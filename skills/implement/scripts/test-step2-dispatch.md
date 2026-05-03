@@ -1,47 +1,53 @@
 # test-step2-dispatch.sh
 
-**Purpose**: Offline regression harness for `skills/implement/scripts/step2-implement.sh` covering the dispatcher branches that do not require spawning Codex. Runs in <1s with no external dependencies (no `codex` binary, no network).
+**Purpose**: Offline regression harness for `skills/implement/scripts/step2-implement.sh` covering the dispatcher branches that do not require spawning an external implementer. Runs in <1s with no `codex`/`cursor` binary and no network.
 
-**Coverage** (15 assertions):
-1. `--coder claude` emits `STATUS=claude_fallback` with no other KV keys, and writes no baseline files (the claude_fallback branch must short-circuit before any plugin / git resolution).
-1b. Default coder (no flag) emits `STATUS=claude_fallback` (the default is `claude`).
-1c. Legacy `--codex-available false` still emits `STATUS=claude_fallback` AND prints a deprecation warning to stderr (backward compat for one release).
+**Coverage** (22 assertions):
+1. `--coder claude` emits `STATUS=claude_fallback` with no other KV keys, and writes no baseline files.
+1b. Default coder (no flag) emits `STATUS=claude_fallback`.
+1c. Legacy `--codex-available false` still emits `STATUS=claude_fallback` and prints a deprecation warning to stderr.
 2. Missing required flag (`--auto-mode`) exits with code 2.
-3. Bad `--coder` enum value exits with code 2.
-3b. `--coder cursor` exits with code 2 and stderr cites issue `#993`.
+3. Bad `--coder` enum value exits with code 2 and names `{claude,codex,cursor}`.
+3b. `--coder cursor --cursor-healthy false` emits `STATUS=bailed REASON=cursor-unhealthy TOOL=cursor` with no baseline-file leak.
+3b2. `--coder cursor` with no `--cursor-healthy` defaults to false and emits `cursor-unhealthy`.
+3b3. `--coder cursor --cursor-healthy ""` treats empty as false and emits `cursor-unhealthy`.
+3b4. `--coder cursor --cursor-healthy bogus` exits with code 2.
+3b5. `--coder claude --cursor-healthy ""` remains `STATUS=claude_fallback`; the Claude path ignores Cursor health noise.
+3b6. Outside a git work-tree, `--coder cursor --cursor-healthy false` emits `cursor-unhealthy` before `REPO_ROOT` lookup.
 3c. `--coder` and `--codex-available` together exit with code 2 and stderr says `mutually exclusive`.
 3d. Bad `--codex-available` enum value exits with code 2.
 4. Bad `--tmpdir` (not a directory) exits with code 2.
 5. Resume cap: pre-seeding `codex-resume-count.txt` to 5 and invoking with `--answers` produces `STATUS=bailed REASON=qa-loop-exceeded` before any Codex spawn.
+5b. Codex resume paths still use `codex-resume-count.txt`, pinning the per-tool filename refactor for byte-identical Codex behavior.
 6. `--answers` pointing at a non-existent file exits with code 2.
-7. (paired with #1) the claude_fallback branch does not leak a baseline file into `$TMPDIR_ARG`.
-8. Corrupt resume counter (non-numeric) → `STATUS=bailed REASON=manifest-schema-invalid`. Defense-in-depth against tmpdir tampering / partial-write corruption.
-9. `--coder codex` invoked with cwd outside any git working tree exits with code 2 and stderr containing `must be invoked from within a git working tree`. Pins the cache-deploy regression fix (REPO_ROOT now derived from `git rev-parse --show-toplevel`, not `SCRIPT_DIR/../../..`).
-10. (paired with #9) the non-git-tree exit-2 path does not leak a baseline file into `$TMPDIR_ARG` (validation must happen before any state mutation).
+7. Corrupt resume counter (non-numeric) emits `STATUS=bailed REASON=manifest-schema-invalid`.
+8. `--coder codex` invoked with cwd outside any git working tree exits with code 2 and stderr containing `must be invoked from within a git working tree`.
+8b. The non-git-tree Codex exit-2 path does not leak a baseline file into `$TMPDIR_ARG`.
 
-All `--coder codex` invocations that proceed past argument parsing are run with cwd pinned to `$REPO_ROOT` so the dispatcher's git resolution targets the harness's own git tree (matches the production caller's contract — the orchestrator always invokes the dispatcher from the consumer-repo cwd).
+All `--coder codex` invocations that proceed past argument parsing are run with cwd pinned to `$REPO_ROOT` so the dispatcher's git resolution targets the harness's own git tree. Cursor health-gate tests also use `cd "$REPO_ROOT"` unless the assertion specifically covers outside-git ordering.
 
-**Out of scope** (no automated coverage today — manual / end-to-end testing only; an offline stub-Codex harness is a known gap):
-- Manifest schema validation (per-status required-key checks via `jq -e`).
+**Out of scope**:
+- Manifest schema validation for real implementer output.
 - Path normalization (`..` / leading `/` / `.claude-plugin/plugin.json` / submodule paths).
 - Sanitization via `scripts/redact-secrets.sh`.
 - Single-retry on transient launcher failure with clean-state guard.
-- `branch-changed` / `protected-path-modified` / `submodule-dirty` post-Codex checks.
-- Dispatcher-side commit (`git add -A && git commit -F …` from `manifest.commit_message`); `commit-failed` bail when the commit fails.
+- `branch-changed` / `protected-path-modified` / `submodule-dirty` / `cursor-modified-history` post-implementer checks.
+- Dispatcher-side commit (`git add -A && git commit -F …`) and `commit-failed` recovery.
 
 **Invariants**:
-- Tests run against the live `step2-implement.sh` in the repo (not a copy) so any edit to the dispatcher's argument parsing, fallback branching, or resume-cap logic is caught here.
-- Tests pre-seed baseline files only for assertion 5 (the dispatcher must NOT touch the working tree, branch state, or git state in any other test path).
-- Scratch directory is created via `mktemp -d` and removed via `trap` on exit; tests run in parallel-safe isolation.
+- Tests run against the live dispatcher in the repo, not a copy.
+- Cursor unhealthy bails do not write baseline files and include `TOOL=cursor`.
+- The Claude fallback branch short-circuits before plugin / git resolution and ignores empty Cursor health input.
+- Scratch directory is created via `mktemp -d` and removed via `trap` on exit.
 
 **Call sites**:
-- `make test-step2-dispatch` — Makefile target.
-- `make test-harnesses` — included in the full pre-CI harness battery.
-- `make lint` — runs both `lint-only` and `test-harnesses`.
+- `make test-step2-dispatch`.
+- `make test-harnesses`.
+- `make lint`.
 
 **Edit-in-sync**:
-- `skills/implement/scripts/step2-implement.sh` — any change to argument parsing, the claude_fallback branch, baseline-file handling, or the resume counter must be exercised here.
-- `skills/implement/scripts/step2-implement.md` — sibling contract for the dispatcher; assertions in this harness should match invariants stated there.
-- `scripts/test-implement-structure.sh` — assertion 19 verifies this harness path exists alongside the dispatcher (via the dispatcher-pin assertion); both should be added/removed together.
+- `skills/implement/scripts/step2-implement.sh` — argument parsing, fallback branching, health gate ordering, baseline-file handling, or resume counter behavior must be exercised here.
+- `skills/implement/scripts/step2-implement.md` — sibling dispatcher contract.
+- `scripts/test-implement-structure.sh` — structural pins for the dispatcher and implementer launchers.
 
 **Running locally**: `make test-step2-dispatch` or `bash skills/implement/scripts/test-step2-dispatch.sh`.

@@ -17,7 +17,7 @@
 # phase sketch consensus.
 #
 # Twenty assertions (assertion 18 added for Protocol Execution Directive pin;
-# assertion 19 added for the Step 2 Codex dispatcher pin; assertion 20 added for
+# assertion 19 added for the Step 2 external implementer dispatcher pin; assertion 20 added for
 # the design-manifest + --design-only path pin). Assertion 5 is retired, so the
 # numbered list runs 1–4, 6–20 (20 live assertions, 21 reserved numbers).
 #  (1) Exactly 1 `^## Load-Bearing Invariants$` heading in skills/implement/SKILL.md.
@@ -632,10 +632,10 @@ if [[ "$DIRECTIVE_COUNT" -ne 1 ]]; then
     fail "(18) Expected exactly 1 '$DIRECTIVE_LITERAL' in skills/implement/SKILL.md, found $DIRECTIVE_COUNT"
 fi
 
-# (19) Step 2 Codex dispatcher pin: SKILL.md must reference the dispatcher
+# (19) Step 2 external implementer dispatcher pin: SKILL.md must reference the dispatcher
 # script path at least once (the dispatcher invocation block) AND the dispatcher
 # script + its sibling contract MUST exist and be executable. Guards against an
-# edit that quietly removes the mandatory-Codex-spawn dispatcher path.
+# edit that quietly removes the mandatory external-implementer dispatcher path.
 DISPATCHER_LITERAL='skills/implement/scripts/step2-implement.sh'
 grep -Fq -- "$DISPATCHER_LITERAL" "$SKILL_MD" \
     || fail "(19) skills/implement/SKILL.md missing dispatcher invocation literal '$DISPATCHER_LITERAL' — Step 2 Codex spawn would be orphaned"
@@ -648,6 +648,16 @@ DISPATCHER_PATH="$REPO_ROOT/$DISPATCHER_LITERAL"
     || fail "(19) Codex implementer launcher missing or not executable: scripts/launch-codex-implement.sh"
 [[ -f "$REPO_ROOT/agents/codex-implementer.md" ]] \
     || fail "(19) Codex implementer system prompt missing: agents/codex-implementer.md"
+[[ -x "$REPO_ROOT/scripts/launch-cursor-implement.sh" ]] \
+    || fail "(19) Cursor implementer launcher missing or not executable: scripts/launch-cursor-implement.sh"
+[[ -f "$REPO_ROOT/scripts/launch-cursor-implement.md" ]] \
+    || fail "(19) Cursor implementer launcher sibling contract missing: scripts/launch-cursor-implement.md"
+[[ -f "$REPO_ROOT/agents/cursor-implementer.md" ]] \
+    || fail "(19) Cursor implementer system prompt missing: agents/cursor-implementer.md"
+[[ -x "$REPO_ROOT/skills/implement/scripts/test-cursor-implementer.sh" ]] \
+    || fail "(19) Cursor implementer test harness missing or not executable: skills/implement/scripts/test-cursor-implementer.sh"
+[[ -f "$REPO_ROOT/skills/implement/scripts/test-cursor-implementer.md" ]] \
+    || fail "(19) Cursor implementer test harness sibling contract missing: skills/implement/scripts/test-cursor-implementer.md"
 
 # (20) Design manifest + design-only path pin: Step 1 must read the design
 # manifest, the flag table must expose --design-only, and Step 18 must mark
