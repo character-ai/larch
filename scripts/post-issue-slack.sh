@@ -12,7 +12,7 @@
 #
 # Arguments:
 #   --issue-number  GitHub issue number (integer)
-#   --status        One of: closed | pr-opened | blocked | user-input
+#   --status        One of: closed | pr-opened | design-only | blocked | user-input
 #   --repo          OWNER/REPO (for link composition fallback if gh fails)
 #   --token         Slack bot token. Omit to auto-resolve from env:
 #                   LARCH_SLACK_BOT_TOKEN then CLAUDE_PLUGIN_OPTION_SLACK_BOT_TOKEN
@@ -21,7 +21,7 @@
 #   --pr-url        Optional PR URL (populates pr-opened status tail)
 #   --detail        Optional free-form tail text appended after the base status
 #
-# Status-to-emoji map: closed=✅, pr-opened=📝, blocked=❌, user-input=❓.
+# Status-to-emoji map: closed=✅, pr-opened=📝, design-only=🧭, blocked=❌, user-input=❓.
 #
 # Output (KEY=value lines on stdout):
 #   SLACK_TS=<timestamp>      (on success)
@@ -73,14 +73,15 @@ if [[ -z "$ISSUE_NUMBER" ]] || [[ -z "$STATUS" ]] || [[ -z "$REPO" ]] || [[ -z "
 fi
 
 case "$STATUS" in
-    closed|pr-opened|blocked|user-input) ;;
-    *) echo "SLACK_TS="; echo "SLACK_ERROR=Invalid --status: $STATUS (want closed|pr-opened|blocked|user-input)"; exit 1 ;;
+    closed|pr-opened|design-only|blocked|user-input) ;;
+    *) echo "SLACK_TS="; echo "SLACK_ERROR=Invalid --status: $STATUS (want closed|pr-opened|design-only|blocked|user-input)"; exit 1 ;;
 esac
 
 # Emoji + base status summary
 case "$STATUS" in
     closed)     EMOJI="✅"; STATUS_SUMMARY="closed" ;;
     pr-opened)  EMOJI="📝"; STATUS_SUMMARY="PR opened, awaiting merge" ;;
+    design-only) EMOJI="🧭"; STATUS_SUMMARY="design complete" ;;
     blocked)    EMOJI="❌"; STATUS_SUMMARY="blocked" ;;
     user-input) EMOJI="❓"; STATUS_SUMMARY="needs user input" ;;
 esac
@@ -142,7 +143,22 @@ LINK="<${ISSUE_URL}|Issue #${ISSUE_NUMBER}>"
 # Compose status tail
 TAIL="$STATUS_SUMMARY"
 if [[ "$STATUS" == "pr-opened" ]] && [[ -n "$PR_URL" ]]; then
-    TAIL="PR <${PR_URL}|opened>, awaiting merge"
+    # Round 3 FINDING_R3_H + Round 4 finding 3: validate PR_URL before
+    # embedding into Slack mrkdwn link syntax. PR_URL normally comes from gh,
+    # but the regex still guarantees no `|`, `>`, backtick, or whitespace can
+    # alter the link structure or mimic adjacent mrkdwn. The character class
+    # accepts host:port (GHE), query strings, and fragments — the bound is
+    # "what mrkdwn safely escapes," not "RFC 3986 strict URL".
+    # shellcheck disable=SC2016 # regex literal: $ is end-anchor, single-quoted intentionally
+    PR_URL_RE='^https://[][A-Za-z0-9._:/?#=&%~+@,!$()*;-]+$'
+    if [[ "$PR_URL" =~ $PR_URL_RE ]]; then
+        TAIL="PR <${PR_URL}|opened>, awaiting merge"
+    else
+        # Refuse to interpolate; degrade to the plain status summary and warn
+        # to stderr so the operator notices.
+        echo "post-issue-slack.sh: PR_URL failed strict https validation, omitting from message: $PR_URL" >&2
+        TAIL="PR opened, awaiting merge"
+    fi
 fi
 if [[ -n "$SAFE_DETAIL" ]]; then
     TAIL="${TAIL} — ${SAFE_DETAIL}"

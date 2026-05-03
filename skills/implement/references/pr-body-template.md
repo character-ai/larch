@@ -18,13 +18,13 @@
 
 <details><summary>Architecture Diagram</summary>
 
-<the Architecture Diagram (mermaid code fence) from the /design phase's Step 3b output visible in conversation context above. Copy the mermaid code fence as printed. If the Architecture Diagram is not visible in conversation context (e.g., /design was interrupted, context was truncated, or this skill was run in --quick mode without /design), write "Architecture diagram not available.">
+<the Architecture Diagram read from ARCHITECTURE_DIAGRAM_FILE in the design manifest. Copy the mermaid code fence from the file. If ARCHITECTURE_DIAGRAM_FILE is absent or unreadable, write "Architecture diagram not available.">
 
 </details>
 
 <details><summary>Code Flow Diagram</summary>
 
-<the Code Flow Diagram (mermaid code fence) from Step 7a output above. Copy the mermaid code fence as printed. If the Code Flow Diagram was not generated (generation failed or quick mode), write "Code flow diagram not available.">
+<the Code Flow Diagram read from $IMPLEMENT_TMPDIR/code-flow-diagram.md. Copy the mermaid code fence from the file. If the Code Flow Diagram was not generated (generation failed or quick mode), write "Code flow diagram not available.">
 
 </details>
 

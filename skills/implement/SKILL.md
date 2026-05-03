@@ -1,7 +1,7 @@
 ---
 name: implement
 description: "Use when shipping a feature end-to-end: design, implement, review, version bump, PR, CI-green merge, Slack issue announce. Triggers: 'ship X', 'land PR', 'merge this'. See /research, /design, /im (merge), /imaq (auto-merge)."
-argument-hint: "[--quick] [--auto] [--merge | --draft] [--no-slack] [--no-admin-fallback] [--coder=claude|codex] [--session-env <path>] [--issue <N>] <feature description>"
+argument-hint: "[--quick] [--auto] [--design-only] [--merge | --draft] [--no-slack] [--no-admin-fallback] [--coder=claude|codex] [--session-env <path>] [--issue <N>] <feature description>"
 allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task, WebFetch, WebSearch, Skill
 ---
 
@@ -9,7 +9,7 @@ allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task
 
 End-to-end: design, plan review, code, validate, commit, code review, validate, commit, code flow diagram, version bump, PR, CI monitor, cleanup, Slack announce of tracking issue. By default, posts a single Slack message about the tracking issue near the end of the run (gated on Slack env vars — `LARCH_SLACK_BOT_TOKEN` + `LARCH_SLACK_CHANNEL_ID`). `--no-slack` opts out. With `--merge`: also CI+rebase+merge loop, local branch delete, main verification.
 
-**Protocol Execution Directive.** You are now the `/implement` orchestrator. After parsing flags and checking for `--draft`/`--merge` mutual-exclusion abort, your FIRST external action MUST be **Step 0** (`session-setup.sh`). Do not `Read`/`Grep`/`Glob` project files, do not `Edit`/`Write`, and do not invoke child skills until Step 0 completes and its output has been parsed. Freelancing the implementation without executing the step sequence is a protocol violation — every step from 0 through 18 must execute in order per this file.
+**Protocol Execution Directive.** You are now the `/implement` orchestrator. After parsing flags and checking for `--draft`/`--merge` and `--design-only`/`--merge` mutual-exclusion aborts, your FIRST external action MUST be **Step 0** (`session-setup.sh`). Do not `Read`/`Grep`/`Glob` project files, do not `Edit`/`Write`, and do not invoke child skills until Step 0 completes and its output has been parsed. Freelancing the implementation without executing the step sequence is a protocol violation — every step from 0 through 18 must execute in order per this file.
 
 **Anti-halt continuation reminder.** After every child `Skill` tool call (e.g., `/design`, `/review`, `/relevant-checks`, `/bump-version`, `/issue`, `/implement`) returns AND after every `Bash` tool call that completes a numbered step or sub-step, IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on the child's cleanup output, on a Bash result, or on a status message, and do NOT write a summary, handoff, status recap, or "returning to parent" message — those are halts in disguise. This applies to ALL step boundaries from Step 0 through Step 18. The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `skip to Step N`, `bail to cleanup`, `jump back`, `loop back`, `fall through`, `break out`). A normal sequential `proceed to Step N+1` instruction is the default continuation this rule reinforces, NOT an exception. Every `/relevant-checks` invocation anywhere in this file is covered by this rule. **Critical boundary: after Step 9b (PR creation) completes, IMMEDIATELY proceed to Step 10 (CI monitor) — PR creation is NOT the end of the run.** See `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Anti-halt continuation reminder for the canonical rule.
 
@@ -54,6 +54,7 @@ The feature to implement is described by `$ARGUMENTS` after flag stripping.
 - `--quick`: `quick_mode=true`. Step 1 skips `/design` (inline plan instead); Step 5 skips `/review` (review loop: rounds 1-3 launch 5 Cursor specialists in parallel + a generic Codex reviewer, rounds 4-7 use single generic Cursor → Codex → Claude fallback, no voting panel); Step 7a skips the Code Flow Diagram. All other steps run normally. Independent of `--merge`.
 - `--auto`: `auto_mode=true`. (a) forward `--auto` to `/design` in Step 1, suppressing its interactive checkpoints; (b) suppress this skill's Step 2 opportunistic questions; (c) in Step 12 merge-conflict resolution, suppress `AskUserQuestion` and use best-effort (bail if confidence too low). When `--quick` also set and `/design` skipped, `--auto` still suppresses Step 2 questions.
 - `--merge`: `merge=true`. Steps 12–15 run (CI+rebase+merge loop, local cleanup, main verification). Otherwise those steps are skipped — PR is created and workflow stops after initial CI wait, rejected findings, final report, Slack issue announce, temp cleanup. **Mutually exclusive with `--draft`.**
+- `--design-only`: `design_only=true`. Run Step 0 / 0.5 / 1, publish the plan, plan-review tally, diagrams when available, and OOS fragments to the tracking issue, then stop without implementation, review, version bump, PR creation, CI, or merge. **Mutually exclusive with `--merge`**; if both are present, print `**⚠ --design-only and --merge are mutually exclusive. Aborting.**` and exit without Step 0. **Mutually exclusive with `--quick`** (quick mode bypasses /design's sketch+review machinery and produces a degraded inline plan that has no plan-review tally; combining the two would publish an empty/degraded review section to the tracking issue with no signal); if both are present, print `**⚠ --design-only and --quick are mutually exclusive (quick mode skips plan-review). Aborting.**` and exit without Step 0.
 - `--draft`: `draft=true`. Step 9b creates the PR in draft state (`create-pr.sh --draft`); Step 14 is skipped so the local branch stays. `draft=true` implies `merge=false`. **Mutually exclusive with `--merge`.** If both are present, print `**⚠ --draft and --merge are mutually exclusive. Aborting.**` and exit without Step 0.
 - `--no-slack`: `slack_enabled=false`. Default: `slack_enabled=true`. When `slack_enabled=true` (default), Step 16a posts a single Slack message about the tracking issue near the end of the run (gated on `slack_available=true` — i.e. `LARCH_SLACK_BOT_TOKEN` and `LARCH_SLACK_CHANNEL_ID` set — and on having a resolved `ISSUE_NUMBER`). When `slack_enabled=false`, Step 16a skips the Slack API call regardless of environment configuration. Independent of all other flags.
 - `--no-admin-fallback`: `no_admin_fallback=true`. Default: `no_admin_fallback=false`. When `true`, forwarded into Step 12b's `merge-pr.sh` invocation; the script then emits `MERGE_RESULT=policy_denied` instead of retrying with `--admin` once the admin-eligible gate (CI good + branch fresh) is reached, and Step 12b bails to Step 12d. Default behavior is unchanged (the `--admin` retry fires as before). Applies to ALL admin-eligible `mergeStateStatus` values (`CLEAN`, `UNSTABLE`, `HAS_HOOKS`, `BLOCKED`) — not just review-required denials. Independent of all other flags (in particular: no special coupling with `--auto`).
@@ -157,6 +158,15 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/write-session-env.sh --output "$IMPLEMENT_TMPDIR/s
 ```
 
 Then:
+- Write a per-run session id for design-manifest freshness checks. The fallback MUST live inside the snippet (a uuidgen-less host would otherwise fail under `set -e` before the prose-only fallback ever runs):
+  ```bash
+  if command -v uuidgen >/dev/null 2>&1; then
+    uuidgen > "$IMPLEMENT_TMPDIR/session-id"
+  else
+    printf '%s\n' "$(basename "$IMPLEMENT_TMPDIR")" > "$IMPLEMENT_TMPDIR/session-id"
+  fi
+  ```
+  Step 1 compares this value to the design manifest's `SESSION_ID` before reusing any exported plan.
 - Set `slack_available` from `SLACK_OK` (`true` → `true`; `false` → `false`). Warn only when the user has NOT opted out: if `slack_enabled=true` AND `SLACK_OK=false`, print `**⚠ Slack is not fully configured (<SLACK_MISSING> not set). Issue Slack announcement (Step 16a) will be skipped.**` When `slack_enabled=false` (user passed `--no-slack`), suppress the warning — Slack is not in use regardless of environment state.
 - If `REPO_UNAVAILABLE=true`: print `**⚠ Could not determine repository name. CI monitoring (Steps 10, 12) and merge (Step 12b) will be skipped.**` Set `repo_unavailable=true`.
 - Set `codex_available=true` only when both `CODEX_AVAILABLE=true` and `CODEX_HEALTHY=true` (per the Binary Check and Health Probe mapping in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md`); same for `cursor_available`. Both flip to `false` at runtime via Runtime Timeout Fallback.
@@ -179,7 +189,7 @@ Durable, actionable follow-up identified during design / implementation / review
 
 **Actionability drives filing**, not category. `Pre-existing Code Issues` are always durable (mechanical dual-write below). `Tool Failures` / `CI Issues` / `Warnings` — file when the failure exposes a recurring / systemic defect; log-only for one-off transients. `External Reviewer Issues` / `Permission Prompts` — typically log-only (operational telemetry); file only when the pattern is persistent across sessions.
 
-**Carve-outs**: Non-accepted OOS (voting rejected) land in the anchor comment's `oos-issues` section under the "Rejected / Out-of-Scope Observations (not filed)" sub-block. Rejected review findings land in `$IMPLEMENT_TMPDIR/rejected-findings.md`, are printed to the terminal transcript at Steps 4 (plan review rejected) and 16 (code review rejected), and are posted to the anchor comment's `plan-review-tally` / `code-review-tally` sections under dedicated `## Rejected Plan Review Findings` / `## Rejected Code Review Findings` sub-headers. `repo_unavailable=true` blocks BOTH paths: Step 9a.1 keeps the entry in `oos-accepted-main-agent.md` and reports `Skipped — repo unavailable` in the anchor's `oos-issues` section; manual `/issue` keeps the item in `execution-issues.md` — do NOT call `/issue` manually when `repo_unavailable=true`. **Security findings are NEVER filed via this principle** — route through SECURITY.md's private disclosure flow.
+**Carve-outs**: Non-accepted OOS (voting rejected) land in the anchor comment's `oos-issues` section under the "Rejected / Out-of-Scope Observations (not filed)" sub-block. Rejected review findings land in `$IMPLEMENT_TMPDIR/rejected-findings.md` and are posted to the anchor comment's `plan-review-tally` / `code-review-tally` sections under dedicated `## Rejected Plan Review Findings` / `## Rejected Code Review Findings` sub-headers — the anchor is the single source of truth. Step 4 (plan review rejected) and Step 16 (code review rejected) emit only one-line breadcrumbs and do NOT reprint the full findings to the terminal transcript. `repo_unavailable=true` blocks BOTH paths: Step 9a.1 keeps the entry in `oos-accepted-main-agent.md` and reports `Skipped — repo unavailable` in the anchor's `oos-issues` section; manual `/issue` keeps the item in `execution-issues.md` — do NOT call `/issue` manually when `repo_unavailable=true`. **Security findings are NEVER filed via this principle** — route through SECURITY.md's private disclosure flow.
 
 **Sanitize before filing from execution context.** Any issue body or anchor fragment composed from execution-session-derived content (execution-issues.md, oos-accepted-main-agent.md, reviewer prose, any session-derived source) MUST apply the dual-write redaction rules below (secrets → `<REDACTED-TOKEN>`, internal URLs → `<INTERNAL-URL>`, PII → `<REDACTED-PII>`) plus SECURITY.md's outbound-redaction subsection. `/issue`'s outbound shell scrubber covers secrets but not internal hostnames / URLs or PII — prompt-level sanitization is required. `/issue` batch mode forwards Description verbatim into public issue bodies, and `tracking-issue-write.sh upsert-anchor` publishes fragment content verbatim into the anchor comment.
 
@@ -484,13 +494,27 @@ Skip `/design`. Handle branch creation here, then produce an inline plan.
 
 **Inline design**: research the codebase (Read / Grep / Glob), then produce a concrete plan under `## Implementation Plan`: files to modify, approach, edge cases, testing strategy (TDD where applicable; else a concrete verification — `/relevant-checks`, grep, dry-run, or manual repro), failure modes. Same content `/design` would produce, without collaborative sketches, plan review, or voting. Print: `⚡ 1: design plan — quick mode, inline plan`
 
+Create the export directory if needed (`mkdir -p "$IMPLEMENT_TMPDIR/design-export"`), then write the inline plan to `$IMPLEMENT_TMPDIR/design-export/plan.txt` (basename exactly `plan.txt`) and set `PLAN_FILE` to that path. Also write `$IMPLEMENT_TMPDIR/design-export/voting-tally.md` containing `Quick mode — no plan review voting.` and set `PLAN_REVIEW_TALLY_FILE` to that path so the Step 1 `plan-review-tally` anchor fragment composer (and downstream PR-body composition) have a file-backed source.
+
 Proceed to Step 2.
 
 ### Normal mode (`quick_mode=false`)
 
 > **Continue after child returns.** When the child Skill returns, execute the NEXT step — do NOT end the turn, and do NOT write a summary, handoff, or "returning to parent" message. See `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Anti-halt continuation reminder. (Branch-specific: applies only to the `/design` invocation in normal mode.)
 
-If `IS_USER_BRANCH=true` AND a reviewed implementation plan is already visible in conversation context (prior `/design` this session), proceed to Step 2. Otherwise invoke `/design` via the Skill tool. Canonical invocation order: `[--auto] --step-prefix "1.::design plan" --branch-info "IS_MAIN=$IS_MAIN IS_USER_BRANCH=$IS_USER_BRANCH USER_PREFIX=$USER_PREFIX CURRENT_BRANCH=$CURRENT_BRANCH" --session-env $IMPLEMENT_TMPDIR/session-env.sh <FEATURE_DESCRIPTION>`. Prepend `--auto` only if `auto_mode=true`. After `/design` returns, proceed to Step 2.
+Before invoking `/design`, check for a reusable design manifest:
+
+```bash
+${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/read-design-manifest.sh --implement-tmpdir "$IMPLEMENT_TMPDIR"
+```
+
+Parse stdout without `eval`/`source`. The skip-/design heuristic is a two-way conjunction:
+1. `MANIFEST_OK=true`.
+2. `PLAN_FILE` is non-empty and points to an existing non-empty file, AND `SESSION_ID` matches the value in `$IMPLEMENT_TMPDIR/session-id`.
+
+(Session binding is enforced by `SESSION_ID` equality alone — `TIMESTAMP` is informational only and MUST NOT gate reuse, since the session-tmpdir lifetime already bounds the manifest's validity window.)
+
+If both are true, reuse the manifest and proceed to Step 2 with **all manifest file variables** set from the reader output — not just `PLAN_FILE`, but also `PLAN_REVIEW_TALLY_FILE`, `CONTESTED_CRITERIA_FILE`, `OOS_FILE`, `REJECTED_FINDINGS_FILE`, `ACCEPTED_PLAN_FINDINGS_FILE`, and `ARCHITECTURE_DIAGRAM_FILE` (when present). Same surface as the post-`/design` success branch below; without this, downstream steps lose plan-review tally / rejected findings / architecture diagram on a resumed run. Otherwise invoke `/design` via the Skill tool. Canonical invocation order: `[--auto] --step-prefix "1.::design plan" --branch-info "IS_MAIN=$IS_MAIN IS_USER_BRANCH=$IS_USER_BRANCH USER_PREFIX=$USER_PREFIX CURRENT_BRANCH=$CURRENT_BRANCH" --session-env $IMPLEMENT_TMPDIR/session-env.sh <FEATURE_DESCRIPTION>`. Prepend `--auto` only if `auto_mode=true`. After `/design` returns, immediately run `read-design-manifest.sh --implement-tmpdir "$IMPLEMENT_TMPDIR"` again; if it does not emit `MANIFEST_OK=true`, print `**⚠ 1: design plan — design manifest unavailable: $ERROR. Bailing to cleanup.**`, set `STALL_TRACKING=true`, and skip to Step 18. On success, set `PLAN_FILE` and all manifest file variables from the reader output.
 
 > **Continue after child returns.** When `/design` returns, execute the Cross-Skill Health Update + `BRANCH_NAME` capture + Step 1.r rebase checkpoint + Step 2 breadcrumb in order — do NOT write a summary, handoff, or "returning to parent" message first. See `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Anti-halt continuation reminder.
 
@@ -510,15 +534,22 @@ Parse `BRANCH=<name>` and save as `BRANCH_NAME`. Referenced by Step 14 (`local-c
 
 ### Anchor-section fragments — `plan-goals-test` + `plan-review-tally`
 
-Write two anchor fragments from `/design`'s visible output. See Step 0.5 "Anchor-section accumulation" for the mechanism.
+Write two anchor fragments from file-backed design artifacts. See Step 0.5 "Anchor-section accumulation" for the mechanism.
 
-1. **`plan-goals-test` fragment** — compose by including the **full implementation plan** (not a summary). **If `## Revised Implementation Plan` appears in conversation context, use that block; otherwise use `## Implementation Plan`.** Quick-mode's inline plan path (Step 1 quick mode "Inline design") prints under `## Implementation Plan` as well, so the source is identical across modes. Include a `## Goal` header with a one-sentence objective, then the complete plan body (approach, files to modify, edge cases, testing strategy), then a `## Test plan` header with the testing strategy extracted from the plan. Write to `$IMPLEMENT_TMPDIR/anchor-sections/plan-goals-test.md`.
-2. **`plan-review-tally` fragment** — compose from the plan review voting tally + Reviewer Competition Scoreboard visible in conversation context (or `"Voting was skipped (insufficient voters)."` / `"No findings were raised — voting was not needed."` / `"Quick mode — no plan review voting."` as appropriate). **After the tally content**, if `$IMPLEMENT_TMPDIR/rejected-findings.md` exists and contains `[Plan Review]` entries, append those entries under a `## Rejected Plan Review Findings` sub-header within the fragment. Write to `$IMPLEMENT_TMPDIR/anchor-sections/plan-review-tally.md`.
+1. **`plan-goals-test` fragment** — compose by reading `PLAN_FILE` (manifest path in normal mode, `$IMPLEMENT_TMPDIR/design-export/plan.txt` in quick mode). Treat the file's full body as the implementation plan — do NOT assume it begins with or contains a literal `## Implementation Plan` heading; `/design` writes plain plan content to `plan.txt` and any normative wrapping is provided by this fragment, not the source file. Include a `## Goal` header with a one-sentence objective, then the complete plan body (approach, files to modify, edge cases, testing strategy), then a `## Test plan` header with the testing strategy extracted from the plan. Write to `$IMPLEMENT_TMPDIR/anchor-sections/plan-goals-test.md`.
+2. **`plan-review-tally` fragment** — compose by reading `PLAN_REVIEW_TALLY_FILE` (manifest path in normal mode, `$IMPLEMENT_TMPDIR/design-export/voting-tally.md` in quick mode). Use fallback text only if the file is missing on a degraded quick-mode path. **After the tally content**, if `REJECTED_FINDINGS_FILE` exists and contains `[Plan Review]` entries, append those entries under a `## Rejected Plan Review Findings` sub-header within the fragment. Write to `$IMPLEMENT_TMPDIR/anchor-sections/plan-review-tally.md`.
 3. If `$ISSUE_NUMBER` is set (any of: Branch 1 sentinel reuse, Branch 2 `--issue` adoption, Branch 3 PR-body recovery, Branch 4 success), assemble the anchor body and invoke `upsert-anchor`. If `deferred=true` (Branch 4 create-issue/anchor/sentinel failure) or `repo_unavailable=true`, skip the upsert.
+
+If `design_only=true`:
+
+1. Compose the `diagrams` anchor fragment now (NOT later, since Steps 7/7a are skipped). The Code Flow Diagram is unavailable in design-only mode (no implementation has run), so the fragment carries: `## Architecture Diagram` + mermaid fence read from `ARCHITECTURE_DIAGRAM_FILE` (or `"Architecture diagram not available."` if that optional manifest key is absent or the file is missing), then `## Code Flow Diagram` + the literal placeholder `"(Code Flow Diagram unavailable — --design-only run, no implementation)"`. Write to `$IMPLEMENT_TMPDIR/anchor-sections/diagrams.md`. If `ISSUE_NUMBER` is set, assemble and upsert (same mechanism as Step 7a's `diagrams` fragment write — see Step 0.5).
+2. Skip the Step 1.r Rebase Checkpoint below — design-only does not modify code, so a rebase to latest main is unnecessary churn.
+3. Skip Steps 2 / 3 / 4 / 5 / 6 / 7 / 7a / 8 / 8a / 8b / 9 / 9b entirely. Proceed directly to Step 9a.1 so accepted OOS observations are filed and anchor `oos-issues` / `run-statistics` fragments are refreshed.
+4. After Step 9a.1 completes, set `DESIGN_ONLY_DONE=true`, skip Steps 10–16, then proceed to Step 16a so the design-only Slack outcome and final report can run before Step 18 cleanup.
 
 ### Rebase onto latest main (before implementation)
 
-Runs unconditionally in both modes. Both `Proceed to Step 2` paths lead here first.
+Runs unconditionally in both modes UNLESS `design_only=true` (per the design-only short-circuit above, which jumps past this section). Both `Proceed to Step 2` paths lead here first.
 
 Apply the Rebase Checkpoint Macro with `<step-prefix>=1.r` and `<short-name>=design plan`.
 
@@ -798,7 +829,7 @@ Runs unconditionally after Step 7 (regardless of Steps 6-7 skip).
 
 If `quick_mode=true`: print `⏩ 7a: code flow — skipped (quick mode) (<elapsed>)`, still write the `diagrams` anchor fragment (Architecture Diagram + Code-Flow-skipped placeholder per the Anchor-section fragment — `diagrams` sub-section below) so the Architecture Diagram is not silently omitted from the anchor, then proceed to Step 8.
 
-If `quick_mode=false`: generate a mermaid Code Flow Diagram from the actual committed implementation. Focus on **runtime behavior** — function call sequences, data flow, control flow. Do NOT duplicate the Architecture Diagram's structural view. Choose the appropriate mermaid type (`sequenceDiagram`, `flowchart`, `stateDiagram`, `graph`, etc.). Print under a `## Code Flow Diagram` header with a mermaid code fence.
+If `quick_mode=false`: generate a mermaid Code Flow Diagram from the actual committed implementation. Focus on **runtime behavior** — function call sequences, data flow, control flow. Do NOT duplicate the Architecture Diagram's structural view. Choose the appropriate mermaid type (`sequenceDiagram`, `flowchart`, `stateDiagram`, `graph`, etc.). Write the diagram to `$IMPLEMENT_TMPDIR/code-flow-diagram.md` and print under a `## Code Flow Diagram` header with a mermaid code fence.
 
 On success: `✅ 7a: code flow — diagram generated (<elapsed>)`. On failure (too abstract to diagram): `**⚠ 7a: code flow — generation failed, proceeding without diagram (<elapsed>)**` and log to `Warnings`.
 
@@ -806,8 +837,8 @@ On success: `✅ 7a: code flow — diagram generated (<elapsed>)`. On failure (t
 
 Compose the `diagrams` fragment from both diagrams (matching the two-sub-section shape in `anchor-comment-template.md`):
 
-- `## Architecture Diagram` + mermaid code fence (retrieved from the `/design` Step 3b output visible in conversation context, or `"Architecture diagram not available."` if not visible).
-- `## Code Flow Diagram` + mermaid code fence just generated, or `"(Code Flow Diagram skipped — quick mode)"` if `quick_mode=true`, or `"Code flow diagram not available."` if generation failed.
+- `## Architecture Diagram` + mermaid code fence read from `ARCHITECTURE_DIAGRAM_FILE`, or `"Architecture diagram not available."` if that optional manifest key is absent or the file is missing.
+- `## Code Flow Diagram` + mermaid code fence read from `$IMPLEMENT_TMPDIR/code-flow-diagram.md`, or `"(Code Flow Diagram skipped — quick mode)"` if `quick_mode=true`, or `"Code flow diagram not available."` if generation failed.
 
 Write to `$IMPLEMENT_TMPDIR/anchor-sections/diagrams.md`. If `ISSUE_NUMBER` is set, assemble and upsert (see Step 0.5). In quick mode, Step 7a is skipped entirely for Code Flow generation but the fragment is still written with the Architecture Diagram + skipped placeholder — do NOT skip the fragment write just because Code Flow was skipped, or the Architecture Diagram will be silently omitted on the deferred path.
 
@@ -1175,13 +1206,13 @@ Parse `VERIFIED`, `COMMIT_HASH`, `COMMIT_MESSAGE`. If `VERIFIED=true`: print `�
 
 ## Step 16 — Rejected Code Review Findings Report
 
-Report unimplemented code review suggestions. Check `$IMPLEMENT_TMPDIR/rejected-findings.md`. If non-empty, print under a `## Unimplemented Code Review Suggestions` header with reviewer name, suggestion, and reason for each. Otherwise print `✅ 16: rejected findings — all suggestions implemented (<elapsed>)`.
+Report unimplemented code review suggestions without reprinting the full findings inline. Check `$IMPLEMENT_TMPDIR/rejected-findings.md`. If non-empty, print `✅ 16: rejected findings — saved to anchor (<elapsed>)`; the full content was already posted via the `code-review-tally` anchor fragment. Otherwise print `✅ 16: rejected findings — all suggestions implemented (<elapsed>)`.
 
 > **Continue to Step 16a.** Do NOT end the turn after printing rejected findings.
 
 ## Step 16a — Post Slack Issue Announcement
 
-Runs unconditionally on every terminal path (normal merge, Step 12d bail, `merge=false`, `draft=true`, `ACTION=already_merged`). The gating below short-circuits when posting is disabled or the tracking issue is not resolvable.
+Runs unconditionally on every terminal path (normal merge, Step 12d bail, `merge=false`, `draft=true`, `ACTION=already_merged`, `DESIGN_ONLY_DONE=true → RUN_OUTCOME=design-only`). The gating below short-circuits when posting is disabled or the tracking issue is not resolvable.
 
 **Skip conditions** (any true → print breadcrumb and proceed to Step 17):
 
@@ -1195,15 +1226,19 @@ Runs unconditionally on every terminal path (normal merge, Step 12d bail, `merge
 **Determine `RUN_OUTCOME`** from session state (first match wins):
 
 1. `pr_closed=true`: `RUN_OUTCOME=closed` (Step 12b merge success OR `ACTION=already_merged`).
-2. `BAIL_NEEDS_USER_INPUT=true`: `RUN_OUTCOME=user-input` (Conflict Resolution Procedure Phase 2 bail under `auto_mode=true`).
-3. `FINAL_BAIL_REASON` is non-empty (Step 12d ran): `RUN_OUTCOME=blocked`.
-4. `merge=false` OR `draft=true` (run successfully created PR without attempting merge): `RUN_OUTCOME=pr-opened`.
-5. Defensive fallback: `RUN_OUTCOME=blocked`.
+2. `DESIGN_ONLY_DONE=true`: `RUN_OUTCOME=design-only` (design artifacts and OOS filing completed; no PR is created).
+3. `BAIL_NEEDS_USER_INPUT=true`: `RUN_OUTCOME=user-input` (Conflict Resolution Procedure Phase 2 bail under `auto_mode=true`).
+4. `FINAL_BAIL_REASON` is non-empty (Step 12d ran): `RUN_OUTCOME=blocked`.
+5. `merge=false` OR `draft=true` (run successfully created PR without attempting merge): `RUN_OUTCOME=pr-opened`.
+6. Defensive fallback: `RUN_OUTCOME=blocked`.
 
 **Compose `--detail`** (optional tail text):
 - `RUN_OUTCOME=blocked` AND `FINAL_BAIL_REASON` non-empty: pass `--detail "$FINAL_BAIL_REASON"`.
 - `RUN_OUTCOME=user-input`: pass `--detail "conflict resolution needs user input (auto-mode bail)"`.
 - Other outcomes: omit `--detail`.
+
+**Optional `post-issue-slack.sh` flags**:
+- `RUN_OUTCOME=design-only`: omit `--pr-url` (no PR exists; the tracking issue URL is the deliverable).
 
 **Invoke the shared script**:
 
@@ -1227,9 +1262,11 @@ On success: print `✅ 16a: slack issue post — posted (<elapsed>)`.
 
 ## Step 17 — Final Report
 
-If `quick_mode=true`: print `✅ 17: final report — quick mode, /design skipped, specialists + generic Codex rounds 1-3 + generic rounds 4+ (<elapsed>)`.
+If `DESIGN_ONLY_DONE=true`: print `✅ 17: final report — design-only complete; tracking issue contains plan, review tally, diagrams, and OOS status (<elapsed>)`.
 
-If `quick_mode=false`: print a summary noting plan review findings were reported by `/design` (visible above) and code review findings by `/review` (visible above). If both phases reported all suggestions implemented, print `✅ 17: final report — all suggestions implemented, plan + code review (<elapsed>)`.
+If `quick_mode=true` and `DESIGN_ONLY_DONE` is not true: print `✅ 17: final report — quick mode, /design skipped, specialists + generic Codex rounds 1-3 + generic rounds 4+ (<elapsed>)`.
+
+If `quick_mode=false` and `DESIGN_ONLY_DONE` is not true: print a summary noting plan review findings were reported by `/design` (via the tracking issue anchor) and code review findings by `/review` (visible above). If both phases reported all suggestions implemented, print `✅ 17: final report — all suggestions implemented, plan + code review (<elapsed>)`.
 
 > **Continue to Step 18.** Do NOT end the turn after the final report.
 
@@ -1254,7 +1291,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/get-issue-info.sh --issue "$ISSUE_NUMBER" --field 
 
 Parse `VALUE=` from stdout. If `VALUE` equals `OPEN`, call `${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh rename --issue $ISSUE_NUMBER --state stalled`. Best-effort: on `FAILED=true` or non-zero exit, log to `Tool Failures` and continue. Do not print a completion line; the Step 18 `✅` is sufficient.
 
-**Branch B — DONE (clean non-merge / draft completion)**: if `$STALL_TRACKING=false` AND `$DONE_RENAME_APPLIED` is NOT `true` (merge-path rename didn't already fire) AND `$PR_NUMBER` is set (a PR was created this run), call `rename --state done`. This handles the `--merge=false` and `--draft` paths where `/implement` completes successfully without attempting auto-merge — the run is logically done and the title should reflect that.
+**Branch B — DONE (clean non-merge / draft / design-only completion)**: if `$STALL_TRACKING=false` AND `$DONE_RENAME_APPLIED` is NOT `true` (merge-path rename didn't already fire) AND (`$PR_NUMBER` is set OR `DESIGN_ONLY_DONE=true`), call `rename --state done`. This handles the `--merge=false` and `--draft` paths where `/implement` completes successfully without attempting auto-merge, plus the `--design-only` path where the tracking issue itself is the deliverable.
 
 **Branch C — no-op**: neither stall nor late-done applies. The merge-path rename (Step 12a `already_merged` / Step 12b `merged` / `admin_merged`) has already set `DONE_RENAME_APPLIED=true`, so this branch is the expected merge-path code flow; nothing more to do.
 
@@ -1266,7 +1303,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-tmpdir.sh --dir "$IMPLEMENT_TMPDIR"
 
 Repeat any external reviewer warnings from earlier (from `/design`, `/review`, or Step 5 runtime-fallback flips). Examples: `**⚠ Codex not available: <reason>**`, `**⚠ Cursor review failed: <reason>**`.
 
-If `draft=true`, remind: `**Note: --draft was set. Draft PR created; local branch retained. Mark the PR ready-for-review and merge manually when ready.**` Otherwise if `merge=false`, remind: `**Note: --merge was not set. PR was created but not merged. Merge manually when ready.**`
+If `DESIGN_ONLY_DONE=true`, remind: `**Note: --design-only was set. No PR was created. The tracking issue's anchor comment carries the plan, plan-review tally, diagrams, and accepted/rejected findings as the run's deliverable.**` Otherwise, if `draft=true`, remind: `**Note: --draft was set. Draft PR created; local branch retained. Mark the PR ready-for-review and merge manually when ready.**` Otherwise if `merge=false`, remind: `**Note: --merge was not set. PR was created but not merged. Merge manually when ready.**`
 
 **Tracking-issue URL**: if the in-memory session variable `$ISSUE_NUMBER` (captured at Step 0.5 — do NOT re-read from the sentinel file, which `cleanup-tmpdir.sh` may have already removed) is non-empty AND `repo_unavailable=false`, derive the URL from `gh` (GH-Enterprise-safe — do NOT hardcode `https://github.com/`):
 

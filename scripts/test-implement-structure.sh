@@ -1,6 +1,6 @@
 #!/bin/bash
 # Structural regression test for /implement SKILL.md + references/ topology (closes #234).
-# Asserts 19 load-bearing invariants across skills/implement/SKILL.md and the six
+# Asserts 20 live load-bearing invariants (assertion 5 retired) across skills/implement/SKILL.md and the six
 # reference docs extracted from it. Complements scripts/test-implement-rebase-macro.sh,
 # which owns the Rebase Checkpoint Macro mechanics; this harness owns top-level section
 # headings, the MANDATORY ↔ reference-file binding, the focus-area CI-parity check,
@@ -16,8 +16,10 @@
 # peer-harness assertions (A) and (D) respectively — accepted duplication per design-
 # phase sketch consensus.
 #
-# Nineteen assertions (assertion 18 added for Protocol Execution Directive pin;
-# assertion 19 added for the Step 2 Codex dispatcher pin):
+# Twenty assertions (assertion 18 added for Protocol Execution Directive pin;
+# assertion 19 added for the Step 2 Codex dispatcher pin; assertion 20 added for
+# the design-manifest + --design-only path pin). Assertion 5 is retired, so the
+# numbered list runs 1–4, 6–20 (20 live assertions, 21 reserved numbers).
 #  (1) Exactly 1 `^## Load-Bearing Invariants$` heading in skills/implement/SKILL.md.
 #  (2) Exactly 1 `^## NEVER List$` heading.
 #  (3) Exactly 1 `^## Rebase Checkpoint Macro$` heading.
@@ -647,5 +649,21 @@ DISPATCHER_PATH="$REPO_ROOT/$DISPATCHER_LITERAL"
 [[ -f "$REPO_ROOT/agents/codex-implementer.md" ]] \
     || fail "(19) Codex implementer system prompt missing: agents/codex-implementer.md"
 
-echo "PASS: test-implement-structure.sh — all 18 structural invariants hold (assertion 5 retired)"
+# (20) Design manifest + design-only path pin: Step 1 must read the design
+# manifest, the flag table must expose --design-only, and Step 18 must mark
+# design-only runs DONE without requiring a PR number.
+grep -Fq -- '--design-only' "$SKILL_MD" \
+    || fail "(20) skills/implement/SKILL.md missing --design-only flag"
+grep -Fq -- 'read-design-manifest.sh --implement-tmpdir "$IMPLEMENT_TMPDIR"' "$SKILL_MD" \
+    || fail "(20) Step 1 missing read-design-manifest.sh invocation"
+grep -Fq -- 'DESIGN_ONLY_DONE=true' "$SKILL_MD" \
+    || fail "(20) Step 1 missing DESIGN_ONLY_DONE short-circuit state"
+grep -Fq -- '$PR_NUMBER` is set OR `DESIGN_ONLY_DONE=true' "$SKILL_MD" \
+    || fail "(20) Step 18 DONE branch must fire for PR_NUMBER or DESIGN_ONLY_DONE"
+grep -Fq -- 'RUN_OUTCOME=design-only' "$SKILL_MD" \
+    || fail "(20) Step 16a Slack outcome state machine missing design-only status"
+grep -Fq -- '$IMPLEMENT_TMPDIR/code-flow-diagram.md' "$SKILL_MD" \
+    || fail "(20) Step 7a/9a must use code-flow diagram file path"
+
+echo "PASS: test-implement-structure.sh — all 20 structural invariants hold (assertion 5 retired)"
 exit 0

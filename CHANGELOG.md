@@ -9,11 +9,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `/implement --design-only`: a new flag that runs Steps 0 / 0.5 / 1 (design + plan + plan-review + diagrams + OOS), publishes all artifacts to the tracking issue's anchor comment, marks the issue `[DONE]`, and stops without implementation, review, version bump, PR creation, CI, or merge. Mutually exclusive with `--merge` and `--quick`. The tracking issue URL is the deliverable. Step 16a posts a 🧭 design-complete Slack status; Step 18 prints a design-only PR-reminder branch instead of falsely claiming a PR exists. (Closes #984.)
+- File-backed `/design` → `/implement` handoff. New `skills/design/scripts/write-design-manifest.sh` exports plan / plan-review tally / contested-decisions / OOS / rejected findings / accepted findings (and optional architecture diagram) into `$IMPLEMENT_TMPDIR/design-export/` with a KV manifest at `manifest.env`; `skills/design/scripts/read-design-manifest.sh` parses + verifies the manifest in `/implement` Step 1 (no `source`/`eval`; rejects malformed keys, control characters / NUL, non-absolute paths, symlinks, paths outside `design-export/`, and duplicate load-bearing keys with `ERROR=duplicate-key:<KEY>`; emits `MANIFEST_OK=true` only after every path validation succeeds; ERR-trapped to preserve the "always exits 0 with envelope" contract). The writer canonicalizes both tmpdirs, rejects symlinked source artifacts (and any source resolving outside `$DESIGN_TMPDIR`), strips C0/DEL controls from `SESSION_ID`, and stages all artifacts to a fresh sibling tmpdir + poisons the live manifest before atomic per-file `mv` to eliminate mixed-vintage exports on partial-rerun failure.
+- `/implement` Step 1 manifest reuse: when a session-bound, valid manifest already exists (matched by `SESSION_ID` equality alone — `TIMESTAMP` is informational), `/implement` reuses it and hydrates ALL file variables (`PLAN_FILE`, `PLAN_REVIEW_TALLY_FILE`, `CONTESTED_CRITERIA_FILE`, `OOS_FILE`, `REJECTED_FINDINGS_FILE`, `ACCEPTED_PLAN_FINDINGS_FILE`, `ARCHITECTURE_DIAGRAM_FILE`) without re-spawning `/design`.
+- `skills/design/references/heavy-worker.md`: subagent runbook that the nested `/design` heavy phase delegates to (sketches + plan + plan-review under an isolated Agent-tool context). The main `/implement` context receives only `DESIGN_HEAVY=complete` (or `failed REASON=<token>`), saving ≈100–300K tokens per nested run. Required Reads use `${CLAUDE_PLUGIN_ROOT}/…` so the subagent loads from the shipped plugin tree regardless of consumer-repo CWD.
+- New regression harness `skills/design/scripts/test-design-manifest.sh` (wired into `make lint` via `test-design-manifest`) covers writer atomic output (glob-checked stale-tmp), missing required artifacts, safe KV grammar, source/eval injection resistance, path traversal, symlink rejection (source AND destination), control-character rejection, malformed-key rejection, duplicate load-bearing key rejection, manifest-not-found and malformed-line error paths, source-symlink rejection, and relative-`--implement-tmpdir` canonicalization.
+- `scripts/test-quick-mode-docs-sync.sh` extended with a `--design-only` literal-anchor block: `README.md`, `docs/skills.md`, `docs/workflow-lifecycle.md`, and `skills/implement/SKILL.md` MUST contain the `--design-only` substring or CI fails.
 - `/fix-issue --coder=<value>` pass-through flag. Forwarded verbatim to the delegated `/implement` run on PR paths (both SIMPLE and HARD bullets); `/fix-issue` performs no validation — `/implement`'s own `--coder` flag is the validating boundary.
+
+### Changed
+
+- `/implement` Step 0 `uuidgen` snippet is now a self-contained Bash block with a `command -v uuidgen` guard + basename fallback so hosts without `uuidgen` no longer exit non-zero before the prose-only fallback ever runs.
+- `/implement` Step 18 PR-reminder block now branches on `DESIGN_ONLY_DONE=true` first so design-only runs no longer claim a draft or unmerged PR exists.
+- `/implement` Step 16a Slack outcome state machine adds `RUN_OUTCOME=design-only` (🧭 design complete); `scripts/post-issue-slack.sh` learns a matching `--status design-only` enum and validates `--pr-url` against an https + GHE-port-aware regex before embedding into Slack mrkdwn (degrades to plain status on validation failure).
+- `/implement` Step 1 anchor-comment template clarification: `PLAN_FILE` is the plan body; the `## Implementation Plan` / `## Goal` / `## Test plan` headings are fragment-level wrapping, not requirements on the source file.
+- `/design` Step 5 cleanup now gates `cleanup-tmpdir.sh` on a `MANIFEST_EXPORT_OK` flag so a manifest-export failure preserves `$DESIGN_TMPDIR` for parent inspection. `/design` `Finalize Plan Review` bullets 1 + 3 now branch on `SESSION_ENV_PATH` so nested runs no longer push voted-in findings + revised plan back into the parent context.
+- Anchor-comment template `Step 9a.1 OOS pipeline` documents that any of the three `oos-accepted-*.md` artifact files MAY be missing — missing-file is treated as empty (no entries from that phase), not as an error.
 
 ### Fixed
 
 - `/implement` Step 2 dispatcher (`skills/implement/scripts/step2-implement.sh`) emitted `STATUS=bailed REASON=protected-path-modified` on every successful Codex `complete` manifest. Root cause: the path-normalization check used a `*$'\0'*` glob, which collapses to `**` in bash (since `$'\0'` is empty in bash strings) and matches every non-empty path. Drop the dead NUL subexpression and add a jq-layer NUL guard that rejects any manifest where a path contains a NUL byte, closing the `read -r` truncation bypass. `--coder=codex` is functional again.
+
+### Internal / docs
+
+- `agent-lint.toml` comment block for `test-quick-mode-docs-sync.sh` mentions the new `--design-only` literal sync surface.
+- `skills/design/scripts/{read,write}-design-manifest.md` siblings document the intentional `CONTESTED_CRITERIA_FILE` → `contested-decisions.md` naming asymmetry (stable for `MANIFEST_VERSION=1`).
+- `skills/shared/subskill-invocation.md` sentinel bullet describes the full manifest-backed handoff (plan + tally + OOS + rejected + accepted-plan + optional architecture diagram), not just one path.
+- `scripts/test-implement-structure.sh` banner + sibling `.md` updated to "20 live assertions (assertion 5 retired)".
+- `scripts/test-design-structure.sh` grep literal updated for the heavy-worker.md `${CLAUDE_PLUGIN_ROOT}/…` path-prefix change.
+- `.gitignore` adds `.claude/scheduled_tasks.lock` (transient ScheduleWakeup bookkeeping).
 
 ## [15.1.3] - 2026-05-03
 
