@@ -141,6 +141,7 @@ LAUNCHER_EXIT=0
     codex exec --full-auto -C "$PWD" \
     $MODEL_ARGS \
     --output-last-message "$TRANSCRIPT_PATH" \
+    -- \
     "$PROMPT" \
     >"$SIDECAR_LOG" 2>&1 || LAUNCHER_EXIT=$?
 
