@@ -92,10 +92,10 @@ Launch all available voters **in parallel** (Cursor first, then Codex, then Clau
 ## Finalize Plan Review
 
 If any in-scope findings were **accepted by vote** (2+ YES votes):
-1. Print them under a `## Plan Review Findings (Voted In)` header with vote counts.
+1. When `SESSION_ENV_PATH` is empty (standalone), print them under a `## Plan Review Findings (Voted In)` header with vote counts. When `SESSION_ENV_PATH` is non-empty (nested under `/implement`), suppress the inline print and emit only `✅ 3: plan review — accepted findings saved (<elapsed>)` — the parent reads the file written in step 5 instead. (Token-reduction contract: nested runs MUST NOT push the full findings list back into the parent context.)
 2. Revise the implementation plan to address each accepted in-scope finding.
-3. Print the revised plan under a `## Revised Implementation Plan` header.
-4. Write the revised plan back to `$DESIGN_TMPDIR/plan.txt` so downstream consumers read the final plan. When `SESSION_ENV_PATH` is non-empty, suppress the inline revised-plan print and print only `✅ 3: plan review — revised plan saved (<elapsed>)`.
+3. When `SESSION_ENV_PATH` is empty (standalone), print the revised plan under a `## Revised Implementation Plan` header. When `SESSION_ENV_PATH` is non-empty, skip the inline print — the revised plan is read from `$DESIGN_TMPDIR/plan.txt` written in step 4.
+4. Write the revised plan back to `$DESIGN_TMPDIR/plan.txt` so downstream consumers read the final plan. When `SESSION_ENV_PATH` is non-empty, also emit `✅ 3: plan review — revised plan saved (<elapsed>)`.
 5. Write the accepted in-scope findings to `$DESIGN_TMPDIR/accepted-plan-findings.md` so Step 3.5 (Design Discussion Round 2) has a stable artifact to read. **Only include in-scope `FINDING_*` items — do not include OOS items.** Use the `FINDING_N` template below. If no in-scope findings were accepted, write an empty `$DESIGN_TMPDIR/accepted-plan-findings.md`.
 
 **OOS items accepted by vote** (2+ YES): These are accepted for GitHub issue filing, NOT for plan revision. **Only when `SESSION_ENV_PATH` is non-empty**: write accepted OOS items to `$(dirname "$SESSION_ENV_PATH")/oos-accepted-design.md` using the `oos-accepted-design.md` format block below. When `SESSION_ENV_PATH` is empty (standalone invocation), skip the OOS artifact write — there is no parent `/implement` to consume it.

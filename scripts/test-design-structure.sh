@@ -123,7 +123,7 @@ grep 'collect-agent-results.sh' "$PLAN_REVIEW_MD" \
 grep -Fq 'write-design-manifest.sh --design-tmpdir "$DESIGN_TMPDIR" --implement-tmpdir "$(dirname "$SESSION_ENV_PATH")"' "$SKILL_MD" \
   || fail "(8) SKILL.md lacks Step 5 write-design-manifest.sh invocation with DESIGN_TMPDIR + dirname(SESSION_ENV_PATH)"
 # shellcheck disable=SC2016 # fixed-string grep literal contains markdown backticks
-grep -Fq 'If `SESSION_ENV_PATH` is empty, skip this manifest write entirely' "$SKILL_MD" \
+grep -Fq 'If `SESSION_ENV_PATH` is empty, skip this manifest write' "$SKILL_MD" \
   || fail "(8) SKILL.md lacks standalone-mode manifest-skip branch"
 # shellcheck disable=SC2016 # fixed-string grep literal contains markdown backticks
 grep -Fq 'read the Step 3 external reviewer launch Bash blocks directly from `skills/design/SKILL.md`' "$REPO_ROOT/skills/design/references/heavy-worker.md" \

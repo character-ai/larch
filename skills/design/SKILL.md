@@ -492,14 +492,14 @@ If `SESSION_ENV_PATH` is non-empty, export design artifacts before cleanup:
 ${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/write-design-manifest.sh --design-tmpdir "$DESIGN_TMPDIR" --implement-tmpdir "$(dirname "$SESSION_ENV_PATH")"
 ```
 
-Parse `MANIFEST_WRITTEN=<path>` from stdout. If the command fails, or the manifest file does not exist, or it exists but is empty, print `**⚠ 5: cleanup — design manifest export failed. Parent /implement will rerun /design.**` and do not remove `$DESIGN_TMPDIR` until the failure is logged. If `SESSION_ENV_PATH` is empty, skip this manifest write entirely; standalone `/design` preserves visible inline output and has no parent consumer.
+Parse `MANIFEST_WRITTEN=<path>` from stdout and set the mental flag `MANIFEST_EXPORT_OK=true` if the command exited 0 AND the manifest file exists AND is non-empty; otherwise set `MANIFEST_EXPORT_OK=false`, print `**⚠ 5: cleanup — design manifest export failed. Parent /implement will rerun /design. Preserving $DESIGN_TMPDIR for inspection.**`, and SKIP the `cleanup-tmpdir.sh` step below entirely so the parent /implement (or operator) can inspect the partial artifacts. If `SESSION_ENV_PATH` is empty, skip this manifest write and treat `MANIFEST_EXPORT_OK` as `true` for cleanup-gating purposes (standalone `/design` preserves visible inline output, has no parent consumer, and always cleans up on the normal path).
 
 **Manifest helper contracts** (per AGENTS.md "per-script contracts live beside the script"):
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/write-design-manifest.sh` — atomic writer invoked above. Sibling contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/write-design-manifest.md`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/read-design-manifest.sh` — consumer-side reader/verifier invoked from `skills/implement/SKILL.md` Step 1 after `/design` returns. Producer/reader colocation under `skills/design/scripts/` is intentional (plan-review FINDING_12 vote: keep colocated, do not relocate to `skills/implement/scripts/`). Sibling contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/read-design-manifest.md`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-manifest.sh` — regression harness for both writer and reader (atomicity, missing-required-artifact rejection, KV grammar, source/eval injection rejection, path-traversal rejection, symlink rejection, control-character rejection, malformed-key rejection). Wired into `make lint` via the `test-design-manifest` Makefile target. Sibling contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-manifest.md`.
 
-Remove the session temp directory and all files within it:
+Remove the session temp directory and all files within it (only when `MANIFEST_EXPORT_OK=true` — on `false`, skip per the gate above):
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-tmpdir.sh --dir "$DESIGN_TMPDIR"

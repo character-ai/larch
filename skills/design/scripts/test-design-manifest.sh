@@ -113,4 +113,29 @@ printf 'SESSION_ID=bad\001value\n' >> "$BASE_EXPORT/manifest.env"
 out=$("$READER" --implement-tmpdir "$TMPROOT/manual")
 printf '%s\n' "$out" | grep -q '^ERROR=control-char$' || fail "control character was not rejected"
 
+# Round 2 FINDING_C: pin duplicate load-bearing key rejection. read-design-manifest.sh
+# fails with ERROR=duplicate-key:<KEY> when a load-bearing key (PLAN_FILE,
+# PLAN_REVIEW_TALLY_FILE, etc.) appears twice. Without this pin, a regression
+# that drops mark_seen_key would silently let later writes shadow validated
+# values without CI signal.
+cp "$BASE_EXPORT/manifest.good" "$BASE_EXPORT/manifest.env"
+printf 'PLAN_FILE=%s/plan.txt\n' "$BASE_EXPORT" >> "$BASE_EXPORT/manifest.env"
+out=$("$READER" --implement-tmpdir "$TMPROOT/manual")
+printf '%s\n' "$out" | grep -q '^MANIFEST_FAILED=true$' || fail "duplicate key did not produce MANIFEST_FAILED envelope"
+printf '%s\n' "$out" | grep -q '^ERROR=duplicate-key:PLAN_FILE$' || fail "duplicate PLAN_FILE was not rejected with duplicate-key:PLAN_FILE"
+
+# Round 2 FINDING_G: pin manifest-not-found and malformed-line (empty line)
+# error paths so they are exercised by CI.
+EMPTY_IMPLEMENT="$TMPROOT/implement-no-manifest"
+mkdir -p "$EMPTY_IMPLEMENT/design-export"
+out=$("$READER" --implement-tmpdir "$EMPTY_IMPLEMENT")
+printf '%s\n' "$out" | grep -q '^ERROR=manifest-not-found$' || fail "missing manifest.env did not produce manifest-not-found"
+
+cp "$BASE_EXPORT/manifest.good" "$BASE_EXPORT/manifest.env"
+# Insert an empty line between two valid KV pairs.
+printf '\n' >> "$BASE_EXPORT/manifest.env"
+printf 'PLAN_FILE=%s/plan.txt\n' "$BASE_EXPORT" >> "$BASE_EXPORT/manifest.env"
+out=$("$READER" --implement-tmpdir "$TMPROOT/manual")
+printf '%s\n' "$out" | grep -q '^ERROR=malformed-line$' || fail "empty line within manifest was not rejected as malformed-line"
+
 echo "PASS: test-design-manifest.sh"

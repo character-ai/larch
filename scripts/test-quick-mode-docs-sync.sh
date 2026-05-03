@@ -227,6 +227,24 @@ run_default() {
   # Required cross-reference: Note A in docs/review-agents.md -> voting-protocol.md
   check_xref "$REPO_ROOT/$XREF_DOC" "$XREF_DOC (Note A xref)" "$XREF_PATH" "$REPO_ROOT" || true
 
+  # Round 2 FINDING_H: --design-only doc-sync guard. The flag was added to
+  # /implement and now appears in README.md, docs/skills.md, and
+  # docs/workflow-lifecycle.md. Without an anchor, a future SKILL.md edit
+  # that renames or removes the flag could leave the public docs silently
+  # advertising a non-existent flag (or vice versa). Each target must contain
+  # the literal "--design-only" substring; SKILL.md is the canonical source
+  # and is also asserted so a future grand rename is caught at the source.
+  local design_only_target
+  for design_only_target in README.md docs/skills.md docs/workflow-lifecycle.md "$SKILL_MD"; do
+    if grep -Fq -- '--design-only' "$REPO_ROOT/$design_only_target"; then
+      echo "PASS: $design_only_target — contains --design-only literal"
+      PASS_COUNT=$((PASS_COUNT + 1))
+    else
+      echo "FAIL: $design_only_target — missing required literal: '--design-only'" >&2
+      FAIL_COUNT=$((FAIL_COUNT + 1))
+    fi
+  done
+
   echo "----"
   echo "PASS_COUNT=$PASS_COUNT  FAIL_COUNT=$FAIL_COUNT"
   if [[ $FAIL_COUNT -gt 0 ]]; then

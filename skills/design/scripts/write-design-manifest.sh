@@ -87,6 +87,14 @@ fi
 if [[ -z "$SESSION_ID" ]]; then
     SESSION_ID=$(basename "$IMPLEMENT_TMPDIR")
 fi
+# Defense-in-depth (Round 2 FINDING_F): the reader rejects values containing
+# any C0/DEL control character. Strip the same set at write time so we never
+# emit a manifest the reader must reject.
+SESSION_ID=$(printf '%s' "$SESSION_ID" | tr -d '\000-\037\177')
+if [[ -z "$SESSION_ID" ]]; then
+    echo "write-design-manifest.sh: SESSION_ID empty after control-char strip" >&2
+    exit 1
+fi
 
 MANIFEST="$EXPORT_DIR/manifest.env"
 TMP=$(mktemp "${MANIFEST}.tmp.XXXXXX")
