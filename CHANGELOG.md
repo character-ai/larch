@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.0.2] - 2026-05-03
+
+### Fixed
+
+- `scripts/launch-codex-implement.sh` now passes the composed prompt to `codex exec` after a `--` end-of-options separator. The agent prompt is built by `cat`ting `agents/codex-implementer.md`, which begins with YAML frontmatter (`---`); codex-cli 0.125.0 interpreted the leading `---` as a flag delimiter and aborted with `unexpected argument`, blocking every `/implement` Step 2 Codex spawn. Operators had to fall back to `--codex-available false` (Claude implementer) to make progress. The sibling `scripts/launch-codex-implement.md` now documents the `--` separator as a load-bearing invariant. `scripts/launch-codex-review.sh` is unaffected because `render-specialist-prompt.sh` strips frontmatter from reviewer prompts. Closes #991.
+
 ## [15.0.1] - 2026-05-03
 
 ### Fixed
