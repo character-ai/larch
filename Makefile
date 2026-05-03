@@ -266,9 +266,10 @@ test-eval-set-structure:
 # in scripts/eval-research.sh (closes #441). NOT a `test-harnesses`
 # prerequisite — the eval-research surface is opt-in operator
 # instrumentation explicitly carved out from CI by repo contract
-# (see Makefile:148, docs/linting.md, scripts/eval-research.md). Runs
-# offline by PATH-stubbing claude + jq so it works on machines without
-# the real binaries. See scripts/test-eval-research-baseline-flag.md.
+# (see the `test-eval-set-structure` target above, docs/linting.md,
+# scripts/eval-research.md). Runs offline by PATH-stubbing claude + jq
+# so it works on machines without the real binaries.
+# See scripts/test-eval-research-baseline-flag.md.
 test-eval-research-baseline-flag:
 	bash scripts/test-eval-research-baseline-flag.sh
 

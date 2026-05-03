@@ -24,7 +24,7 @@ make test-eval-research-baseline-flag
 
 ## Wiring
 
-- **Standalone Makefile target** in the project `Makefile` — `test-eval-research-baseline-flag`. **NOT a `test-harnesses` prerequisite** by design (the runtime harness it tests is opt-in operator instrumentation explicitly carved out from CI; see `Makefile:148` and `docs/linting.md`'s `/research evaluation harness` section). Pattern follows `test-eval-set-structure` (Makefile:157-163).
+- **Standalone Makefile target** in the project `Makefile` — `test-eval-research-baseline-flag`. **NOT a `test-harnesses` prerequisite** by design (the runtime harness it tests is opt-in operator instrumentation explicitly carved out from CI; see the `Makefile` `test-eval-set-structure` target and `docs/linting.md`'s `/research evaluation harness` section). Pattern follows the `Makefile` `test-eval-set-structure` target.
 - **`agent-lint.toml`** — listed in the `[lint].exclude` array so agent-lint's G004 dead-script rule does not flag this Makefile-only harness in CI. The matching pattern is the same as for `test-eval-set-structure.sh` and other Makefile-only harnesses.
 - **CI**: locally `make lint` runs `test-harnesses` then `lint-only`; in CI those are separate jobs (`lint` + `test-harnesses`). This test runs in **neither** by default — operators invoke it on demand or as part of fixing/validating the `--baseline` flag area.
 

@@ -24,8 +24,9 @@
 # Invoked via:  bash scripts/test-eval-research-baseline-flag.sh
 # Wired into:   standalone Makefile target `test-eval-research-baseline-flag`.
 #               NOT a `test-harnesses` prerequisite — eval-research is opt-in
-#               operator instrumentation by repo contract (Makefile:148,
-#               docs/linting.md, scripts/eval-research.md).
+#               operator instrumentation by repo contract (see the
+#               Makefile `test-eval-set-structure` target, docs/linting.md,
+#               and scripts/eval-research.md).
 
 set -euo pipefail
 
