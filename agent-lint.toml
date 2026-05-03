@@ -535,24 +535,6 @@ exclude = [
   # from a standalone Makefile target (test-eval-research-baseline-flag,
   # NOT a test-harnesses prerequisite) and its sibling .md contract.
   "scripts/test-eval-research-baseline-flag.sh",
-  # scripts/test-harnesses.sh is the parallel runner for the test-* regression
-  # harnesses, invoked by the Makefile's test-harnesses target (closes #1005 —
-  # parallelizes ~60 serial harnesses into up to 10 concurrent workers,
-  # cutting wall time ~5×). It enumerates harnesses by running
-  # `make -n _test-harnesses-list` and prints each one's captured output
-  # serially in submission order. Referenced only from Makefile
-  # (test-harnesses target's recipe), docs/linting.md (operator-facing
-  # harness table), and the sibling scripts/test-harnesses.md contract —
-  # same Makefile-only pattern as the other test-* harnesses above.
-  "scripts/test-harnesses.sh",
-  # scripts/test-test-harnesses.sh is the meta-harness for test-harnesses.sh
-  # itself: builds a tiny fake project with three dummy harnesses (one
-  # failing) under mktemp -d, runs the parallel runner with MAX_JOBS=2, and
-  # asserts the output-block contiguity / submission-order / failure-summary
-  # contract. Referenced only from Makefile (test-test-harnesses target +
-  # _test-harnesses-list prerequisite) and the scripts/test-harnesses.md
-  # sibling contract — same Makefile-only pattern.
-  "scripts/test-test-harnesses.sh",
   # scripts/test-validate-research-output.sh is the regression harness for
   # scripts/validate-research-output.sh (the substantive-content validator
   # added by #416 — Phase 3 of umbrella #413). The validator itself is
