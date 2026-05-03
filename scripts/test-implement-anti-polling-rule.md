@@ -14,7 +14,7 @@ Without the inline reminders, future quick-mode review work tends to re-introduc
 ## Invariants asserted
 
 - `AGENTS.md` carries the extended phrasing `Don't spawn a Monitor or a Bash` and explicitly mentions the `for`/`while`/`until` + `sleep` form.
-- `skills/implement/SKILL.md` contains the literal `Do NOT add a Bash polling loop to wait` at least twice (one occurrence per Step 5.3 site).
+- `skills/implement/SKILL.md` contains the literal `Do NOT add a Bash polling loop to wait` inside BOTH the `**5.3-rounds1to3` heading-bounded block AND the `**5.3-generic` heading-bounded block (each block is extracted by an `awk` range up to the next `**5.3` / `**5.4` boundary). A global count is insufficient — the per-site assertion catches a refactor that duplicates the reminder under one heading while dropping it from the other.
 - The same file references `collect-agent-results.sh` as the wait point.
 
 ## Wiring

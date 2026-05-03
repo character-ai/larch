@@ -48,16 +48,40 @@ check "$AGENTS_MD" \
     "AGENTS.md cites the for/while/until + sleep pattern" \
     '`for`/`while`/`until` + `sleep`'
 
-# (2) skills/implement/SKILL.md: inline reminder at both Step 5.3 sites.
-# Both sites must contain the exact phrase identifying collect-agent-results.sh
-# as the wait point. We assert at least two occurrences (one per site).
+# (2) skills/implement/SKILL.md: inline reminder at BOTH Step 5.3 sites.
+# A global count is insufficient — duplicating the literal under one heading
+# while dropping it under the other would still pass. Extract each
+# heading-bounded block separately and grep within.
 SITE_LITERAL='Do NOT add a Bash polling loop to wait'
-COUNT=$(grep -cF -- "$SITE_LITERAL" "$IMPL_MD" || true)
-if [[ "$COUNT" -ge 2 ]]; then
-    PASS=$((PASS + 1))
-    echo "  PASS: SKILL.md Step 5.3-rounds1to3 + Step 5.3-generic carry inline reminder ($COUNT occurrences)"
+
+# Block extraction: from "**5.3-<id>" up to (but not including) the next
+# "**5.3" or "**5.4" boundary. The closing boundaries match the literal
+# section markers in SKILL.md ("**5.3-generic", "**5.3.a", "**5.4 —").
+extract_block() {
+    local start_re="$1" file="$2"
+    awk -v start="$start_re" '
+        $0 ~ start { in_block=1; print; next }
+        in_block && /^\*\*5\.(3|4)/ { in_block=0 }
+        in_block { print }
+    ' "$file"
+}
+
+ROUNDS_BLOCK=$(extract_block '^\*\*5\.3-rounds1to3' "$IMPL_MD")
+GENERIC_BLOCK=$(extract_block '^\*\*5\.3-generic' "$IMPL_MD")
+
+if [[ -z "$ROUNDS_BLOCK" ]]; then fail "SKILL.md Step 5.3-rounds1to3 block extraction" "**5.3-rounds1to3 heading"; fi
+if [[ -z "$GENERIC_BLOCK" ]]; then fail "SKILL.md Step 5.3-generic block extraction"   "**5.3-generic heading"; fi
+
+if grep -qF -- "$SITE_LITERAL" <<<"$ROUNDS_BLOCK"; then
+    PASS=$((PASS + 1)); echo "  PASS: SKILL.md Step 5.3-rounds1to3 carries inline reminder"
 else
-    fail "SKILL.md Step 5.3 inline reminder count >= 2 (found $COUNT)" "$SITE_LITERAL"
+    fail "SKILL.md Step 5.3-rounds1to3 missing inline reminder" "$SITE_LITERAL"
+fi
+
+if grep -qF -- "$SITE_LITERAL" <<<"$GENERIC_BLOCK"; then
+    PASS=$((PASS + 1)); echo "  PASS: SKILL.md Step 5.3-generic carries inline reminder"
+else
+    fail "SKILL.md Step 5.3-generic missing inline reminder" "$SITE_LITERAL"
 fi
 
 check "$IMPL_MD" \
