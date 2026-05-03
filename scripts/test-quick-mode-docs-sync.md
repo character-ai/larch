@@ -1,6 +1,6 @@
 # test-quick-mode-docs-sync.sh
 
-Cross-validation harness with two check families: (1) alignment between the normative `/implement --quick` contract in `skills/implement/SKILL.md` Step 5 and the public user-facing documentation in `README.md`, `docs/review-agents.md`, and `docs/workflow-lifecycle.md` (closes #370); and (2) required cross-references — currently `docs/review-agents.md` → `skills/shared/voting-protocol.md` (closes #377). See the Target files and Required cross-references sections below for full coverage.
+Cross-validation harness with two check families: (1) alignment between the normative `/implement --quick` contract in `skills/implement/SKILL.md` Step 5 and the public user-facing documentation in `README.md`, `docs/review-agents.md`, `docs/workflow-lifecycle.md`, and `docs/skills.md` (closes #370; rounds-1-3 topology markers and `docs/skills.md` target added per #1002); and (2) required cross-references — currently `docs/review-agents.md` → `skills/shared/voting-protocol.md` (closes #377). See the Target files and Required cross-references sections below for full coverage.
 
 ## Purpose
 
@@ -16,20 +16,26 @@ Without this harness, drift between the canonical quick-mode contract and its th
 | `README.md` | required | required |
 | `docs/review-agents.md` | required | required |
 | `docs/workflow-lifecycle.md` | required | required |
+| `docs/skills.md` | required | required |
 
 ### Positive anchors (required in every target)
 
-Each target file MUST contain all three markers:
+Each target file MUST contain all six markers:
 
 | Marker | Casing | Rationale |
 |--------|--------|-----------|
 | `7 rounds` | case-sensitive `grep -F` | Pins the 7-round cap. SKILL.md uses lowercase "7 rounds" consistently. |
 | `Cursor → Codex → Claude` | case-sensitive `grep -F`, UTF-8 U+2192 arrow | Pins the fallback chain order. |
 | `no voting panel` | **case-insensitive** `grep -iF` | Semantic marker; tolerates legitimate sentence-case rewrites (e.g. "No voting panel"). |
+| `rounds 1-3` | **case-insensitive** `grep -iF` | Pins the rounds-1-3 vs rounds-4+ split. Insensitive because `docs/review-agents.md` uses both `Rounds 1-3` (table cell) and `rounds 1-3` (Note A prose). Added per #1002. |
+| `5 Cursor specialists` | case-sensitive `grep -F` | Pins the specialist count in rounds 1-3. Together with the markers below, encodes the multi-lane topology so a future change that drops the specialist panel from rounds 1-3 fails CI. Added per #1002. |
+| `generic Codex` | case-sensitive `grep -F` | Pins the generic Codex slot — present both in rounds 1-3 (specialists + generic Codex) and as a fallback link in the rounds-4+ chain. Added per #1002. |
+
+The last three markers encode the rounds-1-3 vs rounds-4+ topology described in the canonical Step 5 contract. Without them, a SKILL.md edit that re-shuffled the multi-lane structure (e.g. removing the generic Codex from rounds 1-3, or merging rounds 1-3 with rounds 4+) could ship without the public docs being updated.
 
 ### Negative checks (forbidden in public docs only)
 
-Public docs (`README.md`, `docs/review-agents.md`, `docs/workflow-lifecycle.md`) MUST NOT contain any of these legacy stale phrases:
+Public docs (`README.md`, `docs/review-agents.md`, `docs/workflow-lifecycle.md`, `docs/skills.md`) MUST NOT contain any of these legacy stale phrases:
 
 - `1 Claude Code Reviewer subagent, 1 round` — full stale README phrase.
 - `no external reviewers` — legacy claim contradicting the actual fallback chain.
@@ -57,7 +63,7 @@ The check is implemented by `check_xref` (a dedicated function kept separate fro
 
 **Audit performed during #370 implementation**: `grep -F` against each of the three stale phrases returned no matches in `skills/implement/SKILL.md`. The exemption is currently factual (no stale phrases present) rather than merely defensive. If a future SKILL.md edit introduces one of these phrases in a historical context, the exemption still holds by design — SKILL.md's positive anchors alone assert that the current contract is stated somewhere in the file; the canonical source-of-truth assertion does not require the file to be free of historical references.
 
-If the canonical contract itself changes (e.g. the round cap goes to 10 or the fallback chain re-orders), edit the marker variables in `test-quick-mode-docs-sync.sh` and this sibling `.md` FIRST, then propagate to the public docs. The positive-anchor check enforces the new contract across all targets once the markers are updated.
+If the canonical contract itself changes (e.g. the round cap goes to 10, the fallback chain re-orders, or the rounds-1-3 topology changes), edit the `POS_MARKERS` array in `test-quick-mode-docs-sync.sh` and this sibling `.md` FIRST, then propagate to the public docs. The positive-anchor check enforces the new contract across all targets once the markers are updated.
 
 ## `--self-test` mode
 
@@ -65,8 +71,8 @@ The harness ships with a `--self-test` flag that runs two `check_file` fixtures 
 
 `check_file` fixtures:
 
-1. **Good fixture**: contains all three positive markers and no stale phrases. `--self-test` asserts the good fixture produces exactly **0** failures.
-2. **Bad fixture**: contains all three positive markers AND one stale phrase — structured so the ONLY reason `check_file` can fail on this fixture is the negative-check path firing on the stale phrase. `--self-test` asserts the bad fixture produces exactly **1** failure.
+1. **Good fixture**: contains all positive markers and no stale phrases. `--self-test` asserts the good fixture produces exactly **0** failures.
+2. **Bad fixture**: contains all positive markers AND one stale phrase — structured so the ONLY reason `check_file` can fail on this fixture is the negative-check path firing on the stale phrase. `--self-test` asserts the bad fixture produces exactly **1** failure.
 
 The same `check_file` function used in default mode is called against each. The "exactly 1 failure" assertion on the bad fixture is the load-bearing guarantee: if the negative-check block in `check_file` were deleted or bypassed, the bad fixture would produce 0 failures and the self-test would exit non-zero. If the positive-anchor block were deleted, the good fixture would still produce 0 failures (unchanged), but the bad fixture's positive markers would never be checked — the default-mode run against real repo files remains the primary guard against positive-check regressions. The fixture temp dir is cleaned up via `trap` on EXIT.
 
@@ -98,7 +104,7 @@ Listed in `agent-lint.toml`'s `exclude` list because `agent-lint` does not follo
 
 Whenever any of the following change, update them in the same PR:
 
-- **The canonical contract in `skills/implement/SKILL.md` Step 5 quick-mode changes** — update the `POS_MARKER_*` and `STALE_*` constants at the top of `test-quick-mode-docs-sync.sh` FIRST; then update this `.md`; then propagate the new phrasing to each public doc target.
+- **The canonical contract in `skills/implement/SKILL.md` Step 5 quick-mode changes** — update the `POS_MARKERS` and `STALE_PHRASES` arrays at the top of `test-quick-mode-docs-sync.sh` FIRST (and the matching positive-marker / stale-phrase tables above); then update this `.md`; then propagate the new phrasing to each public doc target. If the marker change requires adjusting the self-test fixtures, update the good and bad fixtures in lockstep so the bad fixture continues to fail exactly once on the stale phrase.
 - **A new public doc surfaces that also describes `/implement --quick`** — add it to the `PUBLIC_DOCS` array in the script and list it in the Target Files table above.
 - **The self-test fixture shape needs to change** — keep `check_file` usage byte-identical between default mode and self-test so self-test exercises the same code path. Same rule for `check_xref`: default-mode and self-test must call the same function.
 - **Note A's cited path in `docs/review-agents.md` is renamed / moved / replaced** — update the `XREF_PATH` constant in the script to the new path AND update the "Required cross-references" table above in the same PR. If the rename's intent is to drop the xref entirely, remove the `check_xref` call from `run_default` plus its self-test fixtures, and delete the corresponding row from the table.
