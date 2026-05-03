@@ -494,6 +494,11 @@ ${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/write-design-manifest.sh --design-tm
 
 Parse `MANIFEST_WRITTEN=<path>` from stdout. If the command fails or the file does not exist and is not non-empty, print `**⚠ 5: cleanup — design manifest export failed. Parent /implement will rerun /design.**` and do not remove `$DESIGN_TMPDIR` until the failure is logged. If `SESSION_ENV_PATH` is empty, skip this manifest write entirely; standalone `/design` preserves visible inline output and has no parent consumer.
 
+**Manifest helper contracts** (per AGENTS.md "per-script contracts live beside the script"):
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/write-design-manifest.sh` — atomic writer invoked above. Sibling contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/write-design-manifest.md`.
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/read-design-manifest.sh` — consumer-side reader/verifier invoked from `skills/implement/SKILL.md` Step 1 after `/design` returns. Producer/reader colocation under `skills/design/scripts/` is intentional (plan-review FINDING_12 vote: keep colocated, do not relocate to `skills/implement/scripts/`). Sibling contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/read-design-manifest.md`.
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-manifest.sh` — regression harness for both writer and reader (atomicity, missing-required-artifact rejection, KV grammar, source/eval injection rejection, path-traversal rejection, symlink rejection, control-character rejection, malformed-key rejection). Wired into `make lint` via the `test-design-manifest` Makefile target. Sibling contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-manifest.md`.
+
 Remove the session temp directory and all files within it:
 
 ```bash
