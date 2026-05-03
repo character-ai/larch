@@ -209,11 +209,16 @@ validate_makefile() {
       }
     }
   ' "$makefile" | sort -u > "$phony"
-  # Missing-from-phony = (individual ∪ shard-no-self) − phony, restricted to
-  # targets that actually exist as recipes (the individual list). The shard
-  # set already excludes the coverage-self entry; individual already excludes
-  # carve-outs and the umbrella/shards.
+  # Missing-from-phony = individual − phony. Plus an explicit assertion for
+  # `test-harness-shards-coverage` itself, which is excluded from `individual`
+  # by the carve-out filter but is still a shard-bound test-* recipe whose
+  # `.PHONY` membership matters (without it, a same-named file or directory
+  # could shadow the guard target and silently skip the partition check on
+  # shard-6).
   comm -23 "$individual" "$phony" > "$phony_missing"
+  if ! grep -Fxq 'test-harness-shards-coverage' "$phony"; then
+    printf 'test-harness-shards-coverage\n' >> "$phony_missing"
+  fi
 
   append_section "shard rule declaration errors" "!" "$MISSING_SHARD_RULES"
   append_section "harness recipe target uses non-standard naming - convention is lowercase-hyphenated. See scripts/test-harness-shards-coverage.md" "!" "$naming_violations"
@@ -371,6 +376,13 @@ run_self_case() {
       awk '{ gsub(/ test-zeta /, " "); print }' "$fixture" > "$fixture.tmp"
       mv "$fixture.tmp" "$fixture"
       ;;
+    missing-phony-self)
+      # R3 (Codex): assert failure when test-harness-shards-coverage itself
+      # is missing from .PHONY. The carve-out filter excludes it from the
+      # `individual` set, so a separate explicit assertion guards this case.
+      awk '{ gsub(/ test-harness-shards-coverage /, " "); print }' "$fixture" > "$fixture.tmp"
+      mv "$fixture.tmp" "$fixture"
+      ;;
     happy-path)
       ;;
     *)
@@ -413,6 +425,7 @@ self_test() {
   run_self_case umbrella-missing-shard 1 "umbrella missing shard targets"
   run_self_case umbrella-extra-shard 1 "umbrella has unexpected prerequisites"
   run_self_case missing-phony 1 "missing from .PHONY"
+  run_self_case missing-phony-self 1 "missing from .PHONY"
 }
 
 main() {
