@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.2.1] - 2026-05-03
+
+### Changed
+
+- `scripts/test-quick-mode-docs-sync.sh` tightened to detect rounds-1-3 quick-mode topology drift: adds three positive markers (`rounds 1-3`, `5 Cursor specialists`, `generic Codex`) encoding the multi-lane rounds-1-3 vs rounds-4+ contract; refactors marker storage into a `POS_MARKERS` array; adds `docs/skills.md` to the `PUBLIC_DOCS` target list. Self-test fixtures extended so the new markers are exercised in good and bad fixtures. Sibling `scripts/test-quick-mode-docs-sync.md` and `docs/linting.md` updated to match. (Closes #1002.)
+
 ## [15.2.0] - 2026-05-03
 
 ### Added
