@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.3.1] - 2026-05-03
+
+### Changed
+
+- `/implement` Step 1 (normal mode) carries a new "Post-/design boundary checkpoint" reminder enumerating the in-step continuations permitted between `/design`'s return and the 1.r/Step-2 breadcrumb (📥 manifest-loaded breadcrumb, Cross-Skill Health Update, `BRANCH_NAME` capture, anchor-section writes — in that order); the reminder explicitly classifies "design phase complete," "returning control," and "handing off" as halts in disguise (NEVER #7 family). `skills/design/scripts/read-design-manifest.sh` gains an opt-in `--emit-load-breadcrumb` flag that prints `📥 1: design plan — manifest loaded (plan=<basename>)` as the trailing line of stdout on the success path (suppressed on rejection); the post-`/design` re-run in `/implement` Step 1 forwards this flag so the orchestrator's first mid-Step-1 visible line is unambiguously mid-step. New `scripts/test-implement-post-design-boundary.sh` regression harness pins the SKILL.md reminder phrasing, both breadcrumb literals, the NEVER #7 reference, the reader flag handler, the `plan=<basename>` form (rejecting the legacy `PLAN_FILE=<basename>` form which would collide at the KV-namespace level), and a stdout-shape integration test asserting the breadcrumb is the LAST line on success and is suppressed on the missing-manifest failure path. Wired into the Makefile and `agent-lint.toml` exclude list (closes #1014).
+
 ## [15.3.0] - 2026-05-03
 
 ### Added
