@@ -1235,8 +1235,10 @@ Runs unconditionally on every terminal path (normal merge, Step 12d bail, `merge
 **Compose `--detail`** (optional tail text):
 - `RUN_OUTCOME=blocked` AND `FINAL_BAIL_REASON` non-empty: pass `--detail "$FINAL_BAIL_REASON"`.
 - `RUN_OUTCOME=user-input`: pass `--detail "conflict resolution needs user input (auto-mode bail)"`.
-- `RUN_OUTCOME=design-only`: omit `--pr-url`; the tracking issue URL is the deliverable.
 - Other outcomes: omit `--detail`.
+
+**Optional `post-issue-slack.sh` flags**:
+- `RUN_OUTCOME=design-only`: omit `--pr-url` (no PR exists; the tracking issue URL is the deliverable).
 
 **Invoke the shared script**:
 

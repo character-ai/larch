@@ -42,7 +42,7 @@ This line is suppressed as soon as any fragment contains a non-whitespace byte �
 
 ## Implementation Plan
 
-<full implementation plan body read from PLAN_FILE (the exported `## Implementation Plan` artifact) — approach, files to modify, edge cases, testing strategy>
+<full implementation plan body read from PLAN_FILE — approach, files to modify, edge cases, testing strategy. The `## Implementation Plan` / `## Goal` / `## Test plan` headings here are FRAGMENT-level wrapping written by /implement Step 1; do NOT assume PLAN_FILE itself contains those headings — /design writes plain plan content to plan.txt.>
 
 ## Test plan
 
