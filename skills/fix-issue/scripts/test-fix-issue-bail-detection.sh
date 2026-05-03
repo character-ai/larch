@@ -16,6 +16,8 @@
 #   (a4) HARD bullet forwards "--no-admin-fallback" (issue #559 — branch-protection bypass safety flag).
 #   (a5) SIMPLE bullet forwards "--coder=$coder" (pass-through implementer-selection flag).
 #   (a6) HARD bullet forwards "--coder=$coder" (pass-through implementer-selection flag).
+#   (a7) SIMPLE bullet forwards "--auto" (pass-through autonomous-mode flag).
+#   (a8) HARD bullet forwards "--auto" (pass-through autonomous-mode flag).
 #   (b)  Literal token "IMPLEMENT_BAIL_REASON=adopted-issue-closed" present.
 #   (c)  Warning prefix "/implement bailed: issue #" present.
 #   (d)  Specific directive "Do NOT call `issue-lifecycle.sh close`" present
@@ -117,6 +119,13 @@ assert_bullet_contains "a4: HARD bullet forwards --no-admin-fallback"   '- **HAR
 # default coder.
 assert_bullet_contains "a5: SIMPLE bullet forwards --coder=" '- **SIMPLE**' '--coder=$coder'
 assert_bullet_contains "a6: HARD bullet forwards --coder="   '- **HARD**'   '--coder=$coder'
+
+# (a7, a8) --auto forwarding — pass-through autonomous-mode flag.
+# Without this guard, a future refactor could silently drop the forward and
+# /fix-issue --auto callers would silently lose autonomous behavior in the
+# delegated /implement run.
+assert_bullet_contains "a7: SIMPLE bullet forwards --auto" '- **SIMPLE**' '[--auto if auto_mode]'
+assert_bullet_contains "a8: HARD bullet forwards --auto"   '- **HARD**'   '[--auto if auto_mode]'
 
 # (b) Bail-token literal present.
 assert_contains "b: IMPLEMENT_BAIL_REASON=adopted-issue-closed literal" 'IMPLEMENT_BAIL_REASON=adopted-issue-closed'
