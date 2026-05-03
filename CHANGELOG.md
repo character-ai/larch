@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.4.2] - 2026-05-03
+
+### Changed
+
+- Split the CI `test-harnesses` job into a six-cell parallel matrix (`test-harnesses (1)` through `test-harnesses (6)`), with per-shard prerequisite lists balanced via LPT bin-packing on measured per-harness timings. New `scripts/test-harness-shards-coverage.{sh,md}` partition guard runs FIRST on shard-6 and validates set-equality between recipe-target inventory and union of shard prereqs, single-physical-line shard rules, lowercase-hyphenated naming (`^test-[a-z0-9-]+$` — rejects `test_foo:`, `test-foo_bar:`, etc.), `.PHONY` membership of every shard-bound `test-*` target including the guard itself, umbrella membership, and self-reference-as-first-prereq on shard-6. Carve-out registry centralized via the `CARVE_OUTS` shell variable and shared `is_carve_out()` awk function. `--self-test` mode covers happy-path, missing-target, orphan-in-shards, duplicate-across-shards, backslash-continuation, naming violations (both `test_foo:` and `test-foo_bar:`), self-reference-not-first, umbrella-missing-shard, umbrella-extra-shard, missing-phony, and missing-phony-self fixtures. `lint:` continues to depend on the `test-harnesses` umbrella; `make test-harnesses-N` invocations remain available locally. `docs/linting.md` adds the CI sharding section, branch-protection migration checklist, manual rebalance procedure, and a lockstep edit note for shard-count changes. Sibling-contract sweep updates references in `scripts/test-ci-wait-exit-trap.md`, `skills/research/scripts/test-validate-citations.md`, `skills/issue/scripts/test-body-file-title.md`, `skills/issue/scripts/test-intra-batch-deps.md`, and `skills/research/scripts/test-render-findings-batch.md` to the new shard wiring (closes #1016).
+
 ## [15.4.1] - 2026-05-03
 
 ### Changed
