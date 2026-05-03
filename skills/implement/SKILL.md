@@ -616,7 +616,7 @@ Invoke `/relevant-checks` via the Skill tool. If checks fail, diagnose and fix, 
 
 ## Step 4 — First Commit (implementation)
 
-**On the Codex path** (`$MANIFEST_PATH` is non-empty, i.e. Step 2 returned `STATUS=complete`): the dispatcher has already committed Codex's working-tree edits using `manifest.commit_message` verbatim (`git add -A && git commit -F …`). There is no Claude-side diff verification — `commit_message` is consumed as-is. Skip the `git-commit.sh` invocation. Print `⏩ 4: commit (impl) — already committed by dispatcher (HEAD=$(git rev-parse --short HEAD))`.
+**On the Codex path** (`$MANIFEST_PATH` is non-empty, i.e. Step 2 returned `STATUS=complete`): the dispatcher has already committed Codex's working-tree edits using `manifest.commit_message` (`git add -A && git commit -F …`, with `commit_message` piped through `scripts/redact-secrets.sh` first so secrets do not land in git history). There is no Claude-side diff verification — `commit_message` is consumed as-is modulo the secrets-family redaction; the canonical on-disk manifest is sanitized by the same scrubber for downstream Steps 8a / 9a / 9a.1. Skip the `git-commit.sh` invocation. Print `⏩ 4: commit (impl) — already committed by dispatcher (HEAD=$(git rev-parse --short HEAD))`.
 
 **On the Claude-fallback path** (Step 2 returned `STATUS=claude_fallback`): stage and commit:
 

@@ -9,15 +9,24 @@
 - Spawn-time baseline files are written ONCE on the first invocation under `$TMPDIR_ARG`: `step2-baseline.txt` (HEAD SHA), `step2-spawn-branch.txt` (branch name), `step2-plugin-json-baseline.txt` (`git hash-object` of `.claude-plugin/plugin.json`). All resume invocations reuse them. The baseline SHA anchors the launcher-retry "clean state" guard (post-failure HEAD must equal baseline). The baseline-vs-HEAD diff cross-check that previously enforced manifest path-set equality was removed when the dispatcher took over committing — there is no longer a committed Codex diff to compare against.
 - Resume counter is incremented ONLY when `--answers PATH` is supplied. Cap is 5; the 6th `--answers` invocation emits `STATUS=bailed REASON=qa-loop-exceeded` without spawning Codex.
 - Single retry on transient launcher failure (no manifest written): retry only when post-failure state is fully clean (`git status --porcelain` empty, no `.git/index.lock`, HEAD == `BASELINE_SHA`). A dirty post-failure state emits `STATUS=bailed REASON=dirty-state-after-timeout`.
-- The dispatcher does NOT `git reset`, NOT `git checkout`, NOT discard working-tree state. On `status=complete` it stages and commits Codex's edits via `git add -A && git commit -F <commit-message-file>` — `commit_message` is taken from the manifest verbatim (no diff or subject cross-check). On any other status, the dispatcher leaves the working tree untouched. Codex's hard guard #1 (no destructive git ops) is mirrored here as "the dispatcher never destroys operator work either."
+- The dispatcher does NOT `git reset`, NOT `git checkout`, NOT discard working-tree state. On `status=complete` it stages and commits Codex's edits via `git add -A && git commit -F <commit-message-file>` — `commit_message` is taken from the manifest with no diff or subject cross-check, but IS piped through `scripts/redact-secrets.sh` immediately before `git commit -F` so the secrets-family scrubber that protects the canonical on-disk manifest also protects git history. On any other status, the dispatcher leaves the working tree untouched. On `commit-failed`, `git add -A` has already run and the index stays staged — operators inspect `git status` and `$IMPLEMENT_TMPDIR/codex-commit-stderr.txt` (where the failed `git commit` stderr is captured) before deciding whether to `git reset` or amend. Codex's hard guard #1 (no destructive git ops) is mirrored here as "the dispatcher never destroys operator work either."
 - Path validation rejects `..`, leading `/`, NUL, `.claude-plugin/plugin.json`, and any path under a submodule (per `git submodule status --recursive`). The reserved-file check is a defense-in-depth duplicate of `hooks/pre-commit-block-bump-version-edit.sh`'s contract.
-- `bailed` manifests pass through verbatim (no working-tree-clean / diff-cross-check / commit-count enforcement) — Codex deliberately did not commit, and the orchestrator must see the reason token Codex chose.
+- `bailed` manifests are NOT enforced against working-tree-clean / diff-cross-check / commit-count invariants. Two sub-classes share `STATUS=bailed` on stdout: (1) **Codex-originated** bails (`status=bailed` in the manifest itself, e.g. `resume-incompatible`, `submodule-edit-required-out-of-scope`, free-form Codex tokens) — Codex deliberately did not produce a commit-ready working tree, and the orchestrator surfaces the reason token Codex chose; the manifest passes through verbatim modulo sanitization. (2) **Dispatcher mechanical** bails (`branch-changed`, `protected-path-modified`, `submodule-dirty`, `commit-failed`, `manifest-schema-invalid`, `manifest-missing`, `qa-pending-missing`, `qa-loop-exceeded`, `redactor-not-executable`, `dirty-state-after-timeout`, `codex-runtime-failure`) — the dispatcher overrode an apparent `complete` (or never reached a manifest at all) because a check failed. On `commit-failed` specifically: Codex declared `complete`, the dispatcher staged everything via `git add -A`, then `git commit -F …` failed (empty tree, pre-commit hook rejection, transient git error). The failed `git commit` leaves the index fully staged with NO new commit on HEAD; the dispatcher removes the un-sanitized `manifest.json` (and its raw copy) so raw text fields do not linger on disk, captures `git commit` stderr to `$IMPLEMENT_TMPDIR/codex-commit-stderr.txt`, and bails. Operator recovery surface: `git status` (staged index), `$IMPLEMENT_TMPDIR/codex-commit-stderr.txt`, the transcript, and the sidecar log.
 - Exit code is 0 on every documented outcome (including `STATUS=bailed`). Exit 2 is reserved for caller-error (missing flag, bad path, bad enum value) before any Codex spawn.
 
 **Stdout contract**:
 ```
 STATUS=<complete|needs_qa|bailed|claude_fallback>
-MANIFEST=<path>          # set when STATUS=complete or needs_qa or bailed (if manifest was written)
+MANIFEST=<path>          # set ONLY when STATUS=complete or needs_qa, or when STATUS=bailed
+                         # came from a Codex-authored manifest (status=bailed in the manifest
+                         # itself, e.g. resume-incompatible). Dispatcher mechanical bails
+                         # (commit-failed, manifest-schema-invalid, manifest-missing,
+                         # branch-changed, protected-path-modified, submodule-dirty,
+                         # qa-pending-missing, qa-loop-exceeded, redactor-not-executable,
+                         # dirty-state-after-timeout, codex-runtime-failure) DO NOT emit
+                         # MANIFEST= — and on commit-failed the manifest files are deleted
+                         # from $IMPLEMENT_TMPDIR before bail to avoid leaving un-sanitized
+                         # text on disk.
 QA_PENDING=<path>        # set ONLY when STATUS=needs_qa
 REASON=<token>           # set ONLY when STATUS=bailed
 TRANSCRIPT=<path>        # set when launcher actually ran
@@ -37,7 +46,7 @@ SIDECAR_LOG=<path>       # set when launcher actually ran
 | `--answers PATH` | optional | Operator answers to a prior `needs_qa` cycle; presence increments the resume counter |
 
 **Outcomes** (`STATUS` values):
-- `complete` — Codex committed; all post-Codex mechanical checks passed; manifest sanitized and emitted at `$TMPDIR/manifest.json`.
+- `complete` — all post-Codex mechanical checks passed; the dispatcher committed Codex's working-tree edits using `manifest.commit_message` (redacted via `scripts/redact-secrets.sh` immediately before `git commit -F`); the canonical manifest is sanitized and emitted at `$TMPDIR/manifest.json`.
 - `needs_qa` — Codex wrote `qa-pending.json` with operator questions; SKILL.md Step 2 collects answers and re-invokes the dispatcher with `--answers`.
 - `bailed` — Codex itself emitted `status=bailed`, OR the dispatcher overrode `complete` because mechanical validation failed. `REASON` token list is in `skills/implement/references/codex-manifest-schema.md` (Bail-reason tokens section). When the dispatcher overrides Codex, the dispatcher's reason wins.
 - `claude_fallback` — When `--coder=claude` (the default) or the legacy `--codex-available false`; the caller proceeds with the main-agent code-edit path.
