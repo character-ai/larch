@@ -1,7 +1,7 @@
 ---
 name: implement
 description: "Use when shipping a feature end-to-end: design, implement, review, version bump, PR, CI-green merge, Slack issue announce. Triggers: 'ship X', 'land PR', 'merge this'. See /research, /design, /im (merge), /imaq (auto-merge)."
-argument-hint: "[--quick] [--auto] [--merge | --draft] [--no-slack] [--no-admin-fallback] [--session-env <path>] [--issue <N>] <feature description>"
+argument-hint: "[--quick] [--auto] [--merge | --draft] [--no-slack] [--no-admin-fallback] [--coder=claude|codex] [--session-env <path>] [--issue <N>] <feature description>"
 allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task, WebFetch, WebSearch, Skill
 ---
 
@@ -57,6 +57,7 @@ The feature to implement is described by `$ARGUMENTS` after flag stripping.
 - `--draft`: `draft=true`. Step 9b creates the PR in draft state (`create-pr.sh --draft`); Step 14 is skipped so the local branch stays. `draft=true` implies `merge=false`. **Mutually exclusive with `--merge`.** If both are present, print `**⚠ --draft and --merge are mutually exclusive. Aborting.**` and exit without Step 0.
 - `--no-slack`: `slack_enabled=false`. Default: `slack_enabled=true`. When `slack_enabled=true` (default), Step 16a posts a single Slack message about the tracking issue near the end of the run (gated on `slack_available=true` — i.e. `LARCH_SLACK_BOT_TOKEN` and `LARCH_SLACK_CHANNEL_ID` set — and on having a resolved `ISSUE_NUMBER`). When `slack_enabled=false`, Step 16a skips the Slack API call regardless of environment configuration. Independent of all other flags.
 - `--no-admin-fallback`: `no_admin_fallback=true`. Default: `no_admin_fallback=false`. When `true`, forwarded into Step 12b's `merge-pr.sh` invocation; the script then emits `MERGE_RESULT=policy_denied` instead of retrying with `--admin` once the admin-eligible gate (CI good + branch fresh) is reached, and Step 12b bails to Step 12d. Default behavior is unchanged (the `--admin` retry fires as before). Applies to ALL admin-eligible `mergeStateStatus` values (`CLEAN`, `UNSTABLE`, `HAS_HOOKS`, `BLOCKED`) — not just review-required denials. Independent of all other flags (in particular: no special coupling with `--auto`).
+- `--coder=<value>`: sets `coder=<value>`. Default: `coder=claude`. Accepted values: `claude` (Step 2 implementation runs in the main agent / Claude context — restores pre-Codex behavior; this is the default), `codex` (Step 2 spawns the Codex implementer via `step2-implement.sh`). `--coder=cursor` is reserved for #993 and currently rejected at parse time. Forwarded to the Step 2 dispatcher as `--coder $coder`. Independent of all other flags. The legacy `--codex-available true|false` knob is still accepted by the dispatcher for one release with a stderr deprecation warning (`true → coder=codex`, `false → coder=claude`); orchestrator-side, prefer `--coder` directly.
 - `--no-merge`: **Deprecated** no-op. On encounter, print `**ℹ '--no-merge' is now the default and no longer needed; the flag is recognized as a no-op for backward compatibility.**`
 - `--session-env <path>`: sets `SESSION_ENV_PATH`. Forwarded to `session-setup.sh` via `--caller-env` and to `/design` via `--session-env`. Empty = standalone invocation (full discovery).
 - `--issue <N>`: sets `ISSUE_ARG=<N>`. Default: empty. When non-empty, Step 0.5 Branch 2 adopts the given tracking issue instead of Branch 4 creating a new one. Compatible with all other flags. If the target issue is CLOSED, Step 0.5 emits `IMPLEMENT_BAIL_REASON=adopted-issue-closed` on stdout and exits non-zero (cleanup still runs).
@@ -527,9 +528,9 @@ Apply the Rebase Checkpoint Macro with `<step-prefix>=1.r` and `<short-name>=des
 
 **No mid-run scope re-litigation.** Once Step 2 begins with a plan in hand, the orchestrator does not relitigate scope, capacity, or "should I stop" via its own `AskUserQuestion`; if the plan is too large, that should have surfaced at earlier planning checkpoints (`/design` Step 1c/1d when normal mode runs, or `/design` Step 3.5). Mid-implementation, the dispatcher (or, on Claude fallback, the orchestrator) executes the plan or hits a concrete Step 12d bail condition; the orchestrator does not invent a third halting path. This rule does NOT suppress `AskUserQuestion` calls in the Codex Q/A loop below or in the Claude-fallback branch's opportunistic questions. See NEVER #7.
 
-### Step 2 dispatch — mandatory Codex spawn when available
+### Step 2 dispatch — coder selection
 
-Step 2 invokes a single dispatcher (`skills/implement/scripts/step2-implement.sh`). The dispatcher is the ONLY place that branches on `codex_available`. On the Codex path the dispatcher spawns Codex, validates the returned manifest mechanically, and emits a deterministic KV envelope; the orchestrator MUST NOT inspect Codex's transcript, MUST NOT `git diff` to reconstruct what Codex did, and MUST NOT fall back to a Claude-driven Edit/Write code-edit pass except on `STATUS=claude_fallback`. This preserves Claude tokens and is the load-bearing reason this skill exists in its current shape — see `agents/codex-implementer.md` and `skills/implement/scripts/step2-implement.md` for the contracts.
+Step 2 invokes a single dispatcher (`skills/implement/scripts/step2-implement.sh`). The dispatcher is the ONLY place that branches on the chosen `coder`. On the Codex path (`coder=codex`) the dispatcher spawns Codex, validates the returned manifest mechanically, and emits a deterministic KV envelope; the orchestrator MUST NOT inspect Codex's transcript, MUST NOT `git diff` to reconstruct what Codex did, and MUST NOT fall back to a Claude-driven Edit/Write code-edit pass except on `STATUS=claude_fallback`. On the Claude path (`coder=claude`, the default) the dispatcher emits `STATUS=claude_fallback` immediately and the orchestrator runs the Edit/Write code-edit pass at 2.4. See `agents/codex-implementer.md` and `skills/implement/scripts/step2-implement.md` for the contracts. When `coder=codex` is requested but `codex_available=false` (binary missing or health probe failed), the dispatcher proceeds with the Codex spawn anyway and bails with `codex-runtime-failure` if Codex truly cannot run — operators who want a clean fallback should pass `--coder=claude`.
 
 **2.1 — First dispatch invocation**:
 
@@ -539,7 +540,7 @@ ${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step2-implement.sh \
     --plan-file "$PLAN_FILE" \
     --feature-file "$FEATURE_FILE" \
     --auto-mode "$auto_mode" \
-    --codex-available "$codex_available"
+    --coder "$coder"
 ```
 
 `$PLAN_FILE` is the path written at Step 1 (`/design`'s plan, or the inline quick-mode plan). `$FEATURE_FILE` is `$IMPLEMENT_TMPDIR/feature-description.txt` (created at Step 0). Parse the dispatcher's stdout into local KV variables: `STATUS`, `MANIFEST`, `QA_PENDING`, `REASON`, `TRANSCRIPT`, `SIDECAR_LOG`.

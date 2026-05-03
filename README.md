@@ -69,9 +69,9 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#implement"><code>/implement</code></a></td>
-      <td><code>[--quick] [--auto] [--merge | --draft] [--no-slack] [--no-admin-fallback] [--issue &lt;N&gt;] &lt;feature description&gt;</code></td>
+      <td><code>[--quick] [--auto] [--merge | --draft] [--no-slack] [--no-admin-fallback] [--coder=claude|codex] [--issue &lt;N&gt;] &lt;feature description&gt;</code></td>
     </tr>
-    <tr><td colspan="2">Full end-to-end feature workflow — design, implement, PR. <code>--quick</code> skips <code>/design</code> and runs a simplified single-reviewer loop of up to 7 rounds with a per-round Cursor → Codex → Claude fallback chain (no voting panel).</td></tr>
+    <tr><td colspan="2">Full end-to-end feature workflow — design, implement, PR. <code>--quick</code> skips <code>/design</code> and runs a simplified single-reviewer loop of up to 7 rounds with a per-round Cursor → Codex → Claude fallback chain (no voting panel). <code>--coder</code> selects the Step 2 implementer (default <code>claude</code> — main agent in main context; pass <code>codex</code> to spawn the Codex implementer instead).</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#issue"><code>/issue</code></a></td>
