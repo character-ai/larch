@@ -384,7 +384,12 @@ if [[ "$STATUS" == "complete" ]]; then
     while IFS= read -r p; do
         [[ -z "$p" ]] && continue
         # absolute path or contains ..
-        if [[ "$p" == /* ]] || [[ "$p" == *..* ]] || [[ "$p" == *$'\0'* ]]; then
+        # NUL detection is implicit — bash strings cannot hold a NUL, so the
+        # `read -r` above terminates the field at any NUL in upstream JSON.
+        # A literal `*$'\0'*` glob expands to `**` (because `$'\0'` is empty
+        # in bash) and matches every non-empty path, so the check must not
+        # be expressed that way.
+        if [[ "$p" == /* ]] || [[ "$p" == *..* ]]; then
             paths_invalid=true; break
         fi
         # protected file
