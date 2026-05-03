@@ -16,8 +16,10 @@
 # peer-harness assertions (A) and (D) respectively — accepted duplication per design-
 # phase sketch consensus.
 #
-# Nineteen assertions (assertion 18 added for Protocol Execution Directive pin;
-# assertion 19 added for the Step 2 Codex dispatcher pin):
+# Twenty assertions (assertion 18 added for Protocol Execution Directive pin;
+# assertion 19 added for the Step 2 Codex dispatcher pin; assertion 20 added for
+# the design-manifest + --design-only path pin). Assertion 5 is retired, so the
+# numbered list runs 1–4, 6–20 (20 live assertions, 21 reserved numbers).
 #  (1) Exactly 1 `^## Load-Bearing Invariants$` heading in skills/implement/SKILL.md.
 #  (2) Exactly 1 `^## NEVER List$` heading.
 #  (3) Exactly 1 `^## Rebase Checkpoint Macro$` heading.
@@ -663,5 +665,5 @@ grep -Fq -- 'RUN_OUTCOME=design-only' "$SKILL_MD" \
 grep -Fq -- '$IMPLEMENT_TMPDIR/code-flow-diagram.md' "$SKILL_MD" \
     || fail "(20) Step 7a/9a must use code-flow diagram file path"
 
-echo "PASS: test-implement-structure.sh — all 19 structural invariants hold (assertion 5 retired)"
+echo "PASS: test-implement-structure.sh — all 20 structural invariants hold (assertion 5 retired)"
 exit 0

@@ -35,7 +35,12 @@ mkdir -p "$IMPLEMENT"
 
 "$WRITER" --design-tmpdir "$DESIGN" --implement-tmpdir "$IMPLEMENT" >/dev/null
 [[ -f "$IMPLEMENT/design-export/manifest.env" ]] || fail "writer did not create manifest"
-[[ ! -f "$IMPLEMENT/design-export/manifest.env.tmp" ]] || fail "writer left fixed tmp file"
+# Writer uses mktemp with basename `manifest.env.tmp.XXXXXX`, so a fixed-name
+# check would silently miss stale temp files. Glob across the randomized suffix.
+shopt -s nullglob
+stale_tmps=("$IMPLEMENT"/design-export/manifest.env.tmp.*)
+shopt -u nullglob
+[[ ${#stale_tmps[@]} -eq 0 ]] || fail "writer left stale tmp file(s): ${stale_tmps[*]}"
 
 out=$("$READER" --implement-tmpdir "$IMPLEMENT")
 printf '%s\n' "$out" | grep -q '^MANIFEST_OK=true$' || fail "reader did not accept valid manifest"

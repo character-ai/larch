@@ -172,8 +172,8 @@ The canonical Step 9a.1 procedure lives here (Phase 3+). The anchor comment is t
 
 Step 9a.1's sequence in anchor context:
 
-1. Read `$IMPLEMENT_TMPDIR/oos-accepted-*.md` artifact files (one per phase: `oos-accepted-design.md`, `oos-accepted-review.md`, `oos-accepted-main-agent.md`).
-2. If all artifacts are empty, emit `Accepted OOS (GitHub issues filed)` as an empty bulleted list.
+1. Read `$IMPLEMENT_TMPDIR/oos-accepted-*.md` artifact files (one per phase: `oos-accepted-design.md`, `oos-accepted-review.md`, `oos-accepted-main-agent.md`). **A missing file MUST be treated as empty** (no entries from that phase) — none of the three artifacts is mandatory: `/design` quick mode skips review and never writes `oos-accepted-design.md`; `/review` may produce zero accepted OOS and skip writing `oos-accepted-review.md`; the main-agent dual-write only fires when something was appended. Treat missing-file and empty-file identically; do NOT error on missing.
+2. If all artifacts are missing-or-empty, emit `Accepted OOS (GitHub issues filed)` as an empty bulleted list.
 3. Idempotency guard: if `$IMPLEMENT_TMPDIR/oos-issues-created.md` sentinel exists, recover prior URLs from it and skip the `/issue` invocation (deterministic byte-exact guard). Do NOT double-file.
 4. Invoke `/issue --input-file` batch mode with the accepted OOS entries. Parse stdout for `ISSUES_CREATED`, `ISSUES_FAILED`, `ISSUES_DEDUPLICATED`, per-issue `ISSUE_<i>_NUMBER=`, `ISSUE_<i>_URL=`.
 5. Write the sentinel `$IMPLEMENT_TMPDIR/oos-issues-created.md` with the per-issue URLs for rerun idempotency.

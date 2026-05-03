@@ -130,13 +130,13 @@ grep -Fq 'read the Step 3 external reviewer launch Bash blocks directly from `sk
   || fail "(8) heavy-worker.md must tell the subagent to read Step 3 reviewer launch blocks from SKILL.md"
 
 # Check 9: load-bearing conversation-context dependency phrases are absent.
-if grep -rnE 'visible in conversation|retrieved from.*conversation' "$REPO_ROOT/skills/design" "$REPO_ROOT/skills/implement" "$REPO_ROOT/skills/shared" >/tmp/larch-design-structure-grep.$$ 2>/dev/null; then
-  matches=$(head -5 /tmp/larch-design-structure-grep.$$)
-  rm -f /tmp/larch-design-structure-grep.$$
+GREP_TMP=$(mktemp "${TMPDIR:-/tmp}/larch-design-structure-grep.XXXXXX")
+trap 'rm -f "$GREP_TMP"' EXIT
+if grep -rnE 'visible in conversation|retrieved from.*conversation' "$REPO_ROOT/skills/design" "$REPO_ROOT/skills/implement" "$REPO_ROOT/skills/shared" >"$GREP_TMP" 2>/dev/null; then
+  matches=$(head -5 "$GREP_TMP")
   fail "(9) found forbidden conversation-context dependency phrase:
 $matches"
 fi
-rm -f /tmp/larch-design-structure-grep.$$
 
 echo "PASS: test-design-structure.sh — all 9 structural invariants hold"
 exit 0

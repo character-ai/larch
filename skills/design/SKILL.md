@@ -492,7 +492,7 @@ If `SESSION_ENV_PATH` is non-empty, export design artifacts before cleanup:
 ${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/write-design-manifest.sh --design-tmpdir "$DESIGN_TMPDIR" --implement-tmpdir "$(dirname "$SESSION_ENV_PATH")"
 ```
 
-Parse `MANIFEST_WRITTEN=<path>` from stdout. If the command fails or the file does not exist and is not non-empty, print `**⚠ 5: cleanup — design manifest export failed. Parent /implement will rerun /design.**` and do not remove `$DESIGN_TMPDIR` until the failure is logged. If `SESSION_ENV_PATH` is empty, skip this manifest write entirely; standalone `/design` preserves visible inline output and has no parent consumer.
+Parse `MANIFEST_WRITTEN=<path>` from stdout. If the command fails, or the manifest file does not exist, or it exists but is empty, print `**⚠ 5: cleanup — design manifest export failed. Parent /implement will rerun /design.**` and do not remove `$DESIGN_TMPDIR` until the failure is logged. If `SESSION_ENV_PATH` is empty, skip this manifest write entirely; standalone `/design` preserves visible inline output and has no parent consumer.
 
 **Manifest helper contracts** (per AGENTS.md "per-script contracts live beside the script"):
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/write-design-manifest.sh` — atomic writer invoked above. Sibling contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/write-design-manifest.md`.

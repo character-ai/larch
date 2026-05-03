@@ -72,6 +72,8 @@ check_value() {
     esac
 }
 
+PATH_OUTPUT=""
+
 check_path() {
     local key="$1"
     local value="$2"
@@ -89,7 +91,29 @@ check_path() {
     if [[ "$require_nonempty" = true && ! -s "$value" ]]; then
         fail "required-empty"
     fi
-    printf '%s=%s\n' "$key" "$canon"
+    PATH_OUTPUT+=$(printf '%s=%s\n' "$key" "$canon")$'\n'
+}
+
+LOAD_BEARING_KEYS=(MANIFEST_VERSION PLAN_FILE PLAN_REVIEW_TALLY_FILE CONTESTED_CRITERIA_FILE OOS_FILE REJECTED_FINDINGS_FILE ACCEPTED_PLAN_FINDINGS_FILE ARCHITECTURE_DIAGRAM_FILE TIMESTAMP SESSION_ID)
+
+is_load_bearing_key() {
+    local k="$1"
+    local lb
+    for lb in "${LOAD_BEARING_KEYS[@]}"; do
+        [[ "$lb" = "$k" ]] && return 0
+    done
+    return 1
+}
+
+SEEN_KEYS=""
+
+mark_seen_key() {
+    local k="$1"
+    is_load_bearing_key "$k" || return 0
+    case " $SEEN_KEYS " in
+        *" $k "*) fail "duplicate-key:$k" ;;
+    esac
+    SEEN_KEYS+=" $k"
 }
 
 MANIFEST_VERSION=""
@@ -113,6 +137,7 @@ while IFS= read -r line || [[ -n "$line" ]]; do
     value=${line#*=}
     [[ "$key" =~ ^[A-Z][A-Z0-9_]*$ ]] || fail "invalid-key"
     check_value "$value"
+    mark_seen_key "$key"
     case "$key" in
         MANIFEST_VERSION) MANIFEST_VERSION="$value" ;;
         PLAN_FILE) PLAN_FILE="$value" ;;
@@ -138,7 +163,6 @@ done < "$MANIFEST"
 [[ -n "$TIMESTAMP" ]] || fail "missing-timestamp"
 [[ -n "$SESSION_ID" ]] || fail "missing-session-id"
 
-echo "MANIFEST_OK=true"
 check_path "PLAN_FILE" "$PLAN_FILE" true
 check_path "PLAN_REVIEW_TALLY_FILE" "$PLAN_REVIEW_TALLY_FILE" true
 check_path "CONTESTED_CRITERIA_FILE" "$CONTESTED_CRITERIA_FILE" false
@@ -148,5 +172,11 @@ check_path "ACCEPTED_PLAN_FINDINGS_FILE" "$ACCEPTED_PLAN_FINDINGS_FILE" false
 if [[ -n "$ARCHITECTURE_DIAGRAM_FILE" ]]; then
     check_path "ARCHITECTURE_DIAGRAM_FILE" "$ARCHITECTURE_DIAGRAM_FILE" false
 fi
+
+# All path validations passed. Emit success envelope: MANIFEST_OK=true must
+# precede the buffered KEY=value lines so a fail-closed consumer sees a clean
+# envelope (FINDING_1 of /review Round 1).
+echo "MANIFEST_OK=true"
+printf '%s' "$PATH_OUTPUT"
 printf 'TIMESTAMP=%s\n' "$TIMESTAMP"
 printf 'SESSION_ID=%s\n' "$SESSION_ID"
