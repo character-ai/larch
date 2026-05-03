@@ -156,24 +156,13 @@ run_case "(g) zero-byte readable baseline + non-empty current untracked" \
 # sed must strip). A regression that removes the trailing sed filter
 # would yield a phantom delta entry and flip FILES_CHANGED to true
 # incorrectly.
-# Baseline file MUST live outside the fixture repo. If it lived inside
-# (`$SBX_H/baseline.txt`), the `> "$BL_H"` redirection would create the
-# file before `git ls-files --others --exclude-standard` walks the tree,
-# and on filesystems where readdir returns the just-created file (e.g.
-# Linux ext4 in CI) `baseline.txt` self-includes into the baseline,
-# while the SUT's later `git ls-files` excludes it via the same path —
-# producing a phantom delta and flipping FILES_CHANGED to true. macOS
-# APFS happens to hide the in-flight file from readdir so the race
-# never triggered locally. External baseline (mktemp) eliminates the
-# race entirely. Same external-baseline pattern as case (i).
 SBX_H=$(mkrepo)
 ( cd "$SBX_H" && touch ephemeral.txt )
-BL_H=$(mktemp -t test-bl-h.XXXXXX)
+BL_H="$SBX_H/baseline.txt"
 ( cd "$SBX_H" && git ls-files --others --exclude-standard | LC_ALL=C sort > "$BL_H" )
 ( cd "$SBX_H" && rm ephemeral.txt )
 run_case "(h) non-empty baseline + empty current untracked (sed safety net)" \
     "false" "present" "$SBX_H" "$BL_H"
-rm -f "$BL_H"
 
 # Case (i): untracked file named "-n" with an EXTERNAL (outside-repo)
 # empty baseline file. Issue #695: bash builtin echo treats values like

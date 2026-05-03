@@ -5,17 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.3.0] - 2026-05-03
+
+### Added
+
+- `/fix-issue` accepts an optional `--auto` flag and forwards bare `--auto` to the delegated `/implement` run on PR paths (both SIMPLE and HARD bullets) when set; default behavior is unchanged when omitted. Updates `argument-hint`, the Flags section, the positional-argument flag-strip list, the Step 5a SIMPLE / HARD invocation bullets, the bail-detection harness (assertions a7 / a8) and its sibling contract, plus README / `docs/skills.md` / `docs/workflow-lifecycle.md`.
+
+### Changed
+
+- Reverts #1010 (parallel `make test-harnesses` runner via `scripts/test-harnesses.sh`) due to a Broken-pipe race surfacing intermittently in CI. Restores the serial `test-harnesses` Makefile target and removes the meta-harness `test-test-harnesses`. Revisit parallelization after the race is diagnosed.
+
 ## [15.2.3] - 2026-05-03
 
 ### Changed
 
 - `AGENTS.md` anti-polling rule extended to forbid Bash `run_in_background` polling loops (`for`/`while`/`until` + `sleep`) used to wait on another `run_in_background` job, in addition to the existing Monitor prohibition. Inline reminders added at `skills/implement/SKILL.md` Step 5.3-rounds1to3 and Step 5.3-generic launch sites pointing to `collect-agent-results.sh` as the wait point. New regression harness `scripts/test-implement-anti-polling-rule.sh` pins both the AGENTS.md literals and per-Step-5.3-site reminder presence (heading-bounded extraction, not a global count). Closes #1011.
-
-## [15.2.2] - 2026-05-03
-
-### Changed
-
-- `make test-harnesses` now runs the regression harnesses concurrently via the new `scripts/test-harnesses.sh` (up to 10 workers in parallel; output captured per-harness and printed serially in submission order so blocks never interleave). On a 66-harness suite, wall time drops from ~88s serial to ~30s parallel (2.9× speedup). The harness list is reorganized: the new `_test-harnesses-list` target carries the prerequisite list (single source of truth for "what counts as a harness"), and the `test-harnesses` target now invokes the parallel runner. Direct `make test-<name>` invocations remain unchanged. Adds the `test-test-harnesses` meta-harness exercising the runner with a fake project and asserting block contiguity, exit code, summary line, and validation paths (`MAX_JOBS=0`/`abc`, empty list, multi-statement recipe). The runner is bash 3.2 portable, validates `MAX_JOBS` / `POLL_MS`, fails loud on a zero-harness list (no silent green), restricts each command to a strict `bash <path> [simple-args]` whitelist before `eval`, and kills in-flight workers on `INT`/`TERM`. Also fixes a pre-existing readdir race in `skills/implement/scripts/test-check-review-changes.sh` case (h) that surfaces under parallel execution on Linux ext4 (baseline file moved outside the fixture repo). Closes #1005.
 
 ## [15.2.1] - 2026-05-03
 
