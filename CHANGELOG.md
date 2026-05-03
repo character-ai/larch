@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.4.4] - 2026-05-03
+
+### Changed
+
+- `/implement` Step 2 dispatcher (`skills/implement/scripts/step2-implement.sh`) writes `step2-spawn-coder.txt` under `$IMPLEMENT_TMPDIR` on the first external-implementer invocation and bails fail-closed with `STATUS=bailed REASON=coder-mismatch-tmpdir-reuse TOOL=<current>` on any subsequent invocation whose `--coder` differs. The guard runs before the shared baseline files (`step2-baseline.txt`, `step2-spawn-branch.txt`, `step2-plugin-json-baseline.txt`) and the per-tool `${TOOL_TAG}-resume-count.txt` are touched, closing the cross-coder tmpdir-reuse footgun where a partial `--coder=codex` run reused for `--coder=cursor` (or vice versa) would desynchronize shared baselines and per-tool counters. The `claude_fallback` early-return path is unchanged (writes no baselines, no sentinel). Sibling contract `skills/implement/scripts/step2-implement.md`, the dispatcher bail-token list in `skills/implement/references/codex-manifest-schema.md`, and `docs/linting.md` are updated; `skills/implement/scripts/test-step2-dispatch.sh` grows from 22 to 26 assertions covering first-invocation sentinel write and second-invocation mismatch bail with no per-tool state leak (closes #1018).
+
 ## [15.4.3] - 2026-05-03
 
 ### Changed
