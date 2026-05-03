@@ -38,9 +38,13 @@ append_section() {
 extract_individual_targets() {
   local makefile="$1"
 
+  # Match ANY test-prefixed recipe target (not just lowercase-hyphenated) so
+  # naming violations like `test-foo_bar:` enter the inventory and are caught
+  # by both the naming-violation check AND the shard-coverage check. Carve-outs
+  # are still excluded.
   awk -F: '
     /^[[:space:]]*#/ { next }
-    /^test-[a-z0-9-]*:/ {
+    /^test[^[:space:]:]*:/ {
       name = $1
       if (name ~ /^test-harnesses(-[0-9]+)?$/) next
       if (name == "test-harness-shards-coverage") next
@@ -126,7 +130,25 @@ validate_makefile() {
   local umbrella_missing="$TMPDIR_SHARDS/umbrella-missing"
   local umbrella_extra="$TMPDIR_SHARDS/umbrella-extra"
 
-  grep -nE '^test[^a-z:-].*:' "$makefile" > "$naming_violations" || true
+  # Naming violation = any test-prefixed recipe target whose full name does
+  # not match ^test-[a-z0-9-]+$. Carve-outs (umbrella, shards, coverage,
+  # standalone evals) are excluded from this check — they're known-good by
+  # construction. This replaces the prior `^test[^a-z:-].*:` heuristic, which
+  # only inspected the character immediately after `test` and missed names
+  # like `test-foo_bar:` (underscore after the first hyphen).
+  awk '
+    /^test[^[:space:]:]*:/ {
+      colon = index($0, ":")
+      name = substr($0, 1, colon - 1)
+      if (name ~ /^test-harnesses(-[0-9]+)?$/) next
+      if (name == "test-harness-shards-coverage") next
+      if (name == "test-eval-set-structure") next
+      if (name == "test-eval-research-baseline-flag") next
+      if (name !~ /^test-[a-z0-9-]+$/) {
+        printf "%d:%s\n", NR, $0
+      }
+    }
+  ' "$makefile" > "$naming_violations" || true
   grep -nE "^test-harnesses-[1-6]:.*\\\\" "$makefile" > "$continuation_violations" || true
 
   extract_individual_targets "$makefile" > "$individual"
@@ -263,7 +285,34 @@ run_self_case() {
         printf '\tbash scripts/test-foo.sh\n'
       } >> "$fixture"
       ;;
-    self-reference)
+    underscore-naming-violation)
+      # FINDING_1: `test-foo_bar:` (underscore after first hyphen) used to
+      # escape both the inventory parser and the legacy 5th-char naming guard.
+      # The widened parsers now catch it as a naming violation AND surface it
+      # as missing-from-shards.
+      {
+        printf 'test-foo_bar:\n'
+        printf '\tbash scripts/test-foo-bar.sh\n'
+      } >> "$fixture"
+      ;;
+    self-reference-not-first)
+      # FINDING_4 (repurposed): assert failure when test-harness-shards-coverage
+      # is not the first prerequisite of test-harnesses-6. Swap the order so
+      # test-zeta comes first.
+      awk '{ sub(/^test-harnesses-6: test-harness-shards-coverage test-zeta$/, "test-harnesses-6: test-zeta test-harness-shards-coverage"); print }' "$fixture" > "$fixture.tmp"
+      mv "$fixture.tmp" "$fixture"
+      ;;
+    umbrella-missing-shard)
+      # FINDING_3: assert failure when the umbrella does not list every
+      # test-harnesses-N. Drop test-harnesses-6 from the umbrella.
+      awk '{ sub(/^test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 test-harnesses-6$/, "test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5"); print }' "$fixture" > "$fixture.tmp"
+      mv "$fixture.tmp" "$fixture"
+      ;;
+    umbrella-extra-shard)
+      # FINDING_3: assert failure when the umbrella lists an unexpected
+      # prerequisite (typo / orphan shard target).
+      awk '{ sub(/^test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 test-harnesses-6$/, "test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 test-harnesses-6 test-harnesses-7"); print }' "$fixture" > "$fixture.tmp"
+      mv "$fixture.tmp" "$fixture"
       ;;
     happy-path)
       ;;
@@ -302,7 +351,10 @@ self_test() {
   run_self_case duplicate-across-shards 1 "duplicate across shards"
   run_self_case backslash-continuation-violation 1 "shard rule must be on a single physical line"
   run_self_case naming-convention-violation 1 "harness recipe target uses non-standard naming"
-  run_self_case self-reference 0 ""
+  run_self_case underscore-naming-violation 1 "harness recipe target uses non-standard naming"
+  run_self_case self-reference-not-first 1 "self-reference misplaced"
+  run_self_case umbrella-missing-shard 1 "umbrella missing shard targets"
+  run_self_case umbrella-extra-shard 1 "umbrella has unexpected prerequisites"
 }
 
 main() {

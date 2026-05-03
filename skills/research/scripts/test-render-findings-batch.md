@@ -39,7 +39,7 @@ This harness depends on `skills/issue/scripts/parse-input.sh` being present and 
 
 - **Helper contract changes** (extraction terminator list, heuristic ladder, body-line escape, exit-code vocabulary, stdout schema) → update fixtures and assertions here AND `render-findings-batch.md`.
 - **`parse-input.sh` generic-mode changes** → re-run this harness; if behavior shifts, update fixtures (and add/update fixtures pinning the new behavior).
-- **`make lint` wiring** — keep the three Makefile locations in sync (`.PHONY` + exactly one `test-harnesses-N` shard prereq + recipe). The structural pin in `scripts/test-research-structure.sh` (`test-render-findings-batch` referenced in Makefile) catches partial edits.
+- **`make lint` wiring** — keep the three Makefile locations in sync (`.PHONY` + exactly one `test-harnesses-N` shard prereq + recipe). The structural pin in `scripts/test-harness-shards-coverage.sh` (run via `make test-harness-shards-coverage`) catches partial edits — partition coverage and self-reference invariants.
 
 ## Exit code
 
