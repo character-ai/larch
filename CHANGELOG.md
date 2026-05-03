@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.1.0] - 2026-05-03
+
+### Added
+
+- `/implement` (and aliases `/im`, `/imaq`) now accept `--coder={claude,codex}` to select the Step 2 implementer. Default is `claude` (main agent in main context — restores pre-Codex behavior). `--coder=codex` spawns the Codex implementer via `skills/implement/scripts/step2-implement.sh`. `--coder=cursor` is reserved for #993 and currently rejected at parse time.
+
+### Changed
+
+- `skills/implement/scripts/step2-implement.sh` now branches on `--coder` instead of `--codex-available`. The legacy `--codex-available true|false` flag is still accepted by the dispatcher for one release with a stderr deprecation warning that maps `true` to `coder=codex` and `false` to `coder=claude`. Passing both `--coder` and `--codex-available` exits 2 with a mutex error. Test harness `test-step2-dispatch.sh` extended to 15 assertions covering the new flag, mutex, cursor rejection, and the deprecation path. Closes #995.
+
 ## [15.0.3] - 2026-05-03
 
 ### Changed
