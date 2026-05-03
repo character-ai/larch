@@ -5,13 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.3.0] - 2026-05-03
+
+### Added
+
+- `/fix-issue` accepts an optional `--auto` flag and forwards bare `--auto` to the delegated `/implement` run on PR paths (both SIMPLE and HARD bullets) when set; default behavior is unchanged when omitted. Updates `argument-hint`, the Flags section, the positional-argument flag-strip list, the Step 5a SIMPLE / HARD invocation bullets, the bail-detection harness (assertions a7 / a8) and its sibling contract, plus README / `docs/skills.md` / `docs/workflow-lifecycle.md`.
+
+### Changed
+
+- Reverts #1010 (parallel `make test-harnesses` runner via `scripts/test-harnesses.sh`) due to a Broken-pipe race surfacing intermittently in CI. Restores the serial `test-harnesses` Makefile target and removes the meta-harness `test-test-harnesses`. Revisit parallelization after the race is diagnosed.
+
 ## [15.2.3] - 2026-05-03
 
 ### Changed
 
 - `AGENTS.md` anti-polling rule extended to forbid Bash `run_in_background` polling loops (`for`/`while`/`until` + `sleep`) used to wait on another `run_in_background` job, in addition to the existing Monitor prohibition. Inline reminders added at `skills/implement/SKILL.md` Step 5.3-rounds1to3 and Step 5.3-generic launch sites pointing to `collect-agent-results.sh` as the wait point. New regression harness `scripts/test-implement-anti-polling-rule.sh` pins both the AGENTS.md literals and per-Step-5.3-site reminder presence (heading-bounded extraction, not a global count). Closes #1011.
-
-- Reverts #1010 (parallel `make test-harnesses` runner via `scripts/test-harnesses.sh`) due to a Broken-pipe race surfacing intermittently in CI. Restores the serial `test-harnesses` Makefile target and removes the meta-harness `test-test-harnesses`. Revisit parallelization after the race is diagnosed.
 
 ## [15.2.1] - 2026-05-03
 
