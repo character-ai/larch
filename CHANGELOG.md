@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.0.3] - 2026-05-03
+
+### Changed
+
+- `skills/implement/SKILL.md` Step 0.5 Branch 3 (PR-body recovery) now invokes `scripts/extract-closes-issue-from-pr.sh` instead of inlining the `gh pr view --json body --jq | grep -oE 'Closes #[0-9]+' | head -1 | grep -oE '[0-9]+'` pipeline. The new helper script and its sibling contract `scripts/extract-closes-issue-from-pr.md` follow the per-script-contract convention in `AGENTS.md`. Behavior is unchanged: empty stdout when no PR exists on the current branch or the PR body has no `Closes #<N>` line; otherwise the matched issue number. Closes #985.
+
 ## [15.0.2] - 2026-05-03
 
 ### Fixed
