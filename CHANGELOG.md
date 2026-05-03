@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.4.1] - 2026-05-03
+
+### Changed
+
+- `/implement` NEVER list gains item #9 forbidding orchestrator `ScheduleWakeup` calls anywhere in Steps 0–18, with rationale citing `step2-implement.sh` (foreground synchronous) and `ci-wait.sh` (foreground synchronous, 31-min timeout) and the `/loop`-continuation symptom (a non-sentinel `prompt` re-fires on wakeup as a `/loop` input, perpetuating a chain that survived past Step 18 and triggered spurious post-completion follow-up offers like `/review --diff` against an empty diff). `AGENTS.md` anti-polling rule extended to cover `ScheduleWakeup`; `skills/implement/scripts/step2-implement.md` colocates a one-line top reminder cross-referencing NEVER #9. Prose-only fix; no shell script changes. The pinned literal `Don't spawn a Monitor or a Bash` in `AGENTS.md` is preserved so `scripts/test-implement-anti-polling-rule.sh` continues to pass.
+
 ## [15.4.0] - 2026-05-03
 
 ### Added
