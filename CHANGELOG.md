@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.2.2] - 2026-05-03
+
+### Changed
+
+- `make test-harnesses` now runs the regression harnesses concurrently via the new `scripts/test-harnesses.sh` (up to 10 workers in parallel; output captured per-harness and printed serially in submission order so blocks never interleave). On a 66-harness suite, wall time drops from ~88s serial to ~30s parallel (2.9× speedup). The harness list is reorganized: the new `_test-harnesses-list` target carries the prerequisite list (single source of truth for "what counts as a harness"), and the `test-harnesses` target now invokes the parallel runner. Direct `make test-<name>` invocations remain unchanged. Adds the `test-test-harnesses` meta-harness exercising the runner with a fake project and asserting block contiguity, exit code, summary line, and validation paths (`MAX_JOBS=0`/`abc`, empty list, multi-statement recipe). The runner is bash 3.2 portable, validates `MAX_JOBS` / `POLL_MS`, fails loud on a zero-harness list (no silent green), restricts each command to a strict `bash <path> [simple-args]` whitelist before `eval`, and kills in-flight workers on `INT`/`TERM`. Also fixes a pre-existing readdir race in `skills/implement/scripts/test-check-review-changes.sh` case (h) that surfaces under parallel execution on Linux ext4 (baseline file moved outside the fixture repo). Closes #1005.
+
 ## [15.2.1] - 2026-05-03
 
 ### Changed
