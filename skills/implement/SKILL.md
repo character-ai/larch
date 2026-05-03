@@ -698,7 +698,7 @@ Parse `DIFF_FILE`, `FILE_LIST_FILE`, `COMMIT_LOG_FILE`.
 
 **5.3-rounds1to3 — Launch 5 specialists + generic Codex** (rounds 1-3 only):
 
-Launch all 5 specialists AND a 6th generic Codex reviewer in parallel using the launch wrapper scripts (specialists call `render-specialist-prompt.sh` internally) for each specialist (`structure`, `correctness`, `testing`, `security`, `edge-cases`). **Fallback chain per specialist slot**: Cursor → Codex → Claude subagent. **Fallback chain for the generic slot**: Codex → Cursor → Claude subagent. Use `run_in_background: true` and `timeout: 1860000` on each Bash tool call. **No competition notice** (no voting panel).
+Launch all 5 specialists AND a 6th generic Codex reviewer in parallel using the launch wrapper scripts (specialists call `render-specialist-prompt.sh` internally) for each specialist (`structure`, `correctness`, `testing`, `security`, `edge-cases`). **Fallback chain per specialist slot**: Cursor → Codex → Claude subagent. **Fallback chain for the generic slot**: Codex → Cursor → Claude subagent. Use `run_in_background: true` and `timeout: 1860000` on each Bash tool call. **No competition notice** (no voting panel). **Do NOT add a Bash polling loop to wait on these — the `collect-agent-results.sh` foreground call below is the wait point** (per AGENTS.md anti-polling rule; a redundant poller can keep the session alive long after the watched job has reported).
 
 For each specialist, when **Cursor** is available:
 ```bash
@@ -730,6 +730,8 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1860 --substant
 Where `<tool>` is `cursor` or `codex` depending on which tool was used for each slot. Include `--write-health` only if `SESSION_ENV_PATH` is non-empty. For any slot with `STATUS` not `OK`, follow Runtime Timeout Fallback per slot — flip the tool unavailable, but **do NOT retry the round**; proceed with valid outputs from the other slots. **All-fail guard**: if zero outputs yield `STATUS=OK` with substantive content (every launched slot failed validation or timed out), fall back to the single generic reviewer path for this round — launch a single Claude Code Reviewer subagent (subagent_type: `larch:code-reviewer`, model: `"sonnet"`) as in the both-unavailable path. Print `**⚠ 5: code review — round $round_num all reviewers failed, falling back to Claude generic**`. Deduplicate findings across all reviewers (5 specialists + generic + any Claude fallback) before evaluation. Proceed to 5.4.
 
 **5.3-generic — Launch single reviewer** (rounds 4+ only):
+
+**Do NOT add a Bash polling loop to wait on the launched reviewer — the `collect-agent-results.sh` foreground call below is the wait point** (per AGENTS.md anti-polling rule; a redundant poller can keep the session alive long after the watched job has reported).
 
 - **Cursor** (full repo access — no need to inline the diff):
   ```bash

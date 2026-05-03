@@ -437,6 +437,13 @@ exclude = [
   "skills/design/scripts/test-design-manifest.sh",
   "scripts/test-implement-rebase-macro.sh",
   "scripts/test-implement-structure.sh",
+  # scripts/test-implement-anti-polling-rule.sh pins the AGENTS.md anti-polling
+  # rule literals and the Step 5.3-rounds1to3 / Step 5.3-generic inline
+  # reminders in skills/implement/SKILL.md (closes #1011). Referenced only
+  # from Makefile (test-implement-anti-polling-rule target) and the sibling
+  # scripts/test-implement-anti-polling-rule.md (contract), matching the
+  # same Makefile-only pattern as the other test-* harnesses above.
+  "scripts/test-implement-anti-polling-rule.sh",
   "scripts/test-references-headers.sh",
   "scripts/test-subskill-anchors.sh",
   # scripts/test-parse-args.sh is the regression harness for
