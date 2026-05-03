@@ -4,6 +4,8 @@
 
 **Contract**: Single normative source for the JSON manifest Codex writes at `$IMPLEMENT_TMPDIR/manifest.json` after each implementation attempt. The dispatcher validates the manifest with `jq -e` per the rules below, then — on `status=complete` — uses `manifest.commit_message` to commit Codex's working-tree edits (`git add -A && git commit -F …`). Codex itself does NOT commit (it runs under `workspace-write` sandbox semantics that forbid `.git/` writes). Downstream SKILL.md steps consume only the validated, sanitized manifest — they never read Codex's transcript or run `git diff` to figure out what changed.
 
+**Tool scope**: this schema applies to every external `--coder` (today: `codex` and `cursor`). The filename retains the `codex-` prefix for historical reasons; the manifest contract itself is tool-neutral. `agents/cursor-implementer.md` produces the same JSON shape and bails with the same enum, plus the dispatcher-emitted `cursor-modified-history` token specific to Cursor (which has no `workspace-write` sandbox).
+
 **When to load**: at Step 2 entry (via the MANDATORY directive at the top of Step 2 in SKILL.md) and whenever editing the dispatcher's validation logic, the Codex implementer prompt's manifest-writing instructions, or any of Steps 4 / 8a / 9a / 9a.1 manifest-consumption blocks.
 
 ---
@@ -76,6 +78,10 @@ When `status=bailed`, `bail_reason` MUST be one of these stable tokens (downstre
 - `qa-pending-missing` — Codex emitted `status=needs_qa` but `qa-pending.json` is missing, empty, or its `questions` array is missing/empty. Set by the dispatcher.
 - `redactor-not-executable` — `scripts/redact-secrets.sh` is missing or not executable; dispatcher fails closed rather than emit unsanitized text (covers both the pre-`git commit` redactor probe in Step 7b and the post-validation redactor probe in Step 8). Set by the dispatcher.
 - `codex-runtime-failure` — launcher returned non-zero exit code or no manifest written, and the bounded retry also failed.
+- `cursor-runtime-failure` — Cursor launcher returned non-zero exit code or no manifest written, and the bounded retry also failed.
+- `cursor-unhealthy` — `--coder=cursor` was requested without `--cursor-healthy true`; the dispatcher fails closed before resolving the target git work-tree or launching Cursor.
+- `cursor-bailed-no-reason` — Cursor-authored `status=bailed` manifest did not provide a usable `bail_reason`, so the dispatcher substituted the Cursor-specific fallback token.
+- `cursor-modified-history` — Cursor moved `HEAD` before the dispatcher could commit on Cursor's behalf. Set by the dispatcher, not by Cursor itself.
 - `manifest-missing` — manifest file is absent or empty after Codex returned. Set by the dispatcher (defense-in-depth on top of `codex-runtime-failure`'s `MANIFEST_WRITTEN=false` path).
 - Free-form Codex-authored token — Codex MAY emit any string in `manifest.bail_reason`; the dispatcher preserves it verbatim in the canonical `manifest.json`. The orchestrator's `REASON=` stdout line is sanitized for KV-grammar safety only (whitespace and ASCII control characters collapsed to single spaces; capped at ~200 characters) so an adversarial or malformed bail token cannot break the orchestrator's stdout parser. Use this for genuine fatal errors Codex itself diagnoses (e.g., `unable-to-resolve-import-cycle`, `external-api-down`).
 
@@ -138,5 +144,6 @@ Any change to this schema MUST be paired with edits in:
 
 - `skills/implement/scripts/step2-implement.sh` — dispatcher validation (`jq -e` filters).
 - `agents/codex-implementer.md` — Codex prompt's manifest-writing instructions.
+- `agents/cursor-implementer.md` — Cursor prompt's manifest-writing instructions.
 - `skills/implement/SKILL.md` — Step 4 (commit verification), Step 8a (CHANGELOG), Step 9a (PR `## Summary`), Step 9a.1 (OOS pipeline) consumption blocks.
 - `skills/implement/scripts/test-step2-dispatch.sh` — golden manifest fixtures.

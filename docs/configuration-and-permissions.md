@@ -157,9 +157,7 @@ These checks are re-verified immediately before the `--admin` attempt — the sc
 
 ## Selecting the Step 2 implementer (`--coder`)
 
-`/implement` Step 2 (the actual code-writing step) supports a `--coder={claude,codex}` flag that selects which agent does the implementation. The default is `claude` — implementation runs in the main agent / Claude context (the same path that ran before Codex-as-implementer was introduced). Pass `--coder=codex` to spawn the Codex implementer via `skills/implement/scripts/step2-implement.sh`. The flag is forwarded transparently by `/im` and `/imaq` (they pass `$ARGUMENTS` through to `/implement`). `/fix-issue` also accepts `--coder=<value>` and forwards the value verbatim to `/implement` in Step 5a on PR paths; `/fix-issue` does not validate or interpret the value.
-
-`--coder=cursor` is reserved for issue #993 (Cursor implementer) and currently rejected at parse time with a pointer to that issue.
+`/implement` Step 2 (the actual code-writing step) supports a `--coder={claude,codex,cursor}` flag that selects which agent does the implementation. The default is `claude` — implementation runs in the main agent / Claude context (the same path that ran before Codex-as-implementer was introduced). Pass `--coder=codex` to spawn the Codex implementer via `skills/implement/scripts/step2-implement.sh`; pass `--coder=cursor` to spawn the Cursor implementer through the same dispatcher. Cursor fails closed with `cursor-unhealthy` unless the session health probe reports a healthy Cursor CLI. The flag is forwarded transparently by `/im` and `/imaq` (they pass `$ARGUMENTS` through to `/implement`). `/fix-issue` also accepts `--coder=<value>` and forwards the value verbatim to `/implement` in Step 5a on PR paths; `/fix-issue` does not validate or interpret the value.
 
 The legacy `--codex-available true|false` knob is still accepted by the dispatcher for one release with a stderr deprecation warning (`true → coder=codex`, `false → coder=claude`); orchestrator-side, prefer `--coder` directly. Passing both flags together is a parse-time error.
 
@@ -196,7 +194,7 @@ The Slack channel ID (e.g., `C0123456789`) where tracking-issue status messages 
 
 ### External Agent Model Configuration
 
-These variables control which model Cursor and Codex use when running as external agents (reviews, sketches, voting). When unset, Cursor defaults to `composer-2` (with the `/max-mode on.` slash-command prefix applied to every substantive prompt via `scripts/cursor-wrap-prompt.sh`) and Codex defaults to `gpt-5.5` (hardcoded in `scripts/agent-model-args.sh`). The model is passed via the `--model` flag (Cursor) or `-m` flag (Codex). To restore the pre-`composer-2` behavior, set `LARCH_CURSOR_MODEL=composer-2-fast`.
+These variables control which model Cursor and Codex use when running as external agents (reviews, sketches, voting, and implementation when selected with `--coder`). When unset, Cursor defaults to `composer-2` (with the `/max-mode on.` slash-command prefix applied to every substantive prompt via `scripts/cursor-wrap-prompt.sh`) and Codex defaults to `gpt-5.5` (hardcoded in `scripts/agent-model-args.sh`). The model is passed via the `--model` flag (Cursor) or `-m` flag (Codex). To restore the pre-`composer-2` behavior, set `LARCH_CURSOR_MODEL=composer-2-fast`.
 
 Model configuration is also available via plugin `userConfig` — environment variables take precedence if both are set.
 
@@ -205,7 +203,7 @@ Model configuration is also available via plugin `userConfig` — environment va
 The model name to pass to Cursor's `--model` flag (e.g., `gpt-5.4-medium`, `claude-sonnet-4-6`).
 
 **When set:**
-- All Cursor invocations (reviews, sketches, voting, health probes, negotiations) use this model
+- All Cursor invocations (reviews, sketches, voting, health probes, negotiations, and implement when `--coder=cursor`) use this model
 - The model flag is injected by `scripts/agent-model-args.sh`, which is called from both scripts and skill prompts
 
 **When not set:**

@@ -9,7 +9,12 @@
 # Coder flag (preferred):
 #   --coder claude   → STATUS=claude_fallback (main-agent path; default)
 #   --coder codex    → spawn Codex implementer
-#   --coder cursor   → exit 2 (not yet supported; see issue #993)
+#   --coder cursor   → spawn Cursor implementer when --cursor-healthy true
+#
+# Cursor health flag:
+#   --cursor-healthy true   → permit --coder cursor to launch Cursor
+#   --cursor-healthy false  → --coder cursor bails fail-closed
+#   --cursor-healthy ""     → treated as false
 #
 # Legacy flag (deprecated, accepted for one release):
 #   --codex-available true   → maps to --coder codex (stderr deprecation warning)
@@ -34,12 +39,13 @@
 #                            # full per-bucket breakdown.
 #   QA_PENDING=<path>        # set when STATUS=needs_qa
 #   REASON=<token>           # set when STATUS=bailed
+#   TOOL=<codex|cursor>      # set on external implementer paths
 #   TRANSCRIPT=<path>        # set when launcher actually ran
 #   SIDECAR_LOG=<path>       # set when launcher actually ran
 #
 # Exit code is always 0 unless caller / invocation validation fails (exit 2):
-# missing or invalid flag, missing required path, bad enum value, --coder=cursor,
-# or — on the Codex path — cwd is not inside a git working tree.
+# missing or invalid flag, missing required path, bad enum value,
+# or — on the Codex/Cursor path — cwd is not inside a git working tree.
 
 set -euo pipefail
 
@@ -51,6 +57,7 @@ FEATURE_FILE=""
 AUTO_MODE=""
 CODER=""
 CODEX_AVAILABLE=""
+CURSOR_HEALTHY_ARG=""
 ANSWERS_FILE=""
 
 while [[ $# -gt 0 ]]; do
@@ -61,6 +68,7 @@ while [[ $# -gt 0 ]]; do
         --auto-mode)         AUTO_MODE="${2:?--auto-mode requires a value}"; shift 2 ;;
         --coder)             CODER="${2:?--coder requires a value}"; shift 2 ;;
         --codex-available)   CODEX_AVAILABLE="${2:?--codex-available requires a value}"; shift 2 ;;
+        --cursor-healthy)    CURSOR_HEALTHY_ARG="${2-}"; shift 2 ;;
         --answers)           ANSWERS_FILE="${2:?--answers requires a value}"; shift 2 ;;
         *) echo "step2-implement.sh: unknown flag: $1" >&2; exit 2 ;;
     esac
@@ -98,13 +106,9 @@ if [[ -z "$CODER" ]]; then
 fi
 
 case "$CODER" in
-    claude|codex) ;;
-    cursor)
-        echo "step2-implement.sh: --coder=cursor is not yet supported; see issue #993" >&2
-        exit 2
-        ;;
+    claude|codex|cursor) ;;
     *)
-        echo "step2-implement.sh: --coder must be one of {claude,codex}, got: $CODER" >&2
+        echo "step2-implement.sh: --coder must be one of {claude,codex,cursor}, got: $CODER" >&2
         exit 2
         ;;
 esac
@@ -134,8 +138,29 @@ if [[ "$CODER" == "claude" ]]; then
     exit 0
 fi
 
+# Run after the `claude` early-return so claude path is not affected by
+# --cursor-healthy noise. Empty is normalized to false.
+if [[ -n "$CURSOR_HEALTHY_ARG" ]]; then
+    case "$CURSOR_HEALTHY_ARG" in
+        true|false) ;;
+        *) echo "step2-implement.sh: --cursor-healthy must be 'true', 'false', or empty, got: $CURSOR_HEALTHY_ARG" >&2; exit 2 ;;
+    esac
+fi
+[[ -z "$CURSOR_HEALTHY_ARG" ]] && CURSOR_HEALTHY_ARG="false"
+
+# Cursor health gate (fail-closed). Runs before REPO_ROOT resolution so that
+# --coder=cursor with --cursor-healthy=false bails cleanly even from outside
+# a git work-tree. The gate runs only on the cursor path; codex/claude are
+# unaffected by the value of --cursor-healthy.
+if [[ "$CODER" == "cursor" && "$CURSOR_HEALTHY_ARG" != "true" ]]; then
+    printf 'STATUS=bailed\n'
+    printf 'REASON=cursor-unhealthy\n'
+    printf 'TOOL=cursor\n'
+    exit 0
+fi
+
 # ---------------------------------------------------------------------------
-# Codex path. Set up paths inside $TMPDIR_ARG.
+# External implementer path. Set up paths inside $TMPDIR_ARG.
 # ---------------------------------------------------------------------------
 
 # PLUGIN_ROOT: the plugin tree this script ships in (cache dir when the plugin
@@ -152,17 +177,36 @@ if [[ -z "$REPO_ROOT" ]]; then
     exit 2
 fi
 
+case "$CODER" in
+    codex)
+        TOOL_TAG="codex"
+        AGENT_PROMPT="$PLUGIN_ROOT/agents/codex-implementer.md"
+        LAUNCHER="$PLUGIN_ROOT/scripts/launch-codex-implement.sh"
+        RUNTIME_FAILURE_TOKEN="codex-runtime-failure"
+        BAILED_NO_REASON_TOKEN="codex-bailed-no-reason"
+        ;;
+    cursor)
+        TOOL_TAG="cursor"
+        AGENT_PROMPT="$PLUGIN_ROOT/agents/cursor-implementer.md"
+        LAUNCHER="$PLUGIN_ROOT/scripts/launch-cursor-implement.sh"
+        RUNTIME_FAILURE_TOKEN="cursor-runtime-failure"
+        BAILED_NO_REASON_TOKEN="cursor-bailed-no-reason"
+        ;;
+    *)
+        echo "step2-implement.sh: internal error — CODER=$CODER not handled in tool-case" >&2
+        exit 2
+        ;;
+esac
+
 BASELINE_FILE="$TMPDIR_ARG/step2-baseline.txt"
-RESUME_COUNT_FILE="$TMPDIR_ARG/codex-resume-count.txt"
+RESUME_COUNT_FILE="$TMPDIR_ARG/${TOOL_TAG}-resume-count.txt"
 SPAWN_BRANCH_FILE="$TMPDIR_ARG/step2-spawn-branch.txt"
 PLUGIN_JSON_BASELINE_FILE="$TMPDIR_ARG/step2-plugin-json-baseline.txt"
 MANIFEST_PATH="$TMPDIR_ARG/manifest.json"
 MANIFEST_RAW_PATH="$TMPDIR_ARG/manifest-raw.json"
 QA_PENDING_PATH="$TMPDIR_ARG/qa-pending.json"
-TRANSCRIPT_PATH="$TMPDIR_ARG/codex-impl-transcript.txt"
-SIDECAR_LOG="$TMPDIR_ARG/codex-impl.log"
-AGENT_PROMPT="$PLUGIN_ROOT/agents/codex-implementer.md"
-LAUNCHER="$PLUGIN_ROOT/scripts/launch-codex-implement.sh"
+TRANSCRIPT_PATH="$TMPDIR_ARG/${TOOL_TAG}-impl-transcript.txt"
+SIDECAR_LOG="$TMPDIR_ARG/${TOOL_TAG}-impl.log"
 
 [[ -f "$AGENT_PROMPT" ]] || { echo "step2-implement.sh: agent prompt missing: $AGENT_PROMPT" >&2; exit 2; }
 [[ -x "$LAUNCHER" ]]     || { echo "step2-implement.sh: launcher not executable: $LAUNCHER" >&2; exit 2; }
@@ -172,6 +216,7 @@ emit_bailed() {
     local reason="$1"
     printf 'STATUS=bailed\n'
     printf 'REASON=%s\n' "$reason"
+    printf 'TOOL=%s\n' "$TOOL_TAG"
     if [[ -s "$TRANSCRIPT_PATH" ]]; then printf 'TRANSCRIPT=%s\n' "$TRANSCRIPT_PATH"; fi
     if [[ -s "$SIDECAR_LOG" ]];     then printf 'SIDECAR_LOG=%s\n' "$SIDECAR_LOG"; fi
     exit 0
@@ -276,14 +321,14 @@ if [[ "$MANIFEST_WRITTEN" != "true" || "$LAUNCHER_EXIT" != "0" ]]; then
 fi
 
 if [[ "$MANIFEST_WRITTEN" != "true" ]]; then
-    emit_bailed "codex-runtime-failure"
+    emit_bailed "$RUNTIME_FAILURE_TOKEN"
 fi
 
 # Treat a non-zero launcher exit as failure even when a manifest was written —
 # the manifest may be a stale .tmp leftover, half-written, or otherwise
 # unreliable when the wrapper itself reports failure.
 if [[ "$LAUNCHER_EXIT" != "0" ]]; then
-    emit_bailed "codex-runtime-failure"
+    emit_bailed "$RUNTIME_FAILURE_TOKEN"
 fi
 
 # Step 5: validate manifest schema with jq.
@@ -365,6 +410,17 @@ if [[ "$STATUS" != "bailed" ]]; then
             emit_bailed "submodule-dirty"
         fi
     fi
+
+    # Cursor-specific safety rail: Cursor runs without Codex's
+    # `workspace-write` sandbox, so it can write to `.git/`. Before the
+    # dispatcher commits on Cursor's behalf or allows a needs_qa resume cycle,
+    # assert HEAD has not moved.
+    if [[ "$CODER" == "cursor" ]]; then
+        CURRENT_HEAD=$(git -C "$REPO_ROOT" rev-parse HEAD)
+        if [[ "$CURRENT_HEAD" != "$BASELINE_SHA" ]]; then
+            emit_bailed "cursor-modified-history"
+        fi
+    fi
 fi
 
 # Step 7: complete-only path-normalization check on manifest paths.
@@ -439,7 +495,7 @@ if [[ "$STATUS" == "complete" ]]; then
     # working tree IS the source of truth, manifest.files_touched is
     # advisory, and operator / `/review` / pre-commit hooks are the
     # downstream backstops.
-    COMMIT_MSG_FILE="$TMPDIR_ARG/codex-commit-message.txt"
+    COMMIT_MSG_FILE="$TMPDIR_ARG/${TOOL_TAG}-commit-message.txt"
     REDACT_FOR_COMMIT="$PLUGIN_ROOT/scripts/redact-secrets.sh"
     if [[ -x "$REDACT_FOR_COMMIT" ]]; then
         jq -r '.commit_message' "$MANIFEST_RAW_PATH" | "$REDACT_FOR_COMMIT" > "$COMMIT_MSG_FILE.tmp"
@@ -452,7 +508,7 @@ if [[ "$STATUS" == "complete" ]]; then
     fi
     mv "$COMMIT_MSG_FILE.tmp" "$COMMIT_MSG_FILE"
 
-    COMMIT_STDERR_FILE="$TMPDIR_ARG/codex-commit-stderr.txt"
+    COMMIT_STDERR_FILE="$TMPDIR_ARG/${TOOL_TAG}-commit-stderr.txt"
     git -C "$REPO_ROOT" add -A
     if ! git -C "$REPO_ROOT" commit -F "$COMMIT_MSG_FILE" >/dev/null 2>"$COMMIT_STDERR_FILE"; then
         # Common causes: empty working tree (Codex declared complete with no
@@ -562,28 +618,31 @@ fi
 case "$STATUS" in
     complete)
         printf 'STATUS=complete\n'
+        printf 'TOOL=%s\n' "$TOOL_TAG"
         printf 'MANIFEST=%s\n' "$MANIFEST_PATH"
         printf 'TRANSCRIPT=%s\n' "$TRANSCRIPT_PATH"
         printf 'SIDECAR_LOG=%s\n' "$SIDECAR_LOG"
         ;;
     needs_qa)
         printf 'STATUS=needs_qa\n'
+        printf 'TOOL=%s\n' "$TOOL_TAG"
         printf 'MANIFEST=%s\n' "$MANIFEST_PATH"
         printf 'QA_PENDING=%s\n' "$QA_PENDING_PATH"
         printf 'TRANSCRIPT=%s\n' "$TRANSCRIPT_PATH"
         printf 'SIDECAR_LOG=%s\n' "$SIDECAR_LOG"
         ;;
     bailed)
-        BR=$(jq -r '.bail_reason // "codex-bailed-no-reason"' "$MANIFEST_RAW_PATH")
+        BR=$(jq -r --arg fallback "$BAILED_NO_REASON_TOKEN" '.bail_reason // $fallback' "$MANIFEST_RAW_PATH")
         # Sanitize bail_reason for KV-grammar safety: collapse all
         # whitespace (including newlines) to single spaces, strip ASCII
         # control characters, and cap length so a Codex-authored token
         # cannot break the orchestrator's KV parser by emitting extra
         # `KEY=value` lines or control sequences.
         BR=$(printf '%s' "$BR" | tr -d '\000-\010\013\014\016-\037' | tr '\t\n\r' '   ' | sed -e 's/  */ /g' -e 's/^ //' -e 's/ $//' | cut -c1-200)
-        [[ -z "$BR" ]] && BR="codex-bailed-no-reason"
+        [[ -z "$BR" ]] && BR="$BAILED_NO_REASON_TOKEN"
         printf 'STATUS=bailed\n'
         printf 'REASON=%s\n' "$BR"
+        printf 'TOOL=%s\n' "$TOOL_TAG"
         printf 'MANIFEST=%s\n' "$MANIFEST_PATH"
         printf 'TRANSCRIPT=%s\n' "$TRANSCRIPT_PATH"
         printf 'SIDECAR_LOG=%s\n' "$SIDECAR_LOG"

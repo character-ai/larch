@@ -18,6 +18,7 @@ Cursor also has no way to configure a non-default model via config file that ove
 ## Callers
 
 - `scripts/launch-cursor-review.sh` — canonical Cursor launch wrapper; all SKILL.md Cursor reviewer/sketch/debater launches now route through this script.
+- `scripts/launch-cursor-implement.sh` — Cursor implementer launcher for `/implement --coder=cursor`.
 - `skills/research/references/validation-phase.md` — Cursor validation-reviewer launch (research lanes themselves are Codex-first; Cursor is not used for research lanes).
 - `skills/shared/voting-protocol.md` — Cursor voter template.
 - `skills/shared/dialectic-protocol.md` — Cursor judge template.

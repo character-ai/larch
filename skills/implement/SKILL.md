@@ -1,7 +1,7 @@
 ---
 name: implement
 description: "Use when shipping a feature end-to-end: design, implement, review, version bump, PR, CI-green merge, Slack issue announce. Triggers: 'ship X', 'land PR', 'merge this'. See /research, /design, /im (merge), /imaq (auto-merge)."
-argument-hint: "[--quick] [--auto] [--design-only] [--merge | --draft] [--no-slack] [--no-admin-fallback] [--coder=claude|codex] [--session-env <path>] [--issue <N>] <feature description>"
+argument-hint: "[--quick] [--auto] [--design-only] [--merge | --draft] [--no-slack] [--no-admin-fallback] [--coder=claude|codex|cursor] [--session-env <path>] [--issue <N>] <feature description>"
 allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task, WebFetch, WebSearch, Skill
 ---
 
@@ -58,7 +58,7 @@ The feature to implement is described by `$ARGUMENTS` after flag stripping.
 - `--draft`: `draft=true`. Step 9b creates the PR in draft state (`create-pr.sh --draft`); Step 14 is skipped so the local branch stays. `draft=true` implies `merge=false`. **Mutually exclusive with `--merge`.** If both are present, print `**⚠ --draft and --merge are mutually exclusive. Aborting.**` and exit without Step 0.
 - `--no-slack`: `slack_enabled=false`. Default: `slack_enabled=true`. When `slack_enabled=true` (default), Step 16a posts a single Slack message about the tracking issue near the end of the run (gated on `slack_available=true` — i.e. `LARCH_SLACK_BOT_TOKEN` and `LARCH_SLACK_CHANNEL_ID` set — and on having a resolved `ISSUE_NUMBER`). When `slack_enabled=false`, Step 16a skips the Slack API call regardless of environment configuration. Independent of all other flags.
 - `--no-admin-fallback`: `no_admin_fallback=true`. Default: `no_admin_fallback=false`. When `true`, forwarded into Step 12b's `merge-pr.sh` invocation; the script then emits `MERGE_RESULT=policy_denied` instead of retrying with `--admin` once the admin-eligible gate (CI good + branch fresh) is reached, and Step 12b bails to Step 12d. Default behavior is unchanged (the `--admin` retry fires as before). Applies to ALL admin-eligible `mergeStateStatus` values (`CLEAN`, `UNSTABLE`, `HAS_HOOKS`, `BLOCKED`) — not just review-required denials. Independent of all other flags (in particular: no special coupling with `--auto`).
-- `--coder=<value>`: sets `coder=<value>`. Default: `coder=claude`. Accepted values: `claude` (Step 2 implementation runs in the main agent / Claude context — restores pre-Codex behavior; this is the default), `codex` (Step 2 spawns the Codex implementer via `step2-implement.sh`). `--coder=cursor` is reserved for #993 and currently rejected at parse time. Forwarded to the Step 2 dispatcher as `--coder $coder`. Independent of all other flags. The legacy `--codex-available true|false` knob is still accepted by the dispatcher for one release with a stderr deprecation warning (`true → coder=codex`, `false → coder=claude`); orchestrator-side, prefer `--coder` directly.
+- `--coder=<value>`: sets `coder=<value>`. Default: `coder=claude`. Accepted values: `claude` (Step 2 implementation runs in the main agent / Claude context — restores pre-Codex behavior; this is the default), `codex` (Step 2 spawns the Codex implementer via `step2-implement.sh`), and `cursor` (Step 2 spawns the Cursor implementer via `step2-implement.sh`). When `coder=cursor` is requested but `cursor_available=false` or `CURSOR_HEALTHY=false` (or empty), the dispatcher fails closed with `REASON=cursor-unhealthy` (no silent fallback to Claude). This is asymmetric to the Codex path, which currently spawns and bails at runtime — operators who want Cursor MUST have a healthy `cursor-agent` on PATH. Forwarded to the Step 2 dispatcher as `--coder $coder`. Independent of all other flags. The legacy `--codex-available true|false` knob is still accepted by the dispatcher for one release with a stderr deprecation warning (`true → coder=codex`, `false → coder=claude`); orchestrator-side, prefer `--coder` directly.
 - `--no-merge`: **Deprecated** no-op. On encounter, print `**ℹ '--no-merge' is now the default and no longer needed; the flag is recognized as a no-op for backward compatibility.**`
 - `--session-env <path>`: sets `SESSION_ENV_PATH`. Forwarded to `session-setup.sh` via `--caller-env` and to `/design` via `--session-env`. Empty = standalone invocation (full discovery).
 - `--issue <N>`: sets `ISSUE_ARG=<N>`. Default: empty. When non-empty, Step 0.5 Branch 2 adopts the given tracking issue instead of Branch 4 creating a new one. Compatible with all other flags. If the target issue is CLOSED, Step 0.5 emits `IMPLEMENT_BAIL_REASON=adopted-issue-closed` on stdout and exits non-zero (cleanup still runs).
@@ -563,38 +563,51 @@ Apply the Rebase Checkpoint Macro with `<step-prefix>=1.r` and `<short-name>=des
 
 ### Step 2 dispatch — coder selection
 
-Step 2 invokes a single dispatcher (`skills/implement/scripts/step2-implement.sh`). The dispatcher is the ONLY place that branches on the chosen `coder`. On the Codex path (`coder=codex`) the dispatcher spawns Codex, validates the returned manifest mechanically, and emits a deterministic KV envelope; the orchestrator MUST NOT inspect Codex's transcript, MUST NOT `git diff` to reconstruct what Codex did, and MUST NOT fall back to a Claude-driven Edit/Write code-edit pass except on `STATUS=claude_fallback`. On the Claude path (`coder=claude`, the default) the dispatcher emits `STATUS=claude_fallback` immediately and the orchestrator runs the Edit/Write code-edit pass at 2.4. See `agents/codex-implementer.md` and `skills/implement/scripts/step2-implement.md` for the contracts. When `coder=codex` is requested but `codex_available=false` (binary missing or health probe failed), the dispatcher proceeds with the Codex spawn anyway and bails with `codex-runtime-failure` if Codex truly cannot run — operators who want a clean fallback should pass `--coder=claude`.
+Step 2 invokes a single dispatcher (`skills/implement/scripts/step2-implement.sh`). The dispatcher is the ONLY place that branches on the chosen `coder`. On external implementer paths (`coder=codex` or `coder=cursor`) the dispatcher spawns the tool, validates the returned manifest mechanically, and emits a deterministic KV envelope; the orchestrator MUST NOT inspect the transcript, MUST NOT `git diff` to reconstruct what the tool did, and MUST NOT fall back to a Claude-driven Edit/Write code-edit pass except on `STATUS=claude_fallback`. On the Claude path (`coder=claude`, the default) the dispatcher emits `STATUS=claude_fallback` immediately and the orchestrator runs the Edit/Write code-edit pass at 2.4. See `agents/codex-implementer.md`, `agents/cursor-implementer.md`, and `skills/implement/scripts/step2-implement.md` for the contracts. The dispatcher invokes `${CLAUDE_PLUGIN_ROOT}/scripts/launch-codex-implement.sh` or `${CLAUDE_PLUGIN_ROOT}/scripts/launch-cursor-implement.sh` on the matching external path; Cursor launcher coverage lives in `skills/implement/scripts/test-cursor-implementer.sh` with sibling contract `skills/implement/scripts/test-cursor-implementer.md`. When `coder=codex` is requested but `codex_available=false` (binary missing or health probe failed), the dispatcher proceeds with the Codex spawn anyway and bails with `codex-runtime-failure` if Codex truly cannot run — operators who want a clean fallback should pass `--coder=claude`. When `coder=cursor` is requested but Cursor is unhealthy or unavailable, the dispatcher fails closed with `cursor-unhealthy`.
 
 **2.1 — First dispatch invocation**:
 
 ```bash
+cursor_healthy=$(awk -F= '$1=="CURSOR_HEALTHY"{print $2; exit}' "$IMPLEMENT_TMPDIR/session-env.sh")
+[[ -z "$cursor_healthy" ]] && cursor_healthy="false"
+
 ${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step2-implement.sh \
     --tmpdir "$IMPLEMENT_TMPDIR" \
     --plan-file "$PLAN_FILE" \
     --feature-file "$FEATURE_FILE" \
     --auto-mode "$auto_mode" \
-    --coder "$coder"
+    --coder "$coder" \
+    --cursor-healthy "$cursor_healthy"
 ```
 
-`$PLAN_FILE` is the path written at Step 1 (`/design`'s plan, or the inline quick-mode plan). `$FEATURE_FILE` is `$IMPLEMENT_TMPDIR/feature-description.txt` (created at Step 0). Parse the dispatcher's stdout into local KV variables: `STATUS`, `MANIFEST`, `QA_PENDING`, `REASON`, `TRANSCRIPT`, `SIDECAR_LOG`.
+`$PLAN_FILE` is the path written at Step 1 (`/design`'s plan, or the inline quick-mode plan). `$FEATURE_FILE` is `$IMPLEMENT_TMPDIR/feature-description.txt` (created at Step 0). Parse the dispatcher's stdout into local KV variables: `STATUS`, `TOOL`, `MANIFEST`, `QA_PENDING`, `REASON`, `TRANSCRIPT`, `SIDECAR_LOG`. Derive:
 
-**Cwd contract**: invoke the dispatcher with process cwd = the consumer git repo's working tree (the orchestrator's normal cwd). The dispatcher derives its `REPO_ROOT` from `git rev-parse --show-toplevel` against cwd because `${CLAUDE_PLUGIN_ROOT}` may resolve into the installed plugin cache (no `.git`). On the Codex path, a cwd outside any git working tree exits 2 with a clear caller-error message; do not chdir before invoking. See `skills/implement/scripts/step2-implement.md` invariant "Two distinct roots".
+```bash
+case "$TOOL" in
+    codex) TOOL_LABEL="Codex" ;;
+    cursor) TOOL_LABEL="Cursor" ;;
+    *) TOOL_LABEL="external implementer" ;;
+esac
+```
+
+**Cwd contract**: invoke the dispatcher with process cwd = the consumer git repo's working tree (the orchestrator's normal cwd). The dispatcher derives its `REPO_ROOT` from `git rev-parse --show-toplevel` against cwd because `${CLAUDE_PLUGIN_ROOT}` may resolve into the installed plugin cache (no `.git`). On Codex, or on Cursor after the health gate passes, a cwd outside any git working tree exits 2 with a clear caller-error message; do not chdir before invoking. See `skills/implement/scripts/step2-implement.md` invariant "Two distinct roots".
 
 **2.2 — Branch on `STATUS`**:
 
 - `STATUS=complete` → set `$MANIFEST_PATH=$MANIFEST` and proceed to Step 3. Steps 4 / 8a / 9a / 9a.1 read this manifest; the orchestrator does not run `git diff` to figure out what changed.
 - `STATUS=needs_qa` → run the Q/A loop in 2.3.
-- `STATUS=bailed` → log `Step 2 — Codex bailed: $REASON` to the `Warnings` section of `$IMPLEMENT_TMPDIR/execution-issues.md`. If `$REASON` ∈ {`resume-incompatible`, `branch-changed`, `protected-path-modified`, `submodule-dirty`, `commit-failed`}: bail to Step 12d (the branch may contain partial Codex work the operator must inspect). Otherwise (`codex-runtime-failure`, `dirty-state-after-timeout`, `manifest-schema-invalid`, `manifest-missing`, `qa-pending-missing`, `qa-loop-exceeded`, `redactor-not-executable`, free-form Codex token): print `**⚠ Codex bailed: $REASON. Logs at $TRANSCRIPT and $SIDECAR_LOG.**`, then bail to Step 12d.
+- `STATUS=bailed REASON=cursor-unhealthy` → log `Step 2 — Cursor rejected: cursor-unhealthy` to the `Warnings` section of `$IMPLEMENT_TMPDIR/execution-issues.md`. Print `**⚠ --coder=cursor rejected: Cursor unhealthy or unavailable. Use --coder=claude or --coder=codex (or fix the cursor-agent installation). No logs produced.**` and bail to Step 12d.
+- `STATUS=bailed` → log `Step 2 — $TOOL_LABEL bailed: $REASON` to the `Warnings` section of `$IMPLEMENT_TMPDIR/execution-issues.md`. If `$REASON` ∈ {`resume-incompatible`, `branch-changed`, `protected-path-modified`, `submodule-dirty`, `commit-failed`, `cursor-modified-history`}: bail to Step 12d (the branch may contain partial external-implementer work the operator must inspect). Otherwise (`codex-runtime-failure`, `cursor-runtime-failure`, `cursor-bailed-no-reason`, `dirty-state-after-timeout`, `manifest-schema-invalid`, `manifest-missing`, `qa-pending-missing`, `qa-loop-exceeded`, `redactor-not-executable`, free-form implementer token): print `**⚠ $TOOL_LABEL bailed: $REASON. Logs at $TRANSCRIPT and $SIDECAR_LOG.**`, then bail to Step 12d.
 - `STATUS=claude_fallback` → run the Claude-fallback branch in 2.4.
 
 **2.3 — Q/A loop** (when `STATUS=needs_qa`):
 
 1. Read `$QA_PENDING` (a JSON file containing `{"questions": [{"id": "q1", "text": "..."}, ...]}`).
 2. **If `auto_mode=false`**: pose the questions to the operator via `AskUserQuestion` in a single batched call (one prompt per question, preserving the `id`). **If `auto_mode=true`**: derive best-effort answers from the plan + codebase + `CLAUDE.md`. Either way, log every Q/A pair to `$IMPLEMENT_TMPDIR/execution-issues.md` under `### Q/A` per the schema in 2.5 below.
-3. Compose an answers file `$IMPLEMENT_TMPDIR/codex-answers-$RESUME_N.json` with shape `{"answers": [{"id": "q1", "text": "<answer>"}, ...]}` (`$RESUME_N` is the 1-indexed resume cycle counter the orchestrator tracks locally).
+3. Compose an answers file `$IMPLEMENT_TMPDIR/codex-answers-$RESUME_N.json` with shape `{"answers": [{"id": "q1", "text": "<answer>"}, ...]}` (`$RESUME_N` is the 1-indexed resume cycle counter the orchestrator tracks locally). The filename retains `codex-` for historical compatibility; the dispatcher accepts it for Cursor resumes too.
 4. Re-invoke the dispatcher with the additional flag `--answers "$IMPLEMENT_TMPDIR/codex-answers-$RESUME_N.json"`. Re-parse the new KV envelope and re-branch (this loop body). The dispatcher itself enforces the 5-cycle cap; on the 6th `--answers` invocation it returns `STATUS=bailed REASON=qa-loop-exceeded` automatically.
 
-The dispatcher does NOT git reset between cycles. Codex inspects branch state at the start of every invocation and — on the resume invocation — reads the answers file, decides if its prior partial work is consistent with the new answers, and either continues or bails with `resume-incompatible` (which the operator inspects manually). See `agents/codex-implementer.md` "Resume protocol".
+The dispatcher does NOT git reset between cycles. The external implementer inspects branch state at the start of every invocation and — on the resume invocation — reads the answers file, decides if its prior partial work is consistent with the new answers, and either continues or bails with `resume-incompatible` (which the operator inspects manually). See `agents/codex-implementer.md` / `agents/cursor-implementer.md` "Resume protocol".
 
 **2.4 — Claude-fallback branch** (only when `STATUS=claude_fallback` — i.e. `coder=claude` was selected, either as the default or explicitly via `--coder=claude`, or via the legacy `--codex-available false`):
 
@@ -649,7 +662,7 @@ Invoke `/relevant-checks` via the Skill tool. If checks fail, diagnose and fix, 
 
 ## Step 4 — First Commit (implementation)
 
-**On the Codex path** (`$MANIFEST_PATH` is non-empty, i.e. Step 2 returned `STATUS=complete`): the dispatcher has already committed Codex's working-tree edits using `manifest.commit_message` (`git add -A && git commit -F …`, with `commit_message` piped through `scripts/redact-secrets.sh` first so secrets do not land in git history). There is no Claude-side diff verification — `commit_message` is consumed as-is modulo the secrets-family redaction; the canonical on-disk manifest is sanitized by the same scrubber for downstream Steps 8a / 9a / 9a.1. Skip the `git-commit.sh` invocation. Print `⏩ 4: commit (impl) — already committed by dispatcher (HEAD=$(git rev-parse --short HEAD))`.
+**On the external implementer path** (`$MANIFEST_PATH` is non-empty, i.e. Step 2 returned `STATUS=complete`): the dispatcher has already committed `$TOOL_LABEL`'s working-tree edits using `manifest.commit_message` (`git add -A && git commit -F …`, with `commit_message` piped through `scripts/redact-secrets.sh` first so secrets do not land in git history). There is no Claude-side diff verification — `commit_message` is consumed as-is modulo the secrets-family redaction; the canonical on-disk manifest is sanitized by the same scrubber for downstream Steps 8a / 9a / 9a.1. Skip the `git-commit.sh` invocation. Print `⏩ 4: commit (impl) — already committed by dispatcher (HEAD=$(git rev-parse --short HEAD))`.
 
 **On the Claude-fallback path** (Step 2 returned `STATUS=claude_fallback`): stage and commit:
 
@@ -898,7 +911,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/check-changelog-present.sh
 
 Parse `CHANGELOG_PRESENT=true|false`. If `CHANGELOG_PRESENT=false`, skip and proceed to Step 8b (print `⏩ 8a: changelog — skipped (CHANGELOG_PRESENT=false) (<elapsed>)` — echo the parsed value verbatim so a false skip is visible in the transcript). The freshness rebase at Step 8b still runs on this path so resumed Branch 1/2/3 runs are refreshed before PR creation. (Step 8's `HAS_BUMP=false` directive and the `BUMP_TYPE=NONE` directive both bypass Step 8a entirely and skip directly to Step 8b — there is no CHANGELOG amend without a bump commit to amend.)
 
-Otherwise: read `CHANGELOG.md` and `NEW_VERSION` (from `/bump-version` output in Step 8). Compose a brief changelog entry using the Summary bullets from the implementation. **Source of bullets**: when `$MANIFEST_PATH` is non-empty (Codex path), read `summary_bullets` directly from the manifest (`jq -r '.summary_bullets[]' "$MANIFEST_PATH"`) — these are pre-sanitized by the Step 2 dispatcher and flow verbatim into both this CHANGELOG entry and Step 9a's PR body `## Summary`. On the Claude-fallback path, compose 1-3 bullets from the implementation as before. Today's date. Format:
+Otherwise: read `CHANGELOG.md` and `NEW_VERSION` (from `/bump-version` output in Step 8). Compose a brief changelog entry using the Summary bullets from the implementation. **Source of bullets**: when `$MANIFEST_PATH` is non-empty (`$TOOL_LABEL` path), read `summary_bullets` directly from the manifest (`jq -r '.summary_bullets[]' "$MANIFEST_PATH"`) — these are pre-sanitized by the Step 2 dispatcher and flow verbatim into both this CHANGELOG entry and Step 9a's PR body `## Summary`. On the Claude-fallback path, compose 1-3 bullets from the implementation as before. Today's date. Format:
 
 ```markdown
 ## [X.Y.Z] - YYYY-MM-DD
@@ -985,7 +998,7 @@ The `Closes #<N>` line auto-closes the tracking issue on merge and anchors Step 
 
 ### 9a.1 — Create OOS GitHub Issues
 
-**Codex-path manifest harvest** (when `$MANIFEST_PATH` is non-empty): before running the canonical pipeline below, harvest `manifest.oos_observations[]` and APPEND each entry to `$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md` using the existing `### OOS_N:` schema, with `Vote tally: N/A — accepted by Codex implementer` and `Reviewer: Codex implementer`. Title and Description are the manifest's `title` / `description` fields (already sanitized by the Step 2 dispatcher). This routes Codex-surfaced OOS through the same canonical pipeline as design / review / main-agent OOS without a parallel artifact. Skip on Claude-fallback (the existing main-agent dual-write rule already populates `oos-accepted-main-agent.md`).
+**External-implementer manifest harvest** (when `$MANIFEST_PATH` is non-empty): before running the canonical pipeline below, harvest `manifest.oos_observations[]` and APPEND each entry to `$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md` using the existing `### OOS_N:` schema, with `Vote tally: N/A — accepted by $TOOL_LABEL implementer` and `Reviewer: $TOOL_LABEL implementer`. Title and Description are the manifest's `title` / `description` fields (already sanitized by the Step 2 dispatcher). This routes external-implementer-surfaced OOS through the same canonical pipeline as design / review / main-agent OOS without a parallel artifact. Skip on Claude-fallback (the existing main-agent dual-write rule already populates `oos-accepted-main-agent.md`).
 
 Runs unconditionally regardless of mode. The canonical OOS pipeline lives in `anchor-comment-template.md` Step 9a.1 OOS pipeline procedure section (anchor-comment context). See `anchor-comment-template.md` for: repo-unavailable early-exit; read the three OOS artifact files (`oos-accepted-design.md`, `oos-accepted-review.md`, `oos-accepted-main-agent.md`); all-empty early-exit; idempotency sentinel recovery per Load-Bearing Invariant #2 and NEVER #5; cross-phase dedup; `/issue` batch-mode invocation via Skill tool; stdout parsing for `ISSUES_CREATED` / `ISSUES_FAILED` / `ISSUES_DEDUPLICATED` / per-issue fields; **anchor comment's `oos-issues` section** placeholder replacement; **anchor comment's `run-statistics` section** `| OOS issues filed |` cell rewrite; sentinel write to `oos-issues-created.md`.
 
