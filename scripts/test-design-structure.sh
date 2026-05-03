@@ -111,5 +111,32 @@ grep 'collect-agent-results.sh' "$PLAN_REVIEW_MD" \
   | grep -Fq -- '--validation-mode' \
   || fail "(7) no single plan-review.md line carries 'collect-agent-results.sh', '--timeout 1860', '--substantive-validation', and '--validation-mode' together — issue #661 substantive-validation contract pin is broken"
 
-echo "PASS: test-design-structure.sh — all 7 structural invariants hold"
+# Check 8: nested /implement design handoff must use the file-backed manifest
+# writer and heavy-worker contract, while standalone mode skips the manifest.
+[[ -f "$REPO_ROOT/skills/design/references/heavy-worker.md" ]] \
+  || fail "(8) heavy-worker.md missing — nested /design heavy phase has no subagent runbook"
+[[ -x "$REPO_ROOT/skills/design/scripts/write-design-manifest.sh" ]] \
+  || fail "(8) write-design-manifest.sh missing or not executable"
+[[ -x "$REPO_ROOT/skills/design/scripts/read-design-manifest.sh" ]] \
+  || fail "(8) read-design-manifest.sh missing or not executable"
+# shellcheck disable=SC2016 # fixed-string grep literals contain shell variables/backticks
+grep -Fq 'write-design-manifest.sh --design-tmpdir "$DESIGN_TMPDIR" --implement-tmpdir "$(dirname "$SESSION_ENV_PATH")"' "$SKILL_MD" \
+  || fail "(8) SKILL.md lacks Step 5 write-design-manifest.sh invocation with DESIGN_TMPDIR + dirname(SESSION_ENV_PATH)"
+# shellcheck disable=SC2016 # fixed-string grep literal contains markdown backticks
+grep -Fq 'If `SESSION_ENV_PATH` is empty, skip this manifest write entirely' "$SKILL_MD" \
+  || fail "(8) SKILL.md lacks standalone-mode manifest-skip branch"
+# shellcheck disable=SC2016 # fixed-string grep literal contains markdown backticks
+grep -Fq 'read the Step 3 external reviewer launch Bash blocks directly from `skills/design/SKILL.md`' "$REPO_ROOT/skills/design/references/heavy-worker.md" \
+  || fail "(8) heavy-worker.md must tell the subagent to read Step 3 reviewer launch blocks from SKILL.md"
+
+# Check 9: load-bearing conversation-context dependency phrases are absent.
+if grep -rnE 'visible in conversation|retrieved from.*conversation' "$REPO_ROOT/skills/design" "$REPO_ROOT/skills/implement" "$REPO_ROOT/skills/shared" >/tmp/larch-design-structure-grep.$$ 2>/dev/null; then
+  matches=$(head -5 /tmp/larch-design-structure-grep.$$)
+  rm -f /tmp/larch-design-structure-grep.$$
+  fail "(9) found forbidden conversation-context dependency phrase:
+$matches"
+fi
+rm -f /tmp/larch-design-structure-grep.$$
+
+echo "PASS: test-design-structure.sh — all 9 structural invariants hold"
 exit 0

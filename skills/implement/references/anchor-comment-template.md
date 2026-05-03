@@ -42,7 +42,7 @@ This line is suppressed as soon as any fragment contains a non-whitespace byte �
 
 ## Implementation Plan
 
-<full implementation plan body from /design's `## Implementation Plan` (or `## Revised Implementation Plan` when present in conversation context) — approach, files to modify, edge cases, testing strategy>
+<full implementation plan body read from PLAN_FILE (the exported `## Implementation Plan` artifact) — approach, files to modify, edge cases, testing strategy>
 
 ## Test plan
 

@@ -12,7 +12,7 @@
 #
 # Arguments:
 #   --issue-number  GitHub issue number (integer)
-#   --status        One of: closed | pr-opened | blocked | user-input
+#   --status        One of: closed | pr-opened | design-only | blocked | user-input
 #   --repo          OWNER/REPO (for link composition fallback if gh fails)
 #   --token         Slack bot token. Omit to auto-resolve from env:
 #                   LARCH_SLACK_BOT_TOKEN then CLAUDE_PLUGIN_OPTION_SLACK_BOT_TOKEN
@@ -21,7 +21,7 @@
 #   --pr-url        Optional PR URL (populates pr-opened status tail)
 #   --detail        Optional free-form tail text appended after the base status
 #
-# Status-to-emoji map: closed=✅, pr-opened=📝, blocked=❌, user-input=❓.
+# Status-to-emoji map: closed=✅, pr-opened=📝, design-only=🧭, blocked=❌, user-input=❓.
 #
 # Output (KEY=value lines on stdout):
 #   SLACK_TS=<timestamp>      (on success)
@@ -73,14 +73,15 @@ if [[ -z "$ISSUE_NUMBER" ]] || [[ -z "$STATUS" ]] || [[ -z "$REPO" ]] || [[ -z "
 fi
 
 case "$STATUS" in
-    closed|pr-opened|blocked|user-input) ;;
-    *) echo "SLACK_TS="; echo "SLACK_ERROR=Invalid --status: $STATUS (want closed|pr-opened|blocked|user-input)"; exit 1 ;;
+    closed|pr-opened|design-only|blocked|user-input) ;;
+    *) echo "SLACK_TS="; echo "SLACK_ERROR=Invalid --status: $STATUS (want closed|pr-opened|design-only|blocked|user-input)"; exit 1 ;;
 esac
 
 # Emoji + base status summary
 case "$STATUS" in
     closed)     EMOJI="✅"; STATUS_SUMMARY="closed" ;;
     pr-opened)  EMOJI="📝"; STATUS_SUMMARY="PR opened, awaiting merge" ;;
+    design-only) EMOJI="🧭"; STATUS_SUMMARY="design complete" ;;
     blocked)    EMOJI="❌"; STATUS_SUMMARY="blocked" ;;
     user-input) EMOJI="❓"; STATUS_SUMMARY="needs user input" ;;
 esac

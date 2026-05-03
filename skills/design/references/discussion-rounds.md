@@ -81,11 +81,10 @@ After the plan has been reviewed and revised, stress-test the remaining design d
 
 Read the following artifacts:
 - `$DESIGN_TMPDIR/discussion-round1.md` — If it exists and is non-empty, use it to identify decisions already covered in Round 1 (avoid re-asking). **If it does not exist or is empty** (Round 1 short-circuited or was skipped), treat all candidate decisions as uncovered by Round 1 and proceed normally.
+- `$DESIGN_TMPDIR/plan.txt` — The finalized implementation plan from Step 3. Read this file instead of retrieving the plan from conversation context.
 - `$DESIGN_TMPDIR/accepted-plan-findings.md` — If it exists and is non-empty, use it to identify decisions that reviewers challenged as suboptimal or that required plan revision.
 - `$DESIGN_TMPDIR/contested-decisions.md` — Decisions that sketch agents disagreed on.
 - `$DESIGN_TMPDIR/dialectic-resolutions.md` — How contested decisions were resolved.
-
-Also reference the revised (or original) implementation plan from Step 3's output visible in conversation context above.
 
 ### Behavior
 

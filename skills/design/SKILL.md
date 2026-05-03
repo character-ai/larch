@@ -57,6 +57,8 @@ Step Name Registry:
 
 **Suppressed output:** explanatory prose, script paths, rationale for decisions between tool calls, per-reviewer individual completion messages.
 
+When `SESSION_ENV_PATH` is non-empty (nested under `/implement`), suppress bulky inline artifact bodies for the implementation plan, voting tally, architecture diagram, rejected findings, and discussion syntheses; print one-line saved breadcrumbs instead and rely on the files under `$DESIGN_TMPDIR/` plus the Step 5 design manifest. When `SESSION_ENV_PATH` is empty (standalone `/design`), preserve the existing verbose inline output and skip manifest export entirely.
+
 **Compact reviewer status table**: After launching sketch agents (Step 2a) or plan reviewers (Step 3), maintain a mental tracker of each agent's status. Print a compact table after EACH status change:
 
 ```
@@ -189,7 +191,11 @@ When all Cursor slots fall back to Claude, they still invoke the four distinct p
 1. **Cursor — Generic** — or **Claude (Generic)** fallback: a broad-scope sketch without personality specialization.
 2. **Codex — Generic** — or **Claude (Generic)** fallback: same generic prompt as Cursor-Generic.
 
-Print `> **🔶 2a: sketches**` and proceed to 2a.2.
+Print `> **🔶 2a: sketches**`.
+
+**Nested heavy phase**: If `SESSION_ENV_PATH` is non-empty, invoke a single Agent-tool subagent (subagent_type: `general-purpose`) for the heavy non-interactive phase before entering 2a.2. The subagent MUST read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/heavy-worker.md`, receive `DESIGN_TMPDIR`, `IMPLEMENT_TMPDIR`, `SESSION_ENV_PATH`, `FEATURE_DESCRIPTION`, `quick_mode`, `auto_mode`, branch info, and reviewer health flags as explicit data, and write raw artifacts to `$DESIGN_TMPDIR/`. The subagent returns only `DESIGN_HEAVY=complete` or `DESIGN_HEAVY=failed REASON=<short-token>`; it does not write the manifest and does not return plan/reviewer/tally prose. On `DESIGN_HEAVY=complete`, if `auto_mode=false` proceed directly to Step 3.5; if `auto_mode=true` proceed directly to Step 5 because the worker ran Step 3b and Step 4. On `DESIGN_HEAVY=failed`, print the warning, proceed to Step 5 for cleanup/export checks, and do not run the inline heavy steps.
+
+If `SESSION_ENV_PATH` is empty, proceed to 2a.2 and run the standalone inline flow below.
 
 ### 2a.2 — Launch Sketches in Parallel
 
@@ -265,7 +271,7 @@ Read all sketches (or their Claude fallbacks if an external tool was unavailable
 
    List decisions in priority order: High impact first, then by degree of sketch disagreement (more agents on different sides = higher priority), then by order of appearance in the synthesis. If no sketches diverged (all agents agreed on all points), write exactly `NO_CONTESTED_DECISIONS` as the entire file content.
 
-Print the synthesis under an `## Approach Synthesis` header. Write the synthesis to `$DESIGN_TMPDIR/approach-synthesis.txt` so it can be referenced by Step 2b.
+Write the synthesis to `$DESIGN_TMPDIR/approach-synthesis.txt` so it can be referenced by Step 2b. If `SESSION_ENV_PATH` is empty, also print it under an `## Approach Synthesis` header. If `SESSION_ENV_PATH` is non-empty, print only `✅ 2a: sketches — synthesis saved (<elapsed>)`.
 
 ### 2a.5 — Dialectic Resolution of Contested Decisions
 
@@ -330,7 +336,7 @@ Produce a plan that includes:
 - **Failure modes** (for non-trivial changes): The 3 most likely architectural/systemic failure paths, earliest warning signals, and simplest mitigations. May be omitted for purely cosmetic or documentation-only changes.
 - **Testing strategy**: What tests will be added or modified.
 
-Print the plan to the user under a `## Implementation Plan` header so reviewers can see it. The plan is an intermediate deliverable — IMMEDIATELY continue to Step 3 (Plan Review) after printing. Do NOT halt, summarize, or treat the plan as the end of the design.
+Write the plan to `$DESIGN_TMPDIR/plan.txt` with basename exactly `plan.txt`. If `SESSION_ENV_PATH` is empty, print the plan to the user under a `## Implementation Plan` header so reviewers can see it. If `SESSION_ENV_PATH` is non-empty, print only `✅ 2b: full plan — saved (<elapsed>)`; `/implement` reads the exported plan file. The plan is an intermediate deliverable — IMMEDIATELY continue to Step 3 (Plan Review) after saving/printing. Do NOT halt, summarize, or treat the plan as the end of the design.
 
 ## Step 3 — Plan Review
 
@@ -342,7 +348,7 @@ Launch **all 8 reviewers in parallel** (in a single message). When Cursor is una
 
 ### External Reviewer Setup (if `codex_available` or `cursor_available`)
 
-Before launching external reviewers, write the implementation plan to `$DESIGN_TMPDIR/plan.txt` so Codex and Cursor can read it.
+Before launching external reviewers, verify the implementation plan exists at `$DESIGN_TMPDIR/plan.txt` so Codex and Cursor can read it. Step 2b owns writing this file.
 
 Each reviewer walks five focus areas: code-quality / risk-integration / correctness / architecture / security.
 
@@ -424,7 +430,7 @@ Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
 
 ### Collecting, Voting, Finalize, Track Rejected
 
-Follow `plan-review.md` (loaded via the MANDATORY at the top of Step 3) for: Collecting External Reviewer Results (`collect-agent-results.sh` for all 8 external reviewers, dedup in-scope and OOS separately), Voting Panel launch-order + threshold + Competition scoring, Finalize Plan Review (accepted findings revise plan, write `$DESIGN_TMPDIR/accepted-plan-findings.md`, write accepted OOS to `$(dirname "$SESSION_ENV_PATH")/oos-accepted-design.md` when `SESSION_ENV_PATH` is non-empty, print non-accepted OOS under `## Out-of-Scope Observations`), and Track Rejected Plan Review Findings (append to `$DESIGN_TMPDIR/rejected-findings.md`, in-scope only).
+Follow `plan-review.md` (loaded via the MANDATORY at the top of Step 3) for: Collecting External Reviewer Results (`collect-agent-results.sh` for all 8 external reviewers, dedup in-scope and OOS separately), Voting Panel launch-order + threshold + Competition scoring, writing `$DESIGN_TMPDIR/voting-tally.md`, Finalize Plan Review (accepted findings revise plan, write `$DESIGN_TMPDIR/accepted-plan-findings.md`, write accepted OOS to `$(dirname "$SESSION_ENV_PATH")/oos-accepted-design.md` when `SESSION_ENV_PATH` is non-empty, write all OOS visibility content to `$DESIGN_TMPDIR/oos.md`, print non-accepted OOS under `## Out-of-Scope Observations` only when `SESSION_ENV_PATH` is empty), and Track Rejected Plan Review Findings (append to `$DESIGN_TMPDIR/rejected-findings.md`, in-scope only).
 
 If **all reviewers** report no in-scope issues and no out-of-scope observations, skip voting and proceed to Step 3.5 if `auto_mode=false`, or Step 3b if `auto_mode=true`.
 
@@ -446,7 +452,7 @@ Generate a mermaid Architecture Diagram that represents the high-level system/co
 
 Choose the most appropriate mermaid diagram type for the feature (e.g., `graph TD`, `flowchart`, `C4Context`, `classDiagram`, etc.). The diagram type is flexible — pick whatever best communicates the architecture.
 
-Print the diagram under a `## Architecture Diagram` header with a mermaid code fence, so it is visible in conversation context for `/implement` to extract later when building the PR body:
+Write the diagram to `$DESIGN_TMPDIR/architecture-diagram.md`. If `SESSION_ENV_PATH` is empty, also print the diagram under a `## Architecture Diagram` header with a mermaid code fence:
 
 ```
 ## Architecture Diagram
@@ -456,7 +462,7 @@ Print the diagram under a `## Architecture Diagram` header with a mermaid code f
 ```
 ```
 
-**If diagram generation succeeds**, print: `✅ 3b: arch diagram — generated (<elapsed>)` — then IMMEDIATELY continue to Step 4.
+**If diagram generation succeeds**, print: `✅ 3b: arch diagram — saved (<elapsed>)` when `SESSION_ENV_PATH` is non-empty, or `✅ 3b: arch diagram — generated (<elapsed>)` when standalone — then IMMEDIATELY continue to Step 4.
 
 **If diagram generation fails** (e.g., the feature is too abstract to diagram meaningfully), print: `**⚠ 3b: arch diagram — generation failed, proceeding without diagram (<elapsed>)**` — then IMMEDIATELY continue to Step 4.
 
@@ -464,9 +470,11 @@ Print the diagram under a `## Architecture Diagram` header with a mermaid code f
 
 Print any rejected plan review findings:
 
-1. Check if `$DESIGN_TMPDIR/rejected-findings.md` exists and is non-empty.
-2. If it has content, print it under a `## Unimplemented Plan Review Suggestions` header, formatted clearly with the reviewer name, the suggestion, and the reason for each.
-3. If the file doesn't exist or is empty, print: `✅ 4: rejected findings — all suggestions implemented (<elapsed>)`
+1. Ensure `$DESIGN_TMPDIR/rejected-findings.md`, `$DESIGN_TMPDIR/accepted-plan-findings.md`, and `$DESIGN_TMPDIR/oos.md` exist; create empty files for any missing may-be-empty artifact so Step 5 can export a complete manifest.
+2. Check if `$DESIGN_TMPDIR/rejected-findings.md` exists and is non-empty.
+3. If it has content and `SESSION_ENV_PATH` is empty, print it under a `## Unimplemented Plan Review Suggestions` header, formatted clearly with the reviewer name, the suggestion, and the reason for each.
+4. If it has content and `SESSION_ENV_PATH` is non-empty, print only `✅ 4: rejected findings — saved (<elapsed>)`.
+5. If the file doesn't exist or is empty, print: `✅ 4: rejected findings — all suggestions implemented (<elapsed>)`
 
 After printing rejected findings (or the "all implemented" message), IMMEDIATELY continue to Step 5 — do NOT halt or treat this as the end of the design.
 
@@ -477,6 +485,14 @@ After printing rejected findings (or the "all implemented" message), IMMEDIATELY
 Health status file updates are now handled automatically by `collect-agent-results.sh --write-health` during reviewer collection (Steps 2a.3 and 3). No additional cleanup-time write is needed unless a reviewer was marked unhealthy outside of a `collect-agent-results.sh` call (e.g., via a manual timeout detection). If `SESSION_ENV_PATH` is non-empty and any reviewer was marked unhealthy during this session that was NOT already written by `collect-agent-results.sh`, re-write the health status file at `${SESSION_ENV_PATH}.health` with the final health state before cleanup.
 
 ### 5b — Remove Temp Directory
+
+If `SESSION_ENV_PATH` is non-empty, export design artifacts before cleanup:
+
+```bash
+${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/write-design-manifest.sh --design-tmpdir "$DESIGN_TMPDIR" --implement-tmpdir "$(dirname "$SESSION_ENV_PATH")"
+```
+
+Parse `MANIFEST_WRITTEN=<path>` from stdout. If the command fails or the file does not exist and is not non-empty, print `**⚠ 5: cleanup — design manifest export failed. Parent /implement will rerun /design.**` and do not remove `$DESIGN_TMPDIR` until the failure is logged. If `SESSION_ENV_PATH` is empty, skip this manifest write entirely; standalone `/design` preserves visible inline output and has no parent consumer.
 
 Remove the session temp directory and all files within it:
 

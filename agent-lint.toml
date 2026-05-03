@@ -431,6 +431,7 @@ exclude = [
   # scripts/test-alias-structure.md. Same Makefile-only pattern.
   "scripts/test-alias-structure.sh",
   "scripts/test-design-structure.sh",
+  "skills/design/scripts/test-design-manifest.sh",
   "scripts/test-implement-rebase-macro.sh",
   "scripts/test-implement-structure.sh",
   "scripts/test-references-headers.sh",

@@ -647,5 +647,21 @@ DISPATCHER_PATH="$REPO_ROOT/$DISPATCHER_LITERAL"
 [[ -f "$REPO_ROOT/agents/codex-implementer.md" ]] \
     || fail "(19) Codex implementer system prompt missing: agents/codex-implementer.md"
 
-echo "PASS: test-implement-structure.sh — all 18 structural invariants hold (assertion 5 retired)"
+# (20) Design manifest + design-only path pin: Step 1 must read the design
+# manifest, the flag table must expose --design-only, and Step 18 must mark
+# design-only runs DONE without requiring a PR number.
+grep -Fq -- '--design-only' "$SKILL_MD" \
+    || fail "(20) skills/implement/SKILL.md missing --design-only flag"
+grep -Fq -- 'read-design-manifest.sh --implement-tmpdir "$IMPLEMENT_TMPDIR"' "$SKILL_MD" \
+    || fail "(20) Step 1 missing read-design-manifest.sh invocation"
+grep -Fq -- 'DESIGN_ONLY_DONE=true' "$SKILL_MD" \
+    || fail "(20) Step 1 missing DESIGN_ONLY_DONE short-circuit state"
+grep -Fq -- '$PR_NUMBER` is set OR `DESIGN_ONLY_DONE=true' "$SKILL_MD" \
+    || fail "(20) Step 18 DONE branch must fire for PR_NUMBER or DESIGN_ONLY_DONE"
+grep -Fq -- 'RUN_OUTCOME=design-only' "$SKILL_MD" \
+    || fail "(20) Step 16a Slack outcome state machine missing design-only status"
+grep -Fq -- '$IMPLEMENT_TMPDIR/code-flow-diagram.md' "$SKILL_MD" \
+    || fail "(20) Step 7a/9a must use code-flow diagram file path"
+
+echo "PASS: test-implement-structure.sh — all 19 structural invariants hold (assertion 5 retired)"
 exit 0

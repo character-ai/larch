@@ -71,7 +71,7 @@ Parse the structured output for each reviewer's `STATUS` and `REVIEWER_FILE`. Fo
 2. Deduplicate in-scope findings separately. Assign each a stable sequential ID (`FINDING_1`, `FINDING_2`, etc.) and note which reviewer(s) proposed each.
 3. Deduplicate out-of-scope observations separately. Assign each an `OOS_` prefixed ID (`OOS_1`, `OOS_2`, etc.). If the same issue appears in both in-scope and OOS from different reviewers, merge under the in-scope finding (in-scope takes precedence).
 
-If **all reviewers** report no in-scope issues and no out-of-scope observations, skip voting and proceed to Step 3.5 (Design Discussion Round 2) if `auto_mode=false`, or Step 3b (Architecture Diagram) if `auto_mode=true`.
+If **all reviewers** report no in-scope issues and no out-of-scope observations, write `$DESIGN_TMPDIR/voting-tally.md` with `No findings were raised — voting was not needed.`, write empty `$DESIGN_TMPDIR/accepted-plan-findings.md`, `$DESIGN_TMPDIR/rejected-findings.md`, and `$DESIGN_TMPDIR/oos.md`, skip voting, and proceed to Step 3.5 (Design Discussion Round 2) if `auto_mode=false`, or Step 3b (Architecture Diagram) if `auto_mode=true`.
 
 ---
 
@@ -83,9 +83,9 @@ Submit both in-scope findings and out-of-scope observations to a 3-agent voting 
 
 Launch all available voters **in parallel** (Cursor first, then Codex, then Claude subagent). Wait for external voter sentinels using `wait-for-reviewers.sh` per the Voting Protocol, then parse voter outputs.
 
-**Tally votes**: Apply the threshold rules from the Voting Protocol based on eligible voters per finding (2+ YES with 3 voters, unanimous 2/2 with 2 voters, skip if <2 eligible). Print the vote breakdown per finding.
+**Tally votes**: Apply the threshold rules from the Voting Protocol based on eligible voters per finding (2+ YES with 3 voters, unanimous 2/2 with 2 voters, skip if <2 eligible). Write the vote breakdown per finding to `$DESIGN_TMPDIR/voting-tally.md`. If `SESSION_ENV_PATH` is empty, also print the same tally inline; if `SESSION_ENV_PATH` is non-empty, print only `✅ 3: plan review — voting tally saved (<elapsed>)`.
 
-**Competition scoring**: Compute and print the **Reviewer Competition Scoreboard** per the Voting Protocol's scoring rules (+1 for accepted, 0 for neutral/exonerated, -1 for rejected in-scope findings; OOS items use asymmetric reward-only scoring — +1 for accepted, 0 for all other OOS outcomes including rejection. See `voting-protocol.md` for the full outcome matrix). Print the scoreboard table.
+**Competition scoring**: Compute the **Reviewer Competition Scoreboard** per the Voting Protocol's scoring rules (+1 for accepted, 0 for neutral/exonerated, -1 for rejected in-scope findings; OOS items use asymmetric reward-only scoring — +1 for accepted, 0 for all other OOS outcomes including rejection. See `voting-protocol.md` for the full outcome matrix). Append the scoreboard table to `$DESIGN_TMPDIR/voting-tally.md`. If `SESSION_ENV_PATH` is empty, also print the scoreboard inline.
 
 ---
 
@@ -95,13 +95,14 @@ If any in-scope findings were **accepted by vote** (2+ YES votes):
 1. Print them under a `## Plan Review Findings (Voted In)` header with vote counts.
 2. Revise the implementation plan to address each accepted in-scope finding.
 3. Print the revised plan under a `## Revised Implementation Plan` header.
-4. Write the accepted in-scope findings to `$DESIGN_TMPDIR/accepted-plan-findings.md` so Step 3.5 (Design Discussion Round 2) has a stable artifact to read. **Only include in-scope `FINDING_*` items — do not include OOS items.** Use the `FINDING_N` template below.
+4. Write the revised plan back to `$DESIGN_TMPDIR/plan.txt` so downstream consumers read the final plan. When `SESSION_ENV_PATH` is non-empty, suppress the inline revised-plan print and print only `✅ 3: plan review — revised plan saved (<elapsed>)`.
+5. Write the accepted in-scope findings to `$DESIGN_TMPDIR/accepted-plan-findings.md` so Step 3.5 (Design Discussion Round 2) has a stable artifact to read. **Only include in-scope `FINDING_*` items — do not include OOS items.** Use the `FINDING_N` template below. If no in-scope findings were accepted, write an empty `$DESIGN_TMPDIR/accepted-plan-findings.md`.
 
 **OOS items accepted by vote** (2+ YES): These are accepted for GitHub issue filing, NOT for plan revision. **Only when `SESSION_ENV_PATH` is non-empty**: write accepted OOS items to `$(dirname "$SESSION_ENV_PATH")/oos-accepted-design.md` using the `oos-accepted-design.md` format block below. When `SESSION_ENV_PATH` is empty (standalone invocation), skip the OOS artifact write — there is no parent `/implement` to consume it.
 
-Print any non-accepted OOS items under a `## Out-of-Scope Observations` header for visibility. These are not filed as issues but are recorded for future attention.
+Write all OOS visibility content (accepted and non-accepted) to `$DESIGN_TMPDIR/oos.md`; the file may be empty when there are no OOS observations. Print any non-accepted OOS items under a `## Out-of-Scope Observations` header for visibility only when `SESSION_ENV_PATH` is empty. These are not filed as issues but are recorded for future attention.
 
-If voting rejects all in-scope findings, print: `**ℹ Voting panel rejected all in-scope findings. Plan unchanged.**` (OOS items accepted for issue filing are processed separately by `/implement`.) Proceed to Step 3.5 (Design Discussion Round 2) if `auto_mode=false`, or Step 3b (Architecture Diagram) if `auto_mode=true`.
+If voting rejects all in-scope findings, write an empty `$DESIGN_TMPDIR/accepted-plan-findings.md` and leave `$DESIGN_TMPDIR/plan.txt` unchanged. Print: `**ℹ Voting panel rejected all in-scope findings. Plan unchanged.**` (OOS items accepted for issue filing are processed separately by `/implement`.) Proceed to Step 3.5 (Design Discussion Round 2) if `auto_mode=false`, or Step 3b (Architecture Diagram) if `auto_mode=true`.
 
 ### Accepted FINDING_N template (byte-preserved)
 
@@ -127,7 +128,7 @@ If voting rejects all in-scope findings, print: `**ℹ Voting panel rejected all
 
 For any **in-scope** findings that were **not accepted by vote** (fewer than 2 YES votes — whether rejected or exonerated) during plan review (from any reviewer — Claude subagents, Codex, or Cursor), append each to `$DESIGN_TMPDIR/rejected-findings.md` using the byte-preserved template below. **Do not include OOS items** — those follow a separate pipeline (accepted OOS → GitHub issues via `/implement`, non-accepted OOS → PR body observations).
 
-If no findings were rejected, do not create the file yet.
+If no findings were rejected, write an empty `$DESIGN_TMPDIR/rejected-findings.md` so Step 5's manifest export has a complete required-may-be-empty artifact set.
 
 ```markdown
 ### [Plan Review] <Reviewer Name>
