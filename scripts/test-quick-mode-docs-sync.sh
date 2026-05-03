@@ -50,8 +50,9 @@
 #      future SKILL.md edit introduces historical/comment references to these
 #      phrases, the exemption still holds (SKILL.md positive anchors alone
 #      assert the current contract is stated somewhere in the file); if the
-#      canonical contract itself changes, edit the marker variables below and
-#      the sibling .md FIRST, then propagate to the public docs.
+#      canonical contract itself changes, edit the POS_MARKERS / STALE_PHRASES
+#      arrays below and the sibling .md FIRST, then propagate to the public
+#      docs.
 #
 #   3. REQUIRED CROSS-REFERENCES (two-assertion check, target-specific) —
 #      guards prose path citations in public docs. Each entry is a (doc, xref)

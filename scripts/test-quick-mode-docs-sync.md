@@ -1,10 +1,10 @@
 # test-quick-mode-docs-sync.sh
 
-Cross-validation harness with two check families: (1) alignment between the normative `/implement --quick` contract in `skills/implement/SKILL.md` Step 5 and the public user-facing documentation in `README.md`, `docs/review-agents.md`, `docs/workflow-lifecycle.md`, and `docs/skills.md` (closes #370; rounds-1-3 topology markers and `docs/skills.md` target added per #1002); and (2) required cross-references — currently `docs/review-agents.md` → `skills/shared/voting-protocol.md` (closes #377). See the Target files and Required cross-references sections below for full coverage.
+Cross-validation harness with three check families: (1) positive anchors — required markers in `skills/implement/SKILL.md` Step 5 and the public user-facing documentation in `README.md`, `docs/review-agents.md`, `docs/workflow-lifecycle.md`, and `docs/skills.md`; (2) negative checks — forbidden stale phrases in the public docs (closes #370; rounds-1-3 topology markers and `docs/skills.md` target added per #1002); and (3) required cross-references — currently `docs/review-agents.md` → `skills/shared/voting-protocol.md` (closes #377). See the Target files and Required cross-references sections below for full coverage.
 
 ## Purpose
 
-Without this harness, drift between the canonical quick-mode contract and its three public mirrors is silent. The bug that triggered #370 — "simplified code review (1 Claude Code Reviewer subagent, 1 round)" persisting in the public docs long after SKILL.md evolved to "up to 7 rounds, Cursor → Codex → Claude fallback, no voting panel" — is exactly the class this harness prevents: a SKILL.md edit that does not propagate to the public mirrors, or a public-doc edit that re-introduces a contradiction with SKILL.md.
+Without this harness, drift between the canonical quick-mode contract and its public mirrors (see Target files below) is silent. The bug that triggered #370 — "simplified code review (1 Claude Code Reviewer subagent, 1 round)" persisting in the public docs long after SKILL.md evolved to "up to 7 rounds, Cursor → Codex → Claude fallback, no voting panel" — is exactly the class this harness prevents: a SKILL.md edit that does not propagate to the public mirrors, or a public-doc edit that re-introduces a contradiction with SKILL.md.
 
 ## Invariants enforced
 
