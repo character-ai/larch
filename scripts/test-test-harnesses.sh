@@ -16,8 +16,11 @@ set -uo pipefail
 REPO_ROOT=$(cd "$(dirname "$0")/.." && pwd)
 RUNNER="$REPO_ROOT/scripts/test-harnesses.sh"
 
-if [ ! -x "$RUNNER" ]; then
-    echo "FAIL: runner not executable at $RUNNER" >&2
+# Use `bash "$RUNNER"` rather than relying on the exec bit so the meta-harness
+# is portable across checkouts that may not preserve the +x mode (some CI
+# checkouts, archive extractions, scrubbed worktrees).
+if [ ! -f "$RUNNER" ]; then
+    echo "FAIL: runner not present at $RUNNER" >&2
     exit 1
 fi
 
@@ -71,7 +74,6 @@ EOF
 # repo root via $0, so we copy it into the fake project to keep it self-
 # contained for the test.
 cp "$RUNNER" "$WORKDIR/scripts/test-harnesses.sh"
-chmod +x "$WORKDIR/scripts/test-harnesses.sh"
 
 OUTPUT=$(MAX_JOBS=2 bash "$WORKDIR/scripts/test-harnesses.sh" 2>&1)
 RC=$?
@@ -130,4 +132,57 @@ if ! printf '%s\n' "$OUTPUT" | grep -q '^FAILED: 1 of 3 harness(es) failed$'; th
     fail "missing or wrong summary line"
 fi
 
-echo "PASS: test-test-harnesses.sh"
+# Validation tests below verify the runner FAILS FAST on bad input — they
+# exit 2 before any worker is launched, so no real timeout is needed (a
+# regression that hung would be caught by the harness suite's per-target
+# timeout in CI). For local portability we don't depend on `timeout(1)`,
+# which is GNU coreutils-only on macOS.
+
+# 5. MAX_JOBS=0 must fail loudly, not hang.
+RC5=0
+OUT5=$(MAX_JOBS=0 bash "$WORKDIR/scripts/test-harnesses.sh" 2>&1) || RC5=$?
+[ "$RC5" -eq 2 ] || { echo "FAIL: MAX_JOBS=0 expected exit 2, got $RC5" >&2; exit 1; }
+printf '%s\n' "$OUT5" | grep -q 'MAX_JOBS must be >= 1' || { echo "FAIL: MAX_JOBS=0 missing diagnostic" >&2; exit 1; }
+
+# 6. MAX_JOBS=abc (non-numeric) must fail loudly.
+RC6=0
+OUT6=$(MAX_JOBS=abc bash "$WORKDIR/scripts/test-harnesses.sh" 2>&1) || RC6=$?
+[ "$RC6" -eq 2 ] || { echo "FAIL: MAX_JOBS=abc expected exit 2, got $RC6" >&2; exit 1; }
+printf '%s\n' "$OUT6" | grep -q "MAX_JOBS must be a positive integer" || { echo "FAIL: MAX_JOBS=abc missing diagnostic" >&2; exit 1; }
+
+# 7. Empty _test-harnesses-list must fail loudly (not exit 0 silent-green).
+WORKDIR2=$(mktemp -d -t test-test-harnesses-empty.XXXXXX)
+trap 'rm -rf "$WORKDIR" "$WORKDIR2"' EXIT INT TERM
+mkdir -p "$WORKDIR2/scripts"
+cp "$RUNNER" "$WORKDIR2/scripts/test-harnesses.sh"
+cat >"$WORKDIR2/Makefile" <<'EOF'
+.PHONY: _test-harnesses-list
+_test-harnesses-list:
+EOF
+RC7=0
+OUT7=$(bash "$WORKDIR2/scripts/test-harnesses.sh" 2>&1) || RC7=$?
+[ "$RC7" -eq 2 ] || { echo "FAIL: empty harness list expected exit 2, got $RC7" >&2; printf '%s\n' "$OUT7" >&2; exit 1; }
+printf '%s\n' "$OUT7" | grep -q 'zero harness commands' || { echo "FAIL: empty list missing diagnostic" >&2; exit 1; }
+
+# 8. Non-conforming recipe (multi-statement) must be rejected.
+WORKDIR3=$(mktemp -d -t test-test-harnesses-malformed.XXXXXX)
+trap 'rm -rf "$WORKDIR" "$WORKDIR2" "$WORKDIR3"' EXIT INT TERM
+mkdir -p "$WORKDIR3/scripts"
+cp "$RUNNER" "$WORKDIR3/scripts/test-harnesses.sh"
+cat >"$WORKDIR3/scripts/h-ok.sh" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+chmod +x "$WORKDIR3/scripts/h-ok.sh"
+cat >"$WORKDIR3/Makefile" <<'EOF'
+.PHONY: _test-harnesses-list test-bad
+_test-harnesses-list: test-bad
+test-bad:
+	bash scripts/h-ok.sh && echo chained
+EOF
+RC8=0
+OUT8=$(bash "$WORKDIR3/scripts/test-harnesses.sh" 2>&1) || RC8=$?
+[ "$RC8" -eq 2 ] || { echo "FAIL: chained recipe expected exit 2, got $RC8" >&2; printf '%s\n' "$OUT8" >&2; exit 1; }
+printf '%s\n' "$OUT8" | grep -q "did not match the expected" || { echo "FAIL: chained recipe missing diagnostic" >&2; exit 1; }
+
+echo "PASS: test-test-harnesses.sh (8 cases: contiguity, exit code, summary, MAX_JOBS=0, MAX_JOBS=abc, empty list, malformed recipe)"

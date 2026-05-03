@@ -29,6 +29,19 @@ REPO_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
 
 MAX_JOBS=${MAX_JOBS:-10}
 POLL_MS=${POLL_MS:-100}
+
+# Validate tunables. Invalid values used to wedge the main loop (MAX_JOBS=0
+# launched no jobs while polling for status files that would never appear;
+# POLL_MS=0 made `sleep` near-instant and busy-spinned the CPU).
+case "$MAX_JOBS" in
+    ''|*[!0-9]*) echo "ERROR: MAX_JOBS must be a positive integer, got: '$MAX_JOBS'" >&2; exit 2 ;;
+esac
+[ "$MAX_JOBS" -lt 1 ] && { echo "ERROR: MAX_JOBS must be >= 1, got: $MAX_JOBS" >&2; exit 2; }
+case "$POLL_MS" in
+    ''|*[!0-9]*) echo "ERROR: POLL_MS must be a non-negative integer, got: '$POLL_MS'" >&2; exit 2 ;;
+esac
+[ "$POLL_MS" -lt 10 ] && POLL_MS=10  # clamp: never busy-spin under 10ms
+
 # Convert POLL_MS to seconds string acceptable to `sleep` on macOS+Linux.
 POLL_SLEEP=$(awk -v ms="$POLL_MS" 'BEGIN{printf "%.3f", ms/1000.0}')
 
@@ -46,29 +59,71 @@ if [ "$LIST_RC" -ne 0 ]; then
     exit 2
 fi
 
-# Filter to substantive command lines: drop blanks, comments, and make's
-# own informational chatter ("make: Nothing to be done", "Entering directory"
-# etc.). The harness convention is that every recipe is a single command,
-# typically `bash <path>`.
+# Filter to harness command lines and whitelist them to a strict shape.
+# By convention every harness recipe is a single line of the form
+# `bash <repo-relative-path>` (optional trailing single-token args). We REJECT
+# any line that doesn't match — multi-line recipes, `&&` chains, embedded
+# command substitution, or non-`bash` recipes — to keep the eval surface
+# narrow even though Makefile content is repo-controlled.
 COMMANDS=()
+REJECTED=()
 while IFS= read -r line; do
     case "$line" in
         ''|'#'*|'make['*|'make:'*) continue ;;
     esac
-    COMMANDS+=("$line")
+    # Whitelist: `bash <path-without-shell-metacharacters> [<simple-args>...]`.
+    # Path tokens may contain alnum, `_`, `-`, `.`, `/`. Args may not contain
+    # any of: ;|&`$<>(){}[]\\*?"'~ or whitespace beyond single spaces.
+    if printf '%s' "$line" | grep -Eq '^bash [A-Za-z0-9_./-]+( [A-Za-z0-9_./=:.,@+-]+)*$'; then
+        COMMANDS+=("$line")
+    else
+        REJECTED+=("$line")
+    fi
 done <<EOF
 $LIST_OUTPUT
 EOF
 
+if [ "${#REJECTED[@]}" -gt 0 ]; then
+    echo "ERROR: $(printf '%s\n' "${REJECTED[@]}" | wc -l | tr -d ' ') harness recipe line(s) did not match the expected 'bash <path> [args]' shape:" >&2
+    printf '  rejected: %s\n' "${REJECTED[@]}" >&2
+    echo "Update _test-harnesses-list recipes to a single 'bash <path>' line, or extend the whitelist in scripts/test-harnesses.sh." >&2
+    exit 2
+fi
+
 TOTAL=${#COMMANDS[@]}
 if [ "$TOTAL" -eq 0 ]; then
-    echo "test-harnesses.sh: no harnesses found in _test-harnesses-list — nothing to do"
-    exit 0
+    # Zero harnesses is treated as an error so 'make test-harnesses' cannot
+    # silently pass green when the prereq list is empty / mis-edited / over-
+    # filtered. If you genuinely have no harnesses, remove the test-harnesses
+    # invocation from CI rather than allowing this path to exit 0.
+    echo "ERROR: 'make -n _test-harnesses-list' yielded zero harness commands. Check _test-harnesses-list prerequisites in Makefile." >&2
+    exit 2
 fi
 
 TMPDIR_RUN=$(mktemp -d -t test-harnesses.XXXXXX)
-cleanup() { rm -rf "$TMPDIR_RUN"; }
-trap cleanup EXIT INT TERM
+# Track the process group so signal handlers can kill in-flight workers.
+WORKER_PIDS=()
+cleanup() {
+    rm -rf "$TMPDIR_RUN"
+}
+on_signal() {
+    local sig="$1"
+    # Best-effort: kill any still-running worker so a Ctrl-C / SIGTERM does
+    # not leave background harnesses running after we exit.
+    if [ "${#WORKER_PIDS[@]}" -gt 0 ]; then
+        kill "${WORKER_PIDS[@]}" 2>/dev/null || true
+    fi
+    cleanup
+    # Standard exit codes for signal-terminated processes.
+    case "$sig" in
+        INT)  exit 130 ;;
+        TERM) exit 143 ;;
+        *)    exit 1 ;;
+    esac
+}
+trap cleanup EXIT
+trap 'on_signal INT' INT
+trap 'on_signal TERM' TERM
 
 # Per-job state is tracked entirely via on-disk sentinel files
 # ($TMPDIR_RUN/<idx>.out and <idx>.status). PIDs are intentionally not
@@ -84,11 +139,14 @@ launch() {
     local statusfile="$TMPDIR_RUN/$idx.status"
     (
         # Run the command in a subshell so its exit code is captured cleanly.
-        # `eval` is appropriate here: the input is `make -n` output for
-        # repo-controlled targets — not user input.
+        # `eval` is safe here because each command was vetted by the strict
+        # whitelist regex above (`bash <path> [simple-args]`) — no shell
+        # metacharacters, command substitution, or chaining can reach this
+        # point.
         eval "$cmd" >"$outfile" 2>&1
         echo $? >"$statusfile"
     ) &
+    WORKER_PIDS+=($!)
 }
 
 count_in_flight() {
