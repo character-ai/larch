@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.4.0] - 2026-05-03
+
+### Added
+
+- `/implement --coder=cursor`: third implementer choice alongside `claude` (default) and `codex`. New `scripts/launch-cursor-implement.sh` wrapper (parallel to `launch-codex-implement.sh`, same KV stdout grammar) spawns a non-interactive `cursor-agent` subprocess driven by the new `agents/cursor-implementer.md` system prompt; the implementer writes the same `manifest.json` schema as Codex (note added to `skills/implement/references/codex-manifest-schema.md`). `skills/implement/scripts/step2-implement.sh` gains a `--coder cursor` branch that fails fast with a clear error when `CURSOR_HEALTHY=false` (no silent fallback). `skills/implement/scripts/test-step2-dispatch.sh` covers the new routing branch; new `skills/implement/scripts/test-cursor-implementer.sh` exercises the launcher offline with a mocked cursor-agent and is gated on `CURSOR_HEALTHY=true` for the real-cursor smoke variant. Docs (`README.md`, `docs/workflow-lifecycle.md`, `docs/configuration-and-permissions.md`) updated to show `--coder={claude,codex,cursor}` and note that `LARCH_CURSOR_MODEL` (already used by sketch/review) now also drives the implementer (closes #993).
+
 ## [15.3.1] - 2026-05-03
 
 ### Changed
