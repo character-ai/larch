@@ -563,9 +563,11 @@ ${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step2-implement.sh \
 
 The dispatcher does NOT git reset between cycles. Codex inspects branch state at the start of every invocation and — on the resume invocation — reads the answers file, decides if its prior partial work is consistent with the new answers, and either continues or bails with `resume-incompatible` (which the operator inspects manually). See `agents/codex-implementer.md` "Resume protocol".
 
-**2.4 — Claude-fallback branch** (only when `STATUS=claude_fallback`, i.e. Step 0 reported Codex unavailable):
+**2.4 — Claude-fallback branch** (only when `STATUS=claude_fallback` — i.e. `coder=claude` was selected, either as the default or explicitly via `--coder=claude`, or via the legacy `--codex-available false`):
 
-Print: `**⚠ Codex unavailable — implementing with main agent (token cost will be higher).**`
+Print one of the following based on which path landed here:
+- When `coder=claude` was the resolved choice (the default, or an explicit operator selection): `**ℹ Implementing with main agent (coder=claude).**`
+- When the orchestrator earlier reported Codex unavailable / unhealthy AND `coder=codex` was NOT explicitly requested (legacy / pre-`--coder` callers that mapped through `--codex-available false`): `**⚠ Codex unavailable — implementing with main agent.**`
 
 **Opportunistic questions** (`auto_mode=false` only): before edits, if the plan leaves genuinely ambiguous choices, batch 1-4 into a single `AskUserQuestion`. Only ask when the ambiguity cannot be resolved from the plan, codebase, or CLAUDE.md. When `auto_mode=true`, proceed with best judgment.
 

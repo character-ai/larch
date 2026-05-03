@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
 # test-step2-dispatch.sh — Offline harness for skills/implement/scripts/step2-implement.sh.
 #
-# Covers the dispatcher branches that do NOT require spawning Codex:
-#   1. --coder claude → STATUS=claude_fallback (no launcher run).
-#   2. Default (no --coder, no --codex-available) → STATUS=claude_fallback.
-#   3. --codex-available false → STATUS=claude_fallback + deprecation warning on stderr.
-#   4. --codex-available true (would normally spawn Codex; here we just check
-#      it does NOT take the claude_fallback branch and emits a deprecation
-#      warning — exits non-zero on the spawn path because no Codex stub).
-#   5. Missing required flag → exit 2.
-#   6. --coder bogus → exit 2.
-#   7. --coder cursor → exit 2 with #993 pointer.
-#   8. --coder + --codex-available together → exit 2 (mutex).
-#   9. Pre-seeded resume counter at 5; 6th --answers invocation → STATUS=bailed REASON=qa-loop-exceeded.
-#  10. --answers but file does not exist → exit 2.
-#  11. Corrupt resume counter → STATUS=bailed REASON=manifest-schema-invalid.
-#  12. --coder codex outside a git working tree → exit 2.
+# Covers the dispatcher branches that do NOT require spawning Codex
+# (15 assertions; for the full per-test inventory see test-step2-dispatch.md):
+#   - --coder claude → STATUS=claude_fallback (no launcher run; no baseline-file leak).
+#   - Default coder (neither flag) → STATUS=claude_fallback.
+#   - Legacy --codex-available false → STATUS=claude_fallback + deprecation warning on stderr.
+#   - Missing required flag (--auto-mode) → exit 2.
+#   - Bad --coder enum value → exit 2.
+#   - --coder cursor → exit 2 with #993 pointer.
+#   - --coder + --codex-available together → exit 2 (mutex).
+#   - Bad --codex-available enum value → exit 2.
+#   - Bad --tmpdir → exit 2.
+#   - Pre-seeded resume counter at 5; 6th --answers invocation → STATUS=bailed REASON=qa-loop-exceeded.
+#   - --answers but file does not exist → exit 2.
+#   - Corrupt resume counter → STATUS=bailed REASON=manifest-schema-invalid.
+#   - --coder codex outside a git working tree → exit 2 (no baseline-file leak).
 #
 # Codex-spawning paths (manifest validation, diff cross-check, sanitization,
 # launcher-retry) are covered by a separate end-to-end test in CI with a real
