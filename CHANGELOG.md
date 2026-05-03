@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.4.3] - 2026-05-03
+
+### Changed
+
+- Replace stale `Makefile:148` and `Makefile:157-163` line-number citations with target-name anchors (`test-eval-set-structure` target). Affects `Makefile`, `scripts/test-eval-research-baseline-flag.md`, and `scripts/test-eval-research-baseline-flag.sh`. Pre-existing hygiene fix unrelated to issue #1016 (closes #1021).
+
 ## [15.4.2] - 2026-05-03
 
 ### Changed
