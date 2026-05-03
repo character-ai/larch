@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # test-quick-mode-docs-sync.sh — Cross-validation harness asserting that the
 # public quick-mode description in the user-facing docs (README.md,
-# docs/review-agents.md, docs/workflow-lifecycle.md) stays aligned with the
-# normative `/implement --quick` contract in skills/implement/SKILL.md
-# Step 5 (closes #370).
+# docs/review-agents.md, docs/workflow-lifecycle.md, docs/skills.md) stays
+# aligned with the normative `/implement --quick` contract in
+# skills/implement/SKILL.md Step 5 (closes #370; rounds-1-3 topology markers
+# added per #1002).
 #
 # Without this harness, drift between the canonical contract and the public
 # mirrors is silent: an editor rewriting Step 5 without propagating to the
@@ -23,10 +24,23 @@
 #        - "Cursor → Codex → Claude"     (case-sensitive, grep -F, UTF-8 U+2192)
 #        - "no voting panel"             (case-INSENSITIVE, grep -iF — tolerates
 #                                         legitimate sentence-case rewrites)
+#        - "rounds 1-3"                  (case-INSENSITIVE, grep -iF — tolerates
+#                                         "Rounds 1-3" capitalization in
+#                                         docs/review-agents.md; encodes the
+#                                         multi-lane rounds-1-3 contract)
+#        - "5 Cursor specialists"        (case-sensitive, grep -F — pins the
+#                                         specialist count in rounds 1-3)
+#        - "generic Codex"               (case-sensitive, grep -F — pins the
+#                                         generic Codex slot in rounds 1-3 and
+#                                         the rounds-4+ generic reviewer chain)
+#      The last three encode the rounds-1-3 vs rounds-4+ topology so future
+#      Step 5 quick-mode reviewer-composition changes that don't propagate to
+#      every public surface fail CI (closes #1002).
 #
-#   2. NEGATIVE CHECKS (forbidden stale phrases) — the three public-doc
-#      targets (README.md, docs/review-agents.md, docs/workflow-lifecycle.md)
-#      MUST NOT contain any of the following literal stale strings:
+#   2. NEGATIVE CHECKS (forbidden stale phrases) — the four public-doc
+#      targets (README.md, docs/review-agents.md, docs/workflow-lifecycle.md,
+#      docs/skills.md) MUST NOT contain any of the following literal stale
+#      strings:
 #        - "1 Claude Code Reviewer subagent, 1 round"
 #        - "no external reviewers"
 #        - "no externals, no voting"
@@ -36,8 +50,9 @@
 #      future SKILL.md edit introduces historical/comment references to these
 #      phrases, the exemption still holds (SKILL.md positive anchors alone
 #      assert the current contract is stated somewhere in the file); if the
-#      canonical contract itself changes, edit the marker variables below and
-#      the sibling .md FIRST, then propagate to the public docs.
+#      canonical contract itself changes, edit the POS_MARKERS / STALE_PHRASES
+#      arrays below and the sibling .md FIRST, then propagate to the public
+#      docs.
 #
 #   3. REQUIRED CROSS-REFERENCES (two-assertion check, target-specific) —
 #      guards prose path citations in public docs. Each entry is a (doc, xref)
@@ -60,7 +75,7 @@
 # harness cannot silently go green in CI.
 #
 # Edit-in-sync rule: if skills/implement/SKILL.md Step 5 quick-mode contract
-# changes, update (a) POSITIVE_MARKERS / STALE_PHRASES below FIRST, (b) the
+# changes, update (a) POS_MARKERS / STALE_PHRASES below FIRST, (b) the
 # sibling scripts/test-quick-mode-docs-sync.md, (c) then the public docs. The
 # positive-anchor check will enforce the new contract across all targets once
 # updated. Keep this script and its sibling .md in sync in the same PR.
@@ -72,16 +87,24 @@ REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # --- Canonical markers and stale phrases (single source of truth) -----------
 
-# Positive anchors: each target file must contain all three markers.
+# Positive anchors: each target file must contain ALL of these markers.
 # Format: "marker|casing" where casing is "sensitive" or "insensitive".
-readonly POS_MARKER_1="7 rounds|sensitive"
-readonly POS_MARKER_2="Cursor → Codex → Claude|sensitive"
-readonly POS_MARKER_3="no voting panel|insensitive"
+# To add a marker, append a new entry — `check_file` iterates this array.
+readonly POS_MARKERS=(
+  "7 rounds|sensitive"
+  "Cursor → Codex → Claude|sensitive"
+  "no voting panel|insensitive"
+  "rounds 1-3|insensitive"
+  "5 Cursor specialists|sensitive"
+  "generic Codex|sensitive"
+)
 
 # Stale phrases (forbidden in public docs; SKILL.md exempt).
-readonly STALE_1="1 Claude Code Reviewer subagent, 1 round"
-readonly STALE_2="no external reviewers"
-readonly STALE_3="no externals, no voting"
+readonly STALE_PHRASES=(
+  "1 Claude Code Reviewer subagent, 1 round"
+  "no external reviewers"
+  "no externals, no voting"
+)
 
 # Target files: relative paths from REPO_ROOT.
 #   public docs  — subject to both positive and negative checks
@@ -90,6 +113,7 @@ readonly PUBLIC_DOCS=(
   "README.md"
   "docs/review-agents.md"
   "docs/workflow-lifecycle.md"
+  "docs/skills.md"
 )
 readonly SKILL_MD="skills/implement/SKILL.md"
 
@@ -122,9 +146,9 @@ check_file() {
 
   local local_fail=0
 
-  # Positive anchors: iterate the three markers.
+  # Positive anchors: iterate POS_MARKERS.
   local marker spec casing
-  for spec in "$POS_MARKER_1" "$POS_MARKER_2" "$POS_MARKER_3"; do
+  for spec in "${POS_MARKERS[@]}"; do
     marker="${spec%|*}"
     casing="${spec##*|}"
     if [[ "$casing" == "insensitive" ]]; then
@@ -145,7 +169,7 @@ check_file() {
   # Negative checks: forbidden stale phrases (public docs only).
   if [[ "$apply_negative" == "yes" ]]; then
     local stale
-    for stale in "$STALE_1" "$STALE_2" "$STALE_3"; do
+    for stale in "${STALE_PHRASES[@]}"; do
       if grep -Fq -- "$stale" "$path"; then
         echo "FAIL: $label — forbidden stale phrase present: '$stale'" >&2
         FAIL_COUNT=$((FAIL_COUNT + 1))
@@ -268,12 +292,14 @@ run_self_test() {
   local good="$FIXTURE_DIR/good.md"
   local bad="$FIXTURE_DIR/bad.md"
 
-  # Canonical-correct fixture: contains all 3 positive markers, no stale phrases.
+  # Canonical-correct fixture: contains all positive markers, no stale phrases.
   cat > "$good" <<'EOF'
 This is a fixture describing quick-mode behavior.
 The review loop runs up to 7 rounds.
 Reviewer selection per round follows Cursor → Codex → Claude fallback.
 The loop has no voting panel — main agent accepts or rejects each finding.
+Rounds 1-3 launch 5 Cursor specialists in parallel plus a generic Codex reviewer.
+Rounds 4+ use a single generic reviewer per round.
 EOF
 
   # Stale-phrase fixture: contains ALL positive markers PLUS exactly one stale
@@ -287,6 +313,7 @@ Stale-phrase fixture: contains every positive marker so only the stale phrase ca
 The review loop runs up to 7 rounds.
 Reviewer selection per round follows Cursor → Codex → Claude fallback.
 The loop has no voting panel — main agent accepts or rejects each finding.
+Rounds 1-3 launch 5 Cursor specialists in parallel plus a generic Codex reviewer.
 Stale phrase intentionally embedded: simplified code review (1 Claude Code Reviewer subagent, 1 round).
 EOF
 
