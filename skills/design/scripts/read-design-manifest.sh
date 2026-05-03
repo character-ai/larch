@@ -3,6 +3,21 @@
 
 set -euo pipefail
 
+# Round 3 FINDING_R3_G: the sibling .md contract promises this script never
+# exits non-zero for manifest rejection — every reject path emits
+# MANIFEST_FAILED=true / ERROR=<token> and exits 0. Without an ERR trap,
+# unexpected I/O failures (disk, race on manifest deletion mid-read) under
+# set -euo pipefail can terminate non-zero with no envelope, silently
+# breaking fail-closed callers that only parse stdout. Catch any unhandled
+# failure and emit the documented internal-error envelope.
+# shellcheck disable=SC2317
+on_err() {
+    echo "MANIFEST_FAILED=true"
+    echo "ERROR=internal-error"
+    exit 0
+}
+trap on_err ERR
+
 IMPLEMENT_TMPDIR="${IMPLEMENT_TMPDIR:-}"
 MANIFEST=""
 

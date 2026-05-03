@@ -143,7 +143,18 @@ LINK="<${ISSUE_URL}|Issue #${ISSUE_NUMBER}>"
 # Compose status tail
 TAIL="$STATUS_SUMMARY"
 if [[ "$STATUS" == "pr-opened" ]] && [[ -n "$PR_URL" ]]; then
-    TAIL="PR <${PR_URL}|opened>, awaiting merge"
+    # Round 3 FINDING_R3_H: validate PR_URL against a strict https URL pattern
+    # before embedding into Slack mrkdwn link syntax. PR_URL normally comes
+    # from gh, but a bare-https check guarantees no `|`, `>`, or backtick
+    # characters can alter the link structure or mimic adjacent mrkdwn.
+    if [[ "$PR_URL" =~ ^https://[A-Za-z0-9._/-]+$ ]]; then
+        TAIL="PR <${PR_URL}|opened>, awaiting merge"
+    else
+        # Refuse to interpolate; degrade to the plain status summary and warn
+        # to stderr so the operator notices.
+        echo "post-issue-slack.sh: PR_URL failed strict https validation, omitting from message: $PR_URL" >&2
+        TAIL="PR opened, awaiting merge"
+    fi
 fi
 if [[ -n "$SAFE_DETAIL" ]]; then
     TAIL="${TAIL} — ${SAFE_DETAIL}"

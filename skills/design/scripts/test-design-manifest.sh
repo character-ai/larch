@@ -113,6 +113,33 @@ printf 'SESSION_ID=bad\001value\n' >> "$BASE_EXPORT/manifest.env"
 out=$("$READER" --implement-tmpdir "$TMPROOT/manual")
 printf '%s\n' "$out" | grep -q '^ERROR=control-char$' || fail "control character was not rejected"
 
+# Round 3 FINDING_R3_A: source-side symlink rejection. cp follows symlinks
+# and produces a regular destination file, so the reader's destination
+# symlink check would not see the original symlink. The writer must reject
+# symlinked sources up front.
+DESIGN_SYMLINK="$TMPROOT/design-symlink"
+IMPLEMENT_SYMLINK="$TMPROOT/implement-symlink"
+make_design_tree "$DESIGN_SYMLINK"
+mkdir -p "$IMPLEMENT_SYMLINK"
+echo "outside content" > "$TMPROOT/outside-leak.txt"
+rm "$DESIGN_SYMLINK/plan.txt"
+ln -s "$TMPROOT/outside-leak.txt" "$DESIGN_SYMLINK/plan.txt"
+if "$WRITER" --design-tmpdir "$DESIGN_SYMLINK" --implement-tmpdir "$IMPLEMENT_SYMLINK" >/dev/null 2>&1; then
+    fail "writer accepted symlinked source artifact"
+fi
+[[ ! -f "$IMPLEMENT_SYMLINK/design-export/plan.txt" ]] || fail "writer copied symlinked source content"
+
+# Round 3 FINDING_R3_D: relative --implement-tmpdir must be canonicalized so
+# the manifest contains absolute paths the reader accepts.
+DESIGN_REL="$TMPROOT/design-rel"
+IMPLEMENT_REL_PARENT="$TMPROOT/rel-parent"
+IMPLEMENT_REL_NAME="implement-rel"
+make_design_tree "$DESIGN_REL"
+mkdir -p "$IMPLEMENT_REL_PARENT/$IMPLEMENT_REL_NAME"
+( cd "$IMPLEMENT_REL_PARENT" && "$WRITER" --design-tmpdir "$DESIGN_REL" --implement-tmpdir "./$IMPLEMENT_REL_NAME" >/dev/null )
+out=$("$READER" --implement-tmpdir "$IMPLEMENT_REL_PARENT/$IMPLEMENT_REL_NAME")
+printf '%s\n' "$out" | grep -q '^MANIFEST_OK=true$' || fail "relative --implement-tmpdir was not canonicalized; reader rejected manifest"
+
 # Round 2 FINDING_C: pin duplicate load-bearing key rejection. read-design-manifest.sh
 # fails with ERROR=duplicate-key:<KEY> when a load-bearing key (PLAN_FILE,
 # PLAN_REVIEW_TALLY_FILE, etc.) appears twice. Without this pin, a regression

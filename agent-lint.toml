@@ -276,6 +276,9 @@ suppress = [
 # README.md, docs/review-agents.md, and docs/workflow-lifecycle.md stays
 # aligned with the normative contract in skills/implement/SKILL.md Step 5
 # (up to 7 rounds, Cursor → Codex → Claude fallback chain, no voting panel).
+# Also pins the literal `--design-only` substring in README.md, docs/skills.md,
+# docs/workflow-lifecycle.md, and skills/implement/SKILL.md so flag rename or
+# removal in any of those four files is caught at the source (Round 2 #984 / FINDING_H).
 # Referenced only from Makefile (test-quick-mode-docs-sync target) and
 # scripts/test-quick-mode-docs-sync.md (sibling contract); matches the
 # Makefile-only pattern as the other harnesses above.

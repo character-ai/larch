@@ -158,11 +158,15 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/write-session-env.sh --output "$IMPLEMENT_TMPDIR/s
 ```
 
 Then:
-- Write a per-run session id for design-manifest freshness checks:
+- Write a per-run session id for design-manifest freshness checks. The fallback MUST live inside the snippet (a uuidgen-less host would otherwise fail under `set -e` before the prose-only fallback ever runs):
   ```bash
-  uuidgen > "$IMPLEMENT_TMPDIR/session-id"
+  if command -v uuidgen >/dev/null 2>&1; then
+    uuidgen > "$IMPLEMENT_TMPDIR/session-id"
+  else
+    printf '%s\n' "$(basename "$IMPLEMENT_TMPDIR")" > "$IMPLEMENT_TMPDIR/session-id"
+  fi
   ```
-  If `uuidgen` is unavailable, write the basename of `$IMPLEMENT_TMPDIR`. Step 1 compares this value to the design manifest's `SESSION_ID` before reusing any exported plan.
+  Step 1 compares this value to the design manifest's `SESSION_ID` before reusing any exported plan.
 - Set `slack_available` from `SLACK_OK` (`true` → `true`; `false` → `false`). Warn only when the user has NOT opted out: if `slack_enabled=true` AND `SLACK_OK=false`, print `**⚠ Slack is not fully configured (<SLACK_MISSING> not set). Issue Slack announcement (Step 16a) will be skipped.**` When `slack_enabled=false` (user passed `--no-slack`), suppress the warning — Slack is not in use regardless of environment state.
 - If `REPO_UNAVAILABLE=true`: print `**⚠ Could not determine repository name. CI monitoring (Steps 10, 12) and merge (Step 12b) will be skipped.**` Set `repo_unavailable=true`.
 - Set `codex_available=true` only when both `CODEX_AVAILABLE=true` and `CODEX_HEALTHY=true` (per the Binary Check and Health Probe mapping in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md`); same for `cursor_available`. Both flip to `false` at runtime via Runtime Timeout Fallback.
@@ -1297,7 +1301,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-tmpdir.sh --dir "$IMPLEMENT_TMPDIR"
 
 Repeat any external reviewer warnings from earlier (from `/design`, `/review`, or Step 5 runtime-fallback flips). Examples: `**⚠ Codex not available: <reason>**`, `**⚠ Cursor review failed: <reason>**`.
 
-If `draft=true`, remind: `**Note: --draft was set. Draft PR created; local branch retained. Mark the PR ready-for-review and merge manually when ready.**` Otherwise if `merge=false`, remind: `**Note: --merge was not set. PR was created but not merged. Merge manually when ready.**`
+If `DESIGN_ONLY_DONE=true`, remind: `**Note: --design-only was set. No PR was created. The tracking issue's anchor comment carries the plan, plan-review tally, diagrams, and accepted/rejected findings as the run's deliverable.**` Otherwise, if `draft=true`, remind: `**Note: --draft was set. Draft PR created; local branch retained. Mark the PR ready-for-review and merge manually when ready.**` Otherwise if `merge=false`, remind: `**Note: --merge was not set. PR was created but not merged. Merge manually when ready.**`
 
 **Tracking-issue URL**: if the in-memory session variable `$ISSUE_NUMBER` (captured at Step 0.5 — do NOT re-read from the sentinel file, which `cleanup-tmpdir.sh` may have already removed) is non-empty AND `repo_unavailable=false`, derive the URL from `gh` (GH-Enterprise-safe — do NOT hardcode `https://github.com/`):
 
