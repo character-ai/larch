@@ -1,5 +1,7 @@
 # step2-implement.sh
 
+**Orchestrator wait contract**: the orchestrator MUST NOT call `ScheduleWakeup` while waiting on this dispatcher — `step2-implement.sh` blocks foreground until the implementer returns, so no wakeup is needed, and a non-sentinel `prompt` would re-fire as a `/loop` input on wakeup. See `skills/implement/SKILL.md` NEVER #9.
+
 **Purpose**: Single dispatcher entrypoint for `/implement` Step 2. Branches on `--coder` (canonical) or the legacy `--codex-available` alias; on the Codex/Cursor paths, drives the external implementer loop end-to-end (spawn → manifest → mechanical validation → sanitization → final KV envelope) so SKILL.md Step 2 only needs to parse a deterministic key/value summary. There is no main-agent code-edit path reachable from Step 2 when `--coder=codex` or `--coder=cursor` — Claude fallback occurs when `--coder=claude` (the default; pre-Codex behavior) or when the legacy `--codex-available false` is passed in.
 
 **Invariants**:
