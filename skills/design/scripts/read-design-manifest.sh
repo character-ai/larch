@@ -202,5 +202,10 @@ printf 'TIMESTAMP=%s\n' "$TIMESTAMP"
 printf 'SESSION_ID=%s\n' "$SESSION_ID"
 
 if [[ "$EMIT_LOAD_BREADCRUMB" = true ]]; then
-    printf '📥 1: design plan — manifest loaded (PLAN_FILE=%s)\n' "$(basename "$PLAN_FILE")"
+    # Human-readable breadcrumb. Deliberately uses "plan=<basename>" rather than
+    # "PLAN_FILE=<basename>" so the line cannot be mis-captured by a
+    # non-anchored `grep 'PLAN_FILE='` extraction over the reader's stdout —
+    # the load-bearing envelope key stays unique to the canonical-path line
+    # emitted earlier by check_path.
+    printf '📥 1: design plan — manifest loaded (plan=%s)\n' "$(basename "$PLAN_FILE")"
 fi

@@ -7,7 +7,9 @@
 
 set -euo pipefail
 
-REPO_ROOT=$(cd "$(dirname "$0")/.." && pwd -P)
+# Symlink-safe: use BASH_SOURCE[0] for repo-root resolution to match sibling
+# harnesses (e.g., test-implement-anti-polling-rule.sh).
+REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)
 SKILL_MD="$REPO_ROOT/skills/implement/SKILL.md"
 READER="$REPO_ROOT/skills/design/scripts/read-design-manifest.sh"
 
@@ -16,13 +18,29 @@ fail() { echo "FAIL: $1" >&2; exit 1; }
 [[ -f "$SKILL_MD" ]] || fail "skills/implement/SKILL.md missing"
 [[ -f "$READER" ]] || fail "skills/design/scripts/read-design-manifest.sh missing"
 
-# (A) Post-/design boundary checkpoint blockquote present in SKILL.md.
-grep -q "Post-/design boundary checkpoint" "$SKILL_MD" \
-    || fail "(A) missing 'Post-/design boundary checkpoint' blockquote in SKILL.md"
+# Extract the Post-/design boundary checkpoint blockquote slice — the awk
+# state machine starts at the line containing the header literal and runs to
+# the FIRST blank line that follows the blockquote. Anti-pattern strings (B)
+# and the breadcrumb literal (E) must live INSIDE this slice, not just
+# anywhere in SKILL.md.
+SLICE=$(awk '
+    /Post-\/design boundary checkpoint/ { in_slice=1 }
+    in_slice && /^[[:space:]]*$/ { exit }
+    in_slice { print }
+' "$SKILL_MD")
+[[ -n "$SLICE" ]] || fail "(A) Post-/design boundary checkpoint slice not found in SKILL.md"
 
-# (B) Anti-pattern strings present in SKILL.md (case-insensitive).
+# (A) Header literal present in SKILL.md.
+grep -q "Post-/design boundary checkpoint" "$SKILL_MD" \
+    || fail "(A) missing 'Post-/design boundary checkpoint' header in SKILL.md"
+
+# (B) Anti-pattern strings present INSIDE the boundary-checkpoint slice
+#     (case-insensitive). Asserts the strings stay where they are
+#     load-bearing — drifting them out of the warning text silently weakens
+#     the reminder.
 for s in "returning control" "design phase complete" "handing off"; do
-    grep -qi -- "$s" "$SKILL_MD" || fail "(B) missing anti-pattern string: $s"
+    printf '%s\n' "$SLICE" | grep -qi -- "$s" \
+        || fail "(B) anti-pattern string missing from boundary-checkpoint slice: $s"
 done
 
 # (C) Both breadcrumb forms present in SKILL.md.
@@ -35,9 +53,10 @@ grep -q '🔶 2: implementation' "$SKILL_MD" \
 grep -q 'NEVER #7' "$SKILL_MD" \
     || fail "(D) missing 'NEVER #7' reference in SKILL.md"
 
-# (E) Manifest-loaded breadcrumb literal present in SKILL.md.
-grep -q '📥 1: design plan — manifest loaded' "$SKILL_MD" \
-    || fail "(E) missing manifest-loaded breadcrumb literal in SKILL.md"
+# (E) Manifest-loaded breadcrumb literal present in SKILL.md (uses plan=<basename>
+#     not PLAN_FILE=<basename> per #1014 review FINDING_2 — KV-namespace collision).
+grep -q '📥 1: design plan — manifest loaded (plan=' "$SKILL_MD" \
+    || fail "(E) missing manifest-loaded breadcrumb literal (plan=...) in SKILL.md"
 
 # (F) read-design-manifest.sh invocation in the post-/design re-run carries
 #     --emit-load-breadcrumb so the breadcrumb actually fires.
@@ -49,8 +68,64 @@ grep -q 'read-design-manifest.sh --implement-tmpdir "\$IMPLEMENT_TMPDIR" --emit-
 grep -q -- '--emit-load-breadcrumb' "$READER" \
     || fail "(G) read-design-manifest.sh missing --emit-load-breadcrumb flag handler"
 
-# (H) Reader emits the breadcrumb literal on the success path.
-grep -q '📥 1: design plan — manifest loaded' "$READER" \
-    || fail "(H) read-design-manifest.sh missing breadcrumb emission"
+# (H) Reader emits the breadcrumb literal on the success path with plan= (not PLAN_FILE=).
+grep -q '📥 1: design plan — manifest loaded (plan=' "$READER" \
+    || fail "(H) read-design-manifest.sh missing breadcrumb emission (plan=...)"
+
+# (I) Reader does NOT emit the breadcrumb with the old PLAN_FILE= form anywhere
+#     (guards against partial revert).
+grep -q '📥 1: design plan — manifest loaded (PLAN_FILE=' "$READER" \
+    && fail "(I) read-design-manifest.sh still emits the legacy PLAN_FILE= form — would collide with KV envelope key"
+grep -q '📥 1: design plan — manifest loaded (PLAN_FILE=' "$SKILL_MD" \
+    && fail "(I) SKILL.md still references the legacy PLAN_FILE= breadcrumb form"
+
+# (J) Stdout-shape integration test (#1014 review FINDING_3, Cursor-Testing +
+#     Cursor-Edge): synthesize a minimal valid manifest, run the reader with
+#     --emit-load-breadcrumb, and assert (a) the breadcrumb appears AFTER the
+#     MANIFEST_OK=true line, (b) the breadcrumb is the LAST line of stdout,
+#     and (c) the breadcrumb is SUPPRESSED on the missing-manifest failure
+#     path.
+TMP=$(mktemp -d)
+trap 'rm -rf "$TMP"' EXIT
+mkdir -p "$TMP/design-export"
+cat > "$TMP/design-export/plan.txt" <<'EOF_PLAN'
+test plan body
+EOF_PLAN
+: > "$TMP/design-export/voting-tally.md"
+echo "tally" > "$TMP/design-export/voting-tally.md"
+: > "$TMP/design-export/contested-decisions.md"
+: > "$TMP/design-export/oos.md"
+: > "$TMP/design-export/rejected-findings.md"
+: > "$TMP/design-export/accepted-plan-findings.md"
+cat > "$TMP/design-export/manifest.env" <<EOF_MANIFEST
+MANIFEST_VERSION=1
+PLAN_FILE=$TMP/design-export/plan.txt
+PLAN_REVIEW_TALLY_FILE=$TMP/design-export/voting-tally.md
+CONTESTED_CRITERIA_FILE=$TMP/design-export/contested-decisions.md
+OOS_FILE=$TMP/design-export/oos.md
+REJECTED_FINDINGS_FILE=$TMP/design-export/rejected-findings.md
+ACCEPTED_PLAN_FINDINGS_FILE=$TMP/design-export/accepted-plan-findings.md
+TIMESTAMP=2026-01-01T00:00:00Z
+SESSION_ID=test-session
+EOF_MANIFEST
+
+OUT=$(bash "$READER" --implement-tmpdir "$TMP" --emit-load-breadcrumb)
+printf '%s\n' "$OUT" | grep -q '^MANIFEST_OK=true$' \
+    || fail "(J) reader did not emit MANIFEST_OK=true on the synthesized valid manifest"
+LAST_LINE=$(printf '%s\n' "$OUT" | tail -n 1)
+case "$LAST_LINE" in
+    "📥 1: design plan — manifest loaded (plan=plan.txt)") ;;
+    *) fail "(J) breadcrumb is not the last line of stdout (got: $LAST_LINE)" ;;
+esac
+
+# Failure-path: missing manifest. Reader exits 0 with MANIFEST_FAILED envelope
+# and MUST NOT emit the breadcrumb.
+TMP2=$(mktemp -d)
+OUT_FAIL=$(bash "$READER" --implement-tmpdir "$TMP2" --emit-load-breadcrumb)
+rm -rf "$TMP2"
+printf '%s\n' "$OUT_FAIL" | grep -q '^MANIFEST_FAILED=true$' \
+    || fail "(J) reader did not emit MANIFEST_FAILED=true on missing manifest"
+printf '%s\n' "$OUT_FAIL" | grep -q '📥 1: design plan — manifest loaded' \
+    && fail "(J) reader emitted the breadcrumb on a failure path — must be success-only"
 
 echo "PASS: post-/design boundary checkpoint regression test"
