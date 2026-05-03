@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.2.0] - 2026-05-03
+
+### Added
+
+- `/fix-issue --coder=<value>` pass-through flag. Forwarded verbatim to the delegated `/implement` run on PR paths (both SIMPLE and HARD bullets); `/fix-issue` performs no validation — `/implement`'s own `--coder` flag is the validating boundary.
+
+### Fixed
+
+- `/implement` Step 2 dispatcher (`skills/implement/scripts/step2-implement.sh`) emitted `STATUS=bailed REASON=protected-path-modified` on every successful Codex `complete` manifest. Root cause: the path-normalization check used a `*$'\0'*` glob, which collapses to `**` in bash (since `$'\0'` is empty in bash strings) and matches every non-empty path. Drop the dead NUL subexpression and add a jq-layer NUL guard that rejects any manifest where a path contains a NUL byte, closing the `read -r` truncation bypass. `--coder=codex` is functional again.
+
 ## [15.1.3] - 2026-05-03
 
 ### Changed

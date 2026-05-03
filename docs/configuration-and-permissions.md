@@ -157,7 +157,7 @@ These checks are re-verified immediately before the `--admin` attempt — the sc
 
 ## Selecting the Step 2 implementer (`--coder`)
 
-`/implement` Step 2 (the actual code-writing step) supports a `--coder={claude,codex}` flag that selects which agent does the implementation. The default is `claude` — implementation runs in the main agent / Claude context (the same path that ran before Codex-as-implementer was introduced). Pass `--coder=codex` to spawn the Codex implementer via `skills/implement/scripts/step2-implement.sh`. The flag is forwarded transparently by `/im` and `/imaq` (they pass `$ARGUMENTS` through to `/implement`). `/fix-issue` does NOT currently forward `--coder` — its Step 5a builds a fixed `/implement` invocation that does not propagate the flag; pass `--coder` directly to `/implement` (or to `/im` / `/imaq`) instead.
+`/implement` Step 2 (the actual code-writing step) supports a `--coder={claude,codex}` flag that selects which agent does the implementation. The default is `claude` — implementation runs in the main agent / Claude context (the same path that ran before Codex-as-implementer was introduced). Pass `--coder=codex` to spawn the Codex implementer via `skills/implement/scripts/step2-implement.sh`. The flag is forwarded transparently by `/im` and `/imaq` (they pass `$ARGUMENTS` through to `/implement`). `/fix-issue` also accepts `--coder=<value>` and forwards the value verbatim to `/implement` in Step 5a on PR paths; `/fix-issue` does not validate or interpret the value.
 
 `--coder=cursor` is reserved for issue #993 (Cursor implementer) and currently rejected at parse time with a pointer to that issue.
 

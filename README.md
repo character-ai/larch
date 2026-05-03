@@ -63,7 +63,7 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#fix-issue"><code>/fix-issue</code></a></td>
-      <td><code>[--no-slack] [--no-admin-fallback] [&lt;number-or-url&gt;]</code></td>
+      <td><code>[--no-slack] [--no-admin-fallback] [--coder=&lt;value&gt;] [&lt;number-or-url&gt;]</code></td>
     </tr>
     <tr><td colspan="2">Process one approved GitHub issue per invocation, classifying intent and delegating PR work to <code>/implement</code>.</td></tr>
     <tr><td colspan="2"><hr></td></tr>

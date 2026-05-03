@@ -9,11 +9,13 @@
 # conformance test. Runtime enforcement is the LLM-level orchestration of
 # Step 5a per the prose contract.
 #
-# Eight assertions against the extracted Step 5a block:
+# Ten assertions against the extracted Step 5a block:
 #   (a1) SIMPLE bullet forwards "--issue $ISSUE_NUMBER".
 #   (a2) HARD bullet forwards "--issue $ISSUE_NUMBER".
 #   (a3) SIMPLE bullet forwards "--no-admin-fallback" (issue #559 — branch-protection bypass safety flag).
 #   (a4) HARD bullet forwards "--no-admin-fallback" (issue #559 — branch-protection bypass safety flag).
+#   (a5) SIMPLE bullet forwards "--coder=$coder" (pass-through implementer-selection flag).
+#   (a6) HARD bullet forwards "--coder=$coder" (pass-through implementer-selection flag).
 #   (b)  Literal token "IMPLEMENT_BAIL_REASON=adopted-issue-closed" present.
 #   (c)  Warning prefix "/implement bailed: issue #" present.
 #   (d)  Specific directive "Do NOT call `issue-lifecycle.sh close`" present
@@ -108,6 +110,13 @@ assert_bullet_contains "a2: HARD bullet forwards --issue \$ISSUE_NUMBER"   '- **
 # /fix-issue --no-admin-fallback callers exposed to the silent --admin override.
 assert_bullet_contains "a3: SIMPLE bullet forwards --no-admin-fallback" '- **SIMPLE**' '--no-admin-fallback'
 assert_bullet_contains "a4: HARD bullet forwards --no-admin-fallback"   '- **HARD**'   '--no-admin-fallback'
+
+# (a5, a6) --coder forwarding — pass-through implementer-selection flag.
+# Without this guard, a future refactor could silently drop the forward and
+# /fix-issue --coder=<value> callers would silently fall back to /implement's
+# default coder.
+assert_bullet_contains "a5: SIMPLE bullet forwards --coder=" '- **SIMPLE**' '--coder=$coder'
+assert_bullet_contains "a6: HARD bullet forwards --coder="   '- **HARD**'   '--coder=$coder'
 
 # (b) Bail-token literal present.
 assert_contains "b: IMPLEMENT_BAIL_REASON=adopted-issue-closed literal" 'IMPLEMENT_BAIL_REASON=adopted-issue-closed'

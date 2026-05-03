@@ -384,7 +384,12 @@ if [[ "$STATUS" == "complete" ]]; then
     while IFS= read -r p; do
         [[ -z "$p" ]] && continue
         # absolute path or contains ..
-        if [[ "$p" == /* ]] || [[ "$p" == *..* ]] || [[ "$p" == *$'\0'* ]]; then
+        # NUL detection is implicit — bash strings cannot hold a NUL, so the
+        # `read -r` above terminates the field at any NUL in upstream JSON.
+        # A literal `*$'\0'*` glob expands to `**` (because `$'\0'` is empty
+        # in bash) and matches every non-empty path, so the check must not
+        # be expressed that way.
+        if [[ "$p" == /* ]] || [[ "$p" == *..* ]]; then
             paths_invalid=true; break
         fi
         # protected file
@@ -401,6 +406,19 @@ if [[ "$STATUS" == "complete" ]]; then
             done <<< "$SUBMODULE_PATHS"
         fi
     done < <(jq -r '.files_touched[].path, .tests_added_or_modified[]' "$MANIFEST_RAW_PATH" 2>/dev/null)
+
+    # NUL guard at the jq layer. Bash variables cannot represent NUL, so
+    # `read -r` over `jq -r` output silently truncates a path like
+    # `safe<NUL>../evil` to `safe`, bypassing the `..` check above. Run a
+    # separate jq predicate that returns true if any manifest path
+    # contains a NUL byte (\u0000), and reject the manifest before any
+    # path enters bash control flow. One extra traversal; manifests are
+    # small.
+    if [[ "$paths_invalid" != "true" ]] && \
+       jq -e '[.files_touched[].path, .tests_added_or_modified[]] | any(test("\u0000"))' \
+            "$MANIFEST_RAW_PATH" >/dev/null 2>&1; then
+        paths_invalid=true
+    fi
 
     if [[ "$paths_invalid" == "true" ]]; then
         emit_bailed "protected-path-modified"
