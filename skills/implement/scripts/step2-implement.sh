@@ -1,11 +1,20 @@
 #!/usr/bin/env bash
-# step2-implement.sh — Dispatcher for /implement Step 2 (Codex implementer + Claude fallback).
+# step2-implement.sh — Dispatcher for /implement Step 2 (coder selection).
 #
 # This is the SINGLE entrypoint /implement Step 2 invokes. It is the only place
-# that branches on codex_available. There is no main-agent Edit/Write code-edit
-# path reachable from Step 2 when codex_available=true — the orchestrator only
-# falls back to Claude when this script returns STATUS=claude_fallback (which
-# it does ONLY when --codex-available false is passed in).
+# that branches on the chosen --coder value. The orchestrator only falls back
+# to Claude main-agent Edit/Write when this script returns STATUS=claude_fallback
+# (which it does when --coder=claude — the default).
+#
+# Coder flag (preferred):
+#   --coder claude   → STATUS=claude_fallback (main-agent path; default)
+#   --coder codex    → spawn Codex implementer
+#   --coder cursor   → exit 2 (not yet supported; see issue #993)
+#
+# Legacy flag (deprecated, accepted for one release):
+#   --codex-available true   → maps to --coder codex (stderr deprecation warning)
+#   --codex-available false  → maps to --coder claude (stderr deprecation warning)
+# Passing both --coder and --codex-available exits 2.
 #
 # See:
 #   - skills/implement/SKILL.md Step 2 (caller)
@@ -22,8 +31,8 @@
 #   SIDECAR_LOG=<path>       # set when launcher actually ran
 #
 # Exit code is always 0 unless caller / invocation validation fails (exit 2):
-# missing or invalid flag, missing required path, bad enum value, or — on the
-# Codex path — cwd is not inside a git working tree.
+# missing or invalid flag, missing required path, bad enum value, --coder=cursor,
+# or — on the Codex path — cwd is not inside a git working tree.
 
 set -euo pipefail
 
@@ -33,6 +42,7 @@ TMPDIR_ARG=""
 PLAN_FILE=""
 FEATURE_FILE=""
 AUTO_MODE=""
+CODER=""
 CODEX_AVAILABLE=""
 ANSWERS_FILE=""
 
@@ -42,13 +52,57 @@ while [[ $# -gt 0 ]]; do
         --plan-file)         PLAN_FILE="${2:?--plan-file requires a value}"; shift 2 ;;
         --feature-file)      FEATURE_FILE="${2:?--feature-file requires a value}"; shift 2 ;;
         --auto-mode)         AUTO_MODE="${2:?--auto-mode requires a value}"; shift 2 ;;
+        --coder)             CODER="${2:?--coder requires a value}"; shift 2 ;;
         --codex-available)   CODEX_AVAILABLE="${2:?--codex-available requires a value}"; shift 2 ;;
         --answers)           ANSWERS_FILE="${2:?--answers requires a value}"; shift 2 ;;
         *) echo "step2-implement.sh: unknown flag: $1" >&2; exit 2 ;;
     esac
 done
 
-for var in TMPDIR_ARG PLAN_FILE FEATURE_FILE AUTO_MODE CODEX_AVAILABLE; do
+# Coder selection: --coder is the canonical flag; --codex-available is accepted
+# for one release as a deprecated alias. Mutual-exclusion is mandatory because
+# the legacy flag sets the same internal state and silent precedence would
+# mask operator misconfiguration.
+if [[ -n "$CODER" && -n "$CODEX_AVAILABLE" ]]; then
+    echo "step2-implement.sh: --coder and --codex-available are mutually exclusive" >&2
+    exit 2
+fi
+
+if [[ -n "$CODEX_AVAILABLE" ]]; then
+    case "$CODEX_AVAILABLE" in
+        true)
+            echo "step2-implement.sh: WARNING: --codex-available is deprecated; pass --coder codex instead" >&2
+            CODER="codex"
+            ;;
+        false)
+            echo "step2-implement.sh: WARNING: --codex-available is deprecated; pass --coder claude instead" >&2
+            CODER="claude"
+            ;;
+        *)
+            echo "step2-implement.sh: --codex-available must be 'true' or 'false', got: $CODEX_AVAILABLE" >&2
+            exit 2
+            ;;
+    esac
+fi
+
+# Default coder is claude (main-agent path; restores pre-Codex behavior).
+if [[ -z "$CODER" ]]; then
+    CODER="claude"
+fi
+
+case "$CODER" in
+    claude|codex) ;;
+    cursor)
+        echo "step2-implement.sh: --coder=cursor is not yet supported; see issue #993" >&2
+        exit 2
+        ;;
+    *)
+        echo "step2-implement.sh: --coder must be one of {claude,codex}, got: $CODER" >&2
+        exit 2
+        ;;
+esac
+
+for var in TMPDIR_ARG PLAN_FILE FEATURE_FILE AUTO_MODE; do
     if [[ -z "${!var}" ]]; then
         flag_lc=$(printf '%s' "$var" | tr '[:upper:]' '[:lower:]' | tr '_' '-')
         echo "step2-implement.sh: --$flag_lc is required" >&2
@@ -59,20 +113,16 @@ done
 [[ -d "$TMPDIR_ARG" ]] || { echo "step2-implement.sh: --tmpdir not a directory: $TMPDIR_ARG" >&2; exit 2; }
 [[ -f "$PLAN_FILE" ]]  || { echo "step2-implement.sh: --plan-file not found: $PLAN_FILE" >&2; exit 2; }
 [[ -f "$FEATURE_FILE" ]] || { echo "step2-implement.sh: --feature-file not found: $FEATURE_FILE" >&2; exit 2; }
-case "$CODEX_AVAILABLE" in
-    true|false) ;;
-    *) echo "step2-implement.sh: --codex-available must be 'true' or 'false', got: $CODEX_AVAILABLE" >&2; exit 2 ;;
-esac
 case "$AUTO_MODE" in
     true|false) ;;
     *) echo "step2-implement.sh: --auto-mode must be 'true' or 'false', got: $AUTO_MODE" >&2; exit 2 ;;
 esac
 
-# Branch 1: codex_available=false → emit claude_fallback and return.
+# Branch 1: coder=claude → emit claude_fallback and return.
 # Run BEFORE the PLUGIN_ROOT / REPO_ROOT resolution so the fallback path stays
 # git-free (claude_fallback may be invoked outside a git working tree, and it
 # needs no plugin assets).
-if [[ "$CODEX_AVAILABLE" == "false" ]]; then
+if [[ "$CODER" == "claude" ]]; then
     printf 'STATUS=claude_fallback\n'
     exit 0
 fi

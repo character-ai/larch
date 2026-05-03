@@ -67,7 +67,7 @@ Process one approved GitHub issue per invocation. Step 0 (`find-lock-issue.sh`) 
 
 ## `/implement`
 
-**Arguments**: `[--quick] [--auto] [--merge | --draft] [--no-slack] [--no-admin-fallback] [--issue <N>] <feature description>`
+**Arguments**: `[--quick] [--auto] [--merge | --draft] [--no-slack] [--no-admin-fallback] [--coder=claude|codex] [--issue <N>] <feature description>`
 
 **Source**: [`skills/implement/SKILL.md`](../skills/implement/SKILL.md) · [Diagram](../skills/implement/diagram.svg)
 

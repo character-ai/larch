@@ -155,6 +155,14 @@ These checks are re-verified immediately before the `--admin` attempt — the sc
 
 **Opt out: `--no-admin-fallback`.** Pass `--no-admin-fallback` to `/implement` (or to `/im`, `/imaq`, `/fix-issue` — they forward through) to require branch-protection policies to actually deny the merge. With this flag set, `merge-pr.sh` returns `MERGE_RESULT=policy_denied` instead of retrying with `--admin` once the admin-eligible gate (CI good + branch fresh) is reached, and `/implement` bails to Step 12d with `FINAL_BAIL_REASON="branch protection denied merge; --no-admin-fallback set"`. The opt-out applies to all admin-eligible `mergeStateStatus` values (`CLEAN`, `UNSTABLE`, `HAS_HOOKS`, `BLOCKED`) — not just review-required denials. Default behavior is unchanged when the flag is not set. See `scripts/merge-pr.md` for the script-level contract.
 
+## Selecting the Step 2 implementer (`--coder`)
+
+`/implement` Step 2 (the actual code-writing step) supports a `--coder={claude,codex}` flag that selects which agent does the implementation. The default is `claude` — implementation runs in the main agent / Claude context (the same path that ran before Codex-as-implementer was introduced). Pass `--coder=codex` to spawn the Codex implementer via `skills/implement/scripts/step2-implement.sh`. The flag is forwarded transparently by `/im` and `/imaq` (they pass `$ARGUMENTS` through to `/implement`). `/fix-issue` does NOT currently forward `--coder` — its Step 5a builds a fixed `/implement` invocation that does not propagate the flag; pass `--coder` directly to `/implement` (or to `/im` / `/imaq`) instead.
+
+`--coder=cursor` is reserved for issue #993 (Cursor implementer) and currently rejected at parse time with a pointer to that issue.
+
+The legacy `--codex-available true|false` knob is still accepted by the dispatcher for one release with a stderr deprecation warning (`true → coder=codex`, `false → coder=claude`); orchestrator-side, prefer `--coder` directly. Passing both flags together is a parse-time error.
+
 ## Environment Variables
 
 Larch uses environment variables for Slack integration and external reviewer model configuration. All are optional — when not set, Slack-related features are skipped with warnings, and external reviewers use their default models.

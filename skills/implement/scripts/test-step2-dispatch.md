@@ -2,19 +2,24 @@
 
 **Purpose**: Offline regression harness for `skills/implement/scripts/step2-implement.sh` covering the dispatcher branches that do not require spawning Codex. Runs in <1s with no external dependencies (no `codex` binary, no network).
 
-**Coverage** (10 assertions):
-1. `--codex-available false` emits `STATUS=claude_fallback` with no other KV keys, and writes no baseline files (the claude_fallback branch must short-circuit before any plugin / git resolution).
-2. Missing `--codex-available` exits with code 2.
-3. Bad `--codex-available` enum value exits with code 2.
+**Coverage** (15 assertions):
+1. `--coder claude` emits `STATUS=claude_fallback` with no other KV keys, and writes no baseline files (the claude_fallback branch must short-circuit before any plugin / git resolution).
+1b. Default coder (no flag) emits `STATUS=claude_fallback` (the default is `claude`).
+1c. Legacy `--codex-available false` still emits `STATUS=claude_fallback` AND prints a deprecation warning to stderr (backward compat for one release).
+2. Missing required flag (`--auto-mode`) exits with code 2.
+3. Bad `--coder` enum value exits with code 2.
+3b. `--coder cursor` exits with code 2 and stderr cites issue `#993`.
+3c. `--coder` and `--codex-available` together exit with code 2 and stderr says `mutually exclusive`.
+3d. Bad `--codex-available` enum value exits with code 2.
 4. Bad `--tmpdir` (not a directory) exits with code 2.
 5. Resume cap: pre-seeding `codex-resume-count.txt` to 5 and invoking with `--answers` produces `STATUS=bailed REASON=qa-loop-exceeded` before any Codex spawn.
 6. `--answers` pointing at a non-existent file exits with code 2.
 7. (paired with #1) the claude_fallback branch does not leak a baseline file into `$TMPDIR_ARG`.
 8. Corrupt resume counter (non-numeric) → `STATUS=bailed REASON=manifest-schema-invalid`. Defense-in-depth against tmpdir tampering / partial-write corruption.
-9. `--codex-available true` invoked with cwd outside any git working tree exits with code 2 and stderr containing `must be invoked from within a git working tree`. Pins the cache-deploy regression fix (REPO_ROOT now derived from `git rev-parse --show-toplevel`, not `SCRIPT_DIR/../../..`).
+9. `--coder codex` invoked with cwd outside any git working tree exits with code 2 and stderr containing `must be invoked from within a git working tree`. Pins the cache-deploy regression fix (REPO_ROOT now derived from `git rev-parse --show-toplevel`, not `SCRIPT_DIR/../../..`).
 10. (paired with #9) the non-git-tree exit-2 path does not leak a baseline file into `$TMPDIR_ARG` (validation must happen before any state mutation).
 
-All `--codex-available true` invocations are run with cwd pinned to `$REPO_ROOT` so the dispatcher's git resolution targets the harness's own git tree (matches the production caller's contract — the orchestrator always invokes the dispatcher from the consumer-repo cwd).
+All `--coder codex` invocations that proceed past argument parsing are run with cwd pinned to `$REPO_ROOT` so the dispatcher's git resolution targets the harness's own git tree (matches the production caller's contract — the orchestrator always invokes the dispatcher from the consumer-repo cwd).
 
 **Out of scope** (no automated coverage today — manual / end-to-end testing only; an offline stub-Codex harness is a known gap):
 - Manifest schema validation (per-status required-key checks via `jq -e`).
