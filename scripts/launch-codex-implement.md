@@ -9,6 +9,7 @@
 - Wrapper always exits 0 unless flag validation fails (exit 2). The Codex subprocess's exit code is reported via `LAUNCHER_EXIT=<int>` on stdout; the dispatcher decides whether that constitutes failure.
 - Composes Codex's prompt by concatenating `--agent-prompt` (system-prompt body, `agents/codex-implementer.md`) with this-invocation parameters and an optional resume block. Composition is in shell, not in agent-side prose, so the contract is mechanically inspectable.
 - Reuses `agent-model-args.sh --tool codex --with-effort` exactly as `launch-codex-review.sh` does — this implementer benefits from max reasoning effort.
+- The composed prompt is passed as a positional argument to `codex exec` after a `--` end-of-options separator. The separator is load-bearing: `agents/codex-implementer.md` begins with YAML frontmatter (`---`), and codex-cli (observed on 0.125.0) interprets a leading `---` as a flag delimiter and aborts. `launch-codex-review.sh` does not need this separator because `render-specialist-prompt.sh` strips frontmatter from reviewer prompts.
 
 **Stdout contract**:
 ```
