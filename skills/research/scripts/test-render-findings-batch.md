@@ -2,7 +2,7 @@
 
 **Purpose**: offline regression harness for `render-findings-batch.sh`. Feeds canned final-report fixtures to the helper, asserts exit code + `COUNT=` output, and round-trips the emitted sidecar through `skills/issue/scripts/parse-input.sh` to verify `ITEMS_TOTAL` matches and no `MALFORMED` items appear.
 
-**Wired into**: `make lint` via the `test-render-findings-batch` target. The Makefile follows the `test-run-research-planner` template — three locations updated: `.PHONY` declaration, `test-harnesses` prerequisite chain, and the recipe itself.
+**Wired into**: `make lint` via the `test-render-findings-batch` target. The Makefile wiring has three parts: `.PHONY` declaration, exactly one `test-harnesses-N:` shard prerequisite list, and the recipe itself.
 
 ## Cross-skill dependency (intentional)
 
@@ -39,7 +39,7 @@ This harness depends on `skills/issue/scripts/parse-input.sh` being present and 
 
 - **Helper contract changes** (extraction terminator list, heuristic ladder, body-line escape, exit-code vocabulary, stdout schema) → update fixtures and assertions here AND `render-findings-batch.md`.
 - **`parse-input.sh` generic-mode changes** → re-run this harness; if behavior shifts, update fixtures (and add/update fixtures pinning the new behavior).
-- **`make lint` wiring** — keep the three Makefile locations in sync (`.PHONY` + `test-harnesses` prereq + recipe). The structural pin in `scripts/test-research-structure.sh` (`test-render-findings-batch` referenced in Makefile) catches partial edits.
+- **`make lint` wiring** — keep the three Makefile locations in sync (`.PHONY` + exactly one `test-harnesses-N` shard prereq + recipe). The structural pin in `scripts/test-harness-shards-coverage.sh` (run via `make test-harness-shards-coverage`) catches partial edits — partition coverage and self-reference invariants.
 
 ## Exit code
 

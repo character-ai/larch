@@ -39,7 +39,7 @@ The "10 fixture cases" count is documented as the public-surface count even thou
 ## Wired via
 
 - `Makefile` `test-render-lane-status` target.
-- `Makefile` `test-harnesses` aggregate target prerequisite list.
+- Exactly one `Makefile` `test-harnesses-N` shard prerequisite list.
 - `Makefile` `.PHONY` declaration.
 - `agent-lint.toml` `exclude` array (Makefile-only harness; no `SKILL.md` reference, so the dead-script detector would false-flag without the entry).
 

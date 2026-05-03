@@ -1,7 +1,7 @@
 # Larch Makefile
 # Thin wrapper around pre-commit. Linter definitions live in .pre-commit-config.yaml.
 
-.PHONY: lint lint-only test-harnesses shellcheck markdownlint jsonlint actionlint agent-lint agnix gitleaks trufflehog setup test-redact test-validate-research-output test-validate-citations test-collect-agent-bash32 test-parse-input test-allocate-candidates test-add-blocked-by test-parse-args test-prepare-description test-parse-prose-blockers test-issue-lifecycle test-fix-issue-bail-detection test-fix-issue-step-order test-find-lock-issue test-umbrella-handler test-finalize-umbrella test-sentinel-write test-sessionstart test-audit-edit-write test-block-submodule test-deny-edit-write test-post-scaffold-hints test-render-skill test-render-lane-status test-verify-skill-called test-check-bump-version test-drop-bump-commit test-ci-wait-exit-trap test-lint-skill-invocations test-anti-halt test-orchestrator-scope-sync test-alias-target-resolution test-alias-structure test-design-structure test-design-manifest test-implement-rebase-macro test-implement-structure test-implement-anti-polling-rule test-implement-post-design-boundary test-step2-dispatch test-cursor-implementer test-quick-mode-docs-sync test-references-headers test-render-reviewer-prompt test-render-specialist-prompt test-research-structure test-review-structure test-run-research-planner test-render-findings-batch test-research-banner test-synthesis-subagent test-research-angle-prompts test-subskill-anchors test-tracking-issue-write test-tracking-issue-read-sentinel test-assemble-anchor test-token-tally test-umbrella-helpers test-umbrella-parse-args test-umbrella-emit-output-contract test-umbrella-render-batch-input test-render-umbrella-body test-check-review-changes test-check-reviewers test-validate-pieces-json smoke-dialectic eval-research test-eval-set-structure test-eval-research-baseline-flag test-body-file-title test-intra-batch-deps
+.PHONY: lint lint-only test-harnesses test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 test-harnesses-6 shellcheck markdownlint jsonlint actionlint agent-lint agnix gitleaks trufflehog setup test-redact test-validate-research-output test-validate-citations test-collect-agent-bash32 test-parse-input test-allocate-candidates test-add-blocked-by test-parse-args test-prepare-description test-parse-prose-blockers test-issue-lifecycle test-fix-issue-bail-detection test-fix-issue-step-order test-find-lock-issue test-umbrella-handler test-finalize-umbrella test-sentinel-write test-sessionstart test-audit-edit-write test-block-submodule test-deny-edit-write test-post-scaffold-hints test-render-skill test-render-lane-status test-verify-skill-called test-check-bump-version test-drop-bump-commit test-ci-wait-exit-trap test-lint-skill-invocations test-anti-halt test-orchestrator-scope-sync test-alias-target-resolution test-alias-structure test-design-structure test-design-manifest test-implement-rebase-macro test-implement-structure test-implement-anti-polling-rule test-implement-post-design-boundary test-step2-dispatch test-cursor-implementer test-quick-mode-docs-sync test-harness-shards-coverage test-references-headers test-render-reviewer-prompt test-render-specialist-prompt test-research-structure test-review-structure test-run-research-planner test-render-findings-batch test-research-banner test-synthesis-subagent test-research-angle-prompts test-subskill-anchors test-tracking-issue-write test-tracking-issue-read-sentinel test-assemble-anchor test-token-tally test-umbrella-helpers test-umbrella-parse-args test-umbrella-emit-output-contract test-umbrella-render-batch-input test-render-umbrella-body test-check-review-changes test-check-reviewers test-validate-pieces-json smoke-dialectic eval-research test-eval-set-structure test-eval-research-baseline-flag test-body-file-title test-intra-batch-deps
 
 # CI splits `lint` into `lint-only` (pre-commit) and `test-harnesses`
 # (regression harnesses). `lint` remains the local-dev convenience target
@@ -11,7 +11,30 @@ lint: test-harnesses lint-only
 lint-only:
 	pre-commit run --all-files
 
-test-harnesses: test-redact test-validate-research-output test-validate-citations test-collect-agent-bash32 test-parse-input test-allocate-candidates test-add-blocked-by test-parse-args test-prepare-description test-parse-prose-blockers test-issue-lifecycle test-fix-issue-bail-detection test-fix-issue-step-order test-find-lock-issue test-umbrella-handler test-finalize-umbrella test-sentinel-write test-sessionstart test-audit-edit-write test-block-submodule test-deny-edit-write test-post-scaffold-hints test-render-skill test-render-lane-status test-verify-skill-called test-check-bump-version test-drop-bump-commit test-ci-wait-exit-trap test-lint-skill-invocations test-anti-halt test-orchestrator-scope-sync test-alias-target-resolution test-alias-structure test-design-structure test-design-manifest test-implement-rebase-macro test-implement-structure test-implement-anti-polling-rule test-implement-post-design-boundary test-step2-dispatch test-cursor-implementer test-quick-mode-docs-sync test-references-headers test-render-reviewer-prompt test-render-specialist-prompt test-research-structure test-review-structure test-run-research-planner test-render-findings-batch test-research-banner test-synthesis-subagent test-research-angle-prompts test-subskill-anchors test-tracking-issue-write test-tracking-issue-read-sentinel test-assemble-anchor test-token-tally test-umbrella-helpers test-umbrella-parse-args test-umbrella-emit-output-contract test-umbrella-render-batch-input test-render-umbrella-body test-check-review-changes test-check-reviewers test-validate-pieces-json test-body-file-title test-intra-batch-deps
+# Six balanced regression-harness shards (LPT bin-packing on measured per-harness
+# timings captured 2026-05-03; see docs/linting.md "Refreshing harness shard
+# balance" for the manual procedure used to regenerate these lists when
+# imbalance grows). Total measured runtime: 91.11s across 66 legacy harnesses +
+# 1 partition guard. The 18.34s test-validate-citations on shard-1 is the
+# wall-clock floor. IMPORTANT: each test-harnesses-N rule below stays on a
+# single physical line (no `\` continuations); the drift-detection script
+# `scripts/test-harness-shards-coverage.sh` parses these lines literally. New
+# harnesses get appended to one shard line.
+test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 test-harnesses-6
+
+test-harnesses-1: test-validate-citations
+
+test-harnesses-2: test-find-lock-issue test-render-specialist-prompt test-alias-target-resolution test-umbrella-emit-output-contract test-review-structure test-research-banner test-post-scaffold-hints test-body-file-title test-cursor-implementer
+
+test-harnesses-3: test-umbrella-handler test-issue-lifecycle test-finalize-umbrella test-add-blocked-by test-design-manifest test-umbrella-render-batch-input test-run-research-planner test-deny-edit-write test-render-lane-status test-research-structure test-implement-rebase-macro test-alias-structure test-fix-issue-bail-detection test-synthesis-subagent
+
+test-harnesses-4: test-umbrella-helpers test-render-findings-batch test-verify-skill-called test-check-review-changes test-parse-prose-blockers test-umbrella-parse-args test-render-umbrella-body test-references-headers test-implement-structure test-implement-post-design-boundary test-audit-edit-write test-parse-args test-anti-halt
+
+test-harnesses-5: test-tracking-issue-write test-allocate-candidates test-block-submodule test-redact test-validate-research-output test-prepare-description test-assemble-anchor test-tracking-issue-read-sentinel test-token-tally test-collect-agent-bash32 test-sentinel-write test-design-structure test-fix-issue-step-order test-orchestrator-scope-sync test-intra-batch-deps
+
+# Shard-6 leads with the partition-invariant guard so partition bugs surface
+# even when other shard-6 harnesses fail.
+test-harnesses-6: test-harness-shards-coverage test-drop-bump-commit test-check-bump-version test-lint-skill-invocations test-ci-wait-exit-trap test-render-reviewer-prompt test-parse-input test-validate-pieces-json test-step2-dispatch test-subskill-anchors test-render-skill test-quick-mode-docs-sync test-sessionstart test-check-reviewers test-research-angle-prompts test-implement-anti-polling-rule
 
 test-redact:
 	bash scripts/test-redact-secrets.sh
@@ -142,6 +165,10 @@ test-cursor-implementer:
 test-quick-mode-docs-sync:
 	bash scripts/test-quick-mode-docs-sync.sh
 	bash scripts/test-quick-mode-docs-sync.sh --self-test
+
+test-harness-shards-coverage:
+	bash scripts/test-harness-shards-coverage.sh
+	bash scripts/test-harness-shards-coverage.sh --self-test
 
 test-references-headers:
 	bash scripts/test-references-headers.sh

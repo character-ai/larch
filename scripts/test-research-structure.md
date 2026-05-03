@@ -34,8 +34,8 @@ the `/research` skill under the simplified fixed-shape topology
 
 ## Wiring
 
-- `make test-research-structure` is a `test-harnesses` prerequisite via the
-  Makefile target.
+- `make test-research-structure` is assigned to exactly one `test-harnesses-N`
+  shard via the Makefile target.
 - `agent-lint.toml` exempts this harness's literal pins from agent-lint scans.
 
 ## Edit-in-sync rules

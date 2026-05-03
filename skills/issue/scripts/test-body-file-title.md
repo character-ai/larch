@@ -2,7 +2,7 @@
 
 **Purpose**: structural regression harness pinning the `--body-file` + trailing title semantics in `/issue` SKILL.md. Asserts that the two-source branching logic (EXPLICIT_TITLE from trailing arg, DESCRIPTION from file) and the backward-compatible derive-from-first-line path are both present in SKILL.md.
 
-**Makefile wiring**: `make test-body-file-title` (listed in both `.PHONY` and `test-harnesses`).
+**Makefile wiring**: `make test-body-file-title` (listed in `.PHONY` and in exactly one `test-harnesses-N:` shard prerequisite list — the umbrella `test-harnesses` aggregates all six shards).
 
 **Assertions** (all positive presence via `grep -qF`):
 1. `--body-file` bullet contains "trailing arg is the explicit title" — pins two-source semantics.

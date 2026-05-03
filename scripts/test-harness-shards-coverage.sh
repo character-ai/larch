@@ -1,0 +1,451 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+MAKEFILE="$REPO_ROOT/Makefile"
+
+usage() {
+  printf 'Usage: %s [--self-test]\n' "$(basename "$0")" >&2
+}
+
+cleanup_tmpdir() {
+  if [[ -n "${TMPDIR_SHARDS:-}" && -d "$TMPDIR_SHARDS" ]]; then
+    rm -rf "$TMPDIR_SHARDS"
+  fi
+}
+
+make_tmpdir() {
+  TMPDIR_SHARDS="$(mktemp -d "${TMPDIR:-/tmp}/test-harness-shards-coverage.XXXXXX")"
+  trap cleanup_tmpdir EXIT
+}
+
+append_section() {
+  local title="$1"
+  local prefix="$2"
+  local file="$3"
+
+  if [[ -s "$file" ]]; then
+    {
+      printf '@@ %s @@\n' "$title"
+      while IFS= read -r line; do
+        printf '%s %s\n' "$prefix" "$line"
+      done < "$file"
+    } >> "$REPORT"
+  fi
+}
+
+# Single source of truth for documented standalone carve-outs (test-* recipe
+# targets that are deliberately NOT part of the test-harnesses umbrella). When
+# adding another standalone carve-out, append it to this list AND update the
+# Makefile comments near that target AND scripts/test-harness-shards-coverage.md.
+# The carve-out list is consumed by every awk program in this script via the
+# CARVE_OUTS environment variable; do NOT hardcode names in additional awk
+# blocks.
+CARVE_OUTS="test-eval-set-structure test-eval-research-baseline-flag"
+
+# Awk snippet (used as -v CARVE=... -v COVERAGE=... and a BEGIN block) that
+# returns 1 from is_carve_out(name) for any name matching the umbrella, the
+# shard targets, the coverage harness itself, or any documented carve-out.
+# Embedded as a string so each awk block can splice it in.
+CARVE_OUT_FN='
+  function is_carve_out(name,   i, n, parts) {
+    if (name ~ /^test-harnesses(-[0-9]+)?$/) return 1
+    if (name == COVERAGE) return 1
+    n = split(CARVE, parts, " ")
+    for (i = 1; i <= n; i++) {
+      if (parts[i] != "" && name == parts[i]) return 1
+    }
+    return 0
+  }
+'
+
+extract_individual_targets() {
+  local makefile="$1"
+
+  # Match ANY test-prefixed recipe target (not just lowercase-hyphenated) so
+  # naming violations like `test-foo_bar:` enter the inventory and are caught
+  # by both the naming-violation check AND the shard-coverage check. Carve-outs
+  # are still excluded.
+  awk -F: -v CARVE="$CARVE_OUTS" -v COVERAGE="test-harness-shards-coverage" "
+    $CARVE_OUT_FN
+    /^[[:space:]]*#/ { next }
+    /^test[^[:space:]:]*:/ {
+      name = \$1
+      if (is_carve_out(name)) next
+      print name
+    }
+  " "$makefile" | sort -u
+}
+
+extract_shard_prereqs() {
+  local makefile="$1"
+  local out_all="$2"
+  local out_shard6="$3"
+  local n
+  local count
+  local line
+  local prereq
+
+  : > "$out_all"
+  : > "$out_shard6"
+
+  for n in 1 2 3 4 5 6; do
+    count="$(grep -Ec "^test-harnesses-$n:" "$makefile" || true)"
+    if [[ "$count" != "1" ]]; then
+      printf 'test-harnesses-%s must be declared exactly once (found %s)\n' "$n" "$count" >> "$MISSING_SHARD_RULES"
+      continue
+    fi
+
+    line="$(grep -E "^test-harnesses-$n:" "$makefile")"
+    line="${line#*:}"
+    for prereq in $line; do
+      printf '%s\n' "$prereq" >> "$out_all"
+      if [[ "$n" == "6" ]]; then
+        printf '%s\n' "$prereq" >> "$out_shard6"
+      fi
+    done
+  done
+}
+
+extract_umbrella_prereqs() {
+  local makefile="$1"
+  local out="$2"
+  local count
+  local line
+  local prereq
+
+  : > "$out"
+  count="$(grep -Ec '^test-harnesses:' "$makefile" || true)"
+  if [[ "$count" != "1" ]]; then
+    printf 'test-harnesses umbrella must be declared exactly once (found %s)\n' "$count" >> "$UMBRELLA_ERRORS"
+    return
+  fi
+
+  line="$(grep -E '^test-harnesses:' "$makefile")"
+  line="${line#*:}"
+  for prereq in $line; do
+    printf '%s\n' "$prereq" >> "$out"
+  done
+}
+
+validate_makefile() {
+  local makefile="$1"
+
+  REPORT="$TMPDIR_SHARDS/report"
+  MISSING_SHARD_RULES="$TMPDIR_SHARDS/missing-shard-rules"
+  UMBRELLA_ERRORS="$TMPDIR_SHARDS/umbrella-errors"
+  : > "$REPORT"
+  : > "$MISSING_SHARD_RULES"
+  : > "$UMBRELLA_ERRORS"
+
+  local naming_violations="$TMPDIR_SHARDS/naming-violations"
+  local continuation_violations="$TMPDIR_SHARDS/continuation-violations"
+  local individual="$TMPDIR_SHARDS/individual"
+  local shard_all="$TMPDIR_SHARDS/shard-all"
+  local shard6="$TMPDIR_SHARDS/shard6"
+  local shard_no_self="$TMPDIR_SHARDS/shard-no-self"
+  local duplicates="$TMPDIR_SHARDS/duplicates"
+  local missing="$TMPDIR_SHARDS/missing"
+  local orphan="$TMPDIR_SHARDS/orphan"
+  local umbrella="$TMPDIR_SHARDS/umbrella"
+  local umbrella_expected="$TMPDIR_SHARDS/umbrella-expected"
+  local umbrella_missing="$TMPDIR_SHARDS/umbrella-missing"
+  local umbrella_extra="$TMPDIR_SHARDS/umbrella-extra"
+  local phony="$TMPDIR_SHARDS/phony"
+  local phony_missing="$TMPDIR_SHARDS/phony-missing"
+
+  # Naming violation = any test-prefixed recipe target whose full name does
+  # not match ^test-[a-z0-9-]+$. Carve-outs (umbrella, shards, coverage,
+  # standalone evals) are excluded from this check — they're known-good by
+  # construction. This replaces the prior `^test[^a-z:-].*:` heuristic, which
+  # only inspected the character immediately after `test` and missed names
+  # like `test-foo_bar:` (underscore after the first hyphen).
+  awk -v CARVE="$CARVE_OUTS" -v COVERAGE="test-harness-shards-coverage" "
+    $CARVE_OUT_FN
+    /^test[^[:space:]:]*:/ {
+      colon = index(\$0, \":\")
+      name = substr(\$0, 1, colon - 1)
+      if (is_carve_out(name)) next
+      if (name !~ /^test-[a-z0-9-]+\$/) {
+        printf \"%d:%s\n\", NR, \$0
+      }
+    }
+  " "$makefile" > "$naming_violations" || true
+  grep -nE "^test-harnesses-[1-6]:.*\\\\" "$makefile" > "$continuation_violations" || true
+
+  extract_individual_targets "$makefile" > "$individual"
+  extract_shard_prereqs "$makefile" "$shard_all" "$shard6"
+
+  grep -Fxv 'test-harness-shards-coverage' "$shard_all" | sort -u > "$shard_no_self" || true
+  sort "$shard_all" | uniq -d > "$duplicates"
+  comm -23 "$individual" "$shard_no_self" > "$missing"
+  comm -13 "$individual" "$shard_no_self" > "$orphan"
+
+  extract_umbrella_prereqs "$makefile" "$umbrella"
+  printf '%s\n' test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 test-harnesses-6 | sort -u > "$umbrella_expected"
+  sort -u "$umbrella" > "$umbrella.sorted"
+  comm -23 "$umbrella_expected" "$umbrella.sorted" > "$umbrella_missing"
+  comm -13 "$umbrella_expected" "$umbrella.sorted" > "$umbrella_extra"
+
+  # .PHONY membership check (R2_F9): every shard-bound test-* target must
+  # appear in some .PHONY declaration. The Makefile may have multiple .PHONY
+  # lines; we union all tokens after the first colon. Continuation lines
+  # ending with backslash are folded onto the prior line.
+  awk '
+    BEGIN { in_phony = 0; buf = "" }
+    {
+      line = $0
+      # Continuation handling: if previous line ended with `\`, append.
+      while (sub(/\\$/, "", line) && (getline next_line) > 0) {
+        line = line " " next_line
+      }
+      if (line ~ /^\.PHONY:/) {
+        sub(/^\.PHONY:[[:space:]]*/, "", line)
+        n = split(line, parts, /[[:space:]]+/)
+        for (i = 1; i <= n; i++) {
+          if (parts[i] != "") print parts[i]
+        }
+      }
+    }
+  ' "$makefile" | sort -u > "$phony"
+  # Missing-from-phony = individual − phony. Plus an explicit assertion for
+  # `test-harness-shards-coverage` itself, which is excluded from `individual`
+  # by the carve-out filter but is still a shard-bound test-* recipe whose
+  # `.PHONY` membership matters (without it, a same-named file or directory
+  # could shadow the guard target and silently skip the partition check on
+  # shard-6).
+  comm -23 "$individual" "$phony" > "$phony_missing"
+  if ! grep -Fxq 'test-harness-shards-coverage' "$phony"; then
+    printf 'test-harness-shards-coverage\n' >> "$phony_missing"
+  fi
+
+  append_section "shard rule declaration errors" "!" "$MISSING_SHARD_RULES"
+  append_section "harness recipe target uses non-standard naming - convention is lowercase-hyphenated. See scripts/test-harness-shards-coverage.md" "!" "$naming_violations"
+  append_section "shard rule must be on a single physical line - see scripts/test-harness-shards-coverage.md" "!" "$continuation_violations"
+  append_section "missing from shards" "-" "$missing"
+  append_section "orphan in shards" "+" "$orphan"
+  append_section "duplicate across shards" "!" "$duplicates"
+  append_section "umbrella declaration errors" "!" "$UMBRELLA_ERRORS"
+  append_section "umbrella missing shard targets" "-" "$umbrella_missing"
+  append_section "umbrella has unexpected prerequisites" "+" "$umbrella_extra"
+  append_section "missing from .PHONY" "-" "$phony_missing"
+
+  if ! grep -Fxq 'test-harness-shards-coverage' "$shard_all"; then
+    {
+      printf '@@ self-reference missing @@\n'
+      printf -- '- test-harness-shards-coverage\n'
+    } >> "$REPORT"
+  fi
+
+  if ! grep -Fxq 'test-harness-shards-coverage' "$shard6"; then
+    {
+      printf '@@ self-reference misplaced @@\n'
+      printf '! test-harness-shards-coverage must be the first prerequisite of test-harnesses-6\n'
+    } >> "$REPORT"
+  else
+    local first_shard6
+    IFS= read -r first_shard6 < "$shard6" || first_shard6=""
+    if [[ "$first_shard6" != "test-harness-shards-coverage" ]]; then
+      {
+        printf '@@ self-reference misplaced @@\n'
+        printf '! test-harness-shards-coverage must be the first prerequisite of test-harnesses-6\n'
+      } >> "$REPORT"
+    fi
+  fi
+
+  if [[ -s "$REPORT" ]]; then
+    {
+      printf 'test-harness-shards-coverage: partition invariant failed\n'
+      printf -- '--- expected\n'
+      printf -- '+++ actual\n'
+      while IFS= read -r line; do
+        printf '%s\n' "$line"
+      done < "$REPORT"
+    } >&2
+    return 1
+  fi
+
+  return 0
+}
+
+write_happy_fixture() {
+  local path="$1"
+
+  cat > "$path" <<'EOF'
+.PHONY: test-harnesses test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 test-harnesses-6 test-alpha test-beta test-gamma test-delta test-epsilon test-zeta test-harness-shards-coverage test-eval-set-structure test-eval-research-baseline-flag smoke-dialectic eval-research
+test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 test-harnesses-6
+test-harnesses-1: test-alpha
+test-harnesses-2: test-beta
+test-harnesses-3: test-gamma
+test-harnesses-4: test-delta
+test-harnesses-5: test-epsilon
+test-harnesses-6: test-harness-shards-coverage test-zeta
+test-alpha:
+	bash scripts/test-alpha.sh
+test-beta:
+	bash scripts/test-beta.sh
+test-gamma:
+	bash scripts/test-gamma.sh
+test-delta:
+	bash scripts/test-delta.sh
+test-epsilon:
+	bash scripts/test-epsilon.sh
+test-zeta:
+	bash scripts/test-zeta.sh
+test-harness-shards-coverage:
+	bash scripts/test-harness-shards-coverage.sh
+test-eval-set-structure:
+	bash scripts/test-eval-set-structure.sh
+test-eval-research-baseline-flag:
+	bash scripts/test-eval-research-baseline-flag.sh
+smoke-dialectic:
+	bash scripts/dialectic-smoke-test.sh
+eval-research:
+	bash scripts/eval-research.sh
+EOF
+}
+
+run_self_case() {
+  local name="$1"
+  local expected_status="$2"
+  local expected_stderr="$3"
+  local fixture="$TMPDIR_SHARDS/$name.mk"
+  local stderr_file="$TMPDIR_SHARDS/$name.stderr"
+  local status=0
+
+  write_happy_fixture "$fixture"
+
+  case "$name" in
+    missing-target)
+      {
+        printf 'test-newthing:\n'
+        printf '\tbash scripts/test-newthing.sh\n'
+      } >> "$fixture"
+      ;;
+    orphan-in-shards)
+      awk '{ sub(/^test-harnesses-3: test-gamma$/, "test-harnesses-3: test-gamma test-newthing"); print }' "$fixture" > "$fixture.tmp"
+      mv "$fixture.tmp" "$fixture"
+      ;;
+    duplicate-across-shards)
+      awk '{ sub(/^test-harnesses-5: test-epsilon$/, "test-harnesses-5: test-epsilon test-beta"); print }' "$fixture" > "$fixture.tmp"
+      mv "$fixture.tmp" "$fixture"
+      ;;
+    backslash-continuation-violation)
+      awk '{ sub(/^test-harnesses-3: test-gamma$/, "test-harnesses-3: test-gamma \\"); print }' "$fixture" > "$fixture.tmp"
+      mv "$fixture.tmp" "$fixture"
+      ;;
+    naming-convention-violation)
+      {
+        printf 'test_foo:\n'
+        printf '\tbash scripts/test-foo.sh\n'
+      } >> "$fixture"
+      ;;
+    underscore-naming-violation)
+      # FINDING_1: `test-foo_bar:` (underscore after first hyphen) used to
+      # escape both the inventory parser and the legacy 5th-char naming guard.
+      # The widened parsers now catch it as a naming violation AND surface it
+      # as missing-from-shards.
+      {
+        printf 'test-foo_bar:\n'
+        printf '\tbash scripts/test-foo-bar.sh\n'
+      } >> "$fixture"
+      ;;
+    self-reference-not-first)
+      # FINDING_4 (repurposed): assert failure when test-harness-shards-coverage
+      # is not the first prerequisite of test-harnesses-6. Swap the order so
+      # test-zeta comes first.
+      awk '{ sub(/^test-harnesses-6: test-harness-shards-coverage test-zeta$/, "test-harnesses-6: test-zeta test-harness-shards-coverage"); print }' "$fixture" > "$fixture.tmp"
+      mv "$fixture.tmp" "$fixture"
+      ;;
+    umbrella-missing-shard)
+      # FINDING_3: assert failure when the umbrella does not list every
+      # test-harnesses-N. Drop test-harnesses-6 from the umbrella.
+      awk '{ sub(/^test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 test-harnesses-6$/, "test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5"); print }' "$fixture" > "$fixture.tmp"
+      mv "$fixture.tmp" "$fixture"
+      ;;
+    umbrella-extra-shard)
+      # FINDING_3: assert failure when the umbrella lists an unexpected
+      # prerequisite (typo / orphan shard target).
+      awk '{ sub(/^test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 test-harnesses-6$/, "test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 test-harnesses-6 test-harnesses-7"); print }' "$fixture" > "$fixture.tmp"
+      mv "$fixture.tmp" "$fixture"
+      ;;
+    missing-phony)
+      # R2_F9: assert failure when a shard-bound test-* target is missing
+      # from the .PHONY declaration. Drop test-zeta from .PHONY.
+      awk '{ gsub(/ test-zeta /, " "); print }' "$fixture" > "$fixture.tmp"
+      mv "$fixture.tmp" "$fixture"
+      ;;
+    missing-phony-self)
+      # R3 (Codex): assert failure when test-harness-shards-coverage itself
+      # is missing from .PHONY. The carve-out filter excludes it from the
+      # `individual` set, so a separate explicit assertion guards this case.
+      awk '{ gsub(/ test-harness-shards-coverage /, " "); print }' "$fixture" > "$fixture.tmp"
+      mv "$fixture.tmp" "$fixture"
+      ;;
+    happy-path)
+      ;;
+    *)
+      printf 'unknown self-test case: %s\n' "$name" >&2
+      return 1
+      ;;
+  esac
+
+  set +e
+  validate_makefile "$fixture" > /dev/null 2> "$stderr_file"
+  status="$?"
+  set -e
+
+  if [[ "$expected_status" == "0" && "$status" != "0" ]]; then
+    printf 'self-test %s: expected success, got exit %s\n' "$name" "$status" >&2
+    cat "$stderr_file" >&2
+    return 1
+  fi
+  if [[ "$expected_status" != "0" && "$status" == "0" ]]; then
+    printf 'self-test %s: expected failure, got success\n' "$name" >&2
+    return 1
+  fi
+  if [[ -n "$expected_stderr" ]] && ! grep -Fq "$expected_stderr" "$stderr_file"; then
+    printf 'self-test %s: expected stderr substring not found: %s\n' "$name" "$expected_stderr" >&2
+    cat "$stderr_file" >&2
+    return 1
+  fi
+}
+
+self_test() {
+  make_tmpdir
+  run_self_case happy-path 0 ""
+  run_self_case missing-target 1 "missing from shards"
+  run_self_case orphan-in-shards 1 "orphan in shards"
+  run_self_case duplicate-across-shards 1 "duplicate across shards"
+  run_self_case backslash-continuation-violation 1 "shard rule must be on a single physical line"
+  run_self_case naming-convention-violation 1 "harness recipe target uses non-standard naming"
+  run_self_case underscore-naming-violation 1 "harness recipe target uses non-standard naming"
+  run_self_case self-reference-not-first 1 "self-reference misplaced"
+  run_self_case umbrella-missing-shard 1 "umbrella missing shard targets"
+  run_self_case umbrella-extra-shard 1 "umbrella has unexpected prerequisites"
+  run_self_case missing-phony 1 "missing from .PHONY"
+  run_self_case missing-phony-self 1 "missing from .PHONY"
+}
+
+main() {
+  if [[ "$#" -gt 1 ]]; then
+    usage
+    return 2
+  fi
+
+  if [[ "${1:-}" == "--self-test" ]]; then
+    self_test
+    return 0
+  fi
+
+  if [[ "$#" == "1" ]]; then
+    usage
+    return 2
+  fi
+
+  make_tmpdir
+  validate_makefile "$MAKEFILE"
+}
+
+main "$@"

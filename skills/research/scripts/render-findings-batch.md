@@ -135,7 +135,7 @@ See FINDING_9 in the design review.
 
 ## Test harness
 
-`skills/research/scripts/test-render-findings-batch.sh` — offline regression harness with canned report fixtures (numbered, bulleted, paragraph, mixed, empty, missing, special chars, multi-paragraph bullets, planner-nested headings, fenced code blocks, body-line <code>### </code> escape, empty-title fallback). Round-trip integration through `parse-input.sh`. Wired into `make lint` via the `test-render-findings-batch` target — three Makefile locations updated per the `test-run-research-planner` template (`.PHONY` + `test-harnesses` prereq + recipe).
+`skills/research/scripts/test-render-findings-batch.sh` — offline regression harness with canned report fixtures (numbered, bulleted, paragraph, mixed, empty, missing, special chars, multi-paragraph bullets, planner-nested headings, fenced code blocks, body-line <code>### </code> escape, empty-title fallback). Round-trip integration through `parse-input.sh`. Wired into `make lint` via the `test-render-findings-batch` target — three Makefile locations stay in sync (`.PHONY` + exactly one `test-harnesses-N` shard prereq + recipe).
 
 ## Edit-in-sync rules
 

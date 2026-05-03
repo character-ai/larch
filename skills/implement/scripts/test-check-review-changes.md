@@ -44,7 +44,7 @@ Exits 0 when all cases pass, 1 when any case fails. Prints `PASS:` / `FAIL:` per
 
 Wired into `Makefile` in three places (per the project's per-harness convention):
 - `.PHONY` declaration
-- `test-harnesses` target dependency list
+- exactly one `test-harnesses-N` shard prerequisite list
 - Dedicated recipe block
 
 Excluded from `agent-lint.toml` as a Makefile-only artifact (the harness is not structurally referenced from `SKILL.md`; only the runtime `check-review-changes.sh` is).

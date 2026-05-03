@@ -62,7 +62,7 @@ Both subcommands validate `--dir` is under `/tmp/` or `/private/tmp/` (matching 
 9. `report` after dir removed → graceful placeholder.
 10. `write --phase=adjudication` → exit 1 (phase enum restricted to research|validation).
 
-Wired into Makefile via `.PHONY` line, the `test-harnesses:` prerequisite list, and a dedicated `test-token-tally:` recipe.
+Wired into Makefile via `.PHONY` line, exactly one `test-harnesses-N:` shard prerequisite list, and a dedicated `test-token-tally:` recipe.
 
 ## Edit-in-sync rules
 

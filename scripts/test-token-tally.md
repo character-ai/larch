@@ -4,7 +4,7 @@
 
 **Purpose**: Offline regression harness for `scripts/token-tally.sh`. Asserts byte-exact behavior of all three subcommands (`write`, `report`, `check-budget`) plus contract behavior under malformed inputs, path-validation, missing directories, and unknown-token handling.
 
-**Sole consumer**: invoked by the Makefile `test-token-tally:` target (and transitively by `test-harnesses:`, which CI runs).
+**Sole consumer**: invoked by the Makefile `test-token-tally:` target and transitively by the `test-harnesses` umbrella. CI runs the shard that contains this target.
 
 ## Test cases
 
@@ -39,10 +39,10 @@ Total: 39 individual assertions across 18 test cases (12 original + 5 new from r
 
 ## Wiring
 
-Run via `make test-token-tally` (single harness) or `make test-harnesses` (full CI batch). The harness must be listed in three places in the Makefile:
+Run via `make test-token-tally` (single harness) or `make test-harnesses` (full local batch). The harness must be wired in three places in the Makefile:
 
 1. The `.PHONY` declaration line (top of file).
-2. The `test-harnesses:` prerequisite list (CI target).
+2. Exactly one `test-harnesses-N:` shard prerequisite list.
 3. A dedicated `test-token-tally:` recipe target with `bash scripts/test-token-tally.sh`.
 
 ## Edit-in-sync rules

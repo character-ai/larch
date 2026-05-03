@@ -20,7 +20,7 @@ Without the inline reminders, future quick-mode review work tends to re-introduc
 ## Wiring
 
 - `make test-implement-anti-polling-rule` runs the script.
-- Listed in the `test-harnesses` aggregate target in `Makefile`.
+- Listed in exactly one `test-harnesses-N` shard target in `Makefile`.
 
 ## Run manually
 
