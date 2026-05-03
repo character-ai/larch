@@ -202,6 +202,7 @@ BASELINE_FILE="$TMPDIR_ARG/step2-baseline.txt"
 RESUME_COUNT_FILE="$TMPDIR_ARG/${TOOL_TAG}-resume-count.txt"
 SPAWN_BRANCH_FILE="$TMPDIR_ARG/step2-spawn-branch.txt"
 PLUGIN_JSON_BASELINE_FILE="$TMPDIR_ARG/step2-plugin-json-baseline.txt"
+SPAWN_CODER_FILE="$TMPDIR_ARG/step2-spawn-coder.txt"
 MANIFEST_PATH="$TMPDIR_ARG/manifest.json"
 MANIFEST_RAW_PATH="$TMPDIR_ARG/manifest-raw.json"
 QA_PENDING_PATH="$TMPDIR_ARG/qa-pending.json"
@@ -221,6 +222,25 @@ emit_bailed() {
     if [[ -s "$SIDECAR_LOG" ]];     then printf 'SIDECAR_LOG=%s\n' "$SIDECAR_LOG"; fi
     exit 0
 }
+
+# Step 0.5: cross-coder tmpdir-reuse guard. The shared baseline files written
+# below (step2-baseline.txt, step2-spawn-branch.txt, step2-plugin-json-baseline.txt)
+# and the per-tool ${TOOL_TAG}-resume-count.txt file would desynchronize if a
+# tmpdir from a prior --coder=codex run were reused for --coder=cursor (or vice
+# versa). Record the resolved coder on first invocation; bail clearly on any
+# subsequent invocation whose --coder differs. Atomic write avoids torn reads.
+# Only the external-implementer path writes/reads this sentinel — the claude
+# fallback early-returned above without touching the tmpdir, so a prior claude
+# run leaves no sentinel and a subsequent codex/cursor run is the first writer.
+if [[ -f "$SPAWN_CODER_FILE" ]]; then
+    RECORDED_CODER=$(tr -d '[:space:]' < "$SPAWN_CODER_FILE")
+    if [[ "$RECORDED_CODER" != "$CODER" ]]; then
+        emit_bailed "coder-mismatch-tmpdir-reuse"
+    fi
+else
+    printf '%s\n' "$CODER" > "$SPAWN_CODER_FILE.tmp"
+    mv "$SPAWN_CODER_FILE.tmp" "$SPAWN_CODER_FILE"
+fi
 
 # Step 1: write spawn-time baseline + branch + plugin.json SHA on FIRST invocation.
 # Subsequent invocations (resume cycles) reuse the existing files.
