@@ -24,7 +24,14 @@
 #
 # Stdout contract (KEY=VALUE lines, parsed by SKILL.md Step 2):
 #   STATUS=<complete|needs_qa|bailed|claude_fallback>
-#   MANIFEST=<path>          # set when STATUS=complete or needs_qa
+#   MANIFEST=<path>          # set when STATUS=complete or needs_qa, or when
+#                            # STATUS=bailed came from a Codex-authored manifest
+#                            # (status=bailed in the manifest itself).
+#                            # Dispatcher mechanical bails (emit_bailed path)
+#                            # do NOT emit MANIFEST=, and on commit-failed
+#                            # the manifest files are deleted from $TMPDIR_ARG
+#                            # before bail. See step2-implement.md for the
+#                            # full per-bucket breakdown.
 #   QA_PENDING=<path>        # set when STATUS=needs_qa
 #   REASON=<token>           # set when STATUS=bailed
 #   TRANSCRIPT=<path>        # set when launcher actually ran
@@ -360,15 +367,14 @@ if [[ "$STATUS" != "bailed" ]]; then
     fi
 fi
 
-# Step 7: complete-only checks: working tree clean + path normalization + diff cross-check.
+# Step 7: complete-only path-normalization check on manifest paths.
+# Diff cross-check, commit-subject equality, working-tree-clean, and
+# commits-since-baseline are gone — the dispatcher commits on Codex's behalf
+# below (Step 7b), so there is no committed diff to compare against the
+# manifest, and `commit_message` is consumed with no diff/subject second-guessing
+# (modulo the commit-time secrets-family redaction applied in Step 7b).
 if [[ "$STATUS" == "complete" ]]; then
-    # 7a: working tree clean.
-    DIRTY=$(git -C "$REPO_ROOT" status --porcelain)
-    if [[ -n "$DIRTY" ]]; then
-        emit_bailed "dirty-tree-after-codex"
-    fi
-
-    # 7b: path normalization on every files_touched[].path and tests_added_or_modified.
+    # 7a: path normalization on every files_touched[].path and tests_added_or_modified.
     # Reject: contains '..', starts with '/', equals .claude-plugin/plugin.json,
     # under a submodule (per submodule status), escapes repo root after symlink resolve.
     SUBMODULE_PATHS=$(git -C "$REPO_ROOT" submodule status --recursive 2>/dev/null \
@@ -400,28 +406,49 @@ if [[ "$STATUS" == "complete" ]]; then
         emit_bailed "protected-path-modified"
     fi
 
-    # 7c: baseline-rooted diff cross-check (set equality).
-    DIFF_PATHS=$(git -C "$REPO_ROOT" diff --name-only "$BASELINE_SHA"..HEAD | sort -u)
-    MANIFEST_PATHS=$(jq -r '.files_touched[].path' "$MANIFEST_RAW_PATH" | sort -u)
-    if [[ "$DIFF_PATHS" != "$MANIFEST_PATHS" ]]; then
-        emit_bailed "manifest-diff-mismatch"
+    # 7b: dispatcher commits on Codex's behalf, using manifest.commit_message.
+    # Codex stays inside `workspace-write` sandbox semantics (which forbids
+    # .git/ writes); the dispatcher runs outside that sandbox in the Claude
+    # shell. The commit message is piped through scripts/redact-secrets.sh
+    # BEFORE git commit so any secret accidentally embedded in commit_message
+    # by Codex never lands in git history (the same redactor runs over the
+    # canonical manifest in Step 8 — applying it here closes the prior
+    # split-brain where git history was unredacted while the on-disk manifest
+    # was redacted).
+    #
+    # `git add -A` stages every working-tree change (tracked + untracked).
+    # That is intentional under the new trust model (per SECURITY.md): the
+    # working tree IS the source of truth, manifest.files_touched is
+    # advisory, and operator / `/review` / pre-commit hooks are the
+    # downstream backstops.
+    COMMIT_MSG_FILE="$TMPDIR_ARG/codex-commit-message.txt"
+    REDACT_FOR_COMMIT="$PLUGIN_ROOT/scripts/redact-secrets.sh"
+    if [[ -x "$REDACT_FOR_COMMIT" ]]; then
+        jq -r '.commit_message' "$MANIFEST_RAW_PATH" | "$REDACT_FOR_COMMIT" > "$COMMIT_MSG_FILE.tmp"
+    else
+        # The earlier redactor-not-executable check (top of Step 8 below)
+        # would also fail closed, but we have not reached it yet — guard
+        # here so an unexecutable redactor does not silently let raw
+        # commit_message reach git history.
+        emit_bailed "redactor-not-executable"
     fi
+    mv "$COMMIT_MSG_FILE.tmp" "$COMMIT_MSG_FILE"
 
-    # 7d: at least 1 commit since baseline.
-    COMMITS_SINCE=$(git -C "$REPO_ROOT" rev-list --count "$BASELINE_SHA"..HEAD)
-    if [[ "$COMMITS_SINCE" -lt 1 ]]; then
-        emit_bailed "no-commit-since-baseline"
+    COMMIT_STDERR_FILE="$TMPDIR_ARG/codex-commit-stderr.txt"
+    git -C "$REPO_ROOT" add -A
+    if ! git -C "$REPO_ROOT" commit -F "$COMMIT_MSG_FILE" >/dev/null 2>"$COMMIT_STDERR_FILE"; then
+        # Common causes: empty working tree (Codex declared complete with no
+        # actual edits), pre-commit hook rejection, or a transient git error.
+        # stderr is captured to $COMMIT_STDERR_FILE for operator diagnosis.
+        # We bail BEFORE Step 8's manifest sanitization runs, so the on-disk
+        # manifest copies would otherwise carry Codex's raw text fields —
+        # remove them so no un-redacted artifact persists. The transcript,
+        # sidecar log, and captured stderr file remain for operator
+        # inspection.
+        rm -f "$MANIFEST_PATH" "$MANIFEST_RAW_PATH"
+        emit_bailed "commit-failed"
     fi
-
-    # 7e: HEAD commit subject equals the first line of manifest.commit_message.
-    # SKILL.md Step 4 and the Codex implementer prompt both rely on this
-    # equality so downstream CHANGELOG / PR-body / OOS copy stays aligned with
-    # the actual git history.
-    HEAD_SUBJECT=$(git -C "$REPO_ROOT" log -1 --format=%s)
-    MANIFEST_SUBJECT=$(jq -r '.commit_message // ""' "$MANIFEST_RAW_PATH" | head -n1)
-    if [[ "$HEAD_SUBJECT" != "$MANIFEST_SUBJECT" ]]; then
-        emit_bailed "commit-subject-mismatch"
-    fi
+    rm -f "$COMMIT_STDERR_FILE"
 fi
 
 # Step 8: sanitization. Apply scripts/redact-secrets.sh to text fields, then

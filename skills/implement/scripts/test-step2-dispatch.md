@@ -23,11 +23,11 @@ All `--coder codex` invocations that proceed past argument parsing are run with 
 
 **Out of scope** (no automated coverage today — manual / end-to-end testing only; an offline stub-Codex harness is a known gap):
 - Manifest schema validation (per-status required-key checks via `jq -e`).
-- `git diff --name-only $BASELINE..HEAD` set-equality cross-check.
 - Path normalization (`..` / leading `/` / `.claude-plugin/plugin.json` / submodule paths).
 - Sanitization via `scripts/redact-secrets.sh`.
 - Single-retry on transient launcher failure with clean-state guard.
-- `branch-changed` / `protected-path-modified` / `submodule-dirty` / `dirty-tree-after-codex` post-Codex checks.
+- `branch-changed` / `protected-path-modified` / `submodule-dirty` post-Codex checks.
+- Dispatcher-side commit (`git add -A && git commit -F …` from `manifest.commit_message`); `commit-failed` bail when the commit fails.
 
 **Invariants**:
 - Tests run against the live `step2-implement.sh` in the repo (not a copy) so any edit to the dispatcher's argument parsing, fallback branching, or resume-cap logic is caught here.

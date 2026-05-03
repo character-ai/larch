@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.1.2] - 2026-05-03
+
+### Changed
+
+- `/implement` Step 2: post-Codex commit responsibility moves from Codex into the dispatcher (`skills/implement/scripts/step2-implement.sh`). Codex now leaves working-tree edits + a manifest with `commit_message`; the dispatcher pipes `commit_message` through `scripts/redact-secrets.sh` and runs `git add -A && git commit -F …` with no Claude-side diff or subject verification. Eliminates the `git-index-write-blocked` failure class (Codex stays inside `workspace-write` sandbox) and collapses the prior "Codex commits + dispatcher cross-checks" trust boundary. Drops the now-tautological `commit-subject-mismatch` / `manifest-diff-mismatch` / `no-commit-since-baseline` / `dirty-tree-after-codex` bail tokens; adds `commit-failed` for the new git-commit error path. `manifest.files_touched` is now advisory documentation. Closes #992.
+
 ## [15.1.1] - 2026-05-03
 
 ### Added
