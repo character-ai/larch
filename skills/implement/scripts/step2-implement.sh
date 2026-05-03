@@ -360,15 +360,13 @@ if [[ "$STATUS" != "bailed" ]]; then
     fi
 fi
 
-# Step 7: complete-only checks: working tree clean + path normalization + diff cross-check.
+# Step 7: complete-only path-normalization check on manifest paths.
+# Diff cross-check, commit-subject equality, working-tree-clean, and
+# commits-since-baseline are gone — the dispatcher commits on Codex's behalf
+# below (Step 7b), so there is no committed diff to compare against the
+# manifest, and `commit_message` flows through verbatim with no second-guessing.
 if [[ "$STATUS" == "complete" ]]; then
-    # 7a: working tree clean.
-    DIRTY=$(git -C "$REPO_ROOT" status --porcelain)
-    if [[ -n "$DIRTY" ]]; then
-        emit_bailed "dirty-tree-after-codex"
-    fi
-
-    # 7b: path normalization on every files_touched[].path and tests_added_or_modified.
+    # 7a: path normalization on every files_touched[].path and tests_added_or_modified.
     # Reject: contains '..', starts with '/', equals .claude-plugin/plugin.json,
     # under a submodule (per submodule status), escapes repo root after symlink resolve.
     SUBMODULE_PATHS=$(git -C "$REPO_ROOT" submodule status --recursive 2>/dev/null \
@@ -400,27 +398,20 @@ if [[ "$STATUS" == "complete" ]]; then
         emit_bailed "protected-path-modified"
     fi
 
-    # 7c: baseline-rooted diff cross-check (set equality).
-    DIFF_PATHS=$(git -C "$REPO_ROOT" diff --name-only "$BASELINE_SHA"..HEAD | sort -u)
-    MANIFEST_PATHS=$(jq -r '.files_touched[].path' "$MANIFEST_RAW_PATH" | sort -u)
-    if [[ "$DIFF_PATHS" != "$MANIFEST_PATHS" ]]; then
-        emit_bailed "manifest-diff-mismatch"
-    fi
+    # 7b: dispatcher commits on Codex's behalf, using manifest.commit_message
+    # verbatim. Codex stays inside `workspace-write` sandbox semantics (which
+    # forbids .git/ writes); the dispatcher runs outside that sandbox in the
+    # Claude shell.
+    COMMIT_MSG_FILE="$TMPDIR_ARG/codex-commit-message.txt"
+    jq -r '.commit_message' "$MANIFEST_RAW_PATH" > "$COMMIT_MSG_FILE.tmp"
+    mv "$COMMIT_MSG_FILE.tmp" "$COMMIT_MSG_FILE"
 
-    # 7d: at least 1 commit since baseline.
-    COMMITS_SINCE=$(git -C "$REPO_ROOT" rev-list --count "$BASELINE_SHA"..HEAD)
-    if [[ "$COMMITS_SINCE" -lt 1 ]]; then
-        emit_bailed "no-commit-since-baseline"
-    fi
-
-    # 7e: HEAD commit subject equals the first line of manifest.commit_message.
-    # SKILL.md Step 4 and the Codex implementer prompt both rely on this
-    # equality so downstream CHANGELOG / PR-body / OOS copy stays aligned with
-    # the actual git history.
-    HEAD_SUBJECT=$(git -C "$REPO_ROOT" log -1 --format=%s)
-    MANIFEST_SUBJECT=$(jq -r '.commit_message // ""' "$MANIFEST_RAW_PATH" | head -n1)
-    if [[ "$HEAD_SUBJECT" != "$MANIFEST_SUBJECT" ]]; then
-        emit_bailed "commit-subject-mismatch"
+    git -C "$REPO_ROOT" add -A
+    if ! git -C "$REPO_ROOT" commit -F "$COMMIT_MSG_FILE" >/dev/null 2>&1; then
+        # Common causes: empty working tree (Codex declared complete with no
+        # actual edits), pre-commit hook rejection, or a transient git error.
+        # Operator inspects the working tree.
+        emit_bailed "commit-failed"
     fi
 fi
 

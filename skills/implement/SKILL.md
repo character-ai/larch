@@ -551,7 +551,7 @@ ${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step2-implement.sh \
 
 - `STATUS=complete` → set `$MANIFEST_PATH=$MANIFEST` and proceed to Step 3. Steps 4 / 8a / 9a / 9a.1 read this manifest; the orchestrator does not run `git diff` to figure out what changed.
 - `STATUS=needs_qa` → run the Q/A loop in 2.3.
-- `STATUS=bailed` → log `Step 2 — Codex bailed: $REASON` to the `Warnings` section of `$IMPLEMENT_TMPDIR/execution-issues.md`. If `$REASON` ∈ {`resume-incompatible`, `branch-changed`, `dirty-tree-after-codex`, `protected-path-modified`, `submodule-dirty`, `manifest-diff-mismatch`, `commit-subject-mismatch`}: bail to Step 12d (the branch may contain partial Codex work the operator must inspect). Otherwise (`codex-runtime-failure`, `dirty-state-after-timeout`, `manifest-schema-invalid`, `manifest-missing`, `qa-pending-missing`, `qa-loop-exceeded`, `redactor-not-executable`, free-form Codex token): print `**⚠ Codex bailed: $REASON. Logs at $TRANSCRIPT and $SIDECAR_LOG.**`, then bail to Step 12d.
+- `STATUS=bailed` → log `Step 2 — Codex bailed: $REASON` to the `Warnings` section of `$IMPLEMENT_TMPDIR/execution-issues.md`. If `$REASON` ∈ {`resume-incompatible`, `branch-changed`, `protected-path-modified`, `submodule-dirty`, `commit-failed`}: bail to Step 12d (the branch may contain partial Codex work the operator must inspect). Otherwise (`codex-runtime-failure`, `dirty-state-after-timeout`, `manifest-schema-invalid`, `manifest-missing`, `qa-pending-missing`, `qa-loop-exceeded`, `redactor-not-executable`, free-form Codex token): print `**⚠ Codex bailed: $REASON. Logs at $TRANSCRIPT and $SIDECAR_LOG.**`, then bail to Step 12d.
 - `STATUS=claude_fallback` → run the Claude-fallback branch in 2.4.
 
 **2.3 — Q/A loop** (when `STATUS=needs_qa`):
@@ -616,7 +616,7 @@ Invoke `/relevant-checks` via the Skill tool. If checks fail, diagnose and fix, 
 
 ## Step 4 — First Commit (implementation)
 
-**On the Codex path** (`$MANIFEST_PATH` is non-empty, i.e. Step 2 returned `STATUS=complete`): Codex has already committed. The dispatcher's mechanical validation has already verified working tree clean, ≥1 commit since baseline, and HEAD subject equality with `manifest.commit_message`'s first line. Skip the `git-commit.sh` invocation. Print `⏩ 4: commit (impl) — already committed by Codex (HEAD=$(git rev-parse --short HEAD))`.
+**On the Codex path** (`$MANIFEST_PATH` is non-empty, i.e. Step 2 returned `STATUS=complete`): the dispatcher has already committed Codex's working-tree edits using `manifest.commit_message` verbatim (`git add -A && git commit -F …`). There is no Claude-side diff verification — `commit_message` is consumed as-is. Skip the `git-commit.sh` invocation. Print `⏩ 4: commit (impl) — already committed by dispatcher (HEAD=$(git rev-parse --short HEAD))`.
 
 **On the Claude-fallback path** (Step 2 returned `STATUS=claude_fallback`): stage and commit:
 

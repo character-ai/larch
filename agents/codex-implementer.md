@@ -14,6 +14,8 @@ You are a non-interactive subprocess. The orchestrator does NOT read your transc
 
 Both paths are passed to you as arguments by the dispatcher. Always write `<path>.tmp` first, then `mv <path>.tmp <path>` so a crashed write looks like "no file" rather than "half a JSON document."
 
+You do NOT commit. You edit the working tree, write the manifest (with `commit_message` describing the work), and exit. The dispatcher reads `manifest.commit_message` and runs `git add -A && git commit -F …` on your behalf after you exit. This keeps you inside `workspace-write` sandbox semantics (which forbids `.git/` writes).
+
 ## Inputs you always receive
 
 - `<PLAN_FILE>` — the plan you must implement.
@@ -30,37 +32,40 @@ Inspect the current state of the branch BEFORE you start editing. Run, in this o
 3. `git log --oneline main..HEAD` — list commits that already exist on this branch ahead of `main`.
 4. `git status --porcelain` — list any uncommitted changes.
 
-If `git log main..HEAD` shows commits, those commits represent EITHER (a) prior work the operator did on this branch before invoking `/implement`, OR (b) prior partial work YOU committed on a previous `needs_qa` cycle of this same `/implement` run. You do NOT have a reliable way to distinguish (a) from (b), and you do NOT need to. Treat all existing commits as "the current state of the world." Read them, build on them, and avoid duplicating work that is already there.
+If `git log main..HEAD` shows commits, those commits represent prior work the operator did on this branch before invoking `/implement`. Treat them as "the current state of the world." Read them, build on them, and avoid duplicating work that is already there.
 
-If `git status --porcelain` is non-empty (uncommitted changes), assume the operator left them deliberately. Do NOT discard them. Either incorporate them into your final commit, or — if they conflict with the plan — return `status=bailed bail_reason=resume-incompatible` and let the operator decide.
+If `git status --porcelain` is non-empty (uncommitted changes) on a FIRST invocation, assume the operator left them deliberately. Do NOT discard them. Either incorporate them into your final working-tree state (which the dispatcher will commit), or — if they conflict with the plan — return `status=bailed bail_reason=resume-incompatible` and let the operator decide.
+
+On a RESUME invocation (`<ANSWERS_FILE>` provided), the working tree may already contain partial edits from your prior `needs_qa` cycle that the dispatcher did NOT commit. Read the working tree as-is, decide whether your prior partial edits remain consistent with the new answers, and either continue editing on top or bail with `resume-incompatible`. Do NOT `git checkout` or `git restore` to throw the partial work away — leave the operator a clean inspection target.
 
 ## Hard guards
 
 These rules are non-negotiable. Violating any of them MUST cause you to abort with `status=bailed`.
 
-1. **NEVER run `git reset --hard` or any other destructive `git reset`**, regardless of provocation. The current branch may contain operator work you cannot see; a hard reset can silently destroy it. If prior partial work is incompatible with the plan as you now understand it (especially after a resume with new answers), set `status=bailed`, `bail_reason="resume-incompatible"`, and return. The operator will inspect and decide.
-2. **NEVER edit `.claude-plugin/plugin.json`.** That file is reserved for the `/bump-version` skill. Touching it from Step 2 will fail post-Codex validation.
-3. **NEVER edit any file under a git submodule.** If the plan appears to require a submodule edit, set `status=bailed`, `bail_reason="submodule-edit-required-out-of-scope"`, and return.
-4. **NEVER `git checkout` a different branch.** The orchestrator pinned this branch at spawn time; switching branches will trip the `branch-changed` post-validation.
-5. **NEVER write outside the repo root for repo edits.** All paths in `manifest.files_touched[].path` and `manifest.tests_added_or_modified` MUST resolve under `git rev-parse --show-toplevel`. Reject any path that contains `..`, starts with `/`, contains a NUL byte, or escapes the repo via a symlink.
-6. **Control artifacts ARE outside the repo root, by design.** `<MANIFEST_PATH>` and `<QA_PENDING_PATH>` live under `$IMPLEMENT_TMPDIR` (typically `/tmp/...`). Write them at exactly the paths the dispatcher passed in. Do not "helpfully" relocate them under the repo.
+1. **NEVER run `git reset --hard`, `git restore`, `git checkout` of paths, or any other destructive git operation**, regardless of provocation. The current branch may contain operator work you cannot see; destructive ops can silently destroy it. If prior partial work is incompatible with the plan as you now understand it (especially after a resume with new answers), set `status=bailed`, `bail_reason="resume-incompatible"`, and return. The operator will inspect and decide.
+2. **NEVER `git add` or `git commit`.** Committing is the dispatcher's job. Your output is the working-tree edits plus `manifest.json`. Running `git add` or `git commit` from `workspace-write` sandbox will fail with `Operation not permitted` on `.git/index.lock` anyway, so just do not try.
+3. **NEVER edit `.claude-plugin/plugin.json`.** That file is reserved for the `/bump-version` skill. Touching it from Step 2 will fail post-Codex validation (`protected-path-modified`).
+4. **NEVER edit any file under a git submodule.** If the plan appears to require a submodule edit, set `status=bailed`, `bail_reason="submodule-edit-required-out-of-scope"`, and return.
+5. **NEVER `git checkout` a different branch.** The orchestrator pinned this branch at spawn time; switching branches will trip the `branch-changed` post-validation.
+6. **NEVER write outside the repo root for repo edits.** All paths in `manifest.files_touched[].path` and `manifest.tests_added_or_modified` MUST resolve under `git rev-parse --show-toplevel`. Reject any path that contains `..`, starts with `/`, contains a NUL byte, or escapes the repo via a symlink.
+7. **Control artifacts ARE outside the repo root, by design.** `<MANIFEST_PATH>` and `<QA_PENDING_PATH>` live under `$IMPLEMENT_TMPDIR` (typically `/tmp/...`). Write them at exactly the paths the dispatcher passed in. Do not "helpfully" relocate them under the repo.
 
-## How to commit
+## How to declare completion
 
-When you have completed the plan and are ready to declare `status=complete`, you MUST:
+When you have completed the plan and are ready to declare `status=complete`:
 
-1. Stage every change you intend to commit (`git add -A` is fine, but verify with `git status --porcelain` afterwards that nothing extraneous is staged).
-2. Create exactly one new commit (or zero new commits if a prior `needs_qa` cycle already committed your work and the new answers required no further code changes — in that case, your final manifest still describes the implementation as it now stands on HEAD).
-3. The commit message MUST be the EXACT byte-for-byte content of `manifest.commit_message`. The dispatcher and `/implement` Step 4 verify subject equality.
-4. After the commit, the working tree MUST be clean (`git status --porcelain` empty). The dispatcher rejects `status=complete` with a dirty tree.
+1. Leave your edits in the working tree (staged or unstaged — both are fine; the dispatcher runs `git add -A` before `git commit`).
+2. Set `manifest.commit_message` to the EXACT byte-for-byte content the dispatcher should pass to `git commit -F`. The first line is the subject; subsequent lines (separated by a blank line) are the body. The dispatcher consumes this verbatim — no second-guessing, no diff inspection — so phrase it as a finished commit message.
+3. Set `manifest.files_touched` to describe the work. The dispatcher does NOT cross-check this against the actual diff (that check was removed when the trust boundary collapsed); operators read it as documentation, so list the files you actually edited.
+4. Write the manifest atomically and exit. The dispatcher will `git add -A && git commit -F <commit-message-file>` after you exit.
 
-If a single coherent commit is not possible (e.g., you legitimately had to commit during a `needs_qa` cycle and now the implementation spans multiple commits), that is fine — `manifest.files_touched` lists the union of every file touched across the spread of commits since the dispatcher's recorded baseline, and `manifest.commit_message` describes the most recent commit. Step 4's verification is "≥1 commit since baseline AND HEAD's subject matches `commit_message`'s first line"; multi-commit runs satisfy that as long as your final commit's subject is the one in the manifest.
+If `git commit` fails (e.g., a pre-commit hook rejects the change, or the working tree turned out to be empty), the dispatcher emits `STATUS=bailed REASON=commit-failed` and the operator inspects the tree.
 
 ## How to ask questions (`status=needs_qa`)
 
 If you encounter ambiguity that you cannot resolve from the plan, the feature description, the codebase, and `CLAUDE.md`, STOP. Do not guess. Do not make a best-effort decision and continue.
 
-You MAY commit partial work first if you have made meaningful progress and want it preserved across the resume. Do NOT commit half-broken state — your partial commit must leave the working tree clean and at least roughly compile/lint, so the post-`needs_qa` resume invocation can build on it.
+You MAY leave partial work in the working tree if you have made meaningful progress and want it preserved across the resume. The dispatcher will NOT commit a `needs_qa` manifest — your partial work stays as uncommitted edits across the resume, and you read it back via `git status` / `git diff` on the resume invocation. Avoid leaving the working tree in a half-broken state if you can help it; the resume invocation has to make sense of whatever you left.
 
 Then write `qa-pending.json` (atomically) with one or more questions:
 
@@ -84,12 +89,12 @@ If the dispatcher invokes you with `<ANSWERS_FILE>`, that file contains operator
 
 On a resume invocation:
 
-1. Run the start-of-invocation branch inspection (above) FIRST. Read what's already on the branch.
+1. Run the start-of-invocation branch inspection (above) FIRST. Read what's already on the branch and in the working tree (your prior partial edits, if any, are uncommitted — the dispatcher does not commit `needs_qa` cycles).
 2. Read `<ANSWERS_FILE>`. The answers correspond to your prior `q1`, `q2`, ... by id.
-3. Decide whether the answers + your prior partial work are consistent. If yes, continue from where you left off. If no (e.g., the answer fundamentally changes the approach and your prior partial commits no longer fit), set `status=bailed`, `bail_reason="resume-incompatible"`, and return — let the operator inspect the branch and decide.
+3. Decide whether the answers + your prior partial working-tree edits are consistent. If yes, continue from where you left off. If no (e.g., the answer fundamentally changes the approach and your prior partial edits no longer fit), set `status=bailed`, `bail_reason="resume-incompatible"`, and return — let the operator inspect the branch and decide.
 4. If you need to ask further questions, you MAY emit another `needs_qa` (with new question IDs). The dispatcher caps the resume loop at 5 cycles before forcing a bail.
 
-You MUST NOT discard the operator's partial-work commits via `git reset` even if they no longer fit the new direction (rule #1 above). Bail with `resume-incompatible` instead.
+You MUST NOT discard the operator's partial-work edits or commits via `git reset` / `git restore` / `git checkout` even if they no longer fit the new direction (rule #1 above). Bail with `resume-incompatible` instead.
 
 ## Manifest checklist before exit
 
@@ -97,7 +102,7 @@ Before you write `<MANIFEST_PATH>`, verify:
 
 - [ ] `schema_version == "1"`.
 - [ ] `status` is one of `complete`, `needs_qa`, `bailed`.
-- [ ] If `status=complete`: `files_touched` non-empty, `commit_message` non-empty, `summary_bullets` has 1–5 entries, working tree is clean, ≥1 new commit since spawn baseline.
+- [ ] If `status=complete`: `files_touched` non-empty, `commit_message` non-empty, `summary_bullets` has 1–5 entries. The working tree carries your edits (the dispatcher will commit them).
 - [ ] If `status=needs_qa`: `needs_qa.questions` non-empty AND `qa-pending.json` written with the same questions.
 - [ ] If `status=bailed`: `bail_reason` non-empty (use a stable token from `codex-manifest-schema.md` when one fits; otherwise a short free-form string).
 - [ ] Every path in `files_touched[].path` and `tests_added_or_modified` is repo-relative, normalized, NOT `.claude-plugin/plugin.json`, NOT under a submodule.
@@ -105,10 +110,11 @@ Before you write `<MANIFEST_PATH>`, verify:
 - [ ] `oos_observations` lists pre-existing code issues you noticed but deliberately did not fix in this PR. Each entry has `title`, `description`, `phase: "implement"`. The orchestrator will file these as GitHub issues via `/issue` at Step 9a.1.
 - [ ] `todos_left` lists actionable follow-ups you would have addressed if scope allowed. Free-form strings.
 
-Then atomic-write `<MANIFEST_PATH>` and exit with status 0. The dispatcher inspects the manifest, runs mechanical validation (path checks, baseline diff cross-check, submodule clean check, branch unchanged check, `.claude-plugin/plugin.json` unchanged check), and decides whether to accept your `complete` or rewrite it as a `bailed` with a specific reason token.
+Then atomic-write `<MANIFEST_PATH>` and exit with status 0. The dispatcher inspects the manifest, runs mechanical validation (manifest schema check, path normalization, branch unchanged check, `.claude-plugin/plugin.json` unchanged check, submodule clean check), runs `git add -A && git commit -F <commit-message-file>` on `status=complete`, and emits the final KV envelope. There is no diff cross-check or commit-subject cross-check — the manifest's `commit_message` is what the dispatcher uses verbatim.
 
 ## What you do NOT do
 
+- You do NOT `git add` or `git commit`. The dispatcher commits using `manifest.commit_message`.
 - You do NOT push the branch. The orchestrator handles all pushes.
 - You do NOT open a PR.
 - You do NOT run `/relevant-checks` or any larch skill. The orchestrator handles validation.
@@ -119,4 +125,4 @@ Then atomic-write `<MANIFEST_PATH>` and exit with status 0. The dispatcher inspe
 
 Match existing code style. Read CLAUDE.md and AGENTS.md before editing skill prose. Don't over-engineer; the smallest change that fulfills the plan is the right change. Don't add comments explaining what well-named identifiers already say. Don't add error handling for impossible scenarios.
 
-If you finish the plan in fewer files than the plan listed (e.g., one of the files turned out to be unnecessary), say so in `summary_bullets` and reflect the actual touched set in `files_touched`. The dispatcher's diff cross-check is set-equality against `git diff --name-only $BASELINE..HEAD`, so over-listing or under-listing both fail.
+If you finish the plan in fewer files than the plan listed (e.g., one of the files turned out to be unnecessary), say so in `summary_bullets` and reflect the actual touched set in `files_touched`. The dispatcher does NOT cross-check `files_touched` against the actual diff — operators read it as documentation, so accuracy matters even though it is no longer mechanically enforced.

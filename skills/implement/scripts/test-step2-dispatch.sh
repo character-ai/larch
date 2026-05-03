@@ -17,7 +17,7 @@
 #   - Corrupt resume counter → STATUS=bailed REASON=manifest-schema-invalid.
 #   - --coder codex outside a git working tree → exit 2 (no baseline-file leak).
 #
-# Codex-spawning paths (manifest validation, diff cross-check, sanitization,
+# Codex-spawning paths (manifest validation, dispatcher-side commit, sanitization,
 # launcher-retry) are covered by a separate end-to-end test in CI with a real
 # Codex stub on PATH; this offline harness intentionally stays narrow so it
 # runs in <1s with no external dependencies.
