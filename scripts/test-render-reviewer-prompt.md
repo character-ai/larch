@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Offline regression harness for `scripts/render-reviewer-prompt.sh`. Runs in CI (`make test-harnesses`) and locally (`make lint`). No network, no git state, no external tools.
+Offline regression harness for `scripts/render-reviewer-prompt.sh`. Runs in CI through its `test-harnesses-N` shard and locally via `make lint`. No network, no git state, no external tools.
 
 ## Invariants
 
@@ -18,7 +18,7 @@ This file is itself the test harness. Add new assertions in-place; do NOT split 
 
 - **`scripts/render-reviewer-prompt.sh`**: any new flag or output behavior should be reflected in a new harness assertion before merge.
 - **`skills/research/references/validation-phase.md`**: the static integration check enforces that both Cursor and Codex lanes invoke the renderer. If a third caller is added, raise the threshold or split into per-lane assertions.
-- **`Makefile`**: harness is wired in three places — the top-of-file `.PHONY` declaration, the `test-harnesses` aggregate target's dependency list, and a `test-render-reviewer-prompt:` recipe whose body is `bash scripts/test-render-reviewer-prompt.sh`. Use the target name to locate the recipe, not line numbers.
+- **`Makefile`**: harness is wired in three places — the top-of-file `.PHONY` declaration, exactly one `test-harnesses-N:` shard prerequisite list, and a `test-render-reviewer-prompt:` recipe whose body is `bash scripts/test-render-reviewer-prompt.sh`. Use the target name to locate the recipe, not line numbers.
 
 ## Exit codes
 

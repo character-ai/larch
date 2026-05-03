@@ -32,8 +32,8 @@ or the Finalize Validation section of
 
 ## Wiring
 
-- `make test-synthesis-subagent` is a `test-harnesses` prerequisite (see
-  Makefile).
+- `make test-synthesis-subagent` is assigned to exactly one `test-harnesses-N`
+  shard (see Makefile).
 - `agent-lint.toml` allowlist exempts this harness's metaprompt literals.
 
 ## Edit-in-sync rules

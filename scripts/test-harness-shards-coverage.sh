@@ -1,0 +1,328 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+MAKEFILE="$REPO_ROOT/Makefile"
+
+usage() {
+  printf 'Usage: %s [--self-test]\n' "$(basename "$0")" >&2
+}
+
+cleanup_tmpdir() {
+  if [[ -n "${TMPDIR_SHARDS:-}" && -d "$TMPDIR_SHARDS" ]]; then
+    rm -rf "$TMPDIR_SHARDS"
+  fi
+}
+
+make_tmpdir() {
+  TMPDIR_SHARDS="$(mktemp -d "${TMPDIR:-/tmp}/test-harness-shards-coverage.XXXXXX")"
+  trap cleanup_tmpdir EXIT
+}
+
+append_section() {
+  local title="$1"
+  local prefix="$2"
+  local file="$3"
+
+  if [[ -s "$file" ]]; then
+    {
+      printf '@@ %s @@\n' "$title"
+      while IFS= read -r line; do
+        printf '%s %s\n' "$prefix" "$line"
+      done < "$file"
+    } >> "$REPORT"
+  fi
+}
+
+extract_individual_targets() {
+  local makefile="$1"
+
+  awk -F: '
+    /^[[:space:]]*#/ { next }
+    /^test-[a-z0-9-]*:/ {
+      name = $1
+      if (name ~ /^test-harnesses(-[0-9]+)?$/) next
+      if (name == "test-harness-shards-coverage") next
+      if (name == "test-eval-set-structure") next
+      if (name == "test-eval-research-baseline-flag") next
+      print name
+    }
+  ' "$makefile" | sort -u
+}
+
+extract_shard_prereqs() {
+  local makefile="$1"
+  local out_all="$2"
+  local out_shard6="$3"
+  local n
+  local count
+  local line
+  local prereq
+
+  : > "$out_all"
+  : > "$out_shard6"
+
+  for n in 1 2 3 4 5 6; do
+    count="$(grep -Ec "^test-harnesses-$n:" "$makefile" || true)"
+    if [[ "$count" != "1" ]]; then
+      printf 'test-harnesses-%s must be declared exactly once (found %s)\n' "$n" "$count" >> "$MISSING_SHARD_RULES"
+      continue
+    fi
+
+    line="$(grep -E "^test-harnesses-$n:" "$makefile")"
+    line="${line#*:}"
+    for prereq in $line; do
+      printf '%s\n' "$prereq" >> "$out_all"
+      if [[ "$n" == "6" ]]; then
+        printf '%s\n' "$prereq" >> "$out_shard6"
+      fi
+    done
+  done
+}
+
+extract_umbrella_prereqs() {
+  local makefile="$1"
+  local out="$2"
+  local count
+  local line
+  local prereq
+
+  : > "$out"
+  count="$(grep -Ec '^test-harnesses:' "$makefile" || true)"
+  if [[ "$count" != "1" ]]; then
+    printf 'test-harnesses umbrella must be declared exactly once (found %s)\n' "$count" >> "$UMBRELLA_ERRORS"
+    return
+  fi
+
+  line="$(grep -E '^test-harnesses:' "$makefile")"
+  line="${line#*:}"
+  for prereq in $line; do
+    printf '%s\n' "$prereq" >> "$out"
+  done
+}
+
+validate_makefile() {
+  local makefile="$1"
+
+  REPORT="$TMPDIR_SHARDS/report"
+  MISSING_SHARD_RULES="$TMPDIR_SHARDS/missing-shard-rules"
+  UMBRELLA_ERRORS="$TMPDIR_SHARDS/umbrella-errors"
+  : > "$REPORT"
+  : > "$MISSING_SHARD_RULES"
+  : > "$UMBRELLA_ERRORS"
+
+  local naming_violations="$TMPDIR_SHARDS/naming-violations"
+  local continuation_violations="$TMPDIR_SHARDS/continuation-violations"
+  local individual="$TMPDIR_SHARDS/individual"
+  local shard_all="$TMPDIR_SHARDS/shard-all"
+  local shard6="$TMPDIR_SHARDS/shard6"
+  local shard_no_self="$TMPDIR_SHARDS/shard-no-self"
+  local duplicates="$TMPDIR_SHARDS/duplicates"
+  local missing="$TMPDIR_SHARDS/missing"
+  local orphan="$TMPDIR_SHARDS/orphan"
+  local umbrella="$TMPDIR_SHARDS/umbrella"
+  local umbrella_expected="$TMPDIR_SHARDS/umbrella-expected"
+  local umbrella_missing="$TMPDIR_SHARDS/umbrella-missing"
+  local umbrella_extra="$TMPDIR_SHARDS/umbrella-extra"
+
+  grep -nE '^test[^a-z:-].*:' "$makefile" > "$naming_violations" || true
+  grep -nE "^test-harnesses-[1-6]:.*\\\\" "$makefile" > "$continuation_violations" || true
+
+  extract_individual_targets "$makefile" > "$individual"
+  extract_shard_prereqs "$makefile" "$shard_all" "$shard6"
+
+  grep -Fxv 'test-harness-shards-coverage' "$shard_all" | sort -u > "$shard_no_self" || true
+  sort "$shard_all" | uniq -d > "$duplicates"
+  comm -23 "$individual" "$shard_no_self" > "$missing"
+  comm -13 "$individual" "$shard_no_self" > "$orphan"
+
+  extract_umbrella_prereqs "$makefile" "$umbrella"
+  printf '%s\n' test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 test-harnesses-6 | sort -u > "$umbrella_expected"
+  sort -u "$umbrella" > "$umbrella.sorted"
+  comm -23 "$umbrella_expected" "$umbrella.sorted" > "$umbrella_missing"
+  comm -13 "$umbrella_expected" "$umbrella.sorted" > "$umbrella_extra"
+
+  append_section "shard rule declaration errors" "!" "$MISSING_SHARD_RULES"
+  append_section "harness recipe target uses non-standard naming - convention is lowercase-hyphenated. See scripts/test-harness-shards-coverage.md" "!" "$naming_violations"
+  append_section "shard rule must be on a single physical line - see scripts/test-harness-shards-coverage.md" "!" "$continuation_violations"
+  append_section "missing from shards" "-" "$missing"
+  append_section "orphan in shards" "+" "$orphan"
+  append_section "duplicate across shards" "!" "$duplicates"
+  append_section "umbrella declaration errors" "!" "$UMBRELLA_ERRORS"
+  append_section "umbrella missing shard targets" "-" "$umbrella_missing"
+  append_section "umbrella has unexpected prerequisites" "+" "$umbrella_extra"
+
+  if ! grep -Fxq 'test-harness-shards-coverage' "$shard_all"; then
+    {
+      printf '@@ self-reference missing @@\n'
+      printf -- '- test-harness-shards-coverage\n'
+    } >> "$REPORT"
+  fi
+
+  if ! grep -Fxq 'test-harness-shards-coverage' "$shard6"; then
+    {
+      printf '@@ self-reference misplaced @@\n'
+      printf '! test-harness-shards-coverage must be the first prerequisite of test-harnesses-6\n'
+    } >> "$REPORT"
+  else
+    local first_shard6
+    IFS= read -r first_shard6 < "$shard6" || first_shard6=""
+    if [[ "$first_shard6" != "test-harness-shards-coverage" ]]; then
+      {
+        printf '@@ self-reference misplaced @@\n'
+        printf '! test-harness-shards-coverage must be the first prerequisite of test-harnesses-6\n'
+      } >> "$REPORT"
+    fi
+  fi
+
+  if [[ -s "$REPORT" ]]; then
+    {
+      printf 'test-harness-shards-coverage: partition invariant failed\n'
+      printf -- '--- expected\n'
+      printf -- '+++ actual\n'
+      while IFS= read -r line; do
+        printf '%s\n' "$line"
+      done < "$REPORT"
+    } >&2
+    return 1
+  fi
+
+  return 0
+}
+
+write_happy_fixture() {
+  local path="$1"
+
+  cat > "$path" <<'EOF'
+.PHONY: test-harnesses test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 test-harnesses-6 test-alpha test-beta test-gamma test-delta test-epsilon test-zeta test-harness-shards-coverage test-eval-set-structure test-eval-research-baseline-flag smoke-dialectic eval-research
+test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 test-harnesses-6
+test-harnesses-1: test-alpha
+test-harnesses-2: test-beta
+test-harnesses-3: test-gamma
+test-harnesses-4: test-delta
+test-harnesses-5: test-epsilon
+test-harnesses-6: test-harness-shards-coverage test-zeta
+test-alpha:
+	bash scripts/test-alpha.sh
+test-beta:
+	bash scripts/test-beta.sh
+test-gamma:
+	bash scripts/test-gamma.sh
+test-delta:
+	bash scripts/test-delta.sh
+test-epsilon:
+	bash scripts/test-epsilon.sh
+test-zeta:
+	bash scripts/test-zeta.sh
+test-harness-shards-coverage:
+	bash scripts/test-harness-shards-coverage.sh
+test-eval-set-structure:
+	bash scripts/test-eval-set-structure.sh
+test-eval-research-baseline-flag:
+	bash scripts/test-eval-research-baseline-flag.sh
+smoke-dialectic:
+	bash scripts/dialectic-smoke-test.sh
+eval-research:
+	bash scripts/eval-research.sh
+EOF
+}
+
+run_self_case() {
+  local name="$1"
+  local expected_status="$2"
+  local expected_stderr="$3"
+  local fixture="$TMPDIR_SHARDS/$name.mk"
+  local stderr_file="$TMPDIR_SHARDS/$name.stderr"
+  local status=0
+
+  write_happy_fixture "$fixture"
+
+  case "$name" in
+    missing-target)
+      {
+        printf 'test-newthing:\n'
+        printf '\tbash scripts/test-newthing.sh\n'
+      } >> "$fixture"
+      ;;
+    orphan-in-shards)
+      awk '{ sub(/^test-harnesses-3: test-gamma$/, "test-harnesses-3: test-gamma test-newthing"); print }' "$fixture" > "$fixture.tmp"
+      mv "$fixture.tmp" "$fixture"
+      ;;
+    duplicate-across-shards)
+      awk '{ sub(/^test-harnesses-5: test-epsilon$/, "test-harnesses-5: test-epsilon test-beta"); print }' "$fixture" > "$fixture.tmp"
+      mv "$fixture.tmp" "$fixture"
+      ;;
+    backslash-continuation-violation)
+      awk '{ sub(/^test-harnesses-3: test-gamma$/, "test-harnesses-3: test-gamma \\"); print }' "$fixture" > "$fixture.tmp"
+      mv "$fixture.tmp" "$fixture"
+      ;;
+    naming-convention-violation)
+      {
+        printf 'test_foo:\n'
+        printf '\tbash scripts/test-foo.sh\n'
+      } >> "$fixture"
+      ;;
+    self-reference)
+      ;;
+    happy-path)
+      ;;
+    *)
+      printf 'unknown self-test case: %s\n' "$name" >&2
+      return 1
+      ;;
+  esac
+
+  set +e
+  validate_makefile "$fixture" > /dev/null 2> "$stderr_file"
+  status="$?"
+  set -e
+
+  if [[ "$expected_status" == "0" && "$status" != "0" ]]; then
+    printf 'self-test %s: expected success, got exit %s\n' "$name" "$status" >&2
+    cat "$stderr_file" >&2
+    return 1
+  fi
+  if [[ "$expected_status" != "0" && "$status" == "0" ]]; then
+    printf 'self-test %s: expected failure, got success\n' "$name" >&2
+    return 1
+  fi
+  if [[ -n "$expected_stderr" ]] && ! grep -Fq "$expected_stderr" "$stderr_file"; then
+    printf 'self-test %s: expected stderr substring not found: %s\n' "$name" "$expected_stderr" >&2
+    cat "$stderr_file" >&2
+    return 1
+  fi
+}
+
+self_test() {
+  make_tmpdir
+  run_self_case happy-path 0 ""
+  run_self_case missing-target 1 "missing from shards"
+  run_self_case orphan-in-shards 1 "orphan in shards"
+  run_self_case duplicate-across-shards 1 "duplicate across shards"
+  run_self_case backslash-continuation-violation 1 "shard rule must be on a single physical line"
+  run_self_case naming-convention-violation 1 "harness recipe target uses non-standard naming"
+  run_self_case self-reference 0 ""
+}
+
+main() {
+  if [[ "$#" -gt 1 ]]; then
+    usage
+    return 2
+  fi
+
+  if [[ "${1:-}" == "--self-test" ]]; then
+    self_test
+    return 0
+  fi
+
+  if [[ "$#" == "1" ]]; then
+    usage
+    return 2
+  fi
+
+  make_tmpdir
+  validate_makefile "$MAKEFILE"
+}
+
+main "$@"

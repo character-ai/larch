@@ -391,6 +391,13 @@ exclude = [
   "scripts/test-ci-wait-exit-trap.sh",
   "scripts/test-ci-wait-exit-trap.md",
   "scripts/ci-wait.md",
+  # scripts/test-harness-shards-coverage.sh is the partition-invariant
+  # regression harness for the Makefile `test-harnesses-N` shard lists. It is
+  # referenced only from Makefile (test-harness-shards-coverage target) and
+  # scripts/test-harness-shards-coverage.md (sibling contract), matching the
+  # same Makefile-only pattern as the other test-* harnesses above.
+  "scripts/test-harness-shards-coverage.sh",
+  "scripts/test-harness-shards-coverage.md",
   "scripts/test-lint-skill-invocations.sh",
   "skills/fix-issue/scripts/test-parse-prose-blockers.sh",
   "skills/fix-issue/scripts/blocker-helpers.sh",

@@ -41,7 +41,7 @@ Happy-path cases (a, b, c, d, j, k, l, m, n) use `assert_equal_stdout` against t
 
 ## Makefile wiring
 
-Makefile target: `test-tracking-issue-read-sentinel` — `bash scripts/test-tracking-issue-read-sentinel.sh`. Listed in `.PHONY` and in the `test-harnesses` prerequisites (both at line 4 and line 14 of the current Makefile). CI invokes via `make lint` → `test-harnesses` → this target.
+Makefile target: `test-tracking-issue-read-sentinel` — `bash scripts/test-tracking-issue-read-sentinel.sh`. Listed in `.PHONY` and exactly one `test-harnesses-N:` shard prerequisite list. Local `make lint` invokes it through `test-harnesses`; CI invokes it through the shard that contains this target.
 
 ## `agent-lint.toml` exclusion
 
@@ -53,7 +53,7 @@ The harness is Makefile-only (not referenced from any `SKILL.md`), so agent-lint
 |---|---|
 | `scripts/tracking-issue-read.sh` | Script under test. Every behavioral change in its `--sentinel` branch must be mirrored here — add / update assertions in the same PR. |
 | `scripts/tracking-issue-read.md` | Canonical contract document. Any new allowed `ADOPTED` value or parser behavior change requires updating the contract AND the harness in sync. |
-| `Makefile` | `test-harnesses` target invokes this harness. Adding / removing targets must stay in sync with the `.PHONY` line. |
+| `Makefile` | The `test-tracking-issue-read-sentinel` recipe and one `test-harnesses-N:` shard invoke this harness. Adding / removing targets must stay in sync with the `.PHONY` line. |
 | `agent-lint.toml` | Exclusion entry for this Makefile-only harness. |
 
 ## Conventions

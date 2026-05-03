@@ -39,7 +39,7 @@ Regression harness for `scripts/tracking-issue-write.sh`. Mirrors the stub-`gh` 
 
 ## Makefile wiring
 
-Listed in `Makefile`'s `test-harnesses:` prerequisite and `.PHONY:` declaration. Standalone: `make test-tracking-issue-write`.
+Listed in `Makefile`'s `.PHONY:` declaration and exactly one `test-harnesses-N:` shard prerequisite list. Standalone: `make test-tracking-issue-write`.
 
 ## Conventions
 
@@ -52,4 +52,4 @@ Bash 3.2-safe (indexed arrays only; no associative arrays, no `mapfile`).
 | `scripts/tracking-issue-write.sh` | The script under test. Any behavioral change there must be mirrored in a harness assertion here. |
 | `scripts/redact-secrets.sh` | Sibling outbound scrubber exercised by assertions (a) and (g). |
 | `scripts/test-redact-secrets.sh` | Pattern precedent for stub-gh + PATH-override + assert_contains helpers. |
-| `Makefile` | Target `test-tracking-issue-write` and `test-harnesses` prereq entry — both must remain in sync when renaming the harness. |
+| `Makefile` | Target `test-tracking-issue-write` and exactly one `test-harnesses-N` shard prereq entry — both must remain in sync when renaming the harness. |
