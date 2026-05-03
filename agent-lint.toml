@@ -444,6 +444,15 @@ exclude = [
   # scripts/test-implement-anti-polling-rule.md (contract), matching the
   # same Makefile-only pattern as the other test-* harnesses above.
   "scripts/test-implement-anti-polling-rule.sh",
+  # scripts/test-implement-post-design-boundary.sh pins the post-/design
+  # boundary checkpoint reminder in skills/implement/SKILL.md Step 1 and
+  # the matching --emit-load-breadcrumb flag handler in
+  # skills/design/scripts/read-design-manifest.sh (closes #1014).
+  # Referenced only from Makefile (test-implement-post-design-boundary
+  # target) and the sibling scripts/test-implement-post-design-boundary.md
+  # (contract), matching the same Makefile-only pattern as the other
+  # test-implement-* harnesses above.
+  "scripts/test-implement-post-design-boundary.sh",
   "scripts/test-references-headers.sh",
   "scripts/test-subskill-anchors.sh",
   # scripts/test-parse-args.sh is the regression harness for

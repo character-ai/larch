@@ -20,6 +20,7 @@ trap on_err ERR
 
 IMPLEMENT_TMPDIR="${IMPLEMENT_TMPDIR:-}"
 MANIFEST=""
+EMIT_LOAD_BREADCRUMB=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -30,6 +31,10 @@ while [[ $# -gt 0 ]]; do
         --manifest)
             MANIFEST="${2:?--manifest requires a value}"
             shift 2
+            ;;
+        --emit-load-breadcrumb)
+            EMIT_LOAD_BREADCRUMB=true
+            shift
             ;;
         *)
             echo "MANIFEST_FAILED=true"
@@ -195,3 +200,12 @@ echo "MANIFEST_OK=true"
 printf '%s' "$PATH_OUTPUT"
 printf 'TIMESTAMP=%s\n' "$TIMESTAMP"
 printf 'SESSION_ID=%s\n' "$SESSION_ID"
+
+if [[ "$EMIT_LOAD_BREADCRUMB" = true ]]; then
+    # Human-readable breadcrumb. Deliberately uses "plan=<basename>" rather than
+    # "PLAN_FILE=<basename>" so the line cannot be mis-captured by a
+    # non-anchored `grep 'PLAN_FILE='` extraction over the reader's stdout —
+    # the load-bearing envelope key stays unique to the canonical-path line
+    # emitted earlier by check_path.
+    printf '📥 1: design plan — manifest loaded (plan=%s)\n' "$(basename "$PLAN_FILE")"
+fi
