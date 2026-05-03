@@ -143,11 +143,15 @@ LINK="<${ISSUE_URL}|Issue #${ISSUE_NUMBER}>"
 # Compose status tail
 TAIL="$STATUS_SUMMARY"
 if [[ "$STATUS" == "pr-opened" ]] && [[ -n "$PR_URL" ]]; then
-    # Round 3 FINDING_R3_H: validate PR_URL against a strict https URL pattern
-    # before embedding into Slack mrkdwn link syntax. PR_URL normally comes
-    # from gh, but a bare-https check guarantees no `|`, `>`, or backtick
-    # characters can alter the link structure or mimic adjacent mrkdwn.
-    if [[ "$PR_URL" =~ ^https://[A-Za-z0-9._/-]+$ ]]; then
+    # Round 3 FINDING_R3_H + Round 4 finding 3: validate PR_URL before
+    # embedding into Slack mrkdwn link syntax. PR_URL normally comes from gh,
+    # but the regex still guarantees no `|`, `>`, backtick, or whitespace can
+    # alter the link structure or mimic adjacent mrkdwn. The character class
+    # accepts host:port (GHE), query strings, and fragments — the bound is
+    # "what mrkdwn safely escapes," not "RFC 3986 strict URL".
+    # shellcheck disable=SC2016 # regex literal: $ is end-anchor, single-quoted intentionally
+    PR_URL_RE='^https://[][A-Za-z0-9._:/?#=&%~+@,!$()*;-]+$'
+    if [[ "$PR_URL" =~ $PR_URL_RE ]]; then
         TAIL="PR <${PR_URL}|opened>, awaiting merge"
     else
         # Refuse to interpolate; degrade to the plain status summary and warn

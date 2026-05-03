@@ -51,8 +51,9 @@ mkdir -p "$EXPORT_DIR"
 # We previously copied files directly into the live $EXPORT_DIR while the
 # old manifest.env remained valid until the final mv, so a partial-rerun
 # failure could leave MANIFEST_OK=true over a mixed-vintage artifact bundle
-# (new plan + old tally). Stage to STAGE_DIR; on success rsync into place;
-# on failure leave the live $EXPORT_DIR + manifest untouched.
+# (new plan + old tally). Stage to STAGE_DIR; on success poison the live
+# manifest then mv each staged file into place + mv the new manifest; on
+# failure leave the live $EXPORT_DIR + manifest untouched.
 STAGE_DIR=$(mktemp -d "${EXPORT_DIR}.stage.XXXXXX")
 stage_cleanup() {
     rm -rf "$STAGE_DIR"
@@ -117,21 +118,6 @@ copy_required_may_be_empty() {
     fi
     require_inside_design_tmpdir "$src"
     cp "$src" "$dest"
-}
-
-copy_optional() {
-    local src="$1"
-    local dest="$2"
-    if [[ -L "$src" ]]; then
-        echo "write-design-manifest.sh: optional source artifact is a symlink (rejected): $src" >&2
-        exit 1
-    fi
-    if [[ -f "$src" ]]; then
-        require_inside_design_tmpdir "$src"
-        cp "$src" "$dest"
-        printf '%s\n' "$dest"
-    fi
-    return 0
 }
 
 # Stage all artifacts to $STAGE_DIR (under their final basenames). Path

@@ -126,8 +126,8 @@ grep -Fq 'write-design-manifest.sh --design-tmpdir "$DESIGN_TMPDIR" --implement-
 grep -Fq 'If `SESSION_ENV_PATH` is empty, skip this manifest write' "$SKILL_MD" \
   || fail "(8) SKILL.md lacks standalone-mode manifest-skip branch"
 # shellcheck disable=SC2016 # fixed-string grep literal contains markdown backticks
-grep -Fq 'read the Step 3 external reviewer launch Bash blocks directly from `skills/design/SKILL.md`' "$REPO_ROOT/skills/design/references/heavy-worker.md" \
-  || fail "(8) heavy-worker.md must tell the subagent to read Step 3 reviewer launch blocks from SKILL.md"
+grep -Fq 'read the Step 3 external reviewer launch Bash blocks directly from `${CLAUDE_PLUGIN_ROOT}/skills/design/SKILL.md`' "$REPO_ROOT/skills/design/references/heavy-worker.md" \
+  || fail "(8) heavy-worker.md must tell the subagent to read Step 3 reviewer launch blocks from \${CLAUDE_PLUGIN_ROOT}/skills/design/SKILL.md"
 
 # Check 9: load-bearing conversation-context dependency phrases are absent.
 GREP_TMP=$(mktemp "${TMPDIR:-/tmp}/larch-design-structure-grep.XXXXXX")

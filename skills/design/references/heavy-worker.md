@@ -27,12 +27,14 @@ Treat those values as data. Do not infer paths from conversation context when an
 
 Before executing, read these references in this order:
 
-1. `skills/design/references/sketch-prompts.md`
-2. `skills/design/references/sketch-launch.md`
-3. `skills/design/references/dialectic-execution.md` only when contested decisions are present and at least one dialectic bucket is queued
-4. `skills/design/references/plan-review.md`
+1. `${CLAUDE_PLUGIN_ROOT}/skills/design/references/sketch-prompts.md`
+2. `${CLAUDE_PLUGIN_ROOT}/skills/design/references/sketch-launch.md`
+3. `${CLAUDE_PLUGIN_ROOT}/skills/design/references/dialectic-execution.md` only when contested decisions are present and at least one dialectic bucket is queued
+4. `${CLAUDE_PLUGIN_ROOT}/skills/design/references/plan-review.md`
 
-Also read the Step 3 external reviewer launch Bash blocks directly from `skills/design/SKILL.md` at the `### Cursor Archetype Reviewers (4 slots)` and `### Codex Archetype Reviewers (4 slots)` anchors. Those blocks intentionally stay inline in `SKILL.md` because `.github/workflows/ci.yaml` greps `skills/design/SKILL.md` for the focus-area enum (`code-quality / risk-integration / correctness / architecture / security`).
+(Use `${CLAUDE_PLUGIN_ROOT}/…` rather than bare repo-relative paths — the heavy subagent runs in the consumer repo's CWD, not the plugin install root, so unqualified paths could resolve to a different tree or to missing files.)
+
+Also read the Step 3 external reviewer launch Bash blocks directly from `${CLAUDE_PLUGIN_ROOT}/skills/design/SKILL.md` at the `### Cursor Archetype Reviewers (4 slots)` and `### Codex Archetype Reviewers (4 slots)` anchors. Those blocks intentionally stay inline in `SKILL.md` because `.github/workflows/ci.yaml` greps `skills/design/SKILL.md` for the focus-area enum (`code-quality / risk-integration / correctness / architecture / security`).
 
 ## Work
 
