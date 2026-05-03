@@ -319,7 +319,7 @@ ADOPTED=true
 Check for an existing PR on the current branch; if present, extract the first `Closes #<N>` line from its body:
 
 ```bash
-gh pr view --json body --jq '.body' 2>/dev/null | grep -oE 'Closes #[0-9]+' | head -1 | grep -oE '[0-9]+'
+${CLAUDE_PLUGIN_ROOT}/scripts/extract-closes-issue-from-pr.sh
 ```
 
 If a number emerges as `RECOVERED_N`: validate the target issue via `gh issue view "$RECOVERED_N" --json state,url` (same PR-vs-issue + CLOSED checks as Branch 2). If target is a PR URL or CLOSED, fall through to Branch 4. Else (OPEN issue): **adopt safely without clobbering any populated existing anchor** using the same paginated, multi-anchor-fail-closed `find-anchor` subcommand as Branch 2 — only the issue-number variable differs (`$RECOVERED_N` here vs `$ISSUE_ARG` in Branch 2):
