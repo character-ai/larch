@@ -173,7 +173,7 @@ run_case "case 11: leading-dot hidden file citation" 0 "$F11"
 # --- Case 12: Makefile extensionless citation passes ---
 F12="$TMPROOT/case12-makefile.txt"
 make_words 250 "$F12"
-echo 'See Makefile:14 for the test-harnesses target.' >> "$F12"
+echo 'See Makefile for the test-harnesses target.' >> "$F12"
 run_case "case 12: Makefile extensionless citation" 0 "$F12"
 
 # --- Case 13: empty fenced block (no content lines) does NOT count ---

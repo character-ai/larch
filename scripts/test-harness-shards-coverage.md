@@ -12,10 +12,11 @@ This sibling contract exists because `AGENTS.md` requires every script and test 
 - **Self-reference**: `test-harness-shards-coverage` is excluded from the individual-harness set comparison, but must appear as the first prerequisite of `test-harnesses-6:` so partition bugs surface before other shard-6 harnesses run.
 - **Single physical line**: each `test-harnesses-N:` rule must stay on one physical line with no `\` continuation. The parser reads those rules literally instead of folding Make continuations.
 - **Naming convention**: `test`-prefixed recipe targets use lowercase hyphenated names (`test-foo-bar:`). Targets like `test_foo:`, `testFoo:`, or `test-foo_bar:` (underscore after the first hyphen) fail loudly so they cannot escape the `test-*` inventory. The parser walks every `^test[^[:space:]:]*:` recipe line and validates each name against `^test-[a-z0-9-]+$`, so any deviation anywhere in the suffix is caught.
+- **`.PHONY` membership**: every shard-bound `test-*` recipe target must appear in some `.PHONY:` declaration. The script unions all `.PHONY:` lines (folding backslash continuations) and reports any individual-list target missing from that union. This catches the "added a recipe and shard membership but forgot `.PHONY`" failure mode.
 
 ## Carve-Outs
 
-The Makefile documents opt-in evaluation targets that are intentionally not part of `test-harnesses`: `test-eval-set-structure` and `test-eval-research-baseline-flag`. The script carries the same carve-out list explicitly. When adding another standalone carve-out, update both the Makefile comments near that target and this script's exclusion list in the same change.
+The Makefile documents opt-in evaluation targets that are intentionally not part of `test-harnesses`: `test-eval-set-structure` and `test-eval-research-baseline-flag`. The script carries the same carve-out list as a single source of truth in the `CARVE_OUTS` shell variable near the top of `scripts/test-harness-shards-coverage.sh`; both the inventory parser and the naming-violation scan consume that variable via the shared `is_carve_out()` awk function (`CARVE_OUT_FN`). When adding another standalone carve-out, update both the Makefile comments near that target and the `CARVE_OUTS` variable in the same change — there is no second list to keep in sync inside the script.
 
 ## Makefile Wiring
 
@@ -41,6 +42,7 @@ When adding a new harness target, add it to `.PHONY`, add its recipe, and assign
 - Self-reference not first: `test-harness-shards-coverage` placed second on shard-6.
 - Umbrella missing shard: `test-harnesses:` drops one of `test-harnesses-1..6`.
 - Umbrella extra shard: `test-harnesses:` lists an unexpected prerequisite.
+- Missing `.PHONY`: a shard-bound `test-*` target absent from every `.PHONY:` declaration.
 
 Negative cases assert both non-zero exit and a stable stderr substring.
 

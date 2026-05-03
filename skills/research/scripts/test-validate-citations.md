@@ -56,5 +56,6 @@ When this harness changes:
 ## Wiring
 
 `make lint` invokes this harness via the `test-validate-citations` target,
-which is a prerequisite of `test-harnesses`. The harness exits non-zero on
+which is a prerequisite of exactly one `test-harnesses-N:` shard (the umbrella
+`test-harnesses` aggregates all six shards). The harness exits non-zero on
 any assertion failure; CI fails the same way.

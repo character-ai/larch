@@ -2,7 +2,7 @@
 
 **Purpose**: structural regression harness pinning the intra-batch dependency decoupling from external CANDIDATES in `/issue` SKILL.md. Asserts that Step 4D/4E redirect to Step 5 when `N_NON_MALFORMED >= 2`, Step 5's gate admits the intra-batch-only path, fetch is conditionally skipped, empty-CANDIDATES verdict guidance exists, the no-external-refs validation rule and FETCH_STATUS scope narrowing are pinned, and the old unconditional short-circuit clause is absent.
 
-**Makefile wiring**: `make test-intra-batch-deps` (listed in both `.PHONY` and `test-harnesses`).
+**Makefile wiring**: `make test-intra-batch-deps` (listed in `.PHONY` and in exactly one `test-harnesses-N:` shard prerequisite list — the umbrella `test-harnesses` aggregates all six shards).
 
 **Assertions**:
 1. Step 4D/4E contains "If \`N_NON_MALFORMED >= 2\`, proceed to Step 5" — pins the redirect (appears in both the allocator exit-0 path and the zero-CAND-rows path).

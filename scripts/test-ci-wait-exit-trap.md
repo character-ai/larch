@@ -48,7 +48,7 @@ test-ci-wait-exit-trap:
 
 (Note: the snippet above uses spaces for markdown rendering; the actual `Makefile` rule MUST start with a tab character per Make syntax.)
 
-Listed in `Makefile`'s `.PHONY` declaration and in the `test-harnesses` target's dependency list. `make lint` runs the harness via the `lint: test-harnesses lint-only` chain.
+Listed in `Makefile`'s `.PHONY` declaration and in exactly one `test-harnesses-N:` shard prerequisite list. `make lint` runs the harness via the `lint: test-harnesses lint-only` chain (the umbrella `test-harnesses` aggregates all six shards).
 
 ## Edit-in-sync rules
 
