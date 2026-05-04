@@ -114,7 +114,7 @@ grep 'collect-agent-results.sh' "$PLAN_REVIEW_MD" \
 # Check 8: nested /implement design handoff must use the file-backed manifest
 # writer and heavy-worker contract, while standalone mode skips the manifest.
 [[ -f "$REPO_ROOT/skills/design/references/heavy-worker.md" ]] \
-  || fail "(8) heavy-worker.md missing — nested /design heavy phase has no subagent runbook"
+  || fail "(8) heavy-worker.md missing — subagent /design heavy phase has no subagent runbook"
 [[ -x "$REPO_ROOT/skills/design/scripts/write-design-manifest.sh" ]] \
   || fail "(8) write-design-manifest.sh missing or not executable"
 [[ -x "$REPO_ROOT/skills/design/scripts/read-design-manifest.sh" ]] \
@@ -138,5 +138,26 @@ if grep -rnE 'visible in conversation|retrieved from.*conversation' "$REPO_ROOT/
 $matches"
 fi
 
-echo "PASS: test-design-structure.sh — all 9 structural invariants hold"
+# Check 10: --subagent flag and the renamed Step 2a heavy-phase block (issue #1036).
+# (10a) flags.md must carry `--subagent` and `subagent_mode=true` on the same bullet.
+grep -F -- '--subagent' "$FLAGS_MD" \
+  | grep -Fq -- 'subagent_mode=true' \
+  || fail "(10a) flags.md must carry both '--subagent' and 'subagent_mode=true' on the same bullet (issue #1036)"
+# (10b) SKILL.md must contain the literal `--subagent` AND `subagent_mode=true`.
+grep -Fq -- '--subagent' "$SKILL_MD" \
+  || fail "(10b) SKILL.md missing '--subagent' literal (issue #1036)"
+grep -Fq -- 'subagent_mode=true' "$SKILL_MD" \
+  || fail "(10b) SKILL.md missing 'subagent_mode=true' literal (issue #1036)"
+# (10c) SKILL.md must carry the renamed heading `### Heavy phase dispatch` and the
+#       renamed paragraph token `Subagent heavy phase`, AND must NOT carry the old
+#       `Nested heavy phase` token.
+grep -Fq -- '### Heavy phase dispatch' "$SKILL_MD" \
+  || fail "(10c) SKILL.md missing '### Heavy phase dispatch' heading (issue #1036 — Step 2a heavy phase hoisted out of Quick mode)"
+grep -Fq -- 'Subagent heavy phase' "$SKILL_MD" \
+  || fail "(10c) SKILL.md missing 'Subagent heavy phase' renamed paragraph (issue #1036)"
+if grep -Fq -- 'Nested heavy phase' "$SKILL_MD"; then
+  fail "(10c) SKILL.md still contains legacy 'Nested heavy phase' token — should be renamed to 'Subagent heavy phase' (issue #1036)"
+fi
+
+echo "PASS: test-design-structure.sh — all 10 structural invariants hold"
 exit 0

@@ -1,7 +1,7 @@
 ---
 name: design
 description: "Use when designing any non-trivial feature, refactor, or architectural change — design, architecture, scope, approach validation. Sketch agents (8 regular, 2 quick) propose approaches; 8-reviewer panel validates via 3-voter dialectic."
-argument-hint: "[--auto] [--quick] [--session-env <path>] <feature description>"
+argument-hint: "[--auto] [--quick] [--subagent] [--session-env <path>] <feature description>"
 allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task, WebFetch, WebSearch
 ---
 
@@ -15,6 +15,7 @@ Design an implementation plan for a feature and review it with an 8-reviewer pan
 |------|---------|---------|---------------------|
 | `--auto` | `false` | Skip interactive question checkpoints (1c, 1d, 3.5) | No-op when `/implement --quick` skips `/design` entirely |
 | `--quick` | `false` | Quick sketch mode: 2 agents instead of 8 | Independent of `--auto`; see `flags.md` for `/implement --quick` vs `/design --quick` distinction |
+| `--subagent` | `false` | Run Step 2a heavy phase in an isolated Agent-tool subagent (`heavy-worker.md`); writes artifacts only to `$DESIGN_TMPDIR/` and returns terse status; standalone (`--session-env` empty) parents replay artifacts before cleanup | No-op when `--quick` is set; orthogonal to `--session-env` |
 | `--session-env <path>` | empty | Forward discovered session values to `session-setup.sh` | Empty = standalone invocation, full discovery |
 | `--step-prefix <prefix>` | empty | Nested-numbering prefix from `/implement` | `::` delimiter splits numeric prefix from breadcrumb path; `"1."` (bare numeric) is backward-compat |
 | `--branch-info <values>` | — | Skip redundant branch-state check when called from `/implement` | 4 keys required: `IS_MAIN`/`IS_USER_BRANCH`/`USER_PREFIX`/`CURRENT_BRANCH`; fallback on validation failure to `create-branch.sh --check` |
@@ -191,11 +192,21 @@ When all Cursor slots fall back to Claude, they still invoke the four distinct p
 1. **Cursor — Generic** — or **Claude (Generic)** fallback: a broad-scope sketch without personality specialization.
 2. **Codex — Generic** — or **Claude (Generic)** fallback: same generic prompt as Cursor-Generic.
 
+### Heavy phase dispatch (regular and quick mode)
+
 Print `> **🔶 2a: sketches**`.
 
-**Nested heavy phase**: If `SESSION_ENV_PATH` is non-empty, invoke a single Agent-tool subagent (subagent_type: `general-purpose`) for the heavy non-interactive phase before entering 2a.2. The subagent MUST read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/heavy-worker.md`, receive `DESIGN_TMPDIR`, `IMPLEMENT_TMPDIR`, `SESSION_ENV_PATH`, `FEATURE_DESCRIPTION`, `quick_mode`, `auto_mode`, branch info, and reviewer health flags as explicit data, and write raw artifacts to `$DESIGN_TMPDIR/`. The subagent returns only `DESIGN_HEAVY=complete` or `DESIGN_HEAVY=failed REASON=<short-token>`; it does not write the manifest and does not return plan/reviewer/tally prose. On `DESIGN_HEAVY=complete`, if `auto_mode=false` proceed directly to Step 3.5; if `auto_mode=true` proceed directly to Step 5 because the worker ran Step 3b and Step 4. On `DESIGN_HEAVY=failed`, print the warning (`**⚠ 2a: sketches — heavy worker subagent failed: $REASON. No design manifest will be exported. Parent /implement will see MANIFEST_FAILED at Step 1 and re-invoke /design.**`), proceed to Step 5 for cleanup/export checks, and do not run the inline heavy steps. **Recovery**: the parent `/implement` Step 1 reads the manifest after `/design` returns; on missing/failed manifest it sets `STALL_TRACKING=true` and bails to Step 18 cleanup. To retry transient subagent failures (network blip, model timeout), the operator re-runs the same `/implement` invocation — Step 0.5 sentinel idempotency reuses the already-created tracking issue, and `/design` runs fresh.
+**Subagent heavy phase**: If `subagent_mode=true` (i.e., `--subagent` was passed) AND `quick_mode=false`, invoke a single Agent-tool subagent (subagent_type: `general-purpose`) for the heavy non-interactive phase before entering 2a.2. The subagent MUST read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/heavy-worker.md`, receive `DESIGN_TMPDIR`, `IMPLEMENT_TMPDIR`, `SESSION_ENV_PATH`, `FEATURE_DESCRIPTION`, `quick_mode`, `auto_mode`, branch info, and reviewer health flags as explicit data, and write raw artifacts to `$DESIGN_TMPDIR/`. The subagent returns only `DESIGN_HEAVY=complete` or `DESIGN_HEAVY=failed REASON=<short-token>`; it does not write the manifest and does not return plan/reviewer/tally prose.
 
-If `SESSION_ENV_PATH` is empty, proceed to 2a.2 and run the standalone inline flow below.
+On `DESIGN_HEAVY=complete`:
+- **If `SESSION_ENV_PATH` is non-empty (nested under /implement)**: if `auto_mode=false` proceed directly to Step 3.5; if `auto_mode=true` proceed directly to Step 5 because the worker ran Step 3b and Step 4. (Parent /implement reads the manifest written at Step 5.)
+- **If `SESSION_ENV_PATH` is empty (standalone /design --subagent — NEW capability)**: read and print `$DESIGN_TMPDIR/plan.txt` under `## Implementation Plan`, `$DESIGN_TMPDIR/voting-tally.md` under `## Voting Tally and Reviewer Competition Scoreboard`, `$DESIGN_TMPDIR/accepted-plan-findings.md` under `## Plan Review Findings (Voted In)` (skip header if file is empty or missing), `$DESIGN_TMPDIR/oos.md` under `## Out-of-Scope Observations` (skip header if file is empty or missing), and — when `auto_mode=true` AND `$DESIGN_TMPDIR/architecture-diagram.md` exists and is non-empty — `$DESIGN_TMPDIR/architecture-diagram.md` under `## Architecture Diagram` with the mermaid fence (when `auto_mode=true` AND the file is missing/empty, print `**⚠ Architecture diagram unavailable (Step 3b generation failed in subagent).**` instead so the failure is visible). When `auto_mode=true`, also read `$DESIGN_TMPDIR/rejected-findings.md`: if non-empty, print it under `## Unimplemented Plan Review Suggestions`; if empty or missing, print `## Plan Review — All Suggestions Implemented` (matches Step 4's standalone output). Then if `auto_mode=false` proceed to Step 3.5 (Discussion Round 2 still runs interactively against the displayed artifacts); if `auto_mode=true` proceed to Step 5 (cleanup). This replay matches the inline standalone output that today's empty-`SESSION_ENV_PATH` path produces, so the user sees the deliverables that `cleanup-tmpdir.sh` would otherwise delete.
+
+On `DESIGN_HEAVY=failed`:
+- **If `SESSION_ENV_PATH` is non-empty (nested)**: print `**⚠ 2a: sketches — heavy worker subagent failed: $REASON. No design manifest will be exported. Parent /implement will see MANIFEST_FAILED at Step 1 and re-invoke /design.**`, proceed to Step 5 for cleanup/export checks (Step 5 sets `MANIFEST_EXPORT_OK=false`, skips `cleanup-tmpdir.sh`, preserves `$DESIGN_TMPDIR`), and do not run the inline heavy steps. **Recovery**: the parent `/implement` Step 1 reads the manifest after `/design` returns; on missing/failed manifest it sets `STALL_TRACKING=true` and bails to Step 18 cleanup. To retry transient subagent failures (network blip, model timeout), the operator re-runs the same `/implement` invocation — Step 0.5 sentinel idempotency reuses the already-created tracking issue, and `/design` runs fresh.
+- **If `SESSION_ENV_PATH` is empty (standalone)**: print `**⚠ 2a: sketches — heavy worker subagent failed: $REASON. Preserving $DESIGN_TMPDIR for inspection.**`, set the mental flag `STANDALONE_HEAVY_FAILED=true`, skip the inline heavy steps, and proceed to Step 5. Step 5 sees `STANDALONE_HEAVY_FAILED=true` and skips `cleanup-tmpdir.sh`, preserving `$DESIGN_TMPDIR` so the operator can inspect partial artifacts. (No parent /implement consumer; no manifest needed for standalone.)
+
+If `subagent_mode=false` (or `quick_mode=true`), proceed to 2a.2 and run the inline flow below. (`SESSION_ENV_PATH` continues to govern nested I/O semantics — verbosity suppression, manifest export, OOS routing — orthogonally to dispatch mode.)
 
 ### 2a.2 — Launch Sketches in Parallel
 
@@ -499,7 +510,7 @@ Parse `MANIFEST_WRITTEN=<path>` from stdout and set the mental flag `MANIFEST_EX
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/read-design-manifest.sh` — consumer-side reader/verifier invoked from `skills/implement/SKILL.md` Step 1 after `/design` returns. Producer/reader colocation under `skills/design/scripts/` is intentional (plan-review FINDING_12 vote: keep colocated, do not relocate to `skills/implement/scripts/`). Sibling contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/read-design-manifest.md`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-manifest.sh` — regression harness for both writer and reader (atomicity, missing-required-artifact rejection, KV grammar, source/eval injection rejection, path-traversal rejection, symlink rejection, control-character rejection, malformed-key rejection). Wired into `make lint` via the `test-design-manifest` Makefile target. Sibling contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-manifest.md`.
 
-Remove the session temp directory and all files within it (only when `MANIFEST_EXPORT_OK=true` — on `false`, skip per the gate above):
+Remove the session temp directory and all files within it. Run `cleanup-tmpdir.sh` only when `MANIFEST_EXPORT_OK=true` AND `STANDALONE_HEAVY_FAILED` is unset or `false`; otherwise skip cleanup so `$DESIGN_TMPDIR` is preserved for inspection. `STANDALONE_HEAVY_FAILED=true` is set by the Step 2a `Subagent heavy phase` failure branch when `SESSION_ENV_PATH` is empty (standalone `/design --subagent` failed); `MANIFEST_EXPORT_OK=false` is set by Step 5b's writer-invocation failure (nested `/implement` path):
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-tmpdir.sh --dir "$DESIGN_TMPDIR"
