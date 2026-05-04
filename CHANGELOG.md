@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.7.4] - 2026-05-04
+
+### Changed
+
+- Fix two agnix warnings surfaced in CI (CC-SK-012 in `.claude/skills/combine-issues/SKILL.md`, AS-010 in `skills/research/SKILL.md`) and promote agnix warnings to errors in every invocation mode: `.github/workflows/ci.yaml` agnix job now passes `strict: 'true'`, and `.pre-commit-config.yaml` invokes `agnix . --strict` (which `make agnix` inherits via pre-commit). `docs/linting.md` updated to surface the strict-mode behavior. Closes #1051.
+
 ## [15.7.3] - 2026-05-04
 
 ### Changed
