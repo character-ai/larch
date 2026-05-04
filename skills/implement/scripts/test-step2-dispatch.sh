@@ -4,14 +4,15 @@
 # Covers the dispatcher branches that do NOT require spawning an external implementer
 # (26 assertions; for the full per-test inventory see test-step2-dispatch.md):
 #   - --coder claude → STATUS=claude_fallback (no launcher run; no baseline-file leak).
+#   - default coder (no --coder flag) is codex.
 #   - Default coder (neither flag) → STATUS=claude_fallback.
 #   - Legacy --codex-available false → STATUS=claude_fallback + deprecation warning on stderr.
 #   - Missing required flag (--auto-mode) → exit 2.
 #   - Bad --coder enum value → exit 2 and names {claude,codex,cursor}.
-#   - --coder cursor with false/missing/empty health → STATUS=bailed REASON=cursor-unhealthy TOOL=cursor.
+#   - --coder cursor with false/missing/empty health → STATUS=claude_fallback (no baseline-file leak).
 #   - Bad --cursor-healthy enum value → exit 2.
 #   - --coder claude --cursor-healthy "" → STATUS=claude_fallback.
-#   - --coder cursor outside a git work-tree with false health → cursor-unhealthy before REPO_ROOT lookup.
+#   - --coder cursor outside a git work-tree with false health → claude_fallback before REPO_ROOT lookup.
 #   - --coder + --codex-available together → exit 2 (mutex).
 #   - Bad --codex-available enum value → exit 2.
 #   - Bad --tmpdir → exit 2.
@@ -70,15 +71,20 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Test 1b: default coder (neither flag set) → claude_fallback.
+# Test 1b: default coder (neither flag set) is codex. From a non-git cwd the
+# codex path fails the git-tree precondition and exits 2 — if the default
+# were still claude, the dispatcher would early-return STATUS=claude_fallback
+# from the git-free claude branch with exit 0.
 # ---------------------------------------------------------------------------
 TMP1B="$SCRATCH/test1b"; mkdir -p "$TMP1B"
-OUT=$("$DISPATCHER" --tmpdir "$TMP1B" --plan-file "$PLAN" --feature-file "$FEATURE" \
-    --auto-mode false 2>&1)
-if [[ "$OUT" == *"STATUS=claude_fallback"* ]]; then
+NON_GIT_1B="$SCRATCH/not-a-repo-default"; mkdir -p "$NON_GIT_1B"
+EXIT=0
+ERR=$(cd "$NON_GIT_1B" && "$DISPATCHER" --tmpdir "$TMP1B" --plan-file "$PLAN" --feature-file "$FEATURE" \
+    --auto-mode false 2>&1 >/dev/null) || EXIT=$?
+if [[ "$EXIT" == "2" ]] && [[ "$ERR" == *"must be invoked from within a git working tree"* ]]; then
     pass
 else
-    fail 1b "default coder should be claude_fallback, got: $OUT"
+    fail 1b "default coder should be codex (non-git cwd → git-tree exit 2), got exit=$EXIT err=$ERR"
 fi
 
 # ---------------------------------------------------------------------------
@@ -117,18 +123,18 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Test 3b: --coder cursor --cursor-healthy false → cursor-unhealthy.
+# Test 3b: --coder cursor --cursor-healthy false → claude_fallback.
 # ---------------------------------------------------------------------------
 TMP3B="$SCRATCH/test3b"; mkdir -p "$TMP3B"
 OUT=$(cd "$REPO_ROOT" && "$DISPATCHER" --tmpdir "$TMP3B" --plan-file "$PLAN" --feature-file "$FEATURE" \
     --auto-mode false --coder cursor --cursor-healthy false 2>&1)
-if [[ "$OUT" == $'STATUS=bailed\nREASON=cursor-unhealthy\nTOOL=cursor' ]]; then
+if [[ "$OUT" == "STATUS=claude_fallback" ]]; then
     pass
 else
-    fail 3b "--coder cursor with unhealthy gate should bail closed, got: $OUT"
+    fail 3b "--coder cursor with unhealthy gate should fall back to claude, got: $OUT"
 fi
 if [[ -f "$TMP3B/step2-baseline.txt" ]]; then
-    fail 3b "cursor-unhealthy branch leaked baseline file"
+    fail 3b "cursor unhealthy fallback branch leaked baseline file"
 else
     pass
 fi
@@ -139,10 +145,10 @@ fi
 TMP3B2="$SCRATCH/test3b2"; mkdir -p "$TMP3B2"
 OUT=$(cd "$REPO_ROOT" && "$DISPATCHER" --tmpdir "$TMP3B2" --plan-file "$PLAN" --feature-file "$FEATURE" \
     --auto-mode false --coder cursor 2>&1)
-if [[ "$OUT" == $'STATUS=bailed\nREASON=cursor-unhealthy\nTOOL=cursor' ]]; then
+if [[ "$OUT" == "STATUS=claude_fallback" ]]; then
     pass
 else
-    fail 3b2 "--coder cursor without health should bail closed, got: $OUT"
+    fail 3b2 "--coder cursor without health should fall back to claude, got: $OUT"
 fi
 
 # ---------------------------------------------------------------------------
@@ -151,10 +157,10 @@ fi
 TMP3B3="$SCRATCH/test3b3"; mkdir -p "$TMP3B3"
 OUT=$(cd "$REPO_ROOT" && "$DISPATCHER" --tmpdir "$TMP3B3" --plan-file "$PLAN" --feature-file "$FEATURE" \
     --auto-mode false --coder cursor --cursor-healthy "" 2>&1)
-if [[ "$OUT" == $'STATUS=bailed\nREASON=cursor-unhealthy\nTOOL=cursor' ]]; then
+if [[ "$OUT" == "STATUS=claude_fallback" ]]; then
     pass
 else
-    fail 3b3 "--coder cursor with empty health should bail closed, got: $OUT"
+    fail 3b3 "--coder cursor with empty health should fall back to claude, got: $OUT"
 fi
 
 # ---------------------------------------------------------------------------
@@ -183,16 +189,16 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Test 3b6: outside git tree, unhealthy Cursor bails before REPO_ROOT lookup.
+# Test 3b6: outside git tree, unhealthy Cursor falls back before REPO_ROOT lookup.
 # ---------------------------------------------------------------------------
 TMP3B6="$SCRATCH/test3b6"; mkdir -p "$TMP3B6"
 NON_GIT_CURSOR_DIR="$SCRATCH/not-a-repo-cursor"; mkdir -p "$NON_GIT_CURSOR_DIR"
 OUT=$(cd "$NON_GIT_CURSOR_DIR" && "$DISPATCHER" --tmpdir "$TMP3B6" --plan-file "$PLAN" --feature-file "$FEATURE" \
     --auto-mode false --coder cursor --cursor-healthy false 2>&1)
-if [[ "$OUT" == $'STATUS=bailed\nREASON=cursor-unhealthy\nTOOL=cursor' ]]; then
+if [[ "$OUT" == "STATUS=claude_fallback" ]]; then
     pass
 else
-    fail 3b6 "cursor-unhealthy should win before git-tree lookup, got: $OUT"
+    fail 3b6 "cursor unhealthy fallback should win before git-tree lookup, got: $OUT"
 fi
 
 # ---------------------------------------------------------------------------

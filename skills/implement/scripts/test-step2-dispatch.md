@@ -4,16 +4,16 @@
 
 **Coverage** (26 assertions):
 1. `--coder claude` emits `STATUS=claude_fallback` with no other KV keys, and writes no baseline files.
-1b. Default coder (no flag) emits `STATUS=claude_fallback`.
+1b. Default coder (no flag) is codex — verified via non-git cwd exit 2 with the git-tree message (the claude default would early-return `STATUS=claude_fallback` instead).
 1c. Legacy `--codex-available false` still emits `STATUS=claude_fallback` and prints a deprecation warning to stderr.
 2. Missing required flag (`--auto-mode`) exits with code 2.
 3. Bad `--coder` enum value exits with code 2 and names `{claude,codex,cursor}`.
-3b. `--coder cursor --cursor-healthy false` emits `STATUS=bailed REASON=cursor-unhealthy TOOL=cursor` with no baseline-file leak.
-3b2. `--coder cursor` with no `--cursor-healthy` defaults to false and emits `cursor-unhealthy`.
-3b3. `--coder cursor --cursor-healthy ""` treats empty as false and emits `cursor-unhealthy`.
+3b. `--coder cursor --cursor-healthy false` emits `STATUS=claude_fallback` with no baseline-file leak (cursor unhealthy → claude fallback).
+3b2. `--coder cursor` with no `--cursor-healthy` defaults to false and falls back to `STATUS=claude_fallback`.
+3b3. `--coder cursor --cursor-healthy ""` treats empty as false and falls back to `STATUS=claude_fallback`.
 3b4. `--coder cursor --cursor-healthy bogus` exits with code 2.
 3b5. `--coder claude --cursor-healthy ""` remains `STATUS=claude_fallback`; the Claude path ignores Cursor health noise.
-3b6. Outside a git work-tree, `--coder cursor --cursor-healthy false` emits `cursor-unhealthy` before `REPO_ROOT` lookup.
+3b6. Outside a git work-tree, `--coder cursor --cursor-healthy false` emits `STATUS=claude_fallback` before `REPO_ROOT` lookup.
 3c. `--coder` and `--codex-available` together exit with code 2 and stderr says `mutually exclusive`.
 3d. Bad `--codex-available` enum value exits with code 2.
 4. Bad `--tmpdir` (not a directory) exits with code 2.
@@ -38,7 +38,7 @@ All `--coder codex` invocations that proceed past argument parsing are run with 
 
 **Invariants**:
 - Tests run against the live dispatcher in the repo, not a copy.
-- Cursor unhealthy bails do not write baseline files and include `TOOL=cursor`.
+- Cursor unhealthy fallback emits `STATUS=claude_fallback` and does not write baseline files.
 - The Claude fallback branch short-circuits before plugin / git resolution and ignores empty Cursor health input.
 - Scratch directory is created via `mktemp -d` and removed via `trap` on exit.
 
