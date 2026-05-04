@@ -5,6 +5,14 @@ on:
   pull_request:
     branches:
       - main
+  # Run on push to main so the pre-commit hook-env cache (and pip cache)
+  # populate under the default-branch scope. PRs from feature branches
+  # can read default-branch caches but cannot read each other's, so
+  # without this trigger every fresh PR pays the ~1m 40s cold-install
+  # cost on the lint job. Issue #1034.
+  push:
+    branches:
+      - main
 
 permissions:
   contents: read
@@ -23,6 +31,7 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+          cache: pip
       - uses: actions/cache@v5
         with:
           path: ~/.cache/pre-commit
@@ -32,6 +41,15 @@ jobs:
       - name: Install pre-commit and PyYAML
         run: pip install pre-commit==4.2.0 pyyaml==6.0.2
       - name: Run pre-commit linters
+        # SKIP duplicates of dedicated CI jobs: the `agnix` job below runs
+        # the same agnix lint, and the `gitleaks` job below runs gitleaks
+        # over git history (which on a PR includes the tip's working
+        # tree). The pre-commit `agnix` and `gitleaks` hooks remain
+        # active for local `pre-commit run` and the dev git-hook —
+        # only CI skips them. If either dedicated job is removed, drop
+        # its ID from SKIP to restore CI coverage. Issue #1034.
+        env:
+          SKIP: agnix,gitleaks
         run: make lint-only
 
   # Regression harness shards (the `test-*` bash scripts in Makefile). Runs
