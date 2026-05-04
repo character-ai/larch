@@ -5,14 +5,28 @@ on:
   pull_request:
     branches:
       - main
+  # Run the full workflow on push to main so the pre-commit hook-env
+  # cache populates under the default-branch scope. PRs from feature
+  # branches can read default-branch caches but cannot read each
+  # other's, so without this trigger every fresh PR pays the
+  # ~1m 40s cold-install cost on the lint job. The cost of running
+  # all jobs on each merge to main is accepted as a side effect.
+  # Issue #1034.
+  push:
+    branches:
+      - main
 
 permissions:
   contents: read
 
 jobs:
   # Linters only: pre-commit over all files (shellcheck, markdownlint,
-  # jsonlint, actionlint, agent-lint, agnix, lint-skill-invocations,
-  # gitleaks). Test harnesses run in the separate `test-harnesses` job
+  # jsonlint, actionlint, agent-lint, lint-skill-invocations, gitleaks).
+  # The `agnix` pre-commit hook is SKIPped here because the dedicated
+  # `agnix` job below covers it; gitleaks remains because pre-commit's
+  # `--no-git` working-tree scan is documented in SECURITY.md as
+  # complementary to the dedicated `gitleaks` job's history scan, not
+  # redundant. Test harnesses run in the separate `test-harnesses` job
   # below so harness failures and linter failures can be re-run
   # independently.
   lint:
@@ -32,6 +46,16 @@ jobs:
       - name: Install pre-commit and PyYAML
         run: pip install pre-commit==4.2.0 pyyaml==6.0.2
       - name: Run pre-commit linters
+        # SKIP the `agnix` hook because the dedicated `agnix` CI job
+        # below runs the same lint. The pre-commit hook remains active
+        # for local `pre-commit run` and the dev git-hook — only CI
+        # skips it. If the dedicated `agnix` job is removed, drop
+        # `agnix` from SKIP to restore CI coverage. `gitleaks` is NOT
+        # skipped: its `--no-git` working-tree scan is documented in
+        # SECURITY.md as complementary to the dedicated `gitleaks`
+        # job's history scan. Issue #1034.
+        env:
+          SKIP: agnix
         run: make lint-only
 
   # Regression harness shards (the `test-*` bash scripts in Makefile). Runs
