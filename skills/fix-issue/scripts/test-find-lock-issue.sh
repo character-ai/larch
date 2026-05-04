@@ -3,7 +3,7 @@
 #
 # Hermetic offline test using a PATH-prepended `gh` stub. Validates the
 # combined Find + Lock + Rename pipeline introduced by the fold-find-and-lock
-# refactor (closes #496). Twelve executed fixtures plus one deferred-coverage
+# refactor (closes #496). Thirteen executed fixtures plus one deferred-coverage
 # note cover the script's exit-code matrix and stdout contract:
 #   1. eligible + lock OK + rename OK  → exit 0; LOCK_ACQUIRED=true RENAMED=true
 #   2. eligible + lock fail → exit 3; LOCK_ACQUIRED=false
@@ -46,6 +46,9 @@
 #      returns non-zero) → exit 2; ELIGIBLE=false with detect-failure
 #      error. Confirms detect failures are fatal in explicit-target mode
 #      instead of silently falling through to the ordinary-issue path.
+#  14. auto-pick skips archival-prefixed titles while preserving substring
+#      non-collisions (`Researches`, `Investigation`) → exit 0;
+#      ISSUE_NUMBER=106.
 #
 # Stub gh dispatches on positional + json args. Each fixture writes a stub
 # state file under a per-fixture tmpdir; the stub reads the file to decide
@@ -858,6 +861,52 @@ assert_contains "$OUT" "ELIGIBLE=false" "[13] ELIGIBLE=false on stdout"
 assert_contains "$OUT" "ERROR=umbrella-handler.sh detect failed" "[13] ERROR mentions detect failure"
 assert_contains "$OUT" "#300" "[13] ERROR mentions issue number"
 assert_not_contains "$OUT" "LOCK_ACQUIRED=" "[13] LOCK_ACQUIRED= absent (lock never attempted)"
+
+# ---------------------------------------------------------------------------
+# Fixture 14: auto-pick skips archival-prefixed titles but does not treat
+# substring-prefix collisions as archival. The first five candidates carry the
+# exact archival prefixes and must be skipped before comment fetch. Candidate
+# #105 starts with "Researches" and must NOT get the archival-skip diagnostic;
+# its last comment is IN PROGRESS, so the loop continues. Candidate #106 starts
+# with "Investigation" and must be picked.
+# ---------------------------------------------------------------------------
+echo "Fixture 14: auto-pick skips archival prefixes without substring collisions"
+run_fixture "fixture-14"
+{
+    echo "ISSUE_STATE=OPEN"
+    OPEN_ISSUES_LINES='{"number":100,"title":"Research old duplicate report"}
+{"number":101,"title":"[Research] archived finding"}
+{"number":102,"title":"Investigate flaky hook"}
+{"number":103,"title":"[Investigate] old branch cleanup"}
+{"number":104,"title":"[Research Report] queue audit"}
+{"number":105,"title":"Researches went for a walk"}
+{"number":106,"title":"Investigation of slow query"}'
+    printf "OPEN_ISSUES_JSON='%s'\n" "$OPEN_ISSUES_LINES"
+    echo "ISSUE_105_COMMENTS='$(make_comments_json IN_PROGRESS)'"
+    echo "ISSUE_106_TITLE='Investigation of slow query'"
+    echo "ISSUE_106_COMMENTS='$(make_comments_json GO)'"
+    echo "RENAME_FAIL=false"
+} > "$STUB_STATE_FILE"
+
+OUT_FILE="$TMPROOT/fixture-14/stdout.txt"
+ERR_FILE="$TMPROOT/fixture-14/stderr.txt"
+EXIT_CODE=0
+"$SCRIPT" >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
+
+OUT=$(cat "$OUT_FILE")
+ERR=$(cat "$ERR_FILE")
+
+assert_equal "$EXIT_CODE" "0" "[14] exit code 0 (non-archival collision candidate picked)"
+assert_contains "$OUT" "ELIGIBLE=true" "[14] ELIGIBLE=true on stdout"
+assert_contains "$OUT" "ISSUE_NUMBER=106" "[14] ISSUE_NUMBER=106 (Investigation is not archival)"
+assert_contains "$OUT" "LOCK_ACQUIRED=true" "[14] LOCK_ACQUIRED=true"
+assert_contains "$ERR" "Skipping issue #100: archival title prefix" "[14] bare Research prefix skipped"
+assert_contains "$ERR" "Skipping issue #101: archival title prefix" "[14] bracketed Research prefix skipped"
+assert_contains "$ERR" "Skipping issue #102: archival title prefix" "[14] bare Investigate prefix skipped"
+assert_contains "$ERR" "Skipping issue #103: archival title prefix" "[14] bracketed Investigate prefix skipped"
+assert_contains "$ERR" "Skipping issue #104: archival title prefix" "[14] Research Report prefix skipped"
+assert_not_contains "$ERR" "Skipping issue #105: archival title prefix" "[14] Researches collision is not archival-skipped"
+assert_not_contains "$ERR" "Skipping issue #106: archival title prefix" "[14] Investigation collision is not archival-skipped"
 
 # ---------------------------------------------------------------------------
 # Summary
