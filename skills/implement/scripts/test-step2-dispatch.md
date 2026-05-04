@@ -2,7 +2,7 @@
 
 **Purpose**: Offline regression harness for `skills/implement/scripts/step2-implement.sh` covering the dispatcher branches that do not require spawning an external implementer. Runs in <1s with no `codex`/`cursor` binary and no network.
 
-**Coverage** (22 assertions):
+**Coverage** (26 assertions):
 1. `--coder claude` emits `STATUS=claude_fallback` with no other KV keys, and writes no baseline files.
 1b. Default coder (no flag) emits `STATUS=claude_fallback`.
 1c. Legacy `--codex-available false` still emits `STATUS=claude_fallback` and prints a deprecation warning to stderr.
@@ -23,6 +23,8 @@
 7. Corrupt resume counter (non-numeric) emits `STATUS=bailed REASON=manifest-schema-invalid`.
 8. `--coder codex` invoked with cwd outside any git working tree exits with code 2 and stderr containing `must be invoked from within a git working tree`.
 8b. The non-git-tree Codex exit-2 path does not leak a baseline file into `$TMPDIR_ARG`.
+9. First Codex invocation (reusing the resume-cap setup that bails on `qa-loop-exceeded`) writes `step2-spawn-coder.txt` with content `codex` BEFORE the resume-counter logic runs — pins the cross-coder guard's "first writer" behavior.
+10. Second invocation against a tmpdir whose `step2-spawn-coder.txt` recorded a different coder (`codex` pre-seeded; invocation passes `--coder=cursor --cursor-healthy true`) emits `STATUS=bailed REASON=coder-mismatch-tmpdir-reuse TOOL=cursor`. The pre-seeded sentinel value MUST be unchanged on bail, and the `cursor-resume-count.txt` MUST NOT have been written — pins the cross-coder guard's "fail before any per-tool state mutation" ordering.
 
 All `--coder codex` invocations that proceed past argument parsing are run with cwd pinned to `$REPO_ROOT` so the dispatcher's git resolution targets the harness's own git tree. Cursor health-gate tests also use `cd "$REPO_ROOT"` unless the assertion specifically covers outside-git ordering.
 

@@ -2,7 +2,7 @@
 # test-step2-dispatch.sh — Offline harness for skills/implement/scripts/step2-implement.sh.
 #
 # Covers the dispatcher branches that do NOT require spawning an external implementer
-# (22 assertions; for the full per-test inventory see test-step2-dispatch.md):
+# (26 assertions; for the full per-test inventory see test-step2-dispatch.md):
 #   - --coder claude → STATUS=claude_fallback (no launcher run; no baseline-file leak).
 #   - Default coder (neither flag) → STATUS=claude_fallback.
 #   - Legacy --codex-available false → STATUS=claude_fallback + deprecation warning on stderr.
@@ -19,6 +19,9 @@
 #   - --answers but file does not exist → exit 2.
 #   - Corrupt resume counter → STATUS=bailed REASON=manifest-schema-invalid.
 #   - --coder codex outside a git working tree → exit 2 (no baseline-file leak).
+#   - First codex invocation writes step2-spawn-coder.txt with the resolved coder.
+#   - Second invocation against same tmpdir with mismatched --coder → STATUS=bailed
+#     REASON=coder-mismatch-tmpdir-reuse TOOL=<current-tool>.
 #
 # External-implementer spawning paths (manifest validation, dispatcher-side commit,
 # sanitization, launcher-retry) are covered by separate launcher / end-to-end tests;
@@ -299,6 +302,68 @@ fi
 # A failed pre-spawn validation MUST NOT have written baseline files.
 if [[ -f "$TMP8/step2-baseline.txt" ]]; then
     fail 8 "non-git cwd exit-2 leaked baseline file"
+else
+    pass
+fi
+
+# ---------------------------------------------------------------------------
+# Test 9: first codex invocation writes step2-spawn-coder.txt. Reuse the
+# Test 5 setup (pre-seeded baselines + resume counter at 5) so the dispatcher
+# bails on qa-loop-exceeded AFTER the cross-coder guard records the coder.
+# Asserts the sentinel file exists with content "codex".
+# ---------------------------------------------------------------------------
+TMP9="$SCRATCH/test9"; mkdir -p "$TMP9"
+git -C "$REPO_ROOT" rev-parse HEAD > "$TMP9/step2-baseline.txt"
+git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD > "$TMP9/step2-spawn-branch.txt"
+if [[ -f "$REPO_ROOT/.claude-plugin/plugin.json" ]]; then
+    git -C "$REPO_ROOT" hash-object "$REPO_ROOT/.claude-plugin/plugin.json" > "$TMP9/step2-plugin-json-baseline.txt"
+else
+    printf '\n' > "$TMP9/step2-plugin-json-baseline.txt"
+fi
+echo "5" > "$TMP9/codex-resume-count.txt"
+OUT=$(cd "$REPO_ROOT" && "$DISPATCHER" --tmpdir "$TMP9" --plan-file "$PLAN" --feature-file "$FEATURE" \
+    --auto-mode false --coder codex --answers "$ANSWERS" 2>&1)
+if [[ -f "$TMP9/step2-spawn-coder.txt" ]] && [[ "$(cat "$TMP9/step2-spawn-coder.txt")" == "codex" ]]; then
+    pass
+else
+    fail 9 "first codex invocation should write step2-spawn-coder.txt=codex, got: $(cat "$TMP9/step2-spawn-coder.txt" 2>/dev/null || echo MISSING)"
+fi
+
+# ---------------------------------------------------------------------------
+# Test 10: second invocation against a tmpdir that recorded a different coder
+# bails with coder-mismatch-tmpdir-reuse before touching shared baselines or
+# resume counters. Pre-seed sentinel=codex + baselines, then invoke with
+# --coder=cursor --cursor-healthy true so the cursor health gate passes and
+# the cross-coder guard is the first state mutation reached.
+# ---------------------------------------------------------------------------
+TMP10="$SCRATCH/test10"; mkdir -p "$TMP10"
+git -C "$REPO_ROOT" rev-parse HEAD > "$TMP10/step2-baseline.txt"
+git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD > "$TMP10/step2-spawn-branch.txt"
+if [[ -f "$REPO_ROOT/.claude-plugin/plugin.json" ]]; then
+    git -C "$REPO_ROOT" hash-object "$REPO_ROOT/.claude-plugin/plugin.json" > "$TMP10/step2-plugin-json-baseline.txt"
+else
+    printf '\n' > "$TMP10/step2-plugin-json-baseline.txt"
+fi
+echo "codex" > "$TMP10/step2-spawn-coder.txt"
+OUT=$(cd "$REPO_ROOT" && "$DISPATCHER" --tmpdir "$TMP10" --plan-file "$PLAN" --feature-file "$FEATURE" \
+    --auto-mode false --coder cursor --cursor-healthy true 2>&1)
+if [[ "$OUT" == *"STATUS=bailed"* ]] \
+   && [[ "$OUT" == *"REASON=coder-mismatch-tmpdir-reuse"* ]] \
+   && [[ "$OUT" == *"TOOL=cursor"* ]]; then
+    pass
+else
+    fail 10 "cross-coder reuse should bail with coder-mismatch-tmpdir-reuse TOOL=cursor, got: $OUT"
+fi
+# Sentinel content must be unchanged (still codex) — guard must not overwrite.
+if [[ "$(cat "$TMP10/step2-spawn-coder.txt")" == "codex" ]]; then
+    pass
+else
+    fail 10 "sentinel file overwritten on mismatch path: $(cat "$TMP10/step2-spawn-coder.txt")"
+fi
+# The cursor-resume-count.txt must NOT have been written — the guard runs
+# before the resume-counter logic.
+if [[ -f "$TMP10/cursor-resume-count.txt" ]]; then
+    fail 10 "coder-mismatch path leaked cursor-resume-count.txt"
 else
     pass
 fi
