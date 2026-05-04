@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.7.7] - 2026-05-04
+
+### Fixed
+
+- `skills/implement/scripts/test-step2-dispatch.sh` header comment no longer claims the default-coder path produces `STATUS=claude_fallback`. The bullet now correctly describes the default Codex outside-git → exit 2 behavior, matching Test 1b and the sibling contract doc. Closes #1067.
+
 ## [15.7.6] - 2026-05-04
 
 ### Changed
