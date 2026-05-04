@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.7.13] - 2026-05-04
+
+### Changed
+
+- Update repo references from `zhupanov/larch` to `character-ai/larch` following the GitHub ownership transfer to the `character-ai` org. Touches `.claude-plugin/plugin.json` (`repository` and `homepage` URLs), `docs/installation-and-setup.md` (the `claude plugin marketplace add` install command and the `git clone` URL), `docs/configuration-and-permissions.md` (three historical issue links — #586, #566, #585), and the `/upgrade-larch` skill (`skills/upgrade-larch/SKILL.md`, `skills/upgrade-larch/scripts/upgrade-larch.sh`, `skills/upgrade-larch/scripts/upgrade-larch.md`). Historical CHANGELOG entries, the author email (`zhupanov@yahoo.com`), references to the separate `zhupanov/agent-lint` and `zhupanov/claude-lint` repos (not part of this transfer), and machine-local `/Users/zhupanov/larch1` paths in CHANGELOG history are intentionally left untouched.
+
 ## [15.7.12] - 2026-05-04
 
 ### Changed
