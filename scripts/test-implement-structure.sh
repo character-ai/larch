@@ -1,6 +1,6 @@
 #!/bin/bash
 # Structural regression test for /implement SKILL.md + references/ topology (closes #234).
-# Asserts 20 live load-bearing invariants (assertion 5 retired) across skills/implement/SKILL.md and the six
+# Asserts 21 live load-bearing invariants (assertion 5 retired) across skills/implement/SKILL.md and the six
 # reference docs extracted from it. Complements scripts/test-implement-rebase-macro.sh,
 # which owns the Rebase Checkpoint Macro mechanics; this harness owns top-level section
 # headings, the MANDATORY ↔ reference-file binding, the focus-area CI-parity check,
@@ -16,10 +16,12 @@
 # peer-harness assertions (A) and (D) respectively — accepted duplication per design-
 # phase sketch consensus.
 #
-# Twenty assertions (assertion 18 added for Protocol Execution Directive pin;
-# assertion 19 added for the Step 2 external implementer dispatcher pin; assertion 20 added for
-# the design-manifest + --design-only path pin). Assertion 5 is retired, so the
-# numbered list runs 1–4, 6–20 (20 live assertions, 21 reserved numbers).
+# Twenty-one assertions (assertion 18 added for Protocol Execution Directive
+# pin; assertion 19 added for the Step 2 external implementer dispatcher pin;
+# assertion 20 added for the design-manifest + --design-only path pin;
+# assertion 21 added for the --inline / --subagent forwarding pin, issue #1036).
+# Assertion 5 is retired, so the numbered list runs 1–4, 6–21 (21 live
+# assertions, 22 reserved numbers).
 #  (1) Exactly 1 `^## Load-Bearing Invariants$` heading in skills/implement/SKILL.md.
 #  (2) Exactly 1 `^## NEVER List$` heading.
 #  (3) Exactly 1 `^## Rebase Checkpoint Macro$` heading.
