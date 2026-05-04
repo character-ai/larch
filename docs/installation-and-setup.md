@@ -10,7 +10,7 @@ Slack integration is optional and **on by default** when `LARCH_SLACK_BOT_TOKEN`
 
 #### Install
 ```bash
-claude plugin marketplace add zhupanov/larch
+claude plugin marketplace add character-ai/larch
 claude plugin install larch@larch-local
 ```
 The first command registers larch's marketplace manifest (`.claude-plugin/marketplace.json`). The second command installs the `larch` plugin into your Claude Code user scope. Once installed, all larch skills (e.g., /implement) become available in every Claude Code session.  Note that both commands make changes to your `~/.claude/settings.json`.
@@ -42,7 +42,7 @@ After the skill completes, restart Claude Code to apply the new version.
 If you are hacking on larch itself and want Claude Code to load the plugin directly from your working checkout (so `${CLAUDE_PLUGIN_ROOT}` resolves to the repo you are editing), launch Claude Code with `--plugin-dir`:
 
 ```bash
-git clone https://github.com/zhupanov/larch.git
+git clone https://github.com/character-ai/larch.git
 cd larch
 claude --plugin-dir .
 ```
