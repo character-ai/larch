@@ -504,6 +504,16 @@ Proceed to Step 2.
 
 > **Continue after child returns.** When the child Skill returns, execute the NEXT step — do NOT end the turn, and do NOT write a summary, handoff, or "returning to parent" message. See `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Anti-halt continuation reminder. (Branch-specific: applies only to the `/design` invocation in normal mode.)
 
+**Both-externals-down inline-plan branch**: if `codex_available=false AND cursor_available=false`, do NOT invoke `/design`. The full `/design` pipeline expands to 8 Claude-subagent sketches + 8 Claude-subagent reviewers + judge panels — token-expensive and architecturally brittle when no external can produce independent perspectives anyway. Take the same inline-plan path as quick mode instead, then proceed to Step 2:
+
+1. Print `**⚠ 1: design plan — both Codex and Cursor unavailable; skipping /design and producing inline plan in main agent.**`.
+2. Replicate the quick-mode branch handling (`IS_MAIN=true` → derive a kebab-case branch and create via `${CLAUDE_PLUGIN_ROOT}/scripts/create-branch.sh --branch <USER_PREFIX>/<branch-name>`; `IS_USER_BRANCH=true` → verify alignment, reuse or create; otherwise → warn and create).
+3. Research the codebase (Read / Grep / Glob), produce an inline implementation plan (files to modify, approach, edge cases, testing strategy / concrete verification, failure modes for non-trivial changes). Print under `## Implementation Plan`. Print: `⚡ 1: design plan — both-externals-down, inline plan`.
+4. `mkdir -p "$IMPLEMENT_TMPDIR/design-export"`, write the plan to `$IMPLEMENT_TMPDIR/design-export/plan.txt`, set `PLAN_FILE` to that path. Write `$IMPLEMENT_TMPDIR/design-export/voting-tally.md` containing `Both externals unavailable — no plan review voting.` and set `PLAN_REVIEW_TALLY_FILE` to that path so the `plan-review-tally` anchor fragment composer has a file-backed source.
+5. Skip the manifest read/write and the Step 1.r rebase macro fall-through is unchanged — proceed to the in-step "Capture branch name" + anchor-section fragments + Step 1.r block below as in the normal flow.
+
+Otherwise (at least one of `codex_available` / `cursor_available` is `true`), proceed with the standard /design path:
+
 Before invoking `/design`, check for a reusable design manifest:
 
 ```bash
