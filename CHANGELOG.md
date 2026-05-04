@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.7.8] - 2026-05-04
+
+### Changed
+
+- `/fix-issue` Step 4 classify breadcrumb refines the highlighting: only `$COMPLEXITY` is wrapped in 🟨 yellow-square markers (now with a space on each side of the bold value so the value isn't visually squeezed by the marker glyphs), while `$INTENT` keeps its bold but loses the surrounding 🟨 wrapping. New format: `✅ 4: classify — INTENT=**$INTENT** [COMPLEXITY=🟨 **$COMPLEXITY** 🟨] (<elapsed>)`. `skills/fix-issue/SKILL.md:193` and the matching contract paragraph in `skills/fix-issue/references/triage-classification.md:5` updated together. Closes #1068.
+
 ## [15.7.7] - 2026-05-04
 
 ### Fixed
