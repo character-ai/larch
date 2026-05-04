@@ -357,6 +357,18 @@ exclude = [
   # scripts/launch-codex-implement.md (sibling contract) and
   # skills/implement/scripts/step2-implement.md (mentions launcher path).
   "scripts/launch-codex-implement.sh",
+  # scripts/pre-commit-shellcheck.sh is the parallel shellcheck wrapper invoked
+  # by the local `shellcheck` pre-commit hook in `.pre-commit-config.yaml`
+  # (`entry: scripts/pre-commit-shellcheck.sh`). It replaced the upstream
+  # shellcheck-py hook to drop CI shellcheck wall-clock from ~21s to ~6s on
+  # 4-core runners. agent-lint's G004/dead-script rule scans SKILL.md /
+  # CLAUDE.md / hooks.json / settings.json for invocation refs and does NOT
+  # follow `.pre-commit-config.yaml` entries. Same pattern as other
+  # pre-commit-only scripts (e.g., scripts/lint-skill-invocations.py would be
+  # flagged for the same reason if .py files were in scope). Sibling contract:
+  # scripts/pre-commit-shellcheck.md.
+  "scripts/pre-commit-shellcheck.sh",
+  "scripts/pre-commit-shellcheck.md",
   "scripts/test-sessionstart-health.sh",
   "scripts/audit-edit-write.sh",
   "scripts/test-audit-edit-write.sh",
