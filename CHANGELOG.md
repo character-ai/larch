@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.6.0] - 2026-05-04
+
+### Added
+
+- `/design`: new `--subagent` flag. When `subagent_mode=true` AND `quick_mode=false`, Step 2a's heavy non-interactive phase (sketches → plan synthesis → plan review → optional Step 3b/4) runs in an isolated Agent-tool subagent that consumes `skills/design/references/heavy-worker.md`; otherwise the heavy phase runs inline in the executing agent. Standalone `/design --subagent` is a new capability — on `DESIGN_HEAVY=complete` the parent replays plan / voting tally / accepted findings / OOS / (auto-mode) architecture diagram inline before Step 5 cleanup so artifacts are not lost when `cleanup-tmpdir.sh` removes `$DESIGN_TMPDIR`. `STANDALONE_HEAVY_FAILED` gates Step 5b cleanup so a failed standalone subagent run preserves `$DESIGN_TMPDIR`. The dispatch decision is now keyed on `--subagent` instead of `SESSION_ENV_PATH` non-empty (the I/O contract — verbosity suppression, manifest export, OOS routing — remains gated on `SESSION_ENV_PATH`).
+- `/implement`: new `--inline` flag. Default (`inline_mode=false`) forwards `--subagent` to `/design`, preserving today's token-saving nested behavior. `--inline` (`inline_mode=true`) omits `--subagent`, so `/design`'s heavy phase runs in `/design`'s in-turn context (richer tool transcript, higher token cost). Execution-topology only — parent verbosity suppression remains gated on `SESSION_ENV_PATH`. Migration note: callers other than `/implement` that previously relied on `--session-env` alone for subagent dispatch must now pass `--subagent` explicitly. Closes #1036.
+
 ## [15.5.0] - 2026-05-04
 
 ### Changed
