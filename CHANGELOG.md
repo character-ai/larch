@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.7.9] - 2026-05-04
+
+### Changed
+
+- Step 9a.1 OOS pipeline procedure in `skills/implement/references/anchor-comment-template.md` now requires the `/issue` batch invocation to forward `--title-prefix "[OOS]"` and forbids passing any `--label` flag. Auto-filed OOS issues consistently get the `[OOS]` title prefix without manual retitling, and consumer repos no longer see per-invocation stderr warnings from the `/issue` label-existence probe. A new structural assertion (9d) in `scripts/test-implement-structure.sh` pins the contract. Closes #1065.
+
 ## [15.7.8] - 2026-05-04
 
 ### Changed
