@@ -11,30 +11,29 @@ lint: test-harnesses lint-only
 lint-only:
 	pre-commit run --all-files
 
-# Six balanced regression-harness shards (LPT bin-packing on measured per-harness
-# timings captured 2026-05-03; see docs/linting.md "Refreshing harness shard
-# balance" for the manual procedure used to regenerate these lists when
-# imbalance grows). Total measured runtime: 91.11s across 66 legacy harnesses +
-# 1 partition guard. The 18.34s test-validate-citations on shard-1 is the
-# wall-clock floor. IMPORTANT: each test-harnesses-N rule below stays on a
-# single physical line (no `\` continuations); the drift-detection script
-# `scripts/test-harness-shards-coverage.sh` parses these lines literally. New
-# harnesses get appended to one shard line.
+# Six balanced regression-harness shards. Lists are manually adjusted from
+# observed CI timings; see docs/linting.md "Refreshing harness shard balance"
+# for the procedure used to regenerate these lists when imbalance grows. The
+# test-validate-citations harness is the wall-clock floor, so it runs by itself
+# except for shard-6's partition guard. IMPORTANT: each test-harnesses-N rule
+# below stays on a single physical line (no `\` continuations); the
+# drift-detection script `scripts/test-harness-shards-coverage.sh`
+# parses these lines literally. New harnesses get appended to one shard line.
 test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 test-harnesses-6
 
-test-harnesses-1: test-validate-citations
+test-harnesses-1: test-umbrella-handler test-issue-lifecycle test-finalize-umbrella test-add-blocked-by test-design-manifest test-umbrella-render-batch-input test-run-research-planner test-deny-edit-write test-render-lane-status test-research-structure test-implement-rebase-macro test-alias-structure test-fix-issue-bail-detection test-synthesis-subagent test-find-lock-issue test-render-specialist-prompt
 
-test-harnesses-2: test-find-lock-issue test-render-specialist-prompt test-alias-target-resolution test-umbrella-emit-output-contract test-review-structure test-research-banner test-post-scaffold-hints test-body-file-title test-cursor-implementer
+test-harnesses-2: test-research-banner test-post-scaffold-hints test-body-file-title test-cursor-implementer test-drop-bump-commit test-check-bump-version test-lint-skill-invocations test-ci-wait-exit-trap
 
-test-harnesses-3: test-umbrella-handler test-issue-lifecycle test-finalize-umbrella test-add-blocked-by test-design-manifest test-umbrella-render-batch-input test-run-research-planner test-deny-edit-write test-render-lane-status test-research-structure test-implement-rebase-macro test-alias-structure test-fix-issue-bail-detection test-synthesis-subagent
+test-harnesses-3: test-tracking-issue-write test-allocate-candidates test-block-submodule test-redact test-validate-research-output test-prepare-description test-assemble-anchor test-tracking-issue-read-sentinel test-token-tally test-collect-agent-bash32 test-sentinel-write test-design-structure test-fix-issue-step-order test-orchestrator-scope-sync test-intra-batch-deps test-review-structure
 
-test-harnesses-4: test-umbrella-helpers test-render-findings-batch test-verify-skill-called test-check-review-changes test-parse-prose-blockers test-umbrella-parse-args test-render-umbrella-body test-references-headers test-implement-structure test-implement-post-design-boundary test-audit-edit-write test-parse-args test-anti-halt
+test-harnesses-4: test-umbrella-helpers test-render-findings-batch test-verify-skill-called test-check-review-changes test-parse-prose-blockers test-umbrella-parse-args test-render-umbrella-body test-references-headers test-implement-structure test-implement-post-design-boundary test-audit-edit-write test-parse-args test-anti-halt test-alias-target-resolution
 
-test-harnesses-5: test-tracking-issue-write test-allocate-candidates test-block-submodule test-redact test-validate-research-output test-prepare-description test-assemble-anchor test-tracking-issue-read-sentinel test-token-tally test-collect-agent-bash32 test-sentinel-write test-design-structure test-fix-issue-step-order test-orchestrator-scope-sync test-intra-batch-deps
+test-harnesses-5: test-render-reviewer-prompt test-parse-input test-validate-pieces-json test-step2-dispatch test-subskill-anchors test-render-skill test-quick-mode-docs-sync test-sessionstart test-check-reviewers test-research-angle-prompts test-implement-anti-polling-rule test-umbrella-emit-output-contract
 
 # Shard-6 leads with the partition-invariant guard so partition bugs surface
 # even when other shard-6 harnesses fail.
-test-harnesses-6: test-harness-shards-coverage test-drop-bump-commit test-check-bump-version test-lint-skill-invocations test-ci-wait-exit-trap test-render-reviewer-prompt test-parse-input test-validate-pieces-json test-step2-dispatch test-subskill-anchors test-render-skill test-quick-mode-docs-sync test-sessionstart test-check-reviewers test-research-angle-prompts test-implement-anti-polling-rule
+test-harnesses-6: test-harness-shards-coverage test-validate-citations
 
 test-redact:
 	bash scripts/test-redact-secrets.sh
