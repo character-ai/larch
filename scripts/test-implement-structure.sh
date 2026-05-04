@@ -16,12 +16,15 @@
 # peer-harness assertions (A) and (D) respectively — accepted duplication per design-
 # phase sketch consensus.
 #
-# Twenty-one assertions (assertion 18 added for Protocol Execution Directive
+# Twenty-two assertions (assertion 18 added for Protocol Execution Directive
 # pin; assertion 19 added for the Step 2 external implementer dispatcher pin;
 # assertion 20 added for the design-manifest + --design-only path pin;
-# assertion 21 added for the --inline / --subagent forwarding pin, issue #1036).
-# Assertion 5 is retired, so the numbered list runs 1–4, 6–21 (21 live
-# assertions, 22 reserved numbers).
+# assertion 21 added for the --inline / --subagent forwarding pin, issue #1036;
+# assertion 22 added for the orchestrator-edit-authority gate pin —
+# ORCHESTRATOR_EDIT_AUTHORITY / §2.1.5 / orchestrator-envelope-invalid /
+# NEVER #10 literals).
+# Assertion 5 is retired, so the numbered list runs 1–4, 6–22 (22 live
+# assertions, 23 reserved numbers).
 #  (1) Exactly 1 `^## Load-Bearing Invariants$` heading in skills/implement/SKILL.md.
 #  (2) Exactly 1 `^## NEVER List$` heading.
 #  (3) Exactly 1 `^## Rebase Checkpoint Macro$` heading.
@@ -690,5 +693,24 @@ grep -Fq -- '[--subagent]' "$SKILL_MD" \
 grep -Fq -- 'inline_mode=false' "$SKILL_MD" \
   || fail "(21c) skills/implement/SKILL.md missing 'inline_mode=false' default-forwarding rule (issue #1036)"
 
-echo "PASS: test-implement-structure.sh — all 21 structural invariants hold (assertion 5 retired)"
+# (22) Orchestrator-edit-authority gate pin: SKILL.md must reference the
+# mechanical gate literals introduced by the dispatcher contract — NEVER #10,
+# the ORCHESTRATOR_EDIT_AUTHORITY KV key, the §2.1.5 envelope-validation
+# block, and the orchestrator-local synthetic bail token. Mirrors (17b) for
+# the ci-wait synchronous-only literal: prevents silent deletion of the prompt
+# half of the gate (the mechanical half is pinned by test-step2-dispatch.sh
+# Test 11).
+grep -Fq -- 'ORCHESTRATOR_EDIT_AUTHORITY' "$SKILL_MD" \
+    || fail "(22) skills/implement/SKILL.md missing 'ORCHESTRATOR_EDIT_AUTHORITY' literal — Step 2 mechanical edit-authority gate would be undocumented"
+grep -Fq -- '2.1.5 — Envelope validation' "$SKILL_MD" \
+    || fail "(22) skills/implement/SKILL.md missing '2.1.5 — Envelope validation' header — fail-closed envelope-validation block would be unreachable from the Step 2 narrative"
+grep -Fq -- 'orchestrator-envelope-invalid' "$SKILL_MD" \
+    || fail "(22) skills/implement/SKILL.md missing 'orchestrator-envelope-invalid' synthetic bail token — §2.1.5 fail-closed routing would have no named REASON"
+# NEVER #10 anchor: assert at least one of the SKILL-internal anchors that
+# point at the rule. The rule body literal is too long to byte-pin reliably,
+# but every cross-reference funnels through one of these short anchors.
+grep -Fq -- 'NEVER #10' "$SKILL_MD" \
+    || fail "(22) skills/implement/SKILL.md missing 'NEVER #10' cross-reference anchor — the orchestrator-edit-authority NEVER rule would have no inbound references"
+
+echo "PASS: test-implement-structure.sh — all 22 structural invariants hold (assertion 5 retired)"
 exit 0
