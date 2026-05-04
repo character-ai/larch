@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.7.3] - 2026-05-04
+
+### Changed
+
+- `skills/shared/subskill-invocation.md`: documents the dual-flag handoff for nested skill orchestration. New `## Subagent execution topology` section explains that `--session-env` (file-backed I/O routing) and `--subagent` (heavy-phase execution topology) are orthogonal, prescribes forwarding both when an orchestrator delegates heavy work to `/design`, and describes how `/implement`'s `--inline` flag controls whether `--subagent` is appended (default off → appended). Documentation-only; no behavior change. Closes #1039.
+
 ## [15.7.2] - 2026-05-04
 
 ### Changed
