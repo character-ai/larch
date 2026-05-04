@@ -49,7 +49,7 @@ Scaffold a new larch-style skill from a name and description. Validates the name
 
 ## `/design`
 
-**Arguments**: `[--auto] [--quick] <feature description>`
+**Arguments**: `[--auto] [--quick] [--subagent] [--session-env <path>] <feature description>`
 
 **Source**: [`skills/design/SKILL.md`](../skills/design/SKILL.md) · [Diagram](../skills/design/diagram.svg)
 
@@ -67,7 +67,7 @@ Process one approved GitHub issue per invocation. Step 0 (`find-lock-issue.sh`) 
 
 ## `/implement`
 
-**Arguments**: `[--quick] [--auto] [--design-only] [--merge | --draft] [--no-slack] [--no-admin-fallback] [--coder=claude|codex|cursor] [--issue <N>] <feature description>`
+**Arguments**: `[--quick] [--auto] [--design-only] [--inline] [--merge | --draft] [--no-slack] [--no-admin-fallback] [--coder=claude|codex|cursor] [--session-env <path>] [--issue <N>] <feature description>`
 
 **Source**: [`skills/implement/SKILL.md`](../skills/implement/SKILL.md) · [Diagram](../skills/implement/diagram.svg)
 
