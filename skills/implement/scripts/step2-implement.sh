@@ -45,6 +45,14 @@
 #   TOOL=<codex|cursor>      # set on external implementer paths
 #   TRANSCRIPT=<path>        # set when launcher actually ran
 #   SIDECAR_LOG=<path>       # set when launcher actually ran
+#   ORCHESTRATOR_EDIT_AUTHORITY=<allowed|forbidden>
+#                            # ALWAYS emitted on every exit-0 path. `allowed`
+#                            # only when STATUS=claude_fallback (the only
+#                            # outcome that authorizes main-agent Edit/Write
+#                            # at SKILL.md Step 2.4). `forbidden` on every
+#                            # external-implementer outcome (complete /
+#                            # needs_qa / bailed). See SKILL.md NEVER #10
+#                            # and the Step 2 entry preconditions matrix.
 #
 # Exit code is always 0 unless caller / invocation validation fails (exit 2):
 # missing or invalid flag, missing required path, bad enum value,
@@ -138,6 +146,7 @@ esac
 # needs no plugin assets).
 if [[ "$CODER" == "claude" ]]; then
     printf 'STATUS=claude_fallback\n'
+    printf 'ORCHESTRATOR_EDIT_AUTHORITY=allowed\n'
     exit 0
 fi
 
@@ -158,6 +167,7 @@ fi
 # by the value of --cursor-healthy.
 if [[ "$CODER" == "cursor" && "$CURSOR_HEALTHY_ARG" != "true" ]]; then
     printf 'STATUS=claude_fallback\n'
+    printf 'ORCHESTRATOR_EDIT_AUTHORITY=allowed\n'
     exit 0
 fi
 
@@ -222,6 +232,9 @@ emit_bailed() {
     printf 'TOOL=%s\n' "$TOOL_TAG"
     if [[ -s "$TRANSCRIPT_PATH" ]]; then printf 'TRANSCRIPT=%s\n' "$TRANSCRIPT_PATH"; fi
     if [[ -s "$SIDECAR_LOG" ]];     then printf 'SIDECAR_LOG=%s\n' "$SIDECAR_LOG"; fi
+    # External-implementer bail: orchestrator MUST NOT run main-agent Edit/Write.
+    # See SKILL.md NEVER #10 and Step 2 entry preconditions matrix.
+    printf 'ORCHESTRATOR_EDIT_AUTHORITY=forbidden\n'
     exit 0
 }
 
@@ -636,7 +649,11 @@ if [[ -x "$REDACT" ]]; then
     mv "$TMP_SAN.0" "$MANIFEST_PATH"
 fi
 
-# Step 9: emit final KV envelope.
+# Step 9: emit final KV envelope. ORCHESTRATOR_EDIT_AUTHORITY is the gate the
+# orchestrator uses to decide whether main-agent Edit/Write is permitted at
+# Step 2.4 — `allowed` ONLY when STATUS=claude_fallback (emitted upstream),
+# `forbidden` on every external-implementer outcome here. See SKILL.md NEVER
+# #10 and the Step 2 entry preconditions matrix.
 case "$STATUS" in
     complete)
         printf 'STATUS=complete\n'
@@ -644,6 +661,7 @@ case "$STATUS" in
         printf 'MANIFEST=%s\n' "$MANIFEST_PATH"
         printf 'TRANSCRIPT=%s\n' "$TRANSCRIPT_PATH"
         printf 'SIDECAR_LOG=%s\n' "$SIDECAR_LOG"
+        printf 'ORCHESTRATOR_EDIT_AUTHORITY=forbidden\n'
         ;;
     needs_qa)
         printf 'STATUS=needs_qa\n'
@@ -652,6 +670,7 @@ case "$STATUS" in
         printf 'QA_PENDING=%s\n' "$QA_PENDING_PATH"
         printf 'TRANSCRIPT=%s\n' "$TRANSCRIPT_PATH"
         printf 'SIDECAR_LOG=%s\n' "$SIDECAR_LOG"
+        printf 'ORCHESTRATOR_EDIT_AUTHORITY=forbidden\n'
         ;;
     bailed)
         BR=$(jq -r --arg fallback "$BAILED_NO_REASON_TOKEN" '.bail_reason // $fallback' "$MANIFEST_RAW_PATH")
@@ -668,6 +687,7 @@ case "$STATUS" in
         printf 'MANIFEST=%s\n' "$MANIFEST_PATH"
         printf 'TRANSCRIPT=%s\n' "$TRANSCRIPT_PATH"
         printf 'SIDECAR_LOG=%s\n' "$SIDECAR_LOG"
+        printf 'ORCHESTRATOR_EDIT_AUTHORITY=forbidden\n'
         ;;
 esac
 exit 0

@@ -57,6 +57,8 @@ TMP1="$SCRATCH/test1"; mkdir -p "$TMP1"
 OUT=$("$DISPATCHER" --tmpdir "$TMP1" --plan-file "$PLAN" --feature-file "$FEATURE" \
     --auto-mode false --coder claude 2>&1)
 if [[ "$OUT" == *"STATUS=claude_fallback"* ]] \
+   && [[ "$OUT" == *"ORCHESTRATOR_EDIT_AUTHORITY=allowed"* ]] \
+   && [[ "$OUT" != *"ORCHESTRATOR_EDIT_AUTHORITY=forbidden"* ]] \
    && [[ "$OUT" != *"MANIFEST="* ]] \
    && [[ "$OUT" != *"TRANSCRIPT="* ]]; then
     pass
@@ -95,7 +97,9 @@ ERR=$("$DISPATCHER" --tmpdir "$TMP1C" --plan-file "$PLAN" --feature-file "$FEATU
     --auto-mode false --codex-available false 2>&1 >/dev/null)
 OUT=$("$DISPATCHER" --tmpdir "$TMP1C" --plan-file "$PLAN" --feature-file "$FEATURE" \
     --auto-mode false --codex-available false 2>/dev/null)
-if [[ "$OUT" == *"STATUS=claude_fallback"* ]] && [[ "$ERR" == *"deprecated"* ]]; then
+if [[ "$OUT" == *"STATUS=claude_fallback"* ]] \
+   && [[ "$OUT" == *"ORCHESTRATOR_EDIT_AUTHORITY=allowed"* ]] \
+   && [[ "$ERR" == *"deprecated"* ]]; then
     pass
 else
     fail 1c "--codex-available false should claude_fallback + deprecate, out=$OUT err=$ERR"
@@ -128,7 +132,7 @@ fi
 TMP3B="$SCRATCH/test3b"; mkdir -p "$TMP3B"
 OUT=$(cd "$REPO_ROOT" && "$DISPATCHER" --tmpdir "$TMP3B" --plan-file "$PLAN" --feature-file "$FEATURE" \
     --auto-mode false --coder cursor --cursor-healthy false 2>&1)
-if [[ "$OUT" == "STATUS=claude_fallback" ]]; then
+if [[ "$OUT" == *"STATUS=claude_fallback"* ]] && [[ "$OUT" == *"ORCHESTRATOR_EDIT_AUTHORITY=allowed"* ]]; then
     pass
 else
     fail 3b "--coder cursor with unhealthy gate should fall back to claude, got: $OUT"
@@ -145,7 +149,7 @@ fi
 TMP3B2="$SCRATCH/test3b2"; mkdir -p "$TMP3B2"
 OUT=$(cd "$REPO_ROOT" && "$DISPATCHER" --tmpdir "$TMP3B2" --plan-file "$PLAN" --feature-file "$FEATURE" \
     --auto-mode false --coder cursor 2>&1)
-if [[ "$OUT" == "STATUS=claude_fallback" ]]; then
+if [[ "$OUT" == *"STATUS=claude_fallback"* ]] && [[ "$OUT" == *"ORCHESTRATOR_EDIT_AUTHORITY=allowed"* ]]; then
     pass
 else
     fail 3b2 "--coder cursor without health should fall back to claude, got: $OUT"
@@ -157,7 +161,7 @@ fi
 TMP3B3="$SCRATCH/test3b3"; mkdir -p "$TMP3B3"
 OUT=$(cd "$REPO_ROOT" && "$DISPATCHER" --tmpdir "$TMP3B3" --plan-file "$PLAN" --feature-file "$FEATURE" \
     --auto-mode false --coder cursor --cursor-healthy "" 2>&1)
-if [[ "$OUT" == "STATUS=claude_fallback" ]]; then
+if [[ "$OUT" == *"STATUS=claude_fallback"* ]] && [[ "$OUT" == *"ORCHESTRATOR_EDIT_AUTHORITY=allowed"* ]]; then
     pass
 else
     fail 3b3 "--coder cursor with empty health should fall back to claude, got: $OUT"
@@ -182,7 +186,7 @@ fi
 TMP3B5="$SCRATCH/test3b5"; mkdir -p "$TMP3B5"
 OUT=$("$DISPATCHER" --tmpdir "$TMP3B5" --plan-file "$PLAN" --feature-file "$FEATURE" \
     --auto-mode false --coder claude --cursor-healthy "" 2>&1)
-if [[ "$OUT" == "STATUS=claude_fallback" ]]; then
+if [[ "$OUT" == *"STATUS=claude_fallback"* ]] && [[ "$OUT" == *"ORCHESTRATOR_EDIT_AUTHORITY=allowed"* ]]; then
     pass
 else
     fail 3b5 "claude path should ignore empty cursor health, got: $OUT"
@@ -195,7 +199,7 @@ TMP3B6="$SCRATCH/test3b6"; mkdir -p "$TMP3B6"
 NON_GIT_CURSOR_DIR="$SCRATCH/not-a-repo-cursor"; mkdir -p "$NON_GIT_CURSOR_DIR"
 OUT=$(cd "$NON_GIT_CURSOR_DIR" && "$DISPATCHER" --tmpdir "$TMP3B6" --plan-file "$PLAN" --feature-file "$FEATURE" \
     --auto-mode false --coder cursor --cursor-healthy false 2>&1)
-if [[ "$OUT" == "STATUS=claude_fallback" ]]; then
+if [[ "$OUT" == *"STATUS=claude_fallback"* ]] && [[ "$OUT" == *"ORCHESTRATOR_EDIT_AUTHORITY=allowed"* ]]; then
     pass
 else
     fail 3b6 "cursor unhealthy fallback should win before git-tree lookup, got: $OUT"
@@ -248,10 +252,13 @@ echo '{"answers":[{"id":"q1","text":"x"}]}' > "$ANSWERS"
 
 OUT=$(cd "$REPO_ROOT" && "$DISPATCHER" --tmpdir "$TMP5" --plan-file "$PLAN" --feature-file "$FEATURE" \
     --auto-mode false --coder codex --answers "$ANSWERS" 2>&1)
-if [[ "$OUT" == *"STATUS=bailed"* ]] && [[ "$OUT" == *"REASON=qa-loop-exceeded"* ]]; then
+if [[ "$OUT" == *"STATUS=bailed"* ]] \
+   && [[ "$OUT" == *"REASON=qa-loop-exceeded"* ]] \
+   && [[ "$OUT" == *"ORCHESTRATOR_EDIT_AUTHORITY=forbidden"* ]] \
+   && [[ "$OUT" != *"ORCHESTRATOR_EDIT_AUTHORITY=allowed"* ]]; then
     pass
 else
-    fail 5 "resume cap should emit qa-loop-exceeded, got: $OUT"
+    fail 5 "resume cap should emit qa-loop-exceeded with AUTH=forbidden, got: $OUT"
 fi
 if [[ -f "$TMP5/codex-resume-count.txt" ]]; then
     pass
@@ -283,10 +290,12 @@ fi
 echo "garbage" > "$TMP7/codex-resume-count.txt"
 OUT=$(cd "$REPO_ROOT" && "$DISPATCHER" --tmpdir "$TMP7" --plan-file "$PLAN" --feature-file "$FEATURE" \
     --auto-mode false --coder codex --answers "$ANSWERS" 2>&1)
-if [[ "$OUT" == *"STATUS=bailed"* ]] && [[ "$OUT" == *"REASON=manifest-schema-invalid"* ]]; then
+if [[ "$OUT" == *"STATUS=bailed"* ]] \
+   && [[ "$OUT" == *"REASON=manifest-schema-invalid"* ]] \
+   && [[ "$OUT" == *"ORCHESTRATOR_EDIT_AUTHORITY=forbidden"* ]]; then
     pass
 else
-    fail 7 "corrupt resume counter should bail with manifest-schema-invalid, got: $OUT"
+    fail 7 "corrupt resume counter should bail with manifest-schema-invalid + AUTH=forbidden, got: $OUT"
 fi
 
 # ---------------------------------------------------------------------------
@@ -355,10 +364,12 @@ OUT=$(cd "$REPO_ROOT" && "$DISPATCHER" --tmpdir "$TMP10" --plan-file "$PLAN" --f
     --auto-mode false --coder cursor --cursor-healthy true 2>&1)
 if [[ "$OUT" == *"STATUS=bailed"* ]] \
    && [[ "$OUT" == *"REASON=coder-mismatch-tmpdir-reuse"* ]] \
-   && [[ "$OUT" == *"TOOL=cursor"* ]]; then
+   && [[ "$OUT" == *"TOOL=cursor"* ]] \
+   && [[ "$OUT" == *"ORCHESTRATOR_EDIT_AUTHORITY=forbidden"* ]] \
+   && [[ "$OUT" != *"ORCHESTRATOR_EDIT_AUTHORITY=allowed"* ]]; then
     pass
 else
-    fail 10 "cross-coder reuse should bail with coder-mismatch-tmpdir-reuse TOOL=cursor, got: $OUT"
+    fail 10 "cross-coder reuse should bail with coder-mismatch-tmpdir-reuse TOOL=cursor + AUTH=forbidden, got: $OUT"
 fi
 # Sentinel content must be unchanged (still codex) — guard must not overwrite.
 if [[ "$(cat "$TMP10/step2-spawn-coder.txt")" == "codex" ]]; then
@@ -372,6 +383,45 @@ if [[ -f "$TMP10/cursor-resume-count.txt" ]]; then
     fail 10 "coder-mismatch path leaked cursor-resume-count.txt"
 else
     pass
+fi
+
+# ---------------------------------------------------------------------------
+# Test 11: ORCHESTRATOR_EDIT_AUTHORITY pair invariant — every reachable exit-0
+# outcome from this offline harness emits exactly one
+# ORCHESTRATOR_EDIT_AUTHORITY line, with `allowed` iff STATUS=claude_fallback.
+# Re-runs minimal claude_fallback + bailed scenarios and asserts the iff.
+# ---------------------------------------------------------------------------
+TMP11A="$SCRATCH/test11a"; mkdir -p "$TMP11A"
+OUT_A=$("$DISPATCHER" --tmpdir "$TMP11A" --plan-file "$PLAN" --feature-file "$FEATURE" \
+    --auto-mode false --coder claude 2>&1)
+AUTH_A_LINES=$(printf '%s\n' "$OUT_A" | grep -c '^ORCHESTRATOR_EDIT_AUTHORITY=' || true)
+if [[ "$AUTH_A_LINES" == "1" ]] \
+   && [[ "$OUT_A" == *"STATUS=claude_fallback"* ]] \
+   && [[ "$OUT_A" == *"ORCHESTRATOR_EDIT_AUTHORITY=allowed"* ]]; then
+    pass
+else
+    fail 11a "pair invariant: claude_fallback must emit exactly one AUTH=allowed line, got auth_lines=$AUTH_A_LINES out=$OUT_A"
+fi
+
+TMP11B="$SCRATCH/test11b"; mkdir -p "$TMP11B"
+git -C "$REPO_ROOT" rev-parse HEAD > "$TMP11B/step2-baseline.txt"
+git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD > "$TMP11B/step2-spawn-branch.txt"
+if [[ -f "$REPO_ROOT/.claude-plugin/plugin.json" ]]; then
+    git -C "$REPO_ROOT" hash-object "$REPO_ROOT/.claude-plugin/plugin.json" > "$TMP11B/step2-plugin-json-baseline.txt"
+else
+    printf '\n' > "$TMP11B/step2-plugin-json-baseline.txt"
+fi
+echo "5" > "$TMP11B/codex-resume-count.txt"
+OUT_B=$(cd "$REPO_ROOT" && "$DISPATCHER" --tmpdir "$TMP11B" --plan-file "$PLAN" --feature-file "$FEATURE" \
+    --auto-mode false --coder codex --answers "$ANSWERS" 2>&1)
+AUTH_B_LINES=$(printf '%s\n' "$OUT_B" | grep -c '^ORCHESTRATOR_EDIT_AUTHORITY=' || true)
+if [[ "$AUTH_B_LINES" == "1" ]] \
+   && [[ "$OUT_B" == *"STATUS=bailed"* ]] \
+   && [[ "$OUT_B" == *"ORCHESTRATOR_EDIT_AUTHORITY=forbidden"* ]] \
+   && [[ "$OUT_B" != *"ORCHESTRATOR_EDIT_AUTHORITY=allowed"* ]]; then
+    pass
+else
+    fail 11b "pair invariant: external bailed must emit exactly one AUTH=forbidden line, got auth_lines=$AUTH_B_LINES out=$OUT_B"
 fi
 
 # ---------------------------------------------------------------------------
