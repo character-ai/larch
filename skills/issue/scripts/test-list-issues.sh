@@ -83,6 +83,16 @@ set -euo pipefail
 if [[ "${1:-}" == "-c" ]]; then
     body="${2:-}"
     if [[ "$body" == *"datetime.timedelta(days="* ]]; then
+        # Extract the integer following `days=` and validate it against the
+        # harness's EXPECTED_DAYS — guards against a regression that passes
+        # the wrong constant (e.g. always 0 or an off-by-one variable) into
+        # datetime.timedelta while still keeping the substring intact.
+        days_value="${body##*datetime.timedelta(days=}"
+        days_value="${days_value%%)*}"
+        if [[ -n "${EXPECTED_DAYS:-}" && "$days_value" != "$EXPECTED_DAYS" ]]; then
+            echo "fake-python3: days= mismatch (expected $EXPECTED_DAYS, got $days_value)" >&2
+            exit 1
+        fi
         printf x >>"$MARKER_PYTHON3"
         echo "$MOCK_CUTOFF"
         exit 0
@@ -115,10 +125,17 @@ run_helper() {
     local stdout_file stderr_file rc
     stdout_file="$TMPDIR_TEST/stdout.$$"
     stderr_file="$TMPDIR_TEST/stderr.$$"
+    # Tell the fake python3 which days= value to require — production
+    # passes --closed-window-days through to datetime.timedelta(days=N)
+    # verbatim, so the fake validates the propagation rather than just
+    # the substring shape.
+    EXPECTED_DAYS="$1"
+    export EXPECTED_DAYS
     set +e
     PATH="$FAKE_BIN:$PATH" "$HELPER" --repo owner/repo --closed-window-days "$1" >"$stdout_file" 2>"$stderr_file"
     rc=$?
     set -e
+    unset EXPECTED_DAYS
     LAST_STDOUT=$(cat "$stdout_file")
     LAST_STDERR=$(cat "$stderr_file")
     LAST_RC=$rc
@@ -158,10 +175,22 @@ tsv_body() {
 
 assert_tsv_set_eq() {
     local actual="$1" expected="$2" desc="$3" actual_body diff_output
+    local expected_count actual_count
     actual_body=$(tsv_body "$actual")
-    if diff_output=$(diff -u <(printf '%s\n' "$expected" | sort -u) <(printf '%s\n' "$actual_body" | sort -u)); then
-        PASSED=$((PASSED + 1))
-        echo "  PASS: $desc"
+    # Compare as multisets (sort without -u) so duplicate rows from a buggy
+    # helper trip the assertion instead of collapsing under sort -u.
+    if diff_output=$(diff -u <(printf '%s\n' "$expected" | sort) <(printf '%s\n' "$actual_body" | sort)); then
+        expected_count=$(printf '%s\n' "$expected" | grep -c '' || true)
+        actual_count=$(printf '%s\n' "$actual_body" | grep -c '' || true)
+        if [[ "$expected_count" -ne "$actual_count" ]]; then
+            FAILED=$((FAILED + 1))
+            echo "  FAIL: $desc (row count mismatch: expected $expected_count, got $actual_count)"
+            echo "    actual: $actual_body"
+            echo "    stderr: $LAST_STDERR"
+        else
+            PASSED=$((PASSED + 1))
+            echo "  PASS: $desc"
+        fi
     else
         FAILED=$((FAILED + 1))
         echo "  FAIL: $desc"

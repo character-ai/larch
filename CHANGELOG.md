@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [15.7.7] - 2026-05-04
 
+### Added
+
+- `skills/issue/scripts/test-list-issues.sh` regression test harness pinning the dedup + TSV-shaping behavior of `skills/issue/scripts/list-issues.sh` end-to-end. Covers the `DEDUP_SKIP_PREFIX_FILTER` jq pipeline spliced into both `JQ_FILTER` branches: the five skip prefixes (case-insensitive, including `[Research]` / `[INVESTIGATE]` / leading-whitespace variants), TSV `\t` / `\n` / `\r` sanitization, the open-only branch (`CLOSED_WINDOW_DAYS=0`), and the closed-window branch (`CLOSED_WINDOW_DAYS>0`) with cutoff boundary checks. Drives `list-issues.sh` against static paginated-JSON fixtures (`fixtures/list-issues/page1.json`, `fixtures/list-issues/page2.json`) via PATH-stubbed `gh` and `python3` fakes; production code is unchanged. Wired into `test-harnesses-2` shard via `Makefile` and listed in `docs/linting.md`; `skills/issue/SKILL.md` references the harness adjacent to the `list-issues.sh` invocation. Sibling contract `skills/issue/scripts/test-list-issues.md` documents the harness invariants. Closes #1059.
+
 ### Fixed
 
 - `skills/implement/scripts/test-step2-dispatch.sh` header comment no longer claims the default-coder path produces `STATUS=claude_fallback`. The bullet now correctly describes the default Codex outside-git → exit 2 behavior, matching Test 1b and the sibling contract doc. Closes #1067.
