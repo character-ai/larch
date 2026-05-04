@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.5.0] - 2026-05-04
+
+### Changed
+
+- `/implement` Step 2 dispatcher (`skills/implement/scripts/step2-implement.sh`) now defaults `--coder` to `codex` when the flag is omitted (was `claude`). Operators relying on the prior main-agent default should pass `--coder=claude` explicitly. The flag enum is unchanged; surface signatures (`SKILL.md` `argument-hint:`) are unchanged.
+- `/implement` Step 2 dispatcher: when `--coder=cursor` is requested but Cursor is unhealthy or unavailable, the dispatcher now emits `STATUS=claude_fallback` and the orchestrator runs the main-agent code-edit path — symmetric to passing `--coder=claude`. The previous fail-closed `STATUS=bailed REASON=cursor-unhealthy` behavior (and the `cursor-unhealthy` bail token) is removed from the dispatcher's emitted enum. `skills/implement/scripts/test-step2-dispatch.sh` 26 assertions updated to expect the fallback envelope and a non-git default-coder=codex check; sibling contracts in `step2-implement.md`, `codex-manifest-schema.md`, and `SKILL.md` Step 2 dispatch / 2.2 / 2.4 updated accordingly. `README.md`, `SECURITY.md`, `docs/configuration-and-permissions.md`, `docs/external-reviewers.md`, `docs/skills.md`, `docs/workflow-lifecycle.md`, and `docs/linting.md` updated to reflect the new default and the cursor-fallback semantics (closes #1037).
+
 ## [15.4.9] - 2026-05-04
 
 ### Changed

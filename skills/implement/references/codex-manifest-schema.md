@@ -79,7 +79,6 @@ When `status=bailed`, `bail_reason` MUST be one of these stable tokens (downstre
 - `redactor-not-executable` — `scripts/redact-secrets.sh` is missing or not executable; dispatcher fails closed rather than emit unsanitized text (covers both the pre-`git commit` redactor probe in Step 7b and the post-validation redactor probe in Step 8). Set by the dispatcher.
 - `codex-runtime-failure` — launcher returned non-zero exit code or no manifest written, and the bounded retry also failed.
 - `cursor-runtime-failure` — Cursor launcher returned non-zero exit code or no manifest written, and the bounded retry also failed.
-- `cursor-unhealthy` — `--coder=cursor` was requested without `--cursor-healthy true`; the dispatcher fails closed before resolving the target git work-tree or launching Cursor.
 - `cursor-bailed-no-reason` — Cursor-authored `status=bailed` manifest did not provide a usable `bail_reason`, so the dispatcher substituted the Cursor-specific fallback token.
 - `cursor-modified-history` — Cursor moved `HEAD` before the dispatcher could commit on Cursor's behalf. Set by the dispatcher, not by Cursor itself.
 - `coder-mismatch-tmpdir-reuse` — the dispatcher's `step2-spawn-coder.txt` sentinel recorded a different `--coder` value on a prior invocation against the same `$IMPLEMENT_TMPDIR` (e.g., a partial `--coder=codex` run followed by `--coder=cursor` reusing the same tmpdir). The dispatcher fails closed before touching the shared baseline files or the per-tool resume counter. Set by the dispatcher.

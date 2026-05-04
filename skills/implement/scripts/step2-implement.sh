@@ -4,17 +4,20 @@
 # This is the SINGLE entrypoint /implement Step 2 invokes. It is the only place
 # that branches on the chosen --coder value. The orchestrator only falls back
 # to Claude main-agent Edit/Write when this script returns STATUS=claude_fallback
-# (which it does when --coder=claude — the default).
+# (returned when --coder=claude or when --coder=cursor with --cursor-healthy
+# unset/false — Cursor falls back to Claude instead of failing closed).
 #
 # Coder flag (preferred):
-#   --coder claude   → STATUS=claude_fallback (main-agent path; default)
-#   --coder codex    → spawn Codex implementer
-#   --coder cursor   → spawn Cursor implementer when --cursor-healthy true
+#   --coder claude   → STATUS=claude_fallback (main-agent path)
+#   --coder codex    → spawn Codex implementer (default when --coder is omitted)
+#   --coder cursor   → spawn Cursor implementer when --cursor-healthy true;
+#                      otherwise emits STATUS=claude_fallback so the orchestrator
+#                      runs the main-agent code-edit path.
 #
 # Cursor health flag:
 #   --cursor-healthy true   → permit --coder cursor to launch Cursor
-#   --cursor-healthy false  → --coder cursor bails fail-closed
-#   --cursor-healthy ""     → treated as false
+#   --cursor-healthy false  → --coder cursor falls back to claude_fallback
+#   --cursor-healthy ""     → treated as false (falls back to claude_fallback)
 #
 # Legacy flag (deprecated, accepted for one release):
 #   --codex-available true   → maps to --coder codex (stderr deprecation warning)
@@ -100,9 +103,9 @@ if [[ -n "$CODEX_AVAILABLE" ]]; then
     esac
 fi
 
-# Default coder is claude (main-agent path; restores pre-Codex behavior).
+# Default coder is codex (Codex spawn path) when --coder is omitted.
 if [[ -z "$CODER" ]]; then
-    CODER="claude"
+    CODER="codex"
 fi
 
 case "$CODER" in
@@ -148,14 +151,13 @@ if [[ -n "$CURSOR_HEALTHY_ARG" ]]; then
 fi
 [[ -z "$CURSOR_HEALTHY_ARG" ]] && CURSOR_HEALTHY_ARG="false"
 
-# Cursor health gate (fail-closed). Runs before REPO_ROOT resolution so that
-# --coder=cursor with --cursor-healthy=false bails cleanly even from outside
-# a git work-tree. The gate runs only on the cursor path; codex/claude are
-# unaffected by the value of --cursor-healthy.
+# Cursor health gate (fall back to claude). Runs before REPO_ROOT resolution
+# so that --coder=cursor with --cursor-healthy=false falls back cleanly even
+# from outside a git work-tree, mirroring the --coder=claude early-return
+# above. The gate runs only on the cursor path; codex/claude are unaffected
+# by the value of --cursor-healthy.
 if [[ "$CODER" == "cursor" && "$CURSOR_HEALTHY_ARG" != "true" ]]; then
-    printf 'STATUS=bailed\n'
-    printf 'REASON=cursor-unhealthy\n'
-    printf 'TOOL=cursor\n'
+    printf 'STATUS=claude_fallback\n'
     exit 0
 fi
 
