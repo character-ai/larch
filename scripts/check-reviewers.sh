@@ -7,7 +7,8 @@
 # stripped, then lowercased — case-insensitive exact match). Catches auth
 # failures, network issues, outages, and banner-style responses that produce
 # non-empty but non-OK output.
-# Failed probes are retried once to tolerate transient timeouts.
+# Failed probes are retried up to 2 additional times (3 total attempts) with a
+# 10-second sleep between attempts to tolerate transient timeouts.
 #
 # Usage:
 #   check-reviewers.sh [--probe] [--skip-codex-probe] [--skip-cursor-probe]
@@ -56,161 +57,77 @@ echo "CURSOR_AVAILABLE=$CURSOR_AVAILABLE"
 if [[ "$PROBE" == "true" ]]; then
     CODEX_HEALTHY="false"
     CURSOR_HEALTHY="false"
+    CODEX_PROBE_ERROR=""
+    CURSOR_PROBE_ERROR=""
 
     PROBE_DIR=$(mktemp -d /tmp/larch-probe-XXXXXX)
     # Clean up probe tmpdir on exit
     trap 'rm -rf "$PROBE_DIR"' EXIT
 
-    # Launch probes in parallel for available tools (skip already-known-unhealthy)
-    if [[ "$CODEX_AVAILABLE" == "true" && "$SKIP_CODEX_PROBE" == "true" ]]; then
-        CODEX_HEALTHY="false"
-    elif [[ "$CODEX_AVAILABLE" == "true" ]]; then
-        # Health probe tests basic Codex availability without forcing a model.
-        # agent-model-args.sh defaults to gpt-5.5, which may not be available
-        # on all accounts; the probe should verify Codex works, not that a
-        # specific model is accessible. Operators set LARCH_CODEX_MODEL to
-        # control the model used in actual work.
-        "$SCRIPT_DIR/run-external-agent.sh" \
-            --tool codex \
-            --output "$PROBE_DIR/codex-probe.txt" \
-            --timeout 60 \
-            -- codex exec --full-auto -C "$PWD" \
-            --output-last-message "$PROBE_DIR/codex-probe.txt" \
-            "Respond with OK" \
-            >"$PROBE_DIR/codex-wrapper.log" 2>&1 &
-    fi
+    # Skipped probes are immediately settled as unhealthy with no error message
+    # (consistent with the prior behavior — *_HEALTHY=false, no *_PROBE_ERROR).
+    # The retry loop only ever launches probes for tools that are AVAILABLE and
+    # not SKIPped and not yet HEALTHY.
 
-    if [[ "$CURSOR_AVAILABLE" == "true" && "$SKIP_CURSOR_PROBE" == "true" ]]; then
-        CURSOR_HEALTHY="false"
-    elif [[ "$CURSOR_AVAILABLE" == "true" ]]; then
-        # Build cursor command with optional model from LARCH_CURSOR_MODEL
-        CURSOR_MODEL_ARGS=$("$SCRIPT_DIR/agent-model-args.sh" --tool cursor)
-        # Health probe: "Respond with OK" is passed verbatim — NOT wrapped via
-        # scripts/cursor-wrap-prompt.sh. Probes exist to verify reachability and
-        # auth within a 60s budget; engaging max-mode here would add latency and
-        # cost without diagnostic value.
-        # shellcheck disable=SC2086
-        "$SCRIPT_DIR/run-external-agent.sh" \
-            --tool cursor \
-            --output "$PROBE_DIR/cursor-probe.txt" \
-            --timeout 60 \
-            --capture-stdout \
-            -- cursor agent -p --force --trust $CURSOR_MODEL_ARGS --workspace "$PWD" \
-            "Respond with OK" \
-            >"$PROBE_DIR/cursor-wrapper.log" 2>&1 &
-    fi
+    MAX_ATTEMPTS=3
+    SLEEP_BETWEEN=10
 
-    # Build sentinel list for wait-for-reviewers.sh (only for probes actually launched)
-    SENTINELS=()
-    if [[ "$CODEX_AVAILABLE" == "true" && "$SKIP_CODEX_PROBE" == "false" ]]; then
-        SENTINELS+=("$PROBE_DIR/codex-probe.txt.done")
-    fi
-    if [[ "$CURSOR_AVAILABLE" == "true" && "$SKIP_CURSOR_PROBE" == "false" ]]; then
-        SENTINELS+=("$PROBE_DIR/cursor-probe.txt.done")
-    fi
-
-    if [[ ${#SENTINELS[@]} -gt 0 ]]; then
-        # Wait for probes (120s = 60s timeout + 60s grace)
-        "$SCRIPT_DIR/wait-for-reviewers.sh" --timeout 120 "${SENTINELS[@]}" \
-            >"$PROBE_DIR/wait.log" 2>&1 || true
-    fi
-
-    CODEX_PROBE_ERROR=""
-    CURSOR_PROBE_ERROR=""
-
-    # Check codex probe result (skip if probe was not launched)
-    if [[ "$CODEX_AVAILABLE" == "true" && "$SKIP_CODEX_PROBE" == "false" ]]; then
-        if [[ -f "$PROBE_DIR/codex-probe.txt.done" ]]; then
-            CODEX_EXIT=$(cat "$PROBE_DIR/codex-probe.txt.done")
-            if [[ "$CODEX_EXIT" == "0" ]]; then
-                if [[ -s "$PROBE_DIR/codex-probe.txt" ]]; then
-                    CODEX_PROBE_REPLY=$(tr -d '[:space:]' < "$PROBE_DIR/codex-probe.txt" | tr '[:upper:]' '[:lower:]')
-                    if [[ "$CODEX_PROBE_REPLY" == "ok" ]]; then
-                        CODEX_HEALTHY="true"
-                    else
-                        CODEX_PROBE_ERROR="Probe returned non-OK response: $(head -c 200 "$PROBE_DIR/codex-probe.txt" | tr '\n\r' '  ')"
-                    fi
-                elif [[ -f "$PROBE_DIR/codex-probe.txt.diag" ]]; then
-                    CODEX_PROBE_ERROR=$(cat "$PROBE_DIR/codex-probe.txt.diag")
-                else
-                    CODEX_PROBE_ERROR="Probe exited successfully but produced no output"
-                fi
-            else
-                if [[ -f "$PROBE_DIR/codex-probe.txt.diag" ]]; then
-                    CODEX_PROBE_ERROR=$(cat "$PROBE_DIR/codex-probe.txt.diag")
-                else
-                    CODEX_PROBE_ERROR="Probe failed with exit code $CODEX_EXIT"
-                fi
-            fi
-        else
-            CODEX_PROBE_ERROR="Probe process did not complete (sentinel file missing — possible crash or system kill)"
+    for ((attempt=1; attempt<=MAX_ATTEMPTS; attempt++)); do
+        # Decide which tools still need a probe this round.
+        TRY_CODEX=false
+        TRY_CURSOR=false
+        if [[ "$CODEX_AVAILABLE" == "true" && "$SKIP_CODEX_PROBE" == "false" && "$CODEX_HEALTHY" == "false" ]]; then
+            TRY_CODEX=true
         fi
-    fi
-
-    # Check cursor probe result (skip if probe was not launched)
-    if [[ "$CURSOR_AVAILABLE" == "true" && "$SKIP_CURSOR_PROBE" == "false" ]]; then
-        if [[ -f "$PROBE_DIR/cursor-probe.txt.done" ]]; then
-            CURSOR_EXIT=$(cat "$PROBE_DIR/cursor-probe.txt.done")
-            if [[ "$CURSOR_EXIT" == "0" ]]; then
-                if [[ -s "$PROBE_DIR/cursor-probe.txt" ]]; then
-                    CURSOR_PROBE_REPLY=$(tr -d '[:space:]' < "$PROBE_DIR/cursor-probe.txt" | tr '[:upper:]' '[:lower:]')
-                    if [[ "$CURSOR_PROBE_REPLY" == "ok" ]]; then
-                        CURSOR_HEALTHY="true"
-                    else
-                        CURSOR_PROBE_ERROR="Probe returned non-OK response: $(head -c 200 "$PROBE_DIR/cursor-probe.txt" | tr '\n\r' '  ')"
-                    fi
-                elif [[ -f "$PROBE_DIR/cursor-probe.txt.diag" ]]; then
-                    CURSOR_PROBE_ERROR=$(cat "$PROBE_DIR/cursor-probe.txt.diag")
-                else
-                    CURSOR_PROBE_ERROR="Probe exited successfully but produced no output"
-                fi
-            else
-                if [[ -f "$PROBE_DIR/cursor-probe.txt.diag" ]]; then
-                    CURSOR_PROBE_ERROR=$(cat "$PROBE_DIR/cursor-probe.txt.diag")
-                else
-                    CURSOR_PROBE_ERROR="Probe failed with exit code $CURSOR_EXIT"
-                fi
-            fi
-        else
-            CURSOR_PROBE_ERROR="Probe process did not complete (sentinel file missing — possible crash or system kill)"
+        if [[ "$CURSOR_AVAILABLE" == "true" && "$SKIP_CURSOR_PROBE" == "false" && "$CURSOR_HEALTHY" == "false" ]]; then
+            TRY_CURSOR=true
         fi
-    fi
 
-    # --- Retry once for failed probes (transient timeout recovery) ---
-    RETRY_CODEX=false
-    RETRY_CURSOR=false
+        # No tool needs probing — either both healthy already, or both skipped/unavailable.
+        if [[ "$TRY_CODEX" == "false" && "$TRY_CURSOR" == "false" ]]; then
+            break
+        fi
 
-    if [[ "$CODEX_AVAILABLE" == "true" && "$SKIP_CODEX_PROBE" == "false" && "$CODEX_HEALTHY" == "false" ]]; then
-        RETRY_CODEX=true
-    fi
-    if [[ "$CURSOR_AVAILABLE" == "true" && "$SKIP_CURSOR_PROBE" == "false" && "$CURSOR_HEALTHY" == "false" ]]; then
-        RETRY_CURSOR=true
-    fi
+        # Inter-attempt sleep (only between attempts, not before the first or after the last).
+        if [[ $attempt -gt 1 ]]; then
+            echo "Retrying failed health probes (attempt $attempt of $MAX_ATTEMPTS, after ${SLEEP_BETWEEN}s sleep)..." >&2
+            sleep "$SLEEP_BETWEEN"
+        fi
 
-    if [[ "$RETRY_CODEX" == "true" || "$RETRY_CURSOR" == "true" ]]; then
-        echo "Retrying failed health probes..." >&2
+        SENTINELS=()
 
-        RETRY_SENTINELS=()
-
-        if [[ "$RETRY_CODEX" == "true" ]]; then
-            rm -f "$PROBE_DIR/codex-probe.txt" "$PROBE_DIR/codex-probe.txt.done" "$PROBE_DIR/codex-probe.txt.meta" "$PROBE_DIR/codex-probe.txt.diag"
-            CODEX_MODEL_ARGS=$("$SCRIPT_DIR/agent-model-args.sh" --tool codex)
-            # shellcheck disable=SC2086
+        if [[ "$TRY_CODEX" == "true" ]]; then
+            # Clear any state from a prior attempt for this tool.
+            rm -f "$PROBE_DIR/codex-probe.txt" \
+                  "$PROBE_DIR/codex-probe.txt.done" \
+                  "$PROBE_DIR/codex-probe.txt.meta" \
+                  "$PROBE_DIR/codex-probe.txt.diag"
+            # Health probe tests basic Codex availability without forcing a model.
+            # agent-model-args.sh defaults to gpt-5.5, which may not be available
+            # on all accounts; the probe should verify Codex works, not that a
+            # specific model is accessible. Operators set LARCH_CODEX_MODEL to
+            # control the model used in actual work.
             "$SCRIPT_DIR/run-external-agent.sh" \
                 --tool codex \
                 --output "$PROBE_DIR/codex-probe.txt" \
                 --timeout 60 \
-                -- codex exec --full-auto -C "$PWD" $CODEX_MODEL_ARGS \
+                -- codex exec --full-auto -C "$PWD" \
                 --output-last-message "$PROBE_DIR/codex-probe.txt" \
                 "Respond with OK" \
-                >"$PROBE_DIR/codex-wrapper-retry.log" 2>&1 &
-            RETRY_SENTINELS+=("$PROBE_DIR/codex-probe.txt.done")
+                >"$PROBE_DIR/codex-wrapper-attempt${attempt}.log" 2>&1 &
+            SENTINELS+=("$PROBE_DIR/codex-probe.txt.done")
         fi
 
-        if [[ "$RETRY_CURSOR" == "true" ]]; then
-            rm -f "$PROBE_DIR/cursor-probe.txt" "$PROBE_DIR/cursor-probe.txt.done" "$PROBE_DIR/cursor-probe.txt.meta" "$PROBE_DIR/cursor-probe.txt.diag"
+        if [[ "$TRY_CURSOR" == "true" ]]; then
+            rm -f "$PROBE_DIR/cursor-probe.txt" \
+                  "$PROBE_DIR/cursor-probe.txt.done" \
+                  "$PROBE_DIR/cursor-probe.txt.meta" \
+                  "$PROBE_DIR/cursor-probe.txt.diag"
             CURSOR_MODEL_ARGS=$("$SCRIPT_DIR/agent-model-args.sh" --tool cursor)
-            # Retry probe: same rationale as the initial probe above — no max-mode wrap.
+            # Health probe: "Respond with OK" is passed verbatim — NOT wrapped via
+            # scripts/cursor-wrap-prompt.sh. Probes exist to verify reachability and
+            # auth within a 60s budget; engaging max-mode here would add latency and
+            # cost without diagnostic value.
             # shellcheck disable=SC2086
             "$SCRIPT_DIR/run-external-agent.sh" \
                 --tool cursor \
@@ -219,17 +136,18 @@ if [[ "$PROBE" == "true" ]]; then
                 --capture-stdout \
                 -- cursor agent -p --force --trust $CURSOR_MODEL_ARGS --workspace "$PWD" \
                 "Respond with OK" \
-                >"$PROBE_DIR/cursor-wrapper-retry.log" 2>&1 &
-            RETRY_SENTINELS+=("$PROBE_DIR/cursor-probe.txt.done")
+                >"$PROBE_DIR/cursor-wrapper-attempt${attempt}.log" 2>&1 &
+            SENTINELS+=("$PROBE_DIR/cursor-probe.txt.done")
         fi
 
-        if [[ ${#RETRY_SENTINELS[@]} -gt 0 ]]; then
-            "$SCRIPT_DIR/wait-for-reviewers.sh" --timeout 120 "${RETRY_SENTINELS[@]}" \
-                >"$PROBE_DIR/wait-retry.log" 2>&1 || true
+        if [[ ${#SENTINELS[@]} -gt 0 ]]; then
+            # Wait for probes (120s = 60s timeout + 60s grace)
+            "$SCRIPT_DIR/wait-for-reviewers.sh" --timeout 120 "${SENTINELS[@]}" \
+                >"$PROBE_DIR/wait-attempt${attempt}.log" 2>&1 || true
         fi
 
-        # Re-check codex retry result
-        if [[ "$RETRY_CODEX" == "true" ]]; then
+        # Evaluate this round's results.
+        if [[ "$TRY_CODEX" == "true" ]]; then
             if [[ -f "$PROBE_DIR/codex-probe.txt.done" ]]; then
                 CODEX_EXIT=$(cat "$PROBE_DIR/codex-probe.txt.done")
                 if [[ "$CODEX_EXIT" == "0" && -s "$PROBE_DIR/codex-probe.txt" ]]; then
@@ -238,24 +156,21 @@ if [[ "$PROBE" == "true" ]]; then
                         CODEX_HEALTHY="true"
                         CODEX_PROBE_ERROR=""
                     else
-                        CODEX_PROBE_ERROR="Retry returned non-OK response: $(head -c 200 "$PROBE_DIR/codex-probe.txt" | tr '\n\r' '  ')"
+                        CODEX_PROBE_ERROR="Probe attempt $attempt returned non-OK response: $(head -c 200 "$PROBE_DIR/codex-probe.txt" | tr '\n\r' '  ')"
                     fi
+                elif [[ -f "$PROBE_DIR/codex-probe.txt.diag" ]]; then
+                    CODEX_PROBE_ERROR="Probe attempt $attempt: $(cat "$PROBE_DIR/codex-probe.txt.diag")"
+                elif [[ "$CODEX_EXIT" == "0" ]]; then
+                    CODEX_PROBE_ERROR="Probe attempt $attempt exited successfully but produced no output"
                 else
-                    if [[ -f "$PROBE_DIR/codex-probe.txt.diag" ]]; then
-                        CODEX_PROBE_ERROR="Retry also failed: $(cat "$PROBE_DIR/codex-probe.txt.diag")"
-                    elif [[ "$CODEX_EXIT" == "0" ]]; then
-                        CODEX_PROBE_ERROR="Retry also produced no output"
-                    else
-                        CODEX_PROBE_ERROR="Retry also failed with exit code $CODEX_EXIT"
-                    fi
+                    CODEX_PROBE_ERROR="Probe attempt $attempt failed with exit code $CODEX_EXIT"
                 fi
             else
-                CODEX_PROBE_ERROR="Retry process did not complete (sentinel file missing)"
+                CODEX_PROBE_ERROR="Probe attempt $attempt did not complete (sentinel file missing — possible crash or system kill)"
             fi
         fi
 
-        # Re-check cursor retry result
-        if [[ "$RETRY_CURSOR" == "true" ]]; then
+        if [[ "$TRY_CURSOR" == "true" ]]; then
             if [[ -f "$PROBE_DIR/cursor-probe.txt.done" ]]; then
                 CURSOR_EXIT=$(cat "$PROBE_DIR/cursor-probe.txt.done")
                 if [[ "$CURSOR_EXIT" == "0" && -s "$PROBE_DIR/cursor-probe.txt" ]]; then
@@ -264,22 +179,32 @@ if [[ "$PROBE" == "true" ]]; then
                         CURSOR_HEALTHY="true"
                         CURSOR_PROBE_ERROR=""
                     else
-                        CURSOR_PROBE_ERROR="Retry returned non-OK response: $(head -c 200 "$PROBE_DIR/cursor-probe.txt" | tr '\n\r' '  ')"
+                        CURSOR_PROBE_ERROR="Probe attempt $attempt returned non-OK response: $(head -c 200 "$PROBE_DIR/cursor-probe.txt" | tr '\n\r' '  ')"
                     fi
+                elif [[ -f "$PROBE_DIR/cursor-probe.txt.diag" ]]; then
+                    CURSOR_PROBE_ERROR="Probe attempt $attempt: $(cat "$PROBE_DIR/cursor-probe.txt.diag")"
+                elif [[ "$CURSOR_EXIT" == "0" ]]; then
+                    CURSOR_PROBE_ERROR="Probe attempt $attempt exited successfully but produced no output"
                 else
-                    if [[ -f "$PROBE_DIR/cursor-probe.txt.diag" ]]; then
-                        CURSOR_PROBE_ERROR="Retry also failed: $(cat "$PROBE_DIR/cursor-probe.txt.diag")"
-                    elif [[ "$CURSOR_EXIT" == "0" ]]; then
-                        CURSOR_PROBE_ERROR="Retry also produced no output"
-                    else
-                        CURSOR_PROBE_ERROR="Retry also failed with exit code $CURSOR_EXIT"
-                    fi
+                    CURSOR_PROBE_ERROR="Probe attempt $attempt failed with exit code $CURSOR_EXIT"
                 fi
             else
-                CURSOR_PROBE_ERROR="Retry process did not complete (sentinel file missing)"
+                CURSOR_PROBE_ERROR="Probe attempt $attempt did not complete (sentinel file missing — possible crash or system kill)"
             fi
         fi
-    fi
+
+        # Early exit if everything we wanted is now healthy.
+        STILL_NEEDED=false
+        if [[ "$CODEX_AVAILABLE" == "true" && "$SKIP_CODEX_PROBE" == "false" && "$CODEX_HEALTHY" == "false" ]]; then
+            STILL_NEEDED=true
+        fi
+        if [[ "$CURSOR_AVAILABLE" == "true" && "$SKIP_CURSOR_PROBE" == "false" && "$CURSOR_HEALTHY" == "false" ]]; then
+            STILL_NEEDED=true
+        fi
+        if [[ "$STILL_NEEDED" == "false" ]]; then
+            break
+        fi
+    done
 
     # Only emit health keys for tools that are installed — absent binaries
     # are already handled by *_AVAILABLE=false and should not propagate a

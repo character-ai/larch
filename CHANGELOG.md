@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.4.6] - 2026-05-03
+
+### Changed
+
+- `scripts/check-reviewers.sh` replaces the prior initial-probe + retry-once block with a 3-attempt loop that sleeps 10s between attempts. Each round only re-probes tools that are still unhealthy; healthy tools settle and stay healthy. Worst-case probe duration when both tools stay unresponsive across all 3 attempts rises from ~240s to ~380s — documented in `scripts/check-reviewers.md` so callers with hard wallclock budgets can plan around it.
+- `skills/implement/SKILL.md` Step 1 normal-mode adds a both-externals-down inline-plan branch: when `codex_available=false AND cursor_available=false AND design_only=false`, `/implement` skips `/design` entirely and produces an inline plan in the main agent (mirrors the quick-mode path), avoiding the token-expensive 8-Claude-subagent fallback that has no independent-perspective value when no external can produce one. With `--design-only` the orchestrator instead bails to cleanup with `STALL_TRACKING=true` because `--design-only`'s contract requires external-backed plan-review (closes #1024).
+
 ## [15.4.5] - 2026-05-03
 
 ### Fixed
