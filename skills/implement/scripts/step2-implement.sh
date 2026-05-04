@@ -3,9 +3,13 @@
 #
 # This is the SINGLE entrypoint /implement Step 2 invokes. It is the only place
 # that branches on the chosen --coder value. The orchestrator only falls back
-# to Claude main-agent Edit/Write when this script returns STATUS=claude_fallback
-# (returned when --coder=claude or when --coder=cursor with --cursor-healthy
-# unset/false — Cursor falls back to Claude instead of failing closed).
+# to Claude main-agent Edit/Write when BOTH STATUS=claude_fallback AND
+# ORCHESTRATOR_EDIT_AUTHORITY=allowed are present in this script's stdout (the
+# pair invariant: AUTH=allowed iff STATUS=claude_fallback). claude_fallback is
+# emitted when --coder=claude or when --coder=cursor with --cursor-healthy
+# unset/false (Cursor falls back to Claude instead of failing closed); every
+# external-implementer outcome (complete / needs_qa / bailed) emits AUTH=forbidden
+# instead. See SKILL.md NEVER #10 and the Step 2 entry preconditions matrix.
 #
 # Coder flag (preferred):
 #   --coder claude   → STATUS=claude_fallback (main-agent path)
