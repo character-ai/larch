@@ -185,7 +185,10 @@ When an orchestrator (e.g. `/implement`) delegates heavy planning to `/design`, 
 
 `--inline` controls execution topology only — verbosity suppression in the child is unchanged because `SESSION_ENV_PATH` remains non-empty under both settings. See `skills/implement/SKILL.md § Step 1 — Ensure Design Plan Exists` (canonical invocation order) and the `--inline` flag definition at the top of that file.
 
-`/design --subagent` is a no-op under `--quick`: quick mode skips `/design`'s sketch + plan-review machinery entirely, so the inline-vs-subagent distinction does not arise.
+`--quick` interacts with `--subagent` along two different paths:
+
+- **`/implement --quick`** skips its Step 1 `/design` invocation entirely, so the inline-vs-subagent distinction does not arise on the parent side.
+- **`/design --quick`** still runs the (reduced) sketch and plan-review flow, but `--subagent` is ignored: `/design`'s Step 2a heavy-subagent branch is gated on `subagent_mode=true AND quick_mode=false`, so quick mode falls back to the inline path.
 
 ## Avoid conditional phrasing for sub-skill invocations
 
