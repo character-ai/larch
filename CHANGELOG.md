@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.7.10] - 2026-05-04
+
+### Added
+
+- `skills/issue/scripts/test-list-issues.sh` regression test harness pinning the dedup + TSV-shaping behavior of `skills/issue/scripts/list-issues.sh` end-to-end. Covers the `DEDUP_SKIP_PREFIX_FILTER` jq pipeline spliced into both `JQ_FILTER` branches: the five skip prefixes (case-insensitive, including `[Research]` / `[INVESTIGATE]` / leading-whitespace variants), TSV `\t` / `\n` / `\r` sanitization, the open-only branch (`CLOSED_WINDOW_DAYS=0`), and the closed-window branch (`CLOSED_WINDOW_DAYS>0`) with cutoff boundary checks. Drives `list-issues.sh` against static paginated-JSON fixtures (`fixtures/list-issues/page1.json`, `fixtures/list-issues/page2.json`) via PATH-stubbed `gh` and `python3` fakes; production code is unchanged. The fake `python3` extracts and validates the integer following `datetime.timedelta(days=` against an `EXPECTED_DAYS` env var the harness exports per invocation, so an off-by-one constant in production fails closed. Assertions use multiset TSV equality (`sort` + row-count) so duplicate rows from a buggy helper trip the check rather than collapsing under `sort -u`. Wired into `test-harnesses-2` shard via `Makefile` and listed in `docs/linting.md`; `skills/issue/SKILL.md` references the harness adjacent to the `list-issues.sh` invocation. Sibling contract `skills/issue/scripts/test-list-issues.md` documents the harness invariants. Closes #1059.
+
 ## [15.7.9] - 2026-05-04
 
 ### Changed
