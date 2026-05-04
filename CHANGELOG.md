@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.7.2] - 2026-05-04
+
+### Changed
+
+- `/fix-issue` Step 4: the `classify` breadcrumb now wraps `$INTENT` and `$COMPLEXITY` values in 🟨 yellow-square markers and `**...**` bold so the classification (e.g. `INTENT=PR COMPLEXITY=SIMPLE`) stands out at a glance in the Claude Code transcript. `skills/fix-issue/SKILL.md:192` and the matching contract paragraph in `skills/fix-issue/references/triage-classification.md:5` updated together (closes #1043).
+
 ## [15.7.1] - 2026-05-04
 
 ### Changed
