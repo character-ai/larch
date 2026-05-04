@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.7.12] - 2026-05-04
+
+### Changed
+
+- Speed up the lint CI job by parallelizing shellcheck (~21s → ~6s on 4-core runners), splitting it into a dedicated CI job that runs in parallel with `lint`, and adding pip caching to `actions/setup-python` across `lint`, the new `shellcheck` job, and the six `test-harnesses` matrix cells. The upstream `shellcheck-py` pre-commit hook is replaced by a local hook (`scripts/pre-commit-shellcheck.sh`) that fans `shellcheck -x` out via `xargs -0 -n1 -P $(nproc)`, with the engine binary still pinned to `shellcheck-py==0.10.0.1` via `additional_dependencies` on the local hook (`require_serial: true` keeps pre-commit from double-parallelizing on top). A new `.github/workflows/requirements-lint.txt` (`pre-commit==4.2.0` + `pyyaml==6.0.2`) is the shared dep manifest consumed by `cache: pip` and `pip install -r` across all three job classes; PyYAML is pinned in lockstep with the existing `lint-skill-invocations` `additional_dependencies` per `scripts/lint-skill-invocations.md`. Phase 1 (this PR) keeps `shellcheck` running inside `lint` so coverage is preserved while branch protection migrates to require the new `shellcheck` check; a small Phase 2 follow-up flips `lint`'s `SKIP=agnix` to `SKIP=agnix,shellcheck` once the branch-protection update lands. `docs/linting.md` documents the rollout, the shared requirements file, and the no-longer-required local `shellcheck` binary; `agent-lint.toml` excludes `scripts/pre-commit-shellcheck.sh` from the dead-script scan because pre-commit-config.yaml entries are not part of agent-lint's reachability graph. Closes #1074.
+
 ## [15.7.11] - 2026-05-04
 
 ### Fixed
