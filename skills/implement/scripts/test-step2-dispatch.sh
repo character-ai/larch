@@ -5,7 +5,7 @@
 # (28 assertions; for the full per-test inventory see test-step2-dispatch.md):
 #   - --coder claude → STATUS=claude_fallback (no launcher run; no baseline-file leak).
 #   - default coder (no --coder flag) is codex.
-#   - Default coder (neither flag) → STATUS=claude_fallback.
+#   - Default codex path outside a git work-tree → exit 2.
 #   - Legacy --codex-available false → STATUS=claude_fallback + deprecation warning on stderr.
 #   - Missing required flag (--auto-mode) → exit 2.
 #   - Bad --coder enum value → exit 2 and names {claude,codex,cursor}.
