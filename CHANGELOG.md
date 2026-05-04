@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.7.0] - 2026-05-04
+
+### Added
+
+- `/fix-issue`: new `--inline` flag. Default (`inline_mode=false`) does not forward; when set, `--inline` is forwarded to the delegated `/implement` run on the **HARD bullet only** (Step 5a), where `/design` is invoked. The SIMPLE bullet uses `/implement --quick` which skips `/design`, so `--inline` is intentionally not forwarded there (no-op). Closes #1040.
+
 ## [15.6.0] - 2026-05-04
 
 ### Added
