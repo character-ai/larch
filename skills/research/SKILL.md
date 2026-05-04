@@ -1,6 +1,6 @@
 ---
 name: research
-description: "Use for read-only research; planner pre-pass + 4 Codex-first lanes (arch/edge/ext/security) with Claude fallback; 3-reviewer panel (Claude+Codex+Cursor); --no-issue skips auto-issue."
+description: "Use when conducting read-only research; planner pre-pass + 4 Codex-first lanes (arch/edge/ext/security) with Claude fallback; 3-reviewer panel (Claude+Codex+Cursor); --no-issue skips auto-issue."
 argument-hint: "[--no-issue] <research question or topic>"
 allowed-tools: Bash, Read, Grep, Glob, Agent, Task, WebFetch, WebSearch, Skill, Write, Edit, NotebookEdit
 hooks:
