@@ -108,6 +108,8 @@ chmod +x "$FAKE_BIN/python3"
 OPEN_EXPECTED=$(cat <<'EXPECTED'
 1	Add foo feature	open	https://github.example/owner/repo/issues/1
 2	Fix research summary bug	open	https://github.example/owner/repo/issues/2
+3	Researcher settings	open	https://github.example/owner/repo/issues/3
+12	[research]	open	https://github.example/owner/repo/issues/12
 14	Open with tab and newline and cr	open	https://github.example/owner/repo/issues/14
 EXPECTED
 )
@@ -115,6 +117,8 @@ EXPECTED
 CLOSED_EXPECTED=$(cat <<'EXPECTED'
 1	Add foo feature	open	https://github.example/owner/repo/issues/1
 2	Fix research summary bug	open	https://github.example/owner/repo/issues/2
+3	Researcher settings	open	https://github.example/owner/repo/issues/3
+12	[research]	open	https://github.example/owner/repo/issues/12
 14	Open with tab and newline and cr	open	https://github.example/owner/repo/issues/14
 15	Recent closed	closed	https://github.example/owner/repo/issues/15
 16	Boundary on cutoff	closed	https://github.example/owner/repo/issues/16
@@ -264,9 +268,14 @@ assert_tsv_contains_title "Add foo feature" "ordinary open title passes through"
 assert_tsv_contains_title "Fix research summary bug" "non-prefix research substring passes through"
 assert_tsv_contains_title "Open with tab and newline and cr" "tab/newline/carriage-return title is TSV-shaped"
 
-echo "TEST 4: prefixes, case, and whitespace are filtered"
+echo "TEST 4: prefixes, case, and whitespace are filtered (trailing-space-sensitive grammar — closes #1063)"
 run_helper 0
-assert_tsv_lacks_title "Researcher settings" "broad research prefix filters Researcher"
+# Trailing-space-sensitive prefix grammar: each archival keyword (research /
+# investigate / [research] / [investigate] / [research report]) must be
+# followed by an ASCII space, applied after leading-whitespace trim + ASCII
+# downcase. Substring-prefix collisions like "Researcher" or exact tokens
+# like "[research]" without a trailing space are NOT archival.
+assert_tsv_contains_title "Researcher settings" "Researcher (no trailing space) is NOT archival"
 assert_tsv_lacks_title "research overhaul" "lowercase research prefix filters"
 assert_tsv_lacks_title "Research caching" "mixed-case research prefix filters"
 assert_tsv_lacks_title "INVESTIGATE perf" "uppercase investigate prefix filters"
@@ -275,8 +284,8 @@ assert_tsv_lacks_title "[INVESTIGATE] X" "bracketed investigate prefix filters"
 assert_tsv_lacks_title "[Research Report] Q1" "bracketed research-report prefix filters"
 assert_tsv_lacks_title " Research with leading space" "leading-space research title filters"
 assert_tsv_lacks_title "	Investigate tab-prefixed" "leading-tab investigate title filters"
-assert_tsv_lacks_title "[research]" "exact bracketed research title filters"
-assert_tsv_lacks_title "Research Report no brackets" "broad research prefix filters unbracketed Research Report"
+assert_tsv_contains_title "[research]" "exact bracketed [research] (no trailing space) is NOT archival"
+assert_tsv_lacks_title "Research Report no brackets" "research-prefix-with-space filters unbracketed Research Report"
 
 echo "TEST 5: PR rows are filtered in both branches"
 run_helper 0

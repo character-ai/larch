@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.7.11] - 2026-05-04
+
+### Fixed
+
+- `/issue` Phase 1 dedup and `/fix-issue` auto-pick no longer drop legitimate non-archival titles that share a substring with archival prefixes. The grammar in `skills/issue/scripts/list-issues.sh`'s `DEDUP_SKIP_PREFIX_FILTER` and the new `has_archival_prefix` helper in `skills/fix-issue/scripts/find-lock-issue.sh` both require an ASCII space immediately following each archival keyword (<code>research </code>, <code>[research] </code>, <code>investigate </code>, <code>[investigate] </code>, <code>[research report] </code> after leading-whitespace trim + lowercase), so titles like "Researches went for a walk" or "Investigation of slow query" pass through. Auto-pick mirrors `/issue` Phase 1; explicit `/fix-issue <N>` is intentionally exempt. New fixture 14 in `skills/fix-issue/scripts/test-find-lock-issue.sh` covers substring non-collisions. Closes #1063.
+
 ## [15.7.10] - 2026-05-04
 
 ### Added

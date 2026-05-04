@@ -135,9 +135,11 @@ RAW=$(gh api --paginate "repos/${REPO}/issues?state=all&per_page=100" 2>/dev/nul
 # included all closed issues).
 #
 # Omit /research-style archival titles from the Phase 1 dedup snapshot (case-
-# insensitive, leading whitespace trimmed) to reduce prompt noise.
+# insensitive, leading whitespace trimmed) to reduce prompt noise. Prefixes are
+# trailing-space-sensitive so words like "Researches" and "Investigation" remain
+# visible to dedup.
 # shellcheck disable=SC2016  # jq filter ($t is jq binding, not shell)
-DEDUP_SKIP_PREFIX_FILTER='select((.title // "" | ascii_downcase | sub("^[[:space:]]+"; "")) as $t | (($t | startswith("research")) or ($t | startswith("[research]")) or ($t | startswith("investigate")) or ($t | startswith("[investigate]")) or ($t | startswith("[research report]"))) | not)'
+DEDUP_SKIP_PREFIX_FILTER='select((.title // "" | ascii_downcase | sub("^[[:space:]]+"; "")) as $t | (($t | startswith("research ")) or ($t | startswith("[research] ")) or ($t | startswith("investigate ")) or ($t | startswith("[investigate] ")) or ($t | startswith("[research report] "))) | not)'
 if [[ "$CLOSED_WINDOW_DAYS" -eq 0 ]]; then
     JQ_FILTER='.[] | select(.pull_request == null) | select(.state == "open") | '"$DEDUP_SKIP_PREFIX_FILTER"' | [(.number|tostring), (.title | gsub("\t"; " ") | gsub("\n"; " ") | gsub("\r"; " ")), .state, .html_url] | @tsv'
     TSV=$(echo "$RAW" | jq -r "$JQ_FILTER" 2>/dev/null) || {

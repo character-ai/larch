@@ -13,10 +13,10 @@
 **Pinned production filter**:
 
 ```jq
-select((.title // "" | ascii_downcase | sub("^[[:space:]]+"; "")) as $t | (($t | startswith("research")) or ($t | startswith("[research]")) or ($t | startswith("investigate")) or ($t | startswith("[investigate]")) or ($t | startswith("[research report]"))) | not)
+select((.title // "" | ascii_downcase | sub("^[[:space:]]+"; "")) as $t | (($t | startswith("research ")) or ($t | startswith("[research] ")) or ($t | startswith("investigate ")) or ($t | startswith("[investigate] ")) or ($t | startswith("[research report] "))) | not)
 ```
 
-The pinned skip prefixes are `research`, `[research]`, `investigate`, `[investigate]`, and `[research report]`. The broad `research` prefix intentionally filters `Researcher settings` and `Research Report no brackets` under current production semantics; those rows are not fixture mistakes.
+The pinned skip prefixes are <code>research </code>, <code>[research] </code>, <code>investigate </code>, <code>[investigate] </code>, and <code>[research report] </code> — each requires an ASCII space immediately following the keyword (closes #1063). Substring-prefix collisions like `Researcher settings` (no space after `research`) and the exact token `[research]` (no space after `]`) are intentionally NOT archival and pass through Phase 1 dedup. `Research Report no brackets` is still filtered because the lowercased title starts with <code>research </code> (research + space).
 
 **Fixture shape**: `fixtures/list-issues/page1.json` and `fixtures/list-issues/page2.json` are JSON arrays matching the GitHub REST `repos/.../issues` response shape. The harness concatenates them with no separator to exercise jq's multi-document input behavior used with `gh api --paginate`.
 

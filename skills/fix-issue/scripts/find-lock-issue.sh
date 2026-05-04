@@ -18,8 +18,11 @@
 # the last comment, excludes issues locked with "IN PROGRESS", excludes
 # issues blocked by other open issues (via GitHub's native issue dependencies
 # and prose blockers), excludes issues whose titles start with a managed
-# lifecycle prefix ([IN PROGRESS], [DONE], [STALLED]), and emits the first
-# match. Selection order is two-key: titles matching the whole word "urgent"
+# lifecycle prefix ([IN PROGRESS], [DONE], [STALLED]), excludes archival
+# research/investigation titles ("research ", "[research] ", "investigate ",
+# "[investigate] ", "[research report] " after leading-whitespace trim +
+# lowercase — explicit-target mode is intentionally exempt), and emits the
+# first match. Selection order is two-key: titles matching the whole word "urgent"
 # (case-insensitive, word-boundary regex — does NOT match "non-urgent")
 # come first, then within each tier oldest-first by issue number. The
 # preference is a soft re-ordering, not an eligibility filter — a non-
@@ -146,6 +149,22 @@ has_managed_prefix() {
         '[DONE] '*)        return 0 ;;
         '[STALLED] '*)     return 0 ;;
         *)                 return 1 ;;
+    esac
+}
+
+# Returns 0 if the title starts with an archival research/investigation prefix
+# used by /issue dedup snapshots, 1 otherwise. Case-insensitive, leading
+# whitespace trimmed, and trailing-space-sensitive to avoid substring collisions.
+has_archival_prefix() {
+    local t
+    t=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed 's/^[[:space:]]*//')
+    case "$t" in
+        'research '*)          return 0 ;;
+        '[research] '*)        return 0 ;;
+        'investigate '*)       return 0 ;;
+        '[investigate] '*)     return 0 ;;
+        '[research report] '*) return 0 ;;
+        *)                     return 1 ;;
     esac
 }
 
@@ -724,6 +743,11 @@ while IFS= read -r issue_row; do
     # pagination to save one API round-trip per excluded issue.
     if has_managed_prefix "$ISSUE_TITLE"; then
         echo "Skipping issue #$ISSUE_NUM: managed lifecycle title prefix" >&2
+        continue
+    fi
+
+    if has_archival_prefix "$ISSUE_TITLE"; then
+        echo "Skipping issue #$ISSUE_NUM: archival title prefix" >&2
         continue
     fi
 
