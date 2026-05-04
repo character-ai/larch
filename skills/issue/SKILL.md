@@ -117,6 +117,8 @@ Run the title snapshot helper:
 ${CLAUDE_PLUGIN_ROOT}/skills/issue/scripts/list-issues.sh --repo "$REPO" --closed-window-days "${CLOSED_WINDOW_DAYS:-90}"
 ```
 
+Regression coverage for the title snapshot helper lives in `${CLAUDE_PLUGIN_ROOT}/skills/issue/scripts/test-list-issues.sh` (sibling contract: `${CLAUDE_PLUGIN_ROOT}/skills/issue/scripts/test-list-issues.md`; wired into `make lint` via the `test-list-issues` target). The harness pins the `DEDUP_SKIP_PREFIX_FILTER` behavior, both `JQ_FILTER` branches, PR filtering, closed-window cutoff handling, and TSV shaping.
+
 Parse for `LIST_STATUS`. If `LIST_STATUS=failed`, emit a stderr warning `**⚠ /issue: Phase 1 title snapshot failed; skipping dedup and dep-analysis, creating all items with no blocker edges.**` and jump to Step 6 (Create) — fail-open consistent with the existing dedup contract; dep-analysis cannot run without a candidate snapshot, so creating without dep edges is the safest default. (The /issue exit will still be non-zero only if `ISSUES_FAILED>0` from create or dep-link failures; missing dep analysis due to snapshot-fail is a degraded-warning state, not a hard fail.)
 
 If `LIST_STATUS=ok`, the remaining stdout is TSV rows: `<number>\t<title>\t<state>\t<url>`. Load this into a snapshot set.
