@@ -190,7 +190,7 @@ The reference loaded at Step 3 (`skills/fix-issue/references/triage-classificati
 
 Set `INTENT` and (when `INTENT=PR`) `COMPLEXITY` per those rules using the issue details and Step 3's codebase exploration.
 
-Print `✅ 4: classify — INTENT=🟨**$INTENT**🟨 [COMPLEXITY=🟨**$COMPLEXITY**🟨] (<elapsed>)` (omit the `COMPLEXITY=` segment when `INTENT=NON_PR`). The 🟨 yellow-square markers and `**...**` bold around `$INTENT` and `$COMPLEXITY` are required — they make the classification value visually prominent in the Claude Code transcript so an operator scanning the run can immediately spot which path was taken.
+Print `✅ 4: classify — INTENT=**$INTENT** [COMPLEXITY=🟨 **$COMPLEXITY** 🟨] (<elapsed>)` (omit the `COMPLEXITY=` segment when `INTENT=NON_PR`). The `**...**` bold around `$INTENT` and the 🟨 yellow-square markers plus `**...**` bold around `$COMPLEXITY` are required — they make the classification values visually prominent in the Claude Code transcript so an operator scanning the run can immediately spot which path was taken.
 
 ## Step 5 — Execute
 
