@@ -7,11 +7,21 @@
 exclude: ^(\.venv/|node_modules/)
 
 repos:
-  - repo: https://github.com/shellcheck-py/shellcheck-py
-    rev: v0.10.0.1
+  - repo: local
     hooks:
       - id: shellcheck
-        args: [-x]
+        name: shellcheck (parallel, pinned binary)
+        entry: scripts/pre-commit-shellcheck.sh
+        language: python
+        additional_dependencies: [shellcheck-py==0.10.0.1]
+        types: [shell]
+        require_serial: true
+        # Selection (types: [shell]) and -x follow-source semantics match
+        # the upstream shellcheck-py hook this replaces. Engine is the
+        # same binary (shellcheck-py==0.10.0.1), pinned in the hook env.
+        # Parallelism lives in the wrapper; require_serial: true prevents
+        # pre-commit from also splitting the file list, which would
+        # multiply parallel shellcheck processes against xargs -P.
 
   - repo: https://github.com/igorshubovych/markdownlint-cli
     rev: v0.44.0
