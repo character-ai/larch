@@ -624,7 +624,10 @@ After parsing 2.1's KV envelope and BEFORE the 2.2 `STATUS` switch, validate:
 1. `STATUS` is exactly one of `complete`, `needs_qa`, `bailed`, `claude_fallback`.
 2. `ORCHESTRATOR_EDIT_AUTHORITY` is exactly one of `allowed` or `forbidden`, and appears in stdout.
 3. The pair is **legal**: `ORCHESTRATOR_EDIT_AUTHORITY=allowed` iff `STATUS=claude_fallback`. Any other combination is illegal.
-4. If `STATUS=complete` or `STATUS=needs_qa`, `MANIFEST` (or `QA_PENDING`) is non-empty and points to a readable file.
+4. Status-keyed manifest readability (mirrors the dispatcher contract in `skills/implement/scripts/step2-implement.md` stdout grammar):
+   - If `STATUS=complete`: `MANIFEST` is non-empty and points to a readable file. `QA_PENDING` MUST be absent.
+   - If `STATUS=needs_qa`: `QA_PENDING` is non-empty and points to a readable file, AND `MANIFEST` is non-empty and points to a readable file.
+   - If `STATUS=bailed` or `STATUS=claude_fallback`: this check does not apply (no required manifest path on these branches).
 
 If any check fails, synthesize an orchestrator-local bail: set `STATUS=bailed`, `REASON=orchestrator-envelope-invalid`, log `Step 2 — orchestrator-envelope-invalid: STATUS=<raw> AUTH=<raw> reason=<which-check-failed>` to the `Warnings` section of `$IMPLEMENT_TMPDIR/execution-issues.md`, set `FINAL_BAIL_REASON=orchestrator-envelope-invalid` and `STALL_TRACKING=true`, do NOT consume `MANIFEST`, do NOT enter 2.3 or Step 3, and bail to Step 12d. **`orchestrator-envelope-invalid` is an orchestrator-local synthetic reason**, not a dispatcher-emitted REASON token — the dispatcher's REASON enumeration in `references/codex-manifest-schema.md` and `step2-implement.md` does not include it.
 
@@ -640,7 +643,7 @@ If any check fails, synthesize an orchestrator-local bail: set `STATUS=bailed`, 
 1. Read `$QA_PENDING` (a JSON file containing `{"questions": [{"id": "q1", "text": "..."}, ...]}`).
 2. **If `auto_mode=false`**: pose the questions to the operator via `AskUserQuestion` in a single batched call (one prompt per question, preserving the `id`). **If `auto_mode=true`**: derive best-effort answers from the plan + codebase + `CLAUDE.md`. Either way, log every Q/A pair to `$IMPLEMENT_TMPDIR/execution-issues.md` under `### Q/A` per the schema in 2.5 below.
 3. Compose an answers file `$IMPLEMENT_TMPDIR/codex-answers-$RESUME_N.json` with shape `{"answers": [{"id": "q1", "text": "<answer>"}, ...]}` (`$RESUME_N` is the 1-indexed resume cycle counter the orchestrator tracks locally). The filename retains `codex-` for historical compatibility; the dispatcher accepts it for Cursor resumes too.
-4. Re-invoke the dispatcher with the additional flag `--answers "$IMPLEMENT_TMPDIR/codex-answers-$RESUME_N.json"`. Re-parse the new KV envelope and re-branch (this loop body). The dispatcher itself enforces the 5-cycle cap; on the 6th `--answers` invocation it returns `STATUS=bailed REASON=qa-loop-exceeded` automatically.
+4. Re-invoke the dispatcher with the additional flag `--answers "$IMPLEMENT_TMPDIR/codex-answers-$RESUME_N.json"`. **On every dispatcher return — including each `--answers` redispatch cycle — re-parse the KV envelope and run the §2.1.5 envelope-validation block in full BEFORE re-branching on `STATUS` per §2.2.** Q/A redispatch is not exempt from envelope validation: a malformed or AUTH-illegal envelope on a resume invocation must still fail-closed via `orchestrator-envelope-invalid` exactly as on the first dispatch. The dispatcher itself enforces the 5-cycle cap; on the 6th `--answers` invocation it returns `STATUS=bailed REASON=qa-loop-exceeded` automatically.
 
 The dispatcher does NOT git reset between cycles. The external implementer inspects branch state at the start of every invocation and — on the resume invocation — reads the answers file, decides if its prior partial work is consistent with the new answers, and either continues or bails with `resume-incompatible` (which the operator inspects manually). See `agents/codex-implementer.md` / `agents/cursor-implementer.md` "Resume protocol".
 
@@ -702,7 +705,7 @@ Invoke `/relevant-checks` via the Skill tool. If checks fail, diagnose and fix, 
 
 **On the external implementer path** (`$MANIFEST_PATH` is non-empty, i.e. Step 2 returned `STATUS=complete`): the dispatcher has already committed `$TOOL_LABEL`'s working-tree edits using `manifest.commit_message` (`git add -A && git commit -F …`, with `commit_message` piped through `scripts/redact-secrets.sh` first so secrets do not land in git history). There is no Claude-side diff verification — `commit_message` is consumed as-is modulo the secrets-family redaction; the canonical on-disk manifest is sanitized by the same scrubber for downstream Steps 8a / 9a / 9a.1. Skip the `git-commit.sh` invocation. Print `⏩ 4: commit (impl) — already committed by dispatcher (HEAD=$(git rev-parse --short HEAD))`.
 
-**On the Claude-fallback path** (Step 2 returned `STATUS=claude_fallback`): stage and commit:
+**On the Claude-fallback path** (Step 2 returned `STATUS=claude_fallback` AND `ORCHESTRATOR_EDIT_AUTHORITY=allowed` — the same dual predicate enforced by NEVER #10, the Step 2 entry preconditions matrix, and §2.1.5; if the AUTH key is missing, mismatched, or `forbidden`, Step 2 has already bailed via `orchestrator-envelope-invalid` and Step 4 is unreachable on this branch): stage and commit:
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/git-commit.sh -m "<descriptive commit message>" <specific-files>

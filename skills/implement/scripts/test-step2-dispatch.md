@@ -2,8 +2,8 @@
 
 **Purpose**: Offline regression harness for `skills/implement/scripts/step2-implement.sh` covering the dispatcher branches that do not require spawning an external implementer. Runs in <1s with no `codex`/`cursor` binary and no network.
 
-**Coverage** (26 assertions):
-1. `--coder claude` emits `STATUS=claude_fallback` with no other KV keys, and writes no baseline files.
+**Coverage** (28 assertions):
+1. `--coder claude` emits `STATUS=claude_fallback` and `ORCHESTRATOR_EDIT_AUTHORITY=allowed` (and no other KV keys — no `MANIFEST=`, no `TRANSCRIPT=`, etc.), and writes no baseline files.
 1b. Default coder (no flag) is codex — verified via non-git cwd exit 2 with the git-tree message (the claude default would early-return `STATUS=claude_fallback` instead).
 1c. Legacy `--codex-available false` still emits `STATUS=claude_fallback` and prints a deprecation warning to stderr.
 2. Missing required flag (`--auto-mode`) exits with code 2.
@@ -24,7 +24,8 @@
 8. `--coder codex` invoked with cwd outside any git working tree exits with code 2 and stderr containing `must be invoked from within a git working tree`.
 8b. The non-git-tree Codex exit-2 path does not leak a baseline file into `$TMPDIR_ARG`.
 9. First Codex invocation (reusing the resume-cap setup that bails on `qa-loop-exceeded`) writes `step2-spawn-coder.txt` with content `codex` BEFORE the resume-counter logic runs — pins the cross-coder guard's "first writer" behavior.
-10. Second invocation against a tmpdir whose `step2-spawn-coder.txt` recorded a different coder (`codex` pre-seeded; invocation passes `--coder=cursor --cursor-healthy true`) emits `STATUS=bailed REASON=coder-mismatch-tmpdir-reuse TOOL=cursor`. The pre-seeded sentinel value MUST be unchanged on bail, and the `cursor-resume-count.txt` MUST NOT have been written — pins the cross-coder guard's "fail before any per-tool state mutation" ordering.
+10. Second invocation against a tmpdir whose `step2-spawn-coder.txt` recorded a different coder (`codex` pre-seeded; invocation passes `--coder=cursor --cursor-healthy true`) emits `STATUS=bailed REASON=coder-mismatch-tmpdir-reuse TOOL=cursor`. The pre-seeded sentinel value MUST be unchanged on bail, and the `cursor-resume-count.txt` MUST NOT have been written — pins the cross-coder guard's "fail before any per-tool state mutation" ordering. Also asserts `ORCHESTRATOR_EDIT_AUTHORITY=forbidden` on this bail path.
+11. `ORCHESTRATOR_EDIT_AUTHORITY` pair invariant: on every reachable exit-0 outcome the dispatcher emits exactly one `ORCHESTRATOR_EDIT_AUTHORITY=` line, with `allowed` iff `STATUS=claude_fallback` and `forbidden` on every external-implementer outcome. Test 11a re-runs the `--coder claude` claude_fallback path and asserts `AUTH=allowed`; test 11b re-runs the resume-cap bail (`--coder codex --answers` with pre-seeded `codex-resume-count.txt=5`) and asserts `AUTH=forbidden`. Tests 1, 1c, 3b, 3b2, 3b3, 3b5, 3b6, 5, 7, and 10 also pin the AUTH key on their respective branches; this is the central mechanical gate that lets `SKILL.md` Step 2 enforce NEVER #10 (`ORCHESTRATOR_EDIT_AUTHORITY=allowed` ⇔ `STATUS=claude_fallback`).
 
 All `--coder codex` invocations that proceed past argument parsing are run with cwd pinned to `$REPO_ROOT` so the dispatcher's git resolution targets the harness's own git tree. Cursor health-gate tests also use `cd "$REPO_ROOT"` unless the assertion specifically covers outside-git ordering.
 
