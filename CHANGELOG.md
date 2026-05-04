@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.7.6] - 2026-05-04
+
+### Changed
+
+- `/implement` Step 2 enforces a mechanical edit-authority gate. The dispatcher (`skills/implement/scripts/step2-implement.sh`) now emits `ORCHESTRATOR_EDIT_AUTHORITY=allowed|forbidden` on every exit-0 outcome, with `allowed` iff `STATUS=claude_fallback`; on every external-implementer outcome (`complete` / `needs_qa` / `bailed`) it emits `forbidden`. `skills/implement/SKILL.md` adds NEVER #10 (the dual-predicate gate), a Step 2 entry preconditions matrix, and a §2.1.5 envelope-validation block that fail-closes any malformed or pair-illegal envelope to a synthetic `orchestrator-envelope-invalid` bail. `skills/implement/scripts/test-step2-dispatch.sh` grows to 28 assertions including Test 11 (pair invariant: exactly one AUTH line per envelope, `allowed` iff `STATUS=claude_fallback`). Prevents the `/imaq --coder=cursor` regression where the main agent could perform Edit/Write code edits while the dispatcher was supposed to own the working tree. Closes #1058.
+
 ## [15.7.5] - 2026-05-04
 
 ### Changed
