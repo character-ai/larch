@@ -31,7 +31,7 @@ Local ordering changed: under `make test-harnesses` and therefore `make lint`, h
 
 ### Refreshing harness shard balance
 
-Rebalance manually when one shard's sustained wall-clock materially exceeds the `test-validate-citations` floor of about 18s, or when another shard drops far below the rest.
+Rebalance manually when one shard's sustained wall-clock materially exceeds the `test-validate-citations` floor of about 18s, or when another shard drops far below the rest. Last manual rebalance: 2026-05-03 (issue #1028) — `test-validate-citations` was moved behind shard 6's partition guard so the citation floor and the partition guard share a shard, and the previously crowded shard 2 was redistributed across the lighter shards.
 
 Capture timings:
 
