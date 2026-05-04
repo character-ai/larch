@@ -133,9 +133,13 @@ RAW=$(gh api --paginate "repos/${REPO}/issues?state=all&per_page=100" 2>/dev/nul
 # closed-issue branch in jq entirely rather than falling back to a sentinel
 # cutoff (the original 0000-00-00 fallback was >= every real date and silently
 # included all closed issues).
+#
+# Omit /research-style archival titles from the Phase 1 dedup snapshot (case-
+# insensitive, leading whitespace trimmed) to reduce prompt noise.
+# shellcheck disable=SC2016  # jq filter ($t is jq binding, not shell)
+DEDUP_SKIP_PREFIX_FILTER='select((.title // "" | ascii_downcase | sub("^[[:space:]]+"; "")) as $t | (($t | startswith("research")) or ($t | startswith("[research]")) or ($t | startswith("investigate")) or ($t | startswith("[investigate]")) or ($t | startswith("[research report]"))) | not)'
 if [[ "$CLOSED_WINDOW_DAYS" -eq 0 ]]; then
-    # shellcheck disable=SC2016  # jq filter, not shell expansion
-    JQ_FILTER='.[] | select(.pull_request == null) | select(.state == "open") | [(.number|tostring), (.title | gsub("\t"; " ") | gsub("\n"; " ") | gsub("\r"; " ")), .state, .html_url] | @tsv'
+    JQ_FILTER='.[] | select(.pull_request == null) | select(.state == "open") | '"$DEDUP_SKIP_PREFIX_FILTER"' | [(.number|tostring), (.title | gsub("\t"; " ") | gsub("\n"; " ") | gsub("\r"; " ")), .state, .html_url] | @tsv'
     TSV=$(echo "$RAW" | jq -r "$JQ_FILTER" 2>/dev/null) || {
         echo "LIST_STATUS=failed"
         echo "WARN: jq failed to parse gh api output" >&2
@@ -143,7 +147,7 @@ if [[ "$CLOSED_WINDOW_DAYS" -eq 0 ]]; then
     }
 else
     # shellcheck disable=SC2016  # $cutoff is a jq variable passed via --arg, not a shell variable
-    JQ_FILTER='.[] | select(.pull_request == null) | select(.state == "open" or (.state == "closed" and .closed_at != null and (.closed_at[:10] >= $cutoff))) | [(.number|tostring), (.title | gsub("\t"; " ") | gsub("\n"; " ") | gsub("\r"; " ")), .state, .html_url] | @tsv'
+    JQ_FILTER='.[] | select(.pull_request == null) | select(.state == "open" or (.state == "closed" and .closed_at != null and (.closed_at[:10] >= $cutoff))) | '"$DEDUP_SKIP_PREFIX_FILTER"' | [(.number|tostring), (.title | gsub("\t"; " ") | gsub("\n"; " ") | gsub("\r"; " ")), .state, .html_url] | @tsv'
     TSV=$(echo "$RAW" | jq -r --arg cutoff "$CUTOFF_DATE" "$JQ_FILTER" 2>/dev/null) || {
         echo "LIST_STATUS=failed"
         echo "WARN: jq failed to parse gh api output" >&2
