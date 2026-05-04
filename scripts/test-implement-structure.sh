@@ -57,7 +57,9 @@
 #      that keeps the MANDATORY pointer but orphans Step 9a.1 or Step 11 from the
 #      extracted reference. (9c) SKILL.md must reference `pr-body-template.md` at
 #      least 1 time (the MANDATORY pointer at Step 9a) — lower floor than pre-Phase-3
-#      since rich report content moved to anchor-comment-template.md.
+#      since rich report content moved to anchor-comment-template.md. (9d) The
+#      canonical Step 9a.1 procedure must require `--title-prefix "[OOS]"`
+#      while keeping `/issue` label flags out of that procedure.
 # (10) Cross-skill bail-token pin (umbrella #348 Phase 4): skills/implement/SKILL.md
 #      must contain the literal `IMPLEMENT_BAIL_REASON=adopted-issue-closed`.
 #      `/fix-issue` Step 6a scans this token in captured `/implement` output to
@@ -313,6 +315,27 @@ fi
 pr_body_refs=$(grep -cF 'pr-body-template.md' "$SKILL_MD" || true)
 if ! [[ "$pr_body_refs" =~ ^[0-9]+$ ]] || (( pr_body_refs < 1 )); then
   fail "(9c) expected at least 1 reference to 'pr-body-template.md' in SKILL.md (Step 9a MANDATORY pointer), found ${pr_body_refs:-0}"
+fi
+
+# ---------------------------------------------------------------------------
+# (9d) Step 9a.1 OOS issue-filing flag contract. Scope to the canonical
+#      procedure section only: it must require the `[OOS]` title prefix on the
+#      `/issue` batch invocation, and it must not contain any label flag token.
+#      This prevents the OOS pipeline from regressing to unlabeled-title output
+#      or from triggering label-not-found warnings in consumer repos.
+# ---------------------------------------------------------------------------
+step_9a1_oos_procedure=$(awk '
+  /^## Step 9a\.1 OOS pipeline procedure/ { flag=1; next }
+  /^## / { flag=0 }
+  flag { print }
+' "$ANCHOR_TEMPLATE")
+
+[[ -n "$step_9a1_oos_procedure" ]] \
+  || fail "(9d) could not extract Step 9a.1 OOS pipeline procedure section from anchor-comment-template.md"
+printf '%s\n' "$step_9a1_oos_procedure" | grep -Fq -- '--title-prefix "[OOS]"' \
+  || fail "(9d) Step 9a.1 OOS pipeline procedure must require '/issue --title-prefix \"[OOS]\"'"
+if printf '%s\n' "$step_9a1_oos_procedure" | grep -Fq -- '--label'; then
+  fail "(9d) Step 9a.1 OOS pipeline procedure must not pass a /issue label flag; use the '[OOS]' title prefix instead"
 fi
 
 # ---------------------------------------------------------------------------
