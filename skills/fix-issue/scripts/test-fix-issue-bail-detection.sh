@@ -9,7 +9,7 @@
 # conformance test. Runtime enforcement is the LLM-level orchestration of
 # Step 5a per the prose contract.
 #
-# Twelve assertions against the extracted Step 5a block:
+# Fourteen assertions against the extracted Step 5a block:
 #   (a1) SIMPLE bullet forwards "--issue $ISSUE_NUMBER".
 #   (a2) HARD bullet forwards "--issue $ISSUE_NUMBER".
 #   (a3) SIMPLE bullet forwards "--no-admin-fallback" (issue #559 — branch-protection bypass safety flag).
@@ -18,6 +18,11 @@
 #   (a6) HARD bullet forwards "--coder=$coder" (pass-through implementer-selection flag).
 #   (a7) SIMPLE bullet forwards "--auto" (pass-through autonomous-mode flag).
 #   (a8) HARD bullet forwards "--auto" (pass-through autonomous-mode flag).
+#   (a9) HARD bullet forwards "--inline" (pass-through /design execution-topology
+#        flag; HARD-only because SIMPLE uses /implement --quick which skips
+#        /design and renders --inline a no-op).
+#   (a10) SIMPLE bullet does NOT contain "--inline" (encodes the design decision
+#        that SIMPLE intentionally omits the forward).
 #   (b)  Literal token "IMPLEMENT_BAIL_REASON=adopted-issue-closed" present.
 #   (c)  Warning prefix "/implement bailed: issue #" present.
 #   (d)  Specific directive "Do NOT call `issue-lifecycle.sh close`" present
@@ -126,6 +131,27 @@ assert_bullet_contains "a6: HARD bullet forwards --coder="   '- **HARD**'   '--c
 # delegated /implement run.
 assert_bullet_contains "a7: SIMPLE bullet forwards --auto" '- **SIMPLE**' '[--auto if auto_mode]'
 assert_bullet_contains "a8: HARD bullet forwards --auto"   '- **HARD**'   '[--auto if auto_mode]'
+
+# (a9) HARD bullet forwards --inline. /implement's --inline only matters when
+# /design runs, which is the HARD path; SIMPLE uses /implement --quick which
+# skips /design entirely.
+assert_bullet_contains "a9: HARD bullet forwards --inline" '- **HARD**' '[--inline if inline_mode]'
+
+# (a10) SIMPLE bullet does NOT contain --inline — encodes the design decision
+# that SIMPLE intentionally omits the forward (no-op there).
+SIMPLE_LINE=$(grep -F -- '- **SIMPLE**' <<<"$STEP5A_BLOCK" | head -1 || true)
+if [[ -n "$SIMPLE_LINE" && "$SIMPLE_LINE" != *"--inline"* ]]; then
+    PASS_COUNT=$((PASS_COUNT + 1))
+    echo "  PASS: a10: SIMPLE bullet does NOT contain --inline"
+else
+    echo "  FAIL: a10: SIMPLE bullet does NOT contain --inline" >&2
+    if [[ -z "$SIMPLE_LINE" ]]; then
+        echo "    SIMPLE bullet not found" >&2
+    else
+        echo "    SIMPLE bullet unexpectedly contains --inline: $SIMPLE_LINE" >&2
+    fi
+    exit 1
+fi
 
 # (b) Bail-token literal present.
 assert_contains "b: IMPLEMENT_BAIL_REASON=adopted-issue-closed literal" 'IMPLEMENT_BAIL_REASON=adopted-issue-closed'
