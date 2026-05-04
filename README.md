@@ -57,7 +57,7 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#design"><code>/design</code></a></td>
-      <td><code>[--auto] [--quick] &lt;feature description&gt;</code></td>
+      <td><code>[--auto] [--quick] [--subagent] [--session-env &lt;path&gt;] &lt;feature description&gt;</code></td>
     </tr>
     <tr><td colspan="2">Design an implementation plan with 9 sketch agents (3 in quick mode), dialectic adjudication, and a 6-reviewer validation panel.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
@@ -69,7 +69,7 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#implement"><code>/implement</code></a></td>
-      <td><code>[--quick] [--auto] [--design-only] [--merge | --draft] [--no-slack] [--no-admin-fallback] [--coder=claude|codex|cursor] [--issue &lt;N&gt;] &lt;feature description&gt;</code></td>
+      <td><code>[--quick] [--auto] [--design-only] [--inline] [--merge | --draft] [--no-slack] [--no-admin-fallback] [--coder=claude|codex|cursor] [--session-env &lt;path&gt;] [--issue &lt;N&gt;] &lt;feature description&gt;</code></td>
     </tr>
     <tr><td colspan="2">Full end-to-end feature workflow — design, implement, PR. <code>--design-only</code> publishes plan/review/diagram/OOS artifacts to the tracking issue and stops before implementation. <code>--quick</code> skips <code>/design</code> and runs a code-review loop of up to 7 rounds (no voting panel): rounds 1-3 launch 5 Cursor specialists in parallel plus a generic Codex reviewer; rounds 4-7 use a single generic reviewer per round with a Cursor → Codex → Claude fallback chain. <code>--coder</code> selects the Step 2 implementer (default <code>codex</code> — spawns the Codex implementer; pass <code>claude</code> to run in the main agent / Claude context, or <code>cursor</code> for the Cursor implementer; <code>cursor</code> falls back to the main-agent path when Cursor is unhealthy or unavailable). <code>LARCH_CURSOR_MODEL</code> also drives the Cursor implementer when <code>--coder=cursor</code>.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
