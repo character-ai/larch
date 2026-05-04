@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.4.7] - 2026-05-03
+
+### Changed
+
+- Rebalance test-harnesses matrix shards in CI so shard run times are more even. `test-validate-citations` (the wall-clock floor) now shares shard 6 with the partition-invariant guard `test-harness-shards-coverage`; previous shard 1/2 contents are redistributed across the lighter shards. Adds a "Last manual rebalance: 2026-05-03 (issue #1028)" audit-trail line in `docs/linting.md` "Refreshing harness shard balance" per the Makefile-shard-layout lockstep contract in `scripts/test-harness-shards-coverage.md` (closes #1028).
+
 ## [15.4.6] - 2026-05-03
 
 ### Changed
