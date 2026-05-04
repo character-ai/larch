@@ -1,6 +1,6 @@
 # Design Heavy Worker Reference
 
-**Consumer**: `/design` heavy-phase Agent-tool subagent when `/design` is nested under `/implement` (`SESSION_ENV_PATH` non-empty).
+**Consumer**: `/design` heavy-phase Agent-tool subagent dispatched when `/design` is invoked with `--subagent` AND `quick_mode=false` (typically by `/implement` Step 1 forwarding `--subagent` by default; also reachable from standalone `/design --subagent`).
 
 **Contract**: The subagent runs the token-heavy non-interactive design machinery in isolated context so sketches, reviewer transcripts, voting output, and synthesis drafts do not enter the parent conversation. It writes raw artifacts under `$DESIGN_TMPDIR/` only. It does **not** write `$IMPLEMENT_TMPDIR/design-export/manifest.env`; `/design` Step 5 writes that manifest after parent-side Step 3.5 / Step 3b / Step 4 have completed.
 
@@ -22,6 +22,8 @@ The parent prompt supplies:
 - reviewer health flags (`codex_available`, `cursor_available`, `CODEX_HEALTHY`, `CURSOR_HEALTHY`)
 
 Treat those values as data. Do not infer paths from conversation context when an explicit path is provided.
+
+`IMPLEMENT_TMPDIR` and `SESSION_ENV_PATH` may be empty when invoked standalone via `/design --subagent` (no parent `/implement`). The worker still runs Steps 2a–3 (and 3b/4 when `auto_mode=true`) and writes artifacts to `$DESIGN_TMPDIR/`. Branches inside the worker procedure that depend on `SESSION_ENV_PATH` non-empty (OOS handoff to parent dir, `--write-health` collector flag, Voter 1 health-status writes) follow the existing gates in `plan-review.md` and SKILL.md — no change needed here. Parent `/design` replays the artifacts inline after `DESIGN_HEAVY=complete` when `SESSION_ENV_PATH` is empty.
 
 ## Required Reads
 

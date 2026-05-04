@@ -675,5 +675,18 @@ grep -Fq -- 'RUN_OUTCOME=design-only' "$SKILL_MD" \
 grep -Fq -- '$IMPLEMENT_TMPDIR/code-flow-diagram.md' "$SKILL_MD" \
     || fail "(20) Step 7a/9a must use code-flow diagram file path"
 
-echo "PASS: test-implement-structure.sh — all 20 structural invariants hold (assertion 5 retired)"
+# (21) --inline flag and --subagent forwarding pin (issue #1036). SKILL.md must:
+#      (21a) document the `--inline` flag with `inline_mode=true` literal in the flag list.
+#      (21b) include `[--subagent]` in the canonical /design invocation order block.
+#      (21c) describe the conditional-forward rule tying `--subagent` forwarding to `inline_mode=false`.
+grep -Fq -- '--inline' "$SKILL_MD" \
+  || fail "(21a) skills/implement/SKILL.md missing '--inline' flag literal (issue #1036)"
+grep -Fq -- 'inline_mode=true' "$SKILL_MD" \
+  || fail "(21a) skills/implement/SKILL.md missing 'inline_mode=true' literal (issue #1036)"
+grep -Fq -- '[--subagent]' "$SKILL_MD" \
+  || fail "(21b) skills/implement/SKILL.md missing '[--subagent]' in canonical /design invocation order (issue #1036)"
+grep -Fq -- 'inline_mode=false' "$SKILL_MD" \
+  || fail "(21c) skills/implement/SKILL.md missing 'inline_mode=false' default-forwarding rule (issue #1036)"
+
+echo "PASS: test-implement-structure.sh — all 21 structural invariants hold (assertion 5 retired)"
 exit 0
