@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.7.5] - 2026-05-04
+
+### Changed
+
+- `skills/issue/scripts/list-issues.sh`: Phase 1 dedup snapshot now drops issues whose trimmed, lowercased title starts with `research`, `[research]`, `investigate`, `[investigate]`, or `[research report]`. /research-style archival reports no longer crowd out real semantic candidates from the per-item Phase 2 cap. Filter applies uniformly to the open-only and closed-window fetch branches. Closes #1055.
+
 ## [15.7.4] - 2026-05-04
 
 ### Changed
