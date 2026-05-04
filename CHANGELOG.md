@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.4.9] - 2026-05-04
+
+### Changed
+
+- `.github/workflows/ci.yaml` — add `push: branches: [main]` trigger so the `actions/cache` entry for `~/.cache/pre-commit` populates under the default-branch scope. PRs on feature branches can read the default branch's cache but not each other's, so without this trigger every fresh PR paid the cold-install cost (~115s lint job) instead of the warm-cache cost (~32s). Also set `SKIP=agnix` on the `Run pre-commit linters` step because the dedicated `agnix` CI job covers the same lint; gitleaks remains in the lint step (its `--no-git` working-tree scan is documented in `SECURITY.md` as complementary to the dedicated `gitleaks` job's history scan, not redundant). `docs/linting.md` updated to describe the split (closes #1034).
+
 ## [15.4.7] - 2026-05-03
 
 ### Changed
