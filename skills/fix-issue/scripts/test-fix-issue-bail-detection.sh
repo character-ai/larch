@@ -21,8 +21,10 @@
 #   (a9) HARD bullet forwards "--inline" (pass-through /design execution-topology
 #        flag; HARD-only because SIMPLE uses /implement --quick which skips
 #        /design and renders --inline a no-op).
-#   (a10) SIMPLE bullet does NOT contain "--inline" (encodes the design decision
-#        that SIMPLE intentionally omits the forward).
+#   (a10) SIMPLE bullet does NOT contain the forwarding spell
+#        "[--inline if inline_mode]" (encodes the design decision that SIMPLE
+#        intentionally omits the forward; checks the spell rather than the
+#        bare substring "--inline" so adjacent prose mentions are tolerated).
 #   (b)  Literal token "IMPLEMENT_BAIL_REASON=adopted-issue-closed" present.
 #   (c)  Warning prefix "/implement bailed: issue #" present.
 #   (d)  Specific directive "Do NOT call `issue-lifecycle.sh close`" present
@@ -137,18 +139,21 @@ assert_bullet_contains "a8: HARD bullet forwards --auto"   '- **HARD**'   '[--au
 # skips /design entirely.
 assert_bullet_contains "a9: HARD bullet forwards --inline" '- **HARD**' '[--inline if inline_mode]'
 
-# (a10) SIMPLE bullet does NOT contain --inline — encodes the design decision
-# that SIMPLE intentionally omits the forward (no-op there).
+# (a10) SIMPLE bullet does NOT contain the forwarding spell — encodes the
+# design decision that SIMPLE intentionally omits the forward (no-op there).
+# Checks for the exact spell '[--inline if inline_mode]' rather than the bare
+# substring '--inline', so future edits that mention --inline in adjacent
+# prose on the SIMPLE line do not false-fail.
 SIMPLE_LINE=$(grep -F -- '- **SIMPLE**' <<<"$STEP5A_BLOCK" | head -1 || true)
-if [[ -n "$SIMPLE_LINE" && "$SIMPLE_LINE" != *"--inline"* ]]; then
+if [[ -n "$SIMPLE_LINE" && "$SIMPLE_LINE" != *"[--inline if inline_mode]"* ]]; then
     PASS_COUNT=$((PASS_COUNT + 1))
-    echo "  PASS: a10: SIMPLE bullet does NOT contain --inline"
+    echo "  PASS: a10: SIMPLE bullet does NOT forward --inline"
 else
-    echo "  FAIL: a10: SIMPLE bullet does NOT contain --inline" >&2
+    echo "  FAIL: a10: SIMPLE bullet does NOT forward --inline" >&2
     if [[ -z "$SIMPLE_LINE" ]]; then
         echo "    SIMPLE bullet not found" >&2
     else
-        echo "    SIMPLE bullet unexpectedly contains --inline: $SIMPLE_LINE" >&2
+        echo "    SIMPLE bullet unexpectedly contains '[--inline if inline_mode]': $SIMPLE_LINE" >&2
     fi
     exit 1
 fi
