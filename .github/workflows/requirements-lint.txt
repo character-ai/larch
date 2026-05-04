@@ -1,0 +1,3 @@
+# Keep pyyaml pin in sync with .pre-commit-config.yaml lint-skill-invocations additional_dependencies.
+pre-commit==4.2.0
+pyyaml==6.0.2

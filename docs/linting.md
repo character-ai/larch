@@ -6,7 +6,7 @@ Larch uses [pre-commit](https://pre-commit.com/) as the source of truth for lint
 
 | Linter | File Types | Description |
 |--------|-----------|-------------|
-| [shellcheck](https://www.shellcheck.net/) | `.sh` | Shell script analysis |
+| [shellcheck](https://www.shellcheck.net/) | `.sh` | Shell script analysis, supplied by the pre-commit hook env through pinned `shellcheck-py==0.10.0.1` |
 | [markdownlint](https://github.com/igorshubovych/markdownlint-cli) | `.md` | Markdown style enforcement (config: `.markdownlint.json`) |
 | [jq](https://jqlang.github.io/jq/) | `.json` | JSON syntax validation |
 | [actionlint](https://github.com/rhysd/actionlint) | `.yml`, `.yaml` | GitHub Actions workflow validation |
@@ -17,9 +17,19 @@ Larch uses [pre-commit](https://pre-commit.com/) as the source of truth for lint
 
 There are three pre-commit-driven paths:
 
-- **CI** — The `lint` job runs `make lint-only` (repo-wide pre-commit over all files) with `SKIP=agnix` on the step, because the dedicated `agnix` job below already runs the same lint; gitleaks is **not** skipped — its `--no-git` working-tree scan is documented in `SECURITY.md` as complementary to the dedicated `gitleaks` job's history scan. The `lint` job also runs on `push: main` (not just `pull_request`) so the pre-commit hook-env cache populates under the default-branch scope and fresh PRs read it warm (issue #1034). CI runs regression harnesses through the six-cell `test-harnesses` matrix (`make test-harnesses-1` through `make test-harnesses-6`) instead of one serial harness job. CI also runs separate dedicated jobs on top of the `lint` job: `agent-lint`, `agnix`, `gitleaks` (installs the same pinned engine and runs a full git-history scan on its own so the signal is independently re-runnable), `trufflehog` (CI-only; see "CI secret scanning" below), and `agent-sync` / `smoke-dialectic` for internal invariants.
+- **CI** — The `lint` job runs `make lint-only` (repo-wide pre-commit over all files) with `SKIP=agnix` on the step, because the dedicated `agnix` job below already runs the same lint. During Phase 1 of the shellcheck split, `lint` still runs shellcheck while a new dedicated `shellcheck` job runs the same hook in parallel; after branch protection requires `shellcheck`, Phase 2 changes the step to `SKIP=agnix,shellcheck`. Gitleaks is **not** skipped — its `--no-git` working-tree scan is documented in `SECURITY.md` as complementary to the dedicated `gitleaks` job's history scan. The `lint` job also runs on `push: main` (not just `pull_request`) so the pre-commit hook-env cache populates under the default-branch scope and fresh PRs read it warm (issue #1034). CI runs regression harnesses through the six-cell `test-harnesses` matrix (`make test-harnesses-1` through `make test-harnesses-6`) instead of one serial harness job. CI also runs separate dedicated jobs on top of the `lint` job: `shellcheck`, `agent-lint`, `agnix`, `gitleaks` (installs the same pinned engine and runs a full git-history scan on its own so the signal is independently re-runnable), `trufflehog` (CI-only; see "CI secret scanning" below), and `agent-sync` / `smoke-dialectic` for internal invariants.
 - **`/relevant-checks`** — Runs `pre-commit run --files <changed-files>` scoped to branch changes. Invoked automatically by `/implement` and `/review`. Hooks with `pass_filenames: false` (gitleaks) scan the full tree regardless of the scoped path argument — intentional so scoped checks cannot silently miss secrets outside the changed file set.
 - **Local git hook** — Run `make setup` (or `pre-commit install`) to enable pre-commit hooks on every commit. Bypassable via `git commit --no-verify`; the CI jobs are the enforced backstop.
+
+`.github/workflows/requirements-lint.txt` is the central pinned dependency file for the CI Python lint environment. The `lint`, `shellcheck`, and six `test-harnesses` matrix cells all use it for `actions/setup-python` pip caching and `pip install -r`.
+
+## Shellcheck Engine
+
+The shellcheck pre-commit hook is local so it can run one file per shellcheck process through `scripts/pre-commit-shellcheck.sh` and `xargs -P`. The hook still uses the same pinned engine family as the old upstream hook: `shellcheck-py==0.10.0.1` in `.pre-commit-config.yaml` `additional_dependencies`.
+
+A local `shellcheck` binary on PATH is no longer required for `make lint`, `make shellcheck`, or `/relevant-checks`; pre-commit provides the binary inside the hook environment. Installing shellcheck directly remains useful only for ad-hoc debugging outside pre-commit, for example with `brew install shellcheck` on macOS or `apt-get install shellcheck` on Linux.
+
+When adding a new pre-commit hook, decide explicitly whether `lint`, the dedicated `shellcheck` job, and `/relevant-checks` should run or skip it. The dedicated `shellcheck` job should continue to run only the `shellcheck` hook.
 
 ## CI sharding of `test-harnesses`
 
@@ -82,6 +92,8 @@ Before the sharded CI shape merges, an admin must update main-branch protection.
 - `test-harnesses (6)`
 
 Save the rule before merging the PR, or GitHub may report green matrix checks while branch protection still waits for the retired single check.
+
+For the shellcheck split, branch protection must add the new `shellcheck` job as a required check before Phase 2 lands. Phase 1 intentionally runs shellcheck in both `lint` and the dedicated `shellcheck` job so the new required-check identity can be introduced without losing coverage. Phase 2 is the small follow-up that changes the `lint` job from `SKIP=agnix` to `SKIP=agnix,shellcheck`.
 
 ### Changing the shard count (lockstep edit)
 
