@@ -70,7 +70,7 @@ repos:
     hooks:
       - id: agnix
         name: Lint AI agent configuration files
-        entry: agnix .
+        entry: agnix . --strict
         language: node
         additional_dependencies: ['agnix@0.17.0']
         pass_filenames: false

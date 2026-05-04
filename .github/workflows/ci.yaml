@@ -99,6 +99,7 @@ jobs:
         with:
           target: 'claude-code'
           config: '.agnix.toml'
+          strict: 'true'
 
   # Dedicated gitleaks gate — git-HISTORY scan (complementary to the
   # `lint` job, which runs the pre-commit gitleaks hook over the working
