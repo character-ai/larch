@@ -228,7 +228,7 @@ Then conditionally print advisory warnings (not errors — fail-soft):
 - When `<fail> > 0`: `**⚠ 2.5: citation-validation — <fail> claim(s) FAILED. See ## Citation Validation in the report.**`
 - When `<unknown> > 0`: `**ℹ 2.5: citation-validation — <unknown> claim(s) UNKNOWN. See ## Citation Validation in the report.**`
 
-The sidecar at `$RESEARCH_TMPDIR/citation-validation.md` is consumed by Step 3 (splice contract: appended as a `## Citation Validation` section to `research-report-final.md` before the user-visible `cat`). See `${CLAUDE_PLUGIN_ROOT}/skills/research/scripts/validate-citations.md` for the full validator contract; the offline regression harness is `${CLAUDE_PLUGIN_ROOT}/skills/research/scripts/test-validate-citations.sh` (contract in sibling `${CLAUDE_PLUGIN_ROOT}/skills/research/scripts/test-validate-citations.md`), wired into `make lint`.
+The sidecar at `$RESEARCH_TMPDIR/citation-validation.md` is consumed by Step 3 (splice contract: appended as a `## Citation Validation` section to `research-report-final.md` before the user-visible `cat`). See `${CLAUDE_PLUGIN_ROOT}/skills/research/scripts/validate-citations.md` for the full validator contract; the offline regression harness is `${CLAUDE_PLUGIN_ROOT}/skills/research/scripts/test-validate-citations.sh` (contract in sibling `${CLAUDE_PLUGIN_ROOT}/skills/research/scripts/test-validate-citations.md`), wired into `make lint`. Real-time budget-exhaustion coverage (Tests 20 / 21) lives in the sibling harness `${CLAUDE_PLUGIN_ROOT}/skills/research/scripts/test-validate-citations-budget.sh` (contract in `${CLAUDE_PLUGIN_ROOT}/skills/research/scripts/test-validate-citations-budget.md`) so its real sleeps can be billed to a different CI matrix shard.
 
 ## Step 2.6 — Critique Loop
 

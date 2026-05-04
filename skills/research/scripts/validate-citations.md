@@ -177,9 +177,9 @@ must be terminated cleanly. OS-specific:
   before it writes the per-claim `UNKNOWN(timeout)` rows and the sidecar
   — i.e. exit 143, sidecar absent, fail-soft contract broken.
 
-The test harness asserts the macOS branch via Test 20 (Darwin-only) using
-a stub-curl fixture that hangs deliberately past the budget; the Linux
-`setsid` branch is exercised end-to-end by the existing CI pipeline.
+The budget test harness asserts the macOS branch via Test 20 (Darwin-only)
+using a stub-curl fixture that hangs deliberately past the budget, and the
+Linux no-setsid branch via Test 21 on current Ubuntu CI.
 
 ## Test seams (NOT operator flags)
 
@@ -203,13 +203,20 @@ When this script's behavior changes:
 3. `skills/research/references/citation-validation-phase.md` (the phase
    reference; specifically the Reason vocabulary and SSRF defenses
    sections, which mirror the tables here).
-4. `skills/research/scripts/test-validate-citations.sh` (regression harness).
-5. `Makefile` `test-validate-citations` target.
+4. `skills/research/scripts/test-validate-citations.sh` (CPU-bound regression
+   harness).
+5. `skills/research/scripts/test-validate-citations-budget.sh` (real-time
+   budget-exhaustion regression harness).
+6. `Makefile` `test-validate-citations` / `test-validate-citations-budget`
+   targets.
 
 ## Test harness
 
-`skills/research/scripts/test-validate-citations.sh` runs offline against
-fixture inputs with stubbed curl and stubbed DNS. Verified scenarios:
+`skills/research/scripts/test-validate-citations.sh` runs CPU-bound offline
+scenarios against fixture inputs with stubbed curl and stubbed DNS.
+`skills/research/scripts/test-validate-citations-budget.sh` carries the
+real-time budget-exhaustion scenarios so CI can assign them to a different
+shard. Verified scenarios:
 
 - Provenance extraction (URL, DOI, file:line; LONG-tier and SHORT-tier
   per `scripts/file-line-regex-lib.sh`).
@@ -228,11 +235,12 @@ fixture inputs with stubbed curl and stubbed DNS. Verified scenarios:
   `out-of-tree-path-after-realpath` / `broken-symlink`.
 - HEAD 403/405/501 → `head-not-supported`.
 - HEAD 3xx → `redirect-not-followed`.
-- Darwin budget-exhaustion no-orphan-curl (Test 20, Darwin-only): a hanging
-  fake-curl fixture is run with `--budget-seconds 1`; after the kill loop
-  no fake-curl PID survives. Exercises the macOS `set -m` per-PG-kill
+- Darwin budget-exhaustion no-orphan-curl (budget Test 20, Darwin-only): a
+  hanging fake-curl fixture is run with `--budget-seconds 1`; after the kill
+  loop no fake-curl PID survives. Exercises the macOS `set -m` per-PG-kill
   branch. Test 20 runs on developer macOS (current CI is Ubuntu-only).
-- Linux no-setsid budget-exhaustion fail-soft (Test 21, Linux-only, #849):
+- Linux no-setsid budget-exhaustion fail-soft (budget Test 21, Linux-only,
+  #849):
   the validator is invoked under outer `setsid -w` (so a hypothetical
   regression of the marker gate at line 765 only kills the validator's
   own session) with a hermetic clean-bin in PATH that omits `setsid`. The
