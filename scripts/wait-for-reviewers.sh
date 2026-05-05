@@ -34,6 +34,18 @@ case "$TIMEOUT" in
     ''|*[!0-9]*) echo "Error: --timeout value must be a positive integer, got '$TIMEOUT'" >&2; exit 1 ;;
 esac
 
+# Sentinel-poll interval. Default 5s for production callers (real reviewers
+# take many minutes; 5s noise is negligible). Test harnesses that wrap stub
+# binaries via run-external-agent.sh override via env to avoid paying a 5s
+# delay per probe. Accepts integer or decimal seconds.
+WAIT_POLL_INTERVAL="${WAIT_FOR_REVIEWERS_POLL_INTERVAL:-5}"
+case "$WAIT_POLL_INTERVAL" in
+    ''|*[!0-9.]*|.|0|0.|0.0|0.00|0.000) echo "Error: WAIT_FOR_REVIEWERS_POLL_INTERVAL must be a positive number, got '$WAIT_POLL_INTERVAL'" >&2; exit 1 ;;
+esac
+case "$WAIT_POLL_INTERVAL" in
+    *.*.*) echo "Error: WAIT_FOR_REVIEWERS_POLL_INTERVAL must be a positive number, got '$WAIT_POLL_INTERVAL'" >&2; exit 1 ;;
+esac
+
 if [[ $# -eq 0 ]]; then
     echo "ERROR: at least one sentinel file path is required" >&2
     usage; exit 1
@@ -75,6 +87,7 @@ check_sentinels() {
 SECONDS=0
 found_count=0
 checks=0
+last_progress_minute=0
 
 # Check before first sleep — detect pre-existing sentinels immediately
 check_sentinels "$@"
@@ -83,13 +96,19 @@ while [ "$found_count" -lt "$TOTAL" ] && [ "$SECONDS" -lt "$TIMEOUT" ]; do
     # Print dot progress
     printf "." >&2
     checks=$((checks + 1))
-    # Print status line every 12 checks (~1 minute)
-    if [ $((checks % 12)) -eq 0 ]; then
+    # Print status line on every elapsed-minute boundary. Driven by $SECONDS so
+    # the cadence is minute-based regardless of $WAIT_POLL_INTERVAL — at the
+    # default 5s production cadence this fires every ~12 checks; at the test
+    # harnesses' 0.05s cadence it would fire every ~1200 checks if any test ran
+    # long enough to cross a minute.
+    elapsed_minute=$(( SECONDS / 60 ))
+    if [ "$elapsed_minute" -ge 1 ] && [ "$elapsed_minute" != "$last_progress_minute" ]; then
         printf "\n⏳ Waiting: %dm elapsed, %d checks, %d/%d done\n" \
-            "$((SECONDS / 60))" "$checks" "$found_count" "$TOTAL" >&2
+            "$elapsed_minute" "$checks" "$found_count" "$TOTAL" >&2
+        last_progress_minute="$elapsed_minute"
     fi
 
-    sleep 5
+    sleep "$WAIT_POLL_INTERVAL"
 
     check_sentinels "$@"
 done

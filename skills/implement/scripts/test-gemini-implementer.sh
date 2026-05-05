@@ -22,6 +22,11 @@ pass() { PASS_COUNT=$((PASS_COUNT + 1)); }
 SCRATCH=$(mktemp -d -t gemini-implementer-test.XXXXXX)
 trap 'rm -rf "$SCRATCH"' EXIT
 
+# Tighten run-external-agent.sh's poll cadence so the wrapper does not pay a
+# 10s sleep per stub invocation. Production callers (real Gemini) inherit the
+# default 10s. See scripts/run-external-agent.md.
+export RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05
+
 PLAN="$SCRATCH/plan.md"
 FEATURE="$SCRATCH/feature.txt"
 ANSWERS="$SCRATCH/answers.json"

@@ -42,6 +42,19 @@
 
 set -euo pipefail
 
+# Propagation pause (seconds) between posting a lock comment and re-fetching
+# the comment list to verify no duplicate-runner race. Default 1s gives
+# GitHub time to make the new comment visible via the API. Test harnesses
+# that stub `gh` set this to 0 because the stub returns synthetic state
+# instantly. Accepts integer or decimal seconds.
+ISSUE_LIFECYCLE_LOCK_SETTLE_SECONDS="${ISSUE_LIFECYCLE_LOCK_SETTLE_SECONDS:-1}"
+case "$ISSUE_LIFECYCLE_LOCK_SETTLE_SECONDS" in
+    ''|*[!0-9.]*|.) echo "ERROR=ISSUE_LIFECYCLE_LOCK_SETTLE_SECONDS must be a non-negative number, got '$ISSUE_LIFECYCLE_LOCK_SETTLE_SECONDS'" >&2; exit 2 ;;
+esac
+case "$ISSUE_LIFECYCLE_LOCK_SETTLE_SECONDS" in
+    *.*.*) echo "ERROR=ISSUE_LIFECYCLE_LOCK_SETTLE_SECONDS must be a non-negative number, got '$ISSUE_LIFECYCLE_LOCK_SETTLE_SECONDS'" >&2; exit 2 ;;
+esac
+
 # ---------------------------------------------------------------------------
 # Resolve repo identity (shared across subcommands)
 # ---------------------------------------------------------------------------
@@ -186,7 +199,7 @@ cmd_comment() {
     # will be excluded by id, leaving the other to trigger the >0 race count.
     if [ "$lock_no_go" = true ]; then
         # Brief pause to let GitHub propagate
-        sleep 1
+        sleep "$ISSUE_LIFECYCLE_LOCK_SETTLE_SECONDS"
         local refresh_json
         refresh_json=$(gh api --paginate --slurp "repos/${REPO}/issues/${issue}/comments" 2>/dev/null | jq 'add // []') || {
             echo "LOCK_ACQUIRED=false"
@@ -214,7 +227,7 @@ cmd_comment() {
     # --lock post-check: verify no duplicate lock comment
     if [ "$lock" = true ]; then
         # Brief pause to let GitHub propagate
-        sleep 1
+        sleep "$ISSUE_LIFECYCLE_LOCK_SETTLE_SECONDS"
 
         local comments_json
         comments_json=$(gh api --paginate --slurp "repos/${REPO}/issues/${issue}/comments" 2>/dev/null | jq 'add // []') || {

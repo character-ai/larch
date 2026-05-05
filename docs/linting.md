@@ -17,11 +17,11 @@ Larch uses [pre-commit](https://pre-commit.com/) as the source of truth for lint
 
 There are three pre-commit-driven paths:
 
-- **CI** — The `lint` job runs `make lint-only` (repo-wide pre-commit over all files) with `SKIP=agnix` on the step, because the dedicated `agnix` job below already runs the same lint. During Phase 1 of the shellcheck split, `lint` still runs shellcheck while a new dedicated `shellcheck` job runs the same hook in parallel; after branch protection requires `shellcheck`, Phase 2 changes the step to `SKIP=agnix,shellcheck`. Gitleaks is **not** skipped — its `--no-git` working-tree scan is documented in `SECURITY.md` as complementary to the dedicated `gitleaks` job's history scan. The `lint` job also runs on `push: main` (not just `pull_request`) so the pre-commit hook-env cache populates under the default-branch scope and fresh PRs read it warm (issue #1034). CI runs regression harnesses through the six-cell `test-harnesses` matrix (`make test-harnesses-1` through `make test-harnesses-6`) instead of one serial harness job. CI also runs separate dedicated jobs on top of the `lint` job: `shellcheck`, `agent-lint`, `agnix`, `gitleaks` (installs the same pinned engine and runs a full git-history scan on its own so the signal is independently re-runnable), `trufflehog` (CI-only; see "CI secret scanning" below), and `agent-sync` / `smoke-dialectic` for internal invariants.
+- **CI** — The `lint` job runs `make lint-only` (repo-wide pre-commit over all files) with `SKIP=agnix` on the step, because the dedicated `agnix` job below already runs the same lint. During Phase 1 of the shellcheck split, `lint` still runs shellcheck while a new dedicated `shellcheck` job runs the same hook in parallel; after branch protection requires `shellcheck`, Phase 2 changes the step to `SKIP=agnix,shellcheck`. Gitleaks is **not** skipped — its `--no-git` working-tree scan is documented in `SECURITY.md` as complementary to the dedicated `gitleaks` job's history scan. The `lint` job also runs on `push: main` (not just `pull_request`) so the pre-commit hook-env cache populates under the default-branch scope and fresh PRs read it warm (issue #1034). CI runs regression harnesses through the five-cell `test-harnesses` matrix (`make test-harnesses-1` through `make test-harnesses-5`) instead of one serial harness job. CI also runs separate dedicated jobs on top of the `lint` job: `shellcheck`, `agent-lint`, `agnix`, `gitleaks` (installs the same pinned engine and runs a full git-history scan on its own so the signal is independently re-runnable), `trufflehog` (CI-only; see "CI secret scanning" below), and `agent-sync` / `smoke-dialectic` for internal invariants.
 - **`/relevant-checks`** — Runs `pre-commit run --files <changed-files>` scoped to branch changes. Invoked automatically by `/implement` and `/review`. Hooks with `pass_filenames: false` (gitleaks) scan the full tree regardless of the scoped path argument — intentional so scoped checks cannot silently miss secrets outside the changed file set.
 - **Local git hook** — Run `make setup` (or `pre-commit install`) to enable pre-commit hooks on every commit. Bypassable via `git commit --no-verify`; the CI jobs are the enforced backstop.
 
-`.github/workflows/requirements-lint.txt` is the central pinned dependency file for the CI Python lint environment. The `lint`, `shellcheck`, and six `test-harnesses` matrix cells all use it for `actions/setup-python` pip caching and `pip install -r`.
+`.github/workflows/requirements-lint.txt` is the central pinned dependency file for the CI Python lint environment. The `lint`, `shellcheck`, and five `test-harnesses` matrix cells all use it for `actions/setup-python` pip caching and `pip install -r`.
 
 ## Shellcheck Engine
 
@@ -33,20 +33,20 @@ When adding a new pre-commit hook, decide explicitly whether `lint`, the dedicat
 
 ## CI sharding of `test-harnesses`
 
-`make test-harnesses` remains the local umbrella target and runs all 68 legacy regression harnesses plus the 1 partition guard. CI fans the same inventory out across six parallel matrix cells named `test-harnesses (1)` through `test-harnesses (6)`, each invoking `make test-harnesses-N`.
+`make test-harnesses` remains the local umbrella target and runs all 68 legacy regression harnesses plus the 1 partition guard. CI fans the same inventory out across five parallel matrix cells named `test-harnesses (1)` through `test-harnesses (5)`, each invoking `make test-harnesses-N`.
 
-The shard lists live directly in `Makefile` and are balanced by measured per-harness wall-clock time. New harnesses must be assigned to exactly one `test-harnesses-N:` prerequisite list; `make test-harness-shards-coverage` checks for missing, orphaned, duplicated, wrapped, or non-standard harness entries. The matrix uses `fail-fast: false`, so all six shards finish even after one fails. This spends more CI minutes but preserves complete diagnostics.
+The shard lists live directly in `Makefile` and are balanced by measured per-harness wall-clock time. New harnesses must be assigned to exactly one `test-harnesses-N:` prerequisite list; `make test-harness-shards-coverage` checks for missing, orphaned, duplicated, wrapped, or non-standard harness entries. The matrix uses `fail-fast: false`, so all five shards finish even after one fails. This spends more CI minutes but preserves complete diagnostics.
 
-Local ordering changed: under `make test-harnesses` and therefore `make lint`, harnesses now execute in shard order (`test-harnesses-1`, then `test-harnesses-2`, and so on), not in the old single prerequisite-list order. Direct `make test-X` invocations are unchanged. CI shards run on separate VMs; local `make -j6 test-harnesses` can run shard targets concurrently, so fixed `/tmp` paths in individual harnesses remain a local-parallelism limitation even though the CI split is isolated.
+Local ordering changed: under `make test-harnesses` and therefore `make lint`, harnesses now execute in shard order (`test-harnesses-1`, then `test-harnesses-2`, and so on), not in the old single prerequisite-list order. Direct `make test-X` invocations are unchanged. CI shards run on separate VMs; local `make -j5 test-harnesses` can run shard targets concurrently, so fixed `/tmp` paths in individual harnesses remain a local-parallelism limitation even though the CI split is isolated.
 
 ### Refreshing harness shard balance
 
-Rebalance manually when one shard's sustained wall-clock materially exceeds the `test-validate-citations` floor of about 18s, or when another shard drops far below the rest. Last manual rebalance: 2026-05-03 (issue #1028) — `test-validate-citations` was moved behind shard 6's partition guard so the citation floor and the partition guard share a shard, and the previously crowded shard 2 was redistributed across the lighter shards.
+Rebalance manually when one shard's sustained wall-clock materially exceeds the `test-validate-citations` floor of about 18s, or when another shard drops far below the rest. Last manual rebalance: 2026-05-04 (issue #1102) — `run-external-agent.sh`'s 10s polling sleep was parameterized via `RUN_EXTERNAL_AGENT_POLL_INTERVAL`, dropping stub-binary harness time dramatically; the previously distinct shards 2 (~42s, implementer launchers) and 5 (~110s, check-reviewers + launch-gemini-review) merged into a single shard 2 (~24s) and the matrix shrank from 6 cells to 5. Previous rebalance: 2026-05-03 (issue #1028) — `test-validate-citations` was moved behind the last shard's partition guard so the citation floor and the partition guard share a shard, and the previously crowded shard 2 was redistributed across the lighter shards.
 
 Capture timings:
 
 ```bash
-awk '/^test-harnesses-[1-6]:/ {
+awk '/^test-harnesses-[1-5]:/ {
     for (i = 2; i <= NF; i++)
       if ($i != "test-harness-shards-coverage") print $i
   }' Makefile \
@@ -68,7 +68,7 @@ for line in sys.stdin:
     name, seconds = line.split()
     items.append((float(seconds), name))
 
-bins = [(0.0, []) for _ in range(6)]
+bins = [(0.0, []) for _ in range(5)]
 for seconds, name in sorted(items, reverse=True):
     total, names = min(bins, key=lambda item: item[0])
     names.append(name)
@@ -78,18 +78,17 @@ for index, (total, names) in enumerate(bins, 1):
     print(f"test-harnesses-{index}: {' '.join(names)}  # {total:.2f}s")
 ```
 
-Then update the six `test-harnesses-N:` lines in `Makefile` and run `make test-harness-shards-coverage`.
+Then update the five `test-harnesses-N:` lines in `Makefile` and run `make test-harness-shards-coverage`.
 
 ### Branch protection migration
 
-Before the sharded CI shape merges, an admin must update main-branch protection. In GitHub, open repository Settings → Branches → the `main` rule → Require status checks. Remove the old single `test-harnesses` required check and add these six required checks:
+Before the sharded CI shape merges, an admin must update main-branch protection. In GitHub, open repository Settings → Branches → the `main` rule → Require status checks. Remove the old single `test-harnesses` required check and add these five required checks:
 
 - `test-harnesses (1)`
 - `test-harnesses (2)`
 - `test-harnesses (3)`
 - `test-harnesses (4)`
 - `test-harnesses (5)`
-- `test-harnesses (6)`
 
 Save the rule before merging the PR, or GitHub may report green matrix checks while branch protection still waits for the retired single check.
 
@@ -97,11 +96,11 @@ For the shellcheck split, branch protection must add the new `shellcheck` job as
 
 ### Changing the shard count (lockstep edit)
 
-The integer `6` is the canonical shard count and is hard-coded in three places:
+The integer `5` is the canonical shard count and is hard-coded in three places:
 
-1. `Makefile` — six `test-harnesses-N:` shard targets and the umbrella `test-harnesses:` aggregating them.
-2. `scripts/test-harness-shards-coverage.sh` — the `for n in 1 2 3 4 5 6` loop in `extract_shard_prereqs` and the `umbrella_expected` literal in `validate_makefile`.
-3. `.github/workflows/ci.yaml` — the matrix `shard: [1, 2, 3, 4, 5, 6]` strategy on the `test-harnesses` job.
+1. `Makefile` — five `test-harnesses-N:` shard targets and the umbrella `test-harnesses:` aggregating them.
+2. `scripts/test-harness-shards-coverage.sh` — the `for n in 1 2 3 4 5` loop in `extract_shard_prereqs` and the `umbrella_expected` literal in `validate_makefile`.
+3. `.github/workflows/ci.yaml` — the matrix `shard: [1, 2, 3, 4, 5]` strategy on the `test-harnesses` job.
 
 A partial edit that updates Makefile + script but forgets the workflow YAML would silently drop a CI shard while local `make test-harness-shards-coverage` still passes. Any change to shard count must touch all three locations in the same commit and re-run branch-protection migration above with the new check identities.
 
@@ -128,7 +127,7 @@ See `SECURITY.md` → "Layered secret scanning" for the full three-layer model a
 | `make trufflehog` | Run trufflehog via Docker in `filesystem` mode over the working tree (same pinned image and `--only-verified` flag as the CI `trufflehog` job, but CI uses the action's default `git` mode over the PR range — local and CI are not byte-identical invocations). Requires Docker daemon running locally |
 | `make setup` | Install pre-commit git hooks |
 | `make smoke-dialectic` | Run the offline fixture-driven smoke test for `/design` Step 2a.5 (dialectic parser + tally + structural-invariant guard). Exercises `scripts/dialectic-smoke-test.sh` against `tests/fixtures/dialectic/`. |
-| `make test-launch-gemini-review` | Run the offline Gemini launcher harness. Stubs `gemini`, verifies JSON `.response` normalization, 600s timeout clamping, `.error` fail-closed behavior, and missing-`jq` diagnostics. A `make lint` prerequisite via `test-harnesses-5`. |
+| `make test-launch-gemini-review` | Run the offline Gemini launcher harness. Stubs `gemini`, verifies JSON `.response` normalization, 600s timeout clamping, `.error` fail-closed behavior, and missing-`jq` diagnostics. A `make lint` prerequisite via `test-harnesses-2`. |
 | `make test-design-manifest` | Run the regression harness for the `/design` → `/implement` manifest handoff. Exercises `skills/design/scripts/test-design-manifest.sh` against the writer/reader pair, covering atomic writes, missing required artifacts, KV grammar, injection-shaped values, path containment, symlink rejection, control-character rejection, malformed keys, and an end-to-end success case. A `make lint` prerequisite via `test-harnesses`. |
 | `make test-block-submodule` | Run the regression harness for `scripts/block-submodule-edit.sh` (the PreToolUse hook that denies edits inside submodules). Exercises `scripts/test-block-submodule-edit.sh` end-to-end against a temporary superproject + submodule fixture. |
 | `make test-deny-edit-write` | Run the regression harness for `scripts/deny-edit-write.sh` (the skill-scoped PreToolUse hook registered by `/research` that permits `Edit`/`Write`/`NotebookEdit` only when the target path resolves under canonical `/tmp`, denies otherwise). Exercises `scripts/test-deny-edit-write.sh` — repo-deny, `/tmp`-allow, traversal-deny, relative-deny, `notebook_path` allow/deny, fail-closed on empty path, malformed JSON, idempotency, and `jq`-absent fallback byte-identity. |
@@ -147,7 +146,7 @@ See `SECURITY.md` → "Layered secret scanning" for the full three-layer model a
 | `make test-cursor-implementer` | Run the offline launcher-contract harness for `scripts/launch-cursor-implement.sh`. Exercises `skills/implement/scripts/test-cursor-implementer.sh` with a PATH-stubbed `cursor` binary, covering flag validation, KV-only stdout, `--capture-stdout`, Cursor argv shape parity with `launch-cursor-review.sh`, absence of a `--` separator before the prompt, and mandatory `cursor-wrap-prompt.sh` wrapping. A `make lint` prerequisite via `test-harnesses`. |
 | `make test-gemini-implementer` | Run the offline launcher-contract harness for `scripts/launch-gemini-implement.sh`. Exercises `skills/implement/scripts/test-gemini-implementer.sh` with a PATH-stubbed `gemini` binary, covering flag validation, KV-only stdout, `--capture-stdout`, Gemini argv shape (`--prompt`, `--approval-mode yolo`, `--skip-trust`, model flag), absence of `--output-format json`, manifest detection, and resume-block prompt composition. A `make lint` prerequisite via `test-harnesses-2`. |
 | `make test-quick-mode-docs-sync` | Run the regression harness for `/implement --quick` public-docs sync (closes #370) plus required cross-references (closes #377). Exercises `scripts/test-quick-mode-docs-sync.sh` in both default mode (positive-anchor + stale-phrase checks against `README.md`, `docs/review-agents.md`, `docs/workflow-lifecycle.md`, `docs/skills.md`, and `skills/implement/SKILL.md`, plus a required cross-reference check for `docs/review-agents.md` → `skills/shared/voting-protocol.md`) and `--self-test` mode (two `check_file` fixtures + three `check_xref` fixtures proving both check mechanics). Canonical source of truth for the enforced markers, stale-phrase list, and cross-references is the script itself + sibling `scripts/test-quick-mode-docs-sync.md`. A `make lint` prerequisite. |
-| `make test-harness-shards-coverage` | Run the structural drift detector for the six `test-harnesses-N` shard lists. Exercises `scripts/test-harness-shards-coverage.sh` against the real Makefile and its embedded `--self-test` fixtures, covering missing harness assignment, orphan shard prerequisite, duplicate shard assignment, backslash continuation, non-standard `test-…` recipe naming (must match `^test-[a-z0-9-]+$` — rejects `test_foo:`, `test-foo_bar:`, `testFoo:`, etc.), `.PHONY` membership of every shard-bound `test-*` target, umbrella membership, and the self-reference rule. A `make lint` prerequisite via `test-harnesses-6`. |
+| `make test-harness-shards-coverage` | Run the structural drift detector for the five `test-harnesses-N` shard lists. Exercises `scripts/test-harness-shards-coverage.sh` against the real Makefile and its embedded `--self-test` fixtures, covering missing harness assignment, orphan shard prerequisite, duplicate shard assignment, backslash continuation, non-standard `test-…` recipe naming (must match `^test-[a-z0-9-]+$` — rejects `test_foo:`, `test-foo_bar:`, `testFoo:`, etc.), `.PHONY` membership of every shard-bound `test-*` target, umbrella membership, and the self-reference rule. A `make lint` prerequisite via `test-harnesses-5`. |
 | `make test-alias-target-resolution` | Run the regression harness for `skills/alias/scripts/resolve-target.sh` (the plugin-repo-detection + `--private`-flag target-directory resolver added alongside the alias-routing rework). Exercises `scripts/test-alias-target-resolution.sh` — six cases covering `(plugin-detect × --private × git-state)` plus a `--alias-name` validation case (16 assertions total). Uses `mktemp -d` + `git init -q` per case so the host repo layout does not leak in. A `make lint` prerequisite via `test-harnesses`. |
 | `make test-alias-structure` | Run the structural regression test for `skills/alias/SKILL.md` (companion to `test-alias-target-resolution` above). Pins the prompt-side contract that target-dir resolution flows through a single `$TARGET_DIR` variable threaded through Steps 2/3/4, never replaced by hardcoded `.claude/skills/<alias-name>` paths in any load-bearing site. Exercises `scripts/test-alias-structure.sh`. A `make lint` prerequisite via `test-harnesses`. |
 | `make test-umbrella-parse-args` | Run the regression harness for `skills/umbrella/scripts/parse-args.sh` (closes #572). Exercises `skills/umbrella/scripts/test-umbrella-parse-args.sh` — 32 assert invocations (cases 1-25 plus 26 / 26b / 27-31 covering the new `--input-file` / `--umbrella-summary-file` flags) pinning the stdout grammar (`LABELS_COUNT` + indexed `LABEL_<i>`, `TITLE_PREFIX`, `REPO`, `CLOSED_WINDOW_DAYS`, `DRY_RUN`, `GO`, `INPUT_FILE`, `UMBRELLA_SUMMARY_FILE`, `TASK`, `UMBRELLA_TMPDIR`), the frozen `ERROR=` template list (16 templates — added: `--input-file requires a value`, `--umbrella-summary-file requires a value`, `--input-file and --umbrella-summary-file must be passed together`, `--input-file is mutually exclusive with positional TASK`), the quoting subset (single-quote, double-quote with `\"`/`\\`/`\$` escapes, outside-quote backslash escapes, space/tab/newline as unquoted separators), and the TASK byte-preservation contract (verbatim remainder including unbalanced quotes inside TASK). The `run_parser` helper strips `UMBRELLA_TMPDIR=`, empty `INPUT_FILE=`, and empty `UMBRELLA_SUMMARY_FILE=` lines from stdout so pre-existing `assert_stdout` cases that don't pass the new flags keep matching; new flag-emission cases use the dedicated `assert_raw_stdout_contains` helper. Distinct from `test-parse-args` which covers `skills/create-skill/scripts/parse-args.sh`. A `make lint` prerequisite via `test-harnesses`. |

@@ -81,16 +81,16 @@ extract_individual_targets() {
 extract_shard_prereqs() {
   local makefile="$1"
   local out_all="$2"
-  local out_shard6="$3"
+  local out_last_shard="$3"
   local n
   local count
   local line
   local prereq
 
   : > "$out_all"
-  : > "$out_shard6"
+  : > "$out_last_shard"
 
-  for n in 1 2 3 4 5 6; do
+  for n in 1 2 3 4 5; do
     count="$(grep -Ec "^test-harnesses-$n:" "$makefile" || true)"
     if [[ "$count" != "1" ]]; then
       printf 'test-harnesses-%s must be declared exactly once (found %s)\n' "$n" "$count" >> "$MISSING_SHARD_RULES"
@@ -101,8 +101,8 @@ extract_shard_prereqs() {
     line="${line#*:}"
     for prereq in $line; do
       printf '%s\n' "$prereq" >> "$out_all"
-      if [[ "$n" == "6" ]]; then
-        printf '%s\n' "$prereq" >> "$out_shard6"
+      if [[ "$n" == "5" ]]; then
+        printf '%s\n' "$prereq" >> "$out_last_shard"
       fi
     done
   done
@@ -143,7 +143,7 @@ validate_makefile() {
   local continuation_violations="$TMPDIR_SHARDS/continuation-violations"
   local individual="$TMPDIR_SHARDS/individual"
   local shard_all="$TMPDIR_SHARDS/shard-all"
-  local shard6="$TMPDIR_SHARDS/shard6"
+  local last_shard="$TMPDIR_SHARDS/last-shard"
   local shard_no_self="$TMPDIR_SHARDS/shard-no-self"
   local duplicates="$TMPDIR_SHARDS/duplicates"
   local missing="$TMPDIR_SHARDS/missing"
@@ -172,10 +172,10 @@ validate_makefile() {
       }
     }
   " "$makefile" > "$naming_violations" || true
-  grep -nE "^test-harnesses-[1-6]:.*\\\\" "$makefile" > "$continuation_violations" || true
+  grep -nE "^test-harnesses-[1-5]:.*\\\\" "$makefile" > "$continuation_violations" || true
 
   extract_individual_targets "$makefile" > "$individual"
-  extract_shard_prereqs "$makefile" "$shard_all" "$shard6"
+  extract_shard_prereqs "$makefile" "$shard_all" "$last_shard"
 
   grep -Fxv 'test-harness-shards-coverage' "$shard_all" | sort -u > "$shard_no_self" || true
   sort "$shard_all" | uniq -d > "$duplicates"
@@ -183,7 +183,7 @@ validate_makefile() {
   comm -13 "$individual" "$shard_no_self" > "$orphan"
 
   extract_umbrella_prereqs "$makefile" "$umbrella"
-  printf '%s\n' test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 test-harnesses-6 | sort -u > "$umbrella_expected"
+  printf '%s\n' test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 | sort -u > "$umbrella_expected"
   sort -u "$umbrella" > "$umbrella.sorted"
   comm -23 "$umbrella_expected" "$umbrella.sorted" > "$umbrella_missing"
   comm -13 "$umbrella_expected" "$umbrella.sorted" > "$umbrella_extra"
@@ -238,18 +238,18 @@ validate_makefile() {
     } >> "$REPORT"
   fi
 
-  if ! grep -Fxq 'test-harness-shards-coverage' "$shard6"; then
+  if ! grep -Fxq 'test-harness-shards-coverage' "$last_shard"; then
     {
       printf '@@ self-reference misplaced @@\n'
-      printf '! test-harness-shards-coverage must be the first prerequisite of test-harnesses-6\n'
+      printf '! test-harness-shards-coverage must be the first prerequisite of test-harnesses-5\n'
     } >> "$REPORT"
   else
-    local first_shard6
-    IFS= read -r first_shard6 < "$shard6" || first_shard6=""
-    if [[ "$first_shard6" != "test-harness-shards-coverage" ]]; then
+    local first_last_shard
+    IFS= read -r first_last_shard < "$last_shard" || first_last_shard=""
+    if [[ "$first_last_shard" != "test-harness-shards-coverage" ]]; then
       {
         printf '@@ self-reference misplaced @@\n'
-        printf '! test-harness-shards-coverage must be the first prerequisite of test-harnesses-6\n'
+        printf '! test-harness-shards-coverage must be the first prerequisite of test-harnesses-5\n'
       } >> "$REPORT"
     fi
   fi
@@ -273,14 +273,13 @@ write_happy_fixture() {
   local path="$1"
 
   cat > "$path" <<'EOF'
-.PHONY: test-harnesses test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 test-harnesses-6 test-alpha test-beta test-gamma test-delta test-epsilon test-zeta test-harness-shards-coverage test-eval-set-structure test-eval-research-baseline-flag smoke-dialectic eval-research
-test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 test-harnesses-6
+.PHONY: test-harnesses test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 test-alpha test-beta test-gamma test-delta test-zeta test-harness-shards-coverage test-eval-set-structure test-eval-research-baseline-flag smoke-dialectic eval-research
+test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5
 test-harnesses-1: test-alpha
 test-harnesses-2: test-beta
 test-harnesses-3: test-gamma
 test-harnesses-4: test-delta
-test-harnesses-5: test-epsilon
-test-harnesses-6: test-harness-shards-coverage test-zeta
+test-harnesses-5: test-harness-shards-coverage test-zeta
 test-alpha:
 	bash scripts/test-alpha.sh
 test-beta:
@@ -289,8 +288,6 @@ test-gamma:
 	bash scripts/test-gamma.sh
 test-delta:
 	bash scripts/test-delta.sh
-test-epsilon:
-	bash scripts/test-epsilon.sh
 test-zeta:
 	bash scripts/test-zeta.sh
 test-harness-shards-coverage:
@@ -328,7 +325,7 @@ run_self_case() {
       mv "$fixture.tmp" "$fixture"
       ;;
     duplicate-across-shards)
-      awk '{ sub(/^test-harnesses-5: test-epsilon$/, "test-harnesses-5: test-epsilon test-beta"); print }' "$fixture" > "$fixture.tmp"
+      awk '{ sub(/^test-harnesses-5: test-harness-shards-coverage test-zeta$/, "test-harnesses-5: test-harness-shards-coverage test-zeta test-beta"); print }' "$fixture" > "$fixture.tmp"
       mv "$fixture.tmp" "$fixture"
       ;;
     backslash-continuation-violation)
@@ -353,21 +350,22 @@ run_self_case() {
       ;;
     self-reference-not-first)
       # FINDING_4 (repurposed): assert failure when test-harness-shards-coverage
-      # is not the first prerequisite of test-harnesses-6. Swap the order so
-      # test-zeta comes first.
-      awk '{ sub(/^test-harnesses-6: test-harness-shards-coverage test-zeta$/, "test-harnesses-6: test-zeta test-harness-shards-coverage"); print }' "$fixture" > "$fixture.tmp"
+      # is not the first prerequisite of test-harnesses-5 (the last shard, which
+      # owns the partition-invariant guard). Swap the order so test-zeta comes
+      # first.
+      awk '{ sub(/^test-harnesses-5: test-harness-shards-coverage test-zeta$/, "test-harnesses-5: test-zeta test-harness-shards-coverage"); print }' "$fixture" > "$fixture.tmp"
       mv "$fixture.tmp" "$fixture"
       ;;
     umbrella-missing-shard)
       # FINDING_3: assert failure when the umbrella does not list every
-      # test-harnesses-N. Drop test-harnesses-6 from the umbrella.
-      awk '{ sub(/^test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 test-harnesses-6$/, "test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5"); print }' "$fixture" > "$fixture.tmp"
+      # test-harnesses-N. Drop test-harnesses-5 from the umbrella.
+      awk '{ sub(/^test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5$/, "test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4"); print }' "$fixture" > "$fixture.tmp"
       mv "$fixture.tmp" "$fixture"
       ;;
     umbrella-extra-shard)
       # FINDING_3: assert failure when the umbrella lists an unexpected
       # prerequisite (typo / orphan shard target).
-      awk '{ sub(/^test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 test-harnesses-6$/, "test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 test-harnesses-6 test-harnesses-7"); print }' "$fixture" > "$fixture.tmp"
+      awk '{ sub(/^test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5$/, "test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 test-harnesses-6"); print }' "$fixture" > "$fixture.tmp"
       mv "$fixture.tmp" "$fixture"
       ;;
     missing-phony)

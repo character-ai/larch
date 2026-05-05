@@ -8,6 +8,11 @@ REPO_ROOT=$(cd "$(dirname "$0")/.." && pwd -P)
 TMPDIR=$(mktemp -d /tmp/larch-test-launch-gemini-XXXXXX)
 trap 'rm -rf "$TMPDIR"' EXIT
 
+# Tighten run-external-agent.sh's poll cadence so each stub invocation does
+# not pay a 10s sleep cycle. Production callers inherit the default 10s.
+# See scripts/run-external-agent.md.
+export RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05
+
 FAIL=0
 fail() {
   echo "FAIL: $1" >&2

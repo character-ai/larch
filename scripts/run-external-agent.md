@@ -17,6 +17,10 @@ The capture flags are mutually exclusive. Metadata includes both `CAPTURE_STDOUT
 - Keep `set -euo pipefail`; child exit codes are captured via guarded `wait`.
 - Diagnostic text is appended to `<output>.diag` so stdout-only capture can retain child stderr.
 
+## Poll interval (`RUN_EXTERNAL_AGENT_POLL_INTERVAL`)
+
+The wrapper polls the child PID with `kill -0` in a loop and `sleep`s `$RUN_EXTERNAL_AGENT_POLL_INTERVAL` seconds (default `10`) between checks. Production callers wrapping real agents leave the default — 10s polling keeps progress chatter human-readable and bounds time-to-notice-timeout. Test harnesses that wrap stub binaries which exit in microseconds (e.g. `skills/implement/scripts/test-cursor-implementer.sh`, `skills/implement/scripts/test-gemini-implementer.sh`, `scripts/test-launch-gemini-review.sh`, `scripts/test-check-reviewers.sh`) export `RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05` so each stub invocation does not pay a full 10s sleep cycle. The variable accepts integer or decimal seconds; values that are not strictly positive are rejected with exit 1. Progress messages still fire once per elapsed minute regardless of poll cadence (driven by bash's `$SECONDS` builtin).
+
 ## Call sites
 
 - `scripts/launch-gemini-review.sh` — Gemini reviewer JSON stdout capture.
