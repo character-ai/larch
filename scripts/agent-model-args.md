@@ -12,7 +12,7 @@
 
 ## Fallback chain (Gemini)
 
-`LARCH_GEMINI_MODEL` → `CLAUDE_PLUGIN_OPTION_GEMINI_MODEL` → `--default-model` flag → `gemini-2.5-pro` (hardcoded). Used by the Gemini implementer launcher and aligned with the reviewer-side default in `scripts/launch-gemini-review.sh` and `scripts/check-reviewers.sh`. Gemini has no separate reasoning-effort knob in the CLI; reasoning depth is selected via the model value itself (for example, `gemini-2.5-pro` versus `gemini-2.5-flash`). `--with-effort` is accepted and intentionally emits no extra Gemini flags.
+`LARCH_GEMINI_MODEL` → `CLAUDE_PLUGIN_OPTION_GEMINI_MODEL` → `--default-model` flag → `gemini-2.5-pro` (hardcoded). Aligned with the reviewer-side default in `scripts/launch-gemini-review.sh` and `scripts/check-reviewers.sh`. The Gemini implementer launcher (`scripts/launch-gemini-implement.sh`) does NOT call this helper — it resolves the model inline using the same precedence chain (without `--default-model`, which that call site never used) to keep the `--model "$GEMINI_MODEL"` argv a single quoted token; the two precedence definitions must stay in lockstep when env names, plugin fallbacks, or the hardcoded default change. Gemini has no separate reasoning-effort knob in the CLI; reasoning depth is selected via the model value itself (for example, `gemini-2.5-pro` versus `gemini-2.5-flash`). `--with-effort` is accepted and intentionally emits no extra Gemini flags.
 
 ## Tool registry
 
