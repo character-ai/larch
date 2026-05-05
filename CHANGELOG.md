@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.11.14] - 2026-05-05
+
+### Fixed
+
+- Avoid implying that a PR completed with zero GitHub CI checks when `ci-wait` exits on its first poll (closes #1133).
+- Clarify `ci-wait` stderr progress by labeling the internal loop counter as polls in user-facing strings and the surrounding comment / file-header.
+
 ## [15.11.13] - 2026-05-05
 
 ### Changed
