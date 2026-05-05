@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.10.11] - 2026-05-05
+
+### Changed
+
+- Fortify `/implement` against unexpected halts at the post-merge boundary (`closes #1132`). The `✅ 12: CI+merge loop — PR #<N> merged!` line is the highest-stakes natural-feeling completion point in the orchestrator — every other step boundary already had an inline `> **Continue to Step N.**` reminder, but the post-merge moment uniquely lacked one. Adds three reinforcing reminders to `skills/implement/SKILL.md`: (a) the `ACTION=already_merged` branch in Step 12a now ends with an inline continuation reminder listing Steps 14, 15, 16, 16a, 17, 18; (b) Step 12b's post-merge path now carries a strong block-quote reminder right after "Save expected commit title for Step 15" calling out `pr_closed=true` / `DONE_RENAME_APPLIED=true` as PRE-conditions for Steps 14–18, not POST-conditions of a finished run; (c) NEVER #7 gets a post-merge sub-clause naming the merge breadcrumb as the highest-stakes halt boundary, with the explicit reasoning that halting before Step 16a means the Slack announcement never fires. Also widens NEVER #7's "between Step 1 and Step 17" range to "Step 1 and Step 18" so the opening clause matches the new sub-clause's through-Step-18 scope. Prose-only change; no script or workflow behavior altered.
+
 ## [15.10.10] - 2026-05-05
 
 ### Fixed
