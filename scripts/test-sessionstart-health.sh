@@ -1,23 +1,5 @@
 #!/usr/bin/env bash
 # test-sessionstart-health.sh — Regression test for scripts/sessionstart-health.sh.
-#
-# Four cases, each run with a controlled PATH that contains only stub scripts
-# for the tools we want "present" in that case — no real /usr/bin/jq or
-# /usr/bin/git leaks in. The script-under-test is invoked via an absolute
-# bash path (resolved once before `env -i` from the ambient PATH, so this
-# works on Nix-style layouts where bash is not at /bin/bash) so its
-# `#!/usr/bin/env bash` shebang never triggers PATH lookup for bash itself.
-#
-#   Case 1: jq + git both present        → exit 0, empty stdout
-#   Case 2: jq missing, git present      → exit 0, JSON mentions jq
-#   Case 3: jq present, git missing      → exit 0, JSON mentions git
-#   Case 4: both missing                 → exit 0, JSON mentions both
-#
-# JSON validation uses the harness's own jq (from the outer PATH), not the
-# stubs visible to the script-under-test.
-#
-# Usage:  bash scripts/test-sessionstart-health.sh
-# Exit codes:  0 on success, 1 on first failure.
 
 set -euo pipefail
 
@@ -29,20 +11,23 @@ if [[ ! -x "$SCRIPT" ]]; then
     exit 1
 fi
 
-if ! command -v jq >/dev/null 2>&1; then
+REAL_JQ=$(command -v jq || true)
+REAL_GIT=$(command -v git || true)
+BASH_BIN=$(command -v bash || true)
+if [[ -z "$REAL_JQ" || ! -x "$REAL_JQ" ]]; then
     echo "FAIL: harness jq not on PATH; cannot validate JSON output" >&2
     exit 1
 fi
-
-# Resolve bash from ambient PATH once, before env -i scrubs the environment.
-# This lets the harness run on Nix-style layouts where bash is not at /bin/bash.
-BASH_BIN=$(command -v bash)
+if [[ -z "$REAL_GIT" || ! -x "$REAL_GIT" ]]; then
+    echo "FAIL: harness git not on PATH; cannot create git-state fixtures" >&2
+    exit 1
+fi
 if [[ -z "$BASH_BIN" || ! -x "$BASH_BIN" ]]; then
     echo "FAIL: could not resolve bash on ambient PATH" >&2
     exit 1
 fi
 
-tmp=$(mktemp -d)
+tmp=$(mktemp -d /tmp/larch-sessionstart-test.XXXXXX)
 trap 'rm -rf "$tmp"' EXIT
 
 PASS=0
@@ -101,106 +86,234 @@ assert_not_contains() {
     fi
 }
 
-# Build a stub bin directory. Stubs are minimal: they just exit 0. The point
-# is that `command -v <tool>` returns zero when the stub is present and
-# non-zero when it is absent.
-build_stub_dir() {
-    local dir="$1"
-    shift
-    rm -rf "$dir"
-    mkdir -p "$dir"
-    for tool in "$@"; do
-        printf '#!/bin/sh\nexit 0\n' > "$dir/$tool"
-        chmod +x "$dir/$tool"
-    done
+link_tool() {
+    local dir=$1 tool=$2 resolved
+    resolved=$(command -v "$tool" || true)
+    if [[ -n "$resolved" && -x "$resolved" ]]; then
+        ln -sf "$resolved" "$dir/$tool"
+    fi
 }
 
-# Run the script under test with a stub-only PATH. The pre-resolved $BASH_BIN
-# bypasses the shebang's PATH-lookup of `env` and `bash`, so the only
-# executables the script can see are the stubs in $stub_dir.
-run_under_stubs() {
-    local stub_dir="$1"
-    local out_file="$2"
-    local err_file="$3"
-    local rc=0
-    env -i PATH="$stub_dir" "$BASH_BIN" "$SCRIPT" < /dev/null > "$out_file" 2> "$err_file" || rc=$?
+build_bin() {
+    local dir=$1
+    rm -rf "$dir"
+    mkdir -p "$dir"
+    link_tool "$dir" grep
+    link_tool "$dir" awk
+    link_tool "$dir" cat
+}
+
+add_real_tool() {
+    local dir=$1 tool=$2 path=$3
+    ln -sf "$path" "$dir/$tool"
+}
+
+add_git_not_worktree_stub() {
+    local dir=$1
+    cat > "$dir/git" <<STUB
+#!$BASH_BIN
+if [[ "\$1" == "rev-parse" && "\${2:-}" == "--is-inside-work-tree" ]]; then
+    exit 1
+fi
+exit 0
+STUB
+    chmod +x "$dir/git"
+}
+
+run_from_dir() {
+    local bin=$1 cwd=$2 out_file=$3 err_file=$4 rc=0
+    (cd "$cwd" && env -i PATH="$bin" "$BASH_BIN" "$SCRIPT" < /dev/null > "$out_file" 2> "$err_file") || rc=$?
     printf '%s\n' "$rc"
 }
 
-echo "=== Case 1: jq + git both present ==="
-build_stub_dir "$tmp/c1_bin" jq git
-rc=$(run_under_stubs "$tmp/c1_bin" "$tmp/c1.out" "$tmp/c1.err")
+ctx_from_stdout() {
+    local stdout=$1
+    printf '%s' "$stdout" | "$REAL_JQ" -r '.hookSpecificOutput.additionalContext // empty'
+}
+
+assert_valid_json() {
+    local stdout=$1 label=$2 hook_event
+    if ! printf '%s' "$stdout" | "$REAL_JQ" -e . >/dev/null 2>&1; then
+        FAIL=$((FAIL + 1))
+        FAILED_TESTS+=("$label: stdout is not valid JSON")
+        echo "  FAIL: $label: stdout is not valid JSON" >&2
+        echo "       stdout: '$stdout'" >&2
+        return
+    fi
+    PASS=$((PASS + 1))
+    echo "  ok: $label: stdout is valid JSON"
+    hook_event=$(printf '%s' "$stdout" | "$REAL_JQ" -r '.hookSpecificOutput.hookEventName // empty')
+    assert_eq "$hook_event" "SessionStart" "$label: hookEventName"
+}
+
+make_repo() {
+    local name=$1 repo
+    repo="$tmp/$name"
+    git init "$repo" >/dev/null 2>&1
+    git -C "$repo" config user.email "larch-test@example.invalid"
+    git -C "$repo" config user.name "Larch Test"
+    git -C "$repo" checkout -b main >/dev/null 2>&1
+    printf 'base\n' > "$repo/file.txt"
+    git -C "$repo" add file.txt
+    git -C "$repo" commit -m "base" >/dev/null 2>&1
+    printf '%s\n' "$repo"
+}
+
+echo "=== Case 1: jq + git both present, not a work-tree ==="
+build_bin "$tmp/c1_bin"
+add_real_tool "$tmp/c1_bin" jq "$REAL_JQ"
+add_git_not_worktree_stub "$tmp/c1_bin"
+mkdir -p "$tmp/outside"
+rc=$(run_from_dir "$tmp/c1_bin" "$tmp/outside" "$tmp/c1.out" "$tmp/c1.err")
 assert_eq "$rc" "0" "case 1: exit code 0"
 stdout=$(cat "$tmp/c1.out")
 assert_empty "$stdout" "case 1: stdout empty"
 
 echo "=== Case 2: jq missing, git present ==="
-build_stub_dir "$tmp/c2_bin" git
-rc=$(run_under_stubs "$tmp/c2_bin" "$tmp/c2.out" "$tmp/c2.err")
+build_bin "$tmp/c2_bin"
+add_git_not_worktree_stub "$tmp/c2_bin"
+rc=$(run_from_dir "$tmp/c2_bin" "$tmp/outside" "$tmp/c2.out" "$tmp/c2.err")
 assert_eq "$rc" "0" "case 2: exit code 0"
 stdout=$(cat "$tmp/c2.out")
-# Must be valid JSON and a single line.
-lines=$(printf '%s' "$stdout" | wc -l | tr -d ' ')
-assert_eq "$lines" "0" "case 2: exactly one line of stdout (no trailing newline counted by wc -l)"
-# Validate JSON structure via harness jq.
-if ! printf '%s' "$stdout" | jq -e . >/dev/null 2>&1; then
-    FAIL=$((FAIL + 1))
-    FAILED_TESTS+=("case 2: stdout is not valid JSON")
-    echo "  FAIL: case 2: stdout is not valid JSON" >&2
-    echo "       stdout: '$stdout'" >&2
-else
-    PASS=$((PASS + 1))
-    echo "  ok: case 2: stdout is valid JSON"
-fi
-hook_event=$(printf '%s' "$stdout" | jq -r '.hookSpecificOutput.hookEventName // empty')
-assert_eq "$hook_event" "SessionStart" "case 2: hookEventName"
-ctx=$(printf '%s' "$stdout" | jq -r '.hookSpecificOutput.additionalContext // empty')
+assert_valid_json "$stdout" "case 2"
+ctx=$(ctx_from_stdout "$stdout")
 assert_contains "$ctx" "jq" "case 2: additionalContext mentions jq"
-assert_not_contains "$ctx" "git not on PATH" "case 2: additionalContext does not mention git (git is present)"
+assert_not_contains "$ctx" "git not on PATH" "case 2: additionalContext does not mention git"
 
 echo "=== Case 3: jq present, git missing ==="
-build_stub_dir "$tmp/c3_bin" jq
-rc=$(run_under_stubs "$tmp/c3_bin" "$tmp/c3.out" "$tmp/c3.err")
+build_bin "$tmp/c3_bin"
+add_real_tool "$tmp/c3_bin" jq "$REAL_JQ"
+rc=$(run_from_dir "$tmp/c3_bin" "$tmp/outside" "$tmp/c3.out" "$tmp/c3.err")
 assert_eq "$rc" "0" "case 3: exit code 0"
 stdout=$(cat "$tmp/c3.out")
-lines=$(printf '%s' "$stdout" | wc -l | tr -d ' ')
-assert_eq "$lines" "0" "case 3: exactly one line of stdout"
-if ! printf '%s' "$stdout" | jq -e . >/dev/null 2>&1; then
-    FAIL=$((FAIL + 1))
-    FAILED_TESTS+=("case 3: stdout is not valid JSON")
-    echo "  FAIL: case 3: stdout is not valid JSON" >&2
-    echo "       stdout: '$stdout'" >&2
-else
-    PASS=$((PASS + 1))
-    echo "  ok: case 3: stdout is valid JSON"
-fi
-hook_event=$(printf '%s' "$stdout" | jq -r '.hookSpecificOutput.hookEventName // empty')
-assert_eq "$hook_event" "SessionStart" "case 3: hookEventName"
-ctx=$(printf '%s' "$stdout" | jq -r '.hookSpecificOutput.additionalContext // empty')
+assert_valid_json "$stdout" "case 3"
+ctx=$(ctx_from_stdout "$stdout")
 assert_contains "$ctx" "git" "case 3: additionalContext mentions git"
-assert_not_contains "$ctx" "jq not on PATH" "case 3: additionalContext does not mention jq (jq is present)"
+assert_not_contains "$ctx" "jq not on PATH" "case 3: additionalContext does not mention jq"
 
 echo "=== Case 4: both missing ==="
-build_stub_dir "$tmp/c4_bin"
-rc=$(run_under_stubs "$tmp/c4_bin" "$tmp/c4.out" "$tmp/c4.err")
+build_bin "$tmp/c4_bin"
+rc=$(run_from_dir "$tmp/c4_bin" "$tmp/outside" "$tmp/c4.out" "$tmp/c4.err")
 assert_eq "$rc" "0" "case 4: exit code 0"
 stdout=$(cat "$tmp/c4.out")
-lines=$(printf '%s' "$stdout" | wc -l | tr -d ' ')
-assert_eq "$lines" "0" "case 4: exactly one line of stdout"
-if ! printf '%s' "$stdout" | jq -e . >/dev/null 2>&1; then
-    FAIL=$((FAIL + 1))
-    FAILED_TESTS+=("case 4: stdout is not valid JSON")
-    echo "  FAIL: case 4: stdout is not valid JSON" >&2
-    echo "       stdout: '$stdout'" >&2
-else
-    PASS=$((PASS + 1))
-    echo "  ok: case 4: stdout is valid JSON"
-fi
-hook_event=$(printf '%s' "$stdout" | jq -r '.hookSpecificOutput.hookEventName // empty')
-assert_eq "$hook_event" "SessionStart" "case 4: hookEventName"
-ctx=$(printf '%s' "$stdout" | jq -r '.hookSpecificOutput.additionalContext // empty')
+assert_valid_json "$stdout" "case 4"
+ctx=$(ctx_from_stdout "$stdout")
 assert_contains "$ctx" "jq" "case 4: additionalContext mentions jq"
 assert_contains "$ctx" "git" "case 4: additionalContext mentions git"
+
+build_bin "$tmp/real_bin"
+add_real_tool "$tmp/real_bin" jq "$REAL_JQ"
+add_real_tool "$tmp/real_bin" git "$REAL_GIT"
+
+echo "=== Case 5: dirty working tree ==="
+repo=$(make_repo dirty)
+printf 'dirty\n' >> "$repo/file.txt"
+rc=$(run_from_dir "$tmp/real_bin" "$repo" "$tmp/c5.out" "$tmp/c5.err")
+assert_eq "$rc" "0" "case 5: exit code 0"
+ctx=$(ctx_from_stdout "$(cat "$tmp/c5.out")")
+assert_contains "$ctx" "uncommitted changes" "case 5: dirty tree warning"
+
+echo "=== Case 6: larch-managed stash ==="
+repo=$(make_repo larch-stash)
+printf 'stash\n' > "$repo/stash.txt"
+git -C "$repo" stash push -u -m "larch-stalled-42-12d 20260505T000000Z" >/dev/null 2>&1
+rc=$(run_from_dir "$tmp/real_bin" "$repo" "$tmp/c6.out" "$tmp/c6.err")
+assert_eq "$rc" "0" "case 6: exit code 0"
+ctx=$(ctx_from_stdout "$(cat "$tmp/c6.out")")
+assert_contains "$ctx" "leftover larch-managed stash" "case 6: larch stash warning"
+
+echo "=== Case 7: non-larch stash is ignored ==="
+repo=$(make_repo manual-stash)
+printf 'stash\n' > "$repo/stash.txt"
+git -C "$repo" stash push -u -m "manual work" >/dev/null 2>&1
+rc=$(run_from_dir "$tmp/real_bin" "$repo" "$tmp/c7.out" "$tmp/c7.err")
+assert_eq "$rc" "0" "case 7: exit code 0"
+ctx=$(ctx_from_stdout "$(cat "$tmp/c7.out")")
+assert_not_contains "$ctx" "leftover larch-managed stash" "case 7: non-larch stash ignored"
+
+echo "=== Case 8: interrupted rebase state ==="
+repo=$(make_repo interrupted)
+rebase_head=$(cd "$repo" && git rev-parse --git-path REBASE_HEAD)
+case "$rebase_head" in
+    /*) ;;
+    *) rebase_head="$repo/$rebase_head" ;;
+esac
+printf 'abc123\n' > "$rebase_head"
+rc=$(run_from_dir "$tmp/real_bin" "$repo" "$tmp/c8.out" "$tmp/c8.err")
+assert_eq "$rc" "0" "case 8: exit code 0"
+ctx=$(ctx_from_stdout "$(cat "$tmp/c8.out")")
+assert_contains "$ctx" "interrupted rebase" "case 8: interrupted state warning"
+
+echo "=== Case 9: unmerged local feature branch ==="
+repo=$(make_repo unmerged)
+git -C "$repo" checkout -b feature >/dev/null 2>&1
+printf 'feature\n' >> "$repo/file.txt"
+git -C "$repo" commit -am "feature" >/dev/null 2>&1
+git -C "$repo" checkout main >/dev/null 2>&1
+rc=$(run_from_dir "$tmp/real_bin" "$repo" "$tmp/c9.out" "$tmp/c9.err")
+assert_eq "$rc" "0" "case 9: exit code 0"
+ctx=$(ctx_from_stdout "$(cat "$tmp/c9.out")")
+assert_contains "$ctx" "not merged into main" "case 9: unmerged branch warning"
+
+echo "=== Case 10: stalled-run sentinel ==="
+repo=$(make_repo sentinel)
+sentinel=$(cd "$repo" && git rev-parse --git-path larch-stalled-run.txt)
+case "$sentinel" in
+    /*) ;;
+    *) sentinel="$repo/$sentinel" ;;
+esac
+cat > "$sentinel" <<'SENTINEL'
+ISSUE_NUMBER=77
+ISSUE_URL=https://github.example/owner/repo/issues/77
+STALL_STEP=12d
+STASH_REF=stash@{0}
+TIMESTAMP=2026-05-05T00:00:00Z
+SENTINEL
+rc=$(run_from_dir "$tmp/real_bin" "$repo" "$tmp/c10.out" "$tmp/c10.err")
+assert_eq "$rc" "0" "case 10: exit code 0"
+ctx=$(ctx_from_stdout "$(cat "$tmp/c10.out")")
+assert_contains "$ctx" "prior /implement run for #77 stalled at step 12d" "case 10: sentinel warning"
+assert_contains "$ctx" "stash@{0}" "case 10: sentinel stash ref"
+
+echo "=== Case 10b: stalled-run sentinel with empty STASH_REF emits no-stash guidance ==="
+repo=$(make_repo sentinel-no-stash)
+sentinel=$(cd "$repo" && git rev-parse --git-path larch-stalled-run.txt)
+case "$sentinel" in
+    /*) ;;
+    *) sentinel="$repo/$sentinel" ;;
+esac
+cat > "$sentinel" <<'SENTINEL'
+ISSUE_NUMBER=88
+ISSUE_URL=https://github.example/owner/repo/issues/88
+STALL_STEP=8b
+STASH_REF=
+TIMESTAMP=2026-05-05T00:00:00Z
+SENTINEL
+rc=$(run_from_dir "$tmp/real_bin" "$repo" "$tmp/c10b.out" "$tmp/c10b.err")
+assert_eq "$rc" "0" "case 10b: exit code 0"
+ctx=$(ctx_from_stdout "$(cat "$tmp/c10b.out")")
+assert_contains "$ctx" "prior /implement run for #88 stalled at step 8b" "case 10b: sentinel warning still names issue+step"
+assert_contains "$ctx" "No working-tree edits were stashed" "case 10b: empty STASH_REF emits no-stash guidance"
+assert_not_contains "$ctx" "git stash apply" "case 10b: no fabricated git stash apply command"
+assert_not_contains "$ctx" "no stash" "case 10b: does not emit literal 'no stash' as a fake ref"
+
+echo "=== Case 10c: master-only repo skips unmerged-branch probe ==="
+repo=$(make_repo master-only)
+# Rename main to master so the repo has only `master`, no `main`.
+(cd "$repo" && git branch -m main master 2>/dev/null) || true
+# Add a feature branch off master to make sure --no-merged would fire if main existed.
+(cd "$repo" && git checkout -b feature/x 2>/dev/null && echo x > x.txt && git add x.txt && git -c user.email=test@example.com -c user.name=test commit -q -m feat) >/dev/null 2>&1
+(cd "$repo" && git checkout master 2>/dev/null) >/dev/null 2>&1
+rc=$(run_from_dir "$tmp/real_bin" "$repo" "$tmp/c10c.out" "$tmp/c10c.err")
+assert_eq "$rc" "0" "case 10c: exit code 0"
+ctx=$(ctx_from_stdout "$(cat "$tmp/c10c.out")")
+assert_not_contains "$ctx" "not merged into main" "case 10c: no unmerged-branch advisory when main does not exist"
+
+echo "=== Case 11: not inside a work-tree skips git-state probes ==="
+rc=$(run_from_dir "$tmp/real_bin" "$tmp/outside" "$tmp/c11.out" "$tmp/c11.err")
+assert_eq "$rc" "0" "case 11: exit code 0"
+stdout=$(cat "$tmp/c11.out")
+assert_empty "$stdout" "case 11: stdout empty outside work-tree"
 
 echo
 echo "=== Summary ==="

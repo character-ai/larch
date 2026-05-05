@@ -13,7 +13,11 @@
 # Flags:
 #   --prefix <name>       (required) Temp dir prefix for mktemp (e.g., claude-implement)
 #   --skip-preflight      Skip preflight.sh call entirely (for skills with no preflight)
-#   --skip-branch-check   Forwarded to preflight.sh (skip on-main/clean-tree assertions)
+#   --skip-branch-check   Forwarded to preflight.sh (skip the on-main assertion only;
+#                          the clean-tree assertion still runs unless the caller also
+#                          forwards --skip-clean-check, which session-setup.sh does NOT
+#                          do today). Continuation-from-feature-branch flows still
+#                          reject dirty trees by design; pre-stash any WIP first.
 #   --skip-slack-check    Skip LARCH_SLACK_BOT_TOKEN and LARCH_SLACK_CHANNEL_ID check entirely
 #   --skip-repo-check     Skip repo name derivation entirely
 #   --check-reviewers     Run check-reviewers.sh --probe and emit availability/health keys

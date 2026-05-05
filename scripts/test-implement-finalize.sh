@@ -38,6 +38,12 @@ assert_not_contains() {
     fi
 }
 
+assert_file_contains() {
+    local needle=$1 path=$2 label=$3 content
+    content=$(cat "$path" 2>/dev/null || true)
+    assert_contains "$needle" "$content" "$label"
+}
+
 assert_rc() {
     local actual=$1 expected=$2 label=$3
     if [ "$actual" -eq "$expected" ]; then
@@ -84,13 +90,14 @@ write_state() {
         printf 'DESIGN_ONLY_DONE=%s\n' "$(override_value DESIGN_ONLY_DONE false "$@")"
         printf 'BAIL_NEEDS_USER_INPUT=%s\n' "$(override_value BAIL_NEEDS_USER_INPUT false "$@")"
         printf 'STALL_TRACKING=%s\n' "$(override_value STALL_TRACKING false "$@")"
+        printf 'STALL_STEP=%s\n' "$(override_value STALL_STEP 12d "$@")"
         printf 'DONE_RENAME_APPLIED=%s\n' "$(override_value DONE_RENAME_APPLIED false "$@")"
     } > "$path"
 }
 
 build_sandbox() {
     SANDBOX=$(mktemp -d /tmp/larch-finalize-test.XXXXXX)
-    mkdir -p "$SANDBOX/scripts" "$SANDBOX/tmp"
+    mkdir -p "$SANDBOX/scripts" "$SANDBOX/tmp" "$SANDBOX/bin" "$SANDBOX/repo/.git"
     cp "$REAL_SCRIPT" "$SANDBOX/scripts/implement-finalize.sh"
     chmod +x "$SANDBOX/scripts/implement-finalize.sh"
 
@@ -147,16 +154,66 @@ STUB
 printf '%s\n' "\$@" > "$SANDBOX/cleanup-argv.txt"
 exit "\${STUB_CLEANUP_TMPDIR_RC:-0}"
 STUB
+    cat > "$SANDBOX/bin/git" <<STUB
+#!/usr/bin/env bash
+if [ "\${1:-}" = "-C" ]; then
+  shift 2
+fi
+case "\${1:-} \${2:-} \${3:-}" in
+  "rev-parse --show-toplevel ")
+    echo "\${STUB_REPO_ROOT:-$SANDBOX/repo}"
+    ;;
+  "rev-parse --git-dir ")
+    echo "\${STUB_GIT_DIR:-$SANDBOX/repo/.git}"
+    ;;
+  "status --porcelain ")
+    if [ "\${STUB_STATUS_RC:-0}" -ne 0 ]; then
+      echo "\${STUB_STATUS_ERROR:-status failed}" >&2
+      exit "\${STUB_STATUS_RC:-1}"
+    fi
+    if [ "\${STUB_GIT_DIRTY:-false}" = "true" ]; then
+      echo " M file.txt"
+    fi
+    ;;
+  "stash push -u")
+    printf '%s\n' "\$@" > "$SANDBOX/stash-argv.txt"
+    if [ "\${STUB_STASH_RC:-0}" -ne 0 ]; then
+      echo "\${STUB_STASH_ERROR:-cannot stash}"
+      exit "\${STUB_STASH_RC:-1}"
+    fi
+    ;;
+  "stash list -1")
+    echo "\${STUB_STASH_REF:-stash@{0}}"
+    ;;
+  "stash list --format=%gD"|"stash list --format=%gD %gs")
+    # Label-matching lookup: on success the stub emits a synthesized line
+    # whose ref is STUB_STASH_REF and whose message contains the label that
+    # the production code wrote with \`stash push -u -m\`. STUB_STASH_LABEL
+    # is set by the test before invocation; if absent, return nothing so
+    # the production code falls back to \`stash list -1\`.
+    if [ "\${STUB_STASH_LABEL_OUT:-}" = "skip" ]; then
+      :
+    else
+      echo "\${STUB_STASH_REF:-stash@{0}} On stalled-branch: \${STUB_STASH_LABEL:-larch-stalled-456-12d 20260505T000000Z}"
+    fi
+    ;;
+  *)
+    echo "unexpected git invocation: \$*" >&2
+    exit 99
+    ;;
+esac
+STUB
     chmod +x "$SANDBOX/scripts/"*.sh
+    chmod +x "$SANDBOX/bin/git"
 }
 
 run_subject() {
-    "$SANDBOX/scripts/implement-finalize.sh" "$@" 2>&1 | normalize_elapsed
+    PATH="$SANDBOX/bin:$PATH" "$SANDBOX/scripts/implement-finalize.sh" "$@" 2>&1 | normalize_elapsed
 }
 
 run_subject_raw_rc() {
     set +e
-    OUT=$("$SANDBOX/scripts/implement-finalize.sh" "$@" 2>&1 | normalize_elapsed)
+    OUT=$(PATH="$SANDBOX/bin:$PATH" "$SANDBOX/scripts/implement-finalize.sh" "$@" 2>&1 | normalize_elapsed)
     RC=$?
     set -e
 }
@@ -270,6 +327,39 @@ assert_contains "--state" "$RENAME_ARGV" "teardown: branch A rename called"
 assert_contains "stalled" "$RENAME_ARGV" "teardown: branch A renames stalled"
 assert_contains "RENAME_BRANCH=A" "$OUT" "teardown: branch A tail"
 assert_contains "RENAME_STATUS=ok" "$OUT" "teardown: branch A ok"
+assert_contains "STASH_REF=" "$OUT" "teardown: clean stalled run emits empty stash ref"
+assert_contains "SENTINEL_WRITTEN=true" "$OUT" "teardown: clean stalled run writes sentinel"
+assert_file_contains "STALL_STEP=12d" "$SANDBOX/repo/.git/larch-stalled-run.txt" "teardown: clean sentinel records stall step"
+assert_file_contains "STASH_REF=" "$SANDBOX/repo/.git/larch-stalled-run.txt" "teardown: clean sentinel records empty stash"
+
+write_state "$STATE" STALL_TRACKING=true STALL_STEP=8b
+rm -f "$SANDBOX/stash-argv.txt" "$SANDBOX/repo/.git/larch-stalled-run.txt"
+: > "$SANDBOX/rename-argv.txt"
+OUT=$(STUB_GIT_DIRTY=true run_subject teardown --state-file "$STATE" --implement-tmpdir "$SANDBOX/tmp")
+STASH_ARGV=$(cat "$SANDBOX/stash-argv.txt")
+assert_contains "larch-stalled-456-8b" "$STASH_ARGV" "teardown: dirty stalled run stashes with larch label"
+assert_contains "STASH_REF=stash@{0}" "$OUT" "teardown: dirty stalled run emits stash ref"
+assert_contains "SENTINEL_WRITTEN=true" "$OUT" "teardown: dirty stalled run writes sentinel"
+assert_file_contains "ISSUE_NUMBER=456" "$SANDBOX/repo/.git/larch-stalled-run.txt" "teardown: dirty sentinel records issue"
+assert_file_contains "ISSUE_URL=https://github.example/owner/repo/issues/456" "$SANDBOX/repo/.git/larch-stalled-run.txt" "teardown: dirty sentinel records URL"
+assert_file_contains "STALL_STEP=8b" "$SANDBOX/repo/.git/larch-stalled-run.txt" "teardown: dirty sentinel records stall step"
+assert_file_contains "STASH_REF=stash@{0}" "$SANDBOX/repo/.git/larch-stalled-run.txt" "teardown: dirty sentinel records stash ref"
+
+write_state "$STATE" STALL_TRACKING=true STALL_STEP=8b
+rm -f "$SANDBOX/stash-argv.txt" "$SANDBOX/repo/.git/larch-stalled-run.txt"
+: > "$SANDBOX/rename-argv.txt"
+OUT=$(STUB_STATUS_RC=1 run_subject teardown --state-file "$STATE" --implement-tmpdir "$SANDBOX/tmp")
+assert_contains "git status failed" "$OUT" "teardown: status failure warns and skips stash"
+if [ ! -e "$SANDBOX/stash-argv.txt" ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: teardown: status failure means no stash attempted"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: teardown: status failure should not attempt stash"
+fi
+# Sentinel is still written (no stash, but we record the stall context).
+assert_contains "SENTINEL_WRITTEN=true" "$OUT" "teardown: status failure still writes sentinel"
+assert_contains "STASH_REF=" "$OUT" "teardown: status failure emits empty stash ref"
 
 write_state "$STATE" STALL_TRACKING=true
 : > "$SANDBOX/rename-argv.txt"
@@ -280,11 +370,21 @@ assert_contains "RENAME_BRANCH=A" "$OUT" "teardown: closed stalled branch identi
 assert_contains "RENAME_STATUS=skipped" "$OUT" "teardown: closed stalled status skipped"
 
 write_state "$STATE" STALL_TRACKING=false DONE_RENAME_APPLIED=false PR_NUMBER=789
+rm -f "$SANDBOX/repo/.git/larch-stalled-run.txt" "$SANDBOX/stash-argv.txt"
 : > "$SANDBOX/rename-argv.txt"
 OUT=$(run_subject teardown --state-file "$STATE" --implement-tmpdir "$SANDBOX/tmp")
 RENAME_ARGV=$(cat "$SANDBOX/rename-argv.txt")
 assert_contains "done" "$RENAME_ARGV" "teardown: branch B renames done"
 assert_contains "RENAME_BRANCH=B" "$OUT" "teardown: branch B tail"
+assert_contains "STASH_REF=" "$OUT" "teardown: success path emits empty stash ref"
+assert_contains "SENTINEL_WRITTEN=false" "$OUT" "teardown: success path does not write sentinel"
+if [ ! -e "$SANDBOX/repo/.git/larch-stalled-run.txt" ] && [ ! -e "$SANDBOX/stash-argv.txt" ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: teardown: success path leaves no sentinel or stash"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: teardown: success path left sentinel or stash"
+fi
 
 write_state "$STATE" STALL_TRACKING=false DONE_RENAME_APPLIED=false PR_NUMBER= DESIGN_ONLY_DONE=true
 : > "$SANDBOX/rename-argv.txt"

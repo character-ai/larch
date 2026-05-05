@@ -335,9 +335,110 @@ rename_issue() {
     return 0
 }
 
+auto_stash_stalled_changes() {
+    local issue_number=$1 stall_step=$2 repo_root status_out stash_out rc stash_ref
+    local timestamp label issue_label
+
+    AUTO_STASH_REF=""
+    set +e
+    repo_root=$(git rev-parse --show-toplevel 2>/dev/null)
+    rc=$?
+    set -e
+    if [ "$rc" -ne 0 ] || [ -z "$repo_root" ]; then
+        warn_line '**⚠ 18: auto-stash failed: could not resolve repo root. Continuing.**'
+        return 0
+    fi
+
+    set +e
+    status_out=$(git -C "$repo_root" status --porcelain 2>/dev/null)
+    rc=$?
+    set -e
+    # On `git status` failure we cannot tell clean from dirty; warn so the
+    # operator does not falsely read teardown silence as proof of a clean tree.
+    if [ "$rc" -ne 0 ]; then
+        warn_line '**⚠ 18: auto-stash skipped: git status failed; cannot assert clean tree. Continuing.**'
+        return 0
+    fi
+    if [ -z "$status_out" ]; then
+        return 0
+    fi
+
+    timestamp=$(date -u +%Y%m%dT%H%M%SZ)
+    issue_label=${issue_number:-unknown}
+    label="larch-stalled-${issue_label}-${stall_step} ${timestamp}"
+
+    set +e
+    stash_out=$(git -C "$repo_root" stash push -u -m "$label" 2>&1)
+    rc=$?
+    set -e
+    if [ "$rc" -ne 0 ]; then
+        warn_line "$(printf '**⚠ 18: auto-stash failed: %s. Continuing.**' "$stash_out")"
+        return 0
+    fi
+
+    # Resolve the stash ref by matching our label rather than blindly taking
+    # `stash list -1`. Concurrent activity could insert another stash on top;
+    # `-1` would then surface someone else's ref. We grep for the literal
+    # label we just pushed.
+    set +e
+    stash_ref=$(git -C "$repo_root" stash list --format='%gD %gs' 2>/dev/null \
+        | grep -F -- "$label" \
+        | head -n 1 \
+        | awk '{print $1}')
+    rc=$?
+    set -e
+    if [ "$rc" -ne 0 ] || [ -z "$stash_ref" ]; then
+        # Fallback to the previous heuristic; emit a warning so a missing or
+        # mismatched ref is observable.
+        set +e
+        stash_ref=$(git -C "$repo_root" stash list -1 --format='%gD' 2>/dev/null)
+        rc=$?
+        set -e
+        if [ "$rc" -ne 0 ] || [ -z "$stash_ref" ]; then
+            warn_line '**⚠ 18: auto-stash succeeded but stash ref could not be resolved. Continuing.**'
+            stash_ref=""
+        fi
+    fi
+    AUTO_STASH_REF=$stash_ref
+}
+
+write_stalled_run_sentinel() {
+    local issue_number=$1 issue_url=$2 stall_step=$3 stash_ref=$4
+    local git_dir tmp timestamp rc
+
+    set +e
+    git_dir=$(git rev-parse --git-dir 2>/dev/null)
+    rc=$?
+    set -e
+    if [ "$rc" -ne 0 ] || [ -z "$git_dir" ]; then
+        warn_line '**⚠ 18: stalled-run sentinel write failed: could not resolve git dir. Continuing.**'
+        return 1
+    fi
+
+    timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    tmp="${git_dir}/larch-stalled-run.txt.tmp.$$"
+    if ! {
+        printf 'ISSUE_NUMBER=%s\n' "$issue_number"
+        printf 'ISSUE_URL=%s\n' "$issue_url"
+        printf 'STALL_STEP=%s\n' "$stall_step"
+        printf 'STASH_REF=%s\n' "$stash_ref"
+        printf 'TIMESTAMP=%s\n' "$timestamp"
+    } > "$tmp"; then
+        warn_line '**⚠ 18: stalled-run sentinel write failed. Continuing.**'
+        return 1
+    fi
+    if ! mv "$tmp" "${git_dir}/larch-stalled-run.txt" 2>/dev/null; then
+        rm -f "$tmp" 2>/dev/null || true
+        warn_line '**⚠ 18: stalled-run sentinel write failed. Continuing.**'
+        return 1
+    fi
+    return 0
+}
+
 run_teardown() {
     local start issue_number repo_unavailable stall_tracking done_rename_applied pr_number design_only
     local rename_branch rename_status out rc value issue_url cleanup_rc
+    local stall_step stash_ref sentinel_written
 
     start=$(date +%s)
     load_and_validate_state
@@ -352,6 +453,9 @@ run_teardown() {
     rename_branch=skipped
     rename_status=skipped
     issue_url=""
+    stall_step=$(read_state STALL_STEP unknown)
+    stash_ref=""
+    sentinel_written=false
 
     if [ -n "$issue_number" ] && [ "$repo_unavailable" = "false" ]; then
         if [ "$stall_tracking" = "true" ]; then
@@ -381,14 +485,6 @@ run_teardown() {
         fi
     fi
 
-    set +e
-    out=$("$SCRIPT_DIR/cleanup-tmpdir.sh" --dir "$IMPLEMENT_TMPDIR")
-    cleanup_rc=$?
-    set -e
-    if [ "$cleanup_rc" -ne 0 ]; then
-        warn_line '**⚠ 18: cleanup-tmpdir failed. Continuing.**'
-    fi
-
     if [ -n "$issue_number" ] && [ "$repo_unavailable" = "false" ]; then
         set +e
         out=$("$SCRIPT_DIR/get-issue-info.sh" --issue "$issue_number" --field url)
@@ -397,14 +493,35 @@ run_teardown() {
         value=$(kv_value VALUE "$out")
         if [ "$rc" -eq 0 ] && [ -n "$value" ]; then
             issue_url=$value
-            printf '📎 Tracking issue: %s\n' "$issue_url"
         fi
+    fi
+
+    if [ "$stall_tracking" = "true" ]; then
+        auto_stash_stalled_changes "$issue_number" "$stall_step"
+        stash_ref=$AUTO_STASH_REF
+        if write_stalled_run_sentinel "$issue_number" "$issue_url" "$stall_step" "$stash_ref"; then
+            sentinel_written=true
+        fi
+    fi
+
+    set +e
+    out=$("$SCRIPT_DIR/cleanup-tmpdir.sh" --dir "$IMPLEMENT_TMPDIR")
+    cleanup_rc=$?
+    set -e
+    if [ "$cleanup_rc" -ne 0 ]; then
+        warn_line '**⚠ 18: cleanup-tmpdir failed. Continuing.**'
+    fi
+
+    if [ -n "$issue_url" ]; then
+        printf '📎 Tracking issue: %s\n' "$issue_url"
     fi
 
     printf '✅ 18: cleanup — implement complete! (%s)\n' "$(elapsed "$start")"
     echo "RENAME_BRANCH=$rename_branch"
     echo "RENAME_STATUS=$rename_status"
     echo "ISSUE_URL=$issue_url"
+    echo "STASH_REF=$stash_ref"
+    echo "SENTINEL_WRITTEN=$sentinel_written"
     echo "FINALIZE_SUBCOMMAND=teardown"
     echo "FINALIZE_WARNINGS=$WARNINGS"
 }
