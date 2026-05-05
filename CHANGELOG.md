@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.11.19] - 2026-05-05
+
+### Changed
+
+- Update `scripts/external-tool-registry.md` `## Related` and step 5 of `## Adding a new external tool` to reflect that `scripts/run-external-agent.sh` sanitizes the `.meta` `TOOL=` field via a label-safe allowlist (introduced by #1145) — the human-facing log retains the raw `--tool` label, while disallowed bytes in the `.meta` sidecar are translated to `_` (length-preserved) and an empty result falls back to `sanitized-empty`. Also document that non-label-safe ids may collide after sanitization (e.g. `tool/a` and `tool?a` both become `tool_a`), so `.meta` `TOOL=` is not a bijection from arbitrary labels.
+- Sync `scripts/run-external-agent.md` cross-link to `external-tool-registry.md` so both sibling contracts agree on the registry's framing (NOT sourced; no `--tool` validation; raw label in logs; sanitized `.meta` `TOOL=`).
+
 ## [15.11.18] - 2026-05-05
 
 ### Changed
