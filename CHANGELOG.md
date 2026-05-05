@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.11.6] - 2026-05-05
+
+### Fixed
+
+- Harden `scripts/hydrate-anchor.sh` against path traversal and content injection in fetched anchor bodies. The awk extractor now sources the canonical `SECTION_MARKERS` allowlist from `scripts/anchor-section-markers.sh` and rejects any `<!-- section:<slug> -->` open whose slug contains `/`, `\`, or `..`, or that is not in the allowlist; an open arriving while a section is already active is also treated as malformed and drops the parser out cleanly so subsequent body lines are not appended to the previously-opened legitimate fragment. Adds `scripts/test-hydrate-anchor.sh` (wired into `make lint` via `test-harnesses-5`) covering traversal-shaped slugs, unknown slugs, traversal canaries, and the nested-malicious-open data-corruption case. Updates `SECURITY.md` to separate sentinel/id recovery (`tracking-issue-read.sh --sentinel`) from direct anchor hydration (`hydrate-anchor.sh`) and to state the parser's malformed-input contract. Adds `hydrate-anchor.sh` to the consumer lists in `scripts/anchor-section-markers.{sh,md}` so the edit-in-sync surface stays current. Closes #1138.
+
 ## [15.11.5] - 2026-05-05
 
 ### Changed

@@ -5,6 +5,7 @@
 # Sourced by:
 #   - scripts/tracking-issue-write.sh  (per-section + body-level truncation)
 #   - scripts/assemble-anchor.sh       (anchor-body assembly)
+#   - scripts/hydrate-anchor.sh        (anchor-body slug allowlist on hydration)
 #
 # NOT a standalone script: no set -euo pipefail, no main entry, no flag
 # parsing. The file exposes one read-only contract: the SECTION_MARKERS

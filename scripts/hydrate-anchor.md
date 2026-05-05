@@ -13,6 +13,7 @@
 1. Create `anchor-hydrate/` and `anchor-sections/` (idempotent).
 2. Fetch the anchor body via `gh api /repos/<repo>/issues/comments/<id> --jq '.body'` to `anchor-hydrate/anchor-body.md`.
 3. Run an awk pass over the body matching `<!-- section:<slug> -->` / `<!-- section-end:<slug> -->` open/close markers, writing the interior of each matched range to `anchor-sections/<slug>.md`. Empty sections produce empty files. Slug extraction uses portable `sub`-based parsing (no gawk-only `match($0, /…/, m)` 3-arg form), so the script runs unchanged on macOS BSD awk.
+   Both open and close slugs are accepted only when they are present in the canonical `SECTION_MARKERS` allowlist from `scripts/anchor-section-markers.sh` and contain no `/`, `\`, or `..` bytes. Rejected slugs do not enter section state and never participate in output-path construction. **Malformed-input handling**: an open marker is honored only when the slug passes the allowlist AND no section is currently active. An open marker whose slug is rejected (allowlist miss or traversal shape) OR that arrives while a section is already open is treated as malformed input — the parser drops out of any active section (`in_section=0`, `slug=""`) so subsequent non-marker lines are NOT appended to a previously-opened legitimate fragment. This blocks both path traversal and in-band content injection into allowlisted fragments. A `section-end:<slug>` is honored only when its slug passes the allowlist AND matches the active `slug`; otherwise it is silently ignored.
 4. Emit `HYDRATED=true` and `SECTIONS=<count>` on success.
 
 ## Best-effort contract
@@ -24,12 +25,13 @@
 - failed `mkdir -p` (`cannot create hydrate/sections directories …`)
 - failed `gh api` (`gh api fetch failed for comment …`)
 - empty fetched body (`empty anchor body`)
+- missing marker helper (`missing helper: …`)
 - awk extraction crash (`awk section extraction failed`)
 
 ## When to update
 
-Update this file when the marker format changes (currently `<!-- section:<slug> -->` / `<!-- section-end:<slug> -->`), when the awk extractor becomes more sophisticated, or when the `gh` fetch path changes (e.g., switching to `gh api graphql`). The marker format is shared with `scripts/assemble-anchor.sh` and `scripts/anchor-section-markers.sh` — any change to the marker syntax MUST land in all three files in the same PR. Edit-in-sync rule applies.
+Update this file when the marker format changes (currently `<!-- section:<slug> -->` / `<!-- section-end:<slug> -->`), when the awk extractor becomes more sophisticated, or when the `gh` fetch path changes (e.g., switching to `gh api graphql`). The marker grammar is shared between `scripts/hydrate-anchor.sh` (this script — body parser), `scripts/assemble-anchor.sh` (body emitter), and `scripts/anchor-section-markers.sh` (the canonical slug allowlist sourced by both). Any change to the marker syntax or the canonical slug set MUST land in all three files (and `scripts/anchor-section-markers.md`'s consumer table) in the same PR. Edit-in-sync rule applies.
 
 ## Test harness
 
-No sibling regression harness yet — the script's surface is small (one `gh api` call + one awk extractor) and is exercised end-to-end by every resumed `/implement` run that adopts an existing tracking issue. Add a harness with a stubbed `gh` on PATH and a fixture body file if hydrate-anchor's behavior grows beyond the current single-pass extraction.
+`scripts/test-hydrate-anchor.sh` is the sibling offline regression harness. It stubs `gh` on `PATH`, feeds a fixture containing canonical, unknown, and traversal-shaped markers, and asserts that hydration creates only allowlisted section fragments without clobbering traversal canaries. The harness is wired through `make test-hydrate-anchor` and the `make test-harnesses` shard set.
