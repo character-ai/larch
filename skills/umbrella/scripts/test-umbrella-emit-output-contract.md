@@ -10,7 +10,7 @@ This is a *structural* test (literal-substring assertions on `awk`-extracted blo
 
 ## Coverage
 
-Fifty-two assertions, fail-fast on first miss.
+All `assert_contains` calls fail-fast on first miss; the total grows as new pinned literals are added.
 
 ### Step 3B.1 block (extracted from SKILL.md) — very-small-item bundling rule
 
