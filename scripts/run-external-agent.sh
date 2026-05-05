@@ -106,6 +106,10 @@ if (( 10#$TIMEOUT_SECONDS < 1 )); then
     echo "ERROR: --timeout must be a positive integer, got '$TIMEOUT_SECONDS'" >&2
     exit 1
 fi
+# Normalize to canonical decimal so downstream arithmetic (the timeout-message
+# division below) does not interpret leading-zero values as octal: `0601`
+# would otherwise become 385; `08`/`09` would abort under `set -e`.
+TIMEOUT_SECONDS=$((10#$TIMEOUT_SECONDS))
 
 # Poll interval (seconds) for the kill -0 wait loop below. Default 10s keeps
 # real-agent invocations cheap on syscalls and bounds the time to notice a

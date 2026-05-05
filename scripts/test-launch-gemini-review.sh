@@ -135,6 +135,25 @@ grep -q '\-\-timeout must be a positive integer' "$TZ_STDERR" \
   || fail "reject-timeout-zero: expected positive-integer error"
 assert_no_launcher_artifacts "reject-timeout-zero" "$TIMEOUT_ZERO_OUTPUT"
 
+# Reject zero-valued multi-digit timeout strings (#1167) — parallel to
+# launch-*-implement.sh and run-external-agent.sh. The single-digit `0` is
+# caught by the case-statement; `00`/`000` slip past the case but are
+# rejected by the (( 10#$TIMEOUT < 1 )) guard with the same exit 2 contract.
+for ZERO_VAL in 00 000; do
+  TZ_OUTPUT="$TMPDIR/timeout-${ZERO_VAL}.txt"
+  TZ_OUT="$TMPDIR/timeout-${ZERO_VAL}.stdout"
+  TZ_ERR="$TMPDIR/timeout-${ZERO_VAL}.stderr"
+  set +e
+  "$REPO_ROOT/scripts/launch-gemini-review.sh" --output "$TZ_OUTPUT" --timeout "$ZERO_VAL" --prompt "hi" >"$TZ_OUT" 2>"$TZ_ERR"
+  TZ_CODE=$?
+  set -e
+  [[ "$TZ_CODE" -eq 2 ]] \
+    || fail "reject-timeout-${ZERO_VAL}: expected exit 2, got $TZ_CODE"
+  grep -q '\-\-timeout must be a positive integer' "$TZ_ERR" \
+    || fail "reject-timeout-${ZERO_VAL}: expected positive-integer error"
+  assert_no_launcher_artifacts "reject-timeout-${ZERO_VAL}" "$TZ_OUTPUT"
+done
+
 if [[ "$FAIL" -eq 1 ]]; then
   exit 1
 fi
