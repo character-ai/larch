@@ -532,6 +532,20 @@ Proceed to Step 2.
 
 > **Continue after child returns.** When the child Skill returns, execute the NEXT step — do NOT end the turn, and do NOT write a summary, handoff, or "returning to parent" message. See `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Anti-halt continuation reminder. (Branch-specific: applies only to the `/design` invocation in normal mode.)
 
+**Simplicity classification**: if `design_only=false`, classify the task before invoking `/design` or checking for a reusable design manifest. Use `FEATURE_DESCRIPTION` plus a light codebase scan (Read / Grep / Glob of the obvious target files) to decide whether the work is SIMPLE.
+
+A task qualifies as SIMPLE only when all of these are true:
+- Small surface area: expected edits are localized to one or a few files with obvious ownership.
+- No architectural decisions: the approach follows an existing pattern and does not need competing sketches, trade-off analysis, or API/UX design choices.
+- No new abstractions: the work does not introduce a framework, shared helper, workflow contract, data model, or long-lived extension point.
+- Obvious verification path: `/relevant-checks`, a focused existing test, a dry-run, or direct grep/readback is enough to validate the change.
+
+When the task is SIMPLE: print `**⚡ 1: design plan — task classified as SIMPLE; auto-switching to quick workflow.**`, set `quick_mode=true`, and re-enter the Quick mode branch above (`### Quick mode (quick_mode=true)`). From there, handle branch creation, produce the inline plan, write `plan.txt` + `voting-tally.md`, and proceed to Step 2 exactly as ordinary quick mode does.
+
+When the task is not SIMPLE: leave `quick_mode=false` and continue with the normal-mode flow below.
+
+If `design_only=true`, skip this classification entirely. `--design-only` remains mutually exclusive with quick mode and must not auto-switch into the degraded inline-plan path.
+
 **Both-externals-down inline-plan branch**: if `codex_available=false AND cursor_available=false AND design_only=false`, do NOT invoke `/design`. The full `/design` pipeline expands to 8 Claude-subagent sketches + 8 Claude-subagent reviewers + judge panels — token-expensive and architecturally brittle when no external can produce independent perspectives anyway. Take the same inline-plan path as quick mode (`### Quick mode (quick_mode=true)` above) — same branch handling, same inline plan composition, same `$IMPLEMENT_TMPDIR/design-export/plan.txt` + `voting-tally.md` writes — except the breadcrumb is `⚡ 1: design plan — both-externals-down, inline plan` and the voting-tally fallback text is `Both externals unavailable — no plan review voting.` (replaces the quick-mode `Quick mode — no plan review voting.`). Print `**⚠ 1: design plan — both Codex and Cursor unavailable; skipping /design and producing inline plan in main agent.**` first, then proceed to Step 2.
 
 The `design_only=false` gate is load-bearing: `--design-only`'s contract is to publish design artifacts (plan, plan-review tally, diagrams, OOS) to the tracking issue as the run's deliverable. It is mutually exclusive with `--quick` precisely because quick mode produces a degraded plan with no plan-review voting. Inheriting that degradation here when externals are down would silently violate the same contract. When `codex_available=false AND cursor_available=false AND design_only=true`, do NOT skip /design — print `**⚠ 1: design plan — both Codex and Cursor unavailable but --design-only requires external-backed plan-review. Bailing to cleanup.**`, set `STALL_TRACKING=true`, and skip to Step 18.
