@@ -7,12 +7,13 @@
 - Bad timeout exits 2.
 - Zero-valued timeouts (`0`, `00`, `000`) exit 2 and report the positive-integer timeout contract.
 - Positive leading-zero timeouts (e.g. `010`) are accepted: launcher exits 0 with the standard five-line stdout envelope. Pins acceptance of the leading-zero positive form so a future refactor tightening the digit-only `case` validation (e.g. to `^[1-9][0-9]*$`) breaks CI. Note: the stub exits immediately, so this does NOT prove that downstream treats `010` as decimal 10 vs. octal 8 — only contract stability at the launcher boundary.
-- Missing input files exit 2 — specifically: missing `--plan-file`, missing `--feature-file`, missing `--agent-prompt`, and `--answers-file` pointing at a non-existent path.
+- Missing input files exit 2 with the launcher's literal validation messages — specifically: missing `--plan-file` (`plan file not found`), missing `--feature-file` (`feature file not found`), missing `--agent-prompt` (`agent prompt not found`), and `--answers-file` pointing at a non-existent path (`--answers-file given but path does not exist`).
 - PATH-stubbed `cursor` writes a minimal valid `manifest.json`; the launcher emits exactly five KV stdout lines and no progress chatter.
 - `run-external-agent.sh --capture-stdout` captures Cursor stdout to the transcript path.
 - Cursor argv shape matches `scripts/launch-cursor-review.sh`: `cursor agent -p --force --trust $MODEL_ARGS --workspace "$PWD" "$WRAPPED_PROMPT"`.
 - No `--` end-of-options separator is inserted before the prompt.
 - The prompt is wrapped by `scripts/cursor-wrap-prompt.sh`.
+- Passing `--answers-file` adds the `## Resume invocation` block to the composed prompt.
 
 **Optional smoke**: `CURSOR_HEALTHY=true bash skills/implement/scripts/test-cursor-implementer.sh --real-smoke` launches a real `cursor agent` against a tiny prompt. This is a local development smoke only and is not wired into the Makefile.
 
