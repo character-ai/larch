@@ -26,6 +26,16 @@
 
 set -uo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/anchor-section-markers.sh
+# shellcheck disable=SC1091
+if ! . "$SCRIPT_DIR/anchor-section-markers.sh"; then
+    echo "HYDRATED=false"
+    echo "ERROR=missing helper: $SCRIPT_DIR/anchor-section-markers.sh"
+    exit 0
+fi
+ALLOWED_SLUGS=" ${SECTION_MARKERS[*]} "
+
 ANCHOR_ID=""
 TMPDIR_ARG=""
 REPO=""
@@ -90,32 +100,39 @@ fi
 # $SECTIONS_DIR/<slug>.md. Empty sections produce empty files (overwrite
 # any pre-existing fragment with the remote content — hydration is the
 # source of truth on resume).
-SECTIONS_COUNT=$(awk -v outdir="$SECTIONS_DIR" '
+SECTIONS_COUNT=$(awk -v outdir="$SECTIONS_DIR" -v allowed="$ALLOWED_SLUGS" '
     function extract_slug(line, prefix,    s) {
         s = line
         sub("^" prefix, "", s)
         sub(" -->$", "", s)
         return s
     }
+    function slug_ok(s) {
+        if (s == "") return 0
+        if (index(s, "/") || index(s, "\\") || index(s, "..")) return 0
+        if (index(allowed, " " s " ") == 0) return 0
+        return 1
+    }
     BEGIN { in_section=0; slug=""; outpath=""; count=0 }
     /^<!-- section:[^ ]+ -->$/ {
-        slug = extract_slug($0, "<!-- section:")
-        if (slug != "") {
+        nextslug = extract_slug($0, "<!-- section:")
+        if (slug_ok(nextslug)) {
+            slug = nextslug
             in_section = 1
             outpath = outdir "/" slug ".md"
             printf "" > outpath
             close(outpath)
-            next
         }
+        next
     }
     /^<!-- section-end:[^ ]+ -->$/ {
         endslug = extract_slug($0, "<!-- section-end:")
-        if (endslug != "" && endslug == slug) {
+        if (slug_ok(endslug) && endslug == slug) {
             in_section = 0
             slug = ""
             count++
-            next
         }
+        next
     }
     {
         if (in_section) {
