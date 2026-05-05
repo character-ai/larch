@@ -198,11 +198,11 @@ These tools are required for the full design → implement → PR → merge work
 
 ### Optional integrations
 
-These tools enhance the workflow but are not required. When unavailable, Claude replacement agents fill in automatically:
+These tools enhance the workflow but are not required. Fallback behavior varies by tool — see each bullet below.
 
 - **Codex** — [OpenAI Codex CLI](https://github.com/openai/codex). Participates as an external reviewer and voter alongside Claude subagents. When unavailable, a Claude subagent replacement maintains the reviewer count.
 - **Cursor** — [Cursor AI editor](https://cursor.com/). Participates as an external reviewer and voter. When unavailable, a Claude subagent replacement maintains the reviewer count.
-- **Gemini** — [Gemini CLI](https://github.com/google-gemini/gemini-cli). Adds an optional external reviewer slot in rounds 1-3 and joins the external chain in rounds 4+ when healthy. When unavailable, reviewer use is skipped in rounds 1-3 and falls through to the next external reviewer in rounds 4+; `/implement --coder=gemini` falls back to Claude. See [Gemini](#gemini) for setup details.
+- **Gemini** — [Gemini CLI](https://github.com/google-gemini/gemini-cli). Adds an optional external reviewer slot in rounds 1-3 and joins the external chain in rounds 4+ when available. When unavailable, reviewer use is skipped in rounds 1-3 and falls through to the next external reviewer in rounds 4+; `/implement --coder=gemini` falls back to Claude. See [Gemini](#gemini) for setup details.
 - **Slack** — Single tracking-issue status message per `/implement` run (and for `/fix-issue` NON_PR closures). On by default when Slack env vars are configured; pass `--no-slack` to opt out. Requires environment variables or plugin `userConfig` (see [Environment Variables](configuration-and-permissions.md#environment-variables)). When `--no-slack` is passed, all Slack operations are skipped silently. When env vars are missing (and `--no-slack` was not passed), the operation is skipped with a warning at session setup. All other workflow steps proceed normally in either case.
 
 ### Contributor development
