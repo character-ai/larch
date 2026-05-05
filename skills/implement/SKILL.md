@@ -531,12 +531,25 @@ Proceed to Step 2.
 
 > **Continue after child returns.** When the child Skill returns, execute the NEXT step — do NOT end the turn, and do NOT write a summary, handoff, or "returning to parent" message. See `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Anti-halt continuation reminder. (Branch-specific: applies only to the `/design` invocation in normal mode.)
 
-**Simplicity classification preamble — skip conditions**: classification runs only when both of these hold; otherwise skip it entirely and continue with the normal-mode flow below.
+**Manifest reuse (resumed sessions — runs first)**: before any other normal-mode sub-step, check for a reusable design manifest. This guard runs BEFORE simplicity classification and BEFORE the both-externals-down inline-plan branch so a resumed session never overwrites the prior `/design` artifact set.
 
-- `design_only=false`. `--design-only` is mutually exclusive with quick mode and must not auto-switch into the degraded inline-plan path.
-- No reusable design manifest is present. If `read-design-manifest.sh` would emit `MANIFEST_OK=true` with `PLAN_FILE` non-empty + readable AND `SESSION_ID` matching `$IMPLEMENT_TMPDIR/session-id` (the same conjunction the manifest reuse branch below evaluates), skip simplicity classification — auto-switching to quick mode on a resumed run would discard the prior `/design` artifact set (plan-review tally, contested criteria, rejected findings, architecture diagram) the resume contract is written to preserve.
+```bash
+${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/read-design-manifest.sh --implement-tmpdir "$IMPLEMENT_TMPDIR"
+```
 
-**Simplicity classification**: when both preamble conditions hold, classify the task before invoking `/design`. Use `FEATURE_DESCRIPTION` plus a light codebase scan (Read / Grep / Glob of the obvious target files) to decide whether the work is SIMPLE.
+Parse stdout without `eval`/`source`. The reuse heuristic is a two-way conjunction:
+1. `MANIFEST_OK=true`.
+2. `PLAN_FILE` is non-empty and points to an existing non-empty file, AND `SESSION_ID` matches the value in `$IMPLEMENT_TMPDIR/session-id`.
+
+(Session binding is enforced by `SESSION_ID` equality alone — `TIMESTAMP` is informational only and MUST NOT gate reuse, since the session-tmpdir lifetime already bounds the manifest's validity window.)
+
+If both are true, reuse the manifest and proceed to Step 2 with **all manifest file variables** set from the reader output — not just `PLAN_FILE`, but also `PLAN_REVIEW_TALLY_FILE`, `CONTESTED_CRITERIA_FILE`, `OOS_FILE`, `REJECTED_FINDINGS_FILE`, `ACCEPTED_PLAN_FINDINGS_FILE`, and `ARCHITECTURE_DIAGRAM_FILE` (when present). Same surface as the post-`/design` success branch below; without this, downstream steps lose plan-review tally / rejected findings / architecture diagram on a resumed run.
+
+Otherwise (no reusable manifest), continue with the normal-mode flow below (simplicity classification preamble, then the both-externals-down branch or the standard `/design` invocation).
+
+**Simplicity classification preamble — skip condition**: classification runs only when `design_only=false`; otherwise skip it entirely and continue with the normal-mode flow below. (`--design-only` is mutually exclusive with quick mode and must not auto-switch into the degraded inline-plan path.)
+
+**Simplicity classification**: when the preamble condition holds, classify the task before invoking `/design`. Use `FEATURE_DESCRIPTION` plus a light codebase scan (Read / Grep / Glob of the obvious target files) to decide whether the work is SIMPLE.
 
 A task qualifies as SIMPLE only when all of these are true:
 - Small surface area: expected edits are localized to one or a few files with obvious ownership.
@@ -552,21 +565,7 @@ When the task is not SIMPLE: leave `quick_mode=false` and continue with the norm
 
 The `design_only=false` gate is load-bearing: `--design-only`'s contract is to publish design artifacts (plan, plan-review tally, diagrams, OOS) to the tracking issue as the run's deliverable. It is mutually exclusive with `--quick` precisely because quick mode produces a degraded plan with no plan-review voting. Inheriting that degradation here when externals are down would silently violate the same contract. When `codex_available=false AND cursor_available=false AND design_only=true`, do NOT skip /design — print `**⚠ 1: design plan — both Codex and Cursor unavailable but --design-only requires external-backed plan-review. Bailing to cleanup.**`, set `STALL_TRACKING=true`, and skip to Step 18.
 
-Otherwise (at least one of `codex_available` / `cursor_available` is `true`, OR `design_only=true` and the bail above did not fire), proceed with the standard /design path:
-
-Before invoking `/design`, check for a reusable design manifest:
-
-```bash
-${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/read-design-manifest.sh --implement-tmpdir "$IMPLEMENT_TMPDIR"
-```
-
-Parse stdout without `eval`/`source`. The skip-/design heuristic is a two-way conjunction:
-1. `MANIFEST_OK=true`.
-2. `PLAN_FILE` is non-empty and points to an existing non-empty file, AND `SESSION_ID` matches the value in `$IMPLEMENT_TMPDIR/session-id`.
-
-(Session binding is enforced by `SESSION_ID` equality alone — `TIMESTAMP` is informational only and MUST NOT gate reuse, since the session-tmpdir lifetime already bounds the manifest's validity window.)
-
-If both are true, reuse the manifest and proceed to Step 2 with **all manifest file variables** set from the reader output — not just `PLAN_FILE`, but also `PLAN_REVIEW_TALLY_FILE`, `CONTESTED_CRITERIA_FILE`, `OOS_FILE`, `REJECTED_FINDINGS_FILE`, `ACCEPTED_PLAN_FINDINGS_FILE`, and `ARCHITECTURE_DIAGRAM_FILE` (when present). Same surface as the post-`/design` success branch below; without this, downstream steps lose plan-review tally / rejected findings / architecture diagram on a resumed run. Otherwise invoke `/design` via the Skill tool. Canonical invocation order: `[--auto] [--subagent] --step-prefix "1.::design plan" --branch-info "IS_MAIN=$IS_MAIN IS_USER_BRANCH=$IS_USER_BRANCH USER_PREFIX=$USER_PREFIX CURRENT_BRANCH=$CURRENT_BRANCH" --session-env $IMPLEMENT_TMPDIR/session-env.sh <FEATURE_DESCRIPTION>`. Prepend `--auto` only if `auto_mode=true`. Append `--subagent` (after `--auto`, before `--step-prefix` in argv order) only if `inline_mode=false` (default); when `inline_mode=true`, omit `--subagent` so /design's heavy phase runs in /design's in-turn context (execution topology only — parent verbosity suppression unchanged). After `/design` returns, immediately run `read-design-manifest.sh --implement-tmpdir "$IMPLEMENT_TMPDIR" --emit-load-breadcrumb` again; if it does not emit `MANIFEST_OK=true`, print `**⚠ 1: design plan — design manifest unavailable: $ERROR. Bailing to cleanup.**`, set `STALL_TRACKING=true`, and skip to Step 18. On success, the reader appends `📥 1: design plan — manifest loaded (plan=<basename>)` as the trailing line of its stdout (after the `KEY=value` envelope) — that breadcrumb is the orchestrator's first mid-Step-1 visible line; set `PLAN_FILE` and all manifest file variables from the reader output.
+Otherwise (at least one of `codex_available` / `cursor_available` is `true`, OR `design_only=true` and the bail above did not fire), invoke `/design` via the Skill tool. Canonical invocation order: `[--auto] [--subagent] --step-prefix "1.::design plan" --branch-info "IS_MAIN=$IS_MAIN IS_USER_BRANCH=$IS_USER_BRANCH USER_PREFIX=$USER_PREFIX CURRENT_BRANCH=$CURRENT_BRANCH" --session-env $IMPLEMENT_TMPDIR/session-env.sh <FEATURE_DESCRIPTION>`. Prepend `--auto` only if `auto_mode=true`. Append `--subagent` (after `--auto`, before `--step-prefix` in argv order) only if `inline_mode=false` (default); when `inline_mode=true`, omit `--subagent` so /design's heavy phase runs in /design's in-turn context (execution topology only — parent verbosity suppression unchanged). After `/design` returns, immediately run `read-design-manifest.sh --implement-tmpdir "$IMPLEMENT_TMPDIR" --emit-load-breadcrumb` again; if it does not emit `MANIFEST_OK=true`, print `**⚠ 1: design plan — design manifest unavailable: $ERROR. Bailing to cleanup.**`, set `STALL_TRACKING=true`, and skip to Step 18. On success, the reader appends `📥 1: design plan — manifest loaded (plan=<basename>)` as the trailing line of its stdout (after the `KEY=value` envelope) — that breadcrumb is the orchestrator's first mid-Step-1 visible line; set `PLAN_FILE` and all manifest file variables from the reader output.
 
 > **Continue after child returns.** When `/design` returns, execute the Cross-Skill Health Update + `BRANCH_NAME` capture + Step 1.r rebase checkpoint + Step 2 breadcrumb in order — do NOT write a summary, handoff, or "returning to parent" message first. See `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Anti-halt continuation reminder.
 
