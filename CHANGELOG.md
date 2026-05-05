@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.8.2] - 2026-05-04
+
+### Added
+
+- Wire Gemini in as a third optional external Code Reviewer in `/review` and `/implement --quick` Step 5 review rounds. New `scripts/launch-gemini-review.sh` (generic mode) clamps the Gemini headless invocation to a 600s timeout, parses the CLI's JSON envelope via `jq -er '.response // empty'` (rejecting `.error` and whitespace-only responses), and writes outputs through the standard atomic raw → normalized → `.done` sentinel lifecycle with `--capture-stdout-only` so Gemini stderr cannot corrupt the parsed review. Gating: `gemini_available=true` requires both binary present and a healthy probe; `scripts/session-setup.sh --check-gemini-reviewer` opt-in keeps `/design` and `/research` unaffected; `scripts/check-reviewers.sh` retry/early-exit logic is now N-tool data-driven; `scripts/write-session-env.sh` adds `--gemini-healthy`. Wired into `skills/review/SKILL.md` (panel grows from 6 to 7 when Gemini healthy; rounds 4-7 chain extends to Cursor → Codex → Gemini → Claude) and `skills/implement/SKILL.md` Step 5 quick-mode rounds 1-3 generic slot + rounds 4+ chain. Strictly additive: when Gemini is unavailable, every Gemini token is omitted from output (status tables, scoreboard, collector argv, summaries). Includes `scripts/test-launch-gemini-review.sh` regression harness with success / `.error` / empty-`.response` / missing-`jq` cases, plus structural assertions in `scripts/test-review-structure.sh` / `scripts/test-implement-structure.sh`. Also adds `scripts/run-external-agent.sh --capture-stdout-only` (stderr → `.diag`); hardens `collect-agent-results.sh` `build_failure_reason` against pipe / newline / CR injection from multi-line Gemini stderr; redacts the inlined `--prompt` body from `${OUTPUT}.meta` `CMD=` to a sha256+length tag to limit secret persistence in the session tmpdir. Out of scope (deferred to sibling issues): `--coder=gemini` dispatch, Gemini in design sketches/dialectic, `LARCH_GEMINI_MODEL` env var. Closes #1079.
+
 ## [15.8.1] - 2026-05-04
 
 ### Changed
