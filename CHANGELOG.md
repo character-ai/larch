@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.12] - 2026-05-05
+
+### Changed
+
+- Strengthen the three implementer-launcher harnesses (`skills/implement/scripts/test-{codex,cursor,gemini}-implementer.sh`) so missing-input Tests 3 / 3a / 3b / 3c capture stderr to per-test scratch paths and pin the launcher's literal validation phrasing via `grep -F -- "<expected>"` (`plan file not found`, `feature file not found`, `agent prompt not found`, `--answers-file given but path does not exist`) — a future launcher regression where a different exit-2 path fires first or the input-file check is silently disabled now fails CI instead of satisfying the existing exit-code-only assertion. Add a Cursor `--answers-file` positive resume-path test to `test-cursor-implementer.sh` (mirroring `test-codex-implementer.sh:256-288` / `test-gemini-implementer.sh:230-258`): create an `ANSWERS` JSON fixture, invoke the existing PATH-stub launcher with `--answers-file "$ANSWERS"`, capture the wrapped prompt via `STUB_PROMPT_FILE`, and assert the prompt contains both `## Resume invocation` and the `$ANSWERS` path so the Cursor wrapper can no longer drop the resume block without an offline-harness failure. Update the three implementer-test sibling `.md` Coverage sections to record the pinned validation phrasing and (for cursor) the new resume-path assertion. Closes #1223 (combines #1213 + #1214).
+
 ## [15.12.11] - 2026-05-05
 
 ### Added
