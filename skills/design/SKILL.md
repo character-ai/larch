@@ -104,15 +104,37 @@ Consolidated NEVER rules collected from the procedural steps below. Each rule st
 
 ## Step 0 — Session Setup
 
-Run the shared session setup script. This handles preflight, temp directory creation, reviewer health probe, and health status file in a single call:
+Define `branch_info_supplied=true` only when the caller passed valid `--branch-info` containing all 4 keys: `IS_MAIN`, `IS_USER_BRANCH`, `USER_PREFIX`, and `CURRENT_BRANCH`. `SESSION_ENV_PATH` being non-empty is not a nesting signal by itself; `--session-env` is an exposed argument and can be passed manually.
+
+If `branch_info_supplied=true` (nested under `/implement`), `/implement` already ran the entry gate. Run setup with `--skip-branch-check`:
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix claude-design --skip-branch-check --skip-slack-check --skip-repo-check --check-reviewers [--caller-env "$SESSION_ENV_PATH"] [--skip-codex-probe] [--skip-cursor-probe] [--write-health "${SESSION_ENV_PATH}.health"]
 ```
 
-Only include `--caller-env "$SESSION_ENV_PATH"` and `--write-health "${SESSION_ENV_PATH}.health"` if `SESSION_ENV_PATH` is non-empty. If `SESSION_ENV_PATH` provides `CODEX_HEALTHY=false` or `CURSOR_HEALTHY=false`, the script auto-sets the corresponding `--skip-codex-probe` / `--skip-cursor-probe` flag — you do not need to pass these explicitly when using `--caller-env`.
+If `branch_info_supplied=false` (standalone, regardless of `SESSION_ENV_PATH`), check the current branch before setup:
 
-If the script exits non-zero, print the `PREFLIGHT_ERROR` from its output and abort.
+```bash
+${CLAUDE_PLUGIN_ROOT}/scripts/create-branch.sh --check
+```
+
+Parse `CURRENT_BRANCH`, `IS_MAIN`, `IS_USER_BRANCH`, and `USER_PREFIX` from stdout. If `IS_USER_BRANCH=true`, run setup with `--skip-branch-check`:
+
+```bash
+${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix claude-design --skip-branch-check --skip-slack-check --skip-repo-check --check-reviewers [--caller-env "$SESSION_ENV_PATH"] [--skip-codex-probe] [--skip-cursor-probe] [--write-health "${SESSION_ENV_PATH}.health"]
+```
+
+Otherwise, run setup without `--skip-branch-check`; `preflight.sh` runs in default mode and enforces clean `main` plus fetch/rebase before design work begins:
+
+```bash
+${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix claude-design --skip-slack-check --skip-repo-check --check-reviewers [--caller-env "$SESSION_ENV_PATH"] [--skip-codex-probe] [--skip-cursor-probe] [--write-health "${SESSION_ENV_PATH}.health"]
+```
+
+Only include `--caller-env "$SESSION_ENV_PATH"` and `--write-health "${SESSION_ENV_PATH}.health"` if `SESSION_ENV_PATH` is non-empty. This Anti-pattern #4 predicate is orthogonal to `branch_info_supplied`: session-env controls parent health I/O; branch-info controls whether `/design` trusts `/implement`'s already-gated branch state. If `SESSION_ENV_PATH` provides `CODEX_HEALTHY=false` or `CURSOR_HEALTHY=false`, the script auto-sets the corresponding `--skip-codex-probe` / `--skip-cursor-probe` flag — you do not need to pass these explicitly when using `--caller-env`.
+
+If the script exits non-zero, always print the raw `PREFLIGHT_ERROR=...` line first. Then print the normalized skill-level message and abort:
+
+**⚠ /design requires clean main to start. To continue, choose one of: (a) `git checkout main && git status` clean → re-run; (b) check out or create a `<USER_PREFIX>/*` feature branch and re-run (the branch naming convention is the explicit opt-in to continue from current state); (c) commit or stash uncommitted changes on `main` first.**
 
 Parse the output for `SESSION_TMPDIR`, `CODEX_AVAILABLE`, `CURSOR_AVAILABLE`, `CODEX_HEALTHY`, `CURSOR_HEALTHY`. Set `DESIGN_TMPDIR` = `SESSION_TMPDIR`. Substitute the actual path in every command below.
 
@@ -130,7 +152,7 @@ The `--write-health` flag writes the health status file for cross-skill propagat
 
 **If `branch_info_supplied=true`** (via `--branch-info`): Use the values parsed from the flag (`CURRENT_BRANCH`, `IS_MAIN`, `IS_USER_BRANCH`, `USER_PREFIX`). Skip the `create-branch.sh --check` call.
 
-**Otherwise** (standalone invocation or validation failed): Run the `create-branch.sh` script in check mode:
+**Otherwise** (standalone invocation or validation failed): Use the values parsed from Step 0's standalone `create-branch.sh --check` call. If Step 0 did not capture those values for any reason, run the `create-branch.sh` script in check mode before proceeding:
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/create-branch.sh --check

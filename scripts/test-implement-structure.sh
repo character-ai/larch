@@ -1,6 +1,6 @@
 #!/bin/bash
 # Structural regression test for /implement SKILL.md + references/ topology (closes #234).
-# Asserts 24 live load-bearing invariants (assertion 5 retired; numbered list runs 1–4, 6–24) across skills/implement/SKILL.md and the six
+# Asserts 25 live load-bearing invariants (assertion 5 retired; numbered list runs 1–4, 6–25) across skills/implement/SKILL.md and the six
 # reference docs extracted from it. Complements scripts/test-implement-rebase-macro.sh,
 # which owns the Rebase Checkpoint Macro mechanics; this harness owns top-level section
 # headings, the MANDATORY ↔ reference-file binding, the focus-area CI-parity check,
@@ -16,17 +16,17 @@
 # peer-harness assertions (A) and (D) respectively — accepted duplication per design-
 # phase sketch consensus.
 #
-# Twenty-four assertions (assertion 18 added for Protocol Execution Directive
+# Twenty-five assertions (assertion 18 added for Protocol Execution Directive
 # pin; assertion 19 added for the Step 2 external implementer dispatcher pin;
 # assertion 20 added for the design-manifest + --design-only path pin;
 # assertion 21 added for the --inline / --subagent forwarding pin, issue #1036;
 # assertion 22 added for the orchestrator-edit-authority gate pin —
 # ORCHESTRATOR_EDIT_AUTHORITY / §2.1.5 / orchestrator-envelope-invalid /
 # NEVER #10 literals; assertion 24 added for Gemini implementer structural
-# parity with Cursor's shared guardrails).
-# Assertion 5 is retired, so the numbered list runs 1–4, 6–24 (24 live
-# assertions; assertion 23 was reserved during the umbrella #348 Phase 5
-# planning window and remains reserved).
+# parity with Cursor's shared guardrails; assertion 25 added for the
+# clean-main Step 0 entry gate).
+# Assertion 5 is retired, so the numbered list runs 1–4, 6–25 (25 live
+# assertions; assertion 23 now pins Gemini quick-mode reviewer wiring).
 #  (1) Exactly 1 `^## Load-Bearing Invariants$` heading in skills/implement/SKILL.md.
 #  (2) Exactly 1 `^## NEVER List$` heading.
 #  (3) Exactly 1 `^## Rebase Checkpoint Macro$` heading.
@@ -786,5 +786,38 @@ GEMINI_SHARED=$(awk 'found { print } /^## Shared guardrails$/ { found=1 }' "$REP
 [[ "$CURSOR_SHARED" == "$GEMINI_SHARED" ]] \
   || fail "(24) agents/gemini-implementer.md Shared guardrails section drifted from agents/cursor-implementer.md (modulo per-tool token substitution)"
 
-echo "PASS: test-implement-structure.sh — all 24 structural invariants hold (assertion 5 retired)"
+# (25) Clean-main Step 0 entry gate pin. Scope positive checks to Step 0 so
+# the later Step 1 branch creation check cannot satisfy the entry-gate
+# assertion by accident.
+step0_section=$(awk '
+  /^## Step 0 — Session Setup$/ { flag=1; next }
+  /^## / && flag { flag=0 }
+  flag { print }
+' "$SKILL_MD")
+[[ -n "$step0_section" ]] \
+  || fail "(25) could not extract /implement Step 0 section"
+
+# shellcheck disable=SC2016 # fixed-string grep literal contains shell variable syntax
+printf '%s\n' "$step0_section" | grep -Fq '${CLAUDE_PLUGIN_ROOT}/scripts/create-branch.sh --check' \
+  || fail "(25) Step 0 must run create-branch.sh --check before session setup"
+printf '%s\n' "$step0_section" | grep -Fq 'continue_from_current=true' \
+  || fail "(25) Step 0 must name the continue_from_current=true branch"
+printf '%s\n' "$step0_section" | grep -Fq 'IS_USER_BRANCH=true' \
+  || fail "(25) Step 0 must define continuation by IS_USER_BRANCH=true"
+printf '%s\n' "$step0_section" | grep -F 'session-setup.sh' \
+  | grep -F -- '--skip-branch-check' >/dev/null \
+  || fail "(25) Step 0 must include a session-setup.sh invocation with --skip-branch-check for continue_from_current=true"
+printf '%s\n' "$step0_section" | grep -Fq 'If `continue_from_current=false`, run setup without `--skip-branch-check`' \
+  || fail "(25) Step 0 must document the default setup path without --skip-branch-check"
+printf '%s\n' "$step0_section" | grep -F 'session-setup.sh --prefix claude-implement --check-reviewers' >/dev/null \
+  || fail "(25) Step 0 must include the no-skip session-setup.sh invocation for strict clean-main preflight"
+printf '%s\n' "$step0_section" | grep -Fq '/implement requires clean main to start' \
+  || fail "(25) Step 0 must include the normalized /implement clean-main failure message"
+
+old_unconditional_prose="--skip-branch-check is required so Step 1's IS_USER_BRANCH=true branch-resume paths are reachable"
+if grep -Fq -- "$old_unconditional_prose" "$SKILL_MD"; then
+  fail "(25) SKILL.md still contains the legacy unconditional --skip-branch-check prose"
+fi
+
+echo "PASS: test-implement-structure.sh — all 25 structural invariants hold (assertion 5 retired)"
 exit 0
