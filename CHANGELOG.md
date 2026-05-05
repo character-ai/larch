@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.11.0] - 2026-05-05
+
+### Changed
+
+- Centralize external-tool and implementer-coder names in a sourced registry (`scripts/external-tool-registry.sh`) declaring `LARCH_EXTERNAL_TOOLS=(codex cursor gemini)` and `LARCH_IMPLEMENTER_CODERS=(claude codex cursor gemini)` once for the repo. Three consumers source the registry — `scripts/agent-model-args.sh`, `scripts/check-reviewers.sh`, and `skills/implement/scripts/step2-implement.sh` — using a fail-closed source guard plus sentinel check. `scripts/run-external-agent.sh` is a related label-only wrapper that aligns to the registry via a header comment per dialectic DECISION_1 (closes #1099).
+- Keep per-tool behavior local while deriving validation and probe iteration from the registry. Per-tool model/effort `case` arms in `agent-model-args.sh`, parallel `get_*`/`set_*` helpers in `check-reviewers.sh`, and the launcher dispatch in `step2-implement.sh` are unchanged in shape; defensive `*)` arms catch drift if a future tool is added to the registry without a matching per-tool branch. Stderr wording (`--tool must be 'cursor', 'codex', or 'gemini'`, `--coder must be one of {claude,codex,cursor,gemini}`) is byte-identical to the prior literals.
+- Add regression coverage and lint wiring for registry drift via `scripts/test-external-tool-registry.sh` (29 assertions: registry contents, predicates, brace-list formatters, double-source idempotency, no source-time stdout/stderr, no-shebang/non-executable, registry-vs-`check-reviewers.sh` consistency, registry-vs-`agent-model-args.sh` consistency, nested-cwd `step2-implement.sh --coder claude` path resolution). Wired into `make lint` via the `test-harnesses-5` shard with matching exclusions in `agent-lint.toml` and a row in `docs/linting.md`.
+
 ## [15.10.12] - 2026-05-05
 
 ### Changed
