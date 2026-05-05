@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.11.12] - 2026-05-05
+
+### Changed
+
+- Consolidate the mechanical bash work of `/implement` Steps 14, 15, 16a, and 18 into a new `scripts/implement-finalize.sh` with `postmerge`, `slack`, and `teardown` subcommands (closes #1134). Session state is passed via a single `$IMPLEMENT_TMPDIR/finalize-state.sh` KEY=value file (read via `awk`, never sourced — no shell-injection surface) plus a separate `--final-bail-reason-file` to keep multi-line bail text off `argv` and out of `ps` listings. `skills/implement/SKILL.md` drops three open-coded leaf-script invocations and the Step 18 Branch A/B/C rename selector in favor of three finalizer subcommand calls; prompt-only Steps 16, 17, and the Step 18 epilogue stay in SKILL.md so model-owned UX copy is not relocated into shell. Adds `scripts/implement-finalize.md` as the SSOT contract, `scripts/test-implement-finalize.sh` as an offline harness with sandbox-copied stub leaf scripts (no live `git`/`gh` calls), and `agent-lint.toml` + Makefile (`test-harnesses-5`) wiring.
+
 ## [15.11.11] - 2026-05-05
 
 ### Fixed
