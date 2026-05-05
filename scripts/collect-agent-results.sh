@@ -435,7 +435,7 @@ if [[ "$SUBSTANTIVE_VALIDATION" == "true" ]]; then
         entry="${RESULTS[$j]}"
         # Precise field-by-field extraction. Fields 1-5 (REVIEWER_FILE, TOOL,
         # STATUS, EXIT_CODE, HEALTHY) never contain '|' by construction (paths
-        # are tmpdir paths; tools are codex|cursor|unknown; STATUS/HEALTHY are
+        # are tmpdir paths; tools are codex|cursor|gemini|unknown; STATUS/HEALTHY are
         # fixed enums; EXIT_CODE is numeric). FAILURE_REASON (field 6) is the
         # only field that may carry user content, and it's the trailing field
         # — its content cannot collide with the field-1..5 prefixes.
