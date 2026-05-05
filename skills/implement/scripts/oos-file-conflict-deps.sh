@@ -42,6 +42,26 @@ if [[ -z "$INPUT_FILE" || -z "$OUTPUT_FILE" ]]; then
     usage
     exit 1
 fi
+
+# Install the cleanup trap before any other validation so EVERY non-zero exit
+# from this point on clears the stable output path (contract: fatal runs leave
+# no observable stable TSV). WORK_DIR is created lazily inside the trap path.
+WORK_DIR=""
+OUTPUT_TMP="$OUTPUT_FILE.tmp"
+SUCCESS=0
+cleanup_on_exit() {
+    local rc=$?
+    if [[ -n "$WORK_DIR" ]]; then
+        rm -rf "$WORK_DIR" 2>/dev/null || true
+    fi
+    rm -f "$OUTPUT_TMP" 2>/dev/null || true
+    if (( SUCCESS == 0 )); then
+        rm -f "$OUTPUT_FILE" 2>/dev/null || true
+    fi
+    exit "$rc"
+}
+trap cleanup_on_exit EXIT
+
 if [[ ! -f "$INPUT_FILE" ]]; then
     echo "ERROR: input file not found: $INPUT_FILE" >&2
     exit 1
@@ -60,8 +80,6 @@ source "$REGEX_LIB"
 
 TMPDIR_ROOT="${TMPDIR:-/tmp}"
 WORK_DIR="$(mktemp -d "$TMPDIR_ROOT/oos-file-conflict-deps.XXXXXX")"
-OUTPUT_TMP="$OUTPUT_FILE.tmp"
-trap 'rm -rf "$WORK_DIR"; rm -f "$OUTPUT_TMP"' EXIT
 
 parse_out="$WORK_DIR/parse.out"
 parse_dir="$WORK_DIR/parsed"
@@ -289,11 +307,10 @@ done
 sort -n -k1,1 -k2,2 "$planned_edges" -o "$planned_edges"
 row_count="$(wc -l < "$planned_edges" | tr -d ' ')"
 if (( row_count > GLOBAL_CAP )); then
-    rm -f "$OUTPUT_TMP" "$OUTPUT_FILE"
     echo "ERROR: oos-file-conflict-deps would emit $row_count rows, exceeding the $GLOBAL_CAP-row --intra-batch-deps-file cap; split the OOS batch" >&2
     exit 1
 fi
 
 cp "$planned_edges" "$OUTPUT_TMP"
 mv "$OUTPUT_TMP" "$OUTPUT_FILE"
-trap 'rm -rf "$WORK_DIR"' EXIT
+SUCCESS=1

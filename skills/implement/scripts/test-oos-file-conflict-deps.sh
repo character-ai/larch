@@ -280,6 +280,26 @@ else
     pass_case "case-x-cap-failure-deletes-stale-output"
 fi
 
+# Verify that parser failure (input file missing) also clears any pre-existing
+# stable output, matching the documented "no observable stable TSV on fatal exit"
+# contract for ALL non-zero exit paths (not just Tier-2 cap exceed).
+case_pf_dir="$TMP_ROOT/case-pf-parser-failure"
+mkdir -p "$case_pf_dir"
+case_pf_output="$case_pf_dir/out.tsv"
+case_pf_stderr="$case_pf_dir/stderr.txt"
+printf 'STALE\tROW\n' > "$case_pf_output"
+set +e
+bash "$HELPER" --input-file "$case_pf_dir/does-not-exist.md" --output "$case_pf_output" 2> "$case_pf_stderr"
+case_pf_status=$?
+set -e
+if [[ "$case_pf_status" == 0 ]]; then
+    fail_case "case-pf-parser-failure-clears-stale-output" "expected non-zero exit, got 0"
+elif [[ -e "$case_pf_output" ]]; then
+    fail_case "case-pf-parser-failure-clears-stale-output" "stable output still present after parser failure"
+else
+    pass_case "case-pf-parser-failure-clears-stale-output"
+fi
+
 # case-y / case-z: validate that bogus cap env vars exit 2 with a clear error.
 for cap_kind in cluster global; do
     case_name="case-${cap_kind:0:1}-bogus-cap"
