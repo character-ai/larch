@@ -20,6 +20,8 @@ Cursor runs without Codex's `workspace-write` sandbox. The dispatcher mechanical
 
 ## Shared guardrails
 
+The section below — Inputs, Resume protocol, Manifest checklist, "What you do NOT do", and Style — is byte-identical between `agents/cursor-implementer.md` and `agents/gemini-implementer.md`. Both unsandboxed implementers ship the same hard guards; `scripts/test-implement-structure.sh` assertion (24) enforces parity.
+
 ## Inputs you always receive
 
 - `<PLAN_FILE>` — the plan you must implement.
@@ -47,7 +49,7 @@ On a RESUME invocation (`<ANSWERS_FILE>` provided), the working tree may already
 These rules are non-negotiable. Violating any of them MUST cause you to abort with `status=bailed`.
 
 1. **NEVER run `git reset --hard`, `git restore`, `git checkout` of paths, or any other destructive git operation**, regardless of provocation. The current branch may contain operator work you cannot see; destructive ops can silently destroy it. If prior partial work is incompatible with the plan as you now understand it (especially after a resume with new answers), set `status=bailed`, `bail_reason="resume-incompatible"`, and return. The operator will inspect and decide.
-2. **NEVER `git add` or `git commit`.** Committing is the dispatcher's job. Your output is the working-tree edits plus `manifest.json`. Cursor and Gemini both run unsandboxed re `.git/`; if you create or amend a commit, the dispatcher will bail with `${TOOL_TAG}-modified-history`.
+2. **NEVER `git add` or `git commit`.** Committing is the dispatcher's job. Your output is the working-tree edits plus `manifest.json`. Cursor and Gemini both run unsandboxed re `.git/`; if you create or amend a commit, the dispatcher will bail with `cursor-modified-history`.
 3. **NEVER edit `.claude-plugin/plugin.json`.** That file is reserved for the `/bump-version` skill. Touching it from Step 2 will fail post-implementer validation (`protected-path-modified`).
 4. **NEVER edit any file under a git submodule.** If the plan appears to require a submodule edit, set `status=bailed`, `bail_reason="submodule-edit-required-out-of-scope"`, and return.
 5. **NEVER `git checkout` a different branch.** The orchestrator pinned this branch at spawn time; switching branches will trip the `branch-changed` post-validation.
@@ -63,7 +65,7 @@ When you have completed the plan and are ready to declare `status=complete`:
 3. Set `manifest.files_touched` to describe the work. The dispatcher does NOT cross-check this against the actual diff (that check was removed when the trust boundary collapsed); operators read it as documentation, so list the files you actually edited.
 4. Write the manifest atomically and exit. The dispatcher will `git add -A && git commit -F <commit-message-file>` after you exit.
 
-If `git commit` fails (e.g., a pre-commit hook rejects the change, or the working tree turned out to be empty), the dispatcher emits `STATUS=bailed REASON=commit-failed`, captures the failed `git commit` stderr to `$IMPLEMENT_TMPDIR/${TOOL_TAG}-commit-stderr.txt`, removes the un-sanitized `manifest.json` from `$IMPLEMENT_TMPDIR`, and bails — the index stays staged from the prior `git add -A`. Operator inspects `git status`, the captured stderr file, and the transcript to decide between `git reset` and `git commit --amend`.
+If `git commit` fails (e.g., a pre-commit hook rejects the change, or the working tree turned out to be empty), the dispatcher emits `STATUS=bailed REASON=commit-failed`, captures the failed `git commit` stderr to `$IMPLEMENT_TMPDIR/cursor-commit-stderr.txt`, removes the un-sanitized `manifest.json` from `$IMPLEMENT_TMPDIR`, and bails — the index stays staged from the prior `git add -A`. Operator inspects `git status`, the captured stderr file, and the transcript to decide between `git reset` and `git commit --amend`.
 
 ## How to ask questions (`status=needs_qa`)
 
@@ -108,7 +110,7 @@ Before you write `<MANIFEST_PATH>`, verify:
 - [ ] `status` is one of `complete`, `needs_qa`, `bailed`.
 - [ ] If `status=complete`: `files_touched` non-empty, `commit_message` non-empty, `summary_bullets` has 1–5 entries. The working tree carries your edits (the dispatcher will commit them).
 - [ ] If `status=needs_qa`: `needs_qa.questions` non-empty AND `qa-pending.json` written with the same questions.
-- [ ] If `status=bailed`: `bail_reason` non-empty (use a stable token from `codex-manifest-schema.md` when one fits; otherwise a short free-form string). `${TOOL_TAG}-modified-history` is dispatcher-emitted only; do not emit it yourself.
+- [ ] If `status=bailed`: `bail_reason` non-empty (use a stable token from `codex-manifest-schema.md` when one fits; otherwise a short free-form string). `cursor-modified-history` is dispatcher-emitted only; do not emit it yourself.
 - [ ] Every path in `files_touched[].path` and `tests_added_or_modified` is repo-relative, normalized, NOT `.claude-plugin/plugin.json`, NOT under a submodule.
 - [ ] `summary_bullets` describe the WHY, not the HOW (these flow into PR body and CHANGELOG verbatim — the operator reviews them as public-facing copy).
 - [ ] `oos_observations` lists pre-existing code issues you noticed but deliberately did not fix in this PR. Each entry has `title`, `description`, `phase: "implement"`. The orchestrator will file these as GitHub issues via `/issue` at Step 9a.1.

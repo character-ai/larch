@@ -5,7 +5,7 @@
 # Returns the appropriate --model / -m flag for the given tool based on
 # environment variables. Cursor defaults to composer-2 when no model is
 # configured. Codex defaults to gpt-5.5 when unconfigured. Gemini defaults
-# to pro when unconfigured.
+# to gemini-2.5-pro when unconfigured (matching the reviewer-side default).
 #
 # When --with-effort is passed, also emits tool-specific reasoning-effort flags.
 # The --with-effort flag is an opt-in gate: real reviewer launch call sites
@@ -18,7 +18,7 @@
 #   LARCH_CODEX_MODEL   — Model name for Codex (e.g., o3)
 #   LARCH_CODEX_EFFORT  — Codex reasoning effort: minimal|low|medium|high
 #                         (only consulted when --with-effort is passed)
-#   LARCH_GEMINI_MODEL  — Model name for Gemini (e.g., pro)
+#   LARCH_GEMINI_MODEL  — Model name for Gemini (e.g., gemini-2.5-pro, gemini-2.5-flash)
 #
 # Plugin userConfig fallbacks (lower priority):
 #   CLAUDE_PLUGIN_OPTION_CURSOR_MODEL  → LARCH_CURSOR_MODEL
@@ -57,7 +57,7 @@
 #         (codex with default model and --with-effort)
 #     -m gpt-5.5
 #         (codex with default model, no --with-effort)
-#     --model pro
+#     --model gemini-2.5-pro
 #         (gemini default, --with-effort is a no-op for Gemini)
 #
 # Exit codes:

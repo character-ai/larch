@@ -502,7 +502,7 @@ fi
 
 # Step 7: complete-only path-normalization check on manifest paths.
 # Diff cross-check, commit-subject equality, working-tree-clean, and
-# commits-since-baseline are gone — the dispatcher commits on Codex's behalf
+# commits-since-baseline are gone — the dispatcher commits on the external implementer's behalf
 # below (Step 7b), so there is no committed diff to compare against the
 # manifest, and `commit_message` is consumed with no diff/subject second-guessing
 # (modulo the commit-time secrets-family redaction applied in Step 7b).
@@ -557,12 +557,14 @@ if [[ "$STATUS" == "complete" ]]; then
         emit_bailed "protected-path-modified"
     fi
 
-    # 7b: dispatcher commits on Codex's behalf, using manifest.commit_message.
+    # 7b: dispatcher commits on the external implementer's behalf, using manifest.commit_message.
     # Codex stays inside `workspace-write` sandbox semantics (which forbids
-    # .git/ writes); the dispatcher runs outside that sandbox in the Claude
+    # .git/ writes); Cursor and Gemini run unsandboxed re .git/ but their
+    # prompts forbid commits and their HEAD is asserted unchanged before
+    # we commit. The dispatcher runs outside that sandbox in the Claude
     # shell. The commit message is piped through scripts/redact-secrets.sh
     # BEFORE git commit so any secret accidentally embedded in commit_message
-    # by Codex never lands in git history (the same redactor runs over the
+    # by the implementer never lands in git history (the same redactor runs over the
     # canonical manifest in Step 8 — applying it here closes the prior
     # split-brain where git history was unredacted while the on-disk manifest
     # was redacted).

@@ -2,7 +2,7 @@
 # test-step2-dispatch.sh — Offline harness for skills/implement/scripts/step2-implement.sh.
 #
 # Covers the dispatcher branches that do NOT require spawning an external implementer
-# (35 assertions; for the full per-test inventory see test-step2-dispatch.md):
+# (37 assertions; for the full per-test inventory see test-step2-dispatch.md):
 #   - --coder claude → STATUS=claude_fallback (no launcher run; no baseline-file leak).
 #   - default coder (no --coder flag) is codex.
 #   - Default codex path outside a git work-tree → exit 2.

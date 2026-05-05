@@ -2,7 +2,7 @@
 
 **Purpose**: Offline regression harness for `skills/implement/scripts/step2-implement.sh` covering the dispatcher branches that do not require spawning an external implementer. Runs in <1s with no `codex`/`cursor` binary and no network.
 
-**Coverage** (35 assertions):
+**Coverage** (37 assertions):
 1. `--coder claude` emits `STATUS=claude_fallback` and `ORCHESTRATOR_EDIT_AUTHORITY=allowed` (and no other KV keys — no `MANIFEST=`, no `TRANSCRIPT=`, etc.), and writes no baseline files.
 1b. Default coder (no flag) is codex — verified via non-git cwd exit 2 with the git-tree message (the claude default would early-return `STATUS=claude_fallback` instead).
 1c. Legacy `--codex-available false` still emits `STATUS=claude_fallback` and prints a deprecation warning to stderr.

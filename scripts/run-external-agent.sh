@@ -32,7 +32,7 @@
 #
 #   # Gemini implementer (stdout captured to file via --capture-stdout)
 #   run-external-agent.sh --tool gemini --output /tmp/impl-abc/gemini-output.txt --timeout 1800 --capture-stdout -- \
-#     gemini --prompt "..." --approval-mode yolo --skip-trust --model pro
+#     gemini --prompt "..." --approval-mode yolo --skip-trust --model gemini-2.5-pro
 
 set -euo pipefail
 
