@@ -131,13 +131,14 @@ if [[ -z "$CODER" ]]; then
     CODER="codex"
 fi
 
-case "$CODER" in
-    claude|codex|cursor|gemini) ;;
-    *)
-        echo "step2-implement.sh: --coder must be one of {claude,codex,cursor,gemini}, got: $CODER" >&2
-        exit 2
-        ;;
-esac
+# shellcheck source=scripts/external-tool-registry.sh
+source "$SCRIPT_DIR/../../../scripts/external-tool-registry.sh" || { echo "step2-implement.sh: failed to source external-tool-registry.sh" >&2; exit 2; }
+[[ "${LARCH_EXTERNAL_TOOL_REGISTRY_LOADED:-}" == "1" ]] || { echo "step2-implement.sh: external-tool-registry.sh sourced but sentinel missing" >&2; exit 2; }
+
+if ! larch_is_implementer_coder "$CODER"; then
+    echo "step2-implement.sh: --coder must be one of $(larch_implementer_coders_braced), got: $CODER" >&2
+    exit 2
+fi
 
 for var in TMPDIR_ARG PLAN_FILE FEATURE_FILE AUTO_MODE; do
     if [[ -z "${!var}" ]]; then
