@@ -127,10 +127,14 @@ Standardizes the four post-step rebase checkpoints (Steps 1.r, 4.r, 7.r, 7a.r). 
 
 - **M2 — Run rebase**:
   ```bash
-  ${CLAUDE_PLUGIN_ROOT}/scripts/rebase-push.sh --no-push --skip-if-pushed
+  ${CLAUDE_PLUGIN_ROOT}/scripts/rebase-push.sh --no-push --skip-if-pushed --keep-on-conflict
   ```
+  Capture stdout and exit code as `rc`.
 
-- **M3 — On non-zero exit**: print `**⚠ Rebase onto main failed. Bailing to cleanup.**`, set `STALL_TRACKING=true` (signals Step 18 to rename the tracking issue to `[STALLED]` — see "Title-prefix lifecycle" below), and skip to Step 18.
+- **M3 — On non-zero exit**, branch on `rc`:
+  - **Exit 1** (rebase conflict): print `🔃 <step-prefix>: <short-name> | rebase — conflict detected, invoking Conflict Resolution Procedure (caller_kind=early_rebase)`. **MANDATORY — READ ENTIRE FILE** before executing the Conflict Resolution Procedure: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/conflict-resolution.md`. Invoke the Conflict Resolution Procedure with `caller_kind=early_rebase`. On success, continue to M4. On hard failure, the procedure runs `${CLAUDE_PLUGIN_ROOT}/scripts/git-rebase-abort.sh`, sets `STALL_TRACKING=true` (signals Step 18 to rename the tracking issue to `[STALLED]` — see "Title-prefix lifecycle" below), and skips to Step 18.
+  - **Exit 3** (non-conflict rebase failure — fetch error, detached HEAD, etc.; `REBASE_ERROR=...` printed on stderr): print `**⚠ Rebase onto main failed (non-conflict): $REBASE_ERROR. Bailing to cleanup.**`, set `STALL_TRACKING=true`, and skip to Step 18.
+  - **Other non-zero exit**: print `**⚠ Rebase onto main failed unexpectedly (exit $rc). Bailing to cleanup.**`, set `STALL_TRACKING=true`, and skip to Step 18.
 
 - **M4 — On success**, branch on stdout (check `SKIPPED_ALREADY_PUSHED` BEFORE `SKIPPED_ALREADY_FRESH` — `rebase-push.sh` exits early on already-pushed before fetch):
   - If stdout contains `SKIPPED_ALREADY_PUSHED=true`: silently continue.
@@ -1225,7 +1229,7 @@ Use `timeout: 1860000` on the Bash call. Parse the same fields as Step 10.
 
 After any non-merge / non-bail / non-rebase action, re-invoke `ci-wait.sh` with updated counters. The `rebase` and `rebase_then_evaluate` paths handle their own post-return inside the sub-procedure's step 7: `rebase` sleeps 30s and re-invokes `ci-wait.sh`; `rebase_then_evaluate` falls through to 12c without sleeping. Remaining caller sleep: 60s after a transient retry rerun.
 
-**MANDATORY — READ ENTIRE FILE** before executing the Conflict Resolution Procedure: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/conflict-resolution.md`. Contains the Bail invariant, Phase 1 (conflict classification + trivial / high-confidence / uncertain + `.claude-plugin/plugin.json` trivial-files rule), Phase 2 (user escalation under `auto_mode`), Phase 3 (reviewer panel on conflict resolution), Phase 4 (continue rebase + exit codes 0/1/2/3 + Phase 4 exit-0 dispatch to the sub-procedure with `caller_kind=step12_phase4`). **Do NOT load** on any `rebase-push.sh` exit other than 1, or for step10-family callers.
+**MANDATORY — READ ENTIRE FILE** before executing the Conflict Resolution Procedure: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/conflict-resolution.md`. Contains the Bail invariant, Phase 1 (conflict classification + trivial / high-confidence / uncertain + `.claude-plugin/plugin.json` trivial-files rule), Phase 2 (user escalation under `auto_mode`), Phase 3 (reviewer panel on conflict resolution; skipped for `early_rebase`), Phase 4 (continue rebase + exit codes 0/1/2/3 + Step 12 Phase 4 exit-0 dispatch to the sub-procedure with `caller_kind=step12_phase4`, or early_rebase local-only continue with no re-bump). **Do NOT load** on any `rebase-push.sh` exit other than 1, or for step10-family callers.
 
 ### 12b — Merge
 

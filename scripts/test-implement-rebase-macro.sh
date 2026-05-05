@@ -6,8 +6,9 @@
 #  (C) Exactly four `Apply the Rebase Checkpoint Macro with ...` invocation lines matching canonical pairs.
 #  (E) Step 7.r section retains `FILES_CHANGED=true` prose above the macro invocation.
 #  (F) Macro header line number is BETWEEN `### Verbosity Control` and `## Step 0`.
-#  (G) Macro section body contains the rebase-push.sh invocation and the bail-on-failure line.
-#  (H) Exactly 1 `rebase-push.sh --no-push --skip-if-pushed` occurrence (only the macro M2 uses
+#  (G) Macro section body contains the keep-on-conflict rebase-push.sh invocation, the
+#      early_rebase conflict-resolution dispatch, and the non-conflict bail line.
+#  (H) Exactly 1 `rebase-push.sh --no-push --skip-if-pushed --keep-on-conflict` occurrence (only the macro M2 uses
 #      that flag combo; Step 1.m, Step 8b, and the Rebase + Re-bump Sub-procedure use `--no-push`
 #      alone). Also asserts the 7.r Apply invocation is inside the Step 7 slice and that all
 #      three `--no-push`-only call sites (Step 1.m + Step 8b + Sub-procedure) remain.
@@ -119,23 +120,26 @@ files_changed_line=$(sed -n "${step7_header_line},$((invoke_7r_line - 1))p" "$SK
   || fail "(E) Step 7.r: 'FILES_CHANGED=true' guard prose must appear above the 7.r macro invocation"
 
 # ---------------------------------------------------------------------------
-# (G) Macro section body contains rebase-push.sh invocation and bail line.
+# (G) Macro section body contains rebase-push.sh invocation, conflict-resolution
+#     dispatch, and non-conflict bail line.
 # ---------------------------------------------------------------------------
-sed -n "${macro_section_start},${macro_section_end}p" "$SKILL_MD" | grep -Fq '${CLAUDE_PLUGIN_ROOT}/scripts/rebase-push.sh --no-push --skip-if-pushed' \
-  || fail "(G) macro body lacks 'rebase-push.sh --no-push --skip-if-pushed' invocation"
-sed -n "${macro_section_start},${macro_section_end}p" "$SKILL_MD" | grep -Fq '**⚠ Rebase onto main failed. Bailing to cleanup.**' \
-  || fail "(G) macro body lacks '**⚠ Rebase onto main failed. Bailing to cleanup.**' bail line"
+sed -n "${macro_section_start},${macro_section_end}p" "$SKILL_MD" | grep -Fq '${CLAUDE_PLUGIN_ROOT}/scripts/rebase-push.sh --no-push --skip-if-pushed --keep-on-conflict' \
+  || fail "(G) macro body lacks 'rebase-push.sh --no-push --skip-if-pushed --keep-on-conflict' invocation"
+sed -n "${macro_section_start},${macro_section_end}p" "$SKILL_MD" | grep -Fq 'caller_kind=early_rebase' \
+  || fail "(G) macro body lacks caller_kind=early_rebase conflict-resolution dispatch"
+sed -n "${macro_section_start},${macro_section_end}p" "$SKILL_MD" | grep -Fq '**⚠ Rebase onto main failed (non-conflict): $REBASE_ERROR. Bailing to cleanup.**' \
+  || fail "(G) macro body lacks non-conflict bail line"
 
 # ---------------------------------------------------------------------------
-# (H) Exactly 1 occurrence of 'rebase-push.sh --no-push --skip-if-pushed' (macro M2 only).
-#     Before the refactor, the four blocks at 1.r/4.r/7.r/7a.r each had this exact flag combo.
-#     After the refactor, only the macro has it — so a residual inline block would push the
-#     count to 2+ and fail this assertion. Step 1.m, Step 8b, and Sub-procedure use
-#     `--no-push` alone (see the secondary sanity check below for the three-site count).
+# (H) Exactly 1 occurrence of the macro's keep-on-conflict rebase-push flag combo.
+#     Only the macro should use this exact flag combo; a future copy-pasted inline
+#     checkpoint block would push the count to 2+ and fail this assertion. Step 1.m,
+#     Step 8b, and Sub-procedure use `--no-push` alone (see the secondary sanity
+#     check below for the three-site count).
 # ---------------------------------------------------------------------------
-rebase_push_skip_count=$(grep -cF '${CLAUDE_PLUGIN_ROOT}/scripts/rebase-push.sh --no-push --skip-if-pushed' "$SKILL_MD" || true)
+rebase_push_skip_count=$(grep -cF '${CLAUDE_PLUGIN_ROOT}/scripts/rebase-push.sh --no-push --skip-if-pushed --keep-on-conflict' "$SKILL_MD" || true)
 [[ "$rebase_push_skip_count" == "1" ]] \
-  || fail "(H) expected exactly 1 'rebase-push.sh --no-push --skip-if-pushed' occurrence (macro M2 only), found $rebase_push_skip_count — residual inline rebase block may have survived the refactor"
+  || fail "(H) expected exactly 1 'rebase-push.sh --no-push --skip-if-pushed --keep-on-conflict' occurrence (macro M2 only), found $rebase_push_skip_count — residual inline rebase block may have survived the refactor"
 
 # Sanity check: all three non-macro --no-push call sites must still exist:
 #   - Step 1.m in SKILL.md (pre-Step-1 main freshness)

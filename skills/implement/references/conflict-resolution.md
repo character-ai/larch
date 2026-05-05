@@ -1,16 +1,20 @@
 # Conflict Resolution Procedure
 
-**Consumer**: `/implement` Step 12 — entered when `rebase-push.sh` exits with code 1 from the Rebase + Re-bump Sub-procedure's step 2 conflict-fallback path (step12 family only — step10 family breaks out to Step 11 instead, and step8b family logs a warning, sets `STALL_TRACKING=true`, and skips to Step 18 without entering Phase 1–4 because the Phase 1–4 user-escalation and reviewer-panel machinery is post-PR-only and inappropriate for the 8a→9 pre-PR window).
+**Consumer**: `/implement` Step 12 and the Rebase Checkpoint Macro's early checkpoints (Steps 1.r, 4.r, 7.r, 7a.r). Step 12 enters when `rebase-push.sh` exits with code 1 from the Rebase + Re-bump Sub-procedure's step 2 conflict-fallback path (step12 family only — step10 family breaks out to Step 11 instead, and step8b family logs a warning, sets `STALL_TRACKING=true`, and skips to Step 18). Early checkpoints enter when the macro's `rebase-push.sh --no-push --skip-if-pushed --keep-on-conflict` exits 1 with a rebase still in progress.
 
-**Contract**: Authoritative source for the Phase 1–4 conflict resolution procedure. Preserve the trivial-files auto-resolve list (`version.go`, `go.sum`, `.claude-plugin/plugin.json`, `LARCH_BUMP_FILES` entries when set — bump-commit-only for multi-purpose files, auto-generated), the "upstream (main) / feature branch commit" labeling convention (NEVER "ours"/"theirs" — see NEVER #3 in SKILL.md), and the Phase 4 exit-0 dispatch to the Rebase + Re-bump Sub-procedure with `rebase_already_done=true, caller_kind=step12_phase4`. The per-file context block format at section 3c is parsed by reviewer panel prompts.
+**Contract**: Authoritative source for the Phase 1–4 conflict resolution procedure. Preserve the trivial-files auto-resolve list (`version.go`, `go.sum`, `.claude-plugin/plugin.json`, `LARCH_BUMP_FILES` entries when set — bump-commit-only for multi-purpose files, auto-generated), the "upstream (main) / feature branch commit" labeling convention (NEVER "ours"/"theirs" — see NEVER #3 in SKILL.md), Step 12's Phase 4 exit-0 dispatch to the Rebase + Re-bump Sub-procedure with `rebase_already_done=true, caller_kind=step12_phase4`, and early_rebase's Phase 3 skip + no-push/no-re-bump Phase 4. The per-file context block format at section 3c is parsed by reviewer panel prompts.
 
-**When to load**: only when `rebase-push.sh` (the full, non-`--no-push` variant) exits 1 inside the sub-procedure's step 2 step12-family conflict fallback. Do NOT load on any other `rebase-push.sh` exit code, do NOT load for step10-family callers, and do NOT load for step8b-family callers (step8b_rebase deliberately does not enter Phase 1–4 — see Inputs `Conflict fallback path` in `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/rebase-rebump-subprocedure.md`).
+**When to load**: only when `rebase-push.sh` exits 1 in one of two places: the full, non-`--no-push` variant inside the sub-procedure's step 2 step12-family conflict fallback, or the Rebase Checkpoint Macro's `--no-push --skip-if-pushed --keep-on-conflict` early_rebase path. Do NOT load on any other `rebase-push.sh` exit code, do NOT load for step10-family callers, and do NOT load for step8b-family callers (step8b_rebase deliberately does not enter Phase 1–4 — see Inputs `Conflict fallback path` in `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/rebase-rebump-subprocedure.md`).
 
 ---
 
-When `rebase-push.sh` exits with code 1, the rebase is paused with conflicts. This procedure resolves them intelligently, with user escalation when uncertain and a full reviewer panel to validate the resolution.
+When `rebase-push.sh` exits with code 1, the rebase is paused with conflicts. This procedure resolves them intelligently, with user escalation when uncertain and a full reviewer panel to validate the resolution where the caller family requires one.
 
-**Bail invariant**: Any bail from any phase below must call `${CLAUDE_PLUGIN_ROOT}/scripts/git-rebase-abort.sh` before proceeding to Step 12d, since the rebase is in progress throughout all phases.
+**Caller families**:
+- `caller_kind=step12_phase4` / Step 12 family: run all four phases. Bail paths abort the rebase and proceed to Step 12d. Phase 4 exit 0 dispatches the Rebase + Re-bump Sub-procedure because Step 12 must preserve the terminal fresh-bump invariant.
+- `caller_kind=early_rebase`: run Phase 1, Phase 2, skip Phase 3 entirely, then run Phase 4 in local-only mode. Bail paths abort the rebase, set `STALL_TRACKING=true`, and skip to Step 18. No reviewer panel, no re-bump dispatch, and no push occurs at early checkpoints; Step 5's normal review panel covers correctness later, and no version bump exists yet.
+
+**Bail invariant**: Any bail from any phase below must call `${CLAUDE_PLUGIN_ROOT}/scripts/git-rebase-abort.sh` before proceeding to the caller-family bail destination, since the rebase is in progress throughout all phases.
 
 ## Phase 1 — Conflict Classification and Resolution
 
@@ -34,12 +38,14 @@ For each file in `CONFLICT_FILES`:
 
 ## Phase 2 — User Escalation (for uncertain conflicts)
 
-**If there are no uncertain conflicts**, skip to Phase 3.
+**If there are no uncertain conflicts**, skip to Phase 3 for Step 12 family callers or Phase 4 for `caller_kind=early_rebase`.
 
-- **If `auto_mode=false`**: Call `AskUserQuestion` with the upstream (main) version, the feature branch commit version, and a proposed resolution for each uncertain file, batched into a single call. Use explicit "upstream (main)" and "feature branch commit" labels. Incorporate the user's answer, write the resolved file, and stage with `${CLAUDE_PLUGIN_ROOT}/scripts/git-stage.sh <file>`. If the user indicates the conflict cannot be resolved or asks to abort, run `${CLAUDE_PLUGIN_ROOT}/scripts/git-rebase-abort.sh` and **bail out** (Step 12d).
-- **If `auto_mode=true`**: Attempt best-effort resolution for uncertain conflicts. If confidence is too low for any file (e.g., modify/delete conflict, conflicting business logic with no composable path, one side deleted code the other modified), set `BAIL_NEEDS_USER_INPUT=true` in parent scope (persists through Step 12d into Step 16a's outcome state machine — maps to the ❓ emoji), run `${CLAUDE_PLUGIN_ROOT}/scripts/git-rebase-abort.sh`, and **bail out** (Step 12d). The flag signals that this bail specifically needs human input to proceed — distinct from CI-failure or fix-exhaustion bails which stay `blocked` (❌).
+- **If `auto_mode=false`**: Call `AskUserQuestion` with the upstream (main) version, the feature branch commit version, and a proposed resolution for each uncertain file, batched into a single call. Use explicit "upstream (main)" and "feature branch commit" labels. Incorporate the user's answer, write the resolved file, and stage with `${CLAUDE_PLUGIN_ROOT}/scripts/git-stage.sh <file>`. If the user indicates the conflict cannot be resolved or asks to abort, run `${CLAUDE_PLUGIN_ROOT}/scripts/git-rebase-abort.sh` and **bail out** to the caller-family destination (Step 12d for Step 12 family; `STALL_TRACKING=true` + Step 18 for `early_rebase`).
+- **If `auto_mode=true`**: Attempt best-effort resolution for uncertain conflicts. If confidence is too low for any file (e.g., modify/delete conflict, conflicting business logic with no composable path, one side deleted code the other modified), set `BAIL_NEEDS_USER_INPUT=true` in parent scope (persists through Step 12d into Step 16a's outcome state machine for Step 12 family callers — maps to the ❓ emoji), run `${CLAUDE_PLUGIN_ROOT}/scripts/git-rebase-abort.sh`, and **bail out** to the caller-family destination (Step 12d for Step 12 family; `STALL_TRACKING=true` + Step 18 for `early_rebase`). The flag signals that this bail specifically needs human input to proceed — distinct from CI-failure or fix-exhaustion bails which stay `blocked` (❌).
 
 ## Phase 3 — Reviewer Panel on Conflict Resolution
+
+**If `caller_kind=early_rebase`**: Skip Phase 3 entirely. Proceed to Phase 4. Early checkpoints happen before the Step 5 review panel and before any version bump exists; running a conflict-specific reviewer panel here would duplicate the normal review phase and add post-PR assumptions to the pre-PR path.
 
 **If ALL conflicts were trivial** (no high-confidence or uncertain conflicts): Skip Phase 3 entirely. Proceed to Phase 4.
 
@@ -95,7 +101,12 @@ If the reviewer panel finds no issues or all findings are addressed: proceed to 
 
 ## Phase 4 — Continue Rebase
 
-Run `${CLAUDE_PLUGIN_ROOT}/scripts/rebase-push.sh --continue` and handle exit codes:
+For `caller_kind=early_rebase`, run `${CLAUDE_PLUGIN_ROOT}/scripts/rebase-push.sh --continue --no-push --keep-on-conflict` and handle exit codes:
+- **Exit 0**: Local-only rebase succeeded. Return to the Rebase Checkpoint Macro's success path (M4). Do NOT invoke the Rebase + Re-bump Sub-procedure and do NOT push.
+- **Exit 1**: A later commit in the rebase conflicted. Loop back to **Phase 1** for the new conflict (the Conflict Resolution Procedure starts again for the new set of `CONFLICT_FILES`).
+- **Exit 3**: Check the `REBASE_ERROR` output. If it indicates an empty or already-applied commit (e.g., "nothing to commit", "No changes"), run `${CLAUDE_PLUGIN_ROOT}/scripts/git-rebase-skip.sh` (if it exits non-zero, run `${CLAUDE_PLUGIN_ROOT}/scripts/git-rebase-abort.sh`, set `STALL_TRACKING=true`, and **bail out** to Step 18) and then `${CLAUDE_PLUGIN_ROOT}/scripts/rebase-push.sh --continue --no-push --keep-on-conflict` again (handle the same exit codes). Otherwise, run `${CLAUDE_PLUGIN_ROOT}/scripts/git-rebase-abort.sh`, set `STALL_TRACKING=true`, and **bail out** to Step 18.
+
+For Step 12 family callers, run `${CLAUDE_PLUGIN_ROOT}/scripts/rebase-push.sh --continue` and handle exit codes:
 - **Exit 0**: Rebase and push succeeded. Invoke the **Rebase + Re-bump Sub-procedure** (see `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/rebase-rebump-subprocedure.md`) with `rebase_already_done=true`, `caller_kind=step12_phase4`. The sub-procedure performs fast-forward of local main, re-bump via `/bump-version` (with step12 hard-failure semantics), push of the new bump commit with recovery, and anchor `version-bump-reasoning` refresh. Counter updates and `ci-wait.sh` re-invocation are handled inside the sub-procedure's step 7. If the sub-procedure bails to 12d on hard failure, Phase 4's exit-0 handler also bails to 12d.
 - **Exit 1**: A later commit in the rebase conflicted. Loop back to **Phase 1** for the new conflict (the Conflict Resolution Procedure starts again for the new set of `CONFLICT_FILES`).
 - **Exit 2**: Push `--force-with-lease` failed. Retry `rebase-push.sh --continue` once. If it fails twice, **bail out** (Step 12d — run `${CLAUDE_PLUGIN_ROOT}/scripts/git-rebase-abort.sh` first if the rebase is still in progress).

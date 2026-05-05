@@ -498,6 +498,12 @@ exclude = [
   "scripts/test-design-structure.sh",
   "skills/design/scripts/test-design-manifest.sh",
   "scripts/test-implement-rebase-macro.sh",
+  # scripts/test-rebase-push-keep-on-conflict.sh is the offline regression
+  # harness for scripts/rebase-push.sh's --keep-on-conflict local-only rebase
+  # path. Referenced only from Makefile (test-rebase-push-keep-on-conflict
+  # target) and the sibling scripts/test-rebase-push-keep-on-conflict.md.
+  # Same Makefile-only pattern as other test-* harnesses.
+  "scripts/test-rebase-push-keep-on-conflict.sh",
   "scripts/test-implement-structure.sh",
   # scripts/test-implement-anti-polling-rule.sh pins the AGENTS.md anti-polling
   # rule literals and the Step 5.3-rounds1to3 / Step 5.3-generic inline
@@ -710,6 +716,7 @@ exclude = [
   # test-find-lock-issue.md entries above.
   "scripts/test-alias-target-resolution.md",
   "scripts/test-alias-structure.md",
+  "scripts/test-rebase-push-keep-on-conflict.md",
   # scripts/promote-release.sh is a standalone operator utility for promoting
   # a GitHub Release to "Latest". It is not invoked by any SKILL.md — operators
   # call it directly from the terminal. Its sibling contract

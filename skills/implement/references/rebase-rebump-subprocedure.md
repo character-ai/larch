@@ -6,6 +6,8 @@
 
 **When to load**: before invoking the sub-procedure from Step 8b (`rebase-push.sh --no-push` exit 1 handler), from Step 10 (any `ACTION=rebase*` return from `ci-wait.sh`), from Step 12a (any `ACTION=rebase*` return), or at the entry of Step 12 Phase 4's `rebase-push.sh --continue` exit-0 handler. Do NOT load when Step 12's `merge=false` or `repo_unavailable=true` early-exits fire, when Step 10's `ACTION=merge` / `already_merged` / `evaluate_failure` / `bail` is returned, or when Step 8b's `rebase-push.sh --no-push` returns exit 0 / 3 / other (only exit 1 enters the sub-procedure).
 
+Early Rebase Checkpoint Macro conflicts (Steps 1.r / 4.r / 7.r / 7a.r) do not enter this sub-procedure; they invoke `conflict-resolution.md` directly with `caller_kind=early_rebase`, skip Phase 3, continue with `--no-push`, and perform no re-bump because no version bump exists at those checkpoints.
+
 ---
 
 After the initial version bump in Step 8, every subsequent rebase of the feature branch onto latest `origin/main` must be followed by a fresh `/bump-version` run so the merged state reflects the version in latest main **at merge time**, not at PR-creation time. This sub-procedure consolidates the drop/rebase/fast-forward/bump/push/anchor-refresh sequence so that Steps 10 and 12 can invoke it from multiple places without duplication.
