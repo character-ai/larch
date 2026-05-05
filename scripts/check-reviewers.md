@@ -2,6 +2,14 @@
 
 Checks external reviewer (Codex/Cursor, plus opt-in Gemini) binary availability and optional health probe.
 
+## Tool registry
+
+The script sources `scripts/external-tool-registry.sh` for the canonical external-tool iteration list, using a fail-closed source guard and sentinel check. The legacy probe set is preserved: Codex and Cursor by default, with Gemini included only when `--include-gemini` is passed.
+
+Per-tool getters/setters and `start_probe` arms remain explicit for Bash 3.2 portability, harness stability, and to avoid silent corruption under indirect expansion. Each switch helper has a defensive `*)` `internal error: unsupported reviewer tool: <id>` arm, so a registry update without matching switch updates fails loudly. Adding a new external tool requires both a registry update and a per-tool branch in every switch helper plus `start_probe`; `scripts/test-external-tool-registry.sh` walks every registry entry to catch missed branches.
+
+Output keys (`CODEX_AVAILABLE`, `CURSOR_AVAILABLE`, `GEMINI_AVAILABLE`, `CODEX_HEALTHY`, etc.) are unchanged, so `session-setup.sh` and `wait-for-reviewers.sh` consumers see the same output shape.
+
 ## Probe acceptance rule
 
 With `--probe`, sends `"Respond with OK"` to each available tool with a 60-second timeout. The probe reply is normalized: all whitespace is stripped (`tr -d '[:space:]'`), then lowercased (`tr '[:upper:]' '[:lower:]'`). The result must equal exactly `"ok"` (case-insensitive exact match, NOT substring). This accepts `OK`, `ok`, `Ok`, `oK` (with any surrounding whitespace) and rejects empty output, error messages, verbose responses, and words containing "ok" as a substring (e.g., `token`, `broken`, `NotOK`). Gemini probes first parse the CLI JSON envelope with `jq -r '.response // empty'`; `.error` or missing `.response` fails the probe. The Gemini probe's `-m` argument resolves with the same precedence as `scripts/launch-gemini-review.sh`: `LARCH_GEMINI_MODEL` then `CLAUDE_PLUGIN_OPTION_GEMINI_MODEL`, defaulting to `gemini-2.5-pro` — so probe and reviewer always exercise the same model.

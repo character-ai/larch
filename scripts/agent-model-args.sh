@@ -66,6 +66,12 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# shellcheck source=scripts/external-tool-registry.sh
+source "$SCRIPT_DIR/external-tool-registry.sh" || { echo "agent-model-args.sh: failed to source external-tool-registry.sh" >&2; exit 1; }
+[[ "${LARCH_EXTERNAL_TOOL_REGISTRY_LOADED:-}" == "1" ]] || { echo "agent-model-args.sh: external-tool-registry.sh sourced but sentinel missing" >&2; exit 1; }
+
 TOOL=""
 WITH_EFFORT="false"
 DEFAULT_MODEL=""
@@ -80,6 +86,11 @@ done
 
 if [[ -z "$TOOL" ]]; then
     echo "agent-model-args.sh: --tool is required" >&2
+    exit 1
+fi
+
+if ! larch_is_external_tool "$TOOL"; then
+    echo "agent-model-args.sh: --tool must be 'cursor', 'codex', or 'gemini' (got: $TOOL)" >&2
     exit 1
 fi
 
@@ -120,7 +131,13 @@ case "$TOOL" in
         # Gemini has no effort flag; --with-effort is intentionally a no-op here.
         ;;
     *)
-        echo "agent-model-args.sh: --tool must be 'cursor', 'codex', or 'gemini' (got: $TOOL)" >&2
+        # Defensive: larch_is_external_tool gated entry above, so the registry
+        # was extended without adding the matching arm here. Fail loudly with
+        # exit 1 instead of silently returning empty model args (which would
+        # leave callers like check-reviewers.sh launching probes with no
+        # --model). Symmetric to the *) defensive arms in
+        # scripts/check-reviewers.sh's switch helpers.
+        echo "agent-model-args.sh: internal error: unsupported reviewer tool: $TOOL" >&2
         exit 1
         ;;
 esac

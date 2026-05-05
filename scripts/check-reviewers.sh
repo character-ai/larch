@@ -6,6 +6,10 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# shellcheck source=scripts/external-tool-registry.sh
+source "$SCRIPT_DIR/external-tool-registry.sh" || { echo "check-reviewers.sh: failed to source external-tool-registry.sh" >&2; exit 1; }
+[[ "${LARCH_EXTERNAL_TOOL_REGISTRY_LOADED:-}" == "1" ]] || { echo "check-reviewers.sh: external-tool-registry.sh sourced but sentinel missing" >&2; exit 1; }
+
 PROBE=false
 INCLUDE_GEMINI=false
 SKIP_CODEX_PROBE=false
@@ -46,6 +50,7 @@ get_available() {
         codex) echo "$CODEX_AVAILABLE" ;;
         cursor) echo "$CURSOR_AVAILABLE" ;;
         gemini) echo "$GEMINI_AVAILABLE" ;;
+        *) echo "check-reviewers.sh: internal error: unsupported reviewer tool: $1" >&2; exit 1 ;;
     esac
 }
 
@@ -54,6 +59,7 @@ get_healthy() {
         codex) echo "$CODEX_HEALTHY" ;;
         cursor) echo "$CURSOR_HEALTHY" ;;
         gemini) echo "$GEMINI_HEALTHY" ;;
+        *) echo "check-reviewers.sh: internal error: unsupported reviewer tool: $1" >&2; exit 1 ;;
     esac
 }
 
@@ -62,6 +68,7 @@ set_healthy() {
         codex) CODEX_HEALTHY="$2" ;;
         cursor) CURSOR_HEALTHY="$2" ;;
         gemini) GEMINI_HEALTHY="$2" ;;
+        *) echo "check-reviewers.sh: internal error: unsupported reviewer tool: $1" >&2; exit 1 ;;
     esac
 }
 
@@ -70,6 +77,7 @@ get_skip() {
         codex) echo "$SKIP_CODEX_PROBE" ;;
         cursor) echo "$SKIP_CURSOR_PROBE" ;;
         gemini) echo "$SKIP_GEMINI_PROBE" ;;
+        *) echo "check-reviewers.sh: internal error: unsupported reviewer tool: $1" >&2; exit 1 ;;
     esac
 }
 
@@ -78,6 +86,7 @@ set_probe_error() {
         codex) CODEX_PROBE_ERROR="$2" ;;
         cursor) CURSOR_PROBE_ERROR="$2" ;;
         gemini) GEMINI_PROBE_ERROR="$2" ;;
+        *) echo "check-reviewers.sh: internal error: unsupported reviewer tool: $1" >&2; exit 1 ;;
     esac
 }
 
@@ -86,6 +95,7 @@ get_probe_error() {
         codex) echo "$CODEX_PROBE_ERROR" ;;
         cursor) echo "$CURSOR_PROBE_ERROR" ;;
         gemini) echo "$GEMINI_PROBE_ERROR" ;;
+        *) echo "check-reviewers.sh: internal error: unsupported reviewer tool: $1" >&2; exit 1 ;;
     esac
 }
 
@@ -139,6 +149,10 @@ start_probe() {
                 -- gemini -m "$probe_model" -p "Respond with OK" -o json --skip-trust --approval-mode plan \
                 >"$PROBE_DIR/gemini-wrapper-attempt${attempt}.log" 2>&1 &
             ;;
+        *)
+            echo "check-reviewers.sh: internal error: unsupported reviewer tool: $tool" >&2
+            exit 1
+            ;;
     esac
 }
 
@@ -189,8 +203,11 @@ if [[ "$PROBE" == "true" ]]; then
     CURSOR_PROBE_ERROR=""
     GEMINI_PROBE_ERROR=""
 
-    TOOLS=(codex cursor)
-    [[ "$INCLUDE_GEMINI" == "true" ]] && TOOLS+=(gemini)
+    TOOLS=()
+    for tool in "${LARCH_EXTERNAL_TOOLS[@]}"; do
+        [[ "$tool" == "gemini" && "$INCLUDE_GEMINI" != "true" ]] && continue
+        TOOLS+=("$tool")
+    done
 
     PROBE_DIR=$(mktemp -d /tmp/larch-probe-XXXXXX)
     trap 'rm -rf "$PROBE_DIR"' EXIT

@@ -6,6 +6,13 @@
 # minute, and kills after a configurable timeout (e.g., 30 minutes for
 # reviews/implementation, 20 minutes for votes/sketches).
 #
+# The --tool value is used only for log messages and the .meta TOOL= field.
+# No validation is performed here by design (see issue #1099 / DECISION_1):
+# the wrapper accepts any string label so out-of-tree callers can pass
+# arbitrary provenance tags without importing the registry. The canonical
+# external-tool name set is owned by scripts/external-tool-registry.sh; see
+# scripts/external-tool-registry.md for the registry contract.
+#
 # Usage:
 #   run-external-agent.sh --tool NAME --output FILE --timeout SECS [--capture-stdout|--capture-stdout-only] -- CMD...
 #

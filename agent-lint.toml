@@ -376,6 +376,10 @@ exclude = [
   "scripts/test-post-scaffold-hints.sh",
   "skills/create-skill/scripts/test-render-skill-md.sh",
   "scripts/lib-count-commits.sh",
+  # scripts/external-tool-registry.sh is a sourced-only shell library (no
+  # shebang, not invokable directly). It is referenced from shell consumers via
+  # source directives only, which agent-lint does not follow.
+  "scripts/external-tool-registry.sh",
   "scripts/test-verify-skill-called.sh",
   "scripts/test-check-bump-version.sh",
   # scripts/test-check-reviewers.sh is the regression harness for
@@ -383,6 +387,11 @@ exclude = [
   # Makefile (test-check-reviewers target) and scripts/test-check-reviewers.md
   # (sibling contract).
   "scripts/test-check-reviewers.sh",
+  # scripts/test-external-tool-registry.sh is the regression harness for the
+  # external-tool registry. Referenced only from Makefile
+  # (test-external-tool-registry target) and scripts/test-external-tool-registry.md
+  # (sibling contract).
+  "scripts/test-external-tool-registry.sh",
   # scripts/test-launch-gemini-review.sh is the regression harness for the
   # Gemini launcher. Referenced only from Makefile (test-launch-gemini-review
   # target) and scripts/test-launch-gemini-review.md (sibling contract).
@@ -641,6 +650,7 @@ exclude = [
   # probe acceptance regression harness. Both follow the harness-sibling pattern.
   "scripts/check-reviewers.md",
   "scripts/test-check-reviewers.md",
+  "scripts/test-external-tool-registry.md",
   "scripts/test-launch-gemini-review.md",
   "skills/simplify-skill/scripts/build-feature-description.md",
   # scripts/test-alias-target-resolution.md and scripts/test-alias-structure.md
