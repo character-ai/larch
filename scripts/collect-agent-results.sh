@@ -127,12 +127,10 @@ derive_tool() {
             meta_val="${meta_line#*=}"
             [[ "$meta_key" == "TOOL" ]] && meta_tool="$meta_val"
         done < "$meta"
-        for t in "${LARCH_EXTERNAL_TOOLS[@]}"; do
-            if [[ "$meta_tool" == "$t" ]]; then
-                echo "$meta_tool"
-                return
-            fi
-        done
+        if [[ -n "$meta_tool" ]] && larch_is_external_tool "$meta_tool"; then
+            echo "$meta_tool"
+            return
+        fi
     fi
 
     local base
@@ -539,7 +537,8 @@ if [[ "$SUBSTANTIVE_VALIDATION" == "true" ]]; then
         entry="${RESULTS[$j]}"
         # Precise field-by-field extraction. Fields 1-5 (REVIEWER_FILE, TOOL,
         # STATUS, EXIT_CODE, HEALTHY) never contain '|' by construction (paths
-        # are tmpdir paths; tools are codex|cursor|gemini|unknown; STATUS/HEALTHY are
+        # are tmpdir paths; tools are registered LARCH_EXTERNAL_TOOLS ids — kept
+        # label-safe per the registry contract — or "unknown"; STATUS/HEALTHY are
         # fixed enums; EXIT_CODE is numeric). FAILURE_REASON (field 6) is the
         # only field that may carry user content, and it's the trailing field
         # — its content cannot collide with the field-1..5 prefixes.
