@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.11.3] - 2026-05-05
+
+### Changed
+
+- Update `scripts/preflight.sh` header comment so the exit-code listing for code 3 documents argument-validation failures in addition to fetch and rebase failures (closes #1125). The script already exits 3 on unknown CLI options at line 22 and the sibling contract `scripts/preflight.md` already enumerates all three exit-3 paths; this aligns the header comment with both. Comment-only change; no behavior change.
+
 ## [15.11.2] - 2026-05-05
 
 ### Changed
