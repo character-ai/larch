@@ -1,6 +1,6 @@
 #!/bin/bash
 # Structural regression test for /implement SKILL.md + references/ topology (closes #234).
-# Asserts 25 live load-bearing invariants (assertion 5 retired; numbered list runs 1–4, 6–25) across skills/implement/SKILL.md and the six
+# Asserts 26 live load-bearing invariants (assertion 5 retired; numbered list runs 1–4, 6–26) across skills/implement/SKILL.md and the six
 # reference docs extracted from it. Complements scripts/test-implement-rebase-macro.sh,
 # which owns the Rebase Checkpoint Macro mechanics; this harness owns top-level section
 # headings, the MANDATORY ↔ reference-file binding, the focus-area CI-parity check,
@@ -16,7 +16,7 @@
 # peer-harness assertions (A) and (D) respectively — accepted duplication per design-
 # phase sketch consensus.
 #
-# Twenty-five assertions (assertion 18 added for Protocol Execution Directive
+# Twenty-six assertions (assertion 18 added for Protocol Execution Directive
 # pin; assertion 19 added for the Step 2 external implementer dispatcher pin;
 # assertion 20 added for the design-manifest + --design-only path pin;
 # assertion 21 added for the --inline / --subagent forwarding pin, issue #1036;
@@ -24,8 +24,9 @@
 # ORCHESTRATOR_EDIT_AUTHORITY / §2.1.5 / orchestrator-envelope-invalid /
 # NEVER #10 literals; assertion 24 added for Gemini implementer structural
 # parity with Cursor's shared guardrails; assertion 25 added for the
-# clean-main Step 0 entry gate).
-# Assertion 5 is retired, so the numbered list runs 1–4, 6–25 (25 live
+# clean-main Step 0 entry gate; assertion 26 added for the post-merge
+# anti-halt literal pin, issue #1143).
+# Assertion 5 is retired, so the numbered list runs 1–4, 6–26 (26 live
 # assertions; assertion 23 now pins Gemini quick-mode reviewer wiring).
 #  (1) Exactly 1 `^## Load-Bearing Invariants$` heading in skills/implement/SKILL.md.
 #  (2) Exactly 1 `^## NEVER List$` heading.
@@ -143,6 +144,11 @@
 #            `## Goal` and `## Test plan` separately as the anchor body's rendered
 #            target headings, so this negative pin fails closed on broken main and
 #            passes on the fixed branch.
+# (26) Post-merge anti-halt literal pin (issue #1143): SKILL.md must retain
+#      the NEVER #7 post-merge sub-clause, Step 12a ACTION=already_merged
+#      continuation reminder, and Step 12b post-merge blockquote opener so
+#      the merge breadcrumb cannot silently become a terminal boundary before
+#      Steps 14, 15, 16, 16a, 17, 18 run.
 #
 # Exit 0 on pass, exit 1 on any assertion failure.
 # shellcheck disable=SC2016 # single-quoted strings are intentional grep literals
@@ -863,5 +869,45 @@ if grep -Fq -- "$old_unconditional_prose" "$SKILL_MD"; then
   fail "(25) SKILL.md still contains the legacy unconditional --skip-branch-check prose"
 fi
 
-echo "PASS: test-implement-structure.sh — all 25 structural invariants hold (assertion 5 retired)"
+# ---------------------------------------------------------------------------
+# (26) Post-merge anti-halt literal pin (issue #1143). The post-merge
+#      boundary is halt-prone because the merge breadcrumb sounds terminal
+#      while Steps 14, 15, 16, 16a, 17, 18 remain mandatory. Pin the three
+#      reminder sites with fixed-string checks, plus a count floor for the
+#      shared enumeration so deleting either the NEVER #7 reminder or the
+#      ACTION=already_merged reminder fails closed.
+# ---------------------------------------------------------------------------
+post_merge_never7_literals=(
+  '**Post-merge sub-clause (highest-stakes halt boundary)**'
+  'the celebratory "merged!" tone makes the run feel complete, but Steps 14, 15, 16, 16a, 17, 18 still must run'
+)
+for lit in "${post_merge_never7_literals[@]}"; do
+  grep -Fq "$lit" "$SKILL_MD" \
+    || fail "(26a) SKILL.md lost NEVER #7 post-merge anti-halt literal: $lit"
+done
+
+already_merged_literals=(
+  '"force-merged externally" feels terminal but is mid-run'
+  'Steps 14, 15, 16, 16a, 17, 18 still must run.'
+)
+for lit in "${already_merged_literals[@]}"; do
+  grep -Fq "$lit" "$SKILL_MD" \
+    || fail "(26b) SKILL.md lost Step 12a ACTION=already_merged continuation literal: $lit"
+done
+
+post_merge_step_count=$(grep -Fc 'Steps 14, 15, 16, 16a, 17, 18 still must run' "$SKILL_MD" || true)
+if ! [[ "$post_merge_step_count" =~ ^[0-9]+$ ]] || (( post_merge_step_count < 2 )); then
+  fail "(26b) expected at least 2 post-merge Step 14-18 continuation enumerations in SKILL.md, found ${post_merge_step_count:-0}"
+fi
+
+post_merge_blockquote_literals=(
+  '> **Continue to Step 14 IMMEDIATELY.**'
+  'Halting here is a NEVER #7-family violation regardless of how natural the boundary feels'
+)
+for lit in "${post_merge_blockquote_literals[@]}"; do
+  grep -Fq "$lit" "$SKILL_MD" \
+    || fail "(26c) SKILL.md lost Step 12b post-merge blockquote literal: $lit"
+done
+
+echo "PASS: test-implement-structure.sh — all 26 structural invariants hold (assertion 5 retired)"
 exit 0
