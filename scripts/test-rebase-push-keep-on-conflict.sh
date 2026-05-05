@@ -110,4 +110,16 @@ grep -Fq 'REBASE_ERROR=--keep-on-conflict is only valid with --no-push' "$TMPDIR
   || fail "--keep-on-conflict invalid usage did not emit the expected REBASE_ERROR"
 [[ -z "$invalid_output" ]] || fail "invalid usage should not emit stdout, got: $invalid_output"
 
+# Defense-in-depth: --continue --no-push without --keep-on-conflict is rejected
+# at parse time so a future caller can never silently abort an in-progress
+# local-only rebase on a nested conflict.
+set +e
+require_keep_output=$("$SCRIPT" --continue --no-push 2>"$TMPDIR_ROOT/require-keep.err")
+require_keep_rc=$?
+set -e
+[[ "$require_keep_rc" == "3" ]] || fail "--continue --no-push without --keep-on-conflict expected exit 3, got $require_keep_rc"
+grep -Fq 'REBASE_ERROR=--continue --no-push requires --keep-on-conflict to safely handle nested conflicts' "$TMPDIR_ROOT/require-keep.err" \
+  || fail "--continue --no-push without --keep-on-conflict did not emit the expected REBASE_ERROR"
+[[ -z "$require_keep_output" ]] || fail "--continue --no-push without --keep-on-conflict should not emit stdout, got: $require_keep_output"
+
 echo "PASS: test-rebase-push-keep-on-conflict.sh"

@@ -43,7 +43,8 @@
 #   2 — push --force-with-lease failed (PUSH_ERROR= on stderr, caller should retry after fetch)
 #       Not possible in --no-push mode.
 #   3 — rebase failed for non-conflict reasons (REBASE_ERROR= on stderr), OR
-#       invalid flag combination (e.g., --skip-if-pushed without --no-push)
+#       invalid flag combination (e.g., --skip-if-pushed without --no-push,
+#       --continue --no-push without --keep-on-conflict)
 #       In normal mode: rebase is aborted.
 #       In --continue mode: rebase is left in progress (caller can inspect/retry).
 #       In --no-push mode: rebase is aborted.
@@ -97,6 +98,21 @@ fi
 
 if [[ "$KEEP_ON_CONFLICT" == "true" && "$NO_PUSH" != "true" ]]; then
     echo "REBASE_ERROR=--keep-on-conflict is only valid with --no-push" >&2
+    exit 3
+fi
+
+# --continue --no-push is the local-only conflict-resolution loop used by
+# the Rebase Checkpoint Macro's early_rebase path; in that loop a nested
+# conflict on a later commit MUST leave the rebase in progress so the
+# caller can resolve and re-continue. Without --keep-on-conflict the
+# script would silently abort the in-progress rebase on a nested conflict
+# and discard any partial resolution. Reject the combination at parse
+# time rather than risk losing work — every legitimate caller of
+# --continue --no-push (the early_rebase Phase 4 invocation) already
+# passes --keep-on-conflict, so this is defense-in-depth, not a behavior
+# change for any documented call site.
+if [[ "$CONTINUE_MODE" == "true" && "$NO_PUSH" == "true" && "$KEEP_ON_CONFLICT" != "true" ]]; then
+    echo "REBASE_ERROR=--continue --no-push requires --keep-on-conflict to safely handle nested conflicts" >&2
     exit 3
 fi
 

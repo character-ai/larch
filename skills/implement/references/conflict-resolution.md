@@ -18,6 +18,8 @@ When `rebase-push.sh` exits with code 1, the rebase is paused with conflicts. Th
 
 ## Phase 1 — Conflict Classification and Resolution
 
+The caller supplies `CONFLICT_FILES` as a comma-separated list. For Step 12 family callers it is the `CONFLICT_FILES=...` line on the conflict-fallback `rebase-push.sh` invocation's stdout. For `caller_kind=early_rebase` it is the `CONFLICT_FILES=...` line on the macro M2 `rebase-push.sh --no-push --skip-if-pushed --keep-on-conflict` invocation's stdout, captured by the macro before invoking this procedure. If the caller did not capture the list (defensive only), enumerate the in-progress rebase's unmerged paths via `git diff --name-only --diff-filter=U`.
+
 For each file in `CONFLICT_FILES`:
 
 1. Run `${CLAUDE_PLUGIN_ROOT}/scripts/git-conflict-files.sh` to determine the conflict type per file. Parse the output — each file is a block of `FILE=<path>`, `STAGE_1=<bool>`, `STAGE_2=<bool>`, `STAGE_3=<bool>` lines separated by blank lines.

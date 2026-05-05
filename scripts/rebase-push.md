@@ -11,6 +11,8 @@ Flags:
 Exit codes:
 - `0` — success; stdout may carry `SKIPPED_ALREADY_PUSHED=true` or `SKIPPED_ALREADY_FRESH=true` for the no-op short-circuits.
 - `1` — rebase conflict. In `--no-push` mode, the rebase is aborted before exit unless `--keep-on-conflict` is set; with `--keep-on-conflict`, the rebase is left in progress and stdout carries `CONFLICT_FILES=...`.
-- `3` — non-conflict failure (fetch error, detached HEAD, etc.); stderr carries `REBASE_ERROR=<reason>`.
+- `3` — non-conflict failure (fetch error, detached HEAD, etc.) OR invalid flag combination (e.g., `--skip-if-pushed` without `--no-push`, `--continue --no-push` without `--keep-on-conflict`); stderr carries `REBASE_ERROR=<reason>`.
+
+`--continue --no-push` requires `--keep-on-conflict` (rejected at parse time with exit 3 otherwise) so a nested conflict during the local-only resolution loop never silently aborts the in-progress rebase. Every legitimate caller of `--continue --no-push` (the early_rebase Phase 4 invocation in `skills/implement/references/conflict-resolution.md`) already passes `--keep-on-conflict`; the rejection is defense-in-depth for any future caller.
 
 `/implement`'s Rebase Checkpoint Macro (Steps 1.r / 4.r / 7.r / 7a.r) uses `--no-push --skip-if-pushed --keep-on-conflict` so early checkpoints can resolve conflicts without creating remote state. Step 8b intentionally keeps plain `--no-push` so its conflict path still aborts before entering the Rebase + Re-bump Sub-procedure. `/implement` Step 12's CI+merge loop is the strict-enforcement caller and the only one that may force-push after rebase. See `skills/implement/SKILL.md` "Rebase Checkpoint Macro", `skills/implement/references/conflict-resolution.md`, and the Rebase + Re-bump Sub-procedure for the per-caller failure semantics (early_rebase family STALL_TRACKING, step8b family STALL_TRACKING, step10 family best-effort break, step12 family hard-bail to 12d).
