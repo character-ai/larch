@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.10.9] - 2026-05-05
+
+### Fixed
+
+- `docs/linting.md` `make test-step2-dispatch` row now reports 37 assertions (was 35), matching the harness file header and `test-step2-dispatch.md`.
+
 ## [15.10.8] - 2026-05-05
 
 ### Changed
