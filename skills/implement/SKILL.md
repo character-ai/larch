@@ -547,9 +547,7 @@ If both are true, reuse the manifest and proceed to Step 2 with **all manifest f
 
 Otherwise (no reusable manifest), continue with the normal-mode flow below (simplicity classification preamble, then the both-externals-down branch or the standard `/design` invocation).
 
-**Simplicity classification preamble — skip conditions**: classification runs only when `design_only=false`; otherwise skip it entirely and continue with the normal-mode flow below.
-
-- `design_only=false`. `--design-only` is mutually exclusive with quick mode and must not auto-switch into the degraded inline-plan path.
+**Simplicity classification preamble — skip condition**: classification runs only when `design_only=false`; otherwise skip it entirely and continue with the normal-mode flow below. (`--design-only` is mutually exclusive with quick mode and must not auto-switch into the degraded inline-plan path.)
 
 **Simplicity classification**: when the preamble condition holds, classify the task before invoking `/design`. Use `FEATURE_DESCRIPTION` plus a light codebase scan (Read / Grep / Glob of the obvious target files) to decide whether the work is SIMPLE.
 
