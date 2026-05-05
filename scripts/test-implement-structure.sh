@@ -897,7 +897,7 @@ done
 
 post_merge_step_count=$(grep -Fc 'Steps 14, 15, 16, 16a, 17, 18 still must run' "$SKILL_MD" || true)
 if ! [[ "$post_merge_step_count" =~ ^[0-9]+$ ]] || (( post_merge_step_count < 2 )); then
-  fail "(26b) expected at least 2 post-merge Step 14-18 continuation enumerations in SKILL.md, found ${post_merge_step_count:-0}"
+  fail "(26b-count) expected at least 2 post-merge Step 14-18 continuation enumerations in SKILL.md (NEVER #7 + Step 12a ACTION=already_merged), found ${post_merge_step_count:-0}"
 fi
 
 post_merge_blockquote_literals=(
