@@ -7,9 +7,15 @@
 #   - scripts/check-reviewers.sh
 #   - skills/implement/scripts/step2-implement.sh
 #
-# Related (NOT sourced - permissive label-only consumer):
-#   - scripts/run-external-agent.sh (uses --tool only as a log/.meta label;
-#     DECISION_1 of #1099 keeps that wrapper permissive intentionally)
+# Related:
+#   - scripts/run-external-agent.sh is NOT sourced from this registry and still
+#     does not validate `--tool` against it, per DECISION_1 of #1099. The
+#     human-facing log keeps the raw label, while the `.meta` `TOOL=` sidecar
+#     field is sanitized at write time through a label-safe allowlist
+#     (alphanumerics, `.`, `_`, `-`); disallowed bytes are translated to `_`
+#     (length-preserved), and an empty sanitized result falls back to
+#     `sanitized-empty`. See scripts/run-external-agent.md for the full
+#     sanitization contract.
 #
 # Non-goals: per-tool model defaults, probe argv templates, launcher paths,
 # capture-mode policy, runtime-failure tokens. Those stay with their owners.
