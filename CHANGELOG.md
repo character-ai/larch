@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.2] - 2026-05-05
+
+### Fixed
+
+- Reject zero-valued multi-digit timeout strings (`00`, `000`, ...) in `scripts/launch-cursor-implement.sh`, `scripts/launch-codex-implement.sh`, `scripts/launch-gemini-implement.sh`, `scripts/launch-gemini-review.sh`, and `scripts/run-external-agent.sh`. The previous `''|*[!0-9]*|0)` case pattern only rejected the single-character literal `0` — strings like `00` and `000` slipped through; in `run-external-agent.sh` this re-created the original bug where `[ "$SECONDS" -ge "$TIMEOUT_SECONDS" ]` treated `00` as 0 and reported the child as already timed out on the first poll iteration. Each script now adds an `if (( 10#$TIMEOUT < 1 )); then ...; fi` guard immediately after the existing case statement (using base-10 arithmetic to avoid octal interpretation), reusing the same error message and exit code. `launch-gemini-review.sh` and `run-external-agent.sh` additionally normalize `TIMEOUT=$((10#$TIMEOUT))` after validation so downstream arithmetic — the 600s clamp at `launch-gemini-review.sh:132` and the timeout-message division at `run-external-agent.sh:187` — interprets accepted leading-zero positive values (e.g. `010` → 10) consistently as decimal. Regression coverage extended in `scripts/test-run-external-agent-args.sh` (cases for `00`, `000`, and `010` acceptance), `skills/implement/scripts/test-cursor-implementer.sh`, `skills/implement/scripts/test-gemini-implementer.sh`, and `scripts/test-launch-gemini-review.sh`. Sibling `.md` contracts updated. Closes #1167.
+
 ## [15.12.1] - 2026-05-05
 
 ### Changed
