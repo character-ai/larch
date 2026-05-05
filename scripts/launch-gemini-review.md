@@ -2,7 +2,7 @@
 
 **Purpose**: Launch Gemini as a generic-only code reviewer and normalize the Gemini CLI JSON envelope into the plain-text reviewer output consumed by `collect-agent-results.sh`.
 
-**Invocation**: `gemini -m "$GEMINI_MODEL" -p "$PROMPT" -o json --skip-trust --approval-mode plan`, where `$GEMINI_MODEL` resolves as `${LARCH_GEMINI_MODEL:-${CLAUDE_PLUGIN_OPTION_GEMINI_MODEL:-gemini-2.5-pro}}`. The same precedence is applied by `scripts/check-reviewers.sh` for the Gemini health probe so probe and review use the same model.
+**Invocation**: `gemini -m "$GEMINI_MODEL" -p "$PROMPT" -o json --skip-trust --approval-mode yolo`, where `$GEMINI_MODEL` resolves as `${LARCH_GEMINI_MODEL:-${CLAUDE_PLUGIN_OPTION_GEMINI_MODEL:-gemini-2.5-pro}}`. The same precedence is applied by `scripts/check-reviewers.sh` for the Gemini health probe so probe and review use the same model and approval posture.
 
 ## Invariants
 
@@ -20,7 +20,7 @@
 
 ## Prompt contract
 
-Gemini runs with `--approval-mode plan`, so callers must pass a self-contained prompt containing the diff, commit log, and changed-file list. The launcher does not call `git`.
+Gemini runs with live repository access, matching the Cursor and Codex reviewer posture. Callers pass the same review prompt shape used for those reviewers: ask Gemini to run `git diff main...HEAD`, `git log main...HEAD --oneline`, and read changed files for context in diff mode, or read the description-mode scope file before inspecting files. Reviewer prompts must explicitly say: `Do NOT modify files. Do NOT commit. Do NOT push.`
 
 ## Test harness
 

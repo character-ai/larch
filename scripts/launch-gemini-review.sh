@@ -13,8 +13,8 @@ TIMEOUT=""
 PROMPT=""
 
 # Build a redacted copy of ORIGINAL_ARGS for write_meta() so the full --prompt
-# body (which carries inlined diff / log / file-list — see plan FINDING_10) is
-# not duplicated to ${OUTPUT}.meta. .meta CMD_JSON= replays the launcher
+# body (review instructions and any caller-provided context) is not duplicated
+# to ${OUTPUT}.meta. .meta CMD_JSON= replays the launcher
 # invocation as a single-line JSON array, not raw Gemini, so the actual prompt
 # content is unnecessary for retry semantics. On the missing-jq fail-closed
 # path, write_meta() omits CMD_JSON so write_done() can still run.
@@ -73,7 +73,7 @@ write_meta() {
         # CMD_JSON replays the LAUNCHER (not raw gemini) so retry re-runs
         # JSON normalization. The --prompt body is already redacted to a
         # sha256 prefix + byte length in REDACTED_ARGS to avoid persisting
-        # inlined diff/log content into the session tmpdir's .meta artifact.
+        # prompt content into the session tmpdir's .meta artifact.
         # If jq is unavailable (the LARCH_TEST_FORCE_MISSING_JQ /
         # MISSING_JQ fail_closed path), omit CMD_JSON entirely; the collector
         # treats missing CMD_JSON as fail-closed while write_done() still runs.
@@ -155,7 +155,7 @@ RUN_EXIT=0
     --output "$RAW_OUTPUT" \
     --timeout "$EFFECTIVE_TIMEOUT" \
     --capture-stdout-only \
-    -- gemini -m "$GEMINI_MODEL" -p "$PROMPT" -o json --skip-trust --approval-mode plan || RUN_EXIT=$?
+    -- gemini -m "$GEMINI_MODEL" -p "$PROMPT" -o json --skip-trust --approval-mode yolo || RUN_EXIT=$?
 
 if [[ "$RUN_EXIT" -ne 0 ]]; then
     fail_closed "$RUN_EXIT" "Gemini exited with code $RUN_EXIT"
