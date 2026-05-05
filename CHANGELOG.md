@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.11.7] - 2026-05-05
+
+### Changed
+
+- Keep Gemini implementer model values as a single CLI argument even when configured values contain whitespace.
+- Align the Gemini implementer launcher contract with the safer reviewer-side model resolution pattern.
+
 ## [15.11.6] - 2026-05-05
 
 ### Fixed
