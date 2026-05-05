@@ -127,3 +127,4 @@ Shortcut skills shipped with the plugin. Each alias forwards to an existing skil
 |---|---|
 | [`/im`](skills/im/SKILL.md) | `/implement --merge` |
 | [`/imaq`](skills/imaq/SKILL.md) | `/implement --merge --auto --quick` |
+| [`/imq`](skills/imq/SKILL.md) | `/implement --merge --quick` |
