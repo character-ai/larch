@@ -1,0 +1,3 @@
+# scripts/run-negotiation-round.sh — contract
+
+`scripts/run-negotiation-round.sh` is the per-round driver for the Negotiation Protocol described in `skills/shared/external-reviewers.md`. It wraps the Codex stdin-pipe and Cursor `--agent-prompt` invocation styles behind a uniform interface so callers don't repeat the per-tool argv shape. Removes the previous output file before invoking the tool (fresh-result invariant). Inputs: `--tool codex|cursor`, `--prompt-file`, `--output`, `--workspace`. Stdout emits `RESPONSE_FILE=<path>`. Exit 0 on success, 1 on usage error, 2 on reviewer command failure. Used by `/design` Steps 1d / 3.5 (interactive design discussion rounds) when an external reviewer is the negotiator.

@@ -1,0 +1,3 @@
+# scripts/test-verify-skill-called.sh — contract
+
+Regression harness for `scripts/verify-skill-called.sh` covering all three modes (`--sentinel-file`, `--stdout-line` + `--stdout-file`, `--commit-delta` + `--before-count`) plus the cwd-neutral source chain via `check-bump-version.sh`. Wired into `make lint` via the `test-verify-skill-called` target. The full contract — including the LC_ALL=C grep pinning, the empty-regex rejection, the grep exit-2 fail-closed semantics, and the shared `lib-count-commits.sh` plumbing — is owned by `scripts/verify-skill-called.md` (which also covers `scripts/lib-count-commits.sh`). Listed in `agent-lint.toml`'s exclude set because agent-lint does not follow `source` directives or Makefile-only references.

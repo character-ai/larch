@@ -1,0 +1,3 @@
+# scripts/test-lint-skill-invocations.sh — contract
+
+Black-box regression harness for `scripts/lint-skill-invocations.py` with inline heredoc fixtures under `mktemp -d`, invoking the lint via `python3 scripts/lint-skill-invocations.py --root "$TMPROOT"`. Wired into `make lint` via the `test-lint-skill-invocations` target. The full contract — including the canonical phrase set, the `INVOCATION_LINE_REGEX`, the fenced-code-block exemption, and the `--root` contract token — is owned by `scripts/lint-skill-invocations.md`. Listed in `agent-lint.toml`'s exclude set because agent-lint does not follow Makefile-only references.

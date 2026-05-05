@@ -1,0 +1,3 @@
+# scripts/test-drop-bump-commit.sh — contract
+
+Offline regression harness for `scripts/drop-bump-commit.sh`. Creates isolated temp repos with controlled commit shapes (clean drop, dirty tree refusal, non-bump HEAD refusal, single-commit branch refusal, allowed-files variants including `LARCH_BUMP_FILES` replacement semantics, CHANGELOG.md tolerance) and validates the script's output and side effects. Wired into `make lint` via the `test-drop-bump-commit` target. The full contract — including the four guard predicates and the `LARCH_BUMP_FILES` replacement-vs-additive policy — is owned by `scripts/drop-bump-commit.md`.

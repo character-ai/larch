@@ -1,0 +1,3 @@
+# scripts/git-checkout-ours.sh — contract
+
+`scripts/git-checkout-ours.sh` wraps `git checkout --ours -- <files>`. **During rebase, `--ours` means the side being rebased ONTO (i.e., upstream `main`)** — the inverse of merge semantics. The Conflict Resolution Procedure (`skills/implement/references/conflict-resolution.md`) uses this script for trivial files like `.claude-plugin/plugin.json` that the re-bump step will regenerate, so taking the upstream side is always correct on rebase. Per `/implement` NEVER #3, prose describing conflict sides MUST use "upstream (main)" / "feature branch commit" instead of `ours`/`theirs` to avoid the inverted-semantics trap; this script's name is the documented exception (it directly mirrors the `git` flag).
