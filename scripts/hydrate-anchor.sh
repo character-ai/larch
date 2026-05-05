@@ -116,12 +116,18 @@ SECTIONS_COUNT=$(awk -v outdir="$SECTIONS_DIR" -v allowed="$ALLOWED_SLUGS" '
     BEGIN { in_section=0; slug=""; outpath=""; count=0 }
     /^<!-- section:[^ ]+ -->$/ {
         nextslug = extract_slug($0, "<!-- section:")
-        if (slug_ok(nextslug)) {
+        if (slug_ok(nextslug) && !in_section) {
             slug = nextslug
             in_section = 1
             outpath = outdir "/" slug ".md"
             printf "" > outpath
             close(outpath)
+        } else {
+            # Invalid slug, or a nested open inside an active section: treat
+            # the body as malformed and drop out of any active section so
+            # subsequent lines are not appended to the previous fragment.
+            in_section = 0
+            slug = ""
         }
         next
     }

@@ -10,10 +10,6 @@ MARKERS_HELPER="$SCRIPT_DIR/anchor-section-markers.sh"
 [ -x "$HYDRATE_ANCHOR" ] || { echo "FAIL: $HYDRATE_ANCHOR not executable" >&2; exit 1; }
 [ -f "$MARKERS_HELPER" ] || { echo "FAIL: $MARKERS_HELPER missing" >&2; exit 1; }
 
-# shellcheck source=scripts/anchor-section-markers.sh
-# shellcheck disable=SC1091
-source "$MARKERS_HELPER"
-
 tmp_root="$(mktemp -d "${TMPDIR:-/tmp}/hydrate-anchor-test.XXXXXX")"
 cleanup() {
     chmod u+w "$tmp_root/session/session-id.md" "$tmp_root/.ssh/known_hosts.md" 2>/dev/null || true
@@ -135,6 +131,37 @@ chmod u+w "$session_tmp/session-id.md" "$tmp_root/.ssh/known_hosts.md"
 [ "$(cat "$tmp_root/.ssh/known_hosts.md")" = "known hosts canary" ] \
     || fail "../../ traversal canary was clobbered"
 pass "pre-existing traversal canaries remain unchanged"
+
+# Data-corruption regression: an invalid open marker that appears INSIDE an
+# already-open valid section must drop out of that section so subsequent
+# body lines are not appended to the legitimate fragment.
+session_corrupt="$tmp_root/session-corrupt"
+mkdir -p "$session_corrupt/anchor-hydrate"
+
+fixture_corrupt="$tmp_root/anchor-fixture-corrupt.md"
+cat > "$fixture_corrupt" <<'EOF'
+<!-- section:plan-goals-test -->
+legitimate plan line
+<!-- section:../../etc/passwd -->
+malicious content must not leak into plan-goals-test
+<!-- section-end:plan-goals-test -->
+<!-- section:code-review-tally -->
+legitimate tally line
+<!-- section-end:code-review-tally -->
+EOF
+
+expected_plan_clean="$tmp_root/expected-plan-clean.md"
+printf 'legitimate plan line\n' > "$expected_plan_clean"
+
+output_corrupt="$(
+    HYDRATE_ANCHOR_FIXTURE="$fixture_corrupt" \
+    PATH="$shim_dir:$PATH" \
+    "$HYDRATE_ANCHOR" --anchor-id 2 --tmpdir "$session_corrupt" --repo owner/repo
+)"
+
+assert_contains "HYDRATED=true" "$output_corrupt" "hydrate succeeds when a malicious open is nested inside a valid section"
+assert_file_equals "$expected_plan_clean" "$session_corrupt/anchor-sections/plan-goals-test.md" "nested malicious open does not leak content into the enclosing valid section"
+assert_file_equals "$expected_tally" "$session_corrupt/anchor-sections/code-review-tally.md" "later valid section still extracts after a malformed predecessor"
 
 echo
 echo "Results: $pass_count passed"
