@@ -167,6 +167,34 @@ else
     fail "helper double source should be idempotent"
 fi
 
+# 13. jq CMD_JSON serialization failure path: the EXIT trap must write the
+# real exit code (1) to <output>.done, not the pre-launch default sentinel
+# (99). Regression guard for the EXIT_CODE=1 line preceding `exit 1` on the
+# jq-failure branch in run-external-agent.sh.
+JQ_FAIL_OUT="$TMPDIR/jq-fail-output.txt"
+JQ_SHIM_DIR="$TMPDIR/jq-shim"
+mkdir -p "$JQ_SHIM_DIR"
+cat > "$JQ_SHIM_DIR/jq" <<'JQ_SHIM_EOF'
+#!/bin/sh
+echo "stub jq: forced failure" >&2
+exit 1
+JQ_SHIM_EOF
+chmod +x "$JQ_SHIM_DIR/jq"
+RUN_STDOUT="$TMPDIR/jq-fail.stdout"
+RUN_STDERR="$TMPDIR/jq-fail.stderr"
+set +e
+PATH="$JQ_SHIM_DIR:$PATH" "$WRAPPER" --tool codex --output "$JQ_FAIL_OUT" --timeout 5 -- bash -c 'printf should-not-run' >"$RUN_STDOUT" 2>"$RUN_STDERR"
+RUN_CODE=$?
+set -e
+assert_equals "jq-fail exit" "1" "$RUN_CODE"
+assert_grep "jq-fail stderr" "ERROR: jq failed to serialize argv to CMD_JSON" "$RUN_STDERR"
+assert_file_content "jq-fail done" "${JQ_FAIL_OUT}.done" "1"
+if [[ -e "${JQ_FAIL_OUT}.meta" ]]; then
+    fail "jq-fail no meta: ${JQ_FAIL_OUT}.meta should not exist on jq-failure path"
+else
+    pass
+fi
+
 if [[ "$FAIL" -ne 0 ]]; then
     printf 'FAIL: test-run-external-agent.sh - %s failed, %s passed\n' "$FAIL" "$PASS" >&2
     printf '  %s\n' "${FAIL_DETAILS[@]}" >&2

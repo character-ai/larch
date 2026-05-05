@@ -44,6 +44,7 @@ There is no backward compatibility with the old `CMD=` metadata line. A collecto
 
 - Always remove stale `<output>`, `<output>.done`, `<output>.meta`, and `<output>.diag` before launch.
 - Always write `<output>.done` via the exit trap.
+- The trap writes the value of `EXIT_CODE`, which defaults to `99` ("wrapper crashed before capturing real exit code"). Failure paths between trap installation and child launch (e.g. `CMD_JSON` serialization) must assign `EXIT_CODE` to the real exit value before calling `exit`, so the sentinel matches the process exit status; the `99` default is reserved for unhandled crashes.
 - Keep `set -euo pipefail`; child exit codes are captured via guarded `wait`.
 - Diagnostic text is appended to `<output>.diag` so stdout-only capture can retain child stderr.
 - `jq` is a hard prerequisite for this wrapper, in addition to the repo-wide `jq` dependency used by other larch scripts.
