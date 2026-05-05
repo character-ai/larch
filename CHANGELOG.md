@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.10.0] - 2026-05-04
+
+### Added
+
+- `/issue --blocked-by-issue N` — caller-supplied native-blocking edge for batch mode. When set, every newly created (non-DUPLICATE) batch item is recorded as `blocked_by` issue `N` using GitHub's Issue Dependencies REST API via `skills/issue/scripts/add-blocked-by.sh`. The flag is **caller-agnostic**: the policy meaning (e.g. "tracking issue") is the caller's. `N` must reference an OPEN issue (not a pull request) in the target repo at invocation time — verified by an open-issue precondition probe at the top of Step 4 (single `gh api` GET, single `jq @tsv` parse with tab-IFS, PR rejection, state check, title sanitization, runs in `--dry-run` too). The probe-cached `BLOCKED_BY_ISSUE_ID` is reused in Step 6 to skip per-edge id-lookups. Mutually exclusive with `--no-dedup`; rejected outside batch mode; non-positive integers rejected. Step 5 merges the policy edge alongside intra-batch deps with a narrow no-external-refs carve-out for the probe-validated value; Step-5-skip paths (`LIST_STATUS=failed`, allocator-fail, empty-CANDIDATES + N<2) are augmented at Step 6 so the policy edge still applies.
+- `/implement` Step 9a.1 forwards `--blocked-by-issue $ISSUE_NUMBER` to `/issue` only when `$ISSUE_NUMBER` is set, `deferred=false`, and `repo_unavailable=false`. In any degraded mode the flag is omitted and OOS issues file without the policy edge — preferable to bailing OOS filing. Inter-OOS dependencies among batch items continue to be emitted by `/issue`'s existing Phase 1/2 analysis, now persisted as native `blocked_by` POSTs.
+- `skills/issue/scripts/test-blocked-by-issue.sh` structural-grep harness pinning the new SKILL.md prose: `argument-hint` advertising, the three Validations rules, the Step 4-top probe (`gh api`, `pull_request != null`, `IFS=$'\t' read`, state check, title `tr -d '\t\n'`, dry-run inclusion), the Step 4 snapshot augmentation, the Step 5 merge paragraph, the Step 5 carve-out, the Step 6 Step-5-skip-path augmentation, and the cached `--blocker-id $BLOCKED_BY_ISSUE_ID` mention. Wired into `make lint` via `make test-blocked-by-issue` (`test-harnesses-3`). `scripts/test-implement-structure.sh` assertion 9d now also pins the `--blocked-by-issue` forwarding gate in `skills/implement/references/anchor-comment-template.md`.
+
 ## [15.9.1] - 2026-05-04
 
 ### Changed

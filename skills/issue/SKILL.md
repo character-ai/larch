@@ -1,7 +1,7 @@
 ---
 name: issue
 description: "Use when creating GitHub issues with LLM-based semantic duplicate detection plus always-on inter-issue blocker-dependency analysis. Single or batch mode. Flags: --go, --dry-run, --no-dedup, --title-prefix, --label."
-argument-hint: "[--input-file FILE] [--intra-batch-deps-file FILE] [--title-prefix PREFIX] [--label LABEL]... [--body-file FILE] [--dry-run] [--go] [--no-dedup] [--sentinel-file PATH] [<issue description or title>]"
+argument-hint: "[--input-file FILE] [--intra-batch-deps-file FILE] [--blocked-by-issue N] [--title-prefix PREFIX] [--label LABEL]... [--body-file FILE] [--dry-run] [--go] [--no-dedup] [--sentinel-file PATH] [<issue description or title>]"
 allowed-tools: Bash, Read, Write
 ---
 
@@ -41,6 +41,7 @@ Supported flags (all optional):
 - `--no-dedup` — skip the entire dedup + dependency analysis pipeline (Steps 4 and 5). Jump directly to Step 6 (Create) with all non-malformed items set to `VERDICT=CREATE` and no blocker edges. Useful for archival issues (e.g., `/research` reports) where each run produces genuinely different content and dedup is wasteful.
 - `--sentinel-file PATH` — absolute path at which Step 7 will write the post-success sentinel KV file (see `## Sentinel file (post-success)` below). The path must be absolute and must not contain `..`. When set, `SENTINEL_PATH_EXPLICIT=true` and the parent owns the sentinel's lifecycle (Step 9 does NOT remove it). When unset, `SENTINEL_PATH_EXPLICIT=false` and the helper writes to a child-local default `${TMPDIR:-/tmp}/larch-issue-$$.sentinel` that Step 9 cleans up itself (issue #509 plan review FINDING_3 fix). Save the resolved path as `SENTINEL_PATH`.
 - `--intra-batch-deps-file FILE` — optional. Path to a TSV file of caller-supplied high-confidence intra-batch dependency edges (one row per edge: `<blocker-1based>\t<blocked-1based>`, where each value is a 1-based batch item index). When supplied, Step 5 Phase 2 merges these edges into its `ITEM_<i>_BLOCKED_BY` output before validation — caller-supplied edges are treated as pre-validated high-confidence inputs that bypass LLM near-certainty thresholds but still pass through the full validation pipeline (snapshot membership, range check, DUPLICATE override, SCC cycle resolution). Parser-side limits: max 500 lines, max 64KB file size, strict grammar (`^[0-9]+\t[0-9]+$` per line); reject with `**ERROR: --intra-batch-deps-file: <reason>**` on violation. Only valid with `--input-file` (batch mode); rejected with usage error otherwise.
+- `--blocked-by-issue N` — optional, batch-mode only. Positive integer issue number in the target repo. When set, every newly created batch item is recorded as blocked by issue N using GitHub's native Issue Dependencies REST API via `add-blocked-by.sh`. The flag is caller-agnostic: the policy meaning (for example, "tracking issue") belongs to the caller; `/issue` only enforces that every newly created batch item is recorded as blocked by issue N. `N` must reference an OPEN issue, not a pull request, in the target repo at `/issue` invocation time. The probe runs at the top of Step 4 (see "Step 4.0 — Open-issue precondition probe"). Mutually exclusive with `--no-dedup`. Rejected outside batch mode.
 
 After flag stripping:
 - If `--input-file` is set, set `MODE=batch`. Save `INPUT_FILE`. If any trailing non-flag token remains, abort with `**ERROR: --input-file cannot be combined with a free-form description.**`
@@ -55,6 +56,9 @@ Validations:
 - `MODE=single` with `EXPLICIT_TITLE` set and empty `DESCRIPTION` (empty body file): abort with `**ERROR: --body-file content is empty.**`
 - `MODE=batch` + missing or empty `INPUT_FILE`: abort with `**ERROR: --input-file must point to a non-empty file.**`
 - `--no-dedup` + `--intra-batch-deps-file`: abort with `**ERROR: --no-dedup and --intra-batch-deps-file are mutually exclusive (--no-dedup skips Steps 4–5 where caller-supplied edges are merged).**`
+- `--no-dedup` + `--blocked-by-issue`: abort with `**ERROR: --no-dedup and --blocked-by-issue are mutually exclusive (--no-dedup skips Steps 4–5 where caller-supplied edges are merged).**`
+- `MODE=single` + `--blocked-by-issue`: abort with `**ERROR: --blocked-by-issue requires --input-file (batch mode); single-mode is not supported in this release.**`
+- `--blocked-by-issue` value not a positive integer: abort with `**ERROR: --blocked-by-issue must be a positive integer.**`
 
 ## Step 2 — Resolve Repository
 
@@ -119,9 +123,52 @@ ${CLAUDE_PLUGIN_ROOT}/skills/issue/scripts/list-issues.sh --repo "$REPO" --close
 
 Regression coverage for the title snapshot helper lives in `${CLAUDE_PLUGIN_ROOT}/skills/issue/scripts/test-list-issues.sh` (sibling contract: `${CLAUDE_PLUGIN_ROOT}/skills/issue/scripts/test-list-issues.md`; wired into `make lint` via the `test-list-issues` target). The harness pins the `DEDUP_SKIP_PREFIX_FILTER` behavior, both `JQ_FILTER` branches, PR filtering, closed-window cutoff handling, and TSV shaping.
 
-Parse for `LIST_STATUS`. If `LIST_STATUS=failed`, emit a stderr warning `**⚠ /issue: Phase 1 title snapshot failed; skipping dedup and dep-analysis, creating all items with no blocker edges.**` and jump to Step 6 (Create) — fail-open consistent with the existing dedup contract; dep-analysis cannot run without a candidate snapshot, so creating without dep edges is the safest default. (The /issue exit will still be non-zero only if `ISSUES_FAILED>0` from create or dep-link failures; missing dep analysis due to snapshot-fail is a degraded-warning state, not a hard fail.)
+Parse for `LIST_STATUS`. If `LIST_STATUS=failed` and `BLOCKED_BY_ISSUE` is empty, emit a stderr warning `**⚠ /issue: Phase 1 title snapshot failed; skipping dedup and dep-analysis, creating all items with no blocker edges.**` and jump to Step 6 (Create) — fail-open consistent with the existing dedup contract; dep-analysis cannot run without a candidate snapshot, so creating without dep edges is the safest default. (The /issue exit will still be non-zero only if `ISSUES_FAILED>0` from create or dep-link failures; missing dep analysis due to snapshot-fail is a degraded-warning state, not a hard fail.) If `LIST_STATUS=failed` and `BLOCKED_BY_ISSUE` is set, continue through the Step 4.0 probe below, then jump to Step 6 with `STEP5_SKIPPED_REASON=list-status-failed` so the validated policy edge can still be applied.
+
+### Step 4.0 — Open-issue precondition probe
+
+When `BLOCKED_BY_ISSUE` is non-empty, probe the target issue before Tier-1 reasoning. This probe also runs in `--dry-run`; it is a read-only GET, and dry-run output must include only edges whose caller-supplied blocker passed the same validation as a real run. The probe uses one JSON fetch, one local `jq` parse, rejects pull requests, rejects non-open issues, categorizes missing issues separately, and sanitizes captured stderr before surfacing it:
+
+```bash
+PROBE_OUT=$(mktemp)
+PROBE_ERR=$(mktemp)
+REDACT_HELPER="${CLAUDE_PLUGIN_ROOT}/scripts/redact-secrets.sh"
+trap 'rm -f "$PROBE_OUT" "$PROBE_ERR"' EXIT
+
+if ! gh api "/repos/$REPO/issues/$BLOCKED_BY_ISSUE" >"$PROBE_OUT" 2>"$PROBE_ERR"; then
+  ERR=$(cat "$PROBE_ERR" | "$REDACT_HELPER" 2>/dev/null || cat "$PROBE_ERR")
+  if echo "$ERR" | grep -qiE 'HTTP 404|status 404|404 Not Found|Not Found'; then
+    echo "**ERROR: --blocked-by-issue $BLOCKED_BY_ISSUE not found in $REPO (404).**" >&2
+  else
+    echo "**ERROR: --blocked-by-issue probe failed for #$BLOCKED_BY_ISSUE: $ERR**" >&2
+  fi
+  exit 1
+fi
+
+# Parse all required fields in one jq pass.
+IFS=$'\t' read -r BLOCKED_BY_ISSUE_STATE BLOCKED_BY_ISSUE_ID BLOCKED_BY_ISSUE_TITLE BLOCKED_BY_ISSUE_URL BLOCKED_BY_ISSUE_IS_PR < <(
+  jq -r '[.state, (.id|tostring), .title, .html_url, ((.pull_request != null)|tostring)] | @tsv' "$PROBE_OUT"
+)
+
+if [[ "$BLOCKED_BY_ISSUE_IS_PR" == "true" ]]; then
+  echo "**ERROR: --blocked-by-issue $BLOCKED_BY_ISSUE refers to a pull request, not an issue.**" >&2
+  exit 1
+fi
+
+if [[ "$BLOCKED_BY_ISSUE_STATE" != "open" ]]; then
+  echo "**ERROR: --blocked-by-issue $BLOCKED_BY_ISSUE is not OPEN in $REPO (state=$BLOCKED_BY_ISSUE_STATE).**" >&2
+  exit 1
+fi
+
+# Sanitize title to mirror list-issues.sh TSV-row hygiene.
+BLOCKED_BY_ISSUE_TITLE=$(printf '%s' "$BLOCKED_BY_ISSUE_TITLE" | tr -d '\t\n')
+```
+
+No `ISSUES_*` counters are emitted on the abort paths above; use stderr `**ERROR: ...**` plus non-zero exit, consistent with existing `/issue` usage-error paths. Reuse `BLOCKED_BY_ISSUE_ID` in Step 6 when applying the policy edge so `add-blocked-by.sh` can skip its per-edge blocker id lookup. If the probe succeeded only after a prior `LIST_STATUS=failed`, emit the Phase 1 snapshot warning, set `STEP5_SKIPPED_REASON=list-status-failed`, and jump to Step 6; there is still no candidate snapshot for dedup or LLM dep-analysis.
 
 If `LIST_STATUS=ok`, the remaining stdout is TSV rows: `<number>\t<title>\t<state>\t<url>`. Load this into a snapshot set.
+
+When `BLOCKED_BY_ISSUE` is set and the Phase 1 snapshot does not already include the row for that issue (for example, dropped by the 500-row Tier-1 cap, though `list-issues.sh` itself loads the full TSV), inject a synthetic open-state row built from the precondition-probe metadata. The injected row uses the sanitized title and the html_url from the probe, with state=`open`. This guarantees Step 5 validation step 2 ("Dep-edge snapshot membership") admits the merged policy edge.
 
 **Tier 1 reasoning (LLM — done in this prompt, mandatory):** count the open-state rows in the snapshot. If more than 500 open rows, retain only the 500 most-recent (highest-numbered open issues) and emit a single stderr warning `**⚠ /issue: dep-triage capped at 500 most-recent open titles; <N> older issues skipped — manual review may be needed.**` (closed-state rows are not subject to this cap — they participate only in dup-candidacy and the cap exists to bound the dep-triage prompt size).
 
@@ -188,6 +235,8 @@ Note on Phase 2 fetch drops: the per-item floor guarantees a candidate **enters*
 
 The Step 4E/Step 5 gating logic and intra-batch dependency decoupling are pinned by `${CLAUDE_PLUGIN_ROOT}/skills/issue/scripts/test-intra-batch-deps.sh` (sibling contract: `${CLAUDE_PLUGIN_ROOT}/skills/issue/scripts/test-intra-batch-deps.md`; wired into `make lint` via the `test-intra-batch-deps` target — same pattern as `test-body-file-title`). The harness asserts presence of the `N_NON_MALFORMED >= 2` gate, conditional fetch skip, empty-CANDIDATES verdict guidance, no-external-refs validation rule, FETCH_STATUS scope narrowing, and absence of the old unconditional short-circuit clause.
 
+The `--blocked-by-issue` flag surface, Step 4 probe, Step 5 merge/carve-out, and Step 6 cached-id application path are pinned by `${CLAUDE_PLUGIN_ROOT}/skills/issue/scripts/test-blocked-by-issue.sh` (sibling contract: `${CLAUDE_PLUGIN_ROOT}/skills/issue/scripts/test-blocked-by-issue.md`; wired into `make lint` via the `test-blocked-by-issue` target).
+
 ## Step 5 — Phase 2: Body+Comments Semantic Filter
 
 Only run this step if `CANDIDATES` is non-empty OR `N_NON_MALFORMED >= 2`.
@@ -249,7 +298,11 @@ For each non-malformed new item, emit exactly one verdict line plus zero or more
 
 **Validation rule — no-external-refs on empty-CANDIDATES path**: when `CANDIDATES` is empty, any numeric (non-`ITEM_<j>`) entry in `DUPLICATE_OF`, `BLOCKED_BY`, or `BLOCKS` is invalid — the external corpus was not fetched, so numeric references cannot be validated against fetched content. Override `DUPLICATE_OF=<N>` to `VERDICT=CREATE`; drop numeric `BLOCKED_BY=<N>` and `BLOCKS=<N>` entries silently with `**⚠ /issue: dropping external dep-edge on empty-CANDIDATES path: ITEM_<i>_<field>=<N>.**`
 
+**Carve-out for --blocked-by-issue**: when `BLOCKED_BY_ISSUE` is set, the numeric value equal to `BLOCKED_BY_ISSUE` is exempt from this drop. The exemption is justified because the Step 4-top probe directly validated `BLOCKED_BY_ISSUE` against the live GitHub API (open state, not a pull request, in the target repo); the empty-CANDIDATES no-external-refs rule exists because LLM-emitted numerics cannot be validated without a fetched corpus, but a probe-validated caller-supplied numeric does not have that problem. All other LLM-emitted numeric `BLOCKED_BY` / `BLOCKS` entries are still dropped per the existing rule.
+
 **Caller-supplied intra-batch deps merge** (when `--intra-batch-deps-file` was provided): before running validation, merge the caller-supplied edges into the LLM-emitted `ITEM_<i>_BLOCKED_BY` lists. For each row `<blocker>\t<blocked>` in the file, append `ITEM_<blocker>` to `ITEM_<blocked>_BLOCKED_BY` if not already present (union semantics — LLM edges and caller edges are combined, not replaced). The merged set then passes through the full validation pipeline (steps 1-6 above). Caller-supplied edges that the LLM independently discovered are deduplicated by the union; caller-supplied edges that would create cycles are broken by the SCC pass; caller-supplied edges targeting DUPLICATE items are collapsed by the DUPLICATE override pass. This merge runs after LLM emission and before validation step 1, so all edges — LLM-originated and caller-supplied — receive identical treatment.
+
+**Caller-supplied --blocked-by-issue merge** (when `--blocked-by-issue` was provided): before validation step 1, append `BLOCKED_BY_ISSUE` (the numeric value, e.g. `1234`) to every non-malformed item's `ITEM_<i>_BLOCKED_BY` list, except items whose verdict is `DUPLICATE` (already excluded by the existing DUPLICATE override pass; explicit pre-skip avoids a benign-but-confusing "edge proposed then dropped" stderr line). Union semantics — entries the LLM independently emitted are deduplicated. The merged edge then passes through the full validation pipeline (steps 1-6) along with all other edges. Order: caller-supplied intra-batch deps merge → caller-supplied `--blocked-by-issue` merge → validation.
 
 **Conservatism**: only mark DUPLICATE when near-certain; ambiguous matches tie-break toward CREATE. Same conservatism applies to dep edges — only emit `BLOCKED_BY` / `BLOCKS` when the link is strongly supported by description content (same files, same module surface, explicit "this requires" / "depends on" prose). False negatives (no edge) are preferable to false positives (wrong edge), since blocker links are visible to operators.
 
@@ -274,6 +327,8 @@ Run Kahn's algorithm conceptually: process nodes whose unfulfilled-prerequisite 
 **Live-monitoring UX**: emit a stderr breadcrumb in **input order** (`▶ /issue: creating item <i>/<ITEMS_TOTAL> (topo position <k>)…`) so operators see file-order narrative; machine stdout stays index-keyed.
 
 **Stdout ordering note** (issue #546 plan-review FINDING_11): per-item machine lines (`ISSUE_<i>_*`) are keyed by the original input index `i`. They may appear in topological create order rather than input file order. Consumers parse by key match, not stream position.
+
+**Step-5-skip-path policy-edge augmentation** (issue: round-1 native-blocking PR): when `BLOCKED_BY_ISSUE` is set AND Step 5 was skipped (paths: `LIST_STATUS=failed`, allocator failure, empty-CANDIDATES + `N_NON_MALFORMED < 2`), augment every CREATE-verdicted, non-DUPLICATE item's `ITEM_<i>_BLOCKED_BY` with `BLOCKED_BY_ISSUE` immediately before the per-item iteration begins. No additional validation runs; the probe at Step 4-top already authorized the edge. Emit a stderr breadcrumb: `**ℹ /issue: --blocked-by-issue #$BLOCKED_BY_ISSUE applied directly in Step 6 (Step 5 skipped: <reason>).**` where `<reason>` is one of `list-status-failed`, `allocator-failed`, `empty-candidates-single-item`. The existing `add-blocked-by.sh` invocation in Step 6 then handles the edge identically to any other `BLOCKED_BY` entry (numeric path, with cached `--blocker-id $BLOCKED_BY_ISSUE_ID`).
 
 Iterate over `order[0..ITEMS_TOTAL-1]` (each iteration's value is one original index; substitute that as `<i>` in the per-item logic below):
 
@@ -331,8 +386,9 @@ Iterate over `order[0..ITEMS_TOTAL-1]` (each iteration's value is one original i
     - `ISSUE_<i>_TITLE=<final-title>` — taken directly from `ISSUE_TITLE=…` in create-one.sh's output, which applies the `--title-prefix` with `[OOS]` double-prefix normalization. Do not reimplement title-prefix logic in prompt text.
     - Increment `ISSUES_CREATED`. Append the created issue to an in-memory snapshot so later intra-run dedup iterations can also reference it if the LLM Phase 2 missed an equivalence.
 
-    **Apply blocker dependencies (issue #546)** — runs immediately after a successful create, BEFORE the GO comment. For each entry in `ITEM_<i>_BLOCKED_BY=` (post-validation list from Step 5), invoke `add-blocked-by.sh`:
+    **Apply blocker dependencies (issue #546)** — runs immediately after a successful create, BEFORE the GO comment. For each entry in `ITEM_<i>_BLOCKED_BY=` (post-validation list from Step 5, or Step-5-skip-path augmentation when applicable), invoke `add-blocked-by.sh`:
       - If the entry is `<M>` (existing OPEN issue from snapshot): `add-blocked-by.sh --client-issue $N --blocker-issue $M --repo "$REPO"`. The helper resolves `M → id` via one extra `gh api` lookup.
+      - If the entry equals `BLOCKED_BY_ISSUE`: `add-blocked-by.sh --client-issue $N --blocker-issue $BLOCKED_BY_ISSUE --blocker-id $BLOCKED_BY_ISSUE_ID --repo "$REPO"`. The cached id from the Step 4.0 probe avoids the helper's blocker lookup.
       - If the entry is `ITEM_<j>` (batch sibling): `add-blocked-by.sh --client-issue $N --blocker-issue ${ISSUE_<j>_NUMBER} --blocker-id ${ISSUE_<j>_ID} --repo "$REPO"`. The cached `ISSUE_<j>_ID` (from create-one.sh's prior output for `j`) avoids the lookup. Topological order guarantees `j` was processed before `i` for any `BLOCKED_BY=ITEM_<j>` edge, so `ISSUE_<j>_ID` is always set at this point.
 
     Parse the helper's output:
@@ -379,6 +435,7 @@ For `DUPLICATE` outcomes (both `DUPLICATE_OF=<N>` and `DUPLICATE_OF_ITEM=<j>` br
 - **Direction**: an edge `i blocked-by j` means "item j must land before item i" — the blocker relationship is recorded on the dependent (client = `i`) issue's body via GitHub's native blocker UI.
 - **Detection** (Step 4–5): Tier 1 of Phase 1 emits dep-candidate flags per open snapshot row; Phase 2 emits `ITEM_<i>_BLOCKED_BY=<list>` and `ITEM_<i>_BLOCKS=<list>` for each surviving non-duplicate item, with conservative ("near-certain") thresholds.
 - **Validation** (Step 5b): snapshot membership (open-only for deps), intra-batch range, DUPLICATE override + chain-collapse, SCC-based cycle resolution, DUPLICATE_OF_ITEM as topological prerequisite.
+- **Caller-supplied inputs**: `--intra-batch-deps-file` can inject pre-validated sibling edges into Phase 2, and `--blocked-by-issue` can inject a probe-validated existing open issue number as a policy blocker for every newly created batch item. Both inputs feed the same Step 5 validation and Step 6 application machinery as LLM-emitted edges.
 - **Application** (Step 6): each edge is POSTed via `add-blocked-by.sh` after the create succeeds and BEFORE the GO comment. Retry contract: 3 attempts with 10s/30s pre-retry sleeps; idempotent on 422-with-pinned-message ("already exists" / "already tracked" / "already added" / "duplicate dependency"); 404 on the dependencies sub-resource → immediate fail (feature-unavailable on this host).
 - **Failure recovery** (Step 6): on retry exhaustion for any edge of item `i`, `cleanup-failed-issue.sh` closes the just-created orphan, `ISSUE_<i>_FAILED=true` is emitted, and **transitive descendants** are marked `ISSUE_<d>_FAILED=true ERROR=transitive-failure` and skipped from creation. Per-item rollback; the run continues with non-failed topological nodes. Final exit non-zero iff `ISSUES_FAILED>0`.
 - **GO timing**: when `--go` is set, GO is posted on issue `i` ONLY after all of `i`'s blocker edges have been applied. An issue may briefly exist on GitHub without a GO comment during /issue's dep-wiring (typically <1s; up to ~40s if both retry sleeps fire). `/fix-issue` will not pick up such an issue until /issue completes the GO post. See `skills/fix-issue/SKILL.md` for the receiving side of this contract.
