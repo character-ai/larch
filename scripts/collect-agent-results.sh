@@ -278,7 +278,9 @@ for i in "${!OUTPUT_FILES[@]}"; do
             FAILURE_REASON=$(build_failure_reason "$OUTPUT" "$STATUS" "$EXIT_CODE")
             # Queue for retry if .meta exists
             if [[ -f "$META" ]]; then
-                # Parse META_TIMEOUT for retry wait calculation
+                # .meta is one KEY=VALUE record per line. This parser relies on
+                # run-external-agent.sh's writer-side field contract to keep
+                # values line-oriented; only META_TIMEOUT is needed here.
                 ORIG_TIMEOUT=""
                 while IFS= read -r meta_line || [[ -n "$meta_line" ]]; do
                     meta_key="${meta_line%%=*}"
@@ -326,7 +328,9 @@ if [[ ${#RETRY_FILES[@]} -gt 0 ]]; then
             MAX_RETRY_TIMEOUT=$RETRY_WAIT
         fi
 
-        # Parse .meta file (full parse for retry command reconstruction)
+        # Parse .meta file (full parse for retry command reconstruction). The
+        # line-oriented grammar and field safety guarantees are owned by
+        # run-external-agent.sh's .meta writer contract.
         META_TOOL=""
         META_TIMEOUT=""
         META_CAPTURE=""
