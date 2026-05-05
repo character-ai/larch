@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.9.0] - 2026-05-04
+
+### Added
+
+- `/implement --coder=gemini` — Gemini implementer launcher (`scripts/launch-gemini-implement.sh`) and agent file (`agents/gemini-implementer.md`) paralleling the Codex/Cursor scaffolding. `skills/implement/scripts/step2-implement.sh` accepts `gemini` in its `--coder` enum, takes a new `--gemini-healthy true|false` flag, and falls back to `claude_fallback` (main-agent edit path) when Gemini is unhealthy or unavailable — symmetric with the Cursor fallback. Generalized HEAD-baseline guard via a per-tool `REQUIRES_HEAD_UNCHANGED` capability set: Gemini emits `gemini-modified-history` on bail; Cursor's emitted token remains `cursor-modified-history` (byte-identical to current main); Codex (sandboxed) does not set the capability. Full session-env parity: `scripts/check-reviewers.sh --include-gemini` populates `GEMINI_AVAILABLE` / `GEMINI_HEALTHY`; `scripts/session-setup.sh --check-gemini-reviewer` opt-in keeps the probe scoped to `/implement` only (`/design`, `/review`, `/research` unaffected); `scripts/write-session-env.sh --gemini-healthy` persists the value; `/fix-issue` Step 1 forwards it. Implementer launches resolve `--model` from `LARCH_GEMINI_MODEL` → `CLAUDE_PLUGIN_OPTION_GEMINI_MODEL` → `gemini-2.5-pro` (matching the reviewer-side default). Includes `skills/implement/scripts/test-gemini-implementer.sh` regression harness (8 assertions), wired into `make test-harnesses-2`, plus extensions to `test-step2-dispatch.sh` (now 37 assertions) and `test-implement-structure.sh` assertion (24) for Cursor/Gemini shared-guardrails parity (modulo per-tool token substitution). `SECURITY.md` documents the new unsandboxed implementer alongside Cursor. Auto-selection (no `--coder` flag) remains byte-identical to current main; Gemini is opt-in only. Closes #1080.
+
 ## [15.8.4] - 2026-05-04
 
 ### Changed
