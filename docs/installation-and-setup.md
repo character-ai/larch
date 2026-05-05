@@ -101,6 +101,45 @@ claude plugin install larch@larch-local
 
 > **Note — larch overrides the cli-config.json model for its own Cursor invocations.**
 
+### Gemini
+- Install Gemini CLI with Homebrew or npm:
+```bash
+brew install gemini-cli
+# or
+npm install -g @google/gemini-cli
+```
+- Authenticate with OAuth:
+```bash
+gemini auth login
+```
+- Add/edit `~/.gemini/settings.json` with your authentication mode and preferred model. For Gemini 3 preview work, use a model name such as:
+```JSON
+{
+  "auth": {
+    "type": "oauth"
+  },
+  "model": {
+    "name": "gemini-3-pro-preview"
+  }
+}
+```
+- Add every repo you want Gemini to access to `~/.gemini/trustedFolders.json` using case-correct absolute paths:
+```JSON
+{
+  "trustedFolders": [
+    "/Users/<your-user-name>/path/to/repo"
+  ]
+}
+```
+- `trustedFolders.json` path matching is case-sensitive even on case-insensitive macOS filesystems. If the path case differs from the real checkout path, headless `gemini -p` runs can hang silently behind a trust prompt.
+- Gemini CLI 0.40.x does not look up `rg` on `PATH`; it only checks for a bundled binary at `<gemini-pkg>/bundle/vendor/ripgrep/rg-<platform>-<arch>`, which Homebrew/npm installs may omit. Install ripgrep first (`brew install ripgrep`) so `which rg` resolves, then on Apple Silicon macOS create the missing bundled path as a symlink:
+```bash
+mkdir -p <gemini-pkg>/bundle/vendor/ripgrep
+ln -sf "$(which rg)" <gemini-pkg>/bundle/vendor/ripgrep/rg-darwin-arm64
+```
+  Re-run the symlink command after each `brew upgrade gemini-cli`.
+- Free-tier accounts can hit hard `MODEL_CAPACITY_EXHAUSTED` 429s on `gemini-3-*-preview` models when used from the Gemini CLI. Google AI Pro may raise available capacity; Google AI Ultra unblocks these preview-model capacity failures.
+
 ## What the plugin provides
 
 | Component | Description |
