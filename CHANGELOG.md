@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.13] - 2026-05-05
+
+### Changed
+
+- Replace the literal "Fifty-two assertions, fail-fast on first miss." line in `skills/umbrella/scripts/test-umbrella-emit-output-contract.md` with a structural description ("All `assert_contains` calls fail-fast on first miss; the total grows as new pinned literals are added.") so the doc cannot silently disagree with the harness's actual `assert_contains` total as new pinned literals (e.g. the recent `k*` family) are added. Documentation-only edit; no harness or CI behavior change. Closes #1215.
+
 ## [15.12.12] - 2026-05-05
 
 ### Changed
