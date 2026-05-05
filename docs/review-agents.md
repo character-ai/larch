@@ -53,7 +53,7 @@ Larch uses a single unified Claude reviewer archetype — **Code Reviewer** — 
 
 **Quality gate**: Applied uniformly to every finding — both In-Scope and Out-of-Scope. For each finding, verify: (a) the concern is justified by the stated goal or a concrete current need; (b) the proposed change or action is proportionate (it does not introduce more complexity than the issue warrants); (c) the finding carries concrete evidence appropriate to what is being reviewed (a `file:line` reference for code review, a specific anchor such as a plan section heading or quoted claim for plan/validation review). Out-of-Scope observations must additionally cite a concrete failure mode or breakage path — pure architectural preference is rejected. See `skills/shared/reviewer-templates.md` for the canonical gate definition.
 
-**Model**: Sonnet (default); effort inherits from session. The Claude subagent is deliberately not bumped to opus/max; max reasoning effort is applied only to the external Codex reviewer via `codex_effort` plugin userConfig / `LARCH_CODEX_EFFORT` env var (default `high`). Gemini code-review lanes use the Gemini CLI `pro` model alias through `launch-gemini-review.sh`.
+**Model**: Sonnet (default); effort inherits from session. The Claude subagent is deliberately not bumped to opus/max; max reasoning effort is applied only to the external Codex reviewer via `codex_effort` plugin userConfig / `LARCH_CODEX_EFFORT` env var (default `high`). Gemini code-review lanes use the model resolved by `launch-gemini-review.sh` from `LARCH_GEMINI_MODEL` then `CLAUDE_PLUGIN_OPTION_GEMINI_MODEL` (plugin `gemini_model` userConfig), defaulting to `gemini-2.5-pro`.
 
 ## External reviewer trust boundary (skills using Cursor / Codex against `$PWD`)
 
