@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.11.18] - 2026-05-05
+
+### Changed
+
+- Document Gemini optional integration semantics alongside Codex and Cursor in `docs/installation-and-setup.md`'s "Optional integrations" subsection (closes #1169). Also rewords the section lead-in away from the universal "Claude replacement agents fill in automatically" framing — accurate for Codex/Cursor only — to "Fallback behavior varies by tool — see each bullet below," reflecting that Gemini is additive (skipped when unavailable) and Slack silently skips per its own bullet's contract.
+
 ## [15.11.16] - 2026-05-05
 
 ### Changed
