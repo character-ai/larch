@@ -9,6 +9,7 @@ Regression harness for `scripts/run-external-agent.sh`; the primary behavioral c
 - Verifies safe nested paths and dot/dash/underscore path components are accepted.
 - Verifies empty `--output` is rejected by wrapper argv validation.
 - Verifies `scripts/lib-validate-meta-path.sh` is sourced-only, non-executable, silent when sourced, and idempotent when sourced twice.
+- Verifies the `jq` `CMD_JSON` serialization-failure path: with a `PATH`-prefixed stub `jq` that exits non-zero, the wrapper exits `1`, stderr contains `ERROR: jq failed to serialize argv to CMD_JSON`, `<output>.done` records `1` (not the pre-launch default `99`), and `<output>.meta` is not written. Pins the `EXIT_CODE=1` assignment that synchronizes the trap-written sentinel with the real exit status on this branch.
 
 ## Wiring
 
