@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.10.5] - 2026-05-05
+
+### Changed
+
+- Document the strict clean-main entry contract for `/implement` and standalone `/design` in `docs/installation-and-setup.md`. The new section covers the four parts of the contract: (a) clean `main` is required by default — preflight asserts on-main + clean working tree + fetch + rebase before any side effects; (b) running on a `<USER_PREFIX>/*` branch is the explicit continuation opt-in; (c) `--issue <N>` adopts identity but does not waive the gate; (d) the normalized `PREFLIGHT_ERROR=...` failure message and three remediation paths (clean main, prefix-branch continuation, commit-or-stash). README's Setup TOC links to the new section.
+
 ## [15.10.3] - 2026-05-04
 
 ### Changed
