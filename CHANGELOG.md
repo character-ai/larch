@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.4] - 2026-05-05
+
+### Changed
+
+- Align two umbrella skill test artifacts under `skills/umbrella/scripts/` with current contracts. `test-umbrella-parse-args.md`'s Purpose paragraph now lists `PIECES_JSON` in the documented stdout-grammar key set (between `UMBRELLA_SUMMARY_FILE` and `BLOCKED_BY_ISSUE`, matching `parse-args.md`'s order) and drops the now-stale "intentionally leaves the pre-existing `PIECES_JSON` list drift to the separate OOS PR" sentence. `test-umbrella-emit-output-contract.sh` gains a `k5` assertion in the `(k*)` family pinning the literal `--blocked-by-issue $BLOCKED_BY_ISSUE` forwarding inside the awk-extracted Step 3B.2 block — defense-in-depth complementary to `test-umbrella-blocked-by-issue.sh`'s dedicated needles. The sibling `.md` documents the new assertion (51 → 52). Closes #1201 (combines OOS observations #1191 and #1192).
+
 ## [15.12.3] - 2026-05-05
 
 ### Removed
