@@ -6,10 +6,14 @@
 # minute, and kills after a configurable timeout (e.g., 30 minutes for
 # reviews/implementation, 20 minutes for votes/sketches).
 #
-# The --tool value is used only for log messages and the .meta TOOL= field.
-# No validation is performed here by design (see issue #1099 / DECISION_1):
-# the wrapper accepts any string label so out-of-tree callers can pass
-# arbitrary provenance tags without importing the registry. The canonical
+# The --tool value is used as-is for log messages. For the .meta TOOL= field
+# it is sanitized for line-oriented parsing (ASCII control characters stripped,
+# `=` replaced with `_`) so unusual labels cannot corrupt downstream metadata
+# parsers. If sanitization yields an empty string, the .meta field falls back
+# to `unknown` so retry logic in collect-agent-results.sh stays functional.
+# No registry validation is performed here by design (see issue #1099 /
+# DECISION_1): the wrapper accepts any string label so out-of-tree callers can
+# pass arbitrary provenance tags without importing the registry. The canonical
 # external-tool name set is owned by scripts/external-tool-registry.sh; see
 # scripts/external-tool-registry.md for the registry contract.
 #
@@ -109,7 +113,14 @@ trap 'echo "$EXIT_CODE" > "${OUTPUT_FILE}.done" 2>/dev/null || true' EXIT
 
 # Write metadata for collect-agent-results.sh retry support.
 # CMD is shell-quoted via printf '%q' to preserve argument boundaries.
-META_TOOL_NAME=$(printf '%s' "$TOOL_NAME" | LC_ALL=C tr -d '[:cntrl:]=')
+# Sanitize TOOL_NAME for the line-oriented .meta sidecar:
+#   - strip ASCII control chars (newlines, etc.) — would split the value across lines
+#   - translate `=` to `_` — preserve distinguishability without collapsing labels
+#     into canonical tool ids (e.g. `c=u=r=s=o=r` -> `c_u_r_s_o_r`, not `cursor`)
+# If the result is empty, fall back to `unknown` so collect-agent-results.sh's
+# retry path (which skips on empty META_TOOL) stays functional.
+META_TOOL_NAME=$(printf '%s' "$TOOL_NAME" | LC_ALL=C tr -d '[:cntrl:]' | LC_ALL=C tr '=' '_')
+[[ -z "$META_TOOL_NAME" ]] && META_TOOL_NAME="unknown"
 {
     echo "TOOL=$META_TOOL_NAME"
     echo "TIMEOUT=$TIMEOUT_SECONDS"

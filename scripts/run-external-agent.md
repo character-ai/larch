@@ -6,7 +6,7 @@ Monitored wrapper for external agents. It launches a command, writes `<output>.m
 
 `--tool` is intentionally permissive: it is used only for log messages and the `.meta` `TOOL=` field. The canonical external-tool name set lives in `scripts/external-tool-registry.sh`; callers SHOULD pass a registered name, but this wrapper does not enforce it so out-of-tree callers can pass arbitrary provenance tags.
 
-Before writing `.meta`, the wrapper strips ASCII control characters and `=` from the `TOOL=` value so unusual labels cannot corrupt line-oriented metadata parsing. The original `--tool` value is still preserved for human-readable progress and diagnostics.
+Before writing `.meta`, the wrapper sanitizes the `TOOL=` value: ASCII control characters are stripped and `=` is translated to `_`, so unusual labels cannot corrupt line-oriented metadata parsing or collapse into canonical tool ids consumed by `collect-agent-results.sh::derive_tool()` (e.g. `c=u=r=s=o=r` would otherwise become `cursor`). If sanitization yields an empty string, the `.meta` field falls back to `unknown` so the retry path (which skips when `META_TOOL` is empty) stays functional. The original `--tool` value is still preserved for human-readable progress and diagnostics.
 
 This script is listed as the "Related (label-only consumer, NOT sourced)" entry in `scripts/external-tool-registry.md`, not as a `Sourced by` consumer.
 
