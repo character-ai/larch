@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.9.0] - 2026-05-04
+
+### Added
+
+- Add `gemini` as a third valid `--coder` value for `/implement` (and aliases that forward `--coder`). Adds `scripts/launch-gemini-implement.sh` paralleling the Codex/Cursor launchers (with sibling `scripts/launch-gemini-implement.md` contract), a new `agents/gemini-implementer.md` system prompt that emits the same structured manifest (`manifest.commit_message` drives the commit, same contract as Codex/Cursor — see `skills/implement/references/codex-manifest-schema.md`), and dispatcher wiring in `skills/implement/scripts/step2-implement.sh`: when `coder=gemini`, spawn the Gemini implementer; when Gemini is unhealthy or unavailable, fall back to claude (symmetric with Cursor's `STATUS=claude_fallback` path). Auto-selection rules when `--coder` is unset are unchanged — Gemini is never auto-preferred. Out of scope: reviewer-panel wiring (tracked in the sibling reviewer issue under umbrella #1081). Closes #1080.
+
 ## [15.8.1] - 2026-05-04
 
 ### Changed
