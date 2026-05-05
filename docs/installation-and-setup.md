@@ -66,7 +66,7 @@ claude plugin install larch@larch-local
 - Add/edit the following in `~/.claude/settings.json` (remember to replace `<your-API-key>` with actual value):
 ```JSON
   "env": {
-    "CLAUDE_CODE_EFFORT_LEVEL": "medium"
+    "CLAUDE_CODE_EFFORT_LEVEL": "high"
   },
   "model": "claude-opus-4-7[1m]",
 ```
