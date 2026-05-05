@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.10.3] - 2026-05-04
+
+### Changed
+
+- Speed up CI test-harness shards by parameterizing the wrapper / lock poll cadences. Adds `RUN_EXTERNAL_AGENT_POLL_INTERVAL` (default `10`) to `scripts/run-external-agent.sh`, `WAIT_FOR_REVIEWERS_POLL_INTERVAL` (default `5`) to `scripts/wait-for-reviewers.sh`, and `ISSUE_LIFECYCLE_LOCK_SETTLE_SECONDS` (default `1`) to `skills/fix-issue/scripts/issue-lifecycle.sh`. Production callers inherit the prior hard-coded sleeps unchanged; offline test harnesses (`test-cursor-implementer`, `test-gemini-implementer`, `test-launch-gemini-review`, `test-check-reviewers`, `test-find-lock-issue`) export sub-second values to avoid paying multi-second sleeps per stub invocation. Per-elapsed-minute progress lines in both wrappers now key off `$SECONDS / 60` instead of iteration count, so the cadence stays minute-based regardless of poll interval. The CI matrix shrinks from six shards to five (`test-harnesses-1` through `test-harnesses-5`) after merging the previously slowest cells; `make test-harnesses`, `.github/workflows/ci.yaml`, `scripts/test-harness-shards-coverage.sh`, and `docs/linting.md` are updated together. Coverage is preserved end-to-end — every prior assertion still runs, only the inert wait time was eliminated.
+
 ## [15.10.2] - 2026-05-04
 
 ### Added
