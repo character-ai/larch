@@ -50,6 +50,18 @@ grep -q '^1$' "${ERROR_OUTPUT}.done" \
 [[ -s "${ERROR_OUTPUT}.diag" ]] \
   || fail "Expected diagnostic on Gemini .error"
 
+EMPTY_OUTPUT="$TMPDIR/gemini-empty.txt"
+PATH="$STUB_BIN:$PATH" GEMINI_STUB_MODE=empty \
+  "$REPO_ROOT/scripts/launch-gemini-review.sh" --output "$EMPTY_OUTPUT" --timeout 1800 --prompt "test"
+[[ ! -s "$EMPTY_OUTPUT" ]] \
+  || fail "Expected empty main output when Gemini .response is empty"
+grep -q '^1$' "${EMPTY_OUTPUT}.done" \
+  || fail "Expected non-zero .done when .response is empty"
+[[ -s "${EMPTY_OUTPUT}.diag" ]] \
+  || fail "Expected diagnostic on empty .response"
+grep -q -i 'empty' "${EMPTY_OUTPUT}.diag" \
+  || fail "Expected diag to mention empty response"
+
 MISSING_JQ_OUTPUT="$TMPDIR/gemini-missing-jq.txt"
 PATH="$STUB_BIN:$PATH" LARCH_TEST_FORCE_MISSING_JQ=true \
   "$REPO_ROOT/scripts/launch-gemini-review.sh" --output "$MISSING_JQ_OUTPUT" --timeout 1800 --prompt "test"

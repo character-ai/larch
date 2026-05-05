@@ -191,26 +191,49 @@ is_timed_out() {
     echo "$TIMED_OUT_SENTINELS" | grep -qxF "$needle"
 }
 
+# --- Helper: sanitize a failure-reason string for embedding in pipe-delimited
+# RESULTS records. RESULTS entries use `|` as field delimiter and are later
+# emitted as KEY=value lines via `tr '|' '\n'`. Multi-line .diag content
+# (notably from Gemini's stderr-on-failure path) would inject phantom lines
+# after `FAILURE_REASON=...` and corrupt downstream parsers. Replace pipes,
+# newlines, and CRs with single spaces; collapse whitespace runs; truncate
+# at 500 chars to bound size. ---
+sanitize_failure_reason() {
+    local s="$1"
+    # tr handles bytes; awk collapses whitespace runs
+    printf '%s' "$s" | tr '|\n\r' '   ' | awk '{
+        gsub(/[[:space:]]+/, " ");
+        sub(/^ /, "");
+        sub(/ $/, "");
+        if (length($0) > 500) {
+            print substr($0, 1, 497) "...";
+        } else {
+            print;
+        }
+    }'
+}
+
 # --- Helper: build failure reason from .diag file or status ---
 build_failure_reason() {
     local output_file="$1"
     local status="$2"
     local exit_code="$3"
     local diag_file="${output_file}.diag"
+    local raw
 
     if [[ -f "$diag_file" ]]; then
-        cat "$diag_file"
-        return
+        raw=$(cat "$diag_file")
+    else
+        # Fallback: construct reason from status and exit code
+        case "$status" in
+            SENTINEL_TIMEOUT) raw="Process did not complete (sentinel file missing — possible crash or system kill)" ;;
+            TIMED_OUT)        raw="Process timed out (exit code 124)" ;;
+            FAILED)           raw="Process failed with exit code $exit_code" ;;
+            EMPTY_OUTPUT)     raw="Process exited successfully but produced no output" ;;
+            *)                raw="Unknown failure (status=$status, exit_code=$exit_code)" ;;
+        esac
     fi
-
-    # Fallback: construct reason from status and exit code
-    case "$status" in
-        SENTINEL_TIMEOUT) echo "Process did not complete (sentinel file missing — possible crash or system kill)" ;;
-        TIMED_OUT)        echo "Process timed out (exit code 124)" ;;
-        FAILED)           echo "Process failed with exit code $exit_code" ;;
-        EMPTY_OUTPUT)     echo "Process exited successfully but produced no output" ;;
-        *)                echo "Unknown failure (status=$status, exit_code=$exit_code)" ;;
-    esac
+    sanitize_failure_reason "$raw"
 }
 
 # --- 2. Validate each output and collect results ---

@@ -10,6 +10,32 @@ OUTPUT=""
 TIMEOUT=""
 PROMPT=""
 
+# Build a redacted copy of ORIGINAL_ARGS for write_meta() so the full --prompt
+# body (which carries inlined diff / log / file-list — see plan FINDING_10) is
+# not duplicated to ${OUTPUT}.meta. .meta CMD= replays the launcher invocation,
+# not raw Gemini, so the actual prompt content is unnecessary for retry
+# semantics.
+REDACTED_ARGS=()
+_skip_next=0
+for _arg in "${ORIGINAL_ARGS[@]}"; do
+    if (( _skip_next == 1 )); then
+        _hash="<unhashed>"
+        if command -v shasum >/dev/null 2>&1; then
+            _hash=$(printf '%s' "$_arg" | shasum -a 256 | awk '{print $1}')
+        elif command -v sha256sum >/dev/null 2>&1; then
+            _hash=$(printf '%s' "$_arg" | sha256sum | awk '{print $1}')
+        fi
+        REDACTED_ARGS+=("<REDACTED:sha256=${_hash:0:16},len=${#_arg}>")
+        _skip_next=0
+        continue
+    fi
+    REDACTED_ARGS+=("$_arg")
+    if [[ "$_arg" == "--prompt" ]]; then
+        _skip_next=1
+    fi
+done
+unset _arg _skip_next _hash
+
 usage() {
     echo "Usage: launch-gemini-review.sh --output FILE --timeout SECS --prompt TEXT" >&2
 }
@@ -36,9 +62,16 @@ write_meta() {
         echo "TOOL=gemini"
         echo "TIMEOUT=$EFFECTIVE_TIMEOUT"
         echo "CAPTURE_STDOUT=false"
-        echo "CAPTURE_STDOUT_ONLY=false"
+        # The inner run-external-agent invocation uses --capture-stdout-only;
+        # record the actual capture mode here so collector retry paths that
+        # rebuild flags from .meta do not silently drop --capture-stdout-only.
+        echo "CAPTURE_STDOUT_ONLY=true"
         echo "OUTPUT_FILE=$OUTPUT"
-        printf 'CMD=%s\n' "$(printf '%q ' "$0" "${ORIGINAL_ARGS[@]}")"
+        # CMD= replays the LAUNCHER (not raw gemini) so retry re-runs JSON
+        # normalization. The --prompt body is redacted to a sha256 prefix +
+        # byte length to avoid persisting inlined diff/log content (which may
+        # carry secrets) into the session tmpdir's .meta artifact.
+        printf 'CMD=%s\n' "$(printf '%q ' "$0" "${REDACTED_ARGS[@]}")"
     } > "$tmp"
     mv "$tmp" "${OUTPUT}.meta"
 }
@@ -116,9 +149,9 @@ if ! jq -er '.response // empty' "$RAW_OUTPUT" > "$RESPONSE_TMP"; then
     fail_closed 1 "Gemini JSON missing non-empty .response"
 fi
 
-if [[ ! -s "$RESPONSE_TMP" ]]; then
+if [[ ! -s "$RESPONSE_TMP" ]] || [[ -z "$(tr -d '[:space:]' < "$RESPONSE_TMP")" ]]; then
     rm -f "$RESPONSE_TMP"
-    fail_closed 1 "Gemini JSON .response was empty"
+    fail_closed 1 "Gemini JSON .response was empty (or whitespace-only)"
 fi
 
 mv "$RESPONSE_TMP" "$OUTPUT"

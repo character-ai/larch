@@ -194,7 +194,7 @@ Use `run_in_background: true` and `timeout: 1860000`.
 Before invoking Gemini, build a self-contained prompt by reading the already-gathered context files. In diff mode, inline `git diff main...HEAD`, `git log main...HEAD --oneline`, and `git diff --name-only main...HEAD` equivalents from `DIFF_FILE`, `COMMIT_LOG_FILE`, and `FILE_LIST_FILE`. In description mode, inline `DESCRIPTION_TEXT` plus the contents of `$REVIEW_TMPDIR/scope-files.txt`. Gemini runs in plan mode and must not be asked to run shell commands.
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/launch-gemini-review.sh --output "$REVIEW_TMPDIR/gemini-output.txt" --timeout 1800 --prompt "<self-contained review prompt with diff/log/file-list or description/scope-files inlined; same five focus areas and output contract as Codex>"
+${CLAUDE_PLUGIN_ROOT}/scripts/launch-gemini-review.sh --output "$REVIEW_TMPDIR/gemini-output.txt" --timeout 600 --prompt "<self-contained review prompt with diff/log/file-list or description/scope-files inlined; same five focus areas and output contract as Codex>"
 ```
 
 Use `run_in_background: true` and `timeout: 660000`.
