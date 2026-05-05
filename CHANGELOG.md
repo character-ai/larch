@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.11.24] - 2026-05-05
+
+### Changed
+
+- Update the header comment block in `scripts/external-tool-registry.sh` (lines 10-12 pre-PR) so it mirrors the `## Related` section in the sibling `scripts/external-tool-registry.md`. The previous header described `scripts/run-external-agent.sh` as a "label-only" consumer (citing only DECISION_1 of #1099), which drifted from the contract introduced by #1145 — the wrapper now sanitizes the `.meta` `TOOL=` field through a label-safe allowlist (alphanumerics, `.`, `_`, `-`); disallowed bytes translate to `_` (length-preserved); empty falls back to `sanitized-empty`. The updated header keeps the human-facing log / no-validation framing from #1099 while documenting the `.meta` sanitization behavior, and points readers to `scripts/run-external-agent.md` for the full sanitization contract. Comment-only change; no code or behavior modification. Closes #1181.
+
 ## [15.11.23] - 2026-05-05
 
 ### Changed
