@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Document Gemini CLI install + setup in `docs/installation-and-setup.md`: Homebrew/npm install, OAuth login, `~/.gemini/settings.json` and `~/.gemini/trustedFolders.json` (with the macOS case-sensitivity gotcha), the Gemini CLI 0.40.x bundled-`rg` workaround, and free-tier `MODEL_CAPACITY_EXHAUSTED` vs Google AI Pro/Ultra capacity notes. Closes #1078; sibling integration issues under umbrella #1081 will wire Gemini into reviewer/coder paths.
 
+### Changed
+
+- `/implement --merge` now has `scripts/merge-pr.sh` verify merge state and CI before any merge command, then try `gh pr merge --admin` first by default and fall back to a plain squash merge only if the privileged attempt is rejected. `--no-admin-fallback` still opts out of the privileged path, but now runs the same gate followed by a plain-only merge attempt; a plain failure still emits `MERGE_RESULT=policy_denied` with the existing error string. Step 12b prose, permission docs, and skill catalog text are updated to match the new order, and `scripts/test-merge-pr.sh` is wired into `make test-harnesses-2` to pin admin-first ordering, fallback, opt-out, and gate short-circuits.
+
 ## [15.7.13] - 2026-05-04
 
 ### Changed

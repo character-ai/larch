@@ -144,18 +144,18 @@ Refer to `docs/dev-hook-audit.md` lines 115-137 for the analogous (stricter) pol
 
 ## `--admin` merge behavior
 
-When `/implement --merge` encounters a PR that passes CI but cannot be merged due to branch protection rules (e.g., required reviews), it retries with `gh pr merge --admin` as a fallback. The `--admin` flag overrides **all** branch protection rules including review requirements.
+When `/implement --merge` reaches a PR that is fresh against main and has passing CI, it tries `gh pr merge --admin` first, then falls back to a plain squash merge if the privileged attempt is rejected (for example, because the account lacks admin permission or the installed `gh` does not support the flag). The `--admin` flag overrides **all** branch protection rules including review requirements.
 
 **Safety invariants enforced before `--admin` is attempted:**
 
 1. All CI checks must be passing (every check in the "pass" bucket)
 2. The branch must be up-to-date with main (not behind)
 
-These checks are re-verified immediately before the `--admin` attempt — the script does not rely on cached state. See `scripts/merge-pr.sh` for the implementation.
+These checks are verified immediately before any merge attempt — the script does not rely on cached state. See `scripts/merge-pr.sh` for the implementation.
 
-**Audit trail when `--admin` fires.** When the `--admin` retry actually executes, `/implement` Step 12b posts a best-effort comment on the merged PR explaining that branch protection denied the standard merge and `--admin` was used to override. The comment is informational; if posting it fails (e.g., token cannot comment), the failure is logged to `Tool Failures` and the merge stays merged. The existing stderr `**⚠ Merged with --admin (review overridden).**` warning in the run output is also retained.
+**Audit trail when `--admin` fires.** When the `--admin` attempt succeeds, `/implement` Step 12b posts a best-effort comment on the merged PR explaining that branch protection was overridden after CI and freshness were re-verified. The comment is informational; if posting it fails (e.g., token cannot comment), the failure is logged to `Tool Failures` and the merge stays merged. The existing stderr `**⚠ Merged with --admin (review overridden).**` warning in the run output is also retained.
 
-**Opt out: `--no-admin-fallback`.** Pass `--no-admin-fallback` to `/implement` (or to `/im`, `/imaq`, `/fix-issue` — they forward through) to require branch-protection policies to actually deny the merge. With this flag set, `merge-pr.sh` returns `MERGE_RESULT=policy_denied` instead of retrying with `--admin` once the admin-eligible gate (CI good + branch fresh) is reached, and `/implement` bails to Step 12d with `FINAL_BAIL_REASON="branch protection denied merge; --no-admin-fallback set"`. The opt-out applies to all admin-eligible `mergeStateStatus` values (`CLEAN`, `UNSTABLE`, `HAS_HOOKS`, `BLOCKED`) — not just review-required denials. Default behavior is unchanged when the flag is not set. See `scripts/merge-pr.md` for the script-level contract.
+**Opt out: `--no-admin-fallback`.** Pass `--no-admin-fallback` to `/implement` (or to `/im`, `/imaq`, `/fix-issue` — they forward through) to require branch-protection policies to actually deny the merge. With this flag set, `merge-pr.sh` skips the `--admin` attempt once the admin-eligible gate (CI good + branch fresh) is reached, tries only a plain squash merge, returns `MERGE_RESULT=policy_denied` if that plain merge fails, and `/implement` bails to Step 12d with `FINAL_BAIL_REASON="branch protection denied merge; --no-admin-fallback set"`. The opt-out applies to all admin-eligible `mergeStateStatus` values (`CLEAN`, `UNSTABLE`, `HAS_HOOKS`, `BLOCKED`) — not just review-required denials. See `scripts/merge-pr.md` for the script-level contract.
 
 ## Selecting the Step 2 implementer (`--coder`)
 
