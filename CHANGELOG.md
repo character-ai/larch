@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.11.5] - 2026-05-05
+
+### Changed
+
+- Sanitize the `TOOL=` value written to `<output>.meta` in `scripts/run-external-agent.sh` through a label-safe allowlist (`LC_ALL=C tr -c 'a-zA-Z0-9._-' '_'`) so unusual `--tool` labels cannot corrupt line-oriented metadata parsing in `collect-agent-results.sh::derive_tool()` (closes #1145). Translation (rather than deletion) preserves length so adversarial labels like `cu\nrsor` become `cu_rsor` instead of collapsing into the canonical `cursor` id; the same logic blocks `=`, whitespace, and non-ASCII bytes (including Unicode line/paragraph separators U+2028/U+2029). Empty results fall back to a distinct `sanitized-empty` sentinel so the empty-output retry path stays functional. Human-readable log messages still use the raw `--tool` value as-is. Per the contract in `scripts/external-tool-registry.md`, `--tool` registry validation remains unchanged — labels remain permissive at the registry level.
+
 ## [15.11.4] - 2026-05-05
 
 ### Changed
