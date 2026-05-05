@@ -163,7 +163,7 @@ for n in $(seq 1 21); do
     next=$((n + 1))
     expected+="${n}"$'\t'"${next}"$'\n'
 done
-assert_case "case-j-cluster-chain" "$input" "$expected" 0 "cluster size 22"
+assert_case "case-j-cluster-chain" "$input" "$expected" 0 "N=22"
 
 input="$(make_input case-k)"
 idx=1

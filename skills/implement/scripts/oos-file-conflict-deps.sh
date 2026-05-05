@@ -23,6 +23,8 @@ fi
 
 usage() {
     echo "Usage: oos-file-conflict-deps.sh --input-file FILE [--output FILE]" >&2
+    echo "  When --output is omitted and IMPLEMENT_TMPDIR is set, the output" >&2
+    echo "  defaults to \$IMPLEMENT_TMPDIR/oos-intra-batch-deps.tsv." >&2
 }
 
 while [[ $# -gt 0 ]]; do
@@ -298,7 +300,7 @@ cut -f1 "$component_nodes" | sort -n -u | while IFS= read -r root; do
             NR == FNR { root_by_node[$2]=$1; next }
             root_by_node[$1] == r && root_by_node[$2] == r { print $3; exit }
         ' "$component_nodes" "$candidate_edges")"
-        echo "**⚠ /implement: oos-file-conflict-deps cluster size $node_count on ${basename_hint:-unknown} exceeded $CLUSTER_CAP all-pairs rows; emitting chain (lower robustness under SCC pruning).**" >&2
+        echo "**⚠ /implement: oos-file-conflict-deps cluster on ${basename_hint:-unknown} would emit $cluster_edges dependency rows (cap $CLUSTER_CAP, N=$node_count); emitting chain instead of all-pairs (lower robustness under SCC pruning).**" >&2
         previous=""
         while IFS= read -r node; do
             if [[ -n "$previous" ]]; then
