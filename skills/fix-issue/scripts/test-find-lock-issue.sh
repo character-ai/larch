@@ -69,6 +69,11 @@
 
 set -euo pipefail
 
+# Stub-gh fixtures return synthetic comment state instantly; skip the
+# 1-second GitHub-propagation pause inside issue-lifecycle.sh's lock + lock-no-go
+# post-checks. Production callers (real gh) inherit the default 1s.
+export ISSUE_LIFECYCLE_LOCK_SETTLE_SECONDS=0
+
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
 SCRIPT="$REPO_ROOT/skills/fix-issue/scripts/find-lock-issue.sh"
 

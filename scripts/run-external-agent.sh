@@ -70,6 +70,19 @@ case "$TIMEOUT_SECONDS" in
     ''|*[!0-9]*) echo "ERROR: --timeout must be a positive integer, got '$TIMEOUT_SECONDS'" >&2; exit 1 ;;
 esac
 
+# Poll interval (seconds) for the kill -0 wait loop below. Default 10s keeps
+# real-agent invocations cheap on syscalls and bounds the time to notice a
+# timeout. Test harnesses that wrap stub binaries (which exit in microseconds)
+# override this to a fraction of a second so each invocation does not pay a
+# full 10s sleep cycle. Accepts integer or decimal seconds (e.g. 0.05).
+POLL_INTERVAL="${RUN_EXTERNAL_AGENT_POLL_INTERVAL:-10}"
+case "$POLL_INTERVAL" in
+    ''|*[!0-9.]*|.|0|0.|0.0|0.00|0.000) echo "ERROR: RUN_EXTERNAL_AGENT_POLL_INTERVAL must be a positive number, got '$POLL_INTERVAL'" >&2; exit 1 ;;
+esac
+case "$POLL_INTERVAL" in
+    *.*.*) echo "ERROR: RUN_EXTERNAL_AGENT_POLL_INTERVAL must be a positive number, got '$POLL_INTERVAL'" >&2; exit 1 ;;
+esac
+
 if [[ $# -eq 0 ]]; then
     echo "ERROR: no command specified after --" >&2
     usage; exit 1
@@ -105,6 +118,7 @@ else
 fi
 PID=$!
 SECONDS=0
+LAST_PROGRESS_MINUTE=0
 
 # Poll until the process exits or times out
 # Check timeout BEFORE sleeping to avoid overshooting by a full interval.
@@ -127,10 +141,16 @@ while kill -0 "$PID" 2>/dev/null; do
         EXIT_CODE=124
         exit "$EXIT_CODE"
     fi
-    sleep 10
-    # Print progress every 60s (every 6th iteration)
-    if [ $(( SECONDS % 60 )) -lt 10 ]; then
-        echo "⏳ ${TOOL_NAME} agent: still running ($(( SECONDS / 60 ))m elapsed)"
+    sleep "$POLL_INTERVAL"
+    # Print one progress line per elapsed minute. SECONDS is bash's built-in
+    # seconds-since-shell-start counter, independent of $POLL_INTERVAL.
+    # LAST_PROGRESS_MINUTE de-dups when the poll cadence is sub-second (the
+    # default 10s cadence already polls at most once per second of real time
+    # within a minute window, but tests run with 0.05s).
+    elapsed_minute=$(( SECONDS / 60 ))
+    if [ "$elapsed_minute" -ge 1 ] && [ "$elapsed_minute" != "$LAST_PROGRESS_MINUTE" ]; then
+        echo "⏳ ${TOOL_NAME} agent: still running (${elapsed_minute}m elapsed)"
+        LAST_PROGRESS_MINUTE="$elapsed_minute"
     fi
 done
 

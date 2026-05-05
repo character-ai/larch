@@ -8,6 +8,15 @@
 
 set -euo pipefail
 
+# Tighten run-external-agent.sh's poll cadence so each Gemini-probe stub does
+# not pay a 10s sleep cycle. Production probes (real Gemini) inherit the
+# default 10s. See scripts/run-external-agent.md.
+export RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05
+# wait-for-reviewers.sh polls sentinel-files every 5s by default; that becomes
+# the floor when the run-external-agent.sh polling above is already sub-second.
+# Drop it to 0.05s for stub-binary tests.
+export WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.05
+
 FAIL=0
 
 fail() {

@@ -34,6 +34,18 @@ case "$TIMEOUT" in
     ''|*[!0-9]*) echo "Error: --timeout value must be a positive integer, got '$TIMEOUT'" >&2; exit 1 ;;
 esac
 
+# Sentinel-poll interval. Default 5s for production callers (real reviewers
+# take many minutes; 5s noise is negligible). Test harnesses that wrap stub
+# binaries via run-external-agent.sh override via env to avoid paying a 5s
+# delay per probe. Accepts integer or decimal seconds.
+WAIT_POLL_INTERVAL="${WAIT_FOR_REVIEWERS_POLL_INTERVAL:-5}"
+case "$WAIT_POLL_INTERVAL" in
+    ''|*[!0-9.]*|.|0|0.|0.0|0.00|0.000) echo "Error: WAIT_FOR_REVIEWERS_POLL_INTERVAL must be a positive number, got '$WAIT_POLL_INTERVAL'" >&2; exit 1 ;;
+esac
+case "$WAIT_POLL_INTERVAL" in
+    *.*.*) echo "Error: WAIT_FOR_REVIEWERS_POLL_INTERVAL must be a positive number, got '$WAIT_POLL_INTERVAL'" >&2; exit 1 ;;
+esac
+
 if [[ $# -eq 0 ]]; then
     echo "ERROR: at least one sentinel file path is required" >&2
     usage; exit 1
@@ -89,7 +101,7 @@ while [ "$found_count" -lt "$TOTAL" ] && [ "$SECONDS" -lt "$TIMEOUT" ]; do
             "$((SECONDS / 60))" "$checks" "$found_count" "$TOTAL" >&2
     fi
 
-    sleep 5
+    sleep "$WAIT_POLL_INTERVAL"
 
     check_sentinels "$@"
 done
