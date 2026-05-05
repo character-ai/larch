@@ -1314,6 +1314,7 @@ PR_CLOSED=${pr_closed:-false}
 DESIGN_ONLY_DONE=${DESIGN_ONLY_DONE:-false}
 BAIL_NEEDS_USER_INPUT=${BAIL_NEEDS_USER_INPUT:-false}
 STALL_TRACKING=${STALL_TRACKING:-false}
+STALL_STEP=${STALL_STEP:-}
 DONE_RENAME_APPLIED=${DONE_RENAME_APPLIED:-false}
 EOF
 printf '%s' "${FINAL_BAIL_REASON:-}" > "$IMPLEMENT_TMPDIR/final-bail-reason.txt"
@@ -1369,7 +1370,7 @@ Repeat any external reviewer warnings from earlier (from `/design`, `/review`, o
 
 If `DESIGN_ONLY_DONE=true`, remind: `**Note: --design-only was set. No PR was created. The tracking issue's anchor comment carries the plan, plan-review tally, diagrams, and accepted/rejected findings as the run's deliverable.**` Otherwise, if `draft=true`, remind: `**Note: --draft was set. Draft PR created; local branch retained. Mark the PR ready-for-review and merge manually when ready.**` Otherwise if `merge=false`, remind: `**Note: --merge was not set. PR was created but not merged. Merge manually when ready.**`
 
-Run the consolidated teardown subcommand after the prompt-side warnings/notes above. It performs the title-prefix terminal transition first: Branch A renames to `[STALLED]` only when `STALL_TRACKING=true` and the issue state is exactly `OPEN`; Branch B renames to `[DONE]` when `STALL_TRACKING=false`, `DONE_RENAME_APPLIED!=true`, and `$PR_NUMBER` is set OR `DESIGN_ONLY_DONE=true`; Branch C is a no-op. It then runs `cleanup-tmpdir.sh`, prints the tracking-issue URL when resolvable, and prints the final Step 18 breadcrumb. Mechanical SSOT: `${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.md` § `teardown`.
+Run the consolidated teardown subcommand after the prompt-side warnings/notes above. It performs the title-prefix terminal transition first: Branch A renames to `[STALLED]` only when `STALL_TRACKING=true` and the issue state is exactly `OPEN`; Branch B renames to `[DONE]` when `STALL_TRACKING=false`, `DONE_RENAME_APPLIED!=true`, and `$PR_NUMBER` is set OR `DESIGN_ONLY_DONE=true`; Branch C is a no-op. On stalled paths, it then best-effort stashes leftover working-tree edits with a `larch-stalled-...` label and writes `.git/larch-stalled-run.txt` so the next SessionStart/preflight can surface or clear the leftover state. It then runs `cleanup-tmpdir.sh`, prints the tracking-issue URL when resolvable, and prints the final Step 18 breadcrumb. Mechanical SSOT: `${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.md` § `teardown`.
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.sh teardown \
@@ -1377,4 +1378,4 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.sh teardown \
   --implement-tmpdir "$IMPLEMENT_TMPDIR"
 ```
 
-Relay the script's tracking issue URL line and Step 18 breadcrumb verbatim. Tail records document the mechanical outcome: `RENAME_BRANCH=...`, `RENAME_STATUS=...`, `ISSUE_URL=...`, `FINALIZE_SUBCOMMAND=teardown`, `FINALIZE_WARNINGS=...`.
+Relay the script's tracking issue URL line and Step 18 breadcrumb verbatim. Tail records document the mechanical outcome: `RENAME_BRANCH=...`, `RENAME_STATUS=...`, `ISSUE_URL=...`, `STASH_REF=...`, `SENTINEL_WRITTEN=...`, `FINALIZE_SUBCOMMAND=teardown`, `FINALIZE_WARNINGS=...`.

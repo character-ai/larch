@@ -376,6 +376,13 @@ exclude = [
   "scripts/pre-commit-shellcheck.sh",
   "scripts/pre-commit-shellcheck.md",
   "scripts/test-sessionstart-health.sh",
+  # scripts/test-preflight-args.sh is the regression harness for
+  # scripts/preflight.sh flag semantics and stalled-run sentinel clearing.
+  # Referenced only from Makefile (test-preflight-args target) and
+  # scripts/test-preflight-args.md (sibling contract), matching the same
+  # Makefile-only pattern as scripts/test-sessionstart-health.sh above.
+  "scripts/test-preflight-args.sh",
+  "scripts/test-preflight-args.md",
   # scripts/test-session-entry-gate.sh is the offline regression harness for
   # scripts/session-entry-gate.sh. Referenced only from Makefile
   # (test-session-entry-gate target) and scripts/test-session-entry-gate.md

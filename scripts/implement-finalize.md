@@ -20,6 +20,10 @@ Required keys:
 
 String keys may be present with empty values except `BRANCH_NAME` when `postmerge` actually attempts local cleanup. Boolean keys must be literal `true` or `false`.
 
+Optional keys:
+
+`STALL_STEP` records the step that set `STALL_TRACKING=true`. Teardown defaults it to `unknown` when absent so older state files remain readable.
+
 `--final-bail-reason-file` is a path, not the bail text itself. This keeps arbitrary bail prose out of argv and lets Step 16a normalize the detail text to a single 1024-character line only when Slack posting needs it.
 
 ## Output Contract
@@ -48,6 +52,8 @@ FINALIZE_WARNINGS=<N>
 RENAME_BRANCH=A|B|C|skipped
 RENAME_STATUS=ok|failed|skipped
 ISSUE_URL=<value-or-empty>
+STASH_REF=<stash-ref-or-empty>
+SENTINEL_WRITTEN=true|false
 FINALIZE_SUBCOMMAND=teardown
 FINALIZE_WARNINGS=<N>
 ```
@@ -61,7 +67,9 @@ FINALIZE_WARNINGS=<N>
 - Step 15 runs only after Step 14 actually attempted cleanup. It calls `verify-main.sh --expected-title "$PR_TITLE (#$PR_NUMBER)"`.
 - Step 16a `RUN_OUTCOME` order is: `PR_CLOSED=true` → `closed`; `DESIGN_ONLY_DONE=true` → `design-only`; `BAIL_NEEDS_USER_INPUT=true` → `user-input`; non-empty bail file → `blocked`; `MERGE!=true` or `DRAFT=true` → `pr-opened`; fallback → `blocked`.
 - Step 18 first checks `ISSUE_NUMBER` is non-empty and `REPO_UNAVAILABLE=false` before any rename branch. Branch A (`STALL_TRACKING=true`) renames to `stalled` only when `get-issue-info.sh --field state` returns exactly `VALUE=OPEN`; empty `VALUE=` remains a silent skip. Branch B renames to `done` when no merge-path done rename has already applied and either `PR_NUMBER` is set or `DESIGN_ONLY_DONE=true`. Branch C is a no-op.
-- `cleanup-tmpdir.sh` runs before the tracking-issue URL print. `teardown` reads all state-file values before cleanup, then uses in-memory `ISSUE_NUMBER` for the post-cleanup URL lookup.
+- On stalled runs (`STALL_TRACKING=true`), Step 18 then probes the repo root with `git rev-parse --show-toplevel`. If `git status --porcelain` is non-empty, it best-effort stashes tracked and untracked edits with a `larch-stalled-<issue>-<step> <utc>` label and records the newest stash ref. Stash failures produce a warning and do not block teardown.
+- On stalled runs, Step 18 writes `<git-dir>/larch-stalled-run.txt` atomically with `ISSUE_NUMBER=`, `ISSUE_URL=`, `STALL_STEP=`, `STASH_REF=`, and `TIMESTAMP=`. It resolves `<git-dir>` via `git rev-parse --git-dir` so worktree-style gitdirs are supported. Sentinel write failures produce a warning and do not block teardown.
+- `cleanup-tmpdir.sh` runs after the stalled-run auto-stash/sentinel work and before the tracking-issue URL print. `teardown` reads all state-file values before cleanup and resolves the issue URL before cleanup so the sentinel can carry it.
 
 ## Invariants
 
@@ -78,7 +86,7 @@ FINALIZE_WARNINGS=<N>
 
 ## Test Harness
 
-`scripts/test-implement-finalize.sh` is the offline regression harness. It copies this script into a `/tmp` sandbox with stub sibling helpers, exercises all three subcommands and state-file parsing, normalizes elapsed-time parentheticals, and is wired through `make test-implement-finalize`.
+`scripts/test-implement-finalize.sh` is the offline regression harness. It copies this script into a `/tmp` sandbox with stub sibling helpers and a git shim, exercises all three subcommands, stalled-run stash/sentinel handling, and state-file parsing, normalizes elapsed-time parentheticals, and is wired through `make test-implement-finalize`.
 
 ## Edit In Sync
 

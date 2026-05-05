@@ -2,12 +2,12 @@
 
 ## Purpose
 
-Run the pre-skill git sanity check used by `session-setup.sh`. In default mode it verifies that the caller is on `main`, the working tree is clean, and local `main` can fetch and rebase onto `origin/main`. With `--skip-branch-check`, it skips the branch and clean-tree assertions and only refreshes `origin/main`.
+Run the pre-skill git sanity check used by `session-setup.sh`. In default mode it verifies that the caller is on `main`, the working tree is clean, and local `main` can fetch and rebase onto `origin/main`. `--skip-branch-check` skips only the on-main assertion and rebase. `--skip-clean-check` skips only the clean-tree assertion. All modes still fetch `origin/main`.
 
 ## Interface
 
 ```
-preflight.sh [--skip-branch-check]
+preflight.sh [--skip-branch-check] [--skip-clean-check]
 ```
 
 ## Output contract
@@ -34,27 +34,38 @@ Argument validation (unknown flag) is the exception: it writes `Unknown option: 
 | Exit | Meaning |
 |------|---------|
 | 0 | All requested checks passed. |
-| 1 | Default mode only: current branch is not `main`. |
-| 2 | Default mode only: working tree is not clean. |
-| 3 | Argument validation failed, fetch failed, or default-mode rebase failed. |
+| 1 | Current branch is not `main` and `--skip-branch-check` was not passed. |
+| 2 | Working tree is not clean and `--skip-clean-check` was not passed. |
+| 3 | Argument validation failed, fetch failed, or rebase failed. |
+
+## Flag Matrix
+
+| Flags | Branch check | Clean-tree check | Fetch | Rebase |
+|-------|--------------|------------------|-------|--------|
+| none | yes | yes | yes | yes |
+| `--skip-branch-check` | no | yes | yes | no |
+| `--skip-clean-check` | yes | no | yes | no |
+| both | no | no | yes | no |
+
+After the clean-tree check passes, or when it is explicitly skipped, `preflight.sh` removes `$(git rev-parse --git-path larch-stalled-run.txt)` best-effort. That clears the stalled-run sentinel once the next task has successfully reached a clean or intentionally-clean-skipped launch point.
 
 ## Rebase failure shape
 
-In default mode, `git rebase origin/main` runs only after the working tree has been verified clean. If the rebase fails, `preflight.sh` immediately runs `git rebase --abort 2>/dev/null || true` before emitting `PREFLIGHT=fail` and exiting 3. Callers do not resolve conflicts during preflight; the abort restores the clean preflight starting point whenever Git can abort the failed rebase.
+When both the branch check and clean-tree check are enabled, `git rebase origin/main` runs only after the clean-tree check has passed. If the rebase fails, `preflight.sh` immediately runs `git rebase --abort 2>/dev/null || true` before emitting `PREFLIGHT=fail` and exiting 3. Callers do not resolve conflicts during preflight; the abort restores the clean preflight starting point whenever Git can abort the failed rebase.
 
-`--skip-branch-check` mode does not run a rebase, so this abort behavior is default-mode only.
+`--skip-branch-check` and `--skip-clean-check` modes do not run a rebase, so this abort behavior applies only when both checks remain enabled.
 
 ## Test harness
 
-No dedicated harness exists today. Syntax is covered by running:
+The dedicated harness is:
 
 ```
-bash -n scripts/preflight.sh
+bash scripts/test-preflight-args.sh
 ```
 
 ## Makefile wiring
 
-No dedicated Makefile target exists today.
+`make test-preflight-args` runs the dedicated harness and is included in `test-harnesses-5`.
 
 ## Edit-in-sync
 
