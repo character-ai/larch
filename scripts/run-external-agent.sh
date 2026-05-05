@@ -89,7 +89,7 @@ if [[ "$CAPTURE_STDOUT" == "true" && "$CAPTURE_STDOUT_ONLY" == "true" ]]; then
 fi
 
 case "$TIMEOUT_SECONDS" in
-    ''|*[!0-9]*) echo "ERROR: --timeout must be a positive integer, got '$TIMEOUT_SECONDS'" >&2; exit 1 ;;
+    ''|*[!0-9]*|0) echo "ERROR: --timeout must be a positive integer, got '$TIMEOUT_SECONDS'" >&2; exit 1 ;;
 esac
 
 # Poll interval (seconds) for the kill -0 wait loop below. Default 10s keeps
