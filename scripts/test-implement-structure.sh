@@ -65,6 +65,9 @@
 #      while keeping `/issue` label flags out of that procedure, and must document
 #      `--blocked-by-issue $ISSUE_NUMBER` forwarding only when the tracking issue is
 #      resolved and non-degraded.
+#      (9e) The same procedure must document conditional
+#      `--intra-batch-deps-file` forwarding for Step 9a.1's file-conflict
+#      pre-pass.
 # (10) Cross-skill bail-token pin (umbrella #348 Phase 4): skills/implement/SKILL.md
 #      must contain the literal `IMPLEMENT_BAIL_REASON=adopted-issue-closed`.
 #      `/fix-issue` Step 6a scans this token in captured `/implement` output to
@@ -197,7 +200,7 @@ count=$(grep -c '^## Rebase Checkpoint Macro$' "$SKILL_MD" || true)
   || fail "(3) expected exactly 1 '^## Rebase Checkpoint Macro$' heading in SKILL.md, found $count"
 
 # ---------------------------------------------------------------------------
-# (4) MANDATORY — READ ENTIRE FILE: at least 5 occurrences AND each expected
+# (4) MANDATORY — READ ENTIRE FILE: at least 6 occurrences AND each expected
 #     reference filename appears on a MANDATORY line (step-to-reference binding).
 # ---------------------------------------------------------------------------
 # Use `|| true` to keep set -e + pipefail from aborting before the fail() diagnostic
@@ -357,6 +360,18 @@ printf '%s\n' "$step_9a1_oos_procedure" | grep -Fq -- 'When `$ISSUE_NUMBER` is n
   || fail "(9d) Step 9a.1 OOS pipeline procedure must gate blocked-by forwarding on ISSUE_NUMBER + deferred=false + repo_unavailable=false"
 printf '%s\n' "$step_9a1_oos_procedure" | grep -Fq -- 'In any of the three degraded modes' \
   || fail "(9d) Step 9a.1 OOS pipeline procedure must document the degraded-mode blocked-by skip rule"
+
+# ---------------------------------------------------------------------------
+# (9e) Step 9a.1 file-conflict pre-pass forwarding contract. Scope to the
+#      canonical procedure section only and pin the literal
+#      `--intra-batch-deps-file` token. The helper may emit a TSV only when
+#      accepted OOS items likely modify the same file; when it does, /implement
+#      must forward that TSV through /issue's existing caller-supplied edge
+#      channel so the rows merge with Phase 2 deps and pass through validation,
+#      DUPLICATE override, and SCC cycle resolution.
+# ---------------------------------------------------------------------------
+printf '%s\n' "$step_9a1_oos_procedure" | grep -Fq -- '--intra-batch-deps-file' \
+  || fail "(9e) Step 9a.1 OOS pipeline procedure must document conditional '--intra-batch-deps-file' forwarding"
 
 # ---------------------------------------------------------------------------
 # (10) Cross-skill bail-token pin (umbrella #348 Phase 4): SKILL.md must

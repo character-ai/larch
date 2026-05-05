@@ -348,6 +348,12 @@ exclude = [
   # skill's procedural body).
   "skills/implement/scripts/test-step2-dispatch.sh",
   "skills/implement/scripts/test-step2-dispatch.md",
+  # skills/implement/scripts/test-oos-file-conflict-deps.sh is the fixture
+  # harness for oos-file-conflict-deps.sh. Referenced from Makefile
+  # (test-oos-file-conflict-deps), docs/linting.md, and the helper's sibling
+  # contract; not from SKILL.md's runtime prose.
+  "skills/implement/scripts/test-oos-file-conflict-deps.sh",
+  "skills/implement/scripts/test-oos-file-conflict-deps.md",
   # scripts/launch-codex-implement.sh is invoked by skills/implement/scripts/
   # step2-implement.sh via a `"$LAUNCHER"` variable rather than a literal
   # `${CLAUDE_PLUGIN_ROOT}/scripts/...` path — agent-lint's G004/dead-script
