@@ -38,6 +38,18 @@ else
     fail 2 "zero timeout should report exact error; got: $ARG_OUTPUT"
 fi
 
+# Reject-before-side-effects: parallel to scripts/test-run-external-agent.sh —
+# argument validation must happen before any output / sentinel / sidecar files
+# are touched, otherwise a future reorder could regress the contract while
+# this harness still passes on exit code + stderr substring alone.
+for path in "$OUTPUT" "$OUTPUT.done" "$OUTPUT.meta" "$OUTPUT.diag"; do
+    if [[ -e "$path" ]]; then
+        fail 3 "zero-timeout rejection must not create $path"
+    else
+        pass
+    fi
+done
+
 TOTAL=$((PASS_COUNT + FAIL_COUNT))
 if (( FAIL_COUNT == 0 )); then
     echo "PASS: test-run-external-agent-args.sh — $PASS_COUNT/$TOTAL assertions"
