@@ -31,7 +31,7 @@ Sentinel-file check cadence. Default `5` seconds for production callers — real
 
 ## Test coverage
 
-No dedicated test harness — the script's behavior is exercised end-to-end by the reviewer-launcher harnesses (`scripts/test-check-reviewers.sh`, `scripts/test-launch-gemini-review.sh`) which export `WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.05` and rely on the sentinel-file contract via PATH-stubbed reviewer binaries.
+Dedicated harness: `scripts/test-wait-for-reviewers.sh` pins `--timeout 0` / non-numeric / no-value-supplied rejection (exit 1 + stderr) and the `DONE` / `TIMEOUT` stdout grammar; it also covers the collector's wait-passthrough fix from #1188 (collector `--timeout 0` / `abc` exits 1 with no `STATUS=` records). The reviewer-launcher harness `scripts/test-check-reviewers.sh` additionally exercises the wait script end-to-end via PATH-stubbed reviewer binaries with `WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.05`.
 
 ## Edit-in-sync rules
 

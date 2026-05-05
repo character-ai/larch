@@ -66,7 +66,8 @@
 #
 # Exit codes:
 #   0 — normal completion (results are informational, not errors)
-#   1 — argument error (missing required option or unknown flag)
+#   1 — argument error (missing required option or unknown flag) or non-zero
+#       exit propagated from wait-for-reviewers.sh.
 
 # No -e: exit codes from reviewer subprocesses and retries are informational.
 set -uo pipefail
@@ -186,7 +187,24 @@ for f in "${OUTPUT_FILES[@]}"; do
     SENTINELS+=("${f}.done")
 done
 
-WAIT_OUTPUT=$("$SCRIPT_DIR/wait-for-reviewers.sh" --timeout "$TIMEOUT" "${SENTINELS[@]}" 2>/dev/null) || true
+# Issue #1188: do not silently swallow wait-for-reviewers.sh's non-zero exit
+# (usage errors like a bad --timeout, or fatals like its mktemp failure).
+# Stderr goes to a temp file so the success path stays free of poll progress.
+# The EXIT trap covers signal-driven exits (e.g., SIGTERM mid-wait) so the
+# tempfile is not leaked under ${TMPDIR:-/tmp}; it also subsumes the success
+# and failure-branch cleanup.
+WAIT_STDERR=$(mktemp "${TMPDIR:-/tmp}/collect-wait-stderr.XXXXXX") || {
+    echo "collect-agent-results.sh: mktemp failed" >&2
+    exit 1
+}
+trap 'rm -f -- "$WAIT_STDERR"' EXIT
+WAIT_OUTPUT=$("$SCRIPT_DIR/wait-for-reviewers.sh" --timeout "$TIMEOUT" "${SENTINELS[@]}" 2>"$WAIT_STDERR")
+WAIT_RC=$?
+if [[ "$WAIT_RC" -ne 0 ]]; then
+    cat "$WAIT_STDERR" >&2
+    printf 'collect-agent-results.sh: wait-for-reviewers.sh exited %s\n' "$WAIT_RC" >&2
+    exit 1
+fi
 
 # Parse wait output for TIMEOUT indicators (portable: newline-separated list)
 TIMED_OUT_SENTINELS=""

@@ -414,6 +414,12 @@ exclude = [
   # Gemini launcher. Referenced only from Makefile (test-launch-gemini-review
   # target) and scripts/test-launch-gemini-review.md (sibling contract).
   "scripts/test-launch-gemini-review.sh",
+  # scripts/test-wait-for-reviewers.sh is the regression harness for
+  # wait-for-reviewers.sh timeout validation and collect-agent-results.sh wait
+  # passthrough (#1186 + #1188 / #1200). Referenced only from Makefile
+  # (test-wait-for-reviewers target) and scripts/test-wait-for-reviewers.md
+  # (sibling contract).
+  "scripts/test-wait-for-reviewers.sh",
   # scripts/test-run-external-agent.sh is the regression harness for
   # scripts/run-external-agent.sh. Referenced only from Makefile
   # (test-run-external-agent target) and scripts/test-run-external-agent.md
@@ -704,6 +710,7 @@ exclude = [
   "scripts/test-check-reviewers.md",
   "scripts/test-external-tool-registry.md",
   "scripts/test-launch-gemini-review.md",
+  "scripts/test-wait-for-reviewers.md",
   "scripts/lib-validate-meta-path.md",
   "scripts/test-run-external-agent.md",
   "scripts/test-run-external-agent-args.md",
