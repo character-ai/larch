@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.10] - 2026-05-05
+
+### Changed
+
+- Pin `scripts/wait-for-reviewers.sh`'s `--timeout` rejection contract (literal `0`, non-numeric, no-value-supplied) and the `DONE` / `TIMEOUT` stdout grammar via a new Makefile-wired regression harness `scripts/test-wait-for-reviewers.sh` (test-harnesses-5 shard) so future relaxations or grammar drift fail in CI. Fix the silent-swallow at `scripts/collect-agent-results.sh:183` where `2>/dev/null) || true` masked the new `wait-for-reviewers.sh --timeout 0` exit-1 (and any other wait usage / fatal error) into `SENTINEL_TIMEOUT` reviewer records: the **initial** wait now captures stderr to a temp file under `${TMPDIR:-/tmp}` (cleaned up via `EXIT` trap so signal-driven exits don't leak), surfaces wait stderr followed by a `collect-agent-results.sh: wait-for-reviewers.sh exited <N>` trailer, and exits 1 on any non-zero wait exit. The empty-output retry-phase wait (line ~492) deliberately keeps `>/dev/null 2>&1 || true` because retry outcomes are re-checked from sentinel state downstream. Wire the new harness into `Makefile` (`.PHONY` + shard 5 + recipe), `agent-lint.toml` (harness + sibling-doc allow-lists), and `docs/linting.md` (target table). Closes #1200 (combines #1186 + #1188).
+
 ## [15.12.9] - 2026-05-05
 
 ### Changed
