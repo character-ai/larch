@@ -14,7 +14,7 @@ Update this list whenever a new consumer sources the registry.
 
 ## Related
 
-`scripts/run-external-agent.sh` is a label-only consumer and is NOT sourced. It aligns to this registry via a header comment per DECISION_1 of #1099. The wrapper accepts any `--tool` label without validation by design.
+`scripts/run-external-agent.sh` is NOT sourced from this registry and still does not validate `--tool` against it, per DECISION_1 of #1099. The human-facing log keeps the raw label, while the `.meta` `TOOL=` sidecar field is sanitized at write time through a label-safe allowlist (alphanumerics, `.`, `_`, `-`); disallowed bytes are translated to `_` (length-preserved), and an empty sanitized result falls back to `sanitized-empty`. See `scripts/run-external-agent.md` for the full sanitization contract.
 
 ## Public API
 
@@ -48,7 +48,7 @@ Per-tool model defaults stay in `agent-model-args.sh` for Codex and Cursor; for 
 2. Add the per-tool branch in `agent-model-args.sh`.
 3. Add the per-tool branch in `check-reviewers.sh` `start_probe` and in every switch helper (`get_available`, `get_healthy`, `set_healthy`, `get_skip`, `set_probe_error`, `get_probe_error`); decide opt-in vs. default and update `--include-*` policy accordingly.
 4. If the new tool is also an implementer, add the launcher branch in `step2-implement.sh`.
-5. No change is required in `run-external-agent.sh` because it is label-only.
+5. No change is required in `run-external-agent.sh`: it sanitizes `.meta` `TOOL=` for any input. Prefer a label-safe id (alphanumerics, `.`, `_`, `-`) so `.meta` `TOOL=` matches the registry id verbatim; non-label-safe ids may still collide after sanitization (e.g. `tool/a` and `tool?a` both become `tool_a`), so `.meta` `TOOL=` is not a bijection from arbitrary labels. Only widen the wrapper's allowlist if you intentionally change that contract.
 6. Update the relevant sibling `.md` contracts.
 7. Run `make lint` and `/relevant-checks`.
 
