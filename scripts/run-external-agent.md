@@ -30,11 +30,13 @@ The capture flags are mutually exclusive. Metadata includes both `CAPTURE_STDOUT
 
 The `<output>.meta` sidecar is a line-oriented file: one `KEY=VALUE` record per physical line, parsed by `scripts/collect-agent-results.sh` with the first `=` separating the key from the value. Values therefore must not embed physical newlines or Unicode line-break code points such as U+2028/U+2029.
 
+This grammar is shared by every script that writes a sidecar consumed by `scripts/collect-agent-results.sh`. Today that means this wrapper plus `scripts/launch-gemini-review.sh::write_meta()`, which emits the same key set with `TOOL=gemini`. Maintainers editing either writer (or adding a new one) must keep all writers consistent with this contract.
+
 - `TOOL` follows the allowlist contract in "Tool labels" above.
 - `TIMEOUT` is accepted only after `--timeout` validates as a positive integer.
 - `CAPTURE_STDOUT` and `CAPTURE_STDOUT_ONLY` are wrapper-owned booleans, not caller-controlled byte strings.
-- `OUTPUT_FILE` is the wrapper's `--output` argument. Production callers pass internal session-tmpdir paths and are responsible for not embedding newlines; the wrapper does not re-sanitize this path before metadata emission.
-- `CMD` is serialized with Bash `printf '%q'`, preserving argument boundaries while using shell escapes for non-printable bytes; under byte-oriented locale behavior such as `LC_ALL=C`, that includes the UTF-8 byte sequences for Unicode line and paragraph separators U+2028/U+2029.
+- `OUTPUT_FILE` is the wrapper's `--output` argument. Production callers pass internal session-tmpdir paths and are responsible for not embedding physical newlines or Unicode line-break code points (U+2028/U+2029); the wrapper does not re-sanitize this path before metadata emission.
+- `CMD` is serialized with Bash `printf '%q'`, which preserves argument boundaries and shell-escapes most metacharacters. Behavior on multi-byte UTF-8 sequences (including the UTF-8 encodings of U+2028/U+2029) follows the inherited locale; the wrapper does not force a byte-oriented locale around the `printf '%q'` call. Callers that need locale-deterministic quoting should set `LC_ALL=C` before invoking the wrapper.
 
 ## Invariants
 

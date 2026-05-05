@@ -146,13 +146,11 @@ trap 'echo "$EXIT_CODE" > "${OUTPUT_FILE}.done" 2>/dev/null || true' EXIT
 # (which skips on empty META_TOOL) functional.
 META_TOOL_NAME=$(printf '%s' "$TOOL_NAME" | LC_ALL=C tr -c 'a-zA-Z0-9._-' '_')
 [[ -z "$META_TOOL_NAME" ]] && META_TOOL_NAME="sanitized-empty"
-# The .meta grammar is one KEY=VALUE record per physical line. Non-TOOL
-# fields rely on controlled writer-side sources: TIMEOUT is a positive integer
-# validated above; CAPTURE_STDOUT and CAPTURE_STDOUT_ONLY are wrapper booleans;
-# OUTPUT_FILE is an internal caller-supplied session path and callers must not
-# embed newlines in it; CMD is serialized with Bash printf '%q', whose
-# shell-quoted form escapes non-printable bytes, including UTF-8 bytes for
-# U+2028/U+2029 under byte-oriented locale behavior.
+# The .meta grammar is one KEY=VALUE record per physical line; values must
+# not embed physical newlines or U+2028/U+2029. See the ".meta sidecar
+# grammar" section in scripts/run-external-agent.md for per-field guarantees
+# (TOOL allowlist, TIMEOUT integer validation, capture booleans, OUTPUT_FILE
+# caller responsibility, CMD printf '%q' serialization).
 {
     echo "TOOL=$META_TOOL_NAME"
     echo "TIMEOUT=$TIMEOUT_SECONDS"
