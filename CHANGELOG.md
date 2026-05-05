@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.9.1] - 2026-05-04
+
+### Changed
+
+- `/implement` and standalone `/design` now require a clean `main` branch at session entry by default, fail-closed with a normalized "clean main required" message listing three remediation paths (switch to clean main; check out a `<USER_PREFIX>/*` feature branch; commit/stash). The single continuation predicate is `IS_USER_BRANCH=true` from `scripts/create-branch.sh --check`; `--issue <N>` no longer waives the gate. Step 0 always fetches and rebases `origin/main` on the strict path before any tracking-issue side effects. Nested `/design` calls (with `--branch-info` from `/implement`) keep `--skip-branch-check` since the parent ran the gate. Adds `scripts/test-clean-main-gate.sh` structural test pinning the new invocation rules in both SKILL.md files.
+
 ## [15.9.0] - 2026-05-04
 
 ### Added
