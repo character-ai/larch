@@ -10,7 +10,7 @@ This is a *structural* test (literal-substring assertions on `awk`-extracted blo
 
 ## Coverage
 
-Fifty-one assertions, fail-fast on first miss.
+Fifty-two assertions, fail-fast on first miss.
 
 ### Step 3B.1 block (extracted from SKILL.md) — very-small-item bundling rule
 
@@ -95,14 +95,15 @@ The Step 3B.4 block now documents the three-way wire-dag probe classification (i
 - (i5) Step 3B.4 documents the new transient-probe stderr literal: `/umbrella: wire-dag probe failed (HTTP STATUS): REASON`.
 - (i6) Step 3B.4 documents the EDGES_SKIPPED_API_UNAVAILABLE semantic-preservation note: `` `EDGES_SKIPPED_API_UNAVAILABLE` semantics are intentionally preserved as broad "repo-wide skip" ``.
 
-### Step 3B.4 block + Step 3B.1 block + Step 3B.2 block — pieces-json inter-piece dependency edges (added in #778)
+### Step 3B.4 block + Step 3B.1 block + Step 3B.2 block — pieces-json inter-piece dependency edges (added in #778) plus blocked-by forwarding (added in #1201)
 
-The `k*` family pins the inter-piece dependency edge composition from `--pieces-json` across three blocks.
+The `k*` family pins the inter-piece dependency edge composition from `--pieces-json` across three blocks, plus Step 3B.2 `--blocked-by-issue` forwarding as defense in depth complementary to `test-umbrella-blocked-by-issue.sh`'s dedicated needles.
 
 - (k1) Step 3B.4 contains the `PIECES_JSON` non-empty sub-case: ``When `PIECES_JSON` is non-empty``. Pins the new sub-case that composes inter-child edges from the validated pieces.json.
 - (k2) Step 3B.4 references the validated file: ``validated `PIECES_JSON` (validated at Step 3B.1.5)``. Pins the cross-reference to the validation step.
 - (k3) Step 3B.1 (extended to include 3B.1.5) contains the validation call: ``validate-pieces-json.sh --pieces-file``. Pins the fail-closed validation before Step 3B.2.
 - (k4) Step 3B.2 contains the `--intra-batch-deps-file` forwarding: ``--intra-batch-deps-file``. Pins the forwarding of caller-supplied edges to `/issue`.
+- (k5) Step 3B.2 contains the `--blocked-by-issue` forwarding literal: ``--blocked-by-issue $BLOCKED_BY_ISSUE``. Pins the conditional policy-blocker forwarding inside this harness's full Step 3B.2 awk extraction window.
 
 ### emit-output subsection (extracted from helpers.md)
 
