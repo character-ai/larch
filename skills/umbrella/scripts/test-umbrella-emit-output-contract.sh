@@ -418,9 +418,9 @@ assert_contains "j7: 3B.1 same-area cohesion criterion" \
     '**Same area**: bundled items touch the same component' \
     "$STEP3B1_BLOCK"
 
-# (k*) Issue #778 pieces-json inter-piece dependency edges. Pins the Step 3B.4
-# edge composition from PIECES_JSON, the Step 3B.1.5 validation call, and the
-# Step 3B.2 --intra-batch-deps-file forwarding.
+# (k*) Issue #778 pieces-json inter-piece dependency edges plus #1201
+# blocked-by forwarding defense in depth. Pins the Step 3B.4 edge composition
+# from PIECES_JSON, the Step 3B.1.5 validation call, and Step 3B.2 forwarding.
 assert_contains "k1: 3B.4 PIECES_JSON non-empty sub-case" \
     'When `PIECES_JSON` is non-empty' \
     "$STEP3B4_BLOCK"
@@ -432,6 +432,12 @@ assert_contains "k3: 3B.1(.5) validate-pieces-json.sh call" \
     "$STEP3B1_BLOCK"
 assert_contains "k4: 3B.2 --intra-batch-deps-file forwarding" \
     '--intra-batch-deps-file' \
+    "$STEP3B2_BLOCK"
+# Defense in depth complementary to test-umbrella-blocked-by-issue.sh: this
+# harness pins the full awk-extracted 3B.2 block, while the dedicated harness
+# uses its own blocked-by needles.
+assert_contains "k5: 3B.2 --blocked-by-issue forwarding" \
+    '--blocked-by-issue $BLOCKED_BY_ISSUE' \
     "$STEP3B2_BLOCK"
 
 echo
