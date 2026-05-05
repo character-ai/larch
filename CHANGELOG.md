@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.10.8] - 2026-05-05
+
+### Changed
+
+- Document the multi-tool `<tool>-commit-stderr.txt` path in `skills/implement/references/codex-manifest-schema.md` (lines 59 and 76). The dispatcher in `skills/implement/scripts/step2-implement.sh` writes `${TOOL_TAG}-commit-stderr.txt` where `<tool>` is `codex`, `cursor`, or `gemini`; the schema doc previously hard-coded the `codex-` literal. Documentation-only.
+
 ## [15.10.7] - 2026-05-05
 
 ### Changed
