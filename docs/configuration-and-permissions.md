@@ -235,8 +235,8 @@ The model name to pass to Gemini's `-m` flag (e.g., `gemini-2.5-pro`, `gemini-2.
 - The model flag is consumed by `scripts/launch-gemini-review.sh` and `scripts/check-reviewers.sh`
 
 **When not set:**
-- Defaults to `gemini-2.5-pro`
-- If your Gemini installation does not support `gemini-2.5-pro`, set this variable to a supported model
+- Falls back to plugin `gemini_model` userConfig (`CLAUDE_PLUGIN_OPTION_GEMINI_MODEL`) when configured, otherwise defaults to `gemini-2.5-pro`
+- If your Gemini installation does not support `gemini-2.5-pro`, set this variable (or the plugin userConfig) to a supported model
 
 ### `LARCH_CODEX_EFFORT`
 
