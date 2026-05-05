@@ -160,6 +160,7 @@ META_TOOL_NAME=$(printf '%s' "$TOOL_NAME" | LC_ALL=C tr -c 'a-zA-Z0-9._-' '_')
 # exit status under `set -e`, so jq must succeed before we write the sidecar.
 if ! META_CMD_JSON=$(jq -cn --args '$ARGS.positional' -- "$@"); then
     echo "ERROR: jq failed to serialize argv to CMD_JSON for ${OUTPUT_FILE}.meta" >&2
+    EXIT_CODE=1
     exit 1
 fi
 {
