@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.0] - 2026-05-05
+
+### Added
+
+- `--blocked-by-issue N` flag on `/umbrella`. The flag accepts a positive integer issue number and is forwarded to `/issue` on Step 3A (one-shot) and Step 3B.2 (batch children). Only batch child creation can succeed with the policy edge — single-mode is rejected by `/issue`'s frozen batch-mode-only error, providing fail-fast on misclassified one-shot runs (no silent drop). The flag is intentionally NOT forwarded to the Step 3B.3 umbrella-create call — the policy edge is meant for children, not the umbrella itself. `/umbrella` adds no new GitHub-API code; the policy edge POSTs flow through `/issue`'s existing `add-blocked-by.sh` invocation (one extra native blocked-by edge from N to each newly-created child). The flag is caller-agnostic: `/umbrella` enforces only the forwarding mechanics; the policy meaning ("tracking issue", "umbrella controller", etc.) belongs to the caller. Validation of N (digit-only positive integer; existence/open-state/not-PR via `/issue`'s Step 4.0 probe) is unchanged. New regression harness `skills/umbrella/scripts/test-umbrella-blocked-by-issue.sh` (with sibling `.md`) pins the SKILL.md forwarding grammar and `parse-args.sh` validation; `skills/umbrella/scripts/test-umbrella-parse-args.sh` extended with cases 35-44 covering parse, KV emission ordering, and rejection of empty / non-numeric / signed / leading-zero / zero values. Wired into `make lint` via `test-harnesses-4`. `README.md`, `docs/skills.md`, `docs/linting.md`, `SECURITY.md`, `skills/umbrella/SKILL.md`, `skills/umbrella/scripts/parse-args.sh`, and `skills/umbrella/scripts/parse-args.md` updated to document the new flag and forwarding semantics. Closes #1122.
+
 ## [15.11.24] - 2026-05-05
 
 ### Changed
