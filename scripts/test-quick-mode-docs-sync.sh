@@ -21,7 +21,7 @@
 #   1. POSITIVE ANCHORS (required markers) — each target file MUST contain
 #      all of the following strings:
 #        - "7 rounds"                    (case-sensitive, grep -F)
-#        - "Cursor → Codex → Claude"     (case-sensitive, grep -F, UTF-8 U+2192)
+#        - "Cursor → Codex → Gemini → Claude"     (case-sensitive, grep -F, UTF-8 U+2192)
 #        - "no voting panel"             (case-INSENSITIVE, grep -iF — tolerates
 #                                         legitimate sentence-case rewrites)
 #        - "rounds 1-3"                  (case-INSENSITIVE, grep -iF — tolerates
@@ -92,7 +92,7 @@ REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # To add a marker, append a new entry — `check_file` iterates this array.
 readonly POS_MARKERS=(
   "7 rounds|sensitive"
-  "Cursor → Codex → Claude|sensitive"
+  "Cursor → Codex → Gemini → Claude|sensitive"
   "no voting panel|insensitive"
   "rounds 1-3|insensitive"
   "5 Cursor specialists|sensitive"
@@ -296,7 +296,7 @@ run_self_test() {
   cat > "$good" <<'EOF'
 This is a fixture describing quick-mode behavior.
 The review loop runs up to 7 rounds.
-Reviewer selection per round follows Cursor → Codex → Claude fallback.
+Reviewer selection per round follows Cursor → Codex → Gemini → Claude fallback.
 The loop has no voting panel — main agent accepts or rejects each finding.
 Rounds 1-3 launch 5 Cursor specialists in parallel plus a generic Codex reviewer.
 Rounds 4+ use a single generic reviewer per round.
@@ -311,7 +311,7 @@ EOF
   cat > "$bad" <<'EOF'
 Stale-phrase fixture: contains every positive marker so only the stale phrase can drive failure.
 The review loop runs up to 7 rounds.
-Reviewer selection per round follows Cursor → Codex → Claude fallback.
+Reviewer selection per round follows Cursor → Codex → Gemini → Claude fallback.
 The loop has no voting panel — main agent accepts or rejects each finding.
 Rounds 1-3 launch 5 Cursor specialists in parallel plus a generic Codex reviewer.
 Stale phrase intentionally embedded: simplified code review (1 Claude Code Reviewer subagent, 1 round).

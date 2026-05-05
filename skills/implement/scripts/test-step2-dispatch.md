@@ -2,18 +2,23 @@
 
 **Purpose**: Offline regression harness for `skills/implement/scripts/step2-implement.sh` covering the dispatcher branches that do not require spawning an external implementer. Runs in <1s with no `codex`/`cursor` binary and no network.
 
-**Coverage** (28 assertions):
+**Coverage** (37 assertions):
 1. `--coder claude` emits `STATUS=claude_fallback` and `ORCHESTRATOR_EDIT_AUTHORITY=allowed` (and no other KV keys — no `MANIFEST=`, no `TRANSCRIPT=`, etc.), and writes no baseline files.
 1b. Default coder (no flag) is codex — verified via non-git cwd exit 2 with the git-tree message (the claude default would early-return `STATUS=claude_fallback` instead).
 1c. Legacy `--codex-available false` still emits `STATUS=claude_fallback` and prints a deprecation warning to stderr.
 2. Missing required flag (`--auto-mode`) exits with code 2.
-3. Bad `--coder` enum value exits with code 2 and names `{claude,codex,cursor}`.
+3. Bad `--coder` enum value exits with code 2 and names `{claude,codex,cursor,gemini}`.
 3b. `--coder cursor --cursor-healthy false` emits `STATUS=claude_fallback` with no baseline-file leak (cursor unhealthy → claude fallback).
 3b2. `--coder cursor` with no `--cursor-healthy` defaults to false and falls back to `STATUS=claude_fallback`.
 3b3. `--coder cursor --cursor-healthy ""` treats empty as false and falls back to `STATUS=claude_fallback`.
 3b4. `--coder cursor --cursor-healthy bogus` exits with code 2.
 3b5. `--coder claude --cursor-healthy ""` remains `STATUS=claude_fallback`; the Claude path ignores Cursor health noise.
 3b6. Outside a git work-tree, `--coder cursor --cursor-healthy false` emits `STATUS=claude_fallback` before `REPO_ROOT` lookup.
+3g. `--coder gemini --gemini-healthy false` emits `STATUS=claude_fallback` with no baseline-file leak (Gemini unhealthy → Claude fallback).
+3g2. `--coder gemini` with no `--gemini-healthy` defaults to false and falls back to `STATUS=claude_fallback`.
+3g3. `--coder gemini --gemini-healthy ""` treats empty as false and falls back to `STATUS=claude_fallback`.
+3g4. `--gemini-healthy bogus` exits with code 2 even when `--coder=codex`, pinning validation outside the Gemini path.
+3g5. Outside a git work-tree, `--coder gemini --gemini-healthy false` emits `STATUS=claude_fallback` before `REPO_ROOT` lookup.
 3c. `--coder` and `--codex-available` together exit with code 2 and stderr says `mutually exclusive`.
 3d. Bad `--codex-available` enum value exits with code 2.
 4. Bad `--tmpdir` (not a directory) exits with code 2.
@@ -25,9 +30,10 @@
 8b. The non-git-tree Codex exit-2 path does not leak a baseline file into `$TMPDIR_ARG`.
 9. First Codex invocation (reusing the resume-cap setup that bails on `qa-loop-exceeded`) writes `step2-spawn-coder.txt` with content `codex` BEFORE the resume-counter logic runs — pins the cross-coder guard's "first writer" behavior.
 10. Second invocation against a tmpdir whose `step2-spawn-coder.txt` recorded a different coder (`codex` pre-seeded; invocation passes `--coder=cursor --cursor-healthy true`) emits `STATUS=bailed REASON=coder-mismatch-tmpdir-reuse TOOL=cursor`. The pre-seeded sentinel value MUST be unchanged on bail, and the `cursor-resume-count.txt` MUST NOT have been written — pins the cross-coder guard's "fail before any per-tool state mutation" ordering. Also asserts `ORCHESTRATOR_EDIT_AUTHORITY=forbidden` on this bail path.
+10b. Gemini variant of the same cross-coder guard (`cursor` pre-seeded; invocation passes `--coder=gemini --gemini-healthy true`) emits `TOOL=gemini`, leaves the sentinel unchanged, and does not write `gemini-resume-count.txt`.
 11. `ORCHESTRATOR_EDIT_AUTHORITY` pair invariant: on every reachable exit-0 outcome the dispatcher emits exactly one `ORCHESTRATOR_EDIT_AUTHORITY=` line, with `allowed` iff `STATUS=claude_fallback` and `forbidden` on every external-implementer outcome. Test 11a re-runs the `--coder claude` claude_fallback path and asserts `AUTH=allowed`; test 11b re-runs the resume-cap bail (`--coder codex --answers` with pre-seeded `codex-resume-count.txt=5`) and asserts `AUTH=forbidden`. Tests 1, 1c, 3b, 3b2, 3b3, 3b5, 3b6, 5, 7, and 10 also pin the AUTH key on their respective branches; this is the central mechanical gate that lets `SKILL.md` Step 2 enforce NEVER #10 (`ORCHESTRATOR_EDIT_AUTHORITY=allowed` ⇔ `STATUS=claude_fallback`).
 
-All `--coder codex` invocations that proceed past argument parsing are run with cwd pinned to `$REPO_ROOT` so the dispatcher's git resolution targets the harness's own git tree. Cursor health-gate tests also use `cd "$REPO_ROOT"` unless the assertion specifically covers outside-git ordering.
+All `--coder codex` invocations that proceed past argument parsing are run with cwd pinned to `$REPO_ROOT` so the dispatcher's git resolution targets the harness's own git tree. Cursor and Gemini health-gate tests also use `cd "$REPO_ROOT"` unless the assertion specifically covers outside-git ordering.
 
 **Out of scope**:
 - Manifest schema validation for real implementer output.
@@ -39,7 +45,7 @@ All `--coder codex` invocations that proceed past argument parsing are run with 
 
 **Invariants**:
 - Tests run against the live dispatcher in the repo, not a copy.
-- Cursor unhealthy fallback emits `STATUS=claude_fallback` and does not write baseline files.
+- Cursor/Gemini unhealthy fallback emits `STATUS=claude_fallback` and does not write baseline files.
 - The Claude fallback branch short-circuits before plugin / git resolution and ignores empty Cursor health input.
 - Scratch directory is created via `mktemp -d` and removed via `trap` on exit.
 
