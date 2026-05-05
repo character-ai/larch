@@ -288,9 +288,12 @@ else
 fi
 
 # Test 9: positive leading-zero timeout (010) is accepted; exit 0 + standard
-# five-line stdout envelope. Guards against future refactors that drop the
-# `(( 10#$TIMEOUT < 1 ))` base-10 force-decimal expression and silently
-# regress to `010`-as-octal-eight (or stricter-shell errors).
+# five-line stdout envelope. Pins acceptance of the leading-zero positive
+# form so a future refactor tightening the digit-only `case` validation to
+# e.g. `^[1-9][0-9]*$` (which would reject `010`) breaks CI here. Note: the
+# stub exits immediately, so this assertion does NOT prove that downstream
+# treats `010` as decimal 10 vs. octal 8 — it only pins contract stability
+# at the launcher boundary.
 T9_TRANSCRIPT="$SCRATCH/t9-transcript.txt"
 T9_SIDECAR="$SCRATCH/t9-sidecar.log"
 T9_MANIFEST="$SCRATCH/t9-manifest.json"
