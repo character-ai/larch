@@ -7,7 +7,7 @@
 ## Invariants
 
 - Generic-only v1: accepts `--output`, `--timeout`, and `--prompt`; rejects specialist flags.
-- `--timeout` must be a positive integer; `0`, empty, or non-digit strings are rejected at argv-validation time with exit 2 (parallel to `scripts/run-external-agent.sh` and the `launch-*-implement.sh` family — closes #1115).
+- `--timeout` must be a positive integer; `0`, empty, non-digit strings, and zero-valued multi-digit strings (`00`, `000`, ...) are rejected at argv-validation time with exit 2 (parallel to `scripts/run-external-agent.sh` and the `launch-*-implement.sh` family — closes #1115, #1167). Valid leading-zero positive values like `010` are accepted and interpreted as base-10 (`010` → 10s).
 - Timeout is clamped to 600 seconds before launching Gemini.
 - Uses `run-external-agent.sh --capture-stdout-only` so Gemini stdout JSON is written to `<output>.raw` while stderr remains diagnostic-only.
 - Requires `jq`; missing `jq` fails closed with `MISSING_JQ`, empty output, non-zero `.done`, and a diagnostic.

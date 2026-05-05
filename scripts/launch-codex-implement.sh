@@ -87,6 +87,10 @@ fi
 case "$TIMEOUT" in
     ''|*[!0-9]*|0) echo "launch-codex-implement.sh: --timeout must be a positive integer (seconds), got '$TIMEOUT'" >&2; exit 2 ;;
 esac
+if (( 10#$TIMEOUT < 1 )); then
+    echo "launch-codex-implement.sh: --timeout must be a positive integer (seconds), got '$TIMEOUT'" >&2
+    exit 2
+fi
 
 # Compose the Codex prompt by concatenating the agent system prompt with
 # inline references to the plan, feature, manifest path, qa-pending path,

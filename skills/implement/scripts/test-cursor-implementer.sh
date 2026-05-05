@@ -92,6 +92,26 @@ else
     fail 2b "zero timeout should exit 2 with positive-integer error, got $EXIT: $(cat "$TIMEOUT_ZERO_OUTPUT")"
 fi
 
+# Test 2c/2d: multi-digit zero timeouts exit 2 and report the same contract.
+for timeout_value in 00 000; do
+    EXIT=0
+    TIMEOUT_ZERO_OUTPUT="$SCRATCH/t2-${timeout_value}-output.txt"
+    "$LAUNCHER" \
+        --transcript-path "$SCRATCH/t2-${timeout_value}-transcript.txt" \
+        --sidecar-log "$SCRATCH/t2-${timeout_value}-sidecar.log" \
+        --manifest-path "$SCRATCH/t2-${timeout_value}-manifest.json" \
+        --qa-pending-path "$SCRATCH/t2-${timeout_value}-qa.json" \
+        --plan-file "$PLAN" \
+        --feature-file "$FEATURE" \
+        --agent-prompt "$AGENT_PROMPT" \
+        --timeout "$timeout_value" >"$TIMEOUT_ZERO_OUTPUT" 2>&1 || EXIT=$?
+    if [[ "$EXIT" == "2" ]] && grep -Fq "must be a positive integer" "$TIMEOUT_ZERO_OUTPUT"; then
+        pass
+    else
+        fail "multi-zero-$timeout_value" "timeout $timeout_value should exit 2 with positive-integer error, got $EXIT: $(cat "$TIMEOUT_ZERO_OUTPUT")"
+    fi
+done
+
 # Test 3: missing input file exits 2.
 EXIT=0
 "$LAUNCHER" \

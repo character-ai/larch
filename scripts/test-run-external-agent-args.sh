@@ -50,6 +50,50 @@ for path in "$OUTPUT" "$OUTPUT.done" "$OUTPUT.meta" "$OUTPUT.diag"; do
     fi
 done
 
+for zero_timeout in 00 000; do
+    EXIT=0
+    OUTPUT="$SCRATCH/output-$zero_timeout.txt"
+    ARG_OUTPUT=$("$RUNNER" \
+        --timeout "$zero_timeout" \
+        --tool foo \
+        --output "$OUTPUT" \
+        -- /usr/bin/true 2>&1) || EXIT=$?
+
+    if [[ "$EXIT" == "1" ]]; then
+        pass
+    else
+        fail "multi-zero-$zero_timeout-exit" "timeout $zero_timeout should exit 1, got $EXIT"
+    fi
+
+    EXPECTED="ERROR: --timeout must be a positive integer, got '$zero_timeout'"
+    if [[ "$ARG_OUTPUT" == *"$EXPECTED"* ]]; then
+        pass
+    else
+        fail "multi-zero-$zero_timeout-error" "timeout $zero_timeout should report exact error; got: $ARG_OUTPUT"
+    fi
+
+    for path in "$OUTPUT" "$OUTPUT.done" "$OUTPUT.meta" "$OUTPUT.diag"; do
+        if [[ -e "$path" ]]; then
+            fail "multi-zero-$zero_timeout-side-effects" "timeout $zero_timeout rejection must not create $path"
+        else
+            pass
+        fi
+    done
+done
+
+EXIT=0
+OUTPUT="$SCRATCH/output-010.txt"
+RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 "$RUNNER" \
+    --timeout 010 \
+    --tool foo \
+    --output "$OUTPUT" \
+    -- /usr/bin/true >/dev/null 2>&1 || EXIT=$?
+if [[ "$EXIT" == "0" ]]; then
+    pass
+else
+    fail "leading-zero-positive" "timeout 010 should be accepted, got $EXIT"
+fi
+
 TOTAL=$((PASS_COUNT + FAIL_COUNT))
 if (( FAIL_COUNT == 0 )); then
     echo "PASS: test-run-external-agent-args.sh — $PASS_COUNT/$TOTAL assertions"

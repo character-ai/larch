@@ -77,6 +77,10 @@ fi
 case "$TIMEOUT" in
     ''|*[!0-9]*|0) echo "launch-gemini-implement.sh: --timeout must be a positive integer (seconds), got '$TIMEOUT'" >&2; exit 2 ;;
 esac
+if (( 10#$TIMEOUT < 1 )); then
+    echo "launch-gemini-implement.sh: --timeout must be a positive integer (seconds), got '$TIMEOUT'" >&2
+    exit 2
+fi
 
 RESUME_BLOCK=""
 if [[ -n "$ANSWERS_FILE" ]]; then

@@ -5,7 +5,7 @@
 **Coverage**:
 - Missing required flags exit 2.
 - Bad timeout exits 2.
-- Zero timeout exits 2 and reports the positive-integer timeout contract.
+- Zero-valued timeouts (`0`, `00`, `000`) exit 2 and report the positive-integer timeout contract.
 - Missing input files exit 2.
 - PATH-stubbed `cursor` writes a minimal valid `manifest.json`; the launcher emits exactly five KV stdout lines and no progress chatter.
 - `run-external-agent.sh --capture-stdout` captures Cursor stdout to the transcript path.

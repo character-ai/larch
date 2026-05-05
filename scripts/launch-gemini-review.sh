@@ -123,6 +123,15 @@ validate_meta_scalar_path --output "$OUTPUT" || exit 2
 case "$TIMEOUT" in
     ''|*[!0-9]*|0) echo "launch-gemini-review.sh: --timeout must be a positive integer, got '$TIMEOUT'" >&2; exit 2 ;;
 esac
+if (( 10#$TIMEOUT < 1 )); then
+    echo "launch-gemini-review.sh: --timeout must be a positive integer, got '$TIMEOUT'" >&2
+    exit 2
+fi
+# Normalize to canonical decimal so downstream arithmetic (the > 600 clamp
+# below) does not interpret leading-zero values as octal: e.g. `0601` would
+# otherwise become 385, silently bypassing the clamp; `08`/`09` would abort
+# under `set -e` with "value too great for base".
+TIMEOUT=$((10#$TIMEOUT))
 
 EFFECTIVE_TIMEOUT="$TIMEOUT"
 if (( EFFECTIVE_TIMEOUT > 600 )); then
