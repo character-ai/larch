@@ -106,7 +106,7 @@ Consolidated NEVER rules collected from the procedural steps below. Each rule st
 
 Define `branch_info_supplied=true` only when the caller passed valid `--branch-info` containing all 4 keys: `IS_MAIN`, `IS_USER_BRANCH`, `USER_PREFIX`, and `CURRENT_BRANCH`. `SESSION_ENV_PATH` being non-empty is not a nesting signal by itself; `--session-env` is an exposed argument and can be passed manually.
 
-If `branch_info_supplied=true` (nested under `/implement`), `/implement` already ran the entry gate. Run setup with `--skip-branch-check`:
+If `branch_info_supplied=true` (trusted caller-supplied branch state, normally from `/implement`), the caller is presumed to have already run the entry gate. The four key values are accepted as-is and not cross-checked against the working tree (see the `--branch-info` "Sharp edge" note in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/flags.md`). Run setup with `--skip-branch-check`:
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix claude-design --skip-branch-check --skip-slack-check --skip-repo-check --check-reviewers [--caller-env "$SESSION_ENV_PATH"] [--skip-codex-probe] [--skip-cursor-probe] [--write-health "${SESSION_ENV_PATH}.health"]
