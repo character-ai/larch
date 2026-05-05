@@ -245,6 +245,12 @@ Log noteworthy issues to `$IMPLEMENT_TMPDIR/execution-issues.md` throughout exec
 
 **Categories** (exact headers; entries chronological within a category; categories not intermixed): `Pre-existing Code Issues`, `Tool Failures`, `Permission Prompts`, `External Reviewer Issues`, `CI Issues`, `Warnings` (for `⚠` not fitting a more specific category; do NOT duplicate), `Q/A` (Step 2 opportunistic questions + mid-coding ambiguity resolutions — see Step 2 for schema and progressive-upsert rule).
 
+**File-conflict rule for OOS dependency emission**
+
+Two OOS issues that may run in parallel MUST NOT modify the same file unless their Descriptions expose explicit, parseable, non-overlapping line ranges for that file under the inclusive-overlap rule. Step 9a.1 runs `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-file-conflict-deps.sh` before `/issue` to emit `--intra-batch-deps-file` rows enforcing this rule; the helper contract lives at `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-file-conflict-deps.md`. The deterministic tie-break is lower 1-based batch index blocks higher. The TSV is numeric-only, so sanitization is preserved and no reviewer prose gains a new public surface.
+
+Caller TSV edges are merged (unioned) with `/issue` Phase-2 LLM dep-analysis; neither source has precedence. Acyclicity is delegated to `/issue`'s SCC cycle resolution: "For any SCC with more than one node, drop the lowest-priority outbound edge to break the cycle: among the SCC's nodes, pick the one with the lowest input index, and within its `BLOCKED_BY` list pick the lexically-earliest entry; remove that single entry, then re-run SCC detection." Known limitation: file-conflict TSV edges are silently dropped on `/issue`'s Step-5-skip paths (`LIST_STATUS=failed`, allocator failure, empty-CANDIDATES + `N<2`); track that as a follow-up issue if it matters for the current batch.
+
 ### Mechanical enforcement: `Pre-existing Code Issues` dual-write
 
 Whenever the main agent appends to `Pre-existing Code Issues` in `execution-issues.md`, it MUST also append a corresponding `### OOS_N:` block to `$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md` so Step 9a.1 can file it. Unconditional — runs in every mode. Source of truth converging main-agent-discovered bugs into the same accepted-OOS pipeline as reviewer-surfaced OOS from `/design` and `/review`. For durable follow-up outside this category, enforcement is prescriptive (principle above), not mechanical — use `/issue` directly.

@@ -116,7 +116,7 @@ If voting rejects all in-scope findings, write an empty `$DESIGN_TMPDIR/accepted
 
 ```markdown
 ### OOS_N: <short title>
-- **Description**: <full description of the observation>
+- **Description**: <full description of the observation; include affected repo-relative file paths and line ranges when applicable>
 - **Reviewer**: <attribution>
 - **Vote tally**: <YES/NO/EXONERATE counts>
 - **Phase**: design
