@@ -148,7 +148,7 @@ Flags modify behavior across the skill hierarchy:
 
 | Flag | Available on | Effect |
 |---|---|---|
-| `--quick` | `/implement` | Skips `/design` (produces inline plan instead). Code review runs up to 7 rounds (no voting panel): rounds 1-3 launch 5 Cursor specialists in parallel plus a generic Codex reviewer; rounds 4-7 use a single generic reviewer per round with a Cursor → Codex → Claude Code Reviewer subagent fallback chain. |
+| `--quick` | `/implement` | Skips `/design` (produces inline plan instead). Code review runs up to 7 rounds (no voting panel): rounds 1-3 launch 5 Cursor specialists in parallel plus a generic Codex reviewer; rounds 4-7 use a single generic reviewer per round with a Cursor → Codex → Gemini → Claude Code Reviewer subagent fallback chain. |
 | `--auto` | `/implement`, `/design`, `/fix-issue` (forwarded to `/implement` on PR paths) | Suppresses all interactive question checkpoints. Skills run fully autonomously without user interaction. |
 | `--design-only` | `/implement` | Runs through design and anchor/OOS publication, then stops before implementation, review, version bump, PR, CI, and merge. Mutually exclusive with `--merge`; the tracking issue URL is the deliverable. |
 | `--merge` | `/implement` | Runs the CI+rebase+merge loop, local branch cleanup, and main verification after PR creation. Without `--merge`, `/implement` creates the PR and stops after the initial CI wait; the final Step 16a Slack issue post still runs in both cases (gated on Slack env vars + `--no-slack`). |
