@@ -185,13 +185,9 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/write-session-env.sh --output "$IMPLEMENT_TMPDIR/s
 ```
 
 Then:
-- Write a per-run session id for design-manifest freshness checks. The fallback MUST live inside the snippet (a uuidgen-less host would otherwise fail under `set -e` before the prose-only fallback ever runs):
+- Write a per-run session id for design-manifest freshness checks (uuidgen with fallback to the tmpdir basename when uuidgen is absent — see `scripts/write-session-id.md` for the contract):
   ```bash
-  if command -v uuidgen >/dev/null 2>&1; then
-    uuidgen > "$IMPLEMENT_TMPDIR/session-id"
-  else
-    printf '%s\n' "$(basename "$IMPLEMENT_TMPDIR")" > "$IMPLEMENT_TMPDIR/session-id"
-  fi
+  ${CLAUDE_PLUGIN_ROOT}/scripts/write-session-id.sh --output "$IMPLEMENT_TMPDIR/session-id"
   ```
   Step 1 compares this value to the design manifest's `SESSION_ID` before reusing any exported plan.
 - Set `slack_available` from `SLACK_OK` (`true` → `true`; `false` → `false`). Warn only when the user has NOT opted out: if `slack_enabled=true` AND `SLACK_OK=false`, print `**⚠ Slack is not fully configured (<SLACK_MISSING> not set). Issue Slack announcement (Step 16a) will be skipped.**` When `slack_enabled=false` (user passed `--no-slack`), suppress the warning — Slack is not in use regardless of environment state.
@@ -272,17 +268,13 @@ Parse stdout for `ISSUE_NUMBER`, `ANCHOR_COMMENT_ID`, `ADOPTED`.
 
 - **Mismatch guard**: if `ISSUE_ARG` is non-empty AND `ISSUE_NUMBER_in_sentinel != ISSUE_ARG`: print `**⚠ 0.5: tracking issue — sentinel mismatch (sentinel has #$ISSUE_NUMBER_in_sentinel, --issue requested #$ISSUE_ARG). Clearing sentinel and re-adopting.**`, remove the sentinel file and `rm -rf $IMPLEMENT_TMPDIR/anchor-sections/`, fall through to Branch 2.
 - **Reuse**: set `ISSUE_NUMBER` and `ANCHOR_COMMENT_ID` from sentinel. Print `✅ 0.5: tracking issue — reusing sentinel #$ISSUE_NUMBER (<elapsed>)`.
-- **Hydration** (FINDING_8): if `$IMPLEMENT_TMPDIR/anchor-sections/` is empty or missing, fetch the remote anchor to avoid overwriting populated sections with empty fragments on the first resumed upsert.
-
-  **Fetch the anchor comment directly by ID** — do NOT route through `tracking-issue-read.sh --issue`, because that script's anchor-marker filter unconditionally skips anchor comments from `TASK_FILE` (the filter is a feedback-loop guard for prompt context, not a content-retrieval path). Hydration requires the opposite semantics — retrieving the anchor body — which is a different contract.
+- **Hydration** (FINDING_8): if `$IMPLEMENT_TMPDIR/anchor-sections/` is empty or missing, fetch the remote anchor to avoid overwriting populated sections with empty fragments on the first resumed upsert. The wrapper fetches the comment body directly by ID (not via `tracking-issue-read.sh --issue`, whose anchor-marker filter unconditionally skips anchor comments) and runs the section-extraction loop matching `<!-- section:<slug> -->` / `<!-- section-end:<slug> -->` pairs:
 
   ```bash
-  mkdir -p "$IMPLEMENT_TMPDIR/anchor-hydrate" "$IMPLEMENT_TMPDIR/anchor-sections"
-  gh api "/repos/$REPO/issues/comments/$ANCHOR_COMMENT_ID" --jq '.body' \
-    > "$IMPLEMENT_TMPDIR/anchor-hydrate/anchor-body.md"
+  ${CLAUDE_PLUGIN_ROOT}/scripts/hydrate-anchor.sh --anchor-id "$ANCHOR_COMMENT_ID" --tmpdir "$IMPLEMENT_TMPDIR" --repo "$REPO"
   ```
 
-  Run an inline awk loop over `anchor-body.md` matching `<!-- section:<slug> -->` / `<!-- section-end:<slug> -->` pairs, writing each section interior to `$IMPLEMENT_TMPDIR/anchor-sections/<slug>.md`. Hydration is best-effort: any failure (fetch error, anchor missing, parse error, empty `ANCHOR_COMMENT_ID`) logs to `Warnings` ("Step 0.5 — anchor hydration skipped: <reason>") and proceeds. On failure, the next step's fragment write will be the first fresh write — acceptable if no prior anchor content existed.
+  Best-effort: the script always exits 0; parse `HYDRATED=true|false` and on `false` log `Step 0.5 — anchor hydration skipped: $ERROR` to `Warnings` and proceed. On failure, the next step's fragment write will be the first fresh write — acceptable if no prior anchor content existed. See `scripts/hydrate-anchor.md` for the full contract.
 
 - **Resume rename safety net**: if `ISSUE_NUMBER` is set, run a best-effort idempotent rename to `[IN PROGRESS]`. This recovers from the case where a prior session wrote the sentinel but its Branch 2 / Branch 3 / Branch 4 rename failed (best-effort, logged but non-blocking) — without this, a resumed run could complete with merge/Step 18 renames while the GitHub title never received `[IN PROGRESS]`:
 
@@ -297,14 +289,16 @@ Proceed to Step 1.
 **Branch 2 — `--issue <N>` provided** (`ISSUE_ARG` non-empty, no usable sentinel after Branch 1 mismatch-clear):
 
 ```bash
-gh issue view "$ISSUE_ARG" --json state,url --jq '{state,url}'
+${CLAUDE_PLUGIN_ROOT}/scripts/get-issue-state.sh --issue "$ISSUE_ARG"
 ```
 
-Detect PR-vs-issue: if `.url` contains `/pull/`, print `**⚠ 0.5: tracking issue — #$ISSUE_ARG is a pull request, not an issue. Aborting.**` and skip to Step 18.
+Parse `STATE`, `URL`, `IS_PR` (or `FAILED=true` + `ERROR=` on `gh` failure). On `FAILED=true`, print `**⚠ 0.5: tracking issue — get-issue-state failed: $ERROR. Aborting.**` and skip to Step 18.
 
-If `.state == "CLOSED"`: print `**⚠ 0.5: tracking issue — adopted issue #$ISSUE_ARG is CLOSED. Aborting.**`, emit `IMPLEMENT_BAIL_REASON=adopted-issue-closed` on stdout, skip to Step 18. (`/fix-issue` Step 5a consumes this bail token and branches to a specific warning + skip-to-cleanup path without calling `issue-lifecycle.sh close`.)
+Detect PR-vs-issue: if `IS_PR=true`, print `**⚠ 0.5: tracking issue — #$ISSUE_ARG is a pull request, not an issue. Aborting.**` and skip to Step 18.
 
-Else (`.state == "OPEN"`): **adopt safely without clobbering any populated existing anchor**. First try to locate an existing anchor via the paginated, multi-anchor-fail-closed `find-anchor` subcommand (delegates to `tracking-issue-write.sh`'s `list_anchor_comments` helper, which uses `gh api --paginate` so anchors past the first page of comments are not silently missed; multi-anchor state fails closed instead of silently picking one — see `scripts/tracking-issue-write.md` for the contract):
+If `STATE=CLOSED`: print `**⚠ 0.5: tracking issue — adopted issue #$ISSUE_ARG is CLOSED. Aborting.**`, emit `IMPLEMENT_BAIL_REASON=adopted-issue-closed` on stdout, skip to Step 18. (`/fix-issue` Step 5a consumes this bail token and branches to a specific warning + skip-to-cleanup path without calling `issue-lifecycle.sh close`.)
+
+Else (`STATE=OPEN`): **adopt safely without clobbering any populated existing anchor**. First try to locate an existing anchor via the paginated, multi-anchor-fail-closed `find-anchor` subcommand (delegates to `tracking-issue-write.sh`'s `list_anchor_comments` helper, which uses `gh api --paginate` so anchors past the first page of comments are not silently missed; multi-anchor state fails closed instead of silently picking one — see `scripts/tracking-issue-write.md` for the contract):
 
 ```bash
 FIND_OUT=$(${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh find-anchor --issue "$ISSUE_ARG")
@@ -315,25 +309,19 @@ FIND_OUT=$(${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh find-anchor --i
 - If `FIND_OUT` contains `FAILED=true`: parse `ERROR=` (multi-anchor case starts with "multiple anchor comments found (ids: ...)"; gh-failure case carries the redacted gh stderr). Print `**⚠ 0.5: tracking issue — find-anchor failed: $ERROR. Aborting.**` and skip to Step 18.
 - Else, extract `ANCHOR_ID` from the `ANCHOR_COMMENT_ID=` line of `$FIND_OUT`:
   ```bash
-  ANCHOR_ID=$(printf '%s\n' "$FIND_OUT" | grep -E '^ANCHOR_COMMENT_ID=' | sed 's/^ANCHOR_COMMENT_ID=//')
+  ANCHOR_ID=$(printf '%s\n' "$FIND_OUT" | awk -F= '$1=="ANCHOR_COMMENT_ID"{print $2; exit}')
   ```
-  `ANCHOR_ID` is the canonical name used by the next two sub-branches and by the hydration `gh api ... /comments/$ANCHOR_ID` call below. The value is empty when `find-anchor` reported zero anchors and non-empty when it reported one anchor.
-- If `ANCHOR_ID` is non-empty (existing anchor present): fetch its body to hydrate local fragments before any upsert:
+  `ANCHOR_ID` is the canonical name used by the next two sub-branches and by `hydrate-anchor.sh` below. The value is empty when `find-anchor` reported zero anchors and non-empty when it reported one anchor.
+- If `ANCHOR_ID` is non-empty (existing anchor present): hydrate local fragments before any upsert via the wrapper (best-effort; always exits 0 — log `HYDRATED=false` cases to `Warnings`):
   ```bash
-  mkdir -p "$IMPLEMENT_TMPDIR/anchor-hydrate" "$IMPLEMENT_TMPDIR/anchor-sections"
-  gh api "/repos/$REPO/issues/comments/$ANCHOR_ID" --jq '.body' > "$IMPLEMENT_TMPDIR/anchor-hydrate/anchor-body.md"
+  ${CLAUDE_PLUGIN_ROOT}/scripts/hydrate-anchor.sh --anchor-id "$ANCHOR_ID" --tmpdir "$IMPLEMENT_TMPDIR" --repo "$REPO"
   ```
-  Run the inline awk section-extraction loop (matching `<!-- section:<slug> -->` / `<!-- section-end:<slug> -->` pairs) over `anchor-body.md`, writing each section interior to `$IMPLEMENT_TMPDIR/anchor-sections/<slug>.md`. Set `ANCHOR_COMMENT_ID=$ANCHOR_ID`. Do NOT call `upsert-anchor` at this point — future fragment writes will update sections in place without clobbering hydrated content.
-- Else (`ANCHOR_ID` empty — no existing anchor): compose a seed body via `scripts/assemble-anchor.sh` (passing an empty or partially-populated `$IMPLEMENT_TMPDIR/anchor-sections/` — the helper emits the anchor first-line marker, a seed-only visible placeholder line so the comment renders non-empty in GitHub's UI, and 8 empty section-marker pairs when no fragments exist yet; see `scripts/assemble-anchor.md` "Seed-only visible placeholder"), then plant the anchor:
+  Set `ANCHOR_COMMENT_ID=$ANCHOR_ID`. Do NOT call `upsert-anchor` at this point — future fragment writes will update sections in place without clobbering hydrated content.
+- Else (`ANCHOR_ID` empty — no existing anchor): plant a seed anchor via `refresh-anchor.sh`, which combines `mkdir -p` + `assemble-anchor.sh` + `tracking-issue-write.sh upsert-anchor` into one call (the helper emits the anchor first-line marker, a seed-only visible placeholder line so the comment renders non-empty in GitHub's UI, and 8 empty section-marker pairs when no fragments exist yet; see `scripts/refresh-anchor.md` and `scripts/assemble-anchor.md` "Seed-only visible placeholder"):
   ```bash
-  mkdir -p "$IMPLEMENT_TMPDIR/anchor-sections"
-  ${CLAUDE_PLUGIN_ROOT}/scripts/assemble-anchor.sh \
-    --sections-dir "$IMPLEMENT_TMPDIR/anchor-sections" \
-    --issue "$ISSUE_ARG" \
-    --output "$IMPLEMENT_TMPDIR/anchor-seed.md"
-  ${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh upsert-anchor --issue $ISSUE_ARG --body-file "$IMPLEMENT_TMPDIR/anchor-seed.md"
+  ${CLAUDE_PLUGIN_ROOT}/scripts/refresh-anchor.sh --sections-dir "$IMPLEMENT_TMPDIR/anchor-sections" --issue "$ISSUE_ARG" --output "$IMPLEMENT_TMPDIR/anchor-seed.md"
   ```
-  Parse `ANCHOR_COMMENT_ID` from stdout. If either call reports `FAILED=true`, print `**⚠ 0.5: tracking issue — seed anchor planting failed: $ERROR. Aborting.**` and skip to Step 18.
+  Parse `ANCHOR_COMMENT_ID` from stdout. On `FAILED=true` (assemble or upsert step), print `**⚠ 0.5: tracking issue — seed anchor planting failed: $ERROR. Aborting.**` and skip to Step 18.
 
 On either sub-branch, **rename the adopted issue to `[IN PROGRESS]`** so the title reflects the active run (matches the title-prefix lifecycle applied to fresh-created issues in Branch 4 — see `scripts/tracking-issue-write.md` "Title-prefix lifecycle"):
 
@@ -361,7 +349,7 @@ Check for an existing PR on the current branch; if present, extract the first `C
 ${CLAUDE_PLUGIN_ROOT}/scripts/extract-closes-issue-from-pr.sh
 ```
 
-If a number emerges as `RECOVERED_N`: validate the target issue via `gh issue view "$RECOVERED_N" --json state,url` (same PR-vs-issue + CLOSED checks as Branch 2). If target is a PR URL or CLOSED, fall through to Branch 4. Else (OPEN issue): **adopt safely without clobbering any populated existing anchor** using the same paginated, multi-anchor-fail-closed `find-anchor` subcommand as Branch 2 — only the issue-number variable differs (`$RECOVERED_N` here vs `$ISSUE_ARG` in Branch 2):
+If a number emerges as `RECOVERED_N`: validate the target issue via `${CLAUDE_PLUGIN_ROOT}/scripts/get-issue-state.sh --issue "$RECOVERED_N"` (same PR-vs-issue + CLOSED checks as Branch 2). On `FAILED=true`, log `Step 0.5 — Branch 3 get-issue-state failed: $ERROR` to `Tool Failures` and fall through to Branch 4. If target is a PR URL (`IS_PR=true`) or CLOSED (`STATE=CLOSED`), fall through to Branch 4. Else (`STATE=OPEN`, `IS_PR=false`): **adopt safely without clobbering any populated existing anchor** using the same paginated, multi-anchor-fail-closed `find-anchor` subcommand as Branch 2 — only the issue-number variable differs (`$RECOVERED_N` here vs `$ISSUE_ARG` in Branch 2):
 
 ```bash
 FIND_OUT=$(${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh find-anchor --issue "$RECOVERED_N")
@@ -371,11 +359,15 @@ FIND_OUT=$(${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh find-anchor --i
 
 Otherwise, extract `ANCHOR_ID` from the `ANCHOR_COMMENT_ID=` line of `$FIND_OUT`:
 ```bash
-ANCHOR_ID=$(printf '%s\n' "$FIND_OUT" | grep -E '^ANCHOR_COMMENT_ID=' | sed 's/^ANCHOR_COMMENT_ID=//')
+ANCHOR_ID=$(printf '%s\n' "$FIND_OUT" | awk -F= '$1=="ANCHOR_COMMENT_ID"{print $2; exit}')
 ```
 
-- If `ANCHOR_ID` is non-empty (existing anchor): fetch its body and hydrate local fragments (same as Branch 2 — direct `gh api /repos/.../issues/comments/$ANCHOR_ID` + awk section-extraction). Set `ANCHOR_COMMENT_ID=$ANCHOR_ID`. No upsert.
-- Else (`ANCHOR_ID` empty — no existing anchor): plant a fresh seed anchor using the shared helper (`mkdir -p "$IMPLEMENT_TMPDIR/anchor-sections"` then `${CLAUDE_PLUGIN_ROOT}/scripts/assemble-anchor.sh --sections-dir "$IMPLEMENT_TMPDIR/anchor-sections" --issue "$RECOVERED_N" --output "$IMPLEMENT_TMPDIR/anchor-seed.md"`, then `${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh upsert-anchor --issue $RECOVERED_N --body-file "$IMPLEMENT_TMPDIR/anchor-seed.md"`). Parse `ANCHOR_COMMENT_ID` from stdout.
+- If `ANCHOR_ID` is non-empty (existing anchor): hydrate local fragments via `${CLAUDE_PLUGIN_ROOT}/scripts/hydrate-anchor.sh --anchor-id "$ANCHOR_ID" --tmpdir "$IMPLEMENT_TMPDIR" --repo "$REPO"` (same wrapper used by Branch 1 / Branch 2 hydration; best-effort, always exits 0 — log `HYDRATED=false` cases to `Warnings`). Set `ANCHOR_COMMENT_ID=$ANCHOR_ID`. No upsert.
+- Else (`ANCHOR_ID` empty — no existing anchor): plant a fresh seed anchor via `refresh-anchor.sh` (combines `mkdir -p` + `assemble-anchor.sh` + `tracking-issue-write.sh upsert-anchor` into one call):
+  ```bash
+  ${CLAUDE_PLUGIN_ROOT}/scripts/refresh-anchor.sh --sections-dir "$IMPLEMENT_TMPDIR/anchor-sections" --issue "$RECOVERED_N" --output "$IMPLEMENT_TMPDIR/anchor-seed.md"
+  ```
+  Parse `ANCHOR_COMMENT_ID` from stdout.
 
 On either sub-branch, **rename the recovered issue to `[IN PROGRESS]`** so the title reflects the active run (matches Branch 2 / Branch 4):
 
@@ -422,16 +414,11 @@ Create the tracking issue **immediately** so all subsequent anchor-accumulation 
    ```
    Parse `ISSUE_NUMBER` and `ISSUE_URL` from stdout. On `FAILED=true` OR non-zero exit, print `**⚠ 0.5: tracking issue — Branch 4 create-issue failed: $ERROR. Continuing with deferred/absent anchor.**`, log to `Tool Failures`, set `deferred=true`, leave `$ISSUE_NUMBER` unset, and proceed to Step 1. Downstream: Step 9a omits the `Closes #<N>` line entirely and replaces it with `_No tracking issue — auto-close N/A._`; Step 11 branch 3 skips cleanly; Step 18 URL print is silently skipped.
 
-5. **Seed the anchor** as the first comment on the newly-created issue (`tracking-issue-write.sh` treats the anchor as a standalone comment, not the issue description):
+5. **Seed the anchor** as the first comment on the newly-created issue (`tracking-issue-write.sh` treats the anchor as a standalone comment, not the issue description). The wrapper combines `mkdir -p` + `assemble-anchor.sh` + `tracking-issue-write.sh upsert-anchor` into one call (see `scripts/refresh-anchor.md`):
    ```bash
-   mkdir -p "$IMPLEMENT_TMPDIR/anchor-sections"
-   ${CLAUDE_PLUGIN_ROOT}/scripts/assemble-anchor.sh \
-     --sections-dir "$IMPLEMENT_TMPDIR/anchor-sections" \
-     --issue "$ISSUE_NUMBER" \
-     --output "$IMPLEMENT_TMPDIR/anchor-seed.md"
-   ${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh upsert-anchor --issue $ISSUE_NUMBER --body-file "$IMPLEMENT_TMPDIR/anchor-seed.md"
+   ${CLAUDE_PLUGIN_ROOT}/scripts/refresh-anchor.sh --sections-dir "$IMPLEMENT_TMPDIR/anchor-sections" --issue "$ISSUE_NUMBER" --output "$IMPLEMENT_TMPDIR/anchor-seed.md"
    ```
-   The seed body contains the anchor first-line marker (embedding `$ISSUE_NUMBER`), a seed-only visible placeholder line so the comment renders non-empty in GitHub's UI (issue #431; see `scripts/assemble-anchor.md` "Seed-only visible placeholder"), and all 8 canonical section marker pairs wrapping empty interiors (no fragments yet). Parse `ANCHOR_COMMENT_ID` from `upsert-anchor`'s stdout. On `FAILED=true` from either call OR if parsed `ANCHOR_COMMENT_ID` is empty, print `**⚠ 0.5: tracking issue — Branch 4 anchor planting failed: $ERROR. Continuing with deferred/absent anchor.**`, log to `Tool Failures`, set `deferred=true`, clear `$ISSUE_NUMBER`, and proceed to Step 1 (skipping the sentinel write in step 6). Do NOT continue with an empty `$ANCHOR_COMMENT_ID` — an empty value breaks downstream `upsert-anchor --anchor-id "$ANCHOR_COMMENT_ID"` calls at the shell-expansion layer (the empty expansion would cause the next flag to be consumed as the anchor-id value) and we cannot safely assert sentinel idempotency (Invariant #4) without a resolved anchor id.
+   The seed body contains the anchor first-line marker (embedding `$ISSUE_NUMBER`), a seed-only visible placeholder line so the comment renders non-empty in GitHub's UI (issue #431; see `scripts/assemble-anchor.md` "Seed-only visible placeholder"), and all 8 canonical section marker pairs wrapping empty interiors (no fragments yet). Parse `ANCHOR_COMMENT_ID` from `refresh-anchor.sh`'s stdout. On `FAILED=true` (either assemble or upsert step) OR if parsed `ANCHOR_COMMENT_ID` is empty, print `**⚠ 0.5: tracking issue — Branch 4 anchor planting failed: $ERROR. Continuing with deferred/absent anchor.**`, log to `Tool Failures`, set `deferred=true`, clear `$ISSUE_NUMBER`, and proceed to Step 1 (skipping the sentinel write in step 6). Do NOT continue with an empty `$ANCHOR_COMMENT_ID` — an empty value breaks downstream `upsert-anchor --anchor-id "$ANCHOR_COMMENT_ID"` calls at the shell-expansion layer (the empty expansion would cause the next flag to be consumed as the anchor-id value) and we cannot safely assert sentinel idempotency (Invariant #4) without a resolved anchor id.
 
 6. **Write the sentinel LAST**, only after BOTH `$ISSUE_NUMBER` and `$ANCHOR_COMMENT_ID` resolved to non-empty values in steps 4 and 5 (Load-Bearing Invariant #4 ordering):
    ```
@@ -470,20 +457,15 @@ Each step covered by the accumulation mechanism writes its fragment to `$IMPLEME
 | Step 9a.1 (after OOS filing) | `oos-issues` AND `run-statistics` (two separate fragment files) |
 | Step 11 (post-execution) | `execution-issues` |
 
-**Assembly + upsert procedure** (when `ISSUE_NUMBER` set):
+**Refresh procedure** (when `ISSUE_NUMBER` set):
 
-1. Assemble the anchor body via the shared helper (single source of truth for the 8-slug walk, first-line HTML marker, and empty-marker-pair emission — see `${CLAUDE_PLUGIN_ROOT}/scripts/assemble-anchor.md`):
-   ```bash
-   ${CLAUDE_PLUGIN_ROOT}/scripts/assemble-anchor.sh \
-     --sections-dir "$IMPLEMENT_TMPDIR/anchor-sections" \
-     --issue "$ISSUE_NUMBER" \
-     --output "$IMPLEMENT_TMPDIR/anchor-assembled.md"
-   ```
-   Parse stdout for `ASSEMBLED=true` on success, or `FAILED=true` + `ERROR=<msg>` on failure. The helper walks `SECTION_MARKERS` (sourced from `scripts/anchor-section-markers.sh`, also sourced by `tracking-issue-write.sh`) so all anchor-body creation paths share one executable definition of slug order.
-2. ```bash
-   ${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh upsert-anchor --issue $ISSUE_NUMBER --anchor-id $ANCHOR_COMMENT_ID --body-file $IMPLEMENT_TMPDIR/anchor-assembled.md
-   ```
-3. On `FAILED=true` (either step), log to `Warnings` (`Step <N> — anchor assemble/upsert failed: $ERROR`) and proceed; do NOT bail. Fragments still accumulate locally; Step 9a.1's final upsert is the last attempt.
+```bash
+${CLAUDE_PLUGIN_ROOT}/scripts/refresh-anchor.sh --sections-dir "$IMPLEMENT_TMPDIR/anchor-sections" --issue "$ISSUE_NUMBER" --anchor-id "$ANCHOR_COMMENT_ID" --output "$IMPLEMENT_TMPDIR/anchor-assembled.md"
+```
+
+`refresh-anchor.sh` is the single-call wrapper around `assemble-anchor.sh` + `tracking-issue-write.sh upsert-anchor` (see `scripts/refresh-anchor.md`). It walks `SECTION_MARKERS` via the shared helper (sourced from `scripts/anchor-section-markers.sh`, also sourced by `tracking-issue-write.sh`) so all anchor-body creation paths share one executable definition of slug order. Parse stdout for `ASSEMBLED=true` + `ANCHOR_COMMENT_ID=` + `UPDATED=` on success, or `FAILED=true` + `ERROR=<msg>` on assemble (exit 1) or upsert (exit 2) failure. On `FAILED=true`, log to `Warnings` (`Step <N> — anchor refresh failed: $ERROR`) and proceed; do NOT bail. Fragments still accumulate locally; Step 9a.1's final refresh is the last attempt.
+
+`assemble-anchor.sh` and `tracking-issue-write.sh upsert-anchor` remain callable directly when a step needs the assembled body without an upsert (rebase-rebump-subprocedure step 6 is the historical example, now also migrated to `refresh-anchor.sh`); the wrapper is purely additive.
 
 **Compose-time sanitization**: every fragment composed into an anchor section MUST apply prompt-level sanitization (secrets → `<REDACTED-TOKEN>`, internal URLs → `<INTERNAL-URL>`, PII → `<REDACTED-PII>`). `scripts/redact-secrets.sh` (invoked inside `tracking-issue-write.sh`) is the shell-layer backstop but does NOT cover internal URLs or PII — compose-time sanitization is the first-line defense. See `anchor-comment-template.md` Compose-time sanitization rule.
 
@@ -549,7 +531,7 @@ When the task is SIMPLE: print `**⚡ 1: design plan — task classified as SIMP
 
 When the task is not SIMPLE: leave `quick_mode=false` and continue with the normal-mode flow below.
 
-**Both-externals-down inline-plan branch**: if `codex_available=false AND cursor_available=false AND design_only=false`, do NOT invoke `/design`. The full `/design` pipeline expands to 8 Claude-subagent sketches + 8 Claude-subagent reviewers + judge panels — token-expensive and architecturally brittle when no external can produce independent perspectives anyway. Take the same inline-plan path as quick mode (`### Quick mode (quick_mode=true)` above) — same branch handling, same inline plan composition, same `$IMPLEMENT_TMPDIR/design-export/plan.txt` + `voting-tally.md` writes — except the breadcrumb is `⚡ 1: design plan — both-externals-down, inline plan` and the voting-tally fallback text is `Both externals unavailable — no plan review voting.` (replaces the quick-mode `Quick mode — no plan review voting.`). Print `**⚠ 1: design plan — both Codex and Cursor unavailable; skipping /design and producing inline plan in main agent.**` first, then proceed to Step 2.
+**Both-externals-down inline-plan branch**: if `codex_available=false AND cursor_available=false AND design_only=false`, do NOT invoke `/design` via the Skill tool. The full `/design` pipeline expands to 8 Claude-subagent sketches + 8 Claude-subagent reviewers + judge panels — token-expensive and architecturally brittle when no external can produce independent perspectives anyway. Take the same inline-plan path as quick mode (`### Quick mode (quick_mode=true)` above) — same branch handling, same inline plan composition, same `$IMPLEMENT_TMPDIR/design-export/plan.txt` + `voting-tally.md` writes — except the breadcrumb is `⚡ 1: design plan — both-externals-down, inline plan` and the voting-tally fallback text is `Both externals unavailable — no plan review voting.` (replaces the quick-mode `Quick mode — no plan review voting.`). Print `**⚠ 1: design plan — both Codex and Cursor unavailable; skipping /design and producing inline plan in main agent.**` first, then proceed to Step 2.
 
 The `design_only=false` gate is load-bearing: `--design-only`'s contract is to publish design artifacts (plan, plan-review tally, diagrams, OOS) to the tracking issue as the run's deliverable. It is mutually exclusive with `--quick` precisely because quick mode produces a degraded plan with no plan-review voting. Inheriting that degradation here when externals are down would silently violate the same contract. When `codex_available=false AND cursor_available=false AND design_only=true`, do NOT skip /design — print `**⚠ 1: design plan — both Codex and Cursor unavailable but --design-only requires external-backed plan-review. Bailing to cleanup.**`, set `STALL_TRACKING=true`, and skip to Step 18.
 
@@ -635,10 +617,8 @@ Step 2 invokes a single dispatcher (`skills/implement/scripts/step2-implement.sh
 **2.1 — First dispatch invocation**:
 
 ```bash
-cursor_healthy=$(awk -F= '$1=="CURSOR_HEALTHY"{print $2; exit}' "$IMPLEMENT_TMPDIR/session-env.sh")
-[[ -z "$cursor_healthy" ]] && cursor_healthy="false"
-gemini_healthy=$(awk -F= '$1=="GEMINI_HEALTHY"{print $2; exit}' "$IMPLEMENT_TMPDIR/session-env.sh")
-[[ -z "$gemini_healthy" ]] && gemini_healthy="false"
+cursor_healthy=$(${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CURSOR_HEALTHY --default false)
+gemini_healthy=$(${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh --file "$IMPLEMENT_TMPDIR/session-env.sh" --key GEMINI_HEALTHY --default false)
 
 ${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step2-implement.sh \
     --tmpdir "$IMPLEMENT_TMPDIR" \
@@ -723,20 +703,11 @@ After each `AskUserQuestion` return (Codex Q/A loop in 2.3, Claude-fallback oppo
 **Progressive upsert** (if `$ISSUE_NUMBER` is set, i.e. `deferred=false` and `repo_unavailable=false`):
 1. Compose the `execution-issues` anchor fragment from the full contents of `$IMPLEMENT_TMPDIR/execution-issues.md`, wrapped in `<details><summary>Execution Issues</summary>` / `</details>` per `anchor-comment-template.md` section `execution-issues`. Preserve load-bearing blank lines.
 2. Write to `$IMPLEMENT_TMPDIR/anchor-sections/execution-issues.md`.
-3. Assemble:
+3. Refresh the anchor — `$ANCHOR_COMMENT_ID` is guaranteed non-empty at Step 2 entry (Step 0.5 flips to `deferred=true` and clears `$ISSUE_NUMBER` on any anchor-planting failure; the `deferred=false` precondition above rules out the empty case):
    ```bash
-   ${CLAUDE_PLUGIN_ROOT}/scripts/assemble-anchor.sh \
-     --sections-dir "$IMPLEMENT_TMPDIR/anchor-sections" \
-     --issue "$ISSUE_NUMBER" \
-     --output "$IMPLEMENT_TMPDIR/anchor-assembled.md"
+   ${CLAUDE_PLUGIN_ROOT}/scripts/refresh-anchor.sh --sections-dir "$IMPLEMENT_TMPDIR/anchor-sections" --issue "$ISSUE_NUMBER" --anchor-id "$ANCHOR_COMMENT_ID" --output "$IMPLEMENT_TMPDIR/anchor-assembled.md"
    ```
-   Then upsert — `$ANCHOR_COMMENT_ID` is guaranteed non-empty at Step 2 entry (Step 0.5 flips to `deferred=true` and clears `$ISSUE_NUMBER` on any anchor-planting failure; the `deferred=false` precondition above rules out the empty case):
-   ```bash
-   ${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh upsert-anchor \
-     --issue "$ISSUE_NUMBER" --anchor-id "$ANCHOR_COMMENT_ID" \
-     --body-file "$IMPLEMENT_TMPDIR/anchor-assembled.md"
-   ```
-4. On `FAILED=true` from either call: log `Step 2 — anchor Q/A refresh failed: $ERROR` to `Warnings` and continue. Non-fatal.
+4. On `FAILED=true` (assemble or upsert step): log `Step 2 — anchor Q/A refresh failed: $ERROR` to `Warnings` and continue. Non-fatal.
 
 If `deferred=true` or `repo_unavailable=true`: local-only append; Step 11's post-execution refresh remains the catch-all.
 
@@ -998,7 +969,7 @@ Parse `HAS_BUMP`, `COMMITS_BEFORE`, `STATUS` (`ok|missing_main_ref|git_error` pe
 
 Compose the `version-bump-reasoning` fragment from the contents of `$BUMP_REASONING_FILE` if it exists and is non-empty; otherwise use `"No version bump reasoning available (skill may have skipped via BUMP_TYPE=NONE, or /bump-version was not invoked)."`. Write to `$IMPLEMENT_TMPDIR/anchor-sections/version-bump-reasoning.md`. If `ISSUE_NUMBER` is set, assemble and upsert (see Step 0.5).
 
-**Mid-loop refresh during rebase cycles**: `rebase-rebump-subprocedure.md` step 6 (Steps 10 / 12's rebase + re-bump path) refreshes the anchor's `version-bump-reasoning` section directly. It reads the session's tracking-issue sentinel via `${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-read.sh --sentinel`, rewrites this fragment when `/bump-version` produced a fresh reasoning file in that invocation (preserves the prior fragment otherwise), and calls `${CLAUDE_PLUGIN_ROOT}/scripts/assemble-anchor.sh` + `upsert-anchor`. Umbrella #348 Phase 5 closed the earlier gap where sub-procedure step 6 refreshed a PR-body block that no longer existed in the slim PR body (Phase 3). Anchor refresh failure in that step is non-fatal (logged to `Warnings`); the next successful progressive upsert (this Step 8, or Step 11 post-execution) repairs any stale anchor state.
+**Mid-loop refresh during rebase cycles**: `rebase-rebump-subprocedure.md` step 6 (Steps 10 / 12's rebase + re-bump path) refreshes the anchor's `version-bump-reasoning` section directly. It reads the session's tracking-issue sentinel via `${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-read.sh --sentinel`, rewrites this fragment when `/bump-version` produced a fresh reasoning file in that invocation (preserves the prior fragment otherwise), and calls `${CLAUDE_PLUGIN_ROOT}/scripts/refresh-anchor.sh` (the wrapper around `assemble-anchor.sh` + `upsert-anchor`). Umbrella #348 Phase 5 closed the earlier gap where sub-procedure step 6 refreshed a PR-body block that no longer existed in the slim PR body (Phase 3). Anchor refresh failure in that step is non-fatal (logged to `Warnings`); the next successful progressive upsert (this Step 8, or Step 11 post-execution) repairs any stale anchor state.
 
 ## Step 8a — CHANGELOG Update
 
@@ -1055,16 +1026,15 @@ Capture the exit code as `rc`. Branch:
 
 If `repo_unavailable=true`: skip the force-push branch entirely (no `git ls-remote` / `git-force-push.sh` calls — neither has a `gh` dependency, but the convention is to keep Step 8b's network surface minimal in `repo_unavailable=true` mode parallel to Step 0.5 / 10 / 12 / 18). Proceed to Step 9.
 
-Otherwise, detect whether the feature branch already exists on `origin`. Capture the exit code of `git ls-remote --exit-code --heads`:
+Otherwise, detect whether the feature branch already exists on `origin` via the wrapper around `git ls-remote --exit-code --heads`:
 
 ```bash
-git ls-remote --exit-code --heads origin "$BRANCH_NAME" >/dev/null 2>&1
-ls_remote_rc=$?
+${CLAUDE_PLUGIN_ROOT}/scripts/check-remote-branch.sh --branch "$BRANCH_NAME"
 ```
 
-`git ls-remote --exit-code` returns 0 when the named ref is found, 2 when it is positively confirmed absent, and other non-zero (typically 128) on transport / auth / network failures. Distinguish the three:
+Parse `STATE` (and `RC` for diagnostic logging). The script always exits 0; the trichotomy is in `STATE=present|absent|error` (see `scripts/check-remote-branch.md` for the full contract — `git ls-remote --exit-code` returns 0 / 2 / other for present / absent / transport-failure, and the wrapper preserves all three so transient GitHub failures are not silently degraded to a stale-remote path; see issue #818). Distinguish the three:
 
-- **Exit 0** (branch exists on origin): the local rebase may have rewritten history that origin still points at; force-push to align them:
+- **`STATE=present`** (branch exists on origin): the local rebase may have rewritten history that origin still points at; force-push to align them:
 
   ```bash
   ${CLAUDE_PLUGIN_ROOT}/scripts/git-force-push.sh
@@ -1074,9 +1044,9 @@ ls_remote_rc=$?
   - `STATUS=pushed` or `STATUS=noop_same_ref`: print `✅ 8b: rebase — force-pushed to origin (<elapsed>)`. Proceed to Step 9.
   - `STATUS=diverged_retry_failed` (exit 1): print `**⚠ Step 8b: force-push failed after rebase (lease check refused). Bailing to cleanup.**`. Set `STALL_TRACKING=true`, skip to Step 18.
 
-- **Exit 2** (branch positively confirmed absent on origin — the fresh-branch path): skip the force-push entirely; Step 9b's `create-pr.sh` will perform the initial push.
+- **`STATE=absent`** (branch positively confirmed absent on origin — the fresh-branch path): skip the force-push entirely; Step 9b's `create-pr.sh` will perform the initial push.
 
-- **Other non-zero exit** (transport / auth / network failure — e.g., 128): do NOT degrade to the fresh-branch path, because that would silently mask a real network problem and let `create-pr.sh`'s existing-PR fast-path swallow the subsequent non-fast-forward push failure. Print `**⚠ Step 8b: git ls-remote --heads failed (exit $ls_remote_rc; transport or auth error). Bailing to cleanup.**`. Set `STALL_TRACKING=true`, skip to Step 18.
+- **`STATE=error`** (transport / auth / network failure — e.g., underlying `git ls-remote` exit 128): do NOT degrade to the fresh-branch path, because that would silently mask a real network problem and let `create-pr.sh`'s existing-PR fast-path swallow the subsequent non-fast-forward push failure. Print `**⚠ Step 8b: check-remote-branch failed (RC=$RC, ERROR=$ERROR; transport or auth error). Bailing to cleanup.**`. Set `STALL_TRACKING=true`, skip to Step 18.
 
 Detection is Git-based (not via `gh pr view`) so transient GitHub API failures do not silently degrade to a stale-remote path — see issue #818 for the failure-mode rationale.
 
@@ -1187,11 +1157,11 @@ Runs unconditionally. The Slack announcement of the tracking issue has moved to 
 
    b. Write to `$IMPLEMENT_TMPDIR/anchor-sections/execution-issues.md`.
 
-   c. Assemble the full anchor body from all current fragments in canonical `SECTION_MARKERS` order (see Step 0.5 "Anchor-section accumulation"), and upsert:
+   c. Refresh the anchor — assembles the full body from all current fragments in canonical `SECTION_MARKERS` order and upserts in one call (see Step 0.5 "Anchor-section accumulation" and `scripts/refresh-anchor.md`):
       ```bash
-      ${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh upsert-anchor --issue $ISSUE_NUMBER --anchor-id $ANCHOR_COMMENT_ID --body-file "$IMPLEMENT_TMPDIR/anchor-assembled.md"
+      ${CLAUDE_PLUGIN_ROOT}/scripts/refresh-anchor.sh --sections-dir "$IMPLEMENT_TMPDIR/anchor-sections" --issue "$ISSUE_NUMBER" --anchor-id "$ANCHOR_COMMENT_ID" --output "$IMPLEMENT_TMPDIR/anchor-assembled.md"
       ```
-      On `FAILED=true`, print `**⚠ 11: execution-issues — anchor refresh failed: $ERROR. Continuing.**` and log to `Tool Failures`.
+      On `FAILED=true` (assemble or upsert step), print `**⚠ 11: execution-issues — anchor refresh failed: $ERROR. Continuing.**` and log to `Tool Failures`.
 
 Print: `✅ 11: execution-issues — anchor refreshed (<elapsed>)` on success.
 

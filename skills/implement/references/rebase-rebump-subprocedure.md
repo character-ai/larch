@@ -124,24 +124,17 @@ After the initial version bump in Step 8, every subsequent rebase of the feature
       - **Fresh reasoning file available** (`$BUMP_REASONING_FILE` was set by THIS sub-procedure invocation's step 4 AND the file exists AND is non-empty): `mkdir -p "$IMPLEMENT_TMPDIR/anchor-sections"` then copy the reasoning content into `$IMPLEMENT_TMPDIR/anchor-sections/version-bump-reasoning.md`. Fragment content flows verbatim; compose-time sanitization applies at the call-site layer (see SKILL.md "Compose-time sanitization").
       - **No fresh reasoning file** (HAS_BUMP=false degraded path or degraded-STATUS path where `/bump-version` did not run in this invocation): preserve the existing `$IMPLEMENT_TMPDIR/anchor-sections/version-bump-reasoning.md` fragment unchanged. **Do NOT overwrite with a placeholder** — that would destroy information written at Step 8 of the prior bump cycle. This matches the documented "nothing new to refresh" semantics of the HAS_BUMP=false path.
 
-   d. **Assemble the anchor body** using the shared helper (same helper used by SKILL.md's progressive-upsert assembly; see `${CLAUDE_PLUGIN_ROOT}/scripts/assemble-anchor.md` for the contract):
+   d. **Refresh the anchor** in a single call — assembles the body and upserts it via the shared wrapper used by SKILL.md's progressive-upsert sites (see `${CLAUDE_PLUGIN_ROOT}/scripts/refresh-anchor.md`):
       ```bash
-      ${CLAUDE_PLUGIN_ROOT}/scripts/assemble-anchor.sh \
+      ${CLAUDE_PLUGIN_ROOT}/scripts/refresh-anchor.sh \
         --sections-dir "$IMPLEMENT_TMPDIR/anchor-sections" \
         --issue "$ISSUE_NUMBER" \
+        --anchor-id "$ANCHOR_COMMENT_ID" \
         --output "$IMPLEMENT_TMPDIR/anchor-assembled.md"
       ```
-      Parse stdout for `ASSEMBLED=true` or `FAILED=true` + `ERROR=<msg>`.
+      Parse stdout for `ASSEMBLED=true` + `ANCHOR_COMMENT_ID=<id>` + `UPDATED=true|false` on success, or `FAILED=true` + `ERROR=<msg>` on assemble (exit 1) or upsert (exit 2) failure.
 
-   e. **Upsert the anchor**:
-      ```bash
-      ${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh upsert-anchor \
-        --issue "$ISSUE_NUMBER" --anchor-id "$ANCHOR_COMMENT_ID" \
-        --body-file "$IMPLEMENT_TMPDIR/anchor-assembled.md"
-      ```
-      Parse stdout for `ANCHOR_COMMENT_ID=<id>` / `UPDATED=true|false` on success, or `FAILED=true` + `ERROR=<msg>` on failure.
-
-   f. **Non-fatal failure handling**: if step d's assemble or step e's upsert reports `FAILED=true` OR exits non-zero, print `**⚠ Step <N> — anchor Version Bump Reasoning refresh failed. Continuing.**` and log the specific `ERROR=<msg>` to `$IMPLEMENT_TMPDIR/execution-issues.md` under `Warnings`. **Anchor refresh failure is NOT a hard failure** — the bump is already pushed and the merge will be correct; the stale anchor section is documentation-only. A later successful progressive upsert (Step 11 post-execution refresh, or Step 9a.1's final upsert) may repair it.
+   e. **Non-fatal failure handling**: if the refresh step reports `FAILED=true` OR exits non-zero, print `**⚠ Step <N> — anchor Version Bump Reasoning refresh failed. Continuing.**` and log the specific `ERROR=<msg>` to `$IMPLEMENT_TMPDIR/execution-issues.md` under `Warnings`. **Anchor refresh failure is NOT a hard failure** — the bump is already pushed and the merge will be correct; the stale anchor section is documentation-only. A later successful progressive upsert (Step 11 post-execution refresh, or Step 9a.1's final upsert) may repair it.
 
 7. **Return to caller based on `caller_kind`**:
    - **`step12_rebase`** (from 12a `ACTION=rebase`): increment `rebase_count`, `iteration`, reset `transient_retries`, **sleep 30s** via `${CLAUDE_PLUGIN_ROOT}/scripts/sleep-seconds.sh 30` (give GitHub CI time to register the force-push before polling again), then re-invoke `ci-wait.sh` in Step 12.
