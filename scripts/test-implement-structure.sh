@@ -924,5 +924,42 @@ for lit in "${post_merge_blockquote_literals[@]}"; do
     || fail "(26c) SKILL.md lost Step 12b post-merge blockquote literal: $lit"
 done
 
-echo "PASS: test-implement-structure.sh — all 26 structural invariants hold (assertion 5 retired)"
+# ---------------------------------------------------------------------------
+# (27) Step 1 normal-mode ordering pin (closes #1165). Within
+#      `## Step 1 — Ensure Design Plan Exists`, the line introducing
+#      `**Manifest reuse (resumed sessions — runs first)**` must precede the
+#      lines introducing `**Simplicity classification preamble**` and
+#      `**Both-externals-down inline-plan branch**`. The ordering is
+#      load-bearing: the manifest-reuse guard must run BEFORE simplicity
+#      classification (which can auto-switch to quick mode) and BEFORE the
+#      both-externals-down inline-plan branch (which writes a degraded
+#      plan.txt) so a resumed session never overwrites the prior `/design`
+#      artifact set. Step 1 contains the normative prose stating
+#      "runs first" / "BEFORE simplicity classification" / "BEFORE the
+#      both-externals-down inline-plan branch", but a future prose-only
+#      re-reorder of the actual sub-step headings would not be caught by
+#      any other check (assertion 20 only pins the presence of
+#      `read-design-manifest.sh`). Mirrors the ordering-comparison style of
+#      assertion 25's create-branch → session-entry-gate → session-setup
+#      check. Scoped to the Step 1 section via awk so similarly-worded
+#      text under other steps cannot satisfy the ordering by accident.
+# ---------------------------------------------------------------------------
+step1_section=$(awk '
+  /^## Step 1 — / { flag=1; next }
+  /^## Step / && flag { flag=0 }
+  flag { print }
+' "$SKILL_MD")
+[[ -n "$step1_section" ]] \
+  || fail "(27) could not extract /implement Step 1 section"
+
+manifest_line=$(printf '%s\n' "$step1_section" | grep -nF -- '**Manifest reuse (resumed sessions — runs first)**' | head -1 | cut -d: -f1 || true)
+simplicity_line=$(printf '%s\n' "$step1_section" | grep -nF -- '**Simplicity classification preamble — skip condition**' | head -1 | cut -d: -f1 || true)
+both_down_line=$(printf '%s\n' "$step1_section" | grep -nF -- '**Both-externals-down inline-plan branch**' | head -1 | cut -d: -f1 || true)
+[[ -n "$manifest_line" && -n "$simplicity_line" && -n "$both_down_line" ]] \
+  || fail "(27) could not locate Manifest reuse, Simplicity classification preamble, and Both-externals-down inline-plan branch lines in /implement Step 1 section (closes #1165)"
+if (( manifest_line >= simplicity_line || manifest_line >= both_down_line )); then
+  fail "(27) Step 1 normal-mode ordering must be: Manifest reuse, then Simplicity classification preamble, then Both-externals-down inline-plan branch (closes #1165)"
+fi
+
+echo "PASS: test-implement-structure.sh — all 27 structural invariants hold (assertion 5 retired)"
 exit 0
