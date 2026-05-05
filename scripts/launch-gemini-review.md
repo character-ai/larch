@@ -2,7 +2,7 @@
 
 **Purpose**: Launch Gemini as a generic-only code reviewer and normalize the Gemini CLI JSON envelope into the plain-text reviewer output consumed by `collect-agent-results.sh`.
 
-**Invocation**: `gemini -m pro -p "$PROMPT" -o json --skip-trust --approval-mode plan`
+**Invocation**: `gemini -m "$GEMINI_MODEL" -p "$PROMPT" -o json --skip-trust --approval-mode plan`, where `$GEMINI_MODEL` resolves as `${LARCH_GEMINI_MODEL:-${CLAUDE_PLUGIN_OPTION_GEMINI_MODEL:-gemini-2.5-pro}}`. The same precedence is applied by `scripts/check-reviewers.sh` for the Gemini health probe so probe and review use the same model.
 
 ## Invariants
 
@@ -25,4 +25,4 @@ Gemini runs with `--approval-mode plan`, so callers must pass a self-contained p
 
 ## Edit-in-sync
 
-Update `scripts/run-external-agent.sh`, `scripts/collect-agent-results.sh`, `scripts/check-reviewers.sh`, `skills/review/SKILL.md`, `skills/implement/SKILL.md`, `docs/external-reviewers.md`, and `SECURITY.md` when changing Gemini CLI flags or output schema.
+Update `scripts/run-external-agent.sh`, `scripts/collect-agent-results.sh`, `scripts/check-reviewers.sh`, `skills/review/SKILL.md`, `skills/implement/SKILL.md`, `docs/external-reviewers.md`, and `SECURITY.md` when changing Gemini CLI flags or output schema. Update `.claude-plugin/plugin.json` (`gemini_model` userConfig) and `docs/configuration-and-permissions.md` (`LARCH_GEMINI_MODEL` section) when changing the model-resolution precedence or default.

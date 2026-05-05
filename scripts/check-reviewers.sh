@@ -130,12 +130,13 @@ start_probe() {
                 >"$PROBE_DIR/cursor-wrapper-attempt${attempt}.log" 2>&1 &
             ;;
         gemini)
+            local probe_model="${LARCH_GEMINI_MODEL:-${CLAUDE_PLUGIN_OPTION_GEMINI_MODEL:-gemini-2.5-pro}}"
             "$SCRIPT_DIR/run-external-agent.sh" \
                 --tool gemini \
                 --output "$output" \
                 --timeout 60 \
                 --capture-stdout-only \
-                -- gemini -m pro -p "Respond with OK" -o json --skip-trust --approval-mode plan \
+                -- gemini -m "$probe_model" -p "Respond with OK" -o json --skip-trust --approval-mode plan \
                 >"$PROBE_DIR/gemini-wrapper-attempt${attempt}.log" 2>&1 &
             ;;
     esac

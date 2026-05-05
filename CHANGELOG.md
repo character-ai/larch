@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.8.3] - 2026-05-04
+
+### Added
+
+- `gemini_model` userConfig stanza in `.claude-plugin/plugin.json` paralleling `cursor_model` / `codex_model`, plus a `LARCH_GEMINI_MODEL` section in `docs/configuration-and-permissions.md`. Wires `scripts/launch-gemini-review.sh` and the Gemini health probe in `scripts/check-reviewers.sh` to resolve `-m` from `LARCH_GEMINI_MODEL` then `CLAUDE_PLUGIN_OPTION_GEMINI_MODEL`, defaulting to `gemini-2.5-pro` (replacing the previously hardcoded `-m pro` argv on both paths). Operators preferring the prior alias can set `LARCH_GEMINI_MODEL=pro`. Closes #1088.
+
 ## [15.8.2] - 2026-05-04
 
 ### Added

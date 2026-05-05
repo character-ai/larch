@@ -126,13 +126,15 @@ if [[ "${LARCH_TEST_FORCE_MISSING_JQ:-}" == "true" ]] || ! command -v jq >/dev/n
     fail_closed 127 "MISSING_JQ: jq is required to parse Gemini JSON output"
 fi
 
+GEMINI_MODEL="${LARCH_GEMINI_MODEL:-${CLAUDE_PLUGIN_OPTION_GEMINI_MODEL:-gemini-2.5-pro}}"
+
 RUN_EXIT=0
 "$SCRIPT_DIR/run-external-agent.sh" \
     --tool gemini \
     --output "$RAW_OUTPUT" \
     --timeout "$EFFECTIVE_TIMEOUT" \
     --capture-stdout-only \
-    -- gemini -m pro -p "$PROMPT" -o json --skip-trust --approval-mode plan || RUN_EXIT=$?
+    -- gemini -m "$GEMINI_MODEL" -p "$PROMPT" -o json --skip-trust --approval-mode plan || RUN_EXIT=$?
 
 if [[ "$RUN_EXIT" -ne 0 ]]; then
     fail_closed "$RUN_EXIT" "Gemini exited with code $RUN_EXIT"
