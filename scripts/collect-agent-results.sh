@@ -58,7 +58,7 @@
 #
 # Output (KEY=value blocks on stdout, one block per reviewer, separated by blank lines):
 #   REVIEWER_FILE=<output-path>
-#   TOOL=<codex|cursor|gemini|unknown>
+#   TOOL=<registered external tool|unknown>
 #   STATUS=<OK|TIMED_OUT|FAILED|EMPTY_OUTPUT|SENTINEL_TIMEOUT|NOT_SUBSTANTIVE>
 #   EXIT_CODE=<N>
 #   HEALTHY=<true|false>
@@ -72,6 +72,10 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# shellcheck source=scripts/external-tool-registry.sh
+source "$SCRIPT_DIR/external-tool-registry.sh" || { echo "collect-agent-results.sh: failed to source external-tool-registry.sh" >&2; exit 1; }
+[[ "${LARCH_EXTERNAL_TOOL_REGISTRY_LOADED:-}" == "1" ]] || { echo "collect-agent-results.sh: external-tool-registry.sh sourced but sentinel missing" >&2; exit 1; }
 
 TIMEOUT=""
 WRITE_HEALTH=""
@@ -113,30 +117,32 @@ fi
 derive_tool() {
     local meta="${1}.meta"
     local meta_tool=""
+    local meta_line=""
+    local meta_key=""
+    local meta_val=""
+    local t
     if [[ -f "$meta" ]]; then
         while IFS= read -r meta_line || [[ -n "$meta_line" ]]; do
             meta_key="${meta_line%%=*}"
             meta_val="${meta_line#*=}"
             [[ "$meta_key" == "TOOL" ]] && meta_tool="$meta_val"
         done < "$meta"
-        case "$meta_tool" in
-            codex|cursor|gemini)
-                echo "$meta_tool"
-                return ;;
-        esac
+        if [[ -n "$meta_tool" ]] && larch_is_external_tool "$meta_tool"; then
+            echo "$meta_tool"
+            return
+        fi
     fi
 
     local base
     base=$(basename "$1")
-    if [[ "$base" == *codex* ]]; then
-        echo "codex"
-    elif [[ "$base" == *cursor* ]]; then
-        echo "cursor"
-    elif [[ "$base" == *gemini* ]]; then
-        echo "gemini"
-    else
-        echo "unknown"
-    fi
+    for t in "${LARCH_EXTERNAL_TOOLS[@]}"; do
+        if [[ "$base" == *"$t"* ]]; then
+            echo "$t"
+            return
+        fi
+    done
+
+    echo "unknown"
 }
 
 # --- Health state tracking (portable, no associative arrays) ---
@@ -531,7 +537,8 @@ if [[ "$SUBSTANTIVE_VALIDATION" == "true" ]]; then
         entry="${RESULTS[$j]}"
         # Precise field-by-field extraction. Fields 1-5 (REVIEWER_FILE, TOOL,
         # STATUS, EXIT_CODE, HEALTHY) never contain '|' by construction (paths
-        # are tmpdir paths; tools are codex|cursor|gemini|unknown; STATUS/HEALTHY are
+        # are tmpdir paths; tools are registered LARCH_EXTERNAL_TOOLS ids — kept
+        # label-safe per the registry contract — or "unknown"; STATUS/HEALTHY are
         # fixed enums; EXIT_CODE is numeric). FAILURE_REASON (field 6) is the
         # only field that may carry user content, and it's the trailing field
         # — its content cannot collide with the field-1..5 prefixes.

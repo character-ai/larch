@@ -8,6 +8,7 @@ Single canonical source for external-tool name taxonomy and implementer-coder ta
 
 - `scripts/agent-model-args.sh`
 - `scripts/check-reviewers.sh`
+- `scripts/collect-agent-results.sh`
 - `skills/implement/scripts/step2-implement.sh`
 
 Update this list whenever a new consumer sources the registry.
@@ -36,7 +37,7 @@ Update this list whenever a new consumer sources the registry.
 
 ## Failure symptoms
 
-If a consumer registers a tool in `LARCH_EXTERNAL_TOOLS` but a `case` in `agent-model-args.sh` or a switch helper in `check-reviewers.sh` does not handle it, the consumer exits via the defensive `*)` arm with `internal error: unsupported reviewer tool: <id>`. Test #14 in `test-external-tool-registry.sh` walks every registry entry through `check-reviewers.sh` to catch this at lint time.
+If a consumer registers a tool in `LARCH_EXTERNAL_TOOLS` but a `case` in `agent-model-args.sh` or a switch helper in `check-reviewers.sh` does not handle it, the consumer exits via the defensive `*)` arm with `internal error: unsupported reviewer tool: <id>`. Test #14 in `test-external-tool-registry.sh` walks every registry entry through `check-reviewers.sh` to catch this at lint time. `scripts/collect-agent-results.sh` derives `TOOL=` labels from `LARCH_EXTERNAL_TOOLS`, but its health helper state and `--write-health` output remain explicit `CODEX_HEALTHY`, `CURSOR_HEALTHY`, and `GEMINI_HEALTHY` fields; adding health fields for a future tool is a separate collector contract change.
 
 ## Non-goals
 
@@ -49,12 +50,13 @@ Per-tool model defaults stay in `agent-model-args.sh` for Codex and Cursor; for 
 3. Add the per-tool branch in `check-reviewers.sh` `start_probe` and in every switch helper (`get_available`, `get_healthy`, `set_healthy`, `get_skip`, `set_probe_error`, `get_probe_error`); decide opt-in vs. default and update `--include-*` policy accordingly.
 4. If the new tool is also an implementer, add the launcher branch in `step2-implement.sh`.
 5. No change is required in `run-external-agent.sh`: it sanitizes `.meta` `TOOL=` for any input. Prefer a label-safe id (alphanumerics, `.`, `_`, `-`) so `.meta` `TOOL=` matches the registry id verbatim; non-label-safe ids may still collide after sanitization (e.g. `tool/a` and `tool?a` both become `tool_a`), so `.meta` `TOOL=` is not a bijection from arbitrary labels. Only widen the wrapper's allowlist if you intentionally change that contract.
-6. Update the relevant sibling `.md` contracts.
-7. Run `make lint` and `/relevant-checks`.
+6. If the new tool produces output collected by `scripts/collect-agent-results.sh`, extend the collector's health envelope (`get_tool_healthy`, `set_tool_unhealthy`, the `--write-health` output) to include the new id; without this step, failures on the new tool's outputs are silently dropped from the per-tool monotonic-health state. See the Collector integration section below.
+7. Update the relevant sibling `.md` contracts.
+8. Run `make lint` and `/relevant-checks`.
 
-## Known follow-up drift point
+## Collector integration
 
-`scripts/collect-agent-results.sh` `derive_tool()` re-encodes the `codex|cursor|gemini` enum with a fourth `unknown` classification at `scripts/collect-agent-results.sh:106-118`. That collector deliberately keeps an `unknown` fallback for observational classification of partial or malformed launches, which is semantically different from dispatch validation. Tracked as a deferred follow-up via the OOS_2 issue filed by `/implement` after this PR.
+`scripts/collect-agent-results.sh` sources this registry and uses `LARCH_EXTERNAL_TOOLS` for both `.meta` `TOOL=` validation and basename inference. The collector deliberately keeps an `unknown` fallback for observational classification of partial or malformed launches, which is semantically different from dispatch validation and is not a registry member.
 
 ## Tests
 
