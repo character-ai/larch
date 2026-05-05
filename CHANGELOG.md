@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.11.20] - 2026-05-05
+
+### Added
+
+- Regression harness coverage asserting that `--timeout 0` is rejected by the implement-family external launchers and the shared runner. `skills/implement/scripts/test-cursor-implementer.sh` and `skills/implement/scripts/test-gemini-implementer.sh` gain a Test 2b (parallel to Test 2's `--timeout nope`) asserting exit 2 plus stderr containing `must be a positive integer`. New `scripts/test-run-external-agent-args.sh` (with sibling `scripts/test-run-external-agent-args.md` per AGENTS.md per-script-contract rule) pins `run-external-agent.sh --timeout 0` exit 1 plus the unprefixed stderr literal `ERROR: --timeout must be a positive integer, got '0'`, and asserts no `<output>` / `.done` / `.meta` / `.diag` files are created on the rejection path. The new harness is wired into `make test-harnesses-5` plus `.PHONY`, registered in `agent-lint.toml` (the script and its sibling contract), and listed in `docs/linting.md`. `scripts/run-external-agent.md` lists the new harness alongside `scripts/test-run-external-agent.sh`. Closes the test-coverage gap left by #1115/#1171. Closes #1170.
+
 ## [15.11.19] - 2026-05-05
 
 ### Changed
