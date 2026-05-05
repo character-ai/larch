@@ -46,7 +46,7 @@
 #   synchronous-only invocation contract above is the operational defense.
 #
 # Progress (stderr):
-#   Dots every 10s, status line every ~1 minute (every 6th check)
+#   Dots every 10s, status line every ~1 minute (every 6th poll)
 #
 # Exit codes:
 #   0 — valid decision reached (read ACTION from stdout or <output-file>)
@@ -233,7 +233,7 @@ while true; do
     checks=$((checks + 1))
 
     printf "." >&2
-    # Print status line every 6 checks (~1 minute)
+    # Print status line every 6 polls (~1 minute)
     if [[ $((checks % 6)) -eq 0 ]]; then
         printf "\n⏳ CI: %dm elapsed, %d polls, status=%s\n" \
             "$((SECONDS / 60))" "$checks" "$CI_STATUS" >&2
