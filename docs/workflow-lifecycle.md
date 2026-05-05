@@ -4,7 +4,7 @@ How skills compose to form the end-to-end development workflow in Larch.
 
 ## Skill Orchestration Hierarchy
 
-Skills are not invoked in a flat sequence. They form a hierarchical call graph where higher-level **stateful orchestrators** invoke lower-level skills and continue execution based on their side effects. The diagram below shows only true orchestrators and their direct sub-skills; pure forwarders (`/im`, `/imaq`, `/create-skill`, `/simplify-skill`, `/compress-skill`) are covered separately in the [Delegation Topology](#delegation-topology) subsection below because they run no post-delegation logic. `/alias` is a hybrid (validate → delegate → verify) — it also appears in the Delegation Topology subsection.
+Skills are not invoked in a flat sequence. They form a hierarchical call graph where higher-level **stateful orchestrators** invoke lower-level skills and continue execution based on their side effects. The diagram below shows only true orchestrators and their direct sub-skills; pure forwarders (`/im`, `/imaq`, `/imq`, `/create-skill`, `/simplify-skill`, `/compress-skill`) are covered separately in the [Delegation Topology](#delegation-topology) subsection below because they run no post-delegation logic. `/alias` is a hybrid (validate → delegate → verify) — it also appears in the Delegation Topology subsection.
 
 ```mermaid
 graph TD
@@ -37,7 +37,7 @@ graph TD
 
 ## Delegation Topology
 
-Pure forwarders are **not** orchestrators — they validate input (when applicable), call the Skill tool exactly once, and exit. They run no logic after the child returns. This subsection also documents `/alias`, which is a hybrid: it validates, delegates to `/implement`, and then performs a mechanical sentinel-file verification (see `/alias` Step 4). Edges are labeled with the **arguments passed on that edge** (what the immediate child receives), not the final expansion — for single-hop delegation (`/im`, `/imaq`, `/alias`) this is also what `/implement` sees, but for the two-hop chains `/create-skill → /im → /implement` and `/compress-skill → /imaq → /implement`, the first edge shows only what the intermediate forwarder receives; the forwarder then prepends its own flags (`/im` adds `--merge`; `/imaq` adds `--merge --auto --quick`) before `/implement` sees the final expansion.
+Pure forwarders are **not** orchestrators — they validate input (when applicable), call the Skill tool exactly once, and exit. They run no logic after the child returns. This subsection also documents `/alias`, which is a hybrid: it validates, delegates to `/implement`, and then performs a mechanical sentinel-file verification (see `/alias` Step 4). Edges are labeled with the **arguments passed on that edge** (what the immediate child receives), not the final expansion — for single-hop delegation (`/im`, `/imaq`, `/imq`, `/alias`) this is also what `/implement` sees, but for the two-hop chains `/create-skill → /im → /implement` and `/compress-skill → /imaq → /implement`, the first edge shows only what the intermediate forwarder receives; the forwarder then prepends its own flags (`/im` adds `--merge`; `/imaq` adds `--merge --auto --quick`) before `/implement` sees the final expansion.
 
 ```mermaid
 graph LR
@@ -46,6 +46,7 @@ graph LR
     COMPRESS["/compress-skill"] -->|$ARGS (feature-desc)| IMAQ
     IM["/im"] -->|--merge $ARGS| IMPLEMENT["/implement"]
     IMAQ["/imaq"] -->|--merge --auto --quick $ARGS| IMPLEMENT
+    IMQ["/imq"] -->|--merge --quick $ARGS| IMPLEMENT
     ALIAS["/alias"] -->|--quick --auto $ARGS| IMPLEMENT
 
     style CREATE fill:#6b4c2a,color:#fff
@@ -53,18 +54,20 @@ graph LR
     style COMPRESS fill:#6b4c2a,color:#fff
     style IM fill:#6b4c2a,color:#fff
     style IMAQ fill:#6b4c2a,color:#fff
+    style IMQ fill:#6b4c2a,color:#fff
     style ALIAS fill:#6b4c2a,color:#fff
     style IMPLEMENT fill:#2d5a27,color:#fff
 ```
 
 - **`/im`** — prepends `--merge` to `$ARGUMENTS` and forwards to `/implement`. Equivalent to `/implement --merge <args>`.
 - **`/imaq`** — prepends `--merge --auto --quick`. Equivalent to `/implement --merge --auto --quick <args>`.
+- **`/imq`** — prepends `--merge --quick`. Equivalent to `/implement --merge --quick <args>` (quick mode without `--auto`).
 - **`/alias`** — hybrid: validates alias name, delegates to `/implement --quick --auto` to scaffold a new alias skill, then performs a sentinel-file verification (Step 4) that the expected `SKILL.md` was actually written. Auto-resolves the target directory: inside a Claude plugin source repo (two-file predicate `.claude-plugin/plugin.json` + `skills/implement/SKILL.md` at the git repo root) the alias goes under `skills/<n>/`; anywhere else, under `.claude/skills/<n>/`. Accepts optional `--merge` to merge the alias-creation PR and `--private` to force `.claude/skills/<n>/` even in a plugin repo (no-op in non-plugin repos).
 - **`/create-skill`** — validates name + description, then delegates to `/im --quick --auto` (which expands to `/implement --merge --quick --auto`) to scaffold a new larch-style skill. Auto-merge is the default. Accepts `--merge` as a backward-compat no-op. `/create-skill --plugin` writes under `skills/`; default is `.claude/skills/<name>/`. The scaffold process also emits a post-scaffold doc-sync checklist via `skills/create-skill/scripts/post-scaffold-hints.sh` — reminders to update the README catalog, `.claude/settings.json` permissions, this file (`docs/workflow-lifecycle.md`), and (when applicable) `docs/agents.md`, `docs/review-agents.md`, and `AGENTS.md` canonical sources.
 - **`/simplify-skill`** — accepts a single target-skill name (bare form; `/` prefix tolerated), resolves the target directory (plugin tree first, then consumer `.claude/skills/`, then `${CLAUDE_PLUGIN_ROOT}/.claude/skills/`), enumerates every `.md` file physically under that directory (excluding `scripts/` and `tests/`), and delegates a pinned behavior-preserving refactor feature description to `/im` (which expands to `/implement --merge`). Sub-skills invoked via the `Skill` tool are out of scope by construction (they live in sibling `skills/OTHER/` directories so never appear in the find output). `skills/shared/*.md` is out of scope by policy (cross-skill blast radius — refactor separately). The feature description requires a `## Token budget` section in the PR body tracking SKILL.md line/char deltas. Helper script: `skills/simplify-skill/scripts/build-feature-description.sh` (fail-closed on bad name / not found).
 - **`/compress-skill`** — pure forwarder. Resolves the target skill directory, enumerates the transitively-reachable `.md` set inside it, snapshots baseline byte/line counts, and delegates a behavior-preserving prose-rewrite feature description to `/imaq` (which expands to `/implement --merge --auto --quick`) so changes ship as an auto-merged PR. See the Standalone Usage entry for full scope rules and the `## Token budget` PR-body contract.
 
-Pure forwarders (`/im`, `/imaq`, `/create-skill`, `/simplify-skill`, `/compress-skill`) are exempt from the post-invocation-verification and anti-halt-continuation rules defined in `skills/shared/subskill-invocation.md`. `/alias` is NOT exempt — it carries both the post-invocation sentinel check and the anti-halt banner/micro-reminder. See that document for the full classification rules.
+Pure forwarders (`/im`, `/imaq`, `/imq`, `/create-skill`, `/simplify-skill`, `/compress-skill`) are exempt from the post-invocation-verification and anti-halt-continuation rules defined in `skills/shared/subskill-invocation.md`. `/alias` is NOT exempt — it carries both the post-invocation sentinel check and the anti-halt banner/micro-reminder. See that document for the full classification rules.
 
 ## End-to-End Flow
 
@@ -137,6 +140,7 @@ Not every task requires the full `/implement` pipeline. Skills can be used indep
 Shortcut aliases (covered in [Delegation Topology](#delegation-topology)):
 - **`/im <args>`** ≡ `/implement --merge <args>`
 - **`/imaq <args>`** ≡ `/implement --merge --auto --quick <args>`
+- **`/imq <args>`** ≡ `/implement --merge --quick <args>`
 
 ## Flags
 
@@ -148,9 +152,9 @@ Flags modify behavior across the skill hierarchy:
 | `--auto` | `/implement`, `/design`, `/fix-issue` (forwarded to `/implement` on PR paths) | Suppresses all interactive question checkpoints. Skills run fully autonomously without user interaction. |
 | `--design-only` | `/implement` | Runs through design and anchor/OOS publication, then stops before implementation, review, version bump, PR, CI, and merge. Mutually exclusive with `--merge`; the tracking issue URL is the deliverable. |
 | `--merge` | `/implement` | Runs the CI+rebase+merge loop, local branch cleanup, and main verification after PR creation. Without `--merge`, `/implement` creates the PR and stops after the initial CI wait; the final Step 16a Slack issue post still runs in both cases (gated on Slack env vars + `--no-slack`). |
-| `--no-slack` | `/implement`, `/fix-issue`, `/simplify-skill`, `/compress-skill`, `/create-skill`, `/alias` (plus aliases generated by `/alias` — `$ARGUMENTS` passthrough lets `--no-slack` flow through `/im`, `/imaq`, and other forwarders to `/implement`) | Suppresses the default-on Slack post. On `/implement`, Step 16a posts a single tracking-issue status message near end-of-run (✅ closed / 📝 PR opened / 🧭 design complete / ❌ blocked / ❓ needs user input) as the git user (`git config user.name` → Slack `username`); requires `LARCH_SLACK_BOT_TOKEN` and `LARCH_SLACK_CHANNEL_ID`. Default behavior (no `--no-slack`) posts when env vars are configured; `--no-slack` opts out. Every downstream skill accepts `--no-slack` and forwards it to its `/implement` (or `/im` / `/imaq`) invocation. |
+| `--no-slack` | `/implement`, `/fix-issue`, `/simplify-skill`, `/compress-skill`, `/create-skill`, `/alias` (plus aliases generated by `/alias` — `$ARGUMENTS` passthrough lets `--no-slack` flow through `/im`, `/imaq`, `/imq`, and other forwarders to `/implement`) | Suppresses the default-on Slack post. On `/implement`, Step 16a posts a single tracking-issue status message near end-of-run (✅ closed / 📝 PR opened / 🧭 design complete / ❌ blocked / ❓ needs user input) as the git user (`git config user.name` → Slack `username`); requires `LARCH_SLACK_BOT_TOKEN` and `LARCH_SLACK_CHANNEL_ID`. Default behavior (no `--no-slack`) posts when env vars are configured; `--no-slack` opts out. Every downstream skill accepts `--no-slack` and forwards it to its `/implement` (or `/im` / `/imaq` / `/imq`) invocation. |
 | `--no-issue` | `/research` | Skips the Step 3.5 auto-archive that files the full report as a GitHub issue. Default off (issue is filed). |
-| `--coder=<value>` | `/implement`, `/fix-issue` (and aliases `/im`, `/imaq`) | Selects the Step 2 implementer. `codex` (default) spawns the Codex implementer via `skills/implement/scripts/step2-implement.sh`. `claude` runs the implementation in the main agent / Claude context — pre-Codex behavior. `cursor` spawns the Cursor implementer via the same dispatcher; when Cursor is unhealthy or unavailable, the dispatcher falls back to `STATUS=claude_fallback` and the orchestrator runs the main-agent code-edit path (symmetric to passing `--coder=claude`). `/fix-issue` forwards the value verbatim to `/implement` on PR paths and does not validate it itself. The legacy `--codex-available` knob (boolean) is still accepted by the dispatcher for one release with a stderr deprecation warning (true maps to `coder=codex`; false maps to `coder=claude`). |
+| `--coder=<value>` | `/implement`, `/fix-issue` (and aliases `/im`, `/imaq`, `/imq`) | Selects the Step 2 implementer. `codex` (default) spawns the Codex implementer via `skills/implement/scripts/step2-implement.sh`. `claude` runs the implementation in the main agent / Claude context — pre-Codex behavior. `cursor` spawns the Cursor implementer via the same dispatcher; when Cursor is unhealthy or unavailable, the dispatcher falls back to `STATUS=claude_fallback` and the orchestrator runs the main-agent code-edit path (symmetric to passing `--coder=claude`). `/fix-issue` forwards the value verbatim to `/implement` on PR paths and does not validate it itself. The legacy `--codex-available` knob (boolean) is still accepted by the dispatcher for one release with a stderr deprecation warning (true maps to `coder=codex`; false maps to `coder=claude`). |
 
 ## Conditional Steps
 
