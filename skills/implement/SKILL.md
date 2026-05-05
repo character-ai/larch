@@ -1280,31 +1280,42 @@ Bail if any: 3 fix iterations attempted without progress; failure fundamentally 
 
 ## Step 14 — Local Cleanup
 
-If `draft=true`: print `⏭️ 14: local cleanup — skipped (--draft set, staying on $BRANCH_NAME for further iteration) (<elapsed>)` and skip to Step 16. If `merge=false` (and not already skipped for `--draft`): print `⏭️ 14: local cleanup — skipped (--merge not set), still on $BRANCH_NAME (<elapsed>)` and skip to Step 16.
-
-If the PR was merged:
+Write finalizer state once, then delegate Step 14 and Step 15 mechanical work to `implement-finalize.sh postmerge`. The state file is plain `KEY=value` text and is never sourced; the script reads it with `awk`. Mechanical SSOT: `${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.md` § `postmerge`.
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/local-cleanup.sh --branch "$BRANCH_NAME"
+cat > "$IMPLEMENT_TMPDIR/finalize-state.sh" <<EOF
+BRANCH_NAME=$BRANCH_NAME
+PR_NUMBER=$PR_NUMBER
+PR_TITLE=$PR_TITLE
+PR_URL=$PR_URL
+ISSUE_NUMBER=$ISSUE_NUMBER
+REPO=$REPO
+DRAFT=$draft
+MERGE=$merge
+SLACK_ENABLED=$slack_enabled
+SLACK_AVAILABLE=$slack_available
+DEFERRED=$deferred
+REPO_UNAVAILABLE=$repo_unavailable
+PR_CLOSED=${pr_closed:-false}
+DESIGN_ONLY_DONE=${DESIGN_ONLY_DONE:-false}
+BAIL_NEEDS_USER_INPUT=${BAIL_NEEDS_USER_INPUT:-false}
+STALL_TRACKING=${STALL_TRACKING:-false}
+DONE_RENAME_APPLIED=${DONE_RENAME_APPLIED:-false}
+EOF
+printf '%s' "${FINAL_BAIL_REASON:-}" > "$IMPLEMENT_TMPDIR/final-bail-reason.txt"
+
+${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.sh postmerge \
+  --state-file "$IMPLEMENT_TMPDIR/finalize-state.sh" \
+  --final-bail-reason-file "$IMPLEMENT_TMPDIR/final-bail-reason.txt"
 ```
 
-Parse `CLEANUP_SUCCESS`, `CURRENT_BRANCH`, `BRANCH_DELETED`. If `CLEANUP_SUCCESS=true`: print `✅ 14: local cleanup — switched to main, deleted $BRANCH_NAME (<elapsed>)`. Else: print `**⚠ 14: local cleanup — partially failed, branch: <CURRENT_BRANCH>, deleted: <BRANCH_DELETED> (<elapsed>)**`
-
-If Step 12 bailed (PR not merged): do NOT switch branches or delete the local branch. User needs it to continue manually. Print `**⚠ 14: local cleanup — skipped (PR not merged), still on $BRANCH_NAME (<elapsed>)**`
-
-`$BRANCH_NAME` is captured at the end of Step 1.
+Relay the script's Step 14 / Step 15 breadcrumbs verbatim. Tail records document the mechanical outcome: `LOCAL_CLEANUP_STATUS=...`, `VERIFY_MAIN_STATUS=...`, `FINALIZE_SUBCOMMAND=postmerge`, `FINALIZE_WARNINGS=...`.
 
 > **Continue to Step 15.** Do NOT end the turn after local cleanup.
 
 ## Step 15 — Verify Main
 
-If `merge=false`: skip. Only if PR was merged (skip if bailed). Confirm the last commit on main is the squash-merged commit:
-
-```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/verify-main.sh --expected-title "<PR_TITLE> (#<PR_NUMBER>)"
-```
-
-Parse `VERIFIED`, `COMMIT_HASH`, `COMMIT_MESSAGE`. If `VERIFIED=true`: print `✅ 15: verify main — at <COMMIT_HASH> "<COMMIT_MESSAGE>" (<elapsed>)`. Else: print `**⚠ 15: verify main — unexpected HEAD: <COMMIT_HASH> "<COMMIT_MESSAGE>". Expected: "<PR_TITLE> (#<PR_NUMBER>)" (<elapsed>)**`
+Handled by Step 14's `implement-finalize.sh postmerge` invocation. Step 15 runs only when Step 14 actually attempted local cleanup; `draft=true`, `merge=false`, and Step 12 bail paths skip verification with `VERIFY_MAIN_STATUS=skipped`. Mechanical SSOT: `${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.md` § `postmerge`.
 
 > **Continue to Step 16.** Do NOT end the turn after verifying main.
 
@@ -1316,51 +1327,15 @@ Report unimplemented code review suggestions without reprinting the full finding
 
 ## Step 16a — Post Slack Issue Announcement
 
-Runs unconditionally on every terminal path (normal merge, Step 12d bail, `merge=false`, `draft=true`, `ACTION=already_merged`, `DESIGN_ONLY_DONE=true → RUN_OUTCOME=design-only`). The gating below short-circuits when posting is disabled or the tracking issue is not resolvable.
-
-**Skip conditions** (any true → print breadcrumb and proceed to Step 17):
-
-- `slack_enabled=false`: print `⏭️ 16a: slack issue post — skipped (--no-slack) (<elapsed>)`.
-- `slack_available=false`: print `⏭️ 16a: slack issue post — skipped (Slack not configured) (<elapsed>)`.
-- `deferred=true` OR `$ISSUE_NUMBER` empty: print `⏭️ 16a: slack issue post — skipped (no tracking issue) (<elapsed>)`.
-- `repo_unavailable=true`: print `⏭️ 16a: slack issue post — skipped (repo unavailable) (<elapsed>)`.
-
-**Otherwise** (`slack_enabled=true`, `slack_available=true`, `repo_unavailable=false`, `ISSUE_NUMBER` set, `deferred=false`):
-
-**Determine `RUN_OUTCOME`** from session state (first match wins):
-
-1. `pr_closed=true`: `RUN_OUTCOME=closed` (Step 12b merge success OR `ACTION=already_merged`).
-2. `DESIGN_ONLY_DONE=true`: `RUN_OUTCOME=design-only` (design artifacts and OOS filing completed; no PR is created).
-3. `BAIL_NEEDS_USER_INPUT=true`: `RUN_OUTCOME=user-input` (Conflict Resolution Procedure Phase 2 bail under `auto_mode=true`).
-4. `FINAL_BAIL_REASON` is non-empty (Step 12d ran): `RUN_OUTCOME=blocked`.
-5. `merge=false` OR `draft=true` (run successfully created PR without attempting merge): `RUN_OUTCOME=pr-opened`.
-6. Defensive fallback: `RUN_OUTCOME=blocked`.
-
-**Compose `--detail`** (optional tail text):
-- `RUN_OUTCOME=blocked` AND `FINAL_BAIL_REASON` non-empty: pass `--detail "$FINAL_BAIL_REASON"`.
-- `RUN_OUTCOME=user-input`: pass `--detail "conflict resolution needs user input (auto-mode bail)"`.
-- Other outcomes: omit `--detail`.
-
-**Optional `post-issue-slack.sh` flags**:
-- `RUN_OUTCOME=design-only`: omit `--pr-url` (no PR exists; the tracking issue URL is the deliverable).
-
-**Invoke the shared script**:
+Run the consolidated Slack subcommand. It preserves the Step 16a skip gates and first-match-wins outcome ladder, including `DESIGN_ONLY_DONE=true → RUN_OUTCOME=design-only`, `BAIL_NEEDS_USER_INPUT=true → RUN_OUTCOME=user-input`, and `merge=false` OR `draft=true` → `RUN_OUTCOME=pr-opened`. It omits `--pr-url` for design-only, passes bail/user-input detail when needed, and treats Slack failure as a non-fatal warning. Mechanical SSOT: `${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.md` § `slack`.
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/post-issue-slack.sh \
-  --issue-number "$ISSUE_NUMBER" \
-  --status "$RUN_OUTCOME" \
-  --repo "$REPO" \
-  [--pr-url "$PR_URL"] [--detail "$detail_text"]
+${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.sh slack \
+  --state-file "$IMPLEMENT_TMPDIR/finalize-state.sh" \
+  --final-bail-reason-file "$IMPLEMENT_TMPDIR/final-bail-reason.txt"
 ```
 
-The script auto-resolves `--token` from `LARCH_SLACK_BOT_TOKEN` then `CLAUDE_PLUGIN_OPTION_SLACK_BOT_TOKEN`, and `--channel-id` from `LARCH_SLACK_CHANNEL_ID` then `CLAUDE_PLUGIN_OPTION_SLACK_CHANNEL_ID`, when those flags are omitted.
-
-Include `--pr-url "$PR_URL"` when `$PR_URL` is non-empty (populates the `pr-opened` status tail). Include `--detail` per the rule above.
-
-Parse `SLACK_TS=<value>` from stdout. On non-zero exit OR empty `SLACK_TS`: print `**⚠ 16a: slack issue post — failed. Continuing.**`, log to `Tool Failures`, proceed to Step 17. Do not abort.
-
-On success: print `✅ 16a: slack issue post — posted (<elapsed>)`.
+Relay the script's Step 16a breadcrumb verbatim. Tail records document the mechanical outcome: `RUN_OUTCOME=...`, `SLACK_TS=...`, `FINALIZE_SUBCOMMAND=slack`, `FINALIZE_WARNINGS=...`.
 
 > **Continue to Step 17.** Do NOT end the turn after Slack post.
 
@@ -1376,51 +1351,16 @@ If `quick_mode=false` and `DESIGN_ONLY_DONE` is not true: print a summary noting
 
 ## Step 18 — Cleanup and Final Warnings
 
-### Title-prefix lifecycle terminal transition
-
-Before `cleanup-tmpdir.sh` runs (so `$IMPLEMENT_TMPDIR/parent-issue.md` is still available if needed), flip the tracking issue's title prefix to its terminal state. Branches A, B, and C below all gate on the same two preconditions:
-
-- `$ISSUE_NUMBER` is set (Branch 4 succeeded, or Branch 1/2/3 adopted).
-- `$repo_unavailable=false`.
-
-If either precondition is missing, skip the rename block entirely (no Branch A/B/C executes).
-
-The title-prefix lifecycle applies uniformly to fresh-created (Branch 4) and adopted (Branch 2/3) tracking issues — `/implement` owns the title prefix during the run, while the rest of the title remains user-authored. The `rename` subcommand strips exactly one leading managed prefix before prepending the new one (see `scripts/tracking-issue-write.md` "Title-prefix lifecycle"), so user-owned title text is preserved across transitions.
-
-**Branch A — STALLED (failure path)**: if `$STALL_TRACKING=true`, check that the issue is still OPEN before renaming (renaming a closed issue to `[STALLED]` is semantically wrong — closed means merged means done):
-
-```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/get-issue-info.sh --issue "$ISSUE_NUMBER" --field state
-```
-
-Parse `VALUE=` from stdout. If `VALUE` equals `OPEN`, call `${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh rename --issue $ISSUE_NUMBER --state stalled`. Best-effort: on `FAILED=true` or non-zero exit, log to `Tool Failures` and continue. Do not print a completion line; the Step 18 `✅` is sufficient.
-
-**Branch B — DONE (clean non-merge / draft / design-only completion)**: if `$STALL_TRACKING=false` AND `$DONE_RENAME_APPLIED` is NOT `true` (merge-path rename didn't already fire) AND (`$PR_NUMBER` is set OR `DESIGN_ONLY_DONE=true`), call `rename --state done`. This handles the `--merge=false` and `--draft` paths where `/implement` completes successfully without attempting auto-merge, plus the `--design-only` path where the tracking issue itself is the deliverable.
-
-**Branch C — no-op**: neither stall nor late-done applies. The merge-path rename (Step 12a `already_merged` / Step 12b `merged` / `admin_merged`) has already set `DONE_RENAME_APPLIED=true`, so this branch is the expected merge-path code flow; nothing more to do.
-
-The `rename` subcommand is idempotent — calling it with the same target state is a no-op (`RENAMED=false`) — so the only practical risk from guard-check errors is a redundant best-effort `gh` call. Failures never abort Step 18.
-
-```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-tmpdir.sh --dir "$IMPLEMENT_TMPDIR"
-```
-
 Repeat any external reviewer warnings from earlier (from `/design`, `/review`, or Step 5 runtime-fallback flips). Examples: `**⚠ Codex not available: <reason>**`, `**⚠ Cursor review failed: <reason>**`.
 
 If `DESIGN_ONLY_DONE=true`, remind: `**Note: --design-only was set. No PR was created. The tracking issue's anchor comment carries the plan, plan-review tally, diagrams, and accepted/rejected findings as the run's deliverable.**` Otherwise, if `draft=true`, remind: `**Note: --draft was set. Draft PR created; local branch retained. Mark the PR ready-for-review and merge manually when ready.**` Otherwise if `merge=false`, remind: `**Note: --merge was not set. PR was created but not merged. Merge manually when ready.**`
 
-**Tracking-issue URL**: if the in-memory session variable `$ISSUE_NUMBER` (captured at Step 0.5 — do NOT re-read from the sentinel file, which `cleanup-tmpdir.sh` may have already removed) is non-empty AND `repo_unavailable=false`, derive the URL from `gh` (GH-Enterprise-safe — do NOT hardcode `https://github.com/`):
+Run the consolidated teardown subcommand after the prompt-side warnings/notes above. It performs the title-prefix terminal transition first: Branch A renames to `[STALLED]` only when `STALL_TRACKING=true` and the issue state is exactly `OPEN`; Branch B renames to `[DONE]` when `STALL_TRACKING=false`, `DONE_RENAME_APPLIED!=true`, and `$PR_NUMBER` is set OR `DESIGN_ONLY_DONE=true`; Branch C is a no-op. It then runs `cleanup-tmpdir.sh`, prints the tracking-issue URL when resolvable, and prints the final Step 18 breadcrumb. Mechanical SSOT: `${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.md` § `teardown`.
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/get-issue-info.sh --issue "$ISSUE_NUMBER" --field url
+${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.sh teardown \
+  --state-file "$IMPLEMENT_TMPDIR/finalize-state.sh" \
+  --implement-tmpdir "$IMPLEMENT_TMPDIR"
 ```
 
-Parse `VALUE=` from stdout. If `VALUE` is non-empty, set `ISSUE_URL` to the value and print:
-
-```
-📎 Tracking issue: $ISSUE_URL
-```
-
-If `$ISSUE_NUMBER` is empty OR `VALUE` is empty OR `repo_unavailable=true`: silently skip the URL print — the absence itself is a signal for the degraded path.
-
-Print: `✅ 18: cleanup — implement complete! (<elapsed>)`
+Relay the script's tracking issue URL line and Step 18 breadcrumb verbatim. Tail records document the mechanical outcome: `RENAME_BRANCH=...`, `RENAME_STATUS=...`, `ISSUE_URL=...`, `FINALIZE_SUBCOMMAND=teardown`, `FINALIZE_WARNINGS=...`.
