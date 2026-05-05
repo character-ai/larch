@@ -804,7 +804,9 @@ GEMINI_SHARED=$(awk 'found { print } /^## Shared guardrails$/ { found=1 }' "$REP
 
 # (25) Clean-main Step 0 entry gate pin. Scope positive checks to Step 0 so
 # the later Step 1 branch creation check cannot satisfy the entry-gate
-# assertion by accident.
+# assertion by accident. The gate must flow create-branch -> session-entry-gate
+# -> session-setup, and Step 0 must preserve the continue_from_current alias for
+# downstream Step 1.m compatibility.
 step0_section=$(awk '
   /^## Step 0 — Session Setup$/ { flag=1; next }
   /^## / && flag { flag=0 }
@@ -813,22 +815,48 @@ step0_section=$(awk '
 [[ -n "$step0_section" ]] \
   || fail "(25) could not extract /implement Step 0 section"
 
+protocol_line=$(grep -F 'Protocol Execution Directive.' "$SKILL_MD" | head -1 || true)
+printf '%s\n' "$protocol_line" | grep -Fq 'create-branch.sh --check' \
+  || fail "(25) Protocol Execution Directive must mention create-branch.sh --check"
+printf '%s\n' "$protocol_line" | grep -Fq 'session-entry-gate.sh' \
+  || fail "(25) Protocol Execution Directive must mention session-entry-gate.sh"
+printf '%s\n' "$protocol_line" | grep -Fq 'session-setup.sh' \
+  || fail "(25) Protocol Execution Directive must mention session-setup.sh"
+if printf '%s\n' "$protocol_line" | grep -Fq 'BOTH `create-branch.sh`'; then
+  fail "(25) Protocol Execution Directive still contains the legacy BOTH create-branch phrasing"
+fi
+
 # shellcheck disable=SC2016 # fixed-string grep literal contains shell variable syntax
 printf '%s\n' "$step0_section" | grep -Fq '${CLAUDE_PLUGIN_ROOT}/scripts/create-branch.sh --check' \
   || fail "(25) Step 0 must run create-branch.sh --check before session setup"
+printf '%s\n' "$step0_section" | grep -Fq '${CLAUDE_PLUGIN_ROOT}/scripts/session-entry-gate.sh' \
+  || fail "(25) Step 0 must invoke session-entry-gate.sh"
+printf '%s\n' "$step0_section" | grep -Fq -- '--mode implement' \
+  || fail "(25) Step 0 must invoke session-entry-gate.sh with --mode implement"
+printf '%s\n' "$step0_section" | grep -Fq 'SKIP_BRANCH_CHECK' \
+  || fail "(25) Step 0 must parse/use SKIP_BRANCH_CHECK as the authoritative key"
+printf '%s\n' "$step0_section" | grep -Fq 'GATE_ERROR' \
+  || fail "(25) Step 0 must handle GATE_ERROR separately from PREFLIGHT_ERROR"
 printf '%s\n' "$step0_section" | grep -Fq 'continue_from_current=true' \
-  || fail "(25) Step 0 must name the continue_from_current=true branch"
-printf '%s\n' "$step0_section" | grep -Fq 'IS_USER_BRANCH=true' \
-  || fail "(25) Step 0 must define continuation by IS_USER_BRANCH=true"
+  || fail "(25) Step 0 must preserve the continue_from_current=true alias"
 printf '%s\n' "$step0_section" | grep -F 'session-setup.sh' \
   | grep -F -- '--skip-branch-check' >/dev/null \
-  || fail "(25) Step 0 must include a session-setup.sh invocation with --skip-branch-check for continue_from_current=true"
-printf '%s\n' "$step0_section" | grep -Fq 'If `continue_from_current=false`, run setup without `--skip-branch-check`' \
-  || fail "(25) Step 0 must document the default setup path without --skip-branch-check"
+  || fail "(25) Step 0 must include a session-setup.sh invocation with --skip-branch-check for SKIP_BRANCH_CHECK=true"
+printf '%s\n' "$step0_section" | grep -Fq 'If `SKIP_BRANCH_CHECK=false`, run setup without `--skip-branch-check`' \
+  || fail "(25) Step 0 must document the strict setup path without --skip-branch-check"
 printf '%s\n' "$step0_section" | grep -F 'session-setup.sh --prefix claude-implement --check-reviewers' >/dev/null \
   || fail "(25) Step 0 must include the no-skip session-setup.sh invocation for strict clean-main preflight"
 printf '%s\n' "$step0_section" | grep -Fq '/implement requires clean main to start' \
   || fail "(25) Step 0 must include the normalized /implement clean-main failure message"
+
+create_line=$(printf '%s\n' "$step0_section" | grep -nF '${CLAUDE_PLUGIN_ROOT}/scripts/create-branch.sh --check' | head -1 | cut -d: -f1 || true)
+gate_line=$(printf '%s\n' "$step0_section" | grep -nF '${CLAUDE_PLUGIN_ROOT}/scripts/session-entry-gate.sh' | head -1 | cut -d: -f1 || true)
+setup_line=$(printf '%s\n' "$step0_section" | grep -nF '${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh' | head -1 | cut -d: -f1 || true)
+[[ -n "$create_line" && -n "$gate_line" && -n "$setup_line" ]] \
+  || fail "(25) could not locate create-branch, session-entry-gate, and session-setup lines in Step 0"
+if (( create_line >= gate_line || gate_line >= setup_line )); then
+  fail "(25) Step 0 ordering must be create-branch.sh --check before session-entry-gate.sh before session-setup.sh"
+fi
 
 old_unconditional_prose="--skip-branch-check is required so Step 1's IS_USER_BRANCH=true branch-resume paths are reachable"
 if grep -Fq -- "$old_unconditional_prose" "$SKILL_MD"; then

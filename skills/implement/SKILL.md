@@ -9,7 +9,7 @@ allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task
 
 End-to-end: design, plan review, code, validate, commit, code review, validate, commit, code flow diagram, version bump, PR, CI monitor, cleanup, Slack announce of tracking issue. By default, posts a single Slack message about the tracking issue near the end of the run (gated on Slack env vars — `LARCH_SLACK_BOT_TOKEN` + `LARCH_SLACK_CHANNEL_ID`). `--no-slack` opts out. With `--merge`: also CI+rebase+merge loop, local branch delete, main verification.
 
-**Protocol Execution Directive.** You are now the `/implement` orchestrator. After parsing flags and checking for `--draft`/`--merge` and `--design-only`/`--merge` mutual-exclusion aborts, your FIRST external action MUST be **Step 0**. Step 0 is one atomic failure domain with two ordered Bash invocations: first `${CLAUDE_PLUGIN_ROOT}/scripts/create-branch.sh --check`, then `${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh` with `--skip-branch-check` toggled by the entry gate. Step 0 is not complete until BOTH `create-branch.sh --check` and `session-setup.sh` have completed successfully. No other `Read`/`Edit`/`Write`/`Bash`/child-`Skill` calls may appear between them or before them. Do not `Read`/`Grep`/`Glob` project files, do not `Edit`/`Write`, and do not invoke child skills until Step 0 completes and its output has been parsed. Freelancing the implementation without executing the step sequence is a protocol violation — every step from 0 through 18 must execute in order per this file.
+**Protocol Execution Directive.** You are now the `/implement` orchestrator. After parsing flags and checking for `--draft`/`--merge` and `--design-only`/`--merge` mutual-exclusion aborts, your FIRST external action MUST be **Step 0**. Step 0 is one atomic failure domain with three ordered Bash invocations: first `${CLAUDE_PLUGIN_ROOT}/scripts/create-branch.sh --check`, then `${CLAUDE_PLUGIN_ROOT}/scripts/session-entry-gate.sh`, then `${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh` with `--skip-branch-check` toggled by the entry gate. Step 0 is not complete until all three Bash invocations have completed successfully and their output has been parsed. No other `Read`/`Edit`/`Write`/`Bash`/child-`Skill` calls may appear between them or before them. Do not `Read`/`Grep`/`Glob` project files, do not `Edit`/`Write`, and do not invoke child skills until Step 0 completes and its output has been parsed. Freelancing the implementation without executing the step sequence is a protocol violation — every step from 0 through 18 must execute in order per this file.
 
 **Anti-halt continuation reminder.** After every child `Skill` tool call (e.g., `/design`, `/review`, `/relevant-checks`, `/bump-version`, `/issue`, `/implement`) returns AND after every `Bash` tool call that completes a numbered step or sub-step, IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on the child's cleanup output, on a Bash result, or on a status message, and do NOT write a summary, handoff, status recap, or "returning to parent" message — those are halts in disguise. This applies to ALL step boundaries from Step 0 through Step 18. The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `skip to Step N`, `bail to cleanup`, `jump back`, `loop back`, `fall through`, `break out`). A normal sequential `proceed to Step N+1` instruction is the default continuation this rule reinforces, NOT an exception. Every `/relevant-checks` invocation anywhere in this file is covered by this rule. **Critical boundary: after Step 9b (PR creation) completes, IMMEDIATELY proceed to Step 10 (CI monitor) — PR creation is NOT the end of the run.** See `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Anti-halt continuation reminder for the canonical rule.
 
@@ -156,21 +156,38 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/create-branch.sh --check
 
 Parse `CURRENT_BRANCH`, `IS_MAIN`, `IS_USER_BRANCH`, and `USER_PREFIX` from stdout. If `CURRENT_BRANCH` is empty, treat it as detached HEAD; do not special-case it here. The default preflight below will fail closed. Do not print a separate `create-branch.sh --check failed` branch from Step 0; `IMPLEMENT_TMPDIR` does not exist yet for Tool Failures logging.
 
-Compute `continue_from_current=true` iff `IS_USER_BRANCH=true`. This is the only implicit continuation signal; `--issue <N>` and any session-env/sentinel path do not waive the clean-main entry gate.
+Run the shared entry gate helper using the parsed branch facts. Its contract lives at `${CLAUDE_PLUGIN_ROOT}/scripts/session-entry-gate.md`.
 
-If `continue_from_current=true`, run setup with `--skip-branch-check`:
+```bash
+${CLAUDE_PLUGIN_ROOT}/scripts/session-entry-gate.sh \
+  --mode implement \
+  --current-branch "$CURRENT_BRANCH" \
+  --is-main "$IS_MAIN" \
+  --is-user-branch "$IS_USER_BRANCH" \
+  --user-prefix "$USER_PREFIX"
+```
+
+Parse `ENTRY_GATE` and `SKIP_BRANCH_CHECK` from this script's stdout in isolation. Do not concatenate it with `create-branch.sh --check` output for a single `eval`. On non-zero exit, print the raw `GATE_ERROR=...` line first, then print the normalized internal-contract message and abort:
+
+**⚠ /implement: internal Step 0 contract violation in session-entry-gate.sh. Aborting.**
+
+Do NOT print the clean-main banner for `GATE_ERROR`; that banner is reserved for `session-setup.sh` `PREFLIGHT_ERROR`.
+
+Set `continue_from_current=true` iff `SKIP_BRANCH_CHECK=true`. This alias is retained for downstream Step 1.m compatibility; `SKIP_BRANCH_CHECK` is the authoritative key for assembling `session-setup.sh` argv.
+
+If `SKIP_BRANCH_CHECK=true`, run setup with `--skip-branch-check`:
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix claude-implement --skip-branch-check --check-reviewers --check-gemini-reviewer [--caller-env "$SESSION_ENV_PATH"] [--skip-codex-probe] [--skip-cursor-probe] [--skip-gemini-probe]
 ```
 
-If `continue_from_current=false`, run setup without `--skip-branch-check`:
+If `SKIP_BRANCH_CHECK=false`, run setup without `--skip-branch-check`:
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix claude-implement --check-reviewers --check-gemini-reviewer [--caller-env "$SESSION_ENV_PATH"] [--skip-codex-probe] [--skip-cursor-probe] [--skip-gemini-probe]
 ```
 
-`--skip-branch-check` is passed only when `continue_from_current=true` (i.e., `IS_USER_BRANCH=true`). The default path runs `preflight.sh` in default mode, asserting on-main + clean tree + fetch + rebase before Step 1. Include `--caller-env` only when `SESSION_ENV_PATH` is non-empty — then the script auto-sets `--skip-codex-probe` / `--skip-cursor-probe` / `--skip-gemini-probe` based on `CODEX_HEALTHY` / `CURSOR_HEALTHY` / `GEMINI_HEALTHY` in that file (don't pass them explicitly).
+`--skip-branch-check` is passed only when `SKIP_BRANCH_CHECK=true`. The default path runs `preflight.sh` in default mode, asserting on-main + clean tree + fetch + rebase before Step 1. Include `--caller-env` only when `SESSION_ENV_PATH` is non-empty — then the script auto-sets `--skip-codex-probe` / `--skip-cursor-probe` / `--skip-gemini-probe` based on `CODEX_HEALTHY` / `CURSOR_HEALTHY` / `GEMINI_HEALTHY` in that file (don't pass them explicitly).
 
 On non-zero exit, always print the raw `PREFLIGHT_ERROR=...` line first. Then print the normalized skill-level message and abort:
 

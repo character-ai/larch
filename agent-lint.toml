@@ -370,6 +370,14 @@ exclude = [
   "scripts/pre-commit-shellcheck.sh",
   "scripts/pre-commit-shellcheck.md",
   "scripts/test-sessionstart-health.sh",
+  # scripts/test-session-entry-gate.sh is the offline regression harness for
+  # scripts/session-entry-gate.sh. Referenced only from Makefile
+  # (test-session-entry-gate target) and scripts/test-session-entry-gate.md
+  # (sibling contract), matching the same Makefile-only pattern as
+  # scripts/test-sessionstart-health.sh above. Both the .sh and the .md are
+  # excluded.
+  "scripts/test-session-entry-gate.sh",
+  "scripts/test-session-entry-gate.md",
   "scripts/audit-edit-write.sh",
   "scripts/test-audit-edit-write.sh",
   "scripts/test-deny-edit-write.sh",

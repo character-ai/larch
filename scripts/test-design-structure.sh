@@ -8,9 +8,9 @@
 #  - references/flags.md exists and contains the --branch-info 4-key literal AND the --step-prefix `::` delimiter literal.
 #  - skills/design/ tree contains no Step-3a removal residue tokens.
 #  - SKILL.md Step 3 ("all reviewers OK") and Step 3.5 auto-mode branches forward to Step 3b.
-#  - SKILL.md Step 0 gates standalone /design through create-branch.sh --check
-#    and strict clean-main preflight, while nested --branch-info calls retain
-#    --skip-branch-check.
+#  - SKILL.md Step 0 gates /design through session-entry-gate.sh; standalone
+#    mode derives branch facts with create-branch.sh --check, while nested
+#    --branch-info calls feed already-parsed facts into the shared gate.
 #
 # Exit 0 on pass, exit 1 on any assertion failure.
 set -euo pipefail
@@ -162,10 +162,9 @@ if grep -Fq -- 'Nested heavy phase' "$SKILL_MD"; then
   fail "(10c) SKILL.md still contains legacy 'Nested heavy phase' token — should be renamed to 'Subagent heavy phase' (issue #1036)"
 fi
 
-# Check 11: clean-main Step 0 entry gate. The gate is standalone-only:
-# branch_info_supplied=true means /implement already ran the gate; otherwise
-# /design must run create-branch.sh --check and use strict preflight unless
-# IS_USER_BRANCH=true explicitly opts into the current branch.
+# Check 11: clean-main Step 0 entry gate. The shared helper owns the decision:
+# standalone /design derives branch facts first, nested /design uses the
+# --branch-info facts, and both paths feed session-entry-gate.sh before setup.
 step0_section=$(awk '
   /^## Step 0 — Session Setup$/ { flag=1; next }
   /^## / && flag { flag=0 }
@@ -181,16 +180,46 @@ printf '%s\n' "$step0_section" | grep -Fq 'branch_info_supplied=false' \
 # shellcheck disable=SC2016 # fixed-string grep literal contains shell variable syntax
 printf '%s\n' "$step0_section" | grep -Fq '${CLAUDE_PLUGIN_ROOT}/scripts/create-branch.sh --check' \
   || fail "(11) standalone /design Step 0 must run create-branch.sh --check"
+# shellcheck disable=SC2016 # fixed-string grep literal contains shell variable syntax
+printf '%s\n' "$step0_section" | grep -Fq '${CLAUDE_PLUGIN_ROOT}/scripts/session-entry-gate.sh' \
+  || fail "(11) /design Step 0 must invoke session-entry-gate.sh"
+printf '%s\n' "$step0_section" | grep -Fq -- '--mode design' \
+  || fail "(11) /design Step 0 must invoke session-entry-gate.sh with --mode design"
+# shellcheck disable=SC2016 # fixed-string grep literal contains shell variable syntax
+printf '%s\n' "$step0_section" | grep -Fq -- '--branch-info-supplied "$branch_info_supplied"' \
+  || fail "(11) /design Step 0 must pass --branch-info-supplied to session-entry-gate.sh"
+printf '%s\n' "$step0_section" | grep -Fq 'SKIP_BRANCH_CHECK' \
+  || fail "(11) /design Step 0 must parse/use SKIP_BRANCH_CHECK as the authoritative key"
+printf '%s\n' "$step0_section" | grep -Fq 'GATE_ERROR' \
+  || fail "(11) /design Step 0 must handle GATE_ERROR separately from PREFLIGHT_ERROR"
+printf '%s\n' "$step0_section" | grep -F 'session-setup.sh' \
+  | grep -F -- '--skip-branch-check' >/dev/null \
+  || fail "(11) Step 0 must include a session-setup.sh invocation with --skip-branch-check for SKIP_BRANCH_CHECK=true"
 # shellcheck disable=SC2016 # fixed-string grep literal contains backtick-quoted token names
-printf '%s\n' "$step0_section" | grep -Fq 'If `IS_USER_BRANCH=true`, run setup with `--skip-branch-check`' \
-  || fail "(11) standalone /design Step 0 must pass --skip-branch-check only for IS_USER_BRANCH=true"
-# shellcheck disable=SC2016 # fixed-string grep literal contains backtick-quoted token names
-printf '%s\n' "$step0_section" | grep -Fq 'Otherwise, run setup without `--skip-branch-check`' \
-  || fail "(11) standalone /design Step 0 must document the strict no-skip preflight path"
+printf '%s\n' "$step0_section" | grep -Fq 'If `SKIP_BRANCH_CHECK=false`, run setup without `--skip-branch-check`' \
+  || fail "(11) Step 0 must document the strict no-skip preflight path"
 printf '%s\n' "$step0_section" | grep -F 'session-setup.sh --prefix claude-design --skip-slack-check' >/dev/null \
   || fail "(11) Step 0 must include the no-skip claude-design session-setup.sh invocation"
 printf '%s\n' "$step0_section" | grep -Fq '/design requires clean main to start' \
   || fail "(11) Step 0 must include the normalized /design clean-main failure message"
+# shellcheck disable=SC2016 # fixed-string grep literal contains shell variable syntax
+printf '%s\n' "$step0_section" | grep -Fq 'Only include `--caller-env "$SESSION_ENV_PATH"` and `--write-health "${SESSION_ENV_PATH}.health"` if `SESSION_ENV_PATH` is non-empty' \
+  || fail "(11) Step 0 must retain the Anti-pattern #4 caller-env/write-health predicate"
+
+# shellcheck disable=SC2016 # fixed-string grep literal contains shell variable syntax
+create_line=$(printf '%s\n' "$step0_section" | grep -nF '${CLAUDE_PLUGIN_ROOT}/scripts/create-branch.sh --check' | head -1 | cut -d: -f1 || true)
+# shellcheck disable=SC2016 # fixed-string grep literal contains shell variable syntax
+gate_line=$(printf '%s\n' "$step0_section" | grep -nF '${CLAUDE_PLUGIN_ROOT}/scripts/session-entry-gate.sh' | head -1 | cut -d: -f1 || true)
+# shellcheck disable=SC2016 # fixed-string grep literal contains shell variable syntax
+setup_line=$(printf '%s\n' "$step0_section" | grep -nF '${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh' | head -1 | cut -d: -f1 || true)
+[[ -n "$create_line" && -n "$gate_line" && -n "$setup_line" ]] \
+  || fail "(11) could not locate create-branch, session-entry-gate, and session-setup lines in Step 0"
+if (( create_line >= gate_line || gate_line >= setup_line )); then
+  fail "(11) standalone /design Step 0 ordering must be create-branch.sh --check before session-entry-gate.sh before session-setup.sh"
+fi
+if (( gate_line >= setup_line )); then
+  fail "(11) nested /design Step 0 ordering must be session-entry-gate.sh before session-setup.sh"
+fi
 
 old_design_prose='Run the shared session setup script. This handles preflight, temp directory creation, reviewer health probe, and health status file in a single call'
 if grep -Fq "$old_design_prose" "$SKILL_MD"; then
