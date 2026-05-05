@@ -77,6 +77,8 @@ set -e
   || fail "C1: expected collector exit 1 on --timeout 0, got $C1_CODE"
 grep -q 'must be a positive integer' "$TMPDIR/c1.stderr" \
   || fail "C1: expected wait positive-integer message on collector stderr"
+grep -q 'collect-agent-results.sh: wait-for-reviewers.sh exited' "$TMPDIR/c1.stderr" \
+  || fail "C1: expected collector trailer line 'collect-agent-results.sh: wait-for-reviewers.sh exited <N>' on stderr"
 if grep -qE '^(REVIEWER_FILE|STATUS)=' "$TMPDIR/c1.stdout"; then
   fail "C1: collector emitted reviewer records on stdout despite usage error"
 fi
@@ -90,6 +92,8 @@ set -e
   || fail "C2: expected collector exit 1 on --timeout abc, got $C2_CODE"
 grep -q 'must be a positive integer' "$TMPDIR/c2.stderr" \
   || fail "C2: expected wait positive-integer message on collector stderr"
+grep -q 'collect-agent-results.sh: wait-for-reviewers.sh exited' "$TMPDIR/c2.stderr" \
+  || fail "C2: expected collector trailer line 'collect-agent-results.sh: wait-for-reviewers.sh exited <N>' on stderr"
 if grep -qE '^(REVIEWER_FILE|STATUS)=' "$TMPDIR/c2.stdout"; then
   fail "C2: collector emitted reviewer records on stdout despite usage error"
 fi

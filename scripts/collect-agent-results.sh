@@ -190,19 +190,21 @@ done
 # Issue #1188: do not silently swallow wait-for-reviewers.sh's non-zero exit
 # (usage errors like a bad --timeout, or fatals like its mktemp failure).
 # Stderr goes to a temp file so the success path stays free of poll progress.
+# The EXIT trap covers signal-driven exits (e.g., SIGTERM mid-wait) so the
+# tempfile is not leaked under ${TMPDIR:-/tmp}; it also subsumes the success
+# and failure-branch cleanup.
 WAIT_STDERR=$(mktemp "${TMPDIR:-/tmp}/collect-wait-stderr.XXXXXX") || {
     echo "collect-agent-results.sh: mktemp failed" >&2
     exit 1
 }
+trap 'rm -f -- "$WAIT_STDERR"' EXIT
 WAIT_OUTPUT=$("$SCRIPT_DIR/wait-for-reviewers.sh" --timeout "$TIMEOUT" "${SENTINELS[@]}" 2>"$WAIT_STDERR")
 WAIT_RC=$?
 if [[ "$WAIT_RC" -ne 0 ]]; then
     cat "$WAIT_STDERR" >&2
-    rm -f "$WAIT_STDERR"
     printf 'collect-agent-results.sh: wait-for-reviewers.sh exited %s\n' "$WAIT_RC" >&2
     exit 1
 fi
-rm -f "$WAIT_STDERR"
 
 # Parse wait output for TIMEOUT indicators (portable: newline-separated list)
 TIMED_OUT_SENTINELS=""
