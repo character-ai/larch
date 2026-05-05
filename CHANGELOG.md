@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.1] - 2026-05-05
+
+### Changed
+
+- Allow `/implement`'s early rebase checkpoints (Steps 1.r, 4.r, 7.r, 7a.r) to attempt conflict resolution rather than immediately bailing on the first rebase conflict against latest main. `scripts/rebase-push.sh` gains a `--keep-on-conflict` flag (only valid with `--no-push`) that leaves the rebase in progress and emits `CONFLICT_FILES=...` on stdout, plus relaxes the `--continue` + `--no-push` mutex so the local-only resolution loop can finish. The Rebase Checkpoint Macro M2 now passes `--no-push --skip-if-pushed --keep-on-conflict`; M3 dispatches on exit code (exit 1 → invoke `conflict-resolution.md` Phase 1+2+4 with new `caller_kind=early_rebase`; exit 3 / other → bail to Step 18 as before). `conflict-resolution.md` adds the `early_rebase` caller family that skips Phase 3 (reviewer panel — redundant with Step 5's later `/review`) and runs a simplified Phase 4 with `rebase-push.sh --continue --no-push --keep-on-conflict` (no re-bump dispatch — no version bump exists at these checkpoints). Defense-in-depth: `rebase-push.sh` rejects `--continue --no-push` without `--keep-on-conflict` at parse time so a future caller can never silently abort an in-progress local-only rebase on a nested conflict. New regression harness `scripts/test-rebase-push-keep-on-conflict.sh` (with sibling `.md`) pins the four flag-combination behaviors via a sandbox repo: plain `--no-push` aborts on conflict (preserved), `--no-push --keep-on-conflict` leaves the rebase in progress, `--continue --no-push --keep-on-conflict` finishes a resolved local-only rebase without pushing, and the two flag-combination rejections (`--keep-on-conflict` without `--no-push`, `--continue --no-push` without `--keep-on-conflict`) exit 3 with the expected `REBASE_ERROR` lines. `scripts/test-implement-rebase-macro.sh` updated to assert the new M2 flag combo and the M3 conflict-resolution dispatch. `Makefile` and `agent-lint.toml` wire the new harness into `test-harnesses-1` and the agent-lint exclude list. Tracking issue #1184.
+
 ## [15.12.0] - 2026-05-05
 
 ### Added
