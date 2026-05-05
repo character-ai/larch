@@ -1,0 +1,3 @@
+# scripts/test-implement-finalize.sh — contract
+
+`scripts/test-implement-finalize.sh` is the offline regression harness for `scripts/implement-finalize.sh`. The primary behavioral contract lives in `scripts/implement-finalize.md`; this sibling exists for script discoverability and documents only the harness role. The harness copies `implement-finalize.sh` into a `/tmp` sandbox, supplies stub sibling helpers for local cleanup, verify-main, Slack posting, issue lookup, title rename, and tmpdir cleanup, then exercises the three subcommands plus state-file parsing without touching git, GitHub, Slack, or the caller's real `$IMPLEMENT_TMPDIR`.
