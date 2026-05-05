@@ -1,0 +1,7 @@
+# scripts/test-collect-agent-retry.sh - contract
+
+`scripts/test-collect-agent-retry.sh` is the regression harness for `scripts/collect-agent-results.sh` retry metadata deserialization (issue #1154). It creates synthetic empty reviewer outputs plus `.meta` sidecars and drives the real collector, which in turn launches the real `scripts/run-external-agent.sh` wrapper around a temporary helper.
+
+Cases: (A) valid `CMD_JSON` retries an empty output and returns `STATUS=OK` with `REVIEWER_FILE=*-retry.txt`; (B) malformed JSON fails closed; (C) stale legacy `CMD=`-only metadata fails closed; (D) non-string array elements fail the `array of string` validator; (E) an argv element ending in `\n` survives the base64+sentinel decode path; (F) output retargeting swaps only the standalone output-path argv element and leaves prompt substrings unchanged; (G) when `/bin/bash` is older than 4.4, the happy retry path is re-run under that runtime as the macOS bash-3.2 portability guard.
+
+Wired into `make lint` via the `test-collect-agent-retry` target and one `test-harnesses-N` shard. The harness is added to `agent-lint.toml`'s exclude array because it is a Makefile-only harness. Update this file with `scripts/collect-agent-results.sh`, `scripts/run-external-agent.sh`, `scripts/run-external-agent.md`, and `scripts/collect-agent-results.md` when changing the retry metadata format, fail-closed health behavior, or Bash 3.2 deserialization strategy.

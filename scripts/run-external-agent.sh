@@ -25,7 +25,7 @@
 #
 # The --output value is rejected before any filesystem side effects if it
 # contains a byte outside [A-Za-z0-9._/-]. OUTPUT_FILE is the same byte string
-# used on disk, in .meta, and inside the printf '%q'-quoted CMD= retry field;
+# used on disk, in .meta, and as a standalone argv element inside CMD_JSON;
 # see scripts/run-external-agent.md for the full retry-substitution rationale.
 #
 # Usage:
@@ -131,7 +131,6 @@ EXIT_CODE=99  # default: wrapper crashed before capturing real exit code
 trap 'echo "$EXIT_CODE" > "${OUTPUT_FILE}.done" 2>/dev/null || true' EXIT
 
 # Write metadata for collect-agent-results.sh retry support.
-# CMD is shell-quoted via printf '%q' to preserve argument boundaries.
 # Sanitize TOOL_NAME for the line-oriented .meta sidecar via a label-safe
 # allowlist: keep alphanumerics, dot, underscore, hyphen; translate every
 # other byte to `_`. Translation (not deletion) preserves length so an
@@ -147,17 +146,21 @@ trap 'echo "$EXIT_CODE" > "${OUTPUT_FILE}.done" 2>/dev/null || true' EXIT
 META_TOOL_NAME=$(printf '%s' "$TOOL_NAME" | LC_ALL=C tr -c 'a-zA-Z0-9._-' '_')
 [[ -z "$META_TOOL_NAME" ]] && META_TOOL_NAME="sanitized-empty"
 # The .meta grammar is one KEY=VALUE record per physical line; values must
-# not embed physical newlines or U+2028/U+2029. See the ".meta sidecar
-# grammar" section in scripts/run-external-agent.md for per-field guarantees
-# (TOOL allowlist, TIMEOUT integer validation, capture booleans, OUTPUT_FILE
-# caller responsibility, CMD printf '%q' serialization).
+# not embed physical newlines or U+2028/U+2029. CMD_JSON is a single-line
+# compact JSON array of post-`--` argv strings. Compute it in a guarded
+# assignment first: printf-with-command-substitution does not propagate jq's
+# exit status under `set -e`, so jq must succeed before we write the sidecar.
+if ! META_CMD_JSON=$(jq -cn --args '$ARGS.positional' -- "$@"); then
+    echo "ERROR: jq failed to serialize argv to CMD_JSON for ${OUTPUT_FILE}.meta" >&2
+    exit 1
+fi
 {
     echo "TOOL=$META_TOOL_NAME"
     echo "TIMEOUT=$TIMEOUT_SECONDS"
     echo "CAPTURE_STDOUT=$CAPTURE_STDOUT"
     echo "CAPTURE_STDOUT_ONLY=$CAPTURE_STDOUT_ONLY"
     echo "OUTPUT_FILE=$OUTPUT_FILE"
-    printf 'CMD=%s\n' "$(printf '%q ' "$@")"
+    printf 'CMD_JSON=%s\n' "$META_CMD_JSON"
 } > "${OUTPUT_FILE}.meta"
 
 # Launch the agent in the background

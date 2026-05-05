@@ -14,9 +14,10 @@ PROMPT=""
 
 # Build a redacted copy of ORIGINAL_ARGS for write_meta() so the full --prompt
 # body (which carries inlined diff / log / file-list — see plan FINDING_10) is
-# not duplicated to ${OUTPUT}.meta. .meta CMD= replays the launcher invocation,
-# not raw Gemini, so the actual prompt content is unnecessary for retry
-# semantics.
+# not duplicated to ${OUTPUT}.meta. .meta CMD_JSON= replays the launcher
+# invocation as a single-line JSON array, not raw Gemini, so the actual prompt
+# content is unnecessary for retry semantics. On the missing-jq fail-closed
+# path, write_meta() omits CMD_JSON so write_done() can still run.
 REDACTED_ARGS=()
 _skip_next=0
 for _arg in "${ORIGINAL_ARGS[@]}"; do
@@ -69,11 +70,18 @@ write_meta() {
         # rebuild flags from .meta do not silently drop --capture-stdout-only.
         echo "CAPTURE_STDOUT_ONLY=true"
         echo "OUTPUT_FILE=$OUTPUT"
-        # CMD= replays the LAUNCHER (not raw gemini) so retry re-runs JSON
-        # normalization. The --prompt body is redacted to a sha256 prefix +
-        # byte length to avoid persisting inlined diff/log content (which may
-        # carry secrets) into the session tmpdir's .meta artifact.
-        printf 'CMD=%s\n' "$(printf '%q ' "$0" "${REDACTED_ARGS[@]}")"
+        # CMD_JSON replays the LAUNCHER (not raw gemini) so retry re-runs
+        # JSON normalization. The --prompt body is already redacted to a
+        # sha256 prefix + byte length in REDACTED_ARGS to avoid persisting
+        # inlined diff/log content into the session tmpdir's .meta artifact.
+        # If jq is unavailable (the LARCH_TEST_FORCE_MISSING_JQ /
+        # MISSING_JQ fail_closed path), omit CMD_JSON entirely; the collector
+        # treats missing CMD_JSON as fail-closed while write_done() still runs.
+        if command -v jq >/dev/null 2>&1 && [[ "${LARCH_TEST_FORCE_MISSING_JQ:-}" != "true" ]]; then
+            if META_CMD_JSON=$(jq -cn --args '$ARGS.positional' -- "$0" "${REDACTED_ARGS[@]}"); then
+                printf 'CMD_JSON=%s\n' "$META_CMD_JSON"
+            fi
+        fi
     } > "$tmp"
     mv "$tmp" "${OUTPUT}.meta"
 }
