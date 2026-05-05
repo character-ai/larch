@@ -89,9 +89,18 @@ trap 'rm -rf "$TMPDIR"' EXIT
 STUB_BIN="$TMPDIR/bin"
 mkdir -p "$STUB_BIN"
 
-cat > "$STUB_BIN/gemini" <<'STUB'
+PROBE_ARGV_LOG="$TMPDIR/gemini-probe-argv.log"
+cat > "$STUB_BIN/gemini" <<STUB
 #!/usr/bin/env bash
-case "${GEMINI_STUB_MODE:-ok}" in
+# Record argv to \$PROBE_ARGV_LOG (one element per line, --- between invocations)
+# so the harness can pin the probe approval-mode value.
+{
+  for _arg in "\$@"; do
+    printf '%s\n' "\$_arg"
+  done
+  printf -- '---\n'
+} >> "$PROBE_ARGV_LOG"
+case "\${GEMINI_STUB_MODE:-ok}" in
   ok) printf '{"response":"OK"}\n' ;;
   error) printf '{"error":"auth failed"}\n' ;;
   verbose) printf '{"response":"Thinking... OK"}\n' ;;
@@ -109,6 +118,14 @@ grep -q '^GEMINI_AVAILABLE=true$' <<< "$probe_output" \
   || fail "Expected GEMINI_AVAILABLE=true with stub gemini"
 grep -q '^GEMINI_HEALTHY=true$' <<< "$probe_output" \
   || fail "Expected GEMINI_HEALTHY=true for JSON .response OK"
+
+# Pin probe approval-mode to plan (least privilege). The reviewer launcher
+# uses --approval-mode yolo (test-launch-gemini-review.sh pins that). Probe
+# and reviewer use intentionally different modes; without this assertion a
+# future edit could re-align them silently and re-introduce probe yolo.
+PROBE_APPROVAL_MODE_VALUE=$(awk 'prev=="--approval-mode"{print; exit} {prev=$0}' "$PROBE_ARGV_LOG")
+[[ "$PROBE_APPROVAL_MODE_VALUE" == "plan" ]] \
+  || fail "Expected gemini probe argv to include --approval-mode plan, got '$PROBE_APPROVAL_MODE_VALUE'"
 
 probe_output=$(GEMINI_STUB_MODE=error run_gemini_probe)
 grep -q '^GEMINI_HEALTHY=false$' <<< "$probe_output" \

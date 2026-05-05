@@ -51,9 +51,18 @@ assert_rejected_output() {
 
 STUB_BIN="$TMPDIR/bin"
 mkdir -p "$STUB_BIN"
-cat > "$STUB_BIN/gemini" <<'STUB'
+ARGV_LOG="$TMPDIR/gemini-argv.log"
+cat > "$STUB_BIN/gemini" <<STUB
 #!/usr/bin/env bash
-case "${GEMINI_STUB_MODE:-ok}" in
+# Record each argv element on its own line to \$ARGV_LOG so the harness can
+# pin --approval-mode value. Sentinel line --- separates invocations.
+{
+  for _arg in "\$@"; do
+    printf '%s\n' "\$_arg"
+  done
+  printf -- '---\n'
+} >> "$ARGV_LOG"
+case "\${GEMINI_STUB_MODE:-ok}" in
   ok) printf '{"response":"Plain review text"}\n' ;;
   error) printf '{"error":"auth failed"}\n' ;;
   empty) printf '{"response":""}\n' ;;
@@ -74,6 +83,13 @@ grep -q '^CMD_JSON=' "${OUTPUT}.meta" \
 if grep -q '^CMD=' "${OUTPUT}.meta"; then
   fail "Launcher meta should not include legacy CMD"
 fi
+# Pin reviewer approval-mode to yolo so a regression to plan (which would
+# block git/shell access and silently break the live-repo review contract)
+# is caught at harness time. The launcher passes the inner `gemini` argv
+# through run-external-agent.sh; the stub records each arg on its own line.
+APPROVAL_MODE_VALUE=$(awk 'prev=="--approval-mode"{print; exit} {prev=$0}' "$ARGV_LOG")
+[[ "$APPROVAL_MODE_VALUE" == "yolo" ]] \
+  || fail "Expected gemini argv to include --approval-mode yolo, got '$APPROVAL_MODE_VALUE'"
 grep -q '^0$' "${OUTPUT}.done" \
   || fail "Expected success .done exit code 0"
 if grep -q '[{}]' "$OUTPUT"; then

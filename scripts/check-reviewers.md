@@ -4,7 +4,7 @@ Checks external reviewer (Codex/Cursor, plus opt-in Gemini) binary availability 
 
 ## Tool registry
 
-The script sources `scripts/external-tool-registry.sh` for the canonical external-tool iteration list, using a fail-closed source guard and sentinel check. The legacy probe set is preserved: Codex and Cursor by default, with Gemini included only when `--include-gemini` is passed.
+The script sources `scripts/external-tool-registry.sh` for the canonical external-tool iteration list, using a fail-closed source guard and sentinel check. The legacy probe set is preserved: Codex and Cursor by default, with Gemini included only when `--include-gemini` is passed. The Gemini probe runs with `--approval-mode plan` (least privilege) — the probe sends a fixed `"Respond with OK"` prompt and never invokes a tool, so it does not need the shell/file-read affordance the reviewer launcher (`scripts/launch-gemini-review.sh`) takes via `--approval-mode yolo`. Probe and reviewer share the same `$GEMINI_MODEL` resolution.
 
 Per-tool getters/setters and `start_probe` arms remain explicit for Bash 3.2 portability, harness stability, and to avoid silent corruption under indirect expansion. Each switch helper has a defensive `*)` `internal error: unsupported reviewer tool: <id>` arm, so a registry update without matching switch updates fails loudly. Adding a new external tool requires both a registry update and a per-tool branch in every switch helper plus `start_probe`; `scripts/test-external-tool-registry.sh` walks every registry entry to catch missed branches.
 
