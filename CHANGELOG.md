@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.10.6] - 2026-05-05
+
+### Changed
+
+- Document the `--branch-info` trust model as a "Sharp edge — power-user / nested-call shape only" in `skills/design/references/flags.md` and the `skills/design/SKILL.md` flag table. Standalone callers that supply a complete `--branch-info` are trusted not to lie about `IS_MAIN`/`IS_USER_BRANCH`/`USER_PREFIX`/`CURRENT_BRANCH`; mismatched values silently bypass the standalone branch-state check. Also reworded `skills/design/SKILL.md` Step 0's `branch_info_supplied=true` paragraph so it no longer asserts "nested under `/implement`" — the four key values are accepted as-is from a trusted caller (normally `/implement`) and not cross-checked against the working tree. No behavior change.
+
 ## [15.10.5] - 2026-05-05
 
 ### Changed

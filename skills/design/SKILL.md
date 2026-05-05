@@ -18,7 +18,7 @@ Design an implementation plan for a feature and review it with an 8-reviewer pan
 | `--subagent` | `false` | Run Step 2a heavy phase in an isolated Agent-tool subagent (`heavy-worker.md`); writes artifacts only to `$DESIGN_TMPDIR/` and returns terse status; standalone (`--session-env` empty) parents replay artifacts before cleanup | No-op when `--quick` is set; orthogonal to `--session-env` |
 | `--session-env <path>` | empty | Forward discovered session values to `session-setup.sh` | Empty = standalone invocation, full discovery |
 | `--step-prefix <prefix>` | empty | Nested-numbering prefix from `/implement` | `::` delimiter splits numeric prefix from breadcrumb path; `"1."` (bare numeric) is backward-compat |
-| `--branch-info <values>` | — | Skip redundant branch-state check when called from `/implement` | 4 keys required: `IS_MAIN`/`IS_USER_BRANCH`/`USER_PREFIX`/`CURRENT_BRANCH`; fallback on validation failure to `create-branch.sh --check` |
+| `--branch-info <values>` | — | Skip redundant branch-state check when called from `/implement` | 4 keys required: `IS_MAIN`/`IS_USER_BRANCH`/`USER_PREFIX`/`CURRENT_BRANCH`; fallback on validation failure to `create-branch.sh --check`; power-user / nested-call flag with no standalone value validation |
 
 **MANDATORY — READ ENTIRE FILE before parsing argument flags**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/flags.md` completely. This reference is the single normative source for flag semantics — validation rules, fallback behaviors, `::` delimiter encoding spec, 4-key `--branch-info` requirement, and backward-compat notes. The table above is a non-normative index.
 
@@ -106,7 +106,7 @@ Consolidated NEVER rules collected from the procedural steps below. Each rule st
 
 Define `branch_info_supplied=true` only when the caller passed valid `--branch-info` containing all 4 keys: `IS_MAIN`, `IS_USER_BRANCH`, `USER_PREFIX`, and `CURRENT_BRANCH`. `SESSION_ENV_PATH` being non-empty is not a nesting signal by itself; `--session-env` is an exposed argument and can be passed manually.
 
-If `branch_info_supplied=true` (nested under `/implement`), `/implement` already ran the entry gate. Run setup with `--skip-branch-check`:
+If `branch_info_supplied=true` (trusted caller-supplied branch state, normally from `/implement`), the caller is presumed to have already run the entry gate. The four key values are accepted as-is and not cross-checked against the working tree (see the `--branch-info` "Sharp edge" note in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/flags.md`). Run setup with `--skip-branch-check`:
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix claude-design --skip-branch-check --skip-slack-check --skip-repo-check --check-reviewers [--caller-env "$SESSION_ENV_PATH"] [--skip-codex-probe] [--skip-cursor-probe] [--write-health "${SESSION_ENV_PATH}.health"]
