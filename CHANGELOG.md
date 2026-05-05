@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.11.10] - 2026-05-05
+
+### Changed
+
+- Hoist the `read-design-manifest.sh` reusable-design-manifest check above the both-externals-down inline-plan branch in `/implement` Step 1 normal mode so a resumed session never overwrites the prior `/design` artifact set when both externals happen to be unavailable. Closes #1126.
+
 ## [15.11.9] - 2026-05-05
 
 ### Changed
