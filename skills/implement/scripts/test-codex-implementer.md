@@ -6,7 +6,8 @@
 - Missing required flags exit 2.
 - Bad timeout exits 2.
 - Zero-valued timeouts (`0`, `00`, `000`) exit 2 and report the positive-integer timeout contract.
-- Missing input files exit 2.
+- Positive leading-zero timeouts (e.g. `010`) are accepted: launcher exits 0 with the standard five-line stdout envelope. Guards against a future refactor swapping the base-10 force-decimal expression `(( 10#$TIMEOUT < 1 ))` for plain `(( $TIMEOUT < 1 ))` and silently regressing to `010`-as-octal-eight (or stricter-shell errors).
+- Missing input files exit 2 — specifically: missing `--plan-file`, missing `--feature-file`, missing `--agent-prompt`, and `--answers-file` pointing at a non-existent path.
 - PATH-stubbed `codex` writes a minimal valid `manifest.json`; the launcher emits exactly five KV stdout lines and no progress chatter.
 - Codex's `--output-last-message` transcript path receives the stubbed output payload.
 - Codex argv shape includes `exec`, `--full-auto`, `-C "$PWD"`, `--output-last-message`, and model/effort args from `scripts/agent-model-args.sh --tool codex --with-effort`.
