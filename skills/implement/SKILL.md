@@ -641,7 +641,7 @@ case "$TOOL" in
 esac
 ```
 
-**Cwd contract**: invoke the dispatcher with process cwd = the consumer git repo's working tree (the orchestrator's normal cwd). The dispatcher derives its `REPO_ROOT` from `git rev-parse --show-toplevel` against cwd because `${CLAUDE_PLUGIN_ROOT}` may resolve into the installed plugin cache (no `.git`). On Codex, or on Cursor after the health gate passes, a cwd outside any git working tree exits 2 with a clear caller-error message; do not chdir before invoking. See `skills/implement/scripts/step2-implement.md` invariant "Two distinct roots".
+**Cwd contract**: invoke the dispatcher with process cwd = the consumer git repo's working tree (the orchestrator's normal cwd). The dispatcher derives its `REPO_ROOT` from `git rev-parse --show-toplevel` against cwd because `${CLAUDE_PLUGIN_ROOT}` may resolve into the installed plugin cache (no `.git`). On Codex, on Cursor after the health gate passes, or on Gemini after the health gate passes, a cwd outside any git working tree exits 2 with a clear caller-error message; do not chdir before invoking. See `skills/implement/scripts/step2-implement.md` invariant "Two distinct roots".
 
 **2.1.5 — Envelope validation (fail-closed)**:
 
