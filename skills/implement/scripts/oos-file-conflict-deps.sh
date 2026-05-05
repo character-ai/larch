@@ -257,7 +257,7 @@ cut -f1 "$component_nodes" | sort -n -u | while IFS= read -r root; do
             NR == FNR { root_by_node[$2]=$1; next }
             root_by_node[$1] == r && root_by_node[$2] == r { print $3; exit }
         ' "$component_nodes" "$candidate_edges")"
-        echo "**⚠ /implement: oos-file-conflict-deps cluster size $node_count on ${basename_hint:-unknown} exceeded 200 all-pairs rows; emitting chain (lower robustness under SCC pruning).**" >&2
+        echo "**⚠ /implement: oos-file-conflict-deps cluster size $node_count on ${basename_hint:-unknown} exceeded $CLUSTER_CAP all-pairs rows; emitting chain (lower robustness under SCC pruning).**" >&2
         previous=""
         while IFS= read -r node; do
             if [[ -n "$previous" ]]; then
@@ -276,8 +276,8 @@ done
 sort -n -k1,1 -k2,2 "$planned_edges" -o "$planned_edges"
 row_count="$(wc -l < "$planned_edges" | tr -d ' ')"
 if (( row_count > GLOBAL_CAP )); then
-    rm -f "$OUTPUT_TMP" "$OUTPUT_FILE"
-    echo "ERROR: oos-file-conflict-deps would emit $row_count rows, exceeding the 500-row --intra-batch-deps-file cap; split the OOS batch" >&2
+    rm -f "$OUTPUT_TMP"
+    echo "ERROR: oos-file-conflict-deps would emit $row_count rows, exceeding the $GLOBAL_CAP-row --intra-batch-deps-file cap; split the OOS batch" >&2
     exit 1
 fi
 

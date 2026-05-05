@@ -33,7 +33,7 @@ When adding a new pre-commit hook, decide explicitly whether `lint`, the dedicat
 
 ## CI sharding of `test-harnesses`
 
-`make test-harnesses` remains the local umbrella target and runs all 71 legacy regression harnesses plus the 1 partition guard. CI fans the same inventory out across five parallel matrix cells named `test-harnesses (1)` through `test-harnesses (5)`, each invoking `make test-harnesses-N`.
+`make test-harnesses` remains the local umbrella target and runs every regression harness wired into the `test-harnesses-N` shards plus the partition guard (`make test-harness-shards-coverage` reports the active inventory; the `Makefile` is the source of truth). CI fans the same inventory out across five parallel matrix cells named `test-harnesses (1)` through `test-harnesses (5)`, each invoking `make test-harnesses-N`.
 
 The shard lists live directly in `Makefile` and are balanced by measured per-harness wall-clock time. New harnesses must be assigned to exactly one `test-harnesses-N:` prerequisite list; `make test-harness-shards-coverage` checks for missing, orphaned, duplicated, wrapped, or non-standard harness entries. The matrix uses `fail-fast: false`, so all five shards finish even after one fails. This spends more CI minutes but preserves complete diagnostics.
 

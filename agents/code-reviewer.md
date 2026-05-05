@@ -161,5 +161,6 @@ A numbered list of pre-existing issues or concerns beyond the scope of this PR t
 - What the issue is
 - Suggested fix
 - Note why this is out of scope (pre-existing, unrelated to PR, etc.)
+- When the observation references repo files, include affected repo-relative file paths and line ranges in the form `path/to/file.sh:120-150` (or `path/to/file.sh` for whole-file edits) so /implement Step 9a.1's file-conflict pre-pass can emit serialization edges.
 
 If no in-scope issues found, say "No in-scope issues found." If no out-of-scope observations, omit that section entirely. Do NOT edit any files.

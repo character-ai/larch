@@ -173,7 +173,7 @@ for cluster in $(seq 1 4); do
         idx=$((idx + 1))
     done
 done
-assert_case "case-k-global-cap" "$input" "" 1 "exceeding the 500-row" true 3 10
+assert_case "case-k-global-cap" "$input" "" 1 "exceeding the 10-row" true 3 10
 
 input="$(make_input case-l)"
 append_oos "$input" 1 "First" "Touches Makefile"
@@ -218,7 +218,7 @@ for cluster in $(seq 1 4); do
         idx=$((idx + 1))
     done
 done
-assert_case "case-s-atomic-tier2" "$input" "" 1 "exceeding the 500-row" true 3 10
+assert_case "case-s-atomic-tier2" "$input" "" 1 "exceeding the 10-row" true 3 10
 
 input="$(make_input case-t)"
 append_oos "$input" 1 "First" "Touches skills/foo/bar.sh"
