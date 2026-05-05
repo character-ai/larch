@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.8.0] - 2026-05-04
+
+### Added
+
+- New `/imq` alias skill forwarding to `/implement --merge --quick` (quick mode without `--auto`), filling the gap between `/im` and `/imaq`. Updates README aliases table, `.claude/settings.json` and `docs/configuration-and-permissions.md` permission allowlists, `docs/workflow-lifecycle.md` delegation topology and forwarder bullets, `docs/installation-and-setup.md` skill list, and the pure-delegator scope lists in `skills/shared/subskill-invocation.md` and `scripts/test-anti-halt-banners.sh`.
+
 ## [15.7.14] - 2026-05-04
 
 ### Added
