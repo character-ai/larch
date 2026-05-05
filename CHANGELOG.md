@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.11.9] - 2026-05-05
+
+### Changed
+
+- Pin the post-merge anti-halt reminder literals in `skills/implement/SKILL.md` via a new structural assertion in `scripts/test-implement-structure.sh` (closes #1143).
+
 ## [15.11.8] - 2026-05-05
 
 ### Changed
