@@ -8,7 +8,7 @@ Monitored wrapper for external agents. It launches a command, writes `<output>.m
 
 Before writing `.meta`, the wrapper sanitizes the `TOOL=` value through a label-safe allowlist (alphanumerics, `.`, `_`, `-`); any other byte — control characters, `=`, whitespace, and any non-ASCII byte (including Unicode line/paragraph separators U+2028/U+2029) — is translated to `_`. Translation (rather than deletion) preserves length so an adversarial label cannot collapse into the canonical tool ids consumed by `collect-agent-results.sh::derive_tool()`; for example, `cu\nrsor` becomes `cu_rsor`, not `cursor`. If sanitization yields an empty string, the `.meta` field falls back to `sanitized-empty` (a distinct sentinel from `unknown`, which `derive_tool()` uses for unclassifiable tools) so the retry path — which skips when `META_TOOL` is empty — stays functional.
 
-This script is listed as the "Related (label-only consumer, NOT sourced)" entry in `scripts/external-tool-registry.md`, not as a `Sourced by` consumer.
+This script is listed under `Related` in `scripts/external-tool-registry.md`, not under `Sourced by`: it is NOT sourced from the registry, does not validate `--tool` against it, retains the raw label in human-facing logs, and sanitizes the `.meta` `TOOL=` field as described above.
 
 ## `--output` invariants
 
