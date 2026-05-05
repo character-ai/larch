@@ -46,7 +46,7 @@
 #   synchronous-only invocation contract above is the operational defense.
 #
 # Progress (stderr):
-#   Dots every 10s, status line every ~1 minute (every 6th check)
+#   Dots every 10s, status line every ~1 minute (every 6th poll)
 #
 # Exit codes:
 #   0 — valid decision reached (read ACTION from stdout or <output-file>)
@@ -214,13 +214,13 @@ while true; do
     if [[ "$ACTION" != "wait" ]]; then
         printf "\n" >&2
         if [[ "$ACTION" == "merge" ]]; then
-            printf "✓ CI passed (%ds, %d checks)\n" "$SECONDS" "$checks" >&2
+            printf "✓ CI passed (%ds, %d polls)\n" "$SECONDS" "$checks" >&2
         elif [[ "$ACTION" == "already_merged" ]]; then
             printf "✓ PR already merged (%ds)\n" "$SECONDS" >&2
         elif [[ "$ACTION" == "bail" ]]; then
-            printf "⚠ Bailing: %s (%ds, %d checks)\n" "$BAIL_REASON" "$SECONDS" "$checks" >&2
+            printf "⚠ Bailing: %s (%ds, %d polls)\n" "$BAIL_REASON" "$SECONDS" "$checks" >&2
         else
-            printf "→ Action: %s (%ds, %d checks)\n" "$ACTION" "$SECONDS" "$checks" >&2
+            printf "→ Action: %s (%ds, %d polls)\n" "$ACTION" "$SECONDS" "$checks" >&2
         fi
         exit 0
     fi
@@ -233,9 +233,9 @@ while true; do
     checks=$((checks + 1))
 
     printf "." >&2
-    # Print status line every 6 checks (~1 minute)
+    # Print status line every 6 polls (~1 minute)
     if [[ $((checks % 6)) -eq 0 ]]; then
-        printf "\n⏳ CI: %dm elapsed, %d checks, status=%s\n" \
+        printf "\n⏳ CI: %dm elapsed, %d polls, status=%s\n" \
             "$((SECONDS / 60))" "$checks" "$CI_STATUS" >&2
     fi
 
