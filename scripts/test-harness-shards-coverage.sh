@@ -81,14 +81,14 @@ extract_individual_targets() {
 extract_shard_prereqs() {
   local makefile="$1"
   local out_all="$2"
-  local out_shard6="$3"
+  local out_last_shard="$3"
   local n
   local count
   local line
   local prereq
 
   : > "$out_all"
-  : > "$out_shard6"
+  : > "$out_last_shard"
 
   for n in 1 2 3 4 5; do
     count="$(grep -Ec "^test-harnesses-$n:" "$makefile" || true)"
@@ -102,7 +102,7 @@ extract_shard_prereqs() {
     for prereq in $line; do
       printf '%s\n' "$prereq" >> "$out_all"
       if [[ "$n" == "5" ]]; then
-        printf '%s\n' "$prereq" >> "$out_shard6"
+        printf '%s\n' "$prereq" >> "$out_last_shard"
       fi
     done
   done
@@ -143,7 +143,7 @@ validate_makefile() {
   local continuation_violations="$TMPDIR_SHARDS/continuation-violations"
   local individual="$TMPDIR_SHARDS/individual"
   local shard_all="$TMPDIR_SHARDS/shard-all"
-  local shard6="$TMPDIR_SHARDS/shard6"
+  local last_shard="$TMPDIR_SHARDS/last-shard"
   local shard_no_self="$TMPDIR_SHARDS/shard-no-self"
   local duplicates="$TMPDIR_SHARDS/duplicates"
   local missing="$TMPDIR_SHARDS/missing"
@@ -175,7 +175,7 @@ validate_makefile() {
   grep -nE "^test-harnesses-[1-5]:.*\\\\" "$makefile" > "$continuation_violations" || true
 
   extract_individual_targets "$makefile" > "$individual"
-  extract_shard_prereqs "$makefile" "$shard_all" "$shard6"
+  extract_shard_prereqs "$makefile" "$shard_all" "$last_shard"
 
   grep -Fxv 'test-harness-shards-coverage' "$shard_all" | sort -u > "$shard_no_self" || true
   sort "$shard_all" | uniq -d > "$duplicates"
@@ -238,15 +238,15 @@ validate_makefile() {
     } >> "$REPORT"
   fi
 
-  if ! grep -Fxq 'test-harness-shards-coverage' "$shard6"; then
+  if ! grep -Fxq 'test-harness-shards-coverage' "$last_shard"; then
     {
       printf '@@ self-reference misplaced @@\n'
       printf '! test-harness-shards-coverage must be the first prerequisite of test-harnesses-5\n'
     } >> "$REPORT"
   else
-    local first_shard6
-    IFS= read -r first_shard6 < "$shard6" || first_shard6=""
-    if [[ "$first_shard6" != "test-harness-shards-coverage" ]]; then
+    local first_last_shard
+    IFS= read -r first_last_shard < "$last_shard" || first_last_shard=""
+    if [[ "$first_last_shard" != "test-harness-shards-coverage" ]]; then
       {
         printf '@@ self-reference misplaced @@\n'
         printf '! test-harness-shards-coverage must be the first prerequisite of test-harnesses-5\n'

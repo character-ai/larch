@@ -21,6 +21,10 @@
   **Partial-success semantics**: the `--comment` (DONE) post and the `--pr-url` body backfill run BEFORE the state probe. On probe-AND-close failure (Fixture 6 in the harness), the comment and body edits may have already been applied to the issue — the caller sees `CLOSED=false` but GitHub state shows a backfilled issue body and a DONE comment on a still-open issue. This is the same partial-success class that existed pre-idempotency (comment + body could already succeed before a fatal `gh issue close`); the idempotency change does not introduce a new partial-success mode.
 - **`update-body --issue N --pr-url URL`** — append a PR link to the issue body. Idempotent via substring check. Stdout: `UPDATED=true` (+ optional `SKIPPED=already_present`) on success, `UPDATED=false` + `ERROR=` on failure. Note: `cmd_close` suppresses this subcommand's stdout when it calls it internally so only `CLOSED=true` (or `CLOSED=false` + `ERROR=`) ever appears on `close`'s stdout.
 
+## Lock-settle pause (`ISSUE_LIFECYCLE_LOCK_SETTLE_SECONDS`)
+
+After posting the lock comment, `cmd_comment` pauses for `ISSUE_LIFECYCLE_LOCK_SETTLE_SECONDS` (default `1`) before re-fetching the comment list to detect a duplicate-runner race. The pause gives GitHub time to make the new comment visible via the API. Test harnesses that PATH-stub `gh` (e.g. `skills/fix-issue/scripts/test-find-lock-issue.sh`) export `ISSUE_LIFECYCLE_LOCK_SETTLE_SECONDS=0` because the stub returns synthetic state instantly. The validator accepts non-negative integer or decimal seconds; non-numeric or empty values exit 2 with `ERROR=ISSUE_LIFECYCLE_LOCK_SETTLE_SECONDS must be a non-negative number`.
+
 ## Stdout contract
 
 - `close` success: `CLOSED=true` (single line on stdout; any INFO note goes to stderr).

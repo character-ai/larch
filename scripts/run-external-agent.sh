@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # run-external-agent.sh — Monitored wrapper for external agents (Codex, Cursor, Gemini).
-# Launches the agent in the background, polls every 60s with status messages,
-# kills after a configurable timeout (e.g., 30 minutes for reviews/implementation, 20 minutes for votes/sketches).
+# Launches the agent in the background, polls the child PID at the cadence
+# configured by RUN_EXTERNAL_AGENT_POLL_INTERVAL (default 10s; tests override
+# to a fraction of a second), prints a one-line progress message per elapsed
+# minute, and kills after a configurable timeout (e.g., 30 minutes for
+# reviews/implementation, 20 minutes for votes/sketches).
 #
 # Usage:
 #   run-external-agent.sh --tool NAME --output FILE --timeout SECS [--capture-stdout|--capture-stdout-only] -- CMD...
