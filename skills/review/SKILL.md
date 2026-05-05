@@ -7,7 +7,7 @@ allowed-tools: Bash, Read, Edit, Write, Grep, Glob, Agent, Task, WebFetch, Skill
 
 # Code Review Skill
 
-Review code changes using a 6-reviewer specialist panel (5 Cursor specialists + 1 Codex generic). Two modes: **diff mode** (`--diff`) reviews the current branch diff vs `main` and implements accepted suggestions; **description mode** (positional `<description>`) reviews existing code matching the description and files accepted findings as GitHub issues by default (`--no-issues` to suppress). Claude is not a reviewer but participates as a voter in the 3-voter adjudication panel.
+Review code changes using a 6-reviewer specialist panel (5 Cursor specialists + 1 Codex generic; 7 when Gemini is available as an additive generic reviewer). Two modes: **diff mode** (`--diff`) reviews the current branch diff vs `main` and implements accepted suggestions; **description mode** (positional `<description>`) reviews existing code matching the description and files accepted findings as GitHub issues by default (`--no-issues` to suppress). Claude is not a reviewer but participates as a voter in the 3-voter adjudication panel.
 
 **Anti-halt continuation reminder.** After every child `Skill` tool call (e.g., `/design`, `/review`, `/relevant-checks`, `/bump-version`, `/issue`, `/implement`) returns AND after every `Bash` tool call that completes a numbered step or sub-step, IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on the child's cleanup output, on a Bash result, or on a status message, and do NOT write a summary, handoff, status recap, or "returning to parent" message — those are halts in disguise. This applies to ALL step boundaries from Step 0 through Step 5, and to ALL sub-step transitions within Step 3's review loop (3a→3b→3c→3d→3e→3f→loop back to Step 1). **Critical: in diff mode, the review loop (Steps 1→2→3) repeats until convergence (0 findings) or the 7-round safety limit — completing one round's fixes does NOT mean the review is done.** The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `skip to Step N`, `bail to cleanup`, `jump back`, `loop back`, `fall through`, `break out`). A normal sequential `proceed to Step N+1` instruction is the default continuation this rule reinforces, NOT an exception. Every `/relevant-checks` invocation anywhere in this file is covered by this rule. See `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Anti-halt continuation reminder for the canonical rule.
 
@@ -15,7 +15,7 @@ Review code changes using a 6-reviewer specialist panel (5 Cursor specialists + 
 
 - `--diff`: Set a mental flag `diff_mode=true`. Activates **diff mode** (branch diff vs `main`). Mutually exclusive with positional description text. Default: `diff_mode=false`.
 - `--no-issues`: Set a mental flag `no_issues=true`. Suppresses issue filing in description mode. In diff mode, silently ignored (diff mode never files issues). Default: `no_issues=false`.
-- `--session-env <path>`: Set `SESSION_ENV_PATH` to the given path. This file contains already-discovered session values from a caller skill (e.g., `/implement`) including reviewer health state (`CODEX_HEALTHY`, `CURSOR_HEALTHY`). If not provided, `SESSION_ENV_PATH` is empty (standalone invocation — full health probe at Step 0).
+- `--session-env <path>`: Set `SESSION_ENV_PATH` to the given path. This file contains already-discovered session values from a caller skill (e.g., `/implement`) including reviewer health state (`CODEX_HEALTHY`, `CURSOR_HEALTHY`, `GEMINI_HEALTHY`). If not provided, `SESSION_ENV_PATH` is empty (standalone invocation — full health probe at Step 0).
 - `--step-prefix <prefix>`: Encodes both numeric prefix and textual breadcrumb path using `::` delimiter — see `${CLAUDE_PLUGIN_ROOT}/skills/shared/progress-reporting.md` for the full encoding spec. Examples: `"5.::code review"` (numeric `5.`, path `code review`), `"5."` (numeric only, backward compat). Default: empty (standalone numbering). Internal orchestration flag.
 
 ## Mode activation
@@ -57,7 +57,9 @@ After launching all reviewers (Step 2), maintain a mental tracker of each review
 📊 Reviewers: | Structure: ✅ 3m12s | Correctness: ⏳ | Testing: ✅ 2m45s | Security: ⏳ | Edge-cases: ✅ 4m30s | Codex: ⏳ |
 ```
 
-Icons: ✅ done (with elapsed time since launch), ⏳ pending/in-progress, ❌ failed/timeout (with elapsed time since launch), ⊘ skipped (unavailable). See `${CLAUDE_PLUGIN_ROOT}/skills/shared/progress-reporting.md` for elapsed time and step start formatting rules.
+When `gemini_available=true`, append `| Gemini: ⏳ |` to the table. When `gemini_available=false`, omit the Gemini column entirely; do not render `Gemini: ⊘ skipped`.
+
+Icons: ✅ done (with elapsed time since launch), ⏳ pending/in-progress, ❌ failed/timeout (with elapsed time since launch), ⊘ skipped (unavailable for replacement-style reviewers only). See `${CLAUDE_PLUGIN_ROOT}/skills/shared/progress-reporting.md` for elapsed time and step start formatting rules.
 
 **Status table updates**: (1) Print initial table after launching all reviewers (all ⏳ or ⊘). (2) Update after `collect-agent-results.sh` returns (all external reviewers resolved).
 
@@ -78,20 +80,21 @@ When positional description text is present (no `--diff`), `/review` operates in
 Run the shared session setup script. This handles temp directory creation, reviewer health probe, and health status file in a single call:
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix claude-review --skip-preflight --skip-branch-check --skip-slack-check --skip-repo-check --check-reviewers [--caller-env "$SESSION_ENV_PATH"] [--skip-codex-probe] [--skip-cursor-probe] [--write-health "${SESSION_ENV_PATH}.health"]
+${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix claude-review --skip-preflight --skip-branch-check --skip-slack-check --skip-repo-check --check-reviewers --check-gemini-reviewer [--caller-env "$SESSION_ENV_PATH"] [--skip-codex-probe] [--skip-cursor-probe] [--skip-gemini-probe] [--write-health "${SESSION_ENV_PATH}.health"]
 ```
 
-Only include `--caller-env "$SESSION_ENV_PATH"` and `--write-health "${SESSION_ENV_PATH}.health"` if `SESSION_ENV_PATH` is non-empty. If `SESSION_ENV_PATH` provides `CODEX_HEALTHY=false` or `CURSOR_HEALTHY=false`, the script auto-sets the corresponding `--skip-codex-probe` / `--skip-cursor-probe` flag.
+Only include `--caller-env "$SESSION_ENV_PATH"` and `--write-health "${SESSION_ENV_PATH}.health"` if `SESSION_ENV_PATH` is non-empty. If `SESSION_ENV_PATH` provides `CODEX_HEALTHY=false`, `CURSOR_HEALTHY=false`, or `GEMINI_HEALTHY=false`, the script auto-sets the corresponding `--skip-codex-probe` / `--skip-cursor-probe` / `--skip-gemini-probe` flag.
 
 If the script exits non-zero, print the error and abort.
 
-Parse the output for `SESSION_TMPDIR`, `CODEX_AVAILABLE`, `CURSOR_AVAILABLE`, `CODEX_HEALTHY`, `CURSOR_HEALTHY`. Set `REVIEW_TMPDIR` = `SESSION_TMPDIR`. Substitute the actual path in every command below.
+Parse the output for `SESSION_TMPDIR`, `CODEX_AVAILABLE`, `CURSOR_AVAILABLE`, `GEMINI_AVAILABLE`, `CODEX_HEALTHY`, `CURSOR_HEALTHY`, `GEMINI_HEALTHY`. Set `REVIEW_TMPDIR` = `SESSION_TMPDIR`. Substitute the actual path in every command below.
 
-Set mental flags `codex_available` and `cursor_available` based on the output:
+Set mental flags `codex_available`, `cursor_available`, and `gemini_available` based on the output:
 - If `CODEX_AVAILABLE=false`: `codex_available=false`. Print: `**⚠ Codex not available (binary not found). Proceeding without Codex reviewer.**`
 - Else if `CODEX_HEALTHY=false`: `codex_available=false`. Print: `**⚠ Codex installed but not responding (health check failed). Using Claude replacement.**`
 - Else: `codex_available=true`
 - Same logic for Cursor.
+- Gemini is strictly additive: set `gemini_available=true` only when `GEMINI_AVAILABLE=true` AND `GEMINI_HEALTHY=true`. If either key is absent or false, set `gemini_available=false`. If `GEMINI_AVAILABLE=false`, print nothing unless the session setup emitted a Gemini warning. If `GEMINI_HEALTHY=false`, print: `**⚠ Gemini installed but not responding (health check failed). Skipping Gemini reviewer.**`
 
 ## Step 1 — Gather Context
 
@@ -120,7 +123,7 @@ Set `DIFF_FILE` to empty (no diff in description mode). Set `FILE_LIST_FILE` to 
 
 ### Reviewer panel composition
 
-The panel has 6 reviewers: **5 specialist reviewers** + **1 generic Codex reviewer**. Each specialist concentrates on a narrow focus area using personality definitions from `${CLAUDE_PLUGIN_ROOT}/agents/reviewer-*.md`, rendered into tool-specific prompts by `${CLAUDE_PLUGIN_ROOT}/scripts/render-specialist-prompt.sh`.
+The panel has 6 reviewers: **5 specialist reviewers** + **1 generic Codex reviewer** (7 when `gemini_available=true`, adding one Gemini generic reviewer). Each specialist concentrates on a narrow focus area using personality definitions from `${CLAUDE_PLUGIN_ROOT}/agents/reviewer-*.md`, rendered into tool-specific prompts by `${CLAUDE_PLUGIN_ROOT}/scripts/render-specialist-prompt.sh`.
 
 The 5 specialists and their attribution labels:
 
@@ -132,24 +135,27 @@ The 5 specialists and their attribution labels:
 | Security/Trust-boundaries | `agents/reviewer-security.md` | `Security` |
 | Edge-cases/Failure-recovery | `agents/reviewer-edge-cases.md` | `Edge-cases` |
 
-The generic reviewer uses attribution label `Codex`.
+The generic Codex reviewer uses attribution label `Codex`. The optional Gemini generic reviewer uses attribution label `Gemini` only when launched.
 
-**Description mode is unchanged**: single round, no implement loop, not affected by the round-state machine below. Description mode always launches the full 6-reviewer panel for its single round.
+**Description mode is unchanged** except for the same additive Gemini generic slot: single round, no implement loop, not affected by the round-state machine below. Description mode launches the full 6-reviewer panel, or 7 when `gemini_available=true`, for its single round.
 
 ### Fallback matrix
 
-| Cursor | Codex | Specialist slots (5) | Generic slot (1) | Total |
-|---|---|---|---|---|
-| ✅ | ✅ | 5x Cursor specialist (`cursor-specialist-{name}-output.txt`) | 1x Codex generic (`codex-output.txt`) | 6 |
-| ❌ | ✅ | 5x Codex specialist (`codex-specialist-{name}-output.txt`) | 1x Codex generic (`codex-output.txt`) | 6 |
-| ✅ | ❌ | 5x Cursor specialist (`cursor-specialist-{name}-output.txt`) | 1x Claude generic (Agent tool, `larch:code-reviewer`, `"sonnet"`) | 6 |
-| ❌ | ❌ | — | 1x Claude generic (Agent tool, `larch:code-reviewer`, `"sonnet"`) | 1 |
+| Cursor | Codex | Gemini | Specialist slots (5) | Required generic slot (1) | Additive generic slot | Total |
+|---|---|---|---|---|---|---|
+| ✅ | ✅ | false | 5x Cursor specialist (`cursor-specialist-{name}-output.txt`) | 1x Codex generic (`codex-output.txt`) | — | 6 |
+| ✅ | ✅ | true | 5x Cursor specialist (`cursor-specialist-{name}-output.txt`) | 1x Codex generic (`codex-output.txt`) | 1x Gemini generic (`gemini-output.txt`) | 7 |
+| ❌ | ✅ | false/true | 5x Codex specialist (`codex-specialist-{name}-output.txt`) | 1x Codex generic (`codex-output.txt`) | 1x Gemini generic only when true (`gemini-output.txt`) | 6 or 7 |
+| ✅ | ❌ | false/true | 5x Cursor specialist (`cursor-specialist-{name}-output.txt`) | 1x Claude generic (Agent tool, `larch:code-reviewer`, `"sonnet"`) | 1x Gemini generic only when true (`gemini-output.txt`) | 6 or 7 |
+| ❌ | ❌ | false/true | — | 1x Claude generic (Agent tool, `larch:code-reviewer`, `"sonnet"`) | — | 1 |
+
+Gemini does not backfill missing Codex/Cursor lanes. If both Cursor and Codex are unavailable, launch only the existing one-Claude fallback even when Gemini is installed; Gemini is reviewer-only and additive to the full panel.
 
 **Partial specialist failure**: if `collect-agent-results.sh` reports `STATUS != OK` for an individual specialist slot, follow Runtime Timeout Fallback for that slot's tool only — flip the tool to unavailable for the session. The round proceeds with whichever specialists returned valid output. Do NOT retry individual slots within the same round.
 
 ### Launch procedure
 
-Launch **all reviewers in a single message**. Spawn order: specialist slots first (slowest), then generic slot.
+Launch **all reviewers in a single message**. Spawn order: specialist slots first (slowest), then Codex generic, then Gemini generic when `gemini_available=true`.
 
 **5 specialist slots** — for each specialist (`structure`, `correctness`, `testing`, `security`, `edge-cases`), determine which tool to use per the fallback matrix and invoke the appropriate launch wrapper. The wrappers handle prompt rendering (`render-specialist-prompt.sh`), model args (`agent-model-args.sh`), and prompt wrapping (`cursor-wrap-prompt.sh` for Cursor) internally:
 
@@ -183,9 +189,19 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/launch-codex-review.sh --output "$REVIEW_TMPDIR/co
 
 Use `run_in_background: true` and `timeout: 1860000`.
 
+**Optional Gemini generic slot** (only if `gemini_available=true`; omit this entire slot otherwise):
+
+Before invoking Gemini, build a self-contained prompt by reading the already-gathered context files. In diff mode, inline `git diff main...HEAD`, `git log main...HEAD --oneline`, and `git diff --name-only main...HEAD` equivalents from `DIFF_FILE`, `COMMIT_LOG_FILE`, and `FILE_LIST_FILE`. In description mode, inline `DESCRIPTION_TEXT` plus the contents of `$REVIEW_TMPDIR/scope-files.txt`. Gemini runs in plan mode and must not be asked to run shell commands.
+
+```bash
+${CLAUDE_PLUGIN_ROOT}/scripts/launch-gemini-review.sh --output "$REVIEW_TMPDIR/gemini-output.txt" --timeout 1800 --prompt "<self-contained review prompt with diff/log/file-list or description/scope-files inlined; same five focus areas and output contract as Codex>"
+```
+
+Use `run_in_background: true` and `timeout: 660000`.
+
 **Generic Codex fallback** (if `codex_available` is false): Launch a Claude Code Reviewer subagent via the Agent tool (subagent_type: `larch:code-reviewer`, model: `"sonnet"`) with the same code-review context. Use the Code Reviewer archetype from `${CLAUDE_PLUGIN_ROOT}/skills/shared/reviewer-templates.md` with mode-appropriate `{REVIEW_TARGET}` and `{CONTEXT_BLOCK}`, and the competition notice appended.
 
-**Both-down path** (both `cursor_available` and `codex_available` are false): Launch only 1 Claude Code Reviewer subagent (generic, no specialists). Print: `**⚠ Both Cursor and Codex unavailable. Proceeding with 1 Claude generic reviewer. Voting will be skipped (insufficient reviewers).**`
+**Both-down path** (both `cursor_available` and `codex_available` are false): Launch only 1 Claude Code Reviewer subagent (generic, no specialists). Do not launch Gemini on this path. Print: `**⚠ Both Cursor and Codex unavailable. Proceeding with 1 Claude generic reviewer. Voting will be skipped (insufficient reviewers).**`
 
 Append the following competition context to each reviewer's prompt (specialist and generic, all modes):
 
@@ -205,10 +221,12 @@ External reviewer output collection, validation, and retry are handled by the sh
 
 | Rounds | Reviewer panel | Voting | OOS collection | Stop condition |
 |--------|---------------|--------|----------------|----------------|
-| 1-3 | Full 6-reviewer panel (5 specialists + 1 generic) | 3-voter panel (Claude + Codex + Cursor) each round | Yes | 0 findings accepted by vote, OR round 3 reached |
-| 4-7 | Single Cursor generic (Codex → Claude fallback) | No voting (auto-accept) | No | 0 findings, OR round 7 reached |
+| 1-3 | Full 6-reviewer panel (5 specialists + 1 generic; 7 with Gemini) | 3-voter panel (Claude + Codex + Cursor) each round; Gemini never votes | Yes | 0 findings accepted by vote, OR round 3 reached |
+| 4-7 | Single Cursor generic (Codex → Gemini → Claude fallback when Gemini is available; Cursor → Codex → Claude otherwise) | No voting (auto-accept) | No | 0 findings, OR round 7 reached |
 
 **Description mode is unchanged**: single round, no implement loop. After Step 3d's round summary, jump directly to Step 4 (skip Step 3e implement-fixes and Step 3f re-review).
+
+Symmetric `/review` ↔ `/implement` chain rule: rounds 4+ use `Cursor → Codex → Gemini → Claude` when `gemini_available=true`, and `Cursor → Codex → Claude` when `gemini_available=false`.
 
 ### 3a — Collect
 
@@ -221,16 +239,17 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1860 --substant
   "$REVIEW_TMPDIR/cursor-specialist-testing-output.txt" \
   "$REVIEW_TMPDIR/cursor-specialist-security-output.txt" \
   "$REVIEW_TMPDIR/cursor-specialist-edge-cases-output.txt" \
-  "$REVIEW_TMPDIR/codex-output.txt"
+  "$REVIEW_TMPDIR/codex-output.txt" \
+  ["$REVIEW_TMPDIR/gemini-output.txt"]
 ```
 
-Only include `--write-health` if `SESSION_ENV_PATH` is non-empty. Only include output paths for reviewers that were actually launched as external tools (adjust paths per the fallback matrix — e.g., `codex-specialist-*` when Cursor is down). If the generic slot is a Claude fallback (both-down or Codex-down path), process its Agent tool output directly — do not include it in `collect-agent-results.sh`.
+Only include `--write-health` if `SESSION_ENV_PATH` is non-empty. Only include output paths for reviewers that were actually launched as external tools (adjust paths per the fallback matrix — e.g., `codex-specialist-*` when Cursor is down; include `gemini-output.txt` only when `gemini_available=true`). If the required generic slot is a Claude fallback (both-down or Codex-down path), process its Agent tool output directly — do not include it in `collect-agent-results.sh`.
 
 Parse the structured output for each reviewer's `STATUS` and `REVIEWER_FILE`. For any reviewer with `STATUS` not `OK`, follow the **Runtime Timeout Fallback** procedure. Read valid output files. **In description mode**, reviewers produce **dual-list output** with '### In-Scope Findings' and '### Out-of-Scope Observations' section headers — parse both sections. Section-header fail-open rules: (1) if exactly one section header is present, the missing section is interpreted as empty (NOT a parse error); (2) if both section headers are absent AND the entire output is the literal 'NO_ISSUES_FOUND', the reviewer reported nothing — proceed; (3) if both section headers are absent AND the output is not 'NO_ISSUES_FOUND' (legacy unsectioned output), treat the entire body as in-scope. **In diff mode**, external reviewers produce **single-list output** — treat their entire output as in-scope findings.
 
-Merge findings from all 6 reviewers, attributing each finding to its specialist label (`Structure`, `Correctness`, `Testing`, `Security`, `Edge-cases`, or `Codex`). When deduplicating, credit all proposing reviewers. If the same issue appears in both in-scope and OOS from different reviewers, merge under in-scope.
+Merge findings from all launched reviewers, attributing each finding to its specialist label (`Structure`, `Correctness`, `Testing`, `Security`, `Edge-cases`, `Codex`, and `Gemini` only when launched). When deduplicating, credit all proposing reviewers. If the same issue appears in both in-scope and OOS from different reviewers, merge under in-scope.
 
-**Rounds 4-7 (diff mode only, single generic reviewer):** Launch a single Cursor generic reviewer (if `cursor_available`; else Codex generic if `codex_available`; else Claude Code Reviewer subagent). Collect its output via `collect-agent-results.sh` with a single output path. If `STATUS` is not `OK`, follow Runtime Timeout Fallback and retry the round with the next available tool in the chain.
+**Rounds 4-7 (diff mode only, single generic reviewer):** Launch a single Cursor generic reviewer (if `cursor_available`; else Codex generic if `codex_available`; else Gemini generic if `gemini_available`; else Claude Code Reviewer subagent). Use tool-qualified output paths: `$REVIEW_TMPDIR/cursor-round${round_num}-output.txt`, `$REVIEW_TMPDIR/codex-round${round_num}-output.txt`, or `$REVIEW_TMPDIR/gemini-round${round_num}-output.txt`. For Gemini, inline the diff/log/file-list in the prompt before calling `launch-gemini-review.sh`. Collect its output via `collect-agent-results.sh` with a single output path. If `STATUS` is not `OK`, follow Runtime Timeout Fallback and retry the round with the next available tool in the chain.
 
 OOS observations are only collected in rounds 1-3 — rounds 4-7 use a single generic reviewer without OOS collection.
 
@@ -252,7 +271,7 @@ Merge findings from all reviewers into a single deduplicated list, grouped by fi
 
 Print to the user:
 - `## Review Round {N}` header
-- Bullet list of **accepted** findings with reviewer attribution (`Structure` / `Correctness` / `Testing` / `Security` / `Edge-cases` / `Codex`, or `Claude` for the both-down fallback)
+- Bullet list of **accepted** findings with reviewer attribution (`Structure` / `Correctness` / `Testing` / `Security` / `Edge-cases` / `Codex`, plus `Gemini` only when launched, or `Claude` for the both-down fallback)
 - If rounds 1-3: vote counts per finding, accepted OOS items, and any findings not accepted by vote
 - Total count of accepted findings for this round
 
@@ -280,9 +299,9 @@ After all fixes are applied, invoke `/relevant-checks` via the Skill tool to run
 
 **In diff mode**, increment the round number. IMMEDIATELY re-execute **Step 1** (gather the updated diff) then **Step 2** (launch reviewers again) then **Step 3** (collect, deduplicate, vote/evaluate, implement) as a fresh iteration of the review loop — do NOT halt, summarize, or wait for user input between rounds. The loop continues until reviewers report 0 findings (convergence) or the safety limit is reached (Step 3g).
 
-**Rounds 2-3 (full panel)**: Re-launch the full 6-reviewer panel per Step 2's launch procedure. Voting runs per Step 3c.1. The competition notice is included. This ensures multi-round specialist coverage with proper adjudication. If voting accepts 0 findings in any of rounds 1-3, the review loop terminates early.
+**Rounds 2-3 (full panel)**: Re-launch the full 6-reviewer panel per Step 2's launch procedure (7 when `gemini_available=true`). Voting runs per Step 3c.1; Gemini is reviewer-only and never joins the voter panel. The competition notice is included. This ensures multi-round specialist coverage with proper adjudication. If voting accepts 0 findings in any of rounds 1-3, the review loop terminates early.
 
-**Rounds 4-7 (single generic reviewer)**: Only launch **Cursor generic** (if `cursor_available`; else Codex generic if `codex_available`; else 1 Claude Code Reviewer subagent as fallback). Use the same generic diff-mode prompt from Step 2 (without the competition notice — there is no voting panel in rounds 4+). In rounds 4-7 Step 3a, collect from whichever single reviewer was launched: external output via `collect-agent-results.sh` (with Runtime Timeout Fallback on failure — retry the round with the next tool in the chain), or Claude subagent output directly. Findings that were rejected or exonerated by voting in rounds 1-3 are suppressed per Step 3c.1.
+**Rounds 4-7 (single generic reviewer)**: Only launch **Cursor generic** (if `cursor_available`; else Codex generic if `codex_available`; else Gemini generic if `gemini_available`; else 1 Claude Code Reviewer subagent as fallback). Use the same generic diff-mode prompt from Step 2 (without the competition notice — there is no voting panel in rounds 4+). In rounds 4-7 Step 3a, collect from whichever single reviewer was launched: external output via `collect-agent-results.sh` (with Runtime Timeout Fallback on failure — retry the round with the next tool in the chain), or Claude subagent output directly. Findings that were rejected or exonerated by voting in rounds 1-3 are suppressed per Step 3c.1.
 
 ### 3g — Safety Limit
 
@@ -296,10 +315,10 @@ Print a final summary:
 - Total number of review rounds (always 1 in description mode)
 - Findings per round (with per-reviewer breakdown: `Structure` / `Correctness` / `Testing` / `Security` / `Edge-cases` / `Codex`, or `Claude` for fallback)
 - Voting summary (rounds 1-3): total findings voted on, accepted (2+ YES), neutral (1 YES), exonerated (0 YES + 1+ EXONERATE), rejected (0 YES + 0 EXONERATE)
-- Reviewer Competition Scoreboard (cumulative across all voted rounds, with 6 independent players)
+- Reviewer Competition Scoreboard (cumulative across all voted rounds, with 6 independent players; 7 only when Gemini launched)
 - Total fixes applied across all rounds (diff mode only)
 - Build/test status (pass/fail)
-- **External reviewer warnings** (repeat any preflight or runtime warnings from Codex/Cursor here so they are visible at the end)
+- **External reviewer warnings** (repeat any preflight or runtime warnings from Codex/Cursor/Gemini here so they are visible at the end)
 
 ### 4b — Description-mode /umbrella filing (default in description mode; skipped when --no-issues)
 

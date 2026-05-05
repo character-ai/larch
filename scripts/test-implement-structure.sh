@@ -735,5 +735,28 @@ grep -Fq -- 'orchestrator-envelope-invalid' "$SKILL_MD" \
 grep -Fq -- 'NEVER #10' "$SKILL_MD" \
     || fail "(22) skills/implement/SKILL.md missing 'NEVER #10' cross-reference anchor — the orchestrator-edit-authority NEVER rule would have no inbound references"
 
-echo "PASS: test-implement-structure.sh — all 22 structural invariants hold (assertion 5 retired)"
+# (23) Gemini quick-mode reviewer pins. Step 0 must opt into Gemini probing
+# and Step 5 quick mode must document additive rounds 1-3, the
+# Cursor → Codex → Gemini → Claude rounds-4+ chain, tool-qualified paths, and
+# cross-skill GEMINI_HEALTHY propagation.
+grep -Fq -- '--check-gemini-reviewer' "$SKILL_MD" \
+  || fail "(23a) /implement Step 0 does not opt into Gemini reviewer probing"
+grep -Fq -- '--gemini-healthy' "$SKILL_MD" \
+  || fail "(23b) /implement does not write GEMINI_HEALTHY into session-env"
+grep -Fq 'gemini_available=false' "$SKILL_MD" \
+  || fail "(23c) /implement lacks strict-additive gemini_available=false default"
+grep -Fq 'gemini-quick-review-rounds1to3-generic-round${round_num}.txt' "$SKILL_MD" \
+  || fail "(23d) quick-mode rounds 1-3 missing Gemini generic output path"
+grep -Fq 'gemini-quick-review-round${round_num}.txt' "$SKILL_MD" \
+  || fail "(23e) quick-mode rounds 4+ missing tool-qualified Gemini output path"
+grep -Fq 'cursor-quick-review-round${round_num}.txt' "$SKILL_MD" \
+  || fail "(23f) quick-mode rounds 4+ missing tool-qualified Cursor output path"
+grep -Fq 'codex-quick-review-round${round_num}.txt' "$SKILL_MD" \
+  || fail "(23g) quick-mode rounds 4+ missing tool-qualified Codex output path"
+grep -Fq 'Cursor → Codex → Gemini → Claude' "$SKILL_MD" \
+  || fail "(23h) quick-mode rounds 4+ chain does not include Gemini between Codex and Claude"
+grep -Fq 'GEMINI_HEALTHY' "$SKILL_MD" \
+  || fail "(23i) /implement cross-skill health propagation omits GEMINI_HEALTHY"
+
+echo "PASS: test-implement-structure.sh — all 23 structural invariants hold (assertion 5 retired)"
 exit 0

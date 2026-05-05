@@ -1,6 +1,6 @@
 # External Agents
 
-Codex and Cursor participate alongside Claude subagents as reviewers, voters, and sketch authors in the Larch workflow. This document covers the shared integration procedures.
+Codex and Cursor participate alongside Claude subagents as reviewers, voters, and sketch authors in the Larch workflow. Gemini participates as an additive code reviewer only in `/review` and `/implement --quick`. This document covers the shared integration procedures.
 
 ## Availability Checks
 
@@ -8,8 +8,9 @@ At the start of each skill, a binary check determines which external tools are i
 
 - If **Codex** is not found, a warning is printed and the skill proceeds without it
 - If **Cursor** is not found, a warning is printed and the skill proceeds without it
+- If **Gemini** is not found or unhealthy in an opt-in code-review phase, every Gemini artifact is omitted; it does not get a Claude replacement
 
-Skills gracefully degrade when external tools are unavailable. When Codex or Cursor is not found, Claude replacement subagents fill their slots to maintain per-skill lane counts across most phases. The counts are: 8 for `/design` plan review (4 Cursor + 4 Codex specialists); 6 for `/review` code review (5 Cursor specialists + 1 Codex generic); for `/research` the topology is fixed at 4 Codex-first research lanes (each with per-lane Claude Agent-tool fallback under the same angle prompt) plus a 3-reviewer validation panel (1 Claude Code Reviewer subagent + 1 Codex + 1 Cursor); 8 for the `/design` sketch phase in regular mode (4 Cursor + 4 Codex, one per personality per tool), 2 in quick mode (1 Cursor-Generic + 1 Codex-Generic); 3 for voting panels and for the `/design` dialectic judge panel. Voting uses a step-function threshold: 3 voters require 2+ YES votes, 2 voters require unanimous YES, and fewer than 2 eligible voters causes voting to be skipped with all findings accepted automatically.
+Skills gracefully degrade when external tools are unavailable. When Codex or Cursor is not found, Claude replacement subagents fill their slots to maintain per-skill lane counts across most phases. Gemini is different: it is strictly additive and skipped when unavailable. The counts are: 8 for `/design` plan review (4 Cursor + 4 Codex specialists); 6 for `/review` code review (5 Cursor specialists + 1 Codex generic), or 7 when Gemini is available; for `/research` the topology is fixed at 4 Codex-first research lanes (each with per-lane Claude Agent-tool fallback under the same angle prompt) plus a 3-reviewer validation panel (1 Claude Code Reviewer subagent + 1 Codex + 1 Cursor); 8 for the `/design` sketch phase in regular mode (4 Cursor + 4 Codex, one per personality per tool), 2 in quick mode (1 Cursor-Generic + 1 Codex-Generic); 3 for voting panels and for the `/design` dialectic judge panel. Voting uses a step-function threshold: 3 voters require 2+ YES votes, 2 voters require unanimous YES, and fewer than 2 eligible voters causes voting to be skipped with all findings accepted automatically. Gemini never votes.
 
 **Exception: dialectic debate buckets (`/design` Step 2a.5) do NOT use replacement-first.** When the assigned external tool (Cursor for odd-indexed decisions, Codex for even) is unavailable, the bucket is **skipped entirely** and a `Disposition: bucket-skipped` resolution is written — Claude subagents are never substituted into the debate path. This carve-out applies only to the **debate execution phase** of dialectic; the post-debate **judge panel** uses replacement-first normally. See [Dialectic-specific behavior](#dialectic-specific-behavior) below and `skills/shared/dialectic-protocol.md` for the full rationale.
 
@@ -25,6 +26,7 @@ External reviewers are launched via the `run-external-agent.sh` wrapper script, 
 - **Sentinel file creation** — Writes a `.done` file containing the exit code when the process completes
 - **Output capture** — two patterns, opt-in per invocation:
   - **stdout capture under `--capture-stdout`** — when the reviewer writes its results to stdout, pass `--capture-stdout` and the wrapper redirects the tool's stdout/stderr to `--output`. Cursor pattern; canonical examples at `skills/review/SKILL.md:146-148, 177-179`.
+  - **stdout-only capture under `--capture-stdout-only`** — when the reviewer writes machine-readable JSON to stdout, pass `--capture-stdout-only` and the wrapper redirects stdout to `--output` while stderr goes to `<output>.diag`. Gemini pattern; `launch-gemini-review.sh` normalizes `.response` before the collector sees it.
   - **tool-managed output path** — when the reviewer takes its own output-path argument (e.g., Codex's `--output-last-message`), omit `--capture-stdout`; the wrapper does not capture stdout and the reviewer writes results directly to the file. The `--output` flag still names the expected destination so downstream readers know where to look. Codex pattern; canonical examples at `skills/review/SKILL.md:160-163, 186-190`.
 - **Elapsed time tracking** — Reports how long the review took
 
@@ -36,7 +38,8 @@ External reviewers are always launched in a specific order to maximize paralleli
 
 1. **Cursor** (slowest) — launched first
 2. **Codex** — launched second
-3. **Claude subagents** (fastest) — launched last
+3. **Gemini** — launched after Codex when enabled
+4. **Claude subagents** (fastest) — launched last
 
 All launches happen in a single message to ensure true parallel execution.
 
@@ -83,7 +86,7 @@ Authoritative flag documentation lives in the `--substantive-validation` / `--va
 
 ## Timeout Handling
 
-External reviewers have configurable timeouts (typically 1200 seconds for voting and 1800 seconds for code review). If a reviewer exceeds its timeout:
+External reviewers have configurable timeouts (typically 1200 seconds for voting and 1800 seconds for code review). Gemini code-review launches are hard-capped at 600 seconds by `launch-gemini-review.sh`, even when the caller's Codex/Cursor review timeout is longer, because Gemini is additive and should not hold the panel open as long as replacement-style lanes. If a reviewer exceeds its timeout:
 
 - The process is killed by the wrapper script
 - The sentinel file records a non-zero exit code
@@ -97,7 +100,7 @@ External reviewers participate in multiple phases:
 |---|---|---|---|
 | [Collaborative sketches](collaborative-sketches.md) | Propose architectural approaches | `/design` | Replacement-first (Claude subagent fills slot) |
 | Plan review | Review implementation plans | `/design` | Replacement-first |
-| Code review | Review code changes | `/review` | Replacement-first |
+| Code review | Review code changes | `/review` | Cursor/Codex replacement-first; Gemini additive skip-style |
 | Implementation | Edit working tree from an implementation plan | `/implement` (default `--coder=codex`), `/implement --coder=cursor` | Codex is the default; Cursor falls back to the main-agent path when unhealthy |
 | [Voting](voting-process.md) | Vote on findings | `/design`, `/review` | Replacement-first |
 | Negotiation | Multi-round dispute resolution | `/research` | Replacement-first |

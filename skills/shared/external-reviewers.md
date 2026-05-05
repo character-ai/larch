@@ -1,6 +1,6 @@
-# External Reviewer Procedures (Codex + Cursor)
+# External Reviewer Procedures (Codex + Cursor + Gemini)
 
-Shared mechanical procedures for running Codex and Cursor as external reviewers. Each skill provides its own reviewer invocation commands (prompts, output paths, tmpdir variables) — this file covers the common scaffolding.
+Shared mechanical procedures for running Codex, Cursor, and additive Gemini as external reviewers. Each skill provides its own reviewer invocation commands (prompts, output paths, tmpdir variables) — this file covers the common scaffolding.
 
 ## Binary Check and Health Probe (Step 0)
 
@@ -8,19 +8,20 @@ The binary check, health probe, and health status file write are now handled by 
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix <name> [--skip-preflight] [--skip-branch-check] \
-  [--skip-slack-check] [--skip-repo-check] --check-reviewers [--caller-env <path>] \
-  [--skip-codex-probe] [--skip-cursor-probe] [--write-health <path>]
+  [--skip-slack-check] [--skip-repo-check] --check-reviewers [--check-gemini-reviewer] [--caller-env <path>] \
+  [--skip-codex-probe] [--skip-cursor-probe] [--skip-gemini-probe] [--write-health <path>]
 ```
 
-The `--check-reviewers` flag runs `check-reviewers.sh --probe` internally and emits `CODEX_AVAILABLE`, `CURSOR_AVAILABLE`, `CODEX_HEALTHY`, `CURSOR_HEALTHY` on stdout.
+The `--check-reviewers` flag runs `check-reviewers.sh --probe` internally and emits `CODEX_AVAILABLE`, `CURSOR_AVAILABLE`, `CODEX_HEALTHY`, `CURSOR_HEALTHY` on stdout. `--check-gemini-reviewer` opts into Gemini and adds `GEMINI_AVAILABLE` / `GEMINI_HEALTHY`; callers omit it when Gemini is not part of the skill.
 
-**Session-env override**: If `--caller-env` provides `CODEX_HEALTHY=false` or `CURSOR_HEALTHY=false`, the script auto-sets the corresponding `--skip-codex-probe` / `--skip-cursor-probe` flag internally — you do not need to pass these explicitly when using `--caller-env`.
+**Session-env override**: If `--caller-env` provides `CODEX_HEALTHY=false`, `CURSOR_HEALTHY=false`, or `GEMINI_HEALTHY=false`, the script auto-sets the corresponding `--skip-codex-probe` / `--skip-cursor-probe` / `--skip-gemini-probe` flag internally — you do not need to pass these explicitly when using `--caller-env`.
 
 Set mental flags `codex_available` and `cursor_available` based on the output:
 - If `CODEX_AVAILABLE=false`: `codex_available=false`. Print: `**⚠ Codex not available (binary not found). Proceeding without Codex reviewer.**`
 - Else if `CODEX_HEALTHY=false`: `codex_available=false`. Print: `**⚠ Codex installed but not responding (health check failed: <CODEX_PROBE_ERROR>). Using Claude replacement.**` where `<CODEX_PROBE_ERROR>` is the `CODEX_PROBE_ERROR` value from `session-setup.sh` output (if available; omit the parenthetical detail if not present).
 - Else: `codex_available=true`
 - Same logic for Cursor (using `CURSOR_PROBE_ERROR`).
+- For Gemini, set `gemini_available=true` only when `GEMINI_AVAILABLE=true` AND `GEMINI_HEALTHY=true`; absent keys default to false. If Gemini is unhealthy, use the skip-style warning below.
 
 **Note**: `*_AVAILABLE` is a pure install-state signal (binary exists on PATH). `*_HEALTHY` indicates whether the tool actually responded to a trivial prompt within the 60-second probe timeout. Callers must combine both to determine runtime usability.
 
@@ -34,7 +35,10 @@ When processing reviewer results (after `wait-for-reviewers.sh` returns), check 
 - `wait-for-reviewers.sh` reports `TIMEOUT` for the reviewer (sentinel never appeared — wrapper killed externally)
 - `STATUS=NOT_SUBSTANTIVE` (output passed sentinel + non-empty + retry checks but failed substantive-content validation under `collect-agent-results.sh --substantive-validation` — same Claude-subagent-fallback behavior as a timeout, since the lane is unusable for synthesis; Phase 3 of umbrella #413, closes #416)
 
-Print: `**⚠ <Reviewer> failed — <FAILURE_REASON>. Using Claude replacement for remainder of session.**`
+Use one of two warning templates:
+
+- **Replacement-style reviewers** (Codex/Cursor lanes with Claude fallback): `**⚠ <Reviewer> failed — <FAILURE_REASON>. Using Claude replacement for remainder of session.**`
+- **Skip-style additive reviewers** (Gemini): `**⚠ Gemini failed — <FAILURE_REASON>. Skipping Gemini for remainder of session.**`
 
 Where `<FAILURE_REASON>` is the `FAILURE_REASON` value from `collect-agent-results.sh` output (or from the `.diag` file if collecting results manually). Always include the reason so the user can diagnose the root cause (e.g., timeout duration, exit code, last error output).
 
@@ -44,7 +48,7 @@ This is a mental flag flip within the current skill invocation. For cross-skill 
 
 ## Collecting External Reviewer Results
 
-After launching Codex and/or Cursor as background tasks (via `run-external-agent.sh` with `run_in_background: true`), continue working on other tasks (e.g., processing Claude subagent results) while external reviewers run.
+After launching Codex, Cursor, and/or Gemini as background tasks (via `run-external-agent.sh` with `run_in_background: true`), continue working on other tasks (e.g., processing Claude subagent results) while external reviewers run.
 
 After all other tasks are done, collect and validate external reviewer outputs using the shared collection script:
 
@@ -57,7 +61,7 @@ Only include output file paths for reviewers that were actually launched. For th
 **Output**: The script emits structured `KEY=value` blocks on stdout (one block per reviewer, separated by blank lines):
 ```
 REVIEWER_FILE=<output-path>
-TOOL=<codex|cursor|unknown>
+TOOL=<codex|cursor|gemini|unknown>
 STATUS=<OK|TIMED_OUT|FAILED|EMPTY_OUTPUT|SENTINEL_TIMEOUT|NOT_SUBSTANTIVE>
 EXIT_CODE=<N>
 HEALTHY=<true|false>

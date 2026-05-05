@@ -1,0 +1,20 @@
+# scripts/session-setup.sh — contract
+
+Shared setup wrapper for larch skills. It creates a fresh session tmpdir, optionally runs preflight, Slack and repo discovery, reviewer health probes, and can write a session-env file plus a `.health` sidecar.
+
+## Reviewer probe contract
+
+- `--check-reviewers` probes the legacy Codex+Cursor set.
+- `--check-gemini-reviewer` is opt-in and only meaningful with `--check-reviewers`; it passes `--include-gemini` to `check-reviewers.sh`.
+- Caller-env `CODEX_HEALTHY=false`, `CURSOR_HEALTHY=false`, or `GEMINI_HEALTHY=false` auto-skips the corresponding probe.
+- Gemini health failures use skip-style wording: Gemini is omitted for the session rather than replaced by Claude.
+
+## Session-env contract
+
+Recognized caller-env keys are `SLACK_OK`, `SLACK_MISSING`, `REPO`, `REPO_UNAVAILABLE`, `CODEX_HEALTHY`, `CURSOR_HEALTHY`, and `GEMINI_HEALTHY`. The file is parsed line-by-line and never sourced.
+
+When `--write-health` is provided, the health sidecar contains Codex and Cursor health, plus Gemini health when Gemini probing is requested or inherited from caller-env.
+
+## Edit-in-sync
+
+Update `scripts/check-reviewers.sh`, `scripts/write-session-env.sh`, `skills/shared/subskill-invocation.md`, and `skills/shared/external-reviewers.md` when changing session-env keys or reviewer health semantics.
