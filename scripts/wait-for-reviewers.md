@@ -8,6 +8,10 @@
 - `/design` Step 2a (sketches) and Step 3 (plan review) via the same collector.
 - `/implement` does not invoke this script directly — it runs through `/review` and `/design`.
 
+## Timeout (`--timeout`)
+
+Wrapper timeout in seconds. The validator accepts positive integer values and rejects empty, non-numeric, or `0` values with exit `1`.
+
 ## Poll interval (`WAIT_FOR_REVIEWERS_POLL_INTERVAL`)
 
 Sentinel-file check cadence. Default `5` seconds for production callers — real reviewers take many minutes, so the 5s noise floor is negligible. Test harnesses that wrap stub binaries via `run-external-agent.sh` (e.g. `scripts/test-check-reviewers.sh`) export `WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.05` to avoid paying a 5s sleep per probe when stubs exit in microseconds. The validator accepts positive integer or decimal seconds and rejects `0`, negative, or non-numeric input with exit `1`.

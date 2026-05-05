@@ -31,7 +31,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 case "$TIMEOUT" in
-    ''|*[!0-9]*) echo "Error: --timeout value must be a positive integer, got '$TIMEOUT'" >&2; exit 1 ;;
+    ''|*[!0-9]*|0) echo "Error: --timeout value must be a positive integer, got '$TIMEOUT'" >&2; exit 1 ;;
 esac
 
 # Sentinel-poll interval. Default 5s for production callers (real reviewers
