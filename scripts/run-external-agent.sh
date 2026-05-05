@@ -6,10 +6,20 @@
 # minute, and kills after a configurable timeout (e.g., 30 minutes for
 # reviews/implementation, 20 minutes for votes/sketches).
 #
-# The --tool value is used only for log messages and the .meta TOOL= field.
-# No validation is performed here by design (see issue #1099 / DECISION_1):
-# the wrapper accepts any string label so out-of-tree callers can pass
-# arbitrary provenance tags without importing the registry. The canonical
+# The --tool value is used as-is for human-readable log messages. For the
+# .meta TOOL= field it is sanitized through a label-safe allowlist
+# (alphanumerics, `.`, `_`, `-`); any other byte — control characters, `=`,
+# whitespace, and any non-ASCII byte (including Unicode line/paragraph
+# separators like U+2028/U+2029) — is translated to `_`. The translation
+# preserves length so distinct inputs cannot collapse into the canonical
+# tool ids consumed by collect-agent-results.sh::derive_tool() (e.g.
+# `cu\nrsor` becomes `cu_rsor`, not `cursor`). If sanitization yields an
+# empty string, the .meta field falls back to `sanitized-empty` (a distinct
+# sentinel from `unknown`, which derive_tool() uses for unclassifiable
+# tools) so retry logic in collect-agent-results.sh stays functional.
+# No registry validation is performed here by design (see issue #1099 /
+# DECISION_1): the wrapper accepts any string label so out-of-tree callers can
+# pass arbitrary provenance tags without importing the registry. The canonical
 # external-tool name set is owned by scripts/external-tool-registry.sh; see
 # scripts/external-tool-registry.md for the registry contract.
 #
@@ -17,7 +27,9 @@
 #   run-external-agent.sh --tool NAME --output FILE --timeout SECS [--capture-stdout|--capture-stdout-only] -- CMD...
 #
 # Options:
-#   --tool            Tool name (e.g., "codex", "cursor") — used only for log messages
+#   --tool            Tool name (e.g., "codex", "cursor") — used as-is for log
+#                     messages; sanitized to a label-safe form for the .meta
+#                     TOOL= field (see header comment above for the contract)
 #   --output          Path where tool output is written
 #   --timeout         Timeout in seconds (e.g., 1800 for 30 minutes)
 #   --capture-stdout  Redirect the tool's stdout/stderr to the output file.
@@ -109,8 +121,22 @@ trap 'echo "$EXIT_CODE" > "${OUTPUT_FILE}.done" 2>/dev/null || true' EXIT
 
 # Write metadata for collect-agent-results.sh retry support.
 # CMD is shell-quoted via printf '%q' to preserve argument boundaries.
+# Sanitize TOOL_NAME for the line-oriented .meta sidecar via a label-safe
+# allowlist: keep alphanumerics, dot, underscore, hyphen; translate every
+# other byte to `_`. Translation (not deletion) preserves length so an
+# adversarial label cannot collapse into a canonical tool id consumed by
+# collect-agent-results.sh::derive_tool() — e.g. `cu\nrsor` becomes
+# `cu_rsor`, not `cursor`; `c=u=r=s=o=r` becomes `c_u_r_s_o_r`. The
+# allowlist also handles non-ASCII bytes (including Unicode line/paragraph
+# separators U+2028/U+2029) which `tr '[:cntrl:]'` under LC_ALL=C does not
+# cover. Empty result falls back to `sanitized-empty` (distinct from
+# derive_tool()'s `unknown` so callers can tell sanitization apart from
+# unclassifiable input), keeping collect-agent-results.sh's retry path
+# (which skips on empty META_TOOL) functional.
+META_TOOL_NAME=$(printf '%s' "$TOOL_NAME" | LC_ALL=C tr -c 'a-zA-Z0-9._-' '_')
+[[ -z "$META_TOOL_NAME" ]] && META_TOOL_NAME="sanitized-empty"
 {
-    echo "TOOL=$TOOL_NAME"
+    echo "TOOL=$META_TOOL_NAME"
     echo "TIMEOUT=$TIMEOUT_SECONDS"
     echo "CAPTURE_STDOUT=$CAPTURE_STDOUT"
     echo "CAPTURE_STDOUT_ONLY=$CAPTURE_STDOUT_ONLY"
