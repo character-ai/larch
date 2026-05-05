@@ -240,6 +240,46 @@ input="$(make_input case-u)"
 } >> "$input"
 assert_case "case-u-generic-fallback-body-file" "$input" $'1\t2\n' 0
 
+input="$(make_input case-v)"
+append_oos "$input" 1 "First" "Touches skills/foo/a.sh,skills/foo/b.sh"
+append_oos "$input" 2 "Second" "Touches skills/foo/b.sh"
+assert_case "case-v-comma-separated-paths" "$input" $'1\t2\n' 0
+
+input="$(make_input case-w)"
+append_oos "$input" 1 "First" "Touches skills/foo/a.sh;skills/foo/b.sh"
+append_oos "$input" 2 "Second" "Touches skills/foo/b.sh"
+assert_case "case-w-semicolon-separated-paths" "$input" $'1\t2\n' 0
+
+# case-x: ensure global-cap failure deletes any pre-existing stable output file.
+case_x_dir="$TMP_ROOT/case-x"
+mkdir -p "$case_x_dir"
+case_x_input="$case_x_dir/input.md"
+: > "$case_x_input"
+case_x_output="$case_x_dir/out.tsv"
+case_x_stderr="$case_x_dir/stderr.txt"
+case_x_idx=1
+for cluster in $(seq 1 4); do
+    for _ in $(seq 1 4); do
+        append_oos "$case_x_input" "$case_x_idx" "Item $case_x_idx" "Touches skills/foo/stale-${cluster}.sh"
+        case_x_idx=$((case_x_idx + 1))
+    done
+done
+printf 'STALE\tROW\n' > "$case_x_output"
+set +e
+OOS_FILE_CONFLICT_CLUSTER_CAP=3 OOS_FILE_CONFLICT_GLOBAL_CAP=10 \
+    bash "$HELPER" --input-file "$case_x_input" --output "$case_x_output" 2> "$case_x_stderr"
+case_x_status=$?
+set -e
+if [[ "$case_x_status" != 1 ]]; then
+    fail_case "case-x-cap-failure-deletes-stale-output" "expected exit 1, got $case_x_status"
+elif [[ -e "$case_x_output" ]]; then
+    fail_case "case-x-cap-failure-deletes-stale-output" "stable output file still present after cap failure"
+elif ! grep -Fq "exceeding the 10-row" "$case_x_stderr"; then
+    fail_case "case-x-cap-failure-deletes-stale-output" "stderr missing cap message"
+else
+    pass_case "case-x-cap-failure-deletes-stale-output"
+fi
+
 echo "---"
 echo "Results: $PASS_COUNT passed, $FAIL_COUNT failed"
 if (( FAIL_COUNT > 0 )); then

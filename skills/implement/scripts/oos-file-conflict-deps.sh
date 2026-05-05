@@ -111,7 +111,11 @@ extract_records() {
     : > "$records_file"
 
     local normalized_body="$WORK_DIR/body-normalized.txt"
-    sed -E 's#(^|[^A-Za-z0-9])\./#\1#g' "$body_file" > "$normalized_body"
+    # Strip leading `./`, then replace common adjacency separators (comma, semicolon)
+    # with newlines so grep -Eoh's consumed left/right boundaries do not swallow the
+    # neighbor's anchor, which would silently drop the second path in `a.sh,b.sh`.
+    sed -E -e 's#(^|[^A-Za-z0-9])\./#\1#g' -e 's#[,;]#\
+#g' "$body_file" > "$normalized_body"
 
     grep -Eoh "$__filelinelib_any_re|$__filelinelib_extensionless_re" "$normalized_body" 2>/dev/null \
         | while IFS= read -r raw; do
@@ -276,7 +280,7 @@ done
 sort -n -k1,1 -k2,2 "$planned_edges" -o "$planned_edges"
 row_count="$(wc -l < "$planned_edges" | tr -d ' ')"
 if (( row_count > GLOBAL_CAP )); then
-    rm -f "$OUTPUT_TMP"
+    rm -f "$OUTPUT_TMP" "$OUTPUT_FILE"
     echo "ERROR: oos-file-conflict-deps would emit $row_count rows, exceeding the $GLOBAL_CAP-row --intra-batch-deps-file cap; split the OOS batch" >&2
     exit 1
 fi

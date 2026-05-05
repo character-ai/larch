@@ -13,8 +13,10 @@ is the Step 9a.1 pre-pass immediately before `/issue --input-file`.
   a second OOS parser.
 - **Path extraction delegation**. File mentions are extracted with
   `scripts/file-line-regex-lib.sh`. The helper normalizes `./foo` to `foo`,
-  rejects absolute paths and `..` traversal, and otherwise stays inside the
-  shared path grammar.
+  splits comma- and semicolon-separated path lists onto their own lines so
+  `grep -Eoh`'s consumed left/right boundaries do not swallow the neighbor's
+  anchor, rejects absolute paths and `..` traversal, and otherwise stays inside
+  the shared path grammar.
 - **Numeric-only output**. The TSV contains only `<blocker>\t<blocked>` rows,
   where each value is a 1-based batch item index. Reviewer prose never crosses
   into the dependency artifact.
