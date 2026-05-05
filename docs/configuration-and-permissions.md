@@ -196,7 +196,7 @@ The Slack channel ID (e.g., `C0123456789`) where tracking-issue status messages 
 
 ### External Agent Model Configuration
 
-These variables control which model Cursor, Codex, and Gemini use when running as external agents. Cursor and Codex run reviews, sketches, voting, and implementation (when selected with `--coder`); Gemini runs reviews and implementation (when selected with `--coder=gemini`). When unset, Cursor defaults to `composer-2` (with the `/max-mode on.` slash-command prefix applied to every substantive prompt via `scripts/cursor-wrap-prompt.sh`), Codex defaults to `gpt-5.5` (hardcoded in `scripts/agent-model-args.sh`), and Gemini defaults to `gemini-2.5-pro`. The model is passed via the `--model` flag (Cursor) or `-m` flag (Codex / Gemini). To restore the pre-`composer-2` behavior, set `LARCH_CURSOR_MODEL=composer-2-fast`.
+These variables control which model Cursor, Codex, and Gemini use when running as external agents. Cursor and Codex run reviews, sketches, voting, and implementation (when selected with `--coder`); Gemini runs reviews and implementation (when selected with `--coder=gemini`). When unset, Cursor defaults to `composer-2` (with the `/max-mode on.` slash-command prefix applied to every substantive prompt via `scripts/cursor-wrap-prompt.sh`), Codex defaults to `gpt-5.5` (hardcoded in `scripts/agent-model-args.sh`), and Gemini defaults to `gemini-2.5-pro`. The model is passed via `--model` for Cursor and Gemini implementation, and via `-m` for Codex and Gemini review. To restore the pre-`composer-2` behavior, set `LARCH_CURSOR_MODEL=composer-2-fast`.
 
 Model configuration is also available via plugin `userConfig` — environment variables take precedence if both are set.
 
@@ -228,7 +228,7 @@ The model name to pass to Codex's `-m` flag (e.g., `o3`, `o4-mini`).
 
 ### `LARCH_GEMINI_MODEL`
 
-The model name to pass to Gemini's `-m` flag (e.g., `gemini-2.5-pro`, `gemini-2.5-flash`).
+The model name to pass to Gemini review's `-m` flag and Gemini implementation's `--model` flag (e.g., `gemini-2.5-pro`, `gemini-2.5-flash`).
 
 **When set:**
 - All Gemini reviewer invocations, the Gemini health probe, and Gemini implementation launches (`/implement --coder=gemini`) use this model
