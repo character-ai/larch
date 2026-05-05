@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.11.8] - 2026-05-05
+
+### Changed
+
+- Align setup documentation with Gemini as an optional external tool (closes #1097).
+- Keep collector and dispatcher harness documentation in sync with the canonical external-tool taxonomy.
+
 ## [15.11.7] - 2026-05-05
 
 ### Changed

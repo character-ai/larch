@@ -55,9 +55,9 @@ claude plugin marketplace add .
 claude plugin install larch@larch-local
 ```
 
-## Setting Up Claude, Codex, Cursor, etc.
-- **Only `claude` is mandatory.** `codex` and `cursor` are optional — when either binary is missing or fails to authenticate, larch skills substitute Claude subagents automatically. See [Optional integrations](#optional-integrations) for the full fallback semantics.
-- **Larch is agent-agnostic about authentication.** Each agent can be set up either with an **API key** in your shell environment, or with a **subscription plan** via web-based login from the binary itself. Larch does not care which — it only needs the corresponding binary (`claude`, `codex`, `cursor`) to be on your `PATH` and to land in an authenticated session when invoked.
+## Setting Up Claude, Codex, Cursor, Gemini
+- **Only `claude` is mandatory.** `codex`, `cursor`, and `gemini` are optional — when `codex` or `cursor` is missing or fails to authenticate, larch skills substitute Claude subagents automatically; `gemini` is additive (skipped silently when unavailable for reviewer use, falls back to Claude when selected as `--coder=gemini`). See [Optional integrations](#optional-integrations) for the full fallback semantics.
+- **Larch is agent-agnostic about authentication.** Each agent can be set up either with an **API key** in your shell environment, or with a **subscription plan** via web-based login from the binary itself. Larch does not care which — it only needs the corresponding binary (`claude`, `codex`, `cursor`, `gemini`) to be on your `PATH` and to land in an authenticated session when invoked.
 - The subsections below document one concrete setup recipe per agent (API-key path). If you prefer the subscription-plan path, install the binary and follow its own web-login flow instead — the rest of larch's configuration (settings, model overrides) still applies.
 
 ### Claude
