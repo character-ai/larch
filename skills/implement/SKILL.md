@@ -9,7 +9,7 @@ allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task
 
 End-to-end: design, plan review, code, validate, commit, code review, validate, commit, code flow diagram, version bump, PR, CI monitor, cleanup, Slack announce of tracking issue. By default, posts a single Slack message about the tracking issue near the end of the run (gated on Slack env vars — `LARCH_SLACK_BOT_TOKEN` + `LARCH_SLACK_CHANNEL_ID`). `--no-slack` opts out. With `--merge`: also CI+rebase+merge loop, local branch delete, main verification.
 
-**Protocol Execution Directive.** You are now the `/implement` orchestrator. After parsing flags and checking for `--draft`/`--merge` and `--design-only`/`--merge` mutual-exclusion aborts, your FIRST external action MUST be **Step 0** (`session-setup.sh`). Do not `Read`/`Grep`/`Glob` project files, do not `Edit`/`Write`, and do not invoke child skills until Step 0 completes and its output has been parsed. Freelancing the implementation without executing the step sequence is a protocol violation — every step from 0 through 18 must execute in order per this file.
+**Protocol Execution Directive.** You are now the `/implement` orchestrator. After parsing flags and checking for `--draft`/`--merge` and `--design-only`/`--merge` mutual-exclusion aborts, your FIRST external action MUST be **Step 0**. Step 0 is one atomic failure domain with two ordered Bash invocations: first `${CLAUDE_PLUGIN_ROOT}/scripts/create-branch.sh --check`, then `${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh` with `--skip-branch-check` toggled by the entry gate. Step 0 is not complete until BOTH `create-branch.sh --check` and `session-setup.sh` have completed successfully. No other `Read`/`Edit`/`Write`/`Bash`/child-`Skill` calls may appear between them or before them. Do not `Read`/`Grep`/`Glob` project files, do not `Edit`/`Write`, and do not invoke child skills until Step 0 completes and its output has been parsed. Freelancing the implementation without executing the step sequence is a protocol violation — every step from 0 through 18 must execute in order per this file.
 
 **Anti-halt continuation reminder.** After every child `Skill` tool call (e.g., `/design`, `/review`, `/relevant-checks`, `/bump-version`, `/issue`, `/implement`) returns AND after every `Bash` tool call that completes a numbered step or sub-step, IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on the child's cleanup output, on a Bash result, or on a status message, and do NOT write a summary, handoff, status recap, or "returning to parent" message — those are halts in disguise. This applies to ALL step boundaries from Step 0 through Step 18. The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `skip to Step N`, `bail to cleanup`, `jump back`, `loop back`, `fall through`, `break out`). A normal sequential `proceed to Step N+1` instruction is the default continuation this rule reinforces, NOT an exception. Every `/relevant-checks` invocation anywhere in this file is covered by this rule. **Critical boundary: after Step 9b (PR creation) completes, IMMEDIATELY proceed to Step 10 (CI monitor) — PR creation is NOT the end of the run.** See `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Anti-halt continuation reminder for the canonical rule.
 
@@ -148,13 +148,35 @@ Standardizes the four post-step rebase checkpoints (Steps 1.r, 4.r, 7.r, 7a.r). 
 
 ## Step 0 — Session Setup
 
+Check the current branch before any setup side effects:
+
+```bash
+${CLAUDE_PLUGIN_ROOT}/scripts/create-branch.sh --check
+```
+
+Parse `CURRENT_BRANCH`, `IS_MAIN`, `IS_USER_BRANCH`, and `USER_PREFIX` from stdout. If `CURRENT_BRANCH` is empty, treat it as detached HEAD; do not special-case it here. The default preflight below will fail closed. Do not print a separate `create-branch.sh --check failed` branch from Step 0; `IMPLEMENT_TMPDIR` does not exist yet for Tool Failures logging.
+
+Compute `continue_from_current=true` iff `IS_USER_BRANCH=true`. This is the only implicit continuation signal; `--issue <N>` and any session-env/sentinel path do not waive the clean-main entry gate.
+
+If `continue_from_current=true`, run setup with `--skip-branch-check`:
+
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix claude-implement --skip-branch-check --check-reviewers --check-gemini-reviewer [--caller-env "$SESSION_ENV_PATH"] [--skip-codex-probe] [--skip-cursor-probe] [--skip-gemini-probe]
 ```
 
-`--skip-branch-check` is required so Step 1's `IS_USER_BRANCH=true` branch-resume paths are reachable. Include `--caller-env` only when `SESSION_ENV_PATH` is non-empty — then the script auto-sets `--skip-codex-probe` / `--skip-cursor-probe` / `--skip-gemini-probe` based on `CODEX_HEALTHY` / `CURSOR_HEALTHY` / `GEMINI_HEALTHY` in that file (don't pass them explicitly).
+If `continue_from_current=false`, run setup without `--skip-branch-check`:
 
-On non-zero exit, print `PREFLIGHT_ERROR` and abort.
+```bash
+${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix claude-implement --check-reviewers --check-gemini-reviewer [--caller-env "$SESSION_ENV_PATH"] [--skip-codex-probe] [--skip-cursor-probe] [--skip-gemini-probe]
+```
+
+`--skip-branch-check` is passed only when `continue_from_current=true` (i.e., `IS_USER_BRANCH=true`). The default path runs `preflight.sh` in default mode, asserting on-main + clean tree + fetch + rebase before Step 1. Include `--caller-env` only when `SESSION_ENV_PATH` is non-empty — then the script auto-sets `--skip-codex-probe` / `--skip-cursor-probe` / `--skip-gemini-probe` based on `CODEX_HEALTHY` / `CURSOR_HEALTHY` / `GEMINI_HEALTHY` in that file (don't pass them explicitly).
+
+On non-zero exit, always print the raw `PREFLIGHT_ERROR=...` line first. Then print the normalized skill-level message and abort:
+
+**⚠ /implement requires clean main to start. To continue, choose one of: (a) `git checkout main && git status` clean → re-run; (b) check out or create a `<USER_PREFIX>/*` feature branch and re-run (the branch naming convention is the explicit opt-in to continue from current state); (c) commit or stash uncommitted changes on `main` first.**
+
+Key any future sub-message on the substring inside `PREFLIGHT_ERROR` (for example, `Not on main branch` or `Working tree is not clean`), not on the prior `IS_MAIN` value from `create-branch.sh --check`; detached HEAD can report `IS_MAIN=true` with an empty `CURRENT_BRANCH`.
 
 Parse `SESSION_TMPDIR`, `SLACK_OK`, `SLACK_MISSING`, `REPO`, `REPO_UNAVAILABLE`, `CODEX_AVAILABLE`, `CURSOR_AVAILABLE`, `GEMINI_AVAILABLE`, `CODEX_HEALTHY`, `CURSOR_HEALTHY`, `GEMINI_HEALTHY`. Set `IMPLEMENT_TMPDIR` = `SESSION_TMPDIR`, then write the session-env file:
 
@@ -486,6 +508,8 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/rebase-push.sh --no-push
 ```
 
 `--skip-if-pushed` is intentionally NOT used here: `main` is always on origin so that flag would always short-circuit. `SKIPPED_ALREADY_FRESH=true` keeps this call cheap when local `main` already matches `origin/main`.
+
+When Step 0 ran with `continue_from_current=false`, its default preflight already fetched and rebased `main`, so this Step 1.m call should normally short-circuit with `SKIPPED_ALREADY_FRESH=true`. Keep the macro here for the `continue_from_current=true` path and for idempotent protection if Step 0's freshness work was already satisfied.
 
 On non-zero exit, print `**⚠ Failed to ensure local main is fresh. Bailing to cleanup.**`, set `STALL_TRACKING=true` (parallels Rebase Checkpoint Macro M3 and Step 12d — signals Step 18 to rename the tracking issue to `[STALLED]` when Step 0.5 Branch 4 has already created one), and skip to Step 18. On success: if stdout contains `SKIPPED_ALREADY_FRESH=true`, silently continue; otherwise print `✅ 1.m: design plan | update main — rebased onto latest origin/main (<elapsed>)`.
 

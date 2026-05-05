@@ -8,6 +8,9 @@
 #  - references/flags.md exists and contains the --branch-info 4-key literal AND the --step-prefix `::` delimiter literal.
 #  - skills/design/ tree contains no Step-3a removal residue tokens.
 #  - SKILL.md Step 3 ("all reviewers OK") and Step 3.5 auto-mode branches forward to Step 3b.
+#  - SKILL.md Step 0 gates standalone /design through create-branch.sh --check
+#    and strict clean-main preflight, while nested --branch-info calls retain
+#    --skip-branch-check.
 #
 # Exit 0 on pass, exit 1 on any assertion failure.
 set -euo pipefail
@@ -159,5 +162,40 @@ if grep -Fq -- 'Nested heavy phase' "$SKILL_MD"; then
   fail "(10c) SKILL.md still contains legacy 'Nested heavy phase' token — should be renamed to 'Subagent heavy phase' (issue #1036)"
 fi
 
-echo "PASS: test-design-structure.sh — all 10 structural invariants hold"
+# Check 11: clean-main Step 0 entry gate. The gate is standalone-only:
+# branch_info_supplied=true means /implement already ran the gate; otherwise
+# /design must run create-branch.sh --check and use strict preflight unless
+# IS_USER_BRANCH=true explicitly opts into the current branch.
+step0_section=$(awk '
+  /^## Step 0 — Session Setup$/ { flag=1; next }
+  /^## / && flag { flag=0 }
+  flag { print }
+' "$SKILL_MD")
+[[ -n "$step0_section" ]] \
+  || fail "(11) could not extract /design Step 0 section"
+
+printf '%s\n' "$step0_section" | grep -Fq 'branch_info_supplied=true' \
+  || fail "(11) Step 0 must define branch_info_supplied=true as the nested /implement gate"
+printf '%s\n' "$step0_section" | grep -Fq 'branch_info_supplied=false' \
+  || fail "(11) Step 0 must define the standalone branch_info_supplied=false gate"
+# shellcheck disable=SC2016 # fixed-string grep literal contains shell variable syntax
+printf '%s\n' "$step0_section" | grep -Fq '${CLAUDE_PLUGIN_ROOT}/scripts/create-branch.sh --check' \
+  || fail "(11) standalone /design Step 0 must run create-branch.sh --check"
+# shellcheck disable=SC2016 # fixed-string grep literal contains backtick-quoted token names
+printf '%s\n' "$step0_section" | grep -Fq 'If `IS_USER_BRANCH=true`, run setup with `--skip-branch-check`' \
+  || fail "(11) standalone /design Step 0 must pass --skip-branch-check only for IS_USER_BRANCH=true"
+# shellcheck disable=SC2016 # fixed-string grep literal contains backtick-quoted token names
+printf '%s\n' "$step0_section" | grep -Fq 'Otherwise, run setup without `--skip-branch-check`' \
+  || fail "(11) standalone /design Step 0 must document the strict no-skip preflight path"
+printf '%s\n' "$step0_section" | grep -F 'session-setup.sh --prefix claude-design --skip-slack-check' >/dev/null \
+  || fail "(11) Step 0 must include the no-skip claude-design session-setup.sh invocation"
+printf '%s\n' "$step0_section" | grep -Fq '/design requires clean main to start' \
+  || fail "(11) Step 0 must include the normalized /design clean-main failure message"
+
+old_design_prose='Run the shared session setup script. This handles preflight, temp directory creation, reviewer health probe, and health status file in a single call'
+if grep -Fq "$old_design_prose" "$SKILL_MD"; then
+  fail "(11) SKILL.md still contains legacy unconditional Step 0 session-setup prose"
+fi
+
+echo "PASS: test-design-structure.sh — all 11 structural invariants hold"
 exit 0
