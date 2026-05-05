@@ -232,7 +232,7 @@ The model name to pass to Gemini review's `-m` flag and Gemini implementation's 
 
 **When set:**
 - All Gemini reviewer invocations, the Gemini health probe, and Gemini implementation launches (`/implement --coder=gemini`) use this model
-- The model flag is consumed by `scripts/launch-gemini-review.sh`, `scripts/check-reviewers.sh`, and (for implementation) `scripts/agent-model-args.sh`
+- The model flag is consumed directly by `scripts/launch-gemini-review.sh`, `scripts/check-reviewers.sh`, and `scripts/launch-gemini-implement.sh` (which resolves this env-precedence chain inline rather than via `scripts/agent-model-args.sh`, to keep `--model "$GEMINI_MODEL"` a single quoted argv token)
 
 **When not set:**
 - Falls back to plugin `gemini_model` userConfig (`CLAUDE_PLUGIN_OPTION_GEMINI_MODEL`) when configured, otherwise defaults to `gemini-2.5-pro`

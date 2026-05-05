@@ -40,7 +40,7 @@ If a consumer registers a tool in `LARCH_EXTERNAL_TOOLS` but a `case` in `agent-
 
 ## Non-goals
 
-Per-tool model defaults stay in `agent-model-args.sh`; probe argv templates stay in `check-reviewers.sh`; launcher paths, agent-prompt paths, runtime-failure tokens, and `REQUIRES_HEAD_UNCHANGED` policy stay in `step2-implement.sh`; capture-mode policy and metadata writes stay in `run-external-agent.sh`.
+Per-tool model defaults stay in `agent-model-args.sh` for Codex and Cursor; for Gemini, `agent-model-args.sh`'s gemini arm defines the canonical env-precedence chain that is intentionally mirrored inline at the Gemini launch/probe sites (`launch-gemini-implement.sh`, `launch-gemini-review.sh`, `check-reviewers.sh`) so each call site can pass the model as a single quoted argv token — those four definitions must stay in lockstep when env names, plugin fallbacks, or the hardcoded default change. Probe argv templates stay in `check-reviewers.sh`; launcher paths, agent-prompt paths, runtime-failure tokens, and `REQUIRES_HEAD_UNCHANGED` policy stay in `step2-implement.sh`; capture-mode policy and metadata writes stay in `run-external-agent.sh`.
 
 ## Adding a new external tool
 

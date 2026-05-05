@@ -110,10 +110,9 @@ $RESUME_BLOCK
 
 Begin by inspecting the current branch state, then proceed per the system prompt above."
 
-MODEL_ARGS=$("$SCRIPT_DIR/agent-model-args.sh" --tool gemini --with-effort)
+GEMINI_MODEL="${LARCH_GEMINI_MODEL:-${CLAUDE_PLUGIN_OPTION_GEMINI_MODEL:-gemini-2.5-pro}}"
 
 LAUNCHER_EXIT=0
-# shellcheck disable=SC2086
 "$SCRIPT_DIR/run-external-agent.sh" \
     --tool gemini \
     --output "$TRANSCRIPT_PATH" \
@@ -121,7 +120,7 @@ LAUNCHER_EXIT=0
     --capture-stdout \
     -- \
     gemini --prompt "$PROMPT" --approval-mode yolo --skip-trust \
-    $MODEL_ARGS \
+    --model "$GEMINI_MODEL" \
     >"$SIDECAR_LOG" 2>&1 || LAUNCHER_EXIT=$?
 
 MANIFEST_WRITTEN=false

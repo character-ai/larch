@@ -8,7 +8,7 @@
 - Missing input files exit 2.
 - PATH-stubbed `gemini` writes a minimal valid `manifest.json`; the launcher emits exactly five KV stdout lines and no progress chatter.
 - `run-external-agent.sh --capture-stdout` captures Gemini stdout/stderr to the transcript path.
-- Gemini argv shape includes `--prompt`, `--approval-mode yolo`, `--skip-trust`, and the `--model` flag from `agent-model-args.sh --tool gemini --with-effort`.
+- Gemini argv shape includes `--prompt`, `--approval-mode yolo`, `--skip-trust`, and `--model "$GEMINI_MODEL"` (resolved inline by `launch-gemini-implement.sh` from `LARCH_GEMINI_MODEL` / `CLAUDE_PLUGIN_OPTION_GEMINI_MODEL` / hardcoded `gemini-2.5-pro`; the launcher does NOT shell out to `agent-model-args.sh`).
 - The launcher does not pass `--output-format json`; the dispatcher consumes the on-disk manifest, not Gemini stdout JSON.
 - Passing `--answers-file` adds the `## Resume invocation` block to the composed prompt.
 
@@ -27,4 +27,6 @@
 - `scripts/launch-gemini-implement.md` — sibling launcher contract.
 - `agents/gemini-implementer.md` — prompt body path and resume block wording.
 - `scripts/run-external-agent.sh` — stdout capture semantics.
-- `scripts/agent-model-args.sh` — Gemini model argv generation.
+- `scripts/agent-model-args.sh` — owns the canonical Gemini env-precedence chain that `launch-gemini-implement.sh`, `launch-gemini-review.sh`, and `check-reviewers.sh` (Gemini health probe) each duplicate inline. All four definitions (this helper's gemini arm + the three inline sites) must stay in lockstep when env names, plugin fallbacks, or the hardcoded default change.
+- `scripts/launch-gemini-review.sh` — sibling Gemini launcher using the same inline-resolve pattern (one of the three inline sites in the four-way lockstep).
+- `scripts/check-reviewers.sh` — Gemini health probe inlining the same precedence chain (one of the three inline sites in the four-way lockstep).
