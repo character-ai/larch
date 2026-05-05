@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.11.23] - 2026-05-05
+
+### Changed
+
+- Reject zero reviewer wait timeouts in `scripts/wait-for-reviewers.sh` so timeout values must be positive (case pattern `''|*[!0-9]*)` extended to `''|*[!0-9]*|0)`), aligning with the implement-family launchers (#1115) and `scripts/launch-gemini-review.sh`. `scripts/wait-for-reviewers.md` documents the `--timeout` argument contract beside the script. Closes #1166.
+
 ## [15.11.22] - 2026-05-05
 
 ### Added
