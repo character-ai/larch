@@ -18,7 +18,7 @@
 
 The script sources `scripts/external-tool-registry.sh` for `--tool` membership validation, using a fail-closed source guard and sentinel check before argument handling. The registry owns names only; per-tool model and effort semantics stay local in this script.
 
-The stderr wording for invalid tools remains `--tool must be 'cursor', 'codex', or 'gemini' (got: ...)` and lives as a single literal in the pre-emptive `if ! larch_is_external_tool` guard. The former `case "$TOOL"` `*)` defense-in-depth arm was removed because the pre-emptive registry-backed guard is exhaustive.
+The stderr wording for invalid tools remains `--tool must be 'cursor', 'codex', or 'gemini' (got: ...)` and lives as a single literal in the pre-emptive `if ! larch_is_external_tool` guard. The `case "$TOOL"` block ALSO retains a defensive `*)` arm that emits `agent-model-args.sh: internal error: unsupported reviewer tool: <id>` and exits 1; this catches drift where a future tool is added to `LARCH_EXTERNAL_TOOLS` (so `larch_is_external_tool` accepts it) but the matching per-tool model arm here is forgotten — without the defensive arm the script would silently exit 0 with empty stdout and callers like `check-reviewers.sh` would launch probes with no `--model`. Symmetric to the `*)` arms in `scripts/check-reviewers.sh` switch helpers.
 
 ## Flags
 

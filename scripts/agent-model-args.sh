@@ -130,4 +130,14 @@ case "$TOOL" in
         echo "--model $MODEL"
         # Gemini has no effort flag; --with-effort is intentionally a no-op here.
         ;;
+    *)
+        # Defensive: larch_is_external_tool gated entry above, so the registry
+        # was extended without adding the matching arm here. Fail loudly with
+        # exit 1 instead of silently returning empty model args (which would
+        # leave callers like check-reviewers.sh launching probes with no
+        # --model). Symmetric to the *) defensive arms in
+        # scripts/check-reviewers.sh's switch helpers.
+        echo "agent-model-args.sh: internal error: unsupported reviewer tool: $TOOL" >&2
+        exit 1
+        ;;
 esac
