@@ -56,7 +56,7 @@ The wrapper polls the child PID with `kill -0` in a loop and `sleep`s `$RUN_EXTE
 
 ## Test harness
 
-`scripts/test-run-external-agent.sh` owns direct wrapper coverage for accepted `--output` paths, unsafe path rejection before side effects, and the sourced-helper invariants. `scripts/test-launch-gemini-review.sh` owns the Gemini launcher-specific validation path and JSON normalization lifecycle. `scripts/test-check-reviewers.sh` and collector harnesses continue to cover downstream wrapper consumers.
+`scripts/test-run-external-agent.sh` owns direct wrapper coverage for accepted `--output` paths, unsafe path rejection before side effects, and the sourced-helper invariants. `scripts/test-run-external-agent-args.sh` owns wrapper-side argument validation (notably the `--timeout 0` rejection contract — closes the gap left by #1115/#1171). `scripts/test-launch-gemini-review.sh` owns the Gemini launcher-specific validation path and JSON normalization lifecycle. `scripts/test-check-reviewers.sh` and collector harnesses continue to cover downstream wrapper consumers.
 
 ## Edit-in-sync
 

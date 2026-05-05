@@ -52,6 +52,24 @@ EXIT=0
     --timeout nope >/dev/null 2>&1 || EXIT=$?
 if [[ "$EXIT" == "2" ]]; then pass; else fail 2 "bad timeout should exit 2, got $EXIT"; fi
 
+# Test 2b: zero timeout exits 2 and reports the positive-integer contract.
+EXIT=0
+TIMEOUT_ZERO_OUTPUT="$SCRATCH/t2b-output.txt"
+"$LAUNCHER" \
+    --transcript-path "$SCRATCH/t2b-transcript.txt" \
+    --sidecar-log "$SCRATCH/t2b-sidecar.log" \
+    --manifest-path "$SCRATCH/t2b-manifest.json" \
+    --qa-pending-path "$SCRATCH/t2b-qa.json" \
+    --plan-file "$PLAN" \
+    --feature-file "$FEATURE" \
+    --agent-prompt "$AGENT_PROMPT" \
+    --timeout 0 >"$TIMEOUT_ZERO_OUTPUT" 2>&1 || EXIT=$?
+if [[ "$EXIT" == "2" ]] && grep -Fq "must be a positive integer" "$TIMEOUT_ZERO_OUTPUT"; then
+    pass
+else
+    fail 2b "zero timeout should exit 2 with positive-integer error, got $EXIT: $(cat "$TIMEOUT_ZERO_OUTPUT")"
+fi
+
 # Test 3: missing input file exits 2.
 EXIT=0
 "$LAUNCHER" \
