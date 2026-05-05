@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.5] - 2026-05-05
+
+### Fixed
+
+- Align `<output>.done` with the real exit code on the `scripts/run-external-agent.sh` jq `CMD_JSON` serialization-failure path. Previously the script set `EXIT_CODE=99` ("wrapper crashed before capturing real exit code") as a default at line ~138, installed an EXIT trap that wrote `$EXIT_CODE` to `<output>.done`, then called `exit 1` on jq failure without updating `EXIT_CODE` — so callers reading `.done` saw `99` instead of `1` and could not distinguish a clean configuration / wrapper failure from an unhandled wrapper crash. Now the jq-failure branch sets `EXIT_CODE=1` immediately before `exit 1`, the EXIT trap writes `1` to the sentinel, and `scripts/test-run-external-agent.sh` carries a regression case with a `PATH`-prefixed stub `jq` that asserts wrapper exit `1`, the expected stderr line, `<output>.done == 1`, and absence of `<output>.meta`. The `99` default remains reserved for true wrapper crashes after trap installation. Closes #1195.
+
 ## [15.12.4] - 2026-05-05
 
 ### Changed
