@@ -46,6 +46,7 @@ if [[ "$SKIP_BRANCH_CHECK" == "false" ]]; then
         exit 3
     fi
     if ! git rebase origin/main --quiet 2>/dev/null; then
+        git rebase --abort 2>/dev/null || true
         echo "PREFLIGHT=fail"
         echo "PREFLIGHT_ERROR=git rebase origin/main failed."
         exit 3
