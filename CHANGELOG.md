@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.8] - 2026-05-05
+
+### Changed
+
+- Source `scripts/external-tool-registry.sh` from `scripts/collect-agent-results.sh` and rewrite `derive_tool()` to validate observed `.meta` `TOOL=` labels via `larch_is_external_tool` and to scan the basename for any registered `LARCH_EXTERNAL_TOOLS` token. Closes the deferred convergence point flagged by DECISION_2 of #1099 (and tracked as #1146): `derive_tool()` no longer hardcodes `codex|cursor|gemini` in either the `.meta` validation `case` or the basename `[[ ... ]]` chain, so adding a new external tool to `LARCH_EXTERNAL_TOOLS` automatically extends collector tool labeling. The `unknown` outcome is preserved verbatim as the observational fallback for partial / malformed launches whose `.meta` and basename do not identify a registered tool. The collector's per-tool monotonic-health helpers (`get_tool_healthy`, `set_tool_unhealthy`, and the `--write-health` envelope's `CODEX_HEALTHY` / `CURSOR_HEALTHY` / `GEMINI_HEALTHY` fields) intentionally remain hardcoded — these three explicit variables are consumed downstream by `session-setup.sh` / `write-session-env.sh` as discrete keys and generalizing them is a separate health-envelope change. The residual wedge is documented in `scripts/collect-agent-results.md` and `scripts/external-tool-registry.md`, and a new step 6 in the registry's "Adding a new external tool" checklist explicitly directs maintainers to extend the collector health envelope when the new tool flows through `collect-agent-results.sh`. The substantive-validation block comment that previously listed the literal `codex|cursor|gemini|unknown` enum is updated to describe the registry-driven label set. Sourcing pattern matches `scripts/check-reviewers.sh` and `scripts/agent-model-args.sh`: idempotent sentinel-guarded `source` of `external-tool-registry.sh` with fail-closed `exit 1` on read error or missing `LARCH_EXTERNAL_TOOL_REGISTRY_LOADED` sentinel; `scripts/external-tool-registry.md` and the `external-tool-registry.sh` header comment now list `scripts/collect-agent-results.sh` in the consumers list. Closes #1146.
+
 ## [15.12.7] - 2026-05-05
 
 ### Added
