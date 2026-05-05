@@ -37,10 +37,10 @@ suppress = [
   # template-marker-missing (A006) requires every agent file to carry the
   # 'Derived from skills/shared/reviewer-templates.md' marker. That marker
   # is meaningful for the Code Reviewer archetype family (code-reviewer.md
-  # and the five reviewer-*.md specialists), but agents/codex-implementer.md
-  # is a NON-reviewer agent — it is the system-prompt body loaded by
-  # scripts/launch-codex-implement.sh as Codex's --agent-prompt for
-  # /implement Step 2 implementation work, not a review/synthesis agent.
+  # and the five reviewer-*.md specialists), but agents/codex-implementer.md,
+  # agents/cursor-implementer.md, and agents/gemini-implementer.md are
+  # NON-reviewer agents — system-prompt bodies loaded by the Step 2
+  # implementer launchers, not review/synthesis agents.
   # Suppression is global because agent-lint does not support per-file
   # exceptions for this rule. Drift defense for the reviewer family lives
   # in scripts/generate-code-reviewer-agent.sh + the existing CI pin on

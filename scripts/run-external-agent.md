@@ -6,7 +6,7 @@ Monitored wrapper for external agents. It launches a command, writes `<output>.m
 
 - Default: the child manages its own output path; wrapper stdout/stderr are not captured into `--output`.
 - `--capture-stdout`: redirects child stdout and stderr to `--output`. Cursor uses this mode.
-- `--capture-stdout-only`: redirects child stdout to `--output` and child stderr to `<output>.diag`. Gemini uses this mode so JSON stdout is not corrupted by diagnostic noise.
+- `--capture-stdout-only`: redirects child stdout to `--output` and child stderr to `<output>.diag`. Gemini review uses this mode so JSON stdout is not corrupted by diagnostic noise; Gemini implementation uses `--capture-stdout` because the dispatcher consumes the on-disk manifest rather than stdout JSON.
 
 The capture flags are mutually exclusive. Metadata includes both `CAPTURE_STDOUT` and `CAPTURE_STDOUT_ONLY`; retry callers must preserve the original mode.
 
@@ -16,6 +16,11 @@ The capture flags are mutually exclusive. Metadata includes both `CAPTURE_STDOUT
 - Always write `<output>.done` via the exit trap.
 - Keep `set -euo pipefail`; child exit codes are captured via guarded `wait`.
 - Diagnostic text is appended to `<output>.diag` so stdout-only capture can retain child stderr.
+
+## Call sites
+
+- `scripts/launch-gemini-review.sh` — Gemini reviewer JSON stdout capture.
+- `scripts/launch-gemini-implement.sh` — Gemini implementer transcript capture.
 
 ## Test harness
 

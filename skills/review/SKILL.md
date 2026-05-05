@@ -149,7 +149,7 @@ The generic Codex reviewer uses attribution label `Codex`. The optional Gemini g
 | ✅ | ❌ | false/true | 5x Cursor specialist (`cursor-specialist-{name}-output.txt`) | 1x Claude generic (Agent tool, `larch:code-reviewer`, `"sonnet"`) | 1x Gemini generic only when true (`gemini-output.txt`) | 6 or 7 |
 | ❌ | ❌ | false/true | — | 1x Claude generic (Agent tool, `larch:code-reviewer`, `"sonnet"`) | — | 1 |
 
-Gemini does not backfill missing Codex/Cursor lanes. If both Cursor and Codex are unavailable, launch only the existing one-Claude fallback even when Gemini is installed; Gemini is reviewer-only and additive to the full panel.
+Gemini does not backfill missing Codex/Cursor lanes. If both Cursor and Codex are unavailable, launch only the existing one-Claude fallback even when Gemini is installed; in review panels Gemini is additive to the full panel and never replaces another reviewer.
 
 **Partial specialist failure**: if `collect-agent-results.sh` reports `STATUS != OK` for an individual specialist slot, follow Runtime Timeout Fallback for that slot's tool only — flip the tool to unavailable for the session. The round proceeds with whichever specialists returned valid output. Do NOT retry individual slots within the same round.
 
@@ -299,7 +299,7 @@ After all fixes are applied, invoke `/relevant-checks` via the Skill tool to run
 
 **In diff mode**, increment the round number. IMMEDIATELY re-execute **Step 1** (gather the updated diff) then **Step 2** (launch reviewers again) then **Step 3** (collect, deduplicate, vote/evaluate, implement) as a fresh iteration of the review loop — do NOT halt, summarize, or wait for user input between rounds. The loop continues until reviewers report 0 findings (convergence) or the safety limit is reached (Step 3g).
 
-**Rounds 2-3 (full panel)**: Re-launch the full 6-reviewer panel per Step 2's launch procedure (7 when `gemini_available=true`). Voting runs per Step 3c.1; Gemini is reviewer-only and never joins the voter panel. The competition notice is included. This ensures multi-round specialist coverage with proper adjudication. If voting accepts 0 findings in any of rounds 1-3, the review loop terminates early.
+**Rounds 2-3 (full panel)**: Re-launch the full 6-reviewer panel per Step 2's launch procedure (7 when `gemini_available=true`). Voting runs per Step 3c.1; Gemini never joins the voter panel. The competition notice is included. This ensures multi-round specialist coverage with proper adjudication. If voting accepts 0 findings in any of rounds 1-3, the review loop terminates early.
 
 **Rounds 4-7 (single generic reviewer)**: Only launch **Cursor generic** (if `cursor_available`; else Codex generic if `codex_available`; else Gemini generic if `gemini_available`; else 1 Claude Code Reviewer subagent as fallback). Use the same generic diff-mode prompt from Step 2 (without the competition notice — there is no voting panel in rounds 4+). In rounds 4-7 Step 3a, collect from whichever single reviewer was launched: external output via `collect-agent-results.sh` (with Runtime Timeout Fallback on failure — retry the round with the next tool in the chain), or Claude subagent output directly. Findings that were rejected or exonerated by voting in rounds 1-3 are suppressed per Step 3c.1.
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run-external-agent.sh — Monitored wrapper for external agents (Codex, Cursor).
+# run-external-agent.sh — Monitored wrapper for external agents (Codex, Cursor, Gemini).
 # Launches the agent in the background, polls every 60s with status messages,
 # kills after a configurable timeout (e.g., 30 minutes for reviews/implementation, 20 minutes for votes/sketches).
 #
@@ -29,6 +29,10 @@
 #   # engage max-mode; the example below shows the bare shape for clarity.
 #   run-external-agent.sh --tool cursor --output /tmp/review-abc/cursor-output.txt --timeout 900 --capture-stdout -- \
 #     cursor agent -p --force --trust --workspace /path/to/repo "Review prompt..."
+#
+#   # Gemini implementer (stdout captured to file via --capture-stdout)
+#   run-external-agent.sh --tool gemini --output /tmp/impl-abc/gemini-output.txt --timeout 1800 --capture-stdout -- \
+#     gemini --prompt "..." --approval-mode yolo --skip-trust --model pro
 
 set -euo pipefail
 

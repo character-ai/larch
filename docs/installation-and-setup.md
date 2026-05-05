@@ -139,6 +139,7 @@ ln -sf "$(which rg)" <gemini-pkg>/bundle/vendor/ripgrep/rg-darwin-arm64
 ```
   Re-run the symlink command after each `brew upgrade gemini-cli`.
 - Free-tier accounts can hit hard `MODEL_CAPACITY_EXHAUSTED` 429s on `gemini-3-*-preview` models when used from the Gemini CLI. Google AI Pro may raise available capacity; Google AI Ultra unblocks these preview-model capacity failures.
+- `/implement --coder=gemini` uses the same Gemini CLI install/auth/trusted-folder setup as the Gemini reviewer path, but runs with `--approval-mode yolo --skip-trust` so Gemini can execute shell tools during implementation.
 
 ## What the plugin provides
 

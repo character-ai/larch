@@ -1,6 +1,6 @@
 # External Reviewer Procedures (Codex + Cursor + Gemini)
 
-Shared mechanical procedures for running Codex, Cursor, and additive Gemini as external reviewers. Each skill provides its own reviewer invocation commands (prompts, output paths, tmpdir variables) — this file covers the common scaffolding.
+Shared mechanical procedures for running Codex, Cursor, and additive Gemini as external reviewers. Gemini is also available as `/implement --coder=gemini` for the implementer slot; that launcher is documented separately from reviewer-panel topology. Each skill provides its own reviewer invocation commands (prompts, output paths, tmpdir variables) — this file covers the common scaffolding.
 
 ## Binary Check and Health Probe (Step 0)
 

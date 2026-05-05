@@ -2,15 +2,17 @@
 # test-step2-dispatch.sh — Offline harness for skills/implement/scripts/step2-implement.sh.
 #
 # Covers the dispatcher branches that do NOT require spawning an external implementer
-# (28 assertions; for the full per-test inventory see test-step2-dispatch.md):
+# (35 assertions; for the full per-test inventory see test-step2-dispatch.md):
 #   - --coder claude → STATUS=claude_fallback (no launcher run; no baseline-file leak).
 #   - default coder (no --coder flag) is codex.
 #   - Default codex path outside a git work-tree → exit 2.
 #   - Legacy --codex-available false → STATUS=claude_fallback + deprecation warning on stderr.
 #   - Missing required flag (--auto-mode) → exit 2.
-#   - Bad --coder enum value → exit 2 and names {claude,codex,cursor}.
+#   - Bad --coder enum value → exit 2 and names {claude,codex,cursor,gemini}.
 #   - --coder cursor with false/missing/empty health → STATUS=claude_fallback (no baseline-file leak).
 #   - Bad --cursor-healthy enum value → exit 2.
+#   - --coder gemini with false/missing/empty health → STATUS=claude_fallback (no baseline-file leak).
+#   - Bad --gemini-healthy enum value → exit 2.
 #   - --coder claude --cursor-healthy "" → STATUS=claude_fallback.
 #   - --coder cursor outside a git work-tree with false health → claude_fallback before REPO_ROOT lookup.
 #   - --coder + --codex-available together → exit 2 (mutex).
@@ -120,10 +122,10 @@ TMP3="$SCRATCH/test3"; mkdir -p "$TMP3"
 EXIT=0
 ERR=$("$DISPATCHER" --tmpdir "$TMP3" --plan-file "$PLAN" --feature-file "$FEATURE" \
     --auto-mode false --coder bogus 2>&1 >/dev/null) || EXIT=$?
-if [[ "$EXIT" == "2" ]] && [[ "$ERR" == *"{claude,codex,cursor}"* ]]; then
+if [[ "$EXIT" == "2" ]] && [[ "$ERR" == *"{claude,codex,cursor,gemini}"* ]]; then
     pass
 else
-    fail 3 "bad --coder value should exit 2 and name {claude,codex,cursor}, got exit=$EXIT err=$ERR"
+    fail 3 "bad --coder value should exit 2 and name {claude,codex,cursor,gemini}, got exit=$EXIT err=$ERR"
 fi
 
 # ---------------------------------------------------------------------------
@@ -203,6 +205,73 @@ if [[ "$OUT" == *"STATUS=claude_fallback"* ]] && [[ "$OUT" == *"ORCHESTRATOR_EDI
     pass
 else
     fail 3b6 "cursor unhealthy fallback should win before git-tree lookup, got: $OUT"
+fi
+
+# ---------------------------------------------------------------------------
+# Test 3g: --coder gemini --gemini-healthy false → claude_fallback.
+# ---------------------------------------------------------------------------
+TMP3G="$SCRATCH/test3g"; mkdir -p "$TMP3G"
+OUT=$(cd "$REPO_ROOT" && "$DISPATCHER" --tmpdir "$TMP3G" --plan-file "$PLAN" --feature-file "$FEATURE" \
+    --auto-mode false --coder gemini --gemini-healthy false 2>&1)
+if [[ "$OUT" == *"STATUS=claude_fallback"* ]] && [[ "$OUT" == *"ORCHESTRATOR_EDIT_AUTHORITY=allowed"* ]]; then
+    pass
+else
+    fail 3g "--coder gemini with unhealthy gate should fall back to claude, got: $OUT"
+fi
+if [[ -f "$TMP3G/step2-baseline.txt" ]]; then
+    fail 3g "gemini unhealthy fallback branch leaked baseline file"
+else
+    pass
+fi
+
+# ---------------------------------------------------------------------------
+# Test 3g2: --coder gemini with no --gemini-healthy defaults to false.
+# ---------------------------------------------------------------------------
+TMP3G2="$SCRATCH/test3g2"; mkdir -p "$TMP3G2"
+OUT=$(cd "$REPO_ROOT" && "$DISPATCHER" --tmpdir "$TMP3G2" --plan-file "$PLAN" --feature-file "$FEATURE" \
+    --auto-mode false --coder gemini 2>&1)
+if [[ "$OUT" == *"STATUS=claude_fallback"* ]] && [[ "$OUT" == *"ORCHESTRATOR_EDIT_AUTHORITY=allowed"* ]]; then
+    pass
+else
+    fail 3g2 "--coder gemini without health should fall back to claude, got: $OUT"
+fi
+
+# ---------------------------------------------------------------------------
+# Test 3g3: --coder gemini --gemini-healthy "" treats empty as false.
+# ---------------------------------------------------------------------------
+TMP3G3="$SCRATCH/test3g3"; mkdir -p "$TMP3G3"
+OUT=$(cd "$REPO_ROOT" && "$DISPATCHER" --tmpdir "$TMP3G3" --plan-file "$PLAN" --feature-file "$FEATURE" \
+    --auto-mode false --coder gemini --gemini-healthy "" 2>&1)
+if [[ "$OUT" == *"STATUS=claude_fallback"* ]] && [[ "$OUT" == *"ORCHESTRATOR_EDIT_AUTHORITY=allowed"* ]]; then
+    pass
+else
+    fail 3g3 "--coder gemini with empty health should fall back to claude, got: $OUT"
+fi
+
+# ---------------------------------------------------------------------------
+# Test 3g4: bogus --gemini-healthy value exits 2, even off Gemini path.
+# ---------------------------------------------------------------------------
+TMP3G4="$SCRATCH/test3g4"; mkdir -p "$TMP3G4"
+EXIT=0
+ERR=$(cd "$REPO_ROOT" && "$DISPATCHER" --tmpdir "$TMP3G4" --plan-file "$PLAN" --feature-file "$FEATURE" \
+    --auto-mode false --coder codex --gemini-healthy bogus 2>&1 >/dev/null) || EXIT=$?
+if [[ "$EXIT" == "2" ]] && [[ "$ERR" == *"--gemini-healthy must be 'true', 'false', or empty"* ]]; then
+    pass
+else
+    fail 3g4 "bad --gemini-healthy should exit 2, got exit=$EXIT err=$ERR"
+fi
+
+# ---------------------------------------------------------------------------
+# Test 3g5: outside git tree, unhealthy Gemini falls back before REPO_ROOT lookup.
+# ---------------------------------------------------------------------------
+TMP3G5="$SCRATCH/test3g5"; mkdir -p "$TMP3G5"
+NON_GIT_GEMINI_DIR="$SCRATCH/not-a-repo-gemini"; mkdir -p "$NON_GIT_GEMINI_DIR"
+OUT=$(cd "$NON_GIT_GEMINI_DIR" && "$DISPATCHER" --tmpdir "$TMP3G5" --plan-file "$PLAN" --feature-file "$FEATURE" \
+    --auto-mode false --coder gemini --gemini-healthy false 2>&1)
+if [[ "$OUT" == *"STATUS=claude_fallback"* ]] && [[ "$OUT" == *"ORCHESTRATOR_EDIT_AUTHORITY=allowed"* ]]; then
+    pass
+else
+    fail 3g5 "gemini unhealthy fallback should win before git-tree lookup, got: $OUT"
 fi
 
 # ---------------------------------------------------------------------------
@@ -381,6 +450,40 @@ fi
 # before the resume-counter logic.
 if [[ -f "$TMP10/cursor-resume-count.txt" ]]; then
     fail 10 "coder-mismatch path leaked cursor-resume-count.txt"
+else
+    pass
+fi
+
+# ---------------------------------------------------------------------------
+# Test 10b: Gemini variant of cross-coder tmpdir reuse.
+# ---------------------------------------------------------------------------
+TMP10B="$SCRATCH/test10b"; mkdir -p "$TMP10B"
+git -C "$REPO_ROOT" rev-parse HEAD > "$TMP10B/step2-baseline.txt"
+git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD > "$TMP10B/step2-spawn-branch.txt"
+if [[ -f "$REPO_ROOT/.claude-plugin/plugin.json" ]]; then
+    git -C "$REPO_ROOT" hash-object "$REPO_ROOT/.claude-plugin/plugin.json" > "$TMP10B/step2-plugin-json-baseline.txt"
+else
+    printf '\n' > "$TMP10B/step2-plugin-json-baseline.txt"
+fi
+echo "cursor" > "$TMP10B/step2-spawn-coder.txt"
+OUT=$(cd "$REPO_ROOT" && "$DISPATCHER" --tmpdir "$TMP10B" --plan-file "$PLAN" --feature-file "$FEATURE" \
+    --auto-mode false --coder gemini --gemini-healthy true 2>&1)
+if [[ "$OUT" == *"STATUS=bailed"* ]] \
+   && [[ "$OUT" == *"REASON=coder-mismatch-tmpdir-reuse"* ]] \
+   && [[ "$OUT" == *"TOOL=gemini"* ]] \
+   && [[ "$OUT" == *"ORCHESTRATOR_EDIT_AUTHORITY=forbidden"* ]] \
+   && [[ "$OUT" != *"ORCHESTRATOR_EDIT_AUTHORITY=allowed"* ]]; then
+    pass
+else
+    fail 10b "cross-coder reuse should bail with coder-mismatch-tmpdir-reuse TOOL=gemini + AUTH=forbidden, got: $OUT"
+fi
+if [[ "$(cat "$TMP10B/step2-spawn-coder.txt")" == "cursor" ]]; then
+    pass
+else
+    fail 10b "sentinel file overwritten on Gemini mismatch path: $(cat "$TMP10B/step2-spawn-coder.txt")"
+fi
+if [[ -f "$TMP10B/gemini-resume-count.txt" ]]; then
+    fail 10b "coder-mismatch path leaked gemini-resume-count.txt"
 else
     pass
 fi

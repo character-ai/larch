@@ -6,8 +6,9 @@
 # to Claude main-agent Edit/Write when BOTH STATUS=claude_fallback AND
 # ORCHESTRATOR_EDIT_AUTHORITY=allowed are present in this script's stdout (the
 # pair invariant: AUTH=allowed iff STATUS=claude_fallback). claude_fallback is
-# emitted when --coder=claude or when --coder=cursor with --cursor-healthy
-# unset/false (Cursor falls back to Claude instead of failing closed); every
+# emitted when --coder=claude, when --coder=cursor with --cursor-healthy
+# unset/false, or when --coder=gemini with --gemini-healthy unset/false
+# (Cursor/Gemini fall back to Claude instead of failing closed); every
 # external-implementer outcome (complete / needs_qa / bailed) emits AUTH=forbidden
 # instead. See SKILL.md NEVER #10 and the Step 2 entry preconditions matrix.
 #
@@ -17,11 +18,19 @@
 #   --coder cursor   → spawn Cursor implementer when --cursor-healthy true;
 #                      otherwise emits STATUS=claude_fallback so the orchestrator
 #                      runs the main-agent code-edit path.
+#   --coder gemini   → spawn Gemini implementer when --gemini-healthy true;
+#                      otherwise emits STATUS=claude_fallback so the orchestrator
+#                      runs the main-agent code-edit path.
 #
 # Cursor health flag:
 #   --cursor-healthy true   → permit --coder cursor to launch Cursor
 #   --cursor-healthy false  → --coder cursor falls back to claude_fallback
 #   --cursor-healthy ""     → treated as false (falls back to claude_fallback)
+#
+# Gemini health flag:
+#   --gemini-healthy true   → permit --coder gemini to launch Gemini
+#   --gemini-healthy false  → --coder gemini falls back to claude_fallback
+#   --gemini-healthy ""     → treated as false (falls back to claude_fallback)
 #
 # Legacy flag (deprecated, accepted for one release):
 #   --codex-available true   → maps to --coder codex (stderr deprecation warning)
@@ -46,7 +55,7 @@
 #                            # full per-bucket breakdown.
 #   QA_PENDING=<path>        # set when STATUS=needs_qa
 #   REASON=<token>           # set when STATUS=bailed
-#   TOOL=<codex|cursor>      # set on external implementer paths
+#   TOOL=<codex|cursor|gemini> # set on external implementer paths
 #   TRANSCRIPT=<path>        # set when launcher actually ran
 #   SIDECAR_LOG=<path>       # set when launcher actually ran
 #   ORCHESTRATOR_EDIT_AUTHORITY=<allowed|forbidden>
@@ -60,7 +69,7 @@
 #
 # Exit code is always 0 unless caller / invocation validation fails (exit 2):
 # missing or invalid flag, missing required path, bad enum value,
-# or — on the Codex/Cursor path — cwd is not inside a git working tree.
+# or — on the Codex / Cursor / Gemini path — cwd is not inside a git working tree.
 
 set -euo pipefail
 
@@ -73,6 +82,7 @@ AUTO_MODE=""
 CODER=""
 CODEX_AVAILABLE=""
 CURSOR_HEALTHY_ARG=""
+GEMINI_HEALTHY_ARG=""
 ANSWERS_FILE=""
 
 while [[ $# -gt 0 ]]; do
@@ -84,6 +94,7 @@ while [[ $# -gt 0 ]]; do
         --coder)             CODER="${2:?--coder requires a value}"; shift 2 ;;
         --codex-available)   CODEX_AVAILABLE="${2:?--codex-available requires a value}"; shift 2 ;;
         --cursor-healthy)    CURSOR_HEALTHY_ARG="${2-}"; shift 2 ;;
+        --gemini-healthy)    GEMINI_HEALTHY_ARG="${2-}"; shift 2 ;;
         --answers)           ANSWERS_FILE="${2:?--answers requires a value}"; shift 2 ;;
         *) echo "step2-implement.sh: unknown flag: $1" >&2; exit 2 ;;
     esac
@@ -121,9 +132,9 @@ if [[ -z "$CODER" ]]; then
 fi
 
 case "$CODER" in
-    claude|codex|cursor) ;;
+    claude|codex|cursor|gemini) ;;
     *)
-        echo "step2-implement.sh: --coder must be one of {claude,codex,cursor}, got: $CODER" >&2
+        echo "step2-implement.sh: --coder must be one of {claude,codex,cursor,gemini}, got: $CODER" >&2
         exit 2
         ;;
 esac
@@ -143,6 +154,13 @@ case "$AUTO_MODE" in
     true|false) ;;
     *) echo "step2-implement.sh: --auto-mode must be 'true' or 'false', got: $AUTO_MODE" >&2; exit 2 ;;
 esac
+
+if [[ -n "$GEMINI_HEALTHY_ARG" ]]; then
+    case "$GEMINI_HEALTHY_ARG" in
+        true|false) ;;
+        *) echo "step2-implement.sh: --gemini-healthy must be 'true', 'false', or empty, got: $GEMINI_HEALTHY_ARG" >&2; exit 2 ;;
+    esac
+fi
 
 # Branch 1: coder=claude → emit claude_fallback and return.
 # Run BEFORE the PLUGIN_ROOT / REPO_ROOT resolution so the fallback path stays
@@ -174,6 +192,18 @@ if [[ "$CODER" == "cursor" && "$CURSOR_HEALTHY_ARG" != "true" ]]; then
     printf 'ORCHESTRATOR_EDIT_AUTHORITY=allowed\n'
     exit 0
 fi
+
+[[ -z "$GEMINI_HEALTHY_ARG" ]] && GEMINI_HEALTHY_ARG="false"
+
+# Gemini health gate (fall back to claude). Same ordering as Cursor: the
+# fallback path returns before REPO_ROOT lookup and writes no baseline files.
+if [[ "$CODER" == "gemini" && "$GEMINI_HEALTHY_ARG" != "true" ]]; then
+    printf 'STATUS=claude_fallback\n'
+    printf 'ORCHESTRATOR_EDIT_AUTHORITY=allowed\n'
+    exit 0
+fi
+
+REQUIRES_HEAD_UNCHANGED=false
 
 # ---------------------------------------------------------------------------
 # External implementer path. Set up paths inside $TMPDIR_ARG.
@@ -207,6 +237,15 @@ case "$CODER" in
         LAUNCHER="$PLUGIN_ROOT/scripts/launch-cursor-implement.sh"
         RUNTIME_FAILURE_TOKEN="cursor-runtime-failure"
         BAILED_NO_REASON_TOKEN="cursor-bailed-no-reason"
+        REQUIRES_HEAD_UNCHANGED=true
+        ;;
+    gemini)
+        TOOL_TAG="gemini"
+        AGENT_PROMPT="$PLUGIN_ROOT/agents/gemini-implementer.md"
+        LAUNCHER="$PLUGIN_ROOT/scripts/launch-gemini-implement.sh"
+        RUNTIME_FAILURE_TOKEN="gemini-runtime-failure"
+        BAILED_NO_REASON_TOKEN="gemini-bailed-no-reason"
+        REQUIRES_HEAD_UNCHANGED=true
         ;;
     *)
         echo "step2-implement.sh: internal error — CODER=$CODER not handled in tool-case" >&2
@@ -245,12 +284,12 @@ emit_bailed() {
 # Step 0.5: cross-coder tmpdir-reuse guard. The shared baseline files written
 # below (step2-baseline.txt, step2-spawn-branch.txt, step2-plugin-json-baseline.txt)
 # and the per-tool ${TOOL_TAG}-resume-count.txt file would desynchronize if a
-# tmpdir from a prior --coder=codex run were reused for --coder=cursor (or vice
+# tmpdir from a prior --coder=codex run were reused for --coder=cursor/gemini (or vice
 # versa). Record the resolved coder on first invocation; bail clearly on any
 # subsequent invocation whose --coder differs. Atomic write avoids torn reads.
 # Only the external-implementer path writes/reads this sentinel — the claude
 # fallback early-returned above without touching the tmpdir, so a prior claude
-# run leaves no sentinel and a subsequent codex/cursor run is the first writer.
+# run leaves no sentinel and a subsequent codex/cursor/gemini run is the first writer.
 if [[ -f "$SPAWN_CODER_FILE" ]]; then
     RECORDED_CODER=$(tr -d '[:space:]' < "$SPAWN_CODER_FILE")
     if [[ "$RECORDED_CODER" != "$CODER" ]]; then
@@ -305,10 +344,10 @@ if (( RESUME_COUNT > 5 )); then
     emit_bailed "qa-loop-exceeded"
 fi
 
-# Step 3: clean stale Codex outputs from prior invocations BEFORE launching.
+# Step 3: clean stale implementer outputs from prior invocations BEFORE launching.
 rm -f "$MANIFEST_PATH" "$MANIFEST_RAW_PATH" "$QA_PENDING_PATH" "$TRANSCRIPT_PATH" "$SIDECAR_LOG"
 
-# Step 4: launch Codex. Up to 1 retry on transient failure (timeout / non-zero
+# Step 4: launch external implementer. Up to 1 retry on transient failure (timeout / non-zero
 # exit before manifest written) — but only when post-failure state is clean.
 LAUNCHER_TIMEOUT=1800
 
@@ -422,7 +461,7 @@ case "$STATUS" in
         ;;
 esac
 
-# Step 6: post-Codex mechanical validation (only meaningful for complete/needs_qa;
+# Step 6: post-implementer mechanical validation (only meaningful for complete/needs_qa;
 # bailed is passed through verbatim).
 if [[ "$STATUS" != "bailed" ]]; then
     # 6a: branch unchanged.
@@ -450,14 +489,13 @@ if [[ "$STATUS" != "bailed" ]]; then
         fi
     fi
 
-    # Cursor-specific safety rail: Cursor runs without Codex's
-    # `workspace-write` sandbox, so it can write to `.git/`. Before the
-    # dispatcher commits on Cursor's behalf or allows a needs_qa resume cycle,
+    # Unsandboxed-tool safety rail: Cursor/Gemini can write to `.git/`. Before
+    # the dispatcher commits on their behalf or allows a needs_qa resume cycle,
     # assert HEAD has not moved.
-    if [[ "$CODER" == "cursor" ]]; then
+    if [[ "$REQUIRES_HEAD_UNCHANGED" == "true" ]]; then
         CURRENT_HEAD=$(git -C "$REPO_ROOT" rev-parse HEAD)
         if [[ "$CURRENT_HEAD" != "$BASELINE_SHA" ]]; then
-            emit_bailed "cursor-modified-history"
+            emit_bailed "${TOOL_TAG}-modified-history"
         fi
     fi
 fi

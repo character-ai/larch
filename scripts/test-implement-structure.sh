@@ -22,7 +22,8 @@
 # assertion 21 added for the --inline / --subagent forwarding pin, issue #1036;
 # assertion 22 added for the orchestrator-edit-authority gate pin —
 # ORCHESTRATOR_EDIT_AUTHORITY / §2.1.5 / orchestrator-envelope-invalid /
-# NEVER #10 literals).
+# NEVER #10 literals; assertion 24 added for Gemini implementer structural
+# parity with Cursor's shared guardrails).
 # Assertion 5 is retired, so the numbered list runs 1–4, 6–22 (22 live
 # assertions, 23 reserved numbers).
 #  (1) Exactly 1 `^## Load-Bearing Invariants$` heading in skills/implement/SKILL.md.
@@ -686,6 +687,16 @@ DISPATCHER_PATH="$REPO_ROOT/$DISPATCHER_LITERAL"
     || fail "(19) Cursor implementer test harness missing or not executable: skills/implement/scripts/test-cursor-implementer.sh"
 [[ -f "$REPO_ROOT/skills/implement/scripts/test-cursor-implementer.md" ]] \
     || fail "(19) Cursor implementer test harness sibling contract missing: skills/implement/scripts/test-cursor-implementer.md"
+[[ -x "$REPO_ROOT/scripts/launch-gemini-implement.sh" ]] \
+    || fail "(19) Gemini implementer launcher missing or not executable: scripts/launch-gemini-implement.sh"
+[[ -f "$REPO_ROOT/scripts/launch-gemini-implement.md" ]] \
+    || fail "(19) Gemini implementer launcher sibling contract missing: scripts/launch-gemini-implement.md"
+[[ -f "$REPO_ROOT/agents/gemini-implementer.md" ]] \
+    || fail "(19) Gemini implementer system prompt missing: agents/gemini-implementer.md"
+[[ -x "$REPO_ROOT/skills/implement/scripts/test-gemini-implementer.sh" ]] \
+    || fail "(19) Gemini implementer test harness missing or not executable: skills/implement/scripts/test-gemini-implementer.sh"
+[[ -f "$REPO_ROOT/skills/implement/scripts/test-gemini-implementer.md" ]] \
+    || fail "(19) Gemini implementer test harness sibling contract missing: skills/implement/scripts/test-gemini-implementer.md"
 
 # (20) Design manifest + design-only path pin: Step 1 must read the design
 # manifest, the flag table must expose --design-only, and Step 18 must mark
@@ -758,5 +769,15 @@ grep -Fq 'Cursor → Codex → Gemini → Claude' "$SKILL_MD" \
 grep -Fq 'GEMINI_HEALTHY' "$SKILL_MD" \
   || fail "(23i) /implement cross-skill health propagation omits GEMINI_HEALTHY"
 
-echo "PASS: test-implement-structure.sh — all 23 structural invariants hold (assertion 5 retired)"
+# (24) Cursor/Gemini implementer shared guardrails parity. The prose after
+# `## Shared guardrails` must be byte-identical so the two unsandboxed
+# implementer prompts do not drift in safety-critical instructions.
+CURSOR_SHARED=$(awk 'found { print } /^## Shared guardrails$/ { found=1 }' "$REPO_ROOT/agents/cursor-implementer.md")
+GEMINI_SHARED=$(awk 'found { print } /^## Shared guardrails$/ { found=1 }' "$REPO_ROOT/agents/gemini-implementer.md")
+[[ -n "$CURSOR_SHARED" ]] \
+  || fail "(24) agents/cursor-implementer.md missing non-empty Shared guardrails section"
+[[ "$CURSOR_SHARED" == "$GEMINI_SHARED" ]] \
+  || fail "(24) agents/gemini-implementer.md Shared guardrails section drifted from agents/cursor-implementer.md"
+
+echo "PASS: test-implement-structure.sh — all 24 structural invariants hold (assertion 5 retired)"
 exit 0

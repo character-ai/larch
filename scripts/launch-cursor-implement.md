@@ -37,7 +37,7 @@ SIDECAR_LOG=<path>             # path to run-external-agent.sh chatter
 **Call sites**:
 - `skills/implement/scripts/step2-implement.sh` (dispatcher) — the only authorized caller.
 
-**Edit-in-sync**: `scripts/run-external-agent.sh`, `scripts/agent-model-args.sh`, `scripts/cursor-wrap-prompt.sh`, `scripts/cursor-wrap-prompt.md`, `agents/cursor-implementer.md`, `skills/implement/references/codex-manifest-schema.md`, `scripts/launch-cursor-review.sh`, `skills/implement/scripts/test-cursor-implementer.sh`.
+**Edit-in-sync**: `scripts/run-external-agent.sh`, `scripts/agent-model-args.sh`, `scripts/cursor-wrap-prompt.sh`, `scripts/cursor-wrap-prompt.md`, `agents/cursor-implementer.md`, `agents/gemini-implementer.md`, `skills/implement/references/codex-manifest-schema.md`, `scripts/launch-cursor-review.sh`, `scripts/launch-gemini-implement.md`, `skills/implement/scripts/test-cursor-implementer.sh`.
 
 **Test harness**: `skills/implement/scripts/test-cursor-implementer.sh`.
 
