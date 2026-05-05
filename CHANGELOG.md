@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.10.12] - 2026-05-05
+
+### Changed
+
+- Update the Cwd contract paragraph in `skills/implement/SKILL.md` Step 2.1 so the enumeration of external implementers covers Gemini in addition to Codex and Cursor (closes #1112). The same `REPO_ROOT` / cwd rules already apply once `--coder=gemini` passes the health gate; the paragraph now documents all three implementers uniformly. No behavior change.
+
 ## [15.10.11] - 2026-05-05
 
 ### Changed
