@@ -14,7 +14,7 @@ Update this list whenever a new consumer sources the registry.
 
 ## Related
 
-`scripts/run-external-agent.sh` is NOT sourced from this registry and still does not validate `--tool` against it, per DECISION_1 of #1099. The human-facing log keeps the raw label, while the `.meta` `TOOL=` sidecar field is sanitized at write time through a label-safe allowlist (alphanumerics, `.`, `_`, `-`); an empty sanitized result falls back to `sanitized-empty`.
+`scripts/run-external-agent.sh` is NOT sourced from this registry and still does not validate `--tool` against it, per DECISION_1 of #1099. The human-facing log keeps the raw label, while the `.meta` `TOOL=` sidecar field is sanitized at write time through a label-safe allowlist (alphanumerics, `.`, `_`, `-`); disallowed bytes are translated to `_` (length-preserved), and an empty sanitized result falls back to `sanitized-empty`. See `scripts/run-external-agent.md` for the full sanitization contract.
 
 ## Public API
 
@@ -48,7 +48,7 @@ Per-tool model defaults stay in `agent-model-args.sh` for Codex and Cursor; for 
 2. Add the per-tool branch in `agent-model-args.sh`.
 3. Add the per-tool branch in `check-reviewers.sh` `start_probe` and in every switch helper (`get_available`, `get_healthy`, `set_healthy`, `get_skip`, `set_probe_error`, `get_probe_error`); decide opt-in vs. default and update `--include-*` policy accordingly.
 4. If the new tool is also an implementer, add the launcher branch in `step2-implement.sh`.
-5. No change is required in `run-external-agent.sh` for a new tool id made only of label-safe characters; flag a wrapper update only if the id contains other characters, because `.meta` `TOOL=` would be sanitized or fall back to `sanitized-empty`.
+5. No change is required in `run-external-agent.sh`: it sanitizes `.meta` `TOOL=` for any input. Prefer a label-safe id (alphanumerics, `.`, `_`, `-`) so `.meta` `TOOL=` matches the registry id verbatim and distinct ids cannot collide via sanitization; only widen the wrapper's allowlist if you intentionally change that contract.
 6. Update the relevant sibling `.md` contracts.
 7. Run `make lint` and `/relevant-checks`.
 
