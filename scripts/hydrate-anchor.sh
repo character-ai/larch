@@ -152,18 +152,6 @@ SECTIONS_COUNT=$(awk -v outdir="$SECTIONS_DIR" -v allowed="$ALLOWED_SLUGS" '
     exit 0
 }
 
-# Strip exactly one trailing newline that awk's `>>` reliably appends per
-# `print` so the round-trip with assemble-anchor.sh stays byte-clean.
-for f in "$SECTIONS_DIR"/*.md; do
-    [ -f "$f" ] || continue
-    if [ -s "$f" ]; then
-        # Detect last byte; if newline, the awk-level print added it. Leave
-        # one newline (matches how callers author fragments). No-op if file
-        # has no trailing newline.
-        :
-    fi
-done
-
 echo "HYDRATED=true"
 echo "SECTIONS=$SECTIONS_COUNT"
 exit 0
