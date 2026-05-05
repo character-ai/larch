@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.11.13] - 2026-05-05
+
+### Changed
+
+- Generalize the validation rule 5 ("Dispatcher commit") parenthetical in `skills/implement/references/codex-manifest-schema.md` from "embedded by Codex" to "embedded by the external implementer" so the redactor's intent reads tool-neutrally alongside the rule 4 / rule 6 framing established by #1113. Closes #1149.
+
 ## [15.11.12] - 2026-05-05
 
 ### Changed
