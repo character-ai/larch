@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.11.2] - 2026-05-05
+
+### Changed
+
+- Generalize validation rules 4 and 6 in `skills/implement/references/codex-manifest-schema.md` from naming "Codex" specifically to naming "external implementers" — the trust model documented in those two rules applies equally to all three external `--coder` choices (codex / cursor / gemini) per `SECURITY.md` and the file's own Tool-scope paragraph. Rule 5 wording was deliberately left unchanged per the issue's explicit scope (rules 4 and 6 only); the rule 5 consistency follow-up was filed as a separate issue. Closes #1113.
+
 ## [15.11.1] - 2026-05-05
 
 ### Changed
