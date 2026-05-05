@@ -5,6 +5,7 @@
 # Sourced by:
 #   - scripts/agent-model-args.sh
 #   - scripts/check-reviewers.sh
+#   - scripts/collect-agent-results.sh
 #   - skills/implement/scripts/step2-implement.sh
 #
 # Related:
@@ -27,10 +28,9 @@
 # Bash 3.2 constraint: indexed arrays only. No associative arrays, namerefs,
 # mapfile/readarray, or eval.
 #
-# Known follow-up drift point: scripts/collect-agent-results.sh derive_tool()
-# re-encodes codex|cursor|gemini|unknown - DECISION_2 of #1099 deferred this
-# because the `unknown` outcome is observational classification, not dispatch
-# validation. See scripts/external-tool-registry.md for tracking.
+# scripts/collect-agent-results.sh derives observed tool labels from this
+# registry and still preserves `unknown` as an observational fallback for
+# partial or malformed launches.
 
 [[ -n "${LARCH_EXTERNAL_TOOL_REGISTRY_LOADED:-}" ]] && return 0
 

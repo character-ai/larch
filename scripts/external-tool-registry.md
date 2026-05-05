@@ -8,6 +8,7 @@ Single canonical source for external-tool name taxonomy and implementer-coder ta
 
 - `scripts/agent-model-args.sh`
 - `scripts/check-reviewers.sh`
+- `scripts/collect-agent-results.sh`
 - `skills/implement/scripts/step2-implement.sh`
 
 Update this list whenever a new consumer sources the registry.
@@ -36,7 +37,7 @@ Update this list whenever a new consumer sources the registry.
 
 ## Failure symptoms
 
-If a consumer registers a tool in `LARCH_EXTERNAL_TOOLS` but a `case` in `agent-model-args.sh` or a switch helper in `check-reviewers.sh` does not handle it, the consumer exits via the defensive `*)` arm with `internal error: unsupported reviewer tool: <id>`. Test #14 in `test-external-tool-registry.sh` walks every registry entry through `check-reviewers.sh` to catch this at lint time.
+If a consumer registers a tool in `LARCH_EXTERNAL_TOOLS` but a `case` in `agent-model-args.sh` or a switch helper in `check-reviewers.sh` does not handle it, the consumer exits via the defensive `*)` arm with `internal error: unsupported reviewer tool: <id>`. Test #14 in `test-external-tool-registry.sh` walks every registry entry through `check-reviewers.sh` to catch this at lint time. `scripts/collect-agent-results.sh` derives `TOOL=` labels from `LARCH_EXTERNAL_TOOLS`, but its health helper state and `--write-health` output remain explicit `CODEX_HEALTHY`, `CURSOR_HEALTHY`, and `GEMINI_HEALTHY` fields; adding health fields for a future tool is a separate collector contract change.
 
 ## Non-goals
 
@@ -52,9 +53,9 @@ Per-tool model defaults stay in `agent-model-args.sh` for Codex and Cursor; for 
 6. Update the relevant sibling `.md` contracts.
 7. Run `make lint` and `/relevant-checks`.
 
-## Known follow-up drift point
+## Collector integration
 
-`scripts/collect-agent-results.sh` `derive_tool()` re-encodes the `codex|cursor|gemini` enum with a fourth `unknown` classification at `scripts/collect-agent-results.sh:106-118`. That collector deliberately keeps an `unknown` fallback for observational classification of partial or malformed launches, which is semantically different from dispatch validation. Tracked as a deferred follow-up via the OOS_2 issue filed by `/implement` after this PR.
+`scripts/collect-agent-results.sh` sources this registry and uses `LARCH_EXTERNAL_TOOLS` for both `.meta` `TOOL=` validation and basename inference. The collector deliberately keeps an `unknown` fallback for observational classification of partial or malformed launches, which is semantically different from dispatch validation and is not a registry member.
 
 ## Tests
 
