@@ -5,7 +5,7 @@
 # conflicts and push failures via exit codes.
 #
 # Usage:
-#   rebase-push.sh [--continue] [--no-push [--skip-if-pushed]]
+#   rebase-push.sh [--continue] [--no-push [--skip-if-pushed] [--keep-on-conflict]]
 #
 # Flags:
 #   --continue       — Continue an in-progress rebase instead of starting a new
@@ -16,7 +16,7 @@
 #                      /implement for local-only freshness rebases
 #                      where the branch has not yet been pushed. In this mode,
 #                      conflicts are aborted immediately (exit 1) instead of
-#                      left in progress.
+#                      left in progress unless --keep-on-conflict is set.
 #   --skip-if-pushed — Only valid with --no-push. Before fetching, check whether
 #                      the current branch already exists on origin. If it does,
 #                      print `SKIPPED_ALREADY_PUSHED=true` to stdout and exit 0
@@ -26,6 +26,10 @@
 #                      ls-remote check fails (network/auth), the script falls
 #                      through to the normal rebase path so the subsequent fetch
 #                      surfaces the real error.
+#   --keep-on-conflict
+#                    — Only valid with --no-push. On rebase conflict, leave
+#                      the rebase in progress and emit CONFLICT_FILES= so the
+#                      caller can resolve and continue without pushing.
 #
 # Exit codes:
 #   0 — rebase (and push, unless --no-push) succeeded, OR skipped because
@@ -34,11 +38,13 @@
 #       origin/main (nothing to rebase)
 #   1 — rebase failed with conflicts
 #       Default mode: rebase left in progress (CONFLICT_FILES= on stdout)
-#       --no-push mode: rebase aborted, branch restored to pre-rebase state
+#       --no-push mode: rebase aborted unless --keep-on-conflict is set.
+#       With --keep-on-conflict, rebase left in progress (CONFLICT_FILES= on stdout)
 #   2 — push --force-with-lease failed (PUSH_ERROR= on stderr, caller should retry after fetch)
 #       Not possible in --no-push mode.
 #   3 — rebase failed for non-conflict reasons (REBASE_ERROR= on stderr), OR
-#       invalid flag combination (e.g., --skip-if-pushed without --no-push)
+#       invalid flag combination (e.g., --skip-if-pushed without --no-push,
+#       --continue --no-push without --keep-on-conflict)
 #       In normal mode: rebase is aborted.
 #       In --continue mode: rebase is left in progress (caller can inspect/retry).
 #       In --no-push mode: rebase is aborted.
@@ -58,7 +64,7 @@
 #
 # Note: On exit 1 in default mode, the rebase is left in progress so the
 # caller can resolve conflicts and run `rebase-push.sh --continue`. On exit 1
-# in --no-push mode, the rebase is aborted (caller does not resolve conflicts).
+# in --no-push mode, the rebase is aborted unless --keep-on-conflict is set.
 # On exit 3 in normal mode, the rebase is aborted. On exit 3 in --continue
 # mode, the rebase is left in progress to avoid destroying already-resolved work.
 
@@ -69,22 +75,44 @@ set -uo pipefail
 CONTINUE_MODE=false
 NO_PUSH=false
 SKIP_IF_PUSHED=false
+KEEP_ON_CONFLICT=false
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --continue) CONTINUE_MODE=true; shift ;;
         --no-push) NO_PUSH=true; shift ;;
         --skip-if-pushed) SKIP_IF_PUSHED=true; shift ;;
+        --keep-on-conflict) KEEP_ON_CONFLICT=true; shift ;;
         *) echo "Unknown option: $1" >&2; exit 1 ;;
     esac
 done
 
-if [[ "$CONTINUE_MODE" == "true" && "$NO_PUSH" == "true" ]]; then
-    echo "REBASE_ERROR=--continue and --no-push cannot be used together" >&2
+if [[ "$SKIP_IF_PUSHED" == "true" && "$NO_PUSH" != "true" ]]; then
+    echo "REBASE_ERROR=--skip-if-pushed is only valid with --no-push" >&2
     exit 3
 fi
 
-if [[ "$SKIP_IF_PUSHED" == "true" && "$NO_PUSH" != "true" ]]; then
-    echo "REBASE_ERROR=--skip-if-pushed is only valid with --no-push" >&2
+if [[ "$SKIP_IF_PUSHED" == "true" && "$CONTINUE_MODE" == "true" ]]; then
+    echo "REBASE_ERROR=--skip-if-pushed cannot be used with --continue" >&2
+    exit 3
+fi
+
+if [[ "$KEEP_ON_CONFLICT" == "true" && "$NO_PUSH" != "true" ]]; then
+    echo "REBASE_ERROR=--keep-on-conflict is only valid with --no-push" >&2
+    exit 3
+fi
+
+# --continue --no-push is the local-only conflict-resolution loop used by
+# the Rebase Checkpoint Macro's early_rebase path; in that loop a nested
+# conflict on a later commit MUST leave the rebase in progress so the
+# caller can resolve and re-continue. Without --keep-on-conflict the
+# script would silently abort the in-progress rebase on a nested conflict
+# and discard any partial resolution. Reject the combination at parse
+# time rather than risk losing work — every legitimate caller of
+# --continue --no-push (the early_rebase Phase 4 invocation) already
+# passes --keep-on-conflict, so this is defense-in-depth, not a behavior
+# change for any documented call site.
+if [[ "$CONTINUE_MODE" == "true" && "$NO_PUSH" == "true" && "$KEEP_ON_CONFLICT" != "true" ]]; then
+    echo "REBASE_ERROR=--continue --no-push requires --keep-on-conflict to safely handle nested conflicts" >&2
     exit 3
 fi
 
@@ -159,7 +187,7 @@ if [[ $REBASE_EXIT -ne 0 ]]; then
     # Check if there are conflicts
     CONFLICT_FILES=$(git diff --name-only --diff-filter=U 2>/dev/null | tr '\n' ',' | sed 's/,$//')
     if [[ -n "$CONFLICT_FILES" ]]; then
-        if [[ "$NO_PUSH" == "true" ]]; then
+        if [[ "$NO_PUSH" == "true" && "$KEEP_ON_CONFLICT" != "true" ]]; then
             # In --no-push mode, abort immediately — caller does not resolve conflicts
             git rebase --abort 2>/dev/null || true
             exit 1
