@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.11.22] - 2026-05-05
+
+### Added
+
+- Structural-test assertion (27) in `scripts/test-implement-structure.sh` pinning `/implement` Step 1 normal-mode sub-step ordering: within `## Step 1 — Ensure Design Plan Exists`, the line introducing `**Manifest reuse (resumed sessions — runs first)**` must precede the lines introducing `**Simplicity classification preamble — skip condition**` and `**Both-externals-down inline-plan branch**`. The ordering is load-bearing: manifest reuse must run before simplicity classification (which can auto-switch to quick mode) and before the both-externals-down inline-plan branch (which writes a degraded `plan.txt`) so a resumed session never overwrites the prior `/design` artifact set. Sibling `scripts/test-implement-structure.md` updated to document the new assertion and bump the live-assertion count to 27. Closes #1165.
+
 ## [15.11.21] - 2026-05-05
 
 ### Changed
