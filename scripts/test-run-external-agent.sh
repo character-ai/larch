@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Regression test for scripts/run-external-agent.sh output-path validation.
 #
-# Wired into: make test-harnesses
+# Wired into: make test-run-external-agent (Makefile shard test-harnesses-5).
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -130,6 +130,19 @@ assert_successful_capture "safe-punctuation" "$TMPDIR/foo.bar-baz_qux.txt"
 run_subject "reject-empty" "" -- bash -c 'printf should-not-run'
 assert_equals "reject-empty exit" "1" "$RUN_CODE"
 assert_grep "reject-empty stderr" "--output requires a value" "$RUN_STDERR"
+
+# 11b. --timeout 0 is rejected before side effects (parallel to #1115 + the
+# Gemini reviewer launcher's analogous rejection in test-launch-gemini-review.sh).
+TIMEOUT_ZERO_OUT="$TMPDIR/timeout-zero.txt"
+RUN_STDOUT="$TMPDIR/reject-timeout-zero.stdout"
+RUN_STDERR="$TMPDIR/reject-timeout-zero.stderr"
+set +e
+"$WRAPPER" --tool codex --output "$TIMEOUT_ZERO_OUT" --timeout 0 -- bash -c 'printf should-not-run' >"$RUN_STDOUT" 2>"$RUN_STDERR"
+RUN_CODE=$?
+set -e
+assert_equals "reject-timeout-zero exit" "1" "$RUN_CODE"
+assert_grep "reject-timeout-zero stderr" "--timeout must be a positive integer" "$RUN_STDERR"
+assert_no_artifacts "reject-timeout-zero no side effects" "$TIMEOUT_ZERO_OUT"
 
 # 12. Helper invariants.
 if head -n 1 "$HELPER" | grep -qv '^#!' && [[ ! -x "$HELPER" ]]; then

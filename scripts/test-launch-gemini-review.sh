@@ -113,6 +113,20 @@ assert_rejected_output "reject-equals" "$BAD_EQUALS_OUTPUT"
 BAD_LF_OUTPUT="$TMPDIR/bad"$'\n'"output.txt"
 assert_rejected_output "reject-lf" "$BAD_LF_OUTPUT"
 
+# Reject --timeout 0 at launcher (parallel to run-external-agent.sh + #1115).
+TIMEOUT_ZERO_OUTPUT="$TMPDIR/timeout-zero.txt"
+TZ_STDOUT="$TMPDIR/timeout-zero.stdout"
+TZ_STDERR="$TMPDIR/timeout-zero.stderr"
+set +e
+"$REPO_ROOT/scripts/launch-gemini-review.sh" --output "$TIMEOUT_ZERO_OUTPUT" --timeout 0 --prompt "hi" >"$TZ_STDOUT" 2>"$TZ_STDERR"
+TZ_CODE=$?
+set -e
+[[ "$TZ_CODE" -eq 2 ]] \
+  || fail "reject-timeout-zero: expected exit 2, got $TZ_CODE"
+grep -q '\-\-timeout must be a positive integer' "$TZ_STDERR" \
+  || fail "reject-timeout-zero: expected positive-integer error"
+assert_no_launcher_artifacts "reject-timeout-zero" "$TIMEOUT_ZERO_OUTPUT"
+
 if [[ "$FAIL" -eq 1 ]]; then
   exit 1
 fi
