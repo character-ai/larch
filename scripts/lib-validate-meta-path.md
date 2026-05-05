@@ -1,0 +1,3 @@
+# scripts/lib-validate-meta-path.sh - contract
+
+`scripts/lib-validate-meta-path.sh` is a sourced-only shell library (no shebang, not invokable directly) that defines `validate_meta_scalar_path` for first-party writers of `OUTPUT_FILE=` records consumed by `scripts/collect-agent-results.sh`. The full contract is owned by `scripts/run-external-agent.md`; this sibling exists for discoverability per the AGENTS.md per-script-contract convention. Update this file with `scripts/run-external-agent.md`, `scripts/run-external-agent.sh`, `scripts/launch-gemini-review.sh`, and `scripts/test-run-external-agent.sh` when the accepted `.meta` path alphabet or retry-substitution invariant changes.

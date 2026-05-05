@@ -13,6 +13,7 @@
 - Parses `.response` as the only successful output field. `.error`, missing `.response`, or empty `.response` fail closed.
 - Writes normalized plain text to `--output` atomically, then writes `<output>.done` last.
 - Writes `<output>.meta` with `TOOL=gemini` and `CMD=` pointing at the launcher invocation, so retry paths replay JSON normalization rather than raw `gemini`.
+- Rejects empty `--output` values and paths containing bytes outside `[A-Za-z0-9._/-]` before stale-file cleanup or raw wrapper launch. The same byte string is used on disk, in `OUTPUT_FILE=`, and inside the shell-quoted `CMD=` field that collector retry substitution rewrites, so unsafe paths fail fast instead of being transformed.
 - Output filenames must carry a `gemini-` prefix when consumed by `collect-agent-results.sh` unless `.meta` is guaranteed present.
 
 ## Prompt contract
@@ -21,8 +22,8 @@ Gemini runs with `--approval-mode plan`, so callers must pass a self-contained p
 
 ## Test harness
 
-`scripts/test-launch-gemini-review.sh` stubs `gemini` and exercises the real `run-external-agent.sh` path to cover timeout clamping, JSON normalization, fail-closed `.error`, and `MISSING_JQ`.
+`scripts/test-launch-gemini-review.sh` stubs `gemini` and exercises the real `run-external-agent.sh` path to cover timeout clamping, JSON normalization, fail-closed `.error`, `MISSING_JQ`, and launcher-specific `--output` rejection before side effects.
 
 ## Edit-in-sync
 
-Update `scripts/run-external-agent.sh`, `scripts/collect-agent-results.sh`, `scripts/check-reviewers.sh`, `skills/review/SKILL.md`, `skills/implement/SKILL.md`, `docs/external-reviewers.md`, and `SECURITY.md` when changing Gemini CLI flags or output schema. Update `.claude-plugin/plugin.json` (`gemini_model` userConfig) and `docs/configuration-and-permissions.md` (`LARCH_GEMINI_MODEL` section) when changing the model-resolution precedence or default.
+Update `scripts/run-external-agent.sh`, `scripts/lib-validate-meta-path.sh`, `scripts/collect-agent-results.sh`, `scripts/check-reviewers.sh`, `skills/review/SKILL.md`, `skills/implement/SKILL.md`, `docs/external-reviewers.md`, and `SECURITY.md` when changing Gemini CLI flags, output schema, or output-path invariants. Update `.claude-plugin/plugin.json` (`gemini_model` userConfig) and `docs/configuration-and-permissions.md` (`LARCH_GEMINI_MODEL` section) when changing the model-resolution precedence or default.

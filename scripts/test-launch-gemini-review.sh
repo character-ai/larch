@@ -19,6 +19,36 @@ fail() {
   FAIL=1
 }
 
+assert_no_launcher_artifacts() {
+  local label="$1"
+  local output="$2"
+  local raw="${output}.raw"
+  local suffix
+  for suffix in "" ".done" ".meta" ".diag"; do
+    [[ ! -e "${output}${suffix}" ]] \
+      || fail "$label: unexpected artifact ${output}${suffix}"
+    [[ ! -e "${raw}${suffix}" ]] \
+      || fail "$label: unexpected raw artifact ${raw}${suffix}"
+  done
+}
+
+assert_rejected_output() {
+  local label="$1"
+  local output="$2"
+  local stdout="$TMPDIR/${label}.stdout"
+  local stderr="$TMPDIR/${label}.stderr"
+  local code
+  set +e
+  "$REPO_ROOT/scripts/launch-gemini-review.sh" --output "$output" --timeout 60 --prompt "hi" >"$stdout" 2>"$stderr"
+  code=$?
+  set -e
+  [[ "$code" -eq 2 ]] \
+    || fail "$label: expected exit 2, got $code"
+  grep -q 'ERROR: --output contains bytes outside' "$stderr" \
+    || fail "$label: expected output validation error"
+  assert_no_launcher_artifacts "$label" "$output"
+}
+
 STUB_BIN="$TMPDIR/bin"
 mkdir -p "$STUB_BIN"
 cat > "$STUB_BIN/gemini" <<'STUB'
@@ -76,6 +106,12 @@ grep -q '^127$' "${MISSING_JQ_OUTPUT}.done" \
   || fail "Expected 127 .done when jq is missing"
 grep -q 'MISSING_JQ' "${MISSING_JQ_OUTPUT}.diag" \
   || fail "Expected MISSING_JQ diagnostic"
+
+BAD_EQUALS_OUTPUT="$TMPDIR/bad=output.txt"
+assert_rejected_output "reject-equals" "$BAD_EQUALS_OUTPUT"
+
+BAD_LF_OUTPUT="$TMPDIR/bad"$'\n'"output.txt"
+assert_rejected_output "reject-lf" "$BAD_LF_OUTPUT"
 
 if [[ "$FAIL" -eq 1 ]]; then
   exit 1
