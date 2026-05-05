@@ -4,7 +4,7 @@
 # kills after a configurable timeout (e.g., 30 minutes for reviews/implementation, 20 minutes for votes/sketches).
 #
 # Usage:
-#   run-external-agent.sh --tool NAME --output FILE --timeout SECS [--capture-stdout] -- CMD...
+#   run-external-agent.sh --tool NAME --output FILE --timeout SECS [--capture-stdout|--capture-stdout-only] -- CMD...
 #
 # Options:
 #   --tool            Tool name (e.g., "codex", "cursor") — used only for log messages
@@ -13,6 +13,10 @@
 #   --capture-stdout  Redirect the tool's stdout/stderr to the output file.
 #                     Use for tools like Cursor that write results to stdout.
 #                     Omit for tools like Codex that use their own output flags.
+#   --capture-stdout-only
+#                     Redirect the tool's stdout to the output file and stderr
+#                     to <output>.diag. Use for JSON stdout protocols whose
+#                     parse would be corrupted by stderr noise.
 #   --               End of wrapper options. Everything after is the command to execute.
 #
 # Examples:
@@ -31,6 +35,7 @@ set -euo pipefail
 usage() { echo "Usage: run-external-agent.sh --tool NAME --output FILE --timeout SECS [--capture-stdout] -- CMD..." >&2; }
 
 CAPTURE_STDOUT=false
+CAPTURE_STDOUT_ONLY=false
 TOOL_NAME=""
 OUTPUT_FILE=""
 TIMEOUT_SECONDS=""
@@ -40,6 +45,7 @@ while [[ $# -gt 0 ]]; do
         --output) OUTPUT_FILE="${2:?--output requires a value}"; shift 2 ;;
         --timeout) TIMEOUT_SECONDS="${2:?--timeout requires a value}"; shift 2 ;;
         --capture-stdout) CAPTURE_STDOUT=true; shift ;;
+        --capture-stdout-only) CAPTURE_STDOUT_ONLY=true; shift ;;
         --help) usage; exit 0 ;;
         --) shift; break ;;
         *) echo "Unknown option: $1" >&2; usage; exit 1 ;;
@@ -48,6 +54,11 @@ done
 
 if [[ -z "$TOOL_NAME" ]] || [[ -z "$OUTPUT_FILE" ]] || [[ -z "$TIMEOUT_SECONDS" ]]; then
     echo "ERROR: --tool, --output, and --timeout are required" >&2
+    usage; exit 1
+fi
+
+if [[ "$CAPTURE_STDOUT" == "true" && "$CAPTURE_STDOUT_ONLY" == "true" ]]; then
+    echo "ERROR: --capture-stdout and --capture-stdout-only are mutually exclusive" >&2
     usage; exit 1
 fi
 
@@ -75,6 +86,7 @@ trap 'echo "$EXIT_CODE" > "${OUTPUT_FILE}.done" 2>/dev/null || true' EXIT
     echo "TOOL=$TOOL_NAME"
     echo "TIMEOUT=$TIMEOUT_SECONDS"
     echo "CAPTURE_STDOUT=$CAPTURE_STDOUT"
+    echo "CAPTURE_STDOUT_ONLY=$CAPTURE_STDOUT_ONLY"
     echo "OUTPUT_FILE=$OUTPUT_FILE"
     printf 'CMD=%s\n' "$(printf '%q ' "$@")"
 } > "${OUTPUT_FILE}.meta"
@@ -82,6 +94,8 @@ trap 'echo "$EXIT_CODE" > "${OUTPUT_FILE}.done" 2>/dev/null || true' EXIT
 # Launch the agent in the background
 if [ "$CAPTURE_STDOUT" = true ]; then
     "$@" > "$OUTPUT_FILE" 2>&1 &
+elif [ "$CAPTURE_STDOUT_ONLY" = true ]; then
+    "$@" > "$OUTPUT_FILE" 2> "${OUTPUT_FILE}.diag" &
 else
     "$@" &
 fi
@@ -105,7 +119,7 @@ while kill -0 "$PID" 2>/dev/null; do
         fi
         echo "❌ ${TOOL_NAME} agent: TIMED OUT (exit code 124, ${SECONDS}s elapsed, output ${OUTPUT_SIZE} bytes)"
         # Write diagnostic file for callers
-        echo "Timed out after ${SECONDS}s (limit: ${TIMEOUT_SECONDS}s). Process was killed after exceeding the timeout. Output size: ${OUTPUT_SIZE} bytes." > "${OUTPUT_FILE}.diag"
+        echo "Timed out after ${SECONDS}s (limit: ${TIMEOUT_SECONDS}s). Process was killed after exceeding the timeout. Output size: ${OUTPUT_SIZE} bytes." >> "${OUTPUT_FILE}.diag"
         EXIT_CODE=124
         exit "$EXIT_CODE"
     fi
@@ -135,12 +149,12 @@ if [ "$EXIT_CODE" -ne 0 ]; then
         DIAG_DETAIL=" Last output: $(tail -1 "$OUTPUT_FILE" | head -c 200 | tr '|' ' ')"
     fi
     # Write diagnostic file for callers
-    echo "Failed with exit code ${EXIT_CODE} after ${SECONDS}s. Output size: ${OUTPUT_SIZE} bytes.${DIAG_DETAIL}" > "${OUTPUT_FILE}.diag"
+    echo "Failed with exit code ${EXIT_CODE} after ${SECONDS}s. Output size: ${OUTPUT_SIZE} bytes.${DIAG_DETAIL}" >> "${OUTPUT_FILE}.diag"
 elif [ "$OUTPUT_SIZE" -eq 0 ]; then
     echo "⚠ ${TOOL_NAME} agent: completed but OUTPUT IS EMPTY (exit code 0, ${SECONDS}s elapsed)"
     echo "This typically means ${TOOL_NAME} exited without producing output."
     # Write diagnostic file for callers
-    echo "Process exited successfully (code 0) after ${SECONDS}s but produced no output. This typically means the tool started but did not generate a response." > "${OUTPUT_FILE}.diag"
+    echo "Process exited successfully (code 0) after ${SECONDS}s but produced no output. This typically means the tool started but did not generate a response." >> "${OUTPUT_FILE}.diag"
 else
     echo "✓ ${TOOL_NAME} agent: completed (exit code 0, ${SECONDS}s elapsed, output ${OUTPUT_SIZE} bytes)"
 fi

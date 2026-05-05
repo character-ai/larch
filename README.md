@@ -17,7 +17,7 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
   - [Workflow Lifecycle](docs/workflow-lifecycle.md) — how skills compose end-to-end
   - [Agent System](docs/agents.md) — parallel subagent orchestration
   - [Collaborative Sketches](docs/collaborative-sketches.md) — the diverge-then-converge design phase
-  - [External Reviewers](docs/external-reviewers.md) — Codex and Cursor integration
+  - [External Reviewers](docs/external-reviewers.md) — Codex, Cursor, and optional Gemini integration
   - [Voting Process](docs/voting-process.md) — the 3-agent voting panel
   - [Point Competition](docs/point-competition.md) — reviewer scoring system
 
@@ -27,7 +27,7 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
 - **[Voting-based review resolution](docs/voting-process.md)** — A 3-agent YES/NO/EXONERATE panel adjudicates plan and code review findings.
 - **[Reviewer competition scoring](docs/point-competition.md)** — Reviewers earn points based on finding quality; a scoreboard tracks accepted, neutral, exonerated, and rejected findings.
 - **[End-to-end automation](docs/workflow-lifecycle.md)** — From feature design through PR creation and initial CI wait in one command; `--merge` adds the CI+rebase+merge loop, local cleanup, and main verification. Each run also posts a single Slack status message about its tracking issue near the end (✅ closed / 📝 PR opened / 🧭 design complete / ❌ blocked / ❓ user input needed) when Slack is configured — opt out with `--no-slack`. `--draft` creates a draft PR and keeps the branch for further iteration; `--design-only` publishes the design artifacts to the tracking issue and stops before implementation.
-- **[External reviewer integration](docs/external-reviewers.md)** — Codex and Cursor participate alongside Claude subagents as sketch agents, debaters, judges, reviewers, and voters.
+- **[External reviewer integration](docs/external-reviewers.md)** — Codex and Cursor participate alongside Claude subagents as sketch agents, debaters, judges, reviewers, and voters; Gemini participates as an optional additional reviewer in `/review` and `/implement --quick` review rounds when its CLI is installed and healthy (skipped silently otherwise).
 - **[Tracked runs](skills/implement/SKILL.md)** — `/implement` PRs link to a tracking issue whose anchor comment is the single source of truth for full report content (voting tallies, rejected findings, version-bump reasoning, diagrams, OOS links, execution issues, run statistics).
 
 ## Skills

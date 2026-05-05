@@ -324,5 +324,22 @@ grep 'In diff mode' "$SKILL_MD" \
 grep -Fq -- '--pieces-json' "$SKILL_MD" \
   || fail "(18) SKILL.md lacks '--pieces-json' — Step 4b pieces.json composition contract (#778) is broken"
 
-echo "PASS: test-review-structure.sh — all 18 structural invariants hold"
+# ---------------------------------------------------------------------------
+# (19) Gemini additive reviewer pins.
+# ---------------------------------------------------------------------------
+grep -Fq -- '--check-gemini-reviewer' "$SKILL_MD" \
+  || fail "(19a) /review Step 0 does not opt into Gemini reviewer probing"
+grep -Fq 'gemini_available=true' "$SKILL_MD" \
+  || fail "(19b) /review lacks gemini_available=true derivation"
+grep -Fq 'gemini_available=false' "$SKILL_MD" \
+  || fail "(19c) /review lacks strict-additive gemini_available=false default"
+grep -Fq 'omit the Gemini column entirely' "$SKILL_MD" \
+  || fail "(19d) /review status-table contract must omit Gemini entirely when unavailable"
+grep 'collect-agent-results.sh' "$SKILL_MD" \
+  | grep -Fq 'gemini-output.txt' \
+  || fail "(19e) /review collector argv example does not include conditional gemini-output.txt path"
+grep -Fq 'Cursor → Codex → Gemini → Claude' "$SKILL_MD" \
+  || fail "(19f) /review rounds-4+ chain does not include Gemini between Codex and Claude"
+
+echo "PASS: test-review-structure.sh — all 19 structural invariants hold"
 exit 0

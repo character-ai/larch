@@ -72,6 +72,47 @@ check_unhealthy "OK."                    "OK."
 check_unhealthy "auth error"             "Error: Password not found for account"
 check_unhealthy "thinking prefix"        "Thinking about this... OK"
 
+# Gemini probe integration: stub gemini JSON stdout and let check-reviewers.sh
+# exercise run-external-agent.sh + jq .response extraction.
+REPO_ROOT=$(cd "$(dirname "$0")/.." && pwd -P)
+TMPDIR=$(mktemp -d /tmp/larch-test-check-reviewers-XXXXXX)
+trap 'rm -rf "$TMPDIR"' EXIT
+STUB_BIN="$TMPDIR/bin"
+mkdir -p "$STUB_BIN"
+
+cat > "$STUB_BIN/gemini" <<'STUB'
+#!/usr/bin/env bash
+case "${GEMINI_STUB_MODE:-ok}" in
+  ok) printf '{"response":"OK"}\n' ;;
+  error) printf '{"error":"auth failed"}\n' ;;
+  verbose) printf '{"response":"Thinking... OK"}\n' ;;
+esac
+STUB
+chmod +x "$STUB_BIN/gemini"
+
+run_gemini_probe() {
+    PATH="$STUB_BIN:$PATH" LARCH_TEST_PROBE_SLEEP_SECONDS=0 \
+      "$REPO_ROOT/scripts/check-reviewers.sh" --probe --include-gemini --skip-codex-probe --skip-cursor-probe
+}
+
+probe_output=$(GEMINI_STUB_MODE=ok run_gemini_probe)
+grep -q '^GEMINI_AVAILABLE=true$' <<< "$probe_output" \
+  || fail "Expected GEMINI_AVAILABLE=true with stub gemini"
+grep -q '^GEMINI_HEALTHY=true$' <<< "$probe_output" \
+  || fail "Expected GEMINI_HEALTHY=true for JSON .response OK"
+
+probe_output=$(GEMINI_STUB_MODE=error run_gemini_probe)
+grep -q '^GEMINI_HEALTHY=false$' <<< "$probe_output" \
+  || fail "Expected GEMINI_HEALTHY=false for JSON .error"
+grep -q '^GEMINI_PROBE_ERROR=.*Gemini error' <<< "$probe_output" \
+  || fail "Expected GEMINI_PROBE_ERROR for JSON .error"
+
+probe_output=$(LARCH_TEST_FORCE_MISSING_JQ=true GEMINI_STUB_MODE=ok run_gemini_probe)
+grep -q '^GEMINI_HEALTHY=false$' <<< "$probe_output" \
+  || fail "Expected GEMINI_HEALTHY=false when jq is missing"
+grep -q '^GEMINI_PROBE_ERROR=MISSING_JQ' <<< "$probe_output" \
+  || fail "Expected MISSING_JQ diagnostic when jq is missing"
+
 if [[ "$FAIL" -eq 1 ]]; then
     echo "FAIL: test-check-reviewers.sh — some probe acceptance tests failed" >&2
     exit 1

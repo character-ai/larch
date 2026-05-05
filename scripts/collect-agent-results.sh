@@ -11,7 +11,7 @@
 #
 # Options:
 #   --timeout <seconds>            Timeout for wait-for-reviewers.sh (e.g., 1860)
-#   --write-health <path>          Write updated CODEX_HEALTHY/CURSOR_HEALTHY to file.
+#   --write-health <path>          Write updated CODEX_HEALTHY/CURSOR_HEALTHY/GEMINI_HEALTHY to file.
 #                                  Health is monotonic per tool: any failure sets the tool
 #                                  permanently unhealthy. A later successful instance does
 #                                  NOT flip it back to healthy.
@@ -51,7 +51,7 @@
 #
 # Output (KEY=value blocks on stdout, one block per reviewer, separated by blank lines):
 #   REVIEWER_FILE=<output-path>
-#   TOOL=<codex|cursor|unknown>
+#   TOOL=<codex|cursor|gemini|unknown>
 #   STATUS=<OK|TIMED_OUT|FAILED|EMPTY_OUTPUT|SENTINEL_TIMEOUT|NOT_SUBSTANTIVE>
 #   EXIT_CODE=<N>
 #   HEALTHY=<true|false>
@@ -104,12 +104,29 @@ fi
 
 # --- Derive tool name from output filename ---
 derive_tool() {
+    local meta="${1}.meta"
+    local meta_tool=""
+    if [[ -f "$meta" ]]; then
+        while IFS= read -r meta_line || [[ -n "$meta_line" ]]; do
+            meta_key="${meta_line%%=*}"
+            meta_val="${meta_line#*=}"
+            [[ "$meta_key" == "TOOL" ]] && meta_tool="$meta_val"
+        done < "$meta"
+        case "$meta_tool" in
+            codex|cursor|gemini)
+                echo "$meta_tool"
+                return ;;
+        esac
+    fi
+
     local base
     base=$(basename "$1")
     if [[ "$base" == *codex* ]]; then
         echo "codex"
     elif [[ "$base" == *cursor* ]]; then
         echo "cursor"
+    elif [[ "$base" == *gemini* ]]; then
+        echo "gemini"
     else
         echo "unknown"
     fi
@@ -119,6 +136,7 @@ derive_tool() {
 # Monotonic: once false, stays false for the session.
 CODEX_TOOL_HEALTHY="true"
 CURSOR_TOOL_HEALTHY="true"
+GEMINI_TOOL_HEALTHY="true"
 
 # Read prior health state from existing --write-health file (if it exists).
 # This preserves monotonicity across separate collect-agent-results.sh calls.
@@ -127,6 +145,7 @@ if [[ -n "$WRITE_HEALTH" && -f "$WRITE_HEALTH" ]]; then
         case "$key" in
             CODEX_HEALTHY)  [[ "$value" == "false" ]] && CODEX_TOOL_HEALTHY="false" ;;
             CURSOR_HEALTHY) [[ "$value" == "false" ]] && CURSOR_TOOL_HEALTHY="false" ;;
+            GEMINI_HEALTHY) [[ "$value" == "false" ]] && GEMINI_TOOL_HEALTHY="false" ;;
         esac
     done < "$WRITE_HEALTH"
 fi
@@ -135,6 +154,7 @@ get_tool_healthy() {
     case "$1" in
         codex)  echo "$CODEX_TOOL_HEALTHY" ;;
         cursor) echo "$CURSOR_TOOL_HEALTHY" ;;
+        gemini) echo "$GEMINI_TOOL_HEALTHY" ;;
         *)      echo "true" ;;
     esac
 }
@@ -143,6 +163,7 @@ set_tool_unhealthy() {
     case "$1" in
         codex)  CODEX_TOOL_HEALTHY="false" ;;
         cursor) CURSOR_TOOL_HEALTHY="false" ;;
+        gemini) GEMINI_TOOL_HEALTHY="false" ;;
     esac
 }
 
@@ -170,26 +191,49 @@ is_timed_out() {
     echo "$TIMED_OUT_SENTINELS" | grep -qxF "$needle"
 }
 
+# --- Helper: sanitize a failure-reason string for embedding in pipe-delimited
+# RESULTS records. RESULTS entries use `|` as field delimiter and are later
+# emitted as KEY=value lines via `tr '|' '\n'`. Multi-line .diag content
+# (notably from Gemini's stderr-on-failure path) would inject phantom lines
+# after `FAILURE_REASON=...` and corrupt downstream parsers. Replace pipes,
+# newlines, and CRs with single spaces; collapse whitespace runs; truncate
+# at 500 chars to bound size. ---
+sanitize_failure_reason() {
+    local s="$1"
+    # tr handles bytes; awk collapses whitespace runs
+    printf '%s' "$s" | tr '|\n\r' '   ' | awk '{
+        gsub(/[[:space:]]+/, " ");
+        sub(/^ /, "");
+        sub(/ $/, "");
+        if (length($0) > 500) {
+            print substr($0, 1, 497) "...";
+        } else {
+            print;
+        }
+    }'
+}
+
 # --- Helper: build failure reason from .diag file or status ---
 build_failure_reason() {
     local output_file="$1"
     local status="$2"
     local exit_code="$3"
     local diag_file="${output_file}.diag"
+    local raw
 
     if [[ -f "$diag_file" ]]; then
-        cat "$diag_file"
-        return
+        raw=$(cat "$diag_file")
+    else
+        # Fallback: construct reason from status and exit code
+        case "$status" in
+            SENTINEL_TIMEOUT) raw="Process did not complete (sentinel file missing — possible crash or system kill)" ;;
+            TIMED_OUT)        raw="Process timed out (exit code 124)" ;;
+            FAILED)           raw="Process failed with exit code $exit_code" ;;
+            EMPTY_OUTPUT)     raw="Process exited successfully but produced no output" ;;
+            *)                raw="Unknown failure (status=$status, exit_code=$exit_code)" ;;
+        esac
     fi
-
-    # Fallback: construct reason from status and exit code
-    case "$status" in
-        SENTINEL_TIMEOUT) echo "Process did not complete (sentinel file missing — possible crash or system kill)" ;;
-        TIMED_OUT)        echo "Process timed out (exit code 124)" ;;
-        FAILED)           echo "Process failed with exit code $exit_code" ;;
-        EMPTY_OUTPUT)     echo "Process exited successfully but produced no output" ;;
-        *)                echo "Unknown failure (status=$status, exit_code=$exit_code)" ;;
-    esac
+    sanitize_failure_reason "$raw"
 }
 
 # --- 2. Validate each output and collect results ---
@@ -286,6 +330,7 @@ if [[ ${#RETRY_FILES[@]} -gt 0 ]]; then
         META_TOOL=""
         META_TIMEOUT=""
         META_CAPTURE=""
+        META_CAPTURE_STDOUT_ONLY=""
         META_CMD=""
         META_ORIG_OUTPUT=""
         while IFS= read -r meta_line || [[ -n "$meta_line" ]]; do
@@ -295,6 +340,7 @@ if [[ ${#RETRY_FILES[@]} -gt 0 ]]; then
                 TOOL)           META_TOOL="$meta_val" ;;
                 TIMEOUT)        META_TIMEOUT="$meta_val" ;;
                 CAPTURE_STDOUT) META_CAPTURE="$meta_val" ;;
+                CAPTURE_STDOUT_ONLY) META_CAPTURE_STDOUT_ONLY="$meta_val" ;;
                 OUTPUT_FILE)    META_ORIG_OUTPUT="$meta_val" ;;
                 CMD)            META_CMD="$meta_val" ;;
             esac
@@ -308,6 +354,8 @@ if [[ ${#RETRY_FILES[@]} -gt 0 ]]; then
         RETRY_ARGS=(--tool "$META_TOOL" --output "$RETRY_OUTPUT" --timeout "${META_TIMEOUT:-120}")
         if [[ "$META_CAPTURE" == "true" ]]; then
             RETRY_ARGS+=(--capture-stdout)
+        elif [[ "$META_CAPTURE_STDOUT_ONLY" == "true" ]]; then
+            RETRY_ARGS+=(--capture-stdout-only)
         fi
         RETRY_ARGS+=(--)
 
@@ -435,13 +483,14 @@ for result in "${RESULTS[@]}"; do
 done
 
 # --- 5. Write health file (if requested, monotonic per tool) ---
-# F2 fix: uses CODEX_TOOL_HEALTHY/CURSOR_TOOL_HEALTHY which were seeded from
+# F2 fix: uses CODEX_TOOL_HEALTHY/CURSOR_TOOL_HEALTHY/GEMINI_TOOL_HEALTHY which were seeded from
 # the existing health file (if any) and only downgraded during this run.
 if [[ -n "$WRITE_HEALTH" && "$WRITE_HEALTH" != "/dev/null" ]]; then
     HEALTH_TMPFILE=$(mktemp "${WRITE_HEALTH}.tmp.XXXXXX")
     {
         echo "CODEX_HEALTHY=$CODEX_TOOL_HEALTHY"
         echo "CURSOR_HEALTHY=$CURSOR_TOOL_HEALTHY"
+        echo "GEMINI_HEALTHY=$GEMINI_TOOL_HEALTHY"
     } > "$HEALTH_TMPFILE"
     mv "$HEALTH_TMPFILE" "$WRITE_HEALTH"
 fi
