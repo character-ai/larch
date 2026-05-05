@@ -90,7 +90,7 @@ for timeout_value in 00 000; do
     fi
 done
 
-# Test 3: missing input file exits 2.
+# Test 3: missing plan-file exits 2.
 EXIT=0
 "$LAUNCHER" \
     --transcript-path "$SCRATCH/t3-transcript.txt" \
@@ -102,6 +102,46 @@ EXIT=0
     --agent-prompt "$AGENT_PROMPT" \
     --timeout 30 >/dev/null 2>&1 || EXIT=$?
 if [[ "$EXIT" == "2" ]]; then pass; else fail 3 "missing plan should exit 2, got $EXIT"; fi
+
+# Test 3a: missing feature-file exits 2.
+EXIT=0
+"$LAUNCHER" \
+    --transcript-path "$SCRATCH/t3a-transcript.txt" \
+    --sidecar-log "$SCRATCH/t3a-sidecar.log" \
+    --manifest-path "$SCRATCH/t3a-manifest.json" \
+    --qa-pending-path "$SCRATCH/t3a-qa.json" \
+    --plan-file "$PLAN" \
+    --feature-file "$SCRATCH/missing-feature.txt" \
+    --agent-prompt "$AGENT_PROMPT" \
+    --timeout 30 >/dev/null 2>&1 || EXIT=$?
+if [[ "$EXIT" == "2" ]]; then pass; else fail 3a "missing feature should exit 2, got $EXIT"; fi
+
+# Test 3b: missing agent-prompt exits 2.
+EXIT=0
+"$LAUNCHER" \
+    --transcript-path "$SCRATCH/t3b-transcript.txt" \
+    --sidecar-log "$SCRATCH/t3b-sidecar.log" \
+    --manifest-path "$SCRATCH/t3b-manifest.json" \
+    --qa-pending-path "$SCRATCH/t3b-qa.json" \
+    --plan-file "$PLAN" \
+    --feature-file "$FEATURE" \
+    --agent-prompt "$SCRATCH/missing-agent-prompt.md" \
+    --timeout 30 >/dev/null 2>&1 || EXIT=$?
+if [[ "$EXIT" == "2" ]]; then pass; else fail 3b "missing agent-prompt should exit 2, got $EXIT"; fi
+
+# Test 3c: --answers-file pointing at non-existent path exits 2.
+EXIT=0
+"$LAUNCHER" \
+    --transcript-path "$SCRATCH/t3c-transcript.txt" \
+    --sidecar-log "$SCRATCH/t3c-sidecar.log" \
+    --manifest-path "$SCRATCH/t3c-manifest.json" \
+    --qa-pending-path "$SCRATCH/t3c-qa.json" \
+    --plan-file "$PLAN" \
+    --feature-file "$FEATURE" \
+    --agent-prompt "$AGENT_PROMPT" \
+    --timeout 30 \
+    --answers-file "$SCRATCH/missing-answers.json" >/dev/null 2>&1 || EXIT=$?
+if [[ "$EXIT" == "2" ]]; then pass; else fail 3c "missing answers-file should exit 2, got $EXIT"; fi
 
 STUB_BIN="$SCRATCH/bin"
 mkdir -p "$STUB_BIN"
@@ -215,6 +255,43 @@ if grep -Fq '## Resume invocation' "$RESUME_PROMPT" && grep -Fq "$ANSWERS" "$RES
     pass
 else
     fail 8 "resume invocation block missing from composed prompt"
+fi
+
+# Test 9: positive leading-zero timeout (010) is accepted; exit 0 + standard
+# five-line stdout envelope. Pins acceptance of the leading-zero positive
+# form so a future refactor tightening the digit-only `case` validation to
+# e.g. `^[1-9][0-9]*$` (which would reject `010`) breaks CI here. Note: the
+# stub exits immediately, so this assertion does NOT prove that downstream
+# treats `010` as decimal 10 vs. octal 8 — it only pins contract stability
+# at the launcher boundary.
+T9_TRANSCRIPT="$SCRATCH/t9-transcript.txt"
+T9_SIDECAR="$SCRATCH/t9-sidecar.log"
+T9_MANIFEST="$SCRATCH/t9-manifest.json"
+T9_QA="$SCRATCH/t9-qa.json"
+T9_ARGV="$SCRATCH/t9-argv.txt"
+T9_PROMPT="$SCRATCH/t9-prompt.txt"
+
+OUT=$(cd "$REPO_ROOT" && \
+    PATH="$STUB_BIN:$PATH" \
+    STUB_ARGV_FILE="$T9_ARGV" \
+    STUB_PROMPT_FILE="$T9_PROMPT" \
+    STUB_MANIFEST_PATH="$T9_MANIFEST" \
+    LARCH_GEMINI_MODEL="stub-gemini-model" \
+    "$LAUNCHER" \
+        --transcript-path "$T9_TRANSCRIPT" \
+        --sidecar-log "$T9_SIDECAR" \
+        --manifest-path "$T9_MANIFEST" \
+        --qa-pending-path "$T9_QA" \
+        --plan-file "$PLAN" \
+        --feature-file "$FEATURE" \
+        --agent-prompt "$AGENT_PROMPT" \
+        --timeout 010)
+
+T9_EXPECTED=$(printf 'LAUNCHER_EXIT=0\nMANIFEST_WRITTEN=true\nQA_PENDING_WRITTEN=false\nTRANSCRIPT=%s\nSIDECAR_LOG=%s' "$T9_TRANSCRIPT" "$T9_SIDECAR")
+if [[ "$OUT" == "$T9_EXPECTED" ]]; then
+    pass
+else
+    fail 9 "leading-zero timeout 010 should be accepted with standard envelope; got: $OUT"
 fi
 
 TOTAL=$((PASS_COUNT + FAIL_COUNT))

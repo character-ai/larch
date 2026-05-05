@@ -6,7 +6,8 @@
 - Missing required flags exit 2.
 - Bad timeout exits 2.
 - Zero-valued timeouts (`0`, `00`, `000`) exit 2 and report the positive-integer timeout contract.
-- Missing input files exit 2.
+- Positive leading-zero timeouts (e.g. `010`) are accepted: launcher exits 0 with the standard five-line stdout envelope. Pins acceptance of the leading-zero positive form so a future refactor tightening the digit-only `case` validation (e.g. to `^[1-9][0-9]*$`) breaks CI. Note: the stub exits immediately, so this does NOT prove that downstream treats `010` as decimal 10 vs. octal 8 — only contract stability at the launcher boundary.
+- Missing input files exit 2 — specifically: missing `--plan-file`, missing `--feature-file`, missing `--agent-prompt`, and `--answers-file` pointing at a non-existent path.
 - PATH-stubbed `cursor` writes a minimal valid `manifest.json`; the launcher emits exactly five KV stdout lines and no progress chatter.
 - `run-external-agent.sh --capture-stdout` captures Cursor stdout to the transcript path.
 - Cursor argv shape matches `scripts/launch-cursor-review.sh`: `cursor agent -p --force --trust $MODEL_ARGS --workspace "$PWD" "$WRAPPED_PROMPT"`.

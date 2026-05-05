@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.9] - 2026-05-05
+
+### Changed
+
+- Expand offline implementer-launcher harnesses (`skills/implement/scripts/test-codex-implementer.sh`, `test-cursor-implementer.sh`, `test-gemini-implementer.sh`) with three additional missing-input rejection tests (Tests 3a/3b/3c — missing `--feature-file`, missing `--agent-prompt`, `--answers-file` pointing at a non-existent path) mirroring Test 3's exit-2 shape, plus a positive leading-zero timeout acceptance test (Test 9 — `--timeout 010`) pinning contract stability of the leading-zero positive form at the launcher boundary. Update each sibling `.md` Coverage section to enumerate the four asserted missing-input cases (replacing the overclaiming "Missing input files exit 2" bullet) and add the leading-zero acceptance bullet. Add one Edit-in-sync rule bullet to `skills/umbrella/scripts/test-umbrella-emit-output-contract.md` covering the `(k1)`–`(k5)` family (PIECES_JSON pipeline + `--blocked-by-issue` forwarding prose in `skills/umbrella/SKILL.md` Step 3B.1 / 3B.1.5 / 3B.2 / 3B.4), parallel to the existing `(j1)`–`(j7)`, `(g1)`–`(g4)`, `(h1)`–`(h4)`, `(i1)`–`(i6)` rules. Closes #1211 (combines #1208 / #1209 / #1204).
+
 ## [15.12.8] - 2026-05-05
 
 ### Changed

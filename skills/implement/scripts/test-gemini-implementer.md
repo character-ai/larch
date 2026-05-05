@@ -6,7 +6,8 @@
 - Missing required flags exit 2.
 - Bad timeout exits 2.
 - Zero-valued timeouts (`0`, `00`, `000`) exit 2 and report the positive-integer timeout contract.
-- Missing input files exit 2.
+- Positive leading-zero timeouts (e.g. `010`) are accepted: launcher exits 0 with the standard five-line stdout envelope. Pins acceptance of the leading-zero positive form so a future refactor tightening the digit-only `case` validation (e.g. to `^[1-9][0-9]*$`) breaks CI. Note: the stub exits immediately, so this does NOT prove that downstream treats `010` as decimal 10 vs. octal 8 — only contract stability at the launcher boundary.
+- Missing input files exit 2 — specifically: missing `--plan-file`, missing `--feature-file`, missing `--agent-prompt`, and `--answers-file` pointing at a non-existent path.
 - PATH-stubbed `gemini` writes a minimal valid `manifest.json`; the launcher emits exactly five KV stdout lines and no progress chatter.
 - `run-external-agent.sh --capture-stdout` captures Gemini stdout/stderr to the transcript path.
 - Gemini argv shape includes `--prompt`, `--approval-mode yolo`, `--skip-trust`, and `--model "$GEMINI_MODEL"` (resolved inline by `launch-gemini-implement.sh` from `LARCH_GEMINI_MODEL` / `CLAUDE_PLUGIN_OPTION_GEMINI_MODEL` / hardcoded `gemini-2.5-pro`; the launcher does NOT shell out to `agent-model-args.sh`).
