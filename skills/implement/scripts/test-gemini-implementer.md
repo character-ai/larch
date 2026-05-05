@@ -27,5 +27,6 @@
 - `scripts/launch-gemini-implement.md` — sibling launcher contract.
 - `agents/gemini-implementer.md` — prompt body path and resume block wording.
 - `scripts/run-external-agent.sh` — stdout capture semantics.
-- `scripts/agent-model-args.sh` — owns the canonical Gemini env-precedence chain that `launch-gemini-implement.sh` duplicates inline; keep the two in lockstep when env names, plugin fallbacks, or the hardcoded default change.
-- `scripts/launch-gemini-review.sh` — sibling Gemini launcher using the same inline-resolve pattern.
+- `scripts/agent-model-args.sh` — owns the canonical Gemini env-precedence chain that `launch-gemini-implement.sh`, `launch-gemini-review.sh`, and `check-reviewers.sh` (Gemini health probe) each duplicate inline. All four definitions (this helper's gemini arm + the three inline sites) must stay in lockstep when env names, plugin fallbacks, or the hardcoded default change.
+- `scripts/launch-gemini-review.sh` — sibling Gemini launcher using the same inline-resolve pattern (one of the three inline sites in the four-way lockstep).
+- `scripts/check-reviewers.sh` — Gemini health probe inlining the same precedence chain (one of the three inline sites in the four-way lockstep).
