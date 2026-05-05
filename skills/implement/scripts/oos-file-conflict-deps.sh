@@ -144,12 +144,22 @@ extract_records() {
     sed -E -e 's#(^|[^A-Za-z0-9])\./#\1#g' -e 's#[,;]#\
 #g' "$body_file" > "$normalized_body"
 
-    grep -Eoh "$__filelinelib_any_re|$__filelinelib_extensionless_re" "$normalized_body" 2>/dev/null \
-        | while IFS= read -r raw; do
-            candidate="$(clean_match "$raw")"
-            [[ -n "$candidate" ]] || continue
-            write_record "$records_file" "$candidate"
-        done || true
+    local matches_file="$WORK_DIR/matches.txt"
+    local grep_status=0
+    grep -Eoh "$__filelinelib_any_re|$__filelinelib_extensionless_re" \
+        "$normalized_body" > "$matches_file" 2>/dev/null || grep_status=$?
+    # grep exit 0=match, 1=no-match (expected for path-free bodies),
+    # 2+=real error (binary missing, I/O, regex). Surface real errors.
+    if (( grep_status > 1 )); then
+        echo "ERROR: grep failed scanning $body_file (exit $grep_status)" >&2
+        return "$grep_status"
+    fi
+    while IFS= read -r raw; do
+        [[ -n "$raw" ]] || continue
+        candidate="$(clean_match "$raw")"
+        [[ -n "$candidate" ]] || continue
+        write_record "$records_file" "$candidate"
+    done < "$matches_file"
 
     sort -u "$records_file" -o "$records_file"
 }
