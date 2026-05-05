@@ -18,7 +18,7 @@ Success emits:
 PREFLIGHT=ok
 ```
 
-Failure emits:
+Failure for the documented runtime checks (not-on-main, dirty working tree, fetch failure, rebase failure) emits:
 
 ```
 PREFLIGHT=fail
@@ -26,6 +26,8 @@ PREFLIGHT_ERROR=<human-readable reason>
 ```
 
 `session-setup.sh` captures and re-emits these lines verbatim on preflight failure.
+
+Argument validation (unknown flag) is the exception: it writes `Unknown option: <arg>` to stderr only and exits 3 without emitting the `PREFLIGHT_*` shape. Callers passing only documented flags will not encounter this path.
 
 ## Exit codes
 
