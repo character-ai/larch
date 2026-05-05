@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.11.4] - 2026-05-05
+
+### Changed
+
+- Extend the dispatcher mechanical bail-token enumerations in `skills/implement/scripts/step2-implement.md` to include `gemini-runtime-failure` and `gemini-modified-history` alongside their Cursor counterparts in both the "bailed manifests are NOT enforced" invariant bullet and the stdout-contract commented block under `MANIFEST=<path>`. Aligns the invariant bullet and stdout-contract comments with the canonical bail-token enumeration, the mechanical-bail behavior in `step2-implement.sh` (`emit_bailed`, no `MANIFEST=`), and the existing Codex/Cursor entries. Closes #1114. The reviewer panel surfaced — and this PR rejected — the originally-requested addition of `gemini-bailed-no-reason` to those two enumerations: that token is the per-tool fallback substituted into an implementer-authored `STATUS=bailed` envelope which DOES emit `MANIFEST=` (script lines 720-736), so listing it among mechanical / no-`MANIFEST` reasons would have contradicted the implementation. Doc-only; no script behavior changes.
+
 ## [15.11.3] - 2026-05-05
 
 ### Changed
