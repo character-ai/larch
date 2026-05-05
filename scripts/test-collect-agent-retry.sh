@@ -197,7 +197,9 @@ SYSTEM_BASH="/bin/bash"
 BASH_MAJOR=""
 BASH_MINOR=""
 if [[ -x "$SYSTEM_BASH" ]]; then
+    # shellcheck disable=SC2016 # ${BASH_VERSINFO[*]} must be expanded by $SYSTEM_BASH, not the parent shell.
     BASH_MAJOR="$("$SYSTEM_BASH" -c 'echo "${BASH_VERSINFO[0]}"' 2>/dev/null || echo "")"
+    # shellcheck disable=SC2016 # ${BASH_VERSINFO[*]} must be expanded by $SYSTEM_BASH, not the parent shell.
     BASH_MINOR="$("$SYSTEM_BASH" -c 'echo "${BASH_VERSINFO[1]}"' 2>/dev/null || echo "")"
 fi
 
