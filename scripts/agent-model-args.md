@@ -1,6 +1,6 @@
 # scripts/agent-model-args.sh — contract
 
-`scripts/agent-model-args.sh` outputs model (and optionally effort) CLI arguments for external agent tools (Codex, Cursor, Gemini). External-agent launch sites call it when they support configurable model flags — reviews, sketches, voting, dialectic, and implementation for Codex/Cursor, and implementation for Gemini.
+`scripts/agent-model-args.sh` outputs model (and optionally effort) CLI arguments for external agent tools (Codex, Cursor, Gemini). Codex and Cursor launch sites call it for reviews, sketches, voting, dialectic, and implementation. Gemini's launchers (`scripts/launch-gemini-review.sh`, `scripts/launch-gemini-implement.sh`) and health probe (`scripts/check-reviewers.sh`) do NOT call this helper; they resolve the model inline using the same precedence chain so `--model "$GEMINI_MODEL"` (or `-m "$GEMINI_MODEL"`) stays a single quoted argv token. The Gemini arm of this script defines the canonical precedence chain those inline resolvers must mirror.
 
 ## Fallback chain (Codex)
 
