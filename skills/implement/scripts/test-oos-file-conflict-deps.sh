@@ -280,6 +280,41 @@ else
     pass_case "case-x-cap-failure-deletes-stale-output"
 fi
 
+# case-y / case-z: validate that bogus cap env vars exit 2 with a clear error.
+for cap_kind in cluster global; do
+    case_name="case-${cap_kind:0:1}-bogus-cap"
+    case_dir="$TMP_ROOT/$case_name"
+    mkdir -p "$case_dir"
+    case_input="$case_dir/input.md"
+    : > "$case_input"
+    append_oos "$case_input" 1 "First" "Touches skills/foo/a.sh"
+    append_oos "$case_input" 2 "Second" "Touches skills/foo/a.sh"
+    case_output="$case_dir/out.tsv"
+    case_stderr="$case_dir/stderr.txt"
+    if [[ "$cap_kind" == cluster ]]; then
+        expected_substr="OOS_FILE_CONFLICT_CLUSTER_CAP must be a positive integer"
+        set +e
+        OOS_FILE_CONFLICT_CLUSTER_CAP=abc bash "$HELPER" \
+            --input-file "$case_input" --output "$case_output" 2> "$case_stderr"
+        case_status=$?
+        set -e
+    else
+        expected_substr="OOS_FILE_CONFLICT_GLOBAL_CAP must be a positive integer"
+        set +e
+        OOS_FILE_CONFLICT_GLOBAL_CAP=0 bash "$HELPER" \
+            --input-file "$case_input" --output "$case_output" 2> "$case_stderr"
+        case_status=$?
+        set -e
+    fi
+    if [[ "$case_status" != 2 ]]; then
+        fail_case "$case_name" "expected exit 2, got $case_status"
+    elif ! grep -Fq "$expected_substr" "$case_stderr"; then
+        fail_case "$case_name" "stderr missing: $expected_substr"
+    else
+        pass_case "$case_name"
+    fi
+done
+
 echo "---"
 echo "Results: $PASS_COUNT passed, $FAIL_COUNT failed"
 if (( FAIL_COUNT > 0 )); then

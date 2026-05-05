@@ -12,6 +12,15 @@ OUTPUT_FILE=""
 CLUSTER_CAP="${OOS_FILE_CONFLICT_CLUSTER_CAP:-200}"
 GLOBAL_CAP="${OOS_FILE_CONFLICT_GLOBAL_CAP:-500}"
 
+if ! [[ "$CLUSTER_CAP" =~ ^[0-9]+$ ]] || (( CLUSTER_CAP <= 0 )); then
+    echo "ERROR: OOS_FILE_CONFLICT_CLUSTER_CAP must be a positive integer (got: '$CLUSTER_CAP')" >&2
+    exit 2
+fi
+if ! [[ "$GLOBAL_CAP" =~ ^[0-9]+$ ]] || (( GLOBAL_CAP <= 0 )); then
+    echo "ERROR: OOS_FILE_CONFLICT_GLOBAL_CAP must be a positive integer (got: '$GLOBAL_CAP')" >&2
+    exit 2
+fi
+
 usage() {
     echo "Usage: oos-file-conflict-deps.sh --input-file FILE [--output FILE]" >&2
 }
