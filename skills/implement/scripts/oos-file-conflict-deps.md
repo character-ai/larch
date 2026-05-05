@@ -35,7 +35,14 @@ is the Step 9a.1 pre-pass immediately before `/issue --input-file`.
   caps with `OOS_FILE_CONFLICT_CLUSTER_CAP` and
   `OOS_FILE_CONFLICT_GLOBAL_CAP`; production callers rely on the defaults.
 - **Atomic write**. Successful runs write `<out>.tmp` and then `mv` into place.
-  Fatal runs remove the tmp file and leave no observable stable TSV.
+  Fatal runs remove the tmp file and the stable output path so no observable
+  TSV survives the failure.
+- **Exit-code contract**. `0` on success (TSV written, may be empty if no
+  conflicts found); `1` on missing required arguments / unknown flags / parser
+  failure / global-cap exceeded; `2` on invalid env caps
+  (`OOS_FILE_CONFLICT_CLUSTER_CAP`, `OOS_FILE_CONFLICT_GLOBAL_CAP` non-positive
+  or non-numeric). Callers treat any non-zero exit as a no-TSV outcome and
+  proceed without `--intra-batch-deps-file`.
 
 ## /issue merge and SCC behavior
 
