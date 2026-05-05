@@ -1,0 +1,3 @@
+# scripts/ci-decide.sh — contract
+
+`scripts/ci-decide.sh` is the pure decision-matrix helper invoked by `scripts/ci-wait.sh` to map current CI state and loop counters to the next action (`merge`, `already_merged`, `rebase`, `wait`, `bail`). No side effects: input via flags, output via `KEY=value` lines on stdout. Merge is always allowed when CI passes and the branch is up-to-date with main, regardless of safety limits; safety limits (`iteration >= 50`, `rebase_count >= 20`, `fix_attempts >= 3`) only block non-merge actions. Edits must keep the decision matrix in lockstep with the table in the script header and the `ci-wait.md` contract that consumes the action tokens.

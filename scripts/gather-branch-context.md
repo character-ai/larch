@@ -1,0 +1,3 @@
+# scripts/gather-branch-context.sh — contract
+
+`scripts/gather-branch-context.sh` collects the git diff, changed-file list, and commit log for the current branch versus `main`, writing each to a separate file in the caller-supplied `--output-dir` and emitting `DIFF_FILE` / `FILE_LIST_FILE` / `COMMIT_LOG_FILE` paths on stdout. Used by `/implement` Step 5 quick-mode reviewers and by `/review` to feed external Codex / Cursor reviewers a stable, file-backed context bundle. Splitting the three artifacts across files (rather than concatenating) keeps each surface independently parseable and avoids prompt-token bloat when only one is needed.

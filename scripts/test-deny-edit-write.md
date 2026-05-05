@@ -1,0 +1,3 @@
+# scripts/test-deny-edit-write.sh — contract
+
+Regression harness for `scripts/deny-edit-write.sh` (the `/research` skill-scoped PreToolUse hook that confines `Edit` / `Write` / `NotebookEdit` to canonical `/tmp`). Table-driven with `mktemp`-based fixtures. Wired into `make lint` via the `test-deny-edit-write` target. The full contract — including the table of allow / deny cases, the `jq`-absent fallback assertion, and the byte-identity check on the deny envelope — is owned by `scripts/deny-edit-write.md`. Listed in `agent-lint.toml`'s exclude set. Edits to either side must stay in sync in the same PR.

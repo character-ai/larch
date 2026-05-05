@@ -1,0 +1,3 @@
+# scripts/cleanup-tmpdir.sh — contract
+
+`scripts/cleanup-tmpdir.sh` is the guarded `rm -rf` invoked by every skill's terminal cleanup step (`/implement` Step 18, `/design` Step 5b, `/review` cleanup, `/research` cleanup, `/fix-issue` Step 8, `/issue` cleanup). The script validates that `--dir` is non-empty and resolves under `/tmp/` (or `/private/tmp/` on macOS) before removing — this is the load-bearing guard against accidentally deleting a non-tmp directory if a caller passes the wrong variable. Exit 0 on successful removal (or absent dir); exit 1 on validation failure or argument error. Caller-side guards (e.g. `/implement` Step 18 gating on `MANIFEST_EXPORT_OK`) decide WHEN to invoke; this script decides WHETHER the path is safe to remove.

@@ -1,0 +1,3 @@
+# scripts/git-show-stage.sh — contract
+
+`scripts/git-show-stage.sh` wraps `git show :<N>:<file>` to print the content of a specific index stage during a conflicted rebase: stage 1 = common ancestor (base), stage 2 = "ours" (upstream/main during rebase), stage 3 = "theirs" (feature branch commit during rebase). Used by `/implement`'s Conflict Resolution Procedure Phase 1 to read each side of a conflict before classifying it. Per `/implement` NEVER #3, prose describing the sides MUST use "upstream (main)" / "feature branch commit" rather than the inverted-on-rebase `ours`/`theirs` labels — this script's `--stage` numeric argument is the unambiguous interface.

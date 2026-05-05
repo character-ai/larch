@@ -1,0 +1,3 @@
+# scripts/git-sync-local-main.sh — contract
+
+`scripts/git-sync-local-main.sh` fast-forwards the local `main` ref to `origin/main` (silent no-op if local `main` does not exist). Used by the Rebase + Re-bump Sub-procedure step 3 (`skills/implement/references/rebase-rebump-subprocedure.md`) so `classify-bump.sh`'s merge-base computation resolves against the latest remote base — without this, a stale local `main` could yield a stale `BUMP_TYPE` classification on the re-bump pass. The script does NOT check out `main`: it advances the ref via `git fetch origin main:main` (when the working tree is on a feature branch) or via `git pull --ff-only` semantics (when already on `main`).

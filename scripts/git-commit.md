@@ -1,0 +1,3 @@
+# scripts/git-commit.sh — contract
+
+`scripts/git-commit.sh` is the canonical commit primitive: stages the listed files via `git add` then commits via `git commit --file <tmpfile>` (avoids shell-quoting issues with multi-line messages). Appends the standard `Co-Authored-By: Claude` trailer by default; `--no-trailer` opts out. Used at every commit point in `/implement` (Step 4 implementation commit, Step 7 review-fix commit, Step 8a `CHANGELOG` commit on the path that doesn't amend, Step 12c CI-fix commit) and by `/research` / `/issue` for their few commit operations. Skills do NOT call `git commit` directly — they call this script so the trailer policy is enforced from a single source.
