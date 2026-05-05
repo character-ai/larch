@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.7.14] - 2026-05-04
+
+### Added
+
+- Document Gemini CLI install + setup in `docs/installation-and-setup.md`: Homebrew/npm install, OAuth login, `~/.gemini/settings.json` and `~/.gemini/trustedFolders.json` (with the macOS case-sensitivity gotcha), the Gemini CLI 0.40.x bundled-`rg` workaround, and free-tier `MODEL_CAPACITY_EXHAUSTED` vs Google AI Pro/Ultra capacity notes. Closes #1078; sibling integration issues under umbrella #1081 will wire Gemini into reviewer/coder paths.
+
 ## [15.7.13] - 2026-05-04
 
 ### Changed
