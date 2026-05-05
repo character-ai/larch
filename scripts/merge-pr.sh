@@ -174,6 +174,11 @@ if [[ $MERGE_EXIT -eq 0 ]]; then
     exit 0
 fi
 
+# Collapse newlines in tool output so ERROR stays a single key=value line —
+# emit_output() prints `ERROR=$ERROR` with `echo`, and an embedded newline
+# would split it across multiple lines and break key-based parsers downstream.
+ADMIN_OUTPUT_ONE_LINE=$(printf '%s' "$ADMIN_OUTPUT" | tr '\n' ' ')
+MERGE_OUTPUT_ONE_LINE=$(printf '%s' "$MERGE_OUTPUT" | tr '\n' ' ')
 MERGE_RESULT="admin_failed"
-ERROR="Admin merge failed: $ADMIN_OUTPUT; fallback merge failed: $MERGE_OUTPUT"
+ERROR="Admin merge failed: $ADMIN_OUTPUT_ONE_LINE; fallback merge failed: $MERGE_OUTPUT_ONE_LINE"
 exit 0

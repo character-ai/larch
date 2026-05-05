@@ -41,7 +41,14 @@ fi
 
 case "$2" in
     view)
-        printf '%s\n' "${GH_MERGE_STATE:-CLEAN}"
+        # __EMPTY__ sentinel renders an empty mergeStateStatus line (otherwise
+        # bash's `:-` would treat the empty value as "use default"); :- keeps
+        # CLEAN as the default for tests that do not set the variable.
+        if [[ "${GH_MERGE_STATE:-CLEAN}" == "__EMPTY__" ]]; then
+            printf ''
+        else
+            printf '%s\n' "${GH_MERGE_STATE:-CLEAN}"
+        fi
         ;;
     checks)
         if [[ -n "${GH_CHECKS_JSON:-}" ]]; then
@@ -185,6 +192,38 @@ run_case "ci_gate" \
 assert_stdout_contains "ci_gate" "MERGE_RESULT=ci_not_ready" "E2: non-pass CI emits ci_not_ready"
 assert_exact_command_count "ci_gate" "pr merge 123 --repo owner/repo --squash --admin" "0" "E2: non-pass CI skips admin merge"
 assert_exact_command_count "ci_gate" "pr merge 123 --repo owner/repo --squash" "0" "E2: non-pass CI skips plain merge"
+
+echo
+echo "Sub-test F: default path emits admin_failed when both --admin and plain merges fail"
+run_case "admin_failed" \
+    env GH_MERGE_STATE=BLOCKED GH_ADMIN_EXIT=1 GH_ADMIN_OUTPUT="admin denied"$'\n'"second line" GH_PLAIN_EXIT=1 GH_PLAIN_OUTPUT="plain denied"$'\n'"second line" \
+    bash "$REPO_ROOT/scripts/merge-pr.sh" --pr 123 --repo owner/repo
+assert_stdout_contains "admin_failed" "MERGE_RESULT=admin_failed" "F: both-failed emits admin_failed"
+assert_exact_line_order "admin_failed" "pr merge 123 --repo owner/repo --squash --admin" "pr merge 123 --repo owner/repo --squash" "F: --admin attempted before plain fallback"
+# ERROR must be a single line — collapsed newlines so key=value parsing stays clean.
+ERROR_LINE_COUNT="$(grep -c '^ERROR=' "$TMPDIR_BASE/admin_failed/stdout.log" || true)"
+if [[ "$ERROR_LINE_COUNT" == "1" ]]; then
+    ok "F: ERROR is a single line"
+else
+    fail "F: ERROR is a single line (got $ERROR_LINE_COUNT)"
+    sed 's/^/    stdout: /' "$TMPDIR_BASE/admin_failed/stdout.log"
+fi
+
+echo
+echo "Sub-test G: empty / UNKNOWN mergeStateStatus short-circuits to error"
+run_case "empty_state" \
+    env GH_MERGE_STATE=__EMPTY__ GH_ADMIN_EXIT=0 GH_PLAIN_EXIT=0 \
+    bash "$REPO_ROOT/scripts/merge-pr.sh" --pr 123 --repo owner/repo
+assert_stdout_contains "empty_state" "MERGE_RESULT=error" "G1: empty mergeStateStatus emits error"
+assert_exact_command_count "empty_state" "pr merge 123 --repo owner/repo --squash --admin" "0" "G1: empty mergeStateStatus skips admin merge"
+assert_exact_command_count "empty_state" "pr merge 123 --repo owner/repo --squash" "0" "G1: empty mergeStateStatus skips plain merge"
+
+run_case "unknown_state" \
+    env GH_MERGE_STATE=UNKNOWN GH_ADMIN_EXIT=0 GH_PLAIN_EXIT=0 \
+    bash "$REPO_ROOT/scripts/merge-pr.sh" --pr 123 --repo owner/repo
+assert_stdout_contains "unknown_state" "MERGE_RESULT=error" "G2: UNKNOWN mergeStateStatus emits error"
+assert_exact_command_count "unknown_state" "pr merge 123 --repo owner/repo --squash --admin" "0" "G2: UNKNOWN mergeStateStatus skips admin merge"
+assert_exact_command_count "unknown_state" "pr merge 123 --repo owner/repo --squash" "0" "G2: UNKNOWN mergeStateStatus skips plain merge"
 
 echo
 if [[ "$FAIL_COUNT" -eq 0 ]]; then
