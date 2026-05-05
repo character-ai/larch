@@ -40,6 +40,6 @@ SIDECAR_LOG=<path>             # path to run-external-agent.sh chatter
 
 **Edit-in-sync**: `scripts/run-external-agent.sh`, `scripts/agent-model-args.sh`, `agents/codex-implementer.md`, `skills/implement/references/codex-manifest-schema.md`. Differs from `launch-codex-review.sh` in: (a) progress chatter redirected to sidecar log; (b) prompt composition in shell (review launcher passes prompt as a single argv string).
 
-**Test harness**: this launcher has no dedicated harness today. `skills/implement/scripts/test-step2-dispatch.sh` exercises only the dispatcher branches that do NOT call this launcher (claude_fallback, argument validation, resume-cap bail). Manual / end-to-end testing is the current coverage path for the launcher's `KEY=VALUE` envelope, sidecar-log redirection, and prompt composition. See `skills/implement/scripts/test-step2-dispatch.md` for the dispatcher harness's documented coverage gaps.
+**Test harness**: `skills/implement/scripts/test-codex-implementer.sh` PATH-stubs `codex` and exercises flag validation, timeout validation, missing input files, the five-line `KEY=VALUE` stdout envelope, transcript detection via `--output-last-message`, Codex argv shape/model forwarding, and resume prompt composition. `skills/implement/scripts/test-step2-dispatch.sh` remains the dispatcher harness for Step 2 branches that do not call this launcher (claude_fallback, argument validation, resume-cap bail).
 
-**Makefile wiring**: indirectly exercised by `make test-step2-dispatch` (the dispatcher harness).
+**Makefile wiring**: directly exercised by `make test-codex-implementer` and included in `make test-harnesses-2`; dispatcher-only paths remain covered by `make test-step2-dispatch`.

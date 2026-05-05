@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.7] - 2026-05-05
+
+### Added
+
+- Add `skills/implement/scripts/test-codex-implementer.sh` (with sibling `test-codex-implementer.md`), an offline launcher-contract harness for `scripts/launch-codex-implement.sh`. Mirrors the `test-cursor-implementer.sh` / `test-gemini-implementer.sh` shape: PATH-stubs `codex`, exercises required-flag validation, bad/zero/multi-digit-zero (`0`/`00`/`000`) timeout rejection, missing-input-file rejection, the five-line KV stdout envelope, transcript capture, the Codex argv shape (`exec`, `--full-auto`, `-C`, `--output-last-message`, model args, `--` separator before the prompt), model-arg forwarding (`LARCH_CODEX_MODEL=stub-codex-model`), and resume-block prompt composition under `--answers-file`. Wires `test-codex-implementer` into the `Makefile` `.PHONY` list and into `test-harnesses-2`, and references the new harness from `skills/implement/SKILL.md` Step 2 launcher coverage and `docs/linting.md`. Closes #1197.
+
 ## [15.12.6] - 2026-05-05
 
 ### Changed
