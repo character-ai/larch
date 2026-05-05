@@ -167,6 +167,10 @@ case "\${1:-} \${2:-} \${3:-}" in
     echo "\${STUB_GIT_DIR:-$SANDBOX/repo/.git}"
     ;;
   "status --porcelain ")
+    if [ "\${STUB_STATUS_RC:-0}" -ne 0 ]; then
+      echo "\${STUB_STATUS_ERROR:-status failed}" >&2
+      exit "\${STUB_STATUS_RC:-1}"
+    fi
     if [ "\${STUB_GIT_DIRTY:-false}" = "true" ]; then
       echo " M file.txt"
     fi
@@ -180,6 +184,18 @@ case "\${1:-} \${2:-} \${3:-}" in
     ;;
   "stash list -1")
     echo "\${STUB_STASH_REF:-stash@{0}}"
+    ;;
+  "stash list --format=%gD"|"stash list --format=%gD %gs")
+    # Label-matching lookup: on success the stub emits a synthesized line
+    # whose ref is STUB_STASH_REF and whose message contains the label that
+    # the production code wrote with \`stash push -u -m\`. STUB_STASH_LABEL
+    # is set by the test before invocation; if absent, return nothing so
+    # the production code falls back to \`stash list -1\`.
+    if [ "\${STUB_STASH_LABEL_OUT:-}" = "skip" ]; then
+      :
+    else
+      echo "\${STUB_STASH_REF:-stash@{0}} On stalled-branch: \${STUB_STASH_LABEL:-larch-stalled-456-12d 20260505T000000Z}"
+    fi
     ;;
   *)
     echo "unexpected git invocation: \$*" >&2
@@ -328,6 +344,22 @@ assert_file_contains "ISSUE_NUMBER=456" "$SANDBOX/repo/.git/larch-stalled-run.tx
 assert_file_contains "ISSUE_URL=https://github.example/owner/repo/issues/456" "$SANDBOX/repo/.git/larch-stalled-run.txt" "teardown: dirty sentinel records URL"
 assert_file_contains "STALL_STEP=8b" "$SANDBOX/repo/.git/larch-stalled-run.txt" "teardown: dirty sentinel records stall step"
 assert_file_contains "STASH_REF=stash@{0}" "$SANDBOX/repo/.git/larch-stalled-run.txt" "teardown: dirty sentinel records stash ref"
+
+write_state "$STATE" STALL_TRACKING=true STALL_STEP=8b
+rm -f "$SANDBOX/stash-argv.txt" "$SANDBOX/repo/.git/larch-stalled-run.txt"
+: > "$SANDBOX/rename-argv.txt"
+OUT=$(STUB_STATUS_RC=1 run_subject teardown --state-file "$STATE" --implement-tmpdir "$SANDBOX/tmp")
+assert_contains "git status failed" "$OUT" "teardown: status failure warns and skips stash"
+if [ ! -e "$SANDBOX/stash-argv.txt" ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: teardown: status failure means no stash attempted"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: teardown: status failure should not attempt stash"
+fi
+# Sentinel is still written (no stash, but we record the stall context).
+assert_contains "SENTINEL_WRITTEN=true" "$OUT" "teardown: status failure still writes sentinel"
+assert_contains "STASH_REF=" "$OUT" "teardown: status failure emits empty stash ref"
 
 write_state "$STATE" STALL_TRACKING=true
 : > "$SANDBOX/rename-argv.txt"

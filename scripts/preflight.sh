@@ -45,11 +45,6 @@ if [[ "$SKIP_CLEAN_CHECK" == "false" ]]; then
     fi
 fi
 
-sentinel_path=$(git rev-parse --git-path larch-stalled-run.txt 2>/dev/null || echo "")
-if [[ -n "$sentinel_path" ]]; then
-    rm -f "$sentinel_path" 2>/dev/null || true
-fi
-
 # Always fetch to ensure origin/main is current. Rebase requires being on main.
 if ! git fetch origin main --quiet 2>/dev/null; then
     echo "PREFLIGHT=fail"
@@ -63,6 +58,17 @@ if [[ "$SKIP_BRANCH_CHECK" == "false" && "$SKIP_CLEAN_CHECK" == "false" ]]; then
         echo "PREFLIGHT=fail"
         echo "PREFLIGHT_ERROR=git rebase origin/main failed."
         exit 3
+    fi
+fi
+
+# Clear the stalled-run sentinel only after every requested check has passed
+# AND the working tree is genuinely clean. We must NOT delete it when
+# --skip-clean-check is set with a dirty tree — recovery metadata for the
+# prior stall is the only thing connecting the leftover edits to an issue.
+if [[ "$SKIP_CLEAN_CHECK" == "false" || -z "$(git status --porcelain 2>/dev/null)" ]]; then
+    sentinel_path=$(git rev-parse --git-path larch-stalled-run.txt 2>/dev/null || echo "")
+    if [[ -n "$sentinel_path" ]]; then
+        rm -f "$sentinel_path" 2>/dev/null || true
     fi
 fi
 

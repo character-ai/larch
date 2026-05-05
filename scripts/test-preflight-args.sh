@@ -48,6 +48,17 @@ assert_not_exists() {
     fi
 }
 
+assert_exists() {
+    local path=$1 label=$2
+    if [ -e "$path" ]; then
+        PASS=$((PASS + 1))
+        echo "PASS: $label"
+    else
+        FAIL=$((FAIL + 1))
+        echo "FAIL: $label (path missing: $path)"
+    fi
+}
+
 run_preflight() {
     local repo=$1
     shift
@@ -133,6 +144,35 @@ printf 'ISSUE_NUMBER=1\n' > "$sentinel_path"
 run_preflight "$repo"
 assert_rc "$RC" 0 "sentinel: clean main preflight succeeds"
 assert_not_exists "$sentinel_path" "sentinel: clean check clears stalled-run sentinel"
+
+# --skip-clean-check + dirty tree: sentinel must NOT be deleted, because the
+# tree still carries the leftover edits the sentinel describes.
+repo=$(make_repo sentinel-skip-clean-dirty)
+sentinel_path=$(cd "$repo" && git rev-parse --git-path larch-stalled-run.txt)
+case "$sentinel_path" in
+    /*) ;;
+    *) sentinel_path="$repo/$sentinel_path" ;;
+esac
+printf 'ISSUE_NUMBER=2\nSTASH_REF=stash@{0}\n' > "$sentinel_path"
+printf 'dirty\n' >> "$repo/file.txt"
+run_preflight "$repo" --skip-clean-check
+assert_rc "$RC" 0 "sentinel: --skip-clean-check + dirty preflight succeeds"
+assert_exists "$sentinel_path" "sentinel: --skip-clean-check + dirty preserves sentinel"
+
+# fetch-failure path: even though preflight fails, the sentinel should still be
+# present (we removed it only on the success path).
+repo=$(make_repo sentinel-fetch-fail)
+sentinel_path=$(cd "$repo" && git rev-parse --git-path larch-stalled-run.txt)
+case "$sentinel_path" in
+    /*) ;;
+    *) sentinel_path="$repo/$sentinel_path" ;;
+esac
+printf 'ISSUE_NUMBER=3\n' > "$sentinel_path"
+# Break the origin remote so `git fetch origin main` fails.
+git -C "$repo" remote set-url origin "/this/path/does/not/exist" 2>/dev/null
+run_preflight "$repo"
+assert_rc "$RC" 3 "sentinel: fetch failure exits 3"
+assert_exists "$sentinel_path" "sentinel: fetch failure preserves sentinel"
 
 echo
 echo "Results: $PASS passed, $FAIL failed"

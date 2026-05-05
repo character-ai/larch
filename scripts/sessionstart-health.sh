@@ -5,6 +5,11 @@
 #
 # INVARIANT: all dynamic content MUST be interpolated only via `jq -n --arg`.
 # The jq-missing fallback may hand-craft JSON only from fixed ASCII literals.
+# This holds because every dynamic probe (working-tree, stash, interrupted-op,
+# unmerged-branch, sentinel) is gated on `JQ_AVAILABLE=true && GIT_AVAILABLE=true`,
+# so when jq is missing, MSG contains only the fixed jq-missing/git-missing
+# literals from `append_msg` above. Future probe additions MUST preserve that
+# gating or move their content into a jq-emitted JSON path.
 #
 # SessionStart is non-blocking by spec: the script ALWAYS exits 0. A failing
 # probe produces advisory JSON on stdout; a healthy environment produces
@@ -62,11 +67,16 @@ if [[ "$JQ_AVAILABLE" == "true" && "$GIT_AVAILABLE" == "true" ]]; then
             append_msg "larch hook preflight: interrupted rebase/merge/cherry-pick state on disk."
         fi
 
-        if ! unmerged_branches=$(git branch --no-merged main 2>/dev/null | grep -v '^\*'); then
-            unmerged_branches=""
-        fi
-        if [[ -n "$unmerged_branches" ]]; then
-            append_msg "larch hook preflight: local feature branch(es) not merged into main; consider deleting or pushing."
+        # Only probe unmerged branches when local `main` actually exists; clones
+        # whose integration branch is `master` (or where `main` was never created)
+        # would otherwise silently skip with a misleading-empty result.
+        if git rev-parse --verify --quiet refs/heads/main >/dev/null 2>&1; then
+            if ! unmerged_branches=$(git branch --no-merged main 2>/dev/null | grep -v '^\*'); then
+                unmerged_branches=""
+            fi
+            if [[ -n "$unmerged_branches" ]]; then
+                append_msg "larch hook preflight: local feature branch(es) not merged into main; consider deleting or pushing."
+            fi
         fi
 
         if ! sentinel_path=$(git rev-parse --git-path larch-stalled-run.txt 2>/dev/null); then
@@ -78,8 +88,14 @@ if [[ "$JQ_AVAILABLE" == "true" && "$GIT_AVAILABLE" == "true" ]]; then
             stash_ref=$(awk -F= '$1 == "STASH_REF" {print substr($0, index($0, "=") + 1); exit}' "$sentinel_path" 2>/dev/null || true)
             issue_number=${issue_number:-unknown}
             stall_step=${stall_step:-unknown}
-            stash_ref=${stash_ref:-no stash}
-            append_msg "larch hook preflight: a prior /implement run for #${issue_number} stalled at step ${stall_step}. Working-tree edits stashed as ${stash_ref}. Resume via 'git stash apply ${stash_ref}' or drop via 'git stash drop ${stash_ref}'."
+            # Branch on whether a stash was actually recorded — empty STASH_REF
+            # means the prior run had a clean tree at stall time (or the
+            # auto-stash failed), and `git stash apply no stash` is invalid.
+            if [[ -n "$stash_ref" ]]; then
+                append_msg "larch hook preflight: a prior /implement run for #${issue_number} stalled at step ${stall_step}. Working-tree edits stashed as ${stash_ref}. Resume via 'git stash apply ${stash_ref}' or drop via 'git stash drop ${stash_ref}'."
+            else
+                append_msg "larch hook preflight: a prior /implement run for #${issue_number} stalled at step ${stall_step}. No working-tree edits were stashed; inspect 'git status' / the issue for context."
+            fi
         fi
     fi
 fi

@@ -275,6 +275,40 @@ ctx=$(ctx_from_stdout "$(cat "$tmp/c10.out")")
 assert_contains "$ctx" "prior /implement run for #77 stalled at step 12d" "case 10: sentinel warning"
 assert_contains "$ctx" "stash@{0}" "case 10: sentinel stash ref"
 
+echo "=== Case 10b: stalled-run sentinel with empty STASH_REF emits no-stash guidance ==="
+repo=$(make_repo sentinel-no-stash)
+sentinel=$(cd "$repo" && git rev-parse --git-path larch-stalled-run.txt)
+case "$sentinel" in
+    /*) ;;
+    *) sentinel="$repo/$sentinel" ;;
+esac
+cat > "$sentinel" <<'SENTINEL'
+ISSUE_NUMBER=88
+ISSUE_URL=https://github.example/owner/repo/issues/88
+STALL_STEP=8b
+STASH_REF=
+TIMESTAMP=2026-05-05T00:00:00Z
+SENTINEL
+rc=$(run_from_dir "$tmp/real_bin" "$repo" "$tmp/c10b.out" "$tmp/c10b.err")
+assert_eq "$rc" "0" "case 10b: exit code 0"
+ctx=$(ctx_from_stdout "$(cat "$tmp/c10b.out")")
+assert_contains "$ctx" "prior /implement run for #88 stalled at step 8b" "case 10b: sentinel warning still names issue+step"
+assert_contains "$ctx" "No working-tree edits were stashed" "case 10b: empty STASH_REF emits no-stash guidance"
+assert_not_contains "$ctx" "git stash apply" "case 10b: no fabricated git stash apply command"
+assert_not_contains "$ctx" "no stash" "case 10b: does not emit literal 'no stash' as a fake ref"
+
+echo "=== Case 10c: master-only repo skips unmerged-branch probe ==="
+repo=$(make_repo master-only)
+# Rename main to master so the repo has only `master`, no `main`.
+(cd "$repo" && git branch -m main master 2>/dev/null) || true
+# Add a feature branch off master to make sure --no-merged would fire if main existed.
+(cd "$repo" && git checkout -b feature/x 2>/dev/null && echo x > x.txt && git add x.txt && git -c user.email=test@example.com -c user.name=test commit -q -m feat) >/dev/null 2>&1
+(cd "$repo" && git checkout master 2>/dev/null) >/dev/null 2>&1
+rc=$(run_from_dir "$tmp/real_bin" "$repo" "$tmp/c10c.out" "$tmp/c10c.err")
+assert_eq "$rc" "0" "case 10c: exit code 0"
+ctx=$(ctx_from_stdout "$(cat "$tmp/c10c.out")")
+assert_not_contains "$ctx" "not merged into main" "case 10c: no unmerged-branch advisory when main does not exist"
+
 echo "=== Case 11: not inside a work-tree skips git-state probes ==="
 rc=$(run_from_dir "$tmp/real_bin" "$tmp/outside" "$tmp/c11.out" "$tmp/c11.err")
 assert_eq "$rc" "0" "case 11: exit code 0"

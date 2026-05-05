@@ -353,7 +353,13 @@ auto_stash_stalled_changes() {
     status_out=$(git -C "$repo_root" status --porcelain 2>/dev/null)
     rc=$?
     set -e
-    if [ "$rc" -ne 0 ] || [ -z "$status_out" ]; then
+    # On `git status` failure we cannot tell clean from dirty; warn so the
+    # operator does not falsely read teardown silence as proof of a clean tree.
+    if [ "$rc" -ne 0 ]; then
+        warn_line '**⚠ 18: auto-stash skipped: git status failed; cannot assert clean tree. Continuing.**'
+        return 0
+    fi
+    if [ -z "$status_out" ]; then
         return 0
     fi
 
@@ -370,12 +376,28 @@ auto_stash_stalled_changes() {
         return 0
     fi
 
+    # Resolve the stash ref by matching our label rather than blindly taking
+    # `stash list -1`. Concurrent activity could insert another stash on top;
+    # `-1` would then surface someone else's ref. We grep for the literal
+    # label we just pushed.
     set +e
-    stash_ref=$(git -C "$repo_root" stash list -1 --format='%gD' 2>/dev/null)
+    stash_ref=$(git -C "$repo_root" stash list --format='%gD %gs' 2>/dev/null \
+        | grep -F -- "$label" \
+        | head -n 1 \
+        | awk '{print $1}')
     rc=$?
     set -e
-    if [ "$rc" -ne 0 ]; then
-        stash_ref=""
+    if [ "$rc" -ne 0 ] || [ -z "$stash_ref" ]; then
+        # Fallback to the previous heuristic; emit a warning so a missing or
+        # mismatched ref is observable.
+        set +e
+        stash_ref=$(git -C "$repo_root" stash list -1 --format='%gD' 2>/dev/null)
+        rc=$?
+        set -e
+        if [ "$rc" -ne 0 ] || [ -z "$stash_ref" ]; then
+            warn_line '**⚠ 18: auto-stash succeeded but stash ref could not be resolved. Continuing.**'
+            stash_ref=""
+        fi
     fi
     AUTO_STASH_REF=$stash_ref
 }
