@@ -2,7 +2,7 @@
 
 **Purpose**: Launch Gemini as a generic-only code reviewer and normalize the Gemini CLI JSON envelope into the plain-text reviewer output consumed by `collect-agent-results.sh`.
 
-**Invocation**: `gemini -m "$GEMINI_MODEL" -p "$PROMPT" -o json --skip-trust --approval-mode yolo`, where `$GEMINI_MODEL` resolves as `${LARCH_GEMINI_MODEL:-${CLAUDE_PLUGIN_OPTION_GEMINI_MODEL:-gemini-2.5-pro}}`. The same precedence is applied by `scripts/check-reviewers.sh` for the Gemini health probe so probe and review use the same model and approval posture.
+**Invocation**: `gemini -m "$GEMINI_MODEL" -p "$PROMPT" -o json --skip-trust --approval-mode yolo`, where `$GEMINI_MODEL` resolves as `${LARCH_GEMINI_MODEL:-${CLAUDE_PLUGIN_OPTION_GEMINI_MODEL:-gemini-2.5-pro}}`. The same `$GEMINI_MODEL` precedence is applied by `scripts/check-reviewers.sh` for the Gemini health probe so probe and reviewer use the same model. The probe deliberately stays at `--approval-mode plan` (least privilege) — it sends a fixed `"Respond with OK"` prompt and never invokes a tool.
 
 ## Invariants
 

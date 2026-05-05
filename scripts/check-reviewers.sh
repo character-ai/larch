@@ -146,7 +146,7 @@ start_probe() {
                 --output "$output" \
                 --timeout 60 \
                 --capture-stdout-only \
-                -- gemini -m "$probe_model" -p "Respond with OK" -o json --skip-trust --approval-mode yolo \
+                -- gemini -m "$probe_model" -p "Respond with OK" -o json --skip-trust --approval-mode plan \
                 >"$PROBE_DIR/gemini-wrapper-attempt${attempt}.log" 2>&1 &
             ;;
         *)
