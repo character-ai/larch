@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.3] - 2026-05-05
+
+### Removed
+
+- Drop the dead trailing for-loop and its misleading comment block from `scripts/hydrate-anchor.sh`. The loop body was a single no-op (`:`) yet the surrounding comment claimed to "strip exactly one trailing newline that awk's `>>` reliably appends per `print`" — behavior that was never actually implemented. The hydrate→assemble round-trip is byte-stable in practice via the awk-level `>>` accumulation symmetry between `hydrate-anchor.sh` and `assemble-anchor.sh`. The script's section extraction and stdout contract (`HYDRATED=` / `SECTIONS=` / `ERROR=`) are unchanged. Closes #1159.
+
 ## [15.12.2] - 2026-05-05
 
 ### Fixed
