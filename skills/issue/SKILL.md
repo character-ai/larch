@@ -146,7 +146,7 @@ if ! gh api "/repos/$REPO/issues/$BLOCKED_BY_ISSUE" >"$PROBE_OUT" 2>"$PROBE_ERR"
 fi
 
 # Parse all required fields in one jq pass.
-read -r BLOCKED_BY_ISSUE_STATE BLOCKED_BY_ISSUE_ID BLOCKED_BY_ISSUE_TITLE BLOCKED_BY_ISSUE_URL BLOCKED_BY_ISSUE_IS_PR < <(
+IFS=$'\t' read -r BLOCKED_BY_ISSUE_STATE BLOCKED_BY_ISSUE_ID BLOCKED_BY_ISSUE_TITLE BLOCKED_BY_ISSUE_URL BLOCKED_BY_ISSUE_IS_PR < <(
   jq -r '[.state, (.id|tostring), .title, .html_url, ((.pull_request != null)|tostring)] | @tsv' "$PROBE_OUT"
 )
 

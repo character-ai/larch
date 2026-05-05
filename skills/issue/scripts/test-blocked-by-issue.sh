@@ -46,6 +46,9 @@ assert_present "step4-probe-gh-api" \
 assert_present "step4-probe-pr-check" \
     "pull_request != null"
 
+assert_present "step4-probe-tab-ifs" \
+    'IFS=$'"'"'\t'"'"' read -r BLOCKED_BY_ISSUE_STATE'
+
 assert_present "step4-probe-state-check" \
     '[[ "$BLOCKED_BY_ISSUE_STATE" != "open" ]]'
 
