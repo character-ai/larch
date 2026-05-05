@@ -106,11 +106,7 @@ Consolidated NEVER rules collected from the procedural steps below. Each rule st
 
 Define `branch_info_supplied=true` only when the caller passed valid `--branch-info` containing all 4 keys: `IS_MAIN`, `IS_USER_BRANCH`, `USER_PREFIX`, and `CURRENT_BRANCH`. `SESSION_ENV_PATH` being non-empty is not a nesting signal by itself; `--session-env` is an exposed argument and can be passed manually.
 
-If `branch_info_supplied=true` (trusted caller-supplied branch state, normally from `/implement`), the caller is presumed to have already run the entry gate. The four key values are accepted as-is and not cross-checked against the working tree (see the `--branch-info` "Sharp edge" note in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/flags.md`). Run setup with `--skip-branch-check`:
-
-```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix claude-design --skip-branch-check --skip-slack-check --skip-repo-check --check-reviewers [--caller-env "$SESSION_ENV_PATH"] [--skip-codex-probe] [--skip-cursor-probe] [--write-health "${SESSION_ENV_PATH}.health"]
-```
+If `branch_info_supplied=true` (trusted caller-supplied branch state, normally from `/implement`), use the parsed `--branch-info` values for `CURRENT_BRANCH`, `IS_MAIN`, `IS_USER_BRANCH`, and `USER_PREFIX`. The four key values are accepted as-is and not cross-checked against the working tree (see the `--branch-info` "Sharp edge" note in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/flags.md`). `/implement` is presumed to have already run the entry gate, so `session-entry-gate.sh` below will emit `SKIP_BRANCH_CHECK=true`.
 
 If `branch_info_supplied=false` (standalone, regardless of `SESSION_ENV_PATH`), check the current branch before setup:
 
@@ -118,13 +114,33 @@ If `branch_info_supplied=false` (standalone, regardless of `SESSION_ENV_PATH`), 
 ${CLAUDE_PLUGIN_ROOT}/scripts/create-branch.sh --check
 ```
 
-Parse `CURRENT_BRANCH`, `IS_MAIN`, `IS_USER_BRANCH`, and `USER_PREFIX` from stdout. If `IS_USER_BRANCH=true`, run setup with `--skip-branch-check`:
+Parse `CURRENT_BRANCH`, `IS_MAIN`, `IS_USER_BRANCH`, and `USER_PREFIX` from stdout.
+
+Run the shared entry gate helper using the parsed branch facts. Its contract lives at `${CLAUDE_PLUGIN_ROOT}/scripts/session-entry-gate.md`.
+
+```bash
+${CLAUDE_PLUGIN_ROOT}/scripts/session-entry-gate.sh \
+  --mode design \
+  --current-branch "$CURRENT_BRANCH" \
+  --is-main "$IS_MAIN" \
+  --is-user-branch "$IS_USER_BRANCH" \
+  --user-prefix "$USER_PREFIX" \
+  --branch-info-supplied "$branch_info_supplied"
+```
+
+Parse `ENTRY_GATE` and `SKIP_BRANCH_CHECK` from this script's stdout in isolation. Do not concatenate it with `create-branch.sh --check` output for a single `eval`. On non-zero exit, print the raw `GATE_ERROR=...` line first, then print the normalized internal-contract message and abort:
+
+**⚠ /design: internal Step 0 contract violation in session-entry-gate.sh. Aborting.**
+
+Do NOT print the clean-main banner for `GATE_ERROR`; that banner is reserved for `session-setup.sh` `PREFLIGHT_ERROR`.
+
+If `SKIP_BRANCH_CHECK=true`, run setup with `--skip-branch-check`:
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix claude-design --skip-branch-check --skip-slack-check --skip-repo-check --check-reviewers [--caller-env "$SESSION_ENV_PATH"] [--skip-codex-probe] [--skip-cursor-probe] [--write-health "${SESSION_ENV_PATH}.health"]
 ```
 
-Otherwise, run setup without `--skip-branch-check`; `preflight.sh` runs in default mode and enforces clean `main` plus fetch/rebase before design work begins:
+If `SKIP_BRANCH_CHECK=false`, run setup without `--skip-branch-check`; `preflight.sh` runs in default mode and enforces clean `main` plus fetch/rebase before design work begins:
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix claude-design --skip-slack-check --skip-repo-check --check-reviewers [--caller-env "$SESSION_ENV_PATH"] [--skip-codex-probe] [--skip-cursor-probe] [--write-health "${SESSION_ENV_PATH}.health"]
