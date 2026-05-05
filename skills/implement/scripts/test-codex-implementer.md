@@ -7,7 +7,7 @@
 - Bad timeout exits 2.
 - Zero-valued timeouts (`0`, `00`, `000`) exit 2 and report the positive-integer timeout contract.
 - Positive leading-zero timeouts (e.g. `010`) are accepted: launcher exits 0 with the standard five-line stdout envelope. Pins acceptance of the leading-zero positive form so a future refactor tightening the digit-only `case` validation (e.g. to `^[1-9][0-9]*$`) breaks CI. Note: the stub exits immediately, so this does NOT prove that downstream treats `010` as decimal 10 vs. octal 8 — only contract stability at the launcher boundary.
-- Missing input files exit 2 — specifically: missing `--plan-file`, missing `--feature-file`, missing `--agent-prompt`, and `--answers-file` pointing at a non-existent path.
+- Missing input files exit 2 with the launcher's literal validation messages — specifically: missing `--plan-file` (`plan file not found`), missing `--feature-file` (`feature file not found`), missing `--agent-prompt` (`agent prompt not found`), and `--answers-file` pointing at a non-existent path (`--answers-file given but path does not exist`).
 - PATH-stubbed `codex` writes a minimal valid `manifest.json`; the launcher emits exactly five KV stdout lines and no progress chatter.
 - Codex's `--output-last-message` transcript path receives the stubbed output payload.
 - Codex argv shape includes `exec`, `--full-auto`, `-C "$PWD"`, `--output-last-message`, and model/effort args from `scripts/agent-model-args.sh --tool codex --with-effort`.

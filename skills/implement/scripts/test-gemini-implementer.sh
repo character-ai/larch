@@ -100,8 +100,12 @@ EXIT=0
     --plan-file "$SCRATCH/missing-plan.md" \
     --feature-file "$FEATURE" \
     --agent-prompt "$AGENT_PROMPT" \
-    --timeout 30 >/dev/null 2>&1 || EXIT=$?
-if [[ "$EXIT" == "2" ]]; then pass; else fail 3 "missing plan should exit 2, got $EXIT"; fi
+    --timeout 30 >/dev/null 2>"$SCRATCH/t3-stderr.txt" || EXIT=$?
+if [[ "$EXIT" == "2" ]] && grep -Fq -- "plan file not found" "$SCRATCH/t3-stderr.txt"; then
+    pass
+else
+    fail 3 "missing plan should exit 2 with stderr literal 'plan file not found', got $EXIT"
+fi
 
 # Test 3a: missing feature-file exits 2.
 EXIT=0
@@ -113,8 +117,12 @@ EXIT=0
     --plan-file "$PLAN" \
     --feature-file "$SCRATCH/missing-feature.txt" \
     --agent-prompt "$AGENT_PROMPT" \
-    --timeout 30 >/dev/null 2>&1 || EXIT=$?
-if [[ "$EXIT" == "2" ]]; then pass; else fail 3a "missing feature should exit 2, got $EXIT"; fi
+    --timeout 30 >/dev/null 2>"$SCRATCH/t3a-stderr.txt" || EXIT=$?
+if [[ "$EXIT" == "2" ]] && grep -Fq -- "feature file not found" "$SCRATCH/t3a-stderr.txt"; then
+    pass
+else
+    fail 3a "missing feature should exit 2 with stderr literal 'feature file not found', got $EXIT"
+fi
 
 # Test 3b: missing agent-prompt exits 2.
 EXIT=0
@@ -126,8 +134,12 @@ EXIT=0
     --plan-file "$PLAN" \
     --feature-file "$FEATURE" \
     --agent-prompt "$SCRATCH/missing-agent-prompt.md" \
-    --timeout 30 >/dev/null 2>&1 || EXIT=$?
-if [[ "$EXIT" == "2" ]]; then pass; else fail 3b "missing agent-prompt should exit 2, got $EXIT"; fi
+    --timeout 30 >/dev/null 2>"$SCRATCH/t3b-stderr.txt" || EXIT=$?
+if [[ "$EXIT" == "2" ]] && grep -Fq -- "agent prompt not found" "$SCRATCH/t3b-stderr.txt"; then
+    pass
+else
+    fail 3b "missing agent-prompt should exit 2 with stderr literal 'agent prompt not found', got $EXIT"
+fi
 
 # Test 3c: --answers-file pointing at non-existent path exits 2.
 EXIT=0
@@ -140,8 +152,12 @@ EXIT=0
     --feature-file "$FEATURE" \
     --agent-prompt "$AGENT_PROMPT" \
     --timeout 30 \
-    --answers-file "$SCRATCH/missing-answers.json" >/dev/null 2>&1 || EXIT=$?
-if [[ "$EXIT" == "2" ]]; then pass; else fail 3c "missing answers-file should exit 2, got $EXIT"; fi
+    --answers-file "$SCRATCH/missing-answers.json" >/dev/null 2>"$SCRATCH/t3c-stderr.txt" || EXIT=$?
+if [[ "$EXIT" == "2" ]] && grep -Fq -- "--answers-file given but path does not exist" "$SCRATCH/t3c-stderr.txt"; then
+    pass
+else
+    fail 3c "missing answers-file should exit 2 with stderr literal '--answers-file given but path does not exist', got $EXIT"
+fi
 
 STUB_BIN="$SCRATCH/bin"
 mkdir -p "$STUB_BIN"
