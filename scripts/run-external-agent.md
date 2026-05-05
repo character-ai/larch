@@ -33,7 +33,7 @@ The `<output>.meta` sidecar is a line-oriented file: one `KEY=VALUE` record per 
 This grammar is shared by every script that writes a sidecar consumed by `scripts/collect-agent-results.sh`. Today that means this wrapper plus `scripts/launch-gemini-review.sh::write_meta()`, which emits the same key set with `TOOL=gemini`. Maintainers editing either writer (or adding a new one) must keep all writers consistent with this contract.
 
 - `TOOL` follows the allowlist contract in "Tool labels" above.
-- `TIMEOUT` is accepted only after `--timeout` validates as a positive integer.
+- `TIMEOUT` is accepted only after `--timeout` validates as a positive integer. Empty, non-numeric, and zero-valued digit strings (`0`, `00`, `000`, ...) are rejected; valid leading-zero positive values such as `010` remain accepted.
 - `CAPTURE_STDOUT` and `CAPTURE_STDOUT_ONLY` are wrapper-owned booleans, not caller-controlled byte strings.
 - `OUTPUT_FILE` is the wrapper's `--output` argument. Production callers pass internal session-tmpdir paths and are responsible for not embedding physical newlines or Unicode line-break code points (U+2028/U+2029); the wrapper does not re-sanitize this path before metadata emission.
 - `CMD_JSON` is serialized as a single-line compact JSON array of post-`--` argv strings with `jq -cn --args '$ARGS.positional' -- "$@"`. The wrapper computes it in a guarded assignment (`if ! META_CMD_JSON=$(jq ...); then exit 1; fi`) because `printf 'CMD_JSON=%s\n' "$(jq ...)"` would not propagate `jq` failure under `set -e`. Missing or broken `jq` is a hard wrapper failure: the child is not launched, and stderr receives a clear `ERROR:` line.

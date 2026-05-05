@@ -102,6 +102,10 @@ validate_meta_scalar_path --output "$OUTPUT_FILE" || exit 1
 case "$TIMEOUT_SECONDS" in
     ''|*[!0-9]*|0) echo "ERROR: --timeout must be a positive integer, got '$TIMEOUT_SECONDS'" >&2; exit 1 ;;
 esac
+if (( 10#$TIMEOUT_SECONDS < 1 )); then
+    echo "ERROR: --timeout must be a positive integer, got '$TIMEOUT_SECONDS'" >&2
+    exit 1
+fi
 
 # Poll interval (seconds) for the kill -0 wait loop below. Default 10s keeps
 # real-agent invocations cheap on syscalls and bounds the time to notice a
