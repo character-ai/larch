@@ -69,6 +69,11 @@ PATH="$STUB_BIN:$PATH" "$REPO_ROOT/scripts/launch-gemini-review.sh" --output "$O
   || fail "Expected normalized plain text output"
 grep -q '^TIMEOUT=600$' "${OUTPUT}.raw.meta" \
   || fail "Expected run-external-agent timeout clamp to 600"
+grep -q '^CMD_JSON=' "${OUTPUT}.meta" \
+  || fail "Expected launcher meta to include CMD_JSON"
+if grep -q '^CMD=' "${OUTPUT}.meta"; then
+  fail "Launcher meta should not include legacy CMD"
+fi
 grep -q '^0$' "${OUTPUT}.done" \
   || fail "Expected success .done exit code 0"
 if grep -q '[{}]' "$OUTPUT"; then
@@ -106,6 +111,9 @@ grep -q '^127$' "${MISSING_JQ_OUTPUT}.done" \
   || fail "Expected 127 .done when jq is missing"
 grep -q 'MISSING_JQ' "${MISSING_JQ_OUTPUT}.diag" \
   || fail "Expected MISSING_JQ diagnostic"
+if grep -q '^CMD_JSON=' "${MISSING_JQ_OUTPUT}.meta"; then
+  fail "Missing-jq launcher meta should omit CMD_JSON"
+fi
 
 BAD_EQUALS_OUTPUT="$TMPDIR/bad=output.txt"
 assert_rejected_output "reject-equals" "$BAD_EQUALS_OUTPUT"

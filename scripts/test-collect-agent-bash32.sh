@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # test-collect-agent-bash32.sh — Regression test for the bash 3.2
-# portability hazard in scripts/collect-agent-results.sh:405 (issue #511).
+# portability hazard at the validator call site in collect-agent-results.sh
+# (issue #511).
 #
 # The collector runs `set -uo pipefail` (line 57). Before #511, the validator
 # call expanded `"${VAL_ARGS[@]}"` directly; on bash 3.2 (macOS default

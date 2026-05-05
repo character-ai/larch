@@ -107,7 +107,7 @@ assert_successful_capture() {
     assert_grep "$label meta timeout" "^TIMEOUT=5$" "${output}.meta"
     assert_grep "$label meta capture" "^CAPTURE_STDOUT=true$" "${output}.meta"
     assert_grep "$label meta output" "^OUTPUT_FILE=$output$" "${output}.meta"
-    assert_grep "$label meta command" "^CMD=" "${output}.meta"
+    assert_grep "$label meta command" "^CMD_JSON=" "${output}.meta"
 }
 
 # 1. Control case.

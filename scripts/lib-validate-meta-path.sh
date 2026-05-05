@@ -12,7 +12,7 @@ validate_meta_scalar_path() {
     local LC_ALL=C
 
     if [[ -z "$value" || "$value" == *[!A-Za-z0-9./_-]* ]]; then
-        echo "ERROR: $field contains bytes outside [A-Za-z0-9._/-]; the .meta sidecar parsed by scripts/collect-agent-results.sh requires shell-quote-passthrough paths so retry substitution stays byte-identical with the printf '%q'-quoted CMD= field. Use a path containing only ASCII letters, digits, '.', '/', '_', or '-'." >&2
+        echo "ERROR: $field contains bytes outside [A-Za-z0-9._/-]; the .meta sidecar parsed by scripts/collect-agent-results.sh requires standalone argv paths so retry substitution stays byte-identical with the CMD_JSON element. Use a path containing only ASCII letters, digits, '.', '/', '_', or '-'." >&2
         return 1
     fi
 

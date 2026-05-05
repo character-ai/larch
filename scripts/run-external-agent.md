@@ -12,9 +12,9 @@ This script is listed under `Related` in `scripts/external-tool-registry.md`, no
 
 ## `--output` invariants
 
-`--output` is rejected during argv validation if it is empty or contains any byte outside `[A-Za-z0-9._/-]`; the wrapper exits 1 with an `ERROR:` line on stderr before `rm -f`, trap installation, `.meta` writes, or child launch. The accepted alphabet is deliberately narrower than "not a control byte and not `=`": `CMD=` is serialized with `printf '%q'`, while `OUTPUT_FILE=` stores the path raw, and `collect-agent-results.sh` reconstructs retry commands with literal substring substitution. Spaces, UTF-8 bytes, and other shell-quoted characters would make the raw `OUTPUT_FILE=` value differ from its appearance in `CMD=`, so retry substitution could miss.
+`--output` is rejected during argv validation if it is empty or contains any byte outside `[A-Za-z0-9._/-]`; the wrapper exits 1 with an `ERROR:` line on stderr before `rm -f`, trap installation, `.meta` writes, or child launch. The accepted alphabet is deliberately narrower than "not a control byte and not `=`": `OUTPUT_FILE=` stores the path raw, and `CMD_JSON=` stores argv as JSON strings, but the retry reader retargets output paths by element-wise equality. Production callers that need retry retargeting MUST pass output paths as standalone argv elements (`--output X`), not embedded in one token (`--output=X`) or inside prompt text.
 
-The path is rejected rather than transformed because the same byte string is used for the real output file, `<output>.done`, `<output>.diag`, `<output>.meta`, and the retry-substituted `CMD=` field. A `.meta`-only transform would split the recorded path from the on-disk path and from the bytes embedded in the shell-quoted command. The shared validator lives in `scripts/lib-validate-meta-path.sh`; `scripts/launch-gemini-review.sh` applies the same rule before its own side effects.
+The path is rejected rather than transformed because the same byte string is used for the real output file, `<output>.done`, `<output>.diag`, `<output>.meta`, and any standalone child argv path that the retry collector swaps. A `.meta`-only transform would split the recorded path from the on-disk path and from the bytes embedded in `CMD_JSON`. The shared validator lives in `scripts/lib-validate-meta-path.sh`; `scripts/launch-gemini-review.sh` applies the same rule before its own side effects.
 
 The current line parser in `scripts/collect-agent-results.sh` uses `${meta_line%%=*}` / `${meta_line#*=}`, so embedded `=` in the value is not lost by that parser. `=` is still rejected as defense-in-depth for ad-hoc consumers and future metadata readers, and because it falls outside the narrowed shell-quote-passthrough alphabet.
 
@@ -36,7 +36,9 @@ This grammar is shared by every script that writes a sidecar consumed by `script
 - `TIMEOUT` is accepted only after `--timeout` validates as a positive integer.
 - `CAPTURE_STDOUT` and `CAPTURE_STDOUT_ONLY` are wrapper-owned booleans, not caller-controlled byte strings.
 - `OUTPUT_FILE` is the wrapper's `--output` argument. Production callers pass internal session-tmpdir paths and are responsible for not embedding physical newlines or Unicode line-break code points (U+2028/U+2029); the wrapper does not re-sanitize this path before metadata emission.
-- `CMD` is serialized with Bash `printf '%q'`, which preserves argument boundaries and shell-escapes most metacharacters. Behavior on multi-byte UTF-8 sequences (including the UTF-8 encodings of U+2028/U+2029) follows the inherited locale; the wrapper does not force a byte-oriented locale around the `printf '%q'` call. Callers that need locale-deterministic quoting should set `LC_ALL=C` before invoking the wrapper.
+- `CMD_JSON` is serialized as a single-line compact JSON array of post-`--` argv strings with `jq -cn --args '$ARGS.positional' -- "$@"`. The wrapper computes it in a guarded assignment (`if ! META_CMD_JSON=$(jq ...); then exit 1; fi`) because `printf 'CMD_JSON=%s\n' "$(jq ...)"` would not propagate `jq` failure under `set -e`. Missing or broken `jq` is a hard wrapper failure: the child is not launched, and stderr receives a clear `ERROR:` line.
+
+There is no backward compatibility with the old `CMD=` metadata line. A collector that sees only `CMD=` treats retry metadata as invalid and fails closed.
 
 ## Invariants
 
@@ -44,6 +46,7 @@ This grammar is shared by every script that writes a sidecar consumed by `script
 - Always write `<output>.done` via the exit trap.
 - Keep `set -euo pipefail`; child exit codes are captured via guarded `wait`.
 - Diagnostic text is appended to `<output>.diag` so stdout-only capture can retain child stderr.
+- `jq` is a hard prerequisite for this wrapper, in addition to the repo-wide `jq` dependency used by other larch scripts.
 
 ## Poll interval (`RUN_EXTERNAL_AGENT_POLL_INTERVAL`)
 
@@ -60,4 +63,4 @@ The wrapper polls the child PID with `kill -0` in a loop and `sleep`s `$RUN_EXTE
 
 ## Edit-in-sync
 
-Update `scripts/lib-validate-meta-path.sh`, `scripts/launch-gemini-review.sh`, `scripts/collect-agent-results.sh` retry metadata parsing, launch wrappers, and this contract when adding capture modes, metadata keys, or changing the `OUTPUT_FILE=` retry-substitution invariant.
+Update `scripts/lib-validate-meta-path.sh`, `scripts/launch-gemini-review.sh`, `scripts/collect-agent-results.sh` retry metadata parsing, launch wrappers, and this contract when adding capture modes, metadata keys, or changing the `OUTPUT_FILE=` / `CMD_JSON=` retry-substitution invariant.

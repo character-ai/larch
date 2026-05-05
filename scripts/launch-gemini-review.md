@@ -13,8 +13,9 @@
 - Requires `jq`; missing `jq` fails closed with `MISSING_JQ`, empty output, non-zero `.done`, and a diagnostic.
 - Parses `.response` as the only successful output field. `.error`, missing `.response`, or empty `.response` fail closed.
 - Writes normalized plain text to `--output` atomically, then writes `<output>.done` last.
-- Writes `<output>.meta` with `TOOL=gemini` and `CMD=` pointing at the launcher invocation, so retry paths replay JSON normalization rather than raw `gemini`.
-- Rejects empty `--output` values and paths containing bytes outside `[A-Za-z0-9._/-]` before stale-file cleanup or raw wrapper launch. The same byte string is used on disk, in `OUTPUT_FILE=`, and inside the shell-quoted `CMD=` field that collector retry substitution rewrites, so unsafe paths fail fast instead of being transformed.
+- Writes `<output>.meta` with `TOOL=gemini` and `CMD_JSON=` pointing at the redacted launcher invocation, so retry paths replay JSON normalization rather than raw `gemini`. Only the on-disk encoding changed: the retry replay model remains "launcher argv with the prompt body replaced by a sha256 prefix + byte length."
+- On the missing-`jq` fail-closed path, `write_meta()` deliberately omits `CMD_JSON` instead of failing before `write_done()`. The collector treats missing `CMD_JSON` as invalid retry metadata, skips retry, and marks the result/tool unhealthy.
+- Rejects empty `--output` values and paths containing bytes outside `[A-Za-z0-9._/-]` before stale-file cleanup or raw wrapper launch. The same byte string is used on disk, in `OUTPUT_FILE=`, and as a standalone argv element in `CMD_JSON` that collector retry substitution rewrites, so unsafe paths fail fast instead of being transformed.
 - Output filenames must carry a `gemini-` prefix when consumed by `collect-agent-results.sh` unless `.meta` is guaranteed present.
 
 ## Prompt contract
@@ -23,7 +24,7 @@ Gemini runs with `--approval-mode plan`, so callers must pass a self-contained p
 
 ## Test harness
 
-`scripts/test-launch-gemini-review.sh` stubs `gemini` and exercises the real `run-external-agent.sh` path to cover timeout clamping, JSON normalization, fail-closed `.error`, `MISSING_JQ`, launcher-specific `--output` rejection before side effects, and `--timeout 0` rejection at argv-validation time.
+`scripts/test-launch-gemini-review.sh` stubs `gemini` and exercises the real `run-external-agent.sh` path to cover timeout clamping, JSON normalization, fail-closed `.error`, `MISSING_JQ`, launcher-specific `--output` rejection before side effects, `CMD_JSON` sidecar emission, and `--timeout 0` rejection at argv-validation time.
 
 ## Edit-in-sync
 

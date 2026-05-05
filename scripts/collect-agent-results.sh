@@ -5,6 +5,13 @@
 # Wraps wait-for-reviewers.sh, validates each output, retries once on empty via
 # .meta files written by run-external-agent.sh, and emits structured results.
 #
+# Runtime prerequisites: bash >= 3.2 (the retry block is portable to macOS
+# /bin/bash 3.2). The empty-output retry path additionally requires `jq` (to
+# validate and deserialize CMD_JSON) and `base64 -d` (GNU/BSD/BusyBox-portable
+# for argv element decode). Empty-output retries fail closed if either is
+# missing — see SECURITY.md "Retry-metadata deserialization" and the
+# "Empty-output retry deserializer" section in scripts/collect-agent-results.md.
+#
 # Usage:
 #   collect-agent-results.sh --timeout <seconds> [--write-health <path>] \
 #     [--substantive-validation] <output-file> [<output-file> ...]
@@ -236,6 +243,16 @@ build_failure_reason() {
     sanitize_failure_reason "$raw"
 }
 
+mark_retry_metadata_invalid() {
+    local idx="$1"
+    local orig_output="$2"
+    local reason="$3"
+    local tool
+    tool=$(derive_tool "$orig_output")
+    RESULTS[idx]="REVIEWER_FILE=$orig_output|TOOL=$tool|STATUS=EMPTY_OUTPUT|EXIT_CODE=0|HEALTHY=false|FAILURE_REASON=$reason"
+    set_tool_unhealthy "$tool"
+}
+
 # --- 2. Validate each output and collect results ---
 RETRY_FILES=()
 RETRY_INDICES=()
@@ -316,6 +333,14 @@ done
 # --- 3. Retry empty outputs using .meta files ---
 if [[ ${#RETRY_FILES[@]} -gt 0 ]]; then
     RETRY_SENTINELS=()
+    # Tracks which RETRY_FILES indices actually launched a retry child. The
+    # second loop (retry-result update) iterates over every j in RETRY_FILES,
+    # so without this array, indices that fail-closed via
+    # mark_retry_metadata_invalid (and never spawn a child) would have their
+    # specific FAILURE_REASON overwritten by the generic
+    # "Retry process did not complete (sentinel file missing)" message at
+    # the foot of the second loop.
+    RETRY_LAUNCHED=()
     # F10 fix: compute max retry timeout from original reviewer timeouts + grace
     MAX_RETRY_TIMEOUT=180
     for j in "${!RETRY_FILES[@]}"; do
@@ -335,7 +360,7 @@ if [[ ${#RETRY_FILES[@]} -gt 0 ]]; then
         META_TIMEOUT=""
         META_CAPTURE=""
         META_CAPTURE_STDOUT_ONLY=""
-        META_CMD=""
+        META_CMD_JSON=""
         META_ORIG_OUTPUT=""
         while IFS= read -r meta_line || [[ -n "$meta_line" ]]; do
             meta_key="${meta_line%%=*}"
@@ -346,11 +371,35 @@ if [[ ${#RETRY_FILES[@]} -gt 0 ]]; then
                 CAPTURE_STDOUT) META_CAPTURE="$meta_val" ;;
                 CAPTURE_STDOUT_ONLY) META_CAPTURE_STDOUT_ONLY="$meta_val" ;;
                 OUTPUT_FILE)    META_ORIG_OUTPUT="$meta_val" ;;
-                CMD)            META_CMD="$meta_val" ;;
+                CMD_JSON)       META_CMD_JSON="$meta_val" ;;
             esac
         done < "$META"
 
-        if [[ -z "$META_CMD" || -z "$META_TOOL" ]]; then
+        # Fail closed on missing/malformed retry metadata: immediately mark the
+        # original result unhealthy and flip the tool to unhealthy so callers
+        # do not see a stale STATUS=EMPTY_OUTPUT|HEALTHY=true when no retry
+        # process is launched.
+        # Distinct messages so logs and harness assertions reflect which field
+        # is actually missing — stale CMD=-only sidecars have TOOL but lack
+        # CMD_JSON, and vice versa.
+        if [[ -z "$META_CMD_JSON" && -z "$META_TOOL" ]]; then
+            IDX="${RETRY_INDICES[$j]}"
+            mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: missing CMD_JSON and TOOL"
+            continue
+        fi
+        if [[ -z "$META_CMD_JSON" ]]; then
+            IDX="${RETRY_INDICES[$j]}"
+            mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: missing CMD_JSON"
+            continue
+        fi
+        if [[ -z "$META_TOOL" ]]; then
+            IDX="${RETRY_INDICES[$j]}"
+            mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: missing TOOL"
+            continue
+        fi
+        if ! printf '%s' "$META_CMD_JSON" | jq -e 'type=="array" and length>0 and all(.[]; type=="string")' >/dev/null 2>&1; then
+            IDX="${RETRY_INDICES[$j]}"
+            mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: malformed CMD_JSON"
             continue
         fi
 
@@ -363,27 +412,70 @@ if [[ ${#RETRY_FILES[@]} -gt 0 ]]; then
         fi
         RETRY_ARGS+=(--)
 
-        # Reconstruct command from shell-quoted CMD, replacing original output path
-        # The CMD was saved via printf '%q', so eval reconstructs the original args
-        RECONSTRUCTED_CMD="$META_CMD"
-        # Replace original output path with retry path in the reconstructed command
-        if [[ -n "$META_ORIG_OUTPUT" ]]; then
-            RECONSTRUCTED_CMD="${RECONSTRUCTED_CMD//$META_ORIG_OUTPUT/$RETRY_OUTPUT}"
+        # Deserialize CMD_JSON into a Bash array. Bash 3.2 portability:
+        # mapfile is Bash 4+, and the retry block uses a here-string loop
+        # instead of process-substitution redirection. Newline safety: jq emits
+        # base64 records, and command substitution appends/removes a sentinel
+        # byte so argv elements ending in newlines survive byte-exact.
+        CMD_ARR=()
+        _decode_failed=false
+        _b64_stream=$(printf '%s' "$META_CMD_JSON" | jq -r '.[] | @base64')
+        while IFS= read -r _b64 || [[ -n "${_b64:-}" ]]; do
+            [[ -z "$_b64" ]] && continue
+            if ! _decoded=$({ printf '%s\n' "$_b64" | base64 -d; _decode_status=$?; printf X; exit "$_decode_status"; }); then
+                IDX="${RETRY_INDICES[$j]}"
+                mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: CMD_JSON decode failed"
+                _decode_failed=true
+                break
+            fi
+            CMD_ARR+=("${_decoded%X}")
+        done <<< "$_b64_stream"
+        # Decode failure path is terminal for this index — skip the
+        # empty-array branch below so it does not overwrite the specific
+        # "decode failed" reason with the generic "empty after decode" one.
+        if [[ "$_decode_failed" == "true" ]]; then
+            continue
+        fi
+        if [[ ${#CMD_ARR[@]} -eq 0 ]]; then
+            IDX="${RETRY_INDICES[$j]}"
+            mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: empty CMD_JSON array after decode"
+            continue
         fi
 
-        # Launch retry in background — eval is intentional: CMD was serialized via
-        # printf '%q' and must be re-expanded to reconstruct original arg boundaries.
-        # shellcheck disable=SC2294
-        eval "$(printf '%q ' "$SCRIPT_DIR/run-external-agent.sh" "${RETRY_ARGS[@]}") $RECONSTRUCTED_CMD" >/dev/null 2>&1 &
+        _expected_len=$(printf '%s' "$META_CMD_JSON" | jq 'length')
+        if [[ "${#CMD_ARR[@]}" -ne "$_expected_len" ]]; then
+            IDX="${RETRY_INDICES[$j]}"
+            mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: CMD_JSON decode length mismatch"
+            continue
+        fi
+
+        # Element-wise replacement of the original output path with the retry
+        # path. Equality (not substring): argv elements that merely contain the
+        # original path, such as prompt text, must not be mutated.
+        if [[ -n "$META_ORIG_OUTPUT" ]]; then
+            for _i in "${!CMD_ARR[@]}"; do
+                if [[ "${CMD_ARR[$_i]}" == "$META_ORIG_OUTPUT" ]]; then
+                    CMD_ARR[_i]="$RETRY_OUTPUT"
+                fi
+            done
+        fi
+
+        "$SCRIPT_DIR/run-external-agent.sh" "${RETRY_ARGS[@]}" "${CMD_ARR[@]}" >/dev/null 2>&1 &
         RETRY_SENTINELS+=("${RETRY_OUTPUT}.done")
+        RETRY_LAUNCHED[j]=1
     done
 
     # Wait for retry sentinels
     if [[ ${#RETRY_SENTINELS[@]} -gt 0 ]]; then
         "$SCRIPT_DIR/wait-for-reviewers.sh" --timeout "$MAX_RETRY_TIMEOUT" "${RETRY_SENTINELS[@]}" >/dev/null 2>&1 || true
 
-        # Check retry results and update
+        # Check retry results and update. Indices that fail-closed before
+        # launch (mark_retry_metadata_invalid) leave RETRY_LAUNCHED[$j] unset;
+        # skip them here so their specific FAILURE_REASON survives.
         for j in "${!RETRY_FILES[@]}"; do
+            if [[ "${RETRY_LAUNCHED[$j]:-0}" != "1" ]]; then
+                continue
+            fi
             ORIG_OUTPUT="${RETRY_FILES[$j]}"
             RETRY_OUTPUT="${ORIG_OUTPUT%.txt}-retry.txt"
             RETRY_SENTINEL="${RETRY_OUTPUT}.done"
