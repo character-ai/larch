@@ -11,7 +11,7 @@
 #   0 — all checks passed
 #   1 — not on main branch (only without --skip-branch-check)
 #   2 — dirty working tree (only without --skip-branch-check)
-#   3 — git fetch or rebase failed
+#   3 — argument validation, git fetch, or rebase failed
 
 set -euo pipefail
 
