@@ -196,7 +196,7 @@ The Slack channel ID (e.g., `C0123456789`) where tracking-issue status messages 
 
 ### External Agent Model Configuration
 
-These variables control which model Cursor and Codex use when running as external agents (reviews, sketches, voting, and implementation when selected with `--coder`). When unset, Cursor defaults to `composer-2` (with the `/max-mode on.` slash-command prefix applied to every substantive prompt via `scripts/cursor-wrap-prompt.sh`) and Codex defaults to `gpt-5.5` (hardcoded in `scripts/agent-model-args.sh`). The model is passed via the `--model` flag (Cursor) or `-m` flag (Codex). To restore the pre-`composer-2` behavior, set `LARCH_CURSOR_MODEL=composer-2-fast`.
+These variables control which model Cursor, Codex, and Gemini use when running as external agents (reviews, sketches, voting, and implementation when selected with `--coder`). When unset, Cursor defaults to `composer-2` (with the `/max-mode on.` slash-command prefix applied to every substantive prompt via `scripts/cursor-wrap-prompt.sh`), Codex defaults to `gpt-5.5` (hardcoded in `scripts/agent-model-args.sh`), and Gemini defaults to `gemini-2.5-pro`. The model is passed via the `--model` flag (Cursor) or `-m` flag (Codex / Gemini). To restore the pre-`composer-2` behavior, set `LARCH_CURSOR_MODEL=composer-2-fast`.
 
 Model configuration is also available via plugin `userConfig` — environment variables take precedence if both are set.
 
@@ -225,6 +225,18 @@ The model name to pass to Codex's `-m` flag (e.g., `o3`, `o4-mini`).
 - Codex defaults to `gpt-5.5` (hardcoded in `scripts/agent-model-args.sh`) for all work invocations (reviews, sketches, voting)
 - Health probes (`check-reviewers.sh`) bypass this default and test basic Codex availability without forcing a specific model
 - If your Codex installation does not support `gpt-5.5`, set this variable to a supported model (e.g., `o3`, `o4-mini`)
+
+### `LARCH_GEMINI_MODEL`
+
+The model name to pass to Gemini's `-m` flag (e.g., `gemini-2.5-pro`, `gemini-2.5-flash`).
+
+**When set:**
+- All Gemini reviewer invocations use this model
+- The model flag is consumed by `scripts/launch-gemini-review.sh`
+
+**When not set:**
+- Defaults to `gemini-2.5-pro`
+- If your Gemini installation does not support `gemini-2.5-pro`, set this variable to a supported model
 
 ### `LARCH_CODEX_EFFORT`
 
