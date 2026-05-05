@@ -72,6 +72,47 @@ check_unhealthy "OK."                    "OK."
 check_unhealthy "auth error"             "Error: Password not found for account"
 check_unhealthy "thinking prefix"        "Thinking about this... OK"
 
+SCRATCH=$(mktemp -d -t check-reviewers-test.XXXXXX)
+trap 'rm -rf "$SCRATCH"' EXIT
+
+write_gemini_stub() {
+    local mode="$1"
+    mkdir -p "$SCRATCH/bin"
+    cat > "$SCRATCH/bin/gemini" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$mode" == "healthy" ]]; then
+  printf 'OK\n'
+  exit 0
+fi
+printf 'not ok\n'
+exit 0
+EOF
+    chmod +x "$SCRATCH/bin/gemini"
+}
+
+write_gemini_stub healthy
+OUT=$(PATH="$SCRATCH/bin:/bin:/usr/bin" LARCH_CHECK_REVIEWERS_RETRY_SLEEP=0 "$PWD/scripts/check-reviewers.sh" --include-gemini --probe)
+if [[ "$OUT" != *"GEMINI_AVAILABLE=true"* ]] || [[ "$OUT" != *"GEMINI_HEALTHY=true"* ]]; then
+    fail "Expected healthy Gemini probe with --include-gemini, got: $OUT"
+fi
+
+write_gemini_stub unhealthy
+OUT=$(PATH="$SCRATCH/bin:/bin:/usr/bin" LARCH_CHECK_REVIEWERS_RETRY_SLEEP=0 "$PWD/scripts/check-reviewers.sh" --include-gemini --probe)
+if [[ "$OUT" != *"GEMINI_AVAILABLE=true"* ]] || [[ "$OUT" != *"GEMINI_HEALTHY=false"* ]]; then
+    fail "Expected unhealthy Gemini probe with --include-gemini, got: $OUT"
+fi
+
+OUT=$(PATH="/bin:/usr/bin" "$PWD/scripts/check-reviewers.sh" --include-gemini)
+if [[ "$OUT" != *"GEMINI_AVAILABLE=false"* ]]; then
+    fail "Expected absent Gemini availability=false with --include-gemini, got: $OUT"
+fi
+
+OUT=$(PATH="$SCRATCH/bin:/bin:/usr/bin" "$PWD/scripts/check-reviewers.sh")
+if [[ "$OUT" == *"GEMINI_AVAILABLE="* ]] || [[ "$OUT" == *"GEMINI_HEALTHY="* ]]; then
+    fail "Gemini keys must not be emitted without --include-gemini, got: $OUT"
+fi
+
 if [[ "$FAIL" -eq 1 ]]; then
     echo "FAIL: test-check-reviewers.sh — some probe acceptance tests failed" >&2
     exit 1

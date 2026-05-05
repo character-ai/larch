@@ -159,7 +159,7 @@ These checks are verified immediately before any merge attempt — the script do
 
 ## Selecting the Step 2 implementer (`--coder`)
 
-`/implement` Step 2 (the actual code-writing step) supports a `--coder={claude,codex,cursor}` flag that selects which agent does the implementation. The default is `codex` — implementation is delegated to the Codex implementer via `skills/implement/scripts/step2-implement.sh`. Pass `--coder=claude` to run implementation in the main agent / Claude context (the path that ran before Codex-as-implementer was introduced); pass `--coder=cursor` to spawn the Cursor implementer through the same dispatcher. When `--coder=cursor` is requested but the session health probe reports Cursor unhealthy or unavailable, the dispatcher emits `STATUS=claude_fallback` and the orchestrator runs the main-agent code-edit path — symmetric to passing `--coder=claude`. The flag is forwarded transparently by `/im` and `/imaq` (they pass `$ARGUMENTS` through to `/implement`). `/fix-issue` also accepts `--coder=<value>` and forwards the value verbatim to `/implement` in Step 5a on PR paths; `/fix-issue` does not validate or interpret the value.
+`/implement` Step 2 (the actual code-writing step) supports a `--coder={claude,codex,cursor,gemini}` flag that selects which agent does the implementation. The default is `codex` — implementation is delegated to the Codex implementer via `skills/implement/scripts/step2-implement.sh`. Pass `--coder=claude` to run implementation in the main agent / Claude context (the path that ran before Codex-as-implementer was introduced); pass `--coder=cursor` or `--coder=gemini` to spawn the matching external implementer through the same dispatcher. Gemini is opt-in only and is never auto-selected. When `--coder=cursor` or `--coder=gemini` is requested but the session health probe reports that tool unhealthy or unavailable, the dispatcher emits `STATUS=claude_fallback` and the orchestrator runs the main-agent code-edit path — symmetric to passing `--coder=claude`. The flag is forwarded transparently by `/im` and `/imaq` (they pass `$ARGUMENTS` through to `/implement`). `/fix-issue` also accepts `--coder=<value>` and forwards the value verbatim to `/implement` in Step 5a on PR paths; `/fix-issue` does not validate or interpret the value.
 
 The legacy `--codex-available true|false` knob is still accepted by the dispatcher for one release with a stderr deprecation warning (`true → coder=codex`, `false → coder=claude`); orchestrator-side, prefer `--coder` directly. Passing both flags together is a parse-time error.
 
@@ -196,7 +196,7 @@ The Slack channel ID (e.g., `C0123456789`) where tracking-issue status messages 
 
 ### External Agent Model Configuration
 
-These variables control which model Cursor and Codex use when running as external agents (reviews, sketches, voting, and implementation when selected with `--coder`). When unset, Cursor defaults to `composer-2` (with the `/max-mode on.` slash-command prefix applied to every substantive prompt via `scripts/cursor-wrap-prompt.sh`) and Codex defaults to `gpt-5.5` (hardcoded in `scripts/agent-model-args.sh`). The model is passed via the `--model` flag (Cursor) or `-m` flag (Codex). To restore the pre-`composer-2` behavior, set `LARCH_CURSOR_MODEL=composer-2-fast`.
+These variables control which model Cursor, Codex, and Gemini use when running as external agents (reviews, sketches, voting, and implementation when selected with `--coder`). When unset, Cursor defaults to `composer-2` (with the `/max-mode on.` slash-command prefix applied to every substantive prompt via `scripts/cursor-wrap-prompt.sh`), Codex defaults to `gpt-5.5`, and Gemini defaults to `gemini-2.5-pro` (hardcoded in `scripts/agent-model-args.sh`). The model is passed via the `--model` flag (Cursor/Gemini) or `-m` flag (Codex). To restore the pre-`composer-2` behavior, set `LARCH_CURSOR_MODEL=composer-2-fast`.
 
 Model configuration is also available via plugin `userConfig` — environment variables take precedence if both are set.
 
@@ -238,6 +238,19 @@ Codex reasoning effort for all Codex launches (reviews, sketches, voting). Accep
 - Setting `LARCH_CODEX_EFFORT=""` explicitly does NOT disable emission; to suppress effort flags entirely, the callers already omit the `--with-effort` flag (e.g., `check-reviewers.sh` health probes do not use max effort regardless of env var setting).
 
 **Scope**: Claude and Cursor agents run at their defaults. Only Codex is bumped to `high` by default. This is deliberate — Claude's sonnet default is already well-suited to review work, and Cursor has no dedicated reasoning-effort CLI flag today.
+
+### `LARCH_GEMINI_MODEL`
+
+The model name to pass to Gemini CLI's `--model` flag (for example, `gemini-2.5-pro`).
+
+**When set:**
+- The Gemini implementer (`/implement --coder=gemini`) and Gemini health probe use this model.
+- The plugin option `gemini_model` is exposed to subprocesses as `CLAUDE_PLUGIN_OPTION_GEMINI_MODEL`; `scripts/session-setup.sh` bridges it to `LARCH_GEMINI_MODEL` when the env var is unset.
+
+**When not set:**
+- Gemini defaults to `gemini-2.5-pro`.
+
+Gemini support is opt-in via `--coder=gemini`. It runs unsandboxed with `--approval-mode yolo --skip-trust`; see [`SECURITY.md`](../SECURITY.md) for the trust model and `gemini-modified-history` guard.
 
 ### `LARCH_TOKEN_RATE_PER_M`
 

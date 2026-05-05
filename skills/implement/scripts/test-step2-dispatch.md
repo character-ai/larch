@@ -1,19 +1,20 @@
 # test-step2-dispatch.sh
 
-**Purpose**: Offline regression harness for `skills/implement/scripts/step2-implement.sh` covering the dispatcher branches that do not require spawning an external implementer. Runs in <1s with no `codex`/`cursor` binary and no network.
+**Purpose**: Offline regression harness for `skills/implement/scripts/step2-implement.sh` covering the dispatcher branches that do not require spawning an external implementer. Runs in <1s with no `codex`/`cursor`/`gemini` binary and no network.
 
-**Coverage** (28 assertions):
+**Coverage** (33 assertions):
 1. `--coder claude` emits `STATUS=claude_fallback` and `ORCHESTRATOR_EDIT_AUTHORITY=allowed` (and no other KV keys — no `MANIFEST=`, no `TRANSCRIPT=`, etc.), and writes no baseline files.
 1b. Default coder (no flag) is codex — verified via non-git cwd exit 2 with the git-tree message (the claude default would early-return `STATUS=claude_fallback` instead).
 1c. Legacy `--codex-available false` still emits `STATUS=claude_fallback` and prints a deprecation warning to stderr.
 2. Missing required flag (`--auto-mode`) exits with code 2.
-3. Bad `--coder` enum value exits with code 2 and names `{claude,codex,cursor}`.
+3. Bad `--coder` enum value exits with code 2 and names `{claude,codex,cursor,gemini}`.
 3b. `--coder cursor --cursor-healthy false` emits `STATUS=claude_fallback` with no baseline-file leak (cursor unhealthy → claude fallback).
 3b2. `--coder cursor` with no `--cursor-healthy` defaults to false and falls back to `STATUS=claude_fallback`.
 3b3. `--coder cursor --cursor-healthy ""` treats empty as false and falls back to `STATUS=claude_fallback`.
 3b4. `--coder cursor --cursor-healthy bogus` exits with code 2.
 3b5. `--coder claude --cursor-healthy ""` remains `STATUS=claude_fallback`; the Claude path ignores Cursor health noise.
 3b6. Outside a git work-tree, `--coder cursor --cursor-healthy false` emits `STATUS=claude_fallback` before `REPO_ROOT` lookup.
+3g. Gemini health gate parity: unhealthy/missing health falls back to `STATUS=claude_fallback`, invalid non-empty `--gemini-healthy` exits 2 even on the Claude path, and outside-git unhealthy Gemini falls back before `REPO_ROOT` lookup.
 3c. `--coder` and `--codex-available` together exit with code 2 and stderr says `mutually exclusive`.
 3d. Bad `--codex-available` enum value exits with code 2.
 4. Bad `--tmpdir` (not a directory) exits with code 2.
@@ -34,12 +35,12 @@ All `--coder codex` invocations that proceed past argument parsing are run with 
 - Path normalization (`..` / leading `/` / `.claude-plugin/plugin.json` / submodule paths).
 - Sanitization via `scripts/redact-secrets.sh`.
 - Single-retry on transient launcher failure with clean-state guard.
-- `branch-changed` / `protected-path-modified` / `submodule-dirty` / `cursor-modified-history` post-implementer checks.
+- `branch-changed` / `protected-path-modified` / `submodule-dirty` / `cursor-modified-history` / `gemini-modified-history` post-implementer checks.
 - Dispatcher-side commit (`git add -A && git commit -F …`) and `commit-failed` recovery.
 
 **Invariants**:
 - Tests run against the live dispatcher in the repo, not a copy.
-- Cursor unhealthy fallback emits `STATUS=claude_fallback` and does not write baseline files.
+- Cursor/Gemini unhealthy fallback emits `STATUS=claude_fallback` and does not write baseline files.
 - The Claude fallback branch short-circuits before plugin / git resolution and ignores empty Cursor health input.
 - Scratch directory is created via `mktemp -d` and removed via `trap` on exit.
 

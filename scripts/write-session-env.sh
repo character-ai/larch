@@ -5,12 +5,12 @@
 #   write-session-env.sh --output <path> --slack-ok <true|false> \
 #                        [--slack-missing <csv>] --repo <owner/repo> \
 #                        --repo-unavailable <true|false> \
-#                        [--codex-healthy <true|false>] [--cursor-healthy <true|false>]
+#                        [--codex-healthy <true|false>] [--cursor-healthy <true|false>] [--gemini-healthy <true|false>]
 #
 # Options:
 #   --repo may be empty when --repo-unavailable is true (repo discovery failed).
 #   --slack-missing is optional (only meaningful when --slack-ok is false).
-#   --codex-healthy/--cursor-healthy are optional (reviewer health state from probe).
+#   --codex-healthy/--cursor-healthy/--gemini-healthy are optional (reviewer health state from probe).
 #
 # Output: Writes a shell-sourceable file to --output path (atomic via temp+mv).
 #         When --output is /dev/null, the output is silently discarded.
@@ -25,6 +25,7 @@ REPO=""
 REPO_UNAVAILABLE=""
 CODEX_HEALTHY=""
 CURSOR_HEALTHY=""
+GEMINI_HEALTHY=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -35,6 +36,7 @@ while [[ $# -gt 0 ]]; do
     --repo-unavailable) REPO_UNAVAILABLE="$2"; shift 2 ;;
     --codex-healthy)    CODEX_HEALTHY="$2"; shift 2 ;;
     --cursor-healthy)   CURSOR_HEALTHY="$2"; shift 2 ;;
+    --gemini-healthy)   GEMINI_HEALTHY="$2"; shift 2 ;;
     *) echo "ERROR=Unknown argument: $1" >&2; exit 1 ;;
   esac
 done
@@ -53,6 +55,8 @@ REPO_UNAVAILABLE=$REPO_UNAVAILABLE"
 CODEX_HEALTHY=$CODEX_HEALTHY"
 [[ -n "$CURSOR_HEALTHY" ]] && CONTENT="$CONTENT
 CURSOR_HEALTHY=$CURSOR_HEALTHY"
+[[ -n "$GEMINI_HEALTHY" ]] && CONTENT="$CONTENT
+GEMINI_HEALTHY=$GEMINI_HEALTHY"
 
 # Write atomically via temp+mv for regular paths.
 # Skip /dev/null — mktemp and mv both fail on device nodes.

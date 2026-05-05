@@ -348,6 +348,15 @@ exclude = [
   # skill's procedural body).
   "skills/implement/scripts/test-step2-dispatch.sh",
   "skills/implement/scripts/test-step2-dispatch.md",
+  # skills/implement/scripts/test-cursor-implementer.md is the sibling
+  # contract for the Makefile-only Cursor implementer launcher harness.
+  "skills/implement/scripts/test-cursor-implementer.md",
+  # skills/implement/scripts/test-gemini-implementer.sh is the offline
+  # launcher-contract harness for scripts/launch-gemini-implement.sh.
+  # Referenced from Makefile (test-gemini-implementer target), docs/linting.md,
+  # and the sibling contract.
+  "skills/implement/scripts/test-gemini-implementer.sh",
+  "skills/implement/scripts/test-gemini-implementer.md",
   # scripts/launch-codex-implement.sh is invoked by skills/implement/scripts/
   # step2-implement.sh via a `"$LAUNCHER"` variable rather than a literal
   # `${CLAUDE_PLUGIN_ROOT}/scripts/...` path — agent-lint's G004/dead-script

@@ -55,9 +55,9 @@ claude plugin marketplace add .
 claude plugin install larch@larch-local
 ```
 
-## Setting Up Claude, Codex, Cursor, etc.
-- **Only `claude` is mandatory.** `codex` and `cursor` are optional — when either binary is missing or fails to authenticate, larch skills substitute Claude subagents automatically. See [Optional integrations](#optional-integrations) for the full fallback semantics.
-- **Larch is agent-agnostic about authentication.** Each agent can be set up either with an **API key** in your shell environment, or with a **subscription plan** via web-based login from the binary itself. Larch does not care which — it only needs the corresponding binary (`claude`, `codex`, `cursor`) to be on your `PATH` and to land in an authenticated session when invoked.
+## Setting Up Claude, Codex, Cursor, Gemini, etc.
+- **Only `claude` is mandatory.** `codex`, `cursor`, and `gemini` are optional. Codex/Cursor reviewer lanes fall back to Claude replacements when unavailable; Gemini is used only when explicitly selected with `/implement --coder=gemini` and otherwise has no effect. See [Optional integrations](#optional-integrations) for the full fallback semantics.
+- **Larch is agent-agnostic about authentication.** Each agent can be set up either with an **API key** in your shell environment, or with a **subscription plan** via web-based login from the binary itself. Larch does not care which — it only needs the corresponding binary (`claude`, `codex`, `cursor`, `gemini`) to be on your `PATH` and to land in an authenticated session when invoked.
 - The subsections below document one concrete setup recipe per agent (API-key path). If you prefer the subscription-plan path, install the binary and follow its own web-login flow instead — the rest of larch's configuration (settings, model overrides) still applies.
 
 ### Claude
@@ -108,6 +108,8 @@ brew install gemini-cli
 # or
 npm install -g @google/gemini-cli
 ```
+- Authenticate per the Gemini CLI's own instructions. Larch expects support for `gemini --prompt ... --approval-mode yolo --skip-trust` for `/implement --coder=gemini` and `gemini --prompt "Respond with OK" --output-format text` for the health probe.
+- Optional model override: set `LARCH_GEMINI_MODEL` (or plugin `gemini_model`, exposed as `CLAUDE_PLUGIN_OPTION_GEMINI_MODEL`) to change the `--model` value. The default is `gemini-2.5-pro`.
 - Authenticate with OAuth:
 ```bash
 gemini auth login
@@ -185,6 +187,7 @@ These tools enhance the workflow but are not required. When unavailable, Claude 
 
 - **Codex** — [OpenAI Codex CLI](https://github.com/openai/codex). Participates as an external reviewer and voter alongside Claude subagents. When unavailable, a Claude subagent replacement maintains the reviewer count.
 - **Cursor** — [Cursor AI editor](https://cursor.com/). Participates as an external reviewer and voter. When unavailable, a Claude subagent replacement maintains the reviewer count.
+- **Gemini** — Gemini CLI. Participates only as an opt-in `/implement --coder=gemini` Step 2 implementer; it is never auto-selected and does not join reviewer panels in this change.
 - **Slack** — Single tracking-issue status message per `/implement` run (and for `/fix-issue` NON_PR closures). On by default when Slack env vars are configured; pass `--no-slack` to opt out. Requires environment variables or plugin `userConfig` (see [Environment Variables](configuration-and-permissions.md#environment-variables)). When `--no-slack` is passed, all Slack operations are skipped silently. When env vars are missing (and `--no-slack` was not passed), the operation is skipped with a warning at session setup. All other workflow steps proceed normally in either case.
 
 ### Contributor development

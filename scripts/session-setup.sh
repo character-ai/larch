@@ -7,7 +7,7 @@
 # Usage:
 #   session-setup.sh --prefix <name> [--skip-preflight] [--skip-branch-check] \
 #     [--skip-slack-check] [--skip-repo-check] [--check-reviewers] \
-#     [--skip-codex-probe] [--skip-cursor-probe] [--write-health <path>] \
+#     [--skip-codex-probe] [--skip-cursor-probe] [--include-gemini] [--skip-gemini-probe] [--write-health <path>] \
 #     [--write-session-env <path>] [--caller-env <path>]
 #
 # Flags:
@@ -19,11 +19,13 @@
 #   --check-reviewers     Run check-reviewers.sh --probe and emit availability/health keys
 #   --skip-codex-probe    Forwarded to check-reviewers.sh (skip Codex health probe)
 #   --skip-cursor-probe   Forwarded to check-reviewers.sh (skip Cursor health probe)
-#   --write-health <path> Write CODEX_HEALTHY/CURSOR_HEALTHY to file (cross-skill propagation)
+#   --include-gemini      Forwarded to check-reviewers.sh (opt into Gemini health probe)
+#   --skip-gemini-probe   Forwarded to check-reviewers.sh (skip Gemini health probe)
+#   --write-health <path> Write CODEX_HEALTHY/CURSOR_HEALTHY/GEMINI_HEALTHY to file (cross-skill propagation)
 #   --write-session-env <path>  Write full session-env file via write-session-env.sh
 #   --caller-env <path>   Path to KEY=value file with already-discovered values.
 #                          Recognized keys: SLACK_OK, SLACK_MISSING, REPO, REPO_UNAVAILABLE,
-#                          CODEX_HEALTHY, CURSOR_HEALTHY.
+#                          CODEX_HEALTHY, CURSOR_HEALTHY, GEMINI_HEALTHY.
 #                          If a key is present and non-empty, the script skips re-deriving it.
 #                          SESSION_TMPDIR is never inherited — a fresh tmpdir is always created.
 #                          If the file does not exist or is empty, full discovery happens.
@@ -36,8 +38,10 @@
 #   REPO_UNAVAILABLE=true|false Output unless --skip-repo-check
 #   CODEX_AVAILABLE=true|false  Output when --check-reviewers
 #   CURSOR_AVAILABLE=true|false Output when --check-reviewers
+#   GEMINI_AVAILABLE=true|false Output when --check-reviewers and --include-gemini
 #   CODEX_HEALTHY=true|false    Output when --check-reviewers, or passthrough from --caller-env
 #   CURSOR_HEALTHY=true|false   Output when --check-reviewers, or passthrough from --caller-env
+#   GEMINI_HEALTHY=true|false   Output when --check-reviewers and --include-gemini, or passthrough from --caller-env
 #   CODEX_PROBE_ERROR=<reason>  Output when --check-reviewers and CODEX_HEALTHY=false (explains why)
 #   CURSOR_PROBE_ERROR=<reason> Output when --check-reviewers and CURSOR_HEALTHY=false (explains why)
 #
@@ -60,6 +64,8 @@ SKIP_REPO_CHECK=false
 CHECK_REVIEWERS=false
 SKIP_CODEX_PROBE=false
 SKIP_CURSOR_PROBE=false
+SKIP_GEMINI_PROBE=false
+INCLUDE_GEMINI=false
 WRITE_HEALTH=""
 WRITE_SESSION_ENV=""
 CALLER_ENV=""
@@ -83,6 +89,10 @@ while [[ $# -gt 0 ]]; do
             SKIP_CODEX_PROBE=true; shift ;;
         --skip-cursor-probe)
             SKIP_CURSOR_PROBE=true; shift ;;
+        --include-gemini)
+            INCLUDE_GEMINI=true; shift ;;
+        --skip-gemini-probe)
+            SKIP_GEMINI_PROBE=true; shift ;;
         --write-health)
             [[ $# -ge 2 ]] || { echo "session-setup.sh: --write-health requires a path" >&2; exit 4; }
             WRITE_HEALTH="$2"; shift 2 ;;
@@ -111,6 +121,7 @@ CALLER_REPO=""
 CALLER_REPO_UNAVAILABLE=""
 CALLER_CODEX_HEALTHY=""
 CALLER_CURSOR_HEALTHY=""
+CALLER_GEMINI_HEALTHY=""
 
 if [[ -n "$CALLER_ENV" && -f "$CALLER_ENV" ]]; then
     while IFS='=' read -r key value || [[ -n "$key" ]]; do
@@ -123,6 +134,7 @@ if [[ -n "$CALLER_ENV" && -f "$CALLER_ENV" ]]; then
             REPO_UNAVAILABLE)  CALLER_REPO_UNAVAILABLE="$value" ;;
             CODEX_HEALTHY)     CALLER_CODEX_HEALTHY="$value" ;;
             CURSOR_HEALTHY)    CALLER_CURSOR_HEALTHY="$value" ;;
+            GEMINI_HEALTHY)    CALLER_GEMINI_HEALTHY="$value"; INCLUDE_GEMINI=true ;;
             *)                 ;; # Ignore unknown keys
         esac
     done < "$CALLER_ENV"
@@ -155,6 +167,9 @@ if [[ -z "${LARCH_CURSOR_MODEL:-}" && -n "${CLAUDE_PLUGIN_OPTION_CURSOR_MODEL:-}
 fi
 if [[ -z "${LARCH_CODEX_MODEL:-}" && -n "${CLAUDE_PLUGIN_OPTION_CODEX_MODEL:-}" ]]; then
     export LARCH_CODEX_MODEL="${CLAUDE_PLUGIN_OPTION_CODEX_MODEL}"
+fi
+if [[ -z "${LARCH_GEMINI_MODEL:-}" && -n "${CLAUDE_PLUGIN_OPTION_GEMINI_MODEL:-}" ]]; then
+    export LARCH_GEMINI_MODEL="${CLAUDE_PLUGIN_OPTION_GEMINI_MODEL}"
 fi
 
 # --- 3. Check Slack configuration (LARCH_SLACK_BOT_TOKEN + LARCH_SLACK_CHANNEL_ID) ---
@@ -262,6 +277,9 @@ if [[ "$CHECK_REVIEWERS" == "true" ]]; then
     if [[ "$CALLER_CURSOR_HEALTHY" == "false" ]]; then
         SKIP_CURSOR_PROBE=true
     fi
+    if [[ "$CALLER_GEMINI_HEALTHY" == "false" ]]; then
+        SKIP_GEMINI_PROBE=true
+    fi
 
     # Build check-reviewers.sh arguments
     CR_ARGS=(--probe)
@@ -271,6 +289,12 @@ if [[ "$CHECK_REVIEWERS" == "true" ]]; then
     if [[ "$SKIP_CURSOR_PROBE" == "true" ]]; then
         CR_ARGS+=(--skip-cursor-probe)
     fi
+    if [[ "$INCLUDE_GEMINI" == "true" ]]; then
+        CR_ARGS+=(--include-gemini)
+    fi
+    if [[ "$SKIP_GEMINI_PROBE" == "true" ]]; then
+        CR_ARGS+=(--skip-gemini-probe)
+    fi
 
     # Run check-reviewers.sh; capture output, guard against non-zero exit
     REVIEWER_OUTPUT=$("$SCRIPT_DIR/check-reviewers.sh" "${CR_ARGS[@]}" 2>&1) || true
@@ -278,28 +302,37 @@ if [[ "$CHECK_REVIEWERS" == "true" ]]; then
     # Parse and emit reviewer output
     PROBED_CODEX_AVAILABLE=""
     PROBED_CURSOR_AVAILABLE=""
+    PROBED_GEMINI_AVAILABLE=""
     PROBED_CODEX_HEALTHY=""
     PROBED_CURSOR_HEALTHY=""
+    PROBED_GEMINI_HEALTHY=""
     PROBED_CODEX_PROBE_ERROR=""
     PROBED_CURSOR_PROBE_ERROR=""
+    PROBED_GEMINI_PROBE_ERROR=""
     while IFS='=' read -r key value || [[ -n "$key" ]]; do
         [[ -z "$key" || "$key" =~ ^# ]] && continue
         case "$key" in
             CODEX_AVAILABLE)   PROBED_CODEX_AVAILABLE="$value" ;;
             CURSOR_AVAILABLE)  PROBED_CURSOR_AVAILABLE="$value" ;;
+            GEMINI_AVAILABLE)  PROBED_GEMINI_AVAILABLE="$value" ;;
             CODEX_HEALTHY)     PROBED_CODEX_HEALTHY="$value" ;;
             CURSOR_HEALTHY)    PROBED_CURSOR_HEALTHY="$value" ;;
+            GEMINI_HEALTHY)    PROBED_GEMINI_HEALTHY="$value" ;;
             CODEX_PROBE_ERROR) PROBED_CODEX_PROBE_ERROR="$value" ;;
             CURSOR_PROBE_ERROR) PROBED_CURSOR_PROBE_ERROR="$value" ;;
+            GEMINI_PROBE_ERROR) PROBED_GEMINI_PROBE_ERROR="$value" ;;
         esac
     done <<< "$REVIEWER_OUTPUT"
 
     [[ -n "$PROBED_CODEX_AVAILABLE" ]] && echo "CODEX_AVAILABLE=$PROBED_CODEX_AVAILABLE"
     [[ -n "$PROBED_CURSOR_AVAILABLE" ]] && echo "CURSOR_AVAILABLE=$PROBED_CURSOR_AVAILABLE"
+    [[ -n "$PROBED_GEMINI_AVAILABLE" ]] && echo "GEMINI_AVAILABLE=$PROBED_GEMINI_AVAILABLE"
     [[ -n "$PROBED_CODEX_HEALTHY" ]] && echo "CODEX_HEALTHY=$PROBED_CODEX_HEALTHY"
     [[ -n "$PROBED_CURSOR_HEALTHY" ]] && echo "CURSOR_HEALTHY=$PROBED_CURSOR_HEALTHY"
+    [[ -n "$PROBED_GEMINI_HEALTHY" ]] && echo "GEMINI_HEALTHY=$PROBED_GEMINI_HEALTHY"
     [[ -n "$PROBED_CODEX_PROBE_ERROR" ]] && echo "CODEX_PROBE_ERROR=$PROBED_CODEX_PROBE_ERROR"
     [[ -n "$PROBED_CURSOR_PROBE_ERROR" ]] && echo "CURSOR_PROBE_ERROR=$PROBED_CURSOR_PROBE_ERROR"
+    [[ -n "$PROBED_GEMINI_PROBE_ERROR" ]] && echo "GEMINI_PROBE_ERROR=$PROBED_GEMINI_PROBE_ERROR"
 
     # Emit prominent banners to stderr for failed health checks (must be here,
     # not in check-reviewers.sh, because session-setup captures its stdout+stderr
@@ -328,10 +361,23 @@ if [[ "$CHECK_REVIEWERS" == "true" ]]; then
         echo "     Will use Claude replacement for this session." >&2
         echo "═══════════════════════════════════════════════════════════" >&2
     fi
+    if [[ "$PROBED_GEMINI_AVAILABLE" == "true" && "$PROBED_GEMINI_HEALTHY" == "false" \
+          && "$SKIP_GEMINI_PROBE" == "false" ]]; then
+        echo "═══════════════════════════════════════════════════════════" >&2
+        echo "  ⚠  GEMINI HEALTH CHECK FAILED — not responding" >&2
+        if [[ -n "$PROBED_GEMINI_PROBE_ERROR" ]]; then
+            echo "     Cause: $PROBED_GEMINI_PROBE_ERROR" >&2
+        else
+            echo "     Gemini binary found but health probe timed out or errored." >&2
+        fi
+        echo "     Will use Claude replacement for this session." >&2
+        echo "═══════════════════════════════════════════════════════════" >&2
+    fi
 
     # Use probed values for downstream sections
     FINAL_CODEX_HEALTHY="${PROBED_CODEX_HEALTHY:-}"
     FINAL_CURSOR_HEALTHY="${PROBED_CURSOR_HEALTHY:-}"
+    FINAL_GEMINI_HEALTHY="${PROBED_GEMINI_HEALTHY:-}"
 else
     # Passthrough from caller-env (no probe)
     if [[ -n "$CALLER_CODEX_HEALTHY" ]]; then
@@ -340,8 +386,12 @@ else
     if [[ -n "$CALLER_CURSOR_HEALTHY" ]]; then
         echo "CURSOR_HEALTHY=$CALLER_CURSOR_HEALTHY"
     fi
+    if [[ -n "$CALLER_GEMINI_HEALTHY" ]]; then
+        echo "GEMINI_HEALTHY=$CALLER_GEMINI_HEALTHY"
+    fi
     FINAL_CODEX_HEALTHY="${CALLER_CODEX_HEALTHY:-}"
     FINAL_CURSOR_HEALTHY="${CALLER_CURSOR_HEALTHY:-}"
+    FINAL_GEMINI_HEALTHY="${CALLER_GEMINI_HEALTHY:-}"
 fi
 
 # --- 6. Write health file (if requested) ---
@@ -350,6 +400,9 @@ if [[ -n "$WRITE_HEALTH" && "$WRITE_HEALTH" != "/dev/null" ]]; then
     {
         echo "CODEX_HEALTHY=${FINAL_CODEX_HEALTHY:-true}"
         echo "CURSOR_HEALTHY=${FINAL_CURSOR_HEALTHY:-true}"
+        if [[ "$INCLUDE_GEMINI" == "true" ]]; then
+            echo "GEMINI_HEALTHY=${FINAL_GEMINI_HEALTHY:-true}"
+        fi
     } > "$HEALTH_TMPFILE"
     mv "$HEALTH_TMPFILE" "$WRITE_HEALTH"
 fi
@@ -370,6 +423,7 @@ if [[ -n "$WRITE_SESSION_ENV" ]]; then
     [[ -n "$WSE_REPO" ]] && WSE_ARGS+=(--repo "$WSE_REPO")
     [[ -n "$FINAL_CODEX_HEALTHY" ]] && WSE_ARGS+=(--codex-healthy "$FINAL_CODEX_HEALTHY")
     [[ -n "$FINAL_CURSOR_HEALTHY" ]] && WSE_ARGS+=(--cursor-healthy "$FINAL_CURSOR_HEALTHY")
+    [[ -n "$FINAL_GEMINI_HEALTHY" ]] && WSE_ARGS+=(--gemini-healthy "$FINAL_GEMINI_HEALTHY")
 
     "$SCRIPT_DIR/write-session-env.sh" "${WSE_ARGS[@]}"
 fi

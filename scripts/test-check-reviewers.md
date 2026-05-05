@@ -4,12 +4,13 @@ Regression test for `check-reviewers.sh` probe acceptance logic. Tests the case-
 
 ## What it tests
 
-Simulates the normalization pipeline (`tr -d '[:space:]' | tr '[:upper:]' '[:lower:]'`) and verifies healthy/unhealthy classification for representative fixture replies. Does NOT launch real Codex/Cursor probes — tests only the string-matching logic.
+Simulates the normalization pipeline (`tr -d '[:space:]' | tr '[:upper:]' '[:lower:]'`) and verifies healthy/unhealthy classification for representative fixture replies. Also PATH-stubs `gemini` to verify `--include-gemini` output, healthy/unhealthy probe classification, absent-binary output, and the default no-Gemini-key behavior.
 
 ## Fixture coverage
 
 - **Positive** (should be healthy): `OK`, `ok`, `Ok`, `oK`, whitespace-padded, newline-terminated
 - **Negative** (should be unhealthy): empty, `token`, `broken`, `NotOK`, `Sure OK`, `wok`, `okay`, `OK.`, auth errors, thinking-prefix responses
+- **Gemini opt-in**: installed healthy, installed unhealthy, absent binary, and no `--include-gemini`
 
 ## Wiring
 

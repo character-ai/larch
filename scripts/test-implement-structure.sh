@@ -686,6 +686,22 @@ DISPATCHER_PATH="$REPO_ROOT/$DISPATCHER_LITERAL"
     || fail "(19) Cursor implementer test harness missing or not executable: skills/implement/scripts/test-cursor-implementer.sh"
 [[ -f "$REPO_ROOT/skills/implement/scripts/test-cursor-implementer.md" ]] \
     || fail "(19) Cursor implementer test harness sibling contract missing: skills/implement/scripts/test-cursor-implementer.md"
+[[ -x "$REPO_ROOT/scripts/launch-gemini-implement.sh" ]] \
+    || fail "(19) Gemini implementer launcher missing or not executable: scripts/launch-gemini-implement.sh"
+[[ -f "$REPO_ROOT/scripts/launch-gemini-implement.md" ]] \
+    || fail "(19) Gemini implementer launcher sibling contract missing: scripts/launch-gemini-implement.md"
+[[ -f "$REPO_ROOT/agents/gemini-implementer.md" ]] \
+    || fail "(19) Gemini implementer system prompt missing: agents/gemini-implementer.md"
+[[ -x "$REPO_ROOT/skills/implement/scripts/test-gemini-implementer.sh" ]] \
+    || fail "(19) Gemini implementer test harness missing or not executable: skills/implement/scripts/test-gemini-implementer.sh"
+[[ -f "$REPO_ROOT/skills/implement/scripts/test-gemini-implementer.md" ]] \
+    || fail "(19) Gemini implementer test harness sibling contract missing: skills/implement/scripts/test-gemini-implementer.md"
+cursor_shared=$(awk '/^## Shared guardrails$/{flag=1} flag{print}' "$REPO_ROOT/agents/cursor-implementer.md")
+gemini_shared=$(awk '/^## Shared guardrails$/{flag=1} flag{print}' "$REPO_ROOT/agents/gemini-implementer.md")
+[[ -n "$cursor_shared" && -n "$gemini_shared" ]] \
+    || fail "(19) Cursor/Gemini implementer prompts must both contain a Shared guardrails section"
+[[ "$cursor_shared" == "$gemini_shared" ]] \
+    || fail "(19) Cursor/Gemini implementer Shared guardrails sections must be byte-identical"
 
 # (20) Design manifest + design-only path pin: Step 1 must read the design
 # manifest, the flag table must expose --design-only, and Step 18 must mark
