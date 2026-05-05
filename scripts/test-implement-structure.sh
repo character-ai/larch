@@ -392,13 +392,17 @@ if ! [[ "$sentinel_refs" =~ ^[0-9]+$ ]] || (( sentinel_refs < 1 )); then
 fi
 
 assemble_refs=$(grep -cF 'assemble-anchor.sh' "$REBASE_SUBPROC" || true)
-if ! [[ "$assemble_refs" =~ ^[0-9]+$ ]] || (( assemble_refs < 1 )); then
-  fail "(11c-1) expected at least 1 reference to 'assemble-anchor.sh' in rebase-rebump-subprocedure.md (Step 6d), found ${assemble_refs:-0}"
+refresh_refs=$(grep -cF 'refresh-anchor.sh' "$REBASE_SUBPROC" || true)
+if ! [[ "$assemble_refs" =~ ^[0-9]+$ ]]; then assemble_refs=0; fi
+if ! [[ "$refresh_refs" =~ ^[0-9]+$ ]]; then refresh_refs=0; fi
+if (( assemble_refs + refresh_refs < 1 )); then
+  fail "(11c-1) expected at least 1 reference to 'assemble-anchor.sh' or 'refresh-anchor.sh' in rebase-rebump-subprocedure.md (Step 6d), found ${assemble_refs}+${refresh_refs}"
 fi
 
 upsert_refs=$(grep -cF 'upsert-anchor' "$REBASE_SUBPROC" || true)
-if ! [[ "$upsert_refs" =~ ^[0-9]+$ ]] || (( upsert_refs < 1 )); then
-  fail "(11c-2) expected at least 1 reference to 'upsert-anchor' in rebase-rebump-subprocedure.md (Step 6e), found ${upsert_refs:-0}"
+if ! [[ "$upsert_refs" =~ ^[0-9]+$ ]]; then upsert_refs=0; fi
+if (( upsert_refs + refresh_refs < 1 )); then
+  fail "(11c-2) expected at least 1 reference to 'upsert-anchor' or 'refresh-anchor.sh' in rebase-rebump-subprocedure.md (Step 6e), found ${upsert_refs}+${refresh_refs}"
 fi
 
 # (11d) No remaining invocation patterns. Match the literal
