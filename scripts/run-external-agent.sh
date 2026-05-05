@@ -109,8 +109,9 @@ trap 'echo "$EXIT_CODE" > "${OUTPUT_FILE}.done" 2>/dev/null || true' EXIT
 
 # Write metadata for collect-agent-results.sh retry support.
 # CMD is shell-quoted via printf '%q' to preserve argument boundaries.
+META_TOOL_NAME=$(printf '%s' "$TOOL_NAME" | LC_ALL=C tr -d '[:cntrl:]=')
 {
-    echo "TOOL=$TOOL_NAME"
+    echo "TOOL=$META_TOOL_NAME"
     echo "TIMEOUT=$TIMEOUT_SECONDS"
     echo "CAPTURE_STDOUT=$CAPTURE_STDOUT"
     echo "CAPTURE_STDOUT_ONLY=$CAPTURE_STDOUT_ONLY"
