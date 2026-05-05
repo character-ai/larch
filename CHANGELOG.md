@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.10.1] - 2026-05-04
+
+### Fixed
+
+- `scripts/preflight.sh` now runs `git rebase --abort` when the default-mode rebase fails, mirroring `scripts/rebase-push.sh:162-165`'s `--no-push` behavior. Previously a rebase conflict left the working tree mid-rebase. Adds `scripts/preflight.md` sibling contract documenting the new failure shape and exit-code semantics, including the unknown-flag exception that uses stderr-only output.
+
 ## [15.10.0] - 2026-05-04
 
 ### Added
