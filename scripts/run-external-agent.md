@@ -26,6 +26,16 @@ The current line parser in `scripts/collect-agent-results.sh` uses `${meta_line%
 
 The capture flags are mutually exclusive. Metadata includes both `CAPTURE_STDOUT` and `CAPTURE_STDOUT_ONLY`; retry callers must preserve the original mode.
 
+## .meta sidecar grammar
+
+The `<output>.meta` sidecar is a line-oriented file: one `KEY=VALUE` record per physical line, parsed by `scripts/collect-agent-results.sh` with the first `=` separating the key from the value. Values therefore must not embed physical newlines or Unicode line-break code points such as U+2028/U+2029.
+
+- `TOOL` follows the allowlist contract in "Tool labels" above.
+- `TIMEOUT` is accepted only after `--timeout` validates as a positive integer.
+- `CAPTURE_STDOUT` and `CAPTURE_STDOUT_ONLY` are wrapper-owned booleans, not caller-controlled byte strings.
+- `OUTPUT_FILE` is the wrapper's `--output` argument. Production callers pass internal session-tmpdir paths and are responsible for not embedding newlines; the wrapper does not re-sanitize this path before metadata emission.
+- `CMD` is serialized with Bash `printf '%q'`, preserving argument boundaries while using shell escapes for non-printable bytes; under byte-oriented locale behavior such as `LC_ALL=C`, that includes the UTF-8 byte sequences for Unicode line and paragraph separators U+2028/U+2029.
+
 ## Invariants
 
 - Always remove stale `<output>`, `<output>.done`, `<output>.meta`, and `<output>.diag` before launch.
