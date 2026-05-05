@@ -20,6 +20,7 @@ GO=<true|false>
 INPUT_FILE=<path — empty if --input-file not specified>
 UMBRELLA_SUMMARY_FILE=<path — empty if --umbrella-summary-file not specified>
 PIECES_JSON=<path — empty if --pieces-json not specified>
+BLOCKED_BY_ISSUE=<positive integer — empty if --blocked-by-issue not specified>
 TASK=<verbatim remainder of $ARGS_STR after the flag prefix — may be empty; preserves embedded whitespace AND any quote/escape characters>
 UMBRELLA_TMPDIR=<absolute path — newly-created mktemp dir>
 ```
@@ -37,6 +38,7 @@ When `LABELS_COUNT=0`, no `LABEL_*` lines are emitted (the `LABEL_<i>` block is 
 - `--input-file PATH` — single value. Activates `/umbrella`'s pre-decomposed-input mode: caller provides a pre-built `/issue --input-file` batch markdown directly, bypassing Step 1 task resolve and Step 3B.1 LLM decomposition. Required to be paired with `--umbrella-summary-file`. Mutually exclusive with positional TASK.
 - `--umbrella-summary-file PATH` — single value. Caller-composed 1-2 sentence summary paragraph used as the umbrella issue body's lead summary in Step 3B.3 (replaces the LLM-composed summary). Required to be paired with `--input-file`.
 - `--pieces-json PATH` — single value. Optional caller-supplied inter-piece dependency edges for pre-decomposed-input mode. Required to be paired with `--input-file` (asymmetric: `--input-file` does NOT require `--pieces-json`).
+- `--blocked-by-issue N` — single value; positive integer; emitted as `BLOCKED_BY_ISSUE=<N>`. Caller-agnostic policy blocker. Forwarded to `/issue` at both Step 3A (single-mode one-shot — `/issue` rejects with its frozen batch-mode-only error, providing fail-fast for misclassified runs) and Step 3B.2 (batch child create — applied per child); explicitly NOT forwarded to Step 3B.3 (umbrella's own create) because the policy edge is for children only.
 - `--` — explicit end-of-flags marker; subsequent text is TASK verbatim.
 - Any unknown `--flag` aborts with `ERROR=Unknown flag: <flag>`.
 
@@ -71,12 +73,14 @@ ERROR=embedded newline in unquoted value at offset <N>
 ERROR=embedded newline in TASK at offset <N>
 ERROR=--pieces-json requires a value
 ERROR=--pieces-json requires --input-file
+ERROR=--blocked-by-issue requires a value
+ERROR=--blocked-by-issue must be a positive integer; got '<value>'
 ERROR=--input-file and --umbrella-summary-file must be passed together
 ERROR=--input-file is mutually exclusive with positional TASK
 ```
 
 **Exit codes**: `0` success; `1` parse failure (one `ERROR=...` line on stderr).
 
-**Edit-in-sync rules**: any change to flag set OR stdout grammar OR the frozen ERROR= list OR the quoting subset OR `UMBRELLA_TMPDIR` ownership requires a same-PR update to `SKILL.md` Step 0 (which parses the grammar) and Step 5 (which removes the tmpdir). The harness `test-umbrella-parse-args.sh` keys off the frozen ERROR= templates and stdout shape — update it in lockstep. Wording-only ERROR= template changes (no stdout grammar change, no behavioral change to which inputs are rejected) do NOT require a SKILL.md update because Step 0 surfaces ERROR= lines verbatim and does not parse them.
+**Edit-in-sync rules**: any change to flag set OR stdout grammar OR the frozen ERROR= list OR the quoting subset OR `UMBRELLA_TMPDIR` ownership requires a same-PR update to `SKILL.md` Step 0 (which parses the grammar) and Step 5 (which removes the tmpdir). Any change to the flag set requires a same-PR update to `SKILL.md` Step 0, Step 3A args grammar, Step 3B.2 args grammar, the structural harness, and this sibling contract's grammar list and ERROR template list. The harness `test-umbrella-parse-args.sh` keys off the frozen ERROR= templates and stdout shape — update it in lockstep. Wording-only ERROR= template changes (no stdout grammar change, no behavioral change to which inputs are rejected) do NOT require a SKILL.md update because Step 0 surfaces ERROR= lines verbatim and does not parse them.
 
 **Test harness**: `skills/umbrella/scripts/test-umbrella-parse-args.sh` (sibling `test-umbrella-parse-args.md`); wired into `make lint` via the `test-umbrella-parse-args` Makefile target alongside `test-umbrella-helpers`.

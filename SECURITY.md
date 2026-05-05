@@ -93,6 +93,10 @@ By default, `/research` creates a GitHub issue at the end of each successful run
 
 **Transitive callers**: `scripts/eval-research.sh` and `skills/skill-evolver/SKILL.md` pass `--no-issue` to suppress auto-issue when `/research` is invoked as an intermediate step rather than a user-facing research task.
 
+### /umbrella `--blocked-by-issue`
+
+`/umbrella --blocked-by-issue N` forwards the caller-supplied policy blocker to `/issue` (Step 3A single-create and Step 3B.2 batch child create). All security-relevant validation — open-state probe of issue N, pull-request rejection, `add-blocked-by.sh` cycle-check, dry-run probe, redaction of error stderr — is owned by `/issue`'s existing pipeline and is not duplicated in `/umbrella`. `/umbrella`'s sole local validation is digit-only positive-integer parsing in `parse-args.sh`, which prevents shell-metacharacter injection through the `BLOCKED_BY_ISSUE` value when the orchestrator reconstructs the `/issue` argv. No new `gh api` surface is introduced in `/umbrella`. Failure posture matches existing `/issue` patterns: probe failures, missing issues, closed issues, and PR targets all surface as `/issue`'s frozen `**ERROR: ...**` lines on stderr with non-zero exit; `/umbrella` propagates the exit code without re-emitting or transforming the error.
+
 ## Fixed-string matching for interpolated values (issue #775 unified grep -F doctrine)
 
 Any shell-script call site that matches a literal value (label name, comment marker, edge identifier) MUST use a fixed-string matcher — `grep -F` family or `awk` with `index()`/field-equality — when the searched-for value is interpolated from a variable. Using BRE/ERE matchers (`grep -E`, `grep` default) on interpolated values is a regex-injection class: a value containing regex metacharacters (`.`, `[]`, `(`, `^`, `$`, `|`, `*`, `+`, `?`, `{}`) can over-match, fail closed unexpectedly, or shift match semantics in ways the call site does not anticipate. The `-x` (whole-line) and `-q` (quiet) flags are independent and may be combined with `-F`.

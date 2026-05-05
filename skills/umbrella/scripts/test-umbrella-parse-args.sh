@@ -3,7 +3,7 @@
 #
 # Pins the stdout grammar (LABELS_COUNT + LABEL_<i>, TITLE_PREFIX, REPO,
 # CLOSED_WINDOW_DAYS, DRY_RUN, GO, INPUT_FILE, UMBRELLA_SUMMARY_FILE,
-# PIECES_JSON, TASK, UMBRELLA_TMPDIR), the frozen ERROR= templates, the quoting subset,
+# PIECES_JSON, BLOCKED_BY_ISSUE, TASK, UMBRELLA_TMPDIR), the frozen ERROR= templates, the quoting subset,
 # the paired-flag and TASK-mutual-exclusion validation rules for --input-file
 # / --umbrella-summary-file, and the TASK byte-preservation contract documented
 # in scripts/parse-args.md.
@@ -56,6 +56,7 @@ run_parser() {
     -e '/^INPUT_FILE=$/d' \
     -e '/^UMBRELLA_SUMMARY_FILE=$/d' \
     -e '/^PIECES_JSON=$/d' \
+    -e '/^BLOCKED_BY_ISSUE=$/d' \
     "$stdout_file"
   rm -f "$stdout_file.bak"
   printf '%s' "$exit_code"
@@ -345,6 +346,101 @@ assert_error "case 33: --pieces-json requires --input-file" \
 assert_error "case 34: --pieces-json requires a value" \
   "--input-file /tmp/foo.md --umbrella-summary-file /tmp/bar.txt --pieces-json" \
   "--pieces-json requires a value"
+
+# 35. --blocked-by-issue valid positive integer.
+assert_raw_stdout_contains "case 35: --blocked-by-issue 1234" \
+  "--blocked-by-issue 1234" \
+  "BLOCKED_BY_ISSUE=1234"
+
+# 36. --blocked-by-issue without --input-file (allowed at parse time — runtime
+#      enforcement is /issue's responsibility per Step 3A -> /issue rejection).
+assert_raw_stdout_contains "case 36: --blocked-by-issue allowed without --input-file" \
+  "--blocked-by-issue 1234 some task" \
+  "BLOCKED_BY_ISSUE=1234"
+
+# 37. --blocked-by-issue with --input-file co-occurrence is fine.
+assert_raw_stdout_contains "case 37: --blocked-by-issue with --input-file" \
+  "--input-file /tmp/foo.md --umbrella-summary-file /tmp/bar.txt --blocked-by-issue 99" \
+  "BLOCKED_BY_ISSUE=99"
+
+# 38. --blocked-by-issue missing value -> frozen ERROR template.
+assert_error "case 38: --blocked-by-issue requires a value" \
+  "--blocked-by-issue" \
+  "--blocked-by-issue requires a value"
+
+# 39. --blocked-by-issue zero -> rejected with frozen "must be a positive integer".
+assert_error "case 39: --blocked-by-issue 0 rejected" \
+  "--blocked-by-issue 0" \
+  "must be a positive integer"
+
+# 40. --blocked-by-issue negative — the leading minus is consumed by the lexer
+#      as the next token's leading byte. The unquoted-token reader stops at
+#      whitespace/EOF, so `-1` is read as the value verbatim. The `*[!0-9]*`
+#      check then rejects with "must be a positive integer".
+#
+#      Pin the canonical "must be a positive integer" path explicitly:
+assert_error "case 40: --blocked-by-issue -1 rejected" \
+  "--blocked-by-issue -1" \
+  "must be a positive integer"
+
+# 41. --blocked-by-issue non-integer -> rejected.
+assert_error "case 41: --blocked-by-issue non-integer" \
+  "--blocked-by-issue abc" \
+  "must be a positive integer"
+
+# 42. --blocked-by-issue with leading zero -> rejected.
+assert_error "case 42: --blocked-by-issue leading zero rejected" \
+  "--blocked-by-issue 0123" \
+  "must be a positive integer"
+
+# 43. BLOCKED_BY_ISSUE empty by default — presence check on the empty-value line.
+assert_raw_stdout_contains "case 43: BLOCKED_BY_ISSUE empty by default" \
+  "--label foo" \
+  "BLOCKED_BY_ISSUE="
+
+# 44. BLOCKED_BY_ISSUE adjacency check — pin the canonical key order
+#      PIECES_JSON -> BLOCKED_BY_ISSUE -> TASK in raw stdout.
+adjacency_test() {
+  local label="$1" args="$2"
+  local stdout_file="$TMP/stdout-adj"
+  local stderr_file="$TMP/stderr-adj"
+  set +e
+  bash "$PARSER" "$args" >"$stdout_file" 2>"$stderr_file"
+  local exit_code=$?
+  set -e
+  local emitted
+  emitted=$(sed -n 's/^UMBRELLA_TMPDIR=//p' "$stdout_file")
+  if [ -n "$emitted" ] && [ -d "$emitted" ]; then
+    rm -rf "$emitted"
+  fi
+  if [ "$exit_code" != "0" ]; then
+    printf '  ❌ %s — expected exit 0, got %s\n' "$label" "$exit_code"
+    FAIL=$((FAIL + 1))
+    return
+  fi
+  # Use awk to find the line numbers of PIECES_JSON=, BLOCKED_BY_ISSUE=, TASK=
+  # and assert PIECES_JSON < BLOCKED_BY_ISSUE < TASK.
+  local pieces_line blocked_line task_line
+  pieces_line=$(awk '/^PIECES_JSON=/ {print NR; exit}' "$stdout_file")
+  blocked_line=$(awk '/^BLOCKED_BY_ISSUE=/ {print NR; exit}' "$stdout_file")
+  task_line=$(awk '/^TASK=/ {print NR; exit}' "$stdout_file")
+  if [ -z "$pieces_line" ] || [ -z "$blocked_line" ] || [ -z "$task_line" ]; then
+    printf '  ❌ %s — missing one of PIECES_JSON / BLOCKED_BY_ISSUE / TASK\n' "$label"
+    FAIL=$((FAIL + 1))
+    return
+  fi
+  if [ "$pieces_line" -lt "$blocked_line" ] && [ "$blocked_line" -lt "$task_line" ]; then
+    printf '  ✅ %s\n' "$label"
+    PASS=$((PASS + 1))
+  else
+    printf '  ❌ %s — order PIECES_JSON(line %s) < BLOCKED_BY_ISSUE(line %s) < TASK(line %s) violated\n' \
+      "$label" "$pieces_line" "$blocked_line" "$task_line"
+    FAIL=$((FAIL + 1))
+  fi
+}
+
+adjacency_test "case 44: PIECES_JSON -> BLOCKED_BY_ISSUE -> TASK adjacency" \
+  "--blocked-by-issue 99 hello"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
