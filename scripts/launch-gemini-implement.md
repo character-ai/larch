@@ -1,6 +1,6 @@
 # launch-gemini-implement.sh
 
-**Purpose**: Spawn the Gemini implementer subprocess for `/implement` Step 2 with a tight, machine-parseable stdout contract. Wraps `run-external-agent.sh` + `gemini --prompt ... --approval-mode yolo --skip-trust` and redirects the wrapper's human-readable progress lines to a sidecar log file so the dispatcher (`skills/implement/scripts/step2-implement.sh`) only sees deterministic `KEY=VALUE` lines.
+**Purpose**: Spawn the Gemini implementer subprocess for `/implement` Step 2 with a tight, machine-parseable stdout contract. Wraps `run-external-agent.sh` + `gemini --prompt ... --approval-mode yolo --skip-trust --model "$GEMINI_MODEL"` and redirects the wrapper's human-readable progress lines to a sidecar log file so the dispatcher (`skills/implement/scripts/step2-implement.sh`) only sees deterministic `KEY=VALUE` lines.
 
 **Invariants**:
 - Stdout contract is `KEY=VALUE` lines only: `LAUNCHER_EXIT`, `MANIFEST_WRITTEN`, `QA_PENDING_WRITTEN`, `TRANSCRIPT`, `SIDECAR_LOG`. The dispatcher relies on this; progress text leaking to stdout would corrupt parsing.
@@ -8,8 +8,8 @@
 - Gemini stdout/stderr is captured to `--transcript-path` via `run-external-agent.sh --capture-stdout`. The dispatcher consumes the on-disk manifest, not Gemini stdout.
 - Wrapper always exits 0 unless flag validation fails (exit 2). The Gemini subprocess exit code is reported via `LAUNCHER_EXIT=<int>` on stdout.
 - Composes Gemini's prompt by concatenating `--agent-prompt` (`agents/gemini-implementer.md`) with this-invocation parameters and an optional resume block. Composition is in shell, not agent-side prose.
-- Reuses `agent-model-args.sh --tool gemini --with-effort`. Gemini CLI has no separate reasoning-effort flag; the max-reasoning posture is model-based, defaulting to `--model gemini-2.5-pro` through `LARCH_GEMINI_MODEL` / `CLAUDE_PLUGIN_OPTION_GEMINI_MODEL` / hardcoded `gemini-2.5-pro` (aligned with the reviewer-side default).
-- Gemini argv shape is pinned to the non-interactive shell-tools path verified during design: `gemini --prompt "$PROMPT" --approval-mode yolo --skip-trust $MODEL_ARGS`. Do not add `--output-format json`; the dispatcher reads `manifest.json`, not stdout JSON. The harness stubs Gemini CLI and asserts this shape. Verified against Gemini CLI 0.40.x; update this contract and `test-gemini-implementer.sh` together if a future CLI changes the headless flags.
+- Resolves `GEMINI_MODEL` directly from `LARCH_GEMINI_MODEL` / `CLAUDE_PLUGIN_OPTION_GEMINI_MODEL` / hardcoded `gemini-2.5-pro`, matching `agent-model-args.sh --tool gemini` and `launch-gemini-review.sh`. Gemini CLI has no separate reasoning-effort flag; the max-reasoning posture is model-based.
+- Gemini argv shape is pinned to the non-interactive shell-tools path verified during design: `gemini --prompt "$PROMPT" --approval-mode yolo --skip-trust --model "$GEMINI_MODEL"`. Do not add `--output-format json`; the dispatcher reads `manifest.json`, not stdout JSON. The harness stubs Gemini CLI and asserts this shape. Verified against Gemini CLI 0.40.x; update this contract and `test-gemini-implementer.sh` together if a future CLI changes the headless flags.
 
 **Stdout contract**:
 ```
