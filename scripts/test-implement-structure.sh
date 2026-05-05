@@ -61,7 +61,9 @@
 #      least 1 time (the MANDATORY pointer at Step 9a) — lower floor than pre-Phase-3
 #      since rich report content moved to anchor-comment-template.md. (9d) The
 #      canonical Step 9a.1 procedure must require `--title-prefix "[OOS]"`
-#      while keeping `/issue` label flags out of that procedure.
+#      while keeping `/issue` label flags out of that procedure, and must document
+#      `--blocked-by-issue $ISSUE_NUMBER` forwarding only when the tracking issue is
+#      resolved and non-degraded.
 # (10) Cross-skill bail-token pin (umbrella #348 Phase 4): skills/implement/SKILL.md
 #      must contain the literal `IMPLEMENT_BAIL_REASON=adopted-issue-closed`.
 #      `/fix-issue` Step 6a scans this token in captured `/implement` output to
@@ -322,9 +324,13 @@ fi
 # ---------------------------------------------------------------------------
 # (9d) Step 9a.1 OOS issue-filing flag contract. Scope to the canonical
 #      procedure section only: it must require the `[OOS]` title prefix on the
-#      `/issue` batch invocation, and it must not contain any label flag token.
-#      This prevents the OOS pipeline from regressing to unlabeled-title output
-#      or from triggering label-not-found warnings in consumer repos.
+#      `/issue` batch invocation, must not contain any label flag token, and must
+#      document `--blocked-by-issue $ISSUE_NUMBER` forwarding only when
+#      `$ISSUE_NUMBER` is set, `deferred=false`, and `repo_unavailable=false`, with
+#      an explicit degraded-mode skip rule. This prevents the OOS pipeline from
+#      regressing to unlabeled-title output, from triggering label-not-found
+#      warnings in consumer repos, or from silently dropping the tracking-issue
+#      native blocking edge in the resolved-tracking-issue path.
 # ---------------------------------------------------------------------------
 step_9a1_oos_procedure=$(awk '
   /^## Step 9a\.1 OOS pipeline procedure/ { flag=1; next }
@@ -339,6 +345,12 @@ printf '%s\n' "$step_9a1_oos_procedure" | grep -Fq -- '--title-prefix "[OOS]"' \
 if printf '%s\n' "$step_9a1_oos_procedure" | grep -Fq -- '--label'; then
   fail "(9d) Step 9a.1 OOS pipeline procedure must not pass a /issue label flag; use the '[OOS]' title prefix instead"
 fi
+printf '%s\n' "$step_9a1_oos_procedure" | grep -Fq -- '--blocked-by-issue $ISSUE_NUMBER' \
+  || fail "(9d) Step 9a.1 OOS pipeline procedure must document '/issue --blocked-by-issue \$ISSUE_NUMBER' forwarding"
+printf '%s\n' "$step_9a1_oos_procedure" | grep -Fq -- 'When `$ISSUE_NUMBER` is non-empty AND `deferred=false` AND `repo_unavailable=false`' \
+  || fail "(9d) Step 9a.1 OOS pipeline procedure must gate blocked-by forwarding on ISSUE_NUMBER + deferred=false + repo_unavailable=false"
+printf '%s\n' "$step_9a1_oos_procedure" | grep -Fq -- 'In any of the three degraded modes' \
+  || fail "(9d) Step 9a.1 OOS pipeline procedure must document the degraded-mode blocked-by skip rule"
 
 # ---------------------------------------------------------------------------
 # (10) Cross-skill bail-token pin (umbrella #348 Phase 4): SKILL.md must
