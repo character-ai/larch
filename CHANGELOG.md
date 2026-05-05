@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.11.16] - 2026-05-05
+
+### Changed
+
+- Document the line-oriented `.meta` sidecar grammar consumed by `scripts/collect-agent-results.sh` and emitted by `scripts/run-external-agent.sh` and `scripts/launch-gemini-review.sh::write_meta()`. Adds a per-field contract section in `scripts/run-external-agent.md` (TOOL allowlist, TIMEOUT integer validation, capture booleans, OUTPUT_FILE caller responsibility, CMD `printf '%q'` serialization with locale qualification), short pointer comments at the writer site in `scripts/run-external-agent.sh` and the parser sites in `scripts/collect-agent-results.sh`, and a cross-reference paragraph in `scripts/collect-agent-results.md`. Closes #1155 (OOS surfaced during round-1 review of #1145). Documentation only — no behavioral change.
+
 ## [15.11.15] - 2026-05-05
 
 ### Changed
