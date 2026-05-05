@@ -10,6 +10,14 @@ Before writing `.meta`, the wrapper sanitizes the `TOOL=` value through a label-
 
 This script is listed as the "Related (label-only consumer, NOT sourced)" entry in `scripts/external-tool-registry.md`, not as a `Sourced by` consumer.
 
+## `--output` invariants
+
+`--output` is rejected during argv validation if it is empty or contains any byte outside `[A-Za-z0-9._/-]`; the wrapper exits 1 with an `ERROR:` line on stderr before `rm -f`, trap installation, `.meta` writes, or child launch. The accepted alphabet is deliberately narrower than "not a control byte and not `=`": `CMD=` is serialized with `printf '%q'`, while `OUTPUT_FILE=` stores the path raw, and `collect-agent-results.sh` reconstructs retry commands with literal substring substitution. Spaces, UTF-8 bytes, and other shell-quoted characters would make the raw `OUTPUT_FILE=` value differ from its appearance in `CMD=`, so retry substitution could miss.
+
+The path is rejected rather than transformed because the same byte string is used for the real output file, `<output>.done`, `<output>.diag`, `<output>.meta`, and the retry-substituted `CMD=` field. A `.meta`-only transform would split the recorded path from the on-disk path and from the bytes embedded in the shell-quoted command. The shared validator lives in `scripts/lib-validate-meta-path.sh`; `scripts/launch-gemini-review.sh` applies the same rule before its own side effects.
+
+The current line parser in `scripts/collect-agent-results.sh` uses `${meta_line%%=*}` / `${meta_line#*=}`, so embedded `=` in the value is not lost by that parser. `=` is still rejected as defense-in-depth for ad-hoc consumers and future metadata readers, and because it falls outside the narrowed shell-quote-passthrough alphabet.
+
 ## Output capture modes
 
 - Default: the child manages its own output path; wrapper stdout/stderr are not captured into `--output`.
@@ -36,8 +44,8 @@ The wrapper polls the child PID with `kill -0` in a loop and `sleep`s `$RUN_EXTE
 
 ## Test harness
 
-Covered indirectly by `scripts/test-launch-gemini-review.sh`, `scripts/test-check-reviewers.sh`, and collector harnesses.
+`scripts/test-run-external-agent.sh` owns direct wrapper coverage for accepted `--output` paths, unsafe path rejection before side effects, and the sourced-helper invariants. `scripts/test-launch-gemini-review.sh` owns the Gemini launcher-specific validation path and JSON normalization lifecycle. `scripts/test-check-reviewers.sh` and collector harnesses continue to cover downstream wrapper consumers.
 
 ## Edit-in-sync
 
-Update `scripts/collect-agent-results.sh` retry metadata parsing, launch wrappers, and this contract when adding capture modes or metadata keys.
+Update `scripts/lib-validate-meta-path.sh`, `scripts/launch-gemini-review.sh`, `scripts/collect-agent-results.sh` retry metadata parsing, launch wrappers, and this contract when adding capture modes, metadata keys, or changing the `OUTPUT_FILE=` retry-substitution invariant.

@@ -4,6 +4,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-validate-meta-path.sh
+source "$SCRIPT_DIR/lib-validate-meta-path.sh"
 
 ORIGINAL_ARGS=("$@")
 OUTPUT=""
@@ -108,8 +110,10 @@ if [[ -z "$OUTPUT" || -z "$TIMEOUT" || -z "$PROMPT" ]]; then
     exit 2
 fi
 
+validate_meta_scalar_path --output "$OUTPUT" || exit 2
+
 case "$TIMEOUT" in
-    ''|*[!0-9]*) echo "launch-gemini-review.sh: --timeout must be a positive integer, got '$TIMEOUT'" >&2; exit 2 ;;
+    ''|*[!0-9]*|0) echo "launch-gemini-review.sh: --timeout must be a positive integer, got '$TIMEOUT'" >&2; exit 2 ;;
 esac
 
 EFFECTIVE_TIMEOUT="$TIMEOUT"

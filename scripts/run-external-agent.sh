@@ -23,6 +23,11 @@
 # external-tool name set is owned by scripts/external-tool-registry.sh; see
 # scripts/external-tool-registry.md for the registry contract.
 #
+# The --output value is rejected before any filesystem side effects if it
+# contains a byte outside [A-Za-z0-9._/-]. OUTPUT_FILE is the same byte string
+# used on disk, in .meta, and inside the printf '%q'-quoted CMD= retry field;
+# see scripts/run-external-agent.md for the full retry-substitution rationale.
+#
 # Usage:
 #   run-external-agent.sh --tool NAME --output FILE --timeout SECS [--capture-stdout|--capture-stdout-only] -- CMD...
 #
@@ -58,6 +63,10 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-validate-meta-path.sh
+source "$SCRIPT_DIR/lib-validate-meta-path.sh"
+
 usage() { echo "Usage: run-external-agent.sh --tool NAME --output FILE --timeout SECS [--capture-stdout] -- CMD..." >&2; }
 
 CAPTURE_STDOUT=false
@@ -87,6 +96,8 @@ if [[ "$CAPTURE_STDOUT" == "true" && "$CAPTURE_STDOUT_ONLY" == "true" ]]; then
     echo "ERROR: --capture-stdout and --capture-stdout-only are mutually exclusive" >&2
     usage; exit 1
 fi
+
+validate_meta_scalar_path --output "$OUTPUT_FILE" || exit 1
 
 case "$TIMEOUT_SECONDS" in
     ''|*[!0-9]*|0) echo "ERROR: --timeout must be a positive integer, got '$TIMEOUT_SECONDS'" >&2; exit 1 ;;

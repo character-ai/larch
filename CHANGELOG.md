@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.11.15] - 2026-05-05
+
+### Changed
+
+- Reject unsafe `--output` paths at argv-validation time in `scripts/run-external-agent.sh` and `scripts/launch-gemini-review.sh` so they cannot corrupt the line-oriented `.meta` sidecar parsed by `scripts/collect-agent-results.sh` (closes OOS #1156, parallel to PR #1158 which sanitized `TOOL=`). Validation runs before any side effects (`rm -f`, `.done` trap install, `.meta` write, child launch) and is centralized in a new sourced-only library `scripts/lib-validate-meta-path.sh` consumed by both writers. Unlike `TOOL=` (transformed via a label-safe allowlist), `OUTPUT_FILE` paths are rejected because the same byte string is used on disk, in `.meta`, and inside the shell-quoted `CMD=` field that retry reconstruction substitutes; a `.meta`-only transform would split-brain those copies. The accepted alphabet is the conservative shell-quote-passthrough set `[A-Za-z0-9._/-]` — narrower than rejecting only `[:cntrl:]` and `=`, because `printf '%q'` shell-quotes spaces (and many other bytes) while `OUTPUT_FILE=` stores them raw, and the collector's substring substitution would silently miss spaced paths. **External integrators** invoking `run-external-agent.sh` or `launch-gemini-review.sh` directly with previously-tolerated paths (containing spaces, `=`, control bytes, or non-ASCII) will now fail fast with a clear stderr error; future widening of the alphabet is tracked separately via the OOS issue covering retry-substitution redesign.
+- Reject `--timeout 0` in `scripts/launch-gemini-review.sh` (parallel to `scripts/run-external-agent.sh` and the implement launcher family per #1115); add a regression test in `scripts/test-launch-gemini-review.sh` and a parallel timeout-zero rejection assertion in the new `scripts/test-run-external-agent.sh` so the launcher contract cannot silently re-diverge.
+
 ## [15.11.14] - 2026-05-05
 
 ### Fixed
