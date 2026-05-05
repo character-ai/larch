@@ -4,9 +4,9 @@ Monitored wrapper for external agents. It launches a command, writes `<output>.m
 
 ## Tool labels
 
-`--tool` is intentionally permissive: it is used only for log messages and the `.meta` `TOOL=` field. The canonical external-tool name set lives in `scripts/external-tool-registry.sh`; callers SHOULD pass a registered name, but this wrapper does not enforce it so out-of-tree callers can pass arbitrary provenance tags.
+`--tool` is intentionally permissive at the registry level: callers SHOULD pass a registered name (the canonical external-tool name set lives in `scripts/external-tool-registry.sh`), but this wrapper does not enforce that, so out-of-tree callers can pass arbitrary provenance tags. The raw `--tool` value is used as-is in human-readable log messages.
 
-Before writing `.meta`, the wrapper sanitizes the `TOOL=` value: ASCII control characters are stripped and `=` is translated to `_`, so unusual labels cannot corrupt line-oriented metadata parsing or collapse into canonical tool ids consumed by `collect-agent-results.sh::derive_tool()` (e.g. `c=u=r=s=o=r` would otherwise become `cursor`). If sanitization yields an empty string, the `.meta` field falls back to `unknown` so the retry path (which skips when `META_TOOL` is empty) stays functional. The original `--tool` value is still preserved for human-readable progress and diagnostics.
+Before writing `.meta`, the wrapper sanitizes the `TOOL=` value through a label-safe allowlist (alphanumerics, `.`, `_`, `-`); any other byte — control characters, `=`, whitespace, and any non-ASCII byte (including Unicode line/paragraph separators U+2028/U+2029) — is translated to `_`. Translation (rather than deletion) preserves length so an adversarial label cannot collapse into the canonical tool ids consumed by `collect-agent-results.sh::derive_tool()`; for example, `cu\nrsor` becomes `cu_rsor`, not `cursor`. If sanitization yields an empty string, the `.meta` field falls back to `sanitized-empty` (a distinct sentinel from `unknown`, which `derive_tool()` uses for unclassifiable tools) so the retry path — which skips when `META_TOOL` is empty — stays functional.
 
 This script is listed as the "Related (label-only consumer, NOT sourced)" entry in `scripts/external-tool-registry.md`, not as a `Sourced by` consumer.
 
