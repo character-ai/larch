@@ -161,11 +161,25 @@ write_empty_candidate "$OUT_B"
 write_meta "$OUT_B" "not-valid-json"
 assert_fail_closed "case-b" "$OUT_B" "Retry metadata invalid: malformed CMD_JSON"
 
-# Case C: stale CMD-only metadata is not accepted.
+# Case C: stale CMD-only metadata is not accepted (TOOL is present, only CMD_JSON missing).
 OUT_C="$TMPROOT/cursor-c.txt"
 write_empty_candidate "$OUT_C"
 write_meta_body "$OUT_C" 'CMD=printf\ ok'
-assert_fail_closed "case-c" "$OUT_C" "Retry metadata invalid: missing CMD_JSON or TOOL"
+assert_fail_closed "case-c" "$OUT_C" "Retry metadata invalid: missing CMD_JSON"
+
+# Case C2: both CMD_JSON and TOOL missing — combined message.
+OUT_C2="$TMPROOT/cursor-c2.txt"
+write_empty_candidate "$OUT_C2"
+{
+    printf 'TIMEOUT=2\n'
+    printf 'CAPTURE_STDOUT=false\n'
+    printf 'CAPTURE_STDOUT_ONLY=false\n'
+    printf 'OUTPUT_FILE=%s\n' "$OUT_C2"
+} > "${OUT_C2}.meta"
+HEALTH_C2="$TMPROOT/case-c2.health"
+RESULT_C2=$(run_collector bash "$OUT_C2" "$HEALTH_C2")
+assert_line "case C2 status" "STATUS=EMPTY_OUTPUT" "$RESULT_C2"
+assert_line "case C2 reason" "FAILURE_REASON=Retry metadata invalid: missing CMD_JSON and TOOL" "$RESULT_C2"
 
 # Case D: JSON arrays must contain only strings.
 OUT_D="$TMPROOT/cursor-d.txt"
@@ -220,6 +234,26 @@ if [[ "$DYNAMIC_VULNERABLE" == "true" ]]; then
 else
     skipm "case G: bash ${BASH_MAJOR:-unknown}.${BASH_MINOR:-?} at $SYSTEM_BASH (need < 4.4 for dynamic retry portability check)"
 fi
+
+# Case H: mixed-batch — one candidate has malformed CMD_JSON (no retry launched),
+# another candidate has valid CMD_JSON (retry launched and succeeds). The
+# malformed entry's specific FAILURE_REASON must survive the post-wait
+# result-update loop; without the RETRY_LAUNCHED guard, the second loop would
+# overwrite it with "Retry process did not complete (sentinel file missing)".
+OUT_H_BAD="$TMPROOT/cursor-h-bad.txt"
+OUT_H_OK="$TMPROOT/cursor-h-ok.txt"
+HEALTH_H="$TMPROOT/case-h.health"
+write_empty_candidate "$OUT_H_BAD"
+write_meta "$OUT_H_BAD" "not-valid-json"
+write_empty_candidate "$OUT_H_OK"
+write_meta "$OUT_H_OK" "$(json_array bash "$HELPER" --output "$OUT_H_OK")"
+RESULT_H=$(RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 bash "$COLLECTOR" --timeout 5 --write-health "$HEALTH_H" "$OUT_H_BAD" "$OUT_H_OK" 2>"${HEALTH_H}.stderr")
+# Bad entry retains its specific reason despite the valid sibling launching a retry.
+assert_line "case H bad reviewer file" "REVIEWER_FILE=$OUT_H_BAD" "$RESULT_H"
+assert_line "case H bad reason" "FAILURE_REASON=Retry metadata invalid: malformed CMD_JSON" "$RESULT_H"
+# Good entry recovers via retry.
+assert_line "case H ok reviewer file" "REVIEWER_FILE=${OUT_H_OK%.txt}-retry.txt" "$RESULT_H"
+assert_line "case H ok status" "STATUS=OK" "$RESULT_H"
 
 echo ""
 echo "Summary: $PASS passed, $FAIL failed, $SKIP skipped"
