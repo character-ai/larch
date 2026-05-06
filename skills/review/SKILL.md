@@ -206,7 +206,7 @@ External reviewer output collection, validation, and retry are handled by the sh
 | Rounds | Reviewer panel | Voting | OOS collection | Stop condition |
 |--------|---------------|--------|----------------|----------------|
 | 1-3 | Full 6-reviewer panel (5 specialists + 1 generic) | 3-voter panel (Claude + Codex + Cursor) each round | Yes | 0 findings accepted by vote, OR round 3 reached |
-| 4-7 | Single Cursor generic (Codex → Claude fallback) | No voting (auto-accept) | No | 0 findings, OR round 7 reached |
+| 4-7 | Single generic reviewer per round, chain `Cursor → Codex → Claude` | No voting (auto-accept) | No | 0 findings, OR round 7 reached |
 
 **Description mode is unchanged**: single round, no implement loop. After Step 3d's round summary, jump directly to Step 4 (skip Step 3e implement-fixes and Step 3f re-review).
 

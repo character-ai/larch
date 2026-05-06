@@ -816,28 +816,31 @@ grep -Fq -- 'orchestrator-envelope-invalid' "$SKILL_MD" \
 grep -Fq -- 'NEVER #10' "$SKILL_MD" \
     || fail "(22) skills/implement/SKILL.md missing 'NEVER #10' cross-reference anchor — the orchestrator-edit-authority NEVER rule would have no inbound references"
 
-# (23) Gemini quick-mode reviewer pins. Step 0 must opt into Gemini probing
-# and Step 5 quick mode must document additive rounds 1-3, the
-# Cursor → Codex → Gemini → Claude rounds-4+ chain, tool-qualified paths, and
-# cross-skill GEMINI_HEALTHY propagation.
+# (23) Gemini machinery pins. /implement no longer launches Gemini reviewers
+# in Step 5 quick mode (the review call sites were removed deliberately while
+# preserving the launcher and `--coder=gemini` dispatch path), but Step 0 must
+# still opt into Gemini probing for the `--coder=gemini` implementer dispatch
+# and for cross-skill GEMINI_HEALTHY propagation. Step 5 quick mode rounds 4+
+# now use the Cursor → Codex → Claude chain.
 grep -Fq -- '--check-gemini-reviewer' "$SKILL_MD" \
   || fail "(23a) /implement Step 0 does not opt into Gemini reviewer probing"
 grep -Fq -- '--gemini-healthy' "$SKILL_MD" \
   || fail "(23b) /implement does not write GEMINI_HEALTHY into session-env"
 grep -Fq 'gemini_available=false' "$SKILL_MD" \
-  || fail "(23c) /implement lacks strict-additive gemini_available=false default"
-grep -Fq 'gemini-quick-review-rounds1to3-generic-round${round_num}.txt' "$SKILL_MD" \
-  || fail "(23d) quick-mode rounds 1-3 missing Gemini generic output path"
-grep -Fq 'gemini-quick-review-round${round_num}.txt' "$SKILL_MD" \
-  || fail "(23e) quick-mode rounds 4+ missing tool-qualified Gemini output path"
+  || fail "(23c) /implement lacks gemini_available=false default for --coder=gemini gating"
 grep -Fq 'cursor-quick-review-round${round_num}.txt' "$SKILL_MD" \
   || fail "(23f) quick-mode rounds 4+ missing tool-qualified Cursor output path"
 grep -Fq 'codex-quick-review-round${round_num}.txt' "$SKILL_MD" \
   || fail "(23g) quick-mode rounds 4+ missing tool-qualified Codex output path"
-grep -Fq 'Cursor → Codex → Gemini → Claude' "$SKILL_MD" \
-  || fail "(23h) quick-mode rounds 4+ chain does not include Gemini between Codex and Claude"
+grep -Fq 'Cursor → Codex → Claude' "$SKILL_MD" \
+  || fail "(23h) quick-mode rounds 4+ chain missing Cursor → Codex → Claude"
 grep -Fq 'GEMINI_HEALTHY' "$SKILL_MD" \
   || fail "(23i) /implement cross-skill health propagation omits GEMINI_HEALTHY"
+# Negative pins: the launch-gemini-review.sh call sites were removed; ensure
+# they don't quietly re-appear without an intentional reversal of this change.
+if grep -Fq 'launch-gemini-review.sh' "$SKILL_MD"; then
+  fail "(23j) /implement quick mode unexpectedly re-introduced launch-gemini-review.sh call sites"
+fi
 
 # (24) Cursor/Gemini implementer shared guardrails parity. The prose after
 # `## Shared guardrails` must be byte-identical modulo the per-tool token

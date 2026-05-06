@@ -215,7 +215,7 @@ Then:
 - If `REPO_UNAVAILABLE=true`: print `**⚠ Could not determine repository name. CI monitoring (Steps 10, 12) and merge (Step 12b) will be skipped.**` Set `repo_unavailable=true`.
 - Set `codex_available=true` only when both `CODEX_AVAILABLE=true` and `CODEX_HEALTHY=true` (per the Binary Check and Health Probe mapping in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md`); same for `cursor_available`. Set `gemini_available=true` only when `GEMINI_AVAILABLE=true` AND `GEMINI_HEALTHY=true`; if either key is absent or false, default `gemini_available=false`. The Gemini flag is used for `--coder=gemini` dispatch gating, not review-panel selection.
 - If `CODEX_AVAILABLE=false`: print `**⚠ Codex not available (binary not found). Proceeding without Codex reviewer.**` Else if `CODEX_HEALTHY=false`: print `**⚠ Codex installed but not responding (health check failed). Using Claude replacement.**` Same for Cursor (only check `*_HEALTHY` when `*_AVAILABLE=true`).
-- If `GEMINI_HEALTHY=false` and `GEMINI_AVAILABLE=true`: print `**⚠ Gemini installed but not responding (health check failed).**`
+- If `GEMINI_HEALTHY=false` and `GEMINI_AVAILABLE=true`: print `**⚠ Gemini installed but not responding (health check failed). --coder=gemini will fall back to the main-agent code-edit path per Step 2.**`
 
 The session-env file is passed to `/design` (Step 1) and `/review` (Step 5) via `--session-env`.
 

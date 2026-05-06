@@ -325,21 +325,22 @@ grep -Fq -- '--pieces-json' "$SKILL_MD" \
   || fail "(18) SKILL.md lacks '--pieces-json' — Step 4b pieces.json composition contract (#778) is broken"
 
 # ---------------------------------------------------------------------------
-# (19) Gemini additive reviewer pins.
+# (19) Gemini machinery pins. /review no longer launches Gemini reviewers
+# (the call sites were removed deliberately while preserving the launcher and
+# health-probe machinery), but Step 0 still passes --check-gemini-reviewer to
+# session-setup.sh because the probe stays as machinery for callers that
+# nest /review under /implement (which can dispatch --coder=gemini).
 # ---------------------------------------------------------------------------
 grep -Fq -- '--check-gemini-reviewer' "$SKILL_MD" \
-  || fail "(19a) /review Step 0 does not opt into Gemini reviewer probing"
-grep -Fq 'gemini_available=true' "$SKILL_MD" \
-  || fail "(19b) /review lacks gemini_available=true derivation"
-grep -Fq 'gemini_available=false' "$SKILL_MD" \
-  || fail "(19c) /review lacks strict-additive gemini_available=false default"
-grep -Fq 'omit the Gemini column entirely' "$SKILL_MD" \
-  || fail "(19d) /review status-table contract must omit Gemini entirely when unavailable"
-grep 'collect-agent-results.sh' "$SKILL_MD" \
-  | grep -Fq 'gemini-output.txt' \
-  || fail "(19e) /review collector argv example does not include conditional gemini-output.txt path"
-grep -Fq 'Cursor → Codex → Gemini → Claude' "$SKILL_MD" \
-  || fail "(19f) /review rounds-4+ chain does not include Gemini between Codex and Claude"
+  || fail "(19a) /review Step 0 does not opt into Gemini reviewer probing (machinery)"
+# Negative pins: the launch-gemini-review.sh call sites were removed; ensure
+# they don't quietly re-appear without an intentional reversal of this change.
+if grep -Fq 'launch-gemini-review.sh' "$SKILL_MD"; then
+  fail "(19b) /review unexpectedly re-introduced launch-gemini-review.sh call sites"
+fi
+if grep 'collect-agent-results.sh' "$SKILL_MD" | grep -Fq 'gemini-output.txt'; then
+  fail "(19c) /review collector argv unexpectedly re-introduced gemini-output.txt path"
+fi
 
 echo "PASS: test-review-structure.sh — all 19 structural invariants hold"
 exit 0
