@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.27] - 2026-05-05
+
+### Changed
+
+- Refresh prose docs around the generators registry walker: `docs/review-agents.md`, `skills/shared/reviewer-templates.md`, `AGENTS.md`, `agent-lint.toml`, and `scripts/generate-code-reviewer-agent.md` now describe `scripts/check-generators.sh` (which iterates `scripts/generators.tsv` and dispatches each registered generator in `--check` mode) as the CI enforcement entry point, and `scripts/generate-code-reviewer-agent.md` no longer claims a pre-commit / `make lint` invocation wraps the generator's `--check` mode locally — only CI's `agent-sync` job runs the walker; locally `make test-check-generators` (or `make lint` via the test-harnesses aggregate) exercises it. No behavior change.
+
 ## [15.12.26] - 2026-05-05
 
 ### Changed
