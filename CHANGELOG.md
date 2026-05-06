@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.39] - 2026-05-05
+
+### Fixed
+
+- `scripts/collect-agent-results.sh` now propagates the retry `.done` sentinel value as `EXIT_CODE=<RETRY_EXIT>` on the retry-failed branch (previously masked as `EXIT_CODE=0`) and emits `EXIT_CODE=99` when the retry sentinel is missing entirely (matching the cat-fallback default at `:308-309`). Consumers that mix process exit, sentinel `.done`, and collector `EXIT_CODE` no longer see divergent signals. The retry success branch is unchanged. Sibling contract `scripts/collect-agent-results.md` documents the new propagation rule and the `EXIT_CODE=0|STATUS=EMPTY_OUTPUT` sub-case (retry sentinel is `0` but retry output stayed empty — a failure row, not a success). Regression harness `scripts/test-collect-agent-retry.sh` adds Case I (non-zero retry exit, asserts `EXIT_CODE=<RETRY_EXIT>` and `FAILURE_REASON` end-to-end) and Case J (zero retry exit + empty output, pins `EXIT_CODE=0|STATUS=EMPTY_OUTPUT|HEALTHY=false`). Closes #1290.
+
 ## [15.12.38] - 2026-05-06
 
 ### Changed
