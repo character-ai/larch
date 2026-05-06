@@ -439,6 +439,9 @@ exclude = [
   # dead-script scanner does not resolve TSV registry entries, so the exemplar
   # generator is excluded explicitly.
   "scripts/generate-code-reviewer-agent.sh",
+  # scripts/generate-topology-docs.sh is invoked through the same generator
+  # registry walker; agent-lint does not resolve scripts/generators.tsv rows.
+  "scripts/generate-topology-docs.sh",
   # scripts/lib-validate-meta-path.sh is a sourced-only shell library (no
   # shebang, not invokable directly). It is referenced from shell consumers via
   # source directives only, which agent-lint does not follow.
@@ -460,6 +463,11 @@ exclude = [
   # (test-check-generators target) and scripts/test-check-generators.md
   # (sibling contract).
   "scripts/test-check-generators.sh",
+  # scripts/test-generate-topology-docs.sh is the regression harness for the
+  # topology projection generator. Referenced only from Makefile
+  # (test-generate-topology-docs target) and scripts/test-generate-topology-docs.md
+  # (sibling contract).
+  "scripts/test-generate-topology-docs.sh",
   # scripts/test-launch-gemini-review.sh is the regression harness for the
   # Gemini launcher. Referenced only from Makefile (test-launch-gemini-review
   # target) and scripts/test-launch-gemini-review.md (sibling contract).
@@ -774,6 +782,8 @@ exclude = [
   "scripts/test-check-reviewers.md",
   "scripts/test-external-tool-registry.md",
   "scripts/test-check-generators.md",
+  "scripts/generate-topology-docs.md",
+  "scripts/test-generate-topology-docs.md",
   "scripts/test-launch-gemini-review.md",
   "scripts/test-wait-for-reviewers.md",
   "scripts/lib-validate-meta-path.md",

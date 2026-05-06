@@ -25,6 +25,7 @@ Plugin ships the entire repo. **Runtime surface**: `skills/`, `agents/`, `hooks/
 - **Adding/modifying the Code Reviewer archetype** → edit `skills/shared/reviewer-templates.md` (canonical; update triggers in that file), then run `bash scripts/generate-code-reviewer-agent.sh` to regenerate `agents/code-reviewer.md`; CI's `agent-sync` job runs the registry walker (`scripts/check-generators.sh`) to enforce drift across all registered generators. For any other reviewer archetype, follow the general rule: identify the canonical source and mirror updates to any generated outputs.
 - **Changing a shared script** → edit `scripts/<name>.sh`, read its sibling `scripts/<name>.md` for the contract, then grep for callers across `skills/`, `hooks/`, `.claude/settings.json`, `.github/workflows/`, and other scripts.
 - **Changing dev-only skills** → edit under `.claude/skills/bump-version/` or `.claude/skills/relevant-checks/`.
+- **Adding/changing a topology count** → first ensure the runtime authority for that count is updated; then edit `skills/shared/topology.tsv`; then run `bash scripts/generate-topology-docs.sh` to regenerate `docs/topology.md`. Consumer docs that link to `docs/topology.md` need no edit unless a new row anchor is being introduced.
 - **Docs or scripts only** → classified as PATCH.
 
 ## Canonical sources
@@ -37,7 +38,9 @@ Plugin ships the entire repo. **Runtime surface**: `skills/`, `agents/`, `hooks/
 - `docs/voting-process.md`, `docs/point-competition.md` — review mechanics
 - `docs/agents.md`, `docs/review-agents.md` — subagent orchestration
 - `docs/external-reviewers.md`, `docs/collaborative-sketches.md` — Codex/Cursor integration
+- `docs/topology.md` — generated consumer-doc topology projection
 - `.claude/skills/bump-version/SKILL.md` — authoritative version classification rules
+- `skills/shared/topology.tsv` — projection rows for cross-doc topology counts; runtime authorities listed in the TSV remain source of truth
 - `skills/shared/subskill-invocation.md` — sub-skill invocation conventions (invocation patterns, `allowed-tools` narrowing, post-invocation verification, anti-halt continuation reminder, session-env handoff)
 - `skills/shared/skill-design-principles.md` — design principles for every larch skill (knowledge delta, structure, mechanical rules A/B/C, writing style, anti-patterns, freedom calibration); Section III overrides Section IV for larch skills
 - `skills/shared/reviewer-templates.md` — Code Reviewer archetype (canonical; `agents/code-reviewer.md` is generated from it)

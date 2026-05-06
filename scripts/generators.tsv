@@ -5,3 +5,4 @@
 # walker contract and scripts/generate-code-reviewer-agent.md for the
 # exemplar generator.
 scripts/generate-code-reviewer-agent.sh	agents/code-reviewer.md
+scripts/generate-topology-docs.sh	docs/topology.md
