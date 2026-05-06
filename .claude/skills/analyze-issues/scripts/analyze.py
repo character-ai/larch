@@ -57,6 +57,7 @@ _STEM_KEYWORDS = frozenset({
     "permission", "secret", "feature",
     "scaffold", "failure", "regression",
     "assert", "crash",
+    "refactor", "rename",
 })
 
 
