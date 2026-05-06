@@ -16,6 +16,10 @@ Primary callers are the `agent-sync` registry walker (`scripts/check-generators.
 - Allows an empty `composition` column, but requires non-empty `key`, `value`, and `runtime_authority`.
 - Rejects display values containing tabs, newlines, Markdown-link delimiters, backticks, or HTML comment markers.
 - Validates every `runtime_authority` path as repo-relative, tracked, and containing the row's `value` literal.
+- Rejects bare-numeric or otherwise too-short `value` strings (purely-numeric, or shorter than 3 chars). The substring grep against the runtime authority would otherwise be silently satisfied by an unrelated digit (e.g. `2` matching `Step 2a`); use a phrase like `2 sketch agents` that uniquely pins the topology fact.
+- Rejects duplicate `key` rows and any future anchor-derivation regression that maps two distinct keys onto the same `<a id>` fragment. Anchor derivation is currently the verbatim key (HTML5 allows `.` and `_` in id attributes), so injectivity holds by construction; the duplicate-anchor check is defense-in-depth.
+- Renders the post-validation rows via an ASCII record-separator (`\035`) intermediate so empty `composition` columns survive the read-back step. `IFS=$'\t'` would treat tab as IFS-whitespace and collapse adjacent tabs, which would shift `runtime_authority` into the `composition` cell on empty-composition rows.
+- `LARCH_TOPOLOGY_TSV` and `LARCH_TOPOLOGY_DOC` are dev/CI overrides used only by `scripts/test-generate-topology-docs.sh`. They are trusted-only — operators must not pass untrusted values. The public surface is `--check` against the in-repo defaults.
 - Is deterministic: no timestamps and no locale-dependent output.
 
 ## Makefile And CI Wiring

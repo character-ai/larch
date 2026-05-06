@@ -6,6 +6,12 @@ export LC_ALL=C
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+# LARCH_TOPOLOGY_TSV and LARCH_TOPOLOGY_DOC are dev/CI overrides used by
+# scripts/test-generate-topology-docs.sh. They are trusted-only — operators must not pass
+# untrusted values. The `--check` mode is the only public surface and uses the in-repo
+# defaults; if you need to extend the schema to accept untrusted overrides, gate them
+# behind an explicit repo-root prefix check (see `require_within_repo_root` git history
+# for a prior implementation that proved too strict for the harness's mktemp paths).
 TOPOLOGY_TSV="${LARCH_TOPOLOGY_TSV:-$REPO_ROOT/skills/shared/topology.tsv}"
 TOPOLOGY_DOC="${LARCH_TOPOLOGY_DOC:-$REPO_ROOT/docs/topology.md}"
 
@@ -82,8 +88,14 @@ validate_display_text() {
   esac
 }
 
+# Anchor derivation MUST be injective so two distinct keys never collide on the same
+# `<a id="...">` fragment. We use the key verbatim (HTML5 allows `.` and `_` in id
+# attributes per the URL fragment grammar). This is trivially injective because the
+# key grammar `[a-z0-9_.]+` is preserved byte-for-byte. The duplicate-anchor check
+# below is defense-in-depth: any future change to either the key grammar or this
+# function that breaks injectivity will be caught at generate time.
 anchor_for_key() {
-  printf '%s' "$1" | tr '._' '--'
+  printf '%s' "$1"
 }
 
 [[ -f "$TOPOLOGY_TSV" ]] || fail "topology TSV not found: $TOPOLOGY_TSV"
@@ -93,6 +105,12 @@ ROWS_TMP="$(mktemp)"
 trap 'rm -f "$TMP" "$ROWS_TMP"' EXIT
 
 cd "$REPO_ROOT"
+
+# Bash 3.2-compatible dedup: track seen keys and anchors as newline-delimited
+# strings (cheap, deterministic). Each entry is `<row>|<value>` so duplicate
+# diagnostics can name both rows.
+SEEN_KEYS=""
+SEEN_ANCHORS=""
 
 while IFS= read -r encoded; do
   row="${encoded%%$'\034'*}"
@@ -109,12 +127,37 @@ while IFS= read -r encoded; do
   validate_display_text "$row" "composition" "$composition" "yes"
   validate_repo_path "$row" "$runtime_authority"
 
+  # Reject bare-numeric or otherwise too-short values so substring grep validation
+  # against the runtime authority cannot be silently satisfied by an unrelated digit
+  # (e.g. value `2` matching `Step 2a` or `2-agent`). A non-digit anchor is required
+  # for any value <= 3 chars or composed solely of digits.
+  if [[ "$value" =~ ^[0-9]+$ ]] || (( ${#value} < 3 )); then
+    fail "row $row: value '$value' is too short or purely numeric — use a longer anchor phrase that uniquely identifies the topology fact in the runtime authority (e.g. '8 regular' instead of '8')"
+  fi
+
+  prior_key_row="$(printf '%s\n' "$SEEN_KEYS" | awk -F'|' -v k="$key" '$2 == k { print $1; exit }')"
+  if [[ -n "$prior_key_row" ]]; then
+    fail "row $row: duplicate key '$key' (also defined on row $prior_key_row)"
+  fi
+  SEEN_KEYS="${SEEN_KEYS}${row}|${key}"$'\n'
+
+  anchor="$(anchor_for_key "$key")"
+  prior_anchor_entry="$(printf '%s\n' "$SEEN_ANCHORS" | awk -F'|' -v a="$anchor" '$2 == a { print $1 "|" $3; exit }')"
+  if [[ -n "$prior_anchor_entry" ]]; then
+    prior_anchor_row="${prior_anchor_entry%%|*}"
+    prior_anchor_key="${prior_anchor_entry##*|}"
+    fail "row $row: derived anchor '$anchor' collides with key '$prior_anchor_key' on row $prior_anchor_row"
+  fi
+  SEEN_ANCHORS="${SEEN_ANCHORS}${row}|${anchor}|${key}"$'\n'
+
   [[ -f "$runtime_authority" ]] || fail "row $row: runtime_authority not found: $runtime_authority"
   git ls-files --error-unmatch -- "$runtime_authority" >/dev/null 2>&1 || fail "row $row: runtime_authority is not tracked by git: $runtime_authority"
   grep -Fq -- "$value" "$runtime_authority" || fail "row $row: value '$value' not found in runtime_authority: $runtime_authority"
 
-  anchor="$(anchor_for_key "$key")"
-  printf '%s\t%s\t%s\t%s\t%s\n' "$anchor" "$key" "$value" "$composition" "$runtime_authority" >>"$ROWS_TMP"
+  # Use ASCII record-separator (\035) inside the rendered intermediate so empty
+  # `composition` columns survive the read-back step. IFS=$'\t' would collapse adjacent
+  # tabs as IFS-whitespace, shifting `runtime_authority` into `composition`.
+  printf '%s\035%s\035%s\035%s\035%s\n' "$anchor" "$key" "$value" "$composition" "$runtime_authority" >>"$ROWS_TMP"
 done < <(
   awk -F '\t' '
     {
@@ -145,7 +188,7 @@ Quick-mode `/implement` reviewer-loop phrases such as `7 rounds`, `rounds 1-3`, 
 |---|---:|---|---|
 HEADER
 
-while IFS=$'\t' read -r anchor key value composition runtime_authority; do
+while IFS=$'\035' read -r anchor key value composition runtime_authority; do
   # shellcheck disable=SC2016
   printf '| <a id="%s"></a>`%s` | %s | %s | `%s` |\n' \
     "$anchor" "$key" "$value" "${composition:- }" "$runtime_authority" >>"$TMP"
