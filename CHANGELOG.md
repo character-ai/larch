@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.49] - 2026-05-06
+
+### Changed
+
+- Add consumer-facing `STATUS=OK` guidance to `docs/external-reviewers.md` clarifying that the success signal is `STATUS=OK` paired with empty `FAILURE_REASON`, not `EXIT_CODE` alone — `EXIT_CODE=0` can still appear on retry-failure rows when the retry sentinel was `0` but the retry output stayed empty (`STATUS=EMPTY_OUTPUT`). Cross-link to `scripts/collect-agent-results.md` for the full retry-row exit-code semantics.
+- Redesign the `MAX_RETRY_TIMEOUT` floor in `scripts/collect-agent-results.sh` to derive from queued retries: seed at 30s (small safety floor) instead of a fixed 180s and let the existing per-slot loop raise it to `max(ORIG_TIMEOUT+60)` over queued reviewers. Production retry waits now scale with reviewer timeouts so short reviewers no longer pay a fixed 180s floor. Updates the contract doc `scripts/collect-agent-results.md` and the harness contract `scripts/test-collect-agent-retry.md` (Case K) to describe the new formula.
+
 ## [15.12.48] - 2026-05-06
 
 ### Changed
