@@ -588,6 +588,7 @@ printf '%s' 'My feature work' > "$MOCK_TITLE_FILE"
 out_j1=$(PATH="$STUB_J:$PATH" bash "$WRITE" rename --issue 42 --state in-progress --repo owner/repo 2>&1)
 assert_contains "$out_j1" 'RENAMED=true' '(j1) base rename emits RENAMED=true'
 assert_contains "$out_j1" 'NEW_TITLE=[IN PROGRESS] My feature work' '(j1) base rename NEW_TITLE correct'
+assert_not_contains "$out_j1" 'ROUND_TRIP_APPLIED=' '(j1) omitted --round-trip emits no ROUND_TRIP_APPLIED'
 if [[ -f "$EDIT_CAPTURE" ]]; then
     cap_j1=$(cat "$EDIT_CAPTURE")
     assert_equal "$cap_j1" '[IN PROGRESS] My feature work' '(j1) gh issue edit received prefixed title'
@@ -599,6 +600,7 @@ printf '%s' '[IN PROGRESS] My feature work' > "$MOCK_TITLE_FILE"
 out_j2=$(PATH="$STUB_J:$PATH" bash "$WRITE" rename --issue 42 --state 'done' --repo owner/repo 2>&1)
 assert_contains "$out_j2" 'RENAMED=true' '(j2) transition rename emits RENAMED=true'
 assert_contains "$out_j2" 'NEW_TITLE=[DONE] My feature work' '(j2) transition rename NEW_TITLE correct'
+assert_not_contains "$out_j2" 'ROUND_TRIP_APPLIED=' '(j2) omitted --round-trip emits no ROUND_TRIP_APPLIED'
 if [[ -f "$EDIT_CAPTURE" ]]; then
     cap_j2=$(cat "$EDIT_CAPTURE")
     assert_equal "$cap_j2" '[DONE] My feature work' '(j2) gh issue edit received transitioned title'
@@ -609,6 +611,7 @@ rm -f "$EDIT_CAPTURE" "$EDIT_CALLED_FILE"
 printf '%s' '[DONE] My feature work' > "$MOCK_TITLE_FILE"
 out_j3=$(PATH="$STUB_J:$PATH" bash "$WRITE" rename --issue 42 --state 'done' --repo owner/repo 2>&1)
 assert_contains "$out_j3" 'RENAMED=false' '(j3) idempotent no-op emits RENAMED=false'
+assert_not_contains "$out_j3" 'ROUND_TRIP_APPLIED=' '(j3) omitted --round-trip emits no ROUND_TRIP_APPLIED'
 if [[ -f "$EDIT_CALLED_FILE" ]]; then
     FAIL=$((FAIL + 1))
     FAILED_TESTS+=("(j3) gh issue edit was called despite idempotent no-op")
@@ -625,6 +628,7 @@ printf '%s' '[IN PROGRESS] [DONE] Foo' > "$MOCK_TITLE_FILE"
 out_j4=$(PATH="$STUB_J:$PATH" bash "$WRITE" rename --issue 42 --state stalled --repo owner/repo 2>&1)
 assert_contains "$out_j4" 'RENAMED=true' '(j4) strip-exactly-one emits RENAMED=true'
 assert_contains "$out_j4" 'NEW_TITLE=[STALLED] [DONE] Foo' '(j4) strip-exactly-one preserves stacked residue'
+assert_not_contains "$out_j4" 'ROUND_TRIP_APPLIED=' '(j4) omitted --round-trip emits no ROUND_TRIP_APPLIED'
 
 # (j5) redact pipeline applied to new title
 rm -f "$EDIT_CAPTURE" "$EDIT_CALLED_FILE"
@@ -632,6 +636,7 @@ printf 'Work on %s handler' "$SK_TOKEN" > "$MOCK_TITLE_FILE"
 out_j5=$(PATH="$STUB_J:$PATH" bash "$WRITE" rename --issue 42 --state in-progress --repo owner/repo 2>&1)
 assert_contains "$out_j5" 'RENAMED=true' '(j5) redact-applied rename emits RENAMED=true'
 assert_not_contains "$out_j5" "$SK_TOKEN" '(j5) stdout does not leak sk-ant token'
+assert_not_contains "$out_j5" 'ROUND_TRIP_APPLIED=' '(j5) omitted --round-trip emits no ROUND_TRIP_APPLIED'
 if [[ -f "$EDIT_CAPTURE" ]]; then
     cap_j5=$(cat "$EDIT_CAPTURE")
     assert_contains "$cap_j5" '<REDACTED-TOKEN>' '(j5) outbound title contains <REDACTED-TOKEN>'
@@ -651,6 +656,7 @@ rm -f "$EDIT_CAPTURE" "$EDIT_CALLED_FILE"
 printf '[DONE] Fix %s handler' "$SK_TOKEN" > "$MOCK_TITLE_FILE"
 out_j7=$(PATH="$STUB_J:$PATH" bash "$WRITE" rename --issue 42 --state 'done' --repo owner/repo 2>&1)
 assert_contains "$out_j7" 'RENAMED=false' '(j7) redactable title already at target state emits RENAMED=false'
+assert_not_contains "$out_j7" 'ROUND_TRIP_APPLIED=' '(j7) omitted --round-trip emits no ROUND_TRIP_APPLIED'
 if [[ -f "$EDIT_CALLED_FILE" ]]; then
     FAIL=$((FAIL + 1))
     FAILED_TESTS+=("(j7) gh issue edit was called despite redactable idempotent no-op")
@@ -659,6 +665,89 @@ else
     PASS=$((PASS + 1))
     echo "  ok: (j7) gh issue edit was NOT called (redactable idempotent no-op)"
 fi
+
+# (j8) round-trip add on bare title.
+rm -f "$EDIT_CAPTURE" "$EDIT_CALLED_FILE"
+printf '%s' 'My feature work' > "$MOCK_TITLE_FILE"
+out_j8=$(PATH="$STUB_J:$PATH" bash "$WRITE" rename --issue 42 --state in-progress --round-trip true --repo owner/repo 2>&1)
+assert_contains "$out_j8" 'RENAMED=true' '(j8) round-trip add emits RENAMED=true'
+assert_contains "$out_j8" 'NEW_TITLE=[IN PROGRESS] [ROUND-TRIP] My feature work' '(j8) lifecycle before round-trip'
+assert_contains "$out_j8" 'ROUND_TRIP_APPLIED=true' '(j8) ROUND_TRIP_APPLIED=true'
+
+# (j9) round-trip add on already-lifecycle-prefixed title.
+rm -f "$EDIT_CAPTURE" "$EDIT_CALLED_FILE"
+printf '%s' '[IN PROGRESS] My feature work' > "$MOCK_TITLE_FILE"
+out_j9=$(PATH="$STUB_J:$PATH" bash "$WRITE" rename --issue 42 --state in-progress --round-trip true --repo owner/repo 2>&1)
+assert_contains "$out_j9" 'RENAMED=true' '(j9) round-trip add to in-progress title renames'
+assert_contains "$out_j9" 'NEW_TITLE=[IN PROGRESS] [ROUND-TRIP] My feature work' '(j9) marker inserted after lifecycle'
+assert_contains "$out_j9" 'ROUND_TRIP_APPLIED=true' '(j9) ROUND_TRIP_APPLIED=true'
+
+# (j10) idempotent no-op when lifecycle + round-trip already match.
+rm -f "$EDIT_CAPTURE" "$EDIT_CALLED_FILE"
+printf '%s' '[IN PROGRESS] [ROUND-TRIP] My feature work' > "$MOCK_TITLE_FILE"
+out_j10=$(PATH="$STUB_J:$PATH" bash "$WRITE" rename --issue 42 --state in-progress --round-trip true --repo owner/repo 2>&1)
+assert_contains "$out_j10" 'RENAMED=false' '(j10) round-trip idempotent no-op'
+assert_contains "$out_j10" 'ROUND_TRIP_APPLIED=true' '(j10) no-op still reports applied'
+if [[ -f "$EDIT_CALLED_FILE" ]]; then
+    FAIL=$((FAIL + 1))
+    FAILED_TESTS+=("(j10) gh issue edit was called despite round-trip idempotent no-op")
+    echo "  FAIL: (j10) gh issue edit was called despite round-trip idempotent no-op" >&2
+else
+    PASS=$((PASS + 1))
+    echo "  ok: (j10) gh issue edit was NOT called (round-trip idempotent no-op)"
+fi
+
+# (j11) sticky preservation when --round-trip false but marker exists.
+rm -f "$EDIT_CAPTURE" "$EDIT_CALLED_FILE"
+printf '%s' '[IN PROGRESS] [ROUND-TRIP] My feature work' > "$MOCK_TITLE_FILE"
+out_j11=$(PATH="$STUB_J:$PATH" bash "$WRITE" rename --issue 42 --state 'done' --round-trip false --repo owner/repo 2>&1)
+assert_contains "$out_j11" 'RENAMED=true' '(j11) sticky marker transition renames'
+assert_contains "$out_j11" 'NEW_TITLE=[DONE] [ROUND-TRIP] My feature work' '(j11) sticky marker preserved'
+assert_contains "$out_j11" 'ROUND_TRIP_APPLIED=true' '(j11) ROUND_TRIP_APPLIED=true on sticky preserve'
+
+# (j12) explicit false on bare title does not add marker.
+rm -f "$EDIT_CAPTURE" "$EDIT_CALLED_FILE"
+printf '%s' 'My feature work' > "$MOCK_TITLE_FILE"
+out_j12=$(PATH="$STUB_J:$PATH" bash "$WRITE" rename --issue 42 --state in-progress --round-trip false --repo owner/repo 2>&1)
+assert_contains "$out_j12" 'NEW_TITLE=[IN PROGRESS] My feature work' '(j12) explicit false leaves marker absent'
+assert_contains "$out_j12" 'ROUND_TRIP_APPLIED=false' '(j12) ROUND_TRIP_APPLIED=false'
+
+# (j13) stalled state with round-trip marker.
+rm -f "$EDIT_CAPTURE" "$EDIT_CALLED_FILE"
+printf '%s' 'My feature work' > "$MOCK_TITLE_FILE"
+out_j13=$(PATH="$STUB_J:$PATH" bash "$WRITE" rename --issue 42 --state stalled --round-trip true --repo owner/repo 2>&1)
+assert_contains "$out_j13" 'NEW_TITLE=[STALLED] [ROUND-TRIP] My feature work' '(j13) stalled lifecycle before marker'
+
+# (j14) dual-prefix truncation preserves both prefixes and slices tail.
+rm -f "$EDIT_CAPTURE" "$EDIT_CALLED_FILE"
+long_tail=""
+for _ in $(seq 1 260); do
+    long_tail="${long_tail}x"
+done
+printf '%s' "$long_tail" > "$MOCK_TITLE_FILE"
+out_j14=$(PATH="$STUB_J:$PATH" bash "$WRITE" rename --issue 42 --state in-progress --round-trip true --repo owner/repo 2>&1)
+new_j14=$(printf '%s\n' "$out_j14" | awk -F= '$1=="NEW_TITLE"{print substr($0, index($0, "=") + 1); exit}')
+assert_contains "$new_j14" '[IN PROGRESS] [ROUND-TRIP] ' '(j14) truncated title preserves both prefixes'
+assert_equal "${#new_j14}" "256" '(j14) truncated title is 256 chars'
+
+# (j15) lowercase marker is user content under strict grammar.
+rm -f "$EDIT_CAPTURE" "$EDIT_CALLED_FILE"
+printf '%s' '[IN PROGRESS] [round-trip] foo' > "$MOCK_TITLE_FILE"
+out_j15=$(PATH="$STUB_J:$PATH" bash "$WRITE" rename --issue 42 --state 'done' --round-trip false --repo owner/repo 2>&1)
+assert_contains "$out_j15" 'NEW_TITLE=[DONE] [round-trip] foo' '(j15) lowercase marker preserved as user content'
+assert_contains "$out_j15" 'ROUND_TRIP_APPLIED=false' '(j15) lowercase marker not reported as applied'
+
+# (j16) missing-space marker is user content and canonical marker is added.
+rm -f "$EDIT_CAPTURE" "$EDIT_CALLED_FILE"
+printf '%s' '[IN PROGRESS] [ROUND-TRIP]foo' > "$MOCK_TITLE_FILE"
+out_j16=$(PATH="$STUB_J:$PATH" bash "$WRITE" rename --issue 42 --state 'done' --round-trip true --repo owner/repo 2>&1)
+assert_contains "$out_j16" 'NEW_TITLE=[DONE] [ROUND-TRIP] [ROUND-TRIP]foo' '(j16) missing-space marker treated as user content'
+
+# (j17) mid-string marker does not count unless a leading marker is emitted.
+rm -f "$EDIT_CAPTURE" "$EDIT_CALLED_FILE"
+printf '%s' 'tail has [ROUND-TRIP] mid-string' > "$MOCK_TITLE_FILE"
+out_j17=$(PATH="$STUB_J:$PATH" bash "$WRITE" rename --issue 42 --state in-progress --round-trip false --repo owner/repo 2>&1)
+assert_contains "$out_j17" 'ROUND_TRIP_APPLIED=false' '(j17) mid-string marker ignored for applied flag'
 
 echo ""
 echo "=== (p) mark-false-positive — additive marker grammar and title writes ==="

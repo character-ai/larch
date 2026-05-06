@@ -10,7 +10,7 @@ Phase 1 (umbrella #348) foundation layer: helper for the tracking-issue lifecycl
 tracking-issue-write.sh create-issue   --title T --body-file F [--repo OWNER/REPO]
 tracking-issue-write.sh append-comment --issue N --body-file F [--lifecycle-marker ID] [--repo OWNER/REPO]
 tracking-issue-write.sh upsert-anchor  --issue N [--anchor-id ID] --body-file F [--repo OWNER/REPO]
-tracking-issue-write.sh rename         --issue N --state in-progress|done|stalled [--repo OWNER/REPO]
+tracking-issue-write.sh rename         --issue N --state in-progress|done|stalled [--round-trip BOOL] [--repo OWNER/REPO]
 tracking-issue-write.sh mark-false-positive --issue N [--repo OWNER/REPO]
 tracking-issue-write.sh find-anchor    --issue N [--repo OWNER/REPO]                (read-only)
 ```
@@ -28,7 +28,7 @@ This script emits `FAILED=true` / `ERROR=<msg>` on failure — NOT the `ISSUE_FA
 | `create-issue` | `ISSUE_NUMBER=<N>`, `ISSUE_URL=<url>` |
 | `append-comment` | `COMMENT_ID=<id>`, `COMMENT_URL=<url>` |
 | `upsert-anchor` | `ANCHOR_COMMENT_ID=<id>`, `ANCHOR_COMMENT_URL=<url>`, `UPDATED=true\|false` (`true` when an existing anchor was PATCHed; `false` when a new anchor comment was created) |
-| `rename` | `RENAMED=true\|false`, `NEW_TITLE=<title>` (`false` when the current title already starts with the target prefix — no `gh issue edit` call was made) |
+| `rename` | `RENAMED=true\|false`, `NEW_TITLE=<title>` (`false` when the composed canonical title already equals the current canonical title — no `gh issue edit` call was made). `ROUND_TRIP_APPLIED=true\|false` is emitted only when the caller passed `--round-trip BOOL`. |
 | `mark-false-positive` | `MARKED=true\|false`, `NEW_TITLE=<title>` (`false` when `[FALSE-POSITIVE]` is already present in the leading bracket-block sequence — no `gh issue edit` call was made) |
 | `find-anchor` | `ANCHOR_COMMENT_ID=<id-or-empty>` — exactly one anchor → `ANCHOR_COMMENT_ID=<id>` (exit 0); zero anchors → `ANCHOR_COMMENT_ID=` empty value (exit 0); multiple anchors → `FAILED=true ERROR=multiple anchor comments found (ids: <comma-list>)` (exit 2). Stdout contains ONLY KEY=value lines (no progress text); diagnostics route to stderr — same posture as the four write subcommands. |
 
@@ -91,19 +91,27 @@ Truncation is byte-length based. Multibyte UTF-8 splitting is tolerated because 
 
 Tracking issues carry a machine-owned title-prefix lifecycle: `[IN PROGRESS]` during active work, `[DONE]` after the tracking run completes, `[STALLED]` when a run fails without closing. Each prefix is followed by a single space before the rest of the title (e.g., `[IN PROGRESS] Fix login bug`). `rename` is the single mutator for these prefixes; every consumer MUST use this subcommand rather than inlining `gh issue edit --title`.
 
+The optional round-trip marker is a second managed prefix that appears after the lifecycle prefix: `[IN PROGRESS] [ROUND-TRIP] Fix login bug`. The token grammar is strict ASCII: exactly <code>[ROUND-TRIP] </code>, uppercase, ASCII hyphen, and one trailing space. Lowercase variants, Unicode homoglyphs, or `[ROUND-TRIP]foo` without the trailing separator are user content, not managed markers.
+
 ### Algorithm
 
 1. Fetch the current title via `gh issue view --json title`.
-2. Strip **exactly one** leading managed prefix (anchored at start; regex matching one of `[IN PROGRESS]`, `[DONE]`, or `[STALLED]` followed by a single space). Stacked prefixes beyond the first are preserved — the helper does not "heal" corrupted titles because the healing policy (prefer first vs. last vs. middle) is ambiguous.
-3. Prepend the target-state prefix (`[IN PROGRESS]`, `[DONE]`, or `[STALLED]`) followed by one space.
-4. Pipe the prospective new title through `scripts/redact-secrets.sh` (same posture as `create-issue`).
-5. Truncate to 256 chars if the result exceeds GitHub's title limit. Truncation uses bash string semantics (`${#var}` + `${var:0:256}`), which matches GitHub's character-based 256 limit under UTF-8 locales. The prefix is preserved (tail is sliced). Managed prefixes are ASCII so truncation is stable regardless of locale.
-6. If the resulting title equals the current title (already in target state), emit `RENAMED=false` and skip the `gh` call.
-7. Otherwise call `gh issue edit --title` and emit `RENAMED=true`.
+2. Strip **exactly one** leading lifecycle prefix using `strip_lifecycle_prefix` (anchored at start; one of `[IN PROGRESS]`, `[DONE]`, or `[STALLED]` followed by a single space). Stacked lifecycle prefixes beyond the first are preserved — the helper does not "heal" corrupted titles because the healing policy is ambiguous.
+3. Check whether the lifecycle-stripped title begins with the exact <code>[ROUND-TRIP] </code> token using `has_round_trip_prefix`.
+4. Strip at most one exact round-trip token using `strip_round_trip_prefix`; the remainder is the user tail.
+5. Compose the new title as target lifecycle prefix + (<code>[ROUND-TRIP] </code> if an existing exact marker was present or `--round-trip true` was passed) + user tail. Passing `--round-trip false` does not remove an existing marker; preservation is sticky-add-only. Omitting `--round-trip` behaves like false for adding, but still preserves an existing marker if one is already present.
+6. Pipe the prospective new title through `scripts/redact-secrets.sh` (same posture as `create-issue`).
+7. Truncate to 256 chars if the result exceeds GitHub's title limit. Truncation uses bash string semantics (`${#var}` + slicing), which matches GitHub's character-based 256 limit under UTF-8 locales. Both managed prefixes are preserved at the head; only the user tail is sliced. The round-trip token is 13 ASCII characters including the trailing space.
+8. If the resulting title equals the current canonical title, emit `RENAMED=false` and skip the `gh` call.
+9. Otherwise call `gh issue edit --title` and emit `RENAMED=true`.
+
+When `--round-trip` was passed, emit `ROUND_TRIP_APPLIED=true` iff the final title, after one lifecycle prefix strip, begins with the exact <code>[ROUND-TRIP] </code> token. Do not emit this key on omit-flag call paths; `find-lock-issue.sh` depends on the older stdout shape.
 
 ### Idempotency
 
-Re-calling `rename --state X` on an issue already at state X is a no-op (`RENAMED=false`). This matters for resumed `/implement` sessions and for the bash drivers' EXIT-trap paths (the trap may fire after a successful explicit rename-to-done; the re-rename to `[STALLED]` is a no-op because the guard flag prevents it, but even without that the helper would emit `RENAMED=false` for an already-stalled title).
+Re-calling `rename --state X --round-trip Y` on an issue already at state X is a no-op (`RENAMED=false`) when the leading round-trip marker state already matches the desired sticky-add result. Existing <code>[ROUND-TRIP] </code> markers are preserved even when `--round-trip false` is passed. This matters for resumed `/implement` sessions and for the bash drivers' EXIT-trap paths (the trap may fire after a successful explicit rename-to-done; the re-rename to `[STALLED]` is a no-op because the guard flag prevents it, but even without that the helper would emit `RENAMED=false` for an already-stalled title with matching marker state).
+
+Adversarial cases are intentional: `[IN PROGRESS] [round-trip] foo` remains lowercase user content and `ROUND_TRIP_APPLIED=false` unless a canonical marker is added; `[IN PROGRESS] [ROUND-TRIP]foo` is missing the managed marker's trailing space, so `--round-trip true` produces `[STATE] [ROUND-TRIP] [ROUND-TRIP]foo`; a redactable token in the user tail is redacted before comparison and truncation; a mid-string `[ROUND-TRIP]` occurrence does not count for `ROUND_TRIP_APPLIED`.
 
 ### Distinction from `/fix-issue`'s "IN PROGRESS" comment lock
 

@@ -329,6 +329,67 @@ assert_contains "$OUT" "FINALIZED=true" "[5] FINALIZED=true (close succeeded)"
 assert_contains "$OUT" "RENAMED=false" "[5] RENAMED=false (best-effort fail)"
 assert_contains "$OUT" "CLOSED=true" "[5] CLOSED=true"
 
+# Fixture 6: umbrella body matching round-trip marker adds marker on terminal rename
+echo "Fixture 6: body marker → terminal rename passes --round-trip true"
+run_fixture "fixture-6"
+{
+    echo "ISSUE_TITLE='Umbrella: foo'"
+    echo "ISSUE_STATE=OPEN"
+    echo "ISSUE_BODY='This work was reverted in cafebabe.'"
+    echo "ISSUE_COMMENTS='[[]]'"
+} > "$STUB_STATE_FILE"
+run_script_capture "$TMPROOT/fixture-6" finalize --issue 100
+LOG=$(cat "$STUB_LOG")
+assert_eq_exit 0 "$EC" "[6] exit 0"
+assert_contains "$OUT" "FINALIZED=true" "[6] FINALIZED=true"
+assert_contains "$LOG" "[ROUND-TRIP]" "[6] rename applies round-trip marker"
+
+# Fixture 7: [DONE] title without marker and matching body falls through to marker-adding rename
+echo "Fixture 7: [DONE] without marker + body marker → rename still runs"
+run_fixture "fixture-7"
+{
+    echo "ISSUE_TITLE='[DONE] Umbrella: foo'"
+    echo "ISSUE_STATE=OPEN"
+    echo "ISSUE_BODY='Closed in favor of #123.'"
+    echo "ISSUE_COMMENTS='[[]]'"
+} > "$STUB_STATE_FILE"
+run_script_capture "$TMPROOT/fixture-7" finalize --issue 100
+LOG=$(cat "$STUB_LOG")
+assert_eq_exit 0 "$EC" "[7] exit 0"
+assert_contains "$OUT" "RENAMED=true" "[7] RENAMED=true (fall-through rename ran)"
+assert_contains "$LOG" "issue edit" "[7] gh issue edit called for marker add"
+assert_contains "$LOG" "[ROUND-TRIP]" "[7] rename applies round-trip marker"
+
+# Fixture 8: [DONE] with marker remains the existing skip path
+echo "Fixture 8: [DONE] with marker → skip rename"
+run_fixture "fixture-8"
+{
+    echo "ISSUE_TITLE='[DONE] [ROUND-TRIP] Umbrella: foo'"
+    echo "ISSUE_STATE=OPEN"
+    echo "ISSUE_BODY='No marker phrase here.'"
+    echo "ISSUE_COMMENTS='[[]]'"
+} > "$STUB_STATE_FILE"
+run_script_capture "$TMPROOT/fixture-8" finalize --issue 100
+LOG=$(cat "$STUB_LOG")
+assert_eq_exit 0 "$EC" "[8] exit 0"
+assert_contains "$OUT" "RENAMED=false" "[8] RENAMED=false"
+assert_not_contains "$LOG" "issue edit" "[8] no title edit when already DONE + marker"
+
+# Fixture 9: [DONE] without marker and no body match keeps existing skip path
+echo "Fixture 9: [DONE] without marker + no body marker → skip rename"
+run_fixture "fixture-9"
+{
+    echo "ISSUE_TITLE='[DONE] Umbrella: foo'"
+    echo "ISSUE_STATE=OPEN"
+    echo "ISSUE_BODY='No marker phrase here.'"
+    echo "ISSUE_COMMENTS='[[]]'"
+} > "$STUB_STATE_FILE"
+run_script_capture "$TMPROOT/fixture-9" finalize --issue 100
+LOG=$(cat "$STUB_LOG")
+assert_eq_exit 0 "$EC" "[9] exit 0"
+assert_contains "$OUT" "RENAMED=false" "[9] RENAMED=false"
+assert_not_contains "$LOG" "issue edit" "[9] no title edit when DONE and detector false"
+
 # Summary
 echo
 echo "test-finalize-umbrella: $PASS passed, $FAIL failed."

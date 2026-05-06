@@ -322,9 +322,61 @@ run_slack() {
 }
 
 rename_issue() {
-    local issue=$1 state=$2 label=$3 out rc failed
+    local issue=$1 state=$2 label=$3 repo=$4 out rc failed round_trip body_tmp title
+    round_trip=false
+    body_tmp=""
+    title=""
+    if [ -n "$IMPLEMENT_TMPDIR" ] && is_tmp_path "$IMPLEMENT_TMPDIR" && [ -d "$IMPLEMENT_TMPDIR" ]; then
+        body_tmp="$IMPLEMENT_TMPDIR/round-trip-input-issue-body-step18-${issue}.txt"
+    else
+        body_tmp=$(mktemp)
+    fi
+    # Build gh args; pass --repo when available so the body+title fetch
+    # targets the same issue scope as the rename call below (FINDING_F2).
     set +e
-    out=$("$SCRIPT_DIR/tracking-issue-write.sh" rename --issue "$issue" --state "$state")
+    if [ -n "$repo" ]; then
+        out=$(gh issue view "$issue" --repo "$repo" --json title,body --jq '"TITLE=\(.title // "")\n" + (.body // "")')
+    else
+        out=$(gh issue view "$issue" --json title,body --jq '"TITLE=\(.title // "")\n" + (.body // "")')
+    fi
+    rc=$?
+    set -e
+    if [ "$rc" -ne 0 ]; then
+        # Preserve any stderr the gh call printed by relying on caller's
+        # default stderr passthrough; emit our own warn here too (FINDING_F3).
+        warn_line "Step 18: round-trip detection skipped: gh issue title/body fetch failed"
+        round_trip=false
+    elif [ ! -x "$SCRIPT_DIR/round-trip-detect.sh" ]; then
+        warn_line "Step 18: round-trip detection skipped: detector unavailable"
+        round_trip=false
+    else
+        # Extract first-line TITLE marker; remainder is body. Empty-title is
+        # tolerated (--text-string "" is a no-op for the detector).
+        title=$(printf '%s' "$out" | awk 'NR==1 && /^TITLE=/ { sub(/^TITLE=/, ""); print; exit }')
+        printf '%s' "$out" | awk 'NR>1 || !/^TITLE=/ { print }' > "$body_tmp"
+        set +e
+        # Do NOT redirect detector stderr — preserve warn_false signals so
+        # operators can see degraded-path diagnostics (FINDING_F3).
+        out=$("$SCRIPT_DIR/round-trip-detect.sh" --text-string "$title" --text-file "$body_tmp")
+        rc=$?
+        set -e
+        if [ "$rc" -ne 0 ]; then
+            warn_line "Step 18: round-trip detection skipped: detector failed"
+            round_trip=false
+        else
+            round_trip=$(kv_value ROUND_TRIP "$out")
+            case "$round_trip" in
+                true|false) ;;
+                *)
+                    warn_line "Step 18: round-trip detection skipped: detector output missing"
+                    round_trip=false
+                    ;;
+            esac
+        fi
+    fi
+    rm -f "$body_tmp" 2>/dev/null || true
+    set +e
+    out=$("$SCRIPT_DIR/tracking-issue-write.sh" rename --issue "$issue" --state "$state" --round-trip "$round_trip")
     rc=$?
     set -e
     failed=$(kv_value FAILED "$out")
@@ -436,7 +488,7 @@ write_stalled_run_sentinel() {
 }
 
 run_teardown() {
-    local start issue_number repo_unavailable stall_tracking done_rename_applied pr_number design_only
+    local start issue_number repo repo_unavailable stall_tracking done_rename_applied pr_number design_only
     local rename_branch rename_status out rc value issue_url cleanup_rc
     local stall_step stash_ref sentinel_written
 
@@ -445,6 +497,7 @@ run_teardown() {
     validate_tmpdir_arg
 
     issue_number=$(read_state ISSUE_NUMBER)
+    repo=$(read_state REPO)
     repo_unavailable=$(read_state REPO_UNAVAILABLE)
     stall_tracking=$(read_state STALL_TRACKING)
     done_rename_applied=$(read_state DONE_RENAME_APPLIED)
@@ -466,7 +519,7 @@ run_teardown() {
             set -e
             value=$(kv_value VALUE "$out")
             if [ "$rc" -eq 0 ] && [ "$value" = "OPEN" ]; then
-                if rename_issue "$issue_number" stalled STALLED; then
+                if rename_issue "$issue_number" stalled STALLED "$repo"; then
                     rename_status=ok
                 else
                     rename_status=failed
@@ -474,7 +527,7 @@ run_teardown() {
             fi
         elif [ "$done_rename_applied" != "true" ] && { [ -n "$pr_number" ] || [ "$design_only" = "true" ]; }; then
             rename_branch=B
-            if rename_issue "$issue_number" "done" DONE; then
+            if rename_issue "$issue_number" "done" DONE "$repo"; then
                 rename_status=ok
             else
                 rename_status=failed

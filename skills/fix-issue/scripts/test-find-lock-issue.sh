@@ -49,6 +49,8 @@
 #  14. auto-pick skips archival-prefixed titles while preserving substring
 #      non-collisions (`Researches`, `Investigation`) → exit 0;
 #      ISSUE_NUMBER=106.
+#  15. auto-pick treats `[ROUND-TRIP]` alone as pickable while continuing
+#      to reject lifecycle-prefixed round-trip titles.
 #
 # Stub gh dispatches on positional + json args. Each fixture writes a stub
 # state file under a per-fixture tmpdir; the stub reads the file to decide
@@ -912,6 +914,40 @@ assert_contains "$ERR" "Skipping issue #103: archival title prefix" "[14] bracke
 assert_contains "$ERR" "Skipping issue #104: archival title prefix" "[14] Research Report prefix skipped"
 assert_not_contains "$ERR" "Skipping issue #105: archival title prefix" "[14] Researches collision is not archival-skipped"
 assert_not_contains "$ERR" "Skipping issue #106: archival title prefix" "[14] Investigation collision is not archival-skipped"
+
+# ---------------------------------------------------------------------------
+# Fixture 15: [ROUND-TRIP]-only titles remain pickable; lifecycle prefixes
+# still reject even when followed by [ROUND-TRIP].
+# ---------------------------------------------------------------------------
+echo "Fixture 15: auto-pick [ROUND-TRIP]-only title is pickable"
+run_fixture "fixture-15"
+{
+    echo "ISSUE_STATE=OPEN"
+    OPEN_ISSUES_LINES='{"number":120,"title":"[IN PROGRESS] [ROUND-TRIP] active"}
+{"number":121,"title":"[DONE] [ROUND-TRIP] complete"}
+{"number":122,"title":"[STALLED] [ROUND-TRIP] stalled"}
+{"number":123,"title":"[ROUND-TRIP] Pickable"}'
+    printf "OPEN_ISSUES_JSON='%s'\n" "$OPEN_ISSUES_LINES"
+    echo "ISSUE_123_TITLE='[ROUND-TRIP] Pickable'"
+    echo "ISSUE_123_COMMENTS='$(make_comments_json GO)'"
+    echo "RENAME_FAIL=false"
+} > "$STUB_STATE_FILE"
+
+OUT_FILE="$TMPROOT/fixture-15/stdout.txt"
+ERR_FILE="$TMPROOT/fixture-15/stderr.txt"
+EXIT_CODE=0
+"$SCRIPT" >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
+
+OUT=$(cat "$OUT_FILE")
+ERR=$(cat "$ERR_FILE")
+
+assert_equal "$EXIT_CODE" "0" "[15] exit code 0"
+assert_contains "$OUT" "ISSUE_NUMBER=123" "[15] [ROUND-TRIP]-only title picked"
+assert_contains "$OUT" "LOCK_ACQUIRED=true" "[15] lock acquired"
+assert_contains "$ERR" "Skipping issue #120: managed lifecycle title prefix" "[15] [IN PROGRESS] [ROUND-TRIP] rejected"
+assert_contains "$ERR" "Skipping issue #121: managed lifecycle title prefix" "[15] [DONE] [ROUND-TRIP] rejected"
+assert_contains "$ERR" "Skipping issue #122: managed lifecycle title prefix" "[15] [STALLED] [ROUND-TRIP] rejected"
+assert_not_contains "$ERR" "Skipping issue #123: managed lifecycle title prefix" "[15] [ROUND-TRIP]-only is not managed-prefix rejected"
 
 # ---------------------------------------------------------------------------
 # Summary

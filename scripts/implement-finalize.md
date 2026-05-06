@@ -6,7 +6,7 @@
 
 - `postmerge --state-file PATH --final-bail-reason-file PATH` covers Step 14 local cleanup and Step 15 verify-main. It invokes `scripts/local-cleanup.sh` and `scripts/verify-main.sh`, captures their stdout envelopes, forwards their stderr, and emits only Step 14/15 breadcrumbs plus tail records.
 - `slack --state-file PATH --final-bail-reason-file PATH` covers Step 16a. It computes `RUN_OUTCOME` with the Step 16a first-match-wins ladder, applies the existing Slack skip gates, invokes `scripts/post-issue-slack.sh` when eligible, and emits `RUN_OUTCOME=`, `SLACK_TS=`, `FINALIZE_SUBCOMMAND=slack`, and `FINALIZE_WARNINGS=`.
-- `teardown --state-file PATH --implement-tmpdir PATH` covers the Step 18 title-prefix terminal transition, tmpdir cleanup, tracking-issue URL print, and final `✅ 18` breadcrumb. It invokes `scripts/get-issue-info.sh`, `scripts/tracking-issue-write.sh rename`, and `scripts/cleanup-tmpdir.sh`.
+- `teardown --state-file PATH --implement-tmpdir PATH` covers the Step 18 title-prefix terminal transition, tmpdir cleanup, tracking-issue URL print, and final `✅ 18` breadcrumb. It invokes `scripts/get-issue-info.sh`, `scripts/round-trip-detect.sh`, `scripts/tracking-issue-write.sh rename`, and `scripts/cleanup-tmpdir.sh`.
 
 Exit code `0` is not a complete outcome signal. Consumers must parse `RUN_OUTCOME=`, `LOCAL_CLEANUP_STATUS=`, `VERIFY_MAIN_STATUS=`, `RENAME_STATUS=`, `SLACK_TS=`, and `FINALIZE_WARNINGS=` to detect Slack, cleanup, rename, and verify-main failures. Exit code `2` is reserved for argument or state-file validation failures.
 
@@ -67,6 +67,7 @@ FINALIZE_WARNINGS=<N>
 - Step 15 runs only after Step 14 actually attempted cleanup. It calls `verify-main.sh --expected-title "$PR_TITLE (#$PR_NUMBER)"`.
 - Step 16a `RUN_OUTCOME` order is: `PR_CLOSED=true` → `closed`; `DESIGN_ONLY_DONE=true` → `design-only`; `BAIL_NEEDS_USER_INPUT=true` → `user-input`; non-empty bail file → `blocked`; `MERGE!=true` or `DRAFT=true` → `pr-opened`; fallback → `blocked`.
 - Step 18 first checks `ISSUE_NUMBER` is non-empty and `REPO_UNAVAILABLE=false` before any rename branch. Branch A (`STALL_TRACKING=true`) renames to `stalled` only when `get-issue-info.sh --field state` returns exactly `VALUE=OPEN`; empty `VALUE=` remains a silent skip. Branch B renames to `done` when no merge-path done rename has already applied and either `PR_NUMBER` is set or `DESIGN_ONLY_DONE=true`. Branch C is a no-op.
+- Before any Branch A/B rename, Step 18 fetches **both** the issue title and body with `gh issue view "$issue" --repo "$REPO" --json title,body --jq '"TITLE=\(.title // "")\n" + (.body // "")'`, splits the response into the leading `TITLE=` line and the remaining body (written to a temp file under `--implement-tmpdir` when available), runs `scripts/round-trip-detect.sh --text-string "$title" --text-file <body-file>`, and passes `--round-trip true|false` to `tracking-issue-write.sh rename`. The `--repo` flag matches the rename call's repo scope so transient `gh repo set-default` / cwd disagreements cannot fetch the wrong issue (post-review FINDING_F2). Detection is best-effort: fetch failure, missing detector, detector failure, or missing `ROUND_TRIP=` output logs `Step 18: round-trip detection skipped: <reason>` and defaults to `false`; the lifecycle rename still runs. Detector stderr is **not** redirected — `warn_false` diagnostics surface so degraded paths are visible to operators (post-review FINDING_F3). Sticky preservation of an existing marker is owned by `tracking-issue-write.sh`.
 - On stalled runs (`STALL_TRACKING=true`), Step 18 then probes the repo root with `git rev-parse --show-toplevel`. If `git status --porcelain` is non-empty, it best-effort stashes tracked and untracked edits with a `larch-stalled-<issue>-<step> <utc>` label and records the newest stash ref. Stash failures produce a warning and do not block teardown.
 - On stalled runs, Step 18 writes `<git-dir>/larch-stalled-run.txt` atomically with `ISSUE_NUMBER=`, `ISSUE_URL=`, `STALL_STEP=`, `STASH_REF=`, and `TIMESTAMP=`. It resolves `<git-dir>` via `git rev-parse --git-dir` so worktree-style gitdirs are supported. Sentinel write failures produce a warning and do not block teardown.
 - `cleanup-tmpdir.sh` runs after the stalled-run auto-stash/sentinel work and before the tracking-issue URL print. `teardown` reads all state-file values before cleanup and resolves the issue URL before cleanup so the sentinel can carry it.
@@ -77,6 +78,7 @@ FINALIZE_WARNINGS=<N>
 - Leaf-script stdout is captured and parsed; leaf-script stderr passes through to the operator.
 - All leaf-script failures are best-effort except invocation/state validation. They surface through warning breadcrumbs and tail records, not non-zero exits.
 - `--implement-tmpdir` and `--state-file` must be under `/tmp/` or `/private/tmp/`.
+- Round-trip detection never sends issue bodies through argv; bodies are file-backed per `scripts/round-trip-detect.md`.
 
 ## Primary Callers
 
@@ -86,7 +88,7 @@ FINALIZE_WARNINGS=<N>
 
 ## Test Harness
 
-`scripts/test-implement-finalize.sh` is the offline regression harness. It copies this script into a `/tmp` sandbox with stub sibling helpers and a git shim, exercises all three subcommands, stalled-run stash/sentinel handling, and state-file parsing, normalizes elapsed-time parentheticals, and is wired through `make test-implement-finalize`.
+`scripts/test-implement-finalize.sh` is the offline regression harness. It copies this script into a `/tmp` sandbox with stub sibling helpers and git/gh shims, exercises all three subcommands, round-trip detection pass-through/default-false behavior, stalled-run stash/sentinel handling, and state-file parsing, normalizes elapsed-time parentheticals, and is wired through `make test-implement-finalize`.
 
 ## Edit In Sync
 

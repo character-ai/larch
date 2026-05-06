@@ -289,6 +289,8 @@ Resolve a stable `ISSUE_NUMBER` + (when available) `ANCHOR_COMMENT_ID` for the s
 
 **Step 0.5 entry default**: set `deferred=false`. Branches 1 / 2 / 3 succeed → `deferred` stays `false`. Branch 4 on success → `deferred` stays `false`. Branch 4 on any failure (create-issue, upsert-anchor, sentinel write) → set `deferred=true` explicitly. This establishes a clean binary state for Steps 1 / 2 / 5 / 7a / 8 / 9a / 9a.1 / 11 / 18 — there is no tri-state "unset" to handle.
 
+**Round-trip detection at Step 0.5**: whenever a Branch 1 / 2 / 3 / 4 path has resolved `ISSUE_NUMBER` and is about to rename the tracking issue to `in-progress`, run `${CLAUDE_PLUGIN_ROOT}/scripts/round-trip-detect.sh` and pass the resulting `ROUND_TRIP=true|false` as `--round-trip "$ROUND_TRIP"` to `tracking-issue-write.sh rename`. Issue bodies and feature descriptions MUST be written to temp files under `$IMPLEMENT_TMPDIR` and passed via `--text-file`; only short trusted titles may use `--text-string`. Best-effort: if a body/title fetch or the detector fails, log to `Tool Failures`, set `ROUND_TRIP=false`, and continue with the rename. `tracking-issue-write.sh` owns sticky preservation of any pre-existing marker; callers pass only the fresh detector result. See `${CLAUDE_PLUGIN_ROOT}/scripts/round-trip-detect.md` and `${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.md`.
+
 **Branch 1 — sentinel exists** (`$IMPLEMENT_TMPDIR/parent-issue.md` present):
 
 ```bash
@@ -310,10 +312,16 @@ Parse stdout for `ISSUE_NUMBER`, `ANCHOR_COMMENT_ID`, `ADOPTED`.
 - **Resume rename safety net**: if `ISSUE_NUMBER` is set, run a best-effort idempotent rename to `[IN PROGRESS]`. This recovers from the case where a prior session wrote the sentinel but its Branch 2 / Branch 3 / Branch 4 rename failed (best-effort, logged but non-blocking) — without this, a resumed run could complete with merge/Step 18 renames while the GitHub title never received `[IN PROGRESS]`:
 
   ```bash
-  ${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh rename --issue $ISSUE_NUMBER --state in-progress
+  ROUND_TRIP_OUT=$(${CLAUDE_PLUGIN_ROOT}/scripts/round-trip-detect.sh \
+    --text-file "$IMPLEMENT_TMPDIR/round-trip-input-issue-body.txt" \
+    --text-file "$IMPLEMENT_TMPDIR/round-trip-input-feature-desc.txt" \
+    --text-string "$ISSUE_TITLE" 2>&1) || ROUND_TRIP_OUT="ROUND_TRIP=false"
+  ROUND_TRIP=$(echo "$ROUND_TRIP_OUT" | awk -F= '/^ROUND_TRIP=/ { v=$2 } END { print v }')
+  case "$ROUND_TRIP" in true|false) ;; *) ROUND_TRIP=false ;; esac
+  ${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh rename --issue $ISSUE_NUMBER --state in-progress --round-trip "$ROUND_TRIP"
   ```
 
-  Best-effort: on `FAILED=true` or non-zero exit, log `Step 0.5 — Branch 1 resume rename to in-progress failed: $ERROR` to `Tool Failures` and continue. The rename is idempotent (`RENAMED=false` no-op when the title already starts with `[IN PROGRESS]` followed by a space), so the common resume case is a single cheap `gh issue view` round-trip with no edit.
+  Best-effort: on `FAILED=true` or non-zero exit, log `Step 0.5 — Branch 1 resume rename to in-progress failed: $ERROR` to `Tool Failures` and continue. The rename is idempotent (`RENAMED=false` when the title already starts with the target lifecycle prefix and the round-trip marker state already matches the desired `--round-trip` value after sticky preservation; see `scripts/tracking-issue-write.md`), so the common resume case is a single cheap `gh issue view` round-trip with no edit.
 
 Proceed to Step 1.
 
@@ -357,10 +365,16 @@ FIND_OUT=$(${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh find-anchor --i
 On either sub-branch, **rename the adopted issue to `[IN PROGRESS]`** so the title reflects the active run (matches the title-prefix lifecycle applied to fresh-created issues in Branch 4 — see `scripts/tracking-issue-write.md` "Title-prefix lifecycle"):
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh rename --issue $ISSUE_ARG --state in-progress
+ROUND_TRIP_OUT=$(${CLAUDE_PLUGIN_ROOT}/scripts/round-trip-detect.sh \
+  --text-string "$ISSUE_TITLE" \
+  --text-file "$IMPLEMENT_TMPDIR/round-trip-input-issue-body.txt" \
+  --text-file "$IMPLEMENT_TMPDIR/round-trip-input-feature-desc.txt" 2>&1) || ROUND_TRIP_OUT="ROUND_TRIP=false"
+ROUND_TRIP=$(echo "$ROUND_TRIP_OUT" | awk -F= '/^ROUND_TRIP=/ { v=$2 } END { print v }')
+case "$ROUND_TRIP" in true|false) ;; *) ROUND_TRIP=false ;; esac
+${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh rename --issue $ISSUE_ARG --state in-progress --round-trip "$ROUND_TRIP"
 ```
 
-Best-effort: on `FAILED=true` or non-zero exit, log `Step 0.5 — Branch 2 rename to in-progress failed: $ERROR` to `Tool Failures` and continue. The rename is idempotent (`RENAMED=false` when the title already starts with `[IN PROGRESS]` followed by a space); failure does not affect adoption correctness — it only loses the visual-indicator benefit. Step 12a/12b's terminal rename to `[DONE]` and Step 18's stalled-rename apply to adopted issues uniformly (no `ADOPTED=` guard).
+Best-effort: on `FAILED=true` or non-zero exit, log `Step 0.5 — Branch 2 rename to in-progress failed: $ERROR` to `Tool Failures` and continue. The rename is idempotent (`RENAMED=false` when the title already starts with the target lifecycle prefix and the round-trip marker state already matches the desired `--round-trip` value after sticky preservation; see `scripts/tracking-issue-write.md`); failure does not affect adoption correctness — it only loses the visual-indicator benefit. Step 12a/12b's terminal rename to `[DONE]` and Step 18's stalled-rename apply to adopted issues uniformly (no `ADOPTED=` guard).
 
 Then write `$IMPLEMENT_TMPDIR/parent-issue.md`:
 
@@ -403,10 +417,16 @@ ANCHOR_ID=$(printf '%s\n' "$FIND_OUT" | awk -F= '$1=="ANCHOR_COMMENT_ID"{print $
 On either sub-branch, **rename the recovered issue to `[IN PROGRESS]`** so the title reflects the active run (matches Branch 2 / Branch 4):
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh rename --issue $RECOVERED_N --state in-progress
+ROUND_TRIP_OUT=$(${CLAUDE_PLUGIN_ROOT}/scripts/round-trip-detect.sh \
+  --text-string "$ISSUE_TITLE" \
+  --text-file "$IMPLEMENT_TMPDIR/round-trip-input-issue-body.txt" \
+  --text-file "$IMPLEMENT_TMPDIR/round-trip-input-feature-desc.txt" 2>&1) || ROUND_TRIP_OUT="ROUND_TRIP=false"
+ROUND_TRIP=$(echo "$ROUND_TRIP_OUT" | awk -F= '/^ROUND_TRIP=/ { v=$2 } END { print v }')
+case "$ROUND_TRIP" in true|false) ;; *) ROUND_TRIP=false ;; esac
+${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh rename --issue $RECOVERED_N --state in-progress --round-trip "$ROUND_TRIP"
 ```
 
-Best-effort: on `FAILED=true` or non-zero exit, log `Step 0.5 — Branch 3 rename to in-progress failed: $ERROR` to `Tool Failures` and continue. Idempotent (`RENAMED=false` no-op when the title already starts with `[IN PROGRESS]` followed by a space).
+Best-effort: on `FAILED=true` or non-zero exit, log `Step 0.5 — Branch 3 rename to in-progress failed: $ERROR` to `Tool Failures` and continue. Idempotent (`RENAMED=false` when the title already starts with the target lifecycle prefix and the round-trip marker state already matches the desired `--round-trip` value after sticky preservation; see `scripts/tracking-issue-write.md`).
 
 Then write sentinel with `ADOPTED=true` (Phase 3 Branch 3 adopts an existing open issue via PR-body recovery; per the `scripts/tracking-issue-read.md` contract). Set `ISSUE_NUMBER=$RECOVERED_N`. Print `✅ 0.5: tracking issue — recovered #$ISSUE_NUMBER from PR body (<elapsed>)`. Proceed to Step 1.
 
@@ -444,6 +464,18 @@ Create the tracking issue **immediately** so all subsequent anchor-accumulation 
    ${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh create-issue --title "[IN PROGRESS] <derived-title>" --body-file "$IMPLEMENT_TMPDIR/tracking-issue-body.md"
    ```
    Parse `ISSUE_NUMBER` and `ISSUE_URL` from stdout. On `FAILED=true` OR non-zero exit, print `**⚠ 0.5: tracking issue — Branch 4 create-issue failed: $ERROR. Continuing with deferred/absent anchor.**`, log to `Tool Failures`, set `deferred=true`, leave `$ISSUE_NUMBER` unset, and proceed to Step 1. Downstream: Step 9a omits the `Closes #<N>` line entirely and replaces it with `_No tracking issue — auto-close N/A._`; Step 11 branch 3 skips cleanly; Step 18 URL print is silently skipped.
+
+4b. **Immediately apply round-trip detection to the fresh issue title**: after `ISSUE_NUMBER` resolves, write the just-composed issue body and sanitized feature description to temp files under `$IMPLEMENT_TMPDIR`, run `round-trip-detect.sh` over those files plus the short derived title (parsing the same `ROUND_TRIP_OUT`/`awk`/`case` validation chain as the Branch 1/2/3 blocks above), then run:
+   ```bash
+   ROUND_TRIP_OUT=$(${CLAUDE_PLUGIN_ROOT}/scripts/round-trip-detect.sh \
+     --text-string "$DERIVED_TITLE" \
+     --text-file "$IMPLEMENT_TMPDIR/round-trip-input-issue-body.txt" \
+     --text-file "$IMPLEMENT_TMPDIR/round-trip-input-feature-desc.txt" 2>&1) || ROUND_TRIP_OUT="ROUND_TRIP=false"
+   ROUND_TRIP=$(echo "$ROUND_TRIP_OUT" | awk -F= '/^ROUND_TRIP=/ { v=$2 } END { print v }')
+   case "$ROUND_TRIP" in true|false) ;; *) ROUND_TRIP=false ;; esac
+   ${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh rename --issue "$ISSUE_NUMBER" --state in-progress --round-trip "$ROUND_TRIP"
+   ```
+   This is idempotent and cheap when `ROUND_TRIP=false`; it also lets Branch 4 add `[ROUND-TRIP]` before the sentinel is written.
 
 5. **Seed the anchor** as the first comment on the newly-created issue (`tracking-issue-write.sh` treats the anchor as a standalone comment, not the issue description). The wrapper combines `mkdir -p` + `assemble-anchor.sh` + `tracking-issue-write.sh upsert-anchor` into one call (see `scripts/refresh-anchor.md`):
    ```bash
@@ -1224,7 +1256,7 @@ Use `timeout: 1860000` on the Bash call. Parse the same fields as Step 10.
 
    - **`ACTION=rebase`**: print a context-specific message from `CI_STATUS` — `CI_STATUS=pass` → `🔃 12: CI+merge loop — CI passed, main advanced, rebasing + re-bumping`; `CI_STATUS=pending` → `🔃 12: CI+merge loop — main advanced, rebasing + re-bumping`. Invoke the Rebase + Re-bump Sub-procedure with `rebase_already_done=false`, `caller_kind=step12_rebase`. Counter updates and `ci-wait.sh` re-invocation happen inside the sub-procedure's step 7. On hard failure, the sub-procedure bails to 12d directly.
    - **`ACTION=merge`**: print `✅ 12: CI+merge loop — CI passed, main up-to-date, merging! (<elapsed>)` → proceed to **12b**.
-   - **`ACTION=already_merged`**: print `✅ PR was force-merged externally — skipping CI wait and merge. (<elapsed>)`. Set `pr_closed=true` (consumed by Step 16a's outcome state machine). **Title-prefix lifecycle terminal transition**: if `$ISSUE_NUMBER` is set AND `repo_unavailable=false`, call `${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh rename --issue $ISSUE_NUMBER --state done` (applies to both fresh-created and adopted issues — title-prefix lifecycle is uniform across Branches 2/3/4). Best-effort: on `FAILED=true` or non-zero exit, log to `Tool Failures` and continue. Set `DONE_RENAME_APPLIED=true` on any return (including `RENAMED=false` no-op) so Step 18 does not double-fire. Skip 12b, proceed to Step 14. Counts as merged for Steps 14–15. **Continue to Step 14 IMMEDIATELY after this line — "force-merged externally" feels terminal but is mid-run; do NOT end the turn, summarize, or write a handoff message. Steps 14, 15, 16, 16a, 17, 18 still must run.**
+   - **`ACTION=already_merged`**: print `✅ PR was force-merged externally — skipping CI wait and merge. (<elapsed>)`. Set `pr_closed=true` (consumed by Step 16a's outcome state machine). **Title-prefix lifecycle terminal transition**: if `$ISSUE_NUMBER` is set AND `repo_unavailable=false`, first write the issue body to a temp file (reuse an existing issue-body temp if available; otherwise fetch with null-safe `gh issue view "$ISSUE_NUMBER" --json body --jq '.body // ""'`) and write merged PR text with `gh pr view "$PR_NUMBER" --json title,body --jq '(.title // "") + "\n" + (.body // "")'` to `$IMPLEMENT_TMPDIR/round-trip-input-pr.txt`. Run `round-trip-detect.sh --text-file <issue-body-tmp> --text-file "$IMPLEMENT_TMPDIR/round-trip-input-pr.txt"`, parse `ROUND_TRIP=true|false`, and call `${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh rename --issue $ISSUE_NUMBER --state done --round-trip "$ROUND_TRIP"` (applies to both fresh-created and adopted issues — title-prefix lifecycle is uniform across Branches 2/3/4). Do NOT OR with any pre-existing title marker; sticky preservation is owned by `tracking-issue-write.sh`. Best-effort: on `FAILED=true` or non-zero exit, log to `Tool Failures` and continue. Set `DONE_RENAME_APPLIED=true` on any return (including `RENAMED=false` no-op) so Step 18 does not double-fire. Skip 12b, proceed to Step 14. Counts as merged for Steps 14–15. **Continue to Step 14 IMMEDIATELY after this line — "force-merged externally" feels terminal but is mid-run; do NOT end the turn, summarize, or write a handoff message. Steps 14, 15, 16, 16a, 17, 18 still must run.**
    - **`ACTION=rebase_then_evaluate`**: invoke the sub-procedure with `rebase_already_done=false`, `caller_kind=step12_rebase_then_evaluate`. On success, **fall through to 12c** (counter updates already done; do NOT re-invoke `ci-wait.sh` here — the sub-procedure's `step12_rebase_then_evaluate` branch skips the re-invocation for this path). On hard failure, the sub-procedure bails to 12d.
    - **`ACTION=evaluate_failure`**: → **12c**.
    - **`ACTION=bail`**: print `BAIL_REASON` → **12d**.
@@ -1244,8 +1276,8 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/merge-pr.sh --pr <PR-NUMBER> --repo $REPO [--no-ad
 Append `--no-admin-fallback` to the invocation only when `no_admin_fallback=true` (parsed from the top-level flag). Default behavior tries `--admin` first after `merge-pr.sh` verifies CI is green and the branch is fresh, then retries without `--admin` if the privileged attempt is rejected. With `--no-admin-fallback`, `merge-pr.sh` skips the privileged attempt and tries only the plain squash merge.
 
 Parse `MERGE_RESULT` and `ERROR`:
-- **`merged`**: plain squash merge succeeded (default-mode fallback after `--admin` rejection, or the plain-only path under `--no-admin-fallback`). Print `✅ 12: CI+merge loop — PR #<NUMBER> merged! (<elapsed>)`. Set `pr_closed=true` (consumed by Step 16a's outcome state machine). **Title-prefix lifecycle terminal transition**: if `$ISSUE_NUMBER` set AND `repo_unavailable=false`, call `${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh rename --issue $ISSUE_NUMBER --state done` (applies to both fresh-created and adopted issues). Best-effort (log to `Tool Failures` on failure; do not abort the run — the merge has already succeeded). Set `DONE_RENAME_APPLIED=true` on any return. Continue.
-- **`admin_merged`**: print `**⚠ Merged with --admin (review overridden).** ✅ 12: CI+merge loop — PR #<NUMBER> merged! (<elapsed>)`. Set `pr_closed=true`. Apply the same terminal rename-to-done as the `merged` branch (same guards; same `DONE_RENAME_APPLIED=true` on return). **Then** post a best-effort PR comment recording the bypass:
+- **`merged`**: plain squash merge succeeded (default-mode fallback after `--admin` rejection, or the plain-only path under `--no-admin-fallback`). Print `✅ 12: CI+merge loop — PR #<NUMBER> merged! (<elapsed>)`. Set `pr_closed=true` (consumed by Step 16a's outcome state machine). **Title-prefix lifecycle terminal transition**: if `$ISSUE_NUMBER` set AND `repo_unavailable=false`, run the same issue-body + merged-PR-text round-trip detection procedure from Step 12a, then call `${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh rename --issue $ISSUE_NUMBER --state done --round-trip "$ROUND_TRIP"` (applies to both fresh-created and adopted issues). Best-effort (log to `Tool Failures` on failure; do not abort the run — the merge has already succeeded). Set `DONE_RENAME_APPLIED=true` on any return. Continue.
+- **`admin_merged`**: print `**⚠ Merged with --admin (review overridden).** ✅ 12: CI+merge loop — PR #<NUMBER> merged! (<elapsed>)`. Set `pr_closed=true`. Apply the same detector-backed terminal rename-to-done as the `merged` branch (same guards; same `DONE_RENAME_APPLIED=true` on return). **Then** post a best-effort PR comment recording the bypass:
   ```bash
   gh pr comment <PR-NUMBER> --repo $REPO --body "$ADMIN_AUDIT_COMMENT_BODY"
   ```
@@ -1372,7 +1404,7 @@ Repeat any external reviewer warnings from earlier (from `/design`, `/review`, o
 
 If `DESIGN_ONLY_DONE=true`, remind: `**Note: --design-only was set. No PR was created. The tracking issue's anchor comment carries the plan, plan-review tally, diagrams, and accepted/rejected findings as the run's deliverable.**` Otherwise, if `draft=true`, remind: `**Note: --draft was set. Draft PR created; local branch retained. Mark the PR ready-for-review and merge manually when ready.**` Otherwise if `merge=false`, remind: `**Note: --merge was not set. PR was created but not merged. Merge manually when ready.**`
 
-Run the consolidated teardown subcommand after the prompt-side warnings/notes above. It performs the title-prefix terminal transition first: Branch A renames to `[STALLED]` only when `STALL_TRACKING=true` and the issue state is exactly `OPEN`; Branch B renames to `[DONE]` when `STALL_TRACKING=false`, `DONE_RENAME_APPLIED!=true`, and `$PR_NUMBER` is set OR `DESIGN_ONLY_DONE=true`; Branch C is a no-op. On stalled paths, it then best-effort stashes leftover working-tree edits with a `larch-stalled-...` label and writes `.git/larch-stalled-run.txt` so the next SessionStart/preflight can surface or clear the leftover state. It then runs `cleanup-tmpdir.sh`, prints the tracking-issue URL when resolvable, and prints the final Step 18 breadcrumb. Mechanical SSOT: `${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.md` § `teardown`.
+Run the consolidated teardown subcommand after the prompt-side warnings/notes above. It performs the title-prefix terminal transition first: Branch A renames to `[STALLED]` only when `STALL_TRACKING=true` and the issue state is exactly `OPEN`; Branch B renames to `[DONE]` when `STALL_TRACKING=false`, `DONE_RENAME_APPLIED!=true`, and `$PR_NUMBER` is set OR `DESIGN_ONLY_DONE=true`; Branch C is a no-op. Finalize-time round-trip detection runs inside `scripts/implement-finalize.sh` immediately before Branch A/B renames. On stalled paths, it then best-effort stashes leftover working-tree edits with a `larch-stalled-...` label and writes `.git/larch-stalled-run.txt` so the next SessionStart/preflight can surface or clear the leftover state. It then runs `cleanup-tmpdir.sh`, prints the tracking-issue URL when resolvable, and prints the final Step 18 breadcrumb. Mechanical SSOT: `${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.md` § `teardown`.
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.sh teardown \
