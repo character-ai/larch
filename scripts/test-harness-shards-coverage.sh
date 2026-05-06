@@ -198,7 +198,11 @@ validate_makefile() {
       }
     }
   " "$makefile" > "$naming_violations" || true
-  grep -nE "^test-harnesses-[1-5]:.*\\\\" "$makefile" > "$continuation_violations" || true
+  # Match any numeric shard, mirroring extract_shard_prereqs's dynamic
+  # discovery — leaving this hardcoded to [1-5] would silently allow a
+  # backslash continuation on test-harnesses-6 (or any future shard) to
+  # bypass the single-physical-line invariant.
+  grep -nE "^test-harnesses-[0-9]+:.*\\\\" "$makefile" > "$continuation_violations" || true
 
   extract_individual_targets "$makefile" > "$individual"
   extract_shard_prereqs "$makefile" "$shard_all" "$last_shard" "$umbrella_expected"

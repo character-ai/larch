@@ -88,9 +88,12 @@ discover_gemini_tools_from_slash_command() {
     # Test seam: harnesses can shorten the discovery watchdog (default 5s)
     # to avoid paying full 5s on every "hung Gemini" stub. Production callers
     # leave it unset and inherit the 5s default. Validated as a positive
-    # integer; falls back to 5 if the value is empty or non-numeric.
+    # integer; empty / non-numeric / padded-zero (0, 00, 000, ...) values fall
+    # back to 5. The "*[1-9]*" probe rejects padded-zero forms that the
+    # initial digit-character check would accept.
     local discovery_timeout="${LARCH_GEMINI_TOOL_DISCOVERY_TIMEOUT:-5}"
-    case "$discovery_timeout" in ''|*[!0-9]*|0) discovery_timeout=5 ;; esac
+    case "$discovery_timeout" in ''|*[!0-9]*) discovery_timeout=5 ;; esac
+    case "$discovery_timeout" in *[1-9]*) : ;; *) discovery_timeout=5 ;; esac
     if command -v gtimeout >/dev/null 2>&1; then
         output=$(gtimeout "$discovery_timeout" gemini /tools </dev/null 2>/dev/null) || true
     elif command -v timeout >/dev/null 2>&1; then

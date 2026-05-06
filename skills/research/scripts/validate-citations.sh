@@ -176,13 +176,20 @@ __vc_check_positive_int "--per-fetch-timeout" "$PER_FETCH_TIMEOUT"
 __vc_check_positive_int "--max-claims" "$MAX_CLAIMS"
 
 # __VC_BUDGET_POLL_INTERVAL is a float-tolerant positive number (1, 0.05, etc.).
-# Reject empty / non-numeric / multi-dot / zero. `sleep` accepts both int and
-# fractional seconds on coreutils and macOS.
+# Reject empty / non-numeric / multi-dot. To detect zero (including padded
+# forms like 00, 000, 00.0), require at least one [1-9] digit anywhere.
+# `sleep` accepts both int and fractional seconds on coreutils and macOS.
 case "$__VC_BUDGET_POLL_INTERVAL" in
-    ''|*[!0-9.]*|.|0|0.|0.0|0.00|0.000)
+    ''|*[!0-9.]*|.)
         echo "validate-citations.sh: __VC_BUDGET_POLL_INTERVAL must be a positive number (got: $__VC_BUDGET_POLL_INTERVAL)" >&2
         exit 2 ;;
     *.*.*)
+        echo "validate-citations.sh: __VC_BUDGET_POLL_INTERVAL must be a positive number (got: $__VC_BUDGET_POLL_INTERVAL)" >&2
+        exit 2 ;;
+esac
+case "$__VC_BUDGET_POLL_INTERVAL" in
+    *[1-9]*) : ;;
+    *)
         echo "validate-citations.sh: __VC_BUDGET_POLL_INTERVAL must be a positive number (got: $__VC_BUDGET_POLL_INTERVAL)" >&2
         exit 2 ;;
 esac
