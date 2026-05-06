@@ -34,7 +34,7 @@ $PWD/.claude/skills/relevant-checks/scripts/run-checks.sh
 
 The script automatically detects which files were modified on the current branch, filters to existing files, and runs `pre-commit run --files` on them. Pre-commit handles file-type routing internally — only hooks whose file patterns match the changed files will execute. **Exception**: hooks configured with `pass_filenames: false` in `.pre-commit-config.yaml` (notably `gitleaks`) ignore the scoped `--files` arguments and always scan the full working tree. This is intentional for secret detection — a scoped scan could otherwise silently miss a secret that lives outside the changed file set. Expect gitleaks and the repo-wide policy lint `lint-literal-counts` to run on every `/relevant-checks` invocation, not just when the change set touches files those hooks would normally match on.
 
-The script's exit-code paths are pinned by a sibling regression harness `.claude/skills/relevant-checks/scripts/test-run-checks.sh` (sibling contract `.claude/skills/relevant-checks/scripts/test-run-checks.md`) — wired into `Makefile`'s `test-harnesses` target. Run via `make test-run-checks` or directly. Update the harness in lockstep with `run-checks.sh` whenever a new exit path or banner is introduced.
+The script's exit-code paths are pinned by a sibling regression harness `.claude/skills/relevant-checks/scripts/test-run-checks.sh` (sibling contract `.claude/skills/relevant-checks/scripts/test-run-checks.md`) — wired into `Makefile`'s `test-harnesses` target via shard `test-harnesses-5`. Run via `make test-run-checks` or directly. Update the harness in lockstep with `run-checks.sh` whenever a new exit path or banner is introduced.
 
 ## Retry semantics
 

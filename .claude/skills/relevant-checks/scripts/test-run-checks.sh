@@ -22,8 +22,9 @@ if [[ ! -f "$SCRIPT" ]]; then
     exit 1
 fi
 
+TMPROOT=
+trap '[[ -n "$TMPROOT" ]] && rm -rf "$TMPROOT"' EXIT
 TMPROOT=$(mktemp -d "${TMPDIR:-/tmp}/test-run-checks-XXXXXX")
-trap 'rm -rf "$TMPROOT"' EXIT
 
 export HOME="$TMPROOT/fakehome"
 mkdir -p "$HOME"
@@ -121,7 +122,7 @@ EOF
     case "$pre_commit" in
         absent)
             ;;
-        present|0)
+        present)
             cat > "$dir/pre-commit" <<'EOF'
 #!/usr/bin/env bash
 echo "pre-commit stub: $*"
@@ -130,13 +131,15 @@ EOF
             chmod +x "$dir/pre-commit"
             ;;
         *)
-            # Numeric exit code other than 0 — emulate a real pre-commit failure
-            # so run-checks.sh:116-118 propagates the exit code without invoking
-            # agent-lint.
+            # Numeric exit code — emulate pre-commit success (rc=0) or failure
+            # (rc>0). On non-zero, the script-under-test propagates the exit
+            # code without invoking the run_post_checks agent-lint phase.
             cat > "$dir/pre-commit" <<EOF
 #!/usr/bin/env bash
 echo "pre-commit stub: \$*"
-echo "pre-commit stub: simulated lint failure" >&2
+if [[ "$pre_commit" -ne 0 ]]; then
+    echo "pre-commit stub: simulated lint failure" >&2
+fi
 exit "$pre_commit"
 EOF
             chmod +x "$dir/pre-commit"
@@ -229,10 +232,10 @@ assert_exit_eq "3b: changed file + pre-commit ok + agent-lint ok" "$RUN_EXIT" 0
 assert_stdout_contains "3b: pre-commit stub invoked" "$RUN_OUT" "pre-commit stub:"
 assert_stdout_contains "3b: agent-lint stub invoked" "$RUN_OUT" "agent-lint stub:"
 
-# 3c — changed file + pre-commit non-zero: pins run-checks.sh:116-118, which
-# propagates pre-commit's exit code WITHOUT invoking agent-lint (run_post_checks
-# only runs after pre-commit succeeds). Agent-lint is also stubbed present so a
-# regression that mistakenly invokes it would surface via the agent-lint banner.
+# 3c — changed file + pre-commit non-zero: pins the pre-commit-failure early-exit
+# branch that propagates the exit code without invoking the run_post_checks
+# agent-lint phase. Agent-lint is stubbed present so a regression that
+# mistakenly invokes it would surface via the agent-lint banner.
 REPO_3C="$TMPROOT/repo-changed-file-pre-commit-fails"
 STUB_3C="$TMPROOT/stub-changed-file-pre-commit-fails"
 setup_changed_file_repo "$REPO_3C"
@@ -249,6 +252,20 @@ else
     pass
 fi
 
+# 3d — changed file + pre-commit success + agent-lint non-zero: pins the
+# changed-file dual-phase failure path (PHASES_RUN incremented by pre-commit
+# success, then run_post_checks invokes agent-lint and exit_with_phase_check
+# propagates the non-zero rc). Complements 2b, which exercises the same
+# propagation on the empty-MODIFIED_FILES path.
+REPO_3D="$TMPROOT/repo-changed-file-agent-seven"
+STUB_3D="$TMPROOT/stub-changed-file-agent-seven"
+setup_changed_file_repo "$REPO_3D"
+make_stub_dir "$STUB_3D" present 7
+run_checks "$REPO_3D" "$(controlled_path "$STUB_3D")"
+assert_exit_eq "3d: changed file + pre-commit ok + agent-lint rc=7" "$RUN_EXIT" 7
+assert_stdout_contains "3d: pre-commit stub invoked" "$RUN_OUT" "pre-commit stub:"
+assert_stdout_contains "3d: agent-lint stub invoked" "$RUN_OUT" "agent-lint stub:"
+
 echo "=== Section 4: preflight failure ==="
 
 REPO_4A="$TMPROOT/repo-pre-commit-absent"
@@ -259,9 +276,10 @@ run_checks "$REPO_4A" "$(controlled_path "$STUB_4A")"
 assert_exit_eq "4a: pre-commit absent" "$RUN_EXIT" 1
 assert_stdout_contains "4a: pre-commit missing error" "$RUN_OUT" "ERROR: pre-commit not found"
 
-# 4b — invocation outside a git repository: pins run-checks.sh:18 (`git rev-parse
-# --show-toplevel` failure). Pre-commit is stubbed present so the preflight at
-# run-checks.sh:13-16 succeeds and the script reaches the rev-parse check.
+# 4b — invocation outside a git repository: pins the rev-parse-failure branch
+# (`git rev-parse --show-toplevel` exits non-zero when cwd is not inside a git
+# worktree). Pre-commit is stubbed present so the pre-commit preflight succeeds
+# and the script reaches the rev-parse check.
 DIR_4B="$TMPROOT/non-git-dir"
 STUB_4B="$TMPROOT/stub-non-git"
 mkdir -p "$DIR_4B"
