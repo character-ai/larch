@@ -1,6 +1,6 @@
 # External Agents
 
-Codex and Cursor participate alongside Claude subagents as reviewers, voters, and sketch authors in the Larch workflow. Gemini participates as an additive code reviewer in `/review` and `/implement --quick`, and is available as an explicit `/implement --coder=gemini` implementer. This document covers the shared integration procedures.
+Codex and Cursor participate alongside Claude subagents as reviewers, voters, and sketch authors in the Larch workflow. Gemini reviewer call sites in `/review` and `/implement --quick` have been removed; the launcher (`scripts/launch-gemini-review.sh`), policy file, regression harness, and health-probe machinery remain so the lane can be re-enabled without re-deriving the contract. Gemini is still active as an explicit `/implement --coder=gemini` implementer. The "Launch Order", "Timeout handling", and "Roles Across the Workflow" sections below describe the historical / re-enableable Gemini reviewer shape — they are not the default panel after call-site removal. This document covers the shared integration procedures.
 
 ## Availability Checks
 
@@ -8,7 +8,7 @@ At the start of each skill, a binary check determines which external tools are i
 
 - If **Codex** is not found, a warning is printed and the skill proceeds without it
 - If **Cursor** is not found, a warning is printed and the skill proceeds without it
-- If **Gemini** is not found or unhealthy in an opt-in code-review phase, every Gemini artifact is omitted; it does not get a Claude replacement
+- If **Gemini** is not found or unhealthy, the `--coder=gemini` implementer falls back to the main-agent code-edit path (`STATUS=claude_fallback`); the dormant Gemini reviewer machinery is unaffected because no skill currently invokes it
 
 Skills gracefully degrade when external tools are unavailable. When Codex or Cursor is not found, Claude replacement subagents fill their slots to maintain the per-skill lane shapes across most phases. Gemini is different: it is strictly additive and skipped when unavailable. The authoritative topologies live with their phase docs: `/design` sketch and plan review in [Collaborative Sketches](collaborative-sketches.md) and [Review Agents](review-agents.md), `/review` in [Review Agents](review-agents.md), `/research` in [Agent System](agents.md) and the research skill, and voting / dialectic thresholds in [Voting Process](voting-process.md) plus `skills/shared/dialectic-protocol.md`. Voting uses a step-function threshold: 3 voters require 2+ YES votes, 2 voters require unanimous YES, and fewer than 2 eligible voters causes voting to be skipped with all findings accepted automatically. Gemini never votes.
 
@@ -38,7 +38,7 @@ External reviewers are always launched in a specific order to maximize paralleli
 
 1. **Cursor** (slowest) — launched first
 2. **Codex** — launched second
-3. **Gemini** — launched after Codex when enabled
+3. **Gemini** — historical / re-enableable: launched after Codex when call sites are wired back into a skill (no current skill invokes the reviewer launcher)
 4. **Claude subagents** (fastest) — launched last
 
 All launches happen in a single message to ensure true parallel execution.
@@ -86,7 +86,7 @@ Authoritative flag documentation lives in the `--substantive-validation` / `--va
 
 ## Timeout Handling
 
-External reviewers have configurable timeouts (typically 1200 seconds for voting and 1800 seconds for code review). Gemini code-review launches are hard-capped at 600 seconds by `launch-gemini-review.sh`, even when the caller's Codex/Cursor review timeout is longer, because Gemini is additive and should not hold the panel open as long as replacement-style lanes. If a reviewer exceeds its timeout:
+External reviewers have configurable timeouts (typically 1200 seconds for voting and 1800 seconds for code review). The dormant Gemini reviewer launcher (`launch-gemini-review.sh`) hard-caps any future Gemini code-review launch at 600 seconds, on the rationale that Gemini was additive and should not hold the panel open as long as replacement-style lanes; that cap applies if the call sites are re-enabled. If a reviewer exceeds its timeout:
 
 - The process is killed by the wrapper script
 - The sentinel file records a non-zero exit code
@@ -100,7 +100,7 @@ External reviewers participate in multiple phases:
 |---|---|---|---|
 | [Collaborative sketches](collaborative-sketches.md) | Propose architectural approaches | `/design` | Replacement-first (Claude subagent fills slot) |
 | Plan review | Review implementation plans | `/design` | Replacement-first |
-| Code review | Review code changes | `/review` | Cursor/Codex replacement-first; Gemini additive skip-style |
+| Code review | Review code changes | `/review` | Cursor/Codex replacement-first; Gemini reviewer dormant (call sites removed; launcher retained as machinery) |
 | Implementation | Edit working tree from an implementation plan | `/implement` (default `--coder=codex`), `/implement --coder=cursor`, `/implement --coder=gemini` | Codex is the default; Cursor/Gemini fall back to the main-agent path when unhealthy |
 | [Voting](voting-process.md) | Vote on findings | `/design`, `/review` | Replacement-first |
 | Negotiation | Multi-round dispute resolution | `/research` | Replacement-first |

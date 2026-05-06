@@ -27,7 +27,8 @@
 # clean-main Step 0 entry gate; assertion 26 added for the post-merge
 # anti-halt literal pin, issue #1143).
 # Assertion 5 is retired, so the numbered list runs 1–4, 6–27 (27 live
-# assertions; assertion 23 now pins Gemini quick-mode reviewer wiring).
+# assertions; assertion 23 now pins Gemini machinery preservation, including
+# negative pin 23j against re-introducing launch-gemini-review.sh).
 #  (1) Exactly 1 `^## Load-Bearing Invariants$` heading in skills/implement/SKILL.md.
 #  (2) Exactly 1 `^## NEVER List$` heading.
 #  (3) Exactly 1 `^## Rebase Checkpoint Macro$` heading.
