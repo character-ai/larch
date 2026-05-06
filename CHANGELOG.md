@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.23] - 2026-05-05
+
+### Added
+
+- Cap per-run /implement OOS issue filing via new env var `OOS_ISSUES_PER_RUN_CAP` (default 5). Once the combine pass at `skills/implement/references/anchor-comment-template.md` step 3.4 has written `$IMPLEMENT_TMPDIR/oos-combined.md`, a new step 3.4b runs `skills/implement/scripts/oos-issue-cap.sh`: when the resulting batch exceeds the cap, the helper keeps the first `(cap-1)` entries verbatim and folds the surplus tail into ONE aggregated `### OOS_<cap>:` summary entry. The aggregated entry's Description enumerates the rolled-up titles plus a brief excerpt of each rolled-up Description (bounded by `OOS_ISSUE_CAP_EXCERPT_MAX`, default 200, via the companion `oos-issue-cap-excerpt.py` UTF-8-aware truncator); each bullet carries an untruncated `[Files: <paths>]` suffix so the file-conflict pre-pass at step 3.5 still emits serialization edges for paths that would otherwise have fallen past the excerpt cutoff. The helper fails closed on parser/heading parity mismatches, non-OOS-shaped inputs, invalid env values, and on a same-path `--input-file`/`--output` collision; on any helper failure step 3.4b skips both step 3.5 and step 4 and emits a filing-skipped breadcrumb plus a tracking-issue placeholder so operators can manually file the items.
+- New regression harness `skills/implement/scripts/test-oos-issue-cap.sh` (31 cases) wired into `make lint` via `test-harnesses-3`. `scripts/test-implement-structure.sh` assertion 9g pins the SKILL.md and anchor-comment-template.md prose so the helper invocation, env var names, fail-closed wording, and helper warning string cannot drift silently.
+- `docs/configuration-and-permissions.md` documents both env vars (defaults, behavior, security guidance). Closes #1244.
+
 ## [15.12.22] - 2026-05-05
 
 ### Changed
