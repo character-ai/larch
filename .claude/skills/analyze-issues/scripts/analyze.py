@@ -9,6 +9,7 @@ import importlib.util
 import json
 import math
 import re
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, Sequence, Tuple
@@ -27,6 +28,22 @@ CATEGORY_RULES: Sequence[Tuple[str, Sequence[str]]] = (
     ("New feature/new skill", ("feature", "skill", "scaffold", "add", "new")),
     ("Performance/token-cost reduction", ("performance", "token", "cost", "speed", "latency", "cache")),
 )
+
+# WHY: word-boundary anchors prevent short keywords like `fix` from matching
+# inside `prefix`/`fixture`/`affix`, which silently mis-classified issues into
+# Bug fix. Compile once at module load.
+CATEGORY_PATTERNS: Sequence[Tuple[str, "re.Pattern[str]"]] = tuple(
+    (
+        category,
+        re.compile(r"\b(?:" + "|".join(re.escape(k) for k in keywords) + r")\b", re.I),
+    )
+    for category, keywords in CATEGORY_RULES
+)
+
+# WHY: load_issues fails the load when more than 5% of input list elements
+# are non-dict (corrupt fixture data). --lenient restores silent-skip.
+LOAD_ISSUES_SKIP_THRESHOLD = 0.05
+LOAD_ISSUES_REPR_CAP = 60
 
 STOP_WORDS = {
     "a",
@@ -73,7 +90,7 @@ def strip_prefixes(title: str) -> str:
     return PREFIX_RE.sub("", title or "").strip()
 
 
-def load_issues(path: str) -> List[Dict[str, Any]]:
+def load_issues(path: str, lenient: bool = False) -> List[Dict[str, Any]]:
     try:
         with open(path, "r", encoding="utf-8") as handle:
             raw = json.load(handle)
@@ -82,12 +99,29 @@ def load_issues(path: str) -> List[Dict[str, Any]]:
     if not isinstance(raw, list):
         raise SystemExit(f"ERROR=Issue JSON dump at {path} is not a list")
     issues: List[Dict[str, Any]] = []
-    for item in raw:
+    skipped = 0
+    for index, item in enumerate(raw):
         if not isinstance(item, dict):
+            skipped += 1
+            preview = repr(item)
+            if len(preview) > LOAD_ISSUES_REPR_CAP:
+                preview = preview[: LOAD_ISSUES_REPR_CAP - 3] + "..."
+            print(
+                f"WARN load_issues: skipping non-dict element at index {index}: {preview}",
+                file=sys.stderr,
+            )
             continue
         issue = dict(item)
         issue["body"] = (issue.get("body") or "")[:BODY_CAP]
         issues.append(issue)
+    total = len(raw)
+    if not lenient and total > 0 and skipped / total > LOAD_ISSUES_SKIP_THRESHOLD:
+        raise SystemExit(
+            "ERROR=load_issues skipped "
+            f"{skipped}/{total} non-dict elements "
+            f"({skipped / total * 100:.1f}% > {LOAD_ISSUES_SKIP_THRESHOLD * 100:.0f}% threshold) "
+            f"in {path}; pass --lenient to suppress this check"
+        )
     return issues
 
 
@@ -149,9 +183,9 @@ def default_category(issue: Mapping[str, Any]) -> str:
         return "Tracking/umbrella"
     if re.match(r"^\s*(?:\[research[^\]]*\]\s*)?(?:investigate|research)\b", title, re.I):
         return "Research/investigation"
-    haystack = issue_text(issue).lower()
-    for category, keywords in CATEGORY_RULES:
-        if any(keyword in haystack for keyword in keywords):
+    haystack = issue_text(issue)
+    for category, pattern in CATEGORY_PATTERNS:
+        if pattern.search(haystack):
             return category
     return "Other"
 
@@ -539,12 +573,17 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--span-days", type=int, default=0)
     parser.add_argument("--top-k", type=int, default=10)
     parser.add_argument("--categories", choices=("auto", "default"), default="default")
+    parser.add_argument(
+        "--lenient",
+        action="store_true",
+        help="Silently skip non-dict elements in the input list instead of failing when more than 5%% are non-dict.",
+    )
     return parser.parse_args(list(argv) if argv is not None else None)
 
 
 def main(argv: Iterable[str] | None = None) -> int:
     args = parse_args(argv)
-    issues = load_issues(args.json)
+    issues = load_issues(args.json, lenient=args.lenient)
     if not issues:
         print("No issues to analyze.")
         return 0

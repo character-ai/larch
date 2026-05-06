@@ -55,5 +55,12 @@
         "title": "Add analyze fixture"
       }
     ]
+  },
+  {
+    "number": 8,
+    "title": "prefix handling tweak",
+    "body": "Minor improvement to prefix handling logic.",
+    "state": "OPEN",
+    "createdAt": "2026-05-08T09:00:00Z"
   }
 ]
