@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.46] - 2026-05-06
+
+### Changed
+
+- Align collector retry fail-closed signaling and sentinel validation: `mark_retry_metadata_invalid` now emits `EXIT_CODE=99` instead of `EXIT_CODE=0`, matching the missing-retry-sentinel branch, while preserving the documented retry-zero/empty-output failure row where `STATUS=EMPTY_OUTPUT` can still carry `EXIT_CODE=0`. Consumers that fingerprinted on `EXIT_CODE=0|STATUS=EMPTY_OUTPUT` must switch to `STATUS` plus `FAILURE_REASON`; `skills/shared/external-reviewers.md` now calls out that `STATUS=OK` with empty `FAILURE_REASON` is the success signal. The collector validates `.done` sentinel content with `^[0-9]{1,3}$` plus `<=255` before interpolating into structured output, coercing malformed bytes to `99` with stderr diagnostics to protect the pipe-delimited `RESULTS` invariant. The missing-retry-sentinel row construction is exposed through `build_missing_retry_sentinel_result` for direct regression coverage. Coerced-99 with empty output and a valid `.meta` now routes to the empty-output retry path rather than `STATUS=FAILED`, so a corrupt or partially-written initial `.done` no longer denies the one-shot retry recovery the path was designed for; real (non-coerced) non-zero exits with empty output still route to `FAILED`. Closes #1315.
+
 ## [15.12.45] - 2026-05-06
 
 ### Changed

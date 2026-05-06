@@ -73,6 +73,7 @@ FAILURE_REASON=<explanation>
 Parse each reviewer's `STATUS`, `REVIEWER_FILE`, and `FAILURE_REASON`:
 - `STATUS=OK`: Read the output file — it is non-empty and validated. `FAILURE_REASON` is empty.
 - Any other status: The reviewer failed. `FAILURE_REASON` explains why (e.g., "Timed out after 1800s (limit: 1800s). Process was killed after exceeding the timeout." or "Failed with exit code 1 after 5s. Last output: error message here"). Follow the **Runtime Timeout Fallback** procedure above, including `FAILURE_REASON` in the message.
+- Treat `STATUS=OK` with empty `FAILURE_REASON` as the success signal; do NOT use `EXIT_CODE` alone — see `scripts/collect-agent-results.md` for retry-row exit-code semantics.
 
 **Important**: Do NOT read output files before calling `collect-agent-results.sh`. Cursor buffers all stdout until exit — its output file is empty until the process finishes. The collection script handles all sentinel polling and validation internally.
 
