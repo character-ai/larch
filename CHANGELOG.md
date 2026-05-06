@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.33] - 2026-05-06
+
+### Added
+
+- New regression harness `.claude/skills/relevant-checks/scripts/test-run-checks.sh` (sibling contract `test-run-checks.md`) that pins documented exit-code paths in `.claude/skills/relevant-checks/scripts/run-checks.sh`. Coverage: zero-phase exit 2 (empty `MODIFIED_FILES`, deletions-only branch), `agent-lint` exit-code propagation (rc=0 and rc=7) on BOTH the empty-`MODIFIED_FILES` post-checks-only path AND the changed-file dual-phase path, changed-file dual-phase happy path, changed-file pre-commit-fails path (script propagates pre-commit's exit code without invoking `run_post_checks`), changed-file pre-commit-success + agent-lint-absent path (`WARNING: agent-lint not found on PATH — skipping` banner), pre-commit-missing preflight (exit 1 + `ERROR: pre-commit not found`), and not-inside-a-git-repo (exit 1 + `ERROR: not inside a git repository`). Disposable git repos under `mktemp -d` with controlled-`PATH` `pre-commit` / `agent-lint` stubs; harness bails fast when `git` is missing from PATH. Wired into `Makefile` as `make test-run-checks` plus `test-harnesses-5` shard so it runs under `make lint` and the CI matrix. `.claude/skills/relevant-checks/SKILL.md` and `run-checks.md` updated to point at the new harness, document the rev-parse preflight invariant, and clarify `ERROR:` prefix wording. `docs/linting.md` adds a Makefile-targets row describing the harness coverage. Closes #1275.
+
 ## [15.12.32] - 2026-05-06
 
 ### Changed
