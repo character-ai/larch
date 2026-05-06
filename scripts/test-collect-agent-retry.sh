@@ -299,6 +299,66 @@ assert_line "case H bad reason" "FAILURE_REASON=Retry metadata invalid: malforme
 assert_line "case H ok reviewer file" "REVIEWER_FILE=${OUT_H_OK%.txt}-retry.txt" "$RESULT_H"
 assert_line "case H ok status" "STATUS=OK" "$RESULT_H"
 
+# Case I: retry exits non-zero → EXIT_CODE in result mirrors the sentinel
+# value (regression guard for #1290). Uses a helper that writes nothing to the
+# retry output file and exits with a recognizable non-zero code; the wrapper
+# captures that exit code into the .done sentinel via its EXIT trap, and the
+# collector now propagates it as EXIT_CODE=<RETRY_EXIT> instead of masking as 0.
+NONZERO_HELPER="$TMPROOT/retry-helper-nonzero.sh"
+cat > "$NONZERO_HELPER" <<'NZ_HELPER'
+#!/usr/bin/env bash
+exit 7
+NZ_HELPER
+chmod +x "$NONZERO_HELPER"
+
+OUT_I="$TMPROOT/cursor-i.txt"
+HEALTH_I="$TMPROOT/case-i.health"
+write_empty_candidate "$OUT_I"
+write_meta "$OUT_I" "$(json_array bash "$NONZERO_HELPER" --output "$OUT_I")"
+RESULT_I=$(run_collector bash "$OUT_I" "$HEALTH_I")
+assert_line "case I status" "STATUS=EMPTY_OUTPUT" "$RESULT_I"
+assert_line "case I exit-code propagated" "EXIT_CODE=7" "$RESULT_I"
+assert_line "case I healthy" "HEALTHY=false" "$RESULT_I"
+# Pin the wrapper's exit-7 narrative end-to-end so a regression in
+# build_failure_reason or its caller would surface here too, not only via
+# the bare EXIT_CODE check above.
+if printf '%s\n' "$RESULT_I" | grep -qE '^FAILURE_REASON=Retry also failed: Failed with exit code 7'; then
+    ok "case I failure-reason narrates exit 7"
+else
+    fail "case I missing 'Retry also failed: Failed with exit code 7' FAILURE_REASON"
+    printf '%s\n' "$RESULT_I" >&2
+fi
+assert_line "case I health-file" "CURSOR_HEALTHY=false" "$(cat "$HEALTH_I")"
+
+# Case J: retry exit is 0 but retry output stays empty → STATUS=EMPTY_OUTPUT
+# with EXIT_CODE=0 (confirms scripts/collect-agent-results.md sub-case: an
+# EXIT_CODE=0 row with STATUS=EMPTY_OUTPUT can occur and is NOT a success).
+EMPTY_HELPER="$TMPROOT/retry-helper-empty.sh"
+cat > "$EMPTY_HELPER" <<'EMPTY_HELPER_EOF'
+#!/usr/bin/env bash
+# Touch the output file so it exists but is empty; exit 0.
+out=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --output) out="${2:?}"; shift 2 ;;
+        *) shift ;;
+    esac
+done
+[[ -n "$out" ]] || exit 40
+: > "$out"
+exit 0
+EMPTY_HELPER_EOF
+chmod +x "$EMPTY_HELPER"
+
+OUT_J="$TMPROOT/cursor-j.txt"
+HEALTH_J="$TMPROOT/case-j.health"
+write_empty_candidate "$OUT_J"
+write_meta "$OUT_J" "$(json_array bash "$EMPTY_HELPER" --output "$OUT_J")"
+RESULT_J=$(run_collector bash "$OUT_J" "$HEALTH_J")
+assert_line "case J status" "STATUS=EMPTY_OUTPUT" "$RESULT_J"
+assert_line "case J exit-code zero" "EXIT_CODE=0" "$RESULT_J"
+assert_line "case J healthy" "HEALTHY=false" "$RESULT_J"
+
 echo ""
 echo "Summary: $PASS passed, $FAIL failed, $SKIP skipped"
 if (( FAIL > 0 )); then
