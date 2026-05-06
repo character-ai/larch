@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.29] - 2026-05-05
+
+### Changed
+
+- `.claude/skills/analyze-issues/scripts/analyze.py` `load_issues` now warns to stderr per non-dict element (with index + 60-char repr) and aborts the load when the skip ratio exceeds 5% of the input list, with `--lenient` to suppress the threshold abort. `default_category` now matches keywords via precompiled per-category word-boundary regexes, with a `_STEM_KEYWORDS` frozenset (`determin`, `validate`, `sanitize`, `simplify`, `permission`, `secret`, `feature`, `scaffold`, `failure`, `regression`, `assert`, `crash`, `refactor`, `rename`) for inflectional stems, so short tokens like `fix` no longer alias inside `fixture` / `prefix` / `affix` while inflections like `documentation` / `validation` / `refactoring` still classify correctly. Documentation/contract drift uses explicit kw enumeration with `\bdoc\b` whole-word boundary so `Docker` no longer aliases as Documentation. `run-analysis.sh` forwards `--lenient` via `ANALYZE_ARGS`; `SKILL.md`, `analyze.md`, `run-analysis.md`, `test-analyze.md`, and `docs/linting.md` updated; `test-fixture.json` extended to 10 issues; `test-analyze.sh` extended to 31 assertions covering the new word-boundary, stem, plural, and `--lenient` paths. Closes #1272.
+
 ## [15.12.28] - 2026-05-05
 
 ### Changed

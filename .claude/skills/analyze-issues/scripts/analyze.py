@@ -9,6 +9,7 @@ import importlib.util
 import json
 import math
 import re
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, Sequence, Tuple
@@ -18,15 +19,72 @@ PREFIX_RE = re.compile(r"^\s*(?:\[(?:DONE|OOS|IN PROGRESS|STALLED|URGENT)\]\s*)+
 FILE_RE = re.compile(r"\b[a-z][a-z0-9/_.-]+\.(?:sh|md)\b", re.I)
 
 CATEGORY_RULES: Sequence[Tuple[str, Sequence[str]]] = (
-    ("Documentation/contract drift", ("doc", "readme", "contract", "prompt", "instruction", "schema")),
-    ("Bug fix", ("bug", "fix", "broken", "failure", "error", "crash", "regression")),
-    ("Test coverage", ("test", "coverage", "harness", "fixture", "assert")),
+    # WHY: explicit Documentation forms (`doc`/`docs`/`documentation`/`documented`/
+    # `documenting`) keep `Docker`/`doctrine`/`documentary` from misclassifying as
+    # Documentation, which a `doc\w*` stem would do.
+    ("Documentation/contract drift", (
+        "doc", "docs", "documentation", "documented", "documenting",
+        "readme", "contract", "prompt", "instruction", "instructions",
+        "schema", "schemas",
+    )),
+    # WHY: short Bug fix tokens stay strict (\bfix\b, \bbug\b, \berror\b) so they
+    # cannot alias inside fixture/prefix/affix/error-prone (etc.). Plurals and
+    # common inflections of fix/bug/error are enumerated explicitly so e.g. titles
+    # like `Bugs in CI` or `Errors in parser` still classify as Bug fix.
+    ("Bug fix", (
+        "bug", "bugs",
+        "fix", "fixes", "fixed", "fixing",
+        "broken", "failure", "error", "errors", "crash", "regression",
+    )),
+    ("Test coverage", ("test", "tests", "testing", "coverage", "harness", "fixture", "fixtures", "assert")),
     ("Hardening/validation/security", ("security", "secret", "validate", "guard", "permission", "sanitize", "safe")),
     ("Refactor/code clarity", ("refactor", "cleanup", "clarity", "simplify", "rename")),
     ("Determinism/halt-prevention", ("determin", "halt", "timeout", "race", "idempotent", "retry")),
     ("New feature/new skill", ("feature", "skill", "scaffold", "add", "new")),
     ("Performance/token-cost reduction", ("performance", "token", "cost", "speed", "latency", "cache")),
 )
+
+# WHY: some CATEGORY_RULES entries are inflectional stems whose original
+# substring-matching captured `doc`->"documentation", `determin`->"determinism",
+# `validate`->"validation", `sanitize`->"sanitization", etc. Strict word-boundary
+# matching (\bKW\b) on those keywords would regress those classifications. Mark
+# stems explicitly so the compiled per-category pattern accepts trailing word
+# characters (\bKW\w*) for them, while keeping short exact words like fix/add/new
+# strict (\bKW\b) so they cannot alias inside fixture/prefix/affix/added/newer.
+_STEM_KEYWORDS = frozenset({
+    "determin",
+    "validate", "sanitize", "simplify",
+    "permission", "secret", "feature",
+    "scaffold", "failure", "regression",
+    "assert", "crash",
+    "refactor", "rename",
+})
+
+
+def _keyword_pattern(keyword: str) -> str:
+    if keyword in _STEM_KEYWORDS:
+        # Trim trailing e/y so `validate`->`validat\w*`, `simplify`->`simplif\w*`.
+        stem = re.sub(r"[ey]$", "", keyword)
+        return re.escape(stem) + r"\w*"
+    return re.escape(keyword) + r"\b"
+
+
+CATEGORY_PATTERNS: Sequence[Tuple[str, "re.Pattern[str]"]] = tuple(
+    (
+        category,
+        re.compile(
+            r"\b(?:" + "|".join(_keyword_pattern(k) for k in keywords) + r")",
+            re.I,
+        ),
+    )
+    for category, keywords in CATEGORY_RULES
+)
+
+# WHY: load_issues fails the load when more than 5% of input list elements
+# are non-dict (corrupt fixture data). --lenient suppresses only the threshold
+# abort; per-element stderr WARN lines are emitted regardless.
+LOAD_ISSUES_SKIP_THRESHOLD = 0.05
+LOAD_ISSUES_REPR_CAP = 60
 
 STOP_WORDS = {
     "a",
@@ -73,7 +131,7 @@ def strip_prefixes(title: str) -> str:
     return PREFIX_RE.sub("", title or "").strip()
 
 
-def load_issues(path: str) -> List[Dict[str, Any]]:
+def load_issues(path: str, lenient: bool = False) -> List[Dict[str, Any]]:
     try:
         with open(path, "r", encoding="utf-8") as handle:
             raw = json.load(handle)
@@ -82,12 +140,29 @@ def load_issues(path: str) -> List[Dict[str, Any]]:
     if not isinstance(raw, list):
         raise SystemExit(f"ERROR=Issue JSON dump at {path} is not a list")
     issues: List[Dict[str, Any]] = []
-    for item in raw:
+    skipped = 0
+    for index, item in enumerate(raw):
         if not isinstance(item, dict):
+            skipped += 1
+            preview = repr(item)
+            if len(preview) > LOAD_ISSUES_REPR_CAP:
+                preview = preview[: LOAD_ISSUES_REPR_CAP - 3] + "..."
+            print(
+                f"WARN load_issues: skipping non-dict element at index {index}: {preview}",
+                file=sys.stderr,
+            )
             continue
         issue = dict(item)
         issue["body"] = (issue.get("body") or "")[:BODY_CAP]
         issues.append(issue)
+    total = len(raw)
+    if not lenient and total > 0 and skipped / total > LOAD_ISSUES_SKIP_THRESHOLD:
+        raise SystemExit(
+            "ERROR=load_issues skipped "
+            f"{skipped}/{total} non-dict elements "
+            f"({skipped / total * 100:.1f}% > {LOAD_ISSUES_SKIP_THRESHOLD * 100:.0f}% threshold) "
+            f"in {path}; pass --lenient to suppress this check"
+        )
     return issues
 
 
@@ -149,9 +224,9 @@ def default_category(issue: Mapping[str, Any]) -> str:
         return "Tracking/umbrella"
     if re.match(r"^\s*(?:\[research[^\]]*\]\s*)?(?:investigate|research)\b", title, re.I):
         return "Research/investigation"
-    haystack = issue_text(issue).lower()
-    for category, keywords in CATEGORY_RULES:
-        if any(keyword in haystack for keyword in keywords):
+    haystack = issue_text(issue)
+    for category, pattern in CATEGORY_PATTERNS:
+        if pattern.search(haystack):
             return category
     return "Other"
 
@@ -539,12 +614,20 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--span-days", type=int, default=0)
     parser.add_argument("--top-k", type=int, default=10)
     parser.add_argument("--categories", choices=("auto", "default"), default="default")
+    parser.add_argument(
+        "--lenient",
+        action="store_true",
+        help=(
+            "Suppress the >5%% non-dict abort in load_issues. Per-element stderr "
+            "warnings are still emitted; this flag only disables the threshold check."
+        ),
+    )
     return parser.parse_args(list(argv) if argv is not None else None)
 
 
 def main(argv: Iterable[str] | None = None) -> int:
     args = parse_args(argv)
-    issues = load_issues(args.json)
+    issues = load_issues(args.json, lenient=args.lenient)
     if not issues:
         print("No issues to analyze.")
         return 0

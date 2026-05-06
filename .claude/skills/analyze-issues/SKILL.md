@@ -10,7 +10,7 @@ Generate a backlog-and-process insight report from the current repository's GitH
 
 ## Usage
 
-`/analyze-issues [--limit N] [--span-days N] [--top-K N] [--categories=auto|default]`
+`/analyze-issues [--limit N] [--span-days N] [--top-K N] [--categories=auto|default] [--lenient]`
 
 ## Run the Analysis
 
@@ -28,6 +28,7 @@ Flags:
 - `--span-days N`: analysis span override. Default: auto.
 - `--top-K N`: number of top items to show in ranked sections. Default: `10`.
 - `--categories=auto|default`: category mode. Default: `default`.
+- `--lenient`: forwarded to `analyze.py`. Suppresses the >5% non-dict abort in `load_issues` so a corrupted dump still produces a partial report. Per-element stderr `WARN load_issues: ...` lines are still emitted; this flag only disables the threshold check.
 
 The raw `gh` JSON dump is saved to `${TMPDIR:-/tmp}/<sanitized-repo>-issues.json` for follow-up reanalysis. The slug converts `/` to `-` and keeps only alnum, `-`, and `_`; dumps are intentionally user-private via `umask 077` and an atomic temp+mv write. See `scripts/run-analysis.md` for the full contract.
 
