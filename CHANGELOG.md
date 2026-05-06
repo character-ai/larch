@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.17] - 2026-05-05
+
+### Added
+
+- Project-local `/analyze-issues` skill at `.claude/skills/analyze-issues/` that produces a backlog-and-process insight report from a repository's GitHub issues. Single shell-out point (`gh issue list`) plus local `python3` processing covers coverage stats, category breakdown, cumulative-growth ASCII chart, pattern observations, wasteful-work findings, reviewer/persona effectiveness (with longest-first regex alternation so `codex` is not confused with `code`), and a one-paragraph executive summary. Coordinator at `scripts/run-analysis.sh` writes the raw `gh` JSON dump under `${TMPDIR:-/tmp}` with `umask 077` and atomic temp+mv so issue bodies stay user-private and never torn on partial fetch failure. Per-script contracts at `scripts/{run-analysis,fetch-issues,analyze,render-chart}.md`. Dev-only — does not ship in the plugin tree.
+
 ## [15.12.16] - 2026-05-05
 
 ### Changed
