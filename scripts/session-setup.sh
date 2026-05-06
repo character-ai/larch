@@ -134,9 +134,18 @@ CALLER_CURSOR_HEALTHY=""
 CALLER_GEMINI_HEALTHY=""
 
 if [[ -n "$CALLER_ENV" && -f "$CALLER_ENV" ]]; then
-    while IFS='=' read -r key value || [[ -n "$key" ]]; do
-        # Skip empty lines and lines not matching KEY=value pattern
-        [[ -z "$key" || "$key" =~ ^# ]] && continue
+    # Use explicit `${line%%=*}` / `${line#*=}` parameter expansion instead
+    # of `IFS='=' read -r key value` so the value field is unambiguously
+    # split on the FIRST `=` only. Bash `read` with two variables already
+    # assigns the remainder to the last variable (so embedded `=` is
+    # preserved), but the explicit form is self-documenting and avoids
+    # depending on the `read`-with-two-vars edge case (post-review).
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        [[ -z "$line" || "$line" =~ ^# ]] && continue
+        [[ "$line" != *"="* ]] && continue
+        key="${line%%=*}"
+        value="${line#*=}"
+        [[ -z "$key" ]] && continue
         case "$key" in
             SLACK_OK)          CALLER_SLACK_OK="$value" ;;
             SLACK_MISSING)     CALLER_SLACK_MISSING="$value" ;;
@@ -320,8 +329,14 @@ if [[ "$CHECK_REVIEWERS" == "true" ]]; then
     PROBED_WAIT_INFRA_ERROR=""
     PROBED_GEMINI_TOOL_DRIFT_WARNINGS=""
     PROBED_GEMINI_TOOL_DRIFT_ARTIFACT=""
-    while IFS='=' read -r key value || [[ -n "$key" ]]; do
-        [[ -z "$key" || "$key" =~ ^# ]] && continue
+    # Explicit parameter-expansion split on first `=` for self-documenting
+    # parsing (post-review parity with caller-env loop above).
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        [[ -z "$line" || "$line" =~ ^# ]] && continue
+        [[ "$line" != *"="* ]] && continue
+        key="${line%%=*}"
+        value="${line#*=}"
+        [[ -z "$key" ]] && continue
         case "$key" in
             CODEX_AVAILABLE)   PROBED_CODEX_AVAILABLE="$value" ;;
             CURSOR_AVAILABLE)  PROBED_CURSOR_AVAILABLE="$value" ;;
