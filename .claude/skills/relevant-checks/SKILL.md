@@ -20,7 +20,7 @@ This skill DESCRIBES `run-checks.sh` behavior — it does NOT define new policy.
 
 ## How it works
 
-Changed files are collected from the branch diff, staged changes, unstaged changes, and untracked files. The union is passed to `pre-commit run --files`, which routes each file to the appropriate linter hooks based on file type. Deleted files are filtered out automatically. See `.pre-commit-config.yaml` for the authoritative hook list applied to the changed-file phase — it is consulted at invocation time by `pre-commit` and evolves independently of this skill.
+Changed files are collected from the branch diff, staged changes, unstaged changes, and untracked files. The union is passed to `pre-commit run --files`, which routes each file to the appropriate linter hooks based on file type. Paths are filtered to existing regular files via `[ -f ]` before being passed to pre-commit — this drops deleted paths, directories, and other non-regular paths. See `.pre-commit-config.yaml` for the authoritative hook list applied to the changed-file phase — it is consulted at invocation time by `pre-commit` and evolves independently of this skill.
 
 After pre-commit linting succeeds, `run-checks.sh` additionally invokes `agent-lint` (if available on PATH) to catch structural regressions on the full repository. This is the same linter that CI's `agent-lint` job runs, so developers can catch structural breakage locally before pushing. If pre-commit fails, agent-lint is skipped — only run when basic linting passes. If there are no existing modified files for pre-commit, the script still attempts the full-repo phase; if zero phases actually run, it exits 2 with an `ERROR:` line.
 
