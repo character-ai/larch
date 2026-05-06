@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.18] - 2026-05-05
+
+### Changed
+
+- Document the `/analyze-issues` coordinator's sensitivity behavior in `.claude/skills/analyze-issues/SKILL.md` — the dump path is now correctly described as `${TMPDIR:-/tmp}/<sanitized-repo>-issues.json` with the slug rule (forward-slash → dash, alnum/`-`/`_` only), `umask 077`, and `fetch-issues.sh`'s atomic temp+mv contract, plus a link to `scripts/run-analysis.md` for the full contract. The sibling `scripts/run-analysis.md` Invariants line is updated in lockstep so the cross-reference is credible. Documentation-only; no behavioral change. Closes #1249.
+
 ## [15.12.17] - 2026-05-05
 
 ### Added
