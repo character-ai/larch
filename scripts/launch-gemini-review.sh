@@ -96,7 +96,7 @@ fail_closed() {
     } >> "${OUTPUT}.diag"
     write_meta
     write_done "$code"
-    exit 0
+    exit "$code"
 }
 
 while [[ $# -gt 0 ]]; do

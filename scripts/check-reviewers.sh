@@ -9,12 +9,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/external-tool-registry.sh
 source "$SCRIPT_DIR/external-tool-registry.sh" || { echo "check-reviewers.sh: failed to source external-tool-registry.sh" >&2; exit 1; }
 [[ "${LARCH_EXTERNAL_TOOL_REGISTRY_LOADED:-}" == "1" ]] || { echo "check-reviewers.sh: external-tool-registry.sh sourced but sentinel missing" >&2; exit 1; }
+# shellcheck source=scripts/lib-gemini-tool-drift.sh
+source "$SCRIPT_DIR/lib-gemini-tool-drift.sh" || { echo "check-reviewers.sh: failed to source lib-gemini-tool-drift.sh" >&2; exit 1; }
 
 PROBE=false
 INCLUDE_GEMINI=false
 SKIP_CODEX_PROBE=false
 SKIP_CURSOR_PROBE=false
 SKIP_GEMINI_PROBE=false
+ARTIFACT_DIR=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -23,6 +26,7 @@ while [[ $# -gt 0 ]]; do
         --skip-codex-probe)   SKIP_CODEX_PROBE=true; shift ;;
         --skip-cursor-probe)  SKIP_CURSOR_PROBE=true; shift ;;
         --skip-gemini-probe)  SKIP_GEMINI_PROBE=true; shift ;;
+        --artifact-dir)        ARTIFACT_DIR="${2:?--artifact-dir requires a value}"; shift 2 ;;
         *) echo "check-reviewers.sh: unknown argument: $1" >&2; exit 1 ;;
     esac
 done
@@ -326,6 +330,9 @@ if [[ "$PROBE" == "true" ]]; then
             fi
         done
     else
+        if [[ "$INCLUDE_GEMINI" == "true" && "$GEMINI_AVAILABLE" == "true" && "$SKIP_GEMINI_PROBE" == "false" && "$GEMINI_HEALTHY" == "true" ]]; then
+            check_gemini_tool_drift "$(probe_output_path gemini)"
+        fi
         for tool in "${TOOLS[@]}"; do
             upper=$(printf '%s' "$tool" | tr '[:lower:]' '[:upper:]')
             if [[ "$(get_available "$tool")" == "true" ]]; then

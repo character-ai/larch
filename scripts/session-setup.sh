@@ -52,6 +52,8 @@
 #   CURSOR_PROBE_ERROR=<reason> Output when --check-reviewers and CURSOR_HEALTHY=false (explains why)
 #   GEMINI_PROBE_ERROR=<reason> Output when --check-reviewers --check-gemini-reviewer and GEMINI_HEALTHY=false
 #   WAIT_INFRA_ERROR=<reason>   Output when reviewer health probing could not classify tool health
+#   GEMINI_TOOL_DRIFT_WARNING=<msg>  Output when Gemini tool-catalog drift is detected
+#   GEMINI_TOOL_DRIFT_ARTIFACT=<path> Output when the Gemini drift artifact was written
 #
 # On preflight failure, outputs PREFLIGHT_ERROR=<message> and exits non-zero.
 #
@@ -290,6 +292,7 @@ if [[ "$CHECK_REVIEWERS" == "true" ]]; then
     CR_ARGS=(--probe)
     if [[ "$CHECK_GEMINI_REVIEWER" == "true" ]]; then
         CR_ARGS+=(--include-gemini)
+        CR_ARGS+=(--artifact-dir "$SESSION_TMPDIR")
     fi
     if [[ "$SKIP_CODEX_PROBE" == "true" ]]; then
         CR_ARGS+=(--skip-codex-probe)
@@ -315,6 +318,8 @@ if [[ "$CHECK_REVIEWERS" == "true" ]]; then
     PROBED_CURSOR_PROBE_ERROR=""
     PROBED_GEMINI_PROBE_ERROR=""
     PROBED_WAIT_INFRA_ERROR=""
+    PROBED_GEMINI_TOOL_DRIFT_WARNINGS=""
+    PROBED_GEMINI_TOOL_DRIFT_ARTIFACT=""
     while IFS='=' read -r key value || [[ -n "$key" ]]; do
         [[ -z "$key" || "$key" =~ ^# ]] && continue
         case "$key" in
@@ -328,6 +333,10 @@ if [[ "$CHECK_REVIEWERS" == "true" ]]; then
             CURSOR_PROBE_ERROR) PROBED_CURSOR_PROBE_ERROR="$value" ;;
             GEMINI_PROBE_ERROR) PROBED_GEMINI_PROBE_ERROR="$value" ;;
             WAIT_INFRA_ERROR) PROBED_WAIT_INFRA_ERROR="$value" ;;
+            GEMINI_TOOL_DRIFT_WARNING)
+                PROBED_GEMINI_TOOL_DRIFT_WARNINGS="${PROBED_GEMINI_TOOL_DRIFT_WARNINGS}${PROBED_GEMINI_TOOL_DRIFT_WARNINGS:+
+}$value" ;;
+            GEMINI_TOOL_DRIFT_ARTIFACT) PROBED_GEMINI_TOOL_DRIFT_ARTIFACT="$value" ;;
         esac
     done <<< "$REVIEWER_OUTPUT"
 
@@ -341,6 +350,13 @@ if [[ "$CHECK_REVIEWERS" == "true" ]]; then
     [[ -n "$PROBED_CURSOR_PROBE_ERROR" ]] && echo "CURSOR_PROBE_ERROR=$PROBED_CURSOR_PROBE_ERROR"
     [[ -n "$PROBED_GEMINI_PROBE_ERROR" ]] && echo "GEMINI_PROBE_ERROR=$PROBED_GEMINI_PROBE_ERROR"
     [[ -n "$PROBED_WAIT_INFRA_ERROR" ]] && echo "WAIT_INFRA_ERROR=$PROBED_WAIT_INFRA_ERROR"
+    if [[ -n "$PROBED_GEMINI_TOOL_DRIFT_WARNINGS" ]]; then
+        while IFS= read -r _warning; do
+            [[ -z "$_warning" ]] && continue
+            echo "GEMINI_TOOL_DRIFT_WARNING=$_warning"
+        done <<< "$PROBED_GEMINI_TOOL_DRIFT_WARNINGS"
+    fi
+    [[ -n "$PROBED_GEMINI_TOOL_DRIFT_ARTIFACT" ]] && echo "GEMINI_TOOL_DRIFT_ARTIFACT=$PROBED_GEMINI_TOOL_DRIFT_ARTIFACT"
 
     # Emit prominent banners to stderr for failed health checks (must be here,
     # not in check-reviewers.sh, because session-setup captures its stdout+stderr
@@ -386,6 +402,18 @@ if [[ "$CHECK_REVIEWERS" == "true" ]]; then
             echo "     Gemini binary found but health probe timed out or errored." >&2
         fi
         echo "     Skipping Gemini reviewer for this session." >&2
+        echo "═══════════════════════════════════════════════════════════" >&2
+        fi
+        if [[ -n "$PROBED_GEMINI_TOOL_DRIFT_WARNINGS" ]]; then
+        echo "═══════════════════════════════════════════════════════════" >&2
+        echo "  ⚠  GEMINI TOOL CATALOG DRIFT" >&2
+        while IFS= read -r _warning; do
+            [[ -z "$_warning" ]] && continue
+            echo "     $_warning" >&2
+        done <<< "$PROBED_GEMINI_TOOL_DRIFT_WARNINGS"
+        if [[ -n "$PROBED_GEMINI_TOOL_DRIFT_ARTIFACT" ]]; then
+            echo "     Artifact: $PROBED_GEMINI_TOOL_DRIFT_ARTIFACT" >&2
+        fi
         echo "═══════════════════════════════════════════════════════════" >&2
         fi
     fi

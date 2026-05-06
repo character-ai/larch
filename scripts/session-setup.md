@@ -8,6 +8,8 @@ Shared setup wrapper for larch skills. It creates a fresh session tmpdir, option
 - `--check-gemini-reviewer` is opt-in and only meaningful with `--check-reviewers`; it passes `--include-gemini` to `check-reviewers.sh`.
 - Caller-env `CODEX_HEALTHY=false`, `CURSOR_HEALTHY=false`, or `GEMINI_HEALTHY=false` auto-skips the corresponding probe.
 - Gemini health failures use skip-style wording: Gemini is omitted for the session rather than replaced by Claude.
+- When Gemini probing is enabled, `session-setup.sh` passes `--artifact-dir "$SESSION_TMPDIR"` to `check-reviewers.sh` so `gemini-tool-drift.txt` persists for the session lifetime instead of disappearing with the probe tmpdir.
+- `GEMINI_TOOL_DRIFT_WARNING=` keys are re-emitted on stdout and summarized as a stderr banner. `GEMINI_TOOL_DRIFT_ARTIFACT=` is passed through when present.
 
 ## Session-env contract
 
@@ -17,4 +19,4 @@ When `--write-health` is provided, the health sidecar contains Codex and Cursor 
 
 ## Edit-in-sync
 
-Update `scripts/check-reviewers.sh`, `scripts/write-session-env.sh`, `skills/shared/subskill-invocation.md`, and `skills/shared/external-reviewers.md` when changing session-env keys or reviewer health semantics.
+Update `scripts/check-reviewers.sh`, `scripts/write-session-env.sh`, `skills/shared/subskill-invocation.md`, and `skills/shared/external-reviewers.md` when changing session-env keys or reviewer health semantics. Update `scripts/lib-gemini-tool-drift.sh` and `scripts/check-reviewers.md` when changing Gemini drift warning or artifact keys.

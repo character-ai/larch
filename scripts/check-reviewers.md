@@ -32,6 +32,22 @@ When wait exits non-zero during a probe attempt, the script captures wait stdout
 - `CURSOR_PROBE_ERROR=<msg>` — (only on probe failure) diagnostic message
 - `GEMINI_PROBE_ERROR=<msg>` — (only on probe failure) diagnostic message
 - `WAIT_INFRA_ERROR=<msg>` — (only when wait infrastructure failed) diagnostic message; paired with `*_HEALTHY=true` for each available tool
+- `GEMINI_TOOL_DRIFT_WARNING=<msg>` — (only when `--probe --include-gemini` detects unknown Gemini tool names or an untrusted fixture)
+- `GEMINI_TOOL_DRIFT_ARTIFACT=<path>` — (only when the Gemini drift artifact was written) path to `gemini-tool-drift.txt`
+
+## Tool-name drift alarm
+
+When Gemini is included, available, probed, and healthy, the normal probe-result branch runs a Gemini CLI tool-catalog drift alarm. The wait-infrastructure shortcut branch does not run the alarm.
+
+The deny list is parsed from `scripts/gemini-reviewer-policy.toml` and treated as the source of truth. The parser expects the current single-line `toolName = [...]` TOML shape and fails closed if the parsed list is empty or misses any of today's five denied write tools: `write_file`, `replace`, `edit`, `edit_file`, and `delete_file`. Tests may point at an alternate policy with `LARCH_TEST_GEMINI_POLICY_PATH`.
+
+The known-catalog fixture is `scripts/gemini-known-tools.txt`. Its checksum covers the body after excluding `#` header lines; a mismatch drops fixture entries from expected-tool classification, emits `GEMINI_TOOL_DRIFT_WARNING=fixture checksum mismatch - fixture untrusted`, and continues in deny-list-only mode. Tests may point at an alternate fixture with `LARCH_TEST_GEMINI_FIXTURE_PATH`.
+
+Live discovery is best-effort: probe JSON metadata first, then `gemini /tools` with closed stdin and a 5-second timeout (`gtimeout`, `timeout`, or a process-group watchdog fallback), then fixture-only classification when live discovery is empty. The artifact is written atomically to `<artifact-dir>/gemini-tool-drift.txt`; `--artifact-dir DIR` selects that directory, otherwise the ephemeral probe directory is used.
+
+Unknown live tool names produce `GEMINI_TOOL_DRIFT_WARNING=` and a matching `WARN: gemini-tool-drift:` stderr line. Tool names are sanitized with printable-character filtering and a 64-byte cap before emission. Write-style severity uses token-boundary substring matching against `write`, `edit`, `delete`, `replace`, `create`, `modify`, `save`, `put`, `post`, and `remove`; any observed or fixture-known write-style tool missing from the deny list flips `GEMINI_HEALTHY=false` and appends a `GEMINI_PROBE_ERROR=gemini-tool-drift: ...` diagnostic.
+
+This alarm validates gemini-cli CLI tool catalog drift under the health probe's `--approval-mode plan` argv. The reviewer launcher uses `--approval-mode yolo --admin-policy`, so probe-mode catalog drift is a proxy for reviewer-posture drift, not a strict guarantee.
 
 ## Flags
 
@@ -40,10 +56,11 @@ When wait exits non-zero during a probe attempt, the script captures wait stdout
 - `--skip-codex-probe` — skip Codex probe (marks CODEX_HEALTHY=false)
 - `--skip-cursor-probe` — skip Cursor probe (marks CURSOR_HEALTHY=false)
 - `--skip-gemini-probe` — skip Gemini probe (marks GEMINI_HEALTHY=false)
+- `--artifact-dir DIR` — write Gemini drift artifacts to `DIR/gemini-tool-drift.txt`; defaults to the ephemeral probe directory
 
 ## Test harness
 
-`scripts/test-check-reviewers.sh` — regression tests for the probe acceptance logic using fixture replies and a stubbed Gemini integration probe. Covers positive cases (OK, ok, Ok, whitespace variants), negative cases (empty, token, broken, NotOK, error messages), Gemini `.response`, Gemini `.error`, missing-`jq` fail-closed behavior, and the wait preflight infrastructure-error contract (`WAIT_INFRA_ERROR`, preserved `*_HEALTHY=true`, no retry loop, no sleeping probe wrapper launch). Wired into `make test-harnesses`.
+`scripts/test-check-reviewers.sh` — regression tests for the probe acceptance logic using fixture replies and a stubbed Gemini integration probe. Covers positive cases (OK, ok, Ok, whitespace variants), negative cases (empty, token, broken, NotOK, error messages), Gemini `.response`, Gemini `.error`, missing-`jq` fail-closed behavior, the wait preflight infrastructure-error contract (`WAIT_INFRA_ERROR`, preserved `*_HEALTHY=true`, no retry loop, no sleeping probe wrapper launch), and the Gemini drift alarm's clean, benign, write-style, discovery-unavailable, parser-failure, checksum-mismatch, fixture-undenied-write-style, and hung-discovery cases. Wired into `make test-harnesses`.
 
 ## Edit-in-sync
 
@@ -54,3 +71,5 @@ When wait exits non-zero during a probe attempt, the script captures wait stdout
 | `scripts/wait-for-reviewers.sh` | Sentinel polling for probe completion |
 | `skills/shared/external-reviewers.md` | Documents the two-key rule (`*_AVAILABLE` + `*_HEALTHY`) |
 | `scripts/test-check-reviewers.sh` | Regression harness for acceptance logic |
+| `scripts/lib-gemini-tool-drift.sh` | Gemini drift parser, discovery, classification, and artifact writer |
+| `scripts/gemini-known-tools.txt` / `scripts/gemini-known-tools.md` | Gemini known-catalog fixture and checksum contract |
