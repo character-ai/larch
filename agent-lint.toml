@@ -348,6 +348,13 @@ exclude = [
   # skill's procedural body).
   "skills/implement/scripts/test-step2-dispatch.sh",
   "skills/implement/scripts/test-step2-dispatch.md",
+  # .claude/skills/analyze-issues/scripts/test-analyze.sh is the offline
+  # regression harness for the dev-only /analyze-issues analyzer. It is
+  # referenced from Makefile (test-analyze target) and its sibling contract,
+  # not from SKILL.md's runtime prose. The fixture is consumed by the harness.
+  ".claude/skills/analyze-issues/scripts/test-analyze.sh",
+  ".claude/skills/analyze-issues/scripts/test-analyze.md",
+  ".claude/skills/analyze-issues/scripts/test-fixture.json",
   # skills/implement/scripts/test-oos-file-conflict-deps.sh is the fixture
   # harness for oos-file-conflict-deps.sh. Referenced from Makefile
   # (test-oos-file-conflict-deps), docs/linting.md, and the helper's sibling
