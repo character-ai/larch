@@ -13,7 +13,8 @@ usage() {
   cat >&2 <<'EOF'
 Usage: run-analysis.sh [--limit N] [--span-days N] [--top-K N] [--categories=auto|default] [--lenient]
 
-  --lenient   Forward to analyze.py: suppress the >5% non-dict load_issues abort.
+  --lenient   Forward to analyze.py: suppress the >5% non-dict or malformed-number
+              load_issues abort.
               Per-element stderr warnings are still emitted.
 EOF
 }

@@ -82,35 +82,43 @@ assert_contains "$out" "codex / generic: 1 findings" "codex generic pair"
 assert_not_contains "$out" "- code: 1 findings" "codex not collapsed to code aggregate"
 assert_not_contains "$out" "- code / generic:" "codex not collapsed to code persona"
 
-# load_issues: stderr warning + threshold abort + --lenient backward compat.
-TMP_LOW=$(mktemp -t analyze-low-skip.XXXXXX)
-TMP_HIGH=$(mktemp -t analyze-high-skip.XXXXXX)
-trap 'rm -f "$TMP_LOW" "$TMP_HIGH"' EXIT
+# load_issues: stderr warnings + threshold abort + --lenient backward compat.
+TMP_CASES=$(mktemp -d -t analyze-load-issues.XXXXXX)
+trap 'rm -rf "$TMP_CASES"' EXIT
+
+write_fixture_with_bad_row() {
+    local path="$1" bad_json="$2" valid_count="$3"
+    python3 - "$path" "$bad_json" "$valid_count" <<'PY'
+import json
+import sys
+
+path, bad_json, valid_count = sys.argv[1], sys.argv[2], int(sys.argv[3])
+items = [
+    {
+        "number": i,
+        "title": f"issue {i}",
+        "body": "",
+        "state": "OPEN",
+        "createdAt": "2026-01-01T00:00:00Z",
+    }
+    for i in range(1, valid_count + 1)
+]
+items.append(json.loads(bad_json))
+with open(path, "w", encoding="utf-8") as handle:
+    json.dump(items, handle)
+PY
+}
 
 # 1 non-dict in 20 elements = 5% (not exceeding the 5% threshold) -> succeeds with stderr warning.
-python3 -c '
-import json
-items = [
-    {"number": i, "title": f"issue {i}", "body": "", "state": "OPEN", "createdAt": "2026-01-01T00:00:00Z"}
-    for i in range(1, 20)
-]
-items.append("not a dict")
-print(json.dumps(items))
-' > "$TMP_LOW"
+TMP_LOW="$TMP_CASES/low-skip.json"
+write_fixture_with_bad_row "$TMP_LOW" '"not a dict"' 19
 
 low_stderr=$(python3 "$ANALYZER" --json "$TMP_LOW" 2>&1 >/dev/null)
 assert_contains "$low_stderr" "WARN load_issues: skipping non-dict element at index 19" "load_issues stderr warning at threshold"
 
 # 1 non-dict in 10 elements = 10% > 5% -> aborts (exit non-zero) without --lenient.
-python3 -c '
-import json
-items = [
-    {"number": i, "title": f"issue {i}", "body": "", "state": "OPEN", "createdAt": "2026-01-01T00:00:00Z"}
-    for i in range(1, 10)
-]
-items.append("not a dict")
-print(json.dumps(items))
-' > "$TMP_HIGH"
+TMP_HIGH="$TMP_CASES/high-skip.json"
+write_fixture_with_bad_row "$TMP_HIGH" '"not a dict"' 9
 
 if python3 "$ANALYZER" --json "$TMP_HIGH" >/dev/null 2>&1; then
     FAIL=$((FAIL + 1))
@@ -133,6 +141,156 @@ else
 fi
 assert_contains "$lenient_out" "Total issues: 9" "--lenient: report renders 9 valid dicts past 10% threshold"
 assert_contains "$lenient_out" "## Executive Summary" "--lenient: report includes Executive Summary"
+
+for case_spec in \
+    "missing|{\"title\":\"missing number\",\"body\":\"\",\"state\":\"OPEN\",\"createdAt\":\"2026-01-01T00:00:00Z\"}|missing number" \
+    "null|{\"number\":null,\"title\":\"null number\",\"body\":\"\",\"state\":\"OPEN\",\"createdAt\":\"2026-01-01T00:00:00Z\"}|missing number" \
+    "non_numeric|{\"number\":\"abc\",\"title\":\"bad number\",\"body\":\"\",\"state\":\"OPEN\",\"createdAt\":\"2026-01-01T00:00:00Z\"}|non-numeric number" \
+    "unicode_digit|{\"number\":\"\\u00b2\",\"title\":\"unicode digit\",\"body\":\"\",\"state\":\"OPEN\",\"createdAt\":\"2026-01-01T00:00:00Z\"}|non-numeric number" \
+    "zero|{\"number\":0,\"title\":\"zero number\",\"body\":\"\",\"state\":\"OPEN\",\"createdAt\":\"2026-01-01T00:00:00Z\"}|non-numeric number" \
+    "negative|{\"number\":-3,\"title\":\"negative number\",\"body\":\"\",\"state\":\"OPEN\",\"createdAt\":\"2026-01-01T00:00:00Z\"}|non-numeric number" \
+    "true|{\"number\":true,\"title\":\"true number\",\"body\":\"\",\"state\":\"OPEN\",\"createdAt\":\"2026-01-01T00:00:00Z\"}|non-numeric number" \
+    "false|{\"number\":false,\"title\":\"false number\",\"body\":\"\",\"state\":\"OPEN\",\"createdAt\":\"2026-01-01T00:00:00Z\"}|non-numeric number"; do
+    IFS='|' read -r case_name bad_json warning <<<"$case_spec"
+    case_path="$TMP_CASES/${case_name}.json"
+    write_fixture_with_bad_row "$case_path" "$bad_json" 19
+    case_stderr=$(python3 "$ANALYZER" --json "$case_path" 2>&1 >/dev/null)
+    assert_contains "$case_stderr" "WARN load_issues: skipping issue with $warning at index 19" "load_issues malformed number warning: $case_name"
+done
+
+TMP_DIGIT="$TMP_CASES/digit-string.json"
+python3 - "$TMP_DIGIT" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], "w", encoding="utf-8") as handle:
+    json.dump([{
+        "number": "42",
+        "title": "digit string number",
+        "body": "",
+        "state": "OPEN",
+        "createdAt": "2026-01-01T00:00:00Z",
+    }], handle)
+PY
+digit_stderr="$TMP_CASES/digit-string.stderr"
+digit_out=$(python3 "$ANALYZER" --json "$TMP_DIGIT" 2>"$digit_stderr")
+assert_contains "$digit_out" "Total issues: 1" "load_issues accepts ASCII digit-string issue number"
+assert_not_contains "$(cat "$digit_stderr")" "WARN load_issues:" "load_issues digit-string acceptance emits no skip warning"
+
+TMP_NO_COLLAPSE="$TMP_CASES/no-collapse.json"
+python3 - "$TMP_NO_COLLAPSE" <<'PY'
+import json
+import sys
+
+items = [
+    {
+        "number": number,
+        "title": "Auto loop duplicate",
+        "body": "",
+        "state": "CLOSED",
+        "createdAt": "2026-01-01T00:00:00Z",
+        "closedAt": "2026-01-02T00:00:00Z",
+        "closedByPullRequestsReferences": [{"number": 77}],
+    }
+    for number in (11, 12, 13)
+]
+items.extend([
+    {
+        "title": "Auto loop duplicate",
+        "body": "",
+        "state": "CLOSED",
+        "createdAt": "2026-01-01T00:00:00Z",
+        "closedAt": "2026-01-02T00:00:00Z",
+        "closedByPullRequestsReferences": [{"number": 77}],
+    },
+    {
+        "number": "abc",
+        "title": "Auto loop duplicate",
+        "body": "",
+        "state": "CLOSED",
+        "createdAt": "2026-01-01T00:00:00Z",
+        "closedAt": "2026-01-02T00:00:00Z",
+        "closedByPullRequestsReferences": [{"number": 77}],
+    },
+])
+with open(sys.argv[1], "w", encoding="utf-8") as handle:
+    json.dump(items, handle)
+PY
+no_collapse_out=$(python3 "$ANALYZER" --json "$TMP_NO_COLLAPSE" --lenient 2>/dev/null)
+w45_lines=$(printf '%s\n' "$no_collapse_out" | awk '
+    /^- W4 PR-to-issue closure clusters:/{capture=1}
+    /^## Reviewer\/Persona Tables/{capture=0}
+    capture {print}
+')
+assert_not_contains "$w45_lines" "#0" "malformed numbers do not collapse into #0 in W4/W5 lines"
+
+TMP_MIXED="$TMP_CASES/mixed-corruption.json"
+python3 - "$TMP_MIXED" <<'PY'
+import json
+import sys
+
+items = [
+    {
+        "number": i,
+        "title": f"issue {i}",
+        "body": "",
+        "state": "OPEN",
+        "createdAt": "2026-01-01T00:00:00Z",
+    }
+    for i in range(1, 9)
+]
+items.extend(["not a dict", {"number": "abc", "title": "bad number", "body": ""}])
+with open(sys.argv[1], "w", encoding="utf-8") as handle:
+    json.dump(items, handle)
+PY
+mixed_stderr="$TMP_CASES/mixed.stderr"
+if python3 "$ANALYZER" --json "$TMP_MIXED" >/dev/null 2>"$mixed_stderr"; then
+    FAIL=$((FAIL + 1))
+    FAILED_TESTS+=("load_issues mixed corruption threshold should fail without --lenient")
+    echo "  FAIL: load_issues mixed corruption threshold should fail without --lenient" >&2
+else
+    PASS=$((PASS + 1))
+    echo "  ok: load_issues mixed corruption threshold abort fires"
+fi
+assert_contains "$(cat "$mixed_stderr")" "non-dict or malformed-number elements" "load_issues mixed corruption uses widened abort phrase"
+
+mixed_lenient_out=$(python3 "$ANALYZER" --json "$TMP_MIXED" --lenient 2>/dev/null)
+assert_contains "$mixed_lenient_out" "Total issues: 8" "--lenient: mixed corruption renders valid rows"
+
+TMP_ALL_BAD="$TMP_CASES/all-bad.json"
+python3 - "$TMP_ALL_BAD" <<'PY'
+import json
+import sys
+
+items = [
+    {"title": f"missing number {i}", "body": "", "state": "OPEN", "createdAt": "2026-01-01T00:00:00Z"}
+    for i in range(5)
+]
+with open(sys.argv[1], "w", encoding="utf-8") as handle:
+    json.dump(items, handle)
+PY
+all_bad_stderr="$TMP_CASES/all-bad.stderr"
+if python3 "$ANALYZER" --json "$TMP_ALL_BAD" >/dev/null 2>"$all_bad_stderr"; then
+    FAIL=$((FAIL + 1))
+    FAILED_TESTS+=("load_issues all malformed should fail without --lenient")
+    echo "  FAIL: load_issues all malformed should fail without --lenient" >&2
+else
+    PASS=$((PASS + 1))
+    echo "  ok: load_issues all malformed threshold abort fires"
+fi
+assert_contains "$(cat "$all_bad_stderr")" "non-dict or malformed-number elements" "load_issues all malformed uses widened abort phrase"
+
+all_bad_lenient_out=$(python3 "$ANALYZER" --json "$TMP_ALL_BAD" --lenient 2>/dev/null)
+assert_contains "$all_bad_lenient_out" "No issues to analyze." "--lenient: all malformed returns empty analysis"
+
+if grep -Fq 'int(issue.get("number") or 0)' "$ANALYZER"; then
+    FAIL=$((FAIL + 1))
+    FAILED_TESTS+=("analyze.py must not contain int(issue.get(\"number\") or 0)")
+    echo "  FAIL: analyze.py must not contain int(issue.get(\"number\") or 0)" >&2
+else
+    PASS=$((PASS + 1))
+    echo "  ok: analyze.py has no int(issue.get(\"number\") or 0) fallback"
+fi
 
 # Static guard: the run-analysis.sh wrapper must forward --lenient into ANALYZE_ARGS
 # when LENIENT=1. Catches a regression that drops the append without an end-to-end test.
