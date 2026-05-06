@@ -361,6 +361,17 @@ exclude = [
   # contract; not from SKILL.md's runtime prose.
   "skills/implement/scripts/test-oos-file-conflict-deps.sh",
   "skills/implement/scripts/test-oos-file-conflict-deps.md",
+  # skills/implement/scripts/test-oos-issue-cap.sh is the fixture harness
+  # for oos-issue-cap.sh. Referenced from Makefile (test-oos-issue-cap),
+  # docs/linting.md, and the helper's sibling contract; not from SKILL.md's
+  # runtime prose.
+  "skills/implement/scripts/test-oos-issue-cap.sh",
+  "skills/implement/scripts/test-oos-issue-cap.md",
+  # skills/implement/scripts/oos-issue-cap-excerpt.py is invoked by
+  # oos-issue-cap.sh for UTF-8 character-safe truncation; referenced only
+  # from oos-issue-cap.sh and its sibling contract stub.
+  "skills/implement/scripts/oos-issue-cap-excerpt.py",
+  "skills/implement/scripts/oos-issue-cap-excerpt.md",
   # scripts/launch-codex-implement.sh is invoked by skills/implement/scripts/
   # step2-implement.sh via a `"$LAUNCHER"` variable rather than a literal
   # `${CLAUDE_PLUGIN_ROOT}/scripts/...` path — agent-lint's G004/dead-script

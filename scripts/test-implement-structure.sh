@@ -1,6 +1,6 @@
 #!/bin/bash
 # Structural regression test for /implement SKILL.md + references/ topology (closes #234).
-# Asserts 26 live load-bearing invariants (assertion 5 retired; numbered list runs 1–4, 6–26) across skills/implement/SKILL.md and the six
+# Asserts 27 live load-bearing invariants (assertion 5 retired; numbered list runs 1–4, 6–27) across skills/implement/SKILL.md and the six
 # reference docs extracted from it. Complements scripts/test-implement-rebase-macro.sh,
 # which owns the Rebase Checkpoint Macro mechanics; this harness owns top-level section
 # headings, the MANDATORY ↔ reference-file binding, the focus-area CI-parity check,
@@ -16,7 +16,7 @@
 # peer-harness assertions (A) and (D) respectively — accepted duplication per design-
 # phase sketch consensus.
 #
-# Twenty-six assertions (assertion 18 added for Protocol Execution Directive
+# Twenty-seven assertions (assertion 18 added for Protocol Execution Directive
 # pin; assertion 19 added for the Step 2 external implementer dispatcher pin;
 # assertion 20 added for the design-manifest + --design-only path pin;
 # assertion 21 added for the --inline / --subagent forwarding pin, issue #1036;
@@ -26,7 +26,7 @@
 # parity with Cursor's shared guardrails; assertion 25 added for the
 # clean-main Step 0 entry gate; assertion 26 added for the post-merge
 # anti-halt literal pin, issue #1143).
-# Assertion 5 is retired, so the numbered list runs 1–4, 6–26 (26 live
+# Assertion 5 is retired, so the numbered list runs 1–4, 6–27 (27 live
 # assertions; assertion 23 now pins Gemini quick-mode reviewer wiring).
 #  (1) Exactly 1 `^## Load-Bearing Invariants$` heading in skills/implement/SKILL.md.
 #  (2) Exactly 1 `^## NEVER List$` heading.
@@ -72,6 +72,10 @@
 #      so the combine-pass output path (consumed by `oos-file-conflict-deps.sh`
 #      and `/issue --input-file`) cannot regress to a placeholder or split inputs
 #      while CI stays green.
+#      (9g) The same procedure must pin the per-run OOS issue cap helper,
+#      `OOS_ISSUES_PER_RUN_CAP`, the fail-closed warning string, and the
+#      skip-step wording so helper-script tests cannot pass after prompt-side
+#      integration is accidentally removed.
 # (10) Cross-skill bail-token pin (umbrella #348 Phase 4): skills/implement/SKILL.md
 #      must contain the literal `IMPLEMENT_BAIL_REASON=adopted-issue-closed`.
 #      `/fix-issue` Step 6a scans this token in captured `/implement` output to
@@ -385,6 +389,21 @@ printf '%s\n' "$step_9a1_oos_procedure" | grep -Fq -- '--intra-batch-deps-file' 
 # ---------------------------------------------------------------------------
 printf '%s\n' "$step_9a1_oos_procedure" | grep -Fq -- 'oos-combined.md' \
   || fail "(9f) Step 9a.1 OOS pipeline procedure must reference the literal 'oos-combined.md' (combine-pass output path)"
+
+# ---------------------------------------------------------------------------
+# (9g) Step 9a.1 per-run OOS issue cap integration. The cap is enforced by
+#      prompt-side orchestration around a helper, so pin the key literals in
+#      anchor-comment-template.md: helper path, env var, fail-closed warning,
+#      and skip-step wording.
+# ---------------------------------------------------------------------------
+printf '%s\n' "$step_9a1_oos_procedure" | grep -Fq -- 'oos-issue-cap.sh' \
+  || fail "(9g) Step 9a.1 OOS pipeline procedure must invoke oos-issue-cap.sh"
+printf '%s\n' "$step_9a1_oos_procedure" | grep -Fq -- 'OOS_ISSUES_PER_RUN_CAP' \
+  || fail "(9g) Step 9a.1 OOS pipeline procedure must document OOS_ISSUES_PER_RUN_CAP"
+printf '%s\n' "$step_9a1_oos_procedure" | grep -Fq -- '**⚠ /implement: oos-issue-cap helper failed (exit <N>) — OOS batch NOT filed; review accepted-OOS Descriptions and re-run with corrected env, or have the items filed manually**' \
+  || fail "(9g) Step 9a.1 OOS pipeline procedure must retain the oos-issue-cap fail-closed warning string"
+printf '%s\n' "$step_9a1_oos_procedure" | grep -Fq -- 'SKIP step 3.5 and step 4' \
+  || fail "(9g) Step 9a.1 OOS pipeline procedure must document skipping step 3.5 and step 4 on cap helper failure"
 
 # ---------------------------------------------------------------------------
 # (10) Cross-skill bail-token pin (umbrella #348 Phase 4): SKILL.md must

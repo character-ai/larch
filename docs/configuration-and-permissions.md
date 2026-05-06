@@ -286,3 +286,75 @@ Paths must match `git diff --name-only` output format (repo-root-relative, no `.
 - `LARCH_BUMP_FILES=".claude-plugin/plugin.json:version.go"` — hybrid repo that bumps both `plugin.json` and `version.go`
 - `LARCH_BUMP_FILES="package.json:package-lock.json"` — Node.js consumer repo
 - `LARCH_BUMP_FILES="Cargo.toml:Cargo.lock"` — Rust consumer repo
+
+### `OOS_ISSUES_PER_RUN_CAP`
+
+Per-run global cap on the number of out-of-scope (OOS) GitHub issues a single
+`/implement` run can auto-spawn. Default `5`. Consumed by
+`skills/implement/scripts/oos-issue-cap.sh`, which runs as Step 9a.1 pipeline
+step 3.4b — between the combine pass that writes
+`$IMPLEMENT_TMPDIR/oos-combined.md` and the file-conflict pre-pass that
+consumes it.
+
+This cap bounds the count of OOS *issues* spawned by a single run. It is
+independent of `OOS_FILE_CONFLICT_CLUSTER_CAP` (default `200`) and
+`OOS_FILE_CONFLICT_GLOBAL_CAP` (default `500`), which bound the count of
+file-conflict dependency *edges* emitted by `oos-file-conflict-deps.sh` and
+have no effect on issue count.
+
+**When set:**
+- The cap helper accepts the supplied positive integer and compacts
+  `oos-combined.md` in place when `ITEMS_TOTAL > OOS_ISSUES_PER_RUN_CAP`.
+- Compaction shape: keep the first `(cap-1)` entries from `oos-combined.md`
+  byte-faithfully, replace the surplus tail with one synthetic
+  `### OOS_<cap>:` aggregate entry whose `Description` enumerates each
+  rolled-up entry's title plus a bounded UTF-8-safe excerpt (default 200
+  characters per entry), followed by a per-bullet `[Files: <paths>]` list
+  extracted from the full source body so the file-conflict pre-pass can still
+  see path mentions. Headings are renumbered to `OOS_1..OOS_<cap>` for
+  downstream consumers.
+- Pass-through is byte-equivalent when `ITEMS_TOTAL <= cap`.
+- `OOS_ISSUES_PER_RUN_CAP=1` is the most aggressive setting: it collapses the
+  entire batch into a single aggregate `OOS_1` issue.
+
+**When not set:**
+- Defaults to `5`, which keeps the first four entries separate and rolls any
+  surplus into one aggregate issue.
+
+**Invalid values** (non-positive integer, non-numeric, or empty string): the
+helper exits with status `2` and a stderr message
+`OOS_ISSUES_PER_RUN_CAP must be a positive integer (got: '<value>')`. Per the
+helper's fail-closed contract, the orchestrator skips OOS issue filing for this
+run when the cap helper fails — re-run after correcting the env value (or unset
+to use the default), or have the items filed manually. The canonical operator
+warning is:
+`**⚠ /implement: oos-issue-cap helper failed (exit <N>) — OOS batch NOT filed; review accepted-OOS Descriptions and re-run with corrected env, or have the items filed manually**`
+
+### `OOS_ISSUE_CAP_EXCERPT_MAX`
+
+Per-rolled-up-entry excerpt length (in UTF-8 characters) used by
+`skills/implement/scripts/oos-issue-cap.sh` when composing the aggregate
+`### OOS_<cap>:` Description. Default `200`. Truncation is character-safe via
+the companion `oos-issue-cap-excerpt.py` helper (`python3` is a hard
+dependency).
+
+**When set:**
+- Each rolled-up entry's excerpt is truncated to this many UTF-8 characters;
+  truncated excerpts get a trailing `…` marker.
+
+**When not set:**
+- Defaults to `200`.
+
+**Invalid values** (non-positive integer, non-numeric, or empty string): the
+helper exits with status `2` and a stderr message
+`OOS_ISSUE_CAP_EXCERPT_MAX must be a positive integer (got: '<value>')`. Per
+the fail-closed contract, the orchestrator skips OOS issue filing for this run
+when the cap helper fails — re-run after correcting the env value, or have the
+items filed manually.
+
+**Operator note**: aggregate body size scales as `surplus * EXCERPT_MAX` plus
+per-entry `[Files: …]` lists and boilerplate. At the default cap=5 /
+EXCERPT_MAX=200, worst-case body is about 1.5KB. Operators tuning these into
+substantially larger envelopes should confirm the resulting aggregate body
+stays under GitHub's 65KB body limit; the local artifact at
+`$IMPLEMENT_TMPDIR/oos-combined.md` is observable before `/issue` posts.
