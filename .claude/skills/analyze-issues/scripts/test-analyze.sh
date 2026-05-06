@@ -14,6 +14,15 @@ SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 ANALYZER="$SCRIPT_DIR/analyze.py"
 FIXTURE="$SCRIPT_DIR/test-fixture.json"
 
+if [[ ! -r "$ANALYZER" ]]; then
+    echo "ERROR: analyzer not readable at $ANALYZER" >&2
+    exit 1
+fi
+if [[ ! -r "$FIXTURE" ]]; then
+    echo "ERROR: fixture not readable at $FIXTURE" >&2
+    exit 1
+fi
+
 PASS=0
 FAIL=0
 FAILED_TESTS=()
@@ -54,7 +63,7 @@ assert_contains "$out" "## Reviewer/Persona Tables" "reviewer/persona section"
 
 assert_contains "$out" "Total issues: 7" "issue count"
 assert_contains "$out" "Tracking/umbrella" "tracking category"
-assert_contains "$out" "Bug fix" "bug fix category"
+assert_contains "$out" "Bug fix: 3 (" "bug fix category count (pins rule-order + fix-substring-of-fixture)"
 assert_contains "$out" "Documentation/contract drift" "documentation category"
 assert_contains "$out" "Hardening/validation/security" "hardening category"
 assert_contains "$out" "Auto-spawned share: 1/7" "auto-spawned share"
