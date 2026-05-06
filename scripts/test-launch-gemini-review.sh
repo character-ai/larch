@@ -154,6 +154,10 @@ MUTATION_CODE=$?
 set -e
 [[ "$MUTATION_CODE" -eq 1 ]] \
   || fail "Expected snapshot guard exit 1 on new untracked mutation, got $MUTATION_CODE"
+grep -q '^1$' "${MUTATION_OUTPUT}.done" \
+  || fail "Expected .done sidecar to record exit 1 on new untracked mutation"
+[[ ! -s "$MUTATION_OUTPUT" ]] \
+  || fail "Expected $OUTPUT to be cleared after new-untracked guard revert (matching fail_closed contract)"
 grep -q 'SNAPSHOT_GUARD_TRIGGERED:' "${MUTATION_OUTPUT}.diag" \
   || fail "Expected snapshot guard diagnostic for new untracked mutation"
 grep -q 'poisoned-by-reviewer.txt' "${MUTATION_OUTPUT}.diag" \
@@ -178,6 +182,10 @@ TRACKED_MUTATION_CODE=$?
 set -e
 [[ "$TRACKED_MUTATION_CODE" -eq 1 ]] \
   || fail "Expected snapshot guard exit 1 on tracked mutation, got $TRACKED_MUTATION_CODE"
+grep -q '^1$' "${TRACKED_MUTATION_OUTPUT}.done" \
+  || fail "Expected .done sidecar to record exit 1 on tracked mutation"
+[[ ! -s "$TRACKED_MUTATION_OUTPUT" ]] \
+  || fail "Expected $OUTPUT to be cleared after tracked guard revert (matching fail_closed contract)"
 grep -q 'SNAPSHOT_GUARD_TRIGGERED:' "${TRACKED_MUTATION_OUTPUT}.diag" \
   || fail "Expected snapshot guard diagnostic for tracked mutation"
 grep -q 'tracked.txt' "${TRACKED_MUTATION_OUTPUT}.diag" \
@@ -190,6 +198,41 @@ grep -q 'delete-me.txt' "${TRACKED_MUTATION_OUTPUT}.diag" \
   || fail "Expected snapshot guard to restore deleted tracked file"
 [[ -z "$(git -C "$TRACKED_MUTATION_REPO" status --porcelain)" ]] \
   || fail "Expected mutation repo to be clean after tracked guard revert"
+
+# --- index-state mutation case (FINDING_7): reviewer runs `git add` against an
+# already-modified tracked file. The on-disk content hash is unchanged
+# (operator's pre-launch state was already worktree-modified), but the
+# index now diverges from HEAD. Pre-fix the snapshot would miss this
+# entirely and exit 0; the I-record schema should now catch it.
+INDEX_MUTATION_REPO="$TMPDIR/index-mutation-repo"
+make_mutation_repo "$INDEX_MUTATION_REPO"
+# Operator's pre-launch state: tracked.txt has unstaged modifications.
+printf 'operator-edit\n' > "$INDEX_MUTATION_REPO/tracked.txt"
+INDEX_MUTATION_OUTPUT="$TMPDIR/gemini-index-mutation.txt"
+set +e
+(
+  cd "$INDEX_MUTATION_REPO"
+  PATH="$STUB_BIN:$PATH" \
+    GEMINI_MUTATION_REPO="$INDEX_MUTATION_REPO" \
+    LARCH_TEST_GEMINI_PRE_OUTPUT_HOOK="git -C \"\$GEMINI_MUTATION_REPO\" add tracked.txt" \
+    "$REPO_ROOT/scripts/launch-gemini-review.sh" --output "$INDEX_MUTATION_OUTPUT" --timeout 1800 --prompt "test"
+)
+INDEX_MUTATION_CODE=$?
+set -e
+[[ "$INDEX_MUTATION_CODE" -eq 1 ]] \
+  || fail "Expected snapshot guard exit 1 on index-only mutation, got $INDEX_MUTATION_CODE"
+grep -q '^1$' "${INDEX_MUTATION_OUTPUT}.done" \
+  || fail "Expected .done sidecar to record exit 1 on index-only mutation"
+grep -q 'SNAPSHOT_GUARD_TRIGGERED:' "${INDEX_MUTATION_OUTPUT}.diag" \
+  || fail "Expected snapshot guard diagnostic for index-only mutation"
+grep -q 'tracked.txt' "${INDEX_MUTATION_OUTPUT}.diag" \
+  || fail "Expected snapshot guard diagnostic to name tracked.txt for index-only mutation"
+# After revert, the operator's worktree-modified state may or may not
+# survive the restore (the guard's snapshot_restore_path takes the T
+# branch and restores from backup OR resets via git checkout HEAD --).
+# Either way, the index MUST be clean of the reviewer's `git add`:
+[[ -z "$(git -C "$INDEX_MUTATION_REPO" diff --cached HEAD)" ]] \
+  || fail "Expected guard to clear reviewer-added index entries via git reset HEAD --"
 
 NONGIT_DIR="$TMPDIR/not-a-repo"
 mkdir -p "$NONGIT_DIR"

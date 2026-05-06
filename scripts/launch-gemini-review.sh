@@ -190,11 +190,23 @@ snapshot_path_is_artifact() {
 }
 
 snapshot_timeout_seconds() {
+    # Returns the snapshot timeout cap in canonical decimal seconds.
+    # Falls back to default 30 on: empty, non-digit, or non-positive
+    # (`0`, `00`, ...). Forces base-10 so leading-zero values like `010`
+    # are interpreted as 10s, not octal 8s. Non-positive values are
+    # rejected rather than treated as "disable timeout" — disabling is
+    # not a supported mode (see launch-gemini-review.md).
     local value="${LARCH_GEMINI_SNAPSHOT_TIMEOUT:-30}"
+    local decimal
     case "$value" in
-        ''|*[!0-9]*) printf '30\n' ;;
-        *) printf '%s\n' "$value" ;;
+        ''|*[!0-9]*) printf '30\n'; return ;;
     esac
+    decimal=$((10#$value))
+    if (( decimal < 1 )); then
+        printf '30\n'
+    else
+        printf '%s\n' "$decimal"
+    fi
 }
 
 snapshot_timed_out() {
@@ -219,6 +231,21 @@ snapshot_status_file_mentions_path() {
 snapshot_pre_status_mentions_path() {
     local path="$1"
     snapshot_status_file_mentions_path "${SNAPSHOT_PRE}.status" "$path"
+}
+
+snapshot_pre_index_mentions_path() {
+    # True iff the pre-launch snapshot records carried an `I\t-\t<path>`
+    # entry for this path — i.e. operator already had something staged
+    # for this path before Gemini ran. Used by snapshot_restore_path to
+    # decide whether `git reset -q HEAD -- <path>` is safe to call after
+    # restoring worktree content from backup. When operator had no pre
+    # index entry, reset clears any reviewer-added index changes (the
+    # `git add` mutation case from FINDING_7). When operator had a pre
+    # index entry, reset would clobber operator state — skip it.
+    local path="$1"
+    [[ -f "${SNAPSHOT_PRE}.records" ]] || return 1
+    awk -v p="$path" -F'\t' '$1=="I" && $3==p { found=1; exit } END { exit !found }' \
+        "${SNAPSHOT_PRE}.records" 2>/dev/null
 }
 
 tracked_snapshot_hash() {
@@ -280,8 +307,53 @@ capture_snapshot() {
         fi
     done < <(git -C "$SNAPSHOT_REPO_ROOT" ls-files --others --exclude-standard -z)
 
+    # Capture index state so reviewer mutations that change ONLY the index
+    # (e.g. `git add` of an already-modified tracked file) are detected.
+    # On-disk content hashes alone miss these — pre and post hashes are
+    # identical, but the index has new content. The 3-field schema
+    # (`I\t-\t<path>`) keeps `cut -f3-` semantics uniform with T/U records
+    # so run_snapshot_guard's delta_paths extraction stays correct.
+    while IFS= read -r -d '' path; do
+        snapshot_path_is_artifact "$path" && continue
+        if snapshot_timed_out "$start" "$cap"; then
+            rm -f "$body"
+            return 124
+        fi
+        printf 'I\t-\t%s\n' "$path" >> "$body"
+    done < <(git -C "$SNAPSHOT_REPO_ROOT" diff --cached --name-only -z HEAD 2>/dev/null)
+
     LC_ALL=C sort "$body" >> "$out"
     rm -f "$body"
+}
+
+# shellcheck disable=SC2317 # invoked via `trap ... EXIT` after setup_snapshot_guard
+snapshot_cleanup_on_exit() {
+    # Best-effort removal of snapshot temp resources at process exit.
+    # Registered via `trap` once setup_snapshot_guard has populated the
+    # SNAPSHOT_PRE / SNAPSHOT_POST / SNAPSHOT_BACKUP variables. Avoids
+    # leaving copies of tracked/untracked working-tree contents under
+    # ${TMPDIR:-/tmp} indefinitely (relevant when IMPLEMENT_TMPDIR is
+    # unset, e.g. ad-hoc or test runs).
+    if [[ -n "${SNAPSHOT_PRE:-}" ]]; then
+        rm -f -- \
+            "$SNAPSHOT_PRE" \
+            "${SNAPSHOT_PRE}.body" \
+            "${SNAPSHOT_PRE}.records" \
+            "${SNAPSHOT_PRE}.status" 2>/dev/null || true
+    fi
+    if [[ -n "${SNAPSHOT_POST:-}" ]]; then
+        rm -f -- \
+            "$SNAPSHOT_POST" \
+            "${SNAPSHOT_POST}.body" \
+            "${SNAPSHOT_POST}.records" \
+            "${SNAPSHOT_POST}.added" \
+            "${SNAPSHOT_POST}.removed" \
+            "${SNAPSHOT_POST}.paths" \
+            "${SNAPSHOT_POST}.status" 2>/dev/null || true
+    fi
+    if [[ -n "${SNAPSHOT_BACKUP:-}" && -d "$SNAPSHOT_BACKUP" ]]; then
+        rm -rf -- "$SNAPSHOT_BACKUP" 2>/dev/null || true
+    fi
 }
 
 setup_snapshot_guard() {
@@ -317,6 +389,9 @@ setup_snapshot_guard() {
     SNAPSHOT_PRE=$(mktemp "$tmp_parent/gemini-review-snapshot-pre.XXXXXX")
     SNAPSHOT_POST=$(mktemp "$tmp_parent/gemini-review-snapshot-post.XXXXXX")
     SNAPSHOT_BACKUP=$(mktemp -d "$tmp_parent/gemini-review-snapshot-backup.XXXXXX")
+    # Register cleanup AFTER mktemp so a setup-stage capture failure still
+    # unlinks the temp files. Cleanup is idempotent and tolerates partial state.
+    trap snapshot_cleanup_on_exit EXIT
 
     capture_snapshot "$SNAPSHOT_PRE" pre
     SNAPSHOT_STATUS=$?
@@ -375,7 +450,15 @@ snapshot_restore_path() {
     if [[ -e "$backup_path" || -L "$backup_path" ]]; then
         mkdir -p "$(dirname "$SNAPSHOT_REPO_ROOT/$path")"
         cp -pP "$backup_path" "$SNAPSHOT_REPO_ROOT/$path"
-        if [[ "$pre_kind" == "T" ]] && ! snapshot_pre_status_mentions_path "$path"; then
+        # Reset the index entry to HEAD for this path UNLESS operator had
+        # a pre-existing index entry we must preserve. The pre I-record
+        # check is the precise signal: presence ⇒ operator staged it pre-launch
+        # (don't touch); absence ⇒ any post index entry is reviewer-introduced
+        # and must be cleared. This subsumes the older
+        # `pre_kind=T && !pre-status-mentioned` heuristic, which silently
+        # missed the FINDING_7 case where operator had worktree-mod (status
+        # mentioned, no index) and reviewer ran `git add`.
+        if ! snapshot_pre_index_mentions_path "$path"; then
             git -C "$SNAPSHOT_REPO_ROOT" reset -q HEAD -- "$path" >/dev/null 2>&1 || true
         fi
         return 0
@@ -554,6 +637,11 @@ mv "$RESPONSE_TMP" "$OUTPUT"
 GUARD_EXIT=0
 run_snapshot_guard || GUARD_EXIT=$?
 if [[ "$GUARD_EXIT" -ne 0 ]]; then
+    # Clear $OUTPUT to match fail_closed's contract — non-zero $OUTPUT.done
+    # MUST imply empty $OUTPUT, so consumers that read $OUTPUT without
+    # checking .done first do not see a "successful-looking" review body
+    # for a run that actually failed and triggered a revert.
+    write_empty_output
     {
         [[ -n "$SNAPSHOT_GUARD_MESSAGE" ]] && printf '%s\n' "$SNAPSHOT_GUARD_MESSAGE"
         [[ -n "$SNAPSHOT_GUARD_NOTICE" ]] && printf '%s\n' "$SNAPSHOT_GUARD_NOTICE"
