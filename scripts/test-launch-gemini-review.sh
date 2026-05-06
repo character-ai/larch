@@ -62,20 +62,39 @@ cat > "$STUB_BIN/gemini" <<STUB
   done
   printf -- '---\n'
 } >> "$ARGV_LOG"
+if [[ -n "\${GEMINI_PROMPT_LOG:-}" ]]; then
+  _prev=""
+  for _arg in "\$@"; do
+    if [[ "\$_prev" == "-p" ]]; then
+      printf '%s' "\$_arg" > "\$GEMINI_PROMPT_LOG"
+      break
+    fi
+    _prev="\$_arg"
+  done
+fi
 case "\${GEMINI_STUB_MODE:-ok}" in
   ok) printf '{"response":"Plain review text"}\n' ;;
   error) printf '{"error":"auth failed"}\n' ;;
   empty) printf '{"response":""}\n' ;;
 esac
+if [[ -n "\${LARCH_TEST_GEMINI_PRE_OUTPUT_HOOK:-}" ]]; then
+  bash -c "\$LARCH_TEST_GEMINI_PRE_OUTPUT_HOOK"
+fi
 printf 'diagnostic noise\n' >&2
 STUB
 chmod +x "$STUB_BIN/gemini"
 
 OUTPUT="$TMPDIR/gemini-review.txt"
-PATH="$STUB_BIN:$PATH" "$REPO_ROOT/scripts/launch-gemini-review.sh" --output "$OUTPUT" --timeout 1800 --prompt "test"
+PROMPT_LOG="$TMPDIR/gemini-prompt.log"
+PATH="$STUB_BIN:$PATH" GEMINI_PROMPT_LOG="$PROMPT_LOG" \
+  "$REPO_ROOT/scripts/launch-gemini-review.sh" --output "$OUTPUT" --timeout 1800 --prompt "test"
 
 [[ "$(cat "$OUTPUT")" == "Plain review text" ]] \
   || fail "Expected normalized plain text output"
+grep -q '^HARD CONSTRAINTS — your role is read-only review\.' "$PROMPT_LOG" \
+  || fail "Expected hardening preamble at start of Gemini prompt"
+[[ "$(tail -n 1 "$PROMPT_LOG")" == "test" ]] \
+  || fail "Expected original prompt after hardening preamble"
 grep -q '^TIMEOUT=600$' "${OUTPUT}.raw.meta" \
   || fail "Expected run-external-agent timeout clamp to 600"
 grep -q '^CMD_JSON=' "${OUTPUT}.meta" \
@@ -107,6 +126,83 @@ grep -q '^0$' "${OUTPUT}.done" \
 if grep -q '[{}]' "$OUTPUT"; then
   fail "Output should not contain raw JSON braces"
 fi
+
+make_mutation_repo() {
+  local repo="$1"
+  mkdir -p "$repo"
+  git -C "$repo" init -q
+  git -C "$repo" config user.email "test@example.invalid"
+  git -C "$repo" config user.name "larch test"
+  printf 'base\n' > "$repo/tracked.txt"
+  printf 'delete-base\n' > "$repo/delete-me.txt"
+  git -C "$repo" add tracked.txt delete-me.txt
+  git -C "$repo" commit -q -m initial
+}
+
+MUTATION_REPO="$TMPDIR/mutation-repo"
+make_mutation_repo "$MUTATION_REPO"
+MUTATION_OUTPUT="$TMPDIR/gemini-mutation.txt"
+set +e
+(
+  cd "$MUTATION_REPO"
+  PATH="$STUB_BIN:$PATH" \
+    GEMINI_MUTATION_REPO="$MUTATION_REPO" \
+    LARCH_TEST_GEMINI_PRE_OUTPUT_HOOK="printf poison > \"\$GEMINI_MUTATION_REPO/poisoned-by-reviewer.txt\"" \
+    "$REPO_ROOT/scripts/launch-gemini-review.sh" --output "$MUTATION_OUTPUT" --timeout 1800 --prompt "test"
+)
+MUTATION_CODE=$?
+set -e
+[[ "$MUTATION_CODE" -eq 1 ]] \
+  || fail "Expected snapshot guard exit 1 on new untracked mutation, got $MUTATION_CODE"
+grep -q 'SNAPSHOT_GUARD_TRIGGERED:' "${MUTATION_OUTPUT}.diag" \
+  || fail "Expected snapshot guard diagnostic for new untracked mutation"
+grep -q 'poisoned-by-reviewer.txt' "${MUTATION_OUTPUT}.diag" \
+  || fail "Expected snapshot guard diagnostic to name poisoned-by-reviewer.txt"
+[[ ! -e "$MUTATION_REPO/poisoned-by-reviewer.txt" ]] \
+  || fail "Expected snapshot guard to remove new untracked mutation"
+[[ -z "$(git -C "$MUTATION_REPO" status --porcelain)" ]] \
+  || fail "Expected mutation repo to be clean after new-untracked guard revert"
+
+TRACKED_MUTATION_REPO="$TMPDIR/tracked-mutation-repo"
+make_mutation_repo "$TRACKED_MUTATION_REPO"
+TRACKED_MUTATION_OUTPUT="$TMPDIR/gemini-tracked-mutation.txt"
+set +e
+(
+  cd "$TRACKED_MUTATION_REPO"
+  PATH="$STUB_BIN:$PATH" \
+    GEMINI_MUTATION_REPO="$TRACKED_MUTATION_REPO" \
+    LARCH_TEST_GEMINI_PRE_OUTPUT_HOOK="printf changed > \"\$GEMINI_MUTATION_REPO/tracked.txt\"; rm \"\$GEMINI_MUTATION_REPO/delete-me.txt\"" \
+    "$REPO_ROOT/scripts/launch-gemini-review.sh" --output "$TRACKED_MUTATION_OUTPUT" --timeout 1800 --prompt "test"
+)
+TRACKED_MUTATION_CODE=$?
+set -e
+[[ "$TRACKED_MUTATION_CODE" -eq 1 ]] \
+  || fail "Expected snapshot guard exit 1 on tracked mutation, got $TRACKED_MUTATION_CODE"
+grep -q 'SNAPSHOT_GUARD_TRIGGERED:' "${TRACKED_MUTATION_OUTPUT}.diag" \
+  || fail "Expected snapshot guard diagnostic for tracked mutation"
+grep -q 'tracked.txt' "${TRACKED_MUTATION_OUTPUT}.diag" \
+  || fail "Expected snapshot guard diagnostic to name tracked.txt"
+grep -q 'delete-me.txt' "${TRACKED_MUTATION_OUTPUT}.diag" \
+  || fail "Expected snapshot guard diagnostic to name delete-me.txt"
+[[ "$(cat "$TRACKED_MUTATION_REPO/tracked.txt")" == "base" ]] \
+  || fail "Expected snapshot guard to restore modified tracked content"
+[[ "$(cat "$TRACKED_MUTATION_REPO/delete-me.txt")" == "delete-base" ]] \
+  || fail "Expected snapshot guard to restore deleted tracked file"
+[[ -z "$(git -C "$TRACKED_MUTATION_REPO" status --porcelain)" ]] \
+  || fail "Expected mutation repo to be clean after tracked guard revert"
+
+NONGIT_DIR="$TMPDIR/not-a-repo"
+mkdir -p "$NONGIT_DIR"
+NONGIT_OUTPUT="$TMPDIR/gemini-nongit.txt"
+(
+  cd "$NONGIT_DIR"
+  PATH="$STUB_BIN:$PATH" \
+    "$REPO_ROOT/scripts/launch-gemini-review.sh" --output "$NONGIT_OUTPUT" --timeout 1800 --prompt "test"
+)
+[[ "$(cat "$NONGIT_OUTPUT")" == "Plain review text" ]] \
+  || fail "Expected non-git run to still normalize Gemini output"
+grep -q 'snapshot guard skipped: not inside a git working tree' "${NONGIT_OUTPUT}.diag" \
+  || fail "Expected non-git run to report snapshot guard skip"
 
 ERROR_OUTPUT="$TMPDIR/gemini-error.txt"
 set +e
