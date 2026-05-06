@@ -380,7 +380,7 @@ if [[ "$CHECK_REVIEWERS" == "true" ]]; then
         echo "═══════════════════════════════════════════════════════════" >&2
         echo "  ⚠  PROBE INFRASTRUCTURE ERROR — wait-for-reviewers.sh failed" >&2
         echo "     Cause: $PROBED_WAIT_INFRA_ERROR" >&2
-        echo "     Tool availability preserved; tool health unknown for this session." >&2
+        echo "     Probe could not classify tool health; available tools marked unhealthy for fail-closed gating." >&2
         echo "═══════════════════════════════════════════════════════════" >&2
     else
         if [[ "$PROBED_CODEX_AVAILABLE" == "true" && "$PROBED_CODEX_HEALTHY" == "false" \

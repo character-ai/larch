@@ -10,6 +10,7 @@ Shared setup wrapper for larch skills. It creates a fresh session tmpdir, option
 - Gemini health failures use skip-style wording: Gemini is omitted for the session rather than replaced by Claude.
 - When Gemini probing is enabled, `session-setup.sh` passes `--artifact-dir "$SESSION_TMPDIR"` to `check-reviewers.sh` so `gemini-tool-drift.txt` persists for the session lifetime instead of disappearing with the probe tmpdir.
 - `GEMINI_TOOL_DRIFT_WARNING=` keys are re-emitted on stdout and summarized as a stderr banner. `GEMINI_TOOL_DRIFT_ARTIFACT=` is passed through when present.
+- On `WAIT_INFRA_ERROR=`, the stderr banner says: `Probe could not classify tool health; available tools marked unhealthy for fail-closed gating.` This matches `check-reviewers.sh` emitting `*_HEALTHY=false` for every available tool on the wait/preflight/infra-error path while preserving `WAIT_INFRA_ERROR` as the cause diagnostic.
 
 ## Session-env contract
 

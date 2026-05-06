@@ -55,7 +55,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TRACKING_WRITE="${SCRIPT_DIR}/../../../scripts/tracking-issue-write.sh"
+TRACKING_WRITE="${LARCH_TEST_TRACKING_WRITE_PATH:-${SCRIPT_DIR}/../../../scripts/tracking-issue-write.sh}"
 FALSE_POSITIVE_KEYWORDS_LIB="${SCRIPT_DIR}/../../../scripts/false-positive-keywords.sh"
 
 # Propagation pause (seconds) between posting a lock comment and re-fetching
@@ -421,19 +421,30 @@ _run_false_positive_marker() {
         err_value=$(printf '%s\n' "$mark_out" | grep -oE '^ERROR=.*' | head -1 | sed 's/^ERROR=//')
         echo "WARNING: mark-false-positive failed for issue #$issue: ${err_value:-unknown}" >&2
     fi
-    # SECURITY.md (Phase 1 helper paragraph) declares "suppresses raw marker
-    # stderr and surfaces only the redacted ERROR= value in a stderr WARNING:
-    # line". Pipe captured raw stderr through the secrets scrubber before
-    # re-emission so unredacted token-bearing gh output (which can leak via
-    # 4xx response bodies) does not bypass the scrubber on this surface
-    # (post-review).
+    # SECURITY.md (Phase 1 helper paragraph) declares that raw marker stderr
+    # is discarded unless a complete redactor pass succeeds. Buffer first so a
+    # crashing redactor cannot leak partial token-bearing output to stderr.
     if [ -s "$mark_stderr" ]; then
-        local redactor="$SCRIPT_DIR/../../../scripts/redact-secrets.sh"
-        if [ -x "$redactor" ]; then
-            "$redactor" < "$mark_stderr" >&2 || cat "$mark_stderr" >&2
-        else
-            cat "$mark_stderr" >&2
+        local redactor="${LARCH_TEST_REDACTOR_PATH:-$SCRIPT_DIR/../../../scripts/redact-secrets.sh}"
+        local mark_redacted_tmp
+        mark_redacted_tmp=$(mktemp "${TMPDIR:-/tmp}/mark-redacted.XXXXXX") || mark_redacted_tmp=""
+        local _redactor_exit=127
+        if [ -n "$mark_redacted_tmp" ] && [ -x "$redactor" ]; then
+            if "$redactor" < "$mark_stderr" > "$mark_redacted_tmp" 2>/dev/null; then
+                _redactor_exit=0
+            else
+                _redactor_exit=$?
+            fi
         fi
+        local _stderr_size
+        _stderr_size=$(wc -c < "$mark_stderr" 2>/dev/null | tr -d ' ')
+        _stderr_size="${_stderr_size:-0}"
+        if [ "$_redactor_exit" -eq 0 ] && [ -s "$mark_redacted_tmp" ]; then
+            cat "$mark_redacted_tmp" >&2
+        else
+            echo "WARNING: mark-false-positive stderr suppressed: redactor exit=${_redactor_exit} (${_stderr_size} bytes discarded)" >&2
+        fi
+        [ -n "$mark_redacted_tmp" ] && rm -f "$mark_redacted_tmp"
     fi
     rm -f "$mark_stderr"
 }

@@ -159,6 +159,7 @@ def load_issues(path: str, lenient: bool = False) -> List[Dict[str, Any]]:
         raise SystemExit(f"ERROR=Issue JSON dump at {path} is not a list")
     issues: List[Dict[str, Any]] = []
     skipped = 0
+    number_to_index: dict[int, int] = {}
     for index, item in enumerate(raw):
         if not isinstance(item, dict):
             skipped += 1
@@ -182,6 +183,16 @@ def load_issues(path: str, lenient: bool = False) -> List[Dict[str, Any]]:
                 file=sys.stderr,
             )
             continue
+        if parsed in number_to_index:
+            skipped += 1
+            prior_index = number_to_index[parsed]
+            print(
+                f"WARN load_issues: skipping duplicate parsed number {parsed} at index {index} "
+                f"(first occurrence at index {prior_index} retained)",
+                file=sys.stderr,
+            )
+            continue
+        number_to_index[parsed] = index
         issue["number"] = parsed
         issue["body"] = (issue.get("body") or "")[:BODY_CAP]
         issues.append(issue)
@@ -189,7 +200,7 @@ def load_issues(path: str, lenient: bool = False) -> List[Dict[str, Any]]:
     if not lenient and total > 0 and skipped / total > LOAD_ISSUES_SKIP_THRESHOLD:
         raise SystemExit(
             "ERROR=load_issues skipped "
-            f"{skipped}/{total} non-dict or malformed-number elements "
+            f"{skipped}/{total} non-dict, malformed-number, or duplicate-number elements "
             f"({skipped / total * 100:.1f}% > {LOAD_ISSUES_SKIP_THRESHOLD * 100:.0f}% threshold) "
             f"in {path}; pass --lenient to suppress this check"
         )

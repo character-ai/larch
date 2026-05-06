@@ -29,6 +29,10 @@ normalize_gemini_tool_names() {
         | sort -u
 }
 
+normalize_gemini_tools_from_raw() {
+    normalize_gemini_tool_names
+}
+
 parse_gemini_policy_deny_list() {
     local policy_file="$1"
     [[ -r "$policy_file" ]] || return 1
@@ -65,7 +69,7 @@ read_gemini_fixture_tools() {
     grep -v '^#' "$fixture_file" | grep -v '^$' | normalize_gemini_tool_names
 }
 
-discover_gemini_tools_from_probe() {
+discover_gemini_tools_raw_from_probe() {
     local probe_output="$1"
     [[ -r "$probe_output" ]] || return 0
     command -v jq >/dev/null 2>&1 || return 0
@@ -80,10 +84,15 @@ discover_gemini_tools_from_probe() {
         if type == "string" then .
         elif type == "object" then (.name? // .toolName? // .id? // empty)
         else empty end
-    ' "$probe_output" 2>/dev/null | normalize_gemini_tool_names
+    ' "$probe_output" 2>/dev/null \
+        | while IFS= read -r tool; do
+            tool=$(sanitize_gemini_tool_name "$tool")
+            [[ -n "$tool" ]] && printf '%s\n' "$tool"
+        done \
+        | sort -u
 }
 
-discover_gemini_tools_from_slash_command() {
+discover_gemini_tools_raw_from_slash_command() {
     local output tmp pid watchdog
     # Test seam: harnesses can shorten the discovery watchdog (default 5s)
     # to avoid paying full 5s on every "hung Gemini" stub. Production callers
@@ -121,7 +130,21 @@ discover_gemini_tools_from_slash_command() {
     fi
     printf '%s\n' "$output" \
         | sed -E 's/^[[:space:]]*[-*]?[[:space:]]*//; s/[[:space:]].*$//' \
-        | normalize_gemini_tool_names
+        | while IFS= read -r tool; do
+            tool=$(sanitize_gemini_tool_name "$tool")
+            [[ -n "$tool" ]] && printf '%s\n' "$tool"
+        done \
+        | sort -u
+}
+
+discover_gemini_tools_raw() {
+    local probe_output="$1"
+    local live_catalog
+    live_catalog=$(discover_gemini_tools_raw_from_probe "$probe_output" || true)
+    if [[ -z "$live_catalog" ]]; then
+        live_catalog=$(discover_gemini_tools_raw_from_slash_command || true)
+    fi
+    printf '%s\n' "$live_catalog"
 }
 
 gemini_tool_list_contains() {
@@ -131,14 +154,21 @@ gemini_tool_list_contains() {
 }
 
 gemini_tool_is_write_style() {
-    local lower kw
-    lower=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
+    local tokenized kw
+    tokenized=$(gemini_tool_tokenize_for_write_style "$1")
     for kw in write edit delete replace create modify save put post remove; do
-        if [[ "$lower" =~ (^|_)${kw}(_|$) ]]; then
+        if [[ "$tokenized" =~ (^| )${kw}( |$) ]]; then
             return 0
         fi
     done
     return 1
+}
+
+gemini_tool_tokenize_for_write_style() {
+    printf '%s' "$1" \
+        | sed -E 's/([[:lower:]])([[:upper:]])/\1 \2/g; s/[_\.-]/ /g' \
+        | tr '[:upper:]' '[:lower:]' \
+        | awk '{$1=$1; print}'
 }
 
 write_gemini_drift_artifact() {
@@ -185,7 +215,7 @@ check_gemini_tool_drift() {
     local policy_file="${LARCH_TEST_GEMINI_POLICY_PATH:-$SCRIPT_DIR/gemini-reviewer-policy.toml}"
     local fixture_file="${LARCH_TEST_GEMINI_FIXTURE_PATH:-$SCRIPT_DIR/gemini-known-tools.txt}"
     local artifact_dir="${ARTIFACT_DIR:-$PROBE_DIR}"
-    local artifact deny_list parser_sample fixture_lines fixture_trusted live_catalog expected observed unknowns write_style_uncovered
+    local artifact deny_list parser_sample fixture_lines fixture_trusted live_catalog_raw expected observed unknowns warning_unknowns write_style_uncovered strict_tool
 
     if ! mkdir -p "$artifact_dir" 2>/dev/null; then
         GEMINI_HEALTHY=false
@@ -217,14 +247,21 @@ check_gemini_tool_drift() {
         emit_gemini_tool_drift_warning "fixture checksum mismatch - fixture untrusted"
     fi
 
-    live_catalog=$(discover_gemini_tools_from_probe "$probe_output" || true)
-    if [[ -z "$live_catalog" ]]; then
-        live_catalog=$(discover_gemini_tools_from_slash_command || true)
-    fi
+    live_catalog_raw=$(discover_gemini_tools_raw "$probe_output" || true)
 
     expected=$(printf '%s\n%s\n' "$deny_list" "$fixture_lines" | normalize_gemini_tool_names)
-    observed=$(printf '%s\n%s\n' "$live_catalog" "$fixture_lines" | normalize_gemini_tool_names)
+    observed=$(printf '%s\n%s\n' "$live_catalog_raw" "$fixture_lines" | normalize_gemini_tools_from_raw)
     unknowns=$(comm -23 <(printf '%s\n' "$observed") <(printf '%s\n' "$expected") | grep -v '^$' || true)
+
+    warning_unknowns=""
+    while IFS= read -r tool; do
+        [[ -z "$tool" ]] && continue
+        strict_tool=$(printf '%s\n' "$tool" | normalize_gemini_tools_from_raw)
+        if [[ -z "$strict_tool" ]] || ! gemini_tool_list_contains "$expected" "$strict_tool"; then
+            warning_unknowns="${warning_unknowns}${warning_unknowns:+
+}$tool"
+        fi
+    done <<< "$live_catalog_raw"
 
     write_style_uncovered=""
     while IFS= read -r tool; do
@@ -233,20 +270,20 @@ check_gemini_tool_drift() {
             write_style_uncovered="${write_style_uncovered}${write_style_uncovered:+
 }$tool"
         fi
-    done <<< "$observed"
+    done <<< "$(printf '%s\n%s\n' "$live_catalog_raw" "$fixture_lines" | sort -u)"
 
-    if ! write_gemini_drift_artifact "$artifact" "$deny_list" "$expected" "$observed" "$unknowns" "$fixture_trusted" "$live_catalog" "$write_style_uncovered"; then
+    if ! write_gemini_drift_artifact "$artifact" "$deny_list" "$expected" "$observed" "$unknowns" "$fixture_trusted" "$live_catalog_raw" "$write_style_uncovered"; then
         GEMINI_HEALTHY=false
         set_probe_error gemini "gemini-tool-drift: failed to write artifact dir: $(sanitize_gemini_probe_text "$artifact_dir")"
         return
     fi
     echo "GEMINI_TOOL_DRIFT_ARTIFACT=$artifact"
 
-    if [[ -n "$unknowns" ]]; then
+    if [[ -n "$warning_unknowns" ]]; then
         while IFS= read -r tool; do
             [[ -z "$tool" ]] && continue
             emit_gemini_tool_drift_warning "unknown tool '$(sanitize_gemini_tool_name "$tool")' not in deny list"
-        done <<< "$unknowns"
+        done <<< "$warning_unknowns"
     fi
 
     if [[ -n "$write_style_uncovered" ]]; then
