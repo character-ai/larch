@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.48] - 2026-05-06
+
+### Changed
+
+- Fold the installed-version listing into `skills/upgrade-larch/scripts/upgrade-larch.sh` so `/upgrade-larch` makes a single Bash invocation instead of two. The script now prints `Installed larch plugin version:` followed by the `claude plugin list | grep -A2 'larch@larch-local'` block (best-effort with `|| true` so listing failures do not turn a successful install into a failed upgrade). Updates `skills/upgrade-larch/SKILL.md`, `skills/upgrade-larch/scripts/upgrade-larch.md`, and `docs/installation-and-setup.md` to describe the version-listing block as best-effort confirmation rather than a gate on the restart instruction.
+
 ## [15.12.47] - 2026-05-06
 
 ### Changed
