@@ -312,7 +312,6 @@ cmd_close() {
             --pr-url) pr_url="${2:?--pr-url requires a value}"; shift 2 ;;
             --close-class) close_class="${2:?--close-class requires a value}"; shift 2 ;;
             --mark-false-positive-if-keyword) mark_false_positive=true; shift ;;
-            --repo) shift 2 ;;
             *) echo "Unknown option for close: $1" >&2; exit 2 ;;
         esac
     done
