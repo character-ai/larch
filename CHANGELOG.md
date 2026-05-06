@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.34] - 2026-05-06
+
+### Changed
+
+- `docs/linting.md:130` `make test-launch-gemini-review` description refreshed to document launcher exit-code parity with `${OUTPUT}.done` (success: `0`/`0`; `.error` and empty `.response`: `1`/`1`; missing `jq`: `127`/`127`), now that `scripts/test-launch-gemini-review.sh` asserts the launcher process exit code alongside the `.done` sidecar value (introduced by the #1273 Sub-task A `fail_closed` change). Closes #1289.
+
 ## [15.12.33] - 2026-05-06
 
 ### Added
