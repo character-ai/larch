@@ -442,6 +442,55 @@ else
     fail_case "$name" "warning string drifted"
 fi
 
+name="case-input-output-same-path-rejected"
+input="$(make_input "$name")"
+mkdir -p "$TMP_ROOT/$name"
+stderr_file="$TMP_ROOT/$name/stderr.txt"
+input_before="$TMP_ROOT/$name/input-before.md"
+cp "$input" "$input_before"
+set +e
+bash "$HELPER" --input-file "$input" --output "$input" 2>"$stderr_file" >/dev/null
+status=$?
+set -e
+if assert_status "$name" "$status" 1 \
+    && assert_contains "$name" "$stderr_file" "resolve to the same path" \
+    && assert_byte_equal "$name" "$input_before" "$input"; then
+    pass_case "$name"
+fi
+
+name="case-excerpt-helper-non-numeric-max"
+mkdir -p "$TMP_ROOT/$name"
+body_file="$TMP_ROOT/$name/body.txt"
+printf '%s' "any body content" > "$body_file"
+stderr_file="$TMP_ROOT/$name/stderr.txt"
+python3 "$SCRIPT_DIR/oos-issue-cap-excerpt.py" "$body_file" not-a-number 2>"$stderr_file" >/dev/null && rc=0 || rc=$?
+if assert_status "$name" "$rc" 1 \
+    && assert_contains "$name" "$stderr_file" "MAX_CHARS must be a positive integer"; then
+    pass_case "$name"
+fi
+
+name="case-excerpt-helper-zero-max"
+mkdir -p "$TMP_ROOT/$name"
+body_file="$TMP_ROOT/$name/body.txt"
+printf '%s' "any body content" > "$body_file"
+stderr_file="$TMP_ROOT/$name/stderr.txt"
+python3 "$SCRIPT_DIR/oos-issue-cap-excerpt.py" "$body_file" 0 2>"$stderr_file" >/dev/null && rc=0 || rc=$?
+if assert_status "$name" "$rc" 1 \
+    && assert_contains "$name" "$stderr_file" "MAX_CHARS must be a positive integer"; then
+    pass_case "$name"
+fi
+
+name="case-excerpt-helper-negative-max"
+mkdir -p "$TMP_ROOT/$name"
+body_file="$TMP_ROOT/$name/body.txt"
+printf '%s' "any body content" > "$body_file"
+stderr_file="$TMP_ROOT/$name/stderr.txt"
+python3 "$SCRIPT_DIR/oos-issue-cap-excerpt.py" "$body_file" -1 2>"$stderr_file" >/dev/null && rc=0 || rc=$?
+if assert_status "$name" "$rc" 1 \
+    && assert_contains "$name" "$stderr_file" "MAX_CHARS must be a positive integer"; then
+    pass_case "$name"
+fi
+
 echo "=== test-oos-issue-cap: $PASS_COUNT passed, $FAIL_COUNT failed ==="
 if (( FAIL_COUNT > 0 )); then
     exit 1

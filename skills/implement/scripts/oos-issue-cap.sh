@@ -45,6 +45,14 @@ if [[ -z "$INPUT_FILE" ]]; then
 fi
 if [[ -z "$OUTPUT_FILE" ]]; then
     OUTPUT_FILE="$INPUT_FILE"
+elif [[ "$OUTPUT_PROVIDED" == 1 ]]; then
+    INPUT_REAL="$(cd "$(dirname "$INPUT_FILE")" 2>/dev/null && printf '%s/%s' "$(pwd -P)" "$(basename "$INPUT_FILE")" || printf '%s' "$INPUT_FILE")"
+    OUTPUT_REAL="$(cd "$(dirname "$OUTPUT_FILE")" 2>/dev/null && printf '%s/%s' "$(pwd -P)" "$(basename "$OUTPUT_FILE")" || printf '%s' "$OUTPUT_FILE")"
+    if [[ "$INPUT_REAL" == "$OUTPUT_REAL" ]]; then
+        echo "ERROR: --input-file and --output resolve to the same path: $INPUT_REAL" >&2
+        echo "       Omit --output to rewrite the input file in place (atomic via tmp+mv)." >&2
+        exit 1
+    fi
 fi
 
 WORK_DIR=""

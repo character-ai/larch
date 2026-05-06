@@ -13,7 +13,20 @@ def main() -> int:
         return 1
 
     path = sys.argv[1]
-    max_chars = int(sys.argv[2])
+    try:
+        max_chars = int(sys.argv[2])
+    except ValueError:
+        print(
+            f"ERROR: MAX_CHARS must be a positive integer (got: '{sys.argv[2]}')",
+            file=sys.stderr,
+        )
+        return 1
+    if max_chars < 1:
+        print(
+            f"ERROR: MAX_CHARS must be a positive integer (got: '{sys.argv[2]}')",
+            file=sys.stderr,
+        )
+        return 1
     with open(path, "r", encoding="utf-8", errors="replace") as body_file:
         text = body_file.read()
 
