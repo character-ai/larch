@@ -7,6 +7,11 @@
 # Sentinel files are the .done files created by run-external-agent.sh.
 # Progress (dots, status lines) goes to stderr.
 # Machine-parseable results (DONE/TIMEOUT lines) go to stdout.
+# Stdout grammar (one record per sentinel, in argv order):
+#   DONE <idx> <basename>: exit=<code>
+#   TIMEOUT <idx> <basename>
+# <idx> is the 1-based argv position of the sentinel; <basename> is
+# informational only. Callers must key on <idx>, not basename.
 # Always exits 0 for normal operation (including timeouts) — callers inspect stdout
 # to determine which reviewers completed vs timed out. Exits 1 only for usage errors.
 #
@@ -31,8 +36,13 @@ while [[ $# -gt 0 ]]; do
 done
 
 case "$TIMEOUT" in
-    ''|*[!0-9]*|0) echo "Error: --timeout value must be a positive integer, got '$TIMEOUT'" >&2; exit 1 ;;
+    ''|*[!0-9]*) echo "Error: --timeout value must be a positive integer, got '$TIMEOUT'" >&2; exit 1 ;;
 esac
+if (( 10#$TIMEOUT < 1 )); then
+    echo "Error: --timeout value must be a positive integer, got '$TIMEOUT'" >&2
+    exit 1
+fi
+TIMEOUT=$((10#$TIMEOUT))
 
 # Sentinel-poll interval. Default 5s for production callers (real reviewers
 # take many minutes; 5s noise is negligible). Test harnesses that wrap stub
@@ -45,6 +55,12 @@ esac
 case "$WAIT_POLL_INTERVAL" in
     *.*.*) echo "Error: WAIT_FOR_REVIEWERS_POLL_INTERVAL must be a positive number, got '$WAIT_POLL_INTERVAL'" >&2; exit 1 ;;
 esac
+if [[ "$WAIT_POLL_INTERVAL" != *.* ]]; then
+    if (( 10#$WAIT_POLL_INTERVAL < 1 )); then
+        echo "Error: WAIT_FOR_REVIEWERS_POLL_INTERVAL must be a positive number, got '$WAIT_POLL_INTERVAL'" >&2
+        exit 1
+    fi
+fi
 
 if [[ $# -eq 0 ]]; then
     echo "ERROR: at least one sentinel file path is required" >&2
@@ -125,9 +141,9 @@ for sentinel in "$@"; do
     name=$(basename "$sentinel" .done)
     if [ -f "$MARKER_DIR/$idx" ]; then
         exit_code=$(cat "$MARKER_DIR/$idx" 2>/dev/null)
-        echo "DONE $name: exit=$exit_code"
+        echo "DONE $idx $name: exit=$exit_code"
     else
-        echo "TIMEOUT $name"
+        echo "TIMEOUT $idx $name"
         timed_out=$((timed_out + 1))
     fi
 done

@@ -25,6 +25,8 @@ Set mental flags `codex_available` and `cursor_available` based on the output:
 
 **Note**: `*_AVAILABLE` is a pure install-state signal (binary exists on PATH). `*_HEALTHY` indicates whether the tool actually responded to a trivial prompt within the 60-second probe timeout. Callers must combine both to determine runtime usability.
 
+If `session-setup.sh` emits `WAIT_INFRA_ERROR=<reason>` alongside `*_AVAILABLE=true` and `*_HEALTHY=true`, the wait infrastructure failed before tool health could be classified. Treat the tool as available for monotonic session-state purposes, but regard its health as unknown and surface the infrastructure diagnostic rather than a per-tool failed-health warning.
+
 ## Runtime Timeout Fallback
 
 When processing reviewer results (after `wait-for-reviewers.sh` returns), check each reviewer's sentinel file exit code and output validity. If any of the following are true for a reviewer, set the corresponding `*_available` mental flag to `false` for **all subsequent steps in this session**:
@@ -32,7 +34,7 @@ When processing reviewer results (after `wait-for-reviewers.sh` returns), check 
 - Sentinel exit code is `124` (timeout — the common case when `run-external-agent.sh` enforces its timeout)
 - Sentinel exit code is non-zero (any other failure)
 - Output is empty/invalid after the retry-once procedure (per "Validating External Reviewer Output" below)
-- `wait-for-reviewers.sh` reports `TIMEOUT` for the reviewer (sentinel never appeared — wrapper killed externally)
+- `collect-agent-results.sh` reports `STATUS=SENTINEL_TIMEOUT` for the reviewer. Internally this is derived from `wait-for-reviewers.sh`'s indexed `TIMEOUT <idx> <basename>` grammar, correlated against the output-file argv order; the basename is informational only and is not a stable key.
 - `STATUS=NOT_SUBSTANTIVE` (output passed sentinel + non-empty + retry checks but failed substantive-content validation under `collect-agent-results.sh --substantive-validation` — same Claude-subagent-fallback behavior as a timeout, since the lane is unusable for synthesis; Phase 3 of umbrella #413, closes #416)
 
 Use one of two warning templates:
@@ -56,7 +58,7 @@ After all other tasks are done, collect and validate external reviewer outputs u
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout <seconds> [--write-health <path>] <output-file> [<output-file> ...]
 ```
 
-Only include output file paths for reviewers that were actually launched. For the Bash tool call, use `timeout: <seconds>000` (milliseconds) and **do NOT** set `run_in_background: true` — this call must block. The script internally calls `wait-for-reviewers.sh` to poll for `.done` sentinel files, validates each output, and retries once on empty output (using `.meta` files written by `run-external-agent.sh`).
+Only include output file paths for reviewers that were actually launched. For the Bash tool call, use `timeout: <seconds>000` (milliseconds) and **do NOT** set `run_in_background: true` — this call must block. The script internally calls `wait-for-reviewers.sh` to poll for `.done` sentinel files, validates each output, and retries once on empty output (using `.meta` files written by `run-external-agent.sh`). Wait records are correlated by 1-based argv index, so callers should pass output files in the same order they want result blocks interpreted.
 
 **Output**: The script emits structured `KEY=value` blocks on stdout (one block per reviewer, separated by blank lines):
 ```

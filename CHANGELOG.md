@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Replace the literal "Fifty-two assertions, fail-fast on first miss." line in `skills/umbrella/scripts/test-umbrella-emit-output-contract.md` with a structural description ("All `assert_contains` calls fail-fast on first miss; the total grows as new pinned literals are added.") so the doc cannot silently disagree with the harness's actual `assert_contains` total as new pinned literals (e.g. the recent `k*` family) are added. Documentation-only edit; no harness or CI behavior change. Closes #1215.
+- Harden the wait/collector/check-reviewers script family. `scripts/wait-for-reviewers.sh` now emits indexed stdout records (`DONE <idx> <basename>: exit=<code>`, `TIMEOUT <idx> <basename>`) and rejects zero-valued padded timeout / poll-interval forms (`00`, `000`), while `scripts/collect-agent-results.sh` correlates wait timeouts by argv index instead of basename and fails closed on missing/malformed retry `TIMEOUT=` metadata. `scripts/check-reviewers.sh` now distinguishes wait infrastructure errors with `WAIT_INFRA_ERROR=<reason>` and preserves available tools as `*_HEALTHY=true` instead of turning a wait failure into a per-tool health failure. Regression coverage and contracts updated across wait, collector retry, duplicate-basename, and probe-infrastructure harnesses plus `SECURITY.md`, `docs/linting.md`, and shared external-reviewer docs. Closes #1217, #1218, #1219, #1220.
 
 ## [15.12.12] - 2026-05-05
 

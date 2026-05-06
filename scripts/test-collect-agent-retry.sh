@@ -75,6 +75,32 @@ write_meta_body() {
     } > "${output}.meta"
 }
 
+write_meta_without_timeout() {
+    local output="$1"
+    local cmd_json="$2"
+    {
+        printf 'TOOL=cursor\n'
+        printf 'CAPTURE_STDOUT=false\n'
+        printf 'CAPTURE_STDOUT_ONLY=false\n'
+        printf 'OUTPUT_FILE=%s\n' "$output"
+        printf 'CMD_JSON=%s\n' "$cmd_json"
+    } > "${output}.meta"
+}
+
+write_meta_with_timeout() {
+    local output="$1"
+    local timeout="$2"
+    local cmd_json="$3"
+    {
+        printf 'TOOL=cursor\n'
+        printf 'TIMEOUT=%s\n' "$timeout"
+        printf 'CAPTURE_STDOUT=false\n'
+        printf 'CAPTURE_STDOUT_ONLY=false\n'
+        printf 'OUTPUT_FILE=%s\n' "$output"
+        printf 'CMD_JSON=%s\n' "$cmd_json"
+    } > "${output}.meta"
+}
+
 run_collector() {
     local shell_path="$1"
     local output="$2"
@@ -160,6 +186,24 @@ OUT_B="$TMPROOT/cursor-b.txt"
 write_empty_candidate "$OUT_B"
 write_meta "$OUT_B" "not-valid-json"
 assert_fail_closed "case-b" "$OUT_B" "Retry metadata invalid: malformed CMD_JSON"
+
+# Case B2: alphabetic TIMEOUT fails closed before retry queueing.
+OUT_B2="$TMPROOT/cursor-b2.txt"
+write_empty_candidate "$OUT_B2"
+write_meta_with_timeout "$OUT_B2" "abc" "$(json_array bash "$HELPER" --output "$OUT_B2")"
+assert_fail_closed "case-b2" "$OUT_B2" "Retry metadata invalid: TIMEOUT not a positive integer"
+
+# Case B3: padded zero TIMEOUT fails closed before retry queueing.
+OUT_B3="$TMPROOT/cursor-b3.txt"
+write_empty_candidate "$OUT_B3"
+write_meta_with_timeout "$OUT_B3" "00" "$(json_array bash "$HELPER" --output "$OUT_B3")"
+assert_fail_closed "case-b3" "$OUT_B3" "Retry metadata invalid: TIMEOUT not a positive integer"
+
+# Case B4: missing TIMEOUT fails closed before retry queueing.
+OUT_B4="$TMPROOT/cursor-b4.txt"
+write_empty_candidate "$OUT_B4"
+write_meta_without_timeout "$OUT_B4" "$(json_array bash "$HELPER" --output "$OUT_B4")"
+assert_fail_closed "case-b4" "$OUT_B4" "Retry metadata invalid: TIMEOUT missing"
 
 # Case C: stale CMD-only metadata is not accepted (TOOL is present, only CMD_JSON missing).
 OUT_C="$TMPROOT/cursor-c.txt"

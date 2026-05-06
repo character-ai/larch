@@ -41,6 +41,8 @@ assert_reject() {
 
 # R1/R2: case-statement rejections (literal 0, non-numeric).
 assert_reject "reject-timeout-zero" 'must be a positive integer' --timeout 0 "$TMPDIR/dummy.done"
+assert_reject "reject-timeout-00" "must be a positive integer, got '00'" --timeout 00 "$TMPDIR/dummy.done"
+assert_reject "reject-timeout-000" "must be a positive integer, got '000'" --timeout 000 "$TMPDIR/dummy.done"
 assert_reject "reject-timeout-abc" 'must be a positive integer' --timeout abc "$TMPDIR/dummy.done"
 
 # R3: line-26 ${2:?} requires-value rejection, not the case-statement.
@@ -55,7 +57,7 @@ R4_CODE=$?
 set -e
 [[ "$R4_CODE" -eq 0 ]] \
   || fail "R4: expected exit 0 on existing sentinel, got $R4_CODE"
-grep -q '^DONE done-ok: exit=0$' "$TMPDIR/r4.stdout" \
+grep -q '^DONE 1 done-ok: exit=0$' "$TMPDIR/r4.stdout" \
   || fail "R4: expected DONE stdout grammar"
 
 # R5: TIMEOUT grammar on missing sentinel under --timeout 1 (~1s wall-clock).
@@ -65,8 +67,46 @@ R5_CODE=$?
 set -e
 [[ "$R5_CODE" -eq 0 ]] \
   || fail "R5: expected exit 0 on normal timeout, got $R5_CODE"
-grep -q '^TIMEOUT never$' "$TMPDIR/r5.stdout" \
+grep -q '^TIMEOUT 1 never$' "$TMPDIR/r5.stdout" \
   || fail "R5: expected TIMEOUT stdout grammar"
+
+# R6: same basename in different directories remains distinguishable by index.
+R6_A="$TMPDIR/r6/a/same.done"
+R6_B="$TMPDIR/r6/b/same.done"
+mkdir -p "$(dirname "$R6_A")" "$(dirname "$R6_B")"
+printf '0\n' > "$R6_A"
+printf '7\n' > "$R6_B"
+set +e
+"$REPO_ROOT/scripts/wait-for-reviewers.sh" --timeout 5 "$R6_A" "$R6_B" >"$TMPDIR/r6.stdout" 2>"$TMPDIR/r6.stderr"
+R6_CODE=$?
+set -e
+[[ "$R6_CODE" -eq 0 ]] \
+  || fail "R6: expected exit 0 on duplicate basenames, got $R6_CODE"
+grep -q '^DONE 1 same: exit=0$' "$TMPDIR/r6.stdout" \
+  || fail "R6: expected first duplicate-basename DONE record to use index 1"
+grep -q '^DONE 2 same: exit=7$' "$TMPDIR/r6.stdout" \
+  || fail "R6: expected second duplicate-basename DONE record to use index 2"
+
+# R7/R8: poll interval integer zero forms are rejected, not treated as a busy loop.
+set +e
+WAIT_FOR_REVIEWERS_POLL_INTERVAL=00 \
+  "$REPO_ROOT/scripts/wait-for-reviewers.sh" --timeout 1 "$TMPDIR/never.done" >"$TMPDIR/r7.stdout" 2>"$TMPDIR/r7.stderr"
+R7_CODE=$?
+set -e
+[[ "$R7_CODE" -eq 1 ]] \
+  || fail "R7: expected exit 1 on WAIT_FOR_REVIEWERS_POLL_INTERVAL=00, got $R7_CODE"
+grep -q "^Error: WAIT_FOR_REVIEWERS_POLL_INTERVAL must be a positive number, got '00'" "$TMPDIR/r7.stderr" \
+  || fail "R7: expected poll-interval 00 rejection message"
+
+set +e
+WAIT_FOR_REVIEWERS_POLL_INTERVAL=000 \
+  "$REPO_ROOT/scripts/wait-for-reviewers.sh" --timeout 1 "$TMPDIR/never.done" >"$TMPDIR/r8.stdout" 2>"$TMPDIR/r8.stderr"
+R8_CODE=$?
+set -e
+[[ "$R8_CODE" -eq 1 ]] \
+  || fail "R8: expected exit 1 on WAIT_FOR_REVIEWERS_POLL_INTERVAL=000, got $R8_CODE"
+grep -q "^Error: WAIT_FOR_REVIEWERS_POLL_INTERVAL must be a positive number, got '000'" "$TMPDIR/r8.stderr" \
+  || fail "R8: expected poll-interval 000 rejection message"
 
 # C1: collector swallows nothing on --timeout 0.
 set +e
