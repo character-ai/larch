@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.22] - 2026-05-05
+
+### Changed
+
+- Make generated-artifact drift checks registry-driven so future generators can join CI with one reviewed row.
+- Preserve the existing code-reviewer drift guard as the initial registry entry.
+- Add focused offline coverage for registry parsing, validation, generator failures, and post-run drift. Closes #1237.
+
 ## [15.12.21] - 2026-05-05
 
 ### Changed
