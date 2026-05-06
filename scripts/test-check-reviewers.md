@@ -4,12 +4,13 @@ Regression test for `check-reviewers.sh` probe acceptance logic. Tests the case-
 
 ## What it tests
 
-Simulates the normalization pipeline (`tr -d '[:space:]' | tr '[:upper:]' '[:lower:]'`) and verifies healthy/unhealthy classification for representative fixture replies. It also stubs `gemini` on PATH and runs `check-reviewers.sh --probe --include-gemini` to cover JSON `.response` extraction, JSON `.error` failure, and the `MISSING_JQ` diagnostic path. It does NOT launch real Codex/Cursor probes.
+Simulates the normalization pipeline (`tr -d '[:space:]' | tr '[:upper:]' '[:lower:]'`) and verifies healthy/unhealthy classification for representative fixture replies. It also stubs `codex` / `cursor` with sleeping binaries for the wait-preflight infrastructure-error case and stubs `gemini` on PATH to run `check-reviewers.sh --probe --include-gemini` for JSON `.response` extraction, JSON `.error` failure, and the `MISSING_JQ` diagnostic path. It does NOT launch real Codex/Cursor probes.
 
 ## Fixture coverage
 
 - **Positive** (should be healthy): `OK`, `ok`, `Ok`, `oK`, whitespace-padded, newline-terminated
 - **Negative** (should be unhealthy): empty, `token`, `broken`, `NotOK`, `Sure OK`, `wok`, `okay`, `OK.`, auth errors, thinking-prefix responses
+- **Wait infrastructure**: invalid `WAIT_FOR_REVIEWERS_POLL_INTERVAL=00` emits `WAIT_INFRA_ERROR`, preserves available tools as `*_HEALTHY=true`, skips retry attempt 2, and launches no sleeping probe wrapper
 - **Gemini integration**: stubbed `{"response":"OK"}` succeeds; stubbed `{"error":"auth failed"}` fails; forced missing-`jq` fails closed.
 
 ## Wiring

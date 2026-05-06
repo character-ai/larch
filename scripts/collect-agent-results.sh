@@ -206,20 +206,24 @@ if [[ "$WAIT_RC" -ne 0 ]]; then
     exit 1
 fi
 
-# Parse wait output for TIMEOUT indicators (portable: newline-separated list)
-TIMED_OUT_SENTINELS=""
+# Parse wait output for TIMEOUT indicators (newline-separated indices).
+TIMED_OUT_INDEXES=""
 while IFS= read -r line; do
     if [[ "$line" == TIMEOUT\ * ]]; then
-        local_sentinel="${line#TIMEOUT }"
-        local_sentinel="${local_sentinel%%:*}"
-        TIMED_OUT_SENTINELS="${TIMED_OUT_SENTINELS}${local_sentinel}"$'\n'
+        # Grammar: "TIMEOUT <idx> <basename>" — extract <idx>.
+        rest="${line#TIMEOUT }"
+        local_idx="${rest%% *}"
+        case "$local_idx" in
+            ''|*[!0-9]*) continue ;;
+        esac
+        TIMED_OUT_INDEXES="${TIMED_OUT_INDEXES}${local_idx}"$'\n'
     fi
 done <<< "$WAIT_OUTPUT"
 
-# Check if a sentinel basename is in the timed-out list
-is_timed_out() {
+# Check if a wait argv index is in the timed-out list.
+is_index_timed_out() {
     local needle="$1"
-    echo "$TIMED_OUT_SENTINELS" | grep -qxF "$needle"
+    echo "$TIMED_OUT_INDEXES" | grep -qxF "$needle"
 }
 
 # --- Helper: sanitize a failure-reason string for embedding in pipe-delimited
@@ -293,9 +297,9 @@ for i in "${!OUTPUT_FILES[@]}"; do
     HEALTHY="true"
     FAILURE_REASON=""
 
-    # F1 fix: strip .done suffix to match wait-for-reviewers.sh output format
-    SENTINEL_BASE=$(basename "$SENTINEL" .done)
-    if is_timed_out "$SENTINEL_BASE"; then
+    # wait emits indexed records keyed by argv order. OUTPUT_FILES[$i]
+    # (0-based) corresponds to wait's idx (1-based) = i+1.
+    if is_index_timed_out "$((i + 1))"; then
         # wait-for-reviewers.sh reported TIMEOUT (sentinel never appeared)
         STATUS="SENTINEL_TIMEOUT"
         EXIT_CODE="124"
@@ -328,9 +332,25 @@ for i in "${!OUTPUT_FILES[@]}"; do
                     meta_val="${meta_line#*=}"
                     [[ "$meta_key" == "TIMEOUT" ]] && ORIG_TIMEOUT="$meta_val"
                 done < "$META"
+                _orig_invalid_reason=""
+                if [[ -z "$ORIG_TIMEOUT" ]]; then
+                    _orig_invalid_reason="Retry metadata invalid: TIMEOUT missing"
+                else
+                    case "$ORIG_TIMEOUT" in
+                        ''|*[!0-9]*) _orig_invalid_reason="Retry metadata invalid: TIMEOUT not a positive integer" ;;
+                        *) if (( 10#$ORIG_TIMEOUT < 1 )); then
+                               _orig_invalid_reason="Retry metadata invalid: TIMEOUT not a positive integer"
+                           fi ;;
+                    esac
+                fi
+                if [[ -n "$_orig_invalid_reason" ]]; then
+                    mark_retry_metadata_invalid "$i" "$OUTPUT" "$_orig_invalid_reason"
+                    continue
+                fi
+                ORIG_TIMEOUT=$((10#$ORIG_TIMEOUT))
                 RETRY_FILES+=("$OUTPUT")
                 RETRY_INDICES+=("$i")
-                RETRY_TIMEOUTS+=("${ORIG_TIMEOUT:-120}")
+                RETRY_TIMEOUTS+=("$ORIG_TIMEOUT")
             else
                 HEALTHY="false"  # no .meta → can't retry → mark unhealthy
             fi
@@ -372,6 +392,7 @@ if [[ ${#RETRY_FILES[@]} -gt 0 ]]; then
         META="${ORIG_OUTPUT}.meta"
         RETRY_OUTPUT="${ORIG_OUTPUT%.txt}-retry.txt"
         ORIG_TIMEOUT="${RETRY_TIMEOUTS[$j]}"
+        # ORIG_TIMEOUT was validated and 10#-normalized in the queueing block above.
         RETRY_WAIT=$(( ORIG_TIMEOUT + 60 ))
         if [[ $RETRY_WAIT -gt $MAX_RETRY_TIMEOUT ]]; then
             MAX_RETRY_TIMEOUT=$RETRY_WAIT
@@ -426,9 +447,26 @@ if [[ ${#RETRY_FILES[@]} -gt 0 ]]; then
             mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: malformed CMD_JSON"
             continue
         fi
+        _meta_invalid_reason=""
+        if [[ -z "$META_TIMEOUT" ]]; then
+            _meta_invalid_reason="Retry metadata invalid: TIMEOUT missing"
+        else
+            case "$META_TIMEOUT" in
+                ''|*[!0-9]*) _meta_invalid_reason="Retry metadata invalid: TIMEOUT not a positive integer" ;;
+                *) if (( 10#$META_TIMEOUT < 1 )); then
+                       _meta_invalid_reason="Retry metadata invalid: TIMEOUT not a positive integer"
+                   fi ;;
+            esac
+        fi
+        if [[ -n "$_meta_invalid_reason" ]]; then
+            IDX="${RETRY_INDICES[$j]}"
+            mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "$_meta_invalid_reason"
+            continue
+        fi
+        META_TIMEOUT=$((10#$META_TIMEOUT))
 
         # Build retry command: run-external-agent.sh with updated output path
-        RETRY_ARGS=(--tool "$META_TOOL" --output "$RETRY_OUTPUT" --timeout "${META_TIMEOUT:-120}")
+        RETRY_ARGS=(--tool "$META_TOOL" --output "$RETRY_OUTPUT" --timeout "$META_TIMEOUT")
         if [[ "$META_CAPTURE" == "true" ]]; then
             RETRY_ARGS+=(--capture-stdout)
         elif [[ "$META_CAPTURE_STDOUT_ONLY" == "true" ]]; then

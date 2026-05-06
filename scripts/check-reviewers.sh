@@ -154,6 +154,7 @@ start_probe() {
             exit 1
             ;;
     esac
+    printf '%s\n' "$!"
 }
 
 evaluate_probe() {
@@ -222,7 +223,34 @@ if [[ "$PROBE" == "true" ]]; then
         fi
     fi
 
-    for ((attempt=1; attempt<=MAX_ATTEMPTS; attempt++)); do
+    WAIT_PREFLIGHT_FAILED=false
+    WAIT_PREFLIGHT_ERROR=""
+    WAIT_USAGE_ERROR=false
+    WAIT_INFRA_ERROR_MSG=""
+    if [[ -n "${WAIT_FOR_REVIEWERS_POLL_INTERVAL:-}" ]]; then
+        case "${WAIT_FOR_REVIEWERS_POLL_INTERVAL}" in
+            ''|*[!0-9.]*|.|0|0.|0.0|0.00|0.000)
+                WAIT_PREFLIGHT_FAILED=true
+                WAIT_PREFLIGHT_ERROR="WAIT_FOR_REVIEWERS_POLL_INTERVAL must be a positive number, got '${WAIT_FOR_REVIEWERS_POLL_INTERVAL}'"
+                ;;
+            *.*.*)
+                WAIT_PREFLIGHT_FAILED=true
+                WAIT_PREFLIGHT_ERROR="WAIT_FOR_REVIEWERS_POLL_INTERVAL must be a positive number, got '${WAIT_FOR_REVIEWERS_POLL_INTERVAL}'"
+                ;;
+        esac
+        if [[ "$WAIT_PREFLIGHT_FAILED" == "false" && "${WAIT_FOR_REVIEWERS_POLL_INTERVAL}" != *.* ]]; then
+            if (( 10#${WAIT_FOR_REVIEWERS_POLL_INTERVAL} < 1 )); then
+                WAIT_PREFLIGHT_FAILED=true
+                WAIT_PREFLIGHT_ERROR="WAIT_FOR_REVIEWERS_POLL_INTERVAL must be a positive number, got '${WAIT_FOR_REVIEWERS_POLL_INTERVAL}'"
+            fi
+        fi
+    fi
+    if [[ "$WAIT_PREFLIGHT_FAILED" == "true" ]]; then
+        echo "Probe infrastructure error: $WAIT_PREFLIGHT_ERROR" >&2
+    fi
+
+    if [[ "$WAIT_PREFLIGHT_FAILED" == "false" ]]; then
+        for ((attempt=1; attempt<=MAX_ATTEMPTS; attempt++)); do
         TRY_TOOLS=()
         for tool in "${TOOLS[@]}"; do
             if [[ "$(get_available "$tool")" == "true" && "$(get_skip "$tool")" == "false" && "$(get_healthy "$tool")" == "false" ]]; then
@@ -238,14 +266,39 @@ if [[ "$PROBE" == "true" ]]; then
         fi
 
         SENTINELS=()
+        PROBE_PIDS=()
         for tool in "${TRY_TOOLS[@]}"; do
-            start_probe "$tool" "$attempt"
+            pid=$(start_probe "$tool" "$attempt")
+            PROBE_PIDS+=("$pid")
             SENTINELS+=("$(probe_output_path "$tool").done")
         done
 
+        WAIT_USAGE_ERROR=false
         if [[ ${#SENTINELS[@]} -gt 0 ]]; then
             "$SCRIPT_DIR/wait-for-reviewers.sh" --timeout 120 "${SENTINELS[@]}" \
-                >"$PROBE_DIR/wait-attempt${attempt}.log" 2>&1 || true
+                >"$PROBE_DIR/wait-attempt${attempt}.stdout" \
+                2>"$PROBE_DIR/wait-attempt${attempt}.stderr"
+            WAIT_RC=$?
+            {
+                cat "$PROBE_DIR/wait-attempt${attempt}.stdout"
+                echo "--- stderr ---"
+                cat "$PROBE_DIR/wait-attempt${attempt}.stderr"
+            } > "$PROBE_DIR/wait-attempt${attempt}.log"
+
+            if [[ $WAIT_RC -ne 0 ]]; then
+                WAIT_INFRA_ERROR_MSG="wait-for-reviewers.sh exited $WAIT_RC (see stderr for cause): $(head -c 200 "$PROBE_DIR/wait-attempt${attempt}.stderr" | tr '\n\r' '  ')"
+                echo "Probe infrastructure error: $WAIT_INFRA_ERROR_MSG" >&2
+                WAIT_USAGE_ERROR=true
+            fi
+        fi
+        if [[ "$WAIT_USAGE_ERROR" == "true" ]]; then
+            for _pid in "${PROBE_PIDS[@]}"; do
+                kill -TERM "$_pid" 2>/dev/null || true
+            done
+            for _pid in "${PROBE_PIDS[@]}"; do
+                wait "$_pid" 2>/dev/null || true
+            done
+            break
         fi
 
         for tool in "${TRY_TOOLS[@]}"; do
@@ -259,16 +312,29 @@ if [[ "$PROBE" == "true" ]]; then
             fi
         done
         [[ "$STILL_NEEDED" == "false" ]] && break
-    done
+        done
+    fi
 
-    for tool in "${TOOLS[@]}"; do
-        upper=$(printf '%s' "$tool" | tr '[:lower:]' '[:upper:]')
-        if [[ "$(get_available "$tool")" == "true" ]]; then
-            echo "${upper}_HEALTHY=$(get_healthy "$tool")"
-            err=$(get_probe_error "$tool")
-            [[ -n "$err" ]] && echo "${upper}_PROBE_ERROR=$err"
-        fi
-    done
+    if [[ "${WAIT_PREFLIGHT_FAILED:-false}" == "true" || "${WAIT_USAGE_ERROR:-false}" == "true" ]]; then
+        _wait_msg="${WAIT_PREFLIGHT_ERROR:-${WAIT_INFRA_ERROR_MSG:-unknown}}"
+        _wait_msg=$(printf '%s' "$_wait_msg" | tr '=' ' ' | tr '\n\r' '  ')
+        echo "WAIT_INFRA_ERROR=$_wait_msg"
+        for tool in "${TOOLS[@]}"; do
+            upper=$(printf '%s' "$tool" | tr '[:lower:]' '[:upper:]')
+            if [[ "$(get_available "$tool")" == "true" ]]; then
+                echo "${upper}_HEALTHY=true"
+            fi
+        done
+    else
+        for tool in "${TOOLS[@]}"; do
+            upper=$(printf '%s' "$tool" | tr '[:lower:]' '[:upper:]')
+            if [[ "$(get_available "$tool")" == "true" ]]; then
+                echo "${upper}_HEALTHY=$(get_healthy "$tool")"
+                err=$(get_probe_error "$tool")
+                [[ -n "$err" ]] && echo "${upper}_PROBE_ERROR=$err"
+            fi
+        done
+    fi
 fi
 
 exit 0

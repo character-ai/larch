@@ -51,6 +51,7 @@
 #   CODEX_PROBE_ERROR=<reason>  Output when --check-reviewers and CODEX_HEALTHY=false (explains why)
 #   CURSOR_PROBE_ERROR=<reason> Output when --check-reviewers and CURSOR_HEALTHY=false (explains why)
 #   GEMINI_PROBE_ERROR=<reason> Output when --check-reviewers --check-gemini-reviewer and GEMINI_HEALTHY=false
+#   WAIT_INFRA_ERROR=<reason>   Output when reviewer health probing could not classify tool health
 #
 # On preflight failure, outputs PREFLIGHT_ERROR=<message> and exits non-zero.
 #
@@ -313,6 +314,7 @@ if [[ "$CHECK_REVIEWERS" == "true" ]]; then
     PROBED_CODEX_PROBE_ERROR=""
     PROBED_CURSOR_PROBE_ERROR=""
     PROBED_GEMINI_PROBE_ERROR=""
+    PROBED_WAIT_INFRA_ERROR=""
     while IFS='=' read -r key value || [[ -n "$key" ]]; do
         [[ -z "$key" || "$key" =~ ^# ]] && continue
         case "$key" in
@@ -325,6 +327,7 @@ if [[ "$CHECK_REVIEWERS" == "true" ]]; then
             CODEX_PROBE_ERROR) PROBED_CODEX_PROBE_ERROR="$value" ;;
             CURSOR_PROBE_ERROR) PROBED_CURSOR_PROBE_ERROR="$value" ;;
             GEMINI_PROBE_ERROR) PROBED_GEMINI_PROBE_ERROR="$value" ;;
+            WAIT_INFRA_ERROR) PROBED_WAIT_INFRA_ERROR="$value" ;;
         esac
     done <<< "$REVIEWER_OUTPUT"
 
@@ -337,11 +340,19 @@ if [[ "$CHECK_REVIEWERS" == "true" ]]; then
     [[ -n "$PROBED_CODEX_PROBE_ERROR" ]] && echo "CODEX_PROBE_ERROR=$PROBED_CODEX_PROBE_ERROR"
     [[ -n "$PROBED_CURSOR_PROBE_ERROR" ]] && echo "CURSOR_PROBE_ERROR=$PROBED_CURSOR_PROBE_ERROR"
     [[ -n "$PROBED_GEMINI_PROBE_ERROR" ]] && echo "GEMINI_PROBE_ERROR=$PROBED_GEMINI_PROBE_ERROR"
+    [[ -n "$PROBED_WAIT_INFRA_ERROR" ]] && echo "WAIT_INFRA_ERROR=$PROBED_WAIT_INFRA_ERROR"
 
     # Emit prominent banners to stderr for failed health checks (must be here,
     # not in check-reviewers.sh, because session-setup captures its stdout+stderr
     # via 2>&1 — banners emitted there would be swallowed).
-    if [[ "$PROBED_CODEX_AVAILABLE" == "true" && "$PROBED_CODEX_HEALTHY" == "false" \
+    if [[ -n "$PROBED_WAIT_INFRA_ERROR" ]]; then
+        echo "═══════════════════════════════════════════════════════════" >&2
+        echo "  ⚠  PROBE INFRASTRUCTURE ERROR — wait-for-reviewers.sh failed" >&2
+        echo "     Cause: $PROBED_WAIT_INFRA_ERROR" >&2
+        echo "     Tool availability preserved; tool health unknown for this session." >&2
+        echo "═══════════════════════════════════════════════════════════" >&2
+    else
+        if [[ "$PROBED_CODEX_AVAILABLE" == "true" && "$PROBED_CODEX_HEALTHY" == "false" \
           && "$SKIP_CODEX_PROBE" == "false" ]]; then
         echo "═══════════════════════════════════════════════════════════" >&2
         echo "  ⚠  CODEX HEALTH CHECK FAILED — not responding" >&2
@@ -352,8 +363,8 @@ if [[ "$CHECK_REVIEWERS" == "true" ]]; then
         fi
         echo "     Will use Claude replacement for this session." >&2
         echo "═══════════════════════════════════════════════════════════" >&2
-    fi
-    if [[ "$PROBED_CURSOR_AVAILABLE" == "true" && "$PROBED_CURSOR_HEALTHY" == "false" \
+        fi
+        if [[ "$PROBED_CURSOR_AVAILABLE" == "true" && "$PROBED_CURSOR_HEALTHY" == "false" \
           && "$SKIP_CURSOR_PROBE" == "false" ]]; then
         echo "═══════════════════════════════════════════════════════════" >&2
         echo "  ⚠  CURSOR HEALTH CHECK FAILED — not responding" >&2
@@ -364,8 +375,8 @@ if [[ "$CHECK_REVIEWERS" == "true" ]]; then
         fi
         echo "     Will use Claude replacement for this session." >&2
         echo "═══════════════════════════════════════════════════════════" >&2
-    fi
-    if [[ "$CHECK_GEMINI_REVIEWER" == "true" && "$PROBED_GEMINI_AVAILABLE" == "true" && "$PROBED_GEMINI_HEALTHY" == "false" \
+        fi
+        if [[ "$CHECK_GEMINI_REVIEWER" == "true" && "$PROBED_GEMINI_AVAILABLE" == "true" && "$PROBED_GEMINI_HEALTHY" == "false" \
           && "$SKIP_GEMINI_PROBE" == "false" ]]; then
         echo "═══════════════════════════════════════════════════════════" >&2
         echo "  ⚠  GEMINI HEALTH CHECK FAILED — not responding" >&2
@@ -376,6 +387,7 @@ if [[ "$CHECK_REVIEWERS" == "true" ]]; then
         fi
         echo "     Skipping Gemini reviewer for this session." >&2
         echo "═══════════════════════════════════════════════════════════" >&2
+        fi
     fi
 
     # Use probed values for downstream sections

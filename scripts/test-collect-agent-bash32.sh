@@ -47,6 +47,8 @@ PASS=0
 FAIL=0
 SKIP=0
 FAILED=()
+TMPROOT="$(mktemp -d "${TMPDIR:-/tmp}/test-collect-agent-bash32-XXXXXX")"
+trap 'rm -rf "$TMPROOT"' EXIT
 
 ok()    { PASS=$((PASS + 1)); echo "  ok: $1"; }
 fail()  { FAIL=$((FAIL + 1)); FAILED+=("$1"); echo "  FAIL: $1" >&2; }
@@ -96,9 +98,6 @@ if [[ "$DYNAMIC_VULNERABLE" != "true" ]]; then
     skipm "case 2: bash $BASH_VER_DISPLAY at $SYSTEM_BASH (need < 4.4 for dynamic empty-VAL_ARGS check; bash 4.4+ fixed the hazard)"
     skipm "case 3: bash $BASH_VER_DISPLAY at $SYSTEM_BASH (need < 4.4 for --validation-mode forwarding pin)"
 else
-    TMPROOT="$(mktemp -d "${TMPDIR:-/tmp}/test-collect-agent-bash32-XXXXXX")"
-    trap 'rm -rf "$TMPROOT"' EXIT
-
     # --- Fixture for Case 2: ≥200 words substantive prose with file:line citation
     #
     # Matches `validate-research-output.sh` defaults (--min-words 200) so the
@@ -169,6 +168,34 @@ else
         ACTUAL_STATUS_B="$(echo "$OUT3b" | grep '^STATUS=' | head -1)"
         fail "case 3 negative: same fixture without --validation-mode did not reject (got: $ACTUAL_STATUS_B) — flag is not actually changing behavior"
     fi
+fi
+
+# --- Case 4: duplicate basenames must correlate by wait argv index ----------
+#
+# Two output files share basename `same.txt` in different directories. Only the
+# first has a `.done` sentinel. If the collector keys wait output by basename,
+# the timeout record for the second path can be applied to the first path.
+DIR_A="$(mktemp -d "$TMPROOT/cab32-coll-A.XXXXXX")"
+DIR_B="$(mktemp -d "$TMPROOT/cab32-coll-B.XXXXXX")"
+OUTPUT_A="$DIR_A/same.txt"
+OUTPUT_B="$DIR_B/same.txt"
+printf 'substantive A\n' > "$OUTPUT_A"
+printf 'substantive B\n' > "$OUTPUT_B"
+printf '0\n' > "$OUTPUT_A.done"
+
+WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.05 \
+  "$COLLECTOR" --timeout 1 "$OUTPUT_A" "$OUTPUT_B" >"$TMPROOT/case4.stdout" 2>"$TMPROOT/case4.stderr"
+
+if grep -A 4 -F "REVIEWER_FILE=$OUTPUT_A" "$TMPROOT/case4.stdout" | grep -q '^STATUS=OK$'; then
+    ok "case 4: duplicate basename OUTPUT_A remains STATUS=OK"
+else
+    fail "case 4: collector mis-correlated duplicate-basename OUTPUT_A"
+fi
+
+if grep -A 4 -F "REVIEWER_FILE=$OUTPUT_B" "$TMPROOT/case4.stdout" | grep -q '^STATUS=SENTINEL_TIMEOUT$'; then
+    ok "case 4: duplicate basename OUTPUT_B remains STATUS=SENTINEL_TIMEOUT"
+else
+    fail "case 4: collector mis-correlated duplicate-basename OUTPUT_B"
 fi
 
 echo ""

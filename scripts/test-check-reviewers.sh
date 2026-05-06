@@ -89,6 +89,44 @@ trap 'rm -rf "$TMPDIR"' EXIT
 STUB_BIN="$TMPDIR/bin"
 mkdir -p "$STUB_BIN"
 
+STUB_PROBE_PID_LOG="$TMPDIR/probe-pids.log"
+cat > "$STUB_BIN/codex" <<STUB
+#!/usr/bin/env bash
+printf '%s\n' "\$\$" >> "$STUB_PROBE_PID_LOG"
+sleep 30
+STUB
+chmod +x "$STUB_BIN/codex"
+
+cat > "$STUB_BIN/cursor" <<STUB
+#!/usr/bin/env bash
+printf '%s\n' "\$\$" >> "$STUB_PROBE_PID_LOG"
+sleep 30
+STUB
+chmod +x "$STUB_BIN/cursor"
+
+set +e
+PATH="$STUB_BIN:$PATH" LARCH_TEST_PROBE_SLEEP_SECONDS=0 WAIT_FOR_REVIEWERS_POLL_INTERVAL=00 \
+  "$REPO_ROOT/scripts/check-reviewers.sh" --probe >"$TMPDIR/infra.stdout" 2>"$TMPDIR/infra.stderr"
+infra_code=$?
+set -e
+[[ "$infra_code" -eq 0 ]] \
+  || fail "Expected probe infrastructure error path to exit 0, got $infra_code"
+infra_stdout=$(cat "$TMPDIR/infra.stdout")
+grep -q '^WAIT_INFRA_ERROR=' <<< "$infra_stdout" \
+  || fail "Expected WAIT_INFRA_ERROR on wait preflight failure"
+grep -q '^CODEX_HEALTHY=true$' <<< "$infra_stdout" \
+  || fail "Expected CODEX_HEALTHY=true preservation on wait preflight failure"
+grep -q '^CURSOR_HEALTHY=true$' <<< "$infra_stdout" \
+  || fail "Expected CURSOR_HEALTHY=true preservation on wait preflight failure"
+grep -q 'Probe infrastructure error:' "$TMPDIR/infra.stderr" \
+  || fail "Expected probe infrastructure diagnostic on stderr"
+if grep -q 'Retrying failed health probes (attempt 2 of 3' "$TMPDIR/infra.stderr"; then
+  fail "Expected wait preflight failure to skip retry attempts"
+fi
+if [[ -s "$STUB_PROBE_PID_LOG" ]]; then
+  fail "Expected wait preflight failure to launch no sleeping probe wrappers"
+fi
+
 PROBE_ARGV_LOG="$TMPDIR/gemini-probe-argv.log"
 cat > "$STUB_BIN/gemini" <<STUB
 #!/usr/bin/env bash

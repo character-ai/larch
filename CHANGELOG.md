@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.16] - 2026-05-05
+
+### Changed
+
+- Harden the wait/collector/check-reviewers script family. `scripts/wait-for-reviewers.sh` now emits indexed stdout records (`DONE <idx> <basename>: exit=<code>`, `TIMEOUT <idx> <basename>`) and rejects zero-valued padded timeout / poll-interval forms (`00`, `000`), while `scripts/collect-agent-results.sh` correlates wait timeouts by argv index instead of basename and fails closed on missing or malformed retry `TIMEOUT=` metadata. `scripts/check-reviewers.sh` now distinguishes wait infrastructure errors with `WAIT_INFRA_ERROR=<reason>` and preserves available tools as `*_HEALTHY=true` instead of turning a wait failure into a per-tool health failure. Regression coverage and contracts updated across wait, collector retry, duplicate-basename, and probe-infrastructure harnesses plus `SECURITY.md`, `docs/linting.md`, and shared external-reviewer docs. Closes #1217, #1218, #1219, #1220, #1222.
+
 ## [15.12.15] - 2026-05-05
 
 ### Changed
