@@ -65,7 +65,7 @@ bash scripts/test-preflight-args.sh
 
 ## Makefile wiring
 
-`make test-preflight-args` runs the dedicated harness and is included in `test-harnesses-5`.
+`make test-preflight-args` runs the dedicated harness and is included in `the test-harnesses-N shard partition`.
 
 ## Edit-in-sync
 

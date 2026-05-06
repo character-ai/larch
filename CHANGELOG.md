@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.40] - 2026-05-06
+
+### Changed
+
+- Rebalance CI test-harness shards to ~20s each (closes #1294). Three slow harnesses paid hardcoded sleeps that the existing fake-clock pattern had not yet reached; one non-sleep harness was hot-looping awk forks inside its union-find. Speedups (production defaults preserved): `test-collect-agent-retry` exports `WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.05` (27s → 2.5s); `validate-citations.sh` reads `__VC_BUDGET_POLL_INTERVAL` (default `1`) for its budget-bounded child-PID poll loop, and `test-validate-citations.sh` overrides it to `0.05` (15s → 3.8s); `lib-gemini-tool-drift.sh` reads `LARCH_GEMINI_TOOL_DISCOVERY_TIMEOUT` (default `5`) for the slash-command discovery watchdog, and `test-check-reviewers.sh` overrides it to `1` (41s → 14s); `skills/implement/scripts/oos-file-conflict-deps.sh` replaces its file-backed union-find parent array with an in-memory bash array (~5500 awk forks eliminated; 26s → 15s). All three poll-interval validators now reject padded-zero forms (`00`, `000`, `00.0`).
+- Reshard `Makefile` `test-harnesses-N` from 5 to 6 cells via LPT bin-packing, with `.github/workflows/ci.yaml` matrix updated in lockstep. `scripts/test-harness-shards-coverage.sh` is now shard-count-agnostic — `extract_shard_prereqs` discovers `test-harnesses-N` rules from the Makefile, and the continuation-line regex matches any numeric shard. Self-test fixture (still 5 shards) keeps working unchanged. `docs/linting.md` documents the new shard count, refreshed rebalance procedure, and updated branch-protection migration list (now includes `test-harnesses (6)`).
+
 ## [15.12.39] - 2026-05-05
 
 ### Fixed

@@ -189,6 +189,7 @@ Linux no-setsid branch via Test 21 on current Ubuntu CI.
 | `__VC_SKIP_DNS` | skip real DNS resolution |
 | `__VC_STUB_RESOLVE` | semicolon-separated `host=ip` pairs for fake resolution |
 | `__VC_DRY_RUN` | exit after extraction; print extracted lists to stderr |
+| `__VC_BUDGET_POLL_INTERVAL` | child-PID poll cadence for the budget-bounded `wait` loop. Default `1` (second) keeps progress chatter human-readable; harnesses override to `0.05` to avoid paying full-second wakeups per fetch. Validated as a positive number (int or fractional). |
 | `__VC_SETSID_DONE` | internal marker for the Linux `setsid` re-exec — set just before `exec setsid` so the re-exec'd child inherits it (idempotency guard preventing infinite recursion) AND the budget-exhaustion handler reads it as the "running in dedicated session" gate that authorizes `kill -- -$$` on Linux |
 
 These are NOT documented in `--help` and MUST NOT be relied upon by

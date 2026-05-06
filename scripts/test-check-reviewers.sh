@@ -16,6 +16,12 @@ export RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05
 # the floor when the run-external-agent.sh polling above is already sub-second.
 # Drop it to 0.05s for stub-binary tests.
 export WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.05
+# lib-gemini-tool-drift.sh's slash-command discovery has a 5s default watchdog
+# for the live `gemini /tools` call. The "hung" stub case below exercises that
+# watchdog deliberately (single test); shrinking the watchdog to 1s is safe
+# because the non-hung gemini stub completes printf-instantly. Production
+# callers (real Gemini) inherit the 5s default. See scripts/lib-gemini-tool-drift.md.
+export LARCH_GEMINI_TOOL_DISCOVERY_TIMEOUT=1
 
 FAIL=0
 

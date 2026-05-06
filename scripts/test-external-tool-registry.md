@@ -17,7 +17,7 @@ Pins the canonical external-tool taxonomy (`codex cursor gemini`), implementer-c
 
 ## Makefile wiring
 
-Target: `make test-external-tool-registry`. A `make lint` prerequisite via `test-harnesses-5`.
+Target: `make test-external-tool-registry`. A `make lint` prerequisite via `the test-harnesses-N shard partition`.
 
 ## Edit-in-sync
 

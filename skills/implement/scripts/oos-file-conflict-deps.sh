@@ -211,26 +211,28 @@ path_conflicts() {
     return 1
 }
 
-parent_file="$WORK_DIR/parents"
-: > "$parent_file"
+# In-memory union-find. The parent array is bounded by `items_total` (driven
+# by the OOS batch size, which the per-run cap keeps small) so an indexed bash
+# array is well within practical limits and replaces ~3 awk forks per find /
+# set call. The previous file-backed implementation cost ~5500 awk invocations
+# on a 22-item chain, dominating wall-clock; algorithmically equivalent here.
+declare -a __parent_arr
 for ((i = 1; i <= items_total; i++)); do
-    printf '%s\t%s\n' "$i" "$i" >> "$parent_file"
+    __parent_arr[i]="$i"
 done
 
 find_parent() {
-    local node="$1" parent
-    parent="$(awk -F'\t' -v n="$node" '$1 == n { print $2 }' "$parent_file")"
+    local node="$1" parent="${__parent_arr[$1]}"
     while [[ "$parent" != "$node" ]]; do
         node="$parent"
-        parent="$(awk -F'\t' -v n="$node" '$1 == n { print $2 }' "$parent_file")"
+        parent="${__parent_arr[$node]}"
     done
     printf '%s\n' "$parent"
 }
 
 set_parent() {
     local node="$1" parent="$2"
-    awk -F'\t' -v n="$node" -v p="$parent" 'BEGIN { OFS="\t" } $1 == n { $2=p } { print }' "$parent_file" > "$parent_file.tmp"
-    mv "$parent_file.tmp" "$parent_file"
+    __parent_arr[node]="$parent"
 }
 
 union_nodes() {

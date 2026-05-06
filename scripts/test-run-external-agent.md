@@ -13,7 +13,7 @@ Regression harness for `scripts/run-external-agent.sh`; the primary behavioral c
 
 ## Wiring
 
-Target: `make test-run-external-agent`. Included in `make lint` via the `test-harnesses-5` shard. Exit 0 on all-pass, exit 1 on any failure.
+Target: `make test-run-external-agent`. Included in `make lint` via the `the test-harnesses-N shard partition` shard. Exit 0 on all-pass, exit 1 on any failure.
 
 ## Edit-in-sync
 

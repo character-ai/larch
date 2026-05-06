@@ -64,4 +64,4 @@ Per-tool model defaults stay in `agent-model-args.sh` for Codex and Cursor; for 
 
 ## CI wiring
 
-Target: `make test-external-tool-registry`. A `make lint` prerequisite via `test-harnesses-5`. Also documented in `docs/linting.md`.
+Target: `make test-external-tool-registry`. A `make lint` prerequisite via `the test-harnesses-N shard partition`. Also documented in `docs/linting.md`.

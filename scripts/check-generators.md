@@ -28,7 +28,7 @@ The script is Bash 3.2-compatible: duplicate detection uses plain arrays and lin
 
 ## Makefile Wiring
 
-Target: `make test-check-generators`. A `make lint` prerequisite via `test-harnesses-5`; `test-harness-shards-coverage` must remain the first prerequisite of that shard. See `scripts/test-harness-shards-coverage.md` for the shard invariant.
+Target: `make test-check-generators`. A `make lint` prerequisite via `the test-harnesses-N shard partition`; `test-harness-shards-coverage` must remain the first prerequisite of that shard. See `scripts/test-harness-shards-coverage.md` for the shard invariant.
 
 ## Edit In Sync
 

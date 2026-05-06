@@ -15,7 +15,7 @@
 
 **Makefile wiring**:
 - `make test-run-external-agent-args`.
-- `make test-harnesses-5`.
+- `make the test-harnesses-N shard partition`.
 
 **Edit-in-sync**:
 - `scripts/run-external-agent.sh` — argument-validation behavior under test.
