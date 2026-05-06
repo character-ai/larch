@@ -45,6 +45,6 @@ AUDIT_TS=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo "?")
 AUDIT_PARENT=$(ps -o comm= -p "$PPID" 2>/dev/null | tr -d '\n' || true)
 AUDIT_PARENT="${AUDIT_PARENT//[[:space:]]/_}"
 : "${AUDIT_PARENT:=?}"
-{ printf '%s pid=%s ppid=%s parent=%s dir=%s\n' "$AUDIT_TS" "$$" "$PPID" "$AUDIT_PARENT" "$DIR" >> "$AUDIT_LOG" && chmod 0644 "$AUDIT_LOG" 2>/dev/null; } 2>/dev/null || true
+{ printf '%s pid=%s ppid=%s parent=%s dir=%s\n' "$AUDIT_TS" "$$" "$PPID" "$AUDIT_PARENT" "$DIR" >> "$AUDIT_LOG"; } 2>/dev/null || true
 
 rm -rf "$DIR"
