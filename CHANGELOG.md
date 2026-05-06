@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.21] - 2026-05-05
+
+### Changed
+
+- Reduce documentation drift by anchoring topology summaries to the canonical phase and reviewer docs (`docs/agents.md`, `docs/collaborative-sketches.md`, `docs/external-reviewers.md`, `docs/installation-and-setup.md`, `docs/review-agents.md`, `docs/skills.md`, `docs/workflow-lifecycle.md`, `README.md`).
+- Preserve quick-mode marker literals, voting thresholds, and security/trust-boundary counts where the number is the tested or normative contract.
+- Keep this PR limited to consumer-facing documentation prose; the future P2c lint rule remains out of scope. Closes #1236.
+
 ## [15.12.20] - 2026-05-05
 
 ### Added
