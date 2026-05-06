@@ -21,7 +21,7 @@
 #                                    posting the DONE comment; call 2 succeeds;
 #                                    combined log shows TWO comment|42|DONE lines
 #                                    (regression guard for documented behavior).
-#   8. --repo silently ignored.
+#   8. --repo rejected with exit 2 (Unknown option).
 #   9-16. Legacy false-positive keyword-flag coverage: keyword match, no match,
 #          default-off, close failure skip, idempotent no-op, already-closed
 #          path, marker failure warning, and non-repo cwd path resolution.
@@ -398,19 +398,17 @@ combined_log=$(cat "$TMPROOT/f7a/gh-invocations.log" "$TMPROOT/f7b/gh-invocation
 done_comment_count=$(printf '%s\n' "$combined_log" | grep -c '^comment|42|DONE$' || true)
 assert_eq "[f7] DONE comment posted exactly twice across retry sequence" 2 "$done_comment_count"
 
-# --- Fixture 8: --repo silently ignored ----------------------------------
-# The LLM occasionally passes --repo to close (the script resolves repo
-# internally via gh repo view). Verify --repo is silently consumed without
-# affecting stdout or close behavior.
+# --- Fixture 8: --repo rejected ------------------------------------------
+# close resolves repo internally via gh repo view; caller-supplied --repo is
+# not accepted and must fail before posting a comment or closing the issue.
 echo ""
-echo "=== 8: close with spurious --repo (silently ignored) ==="
+echo "=== 8: close with spurious --repo (rejected) ==="
 run_case "f8" "OPEN" "0" "0" --issue 42 --comment DONE --repo "owner/repo"
-assert_eq "[f8] exit code" 0 "$RC"
-assert_contains "$CLOSE_STDOUT" "CLOSED=true" "[f8] stdout has CLOSED=true"
-assert_not_contains "$CLOSE_STDOUT" "CLOSED=false" "[f8] stdout has no CLOSED=false"
+assert_eq "[f8] exit code" 2 "$RC"
+assert_contains "$CLOSE_STDERR" "Unknown option for close: --repo" "[f8] stderr rejects --repo"
 log8=$(cat "$TMPROOT/f8/gh-invocations.log")
-assert_contains "$log8" "comment|42|DONE" "[f8] DONE comment posted"
-assert_contains "$log8" "close|42" "[f8] gh issue close invoked"
+assert_not_contains "$log8" "comment|42|DONE" "[f8] DONE comment not posted"
+assert_not_contains "$log8" "close|42" "[f8] gh issue close not invoked"
 
 # --- Fixture 9: Flag-on + keyword match -> marker called once -------------
 echo ""
