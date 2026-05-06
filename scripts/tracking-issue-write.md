@@ -91,25 +91,25 @@ Truncation is byte-length based. Multibyte UTF-8 splitting is tolerated because 
 
 Tracking issues carry a machine-owned title-prefix lifecycle: `[IN PROGRESS]` during active work, `[DONE]` after the tracking run completes, `[STALLED]` when a run fails without closing. Each prefix is followed by a single space before the rest of the title (e.g., `[IN PROGRESS] Fix login bug`). `rename` is the single mutator for these prefixes; every consumer MUST use this subcommand rather than inlining `gh issue edit --title`.
 
-The optional round-trip marker is a second managed prefix that appears after the lifecycle prefix: `[IN PROGRESS] [ROUND-TRIP] Fix login bug`. The token grammar is strict ASCII: exactly `[ROUND-TRIP] `, uppercase, ASCII hyphen, and one trailing space. Lowercase variants, Unicode homoglyphs, or `[ROUND-TRIP]foo` without the trailing separator are user content, not managed markers.
+The optional round-trip marker is a second managed prefix that appears after the lifecycle prefix: `[IN PROGRESS] [ROUND-TRIP] Fix login bug`. The token grammar is strict ASCII: exactly <code>[ROUND-TRIP] </code>, uppercase, ASCII hyphen, and one trailing space. Lowercase variants, Unicode homoglyphs, or `[ROUND-TRIP]foo` without the trailing separator are user content, not managed markers.
 
 ### Algorithm
 
 1. Fetch the current title via `gh issue view --json title`.
 2. Strip **exactly one** leading lifecycle prefix using `strip_lifecycle_prefix` (anchored at start; one of `[IN PROGRESS]`, `[DONE]`, or `[STALLED]` followed by a single space). Stacked lifecycle prefixes beyond the first are preserved — the helper does not "heal" corrupted titles because the healing policy is ambiguous.
-3. Check whether the lifecycle-stripped title begins with the exact `[ROUND-TRIP] ` token using `has_round_trip_prefix`.
+3. Check whether the lifecycle-stripped title begins with the exact <code>[ROUND-TRIP] </code> token using `has_round_trip_prefix`.
 4. Strip at most one exact round-trip token using `strip_round_trip_prefix`; the remainder is the user tail.
-5. Compose the new title as target lifecycle prefix + (`[ROUND-TRIP] ` if an existing exact marker was present or `--round-trip true` was passed) + user tail. Passing `--round-trip false` does not remove an existing marker; preservation is sticky-add-only. Omitting `--round-trip` behaves like false for adding, but still preserves an existing marker if one is already present.
+5. Compose the new title as target lifecycle prefix + (<code>[ROUND-TRIP] </code> if an existing exact marker was present or `--round-trip true` was passed) + user tail. Passing `--round-trip false` does not remove an existing marker; preservation is sticky-add-only. Omitting `--round-trip` behaves like false for adding, but still preserves an existing marker if one is already present.
 6. Pipe the prospective new title through `scripts/redact-secrets.sh` (same posture as `create-issue`).
 7. Truncate to 256 chars if the result exceeds GitHub's title limit. Truncation uses bash string semantics (`${#var}` + slicing), which matches GitHub's character-based 256 limit under UTF-8 locales. Both managed prefixes are preserved at the head; only the user tail is sliced. The round-trip token is 13 ASCII characters including the trailing space.
 8. If the resulting title equals the current canonical title, emit `RENAMED=false` and skip the `gh` call.
 9. Otherwise call `gh issue edit --title` and emit `RENAMED=true`.
 
-When `--round-trip` was passed, emit `ROUND_TRIP_APPLIED=true` iff the final title, after one lifecycle prefix strip, begins with the exact `[ROUND-TRIP] ` token. Do not emit this key on omit-flag call paths; `find-lock-issue.sh` depends on the older stdout shape.
+When `--round-trip` was passed, emit `ROUND_TRIP_APPLIED=true` iff the final title, after one lifecycle prefix strip, begins with the exact <code>[ROUND-TRIP] </code> token. Do not emit this key on omit-flag call paths; `find-lock-issue.sh` depends on the older stdout shape.
 
 ### Idempotency
 
-Re-calling `rename --state X --round-trip Y` on an issue already at state X is a no-op (`RENAMED=false`) when the leading round-trip marker state already matches the desired sticky-add result. Existing `[ROUND-TRIP] ` markers are preserved even when `--round-trip false` is passed. This matters for resumed `/implement` sessions and for the bash drivers' EXIT-trap paths (the trap may fire after a successful explicit rename-to-done; the re-rename to `[STALLED]` is a no-op because the guard flag prevents it, but even without that the helper would emit `RENAMED=false` for an already-stalled title with matching marker state).
+Re-calling `rename --state X --round-trip Y` on an issue already at state X is a no-op (`RENAMED=false`) when the leading round-trip marker state already matches the desired sticky-add result. Existing <code>[ROUND-TRIP] </code> markers are preserved even when `--round-trip false` is passed. This matters for resumed `/implement` sessions and for the bash drivers' EXIT-trap paths (the trap may fire after a successful explicit rename-to-done; the re-rename to `[STALLED]` is a no-op because the guard flag prevents it, but even without that the helper would emit `RENAMED=false` for an already-stalled title with matching marker state).
 
 Adversarial cases are intentional: `[IN PROGRESS] [round-trip] foo` remains lowercase user content and `ROUND_TRIP_APPLIED=false` unless a canonical marker is added; `[IN PROGRESS] [ROUND-TRIP]foo` is missing the managed marker's trailing space, so `--round-trip true` produces `[STATE] [ROUND-TRIP] [ROUND-TRIP]foo`; a redactable token in the user tail is redacted before comparison and truncation; a mid-string `[ROUND-TRIP]` occurrence does not count for `ROUND_TRIP_APPLIED`.
 

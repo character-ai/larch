@@ -1,10 +1,10 @@
 # scripts/round-trip-detect.sh — contract
 
-`scripts/round-trip-detect.sh` is the pure detector for the managed `[ROUND-TRIP] ` title marker. Primary callers are `/implement` Step 0.5, Step 12a/12b, `scripts/implement-finalize.sh` Step 18, `/fix-issue` Step 3/6, and `skills/fix-issue/scripts/finalize-umbrella.sh`.
+`scripts/round-trip-detect.sh` is the pure detector for the managed <code>[ROUND-TRIP] </code> title marker. Primary callers are `/implement` Step 0.5, Step 12a/12b, `scripts/implement-finalize.sh` Step 18, `/fix-issue` Step 3/6, and `skills/fix-issue/scripts/finalize-umbrella.sh`.
 
 ## Contract
 
-The title marker grammar is strict ASCII and is documented canonically in `scripts/tracking-issue-write.md`: exactly `[ROUND-TRIP] `, with uppercase text, ASCII hyphen, and one trailing space. This detector does not mutate titles; it emits only `ROUND_TRIP=true` or `ROUND_TRIP=false` on stdout and always exits 0. Any read or invocation error emits `ROUND_TRIP=false` plus a stderr warning so callers degrade safely.
+The title marker grammar is strict ASCII and is documented canonically in `scripts/tracking-issue-write.md`: exactly <code>[ROUND-TRIP] </code>, with uppercase text, ASCII hyphen, and one trailing space. This detector does not mutate titles; it emits only `ROUND_TRIP=true` or `ROUND_TRIP=false` on stdout and always exits 0. Any read or invocation error emits `ROUND_TRIP=false` plus a stderr warning so callers degrade safely.
 
 Inputs are concatenated with newlines. `--text-file PATH` is the required transport for issue bodies, PR bodies, and feature descriptions because those can be large or sensitive; callers should write temp files under their run tmpdir and clean them with their existing traps. `--text-string STR` is restricted to short trusted strings such as issue titles. `--stdin` is available for tests or callers with a pipe-friendly text source. The detector performs case-insensitive body matching with POSIX explicit boundaries, not `\b`, so GNU/BSD grep behavior remains aligned.
 
