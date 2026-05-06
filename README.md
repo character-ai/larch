@@ -12,6 +12,7 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
   - [Skills](#skills)
   - [Aliases](#aliases)
   - [Review Agents](docs/review-agents.md) — the unified `code-reviewer` archetype
+  - [Topology Projection](docs/topology.md) — stable anchors for cross-doc topology counts
   - [Linting](docs/linting.md) — linters, Makefile targets, halt-rate regression harness
 - **Architecture and workflow**
   - [Workflow Lifecycle](docs/workflow-lifecycle.md) — how skills compose end-to-end
@@ -23,7 +24,7 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
 
 ## Features
 
-- **[Multi-agent design planning, reviews, and adjudication](docs/collaborative-sketches.md)** — the configured sketch topology diverges, the dialectic judge panel resolves contested decisions, and the validation panel reviews the final plan.
+- **[Multi-agent design planning, reviews, and adjudication](docs/collaborative-sketches.md)** — the [configured sketch topology](docs/topology.md#design-sketch-regular-slots) diverges, the [dialectic judge panel](docs/topology.md#design-dialectic-judge-panel) resolves contested decisions, and the [validation panel](docs/topology.md#design-plan-review-cursor-archetypes) reviews the final plan.
 - **[Voting-based review resolution](docs/voting-process.md)** — The YES/NO/EXONERATE panel protocol adjudicates plan and code review findings.
 - **[Reviewer competition scoring](docs/point-competition.md)** — Reviewers earn points based on finding quality; a scoreboard tracks accepted, neutral, exonerated, and rejected findings.
 - **[End-to-end automation](docs/workflow-lifecycle.md)** — From feature design through PR creation and initial CI wait in one command; `--merge` adds the CI+rebase+merge loop, local cleanup, and main verification. Each run also posts a single Slack status message about its tracking issue near the end (✅ closed / 📝 PR opened / 🧭 design complete / ❌ blocked / ❓ user input needed) when Slack is configured — opt out with `--no-slack`. `--draft` creates a draft PR and keeps the branch for further iteration; `--design-only` publishes the design artifacts to the tracking issue and stops before implementation.
@@ -59,7 +60,7 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
       <td><a href="docs/skills.md#design"><code>/design</code></a></td>
       <td><code>[--auto] [--quick] [--subagent] [--session-env &lt;path&gt;] &lt;feature description&gt;</code></td>
     </tr>
-    <tr><td colspan="2">Design an implementation plan with the configured sketch topology, dialectic adjudication, and the validation panel described in the design workflow.</td></tr>
+    <tr><td colspan="2">Design an implementation plan with the <a href="docs/topology.md#design-sketch-regular-slots">configured sketch topology</a>, dialectic adjudication, and the <a href="docs/topology.md#design-plan-review-cursor-archetypes">validation panel</a> described in the design workflow.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#fix-issue"><code>/fix-issue</code></a></td>
@@ -89,7 +90,7 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
       <td><a href="docs/skills.md#research"><code>/research</code></a></td>
       <td><code>[--no-issue] &lt;research question or topic&gt;</code></td>
     </tr>
-    <tr><td colspan="2">Collaborative best-effort read-only research with the fixed-shape topology documented in the research skill — planner pre-pass, Codex-first research lanes by angle, and the validation panel. Every run includes unconditional citation validation (HEAD-fetches cited URLs under SSRF guards, validates DOIs, spot-checks file:line refs) emitted as a fail-soft PASS / FAIL / UNKNOWN ledger spliced into the final report.</td></tr>
+    <tr><td colspan="2">Collaborative best-effort read-only research with the fixed-shape topology documented in the research skill — planner pre-pass, <a href="docs/topology.md#research-lanes">Codex-first research lanes</a> by angle, and the <a href="docs/topology.md#research-validation-panel">validation panel</a>. Every run includes unconditional citation validation (HEAD-fetches cited URLs under SSRF guards, validates DOIs, spot-checks file:line refs) emitted as a fail-soft PASS / FAIL / UNKNOWN ledger spliced into the final report.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#review"><code>/review</code></a></td>

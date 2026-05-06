@@ -1,0 +1,10 @@
+design.sketch.regular_slots	8	4 Cursor + 4 Codex	skills/design/references/sketch-launch.md
+design.sketch.quick_slots	2	1 Cursor-Generic + 1 Codex-Generic	skills/design/references/flags.md
+design.plan_review.cursor_archetypes	4 Cursor	Architecture/Standards Edge-cases/Failure-modes Innovation/Exploration Pragmatism/Safety	skills/design/references/plan-review.md
+design.plan_review.codex_archetypes	4 Codex	Architecture/Standards Edge-cases/Failure-modes Innovation/Exploration Pragmatism/Safety	skills/design/references/plan-review.md
+design.dialectic.judge_panel	3-judge	Claude Code Reviewer subagent + Codex + Cursor	skills/shared/dialectic-protocol.md
+design.dialectic.max_decisions	top-5	selected contested decisions	skills/shared/dialectic-protocol.md
+implement.conflict_review.panel	3-reviewer	Claude Code Reviewer subagent + Codex + Cursor	skills/implement/references/conflict-resolution.md
+implement.conflict_review.rounds_max	2 total	resolution-review rounds	skills/implement/references/conflict-resolution.md
+research.lanes	four research lanes	architecture + edge cases + external comparisons + security	skills/research/references/research-phase.md
+research.validation_panel	3 reviewer lanes	Claude Code Reviewer subagent + Codex + Cursor	skills/research/references/validation-phase.md

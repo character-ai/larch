@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+# Regression test for scripts/generate-topology-docs.sh.
+
+set -euo pipefail
+export LC_ALL=C
+
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+SUBJECT="$REPO_ROOT/scripts/generate-topology-docs.sh"
+
+PASS=0
+FAIL=0
+FAIL_DETAILS=()
+TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/larch-generate-topology-docs.XXXXXX")"
+trap 'rm -rf "$TMP_ROOT"' EXIT
+
+pass_case() {
+  PASS=$((PASS + 1))
+}
+
+fail_case() {
+  FAIL=$((FAIL + 1))
+  FAIL_DETAILS+=("$1")
+}
+
+assert_contains() {
+  local label="$1"
+  local needle="$2"
+  local haystack="$3"
+  if [[ "$haystack" == *"$needle"* ]]; then
+    pass_case
+  else
+    fail_case "$label: expected output to contain '$needle'; got '$haystack'"
+  fi
+}
+
+run_generator() {
+  local tsv="$1"
+  local doc="$2"
+  shift 2
+  (
+    cd "$REPO_ROOT"
+    LARCH_TOPOLOGY_TSV="$tsv" LARCH_TOPOLOGY_DOC="$doc" bash "$SUBJECT" "$@"
+  )
+}
+
+assert_success() {
+  local label="$1"
+  local tsv="$2"
+  local doc="$3"
+  shift 3
+  if run_generator "$tsv" "$doc" "$@" >"$TMP_ROOT/stdout.txt" 2>"$TMP_ROOT/stderr.txt"; then
+    pass_case
+  else
+    fail_case "$label: expected success; stderr: $(cat "$TMP_ROOT/stderr.txt")"
+  fi
+}
+
+assert_failure_contains() {
+  local label="$1"
+  local tsv="$2"
+  local doc="$3"
+  local needle="$4"
+  shift 4
+  if run_generator "$tsv" "$doc" "$@" >"$TMP_ROOT/stdout.txt" 2>"$TMP_ROOT/stderr.txt"; then
+    fail_case "$label: expected failure"
+    return
+  fi
+  assert_contains "$label" "$needle" "$(cat "$TMP_ROOT/stderr.txt")"
+}
+
+BASE_TSV="$REPO_ROOT/skills/shared/topology.tsv"
+
+# a. Round-trip write + check against the committed TSV.
+doc="$TMP_ROOT/topology.md"
+assert_success "write mode" "$BASE_TSV" "$doc"
+assert_success "check mode" "$BASE_TSV" "$doc" --check
+assert_contains "rendered regular anchor" 'id="design-sketch-regular-slots"' "$(cat "$doc")"
+
+# b. Drift detection.
+printf '\nmanual drift\n' >>"$doc"
+assert_failure_contains "drift detection" "$BASE_TSV" "$doc" "out of sync" --check
+
+# c-f. Bad TSV grammar and key/value validation.
+bad="$TMP_ROOT/bad.tsv"
+printf 'design.sketch.regular_slots\t8\tskills/design/references/sketch-launch.md\n' >"$bad"
+assert_failure_contains "missing column" "$bad" "$TMP_ROOT/missing-column.md" "malformed row" --check
+
+printf 'design.sketch.regular_slots\t8\t4 Cursor + 4 Codex\tskills/design/references/sketch-launch.md\textra\n' >"$bad"
+assert_failure_contains "extra column" "$bad" "$TMP_ROOT/extra-column.md" "malformed row" --check
+
+printf 'design:sketch\t8\t4 Cursor + 4 Codex\tskills/design/references/sketch-launch.md\n' >"$bad"
+assert_failure_contains "colon in key" "$bad" "$TMP_ROOT/colon-key.md" "key must not contain colon" --check
+
+printf 'design.sketch.regular_slots\t<8>\t4 Cursor + 4 Codex\tskills/design/references/sketch-launch.md\n' >"$bad"
+assert_failure_contains "forbidden value char" "$bad" "$TMP_ROOT/forbidden-value.md" "forbidden character" --check
+
+# g-h. Runtime authority validation.
+printf 'docs.readme.bad\tVALUENOTPRESENT\t\tdocs/skills.md\n' >"$bad"
+assert_failure_contains "stale authority value" "$bad" "$TMP_ROOT/stale-authority.md" "not found in runtime_authority" --check
+
+printf 'docs.missing.bad\t8\t\tdocs/missing-topology-authority.md\n' >"$bad"
+assert_failure_contains "missing authority" "$bad" "$TMP_ROOT/missing-authority.md" "runtime_authority not found" --check
+
+if [[ "$FAIL" -ne 0 ]]; then
+  printf 'FAIL: %s case(s) failed\n' "$FAIL" >&2
+  printf ' - %s\n' "${FAIL_DETAILS[@]}" >&2
+  exit 1
+fi
+
+printf 'PASS: %s assertions\n' "$PASS"

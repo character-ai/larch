@@ -248,13 +248,13 @@ commit_fixture "$dir" scripts/generators.tsv agents/a.md agents/b.md
 assert_walker_success "sequential ordering" "$dir"
 assert_equals "sequential log" $'gen-a\ngen-b' "$(<"$dir/scripts/order.log")"
 
-# n. Real-registry smoke. The row count and canonical row are intentionally
+# n. Real-registry smoke. The row count and canonical rows are intentionally
 # pinned: any legitimate addition to scripts/generators.tsv must update BOTH
 # assertions below in the same PR. The pin acts as a guardrail so an accidental
 # row removal fails CI loudly.
 data_rows="$(awk -F '\t' '!/^#/ && NF == 2 && $1 != "" && $2 != "" { print $1 "\t" $2 }' "$REPO_ROOT/scripts/generators.tsv")"
-assert_equals "real registry row count" "1" "$(printf '%s\n' "$data_rows" | sed '/^$/d' | wc -l | tr -d ' ')"
-assert_equals "real registry canonical row" $'scripts/generate-code-reviewer-agent.sh\tagents/code-reviewer.md' "$data_rows"
+assert_equals "real registry row count" "2" "$(printf '%s\n' "$data_rows" | sed '/^$/d' | wc -l | tr -d ' ')"
+assert_equals "real registry canonical rows" $'scripts/generate-code-reviewer-agent.sh\tagents/code-reviewer.md\nscripts/generate-topology-docs.sh\tdocs/topology.md' "$data_rows"
 
 # o. Post-run drift detection.
 dir="$(new_fixture post-run-drift)"
