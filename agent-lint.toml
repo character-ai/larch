@@ -116,6 +116,15 @@ suppress = [
 # and scripts/lint-skill-invocations.md (sibling contract), matching the same
 # Makefile-only pattern as the other test-* harnesses above.
 #
+# scripts/test-lint-literal-counts.sh is the regression harness for
+# scripts/lint-literal-counts.py (the drift-prone literal item-count markdown
+# lint). The lint script itself IS structurally referenced from
+# .pre-commit-config.yaml (local hook `lint-literal-counts`) and is therefore
+# not excluded; the test harness is referenced only from Makefile
+# (test-lint-literal-counts target) and scripts/lint-literal-counts.md
+# (sibling contract), matching the same Makefile-only pattern as the other
+# test-* harnesses above.
+#
 # skills/fix-issue/scripts/test-parse-prose-blockers.sh is the regression
 # harness for skills/fix-issue/scripts/parse-prose-blockers.sh (the prose-
 # dependency parser invoked by skills/fix-issue/scripts/blocker-helpers.sh's
@@ -496,6 +505,7 @@ exclude = [
   "scripts/test-harness-shards-coverage.sh",
   "scripts/test-harness-shards-coverage.md",
   "scripts/test-lint-skill-invocations.sh",
+  "scripts/test-lint-literal-counts.sh",
   "skills/fix-issue/scripts/test-parse-prose-blockers.sh",
   "skills/fix-issue/scripts/blocker-helpers.sh",
   "skills/fix-issue/scripts/test-issue-lifecycle.sh",
