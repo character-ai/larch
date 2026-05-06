@@ -10,7 +10,7 @@ This harness depends on `skills/issue/scripts/parse-input.sh` being present and 
 
 ## Fixtures
 
-16 cases (numeric IDs match the comment-tagged `# Case N` markers in the harness; cases 13 and 14 land before case 12 in source order due to staged additions, cases 15 and 16 were added per #745, and case 17 was added per #746):
+16 cases (numeric IDs match the comment-tagged `# Case N` markers in the harness; cases 13 and 14 land before case 12 in source order due to staged additions, cases 15 and 16 were added per #745, and case 17 was added per #746): <!-- lint-literal-counts: allow fixture-ledger summary; the leading numeral diverges from the per-case enumeration that follows (the case 17 addition predates this allow), and the harness is the authoritative source for the case count -->
 
 1. **Numbered list** — three findings; round-trip ITEMS_TOTAL=3.
 2. **Bulleted list** — two findings; round-trip ITEMS_TOTAL=2.

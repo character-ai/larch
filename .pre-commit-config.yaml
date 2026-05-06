@@ -78,6 +78,16 @@ repos:
 
   - repo: local
     hooks:
+      - id: lint-literal-counts
+        name: Lint drift-prone literal item counts in markdown
+        entry: python scripts/lint-literal-counts.py
+        language: python
+        pass_filenames: false
+        always_run: true
+        files: \.md$
+
+  - repo: local
+    hooks:
       - id: agnix
         name: Lint AI agent configuration files
         entry: agnix . --strict
