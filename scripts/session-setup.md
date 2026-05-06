@@ -22,7 +22,7 @@ in `/tmp` while preserving `mktemp`'s random suffix.
 
 Recognized caller-env keys are `SLACK_OK`, `SLACK_MISSING`, `REPO`, `REPO_UNAVAILABLE`, `CODEX_HEALTHY`, `CURSOR_HEALTHY`, and `GEMINI_HEALTHY`. The file is parsed line-by-line and never sourced.
 
-When `--write-health` is provided, the health sidecar contains Codex and Cursor health, plus Gemini health when Gemini probing is requested or inherited from caller-env.
+When `--write-health` is provided, the health sidecar contains Codex and Cursor health, plus Gemini health when Gemini probing is requested or inherited from caller-env. The defaults at the write site are fail-closed: an empty `FINAL_*_HEALTHY` (e.g., `check-reviewers.sh` did not emit the key, or the passthrough caller-env omitted it) emits `=false` rather than re-masking unhealthy state as `true`. Regression coverage lives in `scripts/test-session-setup-health-defaults.sh` (sibling contract: `scripts/test-session-setup-health-defaults.md`), wired through `make test-session-setup-health-defaults` and `test-harnesses-6`.
 
 ## Edit-in-sync
 

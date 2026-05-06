@@ -464,10 +464,14 @@ fi
 if [[ -n "$WRITE_HEALTH" && "$WRITE_HEALTH" != "/dev/null" ]]; then
     HEALTH_TMPFILE=$(mktemp "${WRITE_HEALTH}.tmp.XXXXXX")
     {
-        echo "CODEX_HEALTHY=${FINAL_CODEX_HEALTHY:-true}"
-        echo "CURSOR_HEALTHY=${FINAL_CURSOR_HEALTHY:-true}"
+        # Fail-closed defaults: empty FINAL_*_HEALTHY (e.g., a future refactor
+        # drops the key from check-reviewers.sh probe output, or passthrough
+        # caller-env omits it) emits `false` rather than silently re-masking
+        # unhealthy state as `true`. Backstops the #1317 infra-error contract.
+        echo "CODEX_HEALTHY=${FINAL_CODEX_HEALTHY:-false}"
+        echo "CURSOR_HEALTHY=${FINAL_CURSOR_HEALTHY:-false}"
         if [[ "$CHECK_GEMINI_REVIEWER" == "true" || -n "${FINAL_GEMINI_HEALTHY:-}" ]]; then
-            echo "GEMINI_HEALTHY=${FINAL_GEMINI_HEALTHY:-true}"
+            echo "GEMINI_HEALTHY=${FINAL_GEMINI_HEALTHY:-false}"
         fi
     } > "$HEALTH_TMPFILE"
     mv "$HEALTH_TMPFILE" "$WRITE_HEALTH"
