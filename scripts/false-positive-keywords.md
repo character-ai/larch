@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`scripts/false-positive-keywords.sh` is a sourced-only Bash library that detects close-comment phrases indicating an issue is being closed as a false positive, duplicate, superseded, or won't-fix style outcome. The v1 consumer is `/fix-issue`'s `issue-lifecycle.sh close --mark-false-positive-if-keyword` path.
+`scripts/false-positive-keywords.sh` is a sourced-only Bash library that detects close-comment phrases indicating an issue is being closed as a false positive, duplicate, superseded, or won't-fix style outcome. Consumer: `/fix-issue`'s `issue-lifecycle.sh close --mark-false-positive-if-keyword` legacy fallback path. `/fix-issue` itself now uses the structured `--close-class` enum (see `skills/fix-issue/scripts/issue-lifecycle.md`) for its own call sites; the keyword library remains the backstop for unstructured-prose close paths external to `/fix-issue` that have not migrated to the enum.
 
 ## API
 

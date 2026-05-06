@@ -24,7 +24,7 @@ Read the issue details from Step 2 and execute the instructions directly using R
 
 As work proceeds, maintain a running `WORK_SUMMARY` — a concise markdown summary of what was done and the output artifacts (links to any issues created, key findings, etc.). This summary becomes the closing comment in Step 6b and the one-sentence Slack message in Step 7b. Keep `PR_URL` and `PR_NUMBER` unset on this path.
 
-Step 6b intentionally does not pass `--mark-false-positive-if-keyword` to `issue-lifecycle.sh close`. `WORK_SUMMARY` is free-form research or review narrative, not a structured close-class field; matching words like "duplicate", "superseded", or "false positive" inside a legitimate completion summary would misclassify completed NON_PR work as a false-positive closure. A future structured close-class enum can cover this cleanly without keyword inference.
+Step 6b passes `--close-class done` to `issue-lifecycle.sh close`. The structured close-reason enum is set at decision time, not inferred from `WORK_SUMMARY` prose, so legitimate completion narrative containing words like "duplicate", "superseded", or "false positive" can never misclassify the close. Step 6b MUST NOT pass `--mark-false-positive-if-keyword` — the enum is authoritative on this path; the keyword flag remains available solely for unstructured-prose close paths external to `/fix-issue`.
 
 ### Failure fallback
 

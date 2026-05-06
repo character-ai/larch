@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.25] - 2026-05-05
+
+### Added
+
+- New `--close-class <false-positive|duplicate|superseded|done>` flag on `skills/fix-issue/scripts/issue-lifecycle.sh close`. The structured close-reason enum deterministically drives the `[FALSE-POSITIVE]` title marker decision at the call site (mark on `false-positive`, `duplicate`, `superseded`; skip on `done`); the closing comment is never scanned. When paired with the legacy `--mark-false-positive-if-keyword` flag on the same call, `--close-class` wins silently. Invalid enum values exit 2 with a usage error before any `gh` work runs.
+- `/fix-issue` Step 3 (not-material close) now passes `--close-class <inferred>` derived from the triage decision (already-fixed → `done`, duplicate-of → `duplicate`, superseded-by → `superseded`, invalid/false-positive → `false-positive`) instead of the keyword-inference flag. Step 6b NON_PR closes pass `--close-class done` so legitimate completion summaries cannot misclassify as false-positive closes (resolves the FINDING_7 risk that excluded NON_PR from the v1 keyword wiring). Legacy `--mark-false-positive-if-keyword` callers external to `/fix-issue` are not changed and continue to work via the keyword scan.
+
+### Changed
+
+- `skills/fix-issue/scripts/issue-lifecycle.sh` factors the marker invocation into a shared `_run_false_positive_marker` helper used by both the enum branch and the legacy keyword branch. Updates `skills/fix-issue/scripts/issue-lifecycle.md`, `skills/fix-issue/SKILL.md` (Steps 3 / 6b), `skills/fix-issue/references/triage-classification.md`, `skills/fix-issue/references/non-pr-execution.md`, `scripts/false-positive-keywords.md`, and `SECURITY.md` to document the structured close-reason enum as the new default and the keyword flag as the legacy fallback. Closes #1268.
+- `skills/fix-issue/scripts/test-issue-lifecycle.sh` adds 9 new fixtures (f17-f25) covering each enum value's marker behavior, `done` suppresses the marker even with keyword-bearing comments, precedence over the legacy flag for both marking values and `done`, invalid-value rejection, marker on already-CLOSED branch, and empty `--comment` permitted under `--close-class`.
+
 ## [15.12.24] - 2026-05-05
 
 ### Added

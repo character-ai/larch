@@ -26,10 +26,15 @@ Check for:
 If the issue is no longer material (already fixed, invalid, or no longer relevant):
 
 1. Compose a detailed explanation of why the issue is no longer material. Include a summary of the research performed: which files were checked, what recent commits were examined, and what evidence led to the conclusion. This explanation is posted as the closing comment on the issue so that anyone reviewing the closed issue can understand the rationale without re-investigating.
-2. SKILL.md Step 3 invokes `issue-lifecycle.sh close` with the detailed explanation as the `--comment` value and passes `--mark-false-positive-if-keyword`, allowing a best-effort `[FALSE-POSITIVE]` title marker when the closing rationale uses a configured keyword.
-3. SKILL.md Step 3 invokes `tracking-issue-write.sh rename --state done` (best-effort) to clear the `[IN PROGRESS]` title prefix Step 0 applied at lock time, replacing it with `[DONE]` so the closed issue's title accurately reflects that automated processing concluded.
-4. SKILL.md Step 3 invokes `post-issue-slack.sh` with a one-sentence reason summarizing the closure (only when `slack_available=true`).
-5. SKILL.md Step 3 prints the not-material breadcrumb and skips to Step 8.
+2. **Pick a `--close-class` value** at decision time from the triage conclusion, using this canonical mapping:
+   - `already-fixed` (the issue describes a bug that has been fixed by a later commit, or a feature that has since been added) → `done`
+   - `duplicate-of #N` (the issue restates an existing open or closed issue) → `duplicate`
+   - `superseded-by #N` (a later issue or PR replaces the scope of this one) → `superseded`
+   - `invalid` / `not-a-bug` / `false-positive` (the issue does not describe real work — e.g., the reported behavior is by design, or the OOS observation was filed in error) → `false-positive`
+3. SKILL.md Step 3 invokes `issue-lifecycle.sh close` with the detailed explanation as the `--comment` value and passes `--close-class <inferred>` from the mapping above. The enum deterministically drives the `[FALSE-POSITIVE]` title marker — applied for `false-positive`, `duplicate`, and `superseded`; suppressed for `done`. The closing comment is NOT scanned under `--close-class`, so legitimate research narrative containing words like "duplicate" or "superseded" cannot misclassify the close. The legacy `--mark-false-positive-if-keyword` flag remains available for unstructured-prose close paths but is NOT used here.
+4. SKILL.md Step 3 invokes `tracking-issue-write.sh rename --state done` (best-effort) to clear the `[IN PROGRESS]` title prefix Step 0 applied at lock time, replacing it with `[DONE]` so the closed issue's title accurately reflects that automated processing concluded.
+5. SKILL.md Step 3 invokes `post-issue-slack.sh` with a one-sentence reason summarizing the closure (only when `slack_available=true`).
+6. SKILL.md Step 3 prints the not-material breadcrumb and skips to Step 8.
 
 If the issue is still actual, SKILL.md Step 3 prints the active breadcrumb and continues to Step 4.
 
