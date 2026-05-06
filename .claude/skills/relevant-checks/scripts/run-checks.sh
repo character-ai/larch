@@ -32,6 +32,7 @@ run_post_checks() {
     else
         echo ""
         echo "WARNING: agent-lint not found on PATH — skipping"
+        return 0
     fi
 }
 
@@ -40,7 +41,7 @@ exit_with_phase_check() {
 
     if [ "$PHASES_RUN" -eq 0 ]; then
         echo ""
-        echo "ERROR: no validation phases ran (no existing files for pre-commit, and agent-lint was unavailable or skipped)."
+        echo "ERROR: no validation phases ran — pre-commit had no eligible files (no changes, or all changes are deletions) and agent-lint was unavailable or skipped."
         exit 2
     fi
 
