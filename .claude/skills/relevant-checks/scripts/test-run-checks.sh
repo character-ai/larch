@@ -118,14 +118,30 @@ exec "$REAL_GIT" "\$@"
 EOF
     chmod +x "$dir/git"
 
-    if [[ "$pre_commit" == "present" ]]; then
-        cat > "$dir/pre-commit" <<'EOF'
+    case "$pre_commit" in
+        absent)
+            ;;
+        present|0)
+            cat > "$dir/pre-commit" <<'EOF'
 #!/usr/bin/env bash
 echo "pre-commit stub: $*"
 exit 0
 EOF
-        chmod +x "$dir/pre-commit"
-    fi
+            chmod +x "$dir/pre-commit"
+            ;;
+        *)
+            # Numeric exit code other than 0 — emulate a real pre-commit failure
+            # so run-checks.sh:116-118 propagates the exit code without invoking
+            # agent-lint.
+            cat > "$dir/pre-commit" <<EOF
+#!/usr/bin/env bash
+echo "pre-commit stub: \$*"
+echo "pre-commit stub: simulated lint failure" >&2
+exit "$pre_commit"
+EOF
+            chmod +x "$dir/pre-commit"
+            ;;
+    esac
 
     if [[ "$agent_rc" != "absent" ]]; then
         cat > "$dir/agent-lint" <<EOF
@@ -201,6 +217,38 @@ assert_exit_eq "3a: changed file + pre-commit success + agent-lint absent" "$RUN
 assert_stdout_contains "3a: pre-commit stub invoked" "$RUN_OUT" "pre-commit stub:"
 assert_stdout_contains "3a: agent-lint warning" "$RUN_OUT" "WARNING: agent-lint not found on PATH — skipping"
 
+# 3b — changed file + pre-commit success + agent-lint success: pins the dual-phase
+# happy path (run-checks.sh increments PHASES_RUN after pre-commit succeeds, then
+# run_post_checks invokes agent-lint and the final exit_with_phase_check exits 0).
+REPO_3B="$TMPROOT/repo-changed-file-agent-zero"
+STUB_3B="$TMPROOT/stub-changed-file-agent-zero"
+setup_changed_file_repo "$REPO_3B"
+make_stub_dir "$STUB_3B" present 0
+run_checks "$REPO_3B" "$(controlled_path "$STUB_3B")"
+assert_exit_eq "3b: changed file + pre-commit ok + agent-lint ok" "$RUN_EXIT" 0
+assert_stdout_contains "3b: pre-commit stub invoked" "$RUN_OUT" "pre-commit stub:"
+assert_stdout_contains "3b: agent-lint stub invoked" "$RUN_OUT" "agent-lint stub:"
+
+# 3c — changed file + pre-commit non-zero: pins run-checks.sh:116-118, which
+# propagates pre-commit's exit code WITHOUT invoking agent-lint (run_post_checks
+# only runs after pre-commit succeeds). Agent-lint is also stubbed present so a
+# regression that mistakenly invokes it would surface via the agent-lint banner.
+REPO_3C="$TMPROOT/repo-changed-file-pre-commit-fails"
+STUB_3C="$TMPROOT/stub-changed-file-pre-commit-fails"
+setup_changed_file_repo "$REPO_3C"
+make_stub_dir "$STUB_3C" 5 0
+run_checks "$REPO_3C" "$(controlled_path "$STUB_3C")"
+assert_exit_eq "3c: changed file + pre-commit rc=5 → exit propagates" "$RUN_EXIT" 5
+assert_stdout_contains "3c: pre-commit stub invoked" "$RUN_OUT" "pre-commit stub:"
+# agent-lint must NOT have run: a successful agent-lint stub would print
+# "agent-lint stub:" — its absence pins the "skip post-checks on pre-commit
+# failure" branch.
+if [[ "$RUN_OUT" == *"agent-lint stub:"* ]]; then
+    fail "3c: agent-lint must not run when pre-commit fails; got: ${RUN_OUT:0:400}"
+else
+    pass
+fi
+
 echo "=== Section 4: preflight failure ==="
 
 REPO_4A="$TMPROOT/repo-pre-commit-absent"
@@ -210,6 +258,20 @@ make_stub_dir "$STUB_4A" absent absent
 run_checks "$REPO_4A" "$(controlled_path "$STUB_4A")"
 assert_exit_eq "4a: pre-commit absent" "$RUN_EXIT" 1
 assert_stdout_contains "4a: pre-commit missing error" "$RUN_OUT" "ERROR: pre-commit not found"
+
+# 4b — invocation outside a git repository: pins run-checks.sh:18 (`git rev-parse
+# --show-toplevel` failure). Pre-commit is stubbed present so the preflight at
+# run-checks.sh:13-16 succeeds and the script reaches the rev-parse check.
+DIR_4B="$TMPROOT/non-git-dir"
+STUB_4B="$TMPROOT/stub-non-git"
+mkdir -p "$DIR_4B"
+make_stub_dir "$STUB_4B" present absent
+# The stub git wrapper must inherit the same env, so the controlled PATH is
+# enough — the wrapper's `exec real_git` will fail rev-parse because the cwd is
+# not inside any git repo.
+run_checks "$DIR_4B" "$(controlled_path "$STUB_4B")"
+assert_exit_eq "4b: not inside a git repository → exit 1" "$RUN_EXIT" 1
+assert_stdout_contains "4b: not-a-git-repo error" "$RUN_OUT" "not inside a git repository"
 
 echo ""
 echo "=== Summary ==="
