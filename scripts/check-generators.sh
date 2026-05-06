@@ -32,6 +32,7 @@ validate_path() {
   [[ "$path" != /* ]] || fail "$REGISTRY:$row: absolute path not allowed for $label: $path"
   [[ "$path" != ./* ]] || fail "$REGISTRY:$row: $label path must not start with ./ : $path"
   [[ "$path" != -* ]] || fail "$REGISTRY:$row: $label path must not start with -: $path"
+  [[ "$path" != :* ]] || fail "$REGISTRY:$row: $label path must not start with : (reserved for git pathspec magic): $path"
   [[ "$path" != *"//"* ]] || fail "$REGISTRY:$row: $label path must not contain duplicate slash: $path"
   [[ "$path" != *$'\t'* ]] || fail "$REGISTRY:$row: $label path must not contain tabs"
   [[ "$path" != *$'\n'* ]] || fail "$REGISTRY:$row: $label path must not contain newlines"
@@ -112,6 +113,6 @@ while [[ "$idx" -lt "${#generators[@]}" ]]; do
   idx=$((idx + 1))
 done
 
-if ! git diff --exit-code -- "${output_paths[@]}"; then
+if ! git diff HEAD --exit-code -- "${output_paths[@]}"; then
   fail "check-generators: post-run working-tree delta detected at: ${output_paths[*]}"
 fi

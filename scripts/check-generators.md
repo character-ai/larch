@@ -14,7 +14,7 @@ Primary callers are the `agent-sync` job in `.github/workflows/ci.yaml`, the off
 - Processes rows sequentially in registry order and fails fast on the first validation or generator error.
 - Requires each registered generator path and output path to exist as regular files.
 - Requires registered output paths to be tracked by git.
-- After all generators pass, runs `git diff --exit-code` over the registered output paths only.
+- After all generators pass, runs `git diff HEAD --exit-code` over the registered output paths only. The `HEAD` comparison catches both unstaged and staged drift; a plain `git diff --exit-code` would miss staged-only changes (worktree==index but both differ from HEAD). This is **scoped, not whole-tree**: a generator that mutates an unregistered tracked file in `--check` mode would leave that file dirty and the walker would still exit 0. The trust model is "repo-local generators are reviewed code"; widening the post-run check to `git diff-index --quiet HEAD --` is a future-work option if the registry opens up to less-trusted contributors.
 
 ## TSV Parsing
 

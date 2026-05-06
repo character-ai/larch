@@ -58,8 +58,10 @@ commit_fixture() {
   shift
   (
     cd "$dir"
-    HOME="$dir/home" GIT_CONFIG_GLOBAL="$dir/gitconfig" git init -q
+    # Create $HOME before any git invocation: some git builds (or templateDir
+    # hooks) error out when HOME does not exist.
     mkdir -p "$dir/home"
+    HOME="$dir/home" GIT_CONFIG_GLOBAL="$dir/gitconfig" git init -q
     HOME="$dir/home" GIT_CONFIG_GLOBAL="$dir/gitconfig" git -c user.name=test -c user.email=test@test.invalid -c commit.gpgsign=false add scripts/generators.tsv "$@"
     HOME="$dir/home" GIT_CONFIG_GLOBAL="$dir/gitconfig" git -c user.name=test -c user.email=test@test.invalid -c commit.gpgsign=false commit -q -m "fixture baseline"
   )
@@ -97,15 +99,23 @@ assert_walker_success() {
 }
 
 assert_walker_failure_contains() {
+  # Both "walker exited non-zero" and "stderr contains needle" must hold for the
+  # case to count as a single PASS. Counting each separately would inflate PASS
+  # when the needle is missing (PASS=1, FAIL=1 for one logical case).
   local label="$1"
   local dir="$2"
   local needle="$3"
   local err="$dir/stderr.txt"
   if run_walker "$dir" >"$dir/stdout.txt" 2>"$err"; then
     fail_case "$label: expected failure"
-  else
+    return
+  fi
+  local haystack
+  haystack="$(cat "$err")"
+  if [[ "$haystack" == *"$needle"* ]]; then
     pass_case
-    assert_contains "$label stderr" "$needle" "$(cat "$err")"
+  else
+    fail_case "$label: expected output to contain '$needle'; got '$haystack'"
   fi
 }
 
@@ -172,7 +182,10 @@ assert_walker_failure_contains "empty registry" "$dir" "no rows registered"
 for spec in \
   "absolute|/tmp/gen.sh	agents/out.md|absolute path" \
   "parent|scripts/../gen.sh	agents/out.md|parent traversal" \
-  "leading-dot|./scripts/gen.sh	agents/out.md|must not start with ./"; do
+  "leading-dot|./scripts/gen.sh	agents/out.md|must not start with ./" \
+  "leading-dash|-rf	agents/out.md|must not start with -" \
+  "duplicate-slash|scripts//gen.sh	agents/out.md|duplicate slash" \
+  "git-pathspec|:(top)scripts/gen.sh	agents/out.md|reserved for git pathspec magic"; do
   name="${spec%%|*}"
   rest="${spec#*|}"
   row="${rest%%|*}"
@@ -233,9 +246,12 @@ write_generator "$dir/scripts/gen-b.sh" '[[ "${1:-}" == "--check" ]] || exit 2; 
 printf 'scripts/gen-a.sh\tagents/a.md\nscripts/gen-b.sh\tagents/b.md\n' >"$dir/scripts/generators.tsv"
 commit_fixture "$dir" scripts/generators.tsv agents/a.md agents/b.md
 assert_walker_success "sequential ordering" "$dir"
-assert_equals "sequential log" $'gen-a\ngen-b' "$(sed '$!N;s/\n/\n/' "$dir/scripts/order.log")"
+assert_equals "sequential log" $'gen-a\ngen-b' "$(<"$dir/scripts/order.log")"
 
-# n. Real-registry smoke.
+# n. Real-registry smoke. The row count and canonical row are intentionally
+# pinned: any legitimate addition to scripts/generators.tsv must update BOTH
+# assertions below in the same PR. The pin acts as a guardrail so an accidental
+# row removal fails CI loudly.
 data_rows="$(awk -F '\t' '!/^#/ && NF == 2 && $1 != "" && $2 != "" { print $1 "\t" $2 }' "$REPO_ROOT/scripts/generators.tsv")"
 assert_equals "real registry row count" "1" "$(printf '%s\n' "$data_rows" | sed '/^$/d' | wc -l | tr -d ' ')"
 assert_equals "real registry canonical row" $'scripts/generate-code-reviewer-agent.sh\tagents/code-reviewer.md' "$data_rows"
@@ -274,6 +290,35 @@ if run_walker "$dir" --unknown >"$dir/stdout.txt" 2>"$dir/stderr.txt"; then
 else
   pass_case
   assert_contains "unknown args usage" "Usage:" "$(cat "$dir/stderr.txt")"
+fi
+
+# r. Not inside a git work tree.
+dir="$(new_fixture not-in-git)"
+printf 'generated\n' >"$dir/agents/out.md"
+write_generator "$dir/scripts/gen.sh" '[[ "${1:-}" == "--check" ]] || exit 2'
+printf 'scripts/gen.sh\tagents/out.md\n' >"$dir/scripts/generators.tsv"
+# Deliberately do NOT init git here.
+err="$dir/stderr.txt"
+if run_walker "$dir" >"$dir/stdout.txt" 2>"$err"; then
+  fail_case "not in git work tree: expected failure"
+else
+  pass_case
+  assert_contains "not in git work tree" "not inside a git work tree" "$(cat "$err")"
+fi
+
+# s. Registry not found.
+dir="$(new_fixture no-registry)"
+mkdir -p "$dir/home"
+(
+  cd "$dir"
+  HOME="$dir/home" GIT_CONFIG_GLOBAL="$dir/gitconfig" git init -q
+)
+err="$dir/stderr.txt"
+if run_walker "$dir" >"$dir/stdout.txt" 2>"$err"; then
+  fail_case "missing registry: expected failure"
+else
+  pass_case
+  assert_contains "missing registry" "registry not found" "$(cat "$err")"
 fi
 
 if [[ "$FAIL" -ne 0 ]]; then

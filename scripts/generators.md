@@ -7,7 +7,7 @@
 - Rows use exactly two tab-separated columns. Empty first, middle, or last columns are invalid.
 - Lines whose raw first byte is `#` are comments. Strictly empty lines are skipped. Comment and blank detection happens on the raw line read by `IFS= read -r line`, before field splitting.
 - Line endings are LF only. CRLF is rejected.
-- Paths are repo-relative and canonical: no leading `/`, no leading `./`, no leading `-`, no `.` or `..` segments, no duplicate `/`, and no embedded tabs or newlines.
+- Paths are repo-relative and canonical: no leading `/`, no leading `./`, no leading `-`, no leading `:` (reserved for git pathspec magic), no `.` or `..` segments, no duplicate `/`, and no embedded tabs or newlines.
 - The registry has one row per `(generator-script, output-path)` pair and, in v1, at most one row per generator script. If a future generator emits multiple committed artifacts, add one thin wrapper script per output path or loosen the walker contract in a later PR.
 
 ## Invariants
@@ -19,3 +19,5 @@
 ## Edit In Sync
 
 Adding a row requires a matching generator script with its sibling `.md` contract and a committed generated output path. Changes to registry grammar must update `scripts/check-generators.sh`, `scripts/check-generators.md`, and `scripts/test-check-generators.sh` fixtures in the same PR. See `scripts/generate-code-reviewer-agent.md` for the exemplar generator contract.
+
+`agent-lint` does not follow `generators.tsv`, so each new `scripts/*.sh` registry entry must also be excluded from the dead-script scanner in `agent-lint.toml` (mirror the `scripts/generate-code-reviewer-agent.sh` exclusion pattern) until `agent-lint` learns to read this file.
