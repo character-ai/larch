@@ -11,8 +11,12 @@
 # carries one extra italic-markdown line between the first-line HTML marker
 # and the first <!-- section:... --> open marker so the comment renders
 # non-empty in GitHub's UI. Populated runs (any fragment with at least one
-# non-whitespace byte) suppress the placeholder and are byte-for-byte
-# unchanged. See scripts/assemble-anchor.md "Seed-only visible placeholder".
+# non-whitespace byte) suppress the placeholder; populated content is emitted
+# byte-for-byte for every section EXCEPT run-statistics, which is normalized
+# (trailing blank lines stripped, any pre-existing trailing `| larch plugin
+# version | ... |` rows dropped) and a fresh canonical version row is
+# appended. See scripts/assemble-anchor.md "Seed-only visible placeholder"
+# and "Run Statistics version-row injection".
 #
 # Consumers:
 #   - skills/implement/SKILL.md Step 0.5 (Branch 2/3 adoption seed body, Branch 4
@@ -79,22 +83,37 @@ fail_io() {
 emit_run_statistics() {
     fragment="$1"
 
+    normalized=""
     if [ -f "$fragment" ] && grep -q '[^[:space:]]' "$fragment" 2>/dev/null; then
-        # Emit populated run-statistics content with trailing blank lines removed,
-        # then append the auto-captured plugin version as the final table row.
-        awk '
+        # Emit populated run-statistics content with trailing blank lines
+        # AND trailing pre-existing `| larch plugin version | ... |` rows
+        # stripped, then append the freshly-captured plugin version as the
+        # canonical final table row. Stripping pre-existing version rows
+        # prevents duplicates when the run-statistics fragment was hydrated
+        # from a prior anchor body that already carried an injected row
+        # (closes #348-Phase5-resume duplicate-row regression).
+        normalized=$(awk '
             { lines[NR] = $0 }
             END {
                 last = NR
-                while (last > 0 && lines[last] ~ /^[[:space:]]*$/) {
+                while (last > 0 && (lines[last] ~ /^[[:space:]]*$/ || lines[last] ~ /^[[:space:]]*\|[[:space:]]*larch plugin version[[:space:]]*\|/)) {
                     last--
                 }
                 for (i = 1; i <= last; i++) {
                     print lines[i]
                 }
             }
-        ' "$fragment" || fail_io "failed to read fragment: $fragment"
+        ' "$fragment") || fail_io "failed to read fragment: $fragment"
+    fi
+
+    if [ -n "$normalized" ]; then
+        printf '%s\n' "$normalized"
     else
+        # Seed case OR populated fragment whose interior normalized down to
+        # nothing (e.g. a fragment that contained only a stale version row
+        # that the strip loop above removed). Either way the output needs a
+        # complete table scaffold so the appended version row renders as a
+        # well-formed table.
         printf '## Run Statistics\n\n'
         printf '| Metric | Value |\n'
         printf '|---|---|\n'
@@ -171,7 +190,8 @@ done
 # in GitHub's UI; emit one visible markdown line in that case so the seed
 # anchor is not blank between Step 0.5 plant and the first progressive
 # upsert. Populated runs (any fragment with at least one non-whitespace
-# byte) are byte-for-byte unchanged.
+# byte) are byte-for-byte unchanged for every section EXCEPT run-statistics,
+# which is normalized via emit_run_statistics (see above).
 ALL_EMPTY=true
 for slug in "${SECTION_MARKERS[@]}"; do
     fragment="$SECTIONS_DIR/$slug.md"

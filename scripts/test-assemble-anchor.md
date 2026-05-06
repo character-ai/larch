@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Regression harness for `scripts/assemble-anchor.sh`. Covers 16 assertion categories pinned by the sibling `scripts/assemble-anchor.md` contract file: empty sections directory (line-count, line-walk, placeholder presence, injected plugin-version row), partial fragments and whitespace-only fragments (placeholder gating), nonexistent `--sections-dir` (placeholder fires for missing dir), missing plugin root fallback, exact line-shape around a newline-terminated fragment, line-shape around a no-trailing-newline fragment, populated run-statistics injection, full fragments, missing-helper failure, invalid-`--issue` usage error, first-line marker exactness, non-directory `--sections-dir` fail-closed, and unreadable-fragment fail-closed.
+Regression harness for `scripts/assemble-anchor.sh`. Covers 18 assertion categories pinned by the sibling `scripts/assemble-anchor.md` contract file: empty sections directory (line-count, line-walk, placeholder presence, injected plugin-version row), partial fragments and whitespace-only fragments (placeholder gating), nonexistent `--sections-dir` (placeholder fires for missing dir), missing plugin root fallback, exact line-shape around a newline-terminated fragment, line-shape around a no-trailing-newline fragment, populated run-statistics injection, hydrated run-statistics dedup (resume idempotency), populated-but-normalized-to-empty seed-scaffold fallback, full fragments, missing-helper failure, invalid-`--issue` usage error, first-line marker exactness, non-directory `--sections-dir` fail-closed, and unreadable-fragment fail-closed.
 
 ## Assertion catalog
 
@@ -16,6 +16,8 @@ Regression harness for `scripts/assemble-anchor.sh`. Covers 16 assertion categor
 - **(b2)** Newline-terminated fragment → exactly one newline before the close marker (regression guard for the pre-fix `$(tail -c 1 ...)` command-substitution newline-stripping bug, which inserted an extra blank line for every populated fragment). Full output compared against a byte-exact expected fixture.
 - **(b3)** Fragment without a trailing newline → helper inserts the missing newline so the close marker still appears on its own line; fragment content and close marker do not run together on the same line.
 - **(b4)** Populated `run-statistics` fragment: trailing blank lines are stripped and the plugin-version row is appended immediately before the section close marker.
+- **(b5)** Hydrated `run-statistics` fragment whose interior already ends with a stale `| larch plugin version | <X.Y.Z> |` row: the stale trailing version row is stripped before a freshly-captured row is appended, producing exactly one plugin-version row in the output. Regression guard against the resume / hydration duplicate-row case.
+- **(b6)** Populated `run-statistics` fragment whose entire content is a single stale version row (no `## Run Statistics` heading, no table header) normalizes down to empty after the strip loop. The helper falls through to the seed-style scaffold so the assembled section is a well-formed table (heading + header + fresh version row) instead of an orphan row.
 - **(c)** Full fragments: all 8 slugs populated and emitted.
 - **(d)** Missing `anchor-section-markers.sh` helper: running a copy of `assemble-anchor.sh` in a fake tree without the helper emits `FAILED=true` + `ERROR=missing helper: ...` on stdout and exits 1.
 - **(e)** Invalid `--issue` value (non-integer): emits `FAILED=true` + `ERROR=usage: invalid value for --issue ...` on stdout and exits 1.

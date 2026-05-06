@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # test-assemble-anchor.sh — regression harness for scripts/assemble-anchor.sh.
 #
-# Covers 16 assertion categories:
+# Covers 18 assertion categories:
 #   (a) Empty sections directory → 7 empty marker pairs + run-statistics
 #       minimal table + first-line marker + seed-only visible placeholder
 #       line on line 2 (23 lines total).
@@ -24,6 +24,13 @@
 #       close marker still appears on its own line.
 #   (b4) Populated run-statistics fragment → trailing blank lines are
 #       stripped and plugin-version row is appended as the final table row.
+#   (b5) Hydrated run-statistics fragment with a stale plugin-version row →
+#       the stale trailing version row is stripped before the freshly-
+#       captured one is appended (idempotency on resume / hydration).
+#   (b6) Populated fragment whose entire content normalizes to empty (e.g.
+#       a single stale version row, no heading/header) → fall through to
+#       the seed-style scaffold (heading + table header + fresh version row)
+#       instead of emitting an orphan row.
 #   (c) Full fragments → all 8 slugs populated.
 #   (d) Missing anchor-section-markers.sh helper → FAILED=true / ERROR=missing
 #       helper + exit 1.
@@ -335,6 +342,72 @@ prev_line=$(sed -n "$((version_line_num - 1))p" "$output_b4")
 [ "$prev_line" = '| OOS issues filed | 2 |' ] \
     || fail "(b4) trailing blank lines were not stripped before plugin-version row (previous line: '$prev_line')"
 pass "(b4) populated run-statistics fragment → strip trailing blanks and append plugin-version row"
+
+# --------------------------------------------------------------------------
+# (b5) Hydration / resume idempotency: a populated run-statistics fragment
+#      that ALREADY ends with a `| larch plugin version | ... |` row (the
+#      shape produced by a prior assembly that the next session hydrated
+#      back into run-statistics.md) must not produce duplicate version rows.
+#      The injection helper strips trailing pre-existing version rows AND
+#      blank lines, then appends a single freshly-captured row.
+# --------------------------------------------------------------------------
+sections_b5="$tmpdir/sections-b5"
+mkdir -p "$sections_b5"
+{
+    printf '## Run Statistics\n\n'
+    printf '| Metric | Value |\n'
+    printf '|---|---|\n'
+    printf '| OOS issues filed | 4 |\n'
+    printf '| larch plugin version | 1.2.3 |\n'
+    printf '\n'
+} > "$sections_b5/run-statistics.md"
+
+output_b5="$tmpdir/out-b5.md"
+"$ASSEMBLE_ANCHOR" --sections-dir "$sections_b5" --issue 503 --output "$output_b5" > /dev/null
+
+# Exactly one plugin-version row, value 9.8.7 (the test fixture's CLAUDE_PLUGIN_ROOT).
+total_version_rows=$(grep -cE '^\| larch plugin version \|' "$output_b5")
+[ "$total_version_rows" = "1" ] \
+    || fail "(b5) expected exactly 1 plugin-version row, got $total_version_rows (content: $(cat "$output_b5"))"
+grep -qF '| larch plugin version | 9.8.7 |' "$output_b5" \
+    || fail "(b5) plugin-version row should carry the freshly-captured 9.8.7 value, not the hydrated 1.2.3"
+if grep -qF '| larch plugin version | 1.2.3 |' "$output_b5"; then
+    fail "(b5) stale hydrated plugin-version row should have been stripped"
+fi
+pass "(b5) hydrated run-statistics fragment with stale version row → strip stale row, single fresh row appended"
+
+# --------------------------------------------------------------------------
+# (b6) Empty-after-normalization fallback: a populated run-statistics
+#      fragment whose entire content is a single stale version row (no
+#      `## Run Statistics` heading, no table header) normalizes down to
+#      empty after the strip loop. The helper must fall through to the
+#      seed-style scaffold (heading + table header + version row) so the
+#      assembled section is well-formed instead of an orphan row.
+# --------------------------------------------------------------------------
+sections_b6="$tmpdir/sections-b6"
+mkdir -p "$sections_b6"
+printf '| larch plugin version | 0.0.1 |\n' > "$sections_b6/run-statistics.md"
+
+output_b6="$tmpdir/out-b6.md"
+"$ASSEMBLE_ANCHOR" --sections-dir "$sections_b6" --issue 504 --output "$output_b6" > /dev/null
+
+# The output must include the seed-style heading and table header.
+grep -qxF '## Run Statistics' "$output_b6" \
+    || fail "(b6) missing '## Run Statistics' heading after empty-normalization fallback"
+grep -qxF '| Metric | Value |' "$output_b6" \
+    || fail "(b6) missing table header after empty-normalization fallback"
+grep -qxF '|---|---|' "$output_b6" \
+    || fail "(b6) missing table separator after empty-normalization fallback"
+# Exactly one fresh version row, value 9.8.7.
+total_version_rows_b6=$(grep -cE '^\| larch plugin version \|' "$output_b6")
+[ "$total_version_rows_b6" = "1" ] \
+    || fail "(b6) expected exactly 1 plugin-version row, got $total_version_rows_b6"
+grep -qF '| larch plugin version | 9.8.7 |' "$output_b6" \
+    || fail "(b6) version row should carry the freshly-captured value (9.8.7)"
+if grep -qF '| larch plugin version | 0.0.1 |' "$output_b6"; then
+    fail "(b6) stale version row should have been stripped"
+fi
+pass "(b6) populated fragment normalized to empty → seed-style scaffold + fresh version row"
 
 # --------------------------------------------------------------------------
 # (c) Full fragments — all 8 slugs populated
