@@ -121,9 +121,31 @@ else
 fi
 
 # --lenient suppresses the threshold abort and still produces the report.
-lenient_out=$(python3 "$ANALYZER" --json "$TMP_HIGH" --lenient 2>/dev/null) || lenient_out=""
+if lenient_out=$(python3 "$ANALYZER" --json "$TMP_HIGH" --lenient 2>/dev/null); then
+    PASS=$((PASS + 1))
+    echo "  ok: --lenient exits 0 past 10% threshold"
+else
+    FAIL=$((FAIL + 1))
+    FAILED_TESTS+=("--lenient must exit 0 past 10% threshold")
+    echo "  FAIL: --lenient must exit 0 past 10% threshold" >&2
+    lenient_out=""
+fi
 assert_contains "$lenient_out" "Total issues: 9" "--lenient: report renders 9 valid dicts past 10% threshold"
 assert_contains "$lenient_out" "## Executive Summary" "--lenient: report includes Executive Summary"
+
+# Static guard: the run-analysis.sh wrapper must forward --lenient into ANALYZE_ARGS
+# when LENIENT=1. Catches a regression that drops the append without an end-to-end test.
+RUN_ANALYSIS="$SCRIPT_DIR/run-analysis.sh"
+# shellcheck disable=SC2016 # the regex matches a literal $LENIENT in the source file; do not expand here.
+if grep -Eq '"\$LENIENT"\s*==\s*"1".*\bANALYZE_ARGS\+=\(--lenient\)' "$RUN_ANALYSIS" \
+   || awk '/LENIENT.*==.*1/{n=NR} n && NR<=n+3 && /ANALYZE_ARGS\+=\(--lenient\)/{found=1; exit} END{exit !found}' "$RUN_ANALYSIS"; then
+    PASS=$((PASS + 1))
+    echo "  ok: run-analysis.sh forwards --lenient when LENIENT=1"
+else
+    FAIL=$((FAIL + 1))
+    FAILED_TESTS+=("run-analysis.sh must append --lenient to ANALYZE_ARGS when LENIENT=1")
+    echo "  FAIL: run-analysis.sh must append --lenient to ANALYZE_ARGS when LENIENT=1" >&2
+fi
 
 if [[ $FAIL -gt 0 ]]; then
     echo "FAILED ($FAIL of $((PASS + FAIL))):" >&2

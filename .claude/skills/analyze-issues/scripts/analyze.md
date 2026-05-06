@@ -8,7 +8,10 @@ Invariants: use only Python stdlib, cap issue bodies to the first 5 KB before an
 
 `load_issues` policy: emit a stderr `WARN load_issues: skipping non-dict element at index <i>: <repr>` line for every list element that is not a dict, and exit with `ERROR=load_issues skipped …` when the skip ratio exceeds 5% of the input list. The CLI flag `--lenient` suppresses the threshold abort but does NOT silence the per-element stderr warnings; pass it through `run-analysis.sh --lenient` for callers that genuinely tolerate corrupted dumps.
 
-`default_category` keyword matching uses precompiled per-category word-boundary regexes (`CATEGORY_PATTERNS`). Short keywords like `fix` / `add` / `new` match strictly (`\bKW\b`) so they cannot alias inside `fixture` / `prefix` / `affix`. Keywords listed in `_STEM_KEYWORDS` (e.g. `doc`, `determin`, `validate`, `sanitize`, `simplify`, `instruction`) match as prefixes (`\bKW\w*`) so inflectional forms — `documentation`, `determinism`, `validation`, `sanitization` — still classify into the intended category.
+`default_category` keyword matching uses precompiled per-category word-boundary regexes (`CATEGORY_PATTERNS`). Two compilation modes:
+
+- **Whole-word** (default — `re.escape(KW) + r"\b"`): every keyword in `CATEGORY_RULES` not listed in `_STEM_KEYWORDS`. Short tokens like `fix` / `add` / `new` use this mode so they cannot alias inside `fixture` / `prefix` / `affix`. Documentation drift relies on this mode with explicit enumeration of inflectional forms (`doc`, `docs`, `documentation`, `documented`, `documenting`, `instruction`, `instructions`) — `doc` is intentionally NOT a stem to avoid matching `Docker` / `doctrine` / `documentary`.
+- **Prefix-stem** (`re.escape(stem) + r"\w*"`, where `stem` trims a trailing `e`/`y` from the keyword): the `_STEM_KEYWORDS` frozenset (`determin`, `validate`, `sanitize`, `simplify`, `permission`, `secret`, `feature`, `scaffold`, `failure`, `regression`, `assert`, `crash`). These accept inflectional forms — `determinism`, `validation`, `sanitization`, `simplification`, `failures`, `crashes`, `assertions`, etc. — so the stem rewrite preserves the original substring behavior for those keywords.
 
 Makefile wiring: none; this is a dev-only local skill helper.
 
