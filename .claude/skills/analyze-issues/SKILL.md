@@ -29,7 +29,7 @@ Flags:
 - `--top-K N`: number of top items to show in ranked sections. Default: `10`.
 - `--categories=auto|default`: category mode. Default: `default`.
 
-The raw `gh` JSON dump is saved to `/tmp/<repo>-issues.json` for follow-up reanalysis.
+The raw `gh` JSON dump is saved to `${TMPDIR:-/tmp}/<sanitized-repo>-issues.json` for follow-up reanalysis. The slug converts `/` to `-` and keeps only alnum, `-`, and `_`; dumps are intentionally user-private via `umask 077` and an atomic temp+mv write. See `scripts/run-analysis.md` for the full contract.
 
 ## Implementation
 
