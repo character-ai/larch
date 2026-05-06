@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.15] - 2026-05-05
+
+### Changed
+
+- `/implement` Step 9a.1 OOS pipeline now runs an automatic combine pass before filing. When more than one accepted OOS entry exists across the three source artifacts (`oos-accepted-design.md`, `oos-accepted-review.md`, `oos-accepted-main-agent.md`), the orchestrator groups related entries (same code area, similar change pattern, overlapping scope, sequential dependency) into a smaller batch written to `$IMPLEMENT_TMPDIR/oos-combined.md`. Both `oos-file-conflict-deps.sh` and the `/issue` batch invocation read that path as `--input-file`. Combined entries preserve all actionable content from sources, retain `--blocked-by-issue $ISSUE_NUMBER` forwarding to the tracking issue, and continue to receive inter-OOS dependency edges from the file-conflict pre-pass plus `/issue` Phase 2 LLM dep analysis. Combining is silent and unconditional in the orchestrator path — no interactive `/combine-issues` invocation. New `scripts/test-implement-structure.sh` assertion `(9f)` pins the literal `oos-combined.md` in the canonical Step 9a.1 procedure section so the combine-pass output path cannot regress while CI stays green.
+
 ## [15.12.14] - 2026-05-05
 
 ### Changed
