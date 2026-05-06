@@ -6,6 +6,13 @@
 
 set -uo pipefail
 
+# Drop wait-for-reviewers.sh's sentinel-poll cadence to 0.05s. Each successful
+# retry case otherwise pays one full 5s default poll waiting for the retry
+# sentinel to appear. Production callers inherit the 5s default; only this
+# stub-driven harness needs the fast cadence. Companion knob to the existing
+# RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 set inline at run_collector below.
+export WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.05
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COLLECTOR="$REPO_ROOT/scripts/collect-agent-results.sh"
 TMPROOT="$(mktemp -d "${TMPDIR:-/tmp}/test-collect-agent-retry-XXXXXX")"

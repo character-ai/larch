@@ -85,10 +85,16 @@ discover_gemini_tools_from_probe() {
 
 discover_gemini_tools_from_slash_command() {
     local output tmp pid watchdog
+    # Test seam: harnesses can shorten the discovery watchdog (default 5s)
+    # to avoid paying full 5s on every "hung Gemini" stub. Production callers
+    # leave it unset and inherit the 5s default. Validated as a positive
+    # integer; falls back to 5 if the value is empty or non-numeric.
+    local discovery_timeout="${LARCH_GEMINI_TOOL_DISCOVERY_TIMEOUT:-5}"
+    case "$discovery_timeout" in ''|*[!0-9]*|0) discovery_timeout=5 ;; esac
     if command -v gtimeout >/dev/null 2>&1; then
-        output=$(gtimeout 5 gemini /tools </dev/null 2>/dev/null) || true
+        output=$(gtimeout "$discovery_timeout" gemini /tools </dev/null 2>/dev/null) || true
     elif command -v timeout >/dev/null 2>&1; then
-        output=$(timeout 5 gemini /tools </dev/null 2>/dev/null) || true
+        output=$(timeout "$discovery_timeout" gemini /tools </dev/null 2>/dev/null) || true
     else
         tmp=$(mktemp "${TMPDIR:-/tmp}/gemini-tools.XXXXXX") || return 0
         if command -v perl >/dev/null 2>&1; then
@@ -98,7 +104,7 @@ discover_gemini_tools_from_slash_command() {
         fi
         pid=$!
         (
-            sleep 5
+            sleep "$discovery_timeout"
             kill -TERM "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
             sleep 1
             kill -KILL "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true

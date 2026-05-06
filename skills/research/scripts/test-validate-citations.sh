@@ -61,6 +61,12 @@ assert() {
 #       any other https://*               → 200
 #   - exit 0 (curl simulated success)
 
+# Drop the validate-citations.sh budget-wait poll cadence to 0.05s so the
+# many fixture-driven fetches in this harness do not pay full-second wakeups
+# while waiting for the fake-curl child to exit. Production callers inherit
+# the 1s default (see validate-citations.md "Test seams").
+export __VC_BUDGET_POLL_INTERVAL=0.05
+
 FAKE_CURL="$WORK/fake-curl"
 cat > "$FAKE_CURL" <<'FAKEEOF'
 #!/usr/bin/env bash

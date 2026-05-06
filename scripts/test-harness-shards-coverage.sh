@@ -82,15 +82,36 @@ extract_shard_prereqs() {
   local makefile="$1"
   local out_all="$2"
   local out_last_shard="$3"
+  local out_expected_shards="${4:-}"
   local n
   local count
   local line
   local prereq
+  local last_n=0
+  local discovered_shards
+  discovered_shards="$(grep -Eo '^test-harnesses-[0-9]+:' "$makefile" | awk '{ sub(/^test-harnesses-/, ""); sub(/:$/, ""); print }' | sort -nu)"
 
   : > "$out_all"
   : > "$out_last_shard"
+  if [[ -n "$out_expected_shards" ]]; then
+    : > "$out_expected_shards"
+  fi
 
-  for n in 1 2 3 4 5; do
+  if [[ -z "$discovered_shards" ]]; then
+    printf 'no test-harnesses-N rules declared in Makefile\n' >> "$MISSING_SHARD_RULES"
+    return
+  fi
+
+  for n in $discovered_shards; do
+    if [[ -n "$out_expected_shards" ]]; then
+      printf 'test-harnesses-%s\n' "$n" >> "$out_expected_shards"
+    fi
+    if (( n > last_n )); then
+      last_n="$n"
+    fi
+  done
+
+  for n in $discovered_shards; do
     count="$(grep -Ec "^test-harnesses-$n:" "$makefile" || true)"
     if [[ "$count" != "1" ]]; then
       printf 'test-harnesses-%s must be declared exactly once (found %s)\n' "$n" "$count" >> "$MISSING_SHARD_RULES"
@@ -101,11 +122,16 @@ extract_shard_prereqs() {
     line="${line#*:}"
     for prereq in $line; do
       printf '%s\n' "$prereq" >> "$out_all"
-      if [[ "$n" == "5" ]]; then
+      if [[ "$n" == "$last_n" ]]; then
         printf '%s\n' "$prereq" >> "$out_last_shard"
       fi
     done
   done
+
+  # Export the last-shard token so error messages can reference it. Set in the
+  # calling scope via the global LAST_SHARD_NAME for the validate_makefile
+  # report messages below.
+  LAST_SHARD_NAME="test-harnesses-$last_n"
 }
 
 extract_umbrella_prereqs() {
@@ -175,7 +201,7 @@ validate_makefile() {
   grep -nE "^test-harnesses-[1-5]:.*\\\\" "$makefile" > "$continuation_violations" || true
 
   extract_individual_targets "$makefile" > "$individual"
-  extract_shard_prereqs "$makefile" "$shard_all" "$last_shard"
+  extract_shard_prereqs "$makefile" "$shard_all" "$last_shard" "$umbrella_expected"
 
   grep -Fxv 'test-harness-shards-coverage' "$shard_all" | sort -u > "$shard_no_self" || true
   sort "$shard_all" | uniq -d > "$duplicates"
@@ -183,7 +209,11 @@ validate_makefile() {
   comm -13 "$individual" "$shard_no_self" > "$orphan"
 
   extract_umbrella_prereqs "$makefile" "$umbrella"
-  printf '%s\n' test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 | sort -u > "$umbrella_expected"
+  # umbrella_expected was populated by extract_shard_prereqs above using the
+  # set of test-harnesses-N rules actually declared in the Makefile (any N≥1),
+  # so the partition guard stays shard-count-agnostic — adding or removing a
+  # shard updates the comparison automatically.
+  sort -u "$umbrella_expected" -o "$umbrella_expected"
   sort -u "$umbrella" > "$umbrella.sorted"
   comm -23 "$umbrella_expected" "$umbrella.sorted" > "$umbrella_missing"
   comm -13 "$umbrella_expected" "$umbrella.sorted" > "$umbrella_extra"
@@ -238,10 +268,11 @@ validate_makefile() {
     } >> "$REPORT"
   fi
 
+  local last_shard_name="${LAST_SHARD_NAME:-test-harnesses-N}"
   if ! grep -Fxq 'test-harness-shards-coverage' "$last_shard"; then
     {
       printf '@@ self-reference misplaced @@\n'
-      printf '! test-harness-shards-coverage must be the first prerequisite of test-harnesses-5\n'
+      printf '! test-harness-shards-coverage must be the first prerequisite of %s\n' "$last_shard_name"
     } >> "$REPORT"
   else
     local first_last_shard
@@ -249,7 +280,7 @@ validate_makefile() {
     if [[ "$first_last_shard" != "test-harness-shards-coverage" ]]; then
       {
         printf '@@ self-reference misplaced @@\n'
-        printf '! test-harness-shards-coverage must be the first prerequisite of test-harnesses-5\n'
+        printf '! test-harness-shards-coverage must be the first prerequisite of %s\n' "$last_shard_name"
       } >> "$REPORT"
     fi
   fi

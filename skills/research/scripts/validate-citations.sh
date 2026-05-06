@@ -122,6 +122,11 @@ __VC_STUB_RESOLVE="${__VC_STUB_RESOLVE:-}"
 # Test seam: when set, exit 0 immediately after extraction so harnesses can
 # assert claim parsing without making any network call.
 __VC_DRY_RUN="${__VC_DRY_RUN:-}"
+# Test seam: child-PID poll cadence for the budget-bounded `wait` loop. Default
+# 1s keeps progress chatter human-readable for production callers; harnesses
+# override to 0.05s to avoid paying full-second wakeups per fetch. Validated
+# below with the same positive-number rule used by --budget-seconds, etc.
+__VC_BUDGET_POLL_INTERVAL="${__VC_BUDGET_POLL_INTERVAL:-1}"
 
 # Preserve original argv for the Linux setsid re-exec below (the while
 # loop consumes $@ via shift).
@@ -169,6 +174,18 @@ __vc_check_positive_int() {
 __vc_check_positive_int "--budget-seconds" "$BUDGET_SECONDS"
 __vc_check_positive_int "--per-fetch-timeout" "$PER_FETCH_TIMEOUT"
 __vc_check_positive_int "--max-claims" "$MAX_CLAIMS"
+
+# __VC_BUDGET_POLL_INTERVAL is a float-tolerant positive number (1, 0.05, etc.).
+# Reject empty / non-numeric / multi-dot / zero. `sleep` accepts both int and
+# fractional seconds on coreutils and macOS.
+case "$__VC_BUDGET_POLL_INTERVAL" in
+    ''|*[!0-9.]*|.|0|0.|0.0|0.00|0.000)
+        echo "validate-citations.sh: __VC_BUDGET_POLL_INTERVAL must be a positive number (got: $__VC_BUDGET_POLL_INTERVAL)" >&2
+        exit 2 ;;
+    *.*.*)
+        echo "validate-citations.sh: __VC_BUDGET_POLL_INTERVAL must be a positive number (got: $__VC_BUDGET_POLL_INTERVAL)" >&2
+        exit 2 ;;
+esac
 [[ -n "$TMPDIR" ]] || { echo "validate-citations.sh: --tmpdir is required" >&2; exit 2; }
 
 # ---------- helpers ----------
@@ -746,7 +763,7 @@ if [[ ${#CURL_PIDS[@]} -gt 0 ]]; then
             TIMED_OUT=true
             break
         fi
-        sleep 1
+        sleep "$__VC_BUDGET_POLL_INTERVAL"
     done
 fi
 
