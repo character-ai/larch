@@ -29,6 +29,10 @@
 #          (false-positive / duplicate / superseded mark; done skips),
 #          precedence over --mark-false-positive-if-keyword (enum wins),
 #          and invalid-value rejection (exit 2).
+#   23-25. --close-class secondary coverage: marker runs on already-closed
+#          branch (parallel to f14 for the keyword flag), enum permits empty
+#          --comment, precedence holds for marking enum values too (not
+#          only `done`).
 #
 # Scope: offline, hermetic (no network, no git state change). All scratch
 # state under $TMPDIR; torn down by EXIT trap.
@@ -553,6 +557,50 @@ assert_contains "$CLOSE_STDERR" "got 'wontfix'" "[f22] usage error echoes invali
 log22=$(cat "$TMPROOT/f22/gh-invocations.log")
 assert_not_contains "$log22" "close|42" "[f22] gh issue close NOT invoked on usage error"
 assert_not_contains "$log22" "comment|42|" "[f22] gh issue comment NOT invoked on usage error"
+
+# --- Fixture 23: --close-class duplicate marks on already-CLOSED branch ---
+# Pins the contract claim that the marker hook runs after CLOSED=true on
+# both the open and the already-closed paths under --close-class (parallels
+# Fixture 14 which pins the same invariant for the legacy keyword flag).
+echo ""
+echo "=== 23: --close-class duplicate runs marker on already-closed branch ==="
+STUB_TITLE_OVERRIDE="Plain title" run_case "f23" "CLOSED" "0" "0" --issue 42 --comment "Already closed; folding into umbrella" --close-class duplicate
+assert_eq "[f23] exit code" 0 "$RC"
+assert_eq "[f23] stdout byte-stable" "CLOSED=true" "$CLOSE_STDOUT"
+assert_contains "$CLOSE_STDERR" "INFO: issue #42 already closed" "[f23] stderr INFO note present"
+log23=$(cat "$TMPROOT/f23/gh-invocations.log")
+assert_not_contains "$log23" "close|42" "[f23] gh issue close skipped on already-closed branch"
+assert_contains "$log23" "title-edit|42|[FALSE-POSITIVE] Plain title" "[f23] marker title edit ran on already-closed branch"
+
+# --- Fixture 24: --close-class without --comment marks (enum is sole signal) -
+# Pins the contract claim that --close-class permits an empty --comment
+# because the enum is the sole signal — no comment scan happens.
+echo ""
+echo "=== 24: --close-class duplicate marks even when --comment is omitted ==="
+STUB_TITLE_OVERRIDE="Plain title" run_case "f24" "OPEN" "0" "0" --issue 42 --close-class duplicate
+assert_eq "[f24] exit code" 0 "$RC"
+assert_eq "[f24] stdout byte-stable" "CLOSED=true" "$CLOSE_STDOUT"
+log24=$(cat "$TMPROOT/f24/gh-invocations.log")
+assert_not_contains "$log24" "comment|42|" "[f24] no comment posted when --comment omitted"
+assert_contains "$log24" "close|42" "[f24] gh issue close invoked"
+assert_contains "$log24" "title-edit|42|[FALSE-POSITIVE] Plain title" "[f24] marker ran without --comment"
+
+# --- Fixture 25: precedence — marking enum + non-keyword comment ---------
+# Fixture 21 covers `done` + keyword-bearing comment. This fixture pins the
+# converse axis: a marking enum value (duplicate) paired with the legacy
+# keyword flag and a comment that does NOT match keywords. The marker must
+# run exactly once via the enum branch, NOT via the keyword branch (which
+# would no-op on a non-keyword comment anyway, but proves the keyword path
+# is bypassed entirely under --close-class precedence).
+echo ""
+echo "=== 25: --close-class duplicate + keyword flag + non-keyword comment marks once via enum branch ==="
+STUB_TITLE_OVERRIDE="Plain title" run_case "f25" "OPEN" "0" "0" --issue 42 --comment "Closing after analysis." --close-class duplicate --mark-false-positive-if-keyword
+assert_eq "[f25] exit code" 0 "$RC"
+assert_eq "[f25] stdout byte-stable" "CLOSED=true" "$CLOSE_STDOUT"
+log25=$(cat "$TMPROOT/f25/gh-invocations.log")
+title_edit_count25=$(printf '%s\n' "$log25" | grep -c '^title-edit|42|' || true)
+assert_eq "[f25] marker called exactly once via enum precedence" 1 "$title_edit_count25"
+assert_contains "$log25" "title-edit|42|[FALSE-POSITIVE] Plain title" "[f25] marker wrote expected title via enum branch"
 
 # --- Summary --------------------------------------------------------------
 echo ""
