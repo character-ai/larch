@@ -2,11 +2,13 @@
 # test-tracking-issue-write.sh — regression harness for tracking-issue-write.sh.
 #
 # Mirrors the stub-gh + PATH-override pattern of scripts/test-redact-secrets.sh.
-# Fifteen assertion categories (a-o) covering redaction, exit codes, truncation,
+# Sixteen assertion categories (a-p) covering redaction, exit codes, truncation,
 # anchor-skeleton preservation, anchor-upsert semantics, gh-failure redaction,
 # the anchor-section-markers.sh startup-guard fail-closed, the
 # SECTION_MARKERS ⊆ COLLAPSE_PRIORITY invariant, the rename subcommand
 # (idempotency, strip-exactly-one, redaction, invalid --state), the
+# mark-false-positive subcommand (ordering, idempotency, redaction, truncation,
+# and title-grammar edge cases), the
 # seed-only visible placeholder upsert survival (issue #431), and the
 # find-anchor subcommand contract (zero/one/multiple anchors plus
 # pagination across >100 comments — closes #654). All assertions run in
@@ -25,11 +27,16 @@ set -euo pipefail
 
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 WRITE="$REPO_ROOT/scripts/tracking-issue-write.sh"
+TITLE_MARKERS_LIB="$REPO_ROOT/scripts/lib-title-markers.sh"
 
 if [[ ! -x "$WRITE" ]]; then
     echo "FAIL: $WRITE not found or not executable" >&2
     exit 1
 fi
+
+# shellcheck source=scripts/lib-title-markers.sh
+# shellcheck disable=SC1090
+source "$TITLE_MARKERS_LIB"
 
 # Fixture: split prefix in source to defuse GitHub's sk-* secret-scanner heuristic.
 SK_TOKEN='sk-''ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD'
@@ -540,12 +547,20 @@ if [[ "$1" == "repo" ]] && [[ "$2" == "view" ]]; then
     exit 0
 fi
 if [[ "$1" == "issue" ]] && [[ "$2" == "view" ]]; then
+    if [[ "${STUB_VIEW_FAIL:-0}" == "1" ]]; then
+        echo "stub: title view failed" >&2
+        exit 1
+    fi
     # Return the mock title verbatim (no JSON wrapper; --jq .title would
     # have extracted the field, but the stub just emits the raw value).
     cat "$MOCK_TITLE_FILE"
     exit 0
 fi
 if [[ "$1" == "issue" ]] && [[ "$2" == "edit" ]]; then
+    if [[ "${STUB_EDIT_FAIL:-0}" == "1" ]]; then
+        echo "stub: edit failed for $SK_TOKEN_FROM_ENV" >&2
+        exit 1
+    fi
     touch "$EDIT_CALLED_FILE"
     for ((i=1; i<=$#; i++)); do
         if [[ "${!i}" == "--title" ]]; then
@@ -644,6 +659,106 @@ else
     PASS=$((PASS + 1))
     echo "  ok: (j7) gh issue edit was NOT called (redactable idempotent no-op)"
 fi
+
+echo ""
+echo "=== (p) mark-false-positive — additive marker grammar and title writes ==="
+
+assert_marker_helper() {
+    local title="$1" expected="$2" label="$3"
+    local actual
+    actual=$(insert_signal_marker "$title" "FALSE-POSITIVE")
+    assert_equal "$actual" "$expected" "$label"
+}
+
+assert_marker_command() {
+    local title="$1" expected="$2" marked="$3" label="$4"
+    rm -f "$EDIT_CAPTURE" "$EDIT_CALLED_FILE"
+    printf '%s' "$title" > "$MOCK_TITLE_FILE"
+    local out
+    out=$(PATH="$STUB_J:$PATH" bash "$WRITE" mark-false-positive --issue 42 --repo owner/repo 2>&1)
+    assert_contains "$out" "MARKED=$marked" "$label MARKED=$marked"
+    assert_contains "$out" "NEW_TITLE=$expected" "$label NEW_TITLE"
+    if [ "$marked" = true ]; then
+        if [[ -f "$EDIT_CAPTURE" ]]; then
+            local cap
+            cap=$(cat "$EDIT_CAPTURE")
+            assert_equal "$cap" "$expected" "$label gh issue edit title"
+        else
+            FAIL=$((FAIL + 1))
+            FAILED_TESTS+=("$label missing edit capture")
+            echo "  FAIL: $label missing edit capture" >&2
+        fi
+    elif [[ -f "$EDIT_CALLED_FILE" ]]; then
+        FAIL=$((FAIL + 1))
+        FAILED_TESTS+=("$label edited despite idempotent no-op")
+        echo "  FAIL: $label edited despite idempotent no-op" >&2
+    else
+        PASS=$((PASS + 1))
+        echo "  ok: $label no gh issue edit"
+    fi
+}
+
+assert_marker_helper "" "[FALSE-POSITIVE]" "(p1) empty title helper"
+assert_marker_helper "Foo bar" "[FALSE-POSITIVE] Foo bar" "(p2) plain title helper"
+assert_marker_helper "[OOS] Foo" "[FALSE-POSITIVE] [OOS] Foo" "(p3) OOS sibling helper"
+assert_marker_helper "[OOS]Foo" "[FALSE-POSITIVE] [OOS]Foo" "(p4) no-space OOS helper"
+assert_marker_helper "[IN PROGRESS] [OOS] Foo" "[IN PROGRESS] [FALSE-POSITIVE] [OOS] Foo" "(p5) IN PROGRESS ordering helper"
+assert_marker_helper "[DONE] [OOS] Foo" "[DONE] [FALSE-POSITIVE] [OOS] Foo" "(p6) DONE ordering helper"
+assert_marker_helper "[STALLED] [OOS] Foo" "[STALLED] [FALSE-POSITIVE] [OOS] Foo" "(p7) STALLED ordering helper"
+assert_marker_helper "[DONE] [FALSE-POSITIVE] [OOS] Foo" "[DONE] [FALSE-POSITIVE] [OOS] Foo" "(p8) already marked helper"
+assert_marker_helper "[DONE] [ROUND-TRIP] [FALSE-POSITIVE] [OOS] Foo" "[DONE] [ROUND-TRIP] [FALSE-POSITIVE] [OOS] Foo" "(p9) marker present later in leading sequence"
+assert_marker_helper "[DONE] Foo [FALSE-POSITIVE] bar" "[DONE] [FALSE-POSITIVE] Foo [FALSE-POSITIVE] bar" "(p10) mid-title marker is not idempotent"
+assert_marker_helper "[DONE] [ROUND-TRIP] [OOS] Foo" "[DONE] [FALSE-POSITIVE] [ROUND-TRIP] [OOS] Foo" "(p11) sibling ROUND-TRIP preserved"
+assert_marker_helper "Foo [bar] baz" "[FALSE-POSITIVE] Foo [bar] baz" "(p12) embedded bracket after text ignored"
+
+assert_marker_command "Foo bar" "[FALSE-POSITIVE] Foo bar" true "(p13) command marks plain title"
+assert_marker_command "[DONE] [FALSE-POSITIVE] [OOS] Foo" "[DONE] [FALSE-POSITIVE] [OOS] Foo" false "(p14) command idempotent no-op"
+
+rm -f "$EDIT_CAPTURE" "$EDIT_CALLED_FILE"
+printf 'Fix %s handler' "$SK_TOKEN" > "$MOCK_TITLE_FILE"
+out_p15=$(PATH="$STUB_J:$PATH" bash "$WRITE" mark-false-positive --issue 42 --repo owner/repo 2>&1)
+assert_contains "$out_p15" 'MARKED=true' '(p15) redactable title marked'
+assert_not_contains "$out_p15" "$SK_TOKEN" '(p15) stdout does not leak raw token'
+if [[ -f "$EDIT_CAPTURE" ]]; then
+    cap_p15=$(cat "$EDIT_CAPTURE")
+    assert_contains "$cap_p15" '<REDACTED-TOKEN>' '(p15) outbound title contains redaction token'
+    assert_not_contains "$cap_p15" "$SK_TOKEN" '(p15) outbound title does not leak raw token'
+fi
+
+rm -f "$EDIT_CAPTURE" "$EDIT_CALLED_FILE"
+long_tail=""
+for _ in $(seq 1 240); do
+    long_tail="${long_tail}a"
+done
+printf '%s' "$long_tail" > "$MOCK_TITLE_FILE"
+out_p16=$(PATH="$STUB_J:$PATH" bash "$WRITE" mark-false-positive --issue 42 --repo owner/repo 2>&1)
+assert_contains "$out_p16" 'MARKED=true' '(p16) long title marked'
+if [[ -f "$EDIT_CAPTURE" ]]; then
+    cap_p16=$(cat "$EDIT_CAPTURE")
+    assert_equal "${#cap_p16}" "256" "(p16) outbound title truncated to 256 chars"
+    assert_contains "$cap_p16" '[FALSE-POSITIVE] ' '(p16) prefix survives truncation'
+fi
+
+rm -f "$EDIT_CAPTURE" "$EDIT_CALLED_FILE"
+printf '%s' 'edit failure title' > "$MOCK_TITLE_FILE"
+export STUB_EDIT_FAIL=1
+export SK_TOKEN_FROM_ENV="$SK_TOKEN"
+exit_p17=0
+out_p17=$(PATH="$STUB_J:$PATH" bash "$WRITE" mark-false-positive --issue 42 --repo owner/repo 2>&1) || exit_p17=$?
+unset STUB_EDIT_FAIL SK_TOKEN_FROM_ENV
+assert_equal "$exit_p17" "2" "(p17) edit failure exits 2"
+assert_contains "$out_p17" 'FAILED=true' '(p17) edit failure emits FAILED=true'
+assert_contains "$out_p17" 'ERROR=gh issue edit failed:' '(p17) edit failure emits ERROR'
+assert_not_contains "$out_p17" "$SK_TOKEN" '(p17) edit failure stderr redacted'
+
+rm -f "$EDIT_CAPTURE" "$EDIT_CALLED_FILE"
+export STUB_VIEW_FAIL=1
+exit_p18=0
+out_p18=$(PATH="$STUB_J:$PATH" bash "$WRITE" mark-false-positive --issue 42 --repo owner/repo 2>&1) || exit_p18=$?
+unset STUB_VIEW_FAIL
+assert_equal "$exit_p18" "2" "(p18) view failure exits 2"
+assert_contains "$out_p18" 'FAILED=true' '(p18) view failure emits FAILED=true'
+assert_contains "$out_p18" 'ERROR=gh issue view failed:' '(p18) view failure emits ERROR'
 
 echo ""
 echo "=== (k) upsert-anchor preserves the seed-only visible placeholder line ==="

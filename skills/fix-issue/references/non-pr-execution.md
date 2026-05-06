@@ -24,6 +24,8 @@ Read the issue details from Step 2 and execute the instructions directly using R
 
 As work proceeds, maintain a running `WORK_SUMMARY` — a concise markdown summary of what was done and the output artifacts (links to any issues created, key findings, etc.). This summary becomes the closing comment in Step 6b and the one-sentence Slack message in Step 7b. Keep `PR_URL` and `PR_NUMBER` unset on this path.
 
+Step 6b intentionally does not pass `--mark-false-positive-if-keyword` to `issue-lifecycle.sh close`. `WORK_SUMMARY` is free-form research or review narrative, not a structured close-class field; matching words like "duplicate", "superseded", or "false positive" inside a legitimate completion summary would misclassify completed NON_PR work as a false-positive closure. A future structured close-class enum can cover this cleanly without keyword inference.
+
 ### Failure fallback
 
 If the work cannot be completed (e.g., `/issue` fails repeatedly, the issue's instructions are infeasible, or required external access is unavailable), SKILL.md Step 5b prints the NON_PR-failure breadcrumb (`**⚠ 5: execute — non-PR task failed. Issue #$ISSUE_NUMBER remains locked with IN PROGRESS comment and [IN PROGRESS] title prefix. (<elapsed>)**`) and skips to Step 8. The `IN PROGRESS` comment serves as an indicator that manual intervention is needed — same recovery semantics as the `/implement` failure path in Step 5a.

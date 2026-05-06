@@ -150,8 +150,10 @@ Decide whether the issue is still material against the codebase (see the referen
 1. Close with the explanation as the comment:
    ```bash
    ${CLAUDE_PLUGIN_ROOT}/skills/fix-issue/scripts/issue-lifecycle.sh close \
-     --issue $ISSUE_NUMBER --comment "Closing: <detailed explanation with research summary>"
+     --issue $ISSUE_NUMBER --comment "Closing: <detailed explanation with research summary>" \
+     --mark-false-positive-if-keyword
    ```
+   This close path may best-effort add the `[FALSE-POSITIVE]` title marker when the closing comment contains a configured false-positive keyword.
 2. **Best-effort terminal title rename** to clear the `[IN PROGRESS]` prefix Step 0 applied at lock time, replacing it with `[DONE]` so the closed issue's title accurately reflects that automated processing concluded:
    ```bash
    ${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh rename \
@@ -265,6 +267,8 @@ Close the issue with `WORK_SUMMARY` as the closing comment (no `--pr-url`, no bo
 ${CLAUDE_PLUGIN_ROOT}/skills/fix-issue/scripts/issue-lifecycle.sh close \
   --issue $ISSUE_NUMBER --comment "$WORK_SUMMARY"
 ```
+
+Do not pass `--mark-false-positive-if-keyword` on the NON_PR path. `WORK_SUMMARY` is unrestricted research or review narrative, so word-level matches such as "duplicate" or "superseded" would misclassify legitimate completed work as false-positive closure; see `skills/fix-issue/references/non-pr-execution.md`.
 
 **Best-effort terminal title rename** to clear the `[IN PROGRESS]` prefix Step 0 applied at lock time, replacing it with `[DONE]` so the closed issue's title accurately reflects that automated processing concluded:
 

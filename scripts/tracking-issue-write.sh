@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # tracking-issue-write.sh — outbound helper for the tracking-issue lifecycle.
 #
-# Phase 1 (umbrella #348) foundation layer. Ships five narrow subcommands —
-# four writes (create-issue, append-comment, upsert-anchor, rename) that each
-# perform exactly one GitHub write, plus one read-only lookup (find-anchor)
+# Phase 1 (umbrella #348) foundation layer. Ships six narrow subcommands —
+# five writes (create-issue, append-comment, upsert-anchor, rename,
+# mark-false-positive) that each perform exactly one GitHub write, plus one
+# read-only lookup (find-anchor)
 # that lists comments and returns the v1 anchor id (or empty / fail-closed
 # on multi-anchor) — all sharing the same KEY=value stdout envelope and
 # fail-closed redaction posture as skills/issue/scripts/create-one.sh.
@@ -13,6 +14,7 @@
 #   append-comment --issue N --body-file F [--lifecycle-marker ID] [--repo OWNER/REPO]
 #   upsert-anchor  --issue N [--anchor-id ID] --body-file F [--repo OWNER/REPO]
 #   rename         --issue N --state in-progress|done|stalled [--repo OWNER/REPO]
+#   mark-false-positive --issue N [--repo OWNER/REPO]
 #   find-anchor    --issue N [--repo OWNER/REPO]                (read-only)
 #
 # Output contract (KEY=value on stdout; warnings on stderr). NAMESPACE note:
@@ -29,6 +31,7 @@
 #   append-comment: COMMENT_ID=<id>   COMMENT_URL=<url>
 #   upsert-anchor:  ANCHOR_COMMENT_ID=<id>  ANCHOR_COMMENT_URL=<url>  UPDATED=true|false
 #   rename:         RENAMED=true|false  NEW_TITLE=<title>
+#   mark-false-positive: MARKED=true|false  NEW_TITLE=<title>
 #   find-anchor:    ANCHOR_COMMENT_ID=<id-or-empty>
 #                   (one match → ANCHOR_COMMENT_ID=<id>; zero matches →
 #                   ANCHOR_COMMENT_ID= empty value; multiple matches →
@@ -100,6 +103,7 @@ REDACT_HELPER="$REPO_ROOT/scripts/redact-secrets.sh"
 # lockstep. Missing helper is fail-closed so the FAILED=true / ERROR= stdout
 # contract is preserved (test-tracking-issue-write.sh covers this case).
 MARKERS_HELPER="$SCRIPT_DIR/anchor-section-markers.sh"
+TITLE_MARKERS_HELPER="$SCRIPT_DIR/lib-title-markers.sh"
 if [ ! -f "$MARKERS_HELPER" ]; then
     echo "FAILED=true"
     echo "ERROR=missing helper: $MARKERS_HELPER"
@@ -129,6 +133,7 @@ Usage:
   tracking-issue-write.sh append-comment --issue N --body-file F [--lifecycle-marker ID] [--repo OWNER/REPO]
   tracking-issue-write.sh upsert-anchor  --issue N [--anchor-id ID] --body-file F [--repo OWNER/REPO]
   tracking-issue-write.sh rename         --issue N --state in-progress|done|stalled [--repo OWNER/REPO]
+  tracking-issue-write.sh mark-false-positive --issue N [--repo OWNER/REPO]
   tracking-issue-write.sh find-anchor    --issue N [--repo OWNER/REPO]
 USAGE
 }
@@ -716,6 +721,61 @@ case "$cmd" in
             emit_gh_failure "gh issue edit failed: $ERR_CONTENT"
         fi
         echo "RENAMED=true"
+        echo "NEW_TITLE=$NEW_TITLE"
+        exit 0
+        ;;
+
+    mark-false-positive)
+        ISSUE=""
+        REPO=""
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                --issue) ISSUE="${2:?--issue requires a value}"; shift 2 ;;
+                --repo)  REPO="${2:?--repo requires a value}"; shift 2 ;;
+                *) echo "Unknown option for mark-false-positive: $1" >&2; usage; exit 1 ;;
+            esac
+        done
+        if [[ -z "$ISSUE" ]]; then
+            usage
+            exit 1
+        fi
+        if [[ ! -f "$TITLE_MARKERS_HELPER" ]]; then
+            echo "FAILED=true"
+            echo "ERROR=missing helper: $TITLE_MARKERS_HELPER"
+            exit 1
+        fi
+        # shellcheck source=scripts/lib-title-markers.sh
+        # shellcheck disable=SC1091
+        source "$TITLE_MARKERS_HELPER"
+        if [[ -z "$REPO" ]]; then
+            REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null) || REPO=""
+            if [[ -z "$REPO" ]]; then
+                echo "FAILED=true"
+                echo "ERROR=could not determine repo"
+                exit 2
+            fi
+        fi
+        ERR_TMP=$(mktemp)
+        # shellcheck disable=SC2317
+        cleanup() { rm -f "$ERR_TMP"; }
+        trap cleanup EXIT
+        if ! CUR_TITLE=$(gh issue view "$ISSUE" --repo "$REPO" --json title --jq '.title' 2>"$ERR_TMP"); then
+            ERR_CONTENT=$(cat "$ERR_TMP")
+            emit_gh_failure "gh issue view failed: $ERR_CONTENT"
+        fi
+        CUR_TITLE_REDACTED=$(redact "$CUR_TITLE") || emit_redaction_failure
+        NEW_TITLE=$(insert_signal_marker "$CUR_TITLE_REDACTED" "FALSE-POSITIVE")
+        if [[ "$NEW_TITLE" == "$CUR_TITLE_REDACTED" ]]; then
+            echo "MARKED=false"
+            echo "NEW_TITLE=$CUR_TITLE_REDACTED"
+            exit 0
+        fi
+        NEW_TITLE=$(truncate_title_to_256 "$NEW_TITLE")
+        if ! gh issue edit "$ISSUE" --repo "$REPO" --title "$NEW_TITLE" >/dev/null 2>"$ERR_TMP"; then
+            ERR_CONTENT=$(cat "$ERR_TMP")
+            emit_gh_failure "gh issue edit failed: $ERR_CONTENT"
+        fi
+        echo "MARKED=true"
         echo "NEW_TITLE=$NEW_TITLE"
         exit 0
         ;;
