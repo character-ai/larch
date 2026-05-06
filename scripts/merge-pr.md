@@ -18,6 +18,7 @@ Emits `MERGE_RESULT=...` and `ERROR=...` on stdout via an EXIT trap. Exits 0 unc
 | `admin_merged` | CI re-verified green + branch fresh; `--admin` merge succeeded. **Only emitted when `--no-admin-fallback` is NOT set.** |
 | `main_advanced` | Pre-merge gate found that the branch is behind main, or found a non-admin-eligible merge state. Caller should rebase and retry. |
 | `ci_not_ready` | Pre-merge gate did not find all checks passing. Caller should poll CI. |
+| `version_already_published` | Same-version race gate found a literal bump commit in `origin/main..HEAD` and `origin/main` already publishes that same `.claude-plugin/plugin.json` version. Caller should bail so the branch can rebase and re-bump. |
 | `admin_failed` | Default-mode `--admin` attempt failed and the plain fallback also failed. Hard error. |
 | `policy_denied` | CI re-verified green + branch fresh (admin-eligible); `--no-admin-fallback` is set, so `--admin` was NOT invoked, and the plain merge attempt failed. Caller should bail to manual reviewer-approval flow. |
 | `error` | Catch-all unexpected failure. Also covers the case where `gh pr view --json mergeStateStatus` returns empty (API/network/`gh` failure) or `UNKNOWN` — the script cannot determine merge state, so it short-circuits with `error` rather than mis-routing to `main_advanced`. |
@@ -39,13 +40,21 @@ The flag applies to **all admin-eligible mergeStateStatus values** — `CLEAN`, 
 
 Both gates are checked **before** any merge attempt: default-mode `--admin`, default-mode plain fallback, or the `--no-admin-fallback` plain-only attempt. The `--no-admin-fallback` opt-out is not a way to skip the safety invariant — it is a way to decline the override that the safety invariant has already approved.
 
+After CI and merge-state checks pass, the script also runs a same-version bump race gate before any merge attempt:
+
+1. It verifies `git rev-parse HEAD` equals `gh pr view --json headRefOid` for the PR. This precondition ensures the local worktree state being inspected is the PR head GitHub would merge.
+2. It refreshes `origin/main` and scans commit subjects in `origin/main..HEAD` for the newest literal `Bump version to X.Y.Z` subject. This branch-range scan catches a bump commit even when a follow-up `Fix CI failure` commit is on top.
+3. If the branch contains a bump commit, the origin-side version check reads `origin/main:.claude-plugin/plugin.json` content, not origin-side commit subjects. Squash-merge titles therefore cannot hide the already-published version.
+4. Every parsed version must satisfy `^[0-9]+\.[0-9]+\.[0-9]+$`. Fetch failure, unreadable or malformed origin `plugin.json`, missing/null version, local/remote OID mismatch, and malformed versions fail closed via `MERGE_RESULT=error`.
+5. If origin publishes the same version as the branch bump, the script emits `MERGE_RESULT=version_already_published` and `ERROR=origin/main HEAD already bumped to X.Y.Z; rebase and re-bump`. If origin publishes a different version and `origin/main` is no longer an ancestor of `HEAD`, the script emits `MERGE_RESULT=main_advanced`.
+
 ## Non-responsibilities
 
 This script does NOT post audit comments, Slack messages, or any human-facing observability about the bypass. The orchestrator (`skills/implement/SKILL.md` Step 12b's `admin_merged` branch) is responsible for posting a best-effort PR comment recording the bypass when `--admin` actually succeeds. Keeping audit side effects out of this script preserves the narrow `MERGE_RESULT`/`ERROR` stdout contract that callers parse.
 
 ## Edit-in-sync rules
 
-- When the `MERGE_RESULT` enum changes, update both this file's enum table and `skills/implement/SKILL.md` Step 12b's parse table in the same PR.
+- When the `MERGE_RESULT` enum changes, update the script header comment, this file's enum table, `skills/implement/SKILL.md` Step 12b's parse table, Step 12d's lead sentence, and the test harness in the same PR.
 - When `--no-admin-fallback` semantics change (e.g., the gate set, the `ERROR` text), update `skills/implement/SKILL.md` flag spec, `skills/fix-issue/SKILL.md` flag forwarding, and `docs/configuration-and-permissions.md`.
 - When default `--admin` ordering changes, update `skills/implement/SKILL.md` Step 12b, `docs/configuration-and-permissions.md`, and `docs/skills.md`.
 - The script's header comment also documents the enum and flag — keep it byte-aligned with this file's "MERGE_RESULT enum" table.
@@ -53,6 +62,6 @@ This script does NOT post audit comments, Slack messages, or any human-facing ob
 ## Test harness
 
 Validation is via:
-- `bash scripts/test-merge-pr.sh` for offline merge-order and gate regressions.
+- `bash scripts/test-merge-pr.sh` for offline merge-order, same-version gate, PR-head-OID precondition, origin-version parsing, and no-admin-fallback regressions.
 - `make lint` (shellcheck plus the Makefile-wired harness).
 - Manual integration testing on a real PR for new GitHub CLI behavior changes.
