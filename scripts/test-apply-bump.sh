@@ -97,18 +97,21 @@ run_case() {
     printf '%s\n' "$rc" > "$case_dir/exit-code"
 }
 
+# shellcheck disable=SC2317  # invoked indirectly via run_case "$runner"
 invoke_apply() {
     local repo_dir="$1"
     shift
     (cd "$repo_dir" && env "$@" bash "$REPO_ROOT/.claude/skills/bump-version/scripts/apply-bump.sh" --new-version 2.0.0)
 }
 
+# shellcheck disable=SC2317  # invoked indirectly via run_case "$runner"
 invoke_dirty_apply() {
     local repo_dir="$1"
     printf '%s\n' dirty > "$repo_dir/untracked.txt"
     invoke_apply "$repo_dir" STUB_ORIGIN_PLUGIN_JSON='{"version":"1.0.0"}'
 }
 
+# shellcheck disable=SC2317  # invoked indirectly via run_case "$runner"
 invoke_commit_failure_apply() {
     local repo_dir="$1"
     mkdir -p "$repo_dir/.git/hooks"

@@ -40,7 +40,7 @@ The regression harness is:
 
 ```makefile
 test-apply-bump:
-	bash scripts/test-apply-bump.sh
+    bash scripts/test-apply-bump.sh
 ```
 
 `test-apply-bump` is listed in `.PHONY` and in exactly one `test-harnesses-N` shard so `make lint` runs it through the `lint: test-harnesses lint-only` chain.

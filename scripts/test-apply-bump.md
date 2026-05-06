@@ -28,7 +28,7 @@ Each sub-test gets:
 
 ```makefile
 test-apply-bump:
-	bash scripts/test-apply-bump.sh
+    bash scripts/test-apply-bump.sh
 ```
 
 Listed in `.PHONY` and in exactly one `test-harnesses-N:` shard prerequisite list. `make lint` runs the harness via the `lint: test-harnesses lint-only` chain.
