@@ -11,7 +11,7 @@ Process one approved GitHub issue per invocation. Fetches open issues with a `GO
 
 **Single-iteration design**: Each invocation handles at most one issue, then exits. The caller (cron, `/loop`, or manual invocation) is responsible for repeated execution.
 
-**Anti-halt continuation reminder.** After every child tool call returns — both child `Skill` tool calls (e.g., `/design`, `/review`, `/relevant-checks`, `/bump-version`, `/issue`, `/implement`) AND child Bash tool calls into the canonical `/fix-issue` script set (`issue-lifecycle.sh`, `tracking-issue-write.sh`, `post-issue-slack.sh`, `cleanup-tmpdir.sh`, `find-lock-issue.sh`, `session-setup.sh`, `write-session-env.sh`, `get-issue-details.sh`) — IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on the child's cleanup output, and do NOT write a summary, handoff, status recap, or "returning to parent" message — those are halts in disguise. The Bash-tool-call coverage is unique to this `/fix-issue` skill. The terminal Step 6 → Step 7 → Step 8 sequence has no intervening Skill tool calls. Step 6 always invokes `issue-lifecycle.sh close` (and additionally invokes `tracking-issue-write.sh rename` on the NON_PR sub-branch 6b); Step 8 invokes `cleanup-tmpdir.sh` when a temp dir was created (otherwise it is prose-only); on the PR path Step 7 is itself a prose-only skip with no Bash call at all. The same Skill-free **close/announce/cleanup tail** pattern recurs in Step 3's not-material closure flow (close + best-effort rename + Slack + skip-to-cleanup) and in the Step 6b → Step 7b → Step 8 NON_PR close path. Step 5b's NON_PR body is separate from this tail pattern: it may call `/issue` (covered by the Skill-tool reminder above) and run additional Bash (covered by the same Bash-tool reminder above, applied to its full scope as stated next). The enumerated script list is the always-covered minimum scope; the rule applies equally to **any** Bash tool call invoked as part of a `/fix-issue` step's primary work — including Step 5b's inline `gh` queries, shell `test` invocations, and ad-hoc Bash. The Read / Grep / Glob tools are first-class Claude Code tools, not Bash subprocesses — their returns are not directly governed by this Bash extension, but the same continuation discipline applies: do not treat a tool return inside `/fix-issue`'s step sequence as a turn boundary — continue to the next sequenced step unless this file's explicit control-flow directives (`skip to Step N`, `bail to cleanup`, etc.) tell you otherwise. The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `skip to Step N`, `bail to cleanup`, `jump back`, `loop back`, `fall through`, `break out`). A normal sequential `proceed to Step N+1` instruction is the default continuation this rule reinforces, NOT an exception. Every `/relevant-checks` invocation anywhere in this file is covered by this rule. See `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Anti-halt continuation reminder for the canonical rule — note that the shared file remains scoped to `Skill` tool calls only; the broader Bash-call coverage in the paragraph above is `/fix-issue`-local and does NOT propagate to other skills.
+**Anti-halt continuation reminder.** After every child tool call returns — both child `Skill` tool calls (e.g., `/design`, `/review`, `/relevant-checks`, `/bump-version`, `/issue`, `/implement`) AND child Bash tool calls into the canonical `/fix-issue` script set (`issue-lifecycle.sh`, `tracking-issue-write.sh`, `round-trip-detect.sh`, `post-issue-slack.sh`, `cleanup-tmpdir.sh`, `find-lock-issue.sh`, `session-setup.sh`, `write-session-env.sh`, `get-issue-details.sh`) — IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on the child's cleanup output, and do NOT write a summary, handoff, status recap, or "returning to parent" message — those are halts in disguise. The Bash-tool-call coverage is unique to this `/fix-issue` skill. The terminal Step 6 → Step 7 → Step 8 sequence has no intervening Skill tool calls. Step 6 always invokes `issue-lifecycle.sh close` (and additionally invokes `tracking-issue-write.sh rename` on the NON_PR sub-branch 6b); Step 8 invokes `cleanup-tmpdir.sh` when a temp dir was created (otherwise it is prose-only); on the PR path Step 7 is itself a prose-only skip with no Bash call at all. The same Skill-free **close/announce/cleanup tail** pattern recurs in Step 3's not-material closure flow (close + best-effort rename + Slack + skip-to-cleanup) and in the Step 6b → Step 7b → Step 8 NON_PR close path. Step 5b's NON_PR body is separate from this tail pattern: it may call `/issue` (covered by the Skill-tool reminder above) and run additional Bash (covered by the same Bash-tool reminder above, applied to its full scope as stated next). The enumerated script list is the always-covered minimum scope; the rule applies equally to **any** Bash tool call invoked as part of a `/fix-issue` step's primary work — including Step 5b's inline `gh` queries, shell `test` invocations, and ad-hoc Bash. The Read / Grep / Glob tools are first-class Claude Code tools, not Bash subprocesses — their returns are not directly governed by this Bash extension, but the same continuation discipline applies: do not treat a tool return inside `/fix-issue`'s step sequence as a turn boundary — continue to the next sequenced step unless this file's explicit control-flow directives (`skip to Step N`, `bail to cleanup`, etc.) tell you otherwise. The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `skip to Step N`, `bail to cleanup`, `jump back`, `loop back`, `fall through`, `break out`). A normal sequential `proceed to Step N+1` instruction is the default continuation this rule reinforces, NOT an exception. Every `/relevant-checks` invocation anywhere in this file is covered by this rule. See `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Anti-halt continuation reminder for the canonical rule — note that the shared file remains scoped to `Skill` tool calls only; the broader Bash-call coverage in the paragraph above is `/fix-issue`-local and does NOT propagate to other skills.
 
 **Flags**: Parse flags from the start of `$ARGUMENTS`.
 
@@ -145,6 +145,8 @@ Print `> **🔶 3: triage**`
 
 Decide whether the issue is still material against the codebase (see the reference for the check list and the triage-targets rule for investigation/review-only issues).
 
+**Round-trip detection for terminal renames**: before any Step 3 / Step 6 terminal `tracking-issue-write.sh rename --state done`, run `${CLAUDE_PLUGIN_ROOT}/scripts/round-trip-detect.sh` and pass its `ROUND_TRIP=true|false` value as `--round-trip "$ROUND_TRIP"`. Use `$FIX_ISSUE_TMPDIR/issue-details.txt` from Step 2 as the canonical issue text source and pass `$ISSUE_TITLE` via `--text-string` only because it is short. For PR-path Step 6a, also fetch PR text into a temp file with `gh pr view "$PR_NUMBER" --json title,body --jq '(.title // "") + "\n" + (.body // "")'` and include that as an additional `--text-file`. Bodies and PR descriptions MUST be file-backed, not argv-backed. Best-effort: on any `gh` or detector failure, log a warning under `Tool Failures`, set `ROUND_TRIP=false`, and still run the rename. See `${CLAUDE_PLUGIN_ROOT}/scripts/round-trip-detect.md` and `${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.md`.
+
 **If the issue is no longer material** (already fixed, invalid, or no longer relevant): compose a detailed explanation with a research summary per the reference, then:
 
 1. Pick the `--close-class` value at decision time from the triage rationale: `already-fixed → done`, `duplicate-of → duplicate`, `superseded-by → superseded`, `invalid` / `false-positive` / `not-a-bug` → `false-positive`. Close with the explanation as the comment and the inferred class:
@@ -156,8 +158,13 @@ Decide whether the issue is still material against the codebase (see the referen
    This close path adds the `[FALSE-POSITIVE]` title marker for `false-positive`, `duplicate`, and `superseded`; `done` skips the marker. The closing comment is NOT scanned — the enum is the sole signal, set by the orchestrator at triage decision time. See `skills/fix-issue/scripts/issue-lifecycle.md` for the full contract.
 2. **Best-effort terminal title rename** to clear the `[IN PROGRESS]` prefix Step 0 applied at lock time, replacing it with `[DONE]` so the closed issue's title accurately reflects that automated processing concluded:
    ```bash
+   ROUND_TRIP_OUT=$(${CLAUDE_PLUGIN_ROOT}/scripts/round-trip-detect.sh \
+     --text-string "$ISSUE_TITLE" \
+     --text-file "$FIX_ISSUE_TMPDIR/issue-details.txt" 2>&1) || ROUND_TRIP_OUT="ROUND_TRIP=false"
+   ROUND_TRIP=$(echo "$ROUND_TRIP_OUT" | awk -F= '/^ROUND_TRIP=/ { v=$2 } END { print v }')
+   case "$ROUND_TRIP" in true|false) ;; *) ROUND_TRIP=false ;; esac
    ${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh rename \
-     --issue $ISSUE_NUMBER --state done
+     --issue $ISSUE_NUMBER --state done --round-trip "$ROUND_TRIP"
    ```
    Idempotent and best-effort: on `FAILED=true` or non-zero exit, log to `Tool Failures` and continue. Without this rename, a closed not-material issue would persist with the misleading `[IN PROGRESS]` title prefix until manually edited (because `/implement` Step 12a/12b/18 terminal renames only run on the PR delegation path).
 3. **Umbrella finalize hook** (FINDING_7 — ordering: AFTER child rename in step 2, BEFORE Slack in step 4): if `$UMBRELLA_NUMBER` is set (Step 0 dispatched this child from an umbrella), check whether the umbrella is now empty and finalize if so:
@@ -257,7 +264,21 @@ ${CLAUDE_PLUGIN_ROOT}/skills/fix-issue/scripts/issue-lifecycle.sh close \
   --issue $ISSUE_NUMBER --pr-url "$PR_URL" --comment "DONE"
 ```
 
-The `[IN PROGRESS]` title prefix Step 0 applied at lock time has already been flipped to `[DONE]` by `/implement` Step 12a/12b on PR merge. No additional rename is needed here.
+The `[IN PROGRESS]` title prefix Step 0 applied at lock time has usually already been flipped to `[DONE]` by `/implement` Step 12a/12b on PR merge. Run a best-effort marker refresh anyway so `/fix-issue` can add `[ROUND-TRIP]` when the merged PR text carries a marker and `/implement` did not already apply it:
+
+```bash
+PR_ROUND_TRIP_FILE=$(mktemp "$FIX_ISSUE_TMPDIR/round-trip-pr.XXXXXX")
+gh pr view "$PR_NUMBER" --json title,body --jq '(.title // "") + "\n" + (.body // "")' > "$PR_ROUND_TRIP_FILE"
+ROUND_TRIP_OUT=$(${CLAUDE_PLUGIN_ROOT}/scripts/round-trip-detect.sh \
+  --text-file "$FIX_ISSUE_TMPDIR/issue-details.txt" \
+  --text-file "$PR_ROUND_TRIP_FILE" 2>&1) || ROUND_TRIP_OUT="ROUND_TRIP=false"
+ROUND_TRIP=$(echo "$ROUND_TRIP_OUT" | awk -F= '/^ROUND_TRIP=/ { v=$2 } END { print v }')
+case "$ROUND_TRIP" in true|false) ;; *) ROUND_TRIP=false ;; esac
+${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh rename \
+  --issue $ISSUE_NUMBER --state done --round-trip "$ROUND_TRIP"
+```
+
+Best-effort: on `FAILED=true` / non-zero exit / detector failure, log to `Tool Failures` and continue.
 
 ### 6b — `INTENT=NON_PR`
 
@@ -274,8 +295,13 @@ ${CLAUDE_PLUGIN_ROOT}/skills/fix-issue/scripts/issue-lifecycle.sh close \
 **Best-effort terminal title rename** to clear the `[IN PROGRESS]` prefix Step 0 applied at lock time, replacing it with `[DONE]` so the closed issue's title accurately reflects that automated processing concluded:
 
 ```bash
+ROUND_TRIP_OUT=$(${CLAUDE_PLUGIN_ROOT}/scripts/round-trip-detect.sh \
+  --text-string "$ISSUE_TITLE" \
+  --text-file "$FIX_ISSUE_TMPDIR/issue-details.txt" 2>&1) || ROUND_TRIP_OUT="ROUND_TRIP=false"
+ROUND_TRIP=$(echo "$ROUND_TRIP_OUT" | awk -F= '/^ROUND_TRIP=/ { v=$2 } END { print v }')
+case "$ROUND_TRIP" in true|false) ;; *) ROUND_TRIP=false ;; esac
 ${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh rename \
-  --issue $ISSUE_NUMBER --state done
+  --issue $ISSUE_NUMBER --state done --round-trip "$ROUND_TRIP"
 ```
 
 Idempotent and best-effort: on `FAILED=true` or non-zero exit, log to `Tool Failures` and continue. Without this rename, a closed NON_PR issue would persist with the misleading `[IN PROGRESS]` title prefix until manually edited (because `/implement` Step 12a/12b/18 terminal renames only run on the PR delegation path).

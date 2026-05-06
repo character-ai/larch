@@ -149,6 +149,14 @@ echo "RENAMED=true"
 echo "NEW_TITLE=stub"
 exit 0
 STUB
+    cat > "$SANDBOX/scripts/round-trip-detect.sh" <<'STUB'
+#!/usr/bin/env bash
+if [ "${STUB_ROUND_TRIP_DETECT_FAIL:-false}" = "true" ]; then
+  exit 1
+fi
+echo "ROUND_TRIP=${STUB_ROUND_TRIP:-false}"
+exit 0
+STUB
     cat > "$SANDBOX/scripts/cleanup-tmpdir.sh" <<STUB
 #!/usr/bin/env bash
 printf '%s\n' "\$@" > "$SANDBOX/cleanup-argv.txt"
@@ -203,8 +211,20 @@ case "\${1:-} \${2:-} \${3:-}" in
     ;;
 esac
 STUB
+    cat > "$SANDBOX/bin/gh" <<'STUB'
+#!/usr/bin/env bash
+if [ "${1:-}" = "issue" ] && [ "${2:-}" = "view" ]; then
+  if [ "${STUB_GH_ISSUE_VIEW_FAIL:-false}" = "true" ]; then
+    exit 1
+  fi
+  printf '%s\n' "${STUB_ISSUE_BODY:-}"
+  exit 0
+fi
+echo "unexpected gh invocation: $*" >&2
+exit 99
+STUB
     chmod +x "$SANDBOX/scripts/"*.sh
-    chmod +x "$SANDBOX/bin/git"
+    chmod +x "$SANDBOX/bin/git" "$SANDBOX/bin/gh"
 }
 
 run_subject() {
@@ -321,10 +341,12 @@ assert_contains "RENAME_STATUS=skipped" "$OUT" "teardown: empty issue skipped st
 
 write_state "$STATE" STALL_TRACKING=true
 : > "$SANDBOX/rename-argv.txt"
-OUT=$(run_subject teardown --state-file "$STATE" --implement-tmpdir "$SANDBOX/tmp")
+OUT=$(STUB_ROUND_TRIP=true run_subject teardown --state-file "$STATE" --implement-tmpdir "$SANDBOX/tmp")
 RENAME_ARGV=$(cat "$SANDBOX/rename-argv.txt")
 assert_contains "--state" "$RENAME_ARGV" "teardown: branch A rename called"
 assert_contains "stalled" "$RENAME_ARGV" "teardown: branch A renames stalled"
+assert_contains "--round-trip" "$RENAME_ARGV" "teardown: branch A passes round-trip flag"
+assert_contains "true" "$RENAME_ARGV" "teardown: branch A body marker passes round-trip true"
 assert_contains "RENAME_BRANCH=A" "$OUT" "teardown: branch A tail"
 assert_contains "RENAME_STATUS=ok" "$OUT" "teardown: branch A ok"
 assert_contains "STASH_REF=" "$OUT" "teardown: clean stalled run emits empty stash ref"
@@ -372,9 +394,11 @@ assert_contains "RENAME_STATUS=skipped" "$OUT" "teardown: closed stalled status 
 write_state "$STATE" STALL_TRACKING=false DONE_RENAME_APPLIED=false PR_NUMBER=789
 rm -f "$SANDBOX/repo/.git/larch-stalled-run.txt" "$SANDBOX/stash-argv.txt"
 : > "$SANDBOX/rename-argv.txt"
-OUT=$(run_subject teardown --state-file "$STATE" --implement-tmpdir "$SANDBOX/tmp")
+OUT=$(STUB_ROUND_TRIP=true run_subject teardown --state-file "$STATE" --implement-tmpdir "$SANDBOX/tmp")
 RENAME_ARGV=$(cat "$SANDBOX/rename-argv.txt")
 assert_contains "done" "$RENAME_ARGV" "teardown: branch B renames done"
+assert_contains "--round-trip" "$RENAME_ARGV" "teardown: branch B passes round-trip flag"
+assert_contains "true" "$RENAME_ARGV" "teardown: branch B body marker passes round-trip true"
 assert_contains "RENAME_BRANCH=B" "$OUT" "teardown: branch B tail"
 assert_contains "STASH_REF=" "$OUT" "teardown: success path emits empty stash ref"
 assert_contains "SENTINEL_WRITTEN=false" "$OUT" "teardown: success path does not write sentinel"
@@ -391,7 +415,17 @@ write_state "$STATE" STALL_TRACKING=false DONE_RENAME_APPLIED=false PR_NUMBER= D
 OUT=$(run_subject teardown --state-file "$STATE" --implement-tmpdir "$SANDBOX/tmp")
 RENAME_ARGV=$(cat "$SANDBOX/rename-argv.txt")
 assert_contains "done" "$RENAME_ARGV" "teardown: branch B design-only renames done"
+assert_contains "false" "$RENAME_ARGV" "teardown: no body marker passes round-trip false"
 assert_contains "RENAME_BRANCH=B" "$OUT" "teardown: branch B design-only tail"
+
+write_state "$STATE" STALL_TRACKING=false DONE_RENAME_APPLIED=false PR_NUMBER=789
+: > "$SANDBOX/rename-argv.txt"
+OUT=$(STUB_GH_ISSUE_VIEW_FAIL=true run_subject teardown --state-file "$STATE" --implement-tmpdir "$SANDBOX/tmp")
+RENAME_ARGV=$(cat "$SANDBOX/rename-argv.txt")
+assert_contains "round-trip detection skipped: gh issue body fetch failed" "$OUT" "teardown: gh issue view failure warns"
+assert_contains "--round-trip" "$RENAME_ARGV" "teardown: detection failure still renames"
+assert_contains "false" "$RENAME_ARGV" "teardown: detection failure defaults false"
+assert_contains "RENAME_STATUS=ok" "$OUT" "teardown: detection failure does not fail rename"
 
 write_state "$STATE" DONE_RENAME_APPLIED=true
 OUT=$(run_subject teardown --state-file "$STATE" --implement-tmpdir "$SANDBOX/tmp")

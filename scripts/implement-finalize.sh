@@ -322,9 +322,46 @@ run_slack() {
 }
 
 rename_issue() {
-    local issue=$1 state=$2 label=$3 out rc failed
+    local issue=$1 state=$2 label=$3 out rc failed round_trip body_tmp
+    round_trip=false
+    body_tmp=""
+    if [ -n "$IMPLEMENT_TMPDIR" ] && is_tmp_path "$IMPLEMENT_TMPDIR" && [ -d "$IMPLEMENT_TMPDIR" ]; then
+        body_tmp="$IMPLEMENT_TMPDIR/round-trip-input-issue-body-step18-${issue}.txt"
+    else
+        body_tmp=$(mktemp)
+    fi
     set +e
-    out=$("$SCRIPT_DIR/tracking-issue-write.sh" rename --issue "$issue" --state "$state")
+    gh issue view "$issue" --json body --jq '.body // ""' > "$body_tmp" 2>/dev/null
+    rc=$?
+    set -e
+    if [ "$rc" -ne 0 ]; then
+        warn_line "Step 18: round-trip detection skipped: gh issue body fetch failed"
+        round_trip=false
+    elif [ ! -x "$SCRIPT_DIR/round-trip-detect.sh" ]; then
+        warn_line "Step 18: round-trip detection skipped: detector unavailable"
+        round_trip=false
+    else
+        set +e
+        out=$("$SCRIPT_DIR/round-trip-detect.sh" --text-file "$body_tmp" 2>/dev/null)
+        rc=$?
+        set -e
+        if [ "$rc" -ne 0 ]; then
+            warn_line "Step 18: round-trip detection skipped: detector failed"
+            round_trip=false
+        else
+            round_trip=$(kv_value ROUND_TRIP "$out")
+            case "$round_trip" in
+                true|false) ;;
+                *)
+                    warn_line "Step 18: round-trip detection skipped: detector output missing"
+                    round_trip=false
+                    ;;
+            esac
+        fi
+    fi
+    rm -f "$body_tmp" 2>/dev/null || true
+    set +e
+    out=$("$SCRIPT_DIR/tracking-issue-write.sh" rename --issue "$issue" --state "$state" --round-trip "$round_trip")
     rc=$?
     set -e
     failed=$(kv_value FAILED "$out")

@@ -105,6 +105,7 @@ REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null) || {
 SCRIPT_DIR="$(dirname "${BASH_SOURCE[0]}")"
 LIFECYCLE_SCRIPT="${SCRIPT_DIR}/issue-lifecycle.sh"
 RENAME_SCRIPT="${SCRIPT_DIR}/../../../scripts/tracking-issue-write.sh"
+ROUND_TRIP_DETECT_SCRIPT="${SCRIPT_DIR}/../../../scripts/round-trip-detect.sh"
 
 # ---------------------------------------------------------------------------
 # Subcommand: finalize
@@ -126,13 +127,31 @@ cmd_finalize() {
     # ---- Idempotency guard ----
     local cur_state cur_title
     local view_json
-    view_json=$(gh issue view "$issue" --json state,title --jq '{state,title}' 2>/dev/null) || {
+    view_json=$(gh issue view "$issue" --json state,title,body --jq '{state,title,body}' 2>/dev/null) || {
         echo "FINALIZED=false"
         echo "ERROR=Failed to fetch umbrella #$issue state"
         exit 1
     }
     cur_state=$(printf '%s' "$view_json" | jq -r '.state // ""')
     cur_title=$(printf '%s' "$view_json" | jq -r '.title // ""')
+    local cur_body round_trip body_tmp detect_out detect_exit=0
+    cur_body=$(printf '%s' "$view_json" | jq -r '.body // ""')
+    round_trip=false
+    body_tmp=$(mktemp)
+    printf '%s' "$cur_body" > "$body_tmp"
+    if [[ -x "$ROUND_TRIP_DETECT_SCRIPT" ]]; then
+        detect_out=$("$ROUND_TRIP_DETECT_SCRIPT" --text-string "$cur_title" --text-file "$body_tmp" 2>/dev/null) || detect_exit=$?
+        if [[ "$detect_exit" -eq 0 ]]; then
+            round_trip=$(echo "$detect_out" | awk -F= '/^ROUND_TRIP=/ { v=$2 } END { print v }')
+            case "$round_trip" in
+                true|false) ;;
+                *) round_trip=false ;;
+            esac
+        else
+            round_trip=false
+        fi
+    fi
+    rm -f "$body_tmp"
 
     # ---- Idempotency guard semantics ----
     # Only state=CLOSED is a strict short-circuit (no further mutation).
@@ -158,9 +177,19 @@ cmd_finalize() {
     # prior attempt. We do NOT short-circuit on these alone; we use them to
     # decide whether to skip the rename + comment-post steps and just call
     # close.
-    local title_done=false marker_present=false
+    local title_done=false marker_present=false title_has_round_trip=false title_after_lifecycle
     case "$cur_title" in
-        '[DONE] '*) title_done=true ;;
+        '[DONE] '*)
+            title_after_lifecycle="${cur_title#\[DONE\] }"
+            case "$title_after_lifecycle" in
+                '[ROUND-TRIP] '*) title_has_round_trip=true ;;
+            esac
+            if [[ "$round_trip" == "true" && "$title_has_round_trip" != "true" ]]; then
+                title_done=false
+            else
+                title_done=true
+            fi
+            ;;
     esac
     local marker_hits
     marker_hits=$(gh api --paginate --slurp "repos/${REPO}/issues/${issue}/comments" 2>/dev/null \
@@ -179,7 +208,7 @@ cmd_finalize() {
         # succeeded and the title is in the desired terminal state.
         renamed="false"
     else
-        rename_out=$("$RENAME_SCRIPT" rename --issue "$issue" --state "$rename_state" 2>&1) || rename_exit=$?
+        rename_out=$("$RENAME_SCRIPT" rename --issue "$issue" --state "$rename_state" --round-trip "$round_trip" 2>&1) || rename_exit=$?
         renamed=$(echo "$rename_out" | awk -F= '/^RENAMED=/ { v=$2 } END { print v }')
         local rename_failed
         rename_failed=$(echo "$rename_out" | awk -F= '/^FAILED=/ { v=$2 } END { print v }')

@@ -141,7 +141,9 @@ set -euo pipefail
 # ("[IN PROGRESS] ", "[DONE] ", "[STALLED] "), 1 otherwise. Anchored at
 # the start; trailing-space-sensitive (matches the helper exactly — no
 # fuzzy match, so user titles containing the literal substring "[IN
-# PROGRESS]" mid-text are NOT excluded).
+# PROGRESS]" mid-text are NOT excluded). The optional "[ROUND-TRIP] "
+# marker is intentionally NOT a managed-prefix gate here: it is a signal,
+# not a lock, so a title with only that marker remains pickable.
 has_managed_prefix() {
     local t="$1"
     case "$t" in

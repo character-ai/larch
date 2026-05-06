@@ -13,7 +13,7 @@
 #   create-issue   --title T --body-file F [--repo OWNER/REPO]
 #   append-comment --issue N --body-file F [--lifecycle-marker ID] [--repo OWNER/REPO]
 #   upsert-anchor  --issue N [--anchor-id ID] --body-file F [--repo OWNER/REPO]
-#   rename         --issue N --state in-progress|done|stalled [--repo OWNER/REPO]
+#   rename         --issue N --state in-progress|done|stalled [--round-trip BOOL] [--repo OWNER/REPO]
 #   mark-false-positive --issue N [--repo OWNER/REPO]
 #   find-anchor    --issue N [--repo OWNER/REPO]                (read-only)
 #
@@ -31,6 +31,7 @@
 #   append-comment: COMMENT_ID=<id>   COMMENT_URL=<url>
 #   upsert-anchor:  ANCHOR_COMMENT_ID=<id>  ANCHOR_COMMENT_URL=<url>  UPDATED=true|false
 #   rename:         RENAMED=true|false  NEW_TITLE=<title>
+#                   ROUND_TRIP_APPLIED=true|false (only when --round-trip was passed)
 #   mark-false-positive: MARKED=true|false  NEW_TITLE=<title>
 #   find-anchor:    ANCHOR_COMMENT_ID=<id-or-empty>
 #                   (one match → ANCHOR_COMMENT_ID=<id>; zero matches →
@@ -39,17 +40,19 @@
 #                   (ids: <comma-list>) and exit 2.)
 #
 # Rename semantics (tracking-issue title-prefix lifecycle):
-#   Strips exactly ONE leading managed prefix (anchored regex
-#   ^\[(IN PROGRESS|DONE|STALLED)\] ) from the current title, then prepends
-#   the target-state prefix. No-op when the current title already starts
-#   with the target prefix (RENAMED=false). The new title is piped through
+#   Strips exactly ONE leading lifecycle prefix (anchored regex
+#   ^\[(IN PROGRESS|DONE|STALLED)\] ) from the current title, preserves or
+#   adds the optional strict-ASCII "[ROUND-TRIP] " marker, then prepends the
+#   target-state prefix. Lifecycle prefix order is fixed: lifecycle first,
+#   round-trip second. No-op when the composed title matches the current
+#   canonical title (RENAMED=false). The new title is piped through
 #   scripts/redact-secrets.sh before the gh call, matching the security
 #   posture of create-issue. Stacked-prefix corruption (e.g., "[IN PROGRESS]
-#   [DONE] Foo") is NOT healed — only one prefix is stripped. Title length:
-#   truncated to 256 chars using bash string semantics (`${#var}` + slice).
-#   GitHub's limit is 256 characters — matching bash's native length under
-#   UTF-8 locales. Managed prefixes are ASCII so truncation is stable
-#   regardless of locale.
+#   [DONE] Foo") is NOT healed — only one lifecycle prefix is stripped.
+#   Title length: truncated to 256 chars by preserving the managed prefixes
+#   and slicing only the user tail. GitHub's limit is 256 characters —
+#   matching bash's native length under UTF-8 locales. Managed prefixes are
+#   ASCII so truncation is stable regardless of locale.
 #
 # Failure keys:
 #   FAILED=true  ERROR=<single-line message>
@@ -132,7 +135,7 @@ Usage:
   tracking-issue-write.sh create-issue   --title T --body-file F [--repo OWNER/REPO]
   tracking-issue-write.sh append-comment --issue N --body-file F [--lifecycle-marker ID] [--repo OWNER/REPO]
   tracking-issue-write.sh upsert-anchor  --issue N [--anchor-id ID] --body-file F [--repo OWNER/REPO]
-  tracking-issue-write.sh rename         --issue N --state in-progress|done|stalled [--repo OWNER/REPO]
+  tracking-issue-write.sh rename         --issue N --state in-progress|done|stalled [--round-trip BOOL] [--repo OWNER/REPO]
   tracking-issue-write.sh mark-false-positive --issue N [--repo OWNER/REPO]
   tracking-issue-write.sh find-anchor    --issue N [--repo OWNER/REPO]
 USAGE
@@ -150,11 +153,11 @@ state_to_prefix() {
     esac
 }
 
-# strip_managed_prefix <title> — prints the title with exactly ONE leading
-# managed prefix removed (if present). Anchored at the start; stacked
+# strip_lifecycle_prefix <title> — prints the title with exactly ONE leading
+# lifecycle prefix removed (if present). Anchored at the start; stacked
 # prefixes beyond the first are preserved. Uses shell parameter expansion
 # so the stripper is regex-engine-agnostic and safe for bash 3.2.
-strip_managed_prefix() {
+strip_lifecycle_prefix() {
     local t="$1"
     case "$t" in
         '[IN PROGRESS] '*) printf '%s' "${t#\[IN PROGRESS\] }" ;;
@@ -164,13 +167,52 @@ strip_managed_prefix() {
     esac
 }
 
+# has_round_trip_prefix <title-after-lifecycle-strip> — true iff the title
+# begins with the exact managed marker. Lowercase, Unicode-homoglyph, or
+# missing-space variants are user content.
+has_round_trip_prefix() {
+    case "$1" in
+        '[ROUND-TRIP] '*) return 0 ;;
+        *)               return 1 ;;
+    esac
+}
+
+# strip_round_trip_prefix <title-after-lifecycle-strip> — prints the title
+# with at most one exact managed round-trip marker removed.
+strip_round_trip_prefix() {
+    local t="$1"
+    case "$t" in
+        '[ROUND-TRIP] '*) printf '%s' "${t#\[ROUND-TRIP\] }" ;;
+        *)                printf '%s' "$t" ;;
+    esac
+}
+
+# truncate_title_with_prefixes_to_256 <prefixes> <user-tail> —
+# character-oriented truncation to 256 chars using bash string semantics
+# (`${#var}` + slice). GitHub's title limit is 256 characters, matching
+# bash's native string semantics under UTF-8 locales. Preserves both managed
+# prefixes at the head and slices only the user tail. The optional round-trip
+# marker is exactly 13 ASCII chars including the trailing space.
+truncate_title_with_prefixes_to_256() {
+    local prefixes="$1"
+    local tail="$2"
+    local budget=$((256 - ${#prefixes}))
+    if (( budget < 0 )); then
+        budget=0
+    fi
+    if (( ${#prefixes} + ${#tail} <= 256 )); then
+        printf '%s%s' "$prefixes" "$tail"
+    else
+        printf '%s%s' "$prefixes" "${tail:0:$budget}"
+    fi
+}
+
 # truncate_title_to_256 <title> — character-oriented truncation to 256
-# chars using bash string semantics (`${#var}` + `${var:0:256}`). GitHub's
-# title limit is 256 characters, matching bash's native string semantics
-# under UTF-8 locales. Preserves leading managed prefix by design: the
-# caller prepends the prefix, and if the result exceeds 256 chars we
-# slice the TAIL, leaving the prefix intact. Managed prefixes are ASCII,
-# so the truncation is stable regardless of locale.
+# chars using bash string semantics. Used by `mark-false-positive`, where
+# the marker is inserted into the leading bracket-block sequence by
+# insert_signal_marker (lib-title-markers.sh) and the resulting title is
+# truncated as a whole; rename uses truncate_title_with_prefixes_to_256
+# instead because it composes lifecycle + round-trip prefixes explicitly.
 truncate_title_to_256() {
     local t="$1"
     if (( ${#t} <= 256 )); then
@@ -661,10 +703,17 @@ case "$cmd" in
         ISSUE=""
         STATE=""
         REPO=""
+        ROUND_TRIP=false
+        ROUND_TRIP_FLAG_PASSED=false
         while [[ $# -gt 0 ]]; do
             case "$1" in
                 --issue) ISSUE="${2:?--issue requires a value}"; shift 2 ;;
                 --state) STATE="${2:?--state requires a value}"; shift 2 ;;
+                --round-trip)
+                    ROUND_TRIP="${2:?--round-trip requires a value}"
+                    ROUND_TRIP_FLAG_PASSED=true
+                    shift 2
+                    ;;
                 --repo)  REPO="${2:?--repo requires a value}"; shift 2 ;;
                 *) echo "Unknown option for rename: $1" >&2; usage; exit 1 ;;
             esac
@@ -673,6 +722,14 @@ case "$cmd" in
             usage
             exit 1
         fi
+        case "$ROUND_TRIP" in
+            true|false) ;;
+            *)
+                echo "FAILED=true"
+                echo "ERROR=invalid --round-trip: $ROUND_TRIP (expected true|false)"
+                exit 1
+                ;;
+        esac
         TARGET_PREFIX=$(state_to_prefix "$STATE") || {
             echo "FAILED=true"
             echo "ERROR=invalid --state: $STATE (expected in-progress|done|stalled)"
@@ -694,13 +751,30 @@ case "$cmd" in
             ERR_CONTENT=$(cat "$ERR_TMP")
             emit_gh_failure "gh issue view failed: $ERR_CONTENT"
         fi
-        STRIPPED=$(strip_managed_prefix "$CUR_TITLE")
-        NEW_TITLE="${TARGET_PREFIX}${STRIPPED}"
+        LIFECYCLE_STRIPPED=$(strip_lifecycle_prefix "$CUR_TITLE")
+        ROUND_TRIP_PRESENT=false
+        if has_round_trip_prefix "$LIFECYCLE_STRIPPED"; then
+            ROUND_TRIP_PRESENT=true
+        fi
+        USER_TAIL=$(strip_round_trip_prefix "$LIFECYCLE_STRIPPED")
+        EMIT_RT=false
+        if [[ "$ROUND_TRIP_PRESENT" == "true" || "$ROUND_TRIP" == "true" ]]; then
+            EMIT_RT=true
+        fi
+        TITLE_PREFIXES="$TARGET_PREFIX"
+        if [[ "$EMIT_RT" == "true" ]]; then
+            TITLE_PREFIXES="${TITLE_PREFIXES}[ROUND-TRIP] "
+        fi
+        NEW_TITLE=$(truncate_title_with_prefixes_to_256 "$TITLE_PREFIXES" "$USER_TAIL")
         # Redact before length check: redacted content may differ in byte
         # length from input (e.g., "<REDACTED-TOKEN>" replaces a longer
         # token). Length check must be on the actual outbound title.
         NEW_TITLE=$(redact "$NEW_TITLE") || emit_redaction_failure
-        NEW_TITLE=$(truncate_title_to_256 "$NEW_TITLE")
+        # Re-run prefix-preserving truncation after redaction. The redactor
+        # can change the user-tail length; managed prefixes must remain.
+        REDACTED_LIFECYCLE_STRIPPED=$(strip_lifecycle_prefix "$NEW_TITLE")
+        REDACTED_USER_TAIL=$(strip_round_trip_prefix "$REDACTED_LIFECYCLE_STRIPPED")
+        NEW_TITLE=$(truncate_title_with_prefixes_to_256 "$TITLE_PREFIXES" "$REDACTED_USER_TAIL")
         # Idempotency comparison: compare the prospective outbound title
         # against the redacted+truncated form of the CURRENT title so a
         # title that already carries a redactable token is not spuriously
@@ -710,10 +784,34 @@ case "$cmd" in
         # title; applying the same redact+truncate pipeline yields the
         # canonical "what would we emit if the state was already X?" form.
         CUR_TITLE_CANONICAL=$(redact "$CUR_TITLE") || emit_redaction_failure
-        CUR_TITLE_CANONICAL=$(truncate_title_to_256 "$CUR_TITLE_CANONICAL")
+        CUR_CANON_LIFECYCLE_STRIPPED=$(strip_lifecycle_prefix "$CUR_TITLE_CANONICAL")
+        CUR_CANON_RT_PRESENT=false
+        if has_round_trip_prefix "$CUR_CANON_LIFECYCLE_STRIPPED"; then
+            CUR_CANON_RT_PRESENT=true
+        fi
+        CUR_CANON_USER_TAIL=$(strip_round_trip_prefix "$CUR_CANON_LIFECYCLE_STRIPPED")
+        CUR_CANON_PREFIXES=""
+        case "$CUR_TITLE_CANONICAL" in
+            '[IN PROGRESS] '*) CUR_CANON_PREFIXES='[IN PROGRESS] ' ;;
+            '[DONE] '*)        CUR_CANON_PREFIXES='[DONE] ' ;;
+            '[STALLED] '*)     CUR_CANON_PREFIXES='[STALLED] ' ;;
+            *)                 CUR_CANON_PREFIXES="" ;;
+        esac
+        if [[ "$CUR_CANON_RT_PRESENT" == "true" ]]; then
+            CUR_CANON_PREFIXES="${CUR_CANON_PREFIXES}[ROUND-TRIP] "
+        fi
+        CUR_TITLE_CANONICAL=$(truncate_title_with_prefixes_to_256 "$CUR_CANON_PREFIXES" "$CUR_CANON_USER_TAIL")
+        ROUND_TRIP_APPLIED=false
+        NEW_LIFECYCLE_STRIPPED=$(strip_lifecycle_prefix "$NEW_TITLE")
+        if has_round_trip_prefix "$NEW_LIFECYCLE_STRIPPED"; then
+            ROUND_TRIP_APPLIED=true
+        fi
         if [[ "$NEW_TITLE" == "$CUR_TITLE_CANONICAL" ]]; then
             echo "RENAMED=false"
             echo "NEW_TITLE=$NEW_TITLE"
+            if [[ "$ROUND_TRIP_FLAG_PASSED" == "true" ]]; then
+                echo "ROUND_TRIP_APPLIED=$ROUND_TRIP_APPLIED"
+            fi
             exit 0
         fi
         if ! gh issue edit "$ISSUE" --repo "$REPO" --title "$NEW_TITLE" >/dev/null 2>"$ERR_TMP"; then
@@ -722,6 +820,9 @@ case "$cmd" in
         fi
         echo "RENAMED=true"
         echo "NEW_TITLE=$NEW_TITLE"
+        if [[ "$ROUND_TRIP_FLAG_PASSED" == "true" ]]; then
+            echo "ROUND_TRIP_APPLIED=$ROUND_TRIP_APPLIED"
+        fi
         exit 0
         ;;
 
