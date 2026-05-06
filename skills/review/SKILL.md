@@ -301,7 +301,7 @@ Print a final summary:
 - Reviewer Competition Scoreboard (cumulative across all voted rounds, with 6 independent players)
 - Total fixes applied across all rounds (diff mode only)
 - Build/test status (pass/fail)
-- **External reviewer warnings** (repeat any preflight or runtime warnings from Codex/Cursor/Gemini here so they are visible at the end)
+- **External reviewer warnings** (repeat any preflight or runtime warnings from Codex/Cursor here so they are visible at the end; also include any Gemini health/probe banners surfaced by `session-setup.sh` even though the Gemini reviewer lane is dormant)
 
 ### 4b — Description-mode /umbrella filing (default in description mode; skipped when --no-issues)
 

@@ -25,7 +25,7 @@ Each target file MUST contain all six markers:
 | Marker | Casing | Rationale |
 |--------|--------|-----------|
 | `7 rounds` | case-sensitive `grep -F` | Pins the 7-round cap. SKILL.md uses lowercase "7 rounds" consistently. |
-| `Cursor → Codex → Claude` | case-sensitive `grep -F`, UTF-8 U+2192 arrow | Pins the fallback chain order (Gemini was removed from the chain when /implement and /review review call sites were eliminated; the launcher remains as machinery). |
+| `Cursor → Codex → Claude` | case-sensitive `grep -F`, UTF-8 U+2192 arrow | Pins the fallback chain order (Gemini was removed from the chain when its reviewer call sites were eliminated from `/implement` and `/review`; the launcher remains as machinery). |
 | `no voting panel` | **case-insensitive** `grep -iF` | Semantic marker; tolerates legitimate sentence-case rewrites (e.g. "No voting panel"). |
 | `rounds 1-3` | **case-insensitive** `grep -iF` | Pins the rounds-1-3 vs rounds-4+ split. Insensitive because `docs/review-agents.md` uses both `Rounds 1-3` (table cell) and `rounds 1-3` (Note A prose). Added per #1002. |
 | `5 Cursor specialists` | case-sensitive `grep -F` | Pins the specialist count in rounds 1-3. Together with the markers below, encodes the multi-lane topology so a future change that drops the specialist panel from rounds 1-3 fails CI. Added per #1002. |
