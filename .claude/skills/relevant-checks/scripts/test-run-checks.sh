@@ -31,7 +31,11 @@ mkdir -p "$HOME"
 export GIT_CONFIG_GLOBAL=/dev/null
 export GIT_CONFIG_SYSTEM=/dev/null
 
-REAL_GIT=$(command -v git)
+REAL_GIT=$(command -v git || true)
+if [[ -z "$REAL_GIT" ]]; then
+    echo "ERROR: git is required on PATH to run this harness" >&2
+    exit 1
+fi
 REAL_GIT_DIR=$(dirname "$REAL_GIT")
 PATH_GIT_DIR="$REAL_GIT_DIR"
 if [[ "$REAL_GIT_DIR" == "/usr/local/bin" || -x "$REAL_GIT_DIR/agent-lint" || -x "$REAL_GIT_DIR/pre-commit" ]]; then
