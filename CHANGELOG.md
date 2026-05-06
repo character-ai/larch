@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.38] - 2026-05-06
+
+### Changed
+
+- Harden `scripts/launch-gemini-review.sh` against shell-redirect bypass of the `gemini-reviewer-policy.toml` write-deny: the launcher now snapshots the working tree (HEAD SHA, sha256 of tracked + untracked files, and `git diff --cached` index state) before launching Gemini and again after JSON normalization, reverts any reviewer mutation via `git checkout HEAD -- <path>` / `git reset HEAD -- <path>` / `rm -f`, fails loud with `SNAPSHOT_GUARD_TRIGGERED:` (or `UNRECOVERABLE_DELTA:`) and exit code `1` (or `99` on guard infrastructure failure), and clears `$OUTPUT` so non-zero `.done` always implies empty `$OUTPUT`. The launcher also prepends a fixed hardening preamble to the caller-provided prompt forbidding shell writes, mutating commands, and index/ref mutation. `LARCH_GEMINI_SNAPSHOT_TIMEOUT` is validated as a positive base-10 integer (rejects `0`, `00`, `000`; treats `010` as 10s, not octal). Snapshot temp resources are removed by an `EXIT` trap. The launcher's regression harness `scripts/test-launch-gemini-review.sh` is extended with mutation-detection cases (new untracked, modified-tracked, deleted-tracked, index-only `git add` against worktree-modified file), `.done` parity assertions on every guard-failure branch, `$OUTPUT`-cleared assertions, and a non-git fail-open case. Sibling contract `scripts/launch-gemini-review.md` documents exit code `99` and the snapshot-guard semantics; `scripts/test-launch-gemini-review.md` documents the new test coverage. Closes #1280.
+
 ## [15.12.37] - 2026-05-06
 
 ### Fixed
