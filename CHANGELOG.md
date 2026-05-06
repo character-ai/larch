@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.14] - 2026-05-05
+
+### Changed
+
+- Replace the literal "47 literal-substring assertions on awk-extracted blocks" in `docs/linting.md`'s `make test-umbrella-emit-output-contract` row with the structural prose "structural literal-substring assertions on awk-extracted blocks" so the row stays accurate as new pinned literals are added to `skills/umbrella/scripts/test-umbrella-emit-output-contract.sh`. The "47" was already stale (the harness has 53 `assert_contains` calls today), and parallels the same drift-resistance fix #1215 applied to the harness's sibling `.md`. Documentation-only edit; no harness or CI behavior change. Closes #1227.
+
 ## [15.12.13] - 2026-05-05
 
 ### Changed
