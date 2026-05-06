@@ -54,9 +54,15 @@ If you escalate, append a paragraph to the reasoning log file explaining why.
    - First verifies the working tree is clean (fails on any staged or unstaged changes)
    - Backs up `.claude-plugin/plugin.json`
    - Rewrites the `version` field via `jq` (atomic via tmp + mv)
-   - `git add` + `git commit -m "Bump version to <NEW_VERSION>"`
+   - Runs `git add`, then `git fetch origin main` before `git commit`. Fetch failure is fatal with rollback: restore from `$BACKUP`, `git reset HEAD "$PLUGIN_JSON"`, and emit `ERROR="git fetch origin main failed; cannot verify same-version race"`.
+   - Reads `origin/main:.claude-plugin/plugin.json`'s version with strict semver validation. Parse failure is fatal with the same rollback.
+   - If the parsed origin version equals `NEW_VERSION`, rolls back the staged `plugin.json` mutation and calls `fail()` with `ERROR="origin/main has already bumped to <NEW_VERSION>; re-classify needed"`. `/implement` Step 8 routes this to the Rebase + Re-bump Sub-procedure with `caller_kind=step8_apply_bump_same_version` for one re-classification attempt; subsequent failure stalls.
+   - `git commit -m "Bump version to <NEW_VERSION>"`
    - Rolls back from backup on commit failure
+   - Maintains its sibling contract at `$PWD/.claude/skills/bump-version/scripts/apply-bump.md`; update that file with any behavioral change.
 5. If `BUMP_TYPE=NONE`, skip the apply step and report "already bumped".
+
+**Fetch-failure asymmetry (intentional, do not harmonize)**: `classify-bump.sh` treats `git fetch origin main` failure as non-fatal because the classifier can degrade to a stale baseline and the caller still has later freshness gates. `apply-bump.sh`'s pre-commit probe treats fetch failure as fatal with rollback because the same-version probe is meaningless against a stale view, and landing a duplicate bump commit is worse than halting.
 
 ## Usage
 
@@ -82,4 +88,4 @@ The reasoning log at `${IMPLEMENT_TMPDIR:-${TMPDIR:-/tmp}}/bump-version-reasonin
 
 ## Exit codes
 - `classify-bump.sh` — 0 on success (including `BUMP_TYPE=NONE`), non-zero on parse/validation failure
-- `apply-bump.sh` — 0 on successful commit, non-zero on dirty worktree or commit failure (rollback performed)
+- `apply-bump.sh` — 0 on successful commit, non-zero on dirty worktree, origin/main probe failure, same-version race, parse failure, or commit failure (rollback performed after mutation)

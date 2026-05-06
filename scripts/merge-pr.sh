@@ -26,8 +26,12 @@
 #   BLOCKED) — not just review-required denials.
 #
 # Outputs (key=value to stdout, always emitted via EXIT trap):
-#   MERGE_RESULT=merged|admin_merged|main_advanced|ci_not_ready|admin_failed|policy_denied|error
+#   MERGE_RESULT=merged|admin_merged|main_advanced|ci_not_ready|version_already_published|admin_failed|policy_denied|error
 #   ERROR=<message>    (empty string when no error)
+#
+# version_already_published fires only after the PR-head-OID precondition
+# succeeds, the branch range contains a literal "Bump version to X.Y.Z" commit,
+# and origin/main's published plugin.json version matches that local bump.
 #
 # Exit codes:
 #   0 — always (result communicated via MERGE_RESULT)
@@ -135,6 +139,53 @@ if [[ "$MERGE_STATE" != "CLEAN" ]] && [[ "$MERGE_STATE" != "UNSTABLE" ]] && [[ "
     MERGE_RESULT="main_advanced"
     ERROR="Branch mergeStateStatus is $MERGE_STATE"
     exit 0
+fi
+
+# --- Same-version bump race gate ---
+PR_HEAD_OID=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json headRefOid -q '.headRefOid' 2>/dev/null || echo "")
+if [[ -z "$PR_HEAD_OID" ]]; then
+    MERGE_RESULT="error"
+    ERROR="could not resolve PR head OID via gh pr view"
+    exit 0
+fi
+
+LOCAL_HEAD=$(git rev-parse HEAD 2>/dev/null || echo "")
+if [[ -z "$LOCAL_HEAD" ]] || [[ "$LOCAL_HEAD" != "$PR_HEAD_OID" ]]; then
+    MERGE_RESULT="error"
+    ERROR="local HEAD ($LOCAL_HEAD) does not match PR head OID ($PR_HEAD_OID); refusing to evaluate same-version gate"
+    exit 0
+fi
+
+if ! git fetch origin main --quiet 2>/dev/null; then
+    MERGE_RESULT="error"
+    ERROR="git fetch origin main failed; cannot verify same-version race"
+    exit 0
+fi
+
+BUMP_SUBJECT=$(git log --format='%s' origin/main..HEAD 2>/dev/null | grep -E '^Bump version to [0-9]+\.[0-9]+\.[0-9]+$' | head -n1 || true)
+if [[ -n "$BUMP_SUBJECT" ]]; then
+    [[ "$BUMP_SUBJECT" =~ ^Bump\ version\ to\ ([0-9]+\.[0-9]+\.[0-9]+)$ ]]
+    LOCAL_VERSION="${BASH_REMATCH[1]}"
+
+    ORIGIN_VERSION=$(git show origin/main:.claude-plugin/plugin.json 2>/dev/null | jq -r -e '.version // empty' 2>/dev/null || echo "")
+    # Validate as semver before composing the single-line ERROR string.
+    if [[ ! "$ORIGIN_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        MERGE_RESULT="error"
+        ERROR="could not parse origin/main published version (got: '${ORIGIN_VERSION//$'\n'/ }')"
+        exit 0
+    fi
+
+    if [[ "$ORIGIN_VERSION" == "$LOCAL_VERSION" ]]; then
+        MERGE_RESULT="version_already_published"
+        ERROR="origin/main HEAD already bumped to $LOCAL_VERSION; rebase and re-bump"
+        exit 0
+    fi
+
+    if ! git merge-base --is-ancestor origin/main HEAD 2>/dev/null; then
+        MERGE_RESULT="main_advanced"
+        ERROR="origin/main advanced to a different version; rebase needed"
+        exit 0
+    fi
 fi
 
 # --- All checks passed — merge with selected privilege path ---

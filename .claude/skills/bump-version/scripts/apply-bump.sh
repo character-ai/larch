@@ -6,7 +6,9 @@
 #   - Validate .claude-plugin/plugin.json with jq.
 #   - Back up plugin.json.
 #   - Rewrite .version field atomically via jq + mv.
-#   - git add + commit with message "Bump version to <new-version>".
+#   - git add, fetch origin/main, and fail closed with rollback if origin/main
+#     already publishes the requested version.
+#   - Commit with message "Bump version to <new-version>".
 #   - Roll back from backup if git commit fails.
 #
 # Usage:
@@ -56,6 +58,11 @@ fi
 PLUGIN_JSON="$PWD/.claude-plugin/plugin.json"
 BACKUP="$PLUGIN_JSON.bump-backup"
 
+rollback_before_commit() {
+  mv "$BACKUP" "$PLUGIN_JSON"
+  git reset HEAD "$PLUGIN_JSON" >/dev/null 2>&1 || true
+}
+
 # Step 1 (FIRST): Verify clean working tree.
 # This MUST run before any mutation so the script can't trip over its own write.
 # `git status --porcelain` covers tracked changes (staged and unstaged) AND
@@ -82,6 +89,22 @@ mv "$TMP_JSON" "$PLUGIN_JSON"
 
 # Step 5: Stage and commit.
 git add "$PLUGIN_JSON"
+if ! git fetch origin main --quiet 2>/dev/null; then
+  rollback_before_commit
+  fail "git fetch origin main failed; cannot verify same-version race"
+fi
+
+ORIGIN_VERSION=$(git show origin/main:.claude-plugin/plugin.json 2>/dev/null | jq -r -e '.version // empty' 2>/dev/null || echo "")
+if [[ ! "$ORIGIN_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  rollback_before_commit
+  fail "could not parse origin/main published version"
+fi
+
+if [[ "$ORIGIN_VERSION" == "$NEW_VERSION" ]]; then
+  rollback_before_commit
+  fail "origin/main has already bumped to $NEW_VERSION; re-classify needed"
+fi
+
 COMMIT_MSG="Bump version to $NEW_VERSION"
 if git commit -m "$COMMIT_MSG" --quiet; then
   # Success — remove backup, emit result.
