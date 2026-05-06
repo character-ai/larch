@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.44] - 2026-05-06
+
+### Changed
+
+- Tighten `/implement`'s OOS-issue filing algorithm to drive per-work-item OOS-issue rate well below 1 (the prior 1:1 rate paralyzed progress because every fix surfaced ~1 new OOS issue). Adds a new `### OOS triage policy` subsection to `skills/implement/SKILL.md` with four rules: (1) documentation drift folds inline regardless of size; (2) bugs < ~30 LOC fold inline; (3) multiple medium-bug-class entries (≥ ~30 LOC each) combine into ONE filed OOS issue; (4) multiple moderate-doc-class entries (~30-100 lines each, NOT drift) combine into ONE filed OOS issue. Rule 1 takes precedence over rule 4 when both could apply. Rules apply at controlled acceptance points (main-agent `Pre-existing Code Issues` dual-write and Step 5 quick-mode 5.5 OOS evaluation); Step 9a.1 external-implementer manifest harvest applies only rules 3-4 plus the security carve-out because folding inline is no longer mechanically possible at that step (propagating rules 1-2 upstream into implementer-agent prompts is documented as follow-up). `/design` and `/review` voting acceptance writers (`oos-accepted-design.md` / `oos-accepted-review.md`) are also documented as follow-up retrofit work. Rewrites the dual-write subsection so logging to `execution-issues.md` stays unconditional but the OOS-artifact append is conditional on triage. Step 5.5 documents the security carve-out (highest precedence), the rules-1/2 fold-inline branch with a `Warnings` log requirement, and the filed-OOS-candidate branch (NOT filtered by rules 1-2). Step 5.6 explicitly counts triaged-inline findings as accepted-for-fix. Extends `skills/implement/references/anchor-comment-template.md` step 3.4 with belt-and-suspenders combine criteria 5 and 6 (medium-bug class combine; moderate-doc class combine) that override the "do NOT combine genuinely independent entries" carve-out. Closes #1314.
+
 ## [15.12.43] - 2026-05-06
 
 ### Changed
