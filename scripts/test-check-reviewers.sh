@@ -120,10 +120,10 @@ set -e
 infra_stdout=$(cat "$TMPDIR/infra.stdout")
 grep -q '^WAIT_INFRA_ERROR=' <<< "$infra_stdout" \
   || fail "Expected WAIT_INFRA_ERROR on wait preflight failure"
-grep -q '^CODEX_HEALTHY=true$' <<< "$infra_stdout" \
-  || fail "Expected CODEX_HEALTHY=true preservation on wait preflight failure"
-grep -q '^CURSOR_HEALTHY=true$' <<< "$infra_stdout" \
-  || fail "Expected CURSOR_HEALTHY=true preservation on wait preflight failure"
+grep -q '^CODEX_HEALTHY=false$' <<< "$infra_stdout" \
+  || fail "Expected CODEX_HEALTHY=false fail-closed value on wait preflight failure"
+grep -q '^CURSOR_HEALTHY=false$' <<< "$infra_stdout" \
+  || fail "Expected CURSOR_HEALTHY=false fail-closed value on wait preflight failure"
 grep -q 'Probe infrastructure error:' "$TMPDIR/infra.stderr" \
   || fail "Expected probe infrastructure diagnostic on stderr"
 if grep -q 'Retrying failed health probes (attempt 2 of 3' "$TMPDIR/infra.stderr"; then
@@ -146,6 +146,18 @@ if [[ "\${1:-}" == "/tools" ]]; then
       ;;
     write)
       printf '%s\n' delete_file edit edit_file read_file read_many_files replace run_shell_command search_file_content super_write_v2 web_fetch web_search write_file
+      ;;
+    write_hyphen)
+      printf '%s\n' delete_file edit edit_file read_file read_many_files replace run_shell_command search_file_content write-file web_fetch web_search write_file
+      ;;
+    write_dot)
+      printf '%s\n' delete_file edit edit_file read_file read_many_files replace run_shell_command search_file_content file.write web_fetch web_search write_file
+      ;;
+    write_camel)
+      printf '%s\n' delete_file edit edit_file read_file read_many_files replace run_shell_command search_file_content fileWrite web_fetch web_search write_file
+      ;;
+    writer_substring)
+      printf '%s\n' delete_file edit edit_file metadata_writer_index read_file read_many_files replace run_shell_command search_file_content web_fetch web_search write_file
       ;;
     empty)
       :
@@ -207,6 +219,15 @@ write_bad_fixture() {
     } > "$path"
 }
 
+probe_output=$(WAIT_FOR_REVIEWERS_POLL_INTERVAL='key=value' GEMINI_STUB_MODE=ok run_gemini_probe "$TMPDIR/gemini-artifacts-infra-error")
+grep -q "^WAIT_INFRA_ERROR=.*key=value" <<< "$probe_output" \
+  || fail "Expected WAIT_INFRA_ERROR value-side equals to survive"
+grep -q '^GEMINI_HEALTHY=false$' <<< "$probe_output" \
+  || fail "Expected GEMINI_HEALTHY=false on wait infrastructure failure"
+if grep -q '^GEMINI_TOOL_DRIFT_ARTIFACT=' <<< "$probe_output"; then
+  fail "Expected Gemini drift check to stay unrun on wait infrastructure failure"
+fi
+
 probe_output=$(GEMINI_STUB_MODE=ok run_gemini_probe "$TMPDIR/gemini-artifacts-ok")
 grep -q '^GEMINI_AVAILABLE=true$' <<< "$probe_output" \
   || fail "Expected GEMINI_AVAILABLE=true with stub gemini"
@@ -251,6 +272,29 @@ grep -q '^GEMINI_HEALTHY=false$' <<< "$probe_output" \
   || fail "Expected GEMINI_HEALTHY=false for unknown write-style tool"
 grep -q '^GEMINI_PROBE_ERROR=.*write-style tool(s) \[super_write_v2\] not in deny list' <<< "$probe_output" \
   || fail "Expected write-style drift probe error"
+
+for raw_case in \
+  "write_hyphen|write-file" \
+  "write_dot|file.write" \
+  "write_camel|fileWrite"; do
+  IFS='|' read -r mode tool_name <<< "$raw_case"
+  probe_output=$(GEMINI_TOOLS_MODE="$mode" GEMINI_STUB_MODE=ok run_gemini_probe "$TMPDIR/gemini-artifacts-$mode")
+  grep -q '^GEMINI_HEALTHY=false$' <<< "$probe_output" \
+    || fail "Expected GEMINI_HEALTHY=false for unknown write-style tool $tool_name"
+  grep -q "^GEMINI_TOOL_DRIFT_WARNING=unknown tool '$tool_name' not in deny list$" <<< "$probe_output" \
+    || fail "Expected raw unknown-tool warning for $tool_name"
+  grep -q "GEMINI_PROBE_ERROR=.*$tool_name" <<< "$probe_output" \
+    || fail "Expected write-style drift probe error for $tool_name"
+done
+
+probe_output=$(GEMINI_TOOLS_MODE=writer_substring GEMINI_STUB_MODE=ok run_gemini_probe "$TMPDIR/gemini-artifacts-writer-substring")
+grep -q '^GEMINI_HEALTHY=true$' <<< "$probe_output" \
+  || fail "Expected GEMINI_HEALTHY=true for metadata_writer_index substring-only write token"
+grep -q "^GEMINI_TOOL_DRIFT_WARNING=unknown tool 'metadata_writer_index' not in deny list$" <<< "$probe_output" \
+  || fail "Expected unknown warning for metadata_writer_index"
+if grep -q '^GEMINI_PROBE_ERROR=.*metadata_writer_index' <<< "$probe_output"; then
+  fail "Expected metadata_writer_index not to trigger write-style probe error"
+fi
 
 probe_output=$(GEMINI_TOOLS_MODE=empty GEMINI_STUB_MODE=ok run_gemini_probe "$TMPDIR/gemini-artifacts-empty")
 grep -q '^GEMINI_HEALTHY=true$' <<< "$probe_output" \

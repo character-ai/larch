@@ -772,6 +772,7 @@ exclude = [
   "skills/fix-issue/scripts/parse-prose-blockers.md",
   "skills/fix-issue/scripts/blocker-helpers.md",
   "skills/fix-issue/scripts/issue-lifecycle.md",
+  "skills/fix-issue/scripts/test-issue-lifecycle.md",
   "skills/fix-issue/scripts/test-fix-issue-bail-detection.md",
   "skills/fix-issue/scripts/test-fix-issue-step-order.md",
   "skills/fix-issue/scripts/test-find-lock-issue.md",

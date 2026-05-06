@@ -252,10 +252,96 @@ else
     PASS=$((PASS + 1))
     echo "  ok: load_issues mixed corruption threshold abort fires"
 fi
-assert_contains "$(cat "$mixed_stderr")" "non-dict or malformed-number elements" "load_issues mixed corruption uses widened abort phrase"
+assert_contains "$(cat "$mixed_stderr")" "non-dict, malformed-number, or duplicate-number elements" "load_issues mixed corruption uses widened abort phrase"
 
 mixed_lenient_out=$(python3 "$ANALYZER" --json "$TMP_MIXED" --lenient 2>/dev/null)
 assert_contains "$mixed_lenient_out" "Total issues: 8" "--lenient: mixed corruption renders valid rows"
+
+TMP_DUP_LOW="$TMP_CASES/duplicate-low.json"
+python3 - "$TMP_DUP_LOW" <<'PY'
+import json
+import sys
+
+items = [
+    {
+        "number": i,
+        "title": f"issue {i}",
+        "body": "",
+        "state": "OPEN",
+        "createdAt": "2026-01-01T00:00:00Z",
+    }
+    for i in range(1, 21)
+]
+items.append({
+    "number": "007",
+    "title": "duplicate seven",
+    "body": "",
+    "state": "OPEN",
+    "createdAt": "2026-01-01T00:00:00Z",
+})
+with open(sys.argv[1], "w", encoding="utf-8") as handle:
+    json.dump(items, handle)
+PY
+dup_low_stderr="$TMP_CASES/duplicate-low.stderr"
+dup_low_result=$(python3 - "$ANALYZER" "$TMP_DUP_LOW" 2>"$dup_low_stderr" <<'PY'
+import importlib.util
+import sys
+
+analyzer_path, fixture_path = sys.argv[1], sys.argv[2]
+spec = importlib.util.spec_from_file_location("analyze_under_test", analyzer_path)
+module = importlib.util.module_from_spec(spec)
+assert spec.loader is not None
+spec.loader.exec_module(module)
+issues = module.load_issues(fixture_path)
+number_seven = [issue for issue in issues if issue["number"] == 7]
+print(f"len={len(issues)}")
+print(f"count7={len(number_seven)}")
+print(f"title7={number_seven[0]['title'] if number_seven else ''}")
+PY
+)
+assert_contains "$dup_low_result" "len=20" "load_issues duplicate below threshold keeps 20 issues"
+assert_contains "$dup_low_result" "count7=1" "load_issues duplicate below threshold keeps one parsed number"
+assert_contains "$dup_low_result" "title7=issue 7" "load_issues duplicate below threshold keeps first occurrence"
+assert_contains "$(cat "$dup_low_stderr")" "WARN load_issues: skipping duplicate parsed number 7 at index 20 (first occurrence at index 6 retained)" "load_issues duplicate warning includes both indices"
+
+TMP_DUP_HIGH="$TMP_CASES/duplicate-high.json"
+python3 - "$TMP_DUP_HIGH" <<'PY'
+import json
+import sys
+
+items = [
+    {
+        "number": i,
+        "title": f"issue {i}",
+        "body": "",
+        "state": "OPEN",
+        "createdAt": "2026-01-01T00:00:00Z",
+    }
+    for i in range(1, 10)
+]
+items.extend([
+    {
+        "number": "007",
+        "title": f"duplicate seven {i}",
+        "body": "",
+        "state": "OPEN",
+        "createdAt": "2026-01-01T00:00:00Z",
+    }
+    for i in range(3)
+])
+with open(sys.argv[1], "w", encoding="utf-8") as handle:
+    json.dump(items, handle)
+PY
+dup_high_stderr="$TMP_CASES/duplicate-high.stderr"
+if python3 "$ANALYZER" --json "$TMP_DUP_HIGH" >/dev/null 2>"$dup_high_stderr"; then
+    FAIL=$((FAIL + 1))
+    FAILED_TESTS+=("load_issues duplicate threshold should fail without --lenient")
+    echo "  FAIL: load_issues duplicate threshold should fail without --lenient" >&2
+else
+    PASS=$((PASS + 1))
+    echo "  ok: load_issues duplicate threshold abort fires"
+fi
+assert_contains "$(cat "$dup_high_stderr")" "non-dict, malformed-number, or duplicate-number elements" "load_issues duplicate threshold uses widened abort phrase"
 
 TMP_ALL_BAD="$TMP_CASES/all-bad.json"
 python3 - "$TMP_ALL_BAD" <<'PY'
@@ -278,7 +364,7 @@ else
     PASS=$((PASS + 1))
     echo "  ok: load_issues all malformed threshold abort fires"
 fi
-assert_contains "$(cat "$all_bad_stderr")" "non-dict or malformed-number elements" "load_issues all malformed uses widened abort phrase"
+assert_contains "$(cat "$all_bad_stderr")" "non-dict, malformed-number, or duplicate-number elements" "load_issues all malformed uses widened abort phrase"
 
 all_bad_lenient_out=$(python3 "$ANALYZER" --json "$TMP_ALL_BAD" --lenient 2>/dev/null)
 assert_contains "$all_bad_lenient_out" "No issues to analyze." "--lenient: all malformed returns empty analysis"

@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.50] - 2026-05-06
+
+### Fixed
+
+- `scripts/check-reviewers.sh` infra-error path emits `*_HEALTHY=false` (fail-closed) instead of `*_HEALTHY=true`, so consumers gate downstream work correctly when the wait-for-reviewers infrastructure aborts. The `WAIT_INFRA_ERROR=` line still carries the orthogonal diagnostic. Side fix: drop `tr '=' ' '` so `=` characters in the diagnostic value survive end-to-end through `session-setup.sh`'s line-then-`key=value` parser. (closes #1300, OOS sub-issue A of #1317)
+- `scripts/lib-gemini-tool-drift.sh` raw-discovery / strict-normalization split: `discover_gemini_tools_raw` preserves case + separators for unknown-tool warnings and write-style classification; `normalize_gemini_tools_from_raw` keeps the snake_case set-comparison stream. New `gemini_tool_tokenize_for_write_style` splits camelCase before separators before lowercase, then `gemini_tool_is_write_style` matches anchored tokens (substring forbidden). `gemini_tool_list_contains` uses `grep -F` literal matching so dot-separator tool names (`write.file`) cannot false-match snake_case deny-list entries (`write_file`). `write_gemini_drift_artifact`'s `status=` line now drives off the raw `warning_unknowns` set so hyphenated/dotted non-write-style tools no longer yield contradictory artifact + stderr signals. (closes #1299, OOS sub-issue B of #1317)
+- `skills/fix-issue/scripts/issue-lifecycle.sh` `_run_false_positive_marker` switches from `cat` fallback to buffer-then-cat for redactor output, with three explicit branches: redactor exit 0 + non-empty buffer → emit redacted bytes; exit 0 + empty buffer → emit `INFO: mark-false-positive stderr fully redacted (...)` (clean redaction signal); failure / missing redactor → emit `WARNING: mark-false-positive stderr suppressed: redactor exit=<code> (<bytes> bytes discarded)`. New `LARCH_TEST_REDACTOR_PATH` test seam exercises all three branches via fixtures 15b/c/d. SECURITY.md updated to document the 3-outcome contract. (closes #1298, OOS sub-issue C of #1317)
+- `.claude/skills/analyze-issues/scripts/analyze.py` `load_issues` detects duplicate parsed `number` values and skips later occurrences (first-occurrence wins), counting toward the existing 5% `LOAD_ISSUES_SKIP_THRESHOLD` and `--lenient` flag. Prevents silent dict-key collisions in `categorize` / `category_breakdown` / `growth_chart` when `"007"` and `7` parse to the same int. (closes #1297, OOS sub-issue D of #1317)
+
 ## [15.12.49] - 2026-05-06
 
 ### Changed

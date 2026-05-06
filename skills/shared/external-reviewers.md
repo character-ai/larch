@@ -25,7 +25,7 @@ Set mental flags `codex_available` and `cursor_available` based on the output:
 
 **Note**: `*_AVAILABLE` is a pure install-state signal (binary exists on PATH). `*_HEALTHY` indicates whether the tool actually responded to a trivial prompt within the 60-second probe timeout. Callers must combine both to determine runtime usability.
 
-If `session-setup.sh` emits `WAIT_INFRA_ERROR=<reason>` alongside `*_AVAILABLE=true` and `*_HEALTHY=true`, the wait infrastructure failed before tool health could be classified. Treat the tool as available for monotonic session-state purposes, but regard its health as unknown and surface the infrastructure diagnostic rather than a per-tool failed-health warning.
+If `session-setup.sh` emits `WAIT_INFRA_ERROR=<reason>` alongside `*_AVAILABLE=true` and `*_HEALTHY=false`, the wait infrastructure failed before tool health could be classified, and the health key is fail-closed. Check `WAIT_INFRA_ERROR` first to attribute the cause as probe-infra abort rather than per-tool probe failure, then apply the appropriate warning template. Availability remains monotonic for session-state purposes, but launch eligibility still requires `*_AVAILABLE=true AND *_HEALTHY=true`.
 
 ## Runtime Timeout Fallback
 

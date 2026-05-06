@@ -321,12 +321,12 @@ if [[ "$PROBE" == "true" ]]; then
 
     if [[ "${WAIT_PREFLIGHT_FAILED:-false}" == "true" || "${WAIT_USAGE_ERROR:-false}" == "true" ]]; then
         _wait_msg="${WAIT_PREFLIGHT_ERROR:-${WAIT_INFRA_ERROR_MSG:-unknown}}"
-        _wait_msg=$(printf '%s' "$_wait_msg" | tr '=' ' ' | tr '\n\r' '  ')
+        _wait_msg=$(printf '%s' "$_wait_msg" | tr '\n\r' '  ')
         echo "WAIT_INFRA_ERROR=$_wait_msg"
         for tool in "${TOOLS[@]}"; do
             upper=$(printf '%s' "$tool" | tr '[:lower:]' '[:upper:]')
             if [[ "$(get_available "$tool")" == "true" ]]; then
-                echo "${upper}_HEALTHY=true"
+                echo "${upper}_HEALTHY=false"
             fi
         done
     else

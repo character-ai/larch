@@ -24,7 +24,8 @@
 #   8. --repo rejected with exit 2 (Unknown option).
 #   9-16. Legacy false-positive keyword-flag coverage: keyword match, no match,
 #          default-off, close failure skip, idempotent no-op, already-closed
-#          path, marker failure warning, and non-repo cwd path resolution.
+#          path, marker failure warning, marker stderr suppression, and
+#          non-repo cwd path resolution.
 #   17-22. --close-class enum coverage: each value's marker behavior
 #          (false-positive / duplicate / superseded mark; done skips),
 #          precedence over --mark-false-positive-if-keyword (enum wins),
@@ -481,6 +482,79 @@ assert_eq "[f15] stdout byte-stable" "CLOSED=true" "$CLOSE_STDOUT"
 assert_contains "$CLOSE_STDERR" "WARNING: mark-false-positive failed for issue #42:" "[f15] stderr warning present"
 assert_contains "$CLOSE_STDERR" "<REDACTED-TOKEN>" "[f15] warning carries redacted ERROR value"
 assert_not_contains "$CLOSE_STDERR" "sk-ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD" "[f15] warning does not leak raw stub stderr"
+
+MARKER_STDERR_STUB="$TMPROOT/marker-stderr-stub.sh"
+cat > "$MARKER_STDERR_STUB" <<'STUB'
+#!/usr/bin/env bash
+if [[ "${1:-}" == "mark-false-positive" ]]; then
+    echo "ghp_AAAA1234567890abcdefghijklmnop" >&2
+    echo "FAILED=true"
+    echo "ERROR=marker failed"
+    exit 1
+fi
+exit 2
+STUB
+chmod +x "$MARKER_STDERR_STUB"
+
+FAILING_REDACTOR_STUB="$TMPROOT/failing-redactor.sh"
+cat > "$FAILING_REDACTOR_STUB" <<'STUB'
+#!/usr/bin/env bash
+echo "ghp_AAAA1234567890abcdefghijklmnop"
+exit 42
+STUB
+chmod +x "$FAILING_REDACTOR_STUB"
+
+echo ""
+echo "=== 15b: marker stderr redactor failure suppresses raw output ==="
+export LARCH_TEST_TRACKING_WRITE_PATH="$MARKER_STDERR_STUB"
+export LARCH_TEST_REDACTOR_PATH="$FAILING_REDACTOR_STUB"
+STUB_TITLE_OVERRIDE="Plain title" run_case "f15b" "OPEN" "0" "0" --issue 42 --comment "Closing: false-positive" --mark-false-positive-if-keyword
+unset LARCH_TEST_TRACKING_WRITE_PATH LARCH_TEST_REDACTOR_PATH
+assert_eq "[f15b] exit code" 0 "$RC"
+assert_eq "[f15b] stdout byte-stable" "CLOSED=true" "$CLOSE_STDOUT"
+assert_not_contains "$CLOSE_STDERR" "ghp_AAAA1234567890abcdefghijklmnop" "[f15b] marker stderr token suppressed"
+assert_contains "$CLOSE_STDERR" "WARNING: mark-false-positive stderr suppressed" "[f15b] suppression warning present"
+assert_contains "$CLOSE_STDERR" "redactor exit=42" "[f15b] warning carries redactor exit"
+assert_contains "$CLOSE_STDERR" "bytes discarded" "[f15b] warning carries byte count"
+
+echo ""
+echo "=== 15c: marker stderr missing redactor suppresses raw output ==="
+export LARCH_TEST_TRACKING_WRITE_PATH="$MARKER_STDERR_STUB"
+export LARCH_TEST_REDACTOR_PATH="$TMPROOT/missing-redactor.sh"
+STUB_TITLE_OVERRIDE="Plain title" run_case "f15c" "OPEN" "0" "0" --issue 42 --comment "Closing: false-positive" --mark-false-positive-if-keyword
+unset LARCH_TEST_TRACKING_WRITE_PATH LARCH_TEST_REDACTOR_PATH
+assert_eq "[f15c] exit code" 0 "$RC"
+assert_eq "[f15c] stdout byte-stable" "CLOSED=true" "$CLOSE_STDOUT"
+assert_not_contains "$CLOSE_STDERR" "ghp_AAAA1234567890abcdefghijklmnop" "[f15c] marker stderr token suppressed"
+assert_contains "$CLOSE_STDERR" "WARNING: mark-false-positive stderr suppressed" "[f15c] suppression warning present"
+assert_contains "$CLOSE_STDERR" "redactor exit=127" "[f15c] warning carries missing-redactor exit"
+assert_contains "$CLOSE_STDERR" "bytes discarded" "[f15c] warning carries byte count"
+
+# Stub redactor that exits 0 but writes nothing — covers the
+# redactor-success-with-empty-buffer branch added in /review round 5.
+EMPTY_REDACTOR_STUB="$TMPROOT/empty-redactor.sh"
+cat > "$EMPTY_REDACTOR_STUB" <<'STUB'
+#!/usr/bin/env bash
+# Drain stdin to force consumption of the input bytes, but write nothing
+# to stdout. Models the case where the input was entirely sensitive content
+# the scrubber consumed.
+cat >/dev/null
+exit 0
+STUB
+chmod +x "$EMPTY_REDACTOR_STUB"
+
+echo ""
+echo "=== 15d: marker stderr fully-redacted (redactor exit 0 + empty buffer) emits INFO not WARNING ==="
+export LARCH_TEST_TRACKING_WRITE_PATH="$MARKER_STDERR_STUB"
+export LARCH_TEST_REDACTOR_PATH="$EMPTY_REDACTOR_STUB"
+STUB_TITLE_OVERRIDE="Plain title" run_case "f15d" "OPEN" "0" "0" --issue 42 --comment "Closing: false-positive" --mark-false-positive-if-keyword
+unset LARCH_TEST_TRACKING_WRITE_PATH LARCH_TEST_REDACTOR_PATH
+assert_eq "[f15d] exit code" 0 "$RC"
+assert_eq "[f15d] stdout byte-stable" "CLOSED=true" "$CLOSE_STDOUT"
+assert_not_contains "$CLOSE_STDERR" "ghp_AAAA1234567890abcdefghijklmnop" "[f15d] marker stderr token suppressed"
+assert_contains "$CLOSE_STDERR" "INFO: mark-false-positive stderr fully redacted" "[f15d] INFO clean-redaction line present"
+assert_contains "$CLOSE_STDERR" "bytes consumed" "[f15d] INFO carries byte count"
+assert_not_contains "$CLOSE_STDERR" "WARNING: mark-false-positive stderr suppressed" "[f15d] no failure-shaped warning on clean redaction"
 
 # --- Fixture 16: Non-repo cwd invocation succeeds -------------------------
 echo ""
