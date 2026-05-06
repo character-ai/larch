@@ -69,5 +69,12 @@
     "body": "Documentation drift in subsystem foo; rewrite to match current behavior.",
     "state": "OPEN",
     "createdAt": "2026-05-09T09:00:00Z"
+  },
+  {
+    "number": 10,
+    "title": "Docker build error",
+    "body": "Docker container build fails with error in CI.",
+    "state": "OPEN",
+    "createdAt": "2026-05-10T09:00:00Z"
   }
 ]

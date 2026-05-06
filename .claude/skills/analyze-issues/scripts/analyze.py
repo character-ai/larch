@@ -19,9 +19,23 @@ PREFIX_RE = re.compile(r"^\s*(?:\[(?:DONE|OOS|IN PROGRESS|STALLED|URGENT)\]\s*)+
 FILE_RE = re.compile(r"\b[a-z][a-z0-9/_.-]+\.(?:sh|md)\b", re.I)
 
 CATEGORY_RULES: Sequence[Tuple[str, Sequence[str]]] = (
-    ("Documentation/contract drift", ("doc", "readme", "contract", "prompt", "instruction", "schema")),
-    ("Bug fix", ("bug", "fix", "broken", "failure", "error", "crash", "regression")),
-    ("Test coverage", ("test", "coverage", "harness", "fixture", "assert")),
+    # WHY: explicit Documentation forms (`doc`/`docs`/`documentation`/`documented`/
+    # `documenting`) keep `Docker`/`doctrine`/`documentary` from misclassifying as
+    # Documentation, which a `doc\w*` stem would do.
+    ("Documentation/contract drift", (
+        "doc", "docs", "documentation", "documented", "documenting",
+        "readme", "contract", "prompt", "instruction", "instructions", "schema",
+    )),
+    # WHY: short Bug fix tokens stay strict (\bfix\b, \bbug\b, \berror\b) so they
+    # cannot alias inside fixture/prefix/affix/error-prone (etc.). Plurals and
+    # common inflections of fix/bug/error are enumerated explicitly so e.g. titles
+    # like `Bugs in CI` or `Errors in parser` still classify as Bug fix.
+    ("Bug fix", (
+        "bug", "bugs",
+        "fix", "fixes", "fixed", "fixing",
+        "broken", "failure", "error", "errors", "crash", "regression",
+    )),
+    ("Test coverage", ("test", "tests", "testing", "coverage", "harness", "fixture", "assert")),
     ("Hardening/validation/security", ("security", "secret", "validate", "guard", "permission", "sanitize", "safe")),
     ("Refactor/code clarity", ("refactor", "cleanup", "clarity", "simplify", "rename")),
     ("Determinism/halt-prevention", ("determin", "halt", "timeout", "race", "idempotent", "retry")),
@@ -37,7 +51,7 @@ CATEGORY_RULES: Sequence[Tuple[str, Sequence[str]]] = (
 # characters (\bKW\w*) for them, while keeping short exact words like fix/add/new
 # strict (\bKW\b) so they cannot alias inside fixture/prefix/affix/added/newer.
 _STEM_KEYWORDS = frozenset({
-    "doc", "instruction", "determin",
+    "determin",
     "validate", "sanitize", "simplify",
     "permission", "secret", "feature",
     "scaffold", "failure", "regression",
@@ -65,7 +79,8 @@ CATEGORY_PATTERNS: Sequence[Tuple[str, "re.Pattern[str]"]] = tuple(
 )
 
 # WHY: load_issues fails the load when more than 5% of input list elements
-# are non-dict (corrupt fixture data). --lenient restores silent-skip.
+# are non-dict (corrupt fixture data). --lenient suppresses only the threshold
+# abort; per-element stderr WARN lines are emitted regardless.
 LOAD_ISSUES_SKIP_THRESHOLD = 0.05
 LOAD_ISSUES_REPR_CAP = 60
 
