@@ -1,0 +1,7 @@
+# Format: <generator-script>	<output-path>
+# Each generator-script must support `--check` mode (exit 0 if output is in
+# sync, non-zero on drift) and its `--check` mode MUST validate the artifact
+# named in column 2 of its row. See scripts/check-generators.md for the
+# walker contract and scripts/generate-code-reviewer-agent.md for the
+# exemplar generator.
+scripts/generate-code-reviewer-agent.sh	agents/code-reviewer.md
