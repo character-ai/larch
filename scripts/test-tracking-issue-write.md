@@ -9,7 +9,7 @@ Regression harness for `scripts/tracking-issue-write.sh`. Mirrors the stub-`gh` 
 - `mktemp -d "${TMPDIR:-/tmp}/test-tracking-issue-write-XXXXXX"` tmproot with `trap 'rm -rf "$TMPROOT"' EXIT`.
 - Each scenario builds a per-scenario stub-`gh` binary at `$TMPROOT/stub-<tag>/gh` (`chmod +x`) and exports `$BODY_CAPTURE` so the stub can capture `--body-file` content for per-scenario inspection.
 - `PATH="$STUB_<tag>:$PATH"` override per-invocation isolates each scenario from others.
-- Stub helpers: `build_stub_success` (empty comment list, default happy-path), `build_stub_one_anchor` (one anchor-marker comment in list), `build_stub_multi_anchor` (two anchor-marker comments in list → triggers fail-closed branch), `build_stub_token_stderr` (fail-on-failure path, emits a token on stderr), `build_stub_pagination` (sensitive to `--paginate` in `gh api` argv: without `--paginate` returns only 100 rows with no anchor; with `--paginate` returns 150 rows with the anchor on row 125 — exercises case (o)'s regression guard).
+- Stub helpers: `build_stub_success` (empty comment list, default happy-path), `build_stub_one_anchor` (one anchor-marker comment in list), `build_stub_multi_anchor` (two anchor-marker comments in list → triggers fail-closed branch), `build_stub_token_stderr` (fail-on-failure path, emits a token on stderr), `build_stub_pagination` (sensitive to `--paginate` in `gh api` argv: without `--paginate` returns only 100 rows with no anchor; with `--paginate` returns 150 rows with the anchor on row 125 — exercises case (o)'s regression guard), and `build_stub_rename` (title view/edit capture used by both `rename` and `mark-false-positive`).
 - `assert_contains` / `assert_not_contains` / `assert_equal` helpers for test assertions. PASS/FAIL counters + summary, exit 1 on failure.
 
 ## Assertion categories
@@ -32,6 +32,8 @@ Regression harness for `scripts/tracking-issue-write.sh`. Mirrors the stub-`gh` 
 | (m) | `find-anchor` one anchor: stub returns one v1-marker comment (via `build_stub_one_anchor`) → `find-anchor --issue 42` emits `ANCHOR_COMMENT_ID=5001` on stdout, no `FAILED=true`, exit 0. |
 | (n) | `find-anchor` multi-anchor fail-closed: stub returns two v1-marker comments (via `build_stub_multi_anchor`) → `find-anchor --issue 42` exits 2 with `FAILED=true ERROR=multiple anchor comments found (ids: 5001,5002)`. Asserts no `ANCHOR_COMMENT_ID=` line is emitted on the failure path (consumers must check `FAILED=true` first). |
 | (o) | `find-anchor` pagination across >100 comments — regression guard for #654: `build_stub_pagination` is sensitive to whether `--paginate` is present in `gh api`'s argv. WITHOUT `--paginate`, returns only the first 100 rows (no anchor among them); WITH `--paginate`, returns all 150 rows with the anchor on row 125. Asserts `find-anchor` returns `ANCHOR_COMMENT_ID=5125` (the late-page anchor) — a future edit that drops `--paginate` from `list_anchor_comments` would fail this assertion because the stub would return the no-anchor first-page-only payload. |
+| (p) | `mark-false-positive`: ordering, idempotency, `[OOS]` and `[ROUND-TRIP]` sibling preservation, redaction, truncation, gh-failure parity, empty-title edge case, `[OOS]Foo` no-space edge case, and mid-title marker edge case. The harness sources `scripts/lib-title-markers.sh` directly for grammar fixtures and also exercises the subcommand through stubbed `gh issue view/edit`. |
+| (q) | `tracking-issue-write.sh` startup-guard for `mark-false-positive`: running a copy of the script in a fake tree without the sibling `lib-title-markers.sh` helper exits 1 with `FAILED=true ERROR=missing helper: …lib-title-markers.sh`. Symmetric to (h) for the second sourced helper. |
 
 ## Fixture tokens
 
@@ -50,6 +52,7 @@ Bash 3.2-safe (indexed arrays only; no associative arrays, no `mapfile`).
 | File | Relationship |
 |---|---|
 | `scripts/tracking-issue-write.sh` | The script under test. Any behavioral change there must be mirrored in a harness assertion here. |
+| `scripts/lib-title-markers.sh` | Sourced directly by case (p) so title grammar fixtures share the production helper. |
 | `scripts/redact-secrets.sh` | Sibling outbound scrubber exercised by assertions (a) and (g). |
 | `scripts/test-redact-secrets.sh` | Pattern precedent for stub-gh + PATH-override + assert_contains helpers. |
 | `Makefile` | Target `test-tracking-issue-write` and exactly one `test-harnesses-N` shard prereq entry — both must remain in sync when renaming the harness. |

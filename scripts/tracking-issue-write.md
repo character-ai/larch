@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Phase 1 (umbrella #348) foundation layer: helper for the tracking-issue lifecycle. Five narrow subcommands — four writes (`create-issue`, `append-comment`, `upsert-anchor`, `rename`) plus one read-only lookup (`find-anchor`) — sharing a KEY=value stdout envelope and fail-closed redaction posture modelled on `skills/issue/scripts/create-one.sh`. The first three writes were added in Phase 1; `rename` was added alongside the tracking-issue title-prefix lifecycle (see "Title-prefix lifecycle" below); `find-anchor` was added in #654 to give SKILL.md callers a paginated, multi-anchor-fail-closed marker probe that reuses the same `list_anchor_comments` + `filter_anchor_ids` helpers as `upsert-anchor`'s marker-search-fallback (without the body-write side effects).
+Phase 1 (umbrella #348) foundation layer: helper for the tracking-issue lifecycle. Six narrow subcommands — five writes (`create-issue`, `append-comment`, `upsert-anchor`, `rename`, `mark-false-positive`) plus one read-only lookup (`find-anchor`) — sharing a KEY=value stdout envelope and fail-closed redaction posture modelled on `skills/issue/scripts/create-one.sh`. The first three writes were added in Phase 1; `rename` was added alongside the tracking-issue title-prefix lifecycle (see "Title-prefix lifecycle" below); `find-anchor` was added in #654 to give SKILL.md callers a paginated, multi-anchor-fail-closed marker probe that reuses the same `list_anchor_comments` + `filter_anchor_ids` helpers as `upsert-anchor`'s marker-search-fallback (without the body-write side effects). `mark-false-positive` adds the `[FALSE-POSITIVE]` signal marker without disturbing lifecycle prefixes or sibling signal markers.
 
 ## Subcommands
 
@@ -11,6 +11,7 @@ tracking-issue-write.sh create-issue   --title T --body-file F [--repo OWNER/REP
 tracking-issue-write.sh append-comment --issue N --body-file F [--lifecycle-marker ID] [--repo OWNER/REPO]
 tracking-issue-write.sh upsert-anchor  --issue N [--anchor-id ID] --body-file F [--repo OWNER/REPO]
 tracking-issue-write.sh rename         --issue N --state in-progress|done|stalled [--repo OWNER/REPO]
+tracking-issue-write.sh mark-false-positive --issue N [--repo OWNER/REPO]
 tracking-issue-write.sh find-anchor    --issue N [--repo OWNER/REPO]                (read-only)
 ```
 
@@ -28,6 +29,7 @@ This script emits `FAILED=true` / `ERROR=<msg>` on failure — NOT the `ISSUE_FA
 | `append-comment` | `COMMENT_ID=<id>`, `COMMENT_URL=<url>` |
 | `upsert-anchor` | `ANCHOR_COMMENT_ID=<id>`, `ANCHOR_COMMENT_URL=<url>`, `UPDATED=true\|false` (`true` when an existing anchor was PATCHed; `false` when a new anchor comment was created) |
 | `rename` | `RENAMED=true\|false`, `NEW_TITLE=<title>` (`false` when the current title already starts with the target prefix — no `gh issue edit` call was made) |
+| `mark-false-positive` | `MARKED=true\|false`, `NEW_TITLE=<title>` (`false` when `[FALSE-POSITIVE]` is already present in the leading bracket-block sequence — no `gh issue edit` call was made) |
 | `find-anchor` | `ANCHOR_COMMENT_ID=<id-or-empty>` — exactly one anchor → `ANCHOR_COMMENT_ID=<id>` (exit 0); zero anchors → `ANCHOR_COMMENT_ID=` empty value (exit 0); multiple anchors → `FAILED=true ERROR=multiple anchor comments found (ids: <comma-list>)` (exit 2). Stdout contains ONLY KEY=value lines (no progress text); diagnostics route to stderr — same posture as the four write subcommands. |
 
 ### Failure keys
@@ -109,6 +111,19 @@ The title prefix `[IN PROGRESS]` (followed by a space) is the **tracking-issue l
 - Comment lock: applies to any `/fix-issue` subject issue; set at step 1 of `/fix-issue`; cleared when work completes.
 - Title prefix: applied to `/implement`-managed tracking issues for the duration of the active run — both fresh-created (Step 0.5 Branch 4) and adopted (Branch 2/3/Branch 1 resume safety net, e.g. via `/fix-issue` forwarding `--issue <N>`). Step 12a/12b flips `[IN PROGRESS]` → `[DONE]` on merge; Step 18 Branch A flips it to `[STALLED]` on failure; Step 18 Branch B flips it to `[DONE]` on clean non-merge or draft completion (PR opened without auto-merge). The `rename` subcommand strips exactly one leading managed prefix before prepending the new one, so user-authored title text is preserved across transitions.
 
+## Mark-false-positive Semantics
+
+`mark-false-positive` is the canonical mutator for the additive `[FALSE-POSITIVE]` signal marker. It fetches the current title, redacts it, inserts `[FALSE-POSITIVE]` via `scripts/lib-title-markers.sh`, compares the redacted-but-not-truncated result for idempotency, truncates the outbound title to 256 characters, and calls `gh issue edit --title` only when the title changed. The idempotency comparator intentionally uses the redacted but not truncated current title because this subcommand only inserts a prefix; truncation-induced collisions are not a meaningful no-op signal here.
+
+The leading bracket-block sequence is zero or more bracket tokens like `[...]` followed by a space at the start of the title. If `[FALSE-POSITIVE]` is already present anywhere in that leading sequence, the helper is idempotent and returns the title unchanged. If the title begins with exactly one managed lifecycle prefix (`[IN PROGRESS]`, `[DONE]`, or `[STALLED]`, each followed by a space), the marker is inserted immediately after that prefix. Otherwise it is prepended at the start. Sibling markers such as `[OOS]` and `[ROUND-TRIP]` are preserved verbatim and never reordered.
+
+Locked edge cases:
+
+- Empty input title emits `[FALSE-POSITIVE]`.
+- `[OOS]Foo` has no space after `]`, so it is not part of the leading bracket-block grammar and becomes `[FALSE-POSITIVE] [OOS]Foo`.
+- A marker present later in the title, outside the leading bracket-block sequence, is not idempotent. Example: `[DONE] Foo [FALSE-POSITIVE] bar` becomes `[DONE] [FALSE-POSITIVE] Foo [FALSE-POSITIVE] bar`.
+- Redaction precedes truncation, matching the title-write posture of `rename`; gh stderr is redacted through the shared `emit_gh_failure` path.
+
 ## Conventions
 
 Uses Bash 3.2-compatible constructs (indexed arrays only; no associative arrays, no `mapfile`) so macOS-default bash runs match Ubuntu CI. Precedent: `scripts/dialectic-smoke-test.sh`.
@@ -119,7 +134,7 @@ The regression harness `scripts/test-tracking-issue-write.sh` is wired into `mak
 
 ## Test harness
 
-`scripts/test-tracking-issue-write.sh` covers fifteen assertion categories (a-o):
+`scripts/test-tracking-issue-write.sh` covers sixteen assertion categories (a-p):
 
 - **(a)** `create-issue` redacts title + body (`sk-ant-*` secret → `<REDACTED-TOKEN>`).
 - **(b)** `create-issue` exits 3 with `FAILED=true` / `ERROR=redaction:…` when the redactor is missing. Pins exact key literals `FAILED=true` (not `ISSUE_FAILED`).
@@ -137,15 +152,19 @@ The regression harness `scripts/test-tracking-issue-write.sh` is wired into `mak
 - **(m) `find-anchor` one anchor**: stub returns one v1-marker comment → `ANCHOR_COMMENT_ID=<id>` on stdout, exit 0.
 - **(n) `find-anchor` multi-anchor fail-closed**: stub returns two v1-marker comments → exit 2, `FAILED=true ERROR=multiple anchor comments found (ids: 5001,5002)`, no `ANCHOR_COMMENT_ID=` line on stdout.
 - **(o) `find-anchor` pagination across >100 comments** (regression guard for #654): stub is sensitive to whether `--paginate` is in the `gh api` argv. WITHOUT `--paginate`, returns only the first 100 rows (no anchor); WITH `--paginate`, returns all 150 rows with the anchor on row 125. Asserts `find-anchor` returns `ANCHOR_COMMENT_ID=5125` (the late-page anchor) — a future edit dropping `--paginate` from `list_anchor_comments` would fail this assertion.
+- **(p) `mark-false-positive` subcommand**: additive marker ordering with lifecycle prefixes, `[OOS]` co-existence, sibling `[ROUND-TRIP]` preservation, leading-sequence-only idempotency, empty-title and no-space edge cases, redaction, 256-character truncation, and gh-failure envelope parity.
 
 ## Edit-in-sync pointers
 
 | File | Relationship |
 |---|---|
 | `scripts/anchor-section-markers.sh` | Single source of truth for `SECTION_MARKERS`; sourced by this script at startup. Missing helper is fail-closed (test harness case (h)). |
+| `scripts/lib-title-markers.sh` | Sourced helper for additive signal marker insertion; full grammar is documented in this file. |
+| `scripts/false-positive-keywords.md` | Keyword matcher contract for `/fix-issue`'s optional close-time false-positive marker trigger. |
 | `scripts/redact-secrets.sh` | Sole outbound scrubber — do NOT bypass or add a parallel redactor. |
 | `scripts/tracking-issue-read.sh` | Delegates `append-comment` when invoked with `--issue + --prompt`. |
 | `scripts/test-tracking-issue-write.sh` | Regression harness for this script — every behavioral change here must be mirrored in the harness. |
+| `skills/fix-issue/scripts/issue-lifecycle.md` | Documents the `/fix-issue` close-time consumer that calls `mark-false-positive` on keyword matches. |
 | `scripts/assemble-anchor.sh` | Companion helper that assembles anchor bodies from `$IMPLEMENT_TMPDIR/anchor-sections/`. Shares `SECTION_MARKERS` ordering via the same sourced helper. |
 | `skills/implement/references/anchor-comment-template.md` | Human-readable template describing the same 8 section slugs + anchor first-line marker; the executable source of truth is `scripts/anchor-section-markers.sh`. |
 | `SECURITY.md` | Documents the outbound-redaction invariant, gh-failure redaction, anchor-skeleton preservation. |

@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.24] - 2026-05-05
+
+### Added
+
+- New `[FALSE-POSITIVE]` additive title marker, applied at event-triggered close-time hook points (NOT a periodic sweep) when an OOS-style issue closes without a corresponding fix. Closing-comment keyword scan covers `won't fix`/`wontfix`, `superseded`/`superseded by #N`, `not an issue`/`not a bug`, `duplicate of #N`, `false positive`/`false-positive`, with a leading negation guard for `not a duplicate` / `not a bug` / `not a false positive` / `not an issue`. The marker coexists with managed lifecycle prefixes (`[IN PROGRESS]` / `[DONE]` / `[STALLED]`) and the sibling `[ROUND-TRIP]` marker (#1240); idempotent against the leading bracket-block sequence.
+- New shared sourced libraries `scripts/lib-title-markers.sh` (pure title-grammar `insert_signal_marker` helper) and `scripts/false-positive-keywords.sh` (negation-guarded keyword matcher with `matches_false_positive_keywords`).
+- New `mark-false-positive` subcommand on `scripts/tracking-issue-write.sh`, sharing the existing redact + 256-char truncation pipeline. New opt-in `--mark-false-positive-if-keyword` flag on `skills/fix-issue/scripts/issue-lifecycle.sh cmd_close`, default off; wired into `/fix-issue` Step 3 (not-material close) only. Step 6b NON_PR closes intentionally not wired (free-form `WORK_SUMMARY` would mis-classify legitimate completions).
+- New regression harness `scripts/test-false-positive-keywords.sh` (positive + negative + grep-failure fixtures) wired into `make lint` via `test-harnesses-5`. New fixture (q) on `scripts/test-tracking-issue-write.sh` for the `lib-title-markers.sh` startup-guard fail-closed path. New fixtures on `skills/fix-issue/scripts/test-issue-lifecycle.sh` for flag-on/flag-off, close-failure, idempotent re-run, already-closed-branch, marker-call-failure, and non-repo-cwd invocation paths.
+- Documents the deferral of `/implement` Step 9a.1 hook in `skills/implement/SKILL.md` (event-triggered scope only). Closes #1239.
+
 ## [15.12.23] - 2026-05-05
 
 ### Added

@@ -6,7 +6,7 @@
 # Usage:
 #   issue-lifecycle.sh comment --issue NUMBER --body TEXT [--lock]
 #   issue-lifecycle.sh comment --issue NUMBER --body TEXT --lock-no-go
-#   issue-lifecycle.sh close   --issue NUMBER [--comment TEXT] [--pr-url URL]
+#   issue-lifecycle.sh close   --issue NUMBER [--comment TEXT] [--pr-url URL] [--mark-false-positive-if-keyword]
 #   issue-lifecycle.sh update-body --issue NUMBER --pr-url URL
 #
 # Subcommands:
@@ -32,6 +32,9 @@
 #                child-dispatch path.
 #   close      — Close an issue. Optionally post a comment first.
 #                With --pr-url: update the issue body with the PR link before closing.
+#                With --mark-false-positive-if-keyword: after CLOSED=true,
+#                scan the closing comment and best-effort add [FALSE-POSITIVE]
+#                to the issue title on keyword match.
 #                Called by /fix-issue Step 3 (not-material close) and Step 6 (DONE close).
 #   update-body — Append a PR link to the issue body (idempotent).
 #
@@ -41,6 +44,10 @@
 #   2 — usage error
 
 set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TRACKING_WRITE="${SCRIPT_DIR}/../../../scripts/tracking-issue-write.sh"
+FALSE_POSITIVE_KEYWORDS_LIB="${SCRIPT_DIR}/../../../scripts/false-positive-keywords.sh"
 
 # Propagation pause (seconds) between posting a lock comment and re-fetching
 # the comment list to verify no duplicate-runner race. Default 1s gives
@@ -287,20 +294,21 @@ cmd_comment() {
 # Subcommand: close
 # ---------------------------------------------------------------------------
 cmd_close() {
-    local issue="" comment="" pr_url=""
+    local issue="" comment="" pr_url="" mark_false_positive=false
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --issue) issue="${2:?--issue requires a value}"; shift 2 ;;
             --comment) comment="${2:?--comment requires a value}"; shift 2 ;;
             --pr-url) pr_url="${2:?--pr-url requires a value}"; shift 2 ;;
+            --mark-false-positive-if-keyword) mark_false_positive=true; shift ;;
             --repo) shift 2 ;;
             *) echo "Unknown option for close: $1" >&2; exit 2 ;;
         esac
     done
 
     if [[ -z "$issue" ]]; then
-        echo "Usage: issue-lifecycle.sh close --issue N [--comment TEXT] [--pr-url URL]" >&2
+        echo "Usage: issue-lifecycle.sh close --issue N [--comment TEXT] [--pr-url URL] [--mark-false-positive-if-keyword]" >&2
         exit 2
     fi
 
@@ -352,6 +360,29 @@ cmd_close() {
     fi
 
     echo "CLOSED=true"
+
+    if [ "$mark_false_positive" = true ] && [[ -n "$comment" ]]; then
+        # shellcheck source=scripts/false-positive-keywords.sh
+        # shellcheck disable=SC1090
+        source "$FALSE_POSITIVE_KEYWORDS_LIB"
+        local keyword_rc=0
+        matches_false_positive_keywords "$comment" || keyword_rc=$?
+        if [ "$keyword_rc" -eq 0 ]; then
+            local mark_out mark_stderr mark_exit=0 err_value
+            mark_stderr=$(mktemp)
+            mark_out=$("$TRACKING_WRITE" mark-false-positive --issue "$issue" --repo "$REPO" 2>"$mark_stderr") || mark_exit=$?
+            if [ "$mark_exit" -ne 0 ] || printf '%s\n' "$mark_out" | grep -q '^FAILED=true'; then
+                err_value=$(printf '%s\n' "$mark_out" | grep -oE '^ERROR=.*' | head -1 | sed 's/^ERROR=//')
+                echo "WARNING: mark-false-positive failed for issue #$issue: ${err_value:-unknown}" >&2
+            fi
+            if [ -s "$mark_stderr" ]; then
+                cat "$mark_stderr" >&2
+            fi
+            rm -f "$mark_stderr"
+        elif [ "$keyword_rc" -ge 2 ]; then
+            echo "WARNING: false-positive keyword scan failed for issue #$issue" >&2
+        fi
+    fi
 }
 
 # ---------------------------------------------------------------------------

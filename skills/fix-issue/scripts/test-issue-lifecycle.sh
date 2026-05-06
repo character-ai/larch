@@ -21,6 +21,10 @@
 #                                    posting the DONE comment; call 2 succeeds;
 #                                    combined log shows TWO comment|42|DONE lines
 #                                    (regression guard for documented behavior).
+#   8. --repo silently ignored.
+#   9-16. False-positive marker flag coverage: keyword match, no match,
+#          default-off, close failure skip, idempotent no-op, already-closed
+#          path, marker failure warning, and non-repo cwd path resolution.
 #
 # Scope: offline, hermetic (no network, no git state change). All scratch
 # state under $TMPDIR; torn down by EXIT trap.
@@ -120,7 +124,7 @@ case "${1:-}" in
         case "${2:-}" in
             view)
                 # gh issue view <N> --json <field> --jq <filter>
-                # Sub-dispatch on the --json argument to distinguish state vs body.
+                # Sub-dispatch on the --json argument to distinguish state/body/title.
                 local_json=""
                 local_issue="${3:-}"
                 shift 3 2>/dev/null || true
@@ -145,6 +149,10 @@ case "${1:-}" in
                         echo ""
                         exit 0
                         ;;
+                    title)
+                        echo "${STUB_TITLE:-Plain title}"
+                        exit 0
+                        ;;
                     *)
                         echo ""
                         exit 0
@@ -166,9 +174,31 @@ case "${1:-}" in
                 exit 0
                 ;;
             edit)
-                # gh issue edit <N> --body <text>
+                # gh issue edit <N> --body <text> OR --title <text>
                 local_issue="${3:-}"
-                log_invocation "edit|$local_issue|body-updated"
+                shift 3 2>/dev/null || true
+                local_title=""
+                local_body_seen=0
+                while [[ $# -gt 0 ]]; do
+                    case "$1" in
+                        --title) local_title="${2:-}"; shift 2 ;;
+                        --body) local_body_seen=1; shift 2 ;;
+                        *) shift ;;
+                    esac
+                done
+                if [[ -n "$local_title" ]]; then
+                    log_invocation "title-edit|$local_issue|$local_title"
+                    if [[ "${STUB_TITLE_EDIT_FAIL:-0}" == "1" ]]; then
+                        echo "stub: title edit failed for ${STUB_SECRET:-secret}" >&2
+                        exit 1
+                    fi
+                    exit 0
+                fi
+                if [[ "$local_body_seen" == "1" ]]; then
+                    log_invocation "edit|$local_issue|body-updated"
+                else
+                    log_invocation "edit|$local_issue|unknown"
+                fi
                 exit 0
                 ;;
             close)
@@ -213,12 +243,22 @@ run_case() {
     export STUB_STATE="$stub_state"
     export STUB_PROBE_FAIL="$probe_fail"
     export STUB_CLOSE_FAIL="$close_fail"
+    export STUB_TITLE="${STUB_TITLE_OVERRIDE:-Plain title}"
     set +e
     CLOSE_STDOUT=$(PATH="$bin:$PATH" "$SCRIPT" close "$@" 2>"$case_dir/stderr.log")
     RC=$?
     set -e
     CLOSE_STDERR=$(cat "$case_dir/stderr.log")
-    unset STUB_STATE STUB_PROBE_FAIL STUB_CLOSE_FAIL INVOCATIONS_LOG
+    unset STUB_STATE STUB_PROBE_FAIL STUB_CLOSE_FAIL STUB_TITLE INVOCATIONS_LOG
+}
+
+run_case_from_cwd() {
+    # run_case_from_cwd <cwd> <label> <stub_state> <probe_fail> <close_fail> <extra_args...>
+    local cwd="$1"
+    shift
+    pushd "$cwd" >/dev/null
+    run_case "$@"
+    popd >/dev/null
 }
 
 # --- Fixture 1: OPEN, no --pr-url -----------------------------------------
@@ -363,6 +403,89 @@ assert_not_contains "$CLOSE_STDOUT" "CLOSED=false" "[f8] stdout has no CLOSED=fa
 log8=$(cat "$TMPROOT/f8/gh-invocations.log")
 assert_contains "$log8" "comment|42|DONE" "[f8] DONE comment posted"
 assert_contains "$log8" "close|42" "[f8] gh issue close invoked"
+
+# --- Fixture 9: Flag-on + keyword match -> marker called once -------------
+echo ""
+echo "=== 9: false-positive flag + keyword match marks title once ==="
+STUB_TITLE_OVERRIDE="Plain title" run_case "f9" "OPEN" "0" "0" --issue 42 --comment "Closing: duplicate of #24" --mark-false-positive-if-keyword
+assert_eq "[f9] exit code" 0 "$RC"
+assert_eq "[f9] stdout byte-stable" "CLOSED=true" "$CLOSE_STDOUT"
+log9=$(cat "$TMPROOT/f9/gh-invocations.log")
+title_edit_count9=$(printf '%s\n' "$log9" | grep -c '^title-edit|42|' || true)
+assert_eq "[f9] marker title edit called once" 1 "$title_edit_count9"
+assert_contains "$log9" "title-edit|42|[FALSE-POSITIVE] Plain title" "[f9] marker wrote expected title"
+
+# --- Fixture 10: Flag-on + no keyword -> marker not called ----------------
+echo ""
+echo "=== 10: false-positive flag + no keyword skips marker ==="
+STUB_TITLE_OVERRIDE="Plain title" run_case "f10" "OPEN" "0" "0" --issue 42 --comment "Closing after completion" --mark-false-positive-if-keyword
+assert_eq "[f10] exit code" 0 "$RC"
+assert_eq "[f10] stdout byte-stable" "CLOSED=true" "$CLOSE_STDOUT"
+log10=$(cat "$TMPROOT/f10/gh-invocations.log")
+assert_not_contains "$log10" "title-edit|42|" "[f10] marker title edit not called"
+
+# --- Fixture 11: Flag-off default -> marker not called --------------------
+echo ""
+echo "=== 11: false-positive flag off leaves keyword comment byte-stable ==="
+STUB_TITLE_OVERRIDE="Plain title" run_case "f11" "OPEN" "0" "0" --issue 42 --comment "Closing: wontfix and superseded by #99"
+assert_eq "[f11] exit code" 0 "$RC"
+assert_eq "[f11] stdout byte-stable" "CLOSED=true" "$CLOSE_STDOUT"
+log11=$(cat "$TMPROOT/f11/gh-invocations.log")
+assert_not_contains "$log11" "title-edit|42|" "[f11] marker title edit not called by default"
+
+# --- Fixture 12: Close failure -> marker not called -----------------------
+echo ""
+echo "=== 12: close failure skips false-positive marker ==="
+STUB_TITLE_OVERRIDE="Plain title" run_case "f12" "OPEN" "0" "1" --issue 42 --comment "Closing: false positive" --mark-false-positive-if-keyword
+assert_eq "[f12] exit code" 1 "$RC"
+assert_contains "$CLOSE_STDOUT" "CLOSED=false" "[f12] stdout has CLOSED=false"
+log12=$(cat "$TMPROOT/f12/gh-invocations.log")
+assert_not_contains "$log12" "title-edit|42|" "[f12] marker title edit not called after close failure"
+
+# --- Fixture 13: Idempotent re-run -> no marker edit ----------------------
+echo ""
+echo "=== 13: already marked title is idempotent ==="
+STUB_TITLE_OVERRIDE="[DONE] [FALSE-POSITIVE] Plain title" run_case "f13" "OPEN" "0" "0" --issue 42 --comment "Closing: false positive" --mark-false-positive-if-keyword
+assert_eq "[f13] exit code" 0 "$RC"
+assert_eq "[f13] stdout byte-stable" "CLOSED=true" "$CLOSE_STDOUT"
+assert_eq "[f13] stderr no warning" "" "$CLOSE_STDERR"
+log13=$(cat "$TMPROOT/f13/gh-invocations.log")
+assert_not_contains "$log13" "title-edit|42|" "[f13] marker no-op does not edit"
+
+# --- Fixture 14: Already-closed branch + flag + keyword -> marker runs ----
+echo ""
+echo "=== 14: already-closed branch still runs marker after CLOSED=true ==="
+STUB_TITLE_OVERRIDE="Plain title" run_case "f14" "CLOSED" "0" "0" --issue 42 --comment "Closing: superseded" --mark-false-positive-if-keyword
+assert_eq "[f14] exit code" 0 "$RC"
+assert_eq "[f14] stdout byte-stable" "CLOSED=true" "$CLOSE_STDOUT"
+assert_contains "$CLOSE_STDERR" "INFO: issue #42 already closed" "[f14] stderr INFO note present"
+log14=$(cat "$TMPROOT/f14/gh-invocations.log")
+assert_not_contains "$log14" "close|42" "[f14] gh issue close skipped"
+assert_contains "$log14" "title-edit|42|[FALSE-POSITIVE] Plain title" "[f14] marker title edit ran"
+
+# --- Fixture 15: Marker call failure -> warning only ----------------------
+echo ""
+echo "=== 15: marker call failure warns without changing stdout ==="
+export STUB_TITLE_EDIT_FAIL=1
+export STUB_SECRET='sk-ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD'
+STUB_TITLE_OVERRIDE="Plain title" run_case "f15" "OPEN" "0" "0" --issue 42 --comment "Closing: false-positive" --mark-false-positive-if-keyword
+unset STUB_TITLE_EDIT_FAIL STUB_SECRET
+assert_eq "[f15] exit code" 0 "$RC"
+assert_eq "[f15] stdout byte-stable" "CLOSED=true" "$CLOSE_STDOUT"
+assert_contains "$CLOSE_STDERR" "WARNING: mark-false-positive failed for issue #42:" "[f15] stderr warning present"
+assert_contains "$CLOSE_STDERR" "<REDACTED-TOKEN>" "[f15] warning carries redacted ERROR value"
+assert_not_contains "$CLOSE_STDERR" "sk-ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD" "[f15] warning does not leak raw stub stderr"
+
+# --- Fixture 16: Non-repo cwd invocation succeeds -------------------------
+echo ""
+echo "=== 16: false-positive flag works from non-repo cwd ==="
+NON_REPO_CWD="$TMPROOT/non-repo-cwd"
+mkdir -p "$NON_REPO_CWD"
+STUB_TITLE_OVERRIDE="[DONE] Existing" run_case_from_cwd "$NON_REPO_CWD" "f16" "OPEN" "0" "0" --issue 42 --comment "Closing: wontfix" --mark-false-positive-if-keyword
+assert_eq "[f16] exit code" 0 "$RC"
+assert_eq "[f16] stdout byte-stable" "CLOSED=true" "$CLOSE_STDOUT"
+log16=$(cat "$TMPROOT/f16/gh-invocations.log")
+assert_contains "$log16" "title-edit|42|[DONE] [FALSE-POSITIVE] Existing" "[f16] SCRIPT_DIR-based marker path worked"
 
 # --- Summary --------------------------------------------------------------
 echo ""

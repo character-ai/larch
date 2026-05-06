@@ -595,6 +595,12 @@ exclude = [
   # test harness ships with no runtime consumers yet. Phase 3 is the
   # first consumer via skills/implement/SKILL.md (not in this phase).
   "scripts/test-tracking-issue-write.sh",
+  # False-positive marker helpers added for /fix-issue close-time title marking.
+  # lib-title-markers.sh and false-positive-keywords.sh are sourced-only
+  # libraries; test-false-positive-keywords.sh is Makefile-only.
+  "scripts/lib-title-markers.sh",
+  "scripts/false-positive-keywords.sh",
+  "scripts/test-false-positive-keywords.sh",
   # Regression harness for tracking-issue-read.sh's --sentinel branch
   # (added by #359 — ADOPTED= contract pin). Invoked only from Makefile's
   # test-harnesses target; no SKILL.md reference. Phase 3 first consumes
