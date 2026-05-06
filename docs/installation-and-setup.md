@@ -35,7 +35,7 @@ To upgrade larch to the latest version, run the `/upgrade-larch` skill in any Cl
 /upgrade-larch
 ```
 
-After the skill completes, restart Claude Code to apply the new version.
+After the skill prints the installed version, restart Claude Code to apply the new version.
 
 ## Install for local development (contributors)
 

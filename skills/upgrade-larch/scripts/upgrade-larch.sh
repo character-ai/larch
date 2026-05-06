@@ -22,4 +22,8 @@ echo "Installing larch plugin..."
 claude plugin install larch@larch-local 2>&1
 
 echo ""
+echo "Installed larch plugin version:"
+claude plugin list 2>&1 | grep -A2 'larch@larch-local' || true
+
+echo ""
 echo "Upgrade complete. Restart Claude Code to apply the new version."
