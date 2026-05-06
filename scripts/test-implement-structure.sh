@@ -68,6 +68,10 @@
 #      (9e) The same procedure must document conditional
 #      `--intra-batch-deps-file` forwarding for Step 9a.1's file-conflict
 #      pre-pass.
+#      (9f) The same procedure must reference the literal `oos-combined.md`
+#      so the combine-pass output path (consumed by `oos-file-conflict-deps.sh`
+#      and `/issue --input-file`) cannot regress to a placeholder or split inputs
+#      while CI stays green.
 # (10) Cross-skill bail-token pin (umbrella #348 Phase 4): skills/implement/SKILL.md
 #      must contain the literal `IMPLEMENT_BAIL_REASON=adopted-issue-closed`.
 #      `/fix-issue` Step 6a scans this token in captured `/implement` output to
@@ -372,6 +376,15 @@ printf '%s\n' "$step_9a1_oos_procedure" | grep -Fq -- 'In any of the three degra
 # ---------------------------------------------------------------------------
 printf '%s\n' "$step_9a1_oos_procedure" | grep -Fq -- '--intra-batch-deps-file' \
   || fail "(9e) Step 9a.1 OOS pipeline procedure must document conditional '--intra-batch-deps-file' forwarding"
+
+# ---------------------------------------------------------------------------
+# (9f) Step 9a.1 combine-pass output path. Pin the literal `oos-combined.md`
+#      inside the canonical procedure so a future edit cannot rename or drop
+#      the combine-pass output path (consumed by `oos-file-conflict-deps.sh`
+#      and `/issue --input-file`) without CI catching the drift.
+# ---------------------------------------------------------------------------
+printf '%s\n' "$step_9a1_oos_procedure" | grep -Fq -- 'oos-combined.md' \
+  || fail "(9f) Step 9a.1 OOS pipeline procedure must reference the literal 'oos-combined.md' (combine-pass output path)"
 
 # ---------------------------------------------------------------------------
 # (10) Cross-skill bail-token pin (umbrella #348 Phase 4): SKILL.md must
