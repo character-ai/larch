@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.26] - 2026-05-05
+
+### Changed
+
+- `.claude/skills/relevant-checks/scripts/run-checks.sh` now fails loudly (exit 2 with `ERROR: no validation phases ran ...`) when zero validation phases actually executed — the empty-`MODIFIED_FILES` branch now attempts the full-repo `agent-lint` phase via `run_post_checks` instead of exiting 0 immediately, and `run_post_checks` increments a session-scoped `PHASES_RUN` counter only when `agent-lint` actually ran. The post-pre-commit happy path is unchanged (pre-commit success increments `PHASES_RUN` so exit 0 stands when `agent-lint` is absent). Closes a CI-parity footgun where callers treating `/relevant-checks` alone as full CI equivalence got a false green when no phases ran. Updates `.claude/skills/relevant-checks/SKILL.md` (Mindset, Maintenance rule, How it works, Failure-mode taxonomy, NEVER table) and the sibling `.claude/skills/relevant-checks/scripts/run-checks.md` contract to match the new exit semantics. Closes #1260.
+
 ## [15.12.25] - 2026-05-05
 
 ### Added
