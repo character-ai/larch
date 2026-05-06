@@ -431,8 +431,8 @@ if [[ ${#RETRY_FILES[@]} -gt 0 ]]; then
     # "Retry process did not complete (sentinel file missing)" message at
     # the foot of the second loop.
     RETRY_LAUNCHED=()
-    # F10 fix: compute max retry timeout from original reviewer timeouts + grace
-    MAX_RETRY_TIMEOUT=180
+    # F10/#1330: compute max retry timeout from original reviewer timeouts + grace.
+    MAX_RETRY_TIMEOUT=30  # safety floor; loop below raises this to max(ORIG_TIMEOUT+60)
     for j in "${!RETRY_FILES[@]}"; do
         ORIG_OUTPUT="${RETRY_FILES[$j]}"
         META="${ORIG_OUTPUT}.meta"
