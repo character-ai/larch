@@ -5,6 +5,7 @@
 # Note: -e intentionally omitted — pre-commit exit code is captured explicitly
 # (PRE_COMMIT_EXIT) rather than aborting, so later checks can still run.
 set -uo pipefail
+PHASES_RUN=0
 
 # ---------------------------------------------------------------------------
 # Pre-flight: ensure pre-commit is installed
@@ -25,11 +26,25 @@ run_post_checks() {
         echo ""
         echo "=== Running agent-lint ==="
         agent-lint --pedantic "$REPO_ROOT"
-        return $?
+        local rc=$?
+        PHASES_RUN=$((PHASES_RUN + 1))
+        return "$rc"
     else
         echo ""
         echo "WARNING: agent-lint not found on PATH — skipping"
     fi
+}
+
+exit_with_phase_check() {
+    local rc="$1"
+
+    if [ "$PHASES_RUN" -eq 0 ]; then
+        echo ""
+        echo "ERROR: no validation phases ran (no existing files for pre-commit, and agent-lint was unavailable or skipped)."
+        exit 2
+    fi
+
+    exit "$rc"
 }
 
 # ---------------------------------------------------------------------------
@@ -60,8 +75,9 @@ untracked="$(git ls-files --others --exclude-standard 2>/dev/null || true)"
 MODIFIED_FILES="$(printf '%s\n%s\n%s\n%s' "$branch_diff" "$staged_diff" "$unstaged_diff" "$untracked" | sort -u | grep -v '^$' || true)"
 
 if [ -z "$MODIFIED_FILES" ]; then
-    echo "No modified files detected — no checks to run."
-    exit 0
+    echo "No modified files detected — running full-repo post-checks if available."
+    run_post_checks
+    exit_with_phase_check "$?"
 fi
 
 # ---------------------------------------------------------------------------
@@ -85,7 +101,7 @@ done <<< "$MODIFIED_FILES"
 if [ ${#files[@]} -eq 0 ]; then
     echo "No existing modified files to check (all changes are deletions)."
     run_post_checks
-    exit $?
+    exit_with_phase_check "$?"
 fi
 
 # ---------------------------------------------------------------------------
@@ -100,6 +116,8 @@ if [ "$PRE_COMMIT_EXIT" -ne 0 ]; then
     exit "$PRE_COMMIT_EXIT"
 fi
 
+PHASES_RUN=$((PHASES_RUN + 1))
+
 # ---------------------------------------------------------------------------
 # Pre-commit succeeded — run agent-lint on the full repo.
 # This catches structural regressions (frontmatter, references, dead scripts,
@@ -108,3 +126,4 @@ fi
 # locally before pushing.
 # ---------------------------------------------------------------------------
 run_post_checks
+exit_with_phase_check "$?"
