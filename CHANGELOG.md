@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.28] - 2026-05-05
+
+### Changed
+
+- `skills/fix-issue/scripts/issue-lifecycle.sh` `cmd_close` no longer accepts the no-op `--repo` flag. Previously the flag was silently consumed (`shift 2`) and discarded; now it falls through to the case-statement's `*` branch and exits 2 with `Unknown option for close: --repo`. The repo binding for the `mark-false-positive` marker call remains the script-global `$REPO` resolved internally via `gh repo view`. Updates `skills/fix-issue/scripts/issue-lifecycle.md` (signature and Test harness paragraph) and `skills/fix-issue/scripts/test-issue-lifecycle.sh` fixture 8 to assert exit 2 and "Unknown option" stderr with no `gh issue comment` / `gh issue close` invocation. No in-tree caller passes `--repo` to `close`. Closes #1269.
+
 ## [15.12.27] - 2026-05-05
 
 ### Changed
