@@ -11,6 +11,16 @@ ORIGINAL_ARGS=("$@")
 OUTPUT=""
 TIMEOUT=""
 PROMPT=""
+SNAPSHOT_GUARD_STATE="uninitialized"
+SNAPSHOT_GUARD_NOTICE=""
+SNAPSHOT_GUARD_MESSAGE=""
+SNAPSHOT_PRE=""
+SNAPSHOT_POST=""
+SNAPSHOT_BACKUP=""
+SNAPSHOT_REPO_ROOT=""
+SNAPSHOT_STATUS=0
+SNAPSHOT_ARTIFACT_EXACT=()
+SNAPSHOT_ARTIFACT_PREFIX=()
 
 # Build a redacted copy of ORIGINAL_ARGS for write_meta() so the full --prompt
 # body (review instructions and any caller-provided context) is not duplicated
@@ -24,7 +34,7 @@ for _arg in "${ORIGINAL_ARGS[@]}"; do
     if (( _skip_next == 1 )); then
         _hash="<unhashed>"
         if command -v shasum >/dev/null 2>&1; then
-            _hash=$(printf '%s' "$_arg" | shasum -a 256 | awk '{print $1}')
+            _hash=$(printf '%s' "$_arg" | LC_ALL=C shasum -a 256 2>/dev/null | awk '{print $1}')
         elif command -v sha256sum >/dev/null 2>&1; then
             _hash=$(printf '%s' "$_arg" | sha256sum | awk '{print $1}')
         fi
@@ -89,14 +99,445 @@ write_meta() {
 fail_closed() {
     local code="$1"
     local reason="$2"
+    local guard_code=0
+    if [[ "$SNAPSHOT_GUARD_STATE" == "armed" ]]; then
+        run_snapshot_guard || guard_code=$?
+        if [[ -n "$SNAPSHOT_GUARD_MESSAGE" ]]; then
+            reason="${reason}"$'\n'"${SNAPSHOT_GUARD_MESSAGE}"
+        fi
+        if [[ "$guard_code" -eq 99 ]]; then
+            code=99
+        fi
+    fi
     write_empty_output
     {
         [[ -n "$reason" ]] && printf '%s\n' "$reason"
+        [[ -n "$SNAPSHOT_GUARD_NOTICE" ]] && printf '%s\n' "$SNAPSHOT_GUARD_NOTICE"
         [[ -f "$RAW_OUTPUT.diag" ]] && cat "$RAW_OUTPUT.diag"
     } >> "${OUTPUT}.diag"
     write_meta
     write_done "$code"
     exit "$code"
+}
+
+sha256_file() {
+    local path="$1"
+    if [[ -L "$path" ]]; then
+        if command -v shasum >/dev/null 2>&1; then
+            readlink "$path" | LC_ALL=C shasum -a 256 2>/dev/null | awk '{print $1}'
+        else
+            readlink "$path" | sha256sum | awk '{print $1}'
+        fi
+    elif command -v shasum >/dev/null 2>&1; then
+        LC_ALL=C shasum -a 256 "$path" 2>/dev/null | awk '{print $1}'
+    else
+        sha256sum "$path" | awk '{print $1}'
+    fi
+}
+
+resolve_existing_parent_path() {
+    local path="$1"
+    local dir base
+    case "$path" in
+        /*) ;;
+        *) path="$PWD/$path" ;;
+    esac
+    dir=$(dirname "$path")
+    base=$(basename "$path")
+    if [[ -d "$dir" ]]; then
+        (cd "$dir" && printf '%s/%s\n' "$(pwd -P)" "$base")
+    fi
+}
+
+repo_relative_if_inside() {
+    local abs="$1"
+    case "$abs" in
+        "$SNAPSHOT_REPO_ROOT"/*) printf '%s\n' "${abs#"$SNAPSHOT_REPO_ROOT"/}" ;;
+        "$SNAPSHOT_REPO_ROOT") printf '.\n' ;;
+    esac
+}
+
+add_snapshot_artifact_path() {
+    local path="$1"
+    local abs rel
+    abs=$(resolve_existing_parent_path "$path" || true)
+    [[ -n "$abs" ]] || return 0
+    rel=$(repo_relative_if_inside "$abs")
+    [[ -n "$rel" && "$rel" != "." ]] || return 0
+    SNAPSHOT_ARTIFACT_EXACT+=("$rel")
+}
+
+add_snapshot_artifact_prefix() {
+    local path="$1"
+    local abs rel
+    abs=$(resolve_existing_parent_path "$path" || true)
+    [[ -n "$abs" ]] || return 0
+    rel=$(repo_relative_if_inside "$abs")
+    [[ -n "$rel" && "$rel" != "." ]] || return 0
+    SNAPSHOT_ARTIFACT_PREFIX+=("$rel")
+}
+
+snapshot_path_is_artifact() {
+    local path="$1"
+    local artifact
+    for artifact in "${SNAPSHOT_ARTIFACT_EXACT[@]+"${SNAPSHOT_ARTIFACT_EXACT[@]}"}"; do
+        [[ "$path" == "$artifact" ]] && return 0
+    done
+    for artifact in "${SNAPSHOT_ARTIFACT_PREFIX[@]+"${SNAPSHOT_ARTIFACT_PREFIX[@]}"}"; do
+        [[ "$path" == "$artifact"* ]] && return 0
+    done
+    return 1
+}
+
+snapshot_timeout_seconds() {
+    # Returns the snapshot timeout cap in canonical decimal seconds.
+    # Falls back to default 30 on: empty, non-digit, or non-positive
+    # (`0`, `00`, ...). Forces base-10 so leading-zero values like `010`
+    # are interpreted as 10s, not octal 8s. Non-positive values are
+    # rejected rather than treated as "disable timeout" — disabling is
+    # not a supported mode (see launch-gemini-review.md).
+    local value="${LARCH_GEMINI_SNAPSHOT_TIMEOUT:-30}"
+    local decimal
+    case "$value" in
+        ''|*[!0-9]*) printf '30\n'; return ;;
+    esac
+    decimal=$((10#$value))
+    if (( decimal < 1 )); then
+        printf '30\n'
+    else
+        printf '%s\n' "$decimal"
+    fi
+}
+
+snapshot_timed_out() {
+    local start="$1"
+    local cap="$2"
+    (( cap > 0 && SECONDS - start >= cap ))
+}
+
+backup_snapshot_path() {
+    local path="$1"
+    local dest="$SNAPSHOT_BACKUP/$path"
+    mkdir -p "$(dirname "$dest")"
+    cp -pP "$SNAPSHOT_REPO_ROOT/$path" "$dest"
+}
+
+snapshot_status_file_mentions_path() {
+    local status_file="$1"
+    local path="$2"
+    grep -q -F " $path" "$status_file" 2>/dev/null
+}
+
+snapshot_pre_status_mentions_path() {
+    local path="$1"
+    snapshot_status_file_mentions_path "${SNAPSHOT_PRE}.status" "$path"
+}
+
+snapshot_pre_index_mentions_path() {
+    # True iff the pre-launch snapshot records carried an `I\t-\t<path>`
+    # entry for this path — i.e. operator already had something staged
+    # for this path before Gemini ran. Used by snapshot_restore_path to
+    # decide whether `git reset -q HEAD -- <path>` is safe to call after
+    # restoring worktree content from backup. When operator had no pre
+    # index entry, reset clears any reviewer-added index changes (the
+    # `git add` mutation case from FINDING_7). When operator had a pre
+    # index entry, reset would clobber operator state — skip it.
+    local path="$1"
+    [[ -f "${SNAPSHOT_PRE}.records" ]] || return 1
+    awk -v p="$path" -F'\t' '$1=="I" && $3==p { found=1; exit } END { exit !found }' \
+        "${SNAPSHOT_PRE}.records" 2>/dev/null
+}
+
+tracked_snapshot_hash() {
+    local path="$1"
+    local status_file="$2"
+    local clean_oid="$3"
+    if snapshot_status_file_mentions_path "$status_file" "$path"; then
+        if [[ -e "$SNAPSHOT_REPO_ROOT/$path" || -L "$SNAPSHOT_REPO_ROOT/$path" ]]; then
+            sha256_file "$SNAPSHOT_REPO_ROOT/$path"
+        else
+            printf 'MISSING\n'
+        fi
+        return 0
+    fi
+    printf '%s\n' "$clean_oid"
+}
+
+capture_snapshot() {
+    local out="$1"
+    local mode="${2:-post}"
+    local head_sha start cap path hash body status_file entry meta clean_oid
+    body="${out}.body"
+    status_file="${out}.status"
+    start=$SECONDS
+    cap=$(snapshot_timeout_seconds)
+    head_sha=$(git -C "$SNAPSHOT_REPO_ROOT" rev-parse HEAD 2>/dev/null) || return 1
+    printf 'HEAD_SHA=%s\n' "$head_sha" > "$out"
+    git -C "$SNAPSHOT_REPO_ROOT" status --porcelain > "$status_file"
+    : > "$body"
+
+    while IFS= read -r -d '' entry; do
+        meta="${entry%%$'\t'*}"
+        path="${entry#*$'\t'}"
+        clean_oid="${meta#* }"
+        clean_oid="${clean_oid%% *}"
+        snapshot_path_is_artifact "$path" && continue
+        if snapshot_timed_out "$start" "$cap"; then
+            rm -f "$body"
+            return 124
+        fi
+        hash=$(tracked_snapshot_hash "$path" "$status_file" "$clean_oid") || return 1
+        printf 'T\t%s\t%s\n' "$hash" "$path" >> "$body"
+        [[ "$mode" == "pre" && "$hash" != "MISSING" && -n "$SNAPSHOT_BACKUP" && ! -e "$SNAPSHOT_BACKUP/$path" && ! -L "$SNAPSHOT_BACKUP/$path" ]] \
+            && snapshot_pre_status_mentions_path "$path" \
+            && backup_snapshot_path "$path"
+    done < <(git -C "$SNAPSHOT_REPO_ROOT" ls-files -s -z)
+
+    while IFS= read -r -d '' path; do
+        snapshot_path_is_artifact "$path" && continue
+        if snapshot_timed_out "$start" "$cap"; then
+            rm -f "$body"
+            return 124
+        fi
+        if [[ -e "$SNAPSHOT_REPO_ROOT/$path" || -L "$SNAPSHOT_REPO_ROOT/$path" ]]; then
+            hash=$(sha256_file "$SNAPSHOT_REPO_ROOT/$path") || return 1
+            printf 'U\t%s\t%s\n' "$hash" "$path" >> "$body"
+            [[ "$mode" == "pre" && -n "$SNAPSHOT_BACKUP" && ! -e "$SNAPSHOT_BACKUP/$path" && ! -L "$SNAPSHOT_BACKUP/$path" ]] \
+                && backup_snapshot_path "$path"
+        fi
+    done < <(git -C "$SNAPSHOT_REPO_ROOT" ls-files --others --exclude-standard -z)
+
+    # Capture index state so reviewer mutations that change ONLY the index
+    # (e.g. `git add` of an already-modified tracked file) are detected.
+    # On-disk content hashes alone miss these — pre and post hashes are
+    # identical, but the index has new content. The 3-field schema
+    # (`I\t-\t<path>`) keeps `cut -f3-` semantics uniform with T/U records
+    # so run_snapshot_guard's delta_paths extraction stays correct.
+    while IFS= read -r -d '' path; do
+        snapshot_path_is_artifact "$path" && continue
+        if snapshot_timed_out "$start" "$cap"; then
+            rm -f "$body"
+            return 124
+        fi
+        printf 'I\t-\t%s\n' "$path" >> "$body"
+    done < <(git -C "$SNAPSHOT_REPO_ROOT" diff --cached --name-only -z HEAD 2>/dev/null)
+
+    LC_ALL=C sort "$body" >> "$out"
+    rm -f "$body"
+}
+
+# shellcheck disable=SC2317 # invoked via `trap ... EXIT` after setup_snapshot_guard
+snapshot_cleanup_on_exit() {
+    # Best-effort removal of snapshot temp resources at process exit.
+    # Registered via `trap` once setup_snapshot_guard has populated the
+    # SNAPSHOT_PRE / SNAPSHOT_POST / SNAPSHOT_BACKUP variables. Avoids
+    # leaving copies of tracked/untracked working-tree contents under
+    # ${TMPDIR:-/tmp} indefinitely (relevant when IMPLEMENT_TMPDIR is
+    # unset, e.g. ad-hoc or test runs).
+    if [[ -n "${SNAPSHOT_PRE:-}" ]]; then
+        rm -f -- \
+            "$SNAPSHOT_PRE" \
+            "${SNAPSHOT_PRE}.body" \
+            "${SNAPSHOT_PRE}.records" \
+            "${SNAPSHOT_PRE}.status" 2>/dev/null || true
+    fi
+    if [[ -n "${SNAPSHOT_POST:-}" ]]; then
+        rm -f -- \
+            "$SNAPSHOT_POST" \
+            "${SNAPSHOT_POST}.body" \
+            "${SNAPSHOT_POST}.records" \
+            "${SNAPSHOT_POST}.added" \
+            "${SNAPSHOT_POST}.removed" \
+            "${SNAPSHOT_POST}.paths" \
+            "${SNAPSHOT_POST}.status" 2>/dev/null || true
+    fi
+    if [[ -n "${SNAPSHOT_BACKUP:-}" && -d "$SNAPSHOT_BACKUP" ]]; then
+        rm -rf -- "$SNAPSHOT_BACKUP" 2>/dev/null || true
+    fi
+}
+
+setup_snapshot_guard() {
+    local tmp_parent
+    if ! SNAPSHOT_REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null); then
+        SNAPSHOT_GUARD_STATE="skipped"
+        SNAPSHOT_GUARD_NOTICE="snapshot guard skipped: not inside a git working tree"
+        return 0
+    fi
+    if ! git -C "$SNAPSHOT_REPO_ROOT" rev-parse HEAD >/dev/null 2>&1; then
+        SNAPSHOT_GUARD_STATE="skipped"
+        SNAPSHOT_GUARD_NOTICE="snapshot guard skipped: not inside a git working tree"
+        return 0
+    fi
+
+    add_snapshot_artifact_path "$OUTPUT"
+    add_snapshot_artifact_path "${OUTPUT}.done"
+    add_snapshot_artifact_path "${OUTPUT}.meta"
+    add_snapshot_artifact_path "${OUTPUT}.diag"
+    add_snapshot_artifact_path "$RAW_OUTPUT"
+    add_snapshot_artifact_path "${RAW_OUTPUT}.done"
+    add_snapshot_artifact_path "${RAW_OUTPUT}.meta"
+    add_snapshot_artifact_path "${RAW_OUTPUT}.diag"
+    add_snapshot_artifact_prefix "${OUTPUT}.tmp."
+    add_snapshot_artifact_prefix "${OUTPUT}.done.tmp."
+    add_snapshot_artifact_prefix "${OUTPUT}.meta.tmp."
+    add_snapshot_artifact_prefix "${RAW_OUTPUT}.tmp."
+    add_snapshot_artifact_prefix "${RAW_OUTPUT}.done.tmp."
+    add_snapshot_artifact_prefix "${RAW_OUTPUT}.meta.tmp."
+
+    tmp_parent="${IMPLEMENT_TMPDIR:-${TMPDIR:-/tmp}}"
+    [[ -d "$tmp_parent" ]] || tmp_parent="${TMPDIR:-/tmp}"
+    SNAPSHOT_PRE=$(mktemp "$tmp_parent/gemini-review-snapshot-pre.XXXXXX")
+    SNAPSHOT_POST=$(mktemp "$tmp_parent/gemini-review-snapshot-post.XXXXXX")
+    SNAPSHOT_BACKUP=$(mktemp -d "$tmp_parent/gemini-review-snapshot-backup.XXXXXX")
+    # Register cleanup AFTER mktemp so a setup-stage capture failure still
+    # unlinks the temp files. Cleanup is idempotent and tolerates partial state.
+    trap snapshot_cleanup_on_exit EXIT
+
+    capture_snapshot "$SNAPSHOT_PRE" pre
+    SNAPSHOT_STATUS=$?
+    if [[ "$SNAPSHOT_STATUS" -ne 0 ]]; then
+        case "$SNAPSHOT_STATUS" in
+            124)
+                SNAPSHOT_GUARD_STATE="skipped"
+                SNAPSHOT_GUARD_NOTICE="SNAPSHOT_GUARD_TIMEOUT: snapshot guard skipped after ${LARCH_GEMINI_SNAPSHOT_TIMEOUT:-30}s"
+                return 0
+                ;;
+            *)
+                SNAPSHOT_GUARD_STATE="failed"
+                SNAPSHOT_GUARD_MESSAGE="SNAPSHOT_GUARD_FAILED: could not capture pre-launch snapshot"
+                return 99
+                ;;
+        esac
+    fi
+    SNAPSHOT_GUARD_STATE="armed"
+}
+
+snapshot_line_for_path() {
+    local file="$1"
+    local path="$2"
+    local line line_path
+    while IFS= read -r line; do
+        line_path=$(printf '%s\n' "$line" | cut -f3-)
+        if [[ "$line_path" == "$path" ]]; then
+            printf '%s\n' "$line"
+            return 0
+        fi
+    done < "$file"
+    return 0
+}
+
+snapshot_restore_path() {
+    local path="$1"
+    local pre_line="$2"
+    local pre_kind pre_hash backup_path
+    pre_kind="${pre_line%%$'\t'*}"
+    pre_hash="${pre_line#*$'\t'}"
+    pre_hash="${pre_hash%%$'\t'*}"
+    backup_path="$SNAPSHOT_BACKUP/$path"
+
+    if [[ -z "$pre_line" ]]; then
+        rm -f -- "$SNAPSHOT_REPO_ROOT/$path"
+        git -C "$SNAPSHOT_REPO_ROOT" reset -q HEAD -- "$path" >/dev/null 2>&1 || true
+        return 0
+    fi
+
+    if [[ "$pre_hash" == "MISSING" ]]; then
+        rm -f -- "$SNAPSHOT_REPO_ROOT/$path"
+        git -C "$SNAPSHOT_REPO_ROOT" reset -q HEAD -- "$path" >/dev/null 2>&1 || true
+        return 0
+    fi
+
+    if [[ -e "$backup_path" || -L "$backup_path" ]]; then
+        mkdir -p "$(dirname "$SNAPSHOT_REPO_ROOT/$path")"
+        cp -pP "$backup_path" "$SNAPSHOT_REPO_ROOT/$path"
+        # Reset the index entry to HEAD for this path UNLESS operator had
+        # a pre-existing index entry we must preserve. The pre I-record
+        # check is the precise signal: presence ⇒ operator staged it pre-launch
+        # (don't touch); absence ⇒ any post index entry is reviewer-introduced
+        # and must be cleared. This subsumes the older
+        # `pre_kind=T && !pre-status-mentioned` heuristic, which silently
+        # missed the FINDING_7 case where operator had worktree-mod (status
+        # mentioned, no index) and reviewer ran `git add`.
+        if ! snapshot_pre_index_mentions_path "$path"; then
+            git -C "$SNAPSHOT_REPO_ROOT" reset -q HEAD -- "$path" >/dev/null 2>&1 || true
+        fi
+        return 0
+    fi
+
+    if [[ "$pre_kind" == "T" ]]; then
+        git -C "$SNAPSHOT_REPO_ROOT" checkout -q HEAD -- "$path" || return 1
+        git -C "$SNAPSHOT_REPO_ROOT" reset -q HEAD -- "$path" >/dev/null 2>&1 || true
+        return 0
+    fi
+
+    return 1
+}
+
+run_snapshot_guard() {
+    local pre_body post_body added removed delta_paths path pre_line guard_status pre_head post_head
+    local recovered_paths=()
+    local unrecoverable_paths=()
+    [[ "$SNAPSHOT_GUARD_STATE" == "armed" ]] || return 0
+
+    capture_snapshot "$SNAPSHOT_POST" post
+    SNAPSHOT_STATUS=$?
+    if [[ "$SNAPSHOT_STATUS" -ne 0 ]]; then
+        case "$SNAPSHOT_STATUS" in
+            124)
+                SNAPSHOT_GUARD_NOTICE="SNAPSHOT_GUARD_TIMEOUT: snapshot guard skipped after ${LARCH_GEMINI_SNAPSHOT_TIMEOUT:-30}s"
+                return 0
+                ;;
+            *)
+                SNAPSHOT_GUARD_MESSAGE="SNAPSHOT_GUARD_FAILED: could not capture post-launch snapshot"
+                return 99
+                ;;
+        esac
+    fi
+
+    if cmp -s "$SNAPSHOT_PRE" "$SNAPSHOT_POST"; then
+        return 0
+    fi
+
+    pre_head=$(head -n 1 "$SNAPSHOT_PRE")
+    post_head=$(head -n 1 "$SNAPSHOT_POST")
+    pre_body="${SNAPSHOT_PRE}.records"
+    post_body="${SNAPSHOT_POST}.records"
+    added="${SNAPSHOT_POST}.added"
+    removed="${SNAPSHOT_POST}.removed"
+    delta_paths="${SNAPSHOT_POST}.paths"
+    tail -n +2 "$SNAPSHOT_PRE" > "$pre_body"
+    tail -n +2 "$SNAPSHOT_POST" > "$post_body"
+    comm -13 "$pre_body" "$post_body" > "$added"
+    comm -23 "$pre_body" "$post_body" > "$removed"
+    { cut -f3- "$added"; cut -f3- "$removed"; } | LC_ALL=C sort -u > "$delta_paths"
+
+    guard_status=0
+    while IFS= read -r path; do
+        [[ -n "$path" ]] || continue
+        pre_line=$(snapshot_line_for_path "$pre_body" "$path")
+        if snapshot_restore_path "$path" "$pre_line"; then
+            recovered_paths+=("$path")
+        else
+            unrecoverable_paths+=("$path")
+            guard_status=1
+        fi
+    done < "$delta_paths"
+
+    if [[ "$pre_head" != "$post_head" ]]; then
+        unrecoverable_paths+=("HEAD")
+        guard_status=1
+    fi
+
+    if (( ${#unrecoverable_paths[@]} > 0 )); then
+        SNAPSHOT_GUARD_MESSAGE="UNRECOVERABLE_DELTA: Gemini reviewer mutated repo paths that could not be restored: ${unrecoverable_paths[*]}"
+        return 1
+    fi
+    if (( ${#recovered_paths[@]} > 0 )); then
+        SNAPSHOT_GUARD_MESSAGE="SNAPSHOT_GUARD_TRIGGERED: Gemini reviewer mutated repo paths; reverted: ${recovered_paths[*]}"
+        return 1
+    fi
+
+    return "$guard_status"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -147,7 +588,22 @@ if [[ "${LARCH_TEST_FORCE_MISSING_JQ:-}" == "true" ]] || ! command -v jq >/dev/n
     fail_closed 127 "MISSING_JQ: jq is required to parse Gemini JSON output"
 fi
 
+GEMINI_REVIEW_HARDENING_PREAMBLE=$(cat <<'EOF'
+HARD CONSTRAINTS — your role is read-only review. You MUST NOT modify the working tree by any means:
+- Do not redirect, tee, append, or pipe into any file (no `>`, `>>`, `tee`, `tee -a`).
+- Do not run `rm`, `mv`, `cp` (when target is in the repo), `mkdir`, `touch`, `sed -i`, `awk -i inplace`, `perl -i`, or any command with an in-place / write effect.
+- Do not run `git add`, `git commit`, `git checkout <path>`, `git reset <path>`, `git restore`, `git stash`, `git rebase`, `git merge`, `git push`, or any command that mutates branch state, the index, or refs.
+- Do not invoke any tool that writes files (write_file, replace, edit, edit_file, delete_file, or any future-renamed equivalent).
+The launcher enforces this with a working-tree snapshot guard: any mutation triggers a loud failure and a revert, regardless of how the mutation was performed.
+EOF
+)
+PROMPT="${GEMINI_REVIEW_HARDENING_PREAMBLE}"$'\n\n'"${PROMPT}"
+
 GEMINI_MODEL="${LARCH_GEMINI_MODEL:-${CLAUDE_PLUGIN_OPTION_GEMINI_MODEL:-gemini-2.5-pro}}"
+
+if ! setup_snapshot_guard; then
+    fail_closed 99 "$SNAPSHOT_GUARD_MESSAGE"
+fi
 
 RUN_EXIT=0
 "$SCRIPT_DIR/run-external-agent.sh" \
@@ -178,6 +634,30 @@ if [[ ! -s "$RESPONSE_TMP" ]] || [[ -z "$(tr -d '[:space:]' < "$RESPONSE_TMP")" 
 fi
 
 mv "$RESPONSE_TMP" "$OUTPUT"
+GUARD_EXIT=0
+run_snapshot_guard || GUARD_EXIT=$?
+if [[ "$GUARD_EXIT" -ne 0 ]]; then
+    # Clear $OUTPUT to match fail_closed's contract — non-zero $OUTPUT.done
+    # MUST imply empty $OUTPUT, so consumers that read $OUTPUT without
+    # checking .done first do not see a "successful-looking" review body
+    # for a run that actually failed and triggered a revert.
+    write_empty_output
+    {
+        [[ -n "$SNAPSHOT_GUARD_MESSAGE" ]] && printf '%s\n' "$SNAPSHOT_GUARD_MESSAGE"
+        [[ -n "$SNAPSHOT_GUARD_NOTICE" ]] && printf '%s\n' "$SNAPSHOT_GUARD_NOTICE"
+        [[ -f "$RAW_OUTPUT.diag" ]] && cat "$RAW_OUTPUT.diag"
+    } >> "${OUTPUT}.diag"
+    write_meta
+    if [[ "$GUARD_EXIT" -eq 99 ]]; then
+        write_done 99
+        exit 99
+    fi
+    write_done 1
+    exit 1
+fi
+if [[ -n "$SNAPSHOT_GUARD_NOTICE" ]]; then
+    printf '%s\n' "$SNAPSHOT_GUARD_NOTICE" >> "${OUTPUT}.diag"
+fi
 write_meta
 write_done 0
 exit 0

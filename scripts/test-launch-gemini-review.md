@@ -6,16 +6,21 @@ Regression harness for `scripts/launch-gemini-review.sh`.
 
 - Stubs `gemini` on PATH and verifies JSON `.response` is normalized to plain text.
 - Verifies a requested 1800-second timeout is clamped to 600 seconds in the raw launcher metadata.
-- Verifies reviewer Gemini argv includes `--admin-policy <path-ending-in-gemini-reviewer-policy.toml>` and that the policy path exists and is non-empty.
+- Verifies reviewer Gemini argv includes `--approval-mode yolo` and `--admin-policy <path-ending-in-gemini-reviewer-policy.toml>` and that the policy path exists and is non-empty.
 - Verifies `{"error": ...}` fails closed with empty output, diagnostic text, and non-zero `.done`.
 - Verifies the fail-closed process exit code matches `.done` on Gemini `.error`, empty `.response`, and missing-`jq` paths.
 - Verifies forced missing-`jq` fails closed with `MISSING_JQ` and exit code 127 in `.done`.
 - Verifies unsafe `--output` values containing `=` and LF exit 2 before creating normalized or raw output artifacts.
+- Verifies the prompt-hardening preamble is prepended to the caller-provided prompt (Gemini stub records `-p` argument; assertions pin the first line `HARD CONSTRAINTS — your role is read-only review.` and pin the original prompt body's last line at the tail).
+- Verifies the snapshot guard detects and reverts a new-untracked-file mutation injected via `LARCH_TEST_GEMINI_PRE_OUTPUT_HOOK`. Assertions: process exit code `1`, `.done` sidecar `1`, `$OUTPUT` cleared (matches `fail_closed` contract), `SNAPSHOT_GUARD_TRIGGERED:` diag with the mutated path named, file removed post-test, and `git status --porcelain` clean.
+- Verifies the snapshot guard detects and reverts a tracked-mutation case (one tracked file overwritten + one tracked file deleted) injected via the same hook. Same assertion shape as the new-untracked case, with both file contents restored to their HEAD values.
+- Verifies the snapshot guard detects an index-only mutation (reviewer runs `git add` against an already-worktree-modified tracked file) and clears the reviewer-added index entries via `git reset HEAD --`. The on-disk content hash is unchanged in this scenario; the I-record schema in `capture_snapshot` is the load-bearing detection signal.
+- Verifies the launcher's non-git fail-open posture: when invoked outside any git working tree, the snapshot guard skips with the documented diagnostic and the run still succeeds end-to-end.
 
 ## Wiring
 
-Target: `make test-harnesses`. Exit 0 on all-pass, exit 1 on any failure.
+Target: `make test-harnesses`. Exit 0 on all-pass, exit 1 on any failure. Gated on `LARCH_RUN_TEST_LAUNCH_GEMINI_REVIEW=1` so the harness does not fire by default outside `make test-launch-gemini-review` / CI.
 
 ## Edit-in-sync
 
-Update with `scripts/launch-gemini-review.sh`, `scripts/gemini-reviewer-policy.toml`, `scripts/run-external-agent.sh`, `scripts/lib-validate-meta-path.sh`, and the Gemini CLI JSON schema.
+Update with `scripts/launch-gemini-review.sh`, `scripts/launch-gemini-review.md`, `scripts/gemini-reviewer-policy.toml`, `scripts/run-external-agent.sh`, `scripts/lib-validate-meta-path.sh`, and the Gemini CLI JSON schema. Any change to the snapshot-guard semantics (record schema, restore branches, exit codes, env-var validation, EXIT-trap cleanup, prompt preamble text) requires updating the four guard/preamble test cases above in lockstep.
