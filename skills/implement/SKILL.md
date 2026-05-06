@@ -265,10 +265,10 @@ Applies to OOS-acceptance decisions /implement controls directly where folding i
 
 Before accepting any finding at one of the controlled acceptance points, triage it:
 
-1. Documentation drift (any size): do NOT file an OOS issue. The workflow that detects the drift fixes it as part of the current work (i.e., folded into the current PR).
+1. Documentation drift (any size): do NOT file an OOS issue. The workflow that detects the drift fixes it as part of the current work (i.e., folded into the current PR). Drift means a stale or now-incorrect doc statement that needs corrective alignment with current behavior — it is identified by what is wrong, not by line count, so rule 1 takes precedence over rule 4 when both could apply (a 40-line doc-drift fix folds inline; it is NOT batched into rule 4).
 2. A bug whose fix is < ~30 lines of code: do NOT file an OOS issue. Fold the fix into the current PR.
 3. Multiple medium-sized bug fixes (each individually >= ~30 LOC): combine them all into ONE filed OOS issue (not one issue per item).
-4. Multiple moderate-sized documentation changes (each individually ~30-100 lines): combine them all into ONE filed OOS issue.
+4. Multiple moderate-sized documentation changes (each individually ~30-100 lines, NOT drift): combine them all into ONE filed OOS issue. Applies to substantive non-drift doc work (e.g., new sections, intentional rewrites of non-stale content) that is genuinely out-of-scope for the current PR.
 
 Threshold convention: rules 2 and 3 use `< ~30` and `>= ~30` respectively, with rule 3 inclusive at the ~30-LOC boundary; the combine-pass criteria 5/6 in `references/anchor-comment-template.md` step 3.4 use the same convention. The `~` is intentional — the LOC estimate is a natural-language judgment, precise bookkeeping is not required, but the inclusive/exclusive direction at the boundary is fixed.
 
