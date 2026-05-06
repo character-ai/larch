@@ -14,14 +14,6 @@ Upgrade the larch plugin to the latest version. This skill is for the standard G
 ${CLAUDE_PLUGIN_ROOT}/skills/upgrade-larch/scripts/upgrade-larch.sh
 ```
 
-2. Verify the upgrade succeeded by checking the installed version:
-
-```bash
-claude plugin list 2>&1 | grep -A2 'larch@larch-local'
-```
-
-Confirm the version line shows the expected latest version.
-
-3. Tell the user to restart Claude Code to apply the new version.
+2. Verify the script exited successfully (no recovery banner printed). If the script printed an `Installed larch plugin version:` block with a `larch@larch-local` line, confirm it matches the expected new version; if the block is empty, the install still succeeded — version-listing is best-effort. Then tell the user to restart Claude Code to apply the new version.
 
 See `${CLAUDE_PLUGIN_ROOT}/skills/upgrade-larch/scripts/upgrade-larch.md` for script contract and failure recovery details.

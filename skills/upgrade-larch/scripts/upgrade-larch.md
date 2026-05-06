@@ -12,8 +12,9 @@ Automates the full teardown-and-reinstall sequence needed to pick up the latest 
 2. Removes the `larch-local` marketplace (best-effort — may not be registered).
 3. Re-adds the marketplace from `character-ai/larch` on GitHub.
 4. Installs the `larch` plugin from the freshly-added marketplace.
+5. Prints the installed `larch@larch-local` version block for visual confirmation.
 
-Steps 1–2 use `|| true` because the plugin/marketplace may not exist (first install, or already removed). Steps 3–4 run under `set -e` and will fail loudly on network errors, auth issues, or CLI problems. On failure after teardown, the script prints recovery commands so the user can manually re-add.
+Steps 1–2 use `|| true` because the plugin/marketplace may not exist (first install, or already removed). Steps 3–4 run under `set -e` and will fail loudly on network errors, auth issues, or CLI problems. Step 5 also uses `|| true` so an unexpected `claude plugin list` failure or missing `larch@larch-local` line does not turn a successful install into a failed upgrade. On failure after teardown, the script prints recovery commands so the user can manually re-add.
 
 ## Edit-in-sync
 
