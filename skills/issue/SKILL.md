@@ -75,7 +75,11 @@ If `--repo` was passed, use it instead. If `REPO` is empty:
 **Session tmpdir (required before either mode)**: at the top of Step 3, create the session temp directory and the `bodies/` subdirectory that carries per-item body files produced in this step. `$ISSUE_TMPDIR` is used by Step 3 (parser body output + single-mode body file), Step 5 (candidates corpus), and Step 6 (OOS template assembly), then removed at Step 9.
 
 ```bash
-ISSUE_TMPDIR=$(mktemp -d -t claude-issue-XXXXXX)
+CLONE_TAG=$(basename "$PWD")
+CLONE_TAG="${CLONE_TAG//[^A-Za-z0-9_-]/_}"
+CLONE_TAG="${CLONE_TAG:0:32}"
+[[ -z "$CLONE_TAG" ]] && CLONE_TAG="_"
+ISSUE_TMPDIR=$(mktemp -d "/tmp/claude-issue-${CLONE_TAG}-XXXXXX")
 mkdir -p "$ISSUE_TMPDIR/bodies"
 ```
 
