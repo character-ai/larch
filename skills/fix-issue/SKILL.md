@@ -147,13 +147,13 @@ Decide whether the issue is still material against the codebase (see the referen
 
 **If the issue is no longer material** (already fixed, invalid, or no longer relevant): compose a detailed explanation with a research summary per the reference, then:
 
-1. Close with the explanation as the comment:
+1. Pick the `--close-class` value at decision time from the triage rationale: `already-fixed → done`, `duplicate-of → duplicate`, `superseded-by → superseded`, `invalid` / `false-positive` / `not-a-bug` → `false-positive`. Close with the explanation as the comment and the inferred class:
    ```bash
    ${CLAUDE_PLUGIN_ROOT}/skills/fix-issue/scripts/issue-lifecycle.sh close \
      --issue $ISSUE_NUMBER --comment "Closing: <detailed explanation with research summary>" \
-     --mark-false-positive-if-keyword
+     --close-class <inferred-class>
    ```
-   This close path may best-effort add the `[FALSE-POSITIVE]` title marker when the closing comment contains a configured false-positive keyword.
+   This close path adds the `[FALSE-POSITIVE]` title marker for `false-positive`, `duplicate`, and `superseded`; `done` skips the marker. The closing comment is NOT scanned — the enum is the sole signal, set by the orchestrator at triage decision time. See `skills/fix-issue/scripts/issue-lifecycle.md` for the full contract.
 2. **Best-effort terminal title rename** to clear the `[IN PROGRESS]` prefix Step 0 applied at lock time, replacing it with `[DONE]` so the closed issue's title accurately reflects that automated processing concluded:
    ```bash
    ${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh rename \
@@ -261,14 +261,15 @@ The `[IN PROGRESS]` title prefix Step 0 applied at lock time has already been fl
 
 ### 6b — `INTENT=NON_PR`
 
-Close the issue with `WORK_SUMMARY` as the closing comment (no `--pr-url`, no body update):
+Close the issue with `WORK_SUMMARY` as the closing comment, passing `--close-class done` so the enum deterministically suppresses the `[FALSE-POSITIVE]` marker (no `--pr-url`, no body update):
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/skills/fix-issue/scripts/issue-lifecycle.sh close \
-  --issue $ISSUE_NUMBER --comment "$WORK_SUMMARY"
+  --issue $ISSUE_NUMBER --comment "$WORK_SUMMARY" \
+  --close-class done
 ```
 
-Do not pass `--mark-false-positive-if-keyword` on the NON_PR path. `WORK_SUMMARY` is unrestricted research or review narrative, so word-level matches such as "duplicate" or "superseded" would misclassify legitimate completed work as false-positive closure; see `skills/fix-issue/references/non-pr-execution.md`.
+`--close-class done` is the structured replacement for the v1 keyword-inference suppression: the enum is set at decision time, not inferred from `WORK_SUMMARY` prose, so legitimate completion narrative containing words like "duplicate" or "superseded" can never misclassify the close. Do NOT pass `--mark-false-positive-if-keyword` on the NON_PR path — the enum is authoritative. See `skills/fix-issue/references/non-pr-execution.md` for the rationale.
 
 **Best-effort terminal title rename** to clear the `[IN PROGRESS]` prefix Step 0 applied at lock time, replacing it with `[DONE]` so the closed issue's title accurately reflects that automated processing concluded:
 

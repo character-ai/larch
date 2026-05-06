@@ -6,7 +6,7 @@
 # Usage:
 #   issue-lifecycle.sh comment --issue NUMBER --body TEXT [--lock]
 #   issue-lifecycle.sh comment --issue NUMBER --body TEXT --lock-no-go
-#   issue-lifecycle.sh close   --issue NUMBER [--comment TEXT] [--pr-url URL] [--mark-false-positive-if-keyword]
+#   issue-lifecycle.sh close   --issue NUMBER [--comment TEXT] [--pr-url URL] [--close-class CLASS] [--mark-false-positive-if-keyword]
 #   issue-lifecycle.sh update-body --issue NUMBER --pr-url URL
 #
 # Subcommands:
@@ -32,10 +32,19 @@
 #                child-dispatch path.
 #   close      — Close an issue. Optionally post a comment first.
 #                With --pr-url: update the issue body with the PR link before closing.
-#                With --mark-false-positive-if-keyword: after CLOSED=true,
-#                scan the closing comment and best-effort add [FALSE-POSITIVE]
-#                to the issue title on keyword match.
-#                Called by /fix-issue Step 3 (not-material close) and Step 6 (DONE close).
+#                With --close-class CLASS (one of false-positive|duplicate|
+#                superseded|done): after CLOSED=true, deterministically decide
+#                the [FALSE-POSITIVE] title marker — mark on false-positive,
+#                duplicate, superseded; skip on done. The closing comment is
+#                NOT scanned. When --close-class is also paired with
+#                --mark-false-positive-if-keyword, the enum wins silently.
+#                With --mark-false-positive-if-keyword (legacy fallback for
+#                unstructured-prose closes): after CLOSED=true, scan the
+#                closing comment and best-effort add [FALSE-POSITIVE] to the
+#                issue title on keyword match.
+#                Called by /fix-issue Step 3 (not-material close — passes
+#                --close-class) and Step 6 (DONE close — Step 6a no marker
+#                flag; Step 6b passes --close-class done).
 #   update-body — Append a PR link to the issue body (idempotent).
 #
 # Exit codes:
@@ -294,13 +303,14 @@ cmd_comment() {
 # Subcommand: close
 # ---------------------------------------------------------------------------
 cmd_close() {
-    local issue="" comment="" pr_url="" mark_false_positive=false
+    local issue="" comment="" pr_url="" mark_false_positive=false close_class=""
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --issue) issue="${2:?--issue requires a value}"; shift 2 ;;
             --comment) comment="${2:?--comment requires a value}"; shift 2 ;;
             --pr-url) pr_url="${2:?--pr-url requires a value}"; shift 2 ;;
+            --close-class) close_class="${2:?--close-class requires a value}"; shift 2 ;;
             --mark-false-positive-if-keyword) mark_false_positive=true; shift ;;
             --repo) shift 2 ;;
             *) echo "Unknown option for close: $1" >&2; exit 2 ;;
@@ -308,8 +318,18 @@ cmd_close() {
     done
 
     if [[ -z "$issue" ]]; then
-        echo "Usage: issue-lifecycle.sh close --issue N [--comment TEXT] [--pr-url URL] [--mark-false-positive-if-keyword]" >&2
+        echo "Usage: issue-lifecycle.sh close --issue N [--comment TEXT] [--pr-url URL] [--close-class false-positive|duplicate|superseded|done] [--mark-false-positive-if-keyword]" >&2
         exit 2
+    fi
+
+    if [[ -n "$close_class" ]]; then
+        case "$close_class" in
+            false-positive|duplicate|superseded|done) ;;
+            *)
+                echo "Usage: issue-lifecycle.sh close --close-class must be one of: false-positive, duplicate, superseded, done (got '$close_class')" >&2
+                exit 2
+                ;;
+        esac
     fi
 
     # Update body with PR link if provided (idempotent). Suppress stdout so
@@ -361,28 +381,51 @@ cmd_close() {
 
     echo "CLOSED=true"
 
-    if [ "$mark_false_positive" = true ] && [[ -n "$comment" ]]; then
+    # Marker decision. Precedence: --close-class wins over the legacy
+    # --mark-false-positive-if-keyword keyword scan. The enum drives the
+    # decision deterministically at decision time; the closing comment is
+    # never inspected.
+    local should_mark=false
+    if [[ -n "$close_class" ]]; then
+        case "$close_class" in
+            false-positive|duplicate|superseded) should_mark=true ;;
+            done) should_mark=false ;;
+        esac
+        if [ "$should_mark" = true ]; then
+            _run_false_positive_marker "$issue"
+        fi
+    elif [ "$mark_false_positive" = true ] && [[ -n "$comment" ]]; then
         # shellcheck source=scripts/false-positive-keywords.sh
         # shellcheck disable=SC1090
         source "$FALSE_POSITIVE_KEYWORDS_LIB"
         local keyword_rc=0
         matches_false_positive_keywords "$comment" || keyword_rc=$?
         if [ "$keyword_rc" -eq 0 ]; then
-            local mark_out mark_stderr mark_exit=0 err_value
-            mark_stderr=$(mktemp)
-            mark_out=$("$TRACKING_WRITE" mark-false-positive --issue "$issue" --repo "$REPO" 2>"$mark_stderr") || mark_exit=$?
-            if [ "$mark_exit" -ne 0 ] || printf '%s\n' "$mark_out" | grep -q '^FAILED=true'; then
-                err_value=$(printf '%s\n' "$mark_out" | grep -oE '^ERROR=.*' | head -1 | sed 's/^ERROR=//')
-                echo "WARNING: mark-false-positive failed for issue #$issue: ${err_value:-unknown}" >&2
-            fi
-            if [ -s "$mark_stderr" ]; then
-                cat "$mark_stderr" >&2
-            fi
-            rm -f "$mark_stderr"
+            _run_false_positive_marker "$issue"
         elif [ "$keyword_rc" -ge 2 ]; then
             echo "WARNING: false-positive keyword scan failed for issue #$issue" >&2
         fi
     fi
+}
+
+# _run_false_positive_marker — best-effort invocation of
+# `tracking-issue-write.sh mark-false-positive`. Failure never changes
+# stdout or exit status after a successful close; emits a redacted
+# WARNING on stderr. Shared between the --close-class enum path and
+# the legacy keyword path.
+_run_false_positive_marker() {
+    local issue="$1"
+    local mark_out mark_stderr mark_exit=0 err_value
+    mark_stderr=$(mktemp)
+    mark_out=$("$TRACKING_WRITE" mark-false-positive --issue "$issue" --repo "$REPO" 2>"$mark_stderr") || mark_exit=$?
+    if [ "$mark_exit" -ne 0 ] || printf '%s\n' "$mark_out" | grep -q '^FAILED=true'; then
+        err_value=$(printf '%s\n' "$mark_out" | grep -oE '^ERROR=.*' | head -1 | sed 's/^ERROR=//')
+        echo "WARNING: mark-false-positive failed for issue #$issue: ${err_value:-unknown}" >&2
+    fi
+    if [ -s "$mark_stderr" ]; then
+        cat "$mark_stderr" >&2
+    fi
+    rm -f "$mark_stderr"
 }
 
 # ---------------------------------------------------------------------------
