@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.31] - 2026-05-05
+
+### Changed
+
+- `docs/linting.md` `/relevant-checks` bullet updated to document the post-#1278 contract: the skill now also attempts the full-repo `agent-lint` phase even when the changed-file set is empty, and exits 2 with an `ERROR: no validation phases ran ...` line when zero validation phases actually ran. Cross-references the canonical contract in `.claude/skills/relevant-checks/SKILL.md`. Doc-only change. Closes #1276.
+
 ## [15.12.30] - 2026-05-05
 
 ### Added
