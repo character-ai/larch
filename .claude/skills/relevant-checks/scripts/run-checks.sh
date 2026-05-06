@@ -41,7 +41,7 @@ exit_with_phase_check() {
 
     if [ "$PHASES_RUN" -eq 0 ]; then
         echo ""
-        echo "ERROR: no validation phases ran — pre-commit had no eligible files (no changes, or all changes are deletions) and agent-lint was unavailable or skipped."
+        echo "ERROR: no validation phases ran — pre-commit had no eligible files (no changes, or no regular files for pre-commit) and agent-lint was unavailable or skipped."
         exit 2
     fi
 
@@ -82,8 +82,9 @@ if [ -z "$MODIFIED_FILES" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Build file array, filtering to files that exist on disk (deleted files from
-# branch diff would cause pre-commit to fail with file-not-found errors).
+# Build file array, filtering to existing regular files via [ -f ]. This drops
+# deleted paths (would cause pre-commit to fail with file-not-found errors),
+# directories (pre-commit expects file paths), and other non-regular paths.
 # Uses a portable while-read loop instead of mapfile for macOS Bash 3.2 compat.
 # ---------------------------------------------------------------------------
 files=()
