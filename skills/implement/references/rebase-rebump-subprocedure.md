@@ -108,7 +108,7 @@ After the initial version bump in Step 8, every subsequent rebase of the feature
      - **step12 family**: bail to 12d with error `12: CI+merge loop — re-bump push failed twice, remote diverged. Manual intervention required.`
      - **step10 family**: print `**⚠ 10: CI monitor — re-bump push failed twice. Proceeding to Step 11 (may be stale).**` Break to Step 11.
 
-   **Critical (step12 family only)**: Do NOT simply "log and return to caller" on push failure. That would let the merge loop proceed to `ACTION=merge` on a remote branch that does NOT contain the fresh bump commit, violating the feature's core invariant. `ci-wait.sh` and `merge-pr.sh` operate on remote PR state only; they cannot see unpushed local commits.
+   **Critical (step12 family only)**: Do NOT simply "log and return to caller" on push failure. That would let the merge loop proceed to `ACTION=merge` on a remote branch that does NOT contain the fresh bump commit, violating the feature's core invariant. `merge-pr.sh` reads local git state for its HEAD-OID precondition, branch-range bump-subject scan, `origin/main` refresh, and origin `plugin.json` same-version gate, while `ci-wait.sh` and the final `gh pr merge` operation still act on the remote PR / branch state. Unpushed local commits remain invisible to the merge itself.
 
 6. **Refresh anchor's `version-bump-reasoning` section** (best-effort, non-fatal):
 

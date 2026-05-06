@@ -729,12 +729,13 @@ exclude = [
   # Makefile-only harness pattern above.
   "scripts/test-collect-agent-retry.sh",
   # scripts/test-merge-pr.sh is the offline regression harness for
-  # scripts/merge-pr.sh's admin-first / plain-fallback ordering and the
-  # --no-admin-fallback opt-out. It stubs `gh` via PATH and asserts the
-  # MERGE_RESULT outcomes (admin_merged, merged after admin failure, main_advanced,
-  # ci_not_ready, policy_denied). The harness is referenced only from Makefile
-  # (test-merge-pr target) and scripts/test-merge-pr.md (sibling contract) — same
-  # Makefile-only shape as the other test-* harnesses above.
+  # scripts/merge-pr.sh's admin-first / plain-fallback ordering, safety gates,
+  # same-version bump race gate, and --no-admin-fallback opt-out. It stubs `gh`
+  # and `git` via PATH and asserts merge outcomes plus the same-version cases
+  # (version_already_published, no-op fallthrough, stale/unsafe input failures).
+  # The harness is referenced only from Makefile (test-merge-pr target) and
+  # scripts/test-merge-pr.md (sibling contract) — same Makefile-only shape as
+  # the other test-* harnesses above.
   "scripts/test-merge-pr.sh",
   # scripts/test-apply-bump.sh is the offline regression harness for the
   # dev-only bump-version apply script's pre-commit same-version probe and
