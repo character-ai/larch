@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.43] - 2026-05-06
+
+### Changed
+
+- Bring linting docs and agent-lint allow-list comments back in sync with current merge and bump harness coverage (`docs/linting.md`'s `make test-merge-pr` row now mentions PATH-stubbed `gh` and `git` plus the same-version gate cases — `version_already_published`, no-op merge fallthrough, fail-closed stale/unsafe inputs — and corrects the shard prerequisite to `test-harnesses-4`; a new `make test-apply-bump` row enumerates the success / fetch-failure-rollback / same-version-rollback / differing-origin / malformed-origin / commit-failure / dirty-worktree paths under `test-harnesses-2`; `agent-lint.toml`'s `scripts/test-merge-pr.sh` exclude comment is refreshed in lockstep).
+- Clarify the re-bump merge invariant in `skills/implement/references/rebase-rebump-subprocedure.md` so local safety probes are distinguished from the remote merge operation: `merge-pr.sh` reads local git state for its HEAD-OID precondition, branch-range bump-subject scan, `origin/main` refresh, and origin `plugin.json` same-version gate, while `ci-wait.sh` and the final `gh pr merge` operation still act on the remote PR/branch state. Unpushed local commits remain invisible to the merge itself.
+- Align `skills/research/scripts/run-research-planner.md` Step 1.1.b/1.1.c bullets with today's `/research` topology: the planner pre-pass runs unconditionally on every `/research` invocation (no `--plan` flag exists), and the operator re-validation checkpoint is described as TTY-context-only without the stale "interactive pause runs" wording. Closes #1316.
+
 ## [15.12.42] - 2026-05-06
 
 ### Changed
