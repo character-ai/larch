@@ -312,7 +312,12 @@ Parse stdout for `ISSUE_NUMBER`, `ANCHOR_COMMENT_ID`, `ADOPTED`.
 - **Resume rename safety net**: if `ISSUE_NUMBER` is set, run a best-effort idempotent rename to `[IN PROGRESS]`. This recovers from the case where a prior session wrote the sentinel but its Branch 2 / Branch 3 / Branch 4 rename failed (best-effort, logged but non-blocking) — without this, a resumed run could complete with merge/Step 18 renames while the GitHub title never received `[IN PROGRESS]`:
 
   ```bash
-  ${CLAUDE_PLUGIN_ROOT}/scripts/round-trip-detect.sh --text-file "$IMPLEMENT_TMPDIR/round-trip-input-issue-body.txt" --text-file "$IMPLEMENT_TMPDIR/round-trip-input-feature-desc.txt" --text-string "$ISSUE_TITLE"
+  ROUND_TRIP_OUT=$(${CLAUDE_PLUGIN_ROOT}/scripts/round-trip-detect.sh \
+    --text-file "$IMPLEMENT_TMPDIR/round-trip-input-issue-body.txt" \
+    --text-file "$IMPLEMENT_TMPDIR/round-trip-input-feature-desc.txt" \
+    --text-string "$ISSUE_TITLE" 2>&1) || ROUND_TRIP_OUT="ROUND_TRIP=false"
+  ROUND_TRIP=$(echo "$ROUND_TRIP_OUT" | awk -F= '/^ROUND_TRIP=/ { v=$2 } END { print v }')
+  case "$ROUND_TRIP" in true|false) ;; *) ROUND_TRIP=false ;; esac
   ${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh rename --issue $ISSUE_NUMBER --state in-progress --round-trip "$ROUND_TRIP"
   ```
 
@@ -360,7 +365,12 @@ FIND_OUT=$(${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh find-anchor --i
 On either sub-branch, **rename the adopted issue to `[IN PROGRESS]`** so the title reflects the active run (matches the title-prefix lifecycle applied to fresh-created issues in Branch 4 — see `scripts/tracking-issue-write.md` "Title-prefix lifecycle"):
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/round-trip-detect.sh --text-string "$ISSUE_TITLE" --text-file "$IMPLEMENT_TMPDIR/round-trip-input-issue-body.txt" --text-file "$IMPLEMENT_TMPDIR/round-trip-input-feature-desc.txt"
+ROUND_TRIP_OUT=$(${CLAUDE_PLUGIN_ROOT}/scripts/round-trip-detect.sh \
+  --text-string "$ISSUE_TITLE" \
+  --text-file "$IMPLEMENT_TMPDIR/round-trip-input-issue-body.txt" \
+  --text-file "$IMPLEMENT_TMPDIR/round-trip-input-feature-desc.txt" 2>&1) || ROUND_TRIP_OUT="ROUND_TRIP=false"
+ROUND_TRIP=$(echo "$ROUND_TRIP_OUT" | awk -F= '/^ROUND_TRIP=/ { v=$2 } END { print v }')
+case "$ROUND_TRIP" in true|false) ;; *) ROUND_TRIP=false ;; esac
 ${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh rename --issue $ISSUE_ARG --state in-progress --round-trip "$ROUND_TRIP"
 ```
 
@@ -407,7 +417,12 @@ ANCHOR_ID=$(printf '%s\n' "$FIND_OUT" | awk -F= '$1=="ANCHOR_COMMENT_ID"{print $
 On either sub-branch, **rename the recovered issue to `[IN PROGRESS]`** so the title reflects the active run (matches Branch 2 / Branch 4):
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/round-trip-detect.sh --text-string "$ISSUE_TITLE" --text-file "$IMPLEMENT_TMPDIR/round-trip-input-issue-body.txt" --text-file "$IMPLEMENT_TMPDIR/round-trip-input-feature-desc.txt"
+ROUND_TRIP_OUT=$(${CLAUDE_PLUGIN_ROOT}/scripts/round-trip-detect.sh \
+  --text-string "$ISSUE_TITLE" \
+  --text-file "$IMPLEMENT_TMPDIR/round-trip-input-issue-body.txt" \
+  --text-file "$IMPLEMENT_TMPDIR/round-trip-input-feature-desc.txt" 2>&1) || ROUND_TRIP_OUT="ROUND_TRIP=false"
+ROUND_TRIP=$(echo "$ROUND_TRIP_OUT" | awk -F= '/^ROUND_TRIP=/ { v=$2 } END { print v }')
+case "$ROUND_TRIP" in true|false) ;; *) ROUND_TRIP=false ;; esac
 ${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh rename --issue $RECOVERED_N --state in-progress --round-trip "$ROUND_TRIP"
 ```
 
@@ -450,8 +465,14 @@ Create the tracking issue **immediately** so all subsequent anchor-accumulation 
    ```
    Parse `ISSUE_NUMBER` and `ISSUE_URL` from stdout. On `FAILED=true` OR non-zero exit, print `**⚠ 0.5: tracking issue — Branch 4 create-issue failed: $ERROR. Continuing with deferred/absent anchor.**`, log to `Tool Failures`, set `deferred=true`, leave `$ISSUE_NUMBER` unset, and proceed to Step 1. Downstream: Step 9a omits the `Closes #<N>` line entirely and replaces it with `_No tracking issue — auto-close N/A._`; Step 11 branch 3 skips cleanly; Step 18 URL print is silently skipped.
 
-4b. **Immediately apply round-trip detection to the fresh issue title**: after `ISSUE_NUMBER` resolves, write the just-composed issue body and sanitized feature description to temp files under `$IMPLEMENT_TMPDIR`, run `round-trip-detect.sh` over those files plus the short derived title, then run:
+4b. **Immediately apply round-trip detection to the fresh issue title**: after `ISSUE_NUMBER` resolves, write the just-composed issue body and sanitized feature description to temp files under `$IMPLEMENT_TMPDIR`, run `round-trip-detect.sh` over those files plus the short derived title (parsing the same `ROUND_TRIP_OUT`/`awk`/`case` validation chain as the Branch 1/2/3 blocks above), then run:
    ```bash
+   ROUND_TRIP_OUT=$(${CLAUDE_PLUGIN_ROOT}/scripts/round-trip-detect.sh \
+     --text-string "$DERIVED_TITLE" \
+     --text-file "$IMPLEMENT_TMPDIR/round-trip-input-issue-body.txt" \
+     --text-file "$IMPLEMENT_TMPDIR/round-trip-input-feature-desc.txt" 2>&1) || ROUND_TRIP_OUT="ROUND_TRIP=false"
+   ROUND_TRIP=$(echo "$ROUND_TRIP_OUT" | awk -F= '/^ROUND_TRIP=/ { v=$2 } END { print v }')
+   case "$ROUND_TRIP" in true|false) ;; *) ROUND_TRIP=false ;; esac
    ${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh rename --issue "$ISSUE_NUMBER" --state in-progress --round-trip "$ROUND_TRIP"
    ```
    This is idempotent and cheap when `ROUND_TRIP=false`; it also lets Branch 4 add `[ROUND-TRIP]` before the sentinel is written.

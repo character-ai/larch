@@ -140,7 +140,10 @@ cmd_finalize() {
     body_tmp=$(mktemp)
     printf '%s' "$cur_body" > "$body_tmp"
     if [[ -x "$ROUND_TRIP_DETECT_SCRIPT" ]]; then
-        detect_out=$("$ROUND_TRIP_DETECT_SCRIPT" --text-string "$cur_title" --text-file "$body_tmp" 2>/dev/null) || detect_exit=$?
+        # Do NOT redirect detector stderr to /dev/null — preserve warn_false
+        # signals so operators can see degraded-path diagnostics
+        # (post-review FINDING_F3).
+        detect_out=$("$ROUND_TRIP_DETECT_SCRIPT" --text-string "$cur_title" --text-file "$body_tmp") || detect_exit=$?
         if [[ "$detect_exit" -eq 0 ]]; then
             round_trip=$(echo "$detect_out" | awk -F= '/^ROUND_TRIP=/ { v=$2 } END { print v }')
             case "$round_trip" in
