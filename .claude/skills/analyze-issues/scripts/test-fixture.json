@@ -1,0 +1,59 @@
+[
+  {
+    "number": 1,
+    "title": "Tracking issue for foo",
+    "body": "Tracking issue for foo\n\nOriginal prompt: collect follow-up work.",
+    "state": "OPEN",
+    "createdAt": "2026-05-01T09:00:00Z"
+  },
+  {
+    "number": 2,
+    "title": "[OOS] Bug fix: crash in foo",
+    "body": "Investigate the crash in foo and add a regression fix.",
+    "state": "OPEN",
+    "createdAt": "2026-05-02T09:00:00Z"
+  },
+  {
+    "number": 3,
+    "title": "Documentation drift in README",
+    "body": "Documentation and contract drift in README.md needs cleanup.",
+    "state": "OPEN",
+    "createdAt": "2026-05-03T09:00:00Z"
+  },
+  {
+    "number": 4,
+    "title": "Hardening: validate input",
+    "body": "Apply validation guard for unsafe input handling.",
+    "state": "OPEN",
+    "createdAt": "2026-05-04T09:00:00Z"
+  },
+  {
+    "number": 5,
+    "title": "[STALLED] Investigate stale lock",
+    "body": "Investigate why the lock cleanup path can stall.",
+    "state": "OPEN",
+    "createdAt": "2026-05-05T09:00:00Z"
+  },
+  {
+    "number": 6,
+    "title": "Bug fix: crash in foo",
+    "body": "Investigate the crash in foo and add a regression fix.",
+    "state": "OPEN",
+    "createdAt": "2026-05-06T09:00:00Z"
+  },
+  {
+    "number": 7,
+    "title": "Test coverage: add fixture",
+    "body": "- **Reviewer**: codex / generic\n- **Vote tally**: YES=2 NO=1 EXONERATE=0\nAdd fixture coverage for reviewer attribution.",
+    "state": "CLOSED",
+    "createdAt": "2026-05-07T09:00:00Z",
+    "closedAt": "2026-05-08T09:00:00Z",
+    "closedByPullRequestsReferences": [
+      {
+        "number": 77,
+        "url": "https://github.com/example/larch/pull/77",
+        "title": "Add analyze fixture"
+      }
+    ]
+  }
+]
