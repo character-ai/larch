@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.42] - 2026-05-06
+
+### Changed
+
+- Inject the larch plugin version into the `/implement` tracking issue's anchor comment under the existing `run-statistics` section, captured once per assembly via a new `scripts/read-plugin-version.sh` helper that reads `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json` and falls back to `unknown` on any failure. `scripts/assemble-anchor.sh` now special-cases the `run-statistics` slug: it emits a self-contained minimal table on the seed (`## Run Statistics` + `| Metric | Value |` header + `| larch plugin version | <X.Y.Z> |`), and on populated fragments it strips trailing blank lines AND any pre-existing trailing `| larch plugin version | … |` rows before appending a freshly-captured row — keeping the assembler idempotent across hydration / resume so duplicate version rows never accumulate. When stripping leaves the interior empty (e.g. a fragment that contained only a stale version row), the helper falls through to the seed-style scaffold so the assembled section is always a well-formed table. Sibling contract `scripts/assemble-anchor.md` and the canonical `skills/implement/references/anchor-comment-template.md` template document the auto-injected row, the version-row injection rules, and the resume-idempotency contract. Regression harness `scripts/test-assemble-anchor.sh` adds three new assertion blocks — `(b4)` populated-fragment append, `(b5)` hydrated-stale-row dedup, `(b6)` empty-after-normalization scaffold fallback — plus `(a6)` for the missing-`CLAUDE_PLUGIN_ROOT` `unknown` fallback path; the harness now covers 18 categories.
+
 ## [15.12.41] - 2026-05-06
 
 ### Changed

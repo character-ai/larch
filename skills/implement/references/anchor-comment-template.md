@@ -124,6 +124,7 @@ This line is suppressed as soon as any fragment contains a non-whitespace byte â
 | Findings rejected | <N> |
 | CI wait duration | <mm:ss> |
 | Rebase count | <N> |
+| larch plugin version | <auto-injected from `.claude-plugin/plugin.json`, or `unknown`> |
 
 <!-- section-end:run-statistics -->
 ````
@@ -211,6 +212,7 @@ This is a defense-in-depth layer above `scripts/redact-secrets.sh`'s outbound sc
 | `scripts/anchor-section-markers.sh` | Single source of truth for the `SECTION_MARKERS` array (sourced by `tracking-issue-write.sh` and `assemble-anchor.sh`); slug set must match the list here. |
 | `scripts/tracking-issue-write.sh` | Inline `COLLAPSE_PRIORITY` array must be a permutation of the slug list here (same set, body-cap collapse priority order). Enforced by a test-harness invariant in `scripts/test-tracking-issue-write.sh`. |
 | `scripts/assemble-anchor.sh` | Consumes `SECTION_MARKERS` via the shared helper; emits marker pairs and the first-line HTML marker documented here. |
+| `scripts/read-plugin-version.sh` | Supplies the best-effort larch plugin version row auto-injected into `run-statistics`. |
 | `scripts/tracking-issue-read.sh` | Anchor-marker filter uses the same strict `<!-- larch:implement-anchor v1` prefix. |
 | `skills/implement/references/pr-body-template.md` | Sibling slim-projection template for the PR body (Summary + Diagrams + Test plan + `Closes #<N>` + footer only); Phase 3+ the anchor comment is canonical for rich content. |
 | `scripts/test-implement-structure.sh` | Phase 3 test-harness assertion (9a) pins the three load-bearing literals here (`Accepted OOS (GitHub issues filed)`, `\| OOS issues filed \|`, `<details><summary>Execution Issues</summary>`); assertion (9b) pins a â‰¥3 reference floor for `anchor-comment-template.md` in SKILL.md; assertion (9d) pins the Step 9a.1 procedure flag contract (must document `--title-prefix "[OOS]"`; must not pass any `--label` flag; must document `--blocked-by-issue $ISSUE_NUMBER` forwarding only when `$ISSUE_NUMBER` is set, `deferred=false`, and `repo_unavailable=false`, with the explicit degraded-mode skip rule); assertion (9e) pins `--intra-batch-deps-file` forwarding in this procedure; assertion (9f) pins the literal `oos-combined.md` (combine-pass output path consumed by `oos-file-conflict-deps.sh` and `/issue --input-file`) in this procedure; assertion (9g) pins `oos-issue-cap.sh`, `OOS_ISSUES_PER_RUN_CAP`, the fail-closed warning string, and the step 3.5 / step 4 skip wording for the per-run cap pre-pass. |

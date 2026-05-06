@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Assemble the anchor comment body from local per-section fragment files under a sections directory. Walks the canonical `SECTION_MARKERS` slug list (sourced from `anchor-section-markers.sh`), emits paired `<!-- section:<slug> -->` / `<!-- section-end:<slug> -->` markers wrapping each fragment's content (empty marker pairs when a fragment file is absent), prepends the first-line HTML anchor marker `<!-- larch:implement-anchor v1 issue=<N> -->`, and writes the result to `--output`.
+Assemble the anchor comment body from local per-section fragment files under a sections directory. Walks the canonical `SECTION_MARKERS` slug list (sourced from `anchor-section-markers.sh`), emits paired `<!-- section:<slug> -->` / `<!-- section-end:<slug> -->` markers wrapping each fragment's content (empty marker pairs when a fragment file is absent), prepends the first-line HTML anchor marker `<!-- larch:implement-anchor v1 issue=<N> -->`, injects the larch plugin version into the `run-statistics` section, and writes the result to `--output`.
 
 Umbrella #348 Phase 5 extracted this helper to eliminate prose-vs-shell drift across the multiple callsites that previously implemented the walk inline (SKILL.md Step 0.5 Branch 2/3 adoption-seed, Step 0.5 Branch 4 fresh-run first-remote-write, Steps 1/2/5/7a/8/9a.1/11 progressive upserts — Step 2 covers Q/A anchor refresh, and the rebase-rebump sub-procedure Step 6). Every anchor body creation and progressive upsert now routes through this one helper.
 
@@ -50,7 +50,7 @@ Parsers MUST use the `ERROR=` field (not exit code alone) to disambiguate — ex
 
 ### Marker order matches SECTION_MARKERS
 
-The assembly walk iterates `"${SECTION_MARKERS[@]}"` from `anchor-section-markers.sh`. Any consumer that depends on a specific section order (notably `scripts/tracking-issue-write.sh`'s truncation pass) MUST share the same source-of-truth array. Do not hardcode slug names in this script.
+The assembly walk iterates `"${SECTION_MARKERS[@]}"` from `anchor-section-markers.sh`. Any consumer that depends on a specific section order (notably `scripts/tracking-issue-write.sh`'s truncation pass) MUST share the same source-of-truth array. Do not hardcode slug names in this script except for the documented `run-statistics` normalization hook (see "Run Statistics version-row injection" below) — the hook needs the literal slug to special-case that section's content shape, but it is intentional and gated by a single equality test rather than a parallel slug list.
 
 ### First-line marker exactness
 
@@ -59,6 +59,19 @@ Output always begins with `<!-- larch:implement-anchor v1 issue=<N> -->\n`. `tra
 ### Empty marker pairs preserve section shape
 
 Missing fragment files emit only the open/close marker pair with no content between. This preserves the skeleton required by `tracking-issue-write.sh`'s per-section truncation algorithm (which locates interiors by marker-pair boundaries).
+
+Exception — see "Run Statistics version-row injection" below for the full contract.
+
+### Run Statistics version-row injection
+
+The `run-statistics` section is the one slug whose interior is normalized rather than emitted verbatim. The helper always appends a canonical `| larch plugin version | <value> |` table row inside the section, so the larch plugin version is visible in the anchor body from the seed plant at /implement Step 0.5 onward without depending on Step 9a.1's later run-statistics fragment write.
+
+Behavior depends on the fragment's state:
+
+- **Empty / missing fragment** (seed case): the helper emits a self-contained minimal table — `## Run Statistics`, a blank line, the standard `| Metric | Value |` header + `|---|---|` separator, and the plugin-version row.
+- **Populated fragment** (Step 9a.1's full table written by /implement): the helper emits the fragment content with trailing blank lines stripped AND any trailing pre-existing `| larch plugin version | ... |` rows dropped, then appends a freshly-captured plugin-version row. The trailing-version-row strip is what keeps the assembler idempotent across resume / hydration: a fragment that was hydrated from a prior anchor body (which already carried an injected version row) does not produce duplicate rows on the next assembly.
+
+The `<value>` is read once per assembly from `scripts/read-plugin-version.sh`, which reads `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json` (default-derived from the script path when the env var is unset) and falls back to the literal `unknown` on any failure (missing file, missing `jq`, malformed JSON, null version). Any I/O error in `read-plugin-version.sh` is non-fatal at the assembly layer — the helper continues with `PLUGIN_VERSION=unknown`.
 
 ### Seed-only visible placeholder
 
@@ -70,7 +83,7 @@ _/implement run in progress — sections below populate as the run proceeds._
 
 Why: an anchor body composed entirely of HTML comment markers renders invisible in GitHub's UI — the freshly planted seed comment looks blank to humans (issue #431). The placeholder is emitted on its own line, *outside* every section interior, so it never collides with `tracking-issue-write.sh`'s per-section truncation (which locates interiors by whole-line marker-pair boundaries).
 
-Populated runs — any fragment with at least one **non-whitespace byte** — suppress the placeholder. The output for partially or fully populated anchors is byte-for-byte unchanged from the pre-fix shape, so progressive upserts at Steps 1/2/5/7a/8/9a.1/11 only ever see the populated body shape and downstream parsers (truncation, hydration awk) are not affected.
+Populated runs — any fragment with at least one **non-whitespace byte** — suppress the placeholder. The output for partially or fully populated anchors is byte-for-byte unchanged from the pre-fix shape for every section EXCEPT `run-statistics`, which is normalized per the "Empty marker pairs preserve section shape" exception above (trailing blank lines and any pre-existing trailing `| larch plugin version | ... |` rows are stripped, and a freshly-captured plugin-version row is appended). Other sections — and the seed-only placeholder line — are unchanged, so progressive upserts at Steps 1/2/5/7a/8/9a.1/11 see the same body shape for those sections and downstream parsers (truncation, hydration awk) are not affected.
 
 The "all empty" detection runs as a separate pre-pass over `SECTION_MARKERS` after the readability pre-pass and before the assembly brace group. The predicate is `grep -q '[^[:space:]]'` against each candidate fragment file; the first non-whitespace byte hit short-circuits the walk to `ALL_EMPTY=false`. This predicate choice (lenient — whitespace-only fragments still trigger the placeholder) was resolved via dialectic adjudication and confirmed by the user during plan design.
 
@@ -80,7 +93,7 @@ The assembled body is first written to a `mktemp` sibling of `--output` and only
 
 ### No redaction, no network
 
-This helper performs pure text assembly of local files. The redaction pipeline lives in `scripts/tracking-issue-write.sh` (which runs compose → redact → truncate on the assembled body at publish time). Compose-time sanitization of fragment content (secrets → `<REDACTED-TOKEN>`, internal URLs → `<INTERNAL-URL>`, PII → `<REDACTED-PII>`) is the caller's responsibility per `skills/implement/SKILL.md` "Compose-time sanitization" — this helper emits fragments verbatim.
+This helper performs pure text assembly of local files. The redaction pipeline lives in `scripts/tracking-issue-write.sh` (which runs compose → redact → truncate on the assembled body at publish time). Compose-time sanitization of fragment content (secrets → `<REDACTED-TOKEN>`, internal URLs → `<INTERNAL-URL>`, PII → `<REDACTED-PII>`) is the caller's responsibility per `skills/implement/SKILL.md` "Compose-time sanitization" — this helper emits fragments verbatim for every section EXCEPT `run-statistics`, where the version-row injection rule above applies (the injection itself is deterministic plugin-metadata, not user-derived content, so the verbatim contract still holds for everything that flows through caller-authored fragments).
 
 ## Conventions
 
@@ -92,6 +105,7 @@ This helper performs pure text assembly of local files. The redaction pipeline l
 | File | Relationship |
 |---|---|
 | `scripts/anchor-section-markers.sh` | Single-source-of-truth for slug order (sourced). |
+| `scripts/read-plugin-version.sh` | Best-effort plugin-version reader for the auto-injected `run-statistics` row. |
 | `scripts/tracking-issue-write.sh` | Downstream publisher; receives the `--output` path via `upsert-anchor --body-file`. Truncation pass relies on the same SECTION_MARKERS ordering. |
 | `scripts/test-assemble-anchor.sh` | Regression harness — every behavioral change here must be mirrored in the harness. |
 | `skills/implement/SKILL.md` | Primary consumer for anchor-section accumulation. |
@@ -100,16 +114,20 @@ This helper performs pure text assembly of local files. The redaction pipeline l
 
 ## Test harness
 
-`scripts/test-assemble-anchor.sh` covers 14 assertion categories:
+`scripts/test-assemble-anchor.sh` covers 18 assertion categories:
 
-- **(a)** Empty sections directory: output has exactly 18 lines — `<!-- larch:implement-anchor v1 issue=<N> -->` on line 1, the seed-only visible placeholder line on line 2, and 8 pairs of empty marker tags on lines 3-18.
+- **(a)** Empty sections directory: output has exactly 23 lines — `<!-- larch:implement-anchor v1 issue=<N> -->` on line 1, the seed-only visible placeholder line on line 2, 7 empty marker pairs, and the `run-statistics` marker pair wrapping a minimal table plus plugin-version row.
 - **(a2)** Empty sections directory: the seed-only placeholder literal is present on line 2 (regression guard for issue #431).
 - **(a3)** Partial fragments (one slug populated): the placeholder is suppressed — only the all-empty seed case fires it.
 - **(a4)** All fragments contain only whitespace bytes (lenient predicate validation): the placeholder still fires.
 - **(a5)** Nonexistent `--sections-dir`: `ASSEMBLED=true` and the placeholder fires (the all-empty pre-pass treats a missing directory as all-empty).
+- **(a6)** Missing `CLAUDE_PLUGIN_ROOT` target: the auto-injected version row falls back to `unknown`.
 - **(b)** Partial fragments: output contains the populated content only where fragment files exist, empty marker pairs elsewhere, in `SECTION_MARKERS` order.
 - **(b2)** Newline-terminated fragment → exactly one newline before the close marker (regression guard for the `$(tail -c 1 ...)` command-substitution newline-stripping bug that inserted an extra blank line). Full output compared against a byte-exact expected fixture.
 - **(b3)** Fragment without a trailing newline → helper inserts one so the close marker stays on its own line.
+- **(b4)** Populated `run-statistics` fragment: trailing blank lines are stripped and the plugin-version row is appended immediately before the section close marker.
+- **(b5)** Hydrated `run-statistics` fragment whose interior already ends with a stale `| larch plugin version | <X.Y.Z> |` row: the stale trailing version row is stripped before a freshly-captured row is appended, producing exactly one plugin-version row in the output. Regression guard against the resume / hydration duplicate-row case.
+- **(b6)** Populated `run-statistics` fragment whose entire content normalizes to empty after stripping (e.g. a single stale version row, no heading/header): the helper falls through to the seed-style scaffold (heading + table header + fresh version row) so the assembled section is well-formed instead of an orphan row.
 - **(c)** Full fragments: all 8 slugs have populated content.
 - **(d)** Missing `anchor-section-markers.sh` helper: `FAILED=true` + `ERROR=missing helper: …` on stdout + exit 1.
 - **(e)** Invalid `--issue` value (non-integer): usage error with exit 1.
