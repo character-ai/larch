@@ -56,6 +56,12 @@ write_empty_candidate() {
     printf '0\n' > "${output}.done"
 }
 
+write_nonempty_candidate() {
+    local output="$1"
+    mkdir -p "$(dirname "$output")"
+    printf 'substantive collector retry regression content with enough words to be visibly non-empty for the sentinel validation cases\n' > "$output"
+}
+
 write_meta() {
     local output="$1"
     local cmd_json="$2"
@@ -125,6 +131,7 @@ assert_fail_closed() {
     assert_line "$label status" "STATUS=EMPTY_OUTPUT" "$out"
     assert_line "$label healthy" "HEALTHY=false" "$out"
     assert_line "$label reason" "FAILURE_REASON=$expected_reason" "$out"
+    assert_line "$label exit-code" "EXIT_CODE=99" "$out"
     assert_line "$label health-file" "CURSOR_HEALTHY=false" "$(cat "$health")"
 }
 
@@ -231,6 +238,7 @@ HEALTH_C2="$TMPROOT/case-c2.health"
 RESULT_C2=$(run_collector bash "$OUT_C2" "$HEALTH_C2")
 assert_line "case C2 status" "STATUS=EMPTY_OUTPUT" "$RESULT_C2"
 assert_line "case C2 reason" "FAILURE_REASON=Retry metadata invalid: missing CMD_JSON and TOOL" "$RESULT_C2"
+assert_line "case C2 exit-code" "EXIT_CODE=99" "$RESULT_C2"
 
 # Case D: JSON arrays must contain only strings.
 OUT_D="$TMPROOT/cursor-d.txt"
@@ -302,6 +310,7 @@ RESULT_H=$(RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 bash "$COLLECTOR" --timeout 5 -
 # Bad entry retains its specific reason despite the valid sibling launching a retry.
 assert_line "case H bad reviewer file" "REVIEWER_FILE=$OUT_H_BAD" "$RESULT_H"
 assert_line "case H bad reason" "FAILURE_REASON=Retry metadata invalid: malformed CMD_JSON" "$RESULT_H"
+assert_line "case H bad exit-code" "EXIT_CODE=99" "$RESULT_H"
 # Good entry recovers via retry.
 assert_line "case H ok reviewer file" "REVIEWER_FILE=${OUT_H_OK%.txt}-retry.txt" "$RESULT_H"
 assert_line "case H ok status" "STATUS=OK" "$RESULT_H"
@@ -365,6 +374,63 @@ RESULT_J=$(run_collector bash "$OUT_J" "$HEALTH_J")
 assert_line "case J status" "STATUS=EMPTY_OUTPUT" "$RESULT_J"
 assert_line "case J exit-code zero" "EXIT_CODE=0" "$RESULT_J"
 assert_line "case J healthy" "HEALTHY=false" "$RESULT_J"
+
+# Case K: missing retry sentinel branch via direct helper invocation. Launching a
+# real retry that never publishes its sentinel would pay the production retry-wait
+# floor, so this pins the row builder directly through the collector's source-only
+# path.
+RESULT_K=$(
+    bash -c '
+        source "$1" --source-only
+        build_missing_retry_sentinel_result "/tmp/cursor-k.txt" "cursor"
+    ' _ "$COLLECTOR" 2>/dev/null
+)
+assert_line "case K reviewer file" "REVIEWER_FILE=/tmp/cursor-k.txt|TOOL=cursor|STATUS=EMPTY_OUTPUT|EXIT_CODE=99|HEALTHY=false|FAILURE_REASON=Retry process did not complete (sentinel file missing)" "$RESULT_K"
+
+# Case L: malformed initial sentinel content containing the pipe field delimiter
+# is coerced before result construction, so no injected field appears in stdout.
+OUT_L="$TMPROOT/cursor-l.txt"
+HEALTH_L="$TMPROOT/case-l.health"
+write_nonempty_candidate "$OUT_L"
+printf '0|EXTRA\n' > "${OUT_L}.done"
+RESULT_L=$(run_collector bash "$OUT_L" "$HEALTH_L")
+assert_line "case L exit-code coerced" "EXIT_CODE=99" "$RESULT_L"
+LINE_COUNT_L=$(printf '%s\n' "$RESULT_L" | wc -l | tr -d '[:space:]')
+if [[ "$LINE_COUNT_L" == "6" ]]; then
+    ok "case L field-count"
+else
+    fail "case L field injection: $LINE_COUNT_L lines"
+fi
+if printf '%s\n' "$RESULT_L" | grep -Fxq "EXTRA"; then
+    fail "case L injected field surfaced"
+else
+    ok "case L no injected field"
+fi
+
+# Case M: oversized digit-only sentinel content is rejected before Bash arithmetic
+# can overflow and misclassify it as <=255.
+OUT_M="$TMPROOT/cursor-m.txt"
+HEALTH_M="$TMPROOT/case-m.health"
+write_nonempty_candidate "$OUT_M"
+printf '18446744073709551616\n' > "${OUT_M}.done"
+RESULT_M=$(run_collector bash "$OUT_M" "$HEALTH_M")
+assert_line "case M exit-code overflow-guarded" "EXIT_CODE=99" "$RESULT_M"
+
+# Case N: empty initial sentinel file is readable but invalid, so it is coerced.
+OUT_N="$TMPROOT/cursor-n.txt"
+HEALTH_N="$TMPROOT/case-n.health"
+write_nonempty_candidate "$OUT_N"
+: > "${OUT_N}.done"
+RESULT_N=$(run_collector bash "$OUT_N" "$HEALTH_N")
+assert_line "case N exit-code empty-sentinel" "EXIT_CODE=99" "$RESULT_N"
+
+# Case O: 256 is numeric but outside Unix exit-code range.
+OUT_O="$TMPROOT/cursor-o.txt"
+HEALTH_O="$TMPROOT/case-o.health"
+write_nonempty_candidate "$OUT_O"
+printf '256\n' > "${OUT_O}.done"
+RESULT_O=$(run_collector bash "$OUT_O" "$HEALTH_O")
+assert_line "case O exit-code over-255" "EXIT_CODE=99" "$RESULT_O"
 
 echo ""
 echo "Summary: $PASS passed, $FAIL failed, $SKIP skipped"

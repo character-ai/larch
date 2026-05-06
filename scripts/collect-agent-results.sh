@@ -78,6 +78,28 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/external-tool-registry.sh" || { echo "collect-agent-results.sh: failed to source external-tool-registry.sh" >&2; exit 1; }
 [[ "${LARCH_EXTERNAL_TOOL_REGISTRY_LOADED:-}" == "1" ]] || { echo "collect-agent-results.sh: external-tool-registry.sh sourced but sentinel missing" >&2; exit 1; }
 
+normalize_exit_code_or_99() {
+    local raw="$1"
+    local context="$2"
+    if [[ "$raw" =~ ^[0-9]{1,3}$ ]] && (( 10#$raw <= 255 )); then
+        printf '%s' "$raw"
+        return 0
+    fi
+    printf 'collect-agent-results.sh: invalid exit code from %s; forcing EXIT_CODE=99\n' "$context" >&2
+    printf '99'
+}
+
+build_missing_retry_sentinel_result() {
+    local orig_output="$1"
+    local tool="$2"
+    printf 'REVIEWER_FILE=%s|TOOL=%s|STATUS=EMPTY_OUTPUT|EXIT_CODE=99|HEALTHY=false|FAILURE_REASON=Retry process did not complete (sentinel file missing)' \
+        "$orig_output" "$tool"
+}
+
+if [[ "${BASH_SOURCE[0]}" != "$0" && "${1:-}" == "--source-only" ]]; then
+    return 0
+fi
+
 TIMEOUT=""
 WRITE_HEALTH=""
 SUBSTANTIVE_VALIDATION="false"
@@ -277,7 +299,7 @@ mark_retry_metadata_invalid() {
     local reason="$3"
     local tool
     tool=$(derive_tool "$orig_output")
-    RESULTS[idx]="REVIEWER_FILE=$orig_output|TOOL=$tool|STATUS=EMPTY_OUTPUT|EXIT_CODE=0|HEALTHY=false|FAILURE_REASON=$reason"
+    RESULTS[idx]="REVIEWER_FILE=$orig_output|TOOL=$tool|STATUS=EMPTY_OUTPUT|EXIT_CODE=99|HEALTHY=false|FAILURE_REASON=$reason"
     set_tool_unhealthy "$tool"
 }
 
@@ -307,6 +329,7 @@ for i in "${!OUTPUT_FILES[@]}"; do
         FAILURE_REASON=$(build_failure_reason "$OUTPUT" "$STATUS" "$EXIT_CODE")
     elif [[ -f "$SENTINEL" ]]; then
         EXIT_CODE=$(cat "$SENTINEL" 2>/dev/null || echo "99")
+        EXIT_CODE=$(normalize_exit_code_or_99 "$EXIT_CODE" "initial sentinel")
         if [[ "$EXIT_CODE" == "124" ]]; then
             STATUS="TIMED_OUT"
             HEALTHY="false"
@@ -546,6 +569,7 @@ if [[ ${#RETRY_FILES[@]} -gt 0 ]]; then
 
             if [[ -f "$RETRY_SENTINEL" ]]; then
                 RETRY_EXIT=$(cat "$RETRY_SENTINEL" 2>/dev/null || echo "99")
+                RETRY_EXIT=$(normalize_exit_code_or_99 "$RETRY_EXIT" "retry sentinel")
                 if [[ "$RETRY_EXIT" == "0" && -s "$RETRY_OUTPUT" ]]; then
                     # F4 fix: retry succeeded — tool is healthy (retry recovered from transient failure)
                     HEALTHY="true"
@@ -570,7 +594,7 @@ if [[ ${#RETRY_FILES[@]} -gt 0 ]]; then
             else
                 # Retry sentinel never appeared — mark unhealthy
                 set_tool_unhealthy "$TOOL"
-                RESULTS[IDX]="REVIEWER_FILE=$ORIG_OUTPUT|TOOL=$TOOL|STATUS=EMPTY_OUTPUT|EXIT_CODE=99|HEALTHY=false|FAILURE_REASON=Retry process did not complete (sentinel file missing)"
+                RESULTS[IDX]=$(build_missing_retry_sentinel_result "$ORIG_OUTPUT" "$TOOL")
             fi
         done
     fi
