@@ -368,12 +368,17 @@ cmd_close() {
         local keyword_rc=0
         matches_false_positive_keywords "$comment" || keyword_rc=$?
         if [ "$keyword_rc" -eq 0 ]; then
-            local mark_out mark_exit=0 err_value
-            mark_out=$("$TRACKING_WRITE" mark-false-positive --issue "$issue" --repo "$REPO" 2>/dev/null) || mark_exit=$?
+            local mark_out mark_stderr mark_exit=0 err_value
+            mark_stderr=$(mktemp)
+            mark_out=$("$TRACKING_WRITE" mark-false-positive --issue "$issue" --repo "$REPO" 2>"$mark_stderr") || mark_exit=$?
             if [ "$mark_exit" -ne 0 ] || printf '%s\n' "$mark_out" | grep -q '^FAILED=true'; then
                 err_value=$(printf '%s\n' "$mark_out" | grep -oE '^ERROR=.*' | head -1 | sed 's/^ERROR=//')
                 echo "WARNING: mark-false-positive failed for issue #$issue: ${err_value:-unknown}" >&2
             fi
+            if [ -s "$mark_stderr" ]; then
+                cat "$mark_stderr" >&2
+            fi
+            rm -f "$mark_stderr"
         elif [ "$keyword_rc" -ge 2 ]; then
             echo "WARNING: false-positive keyword scan failed for issue #$issue" >&2
         fi

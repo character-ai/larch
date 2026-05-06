@@ -861,6 +861,27 @@ assert_contains "$out_o" 'ANCHOR_COMMENT_ID=5125' '(o) late-page anchor (id=5125
 assert_not_contains "$out_o" 'FAILED=true' '(o) pagination success does not emit FAILED=true'
 
 echo ""
+echo "=== (q) tracking-issue-write.sh mark-false-positive missing lib-title-markers.sh helper → exit 1, FAILED=true ==="
+# Symmetric to (h): mark-false-positive sources scripts/lib-title-markers.sh and
+# fails closed if the helper is missing, preserving the FAILED=true / ERROR=
+# stdout contract for the hermetic-fake-tree case. Without this fixture, a
+# rename or delete of lib-title-markers.sh would not surface in CI from the
+# tracking-issue-write side.
+FAKE_TREE_Q="$TMPROOT/fake-tree-no-lib-title-markers"
+mkdir -p "$FAKE_TREE_Q/scripts"
+cp "$WRITE" "$FAKE_TREE_Q/scripts/tracking-issue-write.sh"
+cp "$REPO_ROOT/scripts/redact-secrets.sh" "$FAKE_TREE_Q/scripts/redact-secrets.sh"
+cp "$REPO_ROOT/scripts/anchor-section-markers.sh" "$FAKE_TREE_Q/scripts/anchor-section-markers.sh"
+chmod +x "$FAKE_TREE_Q/scripts/tracking-issue-write.sh" "$FAKE_TREE_Q/scripts/redact-secrets.sh"
+# Intentionally do NOT copy lib-title-markers.sh.
+exit_q=0
+out_q=$(bash "$FAKE_TREE_Q/scripts/tracking-issue-write.sh" mark-false-positive --issue 42 --repo owner/repo 2>&1) || exit_q=$?
+assert_equal "$exit_q" "1" '(q) exit code is 1 when lib-title-markers.sh is missing'
+assert_contains "$out_q" 'FAILED=true' '(q) FAILED=true on stdout'
+assert_contains "$out_q" 'missing helper' '(q) ERROR mentions missing helper'
+assert_contains "$out_q" 'lib-title-markers.sh' '(q) ERROR names the missing helper file'
+
+echo ""
 echo "=== Summary ==="
 echo "Passed: $PASS"
 echo "Failed: $FAIL"
