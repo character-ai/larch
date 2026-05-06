@@ -43,8 +43,9 @@ suppress = [
   # implementer launchers, not review/synthesis agents.
   # Suppression is global because agent-lint does not support per-file
   # exceptions for this rule. Drift defense for the reviewer family lives
-  # in scripts/generate-code-reviewer-agent.sh + the existing CI pin on
-  # the focus-area enum.
+  # in the registry walker (scripts/check-generators.sh, which dispatches
+  # scripts/generate-code-reviewer-agent.sh --check via scripts/generators.tsv)
+  # + the existing CI pin on the focus-area enum.
   "template-marker-missing",
 ]
 

@@ -2,7 +2,7 @@
 
 Shared reviewer prompt archetype used by `/design` (plan review), `/review` (code review), and `/implement` (Phase 3 conflict-resolution reviewer panel + Step 5 quick-mode review). One canonical "Code Reviewer" archetype, invoked via the Claude subagent `code-reviewer` or as the inline prompt body for Codex / Cursor external reviewers. Each skill fills in the context-specific variables.
 
-`agents/code-reviewer.md` is generated from the archetype below via `scripts/generate-code-reviewer-agent.sh`. Do not hand-edit the agent file — edit this template and regenerate. CI enforces sync.
+`agents/code-reviewer.md` is generated from the archetype below via `scripts/generate-code-reviewer-agent.sh`. Do not hand-edit the agent file — edit this template and regenerate. CI's `agent-sync` job enforces sync via the registry walker (`scripts/check-generators.sh`).
 
 ## Variables
 
@@ -208,4 +208,4 @@ If no in-scope issues found, say "No in-scope issues found." If no out-of-scope 
 
 ## Update triggers
 
-This file is the canonical source for the Code Reviewer archetype. `agents/code-reviewer.md` is generated from it via `scripts/generate-code-reviewer-agent.sh` — do not hand-edit the agent file. Edit the template above and run `bash scripts/generate-code-reviewer-agent.sh` to regenerate; the `agent-sync` CI job enforces that the committed agent file matches generator output.
+This file is the canonical source for the Code Reviewer archetype. `agents/code-reviewer.md` is generated from it via `scripts/generate-code-reviewer-agent.sh` — do not hand-edit the agent file. Edit the template above and run `bash scripts/generate-code-reviewer-agent.sh` to regenerate; the `agent-sync` CI job runs `scripts/check-generators.sh`, which dispatches the generator in `--check` mode and enforces that the committed agent file matches generator output.

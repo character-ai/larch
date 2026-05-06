@@ -22,7 +22,7 @@ Plugin ships the entire repo. **Runtime surface**: `skills/`, `agents/`, `hooks/
 ## Common editing tasks
 
 - **Changing a skill** → start at `skills/<name>/SKILL.md`, then trace every helper in `skills/<name>/scripts/`, `scripts/`, and `skills/shared/`. Behavior is split between prompt and scripts.
-- **Adding/modifying the Code Reviewer archetype** → edit `skills/shared/reviewer-templates.md` (canonical; update triggers in that file), then run `bash scripts/generate-code-reviewer-agent.sh` to regenerate `agents/code-reviewer.md`. For any other reviewer archetype, follow the general rule: identify the canonical source and mirror updates to any generated outputs.
+- **Adding/modifying the Code Reviewer archetype** → edit `skills/shared/reviewer-templates.md` (canonical; update triggers in that file), then run `bash scripts/generate-code-reviewer-agent.sh` to regenerate `agents/code-reviewer.md`; CI's `agent-sync` job runs the registry walker (`scripts/check-generators.sh`) to enforce drift across all registered generators. For any other reviewer archetype, follow the general rule: identify the canonical source and mirror updates to any generated outputs.
 - **Changing a shared script** → edit `scripts/<name>.sh`, read its sibling `scripts/<name>.md` for the contract, then grep for callers across `skills/`, `hooks/`, `.claude/settings.json`, `.github/workflows/`, and other scripts.
 - **Changing dev-only skills** → edit under `.claude/skills/bump-version/` or `.claude/skills/relevant-checks/`.
 - **Docs or scripts only** → classified as PATCH.
