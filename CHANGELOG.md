@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.36] - 2026-05-06
+
+### Fixed
+
+- Malformed GitHub issue numbers in `analyze-issues` dumps are now treated as recoverable input defects instead of collapsing distinct issues onto synthetic issue 0. `_parse_issue_number` validates `number` before body capping in `load_issues` and skips missing/null/non-numeric/non-positive/bool/unicode-digit values with stderr WARN. The lenient skip policy now consistently covers both non-dict rows and malformed-number rows while preserving per-row warnings. The `issue_number` helper is strict and analyses now read `int(issue["number"])` directly. Regression coverage pins malformed-number warnings, mixed-corruption threshold behavior, digit-string acceptance, and W4/W5 no-issue-0 output (closes #1284).
+
 ## [15.12.35] - 2026-05-06
 
 ### Added

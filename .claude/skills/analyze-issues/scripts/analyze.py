@@ -81,10 +81,12 @@ CATEGORY_PATTERNS: Sequence[Tuple[str, "re.Pattern[str]"]] = tuple(
 )
 
 # WHY: load_issues fails the load when more than 5% of input list elements
-# are non-dict (corrupt fixture data). --lenient suppresses only the threshold
-# abort; per-element stderr WARN lines are emitted regardless.
+# are unusable (non-dict elements OR dicts with missing/non-numeric `number`).
+# --lenient suppresses only the threshold abort; per-element stderr WARN
+# lines are emitted regardless.
 LOAD_ISSUES_SKIP_THRESHOLD = 0.05
 LOAD_ISSUES_REPR_CAP = 60
+_DIGIT_RE = re.compile(r"[0-9]+")
 
 STOP_WORDS = {
     "a",
@@ -131,6 +133,22 @@ def strip_prefixes(title: str) -> str:
     return PREFIX_RE.sub("", title or "").strip()
 
 
+def _parse_issue_number(value: Any) -> tuple[int | None, str | None]:
+    if value is None:
+        return None, "missing"
+    if isinstance(value, bool):
+        return None, "non-numeric"
+    if isinstance(value, int):
+        return (value, None) if value > 0 else (None, "non-numeric")
+    if isinstance(value, str) and _DIGIT_RE.fullmatch(value):
+        try:
+            parsed = int(value)
+        except (ValueError, OverflowError):
+            return None, "non-numeric"
+        return (parsed, None) if parsed > 0 else (None, "non-numeric")
+    return None, "non-numeric"
+
+
 def load_issues(path: str, lenient: bool = False) -> List[Dict[str, Any]]:
     try:
         with open(path, "r", encoding="utf-8") as handle:
@@ -153,13 +171,25 @@ def load_issues(path: str, lenient: bool = False) -> List[Dict[str, Any]]:
             )
             continue
         issue = dict(item)
+        parsed, reason = _parse_issue_number(issue.get("number"))
+        if parsed is None:
+            skipped += 1
+            preview = repr(issue.get("number"))
+            if len(preview) > LOAD_ISSUES_REPR_CAP:
+                preview = preview[: LOAD_ISSUES_REPR_CAP - 3] + "..."
+            print(
+                f"WARN load_issues: skipping issue with {reason} number at index {index}: {preview}",
+                file=sys.stderr,
+            )
+            continue
+        issue["number"] = parsed
         issue["body"] = (issue.get("body") or "")[:BODY_CAP]
         issues.append(issue)
     total = len(raw)
     if not lenient and total > 0 and skipped / total > LOAD_ISSUES_SKIP_THRESHOLD:
         raise SystemExit(
             "ERROR=load_issues skipped "
-            f"{skipped}/{total} non-dict elements "
+            f"{skipped}/{total} non-dict or malformed-number elements "
             f"({skipped / total * 100:.1f}% > {LOAD_ISSUES_SKIP_THRESHOLD * 100:.0f}% threshold) "
             f"in {path}; pass --lenient to suppress this check"
         )
@@ -242,14 +272,14 @@ def title_tokens(title: str) -> List[str]:
 
 def categorize(issues: Sequence[Mapping[str, Any]], mode: str, top_k: int) -> Dict[int, str]:
     if mode == "default":
-        return {int(issue.get("number") or 0): default_category(issue) for issue in issues}
+        return {issue_number(issue): default_category(issue) for issue in issues}
 
     # Auto mode strips common status prefixes, counts distinctive title tokens,
     # and assigns each issue to its highest-ranked token bucket.
     frequency: collections.Counter[str] = collections.Counter()
     issue_tokens: Dict[int, List[str]] = {}
     for issue in issues:
-        number = int(issue.get("number") or 0)
+        number = issue_number(issue)
         tokens = title_tokens(str(issue.get("title") or ""))
         issue_tokens[number] = tokens
         frequency.update(set(tokens))
@@ -257,7 +287,7 @@ def categorize(issues: Sequence[Mapping[str, Any]], mode: str, top_k: int) -> Di
     leader_set = set(leaders)
     categories: Dict[int, str] = {}
     for issue in issues:
-        number = int(issue.get("number") or 0)
+        number = issue_number(issue)
         bucket = next((token for token in issue_tokens.get(number, []) if token in leader_set), None)
         categories[number] = f"Auto: {bucket}" if bucket else "Other"
     return categories
@@ -268,7 +298,7 @@ def category_breakdown(
 ) -> Tuple[str, collections.Counter[str]]:
     counts: collections.Counter[str] = collections.Counter()
     for issue in issues:
-        counts[categories.get(int(issue.get("number") or 0), "Other")] += 1
+        counts[categories.get(issue_number(issue), "Other")] += 1
     total = max(len(issues), 1)
     lines = ["## Category Breakdown"]
     for category, count in counts.most_common():
@@ -298,12 +328,12 @@ def growth_chart(
         (oldest + timedelta(days=index * (7 if weekly else 1))).date().isoformat()
         for index in range(bucket_count)
     ]
-    category_order = sorted({categories.get(int(issue.get("number") or 0), "Other") for issue, _date in dated})
+    category_order = sorted({categories.get(issue_number(issue), "Other") for issue, _date in dated})
     matrix: Dict[str, List[int]] = {category: [0] * bucket_count for category in category_order}
     for issue, created in sorted(dated, key=lambda pair: pair[1] or oldest):
         if created is None:
             continue
-        category = categories.get(int(issue.get("number") or 0), "Other")
+        category = categories.get(issue_number(issue), "Other")
         index = (created.date() - oldest.date()).days // (7 if weekly else 1)
         if 0 <= index < bucket_count:
             matrix[category][index] += 1
@@ -385,7 +415,12 @@ def pattern_observations(issues: Sequence[Mapping[str, Any]], top_k: int, stats:
 
 
 def issue_number(issue: Mapping[str, Any]) -> int:
-    return int(issue.get("number") or 0)
+    """Return the GitHub issue number.
+
+    Precondition: issue was produced by load_issues, which guarantees a
+    present, positive integer number field.
+    """
+    return int(issue["number"])
 
 
 def pr_ref_id(ref: Mapping[str, Any]) -> str:
@@ -618,8 +653,9 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
         "--lenient",
         action="store_true",
         help=(
-            "Suppress the >5%% non-dict abort in load_issues. Per-element stderr "
-            "warnings are still emitted; this flag only disables the threshold check."
+            "Suppress the >5%% threshold abort in load_issues for non-dict or "
+            "malformed-number elements. Per-element stderr warnings are still "
+            "emitted; this flag only disables the threshold check."
         ),
     )
     return parser.parse_args(list(argv) if argv is not None else None)
