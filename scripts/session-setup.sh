@@ -177,7 +177,11 @@ if [[ "$SKIP_PREFLIGHT" == "false" ]]; then
 fi
 
 # --- 2. Create temp directory (always fresh, never inherited) ---
-SESSION_TMPDIR=$(mktemp -d "/tmp/${PREFIX}-XXXXXX")
+CLONE_TAG=$(basename "$PWD")
+CLONE_TAG="${CLONE_TAG//[^A-Za-z0-9_-]/_}"
+CLONE_TAG="${CLONE_TAG:0:32}"
+[[ -z "$CLONE_TAG" ]] && CLONE_TAG="_"
+SESSION_TMPDIR=$(mktemp -d "/tmp/${PREFIX}-${CLONE_TAG}-XXXXXX")
 echo "SESSION_TMPDIR=$SESSION_TMPDIR"
 
 # --- 2a. Bridge reviewer model env vars from plugin userConfig (always, regardless of --skip-slack-check) ---

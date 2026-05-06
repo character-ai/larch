@@ -40,4 +40,11 @@ if [[ "$DIR" != /tmp/* && "$DIR" != /private/tmp/* ]]; then
     exit 1
 fi
 
+AUDIT_LOG="${TMPDIR:-/tmp}/larch-cleanup-audit.log"
+AUDIT_TS=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo "?")
+AUDIT_PARENT=$(ps -o comm= -p "$PPID" 2>/dev/null | tr -d '\n' || true)
+AUDIT_PARENT="${AUDIT_PARENT//[[:space:]]/_}"
+: "${AUDIT_PARENT:=?}"
+{ printf '%s pid=%s ppid=%s parent=%s dir=%s\n' "$AUDIT_TS" "$$" "$PPID" "$AUDIT_PARENT" "$DIR" >> "$AUDIT_LOG"; } 2>/dev/null || true
+
 rm -rf "$DIR"

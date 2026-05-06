@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.51] - 2026-05-06
+
+### Changed
+
+- Session tmpdirs created via `scripts/session-setup.sh` and the `/issue` skill now embed a sanitized cwd-basename "clone tag" between the prefix and the random suffix (`/tmp/claude-implement-larch1-xYt7WL`), so concurrent runs from independent clones are distinguishable in `/tmp` while keeping `mktemp`'s random suffix.
+- `scripts/cleanup-tmpdir.sh` now appends a best-effort audit line (UTC timestamp, pid, ppid, parent command, removed dir) to `${TMPDIR:-/tmp}/larch-cleanup-audit.log` before each `rm -rf`, so future surgical-wipe incidents can be traced to their caller. The audit file inherits the operator's umask (no explicit chmod) to avoid widening readability on shared / multi-user hosts.
+- New regression harness `scripts/test-cleanup-tmpdir.sh` covers the audit-log line shape under a private `TMPDIR` override; wired through `make test-cleanup-tmpdir` and `test-harnesses-6`.
+
 ## [15.12.50] - 2026-05-06
 
 ### Fixed

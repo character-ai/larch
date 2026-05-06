@@ -2,6 +2,12 @@
 
 Shared setup wrapper for larch skills. It creates a fresh session tmpdir, optionally runs preflight, Slack and repo discovery, reviewer health probes, and can write a session-env file plus a `.health` sidecar.
 
+Session tmpdirs are named `/tmp/<prefix>-<clone-tag>-XXXXXX`, where
+`<clone-tag>` is the current working directory basename with every character
+outside `[A-Za-z0-9_-]` replaced by `_`, truncated to 32 characters, and
+defaulted to `_` when empty. This keeps concurrent clone runs distinguishable
+in `/tmp` while preserving `mktemp`'s random suffix.
+
 ## Reviewer probe contract
 
 - `--check-reviewers` probes the legacy Codex+Cursor set.

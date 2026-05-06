@@ -415,6 +415,13 @@ exclude = [
   # Makefile-only pattern as scripts/test-sessionstart-health.sh above.
   "scripts/test-preflight-args.sh",
   "scripts/test-preflight-args.md",
+  # scripts/test-cleanup-tmpdir.sh is the regression harness for
+  # scripts/cleanup-tmpdir.sh's invoke-time audit log. Referenced only from
+  # Makefile (test-cleanup-tmpdir target) and scripts/test-cleanup-tmpdir.md
+  # (sibling contract), matching the same Makefile-only pattern as
+  # scripts/test-preflight-args.sh above.
+  "scripts/test-cleanup-tmpdir.sh",
+  "scripts/test-cleanup-tmpdir.md",
   # scripts/test-session-entry-gate.sh is the offline regression harness for
   # scripts/session-entry-gate.sh. Referenced only from Makefile
   # (test-session-entry-gate target) and scripts/test-session-entry-gate.md
