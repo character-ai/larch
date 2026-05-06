@@ -55,7 +55,7 @@ ARGV_LOG="$TMPDIR/gemini-argv.log"
 cat > "$STUB_BIN/gemini" <<STUB
 #!/usr/bin/env bash
 # Record each argv element on its own line to \$ARGV_LOG so the harness can
-# pin --approval-mode value. Sentinel line --- separates invocations.
+# pin reviewer Gemini flags. Sentinel line --- separates invocations.
 {
   for _arg in "\$@"; do
     printf '%s\n' "\$_arg"
@@ -90,6 +90,18 @@ fi
 APPROVAL_MODE_VALUE=$(awk 'prev=="--approval-mode"{print; exit} {prev=$0}' "$ARGV_LOG")
 [[ "$APPROVAL_MODE_VALUE" == "yolo" ]] \
   || fail "Expected gemini argv to include --approval-mode yolo, got '$APPROVAL_MODE_VALUE'"
+# Pin --admin-policy <path-ending-in-gemini-reviewer-policy.toml> so a
+# regression that drops the policy file from the gemini argv (re-opening
+# the bug from #1234 -- reviewer can write files despite "Do NOT modify
+# files" prompt) is caught at harness time. The policy file lives beside
+# the launcher; the absolute path varies by checkout, so we pin the
+# basename. Also assert the path exists on disk and is non-empty so a
+# stale path that points outside the install is caught.
+ADMIN_POLICY_PATH=$(awk 'prev=="--admin-policy"{print; exit} {prev=$0}' "$ARGV_LOG")
+[[ "$ADMIN_POLICY_PATH" == *"/gemini-reviewer-policy.toml" ]] \
+  || fail "Expected gemini argv to include --admin-policy <path>/gemini-reviewer-policy.toml, got '$ADMIN_POLICY_PATH'"
+[[ -s "$ADMIN_POLICY_PATH" ]] \
+  || fail "Expected --admin-policy path '$ADMIN_POLICY_PATH' to exist and be non-empty"
 grep -q '^0$' "${OUTPUT}.done" \
   || fail "Expected success .done exit code 0"
 if grep -q '[{}]' "$OUTPUT"; then

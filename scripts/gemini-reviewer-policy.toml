@@ -1,0 +1,25 @@
+# Larch reviewer mode: deny file-writing tools, allow read tools and shell.
+#
+# Loaded via --admin-policy by scripts/launch-gemini-review.sh so the deny
+# rules override --approval-mode yolo's default-allow. Verified
+# experimentally in issue #1234: user-tier --policy at priority 999 is
+# overridden by yolo; admin-tier at 5999 is not.
+#
+# Tool-name stability across gemini-cli versions is not officially
+# guaranteed. The deny list errs broad. If a future gemini-cli renames a
+# write tool or introduces a new one not on this list, the file-write
+# block silently no-ops. The companion test harness pins the launcher
+# argv shape but does not exercise live gemini behavior. See #1234
+# Caveats and the OOS follow-up for a tool-name-drift alarm.
+#
+# --admin-policy is documented as "OS-specific system directories" in
+# gemini-cli, but `gemini --help` advertises it as a normal CLI flag
+# accepting "files or directories", and experiments confirmed it loads
+# arbitrary paths. This is a slightly off-label use; if a future
+# gemini-cli version restricts admin-policy to system paths only, the
+# fix breaks gracefully (yolo still works, just unhardened).
+[[rule]]
+toolName = ["write_file", "replace", "edit", "edit_file", "delete_file"]
+decision = "deny"
+priority = 5999
+denyMessage = "Larch reviewer mode: write tools are disabled. The reviewer prompt is read-only."

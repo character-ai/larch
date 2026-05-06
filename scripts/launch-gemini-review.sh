@@ -155,7 +155,7 @@ RUN_EXIT=0
     --output "$RAW_OUTPUT" \
     --timeout "$EFFECTIVE_TIMEOUT" \
     --capture-stdout-only \
-    -- gemini -m "$GEMINI_MODEL" -p "$PROMPT" -o json --skip-trust --approval-mode yolo || RUN_EXIT=$?
+    -- gemini -m "$GEMINI_MODEL" -p "$PROMPT" -o json --skip-trust --approval-mode yolo --admin-policy "$SCRIPT_DIR/gemini-reviewer-policy.toml" || RUN_EXIT=$?
 
 if [[ "$RUN_EXIT" -ne 0 ]]; then
     fail_closed "$RUN_EXIT" "Gemini exited with code $RUN_EXIT"

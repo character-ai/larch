@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.19] - 2026-05-05
+
+### Changed
+
+- Block file writes by the Gemini reviewer launcher via gemini-cli's Policy Engine. `scripts/launch-gemini-review.sh:158` now appends `--admin-policy "$SCRIPT_DIR/gemini-reviewer-policy.toml"` to the inner `gemini` argv; the new plugin-shipped TOML denies `write_file`, `replace`, `edit`, `edit_file`, `delete_file` at admin priority 5999, which overrides `--approval-mode yolo`'s default-allow. Shell remains under yolo so `git diff` / `git log` reviewer probes still work. The Gemini implementer launcher (`launch-gemini-implement.sh`) is intentionally NOT changed. `scripts/test-launch-gemini-review.sh` now pins both `--approval-mode yolo` and the `--admin-policy` argv pair (basename + non-empty path on disk). `SECURITY.md`, `scripts/launch-gemini-review.md`, `scripts/test-launch-gemini-review.md`, `docs/external-reviewers.md`, and `docs/review-agents.md` updated to record the new mechanical guarantee, the off-label `--admin-policy` use, and the residual shell-write risk. Closes #1234.
+
 ## [15.12.18] - 2026-05-05
 
 ### Changed
