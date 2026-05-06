@@ -1,6 +1,6 @@
-# External Reviewer Procedures (Codex + Cursor + Gemini)
+# External Reviewer Procedures (Codex + Cursor; Gemini reviewer dormant)
 
-Shared mechanical procedures for running Codex, Cursor, and additive Gemini as external reviewers. Gemini is also available as `/implement --coder=gemini` for the implementer slot; that launcher is documented separately from reviewer-panel topology. Each skill provides its own reviewer invocation commands (prompts, output paths, tmpdir variables) — this file covers the common scaffolding.
+Shared mechanical procedures for running Codex and Cursor as external reviewers. The historical Gemini additive reviewer call sites in `/review` and `/implement --quick` have been removed; the launcher (`scripts/launch-gemini-review.sh`), policy file, regression harness, health probe, and `--check-gemini-reviewer` opt-in flag are retained as machinery for future re-enablement, and the `GEMINI_*` keys plumbed below still flow into `/implement --coder=gemini` dispatch and cross-skill `GEMINI_HEALTHY` propagation. The skip-style fallback wording in this file describes what would happen if those reviewer call sites were restored. Gemini is also available as `/implement --coder=gemini` for the implementer slot; that launcher is documented separately from reviewer-panel topology. Each skill provides its own reviewer invocation commands (prompts, output paths, tmpdir variables) — this file covers the common scaffolding.
 
 ## Binary Check and Health Probe (Step 0)
 
@@ -12,7 +12,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix <name> [--skip-preflight
   [--skip-codex-probe] [--skip-cursor-probe] [--skip-gemini-probe] [--write-health <path>]
 ```
 
-The `--check-reviewers` flag runs `check-reviewers.sh --probe` internally and emits `CODEX_AVAILABLE`, `CURSOR_AVAILABLE`, `CODEX_HEALTHY`, `CURSOR_HEALTHY` on stdout. `--check-gemini-reviewer` opts into Gemini and adds `GEMINI_AVAILABLE` / `GEMINI_HEALTHY`; callers omit it when Gemini is not part of the skill.
+The `--check-reviewers` flag runs `check-reviewers.sh --probe` internally and emits `CODEX_AVAILABLE`, `CURSOR_AVAILABLE`, `CODEX_HEALTHY`, `CURSOR_HEALTHY` on stdout. `--check-gemini-reviewer` opts into Gemini probing and adds `GEMINI_AVAILABLE` / `GEMINI_HEALTHY`; `/implement` and `/review` continue to pass it because those keys are consumed by `/implement --coder=gemini` dispatch gating and by cross-skill health propagation, even though the Gemini reviewer launcher is not currently invoked. Skills that need neither Gemini implementer dispatch nor cross-skill `GEMINI_HEALTHY` propagation may omit the flag.
 
 **Session-env override**: If `--caller-env` provides `CODEX_HEALTHY=false`, `CURSOR_HEALTHY=false`, or `GEMINI_HEALTHY=false`, the script auto-sets the corresponding `--skip-codex-probe` / `--skip-cursor-probe` / `--skip-gemini-probe` flag internally — you do not need to pass these explicitly when using `--caller-env`.
 

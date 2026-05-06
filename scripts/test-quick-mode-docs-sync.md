@@ -4,7 +4,7 @@ Cross-validation harness with three check families: (1) positive anchors — req
 
 ## Purpose
 
-Without this harness, drift between the canonical quick-mode contract and its public mirrors (see Target files below) is silent. The bug that triggered #370 — "simplified code review (1 Claude Code Reviewer subagent, 1 round)" persisting in the public docs long after SKILL.md evolved to "up to 7 rounds, Cursor → Codex → Gemini → Claude fallback, no voting panel" — is exactly the class this harness prevents: a SKILL.md edit that does not propagate to the public mirrors, or a public-doc edit that re-introduces a contradiction with SKILL.md.
+Without this harness, drift between the canonical quick-mode contract and its public mirrors (see Target files below) is silent. The bug that triggered #370 — "simplified code review (1 Claude Code Reviewer subagent, 1 round)" persisting in the public docs long after SKILL.md evolved to "up to 7 rounds, Cursor → Codex → Claude fallback, no voting panel" — is exactly the class this harness prevents: a SKILL.md edit that does not propagate to the public mirrors, or a public-doc edit that re-introduces a contradiction with SKILL.md.
 
 ## Invariants enforced
 
@@ -25,7 +25,7 @@ Each target file MUST contain all six markers:
 | Marker | Casing | Rationale |
 |--------|--------|-----------|
 | `7 rounds` | case-sensitive `grep -F` | Pins the 7-round cap. SKILL.md uses lowercase "7 rounds" consistently. |
-| `Cursor → Codex → Gemini → Claude` | case-sensitive `grep -F`, UTF-8 U+2192 arrow | Pins the fallback chain order. |
+| `Cursor → Codex → Claude` | case-sensitive `grep -F`, UTF-8 U+2192 arrow | Pins the fallback chain order (Gemini was removed from the chain when its reviewer call sites were eliminated from `/implement` and `/review`; the launcher remains as machinery). |
 | `no voting panel` | **case-insensitive** `grep -iF` | Semantic marker; tolerates legitimate sentence-case rewrites (e.g. "No voting panel"). |
 | `rounds 1-3` | **case-insensitive** `grep -iF` | Pins the rounds-1-3 vs rounds-4+ split. Insensitive because `docs/review-agents.md` uses both `Rounds 1-3` (table cell) and `rounds 1-3` (Note A prose). Added per #1002. |
 | `5 Cursor specialists` | case-sensitive `grep -F` | Pins the specialist count in rounds 1-3. Together with the markers below, encodes the multi-lane topology so a future change that drops the specialist panel from rounds 1-3 fails CI. Added per #1002. |

@@ -472,6 +472,15 @@ exclude = [
   # Gemini launcher. Referenced only from Makefile (test-launch-gemini-review
   # target) and scripts/test-launch-gemini-review.md (sibling contract).
   "scripts/test-launch-gemini-review.sh",
+  # scripts/launch-gemini-review.sh is the Gemini reviewer launcher. The
+  # /implement and /review skills no longer invoke it — those call sites were
+  # removed deliberately while preserving the launcher, its policy file, its
+  # regression harness, and its sibling contract as machinery so the lane can
+  # be re-enabled without re-deriving the launcher contract. Referenced from
+  # scripts/launch-gemini-review.md (sibling contract), scripts/test-launch-gemini-review.sh
+  # (regression harness), SECURITY.md, docs/external-reviewers.md, and
+  # docs/configuration-and-permissions.md.
+  "scripts/launch-gemini-review.sh",
   # scripts/test-wait-for-reviewers.sh is the regression harness for
   # wait-for-reviewers.sh timeout validation and collect-agent-results.sh wait
   # passthrough (#1186 + #1188 / #1200). Referenced only from Makefile

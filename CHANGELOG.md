@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.47] - 2026-05-06
+
+### Changed
+
+- Eliminate Gemini reviewer call sites from `/implement` (Step 5 quick-mode rounds 1-3 generic-additive slot and rounds 4+ chain) and `/review` (optional Gemini generic slot in diff and description modes; rounds 4-7 chain). Updates `skills/implement/SKILL.md`, `skills/review/SKILL.md`, the structural test harnesses (`scripts/test-implement-structure.sh`, `scripts/test-review-structure.sh`, `scripts/test-quick-mode-docs-sync.sh`) and their sibling contracts, the public docs (`README.md`, `docs/skills.md`, `docs/workflow-lifecycle.md`, `docs/review-agents.md`, `docs/external-reviewers.md`, `docs/configuration-and-permissions.md`, `SECURITY.md`), and `skills/shared/external-reviewers.md` to describe the new no-Gemini-reviewer review-panel topology and to document the Gemini reviewer machinery as dormant.
+- Allowlist `scripts/launch-gemini-review.sh` in `agent-lint.toml`'s G004/dead-script exclude list so the launcher remains in-tree as machinery for future re-enablement without failing the dead-script lint.
+- Preserve all Gemini machinery: `scripts/launch-gemini-review.sh`, `scripts/launch-gemini-implement.sh`, `agents/gemini-implementer.md`, the dispatcher `coder=gemini` path in `skills/implement/scripts/step2-implement.sh`, the `--coder=gemini` flag and its docs, the dispatcher Gemini bail-reason enum tokens (`gemini-runtime-failure`, `gemini-bailed-no-reason`, `gemini-modified-history`), the `--check-gemini-reviewer` opt-in flag in `scripts/session-setup.sh` (still consumed by `--coder=gemini` dispatch and cross-skill `GEMINI_HEALTHY` propagation), and the Gemini health probe in `scripts/check-reviewers.sh`. Reviewer call sites were the only thing removed; the dispatcher implementer path remains active.
+- Negative test pins in `scripts/test-implement-structure.sh` (assertion 23j) and `scripts/test-review-structure.sh` (assertions 19b/19c) guard against re-introducing `launch-gemini-review.sh` invocations or `gemini-output.txt` collector argv in the two skills without an intentional reversal.
+
 ## [15.12.46] - 2026-05-06
 
 ### Changed
