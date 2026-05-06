@@ -14,17 +14,28 @@ Usage: run-analysis.sh [--limit N] [--span-days N] [--top-K N] [--categories=aut
 EOF
 }
 
+require_value() {
+  if [[ $# -lt 2 ]]; then
+    echo "ERROR=Flag $1 requires a value" >&2
+    usage
+    exit 2
+  fi
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --limit)
+      require_value "$@"
       LIMIT="$2"
       shift 2
       ;;
     --span-days)
+      require_value "$@"
       SPAN_DAYS="$2"
       shift 2
       ;;
     --top-K|--top-k)
+      require_value "$@"
       TOP_K="$2"
       shift 2
       ;;
@@ -33,6 +44,7 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     --categories)
+      require_value "$@"
       CATEGORIES="$2"
       shift 2
       ;;
@@ -70,7 +82,16 @@ if [[ ! "$REPO" =~ ^[^/]+/[^/]+$ ]]; then
 fi
 
 SANITIZED_REPO="$(printf '%s' "$REPO" | tr '/' '-' | tr -cd '[:alnum:]-_')"
-DUMP_PATH="/tmp/${SANITIZED_REPO}-issues.json"
+if [[ -z "$SANITIZED_REPO" ]]; then
+  echo "ERROR=Sanitized repo name is empty (REPO='$REPO')" >&2
+  exit 1
+fi
+
+# Issue bodies can contain sensitive content — keep dumps user-private.
+TMPROOT="${TMPDIR:-/tmp}"
+DUMP_DIR="${TMPROOT%/}"
+DUMP_PATH="${DUMP_DIR}/${SANITIZED_REPO}-issues.json"
+umask 077
 
 "$SCRIPT_DIR/fetch-issues.sh" --repo "$REPO" --limit "$LIMIT" --output "$DUMP_PATH"
 

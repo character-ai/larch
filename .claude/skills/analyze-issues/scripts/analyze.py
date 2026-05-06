@@ -237,6 +237,17 @@ def growth_chart(
         for index, value in enumerate(matrix[category]):
             running += value
             matrix[category][index] = running
+    # WHY: cap legend keys at A-Z; collapse the tail into "Other (overflow)" so the
+    # chart never emits non-letter symbols when the category set exceeds 26.
+    if len(category_order) > 26:
+        head = category_order[:25]
+        tail = category_order[25:]
+        overflow = [0] * bucket_count
+        for category in tail:
+            for index, value in enumerate(matrix[category]):
+                overflow[index] += value
+        category_order = head + ["Other (overflow)"]
+        matrix = {**{c: matrix[c] for c in head}, "Other (overflow)": overflow}
     keys = [chr(ord("A") + index) for index in range(len(category_order))]
 
     chart_module = load_render_chart()
@@ -406,13 +417,29 @@ def reviewer_effectiveness(issues: Sequence[Mapping[str, Any]]) -> Tuple[str, Di
     tool_done: collections.Counter[str] = collections.Counter()
     vote_rows: List[Tuple[int, str, str, str]] = []
 
+    # WHY: larch issues use canonical markdown fields; tolerate plain "Surfaced by:" too.
+    attribution_re = re.compile(
+        r"^\s*(?:[-*]\s*)?(?:\*\*\s*)?(?:reviewer|surfaced\s+by)\s*(?:\*\*)?\s*[:\-]\s*(.+?)\s*$",
+        re.I,
+    )
+    # WHY: real tallies use comma separators and may include EXONERATE; accept both.
+    vote_re = re.compile(
+        r"YES\s*=\s*(\d+)\s*[,\s]+\s*NO\s*=\s*(\d+)(?:\s*[,\s]+\s*EXONERATE\s*=\s*(\d+))?",
+        re.I,
+    )
+
     for issue in issues:
         body = str(issue.get("body") or "")
-        surfaced = next((line for line in body.splitlines() if line.lower().startswith("surfaced by:")), "")
-        if not surfaced:
+        attribution = ""
+        for line in body.splitlines():
+            match = attribution_re.match(line)
+            if match:
+                attribution = match.group(1)
+                break
+        if not attribution:
             continue
-        tool_match = tool_re.search(surfaced)
-        persona_match = persona_re.search(surfaced)
+        tool_match = tool_re.search(attribution)
+        persona_match = persona_re.search(attribution)
         tool = normalize_tool(tool_match.group(1).replace("  ", " ").lower()) if tool_match else "unknown"
         persona = persona_match.group(1).lower() if persona_match else "generic"
         persona = {"arch": "architect", "edge": "edge-cases"}.get(persona, persona)
@@ -423,9 +450,13 @@ def reviewer_effectiveness(issues: Sequence[Mapping[str, Any]]) -> Tuple[str, Di
         if done:
             pair_done[key] += 1
             tool_done[tool] += 1
-        vote_match = re.search(r"\bYES=(\d+)\s+NO=(\d+)\b", body, re.I)
+        vote_match = vote_re.search(body)
         if vote_match:
-            vote_rows.append((issue_number(issue), tool, persona, f"YES={vote_match.group(1)} NO={vote_match.group(2)}"))
+            yes, no, exonerate = vote_match.group(1), vote_match.group(2), vote_match.group(3)
+            tally = f"YES={yes} NO={no}"
+            if exonerate is not None:
+                tally += f" EXONERATE={exonerate}"
+            vote_rows.append((issue_number(issue), tool, persona, tally))
 
     lines = ["## Reviewer/Persona Tables"]
     lines.append("Aggregate per tool:")
@@ -434,7 +465,7 @@ def reviewer_effectiveness(issues: Sequence[Mapping[str, Any]]) -> Tuple[str, Di
             done = tool_done[tool]
             lines.append(f"- {tool}: {total} findings, {done} done ({done / total * 100:.1f}%)")
     else:
-        lines.append("- No Surfaced by lines detected.")
+        lines.append("- No reviewer attribution lines detected.")
 
     lines.append("Per tool/persona:")
     for (tool, persona), total in sorted(pair_counts.items(), key=lambda item: (-item[1], item[0])):
