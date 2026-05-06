@@ -31,10 +31,10 @@ flowchart TD
 
 This pattern is used for:
 
-- **[Collaborative sketches](collaborative-sketches.md)** — 9 agents in regular mode (1 Claude + 4 Cursor + 4 Codex), 3 in quick mode (1 Claude + 1 Cursor + 1 Codex)
-- **Plan review** — 6 reviewers examine the implementation plan simultaneously in `/design` (1 Claude Code Reviewer subagent + 1 Codex generic + 4 Cursor archetypes); 3 reviewers in `/implement` Phase 3 conflict review and `/research` standard validation
-- **Code review** — 6 reviewers examine the diff simultaneously in `/review` (5 Cursor specialists + 1 Codex generic; Claude is a voter only)
-- **[Voting](voting-process.md)** — 3 voters evaluate findings in parallel
+- **[Collaborative sketches](collaborative-sketches.md)** — the mode-specific sketch topology fans out across Claude, Cursor, and Codex
+- **Plan review** — the validation panels described in [Review Agents](review-agents.md) examine plans and research output simultaneously
+- **Code review** — the specialist panel described in [Review Agents](review-agents.md) examines the diff simultaneously; Claude is a voter only
+- **[Voting](voting-process.md)** — the voting panel evaluates findings in parallel
 
 ### Sequential Composition
 
@@ -46,11 +46,11 @@ Larch uses several categories of agents:
 
 ### Review Agent
 
-The 1 persistent [Code Reviewer archetype](review-agents.md) — a unified reviewer covering code quality, risk/integration, correctness, architecture, and security. Defined in `agents/code-reviewer.md` (generated from `skills/shared/reviewer-templates.md` via `scripts/generate-code-reviewer-agent.sh`; discovered via `${CLAUDE_PLUGIN_ROOT}`) with model: sonnet (default) and Read/Grep/Glob tool access. In `/research` validation phase, exactly one Claude Code Reviewer subagent runs alongside 1 Codex and 1 Cursor (3-reviewer panel). In `/design`, one Claude Code Reviewer subagent runs alongside 1 Codex generic and 4 Cursor archetypes (6-reviewer panel). In `/review`, Claude is a voter only — see [review-agents.md](review-agents.md) for the 6-reviewer specialist panel composition. Fallback rule for `/research`: one Claude Code Reviewer subagent fallback replaces each unavailable external slot, preserving the 3-lane invariant — when Codex alone is unavailable, the panel is 2 Claude + 1 Cursor; when Cursor alone is unavailable, 2 Claude + 1 Codex; when both are unavailable, 3 Claude lanes. In `/design`, each Cursor archetype slot falls back to Codex, then Claude; the Codex generic slot falls back to Claude — preserving 6 reviewers.
+The persistent [Code Reviewer archetype](review-agents.md) — a unified reviewer covering code quality, risk/integration, correctness, architecture, and security. Defined in `agents/code-reviewer.md` (generated from `skills/shared/reviewer-templates.md` via `scripts/generate-code-reviewer-agent.sh`; discovered via `${CLAUDE_PLUGIN_ROOT}`) with model: sonnet (default) and Read/Grep/Glob tool access. In `/research` validation, `/design`, and `/review`, the archetype participates according to the panel compositions in [review-agents.md](review-agents.md). Fallback rule for `/research`: one Claude Code Reviewer subagent fallback replaces each unavailable external slot, preserving the validation-panel shape. In `/design`, each Cursor archetype slot falls back to Codex, then Claude; the Codex generic slot falls back to Claude, preserving the configured reviewer panel.
 
 ### Sketch Agents
 
-The agents in the [collaborative sketch phase](collaborative-sketches.md): 9 in regular mode (1 Claude General + 4 Cursor + 4 Codex, one per personality per tool), 3 in quick mode (1 Claude General + 1 Cursor-Generic + 1 Codex-Generic). When an external tool is unavailable, the affected slot falls back to a Claude subagent with the matching prompt. These are ephemeral — launched with inline prompts, not persistent agent definitions.
+The agents in the [collaborative sketch phase](collaborative-sketches.md) follow the regular or quick topology listed in that document. When an external tool is unavailable, the affected slot falls back to a Claude subagent with the matching prompt. These are ephemeral — launched with inline prompts, not persistent agent definitions.
 
 ### Dialectic Debaters
 
@@ -62,17 +62,17 @@ Debaters produce tagged structured output (`<claim>`, `<evidence>`, `<strongest_
 
 ### Dialectic Judges
 
-After debate, the 3-judge panel reads an attribution-stripped ballot (Defense A / Defense B labels per decision, deterministic position-order rotation across decisions to cancel position bias) and casts one binary `THESIS` / `ANTI_THESIS` vote per decision. The panel composition is Cursor + Codex + Claude Code Reviewer subagent, with **replacement-first** fallbacks — when Cursor or Codex is unhealthy, a Claude Code Reviewer subagent replaces that slot so the panel always remains at 3 slots.
+After debate, the judge panel reads an attribution-stripped ballot (Defense A / Defense B labels per decision, deterministic position-order rotation across decisions to cancel position bias) and casts one binary `THESIS` / `ANTI_THESIS` vote per decision. The panel composition is Cursor + Codex + Claude Code Reviewer subagent, with **replacement-first** fallbacks — when Cursor or Codex is unhealthy, a Claude Code Reviewer subagent replaces that slot so the panel shape remains intact.
 
 **Replacement-first applies to judges, not debaters**: judges merely adjudicate between pre-authored defenses, so stylistic attribution leak is not a concern for the judge role; the "no Claude substitution" rule is scoped to the adversarial debate phase only. A dialectic-local health re-probe runs immediately before judge launch so a debate-time Cursor/Codex timeout does not lock that tool out of judging. Judge-panel flags (`judge_codex_available`, `judge_cursor_available`) are judge-phase-local and never mutate orchestrator-wide availability. See `skills/shared/dialectic-protocol.md` for the ballot format, judge prompt template, threshold rules, and resolution schema.
 
 ### Voting Panel Agents
 
-The 3 voters in the [voting process](voting-process.md) (Claude Code Reviewer subagent + Codex + Cursor). These are ephemeral agents launched with the ballot and voting instructions.
+The voters in the [voting process](voting-process.md) (Claude Code Reviewer subagent + Codex + Cursor). These are ephemeral agents launched with the ballot and voting instructions.
 
 ### Research Agents
 
-The research agents in `/research` form a fixed-shape topology: 4 Codex-first research lanes (Codex with per-lane Claude Agent-tool fallback) under angle-differentiated briefs — `RESEARCH_PROMPT_ARCH` (architecture), `RESEARCH_PROMPT_EDGE` (edge cases), `RESEARCH_PROMPT_EXT` (external comparisons), `RESEARCH_PROMPT_SEC` (security) — followed by a 3-reviewer validation panel (1 Claude Code Reviewer subagent + 1 Codex + 1 Cursor). When Codex is unavailable for a research lane, the lane runs the same angle prompt under a Claude Agent-tool fallback. When an external is unavailable in the validation panel, a Claude Code Reviewer subagent replaces the slot, preserving 3 reviewers. All are ephemeral.
+The research agents in `/research` form the fixed-shape topology documented in the skill: Codex-first research lanes under angle-differentiated briefs — `RESEARCH_PROMPT_ARCH` (architecture), `RESEARCH_PROMPT_EDGE` (edge cases), `RESEARCH_PROMPT_EXT` (external comparisons), `RESEARCH_PROMPT_SEC` (security) — followed by the validation panel described in [review-agents.md](review-agents.md). When Codex is unavailable for a research lane, the lane runs the same angle prompt under a Claude Agent-tool fallback. When an external is unavailable in the validation panel, a Claude Code Reviewer subagent replaces the slot, preserving the panel shape. All are ephemeral.
 
 ## Context Isolation
 
