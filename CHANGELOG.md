@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.35] - 2026-05-06
+
+### Added
+
+- New `skills/shared/topology.tsv` projection layer + `scripts/generate-topology-docs.sh` generator (registered in `scripts/generators.tsv`, `Makefile` shard `test-harnesses-5`, `agent-lint.toml`, `docs/linting.md`) that emits `docs/topology.md` as the consumer-doc projection of runtime authorities. Each TSV row's `runtime_authority` path is validated as repo-tracked and contains the row's `value` literal; the generator rejects bare-numeric or too-short values, duplicate keys, duplicate anchors, CRLF line endings, and uses an ASCII record-separator (`\035`) intermediate so empty `composition` columns render correctly. New regression harness `scripts/test-generate-topology-docs.sh` (sibling contract `test-generate-topology-docs.md`) pins write/check round-trips, anchor rendering, drift detection, TSV grammar, runtime-authority validation, CRLF rejection, duplicate-key rejection, short-numeric-value rejection, and empty-composition rendering. Consumer docs (`README.md`, `docs/skills.md`, `docs/review-agents.md`, `SECURITY.md`) link to verbatim-key anchors in `docs/topology.md` instead of repeating drift-prone counts.
+
+### Changed
+
+- Phase-2 drift-prone-count cleanup (closes #1271, combines #1259 + #1261). Sub-task A extends PR #1262's prose-rewrite sweep into runtime/dev surface — `skills/design/references/sketch-launch.md`, `skills/design/references/flags.md`, `skills/design/references/plan-review.md`, and `skills/implement/references/conflict-resolution.md` carry summary-prose rewrites with grep-stable allowlist preservation for byte-pinned literals (e.g. `2+ YES threshold accepts a finding`, `All 4 keys are required`) and CI-grepped focus-area enums. `SECURITY.md:42` updated to reflect the current `/research` flag surface (only `--no-issue`).
+
 ## [15.12.34] - 2026-05-06
 
 ### Changed
