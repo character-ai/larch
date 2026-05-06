@@ -194,9 +194,9 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v6
-      - name: Regenerate agents/code-reviewer.md and check for drift
+      - name: Walk generators registry and check for drift
         run: |
-          bash scripts/generate-code-reviewer-agent.sh --check
+          bash scripts/check-generators.sh
       - name: Assert focus-area enum includes 'security' in canonical surfaces
         run: |
           set -euo pipefail
