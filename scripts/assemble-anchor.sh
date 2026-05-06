@@ -43,6 +43,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MARKERS_HELPER="$SCRIPT_DIR/anchor-section-markers.sh"
+PLUGIN_VERSION_HELPER="$SCRIPT_DIR/read-plugin-version.sh"
 
 if [ ! -f "$MARKERS_HELPER" ]; then
     echo "FAILED=true"
@@ -54,6 +55,15 @@ fi
 # shellcheck disable=SC1091
 source "$MARKERS_HELPER"
 
+PLUGIN_VERSION="unknown"
+if [ -x "$PLUGIN_VERSION_HELPER" ]; then
+    version_stdout="$("$PLUGIN_VERSION_HELPER" 2>/dev/null || true)"
+    if version_line="$(printf '%s\n' "$version_stdout" | grep -m 1 '^LARCH_PLUGIN_VERSION=' 2>/dev/null)"; then
+        PLUGIN_VERSION="${version_line#LARCH_PLUGIN_VERSION=}"
+        [ -n "$PLUGIN_VERSION" ] || PLUGIN_VERSION="unknown"
+    fi
+fi
+
 fail_usage() {
     echo "FAILED=true"
     echo "ERROR=usage: $1"
@@ -64,6 +74,33 @@ fail_io() {
     echo "FAILED=true"
     echo "ERROR=$1"
     exit 2
+}
+
+emit_run_statistics() {
+    fragment="$1"
+
+    if [ -f "$fragment" ] && grep -q '[^[:space:]]' "$fragment" 2>/dev/null; then
+        # Emit populated run-statistics content with trailing blank lines removed,
+        # then append the auto-captured plugin version as the final table row.
+        awk '
+            { lines[NR] = $0 }
+            END {
+                last = NR
+                while (last > 0 && lines[last] ~ /^[[:space:]]*$/) {
+                    last--
+                }
+                for (i = 1; i <= last; i++) {
+                    print lines[i]
+                }
+            }
+        ' "$fragment" || fail_io "failed to read fragment: $fragment"
+    else
+        printf '## Run Statistics\n\n'
+        printf '| Metric | Value |\n'
+        printf '|---|---|\n'
+    fi
+
+    printf '| larch plugin version | %s |\n' "$PLUGIN_VERSION"
 }
 
 SECTIONS_DIR=""
@@ -157,7 +194,9 @@ trap 'rm -f "$TMP_OUTPUT"' EXIT
     for slug in "${SECTION_MARKERS[@]}"; do
         fragment="$SECTIONS_DIR/$slug.md"
         printf '<!-- section:%s -->\n' "$slug"
-        if [ -f "$fragment" ]; then
+        if [ "$slug" = "run-statistics" ]; then
+            emit_run_statistics "$fragment"
+        elif [ -f "$fragment" ]; then
             # Fragment content emitted verbatim; caller owns compose-time sanitization.
             # cat preserves trailing-newline semantics as authored by the caller.
             # Fail closed on read error so a permission-denied fragment cannot

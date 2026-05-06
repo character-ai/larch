@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Assemble the anchor comment body from local per-section fragment files under a sections directory. Walks the canonical `SECTION_MARKERS` slug list (sourced from `anchor-section-markers.sh`), emits paired `<!-- section:<slug> -->` / `<!-- section-end:<slug> -->` markers wrapping each fragment's content (empty marker pairs when a fragment file is absent), prepends the first-line HTML anchor marker `<!-- larch:implement-anchor v1 issue=<N> -->`, and writes the result to `--output`.
+Assemble the anchor comment body from local per-section fragment files under a sections directory. Walks the canonical `SECTION_MARKERS` slug list (sourced from `anchor-section-markers.sh`), emits paired `<!-- section:<slug> -->` / `<!-- section-end:<slug> -->` markers wrapping each fragment's content (empty marker pairs when a fragment file is absent), prepends the first-line HTML anchor marker `<!-- larch:implement-anchor v1 issue=<N> -->`, injects the larch plugin version into the `run-statistics` section, and writes the result to `--output`.
 
 Umbrella #348 Phase 5 extracted this helper to eliminate prose-vs-shell drift across the multiple callsites that previously implemented the walk inline (SKILL.md Step 0.5 Branch 2/3 adoption-seed, Step 0.5 Branch 4 fresh-run first-remote-write, Steps 1/2/5/7a/8/9a.1/11 progressive upserts — Step 2 covers Q/A anchor refresh, and the rebase-rebump sub-procedure Step 6). Every anchor body creation and progressive upsert now routes through this one helper.
 
@@ -60,6 +60,8 @@ Output always begins with `<!-- larch:implement-anchor v1 issue=<N> -->\n`. `tra
 
 Missing fragment files emit only the open/close marker pair with no content between. This preserves the skeleton required by `tracking-issue-write.sh`'s per-section truncation algorithm (which locates interiors by marker-pair boundaries).
 
+Exception: the `run-statistics` section always receives a minimal Run Statistics table plus `| larch plugin version | <value> |` when its fragment is absent, zero-byte, or whitespace-only. When the `run-statistics` fragment is populated, the helper emits the fragment with trailing blank lines stripped and appends the same plugin-version row as the final table row. The value is read once per assembly from `scripts/read-plugin-version.sh`, which reads `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json` and falls back to `unknown` on any failure.
+
 ### Seed-only visible placeholder
 
 When every fragment is **absent, zero-byte, or whitespace-only** (the lenient "all empty" predicate), the assembled body carries one extra italic-markdown line between the first-line HTML marker and the first `<!-- section:plan-goals-test -->` open marker:
@@ -92,6 +94,7 @@ This helper performs pure text assembly of local files. The redaction pipeline l
 | File | Relationship |
 |---|---|
 | `scripts/anchor-section-markers.sh` | Single-source-of-truth for slug order (sourced). |
+| `scripts/read-plugin-version.sh` | Best-effort plugin-version reader for the auto-injected `run-statistics` row. |
 | `scripts/tracking-issue-write.sh` | Downstream publisher; receives the `--output` path via `upsert-anchor --body-file`. Truncation pass relies on the same SECTION_MARKERS ordering. |
 | `scripts/test-assemble-anchor.sh` | Regression harness — every behavioral change here must be mirrored in the harness. |
 | `skills/implement/SKILL.md` | Primary consumer for anchor-section accumulation. |
@@ -100,16 +103,18 @@ This helper performs pure text assembly of local files. The redaction pipeline l
 
 ## Test harness
 
-`scripts/test-assemble-anchor.sh` covers 14 assertion categories:
+`scripts/test-assemble-anchor.sh` covers 16 assertion categories:
 
-- **(a)** Empty sections directory: output has exactly 18 lines — `<!-- larch:implement-anchor v1 issue=<N> -->` on line 1, the seed-only visible placeholder line on line 2, and 8 pairs of empty marker tags on lines 3-18.
+- **(a)** Empty sections directory: output has exactly 23 lines — `<!-- larch:implement-anchor v1 issue=<N> -->` on line 1, the seed-only visible placeholder line on line 2, 7 empty marker pairs, and the `run-statistics` marker pair wrapping a minimal table plus plugin-version row.
 - **(a2)** Empty sections directory: the seed-only placeholder literal is present on line 2 (regression guard for issue #431).
 - **(a3)** Partial fragments (one slug populated): the placeholder is suppressed — only the all-empty seed case fires it.
 - **(a4)** All fragments contain only whitespace bytes (lenient predicate validation): the placeholder still fires.
 - **(a5)** Nonexistent `--sections-dir`: `ASSEMBLED=true` and the placeholder fires (the all-empty pre-pass treats a missing directory as all-empty).
+- **(a6)** Missing `CLAUDE_PLUGIN_ROOT` target: the auto-injected version row falls back to `unknown`.
 - **(b)** Partial fragments: output contains the populated content only where fragment files exist, empty marker pairs elsewhere, in `SECTION_MARKERS` order.
 - **(b2)** Newline-terminated fragment → exactly one newline before the close marker (regression guard for the `$(tail -c 1 ...)` command-substitution newline-stripping bug that inserted an extra blank line). Full output compared against a byte-exact expected fixture.
 - **(b3)** Fragment without a trailing newline → helper inserts one so the close marker stays on its own line.
+- **(b4)** Populated `run-statistics` fragment: trailing blank lines are stripped and the plugin-version row is appended immediately before the section close marker.
 - **(c)** Full fragments: all 8 slugs have populated content.
 - **(d)** Missing `anchor-section-markers.sh` helper: `FAILED=true` + `ERROR=missing helper: …` on stdout + exit 1.
 - **(e)** Invalid `--issue` value (non-integer): usage error with exit 1.
