@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.37] - 2026-05-06
+
+### Fixed
+
+- `/relevant-checks` no longer prints the misleading "all changes are deletions" message in `.claude/skills/relevant-checks/scripts/run-checks.sh` when `MODIFIED_FILES` consists only of paths rejected by the `[ -f ]` regular-file filter (deletions, directories, or other non-regular paths). The empty-`files[]` branch now prints `No existing regular files to pass to pre-commit.`, the zero-phase `ERROR:` line says `(no changes, or no regular files for pre-commit)`, and the surrounding comment block + `[ -f ]` filter-comment + `.claude/skills/relevant-checks/SKILL.md` Mindset/NEVER/taxonomy/How-it-works text + `.claude/skills/relevant-checks/scripts/run-checks.md` invariants line + `docs/linting.md`'s `/relevant-checks` bullet are all aligned with the broader `[ -f ]` semantics. Closes #1277.
+
 ## [15.12.36] - 2026-05-06
 
 ### Fixed

@@ -41,7 +41,7 @@ exit_with_phase_check() {
 
     if [ "$PHASES_RUN" -eq 0 ]; then
         echo ""
-        echo "ERROR: no validation phases ran — pre-commit had no eligible files (no changes, or all changes are deletions) and agent-lint was unavailable or skipped."
+        echo "ERROR: no validation phases ran — pre-commit had no eligible files (no changes, or no regular files for pre-commit) and agent-lint was unavailable or skipped."
         exit 2
     fi
 
@@ -82,8 +82,9 @@ if [ -z "$MODIFIED_FILES" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Build file array, filtering to files that exist on disk (deleted files from
-# branch diff would cause pre-commit to fail with file-not-found errors).
+# Build file array, filtering to existing regular files via [ -f ]. This drops
+# deleted paths (would cause pre-commit to fail with file-not-found errors),
+# directories (pre-commit expects file paths), and other non-regular paths.
 # Uses a portable while-read loop instead of mapfile for macOS Bash 3.2 compat.
 # ---------------------------------------------------------------------------
 files=()
@@ -94,13 +95,16 @@ while IFS= read -r f; do
 done <<< "$MODIFIED_FILES"
 
 # ---------------------------------------------------------------------------
-# If all changes are deletions (files[] empty but MODIFIED_FILES non-empty),
-# pre-commit has nothing to lint, but agent-lint is exactly what we want —
-# deletions are the most likely cause of structural regressions (deleted
-# referenced scripts, removed SKILL.md, etc.). Run agent-lint before exiting.
+# If files[] is empty but MODIFIED_FILES is non-empty, every modified path was
+# rejected by the [ -f ] regular-file filter — typically deletions, but also
+# directories or other non-regular-file path categories. Pre-commit has
+# nothing to lint, but agent-lint is exactly what we want: deletions are the
+# most likely cause of structural regressions (deleted referenced scripts,
+# removed SKILL.md, etc.), and directory-only changes still benefit from
+# repo-wide structural checks. Run agent-lint before exiting.
 # ---------------------------------------------------------------------------
 if [ ${#files[@]} -eq 0 ]; then
-    echo "No existing modified files to check (all changes are deletions)."
+    echo "No existing regular files to pass to pre-commit."
     run_post_checks
     exit_with_phase_check "$?"
 fi
