@@ -15,7 +15,7 @@ Invariants: the assertion list mirrors the `test-fixture.json` row-to-code-path 
 - Hardening/validation/security categorization (#4).
 - `[STALLED]` waste detection (#5 → W3 count of 1). #5's body also matches the Refactor/code clarity rule (`cleanup` keyword), so the breakdown shows `Refactor/code clarity: 1` — kept as-is because the W3 stalled count is asserted separately and the category is incidental.
 - Reviewer attribution parsing, vote-tally parsing, and the longest-first `codex`/`code` alternation (#7's body carries `- **Reviewer**: codex / generic` and `Vote tally: YES=2 NO=1 EXONERATE=0`; assertions confirm `codex: 1 findings` and the absence of `- code: 1 findings` / `- code / generic:`).
-- `load_issues` non-dict handling: a temp 20-element fixture (1 non-dict, 5% ratio) pins the stderr `WARN load_issues: skipping non-dict element at index 19` warning. A temp 10-element fixture (1 non-dict, 10% ratio) pins both the threshold abort (non-zero exit without `--lenient`) and the `--lenient` recovery (exit 0 + report renders past the threshold).
+- `load_issues` non-dict handling: a temp 20-element fixture (1 non-dict, exactly 5% — at the boundary) pins the stderr `WARN load_issues: skipping non-dict element at index 19` warning AND the strict-`>` threshold rule (the 5%-exact case must NOT abort, since `analyze.py` checks `skipped / total > 0.05`). A temp 10-element fixture (1 non-dict, 10% — above the boundary) pins both the threshold abort (non-zero exit without `--lenient`) and the `--lenient` recovery (exit 0 + report renders past the threshold).
 
 If `analyze.py` semantics change for any covered branch, update the fixture and assertions in the same PR.
 

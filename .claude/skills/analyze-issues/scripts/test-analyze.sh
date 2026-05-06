@@ -68,6 +68,7 @@ assert_contains "$out" "Test coverage: 1 (" "test coverage classification (#7 'T
 assert_contains "$out" "Other: 1 (" "other category for #8 'prefix handling tweak' (fix-in-prefix no longer aliases)"
 assert_contains "$out" "Documentation/contract drift: 2 (" "documentation category (#3 README+contract; #9 'documentation'; #10 'Docker' must NOT match 'doc' -> Documentation)"
 assert_contains "$out" "Hardening/validation/security" "hardening category"
+assert_contains "$out" "Refactor/code clarity: 1 (" "refactor category (#5 [STALLED]; cleanup keyword in body)"
 assert_contains "$out" "Auto-spawned share: 1/10" "auto-spawned share"
 
 assert_contains "$out" "W1 duplicate-titled issues opened within 7 days:" "duplicate heading"
@@ -136,9 +137,11 @@ assert_contains "$lenient_out" "## Executive Summary" "--lenient: report include
 # Static guard: the run-analysis.sh wrapper must forward --lenient into ANALYZE_ARGS
 # when LENIENT=1. Catches a regression that drops the append without an end-to-end test.
 RUN_ANALYSIS="$SCRIPT_DIR/run-analysis.sh"
-# shellcheck disable=SC2016 # the regex matches a literal $LENIENT in the source file; do not expand here.
-if grep -Eq '"\$LENIENT"\s*==\s*"1".*\bANALYZE_ARGS\+=\(--lenient\)' "$RUN_ANALYSIS" \
-   || awk '/LENIENT.*==.*1/{n=NR} n && NR<=n+3 && /ANALYZE_ARGS\+=\(--lenient\)/{found=1; exit} END{exit !found}' "$RUN_ANALYSIS"; then
+# Awk-based multiline scan: ERE `.*` does not span newlines, and the real layout
+# in run-analysis.sh has `if [[ "$LENIENT" == "1" ]]` and `ANALYZE_ARGS+=(--lenient)`
+# on adjacent lines. The awk pass remembers any line matching `LENIENT...==...1`
+# and asserts that `ANALYZE_ARGS+=(--lenient)` appears within the next 3 lines.
+if awk '/LENIENT.*==.*1/{n=NR} n && NR<=n+3 && /ANALYZE_ARGS\+=\(--lenient\)/{found=1; exit} END{exit !found}' "$RUN_ANALYSIS"; then
     PASS=$((PASS + 1))
     echo "  ok: run-analysis.sh forwards --lenient when LENIENT=1"
 else
