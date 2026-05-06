@@ -530,6 +530,32 @@ assert_contains "$CLOSE_STDERR" "WARNING: mark-false-positive stderr suppressed"
 assert_contains "$CLOSE_STDERR" "redactor exit=127" "[f15c] warning carries missing-redactor exit"
 assert_contains "$CLOSE_STDERR" "bytes discarded" "[f15c] warning carries byte count"
 
+# Stub redactor that exits 0 but writes nothing — covers the
+# redactor-success-with-empty-buffer branch added in /review round 5.
+EMPTY_REDACTOR_STUB="$TMPROOT/empty-redactor.sh"
+cat > "$EMPTY_REDACTOR_STUB" <<'STUB'
+#!/usr/bin/env bash
+# Drain stdin to force consumption of the input bytes, but write nothing
+# to stdout. Models the case where the input was entirely sensitive content
+# the scrubber consumed.
+cat >/dev/null
+exit 0
+STUB
+chmod +x "$EMPTY_REDACTOR_STUB"
+
+echo ""
+echo "=== 15d: marker stderr fully-redacted (redactor exit 0 + empty buffer) emits INFO not WARNING ==="
+export LARCH_TEST_TRACKING_WRITE_PATH="$MARKER_STDERR_STUB"
+export LARCH_TEST_REDACTOR_PATH="$EMPTY_REDACTOR_STUB"
+STUB_TITLE_OVERRIDE="Plain title" run_case "f15d" "OPEN" "0" "0" --issue 42 --comment "Closing: false-positive" --mark-false-positive-if-keyword
+unset LARCH_TEST_TRACKING_WRITE_PATH LARCH_TEST_REDACTOR_PATH
+assert_eq "[f15d] exit code" 0 "$RC"
+assert_eq "[f15d] stdout byte-stable" "CLOSED=true" "$CLOSE_STDOUT"
+assert_not_contains "$CLOSE_STDERR" "ghp_AAAA1234567890abcdefghijklmnop" "[f15d] marker stderr token suppressed"
+assert_contains "$CLOSE_STDERR" "INFO: mark-false-positive stderr fully redacted" "[f15d] INFO clean-redaction line present"
+assert_contains "$CLOSE_STDERR" "bytes consumed" "[f15d] INFO carries byte count"
+assert_not_contains "$CLOSE_STDERR" "WARNING: mark-false-positive stderr suppressed" "[f15d] no failure-shaped warning on clean redaction"
+
 # --- Fixture 16: Non-repo cwd invocation succeeds -------------------------
 echo ""
 echo "=== 16: false-positive flag works from non-repo cwd ==="

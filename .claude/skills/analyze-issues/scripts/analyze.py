@@ -81,9 +81,10 @@ CATEGORY_PATTERNS: Sequence[Tuple[str, "re.Pattern[str]"]] = tuple(
 )
 
 # WHY: load_issues fails the load when more than 5% of input list elements
-# are unusable (non-dict elements OR dicts with missing/non-numeric `number`).
-# --lenient suppresses only the threshold abort; per-element stderr WARN
-# lines are emitted regardless.
+# are unusable: non-dict elements, dicts with missing/non-numeric `number`,
+# or dicts whose parsed `number` collides with a previously-retained row
+# (duplicate-number skip — first-occurrence wins). --lenient suppresses only
+# the threshold abort; per-element stderr WARN lines are emitted regardless.
 LOAD_ISSUES_SKIP_THRESHOLD = 0.05
 LOAD_ISSUES_REPR_CAP = 60
 _DIGIT_RE = re.compile(r"[0-9]+")
@@ -664,9 +665,10 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
         "--lenient",
         action="store_true",
         help=(
-            "Suppress the >5%% threshold abort in load_issues for non-dict or "
-            "malformed-number elements. Per-element stderr warnings are still "
-            "emitted; this flag only disables the threshold check."
+            "Suppress the >5%% threshold abort in load_issues for non-dict, "
+            "malformed-number, or duplicate-number elements. Per-element "
+            "stderr warnings are still emitted; this flag only disables the "
+            "threshold check."
         ),
     )
     return parser.parse_args(list(argv) if argv is not None else None)

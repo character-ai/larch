@@ -441,6 +441,12 @@ _run_false_positive_marker() {
         _stderr_size="${_stderr_size:-0}"
         if [ "$_redactor_exit" -eq 0 ] && [ -s "$mark_redacted_tmp" ]; then
             cat "$mark_redacted_tmp" >&2
+        elif [ "$_redactor_exit" -eq 0 ]; then
+            # Redactor ran successfully but produced no output — the input
+            # was entirely sensitive content the scrubber consumed. Emit a
+            # neutral INFO line so operators don't interpret a clean redaction
+            # as a failure (round-5 review FINDING_1).
+            echo "INFO: mark-false-positive stderr fully redacted (${_stderr_size} bytes consumed, no surviving output)" >&2
         else
             echo "WARNING: mark-false-positive stderr suppressed: redactor exit=${_redactor_exit} (${_stderr_size} bytes discarded)" >&2
         fi

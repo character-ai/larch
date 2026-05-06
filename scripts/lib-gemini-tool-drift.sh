@@ -150,7 +150,11 @@ discover_gemini_tools_raw() {
 gemini_tool_list_contains() {
     local list="$1"
     local needle="$2"
-    printf '%s\n' "$list" | grep -qx "$needle"
+    # Use -F (literal) so raw tool names containing regex metacharacters
+    # (e.g. `.` in `write.file` or `fileWrite` after raw-stream propagation)
+    # do not over-match snake_case deny-list entries (`write_file`, `file_write`).
+    # `--` guards against needles that begin with `-`.
+    printf '%s\n' "$list" | grep -Fqx -- "$needle"
 }
 
 gemini_tool_is_write_style() {
@@ -172,14 +176,20 @@ gemini_tool_tokenize_for_write_style() {
 }
 
 write_gemini_drift_artifact() {
-    local artifact="$1" deny_list="$2" expected="$3" observed="$4" unknowns="$5" fixture_trusted="$6" live_catalog="$7" write_style_uncovered="$8"
+    local artifact="$1" deny_list="$2" expected="$3" observed="$4" unknowns="$5" fixture_trusted="$6" live_catalog="$7" write_style_uncovered="$8" warning_unknowns="$9"
     local tmp
     tmp=$(mktemp "${artifact}.tmp.XXXXXX") || return 1
+    # `status=` is driven by the union of raw warning_unknowns + write_style_uncovered
+    # (NOT by the strict-normalized `unknowns` set used for the `[unknown]` block).
+    # Strict normalization drops hyphenated / dotted / camelCase tool names that
+    # raw-discovery and write-style classification still see, so a status check
+    # off `unknowns` alone can claim "no drift" while stderr emits warnings —
+    # see issue #1317 review round 4 finding 1.
     {
         echo "==GEMINI-TOOL-DRIFT=="
         if [[ -z "$live_catalog" ]]; then
             echo "status=discovery unavailable; fixture-only check passed"
-        elif [[ -z "$unknowns" && -z "$write_style_uncovered" ]]; then
+        elif [[ -z "$warning_unknowns" && -z "$write_style_uncovered" ]]; then
             echo "status=no drift"
         else
             echo "status=drift detected"
@@ -254,6 +264,9 @@ check_gemini_tool_drift() {
     unknowns=$(comm -23 <(printf '%s\n' "$observed") <(printf '%s\n' "$expected") | grep -v '^$' || true)
 
     warning_unknowns=""
+    # Walk a deduplicated raw stream so duplicate "unknown tool" warnings
+    # cannot be emitted when the same name appears more than once in
+    # discovery output (round-5 review FINDING_3).
     while IFS= read -r tool; do
         [[ -z "$tool" ]] && continue
         strict_tool=$(printf '%s\n' "$tool" | normalize_gemini_tools_from_raw)
@@ -261,7 +274,7 @@ check_gemini_tool_drift() {
             warning_unknowns="${warning_unknowns}${warning_unknowns:+
 }$tool"
         fi
-    done <<< "$live_catalog_raw"
+    done <<< "$(printf '%s\n' "$live_catalog_raw" | sort -u | grep -v '^$' || true)"
 
     write_style_uncovered=""
     while IFS= read -r tool; do
@@ -272,7 +285,7 @@ check_gemini_tool_drift() {
         fi
     done <<< "$(printf '%s\n%s\n' "$live_catalog_raw" "$fixture_lines" | sort -u)"
 
-    if ! write_gemini_drift_artifact "$artifact" "$deny_list" "$expected" "$observed" "$unknowns" "$fixture_trusted" "$live_catalog_raw" "$write_style_uncovered"; then
+    if ! write_gemini_drift_artifact "$artifact" "$deny_list" "$expected" "$observed" "$unknowns" "$fixture_trusted" "$live_catalog_raw" "$write_style_uncovered" "$warning_unknowns"; then
         GEMINI_HEALTHY=false
         set_probe_error gemini "gemini-tool-drift: failed to write artifact dir: $(sanitize_gemini_probe_text "$artifact_dir")"
         return
