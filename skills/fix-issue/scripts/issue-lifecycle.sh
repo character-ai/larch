@@ -421,8 +421,19 @@ _run_false_positive_marker() {
         err_value=$(printf '%s\n' "$mark_out" | grep -oE '^ERROR=.*' | head -1 | sed 's/^ERROR=//')
         echo "WARNING: mark-false-positive failed for issue #$issue: ${err_value:-unknown}" >&2
     fi
+    # SECURITY.md (Phase 1 helper paragraph) declares "suppresses raw marker
+    # stderr and surfaces only the redacted ERROR= value in a stderr WARNING:
+    # line". Pipe captured raw stderr through the secrets scrubber before
+    # re-emission so unredacted token-bearing gh output (which can leak via
+    # 4xx response bodies) does not bypass the scrubber on this surface
+    # (post-review).
     if [ -s "$mark_stderr" ]; then
-        cat "$mark_stderr" >&2
+        local redactor="$SCRIPT_DIR/../../../scripts/redact-secrets.sh"
+        if [ -x "$redactor" ]; then
+            "$redactor" < "$mark_stderr" >&2 || cat "$mark_stderr" >&2
+        else
+            cat "$mark_stderr" >&2
+        fi
     fi
     rm -f "$mark_stderr"
 }

@@ -130,6 +130,26 @@ fi
 PROBE_ARGV_LOG="$TMPDIR/gemini-probe-argv.log"
 cat > "$STUB_BIN/gemini" <<STUB
 #!/usr/bin/env bash
+if [[ "\${1:-}" == "/tools" ]]; then
+  case "\${GEMINI_TOOLS_MODE:-fixture}" in
+    fixture)
+      printf '%s\n' delete_file edit edit_file read_file read_many_files replace run_shell_command search_file_content web_fetch web_search write_file
+      ;;
+    benign)
+      printf '%s\n' delete_file edit edit_file read_file read_many_files replace run_shell_command search_file_content tool_search web_fetch web_search write_file
+      ;;
+    write)
+      printf '%s\n' delete_file edit edit_file read_file read_many_files replace run_shell_command search_file_content super_write_v2 web_fetch web_search write_file
+      ;;
+    empty)
+      :
+      ;;
+    hung)
+      sleep 30
+      ;;
+  esac
+  exit 0
+fi
 # Record argv to \$PROBE_ARGV_LOG (one element per line, --- between invocations)
 # so the harness can pin the probe approval-mode value.
 {
@@ -147,15 +167,52 @@ STUB
 chmod +x "$STUB_BIN/gemini"
 
 run_gemini_probe() {
+    local artifact_dir="${1:-$TMPDIR/gemini-artifacts-default}"
+    shift || true
     PATH="$STUB_BIN:$PATH" LARCH_TEST_PROBE_SLEEP_SECONDS=0 \
-      "$REPO_ROOT/scripts/check-reviewers.sh" --probe --include-gemini --skip-codex-probe --skip-cursor-probe
+      "$REPO_ROOT/scripts/check-reviewers.sh" --probe --include-gemini --skip-codex-probe --skip-cursor-probe --artifact-dir "$artifact_dir" "$@"
 }
 
-probe_output=$(GEMINI_STUB_MODE=ok run_gemini_probe)
+write_fixture() {
+    local path="$1"
+    shift
+    local body="$path.body"
+    printf '%s\n' "$@" > "$body"
+    local checksum
+    if command -v shasum >/dev/null 2>&1; then
+        checksum=$(shasum -a 256 < "$body" | awk '{print $1}')
+    else
+        checksum=$(sha256sum < "$body" | awk '{print $1}')
+    fi
+    {
+        echo "# checksum: $checksum"
+        echo "# Refreshed: test fixture"
+        cat "$body"
+    } > "$path"
+}
+
+write_bad_fixture() {
+    local path="$1"
+    shift
+    {
+        echo "# checksum: bad"
+        echo "# Refreshed: test fixture"
+        printf '%s\n' "$@"
+    } > "$path"
+}
+
+probe_output=$(GEMINI_STUB_MODE=ok run_gemini_probe "$TMPDIR/gemini-artifacts-ok")
 grep -q '^GEMINI_AVAILABLE=true$' <<< "$probe_output" \
   || fail "Expected GEMINI_AVAILABLE=true with stub gemini"
 grep -q '^GEMINI_HEALTHY=true$' <<< "$probe_output" \
   || fail "Expected GEMINI_HEALTHY=true for JSON .response OK"
+grep -q '^GEMINI_TOOL_DRIFT_ARTIFACT=' <<< "$probe_output" \
+  || fail "Expected drift artifact key for clean Gemini probe"
+grep -q 'status=no drift' "$TMPDIR/gemini-artifacts-ok/gemini-tool-drift.txt" \
+  || fail "Expected clean drift artifact to record no drift"
+if grep -q '^GEMINI_TOOL_DRIFT_WARNING=' <<< "$probe_output"; then
+  fail "Expected no drift warning for clean known catalog"
+fi
 
 # Pin probe approval-mode to plan (least privilege). The reviewer launcher
 # uses --approval-mode yolo (test-launch-gemini-review.sh pins that). Probe
@@ -165,17 +222,70 @@ PROBE_APPROVAL_MODE_VALUE=$(awk 'prev=="--approval-mode"{print; exit} {prev=$0}'
 [[ "$PROBE_APPROVAL_MODE_VALUE" == "plan" ]] \
   || fail "Expected gemini probe argv to include --approval-mode plan, got '$PROBE_APPROVAL_MODE_VALUE'"
 
-probe_output=$(GEMINI_STUB_MODE=error run_gemini_probe)
+probe_output=$(GEMINI_STUB_MODE=error run_gemini_probe "$TMPDIR/gemini-artifacts-error")
 grep -q '^GEMINI_HEALTHY=false$' <<< "$probe_output" \
   || fail "Expected GEMINI_HEALTHY=false for JSON .error"
 grep -q '^GEMINI_PROBE_ERROR=.*Gemini error' <<< "$probe_output" \
   || fail "Expected GEMINI_PROBE_ERROR for JSON .error"
 
-probe_output=$(LARCH_TEST_FORCE_MISSING_JQ=true GEMINI_STUB_MODE=ok run_gemini_probe)
+probe_output=$(LARCH_TEST_FORCE_MISSING_JQ=true GEMINI_STUB_MODE=ok run_gemini_probe "$TMPDIR/gemini-artifacts-missing-jq")
 grep -q '^GEMINI_HEALTHY=false$' <<< "$probe_output" \
   || fail "Expected GEMINI_HEALTHY=false when jq is missing"
 grep -q '^GEMINI_PROBE_ERROR=MISSING_JQ' <<< "$probe_output" \
   || fail "Expected MISSING_JQ diagnostic when jq is missing"
+
+probe_output=$(GEMINI_TOOLS_MODE=benign GEMINI_STUB_MODE=ok run_gemini_probe "$TMPDIR/gemini-artifacts-benign")
+grep -q '^GEMINI_HEALTHY=true$' <<< "$probe_output" \
+  || fail "Expected GEMINI_HEALTHY=true for benign unknown tool"
+grep -q "^GEMINI_TOOL_DRIFT_WARNING=unknown tool 'tool_search' not in deny list$" <<< "$probe_output" \
+  || fail "Expected drift warning for benign unknown tool"
+
+probe_output=$(GEMINI_TOOLS_MODE=write GEMINI_STUB_MODE=ok run_gemini_probe "$TMPDIR/gemini-artifacts-write")
+grep -q '^GEMINI_HEALTHY=false$' <<< "$probe_output" \
+  || fail "Expected GEMINI_HEALTHY=false for unknown write-style tool"
+grep -q '^GEMINI_PROBE_ERROR=.*write-style tool(s) \[super_write_v2\] not in deny list' <<< "$probe_output" \
+  || fail "Expected write-style drift probe error"
+
+probe_output=$(GEMINI_TOOLS_MODE=empty GEMINI_STUB_MODE=ok run_gemini_probe "$TMPDIR/gemini-artifacts-empty")
+grep -q '^GEMINI_HEALTHY=true$' <<< "$probe_output" \
+  || fail "Expected GEMINI_HEALTHY=true when live discovery is unavailable"
+grep -q 'status=discovery unavailable; fixture-only check passed' "$TMPDIR/gemini-artifacts-empty/gemini-tool-drift.txt" \
+  || fail "Expected fixture-only artifact when live discovery is unavailable"
+
+MALFORMED_POLICY="$TMPDIR/malformed-policy.toml"
+printf '%s\n' '[[rule]]' 'toolName = ["read_file"]' > "$MALFORMED_POLICY"
+probe_output=$(LARCH_TEST_GEMINI_POLICY_PATH="$MALFORMED_POLICY" GEMINI_STUB_MODE=ok run_gemini_probe "$TMPDIR/gemini-artifacts-policy-fail")
+grep -q '^GEMINI_HEALTHY=false$' <<< "$probe_output" \
+  || fail "Expected GEMINI_HEALTHY=false when policy parser sanity fails"
+grep -q '^GEMINI_PROBE_ERROR=.*policy parser produced unexpected output' <<< "$probe_output" \
+  || fail "Expected policy parser failure diagnostic"
+
+BAD_FIXTURE="$TMPDIR/bad-fixture.txt"
+write_bad_fixture "$BAD_FIXTURE" delete_file edit edit_file read_file replace write_file
+probe_output=$(LARCH_TEST_GEMINI_FIXTURE_PATH="$BAD_FIXTURE" GEMINI_TOOLS_MODE=empty GEMINI_STUB_MODE=ok run_gemini_probe "$TMPDIR/gemini-artifacts-bad-fixture")
+grep -q '^GEMINI_HEALTHY=true$' <<< "$probe_output" \
+  || fail "Expected GEMINI_HEALTHY=true for checksum mismatch with deny-list-only fallback"
+grep -q '^GEMINI_TOOL_DRIFT_WARNING=fixture checksum mismatch - fixture untrusted$' <<< "$probe_output" \
+  || fail "Expected fixture checksum mismatch warning"
+
+UNDENIED_FIXTURE="$TMPDIR/undenied-write-fixture.txt"
+write_fixture "$UNDENIED_FIXTURE" delete_file edit edit_file read_file read_many_files replace run_shell_command search_file_content super_create_v2 web_fetch web_search write_file
+probe_output=$(LARCH_TEST_GEMINI_FIXTURE_PATH="$UNDENIED_FIXTURE" GEMINI_TOOLS_MODE=empty GEMINI_STUB_MODE=ok run_gemini_probe "$TMPDIR/gemini-artifacts-undenied-fixture")
+grep -q '^GEMINI_HEALTHY=false$' <<< "$probe_output" \
+  || fail "Expected GEMINI_HEALTHY=false for fixture-known write-style tool missing from deny list"
+grep -q '^GEMINI_PROBE_ERROR=.*super_create_v2' <<< "$probe_output" \
+  || fail "Expected fixture write-style drift diagnostic"
+
+SECONDS=0
+probe_output=$(GEMINI_TOOLS_MODE=hung GEMINI_STUB_MODE=ok run_gemini_probe "$TMPDIR/gemini-artifacts-hung")
+hung_elapsed=$SECONDS
+grep -q '^GEMINI_HEALTHY=true$' <<< "$probe_output" \
+  || fail "Expected GEMINI_HEALTHY=true when hung discovery falls back to fixture"
+grep -q 'status=discovery unavailable; fixture-only check passed' "$TMPDIR/gemini-artifacts-hung/gemini-tool-drift.txt" \
+  || fail "Expected fixture fallback artifact for hung discovery"
+if (( hung_elapsed > 10 )); then
+  fail "Expected hung discovery to return within 10s, took ${hung_elapsed}s"
+fi
 
 if [[ "$FAIL" -eq 1 ]]; then
     echo "FAIL: test-check-reviewers.sh — some probe acceptance tests failed" >&2

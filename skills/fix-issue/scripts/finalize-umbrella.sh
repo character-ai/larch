@@ -194,10 +194,29 @@ cmd_finalize() {
             fi
             ;;
     esac
-    local marker_hits
-    marker_hits=$(gh api --paginate --slurp "repos/${REPO}/issues/${issue}/comments" 2>/dev/null \
-        | jq -r --arg marker "$MARKER" 'add // [] | map(select(.body | tostring | contains($marker))) | length') || marker_hits=0
+    # marker_hits failure modes are distinguishable: gh API failure (network,
+    # auth, rate limit) returns non-zero from gh and we conservatively assume
+    # the marker MIGHT be present (skip comment-post on retry to avoid
+    # double-comment); jq parse failure or empty stream returns 0 cleanly.
+    # Pre-fix collapsed both into 0, which would let a probe failure cause a
+    # second closing comment to be posted on retry (post-review).
+    local marker_hits marker_probe_failed=false
+    local marker_api_out marker_api_rc=0
+    set +e
+    marker_api_out=$(gh api --paginate --slurp "repos/${REPO}/issues/${issue}/comments" 2>/dev/null)
+    marker_api_rc=$?
+    set -e
+    if [[ "$marker_api_rc" -ne 0 ]]; then
+        marker_probe_failed=true
+        marker_hits=0
+    else
+        marker_hits=$(printf '%s' "$marker_api_out" | jq -r --arg marker "$MARKER" 'add // [] | map(select(.body | tostring | contains($marker))) | length' 2>/dev/null) || marker_hits=0
+    fi
     if [[ "${marker_hits:-0}" -gt 0 ]]; then
+        marker_present=true
+    elif [[ "$marker_probe_failed" == "true" ]]; then
+        # Conservative: skip the comment-post step on retry to avoid
+        # double-comment if the marker is actually present but unreadable.
         marker_present=true
     fi
 
@@ -211,7 +230,7 @@ cmd_finalize() {
         # succeeded and the title is in the desired terminal state.
         renamed="false"
     else
-        rename_out=$("$RENAME_SCRIPT" rename --issue "$issue" --state "$rename_state" --round-trip "$round_trip" 2>&1) || rename_exit=$?
+        rename_out=$("$RENAME_SCRIPT" rename --issue "$issue" --state "$rename_state" --round-trip "$round_trip" --repo "$REPO" 2>&1) || rename_exit=$?
         renamed=$(echo "$rename_out" | awk -F= '/^RENAMED=/ { v=$2 } END { print v }')
         local rename_failed
         rename_failed=$(echo "$rename_out" | awk -F= '/^FAILED=/ { v=$2 } END { print v }')

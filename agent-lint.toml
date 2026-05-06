@@ -108,6 +108,10 @@ suppress = [
 # (sibling contract), matching the same Makefile-only pattern as the other
 # test-* harnesses above.
 #
+# scripts/lib-gemini-tool-drift.sh is a sourced-only shell library (no shebang,
+# not invokable directly). It is referenced from scripts/check-reviewers.sh via
+# a `source` directive only, which agent-lint does not follow.
+#
 # scripts/test-lint-skill-invocations.sh is the regression harness for
 # scripts/lint-skill-invocations.py (the skill-invocation documentation lint).
 # The lint script itself IS structurally referenced from .pre-commit-config.yaml
@@ -425,6 +429,7 @@ exclude = [
   "scripts/test-post-scaffold-hints.sh",
   "skills/create-skill/scripts/test-render-skill-md.sh",
   "scripts/lib-count-commits.sh",
+  "scripts/lib-gemini-tool-drift.sh",
   # scripts/external-tool-registry.sh is a sourced-only shell library (no
   # shebang, not invokable directly). It is referenced from shell consumers via
   # source directives only, which agent-lint does not follow.
@@ -772,6 +777,8 @@ exclude = [
   "scripts/test-launch-gemini-review.md",
   "scripts/test-wait-for-reviewers.md",
   "scripts/lib-validate-meta-path.md",
+  "scripts/lib-gemini-tool-drift.md",
+  "scripts/gemini-known-tools.md",
   "scripts/test-run-external-agent.md",
   "scripts/test-run-external-agent-args.md",
   "scripts/test-collect-agent-retry.md",

@@ -329,7 +329,22 @@ rename_issue() {
     if [ -n "$IMPLEMENT_TMPDIR" ] && is_tmp_path "$IMPLEMENT_TMPDIR" && [ -d "$IMPLEMENT_TMPDIR" ]; then
         body_tmp="$IMPLEMENT_TMPDIR/round-trip-input-issue-body-step18-${issue}.txt"
     else
-        body_tmp=$(mktemp)
+        # set -uo pipefail (no -e) here, so an mktemp failure (full disk,
+        # bad TMPDIR) would otherwise leave body_tmp empty and let the
+        # later printf > "$body_tmp" write to "" silently. Guard explicitly
+        # and skip detection on failure (post-review).
+        body_tmp=$(mktemp 2>/dev/null) || body_tmp=""
+        if [ -z "$body_tmp" ] || [ ! -f "$body_tmp" ]; then
+            warn_line "Step 18: round-trip detection skipped: mktemp failed"
+            out=$("$SCRIPT_DIR/tracking-issue-write.sh" rename --issue "$issue" --state "$state" --round-trip "$round_trip" ${repo:+--repo "$repo"})
+            rc=$?
+            failed=$(kv_value FAILED "$out")
+            if [ "$rc" -ne 0 ] || [ "$failed" = "true" ]; then
+                warn_line "$(printf '**⚠ 18: tracking-issue rename to %s failed. Continuing.**' "$label")"
+                return 1
+            fi
+            return 0
+        fi
     fi
     # Build gh args; pass --repo when available so the body+title fetch
     # targets the same issue scope as the rename call below (FINDING_F2).
@@ -376,7 +391,11 @@ rename_issue() {
     fi
     rm -f "$body_tmp" 2>/dev/null || true
     set +e
-    out=$("$SCRIPT_DIR/tracking-issue-write.sh" rename --issue "$issue" --state "$state" --round-trip "$round_trip")
+    if [ -n "$repo" ]; then
+        out=$("$SCRIPT_DIR/tracking-issue-write.sh" rename --issue "$issue" --state "$state" --round-trip "$round_trip" --repo "$repo")
+    else
+        out=$("$SCRIPT_DIR/tracking-issue-write.sh" rename --issue "$issue" --state "$state" --round-trip "$round_trip")
+    fi
     rc=$?
     set -e
     failed=$(kv_value FAILED "$out")

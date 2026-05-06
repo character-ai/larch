@@ -4,7 +4,7 @@ Regression test for `check-reviewers.sh` probe acceptance logic. Tests the case-
 
 ## What it tests
 
-Simulates the normalization pipeline (`tr -d '[:space:]' | tr '[:upper:]' '[:lower:]'`) and verifies healthy/unhealthy classification for representative fixture replies. It also stubs `codex` / `cursor` with sleeping binaries for the wait-preflight infrastructure-error case and stubs `gemini` on PATH to run `check-reviewers.sh --probe --include-gemini` for JSON `.response` extraction, JSON `.error` failure, and the `MISSING_JQ` diagnostic path. It does NOT launch real Codex/Cursor probes.
+Simulates the normalization pipeline (`tr -d '[:space:]' | tr '[:upper:]' '[:lower:]'`) and verifies healthy/unhealthy classification for representative fixture replies. It also stubs `codex` / `cursor` with sleeping binaries for the wait-preflight infrastructure-error case and stubs `gemini` on PATH to run `check-reviewers.sh --probe --include-gemini` for JSON `.response` extraction, JSON `.error` failure, the `MISSING_JQ` diagnostic path, and Gemini tool-catalog drift classification. It does NOT launch real Codex/Cursor probes.
 
 ## Fixture coverage
 
@@ -12,6 +12,7 @@ Simulates the normalization pipeline (`tr -d '[:space:]' | tr '[:upper:]' '[:low
 - **Negative** (should be unhealthy): empty, `token`, `broken`, `NotOK`, `Sure OK`, `wok`, `okay`, `OK.`, auth errors, thinking-prefix responses
 - **Wait infrastructure**: invalid `WAIT_FOR_REVIEWERS_POLL_INTERVAL=00` emits `WAIT_INFRA_ERROR`, preserves available tools as `*_HEALTHY=true`, skips retry attempt 2, and launches no sleeping probe wrapper
 - **Gemini integration**: stubbed `{"response":"OK"}` succeeds; stubbed `{"error":"auth failed"}` fails; forced missing-`jq` fails closed.
+- **Gemini drift alarm**: clean known catalog, benign unknown warning, write-style unknown health flip, unavailable discovery fixture fallback, policy parser failure, fixture checksum mismatch, fixture-known write-style tool missing from the deny list, and hung `/tools` discovery timeout.
 
 ## Wiring
 

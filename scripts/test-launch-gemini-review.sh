@@ -109,8 +109,13 @@ if grep -q '[{}]' "$OUTPUT"; then
 fi
 
 ERROR_OUTPUT="$TMPDIR/gemini-error.txt"
+set +e
 PATH="$STUB_BIN:$PATH" GEMINI_STUB_MODE=error \
   "$REPO_ROOT/scripts/launch-gemini-review.sh" --output "$ERROR_OUTPUT" --timeout 1800 --prompt "test"
+ERROR_CODE=$?
+set -e
+[[ "$ERROR_CODE" -eq 1 ]] \
+  || fail "Expected launcher exit 1 on Gemini .error, got $ERROR_CODE"
 [[ ! -s "$ERROR_OUTPUT" ]] \
   || fail "Expected empty output on Gemini .error"
 grep -q '^1$' "${ERROR_OUTPUT}.done" \
@@ -119,8 +124,13 @@ grep -q '^1$' "${ERROR_OUTPUT}.done" \
   || fail "Expected diagnostic on Gemini .error"
 
 EMPTY_OUTPUT="$TMPDIR/gemini-empty.txt"
+set +e
 PATH="$STUB_BIN:$PATH" GEMINI_STUB_MODE=empty \
   "$REPO_ROOT/scripts/launch-gemini-review.sh" --output "$EMPTY_OUTPUT" --timeout 1800 --prompt "test"
+EMPTY_CODE=$?
+set -e
+[[ "$EMPTY_CODE" -eq 1 ]] \
+  || fail "Expected launcher exit 1 on empty Gemini .response, got $EMPTY_CODE"
 [[ ! -s "$EMPTY_OUTPUT" ]] \
   || fail "Expected empty main output when Gemini .response is empty"
 grep -q '^1$' "${EMPTY_OUTPUT}.done" \
@@ -131,8 +141,13 @@ grep -q -i 'empty' "${EMPTY_OUTPUT}.diag" \
   || fail "Expected diag to mention empty response"
 
 MISSING_JQ_OUTPUT="$TMPDIR/gemini-missing-jq.txt"
+set +e
 PATH="$STUB_BIN:$PATH" LARCH_TEST_FORCE_MISSING_JQ=true \
   "$REPO_ROOT/scripts/launch-gemini-review.sh" --output "$MISSING_JQ_OUTPUT" --timeout 1800 --prompt "test"
+MISSING_JQ_CODE=$?
+set -e
+[[ "$MISSING_JQ_CODE" -eq 127 ]] \
+  || fail "Expected launcher exit 127 when jq is missing, got $MISSING_JQ_CODE"
 [[ ! -s "$MISSING_JQ_OUTPUT" ]] \
   || fail "Expected empty output when jq is missing"
 grep -q '^127$' "${MISSING_JQ_OUTPUT}.done" \

@@ -8,9 +8,11 @@
 # Tool-name stability across gemini-cli versions is not officially
 # guaranteed. The deny list errs broad. If a future gemini-cli renames a
 # write tool or introduces a new one not on this list, the file-write
-# block silently no-ops. The companion test harness pins the launcher
-# argv shape but does not exercise live gemini behavior. See #1234
-# Caveats and the OOS follow-up for a tool-name-drift alarm.
+# block silently no-ops. The health probe's tool-name drift alarm compares
+# this deny list with a known catalog fixture and best-effort live discovery.
+# The companion launcher test harness pins argv shape but does not exercise
+# live gemini behavior. Keep the single-line toolName array shape: the drift
+# parser treats this exact shape as its v1 contract.
 #
 # --admin-policy is documented as "OS-specific system directories" in
 # gemini-cli, but `gemini --help` advertises it as a normal CLI flag
