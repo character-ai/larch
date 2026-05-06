@@ -292,6 +292,34 @@ assert_case "q (symlink not followed)" 0 "$stderr_file" "$rc"
 rm -f "$stderr_file"
 rm -rf "$external_dir"
 
+# --- Case s: untracked non-ignored markdown is scanned (git worktree) -----
+# Regression for the original `git ls-files '*.md'` (tracked-only) gap: with
+# `pass_filenames: false` + `always_run: true`, an untracked non-ignored .md
+# would otherwise pass cleanly until staged. The fix is `git ls-files
+# --cached --others --exclude-standard`, which includes untracked-non-ignored
+# paths while still respecting .gitignore.
+reset_tree
+git -C "$TMPROOT" init >/dev/null 2>&1
+printf '.agents/\n' >"$TMPROOT/.gitignore"
+git -C "$TMPROOT" add .gitignore >/dev/null 2>&1
+write_md "$TMPROOT/docs/untracked.md" <<'EOF'
+5 reviewers
+EOF
+write_md "$TMPROOT/.agents/ignored.md" <<'EOF'
+5 reviewers
+EOF
+stderr_file=$(mktemp)
+rc=$(run_lint "$stderr_file")
+assert_case "s (untracked non-ignored scanned)" 1 "$stderr_file" "$rc" "docs/untracked.md:1:"
+if grep -Fq ".agents/ignored.md" "$stderr_file"; then
+    echo "FAIL [s (untracked non-ignored scanned)]: scanned gitignored .agents file" >&2
+    FAIL=$((FAIL + 1))
+else
+    PASS=$((PASS + 1))
+    echo "PASS [s (untracked .agents still ignored)]"
+fi
+rm -f "$stderr_file"
+
 # --- Case r: positional arguments rejected --------------------------------
 reset_tree
 stderr_file=$(mktemp)

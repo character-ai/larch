@@ -53,7 +53,18 @@ def iter_markdown_files(root: Path) -> list[Path]:
     if is_git_worktree(root):
         try:
             result = subprocess.run(
-                ["git", "-C", str(root), "ls-files", "-z", "--", "*.md"],
+                [
+                    "git",
+                    "-C",
+                    str(root),
+                    "ls-files",
+                    "--cached",
+                    "--others",
+                    "--exclude-standard",
+                    "-z",
+                    "--",
+                    "*.md",
+                ],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 check=True,
@@ -78,7 +89,7 @@ def iter_markdown_files(root: Path) -> list[Path]:
             if path.is_symlink():
                 continue
             files.append(path)
-    return files
+    return sorted(files)
 
 
 def lint_file(path: Path, root: Path) -> list[str]:
