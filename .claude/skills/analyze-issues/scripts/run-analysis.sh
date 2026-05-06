@@ -7,10 +7,14 @@ LIMIT=2000
 SPAN_DAYS=0
 TOP_K=10
 CATEGORIES="default"
+LENIENT=0
 
 usage() {
   cat >&2 <<'EOF'
-Usage: run-analysis.sh [--limit N] [--span-days N] [--top-K N] [--categories=auto|default]
+Usage: run-analysis.sh [--limit N] [--span-days N] [--top-K N] [--categories=auto|default] [--lenient]
+
+  --lenient   Forward to analyze.py: suppress the >5% non-dict load_issues abort.
+              Per-element stderr warnings are still emitted.
 EOF
 }
 
@@ -47,6 +51,10 @@ while [[ $# -gt 0 ]]; do
       require_value "$@"
       CATEGORIES="$2"
       shift 2
+      ;;
+    --lenient)
+      LENIENT=1
+      shift
       ;;
     -h|--help)
       usage
@@ -98,6 +106,9 @@ umask 077
 ANALYZE_ARGS=(--json "$DUMP_PATH" --top-k "$TOP_K" --categories "$CATEGORIES")
 if [[ "$SPAN_DAYS" != "0" ]]; then
   ANALYZE_ARGS+=(--span-days "$SPAN_DAYS")
+fi
+if [[ "$LENIENT" == "1" ]]; then
+  ANALYZE_ARGS+=(--lenient)
 fi
 
 python3 "$SCRIPT_DIR/analyze.py" "${ANALYZE_ARGS[@]}"

@@ -62,5 +62,12 @@
     "body": "Minor improvement to prefix handling logic.",
     "state": "OPEN",
     "createdAt": "2026-05-08T09:00:00Z"
+  },
+  {
+    "number": 9,
+    "title": "Documentation drift in subsystem",
+    "body": "Documentation drift in subsystem foo; rewrite to match current behavior.",
+    "state": "OPEN",
+    "createdAt": "2026-05-09T09:00:00Z"
   }
 ]

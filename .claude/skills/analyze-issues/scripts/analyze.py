@@ -29,13 +29,37 @@ CATEGORY_RULES: Sequence[Tuple[str, Sequence[str]]] = (
     ("Performance/token-cost reduction", ("performance", "token", "cost", "speed", "latency", "cache")),
 )
 
-# WHY: word-boundary anchors prevent short keywords like `fix` from matching
-# inside `prefix`/`fixture`/`affix`, which silently mis-classified issues into
-# Bug fix. Compile once at module load.
+# WHY: some CATEGORY_RULES entries are inflectional stems whose original
+# substring-matching captured `doc`->"documentation", `determin`->"determinism",
+# `validate`->"validation", `sanitize`->"sanitization", etc. Strict word-boundary
+# matching (\bKW\b) on those keywords would regress those classifications. Mark
+# stems explicitly so the compiled per-category pattern accepts trailing word
+# characters (\bKW\w*) for them, while keeping short exact words like fix/add/new
+# strict (\bKW\b) so they cannot alias inside fixture/prefix/affix/added/newer.
+_STEM_KEYWORDS = frozenset({
+    "doc", "instruction", "determin",
+    "validate", "sanitize", "simplify",
+    "permission", "secret", "feature",
+    "scaffold", "failure", "regression",
+    "assert", "crash",
+})
+
+
+def _keyword_pattern(keyword: str) -> str:
+    if keyword in _STEM_KEYWORDS:
+        # Trim trailing e/y so `validate`->`validat\w*`, `simplify`->`simplif\w*`.
+        stem = re.sub(r"[ey]$", "", keyword)
+        return re.escape(stem) + r"\w*"
+    return re.escape(keyword) + r"\b"
+
+
 CATEGORY_PATTERNS: Sequence[Tuple[str, "re.Pattern[str]"]] = tuple(
     (
         category,
-        re.compile(r"\b(?:" + "|".join(re.escape(k) for k in keywords) + r")\b", re.I),
+        re.compile(
+            r"\b(?:" + "|".join(_keyword_pattern(k) for k in keywords) + r")",
+            re.I,
+        ),
     )
     for category, keywords in CATEGORY_RULES
 )
@@ -576,7 +600,10 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--lenient",
         action="store_true",
-        help="Silently skip non-dict elements in the input list instead of failing when more than 5%% are non-dict.",
+        help=(
+            "Suppress the >5%% non-dict abort in load_issues. Per-element stderr "
+            "warnings are still emitted; this flag only disables the threshold check."
+        ),
     )
     return parser.parse_args(list(argv) if argv is not None else None)
 

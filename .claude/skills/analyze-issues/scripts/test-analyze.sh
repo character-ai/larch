@@ -61,14 +61,14 @@ assert_contains "$out" "## Pattern Observations" "pattern observations section"
 assert_contains "$out" "## Wasteful-work Findings" "wasteful-work findings section"
 assert_contains "$out" "## Reviewer/Persona Tables" "reviewer/persona section"
 
-assert_contains "$out" "Total issues: 8" "issue count"
+assert_contains "$out" "Total issues: 9" "issue count"
 assert_contains "$out" "Tracking/umbrella" "tracking category"
 assert_contains "$out" "Bug fix: 2 (" "bug fix category count (pins rule-order; fix-in-fixture / fix-in-prefix no longer alias)"
 assert_contains "$out" "Test coverage: 1 (" "test coverage classification (#7 'Test coverage: add fixture' no longer aliased to Bug fix)"
 assert_contains "$out" "Other: 1 (" "other category for #8 'prefix handling tweak' (fix-in-prefix no longer aliases)"
-assert_contains "$out" "Documentation/contract drift" "documentation category"
+assert_contains "$out" "Documentation/contract drift: 2 (" "documentation category (#3 README+contract; #9 stem-only via 'doc' -> 'documentation')"
 assert_contains "$out" "Hardening/validation/security" "hardening category"
-assert_contains "$out" "Auto-spawned share: 1/8" "auto-spawned share"
+assert_contains "$out" "Auto-spawned share: 1/9" "auto-spawned share"
 
 assert_contains "$out" "W1 duplicate-titled issues opened within 7 days:" "duplicate heading"
 assert_contains "$out" "#2 and #6: bug fix: crash in foo" "duplicate title pair"
@@ -120,15 +120,10 @@ else
     echo "  ok: load_issues threshold abort fires above 5%"
 fi
 
-# --lenient suppresses the threshold abort.
-if python3 "$ANALYZER" --json "$TMP_HIGH" --lenient >/dev/null 2>&1; then
-    PASS=$((PASS + 1))
-    echo "  ok: --lenient suppresses threshold abort"
-else
-    FAIL=$((FAIL + 1))
-    FAILED_TESTS+=("--lenient should suppress threshold abort on 10% non-dict input")
-    echo "  FAIL: --lenient should suppress threshold abort on 10% non-dict input" >&2
-fi
+# --lenient suppresses the threshold abort and still produces the report.
+lenient_out=$(python3 "$ANALYZER" --json "$TMP_HIGH" --lenient 2>/dev/null) || lenient_out=""
+assert_contains "$lenient_out" "Total issues: 9" "--lenient: report renders 9 valid dicts past threshold"
+assert_contains "$lenient_out" "## Executive Summary" "--lenient: report includes Executive Summary"
 
 if [[ $FAIL -gt 0 ]]; then
     echo "FAILED ($FAIL of $((PASS + FAIL))):" >&2
