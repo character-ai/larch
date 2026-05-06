@@ -432,6 +432,21 @@ printf '256\n' > "${OUT_O}.done"
 RESULT_O=$(run_collector bash "$OUT_O" "$HEALTH_O")
 assert_line "case O exit-code over-255" "EXIT_CODE=99" "$RESULT_O"
 
+# Case P: coerced-99 with empty output + valid .meta must route to retry, NOT to
+# STATUS=FAILED. Without the FINDING_1 fix, a malformed .done would deny the
+# one-shot empty-output recovery the retry path was designed for. With the fix,
+# coerced-99 + empty output is treated as a retry-eligible empty-output case,
+# so the helper runs and the retry succeeds.
+OUT_P="$TMPROOT/cursor-p.txt"
+HEALTH_P="$TMPROOT/case-p.health"
+write_empty_candidate "$OUT_P"
+write_meta "$OUT_P" "$(json_array bash "$HELPER" --output "$OUT_P")"
+printf '0|EXTRA\n' > "${OUT_P}.done"  # malformed → coerced to 99
+RESULT_P=$(run_collector bash "$OUT_P" "$HEALTH_P")
+assert_line "case P retry succeeded" "REVIEWER_FILE=${OUT_P%.txt}-retry.txt" "$RESULT_P"
+assert_line "case P status" "STATUS=OK" "$RESULT_P"
+assert_line "case P healthy" "HEALTHY=true" "$RESULT_P"
+
 echo ""
 echo "Summary: $PASS passed, $FAIL failed, $SKIP skipped"
 if (( FAIL > 0 )); then

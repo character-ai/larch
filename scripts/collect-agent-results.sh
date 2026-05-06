@@ -89,6 +89,20 @@ normalize_exit_code_or_99() {
     printf '99'
 }
 
+# Companion to normalize_exit_code_or_99: returns "true" if the raw input
+# would be coerced to 99 (i.e., fails the regex/range gate), "false" otherwise.
+# Caller-side mirror of the helper's gate so coercion state can be detected
+# WITHOUT relying on subshell variables — normalize_exit_code_or_99 runs inside
+# a $(...) subshell so any global it sets cannot propagate back to the parent.
+exit_code_was_coerced() {
+    local raw="$1"
+    if [[ "$raw" =~ ^[0-9]{1,3}$ ]] && (( 10#$raw <= 255 )); then
+        printf 'false'
+        return 0
+    fi
+    printf 'true'
+}
+
 build_missing_retry_sentinel_result() {
     local orig_output="$1"
     local tool="$2"
@@ -328,8 +342,17 @@ for i in "${!OUTPUT_FILES[@]}"; do
         HEALTHY="false"
         FAILURE_REASON=$(build_failure_reason "$OUTPUT" "$STATUS" "$EXIT_CODE")
     elif [[ -f "$SENTINEL" ]]; then
-        EXIT_CODE=$(cat "$SENTINEL" 2>/dev/null || echo "99")
-        EXIT_CODE=$(normalize_exit_code_or_99 "$EXIT_CODE" "initial sentinel")
+        EXIT_CODE_RAW=$(cat "$SENTINEL" 2>/dev/null || echo "99")
+        EXIT_CODE=$(normalize_exit_code_or_99 "$EXIT_CODE_RAW" "initial sentinel")
+        EXIT_CODE_COERCED=$(exit_code_was_coerced "$EXIT_CODE_RAW")
+        # When normalize_exit_code_or_99 coerced an invalid sentinel to 99 and
+        # the output file is empty, route to the retry path rather than an
+        # immediate STATUS=FAILED — a corrupt or partially-written .done should
+        # not deny the one-shot empty-output recovery when a valid .meta exists.
+        # Real (non-coerced) non-zero exits with empty output still route to FAILED.
+        if [[ "$EXIT_CODE_COERCED" == "true" && ! -s "$OUTPUT" ]]; then
+            EXIT_CODE="0"
+        fi
         if [[ "$EXIT_CODE" == "124" ]]; then
             STATUS="TIMED_OUT"
             HEALTHY="false"
