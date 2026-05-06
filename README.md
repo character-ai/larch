@@ -18,13 +18,13 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
   - [Agent System](docs/agents.md) — parallel subagent orchestration
   - [Collaborative Sketches](docs/collaborative-sketches.md) — the diverge-then-converge design phase
   - [External Reviewers](docs/external-reviewers.md) — Codex, Cursor, and optional Gemini integration
-  - [Voting Process](docs/voting-process.md) — the 3-agent voting panel
+  - [Voting Process](docs/voting-process.md) — the voting panel protocol
   - [Point Competition](docs/point-competition.md) — reviewer scoring system
 
 ## Features
 
-- **[Multi-agent design planning, reviews, and adjudication](docs/collaborative-sketches.md)** — 9 sketch agents in regular mode (3 in quick mode) diverge, a dialectic 3-judge binary panel resolves contested decisions, and a 6-reviewer panel validates the final plan.
-- **[Voting-based review resolution](docs/voting-process.md)** — A 3-agent YES/NO/EXONERATE panel adjudicates plan and code review findings.
+- **[Multi-agent design planning, reviews, and adjudication](docs/collaborative-sketches.md)** — the configured sketch topology diverges, the dialectic judge panel resolves contested decisions, and the validation panel reviews the final plan.
+- **[Voting-based review resolution](docs/voting-process.md)** — The YES/NO/EXONERATE panel protocol adjudicates plan and code review findings.
 - **[Reviewer competition scoring](docs/point-competition.md)** — Reviewers earn points based on finding quality; a scoreboard tracks accepted, neutral, exonerated, and rejected findings.
 - **[End-to-end automation](docs/workflow-lifecycle.md)** — From feature design through PR creation and initial CI wait in one command; `--merge` adds the CI+rebase+merge loop, local cleanup, and main verification. Each run also posts a single Slack status message about its tracking issue near the end (✅ closed / 📝 PR opened / 🧭 design complete / ❌ blocked / ❓ user input needed) when Slack is configured — opt out with `--no-slack`. `--draft` creates a draft PR and keeps the branch for further iteration; `--design-only` publishes the design artifacts to the tracking issue and stops before implementation.
 - **[External reviewer integration](docs/external-reviewers.md)** — Codex and Cursor participate alongside Claude subagents as sketch agents, debaters, judges, reviewers, and voters; Gemini participates as an optional additional reviewer in `/review` and `/implement --quick` review rounds when its CLI is installed and healthy (skipped silently otherwise), and can be selected explicitly for implementation with `/implement --coder=gemini`.
@@ -59,7 +59,7 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
       <td><a href="docs/skills.md#design"><code>/design</code></a></td>
       <td><code>[--auto] [--quick] [--subagent] [--session-env &lt;path&gt;] &lt;feature description&gt;</code></td>
     </tr>
-    <tr><td colspan="2">Design an implementation plan with 9 sketch agents (3 in quick mode), dialectic adjudication, and a 6-reviewer validation panel.</td></tr>
+    <tr><td colspan="2">Design an implementation plan with the configured sketch topology, dialectic adjudication, and the validation panel described in the design workflow.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#fix-issue"><code>/fix-issue</code></a></td>
@@ -89,13 +89,13 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
       <td><a href="docs/skills.md#research"><code>/research</code></a></td>
       <td><code>[--no-issue] &lt;research question or topic&gt;</code></td>
     </tr>
-    <tr><td colspan="2">Collaborative best-effort read-only research with a fixed-shape topology — planner pre-pass + 4 Codex-first research lanes (architecture / edge cases / external comparisons / security, with per-lane Claude fallback) + 3-reviewer validation panel (Code + Cursor + Codex). Every run includes unconditional citation validation (HEAD-fetches cited URLs under SSRF guards, validates DOIs, spot-checks file:line refs) emitted as a fail-soft PASS / FAIL / UNKNOWN ledger spliced into the final report.</td></tr>
+    <tr><td colspan="2">Collaborative best-effort read-only research with the fixed-shape topology documented in the research skill — planner pre-pass, Codex-first research lanes by angle, and the validation panel. Every run includes unconditional citation validation (HEAD-fetches cited URLs under SSRF guards, validates DOIs, spot-checks file:line refs) emitted as a fail-soft PASS / FAIL / UNKNOWN ledger spliced into the final report.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#review"><code>/review</code></a></td>
       <td><code>[--diff] [--no-issues] [&lt;description&gt;]</code></td>
     </tr>
-    <tr><td colspan="2">Code review with a 6-reviewer specialist panel. <code>--diff</code>: review branch changes and implement fixes. <code>&lt;description&gt;</code>: review existing code and file accepted findings as GitHub issues (default; <code>--no-issues</code> to suppress).</td></tr>
+    <tr><td colspan="2">Code review with the specialist panel described in <code>docs/review-agents.md</code>. <code>--diff</code>: review branch changes and implement fixes. <code>&lt;description&gt;</code>: review existing code and file accepted findings as GitHub issues (default; <code>--no-issues</code> to suppress).</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#simplify-skill"><code>/simplify-skill</code></a></td>

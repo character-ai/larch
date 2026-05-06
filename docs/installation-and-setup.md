@@ -1,6 +1,6 @@
 # Installation and Setup
 
-Larch is distributed as a [Claude Code plugin](https://code.claude.com/docs/en/plugin-marketplaces). Installation is a two-step process: register the marketplace that hosts larch, then install the plugin from that marketplace.
+Larch is distributed as a [Claude Code plugin](https://code.claude.com/docs/en/plugin-marketplaces). Installation starts by registering the marketplace that hosts larch, then installing the plugin from that marketplace.
 
 Slack integration is optional and **on by default** when `LARCH_SLACK_BOT_TOKEN` and `LARCH_SLACK_CHANNEL_ID` are configured. `/implement` posts a single tracking-issue status message near the end of each run; pass `--no-slack` to opt out. See [Environment Variables](configuration-and-permissions.md#environment-variables) — skills degrade gracefully when Slack is not configured.
 
