@@ -825,6 +825,12 @@ exclude = [
   "scripts/test-token-report.sh",
   "scripts/test-token-vendor-scrapers.sh",
   "scripts/test-token-claude-source.sh",
+  # scripts/test-timing-ledger.sh and scripts/test-timing-report.sh are
+  # offline regression harnesses for the /implement timing-reporting PoC
+  # (parallel to the token-reporting harnesses above). They are referenced
+  # only from Makefile targets, docs/linting.md, and sibling contracts.
+  "scripts/test-timing-ledger.sh",
+  "scripts/test-timing-report.sh",
   # Skill-local sibling .md files — co-located contract docs for scripts
   # under skills/<name>/scripts/. Not orchestrator references (not cited
   # from the owning SKILL.md by design — contributors discover them by

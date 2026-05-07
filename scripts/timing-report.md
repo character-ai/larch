@@ -19,3 +19,5 @@ Duration rules:
 - Total duration is the last implement mark minus the first implement mark when implement marks exist; otherwise it is the last mark minus the first mark.
 
 The renderer is shell/awk-only and has no `jq` dependency. It skips rows whose first column is not `v1`, and warns to stderr when a `v1` row does not have exactly 13 columns.
+
+Regression harness: `scripts/test-timing-report.sh` (sibling stub `scripts/test-timing-report.md`); wired into `make lint` via the `test-timing-report` Makefile target (shard `test-harnesses-4`).

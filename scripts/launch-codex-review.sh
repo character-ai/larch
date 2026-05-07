@@ -24,7 +24,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"
 
-# shellcheck disable=SC2329 # invoked indirectly by the EXIT trap.
+# shellcheck disable=SC2317,SC2329 # invoked indirectly by the EXIT trap.
 _emit_timing_record() {
     local rc=${1:-$?}
     local end_s status

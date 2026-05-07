@@ -55,7 +55,7 @@ usage() {
     echo "Usage: launch-gemini-review.sh --output FILE --timeout SECS --prompt TEXT" >&2
 }
 
-# shellcheck disable=SC2329 # invoked indirectly by EXIT traps.
+# shellcheck disable=SC2317,SC2329 # invoked indirectly by EXIT traps.
 _emit_timing_record() {
     local rc=${1:-$?}
     local end_s status

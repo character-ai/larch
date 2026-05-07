@@ -2,11 +2,13 @@
 
 `scripts/timing-ledger.sh` writes session-scoped timing rows for `/implement`, nested `/design`, nested `/review`, and external vendor wrapper invocations. It mirrors `scripts/token-ledger.sh` operationally but uses a fixed 13-column TSV schema so shell-only renderers can parse it without `jq`.
 
-Every row has the same tab-separated shape:
+Every row has the same tab-separated shape (`\t` between columns):
 
+<!-- markdownlint-disable MD010 -->
 ```text
 v	type	ts_epoch	skill	step	vendor	task_kind	start_s	end_s	duration_s	output	exit_code	extra
 ```
+<!-- markdownlint-enable MD010 -->
 
 `type` is `mark`, `vendor`, or `workflow`. `extra` is `-` for mark rows, `complete|signal|unknown` for vendor rows, and `HARD|SIMPLE` for workflow rows. Vendor rows store only `basename(output)`, never absolute output paths, so rendered timing reports do not expose workspace layout.
 
@@ -32,3 +34,5 @@ Appends use `flock -w 5` when available. If `flock` is missing or lock acquisiti
 Task-kind validation sources `scripts/lib-timing-kinds.sh`. Unknown but syntactically valid kebab-case kinds are written with a warning to avoid data loss. Malformed kinds are rejected.
 
 Known v1 limitation: direct `scripts/run-external-agent.sh` call sites do not emit vendor timing rows; only the six launch wrappers call `record-vendor-task`.
+
+Regression harness: `scripts/test-timing-ledger.sh` (sibling stub `scripts/test-timing-ledger.md`); wired into `make lint` via the `test-timing-ledger` Makefile target (shard `test-harnesses-4`).
