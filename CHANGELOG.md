@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.53] - 2026-05-06
+
+### Changed
+
+- Structural hardening for `/implement` session tmpdirs (closes #1339, on top of #1333). Adds a shared `scripts/redact-tmpdir-paths.sh` helper that rewrites larch session-tmpdir literals to `<TMPDIR>` and chains it before `redact-secrets.sh` at every remote-publishing site (`tracking-issue-write.sh`, `post-slack-message.sh`, `create-pr.sh`) so per-session paths never leak into tracking-issue comments, anchor sections, PR bodies, or Slack payloads.
+- `scripts/session-setup.sh` now creates session tmpdirs under `${XDG_CACHE_HOME:-$HOME/.cache}/larch/sessions/<prefix>-<clone-tag>-XXXXXX` (with a `/tmp` fallback when the cache root is unwritable), writes `$SESSION_TMPDIR/.larch-keepalive` (PID/PPID/CLONE_PATH/SESSION_ID/PREFIX/CREATED + ext-cleaners-please-skip note), and emits `SESSION_ID=<value>` on stdout. `scripts/write-session-id.sh` is now idempotent — if the target file already has content (from session-setup.sh) it returns 0 without rewriting.
+- Path validators in `scripts/cleanup-tmpdir.sh`, `scripts/implement-finalize.sh` `is_tmp_path`, and `scripts/token-tally.sh` `validate_dir` accept the new cache-sessions root in addition to `/tmp/` and `/private/tmp/`.
+- `scripts/implement-finalize.sh teardown` adds a `verify_cleanup_target()` sanity check that runs before `cleanup-tmpdir.sh`: validates the basename starts with the expected `claude-implement-<clone-tag>-` prefix and that `cat $IMPLEMENT_TMPDIR/session-id` matches `EXPECTED_SESSION_ID` from the state file. On mismatch, appends a Tool Failures entry, emits the documented refusal warning, skips the `rm -rf`, and continues Step 18's remaining responsibilities (rename, Slack, breadcrumb). Step 14's `finalize-state.sh` write now records `EXPECTED_SESSION_ID` and `EXPECTED_TMPDIR_BASENAME_PREFIX`.
+- New regression harnesses (38 assertions): `scripts/test-redact-tmpdir-paths.sh`, `scripts/test-keepalive-sentinel.sh`, `scripts/test-cache-root-validation.sh`, `scripts/test-finalize-sanity-check.sh`. Wired through `make` targets and `test-harnesses-6`.
+
 ## [15.12.52] - 2026-05-06
 
 ### Fixed
