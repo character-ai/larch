@@ -10,7 +10,7 @@
 - Missing input files exit 2 with the launcher's literal validation messages — specifically: missing `--plan-file` (`plan file not found`), missing `--feature-file` (`feature file not found`), missing `--agent-prompt` (`agent prompt not found`), and `--answers-file` pointing at a non-existent path (`--answers-file given but path does not exist`).
 - PATH-stubbed `codex` writes a minimal valid `manifest.json`; the launcher emits exactly five KV stdout lines and no progress chatter.
 - Codex's `--output-last-message` transcript path receives the stubbed output payload.
-- Codex argv shape includes `exec`, `--full-auto`, `-C "$PWD"`, `--add-dir "$(dirname "$MANIFEST")"` immediately after `-C "$REPO_ROOT"`, `--output-last-message`, and model/effort args from `scripts/agent-model-args.sh --tool codex --with-effort`.
+- Codex argv shape includes `exec`, `--full-auto`, `-C "$PWD"`, canonical `--add-dir "$(cd "$(dirname "$MANIFEST")" && pwd -P)"` immediately after `-C "$REPO_ROOT"`, `--output-last-message`, and model/effort args from `scripts/agent-model-args.sh --tool codex --with-effort`.
 - The composed prompt is passed after a `--` end-of-options separator and is the last positional argv argument.
 - Passing `--answers-file` adds the `## Resume invocation` block to the composed prompt.
 - The launcher exits 2 with a "must share the same parent directory" error when `--manifest-path` and `--qa-pending-path` resolve to different parents.

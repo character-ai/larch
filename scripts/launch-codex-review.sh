@@ -54,6 +54,21 @@ if [[ -z "$TIMEOUT" ]]; then
     echo "launch-codex-review.sh: --timeout is required" >&2; exit 2
 fi
 
+# Validate --output BEFORE installing traps/sidecars so the same byte-exact
+# .meta-sidecar contract enforced for the Cursor review launcher applies on
+# the Codex path too. Mirrors scripts/launch-cursor-review.sh:60-62.
+# shellcheck source=scripts/lib-validate-meta-path.sh
+source "$SCRIPT_DIR/lib-validate-meta-path.sh"
+validate_meta_scalar_path --output "$OUTPUT" || exit 1
+
+case "$TIMEOUT" in
+    ''|*[!0-9]*|0) echo "launch-codex-review.sh: --timeout must be a positive integer (seconds), got '$TIMEOUT'" >&2; exit 2 ;;
+esac
+if (( 10#$TIMEOUT < 1 )); then
+    echo "launch-codex-review.sh: --timeout must be a positive integer (seconds), got '$TIMEOUT'" >&2
+    exit 2
+fi
+
 if [[ -n "$AGENT_FILE" ]]; then
     RENDER_ARGS=(--agent-file "$AGENT_FILE" --mode "$MODE")
     [[ -n "$DESCRIPTION_TEXT" ]] && RENDER_ARGS+=(--description-text "$DESCRIPTION_TEXT")
@@ -64,34 +79,46 @@ elif [[ -z "$PROMPT" ]]; then
     echo "launch-codex-review.sh: either --prompt or --agent-file is required" >&2; exit 2
 fi
 
-MODEL_ARGS=$("$SCRIPT_DIR/agent-model-args.sh" --tool codex --with-effort)
+OUTPUT_DIR=$(dirname -- "$OUTPUT")
+CANON_OUTPUT_DIR=$(cd "$OUTPUT_DIR" && pwd -P)
+MODEL_ARGS_TMP=$(mktemp)
+trap 'rm -f "$MODEL_ARGS_TMP"' EXIT
+if "$SCRIPT_DIR/agent-model-args.sh" --tool codex --with-effort > "$MODEL_ARGS_TMP"; then
+    :
+else
+    rc=$?
+    exit "$rc"
+fi
+MODEL_ARGS=()
+while IFS= read -r arg; do
+    MODEL_ARGS+=("$arg")
+done < "$MODEL_ARGS_TMP"
 RUN_EXTERNAL="$SCRIPT_DIR/run-external-agent.sh"
 SIDECAR="${OUTPUT}.sidecar"
 
-# shellcheck disable=SC2086
 EXIT_CODE=0
 if : > "$SIDECAR" 2>/dev/null; then
-    # shellcheck disable=SC2086
     "$RUN_EXTERNAL" \
         --tool codex \
         --output "$OUTPUT" \
         --timeout "$TIMEOUT" \
         -- \
         codex exec --full-auto -C "$PWD" \
-        $MODEL_ARGS \
+        --add-dir "$CANON_OUTPUT_DIR" \
+        ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
         --output-last-message "$OUTPUT" \
         "$PROMPT" \
         2>>"$SIDECAR" || EXIT_CODE=$?
 else
     SIDECAR=/dev/null
-    # shellcheck disable=SC2086
     "$RUN_EXTERNAL" \
         --tool codex \
         --output "$OUTPUT" \
         --timeout "$TIMEOUT" \
         -- \
         codex exec --full-auto -C "$PWD" \
-        $MODEL_ARGS \
+        --add-dir "$CANON_OUTPUT_DIR" \
+        ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
         --output-last-message "$OUTPUT" \
         "$PROMPT" \
         2>/dev/null || EXIT_CODE=$?

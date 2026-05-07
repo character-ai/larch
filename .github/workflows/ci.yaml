@@ -112,6 +112,14 @@ jobs:
           cache-dependency-path: .github/workflows/requirements-lint.txt
       - name: Install lint dependencies
         run: pip install -r .github/workflows/requirements-lint.txt
+      - name: Install ripgrep
+        # ripgrep (rg) is required by scripts/test-agent-model-args.sh
+        # static migration guards (FINDING_11 of /review code review on
+        # PR #1367 hardened the harness to fail fast when rg is missing,
+        # rather than silently passing all guards via empty
+        # `$(rg ... || true)` substitutions). Ubuntu 24.04 hosted runners
+        # do not include ripgrep in the default image inventory.
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
       - name: Run test harnesses (shard ${{ matrix.shard }} of 6)
         run: make test-harnesses-${{ matrix.shard }}
 

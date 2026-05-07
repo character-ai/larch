@@ -147,8 +147,20 @@ Print: `> **🔶 1.3: lane-launch**`
 **Codex launch (per lane)** when `codex_available=true`. Substitute the lane's angle prompt literal into `<LANE_PROMPT>`:
 
 ```bash
+# Use a temp file (NOT process substitution) so a non-zero exit from
+# agent-model-args.sh — e.g., LARCH_CODEX_MODEL contains [[:cntrl:]] or is
+# blank — propagates and aborts the launch, instead of being swallowed and
+# producing an empty MODEL_ARGS array that lets codex run with no -m flag.
+# The defensive `${ARR[@]+"${ARR[@]}"}` expansion is required for Bash 3.2
+# compatibility under `set -u`.
+CODEX_MODEL_ARGS_TMP=$(mktemp)
+trap 'rm -f "$CODEX_MODEL_ARGS_TMP"' EXIT
+"${CLAUDE_PLUGIN_ROOT}/scripts/agent-model-args.sh" --tool codex > "$CODEX_MODEL_ARGS_TMP" || exit $?
+CODEX_MODEL_ARGS=()
+while IFS= read -r arg; do CODEX_MODEL_ARGS+=("$arg"); done < "$CODEX_MODEL_ARGS_TMP"
+
 ${CLAUDE_PLUGIN_ROOT}/scripts/run-external-agent.sh --tool codex --output "$RESEARCH_TMPDIR/codex-research-<slot>-output.txt" --timeout 1800 -- \
-  codex exec --full-auto -C "$PWD" $("${CLAUDE_PLUGIN_ROOT}/scripts/agent-model-args.sh" --tool codex) \
+  codex exec --full-auto -C "$PWD" ${CODEX_MODEL_ARGS[@]+"${CODEX_MODEL_ARGS[@]}"} \
     --output-last-message "$RESEARCH_TMPDIR/codex-research-<slot>-output.txt" \
     "<LANE_PROMPT>"
 ```

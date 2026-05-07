@@ -10,7 +10,8 @@
 - Missing input files exit 2 with the launcher's literal validation messages — specifically: missing `--plan-file` (`plan file not found`), missing `--feature-file` (`feature file not found`), missing `--agent-prompt` (`agent prompt not found`), and `--answers-file` pointing at a non-existent path (`--answers-file given but path does not exist`).
 - PATH-stubbed `cursor` writes a minimal valid `manifest.json`; the launcher emits exactly five KV stdout lines and no progress chatter.
 - `run-external-agent.sh --capture-stdout-only` captures Cursor stdout to the transcript path while preserving JSON parseability.
-- Cursor argv shape matches `scripts/launch-cursor-review.sh`: `cursor agent -p --force --trust --output-format json $MODEL_ARGS --workspace "$PWD" "$WRAPPED_PROMPT"`.
+- Cursor argv shape matches `scripts/launch-cursor-review.sh`: `cursor agent -p --force --trust --output-format json <model args> --workspace "$PWD" "$WRAPPED_PROMPT"`.
+- The implementer launcher writes `${TRANSCRIPT_PATH}.prompt`, appends `OUTER_LAUNCHER*` keys to `${TRANSCRIPT_PATH}.meta`, and publishes `${TRANSCRIPT_PATH}.done` only after post-processing completes.
 - No `--` end-of-options separator is inserted before the prompt.
 - The prompt is wrapped by `scripts/cursor-wrap-prompt.sh`.
 - Passing `--answers-file` adds the `## Resume invocation` block to the composed prompt.

@@ -93,14 +93,20 @@ if (( 10#$TIMEOUT < 1 )); then
     exit 2
 fi
 
-SESSION_TMPDIR="$(dirname "$MANIFEST_PATH")"
-QA_TMPDIR="$(dirname "$QA_PENDING_PATH")"
-if [[ "$SESSION_TMPDIR" != "$QA_TMPDIR" ]]; then
-    echo "launch-codex-implement.sh: --manifest-path and --qa-pending-path must share the same parent directory (got: $SESSION_TMPDIR vs $QA_TMPDIR)" >&2
+MANIFEST_DIR=$(dirname "$MANIFEST_PATH")
+QA_PENDING_DIR=$(dirname "$QA_PENDING_PATH")
+if [[ ! -d "$MANIFEST_DIR" ]]; then
+    echo "launch-codex-implement.sh: session tmpdir does not exist: $MANIFEST_DIR" >&2
     exit 2
 fi
-if [[ ! -d "$SESSION_TMPDIR" ]]; then
-    echo "launch-codex-implement.sh: session tmpdir does not exist: $SESSION_TMPDIR" >&2
+if [[ ! -d "$QA_PENDING_DIR" ]]; then
+    echo "launch-codex-implement.sh: session tmpdir does not exist: $QA_PENDING_DIR" >&2
+    exit 2
+fi
+SESSION_TMPDIR=$(cd "$MANIFEST_DIR" && pwd -P)
+QA_TMPDIR=$(cd "$QA_PENDING_DIR" && pwd -P)
+if [[ "$SESSION_TMPDIR" != "$QA_TMPDIR" ]]; then
+    echo "launch-codex-implement.sh: --manifest-path and --qa-pending-path must share the same parent directory (got: $SESSION_TMPDIR vs $QA_TMPDIR)" >&2
     exit 2
 fi
 
@@ -135,20 +141,30 @@ PROMPT="$(cat "$AGENT_PROMPT")
 
 - Plan to implement: $PLAN_FILE
 - Original feature description: $FEATURE_FILE
-- Write manifest.json (atomically) at: $MANIFEST_PATH
-- Write qa-pending.json (atomically, only if status=needs_qa) at: $QA_PENDING_PATH
+- Write manifest.json (atomically) at: $SESSION_TMPDIR/$(basename "$MANIFEST_PATH")
+- Write qa-pending.json (atomically, only if status=needs_qa) at: $SESSION_TMPDIR/$(basename "$QA_PENDING_PATH")
 - Working directory: $PWD (this is the repo root for git operations)
 $RESUME_BLOCK
 
 Begin by inspecting the current branch state, then proceed per the system prompt above."
 
-MODEL_ARGS=$("$SCRIPT_DIR/agent-model-args.sh" --tool codex --with-effort)
+MODEL_ARGS_TMP=$(mktemp)
+trap 'rm -f "$MODEL_ARGS_TMP"' EXIT
+if "$SCRIPT_DIR/agent-model-args.sh" --tool codex --with-effort > "$MODEL_ARGS_TMP"; then
+    :
+else
+    rc=$?
+    exit "$rc"
+fi
+MODEL_ARGS=()
+while IFS= read -r arg; do
+    MODEL_ARGS+=("$arg")
+done < "$MODEL_ARGS_TMP"
 
 # Run the wrapper, redirecting its stdout AND stderr to the sidecar log so
 # Claude (the dispatcher's caller) never sees the wrapper's progress lines.
 # The wrapper's own exit code is captured into LAUNCHER_EXIT.
 LAUNCHER_EXIT=0
-# shellcheck disable=SC2086
 "$SCRIPT_DIR/run-external-agent.sh" \
     --tool codex \
     --output "$TRANSCRIPT_PATH" \
@@ -156,7 +172,7 @@ LAUNCHER_EXIT=0
     -- \
     codex exec --full-auto -C "$PWD" \
     --add-dir "$SESSION_TMPDIR" \
-    $MODEL_ARGS \
+    ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
     --output-last-message "$TRANSCRIPT_PATH" \
     -- \
     "$PROMPT" \

@@ -149,6 +149,7 @@ for var in TMPDIR_ARG PLAN_FILE FEATURE_FILE AUTO_MODE; do
 done
 
 [[ -d "$TMPDIR_ARG" ]] || { echo "step2-implement.sh: --tmpdir not a directory: $TMPDIR_ARG" >&2; exit 2; }
+TMPDIR_ARG=$(cd "$TMPDIR_ARG" && pwd -P)
 [[ -f "$PLAN_FILE" ]]  || { echo "step2-implement.sh: --plan-file not found: $PLAN_FILE" >&2; exit 2; }
 [[ -f "$FEATURE_FILE" ]] || { echo "step2-implement.sh: --feature-file not found: $FEATURE_FILE" >&2; exit 2; }
 case "$AUTO_MODE" in
@@ -369,7 +370,18 @@ run_launcher() {
     "$LAUNCHER" "${launcher_args[@]}"
 }
 
-LAUNCHER_OUT=$(run_launcher 2>&1) || true
+LAUNCHER_TMP=$(mktemp "$TMPDIR_ARG/${TOOL_TAG}-launcher-output.XXXXXX")
+trap 'rm -f "$LAUNCHER_TMP"' EXIT
+
+if run_launcher >"$LAUNCHER_TMP" 2>&1; then
+    WRAPPER_EXIT=0
+else
+    WRAPPER_EXIT=$?
+fi
+LAUNCHER_OUT=$(head -c 65536 "$LAUNCHER_TMP")
+if [[ "$WRAPPER_EXIT" == "2" ]]; then
+    emit_bailed "wrapper-validation-failure"
+fi
 
 # Parse launcher KV lines.
 LAUNCHER_EXIT=$(printf '%s\n' "$LAUNCHER_OUT" | awk -F= '$1=="LAUNCHER_EXIT"{print $2; exit}')
@@ -380,7 +392,7 @@ LAUNCHER_EXIT=${LAUNCHER_EXIT:-99}
 MANIFEST_WRITTEN=${MANIFEST_WRITTEN:-false}
 
 # Retry once on transient failure: launcher exit non-zero AND no manifest, AND clean state.
-if [[ "$MANIFEST_WRITTEN" != "true" || "$LAUNCHER_EXIT" != "0" ]]; then
+if [[ "$WRAPPER_EXIT" != "0" || "$MANIFEST_WRITTEN" != "true" || "$LAUNCHER_EXIT" != "0" ]]; then
     if [[ "$MANIFEST_WRITTEN" != "true" ]]; then
         # Check post-failure state is clean enough to retry.
         DIRTY=$(git -C "$REPO_ROOT" status --porcelain)
@@ -391,12 +403,25 @@ if [[ "$MANIFEST_WRITTEN" != "true" || "$LAUNCHER_EXIT" != "0" ]]; then
             emit_bailed "dirty-state-after-timeout"
         fi
         # Clean state — single retry.
-        LAUNCHER_OUT=$(run_launcher 2>&1) || true
+        if run_launcher >"$LAUNCHER_TMP" 2>&1; then
+            WRAPPER_EXIT_RETRY=0
+        else
+            WRAPPER_EXIT_RETRY=$?
+        fi
+        LAUNCHER_OUT=$(head -c 65536 "$LAUNCHER_TMP")
+        if [[ "$WRAPPER_EXIT_RETRY" == "2" ]]; then
+            emit_bailed "wrapper-validation-failure"
+        fi
+        WRAPPER_EXIT="$WRAPPER_EXIT_RETRY"
         LAUNCHER_EXIT=$(printf '%s\n' "$LAUNCHER_OUT" | awk -F= '$1=="LAUNCHER_EXIT"{print $2; exit}')
         MANIFEST_WRITTEN=$(printf '%s\n' "$LAUNCHER_OUT" | awk -F= '$1=="MANIFEST_WRITTEN"{print $2; exit}')
         LAUNCHER_EXIT=${LAUNCHER_EXIT:-99}
         MANIFEST_WRITTEN=${MANIFEST_WRITTEN:-false}
     fi
+fi
+
+if [[ "$WRAPPER_EXIT" != "0" ]]; then
+    emit_bailed "$RUNTIME_FAILURE_TOKEN"
 fi
 
 if [[ "$MANIFEST_WRITTEN" != "true" ]]; then

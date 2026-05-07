@@ -131,7 +131,21 @@ $RESUME_BLOCK
 
 Begin by inspecting the current branch state, then proceed per the system prompt above."
 
-MODEL_ARGS=$("$SCRIPT_DIR/agent-model-args.sh" --tool cursor --with-effort)
+PROMPT_FILE_SIDECAR="${TRANSCRIPT_PATH}.prompt"
+printf '%s' "$PROMPT" > "$PROMPT_FILE_SIDECAR"
+
+MODEL_ARGS_TMP=$(mktemp)
+trap 'rm -f "$MODEL_ARGS_TMP"' EXIT
+if "$SCRIPT_DIR/agent-model-args.sh" --tool cursor --with-effort > "$MODEL_ARGS_TMP"; then
+    :
+else
+    rc=$?
+    exit "$rc"
+fi
+MODEL_ARGS=()
+while IFS= read -r arg; do
+    MODEL_ARGS+=("$arg")
+done < "$MODEL_ARGS_TMP"
 WRAPPED_PROMPT=$("$SCRIPT_DIR/cursor-wrap-prompt.sh" "$PROMPT")
 
 # Source the Cursor auth helper. On preflight failure (Darwin + empty
@@ -142,7 +156,10 @@ WRAPPED_PROMPT=$("$SCRIPT_DIR/cursor-wrap-prompt.sh" "$PROMPT")
 # shellcheck source=scripts/lib-cursor-auth.sh
 . "$SCRIPT_DIR/lib-cursor-auth.sh"
 PREFLIGHT_RC=0
-cursor_auth_preflight 2> >(tee -a "$SIDECAR_LOG" >&2) || PREFLIGHT_RC=$?
+PREFLIGHT_ERR=$(mktemp)
+cursor_auth_preflight 2> "$PREFLIGHT_ERR" || PREFLIGHT_RC=$?
+cat "$PREFLIGHT_ERR" >> "$SIDECAR_LOG" 2>/dev/null || true
+rm -f "$PREFLIGHT_ERR"
 if [[ "$PREFLIGHT_RC" != "0" ]]; then
     printf 'LAUNCHER_EXIT=%s\n'           "$PREFLIGHT_RC"
     printf 'MANIFEST_WRITTEN=false\n'
@@ -159,7 +176,7 @@ fi
 # when CURSOR_API_KEY is unset/whitespace-only (preserves today's
 # `cursor login` keychain fallback for users who chose not to set the env
 # var); otherwise CURSOR_AUTH_ARGS=(--api-key "$KEY"). Inserted between
-# `$MODEL_ARGS` and `--workspace` so the prompt remains the final positional
+# the model-args array and `--workspace` so the prompt remains the final positional
 # argument.
 CURSOR_AUTH_ARGS=()
 cursor_auth_argv
@@ -168,7 +185,7 @@ cursor_auth_argv
 # Claude (the dispatcher's caller) never sees the wrapper's progress lines.
 # The wrapper's own exit code is captured into LAUNCHER_EXIT.
 LAUNCHER_EXIT=0
-# shellcheck disable=SC2086
+RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX=.inner.done \
 "$SCRIPT_DIR/run-external-agent.sh" \
     --tool cursor \
     --output "$TRANSCRIPT_PATH" \
@@ -177,11 +194,21 @@ LAUNCHER_EXIT=0
     -- \
     cursor agent -p --force --trust \
     --output-format json \
-    $MODEL_ARGS \
+    ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
     ${CURSOR_AUTH_ARGS[@]+"${CURSOR_AUTH_ARGS[@]}"} \
     --workspace "$PWD" \
     "$WRAPPED_PROMPT" \
-    >"$SIDECAR_LOG" 2>&1 || LAUNCHER_EXIT=$?
+    >"$SIDECAR_LOG" 2>&1 &
+WRAPPER_PID=$!
+wait "$WRAPPER_PID" && LAUNCHER_EXIT=0 || LAUNCHER_EXIT=$?
+
+if [[ -f "${TRANSCRIPT_PATH}.meta" ]]; then
+    {
+        printf 'OUTER_LAUNCHER=%s\n' "$SCRIPT_DIR/launch-cursor-implement.sh"
+        printf 'OUTER_LAUNCHER_PROMPT_FILE=%s\n' "$PROMPT_FILE_SIDECAR"
+        printf 'OUTER_LAUNCHER_WORKDIR=%s\n' "$PWD"
+    } >> "${TRANSCRIPT_PATH}.meta"
+fi
 
 if command -v jq >/dev/null 2>&1; then
     read -r INP OUT CR CW < <(jq -r '.usage // {} | "\(.inputTokens // 0) \(.outputTokens // 0) \(.cacheReadTokens // 0) \(.cacheWriteTokens // 0)"' "$TRANSCRIPT_PATH" 2>/dev/null || echo "0 0 0 0")
@@ -189,6 +216,10 @@ if command -v jq >/dev/null 2>&1; then
         TOT=$((INP + OUT + CR + CW))
         "$PLUGIN_ROOT/scripts/token-ledger.sh" record-vendor cursor input="$INP" output="$OUT" cache_read="$CR" cache_create="$CW" total="$TOT" raw="cursor_implement" >/dev/null 2>&1 || true
     fi
+fi
+
+if [[ -f "${TRANSCRIPT_PATH}.inner.done" ]]; then
+    mv -f "${TRANSCRIPT_PATH}.inner.done" "${TRANSCRIPT_PATH}.done"
 fi
 
 MANIFEST_WRITTEN=false

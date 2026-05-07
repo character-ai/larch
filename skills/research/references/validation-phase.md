@@ -80,11 +80,21 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/render-reviewer-prompt.sh \
 # Build the conditional --api-key argv segment via the shared helper. Empty
 # when CURSOR_API_KEY is unset/whitespace-only (preserves cursor login
 # fallback); two elements (--api-key "$KEY") when set.
+# Use a temp file (NOT process substitution) so a non-zero exit from
+# agent-model-args.sh — e.g., LARCH_CURSOR_MODEL contains [[:cntrl:]] or is
+# blank — propagates and aborts the launch, instead of being swallowed and
+# producing an empty MODEL_ARGS array. The defensive `${ARR[@]+"${ARR[@]}"}`
+# expansion is required for Bash 3.2 compatibility under `set -u`.
 CURSOR_AUTH_FLAGS=()
 while IFS= read -r line; do CURSOR_AUTH_FLAGS+=("$line"); done < <("${CLAUDE_PLUGIN_ROOT}/scripts/cursor-auth-flags.sh")
+CURSOR_MODEL_ARGS_TMP=$(mktemp)
+trap 'rm -f "$CURSOR_MODEL_ARGS_TMP"' EXIT
+"${CLAUDE_PLUGIN_ROOT}/scripts/agent-model-args.sh" --tool cursor > "$CURSOR_MODEL_ARGS_TMP" || exit $?
+CURSOR_MODEL_ARGS=()
+while IFS= read -r arg; do CURSOR_MODEL_ARGS+=("$arg"); done < "$CURSOR_MODEL_ARGS_TMP"
 
 ${CLAUDE_PLUGIN_ROOT}/scripts/run-external-agent.sh --tool cursor --output "$RESEARCH_TMPDIR/cursor-validation-output.txt" --timeout 1800 --capture-stdout -- \
-  cursor agent -p --force --trust $("${CLAUDE_PLUGIN_ROOT}/scripts/agent-model-args.sh" --tool cursor) "${CURSOR_AUTH_FLAGS[@]}" --workspace "$PWD" \
+  cursor agent -p --force --trust ${CURSOR_MODEL_ARGS[@]+"${CURSOR_MODEL_ARGS[@]}"} ${CURSOR_AUTH_FLAGS[@]+"${CURSOR_AUTH_FLAGS[@]}"} --workspace "$PWD" \
     "$("${CLAUDE_PLUGIN_ROOT}/scripts/cursor-wrap-prompt.sh" "$(cat "$RESEARCH_TMPDIR/cursor-prompt.txt")")"
 ```
 
@@ -110,8 +120,16 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/render-reviewer-prompt.sh \
 **On success**, launch in background:
 
 ```bash
+# Same temp-file pattern as the Cursor block above — propagate
+# agent-model-args.sh failures and use the Bash 3.2-safe expansion.
+CODEX_MODEL_ARGS_TMP=$(mktemp)
+trap 'rm -f "$CODEX_MODEL_ARGS_TMP"' EXIT
+"${CLAUDE_PLUGIN_ROOT}/scripts/agent-model-args.sh" --tool codex > "$CODEX_MODEL_ARGS_TMP" || exit $?
+CODEX_MODEL_ARGS=()
+while IFS= read -r arg; do CODEX_MODEL_ARGS+=("$arg"); done < "$CODEX_MODEL_ARGS_TMP"
+
 ${CLAUDE_PLUGIN_ROOT}/scripts/run-external-agent.sh --tool codex --output "$RESEARCH_TMPDIR/codex-validation-output.txt" --timeout 1800 -- \
-  codex exec --full-auto -C "$PWD" $("${CLAUDE_PLUGIN_ROOT}/scripts/agent-model-args.sh" --tool codex) \
+  codex exec --full-auto -C "$PWD" ${CODEX_MODEL_ARGS[@]+"${CODEX_MODEL_ARGS[@]}"} \
     --output-last-message "$RESEARCH_TMPDIR/codex-validation-output.txt" \
     "$(cat "$RESEARCH_TMPDIR/codex-prompt.txt")"
 ```

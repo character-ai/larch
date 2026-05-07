@@ -296,6 +296,25 @@ else
     fail 8 "Cursor prompt was not wrapped with cursor-wrap-prompt.sh prefix"
 fi
 
+if [[ -s "${TRANSCRIPT}.prompt" ]] && grep -Fq 'Begin by inspecting the current branch state' "${TRANSCRIPT}.prompt"; then
+    pass
+else
+    fail 8a "prompt sidecar should contain the composed implementer prompt"
+fi
+if [[ -s "${TRANSCRIPT}.meta" ]] \
+   && grep -Fxq "OUTER_LAUNCHER=$REPO_ROOT/scripts/launch-cursor-implement.sh" "${TRANSCRIPT}.meta" \
+   && grep -Fxq "OUTER_LAUNCHER_PROMPT_FILE=${TRANSCRIPT}.prompt" "${TRANSCRIPT}.meta" \
+   && grep -Fxq "OUTER_LAUNCHER_WORKDIR=$REPO_ROOT" "${TRANSCRIPT}.meta"; then
+    pass
+else
+    fail 8b "meta sidecar should include OUTER_LAUNCHER forward-compat keys"
+fi
+if [[ -f "${TRANSCRIPT}.done" && ! -f "${TRANSCRIPT}.inner.done" ]]; then
+    pass
+else
+    fail 8c "public .done should be published after inner sentinel is consumed"
+fi
+
 # Test 9: positive leading-zero timeout (010) is accepted; exit 0 + standard
 # five-line stdout envelope. Pins acceptance of the leading-zero positive
 # form so a future refactor tightening the digit-only `case` validation to

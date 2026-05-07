@@ -58,13 +58,36 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 case "$TOOL" in
     codex)
-        CODEX_MODEL_ARGS=$("$SCRIPT_DIR/agent-model-args.sh" --tool codex)
-        # shellcheck disable=SC2086
-        codex exec --full-auto -C "$WORKSPACE" $CODEX_MODEL_ARGS \
+        CODEX_MODEL_ARGS_TMP=$(mktemp)
+        if "$SCRIPT_DIR/agent-model-args.sh" --tool codex > "$CODEX_MODEL_ARGS_TMP"; then
+            :
+        else
+            rc=$?
+            rm -f "$CODEX_MODEL_ARGS_TMP"
+            exit "$rc"
+        fi
+        CODEX_MODEL_ARGS=()
+        while IFS= read -r arg; do
+            CODEX_MODEL_ARGS+=("$arg")
+        done < "$CODEX_MODEL_ARGS_TMP"
+        rm -f "$CODEX_MODEL_ARGS_TMP"
+        codex exec --full-auto -C "$WORKSPACE" ${CODEX_MODEL_ARGS[@]+"${CODEX_MODEL_ARGS[@]}"} \
             --output-last-message "$OUTPUT_FILE" - < "$PROMPT_FILE" 2>&1
         ;;
     cursor)
-        CURSOR_MODEL_ARGS=$("$SCRIPT_DIR/agent-model-args.sh" --tool cursor)
+        CURSOR_MODEL_ARGS_TMP=$(mktemp)
+        if "$SCRIPT_DIR/agent-model-args.sh" --tool cursor > "$CURSOR_MODEL_ARGS_TMP"; then
+            :
+        else
+            rc=$?
+            rm -f "$CURSOR_MODEL_ARGS_TMP"
+            exit "$rc"
+        fi
+        CURSOR_MODEL_ARGS=()
+        while IFS= read -r arg; do
+            CURSOR_MODEL_ARGS+=("$arg")
+        done < "$CURSOR_MODEL_ARGS_TMP"
+        rm -f "$CURSOR_MODEL_ARGS_TMP"
         # Source the Cursor auth helper and run preflight before launching.
         # No sentinel collector here (negotiation is foreground-synchronous),
         # so direct exit 2 on preflight failure is sufficient. Note: exit 2
@@ -76,8 +99,7 @@ case "$TOOL" in
         cursor_auth_preflight || exit 2
         CURSOR_AUTH_ARGS=()
         cursor_auth_argv
-        # shellcheck disable=SC2086
-        cursor agent -p --force --trust $CURSOR_MODEL_ARGS ${CURSOR_AUTH_ARGS[@]+"${CURSOR_AUTH_ARGS[@]}"} --workspace "$WORKSPACE" \
+        cursor agent -p --force --trust ${CURSOR_MODEL_ARGS[@]+"${CURSOR_MODEL_ARGS[@]}"} ${CURSOR_AUTH_ARGS[@]+"${CURSOR_AUTH_ARGS[@]}"} --workspace "$WORKSPACE" \
             "$("$SCRIPT_DIR/cursor-wrap-prompt.sh" "Read the negotiation prompt from $PROMPT_FILE and respond to it.")" \
             > "$OUTPUT_FILE" 2>&1
         ;;
