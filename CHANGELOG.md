@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.64] - 2026-05-07
+
+### Added
+
+- Resolve #1352: introduce `larch/.claude/rules/` (Claude Code's modular path-scoped instruction directory) and migrate three pilot rules out of `AGENTS.md` so Claude only loads them when editing the matching paths. New `.claude/rules/script-md-siblings.md` (paths: `scripts/**/*.{sh,py}`, `skills/**/scripts/**/*.{sh,py}`, `skills/shared/*.md`) carries the per-script sibling-contract invariant. New `.claude/rules/skill-editing-trace.md` (paths: `skills/**/SKILL.md`, `skills/**/scripts/**/*.{sh,py}`, `skills/shared/*.md`) carries the "start at SKILL.md, then trace every helper" rule. New `.claude/rules/version-bump-reserved-message.md` is intentionally UNSCOPED (always-on per design plan FINDING_8 — the reserved `Bump version to X.Y.Z` commit subject is a workflow invariant governing commit creation, not a `plugin.json`-edit invariant). New `GEMINI.md` is a one-line `@./AGENTS.md` (13 bytes, Gemini-native @-import; per Round 1 user direction, NOT a symlink). `AGENTS.md` removes the three migrated bullets, adds a single navigation-pointer bullet so Codex/Cursor/Gemini (which do not load Claude Code `.claude/rules/`) can find the rule files, and lists `.claude/rules/` alongside `.claude/skills/` in the Repository-layout supplementary set. `agents/{codex,cursor,gemini}-implementer.md` extend their pre-edit checklist (Style section) to read applicable `.claude/rules/*.md` files when edits touch the matching path scopes. `.pre-commit-config.yaml` adds `\.claude/rules/.*\.md` to the agnix `files:` regex so rules-only commits invoke `agnix --strict` (durable CI coverage replaces the bespoke local YAML check). `larch/.claude/rules/` is dev-only and does NOT ship to consumers (mirrors the existing `.claude/skills/` convention). Token-savings before/after measurement was relaxed by the user during Round 1 design discussion; this PR does not gather that number — operators wanting a number can run a measurement post-merge. The `Cursor / non-Claude-Code` visibility tradeoff is the documented Claude-only scoping the issue explicitly authorized; the AGENTS.md navigation pointer plus the implementer-prompt updates preserve discoverability for external agents.
+
 ## [15.12.63] - 2026-05-07
 
 ### Fixed
