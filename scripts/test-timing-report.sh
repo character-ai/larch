@@ -58,4 +58,24 @@ EMPTY="$TMP_BASE/empty.tsv"
 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$EMPTY" --full --markdown > "$TMP_BASE/empty.out"
 grep -Fq 'Timing report unavailable' "$TMP_BASE/empty.out"
 
+# Review FINDING_11: --full --output PATH branch is now tested.
+OUT_FILE="$TMP_BASE/full-output.md"
+[[ ! -e "$OUT_FILE" ]]
+LARCH_TEST_TIMING_NOW=310 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$LEDGER" --full --markdown --output "$OUT_FILE"
+[[ -f "$OUT_FILE" ]]
+grep -Fq '**Workflow path**: HARD' "$OUT_FILE"
+grep -Fq '## Per-Step Durations' "$OUT_FILE"
+grep -Fq '## Vendor Task Averages' "$OUT_FILE"
+# No leftover .tmp file from the atomic-write rename.
+[[ ! -e "${OUT_FILE}.tmp" ]]
+
+# Review FINDING_1: --ledger PATH should accept paths under the same containment
+# roots that timing-ledger.sh accepts (not just TMPDIR). Use IMPLEMENT_TMPDIR.
+NONTMP_DIR="$TMP_BASE/impl"
+mkdir -p "$NONTMP_DIR"
+NONTMP_LEDGER="$NONTMP_DIR/timing-ledger.tsv"
+cp "$LEDGER" "$NONTMP_LEDGER"
+IMPLEMENT_TMPDIR="$NONTMP_DIR" LARCH_TEST_TIMING_NOW=310 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$NONTMP_LEDGER" --full --markdown > "$TMP_BASE/nontmp.out"
+grep -Fq '**Workflow path**: HARD' "$TMP_BASE/nontmp.out"
+
 echo "PASS: test-timing-report.sh"

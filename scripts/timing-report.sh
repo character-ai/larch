@@ -5,34 +5,35 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Path-validation primitives are shared with timing-ledger.sh so the two
+# scripts agree on the allowed-roots set (closes review FINDING_1 +
+# FINDING_4). Previously timing-report.sh accepted only ${TMPDIR:-/tmp},
+# while timing-ledger.sh writes ledgers under any of TMPDIR /
+# IMPLEMENT_TMPDIR / DESIGN_TMPDIR / REVIEW_TMPDIR /
+# dirname(SESSION_ENV_PATH); a path valid for writes is now also valid
+# for reads.
+# shellcheck source=scripts/lib-timing-paths.sh
+source "$SCRIPT_DIR/lib-timing-paths.sh"
+
 unavailable() {
     printf 'Timing report unavailable: %s\n' "$1"
     exit 0
 }
 
-tmp_root() {
-    local root="${TMPDIR:-/tmp}"
-    (cd "$root" 2>/dev/null && pwd -P) || return 1
-}
-
-validate_tmp_path() {
+# Accept a `--ledger PATH` override under the same containment roots
+# `timing-ledger.sh` accepts (TMPDIR + the four optional env-derived
+# roots), not just TMPDIR. Print the canonicalized path on success;
+# return 1 on failure so the caller can `unavailable "invalid ledger
+# path"`.
+validate_ledger_override() {
     local raw="$1"
-    local root parent parent_dir base resolved
-    root=$(tmp_root) || return 1
-    case "$raw" in
-        ""|*/../*|../*|*/..|..) return 1 ;;
-    esac
-    if [[ "$raw" = /* ]]; then
-        parent="$raw"
-    else
-        parent="$root/$raw"
-    fi
-    parent_dir=$(dirname "$parent")
-    base=$(basename "$parent")
-    mkdir -p "$parent_dir" 2>/dev/null || return 1
-    resolved=$(cd "$parent_dir" 2>/dev/null && pwd -P) || return 1
-    [[ "$resolved" == "$root" || "$resolved" == "$root"/* ]] || return 1
-    printf '%s/%s' "$resolved" "$base"
+    local -a roots=()
+    local root candidate
+    while IFS= read -r root; do
+        [[ -n "$root" ]] && roots+=("$root")
+    done < <(timing_allowed_roots)
+    candidate=$(validate_under_roots "$raw" "${roots[@]+"${roots[@]}"}") || return 1
+    printf '%s' "$candidate"
 }
 
 ledger_from_dump() {
@@ -123,6 +124,7 @@ render_report() {
       row_ok() && $2 == "vendor" {
         vendor_count++
         vendor_ts[vendor_count] = $3 + 0
+        vendor_end[vendor_count] = $9 + 0
         vendor_name[vendor_count] = $6
         vendor_kind[vendor_count] = $7
         vendor_duration[vendor_count] = $10 + 0
@@ -143,7 +145,10 @@ render_report() {
           }
           codex = cursor = gemini = total = 0
           for (i = 1; i <= vendor_count; i++) {
-            if (vendor_ts[i] >= last_terse_ts) {
+            # Compare vendor_end (col $9) with the latest mark timestamp;
+            # using the row write-time ($3) inflated counts when a task
+            # finished before the mark but its trap fired after. (FINDING_5.)
+            if (vendor_end[i] >= last_terse_ts) {
               total++
               if (vendor_name[i] == "codex") codex++
               else if (vendor_name[i] == "cursor") cursor++
@@ -290,7 +295,7 @@ done
 [[ -n "$MODE" ]] || unavailable "missing report mode"
 
 if [[ -n "$LEDGER_OVERRIDE" ]]; then
-    LEDGER=$(validate_tmp_path "$LEDGER_OVERRIDE") || unavailable "invalid ledger path"
+    LEDGER=$(validate_ledger_override "$LEDGER_OVERRIDE") || unavailable "invalid ledger path"
 else
     LEDGER=$(ledger_from_dump)
 fi

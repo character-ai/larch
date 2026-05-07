@@ -134,7 +134,7 @@ read_health_sidecar_value() {
 health_merge() {
     local sidecar="${SESSION_ENV_PATH}.health"
     local slack_ok slack_missing repo repo_unavailable
-    local cur_codex cur_cursor cur_gemini
+    local cur_codex cur_cursor cur_gemini cur_timing_ledger
     local side_codex side_cursor side_gemini
     local merged_codex merged_cursor merged_gemini
     local flipped=false

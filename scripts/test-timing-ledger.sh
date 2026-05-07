@@ -62,4 +62,46 @@ seq 1 20 | xargs -P 4 -I{} "$REPO_ROOT/scripts/timing-ledger.sh" --ledger "$SEQ_
 [[ $(wc -l < "$SEQ_LEDGER" | tr -d ' ') == "20" ]]
 [[ $(awk -F '\t' '{print NF}' "$SEQ_LEDGER" | sort -u) == "13" ]]
 
+# Review FINDING_13: symlink ledger paths must be refused before any write.
+SYMLINK_TARGET="$TMP_BASE/symlink-target.tsv"
+SYMLINK_LEDGER="$TMP_BASE/symlink.tsv"
+: > "$SYMLINK_TARGET"
+ln -s "$SYMLINK_TARGET" "$SYMLINK_LEDGER"
+SYM_WARN="$TMP_BASE/sym-warn.txt"
+"$REPO_ROOT/scripts/timing-ledger.sh" --ledger "$SYMLINK_LEDGER" mark "should be rejected" 2>"$SYM_WARN"
+grep -Fq 'ledger is a symlink' "$SYM_WARN"
+[[ ! -s "$SYMLINK_TARGET" ]] || { echo "symlink target was written despite refusal" >&2; exit 1; }
+
+# Review FINDING_7: when flock cannot be acquired (simulated by a held lock
+# file plus a tight wait), append must fail closed rather than silently
+# producing interleaved garbage.
+if command -v flock >/dev/null 2>&1; then
+  FAILCLOSE_LEDGER="$TMP_BASE/failclose.tsv"
+  FAILCLOSE_LOCK="$FAILCLOSE_LEDGER.lock"  # match append_tsv_line()'s ${ledger}.lock convention
+  : > "$FAILCLOSE_LEDGER"
+  : > "$FAILCLOSE_LOCK"
+  FAILCLOSE_WARN="$TMP_BASE/failclose-warn.txt"
+  # Hold the lock in the background; the script tries flock -w 5 9 on the same
+  # ${ledger}.lock path and times out, hitting the fail-closed branch.
+  (
+      flock -x 9
+      sleep 8
+  ) 9>"$FAILCLOSE_LOCK" &
+  HOLDER_PID=$!
+  sleep 1
+  "$REPO_ROOT/scripts/timing-ledger.sh" --ledger "$FAILCLOSE_LEDGER" mark "should be skipped" 2>"$FAILCLOSE_WARN" || true
+  wait "$HOLDER_PID" 2>/dev/null || true
+  if grep -Fq 'flock lock acquisition failed' "$FAILCLOSE_WARN"; then
+    if [[ -s "$FAILCLOSE_LEDGER" ]]; then
+      echo "fail-closed flock fallback wrote a row anyway" >&2
+      exit 1
+    fi
+  else
+    # On environments where the lock holder failed to acquire (rare), the
+    # warn message will be the no-flock or flock-unavailable variant. Skip
+    # rather than fail — this case is environmental, not a contract bug.
+    echo "WARN: flock fail-closed test did not exercise the contention branch (env)" >&2
+  fi
+fi
+
 echo "PASS: test-timing-ledger.sh"

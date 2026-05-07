@@ -11,10 +11,11 @@ warn() {
     echo "$SCRIPT_NAME: WARNING: $*" >&2
 }
 
-tmp_root() {
-    local root="${TMPDIR:-/tmp}"
-    (cd "$root" 2>/dev/null && pwd -P) || return 1
-}
+# Path-validation primitives are shared with timing-report.sh via the
+# sourced library so both scripts agree on the allowed-roots set
+# (closes review FINDING_1 + FINDING_4).
+# shellcheck source=scripts/lib-timing-paths.sh
+source "$SCRIPT_DIR/lib-timing-paths.sh"
 
 sha256_hex() {
     if command -v shasum >/dev/null 2>&1; then
@@ -26,52 +27,6 @@ sha256_hex() {
 
 is_uint() {
     [[ "$1" =~ ^[0-9]+$ ]]
-}
-
-canonical_parent_path() {
-    local raw="$1"
-    local base parent parent_dir resolved
-    [[ -n "$raw" ]] || return 1
-    case "$raw" in
-        */../*|../*|*/..|..) return 1 ;;
-    esac
-    if [[ "$raw" = /* ]]; then
-        parent="$raw"
-    else
-        parent="$(tmp_root)/$raw"
-    fi
-    parent_dir=$(dirname "$parent")
-    base=$(basename "$parent")
-    mkdir -p "$parent_dir" 2>/dev/null || return 1
-    resolved=$(cd "$parent_dir" 2>/dev/null && pwd -P) || return 1
-    printf '%s/%s' "$resolved" "$base"
-}
-
-canonical_dir() {
-    local raw="$1"
-    [[ -n "$raw" && -d "$raw" ]] || return 1
-    (cd "$raw" 2>/dev/null && pwd -P)
-}
-
-path_under_root() {
-    local path="$1"
-    local root="$2"
-    [[ "$path" == "$root" || "$path" == "$root"/* ]]
-}
-
-validate_under_roots() {
-    local raw="$1"
-    shift
-    local candidate root
-    candidate=$(canonical_parent_path "$raw") || return 1
-    for root in "$@"; do
-        [[ -n "$root" ]] || continue
-        if path_under_root "$candidate" "$root"; then
-            printf '%s' "$candidate"
-            return 0
-        fi
-    done
-    return 1
 }
 
 validate_under_tmp() {
@@ -89,16 +44,7 @@ validate_under_tmp() {
 }
 
 allowed_env_roots() {
-    local root dir
-    root=$(tmp_root 2>/dev/null || true)
-    [[ -n "$root" ]] && printf '%s\n' "$root"
-    for var in IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR; do
-        dir="${!var:-}"
-        canonical_dir "$dir" 2>/dev/null || true
-    done
-    if [[ -n "${SESSION_ENV_PATH:-}" ]]; then
-        canonical_dir "$(dirname "$SESSION_ENV_PATH")" 2>/dev/null || true
-    fi
+    timing_allowed_roots
 }
 
 validate_env_ledger() {
@@ -154,10 +100,23 @@ resolve_ledger_path() {
 ensure_ledger() {
     local ledger="$1"
     local parent
+    # Reject symlinks before any write. The path validator canonicalizes only
+    # the parent directory; if `$ledger` itself is a symlink, every `printf >>`
+    # and `chmod` follows the link target — which can be outside the allowed
+    # containment roots. Closes review FINDING_13.
+    if [[ -L "$ledger" ]]; then
+        warn "ledger is a symlink, refusing to write: $ledger"
+        return 1
+    fi
     parent=$(dirname "$ledger")
     mkdir -p "$parent" 2>/dev/null || return 1
     if [[ ! -e "$ledger" ]]; then
         : > "$ledger" || return 1
+    elif [[ ! -f "$ledger" ]]; then
+        # Existing path is not a regular file (could be a directory, fifo,
+        # device, etc). Refuse to follow.
+        warn "ledger exists but is not a regular file: $ledger"
+        return 1
     fi
     chmod 600 "$ledger" 2>/dev/null || true
 }
@@ -172,9 +131,21 @@ append_tsv_line() {
             chmod 600 "$ledger" 2>/dev/null || true
             return 0
         fi
+        # Lock acquisition failed (contention, slow disk). Fail closed —
+        # an unlocked append would let parallel writers interleave bytes
+        # mid-line, producing malformed rows that timing-report.sh would
+        # silently drop (NF != 13 skip). Closes review FINDING_7.
+        if [[ "$FLOCK_WARNED" != "true" ]]; then
+            warn "flock lock acquisition failed; skipping append (fail closed) for $ledger"
+            FLOCK_WARNED=true
+        fi
+        return 1
     fi
+    # No flock available at all (e.g., minimal container, BSD without
+    # util-linux). Single-process containers should be safe with a plain
+    # append. Warn once and continue.
     if [[ "$FLOCK_WARNED" != "true" ]]; then
-        warn "flock unavailable or lock acquisition failed; falling back to unlocked append"
+        warn "flock unavailable; appending without lock (single-writer assumption) for $ledger"
         FLOCK_WARNED=true
     fi
     printf '%s\n' "$row" >> "$ledger"

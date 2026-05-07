@@ -76,7 +76,7 @@ When positional description text is present (no `--diff`), `/review` operates in
 ## Step 0 — Session Setup
 
 ```bash
-LARCH_TIMING_SKILL=review "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "review Step 0 — session setup" || true
+SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=review "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "review Step 0 — session setup" || true
 ```
 
 Run the shared session setup script. This handles temp directory creation, reviewer health probe, and health status file in a single call:
@@ -100,7 +100,7 @@ Set mental flags `codex_available` and `cursor_available` based on the output:
 ## Step 1 — Gather Context
 
 ```bash
-LARCH_TIMING_SKILL=review "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "review Step 1 — gather context" || true
+SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=review "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "review Step 1 — gather context" || true
 ```
 
 ### Diff mode (`--diff`)
@@ -127,7 +127,7 @@ Set `DIFF_FILE` to empty (no diff in description mode). Set `FILE_LIST_FILE` to 
 ## Step 2 — Launch Reviewer Panel in Parallel
 
 ```bash
-LARCH_TIMING_SKILL=review "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "review Step 2 — reviewer panel" || true
+SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=review "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "review Step 2 — reviewer panel" || true
 ```
 
 ### Reviewer panel composition
@@ -218,7 +218,7 @@ External reviewer output collection, validation, and retry are handled by the sh
 At the top of each Step 3 round iteration's bash block (before `### 3a — Collect` for round N), invoke:
 
 ```bash
-LARCH_TIMING_SKILL=review "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "review Step 3 round ${round_num} — review cycle" || true
+SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=review "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "review Step 3 round ${round_num} — review cycle" || true
 ```
 
 Use the round counter already tracked by the round state machine.
@@ -317,7 +317,7 @@ If `round_substantial=true`, increment the round number. IMMEDIATELY re-execute 
 ## Step 4 — Final Summary (and description-mode /umbrella filing)
 
 ```bash
-LARCH_TIMING_SKILL=review "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "review Step 4 — final summary" || true
+SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=review "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "review Step 4 — final summary" || true
 ```
 
 ### 4a — Print summary (both modes)
@@ -426,7 +426,7 @@ Substitute `ISSUES_CREATED`, `ISSUES_DEDUPLICATED`, `ISSUES_FAILED` from Step 4b
 ## Step 5 — Cleanup
 
 ```bash
-LARCH_TIMING_SKILL=review "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "review Step 5 — cleanup" || true
+SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=review "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "review Step 5 — cleanup" || true
 ```
 
 ### 5a — Update Health Status File

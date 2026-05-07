@@ -14,7 +14,7 @@ One array, one read-only contract:
 SECTION_MARKERS=(plan-goals-test plan-review-tally code-review-tally diagrams version-bump-reasoning oos-issues execution-issues run-statistics timing-report)
 ```
 
-The array contains 8 elements in assembly order. Consumer contract:
+The array contains 9 elements in assembly order. Consumer contract:
 
 - `scripts/assemble-anchor.sh` walks the array to emit `<!-- section:<slug> -->` / `<!-- section-end:<slug> -->` marker pairs in the same order.
 - `scripts/tracking-issue-write.sh` walks the array in its per-section truncation pass (see `tracking-issue-write.md` "Truncation algorithm").
