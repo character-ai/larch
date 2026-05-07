@@ -10,16 +10,11 @@ Plugin ships the entire repo. **Runtime surface**: `skills/`, `agents/`, `hooks/
 
 - Always respect `scripts/block-submodule-edit.sh`. If a hook blocks a write, investigate and resolve the underlying issue. The guard ships via `hooks/hooks.json` only — `.claude/settings.json` no longer mirrors it, so contributors developing in this repo must load larch as a plugin (`claude --plugin-dir .` or the local marketplace) to pick up the guard.
 - After any change, run `/relevant-checks`.
-- Public `skills/*/SKILL.md` use `${CLAUDE_PLUGIN_ROOT}/…`; dev-only `.claude/skills/*/SKILL.md` use `$PWD/…`.
 - Update `SECURITY.md` when security-relevant behavior changes.
-- Path-scoped editing rules for Claude Code live under `.claude/rules/`. Tools that consume only `AGENTS.md` (Codex, Cursor, Gemini) must consult every `.claude/rules/*.md` whose YAML `paths:` frontmatter matches the files they are about to edit. Rules without a `paths:` entry (no frontmatter) are unconditional and must be consulted on any plugin edit.
+- Path-scoped editing rules for Claude Code live under `.claude/rules/`. Tools that consume only `AGENTS.md` (Codex, Cursor, Gemini) must consult any `.claude/rules/*.md` whose `paths:` frontmatter glob matches the file(s) being edited.
 
 ## Common editing tasks
 
-- **Adding/modifying the Code Reviewer archetype** → edit `skills/shared/reviewer-templates.md` (canonical; update triggers in that file), then run `bash scripts/generate-code-reviewer-agent.sh` to regenerate `agents/code-reviewer.md`; CI's `agent-sync` job runs the registry walker (`scripts/check-generators.sh`) to enforce drift across all registered generators. For any other reviewer archetype, follow the general rule: identify the canonical source and mirror updates to any generated outputs.
-- **Changing a shared script** → edit `scripts/<name>.sh`, read its sibling `scripts/<name>.md` for the contract, then grep for callers across `skills/`, `hooks/`, `.claude/settings.json`, `.github/workflows/`, and other scripts.
-- **Changing dev-only skills** → edit under `.claude/skills/bump-version/` or `.claude/skills/relevant-checks/`.
-- **Adding/changing a topology count** → first ensure the runtime authority for that count is updated; then edit `skills/shared/topology.tsv`; then run `bash scripts/generate-topology-docs.sh` to regenerate `docs/topology.md`. Consumer docs that link to `docs/topology.md` need no edit unless a new row anchor is being introduced.
 - **Docs or scripts only** → classified as PATCH.
 
 ## Canonical sources
@@ -42,7 +37,6 @@ Plugin ships the entire repo. **Runtime surface**: `skills/`, `agents/`, `hooks/
 
 ## Conventions
 
-- Shell scripts use `set -euo pipefail` by default. Comment when `-e` is intentionally omitted.
 - Follow recent commit history style.
 - Run `gh pr create` through the skill, not manually.
 - Run `gh issue create` through `/larch:issue`, not manually. Scripts under `scripts/` and `skills/*/scripts/` (e.g., hooks) may continue to call `gh issue create` directly — the rule targets interactive / assistant-driven issue creation only.

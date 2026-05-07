@@ -7,7 +7,7 @@ associated with the current git branch. Wraps the multi-pipe `gh pr view |
 grep | head | grep` invocation that previously lived inline in
 `skills/implement/SKILL.md` Step 0.5 Branch 3 (PR-body recovery), so the
 SKILL.md prose owns intent and the shell pipeline lives in a single
-testable location (per the per-script-contract convention in `AGENTS.md`).
+testable location (per `.claude/rules/script-md-siblings.md`).
 
 ## Inputs
 

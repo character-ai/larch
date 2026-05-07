@@ -8,7 +8,7 @@ Discovery has two deliberately separate pipelines. `discover_gemini_tools_raw()`
 
 **Tokenizer blind spot — undelimited concatenations.** Names without separators or camelCase transitions (e.g. `writefile`, `editfile`) tokenize to a single token that does NOT anchored-match write-style keywords (`writefile` ≠ `write`), so they would slip the write-style alarm. This is a deliberate trade-off: catching `writefile`-style names would require either fuzzy substring matching (which forfeits the `metadata_writer_index` negative case) or a curated stem list (additional surface area to maintain). The current snake_case / camelCase / hyphen / dot taxonomy covers the catalog shapes Gemini-cli and similar tools have shipped historically. If a future tool ships an undelimited write-style name, add it to `scripts/gemini-known-tools.txt` (which routes through the deny-list path) rather than relaxing the tokenizer.
 
-The primary contract lives in `scripts/check-reviewers.md`; this sibling exists for discoverability per the AGENTS.md per-script-contract convention. Do NOT invoke this library directly. Edits must update `scripts/check-reviewers.sh`, `scripts/check-reviewers.md`, `scripts/test-check-reviewers.sh`, `scripts/gemini-known-tools.txt`, `scripts/gemini-known-tools.md`, and `SECURITY.md` as applicable.
+The primary contract lives in `scripts/check-reviewers.md`; this sibling exists for discoverability per `.claude/rules/script-md-siblings.md`. Do NOT invoke this library directly. Edits must update `scripts/check-reviewers.sh`, `scripts/check-reviewers.md`, `scripts/test-check-reviewers.sh`, `scripts/gemini-known-tools.txt`, `scripts/gemini-known-tools.md`, and `SECURITY.md` as applicable.
 
 ## Test seam: `LARCH_GEMINI_TOOL_DISCOVERY_TIMEOUT`
 

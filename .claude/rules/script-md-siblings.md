@@ -9,6 +9,8 @@ Every `.sh` / `.py` script under `scripts/` and `skills/<name>/scripts/` has a s
 - **Primary owns the full contract.** Where a primary script has a sourced-only library (`scripts/lib-*.sh` — no shebang) and/or a regression test harness (`scripts/test-*.sh` for the primary), the primary's `.md` owns the full contract and cites the related files by path. The library and harness still get their own sibling `.md` (typically a one-paragraph stub) so every `.sh` has a sibling for discoverability and audit; the stub points readers to the primary's `.md` rather than restating the contract.
 - **Cross-tree harnesses.** A test harness may live under `scripts/test-*.sh` while its primary lives at `skills/<name>/scripts/<primary>.sh` (e.g. `scripts/test-post-scaffold-hints.sh` testing `skills/create-skill/scripts/post-scaffold-hints.sh`). The primary's `.md` (in its own tree) owns the full contract; the harness in `scripts/` still gets a sibling `.md` stub naming its primary.
 
+**Caller surface for shared scripts.** When changing a script under `scripts/`, also grep for callers across `skills/`, `hooks/`, `.claude/settings.json`, `.github/workflows/`, and other scripts before finalizing the change.
+
 For canonical documentation files (`skills/shared/*.md`), update triggers live inside the file itself at the bottom.
 
 This rule's `paths:` intentionally covers nested `skills/**/scripts/**/*.{sh,py}` so future skill script layouts inherit the same sibling-contract invariant.
