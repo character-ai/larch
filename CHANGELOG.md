@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.58] - 2026-05-07
+
+### Fixed
+
+- Resolve #1357: replace the four layered prompt-text anti-halt reminders at the post-/design boundary in `/implement` Step 1 normal mode with a mechanical wrapper script `skills/implement/scripts/post-design-boundary.sh`. The wrapper delegates manifest validation to `read-design-manifest.sh --emit-load-breadcrumb`, performs Cross-Skill Health Propagation (monotonic flip), captures `BRANCH=` via `git-current-branch.sh` with retry-and-fail-closed, and emits a single coherent envelope ending with an imperative `➡️` continuation directive. SKILL.md Step 1 now invokes the wrapper as the FIRST mandatory post-`/design` action, replaces the Cross-Skill Health Update body with a pointer, parses `BRANCH=` from the wrapper instead of re-running the helper, and adds a post-/design legal next-actions matrix patterned after the Step 2 entry preconditions matrix. The wrapper buffers the reader's success block until every hard gate (manifest read + session-env validation + branch capture) passes — a late branch-capture failure now emits only the failure envelope, not a contradictory dual envelope of `MANIFEST_OK=true` plus a trailing `MANIFEST_FAILED=true`. New skill-local harness `skills/implement/scripts/test-post-design-boundary.sh` (success, missing manifest, invalid tmpdir, anchored parse, stale-health × 4 variants, branch-capture × 2 variants, design-only imperative variant, path-injection × 2, session-env validation × 2). Repo-root harness `scripts/test-implement-post-design-boundary.sh` extended with assertions K (wrapper exists), L (SKILL invokes it), M (no direct `read-design-manifest.sh --emit-load-breadcrumb` from the post-/design slice), N (matrix present in SKILL), F-prime (replaces retired F).
+
 ## [15.12.57] - 2026-05-06
 
 ### Added

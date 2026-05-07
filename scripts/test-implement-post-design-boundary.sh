@@ -1,7 +1,8 @@
 #!/bin/bash
 # Regression test for issue #1014: post-/design boundary checkpoint reminder
-# in skills/implement/SKILL.md Step 1 (normal mode), and the matching
-# --emit-load-breadcrumb flag handler in skills/design/scripts/read-design-manifest.sh.
+# in skills/implement/SKILL.md Step 1 (normal mode), the post-design wrapper,
+# and the matching --emit-load-breadcrumb flag handler in
+# skills/design/scripts/read-design-manifest.sh.
 #
 # Exit 0 on pass, exit 1 on any assertion failure.
 
@@ -12,6 +13,8 @@ set -euo pipefail
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)
 SKILL_MD="$REPO_ROOT/skills/implement/SKILL.md"
 READER="$REPO_ROOT/skills/design/scripts/read-design-manifest.sh"
+WRAPPER="$REPO_ROOT/skills/implement/scripts/post-design-boundary.sh"
+WRAPPER_MD="$REPO_ROOT/skills/implement/scripts/post-design-boundary.md"
 
 fail() { echo "FAIL: $1" >&2; exit 1; }
 
@@ -58,11 +61,46 @@ grep -q 'NEVER #7' "$SKILL_MD" \
 grep -q '📥 1: design plan — manifest loaded (plan=' "$SKILL_MD" \
     || fail "(E) missing manifest-loaded breadcrumb literal (plan=...) in SKILL.md"
 
-# (F) read-design-manifest.sh invocation in the post-/design re-run carries
-#     --emit-load-breadcrumb so the breadcrumb actually fires.
-# shellcheck disable=SC2016 # the literal "$IMPLEMENT_TMPDIR" is intentional — we are searching SKILL.md for an unexpanded shell variable.
+# (F') SKILL.md invokes the wrapper, and the wrapper owns the reader call with
+#      --emit-load-breadcrumb so the breadcrumb path is preserved end-to-end.
+# shellcheck disable=SC2016 # literal ${CLAUDE_PLUGIN_ROOT} is intentional.
+grep -q '\${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/post-design-boundary.sh' "$SKILL_MD" \
+    || fail "(F') SKILL.md missing post-design-boundary.sh invocation"
+[[ -f "$WRAPPER" ]] || fail "(F') post-design-boundary.sh missing"
+grep -q 'read-design-manifest.sh.*--emit-load-breadcrumb' "$WRAPPER" \
+    || fail "(F') wrapper missing read-design-manifest.sh --emit-load-breadcrumb invocation"
+
+# (K) Wrapper exists, is executable, and has a sibling contract.
+[[ -x "$WRAPPER" ]] || fail "(K) post-design-boundary.sh missing or not executable"
+[[ -f "$WRAPPER_MD" ]] || fail "(K) post-design-boundary.md missing"
+
+# (L) SKILL.md Step 1 normal mode invokes the wrapper with the three required
+#     flags. Quoting may vary; this assertion pins the logical Bash block.
+WRAPPER_BLOCK=$(awk '
+    /post-design-boundary\.sh/ { in_block=1 }
+    in_block { print }
+    in_block && /--design-only/ { exit }
+' "$SKILL_MD")
+[[ -n "$WRAPPER_BLOCK" ]] || fail "(L) wrapper invocation block missing"
+for flag in "--implement-tmpdir" "--session-env" "--design-only"; do
+    printf '%s\n' "$WRAPPER_BLOCK" | grep -q -- "$flag" \
+        || fail "(L) wrapper invocation missing flag: $flag"
+done
+
+# (M) The post-/design slice no longer calls read-design-manifest.sh with
+#     --emit-load-breadcrumb directly; the wrapper owns that call.
+# shellcheck disable=SC2016 # literal "$IMPLEMENT_TMPDIR" is intentional.
 grep -q 'read-design-manifest.sh --implement-tmpdir "\$IMPLEMENT_TMPDIR" --emit-load-breadcrumb' "$SKILL_MD" \
-    || fail "(F) post-/design re-run in SKILL.md missing --emit-load-breadcrumb forwarding"
+    && fail "(M) SKILL.md still calls read-design-manifest.sh --emit-load-breadcrumb directly"
+
+# (N) Step 1 carries the post-/design legal next-actions matrix.
+for sentinel in \
+    "post-/design legal next-actions matrix" \
+    "Wrapper output" \
+    "If a downstream paragraph appears to disagree, the matrix wins."; do
+    grep -q "$sentinel" "$SKILL_MD" \
+        || fail "(N) missing post-/design matrix sentinel: $sentinel"
+done
 
 # (G) read-design-manifest.sh defines the --emit-load-breadcrumb flag handler.
 grep -q -- '--emit-load-breadcrumb' "$READER" \
