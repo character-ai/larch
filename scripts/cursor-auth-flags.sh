@@ -30,6 +30,21 @@ if ! . "$SCRIPT_DIR/lib-cursor-auth.sh" 2>/dev/null; then
     exit 1
 fi
 
+# Run the same Darwin-gated preflight the launchers use (lib-cursor-auth.sh
+# `cursor_auth_preflight`). The runtime markdown templates that consume this
+# script's stdout (skills/shared/voting-protocol.md, skills/shared/dialectic-protocol.md,
+# skills/research/references/validation-phase.md) had no preflight gate
+# before — operators hitting voting / dialectic / research-validation paths
+# could still see the cryptic `Security process exited with code: 45` while
+# script-owned launches got the actionable preflight error. Fail closed via
+# exit 2 here so the markdown-template Bash blocks abort with the same
+# actionable stderr message and consistent exit code as the launchers; the
+# `while IFS= read` loop in those blocks then sees zero stdout lines, leaving
+# CURSOR_AUTH_FLAGS empty AND propagating the non-zero exit through process
+# substitution per shell semantics (the markdown-template's outer `set -e` /
+# error-handling discipline catches the failure).
+cursor_auth_preflight || exit 2
+
 CURSOR_AUTH_ARGS=()
 cursor_auth_argv
 

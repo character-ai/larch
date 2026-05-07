@@ -57,6 +57,29 @@ cursor_auth_argv() {
     # cursor-auth-flags.sh) after sourcing this lib — shellcheck cannot see
     # those callers from here.
     CURSOR_AUTH_ARGS=()
+    # Reject embedded newlines / carriage returns in the trimmed key.
+    # cursor-auth-flags.sh emits one argv element per physical line on stdout,
+    # which the runtime markdown templates then read into an array via
+    # `while IFS= read -r line; do CURSOR_AUTH_FLAGS+=("$line"); done`. A key
+    # with an embedded newline would expand a SINGLE logical argv value into
+    # MULTIPLE physical lines, producing a broken `cursor agent` argv (extra
+    # tokens between `--api-key` and `--workspace`). Cursor API keys are
+    # base62-shaped in practice; an embedded newline is almost always the
+    # result of a paste corruption (`"\n"` accidentally captured) or a
+    # heredoc misuse. Fail closed by leaving CURSOR_AUTH_ARGS empty so
+    # `cursor agent` falls back to its default auth resolution rather than
+    # mangling argv. The case statement uses Bash 3.2-safe glob patterns
+    # (no `=~`, no extended-glob).
+    #
+    # NUL bytes ($'\0') are NOT checked: bash strings cannot contain NUL
+    # (the C string terminator), so `$'\0'` expands to an empty string and
+    # `*$'\0'*` is the always-match pattern `**`. Including it here would
+    # cause cursor_auth_argv to fail closed on every non-empty key.
+    case "$key" in
+        *$'\n'*|*$'\r'*)
+            return 0
+            ;;
+    esac
     if [ -n "$key" ]; then
         # shellcheck disable=SC2034
         CURSOR_AUTH_ARGS=(--api-key "$key")

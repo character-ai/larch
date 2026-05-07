@@ -111,14 +111,60 @@ else
     fail 11 "stderr message missing required anchors; got:\n$STDERR"
 fi
 
-# Test 12 (cursor-auth-flags.sh): when CURSOR_API_KEY empty, exits 0 with no stdout.
-FLAGS_OUT=$(CURSOR_API_KEY="" "$REPO_ROOT/scripts/cursor-auth-flags.sh"; echo "rc=$?")
-if [[ "$FLAGS_OUT" == "rc=0" ]]; then pass; else fail 12 "cursor-auth-flags.sh empty key: expected exactly rc=0 with no stdout; got: $FLAGS_OUT"; fi
+# Test 12 (cursor-auth-flags.sh): when CURSOR_API_KEY empty, the preflight
+# gate fires (this is the F4 fix from review round 1). On a controlled-Linux
+# test-mode environment, preflight is a no-op so exit is 0 with no stdout.
+FLAGS_OUT=$(CURSOR_API_KEY="" \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 \
+    LIB_CURSOR_AUTH_TEST_UNAME=Linux \
+    "$REPO_ROOT/scripts/cursor-auth-flags.sh"; echo "rc=$?")
+if [[ "$FLAGS_OUT" == "rc=0" ]]; then pass; else fail 12 "cursor-auth-flags.sh empty key on Linux: expected exactly rc=0 with no stdout; got: $FLAGS_OUT"; fi
 
 # Test 13 (cursor-auth-flags.sh): when CURSOR_API_KEY set, prints two lines.
-FLAGS_OUT=$(CURSOR_API_KEY="abc" "$REPO_ROOT/scripts/cursor-auth-flags.sh")
+FLAGS_OUT=$(CURSOR_API_KEY="abc" \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 \
+    LIB_CURSOR_AUTH_TEST_UNAME=Linux \
+    "$REPO_ROOT/scripts/cursor-auth-flags.sh")
 EXPECTED=$'--api-key\nabc'
 if [[ "$FLAGS_OUT" == "$EXPECTED" ]]; then pass; else fail 13 "cursor-auth-flags.sh: expected '$EXPECTED', got: $FLAGS_OUT"; fi
+
+# Test 14 (review FINDING_3): embedded newline / CR / NUL in CURSOR_API_KEY
+# MUST NOT produce broken argv. cursor_auth_argv leaves CURSOR_AUTH_ARGS empty
+# (fail-closed) so cursor agent falls back to its default auth resolution
+# rather than receiving extra argv tokens that would split the --api-key pair.
+OUT=$(_argv_run $'sk-test\nleak')
+if [[ -z "$OUT" ]]; then pass; else fail 14 "embedded newline in key should leave CURSOR_AUTH_ARGS empty; got: $OUT"; fi
+OUT=$(_argv_run $'sk-test\rleak')
+if [[ -z "$OUT" ]]; then pass; else fail 14b "embedded CR in key should leave CURSOR_AUTH_ARGS empty; got: $OUT"; fi
+
+# Test 15 (review FINDING_4): cursor-auth-flags.sh now runs cursor_auth_preflight.
+# On Darwin (test-mode injected) with empty key + missing keychain, the script
+# exits 2 with no stdout — same actionable failure mode as the launchers, so
+# runtime markdown templates fail consistently rather than silently emitting
+# zero --api-key flags and falling through to keychain auth.
+FLAGS_OUT=$(CURSOR_API_KEY="" \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 \
+    LIB_CURSOR_AUTH_TEST_UNAME=Darwin \
+    LIB_CURSOR_AUTH_TEST_SECURITY_RC=1 \
+    "$REPO_ROOT/scripts/cursor-auth-flags.sh"; echo "rc=$?")
+if grep -Fxq "rc=2" <<<"$FLAGS_OUT" && ! grep -Fq -- "--api-key" <<<"$FLAGS_OUT"; then
+    pass
+else
+    fail 15 "cursor-auth-flags.sh on Darwin preflight failure should exit 2 with no --api-key emitted; got: $FLAGS_OUT"
+fi
+
+# Test 16 (review FINDING_4): cursor-auth-flags.sh on non-Darwin with empty key
+# returns 0 (preflight no-op) and no flags. Pins that the new preflight gate
+# does not break Linux/CI keychain-irrelevant flow.
+FLAGS_OUT=$(CURSOR_API_KEY="" \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 \
+    LIB_CURSOR_AUTH_TEST_UNAME=Linux \
+    "$REPO_ROOT/scripts/cursor-auth-flags.sh"; echo "rc=$?")
+if grep -Fxq "rc=0" <<<"$FLAGS_OUT" && ! grep -Fq -- "--api-key" <<<"$FLAGS_OUT"; then
+    pass
+else
+    fail 16 "cursor-auth-flags.sh on non-Darwin empty key should exit 0 with no flags; got: $FLAGS_OUT"
+fi
 
 TOTAL=$((PASS_COUNT + FAIL_COUNT))
 if (( FAIL_COUNT == 0 )); then
