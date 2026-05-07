@@ -106,6 +106,12 @@ render_jq() {
         end;
       def n($x): ($x // 0 | tonumber? // 0);
       def fmt($x): ($x | tostring);
+      def md_cell($s):
+        ($s // "" | tostring
+          | gsub("\r\n"; " ")
+          | gsub("\n"; " ")
+          | gsub("\r"; " ")
+          | gsub("\\|"; "\\|"));
       def claude_total($r):
         n($r.message.usage.input_tokens)
         + n($r.message.usage.cache_read_input_tokens)
@@ -155,48 +161,98 @@ render_jq() {
           + " cache_read=" + fmt($ct.cache_read) + " cache_create=" + fmt($ct.cache_create)
           + " output=" + fmt($ct.output) + "); vendor=" + fmt($vt)
           + (if $vt > 0 then " (" + ($vb | map(.vendor + "=" + (.total|tostring)) | join(", ")) + ")" else "" end));
-      def md_header:
-        "| Step | Skill | Claude input | Cache read | Cache create | Output | Claude total | Vendor total |\n"
-        + "|---|---:|---:|---:|---:|---:|---:|---:|";
-      def md_row($step; $skill; $ci; $cr; $cc; $out; $ct; $vt):
-        "| " + $step + " | " + $skill + " | " + ($ci|tostring) + " | " + ($cr|tostring)
-        + " | " + ($cc|tostring) + " | " + ($out|tostring) + " | " + ($ct|tostring)
-        + " | " + ($vt|tostring) + " |";
-      def md_na_row($step; $skill; $vt):
-        "| " + $step + " | " + $skill + " | N/A | N/A | N/A | N/A | N/A | " + ($vt|tostring) + " |";
-      def markdown($marks; $claude; $vendor):
-        [md_header] + (
-          [range(0; $marks|length) as $i
+
+      # --- Shared helpers ---
+
+      # Vendor-name to display heading. Explicit map so headings render
+      # capitalized. Unknown vendors fall through to "### " + raw name to keep
+      # coverage lossless when ledger contains arbitrary vendor strings.
+      def vendor_label($vname):
+        if   $vname == "codex"  then "Codex"
+        elif $vname == "cursor" then "Cursor"
+        elif $vname == "gemini" then "Gemini"
+        else $vname
+        end;
+
+      # Shared 4-column header for the per-vendor tables.
+      def vendor_header($input_label; $output_label):
+        "| Step | Skill | " + $input_label + " | " + $output_label + " |\n"
+        + "| --- | --- | ---: | ---: |";
+
+      # 4-column row. Text cells route through md_cell.
+      def vrow($step; $name; $in; $out):
+        "| " + md_cell($step) + " | " + md_cell($name) + " | "
+        + ($in|tostring) + " | " + ($out|tostring) + " |";
+
+      # Single-array slice helper: the one-array analog of step_slice.
+      def slice1($rows; $start; $end):
+        $rows | map(select(.ts != null and .ts >= $start and ($end == null or .ts < $end)));
+
+      # --- Claude table ---
+
+      # Always emitted because Claude is the primary surface.
+      def claude_table($marks; $claude):
+        ["### Claude", "", vendor_header("Claude Input"; "Claude Output")]
+        + ([range(0; $marks|length) as $i
             | ($marks[$i]) as $m
             | (($marks[$i+1].ts) // null) as $end
-            | (step_slice($claude; $vendor; $m.ts; $end)) as $s
-            | (totals($s.claude)) as $ct
-            | (sumfield($s.vendor; "total")) as $vt
-            | md_row($m.step; "**step total**"; $ct.input; $ct.cache_read; $ct.cache_create; $ct.output; $ct.total; $vt),
-              ($s.claude
+            | (slice1($claude; $m.ts; $end)) as $sl
+            | (totals($sl)) as $st
+            | vrow($m.step; "**step total**"; $st.input; $st.output),
+              ($sl
                 | group_by(.skill)
                 | map({skill: .[0].skill, totals: totals(.)})
                 | .[]
-                | md_row("" ; ("&nbsp;&nbsp;" + .skill); .totals.input; .totals.cache_read; .totals.cache_create; .totals.output; .totals.total; 0)),
-              ($s.vendor
-                | group_by(.vendor)
-                | map({vendor: .[0].vendor, total: sumfield(.; "total")})
-                | .[]
-                | md_na_row("" ; ("&nbsp;&nbsp;vendor:" + .vendor); .total))
+                | vrow(""; .skill; .totals.input; .totals.output))
+           ])
+        + [
+            ($marks[0].ts) as $first
+            | (slice1($claude; $first; null)) as $in_run
+            | (totals($in_run)) as $gt
+            | vrow("**Grand total**"; ""; $gt.input; $gt.output)
           ]
-        ) + [
-          # Filter grand totals to only rows at or after the first mark so the
-          # table reconciles: each step row uses step_slice with mark.ts as the
-          # lower bound, so rows BEFORE the first mark are excluded from every
-          # per-step row and would otherwise appear only in the grand total —
-          # producing a sum-of-step-rows ≠ grand-total mismatch. Filtering here
-          # keeps the grand row consistent with the per-step partition.
-          ($marks[0].ts) as $first
-          | ($claude | map(select(.ts != null and .ts >= $first))) as $claude_in_run
-          | ($vendor | map(select(.ts != null and .ts >= $first))) as $vendor_in_run
-          | (totals($claude_in_run)) as $gt
-          | md_row("**Grand total**"; ""; $gt.input; $gt.cache_read; $gt.cache_create; $gt.output; $gt.total; (sumfield($vendor_in_run; "total")))
-        ] | join("\n");
+        | join("\n");
+
+      # --- Per-vendor table ---
+
+      # Filters $vendor to the requested name and in-run window. Both the
+      # emit/omit decision and totals read from that same filtered set.
+      def vendor_table($vname; $marks; $vendor):
+        ($marks[0].ts) as $first
+        | ($vendor | map(select(.vendor == $vname and .ts != null and .ts >= $first))) as $vrows
+        | if ($vrows | length) == 0 then null
+          else
+            ["### " + vendor_label($vname), "", vendor_header("Input"; "Output")]
+            + ([range(0; $marks|length) as $i
+                | ($marks[$i]) as $m
+                | (($marks[$i+1].ts) // null) as $end
+                | (slice1($vrows; $m.ts; $end)) as $sl
+                | (sumfield($sl; "input")) as $vi
+                | (sumfield($sl; "output")) as $vo
+                | vrow($m.step; "**step total**"; $vi; $vo)
+               ])
+            + [
+                (sumfield($vrows; "input")) as $gi
+                | (sumfield($vrows; "output")) as $go
+                | vrow("**Grand total**"; ""; $gi; $go)
+              ]
+            | join("\n")
+          end;
+
+      # Coverage-lossless vendor enumeration: take distinct vendor names in
+      # the in-run window, then emit codex first, cursor second, and any other
+      # vendors alphabetically.
+      def vendor_names($marks; $vendor):
+        ($marks[0].ts) as $first
+        | ($vendor | map(select(.ts != null and .ts >= $first)) | map(.vendor) | unique) as $present
+        | (["codex", "cursor"] | map(select(. as $v | $present | index($v) != null)))
+        + ($present - ["codex", "cursor"] | sort);
+
+      def markdown($marks; $claude; $vendor):
+        ([claude_table($marks; $claude)]
+         + (vendor_names($marks; $vendor) | map(vendor_table(.; $marks; $vendor)))
+         | map(select(. != null))
+         | join("\n\n"));
 
       ($ledger // []) as $l
       | ($l | map(select(.type == "mark") | {step, ts: (.ts | epoch)}) | map(select(.ts != null))) as $marks
