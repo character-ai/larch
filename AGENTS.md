@@ -12,7 +12,7 @@ Plugin ships the entire repo. **Runtime surface**: `skills/`, `agents/`, `hooks/
 - After any change, run `/relevant-checks`.
 - Public `skills/*/SKILL.md` use `${CLAUDE_PLUGIN_ROOT}/…`; dev-only `.claude/skills/*/SKILL.md` use `$PWD/…`.
 - Update `SECURITY.md` when security-relevant behavior changes.
-- Path-scoped editing rules for Claude Code live under `.claude/rules/`. Tools that consume only `AGENTS.md` (Codex, Cursor, Gemini) must consult `.claude/rules/script-md-siblings.md`, `.claude/rules/skill-editing-trace.md`, and `.claude/rules/version-bump-reserved-message.md` when editing scripts, `SKILL.md` files, or `.claude-plugin/plugin.json`.
+- Path-scoped editing rules for Claude Code live under `.claude/rules/`. Tools that consume only `AGENTS.md` (Codex, Cursor, Gemini) must consult every `.claude/rules/*.md` whose YAML `paths:` frontmatter matches the files they are about to edit. Rules without a `paths:` entry (no frontmatter) are unconditional and must be consulted on any plugin edit.
 
 ## Common editing tasks
 
