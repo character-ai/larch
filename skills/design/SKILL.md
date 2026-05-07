@@ -256,6 +256,28 @@ Print `> **🔶 2a: sketches**`.
 
 **Subagent heavy phase**: If `subagent_mode=true` (i.e., `--subagent` was passed) AND `quick_mode=false`, invoke a single Agent-tool subagent (subagent_type: `general-purpose`) for the heavy non-interactive phase before entering 2a.2. The subagent MUST read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/heavy-worker.md`, receive `DESIGN_TMPDIR`, `IMPLEMENT_TMPDIR`, `SESSION_ENV_PATH`, `FEATURE_DESCRIPTION`, `quick_mode`, `auto_mode`, branch info, and reviewer health flags as explicit data, and write raw artifacts to `$DESIGN_TMPDIR/`. The subagent returns only `DESIGN_HEAVY=complete` or `DESIGN_HEAVY=failed REASON=<short-token>`; it does not write the manifest and does not return plan/reviewer/tally prose.
 
+Immediately after the Agent tool returns, parse the heavy-worker status line. Before following the success path, fail closed if the worker omitted a valid status line or returned success without the required artifacts. The gate has two tiers, drawn from two distinct normative sources: **Tier 1 (non-empty)** for substantive artifacts the `heavy-worker.md` "Artifact Contract" mandates as non-empty regardless of manifest export; **Tier 2 (must-exist)** for may-be-empty artifacts that `skills/design/scripts/write-design-manifest.sh` requires on disk for manifest export (`copy_required_may_be_empty` calls in that script). On the nested+`auto_mode=true` path, parent Step 4 (which creates missing empty files) is skipped, so Tier 2 is the load-bearing existence check before manifest export at Step 5; Tier 1 is the heavy-worker contract check independent of manifest export.
+
+```bash
+if [[ "${DESIGN_HEAVY:-}" != "complete" && "${DESIGN_HEAVY:-}" != "failed" ]]; then
+  DESIGN_HEAVY=failed
+  REASON=worker-yielded-without-artifacts
+elif [[ "${DESIGN_HEAVY:-}" == "complete" ]] && {
+  [[ ! -s "$DESIGN_TMPDIR/plan.txt" ]] ||
+  [[ ! -s "$DESIGN_TMPDIR/approach-synthesis.txt" ]] ||
+  [[ ! -s "$DESIGN_TMPDIR/voting-tally.md" ]] ||
+  [[ ! -f "$DESIGN_TMPDIR/contested-decisions.md" ]] ||
+  [[ ! -f "$DESIGN_TMPDIR/oos.md" ]] ||
+  [[ ! -f "$DESIGN_TMPDIR/rejected-findings.md" ]] ||
+  [[ ! -f "$DESIGN_TMPDIR/accepted-plan-findings.md" ]]
+}; then
+  DESIGN_HEAVY=failed
+  REASON=worker-yielded-without-artifacts
+fi
+```
+
+Tier 1 (non-empty `-s` checks) pins the substantive artifacts mandated as non-empty by `heavy-worker.md` "Artifact Contract"; this tier is independent of manifest export and includes `approach-synthesis.txt`, which `write-design-manifest.sh` does not stage. Tier 2 (existence `-f` checks) pins may-be-empty manifest-required artifacts (`contested-decisions.md`, `oos.md`, `rejected-findings.md`, `accepted-plan-findings.md`) that `write-design-manifest.sh` stages via `copy_required_may_be_empty`. Two artifacts are intentionally NOT in the gate: `dialectic-resolutions.md` (`heavy-worker.md` "Artifact Contract" requires it as an empty file when dialectic does not run, but `dialectic-protocol.md` allows absence on the `NO_CONTESTED_DECISIONS` short-circuit and the zero-externals guardrail — adding `-f` would false-positive on those legitimate paths until the two normative sources are reconciled, which is out of scope for this gate) and `architecture-diagram.md` (optional; `auto_mode=true` only). A failure from this gate routes through the normal `DESIGN_HEAVY=failed` branch below.
+
 On `DESIGN_HEAVY=complete`:
 - **If `SESSION_ENV_PATH` is non-empty (nested under /implement)**: if `auto_mode=false` proceed directly to Step 3.5; if `auto_mode=true` proceed directly to Step 5 because the worker ran Step 3b and Step 4. (Parent /implement reads the manifest written at Step 5.)
 - **If `SESSION_ENV_PATH` is empty (standalone /design --subagent — NEW capability)**: read and print `$DESIGN_TMPDIR/plan.txt` under `## Implementation Plan`, `$DESIGN_TMPDIR/voting-tally.md` under `## Voting Tally and Reviewer Competition Scoreboard`, `$DESIGN_TMPDIR/accepted-plan-findings.md` under `## Plan Review Findings (Voted In)` (skip header if file is empty or missing), `$DESIGN_TMPDIR/oos.md` under `## Out-of-Scope Observations` (skip header if file is empty or missing), and — when `auto_mode=true` AND `$DESIGN_TMPDIR/architecture-diagram.md` exists and is non-empty — `$DESIGN_TMPDIR/architecture-diagram.md` under `## Architecture Diagram` with the mermaid fence (when `auto_mode=true` AND the file is missing/empty, print `**⚠ Architecture diagram unavailable (Step 3b generation failed in subagent).**` instead so the failure is visible). When `auto_mode=true`, also read `$DESIGN_TMPDIR/rejected-findings.md`: if non-empty, print it under `## Unimplemented Plan Review Suggestions`; if empty or missing, print `## Plan Review — All Suggestions Implemented` (matches Step 4's standalone output). Then if `auto_mode=false` proceed to Step 3.5 (Discussion Round 2 still runs interactively against the displayed artifacts); if `auto_mode=true` proceed to Step 5 (cleanup). This replay matches the inline standalone output that today's empty-`SESSION_ENV_PATH` path produces, so the user sees the deliverables that `cleanup-tmpdir.sh` would otherwise delete.

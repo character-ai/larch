@@ -49,6 +49,12 @@ Run the same mechanics documented in `/design`:
 
 When `auto_mode=true`, also run Step 3b architecture diagram and Step 4 rejected-finding artifact finalization in the worker, because there are no parent-side interactive checkpoints. When `auto_mode=false`, stop after Step 3 so the parent can run Step 3.5, Step 3b, Step 4, and Step 5.
 
+## Wait Discipline
+
+NEVER return to the parent while any sketch, dialectic debater, dialectic judge, or plan-review process you launched with `run_in_background: true` is still running. The only allowed wait mechanism is the matching foreground `${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh` invocation, except for dialectic judge collection where the documented foreground judge collector path in `dialectic-execution.md` applies. Do not enter a "wait for notifications" state and surrender control to the parent; the parent treats an Agent-tool return as the heavy phase result, so yielding early corrupts the artifact contract.
+
+After every parallel-launch block, the next required action is the matching foreground collection step. Do not surface back to the parent until that collector has returned and all required artifacts below have been finalized. This is the heavy-worker-specific counterpart to the AGENTS.md rule forbidding Monitor or Bash polling loops to watch a one-shot background job; foreground collection is the synchronization point.
+
 ## Artifact Contract
 
 Write these files under `$DESIGN_TMPDIR/`:

@@ -226,5 +226,67 @@ if grep -Fq "$old_design_prose" "$SKILL_MD"; then
   fail "(11) SKILL.md still contains legacy unconditional Step 0 session-setup prose"
 fi
 
-echo "PASS: test-design-structure.sh — all 11 structural invariants hold"
+# Check 12: heavy-worker post-return fail-closed gate (issue #1405). The Step 2a
+# fail-closed validation that runs after the heavy-worker subagent returns must
+# pin the REASON token and the gated artifact paths so a future edit cannot
+# silently weaken the gate. The non-empty (`-s`) tier covers the substantive
+# artifacts mandated as non-empty by heavy-worker.md "Artifact Contract"; the
+# existence (`-f`) tier covers may-be-empty manifest-required artifacts staged
+# by `write-design-manifest.sh` via `copy_required_may_be_empty`.
+grep -Fq -- 'REASON=worker-yielded-without-artifacts' "$SKILL_MD" \
+  || fail "(12) SKILL.md missing REASON=worker-yielded-without-artifacts token in heavy-worker fail-closed gate (issue #1405)"
+# shellcheck disable=SC2016 # fixed-string grep literals contain shell variable syntax
+grep -Fq -- '! -s "$DESIGN_TMPDIR/plan.txt"' "$SKILL_MD" \
+  || fail "(12) SKILL.md missing non-empty (-s) check on plan.txt in heavy-worker fail-closed gate (issue #1405)"
+# shellcheck disable=SC2016
+grep -Fq -- '! -s "$DESIGN_TMPDIR/approach-synthesis.txt"' "$SKILL_MD" \
+  || fail "(12) SKILL.md missing non-empty (-s) check on approach-synthesis.txt in heavy-worker fail-closed gate (issue #1405)"
+# shellcheck disable=SC2016
+grep -Fq -- '! -s "$DESIGN_TMPDIR/voting-tally.md"' "$SKILL_MD" \
+  || fail "(12) SKILL.md missing non-empty (-s) check on voting-tally.md in heavy-worker fail-closed gate (issue #1405)"
+# shellcheck disable=SC2016
+grep -Fq -- '! -f "$DESIGN_TMPDIR/contested-decisions.md"' "$SKILL_MD" \
+  || fail "(12) SKILL.md missing existence (-f) check on contested-decisions.md in heavy-worker fail-closed gate (issue #1405)"
+# shellcheck disable=SC2016
+grep -Fq -- '! -f "$DESIGN_TMPDIR/oos.md"' "$SKILL_MD" \
+  || fail "(12) SKILL.md missing existence (-f) check on oos.md in heavy-worker fail-closed gate (issue #1405)"
+# shellcheck disable=SC2016
+grep -Fq -- '! -f "$DESIGN_TMPDIR/rejected-findings.md"' "$SKILL_MD" \
+  || fail "(12) SKILL.md missing existence (-f) check on rejected-findings.md in heavy-worker fail-closed gate (issue #1405)"
+# shellcheck disable=SC2016
+grep -Fq -- '! -f "$DESIGN_TMPDIR/accepted-plan-findings.md"' "$SKILL_MD" \
+  || fail "(12) SKILL.md missing existence (-f) check on accepted-plan-findings.md in heavy-worker fail-closed gate (issue #1405)"
+
+# Check 12b: heavy-worker.md Wait Discipline section pins the foreground-collect
+# rule introduced in issue #1405. The literal subsection header and the
+# "wait for notifications" anti-pattern phrase must remain so a future edit
+# cannot silently drop the prompt-level rule.
+grep -Fq -- '## Wait Discipline' "$REPO_ROOT/skills/design/references/heavy-worker.md" \
+  || fail "(12b) heavy-worker.md missing '## Wait Discipline' subsection header (issue #1405)"
+grep -Fq -- 'wait for notifications' "$REPO_ROOT/skills/design/references/heavy-worker.md" \
+  || fail "(12b) heavy-worker.md missing 'wait for notifications' anti-pattern phrase in Wait Discipline section (issue #1405)"
+
+# Check 12c: write-design-manifest.sh manifest contract pin. The Step 2a
+# fail-closed gate (check 12 above) and the manifest writer share the same
+# four may-be-empty paths; if a future edit adds or renames one of those paths
+# in `write-design-manifest.sh` without updating SKILL.md's Tier 2 list, this
+# check fails so drift is caught at lint time rather than at a nested
+# /design --subagent run that fails at Step 5.
+WDM_SH="$REPO_ROOT/skills/design/scripts/write-design-manifest.sh"
+[[ -f "$WDM_SH" ]] \
+  || fail "(12c) write-design-manifest.sh not found at $WDM_SH (path may have moved)"
+# shellcheck disable=SC2016 # fixed-string grep literals contain shell variable syntax
+grep -Fq -- 'copy_required_may_be_empty "$DESIGN_TMPDIR/contested-decisions.md"' "$WDM_SH" \
+  || fail "(12c) write-design-manifest.sh missing copy_required_may_be_empty for contested-decisions.md — Tier 2 of SKILL.md gate is out of sync (issue #1405)"
+# shellcheck disable=SC2016
+grep -Fq -- 'copy_required_may_be_empty "$DESIGN_TMPDIR/oos.md"' "$WDM_SH" \
+  || fail "(12c) write-design-manifest.sh missing copy_required_may_be_empty for oos.md — Tier 2 of SKILL.md gate is out of sync (issue #1405)"
+# shellcheck disable=SC2016
+grep -Fq -- 'copy_required_may_be_empty "$DESIGN_TMPDIR/rejected-findings.md"' "$WDM_SH" \
+  || fail "(12c) write-design-manifest.sh missing copy_required_may_be_empty for rejected-findings.md — Tier 2 of SKILL.md gate is out of sync (issue #1405)"
+# shellcheck disable=SC2016
+grep -Fq -- 'copy_required_may_be_empty "$DESIGN_TMPDIR/accepted-plan-findings.md"' "$WDM_SH" \
+  || fail "(12c) write-design-manifest.sh missing copy_required_may_be_empty for accepted-plan-findings.md — Tier 2 of SKILL.md gate is out of sync (issue #1405)"
+
+echo "PASS: test-design-structure.sh — all 12 structural invariants hold (incl. 12b/12c)"
 exit 0
