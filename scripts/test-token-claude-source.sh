@@ -104,21 +104,27 @@ ENCODED=$(printf '%s' "$FAKE_REPO_REAL" | sed 's#/#-#g')
 PROJECT_DIR="$FAKE_HOME/.claude/projects/$ENCODED"
 mkdir -p "$PROJECT_DIR"
 
-T1="$PROJECT_DIR/aaaa-1111.jsonl"
-T2="$PROJECT_DIR/bbbb-2222.jsonl"
+# Filename order DELIBERATELY contradicts mtime order so a buggy resolver
+# that picked the lexically-last (or lexically-first) file would not
+# accidentally satisfy the assertions: T1 lexicographically sorts FIRST
+# but is mtime-OLDEST, T2 sorts LAST but is mtime-NEWEST. Only a true
+# mtime-newest-wins resolver picks T2 here.
+T1="$PROJECT_DIR/zzzz-old-9999.jsonl"
+T2="$PROJECT_DIR/aaaa-newer-1111.jsonl"
 : > "$T1"
 sleep 1
 : > "$T2"
 
-# Test 5: newest-by-mtime wins (T2 is newer than T1).
+# Test 5: newest-by-mtime wins (T2 is newer than T1 by mtime even though T1
+# is lexicographically last).
 out=$(cd "$FAKE_REPO" && HOME="$FAKE_HOME" "$SCRIPT")
 contains "mtime newest transcript" "TRANSCRIPT_PATH=$T2" "$out"
-contains "mtime session_uuid" "SESSION_UUID=bbbb-2222" "$out"
+contains "mtime session_uuid" "SESSION_UUID=aaaa-newer-1111" "$out"
 
 # Test 6: LARCH_CLAUDE_SESSION_ID overrides mtime when its name matches a file
 # in the project dir.
-out=$(cd "$FAKE_REPO" && HOME="$FAKE_HOME" LARCH_CLAUDE_SESSION_ID="aaaa-1111" "$SCRIPT")
-contains "session-id override picks T1" "TRANSCRIPT_PATH=$T1" "$out"
+out=$(cd "$FAKE_REPO" && HOME="$FAKE_HOME" LARCH_CLAUDE_SESSION_ID="zzzz-old-9999" "$SCRIPT")
+contains "session-id override picks T1 (mtime-older)" "TRANSCRIPT_PATH=$T1" "$out"
 
 # Test 7: LARCH_CLAUDE_SESSION_ID with bad chars (path traversal attempt) is
 # silently skipped — falls back to mtime resolution.
@@ -144,7 +150,9 @@ contains "empty project reason" "no Claude transcript" "$out"
 # attribution: a sticky snapshot binds the session to a specific transcript
 # regardless of mtime drift caused by other Claude sessions writing under
 # the same project dir.
-T3="$PROJECT_DIR/cccc-3333.jsonl"
+# Lexicographically-MIDDLE name (sorts after T2/aaaa- but before T1/zzzz-),
+# but mtime-newest. Only a true mtime resolver picks T3 here.
+T3="$PROJECT_DIR/mmmm-newest-3333.jsonl"
 sleep 1
 : > "$T3"  # T3 is now newest by mtime
 
@@ -156,12 +164,12 @@ contains "without snapshot, newest concurrent wins" "TRANSCRIPT_PATH=$T3" "$out"
 SNAP_PIN="$TMP/snap-pin.env"
 cat > "$SNAP_PIN" <<EOF
 TRANSCRIPT_PATH=$T1
-SESSION_DIR=$PROJECT_DIR/aaaa-1111
-SESSION_UUID=aaaa-1111
+SESSION_DIR=$PROJECT_DIR/zzzz-old-9999
+SESSION_UUID=zzzz-old-9999
 EOF
 out=$(cd "$FAKE_REPO" && HOME="$FAKE_HOME" LARCH_CLAUDE_SOURCE_FILE="$SNAP_PIN" "$SCRIPT")
 contains "snapshot pinning beats newer concurrent" "TRANSCRIPT_PATH=$T1" "$out"
-contains "snapshot pinning carries pinned uuid" "SESSION_UUID=aaaa-1111" "$out"
+contains "snapshot pinning carries pinned uuid" "SESSION_UUID=zzzz-old-9999" "$out"
 
 total=$((PASS + FAIL))
 if (( FAIL == 0 )); then

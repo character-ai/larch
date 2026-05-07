@@ -160,7 +160,7 @@ STUB_EOF
                 --plan-file "$LCI_SCRATCH/plan.md" \
                 --feature-file "$LCI_SCRATCH/feature.txt" \
                 --agent-prompt "$AGENT_PROMPT" \
-                --timeout 30 >/dev/null 2>&1 || true
+                --timeout 30 >/dev/null 2>&1
 
         LCI_LEDGER=$(LARCH_TOKEN_SESSION_ID="$LCI_SESSION" "$REPO_ROOT/scripts/token-ledger.sh" dump | sed -n '1p')
         if [[ -f "$LCI_LEDGER" ]] && jq -e --arg raw "$EXPECTED_RAW" --argjson total "$EXPECTED_TOTAL" \
