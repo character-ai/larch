@@ -111,6 +111,17 @@ fi
 # would otherwise become 385; `08`/`09` would abort under `set -e`.
 TIMEOUT_SECONDS=$((10#$TIMEOUT_SECONDS))
 
+SENTINEL_SUFFIX=".done"
+if [[ -n "${RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX:-}" ]]; then
+    case "$RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX" in
+        .inner.done) SENTINEL_SUFFIX=".inner.done" ;;
+        *)
+            echo "ERROR: invalid RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX value '$RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX'; expected '.inner.done'" >&2
+            exit 1
+            ;;
+    esac
+fi
+
 # Poll interval (seconds) for the kill -0 wait loop below. Default 10s keeps
 # real-agent invocations cheap on syscalls and bounds the time to notice a
 # timeout. Test harnesses that wrap stub binaries (which exit in microseconds)
@@ -129,14 +140,23 @@ if [[ $# -eq 0 ]]; then
     usage; exit 1
 fi
 
-# Clear stale output, sentinel, metadata, and diagnostic files
-rm -f "$OUTPUT_FILE" "${OUTPUT_FILE}.done" "${OUTPUT_FILE}.meta" "${OUTPUT_FILE}.diag"
+# Clear stale output, sentinels, metadata, and diagnostic files
+rm -f "$OUTPUT_FILE" "${OUTPUT_FILE}.done" "${OUTPUT_FILE}.inner.done" "${OUTPUT_FILE}.meta" "${OUTPUT_FILE}.diag"
 
 # Write sentinel file on ANY exit — the reliable completion signal for callers.
 # Callers poll for <output-file>.done instead of waiting for runtime notifications.
 # Installed BEFORE .meta write so that any early exit still creates a sentinel.
 EXIT_CODE=99  # default: wrapper crashed before capturing real exit code
-trap 'echo "$EXIT_CODE" > "${OUTPUT_FILE}.done" 2>/dev/null || true' EXIT
+PID=""
+# shellcheck disable=SC2329,SC2317  # body invoked indirectly by the EXIT trap below.
+_write_sentinel_on_exit() {
+    if [[ -n "${PID:-}" ]] && kill -0 "$PID" 2>/dev/null; then
+        kill "$PID" 2>/dev/null || true
+        wait "$PID" 2>/dev/null || true
+    fi
+    echo "$EXIT_CODE" > "${OUTPUT_FILE}${SENTINEL_SUFFIX}" 2>/dev/null || true
+}
+trap _write_sentinel_on_exit EXIT
 
 # Write metadata for collect-agent-results.sh retry support.
 # Sanitize TOOL_NAME for the line-oriented .meta sidecar via a label-safe

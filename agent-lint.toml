@@ -487,6 +487,12 @@ exclude = [
   # Gemini launcher. Referenced only from Makefile (test-launch-gemini-review
   # target) and scripts/test-launch-gemini-review.md (sibling contract).
   "scripts/test-launch-gemini-review.sh",
+  # scripts/test-launch-cursor-review.sh is the regression harness for the
+  # Cursor review launcher (sentinel ordering, .meta enrichment, --prompt-file
+  # round-trip, EXIT trap, validate-before-side-effects). Referenced only from
+  # Makefile (test-launch-cursor-review target) and
+  # scripts/test-launch-cursor-review.md (sibling contract).
+  "scripts/test-launch-cursor-review.sh",
   # scripts/launch-gemini-review.sh is the Gemini reviewer launcher. The
   # /implement and /review skills no longer invoke it — those call sites were
   # removed deliberately while preserving the launcher, its policy file, its
@@ -830,6 +836,7 @@ exclude = [
   "scripts/generate-topology-docs.md",
   "scripts/test-generate-topology-docs.md",
   "scripts/test-launch-gemini-review.md",
+  "scripts/test-launch-cursor-review.md",
   "scripts/test-wait-for-reviewers.md",
   "scripts/lib-validate-meta-path.md",
   "scripts/lib-gemini-tool-drift.md",
