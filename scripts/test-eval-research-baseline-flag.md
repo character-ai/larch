@@ -38,4 +38,4 @@ make test-eval-research-baseline-flag
 
 ## Edit-in-sync
 
-When editing this script, update this `.md` in the same PR (per AGENTS.md per-script-contract rule). Also update the matching contract bullets in `scripts/eval-research.md` if the assertions change in a way that revises `eval-research.sh`'s observable contract for the `--baseline` flag.
+When editing this script, update this `.md` in the same PR (per `.claude/rules/script-md-siblings.md`). Also update the matching contract bullets in `scripts/eval-research.md` if the assertions change in a way that revises `eval-research.sh`'s observable contract for the `--baseline` flag.

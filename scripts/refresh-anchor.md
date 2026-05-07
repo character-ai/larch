@@ -40,4 +40,4 @@ Update this file when the wrapper grows new flags, when the default `--output` p
 
 ## Test harness
 
-`scripts/test-refresh-anchor.sh` covers happy-path composition (with `tracking-issue-write.sh` mocked via a stub on PATH), assemble-failure envelope forwarding, and upsert-failure envelope forwarding. The test stays sibling-located per AGENTS.md "per-script contracts live beside the script".
+`scripts/test-refresh-anchor.sh` covers happy-path composition (with `tracking-issue-write.sh` mocked via a stub on PATH), assemble-failure envelope forwarding, and upsert-failure envelope forwarding. The test stays sibling-located per `.claude/rules/script-md-siblings.md`.

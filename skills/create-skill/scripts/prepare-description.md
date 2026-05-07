@@ -1,6 +1,6 @@
 # prepare-description.sh contract
 
-`skills/create-skill/scripts/prepare-description.sh` is the coordinator script for the Step 1.5 / Step 1.6 description synthesis flow in `skills/create-skill/SKILL.md`. It invokes `validate-args.sh` (sibling), classifies the result, and emits a small `MODE=…` signal that drives the orchestrator's branching. The authoritative developer-facing specification is the in-file header (lines 1–32 of the script) — edits that change the flag list, the stdout `KEY=VALUE` grammar, the synthesis-trigger error literals, or the F9 pre-synthesis scan rule MUST update both the in-file header and this sibling in the same PR per `AGENTS.md § Editing rules`.
+`skills/create-skill/scripts/prepare-description.sh` is the coordinator script for the Step 1.5 / Step 1.6 description synthesis flow in `skills/create-skill/SKILL.md`. It invokes `validate-args.sh` (sibling), classifies the result, and emits a small `MODE=…` signal that drives the orchestrator's branching. The authoritative developer-facing specification is the in-file header (lines 1–32 of the script) — edits that change the flag list, the stdout `KEY=VALUE` grammar, the synthesis-trigger error literals, or the F9 pre-synthesis scan rule MUST update both the in-file header and this sibling in the same PR per `.claude/rules/script-md-siblings.md`.
 
 ## Inputs
 
