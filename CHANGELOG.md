@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.66] - 2026-05-07
+
+### Changed
+
+- Resolve #1372: repoint stale `AGENTS.md § Editing rules` / `Per-script contracts live beside the script` citations at 12 enumerated `file:line` locations to `.claude/rules/script-md-siblings.md` (the new canonical per-script-contract rule from #1352's pilot migration). Public skill prose (`skills/umbrella/SKILL.md`, `skills/design/SKILL.md`, `skills/issue/SKILL.md`, `skills/shared/skill-design-principles.md`) uses `${CLAUDE_PLUGIN_ROOT}/.claude/rules/script-md-siblings.md` so paths resolve against the plugin tree in consumer installs; dev-only contract docs (`agent-lint.toml`, `scripts/repro-claude-p-edit-permissions.md` lines 3 and 139, `scripts/test-harness-shards-coverage.md`, `skills/alias/scripts/generate-alias.md`, `skills/create-skill/scripts/parse-args.md`, `skills/create-skill/scripts/render-skill-md.md` lines 3 and 59) use repo-relative `.claude/rules/script-md-siblings.md` matching AGENTS.md's own convention. Documentation-only PR — no behavior, lint config, or runtime contract changes. Two follow-up OOS issues are filed for remaining same-class stale citations outside this PR's enumerated list.
+
 ## [15.12.65] - 2026-05-07
 
 ### Added

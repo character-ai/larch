@@ -40,7 +40,7 @@ When modifying `generate-alias.sh`:
 1. Update this contract doc to reflect the new CLI / output shape.
 2. Update `skills/alias/SKILL.md` Step 3 if the recipe must change.
 3. Run `bash scripts/test-alias-target-resolution.sh` (helper-script harness — does not exercise this generator directly, but verifies the upstream resolver contract this generator depends on).
-4. Add a regression harness for this generator if its CLI grammar changes materially. Today the generator has no dedicated harness; the AGENTS.md "Per-script contracts live beside the script" rule is satisfied by this contract doc.
+4. Add a regression harness for this generator if its CLI grammar changes materially. Today the generator has no dedicated harness; the script sibling-contract rule (`.claude/rules/script-md-siblings.md`) is satisfied by this contract doc.
 
 ## agent-lint.toml registration
 

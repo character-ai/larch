@@ -1,6 +1,6 @@
 # scripts/repro-claude-p-edit-permissions.sh — contract
 
-Sibling per-script-contract doc per `AGENTS.md`. Edit this file in lockstep with `repro-claude-p-edit-permissions.sh` whenever the script's behavior changes.
+Sibling per-script-contract doc per `.claude/rules/script-md-siblings.md`. Edit this file in lockstep with `repro-claude-p-edit-permissions.sh` whenever the script's behavior changes.
 
 ## Purpose
 
@@ -136,4 +136,4 @@ When changing this script:
 - #585 — kernel fix that this reproducer validates.
 - #587 — this reproducer.
 - `scripts/eval-research.sh` — pattern template for opt-in `claude -p` operator harnesses.
-- `AGENTS.md` "Per-script contracts live beside the script" — the rule that mandates this `.md` exist beside the script.
+- `.claude/rules/script-md-siblings.md` — the rule that mandates this `.md` exist beside the script.

@@ -1,6 +1,6 @@
 # render-skill-md.sh contract
 
-`skills/create-skill/scripts/render-skill-md.sh` is the scaffold renderer for the `/create-skill` Step 3 `/im` delegation path. It writes a fresh skill directory with a `SKILL.md` (frontmatter + body scaffold) and a `scripts/.gitkeep` placeholder, atomically. The authoritative developer-facing specification is the in-file header (lines 1–53 of the script) — edits that change the flag list, the YAML escape rules, the body-vs-frontmatter contract, the stdout/stderr channel split, or any of the directory-creation invariants MUST update both the in-file header and this sibling in the same PR per `AGENTS.md § Editing rules`.
+`skills/create-skill/scripts/render-skill-md.sh` is the scaffold renderer for the `/create-skill` Step 3 `/im` delegation path. It writes a fresh skill directory with a `SKILL.md` (frontmatter + body scaffold) and a `scripts/.gitkeep` placeholder, atomically. The authoritative developer-facing specification is the in-file header (lines 1–53 of the script) — edits that change the flag list, the YAML escape rules, the body-vs-frontmatter contract, the stdout/stderr channel split, or any of the directory-creation invariants MUST update both the in-file header and this sibling in the same PR per `.claude/rules/script-md-siblings.md`.
 
 ## Inputs
 
@@ -56,7 +56,7 @@ The script runs under `set -euo pipefail`. The `cat "$FEATURE_SPEC_FILE"` comman
 
 When changing this script:
 
-1. Update both the in-file header AND this sibling `.md` together (per `AGENTS.md § Editing rules`).
+1. Update both the in-file header AND this sibling `.md` together (per `.claude/rules/script-md-siblings.md`).
 2. Update the sibling test harness `skills/create-skill/scripts/test-render-skill-md.sh` and its sibling contract `skills/create-skill/scripts/test-render-skill-md.md` to cover the new behavior.
 3. Update `skills/create-skill/SKILL.md` Step 3 if the renderer's CLI surface changed (the orchestrator's invocation template must match).
 4. Run `make test-render-skill` (or `make lint` for the full lint sweep) to verify all cases pass before committing.

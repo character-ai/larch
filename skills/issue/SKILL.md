@@ -448,7 +448,7 @@ For `DUPLICATE` outcomes (both `DUPLICATE_OF=<N>` and `DUPLICATE_OF_ITEM=<j>` br
 
 **Asymmetry with `/fix-issue`**: `skills/fix-issue/scripts/find-lock-issue.sh` uses the GET counterpart at the same dependencies REST path (read side, fail-open). /issue uses the POST/write side, fail-closed. The divergence is intentional — do not "harmonize" them.
 
-**Helpers and contracts** (per AGENTS.md "per-script contracts live beside the script"):
+**Helpers and contracts** (per `${CLAUDE_PLUGIN_ROOT}/.claude/rules/script-md-siblings.md`):
 
 - `${CLAUDE_PLUGIN_ROOT}/skills/issue/scripts/add-blocked-by.sh` — applies a single dependency POST with retry/idempotent semantics. Sibling contract: `add-blocked-by.md`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/issue/scripts/cleanup-failed-issue.sh` — best-effort orphan close on dep-wiring exhaustion. Sibling contract: `cleanup-failed-issue.md`.

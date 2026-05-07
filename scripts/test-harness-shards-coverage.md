@@ -4,7 +4,7 @@
 
 Structural regression harness for the `test-harnesses-N` Makefile partition. It prevents silent harness coverage loss when a new `test-*` recipe target is added but not assigned to a shard, when a stale shard prerequisite points at no recipe, or when a harness appears in multiple shards.
 
-This sibling contract exists because `AGENTS.md` requires every script and test harness under `scripts/` to carry a neighboring `<basename>.md` contract.
+This sibling contract exists because `.claude/rules/script-md-siblings.md` requires every script and test harness under `scripts/` to carry a neighboring `<basename>.md` contract.
 
 ## Invariants
 
