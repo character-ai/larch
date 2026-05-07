@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.72] - 2026-05-07
+
+### Added
+
+- Resolve #1377: land three path-scoped `.claude/rules/` files mined from recurring CI failures and the active blocking hook. `.claude/rules/markdown-no-space-in-code-span.md` (paths `["**/*.md"]`) shadows the pre-commit `markdownlint` MD038/MD037/MD001 hygiene class — the largest CI-failure cluster in the mining window (>= 11 distinct PRs across 6 weeks). `.claude/rules/skill-md-description-trigger.md` (paths `["skills/**/SKILL.md", ".claude/skills/**/SKILL.md"]`) shadows `agent-lint S017/desc-no-trigger` so the description-trigger requirement is loaded at SKILL.md edit time without needing to load the full `skills/shared/skill-design-principles.md` rubric. `.claude/rules/no-direct-submodule-edits.md` (paths `["**/*"]`) shadows the `scripts/block-submodule-edit.sh` PreToolUse hook so the agent does not attempt edits the hook would deny at write time. AGENTS.md's existing scale-free `paths:` matching guidance covers the new files automatically; no AGENTS.md edit needed. Mining method, cluster→rule mapping, and rejected-candidate reasoning are recorded on the tracking issue (#1377).
+
 ## [15.12.71] - 2026-05-07
 
 ### Changed
