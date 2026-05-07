@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.61] - 2026-05-07
+
+### Changed
+
+- Resolve #1356: rewrite `/implement` token-spend report (`scripts/token-report.sh`) presentation. Replace the single mixed 8-column table — `Claude input | Cache read | Cache create | Output | Claude total | Vendor total` plus `N/A`-padded vendor rows and `&nbsp;`-indented skill cells — with one Claude table plus one table per vendor sharing a uniform 4-column shape `Step | Skill | Input | Output`. Drops the mixed-rate `Claude total` column whose `input + cache_read + cache_create + output` sum combined dramatically different billing rates (cache_read ~10% of normal input, cache_create ~125%) and produced numbers that did not reflect actual spend; operators who want a single billable proxy can derive `input + cache_read*0.1 + cache_create*1.25 + output` from the ledger themselves. New jq helpers: `md_cell` (escapes `|`, collapses CR/LF on every text cell), `vendor_label` (`codex→Codex / cursor→Cursor / gemini→Gemini`, with the unknown-vendor raw fallback routed through `md_cell` so a hostile vendor name cannot inject heading separators), `vendor_names` (coverage-lossless enumeration in stable order — codex first, cursor second, then any others alphabetically), `claude_table` + `vendor_table` (per-step rows + per-skill detail rows + grand total each), and `slice1` (one-array sibling of `step_slice`). `terse_line` is intentionally unchanged — terse breadcrumb mode keeps cache visibility because a one-line breadcrumb is consumed by humans tailing the chat, not as markdown. Sibling `scripts/token-report.md` Table Shape section rewritten with the breaking presentation contract. `scripts/test-token-report.sh` rewrites assertions for the new shape, derives the expected grand-total count from fixture vendor presence, and adds pipe/newline injection fixtures (mark.step containing `|`, mark.step containing a literal newline, transcript skill containing a literal newline, unknown-vendor heading containing `|` and newline) with anchored oracle checks (35/35 assertions pass). Out of scope: ledger schema (`scripts/token-ledger.sh`) and the transcript-source resolver — purely a presentation-layer change.
+
 ## [15.12.60] - 2026-05-07
 
 ### Fixed

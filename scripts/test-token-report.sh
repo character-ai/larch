@@ -42,10 +42,92 @@ contains "terse step" "Step 2 - implement: claude=100 tokens" "$terse"
 contains "terse vendor" "vendor=10 (cursor=10)" "$terse"
 
 md=$("$SCRIPT" --ledger "$LEDGER" --transcript "$TRANSCRIPT" --full --markdown)
-contains "markdown header" "| Step | Skill | Claude input" "$md"
-contains "skill row" "&nbsp;&nbsp;larch:implement" "$md"
-contains "vendor row" "&nbsp;&nbsp;vendor:codex" "$md"
-contains "grand total" "**Grand total**" "$md"
+contains "claude heading"  "### Claude"  "$md"
+contains "codex heading"   "### Codex"   "$md"
+contains "cursor heading"  "### Cursor"  "$md"
+contains "claude header row" "| Step | Skill | Claude Input | Claude Output |" "$md"
+contains "vendor header row" "| Step | Skill | Input | Output |" "$md"
+contains "claude skill row"  "larch:implement" "$md"
+
+# Pin the cursor step-total row to a uniquely identified line built from
+# fixture values so substring collisions cannot pass silently.
+expected_cursor_row="| Step 2 - implement | **step total** | 1 | 2 |"
+if grep -Fq "$expected_cursor_row" <<<"$md"; then pass
+else fail "cursor step-total row missing or wrong: expected '$expected_cursor_row'"
+fi
+
+# Negative assertions: old columns and HTML entities must not appear. Anchor
+# N/A to the old cell shape so legitimate labels cannot trip it.
+for needle in "Cache read" "Cache create" "Claude total" "Vendor total" "&nbsp;"; do
+    if grep -Fq "$needle" <<<"$md"; then
+        fail "rendered markdown must not contain '$needle'"
+    else
+        pass
+    fi
+done
+if grep -Fq '| N/A |' <<<"$md"; then
+    fail "rendered markdown must not contain old md_na_row cells (\`| N/A |\`)"
+else
+    pass
+fi
+
+# Per-heading existence plus per-block grand-total presence. Compute the
+# expected vendor-table count from fixture content rather than a magic number.
+codex_present=0
+cursor_present=0
+grep -F '"vendor":"codex"' "$LEDGER" >/dev/null 2>&1 && codex_present=1
+grep -F '"vendor":"cursor"' "$LEDGER" >/dev/null 2>&1 && cursor_present=1
+expected_gt=$((1 + codex_present + cursor_present))
+gt_count=$(grep -c '\*\*Grand total\*\*' <<<"$md" || true)
+if [[ "$gt_count" == "$expected_gt" ]]; then pass
+else fail "expected $expected_gt grand-total rows; got $gt_count (codex_present=$codex_present cursor_present=$cursor_present)"
+fi
+
+INJ_LEDGER="$TMP/inj-ledger.jsonl"
+INJ_TRANSCRIPT="$TMP/inj-transcript.jsonl"
+# Build with jq so embedded pipes and newlines round-trip safely as JSON.
+jq -c -n --arg s 'Step | with pipe' '{type:"mark",step:$s,ts:"2026-05-06T00:00:00Z"}' > "$INJ_LEDGER"
+jq -c -n --arg s $'Step\nnewline mark' '{type:"mark",step:$s,ts:"2026-05-06T00:00:30Z"}' >> "$INJ_LEDGER"
+jq -c -n '{type:"vendor",vendor:"cursor",input:1,output:2,total:3,ts:"2026-05-06T00:00:05Z"}' >> "$INJ_LEDGER"
+jq -c -n --arg sk 'a|b' '{type:"assistant",timestamp:"2026-05-06T00:00:03.100Z",attributionSkill:$sk,message:{usage:{input_tokens:1,output_tokens:2,cache_read_input_tokens:0,cache_creation_input_tokens:0}}}' > "$INJ_TRANSCRIPT"
+jq -c -n --arg sk $'two-line\nskill' '{type:"assistant",timestamp:"2026-05-06T00:00:31.100Z",attributionSkill:$sk,message:{usage:{input_tokens:5,output_tokens:6,cache_read_input_tokens:0,cache_creation_input_tokens:0}}}' >> "$INJ_TRANSCRIPT"
+inj_md=$("$SCRIPT" --ledger "$INJ_LEDGER" --transcript "$INJ_TRANSCRIPT" --full --markdown)
+
+contains "injection escaped pipe (step cell)"   'Step \| with pipe' "$inj_md"
+contains "injection escaped pipe (skill cell)"  'a\|b'               "$inj_md"
+contains "injection newline collapsed (step)"   "Step newline mark" "$inj_md"
+contains "injection newline collapsed (skill)"  "two-line skill"    "$inj_md"
+
+hdr_pipes=$(grep -F '| Step | Skill | Claude Input | Claude Output |' <<<"$inj_md" | head -1 | sed 's/\\|//g' | tr -cd '|' | wc -c | tr -d ' ')
+mismatch=0
+while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    case "$line" in
+        '|'*)
+            stripped=$(printf '%s' "$line" | sed 's/\\|//g')
+            n=$(printf '%s' "$stripped" | tr -cd '|' | wc -c | tr -d ' ')
+            case "$line" in
+                *'---'*) continue ;;
+            esac
+            if [[ "$n" != "$hdr_pipes" ]]; then mismatch=$((mismatch + 1)); fi
+            ;;
+    esac
+done <<< "$inj_md"
+case "$mismatch" in
+    0) pass ;;
+    *) fail "$mismatch row(s) had wrong separator-pipe count after injection; md_cell escape failed" ;;
+esac
+
+# Unknown-vendor heading sanitization: vendor_label's raw fallback routes
+# through md_cell so a vendor name containing | or newline cannot break the
+# heading line or inject a fake row separator into downstream markdown.
+UNK_LEDGER="$TMP/unk-ledger.jsonl"
+jq -c -n '{type:"mark",step:"Step 1 - design",ts:"2026-05-06T00:00:00Z"}' > "$UNK_LEDGER"
+jq -c -n --arg v 'evil|vendor' '{type:"vendor",vendor:$v,input:1,output:2,total:3,ts:"2026-05-06T00:00:05Z"}' >> "$UNK_LEDGER"
+jq -c -n --arg v $'two-line\nvendor' '{type:"vendor",vendor:$v,input:4,output:5,total:9,ts:"2026-05-06T00:00:06Z"}' >> "$UNK_LEDGER"
+unk_md=$("$SCRIPT" --ledger "$UNK_LEDGER" --transcript "$TRANSCRIPT" --full --markdown)
+contains "unknown vendor pipe escaped (heading)"      'evil\|vendor'  "$unk_md"
+contains "unknown vendor newline collapsed (heading)" 'two-line vendor' "$unk_md"
 
 RUN_STATS="$TMP/run-statistics.md"
 printf '## Existing\n\nkept\n' > "$RUN_STATS"
@@ -86,7 +168,11 @@ contains "no-step-marks reason" "Token report unavailable: failed to parse token
 BIG="$TMP/big-run-statistics.md"
 for i in $(seq 1 250); do printf '| old | row %s |\n' "$i" >> "$BIG"; done
 "$SCRIPT" --ledger "$LEDGER" --transcript "$TRANSCRIPT" --append-run-statistics "$BIG"
-contains "oversized sentinel" "<!-- token-report-begin -->" "$(cat "$BIG")"
+big_body=$(cat "$BIG")
+contains "oversized sentinel"     "<!-- token-report-begin -->" "$big_body"
+contains "oversized claude head"  "### Claude"  "$big_body"
+contains "oversized codex head"   "### Codex"   "$big_body"
+contains "oversized cursor head"  "### Cursor"  "$big_body"
 
 total=$((PASS + FAIL))
 if (( FAIL == 0 )); then
