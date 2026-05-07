@@ -404,6 +404,77 @@ else
 fi
 
 echo ""
+echo "=== (d2) upsert-anchor per-section truncation closes unclosed code fence ==="
+# Regression: when the kept prefix ends with an unclosed ``` fence, the
+# truncation must insert an explicit closing ``` line before the
+# TRUNCATED marker. Without this, the unclosed fence swallows the
+# marker AND every following section, causing diagrams + tables in
+# subsequent sections to render as raw code on GitHub. Observed once
+# on issue #1356.
+STUB_D2="$TMPROOT/stub-d2"
+BODY_CAPTURE="$TMPROOT/capture-d2.txt"
+build_stub_one_anchor "$STUB_D2"
+export BODY_CAPTURE
+BODY_D2="$TMPROOT/body-d2.txt"
+# plan-goals-test interior: text, an unclosed ```markdown fence, then
+# enough lines to push the cap into the unclosed fence.
+{
+    echo '<!-- larch:implement-anchor v1 issue=42 -->'
+    echo '<!-- section:plan-goals-test -->'
+    # ~3000 chars of prose (30 lines of 100 chars).
+    for _ in $(seq 1 30); do
+        printf 'Plan prose padding line of 100 characters exactly to fill space before the open code fence opens.\n'
+    done
+    # Open a markdown fence with no matching close inside this section.
+    printf '```markdown\n'
+    # Pad inside the fence past the cap (60 lines of 100 chars = 6000+).
+    for _ in $(seq 1 60); do
+        printf 'Inside the unclosed code fence; bytes here push the cut into the fence so closure is required.\n'
+    done
+    # Section close marker (would be eaten by an unclosed fence).
+    echo '<!-- section-end:plan-goals-test -->'
+    # A second section that must remain markdown-rendered.
+    echo '<!-- section:diagrams -->'
+    echo '## Architecture Diagram'
+    echo
+    # shellcheck disable=SC2016  # literal mermaid fence content; no expansion intended
+    printf '```mermaid\nflowchart TD\n  A --> B\n```\n'
+    echo '<!-- section-end:diagrams -->'
+} > "$BODY_D2"
+out_d2=$(PATH="$STUB_D2:$PATH" bash "$WRITE" upsert-anchor --issue 42 --body-file "$BODY_D2" --repo owner/repo 2>&1)
+assert_contains "$out_d2" 'UPDATED=true' '(d2) PATCH succeeded'
+if [[ -f "$BODY_CAPTURE" ]]; then
+    captured_d2=$(cat "$BODY_CAPTURE")
+    assert_contains "$captured_d2" "[TRUNCATED — plan-goals-test exceeded 8000 chars]" '(d2) TRUNCATED marker present'
+    # The TRUNCATED marker must be on its own line, preceded by a ``` close.
+    if awk '
+        /^```$/ { just_closed = 1; next }
+        /^\[TRUNCATED — plan-goals-test exceeded 8000 chars\]$/ {
+            if (just_closed) { found = 1; exit }
+        }
+        { just_closed = 0 }
+        END { exit (found ? 0 : 1) }
+    ' "$BODY_CAPTURE"; then
+        PASS=$((PASS + 1))
+        echo '  ok: (d2) closing fence precedes TRUNCATED marker'
+    else
+        FAIL=$((FAIL + 1))
+        FAILED_TESTS+=('(d2) closing fence does not precede TRUNCATED marker')
+        echo '  FAIL: (d2) closing fence does not precede TRUNCATED marker' >&2
+    fi
+    # The diagrams section markers must remain intact and outside any
+    # code fence (i.e., subsequent ``` count must be even from the
+    # marker's line forward — proxy: section-end:diagrams marker must
+    # be present and the diagrams section's mermaid fences must be
+    # paired).
+    assert_contains "$captured_d2" '<!-- section:diagrams -->' '(d2) diagrams open marker preserved'
+    assert_contains "$captured_d2" '<!-- section-end:diagrams -->' '(d2) diagrams close marker preserved'
+else
+    FAIL=$((FAIL + 1))
+    FAILED_TESTS+=("(d2) body capture missing")
+fi
+
+echo ""
 echo "=== (e) append-comment does NOT touch anchor ==="
 STUB_E="$TMPROOT/stub-e"
 BODY_CAPTURE="$TMPROOT/capture-e.txt"

@@ -90,9 +90,13 @@
 #   Ubuntu CI. Precedent: scripts/dialectic-smoke-test.sh.
 #   Truncation is byte-length based with line-boundary snapping (inline
 #   TRUNCATED marker always begins on its own line so open code fences
-#   cannot consume the marker or subsequent section markers). Multibyte
-#   UTF-8 splitting is tolerated as section interiors are machine-composed
-#   (no human multibyte content expected).
+#   cannot consume the marker or subsequent section markers). When the
+#   kept prefix ends with an unclosed code fence (odd count of `^```'
+#   lines), a closing ``` line is inserted before the TRUNCATED marker
+#   so the unclosed fence cannot swallow the rest of the comment body
+#   (diagrams + tables + sibling sections rendering as raw code on
+#   GitHub). Multibyte UTF-8 splitting is tolerated as section interiors
+#   are machine-composed (no human multibyte content expected).
 
 set -euo pipefail
 
@@ -344,7 +348,21 @@ truncate_body() (
         if (( truncated_at == 0 )); then
             truncated_at="$PER_SECTION_CAP"
         fi
-        new_interior="${interior:0:$truncated_at}"$'\n'"[TRUNCATED — ${slug} exceeded ${PER_SECTION_CAP} chars]"
+        local kept_prefix="${interior:0:$truncated_at}"
+        # Fence-aware close: count `^```' lines in the kept prefix; if
+        # odd, the cut left an unclosed fenced code block. Without an
+        # explicit ``` close the unclosed fence swallows the TRUNCATED
+        # marker AND all subsequent sections (diagrams, voting tables,
+        # run-statistics) — they render as raw code on GitHub instead
+        # of as the intended markdown. Insert a closing ``` line before
+        # the marker so the fence terminates inside this section.
+        local fence_count
+        fence_count=$(printf '%s\n' "$kept_prefix" | awk '/^```/{c++} END{print c+0}')
+        if (( fence_count % 2 == 1 )); then
+            new_interior="${kept_prefix}"$'\n```\n'"[TRUNCATED — ${slug} exceeded ${PER_SECTION_CAP} chars]"
+        else
+            new_interior="${kept_prefix}"$'\n'"[TRUNCATED — ${slug} exceeded ${PER_SECTION_CAP} chars]"
+        fi
         # Write the replacement to a file so awk can read it via getline
         # (awk -v does not accept newlines in the value).
         local ni_file="$work_dir/ni-$slug.txt"
