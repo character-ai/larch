@@ -125,9 +125,12 @@ fi
 # shellcheck disable=SC1091
 source "$MARKERS_HELPER"
 
-# Per-section 8000-char cap. Exceeded interiors are replaced in place with
-# a single inline [TRUNCATED — <id> exceeded 8000 chars] marker snapped to
-# the next newline boundary.
+# Per-section 8000-char cap. Exceeded interiors are replaced in place
+# with a line-snapped truncated prefix, an OPTIONAL closing-fence line
+# of matching length when the kept prefix leaves a column-0 backtick
+# fence open (GFM rule: closer length >= opener length, and a closer
+# line must be backticks followed by only whitespace), and a final
+# inline [TRUNCATED — <id> exceeded 8000 chars] marker on its own line.
 PER_SECTION_CAP=8000
 
 # Body-level 60000-char cap. Exceeding collapses sections to a single
@@ -286,8 +289,10 @@ emit_gh_failure() {
 #
 # Pass 1 (per-section): for each SECTION_MARKERS slug, if the interior
 # between the section-open and section-end markers exceeds PER_SECTION_CAP,
-# replace the interior with a truncated prefix (snapped to newline) plus
-# an inline TRUNCATED marker on its own line. Section markers themselves
+# replace the interior with a truncated prefix (snapped to newline), an
+# OPTIONAL matching-length closing fence line when the kept prefix leaves
+# a column-0 backtick fence open (GFM closer rule applied), then an
+# inline TRUNCATED marker on its own line. Section markers themselves
 # are preserved.
 #
 # Pass 2 (body-level): if total length still exceeds BODY_CAP, walk
@@ -365,16 +370,23 @@ truncate_body() (
         # fences are out of scope: anchor sections are machine-composed
         # by /implement and only emit column-0 backtick fences.
         local fence_state fence_open fence_len
+        # GFM closer rule: only a line whose backtick run is followed by
+        # optional whitespace through end-of-line is a closing fence
+        # delimiter. A line like ```python at column 0 INSIDE an open
+        # fence is content (an info string requires the run to be an
+        # opener), not a closer — flipping state on it would falsely
+        # report the fence closed and skip the synthetic close.
         fence_state=$(printf '%s\n' "$kept_prefix" | awk '
             BEGIN { open = 0; len = 0 }
             {
                 if (match($0, /^`+/)) {
                     n = RLENGTH
                     if (n >= 3) {
+                        rest = substr($0, n + 1)
                         if (open == 0) {
                             open = 1
                             len = n
-                        } else if (n >= len) {
+                        } else if (n >= len && rest ~ /^[[:space:]]*$/) {
                             open = 0
                             len = 0
                         }
