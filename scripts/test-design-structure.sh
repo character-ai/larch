@@ -266,5 +266,27 @@ grep -Fq -- '## Wait Discipline' "$REPO_ROOT/skills/design/references/heavy-work
 grep -Fq -- 'wait for notifications' "$REPO_ROOT/skills/design/references/heavy-worker.md" \
   || fail "(12b) heavy-worker.md missing 'wait for notifications' anti-pattern phrase in Wait Discipline section (issue #1405)"
 
-echo "PASS: test-design-structure.sh — all 12 structural invariants hold"
+# Check 12c: write-design-manifest.sh manifest contract pin. The Step 2a
+# fail-closed gate (check 12 above) and the manifest writer share the same
+# four may-be-empty paths; if a future edit adds or renames one of those paths
+# in `write-design-manifest.sh` without updating SKILL.md's Tier 2 list, this
+# check fails so drift is caught at lint time rather than at a nested
+# /design --subagent run that fails at Step 5.
+WDM_SH="$REPO_ROOT/skills/design/scripts/write-design-manifest.sh"
+[[ -f "$WDM_SH" ]] \
+  || fail "(12c) write-design-manifest.sh not found at $WDM_SH (path may have moved)"
+# shellcheck disable=SC2016 # fixed-string grep literals contain shell variable syntax
+grep -Fq -- 'copy_required_may_be_empty "$DESIGN_TMPDIR/contested-decisions.md"' "$WDM_SH" \
+  || fail "(12c) write-design-manifest.sh missing copy_required_may_be_empty for contested-decisions.md — Tier 2 of SKILL.md gate is out of sync (issue #1405)"
+# shellcheck disable=SC2016
+grep -Fq -- 'copy_required_may_be_empty "$DESIGN_TMPDIR/oos.md"' "$WDM_SH" \
+  || fail "(12c) write-design-manifest.sh missing copy_required_may_be_empty for oos.md — Tier 2 of SKILL.md gate is out of sync (issue #1405)"
+# shellcheck disable=SC2016
+grep -Fq -- 'copy_required_may_be_empty "$DESIGN_TMPDIR/rejected-findings.md"' "$WDM_SH" \
+  || fail "(12c) write-design-manifest.sh missing copy_required_may_be_empty for rejected-findings.md — Tier 2 of SKILL.md gate is out of sync (issue #1405)"
+# shellcheck disable=SC2016
+grep -Fq -- 'copy_required_may_be_empty "$DESIGN_TMPDIR/accepted-plan-findings.md"' "$WDM_SH" \
+  || fail "(12c) write-design-manifest.sh missing copy_required_may_be_empty for accepted-plan-findings.md — Tier 2 of SKILL.md gate is out of sync (issue #1405)"
+
+echo "PASS: test-design-structure.sh — all 12 structural invariants hold (incl. 12b/12c)"
 exit 0
