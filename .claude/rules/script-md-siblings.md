@@ -1,5 +1,5 @@
 ---
-paths: ["scripts/**/*.{sh,py}", "skills/**/scripts/**/*.{sh,py}", "skills/shared/*.md"]
+paths: ["scripts/**/*.{sh,py}", "skills/**/scripts/**/*.{sh,py}", ".claude/skills/**/scripts/**/*.{sh,py}", "skills/shared/*.md"]
 ---
 
 # Script Documentation Siblings
