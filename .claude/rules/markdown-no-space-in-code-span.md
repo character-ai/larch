@@ -9,9 +9,9 @@ Inside a backtick code span, the content must not start or end with whitespace. 
 When you need to render a literal that begins or ends with a space (for example, an exact-match prefix grammar):
 
 - **Drop the surrounding code span** when the content is already a recognizable token in context: write `Umbrella:` (no trailing space) instead of trying to encode a trailing space inside the span.
-- **HTML entities are not a workaround.** `&nbsp;` rendered inside a code span still trips MD038 when adjacent to a real space. Move the literal space outside the span instead — write the inner token without whitespace and put the space in the surrounding prose.
+- **HTML entities are not a workaround.** Encoding the boundary whitespace as `&nbsp;` inside the code span generally does not satisfy MD038 — the rule operates on the source-text whitespace, not the rendered HTML. Move the literal space outside the span instead — write the inner token without whitespace and put the space in the surrounding prose.
 - **Code fence** for multi-token / multi-line literals where exact whitespace matters; fences are exempt from MD038.
-- **Backslash-escape the rendering boundary**: write the span without the literal whitespace and clarify in surrounding prose ("the prefix `Umbrella:` followed by a single space").
+- **Describe boundary spacing in prose** rather than encoding it inside the span: write the span without the literal whitespace and qualify in surrounding text ("the prefix `Umbrella:` followed by a single space").
 
 This rule covers all `.md` files. The most common violations historically are in `CHANGELOG.md` entries that quote prefix grammars verbatim and `SKILL.md` files that document literal markers.
 
