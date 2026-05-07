@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.56] - 2026-05-06
+
+### Fixed
+
+- `scripts/lib-gemini-tool-drift.sh` `write_style_uncovered` loop now normalizes the raw catalog tool name through `normalize_gemini_tools_from_raw` before the deny-list `gemini_tool_list_contains` check, mirroring the `warning_unknowns` pattern. Prior code compared a raw catalog name (e.g. `WRITE_FILE`, `write_File`) against a deny-list of strict snake_case policy keys (`write_file`), so semantically-equivalent casing variants were flagged as uncovered and forced `GEMINI_HEALTHY=false`. Names that fail strict normalization (`write-file`, `file.write`, `fileWrite` whose normalized form is not in the deny list) still flag as uncovered, preserving prior behavior. Closes #1348.
+
 ## [15.12.55] - 2026-05-06
 
 ### Added
