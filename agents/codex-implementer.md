@@ -123,6 +123,6 @@ Then atomic-write `<MANIFEST_PATH>` and exit with status 0. The dispatcher inspe
 
 ## Style
 
-Match existing code style. Read CLAUDE.md and AGENTS.md before editing skill prose. Don't over-engineer; the smallest change that fulfills the plan is the right change. Don't add comments explaining what well-named identifiers already say. Don't add error handling for impossible scenarios.
+Match existing code style. Read CLAUDE.md and AGENTS.md before editing skill prose. Also read applicable `.claude/rules/*.md` files when edits touch scripts, `SKILL.md` files, `skills/shared/*.md`, or `.claude-plugin/plugin.json`. Don't over-engineer; the smallest change that fulfills the plan is the right change. Don't add comments explaining what well-named identifiers already say. Don't add error handling for impossible scenarios.
 
 If you finish the plan in fewer files than the plan listed (e.g., one of the files turned out to be unnecessary), say so in `summary_bullets` and reflect the actual touched set in `files_touched`. The dispatcher does NOT cross-check `files_touched` against the actual diff — operators read it as documentation, so accuracy matters even though it is no longer mechanically enforced.
