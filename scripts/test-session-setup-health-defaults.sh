@@ -46,6 +46,7 @@ assert_no_key() {
 run_session_setup() {
     local label=$1 caller_env=$2 health=$3
     shift 3
+    local logfile="$SANDBOX/log.${label}"
     if ! "$SCRIPT" \
         --prefix "test-health-${label}" \
         --skip-preflight \
@@ -53,9 +54,12 @@ run_session_setup() {
         --skip-repo-check \
         --caller-env "$caller_env" \
         --write-health "$health" \
-        "$@" >/dev/null 2>&1; then
+        "$@" >"$logfile" 2>&1; then
         FAIL=$((FAIL + 1))
         echo "FAIL: $label (session-setup.sh exited non-zero)"
+        echo "----- session-setup.sh output ($logfile, last 50 lines) -----"
+        tail -50 "$logfile" >&2 || true
+        echo "----- end output -----"
         return 1
     fi
     return 0
@@ -68,8 +72,8 @@ run_session_setup() {
 # omit GEMINI_HEALTHY entirely on this path (CHECK_GEMINI_REVIEWER=false AND
 # FINAL_GEMINI_HEALTHY empty).
 # ---------------------------------------------------------------------------
-ENV1="$SANDBOX/env1.sh"
-HEALTH1="$SANDBOX/health1.sh"
+ENV1="$SANDBOX/env1.txt"
+HEALTH1="$SANDBOX/health1.txt"
 : > "$ENV1"  # empty file: no *_HEALTHY keys
 if run_session_setup "empty-caller-env" "$ENV1" "$HEALTH1"; then
     assert_health_value "$HEALTH1" "CODEX_HEALTHY" "false" \
@@ -85,8 +89,8 @@ fi
 # When the caller asks for Gemini but FINAL_GEMINI_HEALTHY is empty, the key
 # MUST be emitted as `false` (the if-guard fires on CHECK_GEMINI_REVIEWER=true).
 # ---------------------------------------------------------------------------
-ENV2="$SANDBOX/env2.sh"
-HEALTH2="$SANDBOX/health2.sh"
+ENV2="$SANDBOX/env2.txt"
+HEALTH2="$SANDBOX/health2.txt"
 : > "$ENV2"
 if run_session_setup "check-gemini-empty" "$ENV2" "$HEALTH2" --check-gemini-reviewer; then
     assert_health_value "$HEALTH2" "CODEX_HEALTHY" "false" \
@@ -102,8 +106,8 @@ fi
 # Confirms the fail-closed default does not clobber explicit `true` health
 # values from the caller's session-env.
 # ---------------------------------------------------------------------------
-ENV3="$SANDBOX/env3.sh"
-HEALTH3="$SANDBOX/health3.sh"
+ENV3="$SANDBOX/env3.txt"
+HEALTH3="$SANDBOX/health3.txt"
 cat > "$ENV3" <<'EOF'
 CODEX_HEALTHY=true
 CURSOR_HEALTHY=true
@@ -121,8 +125,8 @@ fi
 # ---------------------------------------------------------------------------
 # Test 4 — Sanity: explicit caller-env `false` values pass through unchanged.
 # ---------------------------------------------------------------------------
-ENV4="$SANDBOX/env4.sh"
-HEALTH4="$SANDBOX/health4.sh"
+ENV4="$SANDBOX/env4.txt"
+HEALTH4="$SANDBOX/health4.txt"
 cat > "$ENV4" <<'EOF'
 CODEX_HEALTHY=false
 CURSOR_HEALTHY=false

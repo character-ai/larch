@@ -24,6 +24,11 @@
 #   --check-gemini-reviewer
 #                          Include Gemini in the reviewer probe. Omit to preserve
 #                          the legacy Codex+Cursor surface for non-review callers.
+#                          Also gates GEMINI_HEALTHY emission in the --write-health
+#                          sidecar on the passthrough path: when the flag is set
+#                          and FINAL_GEMINI_HEALTHY is empty, the sidecar emits
+#                          GEMINI_HEALTHY=false (fail-closed) rather than omitting
+#                          the key. See section 6's write block.
 #   --skip-codex-probe    Forwarded to check-reviewers.sh (skip Codex health probe)
 #   --skip-cursor-probe   Forwarded to check-reviewers.sh (skip Cursor health probe)
 #   --skip-gemini-probe   Forwarded to check-reviewers.sh (skip Gemini health probe)

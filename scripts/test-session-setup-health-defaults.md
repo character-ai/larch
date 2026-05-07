@@ -9,7 +9,7 @@
 **Coverage**: four scenarios run via the passthrough caller-env path (`--skip-preflight`, no `--check-reviewers`):
 
 1. Empty caller-env, no `--check-gemini-reviewer`: `CODEX_HEALTHY=false`, `CURSOR_HEALTHY=false`, `GEMINI_HEALTHY` key absent (Gemini guard suppresses emission when neither flag nor explicit value is present).
-2. Empty caller-env with `--check-gemini-reviewer`: all three keys emitted as `false`.
+2. Empty caller-env with `--check-gemini-reviewer`: all three keys emitted as `false`. This case intentionally exercises the section-6 `.health` write guard (`if [[ "$CHECK_GEMINI_REVIEWER" == "true" || ... ]]`) in isolation — `--check-gemini-reviewer` is documented as "only meaningful with `--check-reviewers`" for the full reviewer probe workflow, but the write guard fires on the flag alone, so passing it without `--check-reviewers` is the correct way to test the guard's empty-`FINAL_GEMINI_HEALTHY` branch via the passthrough path. Do not "fix" by adding `--check-reviewers` — that would invoke the real probe and narrow coverage to whatever the live `check-reviewers.sh` happens to emit.
 3. Explicit caller-env `true` values for all three keys: passes through unchanged (the fail-closed default does not clobber explicit values).
 4. Explicit caller-env `false` values: passes through unchanged.
 
