@@ -5,12 +5,14 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib-validate-meta-path.sh
+# shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib-validate-meta-path.sh"
 
 ORIGINAL_ARGS=("$@")
 OUTPUT=""
 TIMEOUT=""
 PROMPT=""
+TIMING_TASK_KIND="${LARCH_TIMING_TASK_KIND:-}"
 SNAPSHOT_GUARD_STATE="uninitialized"
 SNAPSHOT_GUARD_NOTICE=""
 SNAPSHOT_GUARD_MESSAGE=""
@@ -51,6 +53,24 @@ unset _arg _skip_next _hash
 
 usage() {
     echo "Usage: launch-gemini-review.sh --output FILE --timeout SECS --prompt TEXT" >&2
+}
+
+# shellcheck disable=SC2329 # invoked indirectly by EXIT traps.
+_emit_timing_record() {
+    local rc=${1:-$?}
+    local end_s status
+    end_s=$(date +%s)
+    (( rc == 0 )) && status=complete || status=signal
+    [[ -n "${TIMING_START_S:-}" && -n "${OUTPUT:-}" ]] || return 0
+    "$SCRIPT_DIR/timing-ledger.sh" record-vendor-task \
+        --vendor gemini \
+        --task-kind "${TIMING_TASK_KIND:-gemini-review}" \
+        --start-s "$TIMING_START_S" \
+        --end-s "$end_s" \
+        --output "$OUTPUT" \
+        --exit-code "$rc" \
+        --status "$status" \
+        >/dev/null 2>&1 || true
 }
 
 write_empty_output() {
@@ -326,7 +346,7 @@ capture_snapshot() {
     rm -f "$body"
 }
 
-# shellcheck disable=SC2317 # invoked via `trap ... EXIT` after setup_snapshot_guard
+# shellcheck disable=SC2317,SC2329 # invoked via `trap ... EXIT` after setup_snapshot_guard
 snapshot_cleanup_on_exit() {
     # Best-effort removal of snapshot temp resources at process exit.
     # Registered via `trap` once setup_snapshot_guard has populated the
@@ -391,7 +411,7 @@ setup_snapshot_guard() {
     SNAPSHOT_BACKUP=$(mktemp -d "$tmp_parent/gemini-review-snapshot-backup.XXXXXX")
     # Register cleanup AFTER mktemp so a setup-stage capture failure still
     # unlinks the temp files. Cleanup is idempotent and tolerates partial state.
-    trap snapshot_cleanup_on_exit EXIT
+    trap '_emit_timing_record $?; snapshot_cleanup_on_exit' EXIT
 
     capture_snapshot "$SNAPSHOT_PRE" pre
     SNAPSHOT_STATUS=$?
@@ -545,6 +565,7 @@ while [[ $# -gt 0 ]]; do
         --output) OUTPUT="${2:?--output requires a value}"; shift 2 ;;
         --timeout) TIMEOUT="${2:?--timeout requires a value}"; shift 2 ;;
         --prompt) PROMPT="${2:?--prompt requires a value}"; shift 2 ;;
+        --timing-task-kind) TIMING_TASK_KIND="${2:?--timing-task-kind requires a value}"; shift 2 ;;
         --agent-file|--mode|--description-text|--scope-files|--competition-notice)
             echo "launch-gemini-review.sh: specialist mode is not supported in v1" >&2
             exit 2 ;;
@@ -573,6 +594,9 @@ fi
 # otherwise become 385, silently bypassing the clamp; `08`/`09` would abort
 # under `set -e` with "value too great for base".
 TIMEOUT=$((10#$TIMEOUT))
+: "${TIMING_TASK_KIND:=gemini-review}"
+TIMING_START_S=$(date +%s)
+trap '_emit_timing_record $?' EXIT
 
 EFFECTIVE_TIMEOUT="$TIMEOUT"
 if (( EFFECTIVE_TIMEOUT > 600 )); then

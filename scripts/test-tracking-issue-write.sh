@@ -332,17 +332,17 @@ else
 fi
 
 echo ""
-echo "=== (c) upsert-anchor preserves anchor + all 8 section markers after >60k body collapse ==="
+echo "=== (c) upsert-anchor preserves anchor + all 9 section markers after >60k body collapse ==="
 STUB_C="$TMPROOT/stub-c"
 BODY_CAPTURE="$TMPROOT/capture-c.txt"
 build_stub_one_anchor "$STUB_C"
 export BODY_CAPTURE
 BODY_C="$TMPROOT/body-c.txt"
-# Compose body: anchor marker line + 8 sections, each with 10000+ chars of content
+# Compose body: anchor marker line + 9 sections, each with 10000+ chars of content
 # so the per-section cap fires first; then ensure body still exceeds 60000.
 {
     echo '<!-- larch:implement-anchor v1 issue=42 -->'
-    for slug in plan-goals-test plan-review-tally code-review-tally diagrams version-bump-reasoning oos-issues execution-issues run-statistics; do
+    for slug in plan-goals-test plan-review-tally code-review-tally diagrams version-bump-reasoning oos-issues execution-issues run-statistics timing-report; do
         printf '<!-- section:%s -->\n' "$slug"
         # 10000 chars of content per section (well over 8000 cap).
         # Use a chunk-repeat pattern that is stable for Bash 3.2.
@@ -358,7 +358,7 @@ assert_contains "$out_c" 'UPDATED=true' '(c) UPDATED=true'
 if [[ -f "$BODY_CAPTURE" ]]; then
     captured_c=$(cat "$BODY_CAPTURE")
     assert_contains "$captured_c" '<!-- larch:implement-anchor v1 issue=42 -->' '(c) HTML anchor marker preserved'
-    for slug in plan-goals-test plan-review-tally code-review-tally diagrams version-bump-reasoning oos-issues execution-issues run-statistics; do
+    for slug in plan-goals-test plan-review-tally code-review-tally diagrams version-bump-reasoning oos-issues execution-issues run-statistics timing-report; do
         assert_contains "$captured_c" "<!-- section:${slug} -->" "(c) section:${slug} marker preserved"
         assert_contains "$captured_c" "<!-- section-end:${slug} -->" "(c) section-end:${slug} marker preserved"
     done
@@ -726,6 +726,15 @@ else
     FAILED_TESTS+=("(i) SECTION_MARKERS ⊆ COLLAPSE_PRIORITY invariant")
     echo "  FAIL: (i) $invariant_out" >&2
 fi
+if bash -c "source '$REPO_ROOT/scripts/anchor-section-markers.sh'; printf '%s\n' \"\${SECTION_MARKERS[@]}\"" | grep -qxF 'timing-report' \
+    && grep -E '^COLLAPSE_PRIORITY=\(' "$WRITE" | grep -qF 'timing-report'; then
+    PASS=$((PASS + 1))
+    echo "  ok: (i2) timing-report present in SECTION_MARKERS and COLLAPSE_PRIORITY"
+else
+    FAIL=$((FAIL + 1))
+    FAILED_TESTS+=("(i2) timing-report missing from SECTION_MARKERS or COLLAPSE_PRIORITY")
+    echo "  FAIL: (i2) timing-report missing from SECTION_MARKERS or COLLAPSE_PRIORITY" >&2
+fi
 
 echo ""
 echo "=== (j) rename subcommand — idempotency, strip-exactly-one, redaction ==="
@@ -1053,7 +1062,7 @@ echo "=== (k) upsert-anchor preserves the seed-only visible placeholder line ===
 # <!-- section:... --> open marker (the seed-only visible placeholder
 # emitted by scripts/assemble-anchor.sh when every fragment is empty) must
 # survive the redact + truncate publish path. Earlier coverage in (c) only
-# pinned the first-line marker and the eight section markers, leaving the
+# pinned the first-line marker and the nine section markers, leaving the
 # preamble line slot uncovered.
 STUB_K="$TMPROOT/stub-k"
 BODY_CAPTURE="$TMPROOT/capture-k.txt"
@@ -1064,7 +1073,7 @@ PLACEHOLDER='_/implement run in progress — sections below populate as the run 
 {
     echo '<!-- larch:implement-anchor v1 issue=42 -->'
     echo "$PLACEHOLDER"
-    for slug in plan-goals-test plan-review-tally code-review-tally diagrams version-bump-reasoning oos-issues execution-issues run-statistics; do
+    for slug in plan-goals-test plan-review-tally code-review-tally diagrams version-bump-reasoning oos-issues execution-issues run-statistics timing-report; do
         printf '<!-- section:%s -->\n' "$slug"
         printf '<!-- section-end:%s -->\n' "$slug"
     done

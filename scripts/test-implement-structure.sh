@@ -1,6 +1,6 @@
 #!/bin/bash
 # Structural regression test for /implement SKILL.md + references/ topology (closes #234).
-# Asserts 27 live load-bearing invariants (assertion 5 retired; numbered list runs 1–4, 6–27) across skills/implement/SKILL.md and the six
+# Asserts 28 live load-bearing invariants (assertion 5 retired; numbered list runs 1–4, 6–28) across skills/implement/SKILL.md and the six
 # reference docs extracted from it. Complements scripts/test-implement-rebase-macro.sh,
 # which owns the Rebase Checkpoint Macro mechanics; this harness owns top-level section
 # headings, the MANDATORY ↔ reference-file binding, the focus-area CI-parity check,
@@ -16,7 +16,7 @@
 # peer-harness assertions (A) and (D) respectively — accepted duplication per design-
 # phase sketch consensus.
 #
-# Twenty-seven assertions (assertion 18 added for Protocol Execution Directive
+# Twenty-eight assertions (assertion 18 added for Protocol Execution Directive
 # pin; assertion 19 added for the Step 2 external implementer dispatcher pin;
 # assertion 20 added for the design-manifest + --design-only path pin;
 # assertion 21 added for the --inline / --subagent forwarding pin, issue #1036;
@@ -25,8 +25,9 @@
 # NEVER #10 literals; assertion 24 added for Gemini implementer structural
 # parity with Cursor's shared guardrails; assertion 25 added for the
 # clean-main Step 0 entry gate; assertion 26 added for the post-merge
-# anti-halt literal pin, issue #1143).
-# Assertion 5 is retired, so the numbered list runs 1–4, 6–27 (27 live
+# anti-halt literal pin, issue #1143; assertion 28 added for timing
+# instrumentation pins).
+# Assertion 5 is retired, so the numbered list runs 1–4, 6–28 (28 live
 # assertions; assertion 23 now pins Gemini machinery preservation, including
 # negative pin 23j against re-introducing launch-gemini-review.sh).
 #  (1) Exactly 1 `^## Load-Bearing Invariants$` heading in skills/implement/SKILL.md.
@@ -1029,5 +1030,56 @@ if (( manifest_line >= simplicity_line || manifest_line >= both_down_line )); th
   fail "(27) Step 1 normal-mode ordering must be: Manifest reuse, then Simplicity classification preamble, then Both-externals-down inline-plan branch (closes #1165)"
 fi
 
-echo "PASS: test-implement-structure.sh — all 27 structural invariants hold (assertion 5 retired)"
+# ---------------------------------------------------------------------------
+# (28) Timing instrumentation pins. Timing is intentionally parallel to the
+#      token observability plane, so these checks catch unpaired step marks,
+#      missing workflow-path exits, anchor drift, invalid timing-kind literals,
+#      and the review-loop round mark that gives nested /review rows useful
+#      boundaries.
+# ---------------------------------------------------------------------------
+token_mark_count=$(grep -Fc 'scripts/token-ledger.sh" mark "Step' "$SKILL_MD" || true)
+timing_mark_count=$(grep -Fc 'scripts/timing-ledger.sh" mark "Step' "$SKILL_MD" || true)
+if [[ "$token_mark_count" != "$timing_mark_count" ]]; then
+  fail "(28a) /implement token/timing mark count mismatch: token=$token_mark_count timing=$timing_mark_count"
+fi
+
+grep -Fq '<!-- section:timing-report -->' "$REFS_DIR/anchor-comment-template.md" \
+  || fail "(28b) anchor-comment-template.md missing timing-report open marker"
+grep -Fq '<!-- section-end:timing-report -->' "$REFS_DIR/anchor-comment-template.md" \
+  || fail "(28b) anchor-comment-template.md missing timing-report close marker"
+
+workflow_path_count=$(grep -Fc 'timing-ledger.sh" workflow-path' "$SKILL_MD" || true)
+if [[ "$workflow_path_count" != "6" ]]; then
+  fail "(28c) expected 6 /implement workflow-path emission sites, found $workflow_path_count"
+fi
+
+REVIEW_SKILL_MD="$REPO_ROOT/skills/review/SKILL.md"
+grep -Fq 'review Step 3 round ${round_num} — review cycle' "$REVIEW_SKILL_MD" \
+  || fail "(28d) /review SKILL.md missing per-round Step 3 timing mark literal"
+
+forbidden_round_kind="cursor-review-roundN""-generic"
+if find "$REPO_ROOT/skills" "$REPO_ROOT/scripts" -type f ! -path "$0" -print0 \
+  | xargs -0 grep -Fq "$forbidden_round_kind"; then
+  fail "(28e) forbidden cursor-review-roundN generic literal found; use cursor-review-generic"
+fi
+
+if grep -n 'quick-review.*launch-.*-review\.sh' "$SKILL_MD" | grep -v -- '--timing-task-kind' >/dev/null; then
+  fail "(28f) quick-mode launch-*-review.sh invocation missing --timing-task-kind"
+fi
+
+allowed_tmp=$(mktemp "${TMPDIR:-/tmp}/larch-timing-kinds-allowed.XXXXXX")
+actual_tmp=$(mktemp "${TMPDIR:-/tmp}/larch-timing-kinds-actual.XXXXXX")
+trap 'rm -f "$allowed_tmp" "$actual_tmp"' EXIT
+awk '
+  /^[[:space:]]*[a-z][a-z0-9-]*$/ { print $1 }
+' "$REPO_ROOT/scripts/lib-timing-kinds.sh" | sort -u > "$allowed_tmp"
+grep -RhoE -- '--timing-task-kind[[:space:]]+[a-z][a-z0-9-]*' "$REPO_ROOT/skills" "$REPO_ROOT/scripts"/launch-* 2>/dev/null \
+  | awk '$2 != "requires" && $2 != "defaults" { print $2 }' | sort -u > "$actual_tmp" || true
+while IFS= read -r kind; do
+  [[ -z "$kind" ]] && continue
+  grep -qxF "$kind" "$allowed_tmp" \
+    || fail "(28g) --timing-task-kind literal not present in TIMING_TASK_KINDS_ALLOWED: $kind"
+done < "$actual_tmp"
+
+echo "PASS: test-implement-structure.sh — all 28 structural invariants hold (assertion 5 retired)"
 exit 0

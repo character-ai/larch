@@ -6,6 +6,7 @@
 - Stdout contract is `KEY=VALUE` lines only: `LAUNCHER_EXIT`, `MANIFEST_WRITTEN`, `QA_PENDING_WRITTEN`, `TRANSCRIPT`, `SIDECAR_LOG`. The dispatcher relies on this; progress text leaking to stdout would corrupt parsing.
 - `run-external-agent.sh`'s stdout AND stderr are redirected (`>"$SIDECAR_LOG" 2>&1`) inside the wrapper. Operators inspecting a failed run read the sidecar log to see wrapper-level progress and diagnostics.
 - Gemini stdout/stderr is captured to `--transcript-path` via `run-external-agent.sh --capture-stdout`. The dispatcher consumes the on-disk manifest, not Gemini stdout.
+- After manifest / Q&A detection, the wrapper emits one best-effort `scripts/timing-ledger.sh record-vendor-task` row. `TIMING_START_S` is captured at wrapper entry after argv validation. `--timing-task-kind <kind>` defaults to `gemini-implement`; timing failures are silent and never affect the KEY=VALUE stdout envelope or wrapper exit behavior.
 - Wrapper always exits 0 unless flag validation fails (exit 2). The Gemini subprocess exit code is reported via `LAUNCHER_EXIT=<int>` on stdout.
 - `--timeout` rejects empty, non-numeric, and zero-valued digit strings (`0`, `00`, `000`, ...), while preserving valid leading-zero positive values such as `010`.
 - Verified against Gemini CLI as of 2026-05: `--approval-mode yolo --skip-trust` permits writes to absolute paths passed via `--manifest-path` and `--qa-pending-path` (which today live under `--tmpdir`, typically rooted at `~/.cache/larch/sessions/...` per the `step2-implement.sh` convention). Gemini CLI also exposes `--include-directories` and `--sandbox`; if a future Gemini release tightens the trust posture and `yolo` no longer covers absolute writes, the launcher must add `--include-directories "$(dirname "$MANIFEST_PATH")"` and this contract revisited.
@@ -35,6 +36,7 @@ SIDECAR_LOG=<path>             # path to run-external-agent.sh chatter
 | `--agent-prompt PATH` | yes | `agents/gemini-implementer.md` system prompt body |
 | `--timeout SECS` | yes | Wall-clock cap for Gemini subprocess |
 | `--answers-file PATH` | optional | Operator answers from a prior `needs_qa` cycle (resume) |
+| `--timing-task-kind KIND` | optional | Timing attribution kind; defaults to `gemini-implement` |
 
 **Call sites**:
 - `skills/implement/scripts/step2-implement.sh` (dispatcher) — the only authorized caller.

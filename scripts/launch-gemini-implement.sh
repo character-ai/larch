@@ -33,6 +33,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"
 
 TRANSCRIPT_PATH=""
 SIDECAR_LOG=""
@@ -43,6 +44,7 @@ FEATURE_FILE=""
 AGENT_PROMPT=""
 TIMEOUT=""
 ANSWERS_FILE=""
+TIMING_TASK_KIND="${LARCH_TIMING_TASK_KIND:-}"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -55,6 +57,7 @@ while [[ $# -gt 0 ]]; do
         --agent-prompt)     AGENT_PROMPT="${2:?--agent-prompt requires a value}"; shift 2 ;;
         --timeout)          TIMEOUT="${2:?--timeout requires a value}"; shift 2 ;;
         --answers-file)     ANSWERS_FILE="${2:?--answers-file requires a value}"; shift 2 ;;
+        --timing-task-kind) TIMING_TASK_KIND="${2:?--timing-task-kind requires a value}"; shift 2 ;;
         *) echo "launch-gemini-implement.sh: unknown flag: $1" >&2; exit 2 ;;
     esac
 done
@@ -81,6 +84,24 @@ if (( 10#$TIMEOUT < 1 )); then
     echo "launch-gemini-implement.sh: --timeout must be a positive integer (seconds), got '$TIMEOUT'" >&2
     exit 2
 fi
+: "${TIMING_TASK_KIND:=gemini-implement}"
+TIMING_START_S=$(date +%s)
+
+emit_timing_record() {
+    local rc="$1"
+    local end_s status
+    end_s=$(date +%s)
+    (( rc == 0 )) && status=complete || status=signal
+    "$PLUGIN_ROOT/scripts/timing-ledger.sh" record-vendor-task \
+        --vendor gemini \
+        --task-kind "$TIMING_TASK_KIND" \
+        --start-s "$TIMING_START_S" \
+        --end-s "$end_s" \
+        --output "$TRANSCRIPT_PATH" \
+        --exit-code "$rc" \
+        --status "$status" \
+        >/dev/null 2>&1 || true
+}
 
 RESUME_BLOCK=""
 if [[ -n "$ANSWERS_FILE" ]]; then
@@ -131,6 +152,7 @@ MANIFEST_WRITTEN=false
 QA_PENDING_WRITTEN=false
 [[ -s "$MANIFEST_PATH" ]]   && MANIFEST_WRITTEN=true
 [[ -s "$QA_PENDING_PATH" ]] && QA_PENDING_WRITTEN=true
+emit_timing_record "$LAUNCHER_EXIT"
 
 printf 'LAUNCHER_EXIT=%s\n'           "$LAUNCHER_EXIT"
 printf 'MANIFEST_WRITTEN=%s\n'        "$MANIFEST_WRITTEN"

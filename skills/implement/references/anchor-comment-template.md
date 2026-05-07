@@ -2,7 +2,7 @@
 
 **Consumer**: `/implement` Phase 3 (umbrella #348) — the canonical anchor-comment markdown template written via `scripts/tracking-issue-write.sh upsert-anchor` and parsed from issue comments by consumers. Active consumers wired in Phase 3: Step 0.5 (resolve tracking issue, hydrate fragments, plant seed anchor on adoption OR Branch 4 first-remote-write: create-issue + seed anchor + sentinel), Anchor-section accumulation at Steps 1 / 2 / 5 / 7a / 8 / 9a.1 / 11, Step 2 progressive `execution-issues` upsert for Q/A entries, Step 9a.1 OOS pipeline (anchor section population), Step 11 post-execution `execution-issues` refresh.
 
-**Contract**: single normative source for (1) the eight canonical section markers, (2) the first-line HTML anchor marker literal, (3) the Voting Tally extraction guidance, (4) the Step 9a.1 OOS pipeline procedure in anchor-comment context, (5) the Quick-mode anchor guidance, and (6) the three load-bearing string literals pinned by `scripts/test-implement-structure.sh` assertion (9a) (`Accepted OOS (GitHub issues filed)`, `| OOS issues filed |`, `<details><summary>Execution Issues</summary>`). Section headers and HTML comment markers must NOT drift — the executable source of truth for `SECTION_MARKERS` is `scripts/anchor-section-markers.sh` (sourced by both `scripts/tracking-issue-write.sh` for truncation ordering and `scripts/assemble-anchor.sh` for assembly ordering); `scripts/tracking-issue-write.sh`'s inline `COLLAPSE_PRIORITY` array is a permutation of the same slug set (body-cap collapse priority). The template below must list the same eight slugs. `test-implement-structure.sh` assertion (9a) pins these literals; assertion (9b) pins a ≥3 reference floor for `anchor-comment-template.md` in SKILL.md.
+**Contract**: single normative source for (1) the nine canonical section markers, (2) the first-line HTML anchor marker literal, (3) the Voting Tally extraction guidance, (4) the Step 9a.1 OOS pipeline procedure in anchor-comment context, (5) the Quick-mode anchor guidance, and (6) the three load-bearing string literals pinned by `scripts/test-implement-structure.sh` assertion (9a) (`Accepted OOS (GitHub issues filed)`, `| OOS issues filed |`, `<details><summary>Execution Issues</summary>`). Section headers and HTML comment markers must NOT drift — the executable source of truth for `SECTION_MARKERS` is `scripts/anchor-section-markers.sh` (sourced by both `scripts/tracking-issue-write.sh` for truncation ordering and `scripts/assemble-anchor.sh` for assembly ordering); `scripts/tracking-issue-write.sh`'s inline `COLLAPSE_PRIORITY` array is a permutation of the same slug set (body-cap collapse priority). The template below must list the same nine slugs. `test-implement-structure.sh` assertion (9a) pins these literals; assertion (9b) pins a ≥3 reference floor for `anchor-comment-template.md` in SKILL.md.
 
 **When to load**: before composing any anchor-section fragment or invoking `tracking-issue-write.sh upsert-anchor`. Do NOT load outside Step 0.5 (including Branch 4 first-remote-write), the Anchor-section accumulation procedure, Step 2 (progressive `execution-issues` upsert for Q/A), Step 9a.1, and Step 11's post-execution anchor refresh.
 
@@ -127,11 +127,28 @@ This line is suppressed as soon as any fragment contains a non-whitespace byte �
 | larch plugin version | <auto-injected from `.claude-plugin/plugin.json`, or `unknown`> |
 
 <!-- section-end:run-statistics -->
+
+<!-- section:timing-report -->
+<!-- timing-report-begin -->
+## Timing Report
+
+**Workflow path**: <HARD | SIMPLE>
+
+## Per-Step Durations
+| Skill | Step | Duration |
+|---|---|---:|
+
+## Vendor Task Averages
+| Vendor | Task kind | Samples | Average | Range |
+|---|---|---:|---:|---|
+
+<!-- timing-report-end -->
+<!-- section-end:timing-report -->
 ````
 
 ## Section markers — exact slug list
 
-The `SECTION_MARKERS` array — sourced from `scripts/anchor-section-markers.sh` by both `scripts/tracking-issue-write.sh` (truncation algorithm) and `scripts/assemble-anchor.sh` (anchor-body assembly) — must list these exact eight slugs in this order (truncation algorithm walks sections in this order for pass 1; assembly walk emits `<!-- section:<slug> -->` / `<!-- section-end:<slug> -->` pairs in the same order):
+The `SECTION_MARKERS` array — sourced from `scripts/anchor-section-markers.sh` by both `scripts/tracking-issue-write.sh` (truncation algorithm) and `scripts/assemble-anchor.sh` (anchor-body assembly) — must list these exact nine slugs in this order (truncation algorithm walks sections in this order for pass 1; assembly walk emits `<!-- section:<slug> -->` / `<!-- section-end:<slug> -->` pairs in the same order):
 
 1. `plan-goals-test`
 2. `plan-review-tally`
@@ -141,6 +158,7 @@ The `SECTION_MARKERS` array — sourced from `scripts/anchor-section-markers.sh`
 6. `oos-issues`
 7. `execution-issues`
 8. `run-statistics`
+9. `timing-report`
 
 Every section is wrapped as `<!-- section:<slug> -->` ... `<!-- section-end:<slug> -->`. Both markers must appear on their own line; no other content may share a marker's line.
 
@@ -153,9 +171,10 @@ When the composed anchor-comment body exceeds the 60000-char body-level cap (aft
 3. `code-review-tally`
 4. `oos-issues`
 5. `run-statistics`
-6. `version-bump-reasoning`
-7. `diagrams`
-8. `plan-goals-test` (highest user-value — goal + test plan must survive)
+6. `timing-report`
+7. `version-bump-reasoning`
+8. `diagrams`
+9. `plan-goals-test` (highest user-value — goal + test plan must survive)
 
 Collapse stops as soon as the body fits the cap. Section markers themselves are preserved even when interiors collapse; Phase 3 consumers parse by these markers.
 
@@ -214,6 +233,7 @@ This is a defense-in-depth layer above `scripts/redact-tmpdir-paths.sh` and `scr
 | `scripts/tracking-issue-write.sh` | Inline `COLLAPSE_PRIORITY` array must be a permutation of the slug list here (same set, body-cap collapse priority order). Enforced by a test-harness invariant in `scripts/test-tracking-issue-write.sh`. |
 | `scripts/assemble-anchor.sh` | Consumes `SECTION_MARKERS` via the shared helper; emits marker pairs and the first-line HTML marker documented here. |
 | `scripts/read-plugin-version.sh` | Supplies the best-effort larch plugin version row auto-injected into `run-statistics`. |
+| `scripts/timing-report.sh` | Writes the sentinel-bracketed `timing-report` fragment consumed by the anchor section. |
 | `scripts/tracking-issue-read.sh` | Anchor-marker filter uses the same strict `<!-- larch:implement-anchor v1` prefix. |
 | `skills/implement/references/pr-body-template.md` | Sibling slim-projection template for the PR body (Summary + Diagrams + Test plan + `Closes #<N>` + footer only); Phase 3+ the anchor comment is canonical for rich content. |
 | `scripts/test-implement-structure.sh` | Phase 3 test-harness assertion (9a) pins the three load-bearing literals here (`Accepted OOS (GitHub issues filed)`, `\| OOS issues filed \|`, `<details><summary>Execution Issues</summary>`); assertion (9b) pins a ≥3 reference floor for `anchor-comment-template.md` in SKILL.md; assertion (9d) pins the Step 9a.1 procedure flag contract (must document `--title-prefix "[OOS]"`; must not pass any `--label` flag; must document `--blocked-by-issue $ISSUE_NUMBER` forwarding only when `$ISSUE_NUMBER` is set, `deferred=false`, and `repo_unavailable=false`, with the explicit degraded-mode skip rule); assertion (9e) pins `--intra-batch-deps-file` forwarding in this procedure; assertion (9f) pins the literal `oos-combined.md` (combine-pass output path consumed by `oos-file-conflict-deps.sh` and `/issue --input-file`) in this procedure; assertion (9g) pins `oos-issue-cap.sh`, `OOS_ISSUES_PER_RUN_CAP`, the fail-closed warning string, and the step 3.5 / step 4 skip wording for the per-run cap pre-pass. |

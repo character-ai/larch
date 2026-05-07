@@ -29,19 +29,21 @@
    - Cursor buckets write to `$DESIGN_TMPDIR/debate-<n>-cursor-thesis.txt` and `…-cursor-antithesis.txt`.
    - Codex buckets write to `$DESIGN_TMPDIR/debate-<n>-codex-thesis.txt` and `…-codex-antithesis.txt`.
 
-   Each Cursor launch (use `run_in_background: true` and `timeout: 1860000`). Pass a short bootstrap prompt that references the per-decision prompt file by path; the tool reads the file via its own filesystem access. This mirrors the voting pattern below ("Read the ballot from $DESIGN_TMPDIR/ballot.txt") and avoids `$(cat ...)` in the launch shell — which would trigger Claude Code permission prompts that break autonomous execution:
+   Each Cursor launch (use `run_in_background: true` and `timeout: 1860000`). Set `CURSOR_DEBATE_TIMING_KIND` to `cursor-debate-thesis` or `cursor-debate-antithesis` to match the side being launched. Pass a short bootstrap prompt that references the per-decision prompt file by path; the tool reads the file via its own filesystem access. This mirrors the voting pattern below ("Read the ballot from $DESIGN_TMPDIR/ballot.txt") and avoids `$(cat ...)` in the launch shell — which would trigger Claude Code permission prompts that break autonomous execution:
    ```bash
    ${CLAUDE_PLUGIN_ROOT}/scripts/launch-cursor-review.sh \
      --output "$DESIGN_TMPDIR/debate-<n>-cursor-<thesis|antithesis>.txt" \
      --timeout 1800 \
+     --timing-task-kind "$CURSOR_DEBATE_TIMING_KIND" \
      --prompt "Read the dialectic-debate task description from $DESIGN_TMPDIR/debate-<n>-<thesis|antithesis>-prompt.txt and follow it exactly to produce the structured tagged output it requests. Work at your maximum reasoning effort level."
    ```
 
-   Each Codex launch (use `run_in_background: true` and `timeout: 1860000`). Same file-path-reference pattern:
+   Each Codex launch (use `run_in_background: true` and `timeout: 1860000`). Set `CODEX_DEBATE_TIMING_KIND` to `codex-debate-thesis` or `codex-debate-antithesis` to match the side being launched. Same file-path-reference pattern:
    ```bash
    ${CLAUDE_PLUGIN_ROOT}/scripts/launch-codex-review.sh \
      --output "$DESIGN_TMPDIR/debate-<n>-codex-<thesis|antithesis>.txt" \
      --timeout 1800 \
+     --timing-task-kind "$CODEX_DEBATE_TIMING_KIND" \
      --prompt "Read the dialectic-debate task description from $DESIGN_TMPDIR/debate-<n>-<thesis|antithesis>-prompt.txt and follow it exactly to produce the structured tagged output it requests. Work at your maximum reasoning effort level."
    ```
 

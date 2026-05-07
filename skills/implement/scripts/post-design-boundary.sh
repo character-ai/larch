@@ -149,6 +149,8 @@ health_merge() {
     cur_codex=$(parse_session_env_key "$SESSION_ENV_PATH" "CODEX_HEALTHY")
     cur_cursor=$(parse_session_env_key "$SESSION_ENV_PATH" "CURSOR_HEALTHY")
     cur_gemini=$(parse_session_env_key "$SESSION_ENV_PATH" "GEMINI_HEALTHY")
+    cur_timing_ledger=$(parse_session_env_key "$SESSION_ENV_PATH" "LARCH_TIMING_LEDGER")
+    [[ -z "$cur_timing_ledger" ]] && cur_timing_ledger="$IMPLEMENT_TMPDIR/timing-ledger.tsv"
 
     side_codex=$(read_health_sidecar_value "$sidecar" "CODEX_HEALTHY")
     side_cursor=$(read_health_sidecar_value "$sidecar" "CURSOR_HEALTHY")
@@ -190,7 +192,8 @@ health_merge() {
             --repo-unavailable "$repo_unavailable" \
             --codex-healthy "$merged_codex" \
             --cursor-healthy "$merged_cursor" \
-            --gemini-healthy "$merged_gemini" >/dev/null 2>&1; then
+            --gemini-healthy "$merged_gemini" \
+            --timing-ledger "$cur_timing_ledger" >/dev/null 2>&1; then
             append_warning "health-merge-failed"
         fi
     fi

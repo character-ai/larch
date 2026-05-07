@@ -25,6 +25,24 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"
 
+# shellcheck disable=SC2329 # invoked indirectly by the EXIT trap.
+_emit_timing_record() {
+    local rc=${1:-$?}
+    local end_s status
+    end_s=$(date +%s)
+    (( rc == 0 )) && status=complete || status=signal
+    [[ -n "${TIMING_START_S:-}" && -n "${OUTPUT:-}" ]] || return 0
+    "$PLUGIN_ROOT/scripts/timing-ledger.sh" record-vendor-task \
+        --vendor cursor \
+        --task-kind "${TIMING_TASK_KIND:-cursor-review}" \
+        --start-s "$TIMING_START_S" \
+        --end-s "$end_s" \
+        --output "$OUTPUT" \
+        --exit-code "$rc" \
+        --status "$status" \
+        >/dev/null 2>&1 || true
+}
+
 OUTPUT=""
 TIMEOUT=""
 PROMPT=""
@@ -34,6 +52,7 @@ MODE=""
 DESCRIPTION_TEXT=""
 SCOPE_FILES=""
 COMPETITION_NOTICE=false
+TIMING_TASK_KIND="${LARCH_TIMING_TASK_KIND:-}"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -46,6 +65,7 @@ while [[ $# -gt 0 ]]; do
         --description-text) DESCRIPTION_TEXT="${2:?--description-text requires a value}"; shift 2 ;;
         --scope-files) SCOPE_FILES="${2:?--scope-files requires a value}"; shift 2 ;;
         --competition-notice) COMPETITION_NOTICE=true; shift ;;
+        --timing-task-kind) TIMING_TASK_KIND="${2:?--timing-task-kind requires a value}"; shift 2 ;;
         *) echo "launch-cursor-review.sh: unknown flag: $1" >&2; exit 2 ;;
     esac
 done
@@ -58,6 +78,7 @@ if [[ -z "$TIMEOUT" ]]; then
 fi
 
 # shellcheck source=scripts/lib-validate-meta-path.sh
+# shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib-validate-meta-path.sh"
 validate_meta_scalar_path --output "$OUTPUT" || exit 1
 case "$TIMEOUT" in
@@ -72,6 +93,8 @@ if (( 10#$TIMEOUT < 1 )); then
     echo "launch-cursor-review.sh: --timeout must be >= 1" >&2
     exit 2
 fi
+: "${TIMING_TASK_KIND:=cursor-review}"
+TIMING_START_S=$(date +%s)
 
 _src_count=0
 [[ -n "$PROMPT" ]] && _src_count=$((_src_count + 1))
@@ -118,7 +141,8 @@ _publish_done_on_exit() {
     fi
     return 0
 }
-trap _publish_done_on_exit EXIT
+# shellcheck disable=SC2154 # _rc is assigned inside the trap string at runtime.
+trap '_rc=$?; _emit_timing_record "$_rc"; _publish_done_on_exit; exit "$_rc"' EXIT
 
 if [[ -n "$PROMPT_FILE" ]]; then
     if ! PROMPT=$({ cat -- "$PROMPT_FILE"; _cat_status=$?; printf X; exit "$_cat_status"; }); then
@@ -149,6 +173,7 @@ printf '%s' "$PROMPT" > "$PROMPT_FILE_SIDECAR"
 # backgrounded callers see STATUS=FAILED with the actionable reason within
 # seconds rather than SENTINEL_TIMEOUT after the full collector timeout.
 # shellcheck source=scripts/lib-cursor-auth.sh
+# shellcheck disable=SC1091
 . "$SCRIPT_DIR/lib-cursor-auth.sh"
 PREFLIGHT_RC=0
 cursor_auth_preflight || PREFLIGHT_RC=$?

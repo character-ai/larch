@@ -5,12 +5,14 @@
 #   write-session-env.sh --output <path> --slack-ok <true|false> \
 #                        [--slack-missing <csv>] --repo <owner/repo> \
 #                        --repo-unavailable <true|false> \
-#                        [--codex-healthy <true|false>] [--cursor-healthy <true|false>] [--gemini-healthy <true|false>]
+#                        [--codex-healthy <true|false>] [--cursor-healthy <true|false>] [--gemini-healthy <true|false>] \
+#                        [--timing-ledger <path>]
 #
 # Options:
 #   --repo may be empty when --repo-unavailable is true (repo discovery failed).
 #   --slack-missing is optional (only meaningful when --slack-ok is false).
 #   --codex-healthy/--cursor-healthy/--gemini-healthy are optional (reviewer health state from probe).
+#   --timing-ledger is optional (shared timing ledger path for nested skills).
 #
 # Output: Writes a shell-sourceable file to --output path (atomic via temp+mv).
 #         When --output is /dev/null, the output is silently discarded.
@@ -26,6 +28,7 @@ REPO_UNAVAILABLE=""
 CODEX_HEALTHY=""
 CURSOR_HEALTHY=""
 GEMINI_HEALTHY=""
+TIMING_LEDGER=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -37,6 +40,7 @@ while [[ $# -gt 0 ]]; do
     --codex-healthy)    CODEX_HEALTHY="$2"; shift 2 ;;
     --cursor-healthy)   CURSOR_HEALTHY="$2"; shift 2 ;;
     --gemini-healthy)   GEMINI_HEALTHY="$2"; shift 2 ;;
+    --timing-ledger)    TIMING_LEDGER="$2"; shift 2 ;;
     *) echo "ERROR=Unknown argument: $1" >&2; exit 1 ;;
   esac
 done
@@ -57,6 +61,8 @@ CODEX_HEALTHY=$CODEX_HEALTHY"
 CURSOR_HEALTHY=$CURSOR_HEALTHY"
 [[ -n "$GEMINI_HEALTHY" ]] && CONTENT="$CONTENT
 GEMINI_HEALTHY=$GEMINI_HEALTHY"
+[[ -n "$TIMING_LEDGER" ]] && CONTENT="$CONTENT
+LARCH_TIMING_LEDGER=$TIMING_LEDGER"
 
 # Write atomically via temp+mv for regular paths.
 # Skip /dev/null — mktemp and mv both fail on device nodes.

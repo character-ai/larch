@@ -202,7 +202,7 @@ Key any future sub-message on the substring inside `PREFLIGHT_ERROR` (for exampl
 Parse `SESSION_TMPDIR`, `SESSION_ID`, `SLACK_OK`, `SLACK_MISSING`, `REPO`, `REPO_UNAVAILABLE`, `CODEX_AVAILABLE`, `CURSOR_AVAILABLE`, `GEMINI_AVAILABLE`, `CODEX_HEALTHY`, `CURSOR_HEALTHY`, `GEMINI_HEALTHY`. `session-setup.sh` creates the tmpdir under `${XDG_CACHE_HOME:-$HOME/.cache}/larch/sessions/` when possible (legacy `/tmp` fallback), writes `$SESSION_TMPDIR/session-id`, and writes `$SESSION_TMPDIR/.larch-keepalive`. Set `IMPLEMENT_TMPDIR` = `SESSION_TMPDIR`, then write the session-env file:
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/write-session-env.sh --output "$IMPLEMENT_TMPDIR/session-env.sh" --slack-ok <value> --slack-missing <value> --repo <value> --repo-unavailable <value> --codex-healthy <value> --cursor-healthy <value> --gemini-healthy <value>
+${CLAUDE_PLUGIN_ROOT}/scripts/write-session-env.sh --output "$IMPLEMENT_TMPDIR/session-env.sh" --slack-ok <value> --slack-missing <value> --repo <value> --repo-unavailable <value> --codex-healthy <value> --cursor-healthy <value> --gemini-healthy <value> --timing-ledger "$IMPLEMENT_TMPDIR/timing-ledger.tsv"
 ```
 
 Then:
@@ -210,6 +210,7 @@ Then:
   ```bash
   ${CLAUDE_PLUGIN_ROOT}/scripts/write-session-id.sh --output "$IMPLEMENT_TMPDIR/session-id"
   export LARCH_TOKEN_SESSION_ID="$(tr -d '\r\n' < "$IMPLEMENT_TMPDIR/session-id" 2>/dev/null || true)"
+  export LARCH_TIMING_LEDGER="$IMPLEMENT_TMPDIR/timing-ledger.tsv"
   # Snapshot the live Claude transcript path BEFORE later concurrent
   # /implement or /design Claude sessions can race the resolver. The
   # exported LARCH_CLAUDE_SOURCE_FILE points downstream
@@ -221,7 +222,9 @@ Then:
   "${CLAUDE_PLUGIN_ROOT}/scripts/token-claude-source.sh" > "$IMPLEMENT_TMPDIR/claude-source.env" 2>/dev/null && \
       export LARCH_CLAUDE_SOURCE_FILE="$IMPLEMENT_TMPDIR/claude-source.env" || true
   "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 0 — preflight" || true
+  "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 0 — preflight" || true
   # token-mark Step 0 — preflight
+  # timing-mark Step 0 — preflight
   ```
   Step 1 compares this value to the design manifest's `SESSION_ID` before reusing any exported plan.
 - Set `slack_available` from `SLACK_OK` (`true` → `true`; `false` → `false`). Warn only when the user has NOT opted out: if `slack_enabled=true` AND `SLACK_OK=false`, print `**⚠ Slack is not fully configured (<SLACK_MISSING> not set). Issue Slack announcement (Step 16a) will be skipped.**` When `slack_enabled=false` (user passed `--no-slack`), suppress the warning — Slack is not in use regardless of environment state.
@@ -234,6 +237,7 @@ The session-env file is passed to `/design` (Step 1) and `/review` (Step 5) via 
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
 # token-step-end Step 0
 ```
 
@@ -316,7 +320,9 @@ If `oos-accepted-main-agent.md` does not exist, create it with the new entry. If
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 0.5 — tracking issue" || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 0.5 — tracking issue" || true
 # token-mark Step 0.5 — tracking issue
+# timing-mark Step 0.5 — tracking issue
 ```
 
 Resolve a stable `ISSUE_NUMBER` + (when available) `ANCHOR_COMMENT_ID` for the session. The anchor comment on this tracking issue is the single source of truth for Phase 3+ report content (voting tallies, diagrams, version bump reasoning, OOS list, execution issues, run statistics); the PR body is a slim projection.
@@ -572,6 +578,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/refresh-anchor.sh --sections-dir "$IMPLEMENT_TMPDI
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
 # token-step-end Step 0.5
 ```
 
@@ -579,7 +586,9 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/refresh-anchor.sh --sections-dir "$IMPLEMENT_TMPDI
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 1 — design plan" || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 1 — design plan" || true
 # token-mark Step 1 — design plan
+# timing-mark Step 1 — design plan
 ```
 
 Determine the user's branch prefix:
@@ -609,6 +618,11 @@ On non-zero exit, print `**⚠ Failed to ensure local main is fresh. Bailing to 
 ### Quick mode (`quick_mode=true`)
 
 Skip `/design`. Handle branch creation here, then produce an inline plan.
+For the explicit `--quick` branch, first record the workflow path (the auto-simple branch records its own SIMPLE row immediately before re-entering this procedure):
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" workflow-path "SIMPLE" || true
+```
 
 **Branch handling** (replicated from `/design` Step 1 since `/design` is skipped):
 - `IS_MAIN=true`: derive a short kebab-case name from the feature description; create via `${CLAUDE_PLUGIN_ROOT}/scripts/create-branch.sh --branch <USER_PREFIX>/<branch-name>`.
@@ -639,6 +653,12 @@ Parse stdout without `eval`/`source`. The reuse heuristic is a two-way conjuncti
 
 If both are true, reuse the manifest and proceed to Step 2 with **all manifest file variables** set from the reader output — not just `PLAN_FILE`, but also `PLAN_REVIEW_TALLY_FILE`, `CONTESTED_CRITERIA_FILE`, `OOS_FILE`, `REJECTED_FINDINGS_FILE`, `ACCEPTED_PLAN_FINDINGS_FILE`, and `ARCHITECTURE_DIAGRAM_FILE` (when present). Same surface as the post-`/design` success branch below; without this, downstream steps lose plan-review tally / rejected findings / architecture diagram on a resumed run. Because `/design` did not return on this reuse path, the post-design boundary wrapper is not invoked; branch capture is handled by the shared `BRANCH_NAME` subsection below.
 
+At the start of this reuse branch, record:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" workflow-path "HARD" || true
+```
+
 Otherwise (no reusable manifest), continue with the normal-mode flow below (simplicity classification preamble, then the both-externals-down branch or the standard `/design` invocation).
 
 **Simplicity classification preamble — skip condition**: classification runs only when `design_only=false`; otherwise skip it entirely and continue with the normal-mode flow below. (`--design-only` is mutually exclusive with quick mode and must not auto-switch into the degraded inline-plan path.)
@@ -651,15 +671,21 @@ A task qualifies as SIMPLE only when all of these are true:
 - No new abstractions: the work does not introduce a framework, shared helper, workflow contract, data model, or long-lived extension point.
 - Obvious verification path: `/relevant-checks`, a focused existing test, a dry-run, or direct grep/readback is enough to validate the change.
 
-When the task is SIMPLE: print `**⚡ 1: design plan — task classified as SIMPLE; auto-switching to quick workflow.**`, set `quick_mode=true`, and re-enter the Quick mode branch above (`### Quick mode (quick_mode=true)`). From there, handle branch creation, produce the inline plan, write `plan.txt` + `voting-tally.md`, and proceed to Step 2 exactly as ordinary quick mode does.
+When the task is SIMPLE: print `**⚡ 1: design plan — task classified as SIMPLE; auto-switching to quick workflow.**`, record `"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" workflow-path "SIMPLE" || true`, set `quick_mode=true`, and re-enter the Quick mode branch above (`### Quick mode (quick_mode=true)`). From there, handle branch creation, produce the inline plan, write `plan.txt` + `voting-tally.md`, and proceed to Step 2 exactly as ordinary quick mode does.
 
 When the task is not SIMPLE: leave `quick_mode=false` and continue with the normal-mode flow below.
 
-**Both-externals-down inline-plan branch**: if `codex_available=false AND cursor_available=false AND design_only=false`, do NOT invoke `/design` via the Skill tool. The full `/design` pipeline expands to 8 Claude-subagent sketches + 8 Claude-subagent reviewers + judge panels — token-expensive and architecturally brittle when no external can produce independent perspectives anyway. Take the same inline-plan path as quick mode (`### Quick mode (quick_mode=true)` above) — same branch handling, same inline plan composition, same `$IMPLEMENT_TMPDIR/design-export/plan.txt` + `voting-tally.md` writes — except the breadcrumb is `⚡ 1: design plan — both-externals-down, inline plan` and the voting-tally fallback text is `Both externals unavailable — no plan review voting.` (replaces the quick-mode `Quick mode — no plan review voting.`). Print `**⚠ 1: design plan — both Codex and Cursor unavailable; skipping /design and producing inline plan in main agent.**` first, then proceed to Step 2.
+**Both-externals-down inline-plan branch**: if `codex_available=false AND cursor_available=false AND design_only=false`, do NOT invoke `/design` via the Skill tool. The full `/design` pipeline expands to 8 Claude-subagent sketches + 8 Claude-subagent reviewers + judge panels — token-expensive and architecturally brittle when no external can produce independent perspectives anyway. Take the same inline-plan path as quick mode (`### Quick mode (quick_mode=true)` above) — same branch handling, same inline plan composition, same `$IMPLEMENT_TMPDIR/design-export/plan.txt` + `voting-tally.md` writes — except the breadcrumb is `⚡ 1: design plan — both-externals-down, inline plan` and the voting-tally fallback text is `Both externals unavailable — no plan review voting.` (replaces the quick-mode `Quick mode — no plan review voting.`). Print `**⚠ 1: design plan — both Codex and Cursor unavailable; skipping /design and producing inline plan in main agent.**`, then record `"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" workflow-path "HARD" || true`, then proceed to Step 2.
 
 The `design_only=false` gate is load-bearing: `--design-only`'s contract is to publish design artifacts (plan, plan-review tally, diagrams, OOS) to the tracking issue as the run's deliverable. It is mutually exclusive with `--quick` precisely because quick mode produces a degraded plan with no plan-review voting. Inheriting that degradation here when externals are down would silently violate the same contract. When `codex_available=false AND cursor_available=false AND design_only=true`, do NOT skip /design — print `**⚠ 1: design plan — both Codex and Cursor unavailable but --design-only requires external-backed plan-review. Bailing to cleanup.**`, set `STALL_TRACKING=true`, and skip to Step 18.
 
-Otherwise (at least one of `codex_available` / `cursor_available` is `true`, OR `design_only=true` and the bail above did not fire), invoke `/design` via the Skill tool. Canonical invocation order: `[--auto] [--subagent] --step-prefix "1.::design plan" --branch-info "IS_MAIN=$IS_MAIN IS_USER_BRANCH=$IS_USER_BRANCH USER_PREFIX=$USER_PREFIX CURRENT_BRANCH=$CURRENT_BRANCH" --session-env $IMPLEMENT_TMPDIR/session-env.sh <FEATURE_DESCRIPTION>`. Prepend `--auto` only if `auto_mode=true`. Append `--subagent` (after `--auto`, before `--step-prefix` in argv order) only if `inline_mode=false` (default); when `inline_mode=true`, omit `--subagent` so /design's heavy phase runs in /design's in-turn context (execution topology only — parent verbosity suppression unchanged).
+On the design-only normal path (external-backed `/design` proceeds), record the HARD path before the Skill invocation:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" workflow-path "HARD" || true
+```
+
+Otherwise (at least one of `codex_available` / `cursor_available` is `true`, OR `design_only=true` and the bail above did not fire), record `"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" workflow-path "HARD" || true`, then invoke `/design` via the Skill tool. Canonical invocation order: `[--auto] [--subagent] --step-prefix "1.::design plan" --branch-info "IS_MAIN=$IS_MAIN IS_USER_BRANCH=$IS_USER_BRANCH USER_PREFIX=$USER_PREFIX CURRENT_BRANCH=$CURRENT_BRANCH" --session-env $IMPLEMENT_TMPDIR/session-env.sh <FEATURE_DESCRIPTION>`. Prepend `--auto` only if `auto_mode=true`. Append `--subagent` (after `--auto`, before `--step-prefix` in argv order) only if `inline_mode=false` (default); when `inline_mode=true`, omit `--subagent` so /design's heavy phase runs in /design's in-turn context (execution topology only — parent verbosity suppression unchanged).
 
 After `/design` returns, the FIRST and MANDATORY orchestrator action is this Bash wrapper call. No orchestrator-authored prose, summary, recap, handoff, or "returning to parent" message may appear before it:
 
@@ -727,6 +753,7 @@ Apply the Rebase Checkpoint Macro with `<step-prefix>=1.r` and `<short-name>=des
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
 # token-step-end Step 1
 ```
 
@@ -734,7 +761,9 @@ Apply the Rebase Checkpoint Macro with `<step-prefix>=1.r` and `<short-name>=des
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 2 — implementation" || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 2 — implementation" || true
 # token-mark Step 2 — implementation
+# timing-mark Step 2 — implementation
 ```
 
 ### Step 2 entry preconditions — legal next-actions matrix
@@ -860,6 +889,7 @@ Material answers that change scope or approach also log here (same `Q/A` categor
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
 # token-step-end Step 2
 ```
 
@@ -867,7 +897,9 @@ Material answers that change scope or approach also log here (same `Q/A` categor
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 3 — checks first pass" || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 3 — checks first pass" || true
 # token-mark Step 3 — checks first pass
+# timing-mark Step 3 — checks first pass
 ```
 
 > **Continue after child returns.** On a clean `/relevant-checks` return (all checks pass), execute Step 4's commit (impl) breadcrumb next — the next user-facing output is either `⏩ 4: commit (impl) — already committed by dispatcher (HEAD=<short-sha>)` on the external implementer path or the Step 4 implementation-commit flow on Claude fallback. On a non-clean return (any hook or agent-lint failure), diagnose, fix, and re-invoke `/relevant-checks` via the Skill tool until clean BEFORE Step 4 — the failure path is in-Step-3, not a halt. In either case, do NOT end the turn, summarize, or write a handoff message.
@@ -876,6 +908,7 @@ Invoke `/relevant-checks` via the Skill tool. If checks fail, diagnose and fix, 
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
 # token-step-end Step 3
 ```
 
@@ -883,7 +916,9 @@ Invoke `/relevant-checks` via the Skill tool. If checks fail, diagnose and fix, 
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 4 — commit implementation" || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 4 — commit implementation" || true
 # token-mark Step 4 — commit implementation
+# timing-mark Step 4 — commit implementation
 ```
 
 **On the external implementer path** (`$MANIFEST_PATH` is non-empty, i.e. Step 2 returned `STATUS=complete`): the dispatcher has already committed `$TOOL_LABEL`'s working-tree edits using `manifest.commit_message` (`git add -A && git commit -F …`, with `commit_message` piped through `scripts/redact-secrets.sh` first so secrets do not land in git history). There is no Claude-side diff verification — `commit_message` is consumed as-is modulo the secrets-family redaction; the canonical on-disk manifest is sanitized by the same scrubber for downstream Steps 8a / 9a / 9a.1. Skip the `git-commit.sh` invocation. Print `⏩ 4: commit (impl) — already committed by dispatcher (HEAD=$(git rev-parse --short HEAD))`.
@@ -902,6 +937,7 @@ Apply the Rebase Checkpoint Macro with `<step-prefix>=4.r` and `<short-name>=com
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
 # token-step-end Step 4
 ```
 
@@ -909,7 +945,9 @@ Apply the Rebase Checkpoint Macro with `<step-prefix>=4.r` and `<short-name>=com
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 5 — code review" || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 5 — code review" || true
 # token-mark Step 5 — code review
+# timing-mark Step 5 — code review
 ```
 
 ### Pre-/review untracked snapshot (both modes)
@@ -932,6 +970,12 @@ Skip `/review`. Review loop up to **7 rounds** of review + fix, with an early-ex
 
 Track `round_num` from 1. For each round:
 
+At the top of each round iteration, before gathering context, record a review-skill timing mark:
+
+```bash
+LARCH_TIMING_SKILL=review "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "review Step 5 quick round ${round_num} — review cycle" || true
+```
+
 **5.1 — Gather context**:
 
 ```bash
@@ -949,24 +993,24 @@ Parse `DIFF_FILE`, `FILE_LIST_FILE`, `COMMIT_LOG_FILE`.
 
 Launch all 5 specialists AND a 6th generic Codex reviewer in parallel using the launch wrapper scripts (specialists call `render-specialist-prompt.sh` internally) for each specialist (`structure`, `correctness`, `testing`, `security`, `edge-cases`). **Fallback chain per specialist slot**: Cursor → Codex → Claude subagent. **Fallback chain for the required generic slot**: Codex → Cursor → Claude subagent. Use `run_in_background: true` and `timeout: 1860000` on Cursor/Codex Bash tool calls. **No competition notice** (no voting panel). **Do NOT add a Bash polling loop to wait on these — the `collect-agent-results.sh` foreground call below is the wait point** (per AGENTS.md anti-polling rule; a redundant poller can keep the session alive long after the watched job has reported).
 
-For each specialist, when **Cursor** is available:
+For each specialist, set `CURSOR_SPECIALIST_TIMING_KIND=cursor-specialist-<name>` with `<name>` replaced by one of `structure`, `correctness`, `testing`, `security`, or `edge-cases`. When **Cursor** is available:
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/launch-cursor-review.sh --output "$IMPLEMENT_TMPDIR/cursor-quick-review-specialist-<name>-round${round_num}.txt" --timeout 1800 --agent-file "${CLAUDE_PLUGIN_ROOT}/agents/reviewer-<name>.md" --mode diff
+${CLAUDE_PLUGIN_ROOT}/scripts/launch-cursor-review.sh --output "$IMPLEMENT_TMPDIR/cursor-quick-review-specialist-<name>-round${round_num}.txt" --timeout 1800 --agent-file "${CLAUDE_PLUGIN_ROOT}/agents/reviewer-<name>.md" --mode diff --timing-task-kind "$CURSOR_SPECIALIST_TIMING_KIND"
 ```
 
-When **Cursor unavailable, Codex available** (per specialist slot):
+When **Cursor unavailable, Codex available** (per specialist slot), set `CODEX_SPECIALIST_TIMING_KIND=codex-specialist-<name>` with the same `<name>` replacement:
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/launch-codex-review.sh --output "$IMPLEMENT_TMPDIR/codex-quick-review-specialist-<name>-round${round_num}.txt" --timeout 1800 --agent-file "${CLAUDE_PLUGIN_ROOT}/agents/reviewer-<name>.md" --mode diff
+${CLAUDE_PLUGIN_ROOT}/scripts/launch-codex-review.sh --output "$IMPLEMENT_TMPDIR/codex-quick-review-specialist-<name>-round${round_num}.txt" --timeout 1800 --agent-file "${CLAUDE_PLUGIN_ROOT}/agents/reviewer-<name>.md" --mode diff --timing-task-kind "$CODEX_SPECIALIST_TIMING_KIND"
 ```
 
 For the **generic Codex slot**, when **Codex** is available:
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/launch-codex-review.sh --output "$IMPLEMENT_TMPDIR/codex-quick-review-rounds1to3-generic-round${round_num}.txt" --timeout 1800 --prompt "Review all code changes on the current branch vs main. Run git diff main...HEAD to see changes and git log main...HEAD --oneline for commits. For each changed file, read the full file for context. Walk five focus areas: (1) Code Quality: bugs, logic, reuse, tests, backward compat, style. (2) Risk/Integration: breaking changes, side effects, thread safety, deployment risks, regressions, CI. (3) Correctness: logic errors, off-by-one, nil handling, type mismatches, races, error paths. (4) Architecture: separation of concerns, contract boundaries, invariants, semantic boundaries. (5) Security: injection, authn/authz, secret handling, crypto, deserialization, SSRF, path traversal, dependency CVEs. Tag each finding with its focus area (one of code-quality / risk-integration / correctness / architecture / security). Return numbered findings with focus-area tag, file:line, issue, and suggested fix. If NO issues, output exactly NO_ISSUES_FOUND. Do NOT modify files. Work at your maximum reasoning effort level."
+${CLAUDE_PLUGIN_ROOT}/scripts/launch-codex-review.sh --output "$IMPLEMENT_TMPDIR/codex-quick-review-rounds1to3-generic-round${round_num}.txt" --timeout 1800 --timing-task-kind codex-review-generic --prompt "Review all code changes on the current branch vs main. Run git diff main...HEAD to see changes and git log main...HEAD --oneline for commits. For each changed file, read the full file for context. Walk five focus areas: (1) Code Quality: bugs, logic, reuse, tests, backward compat, style. (2) Risk/Integration: breaking changes, side effects, thread safety, deployment risks, regressions, CI. (3) Correctness: logic errors, off-by-one, nil handling, type mismatches, races, error paths. (4) Architecture: separation of concerns, contract boundaries, invariants, semantic boundaries. (5) Security: injection, authn/authz, secret handling, crypto, deserialization, SSRF, path traversal, dependency CVEs. Tag each finding with its focus area (one of code-quality / risk-integration / correctness / architecture / security). Return numbered findings with focus-area tag, file:line, issue, and suggested fix. If NO issues, output exactly NO_ISSUES_FOUND. Do NOT modify files. Work at your maximum reasoning effort level."
 ```
 
 When **Codex unavailable, Cursor available** for the generic slot:
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/launch-cursor-review.sh --output "$IMPLEMENT_TMPDIR/cursor-quick-review-rounds1to3-generic-round${round_num}.txt" --timeout 1800 --prompt "Review all code changes on the current branch vs main. Run git diff main...HEAD to see changes and git log main...HEAD --oneline for commits. For each changed file, read the full file for context. Walk five focus areas: (1) Code Quality: bugs, logic, reuse, tests, backward compat, style. (2) Risk/Integration: breaking changes, side effects, thread safety, deployment risks, regressions, CI. (3) Correctness: logic errors, off-by-one, nil handling, type mismatches, races, error paths. (4) Architecture: separation of concerns, contract boundaries, invariants, semantic boundaries. (5) Security: injection, authn/authz, secret handling, crypto, deserialization, SSRF, path traversal, dependency CVEs. Tag each finding with its focus area (one of code-quality / risk-integration / correctness / architecture / security). Return numbered findings with focus-area tag, file:line, issue, and suggested fix. If NO issues, output exactly NO_ISSUES_FOUND. Do NOT modify files. Work at your maximum reasoning effort level."
+${CLAUDE_PLUGIN_ROOT}/scripts/launch-cursor-review.sh --output "$IMPLEMENT_TMPDIR/cursor-quick-review-rounds1to3-generic-round${round_num}.txt" --timeout 1800 --timing-task-kind cursor-review-generic --prompt "Review all code changes on the current branch vs main. Run git diff main...HEAD to see changes and git log main...HEAD --oneline for commits. For each changed file, read the full file for context. Walk five focus areas: (1) Code Quality: bugs, logic, reuse, tests, backward compat, style. (2) Risk/Integration: breaking changes, side effects, thread safety, deployment risks, regressions, CI. (3) Correctness: logic errors, off-by-one, nil handling, type mismatches, races, error paths. (4) Architecture: separation of concerns, contract boundaries, invariants, semantic boundaries. (5) Security: injection, authn/authz, secret handling, crypto, deserialization, SSRF, path traversal, dependency CVEs. Tag each finding with its focus area (one of code-quality / risk-integration / correctness / architecture / security). Return numbered findings with focus-area tag, file:line, issue, and suggested fix. If NO issues, output exactly NO_ISSUES_FOUND. Do NOT modify files. Work at your maximum reasoning effort level."
 ```
 
 When **both Cursor and Codex unavailable** for ALL 6 required slots (5 specialists + generic): fall back to a single Claude Code Reviewer subagent (subagent_type: `larch:code-reviewer`, model: `"sonnet"`) using the unified archetype in `${CLAUDE_PLUGIN_ROOT}/skills/shared/reviewer-templates.md`, preserving the "at least one reviewer" guarantee. Print `**⚠ 5: code review — round $round_num both external tools unavailable, using Claude generic fallback**`. **Skip `collect-agent-results.sh` entirely** on this path — parse only the Agent-tool subagent output. Proceed to 5.4. (When the generic slot's Codex is unavailable but Cursor is up for it, OR vice-versa, the generic slot uses the available external — only the all-down required-panel path collapses to Claude.)
@@ -984,7 +1028,7 @@ Where `<tool>` is `cursor` or `codex` depending on which tool was used for each 
 
 - **Cursor** (full repo access — no need to inline the diff):
   ```bash
-  ${CLAUDE_PLUGIN_ROOT}/scripts/launch-cursor-review.sh --output "$IMPLEMENT_TMPDIR/cursor-quick-review-round${round_num}.txt" --timeout 1800 --prompt "Review all code changes on the current branch vs main. Run git diff main...HEAD to see changes and git log main...HEAD --oneline for commits. For each changed file, read the full file for context. Walk five focus areas: (1) Code Quality: bugs, logic, reuse, tests, backward compat, style. (2) Risk/Integration: breaking changes, side effects, thread safety, deployment risks, regressions, CI. (3) Correctness: logic errors, off-by-one, nil handling, type mismatches, races, error paths. (4) Architecture: separation of concerns, contract boundaries, invariants, semantic boundaries. (5) Security: injection, authn/authz, secret handling, crypto, deserialization, SSRF, path traversal, dependency CVEs. Tag each finding with its focus area (one of code-quality / risk-integration / correctness / architecture / security). Return numbered findings with focus-area tag, file:line, issue, and suggested fix. If NO issues, output exactly NO_ISSUES_FOUND. Do NOT modify files. Work at your maximum reasoning effort level."
+  ${CLAUDE_PLUGIN_ROOT}/scripts/launch-cursor-review.sh --output "$IMPLEMENT_TMPDIR/cursor-quick-review-round${round_num}.txt" --timeout 1800 --timing-task-kind cursor-review-generic --prompt "Review all code changes on the current branch vs main. Run git diff main...HEAD to see changes and git log main...HEAD --oneline for commits. For each changed file, read the full file for context. Walk five focus areas: (1) Code Quality: bugs, logic, reuse, tests, backward compat, style. (2) Risk/Integration: breaking changes, side effects, thread safety, deployment risks, regressions, CI. (3) Correctness: logic errors, off-by-one, nil handling, type mismatches, races, error paths. (4) Architecture: separation of concerns, contract boundaries, invariants, semantic boundaries. (5) Security: injection, authn/authz, secret handling, crypto, deserialization, SSRF, path traversal, dependency CVEs. Tag each finding with its focus area (one of code-quality / risk-integration / correctness / architecture / security). Return numbered findings with focus-area tag, file:line, issue, and suggested fix. If NO issues, output exactly NO_ISSUES_FOUND. Do NOT modify files. Work at your maximum reasoning effort level."
   ```
   Use `run_in_background: true` and `timeout: 1860000`. Collect via:
   ```bash
@@ -994,7 +1038,7 @@ Where `<tool>` is `cursor` or `codex` depending on which tool was used for each 
 
 - **Codex** (same pattern):
   ```bash
-  ${CLAUDE_PLUGIN_ROOT}/scripts/launch-codex-review.sh --output "$IMPLEMENT_TMPDIR/codex-quick-review-round${round_num}.txt" --timeout 1800 --prompt "Review all code changes on the current branch vs main. Run git diff main...HEAD to see changes and git log main...HEAD --oneline for commits. For each changed file, read the full file for context. Walk five focus areas: (1) Code Quality: bugs, logic, reuse, tests, backward compat, style. (2) Risk/Integration: breaking changes, side effects, thread safety, deployment risks, regressions, CI. (3) Correctness: logic errors, off-by-one, nil handling, type mismatches, races, error paths. (4) Architecture: separation of concerns, contract boundaries, invariants, semantic boundaries. (5) Security: injection, authn/authz, secret handling, crypto, deserialization, SSRF, path traversal, dependency CVEs. Tag each finding with its focus area (one of code-quality / risk-integration / correctness / architecture / security). Return numbered findings with focus-area tag, file:line, issue, and suggested fix. If NO issues, output exactly NO_ISSUES_FOUND. Do NOT modify files. Work at your maximum reasoning effort level."
+  ${CLAUDE_PLUGIN_ROOT}/scripts/launch-codex-review.sh --output "$IMPLEMENT_TMPDIR/codex-quick-review-round${round_num}.txt" --timeout 1800 --timing-task-kind codex-review-generic --prompt "Review all code changes on the current branch vs main. Run git diff main...HEAD to see changes and git log main...HEAD --oneline for commits. For each changed file, read the full file for context. Walk five focus areas: (1) Code Quality: bugs, logic, reuse, tests, backward compat, style. (2) Risk/Integration: breaking changes, side effects, thread safety, deployment risks, regressions, CI. (3) Correctness: logic errors, off-by-one, nil handling, type mismatches, races, error paths. (4) Architecture: separation of concerns, contract boundaries, invariants, semantic boundaries. (5) Security: injection, authn/authz, secret handling, crypto, deserialization, SSRF, path traversal, dependency CVEs. Tag each finding with its focus area (one of code-quality / risk-integration / correctness / architecture / security). Return numbered findings with focus-area tag, file:line, issue, and suggested fix. If NO issues, output exactly NO_ISSUES_FOUND. Do NOT modify files. Work at your maximum reasoning effort level."
   ```
   Collect via the same `collect-agent-results.sh`.
 
@@ -1056,6 +1100,7 @@ After review (`/review` in normal mode or the quick-mode loop), for any **in-sco
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
 # token-step-end Step 5
 ```
 
@@ -1063,7 +1108,9 @@ After review (`/review` in normal mode or the quick-mode loop), for any **in-sco
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 6 — checks second pass" || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 6 — checks second pass" || true
 # token-mark Step 6 — checks second pass
+# timing-mark Step 6 — checks second pass
 ```
 
 Check whether Step 5 modified files (both modes). Detection covers staged + unstaged + (current untracked − pre-/review snapshot, when the snapshot is present):
@@ -1084,6 +1131,7 @@ Invoke `/relevant-checks` via the Skill tool; on failure, diagnose + fix, re-inv
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
 # token-step-end Step 6
 ```
 
@@ -1091,7 +1139,9 @@ Invoke `/relevant-checks` via the Skill tool; on failure, diagnose + fix, re-inv
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 7 — commit review fixes" || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 7 — commit review fixes" || true
 # token-mark Step 7 — commit review fixes
+# timing-mark Step 7 — commit review fixes
 ```
 
 If any files changed during review / checks (Steps 5–6):
@@ -1110,6 +1160,7 @@ Apply the Rebase Checkpoint Macro with `<step-prefix>=7.r` and `<short-name>=com
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
 # token-step-end Step 7
 ```
 
@@ -1117,7 +1168,9 @@ Apply the Rebase Checkpoint Macro with `<step-prefix>=7.r` and `<short-name>=com
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 7a — code flow diagram" || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 7a — code flow diagram" || true
 # token-mark Step 7a — code flow diagram
+# timing-mark Step 7a — code flow diagram
 ```
 
 Print: `> **🔶 7a: code flow**`
@@ -1147,6 +1200,7 @@ Apply the Rebase Checkpoint Macro with `<step-prefix>=7a.r` and `<short-name>=co
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
 # token-step-end Step 7a
 ```
 
@@ -1154,7 +1208,9 @@ Apply the Rebase Checkpoint Macro with `<step-prefix>=7a.r` and `<short-name>=co
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 8 — version bump" || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 8 — version bump" || true
 # token-mark Step 8 — version bump
+# timing-mark Step 8 — version bump
 ${CLAUDE_PLUGIN_ROOT}/scripts/check-bump-version.sh --mode pre
 ```
 
@@ -1192,6 +1248,7 @@ Compose the `version-bump-reasoning` fragment from the contents of `$BUMP_REASON
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
 # token-step-end Step 8
 ```
 
@@ -1199,7 +1256,9 @@ Compose the `version-bump-reasoning` fragment from the contents of `$BUMP_REASON
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 8a — changelog" || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 8a — changelog" || true
 # token-mark Step 8a — changelog
+# timing-mark Step 8a — changelog
 ```
 
 Test for `CHANGELOG.md` at the project root via the scripted probe (do NOT eyeball — the probe's `CHANGELOG_PRESENT=` value is the authoritative source for the branch decision and for the breadcrumb tail):
@@ -1235,6 +1294,7 @@ Print: `✅ 8a: changelog — updated for v<NEW_VERSION> (<elapsed>)`
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
 # token-step-end Step 8a
 ```
 
@@ -1242,7 +1302,9 @@ Print: `✅ 8a: changelog — updated for v<NEW_VERSION> (<elapsed>)`
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 8b — rebase" || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 8b — rebase" || true
 # token-mark Step 8b — rebase
+# timing-mark Step 8b — rebase
 ```
 
 Final freshness gate before Step 9. Unlike Step 7a.r's macro call, Step 8b does NOT use `--skip-if-pushed` — resumed Branch 1/2/3 runs (where the feature branch already exists on origin) MUST refresh here, otherwise the PR is created against a base captured before `/bump-version` + CHANGELOG amend ran. Step 12's CI+rebase+merge loop remains the last-chance enforcement at merge time; Step 8b narrows the freshness gap on the initial PR-creation push.
@@ -1291,6 +1353,7 @@ Detection is Git-based (not via `gh pr view`) so transient GitHub API failures d
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
 # token-step-end Step 8b
 ```
 
@@ -1298,7 +1361,9 @@ Detection is Git-based (not via `gh pr view`) so transient GitHub API failures d
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 9 — create PR" || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 9 — create PR" || true
 # token-mark Step 9 — create PR
+# timing-mark Step 9 — create PR
 ```
 
 Step 9 is a single token-accounting bucket spanning 9a, 9a.1, and 9b for this PoC; nested 9a.1 / 9b marks are deferred.
@@ -1337,6 +1402,7 @@ After writing `run-statistics.md`, append or replace the idempotent token block 
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --append-run-statistics "$IMPLEMENT_TMPDIR/anchor-sections/run-statistics.md" || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --append-timing-section "$IMPLEMENT_TMPDIR/anchor-sections/timing-report.md" || true
 ```
 
 After both fragments are written, assemble the anchor body and upsert (see Step 0.5 "Anchor-section accumulation"). Assembly order follows `SECTION_MARKERS`: `oos-issues` comes before `execution-issues`, `run-statistics` comes last.
@@ -1368,6 +1434,7 @@ Print the PR URL. Save `PR_NUMBER`, `PR_URL`, `PR_TITLE` for Steps 10–15.
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
 # token-step-end Step 9
 ```
 
@@ -1375,7 +1442,9 @@ Print the PR URL. Save `PR_NUMBER`, `PR_URL`, `PR_TITLE` for Steps 10–15.
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 10 — CI monitor" || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 10 — CI monitor" || true
 # token-mark Step 10 — CI monitor
+# timing-mark Step 10 — CI monitor
 ```
 
 If `repo_unavailable=true`: print `⏭️ 10: CI monitor — skipped (repo unavailable) (<elapsed>)` and proceed to Step 11.
@@ -1416,6 +1485,7 @@ Log CI failures, transient retries, bail events to `CI Issues`. After any non-te
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
 # token-step-end Step 10
 ```
 
@@ -1423,7 +1493,9 @@ Log CI failures, transient retries, bail events to `CI Issues`. After any non-te
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 11 — execution issues refresh" || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 11 — execution issues refresh" || true
 # token-mark Step 11 — execution issues refresh
+# timing-mark Step 11 — execution issues refresh
 ```
 
 Runs unconditionally. The Slack announcement of the tracking issue has moved to Step 16a (near end-of-run, once the final outcome is known) — Step 11 is now only the anchor refresh.
@@ -1443,6 +1515,7 @@ Runs unconditionally. The Slack announcement of the tracking issue has moved to 
    c. Best-effort append or replace the current Token Report block in `$IMPLEMENT_TMPDIR/anchor-sections/run-statistics.md` before the refresh. This Step 11 table is an interim refresh only; Step 18 owns the authoritative final table:
       ```bash
       "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --append-run-statistics "$IMPLEMENT_TMPDIR/anchor-sections/run-statistics.md" || true
+      "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --append-timing-section "$IMPLEMENT_TMPDIR/anchor-sections/timing-report.md" || true
       ```
 
    d. Refresh the anchor — assembles the full body from all current fragments in canonical `SECTION_MARKERS` order and upserts in one call (see Step 0.5 "Anchor-section accumulation" and `scripts/refresh-anchor.md`):
@@ -1457,6 +1530,7 @@ Print: `✅ 11: execution-issues — anchor refreshed (<elapsed>)` on success.
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
 # token-step-end Step 11
 ```
 
@@ -1464,7 +1538,9 @@ Print: `✅ 11: execution-issues — anchor refreshed (<elapsed>)` on success.
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 12 — CI merge loop" || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 12 — CI merge loop" || true
 # token-mark Step 12 — CI merge loop
+# timing-mark Step 12 — CI merge loop
 ```
 
 If `merge=false`: print `⏭️ 12: CI+merge loop — skipped (--merge not set) (<elapsed>)` and skip to Step 16. If `repo_unavailable=true`: print `⏭️ 12: CI+merge loop — skipped (repo unavailable) (<elapsed>)` and skip to Step 16.
@@ -1567,6 +1643,7 @@ Bail if any: 3 fix iterations attempted without progress; failure fundamentally 
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
 # token-step-end Step 12
 ```
 
@@ -1574,7 +1651,9 @@ Bail if any: 3 fix iterations attempted without progress; failure fundamentally 
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 14 — local cleanup" || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 14 — local cleanup" || true
 # token-mark Step 14 — local cleanup
+# timing-mark Step 14 — local cleanup
 ```
 
 Write finalizer state once, then delegate Step 14 and Step 15 mechanical work to `implement-finalize.sh postmerge`. The state file is plain `KEY=value` text and is never sourced; the script reads it with `awk`. Mechanical SSOT: `${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.md` § `postmerge`.
@@ -1615,6 +1694,7 @@ Relay the script's Step 14 / Step 15 breadcrumbs verbatim. Tail records document
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
 # token-step-end Step 14
 ```
 
@@ -1622,7 +1702,9 @@ Relay the script's Step 14 / Step 15 breadcrumbs verbatim. Tail records document
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 15 — verify main" || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 15 — verify main" || true
 # token-mark Step 15 — verify main
+# timing-mark Step 15 — verify main
 ```
 
 Handled by Step 14's `implement-finalize.sh postmerge` invocation. Step 15 runs only when Step 14 actually attempted local cleanup; `draft=true`, `merge=false`, and Step 12 bail paths skip verification with `VERIFY_MAIN_STATUS=skipped`. Mechanical SSOT: `${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.md` § `postmerge`.
@@ -1631,6 +1713,7 @@ Handled by Step 14's `implement-finalize.sh postmerge` invocation. Step 15 runs 
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
 # token-step-end Step 15
 ```
 
@@ -1638,7 +1721,9 @@ Handled by Step 14's `implement-finalize.sh postmerge` invocation. Step 15 runs 
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 16 — rejected findings" || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 16 — rejected findings" || true
 # token-mark Step 16 — rejected findings
+# timing-mark Step 16 — rejected findings
 ```
 
 Report unimplemented code review suggestions without reprinting the full findings inline. Check `$IMPLEMENT_TMPDIR/rejected-findings.md`. If non-empty, print `✅ 16: rejected findings — saved to anchor (<elapsed>)`; the full content was already posted via the `code-review-tally` anchor fragment. Otherwise print `✅ 16: rejected findings — all suggestions implemented (<elapsed>)`.
@@ -1647,6 +1732,7 @@ Report unimplemented code review suggestions without reprinting the full finding
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
 # token-step-end Step 16
 ```
 
@@ -1654,7 +1740,9 @@ Report unimplemented code review suggestions without reprinting the full finding
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 16a — Slack issue announcement" || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 16a — Slack issue announcement" || true
 # token-mark Step 16a — Slack issue announcement
+# timing-mark Step 16a — Slack issue announcement
 ```
 
 Run the consolidated Slack subcommand. It preserves the Step 16a skip gates and first-match-wins outcome ladder, including `DESIGN_ONLY_DONE=true → RUN_OUTCOME=design-only`, `BAIL_NEEDS_USER_INPUT=true → RUN_OUTCOME=user-input`, and `merge=false` OR `draft=true` → `RUN_OUTCOME=pr-opened`. It omits `--pr-url` for design-only, passes bail/user-input detail when needed, and treats Slack failure as a non-fatal warning. Mechanical SSOT: `${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.md` § `slack`.
@@ -1671,6 +1759,7 @@ Relay the script's Step 16a breadcrumb verbatim. Tail records document the mecha
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
 # token-step-end Step 16a
 ```
 
@@ -1678,7 +1767,9 @@ Relay the script's Step 16a breadcrumb verbatim. Tail records document the mecha
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 17 — final report" || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 17 — final report" || true
 # token-mark Step 17 — final report
+# timing-mark Step 17 — final report
 ```
 
 If `DESIGN_ONLY_DONE=true`: print `✅ 17: final report — design-only complete; tracking issue contains plan, review tally, diagrams, and OOS status (<elapsed>)`.
@@ -1691,12 +1782,14 @@ Print the full token table for immediate visibility:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --full --markdown || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --full --markdown || true
 ```
 
 > **Continue to Step 18.** Do NOT end the turn after the final report.
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
 # token-step-end Step 17
 ```
 
@@ -1704,7 +1797,9 @@ Print the full token table for immediate visibility:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 18 — cleanup" || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 18 — cleanup" || true
 # token-mark Step 18 — cleanup
+# timing-mark Step 18 — cleanup
 ```
 
 Repeat any external reviewer warnings from earlier (from `/design`, `/review`, or Step 5 runtime-fallback flips). Examples: `**⚠ Codex not available: <reason>**`, `**⚠ Cursor review failed: <reason>**`.
@@ -1715,6 +1810,7 @@ Before teardown, perform the authoritative final token-report refresh while `$IM
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --append-run-statistics "$IMPLEMENT_TMPDIR/anchor-sections/run-statistics.md" || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --append-timing-section "$IMPLEMENT_TMPDIR/anchor-sections/timing-report.md" || true
 if [ -n "${ISSUE_NUMBER:-}" ] && [ "${repo_unavailable:-false}" != "true" ]; then
   ${CLAUDE_PLUGIN_ROOT}/scripts/refresh-anchor.sh --sections-dir "$IMPLEMENT_TMPDIR/anchor-sections" --issue "$ISSUE_NUMBER" --anchor-id "$ANCHOR_COMMENT_ID" --output "$IMPLEMENT_TMPDIR/anchor-assembled.md" || true
 fi
@@ -1732,5 +1828,6 @@ Relay the script's tracking issue URL line and Step 18 breadcrumb verbatim. Tail
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
 # token-step-end Step 18
 ```
