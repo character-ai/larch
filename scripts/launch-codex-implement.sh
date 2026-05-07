@@ -42,6 +42,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"
 
 TRANSCRIPT_PATH=""
 SIDECAR_LOG=""
@@ -153,6 +154,11 @@ MANIFEST_WRITTEN=false
 QA_PENDING_WRITTEN=false
 [[ -s "$MANIFEST_PATH" ]]   && MANIFEST_WRITTEN=true
 [[ -s "$QA_PENDING_PATH" ]] && QA_PENDING_WRITTEN=true
+
+N=$(awk '/^tokens used$/ { getline n; gsub(",","",n); last=n } END { print last }' "$SIDECAR_LOG" 2>/dev/null || true)
+if [[ "$N" =~ ^[0-9]+$ ]]; then
+    "$PLUGIN_ROOT/scripts/token-ledger.sh" record-vendor codex total="$N" raw="codex_implement" >/dev/null 2>&1 || true
+fi
 
 printf 'LAUNCHER_EXIT=%s\n'           "$LAUNCHER_EXIT"
 printf 'MANIFEST_WRITTEN=%s\n'        "$MANIFEST_WRITTEN"

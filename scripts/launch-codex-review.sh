@@ -22,6 +22,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"
 
 OUTPUT=""
 TIMEOUT=""
@@ -64,14 +65,41 @@ elif [[ -z "$PROMPT" ]]; then
 fi
 
 MODEL_ARGS=$("$SCRIPT_DIR/agent-model-args.sh" --tool codex --with-effort)
+RUN_EXTERNAL="$SCRIPT_DIR/run-external-agent.sh"
+SIDECAR="${OUTPUT}.sidecar"
 
 # shellcheck disable=SC2086
-exec "$SCRIPT_DIR/run-external-agent.sh" \
-    --tool codex \
-    --output "$OUTPUT" \
-    --timeout "$TIMEOUT" \
-    -- \
-    codex exec --full-auto -C "$PWD" \
-    $MODEL_ARGS \
-    --output-last-message "$OUTPUT" \
-    "$PROMPT"
+EXIT_CODE=0
+if : > "$SIDECAR" 2>/dev/null; then
+    # shellcheck disable=SC2086
+    "$RUN_EXTERNAL" \
+        --tool codex \
+        --output "$OUTPUT" \
+        --timeout "$TIMEOUT" \
+        -- \
+        codex exec --full-auto -C "$PWD" \
+        $MODEL_ARGS \
+        --output-last-message "$OUTPUT" \
+        "$PROMPT" \
+        2>>"$SIDECAR" || EXIT_CODE=$?
+else
+    SIDECAR=/dev/null
+    # shellcheck disable=SC2086
+    "$RUN_EXTERNAL" \
+        --tool codex \
+        --output "$OUTPUT" \
+        --timeout "$TIMEOUT" \
+        -- \
+        codex exec --full-auto -C "$PWD" \
+        $MODEL_ARGS \
+        --output-last-message "$OUTPUT" \
+        "$PROMPT" \
+        2>/dev/null || EXIT_CODE=$?
+fi
+
+N=$(awk '/^tokens used$/ { getline n; gsub(",","",n); last=n } END { print last }' "$SIDECAR" 2>/dev/null || true)
+if [[ "$N" =~ ^[0-9]+$ ]]; then
+    "$PLUGIN_ROOT/scripts/token-ledger.sh" record-vendor codex total="$N" raw="codex_review" >/dev/null 2>&1 || true
+fi
+
+exit "$EXIT_CODE"

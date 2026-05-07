@@ -4,11 +4,13 @@
 
 **Invariants**:
 - Prompt passed only as argv; no `eval`; no unsafe expansion
-- No additional stdout/stderr beyond what `run-external-agent.sh` produces
-- Uses `exec` to replace shell process with `run-external-agent.sh` (clean exit code passthrough)
+- No additional stdout beyond what `run-external-agent.sh` produces
+- Runs `run-external-agent.sh` without `exec` so the launcher can perform best-effort post-call token handling, then exits with `run-external-agent.sh`'s exit code
+- Redirects wrapper stderr to `${OUTPUT}.sidecar` when possible; if the sidecar cannot be opened, stderr falls back to `/dev/null`
+- Uses `--capture-stdout-only` and `--output-format json`, then moves raw Cursor JSON to `${OUTPUT}.json`, extracts `.result` back into `$OUTPUT` for existing collectors, and records `.usage` as `cursor_review` in `scripts/token-ledger.sh`
 - Specialist mode calls `render-specialist-prompt.sh` internally, supporting all flags
 
-**Stdout contract**: Same as `run-external-agent.sh` (sentinel files, `.meta`, `.diag`).
+**Stdout contract**: Same stdout as `run-external-agent.sh`; no `LAUNCHER_EXIT=` line. Exit code is `run-external-agent.sh`'s exit code after best-effort JSON-sidecar extraction and token scrape.
 
 **Flags**:
 - `--output FILE` — (required) output file path

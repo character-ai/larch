@@ -777,6 +777,13 @@ exclude = [
   # (sibling contract), matching the same Makefile-only pattern as the other
   # test-* harnesses above.
   "scripts/test-token-tally.sh",
+  # scripts/test-token-ledger.sh, scripts/test-token-report.sh, and
+  # scripts/test-token-vendor-scrapers.sh are offline regression harnesses
+  # for the /implement token-reporting PoC. They are referenced only from
+  # Makefile targets, docs/linting.md, and sibling contracts.
+  "scripts/test-token-ledger.sh",
+  "scripts/test-token-report.sh",
+  "scripts/test-token-vendor-scrapers.sh",
   # Skill-local sibling .md files — co-located contract docs for scripts
   # under skills/<name>/scripts/. Not orchestrator references (not cited
   # from the owning SKILL.md by design — contributors discover them by
@@ -794,6 +801,9 @@ exclude = [
   "skills/fix-issue/scripts/test-umbrella-handler.md",
   "skills/fix-issue/scripts/test-finalize-umbrella.md",
   "scripts/test-round-trip-detect.md",
+  "scripts/test-token-ledger.md",
+  "scripts/test-token-report.md",
+  "scripts/test-token-vendor-scrapers.md",
   "skills/research/scripts/test-research-angle-prompts.md",
   "skills/create-skill/scripts/post-scaffold-hints.md",
   # skills/create-skill/scripts/test-render-skill-md.md is the sibling contract

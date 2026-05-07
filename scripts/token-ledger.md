@@ -1,0 +1,37 @@
+# token-ledger.sh
+
+**Purpose**: Session-scoped JSONL ledger for `/implement` token accounting. It records step boundary marks and external-vendor token totals. The ledger is observability-only; failures warn on stderr, exit 0, and never block `/implement`.
+
+## Relationship to scripts/token-tally.md
+
+`scripts/token-tally.sh` is the older `/research` helper for lane-level Claude token sidecars. `scripts/token-ledger.sh` is a distinct `/implement` PoC mechanism: JSONL, step marks, vendor records, and session-id based file naming. Do not merge the two contracts in this PR.
+
+## Session-id resolution
+
+Resolution order is:
+
+1. `LARCH_TOKEN_SESSION_ID` env var if set and non-empty.
+2. `$IMPLEMENT_TMPDIR/session-id` file if present and non-empty.
+3. `sha256(cwd)` deterministic fallback.
+
+The cwd-hash fallback is a last resort and can collide across multiple concurrent `/implement` windows in the same checkout. Step 0 exports `LARCH_TOKEN_SESSION_ID` after `write-session-id.sh` so normal runs avoid that collision. Step 0's setup preamble before the first mark is intentionally out-of-band.
+
+The resolved id is never used directly in the filename. It is hashed again and stored as `${TMPDIR:-/tmp}/larch-tokens-<sha256>.jsonl`, preventing path traversal, whitespace, and control bytes in a raw id from escaping the temp namespace.
+
+## Subcommands
+
+- `mark <step-name>` appends a JSON object with `type=mark`, `step`, and UTC `ts`.
+- `record-vendor <vendor> [key=value ...]` appends a JSON object with `type=vendor`, `vendor`, `input`, `output`, `cache_read`, `cache_create`, `total`, `raw`, and UTC `ts`.
+- `dump` prints the ledger path on stdout's first line, then the JSONL contents when present.
+
+`--ledger PATH` overrides session-id resolution for tests. The override resolves under `${TMPDIR:-/tmp}` after canonicalizing its parent. Paths with `..` are rejected.
+
+`record-vendor raw=` is enum-like and bounded. Use short provenance labels such as `codex_implement`, `codex_review`, `cursor_implement`, or `cursor_review`; never paste unstructured stderr, stdout, sidecar logs, prompts, or user content into `raw=`.
+
+## Failure Mode
+
+All subcommands are best-effort. On malformed input, missing `jq`, or path failures, the script writes a warning to stderr and exits 0. It should not mutate stdout except for `dump`.
+
+## Test Harness
+
+`scripts/test-token-ledger.sh` covers mark / vendor / dump round trips, session-id precedence, safe hashed filenames, `--ledger` containment, JSON safety, and mode `600`.

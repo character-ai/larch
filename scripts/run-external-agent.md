@@ -21,8 +21,8 @@ The current line parser in `scripts/collect-agent-results.sh` uses `${meta_line%
 ## Output capture modes
 
 - Default: the child manages its own output path; wrapper stdout/stderr are not captured into `--output`.
-- `--capture-stdout`: redirects child stdout and stderr to `--output`. Cursor uses this mode.
-- `--capture-stdout-only`: redirects child stdout to `--output` and child stderr to `<output>.diag`. Gemini review uses this mode so JSON stdout is not corrupted by diagnostic noise; Gemini implementation uses `--capture-stdout` because the dispatcher consumes the on-disk manifest rather than stdout JSON.
+- `--capture-stdout`: redirects child stdout and stderr to `--output`. Gemini implementation uses this mode because the dispatcher consumes the on-disk manifest rather than stdout JSON.
+- `--capture-stdout-only`: redirects child stdout to `--output` and child stderr to `<output>.diag`. Cursor implement/review and Gemini review use this mode so JSON stdout is not corrupted by diagnostic noise.
 
 The capture flags are mutually exclusive. Metadata includes both `CAPTURE_STDOUT` and `CAPTURE_STDOUT_ONLY`; retry callers must preserve the original mode.
 

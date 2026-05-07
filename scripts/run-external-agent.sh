@@ -67,7 +67,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib-validate-meta-path.sh
 source "$SCRIPT_DIR/lib-validate-meta-path.sh"
 
-usage() { echo "Usage: run-external-agent.sh --tool NAME --output FILE --timeout SECS [--capture-stdout] -- CMD..." >&2; }
+usage() { echo "Usage: run-external-agent.sh --tool NAME --output FILE --timeout SECS [--capture-stdout|--capture-stdout-only] -- CMD..." >&2; }
 
 CAPTURE_STDOUT=false
 CAPTURE_STDOUT_ONLY=false

@@ -5,6 +5,7 @@
 **Invariants**:
 - Stdout contract is `KEY=VALUE` lines only — `LAUNCHER_EXIT`, `MANIFEST_WRITTEN`, `QA_PENDING_WRITTEN`, `TRANSCRIPT`, `SIDECAR_LOG`. The dispatcher relies on this; any progress text leaking to stdout would be parsed as garbage.
 - `run-external-agent.sh`'s stdout AND stderr are redirected (`>"$SIDECAR_LOG" 2>&1`) inside the wrapper. Operators inspecting a failed run read the sidecar log to see what went wrong.
+- After manifest / Q&A detection, the wrapper silently scrapes the sidecar for the last `tokens used` block and records a best-effort `codex_implement` vendor total via `scripts/token-ledger.sh`. Scrape failure never changes launcher stdout or exit behavior.
 - Codex's full transcript (the `--output-last-message` payload) lands at `--transcript-path`. This file may grow large; it is intentionally NOT echoed to stdout.
 - Wrapper always exits 0 unless flag validation fails (exit 2). The Codex subprocess's exit code is reported via `LAUNCHER_EXIT=<int>` on stdout; the dispatcher decides whether that constitutes failure.
 - `--timeout` rejects empty, non-numeric, and zero-valued digit strings (`0`, `00`, `000`, ...), while preserving valid leading-zero positive values such as `010`.
