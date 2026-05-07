@@ -142,13 +142,15 @@ The regression harness `scripts/test-tracking-issue-write.sh` is wired into `mak
 
 ## Test harness
 
-`scripts/test-tracking-issue-write.sh` covers sixteen assertion categories (a-p):
+`scripts/test-tracking-issue-write.sh` covers the assertion categories below ((a)-(q) plus extra truncation guards (d2)-(d4); the canonical table lives in `scripts/test-tracking-issue-write.md` and is the source of truth on count and naming):
 
 - **(a)** `create-issue` redacts title + body (`sk-ant-*` secret → `<REDACTED-TOKEN>`).
 - **(b)** `create-issue` exits 3 with `FAILED=true` / `ERROR=redaction:…` when the redactor is missing. Pins exact key literals `FAILED=true` (not `ISSUE_FAILED`).
 - **(c)** `upsert-anchor` preserves the HTML anchor marker + all 8 section markers after a >60000-char body-level collapse.
 - **(d)** `upsert-anchor` per-section 8000 truncation inserts `[TRUNCATED — <id> exceeded 8000 chars]` on its own line (line-boundary-snapped).
 - **(d2)** `upsert-anchor` per-section 8000 truncation closes an unclosed column-0 backtick fence in the kept prefix with a matching-length fence line before the TRUNCATED marker, and downstream section markers (e.g. `<!-- section:diagrams -->`) remain intact rather than being swallowed by the unclosed block.
+- **(d3)** `upsert-anchor` per-section truncation matches the closing fence length to a 4-backtick opener (GFM rule: closer length ≥ opener length): a 4-backtick opener with embedded 3-backtick content lines gets a 4-backtick close inserted before the TRUNCATED marker.
+- **(d4)** `upsert-anchor` per-section truncation respects the GFM closer rule: a line like ` ```python ` inside an open fence (backticks followed by an info string) is content, not a closer, so the synthetic close is still inserted before the TRUNCATED marker.
 - **(e)** `append-comment` does NOT touch the anchor comment (stub-gh asserts the anchor comment is untouched).
 - **(f1) Idempotency**: `upsert-anchor` with exactly one existing anchor comment PATCHes it, emits `UPDATED=true`, creates no new comment on double-call.
 - **(f2) Multiple-anchor fail-closed**: `upsert-anchor` with 2+ marker comments exits 2 with `FAILED=true ERROR=multiple anchor comments found (ids: <list>)`.
