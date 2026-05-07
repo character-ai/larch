@@ -41,7 +41,13 @@ LEDGER="$TMP/ledger.jsonl"
 if jq -e 'select(.type=="mark" and .step=="Step 1 - fixture")' "$LEDGER" >/dev/null; then pass; else fail "mark JSON missing"; fi
 if jq -e 'select(.type=="vendor" and .vendor=="codex" and .total==123 and .raw=="codex_implement")' "$LEDGER" >/dev/null; then pass; else fail "vendor JSON missing"; fi
 
-mode=$(stat -f %Lp "$LEDGER" 2>/dev/null || stat -c %a "$LEDGER")
+# GNU stat (-c) probed first because BSD stat's `-f` flag means "filesystem"
+# rather than "format" on Linux, where it succeeds with completely different
+# output (a multi-line filesystem report) instead of failing — that breaks
+# the `|| fallback` pattern when the BSD flag is tried first on Linux.
+# Linux GNU stat: `-c %a` returns the octal mode bits and exits 0.
+# macOS BSD stat: `-c` is unrecognized → fails → fallback to `-f %Lp`.
+mode=$(stat -c %a "$LEDGER" 2>/dev/null || stat -f %Lp "$LEDGER" 2>/dev/null)
 assert_eq "ledger mode" "600" "$mode"
 
 dump=$("$SCRIPT" --ledger "$LEDGER" dump)
