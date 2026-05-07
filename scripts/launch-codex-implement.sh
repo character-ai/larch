@@ -93,6 +93,17 @@ if (( 10#$TIMEOUT < 1 )); then
     exit 2
 fi
 
+SESSION_TMPDIR="$(dirname "$MANIFEST_PATH")"
+QA_TMPDIR="$(dirname "$QA_PENDING_PATH")"
+if [[ "$SESSION_TMPDIR" != "$QA_TMPDIR" ]]; then
+    echo "launch-codex-implement.sh: --manifest-path and --qa-pending-path must share the same parent directory (got: $SESSION_TMPDIR vs $QA_TMPDIR)" >&2
+    exit 2
+fi
+if [[ ! -d "$SESSION_TMPDIR" ]]; then
+    echo "launch-codex-implement.sh: session tmpdir does not exist: $SESSION_TMPDIR" >&2
+    exit 2
+fi
+
 # Compose the Codex prompt by concatenating the agent system prompt with
 # inline references to the plan, feature, manifest path, qa-pending path,
 # and (optionally) the answers file. Keeping this composition in shell (not
@@ -144,6 +155,7 @@ LAUNCHER_EXIT=0
     --timeout "$TIMEOUT" \
     -- \
     codex exec --full-auto -C "$PWD" \
+    --add-dir "$SESSION_TMPDIR" \
     $MODEL_ARGS \
     --output-last-message "$TRANSCRIPT_PATH" \
     -- \

@@ -250,6 +250,8 @@ if [[ "$(sed -n '1p' "$ARGV_FILE")" == "exec" ]] \
    && [[ "$(sed -n '2p' "$ARGV_FILE")" == "--full-auto" ]] \
    && [[ "$(sed -n '3p' "$ARGV_FILE")" == "-C" ]] \
    && [[ "$(sed -n '4p' "$ARGV_FILE")" == "$REPO_ROOT" ]] \
+   && [[ "$(sed -n '5p' "$ARGV_FILE")" == "--add-dir" ]] \
+   && [[ "$(sed -n '6p' "$ARGV_FILE")" == "$(dirname "$MANIFEST")" ]] \
    && grep -Fxq -- '-m' "$ARGV_FILE" \
    && grep -Fxq -- 'stub-codex-model' "$ARGV_FILE" \
    && grep -Fxq -- '-c' "$ARGV_FILE" \
@@ -257,7 +259,7 @@ if [[ "$(sed -n '1p' "$ARGV_FILE")" == "exec" ]] \
    && grep -Fxq -- '--output-last-message' "$ARGV_FILE"; then
     pass
 else
-    fail 6 "Codex argv missing required exec/full-auto/model/output flags: $(tr '\n' ' ' < "$ARGV_FILE")"
+    fail 6 "Codex argv missing required exec/full-auto/add-dir/model/output flags: $(tr '\n' ' ' < "$ARGV_FILE")"
 fi
 
 SEPARATOR_INDEX=$(sed -n '1p' "$SEPARATOR_INDEX_FILE")
@@ -406,6 +408,43 @@ STUB_EOF
     rm -f "$RV_LEDGER"
 else
     pass  # jq absent — skip per launcher runtime guard parallel
+fi
+
+# Test 11: --manifest-path and --qa-pending-path with different parents -> exit 2.
+EXIT=0
+T11_OUT="$SCRATCH/t11-output.txt"
+mkdir -p "$SCRATCH/t11-other-parent"
+"$LAUNCHER" \
+    --transcript-path "$SCRATCH/t11-transcript.txt" \
+    --sidecar-log "$SCRATCH/t11-sidecar.log" \
+    --manifest-path "$SCRATCH/t11-manifest.json" \
+    --qa-pending-path "$SCRATCH/t11-other-parent/qa.json" \
+    --plan-file "$PLAN" \
+    --feature-file "$FEATURE" \
+    --agent-prompt "$AGENT_PROMPT" \
+    --timeout 30 >"$T11_OUT" 2>&1 || EXIT=$?
+if [[ "$EXIT" == "2" ]] && grep -Fq "must share the same parent directory" "$T11_OUT"; then
+    pass
+else
+    fail 11 "mismatched manifest/qa-pending parents should exit 2 with the parent-mismatch message, got $EXIT: $(cat "$T11_OUT")"
+fi
+
+# Test 12: --manifest-path under a non-existent parent directory -> exit 2.
+EXIT=0
+T12_OUT="$SCRATCH/t12-output.txt"
+"$LAUNCHER" \
+    --transcript-path "$SCRATCH/t12-transcript.txt" \
+    --sidecar-log "$SCRATCH/t12-sidecar.log" \
+    --manifest-path "$SCRATCH/t12-missing-subdir/manifest.json" \
+    --qa-pending-path "$SCRATCH/t12-missing-subdir/qa.json" \
+    --plan-file "$PLAN" \
+    --feature-file "$FEATURE" \
+    --agent-prompt "$AGENT_PROMPT" \
+    --timeout 30 >"$T12_OUT" 2>&1 || EXIT=$?
+if [[ "$EXIT" == "2" ]] && grep -Fq "session tmpdir does not exist" "$T12_OUT"; then
+    pass
+else
+    fail 12 "missing session tmpdir should exit 2 with the does-not-exist message, got $EXIT: $(cat "$T12_OUT")"
 fi
 
 TOTAL=$((PASS_COUNT + FAIL_COUNT))
