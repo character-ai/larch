@@ -58,11 +58,11 @@ resolve_sources() {
     local source_out transcript session_dir
     if ! source_out=$("$SCRIPT_DIR/token-claude-source.sh" 2>/dev/null); then
         local reason
-        reason=$(printf '%s\n' "$source_out" | awk -F= '$1=="REASON"{print $2; exit}')
+        reason=$(printf '%s\n' "$source_out" | awk '/^REASON=/ { sub(/^REASON=/, ""); print; exit }')
         unavailable "${reason:-Claude transcript source unavailable}"
     fi
-    transcript=$(printf '%s\n' "$source_out" | awk -F= '$1=="TRANSCRIPT_PATH"{print $2; exit}')
-    session_dir=$(printf '%s\n' "$source_out" | awk -F= '$1=="SESSION_DIR"{print $2; exit}')
+    transcript=$(printf '%s\n' "$source_out" | awk '/^TRANSCRIPT_PATH=/ { sub(/^TRANSCRIPT_PATH=/, ""); print; exit }')
+    session_dir=$(printf '%s\n' "$source_out" | awk '/^SESSION_DIR=/ { sub(/^SESSION_DIR=/, ""); print; exit }')
     [[ -n "$transcript" && -f "$transcript" ]] || unavailable "transcript not found"
     TRANSCRIPT_FILES+=("$transcript")
     if [[ -n "$session_dir" && -d "$session_dir/subagents" ]]; then
@@ -72,12 +72,32 @@ resolve_sources() {
     fi
 }
 
+RENDER_FAIL_REASON=""
+
+# render_jq writes the rendered report to stdout on success and returns 0.
+# On failure, sets RENDER_FAIL_REASON to a short message and returns non-zero
+# WITHOUT calling `unavailable` — this is critical because `render_jq` is
+# sometimes invoked from inside a redirect to a temp file (see Step 2 below);
+# calling `exit 0` from `unavailable` here would only exit a subshell when
+# called from `$(...)`, and would prematurely exit the parent script when
+# called from a `>file` redirect, in either case losing the chance for the
+# caller to clean up its temp files. Top-level dispatch maps RENDER_FAIL_REASON
+# back to `unavailable` in the parent shell.
 render_jq() {
     local mode="$1"
     local ledger="$2"
-    command -v jq >/dev/null 2>&1 || unavailable "jq not found"
-    [[ -f "$ledger" ]] || unavailable "ledger not found"
-    [[ "${#TRANSCRIPT_FILES[@]}" -gt 0 ]] || unavailable "transcript not found"
+    if ! command -v jq >/dev/null 2>&1; then
+        RENDER_FAIL_REASON="jq not found"
+        return 1
+    fi
+    if [[ ! -f "$ledger" ]]; then
+        RENDER_FAIL_REASON="ledger not found"
+        return 1
+    fi
+    if [[ "${#TRANSCRIPT_FILES[@]}" -eq 0 ]]; then
+        RENDER_FAIL_REASON="transcript not found"
+        return 1
+    fi
 
     jq -r -s --slurpfile ledger "$ledger" --arg mode "$mode" '
       def epoch:
@@ -165,8 +185,17 @@ render_jq() {
                 | md_na_row("" ; ("&nbsp;&nbsp;vendor:" + .vendor); .total))
           ]
         ) + [
-          (totals($claude)) as $gt
-          | md_row("**Grand total**"; ""; $gt.input; $gt.cache_read; $gt.cache_create; $gt.output; $gt.total; (sumfield($vendor; "total")))
+          # Filter grand totals to only rows at or after the first mark so the
+          # table reconciles: each step row uses step_slice with mark.ts as the
+          # lower bound, so rows BEFORE the first mark are excluded from every
+          # per-step row and would otherwise appear only in the grand total —
+          # producing a sum-of-step-rows ≠ grand-total mismatch. Filtering here
+          # keeps the grand row consistent with the per-step partition.
+          ($marks[0].ts) as $first
+          | ($claude | map(select(.ts != null and .ts >= $first))) as $claude_in_run
+          | ($vendor | map(select(.ts != null and .ts >= $first))) as $vendor_in_run
+          | (totals($claude_in_run)) as $gt
+          | md_row("**Grand total**"; ""; $gt.input; $gt.cache_read; $gt.cache_create; $gt.output; $gt.total; (sumfield($vendor_in_run; "total")))
         ] | join("\n");
 
       ($ledger // []) as $l
@@ -177,7 +206,10 @@ render_jq() {
         elif $mode == "terse" then terse_line($claude; $vendor; $marks[-1])
         else markdown($marks; $claude; $vendor)
         end
-    ' "${TRANSCRIPT_FILES[@]}" 2>/dev/null || unavailable "failed to parse token sources"
+    ' "${TRANSCRIPT_FILES[@]}" 2>/dev/null || {
+        RENDER_FAIL_REASON="failed to parse token sources"
+        return 1
+    }
 }
 
 replace_token_block() {
@@ -246,21 +278,29 @@ fi
 resolve_sources "$TRANSCRIPT_OVERRIDE" "$SESSION_DIR_OVERRIDE"
 
 if [[ "$MODE" == "append" ]]; then
-    rendered=$(render_jq full "$LEDGER")
+    rendered_file=$(mktemp "${TMPDIR:-/tmp}/token-report-rendered.XXXXXX")
+    if ! render_jq full "$LEDGER" > "$rendered_file"; then
+        rm -f "$rendered_file"
+        unavailable "${RENDER_FAIL_REASON:-failed to render token report}"
+    fi
     block=$(mktemp "${TMPDIR:-/tmp}/token-report-block.XXXXXX")
     {
         printf '<!-- token-report-begin -->\n'
         printf '## Token Report\n\n'
-        printf '%s\n' "$rendered"
-        printf '<!-- token-report-end -->\n'
+        cat "$rendered_file"
+        printf '\n<!-- token-report-end -->\n'
     } > "$block"
     replace_token_block "$RUN_STATS_TARGET" "$block"
-    rm -f "$block"
+    rm -f "$block" "$rendered_file"
 elif [[ "$MODE" == "full" && -n "$OUTPUT" ]]; then
-    rendered=$(render_jq full "$LEDGER")
     tmp="$OUTPUT.tmp"
-    printf '%s\n' "$rendered" > "$tmp"
+    if ! render_jq full "$LEDGER" > "$tmp"; then
+        rm -f "$tmp"
+        unavailable "${RENDER_FAIL_REASON:-failed to render token report}"
+    fi
     mv "$tmp" "$OUTPUT"
 else
-    render_jq "$MODE" "$LEDGER"
+    if ! render_jq "$MODE" "$LEDGER"; then
+        unavailable "${RENDER_FAIL_REASON:-failed to render token report}"
+    fi
 fi

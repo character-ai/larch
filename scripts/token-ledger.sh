@@ -187,16 +187,35 @@ cmd_dump() {
 
 main() {
     local ledger_override="" ledger cmd
-    if [[ "${1:-}" == "--ledger" ]]; then
-        ledger_override="${2:-}"
-        shift 2 || true
-    fi
+    # Strip every `--ledger PATH` pair from anywhere in argv so callers can put
+    # the override before the subcommand, immediately after it, or at the tail
+    # (`token-ledger.sh mark "Step 2" --ledger /tmp/x.jsonl` is now equivalent
+    # to `token-ledger.sh --ledger /tmp/x.jsonl mark "Step 2"`). The pre-pass
+    # avoids the prior position-sensitive parser that silently dropped tail
+    # overrides on `mark` and produced "unknown record-vendor key: --ledger"
+    # warnings on `record-vendor`. Last `--ledger` wins if supplied multiple
+    # times — operators should not do that, but the parser stays well-defined.
+    local -a remaining=()
+    local i
+    i=1
+    while (( i <= $# )); do
+        local arg="${!i}"
+        if [[ "$arg" == "--ledger" ]]; then
+            local next_i=$(( i + 1 ))
+            if (( next_i > $# )); then
+                warn "--ledger requires a value"
+                return 1
+            fi
+            ledger_override="${!next_i}"
+            i=$(( next_i + 1 ))
+        else
+            remaining+=("$arg")
+            i=$(( i + 1 ))
+        fi
+    done
+    set -- "${remaining[@]}"
     cmd="${1:-}"
     shift || true
-    if [[ "${1:-}" == "--ledger" ]]; then
-        ledger_override="${2:-}"
-        shift 2 || true
-    fi
     ledger=$(resolve_ledger_path "$ledger_override") || return 1
     case "$cmd" in
         mark) cmd_mark "$ledger" "$@" ;;

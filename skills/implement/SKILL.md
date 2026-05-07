@@ -210,6 +210,16 @@ Then:
   ```bash
   ${CLAUDE_PLUGIN_ROOT}/scripts/write-session-id.sh --output "$IMPLEMENT_TMPDIR/session-id"
   export LARCH_TOKEN_SESSION_ID="$(tr -d '\r\n' < "$IMPLEMENT_TMPDIR/session-id" 2>/dev/null || true)"
+  # Snapshot the live Claude transcript path BEFORE later concurrent
+  # /implement or /design Claude sessions can race the resolver. The
+  # exported LARCH_CLAUDE_SOURCE_FILE points downstream
+  # token-claude-source.sh / token-report.sh invocations at this fixed
+  # transcript instead of "newest .jsonl by mtime", which would otherwise
+  # attribute tokens to the wrong run when concurrent sessions write
+  # transcripts under the same project dir. Best-effort: a snapshot
+  # failure leaves the env unset and the resolver falls back to mtime.
+  "${CLAUDE_PLUGIN_ROOT}/scripts/token-claude-source.sh" > "$IMPLEMENT_TMPDIR/claude-source.env" 2>/dev/null && \
+      export LARCH_CLAUDE_SOURCE_FILE="$IMPLEMENT_TMPDIR/claude-source.env" || true
   "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 0 — preflight" || true
   # token-mark Step 0 — preflight
   ```

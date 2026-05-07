@@ -133,13 +133,18 @@ start_probe() {
             ;;
         cursor)
             CURSOR_MODEL_ARGS=$("$SCRIPT_DIR/agent-model-args.sh" --tool cursor)
+            # Argv MUST track scripts/launch-cursor-review.sh: --capture-stdout-only
+            # plus --output-format json so the probe exercises the same Cursor CLI
+            # path production review launches use. Drift here can produce false
+            # healthy/unhealthy probe verdicts when the JSON output mode behaves
+            # differently from the pre-JSON default.
             # shellcheck disable=SC2086
             "$SCRIPT_DIR/run-external-agent.sh" \
                 --tool cursor \
                 --output "$output" \
                 --timeout 60 \
-                --capture-stdout \
-                -- cursor agent -p --force --trust $CURSOR_MODEL_ARGS --workspace "$PWD" \
+                --capture-stdout-only \
+                -- cursor agent -p --force --trust --output-format json $CURSOR_MODEL_ARGS --workspace "$PWD" \
                 "Respond with OK" \
                 >"$PROBE_DIR/cursor-wrapper-attempt${attempt}.log" 2>&1 &
             ;;
@@ -181,6 +186,20 @@ evaluate_probe() {
                 return
             fi
             reply=$(jq -r '.response // empty' "$output" 2>/dev/null | normalize_probe_reply)
+        elif [[ "$tool" == "cursor" ]]; then
+            # Cursor probe uses --output-format json (mirroring scripts/launch-cursor-review.sh).
+            # The reply text lives at .result; fall back to the raw body for legacy
+            # plain-text output if jq is missing or the body is not valid JSON.
+            if command -v jq >/dev/null 2>&1 && jq -e . "$output" >/dev/null 2>&1; then
+                if jq -e '.error? // empty' "$output" >/dev/null 2>&1; then
+                    error_text=$(jq -r '.error' "$output" 2>/dev/null | head -c 200 | tr '\n\r' '  ')
+                    set_probe_error "$tool" "Probe attempt $attempt returned Cursor error: $error_text"
+                    return
+                fi
+                reply=$(jq -r '.result // empty' "$output" 2>/dev/null | normalize_probe_reply)
+            else
+                reply=$(normalize_probe_reply < "$output")
+            fi
         else
             reply=$(normalize_probe_reply < "$output")
         fi
