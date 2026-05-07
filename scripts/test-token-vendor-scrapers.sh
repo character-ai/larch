@@ -147,6 +147,7 @@ STUB_EOF
 
         LARCH_TOKEN_SESSION_ID="$LCI_SESSION" \
         PATH="$LCI_BIN:$PATH" \
+        CURSOR_API_KEY="test-cursor-api-key" \
         RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
         LARCH_CURSOR_MODEL="stub-model" \
         LARCH_CODEX_MODEL="stub-codex-model" \
