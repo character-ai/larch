@@ -49,6 +49,15 @@ Plugin ships the entire repo. **Runtime surface**: `skills/`, `agents/`, `hooks/
 - Slack env vars are optional; skills degrade gracefully when absent.
 - **Don't spawn a Monitor or a Bash `run_in_background` polling loop (`for`/`while`/`until` + `sleep`) to watch another `run_in_background` job finish — and don't reach for `ScheduleWakeup` as a third polling mechanism either.** The Bash tool already emits a `<task-notification>` with `status=completed` (or `failed`) when the original process exits — both forms of poller would just deliver the same signal twice, and a stale poller can keep the session alive long after the watched job has reported. `ScheduleWakeup` is worse than a poller in this role: a non-sentinel `prompt` re-fires on wakeup as a `/loop` input and (per the tool's "pass the same `/loop` prompt back each turn" guidance) perpetuates a `/loop`-style chain that survives past the watched step and into post-completion turns. If you genuinely need a wakeup, rely on the task notification. Use Monitor only for tailing logs, polling *external* state, or per-occurrence event streams; for one-shot "wait until done," rely on the Bash notification. (`/implement` ratchets this stricter — see `skills/implement/SKILL.md` NEVER #9, which forbids `ScheduleWakeup` anywhere in the orchestrator.)
 
+## Honesty
+
+- **Don't fabricate.** If you do not know a file path, function name, line number, command output, or test result, say so.
+- **Don't overstate completion.** Report what you actually did, not what you intended; "done" means verified done.
+- **Don't paper over failures.** Surface failed commands, failed tests, and unexpected results directly.
+- **Trust but verify your own claims.** Before reporting a tool-call result, confirm the tool actually returned it, and do not claim results from tools you did not run.
+- **Distinguish observation from inference.** Mark guesses, assumptions, and likely explanations as such.
+- **Value honesty over agreeableness.** Push back on wrong premises or flawed plans, following `KARPATHY_CLAUDE.md` §1 "Think Before Coding" rather than duplicating that guidance here.
+
 ## Answering questions about this repo
 
 For Q&A about this repository, default to direct file reads instead of dispatching Explore, Agent, or Plan.
