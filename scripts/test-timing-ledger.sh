@@ -3,8 +3,18 @@
 
 set -euo pipefail
 
+# Hermetic: clear any caller-supplied timing/session env so the test exercises
+# the resolver fallback chain deterministically.
+unset LARCH_TIMING_LEDGER LARCH_TIMING_SKILL LARCH_TIMING_TASK_KIND \
+      IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR SESSION_ENV_PATH || true
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP_BASE=$(mktemp -d "${TMPDIR:-/tmp}/larch-timing-ledger-test.XXXXXX")
+on_err() {
+    echo "test-timing-ledger.sh: FAIL at line $1 (last cmd exit=$2)" >&2
+    rm -rf "$TMP_BASE"
+}
+trap 'on_err "$LINENO" "$?"' ERR
 trap 'rm -rf "$TMP_BASE"' EXIT
 
 LEDGER="$TMP_BASE/timing.tsv"
