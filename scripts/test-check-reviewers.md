@@ -12,7 +12,7 @@ Simulates the normalization pipeline (`tr -d '[:space:]' | tr '[:upper:]' '[:low
 - **Negative** (should be unhealthy): empty, `token`, `broken`, `NotOK`, `Sure OK`, `wok`, `okay`, `OK.`, auth errors, thinking-prefix responses
 - **Wait infrastructure**: invalid `WAIT_FOR_REVIEWERS_POLL_INTERVAL=00` emits `WAIT_INFRA_ERROR`, marks available tools as `*_HEALTHY=false`, skips retry attempt 2, and launches no sleeping probe wrapper. A separate Gemini-inclusive fixture pins value-side `=` preservation and confirms the Gemini drift checker does not run on the infra-error branch.
 - **Gemini integration**: stubbed `{"response":"OK"}` succeeds; stubbed `{"error":"auth failed"}` fails; forced missing-`jq` fails closed.
-- **Gemini drift alarm**: clean known catalog, benign unknown warning, write-style unknown health flip, raw hyphen/dot/camelCase write-style names, anchored-token negative coverage for `metadata_writer_index`, unavailable discovery fixture fallback, policy parser failure, fixture checksum mismatch, fixture-known write-style tool missing from the deny list, and hung `/tools` discovery timeout.
+- **Gemini drift alarm**: clean known catalog, benign unknown warning, write-style unknown health flip, raw uppercase/mixed-case deny-list normalization, raw hyphen/dot/camelCase write-style names, anchored-token negative coverage for `metadata_writer_index`, unavailable discovery fixture fallback, policy parser failure, fixture checksum mismatch, fixture-known write-style tool missing from the deny list, and hung `/tools` discovery timeout.
 
 ## Wiring
 

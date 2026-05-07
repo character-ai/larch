@@ -147,6 +147,12 @@ if [[ "\${1:-}" == "/tools" ]]; then
     write)
       printf '%s\n' delete_file edit edit_file read_file read_many_files replace run_shell_command search_file_content super_write_v2 web_fetch web_search write_file
       ;;
+    write_uppercase)
+      printf '%s\n' delete_file edit edit_file read_file read_many_files replace run_shell_command search_file_content web_fetch web_search WRITE_FILE
+      ;;
+    write_mixed)
+      printf '%s\n' delete_file edit edit_file read_file read_many_files replace run_shell_command search_file_content web_fetch web_search write_File
+      ;;
     write_hyphen)
       printf '%s\n' delete_file edit edit_file read_file read_many_files replace run_shell_command search_file_content write-file web_fetch web_search write_file
       ;;
@@ -272,6 +278,21 @@ grep -q '^GEMINI_HEALTHY=false$' <<< "$probe_output" \
   || fail "Expected GEMINI_HEALTHY=false for unknown write-style tool"
 grep -q '^GEMINI_PROBE_ERROR=.*write-style tool(s) \[super_write_v2\] not in deny list' <<< "$probe_output" \
   || fail "Expected write-style drift probe error"
+
+for raw_case in \
+  "write_uppercase|WRITE_FILE" \
+  "write_mixed|write_File"; do
+  IFS='|' read -r mode tool_name <<< "$raw_case"
+  probe_output=$(GEMINI_TOOLS_MODE="$mode" GEMINI_STUB_MODE=ok run_gemini_probe "$TMPDIR/gemini-artifacts-$mode")
+  grep -q '^GEMINI_HEALTHY=true$' <<< "$probe_output" \
+    || fail "Expected GEMINI_HEALTHY=true for normalized denied write-style tool $tool_name"
+  if grep -q "^GEMINI_TOOL_DRIFT_WARNING=unknown tool '$tool_name' not in deny list$" <<< "$probe_output"; then
+    fail "Expected no raw unknown-tool warning for normalized denied write-style tool $tool_name"
+  fi
+  if grep -q "^GEMINI_PROBE_ERROR=.*$tool_name" <<< "$probe_output"; then
+    fail "Expected no write-style drift probe error for normalized denied write-style tool $tool_name"
+  fi
+done
 
 for raw_case in \
   "write_hyphen|write-file" \
