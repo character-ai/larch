@@ -11,7 +11,7 @@ in `/tmp` while preserving `mktemp`'s random suffix.
 ## Reviewer probe contract
 
 - `--check-reviewers` probes the legacy Codex+Cursor set.
-- `--check-gemini-reviewer` is opt-in and only meaningful with `--check-reviewers`; it passes `--include-gemini` to `check-reviewers.sh`.
+- `--check-gemini-reviewer` is opt-in and only meaningful with `--check-reviewers` for the probe workflow; it passes `--include-gemini` to `check-reviewers.sh`. The flag also gates `GEMINI_HEALTHY` emission in the `--write-health` sidecar on the passthrough path: when set with empty `FINAL_GEMINI_HEALTHY`, the sidecar emits `GEMINI_HEALTHY=false` (fail-closed) rather than omitting the key. See `scripts/test-session-setup-health-defaults.sh` scenario 2 for the regression fixture.
 - Caller-env `CODEX_HEALTHY=false`, `CURSOR_HEALTHY=false`, or `GEMINI_HEALTHY=false` auto-skips the corresponding probe.
 - Gemini health failures use skip-style wording: Gemini is omitted for the session rather than replaced by Claude.
 - When Gemini probing is enabled, `session-setup.sh` passes `--artifact-dir "$SESSION_TMPDIR"` to `check-reviewers.sh` so `gemini-tool-drift.txt` persists for the session lifetime instead of disappearing with the probe tmpdir.
@@ -22,7 +22,7 @@ in `/tmp` while preserving `mktemp`'s random suffix.
 
 Recognized caller-env keys are `SLACK_OK`, `SLACK_MISSING`, `REPO`, `REPO_UNAVAILABLE`, `CODEX_HEALTHY`, `CURSOR_HEALTHY`, and `GEMINI_HEALTHY`. The file is parsed line-by-line and never sourced.
 
-When `--write-health` is provided, the health sidecar contains Codex and Cursor health, plus Gemini health when Gemini probing is requested or inherited from caller-env.
+When `--write-health` is provided, the health sidecar contains Codex and Cursor health, plus Gemini health when Gemini probing is requested or inherited from caller-env. The defaults at the write site are fail-closed: an empty `FINAL_*_HEALTHY` (e.g., `check-reviewers.sh` did not emit the key, or the passthrough caller-env omitted it) emits `=false` rather than re-masking unhealthy state as `true`. Regression coverage lives in `scripts/test-session-setup-health-defaults.sh` (sibling contract: `scripts/test-session-setup-health-defaults.md`), wired through `make test-session-setup-health-defaults` and `test-harnesses-6`.
 
 ## Edit-in-sync
 

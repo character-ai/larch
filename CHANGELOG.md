@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.52] - 2026-05-06
+
+### Fixed
+
+- `scripts/session-setup.sh` `.health` sidecar write block defaults `CODEX_HEALTHY` / `CURSOR_HEALTHY` / `GEMINI_HEALTHY` to `false` (fail-closed) instead of `true` when `FINAL_*_HEALTHY` is empty (e.g., a future refactor drops the key from `check-reviewers.sh` probe output, or a passthrough caller-env omits the key). Backstops the #1317 infra-error fail-closed contract at the sidecar-write layer so an unhealthy session cannot be silently re-masked as healthy. New regression harness `scripts/test-session-setup-health-defaults.sh` (12 assertions across empty caller-env, `--check-gemini-reviewer`, explicit-true, and explicit-false scenarios) wired through `make test-session-setup-health-defaults` and `test-harnesses-6`. Header comment in `scripts/session-setup.sh` and contract in `scripts/session-setup.md` updated to note that `--check-gemini-reviewer` also gates `GEMINI_HEALTHY` emission in the sidecar on the passthrough path. `scripts/check-reviewers.md` Compatibility-audit paragraph rewritten to reflect the new fail-closed default. (closes #1336)
+
 ## [15.12.51] - 2026-05-06
 
 ### Changed
