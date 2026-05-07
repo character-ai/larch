@@ -88,6 +88,16 @@ repos:
 
   - repo: local
     hooks:
+      - id: check-topology-rule-paths
+        name: Check topology-rule paths coverage
+        entry: python scripts/check-topology-rule-paths.py
+        language: python
+        additional_dependencies: ['pyyaml==6.0.2']
+        pass_filenames: false
+        files: ^(skills/shared/topology\.tsv|\.claude/rules/topology-generation\.md|scripts/check-topology-rule-paths\.py)$
+
+  - repo: local
+    hooks:
       - id: agnix
         name: Lint AI agent configuration files
         entry: agnix . --strict

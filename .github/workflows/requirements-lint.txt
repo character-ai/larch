@@ -1,3 +1,4 @@
 # Keep pyyaml pin in sync with .pre-commit-config.yaml lint-skill-invocations additional_dependencies.
+# Also consumed by check-topology-rule-paths in pre-commit and the agent-sync job.
 pre-commit==4.2.0
 pyyaml==6.0.2
