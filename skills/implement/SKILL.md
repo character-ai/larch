@@ -828,9 +828,9 @@ Best-effort: the script always exits 0; on any failure it removes both temp and 
 
 ### Quick mode (`quick_mode=true`)
 
-Print: `> **🔶 5: code review — quick mode (rounds 1-3: 5 Cursor specialists + generic Codex; rounds 4+: single generic Cursor → Codex → Claude fallback; up to 7 rounds)**`
+Print: `> **🔶 5: code review — quick mode (rounds 1-3: 5 Cursor specialists + generic Codex; rounds 4+: single generic Cursor → Codex → Claude fallback; up to 7 rounds, with early stop when a round is classified non-substantial per Step 5.8)**`
 
-Skip `/review`. Review loop up to **7 rounds** of review + fix. No voting panel — main agent unilaterally accepts/rejects each finding. **Rounds 1-3** launch 5 Cursor specialist reviewers in parallel (same specialists as `/review`) plus a generic Codex reviewer (6 reviewers per round); **rounds 4+** use a single generic reviewer per round.
+Skip `/review`. Review loop up to **7 rounds** of review + fix, with an early-exit at Step 5.8 when the just-fixed round is classified non-substantial (see 5.8 for the definition). No voting panel — main agent unilaterally accepts/rejects each finding. **Rounds 1-3** launch 5 Cursor specialist reviewers in parallel (same specialists as `/review`) plus a generic Codex reviewer (6 reviewers per round); **rounds 4+** use a single generic reviewer per round.
 
 Track `round_num` from 1. For each round:
 
@@ -912,7 +912,13 @@ Where `<tool>` is `cursor` or `codex` depending on which tool was used for each 
 
 **5.7 — Implement accepted fixes**: edit files, then invoke `/relevant-checks` via the Skill tool. On failure, diagnose + fix, re-invoke until clean.
 
-**5.8 — Re-review gate**: observable signal is whether 5.7 actually edited files (the main agent knows from its own Edit/Write tool usage this round). If no edits (accepted findings turned out to be no-ops), loop done — IMMEDIATELY proceed to Step 6. Otherwise increment `round_num`; if `<= 7`, IMMEDIATELY loop back to 5.1 — do NOT write a round summary, status recap, or "review progress" message before starting the next round. Fixing findings does NOT mean the review has converged — convergence requires reviewers to report no new issues in a fresh round. If `> 7`, print:
+**5.8 — Re-review gate**: observable signal is whether 5.7 actually edited files (the main agent knows from its own Edit/Write tool usage this round). If no edits (accepted findings turned out to be no-ops), loop done — IMMEDIATELY proceed to Step 6.
+
+**Substantial round definition**: A round's accepted findings are substantial if at least one accepted finding is a medium-to-high severity bug (correctness, security, race, data corruption, broken contract, or comparable), OR the applied fixes are significant in size (a non-trivial code change; as a judgment-call convention, a single fix touching >= ~30 LOC of non-comment code or aggregate fixes that meaningfully change structure), OR the accepted-fix count is large (`>= 5`). A round is not substantial only when all accepted findings are minor at best (nits, minor cleanups, small doc discrepancies, or equivalent), the applied fixes are small, and the accepted-fix count is `< 5`. This is a main-agent judgment call parallel to the OOS triage thresholds; precise bookkeeping is not required, but the boundary directions (`>= 5`, `< 5`, and `>= ~30 LOC`) are fixed.
+
+Classify the just-fixed round as `round_substantial=true|false` before deciding whether to relaunch reviewers. If `round_substantial=false`, print `✅ 5: code review — round $round_num findings were not substantial; review converged`, log to `Warnings`: `Step 5 — quick-mode review loop stopped after round $round_num because accepted findings were not substantial (accepted=<count>; reasoning=<short classification>).`, and IMMEDIATELY proceed to Step 6. Do NOT launch another reviewer round for non-substantial findings.
+
+Otherwise increment `round_num`; if `<= 7`, IMMEDIATELY loop back to 5.1 — do NOT write a round summary, status recap, or "review progress" message before starting the next round. Fixing substantial findings does NOT mean the review has converged — convergence requires reviewers to report no new issues in a fresh round, or the last round produced only non-substantial findings. If `> 7`, print:
 
 ```
 **⚠ 5: code review — quick mode hit 7-round cap without converging. Remaining findings from the last round are listed above. Proceeding.**

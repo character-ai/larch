@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.54] - 2026-05-06
+
+### Changed
+
+- `/implement` Step 5 quick-mode review loop and `/review` Step 3f now stop after the just-fixed round when its accepted findings are non-substantial — defined as no medium-to-high severity bug, applied fixes small in size (~30 LOC convention), AND accepted-fix count `< 5`. Any one of those failing keeps today's loop-back behavior. The 7-round safety cap remains the upper bound. Anti-halt notes, Step 3 round-state machine table, and the Step 5 quick-mode breadcrumb all updated to reflect the new convergence path. Pure SKILL.md prompt change; no script or topology changes.
+
 ## [15.12.53] - 2026-05-06
 
 ### Changed
