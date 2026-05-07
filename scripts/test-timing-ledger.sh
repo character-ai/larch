@@ -35,7 +35,10 @@ if grep -Fq '/private/work/output.txt' "$LEDGER"; then
 fi
 
 mode=$(stat -f '%Lp' "$LEDGER" 2>/dev/null || stat -c '%a' "$LEDGER")
-[[ "$mode" == "600" ]]
+# GNU stat (Linux) and BSD stat (macOS) both produce "600" with -c '%a' / -f '%Lp'.
+# Some container images and umask configurations can leave a leading zero ("0600")
+# or unrelated SUID/SGID bits cleared ("000600"). Compare on the trailing 3 digits.
+[[ "${mode: -3}" == "600" ]] || { echo "expected mode 600 got '$mode'" >&2; exit 1; }
 
 WARN="$TMP_BASE/warn.txt"
 "$REPO_ROOT/scripts/timing-ledger.sh" --ledger "$LEDGER" record-vendor-task \
