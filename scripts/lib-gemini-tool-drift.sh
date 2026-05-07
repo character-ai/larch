@@ -279,9 +279,12 @@ check_gemini_tool_drift() {
     write_style_uncovered=""
     while IFS= read -r tool; do
         [[ -z "$tool" ]] && continue
-        if gemini_tool_is_write_style "$tool" && ! gemini_tool_list_contains "$deny_list" "$tool"; then
-            write_style_uncovered="${write_style_uncovered}${write_style_uncovered:+
+        if gemini_tool_is_write_style "$tool"; then
+            strict_tool=$(printf '%s\n' "$tool" | normalize_gemini_tools_from_raw)
+            if [[ -z "$strict_tool" ]] || ! gemini_tool_list_contains "$deny_list" "$strict_tool"; then
+                write_style_uncovered="${write_style_uncovered}${write_style_uncovered:+
 }$tool"
+            fi
         fi
     done <<< "$(printf '%s\n%s\n' "$live_catalog_raw" "$fixture_lines" | sort -u)"
 
