@@ -5,12 +5,13 @@
 **Invariants**:
 - Stdout contract is `KEY=VALUE` lines only: `LAUNCHER_EXIT`, `MANIFEST_WRITTEN`, `QA_PENDING_WRITTEN`, `TRANSCRIPT`, `SIDECAR_LOG`. The dispatcher relies on this; any progress text leaking to stdout would be parsed as garbage.
 - `run-external-agent.sh`'s stdout AND stderr are redirected (`>"$SIDECAR_LOG" 2>&1`) inside the wrapper. Operators inspecting a failed run read the sidecar log to see what went wrong.
-- Cursor stdout is captured to `--transcript-path` via `run-external-agent.sh --capture-stdout`. This file may grow large; it is intentionally NOT echoed to stdout.
+- Cursor stdout is captured to `--transcript-path` via `run-external-agent.sh --capture-stdout-only`, with stderr routed to `<transcript>.diag` so Cursor JSON remains parseable. This file may grow large; it is intentionally NOT echoed to stdout.
+- The Cursor command includes `--output-format json`; after the run, the wrapper best-effort parses `.usage` and records a `cursor_implement` vendor total via `scripts/token-ledger.sh`. Missing `jq`, malformed JSON, or absent usage is silent and non-fatal.
 - Wrapper always exits 0 unless flag validation fails (exit 2). The Cursor subprocess's exit code is reported via `LAUNCHER_EXIT=<int>` on stdout; the dispatcher decides whether that constitutes failure.
 - `--timeout` rejects empty, non-numeric, and zero-valued digit strings (`0`, `00`, `000`, ...), while preserving valid leading-zero positive values such as `010`.
 - Composes Cursor's prompt by concatenating `--agent-prompt` (`agents/cursor-implementer.md`) with this-invocation parameters and an optional resume block. Composition is in shell, not in agent-side prose, so the contract is mechanically inspectable.
 - Reuses `agent-model-args.sh --tool cursor --with-effort`, then wraps the composed prompt with `cursor-wrap-prompt.sh` so Cursor max-mode is enforced exactly like the review path.
-- Cursor argv shape is pinned to `scripts/launch-cursor-review.sh`: `cursor agent -p --force --trust $MODEL_ARGS --workspace "$PWD" "$WRAPPED_PROMPT"`. There is intentionally no `--` end-of-options separator before the prompt; the wrapped prompt is the positional argument after `--workspace`.
+- Cursor argv shape is pinned to `scripts/launch-cursor-review.sh`: `cursor agent -p --force --trust --output-format json $MODEL_ARGS --workspace "$PWD" "$WRAPPED_PROMPT"`. There is intentionally no `--` end-of-options separator before the prompt; the wrapped prompt is the positional argument after `--workspace`.
 
 **Stdout contract**:
 ```

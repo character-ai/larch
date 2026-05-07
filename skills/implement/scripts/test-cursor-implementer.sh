@@ -246,13 +246,15 @@ else
     fail 5 "stub Cursor stdout was not captured to transcript"
 fi
 
-if [[ "$(sed -n '5p' "$ARGV_FILE")" == "--model" ]] \
-   && [[ "$(sed -n '6p' "$ARGV_FILE")" == "stub-model" ]] \
-   && [[ "$(sed -n '7p' "$ARGV_FILE")" == "--workspace" ]] \
-   && [[ "$(sed -n '8p' "$ARGV_FILE")" == "$REPO_ROOT" ]]; then
+if [[ "$(sed -n '5p' "$ARGV_FILE")" == "--output-format" ]] \
+   && [[ "$(sed -n '6p' "$ARGV_FILE")" == "json" ]] \
+   && [[ "$(sed -n '7p' "$ARGV_FILE")" == "--model" ]] \
+   && [[ "$(sed -n '8p' "$ARGV_FILE")" == "stub-model" ]] \
+   && [[ "$(sed -n '9p' "$ARGV_FILE")" == "--workspace" ]] \
+   && [[ "$(sed -n '10p' "$ARGV_FILE")" == "$REPO_ROOT" ]]; then
     pass
 else
-    fail 6 "Cursor argv shape should place --workspace after model args and before prompt"
+    fail 6 "Cursor argv shape should include --output-format json, model args, then --workspace before prompt"
 fi
 
 if grep -Fxq -- '--' "$ARGV_FILE"; then

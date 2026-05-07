@@ -42,6 +42,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"
 
 TRANSCRIPT_PATH=""
 SIDECAR_LOG=""
@@ -142,13 +143,22 @@ LAUNCHER_EXIT=0
     --tool cursor \
     --output "$TRANSCRIPT_PATH" \
     --timeout "$TIMEOUT" \
-    --capture-stdout \
+    --capture-stdout-only \
     -- \
     cursor agent -p --force --trust \
+    --output-format json \
     $MODEL_ARGS \
     --workspace "$PWD" \
     "$WRAPPED_PROMPT" \
     >"$SIDECAR_LOG" 2>&1 || LAUNCHER_EXIT=$?
+
+if command -v jq >/dev/null 2>&1; then
+    read -r INP OUT CR CW < <(jq -r '.usage // {} | "\(.inputTokens // 0) \(.outputTokens // 0) \(.cacheReadTokens // 0) \(.cacheWriteTokens // 0)"' "$TRANSCRIPT_PATH" 2>/dev/null || echo "0 0 0 0")
+    if [[ "$INP" =~ ^[0-9]+$ && "$OUT" =~ ^[0-9]+$ && "$CR" =~ ^[0-9]+$ && "$CW" =~ ^[0-9]+$ ]]; then
+        TOT=$((INP + OUT + CR + CW))
+        "$PLUGIN_ROOT/scripts/token-ledger.sh" record-vendor cursor input="$INP" output="$OUT" cache_read="$CR" cache_create="$CW" total="$TOT" raw="cursor_implement" >/dev/null 2>&1 || true
+    fi
+fi
 
 MANIFEST_WRITTEN=false
 QA_PENDING_WRITTEN=false

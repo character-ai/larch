@@ -209,6 +209,9 @@ Then:
 - Ensure a per-run session id exists for design-manifest freshness checks. `session-setup.sh` already wrote the value; this call is preserved as an idempotent no-op for older harnesses and fallback paths (see `scripts/write-session-id.md` for the contract):
   ```bash
   ${CLAUDE_PLUGIN_ROOT}/scripts/write-session-id.sh --output "$IMPLEMENT_TMPDIR/session-id"
+  export LARCH_TOKEN_SESSION_ID="$(tr -d '\r\n' < "$IMPLEMENT_TMPDIR/session-id" 2>/dev/null || true)"
+  "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 0 — preflight" || true
+  # token-mark Step 0 — preflight
   ```
   Step 1 compares this value to the design manifest's `SESSION_ID` before reusing any exported plan.
 - Set `slack_available` from `SLACK_OK` (`true` → `true`; `false` → `false`). Warn only when the user has NOT opted out: if `slack_enabled=true` AND `SLACK_OK=false`, print `**⚠ Slack is not fully configured (<SLACK_MISSING> not set). Issue Slack announcement (Step 16a) will be skipped.**` When `slack_enabled=false` (user passed `--no-slack`), suppress the warning — Slack is not in use regardless of environment state.
@@ -218,6 +221,11 @@ Then:
 - If `GEMINI_HEALTHY=false` and `GEMINI_AVAILABLE=true`: print `**⚠ Gemini installed but not responding (health check failed). --coder=gemini will fall back to the main-agent code-edit path per Step 2.**`
 
 The session-env file is passed to `/design` (Step 1) and `/review` (Step 5) via `--session-env`.
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
+# token-step-end Step 0
+```
 
 ### Cross-Skill Health Propagation
 
@@ -295,6 +303,11 @@ Whenever the main agent identifies a Pre-existing code issue, log it under `Pre-
 If `oos-accepted-main-agent.md` does not exist, create it with the new entry. If `repo_unavailable=true`, still append (Step 9a.1 skips filing). **Repo-unavailable audit-loss disclosure**: in `repo_unavailable=true` mode, neither the tracking issue's anchor comment nor the PR body's Execution Issues block exists (Phase 3 slim PR body dropped the Execution Issues block, and without repo access no anchor comment can be created). `$IMPLEMENT_TMPDIR/execution-issues.md` is the only audit trail and is removed at Step 18. Operators running with `repo_unavailable=true` must preserve the tmpdir manually if an audit trail is required.
 
 ## Step 0.5 — Resolve Tracking Issue
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 0.5 — tracking issue" || true
+# token-mark Step 0.5 — tracking issue
+```
 
 Resolve a stable `ISSUE_NUMBER` + (when available) `ANCHOR_COMMENT_ID` for the session. The anchor comment on this tracking issue is the single source of truth for Phase 3+ report content (voting tallies, diagrams, version bump reasoning, OOS list, execution issues, run statistics); the PR body is a slim projection.
 
@@ -547,7 +560,17 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/refresh-anchor.sh --sections-dir "$IMPLEMENT_TMPDI
 
 **Compose-time sanitization**: every fragment composed into an anchor section MUST apply prompt-level sanitization (secrets → `<REDACTED-TOKEN>`, internal URLs → `<INTERNAL-URL>`, PII → `<REDACTED-PII>`). `scripts/redact-secrets.sh` (invoked inside `tracking-issue-write.sh`) is the shell-layer backstop but does NOT cover internal URLs or PII — compose-time sanitization is the first-line defense. See `anchor-comment-template.md` Compose-time sanitization rule.
 
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
+# token-step-end Step 0.5
+```
+
 ## Step 1 — Ensure Design Plan Exists
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 1 — design plan" || true
+# token-mark Step 1 — design plan
+```
 
 Determine the user's branch prefix:
 
@@ -667,7 +690,17 @@ Runs unconditionally in both modes UNLESS `design_only=true` (per the design-onl
 
 Apply the Rebase Checkpoint Macro with `<step-prefix>=1.r` and `<short-name>=design plan`.
 
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
+# token-step-end Step 1
+```
+
 ## Step 2 — Implement the Feature
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 2 — implementation" || true
+# token-mark Step 2 — implementation
+```
 
 ### Step 2 entry preconditions — legal next-actions matrix
 
@@ -790,13 +823,33 @@ If `deferred=true` or `repo_unavailable=true`: local-only append; Step 11's post
 
 Material answers that change scope or approach also log here (same `Q/A` category).
 
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
+# token-step-end Step 2
+```
+
 ## Step 3 — Relevant Checks (first pass)
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 3 — checks first pass" || true
+# token-mark Step 3 — checks first pass
+```
 
 > **Continue after child returns.** When the child Skill returns, execute the NEXT step — do NOT end the turn, and do NOT write a summary, handoff, or "returning to parent" message. See `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Anti-halt continuation reminder. (Covers every other `/relevant-checks` invocation in this file — no per-site reminders needed at quick-mode 5.7, Step 6, Step 10, or Step 12.)
 
 Invoke `/relevant-checks` via the Skill tool. If checks fail, diagnose and fix, then re-invoke to confirm.
 
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
+# token-step-end Step 3
+```
+
 ## Step 4 — First Commit (implementation)
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 4 — commit implementation" || true
+# token-mark Step 4 — commit implementation
+```
 
 **On the external implementer path** (`$MANIFEST_PATH` is non-empty, i.e. Step 2 returned `STATUS=complete`): the dispatcher has already committed `$TOOL_LABEL`'s working-tree edits using `manifest.commit_message` (`git add -A && git commit -F …`, with `commit_message` piped through `scripts/redact-secrets.sh` first so secrets do not land in git history). There is no Claude-side diff verification — `commit_message` is consumed as-is modulo the secrets-family redaction; the canonical on-disk manifest is sanitized by the same scrubber for downstream Steps 8a / 9a / 9a.1. Skip the `git-commit.sh` invocation. Print `⏩ 4: commit (impl) — already committed by dispatcher (HEAD=$(git rev-parse --short HEAD))`.
 
@@ -812,7 +865,17 @@ Commit message describes WHAT was implemented and WHY, not HOW.
 
 Apply the Rebase Checkpoint Macro with `<step-prefix>=4.r` and `<short-name>=commit (impl)`.
 
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
+# token-step-end Step 4
+```
+
 ## Step 5 — Code Review
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 5 — code review" || true
+# token-mark Step 5 — code review
+```
 
 ### Pre-/review untracked snapshot (both modes)
 
@@ -952,7 +1015,17 @@ After review (`/review` in normal mode or the quick-mode loop), for any **in-sco
 **Reason not implemented**: <complete justification for why this finding was not addressed — include the specific technical reasoning, any relevant context about project conventions or design decisions, and why the current code is acceptable despite the finding. Do NOT abbreviate — preserve all important details from the evaluation.>
 ```
 
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
+# token-step-end Step 5
+```
+
 ## Step 6 — Relevant Checks (second pass)
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 6 — checks second pass" || true
+# token-mark Step 6 — checks second pass
+```
 
 Check whether Step 5 modified files (both modes). Detection covers staged + unstaged + (current untracked − pre-/review snapshot, when the snapshot is present):
 
@@ -964,7 +1037,17 @@ Parse both stdout keys with key-based extraction (e.g., `awk -F= '$1=="FILES_CHA
 
 If `FILES_CHANGED=false`: print `⏩ 6: checks (2) — skipped, no review changes (<elapsed>)` and IMMEDIATELY skip to Step 7a (Code Flow Diagram runs unconditionally) — do NOT halt after the skip breadcrumb. If files changed, invoke `/relevant-checks` via the Skill tool; on failure, diagnose + fix, re-invoke.
 
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
+# token-step-end Step 6
+```
+
 ## Step 7 — Second Commit (review fixes)
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 7 — commit review fixes" || true
+# token-mark Step 7 — commit review fixes
+```
 
 If any files changed during review / checks (Steps 5–6):
 
@@ -980,7 +1063,17 @@ Only if `FILES_CHANGED=true` from Step 6 (Step 7 created a commit). If Steps 6�
 
 Apply the Rebase Checkpoint Macro with `<step-prefix>=7.r` and `<short-name>=commit (review)`.
 
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
+# token-step-end Step 7
+```
+
 ## Step 7a — Code Flow Diagram
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 7a — code flow diagram" || true
+# token-mark Step 7a — code flow diagram
+```
 
 Print: `> **🔶 7a: code flow**`
 
@@ -1007,9 +1100,16 @@ Safety net before version bump. `--skip-if-pushed` short-circuits this when the 
 
 Apply the Rebase Checkpoint Macro with `<step-prefix>=7a.r` and `<short-name>=code flow`.
 
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
+# token-step-end Step 7a
+```
+
 ## Step 8 — Version Bump
 
 ```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 8 — version bump" || true
+# token-mark Step 8 — version bump
 ${CLAUDE_PLUGIN_ROOT}/scripts/check-bump-version.sh --mode pre
 ```
 
@@ -1045,7 +1145,17 @@ Compose the `version-bump-reasoning` fragment from the contents of `$BUMP_REASON
 
 **Mid-loop refresh during rebase cycles**: `rebase-rebump-subprocedure.md` step 6 (Steps 10 / 12's rebase + re-bump path) refreshes the anchor's `version-bump-reasoning` section directly. It reads the session's tracking-issue sentinel via `${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-read.sh --sentinel`, rewrites this fragment when `/bump-version` produced a fresh reasoning file in that invocation (preserves the prior fragment otherwise), and calls `${CLAUDE_PLUGIN_ROOT}/scripts/refresh-anchor.sh` (the wrapper around `assemble-anchor.sh` + `upsert-anchor`). Umbrella #348 Phase 5 closed the earlier gap where sub-procedure step 6 refreshed a PR-body block that no longer existed in the slim PR body (Phase 3). Anchor refresh failure in that step is non-fatal (logged to `Warnings`); the next successful progressive upsert (this Step 8, or Step 11 post-execution) repairs any stale anchor state.
 
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
+# token-step-end Step 8
+```
+
 ## Step 8a — CHANGELOG Update
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 8a — changelog" || true
+# token-mark Step 8a — changelog
+```
 
 Test for `CHANGELOG.md` at the project root via the scripted probe (do NOT eyeball — the probe's `CHANGELOG_PRESENT=` value is the authoritative source for the branch decision and for the breadcrumb tail):
 
@@ -1078,7 +1188,17 @@ Keeps the bump commit as the single HEAD commit containing both the version bump
 
 Print: `✅ 8a: changelog — updated for v<NEW_VERSION> (<elapsed>)`
 
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
+# token-step-end Step 8a
+```
+
 ## Step 8b — Rebase onto latest main (before PR creation)
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 8b — rebase" || true
+# token-mark Step 8b — rebase
+```
 
 Final freshness gate before Step 9. Unlike Step 7a.r's macro call, Step 8b does NOT use `--skip-if-pushed` — resumed Branch 1/2/3 runs (where the feature branch already exists on origin) MUST refresh here, otherwise the PR is created against a base captured before `/bump-version` + CHANGELOG amend ran. Step 12's CI+rebase+merge loop remains the last-chance enforcement at merge time; Step 8b narrows the freshness gap on the initial PR-creation push.
 
@@ -1124,7 +1244,19 @@ Parse `STATE` (and `RC` for diagnostic logging). The script always exits 0; the 
 
 Detection is Git-based (not via `gh pr view`) so transient GitHub API failures do not silently degrade to a stale-remote path — see issue #818 for the failure-mode rationale.
 
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
+# token-step-end Step 8b
+```
+
 ## Step 9 — Create PR
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 9 — create PR" || true
+# token-mark Step 9 — create PR
+```
+
+Step 9 is a single token-accounting bucket spanning 9a, 9a.1, and 9b for this PoC; nested 9a.1 / 9b marks are deferred.
 
 ### 9a — Prepare PR body
 
@@ -1156,6 +1288,12 @@ Step 9a.1 writes TWO anchor fragments:
 - `$IMPLEMENT_TMPDIR/anchor-sections/oos-issues.md` — the Accepted OOS bullet list (with `#<N>` links from `/issue` batch output) plus the Rejected / Out-of-Scope Observations sub-block. Content per `anchor-comment-template.md` section `oos-issues`.
 - `$IMPLEMENT_TMPDIR/anchor-sections/run-statistics.md` — the Run Statistics table, with the `| OOS issues filed |` cell populated from the `ISSUES_CREATED` / `ISSUES_DEDUPLICATED` counts. Content per `anchor-comment-template.md` section `run-statistics`.
 
+After writing `run-statistics.md`, append or replace the idempotent token block before assembling:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --append-run-statistics "$IMPLEMENT_TMPDIR/anchor-sections/run-statistics.md" || true
+```
+
 After both fragments are written, assemble the anchor body and upsert (see Step 0.5 "Anchor-section accumulation"). Assembly order follows `SECTION_MARKERS`: `oos-issues` comes before `execution-issues`, `run-statistics` comes last.
 
 Print: `✅ 9a.1: OOS issues — <ISSUES_CREATED> created, <ISSUES_DEDUPLICATED> deduplicated (<elapsed>)` (or the appropriate early-exit breadcrumb).
@@ -1183,7 +1321,17 @@ Print the PR URL. Save `PR_NUMBER`, `PR_URL`, `PR_TITLE` for Steps 10–15.
 
 **MANDATORY — READ ENTIRE FILE** before invoking the sub-procedure from Step 8's same-version `apply-bump.sh` failure branch, Step 8b, Step 10, or Step 12: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/rebase-rebump-subprocedure.md`. Contains the `Inputs` schema (`rebase_already_done`, `caller_kind`), Happy-path steps 1–7 (drop bump → rebase → fast-forward local main → re-bump → push with recovery → anchor `version-bump-reasoning` refresh → return to caller), Phase 4 caller path (`rebase_already_done=true, caller_kind=step12_phase4`), caller-family failure semantics (step12 = hard-bail to 12d; step10 = break to Step 11; step8 = STALL_TRACKING=true + skip to Step 18), and the anti-halt continuation reminder for `/bump-version`. **Do NOT load** when Step 12 early-exits on `merge=false` / `repo_unavailable=true`, when Step 10 returns `ACTION=merge` / `already_merged` / `evaluate_failure` / `bail`, or when Step 8b's `rebase-push.sh --no-push` returns exit 0 / 3 / other (only Step 8b exit 1 enters the sub-procedure; exit 3 / other still bail directly).
 
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
+# token-step-end Step 9
+```
+
 ## Step 10 — CI Monitor (initial wait for green)
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 10 — CI monitor" || true
+# token-mark Step 10 — CI monitor
+```
 
 If `repo_unavailable=true`: print `⏭️ 10: CI monitor — skipped (repo unavailable) (<elapsed>)` and proceed to Step 11.
 
@@ -1217,7 +1365,17 @@ Log CI failures, transient retries, bail events to `CI Issues`. After any non-te
 
 > **Continue to Step 11.** Do NOT end the turn after CI monitoring completes.
 
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
+# token-step-end Step 10
+```
+
 ## Step 11 — Post-execution Anchor `execution-issues` Refresh
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 11 — execution issues refresh" || true
+# token-mark Step 11 — execution issues refresh
+```
 
 Runs unconditionally. The Slack announcement of the tracking issue has moved to Step 16a (near end-of-run, once the final outcome is known) — Step 11 is now only the anchor refresh.
 
@@ -1233,7 +1391,12 @@ Runs unconditionally. The Slack announcement of the tracking issue has moved to 
 
    b. Write to `$IMPLEMENT_TMPDIR/anchor-sections/execution-issues.md`.
 
-   c. Refresh the anchor — assembles the full body from all current fragments in canonical `SECTION_MARKERS` order and upserts in one call (see Step 0.5 "Anchor-section accumulation" and `scripts/refresh-anchor.md`):
+   c. Best-effort append or replace the current Token Report block in `$IMPLEMENT_TMPDIR/anchor-sections/run-statistics.md` before the refresh. This Step 11 table is an interim refresh only; Step 18 owns the authoritative final table:
+      ```bash
+      "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --append-run-statistics "$IMPLEMENT_TMPDIR/anchor-sections/run-statistics.md" || true
+      ```
+
+   d. Refresh the anchor — assembles the full body from all current fragments in canonical `SECTION_MARKERS` order and upserts in one call (see Step 0.5 "Anchor-section accumulation" and `scripts/refresh-anchor.md`):
       ```bash
       ${CLAUDE_PLUGIN_ROOT}/scripts/refresh-anchor.sh --sections-dir "$IMPLEMENT_TMPDIR/anchor-sections" --issue "$ISSUE_NUMBER" --anchor-id "$ANCHOR_COMMENT_ID" --output "$IMPLEMENT_TMPDIR/anchor-assembled.md"
       ```
@@ -1243,7 +1406,17 @@ Print: `✅ 11: execution-issues — anchor refreshed (<elapsed>)` on success.
 
 > **Continue to Step 12.** Do NOT end the turn after anchor refresh.
 
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
+# token-step-end Step 11
+```
+
 ## Step 12 — CI + Rebase + Merge Loop
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 12 — CI merge loop" || true
+# token-mark Step 12 — CI merge loop
+```
 
 If `merge=false`: print `⏭️ 12: CI+merge loop — skipped (--merge not set) (<elapsed>)` and skip to Step 16. If `repo_unavailable=true`: print `⏭️ 12: CI+merge loop — skipped (repo unavailable) (<elapsed>)` and skip to Step 16.
 
@@ -1339,7 +1512,17 @@ Bail if any: 3 fix iterations attempted without progress; failure fundamentally 
 - Set `FINAL_BAIL_REASON` = the `BAIL_REASON` value from the `ci-wait.sh` output that triggered the bail (or the caller-synthesized reason if the bail came from the Rebase + Re-bump Sub-procedure, a conflict, or fix-attempt exhaustion, or a mechanical `merge-pr.sh` bail result — in which case `FINAL_BAIL_REASON` is the literal `ERROR` string from the script, including `"branch protection denied merge; --no-admin-fallback set"` and `"origin/main HEAD already bumped to <X.Y.Z>; rebase and re-bump"`). Leave `BAIL_NEEDS_USER_INPUT` alone if it was already set by the Conflict Resolution Procedure Phase 2 under `auto_mode=true`; otherwise it stays `false`.
 - Set `STALL_TRACKING=true` — signals Step 18 to rename the tracking issue's title from `[IN PROGRESS]` to `[STALLED]` (see Step 18 "Title-prefix lifecycle terminal transition").
 
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
+# token-step-end Step 12
+```
+
 ## Step 14 — Local Cleanup
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 14 — local cleanup" || true
+# token-mark Step 14 — local cleanup
+```
 
 Write finalizer state once, then delegate Step 14 and Step 15 mechanical work to `implement-finalize.sh postmerge`. The state file is plain `KEY=value` text and is never sourced; the script reads it with `awk`. Mechanical SSOT: `${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.md` § `postmerge`.
 
@@ -1377,19 +1560,49 @@ Relay the script's Step 14 / Step 15 breadcrumbs verbatim. Tail records document
 
 > **Continue to Step 15.** Do NOT end the turn after local cleanup.
 
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
+# token-step-end Step 14
+```
+
 ## Step 15 — Verify Main
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 15 — verify main" || true
+# token-mark Step 15 — verify main
+```
 
 Handled by Step 14's `implement-finalize.sh postmerge` invocation. Step 15 runs only when Step 14 actually attempted local cleanup; `draft=true`, `merge=false`, and Step 12 bail paths skip verification with `VERIFY_MAIN_STATUS=skipped`. Mechanical SSOT: `${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.md` § `postmerge`.
 
 > **Continue to Step 16.** Do NOT end the turn after verifying main.
 
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
+# token-step-end Step 15
+```
+
 ## Step 16 — Rejected Code Review Findings Report
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 16 — rejected findings" || true
+# token-mark Step 16 — rejected findings
+```
 
 Report unimplemented code review suggestions without reprinting the full findings inline. Check `$IMPLEMENT_TMPDIR/rejected-findings.md`. If non-empty, print `✅ 16: rejected findings — saved to anchor (<elapsed>)`; the full content was already posted via the `code-review-tally` anchor fragment. Otherwise print `✅ 16: rejected findings — all suggestions implemented (<elapsed>)`.
 
 > **Continue to Step 16a.** Do NOT end the turn after printing rejected findings.
 
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
+# token-step-end Step 16
+```
+
 ## Step 16a — Post Slack Issue Announcement
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 16a — Slack issue announcement" || true
+# token-mark Step 16a — Slack issue announcement
+```
 
 Run the consolidated Slack subcommand. It preserves the Step 16a skip gates and first-match-wins outcome ladder, including `DESIGN_ONLY_DONE=true → RUN_OUTCOME=design-only`, `BAIL_NEEDS_USER_INPUT=true → RUN_OUTCOME=user-input`, and `merge=false` OR `draft=true` → `RUN_OUTCOME=pr-opened`. It omits `--pr-url` for design-only, passes bail/user-input detail when needed, and treats Slack failure as a non-fatal warning. Mechanical SSOT: `${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.md` § `slack`.
 
@@ -1403,7 +1616,17 @@ Relay the script's Step 16a breadcrumb verbatim. Tail records document the mecha
 
 > **Continue to Step 17.** Do NOT end the turn after Slack post.
 
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
+# token-step-end Step 16a
+```
+
 ## Step 17 — Final Report
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 17 — final report" || true
+# token-mark Step 17 — final report
+```
 
 If `DESIGN_ONLY_DONE=true`: print `✅ 17: final report — design-only complete; tracking issue contains plan, review tally, diagrams, and OOS status (<elapsed>)`.
 
@@ -1411,15 +1634,40 @@ If `quick_mode=true` and `DESIGN_ONLY_DONE` is not true: print `✅ 17: final re
 
 If `quick_mode=false` and `DESIGN_ONLY_DONE` is not true: print a summary noting plan review findings were reported by `/design` (via the tracking issue anchor) and code review findings by `/review` (visible above). If both phases reported all suggestions implemented, print `✅ 17: final report — all suggestions implemented, plan + code review (<elapsed>)`.
 
+Print the full token table for immediate visibility:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --full --markdown || true
+```
+
 > **Continue to Step 18.** Do NOT end the turn after the final report.
 
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
+# token-step-end Step 17
+```
+
 ## Step 18 — Cleanup and Final Warnings
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 18 — cleanup" || true
+# token-mark Step 18 — cleanup
+```
 
 Repeat any external reviewer warnings from earlier (from `/design`, `/review`, or Step 5 runtime-fallback flips). Examples: `**⚠ Codex not available: <reason>**`, `**⚠ Cursor review failed: <reason>**`.
 
 If `DESIGN_ONLY_DONE=true`, remind: `**Note: --design-only was set. No PR was created. The tracking issue's anchor comment carries the plan, plan-review tally, diagrams, and accepted/rejected findings as the run's deliverable.**` Otherwise, if `draft=true`, remind: `**Note: --draft was set. Draft PR created; local branch retained. Mark the PR ready-for-review and merge manually when ready.**` Otherwise if `merge=false`, remind: `**Note: --merge was not set. PR was created but not merged. Merge manually when ready.**`
 
-Run the consolidated teardown subcommand after the prompt-side warnings/notes above. It performs the title-prefix terminal transition first: Branch A renames to `[STALLED]` only when `STALL_TRACKING=true` and the issue state is exactly `OPEN`; Branch B renames to `[DONE]` when `STALL_TRACKING=false`, `DONE_RENAME_APPLIED!=true`, and `$PR_NUMBER` is set OR `DESIGN_ONLY_DONE=true`; Branch C is a no-op. Finalize-time round-trip detection runs inside `scripts/implement-finalize.sh` immediately before Branch A/B renames. On stalled paths, it then best-effort stashes leftover working-tree edits with a `larch-stalled-...` label and writes `.git/larch-stalled-run.txt` so the next SessionStart/preflight can surface or clear the leftover state. Before tmpdir removal, it verifies the tmpdir basename prefix and `session-id` against the Step 14 state file; on mismatch it logs a Tool Failures entry, emits the documented refusal warning, skips `rm -rf`, and continues. It then prints the tracking-issue URL when resolvable and prints the final Step 18 breadcrumb. Mechanical SSOT: `${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.md` § `teardown`.
+Before teardown, perform the authoritative final token-report refresh while `$IMPLEMENT_TMPDIR` and its anchor fragments still exist:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --append-run-statistics "$IMPLEMENT_TMPDIR/anchor-sections/run-statistics.md" || true
+if [ -n "${ISSUE_NUMBER:-}" ] && [ "${repo_unavailable:-false}" != "true" ]; then
+  ${CLAUDE_PLUGIN_ROOT}/scripts/refresh-anchor.sh --sections-dir "$IMPLEMENT_TMPDIR/anchor-sections" --issue "$ISSUE_NUMBER" --anchor-id "$ANCHOR_COMMENT_ID" --output "$IMPLEMENT_TMPDIR/anchor-assembled.md" || true
+fi
+```
+
+Run the consolidated teardown subcommand after the prompt-side warnings/notes and authoritative token refresh above. It performs the title-prefix terminal transition first: Branch A renames to `[STALLED]` only when `STALL_TRACKING=true` and the issue state is exactly `OPEN`; Branch B renames to `[DONE]` when `STALL_TRACKING=false`, `DONE_RENAME_APPLIED!=true`, and `$PR_NUMBER` is set OR `DESIGN_ONLY_DONE=true`; Branch C is a no-op. Finalize-time round-trip detection runs inside `scripts/implement-finalize.sh` immediately before Branch A/B renames. On stalled paths, it then best-effort stashes leftover working-tree edits with a `larch-stalled-...` label and writes `.git/larch-stalled-run.txt` so the next SessionStart/preflight can surface or clear the leftover state. Before tmpdir removal, it verifies the tmpdir basename prefix and `session-id` against the Step 14 state file; on mismatch it logs a Tool Failures entry, emits the documented refusal warning, skips `rm -rf`, and continues. It then prints the tracking-issue URL when resolvable and prints the final Step 18 breadcrumb. Mechanical SSOT: `${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.md` § `teardown`.
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.sh teardown \
@@ -1428,3 +1676,8 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.sh teardown \
 ```
 
 Relay the script's tracking issue URL line and Step 18 breadcrumb verbatim. Tail records document the mechanical outcome: `RENAME_BRANCH=...`, `RENAME_STATUS=...`, `ISSUE_URL=...`, `STASH_REF=...`, `SENTINEL_WRITTEN=...`, `FINALIZE_SUBCOMMAND=teardown`, `FINALIZE_WARNINGS=...`.
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
+# token-step-end Step 18
+```

@@ -4,12 +4,13 @@
 
 **Invariants**:
 - Prompt passed only as argv; no `eval`; no unsafe expansion
-- No additional stdout/stderr beyond what `run-external-agent.sh` produces
-- Uses `exec` to replace shell process with `run-external-agent.sh` (clean exit code passthrough)
+- No additional stdout beyond what `run-external-agent.sh` produces
+- Runs `run-external-agent.sh` without `exec` so the launcher can perform a best-effort post-call token scrape, then exits with `run-external-agent.sh`'s exit code
+- Redirects wrapper stderr to `${OUTPUT}.sidecar` when possible and silently scrapes the last `tokens used` block into `token-ledger.sh` as `codex_review`; if the sidecar cannot be opened, stderr falls back to `/dev/null`
 - Uses `--output-last-message` for Codex output (no `--capture-stdout`)
 - Specialist mode calls `render-specialist-prompt.sh` internally, supporting all flags
 
-**Stdout contract**: Same as `run-external-agent.sh` (sentinel files, `.meta`, `.diag`).
+**Stdout contract**: Same stdout as `run-external-agent.sh`; no `LAUNCHER_EXIT=` line. Exit code is `run-external-agent.sh`'s exit code after the best-effort post-call token scrape.
 
 **Flags**: Same as `launch-cursor-review.sh` (see `scripts/launch-cursor-review.md`).
 
