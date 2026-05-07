@@ -122,11 +122,16 @@ start_probe() {
 
     case "$tool" in
         codex)
+            # Argv MUST track scripts/launch-codex-implement.sh: --add-dir
+            # "$PROBE_DIR" exercises the same writable-roots flag production
+            # uses. Drift here can pass a Codex build that rejects --add-dir,
+            # then fail at /implement Step 2 spawn with worse diagnostics.
             "$SCRIPT_DIR/run-external-agent.sh" \
                 --tool codex \
                 --output "$output" \
                 --timeout 60 \
                 -- codex exec --full-auto -C "$PWD" \
+                --add-dir "$PROBE_DIR" \
                 --output-last-message "$output" \
                 "Respond with OK" \
                 >"$PROBE_DIR/codex-wrapper-attempt${attempt}.log" 2>&1 &
