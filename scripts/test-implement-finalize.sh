@@ -92,12 +92,15 @@ write_state() {
         printf 'STALL_TRACKING=%s\n' "$(override_value STALL_TRACKING false "$@")"
         printf 'STALL_STEP=%s\n' "$(override_value STALL_STEP 12d "$@")"
         printf 'DONE_RENAME_APPLIED=%s\n' "$(override_value DONE_RENAME_APPLIED false "$@")"
+        printf 'EXPECTED_SESSION_ID=%s\n' "$(override_value EXPECTED_SESSION_ID session-123 "$@")"
+        printf 'EXPECTED_TMPDIR_BASENAME_PREFIX=%s\n' "$(override_value EXPECTED_TMPDIR_BASENAME_PREFIX tmp "$@")"
     } > "$path"
 }
 
 build_sandbox() {
     SANDBOX=$(mktemp -d /tmp/larch-finalize-test.XXXXXX)
     mkdir -p "$SANDBOX/scripts" "$SANDBOX/tmp" "$SANDBOX/bin" "$SANDBOX/repo/.git"
+    printf 'session-123\n' > "$SANDBOX/tmp/session-id"
     cp "$REAL_SCRIPT" "$SANDBOX/scripts/implement-finalize.sh"
     chmod +x "$SANDBOX/scripts/implement-finalize.sh"
 
@@ -478,7 +481,7 @@ assert_rc "$RC" 2 "teardown: state-file outside implement tmpdir exits 2"
 
 run_subject_raw_rc teardown --state-file "$STATE" --implement-tmpdir /var/not-larch-tmp
 assert_rc "$RC" 2 "teardown: implement tmpdir outside /tmp exits 2"
-assert_contains "--implement-tmpdir must be under /tmp/ or /private/tmp/" "$OUT" "teardown: implement tmpdir diagnostic"
+assert_contains "--implement-tmpdir must be under /tmp/, /private/tmp/, or the larch cache sessions root" "$OUT" "teardown: implement tmpdir diagnostic"
 
 printf 'BRANCH_NAME: bad\n' > "$STATE"
 run_subject_raw_rc slack --state-file "$STATE" --final-bail-reason-file "$BAIL"

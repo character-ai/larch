@@ -839,4 +839,24 @@ exclude = [
   # scripts/promote-release.md is excluded for the same reason.
   "scripts/promote-release.sh",
   "scripts/promote-release.md",
+  # tmpdir-corruption hardening (#1339): redact-tmpdir-paths.sh is invoked
+  # from tracking-issue-write.sh, post-slack-message.sh, and create-pr.sh
+  # via shell variable indirection ($REDACT_TMPDIR_HELPER) — agent-lint's
+  # G004/dead-script rule scans SKILL.md/hooks.json/settings.json for
+  # literal-path references and does not follow shell-to-shell references,
+  # so it would otherwise be flagged. The four test-* harnesses follow the
+  # same Makefile-only pattern as the other test-* entries above:
+  # referenced only from Makefile (test-redact-tmpdir-paths,
+  # test-keepalive-sentinel, test-cache-root-validation,
+  # test-finalize-sanity-check targets) and their sibling .md contracts.
+  "scripts/redact-tmpdir-paths.sh",
+  "scripts/redact-tmpdir-paths.md",
+  "scripts/test-redact-tmpdir-paths.sh",
+  "scripts/test-redact-tmpdir-paths.md",
+  "scripts/test-keepalive-sentinel.sh",
+  "scripts/test-keepalive-sentinel.md",
+  "scripts/test-cache-root-validation.sh",
+  "scripts/test-cache-root-validation.md",
+  "scripts/test-finalize-sanity-check.sh",
+  "scripts/test-finalize-sanity-check.md",
 ]

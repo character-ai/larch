@@ -199,14 +199,14 @@ On non-zero exit, always print the raw `PREFLIGHT_ERROR=...` line first. Then pr
 
 Key any future sub-message on the substring inside `PREFLIGHT_ERROR` (for example, `Not on main branch` or `Working tree is not clean`), not on the prior `IS_MAIN` value from `create-branch.sh --check`; detached HEAD can report `IS_MAIN=true` with an empty `CURRENT_BRANCH`.
 
-Parse `SESSION_TMPDIR`, `SLACK_OK`, `SLACK_MISSING`, `REPO`, `REPO_UNAVAILABLE`, `CODEX_AVAILABLE`, `CURSOR_AVAILABLE`, `GEMINI_AVAILABLE`, `CODEX_HEALTHY`, `CURSOR_HEALTHY`, `GEMINI_HEALTHY`. Set `IMPLEMENT_TMPDIR` = `SESSION_TMPDIR`, then write the session-env file:
+Parse `SESSION_TMPDIR`, `SESSION_ID`, `SLACK_OK`, `SLACK_MISSING`, `REPO`, `REPO_UNAVAILABLE`, `CODEX_AVAILABLE`, `CURSOR_AVAILABLE`, `GEMINI_AVAILABLE`, `CODEX_HEALTHY`, `CURSOR_HEALTHY`, `GEMINI_HEALTHY`. `session-setup.sh` creates the tmpdir under `${XDG_CACHE_HOME:-$HOME/.cache}/larch/sessions/` when possible (legacy `/tmp` fallback), writes `$SESSION_TMPDIR/session-id`, and writes `$SESSION_TMPDIR/.larch-keepalive`. Set `IMPLEMENT_TMPDIR` = `SESSION_TMPDIR`, then write the session-env file:
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/write-session-env.sh --output "$IMPLEMENT_TMPDIR/session-env.sh" --slack-ok <value> --slack-missing <value> --repo <value> --repo-unavailable <value> --codex-healthy <value> --cursor-healthy <value> --gemini-healthy <value>
 ```
 
 Then:
-- Write a per-run session id for design-manifest freshness checks (uuidgen with fallback to the tmpdir basename when uuidgen is absent — see `scripts/write-session-id.md` for the contract):
+- Ensure a per-run session id exists for design-manifest freshness checks. `session-setup.sh` already wrote the value; this call is preserved as an idempotent no-op for older harnesses and fallback paths (see `scripts/write-session-id.md` for the contract):
   ```bash
   ${CLAUDE_PLUGIN_ROOT}/scripts/write-session-id.sh --output "$IMPLEMENT_TMPDIR/session-id"
   ```
@@ -1357,6 +1357,8 @@ BAIL_NEEDS_USER_INPUT=${BAIL_NEEDS_USER_INPUT:-false}
 STALL_TRACKING=${STALL_TRACKING:-false}
 STALL_STEP=${STALL_STEP:-}
 DONE_RENAME_APPLIED=${DONE_RENAME_APPLIED:-false}
+EXPECTED_SESSION_ID=$(cat "$IMPLEMENT_TMPDIR/session-id" 2>/dev/null || echo "")
+EXPECTED_TMPDIR_BASENAME_PREFIX="claude-implement-${CLONE_TAG:-$(basename "$PWD" | tr -c 'A-Za-z0-9_-' '_')}-"
 EOF
 printf '%s' "${FINAL_BAIL_REASON:-}" > "$IMPLEMENT_TMPDIR/final-bail-reason.txt"
 
@@ -1411,7 +1413,7 @@ Repeat any external reviewer warnings from earlier (from `/design`, `/review`, o
 
 If `DESIGN_ONLY_DONE=true`, remind: `**Note: --design-only was set. No PR was created. The tracking issue's anchor comment carries the plan, plan-review tally, diagrams, and accepted/rejected findings as the run's deliverable.**` Otherwise, if `draft=true`, remind: `**Note: --draft was set. Draft PR created; local branch retained. Mark the PR ready-for-review and merge manually when ready.**` Otherwise if `merge=false`, remind: `**Note: --merge was not set. PR was created but not merged. Merge manually when ready.**`
 
-Run the consolidated teardown subcommand after the prompt-side warnings/notes above. It performs the title-prefix terminal transition first: Branch A renames to `[STALLED]` only when `STALL_TRACKING=true` and the issue state is exactly `OPEN`; Branch B renames to `[DONE]` when `STALL_TRACKING=false`, `DONE_RENAME_APPLIED!=true`, and `$PR_NUMBER` is set OR `DESIGN_ONLY_DONE=true`; Branch C is a no-op. Finalize-time round-trip detection runs inside `scripts/implement-finalize.sh` immediately before Branch A/B renames. On stalled paths, it then best-effort stashes leftover working-tree edits with a `larch-stalled-...` label and writes `.git/larch-stalled-run.txt` so the next SessionStart/preflight can surface or clear the leftover state. It then runs `cleanup-tmpdir.sh`, prints the tracking-issue URL when resolvable, and prints the final Step 18 breadcrumb. Mechanical SSOT: `${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.md` § `teardown`.
+Run the consolidated teardown subcommand after the prompt-side warnings/notes above. It performs the title-prefix terminal transition first: Branch A renames to `[STALLED]` only when `STALL_TRACKING=true` and the issue state is exactly `OPEN`; Branch B renames to `[DONE]` when `STALL_TRACKING=false`, `DONE_RENAME_APPLIED!=true`, and `$PR_NUMBER` is set OR `DESIGN_ONLY_DONE=true`; Branch C is a no-op. Finalize-time round-trip detection runs inside `scripts/implement-finalize.sh` immediately before Branch A/B renames. On stalled paths, it then best-effort stashes leftover working-tree edits with a `larch-stalled-...` label and writes `.git/larch-stalled-run.txt` so the next SessionStart/preflight can surface or clear the leftover state. Before tmpdir removal, it verifies the tmpdir basename prefix and `session-id` against the Step 14 state file; on mismatch it logs a Tool Failures entry, emits the documented refusal warning, skips `rm -rf`, and continues. It then prints the tracking-issue URL when resolvable and prints the final Step 18 breadcrumb. Mechanical SSOT: `${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.md` § `teardown`.
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.sh teardown \

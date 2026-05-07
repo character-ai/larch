@@ -38,6 +38,10 @@ done
 OUTDIR=$(dirname "$OUTPUT")
 mkdir -p "$OUTDIR" 2>/dev/null || { echo "FAILED=true"; echo "ERROR=cannot create dir: $OUTDIR"; exit 1; }
 
+if [ -s "$OUTPUT" ]; then
+    exit 0
+fi
+
 if command -v uuidgen >/dev/null 2>&1; then
     uuidgen > "$OUTPUT"
 else

@@ -26,6 +26,16 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+REDACT_TMPDIR_HELPER="$REPO_ROOT/scripts/redact-tmpdir-paths.sh"
+
+PUSH_STDERR=""
+PR_STDERR_FILE=""
+REDACTED_BODY_FILE=""
+cleanup() {
+    rm -f "$PUSH_STDERR" "$PR_STDERR_FILE" "$REDACTED_BODY_FILE"
+}
+trap cleanup EXIT
 
 usage() { echo "Usage: create-pr.sh --title TEXT --body-file FILE [--draft]" >&2; }
 
@@ -52,6 +62,16 @@ if [[ ! -f "$BODY_FILE" ]]; then
     exit 2
 fi
 
+if [[ ! -x "$REDACT_TMPDIR_HELPER" ]]; then
+    echo "ERROR: Redaction helper missing or not executable: redact-tmpdir-paths.sh" >&2
+    exit 2
+fi
+REDACTED_BODY_FILE=$(mktemp)
+if ! "$REDACT_TMPDIR_HELPER" < "$BODY_FILE" > "$REDACTED_BODY_FILE"; then
+    echo "ERROR: Failed to redact PR body tmpdir paths" >&2
+    exit 2
+fi
+
 # --- Get current branch ---
 BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null || echo "")
 if [[ -z "$BRANCH" ]]; then
@@ -71,7 +91,6 @@ if [[ -n "$EXISTING_PR" ]]; then
             # push errors rather than swallowing them — a stale remote on an
             # OPEN PR is exactly the silent-failure mode this branch must avoid.
             PUSH_STDERR=$(mktemp)
-            trap 'rm -f "$PUSH_STDERR"' EXIT
             if git push -u origin HEAD >/dev/null 2>"$PUSH_STDERR"; then
                 : # plain push succeeded (fast-forward or already-in-sync)
             else
@@ -107,8 +126,6 @@ fi
 
 # --- Push branch ---
 PUSH_STDERR=$(mktemp)
-PR_STDERR_FILE=""
-trap 'rm -f "$PUSH_STDERR" "$PR_STDERR_FILE"' EXIT
 if ! git push -u origin HEAD >"$PUSH_STDERR" 2>&1; then
     echo "ERROR: Failed to push branch: $(cat "$PUSH_STDERR")" >&2
     exit 1
@@ -125,7 +142,7 @@ PR_OUTPUT=$(gh pr create \
     --head "$BRANCH" \
     --base main \
     --title "$TITLE" \
-    --body-file "$BODY_FILE" \
+    --body-file "$REDACTED_BODY_FILE" \
     ${GH_DRAFT_ARGS[@]+"${GH_DRAFT_ARGS[@]}"} 2>"$PR_STDERR_FILE")
 PR_EXIT=$?
 

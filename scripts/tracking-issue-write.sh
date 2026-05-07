@@ -99,6 +99,7 @@ set -euo pipefail
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 REPO_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
 REDACT_HELPER="$REPO_ROOT/scripts/redact-secrets.sh"
+REDACT_TMPDIR_HELPER="$REPO_ROOT/scripts/redact-tmpdir-paths.sh"
 
 # 8 canonical section slugs in declaration order. Single source of truth
 # lives in scripts/anchor-section-markers.sh; sourced here to keep the
@@ -228,8 +229,13 @@ truncate_title_to_256() {
 # there is no fallback to un-redacted content per the fail-closed
 # defense-in-depth design.
 emit_redaction_failure() {
+    local rc=$?
     echo "FAILED=true"
-    echo "ERROR=redaction: helper $REDACT_HELPER failed or missing"
+    if [ "$rc" -eq 10 ]; then
+        echo "ERROR=redaction: helper redact-tmpdir-paths.sh failed or missing"
+    else
+        echo "ERROR=redaction: helper $REDACT_HELPER failed or missing"
+    fi
     exit 3
 }
 
@@ -241,7 +247,9 @@ emit_redaction_failure() {
 # stderr when an unterminated PEM block forces fail-closed truncation, and
 # that signal is the only log-visibility mechanism for that condition.
 redact() {
-    printf '%s' "$1" | "$REDACT_HELPER"
+    [ -x "$REDACT_TMPDIR_HELPER" ] || return 10
+    [ -x "$REDACT_HELPER" ] || return 11
+    printf '%s' "$1" | "$REDACT_TMPDIR_HELPER" | "$REDACT_HELPER"
 }
 
 # redact_gh_error <captured-stderr-text> — same as redact but used on gh

@@ -199,11 +199,12 @@ This keeps the anchor-comment shape stable across mode-selection so a Phase 3+ c
 
 Every fragment composed into the anchor-comment body must apply prompt-level sanitization at compose time, parallel to the rule stated in `skills/implement/SKILL.md` "Execution Issues Tracking" section:
 
+- Redact session tmpdir paths → `<TMPDIR>`.
 - Redact secrets / API keys / OAuth / JWT / passwords / certificates → `<REDACTED-TOKEN>`.
 - Internal hostnames / URLs / private IPs → `<INTERNAL-URL>`.
 - PII (emails, names, account IDs linked to a real user) → `<REDACTED-PII>`.
 
-This is a defense-in-depth layer above `scripts/redact-secrets.sh`'s outbound scrubber: the scrubber catches covered token families mechanically, but internal URLs and PII are out of its coverage and MUST be sanitized at compose time. `tracking-issue-write.sh`'s structural choke point (compose → redact → truncate) ensures no bypass path exists, but it does NOT invent redactions the helper does not cover — compose-time prompt-level sanitization is the first and primary defense for those classes.
+This is a defense-in-depth layer above `scripts/redact-tmpdir-paths.sh` and `scripts/redact-secrets.sh`'s outbound scrubbers: the scrubbers catch session tmpdir paths and covered token families mechanically, but internal URLs and PII are out of their coverage and MUST be sanitized at compose time. `tracking-issue-write.sh`'s structural choke point (compose → redact → truncate) ensures no bypass path exists, but it does NOT invent redactions the helpers do not cover — compose-time prompt-level sanitization is the first and primary defense for those classes.
 
 ## Edit-in-sync pointers
 

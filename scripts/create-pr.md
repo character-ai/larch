@@ -18,7 +18,7 @@ create-pr.sh --title TEXT --body-file FILE [--draft]
 Flags:
 
 - `--title TEXT` (required) — PR title. Recommended under 70 characters; not enforced.
-- `--body-file FILE` (required) — path to a markdown file containing the PR body. File must exist; checked at startup. Forwarded verbatim to `gh pr create --body-file` on the new-PR path; ignored on the existing-PR fast-path (existing PR body is not updated by this script — see `gh-pr-body-update.sh` for that operation).
+- `--body-file FILE` (required) — path to a markdown file containing the PR body. File must exist; checked at startup. On the new-PR path the body is copied through `scripts/redact-tmpdir-paths.sh` and the redacted temp file is forwarded to `gh pr create --body-file`; missing or failing redaction exits 2. The file is ignored on the existing-PR fast-path (existing PR body is not updated by this script — see `gh-pr-body-update.sh` for that operation).
 - `--draft` (optional, no value) — pass `--draft` to `gh pr create` so a fresh PR is opened in draft state. Has no effect on the existing-PR fast-path (an already-open PR's draft state is not changed).
 
 ## Output contract (KEY=value on stdout)
@@ -45,6 +45,10 @@ Failure is signalled exclusively via non-zero exit code + a human-readable `ERRO
 | 0    | PR created or pre-existing PR detected; remote branch confirmed up-to-date with local. |
 | 1    | Push failed. Either path: stderr carries the underlying git rejection. |
 | 2    | Argument validation failed, branch detection failed (detached HEAD), `gh pr create` failed, or PR number/URL extraction failed. |
+
+## PR body redaction
+
+`create-pr.sh` removes larch session tmpdir literals from fresh PR bodies via `scripts/redact-tmpdir-paths.sh` before invoking `gh pr create`. This covers `$IMPLEMENT_TMPDIR` references that may appear in generated test output, diagrams, or execution notes. Secret-family redaction is owned by upstream compose sites and downstream helpers; this script currently adds only the tmpdir-path pass because it had no pre-existing secret-redaction pipeline.
 
 ## Existing-PR fast-path push semantics (issue #837)
 

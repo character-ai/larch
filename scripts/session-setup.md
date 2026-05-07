@@ -2,11 +2,20 @@
 
 Shared setup wrapper for larch skills. It creates a fresh session tmpdir, optionally runs preflight, Slack and repo discovery, reviewer health probes, and can write a session-env file plus a `.health` sidecar.
 
-Session tmpdirs are named `/tmp/<prefix>-<clone-tag>-XXXXXX`, where
+Session tmpdirs are named `${XDG_CACHE_HOME:-$HOME/.cache}/larch/sessions/<prefix>-<clone-tag>-XXXXXX`, where
 `<clone-tag>` is the current working directory basename with every character
 outside `[A-Za-z0-9_-]` replaced by `_`, truncated to 32 characters, and
-defaulted to `_` when empty. This keeps concurrent clone runs distinguishable
-in `/tmp` while preserving `mktemp`'s random suffix.
+defaulted to `_` when empty. If the cache sessions root cannot be created or
+written, the script falls back to the legacy `/tmp/<prefix>-<clone-tag>-XXXXXX`
+template with a stderr warning. This keeps concurrent clone runs
+distinguishable while preserving `mktemp`'s random suffix.
+
+Immediately after `mktemp -d`, the script writes `session-id` and emits
+`SESSION_ID=<value>` on stdout. It prefers `uuidgen` and falls back to
+`hostname-pid-epoch` when `uuidgen` is unavailable. It also writes
+`.larch-keepalive` with `PID=`, `PPID=`, `CLONE_PATH=`, `SESSION_ID=`,
+`PREFIX=`, `CREATED=`, and `NOTE=ext-cleaners-please-skip`. The sentinel is
+advisory; write failures warn on stderr and do not abort setup.
 
 ## Reviewer probe contract
 
@@ -26,4 +35,4 @@ When `--write-health` is provided, the health sidecar contains Codex and Cursor 
 
 ## Edit-in-sync
 
-Update `scripts/check-reviewers.sh`, `scripts/write-session-env.sh`, `skills/shared/subskill-invocation.md`, and `skills/shared/external-reviewers.md` when changing session-env keys or reviewer health semantics. Update `scripts/lib-gemini-tool-drift.sh` and `scripts/check-reviewers.md` when changing Gemini drift warning or artifact keys.
+Update `scripts/check-reviewers.sh`, `scripts/write-session-env.sh`, `skills/shared/subskill-invocation.md`, and `skills/shared/external-reviewers.md` when changing session-env keys or reviewer health semantics. Update `scripts/write-session-id.sh` when changing session-id ownership or idempotency. Update `scripts/lib-gemini-tool-drift.sh` and `scripts/check-reviewers.md` when changing Gemini drift warning or artifact keys.
