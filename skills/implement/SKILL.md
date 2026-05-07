@@ -870,7 +870,7 @@ Material answers that change scope or approach also log here (same `Q/A` categor
 # token-mark Step 3 — checks first pass
 ```
 
-> **Continue after child returns.** When `/relevant-checks` returns, execute Step 4's commit (impl) breadcrumb next — the next user-facing output is either `⏩ 4: commit (impl) — already committed by dispatcher (HEAD=<short-sha>)` on the external implementer path or the Step 4 implementation-commit flow on Claude fallback. Do NOT end the turn, summarize, or write a handoff message.
+> **Continue after child returns.** On a clean `/relevant-checks` return (all checks pass), execute Step 4's commit (impl) breadcrumb next — the next user-facing output is either `⏩ 4: commit (impl) — already committed by dispatcher (HEAD=<short-sha>)` on the external implementer path or the Step 4 implementation-commit flow on Claude fallback. On a non-clean return (any hook or agent-lint failure), diagnose, fix, and re-invoke `/relevant-checks` via the Skill tool until clean BEFORE Step 4 — the failure path is in-Step-3, not a halt. In either case, do NOT end the turn, summarize, or write a handoff message.
 
 Invoke `/relevant-checks` via the Skill tool. If checks fail, diagnose and fix, then re-invoke to confirm.
 
@@ -1010,7 +1010,7 @@ Where `<tool>` is `cursor` or `codex` depending on which tool was used for each 
 
 **5.7 — Implement accepted fixes**: edit files, then
 
-> **Continue after child returns.** When `/relevant-checks` returns, execute Step 5.8's re-review gate next — the next user-facing output is one of `✅ 5: code review — round $round_num findings were not substantial; review converged`, `⏳ 5: code review — round $round_num using <Cursor|Codex|Claude>`, or the Step 6 checks (2) breadcrumb. Do NOT end the turn, summarize, or write a handoff message.
+> **Continue after child returns.** On a clean `/relevant-checks` return (all checks pass), execute Step 5.8's re-review gate next — the next user-facing output is one of `✅ 5: code review — round $round_num findings were not substantial; review converged`, `⏳ 5: code review — round $round_num using <Cursor|Codex|Claude>`, or the Step 6 checks (2) breadcrumb. On a non-clean return, diagnose + fix and re-invoke until clean BEFORE Step 5.8 — the re-invoke loop is in-Step-5.7, not a halt. In either case, do NOT end the turn, summarize, or write a handoff message.
 
 invoke `/relevant-checks` via the Skill tool. On failure, diagnose + fix, re-invoke until clean.
 
@@ -1074,11 +1074,13 @@ ${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/check-review-changes.sh --baselin
 
 Parse both stdout keys with key-based extraction (e.g., `awk -F= '$1=="FILES_CHANGED"{print $2}'`) — both keys are always emitted on every invocation in stable order: `FILES_CHANGED` first, `UNTRACKED_BASELINE` second. Do NOT `eval`/`source` the script's stdout. If `UNTRACKED_BASELINE=missing` (snapshot was never written or got cleaned up after a Step 5 failure), log to `Warnings` (`Step 6 — pre-/review untracked baseline missing; untracked delta not computed for this run`) and continue — `FILES_CHANGED` is still authoritative for staged + unstaged.
 
-If `FILES_CHANGED=false`: print `⏩ 6: checks (2) — skipped, no review changes (<elapsed>)` and IMMEDIATELY skip to Step 7a (Code Flow Diagram runs unconditionally) — do NOT halt after the skip breadcrumb. If files changed,
+If `FILES_CHANGED=false`: print `⏩ 6: checks (2) — skipped, no review changes (<elapsed>)` and IMMEDIATELY skip to Step 7a (Code Flow Diagram runs unconditionally) — do NOT halt after the skip breadcrumb.
 
-> **Continue after child returns.** When `/relevant-checks` returns, execute Step 7's commit review fixes branch next — the next user-facing output is the review-fixes commit flow, followed by `> **🔶 7a: code flow**` when Step 7a starts. Do NOT end the turn, summarize, or write a handoff message.
+Else (`FILES_CHANGED=true`):
 
-invoke `/relevant-checks` via the Skill tool; on failure, diagnose + fix, re-invoke.
+> **Continue after child returns.** On a clean `/relevant-checks` return (all checks pass), execute Step 7's commit (review) flow next — the next user-facing output is the review-fixes commit invocation, followed by `> **🔶 7a: code flow**` when Step 7a starts. On a non-clean return, diagnose + fix and re-invoke until clean BEFORE Step 7 — the re-invoke loop is in-Step-6, not a halt. In either case, do NOT end the turn, summarize, or write a handoff message.
+
+Invoke `/relevant-checks` via the Skill tool; on failure, diagnose + fix, re-invoke.
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
@@ -1403,7 +1405,7 @@ Use `timeout: 1860000` on the Bash call. Parse `ACTION`, `CI_STATUS`, `BEHIND_CO
      1. **Transient** (runner provisioning, Docker pull rate limit, "hosted runner lost communication", etc.): if `transient_retries < 2`, run `${CLAUDE_PLUGIN_ROOT}/scripts/sleep-seconds.sh 60`, then `${CLAUDE_PLUGIN_ROOT}/scripts/ci-rerun-failed.sh --run-id <FAILED_RUN_ID> --repo $REPO`. Parse `RERUN_SUBMITTED` and `ERROR`. If `RERUN_SUBMITTED=false`, print `ERROR` and treat as real failure. Else increment `transient_retries`, re-invoke `ci-wait.sh`. If `transient_retries >= 2`, treat as real failure.
      2. **Real CI failure**: `${CLAUDE_PLUGIN_ROOT}/scripts/gh-run-logs.sh --run-id <FAILED_RUN_ID> --repo $REPO`. Diagnose; fix;
 
-        > **Continue after child returns.** When `/relevant-checks` returns, execute the Step 10 CI-fix commit/push chain next — the next user-facing output comes from `${CLAUDE_PLUGIN_ROOT}/scripts/git-commit.sh -m "Fix CI failure" <fixed-files>`, then `${CLAUDE_PLUGIN_ROOT}/scripts/git-push.sh`, then the re-invoked `ci-wait.sh` result. Do NOT end the turn, summarize, or write a handoff message.
+        > **Continue after child returns.** On a clean `/relevant-checks` return (all checks pass on the fixed files), execute the Step 10 CI-fix commit/push chain next — the next user-facing output comes from `${CLAUDE_PLUGIN_ROOT}/scripts/git-commit.sh -m "Fix CI failure" <fixed-files>`, then `${CLAUDE_PLUGIN_ROOT}/scripts/git-push.sh`, then the re-invoked `ci-wait.sh` result. On a non-clean return, diagnose + fix and re-invoke `/relevant-checks` via the Skill tool until clean BEFORE the commit/push chain — the re-invoke loop is in-fix, not a halt. In either case, do NOT end the turn, summarize, or write a handoff message.
 
         `/relevant-checks`; commit via `${CLAUDE_PLUGIN_ROOT}/scripts/git-commit.sh -m "Fix CI failure" <fixed-files>`; push via `${CLAUDE_PLUGIN_ROOT}/scripts/git-push.sh`. Increment `fix_attempts`. Re-invoke `ci-wait.sh`.
    - **`ACTION=bail`**: print `BAIL_REASON` and `**⚠ 10: CI monitor — bailed, PR may have failing CI (<elapsed>)**`. Proceed to Step 11.
@@ -1551,7 +1553,7 @@ Use `FAILED_RUN_ID` from `ci-status.sh`. If empty, identify manually via `${CLAU
    ```
    Analyze; fix;
 
-   > **Continue after child returns.** When `/relevant-checks` returns, execute the Step 12c CI-fix commit/push chain next — the next user-facing output comes from `${CLAUDE_PLUGIN_ROOT}/scripts/git-commit.sh -m "Fix CI failure" <fixed-files>`, then `${CLAUDE_PLUGIN_ROOT}/scripts/git-push.sh`, then the Step 12a CI wait outcome after returning to **12a**. Do NOT end the turn, summarize, or write a handoff message.
+   > **Continue after child returns.** On a clean `/relevant-checks` return (all checks pass on the fixed files), execute the Step 12c CI-fix commit/push chain next — the next user-facing output comes from `${CLAUDE_PLUGIN_ROOT}/scripts/git-commit.sh -m "Fix CI failure" <fixed-files>`, then `${CLAUDE_PLUGIN_ROOT}/scripts/git-push.sh`, then the Step 12a CI wait outcome after returning to **12a**. On a non-clean return, diagnose + fix and re-invoke `/relevant-checks` via the Skill tool until clean BEFORE the commit/push chain — the re-invoke loop is in-fix, not a halt. In either case, do NOT end the turn, summarize, or write a handoff message.
 
    `/relevant-checks`; commit via `${CLAUDE_PLUGIN_ROOT}/scripts/git-commit.sh -m "Fix CI failure" <fixed-files>`; push via `${CLAUDE_PLUGIN_ROOT}/scripts/git-push.sh`. Back to **12a**.
 

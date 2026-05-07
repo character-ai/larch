@@ -57,6 +57,7 @@ function is_invocation_site(line) {
         if (!found) {
             printf("FAIL: invocation site at line %d lacks canonical opener within 5 preceding lines.\n", NR) > "/dev/stderr"
             printf("  line: %s\n", $0) > "/dev/stderr"
+            aborted = 1
             exit 1
         }
         printf("  PASS: line %d has nearby continuation opener\n", NR)
@@ -65,6 +66,10 @@ function is_invocation_site(line) {
 }
 
 END {
+    # awk runs END after `exit 1` from the main rule. Skip the count assertion
+    # in that case so the failure log shows only the original cause, not a
+    # spurious follow-on "expected N, found M" message.
+    if (aborted) { exit 1 }
     if (site_count != expected) {
         printf("FAIL: expected %d /relevant-checks invocation sites, found %d.\n", expected, site_count) > "/dev/stderr"
         exit 1
