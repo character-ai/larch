@@ -7,7 +7,7 @@ Inputs:
 - `--session-env <path>` is optional. Empty means no health propagation. Non-empty values are trusted caller-controlled paths from `/implement`'s own session machinery; the script still rejects non-absolute paths and ASCII control characters.
 - `--design-only true|false` is optional and defaults to `false`.
 
-Logical failures are fail-closed envelopes, not process failures: the script exits 0 with `MANIFEST_FAILED=true` and `ERROR=<token>`. `invalid-tmpdir`, manifest-reader failures, and persistent branch-capture failure all suppress `POST_DESIGN_BOUNDARY_OK=true` and suppress the `➡️` continuation line. Unexpected internal errors are caught by the `ERR` trap and reported as `ERROR=internal-error`, matching the reader's contract.
+Logical failures are fail-closed envelopes, not process failures: the script exits 0 with `MANIFEST_FAILED=true` and `ERROR=<token>`. `invalid-tmpdir`, `invalid-session-env`, manifest-reader failures, `manifest-reader-no-status`, and persistent branch-capture failure all emit ONLY the failure envelope on stdout — no `MANIFEST_OK=true` line, no `📥` reader breadcrumb, no `POST_DESIGN_BOUNDARY_OK=true`, and no `➡️` continuation line. The reader's success block (if produced) is buffered until every hard gate passes, so a late branch-capture failure cannot leave a contradictory dual envelope on stdout. Unexpected internal errors are caught by the `ERR` trap and reported as `ERROR=internal-error`, matching the reader's contract.
 
 Security invariants:
 - The wrapper never `source`s `manifest.env`, `session-env.sh`, or `.health` sidecars.
@@ -29,6 +29,6 @@ The design-only variant is:
 
 The design-only wording mirrors `skills/implement/SKILL.md` ordering: `plan-goals-test` and `plan-review-tally` are written first in all modes, then `diagrams` is written only on the design-only branch before Step 9a.1.
 
-The manifest reader remains the schema authority. This wrapper re-emits the reader's stdout verbatim on both reader success and reader failure, preserving the existing `📥 1: design plan — manifest loaded (plan=<basename>)` reader breadcrumb as a verification artifact. The wrapper then appends the branch, audit key, success key, warnings, and the imperative `➡️` line.
+The manifest reader remains the schema authority. This wrapper buffers the reader's stdout and emits it only when every hard gate (manifest read, session-env validation, branch capture) passes; on success the reader's `📥 1: design plan — manifest loaded (plan=<basename>)` breadcrumb is preserved as a verification artifact. On reader failure the wrapper re-emits the reader's failure envelope verbatim. The wrapper then appends the branch, audit key, success key, warnings, and the imperative `➡️` line on the success path. Late failures (branch capture, internal errors) emit only the failure envelope — they do not also emit the buffered reader success block.
 
 Edit-in-sync: update this file with `post-design-boundary.sh`, `skills/implement/SKILL.md` Step 1 normal mode, `scripts/test-implement-post-design-boundary.sh`, and `skills/implement/scripts/test-post-design-boundary.sh`. The repo-root harness owns SKILL.md and reader-pin assertions; the skill-local harness owns wrapper integration behavior.

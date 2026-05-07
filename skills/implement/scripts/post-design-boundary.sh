@@ -81,8 +81,6 @@ if ! printf '%s\n' "$READER_OUT" | grep -q '^MANIFEST_OK=true$'; then
     fail_closed "manifest-reader-no-status"
 fi
 
-printf '%s\n' "$READER_OUT"
-
 WARNINGS=""
 
 append_warning() {
@@ -215,6 +213,11 @@ if ! BRANCH=$(capture_branch_once); then
     fi
 fi
 
+# All hard gates have passed. Emit the unified success envelope:
+# (1) reader stdout (MANIFEST_OK + KV + 📥 breadcrumb), then (2) wrapper extensions.
+# Buffering avoids the dual-envelope footgun where MANIFEST_OK and a later
+# MANIFEST_FAILED could coexist on a late-failure path.
+printf '%s\n' "$READER_OUT"
 printf 'BRANCH=%s\n' "$BRANCH"
 if [[ "$DESIGN_ONLY" = true ]]; then
     echo "NEXT_ACTION=plan-goals-test-and-plan-review-tally-then-diagrams-then-step-9a1"

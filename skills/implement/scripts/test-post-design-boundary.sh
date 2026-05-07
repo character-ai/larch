@@ -221,7 +221,11 @@ case "$LAST_LINE" in
     *) fail "write failure path final line is not the imperative breadcrumb: $LAST_LINE" ;;
 esac
 
-# Detached HEAD fails branch capture after retry and suppresses success markers.
+# Detached HEAD fails branch capture after retry and emits a clean failure
+# envelope (no MANIFEST_OK, no 📥 breadcrumb, no success markers). This is the
+# regression guard for the dual-envelope bug where a successful reader read
+# was emitted before branch capture, leaving stdout with both MANIFEST_OK=true
+# and a trailing MANIFEST_FAILED=true.
 TMP8="$TMPROOT/branch-fail"
 GIT8="$TMPROOT/git-branch-fail"
 make_manifest "$TMP8"
@@ -230,6 +234,8 @@ git -C "$GIT8" checkout -q --detach HEAD
 OUT=$(cd "$GIT8" && CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash "$WRAPPER" --implement-tmpdir "$TMP8")
 assert_contains "$OUT" '^MANIFEST_FAILED=true$' "detached HEAD did not fail closed"
 assert_contains "$OUT" '^ERROR=branch-capture-failed$' "detached HEAD did not emit branch-capture-failed"
+assert_not_contains "$OUT" '^MANIFEST_OK=true$' "detached HEAD emitted MANIFEST_OK=true (dual-envelope regression)"
+assert_not_contains "$OUT" '📥 1: design plan' "detached HEAD emitted reader breadcrumb (dual-envelope regression)"
 assert_not_contains "$OUT" 'POST_DESIGN_BOUNDARY_OK=true' "detached HEAD emitted success marker"
 assert_not_contains "$OUT" '➡️ 1: design plan' "detached HEAD emitted imperative breadcrumb"
 
@@ -251,5 +257,26 @@ OUT=$(CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash "$WRAPPER" --implement-tmpdir "$CONTR
 assert_contains "$OUT" '^MANIFEST_FAILED=true$' "control-char tmpdir did not fail closed"
 assert_contains "$OUT" '^ERROR=invalid-tmpdir$' "control-char tmpdir did not emit invalid-tmpdir"
 assert_not_contains "$OUT" 'POST_DESIGN_BOUNDARY_OK=true' "control-char tmpdir emitted success marker"
+
+# --session-env validation: relative path is rejected with invalid-session-env.
+TMP10="$TMPROOT/session-rel"
+GIT10="$TMPROOT/git-session-rel"
+make_manifest "$TMP10"
+make_git_repo "$GIT10"
+OUT=$(cd "$GIT10" && CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash "$WRAPPER" --implement-tmpdir "$TMP10" --session-env "relative/session-env.sh")
+assert_contains "$OUT" '^MANIFEST_FAILED=true$' "relative session-env did not fail closed"
+assert_contains "$OUT" '^ERROR=invalid-session-env$' "relative session-env did not emit invalid-session-env"
+assert_not_contains "$OUT" 'POST_DESIGN_BOUNDARY_OK=true' "relative session-env emitted success marker"
+
+# --session-env validation: control-character path is rejected with invalid-session-env.
+TMP11="$TMPROOT/session-ctrl"
+GIT11="$TMPROOT/git-session-ctrl"
+make_manifest "$TMP11"
+make_git_repo "$GIT11"
+CONTROL_SESSION="$TMPROOT/"$'bad\nsession.sh'
+OUT=$(cd "$GIT11" && CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash "$WRAPPER" --implement-tmpdir "$TMP11" --session-env "$CONTROL_SESSION")
+assert_contains "$OUT" '^MANIFEST_FAILED=true$' "control-char session-env did not fail closed"
+assert_contains "$OUT" '^ERROR=invalid-session-env$' "control-char session-env did not emit invalid-session-env"
+assert_not_contains "$OUT" 'POST_DESIGN_BOUNDARY_OK=true' "control-char session-env emitted success marker"
 
 echo "PASS: post-design-boundary wrapper integration tests"
