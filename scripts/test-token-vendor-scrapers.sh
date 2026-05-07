@@ -165,7 +165,17 @@ STUB_EOF
 
         LCI_LEDGER=$(LARCH_TOKEN_SESSION_ID="$LCI_SESSION" "$REPO_ROOT/scripts/token-ledger.sh" dump | sed -n '1p')
         if [[ ! -s "$LCI_LEDGER" ]]; then
-            fail "launch-${variant}-implement.sh produced empty/missing ledger ($LCI_LEDGER); cursor_auth_preflight may have aborted before the launcher could record-vendor (verify CURSOR_API_KEY env, ${variant} stub, and PATH wiring)"
+            case "$variant" in
+                cursor)
+                    fail "launch-cursor-implement.sh produced empty/missing ledger ($LCI_LEDGER); cursor_auth_preflight may have aborted before the launcher could record-vendor (verify CURSOR_API_KEY env, cursor stub, and PATH wiring)"
+                    ;;
+                codex)
+                    fail "launch-codex-implement.sh produced empty/missing ledger ($LCI_LEDGER); the launcher exited before record-vendor ran (verify codex stub on PATH, $LCI_SCRATCH wiring, and that the stub writes a parseable manifest.json)"
+                    ;;
+                *)
+                    fail "launch-${variant}-implement.sh produced empty/missing ledger ($LCI_LEDGER); the launcher exited before record-vendor ran (verify ${variant} stub on PATH, scratch dir wiring, and that the stub writes a parseable manifest.json)"
+                    ;;
+            esac
             rm -f "$LCI_LEDGER"
             continue
         fi

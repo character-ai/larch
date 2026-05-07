@@ -75,9 +75,9 @@ Two-pass, applied AFTER redaction:
 
 2. **Body-level cap** (`BODY_CAP=60000`): if total body length still exceeds 60000 chars after pass 1, walk the collapse priority list in order:
 
-   `execution-issues` → `plan-review-tally` → `code-review-tally` → `oos-issues` → `run-statistics` → `version-bump-reasoning` → `diagrams` → `plan-goals-test`
+   `execution-issues` → `plan-review-tally` → `code-review-tally` → `oos-issues` → `run-statistics` → `timing-report` → `version-bump-reasoning` → `diagrams` → `plan-goals-test`
 
-   For each slug, replace the interior with `[section '<slug>' truncated — see execution-issues.md locally]`. Stop once total length fits the cap. The priority order encodes user-value: most-ephemeral sections collapse first (execution-issues are reproducible from local tmpdir); diagrams and plan-goals-test collapse last (highest user value).
+   The runtime authority is the `COLLAPSE_PRIORITY` array in `scripts/tracking-issue-write.sh`; the order shown here mirrors it but is not normative. For each slug, replace the interior with `[section '<slug>' truncated — see execution-issues.md locally]`. Stop once total length fits the cap. The priority order encodes user-value: most-ephemeral sections collapse first (execution-issues are reproducible from local tmpdir); diagrams and plan-goals-test collapse last (highest user value).
 
 ### UTF-8 policy
 
@@ -85,7 +85,7 @@ Truncation is byte-length based. Multibyte UTF-8 splitting is tolerated because 
 
 ## Lifecycle markers
 
-`append-comment` accepts `--lifecycle-marker <id>`, which prepends `<!-- larch:lifecycle-marker:<id> -->\n` to the body before redaction+truncation. Non-empty marker IDs must match `[A-Za-z0-9._:-]+`; bytes outside that positive charset are rejected before body composition so a caller cannot inject an HTML-comment terminator into the synthesized marker. Passing `--lifecycle-marker ""` is accepted and behaves like omitting the flag. Three canonical markers for Phase 2+ callers: `pr-opened`, `pr-closed`, `in-progress`. These machine-owned markers replace the prose-prefix filters (`PR opened:`, `Closed by PR #`) from the original design — prose prefixes were too loose (matched ordinary English comments).
+`append-comment` accepts `--lifecycle-marker <id>`, which prepends `<!-- larch:lifecycle-marker:<id> -->\n` to the body before redaction+truncation. Non-empty marker IDs must match `[A-Za-z0-9._:-]+` AND must not contain the substring `--` (HTML comment data may not contain consecutive hyphens — parsers may terminate the comment early on the first `--`, even when followed by a non-`>` byte). Bytes outside the positive charset are rejected with one diagnostic; the `--` substring is rejected with a separate diagnostic so callers can tell the two cases apart. Passing `--lifecycle-marker ""` is accepted and behaves like omitting the flag. Three canonical markers for Phase 2+ callers: `pr-opened`, `pr-closed`, `in-progress`. These machine-owned markers replace the prose-prefix filters (`PR opened:`, `Closed by PR #`) from the original design — prose prefixes were too loose (matched ordinary English comments).
 
 ## Title-prefix lifecycle (rename subcommand)
 

@@ -16,6 +16,7 @@ Regression harness for `scripts/launch-gemini-review.sh`.
 - Verifies the snapshot guard detects and reverts a tracked-mutation case (one tracked file overwritten + one tracked file deleted) injected via the same hook. Same assertion shape as the new-untracked case, with both file contents restored to their HEAD values.
 - Verifies the snapshot guard detects an index-only mutation (reviewer runs `git add` against an already-worktree-modified tracked file) and clears the reviewer-added index entries via `git reset HEAD --`. The on-disk content hash is unchanged in this scenario; the I-record schema in `capture_snapshot` is the load-bearing detection signal.
 - Verifies the launcher's non-git fail-open posture: when invoked outside any git working tree, the snapshot guard skips with the documented diagnostic and the run still succeeds end-to-end.
+- Verifies model-rejection paths via `scripts/lib-gemini-model-resolver.sh` (the launcher now sources this helper instead of inlining the env-precedence chain). Blank `LARCH_GEMINI_MODEL`, whitespace-only, and control-byte values are rejected via `fail_closed` before `gemini` runs. Each rejection asserts the canonical sidecar set — non-zero process exit code matching `.done`, empty `$OUTPUT`, and a `.diag` diagnostic anchored on the resolver's stderr message identifying the rejected source.
 
 ## Wiring
 
@@ -23,4 +24,4 @@ Target: `make test-harnesses`. Exit 0 on all-pass, exit 1 on any failure. Gated 
 
 ## Edit-in-sync
 
-Update with `scripts/launch-gemini-review.sh`, `scripts/launch-gemini-review.md`, `scripts/gemini-reviewer-policy.toml`, `scripts/run-external-agent.sh`, `scripts/lib-validate-meta-path.sh`, and the Gemini CLI JSON schema. Any change to the snapshot-guard semantics (record schema, restore branches, exit codes, env-var validation, EXIT-trap cleanup, prompt preamble text) requires updating the four guard/preamble test cases above in lockstep.
+Update with `scripts/launch-gemini-review.sh`, `scripts/launch-gemini-review.md`, `scripts/gemini-reviewer-policy.toml`, `scripts/run-external-agent.sh`, `scripts/lib-validate-meta-path.sh`, `scripts/lib-gemini-model-resolver.sh`, `scripts/lib-gemini-model-resolver.md`, and the Gemini CLI JSON schema. Any change to the snapshot-guard semantics (record schema, restore branches, exit codes, env-var validation, EXIT-trap cleanup, prompt preamble text) requires updating the four guard/preamble test cases above in lockstep. Any change to the resolver's rejection rules (blank/whitespace/cntrl gates, env precedence) requires updating both this harness's resolver-rejection cases and the parallel cases in `scripts/test-check-reviewers.sh` and `skills/implement/scripts/test-gemini-implementer.sh`.

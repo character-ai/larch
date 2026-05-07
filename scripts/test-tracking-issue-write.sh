@@ -688,6 +688,34 @@ for i in "${!unsafe_markers[@]}"; do
 done
 
 echo ""
+echo "=== (e4) append-comment lifecycle-marker rejects '--' substring (HTML comment data invariant) ==="
+double_hyphen_markers=(
+    'foo--bar'
+    'in--progress'
+    'a--'
+    '--b'
+)
+double_hyphen_labels=(
+    'mid-double-hyphen'
+    'two-segments-double'
+    'trailing-double'
+    'leading-double'
+)
+for i in "${!double_hyphen_markers[@]}"; do
+    marker="${double_hyphen_markers[$i]}"
+    label="${double_hyphen_labels[$i]}"
+    STUB_E4="$TMPROOT/stub-e4-$label"
+    build_stub_success "$STUB_E4"
+    BODY_E4="$TMPROOT/body-e4-$label.txt"
+    printf 'plain append comment body\n' > "$BODY_E4"
+    exit_e4=0
+    out_e4=$(PATH="$STUB_E4:$PATH" bash "$WRITE" append-comment --issue 42 --body-file "$BODY_E4" --lifecycle-marker "$marker" --repo owner/repo 2>&1) || exit_e4=$?
+    assert_equal "$exit_e4" "1" "(e4) double-hyphen lifecycle marker $label exits 1"
+    assert_contains "$out_e4" 'FAILED=true' "(e4) double-hyphen lifecycle marker $label emits FAILED=true"
+    assert_contains "$out_e4" "ERROR=lifecycle-marker contains the substring '--'" "(e4) double-hyphen lifecycle marker $label emits dedicated double-hyphen error"
+done
+
+echo ""
 echo "=== (f1) upsert-anchor with exactly one existing anchor → PATCH, UPDATED=true ==="
 # Already covered by (c) which tests PATCH against one existing anchor.
 # Additional assertion: UPDATED=true is surfaced in output AND no new comment

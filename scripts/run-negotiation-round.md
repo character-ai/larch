@@ -17,3 +17,7 @@ Sources `scripts/lib-cursor-auth.sh` in the Cursor branch and runs `cursor_auth_
 | other | Propagated from `scripts/agent-model-args.sh`; inspect that helper's stderr diagnostic |
 
 The negotiation flow is foreground-synchronous and has no sentinel collector, so a synthesized `.done`/`.diag` (as in `launch-cursor-review.sh`) is unnecessary here.
+
+## Stdout envelope symmetry
+
+Every terminal exit path (success, exit 2, exit 3) emits `RESPONSE_FILE=<path>` on stdout before exiting, so callers can parse the response-file path with one rule regardless of failure class. The `RESPONSE_FILE` value still points at the configured `--output` path even on the exit-3 (preflight) path — the file may be empty (the script `rm -f`s it before invocation), but the key is always present. The exit-1 usage-error and `agent-model-args.sh`-propagated paths do NOT emit `RESPONSE_FILE` (they fail before the response-file slot is meaningful).

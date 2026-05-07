@@ -93,10 +93,16 @@ case "$TOOL" in
         # Source the Cursor auth helper and run preflight before launching.
         # No sentinel collector here (negotiation is foreground-synchronous),
         # so direct exit 3 on preflight failure is the distinct auth contract.
+        # Emit RESPONSE_FILE= on the preflight-failure path so the stdout
+        # envelope is symmetric with the exit-2 reviewer-command-failed path
+        # (callers can `grep RESPONSE_FILE=` regardless of failure class).
         # shellcheck source=scripts/lib-cursor-auth.sh
         # shellcheck disable=SC1091
         . "$SCRIPT_DIR/lib-cursor-auth.sh"
-        cursor_auth_preflight || exit 3
+        if ! cursor_auth_preflight; then
+            echo "RESPONSE_FILE=$OUTPUT_FILE"
+            exit 3
+        fi
         CURSOR_AUTH_ARGS=()
         cursor_auth_argv
         cursor agent -p --force --trust ${CURSOR_MODEL_ARGS[@]+"${CURSOR_MODEL_ARGS[@]}"} ${CURSOR_AUTH_ARGS[@]+"${CURSOR_AUTH_ARGS[@]}"} --workspace "$WORKSPACE" \
