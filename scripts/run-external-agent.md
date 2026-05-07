@@ -26,6 +26,23 @@ The current line parser in `scripts/collect-agent-results.sh` uses `${meta_line%
 
 The capture flags are mutually exclusive. Metadata includes both `CAPTURE_STDOUT` and `CAPTURE_STDOUT_ONLY`; retry callers must preserve the original mode.
 
+## Inner-sentinel mode
+
+`RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX` is an optional launcher-integration
+knob. When unset, the wrapper preserves the public completion contract and
+writes `<output>.done` from its `EXIT` trap. When set to the only accepted value,
+`.inner.done`, the trap writes `<output>.inner.done` instead; a wrapping launcher
+is then responsible for publishing `<output>.done` after its own post-processing
+has completed. Any other value is rejected with an `ERROR:` line on stderr and
+exit 1 before stale-file cleanup, trap installation, `.meta` writes, or child
+launch. Stale cleanup always removes both `<output>.done` and
+`<output>.inner.done`, regardless of mode, so switching modes cannot reuse an old
+sentinel.
+
+`scripts/launch-cursor-review.sh` uses this mode so its JSON `.result`
+extraction and token-ledger scrape complete before collectors observe the public
+sentinel. Non-wrapping callers keep the default `<output>.done` behavior.
+
 ## .meta sidecar grammar
 
 The `<output>.meta` sidecar is a line-oriented file: one `KEY=VALUE` record per physical line, parsed by `scripts/collect-agent-results.sh` with the first `=` separating the key from the value. Values therefore must not embed physical newlines or Unicode line-break code points such as U+2028/U+2029.
@@ -42,9 +59,10 @@ There is no backward compatibility with the old `CMD=` metadata line. A collecto
 
 ## Invariants
 
-- Always remove stale `<output>`, `<output>.done`, `<output>.meta`, and `<output>.diag` before launch.
-- Always write `<output>.done` via the exit trap.
+- Always remove stale `<output>`, `<output>.done`, `<output>.inner.done`, `<output>.meta`, and `<output>.diag` before launch.
+- Always write `<output>.done` via the exit trap in default mode, or `<output>.inner.done` when `RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX=.inner.done`.
 - The trap writes the value of `EXIT_CODE`, which defaults to `99` ("wrapper crashed before capturing real exit code"). Failure paths between trap installation and child launch (e.g. `CMD_JSON` serialization) must assign `EXIT_CODE` to the real exit value before calling `exit`, so the sentinel matches the process exit status; the `99` default is reserved for unhandled crashes.
+- If the wrapper exits while the child PID is still alive (for example, because a wrapping launcher signaled the wrapper), the trap kills and reaps the child before writing the sentinel. This keeps launcher-owned public sentinel publication from racing a still-running tool process.
 - Keep `set -euo pipefail`; child exit codes are captured via guarded `wait`.
 - Diagnostic text is appended to `<output>.diag` so stdout-only capture can retain child stderr.
 - `jq` is a hard prerequisite for this wrapper, in addition to the repo-wide `jq` dependency used by other larch scripts.
@@ -64,4 +82,4 @@ The wrapper polls the child PID with `kill -0` in a loop and `sleep`s `$RUN_EXTE
 
 ## Edit-in-sync
 
-Update `scripts/lib-validate-meta-path.sh`, `scripts/launch-gemini-review.sh`, `scripts/collect-agent-results.sh` retry metadata parsing, launch wrappers, and this contract when adding capture modes, metadata keys, or changing the `OUTPUT_FILE=` / `CMD_JSON=` retry-substitution invariant.
+Update `scripts/lib-validate-meta-path.sh`, `scripts/launch-cursor-review.sh`, `scripts/launch-gemini-review.sh`, `scripts/collect-agent-results.sh` retry metadata parsing, launch wrappers, and this contract when adding capture modes, metadata keys, sentinel modes, or changing the `OUTPUT_FILE=` / `CMD_JSON=` retry-substitution invariant.

@@ -77,7 +77,7 @@ assert_no_artifacts() {
     local label="$1"
     local output="$2"
     local suffix
-    for suffix in "" ".done" ".meta" ".diag"; do
+    for suffix in "" ".done" ".inner.done" ".meta" ".diag"; do
         if [[ -e "${output}${suffix}" ]]; then
             fail "$label: unexpected artifact ${output}${suffix}"
         else
@@ -194,6 +194,78 @@ if [[ -e "${JQ_FAIL_OUT}.meta" ]]; then
 else
     pass
 fi
+
+# 14. Inner-sentinel mode writes <output>.inner.done and leaves the public
+# <output>.done for a wrapping launcher to publish after post-processing.
+INNER_OUT="$TMPDIR/inner-mode.txt"
+RUN_STDOUT="$TMPDIR/inner-mode.stdout"
+RUN_STDERR="$TMPDIR/inner-mode.stderr"
+set +e
+RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX=.inner.done "$WRAPPER" --tool codex --output "$INNER_OUT" --timeout 5 --capture-stdout -- bash -c 'printf inner' >"$RUN_STDOUT" 2>"$RUN_STDERR"
+RUN_CODE=$?
+set -e
+assert_equals "inner-mode exit" "0" "$RUN_CODE"
+assert_file_content "inner-mode output" "$INNER_OUT" "inner"
+assert_file_content "inner-mode inner done" "${INNER_OUT}.inner.done" "0"
+if [[ -e "${INNER_OUT}.done" ]]; then
+    fail "inner-mode public done should not exist"
+else
+    pass
+fi
+
+# 15. Default mode keeps today's public .done behavior and does not leave an
+# inner sentinel.
+DEFAULT_OUT="$TMPDIR/default-mode.txt"
+run_subject "default-mode" "$DEFAULT_OUT" --capture-stdout -- bash -c 'printf default'
+assert_equals "default-mode exit" "0" "$RUN_CODE"
+assert_file_content "default-mode done" "${DEFAULT_OUT}.done" "0"
+if [[ -e "${DEFAULT_OUT}.inner.done" ]]; then
+    fail "default-mode inner sentinel should not exist"
+else
+    pass
+fi
+
+# 16. Pre-launch cleanup removes stale public and inner sentinels in either mode.
+CLEANUP_OUT="$TMPDIR/cleanup-mode.txt"
+printf 'stale-public\n' > "${CLEANUP_OUT}.done"
+printf 'stale-inner\n' > "${CLEANUP_OUT}.inner.done"
+run_subject "cleanup-default" "$CLEANUP_OUT" --capture-stdout -- bash -c 'printf cleanup'
+assert_equals "cleanup-default exit" "0" "$RUN_CODE"
+assert_file_content "cleanup-default done" "${CLEANUP_OUT}.done" "0"
+if [[ -e "${CLEANUP_OUT}.inner.done" ]]; then
+    fail "cleanup-default stale inner sentinel should be removed"
+else
+    pass
+fi
+
+CLEANUP_INNER_OUT="$TMPDIR/cleanup-inner-mode.txt"
+printf 'stale-public\n' > "${CLEANUP_INNER_OUT}.done"
+printf 'stale-inner\n' > "${CLEANUP_INNER_OUT}.inner.done"
+RUN_STDOUT="$TMPDIR/cleanup-inner.stdout"
+RUN_STDERR="$TMPDIR/cleanup-inner.stderr"
+set +e
+RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX=.inner.done "$WRAPPER" --tool codex --output "$CLEANUP_INNER_OUT" --timeout 5 --capture-stdout -- bash -c 'printf cleanup-inner' >"$RUN_STDOUT" 2>"$RUN_STDERR"
+RUN_CODE=$?
+set -e
+assert_equals "cleanup-inner exit" "0" "$RUN_CODE"
+assert_file_content "cleanup-inner inner done" "${CLEANUP_INNER_OUT}.inner.done" "0"
+if [[ -e "${CLEANUP_INNER_OUT}.done" ]]; then
+    fail "cleanup-inner stale public sentinel should be removed"
+else
+    pass
+fi
+
+# 17. Unsupported inner-sentinel suffixes fail before side effects.
+BOGUS_OUT="$TMPDIR/bogus-inner-mode.txt"
+RUN_STDOUT="$TMPDIR/bogus-inner.stdout"
+RUN_STDERR="$TMPDIR/bogus-inner.stderr"
+set +e
+RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX=.bogus "$WRAPPER" --tool codex --output "$BOGUS_OUT" --timeout 5 --capture-stdout -- bash -c 'printf should-not-run' >"$RUN_STDOUT" 2>"$RUN_STDERR"
+RUN_CODE=$?
+set -e
+assert_equals "bogus-inner exit" "1" "$RUN_CODE"
+assert_grep "bogus-inner stderr" "ERROR: invalid RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX value '.bogus'; expected '.inner.done'" "$RUN_STDERR"
+assert_no_artifacts "bogus-inner no side effects" "$BOGUS_OUT"
 
 if [[ "$FAIL" -ne 0 ]]; then
     printf 'FAIL: test-run-external-agent.sh - %s failed, %s passed\n' "$FAIL" "$PASS" >&2

@@ -453,6 +453,9 @@ if [[ ${#RETRY_FILES[@]} -gt 0 ]]; then
         META_CAPTURE_STDOUT_ONLY=""
         META_CMD_JSON=""
         META_ORIG_OUTPUT=""
+        META_OUTER_LAUNCHER=""
+        META_OUTER_LAUNCHER_PROMPT_FILE=""
+        META_OUTER_LAUNCHER_WORKDIR=""
         while IFS= read -r meta_line || [[ -n "$meta_line" ]]; do
             meta_key="${meta_line%%=*}"
             meta_val="${meta_line#*=}"
@@ -463,8 +466,96 @@ if [[ ${#RETRY_FILES[@]} -gt 0 ]]; then
                 CAPTURE_STDOUT_ONLY) META_CAPTURE_STDOUT_ONLY="$meta_val" ;;
                 OUTPUT_FILE)    META_ORIG_OUTPUT="$meta_val" ;;
                 CMD_JSON)       META_CMD_JSON="$meta_val" ;;
+                OUTER_LAUNCHER) META_OUTER_LAUNCHER="$meta_val" ;;
+                OUTER_LAUNCHER_PROMPT_FILE) META_OUTER_LAUNCHER_PROMPT_FILE="$meta_val" ;;
+                OUTER_LAUNCHER_WORKDIR) META_OUTER_LAUNCHER_WORKDIR="$meta_val" ;;
             esac
         done < "$META"
+
+        _meta_invalid_reason=""
+        if [[ -z "$META_TIMEOUT" ]]; then
+            _meta_invalid_reason="Retry metadata invalid: TIMEOUT missing"
+        else
+            case "$META_TIMEOUT" in
+                ''|*[!0-9]*) _meta_invalid_reason="Retry metadata invalid: TIMEOUT not a positive integer" ;;
+                *) if (( 10#$META_TIMEOUT < 1 )); then
+                       _meta_invalid_reason="Retry metadata invalid: TIMEOUT not a positive integer"
+                   fi ;;
+            esac
+        fi
+        if [[ -n "$_meta_invalid_reason" ]]; then
+            IDX="${RETRY_INDICES[$j]}"
+            mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "$_meta_invalid_reason"
+            continue
+        fi
+        META_TIMEOUT=$((10#$META_TIMEOUT))
+
+        if [[ -n "$META_OUTER_LAUNCHER" || -n "$META_OUTER_LAUNCHER_PROMPT_FILE" || -n "$META_OUTER_LAUNCHER_WORKDIR" ]]; then
+            IDX="${RETRY_INDICES[$j]}"
+            if [[ -z "$META_OUTER_LAUNCHER" ]]; then
+                mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: missing OUTER_LAUNCHER"
+                continue
+            fi
+            if [[ -z "$META_OUTER_LAUNCHER_PROMPT_FILE" ]]; then
+                mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: missing OUTER_LAUNCHER_PROMPT_FILE"
+                continue
+            fi
+            if [[ -z "$META_OUTER_LAUNCHER_WORKDIR" ]]; then
+                mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: missing OUTER_LAUNCHER_WORKDIR"
+                continue
+            fi
+            case "$META_OUTER_LAUNCHER" in
+                *..*) mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: OUTER_LAUNCHER contains .."; continue ;;
+            esac
+            _expected_launcher="$SCRIPT_DIR/launch-cursor-review.sh"
+            if ! _expected_launcher_dir=$(cd "$(dirname "$_expected_launcher")" 2>/dev/null && pwd -P 2>/dev/null); then
+                mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: OUTER_LAUNCHER not canonical launch-cursor-review.sh"
+                continue
+            fi
+            if ! _candidate_launcher_dir=$(cd "$(dirname "$META_OUTER_LAUNCHER")" 2>/dev/null && pwd -P 2>/dev/null); then
+                mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: OUTER_LAUNCHER not canonical launch-cursor-review.sh"
+                continue
+            fi
+            _expected_launcher_canonical="$_expected_launcher_dir/$(basename "$_expected_launcher")"
+            _candidate_canonical="$_candidate_launcher_dir/$(basename "$META_OUTER_LAUNCHER")"
+            if [[ "$_candidate_canonical" != "$_expected_launcher_canonical" ]]; then
+                mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: OUTER_LAUNCHER not canonical launch-cursor-review.sh"
+                continue
+            fi
+            if [[ ! -f "$META_OUTER_LAUNCHER" || ! -x "$META_OUTER_LAUNCHER" ]]; then
+                mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: OUTER_LAUNCHER not a regular executable file"
+                continue
+            fi
+            _expected_prompt="${ORIG_OUTPUT}.prompt"
+            case "$META_OUTER_LAUNCHER_PROMPT_FILE" in
+                *..*) mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: OUTER_LAUNCHER_PROMPT_FILE contains .."; continue ;;
+            esac
+            if [[ "$META_OUTER_LAUNCHER_PROMPT_FILE" != "$_expected_prompt" ]]; then
+                mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: OUTER_LAUNCHER_PROMPT_FILE not the expected sidecar"
+                continue
+            fi
+            if [[ ! -f "$META_OUTER_LAUNCHER_PROMPT_FILE" || -L "$META_OUTER_LAUNCHER_PROMPT_FILE" || ! -r "$META_OUTER_LAUNCHER_PROMPT_FILE" ]]; then
+                mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: OUTER_LAUNCHER_PROMPT_FILE not a readable regular non-symlink file"
+                continue
+            fi
+            case "$META_OUTER_LAUNCHER_WORKDIR" in
+                *..*) mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: OUTER_LAUNCHER_WORKDIR contains .."; continue ;;
+            esac
+            if [[ ! -d "$META_OUTER_LAUNCHER_WORKDIR" ]]; then
+                mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: OUTER_LAUNCHER_WORKDIR not a directory"
+                continue
+            fi
+            (
+                cd "$META_OUTER_LAUNCHER_WORKDIR" || exit 1
+                "$META_OUTER_LAUNCHER" \
+                    --output "$RETRY_OUTPUT" \
+                    --timeout "$META_TIMEOUT" \
+                    --prompt-file "$META_OUTER_LAUNCHER_PROMPT_FILE"
+            ) >/dev/null 2>&1 &
+            RETRY_SENTINELS+=("${RETRY_OUTPUT}.done")
+            RETRY_LAUNCHED[j]=1
+            continue
+        fi
 
         # Fail closed on missing/malformed retry metadata: immediately mark the
         # original result unhealthy and flip the tool to unhealthy so callers
@@ -493,23 +584,6 @@ if [[ ${#RETRY_FILES[@]} -gt 0 ]]; then
             mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: malformed CMD_JSON"
             continue
         fi
-        _meta_invalid_reason=""
-        if [[ -z "$META_TIMEOUT" ]]; then
-            _meta_invalid_reason="Retry metadata invalid: TIMEOUT missing"
-        else
-            case "$META_TIMEOUT" in
-                ''|*[!0-9]*) _meta_invalid_reason="Retry metadata invalid: TIMEOUT not a positive integer" ;;
-                *) if (( 10#$META_TIMEOUT < 1 )); then
-                       _meta_invalid_reason="Retry metadata invalid: TIMEOUT not a positive integer"
-                   fi ;;
-            esac
-        fi
-        if [[ -n "$_meta_invalid_reason" ]]; then
-            IDX="${RETRY_INDICES[$j]}"
-            mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "$_meta_invalid_reason"
-            continue
-        fi
-        META_TIMEOUT=$((10#$META_TIMEOUT))
 
         # Build retry command: run-external-agent.sh with updated output path
         RETRY_ARGS=(--tool "$META_TOOL" --output "$RETRY_OUTPUT" --timeout "$META_TIMEOUT")
