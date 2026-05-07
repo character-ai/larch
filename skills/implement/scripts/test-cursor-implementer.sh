@@ -337,6 +337,62 @@ else
     fail 10 "resume invocation block missing from composed prompt"
 fi
 
+# Test 11: record-vendor smoke (issue #1351 Gap 1). Stub Cursor emits a
+# transcript containing a valid `.usage` block with known counters; after the
+# launcher returns, dump the per-session ledger and assert a vendor row with
+# raw=cursor_implement, the expected per-counter values, and total=110. Skip
+# when jq is unavailable (parallel to launch-cursor-implement.sh's runtime
+# `command -v jq` guard around its `.usage` parse).
+if command -v jq >/dev/null 2>&1; then
+    RV_STUB_BIN="$SCRATCH/rv-bin"
+    mkdir -p "$RV_STUB_BIN"
+    cat > "$RV_STUB_BIN/cursor" <<'STUB_EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+: "${STUB_MANIFEST_PATH:?}"
+cat > "$STUB_MANIFEST_PATH.tmp" <<JSON
+{"schema_version":"1","status":"bailed","bail_reason":"stub-bailed"}
+JSON
+mv "$STUB_MANIFEST_PATH.tmp" "$STUB_MANIFEST_PATH"
+printf '{"result":"stub","usage":{"inputTokens":11,"outputTokens":22,"cacheReadTokens":33,"cacheWriteTokens":44}}\n'
+STUB_EOF
+    chmod +x "$RV_STUB_BIN/cursor"
+
+    RV_SESSION_ID="rv-cursor-$$"
+    RV_TRANSCRIPT="$SCRATCH/rv-transcript.txt"
+    RV_SIDECAR="$SCRATCH/rv-sidecar.log"
+    RV_MANIFEST="$SCRATCH/rv-manifest.json"
+    RV_QA="$SCRATCH/rv-qa.json"
+
+    cd "$REPO_ROOT" && \
+        PATH="$RV_STUB_BIN:$PATH" \
+        STUB_MANIFEST_PATH="$RV_MANIFEST" \
+        LARCH_CURSOR_MODEL="stub-model" \
+        LARCH_TOKEN_SESSION_ID="$RV_SESSION_ID" \
+        CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+        "$LAUNCHER" \
+            --transcript-path "$RV_TRANSCRIPT" \
+            --sidecar-log "$RV_SIDECAR" \
+            --manifest-path "$RV_MANIFEST" \
+            --qa-pending-path "$RV_QA" \
+            --plan-file "$PLAN" \
+            --feature-file "$FEATURE" \
+            --agent-prompt "$AGENT_PROMPT" \
+            --timeout 30 >/dev/null
+
+    RV_LEDGER=$(LARCH_TOKEN_SESSION_ID="$RV_SESSION_ID" "$REPO_ROOT/scripts/token-ledger.sh" dump | sed -n '1p')
+    if [[ -f "$RV_LEDGER" ]] && jq -e \
+        'select(.type=="vendor" and .vendor=="cursor" and .raw=="cursor_implement" and .input==11 and .output==22 and .cache_read==33 and .cache_create==44 and .total==110)' \
+        "$RV_LEDGER" >/dev/null 2>&1; then
+        pass
+    else
+        fail 11 "cursor record-vendor JSONL missing or counters wrong; ledger=$RV_LEDGER content=$(cat "$RV_LEDGER" 2>/dev/null)"
+    fi
+    rm -f "$RV_LEDGER"
+else
+    pass  # jq absent — skip per launcher runtime guard parallel
+fi
+
 TOTAL=$((PASS_COUNT + FAIL_COUNT))
 if (( FAIL_COUNT == 0 )); then
     echo "PASS: test-cursor-implementer.sh — $PASS_COUNT/$TOTAL assertions"

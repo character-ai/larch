@@ -79,6 +79,30 @@ RAW=$'cursor_"quoted"\nreview'
 "$SCRIPT" --ledger "$LEDGER" record-vendor cursor total=7 raw="$RAW"
 if jq -e --arg raw "$RAW" 'select(.type=="vendor" and .vendor=="cursor" and .raw==$raw)' "$LEDGER" >/dev/null; then pass; else fail "raw field was not JSON-safe"; fi
 
+# `--ledger PATH` "anywhere in argv" pre-pass (issue #1351 Gap 2). Pre-pass
+# strips every `--ledger PATH` pair from anywhere in argv, last-wins. The
+# subcommand position is irrelevant.
+
+# Subcommand-then-flag form (mark): pre-pass before /bump-version replaced the
+# "unknown record-vendor key: --ledger" warnings on this exact shape.
+LEDGER_AFTER="$TMP/after.jsonl"
+"$SCRIPT" mark "Step after-subcmd" --ledger "$LEDGER_AFTER"
+if [[ -f "$LEDGER_AFTER" ]] && jq -e 'select(.type=="mark" and .step=="Step after-subcmd")' "$LEDGER_AFTER" >/dev/null; then pass; else fail "--ledger after subcommand should record the mark: $(cat "$LEDGER_AFTER" 2>/dev/null)"; fi
+
+# Tail position (record-vendor with --ledger as the trailing pair).
+LEDGER_TAIL="$TMP/tail.jsonl"
+"$SCRIPT" record-vendor codex total=99 raw=codex_implement --ledger "$LEDGER_TAIL"
+if [[ -f "$LEDGER_TAIL" ]] && jq -e 'select(.type=="vendor" and .vendor=="codex" and .total==99)' "$LEDGER_TAIL" >/dev/null; then pass; else fail "--ledger at tail should record the vendor row: $(cat "$LEDGER_TAIL" 2>/dev/null)"; fi
+
+# Last-wins precedence when --ledger appears multiple times. The first ledger
+# is never created (validate_under_tmp only mkdir's the parent); the last
+# ledger is the only one written to.
+LEDGER_FIRST="$TMP/first.jsonl"
+LEDGER_LAST="$TMP/last.jsonl"
+"$SCRIPT" --ledger "$LEDGER_FIRST" mark "Step last-wins" --ledger "$LEDGER_LAST"
+if [[ -f "$LEDGER_LAST" ]] && jq -e 'select(.type=="mark" and .step=="Step last-wins")' "$LEDGER_LAST" >/dev/null; then pass; else fail "last --ledger should be the one written to: last=$(cat "$LEDGER_LAST" 2>/dev/null)"; fi
+if [[ ! -e "$LEDGER_FIRST" ]] || [[ ! -s "$LEDGER_FIRST" ]]; then pass; else fail "first --ledger should not have been written to: $(cat "$LEDGER_FIRST" 2>/dev/null)"; fi
+
 total=$((PASS + FAIL))
 if (( FAIL == 0 )); then
     echo "PASS: test-token-ledger.sh — $PASS/$total assertions"

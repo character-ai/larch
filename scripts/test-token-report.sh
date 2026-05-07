@@ -66,6 +66,23 @@ if [[ -s "$OUT" ]]; then pass; else fail "--output did not write table"; fi
 missing=$("$SCRIPT" --ledger "$LEDGER" --transcript "$TMP/missing.jsonl" --since-last-mark --terse)
 contains "missing transcript" "Token report unavailable:" "$missing"
 
+# Malformed transcript JSONL routes through render_jq's jq parse failure to
+# RENDER_FAIL_REASON="failed to parse token sources" (issue #1351 Gap 3).
+MALFORMED_TRANSCRIPT="$TMP/malformed-transcript.jsonl"
+printf 'this is not json\n{also not json\n' > "$MALFORMED_TRANSCRIPT"
+malformed=$("$SCRIPT" --ledger "$LEDGER" --transcript "$MALFORMED_TRANSCRIPT" --since-last-mark --terse)
+contains "malformed transcript reason" "Token report unavailable: failed to parse token sources" "$malformed"
+
+# Ledger with vendor-only entries (no "mark" rows) hits the in-jq error("no
+# step marks in ledger") branch, which also surfaces as
+# RENDER_FAIL_REASON="failed to parse token sources" (issue #1351 Gap 3).
+LEDGER_NO_MARKS="$TMP/no-marks.jsonl"
+cat > "$LEDGER_NO_MARKS" <<'JSONL'
+{"type":"vendor","vendor":"codex","total":5,"ts":"2026-05-06T00:00:00Z"}
+JSONL
+no_marks=$("$SCRIPT" --ledger "$LEDGER_NO_MARKS" --transcript "$TRANSCRIPT" --since-last-mark --terse)
+contains "no-step-marks reason" "Token report unavailable: failed to parse token sources" "$no_marks"
+
 BIG="$TMP/big-run-statistics.md"
 for i in $(seq 1 250); do printf '| old | row %s |\n' "$i" >> "$BIG"; done
 "$SCRIPT" --ledger "$LEDGER" --transcript "$TRANSCRIPT" --append-run-statistics "$BIG"

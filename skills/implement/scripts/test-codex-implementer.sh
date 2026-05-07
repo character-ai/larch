@@ -344,6 +344,70 @@ else
     fail 9 "leading-zero timeout 010 should be accepted with standard envelope; got: $OUT"
 fi
 
+# Test 10: record-vendor smoke (issue #1351 Gap 1). Stub Codex prints a
+# "tokens used" block to stdout (which run-external-agent.sh routes to the
+# sidecar log); after the launcher returns, dump the per-session ledger and
+# assert a vendor row with vendor=codex, raw=codex_implement, total=7777.
+# Skip when jq is unavailable — the assertion uses jq even though the
+# launcher's awk-scrape does not.
+if command -v jq >/dev/null 2>&1; then
+    RV_STUB_BIN="$SCRATCH/rv-bin"
+    mkdir -p "$RV_STUB_BIN"
+    cat > "$RV_STUB_BIN/codex" <<'STUB_EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+: "${STUB_MANIFEST_PATH:?}"
+output_path=""
+last=""
+for arg in "$@"; do
+    if [[ "$last" == "--output-last-message" ]]; then output_path="$arg"; fi
+    last="$arg"
+done
+[[ -n "$output_path" ]] || { echo "stub codex missing --output-last-message" >&2; exit 9; }
+printf 'stub codex transcript payload\n' > "$output_path"
+cat > "$STUB_MANIFEST_PATH.tmp" <<JSON
+{"schema_version":"1","status":"bailed","bail_reason":"stub-bailed"}
+JSON
+mv "$STUB_MANIFEST_PATH.tmp" "$STUB_MANIFEST_PATH"
+printf 'tokens used\n7,777\n'
+STUB_EOF
+    chmod +x "$RV_STUB_BIN/codex"
+
+    RV_SESSION_ID="rv-codex-$$"
+    RV_TRANSCRIPT="$SCRATCH/rv-transcript.txt"
+    RV_SIDECAR="$SCRATCH/rv-sidecar.log"
+    RV_MANIFEST="$SCRATCH/rv-manifest.json"
+    RV_QA="$SCRATCH/rv-qa.json"
+
+    cd "$REPO_ROOT" && \
+        PATH="$RV_STUB_BIN:$PATH" \
+        STUB_MANIFEST_PATH="$RV_MANIFEST" \
+        LARCH_CODEX_MODEL="stub-codex-model" \
+        LARCH_TOKEN_SESSION_ID="$RV_SESSION_ID" \
+        CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+        "$LAUNCHER" \
+            --transcript-path "$RV_TRANSCRIPT" \
+            --sidecar-log "$RV_SIDECAR" \
+            --manifest-path "$RV_MANIFEST" \
+            --qa-pending-path "$RV_QA" \
+            --plan-file "$PLAN" \
+            --feature-file "$FEATURE" \
+            --agent-prompt "$AGENT_PROMPT" \
+            --timeout 30 >/dev/null
+
+    RV_LEDGER=$(LARCH_TOKEN_SESSION_ID="$RV_SESSION_ID" "$REPO_ROOT/scripts/token-ledger.sh" dump | sed -n '1p')
+    if [[ -f "$RV_LEDGER" ]] && jq -e \
+        'select(.type=="vendor" and .vendor=="codex" and .raw=="codex_implement" and .total==7777)' \
+        "$RV_LEDGER" >/dev/null 2>&1; then
+        pass
+    else
+        fail 10 "codex record-vendor JSONL missing or total wrong; ledger=$RV_LEDGER content=$(cat "$RV_LEDGER" 2>/dev/null) sidecar=$(cat "$RV_SIDECAR" 2>/dev/null)"
+    fi
+    rm -f "$RV_LEDGER"
+else
+    pass  # jq absent — skip per launcher runtime guard parallel
+fi
+
 TOTAL=$((PASS_COUNT + FAIL_COUNT))
 if (( FAIL_COUNT == 0 )); then
     echo "PASS: test-codex-implementer.sh — $PASS_COUNT/$TOTAL assertions"
