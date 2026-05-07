@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.73] - 2026-05-07
+
+### Changed
+
+- Resolve #1374: migrate path-scoped invariants from `AGENTS.md` into `.claude/rules/`. Four new rules (`skill-runtime-root-paths.md`, `shell-strict-mode.md`, `topology-generation.md`, `reviewer-archetype-generation.md`) plus extensions to two pilot rules (`script-md-siblings.md`, `skill-editing-trace.md`) and an explicit `paths:` frontmatter on `version-bump-reserved-message.md` — every rule now carries `paths:`. AGENTS.md line 15 is rewritten as a generic glob-discovery instruction (per design DECISION_2 antithesis 2-1, plan-review FINDING_4); the previous hand-maintained enumeration is removed. The three implementer agent prompts (`agents/{codex,cursor,gemini}-implementer.md`) adopt the same generic glob-discovery sentence (per plan-review FINDING_2). Reverse references to migrated bullets are repointed from "per AGENTS.md" to the new rule paths across `agents/` and `scripts/**/*.md` and `skills/**/*.md`. Code-review folded three accepted findings inline: `script-md-siblings.md` `paths:` extended to include `.claude/skills/**/scripts/**/*.{sh,py}` so dev-only skill scripts inherit the sibling-doc invariant; `drift-prone-prose-in-docs.md` citation tightened (the cited rule was too narrow); three sibling stubs flipped from `${CLAUDE_PLUGIN_ROOT}/.claude/rules/...` to repo-relative `.claude/rules/...` for consistency with the rest of the migration.
+
 ## [15.12.72] - 2026-05-07
 
 ### Added
