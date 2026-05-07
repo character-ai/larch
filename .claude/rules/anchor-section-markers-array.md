@@ -6,21 +6,28 @@ paths: ["scripts/anchor-section-markers.sh", "scripts/anchor-section-markers.md"
 
 `scripts/anchor-section-markers.sh` is the single source of truth for
 the canonical `SECTION_MARKERS` array (assembly / truncation /
-hydration order). It is sourced verbatim by
+hydration order). It is sourced verbatim by three scripts —
 `scripts/assemble-anchor.sh`, `scripts/tracking-issue-write.sh`, and
-`scripts/hydrate-anchor.sh`. The human-readable counterpart is
-`skills/implement/references/anchor-comment-template.md`.
+`scripts/hydrate-anchor.sh` — and the human-readable counterpart
+`skills/implement/references/anchor-comment-template.md` is maintained
+in parallel (it does not source the shell file).
 
-When you add, remove, or reorder a section in any of those four
-consumers, update **two** in-tree slug sets in the same change:
+When you add, remove, or reorder a section, update **two** in-tree slug
+sets in the same change:
 
 1. `SECTION_MARKERS` in `scripts/anchor-section-markers.sh` — drives
    `assemble-anchor.sh`'s marker-pair walk, `tracking-issue-write.sh`'s
    per-section truncation, and `hydrate-anchor.sh`'s slug allowlist.
 2. `COLLAPSE_PRIORITY` in `scripts/tracking-issue-write.sh` — drives
    body-level collapse order. `scripts/test-tracking-issue-write.sh`
-   case (i) pins `SECTION_MARKERS ⊆ COLLAPSE_PRIORITY` and case (i2)
-   pins the converse, so omitting an update fails CI loudly.
+   case (i) pins `SECTION_MARKERS ⊆ COLLAPSE_PRIORITY` (every
+   `SECTION_MARKERS` slug must appear in `COLLAPSE_PRIORITY`); case
+   (i2) is a targeted regression guard that `timing-report` stays
+   present in both arrays. The full converse
+   (`COLLAPSE_PRIORITY ⊆ SECTION_MARKERS`) is NOT enforced — extra
+   stale slugs in `COLLAPSE_PRIORITY` would still pass CI. Adding a
+   slug to `SECTION_MARKERS` without updating `COLLAPSE_PRIORITY` does
+   fail (i) loudly.
 
 Also update the regression harness fixtures that pin slug expectations:
 `scripts/test-tracking-issue-write.sh`, `scripts/test-assemble-anchor.sh`,
