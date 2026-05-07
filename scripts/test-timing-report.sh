@@ -47,7 +47,18 @@ if grep -Fq '/tmp/secret/full.txt' "$OUT"; then
 fi
 
 TERSE=$(LARCH_TEST_TIMING_NOW=310 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$LEDGER" --since-last-mark --terse)
-[[ "$TERSE" == 'Step 3 — checks first pass: elapsed=00:01:00 vendor-tasks=0 (codex=0, cursor=0, gemini=0)' ]]
+# Review FINDING_5: terse mode now counts vendor rows whose --end-s ($9) is
+# >= the latest mark timestamp, instead of the row's wall-clock log timestamp.
+# Fixture has end_s values 220, 300, 160 with last_terse_ts=250, so exactly the
+# end_s=300 codex-implement row qualifies (vendor-tasks=1, codex=1).
+EXPECTED_TERSE='Step 3 — checks first pass: elapsed=00:01:00 vendor-tasks=1 (codex=1, cursor=0, gemini=0)'
+if [[ "$TERSE" != "$EXPECTED_TERSE" ]]; then
+  echo "expected terse output:" >&2
+  echo "  $EXPECTED_TERSE" >&2
+  echo "got:" >&2
+  echo "  $TERSE" >&2
+  exit 1
+fi
 
 TARGET="$TMP_BASE/anchor.md"
 cat > "$TARGET" <<'EOF'
