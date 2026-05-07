@@ -497,6 +497,16 @@ exclude = [
   # (test-check-generators target) and scripts/test-check-generators.md
   # (sibling contract).
   "scripts/test-check-generators.sh",
+  # scripts/test-check-topology-rule-paths.sh is the regression harness for
+  # scripts/check-topology-rule-paths.py (the TSV-vs-rule-paths coverage
+  # guard). The check script itself IS structurally referenced from
+  # .pre-commit-config.yaml (local hook `check-topology-rule-paths`) and
+  # .github/workflows/ci.yaml (agent-sync job step), so it is not excluded;
+  # the test harness is referenced only from Makefile
+  # (test-check-topology-rule-paths target) and
+  # scripts/test-check-topology-rule-paths.md (sibling contract), matching
+  # the same Makefile-only pattern as the other test-* harnesses above.
+  "scripts/test-check-topology-rule-paths.sh",
   # scripts/test-generate-topology-docs.sh is the regression harness for the
   # topology projection generator. Referenced only from Makefile
   # (test-generate-topology-docs target) and scripts/test-generate-topology-docs.md
@@ -882,6 +892,7 @@ exclude = [
   "scripts/test-check-reviewers.md",
   "scripts/test-external-tool-registry.md",
   "scripts/test-check-generators.md",
+  "scripts/test-check-topology-rule-paths.md",
   "scripts/generate-topology-docs.md",
   "scripts/test-generate-topology-docs.md",
   "scripts/test-launch-gemini-review.md",

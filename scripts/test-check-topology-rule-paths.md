@@ -1,0 +1,3 @@
+# scripts/test-check-topology-rule-paths.sh - contract
+
+Offline regression harness for `scripts/check-topology-rule-paths.py`. The primary script's sibling contract, `scripts/check-topology-rule-paths.md`, owns the full validation contract and edit-in-sync rules. The harness builds throwaway fixture trees under `mktemp -d`, copies the subject Python script into each tree, lays out canonical inputs (`skills/shared/topology.tsv` and `.claude/rules/topology-generation.md`), and invokes `python3 scripts/check-topology-rule-paths.py` with cwd set to the fixture root. It is invoked from CI through the Makefile shard target `test-check-topology-rule-paths` (wired into `test-harnesses-4`).
