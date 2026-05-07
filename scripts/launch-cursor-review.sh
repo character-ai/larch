@@ -130,6 +130,49 @@ SIDECAR="${OUTPUT}.sidecar"
 PROMPT_FILE_SIDECAR="${OUTPUT}.prompt"
 printf '%s' "$PROMPT" > "$PROMPT_FILE_SIDECAR"
 
+# Source the Cursor auth helper. On preflight failure (Darwin + empty
+# CURSOR_API_KEY + missing `cursor-user` keychain entry), synthesize the
+# sentinel/diag artifacts that `run-external-agent.sh` would have written so
+# backgrounded callers see STATUS=FAILED with the actionable reason within
+# seconds rather than SENTINEL_TIMEOUT after the full collector timeout.
+# shellcheck source=scripts/lib-cursor-auth.sh
+. "$SCRIPT_DIR/lib-cursor-auth.sh"
+PREFLIGHT_RC=0
+cursor_auth_preflight || PREFLIGHT_RC=$?
+if [[ "$PREFLIGHT_RC" != "0" ]]; then
+    : > "$OUTPUT" 2>/dev/null || true
+    {
+        printf 'STATUS=FAILED\n'
+        printf 'FAILURE_REASON=cursor-auth-preflight: CURSOR_API_KEY unset/empty and cursor-user keychain entry missing on Darwin; see docs/installation-and-setup.md (Cursor section)\n'
+    } > "${OUTPUT}.diag" 2>/dev/null || true
+    # Stub .meta so collect-agent-results.sh's parser does not regress on a
+    # missing file (TOOL/TIMEOUT keys keep its retry classifier sane; CMD_JSON
+    # is intentionally an empty array because no child was launched, so the
+    # collector's retry path will see CMD_JSON=[] and skip retry).
+    {
+        printf 'TOOL=cursor\n'
+        printf 'TIMEOUT=%s\n' "$TIMEOUT"
+        printf 'CAPTURE_STDOUT=false\n'
+        printf 'CAPTURE_STDOUT_ONLY=true\n'
+        printf 'OUTPUT_FILE=%s\n' "$OUTPUT"
+        printf 'CMD_JSON=[]\n'
+    } > "${OUTPUT}.meta" 2>/dev/null || true
+    # `.done` is the last artifact written so polling collectors see all
+    # other sidecars in place once they observe `.done`. The wrapper's trap
+    # writes the EXIT_CODE; we mirror that by writing the preflight RC.
+    printf '%s\n' "$PREFLIGHT_RC" > "${OUTPUT}.done" 2>/dev/null || true
+    exit "$PREFLIGHT_RC"
+fi
+
+# Build the conditional --api-key argv segment. CURSOR_AUTH_ARGS is empty
+# when CURSOR_API_KEY is unset/whitespace-only (preserves today's
+# `cursor login` keychain fallback for users who chose not to set the env
+# var); otherwise CURSOR_AUTH_ARGS=(--api-key "$KEY"). Inserted between
+# `$MODEL_ARGS` and `--workspace` so the prompt remains the final positional
+# argument and the argv layout stays the same as `check-reviewers.sh`'s probe.
+CURSOR_AUTH_ARGS=()
+cursor_auth_argv
+
 # shellcheck disable=SC2086
 EXIT_CODE=0
 if : > "$SIDECAR" 2>/dev/null; then
@@ -150,6 +193,7 @@ RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX=.inner.done \
         cursor agent -p --force --trust \
         --output-format json \
         $MODEL_ARGS \
+        ${CURSOR_AUTH_ARGS[@]+"${CURSOR_AUTH_ARGS[@]}"} \
         --workspace "$PWD" \
         "$WRAPPED_PROMPT" \
         2>>"$_STDERR_TARGET" &

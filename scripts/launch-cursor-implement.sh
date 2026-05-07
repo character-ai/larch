@@ -134,6 +134,36 @@ Begin by inspecting the current branch state, then proceed per the system prompt
 MODEL_ARGS=$("$SCRIPT_DIR/agent-model-args.sh" --tool cursor --with-effort)
 WRAPPED_PROMPT=$("$SCRIPT_DIR/cursor-wrap-prompt.sh" "$PROMPT")
 
+# Source the Cursor auth helper. On preflight failure (Darwin + empty
+# CURSOR_API_KEY + missing `cursor-user` keychain entry), emit the standard
+# KV envelope before exiting so step2-implement.sh's parser surfaces a
+# specific failure (LAUNCHER_EXIT=2 + actionable SIDECAR_LOG content)
+# instead of a generic timeout/missing-manifest message.
+# shellcheck source=scripts/lib-cursor-auth.sh
+. "$SCRIPT_DIR/lib-cursor-auth.sh"
+PREFLIGHT_RC=0
+cursor_auth_preflight 2> >(tee -a "$SIDECAR_LOG" >&2) || PREFLIGHT_RC=$?
+if [[ "$PREFLIGHT_RC" != "0" ]]; then
+    printf 'LAUNCHER_EXIT=%s\n'           "$PREFLIGHT_RC"
+    printf 'MANIFEST_WRITTEN=false\n'
+    printf 'QA_PENDING_WRITTEN=false\n'
+    printf 'TRANSCRIPT=%s\n'              "$TRANSCRIPT_PATH"
+    printf 'SIDECAR_LOG=%s\n'             "$SIDECAR_LOG"
+    # Exit 0 keeps the launcher contract (LAUNCHER_EXIT is the failure
+    # signal, not the wrapper's process exit). The dispatcher reads
+    # LAUNCHER_EXIT=2 and surfaces the SIDECAR_LOG content.
+    exit 0
+fi
+
+# Build the conditional --api-key argv segment. CURSOR_AUTH_ARGS is empty
+# when CURSOR_API_KEY is unset/whitespace-only (preserves today's
+# `cursor login` keychain fallback for users who chose not to set the env
+# var); otherwise CURSOR_AUTH_ARGS=(--api-key "$KEY"). Inserted between
+# `$MODEL_ARGS` and `--workspace` so the prompt remains the final positional
+# argument.
+CURSOR_AUTH_ARGS=()
+cursor_auth_argv
+
 # Run the wrapper, redirecting its stdout AND stderr to the sidecar log so
 # Claude (the dispatcher's caller) never sees the wrapper's progress lines.
 # The wrapper's own exit code is captured into LAUNCHER_EXIT.
@@ -148,6 +178,7 @@ LAUNCHER_EXIT=0
     cursor agent -p --force --trust \
     --output-format json \
     $MODEL_ARGS \
+    ${CURSOR_AUTH_ARGS[@]+"${CURSOR_AUTH_ARGS[@]}"} \
     --workspace "$PWD" \
     "$WRAPPED_PROMPT" \
     >"$SIDECAR_LOG" 2>&1 || LAUNCHER_EXIT=$?

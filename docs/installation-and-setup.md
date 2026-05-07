@@ -101,6 +101,33 @@ claude plugin install larch@larch-local
 
 > **Note — larch overrides the cli-config.json model for its own Cursor invocations.**
 
+#### macOS keychain interaction
+
+When `CURSOR_API_KEY` is set in your environment, larch's launchers (`scripts/launch-cursor-review.sh`, `scripts/launch-cursor-implement.sh`, `scripts/run-negotiation-round.sh`, plus the runtime markdown templates that emit `cursor agent` invocations) pass `--api-key "$CURSOR_API_KEY"` explicitly to `cursor agent`, bypassing the macOS keychain entirely for that auth path. This is the recommended setup for larch.
+
+When `CURSOR_API_KEY` is unset or empty, larch falls back to Cursor's default auth resolution, which on macOS may consult the keychain entry created by `cursor login` (account `cursor-user`).
+
+A stale or transiently-unhealthy `cursor-user` keychain entry can produce intermittent failures during parallel reviewer launches with errors like:
+
+```
+Password not found for account 'cursor-user'
+Security process exited with code: 45
+```
+
+If you hit this, the simplest workaround is:
+
+```sh
+security delete-generic-password -a cursor-user 2>/dev/null
+# then either:
+export CURSOR_API_KEY="<your-key>"   # recommended for larch (env-only, deterministic)
+# or:
+cursor login                          # recreates the keychain entry interactively
+```
+
+On Darwin only, larch's launchers run a read-only pre-launch check: if `CURSOR_API_KEY` is empty AND no `cursor-user` keychain entry exists, the launcher exits early with an actionable message rather than letting `cursor agent` emit the cryptic `Security process exited with code: 45`. The check is strictly read-only — it does NOT delete keychain entries or invoke `cursor` as a subprocess. On Linux/CI, the check is a no-op (`CURSOR_API_KEY` is the only auth path).
+
+For the at-rest secret-persistence tradeoff (the API key appears in `.meta` `CMD_JSON` sidecars under the session tmpdir, because the collector's empty-output retry path relies on faithful argv reconstruction), see `SECURITY.md`.
+
 ### Gemini
 - Install Gemini CLI with Homebrew or npm:
 ```bash

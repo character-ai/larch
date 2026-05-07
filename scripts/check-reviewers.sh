@@ -11,6 +11,8 @@ source "$SCRIPT_DIR/external-tool-registry.sh" || { echo "check-reviewers.sh: fa
 [[ "${LARCH_EXTERNAL_TOOL_REGISTRY_LOADED:-}" == "1" ]] || { echo "check-reviewers.sh: external-tool-registry.sh sourced but sentinel missing" >&2; exit 1; }
 # shellcheck source=scripts/lib-gemini-tool-drift.sh
 source "$SCRIPT_DIR/lib-gemini-tool-drift.sh" || { echo "check-reviewers.sh: failed to source lib-gemini-tool-drift.sh" >&2; exit 1; }
+# shellcheck source=scripts/lib-cursor-auth.sh
+source "$SCRIPT_DIR/lib-cursor-auth.sh" || { echo "check-reviewers.sh: failed to source lib-cursor-auth.sh" >&2; exit 1; }
 
 PROBE=false
 INCLUDE_GEMINI=false
@@ -143,13 +145,20 @@ start_probe() {
             # path production review launches use. Drift here can produce false
             # healthy/unhealthy probe verdicts when the JSON output mode behaves
             # differently from the pre-JSON default.
+            # cursor_auth_preflight is INTENTIONALLY NOT invoked here: this
+            # function reports binary health, not configuration validity. A
+            # missing keychain entry should not fail the probe — let the real
+            # launchers surface the actionable preflight error to the operator
+            # at launch time.
+            CURSOR_AUTH_ARGS=()
+            cursor_auth_argv
             # shellcheck disable=SC2086
             "$SCRIPT_DIR/run-external-agent.sh" \
                 --tool cursor \
                 --output "$output" \
                 --timeout 60 \
                 --capture-stdout-only \
-                -- cursor agent -p --force --trust --output-format json $CURSOR_MODEL_ARGS --workspace "$PWD" \
+                -- cursor agent -p --force --trust --output-format json $CURSOR_MODEL_ARGS ${CURSOR_AUTH_ARGS[@]+"${CURSOR_AUTH_ARGS[@]}"} --workspace "$PWD" \
                 "Respond with OK" \
                 >"$PROBE_DIR/cursor-wrapper-attempt${attempt}.log" 2>&1 &
             ;;

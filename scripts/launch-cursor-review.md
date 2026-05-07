@@ -16,8 +16,10 @@
 - If the launcher is signaled while the wrapper child is still alive, the EXIT trap kills and reaps the child before publishing `${OUTPUT}.done`, avoiding a race between the wrapper's inner sentinel and the launcher's public sentinel
 - **Test hook**: the post-wrapper deterministic seam is reached only when `LARCH_ALLOW_TEST_HOOKS=1` (exact string match) AND `LARCH_TEST_TRAP_AFTER_INNER_DONE_FILE` points at a regular non-symlink file the harness wrote under its own tmpdir. The launcher then `source`s that file. Production callers must NOT set either env var. The legacy single-env-var name `LARCH_TEST_TRAP_AFTER_INNER_DONE` (without `_FILE`) is intentionally NOT honored — silent fallback would defeat the gating. This replaces an earlier `eval "$LARCH_TEST_TRAP_AFTER_INNER_DONE"` design that was an env-var → arbitrary-shell channel in shipped runtime code.
 - Specialist mode calls `render-specialist-prompt.sh` internally, supporting all flags
+- Sources `scripts/lib-cursor-auth.sh` and runs `cursor_auth_preflight` BEFORE invoking `run-external-agent.sh`. On Darwin with `CURSOR_API_KEY` empty AND no `cursor-user` keychain entry, exits 2 AFTER synthesizing `${OUTPUT}.done`, `${OUTPUT}.diag` (`STATUS=FAILED` + `FAILURE_REASON=cursor-auth-preflight: ...`), and a stub `${OUTPUT}.meta` so `collect-agent-results.sh` reports the actionable failure within seconds instead of `SENTINEL_TIMEOUT` after the full collector timeout
+- When `CURSOR_API_KEY` is non-empty, passes `--api-key "$CURSOR_API_KEY"` between `$MODEL_ARGS` and `--workspace`. When empty, `cursor agent` runs without `--api-key` and falls back to its default auth resolution (e.g., the `cursor login` keychain entry on Darwin) — preserving backward compatibility with operators who haven't set the env var
 
-**Stdout contract**: Same stdout as `run-external-agent.sh`; no `LAUNCHER_EXIT=` line. Exit code is `run-external-agent.sh`'s exit code after best-effort JSON-sidecar extraction and token scrape.
+**Stdout contract**: Same stdout as `run-external-agent.sh`; no `LAUNCHER_EXIT=` line. Exit code is `run-external-agent.sh`'s exit code after best-effort JSON-sidecar extraction and token scrape, OR `2` on `cursor_auth_preflight` failure (with sentinel/diag/meta synthesized first).
 
 **Flags**:
 - `--output FILE` — (required) output file path

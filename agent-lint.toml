@@ -445,6 +445,17 @@ exclude = [
   "skills/create-skill/scripts/test-render-skill-md.sh",
   "scripts/lib-count-commits.sh",
   "scripts/lib-gemini-tool-drift.sh",
+  # scripts/lib-cursor-auth.sh is a sourced-only shell library (no shebang,
+  # not invokable directly). It is referenced from shell consumers via source
+  # directives only, which agent-lint does not follow.
+  "scripts/lib-cursor-auth.sh",
+  # scripts/cursor-auth-flags.sh is a small executable that prints the
+  # conditional --api-key argv elements for runtime skill markdown blocks.
+  # Referenced from skills/shared/voting-protocol.md, skills/shared/dialectic-protocol.md,
+  # skills/research/references/validation-phase.md via process substitution
+  # (`< <("${CLAUDE_PLUGIN_ROOT}/scripts/cursor-auth-flags.sh")`); agent-lint
+  # does not follow markdown-template invocations.
+  "scripts/cursor-auth-flags.sh",
   # scripts/external-tool-registry.sh is a sourced-only shell library (no
   # shebang, not invokable directly). It is referenced from shell consumers via
   # source directives only, which agent-lint does not follow.
@@ -493,6 +504,11 @@ exclude = [
   # Makefile (test-launch-cursor-review target) and
   # scripts/test-launch-cursor-review.md (sibling contract).
   "scripts/test-launch-cursor-review.sh",
+  # scripts/test-lib-cursor-auth.sh is the hermetic regression harness for
+  # scripts/lib-cursor-auth.sh and scripts/cursor-auth-flags.sh (issue #1358).
+  # Referenced only from Makefile (test-lib-cursor-auth target) and
+  # scripts/test-lib-cursor-auth.md (sibling contract).
+  "scripts/test-lib-cursor-auth.sh",
   # scripts/launch-gemini-review.sh is the Gemini reviewer launcher. The
   # /implement and /review skills no longer invoke it — those call sites were
   # removed deliberately while preserving the launcher, its policy file, its
@@ -837,6 +853,9 @@ exclude = [
   "scripts/test-generate-topology-docs.md",
   "scripts/test-launch-gemini-review.md",
   "scripts/test-launch-cursor-review.md",
+  "scripts/test-lib-cursor-auth.md",
+  "scripts/lib-cursor-auth.md",
+  "scripts/cursor-auth-flags.md",
   "scripts/test-wait-for-reviewers.md",
   "scripts/lib-validate-meta-path.md",
   "scripts/lib-gemini-tool-drift.md",

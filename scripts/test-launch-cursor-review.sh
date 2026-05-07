@@ -348,6 +348,82 @@ else
     pass
 fi
 
+# Case AK1 (issue #1358): with CURSOR_API_KEY set, --api-key + value appear as
+# adjacent tokens in stub argv, AND the persisted CMD_JSON in ${OUTPUT}.meta
+# DOES contain the literal key (no redaction — pins FINDING_1's no-redact
+# disposition so retry argv reconstruction stays correct).
+OUT_AK1="$TMPDIR/cursor-ak1.txt"
+ARGV_LOG_AK1="$TMPDIR/cursor-ak1-argv.log"
+cat > "$STUB_BIN/cursor-argv-stub" <<'AKSTUB'
+#!/usr/bin/env bash
+set -euo pipefail
+: "${CURSOR_STUB_ARGV_LOG:?}"
+for arg in "$@"; do printf '%s\n' "$arg" >> "$CURSOR_STUB_ARGV_LOG"; done
+printf '{"result":"AK1 OK","usage":{"inputTokens":1,"outputTokens":2,"cacheReadTokens":3,"cacheWriteTokens":4}}\n'
+AKSTUB
+chmod +x "$STUB_BIN/cursor-argv-stub"
+# Re-point `cursor` to the argv-recording stub for this case only.
+ln -sf "$STUB_BIN/cursor-argv-stub" "$STUB_BIN/cursor"
+PATH="$STUB_BIN:$PATH" \
+    CURSOR_API_KEY="ak1-test-key-789" \
+    CURSOR_STUB_ARGV_LOG="$ARGV_LOG_AK1" \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux \
+    "$LAUNCHER" --output "$OUT_AK1" --timeout 5 --prompt "case ak1" >/dev/null 2>"$TMPDIR/case-ak1.stderr"
+
+AK1_KEY_LINE=$(grep -Fxn -- '--api-key' "$ARGV_LOG_AK1" | awk -F: 'NR==1 {print $1; exit}')
+AK1_VAL_LINE=$(grep -Fxn -- 'ak1-test-key-789' "$ARGV_LOG_AK1" | awk -F: 'NR==1 {print $1; exit}')
+if [[ -n "$AK1_KEY_LINE" && -n "$AK1_VAL_LINE" ]] && (( AK1_VAL_LINE == AK1_KEY_LINE + 1 )); then
+    pass
+else
+    fail "case AK1 --api-key and value must be adjacent in argv when CURSOR_API_KEY set; key_line=$AK1_KEY_LINE val_line=$AK1_VAL_LINE"
+fi
+
+# CMD_JSON in .meta MUST contain the literal key (no redaction).
+if grep -F 'CMD_JSON=' "${OUT_AK1}.meta" 2>/dev/null | grep -Fq 'ak1-test-key-789'; then
+    pass
+else
+    fail "case AK1 CMD_JSON in .meta must contain the literal key (no redaction)"
+fi
+
+# Case AK2 (issue #1358): with CURSOR_API_KEY empty, --api-key MUST NOT appear
+# in argv. Restore the standard stub for default cases later if any.
+OUT_AK2="$TMPDIR/cursor-ak2.txt"
+ARGV_LOG_AK2="$TMPDIR/cursor-ak2-argv.log"
+PATH="$STUB_BIN:$PATH" \
+    CURSOR_API_KEY="" \
+    CURSOR_STUB_ARGV_LOG="$ARGV_LOG_AK2" \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux \
+    "$LAUNCHER" --output "$OUT_AK2" --timeout 5 --prompt "case ak2" >/dev/null 2>"$TMPDIR/case-ak2.stderr"
+if grep -Fxq -- '--api-key' "$ARGV_LOG_AK2"; then
+    fail "case AK2 Cursor argv must not include --api-key when CURSOR_API_KEY empty"
+else
+    pass
+fi
+
+# Case AK3 (issue #1358): on Darwin (test-mode injected) with CURSOR_API_KEY
+# empty AND injected security RC=1, the launcher synthesizes ${OUTPUT}.done,
+# ${OUTPUT}.diag (STATUS=FAILED + cursor-auth-preflight FAILURE_REASON), and
+# a stub ${OUTPUT}.meta — so collect-agent-results.sh sees the actionable
+# failure within seconds rather than SENTINEL_TIMEOUT.
+OUT_AK3="$TMPDIR/cursor-ak3.txt"
+PATH="$STUB_BIN:$PATH" \
+    CURSOR_API_KEY="" \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Darwin \
+    LIB_CURSOR_AUTH_TEST_SECURITY_RC=1 \
+    "$LAUNCHER" --output "$OUT_AK3" --timeout 5 --prompt "case ak3" >/dev/null 2>"$TMPDIR/case-ak3.stderr" || true
+if [[ -f "${OUT_AK3}.done" ]] && [[ -s "${OUT_AK3}.diag" ]] \
+   && grep -Fq 'STATUS=FAILED' "${OUT_AK3}.diag" \
+   && grep -Fq 'FAILURE_REASON=cursor-auth-preflight' "${OUT_AK3}.diag"; then
+    pass
+else
+    fail "case AK3 preflight failure must synthesize .done + .diag with STATUS=FAILED + cursor-auth-preflight; .done=$(test -f "${OUT_AK3}.done" && echo present || echo missing) diag=$(cat "${OUT_AK3}.diag" 2>/dev/null)"
+fi
+if [[ -s "${OUT_AK3}.meta" ]] && grep -Fq 'CMD_JSON=[]' "${OUT_AK3}.meta"; then
+    pass
+else
+    fail "case AK3 preflight failure must synthesize stub .meta with empty CMD_JSON"
+fi
+
 if [[ "$FAIL" -ne 0 ]]; then
     printf 'FAIL: test-launch-cursor-review.sh - %s failed, %s passed\n' "$FAIL" "$PASS" >&2
     printf '  %s\n' "${FAIL_DETAILS[@]}" >&2

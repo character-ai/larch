@@ -223,6 +223,9 @@ OUT=$(cd "$REPO_ROOT" && \
     STUB_PROMPT_FILE="$PROMPT_FILE" \
     STUB_MANIFEST_PATH="$MANIFEST" \
     LARCH_CURSOR_MODEL="stub-model" \
+    CURSOR_API_KEY="" \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 \
+    LIB_CURSOR_AUTH_TEST_UNAME="Linux" \
     "$LAUNCHER" \
         --transcript-path "$TRANSCRIPT" \
         --sidecar-log "$SIDECAR" \
@@ -246,15 +249,39 @@ else
     fail 5 "stub Cursor stdout was not captured to transcript"
 fi
 
-if [[ "$(sed -n '5p' "$ARGV_FILE")" == "--output-format" ]] \
-   && [[ "$(sed -n '6p' "$ARGV_FILE")" == "json" ]] \
-   && [[ "$(sed -n '7p' "$ARGV_FILE")" == "--model" ]] \
-   && [[ "$(sed -n '8p' "$ARGV_FILE")" == "stub-model" ]] \
-   && [[ "$(sed -n '9p' "$ARGV_FILE")" == "--workspace" ]] \
-   && [[ "$(sed -n '10p' "$ARGV_FILE")" == "$REPO_ROOT" ]]; then
+# Semantic relative-order argv check (insertion-tolerant for the issue #1358
+# `--api-key` argv slot). The line numbers shifted from absolute `5p..10p` to
+# whatever positions sed produces post-`--api-key` insertion, so assert
+# presence + ordering instead.
+_argv_line_of() {
+    # Print the first line number containing the exact token, or 0 if absent.
+    local needle="$1"
+    grep -Fxn -- "$needle" "$ARGV_FILE" | awk -F: 'NR==1 {print $1; exit}'
+}
+_OFMT_LINE=$(_argv_line_of "--output-format")
+_JSON_LINE=$(_argv_line_of "json")
+_MODEL_LINE=$(_argv_line_of "--model")
+_MODEL_VAL_LINE=$(_argv_line_of "stub-model")
+_WS_LINE=$(_argv_line_of "--workspace")
+_WS_VAL_LINE=$(_argv_line_of "$REPO_ROOT")
+if [[ -n "$_OFMT_LINE" && -n "$_JSON_LINE" && -n "$_MODEL_LINE" && -n "$_MODEL_VAL_LINE" && -n "$_WS_LINE" && -n "$_WS_VAL_LINE" ]] \
+   && [[ "$_OFMT_LINE" -lt "$_JSON_LINE" ]] \
+   && [[ "$_JSON_LINE" -lt "$_MODEL_LINE" ]] \
+   && [[ "$_MODEL_LINE" -lt "$_MODEL_VAL_LINE" ]] \
+   && [[ "$_MODEL_VAL_LINE" -lt "$_WS_LINE" ]] \
+   && [[ "$_WS_LINE" -lt "$_WS_VAL_LINE" ]]; then
     pass
 else
     fail 6 "Cursor argv shape should include --output-format json, model args, then --workspace before prompt"
+fi
+
+# Test 6b: with CURSOR_API_KEY unset/empty, --api-key MUST NOT appear in argv.
+# Pins the conditional auth-flag insertion behavior (lib-cursor-auth.sh
+# emits no flag on empty key, preserving cursor login keychain fallback).
+if grep -Fxq -- '--api-key' "$ARGV_FILE"; then
+    fail 6b "Cursor argv must not include --api-key when CURSOR_API_KEY is unset/empty"
+else
+    pass
 fi
 
 if grep -Fxq -- '--' "$ARGV_FILE"; then
@@ -391,6 +418,112 @@ STUB_EOF
     rm -f "$RV_LEDGER"
 else
     pass  # jq absent — skip per launcher runtime guard parallel
+fi
+
+# Test K1 (issue #1358): with CURSOR_API_KEY set, --api-key and the literal
+# key value MUST appear as adjacent tokens in recorded argv. Pins the
+# lib-cursor-auth.sh argv-injection contract.
+K1_TRANSCRIPT="$SCRATCH/k1-transcript.txt"
+K1_SIDECAR="$SCRATCH/k1-sidecar.log"
+K1_MANIFEST="$SCRATCH/k1-manifest.json"
+K1_QA="$SCRATCH/k1-qa.json"
+K1_ARGV="$SCRATCH/k1-argv.txt"
+K1_PROMPT="$SCRATCH/k1-prompt.txt"
+cd "$REPO_ROOT" && \
+    PATH="$STUB_BIN:$PATH" \
+    STUB_ARGV_FILE="$K1_ARGV" \
+    STUB_PROMPT_FILE="$K1_PROMPT" \
+    STUB_MANIFEST_PATH="$K1_MANIFEST" \
+    LARCH_CURSOR_MODEL="stub-model" \
+    CURSOR_API_KEY="test-key-12345" \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 \
+    LIB_CURSOR_AUTH_TEST_UNAME="Linux" \
+    "$LAUNCHER" \
+        --transcript-path "$K1_TRANSCRIPT" \
+        --sidecar-log "$K1_SIDECAR" \
+        --manifest-path "$K1_MANIFEST" \
+        --qa-pending-path "$K1_QA" \
+        --plan-file "$PLAN" \
+        --feature-file "$FEATURE" \
+        --agent-prompt "$AGENT_PROMPT" \
+        --timeout 30 >/dev/null
+
+K1_API_KEY_LINE=$(grep -Fxn -- '--api-key' "$K1_ARGV" | awk -F: 'NR==1 {print $1; exit}')
+K1_API_VAL_LINE=$(grep -Fxn -- 'test-key-12345' "$K1_ARGV" | awk -F: 'NR==1 {print $1; exit}')
+if [[ -n "$K1_API_KEY_LINE" && -n "$K1_API_VAL_LINE" ]] && (( K1_API_VAL_LINE == K1_API_KEY_LINE + 1 )); then
+    pass
+else
+    fail K1 "--api-key and value must be adjacent tokens in argv when CURSOR_API_KEY is set; key_line=$K1_API_KEY_LINE val_line=$K1_API_VAL_LINE"
+fi
+
+# Test K2 (issue #1358): with CURSOR_API_KEY whitespace-only, --api-key MUST NOT
+# appear. Whitespace-trim equivalence to empty-string case pins lib-cursor-auth's
+# Bash-3.2-safe parameter-expansion trim.
+K2_TRANSCRIPT="$SCRATCH/k2-transcript.txt"
+K2_SIDECAR="$SCRATCH/k2-sidecar.log"
+K2_MANIFEST="$SCRATCH/k2-manifest.json"
+K2_QA="$SCRATCH/k2-qa.json"
+K2_ARGV="$SCRATCH/k2-argv.txt"
+K2_PROMPT="$SCRATCH/k2-prompt.txt"
+cd "$REPO_ROOT" && \
+    PATH="$STUB_BIN:$PATH" \
+    STUB_ARGV_FILE="$K2_ARGV" \
+    STUB_PROMPT_FILE="$K2_PROMPT" \
+    STUB_MANIFEST_PATH="$K2_MANIFEST" \
+    LARCH_CURSOR_MODEL="stub-model" \
+    CURSOR_API_KEY=$'  \t\n  ' \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 \
+    LIB_CURSOR_AUTH_TEST_UNAME="Linux" \
+    "$LAUNCHER" \
+        --transcript-path "$K2_TRANSCRIPT" \
+        --sidecar-log "$K2_SIDECAR" \
+        --manifest-path "$K2_MANIFEST" \
+        --qa-pending-path "$K2_QA" \
+        --plan-file "$PLAN" \
+        --feature-file "$FEATURE" \
+        --agent-prompt "$AGENT_PROMPT" \
+        --timeout 30 >/dev/null
+
+if grep -Fxq -- '--api-key' "$K2_ARGV"; then
+    fail K2 "Cursor argv must not include --api-key when CURSOR_API_KEY is whitespace-only"
+else
+    pass
+fi
+
+# Test K3 (issue #1358): on Darwin (test-mode injected) with CURSOR_API_KEY
+# empty AND injected security RC=1 (keychain entry missing), launcher MUST
+# emit the standard KV envelope with LAUNCHER_EXIT=2 and route the actionable
+# stderr to SIDECAR_LOG so step2-implement.sh surfaces a specific failure
+# instead of a generic timeout/missing-manifest message.
+K3_TRANSCRIPT="$SCRATCH/k3-transcript.txt"
+K3_SIDECAR="$SCRATCH/k3-sidecar.log"
+K3_MANIFEST="$SCRATCH/k3-manifest.json"
+K3_QA="$SCRATCH/k3-qa.json"
+K3_OUT=$(cd "$REPO_ROOT" && \
+    PATH="$STUB_BIN:$PATH" \
+    LARCH_CURSOR_MODEL="stub-model" \
+    CURSOR_API_KEY="" \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 \
+    LIB_CURSOR_AUTH_TEST_UNAME="Darwin" \
+    LIB_CURSOR_AUTH_TEST_SECURITY_RC=1 \
+    "$LAUNCHER" \
+        --transcript-path "$K3_TRANSCRIPT" \
+        --sidecar-log "$K3_SIDECAR" \
+        --manifest-path "$K3_MANIFEST" \
+        --qa-pending-path "$K3_QA" \
+        --plan-file "$PLAN" \
+        --feature-file "$FEATURE" \
+        --agent-prompt "$AGENT_PROMPT" \
+        --timeout 30)
+
+K3_EXPECTED=$(printf 'LAUNCHER_EXIT=2\nMANIFEST_WRITTEN=false\nQA_PENDING_WRITTEN=false\nTRANSCRIPT=%s\nSIDECAR_LOG=%s' "$K3_TRANSCRIPT" "$K3_SIDECAR")
+if [[ "$K3_OUT" == "$K3_EXPECTED" ]] \
+   && [[ -s "$K3_SIDECAR" ]] \
+   && grep -Fq 'cursor-auth-preflight' "$K3_SIDECAR" \
+   && grep -Fq 'security delete-generic-password -a cursor-user' "$K3_SIDECAR"; then
+    pass
+else
+    fail K3 "preflight failure on Darwin should emit KV envelope with LAUNCHER_EXIT=2 and actionable SIDECAR_LOG; got stdout=$K3_OUT sidecar=$(cat "$K3_SIDECAR" 2>/dev/null)"
 fi
 
 TOTAL=$((PASS_COUNT + FAIL_COUNT))
