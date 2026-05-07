@@ -4,24 +4,18 @@ This repository **is** the larch Claude Code plugin. Editing here modifies what 
 
 ## Repository layout
 
-Plugin ships the entire repo. **Runtime surface**: `skills/`, `agents/`, `hooks/`, `scripts/`, `.claude-plugin/`. Everything else is supplementary (docs, CI config, `.claude/skills/`, dev settings).
+Plugin ships the entire repo. **Runtime surface**: `skills/`, `agents/`, `hooks/`, `scripts/`, `.claude-plugin/`. Everything else is supplementary (docs, CI config, `.claude/skills/`, `.claude/rules/`, dev settings).
 
 ## Editing rules
 
-- Use `/bump-version` to change `.claude-plugin/plugin.json` version — it owns that commit; `Bump version to X.Y.Z` is a reserved commit message.
 - Always respect `scripts/block-submodule-edit.sh`. If a hook blocks a write, investigate and resolve the underlying issue. The guard ships via `hooks/hooks.json` only — `.claude/settings.json` no longer mirrors it, so contributors developing in this repo must load larch as a plugin (`claude --plugin-dir .` or the local marketplace) to pick up the guard.
 - After any change, run `/relevant-checks`.
 - Public `skills/*/SKILL.md` use `${CLAUDE_PLUGIN_ROOT}/…`; dev-only `.claude/skills/*/SKILL.md` use `$PWD/…`.
 - Update `SECURITY.md` when security-relevant behavior changes.
-- **Per-script contracts live beside the script.** Every `.sh` / `.py` script under `scripts/` and `skills/<name>/scripts/` has a sibling `<basename>.md` next to it (e.g., `scripts/redact-secrets.md` beside `scripts/redact-secrets.sh`) documenting the script's purpose, primary callers, invariants, Makefile wiring, test harness, and edit-in-sync rules. When editing a script, read its sibling `.md` first; update it in the same PR as any behavioral change. Two co-location patterns are permitted, neither is an exemption from the file-existence rule:
-  - **Primary owns the full contract.** Where a primary script has a sourced-only library (`scripts/lib-*.sh` — no shebang) and/or a regression test harness (`scripts/test-*.sh` for the primary), the primary's `.md` owns the full contract and cites the related files by path. The library and harness still get their own sibling `.md` (typically a one-paragraph stub) so every `.sh` has a sibling for discoverability and audit; the stub points readers to the primary's `.md` rather than restating the contract.
-  - **Cross-tree harnesses.** A test harness may live under `scripts/test-*.sh` while its primary lives at `skills/<name>/scripts/<primary>.sh` (e.g. `scripts/test-post-scaffold-hints.sh` testing `skills/create-skill/scripts/post-scaffold-hints.sh`). The primary's `.md` (in its own tree) owns the full contract; the harness in `scripts/` still gets a sibling `.md` stub naming its primary.
-
-  For canonical documentation files (`skills/shared/*.md`), update triggers live inside the file itself at the bottom.
+- Path-scoped editing rules for Claude Code live under `.claude/rules/`. Tools that consume only `AGENTS.md` (Codex, Cursor, Gemini) must consult `.claude/rules/script-md-siblings.md`, `.claude/rules/skill-editing-trace.md`, and `.claude/rules/version-bump-reserved-message.md` when editing scripts, `SKILL.md` files, or `.claude-plugin/plugin.json`.
 
 ## Common editing tasks
 
-- **Changing a skill** → start at `skills/<name>/SKILL.md`, then trace every helper in `skills/<name>/scripts/`, `scripts/`, and `skills/shared/`. Behavior is split between prompt and scripts.
 - **Adding/modifying the Code Reviewer archetype** → edit `skills/shared/reviewer-templates.md` (canonical; update triggers in that file), then run `bash scripts/generate-code-reviewer-agent.sh` to regenerate `agents/code-reviewer.md`; CI's `agent-sync` job runs the registry walker (`scripts/check-generators.sh`) to enforce drift across all registered generators. For any other reviewer archetype, follow the general rule: identify the canonical source and mirror updates to any generated outputs.
 - **Changing a shared script** → edit `scripts/<name>.sh`, read its sibling `scripts/<name>.md` for the contract, then grep for callers across `skills/`, `hooks/`, `.claude/settings.json`, `.github/workflows/`, and other scripts.
 - **Changing dev-only skills** → edit under `.claude/skills/bump-version/` or `.claude/skills/relevant-checks/`.
@@ -49,7 +43,7 @@ Plugin ships the entire repo. **Runtime surface**: `skills/`, `agents/`, `hooks/
 ## Conventions
 
 - Shell scripts use `set -euo pipefail` by default. Comment when `-e` is intentionally omitted.
-- Follow recent commit history style. `Bump version to X.Y.Z` is reserved for `/bump-version`.
+- Follow recent commit history style.
 - Run `gh pr create` through the skill, not manually.
 - Run `gh issue create` through `/larch:issue`, not manually. Scripts under `scripts/` and `skills/*/scripts/` (e.g., hooks) may continue to call `gh issue create` directly — the rule targets interactive / assistant-driven issue creation only.
 - Slack env vars are optional; skills degrade gracefully when absent.
