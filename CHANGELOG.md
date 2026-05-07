@@ -5,15 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [15.13.2] - 2026-05-07
 
 ### Changed
 
-- Launcher follow-up hardening: `tracking-issue-write.sh append-comment` now rejects unsafe non-empty lifecycle marker IDs before composing the synthesized HTML comment, `run-negotiation-round.sh` reserves exit 3 for Cursor auth preflight failure, shared Cursor launcher mechanics live in `scripts/lib-cursor-launcher-common.sh`, Gemini model resolution is centralized in `scripts/lib-gemini-model-resolver.sh`, and the token vendor scraper harness now fails early on an empty implementer ledger.
+- Resolve #1397: launcher toolchain follow-up hardening sweep (six subtasks, post-#1367 / #1382). `scripts/tracking-issue-write.sh append-comment` now rejects unsafe non-empty `--lifecycle-marker` IDs before composing the synthesized HTML comment — split-rc validation distinguishes charset rejection (`return 1`) from the dedicated double-hyphen rule (`return 2`, HTML-comment-data invariant: parsers may terminate the comment early on the first `--`), with separate `ERROR=` strings for each case and four new `(e4)` test rows in `scripts/test-tracking-issue-write.sh`. `scripts/run-negotiation-round.sh` reserves exit 3 for `cursor_auth_preflight` failure (distinct from exit 2 reviewer-command failure) and emits `RESPONSE_FILE=$OUTPUT_FILE` symmetrically before exit 3 so callers can parse the response-file path with one rule regardless of failure class. Shared Cursor launcher mechanics live in new `scripts/lib-cursor-launcher-common.sh` (sourced-only library, Bash 3.2-safe; four functions populating fixed globals — no `ARRAY_NAME`/`eval`/`declare -n`, per FINDING_5 alignment with `lib-cursor-auth.sh`'s secret-handling posture). Gemini model resolution is centralized in new `scripts/lib-gemini-model-resolver.sh` with set-aware (`${VAR+x}`) precedence semantics matching `agent-model-args.sh`'s Gemini arm, sourced by all three Gemini consumers (`launch-gemini-implement.sh`, `launch-gemini-review.sh`, `check-reviewers.sh` probe). The token vendor scraper harness in `scripts/test-token-vendor-scrapers.sh` now fails early on an empty implementer ledger with variant-aware diagnostic strings (Cursor / Codex / generic).
 
 ### Documentation
 
-- Launcher sibling `.md` argv-shape diagrams now match the shipped Bash 3.2-safe argv guards; see [15.12.69] Item D for the original `agent-model-args.sh` line-token stdout contract.
+- Launcher sibling `.md` argv-shape diagrams now match the shipped Bash 3.2-safe argv guards across `scripts/launch-cursor-implement.md`, `scripts/launch-cursor-review.md`, `scripts/launch-codex-implement.md`, `scripts/launch-codex-review.md`; see [15.12.69] Item D for the original `agent-model-args.sh` line-token stdout contract.
+- Sibling `.md` files updated in lockstep with harness changes per `.claude/rules/script-md-siblings.md`: `scripts/test-tracking-issue-write.md` (new `(e2)` / `(e3)` / `(e4)` assertion rows), `scripts/test-check-reviewers.md` (new resolver-rejection coverage block + edit-in-sync table entries), `scripts/test-launch-gemini-review.md` (resolver-rejection assertion paragraph + lockstep edit-in-sync notes), `skills/implement/scripts/test-gemini-implementer.md` (corrected `LAUNCHER_EXIT=<resolver-rc>` + process-exit-0 description matching the launcher's KV envelope), `scripts/run-negotiation-round.md` (stdout envelope symmetry section), `scripts/tracking-issue-write.md` (lifecycle-marker `--` rejection rule + `timing-report` in documented `COLLAPSE_PRIORITY` order). `skills/shared/external-reviewers.md` negotiation section now points readers at `scripts/run-negotiation-round.md`'s exit-code table.
 
 ## [15.13.1] - 2026-05-07
 
