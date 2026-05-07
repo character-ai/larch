@@ -247,6 +247,21 @@ if grep -q '^GEMINI_TOOL_DRIFT_WARNING=' <<< "$probe_output"; then
   fail "Expected no drift warning for clean known catalog"
 fi
 
+model_reject_labels=(empty space newline tab control)
+model_reject_values=("" " " $'foo\n' $'\t' $'foo\x01')
+for i in "${!model_reject_labels[@]}"; do
+  label="${model_reject_labels[$i]}"
+  value="${model_reject_values[$i]}"
+  probe_output=$(LARCH_GEMINI_MODEL="$value" GEMINI_STUB_MODE=ok run_gemini_probe "$TMPDIR/gemini-artifacts-model-$label")
+  grep -q '^GEMINI_HEALTHY=false$' <<< "$probe_output" \
+    || fail "Expected GEMINI_HEALTHY=false for rejected Gemini model case $label"
+  grep -q '^GEMINI_PROBE_ERROR=.*gemini model from LARCH_GEMINI_MODEL' <<< "$probe_output" \
+    || fail "Expected Gemini model diagnostic for rejected model case $label"
+  if grep -q '^GEMINI_TOOL_DRIFT_ARTIFACT=' <<< "$probe_output"; then
+    fail "Expected drift check to stay unrun for rejected model case $label"
+  fi
+done
+
 # Pin probe approval-mode to plan (least privilege). The reviewer launcher
 # uses --approval-mode yolo (test-launch-gemini-review.sh pins that). Probe
 # and reviewer use intentionally different modes; without this assertion a

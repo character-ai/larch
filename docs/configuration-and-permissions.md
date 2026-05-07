@@ -234,7 +234,7 @@ The model name to pass to the dormant Gemini reviewer launcher's `-m` flag and t
 
 **When set:**
 - The Gemini health probe and Gemini implementation launches (`/implement --coder=gemini`) use this model. The dormant reviewer launcher (`scripts/launch-gemini-review.sh`) consumes the same value if its call sites are re-enabled in a future skill change; no current skill invokes it.
-- The model flag is consumed directly by `scripts/launch-gemini-review.sh`, `scripts/check-reviewers.sh`, and `scripts/launch-gemini-implement.sh` (which resolves this env-precedence chain inline rather than via `scripts/agent-model-args.sh`, to keep `--model "$GEMINI_MODEL"` a single quoted argv token)
+- The model flag is consumed through `scripts/lib-gemini-model-resolver.sh` by `scripts/launch-gemini-review.sh`, `scripts/check-reviewers.sh`, and `scripts/launch-gemini-implement.sh` rather than via `scripts/agent-model-args.sh`, keeping `--model "$GEMINI_MODEL"` a single quoted argv token while sharing blank / `[[:cntrl:]]` rejection
 
 **When not set:**
 - Falls back to plugin `gemini_model` userConfig (`CLAUDE_PLUGIN_OPTION_GEMINI_MODEL`) when configured, otherwise defaults to `gemini-2.5-pro`

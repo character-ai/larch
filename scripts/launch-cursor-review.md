@@ -7,6 +7,7 @@
 - No additional stdout beyond what `run-external-agent.sh` produces
 - Validates `--output` through `scripts/lib-validate-meta-path.sh`, rejects empty / non-numeric `--timeout`, and rejects `--timeout` values that arithmetic-evaluate to less than `1` (catches both literal `0` and zero-padded `00` / `000` / `0000`) before creating launcher sidecars or sentinels. Also rejects missing or multiple prompt sources before any side effect.
 - Runs `run-external-agent.sh` without `exec` so the launcher can perform best-effort post-call token handling, then exits with `run-external-agent.sh`'s exit code
+- Sources `scripts/lib-cursor-launcher-common.sh` for shared Cursor model-args hydration, auth-argv setup, outer `.meta` appends, and inner-sentinel promotion.
 - Reads `agent-model-args.sh` line-token stdout into a Bash array and expands it with `${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"}` so model values containing spaces remain one argv token and producer-side validation failures abort before Cursor is launched
 - Redirects wrapper stderr to `${OUTPUT}.sidecar` when possible; if the sidecar cannot be opened, stderr falls back to `/dev/null`
 - Invokes `run-external-agent.sh` with `RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX=.inner.done`; the wrapper writes `${OUTPUT}.inner.done`, and this launcher publishes `${OUTPUT}.done` only after post-processing finishes on the normal success path
@@ -43,4 +44,4 @@
 - `skills/review/SKILL.md` (Cursor specialist + generic reviewer)
 - `scripts/collect-agent-results.sh` empty-output retry path, when `OUTER_LAUNCHER*` metadata is present and valid
 
-**Edit-in-sync**: `scripts/agent-model-args.sh`, `scripts/cursor-wrap-prompt.sh`, `scripts/render-specialist-prompt.sh`, `scripts/run-external-agent.sh`, `scripts/collect-agent-results.sh`, `scripts/test-launch-cursor-review.sh`, and `scripts/test-collect-agent-retry.sh`. Update `scripts/cursor-wrap-prompt.md` callers registry when adding/removing call sites.
+**Edit-in-sync**: `scripts/lib-cursor-launcher-common.sh`, `scripts/agent-model-args.sh`, `scripts/cursor-wrap-prompt.sh`, `scripts/render-specialist-prompt.sh`, `scripts/run-external-agent.sh`, `scripts/collect-agent-results.sh`, `scripts/test-launch-cursor-review.sh`, and `scripts/test-collect-agent-retry.sh`. Update `scripts/cursor-wrap-prompt.md` callers registry when adding/removing call sites.

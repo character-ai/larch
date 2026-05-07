@@ -21,6 +21,8 @@
 #   0 — success (response written)
 #   1 — usage/argument error
 #   2 — reviewer command failed
+#   3 — cursor_auth_preflight failure
+#   other — agent-model-args.sh failure propagated from the helper
 
 set -uo pipefail
 
@@ -90,13 +92,17 @@ case "$TOOL" in
         rm -f "$CURSOR_MODEL_ARGS_TMP"
         # Source the Cursor auth helper and run preflight before launching.
         # No sentinel collector here (negotiation is foreground-synchronous),
-        # so direct exit 2 on preflight failure is sufficient. Note: exit 2
-        # below collides with the existing "reviewer command failed" exit
-        # code; callers needing to disambiguate should inspect stderr for
-        # the `cursor-auth-preflight:` prefix.
+        # so direct exit 3 on preflight failure is the distinct auth contract.
+        # Emit RESPONSE_FILE= on the preflight-failure path so the stdout
+        # envelope is symmetric with the exit-2 reviewer-command-failed path
+        # (callers can `grep RESPONSE_FILE=` regardless of failure class).
         # shellcheck source=scripts/lib-cursor-auth.sh
+        # shellcheck disable=SC1091
         . "$SCRIPT_DIR/lib-cursor-auth.sh"
-        cursor_auth_preflight || exit 2
+        if ! cursor_auth_preflight; then
+            echo "RESPONSE_FILE=$OUTPUT_FILE"
+            exit 3
+        fi
         CURSOR_AUTH_ARGS=()
         cursor_auth_argv
         cursor agent -p --force --trust ${CURSOR_MODEL_ARGS[@]+"${CURSOR_MODEL_ARGS[@]}"} ${CURSOR_AUTH_ARGS[@]+"${CURSOR_AUTH_ARGS[@]}"} --workspace "$WORKSPACE" \

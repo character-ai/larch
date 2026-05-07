@@ -164,6 +164,21 @@ STUB_EOF
                 --timeout 30 >/dev/null 2>&1
 
         LCI_LEDGER=$(LARCH_TOKEN_SESSION_ID="$LCI_SESSION" "$REPO_ROOT/scripts/token-ledger.sh" dump | sed -n '1p')
+        if [[ ! -s "$LCI_LEDGER" ]]; then
+            case "$variant" in
+                cursor)
+                    fail "launch-cursor-implement.sh produced empty/missing ledger ($LCI_LEDGER); cursor_auth_preflight may have aborted before the launcher could record-vendor (verify CURSOR_API_KEY env, cursor stub, and PATH wiring)"
+                    ;;
+                codex)
+                    fail "launch-codex-implement.sh produced empty/missing ledger ($LCI_LEDGER); the launcher exited before record-vendor ran (verify codex stub on PATH, $LCI_SCRATCH wiring, and that the stub writes a parseable manifest.json)"
+                    ;;
+                *)
+                    fail "launch-${variant}-implement.sh produced empty/missing ledger ($LCI_LEDGER); the launcher exited before record-vendor ran (verify ${variant} stub on PATH, scratch dir wiring, and that the stub writes a parseable manifest.json)"
+                    ;;
+            esac
+            rm -f "$LCI_LEDGER"
+            continue
+        fi
         if [[ -f "$LCI_LEDGER" ]] && jq -e --arg raw "$EXPECTED_RAW" --argjson total "$EXPECTED_TOTAL" \
             'select(.type=="vendor" and .raw==$raw and .total==$total)' "$LCI_LEDGER" >/dev/null 2>&1; then
             pass

@@ -13,6 +13,8 @@ source "$SCRIPT_DIR/external-tool-registry.sh" || { echo "check-reviewers.sh: fa
 source "$SCRIPT_DIR/lib-gemini-tool-drift.sh" || { echo "check-reviewers.sh: failed to source lib-gemini-tool-drift.sh" >&2; exit 1; }
 # shellcheck source=scripts/lib-cursor-auth.sh
 source "$SCRIPT_DIR/lib-cursor-auth.sh" || { echo "check-reviewers.sh: failed to source lib-cursor-auth.sh" >&2; exit 1; }
+# shellcheck source=scripts/lib-gemini-model-resolver.sh
+source "$SCRIPT_DIR/lib-gemini-model-resolver.sh" || { echo "check-reviewers.sh: failed to source lib-gemini-model-resolver.sh" >&2; exit 1; }
 
 PROBE=false
 INCLUDE_GEMINI=false
@@ -202,26 +204,20 @@ start_probe() {
                 >"$PROBE_DIR/cursor-wrapper-attempt${attempt}.log" 2>&1 &
             ;;
         gemini)
-            # Probe model SHARES the same trust-boundary as Codex/Cursor probes
-            # (FINDING_9 in /review code review of #1367): reject blank /
-            # whitespace-only / [[:cntrl:]]-bearing values BEFORE they reach the
-            # gemini argv. Production launch-gemini-review.sh uses `-m "$model"`
-            # rather than agent-model-args.sh's `--model` shape, so the probe
-            # mirrors that argv but adds the validation rules agent-model-args.sh
-            # applies for other tools.
-            local probe_model="${LARCH_GEMINI_MODEL:-${CLAUDE_PLUGIN_OPTION_GEMINI_MODEL:-gemini-2.5-pro}}"
-            local probe_model_invalid=false
-            if [[ "$probe_model" == *[[:cntrl:]]* ]]; then
-                probe_model_invalid=true
-            fi
-            case "$probe_model" in
-                *[![:space:]]*) ;;
-                *) probe_model_invalid=true ;;
-            esac
-            if [[ "$probe_model_invalid" == "true" ]]; then
+            # Probe model SHARES the same resolver as the Gemini launchers:
+            # reject blank / whitespace-only / [[:cntrl:]]-bearing values
+            # before they reach the gemini argv while preserving `-m "$model"`
+            # as one quoted token.
+            local probe_model model_err
+            model_err="$PROBE_DIR/gemini-model-attempt${attempt}.diag"
+            if probe_model=$(resolve_gemini_model 2> "$model_err"); then
+                rm -f "$model_err"
+            else
                 {
-                    printf 'Model argument validation failed before launching Gemini probe: model value is blank, whitespace-only, or contains POSIX [[:cntrl:]] characters\n'
+                    printf 'Model argument validation failed before launching Gemini probe: '
+                    cat "$model_err"
                 } > "${output}.diag"
+                rm -f "$model_err"
                 : > "$output"
                 printf '1\n' > "${output}.done"
                 ( exit 0 ) &

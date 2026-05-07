@@ -274,6 +274,21 @@ redact_gh_error() {
     printf '%s' "$redacted" | tr '\n' ' ' | head -c 500
 }
 
+validate_lifecycle_marker() {
+    local marker="$1"
+    local LC_ALL=C
+    # Reject empty and any byte outside the positive charset (return 1),
+    # then reject the substring "--" (return 2). HTML comment data may not
+    # contain consecutive hyphens — parsers may terminate the comment early
+    # on the first "--" they see, even when followed by a non-">" byte. The
+    # split return codes let the caller emit a precise diagnostic.
+    case "$marker" in
+        *[!A-Za-z0-9._:-]*|"") return 1 ;;
+        *--*) return 2 ;;
+        *) return 0 ;;
+    esac
+}
+
 # emit_gh_failure <captured-stderr-text> — redact + emit the KEY=value
 # failure envelope and exit 2.
 emit_gh_failure() {
@@ -576,7 +591,15 @@ case "$cmd" in
             case "$1" in
                 --issue) ISSUE="${2:?--issue requires a value}"; shift 2 ;;
                 --body-file) BODY_FILE="${2:?--body-file requires a value}"; shift 2 ;;
-                --lifecycle-marker) LIFECYCLE_MARKER="${2:?--lifecycle-marker requires a value}"; shift 2 ;;
+                --lifecycle-marker)
+                    if [[ $# -lt 2 ]]; then
+                        echo "Unknown option for append-comment: --lifecycle-marker requires a value" >&2
+                        usage
+                        exit 1
+                    fi
+                    LIFECYCLE_MARKER="${2-}"
+                    shift 2
+                    ;;
                 --repo) REPO="${2:?--repo requires a value}"; shift 2 ;;
                 *) echo "Unknown option for append-comment: $1" >&2; usage; exit 1 ;;
             esac
@@ -605,6 +628,23 @@ case "$cmd" in
             exit 1
         fi
         if [[ -n "$LIFECYCLE_MARKER" ]]; then
+            # Defuse set -e: capture the return code without aborting the script
+            # when validate_lifecycle_marker returns non-zero (rc=1 charset
+            # rejection, rc=2 "--" substring rejection).
+            lifecycle_rc=0
+            validate_lifecycle_marker "$LIFECYCLE_MARKER" || lifecycle_rc=$?
+            case "$lifecycle_rc" in
+                1)
+                    echo "FAILED=true"
+                    echo "ERROR=lifecycle-marker contains bytes outside [A-Za-z0-9._:-]; the synthesized HTML comment requires a positive charset to prevent comment-terminator injection. Use a marker containing only ASCII letters, digits, '.', ':', '_', or '-'."
+                    exit 1
+                    ;;
+                2)
+                    echo "FAILED=true"
+                    echo "ERROR=lifecycle-marker contains the substring '--'; HTML comment data may not contain consecutive hyphens (parsers may terminate the comment early). Use a single-hyphen-delimited slug like 'pr-opened' or 'in-progress'."
+                    exit 1
+                    ;;
+            esac
             BODY_CONTENT="<!-- larch:lifecycle-marker:${LIFECYCLE_MARKER} -->"$'\n'"$BODY_CONTENT"
         fi
         BODY_CONTENT=$(redact "$BODY_CONTENT") || emit_redaction_failure

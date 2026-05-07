@@ -7,6 +7,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib-validate-meta-path.sh
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib-validate-meta-path.sh"
+# shellcheck source=scripts/lib-gemini-model-resolver.sh
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib-gemini-model-resolver.sh"
 
 ORIGINAL_ARGS=("$@")
 OUTPUT=""
@@ -623,7 +626,14 @@ EOF
 )
 PROMPT="${GEMINI_REVIEW_HARDENING_PREAMBLE}"$'\n\n'"${PROMPT}"
 
-GEMINI_MODEL="${LARCH_GEMINI_MODEL:-${CLAUDE_PLUGIN_OPTION_GEMINI_MODEL:-gemini-2.5-pro}}"
+GEMINI_MODEL_ERR=$(mktemp "${OUTPUT}.gemini-model.tmp.XXXXXX")
+if GEMINI_MODEL=$(resolve_gemini_model 2> "$GEMINI_MODEL_ERR"); then
+    rm -f "$GEMINI_MODEL_ERR"
+else
+    MODEL_REASON=$(cat "$GEMINI_MODEL_ERR")
+    rm -f "$GEMINI_MODEL_ERR"
+    fail_closed 2 "$MODEL_REASON"
+fi
 
 if ! setup_snapshot_guard; then
     fail_closed 99 "$SNAPSHOT_GUARD_MESSAGE"

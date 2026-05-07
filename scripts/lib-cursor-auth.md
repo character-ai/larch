@@ -17,7 +17,7 @@ Sourced library exposing two pure functions used by every live `cursor agent` ca
 
 - Never echoes the key on any path (including all error paths in `cursor_auth_preflight`).
 - Never mutates argv beyond the `CURSOR_AUTH_ARGS` global array; callers control the rest.
-- Returns rather than `exit`s — keeps callers in control of exit semantics so each launcher can synthesize its tool-specific failure channel (sentinel files for `launch-cursor-review.sh`, KV envelope for `launch-cursor-implement.sh`, plain `exit 2` for `run-negotiation-round.sh`).
+- Returns rather than `exit`s — keeps callers in control of exit semantics so each launcher can synthesize its tool-specific failure channel (sentinel files for `launch-cursor-review.sh`, KV envelope for `launch-cursor-implement.sh`, plain `exit 3` for `run-negotiation-round.sh`).
 - Darwin-only keychain probe (`security find-generic-password -a cursor-user`); on non-Darwin, preflight is a no-op.
 - Strictly read-only: never invokes `security delete-*`, never spawns a Cursor subprocess, never performs network I/O.
 - Bash 3.2-safe: forbids `declare -n`, `local -n`, `mapfile`, `readarray`, and `eval` for secret-bearing assembly. Whitespace trim uses Bash-3.2-safe parameter expansion only.

@@ -1,0 +1,3 @@
+# lib-cursor-launcher-common.sh
+
+Sourced-only helper for the shared Cursor launcher mechanics in `scripts/launch-cursor-review.sh` and `scripts/launch-cursor-implement.sh`; the primary launcher contracts remain in those two sibling docs. Exposes `cursor_launcher_load_model_args` (hydrates fixed global `MODEL_ARGS` from `scripts/agent-model-args.sh --tool cursor --with-effort`), `cursor_launcher_setup_auth_argv` (sources `scripts/lib-cursor-auth.sh`, returns `cursor_auth_preflight`'s status, and hydrates fixed global `CURSOR_AUTH_ARGS` on success), `cursor_launcher_append_outer_meta`, and `cursor_launcher_promote_inner_done`. Keep this stub in sync with `.claude/rules/script-md-siblings.md` and the primary contracts when shared Cursor launcher behavior changes.
