@@ -109,7 +109,7 @@ REPO_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
 REDACT_HELPER="$REPO_ROOT/scripts/redact-secrets.sh"
 REDACT_TMPDIR_HELPER="$REPO_ROOT/scripts/redact-tmpdir-paths.sh"
 
-# 9 canonical section slugs in declaration order. Single source of truth
+# 10 canonical section slugs in declaration order. Single source of truth
 # lives in scripts/anchor-section-markers.sh; sourced here to keep the
 # truncation pass and scripts/assemble-anchor.sh's assembly walk in
 # lockstep. Missing helper is fail-closed so the FAILED=true / ERROR= stdout
@@ -137,7 +137,7 @@ PER_SECTION_CAP=8000
 # placeholder in priority order (most-ephemeral first, most user-value
 # last). All slugs below come from SECTION_MARKERS above.
 BODY_CAP=60000
-COLLAPSE_PRIORITY=(execution-issues plan-review-tally code-review-tally oos-issues run-statistics timing-report version-bump-reasoning diagrams plan-goals-test)
+COLLAPSE_PRIORITY=(execution-issues review-findings-full plan-review-tally code-review-tally oos-issues run-statistics timing-report version-bump-reasoning diagrams plan-goals-test)
 
 ANCHOR_MARKER_V1_PREFIX='<!-- larch:implement-anchor v1'
 

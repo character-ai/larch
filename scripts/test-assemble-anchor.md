@@ -18,7 +18,7 @@ Regression harness for `scripts/assemble-anchor.sh`. Covers 18 assertion categor
 - **(b4)** Populated `run-statistics` fragment: trailing blank lines are stripped and the plugin-version row is appended immediately before the section close marker.
 - **(b5)** Hydrated `run-statistics` fragment whose interior already ends with a stale `| larch plugin version | <X.Y.Z> |` row: the stale trailing version row is stripped before a freshly-captured row is appended, producing exactly one plugin-version row in the output. Regression guard against the resume / hydration duplicate-row case.
 - **(b6)** Populated `run-statistics` fragment whose entire content is a single stale version row (no `## Run Statistics` heading, no table header) normalizes down to empty after the strip loop. The helper falls through to the seed-style scaffold so the assembled section is a well-formed table (heading + header + fresh version row) instead of an orphan row.
-- **(c)** Full fragments: all 9 slugs populated and emitted.
+- **(c)** Full fragments: all 10 slugs populated and emitted.
 - **(d)** Missing `anchor-section-markers.sh` helper: running a copy of `assemble-anchor.sh` in a fake tree without the helper emits `FAILED=true` + `ERROR=missing helper: ...` on stdout and exits 1.
 - **(e)** Invalid `--issue` value (non-integer): emits `FAILED=true` + `ERROR=usage: invalid value for --issue ...` on stdout and exits 1.
 - **(f)** First-line marker exactness: output always begins with `<!-- larch:implement-anchor v1 issue=<N> -->` where `<N>` is the `--issue` value.

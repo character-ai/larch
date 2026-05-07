@@ -110,13 +110,13 @@ This helper performs pure text assembly of local files. The redaction pipeline l
 | `scripts/test-assemble-anchor.sh` | Regression harness — every behavioral change here must be mirrored in the harness. |
 | `skills/implement/SKILL.md` | Primary consumer for anchor-section accumulation. |
 | `skills/implement/references/rebase-rebump-subprocedure.md` | Phase 5 consumer (sub-procedure Step 6). |
-| `skills/implement/references/anchor-comment-template.md` | Human-readable template describing the same 9 slugs and first-line marker. |
+| `skills/implement/references/anchor-comment-template.md` | Human-readable template describing the same 10 slugs and first-line marker. |
 
 ## Test harness
 
 `scripts/test-assemble-anchor.sh` covers 18 assertion categories:
 
-- **(a)** Empty sections directory: output has exactly 25 lines — `<!-- larch:implement-anchor v1 issue=<N> -->` on line 1, the seed-only visible placeholder line on line 2, 8 empty marker pairs, and the `run-statistics` marker pair wrapping a minimal table plus plugin-version row.
+- **(a)** Empty sections directory: output has exactly 27 lines — `<!-- larch:implement-anchor v1 issue=<N> -->` on line 1, the seed-only visible placeholder line on line 2, 9 empty marker pairs, and the `run-statistics` marker pair wrapping a minimal table plus plugin-version row.
 - **(a2)** Empty sections directory: the seed-only placeholder literal is present on line 2 (regression guard for issue #431).
 - **(a3)** Partial fragments (one slug populated): the placeholder is suppressed — only the all-empty seed case fires it.
 - **(a4)** All fragments contain only whitespace bytes (lenient predicate validation): the placeholder still fires.
@@ -128,7 +128,7 @@ This helper performs pure text assembly of local files. The redaction pipeline l
 - **(b4)** Populated `run-statistics` fragment: trailing blank lines are stripped and the plugin-version row is appended immediately before the section close marker.
 - **(b5)** Hydrated `run-statistics` fragment whose interior already ends with a stale `| larch plugin version | <X.Y.Z> |` row: the stale trailing version row is stripped before a freshly-captured row is appended, producing exactly one plugin-version row in the output. Regression guard against the resume / hydration duplicate-row case.
 - **(b6)** Populated `run-statistics` fragment whose entire content normalizes to empty after stripping (e.g. a single stale version row, no heading/header): the helper falls through to the seed-style scaffold (heading + table header + fresh version row) so the assembled section is well-formed instead of an orphan row.
-- **(c)** Full fragments: all 9 slugs have populated content.
+- **(c)** Full fragments: all 10 slugs have populated content.
 - **(d)** Missing `anchor-section-markers.sh` helper: `FAILED=true` + `ERROR=missing helper: …` on stdout + exit 1.
 - **(e)** Invalid `--issue` value (non-integer): usage error with exit 1.
 - **(f)** First-line marker is always the first line of the output.
