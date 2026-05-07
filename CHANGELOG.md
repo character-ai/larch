@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.67] - 2026-05-07
+
+### Changed
+
+- Resolve #1381: add per-site `> **Continue after child returns.**` blockquotes immediately preceding each `/relevant-checks` Skill-tool invocation in `skills/implement/SKILL.md` (Step 3, Step 5.7 quick-mode after-fixes loop, Step 6 second-pass `FILES_CHANGED=true` branch, Step 10 `evaluate_failure` real-CI-failure case, Step 12c real-CI-failure case). Each callout names the literal next user-facing output (Step 4 commit (impl) breadcrumb / Step 5.8 re-review gate / Step 7 commit (review) flow / Step 10 CI-fix commit-push chain / Step 12c commit-push chain) and distinguishes clean vs non-clean `/relevant-checks` returns to keep the failure path (diagnose, fix, re-invoke) clearly inside the current step rather than reading as a halt. Step 6 also restructured to drop the dangling `If files changed,` predicate split — replaced with an explicit `Else (FILES_CHANGED=true):` branch so the if/else pairing is unambiguous for the orchestrator. Old generic Step 3 callout's meta-coverage parenthetical ("Covers every other `/relevant-checks` invocation in this file ...") removed now that per-site reminders exist at all five sites. New CI-backed text-presence harness `skills/implement/scripts/test-implement-relevant-checks-anti-halt.sh` (sibling contract `.md`) statically pins the invariant: every `/relevant-checks` invocation site (matched by two awk patterns covering the `Invoke /relevant-checks via the Skill tool` form and the inline `; /relevant-checks; commit via` chain form) MUST have the canonical `> **Continue after child returns.**` opener within the 5 physical lines preceding it; expects exactly 5 sites today. Wired into `Makefile` `test-harnesses-6` shard alongside `test-anti-halt` and excluded from `agent-lint.toml`'s orphaned-file scan via the standard `skills/implement/scripts/test-*.sh` pattern. Mirrors the pinning style of `skills/fix-issue/scripts/test-fix-issue-bail-detection.sh`.
+
 ## [15.12.66] - 2026-05-07
 
 ### Changed

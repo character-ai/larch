@@ -583,6 +583,13 @@ exclude = [
   # matching the same Makefile-only pattern as the other test-* harnesses
   # above. Both the .sh and the .md are excluded.
   "skills/implement/scripts/test-check-review-changes.sh",
+  # skills/implement/scripts/test-implement-relevant-checks-anti-halt.sh is
+  # the offline structural guard for per-site /relevant-checks continuation
+  # callouts in skills/implement/SKILL.md (issue #1381). Referenced only from
+  # Makefile (test-implement-relevant-checks-anti-halt target) and the sibling
+  # contract below, matching the same Makefile-only pattern as the other
+  # skill-local test harnesses.
+  "skills/implement/scripts/test-implement-relevant-checks-anti-halt.sh",
   # skills/research/scripts/test-research-angle-prompts.sh is the structural
   # regression guard for the fixed-shape angle-prompt mapping in
   # skills/research/references/research-phase.md. Referenced only from
@@ -843,6 +850,7 @@ exclude = [
   "skills/create-skill/scripts/test-render-skill-md.md",
   "skills/implement/scripts/check-review-changes.md",
   "skills/implement/scripts/test-check-review-changes.md",
+  "skills/implement/scripts/test-implement-relevant-checks-anti-halt.md",
   # scripts/check-reviewers.md is the sibling contract for the health-probe
   # script. scripts/test-check-reviewers.md is the sibling contract for the
   # probe acceptance regression harness. Both follow the harness-sibling pattern.
