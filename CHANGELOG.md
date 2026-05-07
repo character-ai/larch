@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.63] - 2026-05-07
+
+### Fixed
+
+- Resolve #1368: make per-section truncation in `scripts/tracking-issue-write.sh` fence-aware. Observed in issue #1356's anchor comment — `plan-goals-test` got cut mid- ` ```markdown ` fence at the 8000-byte cap, and the unclosed fence swallowed the inserted `[TRUNCATED — …]` marker plus every following section, so on GitHub the diagrams, voting-tally tables, and run-statistics token report rendered as raw code rather than as markdown. Strikingly different from issues #1357/#1358/#1353 worked at the same time which had even fence counts at the cut. Fix: scan the kept prefix line-by-line for column-0 backtick fence delimiters; track the opener's backtick count explicitly; apply the GFM closer rule (closer length ≥ opener length AND closer line is backticks-followed-by-whitespace-only, so a line like ` ```python ` inside an open fence stays content); insert a matching-length closing fence line before the TRUNCATED marker when the cut leaves a fence open. Tilde fences (`~~~`) and indented fences are out of scope — anchor sections are machine-composed by `/implement` and only emit column-0 backtick fences. `scripts/test-tracking-issue-write.sh` adds (d2)/(d3)/(d4) regressions covering 3-backtick mid-fence cut, 4-backtick opener with embedded 3-backtick content, and the GFM closer rule respectively (164 assertions pass). Sibling contracts `scripts/tracking-issue-write.md` and `scripts/test-tracking-issue-write.md` updated.
+
 ## [15.12.62] - 2026-05-07
 
 ### Fixed
