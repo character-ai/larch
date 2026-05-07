@@ -828,9 +828,9 @@ Best-effort: the script always exits 0; on any failure it removes both temp and 
 
 ### Quick mode (`quick_mode=true`)
 
-Print: `> **🔶 5: code review — quick mode (rounds 1-3: 5 Cursor specialists + generic Codex; rounds 4+: single generic Cursor → Codex → Claude fallback; up to 7 rounds)**`
+Print: `> **🔶 5: code review — quick mode (rounds 1-3: 5 Cursor specialists + generic Codex; rounds 4+: single generic Cursor → Codex → Claude fallback; up to 7 rounds, with early stop when a round is classified non-substantial per Step 5.8)**`
 
-Skip `/review`. Review loop up to **7 rounds** of review + fix. No voting panel — main agent unilaterally accepts/rejects each finding. **Rounds 1-3** launch 5 Cursor specialist reviewers in parallel (same specialists as `/review`) plus a generic Codex reviewer (6 reviewers per round); **rounds 4+** use a single generic reviewer per round.
+Skip `/review`. Review loop up to **7 rounds** of review + fix, with an early-exit at Step 5.8 when the just-fixed round is classified non-substantial (see 5.8 for the definition). No voting panel — main agent unilaterally accepts/rejects each finding. **Rounds 1-3** launch 5 Cursor specialist reviewers in parallel (same specialists as `/review`) plus a generic Codex reviewer (6 reviewers per round); **rounds 4+** use a single generic reviewer per round.
 
 Track `round_num` from 1. For each round:
 
