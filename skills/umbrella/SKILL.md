@@ -316,7 +316,7 @@ This skill invokes `/issue` via the Skill tool (Step 3A and Steps 3B.2 / 3B.3). 
 
 ## Script contracts
 
-Each script under `scripts/` has a sibling contract `.md` documenting CLI surface, stdout grammar, exit codes, and edit-in-sync rules (per `AGENTS.md` "Per-script contracts live beside the script"):
+Each script under `scripts/` has a sibling contract `.md` documenting CLI surface, stdout grammar, exit codes, and edit-in-sync rules (per `${CLAUDE_PLUGIN_ROOT}/.claude/rules/script-md-siblings.md`):
 
 - `scripts/parse-args.sh` — Step 0 flag parser; contract `scripts/parse-args.md`.
 - `scripts/render-batch-input.sh` — Step 3B.1 batch-input renderer (`pieces.json` → `/issue --input-file` markdown); contract `scripts/render-batch-input.md`.

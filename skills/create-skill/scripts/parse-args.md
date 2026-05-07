@@ -1,6 +1,6 @@
 # parse-args.sh contract
 
-`skills/create-skill/scripts/parse-args.sh` parses `/create-skill`'s `$ARGUMENTS` string and emits the six named values (`NAME`, `DESCRIPTION`, `PLUGIN`, `MULTI_STEP`, `MERGE`, `NO_SLACK`) that Step 1 of `skills/create-skill/SKILL.md` consumes. The authoritative developer-facing specification is the in-file header — edits that change the flag list, the stdout `KEY=VALUE` grammar, the positional-argument rules, or the error-message format MUST update both the in-file header and this sibling in the same PR per `AGENTS.md § Editing rules` (per-script contract rule).
+`skills/create-skill/scripts/parse-args.sh` parses `/create-skill`'s `$ARGUMENTS` string and emits the six named values (`NAME`, `DESCRIPTION`, `PLUGIN`, `MULTI_STEP`, `MERGE`, `NO_SLACK`) that Step 1 of `skills/create-skill/SKILL.md` consumes. The authoritative developer-facing specification is the in-file header — edits that change the flag list, the stdout `KEY=VALUE` grammar, the positional-argument rules, or the error-message format MUST update both the in-file header and this sibling in the same PR per `.claude/rules/script-md-siblings.md`.
 
 ## Stdout contract (success, one line per `KEY=VALUE`)
 
