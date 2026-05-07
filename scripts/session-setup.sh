@@ -43,6 +43,7 @@
 #
 # Output (KEY=value lines on stdout):
 #   SESSION_TMPDIR=<path>       Always output (fresh per invocation)
+#   SESSION_ID=<value>          Always output (also written to SESSION_TMPDIR/session-id)
 #   SLACK_OK=true|false         Output unless --skip-slack-check
 #   SLACK_MISSING=<csv>         Output when SLACK_OK=false (comma-separated missing var names)
 #   REPO=<owner/repo>           Output unless --skip-repo-check
@@ -186,8 +187,56 @@ CLONE_TAG=$(basename "$PWD")
 CLONE_TAG="${CLONE_TAG//[^A-Za-z0-9_-]/_}"
 CLONE_TAG="${CLONE_TAG:0:32}"
 [[ -z "$CLONE_TAG" ]] && CLONE_TAG="_"
-SESSION_TMPDIR=$(mktemp -d "/tmp/${PREFIX}-${CLONE_TAG}-XXXXXX")
+session_cache_root() {
+    printf '%s/larch/sessions' "${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}"
+}
+
+make_session_id() {
+    if command -v uuidgen >/dev/null 2>&1; then
+        uuidgen
+    else
+        local host
+        host=$(hostname 2>/dev/null || echo unknown-host)
+        printf '%s-%s-%s\n' "$host" "$$" "$(date +%s)"
+    fi
+}
+
+write_keepalive_sentinel() {
+    local sentinel="$SESSION_TMPDIR/.larch-keepalive"
+    local created
+    created=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo "?")
+    if ! {
+        printf 'larch session keepalive\n'
+        printf 'PID=%s\n' "$$"
+        printf 'PPID=%s\n' "$PPID"
+        printf 'CLONE_PATH=%s\n' "$PWD"
+        printf 'SESSION_ID=%s\n' "$SESSION_ID"
+        printf 'PREFIX=%s\n' "$PREFIX"
+        printf 'CREATED=%s\n' "$created"
+        printf 'NOTE=ext-cleaners-please-skip\n'
+    } > "$sentinel"; then
+        printf 'session-setup.sh: warning: failed to write keepalive sentinel: %s\n' "$sentinel" >&2
+    fi
+}
+
+CACHE_ROOT=$(session_cache_root)
+SESSION_TEMPLATE="$CACHE_ROOT/${PREFIX}-${CLONE_TAG}-XXXXXX"
+if mkdir -p "$CACHE_ROOT" 2>/dev/null && touch "$CACHE_ROOT/.larch-write-probe.$$" 2>/dev/null; then
+    rm -f "$CACHE_ROOT/.larch-write-probe.$$" 2>/dev/null || true
+    SESSION_TMPDIR=$(mktemp -d "$SESSION_TEMPLATE" 2>/dev/null) || {
+        printf 'session-setup.sh: warning: cache session root unavailable, falling back to /tmp\n' >&2
+        SESSION_TMPDIR=$(mktemp -d "/tmp/${PREFIX}-${CLONE_TAG}-XXXXXX")
+    }
+else
+    rm -f "$CACHE_ROOT/.larch-write-probe.$$" 2>/dev/null || true
+    printf 'session-setup.sh: warning: cache session root unavailable, falling back to /tmp\n' >&2
+    SESSION_TMPDIR=$(mktemp -d "/tmp/${PREFIX}-${CLONE_TAG}-XXXXXX")
+fi
+SESSION_ID=$(make_session_id)
+printf '%s\n' "$SESSION_ID" > "$SESSION_TMPDIR/session-id"
+write_keepalive_sentinel
 echo "SESSION_TMPDIR=$SESSION_TMPDIR"
+echo "SESSION_ID=$SESSION_ID"
 
 # --- 2a. Bridge reviewer model env vars from plugin userConfig (always, regardless of --skip-slack-check) ---
 if [[ -z "${LARCH_CURSOR_MODEL:-}" && -n "${CLAUDE_PLUGIN_OPTION_CURSOR_MODEL:-}" ]]; then

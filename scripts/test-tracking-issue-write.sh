@@ -282,14 +282,16 @@ BODY_CAPTURE="$TMPROOT/capture-a.txt"
 build_stub_success "$STUB_A"
 export BODY_CAPTURE
 BODY_A="$TMPROOT/body-a.txt"
-printf 'Body containing %s secret\n' "$SK_TOKEN" > "$BODY_A"
+printf 'Body containing %s secret and /tmp/claude-implement-larch1-G2GITf path\n' "$SK_TOKEN" > "$BODY_A"
 out_a=$(PATH="$STUB_A:$PATH" bash "$WRITE" create-issue --title "leaking $SK_TOKEN title" --body-file "$BODY_A" --repo owner/repo 2>&1)
 assert_contains "$out_a" 'ISSUE_NUMBER=42' '(a) ISSUE_NUMBER emitted'
 # Body capture should have redacted token.
 if [[ -f "$BODY_CAPTURE" ]]; then
     captured=$(cat "$BODY_CAPTURE")
     assert_contains "$captured" '<REDACTED-TOKEN>' '(a) body captured contains <REDACTED-TOKEN>'
+    assert_contains "$captured" '<TMPDIR>' '(a) body captured contains <TMPDIR>'
     assert_not_contains "$captured" "$SK_TOKEN" '(a) body captured does NOT leak sk-ant'
+    assert_not_contains "$captured" '/tmp/claude-implement-larch1-G2GITf' '(a) body captured does NOT leak tmpdir'
 else
     FAIL=$((FAIL + 1))
     FAILED_TESTS+=("(a) body capture file missing")
@@ -310,7 +312,8 @@ FAKE_TREE="$TMPROOT/fake-tree"
 mkdir -p "$FAKE_TREE/scripts"
 cp "$WRITE" "$FAKE_TREE/scripts/tracking-issue-write.sh"
 cp "$REPO_ROOT/scripts/anchor-section-markers.sh" "$FAKE_TREE/scripts/anchor-section-markers.sh"
-chmod +x "$FAKE_TREE/scripts/tracking-issue-write.sh"
+cp "$REPO_ROOT/scripts/redact-tmpdir-paths.sh" "$FAKE_TREE/scripts/redact-tmpdir-paths.sh"
+chmod +x "$FAKE_TREE/scripts/tracking-issue-write.sh" "$FAKE_TREE/scripts/redact-tmpdir-paths.sh"
 # Intentionally do NOT create $FAKE_TREE/scripts/redact-secrets.sh.
 BODY_B="$TMPROOT/body-b.txt"
 printf 'body content\n' > "$BODY_B"

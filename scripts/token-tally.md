@@ -16,7 +16,7 @@ Records one per-lane sidecar file at `<d>/lane-tokens-<phase>-<safe-lane>.txt`, 
 - `--lane` is the stable slot name (e.g., `Code`, `Cursor`, `Codex`, `architecture`, `edge-cases`, `external-comparisons`, `security`, `planner`).
 - `--tool` is currently always `claude` (only Claude subagent invocations have measurable usage). Reserved for future expansion if external tools ever expose token counts.
 - `--total-tokens` is a non-negative integer OR the literal `unknown`. Other values exit 1. Use `unknown` when the orchestrator could not parse `total_tokens:` from the Agent tool's `<usage>` block.
-- `--dir` MUST be under `/tmp/` or `/private/tmp/`. Any other path exits 1 (defense in depth; mirrors `cleanup-tmpdir.sh:36-40`).
+- `--dir` MUST be under `/tmp/`, `/private/tmp/`, or `${XDG_CACHE_HOME:-$HOME/.cache}/larch/sessions/`. Any other path exits 1 (defense in depth; mirrors `cleanup-tmpdir.sh`).
 
 Sidecar schema:
 
@@ -31,7 +31,7 @@ TOTAL_TOKENS=<integer or unknown>
 
 Globs `<d>/lane-tokens-*.txt`, aggregates by phase, and emits the `## Token Spend` section to stdout. Fixed-shape output: one Research-phase row, one Validation-phase row, one Total row.
 
-- `--dir` MUST be under `/tmp/` or `/private/tmp/`. If the directory does not exist (e.g., already cleaned by `cleanup-tmpdir.sh`), the script emits a graceful placeholder (`_(token telemetry unavailable: $RESEARCH_TMPDIR was already removed)_`) and exits 0.
+- `--dir` MUST be under `/tmp/`, `/private/tmp/`, or `${XDG_CACHE_HOME:-$HOME/.cache}/larch/sessions/`. If the directory does not exist (e.g., already cleaned by `cleanup-tmpdir.sh`), the script emits a graceful placeholder (`_(token telemetry unavailable: $RESEARCH_TMPDIR was already removed)_`) and exits 0.
 
 **Cost column** (optional `$` column): rendered only when `LARCH_TOKEN_RATE_PER_M` is set to a positive number (USD per million tokens). When unset, malformed, or zero, the `$` column is omitted entirely. Both `total=` and the per-phase rows show the cost. Cost is computed via `awk` floating-point: `(total * rate) / 1_000_000`.
 
@@ -43,9 +43,9 @@ Globs `<d>/lane-tokens-*.txt`, aggregates by phase, and emits the `## Token Spen
 
 ## Path validation
 
-Both subcommands validate `--dir` is under `/tmp/` or `/private/tmp/` (matching `cleanup-tmpdir.sh:36-40`). This is defense in depth: although the orchestrator only ever passes `$RESEARCH_TMPDIR` (always under `/tmp/`), a misinvocation or future caller mistake could otherwise glob and read filenames from any user-supplied directory. Reject early with exit 1.
+Both subcommands validate `--dir` is under `/tmp/`, `/private/tmp/`, or the larch cache sessions root (matching `cleanup-tmpdir.sh`). This is defense in depth: although the orchestrator only ever passes `$RESEARCH_TMPDIR`, a misinvocation or future caller mistake could otherwise glob and read filenames from any user-supplied directory. Reject early with exit 1.
 
-**Symlink-parent canonicalization**: `validate_dir` walks `--dir` upward via `dirname` to the nearest **existing-or-symlink** ancestor (the `! -e && ! -L` loop guard catches dangling symlinks instead of walking past them), canonicalizes that ancestor with `cd … && pwd -P`, and accepts only when the canonical anchor is exactly `/tmp` (canonical) or under it. Both `/tmp` and `/private/tmp` are canonicalized at validation time when distinct (typically only on Linux) so the dual-root contract is preserved. A nearest existing ancestor that is a regular file (or symlink-to-file) is rejected — `validate_dir` does not silently take its parent. The pattern mirrors `scripts/deny-edit-write.sh`'s nearest-existing-ancestor probe with a `/tmp`-allow predicate.
+**Symlink-parent canonicalization**: `validate_dir` walks `--dir` upward via `dirname` to the nearest **existing-or-symlink** ancestor (the `! -e && ! -L` loop guard catches dangling symlinks instead of walking past them), canonicalizes that ancestor with `cd … && pwd -P`, and accepts only when the canonical anchor is exactly one of the allowed roots or under it. `/tmp`, `/private/tmp` when present, and the larch cache sessions root when present are canonicalized at validation time. A nearest existing ancestor that is a regular file (or symlink-to-file) is rejected — `validate_dir` does not silently take its parent. The pattern mirrors `scripts/deny-edit-write.sh`'s nearest-existing-ancestor probe with an allowed-root predicate.
 
 ## Test harness
 

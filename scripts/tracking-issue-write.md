@@ -49,11 +49,11 @@ This script emits `FAILED=true` / `ERROR=<msg>` on failure — NOT the `ISSUE_FA
 
 ### Structural choke point: compose → redact → truncate
 
-Every subcommand composes the full logical body in memory, pipes it through `scripts/redact-secrets.sh`, and only then applies truncation. Order is non-negotiable: reversing it could slice token-shaped byte sequences and let secrets past the scrubber. The placement mirrors the `create-one.sh:202-208` "Single structural choke point" comment. Any refactor that reorders these steps must first update the test harness to prove the invariant still holds.
+Every subcommand composes the full logical body in memory, pipes it through `scripts/redact-tmpdir-paths.sh`, then through `scripts/redact-secrets.sh`, and only then applies truncation. Order is non-negotiable: reversing it could slice token-shaped byte sequences and let secrets past the scrubber, and omitting the tmpdir scrubber could publish per-session local paths. The placement mirrors the `create-one.sh:202-208` "Single structural choke point" comment. Any refactor that reorders these steps must first update the test harness to prove the invariant still holds.
 
 ### gh-failure redaction
 
-Every `gh` invocation captures stdout and stderr separately. On non-success paths, captured stderr is piped through `scripts/redact-secrets.sh` before emission in `ERROR=`. This mirrors `create-one.sh:247-280`'s outbound posture. Covers 4xx API response bodies that may echo token-bearing request material.
+Every `gh` invocation captures stdout and stderr separately. On non-success paths, captured stderr is piped through `scripts/redact-tmpdir-paths.sh` and `scripts/redact-secrets.sh` before emission in `ERROR=`. This mirrors `create-one.sh:247-280`'s outbound posture. Covers 4xx API response bodies that may echo token-bearing request material or local tmpdir paths.
 
 ### Anchor skeleton preservation
 
@@ -100,7 +100,7 @@ The optional round-trip marker is a second managed prefix that appears after the
 3. Check whether the lifecycle-stripped title begins with the exact <code>[ROUND-TRIP] </code> token using `has_round_trip_prefix`.
 4. Strip at most one exact round-trip token using `strip_round_trip_prefix`; the remainder is the user tail.
 5. Compose the new title as target lifecycle prefix + (<code>[ROUND-TRIP] </code> if an existing exact marker was present or `--round-trip true` was passed) + user tail. Passing `--round-trip false` does not remove an existing marker; preservation is sticky-add-only. Omitting `--round-trip` behaves like false for adding, but still preserves an existing marker if one is already present.
-6. Pipe the prospective new title through `scripts/redact-secrets.sh` (same posture as `create-issue`).
+6. Pipe the prospective new title through `scripts/redact-tmpdir-paths.sh` and `scripts/redact-secrets.sh` (same posture as `create-issue`).
 7. Truncate to 256 chars if the result exceeds GitHub's title limit. Truncation uses bash string semantics (`${#var}` + slicing), which matches GitHub's character-based 256 limit under UTF-8 locales. Both managed prefixes are preserved at the head; only the user tail is sliced. The round-trip token is 13 ASCII characters including the trailing space.
 8. If the resulting title equals the current canonical title, emit `RENAMED=false` and skip the `gh` call.
 9. Otherwise call `gh issue edit --title` and emit `RENAMED=true`.
@@ -169,7 +169,8 @@ The regression harness `scripts/test-tracking-issue-write.sh` is wired into `mak
 | `scripts/anchor-section-markers.sh` | Single source of truth for `SECTION_MARKERS`; sourced by this script at startup. Missing helper is fail-closed (test harness case (h)). |
 | `scripts/lib-title-markers.sh` | Sourced helper for additive signal marker insertion; full grammar is documented in this file. |
 | `scripts/false-positive-keywords.md` | Keyword matcher contract for `/fix-issue`'s optional close-time false-positive marker trigger. |
-| `scripts/redact-secrets.sh` | Sole outbound scrubber — do NOT bypass or add a parallel redactor. |
+| `scripts/redact-tmpdir-paths.sh` | First outbound scrubber for larch session tmpdir literals. |
+| `scripts/redact-secrets.sh` | Second outbound scrubber for token-shaped secrets — do NOT bypass the redaction chain. |
 | `scripts/tracking-issue-read.sh` | Delegates `append-comment` when invoked with `--issue + --prompt`. |
 | `scripts/test-tracking-issue-write.sh` | Regression harness for this script — every behavioral change here must be mirrored in the harness. |
 | `skills/fix-issue/scripts/issue-lifecycle.md` | Documents the `/fix-issue` close-time consumer that calls `mark-false-positive` on keyword matches. |

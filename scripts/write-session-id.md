@@ -8,6 +8,7 @@
 
 ## Behavior
 
+- If `PATH` already exists and is non-empty, exit 0 without modifying it. This keeps the wrapper idempotent now that `session-setup.sh` creates `session-id` directly.
 - If `uuidgen` is on `PATH`, write `uuidgen` output to `PATH`.
 - Otherwise fall back to `$(basename $(dirname PATH))` — the session tmpdir basename, which is unique per run and adequate as a freshness key when uuidgen is absent.
 

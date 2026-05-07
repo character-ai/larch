@@ -14,8 +14,8 @@
 # Sidecar file naming:
 #   $RESEARCH_TMPDIR/lane-tokens-<phase>-<lane>.txt
 #
-# All --dir values must be under /tmp/ or /private/tmp/ (defense in depth;
-# mirrors cleanup-tmpdir.sh's path guard).
+# All --dir values must be under /tmp/, /private/tmp/, or the larch cache
+# session root (defense in depth; mirrors cleanup-tmpdir.sh's path guard).
 
 set -euo pipefail
 
@@ -28,7 +28,7 @@ Usage:
   write — write one per-lane sidecar to <d>/lane-tokens-<phase>-<lane>.txt.
   report — emit the ## Token Spend section (header + body) to stdout.
 
-Path validation: --dir MUST be under /tmp/ or /private/tmp/.
+Path validation: --dir MUST be under /tmp/, /private/tmp/, or the larch cache sessions root.
 EOF
 }
 
@@ -47,9 +47,10 @@ validate_dir() {
     case "/$d/" in
         */../*|*/..*|*../*) echo "ERROR: --dir must not contain '..' segments (got: $d)" >&2; return 1 ;;
     esac
+    local cache_root="${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}/larch/sessions"
     # String-prefix guard (cheap, catches the obvious cases).
-    if [[ "$d" != /tmp/* && "$d" != /private/tmp/* ]]; then
-        echo "ERROR: --dir must be under /tmp/ or /private/tmp/ (got: $d)" >&2
+    if [[ "$d" != /tmp/* && "$d" != /private/tmp/* && "$d" != "$cache_root"/* ]]; then
+        echo "ERROR: --dir must be under /tmp/, /private/tmp/, or $cache_root/ (got: $d)" >&2
         return 1
     fi
     # Canonical-path guard (defense in depth — resolves symlinks, ., ..).
@@ -65,13 +66,16 @@ validate_dir() {
     # so both spellings collapse to one canonical path; on Linux they
     # are typically distinct (and /private/tmp may not exist). Accept
     # paths that resolve under either canonical root.
-    local allowed_root_a allowed_root_b=""
+    local allowed_root_a allowed_root_b="" allowed_root_c=""
     allowed_root_a=$(cd /tmp 2>/dev/null && pwd -P) || {
         echo "ERROR: cannot canonicalize /tmp" >&2
         return 1
     }
     if [[ -d /private/tmp ]]; then
         allowed_root_b=$(cd /private/tmp 2>/dev/null && pwd -P) || true
+    fi
+    if [[ -d "$cache_root" ]]; then
+        allowed_root_c=$(cd "$cache_root" 2>/dev/null && pwd -P) || true
     fi
 
     # Walk up from $d to the nearest existing-or-symlink anchor. The
@@ -111,7 +115,10 @@ validate_dir() {
     if [[ -n "$allowed_root_b" ]] && { [[ "$resolved" == "$allowed_root_b" ]] || [[ "$resolved" == "$allowed_root_b"/* ]]; }; then
         return 0
     fi
-    echo "ERROR: --dir resolves outside /tmp/ (resolved: $resolved)" >&2
+    if [[ -n "$allowed_root_c" ]] && { [[ "$resolved" == "$allowed_root_c" ]] || [[ "$resolved" == "$allowed_root_c"/* ]]; }; then
+        return 0
+    fi
+    echo "ERROR: --dir resolves outside /tmp/, /private/tmp/, or $cache_root/ (resolved: $resolved)" >&2
     return 1
 }
 

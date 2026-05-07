@@ -21,6 +21,11 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+REDACT_TMPDIR_HELPER="$REPO_ROOT/scripts/redact-tmpdir-paths.sh"
+REDACT_HELPER="$REPO_ROOT/scripts/redact-secrets.sh"
+
 CHANNEL_ID=""
 TEXT=""
 USERNAME=""
@@ -44,6 +49,16 @@ if [[ -z "$CHANNEL_ID" || -z "$TEXT" || -z "$TOKEN" ]]; then
   echo "Usage: $0 --channel-id CHANNEL_ID --text \"Message\" --token \"SLACK_TOKEN\"" >&2
   exit 1
 fi
+
+if [[ ! -x "$REDACT_TMPDIR_HELPER" ]]; then
+  echo "Error: redaction helper missing or not executable: redact-tmpdir-paths.sh" >&2
+  exit 1
+fi
+if [[ ! -x "$REDACT_HELPER" ]]; then
+  echo "Error: redaction helper missing or not executable: redact-secrets.sh" >&2
+  exit 1
+fi
+TEXT=$(printf '%s' "$TEXT" | "$REDACT_TMPDIR_HELPER" | "$REDACT_HELPER")
 
 # Construct JSON payload safely using jq
 PAYLOAD=$(jq -n \

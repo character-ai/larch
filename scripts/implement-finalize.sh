@@ -32,8 +32,11 @@ elapsed() {
 }
 
 is_tmp_path() {
+    local cache_root
+    cache_root="${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}/larch/sessions"
     case "$1" in
         /tmp/*|/private/tmp/*) return 0 ;;
+        "$cache_root"/*) return 0 ;;
         *) return 1 ;;
     esac
 }
@@ -69,18 +72,18 @@ parse_common_args() {
 
 validate_common_state_args() {
     [ -n "$STATE_FILE" ] || die_usage "--state-file is required"
-    is_tmp_path "$STATE_FILE" || die_usage "--state-file must be under /tmp/ or /private/tmp/"
+    is_tmp_path "$STATE_FILE" || die_usage "--state-file must be under /tmp/, /private/tmp/, or the larch cache sessions root"
     [ -r "$STATE_FILE" ] || die_usage "--state-file must exist and be readable"
 }
 
 validate_bail_file_arg() {
     [ -n "$FINAL_BAIL_REASON_FILE" ] || die_usage "--final-bail-reason-file is required"
-    is_tmp_path "$FINAL_BAIL_REASON_FILE" || die_usage "--final-bail-reason-file must be under /tmp/ or /private/tmp/"
+    is_tmp_path "$FINAL_BAIL_REASON_FILE" || die_usage "--final-bail-reason-file must be under /tmp/, /private/tmp/, or the larch cache sessions root"
 }
 
 validate_tmpdir_arg() {
     [ -n "$IMPLEMENT_TMPDIR" ] || die_usage "--implement-tmpdir is required"
-    is_tmp_path "$IMPLEMENT_TMPDIR" || die_usage "--implement-tmpdir must be under /tmp/ or /private/tmp/"
+    is_tmp_path "$IMPLEMENT_TMPDIR" || die_usage "--implement-tmpdir must be under /tmp/, /private/tmp/, or the larch cache sessions root"
     case "$STATE_FILE" in
         "$IMPLEMENT_TMPDIR"/*) ;;
         *) die_usage "--state-file must live under --implement-tmpdir for teardown" ;;
@@ -170,6 +173,61 @@ normalized_bail_reason() {
 warn_line() {
     WARNINGS=$((WARNINGS + 1))
     printf '%s\n' "$1"
+}
+
+append_execution_issue() {
+    local text=$1
+    [ -f "$IMPLEMENT_TMPDIR/execution-issues.md" ] || return 0
+    {
+        printf '\n## Tool Failures\n\n'
+        printf -- '- %s\n' "$text"
+    } >> "$IMPLEMENT_TMPDIR/execution-issues.md" 2>/dev/null || true
+}
+
+clone_basename_prefix() {
+    local clone_tag
+    clone_tag=$(basename "$PWD")
+    clone_tag=$(printf '%s' "$clone_tag" | tr -c 'A-Za-z0-9_-' '_')
+    clone_tag=${clone_tag:0:32}
+    [ -n "$clone_tag" ] || clone_tag="_"
+    printf 'claude-implement-%s-' "$clone_tag"
+}
+
+verify_cleanup_target() {
+    local expected_session_id expected_prefix actual_basename actual_session_id
+    local basename_ok session_ok session_match_display
+
+    expected_session_id=$(read_state EXPECTED_SESSION_ID "")
+    expected_prefix=$(read_state EXPECTED_TMPDIR_BASENAME_PREFIX "")
+    [ -n "$expected_prefix" ] || expected_prefix=$(clone_basename_prefix)
+
+    actual_basename=$(basename "$IMPLEMENT_TMPDIR")
+    basename_ok=false
+    case "$actual_basename" in
+        "$expected_prefix"*) basename_ok=true ;;
+    esac
+
+    session_ok=true
+    session_match_display=skipped
+    if [ -z "$expected_session_id" ]; then
+        warn_line '**⚠ 18: cleanup sanity check — EXPECTED_SESSION_ID missing; using basename-only validation.**'
+    else
+        actual_session_id=$(cat "$IMPLEMENT_TMPDIR/session-id" 2>/dev/null || true)
+        session_ok=false
+        session_match_display=n
+        if [ "$actual_session_id" = "$expected_session_id" ]; then
+            session_ok=true
+            session_match_display=y
+        fi
+    fi
+
+    if [ "$basename_ok" = "true" ] && [ "$session_ok" = "true" ]; then
+        return 0
+    fi
+
+    append_execution_issue "Step 18 cleanup target failed sanity check (basename=$actual_basename, session-id-match=$session_match_display); cleanup skipped."
+    warn_line "$(printf '**⚠ 18: cleanup target failed sanity check (basename=%s, session-id-match=%s) — refusing to rm-rf. Operator must clean manually.**' "$actual_basename" "$session_match_display")"
+    return 1
 }
 
 run_postmerge() {
@@ -576,12 +634,16 @@ run_teardown() {
         fi
     fi
 
-    set +e
-    out=$("$SCRIPT_DIR/cleanup-tmpdir.sh" --dir "$IMPLEMENT_TMPDIR")
-    cleanup_rc=$?
-    set -e
-    if [ "$cleanup_rc" -ne 0 ]; then
-        warn_line '**⚠ 18: cleanup-tmpdir failed. Continuing.**'
+    if verify_cleanup_target; then
+        set +e
+        out=$("$SCRIPT_DIR/cleanup-tmpdir.sh" --dir "$IMPLEMENT_TMPDIR")
+        cleanup_rc=$?
+        set -e
+        if [ "$cleanup_rc" -ne 0 ]; then
+            warn_line '**⚠ 18: cleanup-tmpdir failed. Continuing.**'
+        fi
+    else
+        :
     fi
 
     if [ -n "$issue_url" ]; then
