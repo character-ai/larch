@@ -61,8 +61,17 @@ fi
 source "$SCRIPT_DIR/lib-validate-meta-path.sh"
 validate_meta_scalar_path --output "$OUTPUT" || exit 1
 case "$TIMEOUT" in
-    ''|*[!0-9]*|0) echo "launch-cursor-review.sh: --timeout must be a positive integer" >&2; exit 2 ;;
+    ''|*[!0-9]*) echo "launch-cursor-review.sh: --timeout must be a positive integer" >&2; exit 2 ;;
 esac
+# Reject zero-padded zero values (e.g., 00, 000) that would pass the digit-only
+# case above but fail the wrapper's arithmetic floor check at run-external-agent.sh
+# AFTER the launcher has installed its EXIT trap and written sidecars. Keeps
+# validate-before-side-effects intact (per FINDING_5 of the design plan review)
+# and matches the floor used by launch-cursor-implement.sh / launch-gemini-review.sh.
+if (( 10#$TIMEOUT < 1 )); then
+    echo "launch-cursor-review.sh: --timeout must be >= 1" >&2
+    exit 2
+fi
 
 _src_count=0
 [[ -n "$PROMPT" ]] && _src_count=$((_src_count + 1))
@@ -155,8 +164,24 @@ if [[ -f "${OUTPUT}.meta" ]]; then
     } >> "${OUTPUT}.meta"
 fi
 
-if [[ -n "${LARCH_TEST_TRAP_AFTER_INNER_DONE:-}" ]]; then
-    eval "$LARCH_TEST_TRAP_AFTER_INNER_DONE"
+# Test-only deterministic hook (FINDING_1 of /review round 1 hardening): the
+# legacy `eval "$LARCH_TEST_TRAP_AFTER_INNER_DONE"` was an env-var → arbitrary-
+# shell channel in shipped runtime code. Replaced with a strictly-gated
+# source-file pattern that requires:
+#   1. LARCH_ALLOW_TEST_HOOKS=1 (exact match; production callers must NOT set this).
+#   2. LARCH_TEST_TRAP_AFTER_INNER_DONE_FILE points at a regular non-symlink file
+#      that the test harness wrote under its own tmpdir.
+# A production attacker would need to set TWO env vars AND control a writable
+# filesystem path the launcher will source, which is a much higher bar than
+# leaking one env var. The harness still controls deterministic post-wrapper
+# trap behavior by writing shell snippets to a path inside its session tmpdir.
+# The legacy env var name (LARCH_TEST_TRAP_AFTER_INNER_DONE without _FILE) is
+# intentionally NOT honored — silent fallback would defeat the gating.
+if [[ "${LARCH_ALLOW_TEST_HOOKS:-}" == "1" && -n "${LARCH_TEST_TRAP_AFTER_INNER_DONE_FILE:-}" ]]; then
+    if [[ -f "$LARCH_TEST_TRAP_AFTER_INNER_DONE_FILE" && ! -L "$LARCH_TEST_TRAP_AFTER_INNER_DONE_FILE" ]]; then
+        # shellcheck source=/dev/null
+        source "$LARCH_TEST_TRAP_AFTER_INNER_DONE_FILE"
+    fi
 fi
 
 # Atomic-or-bust JSON-extraction pattern: keep $OUTPUT pointing at usable
@@ -171,8 +196,23 @@ fi
 #      non-empty content — else leave the original bytes at $OUTPUT
 #      unchanged so collectors still see prose.
 if [[ -s "$OUTPUT" ]]; then
-    cp "$OUTPUT" "${OUTPUT}.json" 2>/dev/null || true
-    if command -v jq >/dev/null 2>&1 && [[ -s "${OUTPUT}.json" ]]; then
+    # Remove any stale ${OUTPUT}.json from a prior run BEFORE the cp. If cp
+    # then fails (full disk, permission, transient I/O), the launcher must not
+    # silently fall through to a state where the prior-run JSON is treated as
+    # this run's bytes — that would let jq promote the wrong .result into
+    # $OUTPUT and record-vendor log the wrong token totals (FINDING_3 of
+    # /review round 1). run-external-agent.sh's pre-launch stale cleanup at
+    # line ~144 does NOT include .json (the launcher owns that sidecar), so
+    # the launcher must clear it itself.
+    rm -f "${OUTPUT}.json"
+    if ! cp "$OUTPUT" "${OUTPUT}.json" 2>/dev/null; then
+        # cp failed — leave $OUTPUT as the wrapper-provided bytes (raw JSON or
+        # prose) and skip the post-processing block. Collectors will still see
+        # bounded content, just without launcher-extracted .result and without
+        # token-ledger updates for this run. Better than silently reading a
+        # stale prior-run .json.
+        :
+    elif command -v jq >/dev/null 2>&1 && [[ -s "${OUTPUT}.json" ]]; then
         EXTRACT_TMP="${OUTPUT}.extract.$$"
         if jq -re '.result // ""' "${OUTPUT}.json" > "$EXTRACT_TMP" 2>/dev/null && [[ -s "$EXTRACT_TMP" ]]; then
             mv "$EXTRACT_TMP" "$OUTPUT"

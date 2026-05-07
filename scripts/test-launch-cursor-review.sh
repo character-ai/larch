@@ -144,9 +144,16 @@ fi
 
 # Case D: deterministic post-wrapper trap path promotes an existing inner
 # sentinel and may leave raw JSON because normal post-processing was interrupted.
+# Hook is gated behind LARCH_ALLOW_TEST_HOOKS=1 + a hook file path under the
+# harness tmpdir, replacing the legacy LARCH_TEST_TRAP_AFTER_INNER_DONE eval
+# channel (FINDING_1 of /review round 1 hardening).
 OUT_D="$TMPDIR/cursor-d.txt"
+HOOK_D="$TMPDIR/case-d.hook"
+printf 'exit 143\n' > "$HOOK_D"
 set +e
-PATH="$STUB_BIN:$PATH" LARCH_TEST_TRAP_AFTER_INNER_DONE='exit 143' \
+PATH="$STUB_BIN:$PATH" \
+    LARCH_ALLOW_TEST_HOOKS=1 \
+    LARCH_TEST_TRAP_AFTER_INNER_DONE_FILE="$HOOK_D" \
     "$LAUNCHER" --output "$OUT_D" --timeout 5 --prompt "case d" >/dev/null 2>"$TMPDIR/case-d.stderr"
 CODE_D=$?
 set -e
@@ -161,6 +168,81 @@ if grep -q '"result"' "$OUT_D"; then
 else
     fail "case D expected raw JSON to remain on abnormal exit"
 fi
+
+# Case D2: hook is rejected when LARCH_ALLOW_TEST_HOOKS != 1, even if the file
+# env var is set. Verifies the gate is exact-match (production-safe).
+OUT_D2="$TMPDIR/cursor-d2.txt"
+HOOK_D2="$TMPDIR/case-d2.hook"
+printf 'exit 143\n' > "$HOOK_D2"
+set +e
+# LARCH_ALLOW_TEST_HOOKS unset (would be the production posture): hook ignored.
+PATH="$STUB_BIN:$PATH" \
+    LARCH_TEST_TRAP_AFTER_INNER_DONE_FILE="$HOOK_D2" \
+    "$LAUNCHER" --output "$OUT_D2" --timeout 5 --prompt "case d2" >/dev/null 2>"$TMPDIR/case-d2.stderr"
+CODE_D2=$?
+set -e
+if [[ "$CODE_D2" -eq 0 ]]; then
+    pass
+else
+    fail "case D2 expected normal exit (hook gated off)"
+fi
+# .done must reflect the wrapper's normal exit, not 143 from the hook
+assert_equals "case D2 hook ignored when ALLOW=unset" "0" "$(cat "${OUT_D2}.done")"
+
+# Case D3: explicit LARCH_ALLOW_TEST_HOOKS=2 (non-"1" value) also rejected.
+OUT_D3="$TMPDIR/cursor-d3.txt"
+HOOK_D3="$TMPDIR/case-d3.hook"
+printf 'exit 143\n' > "$HOOK_D3"
+set +e
+PATH="$STUB_BIN:$PATH" \
+    LARCH_ALLOW_TEST_HOOKS=2 \
+    LARCH_TEST_TRAP_AFTER_INNER_DONE_FILE="$HOOK_D3" \
+    "$LAUNCHER" --output "$OUT_D3" --timeout 5 --prompt "case d3" >/dev/null 2>"$TMPDIR/case-d3.stderr"
+CODE_D3=$?
+set -e
+if [[ "$CODE_D3" -eq 0 ]]; then
+    pass
+else
+    fail "case D3 expected normal exit (hook gated off; ALLOW != 1)"
+fi
+assert_equals "case D3 hook ignored when ALLOW=2" "0" "$(cat "${OUT_D3}.done")"
+
+# Case D4: legacy env var name (without _FILE) is NOT honored, even with ALLOW=1.
+# Guards against silent fallback to the old eval-based contract.
+OUT_D4="$TMPDIR/cursor-d4.txt"
+set +e
+PATH="$STUB_BIN:$PATH" \
+    LARCH_ALLOW_TEST_HOOKS=1 \
+    LARCH_TEST_TRAP_AFTER_INNER_DONE='exit 143' \
+    "$LAUNCHER" --output "$OUT_D4" --timeout 5 --prompt "case d4" >/dev/null 2>"$TMPDIR/case-d4.stderr"
+CODE_D4=$?
+set -e
+if [[ "$CODE_D4" -eq 0 ]]; then
+    pass
+else
+    fail "case D4 expected normal exit (legacy env var not honored)"
+fi
+assert_equals "case D4 legacy env ignored" "0" "$(cat "${OUT_D4}.done")"
+
+# Case D5: symlinked hook file rejected (defense-in-depth).
+OUT_D5="$TMPDIR/cursor-d5.txt"
+HOOK_D5_REAL="$TMPDIR/case-d5-real.hook"
+HOOK_D5_LINK="$TMPDIR/case-d5-link.hook"
+printf 'exit 143\n' > "$HOOK_D5_REAL"
+ln -sf "$HOOK_D5_REAL" "$HOOK_D5_LINK"
+set +e
+PATH="$STUB_BIN:$PATH" \
+    LARCH_ALLOW_TEST_HOOKS=1 \
+    LARCH_TEST_TRAP_AFTER_INNER_DONE_FILE="$HOOK_D5_LINK" \
+    "$LAUNCHER" --output "$OUT_D5" --timeout 5 --prompt "case d5" >/dev/null 2>"$TMPDIR/case-d5.stderr"
+CODE_D5=$?
+set -e
+if [[ "$CODE_D5" -eq 0 ]]; then
+    pass
+else
+    fail "case D5 expected normal exit (symlinked hook rejected)"
+fi
+assert_equals "case D5 symlink hook rejected" "0" "$(cat "${OUT_D5}.done")"
 
 # Case E: signaling the launcher while the wrapper child is running causes the
 # trap to reap the child before publishing .done.
@@ -220,8 +302,51 @@ set +e
 CODE_G_TIMEOUT=$?
 set -e
 assert_equals "case G timeout exit" "2" "$CODE_G_TIMEOUT"
-assert_grep "case G timeout stderr" "launch-cursor-review.sh: --timeout must be a positive integer" "$ERR_G_TIMEOUT"
+# `--timeout 0` now passes the digit-only filter and hits the arithmetic floor
+# check (FINDING_4 hardening), which emits "--timeout must be >= 1".
+assert_grep "case G timeout stderr" "launch-cursor-review.sh: --timeout must be >= 1" "$ERR_G_TIMEOUT"
 assert_no_artifacts "case G timeout no side effects" "$OUT_G_TIMEOUT"
+
+# Case G2 (FINDING_4 of /review round 1): zero-padded timeout must be rejected
+# before side effects, matching launch-cursor-implement.sh / launch-gemini-review.sh
+# floor semantics. The legacy `case … '0' …` filter only rejected literal '0';
+# `00` and `000` slipped through and triggered side effects + a synthetic .done.
+for bad_timeout in 00 000; do
+    OUT_G_PAD="$TMPDIR/cursor-g-pad-${bad_timeout}.txt"
+    ERR_G_PAD="$TMPDIR/case-g-pad-${bad_timeout}.stderr"
+    set +e
+    "$LAUNCHER" --output "$OUT_G_PAD" --timeout "$bad_timeout" --prompt "x" >/dev/null 2>"$ERR_G_PAD"
+    CODE_G_PAD=$?
+    set -e
+    assert_equals "case G2 (timeout=$bad_timeout) exit" "2" "$CODE_G_PAD"
+    assert_grep "case G2 (timeout=$bad_timeout) stderr" "launch-cursor-review.sh: --timeout must be >= 1" "$ERR_G_PAD"
+    assert_no_artifacts "case G2 (timeout=$bad_timeout) no side effects" "$OUT_G_PAD"
+done
+
+# Case H (FINDING_3 of /review round 1): stale ${OUTPUT}.json from a prior run
+# must NOT be reused if the current run's cp into .json fails. The launcher
+# clears any prior .json before the cp; on cp success the post-processing block
+# runs normally. We verify the pre-cp clear by pre-staging a stale .json and
+# confirming its bytes do NOT survive into the current run's $OUTPUT after a
+# successful cp + extract.
+OUT_H="$TMPDIR/cursor-h.txt"
+# Pre-stage a stale .json from a fictitious prior run.
+printf '{"result":"STALE-PRIOR-RUN","usage":{"inputTokens":999}}' > "${OUT_H}.json"
+PATH="$STUB_BIN:$PATH" "$LAUNCHER" --output "$OUT_H" --timeout 5 --prompt "case h" >/dev/null 2>"$TMPDIR/case-h.stderr"
+# After a successful run, $OUTPUT must contain the CURRENT run's extracted
+# .result, never the stale prior-run .result. The cursor stub's output and
+# resulting extracted prose must not be the stale literal.
+if grep -q 'STALE-PRIOR-RUN' "$OUT_H"; then
+    fail "case H stale prior-run .json bytes leaked into \$OUTPUT"
+else
+    pass
+fi
+# The .json sidecar should now reflect the CURRENT run, not the stale bytes.
+if grep -q 'STALE-PRIOR-RUN' "${OUT_H}.json"; then
+    fail "case H stale prior-run .json was not cleared"
+else
+    pass
+fi
 
 if [[ "$FAIL" -ne 0 ]]; then
     printf 'FAIL: test-launch-cursor-review.sh - %s failed, %s passed\n' "$FAIL" "$PASS" >&2

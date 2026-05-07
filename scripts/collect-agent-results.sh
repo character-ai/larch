@@ -522,8 +522,14 @@ if [[ ${#RETRY_FILES[@]} -gt 0 ]]; then
                 mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: OUTER_LAUNCHER not canonical launch-cursor-review.sh"
                 continue
             fi
-            if [[ ! -f "$META_OUTER_LAUNCHER" || ! -x "$META_OUTER_LAUNCHER" ]]; then
-                mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: OUTER_LAUNCHER not a regular executable file"
+            if [[ ! -f "$META_OUTER_LAUNCHER" || -L "$META_OUTER_LAUNCHER" || ! -x "$META_OUTER_LAUNCHER" ]]; then
+                # Reject symlinked launchers (R2_FINDING_2 of /review). Mirrors
+                # the OUTER_LAUNCHER_PROMPT_FILE non-symlink rule below for
+                # uniform defense-in-depth: even though the canonicalization
+                # above resolves directory symlinks via `pwd -P`, a leaf
+                # symlink at the canonical path could be swapped between the
+                # canonical comparison and the exec.
+                mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: OUTER_LAUNCHER not a regular non-symlink executable file"
                 continue
             fi
             _expected_prompt="${ORIG_OUTPUT}.prompt"
@@ -547,10 +553,26 @@ if [[ ${#RETRY_FILES[@]} -gt 0 ]]; then
             fi
             (
                 cd "$META_OUTER_LAUNCHER_WORKDIR" || exit 1
-                "$META_OUTER_LAUNCHER" \
-                    --output "$RETRY_OUTPUT" \
-                    --timeout "$META_TIMEOUT" \
-                    --prompt-file "$META_OUTER_LAUNCHER_PROMPT_FILE"
+                # Sanitize test-hook env vars before exec (R2_FINDING_1 of
+                # /review). The launcher's per-invocation gating
+                # (LARCH_ALLOW_TEST_HOOKS=1 + LARCH_TEST_TRAP_AFTER_INNER_DONE_FILE)
+                # is correct for direct callers, but the collector's outer-
+                # retry path runs in a silenced background subshell — if those
+                # env vars are inherited from the collector process (CI env
+                # leak, attacker on same UID, etc.), every retry would
+                # silently source an arbitrary file under the collector UID
+                # with no log signal. `env -u` clears them just for this
+                # exec, defense-in-depth on top of the per-invocation gate.
+                # The legacy single-env-var name is also cleared even though
+                # the launcher does not honor it, to keep the cleared set
+                # symmetric with the launcher's gating contract.
+                env -u LARCH_ALLOW_TEST_HOOKS \
+                    -u LARCH_TEST_TRAP_AFTER_INNER_DONE_FILE \
+                    -u LARCH_TEST_TRAP_AFTER_INNER_DONE \
+                    -- "$META_OUTER_LAUNCHER" \
+                        --output "$RETRY_OUTPUT" \
+                        --timeout "$META_TIMEOUT" \
+                        --prompt-file "$META_OUTER_LAUNCHER_PROMPT_FILE"
             ) >/dev/null 2>&1 &
             RETRY_SENTINELS+=("${RETRY_OUTPUT}.done")
             RETRY_LAUNCHED[j]=1

@@ -588,6 +588,48 @@ else
     ok "case X no retry output"
 fi
 
+# R2_FINDING_2 (-L rejection on OUTER_LAUNCHER) defense-in-depth note: a
+# leaf-symlink test would require planting a symlink at the canonical
+# $SCRIPT_DIR/launch-cursor-review.sh — the only path where the
+# canonicalization comparison succeeds before the new -L check runs. We
+# cannot pollute the live scripts/ directory from an offline harness; the
+# -L code path is exercised implicitly for any non-canonical leaf-symlink
+# (those are already rejected one step earlier by the canonicalization
+# comparison). The code change is preserved for repos / layouts where a
+# canonical-path symlink could otherwise slip past.
+
+# Case Z (R2_FINDING_1 of /review): retry subshell must clear test-hook env
+# vars before exec so a same-user attacker who sets LARCH_ALLOW_TEST_HOOKS=1
+# in the collector's environment cannot smuggle arbitrary shell into the
+# silent retry. We simulate by exporting both vars to a hook file that, if
+# sourced, would create a sentinel file. Then run the retry; the absence of
+# the sentinel proves the env was sanitized.
+OUT_Z="$TMPROOT/cursor-z.txt"
+HEALTH_Z="$TMPROOT/case-z.health"
+WORKDIR_Z="$TMPROOT/workdir-z"
+HOOK_Z="$TMPROOT/case-z-hook.sh"
+HOOK_SENTINEL_Z="$TMPROOT/case-z-hook-fired"
+mkdir -p "$WORKDIR_Z"
+prepare_outer_candidate "$OUT_Z"
+write_outer_meta "$OUT_Z" "$REPO_ROOT/scripts/launch-cursor-review.sh" "${OUT_Z}.prompt" "$WORKDIR_Z"
+printf 'touch %q\n' "$HOOK_SENTINEL_Z" > "$HOOK_Z"
+export CURSOR_STUB_RESULT="POST-PROCESSED OK"
+# Export the test-hook env vars in the parent shell so the collector
+# subprocess inherits them naturally (an env-prefix on the same line as
+# the command substitution would not propagate INTO the subshell). The
+# collector's own `env -u` in the retry path must then strip them before
+# launching the inner stub.
+export LARCH_ALLOW_TEST_HOOKS=1
+export LARCH_TEST_TRAP_AFTER_INNER_DONE_FILE="$HOOK_Z"
+RESULT_Z=$(PATH="$CURSOR_STUB_BIN:$PATH" run_collector bash "$OUT_Z" "$HEALTH_Z")
+unset LARCH_ALLOW_TEST_HOOKS LARCH_TEST_TRAP_AFTER_INNER_DONE_FILE
+assert_line "case Z status (retry succeeded)" "STATUS=OK" "$RESULT_Z"
+if [[ -e "$HOOK_SENTINEL_Z" ]]; then
+    fail "case Z hook sentinel exists — env-leak smuggled into retry"
+else
+    ok "case Z env sanitized — hook sentinel did not fire"
+fi
+
 echo ""
 echo "Summary: $PASS passed, $FAIL failed, $SKIP skipped"
 if (( FAIL > 0 )); then
