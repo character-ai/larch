@@ -127,6 +127,7 @@ REPO_UNAVAILABLE=false
 CODEX_HEALTHY=true
 CURSOR_HEALTHY=true
 GEMINI_HEALTHY=true
+LARCH_TIMING_LEDGER=/tmp/larch-post-design-boundary-test/timing-ledger.tsv
 EOF_SESSION
 cat > "$SESSION4.health" <<'EOF_HEALTH'
 CODEX_HEALTHY=false
@@ -142,6 +143,7 @@ grep -q '^REPO_UNAVAILABLE=false$' "$SESSION4" || fail "health rewrite did not p
 grep -q '^CODEX_HEALTHY=false$' "$SESSION4" || fail "health rewrite did not degrade CODEX_HEALTHY"
 grep -q '^CURSOR_HEALTHY=true$' "$SESSION4" || fail "health rewrite did not preserve CURSOR_HEALTHY"
 grep -q '^GEMINI_HEALTHY=true$' "$SESSION4" || fail "health rewrite did not preserve GEMINI_HEALTHY"
+grep -q '^LARCH_TIMING_LEDGER=/tmp/larch-post-design-boundary-test/timing-ledger.tsv$' "$SESSION4" || fail "health rewrite did not preserve LARCH_TIMING_LEDGER"
 
 # Missing sidecar is a no-op and emits no warning.
 TMP5="$TMPROOT/health-absent"

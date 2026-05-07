@@ -14,6 +14,7 @@
 - Appends `OUTER_LAUNCHER`, `OUTER_LAUNCHER_PROMPT_FILE`, and `OUTER_LAUNCHER_WORKDIR` to `${OUTPUT}.meta` after the wrapper exits so empty-output retry can replay through this launcher and inherit the same post-processing
 - Stores the original unwrapped prompt in `${OUTPUT}.prompt`; outer retries use `--prompt-file` to replay those bytes without re-rendering or losing trailing newlines
 - Installs an EXIT trap that promotes `${OUTPUT}.inner.done` to `${OUTPUT}.done`, or writes synthetic `99` if the wrapper failed before producing an inner sentinel. If the launcher exits abnormally during post-processing, `${OUTPUT}.done` can appear while `${OUTPUT}` still contains raw JSON envelope bytes; collectors must tolerate that abnormal-exit fallback.
+- The same EXIT trap first emits one best-effort `timing-ledger.sh record-vendor-task` row. `TIMING_START_S` is captured after argv validation and before Cursor auth preflight, so preflight failures produce duration≈0 incomplete rows. `--timing-task-kind <kind>` defaults to `cursor-review`; timing failures are silent and never affect stdout or exit code.
 - If the launcher is signaled while the wrapper child is still alive, the EXIT trap kills and reaps the child before publishing `${OUTPUT}.done`, avoiding a race between the wrapper's inner sentinel and the launcher's public sentinel
 - **Test hook**: the post-wrapper deterministic seam is reached only when `LARCH_ALLOW_TEST_HOOKS=1` (exact string match) AND `LARCH_TEST_TRAP_AFTER_INNER_DONE_FILE` points at a regular non-symlink file the harness wrote under its own tmpdir. The launcher then `source`s that file. Production callers must NOT set either env var. The legacy single-env-var name `LARCH_TEST_TRAP_AFTER_INNER_DONE` (without `_FILE`) is intentionally NOT honored — silent fallback would defeat the gating. This replaces an earlier `eval "$LARCH_TEST_TRAP_AFTER_INNER_DONE"` design that was an env-var → arbitrary-shell channel in shipped runtime code.
 - Specialist mode calls `render-specialist-prompt.sh` internally, supporting all flags
@@ -32,6 +33,7 @@
 - `--description-text TEXT` — review target description (required when `--mode=description`)
 - `--scope-files PATH` — canonical scope files list (required when `--mode=description`)
 - `--competition-notice` — append competition notice to specialist prompt
+- `--timing-task-kind KIND` — optional timing attribution kind; defaults to `cursor-review`
 
 **Call sites**:
 - `skills/implement/SKILL.md` Step 5 (quick-mode specialists + generic reviewers)

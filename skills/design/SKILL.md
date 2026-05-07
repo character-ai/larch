@@ -104,6 +104,10 @@ Consolidated NEVER rules collected from the procedural steps below. Each rule st
 
 ## Step 0 — Session Setup
 
+```bash
+SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 0 — session setup" || true
+```
+
 Define `branch_info_supplied=true` only when the caller passed valid `--branch-info` containing all 4 keys: `IS_MAIN`, `IS_USER_BRANCH`, `USER_PREFIX`, and `CURRENT_BRANCH`. `SESSION_ENV_PATH` being non-empty is not a nesting signal by itself; `--session-env` is an exposed argument and can be passed manually.
 
 If `branch_info_supplied=true` (trusted caller-supplied branch state, normally from `/implement`), use the parsed `--branch-info` values for `CURRENT_BRANCH`, `IS_MAIN`, `IS_USER_BRANCH`, and `USER_PREFIX`. The four key values are accepted as-is and not cross-checked against the working tree (see the `--branch-info` "Sharp edge" note in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/flags.md`). `/implement` is presumed to have already run the entry gate, so `session-entry-gate.sh` below will emit `SKIP_BRANCH_CHECK=true`.
@@ -164,6 +168,10 @@ The `--write-health` flag writes the health status file for cross-skill propagat
 
 ## Step 1 — Create Branch
 
+```bash
+SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 1 — branch" || true
+```
+
 ### 1a — Check current branch state
 
 **If `branch_info_supplied=true`** (via `--branch-info`): Use the values parsed from the flag (`CURRENT_BRANCH`, `IS_MAIN`, `IS_USER_BRANCH`, `USER_PREFIX`). Skip the `create-branch.sh --check` call.
@@ -190,6 +198,10 @@ Parse the output for `CURRENT_BRANCH`, `IS_MAIN`, `IS_USER_BRANCH`, and `USER_PR
 
 ## Step 1c — Clarifying Questions
 
+```bash
+SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 1c — questions" || true
+```
+
 Print: `> **🔶 1c: questions**`
 
 **If `auto_mode=true`**: Print `⏩ 1c: questions — skipped (auto mode) (<elapsed>)` and proceed to Step 1d.
@@ -198,6 +210,10 @@ Print: `> **🔶 1c: questions**`
 
 ## Step 1d — Design Discussion (Round 1)
 
+```bash
+SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 1d — discussion r1" || true
+```
+
 Print: `> **🔶 1d: discussion r1**`
 
 **If `auto_mode=true`**: Print `⏩ 1d: discussion r1 — skipped (auto mode) (<elapsed>)` and proceed to Step 2a.
@@ -205,6 +221,10 @@ Print: `> **🔶 1d: discussion r1**`
 **If `auto_mode=false`**: Execute the Step 1d body in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/discussion-rounds.md`. If already loaded at Step 1c, no need to re-load; otherwise **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/discussion-rounds.md` completely.
 
 ## Step 2a — Collaborative Approach Sketches
+
+```bash
+SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 2a — sketches" || true
+```
 
 **IMPORTANT: The collaborative sketch phase MUST ALWAYS run with all configured sketch agents — 8 in regular mode, 2 in quick mode (using Claude replacements when external tools are unavailable). Never skip or abbreviate this phase regardless of how simple, obvious, or documentation-only the feature appears. The sketch synthesis is required architectural input for the implementation plan — skipping it causes anchoring bias where a single perspective locks in the direction before alternatives are considered.**
 
@@ -324,6 +344,10 @@ Write the synthesis to `$DESIGN_TMPDIR/approach-synthesis.txt` so it can be refe
 
 ### 2a.5 — Dialectic Resolution of Contested Decisions
 
+```bash
+SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 2a.5 — dialectic" || true
+```
+
 Print: `> **🔶 2a.5: dialectic**`
 
 Read `$DESIGN_TMPDIR/contested-decisions.md`. If the file contains only `NO_CONTESTED_DECISIONS` (ignoring leading/trailing whitespace and newlines), print `⏩ 2a.5: dialectic — no contested decisions (<elapsed>)` and IMMEDIATELY proceed to Step 2b — do NOT halt after the skip breadcrumb.
@@ -362,6 +386,10 @@ Execute steps 6 through the final `✅ 2a.5: dialectic — …` print directive 
 
 ## Step 2b — Design the Implementation Plan
 
+```bash
+SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 2b — plan" || true
+```
+
 Before writing any code, create a concrete implementation plan. Research the codebase (read relevant files, grep for patterns, understand existing architecture). See CLAUDE.md for project-specific development references and conventions.
 
 Read `$DESIGN_TMPDIR/approach-synthesis.txt` from Step 2a and incorporate the synthesis into the plan. The synthesis should inform architectural decisions, file selection, and tradeoff resolutions.
@@ -389,6 +417,10 @@ Write the plan to `$DESIGN_TMPDIR/plan.txt` with basename exactly `plan.txt`. If
 
 ## Step 3 — Plan Review
 
+```bash
+SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 3 — plan review" || true
+```
+
 **IMPORTANT: Plan review MUST ALWAYS run with all 8 reviewers (4 Codex specialists + 4 Cursor specialists: Architecture/Standards, Edge-cases/Failure-modes, Innovation/Exploration, Pragmatism/Safety). Never skip or abbreviate this step regardless of how straightforward the plan appears — even when all sketch agents agreed, the plan is short, or the change seems trivial. Reviewers validate against the actual codebase state, catching issues that sketch-phase reasoning alone cannot detect. When Cursor is unavailable, each Cursor archetype slot falls back to Codex; when Codex is unavailable, each Codex archetype slot falls back to Cursor; when both are unavailable, each falls back to a Claude subagent.**
 
 **MANDATORY — READ ENTIRE FILE before launching reviewers**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/plan-review.md` completely. The reference is the normative source for the reviewer-prompt content and post-launch procedures: the byte-preserved Competition notice blockquote (appended to EACH reviewer prompt), the voter-1 / voter-2 / voter-3 detailed quoted prompts, the ballot file handling paragraph, the Collecting External Reviewer Results procedure (8 reviewers: 4 Cursor archetypes + 4 Codex archetypes, all external), the Voting Panel launch-order + threshold + Competition scoring rules, the Finalize Plan Review 4-step procedure plus OOS artifact write rule, the Track Rejected Plan Review Findings rule, and the accepted `FINDING_N` template, accepted `oos-accepted-design.md` format, and rejected-findings template. Step 3 control flow that remains inline in SKILL.md below (not in plan-review.md): the 8-reviewer "MUST ALWAYS run" IMPORTANT banner, the overall parallel-launch + spawn-order rule, `### External Reviewer Setup` (writing `$DESIGN_TMPDIR/plan.txt` + the focus-area enum summary line), and the external reviewer launch Bash blocks (4 Cursor archetypes + 4 Codex archetypes) which must stay inline because CI greps SKILL.md for the focus-area enum they carry. The Competition notice must be in context before any reviewer launch below — reading this file now guarantees that.
@@ -408,7 +440,7 @@ Launch all 4 Cursor archetype plan reviewers **first** in the parallel message (
 **Cursor — Architecture/Standards** (if `cursor_available`):
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/launch-cursor-review.sh --output "$DESIGN_TMPDIR/cursor-plan-arch-output.txt" --timeout 1800 --prompt "You are an Architecture/Standards reviewer. Review the implementation plan in $DESIGN_TMPDIR/plan.txt for this project. Read the plan file, then explore the codebase to validate the plan. Your role is to emphasize maintainability, engineering standards, separation of concerns, and reuse of existing patterns. Walk five focus areas: (1) Code Quality: logical flaws, code reuse, test coverage, backward compat, style consistency. (2) Risk/Integration: breaking changes, side effects, thread safety, deployment risks, regressions, CI. (3) Correctness: logic errors, off-by-one, nil handling, type mismatches, races, error paths. (4) Architecture: separation of concerns, contract boundaries, invariants, semantic boundaries. (5) Security: injection, authn/authz, secret handling, crypto, deserialization, SSRF, path traversal, dependency CVEs. Tag each finding with its focus area (one of code-quality / risk-integration / correctness / architecture / security). Return numbered findings with focus-area tag, concern, and suggested revision. If a finding is out of scope for this PR but worth tracking, prefix it with [OUT_OF_SCOPE]. When emitting [OUT_OF_SCOPE] findings, include affected repo-relative file paths and line ranges (e.g., skills/foo/bar.sh:120-150) in the finding's concern text when applicable, so /implement Step 9a.1's file-conflict pre-pass can emit serialization edges. If NO issues, output exactly NO_ISSUES_FOUND. Do NOT modify files. Work at your maximum reasoning effort level."
+${CLAUDE_PLUGIN_ROOT}/scripts/launch-cursor-review.sh --output "$DESIGN_TMPDIR/cursor-plan-arch-output.txt" --timeout 1800 --timing-task-kind cursor-plan-arch --prompt "You are an Architecture/Standards reviewer. Review the implementation plan in $DESIGN_TMPDIR/plan.txt for this project. Read the plan file, then explore the codebase to validate the plan. Your role is to emphasize maintainability, engineering standards, separation of concerns, and reuse of existing patterns. Walk five focus areas: (1) Code Quality: logical flaws, code reuse, test coverage, backward compat, style consistency. (2) Risk/Integration: breaking changes, side effects, thread safety, deployment risks, regressions, CI. (3) Correctness: logic errors, off-by-one, nil handling, type mismatches, races, error paths. (4) Architecture: separation of concerns, contract boundaries, invariants, semantic boundaries. (5) Security: injection, authn/authz, secret handling, crypto, deserialization, SSRF, path traversal, dependency CVEs. Tag each finding with its focus area (one of code-quality / risk-integration / correctness / architecture / security). Return numbered findings with focus-area tag, concern, and suggested revision. If a finding is out of scope for this PR but worth tracking, prefix it with [OUT_OF_SCOPE]. When emitting [OUT_OF_SCOPE] findings, include affected repo-relative file paths and line ranges (e.g., skills/foo/bar.sh:120-150) in the finding's concern text when applicable, so /implement Step 9a.1's file-conflict pre-pass can emit serialization edges. If NO issues, output exactly NO_ISSUES_FOUND. Do NOT modify files. Work at your maximum reasoning effort level."
 ```
 
 Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
@@ -416,7 +448,7 @@ Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
 **Cursor — Edge-cases/Failure-modes** (if `cursor_available`):
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/launch-cursor-review.sh --output "$DESIGN_TMPDIR/cursor-plan-edge-output.txt" --timeout 1800 --prompt "You are an Edge-case/Failure-mode reviewer. Review the implementation plan in $DESIGN_TMPDIR/plan.txt for this project. Read the plan file, then explore the codebase to validate the plan. Your role is to focus on what can go wrong: boundary conditions, error handling, failure recovery, race conditions, and silent data corruption. Walk five focus areas: (1) Code Quality: logical flaws, code reuse, test coverage, backward compat, style consistency. (2) Risk/Integration: breaking changes, side effects, thread safety, deployment risks, regressions, CI. (3) Correctness: logic errors, off-by-one, nil handling, type mismatches, races, error paths. (4) Architecture: separation of concerns, contract boundaries, invariants, semantic boundaries. (5) Security: injection, authn/authz, secret handling, crypto, deserialization, SSRF, path traversal, dependency CVEs. Tag each finding with its focus area (one of code-quality / risk-integration / correctness / architecture / security). Return numbered findings with focus-area tag, concern, and suggested revision. If a finding is out of scope for this PR but worth tracking, prefix it with [OUT_OF_SCOPE]. When emitting [OUT_OF_SCOPE] findings, include affected repo-relative file paths and line ranges (e.g., skills/foo/bar.sh:120-150) in the finding's concern text when applicable, so /implement Step 9a.1's file-conflict pre-pass can emit serialization edges. If NO issues, output exactly NO_ISSUES_FOUND. Do NOT modify files. Work at your maximum reasoning effort level."
+${CLAUDE_PLUGIN_ROOT}/scripts/launch-cursor-review.sh --output "$DESIGN_TMPDIR/cursor-plan-edge-output.txt" --timeout 1800 --timing-task-kind cursor-plan-edge --prompt "You are an Edge-case/Failure-mode reviewer. Review the implementation plan in $DESIGN_TMPDIR/plan.txt for this project. Read the plan file, then explore the codebase to validate the plan. Your role is to focus on what can go wrong: boundary conditions, error handling, failure recovery, race conditions, and silent data corruption. Walk five focus areas: (1) Code Quality: logical flaws, code reuse, test coverage, backward compat, style consistency. (2) Risk/Integration: breaking changes, side effects, thread safety, deployment risks, regressions, CI. (3) Correctness: logic errors, off-by-one, nil handling, type mismatches, races, error paths. (4) Architecture: separation of concerns, contract boundaries, invariants, semantic boundaries. (5) Security: injection, authn/authz, secret handling, crypto, deserialization, SSRF, path traversal, dependency CVEs. Tag each finding with its focus area (one of code-quality / risk-integration / correctness / architecture / security). Return numbered findings with focus-area tag, concern, and suggested revision. If a finding is out of scope for this PR but worth tracking, prefix it with [OUT_OF_SCOPE]. When emitting [OUT_OF_SCOPE] findings, include affected repo-relative file paths and line ranges (e.g., skills/foo/bar.sh:120-150) in the finding's concern text when applicable, so /implement Step 9a.1's file-conflict pre-pass can emit serialization edges. If NO issues, output exactly NO_ISSUES_FOUND. Do NOT modify files. Work at your maximum reasoning effort level."
 ```
 
 Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
@@ -424,7 +456,7 @@ Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
 **Cursor — Innovation/Exploration** (if `cursor_available`):
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/launch-cursor-review.sh --output "$DESIGN_TMPDIR/cursor-plan-innovation-output.txt" --timeout 1800 --prompt "You are an Innovation/Exploration reviewer. Review the implementation plan in $DESIGN_TMPDIR/plan.txt for this project. Read the plan file, then explore the codebase to validate the plan. Your role is to question assumptions, suggest creative alternatives, and flag when the plan takes the obvious path without considering unconventional but potentially superior solutions. Walk five focus areas: (1) Code Quality: logical flaws, code reuse, test coverage, backward compat, style consistency. (2) Risk/Integration: breaking changes, side effects, thread safety, deployment risks, regressions, CI. (3) Correctness: logic errors, off-by-one, nil handling, type mismatches, races, error paths. (4) Architecture: separation of concerns, contract boundaries, invariants, semantic boundaries. (5) Security: injection, authn/authz, secret handling, crypto, deserialization, SSRF, path traversal, dependency CVEs. Tag each finding with its focus area (one of code-quality / risk-integration / correctness / architecture / security). Return numbered findings with focus-area tag, concern, and suggested revision. If a finding is out of scope for this PR but worth tracking, prefix it with [OUT_OF_SCOPE]. When emitting [OUT_OF_SCOPE] findings, include affected repo-relative file paths and line ranges (e.g., skills/foo/bar.sh:120-150) in the finding's concern text when applicable, so /implement Step 9a.1's file-conflict pre-pass can emit serialization edges. If NO issues, output exactly NO_ISSUES_FOUND. Do NOT modify files. Work at your maximum reasoning effort level."
+${CLAUDE_PLUGIN_ROOT}/scripts/launch-cursor-review.sh --output "$DESIGN_TMPDIR/cursor-plan-innovation-output.txt" --timeout 1800 --timing-task-kind cursor-plan-innovation --prompt "You are an Innovation/Exploration reviewer. Review the implementation plan in $DESIGN_TMPDIR/plan.txt for this project. Read the plan file, then explore the codebase to validate the plan. Your role is to question assumptions, suggest creative alternatives, and flag when the plan takes the obvious path without considering unconventional but potentially superior solutions. Walk five focus areas: (1) Code Quality: logical flaws, code reuse, test coverage, backward compat, style consistency. (2) Risk/Integration: breaking changes, side effects, thread safety, deployment risks, regressions, CI. (3) Correctness: logic errors, off-by-one, nil handling, type mismatches, races, error paths. (4) Architecture: separation of concerns, contract boundaries, invariants, semantic boundaries. (5) Security: injection, authn/authz, secret handling, crypto, deserialization, SSRF, path traversal, dependency CVEs. Tag each finding with its focus area (one of code-quality / risk-integration / correctness / architecture / security). Return numbered findings with focus-area tag, concern, and suggested revision. If a finding is out of scope for this PR but worth tracking, prefix it with [OUT_OF_SCOPE]. When emitting [OUT_OF_SCOPE] findings, include affected repo-relative file paths and line ranges (e.g., skills/foo/bar.sh:120-150) in the finding's concern text when applicable, so /implement Step 9a.1's file-conflict pre-pass can emit serialization edges. If NO issues, output exactly NO_ISSUES_FOUND. Do NOT modify files. Work at your maximum reasoning effort level."
 ```
 
 Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
@@ -432,7 +464,7 @@ Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
 **Cursor — Pragmatism/Safety** (if `cursor_available`):
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/launch-cursor-review.sh --output "$DESIGN_TMPDIR/cursor-plan-pragmatic-output.txt" --timeout 1800 --prompt "You are a Pragmatism/Safety reviewer. Review the implementation plan in $DESIGN_TMPDIR/plan.txt for this project. Read the plan file, then explore the codebase to validate the plan. Your role is to minimize the scope of changes, avoid unnecessary complexity, and ensure existing features are not broken. Walk five focus areas: (1) Code Quality: logical flaws, code reuse, test coverage, backward compat, style consistency. (2) Risk/Integration: breaking changes, side effects, thread safety, deployment risks, regressions, CI. (3) Correctness: logic errors, off-by-one, nil handling, type mismatches, races, error paths. (4) Architecture: separation of concerns, contract boundaries, invariants, semantic boundaries. (5) Security: injection, authn/authz, secret handling, crypto, deserialization, SSRF, path traversal, dependency CVEs. Tag each finding with its focus area (one of code-quality / risk-integration / correctness / architecture / security). Return numbered findings with focus-area tag, concern, and suggested revision. If a finding is out of scope for this PR but worth tracking, prefix it with [OUT_OF_SCOPE]. When emitting [OUT_OF_SCOPE] findings, include affected repo-relative file paths and line ranges (e.g., skills/foo/bar.sh:120-150) in the finding's concern text when applicable, so /implement Step 9a.1's file-conflict pre-pass can emit serialization edges. If NO issues, output exactly NO_ISSUES_FOUND. Do NOT modify files. Work at your maximum reasoning effort level."
+${CLAUDE_PLUGIN_ROOT}/scripts/launch-cursor-review.sh --output "$DESIGN_TMPDIR/cursor-plan-pragmatic-output.txt" --timeout 1800 --timing-task-kind cursor-plan-pragmatic --prompt "You are a Pragmatism/Safety reviewer. Review the implementation plan in $DESIGN_TMPDIR/plan.txt for this project. Read the plan file, then explore the codebase to validate the plan. Your role is to minimize the scope of changes, avoid unnecessary complexity, and ensure existing features are not broken. Walk five focus areas: (1) Code Quality: logical flaws, code reuse, test coverage, backward compat, style consistency. (2) Risk/Integration: breaking changes, side effects, thread safety, deployment risks, regressions, CI. (3) Correctness: logic errors, off-by-one, nil handling, type mismatches, races, error paths. (4) Architecture: separation of concerns, contract boundaries, invariants, semantic boundaries. (5) Security: injection, authn/authz, secret handling, crypto, deserialization, SSRF, path traversal, dependency CVEs. Tag each finding with its focus area (one of code-quality / risk-integration / correctness / architecture / security). Return numbered findings with focus-area tag, concern, and suggested revision. If a finding is out of scope for this PR but worth tracking, prefix it with [OUT_OF_SCOPE]. When emitting [OUT_OF_SCOPE] findings, include affected repo-relative file paths and line ranges (e.g., skills/foo/bar.sh:120-150) in the finding's concern text when applicable, so /implement Step 9a.1's file-conflict pre-pass can emit serialization edges. If NO issues, output exactly NO_ISSUES_FOUND. Do NOT modify files. Work at your maximum reasoning effort level."
 ```
 
 Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
@@ -446,7 +478,7 @@ Launch all 4 Codex archetype plan reviewers **second** in the parallel message (
 **Codex — Architecture/Standards** (if `codex_available`):
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/launch-codex-review.sh --output "$DESIGN_TMPDIR/codex-primary-plan-arch-output.txt" --timeout 1800 --prompt "You are an Architecture/Standards reviewer. Review the implementation plan in $DESIGN_TMPDIR/plan.txt for this project. Read the plan file, then explore the codebase to validate the plan. Your role is to emphasize maintainability, engineering standards, separation of concerns, and reuse of existing patterns. Walk five focus areas: (1) Code Quality: logical flaws, code reuse, test coverage, backward compat, style consistency. (2) Risk/Integration: breaking changes, side effects, thread safety, deployment risks, regressions, CI. (3) Correctness: logic errors, off-by-one, nil handling, type mismatches, races, error paths. (4) Architecture: separation of concerns, contract boundaries, invariants, semantic boundaries. (5) Security: injection, authn/authz, secret handling, crypto, deserialization, SSRF, path traversal, dependency CVEs. Tag each finding with its focus area (one of code-quality / risk-integration / correctness / architecture / security). Return numbered findings with focus-area tag, concern, and suggested revision. If a finding is out of scope for this PR but worth tracking, prefix it with [OUT_OF_SCOPE]. When emitting [OUT_OF_SCOPE] findings, include affected repo-relative file paths and line ranges (e.g., skills/foo/bar.sh:120-150) in the finding's concern text when applicable, so /implement Step 9a.1's file-conflict pre-pass can emit serialization edges. If NO issues, output exactly NO_ISSUES_FOUND. Do NOT modify files. Work at your maximum reasoning effort level."
+${CLAUDE_PLUGIN_ROOT}/scripts/launch-codex-review.sh --output "$DESIGN_TMPDIR/codex-primary-plan-arch-output.txt" --timeout 1800 --timing-task-kind codex-plan-arch --prompt "You are an Architecture/Standards reviewer. Review the implementation plan in $DESIGN_TMPDIR/plan.txt for this project. Read the plan file, then explore the codebase to validate the plan. Your role is to emphasize maintainability, engineering standards, separation of concerns, and reuse of existing patterns. Walk five focus areas: (1) Code Quality: logical flaws, code reuse, test coverage, backward compat, style consistency. (2) Risk/Integration: breaking changes, side effects, thread safety, deployment risks, regressions, CI. (3) Correctness: logic errors, off-by-one, nil handling, type mismatches, races, error paths. (4) Architecture: separation of concerns, contract boundaries, invariants, semantic boundaries. (5) Security: injection, authn/authz, secret handling, crypto, deserialization, SSRF, path traversal, dependency CVEs. Tag each finding with its focus area (one of code-quality / risk-integration / correctness / architecture / security). Return numbered findings with focus-area tag, concern, and suggested revision. If a finding is out of scope for this PR but worth tracking, prefix it with [OUT_OF_SCOPE]. When emitting [OUT_OF_SCOPE] findings, include affected repo-relative file paths and line ranges (e.g., skills/foo/bar.sh:120-150) in the finding's concern text when applicable, so /implement Step 9a.1's file-conflict pre-pass can emit serialization edges. If NO issues, output exactly NO_ISSUES_FOUND. Do NOT modify files. Work at your maximum reasoning effort level."
 ```
 
 Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
@@ -454,7 +486,7 @@ Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
 **Codex — Edge-cases/Failure-modes** (if `codex_available`):
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/launch-codex-review.sh --output "$DESIGN_TMPDIR/codex-primary-plan-edge-output.txt" --timeout 1800 --prompt "You are an Edge-case/Failure-mode reviewer. Review the implementation plan in $DESIGN_TMPDIR/plan.txt for this project. Read the plan file, then explore the codebase to validate the plan. Your role is to focus on what can go wrong: boundary conditions, error handling, failure recovery, race conditions, and silent data corruption. Walk five focus areas: (1) Code Quality: logical flaws, code reuse, test coverage, backward compat, style consistency. (2) Risk/Integration: breaking changes, side effects, thread safety, deployment risks, regressions, CI. (3) Correctness: logic errors, off-by-one, nil handling, type mismatches, races, error paths. (4) Architecture: separation of concerns, contract boundaries, invariants, semantic boundaries. (5) Security: injection, authn/authz, secret handling, crypto, deserialization, SSRF, path traversal, dependency CVEs. Tag each finding with its focus area (one of code-quality / risk-integration / correctness / architecture / security). Return numbered findings with focus-area tag, concern, and suggested revision. If a finding is out of scope for this PR but worth tracking, prefix it with [OUT_OF_SCOPE]. When emitting [OUT_OF_SCOPE] findings, include affected repo-relative file paths and line ranges (e.g., skills/foo/bar.sh:120-150) in the finding's concern text when applicable, so /implement Step 9a.1's file-conflict pre-pass can emit serialization edges. If NO issues, output exactly NO_ISSUES_FOUND. Do NOT modify files. Work at your maximum reasoning effort level."
+${CLAUDE_PLUGIN_ROOT}/scripts/launch-codex-review.sh --output "$DESIGN_TMPDIR/codex-primary-plan-edge-output.txt" --timeout 1800 --timing-task-kind codex-plan-edge --prompt "You are an Edge-case/Failure-mode reviewer. Review the implementation plan in $DESIGN_TMPDIR/plan.txt for this project. Read the plan file, then explore the codebase to validate the plan. Your role is to focus on what can go wrong: boundary conditions, error handling, failure recovery, race conditions, and silent data corruption. Walk five focus areas: (1) Code Quality: logical flaws, code reuse, test coverage, backward compat, style consistency. (2) Risk/Integration: breaking changes, side effects, thread safety, deployment risks, regressions, CI. (3) Correctness: logic errors, off-by-one, nil handling, type mismatches, races, error paths. (4) Architecture: separation of concerns, contract boundaries, invariants, semantic boundaries. (5) Security: injection, authn/authz, secret handling, crypto, deserialization, SSRF, path traversal, dependency CVEs. Tag each finding with its focus area (one of code-quality / risk-integration / correctness / architecture / security). Return numbered findings with focus-area tag, concern, and suggested revision. If a finding is out of scope for this PR but worth tracking, prefix it with [OUT_OF_SCOPE]. When emitting [OUT_OF_SCOPE] findings, include affected repo-relative file paths and line ranges (e.g., skills/foo/bar.sh:120-150) in the finding's concern text when applicable, so /implement Step 9a.1's file-conflict pre-pass can emit serialization edges. If NO issues, output exactly NO_ISSUES_FOUND. Do NOT modify files. Work at your maximum reasoning effort level."
 ```
 
 Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
@@ -462,7 +494,7 @@ Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
 **Codex — Innovation/Exploration** (if `codex_available`):
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/launch-codex-review.sh --output "$DESIGN_TMPDIR/codex-primary-plan-innovation-output.txt" --timeout 1800 --prompt "You are an Innovation/Exploration reviewer. Review the implementation plan in $DESIGN_TMPDIR/plan.txt for this project. Read the plan file, then explore the codebase to validate the plan. Your role is to question assumptions, suggest creative alternatives, and flag when the plan takes the obvious path without considering unconventional but potentially superior solutions. Walk five focus areas: (1) Code Quality: logical flaws, code reuse, test coverage, backward compat, style consistency. (2) Risk/Integration: breaking changes, side effects, thread safety, deployment risks, regressions, CI. (3) Correctness: logic errors, off-by-one, nil handling, type mismatches, races, error paths. (4) Architecture: separation of concerns, contract boundaries, invariants, semantic boundaries. (5) Security: injection, authn/authz, secret handling, crypto, deserialization, SSRF, path traversal, dependency CVEs. Tag each finding with its focus area (one of code-quality / risk-integration / correctness / architecture / security). Return numbered findings with focus-area tag, concern, and suggested revision. If a finding is out of scope for this PR but worth tracking, prefix it with [OUT_OF_SCOPE]. When emitting [OUT_OF_SCOPE] findings, include affected repo-relative file paths and line ranges (e.g., skills/foo/bar.sh:120-150) in the finding's concern text when applicable, so /implement Step 9a.1's file-conflict pre-pass can emit serialization edges. If NO issues, output exactly NO_ISSUES_FOUND. Do NOT modify files. Work at your maximum reasoning effort level."
+${CLAUDE_PLUGIN_ROOT}/scripts/launch-codex-review.sh --output "$DESIGN_TMPDIR/codex-primary-plan-innovation-output.txt" --timeout 1800 --timing-task-kind codex-plan-innovation --prompt "You are an Innovation/Exploration reviewer. Review the implementation plan in $DESIGN_TMPDIR/plan.txt for this project. Read the plan file, then explore the codebase to validate the plan. Your role is to question assumptions, suggest creative alternatives, and flag when the plan takes the obvious path without considering unconventional but potentially superior solutions. Walk five focus areas: (1) Code Quality: logical flaws, code reuse, test coverage, backward compat, style consistency. (2) Risk/Integration: breaking changes, side effects, thread safety, deployment risks, regressions, CI. (3) Correctness: logic errors, off-by-one, nil handling, type mismatches, races, error paths. (4) Architecture: separation of concerns, contract boundaries, invariants, semantic boundaries. (5) Security: injection, authn/authz, secret handling, crypto, deserialization, SSRF, path traversal, dependency CVEs. Tag each finding with its focus area (one of code-quality / risk-integration / correctness / architecture / security). Return numbered findings with focus-area tag, concern, and suggested revision. If a finding is out of scope for this PR but worth tracking, prefix it with [OUT_OF_SCOPE]. When emitting [OUT_OF_SCOPE] findings, include affected repo-relative file paths and line ranges (e.g., skills/foo/bar.sh:120-150) in the finding's concern text when applicable, so /implement Step 9a.1's file-conflict pre-pass can emit serialization edges. If NO issues, output exactly NO_ISSUES_FOUND. Do NOT modify files. Work at your maximum reasoning effort level."
 ```
 
 Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
@@ -470,7 +502,7 @@ Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
 **Codex — Pragmatism/Safety** (if `codex_available`):
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/launch-codex-review.sh --output "$DESIGN_TMPDIR/codex-primary-plan-pragmatic-output.txt" --timeout 1800 --prompt "You are a Pragmatism/Safety reviewer. Review the implementation plan in $DESIGN_TMPDIR/plan.txt for this project. Read the plan file, then explore the codebase to validate the plan. Your role is to minimize the scope of changes, avoid unnecessary complexity, and ensure existing features are not broken. Walk five focus areas: (1) Code Quality: logical flaws, code reuse, test coverage, backward compat, style consistency. (2) Risk/Integration: breaking changes, side effects, thread safety, deployment risks, regressions, CI. (3) Correctness: logic errors, off-by-one, nil handling, type mismatches, races, error paths. (4) Architecture: separation of concerns, contract boundaries, invariants, semantic boundaries. (5) Security: injection, authn/authz, secret handling, crypto, deserialization, SSRF, path traversal, dependency CVEs. Tag each finding with its focus area (one of code-quality / risk-integration / correctness / architecture / security). Return numbered findings with focus-area tag, concern, and suggested revision. If a finding is out of scope for this PR but worth tracking, prefix it with [OUT_OF_SCOPE]. When emitting [OUT_OF_SCOPE] findings, include affected repo-relative file paths and line ranges (e.g., skills/foo/bar.sh:120-150) in the finding's concern text when applicable, so /implement Step 9a.1's file-conflict pre-pass can emit serialization edges. If NO issues, output exactly NO_ISSUES_FOUND. Do NOT modify files. Work at your maximum reasoning effort level."
+${CLAUDE_PLUGIN_ROOT}/scripts/launch-codex-review.sh --output "$DESIGN_TMPDIR/codex-primary-plan-pragmatic-output.txt" --timeout 1800 --timing-task-kind codex-plan-pragmatic --prompt "You are a Pragmatism/Safety reviewer. Review the implementation plan in $DESIGN_TMPDIR/plan.txt for this project. Read the plan file, then explore the codebase to validate the plan. Your role is to minimize the scope of changes, avoid unnecessary complexity, and ensure existing features are not broken. Walk five focus areas: (1) Code Quality: logical flaws, code reuse, test coverage, backward compat, style consistency. (2) Risk/Integration: breaking changes, side effects, thread safety, deployment risks, regressions, CI. (3) Correctness: logic errors, off-by-one, nil handling, type mismatches, races, error paths. (4) Architecture: separation of concerns, contract boundaries, invariants, semantic boundaries. (5) Security: injection, authn/authz, secret handling, crypto, deserialization, SSRF, path traversal, dependency CVEs. Tag each finding with its focus area (one of code-quality / risk-integration / correctness / architecture / security). Return numbered findings with focus-area tag, concern, and suggested revision. If a finding is out of scope for this PR but worth tracking, prefix it with [OUT_OF_SCOPE]. When emitting [OUT_OF_SCOPE] findings, include affected repo-relative file paths and line ranges (e.g., skills/foo/bar.sh:120-150) in the finding's concern text when applicable, so /implement Step 9a.1's file-conflict pre-pass can emit serialization edges. If NO issues, output exactly NO_ISSUES_FOUND. Do NOT modify files. Work at your maximum reasoning effort level."
 ```
 
 Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
@@ -485,6 +517,10 @@ If **all reviewers** report no in-scope issues and no out-of-scope observations,
 
 ## Step 3.5 — Design Discussion (Round 2)
 
+```bash
+SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 3.5 — discussion r2" || true
+```
+
 Print: `> **🔶 3.5: discussion r2**`
 
 **If `auto_mode=true`**: Print `⏩ 3.5: discussion r2 — skipped (auto mode) (<elapsed>)` and proceed to Step 3b. **Do NOT load `discussion-rounds.md` when `auto_mode=true`.**
@@ -492,6 +528,10 @@ Print: `> **🔶 3.5: discussion r2**`
 **If `auto_mode=false`**: Execute the Step 3.5 body in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/discussion-rounds.md`. If already loaded at Step 1c, no need to re-load; otherwise **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/discussion-rounds.md` completely. The body defines Inputs, Behavior (still-contested criteria including close 2-1 voted, fallback-to-synthesis, bucket-skipped, over-cap), Short-circuit, Output schema, Cap, and Terse-answer rules.
 
 ## Step 3b — Architecture Diagram
+
+```bash
+SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 3b — arch diagram" || true
+```
 
 Print: `> **🔶 3b: arch diagram**`
 
@@ -517,6 +557,10 @@ Write the diagram to `$DESIGN_TMPDIR/architecture-diagram.md`. If `SESSION_ENV_P
 
 ## Step 4 — Rejected Plan Review Findings Report
 
+```bash
+SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 4 — rejected findings" || true
+```
+
 Print any rejected plan review findings:
 
 1. Ensure `$DESIGN_TMPDIR/rejected-findings.md`, `$DESIGN_TMPDIR/accepted-plan-findings.md`, and `$DESIGN_TMPDIR/oos.md` exist; create empty files for any missing may-be-empty artifact so Step 5 can export a complete manifest.
@@ -528,6 +572,10 @@ Print any rejected plan review findings:
 After printing rejected findings (or the "all implemented" message), IMMEDIATELY continue to Step 5 — do NOT halt or treat this as the end of the design.
 
 ## Step 5 — Cleanup and Final Warnings
+
+```bash
+SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 5 — cleanup" || true
+```
 
 ### 5a — Update Health Status File
 

@@ -8,6 +8,7 @@
 - Cursor stdout is captured to `--transcript-path` via `run-external-agent.sh --capture-stdout-only`, with stderr routed to `<transcript>.diag` so Cursor JSON remains parseable. This file may grow large; it is intentionally NOT echoed to stdout.
 - The Cursor command includes `--output-format json`; after the run, the wrapper best-effort parses `.usage` and records a `cursor_implement` vendor total via `scripts/token-ledger.sh`. Missing `jq`, malformed JSON, or absent usage is silent and non-fatal.
 - The launcher writes the composed prompt to `${TRANSCRIPT_PATH}.prompt` before launch, appends `OUTER_LAUNCHER`, `OUTER_LAUNCHER_PROMPT_FILE`, and `OUTER_LAUNCHER_WORKDIR` to `${TRANSCRIPT_PATH}.meta` after the inner wrapper exits, and uses `RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX=.inner.done` so `${TRANSCRIPT_PATH}.done` is published only after token-ledger post-processing completes. These keys are a forward-compatibility hook; the collector does not currently replay Cursor implementer launches.
+- The wrapper emits one best-effort `scripts/timing-ledger.sh record-vendor-task` row on the normal and Cursor-auth-preflight failure paths. `TIMING_START_S` is captured at wrapper entry after argv validation and before preflight, so preflight failures produce duration≈0 incomplete rows. `--timing-task-kind <kind>` defaults to `cursor-implement`; timing failures are silent and never affect the KEY=VALUE stdout envelope or wrapper exit behavior.
 - Wrapper always exits 0 unless flag validation fails (exit 2). The Cursor subprocess's exit code is reported via `LAUNCHER_EXIT=<int>` on stdout; the dispatcher decides whether that constitutes failure.
 - `--timeout` rejects empty, non-numeric, and zero-valued digit strings (`0`, `00`, `000`, ...), while preserving valid leading-zero positive values such as `010`.
 - Cursor's `--workspace "$PWD" --trust` posture grants implicit write access to absolute paths passed via `--manifest-path` and `--qa-pending-path` (which today live under `--tmpdir`, typically rooted at `~/.cache/larch/sessions/...` per the `step2-implement.sh` convention). No analogous `--add-dir` flag is required (and Cursor CLI does not expose one). If a future Cursor release introduces a tighter sandbox, this contract must be revisited and the launcher updated to grant the manifest parent explicitly.
@@ -41,6 +42,7 @@ SIDECAR_LOG=<path>             # path to run-external-agent.sh chatter
 | `--agent-prompt PATH` | yes | `agents/cursor-implementer.md` system prompt body |
 | `--timeout SECS` | yes | Wall-clock cap for Cursor subprocess |
 | `--answers-file PATH` | optional | Operator answers from a prior `needs_qa` cycle (resume) |
+| `--timing-task-kind KIND` | optional | Timing attribution kind; defaults to `cursor-implement` |
 
 **Call sites**:
 - `skills/implement/scripts/step2-implement.sh` (dispatcher) — the only authorized caller.

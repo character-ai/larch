@@ -21,7 +21,7 @@
 **Cursor — Architecture/Standards** (if `cursor_available`):
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/launch-cursor-review.sh --output "$DESIGN_TMPDIR/cursor-sketch-arch-output.txt" --timeout 1200 --prompt "<ARCH_PROMPT>"
+${CLAUDE_PLUGIN_ROOT}/scripts/launch-cursor-review.sh --output "$DESIGN_TMPDIR/cursor-sketch-arch-output.txt" --timeout 1200 --timing-task-kind cursor-sketch-arch --prompt "<ARCH_PROMPT>"
 ```
 
 Use `run_in_background: true` and `timeout: 1260000` on the Bash tool call.
@@ -31,7 +31,7 @@ Use `run_in_background: true` and `timeout: 1260000` on the Bash tool call.
 **Cursor — Edge-cases/Failure-modes** (if `cursor_available`):
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/launch-cursor-review.sh --output "$DESIGN_TMPDIR/cursor-sketch-edge-output.txt" --timeout 1200 --prompt "<EDGE_PROMPT>"
+${CLAUDE_PLUGIN_ROOT}/scripts/launch-cursor-review.sh --output "$DESIGN_TMPDIR/cursor-sketch-edge-output.txt" --timeout 1200 --timing-task-kind cursor-sketch-edge --prompt "<EDGE_PROMPT>"
 ```
 
 Use `run_in_background: true` and `timeout: 1260000` on the Bash tool call.
@@ -41,7 +41,7 @@ Use `run_in_background: true` and `timeout: 1260000` on the Bash tool call.
 **Cursor — Innovation/Exploration** (if `cursor_available`):
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/launch-cursor-review.sh --output "$DESIGN_TMPDIR/cursor-sketch-innovation-output.txt" --timeout 1200 --prompt "<INNOVATION_PROMPT>"
+${CLAUDE_PLUGIN_ROOT}/scripts/launch-cursor-review.sh --output "$DESIGN_TMPDIR/cursor-sketch-innovation-output.txt" --timeout 1200 --timing-task-kind cursor-sketch-innovation --prompt "<INNOVATION_PROMPT>"
 ```
 
 Use `run_in_background: true` and `timeout: 1260000` on the Bash tool call.
@@ -51,7 +51,7 @@ Use `run_in_background: true` and `timeout: 1260000` on the Bash tool call.
 **Cursor — Pragmatism/Safety** (if `cursor_available`):
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/launch-cursor-review.sh --output "$DESIGN_TMPDIR/cursor-sketch-pragmatic-output.txt" --timeout 1200 --prompt "<PRAGMATIC_PROMPT>"
+${CLAUDE_PLUGIN_ROOT}/scripts/launch-cursor-review.sh --output "$DESIGN_TMPDIR/cursor-sketch-pragmatic-output.txt" --timeout 1200 --timing-task-kind cursor-sketch-pragmatic --prompt "<PRAGMATIC_PROMPT>"
 ```
 
 Use `run_in_background: true` and `timeout: 1260000` on the Bash tool call.
@@ -61,7 +61,7 @@ Use `run_in_background: true` and `timeout: 1260000` on the Bash tool call.
 **Codex — Architecture/Standards** (if `codex_available`):
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/launch-codex-review.sh --output "$DESIGN_TMPDIR/codex-sketch-arch-output.txt" --timeout 1200 --prompt "<ARCH_PROMPT>"
+${CLAUDE_PLUGIN_ROOT}/scripts/launch-codex-review.sh --output "$DESIGN_TMPDIR/codex-sketch-arch-output.txt" --timeout 1200 --timing-task-kind codex-sketch-arch --prompt "<ARCH_PROMPT>"
 ```
 
 Use `run_in_background: true` and `timeout: 1260000` on the Bash tool call.
@@ -71,7 +71,7 @@ Use `run_in_background: true` and `timeout: 1260000` on the Bash tool call.
 **Codex — Edge-cases/Failure-modes** (if `codex_available`):
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/launch-codex-review.sh --output "$DESIGN_TMPDIR/codex-sketch-edge-output.txt" --timeout 1200 --prompt "<EDGE_PROMPT>"
+${CLAUDE_PLUGIN_ROOT}/scripts/launch-codex-review.sh --output "$DESIGN_TMPDIR/codex-sketch-edge-output.txt" --timeout 1200 --timing-task-kind codex-sketch-edge --prompt "<EDGE_PROMPT>"
 ```
 
 Use `run_in_background: true` and `timeout: 1260000` on the Bash tool call.
@@ -81,7 +81,7 @@ Use `run_in_background: true` and `timeout: 1260000` on the Bash tool call.
 **Codex — Innovation/Exploration** (if `codex_available`):
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/launch-codex-review.sh --output "$DESIGN_TMPDIR/codex-sketch-innovation-output.txt" --timeout 1200 --prompt "<INNOVATION_PROMPT>"
+${CLAUDE_PLUGIN_ROOT}/scripts/launch-codex-review.sh --output "$DESIGN_TMPDIR/codex-sketch-innovation-output.txt" --timeout 1200 --timing-task-kind codex-sketch-innovation --prompt "<INNOVATION_PROMPT>"
 ```
 
 Use `run_in_background: true` and `timeout: 1260000` on the Bash tool call.
@@ -91,7 +91,7 @@ Use `run_in_background: true` and `timeout: 1260000` on the Bash tool call.
 **Codex — Pragmatism/Safety** (if `codex_available`):
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/launch-codex-review.sh --output "$DESIGN_TMPDIR/codex-sketch-pragmatic-output.txt" --timeout 1200 --prompt "<PRAGMATIC_PROMPT>"
+${CLAUDE_PLUGIN_ROOT}/scripts/launch-codex-review.sh --output "$DESIGN_TMPDIR/codex-sketch-pragmatic-output.txt" --timeout 1200 --timing-task-kind codex-sketch-pragmatic --prompt "<PRAGMATIC_PROMPT>"
 ```
 
 Use `run_in_background: true` and `timeout: 1260000` on the Bash tool call.
@@ -105,7 +105,7 @@ Use `run_in_background: true` and `timeout: 1260000` on the Bash tool call.
 **Cursor — Generic** (if `cursor_available`):
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/launch-cursor-review.sh --output "$DESIGN_TMPDIR/cursor-sketch-generic-output.txt" --timeout 1200 --prompt "<GENERIC_PROMPT>"
+${CLAUDE_PLUGIN_ROOT}/scripts/launch-cursor-review.sh --output "$DESIGN_TMPDIR/cursor-sketch-generic-output.txt" --timeout 1200 --timing-task-kind cursor-sketch-generic --prompt "<GENERIC_PROMPT>"
 ```
 
 Use `run_in_background: true` and `timeout: 1260000` on the Bash tool call.
@@ -115,7 +115,7 @@ Use `run_in_background: true` and `timeout: 1260000` on the Bash tool call.
 **Codex — Generic** (if `codex_available`):
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/launch-codex-review.sh --output "$DESIGN_TMPDIR/codex-sketch-generic-output.txt" --timeout 1200 --prompt "<GENERIC_PROMPT>"
+${CLAUDE_PLUGIN_ROOT}/scripts/launch-codex-review.sh --output "$DESIGN_TMPDIR/codex-sketch-generic-output.txt" --timeout 1200 --timing-task-kind codex-sketch-generic --prompt "<GENERIC_PROMPT>"
 ```
 
 Use `run_in_background: true` and `timeout: 1260000` on the Bash tool call.

@@ -10,7 +10,9 @@ Always writes `SLACK_OK`, `SLACK_MISSING`, `REPO`, and `REPO_UNAVAILABLE`. Optio
 - `CURSOR_HEALTHY`
 - `GEMINI_HEALTHY`
 
-Values must stay narrow and caller-controlled (`true|false` for health and Slack booleans; validated repo strings for repo identity).
+It may also write `LARCH_TIMING_LEDGER` when the caller passes `--timing-ledger <path>`. `/implement` uses this durable key so nested `/design` and `/review` invocations continue appending to the parent timing ledger after session-env rewrites.
+
+Values must stay narrow and caller-controlled (`true|false` for health and Slack booleans; validated repo strings for repo identity; caller-owned tmp paths for timing ledgers).
 
 ## Invariants
 

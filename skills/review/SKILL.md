@@ -75,6 +75,10 @@ When positional description text is present (no `--diff`), `/review` operates in
 
 ## Step 0 — Session Setup
 
+```bash
+SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=review "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "review Step 0 — session setup" || true
+```
+
 Run the shared session setup script. This handles temp directory creation, reviewer health probe, and health status file in a single call:
 
 ```bash
@@ -94,6 +98,10 @@ Set mental flags `codex_available` and `cursor_available` based on the output:
 - Same logic for Cursor.
 
 ## Step 1 — Gather Context
+
+```bash
+SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=review "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "review Step 1 — gather context" || true
+```
 
 ### Diff mode (`--diff`)
 
@@ -117,6 +125,10 @@ Skip `gather-branch-context.sh`. Resolve the verbal description to a canonical f
 Set `DIFF_FILE` to empty (no diff in description mode). Set `FILE_LIST_FILE` to `$REVIEW_TMPDIR/scope-files.txt`. Set `COMMIT_LOG_FILE` to empty.
 
 ## Step 2 — Launch Reviewer Panel in Parallel
+
+```bash
+SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=review "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "review Step 2 — reviewer panel" || true
+```
 
 ### Reviewer panel composition
 
@@ -153,16 +165,16 @@ Launch **all reviewers in a single message**. Spawn order: specialist slots firs
 
 **5 specialist slots** — for each specialist (`structure`, `correctness`, `testing`, `security`, `edge-cases`), determine which tool to use per the fallback matrix and invoke the appropriate launch wrapper. The wrappers handle prompt rendering (`render-specialist-prompt.sh`), model args (`agent-model-args.sh`), and prompt wrapping (`cursor-wrap-prompt.sh` for Cursor) internally:
 
-**Cursor specialist** (if `cursor_available`):
+**Cursor specialist** (if `cursor_available`; set `CURSOR_SPECIALIST_TIMING_KIND=cursor-specialist-<name>` with `<name>` replaced by `structure`, `correctness`, `testing`, `security`, or `edge-cases`):
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/launch-cursor-review.sh --output "$REVIEW_TMPDIR/cursor-specialist-<name>-output.txt" --timeout 1800 --agent-file "${CLAUDE_PLUGIN_ROOT}/agents/reviewer-<name>.md" --mode <diff|description> [--description-text "${DESCRIPTION_TEXT}" --scope-files "$REVIEW_TMPDIR/scope-files.txt"] --competition-notice
+${CLAUDE_PLUGIN_ROOT}/scripts/launch-cursor-review.sh --output "$REVIEW_TMPDIR/cursor-specialist-<name>-output.txt" --timeout 1800 --agent-file "${CLAUDE_PLUGIN_ROOT}/agents/reviewer-<name>.md" --mode <diff|description> [--description-text "${DESCRIPTION_TEXT}" --scope-files "$REVIEW_TMPDIR/scope-files.txt"] --competition-notice --timing-task-kind "$CURSOR_SPECIALIST_TIMING_KIND"
 ```
 
-**Codex specialist** (fallback when `cursor_available` is false, `codex_available` is true):
+**Codex specialist** (fallback when `cursor_available` is false, `codex_available` is true; set `CODEX_SPECIALIST_TIMING_KIND=codex-specialist-<name>`):
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/launch-codex-review.sh --output "$REVIEW_TMPDIR/codex-specialist-<name>-output.txt" --timeout 1800 --agent-file "${CLAUDE_PLUGIN_ROOT}/agents/reviewer-<name>.md" --mode <diff|description> [--description-text "${DESCRIPTION_TEXT}" --scope-files "$REVIEW_TMPDIR/scope-files.txt"] --competition-notice
+${CLAUDE_PLUGIN_ROOT}/scripts/launch-codex-review.sh --output "$REVIEW_TMPDIR/codex-specialist-<name>-output.txt" --timeout 1800 --agent-file "${CLAUDE_PLUGIN_ROOT}/agents/reviewer-<name>.md" --mode <diff|description> [--description-text "${DESCRIPTION_TEXT}" --scope-files "$REVIEW_TMPDIR/scope-files.txt"] --competition-notice --timing-task-kind "$CODEX_SPECIALIST_TIMING_KIND"
 ```
 
 Use `run_in_background: true` and `timeout: 1860000` on each specialist Bash tool call.
@@ -172,13 +184,13 @@ Use `run_in_background: true` and `timeout: 1860000` on each specialist Bash too
 **Diff mode**:
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/launch-codex-review.sh --output "$REVIEW_TMPDIR/codex-output.txt" --timeout 1800 --prompt "Review all code changes on the current branch vs main. Run git diff main...HEAD to see changes and git log main...HEAD --oneline for commits. For each changed file, read the full file for context. Walk five focus areas: (1) Code Quality: bugs, logic, reuse, tests, backward compat, style. (2) Risk/Integration: breaking changes, side effects, thread safety, deployment risks, regressions, CI. (3) Correctness: logic errors, off-by-one, nil handling, type mismatches, races, error paths. (4) Architecture: separation of concerns, contract boundaries, invariants, semantic boundaries. (5) Security: injection, authn/authz, secret handling, crypto, deserialization, SSRF, path traversal, dependency CVEs. Tag each finding with its focus area (one of code-quality / risk-integration / correctness / architecture / security). Return numbered findings with focus-area tag, file:line, issue, and suggested fix. When emitting [OUT_OF_SCOPE] findings, include affected repo-relative file paths and line ranges (e.g., skills/foo/bar.sh:120-150) in the finding's issue text when applicable, so /implement Step 9a.1's file-conflict pre-pass can emit serialization edges. If NO issues, output exactly NO_ISSUES_FOUND. Do NOT modify files. Work at your maximum reasoning effort level."
+${CLAUDE_PLUGIN_ROOT}/scripts/launch-codex-review.sh --output "$REVIEW_TMPDIR/codex-output.txt" --timeout 1800 --timing-task-kind codex-review-generic --prompt "Review all code changes on the current branch vs main. Run git diff main...HEAD to see changes and git log main...HEAD --oneline for commits. For each changed file, read the full file for context. Walk five focus areas: (1) Code Quality: bugs, logic, reuse, tests, backward compat, style. (2) Risk/Integration: breaking changes, side effects, thread safety, deployment risks, regressions, CI. (3) Correctness: logic errors, off-by-one, nil handling, type mismatches, races, error paths. (4) Architecture: separation of concerns, contract boundaries, invariants, semantic boundaries. (5) Security: injection, authn/authz, secret handling, crypto, deserialization, SSRF, path traversal, dependency CVEs. Tag each finding with its focus area (one of code-quality / risk-integration / correctness / architecture / security). Return numbered findings with focus-area tag, file:line, issue, and suggested fix. When emitting [OUT_OF_SCOPE] findings, include affected repo-relative file paths and line ranges (e.g., skills/foo/bar.sh:120-150) in the finding's issue text when applicable, so /implement Step 9a.1's file-conflict pre-pass can emit serialization edges. If NO issues, output exactly NO_ISSUES_FOUND. Do NOT modify files. Work at your maximum reasoning effort level."
 ```
 
 **Description mode**:
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/launch-codex-review.sh --output "$REVIEW_TMPDIR/codex-output.txt" --timeout 1800 --prompt "Review existing code described as: '${DESCRIPTION_TEXT}'. The canonical file list is at $REVIEW_TMPDIR/scope-files.txt — read that file first to see exactly which files are in scope. Read each listed file in full. You may also explore via Glob/Grep/Read for additional context, but in-scope vs out-of-scope (OOS) classification MUST be anchored to the canonical file list — findings about files NOT in scope-files.txt are OOS, even if they look related. Walk five focus areas: (1) Code Quality: bugs, logic, reuse, tests, backward compat, style. (2) Risk/Integration: breaking changes, side effects, thread safety, deployment risks, regressions, CI. (3) Correctness: logic errors, off-by-one, nil handling, type mismatches, races, error paths. (4) Architecture: separation of concerns, contract boundaries, invariants, semantic boundaries. (5) Security: injection, authn/authz, secret handling, crypto, deserialization, SSRF, path traversal, dependency CVEs. Tag each finding with its focus area (one of code-quality / risk-integration / correctness / architecture / security). Mark any finding about a file NOT in scope-files.txt as OOS. Return findings in two clearly delimited sections: a section starting with the line '### In-Scope Findings' for findings about files in scope-files.txt, and a section starting with the line '### Out-of-Scope Observations' for findings about files NOT in scope-files.txt. Each finding: focus-area tag, file:line, issue, and suggested fix. For findings placed under '### Out-of-Scope Observations' (and any in-scope finding whose issue text references repo files), include affected repo-relative file paths and line ranges (e.g., skills/foo/bar.sh:120-150) in the finding's issue text when applicable, so /implement Step 9a.1's file-conflict pre-pass can emit serialization edges. If you have neither in-scope findings nor out-of-scope observations, output exactly NO_ISSUES_FOUND. Do NOT modify files. Work at your maximum reasoning effort level."
+${CLAUDE_PLUGIN_ROOT}/scripts/launch-codex-review.sh --output "$REVIEW_TMPDIR/codex-output.txt" --timeout 1800 --timing-task-kind codex-review-generic --prompt "Review existing code described as: '${DESCRIPTION_TEXT}'. The canonical file list is at $REVIEW_TMPDIR/scope-files.txt — read that file first to see exactly which files are in scope. Read each listed file in full. You may also explore via Glob/Grep/Read for additional context, but in-scope vs out-of-scope (OOS) classification MUST be anchored to the canonical file list — findings about files NOT in scope-files.txt are OOS, even if they look related. Walk five focus areas: (1) Code Quality: bugs, logic, reuse, tests, backward compat, style. (2) Risk/Integration: breaking changes, side effects, thread safety, deployment risks, regressions, CI. (3) Correctness: logic errors, off-by-one, nil handling, type mismatches, races, error paths. (4) Architecture: separation of concerns, contract boundaries, invariants, semantic boundaries. (5) Security: injection, authn/authz, secret handling, crypto, deserialization, SSRF, path traversal, dependency CVEs. Tag each finding with its focus area (one of code-quality / risk-integration / correctness / architecture / security). Mark any finding about a file NOT in scope-files.txt as OOS. Return findings in two clearly delimited sections: a section starting with the line '### In-Scope Findings' for findings about files in scope-files.txt, and a section starting with the line '### Out-of-Scope Observations' for findings about files NOT in scope-files.txt. Each finding: focus-area tag, file:line, issue, and suggested fix. For findings placed under '### Out-of-Scope Observations' (and any in-scope finding whose issue text references repo files), include affected repo-relative file paths and line ranges (e.g., skills/foo/bar.sh:120-150) in the finding's issue text when applicable, so /implement Step 9a.1's file-conflict pre-pass can emit serialization edges. If you have neither in-scope findings nor out-of-scope observations, output exactly NO_ISSUES_FOUND. Do NOT modify files. Work at your maximum reasoning effort level."
 ```
 
 Use `run_in_background: true` and `timeout: 1860000`.
@@ -202,6 +214,14 @@ External reviewer output collection, validation, and retry are handled by the sh
 ### Round-state machine (diff mode)
 
 **In diff mode**, this step repeats until reviewers find no more issues, the just-fixed round is classified non-substantial at Step 3f, or the round cap is hit. Track the current **round number** starting at 1.
+
+At the top of each Step 3 round iteration's bash block (before `### 3a — Collect` for round N), invoke:
+
+```bash
+SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=review "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "review Step 3 round ${round_num} — review cycle" || true
+```
+
+Use the round counter already tracked by the round state machine.
 
 | Rounds | Reviewer panel | Voting | OOS collection | Stop condition |
 |--------|---------------|--------|----------------|----------------|
@@ -295,6 +315,10 @@ If `round_substantial=true`, increment the round number. IMMEDIATELY re-execute 
 **Diff mode only.** If the loop has run **7 rounds** without converging (3 full-panel rounds + 4 single-reviewer rounds), stop and print a warning, then IMMEDIATELY proceed to Step 4 — do NOT halt or wait for user input.
 
 ## Step 4 — Final Summary (and description-mode /umbrella filing)
+
+```bash
+SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=review "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "review Step 4 — final summary" || true
+```
 
 ### 4a — Print summary (both modes)
 
@@ -400,6 +424,10 @@ PARSE_STATUS=ok
 Substitute `ISSUES_CREATED`, `ISSUES_DEDUPLICATED`, `ISSUES_FAILED` from Step 4b (or zero each if Step 4b was skipped — i.e., `no_issues=true` or the findings batch was empty). Substitute `SECURITY_FINDINGS_HELD` from Step 4c independently (zero only if Step 4c found no security findings — Step 4c always runs in description mode regardless of whether Step 4b ran). `PARSE_STATUS=ok` always (any error path emits a different `PARSE_STATUS` value or aborts before reaching here). After printing the KV footer, IMMEDIATELY continue to Step 5 (Cleanup) — do NOT halt after the footer.
 
 ## Step 5 — Cleanup
+
+```bash
+SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=review "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "review Step 5 — cleanup" || true
+```
 
 ### 5a — Update Health Status File
 

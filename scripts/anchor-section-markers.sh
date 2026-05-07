@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# anchor-section-markers.sh — single source of truth for the 8 canonical
+# anchor-section-markers.sh — single source of truth for the 9 canonical
 # anchor section slugs, in assembly / truncation order.
 #
 # Sourced by:
@@ -14,7 +14,7 @@
 #
 # Edit-in-sync:
 #   - skills/implement/references/anchor-comment-template.md documents the
-#     same 8 slugs as a human-readable anchor body template. The array
+#     same 9 slugs as a human-readable anchor body template. The array
 #     below is the executable source of truth.
 #   - scripts/tracking-issue-write.sh's COLLAPSE_PRIORITY array is the
 #     body-cap collapse order (different ordering, same slug set).
@@ -25,4 +25,4 @@
 # SECTION_MARKERS is consumed by the callers that source this file
 # (scripts/tracking-issue-write.sh and scripts/assemble-anchor.sh). It is
 # not referenced inside this file — that is by design.
-SECTION_MARKERS=(plan-goals-test plan-review-tally code-review-tally diagrams version-bump-reasoning oos-issues execution-issues run-statistics)
+SECTION_MARKERS=(plan-goals-test plan-review-tally code-review-tally diagrams version-bump-reasoning oos-issues execution-issues run-statistics timing-report)

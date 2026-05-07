@@ -24,6 +24,25 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"
 
+# shellcheck disable=SC2317,SC2329 # invoked indirectly by the EXIT trap.
+_emit_timing_record() {
+    local rc=${1:-$?}
+    local end_s status
+    end_s=$(date +%s)
+    (( rc == 0 )) && status=complete || status=signal
+    [[ -n "${TIMING_START_S:-}" && -n "${OUTPUT:-}" ]] || return 0
+    "$PLUGIN_ROOT/scripts/timing-ledger.sh" record-vendor-task \
+        --vendor codex \
+        --task-kind "${TIMING_TASK_KIND:-codex-review}" \
+        --start-s "$TIMING_START_S" \
+        --end-s "$end_s" \
+        --output "$OUTPUT" \
+        --exit-code "$rc" \
+        --status "$status" \
+        >/dev/null 2>&1 || true
+}
+trap '_emit_timing_record $?' EXIT
+
 OUTPUT=""
 TIMEOUT=""
 PROMPT=""
@@ -32,6 +51,7 @@ MODE=""
 DESCRIPTION_TEXT=""
 SCOPE_FILES=""
 COMPETITION_NOTICE=false
+TIMING_TASK_KIND="${LARCH_TIMING_TASK_KIND:-}"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -43,6 +63,7 @@ while [[ $# -gt 0 ]]; do
         --description-text) DESCRIPTION_TEXT="${2:?--description-text requires a value}"; shift 2 ;;
         --scope-files) SCOPE_FILES="${2:?--scope-files requires a value}"; shift 2 ;;
         --competition-notice) COMPETITION_NOTICE=true; shift ;;
+        --timing-task-kind) TIMING_TASK_KIND="${2:?--timing-task-kind requires a value}"; shift 2 ;;
         *) echo "launch-codex-review.sh: unknown flag: $1" >&2; exit 2 ;;
     esac
 done
@@ -53,6 +74,8 @@ fi
 if [[ -z "$TIMEOUT" ]]; then
     echo "launch-codex-review.sh: --timeout is required" >&2; exit 2
 fi
+: "${TIMING_TASK_KIND:=codex-review}"
+TIMING_START_S=$(date +%s)
 
 # Validate --output BEFORE installing traps/sidecars so the same byte-exact
 # .meta-sidecar contract enforced for the Cursor review launcher applies on

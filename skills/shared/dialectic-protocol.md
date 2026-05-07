@@ -232,6 +232,8 @@ Use `run_in_background: true` and `timeout: 1860000`.
 
 External judges and inline Claude judges use different collection paths. This split is **required** because `collect-agent-results.sh` polls `.done` sentinels produced by `run-external-agent.sh`; inline Agent-tool subagents produce no sentinel.
 
+Timing note: v1 timing rows are emitted by the launch-wrapper scripts, not by direct `run-external-agent.sh` invocations. The Cursor and Codex judge calls below therefore do not emit `codex-judge` / `cursor-judge` timing rows yet; those task kinds are reserved in `scripts/lib-timing-kinds.sh` for a future run-external-agent execution-boundary instrumentation.
+
 1. **Inline judges (Claude subagent + any Claude replacements)**: vote text is returned in the Agent tool's return value. Parse per-decision vote lines directly from the returned text. Inline judges are always eligible (local execution does not fail in the `collect-agent-results.sh` sense).
 
 2. **External judges (Cursor, Codex)**: **Only perform this step if at least one external judge was actually launched** (i.e., at least one of `judge_cursor_available` / `judge_codex_available` was true at launch time). If zero external judges were launched — all three slots were filled by Claude subagent inline replacements — skip this step entirely and proceed to step 3 below. This guard is required because `collect-agent-results.sh` exits with `"at least one output file is required"` when called with no positional arguments, which would abort the all-fallback configuration that the replacement-first rule is designed to support.

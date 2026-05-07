@@ -53,6 +53,7 @@ FEATURE_FILE=""
 AGENT_PROMPT=""
 TIMEOUT=""
 ANSWERS_FILE=""
+TIMING_TASK_KIND="${LARCH_TIMING_TASK_KIND:-}"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -65,6 +66,7 @@ while [[ $# -gt 0 ]]; do
         --agent-prompt)     AGENT_PROMPT="${2:?--agent-prompt requires a value}"; shift 2 ;;
         --timeout)          TIMEOUT="${2:?--timeout requires a value}"; shift 2 ;;
         --answers-file)     ANSWERS_FILE="${2:?--answers-file requires a value}"; shift 2 ;;
+        --timing-task-kind) TIMING_TASK_KIND="${2:?--timing-task-kind requires a value}"; shift 2 ;;
         *) echo "launch-cursor-implement.sh: unknown flag: $1" >&2; exit 2 ;;
     esac
 done
@@ -92,6 +94,24 @@ if (( 10#$TIMEOUT < 1 )); then
     echo "launch-cursor-implement.sh: --timeout must be a positive integer (seconds), got '$TIMEOUT'" >&2
     exit 2
 fi
+: "${TIMING_TASK_KIND:=cursor-implement}"
+TIMING_START_S=$(date +%s)
+
+emit_timing_record() {
+    local rc="$1"
+    local end_s status
+    end_s=$(date +%s)
+    (( rc == 0 )) && status=complete || status=signal
+    "$PLUGIN_ROOT/scripts/timing-ledger.sh" record-vendor-task \
+        --vendor cursor \
+        --task-kind "$TIMING_TASK_KIND" \
+        --start-s "$TIMING_START_S" \
+        --end-s "$end_s" \
+        --output "$TRANSCRIPT_PATH" \
+        --exit-code "$rc" \
+        --status "$status" \
+        >/dev/null 2>&1 || true
+}
 
 # Compose the Cursor prompt by concatenating the agent system prompt with
 # inline references to the plan, feature, manifest path, qa-pending path,
@@ -154,6 +174,7 @@ WRAPPED_PROMPT=$("$SCRIPT_DIR/cursor-wrap-prompt.sh" "$PROMPT")
 # specific failure (LAUNCHER_EXIT=2 + actionable SIDECAR_LOG content)
 # instead of a generic timeout/missing-manifest message.
 # shellcheck source=scripts/lib-cursor-auth.sh
+# shellcheck disable=SC1091
 . "$SCRIPT_DIR/lib-cursor-auth.sh"
 PREFLIGHT_RC=0
 PREFLIGHT_ERR=$(mktemp)
@@ -161,6 +182,7 @@ cursor_auth_preflight 2> "$PREFLIGHT_ERR" || PREFLIGHT_RC=$?
 cat "$PREFLIGHT_ERR" >> "$SIDECAR_LOG" 2>/dev/null || true
 rm -f "$PREFLIGHT_ERR"
 if [[ "$PREFLIGHT_RC" != "0" ]]; then
+    emit_timing_record "$PREFLIGHT_RC"
     printf 'LAUNCHER_EXIT=%s\n'           "$PREFLIGHT_RC"
     printf 'MANIFEST_WRITTEN=false\n'
     printf 'QA_PENDING_WRITTEN=false\n'
@@ -217,6 +239,7 @@ if command -v jq >/dev/null 2>&1; then
         "$PLUGIN_ROOT/scripts/token-ledger.sh" record-vendor cursor input="$INP" output="$OUT" cache_read="$CR" cache_create="$CW" total="$TOT" raw="cursor_implement" >/dev/null 2>&1 || true
     fi
 fi
+emit_timing_record "$LAUNCHER_EXIT"
 
 if [[ -f "${TRANSCRIPT_PATH}.inner.done" ]]; then
     mv -f "${TRANSCRIPT_PATH}.inner.done" "${TRANSCRIPT_PATH}.done"

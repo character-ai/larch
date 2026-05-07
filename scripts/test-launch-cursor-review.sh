@@ -424,6 +424,36 @@ else
     fail "case AK3 preflight failure must synthesize stub .meta with empty CMD_JSON"
 fi
 
+# Case TM (review FINDING_10): the EXIT trap MUST emit a vendor timing
+# row to the ledger pointed at by LARCH_TIMING_LEDGER. Without this
+# coverage the trap could regress silently — structural prose pins on
+# SKILL.md (test-implement-structure.sh assertion 28) do not exercise
+# the runtime trap path.
+OUT_TM="$TMPDIR/cursor-tm.txt"
+TM_LEDGER="$TMPDIR/timing-ledger.tsv"
+set +e
+PATH="$STUB_BIN:$PATH" \
+    LARCH_TIMING_LEDGER="$TM_LEDGER" \
+    LARCH_TIMING_TASK_KIND=cursor-review \
+    "$LAUNCHER" --output "$OUT_TM" --timeout 5 --prompt "case tm" >/dev/null 2>"$TMPDIR/case-tm.stderr"
+set -e
+if [[ -f "$TM_LEDGER" ]]; then
+    pass
+else
+    fail "case TM timing ledger was not written by the EXIT trap"
+fi
+if [[ -f "$TM_LEDGER" ]] && grep -E "^v1"$'\t'"vendor"$'\t'"[0-9]+"$'\t'"[^"$'\t'"]+"$'\t'"-"$'\t'"cursor"$'\t'"cursor-review"$'\t' "$TM_LEDGER" >/dev/null; then
+    pass
+else
+    fail "case TM ledger missing v1\\tvendor\\t…\\tcursor\\tcursor-review row"
+fi
+# The output column should be basename only (no leading path components).
+if [[ -f "$TM_LEDGER" ]] && awk -F'\t' '$2 == "vendor" { print $11 }' "$TM_LEDGER" | grep -q '^/'; then
+    fail "case TM ledger leaked an absolute output path into the basename column"
+else
+    pass
+fi
+
 if [[ "$FAIL" -ne 0 ]]; then
     printf 'FAIL: test-launch-cursor-review.sh - %s failed, %s passed\n' "$FAIL" "$PASS" >&2
     printf '  %s\n' "${FAIL_DETAILS[@]}" >&2

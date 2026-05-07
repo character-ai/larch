@@ -53,6 +53,7 @@ FEATURE_FILE=""
 AGENT_PROMPT=""
 TIMEOUT=""
 ANSWERS_FILE=""
+TIMING_TASK_KIND="${LARCH_TIMING_TASK_KIND:-}"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -65,6 +66,7 @@ while [[ $# -gt 0 ]]; do
         --agent-prompt)     AGENT_PROMPT="${2:?--agent-prompt requires a value}"; shift 2 ;;
         --timeout)          TIMEOUT="${2:?--timeout requires a value}"; shift 2 ;;
         --answers-file)     ANSWERS_FILE="${2:?--answers-file requires a value}"; shift 2 ;;
+        --timing-task-kind) TIMING_TASK_KIND="${2:?--timing-task-kind requires a value}"; shift 2 ;;
         *) echo "launch-codex-implement.sh: unknown flag: $1" >&2; exit 2 ;;
     esac
 done
@@ -109,6 +111,24 @@ if [[ "$SESSION_TMPDIR" != "$QA_TMPDIR" ]]; then
     echo "launch-codex-implement.sh: --manifest-path and --qa-pending-path must share the same parent directory (got: $SESSION_TMPDIR vs $QA_TMPDIR)" >&2
     exit 2
 fi
+: "${TIMING_TASK_KIND:=codex-implement}"
+TIMING_START_S=$(date +%s)
+
+emit_timing_record() {
+    local rc="$1"
+    local end_s status
+    end_s=$(date +%s)
+    (( rc == 0 )) && status=complete || status=signal
+    "$PLUGIN_ROOT/scripts/timing-ledger.sh" record-vendor-task \
+        --vendor codex \
+        --task-kind "$TIMING_TASK_KIND" \
+        --start-s "$TIMING_START_S" \
+        --end-s "$end_s" \
+        --output "$TRANSCRIPT_PATH" \
+        --exit-code "$rc" \
+        --status "$status" \
+        >/dev/null 2>&1 || true
+}
 
 # Compose the Codex prompt by concatenating the agent system prompt with
 # inline references to the plan, feature, manifest path, qa-pending path,
@@ -187,6 +207,7 @@ N=$(awk '/^tokens used$/ { getline n; gsub(",","",n); last=n } END { print last 
 if [[ "$N" =~ ^[0-9]+$ ]]; then
     "$PLUGIN_ROOT/scripts/token-ledger.sh" record-vendor codex total="$N" raw="codex_implement" >/dev/null 2>&1 || true
 fi
+emit_timing_record "$LAUNCHER_EXIT"
 
 printf 'LAUNCHER_EXIT=%s\n'           "$LAUNCHER_EXIT"
 printf 'MANIFEST_WRITTEN=%s\n'        "$MANIFEST_WRITTEN"

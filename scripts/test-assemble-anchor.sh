@@ -2,7 +2,7 @@
 # test-assemble-anchor.sh — regression harness for scripts/assemble-anchor.sh.
 #
 # Covers 18 assertion categories:
-#   (a) Empty sections directory → 7 empty marker pairs + run-statistics
+#   (a) Empty sections directory → 8 empty marker pairs + run-statistics
 #       minimal table + first-line marker + seed-only visible placeholder
 #       line on line 2 (23 lines total).
 #   (a2) Empty sections directory → placeholder literal present (regression
@@ -31,7 +31,7 @@
 #       a single stale version row, no heading/header) → fall through to
 #       the seed-style scaffold (heading + table header + fresh version row)
 #       instead of emitting an orphan row.
-#   (c) Full fragments → all 8 slugs populated.
+#   (c) Full fragments → all 9 slugs populated.
 #   (d) Missing anchor-section-markers.sh helper → FAILED=true / ERROR=missing
 #       helper + exit 1.
 #   (e) Invalid --issue value (non-integer) → usage error, exit 1.
@@ -269,23 +269,25 @@ printf 'line one\nline two\n' > "$sections_b2/plan-goals-test.md"
 output_b2="$tmpdir/out-b2.md"
 "$ASSEMBLE_ANCHOR" --sections-dir "$sections_b2" --issue 500 --output "$output_b2" > /dev/null
 
-# Build expected output: anchor marker + plan-goals-test populated + 7 empty pairs.
+# Build expected output: anchor marker + plan-goals-test populated + canonical marker pairs.
 expected_b2="$tmpdir/expected-b2.md"
 {
     printf '<!-- larch:implement-anchor v1 issue=500 -->\n'
-    printf '<!-- section:plan-goals-test -->\n'
-    printf 'line one\nline two\n'
-    printf '<!-- section-end:plan-goals-test -->\n'
-    for slug in plan-review-tally code-review-tally diagrams version-bump-reasoning oos-issues execution-issues; do
+    for slug in "${SECTION_MARKERS[@]}"; do
         printf '<!-- section:%s -->\n' "$slug"
+        case "$slug" in
+            plan-goals-test)
+                printf 'line one\nline two\n'
+                ;;
+            run-statistics)
+                printf '## Run Statistics\n\n'
+                printf '| Metric | Value |\n'
+                printf '|---|---|\n'
+                printf '| larch plugin version | 9.8.7 |\n'
+                ;;
+        esac
         printf '<!-- section-end:%s -->\n' "$slug"
     done
-    printf '<!-- section:run-statistics -->\n'
-    printf '## Run Statistics\n\n'
-    printf '| Metric | Value |\n'
-    printf '|---|---|\n'
-    printf '| larch plugin version | 9.8.7 |\n'
-    printf '<!-- section-end:run-statistics -->\n'
 } > "$expected_b2"
 
 if ! diff -q "$output_b2" "$expected_b2" > /dev/null; then
@@ -410,7 +412,7 @@ fi
 pass "(b6) populated fragment normalized to empty → seed-style scaffold + fresh version row"
 
 # --------------------------------------------------------------------------
-# (c) Full fragments — all 8 slugs populated
+# (c) Full fragments — all 9 slugs populated
 # --------------------------------------------------------------------------
 sections_c="$tmpdir/sections-c"
 mkdir -p "$sections_c"
@@ -425,7 +427,7 @@ for slug in "${SECTION_MARKERS[@]}"; do
     grep -qxF "fragment content for $slug" "$output_c" \
         || fail "(c) missing content for slug '$slug' in output"
 done
-pass "(c) full fragments → all 8 slugs populated"
+pass "(c) full fragments → all 9 slugs populated"
 
 # --------------------------------------------------------------------------
 # (d) Missing anchor-section-markers.sh helper

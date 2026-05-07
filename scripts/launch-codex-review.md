@@ -8,6 +8,7 @@
 - No additional stdout beyond what `run-external-agent.sh` produces
 - Runs `run-external-agent.sh` without `exec` so the launcher can perform a best-effort post-call token scrape, then exits with `run-external-agent.sh`'s exit code
 - Redirects wrapper stderr to `${OUTPUT}.sidecar` when possible and silently scrapes the last `tokens used` block into `token-ledger.sh` as `codex_review`; if the sidecar cannot be opened, stderr falls back to `/dev/null`
+- Captures `TIMING_START_S` after argv validation and emits one best-effort `timing-ledger.sh record-vendor-task` row on EXIT. `--timing-task-kind <kind>` defaults to `codex-review`; timing failures are silent and never affect stdout or exit code.
 - Uses `--output-last-message` for Codex output (no `--capture-stdout`)
 - Grants Codex write access to the canonical parent directory of `--output` via `--add-dir "$CANON_OUTPUT_DIR"` immediately after `-C "$PWD"`, matching the implementer-lane sandbox posture.
 - Reads `agent-model-args.sh` line-token stdout into a Bash array and expands it with `${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"}` so model values containing spaces remain one argv token and producer-side validation failures abort before Codex is launched.
@@ -15,7 +16,7 @@
 
 **Stdout contract**: Same stdout as `run-external-agent.sh`; no `LAUNCHER_EXIT=` line. Exit code is `run-external-agent.sh`'s exit code after the best-effort post-call token scrape.
 
-**Flags**: Same as `launch-cursor-review.sh` (see `scripts/launch-cursor-review.md`).
+**Flags**: Same as `launch-cursor-review.sh` (see `scripts/launch-cursor-review.md`), including optional `--timing-task-kind <kind>`.
 
 **Call sites**:
 - `skills/implement/SKILL.md` Step 5 (quick-mode specialists + generic reviewers)
