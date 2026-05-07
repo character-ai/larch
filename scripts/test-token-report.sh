@@ -118,6 +118,17 @@ case "$mismatch" in
     *) fail "$mismatch row(s) had wrong separator-pipe count after injection; md_cell escape failed" ;;
 esac
 
+# Unknown-vendor heading sanitization: vendor_label's raw fallback routes
+# through md_cell so a vendor name containing | or newline cannot break the
+# heading line or inject a fake row separator into downstream markdown.
+UNK_LEDGER="$TMP/unk-ledger.jsonl"
+jq -c -n '{type:"mark",step:"Step 1 - design",ts:"2026-05-06T00:00:00Z"}' > "$UNK_LEDGER"
+jq -c -n --arg v 'evil|vendor' '{type:"vendor",vendor:$v,input:1,output:2,total:3,ts:"2026-05-06T00:00:05Z"}' >> "$UNK_LEDGER"
+jq -c -n --arg v $'two-line\nvendor' '{type:"vendor",vendor:$v,input:4,output:5,total:9,ts:"2026-05-06T00:00:06Z"}' >> "$UNK_LEDGER"
+unk_md=$("$SCRIPT" --ledger "$UNK_LEDGER" --transcript "$TRANSCRIPT" --full --markdown)
+contains "unknown vendor pipe escaped (heading)"      'evil\|vendor'  "$unk_md"
+contains "unknown vendor newline collapsed (heading)" 'two-line vendor' "$unk_md"
+
 RUN_STATS="$TMP/run-statistics.md"
 printf '## Existing\n\nkept\n' > "$RUN_STATS"
 "$SCRIPT" --ledger "$LEDGER" --transcript "$TRANSCRIPT" --append-run-statistics "$RUN_STATS"

@@ -166,12 +166,14 @@ render_jq() {
 
       # Vendor-name to display heading. Explicit map so headings render
       # capitalized. Unknown vendors fall through to "### " + raw name to keep
-      # coverage lossless when ledger contains arbitrary vendor strings.
+      # coverage lossless when ledger contains arbitrary vendor strings; the
+      # raw fallback routes through md_cell so a vendor string containing |
+      # or newlines cannot break the heading or inject a fake row separator.
       def vendor_label($vname):
         if   $vname == "codex"  then "Codex"
         elif $vname == "cursor" then "Cursor"
         elif $vname == "gemini" then "Gemini"
-        else $vname
+        else md_cell($vname)
         end;
 
       # Shared 4-column header for the per-vendor tables.
