@@ -146,7 +146,7 @@ The regression harness `scripts/test-tracking-issue-write.sh` is wired into `mak
 
 - **(a)** `create-issue` redacts title + body (`sk-ant-*` secret → `<REDACTED-TOKEN>`).
 - **(b)** `create-issue` exits 3 with `FAILED=true` / `ERROR=redaction:…` when the redactor is missing. Pins exact key literals `FAILED=true` (not `ISSUE_FAILED`).
-- **(c)** `upsert-anchor` preserves the HTML anchor marker + all 8 section markers after a >60000-char body-level collapse.
+- **(c)** `upsert-anchor` preserves the HTML anchor marker + all canonical `SECTION_MARKERS` entries after a >60000-char body-level collapse.
 - **(d)** `upsert-anchor` per-section 8000 truncation inserts `[TRUNCATED — <id> exceeded 8000 chars]` on its own line (line-boundary-snapped).
 - **(d2)** `upsert-anchor` per-section 8000 truncation closes an unclosed column-0 backtick fence in the kept prefix with a matching-length fence line before the TRUNCATED marker, and downstream section markers (e.g. `<!-- section:diagrams -->`) remain intact rather than being swallowed by the unclosed block.
 - **(d3)** `upsert-anchor` per-section truncation matches the closing fence length to a 4-backtick opener (GFM rule: closer length ≥ opener length): a 4-backtick opener with embedded 3-backtick content lines gets a 4-backtick close inserted before the TRUNCATED marker.
@@ -178,7 +178,7 @@ The regression harness `scripts/test-tracking-issue-write.sh` is wired into `mak
 | `scripts/test-tracking-issue-write.sh` | Regression harness for this script — every behavioral change here must be mirrored in the harness. |
 | `skills/fix-issue/scripts/issue-lifecycle.md` | Documents the `/fix-issue` close-time consumer that calls `mark-false-positive` on keyword matches. |
 | `scripts/assemble-anchor.sh` | Companion helper that assembles anchor bodies from `$IMPLEMENT_TMPDIR/anchor-sections/`. Shares `SECTION_MARKERS` ordering via the same sourced helper. |
-| `skills/implement/references/anchor-comment-template.md` | Human-readable template describing the same 8 section slugs + anchor first-line marker; the executable source of truth is `scripts/anchor-section-markers.sh`. |
+| `skills/implement/references/anchor-comment-template.md` | Human-readable template describing the canonical `SECTION_MARKERS` slug set + anchor first-line marker; the executable source of truth is `scripts/anchor-section-markers.sh`. |
 | `SECURITY.md` | Documents the outbound-redaction invariant, gh-failure redaction, anchor-skeleton preservation. |
 
 ## Security

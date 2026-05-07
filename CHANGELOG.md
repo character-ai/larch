@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.74] - 2026-05-07
+
+### Added
+
+- Resolve #1378: ship three path-scoped `.claude/rules/` files from a Claude-proposed code-reading pass after migration (#1374) and mining (#1375 / #1377) completed. `.claude/rules/timing-task-kind-allowlist.md` couples `--timing-task-kind <kind>` literals across launcher families and skill SKILL.md launch blocks to the canonical `TIMING_TASK_KINDS_ALLOWED` array in `scripts/lib-timing-kinds.sh`, so adding or renaming a kind requires updating the allow-list in the same change (the `(28g)` harness covers literal launcher slugs but warns-and-appends rather than fail-closing on unknown kinds). `.claude/rules/anchor-section-markers-array.md` couples `SECTION_MARKERS` (in `scripts/anchor-section-markers.sh`) and `COLLAPSE_PRIORITY` (in `scripts/tracking-issue-write.sh`) along with the three sourcing scripts and pinned harness fixtures, citing case (i) for the subset invariant and case (i2) as a `timing-report` regression guard (the full converse is not enforced). `.claude/rules/research-readonly-hook-coupling.md` couples `skills/research/SKILL.md`'s frontmatter matcher, `scripts/deny-edit-write.sh`'s canonical-`/tmp` allow predicate, the harness, and SECURITY.md so the advertised read-only-repo posture cannot be silently weakened. Same-PR doc fix: `scripts/tracking-issue-write.md` lines 149 and 181 now refer to canonical `SECTION_MARKERS` instead of a stale section count. Eight rejected candidates listed in the PR description.
+
 ## [15.12.73] - 2026-05-07
 
 ### Changed
