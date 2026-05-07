@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.59] - 2026-05-07
+
+### Fixed
+
+- Codex implementer launcher (`scripts/launch-codex-implement.sh`) now grants Codex write access to the dispatcher-owned session tmpdir via `codex exec --add-dir "$(dirname "$MANIFEST_PATH")"`, so the manifest and qa-pending JSON can be atomically written without hitting `Operation not permitted` (closes #1353). The launcher derives `SESSION_TMPDIR` from `--manifest-path`, asserts `--manifest-path` and `--qa-pending-path` share a parent (string equality), and fails fast with `exit 2` when the directory does not exist. Argv ordering is preserved: `exec / --full-auto / -C / --add-dir / model flags / --output-last-message`. Cursor and Gemini implementer launchers are unchanged — `--trust` and `--approval-mode yolo --skip-trust` already permit absolute writes outside the workspace; their sibling `.md` contracts now record the rationale. `SECURITY.md` documents the widened Codex writable surface; `docs/linting.md` updates the harness contract row to mention `--add-dir`, the new parent-mismatch / missing-dir coverage, and the `test-harnesses-3` shard. `skills/implement/scripts/test-codex-implementer.sh` adds Test 11 (parent-mismatch → exit 2), Test 12 (missing-session-tmpdir → exit 2), and an argv-position assertion that `--add-dir <manifest-parent>` is emitted immediately after `-C "$REPO_ROOT"`. The Codex health probe in `scripts/check-reviewers.sh` now mirrors the implementer launcher by passing `--add-dir "$PROBE_DIR"`, so a Codex build that rejects the new flag fails the probe rather than passing healthy and failing later at `/implement` Step 2 spawn with worse diagnostics; `scripts/check-reviewers.md` Tool registry section records the probe-mirrors-launcher invariant.
+
 ## [15.12.58] - 2026-05-07
 
 ### Fixed
