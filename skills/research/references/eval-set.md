@@ -27,11 +27,11 @@
 - **notes**: Lookup; should cite `scripts/deny-edit-write.sh` for the mechanical tier (Edit/Write/NotebookEdit confined to canonical `/tmp`), name Bash + external Cursor/Codex reviewers as the prompt-enforced tier, and reference the SECURITY.md residual-risk framing.
 
 ### eval-3: anchor-section-slugs
-- **question**: What are the 8 canonical anchor section slugs in `/implement`, in assembly order, and which script defines them?
+- **question**: What are the 10 canonical anchor section slugs in `/implement`, in assembly order, and which script defines them?
 - **category**: lookup
 - **expected_provenance_count**: 1
 - **expected_keywords**: SECTION_MARKERS, plan-goals-test, run-statistics, anchor-section-markers.sh
-- **notes**: Lookup; should list all 8 slugs verbatim and cite `scripts/anchor-section-markers.sh`. A correct answer reproduces the array order from the canonical script.
+- **notes**: Lookup; should list all 10 slugs verbatim and cite `scripts/anchor-section-markers.sh`. A correct answer reproduces the array order from the canonical script.
 
 ### eval-4: eval-baseline-q1-2026
 - **question**: What was the result of the `/research` evaluation harness's 2026-Q1 baseline run, and what were the per-entry judge scores?

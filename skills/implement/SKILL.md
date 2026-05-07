@@ -525,7 +525,7 @@ Create the tracking issue **immediately** so all subsequent anchor-accumulation 
    ```bash
    ${CLAUDE_PLUGIN_ROOT}/scripts/refresh-anchor.sh --sections-dir "$IMPLEMENT_TMPDIR/anchor-sections" --issue "$ISSUE_NUMBER" --output "$IMPLEMENT_TMPDIR/anchor-seed.md"
    ```
-   The seed body contains the anchor first-line marker (embedding `$ISSUE_NUMBER`), a seed-only visible placeholder line so the comment renders non-empty in GitHub's UI (issue #431; see `scripts/assemble-anchor.md` "Seed-only visible placeholder"), and all 8 canonical section marker pairs wrapping empty interiors (no fragments yet). Parse `ANCHOR_COMMENT_ID` from `refresh-anchor.sh`'s stdout. On `FAILED=true` (either assemble or upsert step) OR if parsed `ANCHOR_COMMENT_ID` is empty, print `**⚠ 0.5: tracking issue — Branch 4 anchor planting failed: $ERROR. Continuing with deferred/absent anchor.**`, log to `Tool Failures`, set `deferred=true`, clear `$ISSUE_NUMBER`, and proceed to Step 1 (skipping the sentinel write in step 6). Do NOT continue with an empty `$ANCHOR_COMMENT_ID` — an empty value breaks downstream `upsert-anchor --anchor-id "$ANCHOR_COMMENT_ID"` calls at the shell-expansion layer (the empty expansion would cause the next flag to be consumed as the anchor-id value) and we cannot safely assert sentinel idempotency (Invariant #4) without a resolved anchor id.
+   The seed body contains the anchor first-line marker (embedding `$ISSUE_NUMBER`), a seed-only visible placeholder line so the comment renders non-empty in GitHub's UI (issue #431; see `scripts/assemble-anchor.md` "Seed-only visible placeholder"), and all 10 canonical section marker pairs wrapping empty interiors (no fragments yet). Parse `ANCHOR_COMMENT_ID` from `refresh-anchor.sh`'s stdout. On `FAILED=true` (either assemble or upsert step) OR if parsed `ANCHOR_COMMENT_ID` is empty, print `**⚠ 0.5: tracking issue — Branch 4 anchor planting failed: $ERROR. Continuing with deferred/absent anchor.**`, log to `Tool Failures`, set `deferred=true`, clear `$ISSUE_NUMBER`, and proceed to Step 1 (skipping the sentinel write in step 6). Do NOT continue with an empty `$ANCHOR_COMMENT_ID` — an empty value breaks downstream `upsert-anchor --anchor-id "$ANCHOR_COMMENT_ID"` calls at the shell-expansion layer (the empty expansion would cause the next flag to be consumed as the anchor-id value) and we cannot safely assert sentinel idempotency (Invariant #4) without a resolved anchor id.
 
 6. **Write the sentinel LAST**, only after BOTH `$ISSUE_NUMBER` and `$ANCHOR_COMMENT_ID` resolved to non-empty values in steps 4 and 5 (Load-Bearing Invariant #4 ordering):
    ```
@@ -551,14 +551,14 @@ If `repo_unavailable=true`: skip all Step 0.5 branches, do NOT invoke `gh issue 
 
 Each step covered by the accumulation mechanism writes its fragment to `$IMPLEMENT_TMPDIR/anchor-sections/<section-id>.md`. Fragment content is the markdown that will be wrapped by the `<!-- section:<slug> -->` / `<!-- section-end:<slug> -->` markers during body assembly. If `$ISSUE_NUMBER` is set (Branches 1, 2, 3 resolved on Step 0.5 adoption, or Branch 4 success), after writing a fragment the step ALSO assembles the full anchor body and upserts for progressive remote visibility. If `deferred=true` (Branch 4 create-issue/anchor failure) or `repo_unavailable=true`, the step writes only the local fragment.
 
-**Section-ID mapping** (matches the 8 canonical slugs in `anchor-comment-template.md`):
+**Section-ID mapping** (matches the 10 canonical slugs in `anchor-comment-template.md`):
 
 | Step | Section-ID |
 |------|------------|
 | Step 1 (after `/design`'s `## Implementation Plan` visible — or `## Revised Implementation Plan` when superseded by plan review) | `plan-goals-test` |
 | Step 1 tail (after `/design` voting tally visible) | `plan-review-tally` |
 | Step 2 (after each Q/A append — progressive upsert) | `execution-issues` |
-| Step 5 (after `/review` voting tally visible, or after quick-mode loop) | `code-review-tally` |
+| Step 5 (after `/review` voting tally visible, or after quick-mode loop) | `code-review-tally` AND `review-findings-full` (two separate fragment files; the second is composed by `compose-review-findings.sh`) |
 | Step 7a (after Code Flow Diagram generated) | `diagrams` (both Architecture + Code Flow) |
 | Step 8 (after `/bump-version` returns `REASONING_FILE`) | `version-bump-reasoning` |
 | Step 9a.1 (after OOS filing) | `oos-issues` AND `run-statistics` (two separate fragment files) |
@@ -1097,6 +1097,24 @@ After review (`/review` in normal mode or the quick-mode loop), for any **in-sco
 **Finding**: <thorough description of the finding — include the specific file(s) and line(s) affected, what the reviewer identified as the issue, and what change they suggested. Must be detailed enough to serve as an actionable TODO item if later prioritized. Do NOT use a terse one-liner — a reader who has never seen the original review must be able to understand the issue and act on it.>
 **Reason not implemented**: <complete justification for why this finding was not addressed — include the specific technical reasoning, any relevant context about project conventions or design decisions, and why the current code is acceptable despite the finding. Do NOT abbreviate — preserve all important details from the evaluation.>
 ```
+
+### Anchor-section fragment — `review-findings-full`
+
+After the `code-review-tally` fragment is written above (Step 5 normal mode after `/review` returns, or after the quick-mode review loop completes), compose the additive `review-findings-full` fragment that persists per-finding payloads (id, phase, outcome, reviewer, category, verbatim prose body) for plan-review accepted, plan-review rejected, and code-review rejected entries. This fragment carries the load-bearing miner content per issue #1402; the existing tally tables in `plan-review-tally` and `code-review-tally` are unchanged. Switch to archive-pointer mode at 30 KB (per the issue #1402 design decision) by writing `docs/review-archive/issue-<N>.jsonl` and replacing the inline body with a pointer + count summary:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/compose-review-findings.sh" \
+    --design-artifacts-dir "$IMPLEMENT_TMPDIR/design-export" \
+    --implement-tmpdir "$IMPLEMENT_TMPDIR" \
+    --issue "${ISSUE_NUMBER:-0}" \
+    --output "$IMPLEMENT_TMPDIR/anchor-sections/review-findings-full.md"
+```
+
+Best-effort: parse `COMPOSED=true` / `MODE=inline|archive` / `FINDINGS_TOTAL=<N>` from stdout. On `FAILED=true` or non-zero exit, log `Step 5 — review-findings-full compose failed: $ERROR` to `Warnings` and continue without writing the fragment — the next progressive upsert will simply leave the section interior empty. When `MODE=archive`, the JSONL archive lives at `docs/review-archive/issue-<N>.jsonl` in the working tree and gets committed alongside the implementation by Step 7's review-fixes commit (or by the next commit if Step 7 is skipped). When `ISSUE_NUMBER` is unset (deferred / repo-unavailable paths), pass `--issue 0` so the helper still composes a fragment locally; the archive filename `issue-0.jsonl` is benign in those degraded paths because the section is local-only.
+
+If `ISSUE_NUMBER` is set, refresh the anchor immediately after compose (same mechanism as the other Step 5 anchor writes — see Step 0.5 "Anchor-section accumulation").
+
+Known limitation: accepted code-review findings are not currently captured in this fragment. The `/review` skill and the quick-mode 5.5 loop both accept findings without writing a byte-preserved `accepted-code-review-findings.md` artifact. The helper silently emits no records for the `accepted code-review` phase / outcome pair. See `scripts/compose-review-findings.md` "Known limitations" for follow-up wiring.
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
