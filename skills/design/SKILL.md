@@ -256,6 +256,24 @@ Print `> **🔶 2a: sketches**`.
 
 **Subagent heavy phase**: If `subagent_mode=true` (i.e., `--subagent` was passed) AND `quick_mode=false`, invoke a single Agent-tool subagent (subagent_type: `general-purpose`) for the heavy non-interactive phase before entering 2a.2. The subagent MUST read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/heavy-worker.md`, receive `DESIGN_TMPDIR`, `IMPLEMENT_TMPDIR`, `SESSION_ENV_PATH`, `FEATURE_DESCRIPTION`, `quick_mode`, `auto_mode`, branch info, and reviewer health flags as explicit data, and write raw artifacts to `$DESIGN_TMPDIR/`. The subagent returns only `DESIGN_HEAVY=complete` or `DESIGN_HEAVY=failed REASON=<short-token>`; it does not write the manifest and does not return plan/reviewer/tally prose.
 
+Immediately after the Agent tool returns, parse the heavy-worker status line. Before following the success path, fail closed if the worker omitted a valid status line or returned success without the required non-empty artifacts:
+
+```bash
+if [[ "${DESIGN_HEAVY:-}" != "complete" && "${DESIGN_HEAVY:-}" != "failed" ]]; then
+  DESIGN_HEAVY=failed
+  REASON=worker-yielded-without-artifacts
+elif [[ "${DESIGN_HEAVY:-}" == "complete" ]] && {
+  [[ ! -s "$DESIGN_TMPDIR/plan.txt" ]] ||
+  [[ ! -s "$DESIGN_TMPDIR/approach-synthesis.txt" ]] ||
+  [[ ! -s "$DESIGN_TMPDIR/voting-tally.md" ]]
+}; then
+  DESIGN_HEAVY=failed
+  REASON=worker-yielded-without-artifacts
+fi
+```
+
+Only these three artifacts are part of the gate because the heavy-worker artifact contract requires them to be non-empty. May-be-empty artifacts such as `accepted-plan-findings.md`, `rejected-findings.md`, `oos.md`, `dialectic-resolutions.md`, and `architecture-diagram.md` do not participate in this check. A failure from this gate routes through the normal `DESIGN_HEAVY=failed` branch below.
+
 On `DESIGN_HEAVY=complete`:
 - **If `SESSION_ENV_PATH` is non-empty (nested under /implement)**: if `auto_mode=false` proceed directly to Step 3.5; if `auto_mode=true` proceed directly to Step 5 because the worker ran Step 3b and Step 4. (Parent /implement reads the manifest written at Step 5.)
 - **If `SESSION_ENV_PATH` is empty (standalone /design --subagent — NEW capability)**: read and print `$DESIGN_TMPDIR/plan.txt` under `## Implementation Plan`, `$DESIGN_TMPDIR/voting-tally.md` under `## Voting Tally and Reviewer Competition Scoreboard`, `$DESIGN_TMPDIR/accepted-plan-findings.md` under `## Plan Review Findings (Voted In)` (skip header if file is empty or missing), `$DESIGN_TMPDIR/oos.md` under `## Out-of-Scope Observations` (skip header if file is empty or missing), and — when `auto_mode=true` AND `$DESIGN_TMPDIR/architecture-diagram.md` exists and is non-empty — `$DESIGN_TMPDIR/architecture-diagram.md` under `## Architecture Diagram` with the mermaid fence (when `auto_mode=true` AND the file is missing/empty, print `**⚠ Architecture diagram unavailable (Step 3b generation failed in subagent).**` instead so the failure is visible). When `auto_mode=true`, also read `$DESIGN_TMPDIR/rejected-findings.md`: if non-empty, print it under `## Unimplemented Plan Review Suggestions`; if empty or missing, print `## Plan Review — All Suggestions Implemented` (matches Step 4's standalone output). Then if `auto_mode=false` proceed to Step 3.5 (Discussion Round 2 still runs interactively against the displayed artifacts); if `auto_mode=true` proceed to Step 5 (cleanup). This replay matches the inline standalone output that today's empty-`SESSION_ENV_PATH` path produces, so the user sees the deliverables that `cleanup-tmpdir.sh` would otherwise delete.
