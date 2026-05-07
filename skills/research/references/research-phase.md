@@ -147,8 +147,11 @@ Print: `> **🔶 1.3: lane-launch**`
 **Codex launch (per lane)** when `codex_available=true`. Substitute the lane's angle prompt literal into `<LANE_PROMPT>`:
 
 ```bash
+CODEX_MODEL_ARGS=()
+while IFS= read -r arg; do CODEX_MODEL_ARGS+=("$arg"); done < <("${CLAUDE_PLUGIN_ROOT}/scripts/agent-model-args.sh" --tool codex)
+
 ${CLAUDE_PLUGIN_ROOT}/scripts/run-external-agent.sh --tool codex --output "$RESEARCH_TMPDIR/codex-research-<slot>-output.txt" --timeout 1800 -- \
-  codex exec --full-auto -C "$PWD" $("${CLAUDE_PLUGIN_ROOT}/scripts/agent-model-args.sh" --tool codex) \
+  codex exec --full-auto -C "$PWD" "${CODEX_MODEL_ARGS[@]}" \
     --output-last-message "$RESEARCH_TMPDIR/codex-research-<slot>-output.txt" \
     "<LANE_PROMPT>"
 ```

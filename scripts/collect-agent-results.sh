@@ -317,6 +317,63 @@ mark_retry_metadata_invalid() {
     set_tool_unhealthy "$tool"
 }
 
+cmd_has_token() {
+    local needle="$1"
+    shift
+    local arg
+    for arg in "$@"; do
+        [[ "$arg" == "$needle" ]] && return 0
+    done
+    return 1
+}
+
+cmd_lacks_forbidden_token() {
+    local forbidden="$1"
+    shift
+    if cmd_has_token "$forbidden" "$@"; then
+        return 1
+    fi
+    return 0
+}
+
+cmd_json_shape_valid_for_tool() {
+    local tool="$1"
+    shift
+    local argv0_base
+    [[ $# -ge 1 ]] || return 1
+    argv0_base=$(basename "$1")
+    case "$tool" in
+        cursor)
+            [[ $# -ge 2 ]] || return 1
+            [[ "$argv0_base" == "cursor" ]] || return 1
+            [[ "$2" == "agent" ]] || return 1
+            cmd_has_token "--workspace" "$@" || return 1
+            cmd_lacks_forbidden_token "--add-dir" "$@" || return 1
+            ;;
+        codex)
+            [[ $# -ge 2 ]] || return 1
+            [[ "$argv0_base" == "codex" ]] || return 1
+            [[ "$2" == "exec" ]] || return 1
+            cmd_has_token "-C" "$@" || return 1
+            cmd_has_token "--output-last-message" "$@" || return 1
+            ;;
+        gemini)
+            case "$argv0_base" in
+                launch-gemini-review.sh|launch-gemini-implement.sh|gemini) ;;
+                *) return 1 ;;
+            esac
+            cmd_lacks_forbidden_token "--add-dir" "$@" || return 1
+            cmd_lacks_forbidden_token "-C" "$@" || return 1
+            cmd_lacks_forbidden_token "--output-last-message" "$@" || return 1
+            cmd_lacks_forbidden_token "--workspace" "$@" || return 1
+            ;;
+        *)
+            return 2
+            ;;
+    esac
+    return 0
+}
+
 # --- 2. Validate each output and collect results ---
 RETRY_FILES=()
 RETRY_INDICES=()
@@ -662,6 +719,19 @@ if [[ ${#RETRY_FILES[@]} -gt 0 ]]; then
                     CMD_ARR[_i]="$RETRY_OUTPUT"
                 fi
             done
+        fi
+
+        cmd_json_shape_valid_for_tool "$META_TOOL" "${CMD_ARR[@]}"
+        _shape_rc=$?
+        if [[ "$_shape_rc" == "2" ]]; then
+            IDX="${RETRY_INDICES[$j]}"
+            mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: unknown TOOL for CMD_JSON"
+            continue
+        fi
+        if [[ "$_shape_rc" != "0" ]]; then
+            IDX="${RETRY_INDICES[$j]}"
+            mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: CMD_JSON argv shape rejected for $META_TOOL"
+            continue
         fi
 
         "$SCRIPT_DIR/run-external-agent.sh" "${RETRY_ARGS[@]}" "${CMD_ARR[@]}" >/dev/null 2>&1 &

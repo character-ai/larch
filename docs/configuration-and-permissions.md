@@ -198,6 +198,8 @@ The Slack channel ID (e.g., `C0123456789`) where tracking-issue status messages 
 
 These variables control which model Cursor, Codex, and Gemini use when running as external agents. Cursor and Codex run reviews, sketches, voting, and implementation (when selected with `--coder`). Gemini's only currently-active path is implementation (when selected with `--coder=gemini`); the Gemini reviewer call sites have been removed from `/review` and `/implement --quick`, so the dormant reviewer launcher (`scripts/launch-gemini-review.sh`) and Gemini health probe still consume the same `LARCH_GEMINI_MODEL` resolution but the launcher itself is not invoked by any current skill. When unset, Cursor defaults to `composer-2` (with the `/max-mode on.` slash-command prefix applied to every substantive prompt via `scripts/cursor-wrap-prompt.sh`), Codex defaults to `gpt-5.5` (hardcoded in `scripts/agent-model-args.sh`), and Gemini defaults to `gemini-2.5-pro`. The model is passed via `--model` for Cursor and the Gemini implementer, and via `-m` for Codex and the dormant Gemini reviewer launcher. To restore the pre-`composer-2` behavior, set `LARCH_CURSOR_MODEL=composer-2-fast`.
 
+`scripts/agent-model-args.sh` emits one argv token per stdout line. In-tree consumers read that stream into Bash arrays and expand the arrays directly; out-of-tree callers must not use command substitution plus shell word-splitting. Explicit blank / whitespace-only model values and values containing POSIX `[[:cntrl:]]` characters are rejected before an external CLI is launched. Human diagnostics and Codex effort warnings are stderr-only.
+
 Model configuration is also available via plugin `userConfig` — environment variables take precedence if both are set.
 
 ### `LARCH_CURSOR_MODEL`
@@ -206,7 +208,7 @@ The model name to pass to Cursor's `--model` flag (e.g., `gpt-5.4-medium`, `clau
 
 **When set:**
 - All Cursor invocations (reviews, sketches, voting, health probes, negotiations, and implement when `--coder=cursor`) use this model
-- The model flag is injected by `scripts/agent-model-args.sh`, which is called from both scripts and skill prompts
+- The model flag is injected by `scripts/agent-model-args.sh` as line-token argv, then consumed through Bash arrays
 
 **When not set:**
 - Defaults to `composer-2` — Cursor's `cursor agent` CLI does not honor the model configured in `~/.cursor/cli-config.json`, so an explicit default is required to avoid falling back to a potentially rate-limited model
@@ -219,7 +221,7 @@ The model name to pass to Codex's `-m` flag (e.g., `o3`, `o4-mini`).
 
 **When set:**
 - All Codex invocations (reviews, sketches, voting, health probes, negotiations) use this model
-- The model flag is injected by `scripts/agent-model-args.sh`, which is called from both scripts and skill prompts
+- The model flag is injected by `scripts/agent-model-args.sh` as line-token argv, then consumed through Bash arrays
 
 **When not set:**
 - Codex defaults to `gpt-5.5` (hardcoded in `scripts/agent-model-args.sh`) for all work invocations (reviews, sketches, voting)
@@ -244,7 +246,7 @@ The model name to pass to the dormant Gemini reviewer launcher's `-m` flag and t
 Codex reasoning effort for all Codex launches (reviews, sketches, voting). Accepted values: `minimal`, `low`, `medium`, `high`. Default `high` (matches the plugin's `codex_effort` userConfig default).
 
 **When set at launch sites (design sketches, plan review, code review, conflict-resolution review, voting panel):**
-- `scripts/agent-model-args.sh --with-effort` emits `-c model_reasoning_effort="$LARCH_CODEX_EFFORT"`, raising Codex reasoning to the configured level.
+- `scripts/agent-model-args.sh --with-effort` emits `-c` and `model_reasoning_effort="$LARCH_CODEX_EFFORT"` as separate line-token argv entries, raising Codex reasoning to the configured level.
 
 **When not set (or set to empty string):**
 - `--with-effort` falls back to the plugin userConfig value (`codex_effort`, default `high`).

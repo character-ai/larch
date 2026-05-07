@@ -1,0 +1,9 @@
+# scripts/test-launch-codex-review.sh
+
+Offline regression harness for `scripts/launch-codex-review.sh`.
+
+It PATH-stubs `codex` and verifies launcher validation, canonical `--add-dir` placement for the output directory, and array-safe model argument consumption. The injection cases assert that a model value containing spaces remains a single argv token and that a control-character model value fails before Codex is invoked or a `.done` sentinel is produced.
+
+**Primary**: `scripts/launch-codex-review.sh`
+
+**Makefile wiring**: `make test-launch-codex-review`, included in `test-harnesses-2`.

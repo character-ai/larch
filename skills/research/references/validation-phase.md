@@ -82,9 +82,11 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/render-reviewer-prompt.sh \
 # fallback); two elements (--api-key "$KEY") when set.
 CURSOR_AUTH_FLAGS=()
 while IFS= read -r line; do CURSOR_AUTH_FLAGS+=("$line"); done < <("${CLAUDE_PLUGIN_ROOT}/scripts/cursor-auth-flags.sh")
+CURSOR_MODEL_ARGS=()
+while IFS= read -r arg; do CURSOR_MODEL_ARGS+=("$arg"); done < <("${CLAUDE_PLUGIN_ROOT}/scripts/agent-model-args.sh" --tool cursor)
 
 ${CLAUDE_PLUGIN_ROOT}/scripts/run-external-agent.sh --tool cursor --output "$RESEARCH_TMPDIR/cursor-validation-output.txt" --timeout 1800 --capture-stdout -- \
-  cursor agent -p --force --trust $("${CLAUDE_PLUGIN_ROOT}/scripts/agent-model-args.sh" --tool cursor) "${CURSOR_AUTH_FLAGS[@]}" --workspace "$PWD" \
+  cursor agent -p --force --trust "${CURSOR_MODEL_ARGS[@]}" "${CURSOR_AUTH_FLAGS[@]}" --workspace "$PWD" \
     "$("${CLAUDE_PLUGIN_ROOT}/scripts/cursor-wrap-prompt.sh" "$(cat "$RESEARCH_TMPDIR/cursor-prompt.txt")")"
 ```
 
@@ -110,8 +112,11 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/render-reviewer-prompt.sh \
 **On success**, launch in background:
 
 ```bash
+CODEX_MODEL_ARGS=()
+while IFS= read -r arg; do CODEX_MODEL_ARGS+=("$arg"); done < <("${CLAUDE_PLUGIN_ROOT}/scripts/agent-model-args.sh" --tool codex)
+
 ${CLAUDE_PLUGIN_ROOT}/scripts/run-external-agent.sh --tool codex --output "$RESEARCH_TMPDIR/codex-validation-output.txt" --timeout 1800 -- \
-  codex exec --full-auto -C "$PWD" $("${CLAUDE_PLUGIN_ROOT}/scripts/agent-model-args.sh" --tool codex) \
+  codex exec --full-auto -C "$PWD" "${CODEX_MODEL_ARGS[@]}" \
     --output-last-message "$RESEARCH_TMPDIR/codex-validation-output.txt" \
     "$(cat "$RESEARCH_TMPDIR/codex-prompt.txt")"
 ```

@@ -86,6 +86,20 @@ if [[ "$_src_count" -eq 0 ]]; then
     exit 2
 fi
 
+MODEL_ARGS_TMP=$(mktemp)
+if "$SCRIPT_DIR/agent-model-args.sh" --tool cursor --with-effort > "$MODEL_ARGS_TMP"; then
+    :
+else
+    rc=$?
+    rm -f "$MODEL_ARGS_TMP"
+    exit "$rc"
+fi
+MODEL_ARGS=()
+while IFS= read -r arg; do
+    MODEL_ARGS+=("$arg")
+done < "$MODEL_ARGS_TMP"
+rm -f "$MODEL_ARGS_TMP"
+
 WRAPPER_PID=""
 # shellcheck disable=SC2329,SC2317  # body invoked indirectly by the EXIT trap below.
 _publish_done_on_exit() {
@@ -122,7 +136,6 @@ if [[ -n "$AGENT_FILE" ]]; then
     PROMPT=$("$SCRIPT_DIR/render-specialist-prompt.sh" "${RENDER_ARGS[@]}")
 fi
 
-MODEL_ARGS=$("$SCRIPT_DIR/agent-model-args.sh" --tool cursor --with-effort)
 WRAPPED_PROMPT=$({ "$SCRIPT_DIR/cursor-wrap-prompt.sh" "$PROMPT"; _wrap_status=$?; printf X; exit "$_wrap_status"; })
 WRAPPED_PROMPT=${WRAPPED_PROMPT%X}
 RUN_EXTERNAL="$SCRIPT_DIR/run-external-agent.sh"
@@ -168,7 +181,7 @@ fi
 # when CURSOR_API_KEY is unset/whitespace-only (preserves today's
 # `cursor login` keychain fallback for users who chose not to set the env
 # var); otherwise CURSOR_AUTH_ARGS=(--api-key "$KEY"). Inserted between
-# `$MODEL_ARGS` and `--workspace` so the prompt remains the final positional
+# the model-args array and `--workspace` so the prompt remains the final positional
 # argument and the argv layout stays the same as `check-reviewers.sh`'s probe.
 CURSOR_AUTH_ARGS=()
 cursor_auth_argv
@@ -182,7 +195,6 @@ else
     _STDERR_TARGET=/dev/null
 fi
 
-# shellcheck disable=SC2086
 RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX=.inner.done \
 "$RUN_EXTERNAL" \
         --tool cursor \
@@ -192,7 +204,7 @@ RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX=.inner.done \
         -- \
         cursor agent -p --force --trust \
         --output-format json \
-        $MODEL_ARGS \
+        ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
         ${CURSOR_AUTH_ARGS[@]+"${CURSOR_AUTH_ARGS[@]}"} \
         --workspace "$PWD" \
         "$WRAPPED_PROMPT" \

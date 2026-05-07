@@ -139,7 +139,24 @@ start_probe() {
                 >"$PROBE_DIR/codex-wrapper-attempt${attempt}.log" 2>&1 &
             ;;
         cursor)
-            CURSOR_MODEL_ARGS=$("$SCRIPT_DIR/agent-model-args.sh" --tool cursor)
+            CURSOR_MODEL_ARGS_TMP=$(mktemp "$PROBE_DIR/cursor-model-args.XXXXXX") || exit 1
+            if "$SCRIPT_DIR/agent-model-args.sh" --tool cursor > "$CURSOR_MODEL_ARGS_TMP"; then
+                :
+            else
+                rc=$?
+                {
+                    printf 'Model argument validation failed before launching Cursor probe (exit %s)\n' "$rc"
+                } > "${output}.diag"
+                : > "$output"
+                printf '%s\n' "$rc" > "${output}.done"
+                ( exit 0 ) &
+                printf '%s\n' "$!"
+                return
+            fi
+            CURSOR_MODEL_ARGS=()
+            while IFS= read -r arg; do
+                CURSOR_MODEL_ARGS+=("$arg")
+            done < "$CURSOR_MODEL_ARGS_TMP"
             # Argv MUST track scripts/launch-cursor-review.sh: --capture-stdout-only
             # plus --output-format json so the probe exercises the same Cursor CLI
             # path production review launches use. Drift here can produce false
@@ -152,13 +169,12 @@ start_probe() {
             # at launch time.
             CURSOR_AUTH_ARGS=()
             cursor_auth_argv
-            # shellcheck disable=SC2086
             "$SCRIPT_DIR/run-external-agent.sh" \
                 --tool cursor \
                 --output "$output" \
                 --timeout 60 \
                 --capture-stdout-only \
-                -- cursor agent -p --force --trust --output-format json $CURSOR_MODEL_ARGS ${CURSOR_AUTH_ARGS[@]+"${CURSOR_AUTH_ARGS[@]}"} --workspace "$PWD" \
+                -- cursor agent -p --force --trust --output-format json ${CURSOR_MODEL_ARGS[@]+"${CURSOR_MODEL_ARGS[@]}"} ${CURSOR_AUTH_ARGS[@]+"${CURSOR_AUTH_ARGS[@]}"} --workspace "$PWD" \
                 "Respond with OK" \
                 >"$PROBE_DIR/cursor-wrapper-attempt${attempt}.log" 2>&1 &
             ;;

@@ -56,8 +56,56 @@ assert_equals() {
     fi
 }
 
+STUB_BIN="$TMPROOT/bin"
+mkdir -p "$STUB_BIN"
+cat > "$STUB_BIN/cursor" <<'CURSOR_SHAPE_STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+helper=""
+args=("$@")
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --helper)
+            helper="${2:?--helper requires a value}"
+            shift 2
+            ;;
+        *)
+            shift
+            ;;
+    esac
+done
+if [[ -n "$helper" ]]; then
+    exec bash "$helper" "${args[@]}"
+fi
+exit 40
+CURSOR_SHAPE_STUB
+chmod +x "$STUB_BIN/cursor"
+cat > "$STUB_BIN/codex" <<'CODEX_SHAPE_STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+last=""
+for arg in "$@"; do
+    if [[ "$last" == "--output-last-message" ]]; then
+        out="$arg"
+    fi
+    last="$arg"
+done
+[[ -n "$out" ]] || exit 40
+printf 'OK\n' > "$out"
+CODEX_SHAPE_STUB
+chmod +x "$STUB_BIN/codex"
+PATH="$STUB_BIN:$PATH"
+export PATH
+
 json_array() {
-    jq -cn --args '$ARGS.positional' -- "$@"
+    if [[ "${1:-}" == "bash" && -n "${2:-}" ]]; then
+        local helper="$2"
+        shift 2
+        jq -cn --args '$ARGS.positional' -- cursor agent --workspace "$TMPROOT" --helper "$helper" "$@"
+    else
+        jq -cn --args '$ARGS.positional' -- "$@"
+    fi
 }
 
 write_empty_candidate() {
@@ -96,6 +144,20 @@ write_meta_body() {
         printf 'CAPTURE_STDOUT_ONLY=false\n'
         printf 'OUTPUT_FILE=%s\n' "$output"
         printf '%s\n' "$@"
+    } > "${output}.meta"
+}
+
+write_meta_for_tool() {
+    local output="$1"
+    local tool="$2"
+    local cmd_json="$3"
+    {
+        printf 'TOOL=%s\n' "$tool"
+        printf 'TIMEOUT=2\n'
+        printf 'CAPTURE_STDOUT=false\n'
+        printf 'CAPTURE_STDOUT_ONLY=false\n'
+        printf 'OUTPUT_FILE=%s\n' "$output"
+        printf 'CMD_JSON=%s\n' "$cmd_json"
     } > "${output}.meta"
 }
 
@@ -457,6 +519,29 @@ RESULT_P=$(run_collector bash "$OUT_P" "$HEALTH_P")
 assert_line "case P retry succeeded" "REVIEWER_FILE=${OUT_P%.txt}-retry.txt" "$RESULT_P"
 assert_line "case P status" "STATUS=OK" "$RESULT_P"
 assert_line "case P healthy" "HEALTHY=true" "$RESULT_P"
+
+# Case P2: per-tool CMD_JSON shape allowlists fail closed on known-dangerous
+# cursor extensions.
+OUT_P2="$TMPROOT/cursor-p2.txt"
+write_empty_candidate "$OUT_P2"
+write_meta "$OUT_P2" "$(jq -cn --args '$ARGS.positional' -- cursor agent --workspace "$TMPROOT" --add-dir /etc --helper "$HELPER" --output "$OUT_P2")"
+assert_fail_closed "case-p2" "$OUT_P2" "Retry metadata invalid: CMD_JSON argv shape rejected for cursor"
+
+# Case P3: codex's registered shape is accepted by the legacy CMD_JSON path.
+OUT_P3="$TMPROOT/codex-p3.txt"
+HEALTH_P3="$TMPROOT/case-p3.health"
+write_empty_candidate "$OUT_P3"
+write_meta_for_tool "$OUT_P3" codex "$(jq -cn --args '$ARGS.positional' -- codex exec --full-auto -C "$TMPROOT" --output-last-message "$OUT_P3")"
+RESULT_P3=$(run_collector bash "$OUT_P3" "$HEALTH_P3")
+assert_line "case P3 codex shape accepted" "STATUS=OK" "$RESULT_P3"
+assert_line "case P3 codex retry file" "REVIEWER_FILE=${OUT_P3%.txt}-retry.txt" "$RESULT_P3"
+
+# Case P4: unknown TOOL values fail closed instead of falling back to a less
+# constrained CMD_JSON path.
+OUT_P4="$TMPROOT/cursor-p4.txt"
+write_empty_candidate "$OUT_P4"
+write_meta_for_tool "$OUT_P4" unknown-tool "$(jq -cn --args '$ARGS.positional' -- cursor agent --workspace "$TMPROOT" --helper "$HELPER" --output "$OUT_P4")"
+assert_fail_closed "case-p4" "$OUT_P4" "Retry metadata invalid: unknown TOOL for CMD_JSON"
 
 # Outer-launcher retry coverage. The retry metadata points at the real
 # launch-cursor-review.sh, while PATH supplies a stub cursor binary so the

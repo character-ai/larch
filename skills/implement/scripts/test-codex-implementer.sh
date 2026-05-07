@@ -251,7 +251,7 @@ if [[ "$(sed -n '1p' "$ARGV_FILE")" == "exec" ]] \
    && [[ "$(sed -n '3p' "$ARGV_FILE")" == "-C" ]] \
    && [[ "$(sed -n '4p' "$ARGV_FILE")" == "$REPO_ROOT" ]] \
    && [[ "$(sed -n '5p' "$ARGV_FILE")" == "--add-dir" ]] \
-   && [[ "$(sed -n '6p' "$ARGV_FILE")" == "$(dirname "$MANIFEST")" ]] \
+   && [[ "$(sed -n '6p' "$ARGV_FILE")" == "$(cd "$(dirname "$MANIFEST")" && pwd -P)" ]] \
    && grep -Fxq -- '-m' "$ARGV_FILE" \
    && grep -Fxq -- 'stub-codex-model' "$ARGV_FILE" \
    && grep -Fxq -- '-c' "$ARGV_FILE" \

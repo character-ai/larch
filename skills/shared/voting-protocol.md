@@ -106,9 +106,11 @@ Launch all 3 voters **in parallel** (in a single message). When external tools a
 # fallback); two elements (--api-key "$KEY") when set.
 CURSOR_AUTH_FLAGS=()
 while IFS= read -r line; do CURSOR_AUTH_FLAGS+=("$line"); done < <("${CLAUDE_PLUGIN_ROOT}/scripts/cursor-auth-flags.sh")
+CURSOR_MODEL_ARGS=()
+while IFS= read -r arg; do CURSOR_MODEL_ARGS+=("$arg"); done < <("${CLAUDE_PLUGIN_ROOT}/scripts/agent-model-args.sh" --tool cursor --with-effort)
 
 ${CLAUDE_PLUGIN_ROOT}/scripts/run-external-agent.sh --tool cursor --output "<tmpdir>/cursor-vote-output.txt" --timeout 1200 --capture-stdout -- \
-  cursor agent -p --force --trust $("${CLAUDE_PLUGIN_ROOT}/scripts/agent-model-args.sh" --tool cursor --with-effort) "${CURSOR_AUTH_FLAGS[@]}" --workspace "$PWD" \
+  cursor agent -p --force --trust "${CURSOR_MODEL_ARGS[@]}" "${CURSOR_AUTH_FLAGS[@]}" --workspace "$PWD" \
     "$("${CLAUDE_PLUGIN_ROOT}/scripts/cursor-wrap-prompt.sh" "<voter prompt with ballot>. Work at your maximum reasoning effort level.")"
 ```
 
@@ -119,8 +121,11 @@ Use `run_in_background: true` and `timeout: 1260000`.
 **Codex voter** (if `codex_available`):
 
 ```bash
+CODEX_MODEL_ARGS=()
+while IFS= read -r arg; do CODEX_MODEL_ARGS+=("$arg"); done < <("${CLAUDE_PLUGIN_ROOT}/scripts/agent-model-args.sh" --tool codex --with-effort)
+
 ${CLAUDE_PLUGIN_ROOT}/scripts/run-external-agent.sh --tool codex --output "<tmpdir>/codex-vote-output.txt" --timeout 1200 -- \
-  codex exec --full-auto -C "$PWD" $("${CLAUDE_PLUGIN_ROOT}/scripts/agent-model-args.sh" --tool codex --with-effort) \
+  codex exec --full-auto -C "$PWD" "${CODEX_MODEL_ARGS[@]}" \
     --output-last-message "<tmpdir>/codex-vote-output.txt" \
     "<voter prompt with ballot>. Work at your maximum reasoning effort level."
 ```
