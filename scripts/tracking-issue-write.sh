@@ -91,11 +91,15 @@
 #   Truncation is byte-length based with line-boundary snapping (inline
 #   TRUNCATED marker always begins on its own line so open code fences
 #   cannot consume the marker or subsequent section markers). When the
-#   kept prefix ends with an unclosed code fence (odd count of `^```'
-#   lines), a closing ``` line is inserted before the TRUNCATED marker
-#   so the unclosed fence cannot swallow the rest of the comment body
-#   (diagrams + tables + sibling sections rendering as raw code on
-#   GitHub). Multibyte UTF-8 splitting is tolerated as section interiors
+#   kept prefix ends with an unclosed column-0 backtick fence (the
+#   line-by-line scan tracks opener length and requires the close to be
+#   at least that long, per GFM), a closing fence line of matching
+#   length is inserted before the TRUNCATED marker so the unclosed
+#   fence cannot swallow the rest of the comment body (diagrams +
+#   tables + sibling sections rendering as raw code on GitHub). Tilde
+#   fences and indented fences are out of scope — anchor sections are
+#   machine-composed by /implement and only emit column-0 backtick
+#   fences. Multibyte UTF-8 splitting is tolerated as section interiors
 #   are machine-composed (no human multibyte content expected).
 
 set -euo pipefail
@@ -349,17 +353,42 @@ truncate_body() (
             truncated_at="$PER_SECTION_CAP"
         fi
         local kept_prefix="${interior:0:$truncated_at}"
-        # Fence-aware close: count `^```' lines in the kept prefix; if
-        # odd, the cut left an unclosed fenced code block. Without an
-        # explicit ``` close the unclosed fence swallows the TRUNCATED
-        # marker AND all subsequent sections (diagrams, voting tables,
+        # Fence-aware close: scan the kept prefix line-by-line for
+        # column-0 backtick-fence delimiters and decide whether the cut
+        # left an unclosed fenced code block. Without an explicit
+        # closing fence the open block swallows the TRUNCATED marker
+        # AND all subsequent sections (diagrams, voting tables,
         # run-statistics) — they render as raw code on GitHub instead
-        # of as the intended markdown. Insert a closing ``` line before
-        # the marker so the fence terminates inside this section.
-        local fence_count
-        fence_count=$(printf '%s\n' "$kept_prefix" | awk '/^```/{c++} END{print c+0}')
-        if (( fence_count % 2 == 1 )); then
-            new_interior="${kept_prefix}"$'\n```\n'"[TRUNCATED — ${slug} exceeded ${PER_SECTION_CAP} chars]"
+        # of as the intended markdown. The close MUST be at least as
+        # long as the opener (GFM rule), so we track the opener's
+        # backtick length explicitly. Tilde fences (`~~~`) and indented
+        # fences are out of scope: anchor sections are machine-composed
+        # by /implement and only emit column-0 backtick fences.
+        local fence_state fence_open fence_len
+        fence_state=$(printf '%s\n' "$kept_prefix" | awk '
+            BEGIN { open = 0; len = 0 }
+            {
+                if (match($0, /^`+/)) {
+                    n = RLENGTH
+                    if (n >= 3) {
+                        if (open == 0) {
+                            open = 1
+                            len = n
+                        } else if (n >= len) {
+                            open = 0
+                            len = 0
+                        }
+                    }
+                }
+            }
+            END { print open, len }
+        ')
+        fence_open=${fence_state%% *}
+        fence_len=${fence_state##* }
+        if [[ "$fence_open" == "1" ]] && (( fence_len >= 3 )); then
+            local close_fence
+            close_fence=$(printf '%*s' "$fence_len" '' | tr ' ' '`')
+            new_interior="${kept_prefix}"$'\n'"${close_fence}"$'\n'"[TRUNCATED — ${slug} exceeded ${PER_SECTION_CAP} chars]"
         else
             new_interior="${kept_prefix}"$'\n'"[TRUNCATED — ${slug} exceeded ${PER_SECTION_CAP} chars]"
         fi

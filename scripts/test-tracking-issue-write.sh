@@ -475,6 +475,63 @@ else
 fi
 
 echo ""
+echo "=== (d3) upsert-anchor per-section truncation matches close length to 4-backtick opener ==="
+# GFM requires the closing fence to be at least as long as the opener.
+# A 4-backtick opener cannot be closed with 3 backticks. Regression
+# guard for the Codex review finding on issue #1368: if the opener
+# uses 4+ backticks (e.g. so the fenced block itself can contain
+# embedded ``` lines), the inserted close MUST match the opener length
+# or the unclosed block still swallows downstream sections.
+STUB_D3="$TMPROOT/stub-d3"
+BODY_CAPTURE="$TMPROOT/capture-d3.txt"
+build_stub_one_anchor "$STUB_D3"
+export BODY_CAPTURE
+BODY_D3="$TMPROOT/body-d3.txt"
+{
+    echo '<!-- larch:implement-anchor v1 issue=42 -->'
+    echo '<!-- section:plan-goals-test -->'
+    for _ in $(seq 1 30); do
+        printf 'Plan prose padding line of 100 characters exactly to fill space before the open code fence opens.\n'
+    done
+    # Open with 4 backticks so the fence can contain embedded ``` lines.
+    printf '%s\n' '````markdown'
+    for _ in $(seq 1 60); do
+        # Inside the 4-backtick fence; a 3-backtick line would NOT close it.
+        printf 'Inside 4-backtick fence; 3-backtick line ``` here is content not a closer; bytes push past cap.\n'
+    done
+    echo '<!-- section-end:plan-goals-test -->'
+    echo '<!-- section:diagrams -->'
+    echo 'downstream-canary-line'
+    echo '<!-- section-end:diagrams -->'
+} > "$BODY_D3"
+out_d3=$(PATH="$STUB_D3:$PATH" bash "$WRITE" upsert-anchor --issue 42 --body-file "$BODY_D3" --repo owner/repo 2>&1)
+assert_contains "$out_d3" 'UPDATED=true' '(d3) PATCH succeeded'
+if [[ -f "$BODY_CAPTURE" ]]; then
+    captured_d3=$(cat "$BODY_CAPTURE")
+    assert_contains "$captured_d3" "[TRUNCATED — plan-goals-test exceeded 8000 chars]" '(d3) TRUNCATED marker present'
+    # A 4-backtick fence-close line on its own MUST appear before the marker.
+    if awk '
+        /^````$/ { just_closed = 1; next }
+        /^\[TRUNCATED — plan-goals-test exceeded 8000 chars\]$/ {
+            if (just_closed) { found = 1; exit }
+        }
+        { just_closed = 0 }
+        END { exit (found ? 0 : 1) }
+    ' "$BODY_CAPTURE"; then
+        PASS=$((PASS + 1))
+        echo '  ok: (d3) 4-backtick close precedes TRUNCATED marker'
+    else
+        FAIL=$((FAIL + 1))
+        FAILED_TESTS+=('(d3) 4-backtick close does not precede TRUNCATED marker')
+        echo '  FAIL: (d3) 4-backtick close does not precede TRUNCATED marker' >&2
+    fi
+    assert_contains "$captured_d3" 'downstream-canary-line' '(d3) downstream section content preserved'
+else
+    FAIL=$((FAIL + 1))
+    FAILED_TESTS+=('(d3) body capture missing')
+fi
+
+echo ""
 echo "=== (e) append-comment does NOT touch anchor ==="
 STUB_E="$TMPROOT/stub-e"
 BODY_CAPTURE="$TMPROOT/capture-e.txt"
