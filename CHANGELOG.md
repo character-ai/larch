@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.71] - 2026-05-07
+
+### Changed
+
+- Resolve #1384: repoint 9 remaining sibling-contract `.md` stubs from stale `AGENTS.md § Editing rules` / `AGENTS.md "per-script contracts live beside the script"` / `per AGENTS.md` citations to the canonical rule file `.claude/rules/script-md-siblings.md`. Targets enumerated in the issue body plus reviewer-surfaced candidates: `scripts/refresh-anchor.md`, `skills/create-skill/scripts/prepare-description.md`, `skills/simplify-skill/scripts/build-feature-description.md`, `skills/compress-skill/scripts/build-feature-description.md`, `scripts/test-eval-research-baseline-flag.md`, `scripts/test-round-trip-detect.md`, `skills/fix-issue/scripts/test-issue-lifecycle.md`, `scripts/test-prepare-description.md`, `scripts/test-post-scaffold-hints.md`. All targets are dev-only, so all use the repo-relative `.claude/rules/script-md-siblings.md` form per AGENTS.md line 13. Historical CHANGELOG.md entries are out of scope. Documentation-only — no behavior, lint config, or runtime contract changes.
+
 ## [15.12.70] - 2026-05-07
 
 ### Added
