@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.65] - 2026-05-07
+
+### Added
+
+- Resolve #1369: add a top-level `## Honesty` section to `AGENTS.md` so every agent (Claude session, Codex/Cursor/Gemini implementer, reviewer) loads honesty rules at session start. Six bullets cover: don't fabricate (paths/functions/line numbers/command output/test results), don't overstate completion ("done" means verified done), don't paper over failures, trust-but-verify own claims (confirm tool returned what's claimed before reporting), distinguish observation from inference (mark guesses as guesses), and value honesty over agreeableness (cross-references `KARPATHY_CLAUDE.md` §1 "Think Before Coding" instead of duplicating its push-back guidance). Section is unconditional content at ~9 lines so the per-session token cost stays minimal. Out of scope: enforcement mechanisms (lint rules, hooks, reviewer checks) and per-skill honesty rules.
+
 ## [15.12.64] - 2026-05-07
 
 ### Added
