@@ -85,7 +85,7 @@ Truncation is byte-length based. Multibyte UTF-8 splitting is tolerated because 
 
 ## Lifecycle markers
 
-`append-comment` accepts `--lifecycle-marker <id>`, which prepends `<!-- larch:lifecycle-marker:<id> -->\n` to the body before redaction+truncation. Three canonical markers for Phase 2+ callers: `pr-opened`, `pr-closed`, `in-progress`. These machine-owned markers replace the prose-prefix filters (`PR opened:`, `Closed by PR #`) from the original design — prose prefixes were too loose (matched ordinary English comments).
+`append-comment` accepts `--lifecycle-marker <id>`, which prepends `<!-- larch:lifecycle-marker:<id> -->\n` to the body before redaction+truncation. Non-empty marker IDs must match `[A-Za-z0-9._:-]+`; bytes outside that positive charset are rejected before body composition so a caller cannot inject an HTML-comment terminator into the synthesized marker. Passing `--lifecycle-marker ""` is accepted and behaves like omitting the flag. Three canonical markers for Phase 2+ callers: `pr-opened`, `pr-closed`, `in-progress`. These machine-owned markers replace the prose-prefix filters (`PR opened:`, `Closed by PR #`) from the original design — prose prefixes were too loose (matched ordinary English comments).
 
 ## Title-prefix lifecycle (rename subcommand)
 
@@ -152,6 +152,8 @@ The regression harness `scripts/test-tracking-issue-write.sh` is wired into `mak
 - **(d3)** `upsert-anchor` per-section truncation matches the closing fence length to a 4-backtick opener (GFM rule: closer length ≥ opener length): a 4-backtick opener with embedded 3-backtick content lines gets a 4-backtick close inserted before the TRUNCATED marker.
 - **(d4)** `upsert-anchor` per-section truncation respects the GFM closer rule: a line like ` ```python ` inside an open fence (backticks followed by an info string) is content, not a closer, so the synthetic close is still inserted before the TRUNCATED marker.
 - **(e)** `append-comment` does NOT touch the anchor comment (stub-gh asserts the anchor comment is untouched).
+- **(e2)** `append-comment --lifecycle-marker` accepts the three canonical marker IDs (`pr-opened`, `pr-closed`, `in-progress`) and treats an explicit empty marker as an omitted marker.
+- **(e3)** `append-comment --lifecycle-marker` rejects comment terminators, HTML comment injection, whitespace, control bytes, and punctuation outside `[A-Za-z0-9._:-]` with `FAILED=true` and the charset `ERROR=`.
 - **(f1) Idempotency**: `upsert-anchor` with exactly one existing anchor comment PATCHes it, emits `UPDATED=true`, creates no new comment on double-call.
 - **(f2) Multiple-anchor fail-closed**: `upsert-anchor` with 2+ marker comments exits 2 with `FAILED=true ERROR=multiple anchor comments found (ids: <list>)`.
 - **(g) gh-failure redaction**: stub-gh emits a token-bearing stderr on failure → the `FAILED=true ERROR=…` line contains `<REDACTED-TOKEN>` and not the raw token.

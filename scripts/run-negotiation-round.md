@@ -1,9 +1,19 @@
 # scripts/run-negotiation-round.sh — contract
 
-`scripts/run-negotiation-round.sh` is the per-round driver for the Negotiation Protocol described in `skills/shared/external-reviewers.md`. It wraps the Codex stdin-pipe and Cursor `--agent-prompt` invocation styles behind a uniform interface so callers don't repeat the per-tool argv shape. Removes the previous output file before invoking the tool (fresh-result invariant). Inputs: `--tool codex|cursor`, `--prompt-file`, `--output`, `--workspace`. Stdout emits `RESPONSE_FILE=<path>`. Exit 0 on success, 1 on usage error, 2 on reviewer command failure or `cursor_auth_preflight` failure (see exit-code collision note below). Used by `/design` Steps 1d / 3.5 (interactive design discussion rounds) when an external reviewer is the negotiator.
+`scripts/run-negotiation-round.sh` is the per-round driver for the Negotiation Protocol described in `skills/shared/external-reviewers.md`. It wraps the Codex stdin-pipe and Cursor `--agent-prompt` invocation styles behind a uniform interface so callers don't repeat the per-tool argv shape. Removes the previous output file before invoking the tool (fresh-result invariant). Inputs: `--tool codex|cursor`, `--prompt-file`, `--output`, `--workspace`. Stdout emits `RESPONSE_FILE=<path>`. Exit 0 on success, 1 on usage error, 2 on reviewer command failure, and 3 on `cursor_auth_preflight` failure. Model-arg resolution failures from `scripts/agent-model-args.sh` propagate that helper's exit code (typically 1); its stderr diagnostic is the authoritative anchor. Used by `/design` Steps 1d / 3.5 (interactive design discussion rounds) when an external reviewer is the negotiator.
 
 ## Cursor auth handling
 
-Sources `scripts/lib-cursor-auth.sh` in the Cursor branch and runs `cursor_auth_preflight || exit 2` before launching `cursor agent`. Model args from `scripts/agent-model-args.sh` are read as one argv token per line into Bash arrays and expanded with the Bash-3.2-safe `${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"}` pattern. When `CURSOR_API_KEY` is non-empty, passes `--api-key "$CURSOR_API_KEY"` between the Cursor model-args array and `--workspace`. When empty, `cursor agent` runs without `--api-key` and falls back to its default auth resolution (e.g., the `cursor login` keychain entry on Darwin) — preserving backward compatibility with operators who haven't set the env var.
+Sources `scripts/lib-cursor-auth.sh` in the Cursor branch and runs `cursor_auth_preflight || exit 3` before launching `cursor agent`. Model args from `scripts/agent-model-args.sh` are read as one argv token per line into Bash arrays and expanded with the Bash-3.2-safe `${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"}` pattern. When `CURSOR_API_KEY` is non-empty, passes `--api-key "$CURSOR_API_KEY"` between the Cursor model-args array and `--workspace`. When empty, `cursor agent` runs without `--api-key` and falls back to its default auth resolution (e.g., the `cursor login` keychain entry on Darwin) — preserving backward compatibility with operators who haven't set the env var.
 
-**Exit-code collision note**: exit 2 in this script now subsumes both "preflight misconfiguration" (Darwin + empty `CURSOR_API_KEY` + missing `cursor-user` keychain entry) and the original "reviewer command failed". Callers needing to disambiguate should inspect stderr for the `cursor-auth-preflight:` prefix; that prefix is unique to the lib-cursor-auth path and never appears in normal reviewer output. The negotiation flow is foreground-synchronous and has no sentinel collector, so a synthesized `.done`/`.diag` (as in `launch-cursor-review.sh`) is unnecessary here.
+## Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Response written |
+| 1 | Usage / argument error, or the typical `scripts/agent-model-args.sh` validation failure propagated from that helper |
+| 2 | Reviewer command failed |
+| 3 | `cursor_auth_preflight` failed before `cursor agent` launched |
+| other | Propagated from `scripts/agent-model-args.sh`; inspect that helper's stderr diagnostic |
+
+The negotiation flow is foreground-synchronous and has no sentinel collector, so a synthesized `.done`/`.diag` (as in `launch-cursor-review.sh`) is unnecessary here.

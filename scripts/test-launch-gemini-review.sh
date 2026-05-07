@@ -297,6 +297,36 @@ if grep -q '^CMD_JSON=' "${MISSING_JQ_OUTPUT}.meta"; then
   fail "Missing-jq launcher meta should omit CMD_JSON"
 fi
 
+assert_model_rejected() {
+  local label="$1"
+  local value="$2"
+  local output="$TMPDIR/gemini-model-$label.txt"
+  local stdout="$TMPDIR/gemini-model-$label.stdout"
+  local stderr="$TMPDIR/gemini-model-$label.stderr"
+  local code
+  set +e
+  PATH="$STUB_BIN:$PATH" LARCH_GEMINI_MODEL="$value" \
+    "$REPO_ROOT/scripts/launch-gemini-review.sh" --output "$output" --timeout 1800 --prompt "test" >"$stdout" 2>"$stderr"
+  code=$?
+  set -e
+  [[ "$code" -eq 2 ]] \
+    || fail "model-$label: expected launcher exit 2, got $code"
+  [[ ! -s "$stdout" ]] \
+    || fail "model-$label: expected empty stdout"
+  [[ ! -s "$output" ]] \
+    || fail "model-$label: expected empty output"
+  grep -q '^2$' "${output}.done" \
+    || fail "model-$label: expected .done exit code 2"
+  grep -q 'ERROR: gemini model from LARCH_GEMINI_MODEL' "${output}.diag" \
+    || fail "model-$label: expected gemini model diagnostic"
+}
+
+assert_model_rejected "empty" ""
+assert_model_rejected "space" " "
+assert_model_rejected "newline" $'foo\n'
+assert_model_rejected "tab" $'\t'
+assert_model_rejected "control-byte" $'foo\x01'
+
 BAD_EQUALS_OUTPUT="$TMPDIR/bad=output.txt"
 assert_rejected_output "reject-equals" "$BAD_EQUALS_OUTPUT"
 

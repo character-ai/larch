@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- Launcher follow-up hardening: `tracking-issue-write.sh append-comment` now rejects unsafe non-empty lifecycle marker IDs before composing the synthesized HTML comment, `run-negotiation-round.sh` reserves exit 3 for Cursor auth preflight failure, shared Cursor launcher mechanics live in `scripts/lib-cursor-launcher-common.sh`, Gemini model resolution is centralized in `scripts/lib-gemini-model-resolver.sh`, and the token vendor scraper harness now fails early on an empty implementer ledger.
+
+### Documentation
+
+- Launcher sibling `.md` argv-shape diagrams now match the shipped Bash 3.2-safe argv guards; see [15.12.69] Item D for the original `agent-model-args.sh` line-token stdout contract.
+
 ## [15.13.1] - 2026-05-07
 
 ### Fixed

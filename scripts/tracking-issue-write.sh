@@ -274,6 +274,15 @@ redact_gh_error() {
     printf '%s' "$redacted" | tr '\n' ' ' | head -c 500
 }
 
+validate_lifecycle_marker() {
+    local marker="$1"
+    local LC_ALL=C
+    case "$marker" in
+        *[!A-Za-z0-9._:-]*|"") return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
 # emit_gh_failure <captured-stderr-text> — redact + emit the KEY=value
 # failure envelope and exit 2.
 emit_gh_failure() {
@@ -576,7 +585,15 @@ case "$cmd" in
             case "$1" in
                 --issue) ISSUE="${2:?--issue requires a value}"; shift 2 ;;
                 --body-file) BODY_FILE="${2:?--body-file requires a value}"; shift 2 ;;
-                --lifecycle-marker) LIFECYCLE_MARKER="${2:?--lifecycle-marker requires a value}"; shift 2 ;;
+                --lifecycle-marker)
+                    if [[ $# -lt 2 ]]; then
+                        echo "Unknown option for append-comment: --lifecycle-marker requires a value" >&2
+                        usage
+                        exit 1
+                    fi
+                    LIFECYCLE_MARKER="${2-}"
+                    shift 2
+                    ;;
                 --repo) REPO="${2:?--repo requires a value}"; shift 2 ;;
                 *) echo "Unknown option for append-comment: $1" >&2; usage; exit 1 ;;
             esac
@@ -605,6 +622,11 @@ case "$cmd" in
             exit 1
         fi
         if [[ -n "$LIFECYCLE_MARKER" ]]; then
+            if ! validate_lifecycle_marker "$LIFECYCLE_MARKER"; then
+                echo "FAILED=true"
+                echo "ERROR=lifecycle-marker contains bytes outside [A-Za-z0-9._:-]; the synthesized HTML comment requires a positive charset to prevent comment-terminator injection. Use a marker containing only ASCII letters, digits, '.', ':', '_', or '-'."
+                exit 1
+            fi
             BODY_CONTENT="<!-- larch:lifecycle-marker:${LIFECYCLE_MARKER} -->"$'\n'"$BODY_CONTENT"
         fi
         BODY_CONTENT=$(redact "$BODY_CONTENT") || emit_redaction_failure

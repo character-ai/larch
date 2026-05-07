@@ -43,6 +43,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"
+# shellcheck source=scripts/lib-cursor-launcher-common.sh
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib-cursor-launcher-common.sh"
 
 TRANSCRIPT_PATH=""
 SIDECAR_LOG=""
@@ -154,31 +157,22 @@ Begin by inspecting the current branch state, then proceed per the system prompt
 PROMPT_FILE_SIDECAR="${TRANSCRIPT_PATH}.prompt"
 printf '%s' "$PROMPT" > "$PROMPT_FILE_SIDECAR"
 
-MODEL_ARGS_TMP=$(mktemp)
-trap 'rm -f "$MODEL_ARGS_TMP"' EXIT
-if "$SCRIPT_DIR/agent-model-args.sh" --tool cursor --with-effort > "$MODEL_ARGS_TMP"; then
+if cursor_launcher_load_model_args; then
     :
 else
     rc=$?
     exit "$rc"
 fi
-MODEL_ARGS=()
-while IFS= read -r arg; do
-    MODEL_ARGS+=("$arg")
-done < "$MODEL_ARGS_TMP"
 WRAPPED_PROMPT=$("$SCRIPT_DIR/cursor-wrap-prompt.sh" "$PROMPT")
 
-# Source the Cursor auth helper. On preflight failure (Darwin + empty
+# Run Cursor auth preflight. On preflight failure (Darwin + empty
 # CURSOR_API_KEY + missing `cursor-user` keychain entry), emit the standard
 # KV envelope before exiting so step2-implement.sh's parser surfaces a
 # specific failure (LAUNCHER_EXIT=2 + actionable SIDECAR_LOG content)
 # instead of a generic timeout/missing-manifest message.
-# shellcheck source=scripts/lib-cursor-auth.sh
-# shellcheck disable=SC1091
-. "$SCRIPT_DIR/lib-cursor-auth.sh"
 PREFLIGHT_RC=0
 PREFLIGHT_ERR=$(mktemp)
-cursor_auth_preflight 2> "$PREFLIGHT_ERR" || PREFLIGHT_RC=$?
+cursor_launcher_setup_auth_argv 2> "$PREFLIGHT_ERR" || PREFLIGHT_RC=$?
 cat "$PREFLIGHT_ERR" >> "$SIDECAR_LOG" 2>/dev/null || true
 rm -f "$PREFLIGHT_ERR"
 if [[ "$PREFLIGHT_RC" != "0" ]]; then
@@ -193,15 +187,6 @@ if [[ "$PREFLIGHT_RC" != "0" ]]; then
     # LAUNCHER_EXIT=2 and surfaces the SIDECAR_LOG content.
     exit 0
 fi
-
-# Build the conditional --api-key argv segment. CURSOR_AUTH_ARGS is empty
-# when CURSOR_API_KEY is unset/whitespace-only (preserves today's
-# `cursor login` keychain fallback for users who chose not to set the env
-# var); otherwise CURSOR_AUTH_ARGS=(--api-key "$KEY"). Inserted between
-# the model-args array and `--workspace` so the prompt remains the final positional
-# argument.
-CURSOR_AUTH_ARGS=()
-cursor_auth_argv
 
 # Run the wrapper, redirecting its stdout AND stderr to the sidecar log so
 # Claude (the dispatcher's caller) never sees the wrapper's progress lines.
@@ -224,13 +209,7 @@ RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX=.inner.done \
 WRAPPER_PID=$!
 wait "$WRAPPER_PID" && LAUNCHER_EXIT=0 || LAUNCHER_EXIT=$?
 
-if [[ -f "${TRANSCRIPT_PATH}.meta" ]]; then
-    {
-        printf 'OUTER_LAUNCHER=%s\n' "$SCRIPT_DIR/launch-cursor-implement.sh"
-        printf 'OUTER_LAUNCHER_PROMPT_FILE=%s\n' "$PROMPT_FILE_SIDECAR"
-        printf 'OUTER_LAUNCHER_WORKDIR=%s\n' "$PWD"
-    } >> "${TRANSCRIPT_PATH}.meta"
-fi
+cursor_launcher_append_outer_meta "${TRANSCRIPT_PATH}.meta" "$SCRIPT_DIR/launch-cursor-implement.sh" "$PROMPT_FILE_SIDECAR" "$PWD"
 
 if command -v jq >/dev/null 2>&1; then
     read -r INP OUT CR CW < <(jq -r '.usage // {} | "\(.inputTokens // 0) \(.outputTokens // 0) \(.cacheReadTokens // 0) \(.cacheWriteTokens // 0)"' "$TRANSCRIPT_PATH" 2>/dev/null || echo "0 0 0 0")
@@ -241,9 +220,7 @@ if command -v jq >/dev/null 2>&1; then
 fi
 emit_timing_record "$LAUNCHER_EXIT"
 
-if [[ -f "${TRANSCRIPT_PATH}.inner.done" ]]; then
-    mv -f "${TRANSCRIPT_PATH}.inner.done" "${TRANSCRIPT_PATH}.done"
-fi
+cursor_launcher_promote_inner_done "$TRANSCRIPT_PATH"
 
 MANIFEST_WRITTEN=false
 QA_PENDING_WRITTEN=false

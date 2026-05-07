@@ -445,10 +445,18 @@ exclude = [
   "skills/create-skill/scripts/test-render-skill-md.sh",
   "scripts/lib-count-commits.sh",
   "scripts/lib-gemini-tool-drift.sh",
+  # scripts/lib-gemini-model-resolver.sh is a sourced-only shell library (no
+  # shebang, not invokable directly). It is referenced from shell consumers via
+  # source directives only, which agent-lint does not follow.
+  "scripts/lib-gemini-model-resolver.sh",
   # scripts/lib-cursor-auth.sh is a sourced-only shell library (no shebang,
   # not invokable directly). It is referenced from shell consumers via source
   # directives only, which agent-lint does not follow.
   "scripts/lib-cursor-auth.sh",
+  # scripts/lib-cursor-launcher-common.sh is a sourced-only shell library (no
+  # shebang, not invokable directly). It is referenced from the Cursor launchers
+  # via source directives only, which agent-lint does not follow.
+  "scripts/lib-cursor-launcher-common.sh",
   # scripts/cursor-auth-flags.sh is a small executable that prints the
   # conditional --api-key argv elements for runtime skill markdown blocks.
   # Referenced from skills/shared/voting-protocol.md, skills/shared/dialectic-protocol.md,
@@ -880,6 +888,8 @@ exclude = [
   "scripts/test-launch-cursor-review.md",
   "scripts/test-lib-cursor-auth.md",
   "scripts/lib-cursor-auth.md",
+  "scripts/lib-cursor-launcher-common.md",
+  "scripts/lib-gemini-model-resolver.md",
   "scripts/cursor-auth-flags.md",
   "scripts/test-wait-for-reviewers.md",
   "scripts/lib-validate-meta-path.md",

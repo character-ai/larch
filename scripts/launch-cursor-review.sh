@@ -24,6 +24,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"
+# shellcheck source=scripts/lib-cursor-launcher-common.sh
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib-cursor-launcher-common.sh"
 
 # shellcheck disable=SC2329 # invoked indirectly by the EXIT trap.
 _emit_timing_record() {
@@ -109,19 +112,12 @@ if [[ "$_src_count" -eq 0 ]]; then
     exit 2
 fi
 
-MODEL_ARGS_TMP=$(mktemp)
-if "$SCRIPT_DIR/agent-model-args.sh" --tool cursor --with-effort > "$MODEL_ARGS_TMP"; then
+if cursor_launcher_load_model_args; then
     :
 else
     rc=$?
-    rm -f "$MODEL_ARGS_TMP"
     exit "$rc"
 fi
-MODEL_ARGS=()
-while IFS= read -r arg; do
-    MODEL_ARGS+=("$arg")
-done < "$MODEL_ARGS_TMP"
-rm -f "$MODEL_ARGS_TMP"
 
 WRAPPER_PID=""
 # shellcheck disable=SC2329,SC2317  # body invoked indirectly by the EXIT trap below.
@@ -167,16 +163,13 @@ SIDECAR="${OUTPUT}.sidecar"
 PROMPT_FILE_SIDECAR="${OUTPUT}.prompt"
 printf '%s' "$PROMPT" > "$PROMPT_FILE_SIDECAR"
 
-# Source the Cursor auth helper. On preflight failure (Darwin + empty
+# Run Cursor auth preflight. On preflight failure (Darwin + empty
 # CURSOR_API_KEY + missing `cursor-user` keychain entry), synthesize the
 # sentinel/diag artifacts that `run-external-agent.sh` would have written so
 # backgrounded callers see STATUS=FAILED with the actionable reason within
 # seconds rather than SENTINEL_TIMEOUT after the full collector timeout.
-# shellcheck source=scripts/lib-cursor-auth.sh
-# shellcheck disable=SC1091
-. "$SCRIPT_DIR/lib-cursor-auth.sh"
 PREFLIGHT_RC=0
-cursor_auth_preflight || PREFLIGHT_RC=$?
+cursor_launcher_setup_auth_argv || PREFLIGHT_RC=$?
 if [[ "$PREFLIGHT_RC" != "0" ]]; then
     : > "$OUTPUT" 2>/dev/null || true
     {
@@ -201,15 +194,6 @@ if [[ "$PREFLIGHT_RC" != "0" ]]; then
     printf '%s\n' "$PREFLIGHT_RC" > "${OUTPUT}.done" 2>/dev/null || true
     exit "$PREFLIGHT_RC"
 fi
-
-# Build the conditional --api-key argv segment. CURSOR_AUTH_ARGS is empty
-# when CURSOR_API_KEY is unset/whitespace-only (preserves today's
-# `cursor login` keychain fallback for users who chose not to set the env
-# var); otherwise CURSOR_AUTH_ARGS=(--api-key "$KEY"). Inserted between
-# the model-args array and `--workspace` so the prompt remains the final positional
-# argument and the argv layout stays the same as `check-reviewers.sh`'s probe.
-CURSOR_AUTH_ARGS=()
-cursor_auth_argv
 
 # shellcheck disable=SC2086
 EXIT_CODE=0
@@ -237,13 +221,7 @@ RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX=.inner.done \
 WRAPPER_PID=$!
 wait "$WRAPPER_PID" && EXIT_CODE=0 || EXIT_CODE=$?
 
-if [[ -f "${OUTPUT}.meta" ]]; then
-    {
-        printf 'OUTER_LAUNCHER=%s\n' "$SCRIPT_DIR/launch-cursor-review.sh"
-        printf 'OUTER_LAUNCHER_PROMPT_FILE=%s\n' "$PROMPT_FILE_SIDECAR"
-        printf 'OUTER_LAUNCHER_WORKDIR=%s\n' "$PWD"
-    } >> "${OUTPUT}.meta"
-fi
+cursor_launcher_append_outer_meta "${OUTPUT}.meta" "$SCRIPT_DIR/launch-cursor-review.sh" "$PROMPT_FILE_SIDECAR" "$PWD"
 
 # Test-only deterministic hook (FINDING_1 of /review round 1 hardening): the
 # legacy `eval "$LARCH_TEST_TRAP_AFTER_INNER_DONE"` was an env-var → arbitrary-
@@ -311,7 +289,5 @@ if [[ -s "$OUTPUT" ]]; then
     fi
 fi
 
-if [[ -f "${OUTPUT}.inner.done" ]]; then
-    mv -f "${OUTPUT}.inner.done" "${OUTPUT}.done"
-fi
+cursor_launcher_promote_inner_done "$OUTPUT"
 exit "$EXIT_CODE"

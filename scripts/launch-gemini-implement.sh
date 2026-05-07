@@ -34,6 +34,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"
+# shellcheck source=scripts/lib-gemini-model-resolver.sh
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib-gemini-model-resolver.sh"
 
 TRANSCRIPT_PATH=""
 SIDECAR_LOG=""
@@ -135,7 +138,25 @@ $RESUME_BLOCK
 
 Begin by inspecting the current branch state, then proceed per the system prompt above."
 
-GEMINI_MODEL="${LARCH_GEMINI_MODEL:-${CLAUDE_PLUGIN_OPTION_GEMINI_MODEL:-gemini-2.5-pro}}"
+GEMINI_MODEL_ERR=$(mktemp)
+if GEMINI_MODEL=$(resolve_gemini_model 2> "$GEMINI_MODEL_ERR"); then
+    rm -f "$GEMINI_MODEL_ERR"
+else
+    MODEL_RC=$?
+    cat "$GEMINI_MODEL_ERR" >> "$SIDECAR_LOG" 2>/dev/null || true
+    rm -f "$GEMINI_MODEL_ERR"
+    MANIFEST_WRITTEN=false
+    QA_PENDING_WRITTEN=false
+    [[ -s "$MANIFEST_PATH" ]]   && MANIFEST_WRITTEN=true
+    [[ -s "$QA_PENDING_PATH" ]] && QA_PENDING_WRITTEN=true
+    emit_timing_record "$MODEL_RC"
+    printf 'LAUNCHER_EXIT=%s\n'           "$MODEL_RC"
+    printf 'MANIFEST_WRITTEN=%s\n'        "$MANIFEST_WRITTEN"
+    printf 'QA_PENDING_WRITTEN=%s\n'      "$QA_PENDING_WRITTEN"
+    printf 'TRANSCRIPT=%s\n'              "$TRANSCRIPT_PATH"
+    printf 'SIDECAR_LOG=%s\n'             "$SIDECAR_LOG"
+    exit 0
+fi
 
 LAUNCHER_EXIT=0
 "$SCRIPT_DIR/run-external-agent.sh" \

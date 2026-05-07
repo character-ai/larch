@@ -159,6 +159,44 @@ else
     fail 3c "missing answers-file should exit 2 with stderr literal '--answers-file given but path does not exist', got $EXIT"
 fi
 
+assert_model_rejection() {
+    local label="$1"
+    local value="$2"
+    local transcript="$SCRATCH/model-$label-transcript.txt"
+    local sidecar="$SCRATCH/model-$label-sidecar.log"
+    local manifest="$SCRATCH/model-$label-manifest.json"
+    local qa="$SCRATCH/model-$label-qa.json"
+    local stdout="$SCRATCH/model-$label-stdout.txt"
+    local code=0
+    (
+        cd "$REPO_ROOT"
+        LARCH_GEMINI_MODEL="$value" "$LAUNCHER" \
+            --transcript-path "$transcript" \
+            --sidecar-log "$sidecar" \
+            --manifest-path "$manifest" \
+            --qa-pending-path "$qa" \
+            --plan-file "$PLAN" \
+            --feature-file "$FEATURE" \
+            --agent-prompt "$AGENT_PROMPT" \
+            --timeout 30
+    ) >"$stdout" 2>&1 || code=$?
+    if [[ "$code" == "0" ]] \
+       && grep -Fxq 'LAUNCHER_EXIT=1' "$stdout" \
+       && grep -Fxq 'MANIFEST_WRITTEN=false' "$stdout" \
+       && grep -Fxq 'QA_PENDING_WRITTEN=false' "$stdout" \
+       && grep -Fq 'ERROR: gemini model from LARCH_GEMINI_MODEL' "$sidecar"; then
+        pass
+    else
+        fail "model-$label" "model rejection should exit 0 with LAUNCHER_EXIT=1 and sidecar diagnostic; code=$code stdout=$(cat "$stdout") sidecar=$(cat "$sidecar" 2>/dev/null)"
+    fi
+}
+
+assert_model_rejection "empty" ""
+assert_model_rejection "space" " "
+assert_model_rejection "newline" $'foo\n'
+assert_model_rejection "tab" $'\t'
+assert_model_rejection "control-byte" $'foo\x01'
+
 STUB_BIN="$SCRATCH/bin"
 mkdir -p "$STUB_BIN"
 STUB_GEMINI="$STUB_BIN/gemini"

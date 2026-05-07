@@ -2,13 +2,14 @@
 # test-tracking-issue-write.sh — regression harness for tracking-issue-write.sh.
 #
 # Mirrors the stub-gh + PATH-override pattern of scripts/test-redact-secrets.sh.
-# Sixteen assertion categories (a-p) covering redaction, exit codes, truncation,
-# anchor-skeleton preservation, anchor-upsert semantics, gh-failure redaction,
-# the anchor-section-markers.sh startup-guard fail-closed, the
-# SECTION_MARKERS ⊆ COLLAPSE_PRIORITY invariant, the rename subcommand
-# (idempotency, strip-exactly-one, redaction, invalid --state), the
-# mark-false-positive subcommand (ordering, idempotency, redaction, truncation,
-# and title-grammar edge cases), the
+# Assertion categories (a-p plus focused subcases) covering redaction, exit
+# codes, truncation, anchor-skeleton preservation, anchor-upsert semantics,
+# append-comment lifecycle-marker validation, gh-failure redaction, the
+# anchor-section-markers.sh startup-guard fail-closed, the SECTION_MARKERS ⊆
+# COLLAPSE_PRIORITY invariant, the rename subcommand (idempotency,
+# strip-exactly-one, redaction, invalid --state), the mark-false-positive
+# subcommand (ordering, idempotency, redaction, truncation, and title-grammar
+# edge cases), the
 # seed-only visible placeholder upsert survival (issue #431), and the
 # find-anchor subcommand contract (zero/one/multiple anchors plus
 # pagination across >100 comments — closes #654). All assertions run in
@@ -615,6 +616,76 @@ else
     FAIL=$((FAIL + 1))
     FAILED_TESTS+=("(e) body capture missing")
 fi
+
+echo ""
+echo "=== (e2) append-comment lifecycle-marker accepts canonical IDs and empty bypass ==="
+for marker in pr-opened pr-closed in-progress; do
+    STUB_E2="$TMPROOT/stub-e2-$marker"
+    BODY_CAPTURE="$TMPROOT/capture-e2-$marker.txt"
+    build_stub_success "$STUB_E2"
+    export BODY_CAPTURE
+    BODY_E2="$TMPROOT/body-e2-$marker.txt"
+    printf 'plain append comment body\n' > "$BODY_E2"
+    out_e2=$(PATH="$STUB_E2:$PATH" bash "$WRITE" append-comment --issue 42 --body-file "$BODY_E2" --lifecycle-marker "$marker" --repo owner/repo 2>&1)
+    assert_contains "$out_e2" 'COMMENT_ID=7001' "(e2) append-comment accepts lifecycle marker $marker"
+    if [[ -f "$BODY_CAPTURE" ]]; then
+        captured_e2=$(cat "$BODY_CAPTURE")
+        assert_contains "$captured_e2" "<!-- larch:lifecycle-marker:${marker} -->" "(e2) posted body contains lifecycle marker $marker"
+    else
+        FAIL=$((FAIL + 1))
+        FAILED_TESTS+=("(e2) body capture missing for $marker")
+        echo "  FAIL: (e2) body capture missing for $marker" >&2
+    fi
+done
+
+STUB_E2_EMPTY="$TMPROOT/stub-e2-empty"
+BODY_CAPTURE="$TMPROOT/capture-e2-empty.txt"
+build_stub_success "$STUB_E2_EMPTY"
+export BODY_CAPTURE
+BODY_E2_EMPTY="$TMPROOT/body-e2-empty.txt"
+printf 'plain append comment body\n' > "$BODY_E2_EMPTY"
+out_e2_empty=$(PATH="$STUB_E2_EMPTY:$PATH" bash "$WRITE" append-comment --issue 42 --body-file "$BODY_E2_EMPTY" --lifecycle-marker "" --repo owner/repo 2>&1)
+assert_contains "$out_e2_empty" 'COMMENT_ID=7001' '(e2) explicit empty lifecycle marker is accepted'
+if [[ -f "$BODY_CAPTURE" ]]; then
+    captured_e2_empty=$(cat "$BODY_CAPTURE")
+    assert_not_contains "$captured_e2_empty" '<!-- larch:lifecycle-marker:' '(e2) empty lifecycle marker does not prepend comment'
+else
+    FAIL=$((FAIL + 1))
+    FAILED_TESTS+=("(e2) empty-marker body capture missing")
+    echo "  FAIL: (e2) empty-marker body capture missing" >&2
+fi
+
+echo ""
+echo "=== (e3) append-comment lifecycle-marker rejects unsafe bytes ==="
+unsafe_markers=(
+    '-->'
+    $'bad\nmarker'
+    $'bad\tmarker'
+    'bad;marker'
+    'bad marker'
+    '<!--injection-->'
+)
+unsafe_labels=(
+    'comment-terminator'
+    'newline'
+    'tab'
+    'semicolon'
+    'space'
+    'html-comment'
+)
+for i in "${!unsafe_markers[@]}"; do
+    marker="${unsafe_markers[$i]}"
+    label="${unsafe_labels[$i]}"
+    STUB_E3="$TMPROOT/stub-e3-$label"
+    build_stub_success "$STUB_E3"
+    BODY_E3="$TMPROOT/body-e3-$label.txt"
+    printf 'plain append comment body\n' > "$BODY_E3"
+    exit_e3=0
+    out_e3=$(PATH="$STUB_E3:$PATH" bash "$WRITE" append-comment --issue 42 --body-file "$BODY_E3" --lifecycle-marker "$marker" --repo owner/repo 2>&1) || exit_e3=$?
+    assert_equal "$exit_e3" "1" "(e3) unsafe lifecycle marker $label exits 1"
+    assert_contains "$out_e3" 'FAILED=true' "(e3) unsafe lifecycle marker $label emits FAILED=true"
+    assert_contains "$out_e3" 'ERROR=lifecycle-marker contains bytes outside [A-Za-z0-9._:-]' "(e3) unsafe lifecycle marker $label emits charset error"
+done
 
 echo ""
 echo "=== (f1) upsert-anchor with exactly one existing anchor → PATCH, UPDATED=true ==="
