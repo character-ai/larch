@@ -358,6 +358,59 @@ if (( hung_elapsed > 10 )); then
   fail "Expected hung discovery to return within 10s, took ${hung_elapsed}s"
 fi
 
+# Cursor probe argv coverage (#1358 / review-round-1 FINDING_5):
+# pin `--output-format json` and the conditional `--api-key <value>`
+# adjacency in the Cursor probe argv so a future edit cannot drop either
+# silently while production review launches stay correct.
+CURSOR_PROBE_ARGV_LOG="$TMPDIR/cursor-probe-argv.log"
+cat > "$STUB_BIN/cursor" <<STUB
+#!/usr/bin/env bash
+{
+  for _arg in "\$@"; do
+    printf '%s\n' "\$_arg"
+  done
+  printf -- '---\n'
+} >> "$CURSOR_PROBE_ARGV_LOG"
+# Emit the probe's required exact "OK" reply so check-reviewers' acceptance
+# rule matches and the probe completes its happy path.
+printf 'OK\n'
+STUB
+chmod +x "$STUB_BIN/cursor"
+
+run_cursor_probe() {
+    PATH="$STUB_BIN:$PATH" LARCH_TEST_PROBE_SLEEP_SECONDS=0 \
+      "$REPO_ROOT/scripts/check-reviewers.sh" --probe --skip-codex-probe --skip-gemini-probe
+}
+
+# Case 1: with CURSOR_API_KEY set, probe argv contains adjacent --api-key
+# <value> tokens AND --output-format json.
+: > "$CURSOR_PROBE_ARGV_LOG"
+CURSOR_API_KEY="probe-test-key-XYZ" run_cursor_probe >/dev/null 2>&1
+ofmt_line=$(grep -Fxn -- '--output-format' "$CURSOR_PROBE_ARGV_LOG" | awk -F: 'NR==1 {print $1; exit}')
+json_line=$(grep -Fxn -- 'json' "$CURSOR_PROBE_ARGV_LOG" | awk -F: 'NR==1 {print $1; exit}')
+api_key_line=$(grep -Fxn -- '--api-key' "$CURSOR_PROBE_ARGV_LOG" | awk -F: 'NR==1 {print $1; exit}')
+api_val_line=$(grep -Fxn -- 'probe-test-key-XYZ' "$CURSOR_PROBE_ARGV_LOG" | awk -F: 'NR==1 {print $1; exit}')
+if [[ -n "$ofmt_line" && -n "$json_line" && -n "$api_key_line" && -n "$api_val_line" ]] \
+   && (( ofmt_line < json_line )) && (( api_val_line == api_key_line + 1 )); then
+    :
+else
+    fail "Cursor probe argv missing --output-format json or non-adjacent --api-key with CURSOR_API_KEY set; ofmt=$ofmt_line json=$json_line api_key=$api_key_line api_val=$api_val_line"
+fi
+
+# Case 2: with CURSOR_API_KEY empty, probe argv contains --output-format json
+# but no --api-key (preserves cursor login keychain fallback).
+: > "$CURSOR_PROBE_ARGV_LOG"
+CURSOR_API_KEY="" run_cursor_probe >/dev/null 2>&1
+ofmt_line=$(grep -Fxn -- '--output-format' "$CURSOR_PROBE_ARGV_LOG" | awk -F: 'NR==1 {print $1; exit}')
+if [[ -n "$ofmt_line" ]]; then
+    :
+else
+    fail "Cursor probe argv missing --output-format with CURSOR_API_KEY empty"
+fi
+if grep -Fxq -- '--api-key' "$CURSOR_PROBE_ARGV_LOG"; then
+    fail "Cursor probe argv must not include --api-key when CURSOR_API_KEY is empty"
+fi
+
 if [[ "$FAIL" -eq 1 ]]; then
     echo "FAIL: test-check-reviewers.sh — some probe acceptance tests failed" >&2
     exit 1

@@ -101,8 +101,14 @@ Launch all 3 voters **in parallel** (in a single message). When external tools a
 **Cursor voter** (if `cursor_available`):
 
 ```bash
+# Build the conditional --api-key argv segment via the shared helper. Empty
+# when CURSOR_API_KEY is unset/whitespace-only (preserves cursor login
+# fallback); two elements (--api-key "$KEY") when set.
+CURSOR_AUTH_FLAGS=()
+while IFS= read -r line; do CURSOR_AUTH_FLAGS+=("$line"); done < <("${CLAUDE_PLUGIN_ROOT}/scripts/cursor-auth-flags.sh")
+
 ${CLAUDE_PLUGIN_ROOT}/scripts/run-external-agent.sh --tool cursor --output "<tmpdir>/cursor-vote-output.txt" --timeout 1200 --capture-stdout -- \
-  cursor agent -p --force --trust $("${CLAUDE_PLUGIN_ROOT}/scripts/agent-model-args.sh" --tool cursor --with-effort) --workspace "$PWD" \
+  cursor agent -p --force --trust $("${CLAUDE_PLUGIN_ROOT}/scripts/agent-model-args.sh" --tool cursor --with-effort) "${CURSOR_AUTH_FLAGS[@]}" --workspace "$PWD" \
     "$("${CLAUDE_PLUGIN_ROOT}/scripts/cursor-wrap-prompt.sh" "<voter prompt with ballot>. Work at your maximum reasoning effort level.")"
 ```
 

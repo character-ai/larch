@@ -172,11 +172,18 @@ Launch all 3 judges **in parallel** (single message). Spawn order: Cursor first 
 **Cursor judge** (if `judge_cursor_available`):
 
 ```bash
+# Build the conditional --api-key argv segment via the shared helper. Empty
+# when CURSOR_API_KEY is unset/whitespace-only (preserves cursor login
+# fallback); two elements (--api-key "$KEY") when set.
+CURSOR_AUTH_FLAGS=()
+while IFS= read -r line; do CURSOR_AUTH_FLAGS+=("$line"); done < <("${CLAUDE_PLUGIN_ROOT}/scripts/cursor-auth-flags.sh")
+
 ${CLAUDE_PLUGIN_ROOT}/scripts/run-external-agent.sh --tool cursor \
   --output "$DIALECTIC_TMPDIR/cursor-judge-output.txt" \
   --timeout 1800 --capture-stdout -- \
   cursor agent -p --force --trust \
     $("${CLAUDE_PLUGIN_ROOT}/scripts/agent-model-args.sh" --tool cursor --with-effort) \
+    "${CURSOR_AUTH_FLAGS[@]}" \
     --workspace "$PWD" \
     "$("${CLAUDE_PLUGIN_ROOT}/scripts/cursor-wrap-prompt.sh" "<judge prompt from template above>. Work at your maximum reasoning effort level.")"
 ```

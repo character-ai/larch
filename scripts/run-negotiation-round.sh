@@ -65,8 +65,19 @@ case "$TOOL" in
         ;;
     cursor)
         CURSOR_MODEL_ARGS=$("$SCRIPT_DIR/agent-model-args.sh" --tool cursor)
+        # Source the Cursor auth helper and run preflight before launching.
+        # No sentinel collector here (negotiation is foreground-synchronous),
+        # so direct exit 2 on preflight failure is sufficient. Note: exit 2
+        # below collides with the existing "reviewer command failed" exit
+        # code; callers needing to disambiguate should inspect stderr for
+        # the `cursor-auth-preflight:` prefix.
+        # shellcheck source=scripts/lib-cursor-auth.sh
+        . "$SCRIPT_DIR/lib-cursor-auth.sh"
+        cursor_auth_preflight || exit 2
+        CURSOR_AUTH_ARGS=()
+        cursor_auth_argv
         # shellcheck disable=SC2086
-        cursor agent -p --force --trust $CURSOR_MODEL_ARGS --workspace "$WORKSPACE" \
+        cursor agent -p --force --trust $CURSOR_MODEL_ARGS ${CURSOR_AUTH_ARGS[@]+"${CURSOR_AUTH_ARGS[@]}"} --workspace "$WORKSPACE" \
             "$("$SCRIPT_DIR/cursor-wrap-prompt.sh" "Read the negotiation prompt from $PROMPT_FILE and respond to it.")" \
             > "$OUTPUT_FILE" 2>&1
         ;;
