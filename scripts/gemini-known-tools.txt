@@ -11,4 +11,3 @@ search_file_content
 web_fetch
 web_search
 write_file
-run-shell-command-id
