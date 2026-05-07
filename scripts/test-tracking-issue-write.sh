@@ -404,6 +404,200 @@ else
 fi
 
 echo ""
+echo "=== (d2) upsert-anchor per-section truncation closes unclosed code fence ==="
+# Regression: when the kept prefix ends with an unclosed ``` fence, the
+# truncation must insert an explicit closing ``` line before the
+# TRUNCATED marker. Without this, the unclosed fence swallows the
+# marker AND every following section, causing diagrams + tables in
+# subsequent sections to render as raw code on GitHub. Observed once
+# on issue #1356.
+STUB_D2="$TMPROOT/stub-d2"
+BODY_CAPTURE="$TMPROOT/capture-d2.txt"
+build_stub_one_anchor "$STUB_D2"
+export BODY_CAPTURE
+BODY_D2="$TMPROOT/body-d2.txt"
+# plan-goals-test interior: text, an unclosed ```markdown fence, then
+# enough lines to push the cap into the unclosed fence.
+{
+    echo '<!-- larch:implement-anchor v1 issue=42 -->'
+    echo '<!-- section:plan-goals-test -->'
+    # ~3000 chars of prose (30 lines of 100 chars).
+    for _ in $(seq 1 30); do
+        printf 'Plan prose padding line of 100 characters exactly to fill space before the open code fence opens.\n'
+    done
+    # Open a markdown fence with no matching close inside this section.
+    printf '```markdown\n'
+    # Pad inside the fence past the cap (60 lines of 100 chars = 6000+).
+    for _ in $(seq 1 60); do
+        printf 'Inside the unclosed code fence; bytes here push the cut into the fence so closure is required.\n'
+    done
+    # Section close marker (would be eaten by an unclosed fence).
+    echo '<!-- section-end:plan-goals-test -->'
+    # A second section that must remain markdown-rendered.
+    echo '<!-- section:diagrams -->'
+    echo '## Architecture Diagram'
+    echo
+    # shellcheck disable=SC2016  # literal mermaid fence content; no expansion intended
+    printf '```mermaid\nflowchart TD\n  A --> B\n```\n'
+    echo '<!-- section-end:diagrams -->'
+} > "$BODY_D2"
+out_d2=$(PATH="$STUB_D2:$PATH" bash "$WRITE" upsert-anchor --issue 42 --body-file "$BODY_D2" --repo owner/repo 2>&1)
+assert_contains "$out_d2" 'UPDATED=true' '(d2) PATCH succeeded'
+if [[ -f "$BODY_CAPTURE" ]]; then
+    captured_d2=$(cat "$BODY_CAPTURE")
+    assert_contains "$captured_d2" "[TRUNCATED — plan-goals-test exceeded 8000 chars]" '(d2) TRUNCATED marker present'
+    # The TRUNCATED marker must be on its own line, preceded by a ``` close.
+    if awk '
+        /^```$/ { just_closed = 1; next }
+        /^\[TRUNCATED — plan-goals-test exceeded 8000 chars\]$/ {
+            if (just_closed) { found = 1; exit }
+        }
+        { just_closed = 0 }
+        END { exit (found ? 0 : 1) }
+    ' "$BODY_CAPTURE"; then
+        PASS=$((PASS + 1))
+        echo '  ok: (d2) closing fence precedes TRUNCATED marker'
+    else
+        FAIL=$((FAIL + 1))
+        FAILED_TESTS+=('(d2) closing fence does not precede TRUNCATED marker')
+        echo '  FAIL: (d2) closing fence does not precede TRUNCATED marker' >&2
+    fi
+    # The diagrams section markers must remain intact and outside any
+    # code fence (i.e., subsequent ``` count must be even from the
+    # marker's line forward — proxy: section-end:diagrams marker must
+    # be present and the diagrams section's mermaid fences must be
+    # paired).
+    assert_contains "$captured_d2" '<!-- section:diagrams -->' '(d2) diagrams open marker preserved'
+    assert_contains "$captured_d2" '<!-- section-end:diagrams -->' '(d2) diagrams close marker preserved'
+else
+    FAIL=$((FAIL + 1))
+    FAILED_TESTS+=("(d2) body capture missing")
+fi
+
+echo ""
+echo "=== (d3) upsert-anchor per-section truncation matches close length to 4-backtick opener ==="
+# GFM requires the closing fence to be at least as long as the opener.
+# A 4-backtick opener cannot be closed with 3 backticks. Regression
+# guard for the Codex review finding on issue #1368: if the opener
+# uses 4+ backticks (e.g. so the fenced block itself can contain
+# embedded ``` lines), the inserted close MUST match the opener length
+# or the unclosed block still swallows downstream sections.
+STUB_D3="$TMPROOT/stub-d3"
+BODY_CAPTURE="$TMPROOT/capture-d3.txt"
+build_stub_one_anchor "$STUB_D3"
+export BODY_CAPTURE
+BODY_D3="$TMPROOT/body-d3.txt"
+{
+    echo '<!-- larch:implement-anchor v1 issue=42 -->'
+    echo '<!-- section:plan-goals-test -->'
+    for _ in $(seq 1 30); do
+        printf 'Plan prose padding line of 100 characters exactly to fill space before the open code fence opens.\n'
+    done
+    # Open with 4 backticks so the fence can contain embedded ``` lines.
+    printf '%s\n' '````markdown'
+    for _ in $(seq 1 60); do
+        # Inside the 4-backtick fence; a 3-backtick line would NOT close it.
+        printf 'Inside 4-backtick fence; 3-backtick line ``` here is content not a closer; bytes push past cap.\n'
+    done
+    echo '<!-- section-end:plan-goals-test -->'
+    echo '<!-- section:diagrams -->'
+    echo 'downstream-canary-line'
+    echo '<!-- section-end:diagrams -->'
+} > "$BODY_D3"
+out_d3=$(PATH="$STUB_D3:$PATH" bash "$WRITE" upsert-anchor --issue 42 --body-file "$BODY_D3" --repo owner/repo 2>&1)
+assert_contains "$out_d3" 'UPDATED=true' '(d3) PATCH succeeded'
+if [[ -f "$BODY_CAPTURE" ]]; then
+    captured_d3=$(cat "$BODY_CAPTURE")
+    assert_contains "$captured_d3" "[TRUNCATED — plan-goals-test exceeded 8000 chars]" '(d3) TRUNCATED marker present'
+    # A 4-backtick fence-close line on its own MUST appear before the marker.
+    if awk '
+        /^````$/ { just_closed = 1; next }
+        /^\[TRUNCATED — plan-goals-test exceeded 8000 chars\]$/ {
+            if (just_closed) { found = 1; exit }
+        }
+        { just_closed = 0 }
+        END { exit (found ? 0 : 1) }
+    ' "$BODY_CAPTURE"; then
+        PASS=$((PASS + 1))
+        echo '  ok: (d3) 4-backtick close precedes TRUNCATED marker'
+    else
+        FAIL=$((FAIL + 1))
+        FAILED_TESTS+=('(d3) 4-backtick close does not precede TRUNCATED marker')
+        echo '  FAIL: (d3) 4-backtick close does not precede TRUNCATED marker' >&2
+    fi
+    assert_contains "$captured_d3" 'downstream-canary-line' '(d3) downstream section content preserved'
+else
+    FAIL=$((FAIL + 1))
+    FAILED_TESTS+=('(d3) body capture missing')
+fi
+
+echo ""
+echo "=== (d4) upsert-anchor per-section truncation respects GFM closer rule ==="
+# GFM: a closing fence line must contain only backticks (>= opener
+# length) followed by optional whitespace. A line like ```python at
+# column 0 INSIDE an open fence is content, not a closer. Regression
+# for the round-2 Cursor-Correctness finding: if the scanner falsely
+# treats ```python as a closer it would compute fence_open=0 and skip
+# inserting the synthetic close, leaving the real fence open and
+# swallowing downstream sections.
+STUB_D4="$TMPROOT/stub-d4"
+BODY_CAPTURE="$TMPROOT/capture-d4.txt"
+build_stub_one_anchor "$STUB_D4"
+export BODY_CAPTURE
+BODY_D4="$TMPROOT/body-d4.txt"
+{
+    echo '<!-- larch:implement-anchor v1 issue=42 -->'
+    echo '<!-- section:plan-goals-test -->'
+    for _ in $(seq 1 20); do
+        printf 'Plan prose padding line of 100 characters exactly to fill space before the open code fence opens.\n'
+    done
+    # Open with 3 backticks; later embed ```python (3 backticks +
+    # info string) inside the fence. Per GFM that is content because
+    # a closer requires only backticks + whitespace through EOL.
+    printf '%s\n' '```markdown'
+    for _ in $(seq 1 30); do
+        printf 'In open fence body padding line one hundred chars exactly that should not be the closer to fence.\n'
+    done
+    # The trap line: scanner must NOT treat this as a closer.
+    printf '%s\n' '```python'
+    for _ in $(seq 1 40); do
+        printf 'Still inside the open markdown fence; bytes here push past the 8000-byte per-section cap easily.\n'
+    done
+    echo '<!-- section-end:plan-goals-test -->'
+    echo '<!-- section:diagrams -->'
+    echo 'downstream-canary-d4'
+    echo '<!-- section-end:diagrams -->'
+} > "$BODY_D4"
+out_d4=$(PATH="$STUB_D4:$PATH" bash "$WRITE" upsert-anchor --issue 42 --body-file "$BODY_D4" --repo owner/repo 2>&1)
+assert_contains "$out_d4" 'UPDATED=true' '(d4) PATCH succeeded'
+if [[ -f "$BODY_CAPTURE" ]]; then
+    captured_d4=$(cat "$BODY_CAPTURE")
+    assert_contains "$captured_d4" "[TRUNCATED — plan-goals-test exceeded 8000 chars]" '(d4) TRUNCATED marker present'
+    # A standalone 3-backtick close line MUST appear before the marker
+    # (the synthetic close inserted because ```python was treated as
+    # content, not as a closer).
+    if awk '
+        /^```$/ { just_closed = 1; next }
+        /^\[TRUNCATED — plan-goals-test exceeded 8000 chars\]$/ {
+            if (just_closed) { found = 1; exit }
+        }
+        { just_closed = 0 }
+        END { exit (found ? 0 : 1) }
+    ' "$BODY_CAPTURE"; then
+        PASS=$((PASS + 1))
+        echo '  ok: (d4) synthetic close inserted (```python correctly treated as content)'
+    else
+        FAIL=$((FAIL + 1))
+        FAILED_TESTS+=('(d4) ```python falsely treated as closer; no synthetic close inserted')
+        echo '  FAIL: (d4) ```python falsely treated as closer; no synthetic close inserted' >&2
+    fi
+    assert_contains "$captured_d4" 'downstream-canary-d4' '(d4) downstream section content preserved'
+else
+    FAIL=$((FAIL + 1))
+    FAILED_TESTS+=('(d4) body capture missing')
+fi
+
+echo ""
 echo "=== (e) append-comment does NOT touch anchor ==="
 STUB_E="$TMPROOT/stub-e"
 BODY_CAPTURE="$TMPROOT/capture-e.txt"

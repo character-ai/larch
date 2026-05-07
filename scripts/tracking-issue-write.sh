@@ -90,9 +90,17 @@
 #   Ubuntu CI. Precedent: scripts/dialectic-smoke-test.sh.
 #   Truncation is byte-length based with line-boundary snapping (inline
 #   TRUNCATED marker always begins on its own line so open code fences
-#   cannot consume the marker or subsequent section markers). Multibyte
-#   UTF-8 splitting is tolerated as section interiors are machine-composed
-#   (no human multibyte content expected).
+#   cannot consume the marker or subsequent section markers). When the
+#   kept prefix ends with an unclosed column-0 backtick fence (the
+#   line-by-line scan tracks opener length and requires the close to be
+#   at least that long, per GFM), a closing fence line of matching
+#   length is inserted before the TRUNCATED marker so the unclosed
+#   fence cannot swallow the rest of the comment body (diagrams +
+#   tables + sibling sections rendering as raw code on GitHub). Tilde
+#   fences and indented fences are out of scope — anchor sections are
+#   machine-composed by /implement and only emit column-0 backtick
+#   fences. Multibyte UTF-8 splitting is tolerated as section interiors
+#   are machine-composed (no human multibyte content expected).
 
 set -euo pipefail
 
@@ -117,9 +125,12 @@ fi
 # shellcheck disable=SC1091
 source "$MARKERS_HELPER"
 
-# Per-section 8000-char cap. Exceeded interiors are replaced in place with
-# a single inline [TRUNCATED — <id> exceeded 8000 chars] marker snapped to
-# the next newline boundary.
+# Per-section 8000-char cap. Exceeded interiors are replaced in place
+# with a line-snapped truncated prefix, an OPTIONAL closing-fence line
+# of matching length when the kept prefix leaves a column-0 backtick
+# fence open (GFM rule: closer length >= opener length, and a closer
+# line must be backticks followed by only whitespace), and a final
+# inline [TRUNCATED — <id> exceeded 8000 chars] marker on its own line.
 PER_SECTION_CAP=8000
 
 # Body-level 60000-char cap. Exceeding collapses sections to a single
@@ -278,8 +289,10 @@ emit_gh_failure() {
 #
 # Pass 1 (per-section): for each SECTION_MARKERS slug, if the interior
 # between the section-open and section-end markers exceeds PER_SECTION_CAP,
-# replace the interior with a truncated prefix (snapped to newline) plus
-# an inline TRUNCATED marker on its own line. Section markers themselves
+# replace the interior with a truncated prefix (snapped to newline), an
+# OPTIONAL matching-length closing fence line when the kept prefix leaves
+# a column-0 backtick fence open (GFM closer rule applied), then an
+# inline TRUNCATED marker on its own line. Section markers themselves
 # are preserved.
 #
 # Pass 2 (body-level): if total length still exceeds BODY_CAP, walk
@@ -344,7 +357,53 @@ truncate_body() (
         if (( truncated_at == 0 )); then
             truncated_at="$PER_SECTION_CAP"
         fi
-        new_interior="${interior:0:$truncated_at}"$'\n'"[TRUNCATED — ${slug} exceeded ${PER_SECTION_CAP} chars]"
+        local kept_prefix="${interior:0:$truncated_at}"
+        # Fence-aware close: scan the kept prefix line-by-line for
+        # column-0 backtick-fence delimiters and decide whether the cut
+        # left an unclosed fenced code block. Without an explicit
+        # closing fence the open block swallows the TRUNCATED marker
+        # AND all subsequent sections (diagrams, voting tables,
+        # run-statistics) — they render as raw code on GitHub instead
+        # of as the intended markdown. The close MUST be at least as
+        # long as the opener (GFM rule), so we track the opener's
+        # backtick length explicitly. Tilde fences (`~~~`) and indented
+        # fences are out of scope: anchor sections are machine-composed
+        # by /implement and only emit column-0 backtick fences.
+        local fence_state fence_open fence_len
+        # GFM closer rule: only a line whose backtick run is followed by
+        # optional whitespace through end-of-line is a closing fence
+        # delimiter. A line like ```python at column 0 INSIDE an open
+        # fence is content (an info string requires the run to be an
+        # opener), not a closer — flipping state on it would falsely
+        # report the fence closed and skip the synthetic close.
+        fence_state=$(printf '%s\n' "$kept_prefix" | awk '
+            BEGIN { open = 0; len = 0 }
+            {
+                if (match($0, /^`+/)) {
+                    n = RLENGTH
+                    if (n >= 3) {
+                        rest = substr($0, n + 1)
+                        if (open == 0) {
+                            open = 1
+                            len = n
+                        } else if (n >= len && rest ~ /^[[:space:]]*$/) {
+                            open = 0
+                            len = 0
+                        }
+                    }
+                }
+            }
+            END { print open, len }
+        ')
+        fence_open=${fence_state%% *}
+        fence_len=${fence_state##* }
+        if [[ "$fence_open" == "1" ]] && (( fence_len >= 3 )); then
+            local close_fence
+            close_fence=$(printf '%*s' "$fence_len" '' | tr ' ' '`')
+            new_interior="${kept_prefix}"$'\n'"${close_fence}"$'\n'"[TRUNCATED — ${slug} exceeded ${PER_SECTION_CAP} chars]"
+        else
+            new_interior="${kept_prefix}"$'\n'"[TRUNCATED — ${slug} exceeded ${PER_SECTION_CAP} chars]"
+        fi
         # Write the replacement to a file so awk can read it via getline
         # (awk -v does not accept newlines in the value).
         local ni_file="$work_dir/ni-$slug.txt"
