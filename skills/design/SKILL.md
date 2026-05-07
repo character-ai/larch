@@ -256,7 +256,7 @@ Print `> **🔶 2a: sketches**`.
 
 **Subagent heavy phase**: If `subagent_mode=true` (i.e., `--subagent` was passed) AND `quick_mode=false`, invoke a single Agent-tool subagent (subagent_type: `general-purpose`) for the heavy non-interactive phase before entering 2a.2. The subagent MUST read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/heavy-worker.md`, receive `DESIGN_TMPDIR`, `IMPLEMENT_TMPDIR`, `SESSION_ENV_PATH`, `FEATURE_DESCRIPTION`, `quick_mode`, `auto_mode`, branch info, and reviewer health flags as explicit data, and write raw artifacts to `$DESIGN_TMPDIR/`. The subagent returns only `DESIGN_HEAVY=complete` or `DESIGN_HEAVY=failed REASON=<short-token>`; it does not write the manifest and does not return plan/reviewer/tally prose.
 
-Immediately after the Agent tool returns, parse the heavy-worker status line. Before following the success path, fail closed if the worker omitted a valid status line or returned success without the required non-empty artifacts:
+Immediately after the Agent tool returns, parse the heavy-worker status line. Before following the success path, fail closed if the worker omitted a valid status line or returned success without the required artifacts. The gate has two tiers: **non-empty** for substantive artifacts the heavy-worker contract mandates as non-empty, and **must-exist** for may-be-empty artifacts that `skills/design/scripts/write-design-manifest.sh` still requires on disk for manifest export (`copy_required_may_be_empty` calls in that script). On the nested+`auto_mode=true` path, parent Step 4 (which creates missing empty files) is skipped, so this gate is the load-bearing existence check before manifest export at Step 5.
 
 ```bash
 if [[ "${DESIGN_HEAVY:-}" != "complete" && "${DESIGN_HEAVY:-}" != "failed" ]]; then
@@ -265,14 +265,18 @@ if [[ "${DESIGN_HEAVY:-}" != "complete" && "${DESIGN_HEAVY:-}" != "failed" ]]; t
 elif [[ "${DESIGN_HEAVY:-}" == "complete" ]] && {
   [[ ! -s "$DESIGN_TMPDIR/plan.txt" ]] ||
   [[ ! -s "$DESIGN_TMPDIR/approach-synthesis.txt" ]] ||
-  [[ ! -s "$DESIGN_TMPDIR/voting-tally.md" ]]
+  [[ ! -s "$DESIGN_TMPDIR/voting-tally.md" ]] ||
+  [[ ! -f "$DESIGN_TMPDIR/contested-decisions.md" ]] ||
+  [[ ! -f "$DESIGN_TMPDIR/oos.md" ]] ||
+  [[ ! -f "$DESIGN_TMPDIR/rejected-findings.md" ]] ||
+  [[ ! -f "$DESIGN_TMPDIR/accepted-plan-findings.md" ]]
 }; then
   DESIGN_HEAVY=failed
   REASON=worker-yielded-without-artifacts
 fi
 ```
 
-Only these three artifacts are part of the gate because the heavy-worker artifact contract requires them to be non-empty. May-be-empty artifacts such as `accepted-plan-findings.md`, `rejected-findings.md`, `oos.md`, `dialectic-resolutions.md`, and `architecture-diagram.md` do not participate in this check. A failure from this gate routes through the normal `DESIGN_HEAVY=failed` branch below.
+Tier 1 (non-empty `-s` checks) covers the substantive artifacts the heavy-worker artifact contract mandates as non-empty. Tier 2 (existence `-f` checks) covers may-be-empty manifest-required artifacts (`contested-decisions.md`, `oos.md`, `rejected-findings.md`, `accepted-plan-findings.md`) that `write-design-manifest.sh` stages via `copy_required_may_be_empty`. Optional artifacts not part of the gate: `dialectic-resolutions.md` (heavy-worker.md "Artifact Contract" — written only when dialectic ran) and `architecture-diagram.md` (`auto_mode=true` only). A failure from this gate routes through the normal `DESIGN_HEAVY=failed` branch below.
 
 On `DESIGN_HEAVY=complete`:
 - **If `SESSION_ENV_PATH` is non-empty (nested under /implement)**: if `auto_mode=false` proceed directly to Step 3.5; if `auto_mode=true` proceed directly to Step 5 because the worker ran Step 3b and Step 4. (Parent /implement reads the manifest written at Step 5.)
