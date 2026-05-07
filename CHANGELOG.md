@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.12.57] - 2026-05-06
+
+### Added
+
+- Five test-harness gaps from #1351 closed: `scripts/test-token-ledger.sh` now exercises the `--ledger PATH` "anywhere in argv" pre-pass (after-subcommand, tail, last-wins precedence — previously regressions to position-sensitive parsing went uncaught); `scripts/test-token-report.sh` covers the malformed-JSONL and no-step-marks paths that surface as `Token report unavailable: failed to parse token sources`; `scripts/test-token-vendor-scrapers.sh` smokes `launch-cursor-implement.sh` (`raw=cursor_implement total=10`) and `launch-codex-implement.sh` (`raw=codex_implement total=7777`); `skills/implement/scripts/test-{cursor,codex}-implementer.sh` add per-launcher `record-vendor` fixtures asserting the produced JSONL row carries the expected `vendor=` / `raw=` / per-counter / total values. New `scripts/test-token-claude-source.sh` (15 assertions, sibling `.md` contract, wired into `Makefile` `test-harnesses-4` and `agent-lint.toml`) covers the `LARCH_CLAUDE_SOURCE_FILE` snapshot replay short-circuit, snapshot fall-through (stale TRANSCRIPT_PATH, garbage env-file, missing env-file), the live mtime resolver, `LARCH_CLAUDE_SESSION_ID` override, malformed session-id rejection, empty project dir failure, and concurrent-session pinning (snapshot wins over a newer transcript in the project dir). Test transcripts deliberately use names whose lexical order contradicts mtime order so a buggy lexical-order resolver cannot satisfy the assertions. `scripts/token-claude-source.md` Test Harness section now points to the dedicated harness as the primary coverage source. `docs/linting.md` lists the new `make test-token-claude-source` target alongside its siblings.
+
 ## [15.12.56] - 2026-05-06
 
 ### Fixed

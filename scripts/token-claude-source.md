@@ -31,4 +31,6 @@ Then exit 1. This is intentionally different from `token-report.sh`, which print
 
 ## Test Harness
 
-`scripts/test-token-report.sh` exercises the resolver indirectly through reporter failure-mode cases and uses `--transcript` for deterministic fixtures.
+`scripts/test-token-claude-source.sh` is the dedicated offline harness covering the `LARCH_CLAUDE_SOURCE_FILE` snapshot replay short-circuit, snapshot fall-through paths, the live mtime / `LARCH_CLAUDE_SESSION_ID` resolver, and concurrent-session attribution (snapshot pinning beats newer transcripts in the project dir).
+
+`scripts/test-token-report.sh` additionally exercises the resolver indirectly through reporter failure-mode cases and uses `--transcript` for deterministic fixtures.
