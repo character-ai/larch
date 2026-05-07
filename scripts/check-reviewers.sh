@@ -124,16 +124,39 @@ start_probe() {
 
     case "$tool" in
         codex)
-            # Argv MUST track scripts/launch-codex-implement.sh: --add-dir
-            # "$PROBE_DIR" exercises the same writable-roots flag production
-            # uses. Drift here can pass a Codex build that rejects --add-dir,
-            # then fail at /implement Step 2 spawn with worse diagnostics.
+            # Argv MUST track scripts/launch-codex-review.sh / launch-codex-implement.sh:
+            # --add-dir "$PROBE_DIR" exercises the same writable-roots flag production
+            # uses; model args go through scripts/agent-model-args.sh so invalid
+            # LARCH_CODEX_MODEL / CLAUDE_PLUGIN_OPTION_CODEX_MODEL is rejected at
+            # probe time with the same blank/[[:cntrl:]] rules production launchers
+            # apply (FINDING_2 in /review code review of #1367). --with-effort is
+            # intentionally omitted to keep the probe lightweight (matches the
+            # negotiation-round helper).
+            CODEX_MODEL_ARGS_TMP=$(mktemp "$PROBE_DIR/codex-model-args.XXXXXX") || exit 1
+            if "$SCRIPT_DIR/agent-model-args.sh" --tool codex > "$CODEX_MODEL_ARGS_TMP"; then
+                :
+            else
+                rc=$?
+                {
+                    printf 'Model argument validation failed before launching Codex probe (exit %s)\n' "$rc"
+                } > "${output}.diag"
+                : > "$output"
+                printf '%s\n' "$rc" > "${output}.done"
+                ( exit 0 ) &
+                printf '%s\n' "$!"
+                return
+            fi
+            CODEX_MODEL_ARGS=()
+            while IFS= read -r arg; do
+                CODEX_MODEL_ARGS+=("$arg")
+            done < "$CODEX_MODEL_ARGS_TMP"
             "$SCRIPT_DIR/run-external-agent.sh" \
                 --tool codex \
                 --output "$output" \
                 --timeout 60 \
                 -- codex exec --full-auto -C "$PWD" \
                 --add-dir "$PROBE_DIR" \
+                ${CODEX_MODEL_ARGS[@]+"${CODEX_MODEL_ARGS[@]}"} \
                 --output-last-message "$output" \
                 "Respond with OK" \
                 >"$PROBE_DIR/codex-wrapper-attempt${attempt}.log" 2>&1 &
@@ -179,7 +202,32 @@ start_probe() {
                 >"$PROBE_DIR/cursor-wrapper-attempt${attempt}.log" 2>&1 &
             ;;
         gemini)
+            # Probe model SHARES the same trust-boundary as Codex/Cursor probes
+            # (FINDING_9 in /review code review of #1367): reject blank /
+            # whitespace-only / [[:cntrl:]]-bearing values BEFORE they reach the
+            # gemini argv. Production launch-gemini-review.sh uses `-m "$model"`
+            # rather than agent-model-args.sh's `--model` shape, so the probe
+            # mirrors that argv but adds the validation rules agent-model-args.sh
+            # applies for other tools.
             local probe_model="${LARCH_GEMINI_MODEL:-${CLAUDE_PLUGIN_OPTION_GEMINI_MODEL:-gemini-2.5-pro}}"
+            local probe_model_invalid=false
+            if [[ "$probe_model" == *[[:cntrl:]]* ]]; then
+                probe_model_invalid=true
+            fi
+            case "$probe_model" in
+                *[![:space:]]*) ;;
+                *) probe_model_invalid=true ;;
+            esac
+            if [[ "$probe_model_invalid" == "true" ]]; then
+                {
+                    printf 'Model argument validation failed before launching Gemini probe: model value is blank, whitespace-only, or contains POSIX [[:cntrl:]] characters\n'
+                } > "${output}.diag"
+                : > "$output"
+                printf '1\n' > "${output}.done"
+                ( exit 0 ) &
+                printf '%s\n' "$!"
+                return
+            fi
             "$SCRIPT_DIR/run-external-agent.sh" \
                 --tool gemini \
                 --output "$output" \

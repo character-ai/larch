@@ -531,7 +531,7 @@ assert_fail_closed "case-p2" "$OUT_P2" "Retry metadata invalid: CMD_JSON argv sh
 OUT_P3="$TMPROOT/codex-p3.txt"
 HEALTH_P3="$TMPROOT/case-p3.health"
 write_empty_candidate "$OUT_P3"
-write_meta_for_tool "$OUT_P3" codex "$(jq -cn --args '$ARGS.positional' -- codex exec --full-auto -C "$TMPROOT" --output-last-message "$OUT_P3")"
+write_meta_for_tool "$OUT_P3" codex "$(jq -cn --args '$ARGS.positional' -- codex exec --full-auto -C "$TMPROOT" --add-dir "$TMPROOT" --output-last-message "$OUT_P3")"
 RESULT_P3=$(run_collector bash "$OUT_P3" "$HEALTH_P3")
 assert_line "case P3 codex shape accepted" "STATUS=OK" "$RESULT_P3"
 assert_line "case P3 codex retry file" "REVIEWER_FILE=${OUT_P3%.txt}-retry.txt" "$RESULT_P3"

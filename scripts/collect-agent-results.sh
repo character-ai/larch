@@ -355,6 +355,7 @@ cmd_json_shape_valid_for_tool() {
             [[ "$argv0_base" == "codex" ]] || return 1
             [[ "$2" == "exec" ]] || return 1
             cmd_has_token "-C" "$@" || return 1
+            cmd_has_token "--add-dir" "$@" || return 1
             cmd_has_token "--output-last-message" "$@" || return 1
             ;;
         gemini)

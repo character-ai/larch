@@ -5,6 +5,17 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 SUBJECT="$REPO_ROOT/scripts/agent-model-args.sh"
 
+# Fail fast if ripgrep is missing — the static migration guards below scan
+# the repo for unsafe MODEL_ARGS / `[@]` / runtime mapfile patterns and rely
+# on `rg`. Without this gate, `rg ... || true` inside `$(...)` would yield
+# empty hits whenever rg is absent and the harness would silently PASS those
+# guards. Documented prerequisite in test-agent-model-args.md.
+if ! command -v rg >/dev/null 2>&1; then
+    echo "test-agent-model-args.sh: required tool 'rg' (ripgrep) not found on PATH" >&2
+    echo "test-agent-model-args.sh: install ripgrep (e.g., 'brew install ripgrep' / 'apt install ripgrep') and re-run" >&2
+    exit 2
+fi
+
 PASS=0
 FAIL=0
 FAILURES=()

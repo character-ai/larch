@@ -225,7 +225,7 @@ The model name to pass to Codex's `-m` flag (e.g., `o3`, `o4-mini`).
 
 **When not set:**
 - Codex defaults to `gpt-5.5` (hardcoded in `scripts/agent-model-args.sh`) for all work invocations (reviews, sketches, voting)
-- Health probes (`check-reviewers.sh`) bypass this default and test basic Codex availability without forcing a specific model
+- Health probes (`check-reviewers.sh`) route through the same `agent-model-args.sh --tool codex` resolver as production launchers (without `--with-effort`), so a probe exercises the same model and the same blank/whitespace/`[[:cntrl:]]` rejection rules as production. Probe and reviewer share the same model resolution; mismatched health verdicts vs. production launches no longer occur.
 - If your Codex installation does not support `gpt-5.5`, set this variable to a supported model (e.g., `o3`, `o4-mini`)
 
 ### `LARCH_GEMINI_MODEL`

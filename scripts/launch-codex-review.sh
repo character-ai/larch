@@ -53,6 +53,14 @@ fi
 if [[ -z "$TIMEOUT" ]]; then
     echo "launch-codex-review.sh: --timeout is required" >&2; exit 2
 fi
+
+# Validate --output BEFORE installing traps/sidecars so the same byte-exact
+# .meta-sidecar contract enforced for the Cursor review launcher applies on
+# the Codex path too. Mirrors scripts/launch-cursor-review.sh:60-62.
+# shellcheck source=scripts/lib-validate-meta-path.sh
+source "$SCRIPT_DIR/lib-validate-meta-path.sh"
+validate_meta_scalar_path --output "$OUTPUT" || exit 1
+
 case "$TIMEOUT" in
     ''|*[!0-9]*|0) echo "launch-codex-review.sh: --timeout must be a positive integer (seconds), got '$TIMEOUT'" >&2; exit 2 ;;
 esac

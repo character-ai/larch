@@ -10,4 +10,6 @@ The static migration guard scans shell runtime under `scripts/` and `skills/` fo
 
 **Primary**: `scripts/agent-model-args.sh`
 
+**Prerequisites**: `ripgrep` (`rg`) must be on `PATH`. The harness fails fast with exit 2 if `rg` is missing — the static migration guards above scan the repo for unsafe `MODEL_ARGS` expansion patterns and would otherwise silently PASS via empty `rg ... || true` substitutions.
+
 **Makefile wiring**: `make test-agent-model-args`, included in `test-harnesses-2`.
