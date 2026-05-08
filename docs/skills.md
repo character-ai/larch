@@ -12,6 +12,7 @@ Reference for every slash command shipped by the larch plugin. Each section belo
 - [`/relevant-checks`](#relevant-checks)
 - [`/research`](#research)
 - [`/review`](#review)
+- [`/set-up-forked-open-source-repo`](#set-up-forked-open-source-repo)
 - [`/simplify-skill`](#simplify-skill)
 - [`/umbrella`](#umbrella)
 
@@ -112,6 +113,16 @@ The run produces a structured report with findings, risk assessment, difficulty 
 **Source**: [`skills/review/SKILL.md`](../skills/review/SKILL.md) · [Diagram](../skills/review/diagram.svg)
 
 Code review with the specialist panel described in [Review Agents](review-agents.md). Supports `--diff`, which reviews branch changes vs main and implements accepted suggestions in a recursive loop, and positional `<description>`, which reviews existing code and files accepted findings as GitHub issues by default (`--no-issues` to suppress).
+
+## `/set-up-forked-open-source-repo`
+
+**Arguments**: `--upstream <owner/repo> --fork <owner/repo> [--mirror-confirmed] [--init-submodules]`
+
+**Source**: [`skills/set-up-forked-open-source-repo/SKILL.md`](../skills/set-up-forked-open-source-repo/SKILL.md)
+
+Configure the current checkout for upstream/fork OSS contribution. The skill verifies that the fork exists on GitHub and that its immediate parent is the declared upstream, probes both repositories' `refs/heads/main`, optionally performs a destructive fork sync of branches and tags after explicit confirmation, then rewires local remotes so `origin` points at the fork and `upstream` points at upstream. It disables upstream pushes with an invalid-scheme push URL, fetches `origin`, sets `main` to track `origin/main`, and fast-forwards only from a clean `main` checkout.
+
+The workflow is intentionally single-clone and GitHub.com-only. It refuses dirty worktrees, in-progress git operations, missing local `main`, non-`main` checkouts, local `main` ahead of `origin/main`, diverged local/remote `main`, ambiguous remote layouts, non-GitHub URLs, duplicate fork remotes, multi-fetch URL remotes, and multi-push URL remotes. If the fork is missing, it prints fork-creation instructions and exits without local mutation. `--init-submodules` is opt-in; default runs ignore submodules.
 
 ## `/simplify-skill`
 
