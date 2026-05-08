@@ -1271,7 +1271,7 @@ Apply the Rebase Checkpoint Macro with `<step-prefix>=7a.r` and `<short-name>=co
 ${CLAUDE_PLUGIN_ROOT}/scripts/check-bump-version.sh --mode pre
 ```
 
-If `forked_target=true`: print `⏩ 8: version bump — skipped (--forked dry-run) (<elapsed>)`, write the `version-bump-reasoning` anchor fragment locally with `"Version bump skipped for fork CI dry-run."` only when anchor fragments are being preserved locally, and skip directly to Step 8b. Do not invoke `/bump-version` and do not run the Rebase + Re-bump Sub-procedure under fork mode.
+If `forked_target=true`: print `⏩ 8: version bump — skipped (--forked dry-run) (<elapsed>)`, write the `version-bump-reasoning` anchor fragment locally with `"Version bump skipped for fork CI dry-run."` only when anchor fragments are being preserved locally, and skip directly to Step 8b. Skip the `/bump-version` skill call entirely and do not run the Rebase + Re-bump Sub-procedure under fork mode.
 
 Parse `HAS_BUMP`, `COMMITS_BEFORE`, `STATUS` (`ok|missing_main_ref|git_error` per #172). If `STATUS != ok`, the pre-mode count is untrustworthy — log `**⚠ 8: version bump — pre-check STATUS=$STATUS, commit count may be unreliable. Continuing.**` to `Warnings` and proceed. Step 8 is pre-PR and permissive; last-chance enforcement is in the Rebase + Re-bump Sub-procedure step 4 invoked by Step 12 (step12 family), which hard-bails on non-`ok` STATUS from either pre- or post-check.
 
