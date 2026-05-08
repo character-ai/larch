@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [17.0.16] - 2026-05-08
+
+### Changed
+
+- Resolve #1512: add CI structural pins to `scripts/test-implement-structure.sh` for the two follow-ups combined into #1512. Assertion `(29)` pins the anti-pattern doc-drift literals added by #1480 across `skills/design/references/dialectic-execution.md` (the recovery sentence), `skills/design/references/heavy-worker.md` (the `run_in_background: true` + yield anti-pattern and the `**SendMessage dependency.**` heading-style label), and `AGENTS.md` (the `` `/design --subagent` requires `SendMessage` `` bullet). Assertion `(30a)`/`(30b)`/`(30c)` pins the Coder simplicity override section in `skills/implement/SKILL.md` (heading, gate phrase, literal breadcrumb). Sibling `scripts/test-implement-structure.md` updated and the script header / assertion-history block refreshed to cover assertions 29-30.
+
 ## [17.0.15] - 2026-05-08
 
 ### Changed
