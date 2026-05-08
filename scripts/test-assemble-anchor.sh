@@ -32,7 +32,7 @@
 #       a single stale version row, no heading/header) → fall through to
 #       the seed-style scaffold (heading + table header + fresh version row)
 #       instead of emitting an orphan row.
-#   (c) Full fragments → all 10 slugs populated.
+#   (c) Full fragments → all SECTION_MARKERS slugs populated.
 #   (d) Missing anchor-section-markers.sh helper → FAILED=true / ERROR=missing
 #       helper + exit 1.
 #   (e) Invalid --issue value (non-integer) → usage error, exit 1.
@@ -413,7 +413,7 @@ fi
 pass "(b6) populated fragment normalized to empty → seed-style scaffold + fresh version row"
 
 # --------------------------------------------------------------------------
-# (c) Full fragments — all 10 slugs populated
+# (c) Full fragments — all SECTION_MARKERS slugs populated
 # --------------------------------------------------------------------------
 sections_c="$tmpdir/sections-c"
 mkdir -p "$sections_c"
@@ -428,7 +428,7 @@ for slug in "${SECTION_MARKERS[@]}"; do
     grep -qxF "fragment content for $slug" "$output_c" \
         || fail "(c) missing content for slug '$slug' in output"
 done
-pass "(c) full fragments → all 10 slugs populated"
+pass "(c) full fragments → all SECTION_MARKERS slugs populated"
 
 # --------------------------------------------------------------------------
 # (d) Missing anchor-section-markers.sh helper

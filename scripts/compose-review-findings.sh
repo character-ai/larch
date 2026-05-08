@@ -40,7 +40,7 @@
 #
 # Edit-in-sync:
 #   - skills/implement/references/anchor-comment-template.md documents the
-#     review-findings-full section as part of the canonical 10-slug template
+#     review-findings-full section as part of the canonical 11-slug template
 #   - scripts/anchor-section-markers.sh carries the slug
 #   - scripts/tracking-issue-write.sh COLLAPSE_PRIORITY carries the slug
 #   - skills/implement/SKILL.md Step 5 invokes this helper after /review

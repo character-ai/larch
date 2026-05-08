@@ -129,17 +129,17 @@ unk_md=$("$SCRIPT" --ledger "$UNK_LEDGER" --transcript "$TRANSCRIPT" --full --ma
 contains "unknown vendor pipe escaped (heading)"      'evil\|vendor'  "$unk_md"
 contains "unknown vendor newline collapsed (heading)" 'two-line vendor' "$unk_md"
 
-RUN_STATS="$TMP/run-statistics.md"
-printf '## Existing\n\nkept\n' > "$RUN_STATS"
-"$SCRIPT" --ledger "$LEDGER" --transcript "$TRANSCRIPT" --append-run-statistics "$RUN_STATS"
-"$SCRIPT" --ledger "$LEDGER" --transcript "$TRANSCRIPT" --append-run-statistics "$RUN_STATS"
-begin_count=$(grep -c '<!-- token-report-begin -->' "$RUN_STATS")
-end_count=$(grep -c '<!-- token-report-end -->' "$RUN_STATS")
-heading_count=$(grep -c '^## Token Report$' "$RUN_STATS")
+TOKEN_REPORT="$TMP/token-report.md"
+printf '## Existing\n\nkept\n' > "$TOKEN_REPORT"
+"$SCRIPT" --ledger "$LEDGER" --transcript "$TRANSCRIPT" --append-token-report "$TOKEN_REPORT"
+"$SCRIPT" --ledger "$LEDGER" --transcript "$TRANSCRIPT" --append-token-report "$TOKEN_REPORT"
+begin_count=$(grep -c '<!-- token-report-begin -->' "$TOKEN_REPORT")
+end_count=$(grep -c '<!-- token-report-end -->' "$TOKEN_REPORT")
+heading_count=$(grep -c '^## Token Report$' "$TOKEN_REPORT")
 eq "single begin sentinel" "1" "$begin_count"
 eq "single end sentinel" "1" "$end_count"
 eq "single heading" "1" "$heading_count"
-contains "existing content preserved" "kept" "$(cat "$RUN_STATS")"
+contains "existing content preserved" "kept" "$(cat "$TOKEN_REPORT")"
 
 OUT="$TMP/table.md"
 "$SCRIPT" --ledger "$LEDGER" --transcript "$TRANSCRIPT" --full --markdown --output "$OUT"
@@ -165,9 +165,9 @@ JSONL
 no_marks=$("$SCRIPT" --ledger "$LEDGER_NO_MARKS" --transcript "$TRANSCRIPT" --since-last-mark --terse)
 contains "no-step-marks reason" "Token report unavailable: failed to parse token sources" "$no_marks"
 
-BIG="$TMP/big-run-statistics.md"
+BIG="$TMP/big-token-report.md"
 for i in $(seq 1 250); do printf '| old | row %s |\n' "$i" >> "$BIG"; done
-"$SCRIPT" --ledger "$LEDGER" --transcript "$TRANSCRIPT" --append-run-statistics "$BIG"
+"$SCRIPT" --ledger "$LEDGER" --transcript "$TRANSCRIPT" --append-token-report "$BIG"
 big_body=$(cat "$BIG")
 contains "oversized sentinel"     "<!-- token-report-begin -->" "$big_body"
 contains "oversized claude head"  "### Claude"  "$big_body"

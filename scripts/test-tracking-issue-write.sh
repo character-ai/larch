@@ -29,6 +29,7 @@ set -euo pipefail
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 WRITE="$REPO_ROOT/scripts/tracking-issue-write.sh"
 TITLE_MARKERS_LIB="$REPO_ROOT/scripts/lib-title-markers.sh"
+MARKERS_HELPER="$REPO_ROOT/scripts/anchor-section-markers.sh"
 
 if [[ ! -x "$WRITE" ]]; then
     echo "FAIL: $WRITE not found or not executable" >&2
@@ -38,6 +39,10 @@ fi
 # shellcheck source=scripts/lib-title-markers.sh
 # shellcheck disable=SC1090
 source "$TITLE_MARKERS_LIB"
+
+# shellcheck source=scripts/anchor-section-markers.sh
+# shellcheck disable=SC1090
+source "$MARKERS_HELPER"
 
 # Fixture: split prefix in source to defuse GitHub's sk-* secret-scanner heuristic.
 SK_TOKEN='sk-''ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD'
@@ -333,21 +338,22 @@ else
 fi
 
 echo ""
-echo "=== (c) upsert-anchor preserves anchor + all 9 section markers after >60k body collapse ==="
+echo "=== (c) upsert-anchor preserves anchor + canonical section markers after >60k body collapse ==="
 STUB_C="$TMPROOT/stub-c"
 BODY_CAPTURE="$TMPROOT/capture-c.txt"
 build_stub_one_anchor "$STUB_C"
 export BODY_CAPTURE
 BODY_C="$TMPROOT/body-c.txt"
-# Compose body: anchor marker line + 9 sections, each with 10000+ chars of content
-# so the per-section cap fires first; then ensure body still exceeds 60000.
+# Compose body: anchor marker line + canonical sections, each with 16000+
+# chars of content so the per-section cap fires first; then ensure body
+# still exceeds 60000 and exercises body-level collapse.
 {
     echo '<!-- larch:implement-anchor v1 issue=42 -->'
-    for slug in plan-goals-test plan-review-tally code-review-tally diagrams version-bump-reasoning oos-issues execution-issues run-statistics timing-report; do
+    for slug in "${SECTION_MARKERS[@]}"; do
         printf '<!-- section:%s -->\n' "$slug"
-        # 10000 chars of content per section (well over 8000 cap).
+        # 16000+ chars of content per section (well over 14000 cap).
         # Use a chunk-repeat pattern that is stable for Bash 3.2.
-        for _ in $(seq 1 100); do
+        for _ in $(seq 1 140); do
             printf 'This is 100 characters of section content to exceed the per-section cap and trigger body-level collapse of some sections.\n'
         done
         printf '<!-- section-end:%s -->\n' "$slug"
@@ -359,7 +365,7 @@ assert_contains "$out_c" 'UPDATED=true' '(c) UPDATED=true'
 if [[ -f "$BODY_CAPTURE" ]]; then
     captured_c=$(cat "$BODY_CAPTURE")
     assert_contains "$captured_c" '<!-- larch:implement-anchor v1 issue=42 -->' '(c) HTML anchor marker preserved'
-    for slug in plan-goals-test plan-review-tally code-review-tally diagrams version-bump-reasoning oos-issues execution-issues run-statistics timing-report; do
+    for slug in "${SECTION_MARKERS[@]}"; do
         assert_contains "$captured_c" "<!-- section:${slug} -->" "(c) section:${slug} marker preserved"
         assert_contains "$captured_c" "<!-- section-end:${slug} -->" "(c) section-end:${slug} marker preserved"
     done
@@ -370,28 +376,33 @@ else
 fi
 
 echo ""
-echo "=== (d) upsert-anchor per-section 8000 cap inserts inline TRUNCATED marker on own line ==="
+echo "=== (d) upsert-anchor per-section 14000 cap inserts inline TRUNCATED marker on own line ==="
 STUB_D="$TMPROOT/stub-d"
 BODY_CAPTURE="$TMPROOT/capture-d.txt"
 build_stub_one_anchor "$STUB_D"
 export BODY_CAPTURE
 BODY_D="$TMPROOT/body-d.txt"
-# Single section with >8000 interior chars; total body well under 60000.
+# Single section with >14000 interior chars; total body well under 60000.
 {
     echo '<!-- larch:implement-anchor v1 issue=42 -->'
     echo '<!-- section:plan-goals-test -->'
-    for _ in $(seq 1 85); do
+    for _ in $(seq 1 150); do
         printf 'Line of 100 characters exactly to ensure the section overflows the per-section cap with line-boundaries.\n'
     done
     echo '<!-- section-end:plan-goals-test -->'
 } > "$BODY_D"
-out_d=$(PATH="$STUB_D:$PATH" bash "$WRITE" upsert-anchor --issue 42 --body-file "$BODY_D" --repo owner/repo 2>&1)
+STDERR_D="$TMPROOT/stderr-d.txt"
+out_d=$(PATH="$STUB_D:$PATH" bash "$WRITE" upsert-anchor --issue 42 --body-file "$BODY_D" --repo owner/repo 2>"$STDERR_D")
 assert_contains "$out_d" 'UPDATED=true' '(d) PATCH succeeded'
+warning_d='**⚠ tracking-issue-write: section plan-goals-test truncated at 14000 chars (was'
+warning_count_d=$(grep -Fc "$warning_d" "$STDERR_D" || true)
+assert_equal "$warning_count_d" "1" '(d) truncation warning emitted to stderr exactly once'
+assert_not_contains "$out_d" "$warning_d" '(d) truncation warning absent from stdout'
 if [[ -f "$BODY_CAPTURE" ]]; then
     captured_d=$(cat "$BODY_CAPTURE")
-    assert_contains "$captured_d" "[TRUNCATED — plan-goals-test exceeded 8000 chars]" '(d) per-section TRUNCATED marker present'
+    assert_contains "$captured_d" "[TRUNCATED — plan-goals-test exceeded 14000 chars]" '(d) per-section TRUNCATED marker present'
     # Assert marker begins on its own line (line-boundary snap).
-    if grep -qE '^\[TRUNCATED — plan-goals-test exceeded 8000 chars\]$' "$BODY_CAPTURE"; then
+    if grep -qE '^\[TRUNCATED — plan-goals-test exceeded 14000 chars\]$' "$BODY_CAPTURE"; then
         PASS=$((PASS + 1))
         echo "  ok: (d) TRUNCATED marker on its own line"
     else
@@ -428,8 +439,8 @@ BODY_D2="$TMPROOT/body-d2.txt"
     done
     # Open a markdown fence with no matching close inside this section.
     printf '```markdown\n'
-    # Pad inside the fence past the cap (60 lines of 100 chars = 6000+).
-    for _ in $(seq 1 60); do
+    # Pad inside the fence past the cap (150 lines of 100 chars = 15000+).
+    for _ in $(seq 1 150); do
         printf 'Inside the unclosed code fence; bytes here push the cut into the fence so closure is required.\n'
     done
     # Section close marker (would be eaten by an unclosed fence).
@@ -446,11 +457,11 @@ out_d2=$(PATH="$STUB_D2:$PATH" bash "$WRITE" upsert-anchor --issue 42 --body-fil
 assert_contains "$out_d2" 'UPDATED=true' '(d2) PATCH succeeded'
 if [[ -f "$BODY_CAPTURE" ]]; then
     captured_d2=$(cat "$BODY_CAPTURE")
-    assert_contains "$captured_d2" "[TRUNCATED — plan-goals-test exceeded 8000 chars]" '(d2) TRUNCATED marker present'
+    assert_contains "$captured_d2" "[TRUNCATED — plan-goals-test exceeded 14000 chars]" '(d2) TRUNCATED marker present'
     # The TRUNCATED marker must be on its own line, preceded by a ``` close.
     if awk '
         /^```$/ { just_closed = 1; next }
-        /^\[TRUNCATED — plan-goals-test exceeded 8000 chars\]$/ {
+        /^\[TRUNCATED — plan-goals-test exceeded 14000 chars\]$/ {
             if (just_closed) { found = 1; exit }
         }
         { just_closed = 0 }
@@ -496,7 +507,7 @@ BODY_D3="$TMPROOT/body-d3.txt"
     done
     # Open with 4 backticks so the fence can contain embedded ``` lines.
     printf '%s\n' '````markdown'
-    for _ in $(seq 1 60); do
+    for _ in $(seq 1 150); do
         # Inside the 4-backtick fence; a 3-backtick line would NOT close it.
         printf 'Inside 4-backtick fence; 3-backtick line ``` here is content not a closer; bytes push past cap.\n'
     done
@@ -509,11 +520,11 @@ out_d3=$(PATH="$STUB_D3:$PATH" bash "$WRITE" upsert-anchor --issue 42 --body-fil
 assert_contains "$out_d3" 'UPDATED=true' '(d3) PATCH succeeded'
 if [[ -f "$BODY_CAPTURE" ]]; then
     captured_d3=$(cat "$BODY_CAPTURE")
-    assert_contains "$captured_d3" "[TRUNCATED — plan-goals-test exceeded 8000 chars]" '(d3) TRUNCATED marker present'
+    assert_contains "$captured_d3" "[TRUNCATED — plan-goals-test exceeded 14000 chars]" '(d3) TRUNCATED marker present'
     # A 4-backtick fence-close line on its own MUST appear before the marker.
     if awk '
         /^````$/ { just_closed = 1; next }
-        /^\[TRUNCATED — plan-goals-test exceeded 8000 chars\]$/ {
+        /^\[TRUNCATED — plan-goals-test exceeded 14000 chars\]$/ {
             if (just_closed) { found = 1; exit }
         }
         { just_closed = 0 }
@@ -561,8 +572,8 @@ BODY_D4="$TMPROOT/body-d4.txt"
     done
     # The trap line: scanner must NOT treat this as a closer.
     printf '%s\n' '```python'
-    for _ in $(seq 1 40); do
-        printf 'Still inside the open markdown fence; bytes here push past the 8000-byte per-section cap easily.\n'
+    for _ in $(seq 1 120); do
+        printf 'Still inside the open markdown fence; bytes here push past the 14000-char per-section cap easily.\n'
     done
     echo '<!-- section-end:plan-goals-test -->'
     echo '<!-- section:diagrams -->'
@@ -573,13 +584,13 @@ out_d4=$(PATH="$STUB_D4:$PATH" bash "$WRITE" upsert-anchor --issue 42 --body-fil
 assert_contains "$out_d4" 'UPDATED=true' '(d4) PATCH succeeded'
 if [[ -f "$BODY_CAPTURE" ]]; then
     captured_d4=$(cat "$BODY_CAPTURE")
-    assert_contains "$captured_d4" "[TRUNCATED — plan-goals-test exceeded 8000 chars]" '(d4) TRUNCATED marker present'
+    assert_contains "$captured_d4" "[TRUNCATED — plan-goals-test exceeded 14000 chars]" '(d4) TRUNCATED marker present'
     # A standalone 3-backtick close line MUST appear before the marker
     # (the synthetic close inserted because ```python was treated as
     # content, not as a closer).
     if awk '
         /^```$/ { just_closed = 1; next }
-        /^\[TRUNCATED — plan-goals-test exceeded 8000 chars\]$/ {
+        /^\[TRUNCATED — plan-goals-test exceeded 14000 chars\]$/ {
             if (just_closed) { found = 1; exit }
         }
         { just_closed = 0 }
@@ -833,6 +844,15 @@ else
     FAIL=$((FAIL + 1))
     FAILED_TESTS+=("(i2) timing-report missing from SECTION_MARKERS or COLLAPSE_PRIORITY")
     echo "  FAIL: (i2) timing-report missing from SECTION_MARKERS or COLLAPSE_PRIORITY" >&2
+fi
+if bash -c "source '$REPO_ROOT/scripts/anchor-section-markers.sh'; printf '%s\n' \"\${SECTION_MARKERS[@]}\"" | grep -qxF 'token-report' \
+    && grep -E '^COLLAPSE_PRIORITY=\(' "$WRITE" | grep -qF 'token-report'; then
+    PASS=$((PASS + 1))
+    echo "  ok: (i3) token-report present in SECTION_MARKERS and COLLAPSE_PRIORITY"
+else
+    FAIL=$((FAIL + 1))
+    FAILED_TESTS+=("(i3) token-report missing from SECTION_MARKERS or COLLAPSE_PRIORITY")
+    echo "  FAIL: (i3) token-report missing from SECTION_MARKERS or COLLAPSE_PRIORITY" >&2
 fi
 
 echo ""
@@ -1161,8 +1181,8 @@ echo "=== (k) upsert-anchor preserves the seed-only visible placeholder line ===
 # <!-- section:... --> open marker (the seed-only visible placeholder
 # emitted by scripts/assemble-anchor.sh when every fragment is empty) must
 # survive the redact + truncate publish path. Earlier coverage in (c) only
-# pinned the first-line marker and the nine section markers, leaving the
-# preamble line slot uncovered.
+# pinned the first-line marker and section markers, leaving the preamble line
+# slot uncovered. The marker count comes from ${#SECTION_MARKERS[@]}.
 STUB_K="$TMPROOT/stub-k"
 BODY_CAPTURE="$TMPROOT/capture-k.txt"
 build_stub_one_anchor "$STUB_K"
@@ -1172,7 +1192,7 @@ PLACEHOLDER='_/implement run in progress — sections below populate as the run 
 {
     echo '<!-- larch:implement-anchor v1 issue=42 -->'
     echo "$PLACEHOLDER"
-    for slug in plan-goals-test plan-review-tally code-review-tally diagrams version-bump-reasoning oos-issues execution-issues run-statistics timing-report; do
+    for slug in "${SECTION_MARKERS[@]}"; do
         printf '<!-- section:%s -->\n' "$slug"
         printf '<!-- section-end:%s -->\n' "$slug"
     done

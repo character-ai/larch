@@ -20,8 +20,8 @@ the same change:
 2. `COLLAPSE_PRIORITY` in `scripts/tracking-issue-write.sh` — drives
    body-level collapse order. `scripts/test-tracking-issue-write.sh`
    case (i) pins `SECTION_MARKERS ⊆ COLLAPSE_PRIORITY`; every
-   `SECTION_MARKERS` slug must appear in `COLLAPSE_PRIORITY`. Case
-   (i2) pins `timing-report` in both arrays. The converse
+   `SECTION_MARKERS` slug must appear in `COLLAPSE_PRIORITY`. Cases
+   (i2)/(i3) pin `timing-report` and `token-report` in both arrays. The converse
    (`COLLAPSE_PRIORITY ⊆ SECTION_MARKERS`) is NOT enforced; stale extra
    slugs in `COLLAPSE_PRIORITY` pass CI. Adding a `SECTION_MARKERS` slug
    without updating `COLLAPSE_PRIORITY` fails (i) loudly.

@@ -88,7 +88,8 @@
 #   Uses Bash 3.2-compatible constructs (indexed arrays only; no
 #   associative arrays, no `mapfile`) so macOS-default bash runs match
 #   Ubuntu CI. Precedent: scripts/dialectic-smoke-test.sh.
-#   Truncation is byte-length based with line-boundary snapping (inline
+#   Truncation is character-length based under bash's UTF-8 string
+#   semantics, with line-boundary snapping (inline
 #   TRUNCATED marker always begins on its own line so open code fences
 #   cannot consume the marker or subsequent section markers). When the
 #   kept prefix ends with an unclosed column-0 backtick fence (the
@@ -109,7 +110,7 @@ REPO_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
 REDACT_HELPER="$REPO_ROOT/scripts/redact-secrets.sh"
 REDACT_TMPDIR_HELPER="$REPO_ROOT/scripts/redact-tmpdir-paths.sh"
 
-# 10 canonical section slugs in declaration order. Single source of truth
+# 11 canonical section slugs in declaration order. Single source of truth
 # lives in scripts/anchor-section-markers.sh; sourced here to keep the
 # truncation pass and scripts/assemble-anchor.sh's assembly walk in
 # lockstep. Missing helper is fail-closed so the FAILED=true / ERROR= stdout
@@ -125,19 +126,19 @@ fi
 # shellcheck disable=SC1091
 source "$MARKERS_HELPER"
 
-# Per-section 8000-char cap. Exceeded interiors are replaced in place
+# Per-section 14000-char cap. Exceeded interiors are replaced in place
 # with a line-snapped truncated prefix, an OPTIONAL closing-fence line
 # of matching length when the kept prefix leaves a column-0 backtick
 # fence open (GFM rule: closer length >= opener length, and a closer
 # line must be backticks followed by only whitespace), and a final
-# inline [TRUNCATED — <id> exceeded 8000 chars] marker on its own line.
-PER_SECTION_CAP=8000
+# inline [TRUNCATED — <id> exceeded 14000 chars] marker on its own line.
+PER_SECTION_CAP=14000
 
 # Body-level 60000-char cap. Exceeding collapses sections to a single
 # placeholder in priority order (most-ephemeral first, most user-value
 # last). All slugs below come from SECTION_MARKERS above.
 BODY_CAP=60000
-COLLAPSE_PRIORITY=(execution-issues review-findings-full plan-review-tally code-review-tally oos-issues run-statistics timing-report version-bump-reasoning diagrams plan-goals-test)
+COLLAPSE_PRIORITY=(execution-issues review-findings-full plan-review-tally code-review-tally oos-issues token-report run-statistics timing-report version-bump-reasoning diagrams plan-goals-test)
 
 ANCHOR_MARKER_V1_PREFIX='<!-- larch:implement-anchor v1'
 
@@ -363,6 +364,13 @@ truncate_body() (
         if (( ${#interior} <= PER_SECTION_CAP )); then
             continue
         fi
+        # Note: ${#var} is character-length under bash UTF-8 locale (not
+        # strictly bytes). Anchor interiors are machine-composed ASCII so
+        # the count matches what the cap check above uses; the warning text
+        # says "chars" by user-locked spec (issue #1429 discussion-round1.md).
+        # Future multibyte content would diverge — tracked by a separate
+        # follow-up issue.
+        printf '**⚠ tracking-issue-write: section %s truncated at %s chars (was %s chars)**\n' "$slug" "$PER_SECTION_CAP" "${#interior}" >&2
         # Snap to previous newline at or before the cap so the TRUNCATED
         # marker begins on its own line (prevents open-fence corruption).
         local truncated_at="$PER_SECTION_CAP"

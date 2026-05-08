@@ -81,6 +81,13 @@ unknown slug body
 <!-- section:code-review-tally -->
 legitimate tally line
 <!-- section-end:code-review-tally -->
+<!-- section:token-report -->
+## Token Report
+
+| Step | Skill | Input | Output |
+| --- | --- | ---: | ---: |
+| Step 1 | larch:implement | 1 | 2 |
+<!-- section-end:token-report -->
 EOF
 
 shim_dir="$tmp_root/bin"
@@ -105,8 +112,15 @@ chmod a-w "$session_tmp/session-id.md" "$tmp_root/.ssh/known_hosts.md"
 
 expected_plan="$tmp_root/expected-plan.md"
 expected_tally="$tmp_root/expected-tally.md"
+expected_token_report="$tmp_root/expected-token-report.md"
 printf 'legitimate plan line\nlegitimate plan detail\n' > "$expected_plan"
 printf 'legitimate tally line\n' > "$expected_tally"
+{
+    printf '## Token Report\n\n'
+    printf '| Step | Skill | Input | Output |\n'
+    printf '| --- | --- | ---: | ---: |\n'
+    printf '| Step 1 | larch:implement | 1 | 2 |\n'
+} > "$expected_token_report"
 
 output="$(
     HYDRATE_ANCHOR_FIXTURE="$fixture" \
@@ -115,9 +129,10 @@ output="$(
 )"
 
 assert_contains "HYDRATED=true" "$output" "hydrate succeeds with mixed valid and malicious markers"
-assert_contains "SECTIONS=2" "$output" "section count includes only canonical extracted sections"
+assert_contains "SECTIONS=3" "$output" "section count includes only canonical extracted sections"
 assert_file_equals "$expected_plan" "$session_tmp/anchor-sections/plan-goals-test.md" "canonical plan section extracted"
 assert_file_equals "$expected_tally" "$session_tmp/anchor-sections/code-review-tally.md" "canonical tally section extracted"
+assert_file_equals "$expected_token_report" "$session_tmp/anchor-sections/token-report.md" "canonical token-report section extracted"
 
 [ ! -e "$session_tmp/anchor-sections/unknown-slug.md" ] \
     || fail "unknown slug should not produce a fragment"

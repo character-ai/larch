@@ -307,7 +307,7 @@ OUTPUT=""
 LEDGER_OVERRIDE=""
 TRANSCRIPT_OVERRIDE=""
 SESSION_DIR_OVERRIDE=""
-RUN_STATS_TARGET=""
+TOKEN_REPORT_TARGET=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -319,7 +319,7 @@ while [[ $# -gt 0 ]]; do
         --ledger) LEDGER_OVERRIDE="${2:?--ledger requires a value}"; shift 2 ;;
         --transcript) TRANSCRIPT_OVERRIDE="${2:?--transcript requires a value}"; shift 2 ;;
         --session-dir) SESSION_DIR_OVERRIDE="${2:?--session-dir requires a value}"; shift 2 ;;
-        --append-run-statistics) RUN_STATS_TARGET="${2:?--append-run-statistics requires a value}"; MODE="append"; shift 2 ;;
+        --append-token-report) TOKEN_REPORT_TARGET="${2:?--append-token-report requires a value}"; MODE="append"; shift 2 ;;
         *) unavailable "unknown flag: $1" ;;
     esac
 done
@@ -348,7 +348,7 @@ if [[ "$MODE" == "append" ]]; then
         cat "$rendered_file"
         printf '\n<!-- token-report-end -->\n'
     } > "$block"
-    replace_token_block "$RUN_STATS_TARGET" "$block"
+    replace_token_block "$TOKEN_REPORT_TARGET" "$block"
     rm -f "$block" "$rendered_file"
 elif [[ "$MODE" == "full" && -n "$OUTPUT" ]]; then
     tmp="$OUTPUT.tmp"
