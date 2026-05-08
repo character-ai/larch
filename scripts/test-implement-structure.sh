@@ -1048,6 +1048,11 @@ grep -Fq '<!-- section:timing-report -->' "$REFS_DIR/anchor-comment-template.md"
 grep -Fq '<!-- section-end:timing-report -->' "$REFS_DIR/anchor-comment-template.md" \
   || fail "(28b) anchor-comment-template.md missing timing-report close marker"
 
+grep -Fq '<!-- section:token-report -->' "$REFS_DIR/anchor-comment-template.md" \
+  || fail "(28b2) anchor-comment-template.md missing token-report open marker"
+grep -Fq '<!-- section-end:token-report -->' "$REFS_DIR/anchor-comment-template.md" \
+  || fail "(28b2) anchor-comment-template.md missing token-report close marker"
+
 workflow_path_count=$(grep -Fc 'timing-ledger.sh" workflow-path' "$SKILL_MD" || true)
 if [[ "$workflow_path_count" != "6" ]]; then
   fail "(28c) expected 6 /implement workflow-path emission sites, found $workflow_path_count"

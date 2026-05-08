@@ -39,7 +39,7 @@ Each rule states WHY; per-site reminders reference by anchor name.
 
 4. **NEVER skip the `/review` step regardless of the nature of changes.** **Why**: all changes — code, skills, documentation, data files, configuration — require full reviewer-panel vetting. **How to apply**: Step 5 normal mode always invokes `/review`; quick mode runs a multi-round review loop (rounds 1-3: 5 specialists + generic Codex; rounds 4-7: single generic reviewer) but still mandates review.
 
-5. **NEVER let the Step 9a.1 sentinel short-circuit silently skip the anchor-comment Accepted-OOS update.** **Why**: idempotency recovery MUST update the anchor comment's `oos-issues` section from recovered URLs; silent skip breaks the anchor contract as the Phase 3+ single source of truth for Accepted OOS content. **How to apply**: the idempotent-rerun branch in Step 9a.1 issues the same `tracking-issue-write.sh upsert-anchor` call for the anchor's `oos-issues` and `run-statistics` sections (using URLs recovered from `oos-issues-created.md`) as the normal create-script branch steps 7 and 7b.
+5. **NEVER let the Step 9a.1 sentinel short-circuit silently skip the anchor-comment Accepted-OOS update.** **Why**: idempotency recovery MUST update the anchor comment's `oos-issues` section from recovered URLs; silent skip breaks the anchor contract as the Phase 3+ single source of truth for Accepted OOS content. **How to apply**: the idempotent-rerun branch in Step 9a.1 issues the same `tracking-issue-write.sh upsert-anchor` call for the anchor's Step 9a.1 data fragments (using URLs recovered from `oos-issues-created.md`) as the normal create-script branch steps 7 and 7b.
 
 6. **NEVER move the Step 5 quick-mode Cursor/Codex reviewer prompts (containing the five focus-area enum literals `code-quality` / `risk-integration` / `correctness` / `architecture` / `security`) out of `SKILL.md`.** **Why**: `.github/workflows/ci.yaml` inspects `skills/implement/SKILL.md` for the unquoted focus-area enum. **How to apply**: keep every Step 5 quick-mode Bash block that contains the slash-separated focus-area enum (Cursor and Codex variants for both the rounds 1-3 generic slot and the rounds 4+ generic reviewer) inline in Step 5; do not move them to a reference file unless the CI workflow's file list is extended in the same PR.
 
@@ -525,7 +525,7 @@ Create the tracking issue **immediately** so all subsequent anchor-accumulation 
    ```bash
    ${CLAUDE_PLUGIN_ROOT}/scripts/refresh-anchor.sh --sections-dir "$IMPLEMENT_TMPDIR/anchor-sections" --issue "$ISSUE_NUMBER" --output "$IMPLEMENT_TMPDIR/anchor-seed.md"
    ```
-   The seed body contains the anchor first-line marker (embedding `$ISSUE_NUMBER`), a seed-only visible placeholder line so the comment renders non-empty in GitHub's UI (issue #431; see `scripts/assemble-anchor.md` "Seed-only visible placeholder"), and all 10 canonical section marker pairs wrapping empty interiors (no fragments yet). Parse `ANCHOR_COMMENT_ID` from `refresh-anchor.sh`'s stdout. On `FAILED=true` (either assemble or upsert step) OR if parsed `ANCHOR_COMMENT_ID` is empty, print `**⚠ 0.5: tracking issue — Branch 4 anchor planting failed: $ERROR. Continuing with deferred/absent anchor.**`, log to `Tool Failures`, set `deferred=true`, clear `$ISSUE_NUMBER`, and proceed to Step 1 (skipping the sentinel write in step 6). Do NOT continue with an empty `$ANCHOR_COMMENT_ID` — an empty value breaks downstream `upsert-anchor --anchor-id "$ANCHOR_COMMENT_ID"` calls at the shell-expansion layer (the empty expansion would cause the next flag to be consumed as the anchor-id value) and we cannot safely assert sentinel idempotency (Invariant #4) without a resolved anchor id.
+   The seed body contains the anchor first-line marker (embedding `$ISSUE_NUMBER`), a seed-only visible placeholder line so the comment renders non-empty in GitHub's UI (issue #431; see `scripts/assemble-anchor.md` "Seed-only visible placeholder"), and all 11 canonical section marker pairs wrapping empty interiors (no fragments yet). Parse `ANCHOR_COMMENT_ID` from `refresh-anchor.sh`'s stdout. On `FAILED=true` (either assemble or upsert step) OR if parsed `ANCHOR_COMMENT_ID` is empty, print `**⚠ 0.5: tracking issue — Branch 4 anchor planting failed: $ERROR. Continuing with deferred/absent anchor.**`, log to `Tool Failures`, set `deferred=true`, clear `$ISSUE_NUMBER`, and proceed to Step 1 (skipping the sentinel write in step 6). Do NOT continue with an empty `$ANCHOR_COMMENT_ID` — an empty value breaks downstream `upsert-anchor --anchor-id "$ANCHOR_COMMENT_ID"` calls at the shell-expansion layer (the empty expansion would cause the next flag to be consumed as the anchor-id value) and we cannot safely assert sentinel idempotency (Invariant #4) without a resolved anchor id.
 
 6. **Write the sentinel LAST**, only after BOTH `$ISSUE_NUMBER` and `$ANCHOR_COMMENT_ID` resolved to non-empty values in steps 4 and 5 (Load-Bearing Invariant #4 ordering):
    ```
@@ -551,7 +551,7 @@ If `repo_unavailable=true`: skip all Step 0.5 branches, do NOT invoke `gh issue 
 
 Each step covered by the accumulation mechanism writes its fragment to `$IMPLEMENT_TMPDIR/anchor-sections/<section-id>.md`. Fragment content is the markdown that will be wrapped by the `<!-- section:<slug> -->` / `<!-- section-end:<slug> -->` markers during body assembly. If `$ISSUE_NUMBER` is set (Branches 1, 2, 3 resolved on Step 0.5 adoption, or Branch 4 success), after writing a fragment the step ALSO assembles the full anchor body and upserts for progressive remote visibility. If `deferred=true` (Branch 4 create-issue/anchor failure) or `repo_unavailable=true`, the step writes only the local fragment.
 
-**Section-ID mapping** (matches the 10 canonical slugs in `anchor-comment-template.md`):
+**Section-ID mapping** (matches the 11 canonical slugs in `anchor-comment-template.md`):
 
 | Step | Section-ID |
 |------|------------|
@@ -561,7 +561,7 @@ Each step covered by the accumulation mechanism writes its fragment to `$IMPLEME
 | Step 5 (after `/review` voting tally visible, or after quick-mode loop) | `code-review-tally` AND `review-findings-full` (two separate fragment files; the second is composed by `compose-review-findings.sh`) |
 | Step 7a (after Code Flow Diagram generated) | `diagrams` (both Architecture + Code Flow) |
 | Step 8 (after `/bump-version` returns `REASONING_FILE`) | `version-bump-reasoning` |
-| Step 9a.1 (after OOS filing) | `oos-issues` AND `run-statistics` (two separate fragment files) |
+| Step 9a.1 (after OOS filing) | `oos-issues`, `run-statistics`, and `token-report` (separate fragment files) |
 | Step 11 (post-execution) | `execution-issues` |
 
 **Refresh procedure** (when `ISSUE_NUMBER` set):
@@ -748,7 +748,7 @@ If `design_only=true`:
 
 1. Compose the `diagrams` anchor fragment now (NOT later, since Steps 7/7a are skipped). The Code Flow Diagram is unavailable in design-only mode (no implementation has run), so the fragment carries: `## Architecture Diagram` + mermaid fence read from `ARCHITECTURE_DIAGRAM_FILE` (or `"Architecture diagram not available."` if that optional manifest key is absent or the file is missing), then `## Code Flow Diagram` + the literal placeholder `"(Code Flow Diagram unavailable — --design-only run, no implementation)"`. Write to `$IMPLEMENT_TMPDIR/anchor-sections/diagrams.md`. If `ISSUE_NUMBER` is set, assemble and upsert (same mechanism as Step 7a's `diagrams` fragment write — see Step 0.5).
 2. Skip the Step 1.r Rebase Checkpoint below — design-only does not modify code, so a rebase to latest main is unnecessary churn.
-3. Skip Steps 2 / 3 / 4 / 5 / 6 / 7 / 7a / 8 / 8a / 8b / 9 / 9b entirely. Proceed directly to Step 9a.1 so accepted OOS observations are filed and anchor `oos-issues` / `run-statistics` fragments are refreshed.
+3. Skip Steps 2 / 3 / 4 / 5 / 6 / 7 / 7a / 8 / 8a / 8b / 9 / 9b entirely. Proceed directly to Step 9a.1 so accepted OOS observations are filed and the Step 9a.1 anchor data fragments are refreshed.
 4. After Step 9a.1 completes, set `DESIGN_ONLY_DONE=true`, skip Steps 10–16, then proceed to Step 16a so the design-only Slack outcome and final report can run before Step 18 cleanup.
 
 ### Rebase onto latest main (before implementation)
@@ -1415,21 +1415,23 @@ Runs unconditionally regardless of mode. The canonical sequence lives in `anchor
 
 > **Continue after child returns.** When `/issue` returns from batch mode, execute the next sub-steps (parse stdout; write fragments; upsert anchor; write sentinel) — do NOT end the turn, and do NOT write a summary, handoff, or "returning to parent" message. See `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Anti-halt continuation reminder.
 
-### Anchor-section fragments — `oos-issues` and `run-statistics` (two separate files)
+### Anchor-section Data-Fragment Refreshes
 
-Step 9a.1 writes TWO anchor fragments:
+Step 9a.1 writes and refreshes the data fragments needed for OOS publication and run observability:
 
 - `$IMPLEMENT_TMPDIR/anchor-sections/oos-issues.md` — the Accepted OOS bullet list (with `#<N>` links from `/issue` batch output) plus the Rejected / Out-of-Scope Observations sub-block. Content per `anchor-comment-template.md` section `oos-issues`.
 - `$IMPLEMENT_TMPDIR/anchor-sections/run-statistics.md` — the Run Statistics table, with the `| OOS issues filed |` cell populated from the `ISSUES_CREATED` / `ISSUES_DEDUPLICATED` counts. Content per `anchor-comment-template.md` section `run-statistics`.
+- `$IMPLEMENT_TMPDIR/anchor-sections/token-report.md` — the sentinel-bracketed Token Report table produced by `token-report.sh`.
+- `$IMPLEMENT_TMPDIR/anchor-sections/timing-report.md` — the sentinel-bracketed Timing Report table produced by `timing-report.sh`.
 
-After writing `run-statistics.md`, append or replace the idempotent token block before assembling:
+After writing `run-statistics.md`, append or replace the idempotent report blocks before assembling:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --append-run-statistics "$IMPLEMENT_TMPDIR/anchor-sections/run-statistics.md" || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --append-token-report "$IMPLEMENT_TMPDIR/anchor-sections/token-report.md" || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --append-timing-section "$IMPLEMENT_TMPDIR/anchor-sections/timing-report.md" || true
 ```
 
-After both fragments are written, assemble the anchor body and upsert (see Step 0.5 "Anchor-section accumulation"). Assembly order follows `SECTION_MARKERS`: `oos-issues` comes before `execution-issues`, `run-statistics` comes last.
+After fragments are written, assemble the anchor body and upsert (see Step 0.5 "Anchor-section accumulation"). Assembly order follows the sourced `SECTION_MARKERS` array; see `scripts/anchor-section-markers.sh` for the definitive sequence.
 
 Print: `✅ 9a.1: OOS issues — <ISSUES_CREATED> created, <ISSUES_DEDUPLICATED> deduplicated (<elapsed>)` (or the appropriate early-exit breadcrumb).
 
@@ -1536,9 +1538,9 @@ Runs unconditionally. The Slack announcement of the tracking issue has moved to 
 
    b. Write to `$IMPLEMENT_TMPDIR/anchor-sections/execution-issues.md`.
 
-   c. Best-effort append or replace the current Token Report block in `$IMPLEMENT_TMPDIR/anchor-sections/run-statistics.md` before the refresh. This Step 11 table is an interim refresh only; Step 18 owns the authoritative final table:
+   c. Best-effort append or replace the current Token Report block in `$IMPLEMENT_TMPDIR/anchor-sections/token-report.md` before the refresh. This Step 11 table is an interim refresh only; Step 18 owns the authoritative final table:
       ```bash
-      "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --append-run-statistics "$IMPLEMENT_TMPDIR/anchor-sections/run-statistics.md" || true
+      "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --append-token-report "$IMPLEMENT_TMPDIR/anchor-sections/token-report.md" || true
       "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --append-timing-section "$IMPLEMENT_TMPDIR/anchor-sections/timing-report.md" || true
       ```
 
@@ -1833,7 +1835,7 @@ If `DESIGN_ONLY_DONE=true`, remind: `**Note: --design-only was set. No PR was cr
 Before teardown, perform the authoritative final token-report refresh while `$IMPLEMENT_TMPDIR` and its anchor fragments still exist:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --append-run-statistics "$IMPLEMENT_TMPDIR/anchor-sections/run-statistics.md" || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --append-token-report "$IMPLEMENT_TMPDIR/anchor-sections/token-report.md" || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --append-timing-section "$IMPLEMENT_TMPDIR/anchor-sections/timing-report.md" || true
 if [ -n "${ISSUE_NUMBER:-}" ] && [ "${repo_unavailable:-false}" != "true" ]; then
   ${CLAUDE_PLUGIN_ROOT}/scripts/refresh-anchor.sh --sections-dir "$IMPLEMENT_TMPDIR/anchor-sections" --issue "$ISSUE_NUMBER" --anchor-id "$ANCHOR_COMMENT_ID" --output "$IMPLEMENT_TMPDIR/anchor-assembled.md" || true

@@ -168,7 +168,7 @@ the prose into the new section, and emits the structured tags.
 |---|---|
 | `scripts/anchor-section-markers.sh` | Carries the `review-findings-full` slug in `SECTION_MARKERS`. |
 | `scripts/tracking-issue-write.sh` | Carries the slug in `COLLAPSE_PRIORITY` (priority position 2 — second-most-ephemeral). |
-| `skills/implement/references/anchor-comment-template.md` | Documents the section in the canonical 10-slug template; carries the body-level collapse priority and the edit-in-sync table. |
+| `skills/implement/references/anchor-comment-template.md` | Documents the section in the canonical 11-slug template; carries the body-level collapse priority and the edit-in-sync table. |
 | `skills/implement/SKILL.md` Step 5 | Owns the runtime invocation of this helper after `/review` returns or the quick-mode loop completes. |
 | `skills/design/references/plan-review.md` | Owns the byte-preserved formats this helper parses (accepted plan-review + rejected plan-review entries). |
 | `${CLAUDE_PLUGIN_ROOT}/scripts/test-compose-review-findings.sh` | Regression harness; wired into `make lint` via the `test-compose-review-findings` target. |
