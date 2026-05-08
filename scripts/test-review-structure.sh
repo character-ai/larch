@@ -342,5 +342,18 @@ if grep 'collect-agent-results.sh' "$SKILL_MD" | grep -Fq 'gemini-output.txt'; t
   fail "(19c) /review collector argv unexpectedly re-introduced gemini-output.txt path"
 fi
 
-echo "PASS: test-review-structure.sh — all 19 structural invariants hold"
+# ---------------------------------------------------------------------------
+# (20) Diff-mode accepted-OOS security exclusion. voting.md already documents
+# the description-mode guard; diff mode must mirror it at the
+# oos-accepted-review.md public artifact boundary.
+# ---------------------------------------------------------------------------
+VOTING_MD="$REFS_DIR/voting.md"
+grep -F 'oos-accepted-review.md' "$VOTING_MD" \
+  | grep -F 'excluding security-tagged findings' \
+  | grep -Fq 'focus-area\s*=\s*security' \
+  || fail "(20a) voting.md diff-mode oos-accepted-review.md write must exclude security-tagged OOS via canonical focus-area token"
+grep -Fq 'security-tagged findings (focus-area=security) are held locally and NEVER filed publicly' "$VOTING_MD" \
+  || fail "(20b) voting.md description-mode security guard drifted"
+
+echo "PASS: test-review-structure.sh — structural invariants hold (including security OOS exclusions)"
 exit 0

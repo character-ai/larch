@@ -19,6 +19,12 @@ If you discover a security vulnerability in larch, please report it responsibly:
 
 You should receive an acknowledgment within 72 hours. We will work with you to understand the issue and coordinate a fix before any public disclosure.
 
+## Security Findings in OOS Workflows
+
+Accepted security-tagged review/design OOS findings (`focus-area=security`) are held locally and NEVER written to public OOS issue artifacts (`oos-accepted-design.md`, `oos-accepted-review.md`, or the `oos.md` visibility export). They are also NEVER filed via `/issue` or `/umbrella`; use the private disclosure flow above instead.
+
+The external implementer prompts (`agents/codex-implementer.md`, `agents/cursor-implementer.md`, `agents/gemini-implementer.md`) likewise prohibit folding security findings inline and prohibit emitting them in `oos_observations[]`. `/implement` Step 9a.1 defensively re-excludes any security-tagged OOS entries that slip through upstream filters before the `/issue` handoff.
+
 ## Trust Model
 
 Larch is a Claude Code plugin that runs within Claude Code's permission boundary. It does not bypass Claude Code's built-in permission system at the operator level — all tool calls (file edits, shell commands, etc.) at the user-facing assistant level go through the standard permission flow. Consumers running in strict-permissions mode must grant both the bare and fully-qualified `Skill(...)` form for each larch skill they invoke — see the "Strict-permissions consumers — Skill permission entries" subsection in [`docs/configuration-and-permissions.md`](docs/configuration-and-permissions.md#strict-permissions-consumers--skill-permission-entries) for the required allowlist convention, the shadowing caveat (bare names may resolve to project-local skills before reaching the plugin), and the reason `Skill(larch:*)` wildcards do not currently work.

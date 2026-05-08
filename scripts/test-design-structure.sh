@@ -288,5 +288,18 @@ grep -Fq -- 'copy_required_may_be_empty "$DESIGN_TMPDIR/rejected-findings.md"' "
 grep -Fq -- 'copy_required_may_be_empty "$DESIGN_TMPDIR/accepted-plan-findings.md"' "$WDM_SH" \
   || fail "(12c) write-design-manifest.sh missing copy_required_may_be_empty for accepted-plan-findings.md — Tier 2 of SKILL.md gate is out of sync (issue #1405)"
 
-echo "PASS: test-design-structure.sh — all 12 structural invariants hold (incl. 12b/12c)"
+# Check 13: accepted-OOS security exclusion pins. plan-review.md owns both the
+# parent `/implement` accepted-OOS artifact write and the design visibility
+# export; both public-boundary paths must explicitly exclude accepted
+# security-tagged OOS blocks using the canonical token match.
+grep -F 'oos-accepted-design.md' "$PLAN_REVIEW_MD" \
+  | grep -F 'excluding security-tagged findings' \
+  | grep -Fq 'focus-area\s*=\s*security' \
+  || fail "(13a) plan-review.md oos-accepted-design.md write must exclude security-tagged OOS via canonical focus-area token"
+grep -F 'oos.md' "$PLAN_REVIEW_MD" \
+  | grep -F 'excluding security-tagged accepted OOS findings' \
+  | grep -Fq 'focus-area\s*=\s*security' \
+  || fail "(13b) plan-review.md oos.md visibility export must exclude security-tagged accepted OOS via canonical focus-area token"
+
+echo "PASS: test-design-structure.sh — structural invariants hold (including security OOS exclusions)"
 exit 0

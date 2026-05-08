@@ -102,6 +102,19 @@ On a resume invocation:
 
 You MUST NOT discard the operator's partial-work edits or commits via `git reset` / `git restore` / `git checkout` even if they no longer fit the new direction (rule #1 above). Bail with `resume-incompatible` instead.
 
+## OOS triage gate before manifest
+
+Before populating `oos_observations[]`, apply `skills/implement/SKILL.md` § "OOS triage policy" as the authoritative source for thresholds and combine semantics:
+
+- Security findings are NEVER folded inline and NEVER filed via this OOS path regardless of size; route through SECURITY.md's private disclosure flow. If uncertain whether a finding is security, do not file publicly.
+- Rule 1: Documentation drift (any size): do NOT file an OOS issue. Fold the correction into this commit.
+- Rule 2: A bug whose fix is < ~30 lines of code: do NOT file an OOS issue. Fold the fix into this commit.
+- Rule 3: Multiple medium-sized bug fixes (each individually >= ~30 LOC): combine them all into ONE filed OOS issue. A singleton bug fix that is not rule 2 is a filed-OOS candidate; combine semantics apply if multiple.
+- Rule 4: Multiple moderate-sized documentation changes (each individually ~30-100 lines, NOT drift): combine them all into ONE filed OOS issue.
+- For each folded item, add one sanitized body line to `manifest.commit_message` in the form `Inline-triage rule N: <short sanitized reason>`. Do not include raw repro tokens, security-sensitive detail, internal URLs, PII, or secrets; the dispatcher's `redact-secrets.sh` pass is a secrets-only safety net, not a substitute for prompt-level sanitization.
+
+`oos_observations[]` contains only filed-OOS candidates after this triage. Do NOT both fold a finding inline and emit an `oos_observations[]` entry for it. `oos_observations[]` may be empty when every applicable item was folded inline by rules 1-2 or routed to SECURITY.md.
+
 ## Manifest checklist before exit
 
 Before you write `<MANIFEST_PATH>`, verify:
@@ -113,7 +126,7 @@ Before you write `<MANIFEST_PATH>`, verify:
 - [ ] If `status=bailed`: `bail_reason` non-empty (use a stable token from `codex-manifest-schema.md` when one fits; otherwise a short free-form string). `gemini-modified-history` is dispatcher-emitted only; do not emit it yourself.
 - [ ] Every path in `files_touched[].path` and `tests_added_or_modified` is repo-relative, normalized, NOT `.claude-plugin/plugin.json`, NOT under a submodule.
 - [ ] `summary_bullets` describe the WHY, not the HOW (these flow into PR body and CHANGELOG verbatim — the operator reviews them as public-facing copy).
-- [ ] `oos_observations` lists pre-existing code issues you noticed but deliberately did not fix in this PR. Each entry has `title`, `description`, `phase: "implement"`. The orchestrator will file these as GitHub issues via `/issue` at Step 9a.1.
+- [ ] `oos_observations` lists only post-triage filed-OOS candidates you noticed but deliberately did not fix in this PR. It excludes inline-folded rules 1-2 items and security findings routed through SECURITY.md. Each entry has `title`, `description`, `phase: "implement"`. The orchestrator will file these as GitHub issues via `/issue` at Step 9a.1.
 - [ ] `todos_left` lists actionable follow-ups you would have addressed if scope allowed. Free-form strings.
 
 Then atomic-write `<MANIFEST_PATH>` and exit with status 0. The dispatcher inspects the manifest, runs mechanical validation (manifest schema check, path normalization, branch unchanged check, `.claude-plugin/plugin.json` unchanged check, submodule clean check), runs `git add -A && git commit -F <commit-message-file>` on `status=complete` with `commit_message` piped through `scripts/redact-secrets.sh`, and emits the final KV envelope. There is no diff cross-check or commit-subject cross-check — the manifest's `commit_message` is what the dispatcher uses, modulo the secrets-family redaction.
