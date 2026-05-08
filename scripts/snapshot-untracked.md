@@ -4,7 +4,8 @@
 
 **Invariants**:
 - Always exits 0 — callers must never abort on snapshot failure
-- On any failure, removes both temp file and output file so `check-review-changes.sh` sees `UNTRACKED_BASELINE=missing` (issue #651 guard)
+- On any *operation* failure (git / sort / mv), removes both temp file and output file so `check-review-changes.sh` sees `UNTRACKED_BASELINE=missing` (issue #651 guard)
+- Unknown CLI flags and missing `--output` log a diagnostic to stderr and exit 0 *without* touching `$OUTPUT` — argument-parsing errors must not delete user-controlled paths
 - Default output is sorted and newline-delimited for `check-review-changes.sh`; `--nul` switches to sorted NUL-delimited output for `check-mid-run-dirty-tree.sh`
 - Uses `set -o pipefail` so `git ls-files` failures propagate through the pipe
 - Atomic write via temp file + `mv -f`
