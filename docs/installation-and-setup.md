@@ -172,7 +172,7 @@ ln -sf "$(which rg)" <gemini-pkg>/bundle/vendor/ripgrep/rg-darwin-arm64
 
 | Component | Description |
 |---|---|
-| Skills | `/design`, `/implement`, `/review`, `/research`, `/fix-issue`, `/issue`, `/upgrade-larch`, `/alias`, `/create-skill`, `/simplify-skill`, `/compress-skill`, `/im`, `/imaq`, `/imq` |
+| Skills | `/design`, `/implement`, `/review`, `/research`, `/fix-issue`, `/issue`, `/set-up-forked-open-source-repo`, `/upgrade-larch`, `/alias`, `/create-skill`, `/simplify-skill`, `/compress-skill`, `/im`, `/imaq`, `/imq` |
 | Agents | `code-reviewer` (unified archetype covering code quality, risk/integration, correctness, architecture, security) |
 | PreToolUse hook | `block-submodule-edit.sh` — blocks `Edit`/`Write` on files inside any checked-out git submodule of the consuming project |
 | SessionStart hook | `sessionstart-health.sh` — at session start/resume/clear/compact, probes `jq` and `git` on `PATH`; if either is missing, injects an advisory into session context so the issue is visible before the first `Edit`/`Write`. Non-blocking (always exits 0); silent when both tools are present |

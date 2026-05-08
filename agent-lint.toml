@@ -230,6 +230,15 @@ suppress = [
 # and skills/fix-issue/scripts/test-finalize-umbrella.md (sibling contract).
 # Both the .sh and the .md are excluded below.
 #
+# skills/set-up-forked-open-source-repo/scripts/test-setup-forked-open-source-repo.sh
+# is the offline regression harness for the public fork-setup coordinator. It
+# creates local bare upstream/fork repositories, stubs `gh`, and is referenced
+# only from Makefile (test-set-up-forked-open-source-repo target) plus the
+# coordinator sibling contract, matching the same Makefile-only harness pattern
+# as the skill-local test harnesses above. lib-remotes.sh is a sourced-only
+# helper referenced by the coordinator via `source`, which agent-lint does not
+# follow. Both sibling .md files are excluded below.
+#
 # scripts/test-anti-halt-banners.sh is the regression harness for the
 # anti-halt continuation banner (closes #177). The harness asserts banner
 # presence in 5 orchestrator SKILL.md files (fix-issue, implement, review,
@@ -621,6 +630,8 @@ exclude = [
   "skills/fix-issue/scripts/test-find-lock-issue.sh",
   "skills/fix-issue/scripts/test-umbrella-handler.sh",
   "skills/fix-issue/scripts/test-finalize-umbrella.sh",
+  "skills/set-up-forked-open-source-repo/scripts/lib-remotes.sh",
+  "skills/set-up-forked-open-source-repo/scripts/test-setup-forked-open-source-repo.sh",
   # skills/implement/scripts/test-check-review-changes.sh is the offline
   # regression harness for skills/implement/scripts/check-review-changes.sh
   # (closes #651 — fixes the false-positive where any pre-existing untracked
@@ -887,6 +898,9 @@ exclude = [
   "skills/fix-issue/scripts/test-find-lock-issue.md",
   "skills/fix-issue/scripts/test-umbrella-handler.md",
   "skills/fix-issue/scripts/test-finalize-umbrella.md",
+  "skills/set-up-forked-open-source-repo/scripts/lib-remotes.md",
+  "skills/set-up-forked-open-source-repo/scripts/setup-forked-open-source-repo.md",
+  "skills/set-up-forked-open-source-repo/scripts/test-setup-forked-open-source-repo.md",
   "scripts/test-round-trip-detect.md",
   "scripts/test-token-ledger.md",
   "scripts/test-token-report.md",
