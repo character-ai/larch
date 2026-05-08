@@ -64,6 +64,42 @@ fi
 if [[ "$1" == "repo" && "${2:-}" == "view" ]]; then
   [[ "$mode" == "missing" ]] && { echo "HTTP 404: Could not resolve to a Repository" >&2; exit 1; }
   [[ "$mode" == "api-fail" ]] && { echo "HTTP 403: rate limited" >&2; exit 1; }
+  if [[ "$mode" == "parent-split-fields" ]]; then
+    cat <<'JSON'
+{"nameWithOwner":"me/project","parent":{"owner":{"login":"acme"},"name":"project"},"defaultBranchRef":{"name":"main"}}
+JSON
+    exit 0
+  fi
+  if [[ "$mode" == "parent-malformed-owner" ]]; then
+    # Pathological shape: `.parent.owner` is a string rather than an object.
+    # Exercises the type guard in `phase_github`'s jq program — without the
+    # guard, jq aborts indexing `.login` on a string before the parent gate
+    # can run, so the operator never sees the stable `fork parent mismatch`
+    # wording.
+    cat <<'JSON'
+{"nameWithOwner":"me/project","parent":{"owner":"acme","name":"project"},"defaultBranchRef":{"name":"main"}}
+JSON
+    exit 0
+  fi
+  if [[ "$mode" == "parent-numeric-fields" ]]; then
+    # Pathological shape: `.parent.owner.login` and `.parent.name` are
+    # numbers, not strings. Without the string-type guard the jq program
+    # would compose `1/2` and pass the parent gate against a numeric
+    # `--upstream 1/2`, since `validate_owner_repo` accepts purely numeric
+    # owner/repo segments.
+    cat <<'JSON'
+{"nameWithOwner":"me/project","parent":{"owner":{"login":1},"name":2},"defaultBranchRef":{"name":"main"}}
+JSON
+    exit 0
+  fi
+  if [[ "$mode" == "parent-invalid-json" ]]; then
+    # gh repo view emits something that is not valid JSON. The phase MUST
+    # short-circuit with a clear "invalid JSON" diagnostic instead of
+    # falling through to the shape-error path or aborting on a raw jq
+    # parse failure.
+    printf 'this is not json\n'
+    exit 0
+  fi
   cat <<'JSON'
 {"nameWithOwner":"me/project","parent":{"nameWithOwner":"acme/project"},"defaultBranchRef":{"name":"main"}}
 JSON
@@ -282,6 +318,40 @@ OUT="$BASE/out.txt"
 GH_STUB_MODE=missing run_setup "$WORK" "$OUT"
 assert_contains "$OUT" "SETUP_FORKED_REPO_RESULT=fork_missing" "missing fork exits with marker"
 assert_eq "https://github.com/acme/project.git" "$(git -C "$WORK" config --get remote.origin.url)" "missing fork does not mutate remotes"
+
+read_fixture parent_split_fields
+OUT="$BASE/out.txt"
+GH_STUB_MODE=parent-split-fields run_setup "$WORK" "$OUT"
+assert_contains "$OUT" "SETUP_FORKED_REPO_RESULT=mirror_skipped_in_sync" "parent split owner/name fields pass"
+
+# Regression: pathological `.parent.owner` shape (string instead of object)
+# must yield the intended `fork parent mismatch ... got <none>` error,
+# not a raw `jq` index/type abort. Exercises the type guard in phase_github.
+read_fixture parent_malformed_owner
+OUT="$BASE/out.txt"
+if GH_STUB_MODE=parent-malformed-owner run_setup_rc "$WORK" "$OUT"; then fail "malformed parent.owner refuses"; fi
+assert_contains "$OUT" "fork parent mismatch" "malformed parent.owner produces clean mismatch error"
+assert_contains "$OUT" "got <none>" "malformed parent.owner reports <none>"
+
+# Regression: numeric `parent.owner.login` and `parent.name` must NOT compose
+# into `1/2` and pass the gate against a numeric `--upstream 1/2`
+# (validate_owner_repo accepts purely numeric segments). The string type
+# guard rejects the shape and the gate falls into `got <none>`.
+read_fixture parent_numeric_fields
+OUT="$BASE/out.txt"
+if GH_STUB_MODE=parent-numeric-fields run_setup_rc "$WORK" "$OUT"; then fail "numeric parent fields refuses"; fi
+assert_contains "$OUT" "fork parent mismatch" "numeric parent fields produce clean mismatch error"
+assert_contains "$OUT" "got <none>" "numeric parent fields report <none>"
+
+# Regression: syntactically invalid JSON from `gh repo view` must surface
+# as a clean "invalid JSON" diagnostic rather than the shape-error
+# `fork parent mismatch ... got <none>` path or a raw jq parse abort.
+read_fixture parent_invalid_json
+OUT="$BASE/out.txt"
+if GH_STUB_MODE=parent-invalid-json run_setup_rc "$WORK" "$OUT"; then fail "invalid gh JSON exits non-zero"; fi
+assert_contains "$OUT" "gh repo view returned invalid JSON" "invalid gh JSON yields clear diagnostic"
+assert_not_contains "$OUT" "fork parent mismatch" "invalid gh JSON does NOT misclassify as parent mismatch"
+assert_eq "https://github.com/acme/project.git" "$(git -C "$WORK" config --get remote.origin.url)" "invalid gh JSON does not mutate remotes"
 
 read_fixture auth_failure
 OUT="$BASE/out.txt"

@@ -268,12 +268,45 @@ phase_github() {
     exit 1
   fi
 
-  parent="$(jq -r '.parent.nameWithOwner // empty' "$gh_out")"
+  # Reject corrupt JSON up front so syntactically-invalid `gh` output yields
+  # a clear "gh repo view returned invalid JSON" diagnostic rather than the
+  # generic `fork parent mismatch ... got <none>` shape error below.
+  # Using `jq -e 'type == "object"'` (rather than `jq -e .`) so a valid-JSON
+  # but root-`null`/`false` payload — which `jq -e .` would treat as an exit-1
+  # falsy value — does not get misclassified as a syntax error; the gate
+  # accepts only an object root, which is the only shape `gh repo view --json`
+  # ever returns.
+  if ! jq -e 'type == "object"' "$gh_out" >/dev/null 2>"$gh_err"; then
+    printf 'ERROR: gh repo view returned invalid JSON:\n' >&2
+    redact_file "$gh_err" >&2
+    rm -f "$gh_out" "$gh_err"
+    exit 1
+  fi
+  # Treat any malformed shape (non-object .parent.owner, non-string
+  # .login/.name) as "no parent" so the operator gets the stable
+  # `fork parent mismatch ... got <none>` message rather than a raw jq
+  # index/type error. The pre-parse gate above already rejected JSON-syntax
+  # failures, so this fallback is shape-only.
+  parent="$(jq -r '
+    if .parent == null then
+      empty
+    elif (.parent.nameWithOwner // "") != "" then
+      .parent.nameWithOwner
+    elif ((.parent.owner | type) == "object"
+          and ((.parent.owner.login // null) | type) == "string"
+          and ((.parent.name // null) | type) == "string"
+          and (.parent.owner.login // "") != ""
+          and (.parent.name // "") != "") then
+      "\(.parent.owner.login)/\(.parent.name)"
+    else
+      empty
+    end
+  ' "$gh_out" 2>/dev/null || true)"
   rm -f "$gh_out" "$gh_err"
   # GitHub treats owner/repo names as case-insensitive; `gh repo view` returns
-  # the canonical-case `parent.nameWithOwner` while `--upstream` is operator
-  # input. Compare lowercased so an operator passing `acme/project` against a
-  # canonical `Acme/Project` parent does not spuriously fail this gate.
+  # canonical-case parent fields while `--upstream` is operator input. Compare
+  # lowercased so an operator passing `acme/project` against a canonical
+  # `Acme/Project` parent does not spuriously fail this gate.
   parent_lc="$(printf '%s' "$parent" | tr '[:upper:]' '[:lower:]')"
   upstream_lc="$(printf '%s' "$UPSTREAM" | tr '[:upper:]' '[:lower:]')"
   if [[ "$parent_lc" != "$upstream_lc" ]]; then

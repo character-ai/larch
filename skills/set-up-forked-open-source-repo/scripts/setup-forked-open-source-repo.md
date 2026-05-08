@@ -53,10 +53,15 @@ invoking the skill.
 - Treat only explicit fork not-found diagnostics from `gh repo view` as a
   clean fork-missing result. Auth, network, SSO, rate-limit, and other API
   failures exit non-zero after stderr is routed through `scripts/redact-secrets.sh`.
-- Verify `parent.nameWithOwner` matches the declared upstream **case-insensitively**
-  before any mirror push. GitHub treats owner/repo as case-insensitive while
-  `gh repo view --json` returns the canonical-case `nameWithOwner`, so the
-  gate lowercases both sides before comparing — an operator passing
+- Verify the fork parent matches the declared upstream **case-insensitively**
+  before any mirror push. The parser accepts both `parent.nameWithOwner` and
+  the split `parent.owner.login` + `parent.name` shape returned by some
+  `gh repo view --json parent` responses, preferring non-empty
+  `nameWithOwner` when present. The parser type-guards the split-field path
+  (`.parent.owner` must be an object) and silences `jq` errors so a malformed
+  payload surfaces as a clean `fork parent mismatch` rather than a raw
+  `jq` index/type abort. GitHub treats owner/repo as case-insensitive,
+  so the gate lowercases both sides before comparing — an operator passing
   `acme/project` with a canonical `Acme/Project` parent on GitHub passes the
   gate, while a genuinely wrong upstream still fails.
 - Probe `refs/heads/main` explicitly for both upstream and fork; never fall
