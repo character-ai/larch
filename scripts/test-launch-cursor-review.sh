@@ -51,7 +51,7 @@ assert_no_artifacts() {
     local label="$1"
     local output="$2"
     local suffix
-    for suffix in "" ".prompt" ".sidecar" ".done" ".inner.done" ".meta" ".diag" ".json"; do
+    for suffix in "" ".prompt" ".sidecar" ".done" ".inner.done" ".meta" ".diag" ".json" ".dirty-tree" ".untracked-baseline"; do
         if [[ -e "${output}${suffix}" ]]; then
             fail "$label: unexpected artifact ${output}${suffix}"
         else
@@ -129,6 +129,8 @@ assert_grep "case B outer launcher" "^OUTER_LAUNCHER=$REPO_ROOT/scripts/launch-c
 assert_grep "case B outer prompt" "^OUTER_LAUNCHER_PROMPT_FILE=${OUT_B}.prompt$" "${OUT_B}.meta"
 assert_grep "case B workdir" "^OUTER_LAUNCHER_WORKDIR=$(pwd -P)$" "${OUT_B}.meta"
 assert_equals "case B prompt sidecar" "original prompt" "$(cat "${OUT_B}.prompt")"
+assert_grep "case B dirty-tree sidecar status" "^STATUS=" "${OUT_B}.dirty-tree"
+assert_grep "case B dirty-tree sidecar mode" "^MODE=baseline$" "${OUT_B}.dirty-tree"
 
 # Case C: --prompt-file preserves trailing newlines through the wrapper prompt.
 OUT_C="$TMPDIR/cursor-c.txt"
@@ -438,6 +440,13 @@ if [[ -s "${OUT_AK3}.meta" ]] && grep -Fq 'CMD_JSON=[]' "${OUT_AK3}.meta"; then
     pass
 else
     fail "case AK3 preflight failure must synthesize stub .meta with empty CMD_JSON"
+fi
+if [[ -s "${OUT_AK3}.dirty-tree" ]] \
+   && grep -Fq 'STATUS=unknown' "${OUT_AK3}.dirty-tree" \
+   && grep -Fq 'REASON=preflight-short-circuit-no-agent-ran' "${OUT_AK3}.dirty-tree"; then
+    pass
+else
+    fail "case AK3 preflight failure must synthesize unknown dirty-tree sidecar (no detector ran; consumers must route to recovery-safe handling, not treat as launcher-proven clean)"
 fi
 
 # Case TM (review FINDING_10): the EXIT trap MUST emit a vendor timing

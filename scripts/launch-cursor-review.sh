@@ -129,6 +129,42 @@ else
 fi
 
 WRAPPER_PID=""
+DIRTY_TREE_WRITTEN=false
+UNTRACKED_BASELINE="${OUTPUT}.untracked-baseline"
+DIRTY_TREE_SIDECAR="${OUTPUT}.dirty-tree"
+
+_write_dirty_tree_sidecar() {
+    [[ -n "$OUTPUT" ]] || return 0
+    [[ "$DIRTY_TREE_WRITTEN" == "false" ]] || return 0
+    if [[ -x "$SCRIPT_DIR/check-mid-run-dirty-tree.sh" ]]; then
+        "$SCRIPT_DIR/check-mid-run-dirty-tree.sh" --mode baseline --baseline "$UNTRACKED_BASELINE" --sidecar "$DIRTY_TREE_SIDECAR" >/dev/null 2>&1 || true
+    fi
+    DIRTY_TREE_WRITTEN=true
+}
+
+_write_unknown_dirty_tree_sidecar() {
+    # Used by the auth-preflight short-circuit when no agent ran. We have
+    # NOT probed the working tree (no `check-mid-run-dirty-tree.sh` call),
+    # so emit STATUS=unknown rather than STATUS=clean. Pre-launch tracked
+    # or staged edits would otherwise be silently masked when consumers
+    # treat a present sidecar with STATUS=clean as "launcher proved the
+    # tree clean." STATUS=unknown routes consumers through the same
+    # recovery-safe path as a real detector failure.
+    local reason="$1"
+    local tmp="${DIRTY_TREE_SIDECAR}.tmp.$$"
+    {
+        printf 'STATUS=unknown\n'
+        printf 'MODE=baseline\n'
+        if [[ -r "$UNTRACKED_BASELINE" ]]; then
+            printf 'UNTRACKED_BASELINE=present\n'
+        else
+            printf 'UNTRACKED_BASELINE=missing\n'
+        fi
+        printf 'REASON=%s\n' "$reason"
+    } > "$tmp" 2>/dev/null && mv -f "$tmp" "$DIRTY_TREE_SIDECAR" 2>/dev/null || rm -f "$tmp" 2>/dev/null || true
+    DIRTY_TREE_WRITTEN=true
+}
+
 # shellcheck disable=SC2329,SC2317  # body invoked indirectly by the EXIT trap below.
 _publish_done_on_exit() {
     # The shell exit status is fixed at trap entry; this trap only publishes sidecars.
@@ -139,6 +175,7 @@ _publish_done_on_exit() {
         kill "$WRAPPER_PID" 2>/dev/null || true
         wait "$WRAPPER_PID" 2>/dev/null || true
     fi
+    _write_dirty_tree_sidecar
     if [[ -f "${OUTPUT}.inner.done" ]]; then
         mv -f "${OUTPUT}.inner.done" "${OUTPUT}.done" 2>/dev/null || true
     else
@@ -171,6 +208,8 @@ RUN_EXTERNAL="$SCRIPT_DIR/run-external-agent.sh"
 SIDECAR="${OUTPUT}.sidecar"
 PROMPT_FILE_SIDECAR="${OUTPUT}.prompt"
 printf '%s' "$PROMPT" > "$PROMPT_FILE_SIDECAR"
+rm -f "$DIRTY_TREE_SIDECAR" "$UNTRACKED_BASELINE" "${DIRTY_TREE_SIDECAR}.tracked-paths" "${DIRTY_TREE_SIDECAR}.new-untracked-paths"
+"$SCRIPT_DIR/snapshot-untracked.sh" --output "$UNTRACKED_BASELINE" --nul
 
 # Run Cursor auth preflight. On preflight failure (Darwin + empty
 # CURSOR_API_KEY + missing `cursor-user` keychain entry), synthesize the
@@ -197,6 +236,7 @@ if [[ "$PREFLIGHT_RC" != "0" ]]; then
         printf 'OUTPUT_FILE=%s\n' "$OUTPUT"
         printf 'CMD_JSON=[]\n'
     } > "${OUTPUT}.meta" 2>/dev/null || true
+    _write_unknown_dirty_tree_sidecar "preflight-short-circuit-no-agent-ran"
     # `.done` is the last artifact written so polling collectors see all
     # other sidecars in place once they observe `.done`. The wrapper's trap
     # writes the EXIT_CODE; we mirror that by writing the preflight RC.
@@ -298,5 +338,6 @@ if [[ -s "$OUTPUT" ]]; then
     fi
 fi
 
+_write_dirty_tree_sidecar
 cursor_launcher_promote_inner_done "$OUTPUT"
 exit "$EXIT_CODE"

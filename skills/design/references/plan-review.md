@@ -65,6 +65,8 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1860 --substant
 
 Only include `--write-health` if `SESSION_ENV_PATH` is non-empty. Output paths include up to 4 Cursor archetype paths (`cursor-plan-{arch,edge,innovation,pragmatic}-output.txt`) and up to 4 Codex archetype paths (`codex-primary-plan-{arch,edge,innovation,pragmatic}-output.txt`). When Cursor is unavailable and Codex was used as fallback, those paths are `codex-fallback-cursor-plan-{arch,...}-output.txt`. When Codex is unavailable and Cursor was used as fallback, those are `cursor-fallback-codex-plan-{arch,...}-output.txt`. Omit paths for slots where a Claude subagent fallback was launched instead.
 
+Immediately after this collection returns, run the Mid-Run Dirty-Tree Probe Contract from `heavy-worker.md` for `STAGE=plan-review-collection`.
+
 Parse the structured output for each reviewer's `STATUS` and `REVIEWER_FILE`. For any reviewer with `STATUS` not `OK`, follow the **Runtime Timeout Fallback** procedure in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md`. Read valid output files.
 
 1. Parse each reviewer's output for findings. External reviewers produce single-list output. Extract `[OUT_OF_SCOPE]`-prefixed findings as OOS observations; remaining findings are in-scope. Also merge any fallback Claude subagent findings (when externals were unavailable) into the in-scope list, attributing them as `Code`. Attribute archetype findings with their tool+archetype label (Cursor-Arch, Cursor-Edge, Cursor-Innovation, Cursor-Pragmatic, Codex-Arch, Codex-Edge, Codex-Innovation, Codex-Pragmatic — or the fallback variant when applicable) for the competition scoreboard.

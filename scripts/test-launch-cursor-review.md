@@ -26,6 +26,10 @@ effects.
   the outer launcher instead of the inner `cursor agent` command.
 - `${OUTPUT}.prompt` stores the original unwrapped prompt byte-for-byte, and
   `--prompt-file` preserves trailing newlines through the max-mode wrapper.
+- `${OUTPUT}.dirty-tree` is published before public completion and carries the
+  baseline-mode `check-mid-run-dirty-tree.sh` contract; auth-preflight
+  short-circuit publishes `STATUS=clean` with
+  `REASON=preflight-short-circuit-no-agent-ran`.
 - The launcher EXIT trap promotes an existing `.inner.done` or writes a
   synthetic `99` if the wrapper failed before producing one; abnormal exits may
   leave raw JSON in `${OUTPUT}` because post-processing was interrupted.

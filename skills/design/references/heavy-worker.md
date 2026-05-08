@@ -56,6 +56,10 @@ NEVER return to the parent while any sketch, dialectic debater, dialectic judge,
 
 After every parallel-launch block, the next required action is the matching foreground collection step. Do not surface back to the parent until that collector has returned and all required artifacts below have been finalized. This is the heavy-worker-specific counterpart to the AGENTS.md rule forbidding Monitor or Bash polling loops to watch a one-shot background job; foreground collection is the synchronization point.
 
+## Mid-Run Dirty-Tree Probe Contract
+
+After each external collection point, consult launcher `${OUTPUT}.dirty-tree` sidecars and run `${CLAUDE_PLUGIN_ROOT}/scripts/check-mid-run-dirty-tree.sh --mode checkpoint`: Step 2a sketch collection, Step 2a.5 dialectic-debate collection, Step 2a.5 dialectic-judge collection, and Step 3 plan-review collection. If any sidecar or checkpoint reports `STATUS=dirty` or `STATUS=unknown`, write `$DESIGN_TMPDIR/dirty-tree-detected.env` with `STATUS=<status>`, `STAGE=<collection-boundary>`, and `RECOVERY_REQUIRED=true`, then return `DESIGN_HEAVY=failed REASON=dirty-tree`. The parent `/design` or `/implement` owns `AskUserQuestion` recovery. This prompt is not suppressed by `--auto`.
+
 ## Artifact Contract
 
 Write these files under `$DESIGN_TMPDIR/`:
@@ -69,6 +73,7 @@ Write these files under `$DESIGN_TMPDIR/`:
 - `rejected-findings.md` (may be empty)
 - `oos.md` (may be empty; parent `/implement` also consumes `$(dirname "$SESSION_ENV_PATH")/oos-accepted-design.md` for accepted OOS filing)
 - `architecture-diagram.md` when generated
+- `dirty-tree-detected.env` when a collection boundary detects dirty or unknown working-tree state
 
 Sentinel content such as `NO_CONTESTED_DECISIONS` belongs inside the relevant artifact body, never as a manifest value.
 

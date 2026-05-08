@@ -38,6 +38,7 @@ Plugin ships the entire repo. **Runtime surface**: `skills/`, `agents/`, `hooks/
 ## Conventions
 
 - Follow recent commit history style.
+- Single-runner invariant: Run only one `/implement` and one `/fix-issue` per repository at a time. The dirty-tree guards in `launch-cursor-review.sh` and `launch-codex-review.sh` detect mid-run pollution but do not serialize concurrent runners.
 - Run `gh pr create` through the skill, not manually.
 - Run `gh issue create` through `/larch:issue`, not manually. Scripts under `scripts/` and `skills/*/scripts/` (e.g., hooks) may continue to call `gh issue create` directly — the rule targets interactive / assistant-driven issue creation only.
 - Slack env vars are optional; skills degrade gracefully when absent.

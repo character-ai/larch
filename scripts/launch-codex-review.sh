@@ -23,6 +23,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"
+# shellcheck source=scripts/lib-codex-launcher-common.sh
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib-codex-launcher-common.sh"
 
 # shellcheck disable=SC2317,SC2329 # invoked indirectly by the EXIT trap.
 _emit_timing_record() {
@@ -41,11 +44,11 @@ _emit_timing_record() {
         --status "$status" \
         >/dev/null 2>&1 || true
 }
-trap '_emit_timing_record $?' EXIT
 
 OUTPUT=""
 TIMEOUT=""
 PROMPT=""
+PROMPT_FILE=""
 AGENT_FILE=""
 MODE=""
 DESCRIPTION_TEXT=""
@@ -58,6 +61,7 @@ while [[ $# -gt 0 ]]; do
         --output) OUTPUT="${2:?--output requires a value}"; shift 2 ;;
         --timeout) TIMEOUT="${2:?--timeout requires a value}"; shift 2 ;;
         --prompt) PROMPT="${2:?--prompt requires a value}"; shift 2 ;;
+        --prompt-file) PROMPT_FILE="${2:?--prompt-file requires a value}"; shift 2 ;;
         --agent-file) AGENT_FILE="${2:?--agent-file requires a value}"; shift 2 ;;
         --mode) MODE="${2:?--mode requires a value}"; shift 2 ;;
         --description-text) DESCRIPTION_TEXT="${2:?--description-text requires a value}"; shift 2 ;;
@@ -74,13 +78,12 @@ fi
 if [[ -z "$TIMEOUT" ]]; then
     echo "launch-codex-review.sh: --timeout is required" >&2; exit 2
 fi
-: "${TIMING_TASK_KIND:=codex-review}"
-TIMING_START_S=$(date +%s)
 
 # Validate --output BEFORE installing traps/sidecars so the same byte-exact
 # .meta-sidecar contract enforced for the Cursor review launcher applies on
 # the Codex path too. Mirrors scripts/launch-cursor-review.sh:60-62.
 # shellcheck source=scripts/lib-validate-meta-path.sh
+# shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib-validate-meta-path.sh"
 validate_meta_scalar_path --output "$OUTPUT" || exit 1
 
@@ -100,20 +103,72 @@ if [[ -n "${IMPLEMENT_TMPDIR:-}" && -s "${IMPLEMENT_TMPDIR}/claude-source.env" ]
     export LARCH_CLAUDE_SOURCE_FILE="${IMPLEMENT_TMPDIR}/claude-source.env"
 fi
 
+_src_count=0
+[[ -n "$PROMPT" ]] && _src_count=$((_src_count + 1))
+[[ -n "$AGENT_FILE" ]] && _src_count=$((_src_count + 1))
+[[ -n "$PROMPT_FILE" ]] && _src_count=$((_src_count + 1))
+if [[ "$_src_count" -gt 1 ]]; then
+    echo "launch-codex-review.sh: --prompt, --agent-file, and --prompt-file are mutually exclusive" >&2
+    exit 2
+fi
+if [[ "$_src_count" -eq 0 ]]; then
+    echo "launch-codex-review.sh: one of --prompt, --agent-file, --prompt-file is required" >&2
+    exit 2
+fi
+
+: "${TIMING_TASK_KIND:=codex-review}"
+TIMING_START_S=$(date +%s)
+
+MODEL_ARGS_TMP=""
+DIRTY_TREE_WRITTEN=false
+UNTRACKED_BASELINE="${OUTPUT}.untracked-baseline"
+DIRTY_TREE_SIDECAR="${OUTPUT}.dirty-tree"
+
+# shellcheck disable=SC2329,SC2317 # body invoked indirectly by the EXIT trap below.
+_write_dirty_tree_sidecar() {
+    [[ -n "$OUTPUT" ]] || return 0
+    [[ "$DIRTY_TREE_WRITTEN" == "false" ]] || return 0
+    if [[ -x "$SCRIPT_DIR/check-mid-run-dirty-tree.sh" ]]; then
+        "$SCRIPT_DIR/check-mid-run-dirty-tree.sh" --mode baseline --baseline "$UNTRACKED_BASELINE" --sidecar "$DIRTY_TREE_SIDECAR" >/dev/null 2>&1 || true
+    fi
+    DIRTY_TREE_WRITTEN=true
+}
+
+# shellcheck disable=SC2329,SC2317 # body invoked indirectly by the EXIT trap below.
+_codex_exit_dispatcher() {
+    local rc=${1:-$?}
+    _emit_timing_record "$rc"
+    [[ -n "$MODEL_ARGS_TMP" ]] && rm -f "$MODEL_ARGS_TMP"
+    _write_dirty_tree_sidecar
+    codex_launcher_promote_inner_done "$OUTPUT"
+    exit "$rc"
+}
+# shellcheck disable=SC2154 # _rc is assigned inside the trap string at runtime.
+trap '_rc=$?; _codex_exit_dispatcher "$_rc"' EXIT
+
+if [[ -n "$PROMPT_FILE" ]]; then
+    if ! PROMPT=$({ cat -- "$PROMPT_FILE"; _cat_status=$?; printf X; exit "$_cat_status"; }); then
+        echo "launch-codex-review.sh: failed to read --prompt-file $PROMPT_FILE" >&2
+        exit 1
+    fi
+    PROMPT=${PROMPT%X}
+fi
+
 if [[ -n "$AGENT_FILE" ]]; then
     RENDER_ARGS=(--agent-file "$AGENT_FILE" --mode "$MODE")
     [[ -n "$DESCRIPTION_TEXT" ]] && RENDER_ARGS+=(--description-text "$DESCRIPTION_TEXT")
     [[ -n "$SCOPE_FILES" ]] && RENDER_ARGS+=(--scope-files "$SCOPE_FILES")
     [[ "$COMPETITION_NOTICE" == "true" ]] && RENDER_ARGS+=(--competition-notice)
     PROMPT=$("$SCRIPT_DIR/render-specialist-prompt.sh" "${RENDER_ARGS[@]}")
-elif [[ -z "$PROMPT" ]]; then
-    echo "launch-codex-review.sh: either --prompt or --agent-file is required" >&2; exit 2
 fi
 
 OUTPUT_DIR=$(dirname -- "$OUTPUT")
 CANON_OUTPUT_DIR=$(cd "$OUTPUT_DIR" && pwd -P)
 MODEL_ARGS_TMP=$(mktemp)
-trap 'rm -f "$MODEL_ARGS_TMP"' EXIT
+PROMPT_FILE_SIDECAR="${OUTPUT}.prompt"
+printf '%s' "$PROMPT" > "$PROMPT_FILE_SIDECAR"
+rm -f "$DIRTY_TREE_SIDECAR" "$UNTRACKED_BASELINE" "${DIRTY_TREE_SIDECAR}.tracked-paths" "${DIRTY_TREE_SIDECAR}.new-untracked-paths"
+"$SCRIPT_DIR/snapshot-untracked.sh" --output "$UNTRACKED_BASELINE" --nul
 if "$SCRIPT_DIR/agent-model-args.sh" --tool codex --with-effort > "$MODEL_ARGS_TMP"; then
     :
 else
@@ -129,6 +184,7 @@ SIDECAR="${OUTPUT}.sidecar"
 
 EXIT_CODE=0
 if : > "$SIDECAR" 2>/dev/null; then
+    RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX=.inner.done \
     "$RUN_EXTERNAL" \
         --tool codex \
         --output "$OUTPUT" \
@@ -142,6 +198,7 @@ if : > "$SIDECAR" 2>/dev/null; then
         2>>"$SIDECAR" || EXIT_CODE=$?
 else
     SIDECAR=/dev/null
+    RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX=.inner.done \
     "$RUN_EXTERNAL" \
         --tool codex \
         --output "$OUTPUT" \
@@ -154,6 +211,8 @@ else
         "$PROMPT" \
         2>/dev/null || EXIT_CODE=$?
 fi
+
+codex_launcher_append_outer_meta "${OUTPUT}.meta" "$SCRIPT_DIR/launch-codex-review.sh" "$PROMPT_FILE_SIDECAR" "$PWD"
 
 N=$(awk '/^tokens used$/ { getline n; gsub(",","",n); last=n } END { print last }' "$SIDECAR" 2>/dev/null || true)
 if [[ "$N" =~ ^[0-9]+$ ]]; then

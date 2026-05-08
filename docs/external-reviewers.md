@@ -32,6 +32,8 @@ External reviewers are launched via the `run-external-agent.sh` wrapper script, 
 
 During review and voting phases, reviewers are launched with `run_in_background: true` so they run concurrently with other work. (Negotiation rounds in `/research` run synchronously.)
 
+Cursor and Codex review launchers also publish a post-invocation dirty-tree sidecar at `${OUTPUT}.dirty-tree` before `${OUTPUT}.done`. The sidecar uses the `scripts/check-mid-run-dirty-tree.sh` contract: `STATUS=clean|dirty|unknown`, `MODE=baseline`, `UNTRACKED_BASELINE=present|missing`, optional NUL-delimited `TRACKED_PATHS_FILE` / `NEW_UNTRACKED_PATHS_FILE`, and `REASON` for dirty or unknown outcomes. Empty-output retries re-enter the outer launcher, so retry outputs get their own sidecar next to the retry file, for example `codex-retry.txt.dirty-tree`. `STATUS=unknown` is handled like dirty and prompts recovery because the launcher could not prove the tree is clean. The guard is post-hoc detection, not sandboxing; Cursor and Codex still run with the user's filesystem privileges while the reviewer is active.
+
 ## Launch Order
 
 External reviewers are always launched in a specific order to maximize parallelism — **slowest first**:

@@ -565,19 +565,26 @@ if [[ ${#RETRY_FILES[@]} -gt 0 ]]; then
             case "$META_OUTER_LAUNCHER" in
                 *..*) mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: OUTER_LAUNCHER contains .."; continue ;;
             esac
-            _expected_launcher="$SCRIPT_DIR/launch-cursor-review.sh"
+            _launcher_base=$(basename "$META_OUTER_LAUNCHER")
+            case "$META_TOOL:$_launcher_base" in
+                cursor:launch-cursor-review.sh) _expected_launcher="$SCRIPT_DIR/launch-cursor-review.sh" ;;
+                codex:launch-codex-review.sh) _expected_launcher="$SCRIPT_DIR/launch-codex-review.sh" ;;
+                cursor:*) _expected_launcher="$SCRIPT_DIR/launch-cursor-review.sh" ;;
+                codex:*) _expected_launcher="$SCRIPT_DIR/launch-codex-review.sh" ;;
+                *) mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: OUTER_LAUNCHER not canonical launch-cursor-review.sh or launch-codex-review.sh"; continue ;;
+            esac
             if ! _expected_launcher_dir=$(cd "$(dirname "$_expected_launcher")" 2>/dev/null && pwd -P 2>/dev/null); then
-                mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: OUTER_LAUNCHER not canonical launch-cursor-review.sh"
+                mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: OUTER_LAUNCHER not canonical $(basename "$_expected_launcher")"
                 continue
             fi
             if ! _candidate_launcher_dir=$(cd "$(dirname "$META_OUTER_LAUNCHER")" 2>/dev/null && pwd -P 2>/dev/null); then
-                mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: OUTER_LAUNCHER not canonical launch-cursor-review.sh"
+                mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: OUTER_LAUNCHER not canonical $(basename "$_expected_launcher")"
                 continue
             fi
             _expected_launcher_canonical="$_expected_launcher_dir/$(basename "$_expected_launcher")"
             _candidate_canonical="$_candidate_launcher_dir/$(basename "$META_OUTER_LAUNCHER")"
             if [[ "$_candidate_canonical" != "$_expected_launcher_canonical" ]]; then
-                mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: OUTER_LAUNCHER not canonical launch-cursor-review.sh"
+                mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: OUTER_LAUNCHER not canonical $(basename "$_expected_launcher")"
                 continue
             fi
             if [[ ! -f "$META_OUTER_LAUNCHER" || -L "$META_OUTER_LAUNCHER" || ! -x "$META_OUTER_LAUNCHER" ]]; then
