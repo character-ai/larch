@@ -639,10 +639,10 @@ Runs only when `CURRENT_BRANCH == "main"`. Detached HEAD also reports `IS_MAIN=t
 Print: `🔃 1.m: design plan | update main`
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/rebase-push.sh --no-push [--base-remote upstream --base-ref main when forked_target=true]
+${CLAUDE_PLUGIN_ROOT}/scripts/rebase-push.sh --no-push
 ```
 
-`--skip-if-pushed` is intentionally NOT used here: `main` is always on origin so that flag would always short-circuit. `SKIPPED_ALREADY_FRESH=true` keeps this call cheap when local `main` already matches `origin/main`.
+When `forked_target=true`, append `--base-remote upstream --base-ref main` to the command above so freshness compares against the upstream base (defaults preserve `origin/main`). `--skip-if-pushed` is intentionally NOT used here: `main` is always on origin so that flag would always short-circuit. `SKIPPED_ALREADY_FRESH=true` keeps this call cheap when local `main` already matches `origin/main`.
 
 When Step 0 ran with `continue_from_current=false`, its default preflight already fetched and rebased `main`, so this Step 1.m call should normally short-circuit with `SKIPPED_ALREADY_FRESH=true`. Keep the macro here for the `continue_from_current=true` path and for idempotent protection if Step 0's freshness work was already satisfied.
 
@@ -1373,10 +1373,10 @@ Final freshness gate before Step 9. Unlike Step 7a.r's macro call, Step 8b does 
 Print: `🔃 8b: rebase`
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/rebase-push.sh --no-push [--base-remote upstream --base-ref main when forked_target=true]
+${CLAUDE_PLUGIN_ROOT}/scripts/rebase-push.sh --no-push
 ```
 
-Capture the exit code as `rc`. Branch:
+When `forked_target=true`, append `--base-remote upstream --base-ref main` to the command above so freshness compares against the upstream base (defaults preserve `origin/main`). Capture the exit code as `rc`. Branch:
 
 - **Exit 0** with stdout containing `SKIPPED_ALREADY_FRESH=true`: HEAD already at latest main. Silently continue. Proceed to the force-push gate below.
 - **Exit 0** otherwise (rebase actually moved HEAD): print `✅ 8b: rebase — rebased onto latest main (<elapsed>)`. Proceed to the force-push gate below.
