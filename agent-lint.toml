@@ -1047,19 +1047,4 @@ exclude = [
   # scripts/test-ci-status.md.
   "scripts/test-ci-status.sh",
   "scripts/test-ci-status.md",
-  # scripts/gh-pr-body-read.sh wraps `gh pr view --json body` to a file.
-  # Currently only the sibling contract scripts/gh-pr-body-read.md
-  # documents it; the previous primary caller
-  # (scripts/extract-closes-issue-from-pr.sh) inlined `gh pr view --json body`
-  # in a later refactor, leaving the helper structurally referenced only
-  # via its own .md and via the test-implement-structure.sh assertion
-  # (11d-1) that pins zero invocations of it from
-  # references/rebase-rebump-subprocedure.md (Phase 5 retarget; closes #353).
-  # The harness reference is a negative-presence assertion, not a structured
-  # invocation; agent-lint treats the helper as dead. Excluded so the
-  # broader fork-CI work (umbrella #1415) can land without an unrelated
-  # cleanup of this helper. Follow-up: file an OOS issue to either restore
-  # a real caller or retire the helper + harness assertion entry as a pair.
-  "scripts/gh-pr-body-read.sh",
-  "scripts/gh-pr-body-read.md",
 ]

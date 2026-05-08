@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [17.0.7] - 2026-05-08
+
+### Changed
+
+- Resolve #1469: misc SIMPLE cleanups rollup. **B1.** `docs/installation-and-setup.md` makes explicit that `jq` is required for halt-protection hooks (PostToolUse `hook-post-design.sh` + Stop `hook-stop-fail-close.sh`); without `jq`, both hooks short-circuit at their `command -v jq` probe and halt protection is silently disabled. **B2.** `scripts/implement-finalize.sh` surfaces the previously-silent `touch "$IMPLEMENT_TMPDIR/.run-cleaned-up"` failure via `warn_line` (writes to stdout and increments `FINALIZE_WARNINGS`) so an ENOSPC / FS-permission / read-only-mount mishap does not leave the post-/design Stop hook blocking on the next session. Best-effort posture preserved (no exit). **C1.** Retire `scripts/gh-pr-body-read.{sh,md}` (acknowledged debt — no caller after `scripts/extract-closes-issue-from-pr.sh` inlined `gh pr view --json body`); drop the corresponding `agent-lint.toml` exclusion. The negative-presence `(11d-1)` assertion in `scripts/test-implement-structure.sh` is unchanged and still pins zero invocations from `references/rebase-rebump-subprocedure.md`. **C2.** `scripts/rebase-push.sh` inline comments at the script header, exit-code docs, stdout-contract block, and the `--no-push` early-exit guard now reference `$BASE_TARGET` / "the configured base ref" in place of the literal `origin/main`, matching the parameterized code (`--base-remote` / `--base-ref` defaults preserve `origin` / `main`). **A.** Item A from the rollup (`scripts/tracking-issue-write.sh:91-104` byte-vs-character header reconciliation) was already addressed by PR #1443 — verified, no edit.
+
 ## [17.0.6] - 2026-05-08
 
 ### Fixed
