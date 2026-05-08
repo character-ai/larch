@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.15.4] - 2026-05-07
+
+### Changed
+
+- Resolve #1468: align downstream catalogs/allowlists with the actual catalog of shipped larch skills. `README.md`'s `## Skills` HTML table now lists `/upgrade-larch`. `docs/skills.md` gains a `## /upgrade-larch` section plus matching TOC entry, and recovers a missing `[/skill-evolver](#skill-evolver)` TOC bullet whose section already existed below. `.claude/settings.json` `permissions.allow` adds 13 missing `Skill(...)` entries (11 fully-qualified `larch:*` forms documented in the strict-permissions snippet — `larch:alias`, `larch:create-skill`, `larch:design`, `larch:fix-issue`, `larch:im`, `larch:imaq`, `larch:implement`, `larch:imq`, `larch:issue`, `larch:research`, `larch:review` — plus `Skill(upgrade-larch)` and `Skill(larch:upgrade-larch)` matching the new README row). All entries inserted in strict ASCII-codepoint order; no existing entries removed. Documentation/configuration alignment only; no functional code changes.
+
 ## [15.15.3] - 2026-05-07
 
 ### Fixed
