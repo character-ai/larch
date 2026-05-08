@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [18.0.6] - 2026-05-08
+
+### Changed
+
+- `scripts/read-session-env-key.sh` now tolerates an explicitly empty `--file ""` when `--default` is set (emits the default and exits 0). Standalone `/design` and `/review` invocations whose `SESSION_ENV_PATH` is intentionally empty no longer emit `--file is required` stderr noise. An OMITTED `--file` flag still keeps the usage error so caller bugs are not masked.
+
+### Fixed
+
+- `/implement` Step 13.5 / Step 14 state-file snippet now mirrors the full four-step `CLONE_TAG` algorithm (basename, sanitize, truncate to 32 chars, empty-fallback) used by `scripts/session-setup.sh` and `scripts/implement-finalize.sh::clone_basename_prefix`, so `EXPECTED_TMPDIR_BASENAME_PREFIX` matches the actual session tmpdir basename and Step 18's `verify_cleanup_target` no longer refuses rm-rf on every standard run. Closes #1563.
+
 ## [18.0.5] - 2026-05-08
 
 ### Fixed

@@ -76,6 +76,41 @@ assert_eq "A.6 missing with default" "fallback" "$got"
 got=$("$READ_SCRIPT" --file "$ENV_FILE" --key EMPTY --default fallback)
 assert_eq "A.6b present-empty with default" "fallback" "$got"
 
+# A.6c — empty --file with --default returns the default (closes #1563
+# round-2 review: standalone /design and /review pass an empty
+# SESSION_ENV_PATH and would otherwise emit "--file is required" stderr
+# noise, also tripping `set -e` in callers).
+got=$("$READ_SCRIPT" --file "" --key WHATEVER --default fallback)
+assert_eq "A.6c empty file with default" "fallback" "$got"
+
+# A.6d — empty --file without --default keeps the usage error (exit 1).
+if "$READ_SCRIPT" --file "" --key WHATEVER >/dev/null 2>&1; then
+    fail "A.6d: empty --file without --default should exit 1"
+else
+    pass
+fi
+
+# A.6e — empty --file with --default but missing --key still errors with
+# "--key is required" (closes #1563 round-3 review: --key validation
+# must run before the empty-file/default branch so an invocation that
+# forgets --key cannot silently print the default).
+if "$READ_SCRIPT" --file "" --default fallback >/dev/null 2>&1; then
+    fail "A.6e: empty --file + --default without --key should exit 1"
+else
+    pass
+fi
+
+# A.6f — OMITTED --file (not just explicitly empty) with --default still
+# errors with "--file is required" (closes #1563 round-4 review: the
+# default-on-empty-file tolerance is gated on --file being explicitly
+# present so a caller who simply forgot to pass --file does NOT silently
+# get the default and mask caller bugs).
+if "$READ_SCRIPT" --key X --default fallback >/dev/null 2>&1; then
+    fail "A.6f: omitted --file + --default + --key should exit 1"
+else
+    pass
+fi
+
 # A.7 — KEY prefix collision: a key whose name is a prefix of another must
 # match exactly (not match the longer-named key's line). Locks the
 # whole-key-plus-equals match in the corrected awk.

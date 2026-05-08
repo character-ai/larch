@@ -4,9 +4,9 @@
 
 ## Inputs
 
-- `--file PATH` (required) — session-env file path. Must be readable.
+- `--file PATH` (required, must be **explicitly present**) — session-env file path. **Explicitly empty or unreadable `PATH` is tolerated when `--default` is set**: the default value is emitted on stdout and the script exits 0 (parallel handling for both empty and unreadable file). This lets standalone `/design` and `/review` invocations — where `SESSION_ENV_PATH` is intentionally empty — call the script in their token-ledger rehydration blocks without stderr noise or `set -e` trips. The flag must still be **explicitly present** in argv: an OMITTED `--file` always keeps the usage error and exit 1, even when `--default` is set, so a caller who simply forgot the flag cannot silently get the default and mask caller bugs. When `--default` is NOT set, an empty or unreadable `PATH` keeps the usage error and exit 1.
 - `--key KEY` (required) — `KEY` from a `KEY=VALUE` line.
-- `--default VALUE` (optional) — value to emit when the key is absent or has an empty value. When omitted, missing/empty keys produce empty stdout (caller applies its own fallback).
+- `--default VALUE` (optional) — value to emit when the key is absent or has an empty value, OR when `--file` is **explicitly** empty / unreadable. When omitted, missing/empty keys produce empty stdout (caller applies its own fallback) and an empty/unreadable `--file` keeps the usage error. An OMITTED `--file` always keeps the usage error regardless of `--default`.
 
 ## Output
 
