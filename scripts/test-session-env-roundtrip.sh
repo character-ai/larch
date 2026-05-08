@@ -1,0 +1,135 @@
+#!/usr/bin/env bash
+# test-session-env-roundtrip.sh — regression harness for issue #1513.
+#
+# Covers:
+#   A. read-session-env-key.sh extracts values containing '=' without
+#      truncation (was: awk -F= '{print $2}' truncated at first '=').
+#   B. write-session-env.sh validates --timing-ledger paths via the same
+#      regex/length guard used for --token-session-id and --claude-source-file.
+
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
+READ_SCRIPT="$REPO_ROOT/scripts/read-session-env-key.sh"
+WRITE_SCRIPT="$REPO_ROOT/scripts/write-session-env.sh"
+PASS=0
+FAIL=0
+
+pass() { PASS=$((PASS + 1)); }
+fail() { echo "FAIL: $1" >&2; FAIL=$((FAIL + 1)); }
+
+assert_eq() {
+    if [[ "$2" == "$3" ]]; then pass; else fail "$1: expected '$2' got '$3'"; fi
+}
+
+assert_contains() {
+    case "$3" in
+        *"$2"*) pass ;;
+        *) fail "$1: missing '$2' in: $3" ;;
+    esac
+}
+
+TMPDIR_TEST="$(mktemp -d "${TMPDIR:-/tmp}/test-session-env-roundtrip.XXXXXX")"
+trap 'rm -rf "$TMPDIR_TEST"' EXIT
+
+# ------------------------------------------------------------
+# A. read-session-env-key.sh — value containing '='
+# ------------------------------------------------------------
+
+ENV_FILE="$TMPDIR_TEST/session-env.sh"
+cat > "$ENV_FILE" <<'EOF'
+SLACK_OK=true
+COMPLEX=a=b=c
+EMPTY=
+ENDS_EQ=foo=
+TRAILING_LIST=k1=v1,k2=v2
+PLAIN=hello
+EOF
+
+# A.1 — value with multiple '=' must not truncate at first separator.
+got=$("$READ_SCRIPT" --file "$ENV_FILE" --key COMPLEX)
+assert_eq "A.1 multi-eq value" "a=b=c" "$got"
+
+# A.2 — empty value reads as empty.
+got=$("$READ_SCRIPT" --file "$ENV_FILE" --key EMPTY)
+assert_eq "A.2 empty value" "" "$got"
+
+# A.3 — trailing '=' preserved.
+got=$("$READ_SCRIPT" --file "$ENV_FILE" --key ENDS_EQ)
+assert_eq "A.3 trailing eq" "foo=" "$got"
+
+# A.4 — comma-separated kv-list value (typical CSV-of-KVs case).
+got=$("$READ_SCRIPT" --file "$ENV_FILE" --key TRAILING_LIST)
+assert_eq "A.4 csv-kv list" "k1=v1,k2=v2" "$got"
+
+# A.5 — plain value still works.
+got=$("$READ_SCRIPT" --file "$ENV_FILE" --key PLAIN)
+assert_eq "A.5 plain value" "hello" "$got"
+
+# A.6 — missing key with --default returns the default.
+got=$("$READ_SCRIPT" --file "$ENV_FILE" --key NOPE --default fallback)
+assert_eq "A.6 missing with default" "fallback" "$got"
+
+# A.7 — KEY prefix collision: a key whose name is a prefix of another must
+# match exactly (not match the longer-named key's line). Locks the
+# whole-key-plus-equals match in the corrected awk.
+cat > "$ENV_FILE" <<'EOF'
+FOO=short
+FOOBAR=long
+EOF
+got=$("$READ_SCRIPT" --file "$ENV_FILE" --key FOO)
+assert_eq "A.7 prefix collision" "short" "$got"
+got=$("$READ_SCRIPT" --file "$ENV_FILE" --key FOOBAR)
+assert_eq "A.7 longer key" "long" "$got"
+
+# ------------------------------------------------------------
+# B. write-session-env.sh — --timing-ledger path validation
+# ------------------------------------------------------------
+
+OUT="$TMPDIR_TEST/out.sh"
+
+# B.1 — valid path is accepted.
+if "$WRITE_SCRIPT" \
+    --output "$OUT" --slack-ok true --repo a/b --repo-unavailable false \
+    --timing-ledger "$TMPDIR_TEST/timing-ledger.tsv" 2>/dev/null; then
+    pass
+else
+    fail "B.1 valid timing-ledger rejected"
+fi
+# Verify the value round-trips through the writer.
+got=$("$READ_SCRIPT" --file "$OUT" --key LARCH_TIMING_LEDGER)
+assert_eq "B.1 value persisted" "$TMPDIR_TEST/timing-ledger.tsv" "$got"
+
+# B.2 — path with disallowed characters is rejected with the expected error.
+if err=$("$WRITE_SCRIPT" \
+    --output "$OUT" --slack-ok true --repo a/b --repo-unavailable false \
+    --timing-ledger "/tmp/bad ledger.tsv" 2>&1); then
+    fail "B.2 path with space accepted: $err"
+else
+    assert_contains "B.2 error message" "Invalid --timing-ledger" "$err"
+fi
+
+# B.3 — overlong path (> 512 chars) is rejected.
+LONG="$(printf '/tmp/%.0s' {1..200})ledger.tsv"  # ~ 800 chars
+if err=$("$WRITE_SCRIPT" \
+    --output "$OUT" --slack-ok true --repo a/b --repo-unavailable false \
+    --timing-ledger "$LONG" 2>&1); then
+    fail "B.3 overlong path accepted"
+else
+    assert_contains "B.3 error message" "Invalid --timing-ledger" "$err"
+fi
+
+# B.4 — empty / absent --timing-ledger continues to be accepted.
+if "$WRITE_SCRIPT" \
+    --output "$OUT" --slack-ok true --repo a/b --repo-unavailable false 2>/dev/null; then
+    pass
+else
+    fail "B.4 absent timing-ledger rejected"
+fi
+
+# ------------------------------------------------------------
+# Summary
+# ------------------------------------------------------------
+
+echo "test-session-env-roundtrip.sh: $PASS passed, $FAIL failed"
+[[ $FAIL -eq 0 ]]

@@ -59,7 +59,9 @@ if [ ! -r "$FILE" ]; then
 fi
 
 # Use awk for safe key-based extraction (no source / eval). First match wins.
-VALUE=$(awk -F= -v k="$KEY" '$1==k{print $2; exit}' "$FILE")
+# Print the substring after the first `=` so values containing additional `=`
+# characters are not truncated (parallels session-setup.sh's `value="${line#*=}"`).
+VALUE=$(awk -v k="$KEY" 'BEGIN{kl=length(k)} substr($0,1,kl)==k && substr($0,kl+1,1)=="=" {print substr($0,kl+2); exit}' "$FILE")
 
 if [ -z "$VALUE" ] && [ "$DEFAULT_SET" = "true" ]; then
     printf '%s\n' "$DEFAULT"

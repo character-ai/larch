@@ -1033,6 +1033,16 @@ exclude = [
   # Makefile-only pattern as the other test-* harnesses above.
   "scripts/test-session-setup-repo-fallback.sh",
   "scripts/test-session-setup-repo-fallback.md",
+  # scripts/test-session-env-roundtrip.sh is the offline regression harness
+  # for the session-env script pair (issue #1513): read-session-env-key.sh's
+  # awk extraction of values containing `=`, plus write-session-env.sh's
+  # --timing-ledger regex/length guard. Referenced only from Makefile
+  # (test-session-env-roundtrip target, wired via test-harnesses-1),
+  # docs/linting.md, the read-session-env-key.md sibling contract, and the
+  # sibling contract scripts/test-session-env-roundtrip.md, matching the
+  # same Makefile-only pattern as the other test-* harnesses above.
+  "scripts/test-session-env-roundtrip.sh",
+  "scripts/test-session-env-roundtrip.md",
   # scripts/test-implement-fork-env.sh is the offline regression harness for
   # scripts/implement-fork-env.sh (the pre-Step-0 fork bootstrap helper used
   # by /implement --forked). Referenced only from Makefile

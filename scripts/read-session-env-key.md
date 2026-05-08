@@ -18,4 +18,4 @@ Update this file when the session-env grammar changes (e.g., supporting quoted v
 
 ## Test harness
 
-No sibling regression harness — the wrapper is a one-line awk delegate. Manual smoke verification at write-time covers presence / absence / `--default` paths.
+`scripts/test-session-env-roundtrip.sh` (Makefile target `make test-session-env-roundtrip`, wired via `test-harnesses-1`) covers the awk extraction grammar — including values containing `=`, empty values, trailing `=`, comma-separated KV-list values, and KEY-prefix collisions — together with `scripts/write-session-env.sh`'s `--timing-ledger` validation.

@@ -69,6 +69,11 @@ if [[ -n "$CLAUDE_SOURCE_FILE" && ( ${#CLAUDE_SOURCE_FILE} -gt 512 || ! "$CLAUDE
   exit 1
 fi
 
+if [[ -n "$TIMING_LEDGER" && ( ${#TIMING_LEDGER} -gt 512 || ! "$TIMING_LEDGER" =~ ^[A-Za-z0-9_./~+-]+$ ) ]]; then
+  echo "ERROR=Invalid --timing-ledger: must match ^[A-Za-z0-9_./~+-]{1,512}$" >&2
+  exit 1
+fi
+
 # Build the content
 CONTENT="SLACK_OK=$SLACK_OK
 SLACK_MISSING=$SLACK_MISSING
