@@ -44,6 +44,12 @@ assert_file_contains() {
     assert_contains "$needle" "$content" "$label"
 }
 
+assert_file_not_contains() {
+    local needle=$1 path=$2 label=$3 content
+    content=$(cat "$path" 2>/dev/null || true)
+    assert_not_contains "$needle" "$content" "$label"
+}
+
 assert_rc() {
     local actual=$1 expected=$2 label=$3
     if [ "$actual" -eq "$expected" ]; then
@@ -728,6 +734,9 @@ assert_file_contains "--repo" "$SANDBOX/refresh-anchor-argv.txt" "postbump: anch
 assert_file_contains "IMPLEMENT_TMPDIR=$SANDBOX/tmp" "$SANDBOX/refresh-anchor-env.txt" "postbump: exports IMPLEMENT_TMPDIR to children"
 assert_file_contains "## [17.0.4] -" "$SANDBOX/repo/CHANGELOG.md" "postbump: changelog contains new version"
 assert_file_contains "### Changed" "$SANDBOX/repo/CHANGELOG.md" "postbump: flat bullets default to Changed"
+awk 'prev_blank && /^$/ { print "DOUBLE_BLANK"; exit } /^$/ { prev_blank=1; next } { prev_blank=0 }' \
+    "$SANDBOX/repo/CHANGELOG.md" > "$SANDBOX/blank-check.txt"
+assert_file_not_contains "DOUBLE_BLANK" "$SANDBOX/blank-check.txt" "postbump: changelog has no consecutive blank lines"
 
 # FINDING_1 regression: Unreleased section bullets must be preserved, not consumed.
 cat > "$SANDBOX/repo/CHANGELOG.md" <<'CHANGELOG_UNRELEASED'

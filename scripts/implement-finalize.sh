@@ -435,13 +435,13 @@ changelog_categories_to_markdown() {
     for category in Added Changed Fixed Removed Security; do
         file="$dir/$category"
         [ -s "$file" ] || continue
+        [ "$had_any" = "true" ] && printf '\n' >> "$out"
         had_any=true
         printf '### %s\n\n' "$category" >> "$out"
         while IFS= read -r title || [ -n "$title" ]; do
             [ -n "$title" ] || continue
             printf -- '- %s\n' "$title" >> "$out"
         done < "$file"
-        printf '\n' >> "$out"
     done
     [ "$had_any" = "true" ]
 }
@@ -556,6 +556,7 @@ write_changelog_entry() {
         }
         !inserted && /^## \[/ {
             for (i = 1; i <= en; i++) print e[i]
+            print ""
             inserted = 1
         }
         { print }
