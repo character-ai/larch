@@ -46,6 +46,27 @@ for bad_timeout in nope 0 00 000; do
     assert_grep "bad timeout $bad_timeout message" "must be a positive integer" "$TMPDIR/bad-${bad_timeout}.stderr"
 done
 
+# Issue #1480 Bug #2: defensive --timing-task-kind validation. Empty or
+# flag-like values must be rejected with exit 2 and a clear message, NOT
+# silently consumed (which would either pass `--prompt` as the timing-task-kind
+# value or hit the unknown-flag branch later, masking the original arg-shape
+# defect). The dialectic-execution.md template fix (Bug #1) prevents the LLM
+# from constructing this argv shape in the first place; the launcher
+# validation is defense in depth.
+set +e
+"$LAUNCHER" --output "$TMPDIR/bad-empty-tk.txt" --timeout 5 --timing-task-kind "" --prompt "x" >/dev/null 2>"$TMPDIR/bad-empty-tk.stderr"
+RC=$?
+set -e
+assert_eq "empty timing-task-kind exit" "2" "$RC"
+assert_grep "empty timing-task-kind message" "non-empty, non-flag-like value" "$TMPDIR/bad-empty-tk.stderr"
+
+set +e
+"$LAUNCHER" --output "$TMPDIR/bad-flaglike-tk.txt" --timeout 5 --timing-task-kind --prompt "x" >/dev/null 2>"$TMPDIR/bad-flaglike-tk.stderr"
+RC=$?
+set -e
+assert_eq "flag-like timing-task-kind exit" "2" "$RC"
+assert_grep "flag-like timing-task-kind message" "non-empty, non-flag-like value" "$TMPDIR/bad-flaglike-tk.stderr"
+
 STUB_BIN="$TMPDIR/bin"
 mkdir -p "$STUB_BIN"
 cat > "$STUB_BIN/codex" <<'STUB_CODEX'

@@ -562,6 +562,26 @@ else
     fail K3 "preflight failure on Darwin should emit KV envelope with LAUNCHER_EXIT=2 and actionable SIDECAR_LOG; got stdout=$K3_OUT sidecar=$(cat "$K3_SIDECAR" 2>/dev/null)"
 fi
 
+# Test K4 (issue #1480 Bug #2): defensive --timing-task-kind validation.
+# Empty or flag-like values must be rejected with exit 2 and a clear message.
+# Pass --timing-task-kind first so the new validation fires before any
+# unrelated argv check; required flags below the validation are not reached.
+K4_RC=0
+K4_OUT=$("$LAUNCHER" --timing-task-kind "" 2>&1) || K4_RC=$?
+if [[ "$K4_RC" == "2" ]] && grep -Fq "non-empty, non-flag-like value" <<<"$K4_OUT"; then
+    pass
+else
+    fail K4 "empty timing-task-kind should exit 2 with non-empty-non-flag-like message, got rc=$K4_RC: $K4_OUT"
+fi
+
+K4b_RC=0
+K4b_OUT=$("$LAUNCHER" --timing-task-kind --plan-file 2>&1) || K4b_RC=$?
+if [[ "$K4b_RC" == "2" ]] && grep -Fq "non-empty, non-flag-like value" <<<"$K4b_OUT"; then
+    pass
+else
+    fail K4b "flag-like timing-task-kind should exit 2 with non-empty-non-flag-like message, got rc=$K4b_RC: $K4b_OUT"
+fi
+
 TOTAL=$((PASS_COUNT + FAIL_COUNT))
 if (( FAIL_COUNT == 0 )); then
     echo "PASS: test-cursor-implementer.sh — $PASS_COUNT/$TOTAL assertions"

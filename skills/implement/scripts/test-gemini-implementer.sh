@@ -397,6 +397,26 @@ else
     fail 9 "leading-zero timeout 010 should be accepted with standard envelope; got: $OUT"
 fi
 
+# Test 10 (issue #1480 Bug #2): defensive --timing-task-kind validation.
+# Empty or flag-like values must be rejected with exit 2 and a clear message.
+# Pass --timing-task-kind first so the new validation fires before any
+# unrelated argv check; required flags below the validation are not reached.
+T10_RC=0
+T10_OUT=$("$LAUNCHER" --timing-task-kind "" 2>&1) || T10_RC=$?
+if [[ "$T10_RC" == "2" ]] && grep -Fq "non-empty, non-flag-like value" <<<"$T10_OUT"; then
+    pass
+else
+    fail 10 "empty timing-task-kind should exit 2 with non-empty-non-flag-like message, got rc=$T10_RC: $T10_OUT"
+fi
+
+T10b_RC=0
+T10b_OUT=$("$LAUNCHER" --timing-task-kind --plan-file 2>&1) || T10b_RC=$?
+if [[ "$T10b_RC" == "2" ]] && grep -Fq "non-empty, non-flag-like value" <<<"$T10b_OUT"; then
+    pass
+else
+    fail 10b "flag-like timing-task-kind should exit 2 with non-empty-non-flag-like message, got rc=$T10b_RC: $T10b_OUT"
+fi
+
 TOTAL=$((PASS_COUNT + FAIL_COUNT))
 if (( FAIL_COUNT == 0 )); then
     echo "PASS: test-gemini-implementer.sh — $PASS_COUNT/$TOTAL assertions"

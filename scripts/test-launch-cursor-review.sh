@@ -479,6 +479,22 @@ else
     pass
 fi
 
+# Issue #1480 Bug #2: defensive --timing-task-kind validation. Empty or
+# flag-like values must be rejected with exit 2 and a clear message.
+set +e
+"$LAUNCHER" --output "$TMPDIR/bad-empty-tk.txt" --timeout 5 --timing-task-kind "" --prompt "x" >/dev/null 2>"$TMPDIR/bad-empty-tk.stderr"
+RC=$?
+set -e
+assert_equals "empty timing-task-kind exit" "2" "$RC"
+assert_grep "empty timing-task-kind message" "non-empty, non-flag-like value" "$TMPDIR/bad-empty-tk.stderr"
+
+set +e
+"$LAUNCHER" --output "$TMPDIR/bad-flaglike-tk.txt" --timeout 5 --timing-task-kind --prompt "x" >/dev/null 2>"$TMPDIR/bad-flaglike-tk.stderr"
+RC=$?
+set -e
+assert_equals "flag-like timing-task-kind exit" "2" "$RC"
+assert_grep "flag-like timing-task-kind message" "non-empty, non-flag-like value" "$TMPDIR/bad-flaglike-tk.stderr"
+
 if [[ "$FAIL" -ne 0 ]]; then
     printf 'FAIL: test-launch-cursor-review.sh - %s failed, %s passed\n' "$FAIL" "$PASS" >&2
     printf '  %s\n' "${FAIL_DETAILS[@]}" >&2

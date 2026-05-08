@@ -29,23 +29,25 @@
    - Cursor buckets write to `$DESIGN_TMPDIR/debate-<n>-cursor-thesis.txt` and `…-cursor-antithesis.txt`.
    - Codex buckets write to `$DESIGN_TMPDIR/debate-<n>-codex-thesis.txt` and `…-codex-antithesis.txt`.
 
-   Each Cursor launch (use `run_in_background: true` and `timeout: 1860000`). Set `CURSOR_DEBATE_TIMING_KIND` to `cursor-debate-thesis` or `cursor-debate-antithesis` to match the side being launched. Pass a short bootstrap prompt that references the per-decision prompt file by path; the tool reads the file via its own filesystem access. This mirrors the voting pattern below ("Read the ballot from $DESIGN_TMPDIR/ballot.txt") and avoids `$(cat ...)` in the launch shell — which would trigger Claude Code permission prompts that break autonomous execution:
+   Each Cursor launch (use `run_in_background: true` and `timeout: 1860000`). Substitute the timing-task-kind literal directly per side — use `cursor-debate-thesis` for the thesis launch and `cursor-debate-antithesis` for the antithesis launch. Pass a short bootstrap prompt that references the per-decision prompt file by path; the tool reads the file via its own filesystem access. This mirrors the voting pattern below ("Read the ballot from $DESIGN_TMPDIR/ballot.txt") and avoids `$(cat ...)` in the launch shell — which would trigger Claude Code permission prompts that break autonomous execution:
    ```bash
    ${CLAUDE_PLUGIN_ROOT}/scripts/launch-cursor-review.sh \
      --output "$DESIGN_TMPDIR/debate-<n>-cursor-<thesis|antithesis>.txt" \
      --timeout 1800 \
-     --timing-task-kind "$CURSOR_DEBATE_TIMING_KIND" \
+     --timing-task-kind cursor-debate-<thesis|antithesis> \
      --prompt "Read the dialectic-debate task description from $DESIGN_TMPDIR/debate-<n>-<thesis|antithesis>-prompt.txt and follow it exactly to produce the structured tagged output it requests. Work at your maximum reasoning effort level."
    ```
 
-   Each Codex launch (use `run_in_background: true` and `timeout: 1860000`). Set `CODEX_DEBATE_TIMING_KIND` to `codex-debate-thesis` or `codex-debate-antithesis` to match the side being launched. Same file-path-reference pattern:
+   Each Codex launch (use `run_in_background: true` and `timeout: 1860000`). Same literal-substitution rule per side — use `codex-debate-thesis` for the thesis launch and `codex-debate-antithesis` for the antithesis launch. Same file-path-reference pattern:
    ```bash
    ${CLAUDE_PLUGIN_ROOT}/scripts/launch-codex-review.sh \
      --output "$DESIGN_TMPDIR/debate-<n>-codex-<thesis|antithesis>.txt" \
      --timeout 1800 \
-     --timing-task-kind "$CODEX_DEBATE_TIMING_KIND" \
+     --timing-task-kind codex-debate-<thesis|antithesis> \
      --prompt "Read the dialectic-debate task description from $DESIGN_TMPDIR/debate-<n>-<thesis|antithesis>-prompt.txt and follow it exactly to produce the structured tagged output it requests. Work at your maximum reasoning effort level."
    ```
+
+   **Anti-pattern — do NOT use `VAR=value cmd ... "$VAR"` env-var-prefix idiom for these launches.** Bash expands `"$VAR"` in the parent shell BEFORE the env-var-prefix scope takes effect, so `"$VAR"` evaluates to empty in the parent (the assignment is only visible to `cmd`'s own environment). The launcher then receives `--timing-task-kind` followed immediately by the next flag (the empty value disappears under shell tokenization), which collapses argv into `--timing-task-kind --prompt "..."` and either passes `--prompt` as the timing-task-kind value or hits the unknown-flag branch — neither is the intended behavior. Always substitute the timing-task-kind literal directly per launch as shown above; do not factor it into a variable.
 
    The trailing `Work at your maximum reasoning effort level.` is part of the prompt text (the wrapper scripts handle model-args and prompt-wrapping internally).
 
@@ -60,6 +62,8 @@
    Immediately after this collection returns, run the Mid-Run Dirty-Tree Probe Contract from `heavy-worker.md` for `STAGE=dialectic-debate-collection`.
 
 9. **Per-bucket runtime failure handling**. For any reviewer with `STATUS != OK`, print `**⚠ <Tool> dialectic debate (decision <n>, <thesis|antithesis>) failed: <FAILURE_REASON>. Bucket truncated; synthesis decision stands.**` Do NOT flip any flag. The mandatory STATUS pre-check at the top of the "debate quorum rule" below catches the partial-launch case (thesis or antithesis non-OK → decision immediately fails quorum → synthesis decision stands).
+
+   **Recovery discipline.** If you discover any debate launched with broken arguments and decide to re-launch it, re-launch AND immediately call `collect-agent-results.sh` synchronously on the retry outputs in the same Bash message — do NOT yield control back to the parent between the relaunch and the collect. When the parent reclaims control between yield and notification arrival, the bash task-completion notifications cannot reach the suspended subagent and the retry orphans. See `${CLAUDE_PLUGIN_ROOT}/skills/design/references/heavy-worker.md` "Wait Discipline" for the full rationale.
 
 **After all external debaters return**, classify each decision's `Disposition` and, for `voted`-eligible decisions, hand off to the 3-judge panel defined in `${CLAUDE_PLUGIN_ROOT}/skills/shared/dialectic-protocol.md`. The orchestrator no longer picks winners by reading tagged output — that role is delegated to the judge panel. See `dialectic-protocol.md` for the authoritative ballot format, judge prompt template, threshold rules, tally algorithm, and resolution schema. The prose below is the call-site contract in Step 2a.5; `dialectic-protocol.md` is the single source of truth for dialectic parser/threshold rules (do NOT reuse `voting-protocol.md` parsers for dialectic — the token sets and ID shapes differ).
 
