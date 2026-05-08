@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [18.0.1] - 2026-05-08
+
+### Changed
+
+- `/design` Step 3 plan-review and `/review` Step 3 voting-cycle sub-phases now emit `token-ledger.sh mark` calls alongside the existing `timing-ledger.sh` marks. The `scripts/token-report.sh` markdown table renders these as adjacent flat-segment rows under the parent `Step 1 — design plan` / `Step 5 — code review` segments — measurement prerequisite for #1550 (Haiku-routing ROI gate). Closes #1557.
+
 ## [18.0.0] - 2026-05-08
 
 ### Added
