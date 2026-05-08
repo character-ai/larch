@@ -143,8 +143,9 @@ fi
 # (issue #1487, #1437 contract). On the agent-ran success path, the launcher
 # emits ${OUTPUT}.dirty-tree via check-mid-run-dirty-tree.sh --mode baseline.
 # Pin the keys (STATUS=, MODE=baseline) — STATUS value is detector-dependent
-# (clean/dirty/unknown), so just assert the key is present, parallel to
-# test-launch-codex-review.sh:132-133 and test-launch-cursor-review.sh:132-133.
+# (clean/dirty/unknown), so just assert the key is present, parallel to the
+# dirty-tree sidecar assertions in scripts/test-launch-codex-review.sh and
+# scripts/test-launch-cursor-review.sh.
 [[ -s "${OUTPUT}.dirty-tree" ]] \
   || fail "Expected ${OUTPUT}.dirty-tree sidecar to be written on success"
 grep -q '^STATUS=' "${OUTPUT}.dirty-tree" \
@@ -325,7 +326,8 @@ fi
 # MODE=baseline, REASON=fail-closed-no-agent-ran. STATUS=unknown routes consumers
 # through the same recovery-safe path as a real detector failure rather than
 # letting them treat a present sidecar with STATUS=clean as "launcher proved
-# the tree clean." Mirrors test-launch-cursor-review.sh:444-449 (issue #1487).
+# the tree clean." Mirrors the preflight-short-circuit dirty-tree assertions
+# in scripts/test-launch-cursor-review.sh (issue #1487).
 [[ -s "${MISSING_JQ_OUTPUT}.dirty-tree" ]] \
   || fail "Expected ${MISSING_JQ_OUTPUT}.dirty-tree sidecar on MISSING_JQ short-circuit"
 grep -q '^STATUS=unknown$' "${MISSING_JQ_OUTPUT}.dirty-tree" \
@@ -338,6 +340,7 @@ grep -q '^REASON=fail-closed-no-agent-ran$' "${MISSING_JQ_OUTPUT}.dirty-tree" \
 assert_model_rejected() {
   local label="$1"
   local value="$2"
+  local check_dirty_tree="${3:-false}"
   local output="$TMPDIR/gemini-model-$label.txt"
   local stdout="$TMPDIR/gemini-model-$label.stdout"
   local stderr="$TMPDIR/gemini-model-$label.stderr"
@@ -357,9 +360,23 @@ assert_model_rejected() {
     || fail "model-$label: expected .done exit code 2"
   grep -q 'ERROR: gemini model from LARCH_GEMINI_MODEL' "${output}.diag" \
     || fail "model-$label: expected gemini model diagnostic"
+  # Optional dirty-tree sidecar coverage (issue #1487): the model-resolve
+  # failure path is structurally a no-agent-ran fail_closed, so the sidecar
+  # contract is identical to MISSING_JQ. Asserting on at least one resolver
+  # rejection keeps coverage symmetric with the MISSING_JQ assertion above.
+  if [[ "$check_dirty_tree" == "true" ]]; then
+    [[ -s "${output}.dirty-tree" ]] \
+      || fail "model-$label: expected ${output}.dirty-tree sidecar on resolver rejection"
+    grep -q '^STATUS=unknown$' "${output}.dirty-tree" \
+      || fail "model-$label: expected dirty-tree STATUS=unknown on resolver rejection (no agent ran)"
+    grep -q '^MODE=baseline$' "${output}.dirty-tree" \
+      || fail "model-$label: expected dirty-tree MODE=baseline on resolver rejection"
+    grep -q '^REASON=fail-closed-no-agent-ran$' "${output}.dirty-tree" \
+      || fail "model-$label: expected dirty-tree REASON=fail-closed-no-agent-ran on resolver rejection"
+  fi
 }
 
-assert_model_rejected "empty" ""
+assert_model_rejected "empty" "" "true"
 assert_model_rejected "space" " "
 assert_model_rejected "newline" $'foo\n'
 assert_model_rejected "tab" $'\t'

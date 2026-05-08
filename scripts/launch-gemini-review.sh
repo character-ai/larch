@@ -667,6 +667,18 @@ fi
 
 : "${TIMING_TASK_KIND:=gemini-review}"
 TIMING_START_S=$(date +%s)
+
+# Assign DIRTY_TREE_SIDECAR / UNTRACKED_BASELINE BEFORE installing the EXIT
+# trap so an asynchronous exit (SIGINT / SIGTERM) between trap registration and
+# the stale-cleanup block below can still publish a sidecar. The helpers no-op
+# when these vars are empty, so without this ordering the narrow window between
+# trap install and assignment would silently produce no sidecar on early
+# signal-driven exits. The actual stale cleanup of these paths and the
+# baseline-capture call still happen below, after the MISSING_JQ check, so the
+# baseline reflects the post-stale-cleanup state of the working tree.
+DIRTY_TREE_SIDECAR="${OUTPUT}.dirty-tree"
+UNTRACKED_BASELINE="${OUTPUT}.untracked-baseline"
+
 trap '_emit_timing_record $?; _publish_dirty_tree_on_exit' EXIT
 
 EFFECTIVE_TIMEOUT="$TIMEOUT"
@@ -678,18 +690,18 @@ RAW_OUTPUT="${OUTPUT}.raw"
 rm -f "$OUTPUT" "${OUTPUT}.done" "${OUTPUT}.meta" "${OUTPUT}.diag" \
       "$RAW_OUTPUT" "${RAW_OUTPUT}.done" "${RAW_OUTPUT}.meta" "${RAW_OUTPUT}.diag"
 
-# Set up the dirty-tree sidecar contract introduced by #1437 (Cursor + Codex
-# parity, issue #1487). The launcher publishes ${OUTPUT}.dirty-tree with the
-# same STATUS=clean|dirty|unknown enum and same recovery contract as
-# launch-cursor-review.sh / launch-codex-review.sh. Capture the untracked
-# baseline BEFORE the early-short-circuit fail_closed branches below
-# (MISSING_JQ, model-resolve failure, snapshot-guard setup failure) so each
-# of those paths can emit STATUS=unknown via _write_unknown_dirty_tree_sidecar.
+# Stale-cleanup of the dirty-tree sidecar paths (the variables themselves
+# were assigned earlier, before the EXIT trap was installed, so an early
+# signal-driven exit can already publish a sidecar). Capture the untracked
+# baseline AFTER stale cleanup so the baseline reflects the post-cleanup
+# state of the working tree. The capture itself happens BEFORE the
+# early-short-circuit fail_closed branches below (MISSING_JQ, model-resolve
+# failure, snapshot-guard setup failure) so each of those paths can emit
+# STATUS=unknown via _write_unknown_dirty_tree_sidecar.
 # Gemini reviewer call sites are dormant per SECURITY.md; this machinery is
 # preparatory so /review Step 5 sidecar consultation picks up Gemini coverage
-# automatically when the call sites are reintroduced.
-UNTRACKED_BASELINE="${OUTPUT}.untracked-baseline"
-DIRTY_TREE_SIDECAR="${OUTPUT}.dirty-tree"
+# automatically when the call sites are reintroduced (issue #1487; matches
+# the contract introduced for Cursor/Codex by #1437).
 rm -f "$DIRTY_TREE_SIDECAR" "$UNTRACKED_BASELINE" \
       "${DIRTY_TREE_SIDECAR}.tracked-paths" \
       "${DIRTY_TREE_SIDECAR}.new-untracked-paths"
