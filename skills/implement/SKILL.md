@@ -720,7 +720,7 @@ Parse stdout without `eval`/`source`. The reuse heuristic is a two-way conjuncti
 
 If both are true, reuse the manifest and proceed to Step 2 with **all manifest file variables** set from the reader output — not just `PLAN_FILE`, but also `PLAN_REVIEW_TALLY_FILE`, `CONTESTED_CRITERIA_FILE`, `OOS_FILE`, `REJECTED_FINDINGS_FILE`, `ACCEPTED_PLAN_FINDINGS_FILE`, and `ARCHITECTURE_DIAGRAM_FILE` (when present). Same surface as the post-`/design` success branch below; without this, downstream steps lose plan-review tally / rejected findings / architecture diagram on a resumed run. Because `/design` did not return on this reuse path, the post-design boundary wrapper is not invoked; branch capture is handled by the shared `BRANCH_NAME` subsection below.
 
-Before jumping to Step 2 on the manifest-reuse path, run `${CLAUDE_PLUGIN_ROOT}/scripts/check-mid-run-dirty-tree.sh --mode checkpoint`. Parse `STATUS` without `eval`/`source`. If `STATUS=dirty` or `STATUS=unknown`, fire `AskUserQuestion` regardless of `auto_mode` with restore / labeled stash / bail-to-STALLED options using the recovery rules below. This covers resumed sessions that skip both `/design` and `post-design-boundary.sh`.
+Before jumping to Step 2 on the manifest-reuse path, run `${CLAUDE_PLUGIN_ROOT}/scripts/check-mid-run-dirty-tree.sh --mode checkpoint`. Parse `STATUS` without `eval`/`source`. If `STATUS=dirty` or `STATUS=unknown`, fire `AskUserQuestion` regardless of `auto_mode` with restore / labeled stash / bail-to-STALLED options using the recovery rules below. This covers resumed sessions that skip both `/design` and the post-design boundary wrapper.
 
 At the start of this reuse branch, record:
 
