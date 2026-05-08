@@ -14,6 +14,7 @@ fi
 _write_dirty_tree_sidecar() {
     [[ -n "$OUTPUT" ]] || return 0
     [[ "$DIRTY_TREE_WRITTEN" == "false" ]] || return 0
+    [[ -n "$DIRTY_TREE_SIDECAR" ]] || return 0
     if [[ -x "$SCRIPT_DIR/check-mid-run-dirty-tree.sh" ]]; then
         "$SCRIPT_DIR/check-mid-run-dirty-tree.sh" --mode baseline --baseline "$UNTRACKED_BASELINE" --sidecar "$DIRTY_TREE_SIDECAR" >/dev/null 2>&1 || true
     fi

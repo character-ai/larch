@@ -10,6 +10,9 @@ source "$SCRIPT_DIR/lib-validate-meta-path.sh"
 # shellcheck source=scripts/lib-gemini-model-resolver.sh
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib-gemini-model-resolver.sh"
+# shellcheck source=scripts/lib-dirty-tree-sidecar.sh
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib-dirty-tree-sidecar.sh"
 
 ORIGINAL_ARGS=("$@")
 OUTPUT=""
@@ -95,16 +98,12 @@ write_done() {
     mv "$tmp" "${OUTPUT}.done"
 }
 
-# shellcheck disable=SC2329 # invoked from fail_closed, success tail, and exit trap.
-_write_dirty_tree_sidecar() {
-    [[ -n "$OUTPUT" ]] || return 0
-    [[ "$DIRTY_TREE_WRITTEN" == "false" ]] || return 0
-    [[ -n "$DIRTY_TREE_SIDECAR" ]] || return 0
-    if [[ -x "$SCRIPT_DIR/check-mid-run-dirty-tree.sh" ]]; then
-        "$SCRIPT_DIR/check-mid-run-dirty-tree.sh" --mode baseline --baseline "$UNTRACKED_BASELINE" --sidecar "$DIRTY_TREE_SIDECAR" >/dev/null 2>&1 || true
-    fi
-    DIRTY_TREE_WRITTEN=true
-}
+# _write_dirty_tree_sidecar is provided by lib-dirty-tree-sidecar.sh
+# (sourced above) and reads/writes the OUTPUT, DIRTY_TREE_WRITTEN,
+# UNTRACKED_BASELINE, DIRTY_TREE_SIDECAR, SCRIPT_DIR globals declared
+# below. _write_unknown_dirty_tree_sidecar that follows is review-launcher
+# specific (used by Cursor and Gemini auth/setup short-circuits) and
+# stays inline.
 
 # shellcheck disable=SC2329 # invoked from fail_closed and exit trap on early-short-circuit paths.
 _write_unknown_dirty_tree_sidecar() {
