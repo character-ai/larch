@@ -24,13 +24,18 @@ if [[ -z "$ISSUE" || -z "$REPO" || -z "$TMPDIR_ARG" ]]; then
     exit 2
 fi
 
-if [[ ! "$ISSUE" =~ ^[0-9]+$ ]]; then
-    echo "ERROR: --issue must be a positive integer" >&2
+if [[ ! "$ISSUE" =~ ^[1-9][0-9]*$ ]]; then
+    echo "ERROR: --issue must be a positive integer (>= 1; #0 is not a valid GitHub issue number)" >&2
     exit 2
 fi
 
 if [[ ! "$REPO" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; then
     echo "ERROR: --repo must be OWNER/REPO using GitHub owner/repo characters" >&2
+    exit 2
+fi
+
+if ! command -v jq >/dev/null 2>&1; then
+    echo "ERROR: jq is required to parse the issue JSON; install it (e.g. \`brew install jq\` / \`apt install jq\`) and retry." >&2
     exit 2
 fi
 

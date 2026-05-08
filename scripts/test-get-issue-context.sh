@@ -50,4 +50,36 @@ rc=$?
 set -e
 [[ "$rc" -ne 0 ]] || fail "malformed repo should fail"
 
+# Missing jq prereq (Round 1 FINDING_5): if `jq` is not on PATH, the
+# script must fail fast with an explicit error message before invoking
+# `gh` and before writing any `.tmp` file. Build a hermetic PATH that
+# contains the gh stub but excludes the directory where `jq` lives.
+# Round 2 FINDING_2: do NOT include /usr/bin or /bin in the PATH — on
+# Linux `jq` is at /usr/bin/jq, so adding /usr/bin would defeat the
+# missing-jq simulation. Invoke bash explicitly via an absolute path
+# (resolved via $BASH or `command -v bash` BEFORE the hermetic PATH
+# kicks in) rather than relying on `#!/usr/bin/env bash` shebang
+# resolution — with PATH=$no_jq_dir, the kernel CAN exec /usr/bin/env
+# but env then fails to find `bash` in the empty PATH and the script
+# never starts. Resolving bash to an absolute path sidesteps that
+# bootstrap problem; once bash is running, the script's pre-jq-check
+# code path uses only bash builtins / shell syntax (no external
+# commands), so the `command -v jq` check fires and exits 2 cleanly.
+no_jq_dir="$TMPROOT/no-jq-bin"
+mkdir -p "$no_jq_dir"
+cp "$stub_dir/gh" "$no_jq_dir/gh"
+BASH_BIN="${BASH:-$(command -v bash)}"
+[[ -x "$BASH_BIN" ]] || fail "could not resolve bash binary for missing-jq sub-test"
+set +e
+PATH="$no_jq_dir" "$BASH_BIN" "$SCRIPT" --issue 42 --repo upstream/repo --tmpdir "$TMPROOT/no-jq" >"$TMPROOT/no-jq.out" 2>"$TMPROOT/no-jq.err"
+rc=$?
+set -e
+[[ "$rc" -ne 0 ]] || fail "missing jq should fail fast (FINDING_5)"
+grep -Fq 'jq is required' "$TMPROOT/no-jq.err" \
+    || fail "missing-jq error should mention 'jq is required' (FINDING_5)"
+[[ ! -e "$TMPROOT/no-jq/upstream-issue-title.txt.tmp" ]] \
+    || fail "missing-jq path should not have left a .tmp title file (FINDING_5)"
+[[ ! -e "$TMPROOT/no-jq/upstream-issue-body.txt.tmp" ]] \
+    || fail "missing-jq path should not have left a .tmp body file (FINDING_5)"
+
 echo "PASS: test-get-issue-context.sh"

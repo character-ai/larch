@@ -291,6 +291,122 @@ else
 fi
 
 # ----------------------------------------------------------------------
+# Sub-test D — fork-mode argv forwarding + NO_CHECKS early-exit
+# (Round 1 /review FINDING_6 fix). Pins the new contract added by the
+# /implement --forked feature: ci-wait.sh forwards `--base-remote`,
+# `--base-ref`, and `--empty-checks-grace` to ci-status.sh on every
+# poll, AND when ci-status.sh emits `CI_STATUS=NO_CHECKS` ci-wait.sh
+# must exit the wait loop with `ACTION=bail` and propagate the
+# NO_CHECKS status into the stdout KV envelope rather than burning
+# the full timeout.
+# ----------------------------------------------------------------------
+echo
+echo "Sub-test D: fork-mode argv forwarding + NO_CHECKS early-exit"
+
+D_DIR="$TMPDIR_BASE/D"
+mkdir -p "$D_DIR"
+cp "$REPO_ROOT/scripts/ci-wait.sh" "$D_DIR/ci-wait.sh"
+chmod +x "$D_DIR/ci-wait.sh"
+
+# Stub ci-status.sh that LOGS its argv on every invocation AND emits
+# CI_STATUS=NO_CHECKS, simulating an Actions-disabled fork.
+cat > "$D_DIR/ci-status.sh" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$(dirname "$0")/argv.log"
+echo "CI_STATUS=NO_CHECKS"
+echo "BEHIND_COUNT=0"
+echo "FAILED_RUN_ID="
+SH
+chmod +x "$D_DIR/ci-status.sh"
+
+# Stub ci-decide.sh: should NOT be reached on the NO_CHECKS path
+# (ci-wait.sh intercepts NO_CHECKS before calling ci-decide). If it
+# IS called, log the fact so the harness can fail.
+cat > "$D_DIR/ci-decide.sh" <<'SH'
+#!/usr/bin/env bash
+printf 'ci-decide CALLED with: %s\n' "$*" >> "$(dirname "$0")/decide.log"
+# Whatever ci-decide does on NO_CHECKS, we still need it to NOT loop forever:
+echo "ACTION=bail"
+echo "BAIL_REASON=ci-decide-was-unexpectedly-invoked"
+SH
+chmod +x "$D_DIR/ci-decide.sh"
+
+# Run ci-wait.sh in default (stdout) mode with the new fork-mode argv.
+# With NO_CHECKS as the very first poll result, ci-wait.sh must exit on
+# the first iteration without entering the long sleep loop. We do NOT
+# wrap in `timeout` because that command is not portable across macOS /
+# BSD by default; if NO_CHECKS early-exit is broken the harness would
+# hang here, which is the right way to surface a regression.
+set +e
+D_OUT=$("$D_DIR/ci-wait.sh" \
+    --pr 42 \
+    --repo character-ai/larch \
+    --rebase-count 0 \
+    --fix-attempts 0 \
+    --iteration 0 \
+    --base-remote upstream \
+    --base-ref main \
+    --empty-checks-grace 30 \
+    2>&1)
+D_RC=$?
+set -e
+
+if [ "$D_RC" -ne 0 ]; then
+    fail "D: ci-wait.sh exited non-zero ($D_RC) on NO_CHECKS path; output: $D_OUT"
+else
+    ok "D: ci-wait.sh exited zero on NO_CHECKS path"
+fi
+
+# Assertion D1: ci-status.sh argv.log records the new flags forwarded.
+if [ -f "$D_DIR/argv.log" ]; then
+    if grep -Fq -- '--base-remote upstream' "$D_DIR/argv.log"; then
+        ok "D: --base-remote upstream forwarded into ci-status.sh"
+    else
+        fail "D: --base-remote upstream NOT forwarded; argv.log=$(cat "$D_DIR/argv.log")"
+    fi
+    if grep -Fq -- '--base-ref main' "$D_DIR/argv.log"; then
+        ok "D: --base-ref main forwarded into ci-status.sh"
+    else
+        fail "D: --base-ref main NOT forwarded; argv.log=$(cat "$D_DIR/argv.log")"
+    fi
+    if grep -Fq -- '--empty-checks-grace 30' "$D_DIR/argv.log"; then
+        ok "D: --empty-checks-grace 30 forwarded into ci-status.sh"
+    else
+        fail "D: --empty-checks-grace 30 NOT forwarded; argv.log=$(cat "$D_DIR/argv.log")"
+    fi
+else
+    fail "D: ci-status.sh stub never invoked (argv.log absent)"
+fi
+
+# Assertion D2: ci-wait.sh did NOT call ci-decide on the NO_CHECKS path
+# (it should intercept NO_CHECKS BEFORE the ci-decide invocation).
+if [ -f "$D_DIR/decide.log" ]; then
+    fail "D: ci-decide.sh was invoked on NO_CHECKS path; expected ci-wait.sh to intercept first. decide.log=$(cat "$D_DIR/decide.log")"
+else
+    ok "D: ci-decide.sh correctly NOT invoked on NO_CHECKS path"
+fi
+
+# Assertion D3: stdout KV envelope contains ACTION=bail and CI_STATUS=NO_CHECKS.
+if grep -Fq 'ACTION=bail' <<<"$D_OUT"; then
+    ok "D: stdout contains ACTION=bail"
+else
+    fail "D: stdout missing ACTION=bail; got: $D_OUT"
+fi
+if grep -Fq 'CI_STATUS=NO_CHECKS' <<<"$D_OUT"; then
+    ok "D: stdout propagates CI_STATUS=NO_CHECKS"
+else
+    fail "D: stdout missing CI_STATUS=NO_CHECKS; got: $D_OUT"
+fi
+if grep -qE 'BAIL_REASON=.*(no.checks|NO_CHECKS|empty)' <<<"$D_OUT"; then
+    ok "D: BAIL_REASON references NO_CHECKS / empty-checks state"
+else
+    # Soft assertion — exact wording is implementation detail; the
+    # critical contract above (ACTION=bail + CI_STATUS=NO_CHECKS +
+    # ci-decide NOT invoked) is the load-bearing pin.
+    echo "  NOTE: BAIL_REASON wording does not mention NO_CHECKS — review ci-wait.sh BAIL_REASON for this path"
+fi
+
+# ----------------------------------------------------------------------
 echo
 echo "Summary: $PASS_COUNT passed, $FAIL_COUNT failed"
 if [ "$FAIL_COUNT" -gt 0 ]; then

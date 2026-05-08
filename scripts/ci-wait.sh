@@ -31,7 +31,10 @@
 # Outputs (stdout when --output-file absent; otherwise the file at <path>):
 #   key=value — always all lines, in order:
 #   ACTION=merge|rebase|already_merged|rebase_then_evaluate|evaluate_failure|bail
-#   CI_STATUS=pass|fail|pending|merged
+#   CI_STATUS=pass|fail|pending|merged|NO_CHECKS
+#       NO_CHECKS only appears when --empty-checks-grace > 0 and the
+#       fork's checks array is still empty after the grace period
+#       (paired with ACTION=bail per the fork dry-run contract).
 #   BEHIND_COUNT=<N>
 #   FAILED_RUN_ID=<id>          (empty string if no failure)
 #   BAIL_REASON=<text>          (empty string if ACTION != bail)
