@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [18.0.0] - 2026-05-08
+
+### Added
+
+- `agents/reviewer-correctness-edges.md` (label `Correctness-Edges`) and `agents/reviewer-security-structure-tests.md` (label `Security-Structure-Tests`)
+
+### Changed
+
+- `/review` and `/implement --quick` panels: combine 5 hand-maintained Cursor reviewer specialists into 2 (`reviewer-correctness-edges` + `reviewer-security-structure-tests`) — Cursor fan-out drops from 5x to 2x per run, cutting per-`/implement` Cursor + Codex review cost by roughly 60%
+
+### Removed
+
+- `agents/reviewer-correctness.md`, `agents/reviewer-edge-cases.md`, `agents/reviewer-security.md`, `agents/reviewer-structure.md`, `agents/reviewer-testing.md` — backward-incompatible (MAJOR), replaced by the two new combined-personality files
+
 ## [17.1.1] - 2026-05-08
 
 ### Changed
