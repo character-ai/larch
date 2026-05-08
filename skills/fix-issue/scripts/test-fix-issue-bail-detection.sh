@@ -25,8 +25,13 @@
 #        "[--inline if inline_mode]" (encodes the design decision that SIMPLE
 #        intentionally omits the forward; checks the spell rather than the
 #        bare substring "--inline" so adjacent prose mentions are tolerated).
-#   (a11) HARD bullet forwards "[--quick if quick_mode]" (pass-through
-#        force-quick-mode flag — operator escape hatch for HARD classifications).
+#   (a11) HARD bullet forwards "[--quick if quick_mode]" (preserved
+#        compatibility pin — historically the operator escape hatch for
+#        HARD classifications; under the current Step 4 short-circuit,
+#        quick_mode=true AND INTENT=PR forces COMPLEXITY=SIMPLE directly,
+#        so the HARD-bullet segment is unreachable for the PR path. The
+#        assertion is preserved as CI parity protection against
+#        accidental removal during refactors and as a no-op safety net).
 #   (a12) SIMPLE bullet does NOT contain the forwarding spell
 #        "[--quick if quick_mode]" (SIMPLE already passes "--quick"
 #        unconditionally, so the conditional forward would be redundant; same
@@ -164,9 +169,12 @@ else
     exit 1
 fi
 
-# (a11) HARD bullet forwards --quick — operator escape hatch for HARD classifications.
-# Without this guard, a future refactor could silently drop the forward and
-# /fix-issue --quick callers would silently lose the quick-mode override on HARD.
+# (a11) HARD bullet forwards --quick — preserved compatibility pin. Under the
+# current Step 4 short-circuit, quick_mode=true AND INTENT=PR forces
+# COMPLEXITY=SIMPLE directly, so this HARD-bullet segment is unreachable
+# on the PR path. The assertion is kept as a CI parity pin against
+# accidental removal and as a no-op safety net should the short-circuit
+# ever be reverted.
 assert_bullet_contains "a11: HARD bullet forwards --quick" '- **HARD**' '[--quick if quick_mode]'
 
 # (a12) SIMPLE bullet does NOT contain the conditional forwarding spell —
