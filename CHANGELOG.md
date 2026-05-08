@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.13.9] - 2026-05-08
+
+### Fixed
+
+- Resolve #1430: silence the cosmetic `rm: <TMPROOT>: Permission denied` stderr emitted by the EXIT trap in `scripts/test-collect-agent-retry.sh` during `make test-harnesses-1`. The warning was a transient macOS-APFS race: a backgrounded retry subshell (spawned by `scripts/collect-agent-results.sh` and chained via `wait_for_reviewers.sh`) could still hold a per-case workdir as cwd when the harness's EXIT trap fired. All TMPROOT contents are user-owned with normal permissions and a manual `rm -rf` succeeds; cleanup is best-effort tmpdir disposal that the OS reaps regardless. Trap now redirects rm stderr to `/dev/null` with a 4-line comment recording the rationale (review-round-1 follow-up). 121/121 test assertions still pass.
+
 ## [15.13.8] - 2026-05-08
 
 ### Changed
