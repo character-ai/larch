@@ -16,7 +16,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fix EXPECTED_TMPDIR_BASENAME_PREFIX literal-quote leak in /implement Steps 13.5/14 heredoc so Step 18 verify_cleanup_target no longer refuses rm-rf with session-id-match=y (#1572)
 - Add negative assertion (31g) to test-implement-structure.sh pinning unquoted prefix form and forbidding quoted form
 
-
 ## [18.0.8] - 2026-05-08
 
 ### Changed
