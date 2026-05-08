@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [17.0.19] - 2026-05-08
+
+### Changed
+
+- Resolve #1513: combined session-env script defensive fixes (OOS observations from #1505 and #1504). **A.** `scripts/read-session-env-key.sh` extraction rewritten from the legacy `awk -F= '$1==k{print $2}'` form to a whole-key prefix match plus `substr` after the first `=`, so values containing additional `=` characters round-trip without truncation (parallel to `value="${line#*=}"` in `session-setup.sh`'s caller-env parser). **B.** `scripts/write-session-env.sh` adds a regex+length guard on `--timing-ledger` that mirrors the existing `--claude-source-file` check (`^[A-Za-z0-9_./~+-]{1,512}$`), giving direct callers (test harnesses, future skills) writer-side defense-in-depth that complements #1463's session-setup-side validation. New offline regression harness `scripts/test-session-env-roundtrip.sh` (14 assertions; multi-`=`, empty, trailing-`=`, comma-separated KV-list, KEY-prefix collision, present-empty + `--default`, and `--timing-ledger` accept/reject/overlong/absent fixtures), wired into `Makefile` (`test-harnesses-1`), `agent-lint.toml`, `docs/linting.md`, and the `scripts/read-session-env-key.md` Test-harness section. Stale awk-pattern descriptions in `scripts/read-session-env-key.{sh,md}` headers — which still cited the truncating legacy form — were aligned with the corrected implementation; `--default`'s "missing OR empty" semantics were clarified in the script header to match the contract doc.
+
 ## [17.0.18] - 2026-05-08
 
 ### Changed
