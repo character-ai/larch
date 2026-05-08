@@ -18,9 +18,9 @@ Consumers MUST parse with key-based extraction (e.g., `grep -E '^FILES_CHANGED='
 
 **Stdin**: none.
 
-**Exit codes**: always `0`, including on bad CLI input (unknown flag, `--baseline` with no path). On parse errors the script emits an informational `ERROR=…` line on stderr and degrades to the missing-baseline path on stdout (`FILES_CHANGED=false UNTRACKED_BASELINE=missing GIT_PROBE_FAILED=false` if no other detection source fires). Parse errors are NOT probe failures, so `GIT_PROBE_FAILED` stays `false` on the parse-error path. Callers MUST parse stdout, not stderr or exit code.
+**Exit codes**: always `0`, including on bad CLI input (unknown flag, `--baseline` with no path). On parse errors the script emits an informational `ERROR=…` line on stderr, then short-circuits the rest of the run by emitting the three stdout keys with their conservative degraded values — `FILES_CHANGED=false UNTRACKED_BASELINE=missing GIT_PROBE_FAILED=false` — and exits 0 BEFORE any git probe runs. Parse errors are NOT probe failures (no probe ran), so `GIT_PROBE_FAILED` stays `false` on this path. The early short-circuit also prevents a typo-with-`--strict` (e.g. `--strict --bogus`) from forcing `FILES_CHANGED=true` via probe failure on the parse-error path. Callers MUST parse stdout, not stderr or exit code.
 
-**Health-probe key — `GIT_PROBE_FAILED`**: each git probe (`git diff --name-only` for unstaged, `git diff --name-only --cached` for staged, and `git ls-files --others --exclude-standard | sort` for untracked) captures its exit status explicitly. Any non-zero probe sets `GIT_PROBE_FAILED=true`; otherwise `false`. The signal is independent of `FILES_CHANGED` — a probe failure produces empty output for that source, which is observationally indistinguishable from "no changes" in `FILES_CHANGED` alone, and `GIT_PROBE_FAILED` is the only way for callers to distinguish the two states.
+**Health-probe key — `GIT_PROBE_FAILED`**: each git probe captures its exit status explicitly. Any non-zero probe sets `GIT_PROBE_FAILED=true`; otherwise `false`. The probes are: `git diff --name-only` (unstaged) and `git diff --name-only --cached` (staged), always run; and `git ls-files --others --exclude-standard | sort` (untracked) — run only when the untracked dimension is active (i.e., `--baseline` is passed AND its path is readable, so `UNTRACKED_BASELINE=present`). The signal is independent of `FILES_CHANGED` — a probe failure produces empty output for that source, which is observationally indistinguishable from "no changes" in `FILES_CHANGED` alone, and `GIT_PROBE_FAILED` is the only way for callers to distinguish the two states.
 
 **Best-effort git probing (default, no `--strict`)**: probe failures degrade to "no changes detected on that source" for the purpose of computing `FILES_CHANGED`. This is the historical graceful-degradation behavior: a degraded run reports a conservative `FILES_CHANGED=false` rather than blocking Step 6, and the operator's tracked-changes flow (commit / push) surfaces any genuine git breakage downstream. The new `GIT_PROBE_FAILED` key now exposes the unknown-state signal so callers can decide independently.
 
@@ -28,13 +28,15 @@ Consumers MUST parse with key-based extraction (e.g., `grep -E '^FILES_CHANGED='
 
 ## Detection sources
 
-`FILES_CHANGED=true` if and only if any of:
+In **default mode** (no `--strict`), `FILES_CHANGED=true` if and only if any of:
 
 - `git diff --name-only` (unstaged) is non-empty
 - `git diff --name-only --cached` (staged) is non-empty
 - `UNTRACKED_BASELINE=present` AND the untracked delta is non-empty
 
 The untracked delta is `comm -23 <(current-sorted) <(baseline-sorted)` — paths in the current untracked set that were NOT in the pre-/review snapshot.
+
+**`--strict` mode adds a fail-closed override**: when `--strict` is set AND `GIT_PROBE_FAILED=true`, `FILES_CHANGED` is forced to `true` regardless of whether any of the three signals above is non-empty. The fail-closed override lets the caller treat unknown working-tree state as may-have-changed instead of silently skipping the post-/review checks pass on a transient git outage.
 
 ## Required pre-snapshot
 

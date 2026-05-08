@@ -74,13 +74,19 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Parse errors degrade to the missing-baseline path so the always-emit-3-keys,
-# exit-0 stdout contract holds even on bad CLI input. The ERROR= line on stderr
-# is informational only — callers parse stdout, not stderr or exit code.
-# Parse errors are NOT probe failures: GIT_PROBE_FAILED stays false.
+# Parse errors short-circuit before any git probe runs. The always-emit-3-keys
+# stdout contract is preserved with the conservative degraded values
+# (FILES_CHANGED=false, UNTRACKED_BASELINE=missing, GIT_PROBE_FAILED=false).
+# The ERROR= line on stderr is informational only — callers parse stdout, not
+# stderr or exit code. Parse errors are NOT probe failures (no probe ran), and
+# parse errors must NOT interact with --strict to silently force
+# FILES_CHANGED=true on a CLI with a typo (e.g. "--strict --bogus").
 if [[ -n "$PARSE_ERROR" ]]; then
     echo "ERROR=$PARSE_ERROR" >&2
-    BASELINE=""
+    echo "FILES_CHANGED=false"
+    echo "UNTRACKED_BASELINE=missing"
+    echo "GIT_PROBE_FAILED=false"
+    exit 0
 fi
 
 GIT_PROBE_FAILED="false"

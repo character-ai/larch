@@ -22,6 +22,8 @@ Each case sets up an isolated `git init` sandbox via `mktemp -d` (or a non-git `
 | (j) | non-git sandbox (no `.git` anywhere up-tree), default mode | `FILES_CHANGED=false UNTRACKED_BASELINE=missing GIT_PROBE_FAILED=true` | **issue #1485 health-probe key** — graceful degradation preserved by default; new `GIT_PROBE_FAILED` exposes the unknown-state signal so callers can decide independently |
 | (k) | non-git sandbox + `--strict` | `FILES_CHANGED=true UNTRACKED_BASELINE=missing GIT_PROBE_FAILED=true` | **issue #1485 fail-closed mode** — `--strict` promotes a probe failure to `FILES_CHANGED=true` so Step 6 enters the changes-found branch on transient git outages instead of silently skipping the post-/review checks pass |
 | (l) | clean tree + `--strict` | `FILES_CHANGED=false UNTRACKED_BASELINE=missing GIT_PROBE_FAILED=false` | `--strict` is a no-op when all probes succeed; it does NOT artificially flip `FILES_CHANGED` outside the probe-failure path |
+| (m) | clean repo + `--bogus` | `FILES_CHANGED=false UNTRACKED_BASELINE=missing GIT_PROBE_FAILED=false` (stderr `ERROR=…`) | parse error short-circuits BEFORE any git probe runs; the three stdout keys still emit with their conservative degraded values |
+| (n) | non-git sandbox + `--strict --bogus` | `FILES_CHANGED=false UNTRACKED_BASELINE=missing GIT_PROBE_FAILED=false` (stderr `ERROR=…`) | **issue #1485 round-1 review fix** — parse error must short-circuit BEFORE probes run, so `--strict` cannot promote a CLI typo to `FILES_CHANGED=true` via a probe failure (pre-fix: `FILES_CHANGED=true GIT_PROBE_FAILED=true`) |
 
 ## Case (f) is a deliberate behavior change — do NOT "fix" it
 
