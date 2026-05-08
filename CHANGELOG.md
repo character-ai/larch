@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [17.0.0] - 2026-05-07
+
+### Changed
+
+- `/implement` auto-routes small surgical changes to the main Claude agent when no `--coder` flag is set. New `coder_explicit` boolean tracks whether `--coder=...` was explicitly parsed; new "Coder simplicity override" sub-step in Step 1 flips `coder=claude` when `coder_explicit=false` AND `design_only=false` AND the resolved plan describes a small change (≤ ~100 LOC, no new abstractions, no new architectural contracts, no large refactors). Step 2.4 entry list and print-bullet ladder updated with first-match-wins ordering so the legacy `--codex-available false` and Cursor/Gemini health-fallback paths cannot collide with the auto-route bullet. Override is suppressed when `$IMPLEMENT_TMPDIR/step2-spawn-coder.txt` already records an external coder (in-progress resume case) so it cannot bypass the dispatcher's `coder-mismatch-tmpdir-reuse` guard. Operators who require a particular implementer regardless of plan size pass `--coder=<value>` explicitly — the explicit value wins. Routes through the existing `STATUS=claude_fallback` + `ORCHESTRATOR_EDIT_AUTHORITY=allowed` path; no new code path or script change.
+
 ## [16.0.1] - 2026-05-08
 
 ### Changed
