@@ -57,6 +57,8 @@
    ```
    `--write-health /dev/null` ensures both the read path (collect-agent-results.sh checks `-f "$WRITE_HEALTH"`, which is false for character devices like `/dev/null`) and the write path (explicit `!= "/dev/null"` guard) skip — the dialectic phase NEVER updates the cross-skill `${SESSION_ENV_PATH}.health` file. Block on this call (do NOT use `run_in_background`).
 
+   Immediately after this collection returns, run the Mid-Run Dirty-Tree Probe Contract from `heavy-worker.md` for `STAGE=dialectic-debate-collection`.
+
 9. **Per-bucket runtime failure handling**. For any reviewer with `STATUS != OK`, print `**⚠ <Tool> dialectic debate (decision <n>, <thesis|antithesis>) failed: <FAILURE_REASON>. Bucket truncated; synthesis decision stands.**` Do NOT flip any flag. The mandatory STATUS pre-check at the top of the "debate quorum rule" below catches the partial-launch case (thesis or antithesis non-OK → decision immediately fails quorum → synthesis decision stands).
 
 **After all external debaters return**, classify each decision's `Disposition` and, for `voted`-eligible decisions, hand off to the 3-judge panel defined in `${CLAUDE_PLUGIN_ROOT}/skills/shared/dialectic-protocol.md`. The orchestrator no longer picks winners by reading tagged output — that role is delegated to the judge panel. See `dialectic-protocol.md` for the authoritative ballot format, judge prompt template, threshold rules, tally algorithm, and resolution schema. The prose below is the call-site contract in Step 2a.5; `dialectic-protocol.md` is the single source of truth for dialectic parser/threshold rules (do NOT reuse `voting-protocol.md` parsers for dialectic — the token sets and ID shapes differ).
@@ -87,6 +89,8 @@ If any check fails for either side, print `**⚠ Debate for DECISION_N failed qu
 ## Dialectic-local judge-panel re-probe (Part D — cascade scoping)
 
 After the eligibility gate finishes, run a fresh health probe right before launching judges. A Cursor/Codex timeout in **debating** must not lock that tool out of **judging** — the debater phase may have snapshotted availability many minutes ago.
+
+After the judge collector returns, run the Mid-Run Dirty-Tree Probe Contract from `heavy-worker.md` for `STAGE=dialectic-judge-collection`.
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/check-reviewers.sh --probe

@@ -492,6 +492,10 @@ exclude = [
   # shebang, not invokable directly). It is referenced from the Cursor launchers
   # via source directives only, which agent-lint does not follow.
   "scripts/lib-cursor-launcher-common.sh",
+  # scripts/lib-codex-launcher-common.sh is a sourced-only shell library (no
+  # shebang, not invokable directly). It is referenced from the Codex launcher
+  # via source directives only, which agent-lint does not follow.
+  "scripts/lib-codex-launcher-common.sh",
   # scripts/cursor-auth-flags.sh is a small executable that prints the
   # conditional --api-key argv elements for runtime skill markdown blocks.
   # Referenced from skills/shared/voting-protocol.md, skills/shared/dialectic-protocol.md,
@@ -562,6 +566,10 @@ exclude = [
   # Referenced only from Makefile (test-launch-codex-review target) and
   # scripts/test-launch-codex-review.md (sibling contract).
   "scripts/test-launch-codex-review.sh",
+  # scripts/test-check-mid-run-dirty-tree.sh is the regression harness for the
+  # dirty-tree detector. Referenced only from Makefile
+  # (test-check-mid-run-dirty-tree target) and its sibling contract.
+  "scripts/test-check-mid-run-dirty-tree.sh",
   # scripts/test-agent-model-args.sh is the regression harness for
   # scripts/agent-model-args.sh's line-token argv contract. Referenced only
   # from Makefile (test-agent-model-args target) and
@@ -939,9 +947,13 @@ exclude = [
   "scripts/test-generate-topology-docs.md",
   "scripts/test-launch-gemini-review.md",
   "scripts/test-launch-cursor-review.md",
+  "scripts/test-launch-codex-review.md",
+  "scripts/check-mid-run-dirty-tree.md",
+  "scripts/test-check-mid-run-dirty-tree.md",
   "scripts/test-lib-cursor-auth.md",
   "scripts/lib-cursor-auth.md",
   "scripts/lib-cursor-launcher-common.md",
+  "scripts/lib-codex-launcher-common.md",
   "scripts/lib-gemini-model-resolver.md",
   "scripts/cursor-auth-flags.md",
   "scripts/test-wait-for-reviewers.md",

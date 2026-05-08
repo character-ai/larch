@@ -601,6 +601,26 @@ assert_line "case Q status" "STATUS=OK" "$RESULT_Q"
 assert_line "case Q healthy" "HEALTHY=true" "$RESULT_Q"
 assert_equals "case Q retry post-processed" "POST-PROCESSED OK" "$(cat "${OUT_Q%.txt}-retry.txt")"
 
+OUT_Q2="$TMPROOT/codex-q2.txt"
+HEALTH_Q2="$TMPROOT/case-q2.health"
+WORKDIR_Q2="$TMPROOT/workdir-q2"
+mkdir -p "$WORKDIR_Q2"
+prepare_outer_candidate "$OUT_Q2"
+{
+    printf 'TOOL=codex\n'
+    printf 'TIMEOUT=2\n'
+    printf 'CAPTURE_STDOUT=false\n'
+    printf 'CAPTURE_STDOUT_ONLY=false\n'
+    printf 'OUTPUT_FILE=%s\n' "$OUT_Q2"
+    printf 'OUTER_LAUNCHER=%s\n' "$REPO_ROOT/scripts/launch-codex-review.sh"
+    printf 'OUTER_LAUNCHER_PROMPT_FILE=%s\n' "${OUT_Q2}.prompt"
+    printf 'OUTER_LAUNCHER_WORKDIR=%s\n' "$WORKDIR_Q2"
+} > "${OUT_Q2}.meta"
+RESULT_Q2=$(LARCH_CODEX_MODEL=test-codex-model run_collector bash "$OUT_Q2" "$HEALTH_Q2")
+assert_line "case Q2 codex outer reviewer file" "REVIEWER_FILE=${OUT_Q2%.txt}-retry.txt" "$RESULT_Q2"
+assert_line "case Q2 codex outer status" "STATUS=OK" "$RESULT_Q2"
+assert_equals "case Q2 codex outer output" "OK" "$(cat "${OUT_Q2%.txt}-retry.txt")"
+
 OUT_R1="$TMPROOT/cursor-r1.txt"
 prepare_outer_candidate "$OUT_R1"
 write_outer_meta "$OUT_R1" "$REPO_ROOT/scripts/launch-cursor-review.sh" "" "$WORKDIR_Q"

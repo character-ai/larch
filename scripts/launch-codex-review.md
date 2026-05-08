@@ -7,10 +7,14 @@
 - Validates `--output` via `lib-validate-meta-path.sh::validate_meta_scalar_path` BEFORE installing traps, sidecars, or any other side effects (parity with `scripts/launch-cursor-review.sh:60-62`); the same byte-exact `.meta`-sidecar contract enforced for Cursor review applies on the Codex path so retry substitution stays byte-identical with the recorded `CMD_JSON` element.
 - No additional stdout beyond what `run-external-agent.sh` produces
 - Runs `run-external-agent.sh` without `exec` so the launcher can perform a best-effort post-call token scrape, then exits with `run-external-agent.sh`'s exit code
+- Sources `scripts/lib-codex-launcher-common.sh` for inner-sentinel promotion and outer-launcher retry metadata.
 - Redirects wrapper stderr to `${OUTPUT}.sidecar` when possible and silently scrapes the last `tokens used` block into `token-ledger.sh` as `codex_review`; if the sidecar cannot be opened, stderr falls back to `/dev/null`
 - Before token-ledger scraping or spawning Codex, the wrapper rehydrates token context from `IMPLEMENT_TMPDIR` when present: `$IMPLEMENT_TMPDIR/session-id` overwrites any stale `LARCH_TOKEN_SESSION_ID`, and `$IMPLEMENT_TMPDIR/claude-source.env` becomes `LARCH_CLAUDE_SOURCE_FILE`.
 - Captures `TIMING_START_S` after argv validation and emits one best-effort `timing-ledger.sh record-vendor-task` row on EXIT. `--timing-task-kind <kind>` defaults to `codex-review`; timing failures are silent and never affect stdout or exit code.
 - Uses `--output-last-message` for Codex output (no `--capture-stdout`)
+- Invokes `run-external-agent.sh` with `RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX=.inner.done`; the wrapper writes `${OUTPUT}.inner.done`, and the launcher publishes `${OUTPUT}.done` only after token scraping and dirty-tree sidecar publication complete.
+- Before launching, removes stale `${OUTPUT}.dirty-tree` / `${OUTPUT}.untracked-baseline` sidecars and captures a NUL-delimited untracked baseline. On exit, writes `${OUTPUT}.dirty-tree` via `check-mid-run-dirty-tree.sh --mode baseline` before promoting `${OUTPUT}.inner.done` to `${OUTPUT}.done`.
+- Stores the original prompt in `${OUTPUT}.prompt`, accepts `--prompt-file`, and appends `OUTER_LAUNCHER`, `OUTER_LAUNCHER_PROMPT_FILE`, and `OUTER_LAUNCHER_WORKDIR` to `${OUTPUT}.meta` so empty-output retry re-enters this launcher and re-runs the dirty-tree guard.
 - Grants Codex write access to the canonical parent directory of `--output` via `--add-dir "$CANON_OUTPUT_DIR"` immediately after `-C "$PWD"`, matching the implementer-lane sandbox posture.
 - Reads `agent-model-args.sh` line-token stdout into a Bash array and expands it with `${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"}` so model values containing spaces remain one argv token and producer-side validation failures abort before Codex is launched.
 - Specialist mode calls `render-specialist-prompt.sh` internally, supporting all flags
@@ -25,5 +29,6 @@
 - `skills/design/references/sketch-launch.md` (4 regular + 1 quick Codex sketch slots)
 - `skills/design/references/dialectic-execution.md` (Codex debater launches)
 - `skills/review/SKILL.md` (Codex specialist + generic reviewer)
+- `scripts/collect-agent-results.sh` empty-output retry path, when valid Codex `OUTER_LAUNCHER*` metadata is present
 
-**Edit-in-sync**: `scripts/agent-model-args.sh`, `scripts/render-specialist-prompt.sh`, `scripts/run-external-agent.sh`, `scripts/test-launch-codex-review.sh`. Differs from `launch-cursor-review.sh` in: no `cursor-wrap-prompt.sh` call, no `--capture-stdout`, uses `--output-last-message`.
+**Edit-in-sync**: `scripts/lib-codex-launcher-common.sh`, `scripts/check-mid-run-dirty-tree.sh`, `scripts/snapshot-untracked.sh`, `scripts/agent-model-args.sh`, `scripts/render-specialist-prompt.sh`, `scripts/run-external-agent.sh`, `scripts/collect-agent-results.sh`, `scripts/test-launch-codex-review.sh`, and `scripts/test-collect-agent-retry.sh`. Differs from `launch-cursor-review.sh` in: no `cursor-wrap-prompt.sh` call, no `--capture-stdout`, uses `--output-last-message`.

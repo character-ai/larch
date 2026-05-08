@@ -2,7 +2,7 @@
 # snapshot-untracked.sh — Capture a sorted list of untracked files for pre-review baseline.
 #
 # Usage:
-#   snapshot-untracked.sh --output <file>
+#   snapshot-untracked.sh --output <file> [--nul]
 #
 # On success, writes a sorted list of untracked paths to <file> via atomic rename.
 # On ANY failure (git, sort, mv), removes both the temp file and <file> so the
@@ -14,10 +14,12 @@
 set -uo pipefail
 
 OUTPUT=""
+NUL_MODE=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --output) OUTPUT="${2:?--output requires a value}"; shift 2 ;;
+        --nul) NUL_MODE=true; shift ;;
         *) echo "snapshot-untracked.sh: unknown flag: $1" >&2; rm -f "$OUTPUT" "${OUTPUT}.tmp" 2>/dev/null; exit 0 ;;
     esac
 done
@@ -29,7 +31,13 @@ fi
 
 TMP="${OUTPUT}.tmp"
 
-if git ls-files --others --exclude-standard 2>/dev/null \
+if [[ "$NUL_MODE" == "true" ]]; then
+    if git ls-files --others --exclude-standard -z 2>/dev/null \
+        | LC_ALL=C sort -z > "$TMP" \
+        && mv -f "$TMP" "$OUTPUT"; then
+        exit 0
+    fi
+elif git ls-files --others --exclude-standard 2>/dev/null \
     | LC_ALL=C sort > "$TMP" \
     && mv -f "$TMP" "$OUTPUT"; then
     exit 0

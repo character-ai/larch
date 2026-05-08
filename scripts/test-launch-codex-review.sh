@@ -106,6 +106,10 @@ assert_eq "argv 3" "-C" "$(sed -n '3p' "$ARGV")"
 assert_eq "argv 4" "$REPO_ROOT" "$(sed -n '4p' "$ARGV")"
 assert_eq "argv 5 add-dir flag" "--add-dir" "$(sed -n '5p' "$ARGV")"
 assert_eq "argv 6 canonical output dir" "$(cd "$OUTDIR_REAL" && pwd -P)" "$(sed -n '6p' "$ARGV")"
+assert_grep "outer launcher metadata" "OUTER_LAUNCHER=$REPO_ROOT/scripts/launch-codex-review.sh" "${OUTPUT}.meta"
+assert_grep "outer prompt metadata" "OUTER_LAUNCHER_PROMPT_FILE=${OUTPUT}.prompt" "${OUTPUT}.meta"
+assert_grep "dirty-tree sidecar status" "STATUS=" "${OUTPUT}.dirty-tree"
+assert_grep "dirty-tree sidecar mode" "MODE=baseline" "${OUTPUT}.dirty-tree"
 
 if [[ "$(grep -Fxc -- '-m' "$ARGV")" == "1" ]] && grep -Fxq -- 'stub-model' "$ARGV"; then
     pass
@@ -140,6 +144,27 @@ else
     fail "newline model should fail before invoking codex or producing .done (rc=$RC count=$(cat "$TMPDIR/count-bad.txt" 2>/dev/null))"
 fi
 assert_grep "newline model diagnostic" "[[:cntrl:]]" "$TMPDIR/bad-model.stderr"
+if [[ ! -e "$TMPDIR/bad-model.txt.done" ]]; then
+    pass
+else
+    fail "newline model should not publish public done"
+fi
+
+PROMPT_FILE="$TMPDIR/prompt-file.txt"
+ARGV_PROMPT_FILE="$TMPDIR/argv-prompt-file.txt"
+COUNT_PROMPT_FILE="$TMPDIR/count-prompt-file.txt"
+printf 'from prompt file\n\n' > "$PROMPT_FILE"
+PATH="$STUB_BIN:$PATH" \
+    CODEX_STUB_ARGV_LOG="$ARGV_PROMPT_FILE" \
+    CODEX_STUB_COUNT_FILE="$COUNT_PROMPT_FILE" \
+    "$LAUNCHER" --output "$TMPDIR/prompt-file-output.txt" --timeout 5 --prompt-file "$PROMPT_FILE" >/dev/null
+EXPECTED_PROMPT_ARG="$TMPDIR/expected-prompt-arg.txt"
+printf 'from prompt file\n\n' > "$EXPECTED_PROMPT_ARG"
+if [[ "$(cat "$COUNT_PROMPT_FILE")" == "1" ]] && cmp -s "$EXPECTED_PROMPT_ARG" "${TMPDIR}/prompt-file-output.txt.prompt"; then
+    pass
+else
+    fail "--prompt-file should preserve prompt bytes and still launch through Codex"
+fi
 
 if (( FAIL > 0 )); then
     printf 'FAIL: test-launch-codex-review.sh - %s failed, %s passed\n' "$FAIL" "$PASS" >&2
