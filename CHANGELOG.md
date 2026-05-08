@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.13.10] - 2026-05-07
+
+### Fixed
+
+- Resolve #1433: close the partial-content observability window in `scripts/compose-review-findings.sh`'s archive publish path. The previous `cp "$TMP_JSONL" "$ARCHIVE_PATH"` could expose a half-written `docs/review-archive/issue-<N>.jsonl` to readers if interrupted mid-write. Replaced with a same-directory staged write — `mktemp "${ARCHIVE_PATH}.XXXXXX"` inside `$ARCHIVE_DIR`, copy `$TMP_JSONL` in, then `mv -f` to publish — which guarantees an atomic rename on POSIX same-filesystem semantics (the prior bare `mv -f` from `$TMP_JSONL` could fall back to copy+unlink across filesystems and reintroduce the same window). Failure paths in both staging and publish remove the tempfile before `fail`. Harness `scripts/test-compose-review-findings.sh` case (e) now asserts the archive directory contains only the published JSONL after a successful run, pinning the no-leftover-staging-tempfile invariant.
+
 ## [15.13.9] - 2026-05-08
 
 ### Fixed
