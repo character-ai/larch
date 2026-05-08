@@ -1,22 +1,25 @@
 #!/usr/bin/env bash
 # read-session-env-key.sh — read one KEY=VALUE pair from a session-env file.
 #
-# Wraps the inline `awk -F= '$1=="KEY"{print $2; exit}' FILE` pattern that
-# /implement Step 2.1 (and any other safe-parsing site) uses to extract a
-# specific key from $IMPLEMENT_TMPDIR/session-env.sh without sourcing it.
-# Sourcing is unsafe because the file's contents originate from environment
-# probes; awk-based extraction prevents code execution from a hostile value.
+# Safe-parsing wrapper used by /implement Step 2.1 (and any other safe-parsing
+# site) to extract a specific key from $IMPLEMENT_TMPDIR/session-env.sh without
+# sourcing it. Matches the whole `KEY=` prefix on a line and emits everything
+# after the first `=`, parallel to `value="${line#*=}"` in session-setup.sh.
+# Deliberately avoids the legacy `awk -F= '$1=="KEY"{print $2; exit}' FILE`
+# form because that truncates values containing additional `=` characters at
+# the first separator. Sourcing is unsafe because the file's contents
+# originate from environment probes; awk-based extraction prevents code
+# execution from a hostile value.
 #
 # Usage:
 #   read-session-env-key.sh --file PATH --key KEY [--default VALUE]
 #
 # Output:
-#   On success or when key is missing: the resolved value on stdout (one
-#   line, no KEY= prefix). When the key is missing AND --default is set,
-#   the default value is emitted; when the key is missing AND --default is
+#   On success: the resolved value on stdout (one line, no KEY= prefix).
+#   When the key is missing OR has an empty value AND --default is set, the
+#   default value is emitted; when the key is missing AND --default is
 #   absent, nothing is emitted (caller distinguishes by capturing stdout
-#   and applying its own fallback — matches the inline pattern's
-#   `[[ -z "$x" ]] && x=false` post-check).
+#   and applying its own fallback).
 #
 # Exit codes:
 #   0 — success (value or default emitted, or empty when key missing and

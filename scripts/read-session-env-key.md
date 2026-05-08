@@ -1,6 +1,6 @@
 # scripts/read-session-env-key.sh — contract
 
-`scripts/read-session-env-key.sh` is the wrapper around the safe-parsing inline pattern `awk -F= '$1=="KEY"{print $2; exit}' FILE` that `/implement` Step 2.1 uses to read `CURSOR_HEALTHY` / `GEMINI_HEALTHY` (and similar keys) from `$IMPLEMENT_TMPDIR/session-env.sh` without sourcing the file. Sourcing is unsafe because the file's contents originate from environment-probe output; awk-based extraction prevents code execution from a hostile value.
+`scripts/read-session-env-key.sh` is the safe-parsing wrapper that `/implement` Step 2.1 uses to read `CURSOR_HEALTHY` / `GEMINI_HEALTHY` (and similar keys) from `$IMPLEMENT_TMPDIR/session-env.sh` without sourcing the file. The implementation matches the whole `KEY=` prefix on a line and emits everything after the first `=` (parallel to `value="${line#*=}"` in `session-setup.sh`'s caller-env parser); it deliberately does NOT use the legacy `awk -F= '$1=="KEY"{print $2; exit}' FILE` form because that truncates values containing additional `=` characters at the first separator. Sourcing is unsafe because the file's contents originate from environment-probe output; awk-based extraction prevents code execution from a hostile value.
 
 ## Inputs
 

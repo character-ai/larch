@@ -4,8 +4,9 @@
 # Covers:
 #   A. read-session-env-key.sh extracts values containing '=' without
 #      truncation (was: awk -F= '{print $2}' truncated at first '=').
-#   B. write-session-env.sh validates --timing-ledger paths via the same
-#      regex/length guard used for --token-session-id and --claude-source-file.
+#   B. write-session-env.sh validates --timing-ledger paths via the
+#      regex/length guard ^[A-Za-z0-9_./~+-]{1,512}$ shared with
+#      --claude-source-file.
 
 set -euo pipefail
 
@@ -69,6 +70,11 @@ assert_eq "A.5 plain value" "hello" "$got"
 # A.6 — missing key with --default returns the default.
 got=$("$READ_SCRIPT" --file "$ENV_FILE" --key NOPE --default fallback)
 assert_eq "A.6 missing with default" "fallback" "$got"
+
+# A.6b — present-but-empty value with --default returns the default
+# (matches the contract documented in scripts/read-session-env-key.md).
+got=$("$READ_SCRIPT" --file "$ENV_FILE" --key EMPTY --default fallback)
+assert_eq "A.6b present-empty with default" "fallback" "$got"
 
 # A.7 — KEY prefix collision: a key whose name is a prefix of another must
 # match exactly (not match the longer-named key's line). Locks the
