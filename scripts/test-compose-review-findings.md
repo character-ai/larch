@@ -2,7 +2,8 @@
 
 Regression harness for `scripts/compose-review-findings.sh`. Self-contained:
 creates fixtures under a fresh tmpdir, exercises the helper, asserts the
-output shape, cleans up.
+output shape, checks jq-only JSONL parsing, verifies inline/archive redaction,
+and cleans up.
 
 The full contract for the helper under test lives at
 `scripts/compose-review-findings.md`. This stub points there for the

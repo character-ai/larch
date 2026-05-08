@@ -18,6 +18,8 @@ fail() { echo "FAIL: $1" >&2; exit 1; }
 
 TMPROOT=$(mktemp -d)
 trap 'rm -rf "$TMPROOT"' EXIT
+unset LARCH_TOKEN_SESSION_ID
+unset LARCH_IMPLEMENT_TMPDIR_TTL_SECONDS
 
 make_manifest() {
     local tmpdir="$1"
@@ -404,5 +406,78 @@ OUT=$(cd "$GIT11" && CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash "$WRAPPER" --implement
 assert_contains "$OUT" '^MANIFEST_FAILED=true$' "control-char session-env did not fail closed"
 assert_contains "$OUT" '^ERROR=invalid-session-env$' "control-char session-env did not emit invalid-session-env"
 assert_not_contains "$OUT" 'POST_DESIGN_BOUNDARY_OK=true' "control-char session-env emitted success marker"
+
+# TTL / session-id binding for hook tmpdir resolution.
+TTL_CACHE="$TMPROOT/ttl-cache"
+TTL_CWD="$TMPROOT/ttl-cwd"
+mkdir -p "$TTL_CWD"
+
+TMP15="$TTL_CACHE/larch/sessions/claude-implement-stale"
+make_manifest "$TMP15"
+printf 'CLONE_PATH=%s\n' "$TTL_CWD" > "$TMP15/.larch-keepalive"
+touch -t 200001010000 "$TMP15/design-export/manifest.env"
+OUT=$(printf '{"cwd":"%s","stop_hook_active":false}' "$TTL_CWD" \
+    | XDG_CACHE_HOME="$TTL_CACHE" LARCH_IMPLEMENT_TMPDIR_TTL_SECONDS=1 bash "$STOP_HOOK")
+assert_empty "$OUT" "stale tmpdir without session id did not fail open"
+
+TMP16="$TTL_CACHE/larch/sessions/claude-implement-fresh"
+make_manifest "$TMP16"
+printf 'CLONE_PATH=%s\n' "$TTL_CWD" > "$TMP16/.larch-keepalive"
+touch "$TMP16/design-export/manifest.env"
+OUT=$(printf '{"cwd":"%s","stop_hook_active":false}' "$TTL_CWD" \
+    | XDG_CACHE_HOME="$TTL_CACHE" LARCH_IMPLEMENT_TMPDIR_TTL_SECONDS=21600 bash "$STOP_HOOK")
+assert_contains "$OUT" '"decision":"block"' "fresh tmpdir without session id did not block"
+touch "$TMP16/.run-cleaned-up"
+
+TMP17="$TTL_CACHE/larch/sessions/claude-implement-session-mismatch"
+make_manifest "$TMP17"
+printf 'CLONE_PATH=%s\nSESSION_ID=session-A\n' "$TTL_CWD" > "$TMP17/.larch-keepalive"
+OUT=$(printf '{"cwd":"%s","stop_hook_active":false}' "$TTL_CWD" \
+    | XDG_CACHE_HOME="$TTL_CACHE" LARCH_TOKEN_SESSION_ID=session-B bash "$STOP_HOOK")
+assert_empty "$OUT" "session-id mismatch did not disqualify candidate"
+rm -f "$TMP17/design-export/manifest.env"
+
+TMP18="$TTL_CACHE/larch/sessions/claude-implement-session-match"
+make_manifest "$TMP18"
+printf 'CLONE_PATH=%s\nSESSION_ID=session-A\n' "$TTL_CWD" > "$TMP18/.larch-keepalive"
+OUT=$(printf '{"cwd":"%s","stop_hook_active":false}' "$TTL_CWD" \
+    | XDG_CACHE_HOME="$TTL_CACHE" LARCH_TOKEN_SESSION_ID=session-A bash "$STOP_HOOK")
+assert_contains "$OUT" '"decision":"block"' "session-id match did not block"
+touch "$TMP18/.run-cleaned-up"
+rm -f "$TMP18/design-export/manifest.env"
+
+TMP19="$TTL_CACHE/larch/sessions/claude-implement-session-match-stale"
+make_manifest "$TMP19"
+printf 'CLONE_PATH=%s\nSESSION_ID=session-A\n' "$TTL_CWD" > "$TMP19/.larch-keepalive"
+touch -t 200001010000 "$TMP19/design-export/manifest.env"
+OUT=$(printf '{"cwd":"%s","stop_hook_active":false}' "$TTL_CWD" \
+    | XDG_CACHE_HOME="$TTL_CACHE" LARCH_TOKEN_SESSION_ID=session-A LARCH_IMPLEMENT_TMPDIR_TTL_SECONDS=1 bash "$STOP_HOOK")
+assert_contains "$OUT" '"decision":"block"' "session-id match did not bypass TTL"
+touch "$TMP19/.run-cleaned-up"
+rm -f "$TMP19/design-export/manifest.env"
+
+TMP20="$TTL_CACHE/larch/sessions/claude-implement-session-missing"
+make_manifest "$TMP20"
+printf 'CLONE_PATH=%s\n' "$TTL_CWD" > "$TMP20/.larch-keepalive"
+OUT=$(printf '{"cwd":"%s","stop_hook_active":false}' "$TTL_CWD" \
+    | XDG_CACHE_HOME="$TTL_CACHE" LARCH_TOKEN_SESSION_ID=session-A bash "$STOP_HOOK")
+assert_empty "$OUT" "env-set keepalive without SESSION_ID did not disqualify candidate"
+
+TMP21="$TTL_CACHE/larch/sessions/claude-implement-date-broken"
+make_manifest "$TMP21"
+printf 'CLONE_PATH=%s\n' "$TTL_CWD" > "$TMP21/.larch-keepalive"
+touch "$TMP21/design-export/manifest.env"
+DATELESS_BIN="$TMPROOT/dateless-bin"
+mkdir -p "$DATELESS_BIN"
+for tool in awk stat; do
+    tool_path=$(command -v "$tool" || true)
+    [[ -n "$tool_path" ]] && ln -s "$tool_path" "$DATELESS_BIN/$tool"
+done
+BASH_BIN=$(command -v bash || true)
+[[ -n "$BASH_BIN" ]] || fail "could not resolve bash for dateless resolver fixture"
+# shellcheck disable=SC2016
+OUT=$(PATH="$DATELESS_BIN" XDG_CACHE_HOME="$TTL_CACHE" LARCH_IMPLEMENT_TMPDIR_TTL_SECONDS=21600 \
+    "$BASH_BIN" -c 'source "$1"; resolve_implement_tmpdir "$2"' _ "$REPO_ROOT/skills/implement/scripts/lib-resolve-implement-tmpdir.sh" "$TTL_CWD")
+assert_empty "$OUT" "date +%s failure did not reject TTL-only candidate"
 
 echo "PASS: post-design-boundary wrapper integration tests"
