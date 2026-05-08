@@ -43,7 +43,7 @@ The `COLLAPSE_PRIORITY` array lives inline in `scripts/tracking-issue-write.sh` 
 ## Test harness
 
 Covered indirectly by:
-- `scripts/test-assemble-anchor.sh` — fixture-based validation that assemble-anchor.sh emits the full 9-slug marker set in SECTION_MARKERS order.
+- `scripts/test-assemble-anchor.sh` — fixture-based validation that assemble-anchor.sh emits the full SECTION_MARKERS marker set in declaration order.
 - `scripts/test-tracking-issue-write.sh` — existing harness validates truncation + the SECTION_MARKERS ⊆ COLLAPSE_PRIORITY invariant (Phase 5 addition).
 
 No direct harness — the file exposes only a constant array.
