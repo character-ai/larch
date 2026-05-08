@@ -757,7 +757,7 @@ exclude = [
   "scripts/test-render-reviewer-prompt.sh",
   # scripts/test-render-specialist-prompt.sh is the regression harness for
   # scripts/render-specialist-prompt.sh (the specialist reviewer prompt
-  # renderer for /review's 6-reviewer specialist panel). The renderer itself
+  # renderer for /review's 3-reviewer specialist panel). The renderer itself
   # IS structurally referenced from skills/review/SKILL.md Step 2 launch
   # procedure; the test harness is referenced only from Makefile
   # (test-render-specialist-prompt target) and scripts/test-render-specialist-prompt.md

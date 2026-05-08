@@ -47,11 +47,8 @@ After voting completes, a scoreboard is printed showing each reviewer's performa
 
 | Reviewer | Findings | Accepted | Neutral (1 YES) | Exonerated (0 YES, 1+ EXON.) | Rejected (0 YES, 0 EXON.) | OOS Proposed | OOS Accepted | Score |
 |----------|----------|----------|-----------------|-------------------------------|---------------------------|--------------|--------------|-------|
-| Structure | 2 | 1 | 1 | 0 | 0 | 0 | 0 | +1 |
-| Correctness | 1 | 1 | 0 | 0 | 0 | 0 | 0 | +1 |
-| Testing | 2 | 1 | 0 | 1 | 0 | 1 | 1 | +2 |
-| Security | 1 | 1 | 0 | 0 | 0 | 0 | 0 | +1 |
-| Edge-cases | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 |
+| Correctness-Edges | 3 | 2 | 1 | 0 | 0 | 0 | 0 | +2 |
+| Security-Structure-Tests | 4 | 2 | 0 | 1 | 1 | 1 | 1 | +2 |
 | Codex | 2 | 1 | 0 | 0 | 1 | 0 | 0 | 0 |
 
 ## Future Plans
