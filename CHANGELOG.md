@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [16.0.1] - 2026-05-08
+
+### Changed
+
+- Resolve #1462: aggressively reduce /implement's OOS issue spam. The Step 9a.1 combine pass now leads with two prepended hard-combine rules — Rule A (LLM-judged "same logical concern" grouping) and Rule B (leaked SIMPLE singletons whose Description implies doc-drift or a less-than-30-LOC fix) — that cascade into the existing similarity criteria 1-4 (independence-respect intact) and the existing hard-combine criteria 5/6. Both new rules explicitly OVERRIDE the "do NOT combine genuinely independent entries" carve-out. A new ephemeral `oos-grouping-worksheet.md` artifact is written under `$IMPLEMENT_TMPDIR` for in-session human/review auditability of Rule A's grouping decisions; the worksheet uses `INPUT_<i>` indexing (post-3.3 merged-batch ordinal, NOT raw source `OOS_N`), a YAML key-per-line block format with `concern` / `group` / `justification` / `sources` keys, singleton group IDs of the form `g-singleton-<i>`, and is NOT consumed by `oos-issue-cap.sh` / `oos-file-conflict-deps.sh` / `/issue --input-file` and NOT one of the `anchor-sections/*.md` data fragments. Sentinel-recovery runs skip Rules A/B and worksheet writes for the same reason they skip criteria 1-6. New CI assertion `(9h)` in `scripts/test-implement-structure.sh` adds 11 fixed-string greps over the Step 9a.1 procedure block pinning Rule A/B literals, the ASCII cascade arrow `Rule A -> Rule B -> existing criteria 1-4`, override-independence semantics, the worksheet path and contract sub-pins, the sentinel-skip clauses, and the Rule B singleton predicate. SKILL.md cross-references at the OOS triage policy preamble, threshold convention, actionable consequence, Step 5.5, and Step 9a.1 manifest harvest are updated to reflect the new cascade and the worksheet artifact.
+
 ## [16.0.0] - 2026-05-07
 
 ### Changed
