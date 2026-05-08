@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.15.5] - 2026-05-07
+
+### Fixed
+
+- Resolve #1472: `/set-up-forked-open-source-repo` no longer aborts with `fork parent mismatch: expected <upstream>, got <none>` on valid forks. `gh repo view --json parent` does not always populate `.parent.nameWithOwner` — only `.parent.owner.login` and `.parent.name` — so the prior single-field jq expression evaluated to empty and rejected legitimate forks. `phase_github` in `skills/set-up-forked-open-source-repo/scripts/setup-forked-open-source-repo.sh` now prefers a non-empty `.parent.nameWithOwner` and otherwise composes `<owner.login>/<name>` from the populated subfields, with type guards (`.parent.owner` must be an object; `.login` and `.name` must be strings) so a malformed payload produces the stable `fork parent mismatch ... got <none>` diagnostic rather than a raw jq index/type abort. A pre-parse `jq -e 'type == "object"'` gate routes syntactically-invalid `gh` output through a dedicated `gh repo view returned invalid JSON` diagnostic. The case-insensitive comparison and `if .parent == null then empty` "not a fork" short-circuit are unchanged. Adds four regression cases to `test-setup-forked-open-source-repo.sh` (`parent-split-fields`, `parent-malformed-owner`, `parent-numeric-fields`, `parent-invalid-json`); updates `SECURITY.md` and the script's contract `.md` to match the parser's behavior.
+
 ## [15.15.4] - 2026-05-07
 
 ### Changed
