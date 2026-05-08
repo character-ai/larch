@@ -330,7 +330,10 @@ if [[ ! -f "$PLUGIN_JSON_BASELINE_FILE" ]]; then
     if [[ -f "$REPO_ROOT/.claude-plugin/plugin.json" ]]; then
         git -C "$REPO_ROOT" hash-object "$REPO_ROOT/.claude-plugin/plugin.json" > "$PLUGIN_JSON_BASELINE_FILE.tmp"
     else
-        printf '\n' > "$PLUGIN_JSON_BASELINE_FILE.tmp"
+        # Empty file is the canonical absent-sentinel — matches the "" produced by
+        # the post-implementer absent branch in Step 6b, and round-trips cleanly
+        # through `$(cat …)` below (no trailing-newline stripping mismatch). #1475.
+        : > "$PLUGIN_JSON_BASELINE_FILE.tmp"
     fi
     mv "$PLUGIN_JSON_BASELINE_FILE.tmp" "$PLUGIN_JSON_BASELINE_FILE"
 fi
@@ -506,11 +509,13 @@ if [[ "$STATUS" != "bailed" ]]; then
         emit_bailed "branch-changed"
     fi
 
-    # 6b: .claude-plugin/plugin.json unchanged.
+    # 6b: .claude-plugin/plugin.json unchanged. Both branches use "" as the
+    # canonical absent-sentinel, matching the empty baseline file written in
+    # Step 1's first-write block above — closes #1475.
     if [[ -f "$REPO_ROOT/.claude-plugin/plugin.json" ]]; then
         CURRENT_PLUGIN_JSON=$(git -C "$REPO_ROOT" hash-object "$REPO_ROOT/.claude-plugin/plugin.json")
     else
-        CURRENT_PLUGIN_JSON=$'\n'
+        CURRENT_PLUGIN_JSON=""
     fi
     if [[ "$CURRENT_PLUGIN_JSON" != "$PLUGIN_JSON_BASELINE" ]]; then
         emit_bailed "protected-path-modified"

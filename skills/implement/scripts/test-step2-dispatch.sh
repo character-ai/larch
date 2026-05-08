@@ -25,6 +25,9 @@
 #   - First codex invocation writes step2-spawn-coder.txt with the resolved coder.
 #   - Second invocation against same tmpdir with mismatched --coder → STATUS=bailed
 #     REASON=coder-mismatch-tmpdir-reuse TOOL=<current-tool>.
+#   - In a scratch git repo without .claude-plugin/plugin.json, a stub-Codex
+#     run that touches only non-protected files reaches STATUS=complete
+#     (no false-positive REASON=protected-path-modified — issue #1475).
 #
 # External-implementer spawning paths (manifest validation, dispatcher-side commit,
 # sanitization, launcher-retry) are covered by separate launcher / end-to-end tests;
@@ -313,7 +316,7 @@ git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD > "$TMP5/step2-spawn-branch.txt"
 if [[ -f "$REPO_ROOT/.claude-plugin/plugin.json" ]]; then
     git -C "$REPO_ROOT" hash-object "$REPO_ROOT/.claude-plugin/plugin.json" > "$TMP5/step2-plugin-json-baseline.txt"
 else
-    printf '\n' > "$TMP5/step2-plugin-json-baseline.txt"
+    : > "$TMP5/step2-plugin-json-baseline.txt"
 fi
 echo "5" > "$TMP5/codex-resume-count.txt"
 ANSWERS="$SCRATCH/answers.json"
@@ -354,7 +357,7 @@ git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD > "$TMP7/step2-spawn-branch.txt"
 if [[ -f "$REPO_ROOT/.claude-plugin/plugin.json" ]]; then
     git -C "$REPO_ROOT" hash-object "$REPO_ROOT/.claude-plugin/plugin.json" > "$TMP7/step2-plugin-json-baseline.txt"
 else
-    printf '\n' > "$TMP7/step2-plugin-json-baseline.txt"
+    : > "$TMP7/step2-plugin-json-baseline.txt"
 fi
 echo "garbage" > "$TMP7/codex-resume-count.txt"
 OUT=$(cd "$REPO_ROOT" && "$DISPATCHER" --tmpdir "$TMP7" --plan-file "$PLAN" --feature-file "$FEATURE" \
@@ -402,7 +405,7 @@ git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD > "$TMP9/step2-spawn-branch.txt"
 if [[ -f "$REPO_ROOT/.claude-plugin/plugin.json" ]]; then
     git -C "$REPO_ROOT" hash-object "$REPO_ROOT/.claude-plugin/plugin.json" > "$TMP9/step2-plugin-json-baseline.txt"
 else
-    printf '\n' > "$TMP9/step2-plugin-json-baseline.txt"
+    : > "$TMP9/step2-plugin-json-baseline.txt"
 fi
 echo "5" > "$TMP9/codex-resume-count.txt"
 OUT=$(cd "$REPO_ROOT" && "$DISPATCHER" --tmpdir "$TMP9" --plan-file "$PLAN" --feature-file "$FEATURE" \
@@ -426,7 +429,7 @@ git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD > "$TMP10/step2-spawn-branch.txt
 if [[ -f "$REPO_ROOT/.claude-plugin/plugin.json" ]]; then
     git -C "$REPO_ROOT" hash-object "$REPO_ROOT/.claude-plugin/plugin.json" > "$TMP10/step2-plugin-json-baseline.txt"
 else
-    printf '\n' > "$TMP10/step2-plugin-json-baseline.txt"
+    : > "$TMP10/step2-plugin-json-baseline.txt"
 fi
 echo "codex" > "$TMP10/step2-spawn-coder.txt"
 OUT=$(cd "$REPO_ROOT" && "$DISPATCHER" --tmpdir "$TMP10" --plan-file "$PLAN" --feature-file "$FEATURE" \
@@ -463,7 +466,7 @@ git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD > "$TMP10B/step2-spawn-branch.tx
 if [[ -f "$REPO_ROOT/.claude-plugin/plugin.json" ]]; then
     git -C "$REPO_ROOT" hash-object "$REPO_ROOT/.claude-plugin/plugin.json" > "$TMP10B/step2-plugin-json-baseline.txt"
 else
-    printf '\n' > "$TMP10B/step2-plugin-json-baseline.txt"
+    : > "$TMP10B/step2-plugin-json-baseline.txt"
 fi
 echo "cursor" > "$TMP10B/step2-spawn-coder.txt"
 OUT=$(cd "$REPO_ROOT" && "$DISPATCHER" --tmpdir "$TMP10B" --plan-file "$PLAN" --feature-file "$FEATURE" \
@@ -512,7 +515,7 @@ git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD > "$TMP11B/step2-spawn-branch.tx
 if [[ -f "$REPO_ROOT/.claude-plugin/plugin.json" ]]; then
     git -C "$REPO_ROOT" hash-object "$REPO_ROOT/.claude-plugin/plugin.json" > "$TMP11B/step2-plugin-json-baseline.txt"
 else
-    printf '\n' > "$TMP11B/step2-plugin-json-baseline.txt"
+    : > "$TMP11B/step2-plugin-json-baseline.txt"
 fi
 echo "5" > "$TMP11B/codex-resume-count.txt"
 OUT_B=$(cd "$REPO_ROOT" && "$DISPATCHER" --tmpdir "$TMP11B" --plan-file "$PLAN" --feature-file "$FEATURE" \
@@ -594,6 +597,80 @@ if [[ "$OUT_12B" == *"STATUS=bailed"* ]] && [[ "$(cat "$TOKEN12B")" == "fresh-st
     pass
 else
     fail 12b "second tmpdir should export its own session id, out=$OUT_12B token=$(cat "$TOKEN12B" 2>/dev/null)"
+fi
+
+# ---------------------------------------------------------------------------
+# Test 13: in a git repo WITHOUT .claude-plugin/plugin.json, a successful
+# implementer run that does NOT touch plugin.json must reach STATUS=complete
+# (not bail with REASON=protected-path-modified). Regression coverage for
+# issue #1475 — absent-then-still-absent must compare equal in Step 6b.
+# ---------------------------------------------------------------------------
+TMP13="$SCRATCH/test13"; mkdir -p "$TMP13"
+printf 'fresh-step2-13\n' > "$TMP13/session-id"
+
+# Scratch git repo with no .claude-plugin/plugin.json.
+SCRATCH_REPO="$SCRATCH/scratch-repo-13"
+mkdir -p "$SCRATCH_REPO"
+git -C "$SCRATCH_REPO" init -q -b main
+git -C "$SCRATCH_REPO" config user.email "test@example.com"
+git -C "$SCRATCH_REPO" config user.name "Test"
+echo "initial" > "$SCRATCH_REPO/README.md"
+git -C "$SCRATCH_REPO" add README.md
+git -C "$SCRATCH_REPO" commit -q -m "init"
+[[ ! -e "$SCRATCH_REPO/.claude-plugin/plugin.json" ]] || \
+    fail 13 "scratch repo precondition: plugin.json should not exist"
+
+# Stub codex: modify a benign file in the working tree and write a
+# status=complete manifest. Does NOT touch .claude-plugin/plugin.json.
+STUB13="$SCRATCH/stub-bin-13"; mkdir -p "$STUB13"
+cat > "$STUB13/codex" <<'STUB13_CODEX'
+#!/usr/bin/env bash
+set -euo pipefail
+: "${STEP2_MANIFEST_PATH:?}"
+output_path=""
+last=""
+for arg in "$@"; do
+    if [[ "$last" == "--output-last-message" ]]; then
+        output_path="$arg"
+    fi
+    last="$arg"
+done
+[[ -n "$output_path" ]] && printf 'stub transcript\n' > "$output_path"
+# Modify a benign tracked file. Working tree is the dispatcher's cwd.
+echo "edited by stub" >> "$PWD/README.md"
+cat > "$STEP2_MANIFEST_PATH.tmp" <<JSON
+{
+  "schema_version": "1",
+  "status": "complete",
+  "files_touched": [{"path": "README.md"}],
+  "commit_message": "stub: edit README",
+  "summary_bullets": ["edited README"],
+  "tests_added_or_modified": [],
+  "todos_left": [],
+  "oos_observations": []
+}
+JSON
+mv "$STEP2_MANIFEST_PATH.tmp" "$STEP2_MANIFEST_PATH"
+printf 'stub codex stdout\n'
+STUB13_CODEX
+chmod +x "$STUB13/codex"
+
+OUT_13=$(cd "$SCRATCH_REPO" && \
+    PATH="$STUB13:$PATH" \
+    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    STEP2_MANIFEST_PATH="$TMP13/manifest.json" \
+    LARCH_CODEX_MODEL=stub-codex-model \
+    "$DISPATCHER" --tmpdir "$TMP13" --plan-file "$PLAN" --feature-file "$FEATURE" \
+        --auto-mode false --coder codex 2>&1)
+
+if [[ "$OUT_13" == *"STATUS=complete"* ]] \
+   && [[ "$OUT_13" != *"REASON=protected-path-modified"* ]] \
+   && [[ "$OUT_13" == *"ORCHESTRATOR_EDIT_AUTHORITY=forbidden"* ]] \
+   && [[ "$OUT_13" != *"ORCHESTRATOR_EDIT_AUTHORITY=allowed"* ]] \
+   && [[ "$OUT_13" == *"MANIFEST="* ]]; then
+    pass
+else
+    fail 13 "absent plugin.json + benign edit should reach STATUS=complete with AUTH=forbidden + MANIFEST= (no protected-path-modified false positive); got: $OUT_13"
 fi
 
 # ---------------------------------------------------------------------------
