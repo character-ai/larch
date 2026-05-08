@@ -445,7 +445,10 @@ Write the plan to `$DESIGN_TMPDIR/plan.txt` with basename exactly `plan.txt`. If
 
 ```bash
 SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 3 — plan review" || true
-SESSION_ENV_PATH="$SESSION_ENV_PATH" "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 1 — design Step 3 plan review" || true
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$SESSION_ENV_PATH" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$SESSION_ENV_PATH" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 1 — design Step 3 plan review" || true
 ```
 
 **IMPORTANT: Plan review MUST ALWAYS run with all 8 reviewers (4 Codex specialists + 4 Cursor specialists: Architecture/Standards, Edge-cases/Failure-modes, Innovation/Exploration, Pragmatism/Safety). Never skip or abbreviate this step regardless of how straightforward the plan appears — even when all sketch agents agreed, the plan is short, or the change seems trivial. Reviewers validate against the actual codebase state, catching issues that sketch-phase reasoning alone cannot detect. When Cursor is unavailable, each Cursor archetype slot falls back to Codex; when Codex is unavailable, each Codex archetype slot falls back to Cursor; when both are unavailable, each falls back to a Claude subagent.**
@@ -548,7 +551,10 @@ If **all reviewers** report no in-scope issues and no out-of-scope observations,
 
 ```bash
 SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 3.5 — discussion r2" || true
-SESSION_ENV_PATH="$SESSION_ENV_PATH" "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 1 — design Step 3.5 discussion r2" || true
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$SESSION_ENV_PATH" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$SESSION_ENV_PATH" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 1 — design Step 3.5 discussion r2" || true
 ```
 
 Print: `> **🔶 3.5: discussion r2**`
@@ -561,7 +567,10 @@ Print: `> **🔶 3.5: discussion r2**`
 
 ```bash
 SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 3b — arch diagram" || true
-SESSION_ENV_PATH="$SESSION_ENV_PATH" "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 1 — design Step 3b arch diagram" || true
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$SESSION_ENV_PATH" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$SESSION_ENV_PATH" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 1 — design Step 3b arch diagram" || true
 ```
 
 Print: `> **🔶 3b: arch diagram**`
