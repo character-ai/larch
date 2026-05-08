@@ -316,7 +316,15 @@ render_jq() {
         end
     ' "${TRANSCRIPT_FILES[@]}" 2>"$jq_stderr_dest" || {
         if [[ -n "$jq_stderr_path" && -s "$jq_stderr_path" ]]; then
-            RENDER_FAIL_REASON="failed to parse token sources (jq stderr at $jq_stderr_path)"
+            # Published surface (stdout via `unavailable`) flows into the
+            # tracking-issue anchor and PR body, so the absolute jq stderr
+            # path — which carries TMPDIR + username — must not appear in
+            # RENDER_FAIL_REASON. Emit a fixed phrase to stdout consumers
+            # and surface the actual path on stderr only, where it remains
+            # discoverable to operators tailing the script (closes #1511
+            # finding B).
+            RENDER_FAIL_REASON="failed to parse token sources (jq stderr captured; debug)"
+            printf 'token-report.sh: jq stderr captured at %s\n' "$jq_stderr_path" >&2
         else
             RENDER_FAIL_REASON="failed to parse token sources"
             # Empty stderr file on a debug-mode failure carries no signal —
@@ -347,17 +355,23 @@ replace_token_block() {
     fi
     if (( has_begin == 1 && has_end == 1 )); then
         # Both markers present — replace the bracketed region in place.
+        # Marker regexes are anchored to whole-line (allowing leading /
+        # trailing whitespace) so a legitimate prose / table-cell line that
+        # merely *mentions* the marker substring is not treated as a
+        # structural sentinel. token-report.sh always emits the markers on
+        # their own line, so this is the author-side contract; parity with
+        # assemble-anchor.sh marker-pair walks (closes #1511 finding A).
         awk -v repl="$block_file" '
           BEGIN {
             while ((getline line < repl) > 0) replacement = replacement line "\n"
             close(repl)
           }
-          /<!-- token-report-begin -->/ {
+          /^[[:space:]]*<!-- token-report-begin -->[[:space:]]*$/ {
             printf "%s", replacement
             skip=1
             next
           }
-          /<!-- token-report-end -->/ && skip { skip=0; next }
+          /^[[:space:]]*<!-- token-report-end -->[[:space:]]*$/ && skip { skip=0; next }
           !skip { print }
         ' "$target" > "$tmp"
     elif (( has_begin == 1 || has_end == 1 )); then
@@ -366,12 +380,14 @@ replace_token_block() {
         # surviving marker through end-of-file (lone-begin) or the file head
         # through the surviving marker (lone-end), then append a fresh block.
         # Emit a stderr warning so the corruption is observable.
+        # Marker regex is whole-line anchored for the same reason as the
+        # matched-pair branch above.
         if (( has_begin == 1 )); then
             printf 'token-report.sh: warning: %s has lone <!-- token-report-begin --> marker; truncating from marker and rewriting block\n' "$target" >&2
-            awk '/<!-- token-report-begin -->/ {found=1; next} !found {print}' "$target" > "$tmp"
+            awk '/^[[:space:]]*<!-- token-report-begin -->[[:space:]]*$/ {found=1; next} !found {print}' "$target" > "$tmp"
         else
             printf 'token-report.sh: warning: %s has lone <!-- token-report-end --> marker; dropping head through marker and rewriting block\n' "$target" >&2
-            awk '/<!-- token-report-end -->/ {found=1; next} found {print}' "$target" > "$tmp"
+            awk '/^[[:space:]]*<!-- token-report-end -->[[:space:]]*$/ {found=1; next} found {print}' "$target" > "$tmp"
         fi
         # Ensure trailing newline before appending the fresh block.
         if [[ -s "$tmp" ]] && [[ "$(tail -c 1 "$tmp" | wc -c)" -gt 0 ]]; then
