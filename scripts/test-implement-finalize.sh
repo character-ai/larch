@@ -891,7 +891,7 @@ assert_rc "$RC" 2 "postmerge: postbump flag rejected by common parser"
 
 if grep -qF "skip directly to Step 8b" "$SCRIPT_DIR/../skills/implement/SKILL.md"; then
     FAIL=$((FAIL + 1))
-    echo "FAIL: postbump: SKILL.md legacy skip phrase absent"
+    echo "FAIL: postbump: SKILL.md still contains legacy 'skip directly to Step 8b' phrase"
 else
     PASS=$((PASS + 1))
     echo "PASS: postbump: SKILL.md legacy skip phrase absent"

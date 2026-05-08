@@ -2,13 +2,14 @@
 # implement-finalize.sh — Mechanical finalizer for /implement Step 8 post-bump work and Steps 14, 15, 16a, and 18.
 
 set -uo pipefail
-# Intentional: best-effort failure model. Every leaf-script invocation captures
-# its own rc explicitly via 'set +e'/'rc=$?' patterns; helper failures surface
-# through warning breadcrumbs and tail records, NEVER through script exit. Do
-# NOT enable -e without auditing every leaf-script call site. Each guarded
-# probe is bracketed by a 'set +e' / 'set +e' pair: the leading 'set +e' is a
-# defensive no-op (errexit is already off file-wide), and the trailing
-# 'set +e' restores the file-wide invariant after the probe.
+# Intentional: best-effort failure model. Errexit is OFF file-wide. Every
+# leaf-script invocation captures its own rc explicitly via 'rc=$?' after the
+# call; helper failures surface through warning breadcrumbs and tail records,
+# NEVER through script exit. Do NOT enable -e without auditing every leaf-
+# script call site. Each guarded probe begins with a redundant 'set +e' as a
+# defensive no-op (so a future accidental file-wide 'set -e' still leaves the
+# probe non-fatal), and ends with another 'set +e' to keep the invariant
+# explicit at the boundary.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -450,7 +451,7 @@ collect_changelog_bullets() {
     mkdir -p "$dir"
     : > "$dir/Added"; : > "$dir/Changed"; : > "$dir/Fixed"; : > "$dir/Removed"; : > "$dir/Security"
     if [ -n "$manifest_path" ]; then
-        if [ ! -r "$manifest_path" ]; then
+        if ! validate_small_tmp_file "$manifest_path"; then
             return 1
         fi
         categorized=$(jq -c '(.summary_bullets_categorized // {}) | if type == "object" then . else {} end' "$manifest_path" 2>/dev/null || echo '{}')
@@ -560,6 +561,7 @@ write_changelog_entry() {
         { print }
         END {
             if (in_unreleased && !inserted) {
+                print ""
                 for (i = 1; i <= en; i++) print e[i]
                 inserted = 1
             }
@@ -827,11 +829,25 @@ run_force_push_gate() {
 }
 
 run_postbump() {
-    local rc
+    local rc repo_root
     ANCHOR_REFRESH_STATUS=skipped
     CHANGELOG_STATUS="skipped-resume"
     REBASE_STATUS="skipped-resume"
     FORCE_PUSH_STATUS=absent
+    set +e
+    repo_root=$(git rev-parse --show-toplevel 2>/dev/null)
+    rc=$?
+    set +e
+    if [ "$rc" -ne 0 ] || [ -z "$repo_root" ]; then
+        warn_line '**⚠ Step 8: postbump must run inside a git working tree (cwd is not in a repo). Bailing to cleanup.**'
+        postbump_tail postbump-cwd-not-repo skipped skipped-no-bump skipped-resume absent
+        return 0
+    fi
+    cd "$repo_root" || {
+        warn_line "**⚠ Step 8: postbump could not cd to repo root '$repo_root'. Bailing to cleanup.**"
+        postbump_tail postbump-cwd-not-repo skipped skipped-no-bump skipped-resume absent
+        return 0
+    }
     load_and_validate_postbump_state
     if ! read_postbump_checkpoint; then
         append_execution_issue "Step 8 postbump checkpoint file was corrupt."
