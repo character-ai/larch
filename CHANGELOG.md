@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [17.0.5] - 2026-05-08
+
+### Changed
+
+- Resolve #1477: combined leaked-SIMPLE OOS cleanup. **A.** `skills/implement/SKILL.md` Step 0.5 MANDATORY-read paragraph: replace the stale literal "the eight section slugs" with "the canonical slugs per `scripts/anchor-section-markers.sh`" so the doc points readers at the executable source of truth instead of pinning a count that has drifted (the canonical list is now eleven slugs). **B.** `scripts/test-implement-structure.sh` assertion (9d): after the existing `awk` extraction of the Step 9a.1 OOS pipeline procedure section, assert the extracted slice is `>= 4000` bytes with a clear failure message naming the likely cause ("has a new ## heading been inserted inside Step 9a.1 of anchor-comment-template.md?"). Without this guard, a stray top-level `##` heading inside Step 9a.1 silently truncates the slice and the dependent (9d)-(9h) literal pins fail in opaque ways. The current section is ~17KB, so the 4000-byte floor catches any plausible early-truncation slice while leaving plenty of margin for normal copy evolution. Sibling contract `scripts/test-implement-structure.md` updated in lockstep.
+
 ## [17.0.4] - 2026-05-08
 
 ### Changed
