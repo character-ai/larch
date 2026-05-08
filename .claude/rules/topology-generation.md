@@ -15,6 +15,11 @@ paths:
 
 # Topology Generation
 
-**Adding/changing a topology count** → first ensure the runtime authority for that count is updated; then edit `skills/shared/topology.tsv`; then run `bash scripts/generate-topology-docs.sh` to regenerate `docs/topology.md`. Consumer docs that link to `docs/topology.md` need no edit unless a new row anchor is being introduced.
+**Adding/changing a topology count** → update the runtime authority first,
+edit `skills/shared/topology.tsv`, then run
+`bash scripts/generate-topology-docs.sh` to regenerate `docs/topology.md`.
+Consumer docs linking to `docs/topology.md` need no edit unless you add a
+new row anchor.
 
-Adding a new row to `skills/shared/topology.tsv` requires extending this rule's `paths:` to include the new row's runtime authority file, so future edits to that file load this rule.
+Adding a `skills/shared/topology.tsv` row requires extending `paths:` with
+the new row's runtime authority file so future edits load this rule.
