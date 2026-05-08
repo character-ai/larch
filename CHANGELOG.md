@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.13.4] - 2026-05-08
+
+### Changed
+
+- Resolve #1379: Strunk-style brevity polish on `.claude/rules/`. Tightened prose across the 8 long rules (`anchor-section-markers-array.md`, `drift-prone-prose-in-docs.md`, `external-tool-launcher-parity.md`, `launcher-argv-test-coverage.md`, `markdown-no-space-in-code-span.md`, `research-readonly-hook-coupling.md`, `script-md-siblings.md`, `timing-task-kind-allowlist.md`) plus light cleanup on 5 short rules (`no-direct-submodule-edits.md`, `topology-generation.md`, `reviewer-archetype-generation.md`, `skill-editing-trace.md`, `skill-md-description-trigger.md`). Three surgical short rules (`shell-strict-mode.md`, `version-bump-reserved-message.md`, `skill-runtime-root-paths.md`) were intentionally unchanged. **Total**: 21,419 B → 19,313 B (9.83% reduction; ~2,106 B saved across the rules surface). No new rules were added, no rule's claims were changed, no frontmatter keys were introduced, and no file outside `.claude/rules/` was touched (gate 8 enforced). The `topology-generation.md` `paths:` array is byte-preserved and `python3 scripts/check-topology-rule-paths.py` continues to pass. Code-review feedback folded inline restored agent-centered phrasing on `anchor-section-markers-array.md`'s `prevents` line and "prose enumerating supported tools" on `external-tool-launcher-parity.md:24` (3-reviewer convergence on the first; single-reviewer nit on the second). Both fixes preserve the rules' original semantics — the polish bias is brevity that doesn't change what a rule says.
+
 ## [15.13.3] - 2026-05-07
 
 ### Added
