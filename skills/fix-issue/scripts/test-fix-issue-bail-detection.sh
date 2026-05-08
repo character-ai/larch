@@ -25,6 +25,12 @@
 #        "[--inline if inline_mode]" (encodes the design decision that SIMPLE
 #        intentionally omits the forward; checks the spell rather than the
 #        bare substring "--inline" so adjacent prose mentions are tolerated).
+#   (a11) HARD bullet forwards "[--quick if quick_mode]" (pass-through
+#        force-quick-mode flag — operator escape hatch for HARD classifications).
+#   (a12) SIMPLE bullet does NOT contain the forwarding spell
+#        "[--quick if quick_mode]" (SIMPLE already passes "--quick"
+#        unconditionally, so the conditional forward would be redundant; same
+#        spell-check approach as a10).
 #   (b)  Literal token "IMPLEMENT_BAIL_REASON=adopted-issue-closed" present.
 #   (c)  Warning prefix "/implement bailed: issue #" present.
 #   (d)  Specific directive "Do NOT call `issue-lifecycle.sh close`" present
@@ -154,6 +160,28 @@ else
         echo "    SIMPLE bullet not found" >&2
     else
         echo "    SIMPLE bullet unexpectedly contains '[--inline if inline_mode]': $SIMPLE_LINE" >&2
+    fi
+    exit 1
+fi
+
+# (a11) HARD bullet forwards --quick — operator escape hatch for HARD classifications.
+# Without this guard, a future refactor could silently drop the forward and
+# /fix-issue --quick callers would silently lose the quick-mode override on HARD.
+assert_bullet_contains "a11: HARD bullet forwards --quick" '- **HARD**' '[--quick if quick_mode]'
+
+# (a12) SIMPLE bullet does NOT contain the conditional forwarding spell —
+# encodes that SIMPLE already passes --quick unconditionally (the conditional
+# forward would be redundant). Mirrors a10's spell-check approach.
+SIMPLE_LINE_QUICK=$(grep -F -- '- **SIMPLE**' <<<"$STEP5A_BLOCK" | head -1 || true)
+if [[ -n "$SIMPLE_LINE_QUICK" && "$SIMPLE_LINE_QUICK" != *"[--quick if quick_mode]"* ]]; then
+    PASS_COUNT=$((PASS_COUNT + 1))
+    echo "  PASS: a12: SIMPLE bullet does NOT contain conditional --quick forward"
+else
+    echo "  FAIL: a12: SIMPLE bullet does NOT contain conditional --quick forward" >&2
+    if [[ -z "$SIMPLE_LINE_QUICK" ]]; then
+        echo "    SIMPLE bullet not found" >&2
+    else
+        echo "    SIMPLE bullet unexpectedly contains '[--quick if quick_mode]': $SIMPLE_LINE_QUICK" >&2
     fi
     exit 1
 fi
