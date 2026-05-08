@@ -515,6 +515,87 @@ else
     fail "issue #1529 OUTPUT.prompt sidecar must equal the user-original prompt"
 fi
 
+# Case AK1B (issue #1561): LARCH_CURSOR_SANDBOX=disabled drops the
+# `--sandbox enabled` argv tokens while preserving `--mode plan`, `--trust`,
+# and the HARD CONSTRAINTS preamble. Operators on macOS hosts where
+# cursor-agent's sandbox runtime is unavailable rely on this escape hatch.
+OUT_AK1B="$TMPDIR/cursor-ak1b.txt"
+ARGV_LOG_AK1B="$TMPDIR/cursor-ak1b-argv.log"
+PATH="$STUB_BIN:$PATH" \
+    CURSOR_API_KEY="ak1-test-key-789" \
+    CURSOR_STUB_ARGV_LOG="$ARGV_LOG_AK1B" \
+    LARCH_CURSOR_SANDBOX=disabled \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux \
+    "$LAUNCHER" --output "$OUT_AK1B" --timeout 5 --prompt "case ak1b" >/dev/null 2>"$TMPDIR/case-ak1b.stderr"
+
+if grep -Fxq -- '--mode' "$ARGV_LOG_AK1B" && grep -Fxq -- 'plan' "$ARGV_LOG_AK1B"; then
+    AK1B_MODE_LINE=$(grep -Fxn -- '--mode' "$ARGV_LOG_AK1B" | awk -F: 'NR==1 {print $1; exit}')
+    AK1B_PLAN_LINE=$(grep -Fxn -- 'plan' "$ARGV_LOG_AK1B" | awk -F: 'NR==1 {print $1; exit}')
+    if [[ -n "$AK1B_MODE_LINE" && -n "$AK1B_PLAN_LINE" ]] && (( AK1B_PLAN_LINE == AK1B_MODE_LINE + 1 )); then
+        pass
+    else
+        fail "issue #1561 --mode and plan must be adjacent argv tokens under LARCH_CURSOR_SANDBOX=disabled; mode_line=$AK1B_MODE_LINE plan_line=$AK1B_PLAN_LINE"
+    fi
+else
+    fail "issue #1561 Cursor argv must still include --mode plan under LARCH_CURSOR_SANDBOX=disabled"
+fi
+if grep -Fxq -- '--sandbox' "$ARGV_LOG_AK1B"; then
+    fail "issue #1561 Cursor argv must NOT include --sandbox under LARCH_CURSOR_SANDBOX=disabled"
+else
+    pass
+fi
+if grep -Fxq -- '--trust' "$ARGV_LOG_AK1B"; then
+    pass
+else
+    fail "issue #1561 Cursor argv must still include --trust under LARCH_CURSOR_SANDBOX=disabled"
+fi
+if grep -Fxq -- '--force' "$ARGV_LOG_AK1B"; then
+    fail "issue #1561 Cursor argv must NOT include --force under LARCH_CURSOR_SANDBOX=disabled"
+else
+    pass
+fi
+if grep -Fq -- 'HARD CONSTRAINTS — your role is read-only review' "$ARGV_LOG_AK1B"; then
+    pass
+else
+    fail "issue #1561 Cursor argv must still carry the HARD CONSTRAINTS preamble under LARCH_CURSOR_SANDBOX=disabled"
+fi
+# The preamble's enforcement sentence MUST be rendered conditionally — under
+# LARCH_CURSOR_SANDBOX=disabled, the launcher must NOT claim that the CLI
+# sandbox is enforcing read-only (that would lie to the model and weaken
+# prompt-level enforcement; round-1 review finding for issue #1561), and
+# MUST contain the disabled-path enforcement wording instead.
+if grep -Fq -- 'rejected by the sandbox' "$ARGV_LOG_AK1B"; then
+    fail "issue #1561 disabled-path preamble MUST NOT claim writes are rejected by the sandbox"
+else
+    pass
+fi
+if grep -Fq -- 'LARCH_CURSOR_SANDBOX=disabled' "$ARGV_LOG_AK1B"; then
+    pass
+else
+    fail "issue #1561 disabled-path preamble must reference LARCH_CURSOR_SANDBOX=disabled so the model knows the CLI sandbox is opted out"
+fi
+
+# Case AK1C (issue #1561): an unrecognized LARCH_CURSOR_SANDBOX value defaults
+# to enabled and emits a stderr warning so typos are visible without aborting.
+OUT_AK1C="$TMPDIR/cursor-ak1c.txt"
+ARGV_LOG_AK1C="$TMPDIR/cursor-ak1c-argv.log"
+PATH="$STUB_BIN:$PATH" \
+    CURSOR_API_KEY="ak1-test-key-789" \
+    CURSOR_STUB_ARGV_LOG="$ARGV_LOG_AK1C" \
+    LARCH_CURSOR_SANDBOX=bogus \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux \
+    "$LAUNCHER" --output "$OUT_AK1C" --timeout 5 --prompt "case ak1c" >/dev/null 2>"$TMPDIR/case-ak1c.stderr"
+if grep -Fxq -- '--sandbox' "$ARGV_LOG_AK1C" && grep -Fxq -- 'enabled' "$ARGV_LOG_AK1C"; then
+    pass
+else
+    fail "issue #1561 unrecognized LARCH_CURSOR_SANDBOX must default to --sandbox enabled in argv"
+fi
+if grep -Fq -- 'LARCH_CURSOR_SANDBOX=bogus not recognized' "$TMPDIR/case-ak1c.stderr"; then
+    pass
+else
+    fail "issue #1561 unrecognized LARCH_CURSOR_SANDBOX must emit a stderr warning"
+fi
+
 # Case AK2 (issue #1358): with CURSOR_API_KEY empty, --api-key MUST NOT appear
 # in argv. Restore the standard stub for default cases later if any.
 OUT_AK2="$TMPDIR/cursor-ak2.txt"
