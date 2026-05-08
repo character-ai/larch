@@ -120,6 +120,20 @@ MMDC="$(resolve_mmdc)" || {
 tmpdir="$(mktemp -d -t mermaid-lint-XXXXXX)"
 trap 'rm -rf "$tmpdir"' EXIT
 
+# Pass --no-sandbox to Chromium so the SVG-render fallback works on
+# Ubuntu 23.10+ runners with restricted unprivileged user namespaces.
+# Local mmdc 11.x does not expose --parseOnly, so the lint always falls
+# back to renderMermaid which spawns Chromium via Puppeteer; without
+# --no-sandbox the runner aborts with "No usable sandbox!" before any
+# Mermaid syntax is checked. The puppeteer config is repository-pinned
+# at scripts/lint-mermaid-puppeteer.json so the workaround is auditable.
+PPTR_CONFIG="$REPO_ROOT/scripts/lint-mermaid-puppeteer.json"
+if [ -f "$PPTR_CONFIG" ]; then
+    MMDC_RENDER_ARGS=(--puppeteerConfigFile "$PPTR_CONFIG")
+else
+    MMDC_RENDER_ARGS=()
+fi
+
 supports_parse_only=false
 if "$MMDC" --help 2>&1 | grep -q -- '--parseOnly'; then
     supports_parse_only=true
@@ -193,7 +207,7 @@ for path in "${files[@]}"; do
             fi
         else
             output="$file_tmp/fence-$i.svg"
-            if ! "$MMDC" -i "$input" -o "$output" >/dev/null; then
+            if ! "$MMDC" "${MMDC_RENDER_ARGS[@]}" -i "$input" -o "$output" >/dev/null; then
                 echo "ERROR: Mermaid render failed: $path fence $i" >&2
                 failures=$((failures + 1))
             fi
