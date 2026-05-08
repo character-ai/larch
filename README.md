@@ -121,6 +121,12 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
       <td><code>[--label L]... [--title-prefix P] [--repo OWNER/REPO] [--closed-window-days N] [--blocked-by-issue N] [--dry-run] [--go] &lt;task description or empty to deduce from context&gt;</code></td>
     </tr>
     <tr><td colspan="2">Plan-to-issues orchestrator: classifies a task description as one-shot or multi-piece, delegates GitHub issue creation to <code>/issue</code> (batch mode plus an umbrella tracking issue when multi-piece), and wires native blocked-by edges plus child→umbrella back-links. <code>--blocked-by-issue N</code> is forwarded to <code>/issue</code> on both Step 3A (one-shot) and Step 3B.2 (batch children); only batch child creation can succeed with the policy edge — single-mode is rejected by <code>/issue</code>'s canonical batch-mode-only error. Typically invoked transitively by <code>/review</code> (description-mode finding filing) and <code>/skill-evolver</code>.</td></tr>
+    <tr><td colspan="2"><hr></td></tr>
+    <tr>
+      <td><a href="docs/skills.md#upgrade-larch"><code>/upgrade-larch</code></a></td>
+      <td><em>(none)</em></td>
+    </tr>
+    <tr><td colspan="2">Upgrade the larch plugin to the latest version by removing and re-adding the marketplace, then reinstalling the plugin.</td></tr>
   </tbody>
 </table>
 
