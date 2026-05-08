@@ -45,7 +45,7 @@ md=$("$SCRIPT" --ledger "$LEDGER" --transcript "$TRANSCRIPT" --full --markdown)
 contains "claude heading"  "### Claude"  "$md"
 contains "codex heading"   "### Codex"   "$md"
 contains "cursor heading"  "### Cursor"  "$md"
-contains "claude header row" "| Step | Skill | Claude Input | Claude Output |" "$md"
+contains "claude header row" "| Step | Skill | Claude Input | Claude Cache Read | Claude Cache Create | Claude Output |" "$md"
 contains "vendor header row" "| Step | Skill | Input | Output | Total |" "$md"
 contains "claude skill row"  "larch:implement" "$md"
 
@@ -67,9 +67,12 @@ if grep -Fq "$expected_cursor_row" <<<"$md"; then pass
 else fail "cursor step-total row missing or wrong: expected '$expected_cursor_row'"
 fi
 
-# Negative assertions: old columns and HTML entities must not appear. Anchor
-# N/A to the old cell shape so legitimate labels cannot trip it.
-for needle in "Cache read" "Cache create" "Claude total" "Vendor total" "&nbsp;"; do
+# Negative assertions: deprecated combined / aggregate column names and HTML
+# entities must not appear. The "Claude Cache Read" / "Claude Cache Create"
+# columns ARE legitimate now, so we only forbid a combined "Claude total"
+# column and the legacy "Vendor total" header. Anchor N/A to the old cell
+# shape so legitimate labels cannot trip it.
+for needle in "Claude total" "Vendor total" "&nbsp;"; do
     if grep -Fq "$needle" <<<"$md"; then
         fail "rendered markdown must not contain '$needle'"
     else
@@ -109,7 +112,7 @@ contains "injection escaped pipe (skill cell)"  'a\|b'               "$inj_md"
 contains "injection newline collapsed (step)"   "Step newline mark" "$inj_md"
 contains "injection newline collapsed (skill)"  "two-line skill"    "$inj_md"
 
-claude_pipes=$(grep -F '| Step | Skill | Claude Input | Claude Output |' <<<"$inj_md" | head -1 | sed 's/\\|//g' | tr -cd '|' | wc -c | tr -d ' ')
+claude_pipes=$(grep -F '| Step | Skill | Claude Input | Claude Cache Read | Claude Cache Create | Claude Output |' <<<"$inj_md" | head -1 | sed 's/\\|//g' | tr -cd '|' | wc -c | tr -d ' ')
 vendor_pipes=$(grep -F '| Step | Skill | Input | Output | Total |' <<<"$inj_md" | head -1 | sed 's/\\|//g' | tr -cd '|' | wc -c | tr -d ' ')
 mode=""
 mismatch=0

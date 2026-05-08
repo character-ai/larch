@@ -220,15 +220,18 @@ render_jq() {
         else md_cell($vname)
         end;
 
-      # Claude-table 4-column header — used only by claude_table.
-      def vendor_header($input_label; $output_label):
-        "| Step | Skill | " + $input_label + " | " + $output_label + " |\n"
-        + "| --- | --- | ---: | ---: |";
+      # Claude-table 6-column header — used only by claude_table. The two
+      # cache columns are surfaced because cache_read (typically 5-20x
+      # uncached input on long orchestrators) and cache_create are real
+      # billable input volume; hiding them understates Anthropic spend.
+      def vendor_header($input_label; $cache_read_label; $cache_create_label; $output_label):
+        "| Step | Skill | " + $input_label + " | " + $cache_read_label + " | " + $cache_create_label + " | " + $output_label + " |\n"
+        + "| --- | --- | ---: | ---: | ---: | ---: |";
 
-      # Claude-table 4-column row — used only by claude_table.
-      def vrow($step; $name; $in; $out):
+      # Claude-table 6-column row — used only by claude_table.
+      def vrow($step; $name; $in; $cr; $cc; $out):
         "| " + md_cell($step) + " | " + md_cell($name) + " | "
-        + ($in|tostring) + " | " + ($out|tostring) + " |";
+        + ($in|tostring) + " | " + ($cr|tostring) + " | " + ($cc|tostring) + " | " + ($out|tostring) + " |";
 
       # Vendor-table 5-column header — used only by vendor_table.
       def vendor_header5:
@@ -248,24 +251,24 @@ render_jq() {
 
       # Always emitted because Claude is the primary surface.
       def claude_table($marks; $claude):
-        ["### Claude", "", vendor_header("Claude Input"; "Claude Output")]
+        ["### Claude", "", vendor_header("Claude Input"; "Claude Cache Read"; "Claude Cache Create"; "Claude Output")]
         + ([range(0; $marks|length) as $i
             | ($marks[$i]) as $m
             | (($marks[$i+1].ts) // null) as $end
             | (slice1($claude; $m.ts; $end)) as $sl
             | (totals($sl)) as $st
-            | vrow($m.step; "**step total**"; $st.input; $st.output),
+            | vrow($m.step; "**step total**"; $st.input; $st.cache_read; $st.cache_create; $st.output),
               ($sl
                 | group_by(.skill)
                 | map({skill: .[0].skill, totals: totals(.)})
                 | .[]
-                | vrow(""; .skill; .totals.input; .totals.output))
+                | vrow(""; .skill; .totals.input; .totals.cache_read; .totals.cache_create; .totals.output))
            ])
         + [
             ($marks[0].ts) as $first
             | (slice1($claude; $first; null)) as $in_run
             | (totals($in_run)) as $gt
-            | vrow("**Grand total**"; ""; $gt.input; $gt.output)
+            | vrow("**Grand total**"; ""; $gt.input; $gt.cache_read; $gt.cache_create; $gt.output)
           ]
         | join("\n");
 
