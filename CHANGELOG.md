@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [17.0.6] - 2026-05-08
+
+### Fixed
+
+- Resolve #1480: rewrite `skills/design/references/dialectic-execution.md` lines 32-48 to substitute `--timing-task-kind` literals directly per side (`cursor-debate-thesis`, `cursor-debate-antithesis`, `codex-debate-thesis`, `codex-debate-antithesis`), removing the variable indirection that lured the heavy-worker subagent into the `VAR=value cmd ... "$VAR"` env-var-prefix idiom (the gotcha: `"$VAR"` expands in the parent shell BEFORE the prefix scope, so the launcher receives `--timing-task-kind` followed immediately by the next flag). Add an inline anti-pattern note explaining the bash gotcha and a recovery-discipline sentence (re-launch + synchronous `collect-agent-results.sh` in the same Bash message, no yield between). Add defensive `--timing-task-kind` value validation to all six launchers (`scripts/launch-{codex,cursor,gemini}-{review,implement}.sh`): empty values and values starting with `--` are now rejected with exit 2 and the message `--timing-task-kind requires a non-empty, non-flag-like value`. Same-PR regression assertions in `scripts/test-launch-{codex,cursor,gemini}-review.sh` and `skills/implement/scripts/test-{codex,cursor,gemini}-implementer.sh` per `.claude/rules/launcher-argv-test-coverage.md`. Update launcher sibling contracts (`scripts/launch-*.md`) to document the new validation per `.claude/rules/script-md-siblings.md`. Append a `run_in_background: true` + yield + "await notifications" anti-pattern bullet plus a SendMessage subagent-suspend dependency paragraph to `skills/design/references/heavy-worker.md` "Wait Discipline" section. Document the SendMessage dependency under AGENTS.md "Conventions" so operators in environments without `SendMessage` know to pass `--inline` to `/implement`. Two follow-up OOS issues filed: (1) extend the same defensive validation to the `LARCH_TIMING_TASK_KIND` env-var-default path; (2) add a doc-drift lint asserting the new anti-pattern phrases stay present in `dialectic-execution.md` / `heavy-worker.md` / `AGENTS.md`.
+
 ## [17.0.5] - 2026-05-08
 
 ### Changed
