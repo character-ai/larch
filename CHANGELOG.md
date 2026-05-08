@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [17.0.8] - 2026-05-08
+
+### Changed
+
+- Resolve #1464: thread `--repo` through repo-targeted `gh` calls and parameterize `--base` in `scripts/create-pr.sh`. New `scripts/resolve-repo.sh` prints `OWNER/REPO` from `gh repo view --json nameWithOwner` (with a `scripts/github-remote-repo.sh origin` fallback that handles trailing-slash and credentialed HTTPS forms). `scripts/create-pr.sh` accepts a new `--base BASE_REF` flag, falling back to `gh repo view --json defaultBranchRef`'s value, then to `main`; its `"${GH_REPO_ARGS[@]}"` expansions are now guarded with the `${arr[@]+"${arr[@]}"}` pattern so `set -euo pipefail` + bash 3.2 (macOS default) do not crash with "unbound variable" when neither `--repo` nor the resolver supplies a value. `scripts/extract-closes-issue-from-pr.sh` fails closed (exit 0 with empty stdout) when the resolver returns empty, preventing silent mis-routing under fork-configured clones. `scripts/implement-finalize.sh` Step 18's round-trip-detection branch resolves `repo` via the helper before its `gh issue view` fallback. `--repo` threaded through repo-targeted `gh` calls in `skills/fix-issue/scripts/{blocker-helpers,finalize-umbrella,find-lock-issue,issue-lifecycle,umbrella-handler,get-issue-details}.sh` and `skills/issue/scripts/fetch-issue-details.sh`. Defensive `(.labels // [])` in `skills/fix-issue/scripts/get-issue-details.sh` so a null `labels` field cannot crash `set -euo pipefail` downstream of a successful `gh issue view`. Three follow-up OOS items filed as #1501 / #1502 / #1503 (token-report jq-stderr path leak under `LARCH_DEBUG_TOKEN_REPORT`, launcher common-helper duplication, token-report marker substring vs. whole-line regex inconsistency) — all OOS items belong to recently-merged PRs and are out of scope for this branch. Regression coverage: `scripts/test-resolve-repo.sh` gains trailing-slash and credentialed-HTTPS cases; existing `scripts/test-create-pr.sh` covers the `--base` flag.
+
 ## [17.0.7] - 2026-05-08
 
 ### Changed
