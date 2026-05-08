@@ -76,6 +76,20 @@ assert_eq "A.6 missing with default" "fallback" "$got"
 got=$("$READ_SCRIPT" --file "$ENV_FILE" --key EMPTY --default fallback)
 assert_eq "A.6b present-empty with default" "fallback" "$got"
 
+# A.6c — empty --file with --default returns the default (closes #1563
+# round-2 review: standalone /design and /review pass an empty
+# SESSION_ENV_PATH and would otherwise emit "--file is required" stderr
+# noise, also tripping `set -e` in callers).
+got=$("$READ_SCRIPT" --file "" --key WHATEVER --default fallback)
+assert_eq "A.6c empty file with default" "fallback" "$got"
+
+# A.6d — empty --file without --default keeps the usage error (exit 1).
+if "$READ_SCRIPT" --file "" --key WHATEVER >/dev/null 2>&1; then
+    fail "A.6d: empty --file without --default should exit 1"
+else
+    pass
+fi
+
 # A.7 — KEY prefix collision: a key whose name is a prefix of another must
 # match exactly (not match the longer-named key's line). Locks the
 # whole-key-plus-equals match in the corrected awk.

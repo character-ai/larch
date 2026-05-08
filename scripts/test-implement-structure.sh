@@ -1261,28 +1261,40 @@ grep -Fq "$coder_override_breadcrumb" "$SKILL_MD" \
   || fail "(30c) skills/implement/SKILL.md missing pin '$coder_override_breadcrumb' — see #1512"
 
 # ---------------------------------------------------------------------------
-# (31) CLONE_TAG basename idiom pin (closes #1563). The Step 13.5 / Step 14
+# (31) CLONE_TAG basename algorithm pin (closes #1563). The Step 13.5 / Step 14
 #      state-file snippets compute EXPECTED_TMPDIR_BASENAME_PREFIX, which
 #      Step 18's verify_cleanup_target compares against the actual session
-#      tmpdir basename to authorize rm-rf. The naive one-pipe form
-#      `basename "$PWD" | tr ...` causes tr to convert basename's trailing
-#      newline to '_' BEFORE command substitution can strip it, baking a
-#      stray underscore into the prefix and breaking the sanity-check on
-#      every standard run. The fixed two-step form captures basename via
-#      $() first (which strips the newline), then pipes the clean string
-#      through tr — matching scripts/implement-finalize.sh::clone_basename_prefix.
-#      Both Step 13.5 and Step 14 snippets must use the fixed form, so the
-#      positive pin requires at least 2 occurrences and the negative pin
-#      forbids the buggy one-pipe form anywhere in SKILL.md.
+#      tmpdir basename to authorize rm-rf. The prefix MUST exactly mirror what
+#      `scripts/session-setup.sh` (lines 233-236) and
+#      `scripts/implement-finalize.sh::clone_basename_prefix` produce — a
+#      four-step pipeline: (1) basename, (2) sanitize via tr (NOT a one-pipe
+#      `basename "$PWD" | tr` form, which bakes basename's trailing newline
+#      into a stray '_'), (3) truncate to 32 chars, (4) empty-fallback to '_'.
+#      Both Step 13.5 and Step 14 must compute the full algorithm into a
+#      pre-heredoc CLONE_TAG_FULL variable, so the positive pin requires at
+#      least 2 occurrences each of the 4 sentinel literals and the heredoc
+#      reference; the negative pin forbids the buggy one-pipe form anywhere.
 # ---------------------------------------------------------------------------
-clone_tag_fixed_idiom='$(printf '"'"'%s'"'"' "$(basename "$PWD")" | tr -c '"'"'A-Za-z0-9_-'"'"' '"'"'_'"'"')'
-clone_tag_fixed_count=$(grep -F -c "$clone_tag_fixed_idiom" "$SKILL_MD" || true)
-[[ "$clone_tag_fixed_count" -ge 2 ]] \
-  || fail "(31a) skills/implement/SKILL.md must use the two-step CLONE_TAG idiom at both Step 13.5 and Step 14 state-file snippets (found $clone_tag_fixed_count, expected >= 2) — see #1563"
+declare -a clone_tag_pins=(
+  "31a:CLONE_TAG_FULL=\$(basename \"\$PWD\"):basename capture"
+  "31b:CLONE_TAG_FULL=\$(printf '%s' \"\$CLONE_TAG_FULL\" | tr -c 'A-Za-z0-9_-' '_'):sanitize step"
+  "31c:CLONE_TAG_FULL=\${CLONE_TAG_FULL:0:32}:truncate to 32 chars"
+  '31d:[ -n "$CLONE_TAG_FULL" ] || CLONE_TAG_FULL="_":empty-fallback to _'
+  '31e:EXPECTED_TMPDIR_BASENAME_PREFIX="claude-implement-${CLONE_TAG_FULL}-":heredoc reference'
+)
+for clone_tag_pin in "${clone_tag_pins[@]}"; do
+  pin_id="${clone_tag_pin%%:*}"
+  rest="${clone_tag_pin#*:}"
+  pin_lit="${rest%:*}"
+  pin_desc="${rest##*:}"
+  pin_count=$(grep -F -c "$pin_lit" "$SKILL_MD" || true)
+  [[ "$pin_count" -ge 2 ]] \
+    || fail "($pin_id) skills/implement/SKILL.md must apply $pin_desc at both Step 13.5 and Step 14 (found $pin_count, expected >= 2) — see #1563"
+done
 
 clone_tag_buggy_idiom='basename "$PWD" | tr -c'
 if grep -Fq "$clone_tag_buggy_idiom" "$SKILL_MD"; then
-  fail "(31b) skills/implement/SKILL.md must NOT use the one-pipe CLONE_TAG form '$clone_tag_buggy_idiom' (tr sees basename's trailing newline before \$() strips it) — see #1563"
+  fail "(31f) skills/implement/SKILL.md must NOT use the one-pipe CLONE_TAG form '$clone_tag_buggy_idiom' (tr sees basename's trailing newline before \$() strips it) — see #1563"
 fi
 
 echo "PASS: test-implement-structure.sh — structural invariants hold (assertion 5 retired)"

@@ -49,7 +49,20 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-[ -n "$FILE" ] || { echo "read-session-env-key.sh: --file is required" >&2; exit 1; }
+if [ -z "$FILE" ]; then
+    # Empty --file is treated identically to an unreadable file below: when
+    # --default is set, emit the default and exit 0; otherwise keep the
+    # usage error. This lets standalone /design and /review (where
+    # SESSION_ENV_PATH is intentionally empty) call this script in their
+    # token-ledger rehydration blocks without emitting stderr noise or
+    # tripping `set -e` in callers (#1563 round-2 review).
+    if [ "$DEFAULT_SET" = "true" ]; then
+        printf '%s\n' "$DEFAULT"
+        exit 0
+    fi
+    echo "read-session-env-key.sh: --file is required" >&2
+    exit 1
+fi
 [ -n "$KEY" ]  || { echo "read-session-env-key.sh: --key is required"  >&2; exit 1; }
 
 if [ ! -r "$FILE" ]; then

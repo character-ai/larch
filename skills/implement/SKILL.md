@@ -1797,7 +1797,17 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 
 Write `$IMPLEMENT_TMPDIR/finalize-state.sh` before any post-PR cleanup/Slack/teardown branch. This always-run state file is required even when `merge=false`, `draft=true`, `forked_target=true`, or Step 12 bailed before local cleanup.
 
+`EXPECTED_TMPDIR_BASENAME_PREFIX` MUST mirror exactly what `session-setup.sh` and `scripts/implement-finalize.sh::clone_basename_prefix` produce, or Step 18's `verify_cleanup_target` sanity-check will refuse rm-rf and leak the session tmpdir. The four required steps — basename, sanitize via `tr` (NOT a one-pipe form, which bakes basename's trailing newline into a stray `_`; see #1563), truncate to 32 chars, empty-fallback to `_` — are computed inline before the heredoc into `CLONE_TAG_FULL`, then referenced by the heredoc. The `${CLONE_TAG:-…}` operator-override semantics are preserved on the first line.
+
 ```bash
+if [ -n "${CLONE_TAG:-}" ]; then
+  CLONE_TAG_FULL="$CLONE_TAG"
+else
+  CLONE_TAG_FULL=$(basename "$PWD")
+  CLONE_TAG_FULL=$(printf '%s' "$CLONE_TAG_FULL" | tr -c 'A-Za-z0-9_-' '_')
+  CLONE_TAG_FULL=${CLONE_TAG_FULL:0:32}
+  [ -n "$CLONE_TAG_FULL" ] || CLONE_TAG_FULL="_"
+fi
 cat > "$IMPLEMENT_TMPDIR/finalize-state.sh" <<EOF
 BRANCH_NAME=$BRANCH_NAME
 PR_NUMBER=$PR_NUMBER
@@ -1818,7 +1828,7 @@ STALL_TRACKING=${STALL_TRACKING:-false}
 STALL_STEP=${STALL_STEP:-}
 DONE_RENAME_APPLIED=${DONE_RENAME_APPLIED:-false}
 EXPECTED_SESSION_ID=$(cat "$IMPLEMENT_TMPDIR/session-id" 2>/dev/null || echo "")
-EXPECTED_TMPDIR_BASENAME_PREFIX="claude-implement-${CLONE_TAG:-$(printf '%s' "$(basename "$PWD")" | tr -c 'A-Za-z0-9_-' '_')}-"
+EXPECTED_TMPDIR_BASENAME_PREFIX="claude-implement-${CLONE_TAG_FULL}-"
 EOF
 printf '%s' "${FINAL_BAIL_REASON:-}" > "$IMPLEMENT_TMPDIR/final-bail-reason.txt"
 ```
@@ -1841,7 +1851,17 @@ If `forked_target=true`: print `⏭️ 14: local cleanup — skipped (--forked d
 
 Use the finalizer state from Step 13.5, then delegate Step 14 and Step 15 mechanical work to `implement-finalize.sh postmerge`. The state file is plain `KEY=value` text and is never sourced; the script reads it with `awk`. Mechanical SSOT: `${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.md` § `postmerge`.
 
+`CLONE_TAG_FULL` is computed inline using the same four-step algorithm as Step 13.5 (see Step 13.5 prose for the rationale and #1563); the heredoc references it on the `EXPECTED_TMPDIR_BASENAME_PREFIX` line.
+
 ```bash
+if [ -n "${CLONE_TAG:-}" ]; then
+  CLONE_TAG_FULL="$CLONE_TAG"
+else
+  CLONE_TAG_FULL=$(basename "$PWD")
+  CLONE_TAG_FULL=$(printf '%s' "$CLONE_TAG_FULL" | tr -c 'A-Za-z0-9_-' '_')
+  CLONE_TAG_FULL=${CLONE_TAG_FULL:0:32}
+  [ -n "$CLONE_TAG_FULL" ] || CLONE_TAG_FULL="_"
+fi
 cat > "$IMPLEMENT_TMPDIR/finalize-state.sh" <<EOF
 BRANCH_NAME=$BRANCH_NAME
 PR_NUMBER=$PR_NUMBER
@@ -1862,7 +1882,7 @@ STALL_TRACKING=${STALL_TRACKING:-false}
 STALL_STEP=${STALL_STEP:-}
 DONE_RENAME_APPLIED=${DONE_RENAME_APPLIED:-false}
 EXPECTED_SESSION_ID=$(cat "$IMPLEMENT_TMPDIR/session-id" 2>/dev/null || echo "")
-EXPECTED_TMPDIR_BASENAME_PREFIX="claude-implement-${CLONE_TAG:-$(printf '%s' "$(basename "$PWD")" | tr -c 'A-Za-z0-9_-' '_')}-"
+EXPECTED_TMPDIR_BASENAME_PREFIX="claude-implement-${CLONE_TAG_FULL}-"
 EOF
 printf '%s' "${FINAL_BAIL_REASON:-}" > "$IMPLEMENT_TMPDIR/final-bail-reason.txt"
 
