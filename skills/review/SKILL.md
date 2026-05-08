@@ -228,6 +228,7 @@ At the top of each Step 3 round iteration's bash block (before `### 3a — Colle
 
 ```bash
 SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=review "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "review Step 3 round ${round_num} — review cycle" || true
+SESSION_ENV_PATH="$SESSION_ENV_PATH" "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 5 — review Step 3 round ${round_num} voting cycle" || true
 ```
 
 Use the round counter already tracked by the round state machine.
@@ -326,6 +327,7 @@ If `round_substantial=true`, increment the round number. IMMEDIATELY re-execute 
 
 ```bash
 SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=review "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "review Step 4 — final summary" || true
+SESSION_ENV_PATH="$SESSION_ENV_PATH" "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 5 — review Step 4 final summary" || true
 ```
 
 ### 4a — Print summary (both modes)
