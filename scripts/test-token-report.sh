@@ -46,12 +46,23 @@ contains "claude heading"  "### Claude"  "$md"
 contains "codex heading"   "### Codex"   "$md"
 contains "cursor heading"  "### Cursor"  "$md"
 contains "claude header row" "| Step | Skill | Claude Input | Claude Output |" "$md"
-contains "vendor header row" "| Step | Skill | Input | Output |" "$md"
+contains "vendor header row" "| Step | Skill | Input | Output | Total |" "$md"
 contains "claude skill row"  "larch:implement" "$md"
+
+# Pin the codex step-total and grand-total rows to aggregate-only fixture
+# values so total-only rows cannot silently render as all-zero vendor rows.
+expected_codex_row="| Step 1 - design | **step total** | 0 | 0 | 100 |"
+if grep -Fq "$expected_codex_row" <<<"$md"; then pass
+else fail "codex step-total row missing or wrong: expected '$expected_codex_row'"
+fi
+expected_codex_grand="| **Grand total** |  | 0 | 0 | 100 |"
+if grep -Fq "$expected_codex_grand" <<<"$md"; then pass
+else fail "codex grand-total row missing or wrong: expected '$expected_codex_grand'"
+fi
 
 # Pin the cursor step-total row to a uniquely identified line built from
 # fixture values so substring collisions cannot pass silently.
-expected_cursor_row="| Step 2 - implement | **step total** | 1 | 2 |"
+expected_cursor_row="| Step 2 - implement | **step total** | 1 | 2 | 10 |"
 if grep -Fq "$expected_cursor_row" <<<"$md"; then pass
 else fail "cursor step-total row missing or wrong: expected '$expected_cursor_row'"
 fi
@@ -98,18 +109,27 @@ contains "injection escaped pipe (skill cell)"  'a\|b'               "$inj_md"
 contains "injection newline collapsed (step)"   "Step newline mark" "$inj_md"
 contains "injection newline collapsed (skill)"  "two-line skill"    "$inj_md"
 
-hdr_pipes=$(grep -F '| Step | Skill | Claude Input | Claude Output |' <<<"$inj_md" | head -1 | sed 's/\\|//g' | tr -cd '|' | wc -c | tr -d ' ')
+claude_pipes=$(grep -F '| Step | Skill | Claude Input | Claude Output |' <<<"$inj_md" | head -1 | sed 's/\\|//g' | tr -cd '|' | wc -c | tr -d ' ')
+vendor_pipes=$(grep -F '| Step | Skill | Input | Output | Total |' <<<"$inj_md" | head -1 | sed 's/\\|//g' | tr -cd '|' | wc -c | tr -d ' ')
+mode=""
 mismatch=0
+# Pipe-parity check: Claude tables use the Claude header budget (4 columns); any other ### heading is a vendor table using the 5-column budget. Body rows before a heading fail closed.
 while IFS= read -r line; do
     [ -z "$line" ] && continue
     case "$line" in
+        '### Claude'*) mode=claude ;;
+        '### '*) mode=vendor ;;
         '|'*)
-            stripped=$(printf '%s' "$line" | sed 's/\\|//g')
-            n=$(printf '%s' "$stripped" | tr -cd '|' | wc -c | tr -d ' ')
             case "$line" in
                 *'---'*) continue ;;
             esac
-            if [[ "$n" != "$hdr_pipes" ]]; then mismatch=$((mismatch + 1)); fi
+            stripped=$(printf '%s' "$line" | sed 's/\\|//g')
+            n=$(printf '%s' "$stripped" | tr -cd '|' | wc -c | tr -d ' ')
+            case "$mode" in
+                claude) [[ "$n" == "$claude_pipes" ]] || mismatch=$((mismatch + 1)) ;;
+                vendor) [[ "$n" == "$vendor_pipes" ]] || mismatch=$((mismatch + 1)) ;;
+                *) mismatch=$((mismatch + 1)) ;;
+            esac
             ;;
     esac
 done <<< "$inj_md"
@@ -128,6 +148,12 @@ jq -c -n --arg v $'two-line\nvendor' '{type:"vendor",vendor:$v,input:4,output:5,
 unk_md=$("$SCRIPT" --ledger "$UNK_LEDGER" --transcript "$TRANSCRIPT" --full --markdown)
 contains "unknown vendor pipe escaped (heading)"      'evil\|vendor'  "$unk_md"
 contains "unknown vendor newline collapsed (heading)" 'two-line vendor' "$unk_md"
+
+LEGACY_LEDGER="$TMP/legacy-ledger.jsonl"
+jq -c -n '{type:"mark",step:"Step 1 - design",ts:"2026-05-06T00:00:00Z"}' > "$LEGACY_LEDGER"
+jq -c -n '{type:"vendor",vendor:"cursor",input:1,output:2,cache_read:3,cache_create:4,ts:"2026-05-06T00:00:05Z"}' >> "$LEGACY_LEDGER"
+legacy_md=$("$SCRIPT" --ledger "$LEGACY_LEDGER" --transcript "$TRANSCRIPT" --full --markdown)
+contains "legacy vendor total synthesized" "| Step 1 - design | **step total** | 1 | 2 | 10 |" "$legacy_md"
 
 TOKEN_REPORT="$TMP/token-report.md"
 printf '## Existing\n\nkept\n' > "$TOKEN_REPORT"

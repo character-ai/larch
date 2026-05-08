@@ -9,6 +9,12 @@ FAIL=0
 
 pass() { PASS=$((PASS + 1)); }
 fail() { echo "FAIL: $1" >&2; FAIL=$((FAIL + 1)); }
+contains() {
+    case "$3" in
+        *"$2"*) pass ;;
+        *) fail "$1 missing '$2': $3" ;;
+    esac
+}
 eq() {
     if [[ "$2" == "$3" ]]; then pass; else fail "$1 expected '$2' got '$3'"; fi
 }
@@ -187,6 +193,21 @@ STUB_EOF
         fi
         rm -f "$LCI_LEDGER"
     done
+
+    # Issue #1427: Codex aggregate-only telemetry must surface in the
+    # Total column. Records a vendor row with only total= set because the
+    # codex CLI does not split input/output counts.
+    TR_LEDGER="$TMP/codex-only-ledger.jsonl"
+    TR_TRANSCRIPT="$TMP/codex-only-transcript.jsonl"
+    cat > "$TR_LEDGER" <<'JSONL'
+{"type":"mark","step":"Step 2 - implement","ts":"2026-05-06T00:00:00Z"}
+{"type":"vendor","vendor":"codex","total":192077,"raw":"codex_implement","ts":"2026-05-06T00:00:05Z"}
+JSONL
+    printf '' > "$TR_TRANSCRIPT"
+    codex_md=$("$REPO_ROOT/scripts/token-report.sh" --ledger "$TR_LEDGER" --transcript "$TR_TRANSCRIPT" --full --markdown)
+    contains "codex-only header" "| Step | Skill | Input | Output | Total |" "$codex_md"
+    contains "codex-only step row" "| Step 2 - implement | **step total** | 0 | 0 | 192077 |" "$codex_md"
+    contains "codex-only grand total" "| **Grand total** |  | 0 | 0 | 192077 |" "$codex_md"
 else
     pass  # jq absent — skip per launcher runtime guard parallel
 fi

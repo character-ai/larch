@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.15.1] - 2026-05-07
+
+### Fixed
+
+- Resolve #1427: surface vendor token totals in the per-vendor token report so Codex (which only exposes an aggregate `tokens used` count via its CLI) no longer renders as `Input=0 | Output=0` for every step. `scripts/token-report.sh` adds a fifth `Total` column to per-vendor markdown tables (Codex / Cursor / Gemini / future vendors) — the Claude table keeps its existing 4-column shape via dedicated `claude_header4` / `crow4` helpers and is mechanically locked against accidental widening by the new vendor-only `vendor_header5` / `vrow5` helpers. `vendor_row` now synthesizes `total` from `input + output + cache_read + cache_create` only when the ledger row's `total` key is missing entirely; rows that record an explicit numeric `total` (including zero) render that value as-is. `scripts/token-report.md` documents the asymmetric Claude (4-col) / vendor (5-col) shape via header literals; `scripts/test-token-report.sh` extends the Codex step- and grand-total assertions plus a legacy total-absent fallback fixture and tightens its pipe-parity classifier (Claude=4 vs vendor=5, keyed off the most recent `###` heading line); `scripts/test-token-vendor-scrapers.sh` (under the existing `jq` guard) records a Codex aggregate-only vendor row and asserts the renderer surfaces the total in the new column. `scripts/launch-codex-implement.sh` and `scripts/launch-codex-review.sh` are unchanged — Codex CLI does not expose an input/output split, so the launcher path continues to record `total=N` only and the renderer is now the surface that makes that visible.
+
 ## [15.15.0] - 2026-05-08
 
 ### Added
