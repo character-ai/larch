@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [17.0.26] - 2026-05-08
+
+### Changed
+
+- Resolve #1530: bundle CHANGELOG dup heading, anchor-template false-positive guard, macOS bash 3.2 manual gate. Restores agnix-fix Added block at line 68 to '## [17.0.9] - 2026-05-08' (was duplicate '## [17.0.12]'); narrows Step 9a.1 security-token filter with a fenced-vs-unfenced discrimination procedure, security counter-invariant requiring at least one unfenced occurrence in real security findings, and a known-limitation note that upstream sites at plan-review.md/voting.md still substring-only (end-to-end propagation tracked as OOS_1); adds 'Manual Release Gates' section to docs/linting.md documenting macOS bash 3.2 'make test-create-pr' as a manual pre-release gate; extends scripts/test-implement-structure.sh assertion (24c) with grep -Fq pins on the new discrimination phrases.
+
+
 ## [17.0.25] - 2026-05-08
 
 ### Changed
