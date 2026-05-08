@@ -630,17 +630,17 @@ assert_contains "📎 Tracking issue: https://github.example/owner/repo/issues/4
 assert_contains "✅ 18: cleanup — implement complete! (<elapsed>)" "$OUT" "teardown: final breadcrumb"
 assert_contains "ISSUE_URL=https://github.example/owner/repo/issues/456" "$OUT" "teardown: issue URL tail"
 
-# Closing-mark cap on Step 18 — done. Ledger stub appends to ledger-calls.txt;
-# assert teardown invoked both the token and timing ledgers with mark "Step 18 — done"
-# AFTER the printed tracking URL and right before the final breadcrumb. Caps
-# the Step 18 — cleanup window so cross-run vendor records don't accrue here
-# (token-report.sh vendor_table slices the LAST mark with $end == null).
+# Teardown MUST NOT emit the Step 18 — done closing mark. The cap is
+# emitted exclusively by the orchestrator-side terminal Bash block in
+# skills/implement/SKILL.md Step 18 AFTER --since-last-mark --terse runs,
+# so a teardown-side duplicate would race ahead of those terse reports
+# and silently make them slice an empty window. Pin the negative
+# assertion so a future re-add regresses CI.
 write_state "$STATE"
 : > "$SANDBOX/ledger-calls.txt"
 OUT=$(run_subject teardown --state-file "$STATE" --implement-tmpdir "$SANDBOX/tmp")
 LEDGER_CALLS=$(cat "$SANDBOX/ledger-calls.txt" 2>/dev/null || true)
-assert_contains 'token-ledger mark Step 18 — done' "$LEDGER_CALLS" "teardown: closing token-ledger mark Step 18 — done emitted"
-assert_contains 'timing-ledger mark Step 18 — done' "$LEDGER_CALLS" "teardown: closing timing-ledger mark Step 18 — done emitted"
+assert_not_contains 'Step 18 — done' "$LEDGER_CALLS" "teardown: does NOT emit Step 18 — done (orchestrator owns the cap)"
 
 write_state "$STATE"
 rm -f "$SANDBOX/tmp/.run-cleaned-up"

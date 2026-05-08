@@ -1381,17 +1381,6 @@ run_teardown() {
         printf '📎 Tracking issue: %s\n' "$issue_url"
     fi
 
-    # Closing token / timing mark caps the "Step 18 — cleanup" window so any
-    # vendor record logged after teardown in the same JSONL ledger
-    # (e.g. from a subsequent /implement run that falls back to the
-    # pwd-hash session id in token-ledger.sh resolve_session_id()) lands
-    # in the new "Step 18 — done" bucket instead of accruing to this
-    # run's cleanup bucket. Defense-in-depth duplicate of the orchestrator-
-    # side cap in skills/implement/SKILL.md Step 18; one of the two
-    # always fires even on degraded paths. Best-effort and silent.
-    "$SCRIPT_DIR/token-ledger.sh" mark "Step 18 — done" >/dev/null 2>&1 || true
-    "$SCRIPT_DIR/timing-ledger.sh" mark "Step 18 — done" >/dev/null 2>&1 || true
-
     printf '✅ 18: cleanup — implement complete! (%s)\n' "$(elapsed "$start")"
     echo "RENAME_BRANCH=$rename_branch"
     echo "RENAME_STATUS=$rename_status"
