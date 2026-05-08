@@ -2082,4 +2082,10 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
 # token-step-end Step 18
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 18 — done" || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 18 — done" || true
+# token-mark Step 18 — done
+# timing-mark Step 18 — done
 ```
+
+The closing `Step 18 — done` mark caps the `Step 18 — cleanup` window. `scripts/token-report.sh`'s `vendor_table` slices the LAST mark with `$end == null`; without the cap, vendor records logged after Step 18 in the same JSONL ledger (e.g., from a subsequent `/implement` run that falls back to the `pwd | sha256_hex` session id in `scripts/token-ledger.sh resolve_session_id()`) accrue to the prior run's `Step 18 — cleanup` bucket. The defense-in-depth duplicate inside `scripts/implement-finalize.sh teardown` still emits the cap on degraded paths where this orchestrator-side block does not run.

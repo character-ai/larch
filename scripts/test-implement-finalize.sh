@@ -630,6 +630,18 @@ assert_contains "📎 Tracking issue: https://github.example/owner/repo/issues/4
 assert_contains "✅ 18: cleanup — implement complete! (<elapsed>)" "$OUT" "teardown: final breadcrumb"
 assert_contains "ISSUE_URL=https://github.example/owner/repo/issues/456" "$OUT" "teardown: issue URL tail"
 
+# Closing-mark cap on Step 18 — done. Ledger stub appends to ledger-calls.txt;
+# assert teardown invoked both the token and timing ledgers with mark "Step 18 — done"
+# AFTER the printed tracking URL and right before the final breadcrumb. Caps
+# the Step 18 — cleanup window so cross-run vendor records don't accrue here
+# (token-report.sh vendor_table slices the LAST mark with $end == null).
+write_state "$STATE"
+: > "$SANDBOX/ledger-calls.txt"
+OUT=$(run_subject teardown --state-file "$STATE" --implement-tmpdir "$SANDBOX/tmp")
+LEDGER_CALLS=$(cat "$SANDBOX/ledger-calls.txt" 2>/dev/null || true)
+assert_contains 'token-ledger mark Step 18 — done' "$LEDGER_CALLS" "teardown: closing token-ledger mark Step 18 — done emitted"
+assert_contains 'timing-ledger mark Step 18 — done' "$LEDGER_CALLS" "teardown: closing timing-ledger mark Step 18 — done emitted"
+
 write_state "$STATE"
 rm -f "$SANDBOX/tmp/.run-cleaned-up"
 OUT=$(STUB_REQUIRE_RUN_CLEANED_UP=true run_subject teardown --state-file "$STATE" --implement-tmpdir "$SANDBOX/tmp")
