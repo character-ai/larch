@@ -34,16 +34,10 @@ TIMING_TASK_KINDS_ALLOWED=(
     cursor-plan-voter
     codex-review-voter
     cursor-review-voter
-    cursor-specialist-structure
-    cursor-specialist-correctness
-    cursor-specialist-testing
-    cursor-specialist-security
-    cursor-specialist-edge-cases
-    codex-specialist-structure
-    codex-specialist-correctness
-    codex-specialist-testing
-    codex-specialist-security
-    codex-specialist-edge-cases
+    cursor-specialist-correctness-edges
+    cursor-specialist-security-structure-tests
+    codex-specialist-correctness-edges
+    codex-specialist-security-structure-tests
     codex-debate-thesis
     codex-debate-antithesis
     cursor-debate-thesis

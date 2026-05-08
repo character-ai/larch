@@ -43,7 +43,7 @@ Voters decide whether each OOS item deserves a GitHub issue:
 
 ## Scoreboard
 
-After voting completes, a scoreboard is printed showing each reviewer's performance. Attribution labels are skill-specific — `/review` uses 6 independent players (`Structure`, `Correctness`, `Testing`, `Security`, `Edge-cases`, `Codex`); `/design` uses 3 players (`Code`, `Codex`, `Cursor`). One row per independent reviewer:
+After voting completes, a scoreboard is printed showing each reviewer's performance. Attribution labels are skill-specific — `/review` uses 3 independent players (`Correctness-Edges`, `Security-Structure-Tests`, `Codex`); `/design` uses 3 players (`Code`, `Codex`, `Cursor`). One row per independent reviewer:
 
 | Reviewer | Findings | Accepted | Neutral (1 YES) | Exonerated (0 YES, 1+ EXON.) | Rejected (0 YES, 0 EXON.) | OOS Proposed | OOS Accepted | Score |
 |----------|----------|----------|-----------------|-------------------------------|---------------------------|--------------|--------------|-------|
