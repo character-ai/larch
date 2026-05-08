@@ -21,7 +21,7 @@ When changing `scripts/launch-codex-*.sh`,
 - **Sibling `.md` contracts** — every launcher has `<basename>.md` (per `.claude/rules/script-md-siblings.md`); update all three together.
 - **Common collectors** — `scripts/run-external-agent.sh` and `scripts/collect-agent-results.sh`; sanitization, retry, and `.meta` parser changes affect all lanes.
 - **Health probe** — `scripts/check-reviewers.sh`; healthy/unhealthy semantics must stay aligned.
-- **Cross-doc surface** — `docs/external-reviewers.md`, `docs/configuration-and-permissions.md`, and SKILL.md supported-tool prose must list all three identically.
+- **Cross-doc surface** — `docs/external-reviewers.md`, `docs/configuration-and-permissions.md`, and SKILL.md prose enumerating supported tools must list all three identically.
 
 Missing any surface is the #1 OOS-issue generator after a Cursor/Gemini
 integration sweep.

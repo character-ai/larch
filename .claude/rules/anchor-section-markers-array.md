@@ -30,6 +30,6 @@ Update slug fixtures in `scripts/test-tracking-issue-write.sh`,
 `scripts/test-assemble-anchor.sh`, and `scripts/test-hydrate-anchor.sh`.
 
 **prevents**: silent per-section truncation skips and hydration rejection
-when a new anchor section omits `SECTION_MARKERS`; loud CI failure with
-confusing diagnostics when `SECTION_MARKERS` gains a slug missing from
-`COLLAPSE_PRIORITY`.
+when a new anchor section is introduced without updating
+`SECTION_MARKERS`; loud CI failure with confusing diagnostics when
+`SECTION_MARKERS` gains a slug missing from `COLLAPSE_PRIORITY`.
