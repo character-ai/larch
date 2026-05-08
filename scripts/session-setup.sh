@@ -611,7 +611,13 @@ if [[ -n "$WRITE_SESSION_ENV" ]]; then
     [[ -n "$CALLER_CLAUDE_SOURCE_FILE" ]] && WSE_ARGS+=(--claude-source-file "$CALLER_CLAUDE_SOURCE_FILE")
     if [[ -n "$CALLER_TIMING_LEDGER" ]]; then
         CALLER_ENV_DIR=""
-        [[ -n "$CALLER_ENV" ]] && CALLER_ENV_DIR=$(cd "$(dirname "$CALLER_ENV")" 2>/dev/null && pwd -P || true)
+        if [[ -n "$CALLER_ENV" ]]; then
+            if CALLER_ENV_DIR=$(cd "$(dirname "$CALLER_ENV")" 2>/dev/null && pwd -P); then
+                :
+            else
+                CALLER_ENV_DIR=""
+            fi
+        fi
         if is_safe_timing_ledger_path "$CALLER_TIMING_LEDGER" "$CALLER_ENV_DIR"; then
             WSE_ARGS+=(--timing-ledger "$CALLER_TIMING_LEDGER")
         else
