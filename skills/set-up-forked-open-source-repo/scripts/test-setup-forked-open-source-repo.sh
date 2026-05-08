@@ -70,6 +70,16 @@ if [[ "$1" == "repo" && "${2:-}" == "view" ]]; then
 JSON
     exit 0
   fi
+  if [[ "$mode" == "parent-malformed-owner" ]]; then
+    # Pathological shape: `.parent.owner` is a string rather than an object.
+    # Exercises the type guard in `phase_github`'s jq program — without it,
+    # `jq` would abort indexing `.login` on a string and `set -e` would mask
+    # the intended `fork parent mismatch` error.
+    cat <<'JSON'
+{"nameWithOwner":"me/project","parent":{"owner":"acme","name":"project"},"defaultBranchRef":{"name":"main"}}
+JSON
+    exit 0
+  fi
   cat <<'JSON'
 {"nameWithOwner":"me/project","parent":{"nameWithOwner":"acme/project"},"defaultBranchRef":{"name":"main"}}
 JSON
@@ -293,6 +303,15 @@ read_fixture parent_split_fields
 OUT="$BASE/out.txt"
 GH_STUB_MODE=parent-split-fields run_setup "$WORK" "$OUT"
 assert_contains "$OUT" "SETUP_FORKED_REPO_RESULT=mirror_skipped_in_sync" "parent split owner/name fields pass"
+
+# Regression: pathological `.parent.owner` shape (string instead of object)
+# must yield the intended `fork parent mismatch ... got <none>` error,
+# not a raw `jq` index/type abort. Exercises the type guard in phase_github.
+read_fixture parent_malformed_owner
+OUT="$BASE/out.txt"
+if GH_STUB_MODE=parent-malformed-owner run_setup_rc "$WORK" "$OUT"; then fail "malformed parent.owner refuses"; fi
+assert_contains "$OUT" "fork parent mismatch" "malformed parent.owner produces clean mismatch error"
+assert_contains "$OUT" "got <none>" "malformed parent.owner reports <none>"
 
 read_fixture auth_failure
 OUT="$BASE/out.txt"

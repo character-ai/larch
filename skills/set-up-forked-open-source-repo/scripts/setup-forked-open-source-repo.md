@@ -57,7 +57,10 @@ invoking the skill.
   before any mirror push. The parser accepts both `parent.nameWithOwner` and
   the split `parent.owner.login` + `parent.name` shape returned by some
   `gh repo view --json parent` responses, preferring non-empty
-  `nameWithOwner` when present. GitHub treats owner/repo as case-insensitive,
+  `nameWithOwner` when present. The parser type-guards the split-field path
+  (`.parent.owner` must be an object) and silences `jq` errors so a malformed
+  payload surfaces as a clean `fork parent mismatch` rather than a raw
+  `jq` index/type abort. GitHub treats owner/repo as case-insensitive,
   so the gate lowercases both sides before comparing — an operator passing
   `acme/project` with a canonical `Acme/Project` parent on GitHub passes the
   gate, while a genuinely wrong upstream still fails.

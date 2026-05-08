@@ -268,17 +268,23 @@ phase_github() {
     exit 1
   fi
 
+  # Treat any malformed shape (non-object .parent.owner, non-string .login/.name,
+  # jq parse errors) as "no parent" rather than letting jq abort the phase, so
+  # the operator gets the intended `fork parent mismatch ... got <none>` message
+  # rather than a raw jq index/type error.
   parent="$(jq -r '
     if .parent == null then
       empty
     elif (.parent.nameWithOwner // "") != "" then
       .parent.nameWithOwner
-    elif ((.parent.owner.login // "") != "" and (.parent.name // "") != "") then
+    elif ((.parent.owner | type) == "object"
+          and (.parent.owner.login // "") != ""
+          and (.parent.name // "") != "") then
       "\(.parent.owner.login)/\(.parent.name)"
     else
       empty
     end
-  ' "$gh_out")"
+  ' "$gh_out" 2>/dev/null || true)"
   rm -f "$gh_out" "$gh_err"
   # GitHub treats owner/repo names as case-insensitive; `gh repo view` returns
   # canonical-case parent fields while `--upstream` is operator input. Compare
