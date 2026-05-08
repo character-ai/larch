@@ -78,7 +78,7 @@ extract_from_md() {
     local src=$1 outdir=$2
     local in_outer=false outer_len=0 outer_mermaid=false fence_count=0 history="" line opener rest len
     # shellcheck disable=SC2016 # literal backtick regex; no shell expansion intended.
-    local fence_re='^(`{3,})([^`]*)$'
+    local fence_re='^[[:space:]]{0,3}(`{3,})([^`]*)$'
     while IFS= read -r line || [ -n "$line" ]; do
         if [[ "$line" =~ $fence_re ]]; then
             opener="${BASH_REMATCH[1]}"
@@ -128,6 +128,11 @@ validate_fence() {
         # reject scans would misread the leading "---" as the diagram
         # type and never apply the flowchart/sequenceDiagram policies
         # to unsafe content (closes #1426 follow-up FINDING_17).
+        # Returns body-start as positive index, or -1 to signal an
+        # unclosed frontmatter block (caller MUST fail closed — round-2
+        # follow-up to FINDING_17 SECURITY: returning NR+1 here would
+        # silently skip flowchart_reject / sequence_reject and let
+        # unsafe content slip through under malformed frontmatter).
         function body_start_line(  i, s, in_frontmatter, frontmatter_started) {
             in_frontmatter = 0; frontmatter_started = 0
             for (i = 1; i <= NR; i++) {
@@ -146,11 +151,12 @@ validate_fence() {
                 }
                 return i
             }
+            if (in_frontmatter) return -1
             return NR + 1
         }
         function first_content_line(  i, s) {
             i = body_start_line()
-            if (i > NR) return ""
+            if (i < 1 || i > NR) return ""
             s = lines[i]
             sub(/^[[:space:]]+/, "", s)
             sub(/[[:space:]]+$/, "", s)
@@ -158,6 +164,7 @@ validate_fence() {
         }
         function flowchart_reject(  i, j, c, prev, depth, quote, esc, line, start) {
             start = body_start_line()
+            if (start < 1) return 0
             for (i = start; i <= NR; i++) {
                 line = lines[i]
                 depth = 0; quote = 0; esc = 0
@@ -196,11 +203,16 @@ validate_fence() {
         }
         function sequence_reject(  i, s, lower, alias, start) {
             start = body_start_line()
+            if (start < 1) return
             for (i = start; i <= NR; i++) {
                 s = lines[i]
                 sub(/^[[:space:]]+/, "", s)
                 lower = tolower(s)
-                if (lower ~ /^(participant|actor)[[:space:]][^[:space:]].*[[:space:]]as[[:space:]]/) {
+                # Match one-or-more whitespace between keyword/id/as (was
+                # exactly-one-space; round-2 follow-up: aligned forms
+                # like `participant   X   as ...` slipped past alias
+                # rejection — security/correctness bypass).
+                if (lower ~ /^(participant|actor)[[:space:]]+[^[:space:]]+[[:space:]]+as[[:space:]]+/) {
                     alias = s
                     sub(/^[^[:space:]]+[[:space:]]+[^[:space:]]+[[:space:]]+as[[:space:]]+/, "", alias)
                     lower = tolower(alias)
@@ -215,6 +227,13 @@ validate_fence() {
         }
         { lines[NR] = $0 }
         END {
+            # Fail-closed gate: an unclosed YAML frontmatter block
+            # leaves the diagram type undeterminable. Reject rather
+            # than skip both checks (round-2 follow-up to FINDING_17).
+            if (body_start_line() == -1) {
+                printf "REASON_TOKEN=unclosed-frontmatter fence=%s line=%d\n", fence, NR
+                exit 1
+            }
             first = first_content_line()
             if (first ~ /^(flowchart|graph)([[:space:]]|$)/) {
                 if (flowchart_reject()) exit 1

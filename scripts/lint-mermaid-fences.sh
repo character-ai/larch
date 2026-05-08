@@ -43,8 +43,22 @@ resolve_mmdc() {
 
 changed_files() {
     local range=""
+    local in_ci="false"
+    if [ -n "${GITHUB_EVENT_NAME:-}" ] || [ -n "${GITHUB_ACTIONS:-}" ]; then
+        in_ci="true"
+    fi
     if [ "${GITHUB_EVENT_NAME:-}" = "pull_request" ] && [ -n "${GITHUB_BASE_REF:-}" ]; then
-        git fetch --no-tags --prune --depth=1 origin "$GITHUB_BASE_REF" >/dev/null 2>&1 || true
+        # Fail closed in CI if the base ref is unreachable: the workflow
+        # uses fetch-depth: 0 so origin/<base> should already exist
+        # locally; if it doesn't, the symmetric diff would be empty and
+        # the lint would silently skip (round-2 follow-up D).
+        if ! git rev-parse --verify "origin/${GITHUB_BASE_REF}" >/dev/null 2>&1; then
+            git fetch --no-tags --prune origin "$GITHUB_BASE_REF" >/dev/null 2>&1 || true
+        fi
+        if ! git rev-parse --verify "origin/${GITHUB_BASE_REF}" >/dev/null 2>&1; then
+            echo "ERROR: cannot resolve origin/${GITHUB_BASE_REF} for --changed-only diff range" >&2
+            return 2
+        fi
         range="origin/${GITHUB_BASE_REF}...HEAD"
     elif [ "${GITHUB_EVENT_NAME:-}" = "push" ]; then
         if [ -n "${GITHUB_EVENT_BEFORE:-}" ] && [ -n "${GITHUB_SHA:-}" ]; then
@@ -55,19 +69,42 @@ changed_files() {
     else
         if git rev-parse --verify origin/main >/dev/null 2>&1; then
             range="origin/main...HEAD"
+        elif [ "$in_ci" = "true" ]; then
+            # In CI: fail closed instead of silently skipping. Outside
+            # CI we keep the friendly no-op (developers may run
+            # --changed-only locally without origin/main reachable).
+            echo "ERROR: origin/main unavailable in CI; refusing to silently skip Mermaid lint" >&2
+            return 2
         else
             echo "INFO: origin/main unavailable; no changed Mermaid files linted" >&2
             return 0
         fi
     fi
-    git diff --name-only --diff-filter=ACMR "$range" -- '*.md' 2>/dev/null || true
+    if ! git diff --name-only --diff-filter=ACMR "$range" -- '*.md' 2>/dev/null; then
+        if [ "$in_ci" = "true" ]; then
+            echo "ERROR: git diff $range failed in CI" >&2
+            return 2
+        fi
+        echo "INFO: git diff $range failed; no changed Mermaid files linted" >&2
+        return 0
+    fi
 }
 
 if [ "$changed_only" = true ]; then
     [ "${#files[@]}" -eq 0 ] || fail_usage "--changed-only does not accept file arguments"
+    # Capture changed_files's exit status so a CI fail-closed return (2)
+    # propagates instead of being swallowed by process substitution
+    # (round-2 follow-up D).
+    set +e
+    cf_out="$(changed_files)"
+    cf_rc=$?
+    set -e
+    if [ "$cf_rc" -ne 0 ]; then
+        exit "$cf_rc"
+    fi
     while IFS= read -r f; do
         [ -n "$f" ] && files+=("$f")
-    done < <(changed_files)
+    done <<<"$cf_out"
 fi
 
 [ "${#files[@]}" -gt 0 ] || {
@@ -92,7 +129,11 @@ extract_fences() {
     local src=$1 outdir=$2
     local in_outer=false outer_len=0 outer_mermaid=false fence_count=0 line opener rest len
     # shellcheck disable=SC2016 # literal backtick regex; no shell expansion intended.
-    local fence_re='^(`{3,})([^`]*)$'
+    # Accept up to 3 leading spaces of indentation per GFM/CommonMark
+    # fenced-code-block grammar; without this the scanner would skip
+    # indented mermaid fences and the sanitizer / lint chain would
+    # silently bypass them (round-2 follow-up SECURITY).
+    local fence_re='^[[:space:]]{0,3}(`{3,})([^`]*)$'
     while IFS= read -r line || [ -n "$line" ]; do
         if [[ "$line" =~ $fence_re ]]; then
             opener="${BASH_REMATCH[1]}"

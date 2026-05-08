@@ -142,6 +142,32 @@ flowchart TD
   A[Hello] --> B[World]
 EOF
 
+# REJECT cases for round-2 follow-up regressions:
+# (A) Unclosed YAML frontmatter must fail-closed: prior round-1 fix
+#     for FINDING_17 returned NR+1 from body_start_line() when the
+#     closing `---` was missing, silently skipping the flowchart /
+#     sequenceDiagram checks. The fix emits unclosed-frontmatter and
+#     exits non-zero.
+run_case frontmatter-unclosed-no-trailing-marker 1 rejected unclosed-frontmatter <<'EOF'
+---
+title: missing close
+flowchart TD
+  A[unsafe|content]
+EOF
+
+# (C) Multi-space participant declarations must still trigger alias
+#     rejection. Pre-existing bypass: the regex required exactly one
+#     whitespace between keyword/id/as, so `participant   X   as ...`
+#     skipped the alias check.
+run_case multi-space-participant-with-br 1 rejected br-in-participant-alias <<'EOF'
+sequenceDiagram
+  participant   X   as one<br/>two
+EOF
+run_case tab-separated-participant-with-dollar 1 rejected dollar-in-participant-alias <<'EOF'
+sequenceDiagram
+	participant	X	as	$VAR
+EOF
+
 mixed="$tmpdir/mixed.md"
 cat > "$mixed" <<'EOF'
 ## Architecture Diagram
@@ -168,6 +194,29 @@ grep -qxF "FENCE_1_HEADING=architecture" <<<"$mixed_out" || fail "mixed missing 
 grep -qxF "FENCE_2_HEADING=code-flow" <<<"$mixed_out" || fail "mixed missing code-flow heading"
 grep -q "REASON_TOKEN=br-in-participant-alias fence=2 line=" <<<"$mixed_out" || fail "mixed missing fence-2 token"
 ok "mixed-fences from-md"
+
+# (B) Indented mermaid fences (up to 3 leading spaces per
+#     GFM/CommonMark) MUST be detected by the from-md scanner; prior
+#     fence_re started at column 0 and would silently skip indented
+#     fences, bypassing the sanitizer entirely (round-2 follow-up
+#     SECURITY).
+indented="$tmpdir/indented.md"
+cat > "$indented" <<'EOF'
+## Architecture Diagram
+
+   ```mermaid
+   flowchart TD
+     A[unsafe|content]
+   ```
+EOF
+set +e
+indented_out="$("$SANITIZE" --input "$indented" --from-md)"
+indented_rc=$?
+set -e
+[ "$indented_rc" -eq 1 ] || fail "indented-fence rc expected 1 got $indented_rc output=$indented_out"
+grep -qxF "FENCE_COUNT=1" <<<"$indented_out" || fail "indented-fence missing FENCE_COUNT=1 (scanner did not see indented fence)"
+grep -q "REASON_TOKEN=pipe-in-node-label fence=1 line=" <<<"$indented_out" || fail "indented-fence missing pipe-in-node-label token"
+ok "indented-fence detected by from-md scanner"
 
 log="$tmpdir/execution-issues.md"
 cat > "$log" <<'EOF'

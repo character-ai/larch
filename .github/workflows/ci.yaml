@@ -36,6 +36,15 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
+        with:
+          # Fetch the full history so `lint-mermaid-fences.sh
+          # --changed-only` can resolve `origin/<base>...HEAD` even on
+          # PRs whose merge base is deeper than the default depth=1
+          # shallow window. The prior shallow checkout could yield an
+          # empty / wrong diff while the lint step still exited 0,
+          # silently disabling Mermaid CI coverage (closes #1426
+          # follow-up D — round-2 review).
+          fetch-depth: 0
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"

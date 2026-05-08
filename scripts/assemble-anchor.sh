@@ -209,8 +209,12 @@ replace_mermaid_fences() {
     drop_fences="$3"
     drop_all="$4"
 
+    # Accept up to 3 leading spaces of indentation per GFM/CommonMark
+    # fenced-code-block grammar; without this an indented mermaid fence
+    # would slip past replace_mermaid_fences's defense-in-depth scan
+    # (round-2 follow-up SECURITY).
     # shellcheck disable=SC2016 # literal backtick regex; no shell expansion intended.
-    fence_re='^(`{3,})([^`]*)$'
+    fence_re='^[[:space:]]{0,3}(`{3,})([^`]*)$'
     in_outer=false
     outer_len=0
     outer_mermaid=false
