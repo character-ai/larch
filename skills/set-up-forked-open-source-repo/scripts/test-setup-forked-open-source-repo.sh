@@ -135,6 +135,7 @@ run_setup() {
     cd "$work"
     PATH="$GH_BIN:$PATH" \
       CLAUDE_PLUGIN_ROOT="$ROOT" \
+      LARCH_FORKED_REPO_ALLOW_URL_OVERRIDE=1 \
       LARCH_FORKED_REPO_URL_OVERRIDE_UPSTREAM_HTTPS="$UPSTREAM_BARE" \
       LARCH_FORKED_REPO_URL_OVERRIDE_UPSTREAM_SSH="$UPSTREAM_BARE" \
       LARCH_FORKED_REPO_URL_OVERRIDE_FORK_HTTPS="$FORK_BARE" \
@@ -154,6 +155,7 @@ run_setup_rc() {
     cd "$work"
     PATH="$GH_BIN:$PATH" \
       CLAUDE_PLUGIN_ROOT="$ROOT" \
+      LARCH_FORKED_REPO_ALLOW_URL_OVERRIDE=1 \
       LARCH_FORKED_REPO_URL_OVERRIDE_UPSTREAM_HTTPS="$UPSTREAM_BARE" \
       LARCH_FORKED_REPO_URL_OVERRIDE_UPSTREAM_SSH="$UPSTREAM_BARE" \
       LARCH_FORKED_REPO_URL_OVERRIDE_FORK_HTTPS="$FORK_BARE" \
@@ -206,6 +208,20 @@ git -C "$WORK" remote add zhupanov "https://github.com/me/project.git"
 run_setup "$WORK" "$OUT"
 assert_configured "$WORK"
 assert_eq "origin upstream" "$(git -C "$WORK" remote | sort | tr '\n' ' ' | sed 's/ $//')" "named fork remote renamed"
+
+# Regression for FINDING_2: dotted remote names (e.g. `my.fork` → config key
+# `remote.my.fork.url`) used to be silently skipped by a flat
+# `^remote\.[^.][^.]*\.url$` regex over `git config --get-regexp`, which would
+# misclassify the layout as `state-origin-upstream-only` and leak the dotted
+# fork remote alongside a freshly-added `origin`. The classifier now enumerates
+# via `git remote` so dotted names participate in classification correctly.
+read_fixture state_dotted_named_fork
+OUT="$BASE/out.txt"
+git -C "$WORK" remote add my.fork "https://github.com/me/project.git"
+run_setup "$WORK" "$OUT"
+assert_contains "$OUT" "SETUP_FORKED_REPO_RESULT=ok" "dotted named fork remote handled"
+assert_configured "$WORK"
+assert_eq "origin upstream" "$(git -C "$WORK" remote | sort | tr '\n' ' ' | sed 's/ $//')" "dotted fork remote renamed to origin"
 
 read_fixture state_already
 OUT="$BASE/out.txt"
@@ -272,6 +288,18 @@ OUT="$BASE/out.txt"
 if GH_STUB_MODE=auth-fail run_setup_rc "$WORK" "$OUT"; then fail "auth failure exits non-zero"; fi
 assert_contains "$OUT" "gh auth status failed" "auth failure exits non-zero"
 
+# Regression for FINDING_R2_4: the skill's contract distinguishes 404
+# (fork_missing) from non-404 gh failures (auth, rate-limit, SSO, network),
+# but the harness was missing a case for the non-404 path. Without coverage,
+# the 404-vs-other branch in phase_github could regress and start masking
+# real API errors as fork_missing.
+read_fixture api_failure
+OUT="$BASE/out.txt"
+if GH_STUB_MODE=api-fail run_setup_rc "$WORK" "$OUT"; then fail "non-404 gh repo view failure exits non-zero"; fi
+assert_contains "$OUT" "gh repo view failed" "non-404 gh repo view failure exits non-zero"
+assert_not_contains "$OUT" "SETUP_FORKED_REPO_RESULT=fork_missing" "non-404 gh failure does NOT classify as fork_missing"
+assert_eq "https://github.com/acme/project.git" "$(git -C "$WORK" config --get remote.origin.url)" "non-404 gh failure does not mutate remotes"
+
 read_fixture mirror_in_sync
 OUT="$BASE/out.txt"
 run_setup "$WORK" "$OUT"
@@ -323,6 +351,22 @@ export LARCH_FORKED_REPO_INJECT_FAILURE=rollback
 if run_setup_rc "$WORK" "$OUT"; then fail "rollback failure exits non-zero"; fi
 unset LARCH_FORKED_REPO_INJECT_FAILURE
 assert_contains "$OUT" "RECOVERY_REPORT rollback_failed=true" "rollback failure emits recovery report"
+
+# Regression for FINDING_R3_6: round-2 FINDING_R2_1 moved REMOTE_PHASE_ACTIVE=false
+# to AFTER phase_verify so a late-phase failure (after remote rewrites) still
+# triggers rollback. Without the in-verify failure-injection point this guarantee
+# was untested. The injection raises a non-zero command (NOT die / exit) inside
+# phase_verify so the ERR trap fires restore_remote_state — confirming both the
+# late REMOTE_PHASE_ACTIVE clear AND the verify_die-vs-die fix from FINDING_R3_1.
+read_fixture rollback_in_verify
+OUT="$BASE/out.txt"
+export LARCH_FORKED_REPO_INJECT_FAILURE=in-verify
+if run_setup_rc "$WORK" "$OUT"; then fail "in-verify failure triggers rollback"; fi
+unset LARCH_FORKED_REPO_INJECT_FAILURE
+assert_contains "$OUT" "remote rewrite failed; attempting rollback" "in-verify failure attempts rollback"
+assert_eq "https://github.com/acme/project.git" "$(git -C "$WORK" config --get remote.origin.url)" "in-verify rollback restores origin URL"
+if git -C "$WORK" remote | grep -Fxq upstream; then fail "in-verify rollback removes added upstream remote"; fi
+pass "in-verify rollback removes added upstream remote"
 
 read_fixture push_disabled
 OUT="$BASE/out.txt"

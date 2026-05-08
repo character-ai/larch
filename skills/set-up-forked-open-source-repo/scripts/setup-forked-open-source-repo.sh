@@ -37,6 +37,22 @@ die() {
   exit 1
 }
 
+# phase_die: like `die` but goes through the ERR trap so `restore_remote_state`
+# fires when an assertion fails inside any phase that requires ERR-trap-driven
+# rollback (today: `phase_remotes` post-rewrite checks and `phase_verify`
+# assertions). Using plain `die` from inside those phases would `exit 1`
+# directly, bypassing the `trap remote_phase_error ERR` chain — leaving the
+# repo with rewritten remotes and no rollback. The `false` line below is an
+# explicit non-zero command (not an exit), so `set -Ee` triggers the trap;
+# `restore_remote_state` inside `remote_phase_error` runs while
+# `REMOTE_PHASE_ACTIVE=true` (cleared only on success at the tail of
+# `phase_verify`). Pre-rewrite die calls (`phase_preflight`, `phase_github`)
+# may use plain `die` because no remote mutation has happened yet.
+phase_die() {
+  printf 'ERROR: %s\n' "$*" >&2
+  false
+}
+
 validate_owner_repo() {
   local value label
   value="$1"
@@ -51,7 +67,13 @@ https_url() {
   kind="$1"
   owner_repo="$2"
   env_name="LARCH_FORKED_REPO_URL_OVERRIDE_${kind}_HTTPS"
-  if [[ -n "${!env_name:-}" ]]; then
+  # Test seam: the harness sets these env vars to point at local bare repos.
+  # In production the override is a footgun — a leaked CI env var or stale
+  # operator export would direct the destructive mirror push to the URL named
+  # by the env var, independent of the verified `gh repo view` parent. Require
+  # explicit `LARCH_FORKED_REPO_ALLOW_URL_OVERRIDE=1` so the override only
+  # fires when the caller has opted in (the harness sets both).
+  if [[ -n "${!env_name:-}" && "${LARCH_FORKED_REPO_ALLOW_URL_OVERRIDE:-}" == "1" ]]; then
     printf '%s\n' "${!env_name}"
   else
     printf 'https://github.com/%s.git\n' "$owner_repo"
@@ -63,7 +85,7 @@ ssh_url() {
   kind="$1"
   owner_repo="$2"
   env_name="LARCH_FORKED_REPO_URL_OVERRIDE_${kind}_SSH"
-  if [[ -n "${!env_name:-}" ]]; then
+  if [[ -n "${!env_name:-}" && "${LARCH_FORKED_REPO_ALLOW_URL_OVERRIDE:-}" == "1" ]]; then
     printf '%s\n' "${!env_name}"
   else
     printf 'git@github.com:%s.git\n' "$owner_repo"
@@ -167,6 +189,12 @@ phase_preflight() {
   root="$(git rev-parse --show-toplevel 2>/dev/null)" || die "not inside a git repository"
   cd "$root"
 
+  # Hard runtime dependencies. `gh` and `git` are universally expected; `jq`
+  # parses `gh repo view --json` output in phase_github. Fail loudly here with
+  # an actionable message instead of letting a mid-run `command not found`
+  # escape from inside a captured pipeline.
+  command -v jq >/dev/null 2>&1 || die "jq is required but not installed; install jq (e.g., 'brew install jq' or your package manager) and rerun"
+
   if [[ -n "$(git status --porcelain)" ]]; then
     die "working tree is dirty; commit or stash before running"
   fi
@@ -194,6 +222,20 @@ phase_preflight() {
   has_origin=false
   if git remote | grep -Fxq origin; then
     has_origin=true
+    # Pre-fetch URL classification (FINDING_R3_5): inspect origin's fetch URL
+    # via `lib-remotes.sh::normalize_github_url` BEFORE the network fetch, so a
+    # non-GitHub or unparseable origin (which `phase_remotes`'s classifier
+    # would later refuse) is rejected without a single network round-trip
+    # against the unvalidated remote. Multi-URL origins are allowed past this
+    # gate — the classifier rejects them in `phase_remotes` after the fetch
+    # has shown them to be benign — because `git config --get-all` here would
+    # require an extra grammar that mirrors the classifier.
+    local origin_url canonical
+    origin_url="$(git config --get remote.origin.url 2>/dev/null || true)"
+    canonical="$(normalize_github_url "$origin_url" 2>/dev/null || true)"
+    if [[ -z "$canonical" ]]; then
+      die "origin remote URL '$origin_url' is not a recognized GitHub URL; refusing to fetch"
+    fi
     git fetch origin
   fi
 
@@ -209,7 +251,7 @@ phase_preflight() {
 }
 
 phase_github() {
-  local gh_out gh_err parent upstream_https upstream_sha fork_https fork_ssh fork_sha tmp clone_dir sha_after_confirm fork_after_confirm post_sha
+  local gh_out gh_err parent parent_lc upstream_lc upstream_https upstream_sha fork_https fork_ssh fork_sha tmp clone_dir sha_after_confirm fork_after_confirm pushed_sha post_sha
   gh_out="$(mktemp "${TMPDIR:-/tmp}/larch-forked-gh-view.XXXXXX")"
   gh_err="$(mktemp "${TMPDIR:-/tmp}/larch-forked-gh-view-err.XXXXXX")"
 
@@ -228,7 +270,13 @@ phase_github() {
 
   parent="$(jq -r '.parent.nameWithOwner // empty' "$gh_out")"
   rm -f "$gh_out" "$gh_err"
-  if [[ "$parent" != "$UPSTREAM" ]]; then
+  # GitHub treats owner/repo names as case-insensitive; `gh repo view` returns
+  # the canonical-case `parent.nameWithOwner` while `--upstream` is operator
+  # input. Compare lowercased so an operator passing `acme/project` against a
+  # canonical `Acme/Project` parent does not spuriously fail this gate.
+  parent_lc="$(printf '%s' "$parent" | tr '[:upper:]' '[:lower:]')"
+  upstream_lc="$(printf '%s' "$UPSTREAM" | tr '[:upper:]' '[:lower:]')"
+  if [[ "$parent_lc" != "$upstream_lc" ]]; then
     die "fork parent mismatch: expected $UPSTREAM, got ${parent:-<none>}"
   fi
 
@@ -268,10 +316,17 @@ phase_github() {
   tmp="$(mktemp -d "${TMPDIR:-/tmp}/larch-forked-mirror.XXXXXX")"
   clone_dir="$tmp/upstream.git"
   git clone --mirror "$upstream_https" "$clone_dir"
+  # Compare the post-push fork SHA to what we actually pushed (the mirror clone's
+  # refs/heads/main), not to upstream_sha captured at line 239. Upstream main can
+  # advance between the re-probe and the clone — the push then succeeds against
+  # the newer SHA, and asserting against the stale pre-confirm value would
+  # spuriously fail an already-completed destructive sync.
+  pushed_sha="$(git -C "$clone_dir" rev-parse refs/heads/main 2>/dev/null || true)"
+  [[ -n "$pushed_sha" ]] || { rm -rf "$tmp"; die "mirror clone has no refs/heads/main"; }
   git -C "$clone_dir" push --prune "$fork_ssh" '+refs/heads/*:refs/heads/*' '+refs/tags/*:refs/tags/*'
   post_sha="$(remote_main_sha "$fork_https" 2>/dev/null || true)"
   rm -rf "$tmp"
-  [[ "$post_sha" == "$upstream_sha" ]] || die "fork refs/heads/main did not match upstream after mirror sync"
+  [[ "$post_sha" == "$pushed_sha" ]] || die "fork refs/heads/main did not match what was pushed (expected $pushed_sha, got ${post_sha:-<none>})"
   printf 'SETUP_FORKED_REPO_RESULT=mirror_synced\n'
 }
 
@@ -319,6 +374,15 @@ phase_remotes() {
   git config --unset-all remote.upstream.pushurl 2>/dev/null || true
   git config --add remote.upstream.pushurl 'larch-disabled://upstream-push-disabled'
 
+  # Clear any pushurl that may have been carried over from a renamed remote.
+  # `state-origin-upstream-named-fork`'s `git remote rename <named_fork> origin`
+  # preserves `remote.<named_fork>.pushurl` as `remote.origin.pushurl`; without
+  # this unset, a stale or hostile pushurl could redirect future pushes to the
+  # wrong repository while origin's fetch URL still correctly points at the
+  # declared fork. Unsetting forces git to fall back to `remote.origin.url`
+  # for both fetch and push.
+  git config --unset-all remote.origin.pushurl 2>/dev/null || true
+
   case "${LARCH_FORKED_REPO_INJECT_FAILURE:-}" in
     fetch|rollback) trigger_remote_failure ;;
   esac
@@ -326,13 +390,19 @@ phase_remotes() {
   git branch --set-upstream-to=origin/main main
 
   if [[ -n "$(git status --porcelain)" ]]; then
-    die "working tree became dirty before fast-forward"
+    # Late-phase: remotes already rewritten. Use phase_die so the ERR trap
+    # fires restore_remote_state instead of exiting directly.
+    phase_die "working tree became dirty before fast-forward"
   fi
   if ! git merge-base --is-ancestor origin/main main; then
     git merge --ff-only origin/main
   fi
 
-  REMOTE_PHASE_ACTIVE=false
+  # Keep REMOTE_PHASE_ACTIVE=true until phase_verify succeeds. Any failure in
+  # phase_submodules or phase_verify happens AFTER the remote rewrites, so the
+  # ERR trap must still call restore_remote_state to roll back. Without this
+  # guarding through verify, a partial submodule update or a failed verify
+  # assertion would leave a half-configured clone with no automatic recovery.
 }
 
 phase_submodules() {
@@ -342,14 +412,25 @@ phase_submodules() {
 }
 
 phase_verify() {
+  # Late-phase failure injection (harness-only). Triggers a non-zero command
+  # AFTER remote rewrites have completed, so the harness can prove that
+  # REMOTE_PHASE_ACTIVE is still true here and the ERR trap fires
+  # `restore_remote_state` on a verify-time failure (FINDING_R3_6 regression).
+  case "${LARCH_FORKED_REPO_INJECT_FAILURE:-}" in
+    in-verify) trigger_remote_failure ;;
+  esac
   printf '\nFinal remotes:\n'
   git remote -v
   printf '\nDisabled upstream push sentinel:\n'
   git config --get-regexp '^remote\.upstream\.pushurl$'
-  [[ "$(git config --get branch.main.remote)" == "origin" ]] || die "branch.main.remote is not origin"
-  [[ "$(git config --get branch.main.merge)" == "refs/heads/main" ]] || die "branch.main.merge is not refs/heads/main"
+  [[ "$(git config --get branch.main.remote)" == "origin" ]] || phase_die "branch.main.remote is not origin"
+  [[ "$(git config --get branch.main.merge)" == "refs/heads/main" ]] || phase_die "branch.main.merge is not refs/heads/main"
   printf '\nFork workflow: branch off origin/main, push topic branches to origin, and open PRs from %s:<branch> to %s:main.\n' "$FORK" "$UPSTREAM"
   printf 'SETUP_FORKED_REPO_RESULT=ok\n'
+  # Now that all assertions and the success marker have been emitted, drop the
+  # rollback flag so subsequent (non-existent) phases or post-main shutdown do
+  # not accidentally re-trigger a restore on benign exit signals.
+  REMOTE_PHASE_ACTIVE=false
 }
 
 main() {

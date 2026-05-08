@@ -39,11 +39,28 @@ normalize_github_url() {
 }
 
 remote_fetch_urls() {
-  git config --get-regexp '^remote\.[^.][^.]*\.url$' 2>/dev/null || true
+  # Enumerate via `git remote` so dotted remote names (e.g., `my.fork`,
+  # config key `remote.my.fork.url`) are not silently skipped by a flat regex.
+  local name url
+  while IFS= read -r name; do
+    [[ -z "$name" ]] && continue
+    while IFS= read -r url; do
+      [[ -z "$url" ]] && continue
+      printf 'remote.%s.url %s\n' "$name" "$url"
+    done < <(git config --get-all "remote.$name.url" 2>/dev/null || true)
+  done < <(git remote 2>/dev/null || true)
 }
 
 remote_push_urls() {
-  git config --get-regexp '^remote\.[^.][^.]*\.pushurl$' 2>/dev/null || true
+  # Same as remote_fetch_urls; per-remote query covers dotted remote names.
+  local name url
+  while IFS= read -r name; do
+    [[ -z "$name" ]] && continue
+    while IFS= read -r url; do
+      [[ -z "$url" ]] && continue
+      printf 'remote.%s.pushurl %s\n' "$name" "$url"
+    done < <(git config --get-all "remote.$name.pushurl" 2>/dev/null || true)
+  done < <(git remote 2>/dev/null || true)
 }
 
 classify_remote_state() {

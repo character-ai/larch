@@ -16,6 +16,31 @@ configure. It refuses dirty worktrees, non-`main` checkouts, local `main` ahead
 of `origin/main`, diverged local/remote `main`, ambiguous remote layouts, and
 non-GitHub remotes.
 
+## Prerequisites
+
+- `git` (any reasonably recent version).
+- `gh` authenticated against github.com (`gh auth status` must succeed).
+- `jq` on `PATH` — used to parse `gh repo view --json` output. The coordinator
+  fails fast in `phase_preflight` with an actionable message when `jq` is
+  absent.
+
+## Trust caveat: `url.*.insteadOf`
+
+The coordinator's URL-override allowlist
+(`LARCH_FORKED_REPO_ALLOW_URL_OVERRIDE`) gates the test-seam env vars but does
+NOT scan or override Git's built-in `url.<other>.insteadOf` rewrites in
+user/global `gitconfig`. A `url.https://my-evil.example/.insteadOf
+https://github.com/` rule would silently redirect every `git ls-remote`,
+`git clone`, `git fetch`, and `git push` issued by the coordinator,
+bypassing the `gh repo view` parent guard. Same-user trust model — review
+your `git config --global --get-regexp '^url\..*\.insteadOf$'` before
+running the skill on a profile inherited from a less-trusted source. See
+SECURITY.md "Fork setup URL-override footgun" for the residual-risk
+discussion. Pre-fetch URL classification (`phase_preflight` calls
+`normalize_github_url` on `origin.url` before the first `git fetch origin`)
+catches non-GitHub stored URLs but does NOT see transport-time `insteadOf`
+rewrites.
+
 ## Run
 
 Invoke the coordinator:
