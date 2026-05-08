@@ -77,7 +77,7 @@ resolve_implement_tmpdir() {
                     if (( now <= 0 )); then
                         continue
                     fi
-                    if (( (now - mtime) > ttl )); then
+                    if (( (now - mtime) >= ttl )); then
                         continue
                     fi
                 fi

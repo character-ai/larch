@@ -480,4 +480,61 @@ OUT=$(PATH="$DATELESS_BIN" XDG_CACHE_HOME="$TTL_CACHE" LARCH_IMPLEMENT_TMPDIR_TT
     "$BASH_BIN" -c 'source "$1"; resolve_implement_tmpdir "$2"' _ "$REPO_ROOT/skills/implement/scripts/lib-resolve-implement-tmpdir.sh" "$TTL_CWD")
 assert_empty "$OUT" "date +%s failure did not reject TTL-only candidate"
 
+# Boundary: a candidate exactly TTL seconds old is treated as stale (>=).
+# Set mtime precisely to (now - TTL) so age == ttl at evaluation; under the
+# prior strict-`>` rule this would have been treated as fresh. Uses an
+# isolated cache root so unrelated prior fixtures cannot satisfy resolution.
+BOUNDARY_CACHE="$TMPROOT/ttl-boundary-cache"
+BOUNDARY_CWD="$TMPROOT/ttl-boundary-cwd"
+mkdir -p "$BOUNDARY_CWD"
+TMP22="$BOUNDARY_CACHE/larch/sessions/claude-implement-ttl-boundary"
+make_manifest "$TMP22"
+printf 'CLONE_PATH=%s\n' "$BOUNDARY_CWD" > "$TMP22/.larch-keepalive"
+BOUNDARY_TTL=10
+BOUNDARY_TS=$(($(date +%s) - BOUNDARY_TTL))
+# Cross-platform mtime set: try GNU date, then BSD date.
+if BOUNDARY_FMT=$(date -d "@$BOUNDARY_TS" +%Y%m%d%H%M.%S 2>/dev/null); then
+    touch -t "$BOUNDARY_FMT" "$TMP22/design-export/manifest.env"
+elif BOUNDARY_FMT=$(date -r "$BOUNDARY_TS" +%Y%m%d%H%M.%S 2>/dev/null); then
+    touch -t "$BOUNDARY_FMT" "$TMP22/design-export/manifest.env"
+else
+    fail "could not compute boundary mtime for TTL boundary fixture"
+fi
+OUT=$(printf '{"cwd":"%s","stop_hook_active":false}' "$BOUNDARY_CWD" \
+    | XDG_CACHE_HOME="$BOUNDARY_CACHE" LARCH_IMPLEMENT_TMPDIR_TTL_SECONDS="$BOUNDARY_TTL" bash "$STOP_HOOK")
+assert_empty "$OUT" "candidate at exact TTL boundary did not expire (>= rule)"
+rm -f "$TMP22/design-export/manifest.env"
+
+# F4: hook stdin .session_id is surfaced into LARCH_TOKEN_SESSION_ID so
+# session-id binding works in production where /implement Step 0's
+# in-bash export does not propagate to hook subprocesses. Uses an
+# isolated cache root so unrelated prior fixtures cannot win resolution
+# under cwd/SESSION_ID combinations. With LARCH_TOKEN_SESSION_ID unset
+# in env, the only path that can see the stdin mismatch is the hook's
+# explicit `jq -r .session_id` + `export LARCH_TOKEN_SESSION_ID` step.
+F4_CACHE="$TMPROOT/f4-stdin-cache"
+F4_CWD="$TMPROOT/f4-stdin-cwd"
+mkdir -p "$F4_CWD"
+TMP23="$F4_CACHE/larch/sessions/claude-implement-stdin-sid-mismatch"
+make_manifest "$TMP23"
+printf 'CLONE_PATH=%s\nSESSION_ID=session-X\n' "$F4_CWD" > "$TMP23/.larch-keepalive"
+touch "$TMP23/design-export/manifest.env"
+unset LARCH_TOKEN_SESSION_ID
+OUT=$(printf '{"cwd":"%s","stop_hook_active":false,"session_id":"session-Y"}' "$F4_CWD" \
+    | XDG_CACHE_HOME="$F4_CACHE" bash "$STOP_HOOK")
+assert_empty "$OUT" "stdin session_id was not surfaced into resolver (mismatch should disqualify)"
+rm -f "$TMP23/design-export/manifest.env"
+
+# F4: hook stdin .session_id matching keepalive SESSION_ID blocks (positive).
+TMP24="$F4_CACHE/larch/sessions/claude-implement-stdin-sid-match"
+make_manifest "$TMP24"
+printf 'CLONE_PATH=%s\nSESSION_ID=session-Z\n' "$F4_CWD" > "$TMP24/.larch-keepalive"
+touch "$TMP24/design-export/manifest.env"
+unset LARCH_TOKEN_SESSION_ID
+OUT=$(printf '{"cwd":"%s","stop_hook_active":false,"session_id":"session-Z"}' "$F4_CWD" \
+    | XDG_CACHE_HOME="$F4_CACHE" bash "$STOP_HOOK")
+assert_contains "$OUT" '"decision":"block"' "stdin session_id match did not block"
+touch "$TMP24/.run-cleaned-up"
+rm -f "$TMP24/design-export/manifest.env"
+
 echo "PASS: post-design-boundary wrapper integration tests"

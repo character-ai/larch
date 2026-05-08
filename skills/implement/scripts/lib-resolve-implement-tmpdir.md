@@ -23,12 +23,22 @@ Candidate eligibility additionally applies two layered checks on top of
    that candidate** (this is fail-closed for the candidate; missing keepalive
    `SESSION_ID` is NOT treated as "missing signal — proceed"). When
    `LARCH_TOKEN_SESSION_ID` is unset, the session check is skipped entirely.
+   In production, the env value is surfaced into hook subprocesses by
+   `hook-post-design.sh` and `hook-stop-fail-close.sh`, which parse
+   `.session_id` from the Claude Code hook stdin payload and `export
+   LARCH_TOKEN_SESSION_ID="$SID"` before sourcing this lib. `/implement`
+   Step 0's in-bash `export` does NOT propagate to hook subprocesses on its
+   own, so the hook-side surfacing is the load-bearing path that makes the
+   exact-match branch reachable in production.
 2. **Wall-clock TTL backstop.** Applied only when session-id binding did not
    produce an exact match (i.e. env unset OR session check skipped).
-   Candidates whose `manifest.env` mtime is older than
-   `LARCH_IMPLEMENT_TMPDIR_TTL_SECONDS` (default 21600 = 6 hours; set to 0 to
-   disable) are skipped. If `date +%s` cannot be obtained (`now=0`), TTL
-   evaluation is fail-closed: the candidate is rejected.
+   Candidates whose `manifest.env` mtime age `now - mtime` is greater than or
+   equal to `LARCH_IMPLEMENT_TMPDIR_TTL_SECONDS` (default 21600 = 6 hours;
+   set to 0 to disable) are skipped. The window is `[0, ttl)` exclusive at
+   the right boundary — a candidate exactly `ttl` seconds old is treated as
+   stale, not fresh, matching the operator-facing "expire once age reaches
+   the configured TTL" intent. If `date +%s` cannot be obtained (`now=0`),
+   TTL evaluation is fail-closed: the candidate is rejected.
 
 The exact-session-match path bypasses TTL on the rationale that a paused or
 long-running `/design` session is provably the active session and should still
