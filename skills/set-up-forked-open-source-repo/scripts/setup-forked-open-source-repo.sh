@@ -271,7 +271,12 @@ phase_github() {
   # Reject corrupt JSON up front so syntactically-invalid `gh` output yields
   # a clear "gh repo view returned invalid JSON" diagnostic rather than the
   # generic `fork parent mismatch ... got <none>` shape error below.
-  if ! jq -e . "$gh_out" >/dev/null 2>"$gh_err"; then
+  # Using `jq -e 'type == "object"'` (rather than `jq -e .`) so a valid-JSON
+  # but root-`null`/`false` payload — which `jq -e .` would treat as an exit-1
+  # falsy value — does not get misclassified as a syntax error; the gate
+  # accepts only an object root, which is the only shape `gh repo view --json`
+  # ever returns.
+  if ! jq -e 'type == "object"' "$gh_out" >/dev/null 2>"$gh_err"; then
     printf 'ERROR: gh repo view returned invalid JSON:\n' >&2
     redact_file "$gh_err" >&2
     rm -f "$gh_out" "$gh_err"
