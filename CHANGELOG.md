@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [18.0.2] - 2026-05-08
+
+### Added
+
+- `LARCH_CURSOR_SANDBOX` env var (#1561) gating whether `scripts/launch-cursor-review.sh` passes `--sandbox enabled` to the inner `cursor agent` argv. Set to `disabled` (case-insensitive, surrounding whitespace tolerated) on hosts where `cursor-agent`'s sandbox runtime is unavailable; default and any unrecognized value preserve the issue #1529 behavior with a stderr warning on typos.
+
+### Changed
+
+- `scripts/launch-cursor-review.sh` HARD CONSTRAINTS read-only preamble is now rendered conditionally: the enforcement sentence describes CLI-sandbox enforcement on the default path and describes the degraded posture (prompt constraints + post-run dirty-tree sidecar) on the disabled path, so the preamble does not lie to the model when the sandbox is opted out.
+- Trust-boundary docs (`SECURITY.md` § External tool delegation, `docs/external-reviewers.md`, `docs/review-agents.md`, `docs/configuration-and-permissions.md`) document the env var, when to use it, and the degraded enforcement consequence; `scripts/test-launch-cursor-review.sh` adds 8 assertions pinning the disabled-path argv shape, the unrecognized-value warning behavior, and the conditional preamble text.
+
+
 ## [18.0.1] - 2026-05-08
 
 ### Changed
