@@ -65,18 +65,30 @@ jobs:
         with:
           node-version: 'lts/*'
           cache: npm
-          cache-dependency-path: package.json
+          # Track the lockfile so a lockfile-only bump invalidates the
+          # npm cache (closes #1426 follow-up FINDING_1).
+          cache-dependency-path: package-lock.json
       - uses: actions/cache@v5
         with:
           path: ~/.cache/puppeteer
-          key: puppeteer-${{ runner.os }}-${{ hashFiles('package.json') }}
+          # Mirror the cache-dependency-path key on the lockfile so the
+          # Chromium cache invalidates whenever resolved Puppeteer
+          # changes — even via lockfile-only bumps (closes #1426
+          # follow-up FINDING_1).
+          key: puppeteer-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
       - name: Install Mermaid CLI
+        # `npm ci` installs exactly from the committed lockfile and
+        # fails if the lockfile is out of sync with package.json. This
+        # is the conventional CI contract — `npm install` would tolerate
+        # / silently update the lockfile, defeating the purpose of
+        # committing it (closes #1426 follow-up FINDING_10).
+        #
         # Mermaid CLI 11.x has no --parseOnly mode, so the lint script
         # falls back to mmdc -i ... -o ....svg, which requires
         # Puppeteer's Chromium download. The puppeteer cache above
         # restores ~/.cache/puppeteer between runs so cold downloads
-        # only happen when package.json changes.
-        run: npm install
+        # only happen when package-lock.json changes.
+        run: npm ci
       - name: Lint Mermaid fences (changed only)
         run: scripts/lint-mermaid-fences.sh --changed-only
 

@@ -121,18 +121,44 @@ extract_from_md() {
 validate_fence() {
     local file=$1 fence_num=$2
     awk -v fence="$fence_num" '
-        function first_content_line(  i, s) {
+        # body_start_line returns the 1-based line index of the first
+        # diagram-body line, skipping leading blanks, %% comments, and
+        # an optional Mermaid YAML frontmatter block (--- ... ---).
+        # Without the frontmatter skip, both first_content_line and the
+        # reject scans would misread the leading "---" as the diagram
+        # type and never apply the flowchart/sequenceDiagram policies
+        # to unsafe content (closes #1426 follow-up FINDING_17).
+        function body_start_line(  i, s, in_frontmatter, frontmatter_started) {
+            in_frontmatter = 0; frontmatter_started = 0
             for (i = 1; i <= NR; i++) {
                 s = lines[i]
                 sub(/^[[:space:]]+/, "", s)
                 sub(/[[:space:]]+$/, "", s)
                 if (s == "" || s ~ /^%%/) continue
-                return s
+                if (!frontmatter_started && s == "---") {
+                    in_frontmatter = 1
+                    frontmatter_started = 1
+                    continue
+                }
+                if (in_frontmatter) {
+                    if (s == "---") in_frontmatter = 0
+                    continue
+                }
+                return i
             }
-            return ""
+            return NR + 1
         }
-        function flowchart_reject(  i, j, c, prev, depth, quote, esc, line) {
-            for (i = 1; i <= NR; i++) {
+        function first_content_line(  i, s) {
+            i = body_start_line()
+            if (i > NR) return ""
+            s = lines[i]
+            sub(/^[[:space:]]+/, "", s)
+            sub(/[[:space:]]+$/, "", s)
+            return s
+        }
+        function flowchart_reject(  i, j, c, prev, depth, quote, esc, line, start) {
+            start = body_start_line()
+            for (i = start; i <= NR; i++) {
                 line = lines[i]
                 depth = 0; quote = 0; esc = 0
                 for (j = 1; j <= length(line); j++) {
@@ -168,8 +194,9 @@ validate_fence() {
             }
             return 0
         }
-        function sequence_reject(  i, s, lower, alias) {
-            for (i = 1; i <= NR; i++) {
+        function sequence_reject(  i, s, lower, alias, start) {
+            start = body_start_line()
+            for (i = start; i <= NR; i++) {
                 s = lines[i]
                 sub(/^[[:space:]]+/, "", s)
                 lower = tolower(s)

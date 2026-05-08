@@ -55,6 +55,32 @@ claude plugin marketplace add .
 claude plugin install larch@larch-local
 ```
 
+### Mermaid CLI (required for the `lint-mermaid-fences` pre-commit hook)
+
+Contributors editing any `.md` file in this repo trigger the
+`lint-mermaid-fences` pre-commit hook, which runs `mmdc` against every
+` ```mermaid ` fence in the staged Markdown to catch unsafe content
+before it lands in anchor comments or PR bodies. The hook hard-fails
+(exit 2) when the Mermaid CLI is not installed, so a one-time
+installation is required:
+
+```bash
+cd larch
+npm install              # creates node_modules/ (gitignored) + binds the lockfile
+```
+
+This installs `@mermaid-js/mermaid-cli` (pinned in `package.json` /
+`package-lock.json`) plus its Puppeteer/Chromium dependency under
+`node_modules/.bin/mmdc`. The hook resolves `mmdc` from
+`node_modules/.bin/` first, then falls back to a globally-installed
+`mmdc` on `PATH`.
+
+If you are intentionally working on a machine without a Node toolchain
+and want to skip the hook for a single commit, set `SKIP=lint-mermaid-fences`
+on the commit (or on `make lint-only` / `pre-commit run`). CI installs
+the toolchain itself, so the hook still runs there even when locally
+skipped.
+
 ## Setting Up Claude, Codex, Cursor, Gemini
 - **Only `claude` is mandatory.** `codex`, `cursor`, and `gemini` are optional — when `codex` or `cursor` is missing or fails to authenticate, larch skills substitute Claude subagents automatically; `gemini` is additive (skipped silently when unavailable for reviewer use, falls back to Claude when selected as `--coder=gemini`). See [Optional integrations](#optional-integrations) for the full fallback semantics.
 - **Larch is agent-agnostic about authentication.** Each agent can be set up either with an **API key** in your shell environment, or with a **subscription plan** via web-based login from the binary itself. Larch does not care which — it only needs the corresponding binary (`claude`, `codex`, `cursor`, `gemini`) to be on your `PATH` and to land in an authenticated session when invoked.

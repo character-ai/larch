@@ -134,8 +134,13 @@ for path in "${files[@]}"; do
         *.md) ;;
         *) continue ;;
     esac
-    file_tmp="$tmpdir/$(printf '%s' "$path" | tr '/ ' '__')"
-    mkdir -p "$file_tmp"
+    # Use mktemp -d so each path gets a unique subdir; previously
+    # `tr '/ ' '__'` mapped both '/' and ' ' to '_', so paths like
+    # `docs/foo/bar.md` and `docs/foo bar.md` collided into the same
+    # subdir and the second file's extracted fences overwrote the
+    # first's, yielding false passes / false fails (closes #1426
+    # follow-up FINDING_4).
+    file_tmp="$(mktemp -d -p "$tmpdir" file-XXXXXX)"
     count="$(extract_fences "$path" "$file_tmp")"
     i=1
     while [ "$i" -le "$count" ]; do

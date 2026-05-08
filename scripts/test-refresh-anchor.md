@@ -12,6 +12,8 @@ Real `gh` calls are out of scope for unit tests. The harness builds a per-test s
 2. Upsert failure — assemble succeeds, stub emits `FAILED=true` and exits non-zero; wrapper exits 2 and forwards both envelopes.
 3. Missing `--sections-dir` — invocation error; wrapper exits 1 with `FAILED=true` + usage message.
 4. `--anchor-id` forwarding — verified by capturing the stub's argv to a file and asserting both the flag name and value reach the upsert call.
+5. Explicit `--warnings-log` forwarding — when the caller passes `--warnings-log <path>`, the flag and value reach `assemble-anchor.sh`; an unsafe `diagrams.md` fragment produces the placeholder substitution and a `Warnings` entry in the log.
+6. `IMPLEMENT_TMPDIR` env-default — when `--warnings-log` is omitted but `IMPLEMENT_TMPDIR` is set and `$IMPLEMENT_TMPDIR/execution-issues.md` is writable, the wrapper auto-derives `--warnings-log` from the env var so existing call sites inherit the forwarding without per-site updates.
 
 ## Wiring
 

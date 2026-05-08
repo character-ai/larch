@@ -111,6 +111,37 @@ flowchart TD
   A[foo [inner] bar]
 EOF
 
+# REJECT cases that prove the FINDING_17 frontmatter-bypass fix:
+# unsafe content following a YAML frontmatter block must still trip
+# the flowchart / sequenceDiagram checks. Without skipping the leading
+# `---` block in body_start_line, both fences would falsely return
+# STATUS=ok (closes #1426 follow-up FINDING_17).
+run_case frontmatter-pipe-in-node-label 1 rejected pipe-in-node-label <<'EOF'
+---
+title: example
+---
+flowchart TD
+  A[foo|bar]
+EOF
+run_case frontmatter-br-in-participant-alias 1 rejected br-in-participant-alias <<'EOF'
+---
+config:
+  theme: forest
+---
+sequenceDiagram
+  participant X as one<br/>two
+EOF
+
+# ACCEPT case: clean diagram preceded by YAML frontmatter (positive
+# control — frontmatter alone must not produce false rejects).
+run_case frontmatter-clean-flowchart 0 ok <<'EOF'
+---
+title: clean example
+---
+flowchart TD
+  A[Hello] --> B[World]
+EOF
+
 mixed="$tmpdir/mixed.md"
 cat > "$mixed" <<'EOF'
 ## Architecture Diagram
