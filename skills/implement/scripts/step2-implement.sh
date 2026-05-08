@@ -507,10 +507,14 @@ if [[ "$STATUS" != "bailed" ]]; then
     fi
 
     # 6b: .claude-plugin/plugin.json unchanged.
+    # When plugin.json is absent the baseline file at line 333 holds a literal
+    # newline, but `$(cat …)` at line 337 strips trailing newlines per POSIX, so
+    # PLUGIN_JSON_BASELINE becomes "" (empty). Match that here with "" instead
+    # of $'\n' so absent-then-still-absent compares equal — closes #1475.
     if [[ -f "$REPO_ROOT/.claude-plugin/plugin.json" ]]; then
         CURRENT_PLUGIN_JSON=$(git -C "$REPO_ROOT" hash-object "$REPO_ROOT/.claude-plugin/plugin.json")
     else
-        CURRENT_PLUGIN_JSON=$'\n'
+        CURRENT_PLUGIN_JSON=""
     fi
     if [[ "$CURRENT_PLUGIN_JSON" != "$PLUGIN_JSON_BASELINE" ]]; then
         emit_bailed "protected-path-modified"
