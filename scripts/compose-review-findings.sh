@@ -358,7 +358,15 @@ if [ "$INLINE_BYTES" -gt "$ARCHIVE_THRESHOLD" ] && [ "$FINDINGS_TOTAL" -gt 0 ]; 
     MODE="archive"
     ARCHIVE_PATH="$ARCHIVE_DIR/issue-${ISSUE}.jsonl"
     mkdir -p "$ARCHIVE_DIR" 2>/dev/null || fail "cannot create archive directory: $ARCHIVE_DIR"
-    cp "$TMP_JSONL" "$ARCHIVE_PATH" || fail "failed to write archive: $ARCHIVE_PATH"
+    ARCHIVE_TMP="$(mktemp "${ARCHIVE_PATH}.XXXXXX")" || fail "cannot create temp archive file: $ARCHIVE_PATH"
+    if ! cp "$TMP_JSONL" "$ARCHIVE_TMP"; then
+        rm -f "$ARCHIVE_TMP"
+        fail "failed to stage archive: $ARCHIVE_PATH"
+    fi
+    if ! mv -f "$ARCHIVE_TMP" "$ARCHIVE_PATH"; then
+        rm -f "$ARCHIVE_TMP"
+        fail "failed to publish archive: $ARCHIVE_PATH"
+    fi
     ARCHIVE_BYTES=$(wc -c < "$ARCHIVE_PATH" | tr -d ' ')
 
     # Replace the inline body with a pointer + count summary; the existing

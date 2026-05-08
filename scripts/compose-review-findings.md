@@ -9,7 +9,9 @@ When the inline payload exceeds a configurable byte threshold (default
 30 000 bytes, set per issue #1402's design clarification), switch to
 **archive-pointer mode**: write a `docs/review-archive/issue-<N>.jsonl`
 file with one JSON object per finding and replace the inline section body
-with a small pointer + count summary.
+with a small pointer + count summary. Archive files are staged as
+same-directory tempfiles and then published with `mv -f` so readers never
+observe a partially copied final `issue-<N>.jsonl`.
 
 This is the load-bearing helper for issue #1402's `review-findings-full`
 section. The existing `plan-review-tally` and `code-review-tally`
