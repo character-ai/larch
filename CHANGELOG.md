@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [17.0.17] - 2026-05-08
+
+### Changed
+
+- Resolve #1502: dedup the byte-equivalent launcher helpers shared between the Cursor and Codex external-tool launchers into two new sourced-only common libraries — `scripts/lib-external-launcher-common.sh` (canonical `external_launcher_promote_inner_done` / `external_launcher_append_outer_meta`) and `scripts/lib-dirty-tree-sidecar.sh` (canonical `_write_dirty_tree_sidecar`). Per-tool wrappers `lib-codex-launcher-common.sh` and `lib-cursor-launcher-common.sh` now source the new common lib and expose the same `codex_launcher_*` / `cursor_launcher_*` names as one-line aliases, so existing call sites in `launch-codex-review.sh`, `launch-cursor-review.sh`, and `launch-cursor-implement.sh` are unchanged. The two review-launch wrappers (`launch-codex-review.sh`, `launch-cursor-review.sh`) source `lib-dirty-tree-sidecar.sh` instead of defining their own `_write_dirty_tree_sidecar` copy. After review feedback (Cursor structure + testing specialists round 1), `scripts/launch-gemini-review.sh` was also folded in: it now sources the same `lib-dirty-tree-sidecar.sh` so all three external-reviewer launchers share one implementation, and the lib's stricter `[[ -n "$DIRTY_TREE_SIDECAR" ]] || return 0` guard (originally Gemini-only) is hoisted to benefit all three callers. `agent-lint.toml` excludes both new sourced-only libraries from the executable check, consistent with existing `lib-*` exclusions. Sibling `.md` docs added for the new libraries; `Edit-in-sync` registries on `lib-codex-launcher-common.md`, `lib-cursor-launcher-common.md`, `launch-codex-review.md`, `launch-cursor-review.md`, `launch-cursor-implement.md`, and `launch-gemini-review.md` updated.
+
 ## [17.0.16] - 2026-05-08
 
 ### Changed
