@@ -29,6 +29,7 @@
 set -euo pipefail
 
 FILE=""
+FILE_SET=false
 KEY=""
 DEFAULT=""
 DEFAULT_SET=false
@@ -37,7 +38,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --file)
             [ $# -ge 2 ] || { echo "read-session-env-key.sh: --file requires a value" >&2; exit 1; }
-            FILE="$2"; shift 2 ;;
+            FILE="$2"; FILE_SET=true; shift 2 ;;
         --key)
             [ $# -ge 2 ] || { echo "read-session-env-key.sh: --key requires a value" >&2; exit 1; }
             KEY="$2"; shift 2 ;;
@@ -51,16 +52,17 @@ done
 
 [ -n "$KEY" ]  || { echo "read-session-env-key.sh: --key is required"  >&2; exit 1; }
 if [ -z "$FILE" ]; then
-    # Empty --file is treated identically to an unreadable file below: when
-    # --default is set, emit the default and exit 0; otherwise keep the
-    # usage error. This lets standalone /design and /review (where
-    # SESSION_ENV_PATH is intentionally empty) call this script in their
-    # token-ledger rehydration blocks without emitting stderr noise or
-    # tripping `set -e` in callers (#1563 round-2 review). --key is still
-    # required: the validation above runs before this branch so an
-    # empty-file invocation without --key keeps its usage error (#1563
-    # round-3 review).
-    if [ "$DEFAULT_SET" = "true" ]; then
+    # An EXPLICITLY empty --file is treated identically to an unreadable
+    # file below: when --default is set, emit the default and exit 0.
+    # This lets standalone /design and /review (where SESSION_ENV_PATH is
+    # intentionally empty) call this script in their token-ledger
+    # rehydration blocks without stderr noise or `set -e` trips
+    # (#1563 round-2 review). --key is still required: the validation
+    # above runs before this branch (#1563 round-3 review). The default
+    # is gated on FILE_SET=true so a caller who simply FORGOT to pass
+    # --file does NOT silently get the default — that masks caller bugs
+    # (#1563 round-4 review).
+    if [ "$FILE_SET" = "true" ] && [ "$DEFAULT_SET" = "true" ]; then
         printf '%s\n' "$DEFAULT"
         exit 0
     fi

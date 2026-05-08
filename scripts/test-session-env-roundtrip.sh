@@ -100,6 +100,17 @@ else
     pass
 fi
 
+# A.6f — OMITTED --file (not just explicitly empty) with --default still
+# errors with "--file is required" (closes #1563 round-4 review: the
+# default-on-empty-file tolerance is gated on --file being explicitly
+# present so a caller who simply forgot to pass --file does NOT silently
+# get the default and mask caller bugs).
+if "$READ_SCRIPT" --key X --default fallback >/dev/null 2>&1; then
+    fail "A.6f: omitted --file + --default + --key should exit 1"
+else
+    pass
+fi
+
 # A.7 — KEY prefix collision: a key whose name is a prefix of another must
 # match exactly (not match the longer-named key's line). Locks the
 # whole-key-plus-equals match in the corrected awk.
