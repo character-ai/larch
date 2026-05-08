@@ -16,7 +16,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `scripts/launch-cursor-review.sh` HARD CONSTRAINTS read-only preamble is now rendered conditionally: the enforcement sentence describes CLI-sandbox enforcement on the default path and describes the degraded posture (prompt constraints + post-run dirty-tree sidecar) on the disabled path, so the preamble does not lie to the model when the sandbox is opted out.
 - Trust-boundary docs (`SECURITY.md` § External tool delegation, `docs/external-reviewers.md`, `docs/review-agents.md`, `docs/configuration-and-permissions.md`) document the env var, when to use it, and the degraded enforcement consequence; `scripts/test-launch-cursor-review.sh` adds 8 assertions pinning the disabled-path argv shape, the unrecognized-value warning behavior, and the conditional preamble text.
 
-
 ## [18.0.1] - 2026-05-08
 
 ### Changed
