@@ -151,8 +151,8 @@ unchanged — this section is purely additive.>
 
 ### Claude
 
-| Step | Skill | Claude Input | Claude Output |
-|---|---|---:|---:|
+| Step | Skill | Claude Input | Claude Cache Read | Claude Cache Create | Claude Output |
+|---|---|---:|---:|---:|---:|
 
 ### <Vendor>
 
