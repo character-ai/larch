@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.13.11] - 2026-05-07
+
+### Changed
+
+- Resolve #1429: split the anchor's run-statistics section so token tables get their own dedicated `token-report` slug, raise `PER_SECTION_CAP` from 8000 to 14000 chars in `scripts/tracking-issue-write.sh`, and emit a stderr warning when per-section truncation fires (was silent). The split moves the Token Report block (previously appended to `run-statistics.md` by `token-report.sh --append-run-statistics`) to a new `anchor-sections/token-report.md` fragment file, producer flag renamed `--append-run-statistics` → `--append-token-report`. `SECTION_MARKERS`, `COLLAPSE_PRIORITY`, the anchor-comment template, `/implement` Step 9a.1/11/18 callers, and the test harnesses are updated to walk the new canonical slug set. Existing anchor comments on older issues remain compatible: `assemble-anchor.sh` synthesizes any missing section as an empty marker pair on first upsert. Code review accepted FINDING_8 — extended `scripts/test-implement-structure.sh` `(28b2)` to assert `<!-- section:token-report -->` open/close markers in `anchor-comment-template.md`, mirroring the existing `(28b)` timing-report check.
+- **Operator note:** Out-of-tree wrappers passing the old `--append-run-statistics` flag will silently no-op because `scripts/token-report.sh`'s `unavailable()` exits 0 on unknown flags. Update such callers to `--append-token-report` and rebase your fragments to write to `anchor-sections/token-report.md`.
+
 ## [15.13.10] - 2026-05-07
 
 ### Fixed
