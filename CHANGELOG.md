@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [18.0.7] - 2026-05-08
+
+### Changed
+
+- Reduce implement and review green-path validation output by routing relevant checks through a bounded Bash helper
+- Preserve failure diagnostics with private captured logs, redacted triage artifacts, and fail-closed redaction behavior
+- Add hook and harness coverage that prevents active orchestrators from drifting back to Skill invocation
+
+
 ## [18.0.6] - 2026-05-08
 
 ### Changed
