@@ -58,7 +58,7 @@ ISSUE_JSON=$(gh issue view "$ISSUE_NUMBER" --repo "$REPO" --json title,body,labe
 
 TITLE=$(echo "$ISSUE_JSON" | jq -r '.title // "Untitled"')
 BODY=$(echo "$ISSUE_JSON" | jq -r '.body // "No description provided."')
-LABELS=$(echo "$ISSUE_JSON" | jq -r '[.labels[].name] | if length == 0 then "none" else join(", ") end')
+LABELS=$(echo "$ISSUE_JSON" | jq -r '[ (.labels // [])[] | .name ] | if length == 0 then "none" else join(", ") end')
 CREATED=$(echo "$ISSUE_JSON" | jq -r '.createdAt // "unknown"')
 
 # Fetch all comments (paginated)

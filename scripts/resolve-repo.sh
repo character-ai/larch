@@ -6,15 +6,8 @@ set -euo pipefail
 RESOLVED=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null) || RESOLVED=""
 
 if [[ -z "$RESOLVED" ]]; then
-    REMOTE_URL=$(git remote get-url origin 2>/dev/null || true)
-    if [[ -n "$REMOTE_URL" ]]; then
-        RESOLVED=$(printf '%s\n' "$REMOTE_URL" \
-            | sed -E \
-                -e 's#^git@github\.com:##' \
-                -e 's#^ssh://git@github\.com/##' \
-                -e 's#^https://github\.com/##' \
-                -e 's#\.git$##')
-    fi
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    RESOLVED=$("$SCRIPT_DIR/github-remote-repo.sh" origin 2>/dev/null) || RESOLVED=""
 fi
 
 if [[ -z "$RESOLVED" || ! "$RESOLVED" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; then

@@ -97,7 +97,7 @@ if [[ -z "$BRANCH" ]]; then
 fi
 
 # --- Check for existing open PR ---
-EXISTING_PR=$(gh pr view "${GH_REPO_ARGS[@]}" --json number,url,state,title 2>/dev/null || echo "")
+EXISTING_PR=$(gh pr view ${GH_REPO_ARGS[@]+"${GH_REPO_ARGS[@]}"} --json number,url,state,title 2>/dev/null || echo "")
 if [[ -n "$EXISTING_PR" ]]; then
     PR_STATE=$(echo "$EXISTING_PR" | jq -r '.state // empty' 2>/dev/null || echo "")
     if [[ "$PR_STATE" == "OPEN" ]]; then
@@ -130,7 +130,7 @@ if [[ -n "$EXISTING_PR" ]]; then
             # Fetch the existing PR title
             PR_TITLE=$(echo "$EXISTING_PR" | jq -r '.title // empty' 2>/dev/null || echo "")
             if [[ -z "$PR_TITLE" ]]; then
-                PR_TITLE=$(gh pr view "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --json title -q '.title' 2>/dev/null || echo "")
+                PR_TITLE=$(gh pr view "$PR_NUMBER" ${GH_REPO_ARGS[@]+"${GH_REPO_ARGS[@]}"} --json title -q '.title' 2>/dev/null || echo "")
             fi
             echo "PR_NUMBER=$PR_NUMBER"
             echo "PR_URL=$PR_URL"
@@ -156,14 +156,14 @@ if [[ "$DRAFT" == "true" ]]; then
 fi
 
 if [[ -z "$BASE_REF" ]]; then
-    BASE_REF=$(gh repo view "${GH_REPO_ARGS[@]}" --json defaultBranchRef --jq '.defaultBranchRef.name' 2>/dev/null) || BASE_REF=""
+    BASE_REF=$(gh repo view ${GH_REPO_ARGS[@]+"${GH_REPO_ARGS[@]}"} --json defaultBranchRef --jq '.defaultBranchRef.name' 2>/dev/null) || BASE_REF=""
     if [[ -z "$BASE_REF" ]]; then
         BASE_REF="main"
     fi
 fi
 
 PR_OUTPUT=$(gh pr create \
-    "${GH_REPO_ARGS[@]}" \
+    ${GH_REPO_ARGS[@]+"${GH_REPO_ARGS[@]}"} \
     --assignee @me \
     --head "$BRANCH" \
     --base "$BASE_REF" \
@@ -188,7 +188,7 @@ PR_NUMBER=$(echo "$PR_URL" | grep -oE '[0-9]+$' || echo "")
 
 if [[ -z "$PR_NUMBER" ]]; then
     # Fallback: fetch via gh pr view if URL parsing failed
-    PR_NUMBER=$(gh pr view "${GH_REPO_ARGS[@]}" --json number -q '.number' 2>/dev/null || echo "")
+    PR_NUMBER=$(gh pr view ${GH_REPO_ARGS[@]+"${GH_REPO_ARGS[@]}"} --json number -q '.number' 2>/dev/null || echo "")
 fi
 
 if [[ -z "$PR_NUMBER" ]] || [[ -z "$PR_URL" ]]; then

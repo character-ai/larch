@@ -44,6 +44,17 @@ out=$(cd "$repo" && GH_MODE=success PATH="$stub_dir:$PATH" "$SCRIPT")
 out=$(cd "$repo" && GH_MODE=fail PATH="$stub_dir:$PATH" "$SCRIPT")
 [[ "$out" == "fallback/repo" ]] || fail "git remote fallback did not resolve"
 
+# Trailing-slash HTTPS remote: the github-remote-repo.sh fallback strips
+# trailing slashes. Without the helper delegation this used to silently fail.
+git -C "$repo" remote set-url origin https://github.com/trail/slash.git/
+out=$(cd "$repo" && GH_MODE=fail PATH="$stub_dir:$PATH" "$SCRIPT")
+[[ "$out" == "trail/slash" ]] || fail "trailing-slash HTTPS remote did not resolve (got '$out')"
+
+# Credentialed HTTPS remote (token@github.com).
+git -C "$repo" remote set-url origin "https://x-access-token:secret@github.com/cred/repo.git"
+out=$(cd "$repo" && GH_MODE=fail PATH="$stub_dir:$PATH" "$SCRIPT")
+[[ "$out" == "cred/repo" ]] || fail "credentialed HTTPS remote did not resolve (got '$out')"
+
 git -C "$repo" remote remove origin
 set +e
 (cd "$repo" && GH_MODE=fail PATH="$stub_dir:$PATH" "$SCRIPT") >"$TMPROOT/fail.out" 2>"$TMPROOT/fail.err"
