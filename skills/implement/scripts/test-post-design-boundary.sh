@@ -5,12 +5,16 @@ set -euo pipefail
 
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)
 WRAPPER="$REPO_ROOT/skills/implement/scripts/post-design-boundary.sh"
+POST_HOOK="$REPO_ROOT/skills/implement/scripts/hook-post-design.sh"
+STOP_HOOK="$REPO_ROOT/skills/implement/scripts/hook-stop-fail-close.sh"
 READER="$REPO_ROOT/skills/design/scripts/read-design-manifest.sh"
 BRANCH_HELPER="$REPO_ROOT/scripts/git-current-branch.sh"
 
 fail() { echo "FAIL: $1" >&2; exit 1; }
 
 [[ -x "$WRAPPER" ]] || fail "wrapper missing or not executable"
+[[ -x "$POST_HOOK" ]] || fail "post-design hook missing or not executable"
+[[ -x "$STOP_HOOK" ]] || fail "stop hook missing or not executable"
 
 TMPROOT=$(mktemp -d)
 trap 'rm -rf "$TMPROOT"' EXIT
@@ -72,6 +76,12 @@ assert_not_contains() {
     fi
 }
 
+assert_empty() {
+    local output="$1"
+    local label="$2"
+    [[ -z "$output" ]] || fail "$label"
+}
+
 # Success path: reader OK, branch captured, wrapper OK, imperative final line.
 TMP1="$TMPROOT/success"
 GIT1="$TMPROOT/git-success"
@@ -86,6 +96,9 @@ case "$LAST_LINE" in
     "➡️ 1: design plan — boundary gate passed;"*) ;;
     *) fail "success path final line is not the default imperative breadcrumb: $LAST_LINE" ;;
 esac
+[[ -f "$TMP1/.boundary-gate-passed" ]] || fail "success path did not write boundary sentinel"
+OUT=$(cd "$GIT1" && CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash "$WRAPPER" --implement-tmpdir "$TMP1")
+assert_contains "$OUT" '^POST_DESIGN_BOUNDARY_OK=true$' "success sentinel path was not idempotent"
 
 # Missing manifest fails closed and suppresses success markers.
 TMP2="$TMPROOT/missing"
@@ -96,6 +109,19 @@ OUT=$(cd "$GIT2" && CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash "$WRAPPER" --implement-
 assert_contains "$OUT" '^MANIFEST_FAILED=true$' "missing manifest did not fail closed"
 assert_not_contains "$OUT" 'POST_DESIGN_BOUNDARY_OK=true' "missing manifest emitted success marker"
 assert_not_contains "$OUT" '➡️ 1: design plan' "missing manifest emitted imperative breadcrumb"
+[[ ! -f "$TMP2/.boundary-gate-passed" ]] || fail "missing manifest wrote boundary sentinel"
+
+# Boundary sentinel write failure fails closed and suppresses success markers.
+TMP2A="$TMPROOT/sentinel-write-fail"
+GIT2A="$TMPROOT/git-sentinel-write-fail"
+make_manifest "$TMP2A"
+make_git_repo "$GIT2A"
+chmod 0500 "$TMP2A"
+OUT=$(cd "$GIT2A" && CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash "$WRAPPER" --implement-tmpdir "$TMP2A")
+chmod 0700 "$TMP2A"
+assert_contains "$OUT" '^MANIFEST_FAILED=true$' "sentinel write failure did not fail closed"
+assert_contains "$OUT" '^ERROR=boundary-gate-sentinel-write-failed$' "sentinel write failure emitted wrong error"
+assert_not_contains "$OUT" '^POST_DESIGN_BOUNDARY_OK=true$' "sentinel write failure emitted success marker"
 
 # Invalid tmpdir fails closed.
 OUT=$(CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash "$WRAPPER" --implement-tmpdir "relative-tmpdir")
@@ -252,6 +278,86 @@ case "$LAST_LINE" in
     "➡️ 1: design plan — boundary gate passed (design-only);"*) ;;
     *) fail "design-only path final line is not the design-only imperative breadcrumb: $LAST_LINE" ;;
 esac
+
+# PostToolUse hook injects byte-identical wrapper stdout, including trailing newline.
+HOOK_CACHE="$TMPROOT/hook-cache"
+HOOK_CWD="$TMPROOT/hook-cwd"
+TMP12="$HOOK_CACHE/larch/sessions/claude-implement-hook"
+GIT12="$TMPROOT/git-hook"
+mkdir -p "$HOOK_CWD"
+make_manifest "$TMP12"
+make_git_repo "$GIT12"
+printf 'CLONE_PATH=%s\n' "$HOOK_CWD" > "$TMP12/.larch-keepalive"
+printf 'true\n' > "$TMP12/.design-only"
+DIRECT12="$TMPROOT/direct-hook.out"
+DECODED12="$TMPROOT/decoded-hook.out"
+JSON12="$TMPROOT/hook.json"
+(cd "$GIT12" && CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash "$WRAPPER" --implement-tmpdir "$TMP12" --session-env "$TMP12/session-env.sh" --design-only true > "$DIRECT12")
+printf '{"tool_name":"Skill","tool_input":{"skill":"design"},"cwd":"%s"}' "$HOOK_CWD" \
+    | (cd "$GIT12" && XDG_CACHE_HOME="$HOOK_CACHE" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash "$POST_HOOK") > "$JSON12"
+jq -j '.hookSpecificOutput.additionalContext' "$JSON12" > "$DECODED12"
+cmp "$DIRECT12" "$DECODED12" >/dev/null || fail "PostToolUse additionalContext was not byte-identical to wrapper stdout"
+
+# PostToolUse no-op paths.
+OUT=$(printf '{"tool_name":"Skill","tool_input":{"skill":"review"},"cwd":"%s"}' "$HOOK_CWD" \
+    | XDG_CACHE_HOME="$HOOK_CACHE" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash "$POST_HOOK")
+assert_empty "$OUT" "non-design Skill hook path emitted stdout"
+OUT=$(printf '{"tool_name":"Skill","tool_input":{"skill":"design"},"cwd":"%s"}' "$TMPROOT/no-such-cwd" \
+    | XDG_CACHE_HOME="$HOOK_CACHE" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash "$POST_HOOK")
+assert_empty "$OUT" "hook with no cwd-bound tmpdir emitted stdout"
+
+# Stop hook blocks only while manifest exists and neither release sentinel exists.
+STOP_CACHE="$TMPROOT/stop-cache"
+STOP_CWD="$TMPROOT/stop-cwd"
+TMP13="$STOP_CACHE/larch/sessions/claude-implement-stop"
+mkdir -p "$STOP_CWD"
+make_manifest "$TMP13"
+printf 'CLONE_PATH=%s\n' "$STOP_CWD" > "$TMP13/.larch-keepalive"
+OUT=$(printf '{"cwd":"%s","stop_hook_active":false}' "$STOP_CWD" \
+    | XDG_CACHE_HOME="$STOP_CACHE" bash "$STOP_HOOK")
+assert_contains "$OUT" '"decision":"block"' "Stop hook did not emit block decision"
+assert_contains "$OUT" "post-/design boundary" "Stop hook reason missing boundary text"
+assert_contains "$OUT" "$(basename "$TMP13")" "Stop hook reason missing tmpdir basename"
+assert_not_contains "$OUT" "$TMP13" "Stop hook leaked full tmpdir path"
+
+touch "$TMP13/.boundary-gate-passed"
+OUT=$(printf '{"cwd":"%s","stop_hook_active":false}' "$STOP_CWD" \
+    | XDG_CACHE_HOME="$STOP_CACHE" bash "$STOP_HOOK")
+assert_empty "$OUT" "Stop hook blocked after boundary sentinel"
+rm -f "$TMP13/.boundary-gate-passed"
+touch "$TMP13/.run-cleaned-up"
+OUT=$(printf '{"cwd":"%s","stop_hook_active":false}' "$STOP_CWD" \
+    | XDG_CACHE_HOME="$STOP_CACHE" bash "$STOP_HOOK")
+assert_empty "$OUT" "Stop hook blocked after cleanup sentinel"
+rm -f "$TMP13/.run-cleaned-up" "$TMP13/design-export/manifest.env"
+OUT=$(printf '{"cwd":"%s","stop_hook_active":false}' "$STOP_CWD" \
+    | XDG_CACHE_HOME="$STOP_CACHE" bash "$STOP_HOOK")
+assert_empty "$OUT" "Stop hook blocked without manifest"
+make_manifest "$TMP13"
+OUT=$(printf '{"cwd":"%s","stop_hook_active":true}' "$STOP_CWD" \
+    | XDG_CACHE_HOME="$STOP_CACHE" bash "$STOP_HOOK")
+assert_empty "$OUT" "Stop hook blocked continuation-loop reentry"
+
+# Concurrent-session disambiguation: cwd selects the matching keepalive only.
+STOP_CWD_A="$TMPROOT/stop-cwd-a"
+STOP_CWD_B="$TMPROOT/stop-cwd-b"
+TMP14A="$STOP_CACHE/larch/sessions/claude-implement-a"
+TMP14B="$STOP_CACHE/larch/sessions/claude-implement-b"
+mkdir -p "$STOP_CWD_A" "$STOP_CWD_B"
+make_manifest "$TMP14A"
+make_manifest "$TMP14B"
+printf 'CLONE_PATH=%s\n' "$STOP_CWD_A" > "$TMP14A/.larch-keepalive"
+printf 'CLONE_PATH=%s\n' "$STOP_CWD_B" > "$TMP14B/.larch-keepalive"
+touch "$TMP14A/design-export/manifest.env" "$TMP14B/design-export/manifest.env"
+OUT=$(printf '{"cwd":"%s","stop_hook_active":false}' "$STOP_CWD_A" \
+    | XDG_CACHE_HOME="$STOP_CACHE" bash "$STOP_HOOK")
+assert_contains "$OUT" "$(basename "$TMP14A")" "Stop hook did not resolve cwd A"
+OUT=$(printf '{"cwd":"%s","stop_hook_active":false}' "$STOP_CWD_B" \
+    | XDG_CACHE_HOME="$STOP_CACHE" bash "$STOP_HOOK")
+assert_contains "$OUT" "$(basename "$TMP14B")" "Stop hook did not resolve cwd B"
+OUT=$(printf '{"cwd":"%s","stop_hook_active":false}' "$TMPROOT/stop-cwd-none" \
+    | XDG_CACHE_HOME="$STOP_CACHE" bash "$STOP_HOOK")
+assert_empty "$OUT" "Stop hook did not fail open with no cwd match"
 
 # Path-injection defense rejects control characters.
 CONTROL_PATH="$TMPROOT/"$'bad\npath'

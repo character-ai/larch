@@ -634,6 +634,10 @@ run_teardown() {
         fi
     fi
 
+    # Halt-protection sentinel: release the post-/design Stop hook before
+    # cleanup target validation so refused cleanup paths cannot trap exit.
+    touch "$IMPLEMENT_TMPDIR/.run-cleaned-up" 2>/dev/null || true
+
     if verify_cleanup_target; then
         set +e
         out=$("$SCRIPT_DIR/cleanup-tmpdir.sh" --dir "$IMPLEMENT_TMPDIR")

@@ -1,0 +1,3 @@
+# skills/implement/scripts/lib-resolve-implement-tmpdir.sh — contract
+
+`lib-resolve-implement-tmpdir.sh` is a sourced-only helper for the post-/design hook scripts. It exposes `resolve_implement_tmpdir <hook-cwd>`, enumerates `${XDG_CACHE_HOME:-$HOME/.cache}/larch/sessions`, `/tmp`, and `/private/tmp` for `claude-implement-*` directories with `design-export/manifest.env`, filters by `.larch-keepalive` `CLONE_PATH=<hook-cwd>` when the hook stdin includes `cwd`, and returns the freshest manifest mtime with lexicographic tie-break. Empty stdout is the fail-open result for no candidate or no cwd-bound match. Edit in sync with `hook-post-design.sh`, `hook-stop-fail-close.sh`, and `skills/implement/scripts/test-post-design-boundary.sh`.

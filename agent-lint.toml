@@ -381,6 +381,18 @@ exclude = [
   # runtime prose.
   "skills/implement/scripts/test-oos-issue-cap.sh",
   "skills/implement/scripts/test-oos-issue-cap.md",
+  # Post-/design halt-protection hooks are runtime-registered in
+  # hooks/hooks.json, not invoked from skills/implement/SKILL.md. The resolver
+  # is a sourced-only library for those hooks (no shebang and no `set -e` by
+  # design), so it is excluded from executable/error-handling checks alongside
+  # the hook files that agent-lint's skill graph does not currently follow
+  # through plugin hook registration.
+  "skills/implement/scripts/hook-post-design.sh",
+  "skills/implement/scripts/hook-post-design.md",
+  "skills/implement/scripts/hook-stop-fail-close.sh",
+  "skills/implement/scripts/hook-stop-fail-close.md",
+  "skills/implement/scripts/lib-resolve-implement-tmpdir.sh",
+  "skills/implement/scripts/lib-resolve-implement-tmpdir.md",
   # skills/implement/scripts/oos-issue-cap-excerpt.py is invoked by
   # oos-issue-cap.sh for UTF-8 character-safe truncation; referenced only
   # from oos-issue-cap.sh and its sibling contract stub.
