@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [18.0.5] - 2026-05-08
+
+### Fixed
+
+- `/implement` Step 18 — emit a closing `Step 18 — done` token / timing ledger mark after the terminal `--since-last-mark --terse` reports so cross-run vendor records logged in the shared `pwd-hash` ledger fallback no longer accrue to the prior run's `Step 18 — cleanup` bucket. Resolves #1544 (umbrella #1553 Token Cost Savings Drive).
+
 ## [18.0.4] - 2026-05-08
 
 ### Changed

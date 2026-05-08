@@ -630,6 +630,18 @@ assert_contains "📎 Tracking issue: https://github.example/owner/repo/issues/4
 assert_contains "✅ 18: cleanup — implement complete! (<elapsed>)" "$OUT" "teardown: final breadcrumb"
 assert_contains "ISSUE_URL=https://github.example/owner/repo/issues/456" "$OUT" "teardown: issue URL tail"
 
+# Teardown MUST NOT emit the Step 18 — done closing mark. The cap is
+# emitted exclusively by the orchestrator-side terminal Bash block in
+# skills/implement/SKILL.md Step 18 AFTER --since-last-mark --terse runs,
+# so a teardown-side duplicate would race ahead of those terse reports
+# and silently make them slice an empty window. Pin the negative
+# assertion so a future re-add regresses CI.
+write_state "$STATE"
+: > "$SANDBOX/ledger-calls.txt"
+OUT=$(run_subject teardown --state-file "$STATE" --implement-tmpdir "$SANDBOX/tmp")
+LEDGER_CALLS=$(cat "$SANDBOX/ledger-calls.txt" 2>/dev/null || true)
+assert_not_contains 'Step 18 — done' "$LEDGER_CALLS" "teardown: does NOT emit Step 18 — done (orchestrator owns the cap)"
+
 write_state "$STATE"
 rm -f "$SANDBOX/tmp/.run-cleaned-up"
 OUT=$(STUB_REQUIRE_RUN_CLEANED_UP=true run_subject teardown --state-file "$STATE" --implement-tmpdir "$SANDBOX/tmp")
