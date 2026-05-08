@@ -2,7 +2,7 @@
 
 Larch is distributed as a [Claude Code plugin](https://code.claude.com/docs/en/plugin-marketplaces). Installation starts by registering the marketplace that hosts larch, then installing the plugin from that marketplace.
 
-Slack integration is optional and **on by default** when `LARCH_SLACK_BOT_TOKEN` and `LARCH_SLACK_CHANNEL_ID` are configured. `/implement` posts a single tracking-issue status message near the end of each run; pass `--no-slack` to opt out. See [Environment Variables](configuration-and-permissions.md#environment-variables) — skills degrade gracefully when Slack is not configured.
+Slack integration is optional and opt-in. `/implement` posts a single tracking-issue status message near the end of a run only when you pass `--slack` and `LARCH_SLACK_BOT_TOKEN` plus `LARCH_SLACK_CHANNEL_ID` are configured. See [Environment Variables](configuration-and-permissions.md#environment-variables) — skills degrade gracefully when Slack is not configured.
 
 ## Install from GitHub
 
@@ -267,7 +267,7 @@ These tools enhance the workflow but are not required. Fallback behavior varies 
 - **Codex** — [OpenAI Codex CLI](https://github.com/openai/codex). Participates as an external reviewer and voter alongside Claude subagents. When unavailable, a Claude subagent replacement maintains the reviewer count.
 - **Cursor** — [Cursor AI editor](https://cursor.com/). Participates as an external reviewer and voter. When unavailable, a Claude subagent replacement maintains the reviewer count.
 - **Gemini** — [Gemini CLI](https://github.com/google-gemini/gemini-cli). Adds an optional external reviewer slot in rounds 1-3 and joins the external chain in rounds 4+ when available. When unavailable, reviewer use is skipped in rounds 1-3 and falls through to the next external reviewer in rounds 4+; `/implement --coder=gemini` falls back to Claude. See [Gemini](#gemini) for setup details.
-- **Slack** — Single tracking-issue status message per `/implement` run (and for `/fix-issue` NON_PR closures). On by default when Slack env vars are configured; pass `--no-slack` to opt out. Requires environment variables or plugin `userConfig` (see [Environment Variables](configuration-and-permissions.md#environment-variables)). When `--no-slack` is passed, all Slack operations are skipped silently. When env vars are missing (and `--no-slack` was not passed), the operation is skipped with a warning at session setup. All other workflow steps proceed normally in either case.
+- **Slack** — Single tracking-issue status message per `/implement` run (and for `/fix-issue` NON_PR closures) when `--slack` is passed. Requires environment variables or plugin `userConfig` (see [Environment Variables](configuration-and-permissions.md#environment-variables)). When `--slack` is not passed, all Slack operations are skipped silently. When `--slack` is passed but env vars are missing, the operation is skipped with a warning at session setup. All other workflow steps proceed normally in either case.
 
 ### Contributor development
 

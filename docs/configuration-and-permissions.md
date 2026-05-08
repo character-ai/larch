@@ -167,9 +167,9 @@ The legacy `--codex-available true|false` knob is still accepted by the dispatch
 
 ## Environment Variables
 
-Larch uses environment variables for Slack integration and external reviewer model configuration. All are optional — when not set, Slack-related features are skipped with warnings, and external reviewers use their default models.
+Larch uses environment variables for Slack integration and external reviewer model configuration. All are optional — when not set, opted-in Slack features are skipped with warnings, and external reviewers use their default models.
 
-> **Important:** Slack posting in `/implement` is **on by default** when Slack env vars are configured. `/implement` posts a single status message about its tracking issue near the end of each run (✅ closed / 📝 PR opened / ❌ blocked / ❓ user input needed). Pass `--no-slack` to opt out. When both `LARCH_SLACK_BOT_TOKEN` and `LARCH_SLACK_CHANNEL_ID` are present in your shell environment, the post is made (unless `--no-slack` is set); if either is missing, the post is skipped with a warning at session setup time identifying which variable(s) are absent. When `--no-slack` is set, no Slack calls are made regardless of environment configuration. These variables must be present in the environment where `claude` is launched — they are not read from `.env` files or configuration.
+> **Important:** Slack posting in `/implement` is opt-in. `/implement` posts a single status message about its tracking issue near the end of each run (✅ closed / 📝 PR opened / ❌ blocked / ❓ user input needed) only when `--slack` is set. When both `LARCH_SLACK_BOT_TOKEN` and `LARCH_SLACK_CHANNEL_ID` are present in your shell environment, the post is made for opted-in runs; if either is missing, the post is skipped with a warning at session setup time identifying which variable(s) are absent. When `--slack` is not set, no Slack calls are made regardless of environment configuration. These variables must be present in the environment where `claude` is launched — they are not read from `.env` files or configuration.
 
 **Alternative: Plugin `userConfig`** — If you installed larch as a plugin, you can also configure Slack tokens via the plugin's `userConfig` (prompted at plugin enable time). The `userConfig` values are exported as `CLAUDE_PLUGIN_OPTION_*` environment variables to subprocesses. Larch checks both: environment variables take precedence if both are set.
 
@@ -177,23 +177,23 @@ Larch uses environment variables for Slack integration and external reviewer mod
 
 A Slack Bot User OAuth Token (starts with `xoxb-`) used to authenticate Slack API calls. The post body identifies the sender as the git user (via `git config user.name` → Slack `chat.postMessage` `username` parameter), so the message appears attributed to the human running the workflow rather than to the bot's display name.
 
-**When set (and `/implement` is invoked without `--no-slack`):**
+**When set (and `/implement` is invoked with `--slack`):**
 - `/implement` posts a one-line tracking-issue status message to Slack near the end of each run (Step 16a)
 - The token's presence is checked during session setup and its availability is propagated to child skills
 
-**When not set (or `/implement` is invoked with `--no-slack`):**
-- All Slack operations in `/implement` are skipped. When running without `--no-slack` but env vars are missing, a warning is printed at session setup (e.g., `⚠ Slack is not fully configured (LARCH_SLACK_BOT_TOKEN not set). Issue Slack announcement (Step 16a) will be skipped.`). When `--no-slack` is set, no warning is printed — Slack is not in use.
+**When not set (or `/implement` is invoked without `--slack`):**
+- All Slack operations in `/implement` are skipped. When running with `--slack` but env vars are missing, a warning is printed at session setup (e.g., `⚠ Slack is not fully configured (LARCH_SLACK_BOT_TOKEN not set). Issue Slack announcement (Step 16a) will be skipped.`). When `--slack` is not set, no warning is printed — Slack is not in use.
 - All other workflow steps (design, implementation, code review, CI monitoring, merge) proceed normally
 
 ### `LARCH_SLACK_CHANNEL_ID`
 
 The Slack channel ID (e.g., `C0123456789`) where tracking-issue status messages are posted.
 
-**When set (and `/implement` is invoked without `--no-slack`):**
+**When set (and `/implement` is invoked with `--slack`):**
 - The issue status message is posted to this channel
 
-**When not set (or `/implement` is invoked with `--no-slack`):**
-- All Slack operations in `/implement` are skipped. When running without `--no-slack` but env vars are missing, a warning is printed at session setup (e.g., `⚠ Slack is not fully configured (LARCH_SLACK_CHANNEL_ID not set).`). When `--no-slack` is set, no warning is printed.
+**When not set (or `/implement` is invoked without `--slack`):**
+- All Slack operations in `/implement` are skipped. When running with `--slack` but env vars are missing, a warning is printed at session setup (e.g., `⚠ Slack is not fully configured (LARCH_SLACK_CHANNEL_ID not set).`). When `--slack` is not set, no warning is printed.
 - All other workflow steps proceed normally
 
 ### External Agent Model Configuration
