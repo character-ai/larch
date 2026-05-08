@@ -559,6 +559,21 @@ if grep -Fq -- 'HARD CONSTRAINTS — your role is read-only review' "$ARGV_LOG_A
 else
     fail "issue #1561 Cursor argv must still carry the HARD CONSTRAINTS preamble under LARCH_CURSOR_SANDBOX=disabled"
 fi
+# The preamble's enforcement sentence MUST be rendered conditionally — under
+# LARCH_CURSOR_SANDBOX=disabled, the launcher must NOT claim that the CLI
+# sandbox is enforcing read-only (that would lie to the model and weaken
+# prompt-level enforcement; round-1 review finding for issue #1561), and
+# MUST contain the disabled-path enforcement wording instead.
+if grep -Fq -- 'rejected by the sandbox' "$ARGV_LOG_AK1B"; then
+    fail "issue #1561 disabled-path preamble MUST NOT claim writes are rejected by the sandbox"
+else
+    pass
+fi
+if grep -Fq -- 'LARCH_CURSOR_SANDBOX=disabled' "$ARGV_LOG_AK1B"; then
+    pass
+else
+    fail "issue #1561 disabled-path preamble must reference LARCH_CURSOR_SANDBOX=disabled so the model knows the CLI sandbox is opted out"
+fi
 
 # Case AK1C (issue #1561): an unrecognized LARCH_CURSOR_SANDBOX value defaults
 # to enabled and emits a stderr warning so typos are visible without aborting.
