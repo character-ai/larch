@@ -27,7 +27,7 @@
 **Call sites**:
 - `skills/implement/SKILL.md` Step 5 (quick-mode specialists + generic reviewers)
 - `skills/design/SKILL.md` Step 3 (Codex generic reviewer + archetype fallbacks)
-- `skills/design/references/sketch-launch.md` (4 regular + 1 quick Codex sketch slots)
+- `skills/design/references/sketch-launch.md` (2 regular + 1 quick Codex sketch slots)
 - `skills/design/references/dialectic-execution.md` (Codex debater launches)
 - `skills/review/SKILL.md` (Codex specialist + generic reviewer)
 - `scripts/collect-agent-results.sh` empty-output retry path, when valid Codex `OUTER_LAUNCHER*` metadata is present

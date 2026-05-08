@@ -85,38 +85,38 @@ bad="$TMP_ROOT/bad.tsv"
 printf 'design.sketch.regular_slots\t8\tskills/design/references/sketch-launch.md\n' >"$bad"
 assert_failure_contains "missing column" "$bad" "$TMP_ROOT/missing-column.md" "malformed row" --check
 
-printf 'design.sketch.regular_slots\t8\t4 Cursor + 4 Codex\tskills/design/references/sketch-launch.md\textra\n' >"$bad"
+printf 'design.sketch.regular_slots\t4\t2 Cursor + 2 Codex\tskills/design/references/sketch-launch.md\textra\n' >"$bad"
 assert_failure_contains "extra column" "$bad" "$TMP_ROOT/extra-column.md" "malformed row" --check
 
-printf 'design:sketch\t8\t4 Cursor + 4 Codex\tskills/design/references/sketch-launch.md\n' >"$bad"
+printf 'design:sketch\t4\t2 Cursor + 2 Codex\tskills/design/references/sketch-launch.md\n' >"$bad"
 assert_failure_contains "colon in key" "$bad" "$TMP_ROOT/colon-key.md" "key must not contain colon" --check
 
-printf 'design.sketch.regular_slots\t<8>\t4 Cursor + 4 Codex\tskills/design/references/sketch-launch.md\n' >"$bad"
+printf 'design.sketch.regular_slots\t<4>\t2 Cursor + 2 Codex\tskills/design/references/sketch-launch.md\n' >"$bad"
 assert_failure_contains "forbidden value char" "$bad" "$TMP_ROOT/forbidden-value.md" "forbidden character" --check
 
 # g-h. Runtime authority validation.
 printf 'docs.readme.bad\tVALUENOTPRESENT\t\tdocs/skills.md\n' >"$bad"
 assert_failure_contains "stale authority value" "$bad" "$TMP_ROOT/stale-authority.md" "not found in runtime_authority" --check
 
-printf 'docs.missing.bad\t8 regular\t\tdocs/missing-topology-authority.md\n' >"$bad"
+printf 'docs.missing.bad\t4 regular\t\tdocs/missing-topology-authority.md\n' >"$bad"
 assert_failure_contains "missing authority" "$bad" "$TMP_ROOT/missing-authority.md" "runtime_authority not found" --check
 
 # i. CRLF line endings rejected.
 crlf="$TMP_ROOT/crlf.tsv"
-printf 'design.sketch.regular_slots\t8 regular\t4 Cursor + 4 Codex\tskills/design/references/sketch-launch.md\r\n' >"$crlf"
+printf 'design.sketch.regular_slots\t4 regular\t2 Cursor + 2 Codex\tskills/design/references/sketch-launch.md\r\n' >"$crlf"
 assert_failure_contains "CRLF line ending" "$crlf" "$TMP_ROOT/crlf.md" "CRLF line endings not allowed" --check
 
 # j. Duplicate key rejected.
 dupkey="$TMP_ROOT/dup-key.tsv"
 {
-  printf 'design.sketch.regular_slots\t8 regular\t4 Cursor + 4 Codex\tskills/design/references/sketch-launch.md\n'
+  printf 'design.sketch.regular_slots\t4 regular\t2 Cursor + 2 Codex\tskills/design/references/sketch-launch.md\n'
   printf 'design.sketch.regular_slots\tnot a duplicate\tsame key as row 1\tskills/design/references/sketch-launch.md\n'
 } >"$dupkey"
 assert_failure_contains "duplicate key" "$dupkey" "$TMP_ROOT/dup-key.md" "duplicate key" --check
 
 # k. Short or purely-numeric values rejected (anchor-phrase requirement).
 shortval="$TMP_ROOT/short-value.tsv"
-printf 'design.sketch.regular_slots\t8\t4 Cursor + 4 Codex\tskills/design/references/sketch-launch.md\n' >"$shortval"
+printf 'design.sketch.regular_slots\t4\t2 Cursor + 2 Codex\tskills/design/references/sketch-launch.md\n' >"$shortval"
 assert_failure_contains "purely numeric value" "$shortval" "$TMP_ROOT/short-value.md" "too short or purely numeric" --check
 
 # l. Empty composition row generates correctly (regression for IFS=tab field-collapse bug — empty

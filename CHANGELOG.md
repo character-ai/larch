@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [18.0.4] - 2026-05-08
+
+### Changed
+
+- `/design` regular-mode sketch fan-out reduced from 8 external slots to 4 (Cursor-Arch + Cursor-Edge + Codex-Innovation + Codex-Pragmatic). The 2 quick-mode slots and the 8-reviewer Step 3 plan-review panel are unchanged. Closes #1549 (umbrella #1553 — Token Costs Savings Drive). Updates runtime authorities (`sketch-launch.md`, `sketch-prompts.md`), the `skills/design/SKILL.md` description and Step 2a launch blocks, sibling launcher contracts (`launch-cursor-review.md`, `launch-codex-review.md`, `cursor-wrap-prompt.md`), `docs/collaborative-sketches.md` table and mermaid, `skills/implement/SKILL.md`'s both-externals-down rationale, and `skills/shared/topology.tsv` (regenerating `docs/topology.md`). Adds an audit note in `docs/voting-process.md` recording that vote-aggregation thresholds are sketch-count-independent. Adds a structural assertion in `scripts/test-design-structure.sh` pinning the four retained sketch output paths and updates `scripts/test-generate-topology-docs.sh` fixtures to the new topology.
+
 ## [18.0.3] - 2026-05-08
 
 ### Changed

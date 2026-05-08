@@ -1,20 +1,20 @@
 ---
 name: design
-description: "Use when designing any non-trivial feature, refactor, or architectural change — design, architecture, scope, approach validation. Sketch agents (8 regular, 2 quick) propose approaches; 8-reviewer panel validates via 3-voter dialectic."
+description: "Use when designing any non-trivial feature, refactor, or architectural change — design, architecture, scope, approach validation. Sketch agents (4 regular, 2 quick) propose approaches; 8-reviewer panel validates via 3-voter dialectic."
 argument-hint: "[--auto] [--quick] [--subagent] [--session-env <path>] <feature description>"
 allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task, WebFetch, WebSearch
 ---
 
 # Design Skill
 
-Design an implementation plan for a feature and review it with an 8-reviewer panel (4 Codex specialists + 4 Cursor specialists: Architecture/Standards, Edge-cases/Failure-modes, Innovation/Exploration, Pragmatism/Safety), adjudicated by a 3-voter panel (Claude + Codex + Cursor). The sketch phase (Step 2a) runs 8 agents in regular mode (4 Cursor slots + 4 Codex slots, one per personality per tool) or 2 agents in quick mode (1 Cursor-Generic + 1 Codex-Generic).
+Design an implementation plan for a feature and review it with an 8-reviewer panel (4 Codex specialists + 4 Cursor specialists: Architecture/Standards, Edge-cases/Failure-modes, Innovation/Exploration, Pragmatism/Safety), adjudicated by a 3-voter panel (Claude + Codex + Cursor). The sketch phase (Step 2a) runs 4 agents in regular mode (Cursor-Arch + Cursor-Edge + Codex-Innovation + Codex-Pragmatic — one personality per vendor in a diagonal split) or 2 agents in quick mode (1 Cursor-Generic + 1 Codex-Generic).
 
 **Flags**: Parse flags from the start of `$ARGUMENTS` before treating the remainder as the feature description. Flags may appear in any order; stop at the first non-flag token. **All boolean flags default to `false`. Only set a flag to `true` when its `--flag` token is explicitly present in the arguments. Flags are independent — the presence of one flag must not influence the default value of any other flag.**
 
 | Flag | Default | Purpose | Load-bearing detail |
 |------|---------|---------|---------------------|
 | `--auto` | `false` | Skip interactive question checkpoints (1c, 1d, 3.5) | No-op when `/implement --quick` skips `/design` entirely; dirty-tree recovery prompts are not suppressed |
-| `--quick` | `false` | Quick sketch mode: 2 agents instead of 8 | Independent of `--auto`; see `flags.md` for `/implement --quick` vs `/design --quick` distinction |
+| `--quick` | `false` | Quick sketch mode: 2 agents instead of 4 | Independent of `--auto`; see `flags.md` for `/implement --quick` vs `/design --quick` distinction |
 | `--subagent` | `false` | Run Step 2a heavy phase in an isolated Agent-tool subagent (`heavy-worker.md`); writes artifacts only to `$DESIGN_TMPDIR/` and returns terse status; standalone (`--session-env` empty) parents replay artifacts before cleanup | No-op when `--quick` is set; orthogonal to `--session-env` |
 | `--session-env <path>` | empty | Forward discovered session values to `session-setup.sh` | Empty = standalone invocation, full discovery |
 | `--step-prefix <prefix>` | empty | Nested-numbering prefix from `/implement` | `::` delimiter splits numeric prefix from breadcrumb path; `"1."` (bare numeric) is backward-compat |
@@ -63,7 +63,7 @@ When `SESSION_ENV_PATH` is non-empty (nested under `/implement`), suppress bulky
 **Compact reviewer status table**: After launching sketch agents (Step 2a) or plan reviewers (Step 3), maintain a mental tracker of each agent's status. Print a compact table after EACH status change:
 
 ```
-📊 Sketches (regular): | Cursor-Arch: ⏳ | Cursor-Edge: ✅ 3m5s | Cursor-Innovation: ⏳ | Cursor-Pragmatic: ⏳ | Codex-Arch: ⏳ | Codex-Edge: ⏳ | Codex-Innovation: ❌ 8m3s | Codex-Pragmatic: ✅ 4m2s |
+📊 Sketches (regular): | Cursor-Arch: ⏳ | Cursor-Edge: ✅ 3m5s | Codex-Innovation: ❌ 8m3s | Codex-Pragmatic: ✅ 4m2s |
 
 📊 Sketches (quick): | Cursor-Generic: ⏳ | Codex-Generic: ✅ 3m5s |
 
@@ -90,7 +90,7 @@ Before invoking `/design`, the orchestrator should internalize these questions. 
 
 Consolidated NEVER rules collected from the procedural steps below. Each rule states the WHY so edits can respect the original constraint. Inline step-local mentions remain where they carry load-bearing context.
 
-1. **NEVER skip Step 2a** (the sketch phase). **Why:** anchoring bias locks architectural direction before alternatives are considered. **How to apply:** always run all 8 sketch slots in regular mode or all 2 in quick mode, even when the feature seems trivial; Claude fallbacks preserve the configured lane count when externals are unavailable.
+1. **NEVER skip Step 2a** (the sketch phase). **Why:** anchoring bias locks architectural direction before alternatives are considered. **How to apply:** always run all 4 sketch slots in regular mode or all 2 in quick mode, even when the feature seems trivial; Claude fallbacks preserve the configured lane count when externals are unavailable.
 
 2. **NEVER substitute a Claude subagent into a dialectic debate bucket.** **Why:** the debate path is externals-only (Cursor/Codex) because model-specific writing style could encode tool identity into adversarial arguments; the judge path uses the repo-wide replacement-first pattern because judges merely adjudicate pre-authored defenses. See GitHub issue #98. **How to apply:** Step 2a.5 skips debate buckets whose assigned tool is unavailable — do NOT reassign to Claude. Judge-panel slots (after debate) DO use Claude replacements per `dialectic-protocol.md`.
 
@@ -226,24 +226,20 @@ Print: `> **🔶 1d: discussion r1**`
 SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 2a — sketches" || true
 ```
 
-**IMPORTANT: The collaborative sketch phase MUST ALWAYS run with all configured sketch agents — 8 in regular mode, 2 in quick mode (using Claude replacements when external tools are unavailable). Never skip or abbreviate this phase regardless of how simple, obvious, or documentation-only the feature appears. The sketch synthesis is required architectural input for the implementation plan — skipping it causes anchoring bias where a single perspective locks in the direction before alternatives are considered.**
+**IMPORTANT: The collaborative sketch phase MUST ALWAYS run with all configured sketch agents — 4 in regular mode, 2 in quick mode (using Claude replacements when external tools are unavailable). Never skip or abbreviate this phase regardless of how simple, obvious, or documentation-only the feature appears. The sketch synthesis is required architectural input for the implementation plan — skipping it causes anchoring bias where a single perspective locks in the direction before alternatives are considered.**
 
 A diverge-then-converge phase where multiple agents independently produce short architectural sketches before writing the full plan. This surfaces different perspectives early — when they can still influence architectural direction — rather than waiting for review when the plan is already anchored.
 
-### Regular mode (`quick_mode=false`) — 8 sketch agents
+### Regular mode (`quick_mode=false`) — 4 sketch agents
 
-The 8 sketch agents are **4 Cursor + 4 Codex**, with per-slot Claude fallback when an external tool is unavailable:
+The 4 sketch agents are **2 Cursor + 2 Codex**, with per-slot Claude fallback when an external tool is unavailable:
 
 1. **Cursor — Architecture/Standards** — or **Claude (Architecture/Standards)** fallback.
 2. **Cursor — Edge-cases/Failure-modes** — or **Claude (Edge-cases/Failure-modes)** fallback.
-3. **Cursor — Innovation/Exploration** — or **Claude (Innovation/Exploration)** fallback.
-4. **Cursor — Pragmatism/Safety** — or **Claude (Pragmatism/Safety)** fallback.
-5. **Codex — Architecture/Standards** — or **Claude (Architecture/Standards)** fallback.
-6. **Codex — Edge-cases/Failure-modes** — or **Claude (Edge-cases/Failure-modes)** fallback.
-7. **Codex — Innovation/Exploration** — or **Claude (Innovation/Exploration)** fallback.
-8. **Codex — Pragmatism/Safety** — or **Claude (Pragmatism/Safety)** fallback.
+3. **Codex — Innovation/Exploration** — or **Claude (Innovation/Exploration)** fallback.
+4. **Codex — Pragmatism/Safety** — or **Claude (Pragmatism/Safety)** fallback.
 
-When all Cursor slots fall back to Claude, they still invoke the four distinct personality prompts. Same for Codex slots.
+When the assigned external is unavailable, the slot's Claude fallback uses the same personality prompt; the configured 4-agent shape is preserved.
 
 ### Quick mode (`quick_mode=true`) — 2 sketch agents
 
@@ -290,13 +286,13 @@ If `subagent_mode=false` (or `quick_mode=true`), proceed to 2a.2 and run the inl
 
 ### 2a.2 — Launch Sketches in Parallel
 
-**Regular mode**: 8 sketch agents run in parallel: 4 Cursor slots (Architecture/Standards, Edge-cases/Failure-modes, Innovation/Exploration, Pragmatism/Safety) + 4 Codex slots (same four personalities), with per-slot Claude Agent-tool fallback when an external tool is unavailable so the 8-agent count is preserved.
+**Regular mode**: 4 sketch agents run in parallel: 2 Cursor slots (Architecture/Standards, Edge-cases/Failure-modes) + 2 Codex slots (Innovation/Exploration, Pragmatism/Safety), with per-slot Claude Agent-tool fallback when an external tool is unavailable so the 4-agent count is preserved.
 
 **Quick mode**: 2 sketch agents run in parallel: 1 Cursor-Generic + 1 Codex-Generic, with per-slot Claude Agent-tool fallback so the 2-agent count is preserved.
 
 **MANDATORY — READ ENTIRE FILE (load FIRST)**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/sketch-prompts.md` completely. It defines `ARCH_PROMPT`, `EDGE_PROMPT`, `INNOVATION_PROMPT`, `PRAGMATIC_PROMPT`, and `GENERIC_PROMPT` — the four personality-prompt bodies and the quick-mode generic prompt, substituted into the launch shell blocks via the corresponding `<…>` token names.
 
-**MANDATORY — READ ENTIRE FILE (load SECOND, after sketch-prompts.md)**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/sketch-launch.md` completely. It contains the byte-preserved launch shell blocks for the 8 regular-mode external slots (4 Cursor + 4 Codex) and the 2 quick-mode slots (1 Cursor-Generic + 1 Codex-Generic), the spawn-order rule, the per-slot `run_in_background: true` / `timeout: 1260000` requirements, and the per-slot Claude fallback notes.
+**MANDATORY — READ ENTIRE FILE (load SECOND, after sketch-prompts.md)**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/sketch-launch.md` completely. It contains the byte-preserved launch shell blocks for the 4 regular-mode external slots (2 Cursor + 2 Codex) and the 2 quick-mode slots (1 Cursor-Generic + 1 Codex-Generic), the spawn-order rule, the per-slot `run_in_background: true` / `timeout: 1260000` requirements, and the per-slot Claude fallback notes.
 
 Execute the launches per `sketch-launch.md` — all external and fallback launches issued in a single message, Cursor slots first, then Codex slots, then any Claude fallbacks.
 
@@ -304,16 +300,12 @@ Execute the launches per `sketch-launch.md` — all external and fallback launch
 
 Collect and validate external sketch outputs using the shared collection script. Pass the output paths for whichever external slots were actually launched (omit any slot where the tool was unavailable and a Claude subagent fallback is returning via Agent tool instead).
 
-**Regular mode** (8 external output files when both tools available):
+**Regular mode** (4 external output files when both tools available):
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1260 \
   "$DESIGN_TMPDIR/cursor-sketch-arch-output.txt" \
   "$DESIGN_TMPDIR/cursor-sketch-edge-output.txt" \
-  "$DESIGN_TMPDIR/cursor-sketch-innovation-output.txt" \
-  "$DESIGN_TMPDIR/cursor-sketch-pragmatic-output.txt" \
-  "$DESIGN_TMPDIR/codex-sketch-arch-output.txt" \
-  "$DESIGN_TMPDIR/codex-sketch-edge-output.txt" \
   "$DESIGN_TMPDIR/codex-sketch-innovation-output.txt" \
   "$DESIGN_TMPDIR/codex-sketch-pragmatic-output.txt"
 ```

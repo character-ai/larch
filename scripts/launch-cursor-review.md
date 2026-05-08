@@ -44,7 +44,7 @@
 **Call sites**:
 - `skills/implement/SKILL.md` Step 5 (quick-mode specialists + generic reviewers)
 - `skills/design/SKILL.md` Step 3 (4 Cursor archetype reviewers)
-- `skills/design/references/sketch-launch.md` (4 regular + 1 quick Cursor sketch slots)
+- `skills/design/references/sketch-launch.md` (2 regular + 1 quick Cursor sketch slots)
 - `skills/design/references/dialectic-execution.md` (Cursor debater launches)
 - `skills/review/SKILL.md` (Cursor specialist + generic reviewer)
 - `scripts/collect-agent-results.sh` empty-output retry path, when `OUTER_LAUNCHER*` metadata is present and valid
