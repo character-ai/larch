@@ -40,7 +40,7 @@
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/hook-stop-fail-close.sh",
-            "timeout": 5
+            "timeout": 30
           }
         ]
       }

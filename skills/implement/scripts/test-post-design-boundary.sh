@@ -359,6 +359,24 @@ OUT=$(printf '{"cwd":"%s","stop_hook_active":false}' "$TMPROOT/stop-cwd-none" \
     | XDG_CACHE_HOME="$STOP_CACHE" bash "$STOP_HOOK")
 assert_empty "$OUT" "Stop hook did not fail open with no cwd match"
 
+# Fail-open when cwd is missing or empty in stdin: PostToolUse and Stop hooks
+# must NOT pick the globally-newest manifest under accumulated session state.
+OUT=$(printf '{"tool_name":"Skill","tool_input":{"skill":"design"}}' \
+    | XDG_CACHE_HOME="$STOP_CACHE" bash "$POST_HOOK")
+assert_empty "$OUT" "PostToolUse hook did not fail open with missing cwd"
+
+OUT=$(printf '{"tool_name":"Skill","tool_input":{"skill":"design"},"cwd":""}' \
+    | XDG_CACHE_HOME="$STOP_CACHE" bash "$POST_HOOK")
+assert_empty "$OUT" "PostToolUse hook did not fail open with empty cwd"
+
+OUT=$(printf '{"stop_hook_active":false}' \
+    | XDG_CACHE_HOME="$STOP_CACHE" bash "$STOP_HOOK")
+assert_empty "$OUT" "Stop hook did not fail open with missing cwd"
+
+OUT=$(printf '{"cwd":"","stop_hook_active":false}' \
+    | XDG_CACHE_HOME="$STOP_CACHE" bash "$STOP_HOOK")
+assert_empty "$OUT" "Stop hook did not fail open with empty cwd"
+
 # Path-injection defense rejects control characters.
 CONTROL_PATH="$TMPROOT/"$'bad\npath'
 OUT=$(CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash "$WRAPPER" --implement-tmpdir "$CONTROL_PATH")

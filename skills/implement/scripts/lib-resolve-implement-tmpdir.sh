@@ -11,6 +11,16 @@ resolve_implement_tmpdir() {
         "/tmp"
         "/private/tmp"
     )
+    # Fail-OPEN when caller did not supply a cwd. Without cwd we cannot bind
+    # the candidate to the active session via .larch-keepalive — picking the
+    # globally-newest manifest would attach hook state to the wrong session
+    # under concurrent or stale runs (and bypass the documented binding rule
+    # exercised by the test harness). Empty hook_cwd means: no resolution,
+    # no breadcrumb injection, no Stop block.
+    if [[ -z "$hook_cwd" ]]; then
+        return 0
+    fi
+
     local best="" best_mtime=0
     local root dir manifest mtime keepalive cp_match
 
@@ -21,16 +31,14 @@ resolve_implement_tmpdir() {
             manifest="$dir/design-export/manifest.env"
             [[ -f "$manifest" ]] || continue
 
-            if [[ -n "$hook_cwd" ]]; then
-                keepalive="$dir/.larch-keepalive"
-                [[ -f "$keepalive" ]] || continue
-                cp_match=$(awk -F= -v cwd="$hook_cwd" '
-                    $1=="CLONE_PATH" {
-                        v=substr($0, index($0,"=")+1)
-                        if (v==cwd) { print "ok"; exit }
-                    }' "$keepalive" 2>/dev/null)
-                [[ "$cp_match" = "ok" ]] || continue
-            fi
+            keepalive="$dir/.larch-keepalive"
+            [[ -f "$keepalive" ]] || continue
+            cp_match=$(awk -F= -v cwd="$hook_cwd" '
+                $1=="CLONE_PATH" {
+                    v=substr($0, index($0,"=")+1)
+                    if (v==cwd) { print "ok"; exit }
+                }' "$keepalive" 2>/dev/null)
+            [[ "$cp_match" = "ok" ]] || continue
 
             mtime=$(stat -f %m "$manifest" 2>/dev/null \
                 || stat -c %Y "$manifest" 2>/dev/null) || continue
