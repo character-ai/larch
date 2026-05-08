@@ -117,6 +117,30 @@ emit_run_statistics() {
             END {
                 n = NR
 
+                # Pre-scan the ORIGINAL input for a matched begin/end pair.
+                # When the input had a matched pair, an orphan marker found
+                # in a later iteration of the strip loop (after the matched
+                # pair has been removed) is dropped as marker-line-only —
+                # NOT as a BOF→end / begin→EOF strip. Without this, an
+                # orphan end after a matched pair would route into the
+                # lone-end branch on iteration 2 and strip every preceding
+                # line (including legitimate run-statistics rows that lived
+                # before the matched pair). Round-3 review FINDING_1.
+                pre_begin = 0; pre_end = 0
+                for (i = 1; i <= n; i++) {
+                    if (!pre_begin && lines[i] ~ /^[[:space:]]*<!-- token-report-begin -->[[:space:]]*$/) {
+                        pre_begin = i
+                    }
+                }
+                if (pre_begin) {
+                    for (i = pre_begin + 1; i <= n; i++) {
+                        if (lines[i] ~ /^[[:space:]]*<!-- token-report-end -->[[:space:]]*$/) {
+                            pre_end = i; break
+                        }
+                    }
+                }
+                had_pair = (pre_begin && pre_end) ? 1 : 0
+
                 # Phase 1 — iterative legacy token-report block strip.
                 # Marker regexes are anchored to whole-line (allowing leading
                 # / trailing whitespace) so a legitimate prose / table-cell
@@ -154,9 +178,16 @@ emit_run_statistics() {
                     if (begin_idx && end_idx) {
                         skip_start = begin_idx; skip_end = end_idx
                     } else if (begin_idx) {
-                        skip_start = begin_idx; skip_end = n
+                        # Lone-begin: strip from begin to EOF only when the
+                        # original input had no matched pair (genuinely
+                        # degraded "lone-begin" input). Otherwise the orphan
+                        # is leftover from a damaged prior write — drop just
+                        # the marker line.
+                        skip_start = begin_idx; skip_end = had_pair ? begin_idx : n
                     } else {
-                        skip_start = 1; skip_end = end_idx
+                        # Lone-end: symmetric — strip BOF→end only when the
+                        # original input had no matched pair.
+                        skip_start = had_pair ? end_idx : 1; skip_end = end_idx
                     }
                     outn = 0
                     for (i = 1; i <= n; i++) {

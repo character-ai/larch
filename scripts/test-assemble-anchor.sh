@@ -24,6 +24,8 @@
 #   (b9)  Lone <!-- token-report-begin --> — strip from marker to EOF.
 #   (b10) Lone <!-- token-report-end --> — strip from BOF through marker.
 #   (b11) Multi-pair legacy blocks — every pair stripped (loop to fixed point).
+#   (b12) Matched pair + orphan end — orphan dropped as marker-line-only.
+#   (b13) Matched pair + orphan begin — orphan dropped as marker-line-only.
 #   (c)   Full fragments — all SECTION_MARKERS slugs populated.
 #   (d)   Missing anchor-section-markers.sh helper — fail closed exit 1.
 #   (e)   Invalid --issue value — usage error, exit 1.
@@ -606,6 +608,78 @@ grep -qxF '| OOS issues filed | 5 |' "$output_b11" \
 grep -qxF '| Other metric | 7 |' "$output_b11" \
     || fail "(b11) inter-block content should be preserved across multi-pair strip"
 pass "(b11) multi-pair legacy blocks → all pairs stripped (loop iterates to fixed point)"
+
+# --------------------------------------------------------------------------
+# (b12) Matched pair followed by an orphan end marker (no second begin):
+#       the matched pair is stripped on iter 1; the orphan end on iter 2
+#       must drop ONLY the orphan marker line — NOT BOF through the orphan
+#       end (which would delete legitimate content above the matched pair).
+#       Round-3 review FINDING_1.
+# --------------------------------------------------------------------------
+sections_b12="$tmpdir/sections-b12"
+mkdir -p "$sections_b12"
+{
+    printf '## Run Statistics\n\n'
+    printf '| Metric | Value |\n'
+    printf '|---|---|\n'
+    printf '| Pre-pair metric | KEEP_ME |\n'
+    printf '\n'
+    printf '<!-- token-report-begin -->\n'
+    printf 'matched-pair interior\n'
+    printf '<!-- token-report-end -->\n'
+    printf '\n'
+    printf '| Mid metric | ALSO_KEEP_ME |\n'
+    printf '<!-- token-report-end -->\n'
+} > "$sections_b12/run-statistics.md"
+
+output_b12="$tmpdir/out-b12.md"
+"$ASSEMBLE_ANCHOR" --sections-dir "$sections_b12" --issue 1466 --output "$output_b12" > /dev/null
+
+if grep -qF '<!-- token-report-begin -->' "$output_b12"; then
+    fail "(b12) <!-- token-report-begin --> should be stripped"
+fi
+if grep -qF '<!-- token-report-end -->' "$output_b12"; then
+    fail "(b12) all <!-- token-report-end --> markers (matched + orphan) should be stripped"
+fi
+if grep -qF 'matched-pair interior' "$output_b12"; then
+    fail "(b12) matched-pair interior should be stripped"
+fi
+grep -qxF '| Pre-pair metric | KEEP_ME |' "$output_b12" \
+    || fail "(b12) content above the matched pair must be preserved when an orphan end follows"
+grep -qxF '| Mid metric | ALSO_KEEP_ME |' "$output_b12" \
+    || fail "(b12) content between the matched pair and the orphan end must be preserved"
+pass "(b12) matched pair + orphan end → orphan dropped as marker-line-only; surrounding content preserved"
+
+# --------------------------------------------------------------------------
+# (b13) Matched pair followed by an orphan begin marker (no following end):
+#       symmetric to b12 — the orphan begin on iter 2 must drop ONLY the
+#       orphan marker line, NOT begin→EOF.
+# --------------------------------------------------------------------------
+sections_b13="$tmpdir/sections-b13"
+mkdir -p "$sections_b13"
+{
+    printf '## Run Statistics\n\n'
+    printf '| Metric | Value |\n'
+    printf '|---|---|\n'
+    printf '<!-- token-report-begin -->\n'
+    printf 'matched-pair interior\n'
+    printf '<!-- token-report-end -->\n'
+    printf '<!-- token-report-begin -->\n'
+    printf '| Trailing metric | KEEP_TRAILING |\n'
+} > "$sections_b13/run-statistics.md"
+
+output_b13="$tmpdir/out-b13.md"
+"$ASSEMBLE_ANCHOR" --sections-dir "$sections_b13" --issue 1466 --output "$output_b13" > /dev/null
+
+if grep -qF '<!-- token-report-begin -->' "$output_b13"; then
+    fail "(b13) all <!-- token-report-begin --> markers (matched + orphan) should be stripped"
+fi
+if grep -qF 'matched-pair interior' "$output_b13"; then
+    fail "(b13) matched-pair interior should be stripped"
+fi
+grep -qxF '| Trailing metric | KEEP_TRAILING |' "$output_b13" \
+    || fail "(b13) content after the orphan begin must be preserved (orphan dropped as marker-line-only)"
+pass "(b13) matched pair + orphan begin → orphan dropped as marker-line-only; trailing content preserved"
 
 # --------------------------------------------------------------------------
 # (b10) Lone-end marker (degraded input) → strip from BOF through end marker.

@@ -271,17 +271,23 @@ done
 # Negative spellings (`no`, `off`, `0`, `false`, empty) MUST NOT enable
 # the debug path — the gate is an explicit allowlist, not "non-empty
 # non-zero" (round-1 review FINDING_1 — over-broad falsy list).
+# Use env -u for the genuinely-unset case so the harness is hermetic and
+# does not inherit a caller-supplied LARCH_DEBUG_TOKEN_REPORT (round-3
+# review codex finding — without `env -u` running the harness with
+# LARCH_DEBUG_TOKEN_REPORT=1 in the caller's env would flake the
+# "unset" assertion). The empty-value case is exercised separately.
+out=$(env -u LARCH_DEBUG_TOKEN_REPORT "$SCRIPT" \
+    --ledger "$LEDGER" --transcript "$MALFORMED_TRANSCRIPT" --since-last-mark --terse)
+case "$out" in
+    *"jq stderr at "*) fail "<unset> env should not enable debug path: '$out'" ;;
+    *) pass ;;
+esac
+
 for negative_value in "" "0" "false" "FALSE" "no" "NO" "off" "OFF" "disabled"; do
-    if [[ -z "$negative_value" ]]; then
-        out=$("$SCRIPT" --ledger "$LEDGER" --transcript "$MALFORMED_TRANSCRIPT" --since-last-mark --terse)
-        label="<unset>"
-    else
-        out=$(LARCH_DEBUG_TOKEN_REPORT="$negative_value" "$SCRIPT" \
-            --ledger "$LEDGER" --transcript "$MALFORMED_TRANSCRIPT" --since-last-mark --terse)
-        label="$negative_value"
-    fi
+    out=$(LARCH_DEBUG_TOKEN_REPORT="$negative_value" "$SCRIPT" \
+        --ledger "$LEDGER" --transcript "$MALFORMED_TRANSCRIPT" --since-last-mark --terse)
     case "$out" in
-        *"jq stderr at "*) fail "negative env value '$label' should not enable debug path: '$out'" ;;
+        *"jq stderr at "*) fail "negative env value '$negative_value' should not enable debug path: '$out'" ;;
         *) pass ;;
     esac
 done
