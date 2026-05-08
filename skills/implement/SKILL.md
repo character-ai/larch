@@ -1818,7 +1818,7 @@ STALL_TRACKING=${STALL_TRACKING:-false}
 STALL_STEP=${STALL_STEP:-}
 DONE_RENAME_APPLIED=${DONE_RENAME_APPLIED:-false}
 EXPECTED_SESSION_ID=$(cat "$IMPLEMENT_TMPDIR/session-id" 2>/dev/null || echo "")
-EXPECTED_TMPDIR_BASENAME_PREFIX="claude-implement-${CLONE_TAG:-$(basename "$PWD" | tr -c 'A-Za-z0-9_-' '_')}-"
+EXPECTED_TMPDIR_BASENAME_PREFIX="claude-implement-${CLONE_TAG:-$(printf '%s' "$(basename "$PWD")" | tr -c 'A-Za-z0-9_-' '_')}-"
 EOF
 printf '%s' "${FINAL_BAIL_REASON:-}" > "$IMPLEMENT_TMPDIR/final-bail-reason.txt"
 ```
@@ -1862,7 +1862,7 @@ STALL_TRACKING=${STALL_TRACKING:-false}
 STALL_STEP=${STALL_STEP:-}
 DONE_RENAME_APPLIED=${DONE_RENAME_APPLIED:-false}
 EXPECTED_SESSION_ID=$(cat "$IMPLEMENT_TMPDIR/session-id" 2>/dev/null || echo "")
-EXPECTED_TMPDIR_BASENAME_PREFIX="claude-implement-${CLONE_TAG:-$(basename "$PWD" | tr -c 'A-Za-z0-9_-' '_')}-"
+EXPECTED_TMPDIR_BASENAME_PREFIX="claude-implement-${CLONE_TAG:-$(printf '%s' "$(basename "$PWD")" | tr -c 'A-Za-z0-9_-' '_')}-"
 EOF
 printf '%s' "${FINAL_BAIL_REASON:-}" > "$IMPLEMENT_TMPDIR/final-bail-reason.txt"
 
