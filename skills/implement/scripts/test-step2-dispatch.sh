@@ -316,7 +316,7 @@ git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD > "$TMP5/step2-spawn-branch.txt"
 if [[ -f "$REPO_ROOT/.claude-plugin/plugin.json" ]]; then
     git -C "$REPO_ROOT" hash-object "$REPO_ROOT/.claude-plugin/plugin.json" > "$TMP5/step2-plugin-json-baseline.txt"
 else
-    printf '\n' > "$TMP5/step2-plugin-json-baseline.txt"
+    : > "$TMP5/step2-plugin-json-baseline.txt"
 fi
 echo "5" > "$TMP5/codex-resume-count.txt"
 ANSWERS="$SCRATCH/answers.json"
@@ -357,7 +357,7 @@ git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD > "$TMP7/step2-spawn-branch.txt"
 if [[ -f "$REPO_ROOT/.claude-plugin/plugin.json" ]]; then
     git -C "$REPO_ROOT" hash-object "$REPO_ROOT/.claude-plugin/plugin.json" > "$TMP7/step2-plugin-json-baseline.txt"
 else
-    printf '\n' > "$TMP7/step2-plugin-json-baseline.txt"
+    : > "$TMP7/step2-plugin-json-baseline.txt"
 fi
 echo "garbage" > "$TMP7/codex-resume-count.txt"
 OUT=$(cd "$REPO_ROOT" && "$DISPATCHER" --tmpdir "$TMP7" --plan-file "$PLAN" --feature-file "$FEATURE" \
@@ -405,7 +405,7 @@ git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD > "$TMP9/step2-spawn-branch.txt"
 if [[ -f "$REPO_ROOT/.claude-plugin/plugin.json" ]]; then
     git -C "$REPO_ROOT" hash-object "$REPO_ROOT/.claude-plugin/plugin.json" > "$TMP9/step2-plugin-json-baseline.txt"
 else
-    printf '\n' > "$TMP9/step2-plugin-json-baseline.txt"
+    : > "$TMP9/step2-plugin-json-baseline.txt"
 fi
 echo "5" > "$TMP9/codex-resume-count.txt"
 OUT=$(cd "$REPO_ROOT" && "$DISPATCHER" --tmpdir "$TMP9" --plan-file "$PLAN" --feature-file "$FEATURE" \
@@ -429,7 +429,7 @@ git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD > "$TMP10/step2-spawn-branch.txt
 if [[ -f "$REPO_ROOT/.claude-plugin/plugin.json" ]]; then
     git -C "$REPO_ROOT" hash-object "$REPO_ROOT/.claude-plugin/plugin.json" > "$TMP10/step2-plugin-json-baseline.txt"
 else
-    printf '\n' > "$TMP10/step2-plugin-json-baseline.txt"
+    : > "$TMP10/step2-plugin-json-baseline.txt"
 fi
 echo "codex" > "$TMP10/step2-spawn-coder.txt"
 OUT=$(cd "$REPO_ROOT" && "$DISPATCHER" --tmpdir "$TMP10" --plan-file "$PLAN" --feature-file "$FEATURE" \
@@ -466,7 +466,7 @@ git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD > "$TMP10B/step2-spawn-branch.tx
 if [[ -f "$REPO_ROOT/.claude-plugin/plugin.json" ]]; then
     git -C "$REPO_ROOT" hash-object "$REPO_ROOT/.claude-plugin/plugin.json" > "$TMP10B/step2-plugin-json-baseline.txt"
 else
-    printf '\n' > "$TMP10B/step2-plugin-json-baseline.txt"
+    : > "$TMP10B/step2-plugin-json-baseline.txt"
 fi
 echo "cursor" > "$TMP10B/step2-spawn-coder.txt"
 OUT=$(cd "$REPO_ROOT" && "$DISPATCHER" --tmpdir "$TMP10B" --plan-file "$PLAN" --feature-file "$FEATURE" \
@@ -515,7 +515,7 @@ git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD > "$TMP11B/step2-spawn-branch.tx
 if [[ -f "$REPO_ROOT/.claude-plugin/plugin.json" ]]; then
     git -C "$REPO_ROOT" hash-object "$REPO_ROOT/.claude-plugin/plugin.json" > "$TMP11B/step2-plugin-json-baseline.txt"
 else
-    printf '\n' > "$TMP11B/step2-plugin-json-baseline.txt"
+    : > "$TMP11B/step2-plugin-json-baseline.txt"
 fi
 echo "5" > "$TMP11B/codex-resume-count.txt"
 OUT_B=$(cd "$REPO_ROOT" && "$DISPATCHER" --tmpdir "$TMP11B" --plan-file "$PLAN" --feature-file "$FEATURE" \
@@ -664,10 +664,13 @@ OUT_13=$(cd "$SCRATCH_REPO" && \
         --auto-mode false --coder codex 2>&1)
 
 if [[ "$OUT_13" == *"STATUS=complete"* ]] \
-   && [[ "$OUT_13" != *"REASON=protected-path-modified"* ]]; then
+   && [[ "$OUT_13" != *"REASON=protected-path-modified"* ]] \
+   && [[ "$OUT_13" == *"ORCHESTRATOR_EDIT_AUTHORITY=forbidden"* ]] \
+   && [[ "$OUT_13" != *"ORCHESTRATOR_EDIT_AUTHORITY=allowed"* ]] \
+   && [[ "$OUT_13" == *"MANIFEST="* ]]; then
     pass
 else
-    fail 13 "absent plugin.json + benign edit should reach STATUS=complete (no protected-path-modified false positive); got: $OUT_13"
+    fail 13 "absent plugin.json + benign edit should reach STATUS=complete with AUTH=forbidden + MANIFEST= (no protected-path-modified false positive); got: $OUT_13"
 fi
 
 # ---------------------------------------------------------------------------
