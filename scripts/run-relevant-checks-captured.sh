@@ -59,14 +59,11 @@ validate_tmpdir() {
     local tmpdir="$1"
     local canonical=""
     local cache_root="${XDG_CACHE_HOME:-${HOME:-}/.cache}"
-    local sessions_root=""
     local prefix=""
 
     [[ -n "$tmpdir" && "$tmpdir" == /* ]] || return 1
     [[ -d "$tmpdir" && ! -L "$tmpdir" ]] || return 1
     canonical=$(canonical_dir "$tmpdir") || return 1
-    [[ -n "$cache_root" ]] || return 1
-    sessions_root=$(canonical_dir "$cache_root/larch/sessions") || return 1
 
     case "$(basename "$canonical")" in
         claude-implement-*) prefix="claude-implement" ;;
@@ -74,7 +71,28 @@ validate_tmpdir() {
         *) return 1 ;;
     esac
 
-    under_root "$canonical" "$sessions_root" || return 1
+    # Accept canonical XDG cache root AND /tmp fallback roots that
+    # session-setup.sh uses when the cache root is unwritable. macOS resolves
+    # /tmp -> /private/tmp; mktemp may emit either form, so canonicalize each
+    # candidate and try every one. The basename guard above already pins this
+    # to claude-implement-* / claude-review-* dirs, so foreign /tmp dirs are
+    # not accepted just because /tmp is on the allow-list.
+    local accepted_root="" candidate=""
+    local -a candidate_roots=()
+    if [[ -n "$cache_root" ]]; then
+        candidate_roots+=("$cache_root/larch/sessions")
+    fi
+    candidate_roots+=("/tmp")
+    candidate_roots+=("/private/tmp")
+    for candidate in "${candidate_roots[@]}"; do
+        local resolved=""
+        resolved=$(canonical_dir "$candidate") || continue
+        if under_root "$canonical" "$resolved"; then
+            accepted_root="$resolved"
+            break
+        fi
+    done
+    [[ -n "$accepted_root" ]] || return 1
     [[ "$prefix" == "claude-implement" || "$prefix" == "claude-review" ]] || return 1
     printf '%s\n' "$canonical"
 }

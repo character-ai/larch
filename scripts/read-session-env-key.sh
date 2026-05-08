@@ -70,12 +70,21 @@ if [ -z "$FILE" ]; then
     exit 1
 fi
 
-if [ ! -r "$FILE" ]; then
+# An empty or unreadable --file is treated as "key absent": when --default is
+# set, emit the default; otherwise fall through to the legacy "missing --file"
+# error. This lets standalone /design and /review (where SESSION_ENV_PATH is
+# empty) rehydrate token-context keys without a separate guard at every call
+# site.
+if [ -z "$FILE" ] || [ ! -r "$FILE" ]; then
     if [ "$DEFAULT_SET" = "true" ]; then
         printf '%s\n' "$DEFAULT"
         exit 0
     fi
-    echo "read-session-env-key.sh: cannot read $FILE" >&2
+    if [ -z "$FILE" ]; then
+        echo "read-session-env-key.sh: --file is required (or pass --default to receive a fallback when empty)" >&2
+    else
+        echo "read-session-env-key.sh: cannot read $FILE" >&2
+    fi
     exit 1
 fi
 

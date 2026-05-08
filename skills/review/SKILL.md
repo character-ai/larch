@@ -302,7 +302,7 @@ After printing the round summary, IMMEDIATELY continue. **In diff mode**: if 0 f
 2. If the fix involves creating new tests, write them.
 3. If the fix involves CI workflow changes, edit the workflow YAML.
 
-> **Continue after child returns.** On `RELEVANT_CHECKS_OK=true`, IMMEDIATELY continue to Step 3f. On `STATUS=fail`, read `REDACTED_LOG_FILE` (NOT raw `LOG_FILE`), diagnose, fix, and re-invoke the helper. Do NOT end the turn, and do NOT write a summary, handoff, or "returning to parent" message. See `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Anti-halt continuation reminder.
+> **Continue after child returns.** On `RELEVANT_CHECKS_OK=true`, IMMEDIATELY continue to Step 3f. On `STATUS=fail`, first check for `FAILURE_REASON` (structural — e.g. `tmpdir-validation`, `site-validation`, `repo-root-unresolved`, `missing-check-script`, `redaction-failed`; act on the reason, no log file is produced); otherwise read `REDACTED_LOG_FILE` (checks failure — NOT raw `LOG_FILE`); diagnose, fix, and re-invoke the helper. Do NOT end the turn, and do NOT write a summary, handoff, or "returning to parent" message. See `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Anti-halt continuation reminder.
 
 After all fixes are applied, run validation checks:
 

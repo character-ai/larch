@@ -6,9 +6,10 @@ set -euo pipefail
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 HELPER="$REPO_ROOT/scripts/run-relevant-checks-captured.sh"
 REDACT_TMP="$REPO_ROOT/scripts/redact-tmpdir-paths.sh"
+REDACT_SECRETS="$REPO_ROOT/scripts/redact-secrets.sh"
 
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/test-relevant-checks-failure.XXXXXX")
-trap 'chmod +x "$REDACT_TMP" 2>/dev/null || true; rm -rf "$tmp"' EXIT
+trap 'rm -rf "$tmp"' EXIT
 
 fail() {
     echo "FAIL: $1" >&2
@@ -49,10 +50,20 @@ grep -q 'AKIA1234567890ABCDEF' "$log_file" || fail "raw log did not retain synth
 ! grep -q 'ghp_123456789012345678901234567890123456' "$redacted_file" || fail "redacted log leaked GitHub-shaped token"
 ! grep -q '/tmp/larch-implement-demo' "$redacted_file" || fail "redacted log leaked tmp path"
 
-chmod a-x "$REDACT_TMP"
+# Simulate redaction-failed by running the helper from a fixture scripts/
+# directory where the redactor copies are non-executable. Never chmod the
+# tracked redactor in the repo working tree (issue #1543 review FINDING_5: a
+# SIGKILL between chmod and trap restoration would leave the repo dirty and
+# break subsequent helper invocations elsewhere).
+fixture_scripts="$tmp/fixture-scripts"
+mkdir -p "$fixture_scripts"
+cp "$HELPER" "$fixture_scripts/run-relevant-checks-captured.sh"
+chmod +x "$fixture_scripts/run-relevant-checks-captured.sh"
+cp "$REDACT_TMP" "$fixture_scripts/redact-tmpdir-paths.sh"
+cp "$REDACT_SECRETS" "$fixture_scripts/redact-secrets.sh"
+chmod a-x "$fixture_scripts/redact-tmpdir-paths.sh" "$fixture_scripts/redact-secrets.sh"
 rc=0
-out=$(XDG_CACHE_HOME="$xdg" CLAUDE_PROJECT_DIR="$fixture_repo" "$HELPER" --site redaction --tmpdir "$session") || rc=$?
-chmod +x "$REDACT_TMP"
+out=$(XDG_CACHE_HOME="$xdg" CLAUDE_PROJECT_DIR="$fixture_repo" "$fixture_scripts/run-relevant-checks-captured.sh" --site redaction --tmpdir "$session") || rc=$?
 [[ "$rc" -eq 1 ]] || fail "redaction-failed path expected rc 1, got $rc"
 [[ "$out" == "STATUS=fail FAILURE_REASON=redaction-failed" ]] || fail "redaction failure stdout mismatch: $out"
 [[ "$out" != *"LOG_FILE="* ]] || fail "redaction failure leaked raw log path"
