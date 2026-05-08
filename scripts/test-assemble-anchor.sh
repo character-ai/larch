@@ -538,6 +538,50 @@ grep -qxF '| OOS issues filed | 2 |' "$output_b9" \
 pass "(b9) lone <!-- token-report-begin --> marker → strip from marker to EOF"
 
 # --------------------------------------------------------------------------
+# (b11) Multi-pair legacy token-report blocks → all pairs stripped (loop
+#       iterates until none remain). Round-1 review FINDING_2 fix.
+# --------------------------------------------------------------------------
+sections_b11="$tmpdir/sections-b11"
+mkdir -p "$sections_b11"
+{
+    printf '## Run Statistics\n\n'
+    printf '| Metric | Value |\n'
+    printf '|---|---|\n'
+    printf '| OOS issues filed | 5 |\n'
+    printf '\n'
+    printf '<!-- token-report-begin -->\n'
+    printf 'first legacy block\n'
+    printf '<!-- token-report-end -->\n'
+    printf '\n'
+    printf '| Other metric | 7 |\n'
+    printf '\n'
+    printf '<!-- token-report-begin -->\n'
+    printf 'second legacy block\n'
+    printf '<!-- token-report-end -->\n'
+} > "$sections_b11/run-statistics.md"
+
+output_b11="$tmpdir/out-b11.md"
+"$ASSEMBLE_ANCHOR" --sections-dir "$sections_b11" --issue 1466 --output "$output_b11" > /dev/null
+
+if grep -qF '<!-- token-report-begin -->' "$output_b11"; then
+    fail "(b11) all <!-- token-report-begin --> markers should be stripped, even with multiple pairs"
+fi
+if grep -qF '<!-- token-report-end -->' "$output_b11"; then
+    fail "(b11) all <!-- token-report-end --> markers should be stripped, even with multiple pairs"
+fi
+if grep -qF 'first legacy block' "$output_b11"; then
+    fail "(b11) first legacy block interior should be stripped"
+fi
+if grep -qF 'second legacy block' "$output_b11"; then
+    fail "(b11) second legacy block interior should be stripped"
+fi
+grep -qxF '| OOS issues filed | 5 |' "$output_b11" \
+    || fail "(b11) pre-block content should be preserved across multi-pair strip"
+grep -qxF '| Other metric | 7 |' "$output_b11" \
+    || fail "(b11) inter-block content should be preserved across multi-pair strip"
+pass "(b11) multi-pair legacy blocks → all pairs stripped (loop iterates to fixed point)"
+
+# --------------------------------------------------------------------------
 # (b10) Lone-end marker (degraded input) → strip from BOF through end marker.
 # --------------------------------------------------------------------------
 sections_b10="$tmpdir/sections-b10"

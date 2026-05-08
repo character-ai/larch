@@ -107,14 +107,23 @@ render_jq() {
     # /dev/null so the debug knob never breaks production.
     local jq_stderr_dest="/dev/null"
     local jq_stderr_path=""
+    # Allowlist of explicit truthy values — narrower than a blanket
+    # "anything non-empty / non-zero" gate so common negatives (`no`, `off`,
+    # `disabled`, etc.) do not silently enable the debug capture path. The
+    # set matches the doc's enumerated examples (1, true, yes, on) plus their
+    # case variants.
     case "${LARCH_DEBUG_TOKEN_REPORT:-}" in
-        ""|0|false|FALSE|False) ;;
-        *)
+        1|true|TRUE|True|yes|YES|Yes|on|ON|On)
             # mktemp template puts the X's at the end (no `.log` suffix) so
             # BSD mktemp on macOS expands them — BSD mktemp leaves trailing X's
             # alone when a literal suffix follows them, producing a static
-            # filename that concurrent runs would clobber.
+            # filename that concurrent runs would clobber. Explicit chmod 0600
+            # is defense-in-depth even though most mktemp implementations
+            # already create with that mode (closes #1466 review FINDING_8 —
+            # predictable shared-tmp filename + jq stderr can include input
+            # snippets).
             if jq_stderr_path=$(mktemp "${TMPDIR:-/tmp}/larch-token-report-jq-stderr-XXXXXX" 2>/dev/null); then
+                chmod 0600 "$jq_stderr_path" 2>/dev/null || true
                 jq_stderr_dest="$jq_stderr_path"
             else
                 jq_stderr_path=""
@@ -307,9 +316,20 @@ render_jq() {
             RENDER_FAIL_REASON="failed to parse token sources (jq stderr at $jq_stderr_path)"
         else
             RENDER_FAIL_REASON="failed to parse token sources"
+            # Empty stderr file on a debug-mode failure carries no signal —
+            # remove it so $TMPDIR is not littered with empties.
+            if [[ -n "$jq_stderr_path" ]]; then
+                rm -f "$jq_stderr_path"
+            fi
         fi
         return 1
     }
+    # Success path: the debug-mode stderr file is almost always empty
+    # (jq wrote nothing to stderr); remove it so successful runs do not
+    # litter $TMPDIR.
+    if [[ -n "$jq_stderr_path" ]]; then
+        rm -f "$jq_stderr_path"
+    fi
 }
 
 replace_token_block() {

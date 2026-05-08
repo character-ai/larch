@@ -242,6 +242,62 @@ JSONL
 no_marks=$("$SCRIPT" --ledger "$LEDGER_NO_MARKS" --transcript "$TRANSCRIPT" --since-last-mark --terse)
 contains "no-step-marks reason" "Token report unavailable: failed to parse token sources" "$no_marks"
 
+# LARCH_DEBUG_TOKEN_REPORT — opt-in jq-stderr capture path. With the env
+# var set to a truthy spelling, render failure surfaces a "(jq stderr at
+# <path>)" suffix in the unavailable message and the stderr file holds the
+# captured jq diagnostics. Falsy / unset values preserve the default silent
+# behavior. Closes #1466 sub-item A; tests re-use the malformed-transcript
+# fixture above to provoke a render failure.
+debug_out=$(LARCH_DEBUG_TOKEN_REPORT=1 "$SCRIPT" \
+    --ledger "$LEDGER" --transcript "$MALFORMED_TRANSCRIPT" --since-last-mark --terse)
+contains "debug=1 path suffix" "(jq stderr at " "$debug_out"
+debug_path=$(printf '%s' "$debug_out" | sed -n 's/.*jq stderr at \([^)]*\)).*/\1/p')
+if [[ -n "$debug_path" && -s "$debug_path" ]]; then
+    pass
+else
+    fail "debug=1 stderr file empty or missing: '$debug_path'"
+fi
+# Cleanup the captured stderr file before its bytes leak into other tests.
+[[ -n "$debug_path" ]] && rm -f "$debug_path"
+
+# A truthy-but-not-numeric spelling (e.g. `true`) also enables the path.
+debug_true=$(LARCH_DEBUG_TOKEN_REPORT=true "$SCRIPT" \
+    --ledger "$LEDGER" --transcript "$MALFORMED_TRANSCRIPT" --since-last-mark --terse)
+contains "debug=true path suffix" "(jq stderr at " "$debug_true"
+debug_true_path=$(printf '%s' "$debug_true" | sed -n 's/.*jq stderr at \([^)]*\)).*/\1/p')
+[[ -n "$debug_true_path" ]] && rm -f "$debug_true_path"
+
+# Negative spellings (`no`, `off`, `0`, `false`, empty) MUST NOT enable
+# the debug path — the gate is an explicit allowlist, not "non-empty
+# non-zero" (round-1 review FINDING_1 — over-broad falsy list).
+for negative_value in "" "0" "false" "FALSE" "no" "NO" "off" "OFF" "disabled"; do
+    if [[ -z "$negative_value" ]]; then
+        out=$("$SCRIPT" --ledger "$LEDGER" --transcript "$MALFORMED_TRANSCRIPT" --since-last-mark --terse)
+        label="<unset>"
+    else
+        out=$(LARCH_DEBUG_TOKEN_REPORT="$negative_value" "$SCRIPT" \
+            --ledger "$LEDGER" --transcript "$MALFORMED_TRANSCRIPT" --since-last-mark --terse)
+        label="$negative_value"
+    fi
+    case "$out" in
+        *"jq stderr at "*) fail "negative env value '$label' should not enable debug path: '$out'" ;;
+        *) pass ;;
+    esac
+done
+
+# Successful render with debug enabled MUST clean up the stderr temp
+# (review FINDING_7 — empty stderr files cluttering $TMPDIR on every
+# successful run). List the directory before and after to confirm no
+# new larch-token-report-jq-stderr-* file was left behind.
+debug_root="${TMPDIR:-/tmp}"
+before_count=$(find "$debug_root" -maxdepth 1 -name 'larch-token-report-jq-stderr-*' 2>/dev/null | wc -l | tr -d ' ')
+LARCH_DEBUG_TOKEN_REPORT=1 "$SCRIPT" \
+    --ledger "$LEDGER" --transcript "$TRANSCRIPT" --since-last-mark --terse > /dev/null
+after_count=$(find "$debug_root" -maxdepth 1 -name 'larch-token-report-jq-stderr-*' 2>/dev/null | wc -l | tr -d ' ')
+if [[ "$before_count" == "$after_count" ]]; then pass
+else fail "debug=1 successful render leaked stderr temp file (before=$before_count after=$after_count)"
+fi
+
 BIG="$TMP/big-token-report.md"
 for i in $(seq 1 250); do printf '| old | row %s |\n' "$i" >> "$BIG"; done
 "$SCRIPT" --ledger "$LEDGER" --transcript "$TRANSCRIPT" --append-token-report "$BIG"
