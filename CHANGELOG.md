@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [17.1.1] - 2026-05-08
+
+### Changed
+
+- `bump-version`: cap Claude-appended escalation reasoning to ≤100 words / ≤5 sentences and forbid commentary on non-escalation runs to reduce ~23.5k Claude output tokens/run.
+
 ## [17.1.0] - 2026-05-08
 
 ### Added
