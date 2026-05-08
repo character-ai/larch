@@ -128,36 +128,36 @@ PATH="$STUB_BIN:$PATH" "$LAUNCHER" --output "$OUT_B" --timeout 5 --prompt "origi
 assert_grep "case B outer launcher" "^OUTER_LAUNCHER=$REPO_ROOT/scripts/launch-cursor-review.sh$" "${OUT_B}.meta"
 assert_grep "case B outer prompt" "^OUTER_LAUNCHER_PROMPT_FILE=${OUT_B}.prompt$" "${OUT_B}.meta"
 assert_grep "case B workdir" "^OUTER_LAUNCHER_WORKDIR=$(pwd -P)$" "${OUT_B}.meta"
-# Issue #1529: prompt sidecar now contains the HARD CONSTRAINTS preamble
-# followed by two newlines and then the original prompt. Verify the preamble's
-# presence and that the original prompt bytes are preserved verbatim at the
-# tail.
-assert_grep "case B preamble in sidecar" "HARD CONSTRAINTS — your role is read-only review" "${OUT_B}.prompt"
-TAIL_EXPECTED_B="$TMPDIR/case-b-tail-expected.txt"
-printf 'original prompt' > "$TAIL_EXPECTED_B"
-if tail -c "$(wc -c < "$TAIL_EXPECTED_B" | tr -d ' ')" "${OUT_B}.prompt" | cmp -s - "$TAIL_EXPECTED_B"; then
-    pass
+# Issue #1529: the OUTPUT.prompt sidecar holds the user-original prompt
+# (no preamble) so collect-agent-results.sh empty-output retry can replay
+# via --prompt-file without double-prepending the HARD CONSTRAINTS block.
+# The preamble is verified against the actual argv in case C / case AK1
+# (which use argv-recording stubs); case B's stub does not record argv,
+# so this case only verifies the sidecar contract.
+assert_equals "case B prompt sidecar (user-original, no preamble)" "original prompt" "$(cat "${OUT_B}.prompt")"
+if grep -Fq -- 'HARD CONSTRAINTS' "${OUT_B}.prompt"; then
+    fail "case B prompt sidecar must NOT contain the preamble (retry-replay safety)"
 else
-    fail "case B prompt sidecar must end with 'original prompt' verbatim"
+    pass
 fi
 assert_grep "case B dirty-tree sidecar status" "^STATUS=" "${OUT_B}.dirty-tree"
 assert_grep "case B dirty-tree sidecar mode" "^MODE=baseline$" "${OUT_B}.dirty-tree"
 
 # Case C: --prompt-file preserves trailing newlines through the wrapper prompt.
-# Issue #1529: the preamble sits between the wrapper's `/max-mode on. Prompt: `
-# prefix and the prompt-file body. Verify the prefix is present, the preamble
-# appears, and the body bytes (including trailing newlines) are preserved
-# verbatim at the tail.
+# Issue #1529: the wrapper output (last argv to cursor) has the form
+# ` /max-mode on. Prompt: <preamble>\n\n<body>`. Verify the wrapper prefix,
+# preamble presence, and body tail. Also verify the OUTPUT.prompt sidecar is
+# the user-original body verbatim (no preamble — retry-replay safety).
 OUT_C="$TMPDIR/cursor-c.txt"
 PROMPT_C="$TMPDIR/cursor-c.prompt"
 PROMPT_LOG_C="$TMPDIR/cursor-c.prompt-log"
 printf 'line one\n\n' > "$PROMPT_C"
 PATH="$STUB_BIN:$PATH" CURSOR_STUB_PROMPT_LOG="$PROMPT_LOG_C" \
     "$LAUNCHER" --output "$OUT_C" --timeout 5 --prompt-file "$PROMPT_C" >/dev/null 2>"$TMPDIR/case-c.stderr"
-if head -c 24 "$PROMPT_LOG_C" | grep -Fq -- ' /max-mode on. Prompt: '; then
+if grep -Fq -- ' /max-mode on. Prompt: ' "$PROMPT_LOG_C"; then
     pass
 else
-    fail "case C wrapped prompt must begin with the /max-mode wrapper prefix"
+    fail "case C wrapped prompt must contain the /max-mode wrapper prefix"
 fi
 assert_grep "case C wrapped prompt preamble" "HARD CONSTRAINTS — your role is read-only review" "$PROMPT_LOG_C"
 EXPECTED_C_TAIL="$TMPDIR/cursor-c.expected-tail"
@@ -166,6 +166,19 @@ if tail -c "$(wc -c < "$EXPECTED_C_TAIL" | tr -d ' ')" "$PROMPT_LOG_C" | cmp -s 
     pass
 else
     fail "case C wrapped prompt did not preserve trailing newlines at the tail"
+fi
+# Case C sidecar contract: original bytes preserved, no preamble.
+EXPECTED_C_SIDECAR="$TMPDIR/cursor-c.expected-sidecar"
+printf 'line one\n\n' > "$EXPECTED_C_SIDECAR"
+if cmp -s "$EXPECTED_C_SIDECAR" "${OUT_C}.prompt"; then
+    pass
+else
+    fail "case C OUTPUT.prompt sidecar must equal the user-original --prompt-file bytes (no preamble)"
+fi
+if grep -Fq -- 'HARD CONSTRAINTS' "${OUT_C}.prompt"; then
+    fail "case C OUTPUT.prompt sidecar must NOT contain the preamble (retry-replay safety)"
+else
+    pass
 fi
 
 OUT_TOKEN="$TMPDIR/cursor-token.txt"
@@ -458,16 +471,48 @@ if grep -Fxq -- '--force' "$ARGV_LOG_AK1"; then
 else
     pass
 fi
-# Prompt sidecar must carry the HARD CONSTRAINTS read-only preamble.
-if grep -Fq -- 'HARD CONSTRAINTS — your role is read-only review' "${OUT_AK1}.prompt"; then
+
+# Issue #1529: empty-output retry idempotency. The OUTPUT.prompt sidecar
+# is the user-original; replaying via --prompt-file pointing at that sidecar
+# must produce an argv with EXACTLY ONE preamble. Catches a regression where
+# the launcher would also write the preamble into the sidecar.
+ARGV_LOG_AK1_RETRY="$TMPDIR/cursor-ak1-retry-argv.log"
+PATH="$STUB_BIN:$PATH" \
+    CURSOR_API_KEY="ak1-test-key-789" \
+    CURSOR_STUB_ARGV_LOG="$ARGV_LOG_AK1_RETRY" \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux \
+    "$LAUNCHER" --output "$TMPDIR/cursor-ak1-retry.txt" --timeout 5 --prompt-file "${OUT_AK1}.prompt" >/dev/null 2>"$TMPDIR/case-ak1-retry.stderr"
+AK1_PREAMBLE_COUNT_RETRY=$(grep -Fc -- 'HARD CONSTRAINTS — your role is read-only review' "$ARGV_LOG_AK1_RETRY" || true)
+if [[ "$AK1_PREAMBLE_COUNT_RETRY" == "1" ]]; then
     pass
 else
-    fail "issue #1529 prompt sidecar must carry the HARD CONSTRAINTS preamble"
+    fail "issue #1529 cursor retry-replay via --prompt-file must produce exactly 1 preamble in argv; got $AK1_PREAMBLE_COUNT_RETRY"
 fi
-if grep -Fq -- '--mode plan --sandbox enabled' "${OUT_AK1}.prompt"; then
+# Issue #1529: the preamble is applied to the actual cursor argv (last token,
+# the wrapped prompt) — NOT to the OUTPUT.prompt sidecar (which stays user-
+# original so collect-agent-results.sh empty-output retry can replay via
+# --prompt-file without double-prepending the preamble). Verify the argv log
+# carries the preamble and the sidecar does not.
+if grep -Fq -- 'HARD CONSTRAINTS — your role is read-only review' "$ARGV_LOG_AK1"; then
     pass
 else
-    fail "issue #1529 prompt preamble must reference --mode plan --sandbox enabled"
+    fail "issue #1529 cursor argv must carry the HARD CONSTRAINTS preamble"
+fi
+if grep -Fq -- '--mode plan --sandbox enabled' "$ARGV_LOG_AK1"; then
+    pass
+else
+    fail "issue #1529 preamble in argv must reference --mode plan --sandbox enabled"
+fi
+if grep -Fq -- 'HARD CONSTRAINTS' "${OUT_AK1}.prompt"; then
+    fail "issue #1529 OUTPUT.prompt sidecar must NOT contain the preamble (retry-replay safety)"
+else
+    pass
+fi
+# Case AK1 sidecar = user-original prompt verbatim ("case ak1").
+if [[ "$(cat "${OUT_AK1}.prompt")" == "case ak1" ]]; then
+    pass
+else
+    fail "issue #1529 OUTPUT.prompt sidecar must equal the user-original prompt"
 fi
 
 # Case AK2 (issue #1358): with CURSOR_API_KEY empty, --api-key MUST NOT appear

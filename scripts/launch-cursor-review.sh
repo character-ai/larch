@@ -209,17 +209,26 @@ fi
 # `--mode plan --sandbox enabled` (replacing the prior `--force`) so the CLI
 # itself disables the agent's write tools; the preamble is the prompt-level
 # reinforcement so the model also reasons about its read-only role. The
-# launcher's existing dirty-tree-sidecar machinery (snapshot-untracked.sh +
-# _write_dirty_tree_sidecar EXIT trap) remains the after-the-fact detector.
+# launcher's existing dirty-tree-sidecar machinery (snapshot-untracked.sh
+# untracked-files baseline + _write_dirty_tree_sidecar EXIT trap) remains the
+# after-the-fact detector.
+#
+# Retry-replay safety: ${OUTPUT}.prompt is consumed by collect-agent-results.sh
+# empty-output retries via `--prompt-file`. To keep that replay idempotent
+# (one preamble, not N), the sidecar is written from $ORIGINAL_PROMPT
+# (the user/specialist-rendered body BEFORE prepending the preamble) so that
+# on retry the launcher reads the body, prepends the preamble exactly once,
+# and produces an identical outgoing PROMPT — no preamble stacking.
 CURSOR_REVIEW_HARDENING_PREAMBLE=$(cat <<'EOF'
 HARD CONSTRAINTS — your role is read-only review. You MUST NOT modify the working tree by any means:
 - Do not redirect, tee, append, or pipe into any file (no `>`, `>>`, `tee`, `tee -a`).
 - Do not run `rm`, `mv`, `cp` (when target is in the repo), `mkdir`, `touch`, `sed -i`, `awk -i inplace`, `perl -i`, or any command with an in-place / write effect.
 - Do not run `git add`, `git commit`, `git checkout <path>`, `git reset <path>`, `git restore`, `git stash`, `git rebase`, `git merge`, `git push`, or any command that mutates branch state, the index, or refs.
 - Do not invoke any tool that writes files (write_file, replace, edit, edit_file, delete_file, or any future-renamed equivalent).
-The launcher enforces this with a CLI-level read-only sandbox (`--mode plan --sandbox enabled`); any write tool the agent attempts will be rejected by the sandbox. The working tree is also snapshotted at launcher entry, so any post-run mutation is detected and reported.
+The launcher enforces this with a CLI-level read-only sandbox (`--mode plan --sandbox enabled`); any write tool the agent attempts will be rejected by the sandbox. The launcher also captures an untracked-files baseline at entry, so any post-run mutation is detected and reported via the dirty-tree sidecar.
 EOF
 )
+ORIGINAL_PROMPT="$PROMPT"
 PROMPT="${CURSOR_REVIEW_HARDENING_PREAMBLE}"$'\n\n'"${PROMPT}"
 
 WRAPPED_PROMPT=$({ "$SCRIPT_DIR/cursor-wrap-prompt.sh" "$PROMPT"; _wrap_status=$?; printf X; exit "$_wrap_status"; })
@@ -227,7 +236,10 @@ WRAPPED_PROMPT=${WRAPPED_PROMPT%X}
 RUN_EXTERNAL="$SCRIPT_DIR/run-external-agent.sh"
 SIDECAR="${OUTPUT}.sidecar"
 PROMPT_FILE_SIDECAR="${OUTPUT}.prompt"
-printf '%s' "$PROMPT" > "$PROMPT_FILE_SIDECAR"
+# Retry-safe: store the user-original (pre-preamble) bytes so
+# collect-agent-results.sh `--prompt-file` replay re-prepends the preamble
+# exactly once. See ORIGINAL_PROMPT comment above.
+printf '%s' "$ORIGINAL_PROMPT" > "$PROMPT_FILE_SIDECAR"
 rm -f "$DIRTY_TREE_SIDECAR" "$UNTRACKED_BASELINE" "${DIRTY_TREE_SIDECAR}.tracked-paths" "${DIRTY_TREE_SIDECAR}.new-untracked-paths"
 "$SCRIPT_DIR/snapshot-untracked.sh" --output "$UNTRACKED_BASELINE" --nul
 
