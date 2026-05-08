@@ -533,7 +533,7 @@ STUB_EOF
         STUB_MANIFEST_PATH="$RV_MANIFEST" \
         LARCH_CURSOR_MODEL="stub-model" \
         LARCH_TOKEN_SESSION_ID="$RV_SESSION_ID" \
-        IMPLEMENT_TMPDIR= \
+        IMPLEMENT_TMPDIR='' \
         CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
         "$LAUNCHER" \
             --transcript-path "$RV_TRANSCRIPT" \
