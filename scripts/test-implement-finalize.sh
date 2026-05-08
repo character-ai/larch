@@ -97,10 +97,53 @@ write_state() {
     } > "$path"
 }
 
+write_postbump_state() {
+    local path=$1 reasoning_file manifest_path
+    shift
+    reasoning_file=$(override_value BUMP_REASONING_FILE "$SANDBOX/tmp/anchor-sections-input/version-bump-reasoning-sanitized.md" "$@")
+    manifest_path=$(override_value MANIFEST_PATH "$SANDBOX/tmp/manifest.json" "$@")
+    mkdir -p "$SANDBOX/tmp/anchor-sections-input"
+    [ -e "$reasoning_file" ] || printf 'Bump reasoning\n' > "$reasoning_file"
+    if [ -n "$manifest_path" ] && [ ! -e "$manifest_path" ]; then
+        printf '{"summary_bullets":["Ship postbump finalization"]}\n' > "$manifest_path"
+    fi
+    {
+        printf 'BRANCH_NAME=%s\n' "$(override_value BRANCH_NAME feature/finalize "$@")"
+        printf 'ISSUE_NUMBER=%s\n' "$(override_value ISSUE_NUMBER 456 "$@")"
+        printf 'REPO=%s\n' "$(override_value REPO owner/repo "$@")"
+        printf 'REPO_UNAVAILABLE=%s\n' "$(override_value REPO_UNAVAILABLE false "$@")"
+        printf 'FORKED_TARGET=%s\n' "$(override_value FORKED_TARGET false "$@")"
+        printf 'HAS_BUMP=%s\n' "$(override_value HAS_BUMP true "$@")"
+        printf 'BUMP_TYPE=%s\n' "$(override_value BUMP_TYPE PATCH "$@")"
+        printf 'NEW_VERSION=%s\n' "$(override_value NEW_VERSION 17.0.4 "$@")"
+        printf 'BUMP_REASONING_FILE=%s\n' "$reasoning_file"
+        printf 'MANIFEST_PATH=%s\n' "$manifest_path"
+        printf 'TOOL_LABEL=%s\n' "$(override_value TOOL_LABEL codex "$@")"
+        printf 'ANCHOR_COMMENT_ID=%s\n' "$(override_value ANCHOR_COMMENT_ID 123456 "$@")"
+        printf 'EXPECTED_SESSION_ID=%s\n' "$(override_value EXPECTED_SESSION_ID session-123 "$@")"
+        printf 'EXPECTED_TMPDIR_BASENAME_PREFIX=%s\n' "$(override_value EXPECTED_TMPDIR_BASENAME_PREFIX tmp "$@")"
+    } > "$path"
+}
+
 build_sandbox() {
     SANDBOX=$(mktemp -d /tmp/larch-finalize-test.XXXXXX)
     mkdir -p "$SANDBOX/scripts" "$SANDBOX/tmp" "$SANDBOX/bin" "$SANDBOX/repo/.git"
     printf 'session-123\n' > "$SANDBOX/tmp/session-id"
+    cat > "$SANDBOX/repo/CHANGELOG.md" <<'CHANGELOG'
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [17.0.3] - 2026-05-01
+
+### Changed
+
+- Prior change.
+CHANGELOG
+    cp "$SANDBOX/repo/CHANGELOG.md" "$SANDBOX/original-CHANGELOG.md"
     cp "$REAL_SCRIPT" "$SANDBOX/scripts/implement-finalize.sh"
     chmod +x "$SANDBOX/scripts/implement-finalize.sh"
 
@@ -176,6 +219,101 @@ fi
 printf '%s\n' "\$@" > "$SANDBOX/cleanup-argv.txt"
 exit "\${STUB_CLEANUP_TMPDIR_RC:-0}"
 STUB
+    cat > "$SANDBOX/scripts/read-session-env-key.sh" <<'STUB'
+#!/usr/bin/env bash
+default=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --default) default=$2; shift 2 ;;
+    *) shift ;;
+  esac
+done
+printf '%s\n' "$default"
+STUB
+    cat > "$SANDBOX/scripts/token-ledger.sh" <<STUB
+#!/usr/bin/env bash
+echo "token-ledger \$*" >> "$SANDBOX/ledger-calls.txt"
+exit 0
+STUB
+    cat > "$SANDBOX/scripts/timing-ledger.sh" <<STUB
+#!/usr/bin/env bash
+echo "timing-ledger \$*" >> "$SANDBOX/ledger-calls.txt"
+exit 0
+STUB
+    cat > "$SANDBOX/scripts/token-report.sh" <<'STUB'
+#!/usr/bin/env bash
+echo "token report"
+exit 0
+STUB
+    cat > "$SANDBOX/scripts/timing-report.sh" <<'STUB'
+#!/usr/bin/env bash
+echo "timing report"
+exit 0
+STUB
+    cat > "$SANDBOX/scripts/refresh-anchor.sh" <<STUB
+#!/usr/bin/env bash
+printf '%s\n' "\$@" > "$SANDBOX/refresh-anchor-argv.txt"
+printf 'IMPLEMENT_TMPDIR=%s\n' "\${IMPLEMENT_TMPDIR:-}" > "$SANDBOX/refresh-anchor-env.txt"
+if [ "\${STUB_REFRESH_ANCHOR_FAIL:-false}" = "true" ]; then
+  echo "FAILED=true"
+  echo "ERROR=stub refresh failure"
+  exit 2
+fi
+echo "ASSEMBLED=true"
+echo "UPDATED=true"
+exit 0
+STUB
+    cat > "$SANDBOX/scripts/check-changelog-present.sh" <<'STUB'
+#!/usr/bin/env bash
+echo "CHANGELOG_PRESENT=${STUB_CHANGELOG_PRESENT:-true}"
+exit 0
+STUB
+    cat > "$SANDBOX/scripts/git-amend-add.sh" <<'STUB'
+#!/usr/bin/env bash
+if [ "${STUB_AMEND_FAIL:-false}" = "true" ]; then
+  exit 1
+fi
+exit 0
+STUB
+    cat > "$SANDBOX/scripts/rebase-push.sh" <<STUB
+#!/usr/bin/env bash
+printf '%s\n' "\$@" > "$SANDBOX/rebase-argv.txt"
+case "\${STUB_REBASE_RC:-0}" in
+  0)
+    if [ "\${STUB_ALREADY_FRESH:-false}" = "true" ]; then
+      echo "SKIPPED_ALREADY_FRESH=true"
+    fi
+    exit 0 ;;
+  1)
+    echo "CONFLICT_FILES=CHANGELOG.md"
+    exit 1 ;;
+  3)
+    echo "REBASE_ERROR=stub rebase failed"
+    exit 3 ;;
+  *)
+    exit "\${STUB_REBASE_RC:-9}" ;;
+esac
+STUB
+    cat > "$SANDBOX/scripts/check-remote-branch.sh" <<STUB
+#!/usr/bin/env bash
+printf '%s\n' "\$@" > "$SANDBOX/check-remote-argv.txt"
+echo "STATE=\${STUB_REMOTE_STATE:-present}"
+case "\${STUB_REMOTE_STATE:-present}" in
+  present) echo "RC=0" ;;
+  absent) echo "RC=2" ;;
+  *) echo "RC=128"; echo "ERROR=stub transport" ;;
+esac
+exit 0
+STUB
+    cat > "$SANDBOX/scripts/git-force-push.sh" <<'STUB'
+#!/usr/bin/env bash
+echo "BRANCH=feature/finalize"
+echo "STATUS=${STUB_FORCE_PUSH_STATUS:-pushed}"
+case "${STUB_FORCE_PUSH_STATUS:-pushed}" in
+  pushed|noop_same_ref) echo "PUSHED=true"; exit 0 ;;
+  *) echo "PUSHED=false"; exit 1 ;;
+esac
+STUB
     cat > "$SANDBOX/bin/git" <<STUB
 #!/usr/bin/env bash
 if [ "\${1:-}" = "-C" ]; then
@@ -185,8 +323,16 @@ case "\${1:-} \${2:-} \${3:-}" in
   "rev-parse --show-toplevel ")
     echo "\${STUB_REPO_ROOT:-$SANDBOX/repo}"
     ;;
+  "rev-parse --abbrev-ref HEAD")
+    echo "\${STUB_CURRENT_BRANCH:-feature/finalize}"
+    ;;
   "rev-parse --git-dir ")
     echo "\${STUB_GIT_DIR:-$SANDBOX/repo/.git}"
+    ;;
+  "status --porcelain CHANGELOG.md")
+    if [ "\${STUB_CHANGELOG_DIRTY:-false}" = "true" ]; then
+      echo " M CHANGELOG.md"
+    fi
     ;;
   "status --porcelain ")
     if [ "\${STUB_STATUS_RC:-0}" -ne 0 ]; then
@@ -196,6 +342,9 @@ case "\${1:-} \${2:-} \${3:-}" in
     if [ "\${STUB_GIT_DIRTY:-false}" = "true" ]; then
       echo " M file.txt"
     fi
+    ;;
+  "checkout -- CHANGELOG.md")
+    cp "$SANDBOX/original-CHANGELOG.md" "$SANDBOX/repo/CHANGELOG.md" 2>/dev/null || true
     ;;
   "stash push -u")
     printf '%s\n' "\$@" > "$SANDBOX/stash-argv.txt"
@@ -259,12 +408,12 @@ STUB
 }
 
 run_subject() {
-    PATH="$SANDBOX/bin:$PATH" "$SANDBOX/scripts/implement-finalize.sh" "$@" 2>&1 | normalize_elapsed
+    (cd "$SANDBOX/repo" && PATH="$SANDBOX/bin:$PATH" "$SANDBOX/scripts/implement-finalize.sh" "$@") 2>&1 | normalize_elapsed
 }
 
 run_subject_raw_rc() {
     set +e
-    OUT=$(PATH="$SANDBOX/bin:$PATH" "$SANDBOX/scripts/implement-finalize.sh" "$@" 2>&1 | normalize_elapsed)
+    OUT=$( (cd "$SANDBOX/repo" && PATH="$SANDBOX/bin:$PATH" "$SANDBOX/scripts/implement-finalize.sh" "$@") 2>&1 | normalize_elapsed )
     RC=$?
     set -e
 }
@@ -547,6 +696,205 @@ if [ ! -e "$INJECTED" ]; then
 else
     FAIL=$((FAIL + 1))
     echo "FAIL: state parsing: injection side effect exists"
+fi
+
+POSTBUMP_STATE="$SANDBOX/tmp/postbump-state.sh"
+cp "$SANDBOX/original-CHANGELOG.md" "$SANDBOX/repo/CHANGELOG.md"
+: > "$SANDBOX/tmp/execution-issues.md"
+rm -f "$SANDBOX/tmp/.postbump-phase" "$SANDBOX/ledger-calls.txt"
+write_postbump_state "$POSTBUMP_STATE"
+OUT=$(run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
+assert_contains "ANCHOR_REFRESH_STATUS=ok" "$OUT" "postbump: happy path refreshes anchor"
+assert_contains "CHANGELOG_STATUS=updated" "$OUT" "postbump: happy path updates changelog"
+assert_contains "REBASE_STATUS=rebased" "$OUT" "postbump: happy path rebases"
+assert_contains "FORCE_PUSH_STATUS=pushed" "$OUT" "postbump: happy path force-pushes"
+assert_contains "STATUS=ok" "$OUT" "postbump: happy path status ok"
+assert_file_contains "Step 8a — changelog" "$SANDBOX/ledger-calls.txt" "postbump: emits Step 8a ledger mark"
+assert_file_contains "Step 8b — rebase" "$SANDBOX/ledger-calls.txt" "postbump: emits Step 8b ledger mark"
+assert_file_contains "--anchor-id" "$SANDBOX/refresh-anchor-argv.txt" "postbump: anchor refresh passes anchor id"
+assert_file_contains "--repo" "$SANDBOX/refresh-anchor-argv.txt" "postbump: anchor refresh passes repo"
+assert_file_contains "IMPLEMENT_TMPDIR=$SANDBOX/tmp" "$SANDBOX/refresh-anchor-env.txt" "postbump: exports IMPLEMENT_TMPDIR to children"
+assert_file_contains "## [17.0.4] -" "$SANDBOX/repo/CHANGELOG.md" "postbump: changelog contains new version"
+assert_file_contains "### Changed" "$SANDBOX/repo/CHANGELOG.md" "postbump: flat bullets default to Changed"
+
+# FINDING_1 regression: Unreleased section bullets must be preserved, not consumed.
+cat > "$SANDBOX/repo/CHANGELOG.md" <<'CHANGELOG_UNRELEASED'
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+### Added
+
+- pending feature one
+- pending feature two
+
+## [17.0.3] - 2026-05-01
+
+### Changed
+
+- Prior change.
+CHANGELOG_UNRELEASED
+write_postbump_state "$POSTBUMP_STATE"
+OUT=$(run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
+assert_contains "CHANGELOG_STATUS=updated" "$OUT" "postbump: Unreleased preserved happy path"
+assert_file_contains "pending feature one" "$SANDBOX/repo/CHANGELOG.md" "postbump: Unreleased bullets preserved"
+assert_file_contains "pending feature two" "$SANDBOX/repo/CHANGELOG.md" "postbump: all Unreleased bullets preserved"
+# Ensure the new release entry comes AFTER the Unreleased body, not before.
+awk '
+    /^## \[Unreleased\]/ { in_unrel=1; next }
+    in_unrel && /^## \[17\.0\.4\] -/ { print "ORDER_OK"; exit }
+    in_unrel && /^## \[/ && !/^## \[17\.0\.4\] -/ { print "ORDER_BAD"; exit }
+' "$SANDBOX/repo/CHANGELOG.md" > "$SANDBOX/order-check.txt"
+assert_file_contains "ORDER_OK" "$SANDBOX/order-check.txt" "postbump: new entry inserted after Unreleased section body"
+
+# FINDING_5 regression: duplicate target-version headers must be rejected (fail closed).
+cat > "$SANDBOX/repo/CHANGELOG.md" <<'CHANGELOG_DUP'
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [17.0.4] - 2026-05-01
+
+### Fixed
+
+- pre-existing duplicate.
+
+## [17.0.4] - 2026-04-30
+
+### Added
+
+- second pre-existing duplicate.
+
+## [17.0.3] - 2026-04-29
+
+### Changed
+
+- Prior change.
+CHANGELOG_DUP
+write_postbump_state "$POSTBUMP_STATE"
+OUT=$(run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
+assert_contains "CHANGELOG_STATUS=failed" "$OUT" "postbump: duplicate target headers fail closed"
+assert_contains "STATUS=changelog-failed" "$OUT" "postbump: duplicate target headers route to changelog-failed"
+assert_file_contains "multiple existing" "$SANDBOX/tmp/execution-issues.md" "postbump: duplicate-header warning logged"
+
+cp "$SANDBOX/original-CHANGELOG.md" "$SANDBOX/repo/CHANGELOG.md"
+printf '{"summary_bullets_categorized":{"Added":["new flow"],"Fixed":["resume bug"],"Security":["guard paths"]}}\n' > "$SANDBOX/tmp/manifest.json"
+write_postbump_state "$POSTBUMP_STATE"
+OUT=$(STUB_REMOTE_STATE=absent run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
+assert_contains "FORCE_PUSH_STATUS=absent" "$OUT" "postbump: absent remote skips force-push"
+assert_file_contains "### Added" "$SANDBOX/repo/CHANGELOG.md" "postbump: categorized manifest writes Added"
+assert_file_contains "### Fixed" "$SANDBOX/repo/CHANGELOG.md" "postbump: categorized manifest writes Fixed"
+assert_file_contains "### Security" "$SANDBOX/repo/CHANGELOG.md" "postbump: categorized manifest writes Security"
+
+cp "$SANDBOX/original-CHANGELOG.md" "$SANDBOX/repo/CHANGELOG.md"
+printf 'Fixed\tone\nAdded\ttwo\nthree\n' > "$SANDBOX/tmp/changelog-bullets.txt"
+write_postbump_state "$POSTBUMP_STATE" MANIFEST_PATH=
+OUT=$(run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp" --changelog-bullets-file "$SANDBOX/tmp/changelog-bullets.txt")
+assert_contains "CHANGELOG_STATUS=updated" "$OUT" "postbump: Claude fallback bullets update changelog"
+assert_file_contains "### Fixed" "$SANDBOX/repo/CHANGELOG.md" "postbump: fallback categorized Fixed"
+assert_file_contains "### Added" "$SANDBOX/repo/CHANGELOG.md" "postbump: fallback categorized Added"
+assert_file_contains "### Changed" "$SANDBOX/repo/CHANGELOG.md" "postbump: fallback bare bullet defaults Changed"
+
+cp "$SANDBOX/original-CHANGELOG.md" "$SANDBOX/repo/CHANGELOG.md"
+write_postbump_state "$POSTBUMP_STATE" BUMP_TYPE=NONE
+OUT=$(run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
+assert_contains "CHANGELOG_STATUS=skipped-no-bump" "$OUT" "postbump: BUMP_TYPE=NONE skips changelog"
+assert_contains "REBASE_STATUS=rebased" "$OUT" "postbump: BUMP_TYPE=NONE still rebases"
+
+write_postbump_state "$POSTBUMP_STATE" FORKED_TARGET=true REPO_UNAVAILABLE=true
+OUT=$(run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
+assert_contains "CHANGELOG_STATUS=skipped-fork" "$OUT" "postbump: forked target skips changelog"
+assert_contains "FORCE_PUSH_STATUS=skipped-repo-unavailable" "$OUT" "postbump: repo-unavailable skips force-push"
+assert_file_contains "--base-remote" "$SANDBOX/rebase-argv.txt" "postbump: forked target rebases against upstream"
+
+write_postbump_state "$POSTBUMP_STATE"
+rm -f "$SANDBOX/tmp/.postbump-phase"
+OUT=$(STUB_REBASE_RC=1 run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
+assert_contains "STATUS=conflict" "$OUT" "postbump: rebase conflict emits conflict status"
+assert_contains "RESUME_PHASE=force-push-gate" "$OUT" "postbump: conflict emits informational resume phase"
+assert_file_contains "force-push-gate" "$SANDBOX/tmp/.postbump-phase" "postbump: conflict writes checkpoint"
+
+write_postbump_state "$POSTBUMP_STATE"
+printf 'force-push-gate\n' > "$SANDBOX/tmp/.postbump-phase"
+OUT=$(run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
+assert_contains "CHANGELOG_STATUS=skipped-resume" "$OUT" "postbump: checkpoint skips changelog"
+assert_contains "REBASE_STATUS=skipped-resume" "$OUT" "postbump: checkpoint skips rebase"
+assert_contains "FORCE_PUSH_STATUS=pushed" "$OUT" "postbump: checkpoint runs force-push"
+if [ ! -e "$SANDBOX/tmp/.postbump-phase" ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: postbump: successful force-push clears checkpoint"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: postbump: checkpoint should be cleared"
+fi
+
+write_postbump_state "$POSTBUMP_STATE"
+printf 'bogus-phase\n' > "$SANDBOX/tmp/.postbump-phase"
+OUT=$(run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
+assert_contains "STATUS=postbump-state-corrupt" "$OUT" "postbump: corrupt checkpoint fails closed"
+
+write_postbump_state "$POSTBUMP_STATE"
+rm -f "$SANDBOX/tmp/.postbump-phase"
+ln -s /etc/passwd "$SANDBOX/tmp/.postbump-phase"
+OUT=$(run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
+assert_contains "STATUS=postbump-state-corrupt" "$OUT" "postbump: symlink checkpoint rejected"
+rm -f "$SANDBOX/tmp/.postbump-phase"
+
+write_postbump_state "$POSTBUMP_STATE"
+OUT=$(STUB_REMOTE_STATE=error run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
+assert_contains "STATUS=remote-check-failed" "$OUT" "postbump: remote check error fails closed"
+
+write_postbump_state "$POSTBUMP_STATE"
+OUT=$(STUB_FORCE_PUSH_STATUS=diverged_retry_failed run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
+assert_contains "STATUS=push-failed" "$OUT" "postbump: force-push lease failure bails"
+assert_contains "FORCE_PUSH_STATUS=failed" "$OUT" "postbump: force-push failure status"
+
+cp "$SANDBOX/original-CHANGELOG.md" "$SANDBOX/repo/CHANGELOG.md"
+write_postbump_state "$POSTBUMP_STATE"
+OUT=$(STUB_AMEND_FAIL=true run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
+assert_contains "STATUS=changelog-failed" "$OUT" "postbump: changelog amend failure is fatal"
+
+write_postbump_state "$POSTBUMP_STATE" BRANCH_NAME=main
+run_subject_raw_rc postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp"
+assert_rc "$RC" 2 "postbump: main branch rejected"
+
+write_postbump_state "$POSTBUMP_STATE" HAS_BUMP=yes
+run_subject_raw_rc postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp"
+assert_rc "$RC" 2 "postbump: invalid boolean rejected"
+
+write_postbump_state "$POSTBUMP_STATE" BUMP_TYPE=PATCHX
+run_subject_raw_rc postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp"
+assert_rc "$RC" 2 "postbump: invalid bump type rejected"
+
+write_postbump_state "$POSTBUMP_STATE" NEW_VERSION=17.0
+run_subject_raw_rc postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp"
+assert_rc "$RC" 2 "postbump: invalid semver rejected"
+
+write_postbump_state "$POSTBUMP_STATE" BRANCH_NAME=feature/other
+OUT=$(STUB_CURRENT_BRANCH=feature/finalize run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
+assert_contains "STATUS=branch-mismatch" "$OUT" "postbump: branch mismatch emits branch-mismatch"
+
+write_postbump_state "$POSTBUMP_STATE"
+run_subject_raw_rc postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp" --resume-from force-push-gate
+assert_rc "$RC" 2 "postbump: --resume-from flag rejected"
+
+run_subject_raw_rc postmerge --state-file "$STATE" --final-bail-reason-file "$BAIL" --resume-from force-push-gate
+assert_rc "$RC" 2 "postmerge: postbump flag rejected by common parser"
+
+if grep -qF "skip directly to Step 8b" "$SCRIPT_DIR/../skills/implement/SKILL.md"; then
+    FAIL=$((FAIL + 1))
+    echo "FAIL: postbump: SKILL.md still contains legacy 'skip directly to Step 8b' phrase"
+else
+    PASS=$((PASS + 1))
+    echo "PASS: postbump: SKILL.md legacy skip phrase absent"
 fi
 
 echo

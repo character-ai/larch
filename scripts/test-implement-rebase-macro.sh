@@ -143,16 +143,17 @@ rebase_push_skip_count=$(grep -cF '${CLAUDE_PLUGIN_ROOT}/scripts/rebase-push.sh 
 
 # Sanity check: all three non-macro --no-push call sites must still exist:
 #   - Step 1.m in SKILL.md (pre-Step-1 main freshness)
-#   - Step 8b in SKILL.md (pre-PR-creation freshness, issue #818)
 #   - Rebase + Re-bump Sub-procedure in references/rebase-rebump-subprocedure.md
+# Step 8b's pre-PR-creation freshness rebase moved into scripts/implement-finalize.sh
+# postbump Phase 3 (issue #1493) — no longer present in SKILL.md.
 # Count lines ending with 'rebase-push.sh --no-push' across both files (indentation tolerated;
-# --skip-if-pushed excluded because its lines do NOT end with --no-push). Expect exactly 3 —
-# one per call site. This catches accidental removal of ANY site.
+# --skip-if-pushed excluded because its lines do NOT end with --no-push). Expect exactly 2 —
+# one per remaining call site. This catches accidental removal of ANY site.
 SUBPROC_MD="$REPO_ROOT/skills/implement/references/rebase-rebump-subprocedure.md"
 [[ -f "$SUBPROC_MD" ]] || fail "(H) references/rebase-rebump-subprocedure.md missing: $SUBPROC_MD"
 no_push_only_count=$(grep -chE 'rebase-push\.sh --no-push$' "$SKILL_MD" "$SUBPROC_MD" | awk '{s+=$1} END {print s+0}')
-[[ "$no_push_only_count" == "3" ]] \
-  || fail "(H) expected exactly 3 'rebase-push.sh --no-push' (without --skip-if-pushed) call sites across SKILL.md (Step 1.m + Step 8b) + references/rebase-rebump-subprocedure.md, found $no_push_only_count — Step 1.m, Step 8b, or Rebase + Re-bump Sub-procedure was accidentally altered"
+[[ "$no_push_only_count" == "2" ]] \
+  || fail "(H) expected exactly 2 'rebase-push.sh --no-push' (without --skip-if-pushed) call sites across SKILL.md (Step 1.m) + references/rebase-rebump-subprocedure.md, found $no_push_only_count — Step 1.m or Rebase + Re-bump Sub-procedure was accidentally altered (Step 8b's rebase moved into implement-finalize.sh postbump Phase 3 per issue #1493)"
 
 echo "PASS: test-implement-rebase-macro.sh — all structural invariants hold (A-C, E-H)"
 exit 0

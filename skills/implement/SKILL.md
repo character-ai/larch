@@ -11,7 +11,7 @@ End-to-end: design, plan review, code, validate, commit, code review, validate, 
 
 **Protocol Execution Directive.** You are now the `/implement` orchestrator. After parsing flags and checking for `--draft`/`--merge`, `--design-only`/`--merge`, and `--forked`/`--merge` mutual-exclusion aborts, your FIRST external action MUST be **Step 0**. Step 0 is one atomic failure domain with three ordered Bash invocations: first `${CLAUDE_PLUGIN_ROOT}/scripts/create-branch.sh --check`, then `${CLAUDE_PLUGIN_ROOT}/scripts/session-entry-gate.sh`, then `${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh` with `--skip-branch-check` toggled by the entry gate. **Step 0 fork-mode exception**: when `--forked` was parsed at flag-resolution time (`forked_target=true`), invoke `${CLAUDE_PLUGIN_ROOT}/scripts/implement-fork-env.sh` exactly once before the standard three-call setup begins. The helper allocates its own bootstrap tmpdir and emits `BOOTSTRAP_TMPDIR=…` plus `CALLER_ENV_PATH=…` on stdout (along with fork metadata: `FORK_REPO`, `UPSTREAM_REPO`, `FORK_OWNER`, `FORKED_TARGET`, `SLACK_ENABLED`); `IMPLEMENT_TMPDIR` does NOT exist yet at this point and is therefore NOT passed in (Round 1 plan-review FINDING_1 fix — passing an unset `$IMPLEMENT_TMPDIR` would make the helper write `caller-env.sh` to an empty path). That helper encapsulates the upstream prereq probe, both `github-remote-repo.sh` parses, the atomic caller-env write, and stdout emission of fork-mode orchestrator-local KV pairs. The standard three-call setup then runs unchanged with `--caller-env "$CALLER_ENV_PATH"` (the absolute path emitted on the helper's stdout). No other Bash or Write is permitted between flag parsing and the standard three-call setup beyond this single helper invocation. Step 0 is not complete until all required Bash invocations have completed successfully and their output has been parsed. No other `Read`/`Edit`/`Write`/`Bash`/child-`Skill` calls may appear between them or before them. Do not `Read`/`Grep`/`Glob` project files, do not `Edit`/`Write`, and do not invoke child skills until Step 0 completes and its output has been parsed. Freelancing the implementation without executing the step sequence is a protocol violation — every step from 0 through 18 must execute in order per this file.
 
-**Anti-halt continuation reminder.** After every child `Skill` tool call (e.g., `/design`, `/review`, `/relevant-checks`, `/bump-version`, `/issue`, `/implement`) returns AND after every `Bash` tool call that completes a numbered step or sub-step, IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on the child's cleanup output, on a Bash result, or on a status message, and do NOT write a summary, handoff, status recap, or "returning to parent" message — those are halts in disguise. This applies to ALL step boundaries from Step 0 through Step 18. The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `skip to Step N`, `bail to cleanup`, `jump back`, `loop back`, `fall through`, `break out`). A normal sequential `proceed to Step N+1` instruction is the default continuation this rule reinforces, NOT an exception. Every `/relevant-checks` invocation anywhere in this file is covered by this rule. **Critical boundary: after Step 9b (PR creation) completes, IMMEDIATELY proceed to Step 10 (CI monitor) — PR creation is NOT the end of the run.** See `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Anti-halt continuation reminder for the canonical rule.
+**Anti-halt continuation reminder.** After every child `Skill` tool call (e.g., `/design`, `/review`, `/relevant-checks`, `/bump-version`, `/issue`, `/implement`) returns AND after every `Bash` tool call that completes a numbered step or sub-step, IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on the child's cleanup output, on a Bash result, or on a status message, and do NOT write a summary, handoff, status recap, or "returning to parent" message — those are halts in disguise. This applies to ALL step boundaries from Step 0 through Step 18. The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `skip to Step N`, `bail to cleanup`, `jump back`, `loop back`, `fall through`, `break out`). A normal sequential `proceed to Step N+1` instruction is the default continuation this rule reinforces, NOT an exception. Every `/relevant-checks` invocation anywhere in this file is covered by this rule. **Critical boundary: after Step 9b (PR creation) completes, IMMEDIATELY proceed to Step 10 (CI monitor) — PR creation is NOT the end of the run.** **Critical boundary: after Step 8's pre-bump-decision branches resolve (whether via `/bump-version` returning, `BUMP_TYPE=NONE` skip, `HAS_BUMP=false` skip, or `forked_target=true` skip), IMMEDIATELY invoke `implement-finalize.sh postbump` to complete Steps 8a, 8b — version bump (or its skip) is NOT the end of the run; Steps 8a, 8b, 9, 10, 11, 12, 14-18 still must run.** See `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Anti-halt continuation reminder for the canonical rule.
 
 **Skill-name fallback reminder.** When invoking a child skill via the Skill tool from this file, ALWAYS try the bare name first (`"relevant-checks"`, `"bump-version"`, `"design"`, `"review"`, `"issue"`, `"implement"`). Only fall back to the fully-qualified `larch:` form (`"larch:design"`, etc.) when the bare-name lookup returns `Unknown skill` — and conversely, in a consumer repo that installs the plugin under a non-`larch` namespace the bare name may miss and the fully-qualified form (with that repo's actual namespace) becomes the working fallback. **`/relevant-checks` and `/bump-version` are intentionally project-local under `.claude/skills/` and are NOT shipped with the plugin** — `larch:relevant-checks` and `larch:bump-version` do not resolve, so a `larch:`-first attempt fails outright. Do NOT mirror this skill's own namespaced invocation (`larch:implement`) onto child Skill calls. See `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Bare-name-then-fully-qualified fallback for the canonical rule.
 
@@ -47,7 +47,7 @@ Each rule states WHY; per-site reminders reference by anchor name.
 
 7. **NEVER bail mid-run on orchestrator-judgment "scope" or "capacity" concerns without a mechanical justification.** **Why**: `/implement` is designed for long autonomous runs end-to-end. Subjective "this feels like a lot of remaining work" judgments are NOT valid bail reasons. The only sanctioned non-error halt paths between Step 1 and Step 18 are: (a) Step 12d under one of its three documented judgment conditions (3 fix iterations attempted without progress; failure fundamentally incompatible with codebase or CI; fix would require reverting the core feature); (b) explicit user halt mid-run via a fresh interactive turn; (c) hard tool failure (context overflow, persistent CI infrastructure outage, gh auth revocation). **How to apply**: this rule does not forbid the mechanical 12d routes already encoded as control flow (Rebase + Re-bump sub-procedure hard-bail, conflict-resolution abort, merge-pr.sh results that require Step 12d — `admin_failed`, `error`, `policy_denied`, `version_already_published`) — those land in 12d via documented sub-procedures, not via orchestrator judgment. At every step boundary between Step 1 and Step 18, the orchestrator continues according to the next explicit control-flow directive (sequential by default unless this file specifies a non-sequential redirect). If the orchestrator finds itself drafting an `AskUserQuestion` to halt or relitigate scope post Step 1, or composing a "let me check in before continuing" message that is not triggered by one of conditions (a)-(c) above, it MUST instead continue execution and log the concern as a `Warnings` entry in `$IMPLEMENT_TMPDIR/execution-issues.md` (which Step 11 publishes to the tracking issue's anchor). **Post-merge sub-clause (highest-stakes halt boundary)**: the `✅ 12: CI+merge loop — PR #<N> merged!` line at Step 12b (and the analogous `✅ PR was force-merged externally` line at Step 12a's `already_merged` branch) is the single most halt-prone moment in the orchestrator — the celebratory "merged!" tone makes the run feel complete, but Steps 14, 15, 16, 16a, 17, 18 still must run. Halting at the post-merge boundary, ending the turn after the merge breadcrumb, posting a "🎉 done" recap, or composing any handoff/summary message between the merge breadcrumb and Step 14's first action is a NEVER #7 violation regardless of how natural the boundary feels. The `pr_closed=true` and `DONE_RENAME_APPLIED=true` flags set by 12a/12b are PRE-conditions consumed by Steps 14–18 (the `pr_closed=true` flag in particular is consumed by Step 16a's outcome state machine — halting before Step 16a means the Slack announcement never fires) — they are NOT POST-conditions of a finished run.
 
-8. **NEVER use `step12_rebase` or `step10_rebase` (or any other non-`step8b_rebase` token) as the `caller_kind` when invoking the Rebase + Re-bump Sub-procedure from Step 8b's exit-1 handler.** **Why**: step10/step12 caller families have wrong post-success control flow for Step 8b — `step12_rebase` re-invokes `ci-wait.sh` (no PR exists at Step 8b, so `ci-wait.sh` would fail), `step10_rebase` falls through to a Step 10 → Step 11 path that is unreachable from Step 8b, and the failure semantics route to 12d (no PR to bail under) or break out of a non-existent CI loop. **How to apply**: Step 8b's exit-1 handler must invoke with `caller_kind=step8b_rebase`. The sub-procedure's step 7 has a dedicated `step8b_rebase` return branch that returns control to Step 8b's force-push gate without sleeping or re-invoking `ci-wait.sh`.
+8. **NEVER use `step12_rebase` or `step10_rebase` (or any other non-`step8b_rebase` token) as the `caller_kind` when invoking the Rebase + Re-bump Sub-procedure from Step 8b's conflict handler.** **Why**: step10/step12 caller families have wrong post-success control flow for Step 8b — `step12_rebase` re-invokes `ci-wait.sh` (no PR exists at Step 8b, so `ci-wait.sh` would fail), `step10_rebase` falls through to a Step 10 → Step 11 path that is unreachable from Step 8b, and the failure semantics route to 12d (no PR to bail under) or break out of a non-existent CI loop. **How to apply**: `implement-finalize.sh postbump` emits `CALLER_KIND=step8b_rebase` on the conflict envelope, and the orchestrator must invoke the sub-procedure with that same token. The sub-procedure's step 7 has a dedicated `step8b_rebase` return branch that returns control to `postbump`'s checkpointed force-push phase without sleeping or re-invoking `ci-wait.sh`.
 
 9. **NEVER call `ScheduleWakeup` anywhere in the `/implement` orchestrator (Steps 0 through 18, including child-skill returns).** **Why**: every long-running block in `/implement` is foreground-synchronous already — Step 2's Codex/Cursor/Gemini dispatch via `step2-implement.sh` blocks until the implementer returns, and Steps 10/12's `ci-wait.sh` blocks for up to `timeout: 1860000` (31 min) per call (the latter is also explicitly forbidden from `run_in_background:true` per closes #842). No step needs an external wakeup to make progress. Worse, `ScheduleWakeup` interprets any non-sentinel `prompt` as a `/loop` input and re-fires it on wakeup as `/loop <prompt>`; per the tool's "pass the same `/loop` prompt back each turn" guidance, every subsequent orchestrator turn re-passes that same string, perpetuating a `/loop`-style chain that nobody invoked. The chain's last queued wakeup fires AFTER Step 18 has cleaned up `$IMPLEMENT_TMPDIR`, landing the orchestrator in a turn where it knows the run is done and proactively offers a follow-up command (e.g. `/review --diff` against an empty diff) — the visible symptom that triggered this rule. **How to apply**: do not call `ScheduleWakeup` from anywhere in this file or from any child-skill continuation. If a future step ever genuinely needs to wait for an out-of-band signal (the current step graph never does), use the Bash `run_in_background` task notification — already documented in AGENTS.md's anti-polling rule. The autonomous-loop sentinel `<<autonomous-loop-dynamic>>` is also forbidden here as a matter of policy: treat autonomous-loop continuation as out of scope for this orchestrator regardless of the host context, and do not emit it from any step.
 
@@ -1380,21 +1380,21 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 ${CLAUDE_PLUGIN_ROOT}/scripts/check-bump-version.sh --mode pre
 ```
 
-If `forked_target=true`: print `⏩ 8: version bump — skipped (--forked dry-run) (<elapsed>)`, write the `version-bump-reasoning` anchor fragment locally with `"Version bump skipped for fork CI dry-run."` only when anchor fragments are being preserved locally, and skip directly to Step 8b. Skip the `/bump-version` skill call entirely and do not run the Rebase + Re-bump Sub-procedure under fork mode.
+If `forked_target=true`: print `⏩ 8: version bump — skipped (--forked dry-run) (<elapsed>)`, set `FORKED_TARGET=true` in the postbump-state values to write below, skip the `/bump-version` invocation, and jump to the `postbump` invocation. Phase 1 writes the fork-specific fallback fragment, Phase 2 skips, Phase 3 rebases against upstream/main, and Phase 4 skips when `repo_unavailable=true`. Do not run the Rebase + Re-bump Sub-procedure under fork mode.
 
 Parse `HAS_BUMP`, `COMMITS_BEFORE`, `STATUS` (`ok|missing_main_ref|git_error` per #172). If `STATUS != ok`, the pre-mode count is untrustworthy — log `**⚠ 8: version bump — pre-check STATUS=$STATUS, commit count may be unreliable. Continuing.**` to `Warnings` and proceed. Step 8 is pre-PR and permissive; last-chance enforcement is in the Rebase + Re-bump Sub-procedure step 4 invoked by Step 12 (step12 family), which hard-bails on non-`ok` STATUS from either pre- or post-check.
 
-**If `HAS_BUMP=false`**: print `**⚠ VERSION BUMP SKIPPED: No /bump-version skill found at .claude/skills/bump-version/SKILL.md. To enable automatic version bumps, create a /bump-version skill in this repo. The skill should determine the current version, classify the bump type, compute the new version, edit the version file, and commit.**` and skip to Step 8b. The freshness rebase at Step 8b still runs so resumed Branch 1/2/3 runs in repos without a `/bump-version` skill are refreshed before PR creation; Step 8a (CHANGELOG amend) is bypassed because there is no bump commit to amend.
+**If `HAS_BUMP=false`**: print `**⚠ VERSION BUMP SKIPPED: No /bump-version skill found at .claude/skills/bump-version/SKILL.md. To enable automatic version bumps, create a /bump-version skill in this repo. The skill should determine the current version, classify the bump type, compute the new version, edit the version file, and commit.**`, set `HAS_BUMP=false` in postbump-state, skip `/bump-version`, and jump to the `postbump` invocation. Phase 2 skips because there is no bump commit to amend; Phase 3 still refreshes before PR creation.
 
 **If `HAS_BUMP=true`**:
 
-> **Continue after child returns.** When the child Skill returns, execute the NEXT step — do NOT end the turn, and do NOT write a summary, handoff, or "returning to parent" message. See `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Anti-halt continuation reminder. (Branch-specific: `HAS_BUMP=false` skips to Step 8b per the control-flow directive above, which overrides this rule.)
+> **Continue after child returns.** When the child Skill returns, execute the NEXT step — do NOT end the turn, and do NOT write a summary, handoff, or "returning to parent" message. See `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Anti-halt continuation reminder. (Branch-specific: `HAS_BUMP=false` jumps to the postbump invocation per the control-flow directive above, which overrides this rule.)
 
 1. Invoke `/bump-version` via the Skill tool.
 
    **If `/bump-version` fails because `apply-bump.sh` emitted `ERROR` matching `^origin/main has already bumped to .*; re-classify needed$`**: this is the pre-PR same-version race where origin/main advanced to the version the local classifier selected after Step 8's pre-check. **MANDATORY — READ ENTIRE FILE** before invoking the sub-procedure: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/rebase-rebump-subprocedure.md`. Invoke the Rebase + Re-bump Sub-procedure with `rebase_already_done=false`, `caller_kind=step8_apply_bump_same_version`; the sub-procedure drops any partial bump if present, rebases, syncs local main, and re-invokes `/bump-version` for one fresh classification. If that second classification/apply attempt fails with the same `ERROR` pattern, set `STALL_TRACKING=true`, set `FINAL_BAIL_REASON` to that literal `ERROR`, and skip directly to Step 18 (no PR exists yet, so skip Steps 9-17). Do not loop more than once.
 
-   **If `/bump-version` reported `BUMP_TYPE=NONE`** (non-deployable changes only, or HEAD is already a bump commit — no new version bump commit was created): skip sub-steps 2, 3, 3b. Write the `version-bump-reasoning` anchor fragment using the fallback text (`"No version bump reasoning available (skill may have skipped via BUMP_TYPE=NONE, or /bump-version was not invoked)."`). Print `⏩ 8: version bump — skipped (BUMP_TYPE=NONE) (<elapsed>)`. Skip Step 8a (no bump commit to amend — parallels the `HAS_BUMP=false` directive). Proceed directly to Step 8b.
+   **If `/bump-version` reported `BUMP_TYPE=NONE`** (non-deployable changes only, or HEAD is already a bump commit — no new version bump commit was created): skip sub-steps 2, 3, 3b. Write the sanitized postbump reasoning-input file with the fallback text (`"No version bump reasoning available (skill may have skipped via BUMP_TYPE=NONE, or /bump-version was not invoked)."`). Print `⏩ 8: version bump — skipped (BUMP_TYPE=NONE) (<elapsed>)`. Set `BUMP_TYPE=NONE` in postbump-state and jump to the `postbump` invocation.
 
 2. **Capture the reasoning file path**: when invoked via Skill tool, `IMPLEMENT_TMPDIR` does not always propagate to the skill's bash env, so `classify-bump.sh` may write `bump-version-reasoning.md` to `${TMPDIR:-/tmp}`. The authoritative path is on stdout as `REASONING_FILE=<path>`. Parse and save as `BUMP_REASONING_FILE` for step 3b, Step 9a, and the sub-procedure step 6.
 3. Verify a new commit was created:
@@ -1404,15 +1404,42 @@ Parse `HAS_BUMP`, `COMMITS_BEFORE`, `STATUS` (`ok|missing_main_ref|git_error` pe
    **MANDATORY — READ ENTIRE FILE** before post-check evaluation (Block α + Block γ): `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/bump-verification.md`. Contains the STATUS-handling matrix (pre-check degraded → skip numeric; `git_error` / `missing_main_ref` / `ok`+`VERIFIED=false` / `ok`+`VERIFIED=true`) and the reasoning-file sentinel defense-in-depth procedure for step 3b. **Do NOT load** when `HAS_BUMP=false`.
 3b. **Sentinel-file defense-in-depth** (#160): execute Block γ from `bump-verification.md` against `$BUMP_REASONING_FILE`. Advisory only — do NOT bail.
 
-> **Continue after child returns.** When `/bump-version` returns: if `BUMP_TYPE=NONE`, write the anchor fragment (fallback text) then skip to Step 8b — do NOT halt, do NOT write a summary. If a bump was created, continue through sub-steps 2/3/3b, then execute the `version-bump-reasoning` anchor fragment write + Step 8a (always run `check-changelog-present.sh`; then changelog amend when `CHANGELOG_PRESENT=true`, or skip the amend when `CHANGELOG_PRESENT=false`), then Step 8b rebase in order — do NOT end the turn on `/bump-version`'s success line, and do NOT write a summary, handoff, status recap, or "returning to parent" message. See `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Anti-halt continuation reminder.
+> **Continue after child returns.** When `/bump-version` returns: if `BUMP_TYPE=NONE`, write the sanitized postbump reasoning-input file with fallback text and invoke `implement-finalize.sh postbump` — do NOT halt, do NOT write a summary. If a bump was created, continue through sub-steps 2/3/3b, sanitize the reasoning file into `$IMPLEMENT_TMPDIR/anchor-sections-input/version-bump-reasoning-sanitized.md`, write `postbump-state.sh`, and invoke `implement-finalize.sh postbump` to complete the anchor fragment, Step 8a, and Step 8b in order. Do NOT end the turn on `/bump-version`'s success line, and do NOT write a summary, handoff, status recap, or "returning to parent" message. See `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Anti-halt continuation reminder.
 
-**Important** (applies only when `/bump-version` created a bump commit — NOT when `BUMP_TYPE=NONE`): at PR creation time there must be exactly ONE version bump commit as HEAD. Proceed immediately to Step 8a after `/bump-version` returns. No additional commits may be created between Step 8a and Step 9; Step 8b's rebase may rewrite the bump commit's parent (replaying the same commit on top of fresh main) but does NOT introduce new commits, so the single-bump-on-HEAD invariant is preserved. After PR creation, Steps 10 and 12's rebase handlers may repeatedly drop and recreate this bump commit as main advances (via the sub-procedure). Branch history between PR creation and merge may temporarily contain zero or multiple bump commits; the invariant is Load-Bearing Invariant #1 (terminal bump commit on HEAD based on latest `origin/main` at merge time), enforced strictly by Step 12 and best-effort by Step 10.
+**Important** (applies only when `/bump-version` created a bump commit — NOT when `BUMP_TYPE=NONE`): at PR creation time there must be exactly ONE version bump commit as HEAD. Proceed immediately to the `postbump` invocation after `/bump-version` returns and the post-check/sanitization blocks complete. No additional commits may be created between postbump Phase 2 and Step 9; postbump Phase 3 may rewrite the bump commit's parent (replaying the same commit on top of fresh main) but does NOT introduce new commits, so the single-bump-on-HEAD invariant is preserved. After PR creation, Steps 10 and 12's rebase handlers may repeatedly drop and recreate this bump commit as main advances (via the sub-procedure). Branch history between PR creation and merge may temporarily contain zero or multiple bump commits; the invariant is Load-Bearing Invariant #1 (terminal bump commit on HEAD based on latest `origin/main` at merge time), enforced strictly by Step 12 and best-effort by Step 10.
 
-### Anchor-section fragment — `version-bump-reasoning`
+### Postbump finalization — anchor, CHANGELOG, rebase, force-push
 
-Compose the `version-bump-reasoning` fragment from the contents of `$BUMP_REASONING_FILE` if it exists and is non-empty; otherwise use `"No version bump reasoning available (skill may have skipped via BUMP_TYPE=NONE, or /bump-version was not invoked)."`. Write to `$IMPLEMENT_TMPDIR/anchor-sections/version-bump-reasoning.md`. If `ISSUE_NUMBER` is set, assemble and upsert (see Step 0.5).
+Before invoking `postbump`, the orchestrator writes the sanitized reasoning input to `$IMPLEMENT_TMPDIR/anchor-sections-input/version-bump-reasoning-sanitized.md`. If `/bump-version` produced `REASONING_FILE=<path>`, read that file and apply the existing compose-time sanitization pipeline before writing the sanitized copy. On `BUMP_TYPE=NONE`, `HAS_BUMP=false`, and `forked_target=true` paths, write the appropriate fallback text directly to the sanitized-input path and reference that file as `BUMP_REASONING_FILE`.
 
-**Mid-loop refresh during rebase cycles**: `rebase-rebump-subprocedure.md` step 6 (Steps 10 / 12's rebase + re-bump path) refreshes the anchor's `version-bump-reasoning` section directly. It reads the session's tracking-issue sentinel via `${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-read.sh --sentinel`, rewrites this fragment when `/bump-version` produced a fresh reasoning file in that invocation (preserves the prior fragment otherwise), and calls `${CLAUDE_PLUGIN_ROOT}/scripts/refresh-anchor.sh` (the wrapper around `assemble-anchor.sh` + `upsert-anchor`). Umbrella #348 Phase 5 closed the earlier gap where sub-procedure step 6 refreshed a PR-body block that no longer existed in the slim PR body (Phase 3). Anchor refresh failure in that step is non-fatal (logged to `Warnings`); the next successful progressive upsert (this Step 8, or Step 11 post-execution) repairs any stale anchor state.
+Write `$IMPLEMENT_TMPDIR/postbump-state.sh` with the resolved values: `BRANCH_NAME`, `ISSUE_NUMBER`, `REPO`, `REPO_UNAVAILABLE`, `FORKED_TARGET`, `HAS_BUMP`, `BUMP_TYPE`, `NEW_VERSION`, `BUMP_REASONING_FILE`, `MANIFEST_PATH`, `TOOL_LABEL`, `ANCHOR_COMMENT_ID`, and the optional `EXPECTED_*` cleanup-binding values. Use the Write tool, not a shell heredoc, so state-file creation does not require extra Bash permissions. The state file is consumed by `${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.sh postbump`; see `${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.md` for the schema and stdout contract.
+
+If `MANIFEST_PATH` is empty, `CHANGELOG_PRESENT=true`, `HAS_BUMP=true`, and `BUMP_TYPE != NONE`, compose 1-3 Claude-fallback changelog bullets before invoking postbump. Write them to `$IMPLEMENT_TMPDIR/changelog-bullets.txt`, optionally as `Category<TAB>bullet`; bare bullets default to `Changed`. Set `CHANGELOG_BULLETS_FILE` to that path. On manifest-backed coder paths, omit `--changelog-bullets-file`; the script reads `summary_bullets_categorized` or `summary_bullets` from `MANIFEST_PATH`.
+
+```bash
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
+
+POSTBUMP_ARGS=(
+  "${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.sh" postbump
+  --state-file "$IMPLEMENT_TMPDIR/postbump-state.sh"
+  --implement-tmpdir "$IMPLEMENT_TMPDIR"
+)
+if [ -n "${CHANGELOG_BULLETS_FILE:-}" ]; then
+  POSTBUMP_ARGS+=(--changelog-bullets-file "$CHANGELOG_BULLETS_FILE")
+fi
+
+"${POSTBUMP_ARGS[@]}"
+```
+
+Parse the tail records and use the last `STATUS=` line. Branch:
+
+- `STATUS=ok` or `STATUS=skipped`: proceed to Step 9.
+- `STATUS=conflict` with `RESUME_PHASE=force-push-gate` and `CALLER_KIND=step8b_rebase`: **MANDATORY — READ ENTIRE FILE** before invoking the sub-procedure: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/rebase-rebump-subprocedure.md`. Invoke the Rebase + Re-bump Sub-procedure with `rebase_already_done=false`, `caller_kind=step8b_rebase`. On normal return, re-invoke `implement-finalize.sh postbump` with the same `--state-file` and `--implement-tmpdir` flags. There is no resume flag; the script reads `$IMPLEMENT_TMPDIR/.postbump-phase` automatically and skips to the force-push gate phase. The conflict envelope's `RESUME_PHASE=force-push-gate` line is informational only; the orchestrator does not need to forward it.
+- `STATUS=rebase-failed`, `STATUS=push-failed`, `STATUS=remote-check-failed`, `STATUS=changelog-failed`, `STATUS=branch-mismatch`, or `STATUS=postbump-state-corrupt`: set `STALL_TRACKING=true`, set `STALL_STEP=8b`, and skip to Step 18.
+
+`postbump` emits Step 8a and Step 8b token/timing marks and reports internally. The prompt-side Step 8 mark above remains prompt-side because it predates `/bump-version`.
 
 ```bash
 LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
@@ -1425,122 +1452,11 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 
 ## Step 8a — CHANGELOG Update
 
-```bash
-LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
-LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
-export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
-"${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 8a — changelog" || true
-"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 8a — changelog" || true
-# token-mark Step 8a — changelog
-# timing-mark Step 8a — changelog
-```
-
-Test for `CHANGELOG.md` at the project root via the scripted probe (do NOT eyeball — the probe's `CHANGELOG_PRESENT=` value is the authoritative source for the branch decision and for the breadcrumb tail):
-
-```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/check-changelog-present.sh
-```
-
-If `forked_target=true`: print `⏩ 8a: changelog — skipped (--forked dry-run) (<elapsed>)` and proceed to Step 8b. No bump commit exists to amend in fork mode.
-
-Parse `CHANGELOG_PRESENT=true|false`. If `CHANGELOG_PRESENT=false`, skip and proceed to Step 8b (print `⏩ 8a: changelog — skipped (CHANGELOG_PRESENT=false) (<elapsed>)` — echo the parsed value verbatim so a false skip is visible in the transcript). The freshness rebase at Step 8b still runs on this path so resumed Branch 1/2/3 runs are refreshed before PR creation. (Step 8's `HAS_BUMP=false` directive and the `BUMP_TYPE=NONE` directive both bypass Step 8a entirely and skip directly to Step 8b — there is no CHANGELOG amend without a bump commit to amend.)
-
-Otherwise: read `CHANGELOG.md` and `NEW_VERSION` (from `/bump-version` output in Step 8). Compose a brief changelog entry using the Summary bullets from the implementation. **Source of bullets**: when `$MANIFEST_PATH` is non-empty (`$TOOL_LABEL` path), read `summary_bullets` directly from the manifest (`jq -r '.summary_bullets[]' "$MANIFEST_PATH"`) — these are pre-sanitized by the Step 2 dispatcher and flow verbatim into both this CHANGELOG entry and Step 9a's PR body `## Summary`. On the Claude-fallback path, compose 1-3 bullets from the implementation as before. Today's date. Format:
-
-```markdown
-## [X.Y.Z] - YYYY-MM-DD
-
-### Changed
-
-- <bullet point 1>
-- <bullet point 2>
-```
-
-Use the Keep-a-Changelog header (`Added`, `Changed`, `Fixed`, `Removed`) matching the change nature. Multiple categories are fine if the PR spans them.
-
-Insert immediately after the file's header block (after `and this project adheres to [Semantic Versioning]`, before the first existing `## [` section). If an `## [Unreleased]` section exists, insert after it. Stage `CHANGELOG.md` and amend the bump commit:
-
-```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/git-amend-add.sh CHANGELOG.md
-```
-
-Keeps the bump commit as the single HEAD commit containing both the version bump and the changelog update.
-
-Print: `✅ 8a: changelog — updated for v<NEW_VERSION> (<elapsed>)`
-
-```bash
-LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
-LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
-export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
-"${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
-"${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
-# token-step-end Step 8a
-```
+Step 8a — CHANGELOG amend — is consolidated into `implement-finalize.sh postbump` Phase 2. See `${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.md` for the contract. The orchestrator's only Step-8a responsibility is composing Claude-fallback bullets when `MANIFEST_PATH` is empty, as described in the Step 8 invocation block above.
 
 ## Step 8b — Rebase onto latest main (before PR creation)
 
-```bash
-LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
-LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
-export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
-"${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 8b — rebase" || true
-"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 8b — rebase" || true
-# token-mark Step 8b — rebase
-# timing-mark Step 8b — rebase
-```
-
-Final freshness gate before Step 9. Unlike Step 7a.r's macro call, Step 8b does NOT use `--skip-if-pushed` — resumed Branch 1/2/3 runs (where the feature branch already exists on origin) MUST refresh here, otherwise the PR is created against a base captured before `/bump-version` + CHANGELOG amend ran. Step 12's CI+rebase+merge loop remains the last-chance enforcement at merge time; Step 8b narrows the freshness gap on the initial PR-creation push.
-
-Print: `🔃 8b: rebase`
-
-```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/rebase-push.sh --no-push
-```
-
-When `forked_target=true`, append `--base-remote upstream --base-ref main` to the command above so freshness compares against the upstream base (defaults preserve `origin/main`). Capture the exit code as `rc`. Branch:
-
-- **Exit 0** with stdout containing `SKIPPED_ALREADY_FRESH=true`: HEAD already at latest main. Silently continue. Proceed to the force-push gate below.
-- **Exit 0** otherwise (rebase actually moved HEAD): print `✅ 8b: rebase — rebased onto latest main (<elapsed>)`. Proceed to the force-push gate below.
-- **Exit 1** (rebase conflict — typically bump files against a concurrent main bump): if `forked_target=true`, do NOT invoke the Rebase + Re-bump Sub-procedure. Print `**⚠ Step 8b: rebase onto upstream/main failed (conflict under --forked). Resolve manually and rerun.**`, set `STALL_TRACKING=true`, and skip to Step 18. Otherwise, print `🔃 8b: rebase — conflict detected, invoking Rebase + Re-bump Sub-procedure (caller_kind=step8b_rebase) to drop local bump and re-rebase`. **MANDATORY — READ ENTIRE FILE** before invoking the sub-procedure: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/rebase-rebump-subprocedure.md`. Invoke the Rebase + Re-bump Sub-procedure with `rebase_already_done=false`, `caller_kind=step8b_rebase`. The typical concurrent-bump case auto-recovers because the sub-procedure's step 1 (`drop-bump-commit.sh`) removes the local bump before re-rebasing; with the local bump gone, the rebase against fresh main usually succeeds cleanly and step 4 produces a fresh `/bump-version` commit on top. On hard failure anywhere inside the sub-procedure (rebase still conflicts on non-bump files; `/bump-version` failure; degraded `STATUS`; `VERIFIED=false`), the sub-procedure's step8b family branches set `STALL_TRACKING=true` and skip to Step 18 — same recovery semantics as the original bail. On success, the sub-procedure's step 7 returns control to the force-push gate below; sub-procedure step 5 is intentionally skipped for `step8b_rebase` because the gate's `git ls-remote` trichotomy is the load-bearing fresh-branch path (see sub-procedure step 5 for the rationale). **Exception**: if `repo_unavailable=true`, do NOT invoke the sub-procedure — the sub-procedure's step 6 anchor refresh and downstream `gh`-using paths are not applicable; instead fall back to today's bail behavior (print `**⚠ Step 8b: rebase onto main failed (conflict, repo_unavailable=true so sub-procedure auto-recovery is skipped). Bailing to cleanup.**`, set `STALL_TRACKING=true`, skip to Step 18).
-- **Exit 3** (non-conflict rebase failure — fetch error, detached HEAD, etc.; `REBASE_ERROR=...` printed on stderr): print `**⚠ Step 8b: rebase failed (non-conflict): $REBASE_ERROR. Bailing to cleanup.**`. Set `STALL_TRACKING=true`, skip to Step 18. (Non-conflict failures are not addressable by `drop-bump-commit.sh` — the sub-procedure cannot recover from a fetch error or detached HEAD.)
-- **Other non-zero exit** (defensive — `rebase-push.sh`'s header documents only 1 and 3 in `--no-push` mode): print `**⚠ Step 8b: rebase failed unexpectedly (exit $rc). Bailing to cleanup.**`. Set `STALL_TRACKING=true`, skip to Step 18.
-
-### Force-push gate (only when remote refresh is needed)
-
-If `repo_unavailable=true`: skip the force-push branch entirely (no `git ls-remote` / `git-force-push.sh` calls — neither has a `gh` dependency, but the convention is to keep Step 8b's network surface minimal in `repo_unavailable=true` mode parallel to Step 0.5 / 10 / 12 / 18). Proceed to Step 9.
-
-Otherwise, detect whether the feature branch already exists on `origin` via the wrapper around `git ls-remote --exit-code --heads`:
-
-```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/check-remote-branch.sh --branch "$BRANCH_NAME"
-```
-
-Parse `STATE` (and `RC` for diagnostic logging). The script always exits 0; the trichotomy is in `STATE=present|absent|error` (see `scripts/check-remote-branch.md` for the full contract — `git ls-remote --exit-code` returns 0 / 2 / other for present / absent / transport-failure, and the wrapper preserves all three so transient GitHub failures are not silently degraded to a stale-remote path; see issue #818). Distinguish the three:
-
-- **`STATE=present`** (branch exists on origin): the local rebase may have rewritten history that origin still points at; force-push to align them:
-
-  ```bash
-  ${CLAUDE_PLUGIN_ROOT}/scripts/git-force-push.sh
-  ```
-
-  Parse `STATUS`:
-  - `STATUS=pushed` or `STATUS=noop_same_ref`: print `✅ 8b: rebase — force-pushed to origin (<elapsed>)`. Proceed to Step 9.
-  - `STATUS=diverged_retry_failed` (exit 1): print `**⚠ Step 8b: force-push failed after rebase (lease check refused). Bailing to cleanup.**`. Set `STALL_TRACKING=true`, skip to Step 18.
-
-- **`STATE=absent`** (branch positively confirmed absent on origin — the fresh-branch path): skip the force-push entirely; Step 9b's `create-pr.sh` will perform the initial push.
-
-- **`STATE=error`** (transport / auth / network failure — e.g., underlying `git ls-remote` exit 128): do NOT degrade to the fresh-branch path, because that would silently mask a real network problem and let `create-pr.sh`'s existing-PR fast-path swallow the subsequent non-fast-forward push failure. Print `**⚠ Step 8b: check-remote-branch failed (RC=$RC, ERROR=$ERROR; transport or auth error). Bailing to cleanup.**`. Set `STALL_TRACKING=true`, skip to Step 18.
-
-Detection is Git-based (not via `gh pr view`) so transient GitHub API failures do not silently degrade to a stale-remote path — see issue #818 for the failure-mode rationale.
-
-```bash
-LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
-LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
-export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
-"${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
-"${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
-# token-step-end Step 8b
-```
+Step 8b — rebase + force-push gate — is consolidated into `implement-finalize.sh postbump` Phases 3 and 4. Conflict handling is described in the Step 8 invocation block: `STATUS=conflict` triggers the Rebase + Re-bump Sub-procedure under `caller_kind=step8b_rebase`, then the orchestrator re-invokes `postbump` with the same `--state-file` and `--implement-tmpdir` flags; `$IMPLEMENT_TMPDIR/.postbump-phase` containing `force-push-gate` drives the phase-4 resume. See `${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.md` for the contract.
 
 ## Step 9 — Create PR
 
