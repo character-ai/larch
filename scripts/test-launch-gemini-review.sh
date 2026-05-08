@@ -379,6 +379,30 @@ for ZERO_VAL in 00 000; do
   assert_no_launcher_artifacts "reject-timeout-${ZERO_VAL}" "$TZ_OUTPUT"
 done
 
+# Issue #1480 Bug #2: defensive `--timing-task-kind` validation. Empty or
+# flag-like values must be rejected with exit 2 and a clear message.
+TK_EMPTY_OUTPUT="$TMPDIR/bad-empty-tk.txt"
+TK_EMPTY_ERR="$TMPDIR/bad-empty-tk.stderr"
+set +e
+"$REPO_ROOT/scripts/launch-gemini-review.sh" --output "$TK_EMPTY_OUTPUT" --timeout 5 --timing-task-kind "" --prompt "hi" >/dev/null 2>"$TK_EMPTY_ERR"
+TK_EMPTY_RC=$?
+set -e
+[[ "$TK_EMPTY_RC" -eq 2 ]] \
+  || fail "reject-timing-task-kind-empty: expected exit 2, got $TK_EMPTY_RC"
+grep -q 'non-empty, non-flag-like value' "$TK_EMPTY_ERR" \
+  || fail "reject-timing-task-kind-empty: expected non-empty-non-flag-like error message"
+
+TK_FLAGLIKE_OUTPUT="$TMPDIR/bad-flaglike-tk.txt"
+TK_FLAGLIKE_ERR="$TMPDIR/bad-flaglike-tk.stderr"
+set +e
+"$REPO_ROOT/scripts/launch-gemini-review.sh" --output "$TK_FLAGLIKE_OUTPUT" --timeout 5 --timing-task-kind --prompt "hi" >/dev/null 2>"$TK_FLAGLIKE_ERR"
+TK_FLAGLIKE_RC=$?
+set -e
+[[ "$TK_FLAGLIKE_RC" -eq 2 ]] \
+  || fail "reject-timing-task-kind-flaglike: expected exit 2, got $TK_FLAGLIKE_RC"
+grep -q 'non-empty, non-flag-like value' "$TK_FLAGLIKE_ERR" \
+  || fail "reject-timing-task-kind-flaglike: expected non-empty-non-flag-like error message"
+
 if [[ "$FAIL" -eq 1 ]]; then
   exit 1
 fi

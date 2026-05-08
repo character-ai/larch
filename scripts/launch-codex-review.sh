@@ -67,7 +67,7 @@ while [[ $# -gt 0 ]]; do
         --description-text) DESCRIPTION_TEXT="${2:?--description-text requires a value}"; shift 2 ;;
         --scope-files) SCOPE_FILES="${2:?--scope-files requires a value}"; shift 2 ;;
         --competition-notice) COMPETITION_NOTICE=true; shift ;;
-        --timing-task-kind) TIMING_TASK_KIND="${2:?--timing-task-kind requires a value}"; shift 2 ;;
+        --timing-task-kind) [[ -n "${2:-}" && "${2}" != --* ]] || { echo "launch-codex-review.sh: --timing-task-kind requires a non-empty, non-flag-like value" >&2; exit 2; }; TIMING_TASK_KIND="$2"; shift 2 ;;
         *) echo "launch-codex-review.sh: unknown flag: $1" >&2; exit 2 ;;
     esac
 done

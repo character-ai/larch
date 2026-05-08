@@ -568,7 +568,7 @@ while [[ $# -gt 0 ]]; do
         --output) OUTPUT="${2:?--output requires a value}"; shift 2 ;;
         --timeout) TIMEOUT="${2:?--timeout requires a value}"; shift 2 ;;
         --prompt) PROMPT="${2:?--prompt requires a value}"; shift 2 ;;
-        --timing-task-kind) TIMING_TASK_KIND="${2:?--timing-task-kind requires a value}"; shift 2 ;;
+        --timing-task-kind) [[ -n "${2:-}" && "${2}" != --* ]] || { echo "launch-gemini-review.sh: --timing-task-kind requires a non-empty, non-flag-like value" >&2; exit 2; }; TIMING_TASK_KIND="$2"; shift 2 ;;
         --agent-file|--mode|--description-text|--scope-files|--competition-notice)
             echo "launch-gemini-review.sh: specialist mode is not supported in v1" >&2
             exit 2 ;;

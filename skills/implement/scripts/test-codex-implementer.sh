@@ -468,6 +468,28 @@ else
     fail 12 "missing session tmpdir should exit 2 with the does-not-exist message, got $EXIT: $(cat "$T12_OUT")"
 fi
 
+# Test 13 (issue #1480 Bug #2): defensive `--timing-task-kind` validation.
+# Empty or flag-like values must be rejected with exit 2 and a clear message.
+# Pass `--timing-task-kind` first so the new validation fires before any
+# unrelated argv check; required flags below the validation are not reached.
+T13_OUT="$SCRATCH/t13-empty.out"
+EXIT=0
+"$LAUNCHER" --timing-task-kind "" >"$T13_OUT" 2>&1 || EXIT=$?
+if [[ "$EXIT" == "2" ]] && grep -Fq "non-empty, non-flag-like value" "$T13_OUT"; then
+    pass
+else
+    fail 13 "empty timing-task-kind should exit 2 with non-empty-non-flag-like message, got $EXIT: $(cat "$T13_OUT")"
+fi
+
+T13b_OUT="$SCRATCH/t13b-flaglike.out"
+EXIT=0
+"$LAUNCHER" --timing-task-kind --plan-file >"$T13b_OUT" 2>&1 || EXIT=$?
+if [[ "$EXIT" == "2" ]] && grep -Fq "non-empty, non-flag-like value" "$T13b_OUT"; then
+    pass
+else
+    fail 13b "flag-like timing-task-kind should exit 2 with non-empty-non-flag-like message, got $EXIT: $(cat "$T13b_OUT")"
+fi
+
 TOTAL=$((PASS_COUNT + FAIL_COUNT))
 if (( FAIL_COUNT == 0 )); then
     echo "PASS: test-codex-implementer.sh — $PASS_COUNT/$TOTAL assertions"

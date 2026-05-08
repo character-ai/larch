@@ -66,7 +66,7 @@ while [[ $# -gt 0 ]]; do
         --agent-prompt)     AGENT_PROMPT="${2:?--agent-prompt requires a value}"; shift 2 ;;
         --timeout)          TIMEOUT="${2:?--timeout requires a value}"; shift 2 ;;
         --answers-file)     ANSWERS_FILE="${2:?--answers-file requires a value}"; shift 2 ;;
-        --timing-task-kind) TIMING_TASK_KIND="${2:?--timing-task-kind requires a value}"; shift 2 ;;
+        --timing-task-kind) [[ -n "${2:-}" && "${2}" != --* ]] || { echo "launch-codex-implement.sh: --timing-task-kind requires a non-empty, non-flag-like value" >&2; exit 2; }; TIMING_TASK_KIND="$2"; shift 2 ;;
         *) echo "launch-codex-implement.sh: unknown flag: $1" >&2; exit 2 ;;
     esac
 done
