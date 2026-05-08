@@ -28,6 +28,9 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+RESOLVE_REPO="${SCRIPT_DIR}/../../../scripts/resolve-repo.sh"
+
 NUMBERS=""
 OUTPUT=""
 REPO=""
@@ -60,7 +63,7 @@ if ! [[ "$MAX_COMMENTS" =~ ^[0-9]+$ ]] || ! [[ "$MAX_BODY_CHARS" =~ ^[0-9]+$ ]];
 fi
 
 if [[ -z "$REPO" ]]; then
-    REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null) || REPO=""
+    REPO=$("$RESOLVE_REPO" 2>/dev/null) || REPO=""
 fi
 
 # Prepare output file.

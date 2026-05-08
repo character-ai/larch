@@ -406,11 +406,15 @@ rename_issue() {
     fi
     # Build gh args; pass --repo when available so the body+title fetch
     # targets the same issue scope as the rename call below (FINDING_F2).
+    if [ -z "$repo" ]; then
+        repo=$("$SCRIPT_DIR/resolve-repo.sh" 2>/dev/null) || repo=""
+    fi
     set +e
     if [ -n "$repo" ]; then
         out=$(gh issue view "$issue" --repo "$repo" --json title,body --jq '"TITLE=\(.title // "")\n" + (.body // "")')
     else
         out=$(gh issue view "$issue" --json title,body --jq '"TITLE=\(.title // "")\n" + (.body // "")')
+        warn_line "Step 18: round-trip detection: gh issue view executed without --repo (resolve-repo.sh returned empty)"
     fi
     rc=$?
     set -e

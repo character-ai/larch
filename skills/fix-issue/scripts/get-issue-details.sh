@@ -25,6 +25,9 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+RESOLVE_REPO="${SCRIPT_DIR}/../../../scripts/resolve-repo.sh"
+
 ISSUE_NUMBER=""
 OUTPUT_PATH=""
 
@@ -42,20 +45,20 @@ if [[ -z "$ISSUE_NUMBER" ]] || [[ -z "$OUTPUT_PATH" ]]; then
 fi
 
 # Resolve repo identity
-REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null) || {
+REPO=$("$RESOLVE_REPO" 2>/dev/null) || {
     echo "ERROR=Failed to resolve repository name" >&2
     exit 1
 }
 
 # Fetch issue metadata
-ISSUE_JSON=$(gh issue view "$ISSUE_NUMBER" --json title,body,labels,createdAt 2>/dev/null) || {
+ISSUE_JSON=$(gh issue view "$ISSUE_NUMBER" --repo "$REPO" --json title,body,labels,createdAt 2>/dev/null) || {
     echo "ERROR=Failed to fetch issue #$ISSUE_NUMBER" >&2
     exit 1
 }
 
 TITLE=$(echo "$ISSUE_JSON" | jq -r '.title // "Untitled"')
 BODY=$(echo "$ISSUE_JSON" | jq -r '.body // "No description provided."')
-LABELS=$(echo "$ISSUE_JSON" | jq -r '[.labels[].name] | if length == 0 then "none" else join(", ") end')
+LABELS=$(echo "$ISSUE_JSON" | jq -r '[ (.labels // [])[] | .name ] | if length == 0 then "none" else join(", ") end')
 CREATED=$(echo "$ISSUE_JSON" | jq -r '.createdAt // "unknown"')
 
 # Fetch all comments (paginated)

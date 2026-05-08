@@ -57,6 +57,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TRACKING_WRITE="${LARCH_TEST_TRACKING_WRITE_PATH:-${SCRIPT_DIR}/../../../scripts/tracking-issue-write.sh}"
 FALSE_POSITIVE_KEYWORDS_LIB="${SCRIPT_DIR}/../../../scripts/false-positive-keywords.sh"
+RESOLVE_REPO="${SCRIPT_DIR}/../../../scripts/resolve-repo.sh"
 
 # Propagation pause (seconds) between posting a lock comment and re-fetching
 # the comment list to verify no duplicate-runner race. Default 1s gives
@@ -74,10 +75,11 @@ esac
 # ---------------------------------------------------------------------------
 # Resolve repo identity (shared across subcommands)
 # ---------------------------------------------------------------------------
-REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null) || {
+REPO=$("$RESOLVE_REPO" 2>/dev/null) || {
     echo "ERROR=Failed to resolve repository name" >&2
     exit 1
 }
+GH_ISSUE_REPO_ARGS=(--repo "$REPO")
 
 # ---------------------------------------------------------------------------
 # Subcommand: comment
@@ -184,7 +186,7 @@ cmd_comment() {
 
         if [[ -z "$snapshot_ts" ]]; then
             # No-comment-safe fallback (FINDING_4): use the issue's own createdAt.
-            snapshot_ts=$(gh issue view "$issue" --json createdAt --jq '.createdAt // empty' 2>/dev/null) || {
+            snapshot_ts=$(gh issue view "$issue" "${GH_ISSUE_REPO_ARGS[@]}" --json createdAt --jq '.createdAt // empty' 2>/dev/null) || {
                 echo "LOCK_ACQUIRED=false"
                 echo "ERROR=Failed to read issue #$issue createdAt for snapshot anchor"
                 exit 1
@@ -198,7 +200,7 @@ cmd_comment() {
     fi
 
     # Post the comment
-    gh issue comment "$issue" --body "$body" >/dev/null 2>&1 || {
+    gh issue comment "$issue" "${GH_ISSUE_REPO_ARGS[@]}" --body "$body" >/dev/null 2>&1 || {
         echo "LOCK_ACQUIRED=false"
         echo "ERROR=Failed to post comment on issue #$issue"
         exit 1
@@ -344,7 +346,7 @@ cmd_close() {
 
     # Post comment first if provided
     if [[ -n "$comment" ]]; then
-        gh issue comment "$issue" --body "$comment" >/dev/null 2>&1 || {
+        gh issue comment "$issue" "${GH_ISSUE_REPO_ARGS[@]}" --body "$comment" >/dev/null 2>&1 || {
             echo "CLOSED=false"
             echo "ERROR=Failed to post closing comment on issue #$issue"
             exit 1
@@ -363,7 +365,7 @@ cmd_close() {
     # Exact match on "CLOSED": /fix-issue only ever passes issue numbers
     # (never PR numbers), so MERGED and other PR-state values never appear here.
     local current_state probe_ok=1
-    current_state=$(gh issue view "$issue" --json state --jq '.state' 2>/dev/null) || probe_ok=0
+    current_state=$(gh issue view "$issue" "${GH_ISSUE_REPO_ARGS[@]}" --json state --jq '.state' 2>/dev/null) || probe_ok=0
 
     if (( probe_ok )) && [ "$current_state" = "CLOSED" ]; then
         echo "INFO: issue #$issue already closed; backfilling DONE metadata only" >&2
@@ -371,7 +373,7 @@ cmd_close() {
         if (( ! probe_ok )); then
             echo "WARNING: failed to probe state for issue #$issue; attempting close anyway" >&2
         fi
-        gh issue close "$issue" >/dev/null 2>&1 || {
+        gh issue close "$issue" "${GH_ISSUE_REPO_ARGS[@]}" >/dev/null 2>&1 || {
             echo "CLOSED=false"
             echo "ERROR=Failed to close issue #$issue"
             exit 1
@@ -476,7 +478,7 @@ cmd_update_body() {
 
     # Read current body
     local current_body
-    current_body=$(gh issue view "$issue" --json body --jq '.body // ""' 2>/dev/null) || {
+    current_body=$(gh issue view "$issue" "${GH_ISSUE_REPO_ARGS[@]}" --json body --jq '.body // ""' 2>/dev/null) || {
         echo "UPDATED=false"
         echo "ERROR=Failed to read issue #$issue body"
         return 1
@@ -494,7 +496,7 @@ cmd_update_body() {
 
 **PR**: ${pr_url}"
 
-    gh issue edit "$issue" --body "$new_body" >/dev/null 2>&1 || {
+    gh issue edit "$issue" "${GH_ISSUE_REPO_ARGS[@]}" --body "$new_body" >/dev/null 2>&1 || {
         echo "UPDATED=false"
         echo "ERROR=Failed to update issue #$issue body"
         return 1

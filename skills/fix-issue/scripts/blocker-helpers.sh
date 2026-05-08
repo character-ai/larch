@@ -95,7 +95,7 @@ prose_open_blockers() {
     # Fetch the issue body and all comment bodies. Failures at either fetch
     # degrade to empty — the prose path then contributes no blockers.
     local body comments_array
-    body=$(gh issue view "$num" --json body --jq '.body // ""' 2>/dev/null) || body=""
+    body=$(gh issue view "$num" --repo "$REPO" --json body --jq '.body // ""' 2>/dev/null) || body=""
     comments_array=$(gh api --paginate --slurp "repos/${REPO}/issues/${num}/comments" 2>/dev/null \
         | jq 'add // []' 2>/dev/null) || comments_array="[]"
 
@@ -137,7 +137,7 @@ prose_open_blockers() {
     while IFS= read -r ref; do
         [[ -z "$ref" ]] && continue
         local state
-        state=$(gh issue view "$ref" --json state --jq '.state' 2>/dev/null) || continue
+        state=$(gh issue view "$ref" --repo "$REPO" --json state --jq '.state' 2>/dev/null) || continue
         if [[ "$state" == "OPEN" ]]; then
             open_list="$open_list $ref"
         fi

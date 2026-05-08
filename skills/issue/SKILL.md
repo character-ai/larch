@@ -453,6 +453,7 @@ For `DUPLICATE` outcomes (both `DUPLICATE_OF=<N>` and `DUPLICATE_OF_ITEM=<j>` br
 - `${CLAUDE_PLUGIN_ROOT}/skills/issue/scripts/add-blocked-by.sh` — applies a single dependency POST with retry/idempotent semantics. Sibling contract: `add-blocked-by.md`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/issue/scripts/cleanup-failed-issue.sh` — best-effort orphan close on dep-wiring exhaustion. Sibling contract: `cleanup-failed-issue.md`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/issue/scripts/create-one.sh` — extended in this issue to capture `ISSUE_ID=<numeric-id>` from a single `gh issue create --json` round-trip (with fallback to `gh issue create` + `gh api .../issues/N --jq .id` for older gh versions). Sibling contract: `create-one.md`.
+- `${CLAUDE_PLUGIN_ROOT}/skills/issue/scripts/fetch-issue-details.sh` — fetches body/comment details for Phase 2 candidate reasoning. Sibling contract: `fetch-issue-details.md`.
 - Regression coverage: `${CLAUDE_PLUGIN_ROOT}/skills/issue/scripts/test-add-blocked-by.sh` (sibling `test-add-blocked-by.md`), wired into `make lint` via the `test-add-blocked-by` Makefile target.
 
 ## Step 7 — Emit Aggregate Counters and Final Output

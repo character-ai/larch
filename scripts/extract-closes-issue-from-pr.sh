@@ -9,7 +9,20 @@
 # Exit code: always 0 (the empty case is normal, not an error).
 set -euo pipefail
 
-gh pr view --json body --jq '.body' 2>/dev/null \
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REPO=$("$SCRIPT_DIR/resolve-repo.sh" 2>/dev/null) || REPO=""
+
+# Fail-closed on resolver failure: the contract here is "empty stdout means
+# no PR / no Closes line". Calling `gh pr view` without --repo could silently
+# match a different default repo's PR and emit its Closes #N (silent mis-
+# routing, exactly what threading --repo is supposed to prevent). Exit 0
+# with empty stdout — callers (Step 0.5 Branch 3 in /implement) treat that
+# as "no PR found" and fall through to Branch 4.
+if [[ -z "$REPO" ]]; then
+  exit 0
+fi
+
+gh pr view --repo "$REPO" --json body --jq '.body' 2>/dev/null \
   | grep -oE 'Closes #[0-9]+' \
   | head -1 \
   | grep -oE '[0-9]+' \

@@ -24,6 +24,8 @@
 
 set -uo pipefail
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
 ISSUE=""
 REPO=""
 
@@ -42,6 +44,10 @@ if [ -z "$ISSUE" ]; then
     echo "FAILED=true"
     echo "ERROR=--issue is required"
     exit 1
+fi
+
+if [ -z "$REPO" ]; then
+    REPO=$("$SCRIPT_DIR/resolve-repo.sh" 2>/dev/null) || REPO=""
 fi
 
 # shellcheck disable=SC2054  # 'state,url' is a single --json value, not two array elements

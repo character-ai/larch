@@ -91,21 +91,22 @@ MARKER='<!-- larch:fix-issue:umbrella-finalized -->'
 CLOSING_COMMENT_BODY='All tracked issues are closed. Marking umbrella as DONE and closing.'
 
 # ---------------------------------------------------------------------------
-# Resolve repo identity (used for comment-marker probe).
+# Resolve helper script paths.
 # ---------------------------------------------------------------------------
-REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null) || {
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LIFECYCLE_SCRIPT="${SCRIPT_DIR}/issue-lifecycle.sh"
+RENAME_SCRIPT="${SCRIPT_DIR}/../../../scripts/tracking-issue-write.sh"
+ROUND_TRIP_DETECT_SCRIPT="${SCRIPT_DIR}/../../../scripts/round-trip-detect.sh"
+RESOLVE_REPO="${SCRIPT_DIR}/../../../scripts/resolve-repo.sh"
+
+# ---------------------------------------------------------------------------
+# Resolve repo identity (used for gh issue scope and comment-marker probe).
+# ---------------------------------------------------------------------------
+REPO=$("$RESOLVE_REPO" 2>/dev/null) || {
     echo "FINALIZED=false"
     echo "ERROR=Failed to resolve repository name"
     exit 1
 }
-
-# ---------------------------------------------------------------------------
-# Resolve helper script paths.
-# ---------------------------------------------------------------------------
-SCRIPT_DIR="$(dirname "${BASH_SOURCE[0]}")"
-LIFECYCLE_SCRIPT="${SCRIPT_DIR}/issue-lifecycle.sh"
-RENAME_SCRIPT="${SCRIPT_DIR}/../../../scripts/tracking-issue-write.sh"
-ROUND_TRIP_DETECT_SCRIPT="${SCRIPT_DIR}/../../../scripts/round-trip-detect.sh"
 
 # ---------------------------------------------------------------------------
 # Subcommand: finalize
@@ -127,7 +128,7 @@ cmd_finalize() {
     # ---- Idempotency guard ----
     local cur_state cur_title
     local view_json
-    view_json=$(gh issue view "$issue" --json state,title,body --jq '{state,title,body}' 2>/dev/null) || {
+    view_json=$(gh issue view "$issue" --repo "$REPO" --json state,title,body --jq '{state,title,body}' 2>/dev/null) || {
         echo "FINALIZED=false"
         echo "ERROR=Failed to fetch umbrella #$issue state"
         exit 1

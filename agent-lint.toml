@@ -1033,6 +1033,12 @@ exclude = [
   # target) and the sibling contract scripts/test-create-pr.md.
   "scripts/test-create-pr.sh",
   "scripts/test-create-pr.md",
+  # scripts/test-resolve-repo.sh is the offline PATH-stub regression harness
+  # for scripts/resolve-repo.sh. Referenced only from Makefile
+  # (test-resolve-repo target) and the sibling contract
+  # scripts/test-resolve-repo.md.
+  "scripts/test-resolve-repo.sh",
+  "scripts/test-resolve-repo.md",
   # scripts/test-gh-pr-body-update.sh is the offline PATH-stub regression
   # harness asserting --repo threading into gh pr edit/view in
   # scripts/gh-pr-body-update.sh. Referenced only from Makefile
