@@ -238,6 +238,9 @@ set -euo pipefail
 : "${STUB_ARGV_FILE:?}"
 : "${STUB_PROMPT_FILE:?}"
 : "${STUB_MANIFEST_PATH:?}"
+if [[ -n "${STUB_TOKEN_SESSION_FILE:-}" ]]; then
+    printf '%s\n' "${LARCH_TOKEN_SESSION_ID:-}" > "$STUB_TOKEN_SESSION_FILE"
+fi
 prompt_next=false
 for arg in "$@"; do
     printf '%s\n' "$arg" >> "$STUB_ARGV_FILE"
@@ -266,12 +269,20 @@ MANIFEST="$SCRATCH/manifest.json"
 QA_PENDING="$SCRATCH/qa-pending.json"
 ARGV_FILE="$SCRATCH/gemini-argv.txt"
 PROMPT_FILE="$SCRATCH/gemini-prompt.txt"
+TOKEN_SESSION_FILE="$SCRATCH/gemini-token-session.txt"
+IMPLEMENT_TMPDIR_FIXTURE="$SCRATCH/implement-tmpdir"
+mkdir -p "$IMPLEMENT_TMPDIR_FIXTURE"
+printf 'mock-gemini-session\n' > "$IMPLEMENT_TMPDIR_FIXTURE/session-id"
+printf 'SOURCE_FILE=/tmp/mock.jsonl\n' > "$IMPLEMENT_TMPDIR_FIXTURE/claude-source.env"
 
 OUT=$(cd "$REPO_ROOT" && \
     PATH="$STUB_BIN:$PATH" \
     STUB_ARGV_FILE="$ARGV_FILE" \
     STUB_PROMPT_FILE="$PROMPT_FILE" \
     STUB_MANIFEST_PATH="$MANIFEST" \
+    STUB_TOKEN_SESSION_FILE="$TOKEN_SESSION_FILE" \
+    IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR_FIXTURE" \
+    LARCH_TOKEN_SESSION_ID="stale-gemini-session" \
     LARCH_GEMINI_MODEL="stub-gemini-model" \
     "$LAUNCHER" \
         --transcript-path "$TRANSCRIPT" \
@@ -288,6 +299,12 @@ if [[ "$OUT" == "$EXPECTED" ]]; then
     pass
 else
     fail 4 "launcher stdout contract mismatch; got: $OUT"
+fi
+
+if [[ "$(cat "$TOKEN_SESSION_FILE")" == "mock-gemini-session" ]]; then
+    pass
+else
+    fail 4a "launcher did not overwrite stale LARCH_TOKEN_SESSION_ID from IMPLEMENT_TMPDIR/session-id"
 fi
 
 if [[ -s "$TRANSCRIPT" ]] && grep -Fq 'stub gemini stdout' "$TRANSCRIPT"; then

@@ -1070,6 +1070,24 @@ if [[ "$token_mark_count" != "$timing_mark_count" ]]; then
   fail "(28a) /implement token/timing mark count mismatch: token=$token_mark_count timing=$timing_mark_count"
 fi
 
+token_rehydrate_gaps=$(awk '
+  /^```bash$/ { in_block=1; block=""; start=NR; next }
+  /^```$/ && in_block {
+    if (block ~ /token-(ledger|report)\.sh / &&
+        block !~ /Step 0 — preflight/ &&
+        block !~ /read-session-env-key\.sh" --file "\$IMPLEMENT_TMPDIR\/session-env\.sh" --key LARCH_TOKEN_SESSION_ID/) {
+      print start
+    }
+    in_block=0
+    block=""
+    next
+  }
+  in_block { block = block $0 "\n" }
+' "$SKILL_MD")
+if [[ -n "$token_rehydrate_gaps" ]]; then
+  fail "(28a2) /implement token-ledger/token-report Bash blocks missing LARCH_TOKEN_SESSION_ID rehydrate prefix at code-fence starts: $token_rehydrate_gaps"
+fi
+
 grep -Fq '<!-- section:timing-report -->' "$REFS_DIR/anchor-comment-template.md" \
   || fail "(28b) anchor-comment-template.md missing timing-report open marker"
 grep -Fq '<!-- section-end:timing-report -->' "$REFS_DIR/anchor-comment-template.md" \

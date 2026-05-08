@@ -72,6 +72,9 @@ if [[ -n "\${GEMINI_PROMPT_LOG:-}" ]]; then
     _prev="\$_arg"
   done
 fi
+if [[ -n "\${GEMINI_TOKEN_SESSION_FILE:-}" ]]; then
+  printf '%s\n' "\${LARCH_TOKEN_SESSION_ID:-}" > "\$GEMINI_TOKEN_SESSION_FILE"
+fi
 case "\${GEMINI_STUB_MODE:-ok}" in
   ok) printf '{"response":"Plain review text"}\n' ;;
   error) printf '{"error":"auth failed"}\n' ;;
@@ -86,7 +89,15 @@ chmod +x "$STUB_BIN/gemini"
 
 OUTPUT="$TMPDIR/gemini-review.txt"
 PROMPT_LOG="$TMPDIR/gemini-prompt.log"
+TOKEN_SESSION_FILE="$TMPDIR/gemini-token-session.txt"
+IMPLEMENT_TMPDIR_FIXTURE="$TMPDIR/implement-tmpdir"
+mkdir -p "$IMPLEMENT_TMPDIR_FIXTURE"
+printf 'mock-gemini-review-session\n' > "$IMPLEMENT_TMPDIR_FIXTURE/session-id"
+printf 'SOURCE_FILE=/tmp/mock.jsonl\n' > "$IMPLEMENT_TMPDIR_FIXTURE/claude-source.env"
 PATH="$STUB_BIN:$PATH" GEMINI_PROMPT_LOG="$PROMPT_LOG" \
+  GEMINI_TOKEN_SESSION_FILE="$TOKEN_SESSION_FILE" \
+  IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR_FIXTURE" \
+  LARCH_TOKEN_SESSION_ID="stale-gemini-review-session" \
   "$REPO_ROOT/scripts/launch-gemini-review.sh" --output "$OUTPUT" --timeout 1800 --prompt "test"
 
 [[ "$(cat "$OUTPUT")" == "Plain review text" ]] \
@@ -95,6 +106,8 @@ grep -q '^HARD CONSTRAINTS — your role is read-only review\.' "$PROMPT_LOG" \
   || fail "Expected hardening preamble at start of Gemini prompt"
 [[ "$(tail -n 1 "$PROMPT_LOG")" == "test" ]] \
   || fail "Expected original prompt after hardening preamble"
+[[ "$(cat "$TOKEN_SESSION_FILE")" == "mock-gemini-review-session" ]] \
+  || fail "Expected Gemini review launcher to rehydrate token session id"
 grep -q '^TIMEOUT=600$' "${OUTPUT}.raw.meta" \
   || fail "Expected run-external-agent timeout clamp to 600"
 grep -q '^CMD_JSON=' "${OUTPUT}.meta" \

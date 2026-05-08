@@ -597,6 +597,15 @@ fi
 # otherwise become 385, silently bypassing the clamp; `08`/`09` would abort
 # under `set -e` with "value too great for base".
 TIMEOUT=$((10#$TIMEOUT))
+
+if [[ -n "${IMPLEMENT_TMPDIR:-}" && -s "${IMPLEMENT_TMPDIR}/session-id" ]]; then
+    file_id=$(tr -d '\r\n' < "${IMPLEMENT_TMPDIR}/session-id" 2>/dev/null || true)
+    if [[ -n "$file_id" ]]; then export LARCH_TOKEN_SESSION_ID="$file_id"; fi
+fi
+if [[ -n "${IMPLEMENT_TMPDIR:-}" && -s "${IMPLEMENT_TMPDIR}/claude-source.env" ]]; then
+    export LARCH_CLAUDE_SOURCE_FILE="${IMPLEMENT_TMPDIR}/claude-source.env"
+fi
+
 : "${TIMING_TASK_KIND:=gemini-review}"
 TIMING_START_S=$(date +%s)
 trap '_emit_timing_record $?' EXIT

@@ -9,6 +9,7 @@ POST_HOOK="$REPO_ROOT/skills/implement/scripts/hook-post-design.sh"
 STOP_HOOK="$REPO_ROOT/skills/implement/scripts/hook-stop-fail-close.sh"
 READER="$REPO_ROOT/skills/design/scripts/read-design-manifest.sh"
 BRANCH_HELPER="$REPO_ROOT/scripts/git-current-branch.sh"
+WRITE_SESSION_ENV="$REPO_ROOT/scripts/write-session-env.sh"
 
 fail() { echo "FAIL: $1" >&2; exit 1; }
 
@@ -84,6 +85,35 @@ assert_empty() {
     [[ -z "$output" ]] || fail "$label"
 }
 
+# write-session-env accepts and omits token telemetry flags as expected.
+SESSION_WRITER_OUT="$TMPROOT/session-writer.env"
+"$WRITE_SESSION_ENV" \
+    --output "$SESSION_WRITER_OUT" \
+    --slack-ok true \
+    --repo owner/repo \
+    --repo-unavailable false \
+    --token-session-id token-session-1 \
+    --claude-source-file "$TMPROOT/claude-source.env"
+grep -q '^LARCH_TOKEN_SESSION_ID=token-session-1$' "$SESSION_WRITER_OUT" || fail "writer did not emit accepted LARCH_TOKEN_SESSION_ID"
+grep -q "^LARCH_CLAUDE_SOURCE_FILE=$TMPROOT/claude-source.env$" "$SESSION_WRITER_OUT" || fail "writer did not emit accepted LARCH_CLAUDE_SOURCE_FILE"
+SESSION_WRITER_MIN="$TMPROOT/session-writer-min.env"
+"$WRITE_SESSION_ENV" \
+    --output "$SESSION_WRITER_MIN" \
+    --slack-ok true \
+    --repo owner/repo \
+    --repo-unavailable false
+grep -q '^LARCH_TOKEN_SESSION_ID=' "$SESSION_WRITER_MIN" && fail "writer emitted absent LARCH_TOKEN_SESSION_ID"
+grep -q '^LARCH_CLAUDE_SOURCE_FILE=' "$SESSION_WRITER_MIN" && fail "writer emitted absent LARCH_CLAUDE_SOURCE_FILE"
+if "$WRITE_SESSION_ENV" --output /dev/null --slack-ok true --repo owner/repo --repo-unavailable false --token-session-id $'bad\nid' 2>/dev/null; then
+    fail "writer accepted newline in --token-session-id"
+fi
+if "$WRITE_SESSION_ENV" --output /dev/null --slack-ok true --repo owner/repo --repo-unavailable false --token-session-id 'bad=id' 2>/dev/null; then
+    fail "writer accepted equals in --token-session-id"
+fi
+if "$WRITE_SESSION_ENV" --output /dev/null --slack-ok true --repo owner/repo --repo-unavailable false --claude-source-file $'bad\001path' 2>/dev/null; then
+    fail "writer accepted control character in --claude-source-file"
+fi
+
 # Success path: reader OK, branch captured, wrapper OK, imperative final line.
 TMP1="$TMPROOT/success"
 GIT1="$TMPROOT/git-success"
@@ -156,6 +186,8 @@ CODEX_HEALTHY=true
 CURSOR_HEALTHY=true
 GEMINI_HEALTHY=true
 LARCH_TIMING_LEDGER=/tmp/larch-post-design-boundary-test/timing-ledger.tsv
+LARCH_TOKEN_SESSION_ID=token-session-4
+LARCH_CLAUDE_SOURCE_FILE=/tmp/larch-post-design-boundary-test/claude-source.env
 EOF_SESSION
 cat > "$SESSION4.health" <<'EOF_HEALTH'
 CODEX_HEALTHY=false
@@ -172,6 +204,8 @@ grep -q '^CODEX_HEALTHY=false$' "$SESSION4" || fail "health rewrite did not degr
 grep -q '^CURSOR_HEALTHY=true$' "$SESSION4" || fail "health rewrite did not preserve CURSOR_HEALTHY"
 grep -q '^GEMINI_HEALTHY=true$' "$SESSION4" || fail "health rewrite did not preserve GEMINI_HEALTHY"
 grep -q '^LARCH_TIMING_LEDGER=/tmp/larch-post-design-boundary-test/timing-ledger.tsv$' "$SESSION4" || fail "health rewrite did not preserve LARCH_TIMING_LEDGER"
+grep -q '^LARCH_TOKEN_SESSION_ID=token-session-4$' "$SESSION4" || fail "health rewrite did not preserve LARCH_TOKEN_SESSION_ID"
+grep -q '^LARCH_CLAUDE_SOURCE_FILE=/tmp/larch-post-design-boundary-test/claude-source.env$' "$SESSION4" || fail "health rewrite did not preserve LARCH_CLAUDE_SOURCE_FILE"
 
 # Missing sidecar is a no-op and emits no warning.
 TMP5="$TMPROOT/health-absent"

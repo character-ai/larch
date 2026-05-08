@@ -89,7 +89,17 @@ Only include `--caller-env "$SESSION_ENV_PATH"` and `--write-health "${SESSION_E
 
 If the script exits non-zero, print the error and abort.
 
-Parse the output for `SESSION_TMPDIR`, `CODEX_AVAILABLE`, `CURSOR_AVAILABLE`, `GEMINI_AVAILABLE`, `CODEX_HEALTHY`, `CURSOR_HEALTHY`, `GEMINI_HEALTHY`. Set `REVIEW_TMPDIR` = `SESSION_TMPDIR`. Substitute the actual path in every command below.
+Parse the output for `SESSION_TMPDIR`, `CODEX_AVAILABLE`, `CURSOR_AVAILABLE`, `GEMINI_AVAILABLE`, `CODEX_HEALTHY`, `CURSOR_HEALTHY`, `GEMINI_HEALTHY`, `LARCH_TOKEN_SESSION_ID`, and `LARCH_CLAUDE_SOURCE_FILE`. Set `REVIEW_TMPDIR` = `SESSION_TMPDIR`. Substitute the actual path in every command below.
+
+If `SESSION_ENV_PATH` is non-empty, rehydrate token context before launching reviewers. Empty values are valid for standalone `/review`; do not fail when either key is absent:
+
+```bash
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$SESSION_ENV_PATH" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$SESSION_ENV_PATH" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
+```
+
+Every Bash block that invokes a review launcher MUST have these two variables in its environment. The launchers tolerate empty values and fall back to legacy token-ledger resolution when `/review` is standalone.
 
 Set mental flags `codex_available` and `cursor_available` based on the output:
 - If `CODEX_AVAILABLE=false`: `codex_available=false`. Print: `**⚠ Codex not available (binary not found). Proceeding without Codex reviewer.**`

@@ -8,6 +8,7 @@
 - No additional stdout beyond what `run-external-agent.sh` produces
 - Runs `run-external-agent.sh` without `exec` so the launcher can perform a best-effort post-call token scrape, then exits with `run-external-agent.sh`'s exit code
 - Redirects wrapper stderr to `${OUTPUT}.sidecar` when possible and silently scrapes the last `tokens used` block into `token-ledger.sh` as `codex_review`; if the sidecar cannot be opened, stderr falls back to `/dev/null`
+- Before token-ledger scraping or spawning Codex, the wrapper rehydrates token context from `IMPLEMENT_TMPDIR` when present: `$IMPLEMENT_TMPDIR/session-id` overwrites any stale `LARCH_TOKEN_SESSION_ID`, and `$IMPLEMENT_TMPDIR/claude-source.env` becomes `LARCH_CLAUDE_SOURCE_FILE`.
 - Captures `TIMING_START_S` after argv validation and emits one best-effort `timing-ledger.sh record-vendor-task` row on EXIT. `--timing-task-kind <kind>` defaults to `codex-review`; timing failures are silent and never affect stdout or exit code.
 - Uses `--output-last-message` for Codex output (no `--capture-stdout`)
 - Grants Codex write access to the canonical parent directory of `--output` via `--add-dir "$CANON_OUTPUT_DIR"` immediately after `-C "$PWD"`, matching the implementer-lane sandbox posture.
