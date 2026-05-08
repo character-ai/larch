@@ -394,6 +394,14 @@ step_9a1_oos_procedure=$(awk '
 
 [[ -n "$step_9a1_oos_procedure" ]] \
   || fail "(9d) could not extract Step 9a.1 OOS pipeline procedure section from anchor-comment-template.md"
+# Sentinel: catch silent slice truncation when a future PR inserts a new
+# "## " heading inside Step 9a.1. Without this guard the awk slice would
+# shrink and the (9d)-(9h) literal pins below would fail in opaque ways.
+# The current section is ~13KB; 4000 bytes is well above any plausible
+# truncation slice and well below normal evolution.
+extracted_bytes=$(printf '%s' "$step_9a1_oos_procedure" | wc -c | tr -d ' ')
+(( extracted_bytes >= 4000 )) \
+  || fail "(9d) extracted slice suspiciously short (${extracted_bytes} bytes) — has a new ## heading been inserted inside Step 9a.1 of anchor-comment-template.md?"
 printf '%s\n' "$step_9a1_oos_procedure" | grep -Fq -- '--title-prefix "[OOS]"' \
   || fail "(9d) Step 9a.1 OOS pipeline procedure must require '/issue --title-prefix \"[OOS]\"'"
 if printf '%s\n' "$step_9a1_oos_procedure" | grep -Fq -- '--label'; then
