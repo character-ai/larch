@@ -160,6 +160,7 @@ if GEMINI_MODEL=$(resolve_gemini_model 2> "$GEMINI_MODEL_ERR"); then
     rm -f "$GEMINI_MODEL_ERR"
 else
     MODEL_RC=$?
+    : > "$SIDECAR_LOG"
     cat "$GEMINI_MODEL_ERR" >> "$SIDECAR_LOG" 2>/dev/null || true
     rm -f "$GEMINI_MODEL_ERR"
     emit_timing_record "$MODEL_RC"

@@ -205,6 +205,11 @@ PRESEEDED_QA="$SCRATCH/model-preseed-qa.json"
 PRESEEDED_STDOUT="$SCRATCH/model-preseed-stdout.txt"
 printf '{"status":"complete"}\n' > "$PRESEEDED_MANIFEST"
 printf '{"qa":"pending"}\n' > "$PRESEEDED_QA"
+# Sidecar-truncation regression (parity with codex/cursor model-preflight test):
+# /review FINDING_1 verified resolve_gemini_model failure path now truncates
+# SIDECAR_LOG before appending diagnostics so stale chatter from prior runs
+# does not mix into preflight output.
+printf 'STALE-SENTINEL-1514\n' > "$PRESEEDED_SIDECAR"
 EXIT=0
 (
     cd "$REPO_ROOT"
@@ -223,10 +228,11 @@ if [[ "$EXIT" == "0" ]] \
    && grep -Fxq 'MANIFEST_WRITTEN=false' "$PRESEEDED_STDOUT" \
    && grep -Fxq 'QA_PENDING_WRITTEN=false' "$PRESEEDED_STDOUT" \
    && ! grep -Fxq 'MANIFEST_WRITTEN=true' "$PRESEEDED_STDOUT" \
-   && ! grep -Fxq 'QA_PENDING_WRITTEN=true' "$PRESEEDED_STDOUT"; then
+   && ! grep -Fxq 'QA_PENDING_WRITTEN=true' "$PRESEEDED_STDOUT" \
+   && ! grep -Fq 'STALE-SENTINEL-1514' "$PRESEEDED_SIDECAR"; then
     pass
 else
-    fail "model-preseed" "model rejection with pre-existing manifest/qa should force false flags; exit=$EXIT stdout=$(cat "$PRESEEDED_STDOUT")"
+    fail "model-preseed" "model rejection with pre-existing manifest/qa should force false flags and truncate stale sidecar; exit=$EXIT stdout=$(cat "$PRESEEDED_STDOUT") sidecar=$(cat "$PRESEEDED_SIDECAR" 2>/dev/null)"
 fi
 
 STUB_BIN="$SCRATCH/bin"
