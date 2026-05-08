@@ -30,6 +30,9 @@ fi
 tmp=$(mktemp -d /tmp/larch-sessionstart-test.XXXXXX)
 trap 'rm -rf "$tmp"' EXIT
 
+JQ_ONLY_FIXED='{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"larch hook preflight: jq not on PATH (install jq for advisory hook output)."}}'
+JQ_GIT_FIXED='{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"larch hook preflight: jq not on PATH and git not on PATH; install jq and git for advisory hook output."}}'
+
 PASS=0
 FAIL=0
 FAILED_TESTS=()
@@ -200,6 +203,7 @@ assert_valid_json "$stdout" "case 4"
 ctx=$(ctx_from_stdout "$stdout")
 assert_contains "$ctx" "jq" "case 4: additionalContext mentions jq"
 assert_contains "$ctx" "git" "case 4: additionalContext mentions git"
+assert_contains "$ctx" "jq not on PATH and git not on PATH" "case 4: fixed jq+git literal"
 
 build_bin "$tmp/real_bin"
 add_real_tool "$tmp/real_bin" jq "$REAL_JQ"
@@ -308,6 +312,36 @@ rc=$(run_from_dir "$tmp/real_bin" "$repo" "$tmp/c10c.out" "$tmp/c10c.err")
 assert_eq "$rc" "0" "case 10c: exit code 0"
 ctx=$(ctx_from_stdout "$(cat "$tmp/c10c.out")")
 assert_not_contains "$ctx" "not merged into main" "case 10c: no unmerged-branch advisory when main does not exist"
+
+echo "=== Case 10d: jq-missing fallback is injection-proof, jq-only-missing ==="
+repo=$(make_repo injection-jq-only)
+sentinel=$(cd "$repo" && git rev-parse --git-path larch-stalled-run.txt)
+case "$sentinel" in
+    /*) ;;
+    *) sentinel="$repo/$sentinel" ;;
+esac
+cat > "$sentinel" <<'SENTINEL'
+ISSUE_NUMBER=99
+STALL_STEP=";injected:"
+STASH_REF=stash@{0}
+SENTINEL
+build_bin "$tmp/c10d_bin"
+add_real_tool "$tmp/c10d_bin" git "$REAL_GIT"
+rc=$(run_from_dir "$tmp/c10d_bin" "$repo" "$tmp/c10d.out" "$tmp/c10d.err")
+assert_eq "$rc" "0" "case 10d: exit code 0"
+stdout=$(cat "$tmp/c10d.out")
+assert_eq "$stdout" "$JQ_ONLY_FIXED" "case 10d: stdout is exact fixed jq-only envelope"
+assert_valid_json "$stdout" "case 10d"
+assert_not_contains "$stdout" '";injected:"' "case 10d: injection content absent"
+
+echo "=== Case 10e: jq+git-missing fallback is injection-proof ==="
+build_bin "$tmp/c10e_bin"
+rc=$(run_from_dir "$tmp/c10e_bin" "$repo" "$tmp/c10e.out" "$tmp/c10e.err")
+assert_eq "$rc" "0" "case 10e: exit code 0"
+stdout=$(cat "$tmp/c10e.out")
+assert_eq "$stdout" "$JQ_GIT_FIXED" "case 10e: stdout is exact fixed jq+git envelope"
+assert_valid_json "$stdout" "case 10e"
+assert_not_contains "$stdout" '";injected:"' "case 10e: injection content absent"
 
 echo "=== Case 11: not inside a work-tree skips git-state probes ==="
 rc=$(run_from_dir "$tmp/real_bin" "$tmp/outside" "$tmp/c11.out" "$tmp/c11.err")

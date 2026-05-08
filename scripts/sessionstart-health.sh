@@ -4,12 +4,10 @@
 # advisory to Claude's session context when anything needs attention.
 #
 # INVARIANT: all dynamic content MUST be interpolated only via `jq -n --arg`.
-# The jq-missing fallback may hand-craft JSON only from fixed ASCII literals.
-# This holds because every dynamic probe (working-tree, stash, interrupted-op,
-# unmerged-branch, sentinel) is gated on `JQ_AVAILABLE=true && GIT_AVAILABLE=true`,
-# so when jq is missing, MSG contains only the fixed jq-missing/git-missing
-# literals from `append_msg` above. Future probe additions MUST preserve that
-# gating or move their content into a jq-emitted JSON path.
+# The jq-missing branch is hardcoded to fixed JSON literals (one per
+# GIT_AVAILABLE value) — no `%s` formatting, no variable interpolation. Future
+# probes that interpolate user-influenced content into MSG are still safe in
+# the jq-missing branch because that branch does not read MSG.
 #
 # SessionStart is non-blocking by spec: the script ALWAYS exits 0. A failing
 # probe produces advisory JSON on stdout; a healthy environment produces
@@ -104,7 +102,11 @@ if [[ -n "$MSG" ]]; then
     if [[ "$JQ_AVAILABLE" == "true" ]]; then
         jq -n --arg ctx "$MSG" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$ctx}}' || true
     else
-        printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s"}}\n' "$MSG"
+        if [[ "$GIT_AVAILABLE" == "true" ]]; then
+            printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"larch hook preflight: jq not on PATH (install jq for advisory hook output)."}}'
+        else
+            printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"larch hook preflight: jq not on PATH and git not on PATH; install jq and git for advisory hook output."}}'
+        fi
     fi
 fi
 

@@ -41,6 +41,10 @@ or file means "no findings of that kind". The composed fragment is always
 non-empty (worst case: a one-line "No review findings captured in this
 run." note) so the anchor slot is always populated.
 
+`jq` is a required runtime dependency. Per issue #1425, JSONL emission goes
+exclusively through `jq -nc --arg` for every string field, and the script
+fails closed when `jq` is unavailable.
+
 ## Output (KV on stdout)
 
 ```
@@ -86,11 +90,23 @@ Archive mode: one JSON object per line (`docs/review-archive/issue-<N>.jsonl`):
 {"id":"...","phase":"plan-review|code-review","outcome":"accepted|rejected","reviewer":"...","category":"...","prose_body":"..."}
 ```
 
-`prose_body` is JSON-string-escaped (RFC 8259: `\\`, `\"`, `\b`, `\f`, `\n`,
-`\r`, `\t`, plus `\u00XX` for U+0000–U+001F controls). The on-disk source
-files preserve `file:line` citations and `suggested_diff_excerpt` snippets
-inside the prose body — that prose carries the load-bearing miner content
-verbatim. Future iterations may extract those into separate JSON keys.
+JSONL emission goes exclusively through `jq -nc --arg` for every string
+field, including bounded enums. Free-form fields (`prose_body`, `reviewer`,
+embedded title) are redacted via the canonical
+`redact-tmpdir-paths.sh | redact-secrets.sh` chain before JSON encoding so
+secrets cannot reach the committed `docs/review-archive/` JSONL. The same
+redacted values feed the inline markdown branch, so inline mode and
+archive-pointer mode share one pre-publication boundary. Redactor stderr is
+preserved so PEM-truncation WARN diagnostics surface, mirroring
+`tracking-issue-write.sh`'s `redact()` posture. Bounded enums (`id`, `phase`,
+`outcome`, `category`) are not redacted because they are script-derived; they
+still pass through `jq --arg` for JSON safety. A non-zero redactor exit
+triggers the documented `FAILED=true` / `ERROR=...` envelope. See
+`SECURITY.md` for the corresponding public-archive trust-model note. The
+on-disk source files preserve `file:line` citations and
+`suggested_diff_excerpt` snippets inside the prose body — that prose carries
+the load-bearing miner content verbatim after redaction. Future iterations
+may extract those into separate JSON keys.
 
 ## Category derivation
 

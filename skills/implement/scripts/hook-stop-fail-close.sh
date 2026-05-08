@@ -22,6 +22,16 @@ if command -v jq >/dev/null 2>&1; then
     HOOK_CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // ""' 2>/dev/null) || HOOK_CWD=""
 fi
 
+# Surface the active Claude Code session_id from the Stop event payload
+# into LARCH_TOKEN_SESSION_ID so the resolver's session-id binding branch
+# is reachable in production (parallels hook-post-design.sh). Empty /
+# missing / null falls through to TTL.
+SID=""
+if command -v jq >/dev/null 2>&1; then
+    SID=$(printf '%s' "$INPUT" | jq -r '.session_id // ""' 2>/dev/null) || SID=""
+fi
+[[ -n "$SID" ]] && export LARCH_TOKEN_SESSION_ID="$SID"
+
 # shellcheck source=lib-resolve-implement-tmpdir.sh
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib-resolve-implement-tmpdir.sh"

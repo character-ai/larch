@@ -22,7 +22,9 @@ resolve_implement_tmpdir() {
     fi
 
     local best="" best_mtime=0
-    local root dir manifest mtime keepalive cp_match
+    local root dir manifest mtime keepalive cp_match now session_match sid ttl
+
+    now=$(date +%s 2>/dev/null || echo 0)
 
     for root in "${roots[@]}"; do
         [[ -d "$root" ]] || continue
@@ -40,6 +42,23 @@ resolve_implement_tmpdir() {
                 }' "$keepalive" 2>/dev/null)
             [[ "$cp_match" = "ok" ]] || continue
 
+            # Session-id binding: when /implement Step 0 exported the active
+            # session id, require an exact .larch-keepalive match. When the
+            # env var is unset, skip this check and rely on the TTL backstop.
+            session_match=false
+            if [[ -n "${LARCH_TOKEN_SESSION_ID:-}" ]]; then
+                sid=$(awk -F= -v want="$LARCH_TOKEN_SESSION_ID" '
+                    $1=="SESSION_ID" {
+                        v=substr($0, index($0,"=")+1)
+                        if (v==want) { print "ok"; exit }
+                    }' "$keepalive" 2>/dev/null)
+                if [[ "$sid" = "ok" ]]; then
+                    session_match=true
+                else
+                    continue
+                fi
+            fi
+
             # Linux GNU stat first (CI lane), then BSD/macOS fallback.
             # Order matters: GNU `stat -f %m` switches to fs-info mode and
             # treats `%m` as a path argument, polluting stdout with
@@ -51,6 +70,18 @@ resolve_implement_tmpdir() {
                 || mtime=$(stat -f %m "$manifest" 2>/dev/null) \
                 || continue
             [[ "$mtime" =~ ^[0-9]+$ ]] || continue
+            if ! $session_match; then
+                ttl=${LARCH_IMPLEMENT_TMPDIR_TTL_SECONDS:-21600}
+                [[ "$ttl" =~ ^[0-9]+$ ]] || ttl=21600
+                if (( ttl > 0 )); then
+                    if (( now <= 0 )); then
+                        continue
+                    fi
+                    if (( (now - mtime) >= ttl )); then
+                        continue
+                    fi
+                fi
+            fi
             if (( mtime > best_mtime )); then
                 best_mtime=$mtime
                 best=$dir

@@ -145,14 +145,10 @@ else
     MODEL_RC=$?
     cat "$GEMINI_MODEL_ERR" >> "$SIDECAR_LOG" 2>/dev/null || true
     rm -f "$GEMINI_MODEL_ERR"
-    MANIFEST_WRITTEN=false
-    QA_PENDING_WRITTEN=false
-    [[ -s "$MANIFEST_PATH" ]]   && MANIFEST_WRITTEN=true
-    [[ -s "$QA_PENDING_PATH" ]] && QA_PENDING_WRITTEN=true
     emit_timing_record "$MODEL_RC"
     printf 'LAUNCHER_EXIT=%s\n'           "$MODEL_RC"
-    printf 'MANIFEST_WRITTEN=%s\n'        "$MANIFEST_WRITTEN"
-    printf 'QA_PENDING_WRITTEN=%s\n'      "$QA_PENDING_WRITTEN"
+    printf 'MANIFEST_WRITTEN=false\n'
+    printf 'QA_PENDING_WRITTEN=false\n'
     printf 'TRANSCRIPT=%s\n'              "$TRANSCRIPT_PATH"
     printf 'SIDECAR_LOG=%s\n'             "$SIDECAR_LOG"
     exit 0

@@ -44,6 +44,8 @@
 #   - scripts/anchor-section-markers.sh carries the slug
 #   - scripts/tracking-issue-write.sh COLLAPSE_PRIORITY carries the slug
 #   - skills/implement/SKILL.md Step 5 invokes this helper after /review
+#
+# Requires `jq` on PATH for JSONL emission.
 
 set -euo pipefail
 
@@ -108,6 +110,20 @@ case "$ARCHIVE_THRESHOLD" in
     ''|*[!0-9]*) fail "invalid value for --archive-threshold: '$ARCHIVE_THRESHOLD' (expected non-negative integer)" ;;
 esac
 
+command -v jq >/dev/null 2>&1 || fail "jq is required for compose-review-findings.sh; install via brew install jq / apt install jq"
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+REDACT_TMP="$SCRIPT_DIR/redact-tmpdir-paths.sh"
+REDACT_SECRETS="$SCRIPT_DIR/redact-secrets.sh"
+[ -x "$REDACT_TMP" ]     || fail "redaction helper not executable: $REDACT_TMP"
+[ -x "$REDACT_SECRETS" ] || fail "redaction helper not executable: $REDACT_SECRETS"
+
+redact_field() {
+    # Preserve redactor stderr so PEM-truncation WARN diagnostics surface,
+    # matching tracking-issue-write.sh's redact() posture.
+    printf '%s' "$1" | "$REDACT_TMP" | "$REDACT_SECRETS"
+}
+
 # Map a reviewer name fragment to one of the canonical category tags.
 # The tag enum (per issue #1402) is the union of the plan-review
 # personalities and the code-review specialists, plus a generic / other
@@ -130,26 +146,6 @@ derive_category() {
     esac
 }
 
-# JSON-string-escape a value for safe embedding in a JSONL record. Handles
-# the minimum set required by RFC 8259: backslash, double-quote, and
-# control characters (\b \f \n \r \t plus \u00XX for U+0000–U+001F).
-# Reads from stdin, writes to stdout, no trailing newline added.
-json_escape() {
-    python3 -c '
-import sys, json
-data = sys.stdin.read()
-sys.stdout.write(json.dumps(data)[1:-1])
-' 2>/dev/null || {
-        # Fallback for environments without python3 — handle the common
-        # cases inline. Less complete than the python path but covers
-        # backslash, double-quote, newlines, tabs.
-        sed -e 's/\\/\\\\/g' \
-            -e 's/"/\\"/g' \
-            -e 's/\t/\\t/g' \
-            -e ':a;N;$!ba;s/\n/\\n/g'
-    }
-}
-
 # Append a finding record to the inline markdown and the JSONL stream.
 emit_finding() {
     local id="$1"
@@ -158,6 +154,14 @@ emit_finding() {
     local reviewer="$4"
     local category="$5"
     local body="$6"
+    local body_redacted reviewer_redacted
+
+    if ! body_redacted=$(redact_field "$body"); then
+        fail "redaction failed for prose_body in $id"
+    fi
+    if ! reviewer_redacted=$(redact_field "$reviewer"); then
+        fail "redaction failed for reviewer in $id"
+    fi
 
     {
         printf '### %s — %s\n' "$id" "$category"
@@ -167,24 +171,26 @@ emit_finding() {
         # options when the format starts with `-`).
         printf '%s\n' "- **Phase**: $phase"
         printf '%s\n' "- **Outcome**: $outcome"
-        printf '%s\n' "- **Reviewer**: $reviewer"
+        printf '%s\n' "- **Reviewer**: $reviewer_redacted"
         printf '%s\n' "- **Category**: $category"
         printf '%s\n\n' "- **Prose body** (verbatim from source artifact):"
         # Indent body lines with `> ` (blockquote) so the rendered section keeps
         # the verbatim payload visually separate from the structured bullets,
         # AND so the body cannot accidentally introduce a same-level `### ` that
         # would re-parse as a new finding.
-        printf '%s\n' "$body" | sed 's/^/> /'
+        printf '%s\n' "$body_redacted" | sed 's/^/> /'
         printf '\n'
     } >> "$TMP_INLINE"
 
-    {
-        local body_escaped reviewer_escaped
-        body_escaped=$(printf '%s' "$body" | json_escape)
-        reviewer_escaped=$(printf '%s' "$reviewer" | json_escape)
-        printf '{"id":"%s","phase":"%s","outcome":"%s","reviewer":"%s","category":"%s","prose_body":"%s"}\n' \
-            "$id" "$phase" "$outcome" "$reviewer_escaped" "$category" "$body_escaped"
-    } >> "$TMP_JSONL"
+    jq -nc \
+        --arg id "$id" \
+        --arg phase "$phase" \
+        --arg outcome "$outcome" \
+        --arg reviewer "$reviewer_redacted" \
+        --arg category "$category" \
+        --arg body "$body_redacted" \
+        '{id:$id, phase:$phase, outcome:$outcome, reviewer:$reviewer, category:$category, prose_body:$body}' \
+        >> "$TMP_JSONL" || fail "failed to encode JSONL for $id"
 
     FINDINGS_TOTAL=$((FINDINGS_TOTAL + 1))
 }

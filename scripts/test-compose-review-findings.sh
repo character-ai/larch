@@ -13,7 +13,11 @@
 #   (e) inline ↔ archive switchover at the configured threshold
 #   (f) archive content shape (JSONL — one record per line, valid JSON)
 #   (g) category derivation maps reviewer-name fragments to canonical tags
-#   (h) JSON escaping handles backslash, double-quote, and embedded newlines
+#   (h) JSON escaping handles control bytes, carriage returns, quotes, and newlines
+#   (i) missing jq fails closed before writing an archive
+#   (j) archive mode redacts token-shaped secrets
+#   (k) inline mode also redacts token-shaped secrets
+#   (l) redactor failure surfaces the documented failure envelope
 #
 # Self-contained: creates fixtures under a fresh tmpdir and cleans up.
 
@@ -21,8 +25,18 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPOSE="$SCRIPT_DIR/compose-review-findings.sh"
+BASH_BIN=$(command -v bash || true)
+REAL_JQ=$(command -v jq || true)
 
 [ -x "$COMPOSE" ] || { echo "FAIL: $COMPOSE not executable" >&2; exit 1; }
+if [ -z "$BASH_BIN" ] || [ ! -x "$BASH_BIN" ]; then
+    echo "FAIL: bash not found on PATH" >&2
+    exit 1
+fi
+if [ -z "$REAL_JQ" ] || [ ! -x "$REAL_JQ" ]; then
+    echo "FAIL: jq not found on PATH" >&2
+    exit 1
+fi
 
 TMP=$(mktemp -d /tmp/test-compose-review-findings.XXXXXX)
 trap 'rm -rf "$TMP"' EXIT
@@ -150,26 +164,16 @@ grep -q 'Archive path' "$out_e" || fail "(e) archive path bullet missing"
 # (f) Archive content shape: one JSON object per line, parseable
 # --------------------------------------------------------------------------
 echo "=== (f) Archive content shape ==="
-if command -v python3 >/dev/null 2>&1; then
-    line_count=$(wc -l < "$TMP/e-archive/issue-99.jsonl" | tr -d ' ')
-    [ "$line_count" -gt 0 ] || fail "(f) archive empty"
-    python3 - "$TMP/e-archive/issue-99.jsonl" <<'PY' || fail "(f) JSONL parse failure"
-import json, sys
-path = sys.argv[1]
-with open(path) as f:
-    for n, line in enumerate(f, 1):
-        line = line.rstrip("\n")
-        if not line:
-            continue
-        obj = json.loads(line)
-        for key in ("id", "phase", "outcome", "reviewer", "category", "prose_body"):
-            if key not in obj:
-                raise SystemExit(f"line {n} missing key {key}")
-PY
-    [ "$FAILS" -eq 0 ] && pass "(f) JSONL shape"
-else
-    pass "(f) skipped (no python3)"
-fi
+line_count=$(wc -l < "$TMP/e-archive/issue-99.jsonl" | tr -d ' ')
+[ "$line_count" -gt 0 ] || fail "(f) archive empty"
+while IFS= read -r line || [ -n "$line" ]; do
+    [ -n "$line" ] || continue
+    printf '%s\n' "$line" | "$REAL_JQ" -e '
+        has("id") and has("phase") and has("outcome") and
+        has("reviewer") and has("category") and has("prose_body")
+    ' >/dev/null || fail "(f) JSONL parse/key failure"
+done < "$TMP/e-archive/issue-99.jsonl"
+[ "$FAILS" -eq 0 ] && pass "(f) JSONL shape"
 
 # --------------------------------------------------------------------------
 # (g) Category derivation
@@ -204,44 +208,155 @@ grep -q '^### REJ_C3 — generic$' "$out_g" || fail "(g) generic mapping missing
 # (h) JSON escaping
 # --------------------------------------------------------------------------
 echo "=== (h) JSON escaping ==="
-if command -v python3 >/dev/null 2>&1; then
-    mkdir -p "$TMP/h-design" "$TMP/h-impl" "$TMP/h-archive"
-    cat > "$TMP/h-impl/rejected-findings.md" <<'EOF'
-### [Code Review] Cursor-Generic
-**Finding**: A path with backslashes \\foo\\bar and quotes "hello" embedded
-**Reason not implemented**: line one
-line two with a tab	character
-EOF
-    out_h="$TMP/h-out.md"
-    "$COMPOSE" \
-        --design-artifacts-dir "$TMP/h-design" \
-        --implement-tmpdir "$TMP/h-impl" \
-        --issue 7 \
-        --output "$out_h" \
-        --archive-dir "$TMP/h-archive" \
-        --archive-threshold 1 >/dev/null 2>&1 || fail "(h) compose failed"
-    [ -f "$TMP/h-archive/issue-7.jsonl" ] || fail "(h) archive missing"
-    python3 - "$TMP/h-archive/issue-7.jsonl" <<'PY' || fail "(h) JSON escape parse failure"
-import json, sys
-with open(sys.argv[1]) as f:
-    for line in f:
-        line = line.rstrip("\n")
-        if not line:
-            continue
-        obj = json.loads(line)
-        body = obj["prose_body"]
-        if "\\\\foo\\\\bar" not in body and "\\foo\\bar" not in body:
-            raise SystemExit("backslash content lost in escape: " + repr(body))
-        if '"hello"' not in body:
-            raise SystemExit("quote content lost in escape: " + repr(body))
-        # Embedded newlines must round-trip as actual \n.
-        if "line one" not in body or "line two" not in body:
-            raise SystemExit("newline content lost: " + repr(body))
-PY
-    [ "$FAILS" -eq 0 ] && pass "(h) JSON escaping"
-else
-    pass "(h) skipped (no python3)"
-fi
+mkdir -p "$TMP/h-design" "$TMP/h-impl" "$TMP/h-archive"
+{
+    # FINDING ids are constrained by FINDING_[0-9A-Za-z_]+, so quote/control
+    # coverage belongs in pending_title, reviewer, and prose_body rather than id.
+    printf '### FINDING_1: title with "quote", newline coverage, and carriage\rreturn\n'
+    printf -- '- **Concern**: controls \001 \007 \033, CR\r, and quote "hello".\n'
+    printf -- '- **Resolution**: line one\nline two with backslashes \\\\foo\\\\bar\n'
+} > "$TMP/h-design/accepted-plan-findings.md"
+{
+    printf '### [Code Review] Cursor-Generic "quoted" \007\n'
+    printf '**Finding**: code-review body with escape \033 and carriage\rreturn.\n'
+    printf '**Reason not implemented**: second line with "quote".\n'
+} > "$TMP/h-impl/rejected-findings.md"
+out_h="$TMP/h-out.md"
+"$COMPOSE" \
+    --design-artifacts-dir "$TMP/h-design" \
+    --implement-tmpdir "$TMP/h-impl" \
+    --issue 7 \
+    --output "$out_h" \
+    --archive-dir "$TMP/h-archive" \
+    --archive-threshold 1 >/dev/null 2>&1 || fail "(h) compose failed"
+[ -f "$TMP/h-archive/issue-7.jsonl" ] || fail "(h) archive missing"
+while IFS= read -r line || [ -n "$line" ]; do
+    [ -n "$line" ] || continue
+    printf '%s\n' "$line" | "$REAL_JQ" -e . >/dev/null || fail "(h) JSONL line is not parseable"
+done < "$TMP/h-archive/issue-7.jsonl"
+"$REAL_JQ" -s -e '
+    any(.[]; .id == "FINDING_1"
+        and (.prose_body | contains("title with \"quote\""))
+        and (.prose_body | contains("\u0001"))
+        and (.prose_body | contains("\u0007"))
+        and (.prose_body | contains("\u001b"))
+        and (.prose_body | contains("\r"))
+        and (.prose_body | contains("line one\nline two"))
+        and (.prose_body | contains("\\\\foo\\\\bar")))
+    and
+    any(.[]; .id == "REJ_C1"
+        and (.reviewer | contains("\"quoted\""))
+        and (.reviewer | contains("\u0007"))
+        and (.prose_body | contains("\u001b"))
+        and (.prose_body | contains("\r")))
+' "$TMP/h-archive/issue-7.jsonl" >/dev/null || fail "(h) escaped fields did not round-trip"
+[ "$FAILS" -eq 0 ] && pass "(h) JSON escaping"
+
+# --------------------------------------------------------------------------
+# (i) jq unavailable fails closed
+# --------------------------------------------------------------------------
+echo "=== (i) Missing jq fails closed ==="
+mkdir -p "$TMP/i-design" "$TMP/i-impl" "$TMP/i-archive" "$TMP/i-bin"
+out_i="$TMP/i-out.md"
+stdout_i="$TMP/i-stdout.txt"
+stderr_i="$TMP/i-stderr.txt"
+EXIT_I=0
+env PATH="$TMP/i-bin" "$BASH_BIN" "$COMPOSE" \
+    --design-artifacts-dir "$TMP/i-design" \
+    --implement-tmpdir "$TMP/i-impl" \
+    --issue 8 \
+    --output "$out_i" \
+    --archive-dir "$TMP/i-archive" \
+    --archive-threshold 1 >"$stdout_i" 2>"$stderr_i" || EXIT_I=$?
+[ "$EXIT_I" -eq 2 ] || fail "(i) expected exit 2 without jq, got $EXIT_I"
+grep -qxF 'FAILED=true' "$stdout_i" || fail "(i) missing FAILED=true"
+grep -q 'jq is required for compose-review-findings.sh' "$stdout_i" || fail "(i) missing jq-required error"
+[ ! -e "$TMP/i-archive/issue-8.jsonl" ] || fail "(i) archive was written despite missing jq"
+[ "$FAILS" -eq 0 ] && pass "(i) missing jq fail-closed"
+
+# --------------------------------------------------------------------------
+# (j) Archive mode redacts token-shaped secrets
+# --------------------------------------------------------------------------
+echo "=== (j) Archive mode redacts token-shaped secrets ==="
+SK_PREFIX='sk-'
+SK_MID='ant-api03-'
+SK_TOKEN="${SK_PREFIX}${SK_MID}FAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKE"
+printf '%s' "$SK_TOKEN" | "$SCRIPT_DIR/redact-secrets.sh" | grep -qxF '<REDACTED-TOKEN>' \
+    || fail "(j) fixture token did not match redact-secrets.sh"
+mkdir -p "$TMP/j-design" "$TMP/j-impl" "$TMP/j-archive"
+{
+    printf '### [Code Review] Cursor-Security\n'
+    printf '**Finding**: token fixture %s\n' "$SK_TOKEN"
+    for _ in $(seq 1 12); do
+        printf 'Filler line to force archive mode while carrying the secret fixture through redaction.\n'
+    done
+    printf '**Reason not implemented**: regression fixture.\n'
+} > "$TMP/j-impl/rejected-findings.md"
+out_j="$TMP/j-out.md"
+stdout_j=$("$COMPOSE" \
+    --design-artifacts-dir "$TMP/j-design" \
+    --implement-tmpdir "$TMP/j-impl" \
+    --issue 9 \
+    --output "$out_j" \
+    --archive-dir "$TMP/j-archive" \
+    --archive-threshold 100 2>&1)
+grep -qxF 'MODE=archive' <<<"$stdout_j" || fail "(j) expected archive mode"
+grep -Fq '<REDACTED-TOKEN>' "$TMP/j-archive/issue-9.jsonl" || fail "(j) archive missing redacted token"
+! grep -Fq "$SK_TOKEN" "$TMP/j-archive/issue-9.jsonl" || fail "(j) archive leaked raw token"
+! grep -Fq "$SK_TOKEN" "$out_j" || fail "(j) inline pointer leaked raw token"
+[ "$FAILS" -eq 0 ] && pass "(j) archive redaction"
+
+# --------------------------------------------------------------------------
+# (k) Inline mode also redacts token-shaped secrets
+# --------------------------------------------------------------------------
+echo "=== (k) Inline mode redacts token-shaped secrets ==="
+mkdir -p "$TMP/k-design" "$TMP/k-impl"
+{
+    printf '### [Code Review] Cursor-Security\n'
+    printf '**Finding**: inline token fixture %s\n' "$SK_TOKEN"
+    printf '**Reason not implemented**: regression fixture.\n'
+} > "$TMP/k-impl/rejected-findings.md"
+out_k="$TMP/k-out.md"
+stdout_k=$("$COMPOSE" \
+    --design-artifacts-dir "$TMP/k-design" \
+    --implement-tmpdir "$TMP/k-impl" \
+    --issue 10 \
+    --output "$out_k" 2>&1)
+grep -qxF 'MODE=inline' <<<"$stdout_k" || fail "(k) expected inline mode"
+grep -Fq '<REDACTED-TOKEN>' "$out_k" || fail "(k) inline output missing redacted token"
+! grep -Fq "$SK_TOKEN" "$out_k" || fail "(k) inline output leaked raw token"
+[ "$FAILS" -eq 0 ] && pass "(k) inline redaction"
+
+# --------------------------------------------------------------------------
+# (l) Redactor failure surfaces FAILED envelope
+# --------------------------------------------------------------------------
+echo "=== (l) Redactor failure surfaces FAILED envelope ==="
+mkdir -p "$TMP/l-bin" "$TMP/l-design" "$TMP/l-impl"
+cp "$COMPOSE" "$TMP/l-bin/compose-review-findings.sh"
+cp "$SCRIPT_DIR/redact-tmpdir-paths.sh" "$TMP/l-bin/redact-tmpdir-paths.sh"
+cat > "$TMP/l-bin/redact-secrets.sh" <<'EOF_REDACTOR_FAIL'
+#!/bin/sh
+exit 1
+EOF_REDACTOR_FAIL
+chmod +x "$TMP/l-bin/compose-review-findings.sh" "$TMP/l-bin/redact-tmpdir-paths.sh" "$TMP/l-bin/redact-secrets.sh"
+cat > "$TMP/l-impl/rejected-findings.md" <<'EOF_L'
+### [Code Review] Cursor-Security
+**Finding**: body
+**Reason not implemented**: reason
+EOF_L
+out_l="$TMP/l-out.md"
+stdout_l="$TMP/l-stdout.txt"
+stderr_l="$TMP/l-stderr.txt"
+EXIT_L=0
+"$BASH_BIN" "$TMP/l-bin/compose-review-findings.sh" \
+    --design-artifacts-dir "$TMP/l-design" \
+    --implement-tmpdir "$TMP/l-impl" \
+    --issue 11 \
+    --output "$out_l" >"$stdout_l" 2>"$stderr_l" || EXIT_L=$?
+[ "$EXIT_L" -eq 2 ] || fail "(l) expected exit 2 on redactor failure, got $EXIT_L"
+grep -qxF 'FAILED=true' "$stdout_l" || fail "(l) missing FAILED=true"
+grep -q 'redaction failed for prose_body' "$stdout_l" || fail "(l) missing redaction failure error"
+[ "$FAILS" -eq 0 ] && pass "(l) redactor failure envelope"
 
 if [ "$FAILS" -eq 0 ]; then
     echo "PASS: all compose-review-findings tests passed"

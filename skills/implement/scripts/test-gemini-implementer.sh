@@ -197,6 +197,38 @@ assert_model_rejection "newline" $'foo\n'
 assert_model_rejection "tab" $'\t'
 assert_model_rejection "control-byte" $'foo\x01'
 
+# Model rejection must not promote stale artifacts from prior attempts.
+PRESEEDED_TRANSCRIPT="$SCRATCH/model-preseed-transcript.txt"
+PRESEEDED_SIDECAR="$SCRATCH/model-preseed-sidecar.log"
+PRESEEDED_MANIFEST="$SCRATCH/model-preseed-manifest.json"
+PRESEEDED_QA="$SCRATCH/model-preseed-qa.json"
+PRESEEDED_STDOUT="$SCRATCH/model-preseed-stdout.txt"
+printf '{"status":"complete"}\n' > "$PRESEEDED_MANIFEST"
+printf '{"qa":"pending"}\n' > "$PRESEEDED_QA"
+EXIT=0
+(
+    cd "$REPO_ROOT"
+    LARCH_GEMINI_MODEL=$'bad\x01model' "$LAUNCHER" \
+        --transcript-path "$PRESEEDED_TRANSCRIPT" \
+        --sidecar-log "$PRESEEDED_SIDECAR" \
+        --manifest-path "$PRESEEDED_MANIFEST" \
+        --qa-pending-path "$PRESEEDED_QA" \
+        --plan-file "$PLAN" \
+        --feature-file "$FEATURE" \
+        --agent-prompt "$AGENT_PROMPT" \
+        --timeout 30
+) >"$PRESEEDED_STDOUT" 2>&1 || EXIT=$?
+if [[ "$EXIT" == "0" ]] \
+   && grep -Fxq 'LAUNCHER_EXIT=1' "$PRESEEDED_STDOUT" \
+   && grep -Fxq 'MANIFEST_WRITTEN=false' "$PRESEEDED_STDOUT" \
+   && grep -Fxq 'QA_PENDING_WRITTEN=false' "$PRESEEDED_STDOUT" \
+   && ! grep -Fxq 'MANIFEST_WRITTEN=true' "$PRESEEDED_STDOUT" \
+   && ! grep -Fxq 'QA_PENDING_WRITTEN=true' "$PRESEEDED_STDOUT"; then
+    pass
+else
+    fail "model-preseed" "model rejection with pre-existing manifest/qa should force false flags; exit=$EXIT stdout=$(cat "$PRESEEDED_STDOUT")"
+fi
+
 STUB_BIN="$SCRATCH/bin"
 mkdir -p "$STUB_BIN"
 STUB_GEMINI="$STUB_BIN/gemini"

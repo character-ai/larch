@@ -23,6 +23,16 @@ esac
 
 HOOK_CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // ""' 2>/dev/null) || HOOK_CWD=""
 
+# Surface the active Claude Code session_id (passed by Claude Code in every
+# hook event payload) into LARCH_TOKEN_SESSION_ID so the resolver's
+# session-id binding branch is reachable in production. Without this,
+# `/implement` Step 0's in-bash export does not propagate to hook
+# subprocesses, leaving the resolver on the TTL-only fallback path. Empty
+# / missing / null session_id falls through to TTL — the resolver treats
+# unset LARCH_TOKEN_SESSION_ID as "no session signal available".
+SID=$(printf '%s' "$INPUT" | jq -r '.session_id // ""' 2>/dev/null) || SID=""
+[[ -n "$SID" ]] && export LARCH_TOKEN_SESSION_ID="$SID"
+
 # shellcheck source=lib-resolve-implement-tmpdir.sh
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib-resolve-implement-tmpdir.sh"

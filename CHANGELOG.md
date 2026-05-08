@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.13.8] - 2026-05-08
+
+### Changed
+
+- Resolve #1425: combined OOS follow-ups (compose-review-findings JSONL safety + per-field redaction; lib-resolve-implement-tmpdir TTL/session binding via LARCH_TOKEN_SESSION_ID; sessionstart-health jq-missing fallback hardening; launch-gemini-implement preflight parity). Code-review-time hardening: SECURITY.md updated to drop the stale "intentionally not changed" claim about `scripts/launch-gemini-implement.sh` and document the new force-false KV envelope on model-resolution failure; `lib-resolve-implement-tmpdir.sh` TTL boundary tightened from `> ttl` to `>= ttl` (a candidate exactly TTL seconds old is now treated as stale, matching the operator-facing intent); `hook-post-design.sh` and `hook-stop-fail-close.sh` now parse `.session_id` from the Claude Code hook stdin payload and `export LARCH_TOKEN_SESSION_ID="$SID"` before sourcing the resolver, so the session-id binding branch is reachable in production (the in-bash `export` from `/implement` Step 0 does not propagate to hook subprocesses on its own). New regression coverage in `skills/implement/scripts/test-post-design-boundary.sh` for the TTL boundary and the hook-stdin session-id surfacing path (positive + negative).
+- **Operator note:** `compose-review-findings.sh` now requires `jq` on PATH (was previously tolerant via python3/sed fallback). Install via `brew install jq` / `apt install jq`. The `/implement` Step 5 anchor compose step fails closed when jq is absent.
+
 ## [15.13.7] - 2026-05-08
 
 ### Added
