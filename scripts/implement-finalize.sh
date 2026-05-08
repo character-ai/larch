@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
-# implement-finalize.sh — Mechanical finalizer for /implement Steps 14, 15, 16a, and 18.
+# implement-finalize.sh — Mechanical finalizer for /implement Step 8 post-bump work and Steps 14, 15, 16a, and 18.
 
 set -uo pipefail
+# Intentional: best-effort failure model. Every leaf-script invocation captures
+# its own rc explicitly via 'set +e'/'rc=$?' patterns; helper failures surface
+# through warning breadcrumbs and tail records, NEVER through script exit. Do
+# NOT enable -e without auditing every leaf-script call site (see existing
+# 'set +e ... set -e' guards throughout this file).
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -9,10 +14,13 @@ STATE_FILE=""
 FINAL_BAIL_REASON_FILE=""
 IMPLEMENT_TMPDIR=""
 WARNINGS=0
+CHANGELOG_BULLETS_FILE=""
+POSTBUMP_CHECKPOINT_PHASE=""
 
 usage() {
     cat >&2 <<'USAGE'
 Usage:
+  implement-finalize.sh postbump  --state-file PATH --implement-tmpdir PATH [--changelog-bullets-file PATH]
   implement-finalize.sh postmerge --state-file PATH --final-bail-reason-file PATH
   implement-finalize.sh slack     --state-file PATH --final-bail-reason-file PATH
   implement-finalize.sh teardown  --state-file PATH --implement-tmpdir PATH
@@ -57,6 +65,36 @@ parse_common_args() {
             --implement-tmpdir)
                 [ $# -ge 2 ] || die_usage "--implement-tmpdir requires a value"
                 IMPLEMENT_TMPDIR=$2
+                shift 2
+                ;;
+            --help)
+                usage
+                exit 0
+                ;;
+            *)
+                die_usage "unknown option: $1"
+                ;;
+        esac
+    done
+}
+
+parse_postbump_args() {
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --state-file)
+                [ $# -ge 2 ] || die_usage "--state-file requires a value"
+                STATE_FILE=$2
+                shift 2
+                ;;
+            --implement-tmpdir)
+                [ $# -ge 2 ] || die_usage "--implement-tmpdir requires a value"
+                IMPLEMENT_TMPDIR=$2
+                shift 2
+                ;;
+            --changelog-bullets-file)
+                [ $# -ge 2 ] || die_usage "--changelog-bullets-file requires a value"
+                CHANGELOG_BULLETS_FILE=$2
+                is_tmp_path "$CHANGELOG_BULLETS_FILE" || die_usage "--changelog-bullets-file must be under /tmp/, /private/tmp/, or the larch cache sessions root"
                 shift 2
                 ;;
             --help)
@@ -184,6 +222,633 @@ append_execution_issue() {
     } >> "$IMPLEMENT_TMPDIR/execution-issues.md" 2>/dev/null || true
 }
 
+require_postbump_state_keys() {
+    local key
+    for key in \
+        BRANCH_NAME ISSUE_NUMBER REPO REPO_UNAVAILABLE FORKED_TARGET HAS_BUMP \
+        BUMP_TYPE NEW_VERSION BUMP_REASONING_FILE MANIFEST_PATH TOOL_LABEL ANCHOR_COMMENT_ID
+    do
+        state_has_key "$key" || die_usage "state-file missing required key: $key"
+    done
+}
+
+require_postbump_bool_state() {
+    local key value
+    for key in HAS_BUMP FORKED_TARGET REPO_UNAVAILABLE; do
+        value=$(read_state "$key")
+        case "$value" in
+            true|false) ;;
+            *) die_usage "state-file key $key must be true or false" ;;
+        esac
+    done
+}
+
+require_postbump_enum_state() {
+    local value
+    value=$(read_state BUMP_TYPE)
+    case "$value" in
+        MAJOR|MINOR|PATCH|NONE) ;;
+        *) die_usage "state-file key BUMP_TYPE must be one of MAJOR, MINOR, PATCH, NONE" ;;
+    esac
+}
+
+validate_postbump_state_branch() {
+    local check_current=${1:-false} branch current rc
+    branch=$(read_state BRANCH_NAME)
+    [ -n "$branch" ] || die_usage "state-file key BRANCH_NAME must be non-empty for postbump"
+    case "$branch" in
+        main|master) die_usage "state-file key BRANCH_NAME must not be main or master" ;;
+    esac
+    if [ "$check_current" = "true" ]; then
+        set +e
+        current=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+        rc=$?
+        set -e
+        if [ "$rc" -ne 0 ] || [ "$current" != "$branch" ]; then
+            return 1
+        fi
+    fi
+    return 0
+}
+
+load_and_validate_postbump_state() {
+    local bump_type new_version
+    validate_common_state_args
+    validate_tmpdir_arg
+    export IMPLEMENT_TMPDIR
+    validate_state_file_syntax
+    require_postbump_state_keys
+    require_postbump_bool_state
+    require_postbump_enum_state
+    validate_postbump_state_branch false
+    bump_type=$(read_state BUMP_TYPE)
+    new_version=$(read_state NEW_VERSION)
+    if [ "$bump_type" != "NONE" ] && ! printf '%s\n' "$new_version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+        die_usage "state-file key NEW_VERSION must be semver when BUMP_TYPE is not NONE"
+    fi
+}
+
+postbump_checkpoint_path() {
+    printf '%s/.postbump-phase' "$IMPLEMENT_TMPDIR"
+}
+
+write_postbump_checkpoint() {
+    local tmp checkpoint
+    checkpoint=$(postbump_checkpoint_path)
+    tmp="$checkpoint.tmp.$$"
+    printf 'force-push-gate\n' > "$tmp" && mv "$tmp" "$checkpoint"
+}
+
+read_postbump_checkpoint() {
+    local checkpoint size phase
+    POSTBUMP_CHECKPOINT_PHASE=""
+    checkpoint=$(postbump_checkpoint_path)
+    [ -e "$checkpoint" ] || return 0
+    if [ ! -f "$checkpoint" ] || [ -L "$checkpoint" ]; then
+        return 1
+    fi
+    size=$(wc -c < "$checkpoint" 2>/dev/null | tr -d '[:space:]' || echo 9999)
+    case "$size" in
+        ''|*[!0-9]*) return 1 ;;
+    esac
+    [ "$size" -le 64 ] || return 1
+    phase=$(tr -d '\r' < "$checkpoint" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+    printf '%s\n' "$phase" | grep -Eq '^[a-z][a-z0-9-]*$' || return 1
+    case "$phase" in
+        force-push-gate) POSTBUMP_CHECKPOINT_PHASE=$phase ;;
+        *) return 1 ;;
+    esac
+    return 0
+}
+
+clear_postbump_checkpoint() {
+    rm -f "$(postbump_checkpoint_path)" 2>/dev/null || true
+}
+
+postbump_tail() {
+    local status=$1 anchor_status=$2 changelog_status=$3 rebase_status=$4 force_push_status=$5 resume_phase=${6:-}
+    echo "ANCHOR_REFRESH_STATUS=$anchor_status"
+    echo "CHANGELOG_STATUS=$changelog_status"
+    echo "REBASE_STATUS=$rebase_status"
+    echo "FORCE_PUSH_STATUS=$force_push_status"
+    if [ -n "$resume_phase" ]; then
+        echo "RESUME_PHASE=$resume_phase"
+        echo "CALLER_KIND=step8b_rebase"
+    fi
+    echo "STATUS=$status"
+    echo "FINALIZE_SUBCOMMAND=postbump"
+    echo "FINALIZE_WARNINGS=$WARNINGS"
+}
+
+postbump_mark() {
+    local label=$1 token_session source_file
+    token_session=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "" 2>/dev/null || true)
+    source_file=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "" 2>/dev/null || true)
+    export LARCH_TOKEN_SESSION_ID=$token_session
+    export LARCH_CLAUDE_SOURCE_FILE=$source_file
+    "$SCRIPT_DIR/token-ledger.sh" mark "$label" 2>/dev/null || true
+    "$SCRIPT_DIR/timing-ledger.sh" mark "$label" 2>/dev/null || true
+}
+
+postbump_report_since_mark() {
+    "$SCRIPT_DIR/token-report.sh" --since-last-mark --terse 2>/dev/null || true
+    "$SCRIPT_DIR/timing-report.sh" --since-last-mark --terse 2>/dev/null || true
+}
+
+validate_bump_reasoning_file() {
+    local path=$1 basename size
+    [ -n "$path" ] || return 1
+    is_tmp_path "$path" || return 1
+    [ -f "$path" ] || return 1
+    [ ! -L "$path" ] || return 1
+    basename=$(basename "$path")
+    case "$basename" in
+        bump-version-reasoning*.md|version-bump-reasoning-sanitized.md) ;;
+        *) return 1 ;;
+    esac
+    size=$(wc -c < "$path" 2>/dev/null | tr -d '[:space:]' || echo 999999)
+    case "$size" in
+        ''|*[!0-9]*) return 1 ;;
+    esac
+    [ "$size" -le 65536 ] || return 1
+}
+
+validate_small_tmp_file() {
+    local path=$1 size
+    [ -n "$path" ] || return 1
+    is_tmp_path "$path" || return 1
+    [ -f "$path" ] || return 1
+    [ ! -L "$path" ] || return 1
+    size=$(wc -c < "$path" 2>/dev/null | tr -d '[:space:]' || echo 999999)
+    case "$size" in
+        ''|*[!0-9]*) return 1 ;;
+    esac
+    [ "$size" -le 65536 ] || return 1
+}
+
+write_version_reasoning_fragment() {
+    local start issue_number repo repo_unavailable reasoning_file anchor_id content out rc failed args
+    start=$(date +%s)
+    issue_number=$(read_state ISSUE_NUMBER)
+    repo=$(read_state REPO)
+    repo_unavailable=$(read_state REPO_UNAVAILABLE)
+    reasoning_file=$(read_state BUMP_REASONING_FILE)
+    anchor_id=$(read_state ANCHOR_COMMENT_ID)
+    mkdir -p "$IMPLEMENT_TMPDIR/anchor-sections"
+    if validate_bump_reasoning_file "$reasoning_file"; then
+        content=$(cat "$reasoning_file" 2>/dev/null || true)
+    else
+        content="No version bump reasoning available (skill may have skipped via BUMP_TYPE=NONE, or /bump-version was not invoked)."
+        append_execution_issue "Step 8 postbump anchor used fallback version-bump reasoning because BUMP_REASONING_FILE failed validation."
+        warn_line '**⚠ 8: anchor — version-bump-reasoning input failed validation; fallback text used. Continuing.**'
+    fi
+    printf '%s\n' "$content" > "$IMPLEMENT_TMPDIR/anchor-sections/version-bump-reasoning.md"
+
+    ANCHOR_REFRESH_STATUS=skipped
+    if [ -n "$issue_number" ] && [ "$repo_unavailable" = "false" ]; then
+        args=("$SCRIPT_DIR/refresh-anchor.sh" --sections-dir "$IMPLEMENT_TMPDIR/anchor-sections" --issue "$issue_number" --output "$IMPLEMENT_TMPDIR/anchor-assembled.md")
+        [ -z "$anchor_id" ] || args=("${args[@]}" --anchor-id "$anchor_id")
+        [ -z "$repo" ] || args=("${args[@]}" --repo "$repo")
+        set +e
+        out=$("${args[@]}")
+        rc=$?
+        set -e
+        failed=$(kv_value FAILED "$out")
+        if [ "$rc" -eq 0 ] && [ "$failed" != "true" ]; then
+            ANCHOR_REFRESH_STATUS=ok
+        else
+            ANCHOR_REFRESH_STATUS=failed
+            append_execution_issue "Step 8 postbump anchor refresh failed."
+            warn_line '**⚠ 8: anchor — version-bump-reasoning refresh failed. Continuing.**'
+        fi
+    fi
+    printf '✅ 8: anchor — version-bump-reasoning fragment written (%s)\n' "$(elapsed "$start")"
+}
+
+changelog_categories_to_markdown() {
+    local dir=$1 out=$2 category file title had_any
+    : > "$out"
+    had_any=false
+    for category in Added Changed Fixed Removed Security; do
+        file="$dir/$category"
+        [ -s "$file" ] || continue
+        had_any=true
+        printf '### %s\n\n' "$category" >> "$out"
+        while IFS= read -r title || [ -n "$title" ]; do
+            [ -n "$title" ] || continue
+            printf -- '- %s\n' "$title" >> "$out"
+        done < "$file"
+        printf '\n' >> "$out"
+    done
+    [ "$had_any" = "true" ]
+}
+
+collect_changelog_bullets() {
+    local dir=$1 manifest_path=$2 line category bullet categorized
+    mkdir -p "$dir"
+    : > "$dir/Added"; : > "$dir/Changed"; : > "$dir/Fixed"; : > "$dir/Removed"; : > "$dir/Security"
+    if [ -n "$manifest_path" ]; then
+        if [ ! -r "$manifest_path" ]; then
+            return 1
+        fi
+        categorized=$(jq -c '(.summary_bullets_categorized // {}) | if type == "object" then . else {} end' "$manifest_path" 2>/dev/null || echo '{}')
+        if [ "$categorized" != "{}" ]; then
+            for category in Added Changed Fixed Removed Security; do
+                jq -r --arg c "$category" '(.summary_bullets_categorized // {})[$c] // [] | if type == "array" then .[] else empty end' "$manifest_path" 2>/dev/null >> "$dir/$category" || return 1
+            done
+        else
+            jq -r '(.summary_bullets // []) | if type == "array" then .[] else empty end' "$manifest_path" 2>/dev/null >> "$dir/Changed" || return 1
+        fi
+    else
+        validate_small_tmp_file "$CHANGELOG_BULLETS_FILE" || return 1
+        while IFS= read -r line || [ -n "$line" ]; do
+            [ -n "$line" ] || continue
+            case "$line" in
+                *"	"*)
+                    category=${line%%	*}
+                    bullet=${line#*	}
+                    ;;
+                *)
+                    category=Changed
+                    bullet=$line
+                    ;;
+            esac
+            case "$category" in
+                Added|Changed|Fixed|Removed|Security) ;;
+                *) category=Changed ;;
+            esac
+            printf '%s\n' "$bullet" >> "$dir/$category"
+        done < "$CHANGELOG_BULLETS_FILE"
+    fi
+}
+
+write_changelog_entry() {
+    local version=$1 categories_file=$2 output=$3 today tmp
+    today=$(date +%Y-%m-%d)
+    tmp="$output.entry.$$"
+    {
+        printf '## [%s] - %s\n\n' "$version" "$today"
+        cat "$categories_file"
+    } > "$tmp"
+    awk -v version="$version" -v entry="$tmp" '
+        BEGIN {
+            while ((getline line < entry) > 0) e[++en] = line
+            close(entry)
+            inserted = 0
+            skipping = 0
+        }
+        $0 ~ "^## \\[" version "\\] - " {
+            if (!inserted) {
+                for (i = 1; i <= en; i++) print e[i]
+                inserted = 1
+            }
+            skipping = 1
+            next
+        }
+        skipping && /^## \[/ {
+            skipping = 0
+        }
+        skipping {
+            next
+        }
+        /^## \[Unreleased\]/ {
+            print
+            if (!inserted) {
+                print ""
+                for (i = 1; i <= en; i++) print e[i]
+                inserted = 1
+            }
+            next
+        }
+        /and this project adheres to \[Semantic Versioning\]/ {
+            print
+            if (!inserted) {
+                print ""
+                for (i = 1; i <= en; i++) print e[i]
+                inserted = 1
+            }
+            next
+        }
+        !inserted && /^## \[/ {
+            for (i = 1; i <= en; i++) print e[i]
+            inserted = 1
+        }
+        { print }
+        END {
+            if (!inserted) exit 3
+        }
+    ' CHANGELOG.md > "$output"
+    rc=$?
+    rm -f "$tmp"
+    return "$rc"
+}
+
+maybe_update_changelog() {
+    local start out rc present forked_target has_bump bump_type new_version manifest_path tmpdir categories_md tmp_changelog status_out
+    start=$(date +%s)
+    postbump_mark "Step 8a — changelog"
+    CHANGELOG_STATUS="skipped-no-bump"
+    set +e
+    out=$("$SCRIPT_DIR/check-changelog-present.sh")
+    rc=$?
+    set -e
+    present=$(kv_value CHANGELOG_PRESENT "$out")
+    if [ "$rc" -ne 0 ] || [ "$present" != "true" ]; then
+        CHANGELOG_STATUS="skipped-absent"
+        printf '⏭️ 8a: changelog — skipped (CHANGELOG_PRESENT=false) (%s)\n' "$(elapsed "$start")"
+        postbump_report_since_mark
+        return 0
+    fi
+    forked_target=$(read_state FORKED_TARGET)
+    if [ "$forked_target" = "true" ]; then
+        CHANGELOG_STATUS="skipped-fork"
+        printf '⏭️ 8a: changelog — skipped (--forked dry-run) (%s)\n' "$(elapsed "$start")"
+        postbump_report_since_mark
+        return 0
+    fi
+    has_bump=$(read_state HAS_BUMP)
+    bump_type=$(read_state BUMP_TYPE)
+    if [ "$has_bump" != "true" ] || [ "$bump_type" = "NONE" ]; then
+        CHANGELOG_STATUS="skipped-no-bump"
+        printf '⏭️ 8a: changelog — skipped (no bump commit) (%s)\n' "$(elapsed "$start")"
+        postbump_report_since_mark
+        return 0
+    fi
+
+    new_version=$(read_state NEW_VERSION)
+    manifest_path=$(read_state MANIFEST_PATH)
+    tmpdir="$IMPLEMENT_TMPDIR/postbump-changelog.$$"
+    mkdir -p "$tmpdir"
+    if ! collect_changelog_bullets "$tmpdir/categories" "$manifest_path"; then
+        CHANGELOG_STATUS=failed
+        append_execution_issue "Step 8a changelog failed while reading changelog bullets."
+        warn_line '**⚠ Step 8a: changelog update failed while reading bullets. Bailing to cleanup.**'
+        rm -rf "$tmpdir"
+        postbump_report_since_mark
+        return 1
+    fi
+    categories_md="$tmpdir/categories.md"
+    if ! changelog_categories_to_markdown "$tmpdir/categories" "$categories_md"; then
+        CHANGELOG_STATUS="skipped-no-bullets"
+        append_execution_issue "Step 8a changelog skipped because no summary bullets were available."
+        warn_line '**⚠ 8a: changelog — no summary bullets available; amend skipped. Continuing.**'
+        rm -rf "$tmpdir"
+        postbump_report_since_mark
+        return 0
+    fi
+
+    tmp_changelog="$tmpdir/CHANGELOG.md"
+    set +e
+    write_changelog_entry "$new_version" "$categories_md" "$tmp_changelog"
+    rc=$?
+    set -e
+    if [ "$rc" -ne 0 ]; then
+        CHANGELOG_STATUS=failed
+        append_execution_issue "Step 8a changelog failed because CHANGELOG.md had no insertion anchor."
+        warn_line '**⚠ Step 8a: changelog update failed (no insertion anchor). Bailing to cleanup.**'
+        rm -rf "$tmpdir"
+        postbump_report_since_mark
+        return 1
+    fi
+    if ! mv "$tmp_changelog" CHANGELOG.md 2>/dev/null; then
+        CHANGELOG_STATUS=failed
+        append_execution_issue "Step 8a changelog failed while writing CHANGELOG.md."
+        warn_line '**⚠ Step 8a: changelog write failed. Bailing to cleanup.**'
+        rm -rf "$tmpdir"
+        postbump_report_since_mark
+        return 1
+    fi
+    set +e
+    out=$("$SCRIPT_DIR/git-amend-add.sh" CHANGELOG.md 2>&1)
+    rc=$?
+    set -e
+    if [ "$rc" -ne 0 ]; then
+        git checkout -- CHANGELOG.md 2>/dev/null || true
+        CHANGELOG_STATUS=failed
+        append_execution_issue "Step 8a changelog amend failed."
+        warn_line '**⚠ Step 8a: changelog amend failed. Bailing to cleanup.**'
+        rm -rf "$tmpdir"
+        postbump_report_since_mark
+        return 1
+    fi
+    set +e
+    status_out=$(git status --porcelain CHANGELOG.md 2>/dev/null)
+    rc=$?
+    set -e
+    if [ "$rc" -ne 0 ] || [ -n "$status_out" ]; then
+        git checkout -- CHANGELOG.md 2>/dev/null || true
+        CHANGELOG_STATUS=failed
+        append_execution_issue "Step 8a changelog remained dirty after amend."
+        warn_line '**⚠ Step 8a: changelog remained dirty after amend. Bailing to cleanup.**'
+        rm -rf "$tmpdir"
+        postbump_report_since_mark
+        return 1
+    fi
+    CHANGELOG_STATUS=updated
+    printf '✅ 8a: changelog — updated for v%s (%s)\n' "$new_version" "$(elapsed "$start")"
+    rm -rf "$tmpdir"
+    postbump_report_since_mark
+    return 0
+}
+
+run_step8b_rebase() {
+    local start forked_target repo_unavailable out rc skipped error_text
+    start=$(date +%s)
+    postbump_mark "Step 8b — rebase"
+    REBASE_STATUS=failed
+    if ! validate_postbump_state_branch true; then
+        append_execution_issue "Step 8b postbump branch mismatch before rebase."
+        warn_line '**⚠ Step 8b: branch mismatch before rebase. Bailing to cleanup.**'
+        set +e
+        postbump_report_since_mark
+        return 4
+    fi
+    printf '🔃 8b: rebase\n'
+    forked_target=$(read_state FORKED_TARGET)
+    repo_unavailable=$(read_state REPO_UNAVAILABLE)
+    set +e
+    if [ "$forked_target" = "true" ]; then
+        out=$("$SCRIPT_DIR/rebase-push.sh" --no-push --base-remote upstream --base-ref main 2>&1)
+    else
+        out=$("$SCRIPT_DIR/rebase-push.sh" --no-push 2>&1)
+    fi
+    rc=$?
+    set -e
+    skipped=$(kv_value SKIPPED_ALREADY_FRESH "$out")
+    case "$rc" in
+        0)
+            if [ "$skipped" = "true" ]; then
+                REBASE_STATUS=already-fresh
+            else
+                REBASE_STATUS=rebased
+                printf '✅ 8b: rebase — rebased onto latest main (%s)\n' "$(elapsed "$start")"
+            fi
+            postbump_report_since_mark
+            return 0
+            ;;
+        1)
+            if [ "$forked_target" = "true" ]; then
+                REBASE_STATUS=failed
+                warn_line '**⚠ Step 8b: rebase onto upstream/main failed (conflict under --forked). Resolve manually and rerun.**'
+                set +e
+                postbump_report_since_mark
+                return 2
+            elif [ "$repo_unavailable" = "true" ]; then
+                REBASE_STATUS=failed
+                warn_line '**⚠ Step 8b: rebase onto main failed (conflict, repo_unavailable=true so sub-procedure auto-recovery is skipped). Bailing to cleanup.**'
+                set +e
+                postbump_report_since_mark
+                return 2
+            else
+                REBASE_STATUS=conflict
+                write_postbump_checkpoint
+                printf '🔃 8b: rebase — conflict detected; handing off to Rebase + Re-bump Sub-procedure (caller_kind=step8b_rebase)\n'
+                set +e
+                postbump_report_since_mark
+                return 1
+            fi
+            ;;
+        3)
+            error_text=$(kv_value REBASE_ERROR "$out")
+            [ -n "$error_text" ] || error_text="exit 3"
+            REBASE_STATUS=failed
+            warn_line "$(printf '**⚠ Step 8b: rebase failed (non-conflict): %s. Bailing to cleanup.**' "$error_text")"
+            set +e
+            postbump_report_since_mark
+            return 2
+            ;;
+        *)
+            REBASE_STATUS=failed
+            warn_line "$(printf '**⚠ Step 8b: rebase failed unexpectedly (exit %s). Bailing to cleanup.**' "$rc")"
+            set +e
+            postbump_report_since_mark
+            return 2
+            ;;
+    esac
+}
+
+run_force_push_gate() {
+    local start repo_unavailable branch out rc state remote_rc error push_status
+    start=$(date +%s)
+    FORCE_PUSH_STATUS=absent
+    repo_unavailable=$(read_state REPO_UNAVAILABLE)
+    if [ "$repo_unavailable" = "true" ]; then
+        FORCE_PUSH_STATUS="skipped-repo-unavailable"
+        clear_postbump_checkpoint
+        printf '⏭️ 8b: rebase — force-push skipped (repo_unavailable=true) (%s)\n' "$(elapsed "$start")"
+        return 0
+    fi
+    if ! validate_postbump_state_branch true; then
+        append_execution_issue "Step 8b postbump branch mismatch before force-push gate."
+        warn_line '**⚠ Step 8b: branch mismatch before force-push gate. Bailing to cleanup.**'
+        set +e
+        return 4
+    fi
+    branch=$(read_state BRANCH_NAME)
+    set +e
+    out=$("$SCRIPT_DIR/check-remote-branch.sh" --branch "$branch")
+    rc=$?
+    set -e
+    state=$(kv_value STATE "$out")
+    remote_rc=$(kv_value RC "$out")
+    error=$(kv_value ERROR "$out")
+    case "$state" in
+        present)
+            set +e
+            out=$("$SCRIPT_DIR/git-force-push.sh" 2>&1)
+            rc=$?
+            set -e
+            push_status=$(kv_value STATUS "$out")
+            case "$push_status" in
+                pushed|noop_same_ref)
+                    FORCE_PUSH_STATUS=$push_status
+                    clear_postbump_checkpoint
+                    printf '✅ 8b: rebase — force-pushed to origin (%s)\n' "$(elapsed "$start")"
+                    return 0
+                    ;;
+                *)
+                    FORCE_PUSH_STATUS=failed
+                    append_execution_issue "Step 8b force-push failed after rebase."
+                    warn_line '**⚠ Step 8b: force-push failed after rebase (lease check refused). Bailing to cleanup.**'
+                    set +e
+                    return 3
+                    ;;
+            esac
+            ;;
+        absent)
+            FORCE_PUSH_STATUS=absent
+            clear_postbump_checkpoint
+            return 0
+            ;;
+        *)
+            FORCE_PUSH_STATUS=failed
+            append_execution_issue "Step 8b check-remote-branch failed before force-push."
+            warn_line "$(printf '**⚠ Step 8b: check-remote-branch failed (RC=%s, ERROR=%s; transport or auth error). Bailing to cleanup.**' "$remote_rc" "$error")"
+            set +e
+            return 5
+            ;;
+    esac
+}
+
+run_postbump() {
+    local rc
+    ANCHOR_REFRESH_STATUS=skipped
+    CHANGELOG_STATUS="skipped-resume"
+    REBASE_STATUS="skipped-resume"
+    FORCE_PUSH_STATUS=absent
+    load_and_validate_postbump_state
+    if ! read_postbump_checkpoint; then
+        append_execution_issue "Step 8 postbump checkpoint file was corrupt."
+        warn_line '**⚠ Step 8: postbump checkpoint file corrupt. Bailing to cleanup.**'
+        postbump_tail postbump-state-corrupt skipped skipped-resume skipped-resume absent
+        return 0
+    fi
+    if [ "$POSTBUMP_CHECKPOINT_PHASE" = "force-push-gate" ]; then
+        ANCHOR_REFRESH_STATUS=skipped
+        CHANGELOG_STATUS="skipped-resume"
+        REBASE_STATUS="skipped-resume"
+        set +e
+        run_force_push_gate
+        rc=$?
+        set -e
+        case "$rc" in
+            0) postbump_tail ok "$ANCHOR_REFRESH_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" "$FORCE_PUSH_STATUS" ;;
+            3) postbump_tail push-failed "$ANCHOR_REFRESH_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" "$FORCE_PUSH_STATUS" ;;
+            4) postbump_tail branch-mismatch "$ANCHOR_REFRESH_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" "$FORCE_PUSH_STATUS" ;;
+            5) postbump_tail remote-check-failed "$ANCHOR_REFRESH_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" "$FORCE_PUSH_STATUS" ;;
+            *) postbump_tail push-failed "$ANCHOR_REFRESH_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" "$FORCE_PUSH_STATUS" ;;
+        esac
+        return 0
+    fi
+
+    write_version_reasoning_fragment
+    if ! maybe_update_changelog; then
+        postbump_tail changelog-failed "$ANCHOR_REFRESH_STATUS" "$CHANGELOG_STATUS" skipped-resume absent
+        return 0
+    fi
+    set +e
+    run_step8b_rebase
+    rc=$?
+    set -e
+    case "$rc" in
+        0) ;;
+        1) postbump_tail conflict "$ANCHOR_REFRESH_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" absent force-push-gate; return 0 ;;
+        4) postbump_tail branch-mismatch "$ANCHOR_REFRESH_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" absent; return 0 ;;
+        *) postbump_tail rebase-failed "$ANCHOR_REFRESH_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" absent; return 0 ;;
+    esac
+    set +e
+    run_force_push_gate
+    rc=$?
+    set -e
+    case "$rc" in
+        0) postbump_tail ok "$ANCHOR_REFRESH_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" "$FORCE_PUSH_STATUS" ;;
+        3) postbump_tail push-failed "$ANCHOR_REFRESH_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" "$FORCE_PUSH_STATUS" ;;
+        4) postbump_tail branch-mismatch "$ANCHOR_REFRESH_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" "$FORCE_PUSH_STATUS" ;;
+        5) postbump_tail remote-check-failed "$ANCHOR_REFRESH_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" "$FORCE_PUSH_STATUS" ;;
+        *) postbump_tail push-failed "$ANCHOR_REFRESH_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" "$FORCE_PUSH_STATUS" ;;
+    esac
+}
+
 clone_basename_prefix() {
     local clone_tag
     clone_tag=$(basename "$PWD")
@@ -248,13 +913,13 @@ run_postmerge() {
 
     if [ "$draft" = "true" ]; then
         printf '⏭️ 14: local cleanup — skipped (--draft set, staying on %s for further iteration) (%s)\n' "$branch" "$(elapsed "$start")"
-        local_status=skipped-draft
+        local_status="skipped-draft"
     elif [ "$merge" != "true" ]; then
         printf '⏭️ 14: local cleanup — skipped (--merge not set), still on %s (%s)\n' "$branch" "$(elapsed "$start")"
-        local_status=skipped-merge-false
+        local_status="skipped-merge-false"
     elif bail_reason_nonempty; then
         warn_line "$(printf '**⚠ 14: local cleanup — skipped (PR not merged), still on %s (%s)**' "$branch" "$(elapsed "$start")")"
-        local_status=skipped-bail
+        local_status="skipped-bail"
     else
         [ -n "$branch" ] || die_usage "state-file key BRANCH_NAME must be non-empty for postmerge cleanup"
         [ "$branch" != "main" ] || die_usage "state-file key BRANCH_NAME must not be main"
@@ -679,12 +1344,24 @@ main() {
     [ $# -gt 0 ] || die_usage "missing subcommand"
     subcommand=$1
     shift
-    parse_common_args "$@"
 
     case "$subcommand" in
-        postmerge) run_postmerge ;;
-        slack) run_slack ;;
-        teardown) run_teardown ;;
+        postbump)
+            parse_postbump_args "$@"
+            run_postbump
+            ;;
+        postmerge)
+            parse_common_args "$@"
+            run_postmerge
+            ;;
+        slack)
+            parse_common_args "$@"
+            run_slack
+            ;;
+        teardown)
+            parse_common_args "$@"
+            run_teardown
+            ;;
         *) die_usage "unknown subcommand: $subcommand" ;;
     esac
 }
