@@ -221,6 +221,15 @@ fi
 # untracked-files baseline + _write_dirty_tree_sidecar EXIT trap) remains the
 # after-the-fact detector.
 #
+# Issue #1561: hosts where cursor-agent's sandbox runtime is unavailable
+# (e.g. macOS Darwin without a working sandbox backend) fail with
+# "Sandbox mode is enabled but not available on this system" on every launch.
+# Operators on such hosts can set `LARCH_CURSOR_SANDBOX=disabled` to opt out
+# of `--sandbox enabled` while keeping `--mode plan`. Read-only enforcement
+# then degrades to two layers: this prompt-level preamble and the post-run
+# dirty-tree sidecar. Default and any unrecognized value resolve to `enabled`
+# (current behavior); a stderr warning surfaces typos without aborting.
+#
 # Retry-replay safety: ${OUTPUT}.prompt is consumed by collect-agent-results.sh
 # empty-output retries via `--prompt-file`. To keep that replay idempotent
 # (one preamble, not N), the sidecar is written from $ORIGINAL_PROMPT
@@ -238,6 +247,24 @@ EOF
 )
 ORIGINAL_PROMPT="$PROMPT"
 PROMPT="${CURSOR_REVIEW_HARDENING_PREAMBLE}"$'\n\n'"${PROMPT}"
+
+# Issue #1561: resolve LARCH_CURSOR_SANDBOX into the sandbox-portion of the
+# inner cursor argv. `disabled` (case-insensitive, trailing whitespace
+# tolerated) drops `--sandbox enabled` for hosts whose cursor-agent sandbox
+# runtime is unavailable; any other value (including unset, empty, or
+# `enabled`) preserves the default. Unknown values warn on stderr but do
+# not abort — typos must not regress hosts where the sandbox actually works.
+CURSOR_SANDBOX_ARGS=(--sandbox enabled)
+_cs_raw="${LARCH_CURSOR_SANDBOX:-}"
+_cs_norm="${_cs_raw#"${_cs_raw%%[![:space:]]*}"}"
+_cs_norm="${_cs_norm%"${_cs_norm##*[![:space:]]}"}"
+_cs_norm=$(printf '%s' "$_cs_norm" | LC_ALL=C tr '[:upper:]' '[:lower:]')
+case "$_cs_norm" in
+    disabled) CURSOR_SANDBOX_ARGS=() ;;
+    ''|enabled) ;;
+    *) printf '**⚠ launch-cursor-review.sh: LARCH_CURSOR_SANDBOX=%s not recognized; defaulting to enabled**\n' "$_cs_raw" >&2 ;;
+esac
+unset _cs_raw _cs_norm
 
 WRAPPED_PROMPT=$({ "$SCRIPT_DIR/cursor-wrap-prompt.sh" "$PROMPT"; _wrap_status=$?; printf X; exit "$_wrap_status"; })
 WRAPPED_PROMPT=${WRAPPED_PROMPT%X}
@@ -300,7 +327,8 @@ RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX=.inner.done \
         --timeout "$TIMEOUT" \
         --capture-stdout-only \
         -- \
-        cursor agent -p --trust --mode plan --sandbox enabled \
+        cursor agent -p --trust --mode plan \
+        ${CURSOR_SANDBOX_ARGS[@]+"${CURSOR_SANDBOX_ARGS[@]}"} \
         --output-format json \
         ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
         ${CURSOR_AUTH_ARGS[@]+"${CURSOR_AUTH_ARGS[@]}"} \
