@@ -5,3 +5,4 @@ __pycache__/
 .claude/scheduled_tasks.lock
 .agents/
 skills-lock.json
+node_modules/

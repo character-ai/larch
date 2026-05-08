@@ -66,14 +66,17 @@ jobs:
           node-version: 'lts/*'
           cache: npm
           cache-dependency-path: package.json
-      - name: Install Mermaid CLI
-        env:
-          PUPPETEER_SKIP_DOWNLOAD: '1'
-        run: npm install
       - uses: actions/cache@v5
         with:
           path: ~/.cache/puppeteer
           key: puppeteer-${{ runner.os }}-${{ hashFiles('package.json') }}
+      - name: Install Mermaid CLI
+        # Mermaid CLI 11.x has no --parseOnly mode, so the lint script
+        # falls back to mmdc -i ... -o ....svg, which requires
+        # Puppeteer's Chromium download. The puppeteer cache above
+        # restores ~/.cache/puppeteer between runs so cold downloads
+        # only happen when package.json changes.
+        run: npm install
       - name: Lint Mermaid fences (changed only)
         run: scripts/lint-mermaid-fences.sh --changed-only
 
