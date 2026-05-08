@@ -1080,7 +1080,7 @@ The snapshot is captured via a dedicated script that handles `pipefail`, atomic 
 ${CLAUDE_PLUGIN_ROOT}/scripts/snapshot-untracked.sh --output "$IMPLEMENT_TMPDIR/pre-review-untracked.txt"
 ```
 
-Best-effort: the script always exits 0; on any failure it removes both temp and baseline files so `check-review-changes.sh` sees `UNTRACKED_BASELINE=missing` and degrades gracefully (issue #651).
+Best-effort: the script always exits 0; on any *operation* failure (git / sort / mv) it removes both temp and baseline files so `check-review-changes.sh` sees `UNTRACKED_BASELINE=missing` and degrades gracefully (issue #651). Argument-parsing failures (unknown flag, missing `--output`) log to stderr and exit 0 *without* touching the baseline path — see `scripts/snapshot-untracked.md` for the full contract.
 
 ### Quick mode (`quick_mode=true`)
 

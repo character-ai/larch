@@ -5,9 +5,13 @@
 #   snapshot-untracked.sh --output <file> [--nul]
 #
 # On success, writes a sorted list of untracked paths to <file> via atomic rename.
-# On ANY failure (git, sort, mv), removes both the temp file and <file> so the
-# downstream consumer (check-review-changes.sh) sees UNTRACKED_BASELINE=missing
-# and degrades gracefully (issue #651).
+# On any OPERATION failure (git, sort, mv), removes both the temp file and <file>
+# so the downstream consumer (check-review-changes.sh) sees
+# UNTRACKED_BASELINE=missing and degrades gracefully (issue #651).
+#
+# On argument-parsing failure (unknown flag, missing --output), logs to stderr
+# and exits 0 WITHOUT touching <file> — argument errors must not delete
+# user-controlled paths (issue #1486).
 #
 # Always exits 0 — callers must never abort on snapshot failure.
 
@@ -18,9 +22,16 @@ NUL_MODE=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --output) OUTPUT="${2:?--output requires a value}"; shift 2 ;;
+        --output)
+            if [[ $# -lt 2 || -z "${2:-}" ]]; then
+                echo "snapshot-untracked.sh: --output requires a value" >&2
+                exit 0
+            fi
+            OUTPUT="$2"
+            shift 2
+            ;;
         --nul) NUL_MODE=true; shift ;;
-        *) echo "snapshot-untracked.sh: unknown flag: $1" >&2; rm -f "$OUTPUT" "${OUTPUT}.tmp" 2>/dev/null; exit 0 ;;
+        *) echo "snapshot-untracked.sh: unknown flag: $1" >&2; exit 0 ;;
     esac
 done
 
