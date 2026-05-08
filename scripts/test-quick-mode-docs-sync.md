@@ -28,7 +28,7 @@ Each target file MUST contain all six markers:
 | `Cursor → Codex → Claude` | case-sensitive `grep -F`, UTF-8 U+2192 arrow | Pins the fallback chain order (Gemini was removed from the chain when its reviewer call sites were eliminated from `/implement` and `/review`; the launcher remains as machinery). |
 | `no voting panel` | **case-insensitive** `grep -iF` | Semantic marker; tolerates legitimate sentence-case rewrites (e.g. "No voting panel"). |
 | `rounds 1-3` | **case-insensitive** `grep -iF` | Pins the rounds-1-3 vs rounds-4+ split. Insensitive because `docs/review-agents.md` uses both `Rounds 1-3` (table cell) and `rounds 1-3` (Note A prose). Added per #1002. |
-| `5 Cursor specialists` | case-sensitive `grep -F` | Pins the specialist count in rounds 1-3. Together with the markers below, encodes the multi-lane topology so a future change that drops the specialist panel from rounds 1-3 fails CI. Added per #1002. |
+| `2 Cursor specialists` | case-sensitive `grep -F` | Pins the specialist count in rounds 1-3. Together with the markers below, encodes the multi-lane topology so a future change that drops the specialist panel from rounds 1-3 fails CI. Added per #1002. |
 | `generic Codex` | case-sensitive `grep -F` | Pins the generic Codex slot — present both in rounds 1-3 (specialists + generic Codex) and as a fallback link in the rounds-4+ chain. Added per #1002. |
 
 The last three markers encode the rounds-1-3 vs rounds-4+ topology described in the canonical Step 5 contract. Without them, a SKILL.md edit that re-shuffled the multi-lane structure (e.g. removing the generic Codex from rounds 1-3, or merging rounds 1-3 with rounds 4+) could ship without the public docs being updated.

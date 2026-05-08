@@ -7,7 +7,7 @@ allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task
 
 # Code Review Skill
 
-Review code changes using a 6-reviewer specialist panel (5 Cursor specialists + 1 Codex generic). Two modes: **diff mode** (`--diff`) reviews the current branch diff vs `main` and implements accepted suggestions; **description mode** (positional `<description>`) reviews existing code matching the description and files accepted findings as GitHub issues by default (`--no-issues` to suppress). Claude is not a reviewer but participates as a voter in the 3-voter adjudication panel.
+Review code changes using a 3-reviewer specialist panel (2 Cursor specialists + 1 Codex generic). Two modes: **diff mode** (`--diff`) reviews the current branch diff vs `main` and implements accepted suggestions; **description mode** (positional `<description>`) reviews existing code matching the description and files accepted findings as GitHub issues by default (`--no-issues` to suppress). Claude is not a reviewer but participates as a voter in the 3-voter adjudication panel.
 
 **Anti-halt continuation reminder.** After every child `Skill` tool call (e.g., `/design`, `/review`, `/relevant-checks`, `/bump-version`, `/issue`, `/implement`) returns AND after every `Bash` tool call that completes a numbered step or sub-step, IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on the child's cleanup output, on a Bash result, or on a status message, and do NOT write a summary, handoff, status recap, or "returning to parent" message — those are halts in disguise. This applies to ALL step boundaries from Step 0 through Step 5, and to ALL sub-step transitions within Step 3's review loop (3a→3b→3c→3d→3e→3f→loop back to Step 1). **Critical: in diff mode, the review loop (Steps 1→2→3) repeats until convergence (0 findings, or Step 3f classifies the just-fixed round as non-substantial — a main-agent classification of accepted-and-fixed work, not a reading of reviewer prose) or the 7-round safety limit — completing one round's substantial fixes does NOT mean the review is done.** The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `skip to Step N`, `bail to cleanup`, `jump back`, `loop back`, `fall through`, `break out`). A normal sequential `proceed to Step N+1` instruction is the default continuation this rule reinforces, NOT an exception. Every `/relevant-checks` invocation anywhere in this file is covered by this rule. See `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Anti-halt continuation reminder for the canonical rule.
 
@@ -56,7 +56,7 @@ Step Name Registry:
 After launching all reviewers (Step 2), maintain a mental tracker of each reviewer's status. Print a compact table after EACH status change:
 
 ```
-📊 Reviewers: | Structure: ✅ 3m12s | Correctness: ⏳ | Testing: ✅ 2m45s | Security: ⏳ | Edge-cases: ✅ 4m30s | Codex: ⏳ |
+📊 Reviewers: | Correctness-Edges: ✅ 3m12s | Security-Structure-Tests: ⏳ | Codex: ⏳ |
 ```
 
 Icons: ✅ done (with elapsed time since launch), ⏳ pending/in-progress, ❌ failed/timeout (with elapsed time since launch), ⊘ skipped (unavailable for replacement-style reviewers only). See `${CLAUDE_PLUGIN_ROOT}/skills/shared/progress-reporting.md` for elapsed time and step start formatting rules.
@@ -144,29 +144,26 @@ SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=review "${CLAUDE_PLUGIN_
 
 ### Reviewer panel composition
 
-The panel has 6 reviewers: **5 specialist reviewers** + **1 generic Codex reviewer**. Each specialist concentrates on a narrow focus area using personality definitions from `${CLAUDE_PLUGIN_ROOT}/agents/reviewer-*.md`, rendered into tool-specific prompts by `${CLAUDE_PLUGIN_ROOT}/scripts/render-specialist-prompt.sh`.
+The panel has 3 reviewers: **2 specialist reviewers** + **1 generic Codex reviewer**. Each specialist concentrates on a combined focus area using personality definitions from `${CLAUDE_PLUGIN_ROOT}/agents/reviewer-*.md`, rendered into tool-specific prompts by `${CLAUDE_PLUGIN_ROOT}/scripts/render-specialist-prompt.sh`.
 
-The 5 specialists and their attribution labels:
+The 2 specialists and their attribution labels:
 
 | Specialist | Agent file | Attribution label |
 |---|---|---|
-| Structure/KISS/Maintainability | `agents/reviewer-structure.md` | `Structure` |
-| Correctness/Logic/Error-paths | `agents/reviewer-correctness.md` | `Correctness` |
-| Tests/CI/Regression | `agents/reviewer-testing.md` | `Testing` |
-| Security/Trust-boundaries | `agents/reviewer-security.md` | `Security` |
-| Edge-cases/Failure-recovery | `agents/reviewer-edge-cases.md` | `Edge-cases` |
+| Correctness/Edge-cases/Failure-recovery | `agents/reviewer-correctness-edges.md` | `Correctness-Edges` |
+| Security/Structure/Tests-CI-Regression | `agents/reviewer-security-structure-tests.md` | `Security-Structure-Tests` |
 
 The generic Codex reviewer uses attribution label `Codex`.
 
-**Description mode is unchanged**: single round, no implement loop, not affected by the round-state machine below. Description mode launches the full 6-reviewer panel for its single round.
+**Description mode is unchanged**: single round, no implement loop, not affected by the round-state machine below. Description mode launches the full 3-reviewer panel for its single round.
 
 ### Fallback matrix
 
-| Cursor | Codex | Specialist slots (5) | Required generic slot (1) | Total |
+| Cursor | Codex | Specialist slots (2) | Required generic slot (1) | Total |
 |---|---|---|---|---|
-| ✅ | ✅ | 5x Cursor specialist (`cursor-specialist-{name}-output.txt`) | 1x Codex generic (`codex-output.txt`) | 6 |
-| ❌ | ✅ | 5x Codex specialist (`codex-specialist-{name}-output.txt`) | 1x Codex generic (`codex-output.txt`) | 6 |
-| ✅ | ❌ | 5x Cursor specialist (`cursor-specialist-{name}-output.txt`) | 1x Claude generic (Agent tool, `larch:code-reviewer`, `"sonnet"`) | 6 |
+| ✅ | ✅ | 2x Cursor specialist (`cursor-specialist-{name}-output.txt`) | 1x Codex generic (`codex-output.txt`) | 3 |
+| ❌ | ✅ | 2x Codex specialist (`codex-specialist-{name}-output.txt`) | 1x Codex generic (`codex-output.txt`) | 3 |
+| ✅ | ❌ | 2x Cursor specialist (`cursor-specialist-{name}-output.txt`) | 1x Claude generic (Agent tool, `larch:code-reviewer`, `"sonnet"`) | 3 |
 | ❌ | ❌ | — | 1x Claude generic (Agent tool, `larch:code-reviewer`, `"sonnet"`) | 1 |
 
 **Partial specialist failure**: if `collect-agent-results.sh` reports `STATUS != OK` for an individual specialist slot, follow Runtime Timeout Fallback for that slot's tool only — flip the tool to unavailable for the session. The round proceeds with whichever specialists returned valid output. Do NOT retry individual slots within the same round.
@@ -175,9 +172,9 @@ The generic Codex reviewer uses attribution label `Codex`.
 
 Launch **all reviewers in a single message**. Spawn order: specialist slots first (slowest), then Codex generic.
 
-**5 specialist slots** — for each specialist (`structure`, `correctness`, `testing`, `security`, `edge-cases`), determine which tool to use per the fallback matrix and invoke the appropriate launch wrapper. The wrappers handle prompt rendering (`render-specialist-prompt.sh`), model args (`agent-model-args.sh`), and prompt wrapping (`cursor-wrap-prompt.sh` for Cursor) internally:
+**2 specialist slots** — for each specialist (`correctness-edges`, `security-structure-tests`), determine which tool to use per the fallback matrix and invoke the appropriate launch wrapper. The wrappers handle prompt rendering (`render-specialist-prompt.sh`), model args (`agent-model-args.sh`), and prompt wrapping (`cursor-wrap-prompt.sh` for Cursor) internally:
 
-**Cursor specialist** (if `cursor_available`; set `CURSOR_SPECIALIST_TIMING_KIND=cursor-specialist-<name>` with `<name>` replaced by `structure`, `correctness`, `testing`, `security`, or `edge-cases`):
+**Cursor specialist** (if `cursor_available`; set `CURSOR_SPECIALIST_TIMING_KIND=cursor-specialist-<name>` with `<name>` replaced by `correctness-edges` or `security-structure-tests`):
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/launch-cursor-review.sh --output "$REVIEW_TMPDIR/cursor-specialist-<name>-output.txt" --timeout 1800 --agent-file "${CLAUDE_PLUGIN_ROOT}/agents/reviewer-<name>.md" --mode <diff|description> [--description-text "${DESCRIPTION_TEXT}" --scope-files "$REVIEW_TMPDIR/scope-files.txt"] --competition-notice --timing-task-kind "$CURSOR_SPECIALIST_TIMING_KIND"
@@ -237,7 +234,7 @@ Use the round counter already tracked by the round state machine.
 
 | Rounds | Reviewer panel | Voting | OOS collection | Stop condition |
 |--------|---------------|--------|----------------|----------------|
-| 1-3 | Full 6-reviewer panel (5 specialists + 1 generic) | 3-voter panel (Claude + Codex + Cursor) each round | Yes | 0 findings accepted by vote, OR Step 3f classifies the just-fixed round as non-substantial, OR round 3 reached |
+| 1-3 | Full 3-reviewer panel (2 specialists + 1 generic) | 3-voter panel (Claude + Codex + Cursor) each round | Yes | 0 findings accepted by vote, OR Step 3f classifies the just-fixed round as non-substantial, OR round 3 reached |
 | 4-7 | Single generic reviewer per round, chain `Cursor → Codex → Claude` | No voting (auto-accept) | No | 0 findings, OR Step 3f classifies the just-fixed round as non-substantial, OR round 7 reached |
 
 **Description mode is unchanged**: single round, no implement loop. After Step 3d's round summary, jump directly to Step 4 (skip Step 3e implement-fixes and Step 3f re-review).
@@ -246,15 +243,12 @@ Symmetric `/review` ↔ `/implement` chain rule: rounds 4+ use `Cursor → Codex
 
 ### 3a — Collect
 
-**Rounds 1-3 (full 6-reviewer panel):** Collect and validate all external reviewer outputs using the shared collection script. Include output paths for all specialist and generic reviewers that were actually launched:
+**Rounds 1-3 (full 3-reviewer panel):** Collect and validate all external reviewer outputs using the shared collection script. Include output paths for all specialist and generic reviewers that were actually launched:
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1860 --substantive-validation --validation-mode [--write-health "${SESSION_ENV_PATH}.health"] \
-  "$REVIEW_TMPDIR/cursor-specialist-structure-output.txt" \
-  "$REVIEW_TMPDIR/cursor-specialist-correctness-output.txt" \
-  "$REVIEW_TMPDIR/cursor-specialist-testing-output.txt" \
-  "$REVIEW_TMPDIR/cursor-specialist-security-output.txt" \
-  "$REVIEW_TMPDIR/cursor-specialist-edge-cases-output.txt" \
+  "$REVIEW_TMPDIR/cursor-specialist-correctness-edges-output.txt" \
+  "$REVIEW_TMPDIR/cursor-specialist-security-structure-tests-output.txt" \
   "$REVIEW_TMPDIR/codex-output.txt"
 ```
 
@@ -264,7 +258,7 @@ Parse the structured output for each reviewer's `STATUS` and `REVIEWER_FILE`. Fo
 
 Immediately after each `collect-agent-results.sh` return, scan every launched external output's `${OUTPUT}.dirty-tree` sidecar. Treat missing, empty, dirty, or unknown sidecars as `STATUS=unknown` unless a checkpoint probe proves the tree clean. On `STATUS=dirty` or `STATUS=unknown`, fire `AskUserQuestion` regardless of parent `auto_mode` with restore / labeled stash / bail options scoped to the launcher's reported path files. Mark `RECOVERY_TAKEN=true` if the operator chooses restore or stash. The restore path must validate repo-relative paths, reject absolute paths, `..`, and `.git/`, then consume each NUL-delimited stream correctly: `git restore --pathspec-from-file=- --pathspec-file-nul -- < TRACKED_PATHS_FILE` for tracked changes, and `[ -s NEW_UNTRACKED_PATHS_FILE ] && xargs -0 git clean -f -- < NEW_UNTRACKED_PATHS_FILE` for new untracked files (`git clean` does NOT accept `--pathspec-from-file` / `--pathspec-file-nul`; the portable stdin form `xargs -0 ... < FILE` works on both GNU and BSD xargs, while `xargs -0 -a FILE ...` is GNU-only and fails on macOS); never run a blanket clean.
 
-Merge findings from all launched reviewers, attributing each finding to its specialist label (`Structure`, `Correctness`, `Testing`, `Security`, `Edge-cases`, `Codex`). When deduplicating, credit all proposing reviewers. If the same issue appears in both in-scope and OOS from different reviewers, merge under in-scope.
+Merge findings from all launched reviewers, attributing each finding to its specialist label (`Correctness-Edges`, `Security-Structure-Tests`, `Codex`). When deduplicating, credit all proposing reviewers. If the same issue appears in both in-scope and OOS from different reviewers, merge under in-scope.
 
 **Rounds 4-7 (diff mode only, single generic reviewer):** Launch a single Cursor generic reviewer (if `cursor_available`; else Codex generic if `codex_available`; else Claude Code Reviewer subagent). Use tool-qualified output paths: `$REVIEW_TMPDIR/cursor-round${round_num}-output.txt` or `$REVIEW_TMPDIR/codex-round${round_num}-output.txt`. Collect its output via `collect-agent-results.sh` with a single output path. If `STATUS` is not `OK`, follow Runtime Timeout Fallback and retry the round with the next available tool in the chain.
 
@@ -288,7 +282,7 @@ Merge findings from all reviewers into a single deduplicated list, grouped by fi
 
 Print to the user:
 - `## Review Round {N}` header
-- Bullet list of **accepted** findings with reviewer attribution (`Structure` / `Correctness` / `Testing` / `Security` / `Edge-cases` / `Codex`, or `Claude` for the both-down fallback)
+- Bullet list of **accepted** findings with reviewer attribution (`Correctness-Edges` / `Security-Structure-Tests` / `Codex`, or `Claude` for the both-down fallback)
 - If rounds 1-3: vote counts per finding, accepted OOS items, and any findings not accepted by vote
 - Total count of accepted findings for this round
 
@@ -320,7 +314,7 @@ After all fixes are applied, invoke `/relevant-checks` via the Skill tool to run
 
 If `round_substantial=true`, increment the round number. IMMEDIATELY re-execute **Step 1** (gather the updated diff) then **Step 2** (launch reviewers again) then **Step 3** (collect, deduplicate, vote/evaluate, implement) as a fresh iteration of the review loop — do NOT halt, summarize, or wait for user input between rounds. The loop continues until reviewers report 0 findings, the last round produced only non-substantial findings (convergence), or the safety limit is reached (Step 3g).
 
-**Rounds 2-3 (full panel)**: Re-launch the full 6-reviewer panel per Step 2's launch procedure. Voting runs per Step 3c.1. The competition notice is included. This ensures multi-round specialist coverage with proper adjudication. If voting accepts 0 findings in any of rounds 1-3, the review loop terminates early.
+**Rounds 2-3 (full panel)**: Re-launch the full 3-reviewer panel per Step 2's launch procedure. Voting runs per Step 3c.1. The competition notice is included. This ensures multi-round specialist coverage with proper adjudication. If voting accepts 0 findings in any of rounds 1-3, the review loop terminates early.
 
 **Rounds 4-7 (single generic reviewer)**: Only launch **Cursor generic** (if `cursor_available`; else Codex generic if `codex_available`; else 1 Claude Code Reviewer subagent as fallback). Use the same generic diff-mode prompt from Step 2 (without the competition notice — there is no voting panel in rounds 4+). In rounds 4-7 Step 3a, collect from whichever single reviewer was launched: external output via `collect-agent-results.sh` (with Runtime Timeout Fallback on failure — retry the round with the next tool in the chain), or Claude subagent output directly. Findings that were rejected or exonerated by voting in rounds 1-3 are suppressed per Step 3c.1.
 
@@ -338,9 +332,9 @@ SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=review "${CLAUDE_PLUGIN_
 
 Print a final summary:
 - Total number of review rounds (always 1 in description mode)
-- Findings per round (with per-reviewer breakdown: `Structure` / `Correctness` / `Testing` / `Security` / `Edge-cases` / `Codex`, or `Claude` for fallback)
+- Findings per round (with per-reviewer breakdown: `Correctness-Edges` / `Security-Structure-Tests` / `Codex`, or `Claude` for fallback)
 - Voting summary (rounds 1-3): total findings voted on, accepted (2+ YES), neutral (1 YES), exonerated (0 YES + 1+ EXONERATE), rejected (0 YES + 0 EXONERATE)
-- Reviewer Competition Scoreboard (cumulative across all voted rounds, with 6 independent players)
+- Reviewer Competition Scoreboard (cumulative across all voted rounds, with 3 independent players)
 - Total fixes applied across all rounds (diff mode only)
 - Build/test status (pass/fail)
 - **External reviewer warnings** (repeat any preflight or runtime warnings from Codex/Cursor here so they are visible at the end; also include any Gemini health/probe banners surfaced by `session-setup.sh` even though the Gemini reviewer lane is dormant)

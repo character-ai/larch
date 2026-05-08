@@ -276,12 +276,12 @@ grep -Fq -- '--mode' "$REPO_ROOT/scripts/render-specialist-prompt.sh" \
 #      Findings + Out-of-Scope Observations) is enforced by the specialist agent
 #      files' Output format section and by test-render-specialist-prompt.sh.
 #      This assertion verifies that scripts/render-specialist-prompt.sh exists
-#      and the 5 specialist agent files exist with the dual-list output headers.
+#      and the 2 specialist agent files exist with the dual-list output headers.
 # ---------------------------------------------------------------------------
 RENDERER="$REPO_ROOT/scripts/render-specialist-prompt.sh"
 [[ -f "$RENDERER" ]] \
   || fail "(15) scripts/render-specialist-prompt.sh does not exist — specialist prompt rendering is broken"
-for specialist in reviewer-structure reviewer-correctness reviewer-testing reviewer-security reviewer-edge-cases; do
+for specialist in reviewer-correctness-edges reviewer-security-structure-tests; do
   agent_file="$REPO_ROOT/agents/${specialist}.md"
   [[ -f "$agent_file" ]] \
     || fail "(15) agents/${specialist}.md does not exist — specialist agent definition is missing"

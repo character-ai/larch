@@ -22,7 +22,7 @@ Launch all available voters **in parallel** (Cursor first, then Codex, then Clau
 
 **Tally votes**: Apply the threshold rules from the Voting Protocol based on eligible voters per finding (2+ YES with 3 voters, unanimous 2/2 with 2 voters, skip if <2 eligible). Print vote breakdown per finding.
 
-**Competition scoring**: Compute and print the **Reviewer Competition Scoreboard** per the Voting Protocol with 6 independent players (`Structure`, `Correctness`, `Testing`, `Security`, `Edge-cases`, `Codex`; or `Claude` for the both-down fallback). Scores are cumulative across all voted rounds (1-3) — round 4+ findings are auto-accepted and do not contribute to scores.
+**Competition scoring**: Compute and print the **Reviewer Competition Scoreboard** per the Voting Protocol with 3 independent players (`Correctness-Edges`, `Security-Structure-Tests`, `Codex`; or `Claude` for the both-down fallback). Scores are cumulative across all voted rounds (1-3) — round 4+ findings are auto-accepted and do not contribute to scores.
 
 **Zero accepted in-scope findings**: If voting rejects all in-scope findings, print `**ℹ Voting panel rejected all in-scope findings. No changes to implement.**` (In diff mode driven by `/implement`, OOS items accepted for issue filing are processed by `/implement` Step 9a.1; in description mode, `/review` Step 4b files them via `/umbrella` by default — see the **Diff mode** / **Description mode** bullets below.) and skip to **Step 4**.
 
