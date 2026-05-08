@@ -236,35 +236,45 @@ fi
 # (the user/specialist-rendered body BEFORE prepending the preamble) so that
 # on retry the launcher reads the body, prepends the preamble exactly once,
 # and produces an identical outgoing PROMPT — no preamble stacking.
-CURSOR_REVIEW_HARDENING_PREAMBLE=$(cat <<'EOF'
-HARD CONSTRAINTS — your role is read-only review. You MUST NOT modify the working tree by any means:
-- Do not redirect, tee, append, or pipe into any file (no `>`, `>>`, `tee`, `tee -a`).
-- Do not run `rm`, `mv`, `cp` (when target is in the repo), `mkdir`, `touch`, `sed -i`, `awk -i inplace`, `perl -i`, or any command with an in-place / write effect.
-- Do not run `git add`, `git commit`, `git checkout <path>`, `git reset <path>`, `git restore`, `git stash`, `git rebase`, `git merge`, `git push`, or any command that mutates branch state, the index, or refs.
-- Do not invoke any tool that writes files (write_file, replace, edit, edit_file, delete_file, or any future-renamed equivalent).
-The launcher enforces this with a CLI-level read-only sandbox (`--mode plan --sandbox enabled`); any write tool the agent attempts will be rejected by the sandbox. The launcher also captures an untracked-files baseline at entry, so any post-run mutation is detected and reported via the dirty-tree sidecar.
-EOF
-)
-ORIGINAL_PROMPT="$PROMPT"
-PROMPT="${CURSOR_REVIEW_HARDENING_PREAMBLE}"$'\n\n'"${PROMPT}"
-
 # Issue #1561: resolve LARCH_CURSOR_SANDBOX into the sandbox-portion of the
-# inner cursor argv. `disabled` (case-insensitive, trailing whitespace
+# inner cursor argv. `disabled` (case-insensitive, surrounding whitespace
 # tolerated) drops `--sandbox enabled` for hosts whose cursor-agent sandbox
 # runtime is unavailable; any other value (including unset, empty, or
 # `enabled`) preserves the default. Unknown values warn on stderr but do
 # not abort — typos must not regress hosts where the sandbox actually works.
+# This must precede preamble assembly because the preamble's "launcher
+# enforces this with a CLI-level read-only sandbox" sentence is rendered
+# conditionally on the resolved state — a static sentence would lie to the
+# model on the disabled path and weaken prompt-level enforcement.
 CURSOR_SANDBOX_ARGS=(--sandbox enabled)
+CURSOR_SANDBOX_RESOLVED=enabled
 _cs_raw="${LARCH_CURSOR_SANDBOX:-}"
 _cs_norm="${_cs_raw#"${_cs_raw%%[![:space:]]*}"}"
 _cs_norm="${_cs_norm%"${_cs_norm##*[![:space:]]}"}"
 _cs_norm=$(printf '%s' "$_cs_norm" | LC_ALL=C tr '[:upper:]' '[:lower:]')
 case "$_cs_norm" in
-    disabled) CURSOR_SANDBOX_ARGS=() ;;
+    disabled) CURSOR_SANDBOX_ARGS=(); CURSOR_SANDBOX_RESOLVED=disabled ;;
     ''|enabled) ;;
     *) printf '**⚠ launch-cursor-review.sh: LARCH_CURSOR_SANDBOX=%s not recognized; defaulting to enabled**\n' "$_cs_raw" >&2 ;;
 esac
 unset _cs_raw _cs_norm
+
+if [[ "$CURSOR_SANDBOX_RESOLVED" == "disabled" ]]; then
+    CURSOR_SANDBOX_ENFORCEMENT_LINE="The launcher passes --mode plan to the cursor CLI, but the CLI-level sandbox is opted out via LARCH_CURSOR_SANDBOX=disabled on this host. Read-only enforcement therefore relies on these prompt constraints plus the launcher's untracked-files baseline + dirty-tree sidecar; any post-run mutation will be detected after the fact, not blocked at the call."
+else
+    CURSOR_SANDBOX_ENFORCEMENT_LINE="The launcher enforces this with a CLI-level read-only sandbox (\`--mode plan --sandbox enabled\`); any write tool the agent attempts will be rejected by the sandbox. The launcher also captures an untracked-files baseline at entry, so any post-run mutation is detected and reported via the dirty-tree sidecar."
+fi
+CURSOR_REVIEW_HARDENING_PREAMBLE=$(cat <<EOF
+HARD CONSTRAINTS — your role is read-only review. You MUST NOT modify the working tree by any means:
+- Do not redirect, tee, append, or pipe into any file (no \`>\`, \`>>\`, \`tee\`, \`tee -a\`).
+- Do not run \`rm\`, \`mv\`, \`cp\` (when target is in the repo), \`mkdir\`, \`touch\`, \`sed -i\`, \`awk -i inplace\`, \`perl -i\`, or any command with an in-place / write effect.
+- Do not run \`git add\`, \`git commit\`, \`git checkout <path>\`, \`git reset <path>\`, \`git restore\`, \`git stash\`, \`git rebase\`, \`git merge\`, \`git push\`, or any command that mutates branch state, the index, or refs.
+- Do not invoke any tool that writes files (write_file, replace, edit, edit_file, delete_file, or any future-renamed equivalent).
+${CURSOR_SANDBOX_ENFORCEMENT_LINE}
+EOF
+)
+ORIGINAL_PROMPT="$PROMPT"
+PROMPT="${CURSOR_REVIEW_HARDENING_PREAMBLE}"$'\n\n'"${PROMPT}"
 
 WRAPPED_PROMPT=$({ "$SCRIPT_DIR/cursor-wrap-prompt.sh" "$PROMPT"; _wrap_status=$?; printf X; exit "$_wrap_status"; })
 WRAPPED_PROMPT=${WRAPPED_PROMPT%X}
