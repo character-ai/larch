@@ -251,6 +251,61 @@ else
     pass
 fi
 
+# Whole-line begin marker + prose-only end mention. Under the round-1
+# review consensus (closes #1511 round-1 FINDING — substring grep + whole
+# line awk = data loss), the matched-pair branch must NOT silently drop
+# trailing content because of an inline mention of the end marker. With
+# whole-line presence probes, has_end stays 0 and the file routes to the
+# lone-begin recovery path: content from the whole-line begin marker
+# through EOF is dropped (intentional lone-marker semantics), the prose
+# end mention sits BEFORE the begin marker so it is preserved, and a
+# fresh block is appended.
+WHOLE_BEGIN_PROSE_END="$TMP/whole-begin-prose-end.md"
+{
+    printf '## Existing\n\n'
+    # shellcheck disable=SC2016 # Backticks are literal markdown code-span delimiters in fixture data.
+    printf 'See `<!-- token-report-end -->` mentioned in this prose line; not a real sentinel.\n'
+    printf '\n'
+    printf '<!-- token-report-begin -->\n'
+    printf 'this would be deleted by lone-begin recovery\n'
+} > "$WHOLE_BEGIN_PROSE_END"
+"$SCRIPT" --ledger "$LEDGER" --transcript "$TRANSCRIPT" --append-token-report "$WHOLE_BEGIN_PROSE_END" 2>"$TMP/whole-begin-prose-end.stderr"
+wbpe_body=$(cat "$WHOLE_BEGIN_PROSE_END")
+contains "whole-begin/prose-end: prose end mention preserved" "mentioned in this prose line" "$wbpe_body"
+contains "whole-begin/prose-end: lone-begin warning emitted" "lone <!-- token-report-begin -->" "$(cat "$TMP/whole-begin-prose-end.stderr")"
+wbpe_real_begin=$(grep -c '^[[:space:]]*<!-- token-report-begin -->[[:space:]]*$' "$WHOLE_BEGIN_PROSE_END")
+wbpe_real_end=$(grep -c '^[[:space:]]*<!-- token-report-end -->[[:space:]]*$' "$WHOLE_BEGIN_PROSE_END")
+eq "whole-begin/prose-end: single whole-line begin" "1" "$wbpe_real_begin"
+eq "whole-begin/prose-end: single whole-line end" "1" "$wbpe_real_end"
+if grep -q 'this would be deleted by lone-begin recovery' "$WHOLE_BEGIN_PROSE_END"; then
+    fail "whole-begin/prose-end: post-begin content was not stripped"
+else
+    pass
+fi
+
+# Prose-only mentions of BOTH markers, no whole-line markers anywhere.
+# Substring grep would have selected the matched-pair branch, then the
+# whole-line awk would have silently no-op'd the replacement (file
+# unchanged → append succeeded with no new block, an invisible failure).
+# With whole-line presence probes, has_begin and has_end both stay 0 and
+# the file routes to the no-marker append path: existing content is
+# preserved verbatim and a fresh block is appended at EOF.
+PROSE_BOTH_NO_WHOLE_LINE="$TMP/prose-both-no-whole-line.md"
+{
+    printf '## Existing\n\n'
+    # shellcheck disable=SC2016 # Backticks are literal markdown code-span delimiters in fixture data.
+    printf 'Both `<!-- token-report-begin -->` and `<!-- token-report-end -->` mentioned only in prose.\n'
+    printf '\nkept-content\n'
+} > "$PROSE_BOTH_NO_WHOLE_LINE"
+"$SCRIPT" --ledger "$LEDGER" --transcript "$TRANSCRIPT" --append-token-report "$PROSE_BOTH_NO_WHOLE_LINE"
+pbnwl_body=$(cat "$PROSE_BOTH_NO_WHOLE_LINE")
+contains "prose-both: existing content preserved" "kept-content" "$pbnwl_body"
+contains "prose-both: prose mentions preserved" "mentioned only in prose" "$pbnwl_body"
+pbnwl_real_begin=$(grep -c '^[[:space:]]*<!-- token-report-begin -->[[:space:]]*$' "$PROSE_BOTH_NO_WHOLE_LINE")
+pbnwl_real_end=$(grep -c '^[[:space:]]*<!-- token-report-end -->[[:space:]]*$' "$PROSE_BOTH_NO_WHOLE_LINE")
+eq "prose-both: fresh whole-line begin appended" "1" "$pbnwl_real_begin"
+eq "prose-both: fresh whole-line end appended" "1" "$pbnwl_real_end"
+
 OUT="$TMP/table.md"
 "$SCRIPT" --ledger "$LEDGER" --transcript "$TRANSCRIPT" --full --markdown --output "$OUT"
 if [[ -s "$OUT" ]]; then pass; else fail "--output did not write table"; fi

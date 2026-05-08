@@ -100,14 +100,20 @@ render_jq() {
     fi
 
     # When LARCH_DEBUG_TOKEN_REPORT matches the explicit truthy allowlist
-    # below, redirect jq stderr to a temp file and surface its path on
-    # render failure via RENDER_FAIL_REASON. The redirect is a plain
-    # `2>"$jq_stderr_dest"`, not a `tee` — diagnostics go only to the temp
-    # file. Default behavior (silent stderr to /dev/null) is preserved for
-    # any unset / negative / unrecognized value (`no`, `off`, `disabled`,
-    # `0`, etc.) so the report stays non-blocking; the env var is purely
-    # an opt-in development diagnostic. mktemp failure degrades silently
-    # to /dev/null so the debug knob never breaks production.
+    # below, redirect jq stderr to a temp file and surface a fixed
+    # diagnostic suffix (`(jq stderr captured; debug)`) on stdout via
+    # RENDER_FAIL_REASON, while emitting the actual file path on the
+    # script's own stderr (`token-report.sh: jq stderr captured at <path>`).
+    # The published surface (stdout, which flows verbatim into tracking
+    # issue anchors and PR bodies) never carries the absolute
+    # TMPDIR/username-bearing path. The redirect is a plain
+    # `2>"$jq_stderr_dest"`, not a `tee` — jq diagnostics go only to the
+    # temp file. Default behavior (silent stderr to /dev/null) is
+    # preserved for any unset / negative / unrecognized value (`no`,
+    # `off`, `disabled`, `0`, etc.) so the report stays non-blocking; the
+    # env var is purely an opt-in development diagnostic. mktemp failure
+    # degrades silently to /dev/null so the debug knob never breaks
+    # production.
     local jq_stderr_dest="/dev/null"
     local jq_stderr_path=""
     # Allowlist of explicit truthy values — narrower than a blanket
@@ -350,8 +356,16 @@ replace_token_block() {
     mkdir -p "$(dirname "$target")"
     tmp="$target.tmp"
     if [[ -f "$target" ]]; then
-        grep -Fq '<!-- token-report-begin -->' "$target" && has_begin=1
-        grep -Fq '<!-- token-report-end -->' "$target" && has_end=1
+        # Presence probes use the SAME whole-line anchored regex as the
+        # awk rewrite below — keeping them in sync prevents a data-loss
+        # path where substring grep selects the matched-pair / lone-marker
+        # branch but awk never matches a structural sentinel and either
+        # drops legitimate trailing content (lone-end + trailing prose
+        # mention) or silently no-ops the replacement (prose-only mentions
+        # of both markers). #1511 round-1 review consensus FINDING (data
+        # loss path).
+        grep -Eq '^[[:space:]]*<!-- token-report-begin -->[[:space:]]*$' "$target" && has_begin=1
+        grep -Eq '^[[:space:]]*<!-- token-report-end -->[[:space:]]*$' "$target" && has_end=1
     fi
     if (( has_begin == 1 && has_end == 1 )); then
         # Both markers present — replace the bracketed region in place.
