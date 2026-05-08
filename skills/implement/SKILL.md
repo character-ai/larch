@@ -2084,8 +2084,6 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 # token-step-end Step 18
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 18 — done" || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 18 — done" || true
-# token-mark Step 18 — done
-# timing-mark Step 18 — done
 ```
 
 The closing `Step 18 — done` mark caps the `Step 18 — cleanup` window. `scripts/token-report.sh`'s `vendor_table` slices the LAST mark with `$end == null`; without the cap, vendor records logged after Step 18 in the same JSONL ledger (e.g., from a subsequent `/implement` run that falls back to the `pwd | sha256_hex` session id in `scripts/token-ledger.sh resolve_session_id()`) accrue to the prior run's `Step 18 — cleanup` bucket. The mark MUST be emitted from the orchestrator (not from `scripts/implement-finalize.sh teardown`) and only AFTER the `--since-last-mark --terse` reports above, so those reports slice the actual cleanup window rather than an empty post-`Step 18 — done` slice. By the time this block runs, `cleanup-tmpdir.sh` (inside teardown) has already removed `$IMPLEMENT_TMPDIR/session-env.sh` and `$IMPLEMENT_TMPDIR/session-id`, so `LARCH_TOKEN_SESSION_ID` resolution falls through to the `pwd-hash` fallback and the closing mark lands in `larch-tokens-<pwd-hash>.jsonl`. That landing site is intentional and load-bearing: the cross-run leakage being capped also flows through the same `pwd-hash` fallback in subsequent runs, so the cap and the leakage land in the same physical ledger file.
