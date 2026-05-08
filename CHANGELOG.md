@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [17.0.15] - 2026-05-08
+
+### Changed
+
+- Resolve #1478: external implementers now triage doc drift and small bugs (rules 1-2 of `skills/implement/SKILL.md` § "OOS triage policy") inline into the implementer's own commit before emitting any public OOS candidate, with a sanitized `Inline-triage rule N: <reason>` annotation in `commit_message`. Security-tagged OOS findings are kept out of public accepted-OOS artifacts and `/issue` handoffs at three boundaries: `skills/design/references/plan-review.md` (accepted-OOS write to `oos-accepted-design.md` and `$DESIGN_TMPDIR/oos.md` visibility write), `skills/review/references/voting.md` (diff-mode accepted-OOS write to `oos-accepted-review.md`, mirroring the description-mode model already at line 32), and `skills/implement/references/anchor-comment-template.md` (Step 9a.1 defensive re-exclusion as the first operation after artifact reads, before dedup / combine / cap / file-conflict pre-pass). The canonical security-token match is `focus-area\s*=\s*security` case-insensitive anywhere inside the `### OOS_N:` block. `skills/implement/SKILL.md` and `skills/implement/references/codex-manifest-schema.md` prose narrowed to reflect the post-retrofit state; `SECURITY.md` documents the local-hold contract. Lightweight structural assertions added to `scripts/test-design-structure.sh`, `scripts/test-review-structure.sh`, and `scripts/test-implement-structure.sh`.
+
 ## [17.0.14] - 2026-05-08
 
 ### Changed
