@@ -142,11 +142,18 @@ _write_dirty_tree_sidecar() {
     DIRTY_TREE_WRITTEN=true
 }
 
-_write_clean_dirty_tree_sidecar() {
+_write_unknown_dirty_tree_sidecar() {
+    # Used by the auth-preflight short-circuit when no agent ran. We have
+    # NOT probed the working tree (no `check-mid-run-dirty-tree.sh` call),
+    # so emit STATUS=unknown rather than STATUS=clean. Pre-launch tracked
+    # or staged edits would otherwise be silently masked when consumers
+    # treat a present sidecar with STATUS=clean as "launcher proved the
+    # tree clean." STATUS=unknown routes consumers through the same
+    # recovery-safe path as a real detector failure.
     local reason="$1"
     local tmp="${DIRTY_TREE_SIDECAR}.tmp.$$"
     {
-        printf 'STATUS=clean\n'
+        printf 'STATUS=unknown\n'
         printf 'MODE=baseline\n'
         if [[ -r "$UNTRACKED_BASELINE" ]]; then
             printf 'UNTRACKED_BASELINE=present\n'
@@ -229,7 +236,7 @@ if [[ "$PREFLIGHT_RC" != "0" ]]; then
         printf 'OUTPUT_FILE=%s\n' "$OUTPUT"
         printf 'CMD_JSON=[]\n'
     } > "${OUTPUT}.meta" 2>/dev/null || true
-    _write_clean_dirty_tree_sidecar "preflight-short-circuit-no-agent-ran"
+    _write_unknown_dirty_tree_sidecar "preflight-short-circuit-no-agent-ran"
     # `.done` is the last artifact written so polling collectors see all
     # other sidecars in place once they observe `.done`. The wrapper's trap
     # writes the EXIT_CODE; we mirror that by writing the preflight RC.

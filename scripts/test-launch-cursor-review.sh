@@ -442,11 +442,11 @@ else
     fail "case AK3 preflight failure must synthesize stub .meta with empty CMD_JSON"
 fi
 if [[ -s "${OUT_AK3}.dirty-tree" ]] \
-   && grep -Fq 'STATUS=clean' "${OUT_AK3}.dirty-tree" \
+   && grep -Fq 'STATUS=unknown' "${OUT_AK3}.dirty-tree" \
    && grep -Fq 'REASON=preflight-short-circuit-no-agent-ran' "${OUT_AK3}.dirty-tree"; then
     pass
 else
-    fail "case AK3 preflight failure must synthesize clean dirty-tree sidecar"
+    fail "case AK3 preflight failure must synthesize unknown dirty-tree sidecar (no detector ran; consumers must route to recovery-safe handling, not treat as launcher-proven clean)"
 fi
 
 # Case TM (review FINDING_10): the EXIT trap MUST emit a vendor timing

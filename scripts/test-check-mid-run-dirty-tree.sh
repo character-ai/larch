@@ -60,6 +60,17 @@ run_sut "$repo_a" "$TMPROOT/a.out" --mode checkpoint
 assert_contains "checkpoint clean status" "STATUS=clean" "$TMPROOT/a.out"
 assert_contains "checkpoint clean mode" "MODE=checkpoint" "$TMPROOT/a.out"
 
+# Checkpoint mode on a dirty repo — pins the runtime path consumed by
+# /implement and /review at orchestration boundaries (manifest reuse,
+# post-/review backstop, etc.). Without this fixture the dirty branch in
+# scripts/check-mid-run-dirty-tree.sh:123-128 was never exercised.
+repo_a_dirty=$(new_repo a-dirty)
+printf 'change\n' >> "$repo_a_dirty/tracked.txt"
+run_sut "$repo_a_dirty" "$TMPROOT/a-dirty.out" --mode checkpoint
+assert_contains "checkpoint dirty status" "STATUS=dirty" "$TMPROOT/a-dirty.out"
+assert_contains "checkpoint dirty mode" "MODE=checkpoint" "$TMPROOT/a-dirty.out"
+assert_contains "checkpoint dirty reason" "REASON=checkpoint-dirty" "$TMPROOT/a-dirty.out"
+
 repo_b=$(new_repo b)
 baseline_b="$TMPROOT/b.baseline"
 write_baseline "$repo_b" "$baseline_b"
@@ -170,7 +181,11 @@ baseline_m="$TMPROOT/m.baseline"
 write_baseline "$repo_m" "$baseline_m"
 printf 'new\n' > "$repo_m/new.txt"
 run_sut "$repo_m" "$TMPROOT/m.out" --mode baseline --baseline "$baseline_m" --sidecar "$TMPROOT/m.sidecar"
-if [[ -f "$TMPROOT/m.sidecar" && ! -e "$TMPROOT/m.sidecar.tmp.$$" ]]; then pass; else fail "sidecar should be atomically published without leftover current-pid tmp"; fi
+# Glob check: the SUT runs in a subshell so its `$$` differs from the
+# harness `$$`; `m.sidecar.tmp.<harness-pid>` would never exist regardless.
+# Assert no `m.sidecar.tmp.*` files remain — catches leftover tmp litter
+# from any SUT PID, not just the harness's.
+if [[ -f "$TMPROOT/m.sidecar" ]] && ! compgen -G "$TMPROOT/m.sidecar.tmp.*" >/dev/null 2>&1; then pass; else fail "sidecar should be atomically published without leftover m.sidecar.tmp.* litter (any pid)"; fi
 
 if (( FAIL > 0 )); then
     printf 'FAIL: test-check-mid-run-dirty-tree.sh - %s failed, %s passed\n' "$FAIL" "$PASS" >&2
