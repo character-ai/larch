@@ -242,6 +242,75 @@ JSONL
 no_marks=$("$SCRIPT" --ledger "$LEDGER_NO_MARKS" --transcript "$TRANSCRIPT" --since-last-mark --terse)
 contains "no-step-marks reason" "Token report unavailable: failed to parse token sources" "$no_marks"
 
+# LARCH_DEBUG_TOKEN_REPORT — opt-in jq-stderr capture path. With the env
+# var set to a truthy spelling, render failure surfaces a "(jq stderr at
+# <path>)" suffix in the unavailable message and the stderr file holds the
+# captured jq diagnostics. Falsy / unset values preserve the default silent
+# behavior. Closes #1466 sub-item A; tests re-use the malformed-transcript
+# fixture above to provoke a render failure.
+# Truthy spellings — full enumerated allowlist from scripts/token-report.sh
+# (round-2 review FINDING_3: tests covered only `1` and `true`; documented
+# allowlist also includes case variants of yes/on). Each entry must surface
+# the "(jq stderr at <path>)" suffix and produce a non-empty stderr file.
+for truthy_value in "1" "true" "TRUE" "True" "yes" "YES" "Yes" "on" "ON" "On"; do
+    debug_out=$(LARCH_DEBUG_TOKEN_REPORT="$truthy_value" "$SCRIPT" \
+        --ledger "$LEDGER" --transcript "$MALFORMED_TRANSCRIPT" --since-last-mark --terse)
+    case "$debug_out" in
+        *"(jq stderr at "*) pass ;;
+        *) fail "truthy env value '$truthy_value' should enable debug path: '$debug_out'" ;;
+    esac
+    # Extract the path between "jq stderr at " and the LAST ")" — using bash
+# parameter expansion (greedy on both ends) so a path that itself contains
+# a `)` is not silently truncated. The greedy ##*X / %Y* pair pins the path
+# to whatever lies between the marker phrase and the final close paren.
+debug_path="${debug_out##*jq stderr at }"; debug_path="${debug_path%)*}"
+    if [[ -n "$debug_path" && -s "$debug_path" ]]; then
+        pass
+    else
+        fail "truthy env value '$truthy_value' stderr file empty or missing: '$debug_path'"
+    fi
+    [[ -n "$debug_path" ]] && rm -f "$debug_path"
+done
+
+# Negative spellings (`no`, `off`, `0`, `false`, empty) MUST NOT enable
+# the debug path — the gate is an explicit allowlist, not "non-empty
+# non-zero" (round-1 review FINDING_1 — over-broad falsy list).
+# Use env -u for the genuinely-unset case so the harness is hermetic and
+# does not inherit a caller-supplied LARCH_DEBUG_TOKEN_REPORT (round-3
+# review codex finding — without `env -u` running the harness with
+# LARCH_DEBUG_TOKEN_REPORT=1 in the caller's env would flake the
+# "unset" assertion). The empty-value case is exercised separately.
+out=$(env -u LARCH_DEBUG_TOKEN_REPORT "$SCRIPT" \
+    --ledger "$LEDGER" --transcript "$MALFORMED_TRANSCRIPT" --since-last-mark --terse)
+case "$out" in
+    *"jq stderr at "*) fail "<unset> env should not enable debug path: '$out'" ;;
+    *) pass ;;
+esac
+
+for negative_value in "" "0" "false" "FALSE" "no" "NO" "off" "OFF" "disabled"; do
+    out=$(LARCH_DEBUG_TOKEN_REPORT="$negative_value" "$SCRIPT" \
+        --ledger "$LEDGER" --transcript "$MALFORMED_TRANSCRIPT" --since-last-mark --terse)
+    case "$out" in
+        *"jq stderr at "*) fail "negative env value '$negative_value' should not enable debug path: '$out'" ;;
+        *) pass ;;
+    esac
+done
+
+# Successful render with debug enabled MUST clean up the stderr temp
+# (round-1 review FINDING_7 — empty stderr files cluttering $TMPDIR on
+# every successful run). Use a per-test isolated TMPDIR so a parallel job
+# touching the shared system /tmp cannot flake the before/after count
+# (round-2 review FINDING_6).
+isolated_tmp="$TMP/leak-check-tmp"
+mkdir -p "$isolated_tmp"
+before_count=$(find "$isolated_tmp" -maxdepth 1 -name 'larch-token-report-jq-stderr-*' 2>/dev/null | wc -l | tr -d ' ')
+TMPDIR="$isolated_tmp" LARCH_DEBUG_TOKEN_REPORT=1 "$SCRIPT" \
+    --ledger "$LEDGER" --transcript "$TRANSCRIPT" --since-last-mark --terse > /dev/null
+after_count=$(find "$isolated_tmp" -maxdepth 1 -name 'larch-token-report-jq-stderr-*' 2>/dev/null | wc -l | tr -d ' ')
+if [[ "$before_count" == "$after_count" ]]; then pass
+else fail "debug=1 successful render leaked stderr temp file (before=$before_count after=$after_count)"
+fi
+
 BIG="$TMP/big-token-report.md"
 for i in $(seq 1 250); do printf '| old | row %s |\n' "$i" >> "$BIG"; done
 "$SCRIPT" --ledger "$LEDGER" --transcript "$TRANSCRIPT" --append-token-report "$BIG"

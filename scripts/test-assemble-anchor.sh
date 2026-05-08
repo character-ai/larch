@@ -1,7 +1,37 @@
 #!/usr/bin/env bash
 # test-assemble-anchor.sh — regression harness for scripts/assemble-anchor.sh.
 #
-# Covers 18 assertion categories:
+# Assertion categories — see the per-block headers below for full text.
+# (Tally is intentionally not inlined here per the drift-prone-prose-in-docs
+# rule — count the `pass` / `fail` call sites or read the harness's trailing
+# summary line.)
+#
+#   (a)   Empty sections directory — anchor marker + placeholder + marker
+#         pairs + injected run-statistics version row.
+#   (a2)  Empty sections directory — placeholder literal present.
+#   (a3)  Partial fragments — placeholder suppressed.
+#   (a4)  All whitespace-only fragments — placeholder fires (lenient).
+#   (a5)  Nonexistent --sections-dir — assembled with placeholder.
+#   (a6)  Missing CLAUDE_PLUGIN_ROOT — version row falls back to unknown.
+#   (b)   Partial fragments populated where present, empty pairs elsewhere.
+#   (b2)  Newline-terminated fragment — exactly one newline before close.
+#   (b3)  Fragment without trailing newline — newline inserted before close.
+#   (b4)  Populated run-statistics — strip trailing blanks, append version.
+#   (b5)  Hydrated run-statistics with stale version row — strip + dedupe.
+#   (b6)  Populated fragment normalized to empty — seed-style scaffold.
+#   (b7)  Diagrams sanitizer — offending fence placeholder + warning.
+#   (b8)  Legacy token-report block stripped from run-statistics.
+#   (b9)  Lone <!-- token-report-begin --> — strip from marker to EOF.
+#   (b10) Lone <!-- token-report-end --> — strip from BOF through marker.
+#   (b11) Multi-pair legacy blocks — every pair stripped (loop to fixed point).
+#   (b12) Matched pair + orphan end — orphan dropped as marker-line-only.
+#   (b13) Matched pair + orphan begin — orphan dropped as marker-line-only.
+#   (c)   Full fragments — all SECTION_MARKERS slugs populated.
+#   (d)   Missing anchor-section-markers.sh helper — fail closed exit 1.
+#   (e)   Invalid --issue value — usage error, exit 1.
+#   (f)   First-line HTML anchor marker exactness.
+#   (g)   Non-directory --sections-dir — fail closed exit 2.
+#   (h)   Unreadable fragment — fail closed exit 2 (skipped under root).
 #   (a) Empty sections directory → one empty marker pair per SECTION_MARKERS
 #       slug + run-statistics minimal table + first-line marker +
 #       seed-only visible placeholder line on line 2 (line count derived
@@ -294,10 +324,11 @@ pass "(b7) diagrams sanitizer → offending fence placeholder + warning"
 # --------------------------------------------------------------------------
 # (b2) Exact line-shape check: a newline-terminated fragment produces NO
 #      extra blank line between content and the close marker.
-#      Regression guard for the $(tail -c 1 ...) command-substitution bug
-#      (see scripts/assemble-anchor.sh:~130 — newline-stripping on command
-#      substitution caused a blank line to be emitted for every populated
-#      fragment before the fix).
+#      Regression guard for the original `$(tail -c 1 ...)` command-
+#      substitution newline-stripping bug. Refer by symbol — the current
+#      newline-handling lives in the populated-fragment `cat` + `od` /
+#      `tail -c` block of assemble-anchor.sh's main assembly loop, not at
+#      the line numbers the original fix touched.
 # --------------------------------------------------------------------------
 sections_b2="$tmpdir/sections-b2"
 mkdir -p "$sections_b2"
@@ -448,6 +479,240 @@ if grep -qF '| larch plugin version | 0.0.1 |' "$output_b6"; then
     fail "(b6) stale version row should have been stripped"
 fi
 pass "(b6) populated fragment normalized to empty → seed-style scaffold + fresh version row"
+
+# --------------------------------------------------------------------------
+# (b8) Legacy-anchor migration: a hydrated run-statistics fragment that
+#      embeds a pre-#1429 `<!-- token-report-begin -->...<!-- token-report-end -->`
+#      Token Report block must have that block stripped before assembly.
+#      Resumed runs against pre-split anchors would otherwise publish
+#      duplicate Token Report content (legacy block in run-statistics +
+#      fresh token-report section). Closes #1466 sub-item B (was #1440).
+# --------------------------------------------------------------------------
+sections_b8="$tmpdir/sections-b8"
+mkdir -p "$sections_b8"
+{
+    printf '## Run Statistics\n\n'
+    printf '| Metric | Value |\n'
+    printf '|---|---|\n'
+    printf '| OOS issues filed | 1 |\n'
+    printf '\n'
+    printf '<!-- token-report-begin -->\n'
+    printf '## Token Report\n\n'
+    printf '### Claude\n\n'
+    printf '| Step | Skill | Claude Input | Claude Output |\n'
+    printf '| --- | --- | ---: | ---: |\n'
+    printf '| Step 0 | **step total** | 100 | 50 |\n'
+    printf '<!-- token-report-end -->\n'
+    printf '\n'
+} > "$sections_b8/run-statistics.md"
+
+output_b8="$tmpdir/out-b8.md"
+"$ASSEMBLE_ANCHOR" --sections-dir "$sections_b8" --issue 1466 --output "$output_b8" > /dev/null
+
+# Legacy markers and their interior must NOT appear in the assembled body.
+if grep -qF '<!-- token-report-begin -->' "$output_b8"; then
+    fail "(b8) legacy <!-- token-report-begin --> marker should be stripped from run-statistics"
+fi
+if grep -qF '<!-- token-report-end -->' "$output_b8"; then
+    fail "(b8) legacy <!-- token-report-end --> marker should be stripped from run-statistics"
+fi
+if grep -qF '## Token Report' "$output_b8"; then
+    fail "(b8) Token Report heading inside legacy block should be stripped from run-statistics"
+fi
+if grep -qF '| Step 0 | **step total** | 100 | 50 |' "$output_b8"; then
+    fail "(b8) Token Report data row inside legacy block should be stripped from run-statistics"
+fi
+
+# Surrounding non-legacy content must be preserved.
+grep -qxF '## Run Statistics' "$output_b8" \
+    || fail "(b8) Run Statistics heading should be preserved across legacy strip"
+grep -qxF '| OOS issues filed | 1 |' "$output_b8" \
+    || fail "(b8) Pre-existing OOS-issues row should be preserved across legacy strip"
+
+# Exactly one fresh plugin-version row, value 9.8.7.
+total_version_rows_b8=$(grep -cE '^\| larch plugin version \|' "$output_b8")
+[ "$total_version_rows_b8" = "1" ] \
+    || fail "(b8) expected exactly 1 plugin-version row, got $total_version_rows_b8"
+grep -qF '| larch plugin version | 9.8.7 |' "$output_b8" \
+    || fail "(b8) plugin-version row should carry the freshly-captured 9.8.7 value"
+pass "(b8) legacy <!-- token-report-begin -->...<!-- token-report-end --> block stripped from run-statistics fragment"
+
+# --------------------------------------------------------------------------
+# (b9) Lone-begin marker (degraded input) → strip from begin marker to EOF.
+# --------------------------------------------------------------------------
+sections_b9="$tmpdir/sections-b9"
+mkdir -p "$sections_b9"
+{
+    printf '## Run Statistics\n\n'
+    printf '| Metric | Value |\n'
+    printf '|---|---|\n'
+    printf '| OOS issues filed | 2 |\n'
+    printf '\n'
+    printf '<!-- token-report-begin -->\n'
+    printf '## Token Report\n\n'
+    printf 'half-written content with no closing marker\n'
+} > "$sections_b9/run-statistics.md"
+
+output_b9="$tmpdir/out-b9.md"
+"$ASSEMBLE_ANCHOR" --sections-dir "$sections_b9" --issue 1466 --output "$output_b9" > /dev/null
+
+if grep -qF '<!-- token-report-begin -->' "$output_b9"; then
+    fail "(b9) lone <!-- token-report-begin --> marker should be stripped"
+fi
+if grep -qF 'half-written content with no closing marker' "$output_b9"; then
+    fail "(b9) content after lone begin marker should be stripped"
+fi
+grep -qxF '| OOS issues filed | 2 |' "$output_b9" \
+    || fail "(b9) pre-marker content should be preserved on lone-begin strip"
+pass "(b9) lone <!-- token-report-begin --> marker → strip from marker to EOF"
+
+# --------------------------------------------------------------------------
+# (b11) Multi-pair legacy token-report blocks → all pairs stripped (loop
+#       iterates until none remain). Round-1 review FINDING_2 fix.
+# --------------------------------------------------------------------------
+sections_b11="$tmpdir/sections-b11"
+mkdir -p "$sections_b11"
+{
+    printf '## Run Statistics\n\n'
+    printf '| Metric | Value |\n'
+    printf '|---|---|\n'
+    printf '| OOS issues filed | 5 |\n'
+    printf '\n'
+    printf '<!-- token-report-begin -->\n'
+    printf 'first legacy block\n'
+    printf '<!-- token-report-end -->\n'
+    printf '\n'
+    printf '| Other metric | 7 |\n'
+    printf '\n'
+    printf '<!-- token-report-begin -->\n'
+    printf 'second legacy block\n'
+    printf '<!-- token-report-end -->\n'
+} > "$sections_b11/run-statistics.md"
+
+output_b11="$tmpdir/out-b11.md"
+"$ASSEMBLE_ANCHOR" --sections-dir "$sections_b11" --issue 1466 --output "$output_b11" > /dev/null
+
+if grep -qF '<!-- token-report-begin -->' "$output_b11"; then
+    fail "(b11) all <!-- token-report-begin --> markers should be stripped, even with multiple pairs"
+fi
+if grep -qF '<!-- token-report-end -->' "$output_b11"; then
+    fail "(b11) all <!-- token-report-end --> markers should be stripped, even with multiple pairs"
+fi
+if grep -qF 'first legacy block' "$output_b11"; then
+    fail "(b11) first legacy block interior should be stripped"
+fi
+if grep -qF 'second legacy block' "$output_b11"; then
+    fail "(b11) second legacy block interior should be stripped"
+fi
+grep -qxF '| OOS issues filed | 5 |' "$output_b11" \
+    || fail "(b11) pre-block content should be preserved across multi-pair strip"
+grep -qxF '| Other metric | 7 |' "$output_b11" \
+    || fail "(b11) inter-block content should be preserved across multi-pair strip"
+pass "(b11) multi-pair legacy blocks → all pairs stripped (loop iterates to fixed point)"
+
+# --------------------------------------------------------------------------
+# (b12) Matched pair followed by an orphan end marker (no second begin):
+#       the matched pair is stripped on iter 1; the orphan end on iter 2
+#       must drop ONLY the orphan marker line — NOT BOF through the orphan
+#       end (which would delete legitimate content above the matched pair).
+#       Round-3 review FINDING_1.
+# --------------------------------------------------------------------------
+sections_b12="$tmpdir/sections-b12"
+mkdir -p "$sections_b12"
+{
+    printf '## Run Statistics\n\n'
+    printf '| Metric | Value |\n'
+    printf '|---|---|\n'
+    printf '| Pre-pair metric | KEEP_ME |\n'
+    printf '\n'
+    printf '<!-- token-report-begin -->\n'
+    printf 'matched-pair interior\n'
+    printf '<!-- token-report-end -->\n'
+    printf '\n'
+    printf '| Mid metric | ALSO_KEEP_ME |\n'
+    printf '<!-- token-report-end -->\n'
+} > "$sections_b12/run-statistics.md"
+
+output_b12="$tmpdir/out-b12.md"
+"$ASSEMBLE_ANCHOR" --sections-dir "$sections_b12" --issue 1466 --output "$output_b12" > /dev/null
+
+if grep -qF '<!-- token-report-begin -->' "$output_b12"; then
+    fail "(b12) <!-- token-report-begin --> should be stripped"
+fi
+if grep -qF '<!-- token-report-end -->' "$output_b12"; then
+    fail "(b12) all <!-- token-report-end --> markers (matched + orphan) should be stripped"
+fi
+if grep -qF 'matched-pair interior' "$output_b12"; then
+    fail "(b12) matched-pair interior should be stripped"
+fi
+grep -qxF '| Pre-pair metric | KEEP_ME |' "$output_b12" \
+    || fail "(b12) content above the matched pair must be preserved when an orphan end follows"
+grep -qxF '| Mid metric | ALSO_KEEP_ME |' "$output_b12" \
+    || fail "(b12) content between the matched pair and the orphan end must be preserved"
+pass "(b12) matched pair + orphan end → orphan dropped as marker-line-only; surrounding content preserved"
+
+# --------------------------------------------------------------------------
+# (b13) Matched pair followed by an orphan begin marker (no following end):
+#       symmetric to b12 — the orphan begin on iter 2 must drop ONLY the
+#       orphan marker line, NOT begin→EOF.
+# --------------------------------------------------------------------------
+sections_b13="$tmpdir/sections-b13"
+mkdir -p "$sections_b13"
+{
+    printf '## Run Statistics\n\n'
+    printf '| Metric | Value |\n'
+    printf '|---|---|\n'
+    printf '<!-- token-report-begin -->\n'
+    printf 'matched-pair interior\n'
+    printf '<!-- token-report-end -->\n'
+    printf '<!-- token-report-begin -->\n'
+    printf '| Trailing metric | KEEP_TRAILING |\n'
+} > "$sections_b13/run-statistics.md"
+
+output_b13="$tmpdir/out-b13.md"
+"$ASSEMBLE_ANCHOR" --sections-dir "$sections_b13" --issue 1466 --output "$output_b13" > /dev/null
+
+if grep -qF '<!-- token-report-begin -->' "$output_b13"; then
+    fail "(b13) all <!-- token-report-begin --> markers (matched + orphan) should be stripped"
+fi
+if grep -qF 'matched-pair interior' "$output_b13"; then
+    fail "(b13) matched-pair interior should be stripped"
+fi
+grep -qxF '| Trailing metric | KEEP_TRAILING |' "$output_b13" \
+    || fail "(b13) content after the orphan begin must be preserved (orphan dropped as marker-line-only)"
+pass "(b13) matched pair + orphan begin → orphan dropped as marker-line-only; trailing content preserved"
+
+# --------------------------------------------------------------------------
+# (b10) Lone-end marker (degraded input) → strip from BOF through end marker.
+# --------------------------------------------------------------------------
+sections_b10="$tmpdir/sections-b10"
+mkdir -p "$sections_b10"
+{
+    printf 'orphan content above end marker\n'
+    printf '## Token Report\n\n'
+    printf 'more orphan content\n'
+    printf '<!-- token-report-end -->\n'
+    printf '## Run Statistics\n\n'
+    printf '| Metric | Value |\n'
+    printf '|---|---|\n'
+    printf '| OOS issues filed | 3 |\n'
+} > "$sections_b10/run-statistics.md"
+
+output_b10="$tmpdir/out-b10.md"
+"$ASSEMBLE_ANCHOR" --sections-dir "$sections_b10" --issue 1466 --output "$output_b10" > /dev/null
+
+if grep -qF '<!-- token-report-end -->' "$output_b10"; then
+    fail "(b10) lone <!-- token-report-end --> marker should be stripped"
+fi
+if grep -qF 'orphan content above end marker' "$output_b10"; then
+    fail "(b10) content above lone end marker should be stripped"
+fi
+if grep -qF 'more orphan content' "$output_b10"; then
+    fail "(b10) intermediate orphan content above lone end marker should be stripped"
+fi
+grep -qxF '| OOS issues filed | 3 |' "$output_b10" \
+    || fail "(b10) post-marker content should be preserved on lone-end strip"
+pass "(b10) lone <!-- token-report-end --> marker → strip from BOF through marker"
 
 # --------------------------------------------------------------------------
 # (c) Full fragments — all SECTION_MARKERS slugs populated

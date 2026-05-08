@@ -13,10 +13,11 @@
 # non-empty in GitHub's UI. Populated runs (any fragment with at least one
 # non-whitespace byte) suppress the placeholder; populated content is emitted
 # byte-for-byte for every section EXCEPT run-statistics, which is normalized
-# (trailing blank lines stripped, any pre-existing trailing `| larch plugin
-# version | ... |` rows dropped) and a fresh canonical version row is
-# appended. See scripts/assemble-anchor.md "Seed-only visible placeholder"
-# and "Run Statistics version-row injection".
+# (legacy <!-- token-report-begin -->...<!-- token-report-end --> sentinel
+# pairs stripped, trailing blank lines stripped, any pre-existing trailing
+# `| larch plugin version | ... |` rows dropped) and a fresh canonical
+# version row is appended. See scripts/assemble-anchor.md "Seed-only visible
+# placeholder" and "Run Statistics version-row injection".
 #
 # Consumers:
 #   - skills/implement/SKILL.md Step 0.5 (Branch 2/3 adoption seed body, Branch 4
@@ -86,21 +87,125 @@ emit_run_statistics() {
 
     normalized=""
     if [ -f "$fragment" ] && grep -q '[^[:space:]]' "$fragment" 2>/dev/null; then
-        # Emit populated run-statistics content with trailing blank lines
-        # AND trailing pre-existing `| larch plugin version | ... |` rows
-        # stripped, then append the freshly-captured plugin version as the
-        # canonical final table row. Stripping pre-existing version rows
-        # prevents duplicates when the run-statistics fragment was hydrated
-        # from a prior anchor body that already carried an injected row
-        # (closes #348-Phase5-resume duplicate-row regression).
+        # Emit populated run-statistics content after the awk END block runs
+        # three phases:
+        #
+        #   Phase 1 — iteratively strip legacy
+        #     `<!-- token-report-begin -->...<!-- token-report-end -->`
+        #     sentinel pairs. Pre-#1429 anchors embedded the Token Report
+        #     inside run-statistics; after the split that block lives in its
+        #     own token-report section, so leaving the legacy markers in
+        #     run-statistics would publish duplicate Token Report content on
+        #     resumed runs against pre-split anchors (closes #1466 sub-item
+        #     B; was #1440). Lone-begin (no closing marker) strips from the
+        #     begin marker to EOF; lone-end (no opening marker) strips from
+        #     BOF through the end marker — degraded-input safe. The loop
+        #     iterates so multi-pair fragments and stray-end-then-pair
+        #     residue both normalize; each iteration drops at least one
+        #     marker line so the loop terminates in O(N).
+        #   Phase 2 — strip trailing blank lines.
+        #   Phase 3 — strip any trailing pre-existing
+        #     `| larch plugin version | ... |` rows. Stripping pre-existing
+        #     version rows prevents duplicates when the run-statistics
+        #     fragment was hydrated from a prior anchor body that already
+        #     carried an injected row (closes #348-Phase5-resume).
+        #
+        # The freshly-captured plugin version is appended below as the
+        # canonical final table row.
         normalized=$(awk '
             { lines[NR] = $0 }
             END {
-                last = NR
-                while (last > 0 && (lines[last] ~ /^[[:space:]]*$/ || lines[last] ~ /^[[:space:]]*\|[[:space:]]*larch plugin version[[:space:]]*\|/)) {
-                    last--
+                n = NR
+
+                # Pre-scan the ORIGINAL input for a matched begin/end pair.
+                # When the input had a matched pair, an orphan marker found
+                # in a later iteration of the strip loop (after the matched
+                # pair has been removed) is dropped as marker-line-only —
+                # NOT as a BOF→end / begin→EOF strip. Without this, an
+                # orphan end after a matched pair would route into the
+                # lone-end branch on iteration 2 and strip every preceding
+                # line (including legitimate run-statistics rows that lived
+                # before the matched pair). Round-3 review FINDING_1.
+                pre_begin = 0; pre_end = 0
+                for (i = 1; i <= n; i++) {
+                    if (!pre_begin && lines[i] ~ /^[[:space:]]*<!-- token-report-begin -->[[:space:]]*$/) {
+                        pre_begin = i
+                    }
                 }
-                for (i = 1; i <= last; i++) {
+                if (pre_begin) {
+                    for (i = pre_begin + 1; i <= n; i++) {
+                        if (lines[i] ~ /^[[:space:]]*<!-- token-report-end -->[[:space:]]*$/) {
+                            pre_end = i; break
+                        }
+                    }
+                }
+                had_pair = (pre_begin && pre_end) ? 1 : 0
+
+                # Phase 1 — iterative legacy token-report block strip.
+                # Marker regexes are anchored to whole-line (allowing leading
+                # / trailing whitespace) so a legitimate prose / table-cell
+                # line that merely *mentions* the marker substring is not
+                # treated as a structural sentinel. token-report.sh always
+                # emits the markers on their own line, so this is the
+                # author-side contract; round-2 review FINDING_5 surfaced
+                # the substring-match risk twice and this anchors it.
+                while (1) {
+                    begin_idx = 0
+                    end_idx = 0
+                    for (i = 1; i <= n; i++) {
+                        if (!begin_idx && lines[i] ~ /^[[:space:]]*<!-- token-report-begin -->[[:space:]]*$/) {
+                            begin_idx = i
+                        }
+                    }
+                    if (begin_idx) {
+                        for (i = begin_idx + 1; i <= n; i++) {
+                            if (lines[i] ~ /^[[:space:]]*<!-- token-report-end -->[[:space:]]*$/) {
+                                end_idx = i
+                                break
+                            }
+                        }
+                    } else {
+                        for (i = 1; i <= n; i++) {
+                            if (lines[i] ~ /^[[:space:]]*<!-- token-report-end -->[[:space:]]*$/) {
+                                end_idx = i
+                                break
+                            }
+                        }
+                    }
+                    if (begin_idx == 0 && end_idx == 0) break
+                    skip_start = 0
+                    skip_end = 0
+                    if (begin_idx && end_idx) {
+                        skip_start = begin_idx; skip_end = end_idx
+                    } else if (begin_idx) {
+                        # Lone-begin: strip from begin to EOF only when the
+                        # original input had no matched pair (genuinely
+                        # degraded "lone-begin" input). Otherwise the orphan
+                        # is leftover from a damaged prior write — drop just
+                        # the marker line.
+                        skip_start = begin_idx; skip_end = had_pair ? begin_idx : n
+                    } else {
+                        # Lone-end: symmetric — strip BOF→end only when the
+                        # original input had no matched pair.
+                        skip_start = had_pair ? end_idx : 1; skip_end = end_idx
+                    }
+                    outn = 0
+                    for (i = 1; i <= n; i++) {
+                        if (i >= skip_start && i <= skip_end) continue
+                        outn++
+                        lines[outn] = lines[i]
+                    }
+                    for (i = outn + 1; i <= n; i++) delete lines[i]
+                    n = outn
+                }
+
+                # Phase 2+3 — strip trailing blank lines AND trailing
+                # pre-existing version rows from the kept set.
+                while (n > 0 && (lines[n] ~ /^[[:space:]]*$/ || lines[n] ~ /^[[:space:]]*\|[[:space:]]*larch plugin version[[:space:]]*\|/)) {
+                    n--
+                }
+
+                for (i = 1; i <= n; i++) {
                     print lines[i]
                 }
             }

@@ -99,6 +99,41 @@ render_jq() {
         return 1
     fi
 
+    # When LARCH_DEBUG_TOKEN_REPORT matches the explicit truthy allowlist
+    # below, redirect jq stderr to a temp file and surface its path on
+    # render failure via RENDER_FAIL_REASON. The redirect is a plain
+    # `2>"$jq_stderr_dest"`, not a `tee` — diagnostics go only to the temp
+    # file. Default behavior (silent stderr to /dev/null) is preserved for
+    # any unset / negative / unrecognized value (`no`, `off`, `disabled`,
+    # `0`, etc.) so the report stays non-blocking; the env var is purely
+    # an opt-in development diagnostic. mktemp failure degrades silently
+    # to /dev/null so the debug knob never breaks production.
+    local jq_stderr_dest="/dev/null"
+    local jq_stderr_path=""
+    # Allowlist of explicit truthy values — narrower than a blanket
+    # "anything non-empty / non-zero" gate so common negatives (`no`, `off`,
+    # `disabled`, etc.) do not silently enable the debug capture path. The
+    # set matches the doc's enumerated examples (1, true, yes, on) plus their
+    # case variants.
+    case "${LARCH_DEBUG_TOKEN_REPORT:-}" in
+        1|true|TRUE|True|yes|YES|Yes|on|ON|On)
+            # mktemp template puts the X's at the end (no `.log` suffix) so
+            # BSD mktemp on macOS expands them — BSD mktemp leaves trailing X's
+            # alone when a literal suffix follows them, producing a static
+            # filename that concurrent runs would clobber. Explicit chmod 0600
+            # is defense-in-depth even though most mktemp implementations
+            # already create with that mode (closes #1466 review FINDING_8 —
+            # predictable shared-tmp filename + jq stderr can include input
+            # snippets).
+            if jq_stderr_path=$(mktemp "${TMPDIR:-/tmp}/larch-token-report-jq-stderr-XXXXXX" 2>/dev/null); then
+                chmod 0600 "$jq_stderr_path" 2>/dev/null || true
+                jq_stderr_dest="$jq_stderr_path"
+            else
+                jq_stderr_path=""
+            fi
+            ;;
+    esac
+
     jq -r -s --slurpfile ledger "$ledger" --arg mode "$mode" '
       def epoch:
         if . == null then null
@@ -279,10 +314,25 @@ render_jq() {
         elif $mode == "terse" then terse_line($claude; $vendor; $marks[-1])
         else markdown($marks; $claude; $vendor)
         end
-    ' "${TRANSCRIPT_FILES[@]}" 2>/dev/null || {
-        RENDER_FAIL_REASON="failed to parse token sources"
+    ' "${TRANSCRIPT_FILES[@]}" 2>"$jq_stderr_dest" || {
+        if [[ -n "$jq_stderr_path" && -s "$jq_stderr_path" ]]; then
+            RENDER_FAIL_REASON="failed to parse token sources (jq stderr at $jq_stderr_path)"
+        else
+            RENDER_FAIL_REASON="failed to parse token sources"
+            # Empty stderr file on a debug-mode failure carries no signal —
+            # remove it so $TMPDIR is not littered with empties.
+            if [[ -n "$jq_stderr_path" ]]; then
+                rm -f "$jq_stderr_path"
+            fi
+        fi
         return 1
     }
+    # Success path: the debug-mode stderr file is almost always empty
+    # (jq wrote nothing to stderr); remove it so successful runs do not
+    # litter $TMPDIR.
+    if [[ -n "$jq_stderr_path" ]]; then
+        rm -f "$jq_stderr_path"
+    fi
 }
 
 replace_token_block() {

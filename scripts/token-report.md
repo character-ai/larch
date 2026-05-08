@@ -29,10 +29,16 @@ When the target file is damaged so that exactly one of the two markers is presen
 
 Token reporting must never block `/implement`.
 
-- `token-report.sh`: prints `Token report unavailable: <reason>` to stdout and exits 0.
+- `token-report.sh`: prints `Token report unavailable: <reason>` to stdout and exits 0. With `LARCH_DEBUG_TOKEN_REPORT` enabled (see "LARCH_DEBUG_TOKEN_REPORT opt-in jq diagnostics" below) and a non-empty captured jq stderr, the message gains an optional trailing parenthetical of the form `(jq stderr at <path>)` (preceded by a single space); consumers matching the `Token report unavailable:` prefix continue to work, consumers expecting an exact-line match must accept the optional suffix.
 - `token-ledger.sh`: warns on stderr and exits 0.
 - `token-claude-source.sh`: prints `STATUS=unavailable` / `REASON=<msg>` to stdout and exits 1.
 - Launcher scrape blocks: silent on failure; diagnostics stay in sidecars or stderr and never pollute launcher stdout.
+
+### `LARCH_DEBUG_TOKEN_REPORT` opt-in jq diagnostics
+
+By default the embedded `jq` invocation in `render_jq` redirects stderr to `/dev/null` so a malformed ledger or transcript only surfaces the generic `Token report unavailable: failed to parse token sources` message. Set `LARCH_DEBUG_TOKEN_REPORT` to one of the explicit truthy values (`1`, `true`, `TRUE`, `True`, `yes`, `YES`, `Yes`, `on`, `ON`, `On`) to redirect jq stderr to a freshly-allocated `mktemp` file under `${TMPDIR:-/tmp}` named `larch-token-report-jq-stderr-XXXXXX` (chmod 0600 explicitly applied as defense in depth). On render failure with non-empty stderr, the path is appended to the unavailable message as `... (jq stderr at <path>)` so the operator can read the actual jq diagnostics. On render success — or render failure with empty stderr — the temp file is removed so successful runs do not litter `$TMPDIR`. The redirect is a plain stderr redirect, not a `tee` — jq diagnostics go only to the temp file, not also to the controlling terminal.
+
+Any other value (including `no`, `off`, `disabled`, `0`, empty, or unset) preserves the default silent behavior — the env var is parsed against an explicit allowlist of truthy spellings, not as "anything non-empty / non-zero," so common negatives stay safely off. `mktemp` failure (e.g. an out-of-space `$TMPDIR`) degrades silently to `/dev/null`, so the debug knob never breaks the production render path. The env var is purely a development knob, not a production observability surface.
 
 ## Table Shape
 
