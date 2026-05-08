@@ -4,6 +4,14 @@ if [[ -n "${LARCH_LIB_CURSOR_LAUNCHER_COMMON_LOADED:-}" ]]; then
     return 0
 fi
 
+# Shared launcher mechanics common to Cursor and Codex live in
+# lib-external-launcher-common.sh; the cursor_launcher_* wrappers below
+# preserve the existing names so call sites in launch-cursor-review.sh
+# and launch-cursor-implement.sh stay untouched.
+# shellcheck source=scripts/lib-external-launcher-common.sh
+# shellcheck disable=SC1091
+source "${BASH_SOURCE[0]%/*}/lib-external-launcher-common.sh"
+
 cursor_launcher_load_model_args() {
     local model_args_tmp rc arg
     model_args_tmp=$(mktemp) || return 1
@@ -32,23 +40,11 @@ cursor_launcher_setup_auth_argv() {
 }
 
 cursor_launcher_append_outer_meta() {
-    local meta_path="$1"
-    local outer_launcher_path="$2"
-    local prompt_file_sidecar="$3"
-    local workdir="$4"
-    [[ -f "$meta_path" ]] || return 0
-    {
-        printf 'OUTER_LAUNCHER=%s\n' "$outer_launcher_path"
-        printf 'OUTER_LAUNCHER_PROMPT_FILE=%s\n' "$prompt_file_sidecar"
-        printf 'OUTER_LAUNCHER_WORKDIR=%s\n' "$workdir"
-    } >> "$meta_path"
+    external_launcher_append_outer_meta "$@"
 }
 
 cursor_launcher_promote_inner_done() {
-    local output_path="$1"
-    if [[ -f "${output_path}.inner.done" ]]; then
-        mv -f "${output_path}.inner.done" "${output_path}.done"
-    fi
+    external_launcher_promote_inner_done "$@"
 }
 
 LARCH_LIB_CURSOR_LAUNCHER_COMMON_LOADED=1

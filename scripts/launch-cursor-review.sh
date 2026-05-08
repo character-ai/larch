@@ -27,6 +27,9 @@ PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"
 # shellcheck source=scripts/lib-cursor-launcher-common.sh
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib-cursor-launcher-common.sh"
+# shellcheck source=scripts/lib-dirty-tree-sidecar.sh
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib-dirty-tree-sidecar.sh"
 
 # shellcheck disable=SC2329 # invoked indirectly by the EXIT trap.
 _emit_timing_record() {
@@ -133,14 +136,11 @@ DIRTY_TREE_WRITTEN=false
 UNTRACKED_BASELINE="${OUTPUT}.untracked-baseline"
 DIRTY_TREE_SIDECAR="${OUTPUT}.dirty-tree"
 
-_write_dirty_tree_sidecar() {
-    [[ -n "$OUTPUT" ]] || return 0
-    [[ "$DIRTY_TREE_WRITTEN" == "false" ]] || return 0
-    if [[ -x "$SCRIPT_DIR/check-mid-run-dirty-tree.sh" ]]; then
-        "$SCRIPT_DIR/check-mid-run-dirty-tree.sh" --mode baseline --baseline "$UNTRACKED_BASELINE" --sidecar "$DIRTY_TREE_SIDECAR" >/dev/null 2>&1 || true
-    fi
-    DIRTY_TREE_WRITTEN=true
-}
+# _write_dirty_tree_sidecar is provided by lib-dirty-tree-sidecar.sh
+# (sourced above) and reads/writes the OUTPUT, DIRTY_TREE_WRITTEN,
+# UNTRACKED_BASELINE, DIRTY_TREE_SIDECAR, SCRIPT_DIR globals declared
+# above. _write_unknown_dirty_tree_sidecar below is cursor-only and
+# stays inline.
 
 _write_unknown_dirty_tree_sidecar() {
     # Used by the auth-preflight short-circuit when no agent ran. We have
