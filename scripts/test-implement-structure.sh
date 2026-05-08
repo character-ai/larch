@@ -1,6 +1,6 @@
 #!/bin/bash
 # Structural regression test for /implement SKILL.md + references/ topology (closes #234).
-# Asserts 28 live load-bearing invariants (assertion 5 retired; numbered list runs 1–4, 6–28) across skills/implement/SKILL.md and the six
+# Asserts live load-bearing invariants (assertion 5 retired; numbered list runs 1–4, 6–28, with lettered sub-pins) across skills/implement/SKILL.md and the six
 # reference docs extracted from it. Complements scripts/test-implement-rebase-macro.sh,
 # which owns the Rebase Checkpoint Macro mechanics; this harness owns top-level section
 # headings, the MANDATORY ↔ reference-file binding, the focus-area CI-parity check,
@@ -16,20 +16,17 @@
 # peer-harness assertions (A) and (D) respectively — accepted duplication per design-
 # phase sketch consensus.
 #
-# Twenty-eight assertions (assertion 18 added for Protocol Execution Directive
-# pin; assertion 19 added for the Step 2 external implementer dispatcher pin;
-# assertion 20 added for the design-manifest + --design-only path pin;
-# assertion 21 added for the --inline / --subagent forwarding pin, issue #1036;
-# assertion 22 added for the orchestrator-edit-authority gate pin —
-# ORCHESTRATOR_EDIT_AUTHORITY / §2.1.5 / orchestrator-envelope-invalid /
-# NEVER #10 literals; assertion 24 added for Gemini implementer structural
-# parity with Cursor's shared guardrails; assertion 25 added for the
-# clean-main Step 0 entry gate; assertion 26 added for the post-merge
-# anti-halt literal pin, issue #1143; assertion 28 added for timing
-# instrumentation pins).
-# Assertion 5 is retired, so the numbered list runs 1–4, 6–28 (28 live
-# assertions; assertion 23 now pins Gemini machinery preservation, including
-# negative pin 23j against re-introducing launch-gemini-review.sh).
+# Assertion history: assertion 18 added the Protocol Execution Directive pin;
+# assertion 19 added the Step 2 external implementer dispatcher pin; assertion
+# 20 added the design-manifest + --design-only path pin; assertion 21 added the
+# --inline / --subagent forwarding pin, issue #1036; assertion 22 added the
+# orchestrator-edit-authority gate pin; assertion 24 added Gemini implementer
+# structural parity with Cursor's shared guardrails and later OOS triage
+# sub-pins; assertion 25 added the clean-main Step 0 entry gate; assertion 26
+# added the post-merge anti-halt literal pin, issue #1143; assertion 28 added
+# timing instrumentation pins. Assertion 5 is retired, so the numbered list
+# runs 1–4, 6–28; assertion 23 pins Gemini machinery preservation, including
+# negative pin 23j against re-introducing launch-gemini-review.sh.
 #  (1) Exactly 1 `^## Load-Bearing Invariants$` heading in skills/implement/SKILL.md.
 #  (2) Exactly 1 `^## NEVER List$` heading.
 #  (3) Exactly 1 `^## Rebase Checkpoint Macro$` heading.
@@ -933,6 +930,30 @@ GEMINI_SHARED=$(awk 'found { print } /^## Shared guardrails$/ { found=1 }' "$REP
 [[ "$CURSOR_SHARED" == "$GEMINI_SHARED" ]] \
   || fail "(24) agents/gemini-implementer.md Shared guardrails section drifted from agents/cursor-implementer.md (modulo per-tool token substitution)"
 
+# (24b) External implementer OOS triage gate and Step 9a.1 defensive
+# security re-exclusion pins. These literals prevent the implementer prompts
+# from regressing to pre-triage `oos_observations[]` semantics and prevent the
+# last-line public-filing backstop from being deleted from the anchor template.
+for implementer_prompt in \
+  "$REPO_ROOT/agents/codex-implementer.md" \
+  "$REPO_ROOT/agents/cursor-implementer.md" \
+  "$REPO_ROOT/agents/gemini-implementer.md"
+do
+  grep -Fq '## OOS triage gate before manifest' "$implementer_prompt" \
+    || fail "(24b) $(basename "$implementer_prompt") missing OOS triage gate heading"
+  grep -Fq 'Security findings are NEVER folded inline and NEVER filed via this OOS path regardless of size' "$implementer_prompt" \
+    || fail "(24b) $(basename "$implementer_prompt") missing security carve-out in OOS triage gate"
+  grep -Fq 'Inline-triage rule N:' "$implementer_prompt" \
+    || fail "(24b) $(basename "$implementer_prompt") missing Inline-triage audit annotation contract"
+  grep -Fq 'contains only filed-OOS candidates after this triage' "$implementer_prompt" \
+    || fail "(24b) $(basename "$implementer_prompt") missing post-triage oos_observations semantics"
+done
+
+grep -Fq 'defensively filter out any `### OOS_N:` block whose content contains the canonical token `focus-area\s*=\s*security`' "$REFS_DIR/anchor-comment-template.md" \
+  || fail "(24c) anchor-comment-template.md missing Step 9a.1 defensive security re-exclusion sub-bullet"
+grep -Fq 'post-filter entry list is logically empty after security re-exclusion' "$REFS_DIR/anchor-comment-template.md" \
+  || fail "(24c) anchor-comment-template.md missing post-filter empty-batch early-exit path"
+
 # (25) Clean-main Step 0 entry gate pin. Scope positive checks to Step 0 so
 # the later Step 1 branch creation check cannot satisfy the entry-gate
 # assertion by accident. The gate must flow create-branch -> session-entry-gate
@@ -1172,5 +1193,5 @@ while IFS= read -r kind; do
     || fail "(28g) --timing-task-kind literal not present in TIMING_TASK_KINDS_ALLOWED: $kind"
 done < "$actual_tmp"
 
-echo "PASS: test-implement-structure.sh — all 28 structural invariants hold (assertion 5 retired)"
+echo "PASS: test-implement-structure.sh — structural invariants hold (assertion 5 retired)"
 exit 0
