@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [17.0.18] - 2026-05-08
+
+### Changed
+
+- Resolve #1511: `scripts/token-report.sh` follow-ups (combined OOS from PR #1494). (A) `replace_token_block` aligns its marker handling with `scripts/assemble-anchor.sh`'s whole-line anchored regex (`^[[:space:]]*<!-- token-report-begin -->[[:space:]]*$` and the matching `-end-` variant) for BOTH the awk rewrite (matched-pair branch and lone-marker branches) AND the `has_begin` / `has_end` presence probes (now `grep -Eq` with the same anchored pattern). Probe / rewrite parity is load-bearing — round-1 review consensus surfaced two data-loss paths against non-conforming input (whole-line begin + prose-only end mention silently dropped post-marker tail; prose-only mentions of both markers silently no-op'd the replacement). Files whose marker mentions appear only in prose now route through the no-marker append path: existing content preserved, fresh block appended. (B) Stop leaking the absolute jq-stderr temp path on stdout under `LARCH_DEBUG_TOKEN_REPORT`. `RENDER_FAIL_REASON` now carries a fixed `failed to parse token sources (jq stderr captured; debug)` phrase; the actual file path is emitted to the script's own stderr (`token-report.sh: jq stderr captured at <path>`). The published surface (stdout, which flows verbatim into tracking-issue anchors and PR bodies) no longer carries TMPDIR / username-bearing absolute paths. `scripts/token-report.md` updated to describe the new published-surface contract and the whole-line marker regex parity. `scripts/test-token-report.sh` expanded (115 / 115 assertions): (a) `LARCH_DEBUG_TOKEN_REPORT` truthy-spelling loop splits stdout / stderr and asserts the fixed phrase on stdout, the path line on stderr, no path leak on stdout, and a non-empty captured stderr file; (b) negative-spelling loop checks neither suffix appears; (c) three new whole-line marker regression cases (`PROSE_MARKER` for matched-pair preservation, `WHOLE_BEGIN_PROSE_END` for lone-begin recovery against prose-only end, `PROSE_BOTH_NO_WHOLE_LINE` for no-marker append against prose-only mentions of both markers). `scripts/test-token-report.md` updated to describe the new contract.
+
 ## [17.0.17] - 2026-05-08
 
 ### Changed
