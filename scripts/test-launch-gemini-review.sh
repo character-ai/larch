@@ -139,6 +139,18 @@ grep -q '^0$' "${OUTPUT}.done" \
 if grep -q '[{}]' "$OUTPUT"; then
   fail "Output should not contain raw JSON braces"
 fi
+# Dirty-tree sidecar parity with launch-cursor-review.sh / launch-codex-review.sh
+# (issue #1487, #1437 contract). On the agent-ran success path, the launcher
+# emits ${OUTPUT}.dirty-tree via check-mid-run-dirty-tree.sh --mode baseline.
+# Pin the keys (STATUS=, MODE=baseline) — STATUS value is detector-dependent
+# (clean/dirty/unknown), so just assert the key is present, parallel to
+# test-launch-codex-review.sh:132-133 and test-launch-cursor-review.sh:132-133.
+[[ -s "${OUTPUT}.dirty-tree" ]] \
+  || fail "Expected ${OUTPUT}.dirty-tree sidecar to be written on success"
+grep -q '^STATUS=' "${OUTPUT}.dirty-tree" \
+  || fail "Expected dirty-tree sidecar STATUS= line on success"
+grep -q '^MODE=baseline$' "${OUTPUT}.dirty-tree" \
+  || fail "Expected dirty-tree sidecar MODE=baseline on success"
 
 make_mutation_repo() {
   local repo="$1"
@@ -309,6 +321,19 @@ grep -q 'MISSING_JQ' "${MISSING_JQ_OUTPUT}.diag" \
 if grep -q '^CMD_JSON=' "${MISSING_JQ_OUTPUT}.meta"; then
   fail "Missing-jq launcher meta should omit CMD_JSON"
 fi
+# Dirty-tree sidecar on the early-short-circuit (no-agent-ran) path: STATUS=unknown,
+# MODE=baseline, REASON=fail-closed-no-agent-ran. STATUS=unknown routes consumers
+# through the same recovery-safe path as a real detector failure rather than
+# letting them treat a present sidecar with STATUS=clean as "launcher proved
+# the tree clean." Mirrors test-launch-cursor-review.sh:444-449 (issue #1487).
+[[ -s "${MISSING_JQ_OUTPUT}.dirty-tree" ]] \
+  || fail "Expected ${MISSING_JQ_OUTPUT}.dirty-tree sidecar on MISSING_JQ short-circuit"
+grep -q '^STATUS=unknown$' "${MISSING_JQ_OUTPUT}.dirty-tree" \
+  || fail "Expected dirty-tree sidecar STATUS=unknown on MISSING_JQ short-circuit (no agent ran)"
+grep -q '^MODE=baseline$' "${MISSING_JQ_OUTPUT}.dirty-tree" \
+  || fail "Expected dirty-tree sidecar MODE=baseline on MISSING_JQ short-circuit"
+grep -q '^REASON=fail-closed-no-agent-ran$' "${MISSING_JQ_OUTPUT}.dirty-tree" \
+  || fail "Expected dirty-tree sidecar REASON=fail-closed-no-agent-ran on MISSING_JQ short-circuit"
 
 assert_model_rejected() {
   local label="$1"
