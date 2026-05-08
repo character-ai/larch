@@ -10,8 +10,8 @@
 # Flags:
 #   --continue       — Continue an in-progress rebase instead of starting a new
 #                      one. Skips fetch and runs `git rebase --continue` instead
-#                      of `git rebase origin/main`. Caller must resolve conflicts
-#                      and stage files before invoking with --continue.
+#                      of `git rebase $BASE_TARGET`. Caller must resolve
+#                      conflicts and stage files before invoking with --continue.
 #   --no-push        — Skip the push step after a successful rebase. Used by
 #                      /implement for local-only freshness rebases
 #                      where the branch has not yet been pushed. In this mode,
@@ -39,7 +39,7 @@
 #   0 — rebase (and push, unless --no-push) succeeded, OR skipped because
 #       --skip-if-pushed detected the branch already on origin, OR (in
 #       --no-push mode only) skipped because HEAD already contains
-#       origin/main (nothing to rebase)
+#       $BASE_TARGET (nothing to rebase)
 #   1 — rebase failed with conflicts
 #       Default mode: rebase left in progress (CONFLICT_FILES= on stdout)
 #       --no-push mode: rebase aborted unless --keep-on-conflict is set.
@@ -56,7 +56,7 @@
 # Stdout on exit 0 when --skip-if-pushed skipped the rebase:
 #   SKIPPED_ALREADY_PUSHED=true
 #
-# Stdout on exit 0 when --no-push and HEAD already contains origin/main:
+# Stdout on exit 0 when --no-push and HEAD already contains $BASE_TARGET:
 #   SKIPPED_ALREADY_FRESH=true
 #   Only emitted in --no-push mode. In default (push) mode the script
 #   always proceeds to the push step even if the rebase would be a no-op,
@@ -174,7 +174,7 @@ else
 
     # --- Fetch latest base ---
     # In --no-push mode, fetch failure is fatal (the whole point is freshness).
-    # In default mode, fetch failure is tolerated to allow rebasing against cached origin/main.
+    # In default mode, fetch failure is tolerated to allow rebasing against the cached $BASE_TARGET.
     if [[ "$NO_PUSH" == "true" ]]; then
         if ! git fetch "$BASE_REMOTE" "$BASE_REF" --quiet 2>/dev/null; then
             echo "REBASE_ERROR=git fetch $BASE_REMOTE $BASE_REF failed (network/auth issue)" >&2
@@ -184,14 +184,14 @@ else
         git fetch "$BASE_REMOTE" "$BASE_REF" --quiet 2>/dev/null || true
     fi
 
-    # --- Early exit: skip rebase if HEAD already contains origin/main ---
-    # If origin/main is an ancestor of HEAD, HEAD already has every commit
-    # from main, so `git rebase origin/main` would be a no-op. Exit 0 with a
-    # SKIPPED_ALREADY_FRESH=true marker so callers can log it distinctly.
+    # --- Early exit: skip rebase if HEAD already contains $BASE_TARGET ---
+    # If $BASE_TARGET is an ancestor of HEAD, HEAD already has every commit
+    # from the base ref, so `git rebase $BASE_TARGET` would be a no-op. Exit 0
+    # with a SKIPPED_ALREADY_FRESH=true marker so callers can log it distinctly.
     #
     # This optimization is gated on --no-push mode. In default (push) mode we
     # must still reach the push step: a feature branch may have local commits
-    # that have never been pushed, and HEAD containing origin/main says
+    # that have never been pushed, and HEAD containing $BASE_TARGET says
     # nothing about whether the remote tracking branch is up to date.
     if [[ "$NO_PUSH" == "true" ]] && git merge-base --is-ancestor "$BASE_TARGET" HEAD 2>/dev/null; then
         echo "SKIPPED_ALREADY_FRESH=true"

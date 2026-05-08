@@ -636,7 +636,13 @@ run_teardown() {
 
     # Halt-protection sentinel: release the post-/design Stop hook before
     # cleanup target validation so refused cleanup paths cannot trap exit.
-    touch "$IMPLEMENT_TMPDIR/.run-cleaned-up" 2>/dev/null || true
+    # Surface failure so a silent ENOSPC / FS-permission / read-only-mount
+    # mishap does not leave the Stop hook blocking the next session: log a
+    # warning to stderr (which is forwarded into FINALIZE_WARNINGS by
+    # warn_line) and continue with best-effort posture.
+    if ! touch "$IMPLEMENT_TMPDIR/.run-cleaned-up" 2>/dev/null; then
+        warn_line '**⚠ 18: halt-protection sentinel write failed (touch .run-cleaned-up); Stop hook may continue blocking on next session. Continuing.**'
+    fi
 
     if verify_cleanup_target; then
         set +e

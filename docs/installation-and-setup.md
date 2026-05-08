@@ -258,7 +258,7 @@ These tools are required for the full design → implement → PR → merge work
 
 - **git** — version control (used by all skills)
 - **gh** — [GitHub CLI](https://cli.github.com/), authenticated with repo write access (`gh auth login`). Required for PR creation, CI monitoring, and merge automation.
-- **jq** — [JSON processor](https://jqlang.github.io/jq/). Used by validation scripts and session setup.
+- **jq** — [JSON processor](https://jqlang.github.io/jq/). Used by validation scripts, session setup, and the post-/design halt-protection hooks (`hook-post-design.sh` PostToolUse + `hook-stop-fail-close.sh` Stop). When `jq` is missing, both hooks short-circuit at their `command -v jq` probe, halt protection is silently disabled, and `/implement` can stop mid-run after `/design` returns. The SessionStart hook (see below) injects an advisory when `jq` is absent so the gap is visible at session start.
 
 ### Optional integrations
 
