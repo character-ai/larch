@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.13.7] - 2026-05-08
+
+### Added
+
+- Resolve #1417: project-wide guard against improvised `ScheduleWakeup` calls outside skill-script direction. New bullet in `AGENTS.md` extending the existing anti-polling rule, mirroring `NEVER` ratchets in `skills/fix-issue/SKILL.md` (entry #8 of the existing Anti-patterns list) and a new `## Anti-patterns` section in `skills/research/SKILL.md`; `skills/implement/SKILL.md` already carries `NEVER` #9 and is unchanged. New `scripts/test-anti-improvised-wakeup.sh` regression harness (sibling contract `scripts/test-anti-improvised-wakeup.md`) pins the load-bearing literal `NEVER improvise ScheduleWakeup outside skill-script direction` at all three project anchors plus the legacy `NEVER call` ScheduleWakeup `anywhere in the` /implement `orchestrator` literal in `skills/implement/SKILL.md`. Wired into `Makefile` (new `test-anti-improvised-wakeup` target registered in the lightest `test-harnesses-1` shard) and excluded from `agent-lint.toml`'s `dead-script` list (Makefile-only invocation pattern matching every other `test-*.sh`). Failure mode addressed: a one-shot `/fix-issue` run that finished Step 8 cleanup observed the orchestrator inventing a 1800 s `ScheduleWakeup` to fire another `/fix-issue` iteration outside any skill's script direction; the harness fails CI on editorial drift weakening or removing any of the four anchor literals.
+
 ## [15.13.6] - 2026-05-08
 
 ### Added
