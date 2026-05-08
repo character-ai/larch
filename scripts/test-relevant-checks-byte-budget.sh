@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# Regression harness for run-relevant-checks-captured.sh green-path stdout.
+
+set -euo pipefail
+
+REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+HELPER="$REPO_ROOT/scripts/run-relevant-checks-captured.sh"
+
+if [[ ! -x "$HELPER" ]]; then
+    echo "FAIL: helper not executable: $HELPER" >&2
+    exit 1
+fi
+
+tmp=$(mktemp -d "${TMPDIR:-/tmp}/test relevant checks byte budget.XXXXXX")
+trap 'rm -rf "$tmp"' EXIT
+
+fail() {
+    echo "FAIL: $1" >&2
+    exit 1
+}
+
+mode_of() {
+    stat -f %Lp "$1" 2>/dev/null || stat -c %a "$1"
+}
+
+fixture_repo="$tmp/repo"
+mkdir -p "$fixture_repo/.claude/skills/relevant-checks/scripts"
+cat > "$fixture_repo/.claude/skills/relevant-checks/scripts/run-checks.sh" <<'SCRIPT'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "=== Running pre-commit on 1 changed file(s) ==="
+for n in $(seq 1 300); do
+    echo "verbose validation output $n"
+done
+echo "=== Running agent-lint ==="
+echo "agent lint ok"
+SCRIPT
+chmod +x "$fixture_repo/.claude/skills/relevant-checks/scripts/run-checks.sh"
+
+xdg="$tmp/a a a/cache root with spaces and an intentionally long path segment"
+session="$xdg/larch/sessions/claude-implement-repo-ABC123"
+mkdir -p "$session"
+
+old_umask=$(umask)
+umask 000
+out=$(XDG_CACHE_HOME="$xdg" CLAUDE_PROJECT_DIR="$fixture_repo" "$HELPER" --site step3 --tmpdir "$session")
+umask "$old_umask"
+
+[[ "$out" == RELEVANT_CHECKS_OK=true* ]] || fail "success line missing: $out"
+[[ "$out" == *"COVERAGE=full"* ]] || fail "coverage not full: $out"
+[[ "$out" != *"LOG="* && "$out" != *"LOG_FILE="* ]] || fail "success leaked log token: $out"
+
+bytes=$(printf '%s\n' "$out" | wc -c | tr -d '[:space:]')
+(( bytes <= 120 )) || fail "success stdout too large: $bytes bytes: $out"
+
+log_dir="$session/relevant-checks"
+log_file="$log_dir/step3-1.log"
+[[ -d "$log_dir" ]] || fail "log dir missing"
+[[ -f "$log_file" ]] || fail "captured log missing"
+[[ "$(mode_of "$log_dir")" == "700" ]] || fail "log dir mode not 700: $(mode_of "$log_dir")"
+[[ "$(mode_of "$log_file")" == "600" ]] || fail "log file mode not 600: $(mode_of "$log_file")"
+
+echo "test-relevant-checks-byte-budget: ok"

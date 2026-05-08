@@ -10,7 +10,7 @@ Skills are not invoked in a flat sequence. They form a hierarchical call graph w
 graph TD
     IMPLEMENT["/implement"] -->|invokes| DESIGN["/design"]
     IMPLEMENT -->|invokes| REVIEW["/review"]
-    IMPLEMENT -->|invokes| CHECKS["/relevant-checks"]
+    IMPLEMENT -->|runs helper for| CHECKS["project relevant-checks script"]
     IMPLEMENT -->|invokes| BUMP["/bump-version"]
     IMPLEMENT -->|invokes| ISSUE_OOS["/issue (OOS filing)"]
     FIX["/fix-issue"] -->|invokes| IMPLEMENT

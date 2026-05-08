@@ -55,10 +55,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `agents/reviewer-correctness-edges.md` (label `Correctness-Edges`) and `agents/reviewer-security-structure-tests.md` (label `Security-Structure-Tests`)
+- Resolve #1543: `scripts/run-relevant-checks-captured.sh` adds a script-first relevant-checks path for `/implement` and `/review`, capturing verbose check output under the session tmpdir and emitting a bounded green-path `RELEVANT_CHECKS_OK=true` line. New helper, validation, byte-budget, failure-redaction, `/review`, and hook-backstop harnesses pin the stdout budget, tmpdir/site validation, redacted failure envelope, and active-session Skill-deny behavior.
 
 ### Changed
 
 - `/review` and `/implement --quick` panels: combine 5 hand-maintained Cursor reviewer specialists into 2 (`reviewer-correctness-edges` + `reviewer-security-structure-tests`) — Cursor fan-out drops from 5x to 2x per run, cutting per-`/implement` Cursor + Codex review cost by roughly 60%
+- `/implement` and `/review` now call the relevant-checks helper instead of invoking the `/relevant-checks` Skill on the green path; failures direct the orchestrator to `REDACTED_LOG_FILE`, and a PreToolUse hook blocks accidental `/relevant-checks` Skill calls inside active implement/review sessions.
 
 ### Removed
 

@@ -200,20 +200,20 @@ ln -sf "$(which rg)" <gemini-pkg>/bundle/vendor/ripgrep/rg-darwin-arm64
 |---|---|
 | Skills | `/design`, `/implement`, `/review`, `/research`, `/fix-issue`, `/issue`, `/set-up-forked-open-source-repo`, `/upgrade-larch`, `/alias`, `/create-skill`, `/simplify-skill`, `/compress-skill`, `/im`, `/imaq`, `/imq` |
 | Agents | `code-reviewer` (unified archetype covering code quality, risk/integration, correctness, architecture, security) |
-| PreToolUse hook | `block-submodule-edit.sh` — blocks `Edit`/`Write` on files inside any checked-out git submodule of the consuming project |
+| PreToolUse hooks | `block-submodule-edit.sh` blocks `Edit`/`Write` on files inside any checked-out git submodule of the consuming project; `hook-block-skill-relevant-checks.sh` blocks `/relevant-checks` Skill calls inside active `/implement` or `/review` sessions so orchestrators use the captured helper |
 | SessionStart hook | `sessionstart-health.sh` — at session start/resume/clear/compact, probes `jq` and `git` on `PATH`; if either is missing, injects an advisory into session context so the issue is visible before the first `Edit`/`Write`. Non-blocking (always exits 0); silent when both tools are present |
 
 ## `/relevant-checks` — required consumer dependency
 
-> **Important:** `/implement` and `/review` invoke `/relevant-checks` after each commit during their workflows. If your repo does not define one, these workflows will fail at the validation step.
+> **Important:** `/implement` and `/review` run the project-local relevant-checks script after code changes. If your repo does not provide one, these workflows will fail at the validation step.
 
-The `/relevant-checks` skill is **not part of the plugin surface** — it is present in the install directory but not loaded by the plugin runtime. Each consuming repo must provide its own `/relevant-checks` as a project-level skill at `.claude/skills/relevant-checks/` with build and lint commands tailored to that repo.
+The `/relevant-checks` skill is **not part of the plugin surface** — it is present in the install directory but not loaded by the plugin runtime. Each consuming repo must provide its own project-level `.claude/skills/relevant-checks/` directory with build and lint commands tailored to that repo. Human operators can invoke that Skill directly; larch orchestrators call `.claude/skills/relevant-checks/scripts/run-checks.sh` through the plugin helper `scripts/run-relevant-checks-captured.sh` so successful checks do not spend LLM tokens.
 
 **To create one for your repo:**
 
 1. Create `.claude/skills/relevant-checks/SKILL.md` with `allowed-tools: Bash`
 2. Add a `scripts/run-checks.sh` that runs your repo's linters, tests, or validators
-3. Reference the script from SKILL.md using `$PWD/.claude/skills/relevant-checks/scripts/run-checks.sh`
+3. Keep the script executable and preserve the documented exit-path matrix: success exits 0 after at least one validation phase, check failures return the underlying tool exit code, and zero validation coverage exits non-zero with an `ERROR:` line.
 
 Larch's own copy at `.claude/skills/relevant-checks/` serves as a reference implementation — it runs `pre-commit` linters plus `agent-lint` (if available on PATH).
 

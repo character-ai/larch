@@ -1,18 +1,19 @@
 #!/usr/bin/env bash
 # test-implement-relevant-checks-anti-halt.sh — Regression harness for
-# /implement's per-site /relevant-checks continuation callouts.
+# /implement's per-site relevant-checks helper continuation callouts.
 #
 # The skill is prose; this harness statically pins the anti-halt invariant that
-# every load-bearing /relevant-checks invocation site in skills/implement/SKILL.md
-# has the canonical continuation blockquote opener nearby. It does not execute
-# /relevant-checks or validate runtime behavior.
+# every load-bearing run-relevant-checks-captured.sh invocation site in
+# skills/implement/SKILL.md has the canonical continuation blockquote opener
+# nearby and failure prose points to REDACTED_LOG_FILE. It does not execute the
+# helper or validate runtime behavior.
 #
-# Extraction detects the five invocation-site forms used today:
-#   (1) Step 3's standalone "Invoke /relevant-checks via the Skill tool."
-#   (2) Quick-mode Step 5.7's "invoke /relevant-checks via the Skill tool."
-#   (3) Step 6's FILES_CHANGED=true branch invocation.
-#   (4) Step 10's inline CI-fix chain: "...; /relevant-checks; commit ...".
-#   (5) Step 12c's inline CI-fix chain: "...; /relevant-checks; commit ...".
+# Extraction detects the five helper invocation sites used today:
+#   (1) Step 3 first-pass checks.
+#   (2) Quick-mode Step 5.7 accepted-fix checks.
+#   (3) Step 6 FILES_CHANGED=true branch checks.
+#   (4) Step 10 CI-fix chain checks.
+#   (5) Step 12c CI-fix chain checks.
 #
 # A site passes only when "> **Continue after child returns.**" appears within
 # the five physical lines preceding the invocation line.
@@ -41,17 +42,26 @@ echo "Running test-implement-relevant-checks-anti-halt against $SKILL_MD"
 
 awk -v opener="$CANONICAL_OPENER" -v expected="$EXPECTED_SITES" '
 function is_invocation_site(line) {
-    return line ~ /[Ii]nvoke `\/relevant-checks` via the Skill tool[.;]/ ||
-           line ~ /`\/relevant-checks`; commit via/
+    return line ~ /run-relevant-checks-captured\.sh/ &&
+           line !~ /Anti-halt continuation reminder/ &&
+           line !~ /Skill-name fallback reminder/
 }
 
 {
     if (is_invocation_site($0)) {
         site_count++
         found = 0
+        has_redacted = 0
+        has_raw_warning = 0
         for (i = NR - 5; i < NR; i++) {
             if (i > 0 && index(previous[i % 6], opener) > 0) {
                 found = 1
+            }
+            if (i > 0 && index(previous[i % 6], "REDACTED_LOG_FILE") > 0) {
+                has_redacted = 1
+            }
+            if (i > 0 && index(previous[i % 6], "NOT raw `LOG_FILE`") > 0) {
+                has_raw_warning = 1
             }
         }
         if (!found) {
@@ -60,7 +70,20 @@ function is_invocation_site(line) {
             aborted = 1
             exit 1
         }
+        if (!has_redacted || !has_raw_warning) {
+            printf("FAIL: invocation site at line %d lacks REDACTED_LOG_FILE-only failure guidance nearby.\n", NR) > "/dev/stderr"
+            printf("  line: %s\n", $0) > "/dev/stderr"
+            aborted = 1
+            exit 1
+        }
         printf("  PASS: line %d has nearby continuation opener\n", NR)
+    }
+    if ($0 ~ /[Ii]nvoke `\/relevant-checks` via the Skill tool/ ||
+        $0 ~ /re-invoke `\/relevant-checks` via the Skill tool/ ||
+        $0 ~ /`\/relevant-checks`; commit via/) {
+        printf("FAIL: legacy /relevant-checks Skill invocation pattern at line %d: %s\n", NR, $0) > "/dev/stderr"
+        aborted = 1
+        exit 1
     }
     previous[NR % 6] = $0
 }
@@ -71,7 +94,7 @@ END {
     # spurious follow-on "expected N, found M" message.
     if (aborted) { exit 1 }
     if (site_count != expected) {
-        printf("FAIL: expected %d /relevant-checks invocation sites, found %d.\n", expected, site_count) > "/dev/stderr"
+        printf("FAIL: expected %d relevant-checks helper invocation sites, found %d.\n", expected, site_count) > "/dev/stderr"
         exit 1
     }
     printf("\nAll %d invocation sites passed.\n", site_count)

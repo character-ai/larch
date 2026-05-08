@@ -6,7 +6,7 @@ allowed-tools: Bash
 
 # Relevant Checks
 
-Run validation checks scoped to files modified on the current branch. This is a repo-specific skill — each repository defines its own `/relevant-checks` with checks appropriate for that repo.
+Run validation checks scoped to files modified on the current branch. This is a repo-specific skill — each repository defines its own `/relevant-checks` with checks appropriate for that repo. Human operators may invoke this skill directly; larch orchestrators use the script-first helper `scripts/run-relevant-checks-captured.sh` so successful runs return a bounded machine line instead of the full Skill transcript.
 
 ## Mindset
 
