@@ -696,8 +696,9 @@ rm -f "$OUTPUT" "${OUTPUT}.done" "${OUTPUT}.meta" "${OUTPUT}.diag" \
 # baseline AFTER stale cleanup so the baseline reflects the post-cleanup
 # state of the working tree. The capture itself happens BEFORE the
 # early-short-circuit fail_closed branches below (MISSING_JQ, model-resolve
-# failure, snapshot-guard setup failure) so each of those paths can emit
-# STATUS=unknown via _write_unknown_dirty_tree_sidecar.
+# failure, snapshot-guard setup failure — all reached AFTER this block) so
+# each of those paths can emit STATUS=unknown via
+# _write_unknown_dirty_tree_sidecar.
 # Gemini reviewer call sites are dormant per SECURITY.md; this machinery is
 # preparatory so /review Step 5 sidecar consultation picks up Gemini coverage
 # automatically when the call sites are reintroduced (issue #1487; matches

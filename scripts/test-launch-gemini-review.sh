@@ -192,6 +192,16 @@ grep -q 'poisoned-by-reviewer.txt' "${MUTATION_OUTPUT}.diag" \
   || fail "Expected snapshot guard to remove new untracked mutation"
 [[ -z "$(git -C "$MUTATION_REPO" status --porcelain)" ]] \
   || fail "Expected mutation repo to be clean after new-untracked guard revert"
+# Dirty-tree sidecar must publish on the snapshot-guard-triggered path:
+# AGENT_RAN=true (the agent was launched and mutated the tree) so the
+# guard-failure tail emits dirty-tree before write_meta. Catches a regression
+# that would drop the call from this branch (issue #1487).
+[[ -s "${MUTATION_OUTPUT}.dirty-tree" ]] \
+  || fail "Expected new-untracked-mutation run to publish dirty-tree sidecar"
+grep -q '^STATUS=' "${MUTATION_OUTPUT}.dirty-tree" \
+  || fail "Expected new-untracked-mutation dirty-tree sidecar STATUS= line"
+grep -q '^MODE=baseline$' "${MUTATION_OUTPUT}.dirty-tree" \
+  || fail "Expected new-untracked-mutation dirty-tree sidecar MODE=baseline"
 
 TRACKED_MUTATION_REPO="$TMPDIR/tracked-mutation-repo"
 make_mutation_repo "$TRACKED_MUTATION_REPO"
@@ -224,6 +234,12 @@ grep -q 'delete-me.txt' "${TRACKED_MUTATION_OUTPUT}.diag" \
   || fail "Expected snapshot guard to restore deleted tracked file"
 [[ -z "$(git -C "$TRACKED_MUTATION_REPO" status --porcelain)" ]] \
   || fail "Expected mutation repo to be clean after tracked guard revert"
+[[ -s "${TRACKED_MUTATION_OUTPUT}.dirty-tree" ]] \
+  || fail "Expected tracked-mutation run to publish dirty-tree sidecar"
+grep -q '^STATUS=' "${TRACKED_MUTATION_OUTPUT}.dirty-tree" \
+  || fail "Expected tracked-mutation dirty-tree sidecar STATUS= line"
+grep -q '^MODE=baseline$' "${TRACKED_MUTATION_OUTPUT}.dirty-tree" \
+  || fail "Expected tracked-mutation dirty-tree sidecar MODE=baseline"
 
 # --- index-state mutation case (FINDING_7): reviewer runs `git add` against an
 # already-modified tracked file. The on-disk content hash is unchanged
@@ -259,6 +275,12 @@ grep -q 'tracked.txt' "${INDEX_MUTATION_OUTPUT}.diag" \
 # Either way, the index MUST be clean of the reviewer's `git add`:
 [[ -z "$(git -C "$INDEX_MUTATION_REPO" diff --cached HEAD)" ]] \
   || fail "Expected guard to clear reviewer-added index entries via git reset HEAD --"
+[[ -s "${INDEX_MUTATION_OUTPUT}.dirty-tree" ]] \
+  || fail "Expected index-only-mutation run to publish dirty-tree sidecar"
+grep -q '^STATUS=' "${INDEX_MUTATION_OUTPUT}.dirty-tree" \
+  || fail "Expected index-only-mutation dirty-tree sidecar STATUS= line"
+grep -q '^MODE=baseline$' "${INDEX_MUTATION_OUTPUT}.dirty-tree" \
+  || fail "Expected index-only-mutation dirty-tree sidecar MODE=baseline"
 
 NONGIT_DIR="$TMPDIR/not-a-repo"
 mkdir -p "$NONGIT_DIR"
@@ -272,6 +294,16 @@ NONGIT_OUTPUT="$TMPDIR/gemini-nongit.txt"
   || fail "Expected non-git run to still normalize Gemini output"
 grep -q 'snapshot guard skipped: not inside a git working tree' "${NONGIT_OUTPUT}.diag" \
   || fail "Expected non-git run to report snapshot guard skip"
+# Dirty-tree sidecar must still publish on the non-git fail-open path: an
+# agent ran (AGENT_RAN=true) so _write_dirty_tree_sidecar runs at the
+# success-tail call. Catches a regression that would only emit dirty-tree
+# inside a git worktree (issue #1487 contract is non-conditional on git).
+[[ -s "${NONGIT_OUTPUT}.dirty-tree" ]] \
+  || fail "Expected non-git success run to publish dirty-tree sidecar"
+grep -q '^STATUS=' "${NONGIT_OUTPUT}.dirty-tree" \
+  || fail "Expected non-git dirty-tree sidecar STATUS= line"
+grep -q '^MODE=baseline$' "${NONGIT_OUTPUT}.dirty-tree" \
+  || fail "Expected non-git dirty-tree sidecar MODE=baseline"
 
 ERROR_OUTPUT="$TMPDIR/gemini-error.txt"
 set +e
