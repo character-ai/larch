@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # test-assemble-anchor.sh — regression harness for scripts/assemble-anchor.sh.
 #
-# Covers 18 assertion categories:
+# Covers the documented assertion categories below. The exact tally is not
+# inlined here per the drift-prone-prose-in-docs rule — count the `pass` /
+# `fail` call sites or run the harness and read the trailing summary line.
 #   (a) Empty sections directory → one empty marker pair per SECTION_MARKERS
 #       slug + run-statistics minimal table + first-line marker +
 #       seed-only visible placeholder line on line 2 (line count derived
@@ -448,6 +450,124 @@ if grep -qF '| larch plugin version | 0.0.1 |' "$output_b6"; then
     fail "(b6) stale version row should have been stripped"
 fi
 pass "(b6) populated fragment normalized to empty → seed-style scaffold + fresh version row"
+
+# --------------------------------------------------------------------------
+# (b8) Legacy-anchor migration: a hydrated run-statistics fragment that
+#      embeds a pre-#1429 `<!-- token-report-begin -->...<!-- token-report-end -->`
+#      Token Report block must have that block stripped before assembly.
+#      Resumed runs against pre-split anchors would otherwise publish
+#      duplicate Token Report content (legacy block in run-statistics +
+#      fresh token-report section). Closes #1466 sub-item B (was #1440).
+# --------------------------------------------------------------------------
+sections_b8="$tmpdir/sections-b8"
+mkdir -p "$sections_b8"
+{
+    printf '## Run Statistics\n\n'
+    printf '| Metric | Value |\n'
+    printf '|---|---|\n'
+    printf '| OOS issues filed | 1 |\n'
+    printf '\n'
+    printf '<!-- token-report-begin -->\n'
+    printf '## Token Report\n\n'
+    printf '### Claude\n\n'
+    printf '| Step | Skill | Claude Input | Claude Output |\n'
+    printf '| --- | --- | ---: | ---: |\n'
+    printf '| Step 0 | **step total** | 100 | 50 |\n'
+    printf '<!-- token-report-end -->\n'
+    printf '\n'
+} > "$sections_b8/run-statistics.md"
+
+output_b8="$tmpdir/out-b8.md"
+"$ASSEMBLE_ANCHOR" --sections-dir "$sections_b8" --issue 1466 --output "$output_b8" > /dev/null
+
+# Legacy markers and their interior must NOT appear in the assembled body.
+if grep -qF '<!-- token-report-begin -->' "$output_b8"; then
+    fail "(b8) legacy <!-- token-report-begin --> marker should be stripped from run-statistics"
+fi
+if grep -qF '<!-- token-report-end -->' "$output_b8"; then
+    fail "(b8) legacy <!-- token-report-end --> marker should be stripped from run-statistics"
+fi
+if grep -qF '## Token Report' "$output_b8"; then
+    fail "(b8) Token Report heading inside legacy block should be stripped from run-statistics"
+fi
+if grep -qF '| Step 0 | **step total** | 100 | 50 |' "$output_b8"; then
+    fail "(b8) Token Report data row inside legacy block should be stripped from run-statistics"
+fi
+
+# Surrounding non-legacy content must be preserved.
+grep -qxF '## Run Statistics' "$output_b8" \
+    || fail "(b8) Run Statistics heading should be preserved across legacy strip"
+grep -qxF '| OOS issues filed | 1 |' "$output_b8" \
+    || fail "(b8) Pre-existing OOS-issues row should be preserved across legacy strip"
+
+# Exactly one fresh plugin-version row, value 9.8.7.
+total_version_rows_b8=$(grep -cE '^\| larch plugin version \|' "$output_b8")
+[ "$total_version_rows_b8" = "1" ] \
+    || fail "(b8) expected exactly 1 plugin-version row, got $total_version_rows_b8"
+grep -qF '| larch plugin version | 9.8.7 |' "$output_b8" \
+    || fail "(b8) plugin-version row should carry the freshly-captured 9.8.7 value"
+pass "(b8) legacy <!-- token-report-begin -->...<!-- token-report-end --> block stripped from run-statistics fragment"
+
+# --------------------------------------------------------------------------
+# (b9) Lone-begin marker (degraded input) → strip from begin marker to EOF.
+# --------------------------------------------------------------------------
+sections_b9="$tmpdir/sections-b9"
+mkdir -p "$sections_b9"
+{
+    printf '## Run Statistics\n\n'
+    printf '| Metric | Value |\n'
+    printf '|---|---|\n'
+    printf '| OOS issues filed | 2 |\n'
+    printf '\n'
+    printf '<!-- token-report-begin -->\n'
+    printf '## Token Report\n\n'
+    printf 'half-written content with no closing marker\n'
+} > "$sections_b9/run-statistics.md"
+
+output_b9="$tmpdir/out-b9.md"
+"$ASSEMBLE_ANCHOR" --sections-dir "$sections_b9" --issue 1466 --output "$output_b9" > /dev/null
+
+if grep -qF '<!-- token-report-begin -->' "$output_b9"; then
+    fail "(b9) lone <!-- token-report-begin --> marker should be stripped"
+fi
+if grep -qF 'half-written content with no closing marker' "$output_b9"; then
+    fail "(b9) content after lone begin marker should be stripped"
+fi
+grep -qxF '| OOS issues filed | 2 |' "$output_b9" \
+    || fail "(b9) pre-marker content should be preserved on lone-begin strip"
+pass "(b9) lone <!-- token-report-begin --> marker → strip from marker to EOF"
+
+# --------------------------------------------------------------------------
+# (b10) Lone-end marker (degraded input) → strip from BOF through end marker.
+# --------------------------------------------------------------------------
+sections_b10="$tmpdir/sections-b10"
+mkdir -p "$sections_b10"
+{
+    printf 'orphan content above end marker\n'
+    printf '## Token Report\n\n'
+    printf 'more orphan content\n'
+    printf '<!-- token-report-end -->\n'
+    printf '## Run Statistics\n\n'
+    printf '| Metric | Value |\n'
+    printf '|---|---|\n'
+    printf '| OOS issues filed | 3 |\n'
+} > "$sections_b10/run-statistics.md"
+
+output_b10="$tmpdir/out-b10.md"
+"$ASSEMBLE_ANCHOR" --sections-dir "$sections_b10" --issue 1466 --output "$output_b10" > /dev/null
+
+if grep -qF '<!-- token-report-end -->' "$output_b10"; then
+    fail "(b10) lone <!-- token-report-end --> marker should be stripped"
+fi
+if grep -qF 'orphan content above end marker' "$output_b10"; then
+    fail "(b10) content above lone end marker should be stripped"
+fi
+if grep -qF 'more orphan content' "$output_b10"; then
+    fail "(b10) intermediate orphan content above lone end marker should be stripped"
+fi
+grep -qxF '| OOS issues filed | 3 |' "$output_b10" \
+    || fail "(b10) post-marker content should be preserved on lone-end strip"
+pass "(b10) lone <!-- token-report-end --> marker → strip from BOF through marker"
 
 # --------------------------------------------------------------------------
 # (c) Full fragments — all SECTION_MARKERS slugs populated

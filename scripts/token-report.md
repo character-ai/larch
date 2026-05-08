@@ -34,6 +34,10 @@ Token reporting must never block `/implement`.
 - `token-claude-source.sh`: prints `STATUS=unavailable` / `REASON=<msg>` to stdout and exits 1.
 - Launcher scrape blocks: silent on failure; diagnostics stay in sidecars or stderr and never pollute launcher stdout.
 
+### `LARCH_DEBUG_TOKEN_REPORT` opt-in jq diagnostics
+
+By default the embedded `jq` invocation in `render_jq` redirects stderr to `/dev/null` so a malformed ledger or transcript only surfaces the generic `Token report unavailable: failed to parse token sources` message. Set `LARCH_DEBUG_TOKEN_REPORT` to a non-empty, non-zero, non-false value (`1`, `true`, `yes`, etc.) to tee jq stderr to a freshly-allocated `mktemp` file under `${TMPDIR:-/tmp}` named `larch-token-report-jq-stderr-XXXXXX`. On render failure, the path is appended to the unavailable message as `... (jq stderr at <path>)` so the operator can read the actual jq diagnostics. The file is left in place (best-effort cleanup is the operator's responsibility) — the env var is purely a development knob, not a production observability surface. `LARCH_DEBUG_TOKEN_REPORT=0`, `LARCH_DEBUG_TOKEN_REPORT=false`, and an unset value all preserve the default silent behavior. `mktemp` failure (e.g. an out-of-space `$TMPDIR`) degrades silently to `/dev/null`, so the debug knob never breaks the production render path.
+
 ## Table Shape
 
 The full markdown output renders as **one Claude table plus one table per vendor present in the run**, each preceded by an `### <vendor>` heading and a blank line. The Claude table is always emitted; vendor tables are emitted only when at least one row of that vendor exists at or after the first ledger mark.

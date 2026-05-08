@@ -86,22 +86,74 @@ emit_run_statistics() {
 
     normalized=""
     if [ -f "$fragment" ] && grep -q '[^[:space:]]' "$fragment" 2>/dev/null; then
-        # Emit populated run-statistics content with trailing blank lines
-        # AND trailing pre-existing `| larch plugin version | ... |` rows
-        # stripped, then append the freshly-captured plugin version as the
-        # canonical final table row. Stripping pre-existing version rows
-        # prevents duplicates when the run-statistics fragment was hydrated
-        # from a prior anchor body that already carried an injected row
-        # (closes #348-Phase5-resume duplicate-row regression).
+        # Emit populated run-statistics content after two passes:
+        #
+        #   1. Strip legacy `<!-- token-report-begin -->...<!-- token-report-end -->`
+        #      sentinel pairs. Pre-#1429 anchors embedded the Token Report
+        #      inside run-statistics; after the split that block lives in its
+        #      own token-report section, so leaving the legacy markers in
+        #      run-statistics would publish duplicate Token Report content on
+        #      resumed runs against pre-split anchors (closes #1466 sub-item
+        #      B; was #1440). Lone-begin (no closing marker) strips from the
+        #      begin marker to EOF; lone-end (no opening marker) strips from
+        #      BOF through the end marker — degraded-input safe.
+        #   2. Strip trailing blank lines AND any trailing pre-existing
+        #      `| larch plugin version | ... |` rows. Stripping pre-existing
+        #      version rows prevents duplicates when the run-statistics
+        #      fragment was hydrated from a prior anchor body that already
+        #      carried an injected row (closes #348-Phase5-resume).
+        #
+        # The freshly-captured plugin version is appended below as the
+        # canonical final table row.
         normalized=$(awk '
             { lines[NR] = $0 }
             END {
-                last = NR
-                while (last > 0 && (lines[last] ~ /^[[:space:]]*$/ || lines[last] ~ /^[[:space:]]*\|[[:space:]]*larch plugin version[[:space:]]*\|/)) {
-                    last--
+                # Phase 1 — locate legacy token-report markers (first begin;
+                # first end-after-begin if begin exists, else first end).
+                begin_idx = 0; end_idx = 0
+                for (i = 1; i <= NR; i++) {
+                    if (!begin_idx && lines[i] ~ /<!-- token-report-begin -->/) {
+                        begin_idx = i
+                    }
                 }
-                for (i = 1; i <= last; i++) {
-                    print lines[i]
+                if (begin_idx) {
+                    for (i = begin_idx + 1; i <= NR; i++) {
+                        if (lines[i] ~ /<!-- token-report-end -->/) {
+                            end_idx = i; break
+                        }
+                    }
+                } else {
+                    for (i = 1; i <= NR; i++) {
+                        if (lines[i] ~ /<!-- token-report-end -->/) {
+                            end_idx = i; break
+                        }
+                    }
+                }
+                skip_start = 0; skip_end = 0
+                if (begin_idx && end_idx) {
+                    skip_start = begin_idx; skip_end = end_idx
+                } else if (begin_idx) {
+                    skip_start = begin_idx; skip_end = NR
+                } else if (end_idx) {
+                    skip_start = 1; skip_end = end_idx
+                }
+
+                # Phase 2 — keep lines outside the strip range.
+                outn = 0
+                for (i = 1; i <= NR; i++) {
+                    if (skip_start && i >= skip_start && i <= skip_end) continue
+                    outn++
+                    out[outn] = lines[i]
+                }
+
+                # Phase 3 — strip trailing blank lines AND trailing
+                # pre-existing version rows from the kept set.
+                while (outn > 0 && (out[outn] ~ /^[[:space:]]*$/ || out[outn] ~ /^[[:space:]]*\|[[:space:]]*larch plugin version[[:space:]]*\|/)) {
+                    outn--
+                }
+
+                for (i = 1; i <= outn; i++) {
+                    print out[i]
                 }
             }
         ' "$fragment") || fail_io "failed to read fragment: $fragment"

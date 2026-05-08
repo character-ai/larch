@@ -99,6 +99,29 @@ render_jq() {
         return 1
     fi
 
+    # When LARCH_DEBUG_TOKEN_REPORT is set to a non-empty, non-zero value,
+    # tee jq stderr to a temp file and surface its path on render failure
+    # via RENDER_FAIL_REASON. Default behavior (silent stderr) is preserved
+    # so the report stays non-blocking; the env var is purely an opt-in
+    # diagnostic for development. mktemp failure degrades silently to
+    # /dev/null so the debug knob never breaks production.
+    local jq_stderr_dest="/dev/null"
+    local jq_stderr_path=""
+    case "${LARCH_DEBUG_TOKEN_REPORT:-}" in
+        ""|0|false|FALSE|False) ;;
+        *)
+            # mktemp template puts the X's at the end (no `.log` suffix) so
+            # BSD mktemp on macOS expands them — BSD mktemp leaves trailing X's
+            # alone when a literal suffix follows them, producing a static
+            # filename that concurrent runs would clobber.
+            if jq_stderr_path=$(mktemp "${TMPDIR:-/tmp}/larch-token-report-jq-stderr-XXXXXX" 2>/dev/null); then
+                jq_stderr_dest="$jq_stderr_path"
+            else
+                jq_stderr_path=""
+            fi
+            ;;
+    esac
+
     jq -r -s --slurpfile ledger "$ledger" --arg mode "$mode" '
       def epoch:
         if . == null then null
@@ -279,8 +302,12 @@ render_jq() {
         elif $mode == "terse" then terse_line($claude; $vendor; $marks[-1])
         else markdown($marks; $claude; $vendor)
         end
-    ' "${TRANSCRIPT_FILES[@]}" 2>/dev/null || {
-        RENDER_FAIL_REASON="failed to parse token sources"
+    ' "${TRANSCRIPT_FILES[@]}" 2>"$jq_stderr_dest" || {
+        if [[ -n "$jq_stderr_path" && -s "$jq_stderr_path" ]]; then
+            RENDER_FAIL_REASON="failed to parse token sources (jq stderr at $jq_stderr_path)"
+        else
+            RENDER_FAIL_REASON="failed to parse token sources"
+        fi
         return 1
     }
 }

@@ -70,7 +70,12 @@ The `run-statistics` section is the one slug whose interior is normalized rather
 Behavior depends on the fragment's state:
 
 - **Empty / missing fragment** (seed case): the helper emits a self-contained minimal table — `## Run Statistics`, a blank line, the standard `| Metric | Value |` header + `|---|---|` separator, and the plugin-version row.
-- **Populated fragment** (Step 9a.1's full table written by /implement): the helper emits the fragment content with trailing blank lines stripped AND any trailing pre-existing `| larch plugin version | ... |` rows dropped, then appends a freshly-captured plugin-version row. The trailing-version-row strip is what keeps the assembler idempotent across resume / hydration: a fragment that was hydrated from a prior anchor body (which already carried an injected version row) does not produce duplicate rows on the next assembly.
+- **Populated fragment** (Step 9a.1's full table written by /implement): the helper emits the fragment content after three transforms, in order:
+    1. **Legacy token-report block strip** — any `<!-- token-report-begin -->...<!-- token-report-end -->` pair embedded inside the fragment is removed (closes #1466 sub-item B; was #1440). Pre-#1429 anchors carried the Token Report inside `run-statistics`; after the split that block is published as its own `token-report` section, so leaving the legacy markers in `run-statistics` would publish duplicate Token Report content on resumed runs against pre-split anchors. Lone-begin (no closing marker) strips from the marker to EOF; lone-end (no opening marker) strips from BOF through the marker — both are degraded-input safe.
+    2. **Trailing blank-line strip** — preserves the existing minimum-noise behavior.
+    3. **Trailing pre-existing version-row strip** — keeps the assembler idempotent across resume / hydration: a fragment that was hydrated from a prior anchor body (which already carried an injected version row) does not produce duplicate rows on the next assembly.
+
+  After the strips, a freshly-captured plugin-version row is appended.
 
 The `<value>` is read once per assembly from `scripts/read-plugin-version.sh`, which reads `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json` (default-derived from the script path when the env var is unset) and falls back to the literal `unknown` on any failure (missing file, missing `jq`, malformed JSON, null version). Any I/O error in `read-plugin-version.sh` is non-fatal at the assembly layer — the helper continues with `PLUGIN_VERSION=unknown`.
 
@@ -142,6 +147,9 @@ If the sanitizer is missing, non-executable, or exits 2, assembly fails closed f
 - **(b4)** Populated `run-statistics` fragment: trailing blank lines are stripped and the plugin-version row is appended immediately before the section close marker.
 - **(b5)** Hydrated `run-statistics` fragment whose interior already ends with a stale `| larch plugin version | <X.Y.Z> |` row: the stale trailing version row is stripped before a freshly-captured row is appended, producing exactly one plugin-version row in the output. Regression guard against the resume / hydration duplicate-row case.
 - **(b6)** Populated `run-statistics` fragment whose entire content normalizes to empty after stripping (e.g. a single stale version row, no heading/header): the helper falls through to the seed-style scaffold (heading + table header + fresh version row) so the assembled section is well-formed instead of an orphan row.
+- **(b8)** Hydrated `run-statistics` fragment containing a legacy `<!-- token-report-begin -->...<!-- token-report-end -->` Token Report block: the legacy block is stripped before assembly, surrounding non-legacy content is preserved, and exactly one fresh plugin-version row is appended. Closes #1466 sub-item B (was #1440).
+- **(b9)** Lone `<!-- token-report-begin -->` marker (degraded-input case): the helper strips from the marker through EOF and preserves pre-marker content.
+- **(b10)** Lone `<!-- token-report-end -->` marker (degraded-input case): the helper strips from BOF through the marker and preserves post-marker content.
 - **(c)** Full fragments: all SECTION_MARKERS slugs have populated content.
 - **(d)** Missing `anchor-section-markers.sh` helper: `FAILED=true` + `ERROR=missing helper: …` on stdout + exit 1.
 - **(e)** Invalid `--issue` value (non-integer): usage error with exit 1.
