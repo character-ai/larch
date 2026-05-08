@@ -205,6 +205,11 @@ PRESEEDED_QA="$SCRATCH/model-preseed-qa.json"
 PRESEEDED_STDOUT="$SCRATCH/model-preseed-stdout.txt"
 printf '{"status":"complete"}\n' > "$PRESEEDED_MANIFEST"
 printf '{"qa":"pending"}\n' > "$PRESEEDED_QA"
+# Sidecar-truncation regression (parity with codex/cursor model-preflight test):
+# /review FINDING_1 verified resolve_gemini_model failure path now truncates
+# SIDECAR_LOG before appending diagnostics so stale chatter from prior runs
+# does not mix into preflight output.
+printf 'STALE-SENTINEL-1514\n' > "$PRESEEDED_SIDECAR"
 EXIT=0
 (
     cd "$REPO_ROOT"
@@ -223,10 +228,11 @@ if [[ "$EXIT" == "0" ]] \
    && grep -Fxq 'MANIFEST_WRITTEN=false' "$PRESEEDED_STDOUT" \
    && grep -Fxq 'QA_PENDING_WRITTEN=false' "$PRESEEDED_STDOUT" \
    && ! grep -Fxq 'MANIFEST_WRITTEN=true' "$PRESEEDED_STDOUT" \
-   && ! grep -Fxq 'QA_PENDING_WRITTEN=true' "$PRESEEDED_STDOUT"; then
+   && ! grep -Fxq 'QA_PENDING_WRITTEN=true' "$PRESEEDED_STDOUT" \
+   && ! grep -Fq 'STALE-SENTINEL-1514' "$PRESEEDED_SIDECAR"; then
     pass
 else
-    fail "model-preseed" "model rejection with pre-existing manifest/qa should force false flags; exit=$EXIT stdout=$(cat "$PRESEEDED_STDOUT")"
+    fail "model-preseed" "model rejection with pre-existing manifest/qa should force false flags and truncate stale sidecar; exit=$EXIT stdout=$(cat "$PRESEEDED_STDOUT") sidecar=$(cat "$PRESEEDED_SIDECAR" 2>/dev/null)"
 fi
 
 STUB_BIN="$SCRATCH/bin"
@@ -395,6 +401,41 @@ if [[ "$OUT" == "$T9_EXPECTED" ]]; then
     pass
 else
     fail 9 "leading-zero timeout 010 should be accepted with standard envelope; got: $OUT"
+fi
+
+TENV_TRANSCRIPT="$SCRATCH/tenv-transcript.txt"
+TENV_SIDECAR="$SCRATCH/tenv-sidecar.log"
+TENV_MANIFEST="$SCRATCH/tenv-manifest.json"
+TENV_QA="$SCRATCH/tenv-qa.json"
+TENV_ARGV="$SCRATCH/tenv-argv.txt"
+TENV_PROMPT="$SCRATCH/tenv-prompt.txt"
+TENV_LEDGER="$SCRATCH/tenv-timing.tsv"
+cd "$REPO_ROOT" && \
+    PATH="$STUB_BIN:$PATH" \
+    STUB_ARGV_FILE="$TENV_ARGV" \
+    STUB_PROMPT_FILE="$TENV_PROMPT" \
+    STUB_MANIFEST_PATH="$TENV_MANIFEST" \
+    LARCH_GEMINI_MODEL="stub-gemini-model" \
+    LARCH_TIMING_LEDGER="$TENV_LEDGER" \
+    LARCH_TIMING_TASK_KIND="--prompt" \
+    "$LAUNCHER" \
+        --transcript-path "$TENV_TRANSCRIPT" \
+        --sidecar-log "$TENV_SIDECAR" \
+        --manifest-path "$TENV_MANIFEST" \
+        --qa-pending-path "$TENV_QA" \
+        --plan-file "$PLAN" \
+        --feature-file "$FEATURE" \
+        --agent-prompt "$AGENT_PROMPT" \
+        --timeout 30 >/dev/null
+if [[ -f "$TENV_LEDGER" ]] && awk -F'\t' '$2 == "vendor" && $6 == "gemini" && $7 == "gemini-implement" { found=1 } END { exit(found ? 0 : 1) }' "$TENV_LEDGER"; then
+    pass
+else
+    fail "timing-env" "env LARCH_TIMING_TASK_KIND=--prompt should fall back to gemini-implement; ledger=$(cat "$TENV_LEDGER" 2>/dev/null)"
+fi
+if [[ -f "$TENV_LEDGER" ]] && awk -F'\t' '$2 == "vendor" { print $7 }' "$TENV_LEDGER" | grep -Fxq -- '--prompt'; then
+    fail "timing-env-leak" "env LARCH_TIMING_TASK_KIND=--prompt leaked into gemini implement timing ledger"
+else
+    pass
 fi
 
 # Test 10 (issue #1480 Bug #2): defensive `--timing-task-kind` validation.

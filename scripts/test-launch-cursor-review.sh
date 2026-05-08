@@ -591,6 +591,25 @@ else
     pass
 fi
 
+OUT_TM_ENV="$TMPDIR/cursor-tm-env.txt"
+TM_ENV_LEDGER="$TMPDIR/timing-ledger-env.tsv"
+set +e
+PATH="$STUB_BIN:$PATH" \
+    LARCH_TIMING_LEDGER="$TM_ENV_LEDGER" \
+    LARCH_TIMING_TASK_KIND="--prompt" \
+    "$LAUNCHER" --output "$OUT_TM_ENV" --timeout 5 --prompt "case tm env" >/dev/null 2>"$TMPDIR/case-tm-env.stderr"
+set -e
+if [[ -f "$TM_ENV_LEDGER" ]] && grep -E "^v1"$'\t'"vendor"$'\t'"[0-9]+"$'\t'"[^"$'\t'"]+"$'\t'"-"$'\t'"cursor"$'\t'"cursor-review"$'\t' "$TM_ENV_LEDGER" >/dev/null; then
+    pass
+else
+    fail "case TM env ledger missing fallback cursor-review row; ledger=$(cat "$TM_ENV_LEDGER" 2>/dev/null)"
+fi
+if [[ -f "$TM_ENV_LEDGER" ]] && awk -F'\t' '$2 == "vendor" { print $7 }' "$TM_ENV_LEDGER" | grep -Fxq -- '--prompt'; then
+    fail "case TM env leaked --prompt task-kind into timing ledger"
+else
+    pass
+fi
+
 # Issue #1480 Bug #2: defensive `--timing-task-kind` validation. Empty or
 # flag-like values must be rejected with exit 2 and a clear message.
 set +e

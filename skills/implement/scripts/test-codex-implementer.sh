@@ -367,6 +367,108 @@ else
     fail 9 "leading-zero timeout 010 should be accepted with standard envelope; got: $OUT"
 fi
 
+MODEL_TRANSCRIPT="$SCRATCH/model-preflight-transcript.txt"
+MODEL_SIDECAR="$SCRATCH/model-preflight-sidecar.log"
+MODEL_MANIFEST="$SCRATCH/model-preflight-manifest.json"
+MODEL_QA="$SCRATCH/model-preflight-qa.json"
+MODEL_STDOUT="$SCRATCH/model-preflight-stdout.txt"
+printf 'STALE-SENTINEL-1514\n' > "$MODEL_SIDECAR"
+printf '{"status":"complete"}\n' > "$MODEL_MANIFEST"
+printf '{"questions":[]}\n' > "$MODEL_QA"
+MODEL_EXIT=0
+(
+    cd "$REPO_ROOT"
+    LARCH_CODEX_MODEL=$'bad\nmodel' "$LAUNCHER" \
+        --transcript-path "$MODEL_TRANSCRIPT" \
+        --sidecar-log "$MODEL_SIDECAR" \
+        --manifest-path "$MODEL_MANIFEST" \
+        --qa-pending-path "$MODEL_QA" \
+        --plan-file "$PLAN" \
+        --feature-file "$FEATURE" \
+        --agent-prompt "$AGENT_PROMPT" \
+        --timeout 30
+) >"$MODEL_STDOUT" 2>&1 || MODEL_EXIT=$?
+MODEL_LAUNCHER_EXIT=$(awk -F= '$1=="LAUNCHER_EXIT"{print $2; exit}' "$MODEL_STDOUT")
+if [[ "$MODEL_EXIT" == "0" ]] \
+   && [[ -n "$MODEL_LAUNCHER_EXIT" && "$MODEL_LAUNCHER_EXIT" != "0" ]] \
+   && grep -Fxq 'MANIFEST_WRITTEN=false' "$MODEL_STDOUT" \
+   && grep -Fxq 'QA_PENDING_WRITTEN=false' "$MODEL_STDOUT" \
+   && grep -Fq 'LARCH_CODEX_MODEL' "$MODEL_SIDECAR" \
+   && ! grep -Fq 'STALE-SENTINEL-1514' "$MODEL_SIDECAR"; then
+    pass
+else
+    fail "model-preflight" "model args failure should exit wrapper 0 with non-zero LAUNCHER_EXIT, false manifest flags, and truncated diagnostic sidecar; exit=$MODEL_EXIT stdout=$(cat "$MODEL_STDOUT") sidecar=$(cat "$MODEL_SIDECAR" 2>/dev/null)"
+fi
+
+TENV_TRANSCRIPT="$SCRATCH/tenv-transcript.txt"
+TENV_SIDECAR="$SCRATCH/tenv-sidecar.log"
+TENV_MANIFEST="$SCRATCH/tenv-manifest.json"
+TENV_QA="$SCRATCH/tenv-qa.json"
+TENV_ARGV="$SCRATCH/tenv-argv.txt"
+TENV_PROMPT="$SCRATCH/tenv-prompt.txt"
+TENV_LAST_ARG="$SCRATCH/tenv-last-arg.txt"
+TENV_SEPARATOR_INDEX="$SCRATCH/tenv-separator-index.txt"
+TENV_LEDGER="$SCRATCH/tenv-timing.tsv"
+cd "$REPO_ROOT" && \
+    PATH="$STUB_BIN:$PATH" \
+    STUB_ARGV_FILE="$TENV_ARGV" \
+    STUB_PROMPT_FILE="$TENV_PROMPT" \
+    STUB_LAST_ARG_FILE="$TENV_LAST_ARG" \
+    STUB_SEPARATOR_INDEX_FILE="$TENV_SEPARATOR_INDEX" \
+    STUB_MANIFEST_PATH="$TENV_MANIFEST" \
+    LARCH_CODEX_MODEL="stub-codex-model" \
+    LARCH_TIMING_LEDGER="$TENV_LEDGER" \
+    LARCH_TIMING_TASK_KIND="--prompt" \
+    "$LAUNCHER" \
+        --transcript-path "$TENV_TRANSCRIPT" \
+        --sidecar-log "$TENV_SIDECAR" \
+        --manifest-path "$TENV_MANIFEST" \
+        --qa-pending-path "$TENV_QA" \
+        --plan-file "$PLAN" \
+        --feature-file "$FEATURE" \
+        --agent-prompt "$AGENT_PROMPT" \
+        --timeout 30 >/dev/null
+if [[ -f "$TENV_LEDGER" ]] && awk -F'\t' '$2 == "vendor" && $6 == "codex" && $7 == "codex-implement" { found=1 } END { exit(found ? 0 : 1) }' "$TENV_LEDGER"; then
+    pass
+else
+    fail "timing-env" "env LARCH_TIMING_TASK_KIND=--prompt should fall back to codex-implement; ledger=$(cat "$TENV_LEDGER" 2>/dev/null)"
+fi
+if [[ -f "$TENV_LEDGER" ]] && awk -F'\t' '$2 == "vendor" { print $7 }' "$TENV_LEDGER" | grep -Fxq -- '--prompt'; then
+    fail "timing-env-leak" "env LARCH_TIMING_TASK_KIND=--prompt leaked into codex implement timing ledger"
+else
+    pass
+fi
+
+DISPATCHER="$REPO_ROOT/skills/implement/scripts/step2-implement.sh"
+STEP2_REPO="$SCRATCH/step2-codex-retry-repo"
+mkdir -p "$STEP2_REPO"
+git -C "$STEP2_REPO" init -q -b main
+git -C "$STEP2_REPO" config user.email "test@example.invalid"
+git -C "$STEP2_REPO" config user.name "larch test"
+printf 'base\n' > "$STEP2_REPO/README.md"
+git -C "$STEP2_REPO" add README.md
+git -C "$STEP2_REPO" commit -q -m initial
+STEP2_TMP="$SCRATCH/step2-codex-retry-tmp"
+mkdir -p "$STEP2_TMP"
+STEP2_LEDGER="$STEP2_TMP/timing.tsv"
+STEP2_OUT=$(cd "$STEP2_REPO" && \
+    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    LARCH_TIMING_LEDGER="$STEP2_LEDGER" \
+    LARCH_CODEX_MODEL=$'bad\nmodel' \
+    "$DISPATCHER" --tmpdir "$STEP2_TMP" --plan-file "$PLAN" --feature-file "$FEATURE" \
+        --auto-mode false --coder codex 2>&1)
+STEP2_ROWS=$(awk -F'\t' '$2 == "vendor" && $6 == "codex" && $7 == "codex-implement" && $12 != "0" { c++ } END { print c + 0 }' "$STEP2_LEDGER" 2>/dev/null || echo 0)
+if [[ "$STEP2_OUT" == *"STATUS=bailed"* ]] \
+   && [[ "$STEP2_OUT" == *"REASON=codex-runtime-failure"* ]] \
+   && [[ "$STEP2_OUT" == *"TOOL=codex"* ]] \
+   && [[ "$STEP2_OUT" == *"ORCHESTRATOR_EDIT_AUTHORITY=forbidden"* ]] \
+   && [[ "$STEP2_ROWS" == "2" ]] \
+   && [[ ! -e "$STEP2_TMP/manifest.json" ]]; then
+    pass
+else
+    fail "step2-codex-retry" "dispatcher should retry codex preflight failure once then bail codex-runtime-failure with two non-zero timing rows; rows=$STEP2_ROWS out=$STEP2_OUT ledger=$(cat "$STEP2_LEDGER" 2>/dev/null)"
+fi
+
 # Test 10: record-vendor smoke (issue #1351 Gap 1). Stub Codex prints a
 # "tokens used" block to stdout (which run-external-agent.sh routes to the
 # sidecar log); after the launcher returns, dump the per-session ledger and
@@ -407,6 +509,7 @@ STUB_EOF
         STUB_MANIFEST_PATH="$RV_MANIFEST" \
         LARCH_CODEX_MODEL="stub-codex-model" \
         LARCH_TOKEN_SESSION_ID="$RV_SESSION_ID" \
+        IMPLEMENT_TMPDIR='' \
         CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
         "$LAUNCHER" \
             --transcript-path "$RV_TRANSCRIPT" \

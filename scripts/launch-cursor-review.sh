@@ -108,6 +108,14 @@ if [[ -n "${IMPLEMENT_TMPDIR:-}" && -s "${IMPLEMENT_TMPDIR}/claude-source.env" ]
     export LARCH_CLAUDE_SOURCE_FILE="${IMPLEMENT_TMPDIR}/claude-source.env"
 fi
 
+# Defensive: env-derived LARCH_TIMING_TASK_KIND may be empty or flag-shaped
+# (e.g. "--prompt") if a caller mis-parses argv. The CLI form was
+# already validated above (#1480); apply the same predicate to the env path
+# and fall back silently. Whitespace-only and other invalid-but-non-flag
+# shapes rely on timing-ledger.sh's regex backstop (do not extend here).
+if [[ -z "$TIMING_TASK_KIND" || "$TIMING_TASK_KIND" == --* ]]; then
+    TIMING_TASK_KIND="cursor-review"
+fi
 : "${TIMING_TASK_KIND:=cursor-review}"
 TIMING_START_S=$(date +%s)
 
