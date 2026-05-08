@@ -280,7 +280,7 @@ Tier 1 (non-empty `-s` checks) pins the substantive artifacts mandated as non-em
 
 On `DESIGN_HEAVY=complete`:
 - **If `SESSION_ENV_PATH` is non-empty (nested under /implement)**: if `auto_mode=false` proceed directly to Step 3.5; if `auto_mode=true` proceed directly to Step 5 because the worker ran Step 3b and Step 4. (Parent /implement reads the manifest written at Step 5.)
-- **If `SESSION_ENV_PATH` is empty (standalone /design --subagent — NEW capability)**: read and print `$DESIGN_TMPDIR/plan.txt` under `## Implementation Plan`, `$DESIGN_TMPDIR/voting-tally.md` under `## Voting Tally and Reviewer Competition Scoreboard`, `$DESIGN_TMPDIR/accepted-plan-findings.md` under `## Plan Review Findings (Voted In)` (skip header if file is empty or missing), `$DESIGN_TMPDIR/oos.md` under `## Out-of-Scope Observations` (skip header if file is empty or missing), and — when `auto_mode=true` AND `$DESIGN_TMPDIR/architecture-diagram.md` exists and is non-empty — `$DESIGN_TMPDIR/architecture-diagram.md` under `## Architecture Diagram` with the mermaid fence (when `auto_mode=true` AND the file is missing/empty, print `**⚠ Architecture diagram unavailable (Step 3b generation failed in subagent).**` instead so the failure is visible). When `auto_mode=true`, also read `$DESIGN_TMPDIR/rejected-findings.md`: if non-empty, print it under `## Unimplemented Plan Review Suggestions`; if empty or missing, print `## Plan Review — All Suggestions Implemented` (matches Step 4's standalone output). Then if `auto_mode=false` proceed to Step 3.5 (Discussion Round 2 still runs interactively against the displayed artifacts); if `auto_mode=true` proceed to Step 5 (cleanup). This replay matches the inline standalone output that today's empty-`SESSION_ENV_PATH` path produces, so the user sees the deliverables that `cleanup-tmpdir.sh` would otherwise delete.
+- **If `SESSION_ENV_PATH` is empty (standalone /design --subagent — NEW capability)**: read and print `$DESIGN_TMPDIR/plan.txt` under `## Implementation Plan`, `$DESIGN_TMPDIR/voting-tally.md` under `## Voting Tally and Reviewer Competition Scoreboard`, `$DESIGN_TMPDIR/accepted-plan-findings.md` under `## Plan Review Findings (Voted In)` (skip header if file is empty or missing), `$DESIGN_TMPDIR/oos.md` under `## Out-of-Scope Observations` (skip header if file is empty or missing), and — when `auto_mode=true` AND `$DESIGN_TMPDIR/architecture-diagram.md` exists and is non-empty — `$DESIGN_TMPDIR/architecture-diagram.md` under `## Architecture Diagram` with the mermaid fence (when `auto_mode=true` AND the file is missing/empty, print `**⚠ Architecture diagram unavailable (rejected by sanitizer).**` if the session's Warnings section contains a `mermaid sanitizer rejected` entry; otherwise print `**⚠ Architecture diagram unavailable (Step 3b generation failed in subagent).**`). When `auto_mode=true`, also read `$DESIGN_TMPDIR/rejected-findings.md`: if non-empty, print it under `## Unimplemented Plan Review Suggestions`; if empty or missing, print `## Plan Review — All Suggestions Implemented` (matches Step 4's standalone output). Then if `auto_mode=false` proceed to Step 3.5 (Discussion Round 2 still runs interactively against the displayed artifacts); if `auto_mode=true` proceed to Step 5 (cleanup). This replay matches the inline standalone output that today's empty-`SESSION_ENV_PATH` path produces, so the user sees the deliverables that `cleanup-tmpdir.sh` would otherwise delete.
 
 On `DESIGN_HEAVY=failed`:
 - **If `SESSION_ENV_PATH` is non-empty (nested)**: print `**⚠ 2a: sketches — heavy worker subagent failed: $REASON. No design manifest will be exported. Parent /implement will see MANIFEST_FAILED at Step 1 and re-invoke /design.**`, proceed to Step 5 for cleanup/export checks (Step 5 sets `MANIFEST_EXPORT_OK=false`, skips `cleanup-tmpdir.sh`, preserves `$DESIGN_TMPDIR`), and do not run the inline heavy steps. **Recovery**: the parent `/implement` Step 1 reads the manifest after `/design` returns; on missing/failed manifest it sets `STALL_TRACKING=true` and bails to Step 18 cleanup. To retry transient subagent failures (network blip, model timeout), the operator re-runs the same `/implement` invocation — Step 0.5 sentinel idempotency reuses the already-created tracking issue, and `/design` runs fresh.
@@ -563,7 +563,18 @@ Generate a mermaid Architecture Diagram that represents the high-level system/co
 
 Choose the most appropriate mermaid diagram type for the feature (e.g., `graph TD`, `flowchart`, `C4Context`, `classDiagram`, etc.). The diagram type is flexible — pick whatever best communicates the architecture.
 
-Write the diagram to `$DESIGN_TMPDIR/architecture-diagram.md`. If `SESSION_ENV_PATH` is empty, also print the diagram under a `## Architecture Diagram` header with a mermaid code fence:
+Diagram contents must obey `${CLAUDE_PLUGIN_ROOT}/skills/shared/mermaid-safe-content.md` to avoid sanitizer rejection.
+
+Write the diagram to `$DESIGN_TMPDIR/architecture-diagram.candidate.md` first. The candidate file includes the `## Architecture Diagram` heading and mermaid fence. Validate it before promotion:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/sanitize-mermaid-fragment.sh" \
+  --input "$DESIGN_TMPDIR/architecture-diagram.candidate.md" \
+  --from-md \
+  --warnings-step "3b"
+```
+
+On `STATUS=ok`, rename the candidate to `$DESIGN_TMPDIR/architecture-diagram.md`. If `SESSION_ENV_PATH` is empty, also print the promoted diagram under a `## Architecture Diagram` header with a mermaid code fence:
 
 ```
 ## Architecture Diagram
@@ -573,7 +584,9 @@ Write the diagram to `$DESIGN_TMPDIR/architecture-diagram.md`. If `SESSION_ENV_P
 ```
 ```
 
-**If diagram generation succeeds**, print: `✅ 3b: arch diagram — saved (<elapsed>)` when `SESSION_ENV_PATH` is non-empty, or `✅ 3b: arch diagram — generated (<elapsed>)` when standalone — then IMMEDIATELY continue to Step 4.
+**If diagram generation and sanitizer validation succeed**, print: `✅ 3b: arch diagram — saved (<elapsed>)` when `SESSION_ENV_PATH` is non-empty, or `✅ 3b: arch diagram — generated (<elapsed>)` when standalone — then IMMEDIATELY continue to Step 4.
+
+**If the sanitizer returns `STATUS=rejected` or exits 2**, do NOT promote the candidate. Delete `$DESIGN_TMPDIR/architecture-diagram.candidate.md`, print `**⚠ 3b: architecture diagram — rejected by mermaid sanitizer (REASON_TOKEN=<token>); proceeding without diagram.**`, and continue to Step 4. When `SESSION_ENV_PATH` is non-empty, append `- **Step 3b — architecture diagram rejected:** <REASON_TOKEN>` under `### Warnings` in `$(dirname "$SESSION_ENV_PATH")/execution-issues.md` via `${CLAUDE_PLUGIN_ROOT}/scripts/append-execution-issue.sh`. Use only `REASON_TOKEN` values, not raw diagram content.
 
 **If diagram generation fails** (e.g., the feature is too abstract to diagram meaningfully), print: `**⚠ 3b: arch diagram — generation failed, proceeding without diagram (<elapsed>)**` — then IMMEDIATELY continue to Step 4.
 

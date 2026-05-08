@@ -9,7 +9,7 @@ Umbrella #348 Phase 5 extracted this helper to eliminate prose-vs-shell drift ac
 ## Interface
 
 ```
-assemble-anchor.sh --sections-dir <dir> --issue <N> --output <path>
+assemble-anchor.sh --sections-dir <dir> --issue <N> --output <path> [--warnings-log <path>]
 ```
 
 Flags are all required.
@@ -17,6 +17,7 @@ Flags are all required.
 - `--sections-dir <dir>` — directory containing per-slug fragment files named `<slug>.md`. Missing directory is tolerated (all marker pairs emit empty). Unreadable directory is an I/O failure.
 - `--issue <N>` — non-negative integer issue number. Embedded verbatim into the first-line HTML marker `<!-- larch:implement-anchor v1 issue=<N> -->`.
 - `--output <path>` — destination for the assembled body. Parent directory is created if missing. Atomic rename ensures the file appears complete or not at all.
+- `--warnings-log <path>` — optional execution-issues log. Mermaid policy rejections append `Warnings` through the sanitizer; sanitizer tool failures append `Tool Failures` from this helper.
 
 ## Output contract (KEY=value on stdout)
 
@@ -93,7 +94,17 @@ The assembled body is first written to a `mktemp` sibling of `--output` and only
 
 ### No redaction, no network
 
-This helper performs pure text assembly of local files. The redaction pipeline lives in `scripts/tracking-issue-write.sh` (which runs compose → redact → truncate on the assembled body at publish time). Compose-time sanitization of fragment content (secrets → `<REDACTED-TOKEN>`, internal URLs → `<INTERNAL-URL>`, PII → `<REDACTED-PII>`) is the caller's responsibility per `skills/implement/SKILL.md` "Compose-time sanitization" — this helper emits fragments verbatim for every section EXCEPT `run-statistics`, where the version-row injection rule above applies (the injection itself is deterministic plugin-metadata, not user-derived content, so the verbatim contract still holds for everything that flows through caller-authored fragments).
+This helper performs pure text assembly of local files. The redaction pipeline lives in `scripts/tracking-issue-write.sh` (which runs compose -> redact -> truncate on the assembled body at publish time). Compose-time sanitization of fragment content (secrets -> `<REDACTED-TOKEN>`, internal URLs -> `<INTERNAL-URL>`, PII -> `<REDACTED-PII>`) is the caller's responsibility per `skills/implement/SKILL.md` "Compose-time sanitization" — this helper emits fragments verbatim for every section EXCEPT `run-statistics`, where the version-row injection rule above applies, and `diagrams`, where Mermaid fences are validated by `scripts/sanitize-mermaid-fragment.sh` as defense in depth.
+
+### Diagrams slug Mermaid sanitizer
+
+When the `diagrams` fragment exists, `assemble-anchor.sh` invokes sibling `scripts/sanitize-mermaid-fragment.sh --from-md`. On sanitizer rejection, only the rejected Mermaid fence is replaced; surrounding headings and prose remain intact. Placeholder mapping is heading-aware:
+
+- `## Architecture Diagram` -> `Architecture diagram not available.`
+- `## Code Flow Diagram` -> `Code flow diagram not available.`
+- unknown heading -> `Mermaid diagram not available.`
+
+If the sanitizer is missing, non-executable, or exits 2, assembly fails closed for the diagrams slug: every top-level Mermaid fence in that fragment is replaced with the heading-aware placeholder and assembly still exits 0. With `--warnings-log`, policy rejections are logged under `Warnings` by the sanitizer, while fail-closed tool errors are logged under `Tool Failures` as `assemble-anchor: sanitizer exit 2 — diagrams slug fail-closed`.
 
 ## Conventions
 
@@ -106,6 +117,8 @@ This helper performs pure text assembly of local files. The redaction pipeline l
 |---|---|
 | `scripts/anchor-section-markers.sh` | Single-source-of-truth for slug order (sourced). |
 | `scripts/read-plugin-version.sh` | Best-effort plugin-version reader for the auto-injected `run-statistics` row. |
+| `scripts/sanitize-mermaid-fragment.sh` | Defense-in-depth sanitizer for the `diagrams` slug. |
+| `scripts/append-execution-issue.sh` | Categorized warnings-log appender used for fail-closed sanitizer tool errors. |
 | `scripts/tracking-issue-write.sh` | Downstream publisher; receives the `--output` path via `upsert-anchor --body-file`. Truncation pass relies on the same SECTION_MARKERS ordering. |
 | `scripts/test-assemble-anchor.sh` | Regression harness — every behavioral change here must be mirrored in the harness. |
 | `skills/implement/SKILL.md` | Primary consumer for anchor-section accumulation. |
@@ -114,7 +127,7 @@ This helper performs pure text assembly of local files. The redaction pipeline l
 
 ## Test harness
 
-`scripts/test-assemble-anchor.sh` covers 18 assertion categories:
+`scripts/test-assemble-anchor.sh` covers the anchor assembly invariants, including:
 
 - **(a)** Empty sections directory: output has exactly `2 + 2*N + 5` lines — `<!-- larch:implement-anchor v1 issue=<N> -->` on line 1, the seed-only visible placeholder line on line 2, all non-run-statistics marker pairs, and the `run-statistics` marker pair wrapping a minimal table plus plugin-version row.
 - **(a2)** Empty sections directory: the seed-only placeholder literal is present on line 2 (regression guard for issue #431).
@@ -123,6 +136,7 @@ This helper performs pure text assembly of local files. The redaction pipeline l
 - **(a5)** Nonexistent `--sections-dir`: `ASSEMBLED=true` and the placeholder fires (the all-empty pre-pass treats a missing directory as all-empty).
 - **(a6)** Missing `CLAUDE_PLUGIN_ROOT` target: the auto-injected version row falls back to `unknown`.
 - **(b)** Partial fragments: output contains the populated content only where fragment files exist, empty marker pairs elsewhere, in `SECTION_MARKERS` order.
+- Diagrams sanitizer rejection: an unsafe fence is replaced with the matching placeholder while valid neighboring fences are preserved and a `Warnings` entry is appended.
 - **(b2)** Newline-terminated fragment → exactly one newline before the close marker (regression guard for the `$(tail -c 1 ...)` command-substitution newline-stripping bug that inserted an extra blank line). Full output compared against a byte-exact expected fixture.
 - **(b3)** Fragment without a trailing newline → helper inserts one so the close marker stays on its own line.
 - **(b4)** Populated `run-statistics` fragment: trailing blank lines are stripped and the plugin-version row is appended immediately before the section close marker.

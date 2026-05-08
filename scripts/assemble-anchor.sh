@@ -39,15 +39,16 @@
 #
 # The helper does NOT invoke the redaction pipeline — that responsibility
 # lives with scripts/tracking-issue-write.sh at publish time. Compose-time
-# sanitization of fragment bodies is the caller's responsibility (see
-# skills/implement/SKILL.md "Compose-time sanitization" and the sibling
-# scripts/assemble-anchor.md for the layering spec).
+# sanitization is the SKILL's responsibility, and this helper also enforces
+# the diagrams slug with a fail-closed Mermaid sanitizer as defense in depth.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MARKERS_HELPER="$SCRIPT_DIR/anchor-section-markers.sh"
 PLUGIN_VERSION_HELPER="$SCRIPT_DIR/read-plugin-version.sh"
+MERMAID_SANITIZER="$SCRIPT_DIR/sanitize-mermaid-fragment.sh"
+APPEND_ISSUE="$SCRIPT_DIR/append-execution-issue.sh"
 
 if [ ! -f "$MARKERS_HELPER" ]; then
     echo "FAILED=true"
@@ -125,6 +126,7 @@ emit_run_statistics() {
 SECTIONS_DIR=""
 ISSUE=""
 OUTPUT=""
+WARNINGS_LOG=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -137,6 +139,9 @@ while [ $# -gt 0 ]; do
         --output)
             [ $# -ge 2 ] || fail_usage "--output requires a value"
             OUTPUT="$2"; shift 2 ;;
+        --warnings-log)
+            [ $# -ge 2 ] || fail_usage "--warnings-log requires a value"
+            WARNINGS_LOG="$2"; shift 2 ;;
         *)
             fail_usage "unknown flag: $1" ;;
     esac
@@ -169,6 +174,151 @@ if [ -e "$SECTIONS_DIR" ]; then
         fail_io "sections directory not readable: $SECTIONS_DIR"
     fi
 fi
+
+placeholder_for_heading() {
+    case "$1" in
+        architecture) printf '%s\n' 'Architecture diagram not available.' ;;
+        code-flow) printf '%s\n' 'Code flow diagram not available.' ;;
+        *) printf '%s\n' 'Mermaid diagram not available.' ;;
+    esac
+}
+
+heading_from_history() {
+    history="$1"
+    if printf '%s\n' "$history" | tail -n 5 | grep -Eiq '^##[[:space:]]+Code Flow Diagram[[:space:]]*$'; then
+        printf '%s\n' 'code-flow'
+    elif printf '%s\n' "$history" | tail -n 5 | grep -Eiq '^##[[:space:]]+Architecture Diagram[[:space:]]*$'; then
+        printf '%s\n' 'architecture'
+    else
+        printf '%s\n' 'unknown'
+    fi
+}
+
+drop_list_contains() {
+    needle="$1"
+    list="$2"
+    case " $list " in
+        *" $needle "*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+replace_mermaid_fences() {
+    src="$1"
+    dst="$2"
+    drop_fences="$3"
+    drop_all="$4"
+
+    # Accept up to 3 leading spaces of indentation per GFM/CommonMark
+    # fenced-code-block grammar; without this an indented mermaid fence
+    # would slip past replace_mermaid_fences's defense-in-depth scan
+    # (round-2 follow-up SECURITY).
+    # shellcheck disable=SC2016 # literal backtick regex; no shell expansion intended.
+    fence_re='^[[:space:]]{0,3}(`{3,})([^`]*)$'
+    in_outer=false
+    outer_len=0
+    outer_mermaid=false
+    dropping=false
+    fence_count=0
+    history=""
+
+    while IFS= read -r line || [ -n "$line" ]; do
+        if [[ "$line" =~ $fence_re ]]; then
+            opener="${BASH_REMATCH[1]}"
+            rest="${BASH_REMATCH[2]}"
+            len=${#opener}
+            if [ "$in_outer" = false ]; then
+                if [[ "$rest" =~ ^[[:space:]]*mermaid[[:space:]]*$ ]]; then
+                    fence_count=$((fence_count + 1))
+                    in_outer=true
+                    outer_len=$len
+                    outer_mermaid=true
+                    if [ "$drop_all" = true ] || drop_list_contains "$fence_count" "$drop_fences"; then
+                        dropping=true
+                        placeholder_for_heading "$(heading_from_history "$history")" >> "$dst"
+                    else
+                        dropping=false
+                        printf '%s\n' "$line" >> "$dst"
+                    fi
+                    continue
+                else
+                    in_outer=true
+                    outer_len=$len
+                    outer_mermaid=false
+                    printf '%s\n' "$line" >> "$dst"
+                    continue
+                fi
+            else
+                if [ "$len" -ge "$outer_len" ] && [[ "$rest" =~ ^[[:space:]]*$ ]]; then
+                    if [ "$outer_mermaid" = true ] && [ "$dropping" = true ]; then
+                        in_outer=false
+                        outer_len=0
+                        outer_mermaid=false
+                        dropping=false
+                        continue
+                    fi
+                    printf '%s\n' "$line" >> "$dst"
+                    in_outer=false
+                    outer_len=0
+                    outer_mermaid=false
+                    dropping=false
+                    continue
+                fi
+            fi
+        fi
+
+        if [ "$in_outer" = true ] && [ "$outer_mermaid" = true ] && [ "$dropping" = true ]; then
+            continue
+        fi
+        printf '%s\n' "$line" >> "$dst"
+        if [ "$in_outer" = false ] && [ -n "$(printf '%s' "$line" | tr -d '[:space:]')" ]; then
+            history="${history}${line}"$'\n'
+            history="$(printf '%s\n' "$history" | tail -n 5)"$'\n'
+        fi
+    done < "$src"
+}
+
+emit_diagrams_fragment() {
+    fragment="$1"
+    sanitized="$TMP_OUTPUT.diagrams"
+    : > "$sanitized" || fail_io "cannot create sanitized diagrams temp file"
+
+    if [ ! -x "$MERMAID_SANITIZER" ]; then
+        replace_mermaid_fences "$fragment" "$sanitized" "" true || fail_io "failed to sanitize diagrams fragment"
+        if [ -n "$WARNINGS_LOG" ] && [ -x "$APPEND_ISSUE" ]; then
+            "$APPEND_ISSUE" --log "$WARNINGS_LOG" --category "Tool Failures" \
+                --entry "- **assemble-anchor: sanitizer exit 2 — diagrams slug fail-closed**" >/dev/null 2>&1 || true
+        fi
+        cat "$sanitized" || fail_io "failed to read sanitized diagrams fragment"
+        return 0
+    fi
+
+    sanitizer_args=(--input "$fragment" --from-md)
+    [ -n "$WARNINGS_LOG" ] && sanitizer_args+=(--warnings-log "$WARNINGS_LOG" --warnings-step "assemble-anchor")
+    set +e
+    sanitizer_out="$("$MERMAID_SANITIZER" "${sanitizer_args[@]}" 2>/dev/null)"
+    sanitizer_rc=$?
+    set -e
+
+    if [ "$sanitizer_rc" -eq 0 ]; then
+        cat "$fragment" || fail_io "failed to read fragment: $fragment"
+        return 0
+    fi
+
+    if [ "$sanitizer_rc" -eq 1 ]; then
+        drop_fences="$(printf '%s\n' "$sanitizer_out" | awk -F'[ =]' '/^REASON_TOKEN=/{print $4}' | sort -n -u | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
+        replace_mermaid_fences "$fragment" "$sanitized" "$drop_fences" false || fail_io "failed to sanitize diagrams fragment"
+        cat "$sanitized" || fail_io "failed to read sanitized diagrams fragment"
+        return 0
+    fi
+
+    replace_mermaid_fences "$fragment" "$sanitized" "" true || fail_io "failed to sanitize diagrams fragment"
+    if [ -n "$WARNINGS_LOG" ] && [ -x "$APPEND_ISSUE" ]; then
+        "$APPEND_ISSUE" --log "$WARNINGS_LOG" --category "Tool Failures" \
+            --entry "- **assemble-anchor: sanitizer exit 2 — diagrams slug fail-closed**" >/dev/null 2>&1 || true
+    fi
+    cat "$sanitized" || fail_io "failed to read sanitized diagrams fragment"
+}
 
 # Pre-pass: verify every existing fragment file is readable BEFORE entering
 # the assembly brace-group (whose redirection `> "$TMP_OUTPUT"` would swallow
@@ -216,6 +366,8 @@ trap 'rm -f "$TMP_OUTPUT"' EXIT
         printf '<!-- section:%s -->\n' "$slug"
         if [ "$slug" = "run-statistics" ]; then
             emit_run_statistics "$fragment"
+        elif [ "$slug" = "diagrams" ] && [ -f "$fragment" ]; then
+            emit_diagrams_fragment "$fragment"
         elif [ -f "$fragment" ]; then
             # Fragment content emitted verbatim; caller owns compose-time sanitization.
             # cat preserves trailing-newline semantics as authored by the caller.

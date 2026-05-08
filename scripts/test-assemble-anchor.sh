@@ -255,6 +255,43 @@ grep -qxF '<!-- section-end:plan-goals-test -->' "$output_b" \
 pass "(b) partial fragments → populated content in order, empty pairs for missing slugs"
 
 # --------------------------------------------------------------------------
+# (b7) Diagrams fragment sanitizer rejects only the offending Mermaid fence
+#      and preserves surrounding headings/prose.
+# --------------------------------------------------------------------------
+sections_b7="$tmpdir/sections-b7"
+mkdir -p "$sections_b7"
+cat > "$sections_b7/diagrams.md" <<'EOF'
+## Architecture Diagram
+
+```mermaid
+flowchart TD
+  A[foo|bar]
+```
+
+## Code Flow Diagram
+
+```mermaid
+sequenceDiagram
+  participant X as Final
+  X->>X: done
+```
+EOF
+warnings_b7="$tmpdir/execution-issues-b7.md"
+output_b7="$tmpdir/out-b7.md"
+"$ASSEMBLE_ANCHOR" --sections-dir "$sections_b7" --issue 107 --output "$output_b7" --warnings-log "$warnings_b7" > /dev/null
+
+grep -Fxq 'Architecture diagram not available.' "$output_b7" \
+    || fail "(b7) rejected architecture fence should be replaced with placeholder"
+grep -Fxq 'sequenceDiagram' "$output_b7" \
+    || fail "(b7) valid code-flow fence should be preserved"
+if grep -Fxq '  A[foo|bar]' "$output_b7"; then
+    fail "(b7) unsafe architecture fence content leaked into assembled body"
+fi
+grep -qF -- '- **Step assemble-anchor — mermaid sanitizer rejected:** pipe-in-node-label' "$warnings_b7" \
+    || fail "(b7) sanitizer rejection should append a Warnings entry"
+pass "(b7) diagrams sanitizer → offending fence placeholder + warning"
+
+# --------------------------------------------------------------------------
 # (b2) Exact line-shape check: a newline-terminated fragment produces NO
 #      extra blank line between content and the close marker.
 #      Regression guard for the $(tail -c 1 ...) command-substitution bug

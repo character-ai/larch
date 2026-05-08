@@ -15,7 +15,8 @@
 #       --issue N \
 #       [--anchor-id ID] \
 #       [--output PATH] \
-#       [--repo OWNER/REPO]
+#       [--repo OWNER/REPO] \
+#       [--warnings-log PATH]
 #
 # Behavior:
 #   1. mkdir -p the sections-dir (idempotent — covers fresh-session callers
@@ -64,6 +65,7 @@ ISSUE=""
 ANCHOR_ID=""
 OUTPUT=""
 REPO=""
+WARNINGS_LOG=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -82,6 +84,9 @@ while [ $# -gt 0 ]; do
         --repo)
             [ $# -ge 2 ] || fail_usage "--repo requires a value"
             REPO="$2"; shift 2 ;;
+        --warnings-log)
+            [ $# -ge 2 ] || fail_usage "--warnings-log requires a value"
+            WARNINGS_LOG="$2"; shift 2 ;;
         *)
             fail_usage "unknown flag: $1" ;;
     esac
@@ -106,6 +111,10 @@ if [ -z "$OUTPUT" ]; then
     OUTPUT="$(dirname "$SECTIONS_DIR")/anchor-assembled.md"
 fi
 
+if [ -z "$WARNINGS_LOG" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -w "${IMPLEMENT_TMPDIR}/execution-issues.md" ]; then
+    WARNINGS_LOG="${IMPLEMENT_TMPDIR}/execution-issues.md"
+fi
+
 mkdir -p "$SECTIONS_DIR" 2>/dev/null || {
     echo "FAILED=true"
     echo "ERROR=cannot create sections directory: $SECTIONS_DIR"
@@ -114,7 +123,9 @@ mkdir -p "$SECTIONS_DIR" 2>/dev/null || {
 
 # Step 1: assemble the body. Forward stdout verbatim so callers see
 # ASSEMBLED=true / OUTPUT=… on success or FAILED=true / ERROR=… on failure.
-ASM_OUT="$("$ASSEMBLE" --sections-dir "$SECTIONS_DIR" --issue "$ISSUE" --output "$OUTPUT")" || {
+ASSEMBLE_ARGS=(--sections-dir "$SECTIONS_DIR" --issue "$ISSUE" --output "$OUTPUT")
+[ -n "$WARNINGS_LOG" ] && ASSEMBLE_ARGS+=(--warnings-log "$WARNINGS_LOG")
+ASM_OUT="$("$ASSEMBLE" "${ASSEMBLE_ARGS[@]}")" || {
     # assemble-anchor already emitted FAILED=true / ERROR=… on stdout (captured
     # in $ASM_OUT). Forward that envelope verbatim.
     printf '%s\n' "$ASM_OUT"

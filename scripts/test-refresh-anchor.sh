@@ -116,6 +116,60 @@ ARGV=$(cat "$TMP4/upsert-argv.txt")
 assert_contains "--anchor-id" "$ARGV" "anchor-id: forwarded to upsert"
 assert_contains "ABC123"      "$ARGV" "anchor-id: value forwarded"
 
+# ── Test 5: explicit --warnings-log reaches assemble-anchor and records
+# sanitizer warnings for the diagrams slug.
+TMP5=$(mktemp -d)
+trap 'rm -rf "$TMP1" "$TMP2" "$TMP4" "$TMP5"' EXIT
+build_sandbox "$TMP5/scripts" '
+echo "ANCHOR_COMMENT_ID=777"
+echo "ANCHOR_COMMENT_URL=u"
+echo "UPDATED=true"
+exit 0
+'
+cp "$SCRIPT_DIR/sanitize-mermaid-fragment.sh" "$TMP5/scripts/sanitize-mermaid-fragment.sh"
+cp "$SCRIPT_DIR/append-execution-issue.sh" "$TMP5/scripts/append-execution-issue.sh"
+chmod +x "$TMP5/scripts/sanitize-mermaid-fragment.sh" "$TMP5/scripts/append-execution-issue.sh"
+mkdir -p "$TMP5/sections"
+cat > "$TMP5/sections/diagrams.md" <<'EOF'
+## Architecture Diagram
+
+```mermaid
+flowchart TD
+  A[bad|label]
+```
+EOF
+LOG5="$TMP5/custom-execution-issues.md"
+"$TMP5/scripts/refresh-anchor.sh" --sections-dir "$TMP5/sections" --issue 55 --warnings-log "$LOG5" >/dev/null
+assert_contains "Architecture diagram not available." "$(cat "$TMP5/anchor-assembled.md")" "warnings-log: bad fence replaced"
+assert_contains "mermaid sanitizer rejected" "$(cat "$LOG5")" "warnings-log: explicit path forwarded"
+
+# ── Test 6: IMPLEMENT_TMPDIR/execution-issues.md default is forwarded when
+# writable and no explicit override is supplied.
+TMP6=$(mktemp -d)
+trap 'rm -rf "$TMP1" "$TMP2" "$TMP4" "$TMP5" "$TMP6"' EXIT
+build_sandbox "$TMP6/scripts" '
+echo "ANCHOR_COMMENT_ID=778"
+echo "ANCHOR_COMMENT_URL=u"
+echo "UPDATED=true"
+exit 0
+'
+cp "$SCRIPT_DIR/sanitize-mermaid-fragment.sh" "$TMP6/scripts/sanitize-mermaid-fragment.sh"
+cp "$SCRIPT_DIR/append-execution-issue.sh" "$TMP6/scripts/append-execution-issue.sh"
+chmod +x "$TMP6/scripts/sanitize-mermaid-fragment.sh" "$TMP6/scripts/append-execution-issue.sh"
+mkdir -p "$TMP6/sections"
+cat > "$TMP6/sections/diagrams.md" <<'EOF'
+## Code Flow Diagram
+
+```mermaid
+sequenceDiagram
+  participant X as one<br/>two
+```
+EOF
+: > "$TMP6/execution-issues.md"
+IMPLEMENT_TMPDIR="$TMP6" "$TMP6/scripts/refresh-anchor.sh" --sections-dir "$TMP6/sections" --issue 56 >/dev/null
+assert_contains "Code flow diagram not available." "$(cat "$TMP6/anchor-assembled.md")" "env-default: bad fence replaced"
+assert_contains "mermaid sanitizer rejected" "$(cat "$TMP6/execution-issues.md")" "env-default: warnings path forwarded"
+
 echo
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

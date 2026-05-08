@@ -33,9 +33,18 @@ jobs:
   # harness failures and linter failures can be re-run independently.
   lint:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
+        with:
+          # Fetch the full history so `lint-mermaid-fences.sh
+          # --changed-only` can resolve `origin/<base>...HEAD` even on
+          # PRs whose merge base is deeper than the default depth=1
+          # shallow window. The prior shallow checkout could yield an
+          # empty / wrong diff while the lint step still exited 0,
+          # silently disabling Mermaid CI coverage (closes #1426
+          # follow-up D — round-2 review).
+          fetch-depth: 0
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
@@ -59,8 +68,38 @@ jobs:
         # SECURITY.md as complementary to the dedicated `gitleaks`
         # job's history scan. Issue #1034.
         env:
-          SKIP: agnix
+          SKIP: agnix,lint-mermaid-fences
         run: make lint-only
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 'lts/*'
+          cache: npm
+          # Track the lockfile so a lockfile-only bump invalidates the
+          # npm cache (closes #1426 follow-up FINDING_1).
+          cache-dependency-path: package-lock.json
+      - uses: actions/cache@v5
+        with:
+          path: ~/.cache/puppeteer
+          # Mirror the cache-dependency-path key on the lockfile so the
+          # Chromium cache invalidates whenever resolved Puppeteer
+          # changes — even via lockfile-only bumps (closes #1426
+          # follow-up FINDING_1).
+          key: puppeteer-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - name: Install Mermaid CLI
+        # `npm ci` installs exactly from the committed lockfile and
+        # fails if the lockfile is out of sync with package.json. This
+        # is the conventional CI contract — `npm install` would tolerate
+        # / silently update the lockfile, defeating the purpose of
+        # committing it (closes #1426 follow-up FINDING_10).
+        #
+        # Mermaid CLI 11.x has no --parseOnly mode, so the lint script
+        # falls back to mmdc -i ... -o ....svg, which requires
+        # Puppeteer's Chromium download. The puppeteer cache above
+        # restores ~/.cache/puppeteer between runs so cold downloads
+        # only happen when package-lock.json changes.
+        run: npm ci
+      - name: Lint Mermaid fences (changed only)
+        run: scripts/lint-mermaid-fences.sh --changed-only
 
   # Dedicated shellcheck job — runs in parallel with `lint`. During Phase 1
   # of the rollout, `shellcheck` ALSO runs inside `lint` so coverage is

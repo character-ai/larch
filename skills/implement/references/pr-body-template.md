@@ -18,13 +18,13 @@
 
 <details><summary>Architecture Diagram</summary>
 
-<the Architecture Diagram read from ARCHITECTURE_DIAGRAM_FILE in the design manifest. Copy the mermaid code fence from the file. If ARCHITECTURE_DIAGRAM_FILE is absent or unreadable, write "Architecture diagram not available.">
+<the Architecture Diagram read from ARCHITECTURE_DIAGRAM_FILE in the design manifest. Sanitize the file before inclusion. Copy the mermaid code fence from the file only when sanitizer accepts it. If ARCHITECTURE_DIAGRAM_FILE is absent, unreadable, or rejected, write "Architecture diagram not available.">
 
 </details>
 
 <details><summary>Code Flow Diagram</summary>
 
-<the Code Flow Diagram read from $IMPLEMENT_TMPDIR/code-flow-diagram.md. Copy the mermaid code fence from the file. If the Code Flow Diagram was not generated (generation failed or quick mode), write "Code flow diagram not available.">
+<the Code Flow Diagram read from $IMPLEMENT_TMPDIR/code-flow-diagram.md. Sanitize the file before inclusion. Copy the mermaid code fence from the file only when sanitizer accepts it. If the Code Flow Diagram was not generated (generation failed, quick mode, or sanitizer rejection), write "Code flow diagram not available.">
 
 </details>
 
@@ -44,5 +44,6 @@ Generated with [Claude Code](https://claude.com/claude-code)
 ## Composition notes
 
 - `<TRACKING_ISSUE_NUMBER>` is `$ISSUE_NUMBER` from Step 0.5 — set on all four branches when the path succeeds (Branch 1 sentinel reuse, Branch 2 `--issue` adoption, Branch 3 PR-body recovery, Branch 4 immediate first-remote-write). On degraded runs (`repo_unavailable=true` OR Step 0.5 Branch 4 create-issue/anchor/sentinel failure set `deferred=true` with `$ISSUE_NUMBER` unset), Step 9a **omits the `Closes #<TRACKING_ISSUE_NUMBER>` line entirely** and replaces it with the single prose line `_No tracking issue — auto-close N/A._` so the PR body stays well-formed and GitHub does not encounter a malformed `Closes #...` reference.
+- Diagram source files are validated with `scripts/sanitize-mermaid-fragment.sh --from-md` before inclusion. Rejected diagrams are replaced with the matching placeholder and logged to `execution-issues.md` as a `Warnings` entry with public-safe `REASON_TOKEN` values.
 - The `Closes #<N>` line is load-bearing for three consumers: (1) GitHub's auto-close-on-merge behavior (closes the tracking issue when the PR merges); (2) Step 0.5 Branch 3 (PR-body-recovery) uses the FIRST `Closes #<N>` match on an existing PR body to adopt the same tracking issue on a subsequent session; (3) `/fix-issue`'s Phase 2 close idempotency relies on this auto-close to transition the tracking issue cleanly.
 - Rich report content (voting tallies, diagrams, execution issues, OOS list, run statistics, version bump reasoning) is written to the anchor comment via `tracking-issue-write.sh upsert-anchor`, not to this PR body. See `skills/implement/references/anchor-comment-template.md` for the anchor's canonical template and section markers.
