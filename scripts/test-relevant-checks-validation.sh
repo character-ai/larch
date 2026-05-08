@@ -46,6 +46,27 @@ mkdir -p "$outside"
 out=$(run_expect_fail "outside tmpdir" env XDG_CACHE_HOME="$xdg" CLAUDE_PROJECT_DIR="$fixture_repo" "$HELPER" --site step3 --tmpdir "$outside")
 [[ "$out" == *"FAILURE_REASON=tmpdir-validation"* ]] || fail "outside tmpdir reason mismatch: $out"
 
+# Nested under /tmp must reject — /tmp fallback root only accepts direct
+# children (session-setup.sh creates fallback sessions as direct /tmp
+# children only). Two-level nesting like /tmp/foo/claude-implement-* is a
+# foreign dir, not a larch fallback session.
+nested_tmp="/tmp/larch-test-validation-nested-$$"
+mkdir -p "$nested_tmp/claude-implement-nested-test"
+out=$(run_expect_fail "nested /tmp tmpdir" env XDG_CACHE_HOME="$xdg" CLAUDE_PROJECT_DIR="$fixture_repo" "$HELPER" --site step3 --tmpdir "$nested_tmp/claude-implement-nested-test")
+rm -rf "$nested_tmp"
+[[ "$out" == *"FAILURE_REASON=tmpdir-validation"* ]] || fail "nested /tmp tmpdir reason mismatch: $out"
+
+# Direct /tmp child with claude-implement-* basename SHOULD validate
+# (session-setup.sh's fallback creates exactly this). Use a real /tmp child
+# to exercise the fallback-root accept branch.
+direct_tmp_session="/tmp/claude-implement-larch-test-validation-direct-$$"
+mkdir -p "$direct_tmp_session"
+rc=0
+out=$(env XDG_CACHE_HOME="$xdg" CLAUDE_PROJECT_DIR="$fixture_repo" "$HELPER" --site step3 --tmpdir "$direct_tmp_session" 2>&1) || rc=$?
+rm -rf "$direct_tmp_session"
+[[ "$rc" -eq 0 ]] || fail "direct /tmp child should validate (rc=$rc, out=$out)"
+[[ "$out" == *"RELEVANT_CHECKS_OK=true"* ]] || fail "direct /tmp child should produce success line: $out"
+
 out=$(run_expect_fail "missing tmpdir" env XDG_CACHE_HOME="$xdg" CLAUDE_PROJECT_DIR="$fixture_repo" "$HELPER" --site step3 --tmpdir "$tmp/missing")
 [[ "$out" == *"FAILURE_REASON=tmpdir-validation"* ]] || fail "missing tmpdir reason mismatch: $out"
 

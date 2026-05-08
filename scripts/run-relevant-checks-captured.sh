@@ -77,21 +77,31 @@ validate_tmpdir() {
     # candidate and try every one. The basename guard above already pins this
     # to claude-implement-* / claude-review-* dirs, so foreign /tmp dirs are
     # not accepted just because /tmp is on the allow-list.
-    local accepted_root="" candidate=""
-    local -a candidate_roots=()
+    # Cache sessions root: descendant matching is fine (operators may nest
+    # custom XDG_CACHE_HOME paths). /tmp fallback roots: require the canonical
+    # session dir to be a DIRECT child of the canonical root — session-setup.sh
+    # only ever creates fallback session dirs that way, and accepting deeper
+    # nesting would let an attacker-controlled or accidentally-shaped
+    # /tmp/foo/claude-implement-bar pass.
+    local accepted_root="" candidate="" canonical_parent=""
+    canonical_parent=$(dirname -- "$canonical")
     if [[ -n "$cache_root" ]]; then
-        candidate_roots+=("$cache_root/larch/sessions")
-    fi
-    candidate_roots+=("/tmp")
-    candidate_roots+=("/private/tmp")
-    for candidate in "${candidate_roots[@]}"; do
-        local resolved=""
-        resolved=$(canonical_dir "$candidate") || continue
-        if under_root "$canonical" "$resolved"; then
-            accepted_root="$resolved"
-            break
+        local cache_sessions=""
+        cache_sessions=$(canonical_dir "$cache_root/larch/sessions") || cache_sessions=""
+        if [[ -n "$cache_sessions" ]] && under_root "$canonical" "$cache_sessions"; then
+            accepted_root="$cache_sessions"
         fi
-    done
+    fi
+    if [[ -z "$accepted_root" ]]; then
+        for candidate in "/tmp" "/private/tmp"; do
+            local resolved=""
+            resolved=$(canonical_dir "$candidate") || continue
+            if [[ "$canonical_parent" == "$resolved" ]]; then
+                accepted_root="$resolved"
+                break
+            fi
+        done
+    fi
     [[ -n "$accepted_root" ]] || return 1
     [[ "$prefix" == "claude-implement" || "$prefix" == "claude-review" ]] || return 1
     printf '%s\n' "$canonical"
@@ -114,18 +124,35 @@ fi
 
 umask 077
 LOG_DIR="$TMPDIR_CANONICAL/relevant-checks"
-mkdir -p "$LOG_DIR"
-chmod 700 "$LOG_DIR"
+mkdir -p "$LOG_DIR" || fail "log-dir-create-failed" 1
+# Reject a pre-existing symlink at LOG_DIR — TMPDIR_CANONICAL is a larch
+# session dir but a same-user attacker could pre-place a symlink. fail-closed.
+[[ -L "$LOG_DIR" ]] && fail "log-dir-symlink-rejected" 1
+chmod 700 "$LOG_DIR" || fail "log-dir-chmod-failed" 1
 
+# Allocate a unique attempt log under LOG_DIR. Distinguish collision (file
+# already exists at this attempt index — bump the counter and retry) from
+# hard failure (unwritable, quota-exceeded, out-of-inodes — emit a structured
+# failure envelope and bail). Cap the attempt counter at a generous-but-fixed
+# limit so a pathological state cannot loop forever.
 attempt=1
-while :; do
+LOG_FILE=""
+while (( attempt <= 100 )); do
     LOG_FILE="$LOG_DIR/$SITE-$attempt.log"
     if (set -C; : > "$LOG_FILE") 2>/dev/null; then
-        chmod 600 "$LOG_FILE"
+        chmod 600 "$LOG_FILE" || fail "log-file-chmod-failed" 1
         break
     fi
-    attempt=$((attempt + 1))
+    if [[ -e "$LOG_FILE" ]]; then
+        # Collision at this attempt index — try the next one.
+        attempt=$((attempt + 1))
+        LOG_FILE=""
+        continue
+    fi
+    # Non-collision failure (read-only mount, quota, ENOSPC, ...). Bail.
+    fail "log-allocation" 1
 done
+[[ -n "$LOG_FILE" ]] || fail "log-allocation-attempt-cap" 1
 
 if "$CHECK_SCRIPT" >"$LOG_FILE" 2>&1; then
     rc=0
