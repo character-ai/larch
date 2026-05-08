@@ -40,8 +40,17 @@ resolve_implement_tmpdir() {
                 }' "$keepalive" 2>/dev/null)
             [[ "$cp_match" = "ok" ]] || continue
 
-            mtime=$(stat -f %m "$manifest" 2>/dev/null \
-                || stat -c %Y "$manifest" 2>/dev/null) || continue
+            # Linux GNU stat first (CI lane), then BSD/macOS fallback.
+            # Order matters: GNU `stat -f %m` switches to fs-info mode and
+            # treats `%m` as a path argument, polluting stdout with
+            # "File: ..." text — running the BSD form first on Linux would
+            # capture that text into $mtime and break the arithmetic
+            # comparison below under callers that set -u (`File: unbound
+            # variable`). Numeric guard covers both branches.
+            mtime=$(stat -c %Y "$manifest" 2>/dev/null) \
+                || mtime=$(stat -f %m "$manifest" 2>/dev/null) \
+                || continue
+            [[ "$mtime" =~ ^[0-9]+$ ]] || continue
             if (( mtime > best_mtime )); then
                 best_mtime=$mtime
                 best=$dir
