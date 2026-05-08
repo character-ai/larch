@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [17.0.11] - 2026-05-08
+
+### Fixed
+
+- Resolve #1486: `scripts/snapshot-untracked.sh` no longer deletes the user-controlled `$OUTPUT` path on argument-parsing errors. The unknown-flag arm previously ran `rm -f "$OUTPUT" "${OUTPUT}.tmp"` — a typo'd later flag after a valid `--output <path>` would silently delete that path. The arm now logs to stderr and exits 0 without touching the output. Folded inline (rule 2): `${2:?--output requires a value}` replaced with an explicit guard that exits 0 instead of 1 on missing `--output` value, preserving the always-exit-0 contract. Header in `scripts/snapshot-untracked.sh`, sibling `scripts/snapshot-untracked.md`, and `skills/implement/SKILL.md` Step 5 narrowed from "any failure" to "operation failure" (git/sort/mv) vs. "argument-parsing failure" so the split contract is documented in all three places.
+
 ## [17.0.10] - 2026-05-08
 
 ### Changed
