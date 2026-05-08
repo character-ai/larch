@@ -218,6 +218,94 @@ else
     pass
 fi
 
+# Whole-line marker regex parity with assemble-anchor.sh — a prose line
+# that merely *mentions* the marker substring (e.g. inside a backtick
+# code span or table cell) MUST NOT be treated as a structural sentinel
+# (closes #1511 finding A). Set up a file with a prose mention BEFORE a
+# real matched pair; the matched-pair branch must rewrite only the real
+# pair and leave the prose line intact.
+PROSE_MARKER="$TMP/prose-marker.md"
+{
+    printf '## Existing\n\n'
+    # shellcheck disable=SC2016 # Backticks here are literal markdown code-span delimiters in fixture data, not shell command substitution.
+    printf 'See `<!-- token-report-begin -->` for the matched-pair contract; the marker text appears in this prose line.\n'
+    printf '\n'
+    printf '<!-- token-report-begin -->\n'
+    printf '## Token Report\n\nstale body\n'
+    printf '<!-- token-report-end -->\n'
+    printf '\n## After\n\nkept-suffix\n'
+} > "$PROSE_MARKER"
+"$SCRIPT" --ledger "$LEDGER" --transcript "$TRANSCRIPT" --append-token-report "$PROSE_MARKER"
+pm_body=$(cat "$PROSE_MARKER")
+contains "prose mention preserved (begin)" "the marker text appears in this prose line" "$pm_body"
+contains "prose-marker: suffix preserved" "kept-suffix" "$pm_body"
+# Exactly one real matched pair after rewrite — the prose mentions inside
+# code spans must not bump the count.
+pm_real_begin=$(grep -c '^[[:space:]]*<!-- token-report-begin -->[[:space:]]*$' "$PROSE_MARKER")
+pm_real_end=$(grep -c '^[[:space:]]*<!-- token-report-end -->[[:space:]]*$' "$PROSE_MARKER")
+eq "prose-marker: single whole-line begin" "1" "$pm_real_begin"
+eq "prose-marker: single whole-line end" "1" "$pm_real_end"
+if grep -q 'stale body' "$PROSE_MARKER"; then
+    fail "prose-marker: stale body inside real pair was not rewritten"
+else
+    pass
+fi
+
+# Whole-line begin marker + prose-only end mention. Under the round-1
+# review consensus (closes #1511 round-1 FINDING — substring grep + whole
+# line awk = data loss), the matched-pair branch must NOT silently drop
+# trailing content because of an inline mention of the end marker. With
+# whole-line presence probes, has_end stays 0 and the file routes to the
+# lone-begin recovery path: content from the whole-line begin marker
+# through EOF is dropped (intentional lone-marker semantics), the prose
+# end mention sits BEFORE the begin marker so it is preserved, and a
+# fresh block is appended.
+WHOLE_BEGIN_PROSE_END="$TMP/whole-begin-prose-end.md"
+{
+    printf '## Existing\n\n'
+    # shellcheck disable=SC2016 # Backticks are literal markdown code-span delimiters in fixture data.
+    printf 'See `<!-- token-report-end -->` mentioned in this prose line; not a real sentinel.\n'
+    printf '\n'
+    printf '<!-- token-report-begin -->\n'
+    printf 'this would be deleted by lone-begin recovery\n'
+} > "$WHOLE_BEGIN_PROSE_END"
+"$SCRIPT" --ledger "$LEDGER" --transcript "$TRANSCRIPT" --append-token-report "$WHOLE_BEGIN_PROSE_END" 2>"$TMP/whole-begin-prose-end.stderr"
+wbpe_body=$(cat "$WHOLE_BEGIN_PROSE_END")
+contains "whole-begin/prose-end: prose end mention preserved" "mentioned in this prose line" "$wbpe_body"
+contains "whole-begin/prose-end: lone-begin warning emitted" "lone <!-- token-report-begin -->" "$(cat "$TMP/whole-begin-prose-end.stderr")"
+wbpe_real_begin=$(grep -c '^[[:space:]]*<!-- token-report-begin -->[[:space:]]*$' "$WHOLE_BEGIN_PROSE_END")
+wbpe_real_end=$(grep -c '^[[:space:]]*<!-- token-report-end -->[[:space:]]*$' "$WHOLE_BEGIN_PROSE_END")
+eq "whole-begin/prose-end: single whole-line begin" "1" "$wbpe_real_begin"
+eq "whole-begin/prose-end: single whole-line end" "1" "$wbpe_real_end"
+if grep -q 'this would be deleted by lone-begin recovery' "$WHOLE_BEGIN_PROSE_END"; then
+    fail "whole-begin/prose-end: post-begin content was not stripped"
+else
+    pass
+fi
+
+# Prose-only mentions of BOTH markers, no whole-line markers anywhere.
+# Substring grep would have selected the matched-pair branch, then the
+# whole-line awk would have silently no-op'd the replacement (file
+# unchanged → append succeeded with no new block, an invisible failure).
+# With whole-line presence probes, has_begin and has_end both stay 0 and
+# the file routes to the no-marker append path: existing content is
+# preserved verbatim and a fresh block is appended at EOF.
+PROSE_BOTH_NO_WHOLE_LINE="$TMP/prose-both-no-whole-line.md"
+{
+    printf '## Existing\n\n'
+    # shellcheck disable=SC2016 # Backticks are literal markdown code-span delimiters in fixture data.
+    printf 'Both `<!-- token-report-begin -->` and `<!-- token-report-end -->` mentioned only in prose.\n'
+    printf '\nkept-content\n'
+} > "$PROSE_BOTH_NO_WHOLE_LINE"
+"$SCRIPT" --ledger "$LEDGER" --transcript "$TRANSCRIPT" --append-token-report "$PROSE_BOTH_NO_WHOLE_LINE"
+pbnwl_body=$(cat "$PROSE_BOTH_NO_WHOLE_LINE")
+contains "prose-both: existing content preserved" "kept-content" "$pbnwl_body"
+contains "prose-both: prose mentions preserved" "mentioned only in prose" "$pbnwl_body"
+pbnwl_real_begin=$(grep -c '^[[:space:]]*<!-- token-report-begin -->[[:space:]]*$' "$PROSE_BOTH_NO_WHOLE_LINE")
+pbnwl_real_end=$(grep -c '^[[:space:]]*<!-- token-report-end -->[[:space:]]*$' "$PROSE_BOTH_NO_WHOLE_LINE")
+eq "prose-both: fresh whole-line begin appended" "1" "$pbnwl_real_begin"
+eq "prose-both: fresh whole-line end appended" "1" "$pbnwl_real_end"
+
 OUT="$TMP/table.md"
 "$SCRIPT" --ledger "$LEDGER" --transcript "$TRANSCRIPT" --full --markdown --output "$OUT"
 if [[ -s "$OUT" ]]; then pass; else fail "--output did not write table"; fi
@@ -243,38 +331,57 @@ no_marks=$("$SCRIPT" --ledger "$LEDGER_NO_MARKS" --transcript "$TRANSCRIPT" --si
 contains "no-step-marks reason" "Token report unavailable: failed to parse token sources" "$no_marks"
 
 # LARCH_DEBUG_TOKEN_REPORT — opt-in jq-stderr capture path. With the env
-# var set to a truthy spelling, render failure surfaces a "(jq stderr at
-# <path>)" suffix in the unavailable message and the stderr file holds the
-# captured jq diagnostics. Falsy / unset values preserve the default silent
-# behavior. Closes #1466 sub-item A; tests re-use the malformed-transcript
-# fixture above to provoke a render failure.
+# var set to a truthy spelling, render failure surfaces a fixed
+# "(jq stderr captured; debug)" suffix in the published unavailable
+# message (stdout) and emits the actual captured stderr file path on the
+# script's own stderr ("token-report.sh: jq stderr captured at <path>")
+# so the absolute TMPDIR/username-bearing path never reaches the
+# published surface (anchor / PR body). Falsy / unset values preserve
+# the default silent behavior. Closes #1466 sub-item A and #1511
+# sub-item B; tests re-use the malformed-transcript fixture above to
+# provoke a render failure.
 # Truthy spellings — full enumerated allowlist from scripts/token-report.sh
 # (round-2 review FINDING_3: tests covered only `1` and `true`; documented
 # allowlist also includes case variants of yes/on). Each entry must surface
-# the "(jq stderr at <path>)" suffix and produce a non-empty stderr file.
+# the fixed-phrase suffix on stdout, the stderr path line, and a non-empty
+# stderr file.
 for truthy_value in "1" "true" "TRUE" "True" "yes" "YES" "Yes" "on" "ON" "On"; do
+    debug_stderr_file="$TMP/debug-stderr-$truthy_value.txt"
     debug_out=$(LARCH_DEBUG_TOKEN_REPORT="$truthy_value" "$SCRIPT" \
-        --ledger "$LEDGER" --transcript "$MALFORMED_TRANSCRIPT" --since-last-mark --terse)
+        --ledger "$LEDGER" --transcript "$MALFORMED_TRANSCRIPT" --since-last-mark --terse \
+        2>"$debug_stderr_file")
     case "$debug_out" in
-        *"(jq stderr at "*) pass ;;
-        *) fail "truthy env value '$truthy_value' should enable debug path: '$debug_out'" ;;
+        *"(jq stderr captured; debug)"*) pass ;;
+        *) fail "truthy env value '$truthy_value' should surface fixed-phrase suffix on stdout: '$debug_out'" ;;
     esac
-    # Extract the path between "jq stderr at " and the LAST ")" — using bash
-# parameter expansion (greedy on both ends) so a path that itself contains
-# a `)` is not silently truncated. The greedy ##*X / %Y* pair pins the path
-# to whatever lies between the marker phrase and the final close paren.
-debug_path="${debug_out##*jq stderr at }"; debug_path="${debug_path%)*}"
+    case "$debug_out" in
+        *"jq stderr at "*) fail "truthy env value '$truthy_value' MUST NOT leak absolute path on stdout: '$debug_out'" ;;
+        *) pass ;;
+    esac
+    debug_stderr_body=$(cat "$debug_stderr_file")
+    case "$debug_stderr_body" in
+        *"token-report.sh: jq stderr captured at "*) pass ;;
+        *) fail "truthy env value '$truthy_value' should emit captured-path line on stderr: '$debug_stderr_body'" ;;
+    esac
+    # Extract the path on the script's stderr — greedy on both ends so a
+    # path containing a `)` (unlikely under mktemp but defensive) is not
+    # silently truncated.
+    debug_path_line="${debug_stderr_body##*jq stderr captured at }"
+    debug_path="${debug_path_line%%$'\n'*}"
     if [[ -n "$debug_path" && -s "$debug_path" ]]; then
         pass
     else
         fail "truthy env value '$truthy_value' stderr file empty or missing: '$debug_path'"
     fi
     [[ -n "$debug_path" ]] && rm -f "$debug_path"
+    rm -f "$debug_stderr_file"
 done
 
 # Negative spellings (`no`, `off`, `0`, `false`, empty) MUST NOT enable
 # the debug path — the gate is an explicit allowlist, not "non-empty
-# non-zero" (round-1 review FINDING_1 — over-broad falsy list).
+# non-zero" (round-1 review FINDING_1 — over-broad falsy list). The
+# "must not leak" assertion is keyed on either spelling of the legacy /
+# fixed phrase since the negative path emits no debug suffix at all.
 # Use env -u for the genuinely-unset case so the harness is hermetic and
 # does not inherit a caller-supplied LARCH_DEBUG_TOKEN_REPORT (round-3
 # review codex finding — without `env -u` running the harness with
@@ -283,7 +390,7 @@ done
 out=$(env -u LARCH_DEBUG_TOKEN_REPORT "$SCRIPT" \
     --ledger "$LEDGER" --transcript "$MALFORMED_TRANSCRIPT" --since-last-mark --terse)
 case "$out" in
-    *"jq stderr at "*) fail "<unset> env should not enable debug path: '$out'" ;;
+    *"jq stderr captured"*|*"jq stderr at "*) fail "<unset> env should not enable debug path: '$out'" ;;
     *) pass ;;
 esac
 
@@ -291,7 +398,7 @@ for negative_value in "" "0" "false" "FALSE" "no" "NO" "off" "OFF" "disabled"; d
     out=$(LARCH_DEBUG_TOKEN_REPORT="$negative_value" "$SCRIPT" \
         --ledger "$LEDGER" --transcript "$MALFORMED_TRANSCRIPT" --since-last-mark --terse)
     case "$out" in
-        *"jq stderr at "*) fail "negative env value '$negative_value' should not enable debug path: '$out'" ;;
+        *"jq stderr captured"*|*"jq stderr at "*) fail "negative env value '$negative_value' should not enable debug path: '$out'" ;;
         *) pass ;;
     esac
 done
