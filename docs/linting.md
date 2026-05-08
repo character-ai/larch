@@ -116,6 +116,18 @@ Two scanners run as dedicated CI jobs in `.github/workflows/ci.yaml`:
 
 See `SECURITY.md` → "Layered secret scanning" for the full three-layer model and allowlist discussion.
 
+## Manual Release Gates
+
+Some regression tests intentionally short-circuit on the enforced CI runners and rely on a manual run before a release that touches the affected surface.
+
+### macOS bash 3.2 regression coverage
+
+Issue #1496 / PR #1510 added a regression block in `scripts/test-create-pr.sh` (the conditional under `if [[ -x /bin/bash ]] && /bin/bash --version | grep -qE 'version 3\.[0-9]'`) that re-runs `create-pr.sh` under the system `/bin/bash` only when that interpreter reports bash 3.x — the actual macOS system shell that triggered the empty-array `${VAR[@]}` `set -u` defect (`unbound variable` on every `gh pr view/create "${GH_REPO_ARGS[@]}"` site when `--repo` was not passed).
+
+CI uses `ubuntu-latest` exclusively (bash 4+ as `/bin/bash`), so the macOS-shaped block is a no-op skip on the enforced pipeline — the regression is not continuously proven by `make test-create-pr` on CI.
+
+**Manual gate**: before cutting a release whose changes touch `scripts/create-pr.sh` (or any sibling shell entrypoint that exercises `${VAR[@]+"${VAR[@]}"}` empty-array patterns or `set -u` interactions), run `make test-create-pr` on a macOS workstation so the bash 3.2 conditional executes against the real interpreter. A green run on macOS confirms the empty-array regression remains fixed against the historically-failing path; a green run on Linux only confirms the bash 4+ path. See PR #1510 / issue #1496 for the underlying defect context.
+
 ## Makefile Targets
 
 | Target | Description |

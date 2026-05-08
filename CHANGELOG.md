@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [17.0.26] - 2026-05-08
+
+### Changed
+
+- Resolve #1530: bundle CHANGELOG dup heading, anchor-template false-positive guard, macOS bash 3.2 manual gate. Restores agnix-fix Added block at line 68 to '## [17.0.9] - 2026-05-08' (was duplicate '## [17.0.12]'); narrows Step 9a.1 security-token filter with a fenced-vs-unfenced discrimination procedure, security counter-invariant requiring at least one unfenced occurrence in real security findings, and a known-limitation note that upstream sites at plan-review.md/voting.md still substring-only (end-to-end propagation tracked as OOS_1); adds 'Manual Release Gates' section to docs/linting.md documenting macOS bash 3.2 'make test-create-pr' as a manual pre-release gate; extends scripts/test-implement-structure.sh assertion (24c) with grep -Fq pins on the new discrimination phrases.
+
 ## [17.0.25] - 2026-05-08
 
 ### Changed
@@ -93,7 +99,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Resolve #1463: combined OOS observations from #1459, #1444, #1434. **A.** `scripts/session-setup.sh` `--write-session-env` path now forwards `--timing-ledger` (mirroring the existing `--token-session-id` / `--claude-source-file` passthrough) when caller-env supplies `LARCH_TIMING_LEDGER`, gated by an inline `is_safe_timing_ledger_path` validation that requires absolute paths under `${TMPDIR:-/tmp}`, `$IMPLEMENT_TMPDIR`, `$DESIGN_TMPDIR`, `$REVIEW_TMPDIR`, or `dirname("$CALLER_ENV")`. Validation failure emits a single stderr warning and skips forwarding (fail-soft); the key is intentionally NOT echoed on session-setup stdout (file-only contract). **B.** `scripts/session-setup.sh` inline GitHub remote URL parser (lines 322-339) now delegates to `scripts/github-remote-repo.sh` after `gh repo view` fails, preserving fail-soft `REPO_UNAVAILABLE=true` semantics. The helper anchors `owner/repo` exactly while the legacy inline regex matched the trailing two segments — a deliberate fail-closed tightening for malformed remotes that the legacy regex would have mis-parsed. **C.** Hook subprocess env-inheritance investigation: existing production wiring binds `session_id` from the hook-event JSON payload (not from inherited LARCH_TOKEN_SESSION_ID), so a one-line breadcrumb cross-reference is added to `skills/implement/scripts/hook-post-design.sh` and `skills/implement/scripts/hook-stop-fail-close.sh` — no behavior change. New regression coverage: `scripts/test-session-setup-repo-fallback.sh` (gh-success / gh-fails-SSH / gh-fails-HTTPS / gh-fails-malformed / gh-fails-no-origin) wired through Makefile `test-harnesses-*`; `skills/implement/scripts/test-implement-review-token-propagation.sh` extended for `LARCH_TIMING_LEDGER` (positive forwarding + negative-stdout + negative-validation cases). Two follow-up OOS issues filed: #1504 (writer-side `--timing-ledger` validation in `scripts/write-session-env.sh`) and #1505 (awk-truncation fix in `scripts/read-session-env-key.sh`).
 
-## [17.0.12] - 2026-05-08
+## [17.0.9] - 2026-05-08
 
 ### Added
 
