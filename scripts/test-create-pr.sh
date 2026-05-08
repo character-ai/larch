@@ -120,4 +120,42 @@ rc=$?
 set -e
 [[ "$rc" -ne 0 ]] || fail "malformed --repo should fail"
 
+# Regression for issue #1496: GH_REPO_ARGS empty array under bash 3.2 + set -u.
+# Pre-fix, all four `gh pr view/create "${GH_REPO_ARGS[@]}"` sites aborted with
+# `unbound variable` on macOS system bash when --repo was not passed. Run the
+# script without --repo and assert (a) it does not abort with that message and
+# (b) every gh subcommand was reached without any --repo prefix.
+repo=$(setup_repo norepo)
+set +e
+(cd "$repo" && GH_LOG="$TMPROOT/norepo-gh.log" GH_MODE=create PATH="$stub_dir:$PATH" "$SCRIPT" --title "Test PR" --body-file body.md) >"$TMPROOT/norepo.out" 2>"$TMPROOT/norepo.err"
+rc=$?
+set -e
+if grep -q 'unbound variable' "$TMPROOT/norepo.err"; then
+    fail "create-pr.sh aborted with 'unbound variable' under bash $BASH_VERSION when --repo omitted (issue #1496)"
+fi
+[[ "$rc" -eq 0 ]] || fail "no-repo path failed unexpectedly: rc=$rc; stderr=$(cat "$TMPROOT/norepo.err")"
+grep -Fxq 'PR_STATUS=created' <"$TMPROOT/norepo.out" || fail "no-repo path did not report created"
+if grep -E '^(pr view|pr create)' "$TMPROOT/norepo-gh.log" | grep -E -- '--repo' >/dev/null; then
+    fail "no-repo path threaded an unexpected --repo argument to gh"
+fi
+
+# Same regression under /bin/bash (bash 3.2 on macOS) when available — exercises
+# the actual interpreter that triggered the reported defect; no-op skip on
+# Linux runners that ship bash 4+ as /bin/bash.
+if [[ -x /bin/bash ]] && /bin/bash --version | grep -qE 'version 3\.[0-9]'; then
+    repo=$(setup_repo norepo32)
+    set +e
+    (cd "$repo" && GH_LOG="$TMPROOT/norepo32-gh.log" GH_MODE=create PATH="$stub_dir:$PATH" /bin/bash "$SCRIPT" --title "Test PR" --body-file body.md) >"$TMPROOT/norepo32.out" 2>"$TMPROOT/norepo32.err"
+    rc=$?
+    set -e
+    if grep -q 'unbound variable' "$TMPROOT/norepo32.err"; then
+        fail "create-pr.sh aborted with 'unbound variable' under /bin/bash 3.2 when --repo omitted (issue #1496)"
+    fi
+    [[ "$rc" -eq 0 ]] || fail "no-repo path failed under /bin/bash 3.2: rc=$rc; stderr=$(cat "$TMPROOT/norepo32.err")"
+    grep -Fxq 'PR_STATUS=created' <"$TMPROOT/norepo32.out" || fail "no-repo path under /bin/bash 3.2 did not report created"
+    if grep -E '^(pr view|pr create)' "$TMPROOT/norepo32-gh.log" | grep -E -- '--repo' >/dev/null; then
+        fail "no-repo path under /bin/bash 3.2 threaded an unexpected --repo argument to gh"
+    fi
+fi
+
 echo "PASS: test-create-pr.sh"
