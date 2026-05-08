@@ -127,7 +127,12 @@ LOG_DIR="$TMPDIR_CANONICAL/relevant-checks"
 mkdir -p "$LOG_DIR" || fail "log-dir-create-failed" 1
 # Reject a pre-existing symlink at LOG_DIR — TMPDIR_CANONICAL is a larch
 # session dir but a same-user attacker could pre-place a symlink. fail-closed.
-[[ -L "$LOG_DIR" ]] && fail "log-dir-symlink-rejected" 1
+# Use an `if` block, not `[[ ]] && fail` — under `set -e` the latter exits 1
+# when LOG_DIR is NOT a symlink (the `&&` list's overall non-zero exit trips
+# `set -e`). The `if` form makes the success branch a no-op.
+if [[ -L "$LOG_DIR" ]]; then
+    fail "log-dir-symlink-rejected" 1
+fi
 chmod 700 "$LOG_DIR" || fail "log-dir-chmod-failed" 1
 
 # Allocate a unique attempt log under LOG_DIR. Distinguish collision (file

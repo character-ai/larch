@@ -13,7 +13,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Preserve failure diagnostics with private captured logs, redacted triage artifacts, and fail-closed redaction behavior
 - Add hook and harness coverage that prevents active orchestrators from drifting back to Skill invocation
 
-
 ## [18.0.6] - 2026-05-08
 
 ### Changed

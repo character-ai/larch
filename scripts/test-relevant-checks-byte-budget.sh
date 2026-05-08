@@ -20,7 +20,10 @@ fail() {
 }
 
 mode_of() {
-    stat -f %Lp "$1" 2>/dev/null || stat -c %a "$1"
+    # Linux GNU stat: -c %a (octal). BSD/macOS stat: -f %Lp (low 12 bits octal).
+    # Prefer GNU first because Linux is the CI host and BSD's %Lp is ambiguous
+    # under GNU (--file-system mode dumps fs metadata regardless of format).
+    stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"
 }
 
 fixture_repo="$tmp/repo"
