@@ -248,24 +248,25 @@ contains "no-step-marks reason" "Token report unavailable: failed to parse token
 # captured jq diagnostics. Falsy / unset values preserve the default silent
 # behavior. Closes #1466 sub-item A; tests re-use the malformed-transcript
 # fixture above to provoke a render failure.
-debug_out=$(LARCH_DEBUG_TOKEN_REPORT=1 "$SCRIPT" \
-    --ledger "$LEDGER" --transcript "$MALFORMED_TRANSCRIPT" --since-last-mark --terse)
-contains "debug=1 path suffix" "(jq stderr at " "$debug_out"
-debug_path=$(printf '%s' "$debug_out" | sed -n 's/.*jq stderr at \([^)]*\)).*/\1/p')
-if [[ -n "$debug_path" && -s "$debug_path" ]]; then
-    pass
-else
-    fail "debug=1 stderr file empty or missing: '$debug_path'"
-fi
-# Cleanup the captured stderr file before its bytes leak into other tests.
-[[ -n "$debug_path" ]] && rm -f "$debug_path"
-
-# A truthy-but-not-numeric spelling (e.g. `true`) also enables the path.
-debug_true=$(LARCH_DEBUG_TOKEN_REPORT=true "$SCRIPT" \
-    --ledger "$LEDGER" --transcript "$MALFORMED_TRANSCRIPT" --since-last-mark --terse)
-contains "debug=true path suffix" "(jq stderr at " "$debug_true"
-debug_true_path=$(printf '%s' "$debug_true" | sed -n 's/.*jq stderr at \([^)]*\)).*/\1/p')
-[[ -n "$debug_true_path" ]] && rm -f "$debug_true_path"
+# Truthy spellings — full enumerated allowlist from scripts/token-report.sh
+# (round-2 review FINDING_3: tests covered only `1` and `true`; documented
+# allowlist also includes case variants of yes/on). Each entry must surface
+# the "(jq stderr at <path>)" suffix and produce a non-empty stderr file.
+for truthy_value in "1" "true" "TRUE" "True" "yes" "YES" "Yes" "on" "ON" "On"; do
+    debug_out=$(LARCH_DEBUG_TOKEN_REPORT="$truthy_value" "$SCRIPT" \
+        --ledger "$LEDGER" --transcript "$MALFORMED_TRANSCRIPT" --since-last-mark --terse)
+    case "$debug_out" in
+        *"(jq stderr at "*) pass ;;
+        *) fail "truthy env value '$truthy_value' should enable debug path: '$debug_out'" ;;
+    esac
+    debug_path=$(printf '%s' "$debug_out" | sed -n 's/.*jq stderr at \([^)]*\)).*/\1/p')
+    if [[ -n "$debug_path" && -s "$debug_path" ]]; then
+        pass
+    else
+        fail "truthy env value '$truthy_value' stderr file empty or missing: '$debug_path'"
+    fi
+    [[ -n "$debug_path" ]] && rm -f "$debug_path"
+done
 
 # Negative spellings (`no`, `off`, `0`, `false`, empty) MUST NOT enable
 # the debug path — the gate is an explicit allowlist, not "non-empty
@@ -286,14 +287,16 @@ for negative_value in "" "0" "false" "FALSE" "no" "NO" "off" "OFF" "disabled"; d
 done
 
 # Successful render with debug enabled MUST clean up the stderr temp
-# (review FINDING_7 — empty stderr files cluttering $TMPDIR on every
-# successful run). List the directory before and after to confirm no
-# new larch-token-report-jq-stderr-* file was left behind.
-debug_root="${TMPDIR:-/tmp}"
-before_count=$(find "$debug_root" -maxdepth 1 -name 'larch-token-report-jq-stderr-*' 2>/dev/null | wc -l | tr -d ' ')
-LARCH_DEBUG_TOKEN_REPORT=1 "$SCRIPT" \
+# (round-1 review FINDING_7 — empty stderr files cluttering $TMPDIR on
+# every successful run). Use a per-test isolated TMPDIR so a parallel job
+# touching the shared system /tmp cannot flake the before/after count
+# (round-2 review FINDING_6).
+isolated_tmp="$TMP/leak-check-tmp"
+mkdir -p "$isolated_tmp"
+before_count=$(find "$isolated_tmp" -maxdepth 1 -name 'larch-token-report-jq-stderr-*' 2>/dev/null | wc -l | tr -d ' ')
+TMPDIR="$isolated_tmp" LARCH_DEBUG_TOKEN_REPORT=1 "$SCRIPT" \
     --ledger "$LEDGER" --transcript "$TRANSCRIPT" --since-last-mark --terse > /dev/null
-after_count=$(find "$debug_root" -maxdepth 1 -name 'larch-token-report-jq-stderr-*' 2>/dev/null | wc -l | tr -d ' ')
+after_count=$(find "$isolated_tmp" -maxdepth 1 -name 'larch-token-report-jq-stderr-*' 2>/dev/null | wc -l | tr -d ' ')
 if [[ "$before_count" == "$after_count" ]]; then pass
 else fail "debug=1 successful render leaked stderr temp file (before=$before_count after=$after_count)"
 fi

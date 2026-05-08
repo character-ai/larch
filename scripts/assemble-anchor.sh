@@ -118,24 +118,31 @@ emit_run_statistics() {
                 n = NR
 
                 # Phase 1 — iterative legacy token-report block strip.
+                # Marker regexes are anchored to whole-line (allowing leading
+                # / trailing whitespace) so a legitimate prose / table-cell
+                # line that merely *mentions* the marker substring is not
+                # treated as a structural sentinel. token-report.sh always
+                # emits the markers on their own line, so this is the
+                # author-side contract; round-2 review FINDING_5 surfaced
+                # the substring-match risk twice and this anchors it.
                 while (1) {
                     begin_idx = 0
                     end_idx = 0
                     for (i = 1; i <= n; i++) {
-                        if (!begin_idx && lines[i] ~ /<!-- token-report-begin -->/) {
+                        if (!begin_idx && lines[i] ~ /^[[:space:]]*<!-- token-report-begin -->[[:space:]]*$/) {
                             begin_idx = i
                         }
                     }
                     if (begin_idx) {
                         for (i = begin_idx + 1; i <= n; i++) {
-                            if (lines[i] ~ /<!-- token-report-end -->/) {
+                            if (lines[i] ~ /^[[:space:]]*<!-- token-report-end -->[[:space:]]*$/) {
                                 end_idx = i
                                 break
                             }
                         }
                     } else {
                         for (i = 1; i <= n; i++) {
-                            if (lines[i] ~ /<!-- token-report-end -->/) {
+                            if (lines[i] ~ /^[[:space:]]*<!-- token-report-end -->[[:space:]]*$/) {
                                 end_idx = i
                                 break
                             }

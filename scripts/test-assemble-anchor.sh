@@ -1,9 +1,35 @@
 #!/usr/bin/env bash
 # test-assemble-anchor.sh — regression harness for scripts/assemble-anchor.sh.
 #
-# Covers the documented assertion categories below. The exact tally is not
-# inlined here per the drift-prone-prose-in-docs rule — count the `pass` /
-# `fail` call sites or run the harness and read the trailing summary line.
+# Assertion categories — see the per-block headers below for full text.
+# (Tally is intentionally not inlined here per the drift-prone-prose-in-docs
+# rule — count the `pass` / `fail` call sites or read the harness's trailing
+# summary line.)
+#
+#   (a)   Empty sections directory — anchor marker + placeholder + marker
+#         pairs + injected run-statistics version row.
+#   (a2)  Empty sections directory — placeholder literal present.
+#   (a3)  Partial fragments — placeholder suppressed.
+#   (a4)  All whitespace-only fragments — placeholder fires (lenient).
+#   (a5)  Nonexistent --sections-dir — assembled with placeholder.
+#   (a6)  Missing CLAUDE_PLUGIN_ROOT — version row falls back to unknown.
+#   (b)   Partial fragments populated where present, empty pairs elsewhere.
+#   (b2)  Newline-terminated fragment — exactly one newline before close.
+#   (b3)  Fragment without trailing newline — newline inserted before close.
+#   (b4)  Populated run-statistics — strip trailing blanks, append version.
+#   (b5)  Hydrated run-statistics with stale version row — strip + dedupe.
+#   (b6)  Populated fragment normalized to empty — seed-style scaffold.
+#   (b7)  Diagrams sanitizer — offending fence placeholder + warning.
+#   (b8)  Legacy token-report block stripped from run-statistics.
+#   (b9)  Lone <!-- token-report-begin --> — strip from marker to EOF.
+#   (b10) Lone <!-- token-report-end --> — strip from BOF through marker.
+#   (b11) Multi-pair legacy blocks — every pair stripped (loop to fixed point).
+#   (c)   Full fragments — all SECTION_MARKERS slugs populated.
+#   (d)   Missing anchor-section-markers.sh helper — fail closed exit 1.
+#   (e)   Invalid --issue value — usage error, exit 1.
+#   (f)   First-line HTML anchor marker exactness.
+#   (g)   Non-directory --sections-dir — fail closed exit 2.
+#   (h)   Unreadable fragment — fail closed exit 2 (skipped under root).
 #   (a) Empty sections directory → one empty marker pair per SECTION_MARKERS
 #       slug + run-statistics minimal table + first-line marker +
 #       seed-only visible placeholder line on line 2 (line count derived

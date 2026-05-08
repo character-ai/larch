@@ -99,12 +99,15 @@ render_jq() {
         return 1
     fi
 
-    # When LARCH_DEBUG_TOKEN_REPORT is set to a non-empty, non-zero value,
-    # tee jq stderr to a temp file and surface its path on render failure
-    # via RENDER_FAIL_REASON. Default behavior (silent stderr) is preserved
-    # so the report stays non-blocking; the env var is purely an opt-in
-    # diagnostic for development. mktemp failure degrades silently to
-    # /dev/null so the debug knob never breaks production.
+    # When LARCH_DEBUG_TOKEN_REPORT matches the explicit truthy allowlist
+    # below, redirect jq stderr to a temp file and surface its path on
+    # render failure via RENDER_FAIL_REASON. The redirect is a plain
+    # `2>"$jq_stderr_dest"`, not a `tee` — diagnostics go only to the temp
+    # file. Default behavior (silent stderr to /dev/null) is preserved for
+    # any unset / negative / unrecognized value (`no`, `off`, `disabled`,
+    # `0`, etc.) so the report stays non-blocking; the env var is purely
+    # an opt-in development diagnostic. mktemp failure degrades silently
+    # to /dev/null so the debug knob never breaks production.
     local jq_stderr_dest="/dev/null"
     local jq_stderr_path=""
     # Allowlist of explicit truthy values — narrower than a blanket
