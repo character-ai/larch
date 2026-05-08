@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [17.0.12] - 2026-05-08
+
+### Changed
+
+- Resolve #1496: add a bash 3.2 regression test in `scripts/test-create-pr.sh` for the `create-pr.sh` empty-array `set -u` defect. The defensive `${GH_REPO_ARGS[@]+"${GH_REPO_ARGS[@]}"}` expansion itself shipped via PR #1506 (#1464), which threaded `--repo` and parameterized `--base` across the `gh` CLI helpers and as a side-effect guarded all four `GH_REPO_ARGS` expansion sites in `create-pr.sh`. Issue #1496 was filed in parallel to specifically pin the macOS `/bin/bash` (3.2) `set -u` failure scenario. The new test invokes `create-pr.sh` without `--repo` against a stubbed `gh`/`git` and asserts: (a) no `unbound variable` abort on stderr, (b) `PR_STATUS=created` on stdout, (c) no `--repo` argument threaded into the `gh` stub log. The block re-runs under `/bin/bash` when that interpreter is bash 3.x — the actual macOS system shell that triggered the defect — and is a no-op skip on Linux runners shipping bash 4+ as `/bin/bash`. Verified by demonstrating the new test FAILs against the pre-#1506 script under `/bin/bash` 3.2.57 and PASSes against current main.
+
 ## [17.0.11] - 2026-05-08
 
 ### Fixed
@@ -17,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Resolve #1463: combined OOS observations from #1459, #1444, #1434. **A.** `scripts/session-setup.sh` `--write-session-env` path now forwards `--timing-ledger` (mirroring the existing `--token-session-id` / `--claude-source-file` passthrough) when caller-env supplies `LARCH_TIMING_LEDGER`, gated by an inline `is_safe_timing_ledger_path` validation that requires absolute paths under `${TMPDIR:-/tmp}`, `$IMPLEMENT_TMPDIR`, `$DESIGN_TMPDIR`, `$REVIEW_TMPDIR`, or `dirname("$CALLER_ENV")`. Validation failure emits a single stderr warning and skips forwarding (fail-soft); the key is intentionally NOT echoed on session-setup stdout (file-only contract). **B.** `scripts/session-setup.sh` inline GitHub remote URL parser (lines 322-339) now delegates to `scripts/github-remote-repo.sh` after `gh repo view` fails, preserving fail-soft `REPO_UNAVAILABLE=true` semantics. The helper anchors `owner/repo` exactly while the legacy inline regex matched the trailing two segments — a deliberate fail-closed tightening for malformed remotes that the legacy regex would have mis-parsed. **C.** Hook subprocess env-inheritance investigation: existing production wiring binds `session_id` from the hook-event JSON payload (not from inherited LARCH_TOKEN_SESSION_ID), so a one-line breadcrumb cross-reference is added to `skills/implement/scripts/hook-post-design.sh` and `skills/implement/scripts/hook-stop-fail-close.sh` — no behavior change. New regression coverage: `scripts/test-session-setup-repo-fallback.sh` (gh-success / gh-fails-SSH / gh-fails-HTTPS / gh-fails-malformed / gh-fails-no-origin) wired through Makefile `test-harnesses-*`; `skills/implement/scripts/test-implement-review-token-propagation.sh` extended for `LARCH_TIMING_LEDGER` (positive forwarding + negative-stdout + negative-validation cases). Two follow-up OOS issues filed: #1504 (writer-side `--timing-ledger` validation in `scripts/write-session-env.sh`) and #1505 (awk-truncation fix in `scripts/read-session-env-key.sh`).
 
-## [17.0.9] - 2026-05-08
+## [17.0.12] - 2026-05-08
 
 ### Added
 
