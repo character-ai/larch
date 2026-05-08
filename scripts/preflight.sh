@@ -37,15 +37,33 @@ if [[ "$SKIP_BRANCH_CHECK" == "false" ]]; then
     fi
 fi
 
-# Check clean status
+# Check clean status. We delegate to check-clean-tree.sh (default fail-open
+# mode) but preserve the helper's stderr — the contract documented in
+# scripts/check-clean-tree.md promises raw `git status --porcelain` failure
+# diagnostics to operators, and previous `2>/dev/null` suppression broke
+# that promise on the preflight path. Empty / unknown CLEAN values are
+# treated as the dirty branch (fail-closed against partial helper output)
+# rather than silently continuing — a missing `CLEAN=` line means we
+# could not confirm cleanliness, which is operationally identical to a
+# dirty tree for preflight's gate purposes.
 if [[ "$SKIP_CLEAN_CHECK" == "false" ]]; then
-    CLEAN_TREE_OUT=$("$SCRIPT_DIR/check-clean-tree.sh" 2>/dev/null || true)
+    CLEAN_TREE_OUT=$("$SCRIPT_DIR/check-clean-tree.sh" || true)
     CLEAN_TREE=$(echo "$CLEAN_TREE_OUT" | awk -F= '/^CLEAN=/ { v=$2 } END { print v }')
-    if [[ "$CLEAN_TREE" == "false" ]]; then
-        echo "PREFLIGHT=fail"
-        echo "PREFLIGHT_ERROR=Working tree is not clean. Commit or stash changes first."
-        exit 2
-    fi
+    case "$CLEAN_TREE" in
+        true)
+            : # clean — fall through
+            ;;
+        false)
+            echo "PREFLIGHT=fail"
+            echo "PREFLIGHT_ERROR=Working tree is not clean. Commit or stash changes first."
+            exit 2
+            ;;
+        *)
+            echo "PREFLIGHT=fail"
+            echo "PREFLIGHT_ERROR=Could not determine working-tree cleanliness (helper produced no CLEAN= line)."
+            exit 2
+            ;;
+    esac
 fi
 
 # Always fetch to ensure origin/main is current. Rebase requires being on main.
