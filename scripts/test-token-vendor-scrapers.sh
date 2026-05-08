@@ -152,6 +152,7 @@ STUB_EOF
         QA="$LCI_SCRATCH/$variant-qa.json"
 
         LARCH_TOKEN_SESSION_ID="$LCI_SESSION" \
+        IMPLEMENT_TMPDIR= \
         PATH="$LCI_BIN:$PATH" \
         CURSOR_API_KEY="test-cursor-api-key" \
         RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \

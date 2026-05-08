@@ -397,6 +397,41 @@ else
     fail 9 "leading-zero timeout 010 should be accepted with standard envelope; got: $OUT"
 fi
 
+TENV_TRANSCRIPT="$SCRATCH/tenv-transcript.txt"
+TENV_SIDECAR="$SCRATCH/tenv-sidecar.log"
+TENV_MANIFEST="$SCRATCH/tenv-manifest.json"
+TENV_QA="$SCRATCH/tenv-qa.json"
+TENV_ARGV="$SCRATCH/tenv-argv.txt"
+TENV_PROMPT="$SCRATCH/tenv-prompt.txt"
+TENV_LEDGER="$SCRATCH/tenv-timing.tsv"
+cd "$REPO_ROOT" && \
+    PATH="$STUB_BIN:$PATH" \
+    STUB_ARGV_FILE="$TENV_ARGV" \
+    STUB_PROMPT_FILE="$TENV_PROMPT" \
+    STUB_MANIFEST_PATH="$TENV_MANIFEST" \
+    LARCH_GEMINI_MODEL="stub-gemini-model" \
+    LARCH_TIMING_LEDGER="$TENV_LEDGER" \
+    LARCH_TIMING_TASK_KIND="--prompt" \
+    "$LAUNCHER" \
+        --transcript-path "$TENV_TRANSCRIPT" \
+        --sidecar-log "$TENV_SIDECAR" \
+        --manifest-path "$TENV_MANIFEST" \
+        --qa-pending-path "$TENV_QA" \
+        --plan-file "$PLAN" \
+        --feature-file "$FEATURE" \
+        --agent-prompt "$AGENT_PROMPT" \
+        --timeout 30 >/dev/null
+if [[ -f "$TENV_LEDGER" ]] && awk -F'\t' '$2 == "vendor" && $6 == "gemini" && $7 == "gemini-implement" { found=1 } END { exit(found ? 0 : 1) }' "$TENV_LEDGER"; then
+    pass
+else
+    fail "timing-env" "env LARCH_TIMING_TASK_KIND=--prompt should fall back to gemini-implement; ledger=$(cat "$TENV_LEDGER" 2>/dev/null)"
+fi
+if [[ -f "$TENV_LEDGER" ]] && awk -F'\t' '$2 == "vendor" { print $7 }' "$TENV_LEDGER" | grep -Fxq -- '--prompt'; then
+    fail "timing-env-leak" "env LARCH_TIMING_TASK_KIND=--prompt leaked into gemini implement timing ledger"
+else
+    pass
+fi
+
 # Test 10 (issue #1480 Bug #2): defensive `--timing-task-kind` validation.
 # Empty or flag-like values must be rejected with exit 2 and a clear message.
 # Pass `--timing-task-kind` first so the new validation fires before any

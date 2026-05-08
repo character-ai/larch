@@ -36,6 +36,8 @@
 #   0 — wrapper completed cleanly, regardless of Cursor's own exit code
 #       (the dispatcher inspects MANIFEST_WRITTEN + LAUNCHER_EXIT to decide
 #       what happened).
+#       Preflight failures in model-args loading emit the same five-line KV
+#       envelope and exit 0, with LAUNCHER_EXIT carrying the failure rc.
 #   2 — wrapper-side error (missing flag, missing input file, etc.); exit
 #       before launching Cursor.
 
@@ -106,6 +108,14 @@ if [[ -n "${IMPLEMENT_TMPDIR:-}" && -s "${IMPLEMENT_TMPDIR}/claude-source.env" ]
     export LARCH_CLAUDE_SOURCE_FILE="${IMPLEMENT_TMPDIR}/claude-source.env"
 fi
 
+# Defensive: env-derived LARCH_TIMING_TASK_KIND may be empty or flag-shaped
+# (e.g. "--prompt") if a caller mis-parses argv. CLI --timing-task-kind is
+# already validated above (#1480); apply the same predicate to the env path
+# and fall back silently. Whitespace-only and other invalid-but-non-flag
+# shapes rely on timing-ledger.sh's regex backstop (do not extend here).
+if [[ -z "$TIMING_TASK_KIND" || "$TIMING_TASK_KIND" == --* ]]; then
+    TIMING_TASK_KIND="cursor-implement"
+fi
 : "${TIMING_TASK_KIND:=cursor-implement}"
 TIMING_START_S=$(date +%s)
 
@@ -166,12 +176,22 @@ Begin by inspecting the current branch state, then proceed per the system prompt
 PROMPT_FILE_SIDECAR="${TRANSCRIPT_PATH}.prompt"
 printf '%s' "$PROMPT" > "$PROMPT_FILE_SIDECAR"
 
-if cursor_launcher_load_model_args; then
-    :
-else
-    rc=$?
-    exit "$rc"
+MODEL_ARGS_ERR=$(mktemp)
+MODEL_ARGS_RC=0
+cursor_launcher_load_model_args 2> "$MODEL_ARGS_ERR" || MODEL_ARGS_RC=$?
+if [[ "$MODEL_ARGS_RC" -ne 0 ]]; then
+    : > "$SIDECAR_LOG"
+    cat "$MODEL_ARGS_ERR" >> "$SIDECAR_LOG" 2>/dev/null || true
+    rm -f "$MODEL_ARGS_ERR"
+    emit_timing_record "$MODEL_ARGS_RC"
+    printf 'LAUNCHER_EXIT=%s\n'      "$MODEL_ARGS_RC"
+    printf 'MANIFEST_WRITTEN=false\n'
+    printf 'QA_PENDING_WRITTEN=false\n'
+    printf 'TRANSCRIPT=%s\n'         "$TRANSCRIPT_PATH"
+    printf 'SIDECAR_LOG=%s\n'        "$SIDECAR_LOG"
+    exit 0
 fi
+rm -f "$MODEL_ARGS_ERR"
 WRAPPED_PROMPT=$("$SCRIPT_DIR/cursor-wrap-prompt.sh" "$PROMPT")
 
 # Run Cursor auth preflight. On preflight failure (Darwin + empty

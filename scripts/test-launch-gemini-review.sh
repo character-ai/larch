@@ -305,6 +305,21 @@ grep -q '^STATUS=' "${NONGIT_OUTPUT}.dirty-tree" \
 grep -q '^MODE=baseline$' "${NONGIT_OUTPUT}.dirty-tree" \
   || fail "Expected non-git dirty-tree sidecar MODE=baseline"
 
+TIMING_ENV_OUTPUT="$TMPDIR/gemini-timing-env.txt"
+TIMING_ENV_LEDGER="$TMPDIR/gemini-timing-env.tsv"
+PATH="$STUB_BIN:$PATH" \
+  LARCH_TIMING_LEDGER="$TIMING_ENV_LEDGER" \
+  LARCH_TIMING_TASK_KIND="--prompt" \
+  "$REPO_ROOT/scripts/launch-gemini-review.sh" --output "$TIMING_ENV_OUTPUT" --timeout 1800 --prompt "test"
+if grep -E "^v1"$'\t'"vendor"$'\t'"[0-9]+"$'\t'"[^"$'\t'"]+"$'\t'"-"$'\t'"gemini"$'\t'"gemini-review"$'\t' "$TIMING_ENV_LEDGER" >/dev/null; then
+  :
+else
+  fail "Expected env LARCH_TIMING_TASK_KIND=--prompt to fall back to gemini-review; ledger=$(cat "$TIMING_ENV_LEDGER" 2>/dev/null)"
+fi
+if awk -F'\t' '$2 == "vendor" { print $7 }' "$TIMING_ENV_LEDGER" | grep -Fxq -- '--prompt'; then
+  fail "Expected env LARCH_TIMING_TASK_KIND=--prompt not to leak into Gemini timing ledger"
+fi
+
 ERROR_OUTPUT="$TMPDIR/gemini-error.txt"
 set +e
 PATH="$STUB_BIN:$PATH" GEMINI_STUB_MODE=error \

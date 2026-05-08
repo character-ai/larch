@@ -169,6 +169,27 @@ else
     fail "model args should include one -m and literal stub-model"
 fi
 
+TIMING_ENV_LEDGER="$TMPDIR/lcr-timing-env.tsv"
+TIMING_ENV_ARGV="$TMPDIR/argv-timing-env.txt"
+TIMING_ENV_COUNT="$TMPDIR/count-timing-env.txt"
+PATH="$STUB_BIN:$PATH" \
+    CODEX_STUB_ARGV_LOG="$TIMING_ENV_ARGV" \
+    CODEX_STUB_COUNT_FILE="$TIMING_ENV_COUNT" \
+    LARCH_CODEX_MODEL="stub-model" \
+    LARCH_TIMING_LEDGER="$TIMING_ENV_LEDGER" \
+    LARCH_TIMING_TASK_KIND="--prompt" \
+    "$LAUNCHER" --output "$TMPDIR/timing-env.txt" --timeout 5 --prompt "review prompt" >/dev/null
+if [[ -f "$TIMING_ENV_LEDGER" ]] && grep -E "^v1"$'\t'"vendor"$'\t'"[0-9]+"$'\t'"[^"$'\t'"]+"$'\t'"-"$'\t'"codex"$'\t'"codex-review"$'\t' "$TIMING_ENV_LEDGER" >/dev/null; then
+    pass
+else
+    fail "env LARCH_TIMING_TASK_KIND=--prompt should fall back to codex-review; ledger=$(cat "$TIMING_ENV_LEDGER" 2>/dev/null)"
+fi
+if [[ -f "$TIMING_ENV_LEDGER" ]] && awk -F'\t' '$2 == "vendor" { print $7 }' "$TIMING_ENV_LEDGER" | grep -Fxq -- '--prompt'; then
+    fail "env LARCH_TIMING_TASK_KIND=--prompt leaked into timing ledger"
+else
+    pass
+fi
+
 ARGV_INJECT="$TMPDIR/argv-inject.txt"
 COUNT_INJECT="$TMPDIR/count-inject.txt"
 PATH="$STUB_BIN:$PATH" \
@@ -255,6 +276,75 @@ else
 fi
 if grep -Fq -- 'HARD CONSTRAINTS' "$PROMPT_SIDECAR"; then
     fail "--prompt-file run must NOT include the preamble in the sidecar (retry-replay safety)"
+else
+    pass
+fi
+
+if command -v jq >/dev/null 2>&1; then
+    LCR_BIN="$TMPDIR/lcr-bin"
+    mkdir -p "$LCR_BIN"
+    cat > "$LCR_BIN/codex" <<'STUB_EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+: "${CODEX_STUB_ARGV_LOG:?}"
+: "${CODEX_STUB_COUNT_FILE:?}"
+count=0
+if [[ -f "$CODEX_STUB_COUNT_FILE" ]]; then
+    count=$(cat "$CODEX_STUB_COUNT_FILE")
+fi
+count=$((count + 1))
+printf '%s\n' "$count" > "$CODEX_STUB_COUNT_FILE"
+output_path=""
+last=""
+for arg in "$@"; do
+    printf '%s\n' "$arg" >> "$CODEX_STUB_ARGV_LOG"
+    if [[ "$last" == "--output-last-message" ]]; then output_path="$arg"; fi
+    last="$arg"
+done
+[[ -n "$output_path" ]] || exit 9
+printf 'stub codex review payload\n' > "$output_path"
+printf 'tokens used\n42\n' >&2
+STUB_EOF
+    chmod +x "$LCR_BIN/codex"
+
+    LCR_SESSION="lcr-codex-review-$$"
+    LCR_OUT="$TMPDIR/lcr-codex-review-output.txt"
+    LCR_ARGV="$TMPDIR/lcr-argv.txt"
+    LCR_COUNT="$TMPDIR/lcr-count.txt"
+    LCR_STDERR="$TMPDIR/lcr.stderr"
+
+    set +e
+    LARCH_TOKEN_SESSION_ID="$LCR_SESSION" \
+    IMPLEMENT_TMPDIR= \
+    PATH="$LCR_BIN:$PATH" \
+    CODEX_STUB_ARGV_LOG="$LCR_ARGV" \
+    CODEX_STUB_COUNT_FILE="$LCR_COUNT" \
+    LARCH_CODEX_MODEL="stub-model" \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+        "$LAUNCHER" \
+            --output "$LCR_OUT" \
+            --timeout 30 \
+            --prompt "review" \
+            >/dev/null 2>"$LCR_STDERR"
+    LCR_RC=$?
+    set -e
+
+    if [[ "$LCR_RC" -ne 0 ]]; then
+        fail "launch-codex-review.sh smoke exited rc=$LCR_RC; stderr=$(cat "$LCR_STDERR" 2>/dev/null)"
+    else
+        LCR_LEDGER=$(LARCH_TOKEN_SESSION_ID="$LCR_SESSION" \
+            "$REPO_ROOT/scripts/token-ledger.sh" dump | sed -n '1p')
+        EXPECTED_TOTAL=42
+        if [[ -s "$LCR_LEDGER" ]] \
+           && jq -e --argjson total "$EXPECTED_TOTAL" \
+               'select(.type=="vendor" and .vendor=="codex" and .raw=="codex_review" and .total==$total)' \
+               "$LCR_LEDGER" >/dev/null 2>&1; then
+            pass
+        else
+            fail "launch-codex-review.sh did not record vendor=codex raw=codex_review total=$EXPECTED_TOTAL; ledger=$LCR_LEDGER content=$(cat "$LCR_LEDGER" 2>/dev/null) stderr=$(cat "$LCR_STDERR" 2>/dev/null)"
+        fi
+        rm -f "$LCR_LEDGER"
+    fi
 else
     pass
 fi

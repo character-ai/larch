@@ -2,7 +2,7 @@
 
 Offline regression harness for `scripts/launch-codex-review.sh`.
 
-It PATH-stubs `codex` and verifies launcher validation, canonical `--add-dir` placement for the output directory, outer-launcher retry metadata, `--prompt-file` prompt preservation, dirty-tree sidecar publication, and array-safe model argument consumption. The injection cases assert that a model value containing spaces remains a single argv token and that a control-character model value fails before Codex is invoked or a `.done` sentinel is produced.
+It PATH-stubs `codex` and verifies launcher validation, canonical `--add-dir` placement for the output directory, outer-launcher retry metadata, `--prompt-file` prompt preservation, dirty-tree sidecar publication, env-derived timing fallback to `codex-review`, Codex review token-ledger scraping from stderr-sidecar output, and array-safe model argument consumption. The injection cases assert that a model value containing spaces remains a single argv token and that a control-character model value fails before Codex is invoked or a `.done` sentinel is produced.
 
 **Primary**: `scripts/launch-codex-review.sh`
 

@@ -28,7 +28,7 @@ effects.
   `--prompt-file` preserves trailing newlines through the max-mode wrapper.
 - `${OUTPUT}.dirty-tree` is published before public completion and carries the
   baseline-mode `check-mid-run-dirty-tree.sh` contract; auth-preflight
-  short-circuit publishes `STATUS=clean` with
+  short-circuit publishes `STATUS=unknown` with
   `REASON=preflight-short-circuit-no-agent-ran`.
 - The launcher EXIT trap promotes an existing `.inner.done` or writes a
   synthetic `99` if the wrapper failed before producing one; abnormal exits may
@@ -48,6 +48,9 @@ effects.
   single-env-var form `LARCH_TEST_TRAP_AFTER_INNER_DONE` (without `_FILE`) is
   not honored regardless of `LARCH_ALLOW_TEST_HOOKS`. Symlinked hook files are
   rejected. Production callers must not set either env var.
+- `LARCH_TIMING_TASK_KIND=--prompt` from the environment falls back silently to
+  `cursor-review` in the timing TSV, while the CLI `--timing-task-kind` path
+  still rejects empty and flag-shaped values with exit 2.
 
 ## Test harness
 
