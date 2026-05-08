@@ -25,7 +25,9 @@ fi
 # Surface the active Claude Code session_id from the Stop event payload
 # into LARCH_TOKEN_SESSION_ID so the resolver's session-id binding branch
 # is reachable in production (parallels hook-post-design.sh). Empty /
-# missing / null falls through to TTL.
+# missing / null falls through to TTL. See lib-resolve-implement-tmpdir.sh
+# session-id binding for the resolver-side .larch-keepalive SESSION_ID match
+# this export feeds.
 SID=""
 if command -v jq >/dev/null 2>&1; then
     SID=$(printf '%s' "$INPUT" | jq -r '.session_id // ""' 2>/dev/null) || SID=""

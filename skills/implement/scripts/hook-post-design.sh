@@ -29,7 +29,9 @@ HOOK_CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // ""' 2>/dev/null) || HOOK_CWD=""
 # `/implement` Step 0's in-bash export does not propagate to hook
 # subprocesses, leaving the resolver on the TTL-only fallback path. Empty
 # / missing / null session_id falls through to TTL — the resolver treats
-# unset LARCH_TOKEN_SESSION_ID as "no session signal available".
+# unset LARCH_TOKEN_SESSION_ID as "no session signal available". See
+# lib-resolve-implement-tmpdir.sh session-id binding for the resolver-side
+# .larch-keepalive SESSION_ID match this export feeds.
 SID=$(printf '%s' "$INPUT" | jq -r '.session_id // ""' 2>/dev/null) || SID=""
 [[ -n "$SID" ]] && export LARCH_TOKEN_SESSION_ID="$SID"
 

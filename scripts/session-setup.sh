@@ -37,7 +37,8 @@
 #   --caller-env <path>   Path to KEY=value file with already-discovered values.
 #                          Recognized keys: SLACK_OK, SLACK_MISSING, REPO, REPO_UNAVAILABLE,
 #                          CODEX_HEALTHY, CURSOR_HEALTHY, GEMINI_HEALTHY,
-#                          LARCH_TOKEN_SESSION_ID, LARCH_CLAUDE_SOURCE_FILE.
+#                          LARCH_TOKEN_SESSION_ID, LARCH_CLAUDE_SOURCE_FILE,
+#                          LARCH_TIMING_LEDGER.
 #                          If a key is present and non-empty, the script skips re-deriving it.
 #                          SESSION_TMPDIR is never inherited — a fresh tmpdir is always created.
 #                          If the file does not exist or is empty, full discovery happens.
@@ -55,8 +56,9 @@
 #   CODEX_HEALTHY=true|false    Output when --check-reviewers, or passthrough from --caller-env
 #   CURSOR_HEALTHY=true|false   Output when --check-reviewers, or passthrough from --caller-env
 #   GEMINI_HEALTHY=true|false   Output when --check-reviewers --check-gemini-reviewer, or passthrough from --caller-env
-#   LARCH_TOKEN_SESSION_ID=<id> Output when passthrough from --caller-env
-#   LARCH_CLAUDE_SOURCE_FILE=<path> Output when passthrough from --caller-env
+#   LARCH_TOKEN_SESSION_ID=<id> Output when passthrough from --caller-env, in both probe and passthrough branches
+#   LARCH_CLAUDE_SOURCE_FILE=<path> Output when passthrough from --caller-env, in both probe and passthrough branches
+#   LARCH_TIMING_LEDGER is forwarded to write-session-env.sh only when supplied via --caller-env; it is intentionally NOT echoed on stdout.
 #   CODEX_PROBE_ERROR=<reason>  Output when --check-reviewers and CODEX_HEALTHY=false (explains why)
 #   CURSOR_PROBE_ERROR=<reason> Output when --check-reviewers and CURSOR_HEALTHY=false (explains why)
 #   GEMINI_PROBE_ERROR=<reason> Output when --check-reviewers --check-gemini-reviewer and GEMINI_HEALTHY=false
@@ -143,6 +145,7 @@ CALLER_CURSOR_HEALTHY=""
 CALLER_GEMINI_HEALTHY=""
 CALLER_TOKEN_SESSION_ID=""
 CALLER_CLAUDE_SOURCE_FILE=""
+CALLER_TIMING_LEDGER=""
 
 if [[ -n "$CALLER_ENV" && -f "$CALLER_ENV" ]]; then
     # Use explicit `${line%%=*}` / `${line#*=}` parameter expansion instead
@@ -167,10 +170,47 @@ if [[ -n "$CALLER_ENV" && -f "$CALLER_ENV" ]]; then
             GEMINI_HEALTHY)    CALLER_GEMINI_HEALTHY="$value" ;;
             LARCH_TOKEN_SESSION_ID) CALLER_TOKEN_SESSION_ID="$value" ;;
             LARCH_CLAUDE_SOURCE_FILE) CALLER_CLAUDE_SOURCE_FILE="$value" ;;
+            LARCH_TIMING_LEDGER) CALLER_TIMING_LEDGER="$value" ;;
             *)                 ;; # Ignore unknown keys
         esac
     done < "$CALLER_ENV"
 fi
+
+is_path_under_root() {
+    local path="$1"
+    local root="$2"
+    local path_dir
+    local path_base
+    local path_real
+    local root_real
+
+    [[ -n "$root" ]] || return 1
+    root_real=$(cd "$root" 2>/dev/null && pwd -P) || return 1
+    path_dir=$(dirname "$path")
+    path_base=$(basename "$path")
+    path_real=$(cd "$path_dir" 2>/dev/null && printf '%s/%s\n' "$(pwd -P)" "$path_base") || return 1
+
+    [[ "$path_real" == "$root_real" || "$path_real" == "$root_real/"* ]]
+}
+
+is_safe_timing_ledger_path() {
+    local path="$1"
+    local caller_env_dir="$2"
+    local root
+
+    [[ -n "$path" ]] || return 1
+    [[ "$path" != *$'\n'* && "$path" != *$'\r'* ]] || return 1
+    [[ "$path" == /* ]] || return 1
+    [[ ${#path} -le 512 && "$path" =~ ^[A-Za-z0-9_./~+-]+$ ]] || return 1
+
+    for root in "${TMPDIR:-/tmp}" "${IMPLEMENT_TMPDIR:-}" "${DESIGN_TMPDIR:-}" "${REVIEW_TMPDIR:-}" "$caller_env_dir"; do
+        if is_path_under_root "$path" "$root"; then
+            return 0
+        fi
+    done
+
+    return 1
+}
 
 # --- 1. Preflight ---
 if [[ "$SKIP_PREFLIGHT" == "false" ]]; then
@@ -325,17 +365,14 @@ if [[ "$SKIP_REPO_CHECK" == "false" ]]; then
         if REPO=$(gh repo view --json nameWithOwner -q '.nameWithOwner' 2>/dev/null) && [[ -n "$REPO" ]]; then
             : # Success
         else
-            # Fallback: parse from git remote
-            REMOTE_URL=$(git remote get-url origin 2>/dev/null || echo "")
-            if [[ -n "$REMOTE_URL" ]]; then
-                # Strip .git suffix, then extract owner/repo
-                REMOTE_URL="${REMOTE_URL%.git}"
-                if [[ "$REMOTE_URL" =~ git@github\.com:([^/]+/[^/]+)$ ]]; then
-                    REPO="${BASH_REMATCH[1]}"
-                elif [[ "$REMOTE_URL" =~ github\.com/([^/]+/[^/]+)$ ]]; then
-                    REPO="${BASH_REMATCH[1]}"
-                fi
-            fi
+            # Centralized parser: scripts/github-remote-repo.sh.
+            # Suppress stderr because parse failures are non-fatal here, and
+            # guard the call against `set -e` aborting on exit 2. Empty output
+            # flips REPO_UNAVAILABLE=true downstream, matching the previous
+            # inline-parser fail-soft semantics. The helper is stricter than
+            # the legacy regex: malformed origins that only matched on their
+            # trailing two segments now fail closed as REPO_UNAVAILABLE=true.
+            REPO=$("$SCRIPT_DIR/github-remote-repo.sh" origin 2>/dev/null || true)
         fi
 
         if [[ -z "$REPO" ]]; then
@@ -572,6 +609,21 @@ if [[ -n "$WRITE_SESSION_ENV" ]]; then
     [[ -n "$FINAL_GEMINI_HEALTHY" ]] && WSE_ARGS+=(--gemini-healthy "$FINAL_GEMINI_HEALTHY")
     [[ -n "$CALLER_TOKEN_SESSION_ID" ]] && WSE_ARGS+=(--token-session-id "$CALLER_TOKEN_SESSION_ID")
     [[ -n "$CALLER_CLAUDE_SOURCE_FILE" ]] && WSE_ARGS+=(--claude-source-file "$CALLER_CLAUDE_SOURCE_FILE")
+    if [[ -n "$CALLER_TIMING_LEDGER" ]]; then
+        CALLER_ENV_DIR=""
+        if [[ -n "$CALLER_ENV" ]]; then
+            if CALLER_ENV_DIR=$(cd "$(dirname "$CALLER_ENV")" 2>/dev/null && pwd -P); then
+                :
+            else
+                CALLER_ENV_DIR=""
+            fi
+        fi
+        if is_safe_timing_ledger_path "$CALLER_TIMING_LEDGER" "$CALLER_ENV_DIR"; then
+            WSE_ARGS+=(--timing-ledger "$CALLER_TIMING_LEDGER")
+        else
+            printf 'session-setup.sh: warning: ignoring unsafe LARCH_TIMING_LEDGER from caller-env (not under accepted root)\n' >&2
+        fi
+    fi
 
     "$SCRIPT_DIR/write-session-env.sh" "${WSE_ARGS[@]}"
 fi
