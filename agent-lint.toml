@@ -496,6 +496,18 @@ exclude = [
   # shebang, not invokable directly). It is referenced from the Codex launcher
   # via source directives only, which agent-lint does not follow.
   "scripts/lib-codex-launcher-common.sh",
+  # scripts/lib-external-launcher-common.sh is a sourced-only shell library (no
+  # shebang, not invokable directly) carrying the canonical bodies shared
+  # between lib-codex-launcher-common.sh and lib-cursor-launcher-common.sh
+  # (issue #1502 dedup). Referenced via source directives only, which
+  # agent-lint does not follow.
+  "scripts/lib-external-launcher-common.sh",
+  # scripts/lib-dirty-tree-sidecar.sh is a sourced-only shell library (no
+  # shebang, not invokable directly) carrying the canonical
+  # _write_dirty_tree_sidecar shared between launch-codex-review.sh and
+  # launch-cursor-review.sh (issue #1502 dedup). Referenced via source
+  # directives only.
+  "scripts/lib-dirty-tree-sidecar.sh",
   # scripts/cursor-auth-flags.sh is a small executable that prints the
   # conditional --api-key argv elements for runtime skill markdown blocks.
   # Referenced from skills/shared/voting-protocol.md, skills/shared/dialectic-protocol.md,

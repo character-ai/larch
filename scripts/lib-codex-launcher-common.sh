@@ -4,24 +4,19 @@ if [[ -n "${LARCH_LIB_CODEX_LAUNCHER_COMMON_LOADED:-}" ]]; then
     return 0
 fi
 
+# Canonical bodies live in lib-external-launcher-common.sh; the wrappers
+# below preserve the codex_launcher_* names so existing call sites in
+# launch-codex-review.sh stay untouched.
+# shellcheck source=scripts/lib-external-launcher-common.sh
+# shellcheck disable=SC1091
+source "${BASH_SOURCE[0]%/*}/lib-external-launcher-common.sh"
+
 codex_launcher_promote_inner_done() {
-    local output_path="$1"
-    if [[ -f "${output_path}.inner.done" ]]; then
-        mv -f "${output_path}.inner.done" "${output_path}.done"
-    fi
+    external_launcher_promote_inner_done "$@"
 }
 
 codex_launcher_append_outer_meta() {
-    local meta_path="$1"
-    local outer_launcher_path="$2"
-    local prompt_file_sidecar="$3"
-    local workdir="$4"
-    [[ -f "$meta_path" ]] || return 0
-    {
-        printf 'OUTER_LAUNCHER=%s\n' "$outer_launcher_path"
-        printf 'OUTER_LAUNCHER_PROMPT_FILE=%s\n' "$prompt_file_sidecar"
-        printf 'OUTER_LAUNCHER_WORKDIR=%s\n' "$workdir"
-    } >> "$meta_path"
+    external_launcher_append_outer_meta "$@"
 }
 
 LARCH_LIB_CODEX_LAUNCHER_COMMON_LOADED=1
