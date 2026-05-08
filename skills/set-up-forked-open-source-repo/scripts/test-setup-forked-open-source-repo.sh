@@ -29,6 +29,30 @@ assert_contains() {
   pass "$label"
 }
 
+# Wait until a path exists (file, directory, or symlink), polling at a
+# 100ms cadence up to ~30s. Replaces fixed `sleep 1` synchronization in
+# lock-contention tests, which can flake under heavy CI load if the
+# background lock holder hasn't yet reached the lock-acquisition point
+# inside the 1-second window.
+wait_for_path() {
+  local path label deadline_iters i
+  path="$1"
+  label="$2"
+  # 300 * 0.1s = 30s ceiling; under load the inner sleep can drift, but
+  # 30s is generous compared to the ~50ms first lock-acquisition path on
+  # the slowest macOS CI runner observed.
+  deadline_iters=300
+  i=0
+  while [[ $i -lt $deadline_iters ]]; do
+    if [[ -e "$path" ]]; then
+      return 0
+    fi
+    sleep 0.1
+    i=$((i + 1))
+  done
+  fail "$label timed out waiting for $path"
+}
+
 assert_not_contains() {
   local file pattern label
   file="$1"
@@ -596,9 +620,11 @@ assert_contains "$OUT" "SETUP_FORKED_REPO_RESULT=ok" "prunable worktree is skipp
 read_fixture lock_contention_mkdir
 OUT1="$BASE/out-first.txt"
 OUT2="$BASE/out-second.txt"
+COMMON_DIR="$(git -C "$WORK" rev-parse --absolute-git-dir)"
+LOCK_FILE="$COMMON_DIR/larch-fork-setup.lock"
 LARCH_FORKED_REPO_FORCE_MKDIR_LOCK=1 LARCH_FORKED_REPO_PAUSE_AFTER_LOCK_S=2 run_setup "$WORK" "$OUT1" &
 pid="$!"
-sleep 1
+wait_for_path "$LOCK_FILE.d" "mkdir lock contention precondition"
 if LARCH_FORKED_REPO_FORCE_MKDIR_LOCK=1 run_setup_rc "$WORK" "$OUT2"; then fail "mkdir lock contention refuses"; fi
 wait "$pid"
 assert_contains "$OUT2" "another setup-forked-open-source-repo run is in progress" "mkdir lock contention refuses"
@@ -608,9 +634,11 @@ assert_contains "$OUT2" "holder=" "mkdir lock contention reports holder"
 read_fixture lock_contention_mixed_mode
 OUT1="$BASE/out-first.txt"
 OUT2="$BASE/out-second.txt"
+COMMON_DIR="$(git -C "$WORK" rev-parse --absolute-git-dir)"
+LOCK_FILE="$COMMON_DIR/larch-fork-setup.lock"
 LARCH_FORKED_REPO_FORCE_MKDIR_LOCK=1 LARCH_FORKED_REPO_PAUSE_AFTER_LOCK_S=2 run_setup "$WORK" "$OUT1" &
 pid="$!"
-sleep 1
+wait_for_path "$LOCK_FILE.d" "mixed-mode lock contention precondition"
 if run_setup_rc "$WORK" "$OUT2"; then fail "mixed-mode lock contention refuses"; fi
 wait "$pid"
 assert_contains "$OUT2" "another setup-forked-open-source-repo run is in progress" "mixed-mode lock contention refuses"
@@ -628,13 +656,15 @@ if command -v flock >/dev/null 2>&1; then
   OUT="$BASE/out.txt"
   COMMON_DIR="$(git -C "$WORK" rev-parse --absolute-git-dir)"
   LOCK_FILE="$COMMON_DIR/larch-fork-setup.lock"
+  FLOCK_READY="$BASE/flock-ready"
   (
     exec 8>"$LOCK_FILE"
     flock -x 8
+    : >"$FLOCK_READY"
     sleep 2
   ) &
   pid="$!"
-  sleep 1
+  wait_for_path "$FLOCK_READY" "flock lock contention precondition"
   if run_setup_rc "$WORK" "$OUT"; then fail "flock lock contention refuses"; fi
   wait "$pid"
   assert_contains "$OUT" "another setup-forked-open-source-repo run is in progress" "flock lock contention refuses"
