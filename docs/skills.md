@@ -14,7 +14,9 @@ Reference for every slash command shipped by the larch plugin. Each section belo
 - [`/review`](#review)
 - [`/set-up-forked-open-source-repo`](#set-up-forked-open-source-repo)
 - [`/simplify-skill`](#simplify-skill)
+- [`/skill-evolver`](#skill-evolver)
 - [`/umbrella`](#umbrella)
+- [`/upgrade-larch`](#upgrade-larch)
 
 ## `/alias`
 
@@ -147,3 +149,11 @@ Evolve an existing larch skill by researching concrete improvements and filing t
 **Source**: [`skills/umbrella/SKILL.md`](../skills/umbrella/SKILL.md)
 
 Plan-to-issues orchestrator. Takes a task description (or deduces it from session context), classifies it as one-shot or multi-piece, and delegates GitHub issue creation to `/issue` — adding native blocked-by dependencies to form an execution DAG and back-linking children to the umbrella when multi-piece. Typically invoked transitively by `/review` (description-mode finding filing) and `/skill-evolver` (research-finding filing) rather than called directly by humans, though direct invocation is supported. The one-shot path emits a single child issue and skips umbrella creation; the multi-piece path emits an umbrella tracking issue plus one child per piece (very small items may be bundled into a single composed piece per Step 3B.1's bundling rule), with `Closes #<umbrella>` blocked-by edges wired between children and the umbrella. `--blocked-by-issue N` is a caller-supplied policy blocker; `N` is a positive integer issue number, forwarded verbatim to `/issue` on both Step 3A (one-shot) and Step 3B.2 (batch children). Only batch child creation can succeed with the policy edge — single-mode is rejected by `/issue`'s frozen batch-mode-only error, providing fail-fast on misclassified one-shot runs (no silent drop). The flag is intentionally NOT forwarded to the Step 3B.3 umbrella-create call — the policy edge is meant for children, not the umbrella itself. `--dry-run` previews the proposed batch without GitHub mutations; `--go` posts a `GO` sentinel comment on each successfully-created child to make them eligible for `/fix-issue` automation. Example: `/umbrella refactor the auth subsystem across schema, middleware, and tests`.
+
+## `/upgrade-larch`
+
+**Arguments**: *(none)*
+
+**Source**: [`skills/upgrade-larch/SKILL.md`](../skills/upgrade-larch/SKILL.md)
+
+Upgrade the larch plugin to the latest version. Targets the standard GitHub install (`claude plugin marketplace add character-ai/larch`): the skill removes and re-adds the marketplace, then reinstalls the plugin so the newest release is picked up. Contributors using a local checkout (`claude --plugin-dir .` or `claude plugin marketplace add .`) should `git pull` instead. Delegates to `${CLAUDE_PLUGIN_ROOT}/skills/upgrade-larch/scripts/upgrade-larch.sh`; on success the user is told to restart Claude Code to apply the new version.
