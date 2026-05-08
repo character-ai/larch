@@ -1193,5 +1193,63 @@ while IFS= read -r kind; do
     || fail "(28g) --timing-task-kind literal not present in TIMING_TASK_KINDS_ALLOWED: $kind"
 done < "$actual_tmp"
 
+# ---------------------------------------------------------------------------
+# (29) Anti-pattern doc-drift pin (closes #1512, was #1498). Issue #1480 added
+#      three documentary surfaces — the dialectic-execution.md recovery
+#      sentence, the heavy-worker.md `run_in_background: true` + yield
+#      anti-pattern + SendMessage-dependency note, and the AGENTS.md
+#      SendMessage requirement bullet — none of which were mechanically
+#      pinned. A future edit could silently regress any of them. Pin each
+#      with a fixed-string check so deletion fails CI. Mirrors the
+#      whole-file byte-pin pattern of assertions (13)/(26).
+# ---------------------------------------------------------------------------
+DESIGN_REFS_DIR="$REPO_ROOT/skills/design/references"
+DIALECTIC_EXEC_MD="$DESIGN_REFS_DIR/dialectic-execution.md"
+HEAVY_WORKER_MD="$DESIGN_REFS_DIR/heavy-worker.md"
+AGENTS_MD="$REPO_ROOT/AGENTS.md"
+
+[[ -f "$DIALECTIC_EXEC_MD" ]] || fail "(29a) skills/design/references/dialectic-execution.md missing: $DIALECTIC_EXEC_MD"
+[[ -f "$HEAVY_WORKER_MD" ]] || fail "(29b) skills/design/references/heavy-worker.md missing: $HEAVY_WORKER_MD"
+[[ -f "$AGENTS_MD" ]] || fail "(29c) AGENTS.md missing: $AGENTS_MD"
+
+dialectic_exec_pin='do NOT yield control back to the parent'
+grep -Fq "$dialectic_exec_pin" "$DIALECTIC_EXEC_MD" \
+  || fail "(29a) skills/design/references/dialectic-execution.md missing pin '$dialectic_exec_pin' — see #1512"
+
+heavy_worker_pins=(
+  '`run_in_background: true` + yield'
+  '**SendMessage dependency.**'
+)
+for lit in "${heavy_worker_pins[@]}"; do
+  grep -Fq "$lit" "$HEAVY_WORKER_MD" \
+    || fail "(29b) skills/design/references/heavy-worker.md missing pin '$lit' — see #1512"
+done
+
+agents_pin='`/design --subagent` requires `SendMessage`'
+grep -Fq "$agents_pin" "$AGENTS_MD" \
+  || fail "(29c) AGENTS.md missing pin '$agents_pin' — see #1512"
+
+# ---------------------------------------------------------------------------
+# (30) Coder simplicity override pin (closes #1512, was #1482).
+#      skills/implement/SKILL.md grew a "### Coder simplicity override"
+#      section (Step 1) that auto-routes implementer selection to claude
+#      for small, surgical plans when --coder was not explicitly passed.
+#      The section's heading, gate phrase, and literal breadcrumb are
+#      runtime-load-bearing: the orchestrator emits the breadcrumb verbatim
+#      when the override fires, and `/fix-issue` and other consumers expect
+#      that breadcrumb shape. Future edits to SKILL.md could drop or
+#      paraphrase any of the three without failing any other check. Pin
+#      each with a fixed-string check.
+# ---------------------------------------------------------------------------
+coder_override_pins=(
+  '### Coder simplicity override'
+  '`coder_explicit=false` AND `design_only=false`'
+  '**⚡ 1: design plan — task classified as small (≤ ~100 LOC, no new abstractions); coder auto-set to claude (no explicit --coder).**'
+)
+for lit in "${coder_override_pins[@]}"; do
+  grep -Fq "$lit" "$SKILL_MD" \
+    || fail "(30) skills/implement/SKILL.md missing pin '$lit' — see #1512"
+done
+
 echo "PASS: test-implement-structure.sh — structural invariants hold (assertion 5 retired)"
 exit 0
