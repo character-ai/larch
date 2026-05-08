@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # test-check-review-changes.sh — Offline regression harness for check-review-changes.sh.
 #
-# Pins nine cases that together cover the issue #651 regression
+# Pins cases that together cover the issue #651 regression
 # (pre-existing untracked → false positive), the empty-vs-missing
 # baseline-state distinction, the printf '%s\n' -> comm -> sed safety net
-# inside the SUT, and the issue #695 dash-prefixed-filename regression:
+# inside the SUT, the issue #695 dash-prefixed-filename regression, and
+# the issue #1485 GIT_PROBE_FAILED / --strict fail-closed mode:
 #   (a) clean tree, no baseline → FILES_CHANGED=false UNTRACKED_BASELINE=missing
 #   (b) pre-existing untracked + matching baseline →
 #       FILES_CHANGED=false UNTRACKED_BASELINE=present (THE regression case)
@@ -26,6 +27,23 @@
 #       feeding CURRENT to comm via printf '%s\n' instead of echo, so
 #       filenames matching echo flags like -n / -e / -nn / -E are not
 #       silently swallowed)
+#   (j) probe failure (run outside any git tree), default mode →
+#       FILES_CHANGED=false UNTRACKED_BASELINE=missing GIT_PROBE_FAILED=true
+#       (issue #1485: graceful degradation preserved by default; new
+#       GIT_PROBE_FAILED key exposes the unknown-state signal)
+#   (k) probe failure + --strict → FILES_CHANGED=true
+#       UNTRACKED_BASELINE=missing GIT_PROBE_FAILED=true (issue #1485
+#       fail-closed: --strict promotes probe failure to FILES_CHANGED=true)
+#   (l) clean tree + --strict → FILES_CHANGED=false UNTRACKED_BASELINE=missing
+#       GIT_PROBE_FAILED=false (--strict is a no-op when probes succeed)
+#   (m) parse error (clean repo + --bogus) → FILES_CHANGED=false
+#       UNTRACKED_BASELINE=missing GIT_PROBE_FAILED=false (parse error
+#       short-circuits before any git probe runs)
+#   (n) parse error + --strict footgun (non-git + "--strict --bogus") →
+#       FILES_CHANGED=false UNTRACKED_BASELINE=missing GIT_PROBE_FAILED=false
+#       (issue #1485 round-1 review fix: parse error must short-circuit
+#       BEFORE probes run, so --strict cannot promote a typo to
+#       FILES_CHANGED=true via probe failure)
 #
 # Usage:
 #   bash skills/implement/scripts/test-check-review-changes.sh
@@ -53,25 +71,44 @@ run_case() {
     local expected_baseline="$1"; shift
     local sandbox="$1"; shift
     local baseline_arg="$1"; shift
+    # Optional 6th: expected_git_probe_failed (default "false" — most
+    # legacy cases run inside a real git repo where probes succeed).
+    local expected_git_probe_failed="${1:-false}"
+    if [[ $# -gt 0 ]]; then
+        shift
+    fi
+    # Optional 7th: extra args passed verbatim to the SUT (e.g. --strict).
+    local extra_args="${1:-}"
 
     local out
     if [[ -n "$baseline_arg" ]]; then
-        out=$(cd "$sandbox" && "$SUT" --baseline "$baseline_arg")
+        if [[ -n "$extra_args" ]]; then
+            out=$(cd "$sandbox" && "$SUT" --baseline "$baseline_arg" "$extra_args")
+        else
+            out=$(cd "$sandbox" && "$SUT" --baseline "$baseline_arg")
+        fi
     else
-        out=$(cd "$sandbox" && "$SUT")
+        if [[ -n "$extra_args" ]]; then
+            out=$(cd "$sandbox" && "$SUT" "$extra_args")
+        else
+            out=$(cd "$sandbox" && "$SUT")
+        fi
     fi
 
-    local actual_fc actual_ub
+    local actual_fc actual_ub actual_gpf
     actual_fc=$(echo "$out" | awk -F= '$1=="FILES_CHANGED"{print $2}')
     actual_ub=$(echo "$out" | awk -F= '$1=="UNTRACKED_BASELINE"{print $2}')
+    actual_gpf=$(echo "$out" | awk -F= '$1=="GIT_PROBE_FAILED"{print $2}')
 
-    if [[ "$actual_fc" == "$expected_files_changed" ]] && [[ "$actual_ub" == "$expected_baseline" ]]; then
-        echo "PASS: $name (FILES_CHANGED=$actual_fc UNTRACKED_BASELINE=$actual_ub)"
+    if [[ "$actual_fc" == "$expected_files_changed" ]] \
+        && [[ "$actual_ub" == "$expected_baseline" ]] \
+        && [[ "$actual_gpf" == "$expected_git_probe_failed" ]]; then
+        echo "PASS: $name (FILES_CHANGED=$actual_fc UNTRACKED_BASELINE=$actual_ub GIT_PROBE_FAILED=$actual_gpf)"
         PASS=$((PASS + 1))
     else
         echo "FAIL: $name" >&2
-        echo "  expected: FILES_CHANGED=$expected_files_changed UNTRACKED_BASELINE=$expected_baseline" >&2
-        echo "  actual:   FILES_CHANGED=$actual_fc UNTRACKED_BASELINE=$actual_ub" >&2
+        echo "  expected: FILES_CHANGED=$expected_files_changed UNTRACKED_BASELINE=$expected_baseline GIT_PROBE_FAILED=$expected_git_probe_failed" >&2
+        echo "  actual:   FILES_CHANGED=$actual_fc UNTRACKED_BASELINE=$actual_ub GIT_PROBE_FAILED=$actual_gpf" >&2
         echo "  full output:" >&2
         printf '    %s\n' "${out//$'\n'/$'\n'    }" >&2
         FAIL=$((FAIL + 1))
@@ -180,8 +217,90 @@ run_case '(i) untracked filename "-n" + external empty baseline (#695)' \
     "true" "present" "$SBX_I" "$BL_I"
 rm -f "$BL_I"
 
+# Case (j): probe failure — run the SUT outside any git tree (no .git
+# anywhere up the chain). git diff and git ls-files both exit non-zero
+# with "fatal: not a git repository". Default mode preserves graceful
+# degradation (FILES_CHANGED=false), but GIT_PROBE_FAILED=true now
+# exposes the unknown-state signal so callers can fail-closed.
+SBX_J=$(mktemp -d)
+run_case "(j) probe failure (no git repo), default mode" \
+    "false" "missing" "$SBX_J" "" "true"
+
+# Case (k): probe failure + --strict. --strict promotes a probe failure
+# to FILES_CHANGED=true (fail-closed) so the caller does not silently
+# skip the post-/review checks pass on a transient git outage.
+SBX_K=$(mktemp -d)
+run_case "(k) probe failure (no git repo) + --strict (fail-closed)" \
+    "true" "missing" "$SBX_K" "" "true" "--strict"
+
+# Case (l): clean tree + --strict. --strict is a no-op when probes
+# succeed — FILES_CHANGED reflects the observed signal (no changes
+# here) and GIT_PROBE_FAILED stays false.
+SBX_L=$(mkrepo)
+run_case "(l) clean tree + --strict (no-op when probes succeed)" \
+    "false" "missing" "$SBX_L" "" "false" "--strict"
+
+# Cases (m)-(n): parse-error contract pinning. The script must short-
+# circuit on bad CLI input BEFORE running any git probe — emit ERROR= on
+# stderr and the three stdout keys with their conservative degraded
+# values. In particular, "--strict --bogus" outside a git repo must
+# NOT flip FILES_CHANGED=true via a probe failure (the parse-error +
+# --strict footgun the round-1 review surfaced). These cases are
+# inline (rather than via run_case) because they need to pass multiple
+# args to the SUT, while run_case's $extra_args is a single token.
+
+# Case (m): clean repo + bogus flag → parse error, three keys, no probe.
+# Capture stderr separately to assert the documented ERROR= line is
+# emitted (a regression that dropped the stderr line would otherwise
+# pass silently if only stdout were checked — round-2 review nit).
+SBX_M=$(mkrepo)
+STDERR_M=$(mktemp)
+out_m=$(cd "$SBX_M" && "$SUT" --bogus 2>"$STDERR_M")
+fc_m=$(echo "$out_m" | awk -F= '$1=="FILES_CHANGED"{print $2}')
+ub_m=$(echo "$out_m" | awk -F= '$1=="UNTRACKED_BASELINE"{print $2}')
+gpf_m=$(echo "$out_m" | awk -F= '$1=="GIT_PROBE_FAILED"{print $2}')
+err_m_ok="false"
+grep -q '^ERROR=' "$STDERR_M" && err_m_ok="true"
+if [[ "$fc_m" == "false" && "$ub_m" == "missing" && "$gpf_m" == "false" && "$err_m_ok" == "true" ]]; then
+    echo "PASS: (m) parse error (clean repo + --bogus) emits 3 keys + ERROR= on stderr, no probe (FILES_CHANGED=$fc_m UNTRACKED_BASELINE=$ub_m GIT_PROBE_FAILED=$gpf_m ERROR_ON_STDERR=$err_m_ok)"
+    PASS=$((PASS + 1))
+else
+    echo "FAIL: (m) parse error (clean repo + --bogus)" >&2
+    echo "  expected: FILES_CHANGED=false UNTRACKED_BASELINE=missing GIT_PROBE_FAILED=false ERROR_ON_STDERR=true" >&2
+    echo "  actual:   FILES_CHANGED=$fc_m UNTRACKED_BASELINE=$ub_m GIT_PROBE_FAILED=$gpf_m ERROR_ON_STDERR=$err_m_ok" >&2
+    FAIL=$((FAIL + 1))
+fi
+rm -f "$STDERR_M"
+
+# Case (n): non-git sandbox + "--strict --bogus" → parse error must
+# short-circuit BEFORE probes run, so GIT_PROBE_FAILED stays false and
+# --strict cannot promote FILES_CHANGED=true on a CLI typo. Pre-fix
+# this case would yield FILES_CHANGED=true GIT_PROBE_FAILED=true (the
+# parse-error + strict footgun); the fix exits 0 with the conservative
+# degraded values before any git probe is invoked. Stderr ERROR= is
+# also asserted (round-2 review nit) so a regression dropping the
+# stderr line is caught.
+SBX_N=$(mktemp -d)
+STDERR_N=$(mktemp)
+out_n=$(cd "$SBX_N" && "$SUT" --strict --bogus 2>"$STDERR_N")
+fc_n=$(echo "$out_n" | awk -F= '$1=="FILES_CHANGED"{print $2}')
+ub_n=$(echo "$out_n" | awk -F= '$1=="UNTRACKED_BASELINE"{print $2}')
+gpf_n=$(echo "$out_n" | awk -F= '$1=="GIT_PROBE_FAILED"{print $2}')
+err_n_ok="false"
+grep -q '^ERROR=' "$STDERR_N" && err_n_ok="true"
+if [[ "$fc_n" == "false" && "$ub_n" == "missing" && "$gpf_n" == "false" && "$err_n_ok" == "true" ]]; then
+    echo "PASS: (n) parse error short-circuits before --strict can flip FILES_CHANGED, ERROR= on stderr (FILES_CHANGED=$fc_n UNTRACKED_BASELINE=$ub_n GIT_PROBE_FAILED=$gpf_n ERROR_ON_STDERR=$err_n_ok)"
+    PASS=$((PASS + 1))
+else
+    echo "FAIL: (n) parse error + --strict footgun: parse error did not short-circuit before probe ran" >&2
+    echo "  expected: FILES_CHANGED=false UNTRACKED_BASELINE=missing GIT_PROBE_FAILED=false ERROR_ON_STDERR=true" >&2
+    echo "  actual:   FILES_CHANGED=$fc_n UNTRACKED_BASELINE=$ub_n GIT_PROBE_FAILED=$gpf_n ERROR_ON_STDERR=$err_n_ok" >&2
+    FAIL=$((FAIL + 1))
+fi
+rm -f "$STDERR_N"
+
 # Cleanup sandboxes.
-rm -rf "$SBX_A" "$SBX_B" "$SBX_C" "$SBX_D" "$SBX_E" "$SBX_F" "$SBX_G" "$SBX_H" "$SBX_I"
+rm -rf "$SBX_A" "$SBX_B" "$SBX_C" "$SBX_D" "$SBX_E" "$SBX_F" "$SBX_G" "$SBX_H" "$SBX_I" "$SBX_J" "$SBX_K" "$SBX_L" "$SBX_M" "$SBX_N"
 
 echo ""
 echo "RESULTS: $PASS passed, $FAIL failed"

@@ -17,32 +17,41 @@
 # legitimately represents "no untracked files at snapshot time," so all
 # current untracked are considered review-created.
 #
-# Stdout contract — TWO keys ALWAYS emitted on every invocation in stable
+# Stdout contract — THREE keys ALWAYS emitted on every invocation in stable
 # order. Consumers must parse with key-based grep/awk, never eval/source:
 #   FILES_CHANGED=true|false
 #   UNTRACKED_BASELINE=present|missing
+#   GIT_PROBE_FAILED=true|false
 #
 # Usage:
-#   check-review-changes.sh [--baseline <path>]
+#   check-review-changes.sh [--baseline <path>] [--strict]
 #
 # Exit codes:
 #   0 — always (including bad CLI input — see Parse-error policy below).
 #
 # Parse-error policy: on unknown flag or --baseline-without-path, emit an
 # informational ERROR=... line on stderr and degrade to the missing-baseline
-# path on stdout. The always-2-keys, exit-0 contract is preserved so callers
+# path on stdout. The always-3-keys, exit-0 contract is preserved so callers
 # (notably skills/implement/SKILL.md Step 6) parse stdout uniformly.
 #
-# Best-effort git probing: git diff and git ls-files are run with
-# 2>/dev/null || echo "", so transient git errors degrade to "no changes
-# detected on that source" rather than aborting. The script does NOT emit a
-# separate health key — empty output and "git failed" are observationally
-# indistinguishable on stdout. See check-review-changes.md for the full
-# graceful-degradation philosophy.
+# Health-probe mode: each git probe (git diff staged, git diff unstaged,
+# git ls-files untracked) captures its exit status explicitly. Any non-zero
+# probe sets GIT_PROBE_FAILED=true; otherwise GIT_PROBE_FAILED=false.
+# Default behavior (no --strict): a failed probe degrades to empty output
+# for that source — observationally same as "no changes detected" on
+# FILES_CHANGED, but GIT_PROBE_FAILED=true now exposes the unknown-state
+# signal so callers can decide independently.
+#
+# --strict: when set AND any probe failed (GIT_PROBE_FAILED=true), force
+# FILES_CHANGED=true (fail-closed: treat unknown as may-have-changed).
+# Without --strict, FILES_CHANGED reflects only the observed signal,
+# preserving the historical graceful-degradation behavior. See
+# check-review-changes.md for the full contract.
 
 set -euo pipefail
 
 BASELINE=""
+STRICT="false"
 PARSE_ERROR=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -54,6 +63,10 @@ while [[ $# -gt 0 ]]; do
             BASELINE="$2"
             shift 2
             ;;
+        --strict)
+            STRICT="true"
+            shift
+            ;;
         *)
             PARSE_ERROR="Unknown argument: $1"
             break
@@ -61,23 +74,48 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Parse errors degrade to the missing-baseline path so the always-emit-2-keys,
-# exit-0 stdout contract holds even on bad CLI input. The ERROR= line on stderr
-# is informational only — callers parse stdout, not stderr or exit code.
+# Parse errors short-circuit before any git probe runs. The always-emit-3-keys
+# stdout contract is preserved with the conservative degraded values
+# (FILES_CHANGED=false, UNTRACKED_BASELINE=missing, GIT_PROBE_FAILED=false).
+# The ERROR= line on stderr is informational only — callers parse stdout, not
+# stderr or exit code. Parse errors are NOT probe failures (no probe ran), and
+# parse errors must NOT interact with --strict to silently force
+# FILES_CHANGED=true on a CLI with a typo (e.g. "--strict --bogus").
 if [[ -n "$PARSE_ERROR" ]]; then
     echo "ERROR=$PARSE_ERROR" >&2
-    BASELINE=""
+    echo "FILES_CHANGED=false"
+    echo "UNTRACKED_BASELINE=missing"
+    echo "GIT_PROBE_FAILED=false"
+    exit 0
 fi
 
-UNSTAGED=$(git diff --name-only 2>/dev/null || echo "")
-STAGED=$(git diff --name-only --cached 2>/dev/null || echo "")
+GIT_PROBE_FAILED="false"
+
+if UNSTAGED=$(git diff --name-only 2>/dev/null); then
+    :
+else
+    GIT_PROBE_FAILED="true"
+    UNSTAGED=""
+fi
+
+if STAGED=$(git diff --name-only --cached 2>/dev/null); then
+    :
+else
+    GIT_PROBE_FAILED="true"
+    STAGED=""
+fi
 
 UNTRACKED_BASELINE="missing"
 UNTRACKED_DELTA=""
 
 if [[ -n "$BASELINE" ]] && [[ -r "$BASELINE" ]]; then
     UNTRACKED_BASELINE="present"
-    CURRENT=$(git ls-files --others --exclude-standard 2>/dev/null | LC_ALL=C sort || echo "")
+    if CURRENT=$(git ls-files --others --exclude-standard 2>/dev/null | LC_ALL=C sort); then
+        :
+    else
+        GIT_PROBE_FAILED="true"
+        CURRENT=""
+    fi
     UNTRACKED_DELTA=$(comm -23 <(printf '%s\n' "$CURRENT") <(LC_ALL=C sort "$BASELINE") | sed '/^$/d' || echo "")
 fi
 
@@ -86,5 +124,13 @@ if [[ -n "$UNSTAGED" ]] || [[ -n "$STAGED" ]] || [[ -n "$UNTRACKED_DELTA" ]]; th
     FILES_CHANGED="true"
 fi
 
+# --strict fail-closed: a failed probe means the working-tree state is
+# unknown. Force FILES_CHANGED=true so Step 6 enters the changes-found
+# branch rather than silently skipping the post-/review checks pass.
+if [[ "$STRICT" == "true" ]] && [[ "$GIT_PROBE_FAILED" == "true" ]]; then
+    FILES_CHANGED="true"
+fi
+
 echo "FILES_CHANGED=$FILES_CHANGED"
 echo "UNTRACKED_BASELINE=$UNTRACKED_BASELINE"
+echo "GIT_PROBE_FAILED=$GIT_PROBE_FAILED"

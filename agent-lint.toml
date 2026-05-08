@@ -661,9 +661,11 @@ exclude = [
   # skills/implement/scripts/test-check-review-changes.sh is the offline
   # regression harness for skills/implement/scripts/check-review-changes.sh
   # (closes #651 — fixes the false-positive where any pre-existing untracked
-  # file flipped FILES_CHANGED=true). Seven cases pin the regression behavior
-  # plus the empty-vs-missing baseline-state distinction. The harness is
-  # referenced only from Makefile (test-check-review-changes target) and
+  # file flipped FILES_CHANGED=true; later extended for issues #695 and #1485).
+  # Cases pin the regression behavior, the empty-vs-missing baseline-state
+  # distinction, the dash-prefixed-filename safety, and the GIT_PROBE_FAILED /
+  # --strict fail-closed mode. The harness is referenced only from Makefile
+  # (test-check-review-changes target) and
   # skills/implement/scripts/test-check-review-changes.md (sibling contract),
   # matching the same Makefile-only pattern as the other test-* harnesses
   # above. Both the .sh and the .md are excluded.
