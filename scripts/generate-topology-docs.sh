@@ -132,7 +132,7 @@ while IFS= read -r encoded; do
   # (e.g. value `2` matching `Step 2a` or `2-agent`). A non-digit anchor is required
   # for any value <= 3 chars or composed solely of digits.
   if [[ "$value" =~ ^[0-9]+$ ]] || (( ${#value} < 3 )); then
-    fail "row $row: value '$value' is too short or purely numeric — use a longer anchor phrase that uniquely identifies the topology fact in the runtime authority (e.g. '8 regular' instead of '8')"
+    fail "row $row: value '$value' is too short or purely numeric — use a longer anchor phrase that uniquely identifies the topology fact in the runtime authority (e.g. '4 regular' instead of '4')"
   fi
 
   prior_key_row="$(printf '%s\n' "$SEEN_KEYS" | awk -F'|' -v k="$key" '$2 == k { print $1; exit }')"

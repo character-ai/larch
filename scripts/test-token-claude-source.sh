@@ -117,18 +117,18 @@ sleep 1
 
 # Test 5: newest-by-mtime wins (T2 is newer than T1 by mtime even though T1
 # is lexicographically last).
-out=$(cd "$FAKE_REPO" && HOME="$FAKE_HOME" "$SCRIPT")
+out=$(cd "$FAKE_REPO" && env -u LARCH_CLAUDE_SOURCE_FILE -u LARCH_TOKEN_SESSION_ID HOME="$FAKE_HOME" "$SCRIPT")
 contains "mtime newest transcript" "TRANSCRIPT_PATH=$T2" "$out"
 contains "mtime session_uuid" "SESSION_UUID=aaaa-newer-1111" "$out"
 
 # Test 6: LARCH_CLAUDE_SESSION_ID overrides mtime when its name matches a file
 # in the project dir.
-out=$(cd "$FAKE_REPO" && HOME="$FAKE_HOME" LARCH_CLAUDE_SESSION_ID="zzzz-old-9999" "$SCRIPT")
+out=$(cd "$FAKE_REPO" && env -u LARCH_CLAUDE_SOURCE_FILE -u LARCH_TOKEN_SESSION_ID HOME="$FAKE_HOME" LARCH_CLAUDE_SESSION_ID="zzzz-old-9999" "$SCRIPT")
 contains "session-id override picks T1 (mtime-older)" "TRANSCRIPT_PATH=$T1" "$out"
 
 # Test 7: LARCH_CLAUDE_SESSION_ID with bad chars (path traversal attempt) is
 # silently skipped — falls back to mtime resolution.
-out=$(cd "$FAKE_REPO" && HOME="$FAKE_HOME" LARCH_CLAUDE_SESSION_ID="../escape" "$SCRIPT")
+out=$(cd "$FAKE_REPO" && env -u LARCH_CLAUDE_SOURCE_FILE -u LARCH_TOKEN_SESSION_ID HOME="$FAKE_HOME" LARCH_CLAUDE_SESSION_ID="../escape" "$SCRIPT")
 contains "bad session-id falls back to mtime" "TRANSCRIPT_PATH=$T2" "$out"
 
 # Test 8: empty project dir → STATUS=unavailable.
@@ -139,7 +139,7 @@ EMPTY_REPO_REAL=$(cd "$EMPTY_REPO" && git rev-parse --show-toplevel)
 EMPTY_REPO_REAL=$(cd "$EMPTY_REPO_REAL" && pwd -P)
 EMPTY_ENCODED=$(printf '%s' "$EMPTY_REPO_REAL" | sed 's#/#-#g')
 mkdir -p "$FAKE_HOME/.claude/projects/$EMPTY_ENCODED"
-out=$(cd "$EMPTY_REPO" && HOME="$FAKE_HOME" "$SCRIPT" 2>&1) || true
+out=$(cd "$EMPTY_REPO" && env -u LARCH_CLAUDE_SOURCE_FILE -u LARCH_TOKEN_SESSION_ID HOME="$FAKE_HOME" "$SCRIPT" 2>&1) || true
 contains "empty project status" "STATUS=unavailable" "$out"
 contains "empty project reason" "no Claude transcript" "$out"
 
@@ -157,7 +157,7 @@ sleep 1
 : > "$T3"  # T3 is now newest by mtime
 
 # Without snapshot: T3 would win.
-out=$(cd "$FAKE_REPO" && HOME="$FAKE_HOME" "$SCRIPT")
+out=$(cd "$FAKE_REPO" && env -u LARCH_CLAUDE_SOURCE_FILE -u LARCH_TOKEN_SESSION_ID HOME="$FAKE_HOME" "$SCRIPT")
 contains "without snapshot, newest concurrent wins" "TRANSCRIPT_PATH=$T3" "$out"
 
 # With snapshot pinning T1: T1 wins despite T3 being newer.

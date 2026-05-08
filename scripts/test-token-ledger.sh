@@ -60,7 +60,7 @@ SESSION_TMP="$TMP/session"
 mkdir -p "$SESSION_TMP"
 printf 'session-file-id\n' > "$SESSION_TMP/session-id"
 env_path=$(LARCH_TOKEN_SESSION_ID=env-id IMPLEMENT_TMPDIR="$SESSION_TMP" "$SCRIPT" dump | sed -n '1p')
-file_path=$(IMPLEMENT_TMPDIR="$SESSION_TMP" "$SCRIPT" dump | sed -n '1p')
+file_path=$(env -u LARCH_TOKEN_SESSION_ID IMPLEMENT_TMPDIR="$SESSION_TMP" "$SCRIPT" dump | sed -n '1p')
 env_slug=$(sha256 "env-id")
 file_slug=$(sha256 "session-file-id")
 assert_contains "env precedence" "$env_slug" "$env_path"

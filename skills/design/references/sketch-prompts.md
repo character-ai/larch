@@ -1,6 +1,6 @@
 # Sketch Personality Prompts
 
-**Consumer**: `/design` Step 2a.2 — launch shell blocks for Cursor and Codex sketch slots (4 personality slots per tool in regular mode, 1 generic slot per tool in quick mode), and their respective Claude fallback Agent-tool invocations.
+**Consumer**: `/design` Step 2a.2 — launch shell blocks for Cursor and Codex sketch slots (4 regular personality slots total in regular mode — Cursor-Arch + Cursor-Edge + Codex-Innovation + Codex-Pragmatic — and 1 generic slot per tool in quick mode), and their respective Claude fallback Agent-tool invocations.
 
 **Contract**: byte-preserved prompt bodies for the four non-general sketch personalities plus the generic quick-mode prompt, keyed by the placeholder tokens `<ARCH_PROMPT>`, `<EDGE_PROMPT>`, `<INNOVATION_PROMPT>`, `<PRAGMATIC_PROMPT>`, `<GENERIC_PROMPT>` that `references/sketch-launch.md` substitutes at launch time. The trailing effort suffix is part of the external-launch body; Claude Agent-tool fallback invocations strip it.
 

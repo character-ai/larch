@@ -23,6 +23,10 @@ The number of YES votes required depends on how many voters are available:
 | 1 | Skip voting | All findings accepted automatically |
 | 0 | Skip voting | All findings accepted automatically |
 
+### Sketch-count Independence
+
+**Sketch-count independence (audit conclusion).** Plan-review voting thresholds (3 voters, 2+ YES) and dialectic judge thresholds (3 voters, 2+ same-side) are independent of the `/design` sketch-agent count. The dialectic decision cap `min(5, |contested-decisions|)` naturally handles a smaller pool of contested decisions when fewer sketches diverge. Reducing the regular-mode sketch fan-out from 8 to 4 (umbrella issue #1553) does not require any threshold change.
+
 ## Voter Panel Composition
 
 When all tools are available, the panel has 3 voters. The Claude voter is the same unified Code Reviewer subagent for both skills:

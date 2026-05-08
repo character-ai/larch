@@ -20,6 +20,7 @@ SKILL_MD="$REPO_ROOT/skills/design/SKILL.md"
 FLAGS_MD="$REPO_ROOT/skills/design/references/flags.md"
 DIALEXEC_MD="$REPO_ROOT/skills/design/references/dialectic-execution.md"
 DESIGN_DIR="$REPO_ROOT/skills/design"
+SKETCH_LAUNCH_MD="$REPO_ROOT/skills/design/references/sketch-launch.md"
 
 fail() {
   echo "FAIL: $1" >&2
@@ -71,6 +72,69 @@ grep -q 'All 4 keys are required' "$FLAGS_MD" \
 # shellcheck disable=SC2016 # single quotes intentional — grep pattern is literal, includes backticks
 grep -q '`::` delimiter' "$FLAGS_MD" \
   || fail "references/flags.md lacks the --step-prefix backtick-colon-delimiter literal"
+
+# Check 4b: regular sketch launch output paths and Step 2a.3 collector paths
+# must stay in sync. This pins the intentionally retained 4-slot diagonal
+# after the regular-mode sketch fan-out was reduced from 8 to 4.
+[[ -f "$SKETCH_LAUNCH_MD" ]] || fail "references/sketch-launch.md missing: $SKETCH_LAUNCH_MD"
+
+regular_launch_section=$(awk '
+  /^## Regular Mode/ { flag=1; next }
+  /^## Quick Mode/ && flag { flag=0 }
+  flag { print }
+' "$SKETCH_LAUNCH_MD")
+[[ -n "$regular_launch_section" ]] \
+  || fail "(4b) could not extract Regular Mode section from sketch-launch.md"
+
+regular_collector_section=$(awk '
+  /^\*\*Regular mode\*\* \(4 external output files when both tools available\):$/ { flag=1; next }
+  /^\*\*Quick mode\*\*/ && flag { flag=0 }
+  flag { print }
+' "$SKILL_MD")
+[[ -n "$regular_collector_section" ]] \
+  || fail "(4b) could not extract Step 2a.3 regular collector section from SKILL.md"
+
+expected_regular_sketch_outputs=(
+  'cursor-sketch-arch-output.txt'
+  'cursor-sketch-edge-output.txt'
+  'codex-sketch-innovation-output.txt'
+  'codex-sketch-pragmatic-output.txt'
+)
+
+dropped_regular_sketch_outputs=(
+  'cursor-sketch-innovation-output.txt'
+  'cursor-sketch-pragmatic-output.txt'
+  'codex-sketch-arch-output.txt'
+  'codex-sketch-edge-output.txt'
+)
+
+# shellcheck disable=SC2016 # fixed-string grep literal intentionally contains shell syntax from markdown examples.
+launch_output_count=$(printf '%s\n' "$regular_launch_section" | { grep -F -- '--output "$DESIGN_TMPDIR/' || true; } | wc -l | tr -d ' ')
+[[ "$launch_output_count" == "4" ]] \
+  || fail "(4b) sketch-launch.md Regular Mode must contain exactly 4 regular --output paths; found $launch_output_count"
+
+# shellcheck disable=SC2016 # fixed-string grep literal intentionally contains shell syntax from markdown examples.
+collector_output_count=$(printf '%s\n' "$regular_collector_section" | { grep -F -- '"$DESIGN_TMPDIR/' || true; } | wc -l | tr -d ' ')
+[[ "$collector_output_count" == "4" ]] \
+  || fail "(4b) SKILL.md Step 2a.3 regular collector must contain exactly 4 output paths; found $collector_output_count"
+
+for output in "${expected_regular_sketch_outputs[@]}"; do
+  launch_matches=$(printf '%s\n' "$regular_launch_section" | { grep -F -- "--output \"\$DESIGN_TMPDIR/$output\"" || true; } | wc -l | tr -d ' ')
+  [[ "$launch_matches" == "1" ]] \
+    || fail "(4b) sketch-launch.md Regular Mode must contain exactly one launcher output for $output; found $launch_matches"
+  collector_matches=$(printf '%s\n' "$regular_collector_section" | { grep -F -- "\"\$DESIGN_TMPDIR/$output\"" || true; } | wc -l | tr -d ' ')
+  [[ "$collector_matches" == "1" ]] \
+    || fail "(4b) SKILL.md Step 2a.3 collector must contain exactly one output path for $output; found $collector_matches"
+done
+
+for output in "${dropped_regular_sketch_outputs[@]}"; do
+  if printf '%s\n' "$regular_launch_section" | grep -Fq -- "$output"; then
+    fail "(4b) sketch-launch.md Regular Mode still contains dropped output path $output"
+  fi
+  if printf '%s\n' "$regular_collector_section" | grep -Fq -- "$output"; then
+    fail "(4b) SKILL.md Step 2a.3 regular collector still contains dropped output path $output"
+  fi
+done
 
 # Check 5: skills/design/ tree must contain zero Step-3a removal residue tokens (issue #453).
 [[ -d "$DESIGN_DIR" ]] || fail "skills/design/ directory missing: $DESIGN_DIR"
