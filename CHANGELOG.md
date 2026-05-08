@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [17.0.1] - 2026-05-07
+
+### Fixed
+
+- Resolve #1475: align the absent-sentinel encoding for the `.claude-plugin/plugin.json` baseline check in `skills/implement/scripts/step2-implement.sh`. The Step 1 baseline write now uses an empty file (`: > "$file.tmp"`) when `plugin.json` is absent, and the Step 6b post-implementer comparison uses `CURRENT_PLUGIN_JSON=""` for the same absent state. Previously the baseline used `printf '\n'` while the post-check used `$'\n'`, which compared unequal because `$(cat …)` strips trailing newlines per POSIX. The mismatch caused a deterministic false-positive `protected-path-modified` bail for `--coder=codex` (default), `--coder=cursor`, and `--coder=gemini` in any consumer repo lacking `.claude-plugin/plugin.json`. New Test 13 in `skills/implement/scripts/test-step2-dispatch.sh` covers the absent-then-still-absent case end-to-end with a stub Codex spawn → manifest → Step 6/7 → dispatcher-side commit flow, asserting `STATUS=complete` plus `ORCHESTRATOR_EDIT_AUTHORITY=forbidden` + `MANIFEST=` per NEVER #10. Test 12 entry added to `test-step2-dispatch.md` to close the previously latent 11→13 numbering gap.
+
 ## [17.0.0] - 2026-05-07
 
 ### Changed
