@@ -97,15 +97,15 @@ if grep -q 'REPO_ROOT=\$(git rev-parse --show-toplevel 2>/dev/null || pwd -P)' "
 fi
 
 # (I) NEVER list updates.
-grep -q 'NEVER parse.*--merge.*--no-slack.*--private' "$SKILL_MD" \
-  || fail "(I.1) NEVER #5 should mention all three flags (--merge, --no-slack, --private)"
+grep -q 'NEVER parse.*--merge.*--slack.*--private' "$SKILL_MD" \
+  || fail "(I.1) NEVER #5 should mention all three flags (--merge, --slack, --private)"
 grep -q 'NEVER hardcode' "$SKILL_MD" \
   || fail "(I.2) NEVER list should include the TARGET_DIR-threading rule"
 grep -q 'NEVER use .eval' "$SKILL_MD" \
   || fail "(I.3) NEVER list should forbid eval of resolve-target.sh stdout"
 
 # (J) Frontmatter argument-hint includes [--private].
-grep -q 'argument-hint: "\[--merge\] \[--no-slack\] \[--private\]' "$SKILL_MD" \
+grep -q 'argument-hint: "\[--merge\] \[--slack\] \[--private\]' "$SKILL_MD" \
   || fail "(J) frontmatter argument-hint must include [--private]"
 
 # (K) No stale Step-2/3/4 hardcoded paths.

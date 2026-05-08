@@ -25,6 +25,10 @@ The script prefers `./node_modules/.bin/mmdc` resolved from the repo root, then 
 
 This repo pins `@mermaid-js/mermaid-cli` in `package.json`. Version 11.12.0 documents `mmdc` as the package bin and depends on Mermaid 11.x. The script probes `mmdc --help` for `--parseOnly`; when supported, it uses parse-only mode. Otherwise it renders to a temp `.svg` file because `mmdc` rejects extension-less outputs.
 
+## Chromium sandbox workaround
+
+When the script falls back to the SVG-render path (mmdc 11.x without `--parseOnly`), it forwards a repo-pinned puppeteer config via `--puppeteerConfigFile scripts/lint-mermaid-puppeteer.json`. The config passes `--no-sandbox` and `--disable-setuid-sandbox` to Chromium so the renderer launches on Ubuntu 23.10+ runners with restricted unprivileged user namespaces (otherwise puppeteer aborts with `[FATAL:zygote_host_impl_linux.cc] No usable sandbox!` before reaching any Mermaid syntax check). The config file is checked in alongside the script for auditability; if it is missing the script silently degrades to the un-flagged invocation (preserving older-runner behavior). macOS runners ignore `--no-sandbox` harmlessly.
+
 ## Fence Extraction
 
 The extractor is a fenced-block state machine:

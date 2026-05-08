@@ -342,7 +342,7 @@ run_slack() {
     slack_ts=""
 
     if [ "$slack_enabled" = "false" ]; then
-        printf '⏭️ 16a: slack issue post — skipped (--no-slack) (%s)\n' "$(elapsed "$start")"
+        printf '⏭️ 16a: slack issue post — skipped (--slack not set) (%s)\n' "$(elapsed "$start")"
     elif [ "$slack_available" = "false" ]; then
         printf '⏭️ 16a: slack issue post — skipped (Slack not configured) (%s)\n' "$(elapsed "$start")"
     elif [ "$deferred" = "true" ] || [ -z "$issue_number" ]; then

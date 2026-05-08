@@ -314,7 +314,7 @@ assert_contains "MERGE must be true or false" "$OUT" "postmerge: invalid boolean
 
 write_state "$STATE" SLACK_ENABLED=false PR_CLOSED=true
 OUT=$(run_subject slack --state-file "$STATE" --final-bail-reason-file "$BAIL")
-assert_contains "⏭️ 16a: slack issue post — skipped (--no-slack) (<elapsed>)" "$OUT" "slack: --no-slack skip"
+assert_contains "⏭️ 16a: slack issue post — skipped (--slack not set) (<elapsed>)" "$OUT" "slack: --slack-not-set skip"
 assert_contains "RUN_OUTCOME=closed" "$OUT" "slack: closed outcome emitted on skip"
 
 write_state "$STATE" SLACK_ENABLED=false DESIGN_ONLY_DONE=true

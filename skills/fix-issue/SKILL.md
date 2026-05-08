@@ -1,7 +1,7 @@
 ---
 name: fix-issue
 description: "Use when fixing open GitHub issues. Processes one approved issue per invocation: skips issues with open blockers, triages, classifies intent, then either delegates to /implement or follows the issue's instructions inline for research/review tasks."
-argument-hint: "[--auto] [--no-slack] [--no-admin-fallback] [--coder=<value>] [--inline] [--issue <number-or-url>] [<number-or-url>]"
+argument-hint: "[--auto] [--slack] [--no-admin-fallback] [--coder=<value>] [--inline] [--issue <number-or-url>] [<number-or-url>]"
 allowed-tools: Bash, Read, Grep, Glob, Skill
 ---
 
@@ -16,12 +16,12 @@ Process one approved GitHub issue per invocation. Fetches open issues with a `GO
 **Flags**: Parse flags from the start of `$ARGUMENTS`.
 
 - `--auto`: Set `auto_mode=true`. Forward bare `--auto` to `/implement` in Step 5a (both SIMPLE and HARD bullets) when set; do NOT forward when unset. Default: `auto_mode=false`. When forwarded, `/implement` runs autonomously per its own `--auto` semantics — `/design` skips its interactive checkpoints, Step 2 opportunistic questions are suppressed, and Step 12 merge-conflict resolution uses best-effort instead of `AskUserQuestion`. `/fix-issue` itself does not currently issue interactive prompts in its own steps; the flag is purely a pass-through. Independent of all other flags.
-- `--no-slack`: Set `slack_enabled=false`. Forward `--no-slack` to `/implement` in Step 5a. Default: `slack_enabled=true`. When `slack_enabled=true` (default), the delegated `/implement` run posts to Slack (Step 16a) when Slack env vars are configured; the `NON_PR` path's Step 7 Slack announcement also posts via the shared `scripts/post-issue-slack.sh`. When `slack_enabled=false` (user passed `--no-slack`), no Slack calls are made on either path.
+- `--slack`: Set `slack_enabled=true`. Forward `--slack` to `/implement` in Step 5a. Default: `slack_enabled=false`. When `slack_enabled=true`, the delegated `/implement` run posts to Slack (Step 16a) when Slack env vars are configured; the `NON_PR` path's Step 7 Slack announcement also posts via the shared `scripts/post-issue-slack.sh`. When `slack_enabled=false` (default; `--slack` not set), no Slack calls are made on either path.
 - `--no-admin-fallback`: Set `no_admin_fallback=true`. Forward `--no-admin-fallback` to `/implement` in Step 5a (both SIMPLE and HARD bullets). Default: `no_admin_fallback=false`. When `true`, the delegated `/implement` run instructs `merge-pr.sh` to skip the default `--admin`-first attempt once the admin-eligible gate (CI good + branch fresh) is reached, try only a plain squash merge, emit `MERGE_RESULT=policy_denied` if that plain merge fails, and bail to Step 12d with a documented reason. See `skills/implement/SKILL.md` `--no-admin-fallback` for the full semantics.
 - `--coder=<value>`: Set `coder=<value>`. Forward `--coder=$coder` to `/implement` in Step 5a (both SIMPLE and HARD bullets) exactly as provided, with no validation or interpretation by `/fix-issue`. Only the `--coder=<value>` form (single token, `=`-separated) is recognized — the space-separated `--coder <value>` form is NOT supported, so a positional issue argument like `/fix-issue --coder codex 42` would treat `codex` as the issue identifier; pass `--coder=codex 42` instead. Default: empty (flag absent, or `--coder=` with an empty value → not forwarded). `/implement`'s own `--coder` flag validates the value (`claude` / `codex` / `cursor` / `gemini` accepted).
 - `--inline`: Set `inline_mode=true`. Forward bare `--inline` to `/implement` in Step 5a on the **HARD bullet only** when set; do NOT forward when unset and do NOT forward on the SIMPLE bullet. Default: `inline_mode=false`. Per `skills/implement/SKILL.md` `--inline`, the flag controls whether `/design`'s heavy phase runs in an isolated subagent (`--inline` absent, default) or in `/design`'s in-turn context (`--inline` present). The SIMPLE bullet uses `/implement --quick`, which skips `/design` entirely — so `--inline` is a no-op there and is intentionally not forwarded to keep the SIMPLE invocation minimal. Independent of all other flags.
 - `--issue <number-or-url>`: **Deprecated** — recognized for backward compatibility. Prefer passing the issue number or URL as a positional argument (e.g., `/fix-issue 42`). When this flag is encountered, print: `**ℹ '--issue' is deprecated; pass the issue number or URL as a positional argument instead (e.g., /fix-issue 42).**`
-- **Positional argument** (after flag stripping): If any non-flag text remains in `$ARGUMENTS` after stripping all flags defined above (`--auto`, `--no-slack`, `--no-admin-fallback`, `--coder`, `--inline`, `--issue`), treat it as the issue number or URL. Set `ISSUE_ARG` to this value. When set, Step 0 targets this specific issue instead of scanning for an eligible candidate (auto-pick prefers issues with the whole word `urgent` anywhere in the title — case-insensitive, word-boundary; "non-urgent" does NOT match — and falls back to oldest-first within each tier). Accepts a bare issue number (e.g., `42`) or a full GitHub issue URL (e.g., `https://github.com/owner/repo/issues/42`). The issue must be open, have `GO` as its last comment, and have no currently-open blocking dependencies (see Step 0 for the degradation note when the dependency endpoint is unavailable). Default: empty (auto-pick mode). If both `--issue` and a positional argument are provided, print: `**⚠ Both --issue and a positional argument were provided. Using the positional argument.**` and use the positional argument.
+- **Positional argument** (after flag stripping): If any non-flag text remains in `$ARGUMENTS` after stripping all flags defined above (`--auto`, `--slack`, `--no-admin-fallback`, `--coder`, `--inline`, `--issue`), treat it as the issue number or URL. Set `ISSUE_ARG` to this value. When set, Step 0 targets this specific issue instead of scanning for an eligible candidate (auto-pick prefers issues with the whole word `urgent` anywhere in the title — case-insensitive, word-boundary; "non-urgent" does NOT match — and falls back to oldest-first within each tier). Accepts a bare issue number (e.g., `42`) or a full GitHub issue URL (e.g., `https://github.com/owner/repo/issues/42`). The issue must be open, have `GO` as its last comment, and have no currently-open blocking dependencies (see Step 0 for the degradation note when the dependency endpoint is unavailable). Default: empty (auto-pick mode). If both `--issue` and a positional argument are provided, print: `**⚠ Both --issue and a positional argument were provided. Using the positional argument.**` and use the positional argument.
 
 ## Mindset
 
@@ -120,7 +120,7 @@ If `REPO_UNAVAILABLE=true`, print `**⚠ Could not determine repository. GitHub 
 
 If `SLACK_OK=true`, set `slack_available=true`. **Do NOT make a separate Bash call to resolve Slack env vars.** When Slack tokens are needed (Steps 3 and 7), use inline shell expansion: `"${LARCH_SLACK_BOT_TOKEN:-$CLAUDE_PLUGIN_OPTION_SLACK_BOT_TOKEN}"` and `"${LARCH_SLACK_CHANNEL_ID:-$CLAUDE_PLUGIN_OPTION_SLACK_CHANNEL_ID}"`.
 
-If `SLACK_OK=false`, print (only when `slack_enabled=true`) `**⚠ Slack not configured ($SLACK_MISSING). Slack announcements will be skipped.**` Set `slack_available=false`. When `slack_enabled=false` (user passed `--no-slack`), suppress the warning.
+If `SLACK_OK=false`, print (only when `slack_enabled=true`) `**⚠ Slack not configured ($SLACK_MISSING). Slack announcements will be skipped.**` Set `slack_available=false`. When `slack_enabled=false` (default; `--slack` not set), suppress the warning.
 
 Write session-env for forwarding to `/implement`:
 
@@ -217,8 +217,8 @@ Compose the feature description from the issue content: use the issue title as t
 
 Invoke `/implement` via the Skill tool. Forwarding `--issue $ISSUE_NUMBER` makes `/implement` adopt the queue issue as its tracking issue (Phase 3 Branch 2 adoption), so the two skills converge on the same tracking issue and `/fix-issue` avoids a duplicate tracking-issue on its path:
 
-- **SIMPLE**: `/implement --quick --merge --session-env $FIX_ISSUE_TMPDIR/session-env.sh --issue $ISSUE_NUMBER [--auto if auto_mode] [--no-slack if !slack_enabled] [--no-admin-fallback if no_admin_fallback] [--coder=$coder if coder set] <feature description>`
-- **HARD**: `/implement --merge --session-env $FIX_ISSUE_TMPDIR/session-env.sh --issue $ISSUE_NUMBER [--auto if auto_mode] [--no-slack if !slack_enabled] [--no-admin-fallback if no_admin_fallback] [--coder=$coder if coder set] [--inline if inline_mode] <feature description>`
+- **SIMPLE**: `/implement --quick --merge --session-env $FIX_ISSUE_TMPDIR/session-env.sh --issue $ISSUE_NUMBER [--auto if auto_mode] [--slack if slack_enabled] [--no-admin-fallback if no_admin_fallback] [--coder=$coder if coder set] <feature description>`
+- **HARD**: `/implement --merge --session-env $FIX_ISSUE_TMPDIR/session-env.sh --issue $ISSUE_NUMBER [--auto if auto_mode] [--slack if slack_enabled] [--no-admin-fallback if no_admin_fallback] [--coder=$coder if coder set] [--inline if inline_mode] <feature description>`
 
 After `/implement` completes, capture the PR URL and PR number from its output. Save as `PR_URL` and `PR_NUMBER`.
 
@@ -326,11 +326,11 @@ Print `✅ 6: close issue — #$ISSUE_NUMBER closed (<elapsed>)` (mention umbrel
 
 ## Step 7 — Slack Announce (NON_PR path only)
 
-The PR path's Slack announcement is handled by the child `/implement` at its Step 16a — this skill does NOT post again to avoid duplication. This step runs only for `INTENT=NON_PR`.
+The PR path's Slack decision is handled by the child `/implement` at its Step 16a — this skill does NOT post again to avoid duplication. This step runs only for `INTENT=NON_PR`.
 
-If `INTENT=PR`, print `⏭️ 7: slack announce — skipped (PR path — /implement posted at Step 16a) (<elapsed>)` and proceed to Step 8.
+If `INTENT=PR`, print `⏭️ 7: slack announce — skipped (PR path — /implement owns Step 16a) (<elapsed>)` and proceed to Step 8.
 
-If `slack_enabled=false` (user passed `--no-slack`), print `⏭️ 7: slack announce — skipped (--no-slack) (<elapsed>)` and proceed to Step 8.
+If `slack_enabled=false` (default; `--slack` not set), print `⏭️ 7: slack announce — skipped (--slack not set) (<elapsed>)` and proceed to Step 8.
 
 If `slack_available=false`, print `⏭️ 7: slack announce — skipped (Slack not configured) (<elapsed>)` and proceed to Step 8.
 
