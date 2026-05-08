@@ -120,6 +120,10 @@ Step Name Registry:
 | 3.5 | auto-issue |
 | 4 | cleanup |
 
+## Anti-patterns
+
+1. **NEVER improvise ScheduleWakeup outside skill-script direction.** **Why**: `/research` is single-iteration by contract — its terminal `## Step 4 — Cleanup and Final Warnings` block ends the run. Calling `ScheduleWakeup` after the cleanup, or narrating "next iteration" / "loop sleeping until ..." prose, is orchestrator improvisation outside any of `/research`'s steps. Recurring behavior is owned by `/loop`'s `<<autonomous-loop-dynamic>>` sentinel mechanism, not by improvised wakeup chains in this skill. **How to apply**: this skill has no step that calls `ScheduleWakeup`; do not call it from anywhere in the run. See AGENTS.md for the project-wide rule that this entry mirrors. **CI-backed**: yes — `scripts/test-anti-improvised-wakeup.sh` pins the literal at this site.
+
 ## Step 0 — Session Setup
 
 ### 0a — Session Setup and Reviewer Check
