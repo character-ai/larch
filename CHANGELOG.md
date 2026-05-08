@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [17.0.9] - 2026-05-08
+
+### Added
+
+- Resolve #1484: add private dev-only `/agnix-fix <issue-number>` skill at `.claude/skills/agnix-fix/SKILL.md`. Wraps `/implement --forked --quick --auto --coder=codex` for fixing `agent-sh/agnix` issues end-to-end from a fork clone. Fetches the upstream issue via `gh issue view --repo agent-sh/agnix --json title,body,state,url`, validates `state=OPEN` and rejects PR URLs, then composes a feature description from the upstream URL/title/body and forwards to `/implement`. Bakes in CI-monitoring guidance for the deterministic `add-to-project.yml` failure on fork PRs (`secrets.PROJECT_TOKEN` is org-level on `agent-sh` and not shared with forks). Idempotently provisions the `skip-changelog` label on the fork via `gh api repos/$FORK_REPO/labels/skip-changelog` 404-check + `gh label create`. Defensive guards: strict `owner/repo` match on `git remote get-url upstream` (HTTPS / SSH / `ssh://` forms via sed normalization, then equality vs `agent-sh/agnix`); per-run random 16-byte hex delimiter wrapping the upstream issue body to resist prompt-injection from a hostile issue body in `--auto` mode (collision-guarded — refuses if body already contains the delimiter); `gh` stderr captured separately so warnings cannot corrupt the JSON stream `jq` parses; explicit `--coder=codex` to suppress the small-plan auto-route (#1481) on Rust agnix work. Not shipped to other plugin consumers; place in `.claude/skills/` only.
+
 ## [17.0.8] - 2026-05-08
 
 ### Changed
