@@ -122,15 +122,26 @@ PATH="$STUB_BIN:$PATH" \
 assert_eq "stub invoked once" "1" "$(cat "$COUNT")"
 assert_eq "token session id rehydrated" "mock-codex-review-session" "$(cat "$TOKEN_SESSION_FILE")"
 assert_eq "argv 1" "exec" "$(sed -n '1p' "$ARGV")"
-assert_eq "argv 2" "--full-auto" "$(sed -n '2p' "$ARGV")"
-assert_eq "argv 3" "-C" "$(sed -n '3p' "$ARGV")"
-assert_eq "argv 4" "$REPO_ROOT" "$(sed -n '4p' "$ARGV")"
-assert_eq "argv 5 add-dir flag" "--add-dir" "$(sed -n '5p' "$ARGV")"
-assert_eq "argv 6 canonical output dir" "$(cd "$OUTDIR_REAL" && pwd -P)" "$(sed -n '6p' "$ARGV")"
+# Issue #1529: read-only review sandbox replaces --full-auto.
+assert_eq "argv 2 sandbox flag" "--sandbox" "$(sed -n '2p' "$ARGV")"
+assert_eq "argv 3 sandbox value" "read-only" "$(sed -n '3p' "$ARGV")"
+assert_eq "argv 4" "-C" "$(sed -n '4p' "$ARGV")"
+assert_eq "argv 5" "$REPO_ROOT" "$(sed -n '5p' "$ARGV")"
+assert_eq "argv 6 add-dir flag" "--add-dir" "$(sed -n '6p' "$ARGV")"
+assert_eq "argv 7 canonical output dir" "$(cd "$OUTDIR_REAL" && pwd -P)" "$(sed -n '7p' "$ARGV")"
+# argv MUST NOT carry --full-auto anymore.
+if grep -Fxq -- '--full-auto' "$ARGV"; then
+    fail "argv must NOT contain --full-auto under the issue #1529 read-only contract"
+else
+    pass
+fi
 assert_grep "outer launcher metadata" "OUTER_LAUNCHER=$REPO_ROOT/scripts/launch-codex-review.sh" "${OUTPUT}.meta"
 assert_grep "outer prompt metadata" "OUTER_LAUNCHER_PROMPT_FILE=${OUTPUT}.prompt" "${OUTPUT}.meta"
 assert_grep "dirty-tree sidecar status" "STATUS=" "${OUTPUT}.dirty-tree"
 assert_grep "dirty-tree sidecar mode" "MODE=baseline" "${OUTPUT}.dirty-tree"
+# Issue #1529: prompt sidecar carries the HARD CONSTRAINTS read-only preamble.
+assert_grep "prompt preamble HARD CONSTRAINTS" "HARD CONSTRAINTS — your role is read-only review" "${OUTPUT}.prompt"
+assert_grep "prompt preamble sandbox-flag mention" "--sandbox read-only" "${OUTPUT}.prompt"
 
 if [[ "$(grep -Fxc -- '-m' "$ARGV")" == "1" ]] && grep -Fxq -- 'stub-model' "$ARGV"; then
     pass
@@ -179,12 +190,25 @@ PATH="$STUB_BIN:$PATH" \
     CODEX_STUB_ARGV_LOG="$ARGV_PROMPT_FILE" \
     CODEX_STUB_COUNT_FILE="$COUNT_PROMPT_FILE" \
     "$LAUNCHER" --output "$TMPDIR/prompt-file-output.txt" --timeout 5 --prompt-file "$PROMPT_FILE" >/dev/null
-EXPECTED_PROMPT_ARG="$TMPDIR/expected-prompt-arg.txt"
-printf 'from prompt file\n\n' > "$EXPECTED_PROMPT_ARG"
-if [[ "$(cat "$COUNT_PROMPT_FILE")" == "1" ]] && cmp -s "$EXPECTED_PROMPT_ARG" "${TMPDIR}/prompt-file-output.txt.prompt"; then
+# Issue #1529: the prompt sidecar now contains the HARD CONSTRAINTS preamble
+# followed by two newlines and then the original prompt-file bytes. Verify
+# both the preamble's presence and that the original bytes are still preserved
+# verbatim at the tail.
+PROMPT_SIDECAR="${TMPDIR}/prompt-file-output.txt.prompt"
+if [[ "$(cat "$COUNT_PROMPT_FILE")" == "1" ]]; then
     pass
 else
-    fail "--prompt-file should preserve prompt bytes and still launch through Codex"
+    fail "--prompt-file should still launch through Codex exactly once"
+fi
+assert_grep "--prompt-file preamble in sidecar" "HARD CONSTRAINTS — your role is read-only review" "$PROMPT_SIDECAR"
+# The original `from prompt file\n\n` bytes must appear verbatim AFTER the
+# preamble. Check the tail bytes byte-by-byte.
+TAIL_EXPECTED="$TMPDIR/tail-expected.txt"
+printf 'from prompt file\n\n' > "$TAIL_EXPECTED"
+if tail -c "$(wc -c < "$TAIL_EXPECTED" | tr -d ' ')" "$PROMPT_SIDECAR" | cmp -s - "$TAIL_EXPECTED"; then
+    pass
+else
+    fail "--prompt-file original bytes must appear verbatim at the tail of prompt sidecar"
 fi
 
 if (( FAIL > 0 )); then
