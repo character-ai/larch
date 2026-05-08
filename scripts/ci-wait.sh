@@ -13,7 +13,7 @@
 # a leaked-polling-loop risk on signal-kill (#842). See scripts/ci-wait.md.
 #
 # Usage:
-#   ci-wait.sh --pr NUMBER --repo OWNER/REPO [--rebase-count N] [--fix-attempts N] [--iteration N] [--timeout SECONDS] [--output-file PATH]
+#   ci-wait.sh --pr NUMBER --repo OWNER/REPO [--rebase-count N] [--fix-attempts N] [--iteration N] [--timeout SECONDS] [--output-file PATH] [--base-remote NAME] [--base-ref BRANCH] [--empty-checks-grace SECONDS]
 #
 # Options:
 #   --pr             PR number (required)
@@ -31,7 +31,10 @@
 # Outputs (stdout when --output-file absent; otherwise the file at <path>):
 #   key=value — always all lines, in order:
 #   ACTION=merge|rebase|already_merged|rebase_then_evaluate|evaluate_failure|bail
-#   CI_STATUS=pass|fail|pending|merged
+#   CI_STATUS=pass|fail|pending|merged|NO_CHECKS
+#       NO_CHECKS only appears when --empty-checks-grace > 0 and the
+#       fork's checks array is still empty after the grace period
+#       (paired with ACTION=bail per the fork dry-run contract).
 #   BEHIND_COUNT=<N>
 #   FAILED_RUN_ID=<id>          (empty string if no failure)
 #   BAIL_REASON=<text>          (empty string if ACTION != bail)
@@ -57,7 +60,7 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-usage() { echo "Usage: ci-wait.sh --pr NUMBER --repo OWNER/REPO [--rebase-count N] [--fix-attempts N] [--iteration N] [--timeout SECONDS] [--output-file PATH]" >&2; }
+usage() { echo "Usage: ci-wait.sh --pr NUMBER --repo OWNER/REPO [--rebase-count N] [--fix-attempts N] [--iteration N] [--timeout SECONDS] [--output-file PATH] [--base-remote NAME] [--base-ref BRANCH] [--empty-checks-grace SECONDS]" >&2; }
 
 # --- Defaults ---
 PR_NUMBER=""
@@ -67,6 +70,9 @@ FIX_ATTEMPTS=0
 ITERATION=0
 TIMEOUT=1800
 OUTPUT_FILE=""
+BASE_REMOTE="origin"
+BASE_REF="main"
+EMPTY_CHECKS_GRACE=0
 
 # --- Parse arguments (before installing EXIT trap to avoid emitting output on usage errors) ---
 while [[ $# -gt 0 ]]; do
@@ -78,6 +84,9 @@ while [[ $# -gt 0 ]]; do
         --iteration) ITERATION="${2:?--iteration requires a value}"; shift 2 ;;
         --timeout) TIMEOUT="${2:?--timeout requires a value}"; shift 2 ;;
         --output-file) OUTPUT_FILE="${2:?--output-file requires a value}"; shift 2 ;;
+        --base-remote) BASE_REMOTE="${2:?--base-remote requires a value}"; shift 2 ;;
+        --base-ref) BASE_REF="${2:?--base-ref requires a value}"; shift 2 ;;
+        --empty-checks-grace) EMPTY_CHECKS_GRACE="${2:?--empty-checks-grace requires a value}"; shift 2 ;;
         --help) usage; exit 0 ;;
         *) echo "Unknown option: $1" >&2; usage; exit 1 ;;
     esac
@@ -89,13 +98,18 @@ if [[ -z "$PR_NUMBER" ]] || [[ -z "$REPO" ]]; then
 fi
 
 # Validate numeric arguments
-for var_name in REBASE_COUNT FIX_ATTEMPTS ITERATION TIMEOUT; do
+for var_name in REBASE_COUNT FIX_ATTEMPTS ITERATION TIMEOUT EMPTY_CHECKS_GRACE; do
     val="${!var_name}"
     if ! [[ "$val" =~ ^[0-9]+$ ]]; then
         echo "ERROR: --$(echo "$var_name" | tr '_' '-' | tr '[:upper:]' '[:lower:]') must be a non-negative integer, got: $val" >&2
         exit 1
     fi
 done
+
+if [[ ! "$BASE_REMOTE" =~ ^[A-Za-z0-9._/-]+$ ]] || [[ ! "$BASE_REF" =~ ^[A-Za-z0-9._/-]+$ ]]; then
+    echo "ERROR: --base-remote/--base-ref contain unsupported characters" >&2
+    exit 1
+fi
 
 # --- Clear stale output / sentinel from a prior crashed run (file-mode only) ---
 # Done after validation but before installing the EXIT trap, so a consumer
@@ -166,7 +180,7 @@ while true; do
     fi
 
     # 1. Check CI status
-    CI_OUTPUT=$("$SCRIPT_DIR/ci-status.sh" --pr "$PR_NUMBER" --repo "$REPO" ) || true
+    CI_OUTPUT=$("$SCRIPT_DIR/ci-status.sh" --pr "$PR_NUMBER" --repo "$REPO" --base-remote "$BASE_REMOTE" --base-ref "$BASE_REF" --empty-checks-grace "$EMPTY_CHECKS_GRACE" ) || true
     CI_STATUS=$(echo "$CI_OUTPUT" | grep '^CI_STATUS=' | head -1 | cut -d= -f2-)
     BEHIND_COUNT=$(echo "$CI_OUTPUT" | grep '^BEHIND_COUNT=' | head -1 | cut -d= -f2-)
     FAILED_RUN_ID=$(echo "$CI_OUTPUT" | grep '^FAILED_RUN_ID=' | head -1 | cut -d= -f2-)
@@ -187,6 +201,13 @@ while true; do
         ci_failures=0
         BEHIND_COUNT="${BEHIND_COUNT:-0}"
         FAILED_RUN_ID="${FAILED_RUN_ID:-}"
+    fi
+
+    if [[ "$CI_STATUS" == "NO_CHECKS" ]]; then
+        ACTION="bail"
+        BAIL_REASON="No CI checks observed after ${EMPTY_CHECKS_GRACE}s grace"
+        printf "\n⚠ CI produced no checks after %ds grace\n" "$EMPTY_CHECKS_GRACE" >&2
+        exit 0
     fi
 
     # 2. Get decision

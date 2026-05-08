@@ -14,7 +14,7 @@ When `--output-file` is **absent**, the EXIT trap emits 7 KV lines on stdout in 
 
 ```
 ACTION=merge|rebase|already_merged|rebase_then_evaluate|evaluate_failure|bail
-CI_STATUS=pass|fail|pending|merged
+CI_STATUS=pass|fail|pending|merged|NO_CHECKS
 BEHIND_COUNT=<N>
 FAILED_RUN_ID=<id-or-empty>
 BAIL_REASON=<text-or-empty>
@@ -23,6 +23,8 @@ ELAPSED=<seconds>
 ```
 
 Default callers (`/implement` Step 10, Step 12a, and the four step-7 re-invocation branches in `skills/implement/references/rebase-rebump-subprocedure.md`) parse stdout. No `.done` sentinel is written in default mode.
+
+`--base-remote NAME`, `--base-ref BRANCH`, and `--empty-checks-grace SECONDS` are forwarded to `ci-status.sh` on every poll. When `ci-status.sh` returns `CI_STATUS=NO_CHECKS`, `ci-wait.sh` stops polling immediately and emits `ACTION=bail` with a no-checks bail reason; this is used by `/implement --forked` to avoid burning the full CI timeout on forks where Actions are disabled or every workflow is upstream-only.
 
 ## Optional `--output-file <path>` mode
 

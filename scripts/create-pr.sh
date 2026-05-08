@@ -5,7 +5,7 @@
 # If none exists, pushes the branch and creates a new PR.
 #
 # Usage:
-#   create-pr.sh --title TEXT --body-file FILE [--draft]
+#   create-pr.sh --title TEXT --body-file FILE [--draft] [--repo OWNER/REPO]
 #
 # Arguments:
 #   --title     — PR title (under 70 chars recommended)
@@ -37,16 +37,18 @@ cleanup() {
 }
 trap cleanup EXIT
 
-usage() { echo "Usage: create-pr.sh --title TEXT --body-file FILE [--draft]" >&2; }
+usage() { echo "Usage: create-pr.sh --title TEXT --body-file FILE [--draft] [--repo OWNER/REPO]" >&2; }
 
 TITLE=""
 BODY_FILE=""
 DRAFT=false
+TARGET_REPO=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --title) TITLE="${2:?--title requires a value}"; shift 2 ;;
         --body-file) BODY_FILE="${2:?--body-file requires a value}"; shift 2 ;;
         --draft) DRAFT=true; shift ;;
+        --repo) TARGET_REPO="${2:?--repo requires a value}"; shift 2 ;;
         --help) usage; exit 0 ;;
         *) echo "Unknown option: $1" >&2; usage; exit 2 ;;
     esac
@@ -60,6 +62,15 @@ fi
 if [[ ! -f "$BODY_FILE" ]]; then
     echo "ERROR: Body file not found: $BODY_FILE" >&2
     exit 2
+fi
+
+GH_REPO_ARGS=()
+if [[ -n "$TARGET_REPO" ]]; then
+    if [[ ! "$TARGET_REPO" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; then
+        echo "ERROR: --repo must be OWNER/REPO using GitHub owner/repo characters" >&2
+        exit 2
+    fi
+    GH_REPO_ARGS=(--repo "$TARGET_REPO")
 fi
 
 if [[ ! -x "$REDACT_TMPDIR_HELPER" ]]; then
@@ -80,7 +91,7 @@ if [[ -z "$BRANCH" ]]; then
 fi
 
 # --- Check for existing open PR ---
-EXISTING_PR=$(gh pr view --json number,url,state,title 2>/dev/null || echo "")
+EXISTING_PR=$(gh pr view "${GH_REPO_ARGS[@]}" --json number,url,state,title 2>/dev/null || echo "")
 if [[ -n "$EXISTING_PR" ]]; then
     PR_STATE=$(echo "$EXISTING_PR" | jq -r '.state // empty' 2>/dev/null || echo "")
     if [[ "$PR_STATE" == "OPEN" ]]; then
@@ -113,7 +124,7 @@ if [[ -n "$EXISTING_PR" ]]; then
             # Fetch the existing PR title
             PR_TITLE=$(echo "$EXISTING_PR" | jq -r '.title // empty' 2>/dev/null || echo "")
             if [[ -z "$PR_TITLE" ]]; then
-                PR_TITLE=$(gh pr view "$PR_NUMBER" --json title -q '.title' 2>/dev/null || echo "")
+                PR_TITLE=$(gh pr view "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --json title -q '.title' 2>/dev/null || echo "")
             fi
             echo "PR_NUMBER=$PR_NUMBER"
             echo "PR_URL=$PR_URL"
@@ -138,6 +149,7 @@ if [[ "$DRAFT" == "true" ]]; then
     GH_DRAFT_ARGS+=(--draft)
 fi
 PR_OUTPUT=$(gh pr create \
+    "${GH_REPO_ARGS[@]}" \
     --assignee @me \
     --head "$BRANCH" \
     --base main \
@@ -162,7 +174,7 @@ PR_NUMBER=$(echo "$PR_URL" | grep -oE '[0-9]+$' || echo "")
 
 if [[ -z "$PR_NUMBER" ]]; then
     # Fallback: fetch via gh pr view if URL parsing failed
-    PR_NUMBER=$(gh pr view --json number -q '.number' 2>/dev/null || echo "")
+    PR_NUMBER=$(gh pr view "${GH_REPO_ARGS[@]}" --json number -q '.number' 2>/dev/null || echo "")
 fi
 
 if [[ -z "$PR_NUMBER" ]] || [[ -z "$PR_URL" ]]; then

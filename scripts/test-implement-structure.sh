@@ -953,6 +953,33 @@ if grep -Fq -- "$old_unconditional_prose" "$SKILL_MD"; then
   fail "(25) SKILL.md still contains the legacy unconditional --skip-branch-check prose"
 fi
 
+# Fork-mode structural pins (issue #1415). These checks intentionally sit near
+# assertion 25 because the fork helper is the only permitted pre-setup exception
+# to the Step 0 clean-main entry gate.
+grep -Fq -- '--forked' "$SKILL_MD" \
+  || fail "(25-fork) SKILL.md argument/flag surface must advertise --forked"
+printf '%s\n' "$protocol_line" | grep -Fq 'implement-fork-env.sh' \
+  || fail "(25-fork) Protocol Execution Directive must name implement-fork-env.sh as the fork pre-setup exception"
+# Round 1 FINDING_1 + Round 3 FINDING_1 fix: Step 0 invokes
+# implement-fork-env.sh WITHOUT --tmpdir (the helper allocates its own
+# bootstrap via mktemp because IMPLEMENT_TMPDIR is not yet set when
+# this runs). Pin both the bare invocation and the absence of the old
+# --tmpdir-passing form so future edits cannot silently regress.
+printf '%s\n' "$step0_section" | grep -Eq '\$\{CLAUDE_PLUGIN_ROOT\}/scripts/implement-fork-env\.sh($|[^ ]| *$)' \
+  || fail "(25-fork) Step 0 must invoke implement-fork-env.sh exactly once under forked_target=true"
+printf '%s\n' "$step0_section" | grep -Fq 'implement-fork-env.sh --tmpdir "$IMPLEMENT_TMPDIR"' \
+  && fail "(25-fork) Step 0 must NOT pass --tmpdir \"\$IMPLEMENT_TMPDIR\" (Round 1 FINDING_1 — IMPLEMENT_TMPDIR is unset at this point)"
+printf '%s\n' "$step0_section" | grep -Fq 'CALLER_ENV_PATH' \
+  || fail "(25-fork) Step 0 fork-mode prose must mention CALLER_ENV_PATH (Round 1 FINDING_1 — capture from helper stdout)"
+grep -Fq 'If `forked_target=true`: print `⏭️ 11: execution-issues — skipped (--forked dry-run, no tracking anchor)' "$SKILL_MD" \
+  || fail "(25-fork) Step 11 must have an explicit forked_target=true short-circuit"
+grep -Fq 'omit the `Closes #<TRACKING_ISSUE_NUMBER>` line unconditionally' "$SKILL_MD" \
+  || fail "(25-fork) Step 9a must unconditionally suppress Closes under fork mode"
+grep -Fq 'Fork-mode carve-out for Invariants #1 and #2' "$SKILL_MD" \
+  || fail "(25-fork) Load-Bearing Invariants must document the fork-mode carve-out"
+grep -Fq '**Fork-mode carve-out**: when `forked_target=true`' "$SKILL_MD" \
+  || fail "(25-fork) NEVER #5 must document the fork-mode carve-out"
+
 # ---------------------------------------------------------------------------
 # (26) Post-merge anti-halt literal pin (issue #1143). The post-merge
 #      boundary is halt-prone because the merge breadcrumb sounds terminal

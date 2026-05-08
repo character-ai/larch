@@ -1,12 +1,13 @@
 # scripts/rebase-push.sh — contract
 
-`scripts/rebase-push.sh` is the canonical "rebase onto latest origin/main" primitive used at every freshness checkpoint in `/implement` (Steps 1.m, 1.r, 4.r, 7.r, 7a.r, 8b, the Rebase + Re-bump Sub-procedure invoked from Steps 8b/10/12, and the conflict-resolution Phase 4 path) and at `/design` Step 1's pre-implementation rebase. It fetches `origin/main`, runs `git rebase origin/main`, and (unless `--no-push`) force-pushes with lease.
+`scripts/rebase-push.sh` is the canonical "rebase onto latest base" primitive used at every freshness checkpoint in `/implement` (Steps 1.m, 1.r, 4.r, 7.r, 7a.r, 8b, the Rebase + Re-bump Sub-procedure invoked from Steps 8b/10/12, and the conflict-resolution Phase 4 path) and at `/design` Step 1's pre-implementation rebase. By default it fetches `origin/main`, runs `git rebase origin/main`, and (unless `--no-push`) force-pushes with lease. Callers may override the base with `--base-remote NAME --base-ref BRANCH`; `/implement --forked` uses `upstream/main`.
 
 Flags:
 - `--continue` — continue an in-progress rebase (caller must have resolved conflicts and staged); skips fetch.
 - `--no-push` — local-only rebase; conflicts are aborted immediately (exit 1) unless `--keep-on-conflict` is set.
 - `--skip-if-pushed` (only valid with `--no-push`) — short-circuit when the branch is already on `origin` at the same commit, emitting `SKIPPED_ALREADY_PUSHED=true`. Distinct from the `SKIPPED_ALREADY_FRESH=true` case (HEAD already matches `origin/main`).
 - `--keep-on-conflict` (only valid with `--no-push`) — leave a conflicting rebase in progress and emit `CONFLICT_FILES=...` so early `/implement` rebase checkpoints can enter the Conflict Resolution Procedure without pushing.
+- `--base-remote NAME` / `--base-ref BRANCH` — base remote/ref to fetch and rebase against. Defaults preserve the historical `origin/main` behavior.
 
 Exit codes:
 - `0` — success; stdout may carry `SKIPPED_ALREADY_PUSHED=true` or `SKIPPED_ALREADY_FRESH=true` for the no-op short-circuits.

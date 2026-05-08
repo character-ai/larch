@@ -207,6 +207,17 @@ Larch's own copy at `.claude/skills/relevant-checks/` serves as a reference impl
 
 Standalone `/design` prints the same message with `/design` substituted for `/implement`. The three remediation paths (clean `main`, `<USER_PREFIX>/*` continuation, commit-or-stash) cover dirty trees, wrong-branch starts, and transient fetch failures.
 
+## Fork CI dry-runs
+
+`/implement --forked` is for open-source fork workflows where `origin` is the contributor fork and `upstream` is the canonical repository. Configure remotes before running:
+
+```bash
+git remote -v
+git remote add upstream git@github.com:OWNER/UPSTREAM.git
+```
+
+The fork mode refuses to run when `upstream` is missing or either remote cannot be parsed as a `github.com` owner/repo. It targets fork PR operations at `origin`, compares freshness against `upstream/main`, disables tracking-issue lifecycle and Slack, skips version bump / CHANGELOG / merge, waits for fork CI, and prints a manual `gh pr create --repo "$UPSTREAM_REPO" --base main --head "$FORK_OWNER:$BRANCH_NAME"` command for opening the upstream PR.
+
 ## Prerequisites
 
 Larch skills have different dependency requirements depending on which features you use.

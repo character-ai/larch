@@ -980,4 +980,68 @@ exclude = [
   "scripts/test-cache-root-validation.md",
   "scripts/test-finalize-sanity-check.sh",
   "scripts/test-finalize-sanity-check.md",
+  # scripts/github-remote-repo.sh is the one-URL/one-remote-name parser used
+  # by scripts/implement-fork-env.sh (forked-target-only pre-Step-0 helper)
+  # via shell variable indirection: `"$HELPER_ROOT/scripts/github-remote-repo.sh"`.
+  # agent-lint's G004/dead-script rule scans for literal-path references in
+  # SKILL.md / hooks.json / settings.json and does not follow shell-variable
+  # indirection (same exclusion shape as scripts/launch-codex-implement.sh
+  # above). Sibling contract: scripts/github-remote-repo.md.
+  "scripts/github-remote-repo.sh",
+  # scripts/test-github-remote-repo.sh is the offline regression harness for
+  # the GitHub remote-URL / remote-name parser. Referenced only from Makefile
+  # (test-github-remote-repo target), docs/linting.md, and the sibling
+  # contract scripts/test-github-remote-repo.md, matching the same
+  # Makefile-only pattern as the other test-* harnesses above.
+  "scripts/test-github-remote-repo.sh",
+  "scripts/test-github-remote-repo.md",
+  # scripts/test-implement-fork-env.sh is the offline regression harness for
+  # scripts/implement-fork-env.sh (the pre-Step-0 fork bootstrap helper used
+  # by /implement --forked). Referenced only from Makefile
+  # (test-implement-fork-env target) and the sibling contract
+  # scripts/test-implement-fork-env.md.
+  "scripts/test-implement-fork-env.sh",
+  "scripts/test-implement-fork-env.md",
+  # scripts/test-get-issue-context.sh is the offline regression harness for
+  # scripts/get-issue-context.sh (the upstream-issue body/title fetcher used
+  # by /implement --forked --issue <N>). Referenced only from Makefile
+  # (test-get-issue-context target) and the sibling contract
+  # scripts/test-get-issue-context.md.
+  "scripts/test-get-issue-context.sh",
+  "scripts/test-get-issue-context.md",
+  # scripts/test-create-pr.sh is the offline PATH-stub regression harness
+  # asserting --repo threading into every gh pr view/create/edit invocation
+  # in scripts/create-pr.sh. Referenced only from Makefile (test-create-pr
+  # target) and the sibling contract scripts/test-create-pr.md.
+  "scripts/test-create-pr.sh",
+  "scripts/test-create-pr.md",
+  # scripts/test-gh-pr-body-update.sh is the offline PATH-stub regression
+  # harness asserting --repo threading into gh pr edit/view in
+  # scripts/gh-pr-body-update.sh. Referenced only from Makefile
+  # (test-gh-pr-body-update target) and the sibling contract
+  # scripts/test-gh-pr-body-update.md.
+  "scripts/test-gh-pr-body-update.sh",
+  "scripts/test-gh-pr-body-update.md",
+  # scripts/test-ci-status.sh is the offline regression harness for
+  # scripts/ci-status.sh's --empty-checks-grace flag and STATUS=NO_CHECKS
+  # exit (added for /implement --forked fork-CI dry-run). Referenced only
+  # from Makefile (test-ci-status target) and the sibling contract
+  # scripts/test-ci-status.md.
+  "scripts/test-ci-status.sh",
+  "scripts/test-ci-status.md",
+  # scripts/gh-pr-body-read.sh wraps `gh pr view --json body` to a file.
+  # Currently only the sibling contract scripts/gh-pr-body-read.md
+  # documents it; the previous primary caller
+  # (scripts/extract-closes-issue-from-pr.sh) inlined `gh pr view --json body`
+  # in a later refactor, leaving the helper structurally referenced only
+  # via its own .md and via the test-implement-structure.sh assertion
+  # (11d-1) that pins zero invocations of it from
+  # references/rebase-rebump-subprocedure.md (Phase 5 retarget; closes #353).
+  # The harness reference is a negative-presence assertion, not a structured
+  # invocation; agent-lint treats the helper as dead. Excluded so the
+  # broader fork-CI work (umbrella #1415) can land without an unrelated
+  # cleanup of this helper. Follow-up: file an OOS issue to either restore
+  # a real caller or retire the helper + harness assertion entry as a pair.
+  "scripts/gh-pr-body-read.sh",
+  "scripts/gh-pr-body-read.md",
 ]
