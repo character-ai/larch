@@ -956,6 +956,10 @@ grep -Fq 'defensively filter out any `### OOS_N:` block whose content contains t
   || fail "(24c) anchor-comment-template.md missing Step 9a.1 defensive security re-exclusion sub-bullet"
 grep -Fq 'post-filter entry list is logically empty after security re-exclusion' "$REFS_DIR/anchor-comment-template.md" \
   || fail "(24c) anchor-comment-template.md missing post-filter empty-batch early-exit path"
+grep -Fq 'Match discrimination (false-positive guard)' "$REFS_DIR/anchor-comment-template.md" \
+  || fail "(24c) anchor-comment-template.md missing Match discrimination (false-positive guard) sub-bullet"
+grep -Fq 'Security counter-invariant' "$REFS_DIR/anchor-comment-template.md" \
+  || fail "(24c) anchor-comment-template.md missing Security counter-invariant clause"
 
 # (25) Clean-main Step 0 entry gate pin. Scope positive checks to Step 0 so
 # the later Step 1 branch creation check cannot satisfy the entry-gate
