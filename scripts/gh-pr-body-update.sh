@@ -6,7 +6,7 @@
 # large PR bodies.
 #
 # Usage:
-#   gh-pr-body-update.sh --pr <number> --body-file <path>
+#   gh-pr-body-update.sh --pr <number> --body-file <path> [--repo OWNER/REPO]
 #
 # Arguments:
 #   --pr        — PR number
@@ -23,14 +23,16 @@
 
 set -uo pipefail
 
-usage() { echo "Usage: gh-pr-body-update.sh --pr <number> --body-file <path>" >&2; }
+usage() { echo "Usage: gh-pr-body-update.sh --pr <number> --body-file <path> [--repo OWNER/REPO]" >&2; }
 
 PR=""
 BODY_FILE=""
+TARGET_REPO=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --pr) PR="${2:?--pr requires a value}"; shift 2 ;;
         --body-file) BODY_FILE="${2:?--body-file requires a value}"; shift 2 ;;
+        --repo) TARGET_REPO="${2:?--repo requires a value}"; shift 2 ;;
         --help) usage; exit 0 ;;
         *) echo "Unknown option: $1" >&2; usage; exit 1 ;;
     esac
@@ -39,6 +41,16 @@ done
 if [[ -z "$PR" ]] || [[ -z "$BODY_FILE" ]]; then
     echo "ERROR: --pr and --body-file are required" >&2
     usage; exit 1
+fi
+
+GH_REPO_ARGS=()
+if [[ -n "$TARGET_REPO" ]]; then
+    if [[ ! "$TARGET_REPO" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; then
+        echo "ERROR: --repo must be OWNER/REPO using GitHub owner/repo characters" >&2
+        usage
+        exit 1
+    fi
+    GH_REPO_ARGS=(--repo "$TARGET_REPO")
 fi
 
 # --- Output defaults ---
@@ -57,7 +69,7 @@ if [[ ! -f "$BODY_FILE" ]]; then
     exit 2
 fi
 
-OUTPUT=$(gh pr edit "$PR" --body-file "$BODY_FILE" 2>&1)
+OUTPUT=$(gh pr edit "$PR" "${GH_REPO_ARGS[@]}" --body-file "$BODY_FILE" 2>&1)
 EXIT_CODE=$?
 
 if [[ $EXIT_CODE -eq 0 ]]; then

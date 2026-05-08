@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# rebase-push.sh — Rebase onto origin/main and optionally force-push with lease.
+# rebase-push.sh — Rebase onto a configured base and optionally force-push with lease.
 #
-# Fetches origin/main, rebases, and (unless --no-push) pushes. Reports
+# Fetches the configured base ref, rebases, and (unless --no-push) pushes. Reports
 # conflicts and push failures via exit codes.
 #
 # Usage:
-#   rebase-push.sh [--continue] [--no-push [--skip-if-pushed] [--keep-on-conflict]]
+#   rebase-push.sh [--continue] [--no-push [--skip-if-pushed] [--keep-on-conflict]] [--base-remote NAME] [--base-ref BRANCH]
 #
 # Flags:
 #   --continue       — Continue an in-progress rebase instead of starting a new
@@ -30,6 +30,10 @@
 #                    — Only valid with --no-push. On rebase conflict, leave
 #                      the rebase in progress and emit CONFLICT_FILES= so the
 #                      caller can resolve and continue without pushing.
+#   --base-remote NAME
+#                    — Remote to fetch/rebase against (default: origin).
+#   --base-ref BRANCH
+#                    — Branch/ref name on base remote (default: main).
 #
 # Exit codes:
 #   0 — rebase (and push, unless --no-push) succeeded, OR skipped because
@@ -76,15 +80,31 @@ CONTINUE_MODE=false
 NO_PUSH=false
 SKIP_IF_PUSHED=false
 KEEP_ON_CONFLICT=false
+BASE_REMOTE="origin"
+BASE_REF="main"
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --continue) CONTINUE_MODE=true; shift ;;
         --no-push) NO_PUSH=true; shift ;;
         --skip-if-pushed) SKIP_IF_PUSHED=true; shift ;;
         --keep-on-conflict) KEEP_ON_CONFLICT=true; shift ;;
+        --base-remote) BASE_REMOTE="${2:?--base-remote requires a value}"; shift 2 ;;
+        --base-ref) BASE_REF="${2:?--base-ref requires a value}"; shift 2 ;;
         *) echo "Unknown option: $1" >&2; exit 1 ;;
     esac
 done
+
+if [[ ! "$BASE_REMOTE" =~ ^[A-Za-z0-9._/-]+$ ]]; then
+    echo "REBASE_ERROR=--base-remote contains unsupported characters" >&2
+    exit 3
+fi
+
+if [[ ! "$BASE_REF" =~ ^[A-Za-z0-9._/-]+$ ]]; then
+    echo "REBASE_ERROR=--base-ref contains unsupported characters" >&2
+    exit 3
+fi
+
+BASE_TARGET="${BASE_REMOTE}/${BASE_REF}"
 
 if [[ "$SKIP_IF_PUSHED" == "true" && "$NO_PUSH" != "true" ]]; then
     echo "REBASE_ERROR=--skip-if-pushed is only valid with --no-push" >&2
@@ -152,16 +172,16 @@ else
         exit 3
     fi
 
-    # --- Fetch latest main ---
+    # --- Fetch latest base ---
     # In --no-push mode, fetch failure is fatal (the whole point is freshness).
     # In default mode, fetch failure is tolerated to allow rebasing against cached origin/main.
     if [[ "$NO_PUSH" == "true" ]]; then
-        if ! git fetch origin main --quiet 2>/dev/null; then
-            echo "REBASE_ERROR=git fetch origin main failed (network/auth issue)" >&2
+        if ! git fetch "$BASE_REMOTE" "$BASE_REF" --quiet 2>/dev/null; then
+            echo "REBASE_ERROR=git fetch $BASE_REMOTE $BASE_REF failed (network/auth issue)" >&2
             exit 3
         fi
     else
-        git fetch origin main --quiet 2>/dev/null || true
+        git fetch "$BASE_REMOTE" "$BASE_REF" --quiet 2>/dev/null || true
     fi
 
     # --- Early exit: skip rebase if HEAD already contains origin/main ---
@@ -173,13 +193,13 @@ else
     # must still reach the push step: a feature branch may have local commits
     # that have never been pushed, and HEAD containing origin/main says
     # nothing about whether the remote tracking branch is up to date.
-    if [[ "$NO_PUSH" == "true" ]] && git merge-base --is-ancestor origin/main HEAD 2>/dev/null; then
+    if [[ "$NO_PUSH" == "true" ]] && git merge-base --is-ancestor "$BASE_TARGET" HEAD 2>/dev/null; then
         echo "SKIPPED_ALREADY_FRESH=true"
         exit 0
     fi
 
     # --- Attempt rebase ---
-    REBASE_OUTPUT=$(git rebase origin/main 2>&1)
+    REBASE_OUTPUT=$(git rebase "$BASE_TARGET" 2>&1)
     REBASE_EXIT=$?
 fi
 

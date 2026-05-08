@@ -12,7 +12,7 @@ Both paths emit the same four `PR_*` keys on stdout so downstream consumers pars
 ## Interface
 
 ```
-create-pr.sh --title TEXT --body-file FILE [--draft]
+create-pr.sh --title TEXT --body-file FILE [--draft] [--repo OWNER/REPO]
 ```
 
 Flags:
@@ -20,6 +20,7 @@ Flags:
 - `--title TEXT` (required) — PR title. Recommended under 70 characters; not enforced.
 - `--body-file FILE` (required) — path to a markdown file containing the PR body. File must exist; checked at startup. On the new-PR path the body is copied through `scripts/redact-tmpdir-paths.sh` and the redacted temp file is forwarded to `gh pr create --body-file`; missing or failing redaction exits 2. The file is ignored on the existing-PR fast-path (existing PR body is not updated by this script — see `gh-pr-body-update.sh` for that operation).
 - `--draft` (optional, no value) — pass `--draft` to `gh pr create` so a fresh PR is opened in draft state. Has no effect on the existing-PR fast-path (an already-open PR's draft state is not changed).
+- `--repo OWNER/REPO` (optional) — pass `--repo` to every `gh pr view` / `gh pr create` call. Used by `/implement --forked` so PR detection and creation target the fork (`origin`) even when `gh` would otherwise resolve the upstream repository.
 
 ## Output contract (KEY=value on stdout)
 
@@ -73,7 +74,7 @@ Both paths surface push failure as exit 1 with stderr, and both paths surface su
 
 ## Test harness
 
-No dedicated test harness today. Real-world coverage comes from `/implement`'s continuous CI execution: the existing-PR fast-path runs on every PR resumption / CI-rebase iteration; the new-PR path runs on every initial PR creation. Issue #837's plan review surfaced this gap (FINDING_7) but the panel exonerated adding a hermetic harness as out of scope for the bug fix.
+`scripts/test-create-pr.sh` uses temporary git repositories and a PATH-stubbed `gh` binary to assert that `--repo` is threaded through every `gh pr view` and `gh pr create` path, including existing-PR title backfill and PR-number fallback.
 
 ## Edit-in-sync rules
 

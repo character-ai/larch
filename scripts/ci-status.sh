@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # ci-status.sh — Check CI status and main branch advancement for a PR.
 #
-# Fetches origin/main, checks PR CI status via `gh pr checks --json`,
-# and counts commits behind origin/main.
+# Fetches the configured base ref, checks PR CI status via `gh pr checks --json`,
+# and counts commits behind the configured base ref.
 #
 # Usage:
-#   ci-status.sh --pr NUMBER --repo OWNER/REPO
+#   ci-status.sh --pr NUMBER --repo OWNER/REPO [--base-remote NAME] [--base-ref BRANCH] [--empty-checks-grace SECONDS]
 #
 # Outputs (always all three lines, in order):
-#   CI_STATUS=pass|fail|pending|merged
+#   CI_STATUS=pass|fail|pending|merged|NO_CHECKS
 #   BEHIND_COUNT=<N>
 #   FAILED_RUN_ID=<id>    (empty string if no failure)
 #
@@ -30,10 +30,16 @@ usage() { echo "Usage: ci-status.sh --pr NUMBER --repo OWNER/REPO" >&2; }
 
 PR_NUMBER=""
 REPO=""
+BASE_REMOTE="origin"
+BASE_REF="main"
+EMPTY_CHECKS_GRACE=0
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --pr) PR_NUMBER="${2:?--pr requires a value}"; shift 2 ;;
         --repo) REPO="${2:?--repo requires a value}"; shift 2 ;;
+        --base-remote) BASE_REMOTE="${2:?--base-remote requires a value}"; shift 2 ;;
+        --base-ref) BASE_REF="${2:?--base-ref requires a value}"; shift 2 ;;
+        --empty-checks-grace) EMPTY_CHECKS_GRACE="${2:?--empty-checks-grace requires a value}"; shift 2 ;;
         --help) usage; exit 0 ;;
         *) echo "Unknown option: $1" >&2; usage; CI_STATUS="error"; exit 0 ;;
     esac
@@ -44,6 +50,20 @@ if [[ -z "$PR_NUMBER" ]] || [[ -z "$REPO" ]]; then
     usage; CI_STATUS="error"; exit 0
 fi
 
+if ! [[ "$EMPTY_CHECKS_GRACE" =~ ^[0-9]+$ ]]; then
+    echo "ERROR: --empty-checks-grace must be a non-negative integer" >&2
+    CI_STATUS="error"
+    exit 0
+fi
+
+if [[ ! "$BASE_REMOTE" =~ ^[A-Za-z0-9._/-]+$ ]] || [[ ! "$BASE_REF" =~ ^[A-Za-z0-9._/-]+$ ]]; then
+    echo "ERROR: --base-remote/--base-ref contain unsupported characters" >&2
+    CI_STATUS="error"
+    exit 0
+fi
+
+BASE_TARGET="${BASE_REMOTE}/${BASE_REF}"
+
 # --- Check if PR has been force-merged ---
 PR_STATE=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json state -q '.state' 2>/dev/null || echo "")
 if [[ "$PR_STATE" == "MERGED" ]]; then
@@ -51,11 +71,11 @@ if [[ "$PR_STATE" == "MERGED" ]]; then
     exit 0
 fi
 
-# --- Fetch origin/main for staleness check ---
-if ! git fetch origin main --quiet 2>/dev/null; then
+# --- Fetch base ref for staleness check ---
+if ! git fetch "$BASE_REMOTE" "$BASE_REF" --quiet 2>/dev/null; then
     # Fetch failed — cannot reliably compute BEHIND_COUNT.
     # Force pending status so the caller retries instead of trusting stale refs.
-    echo "⚠ git fetch origin main failed — reporting pending to force retry" >&2
+    echo "⚠ git fetch $BASE_REMOTE $BASE_REF failed — reporting pending to force retry" >&2
     CI_STATUS="pending"
     BEHIND_COUNT="0"
     exit 0
@@ -72,7 +92,33 @@ if [[ -n "$CHECKS_JSON" ]] && [[ "$CHECKS_JSON" != "null" ]] \
     TOTAL=$(echo "$CHECKS_JSON" | jq 'length' 2>/dev/null || echo "0")
 
     if [[ "$TOTAL" -eq 0 ]]; then
-        CI_STATUS="pending"
+        if [[ "$EMPTY_CHECKS_GRACE" -gt 0 ]]; then
+            sleep "$EMPTY_CHECKS_GRACE"
+            CHECKS_JSON=$(gh pr checks "$PR_NUMBER" --repo "$REPO" --json name,state,bucket,link 2>/dev/null || echo "")
+            TOTAL=$(echo "$CHECKS_JSON" | jq 'if type == "array" then length else 0 end' 2>/dev/null || echo "0")
+        fi
+        if [[ "$TOTAL" -eq 0 ]]; then
+            if [[ "$EMPTY_CHECKS_GRACE" -gt 0 ]]; then
+                CI_STATUS="NO_CHECKS"
+            else
+                CI_STATUS="pending"
+            fi
+        else
+            FAILED=$(echo "$CHECKS_JSON" | jq '[.[] | select(.bucket == "fail")] | length' 2>/dev/null || echo "0")
+            PENDING=$(echo "$CHECKS_JSON" | jq '[.[] | select(.bucket == "pending")] | length' 2>/dev/null || echo "0")
+
+            if [[ "$FAILED" -gt 0 ]]; then
+                CI_STATUS="fail"
+                FAILED_LINK=$(echo "$CHECKS_JSON" | jq -r '[.[] | select(.bucket == "fail")][0].link // empty' 2>/dev/null || echo "")
+                if [[ -n "$FAILED_LINK" ]]; then
+                    FAILED_RUN_ID=$(echo "$FAILED_LINK" | grep -oE 'runs/[0-9]+' | head -1 | sed 's/runs\///' || echo "")
+                fi
+            elif [[ "$PENDING" -gt 0 ]]; then
+                CI_STATUS="pending"
+            else
+                CI_STATUS="pass"
+            fi
+        fi
     else
         FAILED=$(echo "$CHECKS_JSON" | jq '[.[] | select(.bucket == "fail")] | length' 2>/dev/null || echo "0")
         PENDING=$(echo "$CHECKS_JSON" | jq '[.[] | select(.bucket == "pending")] | length' 2>/dev/null || echo "0")
@@ -96,7 +142,18 @@ else
     CHECKS_TEXT=$(gh pr checks "$PR_NUMBER" --repo "$REPO" 2>/dev/null || echo "")
 
     if [[ -z "$CHECKS_TEXT" ]]; then
-        CI_STATUS="pending"
+        if [[ "$EMPTY_CHECKS_GRACE" -gt 0 ]]; then
+            sleep "$EMPTY_CHECKS_GRACE"
+            CHECKS_TEXT=$(gh pr checks "$PR_NUMBER" --repo "$REPO" 2>/dev/null || echo "")
+        fi
+    fi
+
+    if [[ -z "$CHECKS_TEXT" ]]; then
+        if [[ "$EMPTY_CHECKS_GRACE" -gt 0 ]]; then
+            CI_STATUS="NO_CHECKS"
+        else
+            CI_STATUS="pending"
+        fi
     elif echo "$CHECKS_TEXT" | grep -qiE '\bfail'; then
         CI_STATUS="fail"
         # Try to extract run ID from the URL column
@@ -112,7 +169,7 @@ else
 fi
 
 # --- Check behind count ---
-BEHIND_COUNT=$(git rev-list HEAD..origin/main --count 2>/dev/null || echo "0")
+BEHIND_COUNT=$(git rev-list "HEAD..$BASE_TARGET" --count 2>/dev/null || echo "0")
 
 # --- Git-based merge detection (catches race where git refs update before GitHub API) ---
 # If main advanced, check if this PR's squash-merge commit landed.
@@ -120,7 +177,7 @@ BEHIND_COUNT=$(git rev-list HEAD..origin/main --count 2>/dev/null || echo "0")
 # Note: only works for squash merges (this project uses --squash exclusively).
 # False positive would trigger premature cleanup; remote branch preserved for recovery.
 if [[ "$BEHIND_COUNT" -gt 0 ]]; then
-    if git log HEAD..origin/main --oneline 2>/dev/null | grep -Fq "(#${PR_NUMBER})"; then
+    if git log "HEAD..$BASE_TARGET" --oneline 2>/dev/null | grep -Fq "(#${PR_NUMBER})"; then
         CI_STATUS="merged"
         BEHIND_COUNT="0"
         FAILED_RUN_ID=""

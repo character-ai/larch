@@ -953,6 +953,24 @@ if grep -Fq -- "$old_unconditional_prose" "$SKILL_MD"; then
   fail "(25) SKILL.md still contains the legacy unconditional --skip-branch-check prose"
 fi
 
+# Fork-mode structural pins (issue #1415). These checks intentionally sit near
+# assertion 25 because the fork helper is the only permitted pre-setup exception
+# to the Step 0 clean-main entry gate.
+grep -Fq -- '--forked' "$SKILL_MD" \
+  || fail "(25-fork) SKILL.md argument/flag surface must advertise --forked"
+printf '%s\n' "$protocol_line" | grep -Fq 'implement-fork-env.sh' \
+  || fail "(25-fork) Protocol Execution Directive must name implement-fork-env.sh as the fork pre-setup exception"
+printf '%s\n' "$step0_section" | grep -Fq '${CLAUDE_PLUGIN_ROOT}/scripts/implement-fork-env.sh --tmpdir "$IMPLEMENT_TMPDIR"' \
+  || fail "(25-fork) Step 0 must invoke implement-fork-env.sh exactly once under forked_target=true"
+grep -Fq 'If `forked_target=true`: print `⏭️ 11: execution-issues — skipped (--forked dry-run, no tracking anchor)' "$SKILL_MD" \
+  || fail "(25-fork) Step 11 must have an explicit forked_target=true short-circuit"
+grep -Fq 'omit the `Closes #<TRACKING_ISSUE_NUMBER>` line unconditionally' "$SKILL_MD" \
+  || fail "(25-fork) Step 9a must unconditionally suppress Closes under fork mode"
+grep -Fq 'Fork-mode carve-out for Invariants #1 and #2' "$SKILL_MD" \
+  || fail "(25-fork) Load-Bearing Invariants must document the fork-mode carve-out"
+grep -Fq '**Fork-mode carve-out**: when `forked_target=true`' "$SKILL_MD" \
+  || fail "(25-fork) NEVER #5 must document the fork-mode carve-out"
+
 # ---------------------------------------------------------------------------
 # (26) Post-merge anti-halt literal pin (issue #1143). The post-merge
 #      boundary is halt-prone because the merge breadcrumb sounds terminal

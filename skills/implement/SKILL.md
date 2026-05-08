@@ -1,7 +1,7 @@
 ---
 name: implement
 description: "Use when shipping a feature end-to-end: design, implement, review, version bump, PR, CI-green merge, Slack issue announce. Triggers: 'ship X', 'land PR', 'merge this'. See /research, /design, /im (merge), /imaq (auto-merge)."
-argument-hint: "[--quick] [--auto] [--design-only] [--inline] [--merge | --draft] [--no-slack] [--no-admin-fallback] [--coder=claude|codex|cursor|gemini] [--session-env <path>] [--issue <N>] <feature description>"
+argument-hint: "[--quick] [--auto] [--forked] [--design-only] [--inline] [--merge | --draft] [--no-slack] [--no-admin-fallback] [--coder=claude|codex|cursor|gemini] [--session-env <path>] [--issue <N>] <feature description>"
 allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task, WebFetch, WebSearch, Skill
 ---
 
@@ -9,7 +9,7 @@ allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task
 
 End-to-end: design, plan review, code, validate, commit, code review, validate, commit, code flow diagram, version bump, PR, CI monitor, cleanup, Slack announce of tracking issue. By default, posts a single Slack message about the tracking issue near the end of the run (gated on Slack env vars — `LARCH_SLACK_BOT_TOKEN` + `LARCH_SLACK_CHANNEL_ID`). `--no-slack` opts out. With `--merge`: also CI+rebase+merge loop, local branch delete, main verification.
 
-**Protocol Execution Directive.** You are now the `/implement` orchestrator. After parsing flags and checking for `--draft`/`--merge` and `--design-only`/`--merge` mutual-exclusion aborts, your FIRST external action MUST be **Step 0**. Step 0 is one atomic failure domain with three ordered Bash invocations: first `${CLAUDE_PLUGIN_ROOT}/scripts/create-branch.sh --check`, then `${CLAUDE_PLUGIN_ROOT}/scripts/session-entry-gate.sh`, then `${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh` with `--skip-branch-check` toggled by the entry gate. Step 0 is not complete until all three Bash invocations have completed successfully and their output has been parsed. No other `Read`/`Edit`/`Write`/`Bash`/child-`Skill` calls may appear between them or before them. Do not `Read`/`Grep`/`Glob` project files, do not `Edit`/`Write`, and do not invoke child skills until Step 0 completes and its output has been parsed. Freelancing the implementation without executing the step sequence is a protocol violation — every step from 0 through 18 must execute in order per this file.
+**Protocol Execution Directive.** You are now the `/implement` orchestrator. After parsing flags and checking for `--draft`/`--merge`, `--design-only`/`--merge`, and `--forked`/`--merge` mutual-exclusion aborts, your FIRST external action MUST be **Step 0**. Step 0 is one atomic failure domain with three ordered Bash invocations: first `${CLAUDE_PLUGIN_ROOT}/scripts/create-branch.sh --check`, then `${CLAUDE_PLUGIN_ROOT}/scripts/session-entry-gate.sh`, then `${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh` with `--skip-branch-check` toggled by the entry gate. **Step 0 fork-mode exception**: when `--forked` was parsed at flag-resolution time (`forked_target=true`), invoke `${CLAUDE_PLUGIN_ROOT}/scripts/implement-fork-env.sh --tmpdir "$IMPLEMENT_TMPDIR"` exactly once before the standard three-call setup begins. That helper encapsulates the upstream prereq probe, both `github-remote-repo.sh` parses, the atomic caller-env write, and stdout emission of fork-mode orchestrator-local KV pairs. The standard three-call setup then runs unchanged with `--caller-env "$IMPLEMENT_TMPDIR/caller-env.sh"`. No other Bash or Write is permitted between flag parsing and the standard three-call setup beyond this single helper invocation. Step 0 is not complete until all required Bash invocations have completed successfully and their output has been parsed. No other `Read`/`Edit`/`Write`/`Bash`/child-`Skill` calls may appear between them or before them. Do not `Read`/`Grep`/`Glob` project files, do not `Edit`/`Write`, and do not invoke child skills until Step 0 completes and its output has been parsed. Freelancing the implementation without executing the step sequence is a protocol violation — every step from 0 through 18 must execute in order per this file.
 
 **Anti-halt continuation reminder.** After every child `Skill` tool call (e.g., `/design`, `/review`, `/relevant-checks`, `/bump-version`, `/issue`, `/implement`) returns AND after every `Bash` tool call that completes a numbered step or sub-step, IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on the child's cleanup output, on a Bash result, or on a status message, and do NOT write a summary, handoff, status recap, or "returning to parent" message — those are halts in disguise. This applies to ALL step boundaries from Step 0 through Step 18. The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `skip to Step N`, `bail to cleanup`, `jump back`, `loop back`, `fall through`, `break out`). A normal sequential `proceed to Step N+1` instruction is the default continuation this rule reinforces, NOT an exception. Every `/relevant-checks` invocation anywhere in this file is covered by this rule. **Critical boundary: after Step 9b (PR creation) completes, IMMEDIATELY proceed to Step 10 (CI monitor) — PR creation is NOT the end of the run.** See `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Anti-halt continuation reminder for the canonical rule.
 
@@ -22,6 +22,8 @@ Four invariants enforced across multiple steps. Anchor cross-step questions here
 1. **Version Bump Freshness** — the terminal bump commit on HEAD MUST be based on latest `origin/main` at merge time. **Enforcement**: Step 12's Rebase + Re-bump Sub-procedure, step12-family hard-bail to 12d on any failure; Step 10 uses the same sub-procedure with step10-family best-effort semantics (warn + break to Step 11); Step 8 is pre-PR and permissive. **Why**: merging a stale bump publishes a version that does not reflect latest main, violating the plugin's version contract.
 
 2. **Step 9a.1 OOS Sentinel Idempotency** — re-running `/implement` in the same session MUST NOT double-file OOS issues. **Enforcement**: the `$IMPLEMENT_TMPDIR/oos-issues-created.md` sentinel detected at Step 9a.1 entry; prior URLs + tallies are recovered from it with no `/issue` call. **Why**: `/issue`'s LLM-based semantic dedup is a second backstop but not deterministic; the sentinel is the byte-exact deterministic guard.
+
+**Fork-mode carve-out for Invariants #1 and #2**: when `forked_target=true`, version bump and OOS issue-filing surfaces are intentionally disabled. Freshness compares against `upstream/main` through `rebase-push.sh --base-remote upstream --base-ref main` and `ci-status.sh --base-remote upstream --base-ref main`; no `/bump-version`, CHANGELOG amend, or Rebase + Re-bump Sub-procedure runs. Step 9a.1 does not call `/issue`; accepted OOS items are carried as final-report text only.
 
 3. **Degraded-Git Fail-Closed** — `check-bump-version.sh STATUS != ok` MUST force `VERIFIED=false` at Step 12 regardless of `COMMITS_AFTER`. **Enforcement**: STATUS-first evaluation ordering in the Rebase + Re-bump Sub-procedure step 4 (see `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/bump-verification.md` Block β); Step 8 permissive, Step 12 strict (bail to 12d). **Why**: a coerced 0 baseline from a transient git error routes to a bogus "wrong commit count" mis-diagnosis — the fail-closed rule prevents silently wrong merged versions.
 
@@ -39,7 +41,7 @@ Each rule states WHY; per-site reminders reference by anchor name.
 
 4. **NEVER skip the `/review` step regardless of the nature of changes.** **Why**: all changes — code, skills, documentation, data files, configuration — require full reviewer-panel vetting. **How to apply**: Step 5 normal mode always invokes `/review`; quick mode runs a multi-round review loop (rounds 1-3: 5 specialists + generic Codex; rounds 4-7: single generic reviewer) but still mandates review.
 
-5. **NEVER let the Step 9a.1 sentinel short-circuit silently skip the anchor-comment Accepted-OOS update.** **Why**: idempotency recovery MUST update the anchor comment's `oos-issues` section from recovered URLs; silent skip breaks the anchor contract as the Phase 3+ single source of truth for Accepted OOS content. **How to apply**: the idempotent-rerun branch in Step 9a.1 issues the same `tracking-issue-write.sh upsert-anchor` call for the anchor's Step 9a.1 data fragments (using URLs recovered from `oos-issues-created.md`) as the normal create-script branch steps 7 and 7b.
+5. **NEVER let the Step 9a.1 sentinel short-circuit silently skip the anchor-comment Accepted-OOS update.** **Why**: idempotency recovery MUST update the anchor comment's `oos-issues` section from recovered URLs; silent skip breaks the anchor contract as the Phase 3+ single source of truth for Accepted OOS content. **How to apply**: the idempotent-rerun branch in Step 9a.1 issues the same `tracking-issue-write.sh upsert-anchor` call for the anchor's Step 9a.1 data fragments (using URLs recovered from `oos-issues-created.md`) as the normal create-script branch steps 7 and 7b. **Fork-mode carve-out**: when `forked_target=true`, tracking-issue lifecycle and OOS issue creation are disabled, so Step 9a.1 skips issue filing and anchor Accepted-OOS updates; accepted OOS items are emitted in the final report as text only.
 
 6. **NEVER move the Step 5 quick-mode Cursor/Codex reviewer prompts (containing the five focus-area enum literals `code-quality` / `risk-integration` / `correctness` / `architecture` / `security`) out of `SKILL.md`.** **Why**: `.github/workflows/ci.yaml` inspects `skills/implement/SKILL.md` for the unquoted focus-area enum. **How to apply**: keep every Step 5 quick-mode Bash block that contains the slash-separated focus-area enum (Cursor and Codex variants for both the rounds 1-3 generic slot and the rounds 4+ generic reviewer) inline in Step 5; do not move them to a reference file unless the CI workflow's file list is extended in the same PR.
 
@@ -57,6 +59,7 @@ The feature to implement is described by `$ARGUMENTS` after flag stripping.
 
 - `--quick`: `quick_mode=true`. Step 1 skips `/design` (inline plan instead); Step 5 skips `/review` (review loop: rounds 1-3 launch 5 Cursor specialists in parallel + a generic Codex reviewer, rounds 4-7 use single generic Cursor → Codex → Claude fallback chain — no voting panel); Step 7a skips the Code Flow Diagram. All other steps run normally. Independent of `--merge`. Step 1 normal mode may also flip `quick_mode=true` at runtime via simplicity classification (see Step 1 "Simplicity classification" — auto-switch is unilateral, no user prompt, but skipped on resumed sessions where a reusable design manifest is present).
 - `--auto`: `auto_mode=true`. (a) forward `--auto` to `/design` in Step 1, suppressing its interactive checkpoints; (b) suppress this skill's Step 2 opportunistic questions; (c) in Step 12 merge-conflict resolution, suppress `AskUserQuestion` and use best-effort (bail if confidence too low). When `--quick` also set and `/design` skipped, `--auto` still suppresses Step 2 questions.
+- `--forked`: `forked_target=true`. Run the workflow as a fork-CI dry-run: target fork PR operations at `origin` (`FORK_REPO`), compare freshness against `upstream/main`, disable Slack (`slack_enabled=false`), disable tracking-issue lifecycle, skip version bump / CHANGELOG / merge, and print a final upstream-PR command for the operator. Compatible with `--quick`, `--draft`, `--design-only`, `--auto`, `--issue`, and `--coder=...`. **Mutually exclusive with `--merge`**; if both are present, print `**⚠ --forked and --merge are mutually exclusive. Aborting.**` and exit without Step 0.
 - `--merge`: `merge=true`. Steps 12–15 run (CI+rebase+merge loop, local cleanup, main verification). Otherwise those steps are skipped — PR is created and workflow stops after initial CI wait, rejected findings, final report, Slack issue announce, temp cleanup. **Mutually exclusive with `--draft`.**
 - `--design-only`: `design_only=true`. Run Step 0 / 0.5 / 1, publish the plan, plan-review tally, diagrams when available, and OOS fragments to the tracking issue, then stop without implementation, review, version bump, PR creation, CI, or merge. **Mutually exclusive with `--merge`**; if both are present, print `**⚠ --design-only and --merge are mutually exclusive. Aborting.**` and exit without Step 0. **Mutually exclusive with `--quick`** (quick mode bypasses /design's sketch+review machinery and produces a degraded inline plan that has no plan-review tally; combining the two would publish an empty/degraded review section to the tracking issue with no signal); if both are present, print `**⚠ --design-only and --quick are mutually exclusive (quick mode skips plan-review). Aborting.**` and exit without Step 0.
 - `--inline`: `inline_mode=true`. Default: `inline_mode=false`. **Execution topology only — does not change parent verbosity suppression.** Controls how /design's heavy non-interactive phase (sketches → plan → plan review → optionally Step 3b/4) executes. When `inline_mode=false` (default), /implement appends `--subagent` to its Step 1 /design invocation, so the heavy phase runs in an isolated Agent-tool subagent and only terse breadcrumbs reach the parent — preserves today's token-saving nested behavior. When `inline_mode=true`, /implement omits `--subagent`, so the heavy phase runs in /design's own in-turn context (richer tool transcript visible in the design step's output, higher token cost in the parent context). **Parent verbosity suppression is unchanged** — bulky inline artifact bodies remain file-backed via the manifest because /design's suppression rules are gated on `SESSION_ENV_PATH` (non-empty whenever /implement invokes /design). A separate verbosity flag would be required to actually unsuppress inline artifact prints; that is out of scope for this PR. Orthogonal to all other flags including `--design-only` (`--design-only --inline` is allowed). **No effect under `--quick`** — quick mode skips /design entirely, so the inline-vs-subagent distinction is moot.
@@ -67,6 +70,15 @@ The feature to implement is described by `$ARGUMENTS` after flag stripping.
 - `--no-merge`: **Deprecated** no-op. On encounter, print `**ℹ '--no-merge' is now the default and no longer needed; the flag is recognized as a no-op for backward compatibility.**`
 - `--session-env <path>`: sets `SESSION_ENV_PATH`. Forwarded to `session-setup.sh` via `--caller-env` and to `/design` via `--session-env`. Empty = standalone invocation (full discovery).
 - `--issue <N>`: sets `ISSUE_ARG=<N>`. Default: empty. When non-empty, Step 0.5 Branch 2 adopts the given tracking issue instead of Branch 4 creating a new one. Compatible with all other flags. If the target issue is CLOSED, Step 0.5 emits `IMPLEMENT_BAIL_REASON=adopted-issue-closed` on stdout and exits non-zero (cleanup still runs).
+
+**Mode matrix**:
+
+| Mode | PR target | Tracking issue lifecycle | Version bump | CI base comparison | Merge |
+|---|---|---|---|---|---|
+| Default | `$REPO` from session setup | enabled | enabled when available | `origin/main` | skipped |
+| `--merge` | `$REPO` from session setup | enabled | enabled when available | `origin/main` | enabled |
+| `--forked` | `$FORK_REPO` from origin | disabled | skipped | `upstream/main` | disabled |
+| `--design-only` | none | enabled except `--forked` | skipped | n/a | disabled |
 
 ## Progress Reporting
 
@@ -126,9 +138,9 @@ Standardizes the four post-step rebase checkpoints (Steps 1.r, 4.r, 7.r, 7a.r). 
 - **M1 — Print start line**: `🔃 <step-prefix>: <short-name> | rebase`
 
 - **M2 — Run rebase**:
-  ```bash
-  ${CLAUDE_PLUGIN_ROOT}/scripts/rebase-push.sh --no-push --skip-if-pushed --keep-on-conflict
-  ```
+```bash
+${CLAUDE_PLUGIN_ROOT}/scripts/rebase-push.sh --no-push --skip-if-pushed --keep-on-conflict [--base-remote upstream --base-ref main when forked_target=true]
+```
   Capture stdout and exit code as `rc`.
 
 - **M3 — On non-zero exit**, branch on `rc`:
@@ -151,6 +163,14 @@ Standardizes the four post-step rebase checkpoints (Steps 1.r, 4.r, 7.r, 7a.r). 
 | 7a.r | `7a.r`          | `code flow`      |
 
 ## Step 0 — Session Setup
+
+If `forked_target=true`, run the single fork pre-setup helper before the standard three-call sequence:
+
+```bash
+${CLAUDE_PLUGIN_ROOT}/scripts/implement-fork-env.sh --tmpdir "$IMPLEMENT_TMPDIR"
+```
+
+Parse stdout as orchestrator-local variables only: `FORK_REPO`, `UPSTREAM_REPO`, `FORK_OWNER`, `FORKED_TARGET`, `SLACK_ENABLED`. Set `slack_enabled=false`. Do NOT write these fork-only keys to session-env. The helper has already atomically written `$IMPLEMENT_TMPDIR/caller-env.sh` containing only `REPO=$FORK_REPO`; use that file as the `session-setup.sh --caller-env` path. On non-zero exit, print stderr and abort without running the standard setup calls.
 
 Check the current branch before any setup side effects:
 
@@ -182,16 +202,16 @@ Set `continue_from_current=true` iff `SKIP_BRANCH_CHECK=true`. This alias is ret
 If `SKIP_BRANCH_CHECK=true`, run setup with `--skip-branch-check`:
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix claude-implement --skip-branch-check --check-reviewers --check-gemini-reviewer [--caller-env "$SESSION_ENV_PATH"] [--skip-codex-probe] [--skip-cursor-probe] [--skip-gemini-probe]
+${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix claude-implement --skip-branch-check --check-reviewers --check-gemini-reviewer [--caller-env "$SESSION_ENV_PATH" OR "$IMPLEMENT_TMPDIR/caller-env.sh" under forked_target=true] [--skip-codex-probe] [--skip-cursor-probe] [--skip-gemini-probe]
 ```
 
 If `SKIP_BRANCH_CHECK=false`, run setup without `--skip-branch-check`:
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix claude-implement --check-reviewers --check-gemini-reviewer [--caller-env "$SESSION_ENV_PATH"] [--skip-codex-probe] [--skip-cursor-probe] [--skip-gemini-probe]
+${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix claude-implement --check-reviewers --check-gemini-reviewer [--caller-env "$SESSION_ENV_PATH" OR "$IMPLEMENT_TMPDIR/caller-env.sh" under forked_target=true] [--skip-codex-probe] [--skip-cursor-probe] [--skip-gemini-probe]
 ```
 
-`--skip-branch-check` is passed only when `SKIP_BRANCH_CHECK=true`. The default path runs `preflight.sh` in default mode, asserting on-main + clean tree + fetch + rebase before Step 1. Include `--caller-env` only when `SESSION_ENV_PATH` is non-empty — then the script auto-sets `--skip-codex-probe` / `--skip-cursor-probe` / `--skip-gemini-probe` based on `CODEX_HEALTHY` / `CURSOR_HEALTHY` / `GEMINI_HEALTHY` in that file (don't pass them explicitly).
+`--skip-branch-check` is passed only when `SKIP_BRANCH_CHECK=true`. The default path runs `preflight.sh` in default mode, asserting on-main + clean tree + fetch + rebase before Step 1. Include `--caller-env` when `SESSION_ENV_PATH` is non-empty, or when `forked_target=true` using `$IMPLEMENT_TMPDIR/caller-env.sh` from `implement-fork-env.sh` (fork mode takes precedence if both exist). When a caller-env file is present, the script auto-sets `--skip-codex-probe` / `--skip-cursor-probe` / `--skip-gemini-probe` based on `CODEX_HEALTHY` / `CURSOR_HEALTHY` / `GEMINI_HEALTHY` in that file (don't pass them explicitly).
 
 On non-zero exit, always print the raw `PREFLIGHT_ERROR=...` line first. Then print the normalized skill-level message and abort:
 
@@ -228,6 +248,7 @@ Then:
   ```
   Step 1 compares this value to the design manifest's `SESSION_ID` before reusing any exported plan.
 - Set `slack_available` from `SLACK_OK` (`true` → `true`; `false` → `false`). Warn only when the user has NOT opted out: if `slack_enabled=true` AND `SLACK_OK=false`, print `**⚠ Slack is not fully configured (<SLACK_MISSING> not set). Issue Slack announcement (Step 16a) will be skipped.**` When `slack_enabled=false` (user passed `--no-slack`), suppress the warning — Slack is not in use regardless of environment state.
+- If `forked_target=true`, keep `slack_enabled=false` even if `SLACK_OK=true`; fork dry-runs do not post Slack.
 - If `REPO_UNAVAILABLE=true`: print `**⚠ Could not determine repository name. CI monitoring (Steps 10, 12) and merge (Step 12b) will be skipped.**` Set `repo_unavailable=true`.
 - Set `codex_available=true` only when both `CODEX_AVAILABLE=true` and `CODEX_HEALTHY=true` (per the Binary Check and Health Probe mapping in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md`); same for `cursor_available`. Set `gemini_available=true` only when `GEMINI_AVAILABLE=true` AND `GEMINI_HEALTHY=true`; if either key is absent or false, default `gemini_available=false`. The Gemini flag is used for `--coder=gemini` dispatch gating, not review-panel selection.
 - If `CODEX_AVAILABLE=false`: print `**⚠ Codex not available (binary not found). Proceeding without Codex reviewer.**` Else if `CODEX_HEALTHY=false`: print `**⚠ Codex installed but not responding (health check failed). Using Claude replacement.**` Same for Cursor (only check `*_HEALTHY` when `*_AVAILABLE=true`).
@@ -543,6 +564,18 @@ Create the tracking issue **immediately** so all subsequent anchor-accumulation 
 
 If `repo_unavailable=true`: skip all Step 0.5 branches, do NOT invoke `gh issue view` / `tracking-issue-write.sh`. Fragment accumulation at later steps writes only to local `$IMPLEMENT_TMPDIR/anchor-sections/` files. No tracking issue is created, no sentinel is written, and `$IMPLEMENT_TMPDIR/execution-issues.md` is the only audit trail (removed at Step 18). Print `⏩ 0.5: tracking issue — skipped (repo unavailable) (<elapsed>)`.
 
+### forked_target=true
+
+If `forked_target=true`: skip Branches 1, 3, and 4 entirely; no tracking issue is created, adopted, renamed, anchored, or written to a sentinel. Set `deferred=true`, leave `ISSUE_NUMBER` unset, and keep fork metadata in orchestrator-local variables (`FORK_REPO`, `UPSTREAM_REPO`, `FORK_OWNER`).
+
+When `ISSUE_ARG` is non-empty, do not adopt it as a tracking issue. Instead set `UPSTREAM_DESIGN_ISSUE=$ISSUE_ARG`, then fetch upstream context:
+
+```bash
+${CLAUDE_PLUGIN_ROOT}/scripts/get-issue-context.sh --issue "$ISSUE_ARG" --repo "$UPSTREAM_REPO" --tmpdir "$IMPLEMENT_TMPDIR"
+```
+
+Parse `TITLE_FILE` and `BODY_FILE`. If the user-supplied `FEATURE_DESCRIPTION` is empty, replace it with the contents of `$BODY_FILE`; otherwise the user description wins. On helper failure, print `**⚠ 0.5: tracking issue — upstream issue context fetch failed: $ERROR. Aborting.**` and skip to Step 18. `ISSUE_NUMBER` MUST remain unset under fork mode so Step 9a cannot inject `Closes #N` into the fork PR body. Print `⏩ 0.5: tracking issue — skipped (--forked dry-run) (<elapsed>)`.
+
 ### /fix-issue coordination
 
 `/fix-issue` Step 5a forwards `--issue $ISSUE_NUMBER` to `/implement` so the two skills converge on the same tracking issue via Branch 2 by construction — `/implement` adopts the issue `/fix-issue` already locked, avoiding a duplicate tracking-issue on the `/fix-issue` path. On `IMPLEMENT_BAIL_REASON=adopted-issue-closed` (Branch 2 CLOSED early-exit above), `/fix-issue` Step 5a branches to a specific warning and skips its close call. GO/IN PROGRESS lock-check logic in `/fix-issue` is unaffected by anchor comments: `/implement`'s anchor comment carries the `<!-- larch:implement-anchor v1 issue=<N> -->` first-line marker, and `tracking-issue-read.sh`'s anchor-marker filter skips it from aggregated task content — the lock-check ignores anchors by construction. See `skills/fix-issue/SKILL.md` Step 5a and `scripts/tracking-issue-read.md` (anchor-marker filter section).
@@ -606,14 +639,14 @@ Runs only when `CURRENT_BRANCH == "main"`. Detached HEAD also reports `IS_MAIN=t
 Print: `🔃 1.m: design plan | update main`
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/rebase-push.sh --no-push
+${CLAUDE_PLUGIN_ROOT}/scripts/rebase-push.sh --no-push [--base-remote upstream --base-ref main when forked_target=true]
 ```
 
 `--skip-if-pushed` is intentionally NOT used here: `main` is always on origin so that flag would always short-circuit. `SKIPPED_ALREADY_FRESH=true` keeps this call cheap when local `main` already matches `origin/main`.
 
 When Step 0 ran with `continue_from_current=false`, its default preflight already fetched and rebased `main`, so this Step 1.m call should normally short-circuit with `SKIPPED_ALREADY_FRESH=true`. Keep the macro here for the `continue_from_current=true` path and for idempotent protection if Step 0's freshness work was already satisfied.
 
-On non-zero exit, print `**⚠ Failed to ensure local main is fresh. Bailing to cleanup.**`, set `STALL_TRACKING=true` (parallels Rebase Checkpoint Macro M3 and Step 12d — signals Step 18 to rename the tracking issue to `[STALLED]` when Step 0.5 Branch 4 has already created one), and skip to Step 18. On success: if stdout contains `SKIPPED_ALREADY_FRESH=true`, silently continue; otherwise print `✅ 1.m: design plan | update main — rebased onto latest origin/main (<elapsed>)`.
+On non-zero exit, print `**⚠ Failed to ensure local main is fresh. Bailing to cleanup.**`, set `STALL_TRACKING=true` (parallels Rebase Checkpoint Macro M3 and Step 12d — signals Step 18 to rename the tracking issue to `[STALLED]` when Step 0.5 Branch 4 has already created one), and skip to Step 18. On success: if stdout contains `SKIPPED_ALREADY_FRESH=true`, silently continue; otherwise print `✅ 1.m: design plan | update main — rebased onto latest <base> (<elapsed>)`, where `<base>` is `upstream/main` under fork mode and `origin/main` otherwise.
 
 ### Quick mode (`quick_mode=true`)
 
@@ -1238,6 +1271,8 @@ Apply the Rebase Checkpoint Macro with `<step-prefix>=7a.r` and `<short-name>=co
 ${CLAUDE_PLUGIN_ROOT}/scripts/check-bump-version.sh --mode pre
 ```
 
+If `forked_target=true`: print `⏩ 8: version bump — skipped (--forked dry-run) (<elapsed>)`, write the `version-bump-reasoning` anchor fragment locally with `"Version bump skipped for fork CI dry-run."` only when anchor fragments are being preserved locally, and skip directly to Step 8b. Do not invoke `/bump-version` and do not run the Rebase + Re-bump Sub-procedure under fork mode.
+
 Parse `HAS_BUMP`, `COMMITS_BEFORE`, `STATUS` (`ok|missing_main_ref|git_error` per #172). If `STATUS != ok`, the pre-mode count is untrustworthy — log `**⚠ 8: version bump — pre-check STATUS=$STATUS, commit count may be unreliable. Continuing.**` to `Warnings` and proceed. Step 8 is pre-PR and permissive; last-chance enforcement is in the Rebase + Re-bump Sub-procedure step 4 invoked by Step 12 (step12 family), which hard-bails on non-`ok` STATUS from either pre- or post-check.
 
 **If `HAS_BUMP=false`**: print `**⚠ VERSION BUMP SKIPPED: No /bump-version skill found at .claude/skills/bump-version/SKILL.md. To enable automatic version bumps, create a /bump-version skill in this repo. The skill should determine the current version, classify the bump type, compute the new version, edit the version file, and commit.**` and skip to Step 8b. The freshness rebase at Step 8b still runs so resumed Branch 1/2/3 runs in repos without a `/bump-version` skill are refreshed before PR creation; Step 8a (CHANGELOG amend) is bypassed because there is no bump commit to amend.
@@ -1291,6 +1326,8 @@ Test for `CHANGELOG.md` at the project root via the scripted probe (do NOT eyeba
 ${CLAUDE_PLUGIN_ROOT}/scripts/check-changelog-present.sh
 ```
 
+If `forked_target=true`: print `⏩ 8a: changelog — skipped (--forked dry-run) (<elapsed>)` and proceed to Step 8b. No bump commit exists to amend in fork mode.
+
 Parse `CHANGELOG_PRESENT=true|false`. If `CHANGELOG_PRESENT=false`, skip and proceed to Step 8b (print `⏩ 8a: changelog — skipped (CHANGELOG_PRESENT=false) (<elapsed>)` — echo the parsed value verbatim so a false skip is visible in the transcript). The freshness rebase at Step 8b still runs on this path so resumed Branch 1/2/3 runs are refreshed before PR creation. (Step 8's `HAS_BUMP=false` directive and the `BUMP_TYPE=NONE` directive both bypass Step 8a entirely and skip directly to Step 8b — there is no CHANGELOG amend without a bump commit to amend.)
 
 Otherwise: read `CHANGELOG.md` and `NEW_VERSION` (from `/bump-version` output in Step 8). Compose a brief changelog entry using the Summary bullets from the implementation. **Source of bullets**: when `$MANIFEST_PATH` is non-empty (`$TOOL_LABEL` path), read `summary_bullets` directly from the manifest (`jq -r '.summary_bullets[]' "$MANIFEST_PATH"`) — these are pre-sanitized by the Step 2 dispatcher and flow verbatim into both this CHANGELOG entry and Step 9a's PR body `## Summary`. On the Claude-fallback path, compose 1-3 bullets from the implementation as before. Today's date. Format:
@@ -1336,14 +1373,14 @@ Final freshness gate before Step 9. Unlike Step 7a.r's macro call, Step 8b does 
 Print: `🔃 8b: rebase`
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/rebase-push.sh --no-push
+${CLAUDE_PLUGIN_ROOT}/scripts/rebase-push.sh --no-push [--base-remote upstream --base-ref main when forked_target=true]
 ```
 
 Capture the exit code as `rc`. Branch:
 
 - **Exit 0** with stdout containing `SKIPPED_ALREADY_FRESH=true`: HEAD already at latest main. Silently continue. Proceed to the force-push gate below.
 - **Exit 0** otherwise (rebase actually moved HEAD): print `✅ 8b: rebase — rebased onto latest main (<elapsed>)`. Proceed to the force-push gate below.
-- **Exit 1** (rebase conflict — typically bump files against a concurrent main bump): print `🔃 8b: rebase — conflict detected, invoking Rebase + Re-bump Sub-procedure (caller_kind=step8b_rebase) to drop local bump and re-rebase`. **MANDATORY — READ ENTIRE FILE** before invoking the sub-procedure: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/rebase-rebump-subprocedure.md`. Invoke the Rebase + Re-bump Sub-procedure with `rebase_already_done=false`, `caller_kind=step8b_rebase`. The typical concurrent-bump case auto-recovers because the sub-procedure's step 1 (`drop-bump-commit.sh`) removes the local bump before re-rebasing; with the local bump gone, the rebase against fresh main usually succeeds cleanly and step 4 produces a fresh `/bump-version` commit on top. On hard failure anywhere inside the sub-procedure (rebase still conflicts on non-bump files; `/bump-version` failure; degraded `STATUS`; `VERIFIED=false`), the sub-procedure's step8b family branches set `STALL_TRACKING=true` and skip to Step 18 — same recovery semantics as the original bail. On success, the sub-procedure's step 7 returns control to the force-push gate below; sub-procedure step 5 is intentionally skipped for `step8b_rebase` because the gate's `git ls-remote` trichotomy is the load-bearing fresh-branch path (see sub-procedure step 5 for the rationale). **Exception**: if `repo_unavailable=true`, do NOT invoke the sub-procedure — the sub-procedure's step 6 anchor refresh and downstream `gh`-using paths are not applicable; instead fall back to today's bail behavior (print `**⚠ Step 8b: rebase onto main failed (conflict, repo_unavailable=true so sub-procedure auto-recovery is skipped). Bailing to cleanup.**`, set `STALL_TRACKING=true`, skip to Step 18).
+- **Exit 1** (rebase conflict — typically bump files against a concurrent main bump): if `forked_target=true`, do NOT invoke the Rebase + Re-bump Sub-procedure. Print `**⚠ Step 8b: rebase onto upstream/main failed (conflict under --forked). Resolve manually and rerun.**`, set `STALL_TRACKING=true`, and skip to Step 18. Otherwise, print `🔃 8b: rebase — conflict detected, invoking Rebase + Re-bump Sub-procedure (caller_kind=step8b_rebase) to drop local bump and re-rebase`. **MANDATORY — READ ENTIRE FILE** before invoking the sub-procedure: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/rebase-rebump-subprocedure.md`. Invoke the Rebase + Re-bump Sub-procedure with `rebase_already_done=false`, `caller_kind=step8b_rebase`. The typical concurrent-bump case auto-recovers because the sub-procedure's step 1 (`drop-bump-commit.sh`) removes the local bump before re-rebasing; with the local bump gone, the rebase against fresh main usually succeeds cleanly and step 4 produces a fresh `/bump-version` commit on top. On hard failure anywhere inside the sub-procedure (rebase still conflicts on non-bump files; `/bump-version` failure; degraded `STATUS`; `VERIFIED=false`), the sub-procedure's step8b family branches set `STALL_TRACKING=true` and skip to Step 18 — same recovery semantics as the original bail. On success, the sub-procedure's step 7 returns control to the force-push gate below; sub-procedure step 5 is intentionally skipped for `step8b_rebase` because the gate's `git ls-remote` trichotomy is the load-bearing fresh-branch path (see sub-procedure step 5 for the rationale). **Exception**: if `repo_unavailable=true`, do NOT invoke the sub-procedure — the sub-procedure's step 6 anchor refresh and downstream `gh`-using paths are not applicable; instead fall back to today's bail behavior (print `**⚠ Step 8b: rebase onto main failed (conflict, repo_unavailable=true so sub-procedure auto-recovery is skipped). Bailing to cleanup.**`, set `STALL_TRACKING=true`, skip to Step 18).
 - **Exit 3** (non-conflict rebase failure — fetch error, detached HEAD, etc.; `REBASE_ERROR=...` printed on stderr): print `**⚠ Step 8b: rebase failed (non-conflict): $REBASE_ERROR. Bailing to cleanup.**`. Set `STALL_TRACKING=true`, skip to Step 18. (Non-conflict failures are not addressable by `drop-bump-commit.sh` — the sub-procedure cannot recover from a fetch error or detached HEAD.)
 - **Other non-zero exit** (defensive — `rebase-push.sh`'s header documents only 1 and 3 in `--no-push` mode): print `**⚠ Step 8b: rebase failed unexpectedly (exit $rc). Bailing to cleanup.**`. Set `STALL_TRACKING=true`, skip to Step 18.
 
@@ -1398,6 +1435,7 @@ The anchor comment on the tracking issue is the single source of truth for repor
 
 Write the slim PR body to `$IMPLEMENT_TMPDIR/pr-body.md`. Substitute `<TRACKING_ISSUE_NUMBER>`:
 
+- **Fork dry-run path** (`forked_target=true`): omit the `Closes #<TRACKING_ISSUE_NUMBER>` line unconditionally, regardless of any `ISSUE_NUMBER` or `UPSTREAM_DESIGN_ISSUE` value. Replace it with `_Fork CI dry-run — upstream auto-close intentionally omitted._`. The fork PR must not auto-close an upstream issue. The final report may suggest adding `Closes #<UPSTREAM_DESIGN_ISSUE>` manually to the upstream PR body.
 - **Issue-known path** (any of: Branch 1 sentinel reuse, Branch 2 `--issue` adoption, Branch 3 PR-body recovery, Branch 4 successful immediate creation — in all cases `$ISSUE_NUMBER` is set at Step 9a entry): substitute `$ISSUE_NUMBER` directly, yielding a well-formed `Closes #<N>` line.
 - **Degraded path** (`repo_unavailable=true` OR Step 0.5 Branch 4 create-issue/anchor/sentinel failure left `deferred=true` with `$ISSUE_NUMBER` unset): **omit the `Closes #<TRACKING_ISSUE_NUMBER>` line entirely** (do NOT substitute `(no tracking issue created)` into a `Closes #...` prefix — that would produce the malformed literal `Closes #(no tracking issue created)`). Replace the line with the single prose line `_No tracking issue — auto-close N/A._` so the PR body stays well-formed. The PR body has no auto-close link on this path, and Step 0.5 Branch 3 recovery on subsequent sessions will fall through (no `Closes #<N>` to match).
 
@@ -1411,7 +1449,7 @@ The `Closes #<N>` line auto-closes the tracking issue on merge and anchors Step 
 
 The `[FALSE-POSITIVE]` marker is wired only on `/fix-issue` Step 3 (not-material close) in v1 — see `skills/fix-issue/SKILL.md` and `skills/fix-issue/scripts/issue-lifecycle.md`. `/issue` dedup verdicts skip creation rather than closing, and orphan-rollback closes are infrastructure recovery, not won't-fix decisions; future deliberate OOS-close hooks should call the marker at their close site and be tracked in a separate issue.
 
-Runs unconditionally regardless of mode. The canonical sequence lives in `anchor-comment-template.md` Step 9a.1 OOS pipeline procedure section — including the combine pass at step 3.4 that groups related entries when more than one accepted OOS exists across the three source files, the per-run issue cap pre-pass at step 3.4b (`OOS_ISSUES_PER_RUN_CAP`, default `5`, with `OOS_ISSUE_CAP_EXCERPT_MAX`, default `200`) that compacts surplus OOS items in place and fails closed by skipping issue filing on helper errors, the best-effort file-conflict pre-pass at step 3.5 with degraded-continue behavior, and the `/issue` batch-mode invocation at step 4 with `--title-prefix "[OOS]"` and conditional `--blocked-by-issue $ISSUE_NUMBER` forwarding. The cap helper contract lives at `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-issue-cap.md`.
+Runs unconditionally regardless of mode, except `forked_target=true`: in fork mode, skip all `/issue` call sites and sentinel writes, compose accepted-OOS text for the final report only, print `⏩ 9a.1: OOS issues — skipped (--forked dry-run) (<elapsed>)`, and proceed to 9b. The canonical sequence for non-fork mode lives in `anchor-comment-template.md` Step 9a.1 OOS pipeline procedure section — including the combine pass at step 3.4 that groups related entries when more than one accepted OOS exists across the three source files, the per-run issue cap pre-pass at step 3.4b (`OOS_ISSUES_PER_RUN_CAP`, default `5`, with `OOS_ISSUE_CAP_EXCERPT_MAX`, default `200`) that compacts surplus OOS items in place and fails closed by skipping issue filing on helper errors, the best-effort file-conflict pre-pass at step 3.5 with degraded-continue behavior, and the `/issue` batch-mode invocation at step 4 with `--title-prefix "[OOS]"` and conditional `--blocked-by-issue $ISSUE_NUMBER` forwarding. The cap helper contract lives at `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-issue-cap.md`.
 
 > **Continue after child returns.** When `/issue` returns from batch mode, execute the next sub-steps (parse stdout; write fragments; upsert anchor; write sentinel) — do NOT end the turn, and do NOT write a summary, handoff, or "returning to parent" message. See `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Anti-halt continuation reminder.
 
@@ -1440,7 +1478,7 @@ Print: `✅ 9a.1: OOS issues — <ISSUES_CREATED> created, <ISSUES_DEDUPLICATED>
 Run `create-pr.sh` with a concise title (under 70 chars). If `draft=true`, append `--draft`:
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/create-pr.sh --title "<title>" --body-file "$IMPLEMENT_TMPDIR/pr-body.md" [--draft]
+${CLAUDE_PLUGIN_ROOT}/scripts/create-pr.sh --title "<title>" --body-file "$IMPLEMENT_TMPDIR/pr-body.md" [--draft] [--repo "$FORK_REPO" when forked_target=true]
 ```
 
 Parse `PR_NUMBER`, `PR_URL`, `PR_TITLE`, `PR_STATUS`. The script pushes the branch, detects existing PRs, creates new with `--assignee @me`. `PR_STATUS` is `created` or `existing`. Save — used in Step 16a. When `draft=true` and `PR_STATUS=existing`, the pre-existing PR's draft state is unchanged (`--draft` only affects new PRs).
@@ -1449,7 +1487,7 @@ On non-zero exit: print the error and abort. Do not proceed to Steps 10–18.
 
 If `PR_STATUS=existing`: `create-pr.sh` did not update the body. Do it now:
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/gh-pr-body-update.sh --pr <PR_NUMBER> --body-file "$IMPLEMENT_TMPDIR/pr-body.md"
+${CLAUDE_PLUGIN_ROOT}/scripts/gh-pr-body-update.sh --pr <PR_NUMBER> --body-file "$IMPLEMENT_TMPDIR/pr-body.md" [--repo "$FORK_REPO" when forked_target=true]
 ```
 
 Print the PR URL. Save `PR_NUMBER`, `PR_URL`, `PR_TITLE` for Steps 10–15.
@@ -1483,7 +1521,8 @@ Counters (all start at 0): `iteration` (passed to `ci-wait.sh`, returned as `ITE
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/ci-wait.sh --pr <PR-NUMBER> --repo $REPO \
-  --rebase-count "$rebase_count" --fix-attempts "$fix_attempts" --iteration "$iteration"
+  --rebase-count "$rebase_count" --fix-attempts "$fix_attempts" --iteration "$iteration" \
+  [--base-remote upstream --base-ref main --empty-checks-grace 30 when forked_target=true]
 ```
 
 Use `timeout: 1860000` on the Bash call. Parse `ACTION`, `CI_STATUS`, `BEHIND_COUNT`, `FAILED_RUN_ID`, `BAIL_REASON`, `ITERATION`, `ELAPSED`. Update `iteration` from returned `ITERATION`.
@@ -1493,6 +1532,7 @@ Use `timeout: 1860000` on the Bash call. Parse `ACTION`, `CI_STATUS`, `BEHIND_CO
 **Execute**:
 
    - **`ACTION=merge`**: CI passed, branch up-to-date. Print `✅ 10: CI monitor — CI passed! (<elapsed>)` and proceed to Step 11. **Do NOT merge here** — Step 12 handles merging.
+   - **`ACTION=bail` with `CI_STATUS=NO_CHECKS`**: set `FORK_CI_NO_CHECKS=true`, print `**⚠ 10: CI monitor — no checks observed on fork after grace period (<elapsed>)**`, and proceed to Step 11. This is non-terminal under `forked_target=true`; the final report explains the dry-run caveat. Outside fork mode, handle as ordinary bail below.
    - **`ACTION=already_merged`**: PR merged externally. Print `✅ 10: CI monitor — PR merged externally (<elapsed>)` and proceed to Step 11. (Step 12 will detect `already_merged` again.)
    - **`ACTION=rebase`**: main advanced. Invoke the sub-procedure with `rebase_already_done=false`, `caller_kind=step10_rebase`. Counter updates and `ci-wait.sh` re-invocation happen inside the sub-procedure's step 7. On failure, the sub-procedure warns and breaks out of Step 10 to Step 11 — it does NOT bail to 12d (Step 12 will re-run it under strict semantics).
    - **`ACTION=rebase_then_evaluate`**: invoke the sub-procedure with `rebase_already_done=false`, `caller_kind=step10_rebase_then_evaluate`. On success, fall through to the `evaluate_failure` handler. On failure, break to Step 11.
@@ -1528,6 +1568,7 @@ Runs unconditionally. The Slack announcement of the tracking issue has moved to 
 
 **Branch on state**:
 
+0. If `forked_target=true`: print `⏭️ 11: execution-issues — skipped (--forked dry-run, no tracking anchor) (<elapsed>)` and proceed to Step 12. Do not enter the missing-`ISSUE_NUMBER` bug branch.
 1. If `repo_unavailable=true`: print `⏭️ 11: execution-issues — skipped (repo unavailable) (<elapsed>)` and proceed to Step 12. No anchor exists; `$IMPLEMENT_TMPDIR/execution-issues.md` is the only audit trail (removed at Step 18; preserve tmpdir manually if audit needed).
 2. If `$IMPLEMENT_TMPDIR/execution-issues.md` does not exist or is empty: print `⏩ 11: execution-issues — skipped (no execution issues logged) (<elapsed>)` and IMMEDIATELY proceed to Step 12.
 3. If `$ISSUE_NUMBER` is absent at Step 11 entry AND `deferred=true` (Step 0.5 Branch 4 create-issue/anchor/sentinel failure): print `⏭️ 11: execution-issues — skipped (tracking issue creation failed at Step 0.5) (<elapsed>)` and proceed to Step 12. This is a legitimate degraded-clean path, NOT a bug — the Step 0.5 Branch 4 failure already logged the specific `ERROR` to `Tool Failures` and set `deferred=true`; no second warning is needed here.
@@ -1569,7 +1610,7 @@ Print: `✅ 11: execution-issues — anchor refreshed (<elapsed>)` on success.
 # timing-mark Step 12 — CI merge loop
 ```
 
-If `merge=false`: print `⏭️ 12: CI+merge loop — skipped (--merge not set) (<elapsed>)` and skip to Step 16. If `repo_unavailable=true`: print `⏭️ 12: CI+merge loop — skipped (repo unavailable) (<elapsed>)` and skip to Step 16.
+If `forked_target=true`: print `⏭️ 12: CI+merge loop — skipped (--forked dry-run) (<elapsed>)` and proceed to Step 13.5. If `merge=false`: print `⏭️ 12: CI+merge loop — skipped (--merge not set) (<elapsed>)` and proceed to Step 13.5. If `repo_unavailable=true`: print `⏭️ 12: CI+merge loop — skipped (repo unavailable) (<elapsed>)` and proceed to Step 13.5.
 
 Monitor CI and main **in parallel** — don't wait for CI to finish before checking if main has advanced.
 
@@ -1581,7 +1622,8 @@ Counters from Step 10. `transient_retries` managed locally (used only in 12c; ex
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/ci-wait.sh --pr <PR-NUMBER> --repo $REPO \
-  --rebase-count "$rebase_count" --fix-attempts "$fix_attempts" --iteration "$iteration"
+  --rebase-count "$rebase_count" --fix-attempts "$fix_attempts" --iteration "$iteration" \
+  [--base-remote upstream --base-ref main --empty-checks-grace 30 when forked_target=true]
 ```
 
 Use `timeout: 1860000` on the Bash call. Parse the same fields as Step 10.
@@ -1673,6 +1715,38 @@ Bail if any: 3 fix iterations attempted without progress; failure fundamentally 
 # token-step-end Step 12
 ```
 
+## Step 13.5 — Finalizer State
+
+Write `$IMPLEMENT_TMPDIR/finalize-state.sh` before any post-PR cleanup/Slack/teardown branch. This always-run state file is required even when `merge=false`, `draft=true`, `forked_target=true`, or Step 12 bailed before local cleanup.
+
+```bash
+cat > "$IMPLEMENT_TMPDIR/finalize-state.sh" <<EOF
+BRANCH_NAME=$BRANCH_NAME
+PR_NUMBER=$PR_NUMBER
+PR_TITLE=$PR_TITLE
+PR_URL=$PR_URL
+ISSUE_NUMBER=$ISSUE_NUMBER
+REPO=$REPO
+DRAFT=$draft
+MERGE=$merge
+SLACK_ENABLED=$slack_enabled
+SLACK_AVAILABLE=$slack_available
+DEFERRED=$deferred
+REPO_UNAVAILABLE=$repo_unavailable
+PR_CLOSED=${pr_closed:-false}
+DESIGN_ONLY_DONE=${DESIGN_ONLY_DONE:-false}
+BAIL_NEEDS_USER_INPUT=${BAIL_NEEDS_USER_INPUT:-false}
+STALL_TRACKING=${STALL_TRACKING:-false}
+STALL_STEP=${STALL_STEP:-}
+DONE_RENAME_APPLIED=${DONE_RENAME_APPLIED:-false}
+EXPECTED_SESSION_ID=$(cat "$IMPLEMENT_TMPDIR/session-id" 2>/dev/null || echo "")
+EXPECTED_TMPDIR_BASENAME_PREFIX="claude-implement-${CLONE_TAG:-$(basename "$PWD" | tr -c 'A-Za-z0-9_-' '_')}-"
+EOF
+printf '%s' "${FINAL_BAIL_REASON:-}" > "$IMPLEMENT_TMPDIR/final-bail-reason.txt"
+```
+
+If `forked_target=true`, leave `ISSUE_NUMBER` blank and keep `REPO=$FORK_REPO` as resolved by session setup.
+
 ## Step 14 — Local Cleanup
 
 ```bash
@@ -1682,7 +1756,9 @@ Bail if any: 3 fix iterations attempted without progress; failure fundamentally 
 # timing-mark Step 14 — local cleanup
 ```
 
-Write finalizer state once, then delegate Step 14 and Step 15 mechanical work to `implement-finalize.sh postmerge`. The state file is plain `KEY=value` text and is never sourced; the script reads it with `awk`. Mechanical SSOT: `${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.md` § `postmerge`.
+If `forked_target=true`: print `⏭️ 14: local cleanup — skipped (--forked dry-run, branch retained) (<elapsed>)` and proceed to Step 15. If `merge=false`: print `⏭️ 14: local cleanup — skipped (--merge not set) (<elapsed>)` and proceed to Step 15.
+
+Use the finalizer state from Step 13.5, then delegate Step 14 and Step 15 mechanical work to `implement-finalize.sh postmerge`. The state file is plain `KEY=value` text and is never sourced; the script reads it with `awk`. Mechanical SSOT: `${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.md` § `postmerge`.
 
 ```bash
 cat > "$IMPLEMENT_TMPDIR/finalize-state.sh" <<EOF
@@ -1773,6 +1849,8 @@ Report unimplemented code review suggestions without reprinting the full finding
 
 Run the consolidated Slack subcommand. It preserves the Step 16a skip gates and first-match-wins outcome ladder, including `DESIGN_ONLY_DONE=true → RUN_OUTCOME=design-only`, `BAIL_NEEDS_USER_INPUT=true → RUN_OUTCOME=user-input`, and `merge=false` OR `draft=true` → `RUN_OUTCOME=pr-opened`. It omits `--pr-url` for design-only, passes bail/user-input detail when needed, and treats Slack failure as a non-fatal warning. Mechanical SSOT: `${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.md` § `slack`.
 
+If `forked_target=true`: print `⏭️ 16a: slack issue post — skipped (--forked dry-run) (<elapsed>)` and proceed to Step 17. `slack_enabled=false` was set at flag-resolution time, so no Slack API call is legal in fork mode.
+
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.sh slack \
   --state-file "$IMPLEMENT_TMPDIR/finalize-state.sh" \
@@ -1799,6 +1877,33 @@ Relay the script's Step 16a breadcrumb verbatim. Tail records document the mecha
 ```
 
 If `DESIGN_ONLY_DONE=true`: print `✅ 17: final report — design-only complete; tracking issue contains plan, review tally, diagrams, and OOS status (<elapsed>)`.
+
+If `forked_target=true` and `DESIGN_ONLY_DONE` is not true: print:
+
+```markdown
+## Fork CI Dry-Run Complete
+
+Fork PR: <PR_URL>
+
+To open the upstream PR when CI is green on the fork, use these values:
+
+UPSTREAM_REPO: <UPSTREAM_REPO>
+FORK_OWNER:    <FORK_OWNER>
+BRANCH:        <BRANCH_NAME>
+
+Command template:
+
+gh pr create --repo "$UPSTREAM_REPO" --base main --head "$FORK_OWNER:$BRANCH_NAME"
+
+Caveats for fork CI fidelity:
+- Actions must be enabled on the fork repo for any workflow to run.
+- Workflows that consume upstream secrets will fail or skip in the fork.
+- Workflows guarded by `if: github.repository == 'owner/upstream-repo'` will skip on forks.
+- Green on the fork does not guarantee green on the upstream PR; treat this as a dry run only.
+- If `FORK_CI_NO_CHECKS=true`, no checks were observed after the grace period, so the fork produced no CI signal.
+```
+
+If `UPSTREAM_DESIGN_ISSUE` is set, append: `You may include Closes #<UPSTREAM_DESIGN_ISSUE> in the upstream PR body when you compose it manually.` If accepted-OOS items were skipped by Step 9a.1, append them under `## Out-of-Scope Observations` as text only. **Precedence**: `DESIGN_ONLY_DONE=true` wins over fork-mode report; never print fork-CI / fork-PR language on design-only completion.
 
 If `quick_mode=true` and `DESIGN_ONLY_DONE` is not true: print `✅ 17: final report — quick mode, /design skipped, specialists + generic Codex rounds 1-3 + generic rounds 4+ (<elapsed>)`.
 
@@ -1837,12 +1942,12 @@ Before teardown, perform the authoritative final token-report refresh while `$IM
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --append-token-report "$IMPLEMENT_TMPDIR/anchor-sections/token-report.md" || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --append-timing-section "$IMPLEMENT_TMPDIR/anchor-sections/timing-report.md" || true
-if [ -n "${ISSUE_NUMBER:-}" ] && [ "${repo_unavailable:-false}" != "true" ]; then
+if [ "${forked_target:-false}" != "true" ] && [ -n "${ISSUE_NUMBER:-}" ] && [ "${repo_unavailable:-false}" != "true" ]; then
   ${CLAUDE_PLUGIN_ROOT}/scripts/refresh-anchor.sh --sections-dir "$IMPLEMENT_TMPDIR/anchor-sections" --issue "$ISSUE_NUMBER" --anchor-id "$ANCHOR_COMMENT_ID" --output "$IMPLEMENT_TMPDIR/anchor-assembled.md" || true
 fi
 ```
 
-Run the consolidated teardown subcommand after the prompt-side warnings/notes and authoritative token refresh above. It performs the title-prefix terminal transition first: Branch A renames to `[STALLED]` only when `STALL_TRACKING=true` and the issue state is exactly `OPEN`; Branch B renames to `[DONE]` when `STALL_TRACKING=false`, `DONE_RENAME_APPLIED!=true`, and `$PR_NUMBER` is set OR `DESIGN_ONLY_DONE=true`; Branch C is a no-op. Finalize-time round-trip detection runs inside `scripts/implement-finalize.sh` immediately before Branch A/B renames. On stalled paths, it then best-effort stashes leftover working-tree edits with a `larch-stalled-...` label and writes `.git/larch-stalled-run.txt` so the next SessionStart/preflight can surface or clear the leftover state. Before `cleanup-tmpdir.sh` runs (and before `verify_cleanup_target`, so even a refused cleanup releases the Stop hook), teardown writes `$IMPLEMENT_TMPDIR/.run-cleaned-up`. Before tmpdir removal, it verifies the tmpdir basename prefix and `session-id` against the Step 14 state file; on mismatch it logs a Tool Failures entry, emits the documented refusal warning, skips `rm -rf`, and continues. It then prints the tracking-issue URL when resolvable and prints the final Step 18 breadcrumb. Mechanical SSOT: `${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.md` § `teardown`.
+Run the consolidated teardown subcommand after the prompt-side warnings/notes and authoritative token refresh above. Under `forked_target=true`, skip only the tracking-issue rename / anchor-refresh portions by leaving `ISSUE_NUMBER` unset; still run `implement-finalize.sh teardown` so `$IMPLEMENT_TMPDIR` is cleaned up and final warnings are repeated. It performs the title-prefix terminal transition first: Branch A renames to `[STALLED]` only when `STALL_TRACKING=true` and the issue state is exactly `OPEN`; Branch B renames to `[DONE]` when `STALL_TRACKING=false`, `DONE_RENAME_APPLIED!=true`, and `$PR_NUMBER` is set OR `DESIGN_ONLY_DONE=true`; Branch C is a no-op. Finalize-time round-trip detection runs inside `scripts/implement-finalize.sh` immediately before Branch A/B renames. On stalled paths, it then best-effort stashes leftover working-tree edits with a `larch-stalled-...` label and writes `.git/larch-stalled-run.txt` so the next SessionStart/preflight can surface or clear the leftover state. Before `cleanup-tmpdir.sh` runs (and before `verify_cleanup_target`, so even a refused cleanup releases the Stop hook), teardown writes `$IMPLEMENT_TMPDIR/.run-cleaned-up`. Before tmpdir removal, it verifies the tmpdir basename prefix and `session-id` against the Step 14 state file; on mismatch it logs a Tool Failures entry, emits the documented refusal warning, skips `rm -rf`, and continues. It then prints the tracking-issue URL when resolvable and prints the final Step 18 breadcrumb. Mechanical SSOT: `${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.md` § `teardown`.
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.sh teardown \
