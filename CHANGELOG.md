@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [16.0.0] - 2026-05-07
+
+### Changed
+
+- Make Slack notifications opt-in through `--slack` across `/implement` and downstream delegators. `/implement` now defaults `slack_enabled=false`; passing `--slack` explicitly opts in. The legacy `--no-slack` flag is removed; existing scripts and aliases that pass it must be updated. `/fix-issue`, `/alias`, `/create-skill`, `/compress-skill`, and `/simplify-skill` rename their `--no-slack` flag to `--slack` symmetrically and forward it to the delegated `/implement` run only when explicitly opted in. **BREAKING**: users who depended on default-on Slack must add `--slack` to their invocations.
+- Update `/create-skill` parser output to expose positive `SLACK=true|false` semantics and reject the legacy opt-out flag. `skills/create-skill/scripts/parse-args.sh` now parses `--slack`, emits `SLACK=true|false`, and rejects `--no-slack` with a hard `Unknown flag` error. Regression harness `scripts/test-parse-args.sh` was inverted: `--slack` is accepted; `--no-slack` is rejected.
+- Align docs, security guidance, and focused regression harnesses with Slack-off-by-default behavior. Updates `README.md`, `docs/configuration-and-permissions.md`, `docs/installation-and-setup.md`, `docs/skills.md`, `docs/workflow-lifecycle.md`, `SECURITY.md`, and `agent-lint.toml` to describe the new opt-in default. The `scripts/implement-finalize.sh` Step 16a skip breadcrumb now reads `⏭️ 16a: slack issue post — skipped (--slack not set)` when `SLACK_ENABLED=false`, with `scripts/test-implement-finalize.sh` updated accordingly.
+
+### Fixed
+
+- `scripts/lint-mermaid-fences.sh` now passes `--no-sandbox` and `--disable-setuid-sandbox` to Chromium via a repo-pinned Puppeteer config (`scripts/lint-mermaid-puppeteer.json`) so the SVG-render fallback launches on Ubuntu 23.10+ runners with restricted unprivileged user namespaces. Previously CI (`Lint Mermaid fences (changed only)`) failed before any Mermaid syntax check on PRs touching `.md` files containing fences. Also fixes pre-existing `lint-mermaid-fences` failures in `docs/workflow-lifecycle.md` (parser choking on literal `(...)` text in pipe edge labels).
+
 ## [15.15.5] - 2026-05-07
 
 ### Fixed
