@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.13.5] - 2026-05-07
+
+### Changed
+
+- Resolve #1416: combined design-phase OOS follow-ups from #1410 and #1411. New root `.gitattributes` enforces LF EOL across the repo (default `* text=auto eol=lf` plus explicit `text eol=lf` for `*.md`, `*.sh`, `*.py`, `*.yaml`, `*.yml`, `*.json`, `*.tsv`, `*.toml`, `*.txt`) so CRLF normalization no longer depends on contributor editor settings or `git`'s `core.autocrlf`. `scripts/anchor-section-markers.md` test-harness bullet drops the stale "9-slug" literal in favor of referring to the `SECTION_MARKERS` array by symbol; the array now has 10 slugs (the `timing-report` slug was added). Also folded inline as same-class doc drift: `scripts/test-assemble-anchor.sh` header comment dropped its stale "8 empty marker pairs … (23 lines total)" literal counts in favor of a by-symbol reference to `SECTION_MARKERS`, per `.claude/rules/drift-prone-prose-in-docs.md` "Don't write hardcoded counts in prose".
+
 ## [15.13.4] - 2026-05-08
 
 ### Changed
