@@ -64,6 +64,12 @@ fi
 if [[ "$1" == "repo" && "${2:-}" == "view" ]]; then
   [[ "$mode" == "missing" ]] && { echo "HTTP 404: Could not resolve to a Repository" >&2; exit 1; }
   [[ "$mode" == "api-fail" ]] && { echo "HTTP 403: rate limited" >&2; exit 1; }
+  if [[ "$mode" == "parent-split-fields" ]]; then
+    cat <<'JSON'
+{"nameWithOwner":"me/project","parent":{"owner":{"login":"acme"},"name":"project"},"defaultBranchRef":{"name":"main"}}
+JSON
+    exit 0
+  fi
   cat <<'JSON'
 {"nameWithOwner":"me/project","parent":{"nameWithOwner":"acme/project"},"defaultBranchRef":{"name":"main"}}
 JSON
@@ -282,6 +288,11 @@ OUT="$BASE/out.txt"
 GH_STUB_MODE=missing run_setup "$WORK" "$OUT"
 assert_contains "$OUT" "SETUP_FORKED_REPO_RESULT=fork_missing" "missing fork exits with marker"
 assert_eq "https://github.com/acme/project.git" "$(git -C "$WORK" config --get remote.origin.url)" "missing fork does not mutate remotes"
+
+read_fixture parent_split_fields
+OUT="$BASE/out.txt"
+GH_STUB_MODE=parent-split-fields run_setup "$WORK" "$OUT"
+assert_contains "$OUT" "SETUP_FORKED_REPO_RESULT=mirror_skipped_in_sync" "parent split owner/name fields pass"
 
 read_fixture auth_failure
 OUT="$BASE/out.txt"

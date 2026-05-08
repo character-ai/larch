@@ -268,12 +268,22 @@ phase_github() {
     exit 1
   fi
 
-  parent="$(jq -r '.parent.nameWithOwner // empty' "$gh_out")"
+  parent="$(jq -r '
+    if .parent == null then
+      empty
+    elif (.parent.nameWithOwner // "") != "" then
+      .parent.nameWithOwner
+    elif ((.parent.owner.login // "") != "" and (.parent.name // "") != "") then
+      "\(.parent.owner.login)/\(.parent.name)"
+    else
+      empty
+    end
+  ' "$gh_out")"
   rm -f "$gh_out" "$gh_err"
   # GitHub treats owner/repo names as case-insensitive; `gh repo view` returns
-  # the canonical-case `parent.nameWithOwner` while `--upstream` is operator
-  # input. Compare lowercased so an operator passing `acme/project` against a
-  # canonical `Acme/Project` parent does not spuriously fail this gate.
+  # canonical-case parent fields while `--upstream` is operator input. Compare
+  # lowercased so an operator passing `acme/project` against a canonical
+  # `Acme/Project` parent does not spuriously fail this gate.
   parent_lc="$(printf '%s' "$parent" | tr '[:upper:]' '[:lower:]')"
   upstream_lc="$(printf '%s' "$UPSTREAM" | tr '[:upper:]' '[:lower:]')"
   if [[ "$parent_lc" != "$upstream_lc" ]]; then
