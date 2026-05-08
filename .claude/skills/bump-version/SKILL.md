@@ -49,7 +49,7 @@ If you escalate, append at most 5 sentences (≤100 words) to the reasoning log 
    - For each modified SKILL.md, reads the old and new full file contents via `git show "$BASE:<path>"` and `git show "HEAD:<path>"`, extracts the first YAML frontmatter block between `---` markers, and compares the `name:` and `argument-hint:` fields. The `argument-hint:` comparison uses token sets: a `--<flag>` present in both old and new is treated as unchanged; only genuine additions or removals contribute to classification.
    - Writes evidence to `${IMPLEMENT_TMPDIR:-${TMPDIR:-/tmp}}/bump-version-reasoning.md` (absolute path also emitted as `REASONING_FILE=<path>` on stdout)
    - Emits `KEY=VALUE` lines on stdout: `CURRENT_VERSION`, `NEW_VERSION`, `BUMP_TYPE`, `REASONING_FILE`
-3. You (main agent) parse the output. **By default, proceed directly to `apply-bump.sh` with the emitted `NEW_VERSION` — no diff review, no commentary, no log append.** Only review the diff for the **escalation-only** caveat when you have specific evidence of a backward-incompatible behavioral change beyond the classifier's reach; if escalating, update `NEW_VERSION` and append the bounded reasoning per the Caveat above.
+3. You (main agent) parse the output and review the diff for the **escalation-only** caveat (line 34). **Do not write commentary about that review unless you actually escalate** — no log append, no diff summary, no narration. If escalating, update `NEW_VERSION` and append the bounded reasoning per the Caveat above; otherwise proceed directly to `apply-bump.sh` with the emitted `NEW_VERSION`.
 4. You invoke `apply-bump.sh --new-version <NEW_VERSION>`, which:
    - First verifies the working tree is clean (fails on any staged or unstaged changes)
    - Backs up `.claude-plugin/plugin.json`
@@ -74,7 +74,7 @@ Parse the output for `CURRENT_VERSION`, `NEW_VERSION`, `BUMP_TYPE`, `REASONING_F
 
 If `BUMP_TYPE=NONE`, report the no-op and exit.
 
-Otherwise, **the default action is to invoke `apply-bump.sh` directly with the script-emitted `NEW_VERSION` — no diff review, no commentary, no log append.** Only review the branch diff when you have specific evidence to suspect a backward-incompatible behavioral change beyond the deterministic classifier's reach. If escalating, compute the new version from `CURRENT_VERSION` + your escalated bump type and append the bounded reasoning per the Caveat above.
+Otherwise, review the branch diff for the escalation-only caveat (above) and decide whether to escalate. **Do not write commentary about that review unless you actually escalate** — no log append, no diff summary, no narration. If escalating, compute the new version from `CURRENT_VERSION` + your escalated bump type and append the bounded reasoning per the Caveat above; otherwise invoke `apply-bump.sh` directly with the script-emitted `NEW_VERSION`.
 
 Then apply:
 
