@@ -324,10 +324,11 @@ pass "(b7) diagrams sanitizer → offending fence placeholder + warning"
 # --------------------------------------------------------------------------
 # (b2) Exact line-shape check: a newline-terminated fragment produces NO
 #      extra blank line between content and the close marker.
-#      Regression guard for the $(tail -c 1 ...) command-substitution bug
-#      (see scripts/assemble-anchor.sh:~130 — newline-stripping on command
-#      substitution caused a blank line to be emitted for every populated
-#      fragment before the fix).
+#      Regression guard for the original `$(tail -c 1 ...)` command-
+#      substitution newline-stripping bug. Refer by symbol — the current
+#      newline-handling lives in the populated-fragment `cat` + `od` /
+#      `tail -c` block of assemble-anchor.sh's main assembly loop, not at
+#      the line numbers the original fix touched.
 # --------------------------------------------------------------------------
 sections_b2="$tmpdir/sections-b2"
 mkdir -p "$sections_b2"

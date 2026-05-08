@@ -259,7 +259,11 @@ for truthy_value in "1" "true" "TRUE" "True" "yes" "YES" "Yes" "on" "ON" "On"; d
         *"(jq stderr at "*) pass ;;
         *) fail "truthy env value '$truthy_value' should enable debug path: '$debug_out'" ;;
     esac
-    debug_path=$(printf '%s' "$debug_out" | sed -n 's/.*jq stderr at \([^)]*\)).*/\1/p')
+    # Extract the path between "jq stderr at " and the LAST ")" — using bash
+# parameter expansion (greedy on both ends) so a path that itself contains
+# a `)` is not silently truncated. The greedy ##*X / %Y* pair pins the path
+# to whatever lies between the marker phrase and the final close paren.
+debug_path="${debug_out##*jq stderr at }"; debug_path="${debug_path%)*}"
     if [[ -n "$debug_path" && -s "$debug_path" ]]; then
         pass
     else

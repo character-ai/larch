@@ -151,6 +151,8 @@ If the sanitizer is missing, non-executable, or exits 2, assembly fails closed f
 - **(b9)** Lone `<!-- token-report-begin -->` marker (degraded-input case): the helper strips from the marker through EOF and preserves pre-marker content.
 - **(b10)** Lone `<!-- token-report-end -->` marker (degraded-input case): the helper strips from BOF through the marker and preserves post-marker content.
 - **(b11)** Multi-pair legacy token-report blocks: every begin/end pair is stripped (the awk strip loop iterates to a fixed point). Inter-block and pre/post content is preserved.
+- **(b12)** Matched pair followed by an orphan `<!-- token-report-end -->` (no second begin): the matched pair is stripped on iteration 1; the orphan end on iteration 2 is dropped as marker-line-only — content above the matched pair and content between the pair and the orphan are preserved.
+- **(b13)** Matched pair followed by an orphan `<!-- token-report-begin -->` (no following end): symmetric to (b12) — the orphan begin is dropped as marker-line-only and trailing content is preserved.
 - **(c)** Full fragments: all SECTION_MARKERS slugs have populated content.
 - **(d)** Missing `anchor-section-markers.sh` helper: `FAILED=true` + `ERROR=missing helper: …` on stdout + exit 1.
 - **(e)** Invalid `--issue` value (non-integer): usage error with exit 1.
