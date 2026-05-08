@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [17.0.23] - 2026-05-08
+
+### Changed
+
+- Resolve #1529: cursor and codex review launchers (`scripts/launch-cursor-review.sh`, `scripts/launch-codex-review.sh`) now run in a CLI-level read-only sandbox — `cursor agent -p --trust --mode plan --sandbox enabled` (replacing `--force --trust`) and `codex exec --sandbox read-only -C "$PWD"` (replacing `--full-auto`'s workspace-write). Each launcher also prepends a HARD CONSTRAINTS read-only preamble to every prompt (specialist, generic, sketch, debater, voter), mirroring `scripts/launch-gemini-review.sh`'s `GEMINI_REVIEW_HARDENING_PREAMBLE`. The CLI sandbox is the primary mitigation; the prompt preamble is its prompt-level reinforcement. The contract applies wherever these review launchers are used — `/review`, `/implement --quick` Step 5, `/design` plan-review, `/design` sketches, `/design` dialectic debaters. The implementer launchers (`scripts/launch-codex-implement.sh`, `scripts/launch-cursor-implement.sh`, `scripts/launch-gemini-implement.sh`) are intentionally untouched because their job is to edit the working tree.
+
+### Fixed
+
+- Resolve #1529: review-launcher empty-output retry no longer double-prepends the HARD CONSTRAINTS preamble. `${OUTPUT}.prompt` (consumed by `collect-agent-results.sh` retry via `--prompt-file`) now stores the user-original body so retries read the body, prepend the preamble exactly once, and produce an identical outgoing PROMPT — no preamble stacking. Caught by the round-1 `/review` panel and pinned by a new retry-idempotency proof case in both `scripts/test-launch-codex-review.sh` and `scripts/test-launch-cursor-review.sh` (replay via `--prompt-file` against the prior run's `OUTPUT.prompt` sidecar must produce exactly 1 preamble in argv). `SECURITY.md`, `docs/review-agents.md`, and `docs/external-reviewers.md` updated to reflect the new mechanical CLI-level read-only sandboxing posture for review-launcher lanes.
+
 ## [17.0.22] - 2026-05-08
 
 ### Fixed

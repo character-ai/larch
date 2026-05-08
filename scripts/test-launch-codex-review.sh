@@ -122,15 +122,46 @@ PATH="$STUB_BIN:$PATH" \
 assert_eq "stub invoked once" "1" "$(cat "$COUNT")"
 assert_eq "token session id rehydrated" "mock-codex-review-session" "$(cat "$TOKEN_SESSION_FILE")"
 assert_eq "argv 1" "exec" "$(sed -n '1p' "$ARGV")"
-assert_eq "argv 2" "--full-auto" "$(sed -n '2p' "$ARGV")"
-assert_eq "argv 3" "-C" "$(sed -n '3p' "$ARGV")"
-assert_eq "argv 4" "$REPO_ROOT" "$(sed -n '4p' "$ARGV")"
-assert_eq "argv 5 add-dir flag" "--add-dir" "$(sed -n '5p' "$ARGV")"
-assert_eq "argv 6 canonical output dir" "$(cd "$OUTDIR_REAL" && pwd -P)" "$(sed -n '6p' "$ARGV")"
+# Issue #1529: read-only review sandbox replaces --full-auto.
+assert_eq "argv 2 sandbox flag" "--sandbox" "$(sed -n '2p' "$ARGV")"
+assert_eq "argv 3 sandbox value" "read-only" "$(sed -n '3p' "$ARGV")"
+assert_eq "argv 4" "-C" "$(sed -n '4p' "$ARGV")"
+assert_eq "argv 5" "$REPO_ROOT" "$(sed -n '5p' "$ARGV")"
+assert_eq "argv 6 add-dir flag" "--add-dir" "$(sed -n '6p' "$ARGV")"
+assert_eq "argv 7 canonical output dir" "$(cd "$OUTDIR_REAL" && pwd -P)" "$(sed -n '7p' "$ARGV")"
+# argv MUST NOT carry --full-auto anymore.
+if grep -Fxq -- '--full-auto' "$ARGV"; then
+    fail "argv must NOT contain --full-auto under the issue #1529 read-only contract"
+else
+    pass
+fi
 assert_grep "outer launcher metadata" "OUTER_LAUNCHER=$REPO_ROOT/scripts/launch-codex-review.sh" "${OUTPUT}.meta"
 assert_grep "outer prompt metadata" "OUTER_LAUNCHER_PROMPT_FILE=${OUTPUT}.prompt" "${OUTPUT}.meta"
 assert_grep "dirty-tree sidecar status" "STATUS=" "${OUTPUT}.dirty-tree"
 assert_grep "dirty-tree sidecar mode" "MODE=baseline" "${OUTPUT}.dirty-tree"
+# Issue #1529: the preamble is applied to the outgoing PROMPT (last argv
+# token before the closing newline) but NOT to the OUTPUT.prompt sidecar
+# (which stays the user-original body so collect-agent-results.sh empty-output
+# retry replays via --prompt-file without double-prepending). Argv contains the
+# preamble; sidecar does not.
+if grep -Fq -- 'HARD CONSTRAINTS — your role is read-only review' "$ARGV"; then
+    pass
+else
+    fail "issue #1529 codex argv must carry the HARD CONSTRAINTS preamble"
+fi
+if grep -Fq -- 'HARD CONSTRAINTS' "${OUTPUT}.prompt"; then
+    fail "issue #1529 OUTPUT.prompt sidecar must NOT contain the preamble (retry-replay safety)"
+else
+    pass
+fi
+# Sidecar preserves the user-original prompt verbatim ("review prompt").
+EXPECTED_SIDECAR="$TMPDIR/expected-sidecar.txt"
+printf 'review prompt' > "$EXPECTED_SIDECAR"
+if cmp -s "$EXPECTED_SIDECAR" "${OUTPUT}.prompt"; then
+    pass
+else
+    fail "issue #1529 OUTPUT.prompt sidecar must equal the user-original prompt 'review prompt'"
+fi
 
 if [[ "$(grep -Fxc -- '-m' "$ARGV")" == "1" ]] && grep -Fxq -- 'stub-model' "$ARGV"; then
     pass
@@ -171,6 +202,28 @@ else
     fail "newline model should not publish public done"
 fi
 
+# Issue #1529: empty-output retry idempotency. The first run wrote
+# "review prompt" to ${OUTPUT}.prompt (user-original, no preamble).
+# Replaying via --prompt-file pointing at that sidecar must produce an argv
+# with EXACTLY ONE preamble — not two. Catches a regression where the
+# launcher would also write the preamble into the sidecar (which would make
+# the replay double-prepend).
+RETRY_OUTPUT="$TMPDIR/retry-output.txt"
+RETRY_ARGV="$TMPDIR/retry-argv.txt"
+RETRY_COUNT="$TMPDIR/retry-count.txt"
+PATH="$STUB_BIN:$PATH" \
+    CODEX_STUB_ARGV_LOG="$RETRY_ARGV" \
+    CODEX_STUB_COUNT_FILE="$RETRY_COUNT" \
+    "$LAUNCHER" --output "$RETRY_OUTPUT" --timeout 5 --prompt-file "${OUTPUT}.prompt" >/dev/null
+PREAMBLE_COUNT_RETRY=$(grep -Fc -- 'HARD CONSTRAINTS — your role is read-only review' "$RETRY_ARGV" || true)
+# `grep -F` per-line: the preamble's first line is on one argv-line because
+# the prompt is one shell argv. So count must be exactly 1.
+if [[ "$PREAMBLE_COUNT_RETRY" == "1" ]]; then
+    pass
+else
+    fail "retry replay via --prompt-file must produce exactly 1 preamble in argv; got $PREAMBLE_COUNT_RETRY"
+fi
+
 PROMPT_FILE="$TMPDIR/prompt-file.txt"
 ARGV_PROMPT_FILE="$TMPDIR/argv-prompt-file.txt"
 COUNT_PROMPT_FILE="$TMPDIR/count-prompt-file.txt"
@@ -179,12 +232,31 @@ PATH="$STUB_BIN:$PATH" \
     CODEX_STUB_ARGV_LOG="$ARGV_PROMPT_FILE" \
     CODEX_STUB_COUNT_FILE="$COUNT_PROMPT_FILE" \
     "$LAUNCHER" --output "$TMPDIR/prompt-file-output.txt" --timeout 5 --prompt-file "$PROMPT_FILE" >/dev/null
-EXPECTED_PROMPT_ARG="$TMPDIR/expected-prompt-arg.txt"
-printf 'from prompt file\n\n' > "$EXPECTED_PROMPT_ARG"
-if [[ "$(cat "$COUNT_PROMPT_FILE")" == "1" ]] && cmp -s "$EXPECTED_PROMPT_ARG" "${TMPDIR}/prompt-file-output.txt.prompt"; then
+PROMPT_SIDECAR="${TMPDIR}/prompt-file-output.txt.prompt"
+if [[ "$(cat "$COUNT_PROMPT_FILE")" == "1" ]]; then
     pass
 else
-    fail "--prompt-file should preserve prompt bytes and still launch through Codex"
+    fail "--prompt-file should still launch through Codex exactly once"
+fi
+# Issue #1529: --prompt-file's bytes are preserved verbatim in the sidecar
+# (no preamble there — retry-replay safety) and the preamble is applied to
+# the outgoing argv only.
+EXPECTED_PROMPT_ARG="$TMPDIR/expected-prompt-arg.txt"
+printf 'from prompt file\n\n' > "$EXPECTED_PROMPT_ARG"
+if cmp -s "$EXPECTED_PROMPT_ARG" "$PROMPT_SIDECAR"; then
+    pass
+else
+    fail "--prompt-file should preserve original bytes verbatim in OUTPUT.prompt sidecar"
+fi
+if grep -Fq -- 'HARD CONSTRAINTS — your role is read-only review' "$ARGV_PROMPT_FILE"; then
+    pass
+else
+    fail "--prompt-file run must still apply the HARD CONSTRAINTS preamble to the codex argv"
+fi
+if grep -Fq -- 'HARD CONSTRAINTS' "$PROMPT_SIDECAR"; then
+    fail "--prompt-file run must NOT include the preamble in the sidecar (retry-replay safety)"
+else
+    pass
 fi
 
 if (( FAIL > 0 )); then
