@@ -1441,6 +1441,15 @@ Parse the tail records and use the last `STATUS=` line. Branch:
 
 `postbump` emits Step 8a and Step 8b token/timing marks and reports internally. The prompt-side Step 8 mark above remains prompt-side because it predates `/bump-version`.
 
+```bash
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
+# token-step-end Step 8
+```
+
 ## Step 8a — CHANGELOG Update
 
 Step 8a — CHANGELOG amend — is consolidated into `implement-finalize.sh postbump` Phase 2. See `${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.md` for the contract. The orchestrator's only Step-8a responsibility is composing Claude-fallback bullets when `MANIFEST_PATH` is empty, as described in the Step 8 invocation block above.
