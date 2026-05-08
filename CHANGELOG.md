@@ -11,7 +11,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `/fix-issue` accepts an optional `--quick` flag, forwarded to `/implement` on the HARD bullet to override the SIMPLE/HARD complexity classification and force quick mode (skips `/design`, single-reviewer loop). SIMPLE is unaffected since it already passes `--quick`.
 
-
 ## [17.0.26] - 2026-05-08
 
 ### Changed
