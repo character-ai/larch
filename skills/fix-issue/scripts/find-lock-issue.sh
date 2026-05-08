@@ -2,13 +2,16 @@
 # find-lock-issue.sh — Find an eligible issue, lock it, and rename it to [IN PROGRESS].
 #
 # Combined Find + Lock + Rename pipeline invoked by /fix-issue Step 0. Runs
-# three operations in sequence:
+# four operations in sequence:
 #   1. Find candidate (eligibility scan or explicit-issue verification).
-#   2. Acquire the comment-based concurrency lock by delegating to
+#   2. Probe the local working tree with scripts/check-clean-tree.sh
+#      --fail-closed. Dirty or unknown cleanliness aborts before any GitHub
+#      mutation so GO and the original title remain intact.
+#   3. Acquire the comment-based concurrency lock by delegating to
 #      issue-lifecycle.sh comment --lock (verifies tail GO, deletes GO,
 #      posts "IN PROGRESS", post-checks for duplicate IN PROGRESS races).
 #      The comment lock is the correctness invariant.
-#   3. Rename the issue title to "[IN PROGRESS] <title>" by delegating to
+#   4. Rename the issue title to "[IN PROGRESS] <title>" by delegating to
 #      tracking-issue-write.sh rename --state in-progress. Best-effort: a
 #      rename failure does NOT undo the lock — the script still exits 0
 #      with LOCK_ACQUIRED=true RENAMED=false. /implement Step 0.5 Branch 2
@@ -89,7 +92,11 @@
 #   1 — no eligible issues (auto-pick mode only)
 #   2 — error: gh CLI failure, explicit issue not eligible, umbrella
 #       blocked by open dependencies, or umbrella-handler.sh detect
-#       failure in explicit-target mode (closes #891)
+#       failure in explicit-target mode (closes #891). Also used for
+#       pre-lock dirty-tree aborts before any GitHub mutation: ordinary
+#       paths emit ELIGIBLE=false ERROR=Working tree is not clean..., while
+#       umbrella child paths also emit IS_UMBRELLA=true UMBRELLA_NUMBER,
+#       UMBRELLA_TITLE, ISSUE_NUMBER, ISSUE_TITLE, and LOCK_ACQUIRED=false.
 #   3 — eligible issue found but comment lock could not be acquired
 #       (concurrent runner won the race, or GO sentinel changed between
 #       eligibility scan and lock attempt; on umbrella paths, the failure
@@ -234,6 +241,56 @@ source "$BLOCKER_HELPERS" || {
 }
 
 # ---------------------------------------------------------------------------
+# _emit_dirty_tree_pre_lock_abort <issue-num> <issue-title>
+#                                 [<umbrella-num> <umbrella-title>]
+#
+# Runs the local working-tree cleanliness probe immediately before lock
+# acquisition. The predicate itself lives in scripts/check-clean-tree.sh so
+# this pre-lock guard and preflight.sh share one git-status contract.
+# find-lock-issue.sh uses --fail-closed because it must not delete GO, post
+# IN PROGRESS, or rename an issue when local cleanliness cannot be determined.
+# preflight.sh intentionally calls the same helper in default fail-open mode
+# to preserve its historical setup behavior.
+# ---------------------------------------------------------------------------
+_emit_dirty_tree_pre_lock_abort() {
+    local issue_num="$1"
+    local issue_title="$2"
+    local umbrella_num="${3:-}"
+    local umbrella_title="${4:-}"
+    local check_script="${SCRIPT_DIR}/../../../scripts/check-clean-tree.sh"
+
+    local probe_out probe_exit=0
+    probe_out=$("$check_script" --fail-closed 2>&1) || probe_exit=$?
+
+    local clean_line
+    clean_line=$(printf '%s\n' "$probe_out" | awk -F= '/^CLEAN=/ { v=$2 } END { print v }')
+
+    if [ "$probe_exit" -eq 0 ] && [ "$clean_line" = "true" ]; then
+        return 0
+    fi
+
+    echo "ELIGIBLE=false"
+    if [ -n "$umbrella_num" ]; then
+        echo "IS_UMBRELLA=true"
+        echo "UMBRELLA_NUMBER=$umbrella_num"
+        echo "UMBRELLA_TITLE=$umbrella_title"
+        echo "ISSUE_NUMBER=$issue_num"
+        echo "ISSUE_TITLE=$issue_title"
+        echo "LOCK_ACQUIRED=false"
+    fi
+
+    if [ "$probe_exit" -eq 0 ] && [ "$clean_line" = "false" ]; then
+        echo "ERROR=Working tree is not clean. Commit or stash changes, then re-run /fix-issue. No issue was locked."
+    else
+        local summary
+        summary=$(printf '%s\n' "$probe_out" | awk '/^PROBE_ERROR=/ { sub(/^PROBE_ERROR=/, "", $0); v=$0 } END { print v }')
+        [ -n "$summary" ] || summary="probe exited $probe_exit"
+        echo "ERROR=Cannot determine working-tree cleanliness: $summary"
+    fi
+    exit 2
+}
+
+# ---------------------------------------------------------------------------
 # lock_and_rename_then_emit <issue-num> <issue-title>
 #
 # Acquires the comment lock by delegating to issue-lifecycle.sh comment --lock,
@@ -261,6 +318,8 @@ lock_and_rename_then_emit() {
     local lock_script rename_script
     lock_script="${SCRIPT_DIR}/issue-lifecycle.sh"
     rename_script="${SCRIPT_DIR}/../../../scripts/tracking-issue-write.sh"
+
+    _emit_dirty_tree_pre_lock_abort "$issue_num" "$issue_title" "" ""
 
     # ---- Step 2: acquire comment lock (correctness invariant) ----
     local lock_out lock_exit=0
@@ -349,6 +408,8 @@ lock_no_go_and_rename_then_emit_for_child() {
     local lock_script rename_script
     lock_script="${SCRIPT_DIR}/issue-lifecycle.sh"
     rename_script="${SCRIPT_DIR}/../../../scripts/tracking-issue-write.sh"
+
+    _emit_dirty_tree_pre_lock_abort "$child_num" "$child_title" "$umbrella_num" "$umbrella_title"
 
     # ---- Lock without GO ----
     local lock_out lock_exit=0
