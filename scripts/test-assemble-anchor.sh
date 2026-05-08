@@ -2,9 +2,10 @@
 # test-assemble-anchor.sh — regression harness for scripts/assemble-anchor.sh.
 #
 # Covers 18 assertion categories:
-#   (a) Empty sections directory → 8 empty marker pairs + run-statistics
-#       minimal table + first-line marker + seed-only visible placeholder
-#       line on line 2 (23 lines total).
+#   (a) Empty sections directory → one empty marker pair per SECTION_MARKERS
+#       slug + run-statistics minimal table + first-line marker +
+#       seed-only visible placeholder line on line 2 (line count derived
+#       from SECTION_MARKERS at runtime — see expected_lines_a below).
 #   (a2) Empty sections directory → placeholder literal present (regression
 #       guard for the seed-only visibility fix).
 #   (a3) Partial fragments (one slug populated) → placeholder is suppressed

@@ -1,0 +1,18 @@
+# Default: detect text files automatically and normalize EOL to LF in the
+# repository. This makes line-ending behavior independent of contributor
+# editor settings or `git`'s `core.autocrlf`.
+
+* text=auto eol=lf
+
+# Explicit text rules for the common extensions in this repo. These pin
+# `eol=lf` regardless of `core.autocrlf` and prevent CRLF from sneaking
+# into text content via Windows editors or copy-paste from CRLF sources.
+*.md     text eol=lf
+*.sh     text eol=lf
+*.py     text eol=lf
+*.yaml   text eol=lf
+*.yml    text eol=lf
+*.json   text eol=lf
+*.tsv    text eol=lf
+*.toml   text eol=lf
+*.txt    text eol=lf
