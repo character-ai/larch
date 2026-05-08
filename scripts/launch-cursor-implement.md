@@ -46,11 +46,12 @@ SIDECAR_LOG=<path>             # path to run-external-agent.sh chatter
 | `--timeout SECS` | yes | Wall-clock cap for Cursor subprocess |
 | `--answers-file PATH` | optional | Operator answers from a prior `needs_qa` cycle (resume) |
 | `--timing-task-kind KIND` | optional | Timing attribution kind; defaults to `cursor-implement` |
+| `--token-budget-cap N` | optional | Combined vendor token cap; exits 0 with `STATUS=cap_hit` in `$TRANSCRIPT_PATH` when exceeded |
 
 **Call sites**:
 - `skills/implement/scripts/step2-implement.sh` (dispatcher) — the only authorized caller.
 
-**Edit-in-sync**: `scripts/lib-cursor-launcher-common.sh`, `scripts/lib-external-launcher-common.sh`, `scripts/run-external-agent.sh`, `scripts/agent-model-args.sh`, `scripts/cursor-wrap-prompt.sh`, `scripts/cursor-wrap-prompt.md`, `agents/cursor-implementer.md`, `agents/gemini-implementer.md`, `skills/implement/references/codex-manifest-schema.md`, `scripts/launch-cursor-review.sh`, `scripts/launch-gemini-implement.md`, `skills/implement/scripts/test-cursor-implementer.sh`.
+**Edit-in-sync**: `scripts/check-step-token-budget.sh` (budget-cap helper), `scripts/lib-cursor-launcher-common.sh`, `scripts/lib-external-launcher-common.sh`, `scripts/run-external-agent.sh`, `scripts/agent-model-args.sh`, `scripts/cursor-wrap-prompt.sh`, `scripts/cursor-wrap-prompt.md`, `agents/cursor-implementer.md`, `agents/gemini-implementer.md`, `skills/implement/references/codex-manifest-schema.md`, `scripts/launch-cursor-review.sh`, `scripts/launch-gemini-implement.md`, `skills/implement/scripts/test-cursor-implementer.sh`.
 
 **Test harness**: `skills/implement/scripts/test-cursor-implementer.sh`.
 

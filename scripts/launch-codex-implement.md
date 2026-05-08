@@ -40,11 +40,12 @@ SIDECAR_LOG=<path>             # path to run-external-agent.sh chatter
 | `--timeout SECS` | yes | Wall-clock cap for Codex subprocess |
 | `--answers-file PATH` | optional | Operator answers from a prior `needs_qa` cycle (resume) |
 | `--timing-task-kind KIND` | optional | Timing attribution kind; defaults to `codex-implement` |
+| `--token-budget-cap N` | optional | Combined vendor token cap; exits 0 with `STATUS=cap_hit` in `$TRANSCRIPT_PATH` when exceeded |
 
 **Call sites**:
 - `skills/implement/scripts/step2-implement.sh` (dispatcher) — the only authorized caller.
 
-**Edit-in-sync**: `scripts/run-external-agent.sh`, `scripts/agent-model-args.sh`, `agents/codex-implementer.md`, `skills/implement/references/codex-manifest-schema.md`. Differs from `launch-codex-review.sh` in: (a) progress chatter redirected to sidecar log; (b) prompt composition in shell (review launcher passes prompt as a single argv string).
+**Edit-in-sync**: `scripts/check-step-token-budget.sh` (budget-cap helper), `scripts/run-external-agent.sh`, `scripts/agent-model-args.sh`, `agents/codex-implementer.md`, `skills/implement/references/codex-manifest-schema.md`. Differs from `launch-codex-review.sh` in: (a) progress chatter redirected to sidecar log; (b) prompt composition in shell (review launcher passes prompt as a single argv string).
 
 **Test harness**: `skills/implement/scripts/test-codex-implementer.sh` PATH-stubs `codex` and exercises flag validation, timeout validation, missing input files, manifest/qa-pending parent validation, missing-session-tmpdir validation, env-derived timing fallback, model-args preflight envelopes and retry classification, the five-line `KEY=VALUE` stdout envelope, transcript detection via `--output-last-message`, Codex argv shape/model forwarding including `--add-dir`, and resume prompt composition. `skills/implement/scripts/test-step2-dispatch.sh` remains the dispatcher harness for Step 2 branches that do not call this launcher (claude_fallback, argument validation, resume-cap bail).
 

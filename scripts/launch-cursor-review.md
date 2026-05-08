@@ -40,6 +40,7 @@
 - `--scope-files PATH` — canonical scope files list (required when `--mode=description`)
 - `--competition-notice` — append competition notice to specialist prompt
 - `--timing-task-kind KIND` — optional timing attribution kind; defaults to `cursor-review`
+- `--token-budget-cap N` — optional combined vendor token budget cap (positive integer). When set, the launcher calls `check-step-token-budget.sh` immediately after session-ID hydration. If combined vendor tokens since the last ledger mark already exceed `N`, the launcher writes `STATUS=cap_hit` to `$OUTPUT`, writes a `${OUTPUT}.cap-hit` sidecar with diagnostics, optionally writes `${IMPLEMENT_TMPDIR}/step-budget-cap-hit.env`, prints a one-line operator warning on stderr, and exits 0 without spawning Cursor. Validation: missing or non-numeric value exits 2.
 
 **Call sites**:
 - `skills/implement/SKILL.md` Step 5 (quick-mode specialists + generic reviewers)
@@ -49,4 +50,4 @@
 - `skills/review/SKILL.md` (Cursor specialist + generic reviewer)
 - `scripts/collect-agent-results.sh` empty-output retry path, when `OUTER_LAUNCHER*` metadata is present and valid
 
-**Edit-in-sync**: `scripts/lib-cursor-launcher-common.sh`, `scripts/lib-external-launcher-common.sh`, `scripts/lib-dirty-tree-sidecar.sh`, `scripts/check-mid-run-dirty-tree.sh`, `scripts/snapshot-untracked.sh`, `scripts/agent-model-args.sh`, `scripts/cursor-wrap-prompt.sh`, `scripts/render-specialist-prompt.sh`, `scripts/run-external-agent.sh`, `scripts/collect-agent-results.sh`, `scripts/test-launch-cursor-review.sh`, and `scripts/test-collect-agent-retry.sh`. Update `scripts/cursor-wrap-prompt.md` callers registry when adding/removing call sites.
+**Edit-in-sync**: `scripts/check-step-token-budget.sh` (budget-cap helper), `scripts/lib-cursor-launcher-common.sh`, `scripts/lib-external-launcher-common.sh`, `scripts/lib-dirty-tree-sidecar.sh`, `scripts/check-mid-run-dirty-tree.sh`, `scripts/snapshot-untracked.sh`, `scripts/agent-model-args.sh`, `scripts/cursor-wrap-prompt.sh`, `scripts/render-specialist-prompt.sh`, `scripts/run-external-agent.sh`, `scripts/collect-agent-results.sh`, `scripts/test-launch-cursor-review.sh`, and `scripts/test-collect-agent-retry.sh`. Update `scripts/cursor-wrap-prompt.md` callers registry when adding/removing call sites.

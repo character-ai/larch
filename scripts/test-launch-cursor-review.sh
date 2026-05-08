@@ -707,6 +707,36 @@ set -e
 assert_equals "flag-like timing-task-kind exit" "2" "$RC"
 assert_grep "flag-like timing-task-kind message" "non-empty, non-flag-like value" "$TMPDIR/bad-flaglike-tk.stderr"
 
+# --token-budget-cap argv validation
+set +e
+"$LAUNCHER" --output "$TMPDIR/budget-missing.txt" --timeout 5 --prompt "x" \
+    --token-budget-cap >/dev/null 2>"$TMPDIR/budget-missing.stderr"
+RC=$?
+set -e
+assert_equals "token-budget-cap missing value exit" "2" "$RC"
+assert_grep "token-budget-cap missing value message" "positive integer" "$TMPDIR/budget-missing.stderr"
+
+for bad_cap in abc 0.5 -1; do
+    set +e
+    "$LAUNCHER" --output "$TMPDIR/budget-bad-${bad_cap}.txt" --timeout 5 --prompt "x" \
+        --token-budget-cap "$bad_cap" >/dev/null 2>"$TMPDIR/budget-bad-${bad_cap}.stderr"
+    RC=$?
+    set -e
+    assert_equals "token-budget-cap bad value '$bad_cap' exit" "2" "$RC"
+    assert_grep "token-budget-cap bad value '$bad_cap' message" "positive integer" "$TMPDIR/budget-bad-${bad_cap}.stderr"
+done
+
+# Accept path: flag recognized (not "unknown flag"), binary absence causes exit from other checks
+set +e
+"$LAUNCHER" --output "$TMPDIR/budget-accept.txt" --timeout 5 --prompt "x" \
+    --token-budget-cap 9999999 >/dev/null 2>"$TMPDIR/budget-accept.stderr"
+set -e
+if grep -Fq "unknown flag: --token-budget-cap" "$TMPDIR/budget-accept.stderr" 2>/dev/null; then
+    fail "token-budget-cap flag not recognized (got 'unknown flag' rejection)"
+else
+    pass
+fi
+
 if [[ "$FAIL" -ne 0 ]]; then
     printf 'FAIL: test-launch-cursor-review.sh - %s failed, %s passed\n' "$FAIL" "$PASS" >&2
     printf '  %s\n' "${FAIL_DETAILS[@]}" >&2
