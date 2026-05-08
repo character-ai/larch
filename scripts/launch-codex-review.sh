@@ -124,7 +124,7 @@ DIRTY_TREE_WRITTEN=false
 UNTRACKED_BASELINE="${OUTPUT}.untracked-baseline"
 DIRTY_TREE_SIDECAR="${OUTPUT}.dirty-tree"
 
-# shellcheck disable=SC2329 # invoked indirectly by the EXIT trap.
+# shellcheck disable=SC2329,SC2317 # body invoked indirectly by the EXIT trap below.
 _write_dirty_tree_sidecar() {
     [[ -n "$OUTPUT" ]] || return 0
     [[ "$DIRTY_TREE_WRITTEN" == "false" ]] || return 0
@@ -134,7 +134,7 @@ _write_dirty_tree_sidecar() {
     DIRTY_TREE_WRITTEN=true
 }
 
-# shellcheck disable=SC2329 # invoked indirectly by the EXIT trap.
+# shellcheck disable=SC2329,SC2317 # body invoked indirectly by the EXIT trap below.
 _codex_exit_dispatcher() {
     local rc=${1:-$?}
     _emit_timing_record "$rc"

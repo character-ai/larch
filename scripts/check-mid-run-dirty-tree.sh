@@ -143,17 +143,28 @@ fi
 if ! git diff --name-only --cached -z > "$STAGED" 2>/dev/null; then
     emit_unknown "git-diff-cached-failed" "missing"
 fi
-cat "$UNSTAGED" "$STAGED" | LC_ALL=C sort -zu > "$TRACKED"
+# Guard the merge+sort pipeline so any cat / sort / pipe failure (disk
+# full, sort OOM, I/O error) still publishes STATUS=unknown via
+# emit_unknown instead of aborting under `set -euo pipefail` and
+# violating the "always exits 0" contract documented in
+# scripts/check-mid-run-dirty-tree.md.
+if ! { cat "$UNSTAGED" "$STAGED" | LC_ALL=C sort -zu > "$TRACKED"; }; then
+    emit_unknown "tracked-merge-sort-failed" "missing"
+fi
 
 if ! git ls-files --others --exclude-standard -z > "$CURRENT_UNTRACKED" 2>/dev/null; then
     emit_unknown "git-ls-files-failed" "missing"
 fi
-LC_ALL=C sort -zu "$CURRENT_UNTRACKED" -o "$CURRENT_UNTRACKED"
+if ! LC_ALL=C sort -zu "$CURRENT_UNTRACKED" -o "$CURRENT_UNTRACKED"; then
+    emit_unknown "untracked-sort-failed" "missing"
+fi
 
 BASELINE_STATE="missing"
 if [[ -r "$BASELINE" ]]; then
     BASELINE_STATE="present"
-    LC_ALL=C sort -zu "$BASELINE" -o "$BASELINE_SORTED"
+    if ! LC_ALL=C sort -zu "$BASELINE" -o "$BASELINE_SORTED"; then
+        emit_unknown "baseline-sort-failed" "$BASELINE_STATE"
+    fi
     LC_ALL=C perl -0ne '
         BEGIN {
             open my $baseline, "<", $ARGV[0] or exit 3;
