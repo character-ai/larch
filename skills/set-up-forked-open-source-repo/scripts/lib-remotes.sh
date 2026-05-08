@@ -2,29 +2,47 @@
 # Sourced by setup-forked-open-source-repo.sh.
 
 normalize_github_url() {
-  local url owner repo rest
+  local url host owner repo rest tuple
   url="${1:-}"
   url="${url%/}"
   url="${url%.git}"
 
   case "$url" in
-    git@github.com:*)
-      rest="${url#git@github.com:}"
+    git@*:*)
+      host="${url#git@}"
+      host="${host%%:*}"
+      rest="${url#git@"$host":}"
       ;;
-    ssh://git@github.com/*)
-      rest="${url#ssh://git@github.com/}"
+    ssh://git@*/*)
+      tuple="${url#ssh://git@}"
+      host="${tuple%%/*}"
+      rest="${tuple#*/}"
       ;;
-    https://github.com/*)
-      rest="${url#https://github.com/}"
+    ssh://*/*)
+      tuple="${url#ssh://}"
+      host="${tuple%%/*}"
+      rest="${tuple#*/}"
       ;;
-    git://github.com/*)
-      rest="${url#git://github.com/}"
+    https://*/*)
+      tuple="${url#https://}"
+      host="${tuple%%/*}"
+      rest="${tuple#*/}"
+      ;;
+    git://*/*)
+      tuple="${url#git://}"
+      host="${tuple%%/*}"
+      rest="${tuple#*/}"
       ;;
     *)
       printf '\n'
       return 1
       ;;
   esac
+
+  if [[ -z "$host" || "$host" == *"/"* || "$host" == *"@"* || "$host" == *"://"* || ! "$host" =~ ^[A-Za-z0-9.-]+(:[0-9]+)?$ ]]; then
+    printf '\n'
+    return 1
+  fi
 
   owner="${rest%%/*}"
   repo="${rest#*/}"
@@ -35,7 +53,7 @@ normalize_github_url() {
     return 1
   fi
 
-  printf '%s/%s\n' "$owner" "$repo" | tr '[:upper:]' '[:lower:]'
+  printf '%s\t%s/%s\n' "$host" "$owner" "$repo" | tr '[:upper:]' '[:lower:]'
 }
 
 remote_fetch_urls() {
@@ -64,13 +82,16 @@ remote_push_urls() {
 }
 
 classify_remote_state() {
-  local upstream fork line key value remote canonical
+  local upstream fork line key value remote tuple canonical_host canonical
   local remotes remote_count origin_seen upstream_seen fork_count fork_remote
   local origin_canonical upstream_canonical bad multi_url multi_push push_remote
   local fetch_keys push_keys
+  local expected_host
 
   upstream="$1"
   fork="$2"
+  expected_host="${GH_HOST:-github.com}"
+  expected_host="$(printf '%s\n' "$expected_host" | tr '[:upper:]' '[:lower:]')"
   remotes=""
   remote_count=0
   origin_seen=false
@@ -116,8 +137,14 @@ classify_remote_state() {
     value="${line#* }"
     remote="${key#remote.}"
     remote="${remote%.url}"
-    canonical="$(normalize_github_url "$value" || true)"
-    if [[ -z "$canonical" ]]; then
+    tuple="$(normalize_github_url "$value" || true)"
+    if [[ -z "$tuple" ]]; then
+      bad=true
+      continue
+    fi
+    canonical_host="${tuple%%	*}"
+    canonical="${tuple#*	}"
+    if [[ "$canonical_host" != "$expected_host" ]]; then
       bad=true
       continue
     fi
@@ -166,6 +193,107 @@ classify_remote_state() {
   fi
 
   printf 'state-ambiguous\n'
+}
+
+acquire_clone_lock() {
+  local lock_file lock_dir holder holder_tmp
+  lock_file="$1"
+  lock_dir="$lock_file.d"
+
+  if ! mkdir "$lock_dir" 2>/dev/null; then
+    holder="unknown"
+    if [[ -r "$lock_dir/holder" ]]; then
+      holder="$(cat "$lock_dir/holder" 2>/dev/null || true)"
+      [[ -n "$holder" ]] || holder="unknown"
+    fi
+    die "another setup-forked-open-source-repo run is in progress (lock=$lock_dir, holder=$holder)"
+  fi
+
+  holder_tmp="$lock_dir/.holder.$$"
+  printf '%s\n' "$$" >"$holder_tmp"
+  mv "$holder_tmp" "$lock_dir/holder"
+
+  if command -v flock >/dev/null 2>&1 && [[ -z "${LARCH_FORKED_REPO_FORCE_MKDIR_LOCK:-}" ]]; then
+    if ! exec 9>"$lock_file"; then
+      rm -f "$lock_dir/holder"
+      rmdir "$lock_dir" 2>/dev/null || true
+      die "unable to open setup lock file $lock_file"
+    fi
+    if ! flock -n 9; then
+      rm -f "$lock_dir/holder"
+      rmdir "$lock_dir" 2>/dev/null || true
+      die "another setup-forked-open-source-repo run is in progress (lock=$lock_dir, holder=$$)"
+    fi
+  fi
+}
+
+release_clone_lock() {
+  local lock_file lock_dir
+  lock_file="${1:-}"
+  [[ -n "$lock_file" ]] || return 0
+  lock_dir="$lock_file.d"
+  rm -f "$lock_dir/holder"
+  rmdir "$lock_dir" 2>/dev/null || true
+  exec 9>&- 2>/dev/null || true
+}
+
+_for_each_live_worktree() {
+  local callback line path prunable
+  callback="$1"
+  path=""
+  prunable=false
+
+  while IFS= read -r line; do
+    if [[ -z "$line" ]]; then
+      if [[ -n "$path" && "$prunable" != "true" ]]; then
+        "$callback" "$path" || return 1
+      fi
+      path=""
+      prunable=false
+      continue
+    fi
+    case "$line" in
+      worktree\ *)
+        path="${line#worktree }"
+        ;;
+      prunable*)
+        prunable=true
+        ;;
+    esac
+  done < <(git worktree list --porcelain)
+
+  if [[ -n "$path" && "$prunable" != "true" ]]; then
+    "$callback" "$path" || return 1
+  fi
+}
+
+_assert_worktree_clean() {
+  local path
+  path="$1"
+  if [[ -n "$(git -C "$path" status --porcelain)" ]]; then
+    printf "ERROR: working tree '%s' is dirty; commit or stash before running\n" "$path" >&2
+    return 1
+  fi
+}
+
+assert_all_worktrees_clean() {
+  _for_each_live_worktree _assert_worktree_clean
+}
+
+_assert_worktree_no_op_in_progress() {
+  local path git_dir sentinel
+  path="$1"
+  git_dir="$(git -C "$path" rev-parse --absolute-git-dir 2>/dev/null)" || return 1
+  for sentinel in MERGE_HEAD REBASE_HEAD rebase-apply rebase-merge CHERRY_PICK_HEAD REVERT_HEAD; do
+    if [[ -e "$git_dir/$sentinel" ]]; then
+      printf "ERROR: git operation in progress in '%s' (%s); resolve it before running\n" "$path" "$sentinel" >&2
+      return 1
+    fi
+  done
+}
+
+assert_all_worktrees_no_op_in_progress() {
+  _for_each_live_worktree _assert_worktree_no_op_in_progress
 }
 
 journal_record() {

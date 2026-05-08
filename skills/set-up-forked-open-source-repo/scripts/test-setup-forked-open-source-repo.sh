@@ -53,15 +53,47 @@ make_gh_stub() {
   local bin
   bin="$1"
   mkdir -p "$bin"
-  cat >"$bin/gh" <<'STUB'
+cat >"$bin/gh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 mode="${GH_STUB_MODE:-ok}"
+record="${GH_STUB_RECORD:-}"
+record_line() {
+  [[ -n "$record" ]] || return 0
+  printf '%s\n' "$*" >>"$record"
+}
+assert_host() {
+  local actual label
+  actual="$1"
+  label="$2"
+  if [[ -n "${GH_STUB_EXPECT_HOST:-}" && "$actual" != "$GH_STUB_EXPECT_HOST" ]]; then
+    echo "$label host mismatch: expected $GH_STUB_EXPECT_HOST got ${actual:-<empty>}" >&2
+    exit 3
+  fi
+}
 if [[ "$1" == "auth" && "${2:-}" == "status" ]]; then
+  shift 2
+  auth_host=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --hostname)
+        auth_host="${2:-}"
+        shift 2
+        ;;
+      *)
+        shift
+        ;;
+    esac
+  done
+  record_line "auth_status hostname=${auth_host:-} env=${GH_HOST:-}"
+  assert_host "${auth_host:-}" "auth status --hostname"
+  assert_host "${GH_HOST:-}" "auth status GH_HOST"
   [[ "$mode" == "auth-fail" ]] && { echo "auth failed token ghp_example" >&2; exit 1; }
   exit 0
 fi
 if [[ "$1" == "repo" && "${2:-}" == "view" ]]; then
+  record_line "repo_view env=${GH_HOST:-} args=$*"
+  assert_host "${GH_HOST:-}" "repo view GH_HOST"
   [[ "$mode" == "missing" ]] && { echo "HTTP 404: Could not resolve to a Repository" >&2; exit 1; }
   [[ "$mode" == "api-fail" ]] && { echo "HTTP 403: rate limited" >&2; exit 1; }
   if [[ "$mode" == "parent-split-fields" ]]; then
@@ -177,6 +209,10 @@ run_setup() {
       LARCH_FORKED_REPO_URL_OVERRIDE_FORK_HTTPS="$FORK_BARE" \
       LARCH_FORKED_REPO_URL_OVERRIDE_FORK_SSH="$FORK_BARE" \
       LARCH_FORKED_REPO_INJECT_FAILURE="${LARCH_FORKED_REPO_INJECT_FAILURE:-}" \
+      LARCH_FORKED_REPO_FORCE_MKDIR_LOCK="${LARCH_FORKED_REPO_FORCE_MKDIR_LOCK:-}" \
+      LARCH_FORKED_REPO_PAUSE_AFTER_LOCK_S="${LARCH_FORKED_REPO_PAUSE_AFTER_LOCK_S:-}" \
+      GH_STUB_EXPECT_HOST="${GH_STUB_EXPECT_HOST:-}" \
+      GH_STUB_RECORD="${GH_STUB_RECORD:-}" \
       "$SCRIPT" --upstream acme/project --fork me/project "$@"
   ) >"$out" 2>&1
 }
@@ -197,6 +233,10 @@ run_setup_rc() {
       LARCH_FORKED_REPO_URL_OVERRIDE_FORK_HTTPS="$FORK_BARE" \
       LARCH_FORKED_REPO_URL_OVERRIDE_FORK_SSH="$FORK_BARE" \
       LARCH_FORKED_REPO_INJECT_FAILURE="${LARCH_FORKED_REPO_INJECT_FAILURE:-}" \
+      LARCH_FORKED_REPO_FORCE_MKDIR_LOCK="${LARCH_FORKED_REPO_FORCE_MKDIR_LOCK:-}" \
+      LARCH_FORKED_REPO_PAUSE_AFTER_LOCK_S="${LARCH_FORKED_REPO_PAUSE_AFTER_LOCK_S:-}" \
+      GH_STUB_EXPECT_HOST="${GH_STUB_EXPECT_HOST:-}" \
+      GH_STUB_RECORD="${GH_STUB_RECORD:-}" \
       "$SCRIPT" --upstream acme/project --fork me/project "$@"
   ) >"$out" 2>&1
   rc="$?"
@@ -454,5 +494,152 @@ git -C "$WORK" remote set-url origin "https://github.com/acme/project.git"
 git -C "$FORK_BARE" fetch "$UPSTREAM_BARE" main:main >/dev/null
 run_setup "$WORK" "$OUT"
 assert_contains "$OUT" "SETUP_FORKED_REPO_RESULT=ok" "default run ignores submodule init"
+
+read_fixture normalize_ghe_urls
+LIB="$SCRIPT_DIR/lib-remotes.sh"
+tuple="$(bash -c 'source "$1"; normalize_github_url "$2"' bash "$LIB" "https://ghe.example.com/acme/proj.git")"
+assert_eq "$(printf 'ghe.example.com\tacme/proj')" "$tuple" "normalize https GHE URL returns host and slug"
+tuple="$(bash -c 'source "$1"; normalize_github_url "$2"' bash "$LIB" "git@ghe.example.com:acme/proj.git")"
+assert_eq "$(printf 'ghe.example.com\tacme/proj')" "$tuple" "normalize scp-style GHE URL returns host and slug"
+tuple="$(bash -c 'source "$1"; normalize_github_url "$2"' bash "$LIB" "ssh://git@ghe.example.com/acme/proj.git")"
+assert_eq "$(printf 'ghe.example.com\tacme/proj')" "$tuple" "normalize ssh GHE URL returns host and slug"
+tuple="$(bash -c 'source "$1"; normalize_github_url "$2"' bash "$LIB" "git://ghe.example.com/acme/proj")"
+assert_eq "$(printf 'ghe.example.com\tacme/proj')" "$tuple" "normalize git protocol GHE URL returns host and slug"
+set +e
+tuple="$(bash -c 'source "$1"; normalize_github_url "$2"' bash "$LIB" "http://github.com/acme/proj")"
+rc="$?"
+set -e
+assert_eq "1" "$rc" "normalize rejects http URL"
+assert_eq "" "$tuple" "normalize rejected http URL prints empty"
+set +e
+tuple="$(bash -c 'source "$1"; normalize_github_url "$2"' bash "$LIB" "https://acme@github.com/acme/proj")"
+rc="$?"
+set -e
+assert_eq "1" "$rc" "normalize rejects malformed host"
+assert_eq "" "$tuple" "normalize rejected malformed host prints empty"
+
+read_fixture ghe_host_forwarding
+OUT="$BASE/out.txt"
+RECORD="$BASE/gh-record.txt"
+git -C "$WORK" config --add url."$UPSTREAM_BARE".insteadOf "https://ghe.example.com/acme/project.git"
+git -C "$WORK" remote set-url origin "https://ghe.example.com/acme/project.git"
+GH_STUB_EXPECT_HOST=ghe.example.com GH_STUB_RECORD="$RECORD" run_setup "$WORK" "$OUT"
+assert_contains "$OUT" "SETUP_FORKED_REPO_RESULT=ok" "GHE origin run succeeds"
+assert_contains "$RECORD" "auth_status hostname=ghe.example.com env=ghe.example.com" "GHE auth status receives host"
+assert_contains "$RECORD" "repo_view env=ghe.example.com" "GHE repo view receives GH_HOST"
+
+read_fixture github_host_baseline
+OUT="$BASE/out.txt"
+RECORD="$BASE/gh-record.txt"
+GH_STUB_EXPECT_HOST=github.com GH_STUB_RECORD="$RECORD" run_setup "$WORK" "$OUT"
+assert_contains "$OUT" "SETUP_FORKED_REPO_RESULT=ok" "github.com host baseline succeeds"
+assert_contains "$RECORD" "auth_status hostname=github.com env=github.com" "github.com auth status receives host"
+assert_contains "$RECORD" "repo_view env=github.com" "github.com repo view receives GH_HOST"
+assert_configured "$WORK"
+
+read_fixture host_mismatch
+OUT="$BASE/out.txt"
+RECORD="$BASE/gh-record.txt"
+git -C "$WORK" remote add mine "https://ghe.example.com/me/project.git"
+if GH_STUB_RECORD="$RECORD" run_setup_rc "$WORK" "$OUT"; then fail "mixed host remotes refuse"; fi
+assert_contains "$OUT" "ambiguous remote state" "mixed host remotes refuse before GitHub repo view"
+assert_not_contains "$RECORD" "repo_view" "mixed host refusal skips gh repo view"
+
+read_fixture multi_url_origin
+OUT="$BASE/out.txt"
+RECORD="$BASE/gh-record.txt"
+git -C "$WORK" config --add remote.origin.url "https://github.com/acme/project.git"
+if GH_STUB_RECORD="$RECORD" run_setup_rc "$WORK" "$OUT"; then fail "multi-URL origin refuses"; fi
+assert_contains "$OUT" "multiple remote.origin.url entries" "multi-URL origin refuses early"
+if [[ -f "$RECORD" ]]; then
+  assert_not_contains "$RECORD" "auth_status" "multi-URL origin skips gh auth"
+else
+  pass "multi-URL origin skips gh auth"
+fi
+
+read_fixture sibling_dirty
+OUT="$BASE/out.txt"
+SIBLING="$BASE/sibling"
+git -C "$WORK" worktree add -b sibling "$SIBLING" main >/dev/null
+printf 'dirty\n' >"$SIBLING/dirty.txt"
+if run_setup_rc "$WORK" "$OUT"; then fail "dirty sibling worktree refuses"; fi
+assert_contains "$OUT" "is dirty; commit or stash before running" "dirty sibling worktree refuses with path"
+
+read_fixture sibling_op_in_progress
+OUT="$BASE/out.txt"
+SIBLING="$BASE/sibling"
+git -C "$WORK" worktree add -b sibling "$SIBLING" main >/dev/null
+mkdir -p "$(git -C "$SIBLING" rev-parse --absolute-git-dir)/rebase-merge"
+if run_setup_rc "$WORK" "$OUT"; then fail "sibling rebase refuses from primary"; fi
+assert_contains "$OUT" "git operation in progress in" "sibling rebase refuses from primary"
+assert_contains "$OUT" "rebase-merge" "sibling rebase reports sentinel from primary"
+
+read_fixture sibling_op_in_progress_from_sibling
+OUT="$BASE/out-sibling.txt"
+SIBLING="$BASE/sibling"
+git -C "$WORK" checkout -b feature >/dev/null
+git -C "$WORK" worktree add "$SIBLING" main >/dev/null
+mkdir -p "$(git -C "$SIBLING" rev-parse --absolute-git-dir)/rebase-merge"
+OUT="$BASE/out-sibling.txt"
+if run_setup_rc "$SIBLING" "$OUT"; then fail "sibling rebase refuses from sibling cwd"; fi
+assert_contains "$OUT" "git operation in progress in" "sibling rebase refuses from sibling cwd"
+assert_contains "$OUT" "rebase-merge" "sibling rebase reports sentinel from sibling cwd"
+
+read_fixture prunable_worktree
+OUT="$BASE/out.txt"
+PRUNABLE="$BASE/prunable"
+git -C "$WORK" worktree add -b prunable "$PRUNABLE" main >/dev/null
+rm -rf "$PRUNABLE"
+run_setup "$WORK" "$OUT"
+assert_contains "$OUT" "SETUP_FORKED_REPO_RESULT=ok" "prunable worktree is skipped"
+
+read_fixture lock_contention_mkdir
+OUT1="$BASE/out-first.txt"
+OUT2="$BASE/out-second.txt"
+LARCH_FORKED_REPO_FORCE_MKDIR_LOCK=1 LARCH_FORKED_REPO_PAUSE_AFTER_LOCK_S=2 run_setup "$WORK" "$OUT1" &
+pid="$!"
+sleep 1
+if LARCH_FORKED_REPO_FORCE_MKDIR_LOCK=1 run_setup_rc "$WORK" "$OUT2"; then fail "mkdir lock contention refuses"; fi
+wait "$pid"
+assert_contains "$OUT2" "another setup-forked-open-source-repo run is in progress" "mkdir lock contention refuses"
+assert_contains "$OUT2" "lock=" "mkdir lock contention reports lock"
+assert_contains "$OUT2" "holder=" "mkdir lock contention reports holder"
+
+read_fixture lock_contention_mixed_mode
+OUT1="$BASE/out-first.txt"
+OUT2="$BASE/out-second.txt"
+LARCH_FORKED_REPO_FORCE_MKDIR_LOCK=1 LARCH_FORKED_REPO_PAUSE_AFTER_LOCK_S=2 run_setup "$WORK" "$OUT1" &
+pid="$!"
+sleep 1
+if run_setup_rc "$WORK" "$OUT2"; then fail "mixed-mode lock contention refuses"; fi
+wait "$pid"
+assert_contains "$OUT2" "another setup-forked-open-source-repo run is in progress" "mixed-mode lock contention refuses"
+
+read_fixture holder_sidecar_cleanup
+OUT="$BASE/out.txt"
+COMMON_DIR="$(git -C "$WORK" rev-parse --absolute-git-dir)"
+LOCK_FILE="$COMMON_DIR/larch-fork-setup.lock"
+LARCH_FORKED_REPO_FORCE_MKDIR_LOCK=1 LARCH_FORKED_REPO_PAUSE_AFTER_LOCK_S=1 run_setup "$WORK" "$OUT"
+if [[ -e "$LOCK_FILE.d/holder" || -d "$LOCK_FILE.d" ]]; then fail "lock holder sidecar cleaned after release"; fi
+pass "lock holder sidecar cleaned after release"
+
+if command -v flock >/dev/null 2>&1; then
+  read_fixture lock_contention_flock
+  OUT="$BASE/out.txt"
+  COMMON_DIR="$(git -C "$WORK" rev-parse --absolute-git-dir)"
+  LOCK_FILE="$COMMON_DIR/larch-fork-setup.lock"
+  (
+    exec 8>"$LOCK_FILE"
+    flock -x 8
+    sleep 2
+  ) &
+  pid="$!"
+  sleep 1
+  if run_setup_rc "$WORK" "$OUT"; then fail "flock lock contention refuses"; fi
+  wait "$pid"
+  assert_contains "$OUT" "another setup-forked-open-source-repo run is in progress" "flock lock contention refuses"
+else
+  pass "flock lock contention skipped because flock is unavailable"
+fi
 
 printf 'All set-up-forked-open-source-repo harness checks passed.\n'

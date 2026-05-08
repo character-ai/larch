@@ -8,3 +8,11 @@ edit-in-sync rules live in
 harness creates local bare upstream/fork repositories, stubs `gh`, and exercises
 preflight, mirror-sync, remote-classification, rollback, and verification paths
 offline.
+
+Current host/concurrency hardening coverage includes GHE URL parsing,
+`http://` and malformed-host rejection, `GH_HOST` / `--hostname` forwarding,
+github.com baseline preservation, mixed-host refusal before `gh repo view`,
+multi-URL `origin` refusal before `gh auth`, linked-worktree dirty and
+operation-in-progress refusal, prunable worktree skipping, portable mkdir lock
+contention, mixed-mode contention, optional flock contention, and lock sidecar
+cleanup.

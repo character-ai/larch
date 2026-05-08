@@ -15,6 +15,9 @@ INIT_SUBMODULES=false
 SNAPSHOT_FILE=""
 JOURNAL_FILE=""
 REMOTE_PHASE_ACTIVE=false
+LOCK_FILE=""
+GH_HOST="github.com"
+PREFLIGHT_REMOTE_CLASSIFICATION=""
 
 usage() {
   cat >&2 <<'EOF'
@@ -63,9 +66,16 @@ validate_owner_repo() {
 }
 
 https_url() {
-  local kind owner_repo env_name
-  kind="$1"
-  owner_repo="$2"
+  local host kind owner_repo env_name
+  if [[ $# -ge 3 ]]; then
+    host="$1"
+    kind="$2"
+    owner_repo="$3"
+  else
+    host="${GH_HOST:-github.com}"
+    kind="$1"
+    owner_repo="$2"
+  fi
   env_name="LARCH_FORKED_REPO_URL_OVERRIDE_${kind}_HTTPS"
   # Test seam: the harness sets these env vars to point at local bare repos.
   # In production the override is a footgun — a leaked CI env var or stale
@@ -76,19 +86,26 @@ https_url() {
   if [[ -n "${!env_name:-}" && "${LARCH_FORKED_REPO_ALLOW_URL_OVERRIDE:-}" == "1" ]]; then
     printf '%s\n' "${!env_name}"
   else
-    printf 'https://github.com/%s.git\n' "$owner_repo"
+    printf 'https://%s/%s.git\n' "$host" "$owner_repo"
   fi
 }
 
 ssh_url() {
-  local kind owner_repo env_name
-  kind="$1"
-  owner_repo="$2"
+  local host kind owner_repo env_name
+  if [[ $# -ge 3 ]]; then
+    host="$1"
+    kind="$2"
+    owner_repo="$3"
+  else
+    host="${GH_HOST:-github.com}"
+    kind="$1"
+    owner_repo="$2"
+  fi
   env_name="LARCH_FORKED_REPO_URL_OVERRIDE_${kind}_SSH"
   if [[ -n "${!env_name:-}" && "${LARCH_FORKED_REPO_ALLOW_URL_OVERRIDE:-}" == "1" ]]; then
     printf '%s\n' "${!env_name}"
   else
-    printf 'git@github.com:%s.git\n' "$owner_repo"
+    printf 'git@%s:%s.git\n' "$host" "$owner_repo"
   fi
 }
 
@@ -146,6 +163,10 @@ trigger_remote_failure() {
   remote_phase_error 1
 }
 
+release_lock_on_exit() {
+  release_clone_lock "$LOCK_FILE"
+}
+
 parse_args() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -185,7 +206,7 @@ parse_args() {
 }
 
 phase_preflight() {
-  local root current git_dir gh_err has_origin
+  local root current gh_err has_origin upstream_canonical fork_canonical origin_url_count
   root="$(git rev-parse --show-toplevel 2>/dev/null)" || die "not inside a git repository"
   cd "$root"
 
@@ -195,23 +216,48 @@ phase_preflight() {
   # escape from inside a captured pipeline.
   command -v jq >/dev/null 2>&1 || die "jq is required but not installed; install jq (e.g., 'brew install jq' or your package manager) and rerun"
 
-  if [[ -n "$(git status --porcelain)" ]]; then
-    die "working tree is dirty; commit or stash before running"
-  fi
+  LOCK_DIR="$(git rev-parse --git-common-dir)"
+  LOCK_DIR="$(cd "$LOCK_DIR" && pwd)"
+  LOCK_FILE="$LOCK_DIR/larch-fork-setup.lock"
+  acquire_clone_lock "$LOCK_FILE"
+  trap release_lock_on_exit EXIT
 
-  git_dir="$(git rev-parse --git-dir)"
-  for path in MERGE_HEAD REBASE_HEAD rebase-apply rebase-merge CHERRY_PICK_HEAD REVERT_HEAD; do
-    if [[ -e "$git_dir/$path" ]]; then
-      die "git operation in progress ($path); resolve it before running"
-    fi
-  done
+  if [[ -n "${LARCH_FORKED_REPO_PAUSE_AFTER_LOCK_S:-}" ]]; then
+    sleep "$LARCH_FORKED_REPO_PAUSE_AFTER_LOCK_S"
+  fi
 
   git show-ref --verify --quiet refs/heads/main || die "local refs/heads/main is absent"
   current="$(git symbolic-ref --short HEAD 2>/dev/null || true)"
   [[ "$current" == "main" ]] || die "current checkout must be main"
 
+  has_origin=false
+  if git remote | grep -Fxq origin; then
+    has_origin=true
+    # Pre-fetch URL classification inspects origin's stored fetch URL via
+    # `lib-remotes.sh::normalize_github_url` before the first network fetch.
+    # Multi-URL origins are refused before any `gh` invocation so a mixed or
+    # ambiguous transport shape cannot reach the destructive phases.
+    local origin_url tuple canonical_host canonical_slug
+    origin_url_count="$(git config --get-all remote.origin.url | wc -l | tr -d '[:space:]')"
+    if [[ "$origin_url_count" -gt 1 ]]; then
+      die "multiple remote.origin.url entries; refuse early"
+    fi
+    origin_url="$(git config --get remote.origin.url 2>/dev/null || true)"
+    tuple="$(normalize_github_url "$origin_url" 2>/dev/null || true)"
+    if [[ -z "$tuple" ]]; then
+      die "origin remote URL '$origin_url' is not a recognized GitHub-compatible URL; refusing to fetch"
+    fi
+    canonical_host="${tuple%%	*}"
+    canonical_slug="${tuple#*	}"
+    [[ -n "$canonical_slug" ]] || die "origin remote URL '$origin_url' is not a recognized GitHub-compatible URL; refusing to fetch"
+    GH_HOST="$canonical_host"
+  else
+    GH_HOST="github.com"
+  fi
+  export GH_HOST
+
   gh_err="$(mktemp "${TMPDIR:-/tmp}/larch-forked-gh-auth.XXXXXX")"
-  if ! gh auth status >/dev/null 2>"$gh_err"; then
+  if ! gh auth status --hostname "$GH_HOST" >/dev/null 2>"$gh_err"; then
     printf 'ERROR: gh auth status failed:\n' >&2
     redact_file "$gh_err" >&2
     rm -f "$gh_err"
@@ -219,22 +265,15 @@ phase_preflight() {
   fi
   rm -f "$gh_err"
 
-  has_origin=false
-  if git remote | grep -Fxq origin; then
-    has_origin=true
-    # Pre-fetch URL classification (FINDING_R3_5): inspect origin's fetch URL
-    # via `lib-remotes.sh::normalize_github_url` BEFORE the network fetch, so a
-    # non-GitHub or unparseable origin (which `phase_remotes`'s classifier
-    # would later refuse) is rejected without a single network round-trip
-    # against the unvalidated remote. Multi-URL origins are allowed past this
-    # gate — the classifier rejects them in `phase_remotes` after the fetch
-    # has shown them to be benign — because `git config --get-all` here would
-    # require an extra grammar that mirrors the classifier.
-    local origin_url canonical
-    origin_url="$(git config --get remote.origin.url 2>/dev/null || true)"
-    canonical="$(normalize_github_url "$origin_url" 2>/dev/null || true)"
-    if [[ -z "$canonical" ]]; then
-      die "origin remote URL '$origin_url' is not a recognized GitHub URL; refusing to fetch"
+  assert_all_worktrees_clean || die "working tree is dirty; commit or stash before running"
+  assert_all_worktrees_no_op_in_progress || die "git operation in progress; resolve it before running"
+
+  if [[ "$has_origin" == "true" ]]; then
+    upstream_canonical="$(printf '%s\n' "$UPSTREAM" | tr '[:upper:]' '[:lower:]')"
+    fork_canonical="$(printf '%s\n' "$FORK" | tr '[:upper:]' '[:lower:]')"
+    PREFLIGHT_REMOTE_CLASSIFICATION="$(classify_remote_state "$upstream_canonical" "$fork_canonical")"
+    if [[ "${PREFLIGHT_REMOTE_CLASSIFICATION%% *}" == "state-ambiguous" ]]; then
+      die "ambiguous remote state; refusing to call GitHub before remotes are resolved"
     fi
     git fetch origin
   fi
@@ -257,7 +296,7 @@ phase_github() {
 
   if ! gh repo view "$FORK" --json nameWithOwner,parent,defaultBranchRef >"$gh_out" 2>"$gh_err"; then
     if grep -Eiq '404|not[_ -]?found|Could not resolve to a Repository' "$gh_err" "$gh_out"; then
-      printf 'Fork %s was not found. Create it at https://github.com/%s/fork, then rerun this skill.\n' "$FORK" "$UPSTREAM"
+      printf 'Fork %s was not found. Create it at https://%s/%s/fork, then rerun this skill.\n' "$FORK" "${GH_HOST:-github.com}" "$UPSTREAM"
       printf 'SETUP_FORKED_REPO_RESULT=fork_missing\n'
       rm -f "$gh_out" "$gh_err"
       exit 0
@@ -346,6 +385,9 @@ phase_github() {
     die "remote moved during confirmation; rerun"
   fi
 
+  assert_all_worktrees_clean || die "working tree became dirty before mirror push"
+  assert_all_worktrees_no_op_in_progress || die "git operation started before mirror push"
+
   tmp="$(mktemp -d "${TMPDIR:-/tmp}/larch-forked-mirror.XXXXXX")"
   clone_dir="$tmp/upstream.git"
   git clone --mirror "$upstream_https" "$clone_dir"
@@ -371,7 +413,11 @@ phase_remotes() {
 
   snapshot_remote_state
   REMOTE_PHASE_ACTIVE=true
-  classification="$(classify_remote_state "$upstream_canonical" "$fork_canonical")"
+  if [[ -n "$PREFLIGHT_REMOTE_CLASSIFICATION" ]]; then
+    classification="$PREFLIGHT_REMOTE_CLASSIFICATION"
+  else
+    classification="$(classify_remote_state "$upstream_canonical" "$fork_canonical")"
+  fi
   state="${classification%% *}"
   named_fork="${classification#* }"
 
@@ -422,11 +468,7 @@ phase_remotes() {
   git fetch origin --prune --tags
   git branch --set-upstream-to=origin/main main
 
-  if [[ -n "$(git status --porcelain)" ]]; then
-    # Late-phase: remotes already rewritten. Use phase_die so the ERR trap
-    # fires restore_remote_state instead of exiting directly.
-    phase_die "working tree became dirty before fast-forward"
-  fi
+  assert_all_worktrees_clean || phase_die "working tree became dirty before fast-forward"
   if ! git merge-base --is-ancestor origin/main main; then
     git merge --ff-only origin/main
   fi
