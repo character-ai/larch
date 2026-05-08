@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [17.0.24] - 2026-05-08
+
+### Changed
+
+- Resolve #1531: surface `cache_read` and `cache_create` columns in `scripts/token-report.sh`'s Claude markdown table — the jq harvester `usage_row` already captured `cache_read_input_tokens` and `cache_creation_input_tokens` per assistant turn, but `claude_table` only emitted `Claude Input` and `Claude Output`, so reports understated Anthropic input volume by hiding cache reads (typically 5-20x uncached input on long orchestrators) and cache writes. Widen the 2-column `vendor_header` and `vrow` jq helpers (used only by `claude_table`) to a 6-column shape: `Step | Skill | Claude Input | Claude Cache Read | Claude Cache Create | Claude Output`. Per-vendor (`vendor_header5` / `vrow5`) tables, the terse-line format, ledger schema, and `usage_row` are unchanged. Update `scripts/test-token-report.sh` golden header assertion plus three new body-row pin assertions for Step 1 step-total (`1 | 2 | 3 | 4`), Step 2 step-total (`10 | 20 | 30 | 40`), and Grand total (`11 | 22 | 33 | 44`) so a regression that zeros / swaps cache columns or drops them from `vrow` while keeping the column count would fail (harness now 116/116, was 113/113); reword the pipe-parity comment to describe the live-header-derived budget rather than pin "4 columns"; drop now-legitimate "Cache read" / "Cache create" from the negative-needle list. Update `scripts/token-report.md` Table Shape section with the new column list and restore concrete illustrative billable-proxy multipliers (`cache_read*0.1 + cache_create*1.25`) with an explicit "verify against current Anthropic pricing" disclaimer. Update `scripts/test-token-report.md` prose to reflect the 6-column header. Update `skills/implement/references/anchor-comment-template.md` token-report scaffold from 4-column to 6-column Claude header so the canonical template matches the renderer.
+
 ## [17.0.23] - 2026-05-08
 
 ### Changed
