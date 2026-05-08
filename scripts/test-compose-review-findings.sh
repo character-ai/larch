@@ -10,7 +10,8 @@
 #       header with synthetic id REJ_P1
 #   (d) rejected code-review parsing → finding emitted under [Code Review]
 #       header with synthetic id REJ_C1
-#   (e) inline ↔ archive switchover at the configured threshold
+#   (e) inline ↔ archive switchover at the configured threshold, with no
+#       leftover same-directory archive tempfile
 #   (f) archive content shape (JSONL — one record per line, valid JSON)
 #   (g) category derivation maps reviewer-name fragments to canonical tags
 #   (h) JSON escaping handles control bytes, carriage returns, quotes, and newlines
@@ -156,6 +157,10 @@ stdout_e=$("$COMPOSE" \
 grep -qxF 'MODE=archive' <<<"$stdout_e" || fail "(e) expected MODE=archive; got: $stdout_e"
 grep -qxF "ARCHIVE_PATH=$TMP/e-archive/issue-99.jsonl" <<<"$stdout_e" || fail "(e) archive path missing"
 [ -f "$TMP/e-archive/issue-99.jsonl" ] || fail "(e) archive file not created"
+archive_entries=("$TMP/e-archive"/*)
+if [ "${#archive_entries[@]}" -ne 1 ] || [ "${archive_entries[0]}" != "$TMP/e-archive/issue-99.jsonl" ]; then
+    fail "(e) archive directory should contain only the published JSONL"
+fi
 grep -q 'Inline payload exceeded' "$out_e" || fail "(e) pointer text missing"
 grep -q 'Archive path' "$out_e" || fail "(e) archive path bullet missing"
 [ "$FAILS" -eq 0 ] && pass "(e) archive switchover"
