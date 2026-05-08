@@ -467,6 +467,12 @@ exclude = [
   # the same Makefile-only pattern as scripts/test-session-entry-gate.sh above.
   "scripts/test-session-setup-health-defaults.sh",
   "scripts/test-session-setup-health-defaults.md",
+  # scripts/test-mermaid-fragments.sh is the regression harness for
+  # sanitize-mermaid-fragment.sh and lint-mermaid-fences.sh. Referenced only
+  # from Makefile (test-mermaid-fragments target) and its sibling contract,
+  # matching the Makefile-only harness pattern above.
+  "scripts/test-mermaid-fragments.sh",
+  "scripts/test-mermaid-fragments.md",
   "scripts/audit-edit-write.sh",
   "scripts/test-audit-edit-write.sh",
   "scripts/test-deny-edit-write.sh",

@@ -33,7 +33,7 @@ jobs:
   # harness failures and linter failures can be re-run independently.
   lint:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -59,8 +59,23 @@ jobs:
         # SECURITY.md as complementary to the dedicated `gitleaks`
         # job's history scan. Issue #1034.
         env:
-          SKIP: agnix
+          SKIP: agnix,lint-mermaid-fences
         run: make lint-only
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 'lts/*'
+          cache: npm
+          cache-dependency-path: package.json
+      - name: Install Mermaid CLI
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: '1'
+        run: npm install
+      - uses: actions/cache@v5
+        with:
+          path: ~/.cache/puppeteer
+          key: puppeteer-${{ runner.os }}-${{ hashFiles('package.json') }}
+      - name: Lint Mermaid fences (changed only)
+        run: scripts/lint-mermaid-fences.sh --changed-only
 
   # Dedicated shellcheck job — runs in parallel with `lint`. During Phase 1
   # of the rollout, `shellcheck` ALSO runs inside `lint` so coverage is

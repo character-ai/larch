@@ -9,6 +9,9 @@
 - `--anchor-id ID` (optional) — when set, pins the existing anchor for `upsert-anchor`. When omitted, `upsert-anchor` finds the existing anchor by its `<!-- larch:implement-anchor v1 issue=<N> -->` first-line marker, or creates a new comment if absent (Branch 2/3 seed-plant + Branch 4 fresh-creation paths).
 - `--output PATH` (optional) — assembled-body path. Default: `$(dirname "$SECTIONS_DIR")/anchor-assembled.md` so a session tmpdir layout `$IMPLEMENT_TMPDIR/anchor-sections/` resolves to `$IMPLEMENT_TMPDIR/anchor-assembled.md` automatically.
 - `--repo OWNER/REPO` (optional) — forwarded to `tracking-issue-write.sh`. When omitted, `upsert-anchor` resolves the repo via `gh repo view`.
+- `--warnings-log PATH` (optional) — forwarded to `assemble-anchor.sh` so Mermaid sanitizer rejections and fail-closed tool errors are logged in the session execution-issues file.
+
+When `--warnings-log` is omitted and `IMPLEMENT_TMPDIR` is set with a writable `$IMPLEMENT_TMPDIR/execution-issues.md`, the wrapper forwards that path automatically. Explicit `--warnings-log` wins over the environment default.
 
 ## Outputs
 
@@ -36,7 +39,7 @@ The wrapper does not invent new envelope keys. Callers parse `ASSEMBLED=true` an
 
 ## When to update
 
-Update this file when the wrapper grows new flags, when the default `--output` path changes, or when failure-envelope semantics change. The wrapper itself is intentionally a thin composition; reviewer panels should resist suggestions to add behavior here that does not also belong on `assemble-anchor.sh` / `upsert-anchor`. Edit-in-sync rule: any change to the assemble/upsert KV envelopes must also propagate to `refresh-anchor.sh`'s output documentation and to SKILL.md's parsing rules.
+Update this file when the wrapper grows new flags, when the default `--output` path changes, warning-log derivation changes, or when failure-envelope semantics change. The wrapper itself is intentionally a thin composition; reviewer panels should resist suggestions to add behavior here that does not also belong on `assemble-anchor.sh` / `upsert-anchor`. Edit-in-sync rule: any change to the assemble/upsert KV envelopes must also propagate to `refresh-anchor.sh`'s output documentation and to SKILL.md's parsing rules.
 
 ## Test harness
 

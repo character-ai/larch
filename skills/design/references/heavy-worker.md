@@ -33,6 +33,7 @@ Before executing, read these references in this order:
 2. `${CLAUDE_PLUGIN_ROOT}/skills/design/references/sketch-launch.md`
 3. `${CLAUDE_PLUGIN_ROOT}/skills/design/references/dialectic-execution.md` only when contested decisions are present and at least one dialectic bucket is queued
 4. `${CLAUDE_PLUGIN_ROOT}/skills/design/references/plan-review.md`
+5. `${CLAUDE_PLUGIN_ROOT}/skills/design/SKILL.md` Step 3b before generating an architecture diagram
 
 (Use `${CLAUDE_PLUGIN_ROOT}/…` rather than bare repo-relative paths — the heavy subagent runs in the consumer repo's CWD, not the plugin install root, so unqualified paths could resolve to a different tree or to missing files.)
 
@@ -47,7 +48,7 @@ Run the same mechanics documented in `/design`:
 3. Step 2b implementation plan synthesis.
 4. Step 3 plan review, voting, plan revision, OOS extraction, and rejected-finding tracking.
 
-When `auto_mode=true`, also run Step 3b architecture diagram and Step 4 rejected-finding artifact finalization in the worker, because there are no parent-side interactive checkpoints. When `auto_mode=false`, stop after Step 3 so the parent can run Step 3.5, Step 3b, Step 4, and Step 5.
+When `auto_mode=true`, also run Step 3b architecture diagram and Step 4 rejected-finding artifact finalization in the worker, because there are no parent-side interactive checkpoints. When generating `architecture-diagram.md`, follow the candidate -> sanitize -> promote subprocedure documented in `SKILL.md` Step 3b. Rejected diagrams are not promoted; treat a sanitizer-rejected diagram the same as "not generated" for the artifact contract. When `auto_mode=false`, stop after Step 3 so the parent can run Step 3.5, Step 3b, Step 4, and Step 5.
 
 ## Wait Discipline
 

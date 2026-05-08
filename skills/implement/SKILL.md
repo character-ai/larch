@@ -1310,9 +1310,9 @@ Runs unconditionally after Step 7 (regardless of Steps 6-7 skip).
 
 If `quick_mode=true`: print `⏩ 7a: code flow — skipped (quick mode) (<elapsed>)`, still write the `diagrams` anchor fragment (Architecture Diagram + Code-Flow-skipped placeholder per the Anchor-section fragment — `diagrams` sub-section below) so the Architecture Diagram is not silently omitted from the anchor, then proceed to Step 8.
 
-If `quick_mode=false`: generate a mermaid Code Flow Diagram from the actual committed implementation. Focus on **runtime behavior** — function call sequences, data flow, control flow. Do NOT duplicate the Architecture Diagram's structural view. Choose the appropriate mermaid type (`sequenceDiagram`, `flowchart`, `stateDiagram`, `graph`, etc.). Write the diagram to `$IMPLEMENT_TMPDIR/code-flow-diagram.md` and print under a `## Code Flow Diagram` header with a mermaid code fence.
+If `quick_mode=false`: generate a mermaid Code Flow Diagram from the actual committed implementation. Focus on **runtime behavior** — function call sequences, data flow, control flow. Do NOT duplicate the Architecture Diagram's structural view. Choose the appropriate mermaid type (`sequenceDiagram`, `flowchart`, `stateDiagram`, `graph`, etc.). Diagram contents must obey `${CLAUDE_PLUGIN_ROOT}/skills/shared/mermaid-safe-content.md`. Write the diagram to `$IMPLEMENT_TMPDIR/code-flow-diagram.candidate.md` first, including the `## Code Flow Diagram` heading and mermaid fence; validate it with `${CLAUDE_PLUGIN_ROOT}/scripts/sanitize-mermaid-fragment.sh --input "$IMPLEMENT_TMPDIR/code-flow-diagram.candidate.md" --from-md --warnings-step "7a"`, then promote it to `$IMPLEMENT_TMPDIR/code-flow-diagram.md` only on `STATUS=ok`. Print the promoted diagram under a `## Code Flow Diagram` header with a mermaid code fence.
 
-On success: `✅ 7a: code flow — diagram generated (<elapsed>)`. On failure (too abstract to diagram): `**⚠ 7a: code flow — generation failed, proceeding without diagram (<elapsed>)**` and log to `Warnings`.
+On success: `✅ 7a: code flow — diagram generated (<elapsed>)`. On generation failure (too abstract to diagram): `**⚠ 7a: code flow — generation failed, proceeding without diagram (<elapsed>)**` and log to `Warnings`. On sanitizer rejection or exit 2, delete the candidate, do not promote it, print `**⚠ 7a: code flow — rejected by mermaid sanitizer (REASON_TOKEN=<token>), proceeding without diagram (<elapsed>)**`, and append `- **Step 7a — code flow diagram rejected:** <REASON_TOKEN>` under `### Warnings` in `$IMPLEMENT_TMPDIR/execution-issues.md` via `${CLAUDE_PLUGIN_ROOT}/scripts/append-execution-issue.sh`. Use only `REASON_TOKEN` values, not raw diagram content.
 
 ### Anchor-section fragment — `diagrams`
 
@@ -1540,6 +1540,8 @@ Write the slim PR body to `$IMPLEMENT_TMPDIR/pr-body.md`. Substitute `<TRACKING_
 The `Closes #<N>` line auto-closes the tracking issue on merge and anchors Step 0.5 Branch 3 recovery on subsequent sessions.
 
 **MANDATORY — READ ENTIRE FILE** before composing the PR body: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/pr-body-template.md`. Contains the slim PR body scaffold (Summary, Architecture Diagram, Code Flow Diagram, Test plan, `Closes #<N>`, Claude Code footer). **Do NOT load** outside Step 9a.
+
+Before embedding each diagram source file into `$IMPLEMENT_TMPDIR/pr-body.md`, run `${CLAUDE_PLUGIN_ROOT}/scripts/sanitize-mermaid-fragment.sh --input <diagram-file> --from-md --warnings-step "9a"`. On rejection or exit 2, substitute `Architecture diagram not available.` or `Code flow diagram not available.` in the PR body and append `- **Step 9a — PR-body diagram <architecture|code-flow> rejected:** <REASON_TOKEN>` under `### Warnings` in `$IMPLEMENT_TMPDIR/execution-issues.md` via `${CLAUDE_PLUGIN_ROOT}/scripts/append-execution-issue.sh`. Preserve the rest of the PR body.
 
 ### 9a.1 — Create OOS GitHub Issues
 
