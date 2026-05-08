@@ -1,6 +1,6 @@
 #!/bin/bash
 # Structural regression test for /implement SKILL.md + references/ topology (closes #234).
-# Asserts live load-bearing invariants (assertion 5 retired; numbered list runs 1–4, 6–28, with lettered sub-pins) across skills/implement/SKILL.md and the six
+# Asserts live load-bearing invariants (assertion 5 retired; numbered list runs 1–4, 6–30, with lettered sub-pins) across skills/implement/SKILL.md and the six
 # reference docs extracted from it. Complements scripts/test-implement-rebase-macro.sh,
 # which owns the Rebase Checkpoint Macro mechanics; this harness owns top-level section
 # headings, the MANDATORY ↔ reference-file binding, the focus-area CI-parity check,
@@ -24,9 +24,12 @@
 # structural parity with Cursor's shared guardrails and later OOS triage
 # sub-pins; assertion 25 added the clean-main Step 0 entry gate; assertion 26
 # added the post-merge anti-halt literal pin, issue #1143; assertion 28 added
-# timing instrumentation pins. Assertion 5 is retired, so the numbered list
-# runs 1–4, 6–28; assertion 23 pins Gemini machinery preservation, including
-# negative pin 23j against re-introducing launch-gemini-review.sh.
+# timing instrumentation pins; assertion 29 added the anti-pattern doc-drift
+# pin (issue #1512, was #1498); assertion 30 added the Coder simplicity
+# override pin (issue #1512, was #1482). Assertion 5 is retired, so the
+# numbered list runs 1–4, 6–30; assertion 23 pins Gemini machinery
+# preservation, including negative pin 23j against re-introducing
+# launch-gemini-review.sh.
 #  (1) Exactly 1 `^## Load-Bearing Invariants$` heading in skills/implement/SKILL.md.
 #  (2) Exactly 1 `^## NEVER List$` heading.
 #  (3) Exactly 1 `^## Rebase Checkpoint Macro$` heading.
@@ -1192,6 +1195,66 @@ while IFS= read -r kind; do
   grep -qxF "$kind" "$allowed_tmp" \
     || fail "(28g) --timing-task-kind literal not present in TIMING_TASK_KINDS_ALLOWED: $kind"
 done < "$actual_tmp"
+
+# ---------------------------------------------------------------------------
+# (29) Anti-pattern doc-drift pin (closes #1512, was #1498). Issue #1480 added
+#      three documentary surfaces — the dialectic-execution.md recovery
+#      sentence, the heavy-worker.md `run_in_background: true` + yield
+#      anti-pattern + SendMessage-dependency note, and the AGENTS.md
+#      SendMessage requirement bullet — none of which were mechanically
+#      pinned. A future edit could silently regress any of them. Pin each
+#      with a fixed-string check so deletion fails CI. Mirrors the
+#      whole-file byte-pin pattern of assertions (13)/(26).
+# ---------------------------------------------------------------------------
+DESIGN_REFS_DIR="$REPO_ROOT/skills/design/references"
+DIALECTIC_EXEC_MD="$DESIGN_REFS_DIR/dialectic-execution.md"
+HEAVY_WORKER_MD="$DESIGN_REFS_DIR/heavy-worker.md"
+AGENTS_MD="$REPO_ROOT/AGENTS.md"
+
+[[ -f "$DIALECTIC_EXEC_MD" ]] || fail "(29a) skills/design/references/dialectic-execution.md missing: $DIALECTIC_EXEC_MD"
+[[ -f "$HEAVY_WORKER_MD" ]] || fail "(29b) skills/design/references/heavy-worker.md missing: $HEAVY_WORKER_MD"
+[[ -f "$AGENTS_MD" ]] || fail "(29c) AGENTS.md missing: $AGENTS_MD"
+
+dialectic_exec_pin='do NOT yield control back to the parent'
+grep -Fq "$dialectic_exec_pin" "$DIALECTIC_EXEC_MD" \
+  || fail "(29a) skills/design/references/dialectic-execution.md missing pin '$dialectic_exec_pin' — see #1512"
+
+heavy_worker_pins=(
+  '`run_in_background: true` + yield'
+  '**SendMessage dependency.**'
+)
+for lit in "${heavy_worker_pins[@]}"; do
+  grep -Fq "$lit" "$HEAVY_WORKER_MD" \
+    || fail "(29b) skills/design/references/heavy-worker.md missing pin '$lit' — see #1512"
+done
+
+agents_pin='`/design --subagent` requires `SendMessage`'
+grep -Fq "$agents_pin" "$AGENTS_MD" \
+  || fail "(29c) AGENTS.md missing pin '$agents_pin' — see #1512"
+
+# ---------------------------------------------------------------------------
+# (30) Coder simplicity override pin (closes #1512, was #1482).
+#      skills/implement/SKILL.md grew a "### Coder simplicity override"
+#      section (Step 1) that auto-routes implementer selection to claude
+#      for small, surgical plans when --coder was not explicitly passed.
+#      The section's heading, gate phrase, and literal breadcrumb are
+#      runtime-load-bearing: the orchestrator emits the breadcrumb verbatim
+#      when the override fires, and `/fix-issue` and other consumers expect
+#      that breadcrumb shape. Future edits to SKILL.md could drop or
+#      paraphrase any of the three without failing any other check. Pin
+#      each with a fixed-string check.
+# ---------------------------------------------------------------------------
+coder_override_heading='### Coder simplicity override'
+grep -Fq "$coder_override_heading" "$SKILL_MD" \
+  || fail "(30a) skills/implement/SKILL.md missing pin '$coder_override_heading' — see #1512"
+
+coder_override_gate='`coder_explicit=false` AND `design_only=false`'
+grep -Fq "$coder_override_gate" "$SKILL_MD" \
+  || fail "(30b) skills/implement/SKILL.md missing pin '$coder_override_gate' — see #1512"
+
+coder_override_breadcrumb='**⚡ 1: design plan — task classified as small (≤ ~100 LOC, no new abstractions); coder auto-set to claude (no explicit --coder).**'
+grep -Fq "$coder_override_breadcrumb" "$SKILL_MD" \
+  || fail "(30c) skills/implement/SKILL.md missing pin '$coder_override_breadcrumb' — see #1512"
 
 echo "PASS: test-implement-structure.sh — structural invariants hold (assertion 5 retired)"
 exit 0
