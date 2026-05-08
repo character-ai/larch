@@ -1265,7 +1265,7 @@ grep -Fq "$coder_override_breadcrumb" "$SKILL_MD" \
 #      state-file snippets compute EXPECTED_TMPDIR_BASENAME_PREFIX, which
 #      Step 18's verify_cleanup_target compares against the actual session
 #      tmpdir basename to authorize rm-rf. The prefix MUST exactly mirror what
-#      `scripts/session-setup.sh` (lines 233-236) and
+#      `scripts/session-setup.sh`'s CLONE_TAG derivation block and
 #      `scripts/implement-finalize.sh::clone_basename_prefix` produce — a
 #      four-step pipeline: (1) basename, (2) sanitize via tr (NOT a one-pipe
 #      `basename "$PWD" | tr` form, which bakes basename's trailing newline

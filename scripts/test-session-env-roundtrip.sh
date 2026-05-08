@@ -90,6 +90,16 @@ else
     pass
 fi
 
+# A.6e — empty --file with --default but missing --key still errors with
+# "--key is required" (closes #1563 round-3 review: --key validation
+# must run before the empty-file/default branch so an invocation that
+# forgets --key cannot silently print the default).
+if "$READ_SCRIPT" --file "" --default fallback >/dev/null 2>&1; then
+    fail "A.6e: empty --file + --default without --key should exit 1"
+else
+    pass
+fi
+
 # A.7 — KEY prefix collision: a key whose name is a prefix of another must
 # match exactly (not match the longer-named key's line). Locks the
 # whole-key-plus-equals match in the corrected awk.
