@@ -216,6 +216,13 @@ if ! BRANCH=$(capture_branch_once); then
     fi
 fi
 
+# Halt-protection sentinel: signals that the post-/design boundary gate
+# passed. Failure is fatal because the Stop hook treats sentinel absence as
+# "halted mid-Step-1" and would otherwise trap a legitimate success path.
+if ! touch "$IMPLEMENT_TMPDIR/.boundary-gate-passed" 2>/dev/null; then
+    fail_closed "boundary-gate-sentinel-write-failed"
+fi
+
 # All hard gates have passed. Emit the unified success envelope:
 # (1) reader stdout (MANIFEST_OK + KV + 📥 breadcrumb), then (2) wrapper extensions.
 # Buffering avoids the dual-envelope footgun where MANIFEST_OK and a later

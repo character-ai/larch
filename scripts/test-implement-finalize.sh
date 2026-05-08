@@ -162,6 +162,17 @@ exit 0
 STUB
     cat > "$SANDBOX/scripts/cleanup-tmpdir.sh" <<STUB
 #!/usr/bin/env bash
+dir=""
+while [ \$# -gt 0 ]; do
+  case "\$1" in
+    --dir) dir="\${2:-}"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+if [ "\${STUB_REQUIRE_RUN_CLEANED_UP:-false}" = "true" ] && [ ! -f "\$dir/.run-cleaned-up" ]; then
+  echo "missing .run-cleaned-up before cleanup" >&2
+  exit 42
+fi
 printf '%s\n' "\$@" > "$SANDBOX/cleanup-argv.txt"
 exit "\${STUB_CLEANUP_TMPDIR_RC:-0}"
 STUB
@@ -469,6 +480,37 @@ OUT=$(run_subject teardown --state-file "$STATE" --implement-tmpdir "$SANDBOX/tm
 assert_contains "📎 Tracking issue: https://github.example/owner/repo/issues/456" "$OUT" "teardown: tracking URL printed"
 assert_contains "✅ 18: cleanup — implement complete! (<elapsed>)" "$OUT" "teardown: final breadcrumb"
 assert_contains "ISSUE_URL=https://github.example/owner/repo/issues/456" "$OUT" "teardown: issue URL tail"
+
+write_state "$STATE"
+rm -f "$SANDBOX/tmp/.run-cleaned-up"
+OUT=$(STUB_REQUIRE_RUN_CLEANED_UP=true run_subject teardown --state-file "$STATE" --implement-tmpdir "$SANDBOX/tmp")
+assert_contains "✅ 18: cleanup — implement complete! (<elapsed>)" "$OUT" "teardown: run-cleaned-up exists before cleanup-tmpdir"
+if [ -f "$SANDBOX/tmp/.run-cleaned-up" ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: teardown: run-cleaned-up sentinel written"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: teardown: run-cleaned-up sentinel missing"
+fi
+
+write_state "$STATE" EXPECTED_SESSION_ID=wrong-session
+rm -f "$SANDBOX/tmp/.run-cleaned-up"
+OUT=$(run_subject teardown --state-file "$STATE" --implement-tmpdir "$SANDBOX/tmp")
+assert_contains "refusing to rm-rf" "$OUT" "teardown: sanity-check refusal path reached"
+if [ -f "$SANDBOX/tmp/.run-cleaned-up" ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: teardown: run-cleaned-up written before sanity-check refusal"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: teardown: run-cleaned-up missing on sanity-check refusal"
+fi
+
+write_state "$STATE" ISSUE_NUMBER=
+rm -f "$SANDBOX/tmp/.run-cleaned-up"
+chmod 0500 "$SANDBOX/tmp"
+OUT=$(run_subject teardown --state-file "$STATE" --implement-tmpdir "$SANDBOX/tmp")
+chmod 0700 "$SANDBOX/tmp"
+assert_contains "✅ 18: cleanup — implement complete! (<elapsed>)" "$OUT" "teardown: run-cleaned-up touch failure is non-blocking"
 
 write_state "$STATE"
 OUT=$(STUB_CLEANUP_TMPDIR_RC=1 run_subject teardown --state-file "$STATE" --implement-tmpdir "$SANDBOX/tmp")

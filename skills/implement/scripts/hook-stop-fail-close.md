@@ -1,0 +1,7 @@
+# skills/implement/scripts/hook-stop-fail-close.sh — contract
+
+`hook-stop-fail-close.sh` is the plugin-shipped `Stop` hook that refuses session stop only for a post-/design halt window: the resolved `/implement` tmpdir has `design-export/manifest.env`, neither `.boundary-gate-passed` nor `.run-cleaned-up` exists, and stdin `stop_hook_active` is not `true`. The hook resolves tmpdirs through `lib-resolve-implement-tmpdir.sh` using stdin `cwd`; no matching cwd-bound candidate is a fail-open no-op.
+
+Output is empty unless the predicate is true. The block envelope shape was verified against the Claude Code hooks reference at `https://code.claude.com/docs/en/hooks` on May 8, 2026: Stop hooks use top-level `{"decision":"block","reason":"..."}`. The reason is mode-agnostic, names `post-design-boundary.sh` rather than assuming the gate passed, and includes only the tmpdir basename to avoid leaking host paths. If `jq` is missing or JSON emission fails, the hook emits a static literal block envelope.
+
+The `stop_hook_active` guard prevents a continuation-loop trap: when Claude Code re-enters after a prior Stop block, the hook allows the subsequent stop through. Operator escape paths are hard-quit, remove the stale `design-export/manifest.env`, or touch `.run-cleaned-up` inside the active tmpdir. Edit in sync with `lib-resolve-implement-tmpdir.sh`, `post-design-boundary.sh`, `hooks/hooks.json`, and `skills/implement/scripts/test-post-design-boundary.sh`.
