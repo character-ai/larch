@@ -826,6 +826,10 @@ When `coder_explicit=false` AND `design_only=false` AND the resolved plan descri
 
 Classification is a main-agent judgment based on the plan in hand (same convention as the OOS triage thresholds — the `~` is intentional, precise bookkeeping is not required, but the boundary direction is fixed). When `coder_explicit=true` the explicit value wins regardless of plan size — the user has forced a particular implementer; the override does NOT fire and `coder` stays as parsed. The override does NOT modify `coder_explicit` itself, so resumed sessions re-evaluate against the same parsed flag state.
 
+**Legacy `--codex-available` interaction**: the deprecated `--codex-available true|false` flag is dispatcher-only and does NOT set `coder_explicit`. To suppress the simplicity override on legacy invocations, pass `--coder=codex` (or whichever implementer is desired) explicitly; the legacy knob alone leaves `coder_explicit=false` and the override may fire on small plans.
+
+**Manifest-reuse interaction**: this override runs unconditionally on the manifest-reuse fast path even though Step 1's "Simplicity classification preamble" is skipped there. The asymmetry is intentional — the preamble's job is to flip `quick_mode` (an irreversible workflow choice), while the override's job is to choose the implementer for THIS run; running it on resume keeps implementer selection responsive to the resumed plan.
+
 Routing consequence: the Step 2 dispatcher receives `--coder claude` and immediately emits `STATUS=claude_fallback` + `ORCHESTRATOR_EDIT_AUTHORITY=allowed`, taking the existing main-agent code-edit path at Step 2.4 — no new code path is introduced.
 
 ### Rebase onto latest main (before implementation)
@@ -936,12 +940,13 @@ If any check fails, synthesize an orchestrator-local bail: set `STATUS=bailed`, 
 
 The dispatcher does NOT git reset between cycles. The external implementer inspects branch state at the start of every invocation and — on the resume invocation — reads the answers file, decides if its prior partial work is consistent with the new answers, and either continues or bails with `resume-incompatible` (which the operator inspects manually). See `agents/codex-implementer.md` / `agents/cursor-implementer.md` / `agents/gemini-implementer.md` "Resume protocol".
 
-**2.4 — Claude-fallback branch** (entered ONLY when `STATUS=claude_fallback` AND `ORCHESTRATOR_EDIT_AUTHORITY=allowed`, validated in 2.1.5 — i.e. `coder=claude` was selected explicitly via `--coder=claude`, `coder=cursor` was selected but Cursor was unhealthy / unavailable so the dispatcher fell back to claude, `coder=gemini` was selected but Gemini was unhealthy / unavailable so the dispatcher fell back to claude, or the legacy `--codex-available false` was passed):
+**2.4 — Claude-fallback branch** (entered ONLY when `STATUS=claude_fallback` AND `ORCHESTRATOR_EDIT_AUTHORITY=allowed`, validated in 2.1.5 — i.e. `coder=claude` was selected explicitly via `--coder=claude`, `coder=claude` was set by Step 1's Coder simplicity override (`coder_explicit=false` AND plan classified small), `coder=cursor` was selected but Cursor was unhealthy / unavailable so the dispatcher fell back to claude, `coder=gemini` was selected but Gemini was unhealthy / unavailable so the dispatcher fell back to claude, or the legacy `--codex-available false` was passed):
 
 **Entry guard**: if `coder=codex`, `coder=cursor`, or `coder=gemini` was the resolved choice and the dispatcher returned anything other than `STATUS=claude_fallback` + `ORCHESTRATOR_EDIT_AUTHORITY=allowed`, do NOT enter this branch — the entry preconditions matrix at the top of Step 2 is authoritative; routing here would violate NEVER #10.
 
-Print one of the following based on which path landed here (use `coder` and the dispatcher's stdout to disambiguate):
-- When `coder=claude` was the resolved choice (an explicit operator selection): `**ℹ Implementing with main agent (coder=claude).**`
+Print one of the following based on which path landed here (use `coder`, `coder_explicit`, and the dispatcher's stdout to disambiguate):
+- When `coder=claude` AND `coder_explicit=true` (explicit operator selection): `**ℹ Implementing with main agent (coder=claude).**`
+- When `coder=claude` AND `coder_explicit=false` (auto-routed by Step 1's Coder simplicity override): `**ℹ Implementing with main agent (auto-routed: small plan, no explicit --coder).**`
 - When `coder=cursor` was the resolved choice but the dispatcher fell back to claude because Cursor was unhealthy or unavailable: `**⚠ Cursor unavailable — implementing with main agent.**` Also log `Step 2 — Cursor unhealthy/unavailable: fell back to claude` to the `Warnings` section of `$IMPLEMENT_TMPDIR/execution-issues.md`.
 - When `coder=gemini` was the resolved choice but the dispatcher fell back to claude because Gemini was unhealthy or unavailable: `**⚠ Gemini unavailable — implementing with main agent.**` Also log `Step 2 — Gemini unhealthy/unavailable: fell back to claude` to the `Warnings` section of `$IMPLEMENT_TMPDIR/execution-issues.md`.
 - When the orchestrator earlier reported Codex unavailable / unhealthy AND `coder=codex` was NOT explicitly requested (legacy / pre-`--coder` callers that mapped through `--codex-available false`): `**⚠ Codex unavailable — implementing with main agent.**`
