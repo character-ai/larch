@@ -92,7 +92,7 @@ Create one or more GitHub issues with LLM-based semantic duplicate detection. Su
 
 **Source**: [`.claude/skills/relevant-checks/SKILL.md`](../.claude/skills/relevant-checks/SKILL.md)
 
-Run pre-commit linters (shellcheck, markdownlint, jsonlint, actionlint, gitleaks) scoped to changed files (except gitleaks, which always scans the full working tree; see the relevant-checks skill). Invoked automatically by `/implement` and `/review` after code changes. **Not part of the plugin surface; each consuming repo provides its own.**
+Run pre-commit linters (shellcheck, markdownlint, jsonlint, actionlint, gitleaks) scoped to changed files (except gitleaks, which always scans the full working tree; see the relevant-checks skill). Human-invocable for local validation. `/implement` and `/review` use the script-first helper `scripts/run-relevant-checks-captured.sh` to call the same project-local `run-checks.sh` without invoking the Skill on the green path. **Not part of the plugin surface; each consuming repo provides its own.**
 
 ## `/research`
 

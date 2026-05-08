@@ -482,6 +482,14 @@ exclude = [
   "scripts/audit-edit-write.sh",
   "scripts/test-audit-edit-write.sh",
   "scripts/test-deny-edit-write.sh",
+  # Relevant-checks helper and hook harnesses are Makefile-only regression
+  # tests for the script-first green path; the runtime scripts are referenced
+  # from SKILL.md or hooks.json, while these tests are not.
+  "scripts/test-relevant-checks-byte-budget.sh",
+  "scripts/test-relevant-checks-validation.sh",
+  "scripts/test-relevant-checks-helper-failure.sh",
+  "scripts/test-hook-block-skill-relevant-checks.sh",
+  "scripts/test-review-relevant-checks-helper.sh",
   "scripts/test-post-scaffold-hints.sh",
   "skills/create-skill/scripts/test-render-skill-md.sh",
   "scripts/lib-count-commits.sh",
@@ -971,6 +979,11 @@ exclude = [
   "scripts/check-mid-run-dirty-tree.md",
   "scripts/test-check-mid-run-dirty-tree.md",
   "scripts/check-clean-tree.md",
+  "scripts/test-relevant-checks-byte-budget.md",
+  "scripts/test-relevant-checks-validation.md",
+  "scripts/test-relevant-checks-helper-failure.md",
+  "scripts/test-hook-block-skill-relevant-checks.md",
+  "scripts/test-review-relevant-checks-helper.md",
   "scripts/test-lib-cursor-auth.md",
   "scripts/lib-cursor-auth.md",
   "scripts/lib-cursor-launcher-common.md",
