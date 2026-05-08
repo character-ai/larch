@@ -268,16 +268,28 @@ phase_github() {
     exit 1
   fi
 
-  # Treat any malformed shape (non-object .parent.owner, non-string .login/.name,
-  # jq parse errors) as "no parent" rather than letting jq abort the phase, so
-  # the operator gets the intended `fork parent mismatch ... got <none>` message
-  # rather than a raw jq index/type error.
+  # Reject corrupt JSON up front so syntactically-invalid `gh` output yields
+  # a clear "gh repo view returned invalid JSON" diagnostic rather than the
+  # generic `fork parent mismatch ... got <none>` shape error below.
+  if ! jq -e . "$gh_out" >/dev/null 2>"$gh_err"; then
+    printf 'ERROR: gh repo view returned invalid JSON:\n' >&2
+    redact_file "$gh_err" >&2
+    rm -f "$gh_out" "$gh_err"
+    exit 1
+  fi
+  # Treat any malformed shape (non-object .parent.owner, non-string
+  # .login/.name) as "no parent" so the operator gets the stable
+  # `fork parent mismatch ... got <none>` message rather than a raw jq
+  # index/type error. The pre-parse gate above already rejected JSON-syntax
+  # failures, so this fallback is shape-only.
   parent="$(jq -r '
     if .parent == null then
       empty
     elif (.parent.nameWithOwner // "") != "" then
       .parent.nameWithOwner
     elif ((.parent.owner | type) == "object"
+          and ((.parent.owner.login // null) | type) == "string"
+          and ((.parent.name // null) | type) == "string"
           and (.parent.owner.login // "") != ""
           and (.parent.name // "") != "") then
       "\(.parent.owner.login)/\(.parent.name)"
