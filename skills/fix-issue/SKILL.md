@@ -137,6 +137,8 @@ ${CLAUDE_PLUGIN_ROOT}/skills/fix-issue/scripts/get-issue-details.sh \
   --issue $ISSUE_NUMBER --output "$FIX_ISSUE_TMPDIR/issue-details.txt"
 ```
 
+Sibling contract: `${CLAUDE_PLUGIN_ROOT}/skills/fix-issue/scripts/get-issue-details.md`.
+
 Read `$FIX_ISSUE_TMPDIR/issue-details.txt` to get the full issue content.
 
 ## Step 3 — Triage
@@ -147,7 +149,7 @@ Print `> **🔶 3: triage**`
 
 Decide whether the issue is still material against the codebase (see the reference for the check list and the triage-targets rule for investigation/review-only issues).
 
-**Round-trip detection for terminal renames**: before any Step 3 / Step 6 terminal `tracking-issue-write.sh rename --state done`, run `${CLAUDE_PLUGIN_ROOT}/scripts/round-trip-detect.sh` and pass its `ROUND_TRIP=true|false` value as `--round-trip "$ROUND_TRIP"`. Use `$FIX_ISSUE_TMPDIR/issue-details.txt` from Step 2 as the canonical issue text source and pass `$ISSUE_TITLE` via `--text-string` only because it is short. For PR-path Step 6a, also fetch PR text into a temp file with `gh pr view "$PR_NUMBER" --json title,body --jq '(.title // "") + "\n" + (.body // "")'` and include that as an additional `--text-file`. Bodies and PR descriptions MUST be file-backed, not argv-backed. Best-effort: on any `gh` or detector failure, log a warning under `Tool Failures`, set `ROUND_TRIP=false`, and still run the rename. See `${CLAUDE_PLUGIN_ROOT}/scripts/round-trip-detect.md` and `${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.md`.
+**Round-trip detection for terminal renames**: before any Step 3 / Step 6 terminal `tracking-issue-write.sh rename --state done`, run `${CLAUDE_PLUGIN_ROOT}/scripts/round-trip-detect.sh` and pass its `ROUND_TRIP=true|false` value as `--round-trip "$ROUND_TRIP"`. Use `$FIX_ISSUE_TMPDIR/issue-details.txt` from Step 2 as the canonical issue text source and pass `$ISSUE_TITLE` via `--text-string` only because it is short. For PR-path Step 6a, also fetch PR text into a temp file with `gh pr view "$PR_NUMBER" --repo "$REPO" --json title,body --jq '(.title // "") + "\n" + (.body // "")'` and include that as an additional `--text-file`. Bodies and PR descriptions MUST be file-backed, not argv-backed. Best-effort: on any `gh` or detector failure, log a warning under `Tool Failures`, set `ROUND_TRIP=false`, and still run the rename. See `${CLAUDE_PLUGIN_ROOT}/scripts/round-trip-detect.md` and `${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.md`.
 
 **If the issue is no longer material** (already fixed, invalid, or no longer relevant): compose a detailed explanation with a research summary per the reference, then:
 
@@ -270,7 +272,7 @@ The `[IN PROGRESS]` title prefix Step 0 applied at lock time has usually already
 
 ```bash
 PR_ROUND_TRIP_FILE=$(mktemp "$FIX_ISSUE_TMPDIR/round-trip-pr.XXXXXX")
-gh pr view "$PR_NUMBER" --json title,body --jq '(.title // "") + "\n" + (.body // "")' > "$PR_ROUND_TRIP_FILE"
+gh pr view "$PR_NUMBER" --repo "$REPO" --json title,body --jq '(.title // "") + "\n" + (.body // "")' > "$PR_ROUND_TRIP_FILE"
 ROUND_TRIP_OUT=$(${CLAUDE_PLUGIN_ROOT}/scripts/round-trip-detect.sh \
   --text-file "$FIX_ISSUE_TMPDIR/issue-details.txt" \
   --text-file "$PR_ROUND_TRIP_FILE" 2>&1) || ROUND_TRIP_OUT="ROUND_TRIP=false"

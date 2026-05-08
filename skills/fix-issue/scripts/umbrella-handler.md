@@ -2,6 +2,8 @@
 
 `skills/fix-issue/scripts/umbrella-handler.sh` is the umbrella-issue helper invoked by `skills/fix-issue/scripts/find-lock-issue.sh`'s explicit-issue path. It owns three orthogonal decisions: detection, child enumeration, and pick-next-eligible-child. Auto-pick mode in `find-lock-issue.sh` does NOT call this helper — umbrella handling is restricted to the explicit-issue path per the design dialectic's DECISION_1 (`/design` Step 2a.5 voted 2-1 ANTI_THESIS).
 
+The helper resolves `REPO` once with `scripts/resolve-repo.sh`. Direct `gh issue view` calls pass `--repo "$REPO"`, and comment/dependency lookups use `repos/$REPO/...` API paths. Resolution failure is fail-closed with `ERROR=Failed to resolve repository name`.
+
 ## Subcommands
 
 - **`detect --issue N`** — emits `IS_UMBRELLA=true|false` plus `UMBRELLA_TITLE=<title>` when true.

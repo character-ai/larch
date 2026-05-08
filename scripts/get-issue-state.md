@@ -5,7 +5,7 @@
 ## Inputs
 
 - `--issue N` (required) — issue number (or PR number — the script does not assume; it reports `IS_PR=true` when the URL `gh` returns contains `/pull/`).
-- `--repo OWNER/REPO` (optional) — passed through to `gh issue view`. When omitted, `gh` resolves the repo from the cwd's git config.
+- `--repo OWNER/REPO` (optional) — passed through to `gh issue view`. When omitted, the script resolves the current repo with `scripts/resolve-repo.sh` and passes `--repo` if resolution succeeds; if resolution fails, `gh` resolves the repo from the cwd's git config.
 
 ## Outputs
 

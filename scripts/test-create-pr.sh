@@ -35,9 +35,17 @@ cat > "$stub_dir/gh" <<'GH'
 #!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$*" >> "${GH_LOG:?}"
-if [[ "$1 $2" != "pr view" && "$1 $2" != "pr create" ]]; then
+if [[ "$1 $2" != "pr view" && "$1 $2" != "pr create" && "$1 $2" != "repo view" ]]; then
     echo "unexpected gh command: $*" >&2
     exit 2
+fi
+if [[ "$1 $2" == "repo view" ]]; then
+    case "${GH_DEFAULT_BRANCH_MODE:-detect}" in
+        detect) echo "develop" ;;
+        fallback) exit 1 ;;
+        *) echo "${GH_DEFAULT_BRANCH_MODE}" ;;
+    esac
+    exit 0
 fi
 case "${GH_MODE:-create}" in
     existing)
@@ -75,6 +83,21 @@ grep -Fxq 'PR_STATUS=created' <<<"$out" || fail "create path did not report crea
 if grep -E '^(pr view|pr create)' "$TMPROOT/create-gh.log" | grep -v -- '--repo fork/repo' >/dev/null; then
     fail "create path has gh pr view/create without --repo"
 fi
+grep -Fq 'repo view --repo fork/repo --json defaultBranchRef --jq .defaultBranchRef.name' "$TMPROOT/create-gh.log" || fail "create path did not detect default branch with --repo"
+grep -Fq -- '--base develop' "$TMPROOT/create-gh.log" || fail "create path did not use detected default branch"
+
+repo=$(setup_repo explicit-base)
+out=$(cd "$repo" && GH_LOG="$TMPROOT/base-gh.log" GH_MODE=create PATH="$stub_dir:$PATH" "$SCRIPT" --title "Test PR" --body-file body.md --repo fork/repo --base release)
+grep -Fxq 'PR_STATUS=created' <<<"$out" || fail "explicit base path did not report created"
+grep -Fq -- '--base release' "$TMPROOT/base-gh.log" || fail "explicit base path did not use --base value"
+if grep -Fq 'repo view' "$TMPROOT/base-gh.log"; then
+    fail "explicit base path should not detect default branch"
+fi
+
+repo=$(setup_repo fallback-base)
+out=$(cd "$repo" && GH_LOG="$TMPROOT/base-fallback-gh.log" GH_MODE=create GH_DEFAULT_BRANCH_MODE=fallback PATH="$stub_dir:$PATH" "$SCRIPT" --title "Test PR" --body-file body.md --repo fork/repo)
+grep -Fxq 'PR_STATUS=created' <<<"$out" || fail "base fallback path did not report created"
+grep -Fq -- '--base main' "$TMPROOT/base-fallback-gh.log" || fail "base fallback path did not fall back to main"
 
 repo=$(setup_repo existing)
 out=$(cd "$repo" && GH_LOG="$TMPROOT/existing-gh.log" GH_MODE=existing PATH="$stub_dir:$PATH" "$SCRIPT" --title "Test PR" --body-file body.md --repo fork/repo)

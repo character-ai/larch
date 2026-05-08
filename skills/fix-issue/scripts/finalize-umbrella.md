@@ -2,7 +2,7 @@
 
 `skills/fix-issue/scripts/finalize-umbrella.sh` is the umbrella-finalization composer invoked when an umbrella's tracked children are all closed. It composes `tracking-issue-write.sh rename --state done` plus `issue-lifecycle.sh close --comment ...` into a single idempotent operation, addressing FINDING_2 from the design plan-review panel: `issue-lifecycle.sh close` posts the `--comment` BEFORE its idempotency probe, so concurrent finalize attempts could double-post the closing comment without an upstream guard.
 
-Before the terminal rename, the helper also runs `scripts/round-trip-detect.sh` over the umbrella title and body fetched by the same `gh issue view` probe. The body is passed via a temp file, never argv; the title is passed as a short trusted `--text-string`. The result is passed to `tracking-issue-write.sh rename --round-trip true|false`; sticky preservation of an existing marker is owned by the shared rename helper.
+Before the terminal rename, the helper also runs `scripts/round-trip-detect.sh` over the umbrella title and body fetched by the same `gh issue view --repo "$REPO"` probe. The body is passed via a temp file, never argv; the title is passed as a short trusted `--text-string`. `REPO` is resolved once with `scripts/resolve-repo.sh`; the value is used for the issue view, comment-marker API path, and `tracking-issue-write.sh rename --repo`. The result is passed to `tracking-issue-write.sh rename --round-trip true|false`; sticky preservation of an existing marker is owned by the shared rename helper.
 
 ## Subcommand
 

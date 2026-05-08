@@ -9,7 +9,14 @@
 # Exit code: always 0 (the empty case is normal, not an error).
 set -euo pipefail
 
-gh pr view --json body --jq '.body' 2>/dev/null \
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REPO=$("$SCRIPT_DIR/resolve-repo.sh" 2>/dev/null) || REPO=""
+GH_REPO_ARGS=()
+if [[ -n "$REPO" ]]; then
+  GH_REPO_ARGS=(--repo "$REPO")
+fi
+
+gh pr view "${GH_REPO_ARGS[@]}" --json body --jq '.body' 2>/dev/null \
   | grep -oE 'Closes #[0-9]+' \
   | head -1 \
   | grep -oE '[0-9]+' \

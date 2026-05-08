@@ -203,7 +203,9 @@ done
 # ---------------------------------------------------------------------------
 # Resolve repo identity
 # ---------------------------------------------------------------------------
-REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null) || {
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+RESOLVE_REPO="${SCRIPT_DIR}/../../../scripts/resolve-repo.sh"
+REPO=$("$RESOLVE_REPO" 2>/dev/null) || {
     echo "ELIGIBLE=false"
     echo "ERROR=Failed to resolve repository name"
     exit 2
@@ -256,10 +258,9 @@ source "$BLOCKER_HELPERS" || {
 lock_and_rename_then_emit() {
     local issue_num="$1"
     local issue_title="$2"
-    local script_dir lock_script rename_script
-    script_dir="$(dirname "${BASH_SOURCE[0]}")"
-    lock_script="${script_dir}/issue-lifecycle.sh"
-    rename_script="${script_dir}/../../../scripts/tracking-issue-write.sh"
+    local lock_script rename_script
+    lock_script="${SCRIPT_DIR}/issue-lifecycle.sh"
+    rename_script="${SCRIPT_DIR}/../../../scripts/tracking-issue-write.sh"
 
     # ---- Step 2: acquire comment lock (correctness invariant) ----
     local lock_out lock_exit=0
@@ -290,7 +291,7 @@ lock_and_rename_then_emit() {
 
     # ---- Step 3: rename title (best-effort) ----
     local rename_out rename_exit=0 renamed=false rename_error=""
-    rename_out=$("$rename_script" rename --issue "$issue_num" --state in-progress 2>&1) || rename_exit=$?
+    rename_out=$("$rename_script" rename --issue "$issue_num" --state in-progress --repo "$REPO" 2>&1) || rename_exit=$?
 
     # Parse RENAMED (true/false). RENAMED=false is BOTH the idempotent no-op
     # path AND the failure path; distinguish via FAILED= or non-zero exit.
@@ -345,10 +346,9 @@ lock_no_go_and_rename_then_emit_for_child() {
     local child_title="$2"
     local umbrella_num="$3"
     local umbrella_title="$4"
-    local script_dir lock_script rename_script
-    script_dir="$(dirname "${BASH_SOURCE[0]}")"
-    lock_script="${script_dir}/issue-lifecycle.sh"
-    rename_script="${script_dir}/../../../scripts/tracking-issue-write.sh"
+    local lock_script rename_script
+    lock_script="${SCRIPT_DIR}/issue-lifecycle.sh"
+    rename_script="${SCRIPT_DIR}/../../../scripts/tracking-issue-write.sh"
 
     # ---- Lock without GO ----
     local lock_out lock_exit=0
@@ -376,7 +376,7 @@ lock_no_go_and_rename_then_emit_for_child() {
 
     # ---- Rename the child to [IN PROGRESS] (best-effort) ----
     local rename_out rename_exit=0 renamed=false rename_error=""
-    rename_out=$("$rename_script" rename --issue "$child_num" --state in-progress 2>&1) || rename_exit=$?
+    rename_out=$("$rename_script" rename --issue "$child_num" --state in-progress --repo "$REPO" 2>&1) || rename_exit=$?
     local rename_failed
     renamed=$(echo "$rename_out" | awk -F= '/^RENAMED=/ { v=$2 } END { print v }')
     rename_failed=$(echo "$rename_out" | awk -F= '/^FAILED=/ { v=$2 } END { print v }')
@@ -419,9 +419,8 @@ lock_no_go_and_rename_then_emit_for_child() {
 handle_umbrella() {
     local umbrella_num="$1"
     local umbrella_title="$2"
-    local script_dir handler_script
-    script_dir="$(dirname "${BASH_SOURCE[0]}")"
-    handler_script="${script_dir}/umbrella-handler.sh"
+    local handler_script
+    handler_script="${SCRIPT_DIR}/umbrella-handler.sh"
 
     local pick_out pick_exit=0
     pick_out=$("$handler_script" pick-child --issue "$umbrella_num" 2>&1) || pick_exit=$?
@@ -494,7 +493,25 @@ if [[ -n "$ISSUE_ARG" ]]; then
     # gh issue view accepts both bare numbers and full GitHub URLs natively.
     # For URLs, it resolves the repo from the URL — we must verify it matches
     # the current repo to prevent cross-repo misoperation.
-    ISSUE_JSON=$(gh issue view "$ISSUE_ARG" --json number,state,title,url 2>/dev/null) || {
+    ISSUE_QUERY="$ISSUE_ARG"
+    case "$ISSUE_ARG" in
+        https://*/issues/*)
+            ISSUE_REPO_FROM_ARG=$(printf '%s\n' "$ISSUE_ARG" | sed -n 's|https://[^/]*/\([^/]*/[^/]*\)/issues/[0-9][0-9]*.*|\1|p')
+            ISSUE_NUM_FROM_ARG=$(printf '%s\n' "$ISSUE_ARG" | sed -n 's|https://[^/]*/[^/]*/[^/]*/issues/\([0-9][0-9]*\).*|\1|p')
+            if [[ -z "$ISSUE_REPO_FROM_ARG" || -z "$ISSUE_NUM_FROM_ARG" ]]; then
+                echo "ELIGIBLE=false"
+                echo "ERROR=Cannot parse issue URL: $ISSUE_ARG"
+                exit 2
+            fi
+            if [[ "$ISSUE_REPO_FROM_ARG" != "$REPO" ]]; then
+                echo "ELIGIBLE=false"
+                echo "ERROR=Issue belongs to $ISSUE_REPO_FROM_ARG, not the current repo ($REPO)"
+                exit 2
+            fi
+            ISSUE_QUERY="$ISSUE_NUM_FROM_ARG"
+            ;;
+    esac
+    ISSUE_JSON=$(gh issue view "$ISSUE_QUERY" --repo "$REPO" --json number,state,title,url 2>/dev/null) || {
         echo "ELIGIBLE=false"
         echo "ERROR=Failed to fetch issue (invalid number, URL, or inaccessible): $ISSUE_ARG"
         exit 2
@@ -551,7 +568,7 @@ if [[ -n "$ISSUE_ARG" ]]; then
     # post-#846 (the prior body-literal substring match caused false
     # positives like #753); the umbrella's existence is the approval signal
     # — children inherit approval from the umbrella's existence.
-    UMBRELLA_HANDLER="$(dirname "${BASH_SOURCE[0]}")/umbrella-handler.sh"
+    UMBRELLA_HANDLER="${SCRIPT_DIR}/umbrella-handler.sh"
     if [[ -x "$UMBRELLA_HANDLER" ]]; then
         UMBRELLA_DETECT_OUT=""
         if UMBRELLA_DETECT_OUT=$("$UMBRELLA_HANDLER" detect --issue "$ISSUE_NUM" 2>&1); then
@@ -779,7 +796,7 @@ while IFS= read -r issue_row; do
         # umbrella body text would be sent to /implement as a normal feature
         # spec, defeating the umbrella state machine. Operators wanting umbrella
         # children processed must explicitly invoke `/fix-issue <umbrella#>`.
-        UMBRELLA_HANDLER="$(dirname "${BASH_SOURCE[0]}")/umbrella-handler.sh"
+        UMBRELLA_HANDLER="${SCRIPT_DIR}/umbrella-handler.sh"
         if [[ -x "$UMBRELLA_HANDLER" ]]; then
             UMBRELLA_DETECT_OUT=""
             if UMBRELLA_DETECT_OUT=$("$UMBRELLA_HANDLER" detect --issue "$ISSUE_NUM" 2>/dev/null); then

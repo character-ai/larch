@@ -8,7 +8,7 @@
 - Always exits 0 (fail-open)
 - Emits `VALUE=<result>` on success, `VALUE=` on any failure
 - Uses `--json`/`--jq` for structured output (no grep/sed parsing)
-- Does not add `--repo` — relies on gh's default context (matching pre-existing Step 18 behavior)
+- Accepts `--repo OWNER/REPO`; when omitted, resolves the current repo with `scripts/resolve-repo.sh` and passes `--repo` if resolution succeeds, falling back to gh's default context only when resolution fails
 
 **Stdout contract**: `VALUE=<string>` (exactly one line).
 

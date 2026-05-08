@@ -20,7 +20,7 @@ Unions native and prose blocker sets, dedupes, and returns a space-separated lis
 
 ## Sourcing requirements
 
-1. **`REPO` must be set first.** The functions read `$REPO` at call time; sourcing the library does not resolve it for you. Both callers (`find-lock-issue.sh`, `umbrella-handler.sh`) resolve `REPO` via `gh repo view --json nameWithOwner --jq '.nameWithOwner'` before sourcing, with their own error-emission contract on resolution failure.
+1. **`REPO` must be set first.** The functions read `$REPO` at call time; sourcing the library does not resolve it for you. Both callers (`find-lock-issue.sh`, `umbrella-handler.sh`) resolve `REPO` via `scripts/resolve-repo.sh` before sourcing, with their own error-emission contract on resolution failure. The functions pass `--repo "$REPO"` on their `gh issue view` calls and use `repos/$REPO/...` for API paths.
 2. **`set -euo pipefail`-safe.** The functions are written so empty-pipeline edges (no native blockers found, no prose refs found) produce empty output rather than triggering `pipefail`. The library can be sourced into a script running with `set -euo pipefail`.
 3. **Source-failure guard required.** An unguarded `source` of a missing or unreadable file under `set -e` aborts the script before any stdout is emitted, breaking callers that parse `KEY=VALUE` output. Both callers wrap their `source` call with explicit failure handling — find-lock-issue.sh emits `ELIGIBLE=false ERROR=...` and exits 2 on source failure; umbrella-handler.sh emits the per-subcommand `ERROR=...` shape and exits 1.
 

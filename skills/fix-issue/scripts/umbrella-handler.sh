@@ -83,10 +83,13 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+RESOLVE_REPO="${SCRIPT_DIR}/../../../scripts/resolve-repo.sh"
+
 # ---------------------------------------------------------------------------
 # Resolve repo identity (shared across subcommands)
 # ---------------------------------------------------------------------------
-REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null) || {
+REPO=$("$RESOLVE_REPO" 2>/dev/null) || {
     echo "ERROR=Failed to resolve repository name"
     exit 1
 }
@@ -106,7 +109,7 @@ REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null) || {
 # would abort this script before emitting the documented `ERROR=...` contract,
 # breaking callers that parse stdout for the per-subcommand shape.
 # ---------------------------------------------------------------------------
-BLOCKER_HELPERS="$(dirname "${BASH_SOURCE[0]}")/blocker-helpers.sh"
+BLOCKER_HELPERS="${SCRIPT_DIR}/blocker-helpers.sh"
 # shellcheck source=skills/fix-issue/scripts/blocker-helpers.sh
 source "$BLOCKER_HELPERS" || {
     echo "ERROR=Failed to source blocker-helpers.sh: $BLOCKER_HELPERS"
@@ -216,7 +219,7 @@ has_managed_prefix() {
 fetch_issue_basics() {
     local n="$1"
     local json
-    json=$(gh issue view "$n" --json title,body --jq '{title, body}' 2>/dev/null) || return 1
+    json=$(gh issue view "$n" --repo "$REPO" --json title,body --jq '{title, body}' 2>/dev/null) || return 1
     ISSUE_TITLE=$(printf '%s' "$json" | jq -r '.title // ""')
     ISSUE_BODY=$(printf '%s' "$json" | jq -r '.body // ""')
 }
@@ -285,7 +288,7 @@ child_eligible() {
     local n="$1"
     local title state
     local json
-    json=$(gh issue view "$n" --json title,state --jq '{title, state}' 2>/dev/null) || {
+    json=$(gh issue view "$n" --repo "$REPO" --json title,state --jq '{title, state}' 2>/dev/null) || {
         BLOCKING_REASON="failed to fetch issue #$n"
         return 1
     }
@@ -424,7 +427,7 @@ cmd_pick_child() {
     while IFS= read -r child_num; do
         [[ -z "$child_num" ]] && continue
         local cstate cjson
-        cjson=$(gh issue view "$child_num" --json state,title --jq '{state,title}' 2>/dev/null) || {
+        cjson=$(gh issue view "$child_num" --repo "$REPO" --json state,title --jq '{state,title}' 2>/dev/null) || {
             # Treat fetch failures as ineligible-but-not-closed (defensive).
             all_closed=false
             if ! $first_blocking_set; then

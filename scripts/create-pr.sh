@@ -5,12 +5,13 @@
 # If none exists, pushes the branch and creates a new PR.
 #
 # Usage:
-#   create-pr.sh --title TEXT --body-file FILE [--draft] [--repo OWNER/REPO]
+#   create-pr.sh --title TEXT --body-file FILE [--draft] [--repo OWNER/REPO] [--base BASE_REF]
 #
 # Arguments:
 #   --title     — PR title (under 70 chars recommended)
 #   --body-file — Path to a file containing the PR body (markdown)
 #   --draft     — Create the PR in draft state (optional)
+#   --base      — Base branch for new PRs (optional; defaults to repo default branch, then main)
 #
 # Outputs (key=value to stdout):
 #   PR_NUMBER=<N>
@@ -37,18 +38,20 @@ cleanup() {
 }
 trap cleanup EXIT
 
-usage() { echo "Usage: create-pr.sh --title TEXT --body-file FILE [--draft] [--repo OWNER/REPO]" >&2; }
+usage() { echo "Usage: create-pr.sh --title TEXT --body-file FILE [--draft] [--repo OWNER/REPO] [--base BASE_REF]" >&2; }
 
 TITLE=""
 BODY_FILE=""
 DRAFT=false
 TARGET_REPO=""
+BASE_REF=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --title) TITLE="${2:?--title requires a value}"; shift 2 ;;
         --body-file) BODY_FILE="${2:?--body-file requires a value}"; shift 2 ;;
         --draft) DRAFT=true; shift ;;
         --repo) TARGET_REPO="${2:?--repo requires a value}"; shift 2 ;;
+        --base) BASE_REF="${2:?--base requires a value}"; shift 2 ;;
         --help) usage; exit 0 ;;
         *) echo "Unknown option: $1" >&2; usage; exit 2 ;;
     esac
@@ -65,6 +68,9 @@ if [[ ! -f "$BODY_FILE" ]]; then
 fi
 
 GH_REPO_ARGS=()
+if [[ -z "$TARGET_REPO" ]]; then
+    TARGET_REPO=$("$SCRIPT_DIR/resolve-repo.sh" 2>/dev/null) || TARGET_REPO=""
+fi
 if [[ -n "$TARGET_REPO" ]]; then
     if [[ ! "$TARGET_REPO" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; then
         echo "ERROR: --repo must be OWNER/REPO using GitHub owner/repo characters" >&2
@@ -148,11 +154,19 @@ GH_DRAFT_ARGS=()
 if [[ "$DRAFT" == "true" ]]; then
     GH_DRAFT_ARGS+=(--draft)
 fi
+
+if [[ -z "$BASE_REF" ]]; then
+    BASE_REF=$(gh repo view "${GH_REPO_ARGS[@]}" --json defaultBranchRef --jq '.defaultBranchRef.name' 2>/dev/null) || BASE_REF=""
+    if [[ -z "$BASE_REF" ]]; then
+        BASE_REF="main"
+    fi
+fi
+
 PR_OUTPUT=$(gh pr create \
     "${GH_REPO_ARGS[@]}" \
     --assignee @me \
     --head "$BRANCH" \
-    --base main \
+    --base "$BASE_REF" \
     --title "$TITLE" \
     --body-file "$REDACTED_BODY_FILE" \
     ${GH_DRAFT_ARGS[@]+"${GH_DRAFT_ARGS[@]}"} 2>"$PR_STDERR_FILE")
