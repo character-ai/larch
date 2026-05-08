@@ -35,7 +35,7 @@ After `classify-bump.sh` computes its deterministic baseline, the main agent (yo
 
 **You may ONLY escalate severity (PATCH → MINOR → MAJOR). Never downgrade.**
 
-If you escalate, append a paragraph to the reasoning log file explaining why.
+If you escalate, append at most 5 sentences (≤100 words) to the reasoning log file explaining why. State the specific evidence — do not restate the diff or summarize the classifier's bullets. **If you do not escalate, write nothing — do not append to the log, do not summarize the diff, do not narrate your decision.** Escalation is rare; the deterministic classifier is correct in the common case.
 
 ## How it works
 
@@ -49,7 +49,7 @@ If you escalate, append a paragraph to the reasoning log file explaining why.
    - For each modified SKILL.md, reads the old and new full file contents via `git show "$BASE:<path>"` and `git show "HEAD:<path>"`, extracts the first YAML frontmatter block between `---` markers, and compares the `name:` and `argument-hint:` fields. The `argument-hint:` comparison uses token sets: a `--<flag>` present in both old and new is treated as unchanged; only genuine additions or removals contribute to classification.
    - Writes evidence to `${IMPLEMENT_TMPDIR:-${TMPDIR:-/tmp}}/bump-version-reasoning.md` (absolute path also emitted as `REASONING_FILE=<path>` on stdout)
    - Emits `KEY=VALUE` lines on stdout: `CURRENT_VERSION`, `NEW_VERSION`, `BUMP_TYPE`, `REASONING_FILE`
-3. You (main agent) parse the output, read the reasoning log, review the diff, and apply the **escalation-only** caveat review. If you escalate, update `NEW_VERSION` accordingly and append reasoning to the log.
+3. You (main agent) parse the output. **By default, proceed directly to `apply-bump.sh` with the emitted `NEW_VERSION` — no diff review, no commentary, no log append.** Only review the diff for the **escalation-only** caveat when you have specific evidence of a backward-incompatible behavioral change beyond the classifier's reach; if escalating, update `NEW_VERSION` and append the bounded reasoning per the Caveat above.
 4. You invoke `apply-bump.sh --new-version <NEW_VERSION>`, which:
    - First verifies the working tree is clean (fails on any staged or unstaged changes)
    - Backs up `.claude-plugin/plugin.json`
@@ -74,7 +74,7 @@ Parse the output for `CURRENT_VERSION`, `NEW_VERSION`, `BUMP_TYPE`, `REASONING_F
 
 If `BUMP_TYPE=NONE`, report the no-op and exit.
 
-Otherwise, review the reasoning log and the branch diff. Decide whether to escalate. If escalating, compute the new version from `CURRENT_VERSION` + your escalated bump type and append your reasoning to the log file.
+Otherwise, **the default action is to invoke `apply-bump.sh` directly with the script-emitted `NEW_VERSION` — no diff review, no commentary, no log append.** Only review the branch diff when you have specific evidence to suspect a backward-incompatible behavioral change beyond the deterministic classifier's reach. If escalating, compute the new version from `CURRENT_VERSION` + your escalated bump type and append the bounded reasoning per the Caveat above.
 
 Then apply:
 
