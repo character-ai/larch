@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [17.0.22] - 2026-05-08
+
+### Fixed
+
+- Resolve #1515: `/fix-issue` Step 0 now probes working-tree cleanliness via the new shared `scripts/check-clean-tree.sh` helper (invoked with `--fail-closed`) BEFORE the `issue-lifecycle.sh comment --lock` and title rename, so a dirty tree aborts the run with `exit 2` and a clear `ERROR=Working tree is not clean. Commit or stash changes, then re-run /fix-issue. No issue was locked.` message — leaving the `GO` sentinel and original title intact instead of trapping the operator with an `[IN PROGRESS]`-prefixed locked issue that previously required manual `IN PROGRESS` comment deletion plus title-prefix strip plus re-adding `GO`. The probe covers the explicit-target, auto-pick, and umbrella-dispatch paths uniformly (including a separate exit-2 sub-case for `git status --porcelain` invocation failure with the prefix `ERROR=Cannot determine working-tree cleanliness:` so consumers can substring-match the two classes). `scripts/preflight.sh` adopts the same shared helper in default fail-open mode (preserving its historical empty-stdout-as-clean semantics) but now also treats an empty / unrecognized `CLEAN=` line as fail-closed (per code-review feedback against round 1) and stops swallowing helper stderr — so operators see git diagnostics that `scripts/check-clean-tree.md` advertises as "echoed for operator debugging." Both callers go through one canonical predicate, structurally eliminating the drift risk between them. `skills/fix-issue/SKILL.md` Step 0 prose + Known Limitations "Lock-before-setup behavioral delta" entry are updated to reflect the new pre-lock gate. New `scripts/test-check-clean-tree.sh` regression harness covers clean / dirty / git-failure under both fail-open and `--fail-closed` modes; `skills/fix-issue/scripts/test-find-lock-issue.sh` adds a `with_sterile_repo` wrapper plus dirty-tree fixtures for the explicit-target, auto-pick, umbrella-dispatch, and probe-failure paths. The `scripts/preflight.sh` fail-open-on-git-invocation-failure asymmetry (whether to flip preflight to `--fail-closed`) is filed as a follow-up OOS issue — its scope is narrowed by this PR since the structural drift is already eliminated.
+
 ## [17.0.21] - 2026-05-08
 
 ### Changed
