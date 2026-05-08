@@ -15,7 +15,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `/implement` Step 13.5 / Step 14 state-file snippet now mirrors the full four-step `CLONE_TAG` algorithm (basename, sanitize, truncate to 32 chars, empty-fallback) used by `scripts/session-setup.sh` and `scripts/implement-finalize.sh::clone_basename_prefix`, so `EXPECTED_TMPDIR_BASENAME_PREFIX` matches the actual session tmpdir basename and Step 18's `verify_cleanup_target` no longer refuses rm-rf on every standard run. Closes #1563.
 
-
 ## [18.0.5] - 2026-05-08
 
 ### Fixed
