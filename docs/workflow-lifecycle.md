@@ -15,7 +15,7 @@ graph TD
     IMPLEMENT -->|invokes| ISSUE_OOS["/issue (OOS filing)"]
     FIX["/fix-issue"] -->|invokes| IMPLEMENT
     EVOLVER["/skill-evolver"] -->|invokes| RESEARCH["/research"]
-    EVOLVER -->|invokes (conditional)| UMBRELLA["/umbrella"]
+    EVOLVER -->|invokes conditionally| UMBRELLA["/umbrella"]
     UMBRELLA -->|invokes| ISSUE
 
     style IMPLEMENT fill:#2d5a27,color:#fff
@@ -42,8 +42,8 @@ Pure forwarders are **not** orchestrators — they validate input (when applicab
 ```mermaid
 graph LR
     CREATE["/create-skill"] -->|--quick --auto| IM
-    SIMPLIFY["/simplify-skill"] -->|$ARGS (feature-desc)| IM
-    COMPRESS["/compress-skill"] -->|$ARGS (feature-desc)| IMAQ
+    SIMPLIFY["/simplify-skill"] -->|"$ARGS feature-desc"| IM
+    COMPRESS["/compress-skill"] -->|"$ARGS feature-desc"| IMAQ
     IM["/im"] -->|--merge $ARGS| IMPLEMENT["/implement"]
     IMAQ["/imaq"] -->|--merge --auto --quick $ARGS| IMPLEMENT
     IMQ["/imq"] -->|--merge --quick $ARGS| IMPLEMENT
