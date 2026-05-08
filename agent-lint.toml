@@ -726,6 +726,14 @@ exclude = [
   # Same Makefile-only pattern as other test-* harnesses.
   "scripts/test-rebase-push-keep-on-conflict.sh",
   "scripts/test-implement-structure.sh",
+  # scripts/test-implement-cleanup-roundtrip.sh is the round-trip integration
+  # test for the EXPECTED_TMPDIR_BASENAME_PREFIX state-file convention used by
+  # skills/implement/SKILL.md Steps 13.5 and 14 and validated by
+  # scripts/implement-finalize.sh::verify_cleanup_target (closes #1572).
+  # Referenced only from Makefile (test-implement-cleanup-roundtrip target)
+  # and scripts/test-implement-cleanup-roundtrip.md (sibling contract),
+  # matching the same Makefile-only pattern as other test-implement-* harnesses.
+  "scripts/test-implement-cleanup-roundtrip.sh",
   # scripts/test-implement-anti-polling-rule.sh pins the AGENTS.md anti-polling
   # rule literals and the Step 5.3-rounds1to3 / Step 5.3-generic inline
   # reminders in skills/implement/SKILL.md (closes #1011). Referenced only
