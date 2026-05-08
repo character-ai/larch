@@ -16,6 +16,7 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SKIP_BRANCH_CHECK=false
 SKIP_CLEAN_CHECK=false
 while [[ $# -gt 0 ]]; do
@@ -38,7 +39,9 @@ fi
 
 # Check clean status
 if [[ "$SKIP_CLEAN_CHECK" == "false" ]]; then
-    if [[ -n "$(git status --porcelain 2>/dev/null)" ]]; then
+    CLEAN_TREE_OUT=$("$SCRIPT_DIR/check-clean-tree.sh" 2>/dev/null || true)
+    CLEAN_TREE=$(echo "$CLEAN_TREE_OUT" | awk -F= '/^CLEAN=/ { v=$2 } END { print v }')
+    if [[ "$CLEAN_TREE" == "false" ]]; then
         echo "PREFLIGHT=fail"
         echo "PREFLIGHT_ERROR=Working tree is not clean. Commit or stash changes first."
         exit 2

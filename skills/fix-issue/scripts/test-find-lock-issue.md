@@ -1,8 +1,8 @@
 # skills/fix-issue/scripts/test-find-lock-issue.sh — contract
 
-`skills/fix-issue/scripts/test-find-lock-issue.sh` is the offline regression harness for `skills/fix-issue/scripts/find-lock-issue.sh` (the combined Find + Lock + Rename pipeline introduced by the fold-find-and-lock refactor closing #496). It uses a PATH-prepended `gh` stub under a per-fixture tmpdir to validate the script's exit-code matrix and unified stdout contract without any network or git-state mutation.
+`skills/fix-issue/scripts/test-find-lock-issue.sh` is the offline regression harness for `skills/fix-issue/scripts/find-lock-issue.sh` (the combined Find + Lock + Rename pipeline introduced by the fold-find-and-lock refactor closing #496). It uses a PATH-prepended `gh` stub under a per-fixture tmpdir plus a sterile git repository wrapper for script invocations, validating the script's exit-code matrix and unified stdout contract without network access or dependence on the caller's checkout state.
 
-## Thirteen executed fixtures plus one deferred-coverage note (fixture 4)
+## Fixtures
 
 1. **Eligible + lock OK + rename OK** → exit 0; `ELIGIBLE=true`, `ISSUE_NUMBER=N`, `LOCK_ACQUIRED=true`, `RENAMED=true`. Auxiliary delegate keys (`COMMENTED`, `NEW_TITLE`) are filtered from stdout.
 2. **Eligible + lock fail** → exit 3; `ELIGIBLE=true LOCK_ACQUIRED=false ERROR=...`. Simulated by failing the IN PROGRESS comment post inside `cmd_comment` (a stateless-stub-friendly approximation of the duplicate-IN-PROGRESS detection path; both produce the same `exit 1` from `cmd_comment` → `exit 3` from `find-lock-issue.sh`).
@@ -18,6 +18,17 @@
 12. **Auto-pick skips umbrella issue** → exit 1; `ELIGIBLE=false`. Closes #753 (Anti-pattern #7 regression). A single candidate with an umbrella-style title (`"Umbrella: deploy pipeline refactor (3 children)"`) and `GO` as its last comment is the only issue in the auto-pick scan. The auto-pick loop calls `umbrella-handler.sh detect` on each GO-tagged candidate; when `IS_UMBRELLA=true`, the candidate is skipped with a diagnostic on stderr. With no other candidates, the scan exits 1 (`ELIGIBLE=false`). Asserts the exit code, `ELIGIBLE=false`, absence of `LOCK_ACQUIRED` (lock never attempted), and the stderr skip diagnostic (`Skipping issue #200: umbrella issue`).
 13. **Explicit-target umbrella detect failure exits 2** → exit 2; `ELIGIBLE=false ERROR=umbrella-handler.sh detect failed for issue #300...`. Closes #891. When `umbrella-handler.sh detect` fails (non-zero exit) in explicit-target mode, the script must surface the error rather than silently fall through to the ordinary-issue path. `ISSUE_300_VIEW_FAIL_BODY=true` makes the detect call's `gh issue view --json title,body` fail while the initial `find-lock-issue.sh` fetch (`--json number,state,title,url`) succeeds. Asserts exit 2, `ELIGIBLE=false`, the detect-failure ERROR with the issue number, and the absence of `LOCK_ACQUIRED=` (lock never attempted).
 14. **Auto-pick skips archival-prefixed titles, does NOT skip substring-prefix collisions** → exit 0; `ELIGIBLE=true ISSUE_NUMBER=106 LOCK_ACQUIRED=true RENAMED=true`. Closes #1063. Open issues span the five archival forms with the required trailing space (e.g. `Research foo`, `[Research] bar`, `Investigate queues`, `[research report] X`, `INVESTIGATE pipeline`) plus substring-collision titles that must NOT be skipped (`Researches went for a walk`, `Investigation of slow query` — `Investigation` lacks the <code>investigate </code> trailing-space form because there is no space after `investigate`), with one ordinary candidate (#106) at the end. The auto-pick loop must skip every archival row with a `Skipping issue #N: archival title prefix` stderr line, must NOT skip the substring-collision rows (so they fall through to GO-check / blocker / dispatch), and must select #106 as the locked candidate. Mirrors the `/issue` Phase 1 dedup grammar in `list-issues.sh`'s `DEDUP_SKIP_PREFIX_FILTER`.
+15. **Auto-pick treats `[ROUND-TRIP]` alone as pickable** → exit 0; lifecycle-prefixed round-trip titles are still rejected.
+16. **Explicit-target dirty-tree abort** → exit 2; `ELIGIBLE=false`, dirty-tree guidance in `ERROR=`, no `LOCK_ACQUIRED=`, no `gh issue comment`, and no rename call.
+17. **Auto-pick dirty-tree abort** → exit 2 after candidate discovery but before lock; no lock comment or rename call.
+18. **Umbrella dispatch dirty-tree abort** → exit 2 before child `--lock-no-go`; stdout includes `IS_UMBRELLA=true`, `UMBRELLA_NUMBER`, `UMBRELLA_TITLE`, child `ISSUE_NUMBER`, child `ISSUE_TITLE`, `LOCK_ACQUIRED=false`, and the dirty-tree `ERROR=` prefix.
+19. **Git-shim probe failure** → exit 2 with `ERROR=Cannot determine working-tree cleanliness:` and no lock comment. This uses a PATH-prepended `git` shim that fails only `git status --porcelain`, so it exercises the actual fail-closed pre-lock branch rather than the unrelated non-git-cwd path.
+
+## Sterile git wrapper
+
+The harness runs each subject invocation through `with_sterile_repo`, which creates a per-fixture `git init` repository and runs `find-lock-issue.sh` from that directory. Clean-path fixtures are unaffected by ambient developer or CI dirt. Dirty-path fixtures write an untracked file into their sterile repo immediately before invocation, so the pre-lock probe sees controlled dirt.
+
+Fixture 19 layers a `git` shim ahead of the normal PATH after the sterile repo exists. The shim passes every git subcommand through to the real binary except `git status --porcelain`, which exits 1 with multi-line stderr.
 
 ## Stub design
 

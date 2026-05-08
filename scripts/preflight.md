@@ -4,6 +4,8 @@
 
 Run the pre-skill git sanity check used by `session-setup.sh`. In default mode it verifies that the caller is on `main`, the working tree is clean, and local `main` can fetch and rebase onto `origin/main`. `--skip-branch-check` skips only the on-main assertion and rebase. `--skip-clean-check` skips only the clean-tree assertion. All modes still fetch `origin/main`.
 
+The clean-tree assertion delegates to `scripts/check-clean-tree.sh` in its default fail-open mode, preserving the prior `git status --porcelain 2>/dev/null` behavior where a failed cleanliness probe does not itself fail preflight. `skills/fix-issue/scripts/find-lock-issue.sh` uses the same helper with `--fail-closed` before acquiring an issue lock; both callers share the dirty-tree message family, but differ deliberately on probe-failure handling.
+
 ## Interface
 
 ```
@@ -72,5 +74,7 @@ bash scripts/test-preflight-args.sh
 When changing `scripts/preflight.sh`:
 
 - Update this file for any output contract, exit code, or git-state side effect change.
+- Update `scripts/check-clean-tree.md` if the clean-tree helper contract changes.
+- Update `skills/fix-issue/scripts/find-lock-issue.md` if dirty-tree messaging equivalence changes.
 - Verify `scripts/session-setup.sh` still captures and re-emits `PREFLIGHT_*` output correctly.
 - Verify `/implement` and `/design` setup prose still matches the default versus `--skip-branch-check` behavior.

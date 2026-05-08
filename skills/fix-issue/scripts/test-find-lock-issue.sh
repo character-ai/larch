@@ -3,8 +3,8 @@
 #
 # Hermetic offline test using a PATH-prepended `gh` stub. Validates the
 # combined Find + Lock + Rename pipeline introduced by the fold-find-and-lock
-# refactor (closes #496). Thirteen executed fixtures plus one deferred-coverage
-# note cover the script's exit-code matrix and stdout contract:
+# refactor (closes #496). The fixtures below cover the script's exit-code
+# matrix, stdout contract, and pre-lock dirty-tree abort behavior:
 #   1. eligible + lock OK + rename OK  → exit 0; LOCK_ACQUIRED=true RENAMED=true
 #   2. eligible + lock fail → exit 3; LOCK_ACQUIRED=false
 #   3. eligible + lock OK + rename fails (best-effort) → exit 0; RENAMED=false
@@ -51,6 +51,13 @@
 #      ISSUE_NUMBER=106.
 #  15. auto-pick treats `[ROUND-TRIP]` alone as pickable while continuing
 #      to reject lifecycle-prefixed round-trip titles.
+#  16. explicit-target eligible + dirty tree → exit 2 before lock; no `gh
+#      issue comment` or rename call recorded.
+#  17. auto-pick eligible + dirty tree → exit 2 before lock; no lock call.
+#  18. umbrella dispatch + dirty tree → exit 2 before child lock; umbrella
+#      context keys include UMBRELLA_TITLE and LOCK_ACQUIRED=false.
+#  19. git status probe failure under the pre-lock --fail-closed probe →
+#      exit 2 with Cannot determine working-tree cleanliness and no lock call.
 #
 # Stub gh dispatches on positional + json args. Each fixture writes a stub
 # state file under a per-fixture tmpdir; the stub reads the file to decide
@@ -78,6 +85,7 @@ export ISSUE_LIFECYCLE_LOCK_SETTLE_SECONDS=0
 
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
 SCRIPT="$REPO_ROOT/skills/fix-issue/scripts/find-lock-issue.sh"
+REAL_GIT=$(command -v git)
 
 if [[ ! -x "$SCRIPT" ]]; then
     echo "FAIL: $SCRIPT not found or not executable" >&2
@@ -344,6 +352,44 @@ run_fixture() {
     export PATH="$stub_dir:$PATH"
 }
 
+ensure_sterile_repo() {
+    local fixture_name="$1"
+    local repo="$TMPROOT/$fixture_name/sterile-repo"
+    mkdir -p "$repo"
+    if [[ ! -d "$repo/.git" ]]; then
+        git -C "$repo" init -q
+    fi
+    printf '%s\n' "$repo"
+}
+
+with_sterile_repo() {
+    local fixture_name="$1"
+    shift
+    local repo
+    repo=$(ensure_sterile_repo "$fixture_name")
+    (cd "$repo" && "$@")
+}
+
+gh_log_count() {
+    local log_file="$1"
+    local pattern="$2"
+    awk -v pattern="$pattern" -F'|' '$2 ~ pattern { count++ } END { print count + 0 }' "$log_file"
+}
+
+make_git_status_failure_shim() {
+    local shim_dir="$1"
+    mkdir -p "$shim_dir"
+    cat > "$shim_dir/git" <<SHIM_EOF
+#!/usr/bin/env bash
+if [ "\${1:-}" = "status" ] && [ "\${2:-}" = "--porcelain" ]; then
+    printf 'fatal: shim status failed\\nsecond line\\twith tab\\n' >&2
+    exit 1
+fi
+exec "$REAL_GIT" "\$@"
+SHIM_EOF
+    chmod +x "$shim_dir/git"
+}
+
 assert_contains() {
     local haystack="$1" needle="$2" label="$3"
     if [[ "$haystack" == *"$needle"* ]]; then
@@ -444,7 +490,7 @@ run_fixture "fixture-1"
 OUT_FILE="$TMPROOT/fixture-1/stdout.txt"
 ERR_FILE="$TMPROOT/fixture-1/stderr.txt"
 EXIT_CODE=0
-"$SCRIPT" 42 >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
+with_sterile_repo "fixture-1" "$SCRIPT" 42 >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
 
 OUT=$(cat "$OUT_FILE")
 ERR=$(cat "$ERR_FILE")
@@ -479,7 +525,7 @@ run_fixture "fixture-2"
 OUT_FILE="$TMPROOT/fixture-2/stdout.txt"
 ERR_FILE="$TMPROOT/fixture-2/stderr.txt"
 EXIT_CODE=0
-"$SCRIPT" 43 >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
+with_sterile_repo "fixture-2" "$SCRIPT" 43 >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
 
 OUT=$(cat "$OUT_FILE")
 
@@ -506,7 +552,7 @@ run_fixture "fixture-3"
 OUT_FILE="$TMPROOT/fixture-3/stdout.txt"
 ERR_FILE="$TMPROOT/fixture-3/stderr.txt"
 EXIT_CODE=0
-"$SCRIPT" 44 >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
+with_sterile_repo "fixture-3" "$SCRIPT" 44 >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
 
 OUT=$(cat "$OUT_FILE")
 ERR=$(cat "$ERR_FILE")
@@ -561,7 +607,7 @@ run_fixture "fixture-5"
 OUT_FILE="$TMPROOT/fixture-5/stdout.txt"
 ERR_FILE="$TMPROOT/fixture-5/stderr.txt"
 EXIT_CODE=0
-"$SCRIPT" 45 >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
+with_sterile_repo "fixture-5" "$SCRIPT" 45 >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
 
 OUT=$(cat "$OUT_FILE")
 
@@ -586,7 +632,7 @@ run_fixture "fixture-6"
 OUT_FILE="$TMPROOT/fixture-6/stdout.txt"
 ERR_FILE="$TMPROOT/fixture-6/stderr.txt"
 EXIT_CODE=0
-"$SCRIPT" >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
+with_sterile_repo "fixture-6" "$SCRIPT" >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
 
 OUT=$(cat "$OUT_FILE")
 
@@ -635,7 +681,7 @@ run_fixture "fixture-7"
 OUT_FILE="$TMPROOT/fixture-7/stdout.txt"
 ERR_FILE="$TMPROOT/fixture-7/stderr.txt"
 EXIT_CODE=0
-"$SCRIPT" >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
+with_sterile_repo "fixture-7" "$SCRIPT" >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
 
 OUT=$(cat "$OUT_FILE")
 
@@ -668,7 +714,7 @@ run_fixture "fixture-8"
 OUT_FILE="$TMPROOT/fixture-8/stdout.txt"
 ERR_FILE="$TMPROOT/fixture-8/stderr.txt"
 EXIT_CODE=0
-"$SCRIPT" >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
+with_sterile_repo "fixture-8" "$SCRIPT" >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
 
 OUT=$(cat "$OUT_FILE")
 
@@ -697,7 +743,7 @@ run_fixture "fixture-9"
 OUT_FILE="$TMPROOT/fixture-9/stdout.txt"
 ERR_FILE="$TMPROOT/fixture-9/stderr.txt"
 EXIT_CODE=0
-"$SCRIPT" "https://ghe.example.com/stub/repo/issues/55" >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
+with_sterile_repo "fixture-9" "$SCRIPT" "https://ghe.example.com/stub/repo/issues/55" >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
 
 OUT=$(cat "$OUT_FILE")
 
@@ -731,7 +777,7 @@ run_fixture "fixture-10"
 OUT_FILE="$TMPROOT/fixture-10/stdout.txt"
 ERR_FILE="$TMPROOT/fixture-10/stderr.txt"
 EXIT_CODE=0
-"$SCRIPT" 50 >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
+with_sterile_repo "fixture-10" "$SCRIPT" 50 >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
 
 OUT=$(cat "$OUT_FILE")
 
@@ -785,7 +831,7 @@ STATE_EOF
 OUT_FILE="$TMPROOT/fixture-11/stdout.txt"
 ERR_FILE="$TMPROOT/fixture-11/stderr.txt"
 EXIT_CODE=0
-"$SCRIPT" 1100 >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
+with_sterile_repo "fixture-11" "$SCRIPT" 1100 >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
 
 OUT=$(cat "$OUT_FILE")
 
@@ -826,7 +872,7 @@ run_fixture "fixture-12"
 OUT_FILE="$TMPROOT/fixture-12/stdout.txt"
 ERR_FILE="$TMPROOT/fixture-12/stderr.txt"
 EXIT_CODE=0
-"$SCRIPT" >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
+with_sterile_repo "fixture-12" "$SCRIPT" >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
 
 OUT=$(cat "$OUT_FILE")
 ERR=$(cat "$ERR_FILE")
@@ -859,7 +905,7 @@ run_fixture "fixture-13"
 OUT_FILE="$TMPROOT/fixture-13/stdout.txt"
 ERR_FILE="$TMPROOT/fixture-13/stderr.txt"
 EXIT_CODE=0
-"$SCRIPT" 300 >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
+with_sterile_repo "fixture-13" "$SCRIPT" 300 >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
 
 OUT=$(cat "$OUT_FILE")
 
@@ -898,7 +944,7 @@ run_fixture "fixture-14"
 OUT_FILE="$TMPROOT/fixture-14/stdout.txt"
 ERR_FILE="$TMPROOT/fixture-14/stderr.txt"
 EXIT_CODE=0
-"$SCRIPT" >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
+with_sterile_repo "fixture-14" "$SCRIPT" >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
 
 OUT=$(cat "$OUT_FILE")
 ERR=$(cat "$ERR_FILE")
@@ -936,7 +982,7 @@ run_fixture "fixture-15"
 OUT_FILE="$TMPROOT/fixture-15/stdout.txt"
 ERR_FILE="$TMPROOT/fixture-15/stderr.txt"
 EXIT_CODE=0
-"$SCRIPT" >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
+with_sterile_repo "fixture-15" "$SCRIPT" >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
 
 OUT=$(cat "$OUT_FILE")
 ERR=$(cat "$ERR_FILE")
@@ -948,6 +994,133 @@ assert_contains "$ERR" "Skipping issue #120: managed lifecycle title prefix" "[1
 assert_contains "$ERR" "Skipping issue #121: managed lifecycle title prefix" "[15] [DONE] [ROUND-TRIP] rejected"
 assert_contains "$ERR" "Skipping issue #122: managed lifecycle title prefix" "[15] [STALLED] [ROUND-TRIP] rejected"
 assert_not_contains "$ERR" "Skipping issue #123: managed lifecycle title prefix" "[15] [ROUND-TRIP]-only is not managed-prefix rejected"
+
+# ---------------------------------------------------------------------------
+# Fixture 16: explicit-target eligible issue + dirty tree. The pre-lock probe
+# must abort before issue-lifecycle.sh deletes GO or posts IN PROGRESS.
+# ---------------------------------------------------------------------------
+echo "Fixture 16: explicit-target dirty tree aborts before lock"
+run_fixture "fixture-16"
+{
+    echo "ISSUE_STATE=OPEN"
+    echo "ISSUE_TITLE='Dirty explicit target'"
+    echo "COMMENTS_JSON='$(make_comments_json GO)'"
+    echo "RENAME_FAIL=false"
+} > "$STUB_STATE_FILE"
+dirty_repo=$(ensure_sterile_repo "fixture-16")
+printf 'dirty\n' > "$dirty_repo/untracked.txt"
+
+OUT_FILE="$TMPROOT/fixture-16/stdout.txt"
+ERR_FILE="$TMPROOT/fixture-16/stderr.txt"
+EXIT_CODE=0
+with_sterile_repo "fixture-16" "$SCRIPT" 140 >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
+
+OUT=$(cat "$OUT_FILE")
+
+assert_equal "$EXIT_CODE" "2" "[16] exit code 2 (dirty pre-lock abort)"
+assert_contains "$OUT" "ELIGIBLE=false" "[16] ELIGIBLE=false on stdout"
+assert_contains "$OUT" "ERROR=Working tree is not clean. Commit or stash changes, then re-run /fix-issue. No issue was locked." "[16] dirty-tree operator guidance"
+assert_not_contains "$OUT" "LOCK_ACQUIRED=" "[16] LOCK_ACQUIRED absent on ordinary dirty abort"
+assert_equal "$(gh_log_count "$STUB_LOG" '^issue comment')" "0" "[16] no lock comment posted"
+assert_equal "$(gh_log_count "$STUB_LOG" '^issue edit')" "0" "[16] no rename attempted"
+
+# ---------------------------------------------------------------------------
+# Fixture 17: auto-pick eligible issue + dirty tree. Candidate discovery still
+# runs, but lock acquisition is blocked before the first GitHub mutation.
+# ---------------------------------------------------------------------------
+echo "Fixture 17: auto-pick dirty tree aborts before lock"
+run_fixture "fixture-17"
+{
+    OPEN_ISSUES_LINES='{"number":150,"title":"Dirty auto-pick candidate"}'
+    printf "OPEN_ISSUES_JSON='%s'\n" "$OPEN_ISSUES_LINES"
+    echo "ISSUE_150_TITLE='Dirty auto-pick candidate'"
+    echo "ISSUE_150_STATE=OPEN"
+    echo "ISSUE_150_COMMENTS='$(make_comments_json GO)'"
+    echo "RENAME_FAIL=false"
+} > "$STUB_STATE_FILE"
+dirty_repo=$(ensure_sterile_repo "fixture-17")
+printf 'dirty\n' > "$dirty_repo/untracked.txt"
+
+OUT_FILE="$TMPROOT/fixture-17/stdout.txt"
+ERR_FILE="$TMPROOT/fixture-17/stderr.txt"
+EXIT_CODE=0
+with_sterile_repo "fixture-17" "$SCRIPT" >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
+
+OUT=$(cat "$OUT_FILE")
+
+assert_equal "$EXIT_CODE" "2" "[17] exit code 2 (auto-pick dirty pre-lock abort)"
+assert_contains "$OUT" "ELIGIBLE=false" "[17] ELIGIBLE=false on stdout"
+assert_contains "$OUT" "ERROR=Working tree is not clean." "[17] dirty-tree ERROR prefix"
+assert_equal "$(gh_log_count "$STUB_LOG" '^issue comment')" "0" "[17] no lock comment posted"
+assert_equal "$(gh_log_count "$STUB_LOG" '^issue edit')" "0" "[17] no rename attempted"
+
+# ---------------------------------------------------------------------------
+# Fixture 18: umbrella dispatch + dirty tree. The child is selected, then the
+# pre-lock probe aborts before --lock-no-go mutates the child.
+# ---------------------------------------------------------------------------
+echo "Fixture 18: umbrella dispatch dirty tree aborts before child lock"
+run_fixture "fixture-18"
+cat > "$STUB_STATE_FILE" <<'STATE_EOF'
+ISSUE_1600_TITLE='Umbrella: dirty tree dispatch'
+ISSUE_1600_BODY=$'Umbrella tracking issue.\n\n## Children\n\n- [ ] #1601 — ready child\n'
+ISSUE_1600_STATE=OPEN
+ISSUE_1600_COMMENTS='[[]]'
+ISSUE_1601_TITLE='Ready child blocked by local dirt'
+ISSUE_1601_BODY='Clean body, no blockers.'
+ISSUE_1601_STATE=OPEN
+ISSUE_1601_COMMENTS='[[]]'
+RENAME_FAIL=false
+STATE_EOF
+dirty_repo=$(ensure_sterile_repo "fixture-18")
+printf 'dirty\n' > "$dirty_repo/untracked.txt"
+
+OUT_FILE="$TMPROOT/fixture-18/stdout.txt"
+ERR_FILE="$TMPROOT/fixture-18/stderr.txt"
+EXIT_CODE=0
+with_sterile_repo "fixture-18" "$SCRIPT" 1600 >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
+
+OUT=$(cat "$OUT_FILE")
+
+assert_equal "$EXIT_CODE" "2" "[18] exit code 2 (umbrella dirty pre-lock abort)"
+assert_contains "$OUT" "ELIGIBLE=false" "[18] ELIGIBLE=false on stdout"
+assert_contains "$OUT" "IS_UMBRELLA=true" "[18] umbrella context emitted"
+assert_contains "$OUT" "UMBRELLA_NUMBER=1600" "[18] umbrella number emitted"
+assert_contains "$OUT" "UMBRELLA_TITLE=Umbrella: dirty tree dispatch" "[18] umbrella title emitted"
+assert_contains "$OUT" "ISSUE_NUMBER=1601" "[18] child number emitted"
+assert_contains "$OUT" "ISSUE_TITLE=Ready child blocked by local dirt" "[18] child title emitted"
+assert_contains "$OUT" "LOCK_ACQUIRED=false" "[18] LOCK_ACQUIRED=false emitted"
+assert_contains "$OUT" "ERROR=Working tree is not clean." "[18] dirty-tree ERROR prefix"
+assert_equal "$(gh_log_count "$STUB_LOG" '^issue comment')" "0" "[18] no child lock comment posted"
+assert_equal "$(gh_log_count "$STUB_LOG" '^issue edit')" "0" "[18] no child rename attempted"
+
+# ---------------------------------------------------------------------------
+# Fixture 19: git status probe failure. A PATH-prepended git shim fails only
+# `git status --porcelain`, exercising find-lock-issue.sh's fail-closed
+# subprocess path without conflating it with non-git-cwd setup failure.
+# ---------------------------------------------------------------------------
+echo "Fixture 19: git status probe failure aborts before lock"
+run_fixture "fixture-19"
+{
+    echo "ISSUE_STATE=OPEN"
+    echo "ISSUE_TITLE='Probe failure target'"
+    echo "COMMENTS_JSON='$(make_comments_json GO)'"
+    echo "RENAME_FAIL=false"
+} > "$STUB_STATE_FILE"
+shim_dir="$TMPROOT/fixture-19/git-shim"
+make_git_status_failure_shim "$shim_dir"
+
+OUT_FILE="$TMPROOT/fixture-19/stdout.txt"
+ERR_FILE="$TMPROOT/fixture-19/stderr.txt"
+EXIT_CODE=0
+PATH="$shim_dir:$PATH" with_sterile_repo "fixture-19" "$SCRIPT" 170 >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
+
+OUT=$(cat "$OUT_FILE")
+
+assert_equal "$EXIT_CODE" "2" "[19] exit code 2 (probe failure pre-lock abort)"
+assert_contains "$OUT" "ELIGIBLE=false" "[19] ELIGIBLE=false on stdout"
+assert_contains "$OUT" "ERROR=Cannot determine working-tree cleanliness: git exited 1" "[19] probe-failure ERROR prefix"
+assert_equal "$(gh_log_count "$STUB_LOG" '^issue comment')" "0" "[19] no lock comment posted"
+assert_equal "$(gh_log_count "$STUB_LOG" '^issue edit')" "0" "[19] no rename attempted"
 
 # ---------------------------------------------------------------------------
 # Summary

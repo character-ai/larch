@@ -444,6 +444,12 @@ exclude = [
   # Makefile-only pattern as scripts/test-sessionstart-health.sh above.
   "scripts/test-preflight-args.sh",
   "scripts/test-preflight-args.md",
+  # scripts/test-check-clean-tree.sh is the regression harness for
+  # scripts/check-clean-tree.sh. Referenced only from Makefile
+  # (test-check-clean-tree target) and scripts/test-check-clean-tree.md
+  # (sibling contract), matching the same Makefile-only pattern.
+  "scripts/test-check-clean-tree.sh",
+  "scripts/test-check-clean-tree.md",
   # scripts/test-cleanup-tmpdir.sh is the regression harness for
   # scripts/cleanup-tmpdir.sh's invoke-time audit log. Referenced only from
   # Makefile (test-cleanup-tmpdir target) and scripts/test-cleanup-tmpdir.md
@@ -964,6 +970,7 @@ exclude = [
   "scripts/test-launch-codex-review.md",
   "scripts/check-mid-run-dirty-tree.md",
   "scripts/test-check-mid-run-dirty-tree.md",
+  "scripts/check-clean-tree.md",
   "scripts/test-lib-cursor-auth.md",
   "scripts/lib-cursor-auth.md",
   "scripts/lib-cursor-launcher-common.md",
