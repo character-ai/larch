@@ -167,6 +167,57 @@ eq "single end sentinel" "1" "$end_count"
 eq "single heading" "1" "$heading_count"
 contains "existing content preserved" "kept" "$(cat "$TOKEN_REPORT")"
 
+# Lone-begin marker normalization: a half-written prior run leaves only the
+# begin sentinel and partial body. The replace path must drop the lone marker
+# (and everything after it) before appending the fresh block, leaving exactly
+# one begin/end pair and one ## Token Report heading. Without this, the legacy
+# else-branch would append a second block over the broken prefix.
+LONE_BEGIN="$TMP/lone-begin.md"
+{
+    printf '## Existing\n\nkept-prefix\n'
+    printf '<!-- token-report-begin -->\n'
+    printf 'partial broken body\n'
+} > "$LONE_BEGIN"
+"$SCRIPT" --ledger "$LEDGER" --transcript "$TRANSCRIPT" --append-token-report "$LONE_BEGIN" 2>"$TMP/lone-begin.stderr"
+lb_begin=$(grep -c '<!-- token-report-begin -->' "$LONE_BEGIN")
+lb_end=$(grep -c '<!-- token-report-end -->' "$LONE_BEGIN")
+lb_heading=$(grep -c '^## Token Report$' "$LONE_BEGIN")
+eq "lone-begin: single begin marker" "1" "$lb_begin"
+eq "lone-begin: single end marker" "1" "$lb_end"
+eq "lone-begin: single heading" "1" "$lb_heading"
+contains "lone-begin: warning emitted" "lone <!-- token-report-begin -->" "$(cat "$TMP/lone-begin.stderr")"
+contains "lone-begin: prefix preserved" "kept-prefix" "$(cat "$LONE_BEGIN")"
+if grep -q 'partial broken body' "$LONE_BEGIN"; then
+    fail "lone-begin: broken body was not stripped"
+else
+    pass
+fi
+
+# Lone-end marker normalization: only the end sentinel survives. The replace
+# path drops content from the head through the marker, then appends a fresh
+# block. The result keeps exactly one begin/end pair and one heading; any
+# pre-marker body is intentionally discarded since it cannot be reattributed.
+LONE_END="$TMP/lone-end.md"
+{
+    printf 'orphan body before lone end\n'
+    printf '<!-- token-report-end -->\n'
+    printf '## After\n\nkept-suffix\n'
+} > "$LONE_END"
+"$SCRIPT" --ledger "$LEDGER" --transcript "$TRANSCRIPT" --append-token-report "$LONE_END" 2>"$TMP/lone-end.stderr"
+le_begin=$(grep -c '<!-- token-report-begin -->' "$LONE_END")
+le_end=$(grep -c '<!-- token-report-end -->' "$LONE_END")
+le_heading=$(grep -c '^## Token Report$' "$LONE_END")
+eq "lone-end: single begin marker" "1" "$le_begin"
+eq "lone-end: single end marker" "1" "$le_end"
+eq "lone-end: single heading" "1" "$le_heading"
+contains "lone-end: warning emitted" "lone <!-- token-report-end -->" "$(cat "$TMP/lone-end.stderr")"
+contains "lone-end: suffix preserved" "kept-suffix" "$(cat "$LONE_END")"
+if grep -q 'orphan body before lone end' "$LONE_END"; then
+    fail "lone-end: orphan head was not stripped"
+else
+    pass
+fi
+
 OUT="$TMP/table.md"
 "$SCRIPT" --ledger "$LEDGER" --transcript "$TRANSCRIPT" --full --markdown --output "$OUT"
 if [[ -s "$OUT" ]]; then pass; else fail "--output did not write table"; fi

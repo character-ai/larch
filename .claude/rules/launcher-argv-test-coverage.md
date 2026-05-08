@@ -14,7 +14,7 @@ Harness paths are **not** uniform:
 - `scripts/launch-cursor-review.sh` → `scripts/test-launch-cursor-review.sh`
 - `scripts/launch-gemini-review.sh` → `scripts/test-launch-gemini-review.sh`
 - `scripts/launch-codex-implement.sh` / `launch-cursor-implement.sh` / `launch-gemini-implement.sh` → `skills/implement/scripts/test-codex-implementer.sh` / `test-cursor-implementer.sh` / `test-gemini-implementer.sh` (and `test-step2-dispatch.sh` for cross-coder dispatcher coverage)
-- `scripts/launch-codex-review.sh` → no dedicated `test-launch-*.sh` harness today; coverage runs through the `/review` reviewer-collection path. If you change its argv, add a dedicated harness in the same PR rather than relying on indirect coverage.
+- `scripts/launch-codex-review.sh` → `scripts/test-launch-codex-review.sh`
 
 The sibling `<basename>.md` (per `.claude/rules/script-md-siblings.md`)
 names the current harness; read it before assuming a path. `docs/linting.md`

@@ -134,7 +134,7 @@ read_health_sidecar_value() {
 health_merge() {
     local sidecar="${SESSION_ENV_PATH}.health"
     local slack_ok slack_missing repo repo_unavailable
-    local cur_codex cur_cursor cur_gemini cur_timing_ledger
+    local cur_codex cur_cursor cur_gemini cur_timing_ledger cur_token_session_id cur_claude_source_file
     local side_codex side_cursor side_gemini
     local merged_codex merged_cursor merged_gemini
     local flipped=false
@@ -150,6 +150,8 @@ health_merge() {
     cur_cursor=$(parse_session_env_key "$SESSION_ENV_PATH" "CURSOR_HEALTHY")
     cur_gemini=$(parse_session_env_key "$SESSION_ENV_PATH" "GEMINI_HEALTHY")
     cur_timing_ledger=$(parse_session_env_key "$SESSION_ENV_PATH" "LARCH_TIMING_LEDGER")
+    cur_token_session_id=$(parse_session_env_key "$SESSION_ENV_PATH" "LARCH_TOKEN_SESSION_ID")
+    cur_claude_source_file=$(parse_session_env_key "$SESSION_ENV_PATH" "LARCH_CLAUDE_SOURCE_FILE")
     [[ -z "$cur_timing_ledger" ]] && cur_timing_ledger="$IMPLEMENT_TMPDIR/timing-ledger.tsv"
 
     side_codex=$(read_health_sidecar_value "$sidecar" "CODEX_HEALTHY")
@@ -184,16 +186,20 @@ health_merge() {
     fi
 
     if [[ "$flipped" = true ]]; then
-        if ! "$PLUGIN_ROOT/scripts/write-session-env.sh" \
-            --output "$SESSION_ENV_PATH" \
-            --slack-ok "$slack_ok" \
-            --slack-missing "$slack_missing" \
-            --repo "$repo" \
-            --repo-unavailable "$repo_unavailable" \
-            --codex-healthy "$merged_codex" \
-            --cursor-healthy "$merged_cursor" \
-            --gemini-healthy "$merged_gemini" \
-            --timing-ledger "$cur_timing_ledger" >/dev/null 2>&1; then
+        local write_args=(
+            --output "$SESSION_ENV_PATH"
+            --slack-ok "$slack_ok"
+            --slack-missing "$slack_missing"
+            --repo "$repo"
+            --repo-unavailable "$repo_unavailable"
+            --codex-healthy "$merged_codex"
+            --cursor-healthy "$merged_cursor"
+            --gemini-healthy "$merged_gemini"
+            --timing-ledger "$cur_timing_ledger"
+        )
+        [[ -n "$cur_token_session_id" ]] && write_args+=(--token-session-id "$cur_token_session_id")
+        [[ -n "$cur_claude_source_file" ]] && write_args+=(--claude-source-file "$cur_claude_source_file")
+        if ! "$PLUGIN_ROOT/scripts/write-session-env.sh" "${write_args[@]}" >/dev/null 2>&1; then
             append_warning "health-merge-failed"
         fi
     fi

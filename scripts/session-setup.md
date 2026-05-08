@@ -29,7 +29,9 @@ advisory; write failures warn on stderr and do not abort setup.
 
 ## Session-env contract
 
-Recognized caller-env keys are `SLACK_OK`, `SLACK_MISSING`, `REPO`, `REPO_UNAVAILABLE`, `CODEX_HEALTHY`, `CURSOR_HEALTHY`, and `GEMINI_HEALTHY`. The file is parsed line-by-line and never sourced.
+Recognized caller-env keys are `SLACK_OK`, `SLACK_MISSING`, `REPO`, `REPO_UNAVAILABLE`, `CODEX_HEALTHY`, `CURSOR_HEALTHY`, `GEMINI_HEALTHY`, `LARCH_TOKEN_SESSION_ID`, and `LARCH_CLAUDE_SOURCE_FILE`. The file is parsed line-by-line and never sourced.
+
+`LARCH_TOKEN_SESSION_ID` and `LARCH_CLAUDE_SOURCE_FILE` are pass-through telemetry context for nested skills. `/implement` establishes them from its own session tmpdir, `/review` inherits them when invoked with `--session-env`, and standalone `/review` leaves them absent so token-ledger fallback behavior remains unchanged.
 
 When `--write-health` is provided, the health sidecar contains Codex and Cursor health, plus Gemini health when Gemini probing is requested or inherited from caller-env. The defaults at the write site are fail-closed: an empty `FINAL_*_HEALTHY` (e.g., `check-reviewers.sh` did not emit the key, or the passthrough caller-env omitted it) emits `=false` rather than re-masking unhealthy state as `true`. Regression coverage lives in `scripts/test-session-setup-health-defaults.sh` (sibling contract: `scripts/test-session-setup-health-defaults.md`), wired through `make test-session-setup-health-defaults` and `test-harnesses-6`.
 

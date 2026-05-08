@@ -193,6 +193,9 @@ last=""
 : "${STUB_ARGV_FILE:?}"
 : "${STUB_PROMPT_FILE:?}"
 : "${STUB_MANIFEST_PATH:?}"
+if [[ -n "${STUB_TOKEN_SESSION_FILE:-}" ]]; then
+    printf '%s\n' "${LARCH_TOKEN_SESSION_ID:-}" > "$STUB_TOKEN_SESSION_FILE"
+fi
 for arg in "$@"; do
     printf '%s\n' "$arg" >> "$STUB_ARGV_FILE"
     last="$arg"
@@ -216,12 +219,20 @@ MANIFEST="$SCRATCH/manifest.json"
 QA_PENDING="$SCRATCH/qa-pending.json"
 ARGV_FILE="$SCRATCH/cursor-argv.txt"
 PROMPT_FILE="$SCRATCH/cursor-prompt.txt"
+TOKEN_SESSION_FILE="$SCRATCH/cursor-token-session.txt"
+IMPLEMENT_TMPDIR_FIXTURE="$SCRATCH/implement-tmpdir"
+mkdir -p "$IMPLEMENT_TMPDIR_FIXTURE"
+printf 'mock-cursor-session\n' > "$IMPLEMENT_TMPDIR_FIXTURE/session-id"
+printf 'SOURCE_FILE=/tmp/mock.jsonl\n' > "$IMPLEMENT_TMPDIR_FIXTURE/claude-source.env"
 
 OUT=$(cd "$REPO_ROOT" && \
     PATH="$STUB_BIN:$PATH" \
     STUB_ARGV_FILE="$ARGV_FILE" \
     STUB_PROMPT_FILE="$PROMPT_FILE" \
     STUB_MANIFEST_PATH="$MANIFEST" \
+    STUB_TOKEN_SESSION_FILE="$TOKEN_SESSION_FILE" \
+    IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR_FIXTURE" \
+    LARCH_TOKEN_SESSION_ID="stale-cursor-session" \
     LARCH_CURSOR_MODEL="stub-model" \
     CURSOR_API_KEY="" \
     LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 \
@@ -241,6 +252,12 @@ if [[ "$OUT" == "$EXPECTED" ]]; then
     pass
 else
     fail 4 "launcher stdout contract mismatch; got: $OUT"
+fi
+
+if [[ "$(cat "$TOKEN_SESSION_FILE")" == "mock-cursor-session" ]]; then
+    pass
+else
+    fail 4a "launcher did not overwrite stale LARCH_TOKEN_SESSION_ID from IMPLEMENT_TMPDIR/session-id"
 fi
 
 if [[ -s "$TRANSCRIPT" ]] && grep -Fq 'stub cursor stdout' "$TRANSCRIPT"; then

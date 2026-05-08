@@ -21,6 +21,8 @@
 <!-- token-report-end -->
 ```
 
+When the target file is damaged so that exactly one of the two markers is present (a half-written prior run, manual edit, or partial write), `replace_token_block` normalizes the file: with a lone begin marker, content from the marker through end-of-file is dropped before appending a fresh block; with a lone end marker, content from the head through the marker is dropped. A stderr warning describing the lone-marker case is printed so the corruption stays observable. This prevents accumulating duplicate `## Token Report` blocks against a broken-prefix anchor file.
+
 `--ledger`, `--transcript`, and `--session-dir` are test hooks. Production calls resolve the ledger through `token-ledger.sh dump` and the transcript through `token-claude-source.sh`.
 
 ## Cross-cutting Failure Mode

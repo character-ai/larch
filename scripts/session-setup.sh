@@ -36,7 +36,8 @@
 #   --write-session-env <path>  Write full session-env file via write-session-env.sh
 #   --caller-env <path>   Path to KEY=value file with already-discovered values.
 #                          Recognized keys: SLACK_OK, SLACK_MISSING, REPO, REPO_UNAVAILABLE,
-#                          CODEX_HEALTHY, CURSOR_HEALTHY, GEMINI_HEALTHY.
+#                          CODEX_HEALTHY, CURSOR_HEALTHY, GEMINI_HEALTHY,
+#                          LARCH_TOKEN_SESSION_ID, LARCH_CLAUDE_SOURCE_FILE.
 #                          If a key is present and non-empty, the script skips re-deriving it.
 #                          SESSION_TMPDIR is never inherited — a fresh tmpdir is always created.
 #                          If the file does not exist or is empty, full discovery happens.
@@ -54,6 +55,8 @@
 #   CODEX_HEALTHY=true|false    Output when --check-reviewers, or passthrough from --caller-env
 #   CURSOR_HEALTHY=true|false   Output when --check-reviewers, or passthrough from --caller-env
 #   GEMINI_HEALTHY=true|false   Output when --check-reviewers --check-gemini-reviewer, or passthrough from --caller-env
+#   LARCH_TOKEN_SESSION_ID=<id> Output when passthrough from --caller-env
+#   LARCH_CLAUDE_SOURCE_FILE=<path> Output when passthrough from --caller-env
 #   CODEX_PROBE_ERROR=<reason>  Output when --check-reviewers and CODEX_HEALTHY=false (explains why)
 #   CURSOR_PROBE_ERROR=<reason> Output when --check-reviewers and CURSOR_HEALTHY=false (explains why)
 #   GEMINI_PROBE_ERROR=<reason> Output when --check-reviewers --check-gemini-reviewer and GEMINI_HEALTHY=false
@@ -138,6 +141,8 @@ CALLER_REPO_UNAVAILABLE=""
 CALLER_CODEX_HEALTHY=""
 CALLER_CURSOR_HEALTHY=""
 CALLER_GEMINI_HEALTHY=""
+CALLER_TOKEN_SESSION_ID=""
+CALLER_CLAUDE_SOURCE_FILE=""
 
 if [[ -n "$CALLER_ENV" && -f "$CALLER_ENV" ]]; then
     # Use explicit `${line%%=*}` / `${line#*=}` parameter expansion instead
@@ -160,6 +165,8 @@ if [[ -n "$CALLER_ENV" && -f "$CALLER_ENV" ]]; then
             CODEX_HEALTHY)     CALLER_CODEX_HEALTHY="$value" ;;
             CURSOR_HEALTHY)    CALLER_CURSOR_HEALTHY="$value" ;;
             GEMINI_HEALTHY)    CALLER_GEMINI_HEALTHY="$value" ;;
+            LARCH_TOKEN_SESSION_ID) CALLER_TOKEN_SESSION_ID="$value" ;;
+            LARCH_CLAUDE_SOURCE_FILE) CALLER_CLAUDE_SOURCE_FILE="$value" ;;
             *)                 ;; # Ignore unknown keys
         esac
     done < "$CALLER_ENV"
@@ -509,9 +516,24 @@ else
     if [[ -n "$CALLER_GEMINI_HEALTHY" ]]; then
         echo "GEMINI_HEALTHY=$CALLER_GEMINI_HEALTHY"
     fi
+    if [[ -n "$CALLER_TOKEN_SESSION_ID" ]]; then
+        echo "LARCH_TOKEN_SESSION_ID=$CALLER_TOKEN_SESSION_ID"
+    fi
+    if [[ -n "$CALLER_CLAUDE_SOURCE_FILE" ]]; then
+        echo "LARCH_CLAUDE_SOURCE_FILE=$CALLER_CLAUDE_SOURCE_FILE"
+    fi
     FINAL_CODEX_HEALTHY="${CALLER_CODEX_HEALTHY:-}"
     FINAL_CURSOR_HEALTHY="${CALLER_CURSOR_HEALTHY:-}"
     FINAL_GEMINI_HEALTHY="${CALLER_GEMINI_HEALTHY:-}"
+fi
+
+if [[ "$CHECK_REVIEWERS" == "true" ]]; then
+    if [[ -n "$CALLER_TOKEN_SESSION_ID" ]]; then
+        echo "LARCH_TOKEN_SESSION_ID=$CALLER_TOKEN_SESSION_ID"
+    fi
+    if [[ -n "$CALLER_CLAUDE_SOURCE_FILE" ]]; then
+        echo "LARCH_CLAUDE_SOURCE_FILE=$CALLER_CLAUDE_SOURCE_FILE"
+    fi
 fi
 
 # --- 6. Write health file (if requested) ---
@@ -548,6 +570,8 @@ if [[ -n "$WRITE_SESSION_ENV" ]]; then
     [[ -n "$FINAL_CODEX_HEALTHY" ]] && WSE_ARGS+=(--codex-healthy "$FINAL_CODEX_HEALTHY")
     [[ -n "$FINAL_CURSOR_HEALTHY" ]] && WSE_ARGS+=(--cursor-healthy "$FINAL_CURSOR_HEALTHY")
     [[ -n "$FINAL_GEMINI_HEALTHY" ]] && WSE_ARGS+=(--gemini-healthy "$FINAL_GEMINI_HEALTHY")
+    [[ -n "$CALLER_TOKEN_SESSION_ID" ]] && WSE_ARGS+=(--token-session-id "$CALLER_TOKEN_SESSION_ID")
+    [[ -n "$CALLER_CLAUDE_SOURCE_FILE" ]] && WSE_ARGS+=(--claude-source-file "$CALLER_CLAUDE_SOURCE_FILE")
 
     "$SCRIPT_DIR/write-session-env.sh" "${WSE_ARGS[@]}"
 fi

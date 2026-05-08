@@ -219,11 +219,7 @@ On non-zero exit, always print the raw `PREFLIGHT_ERROR=...` line first. Then pr
 
 Key any future sub-message on the substring inside `PREFLIGHT_ERROR` (for example, `Not on main branch` or `Working tree is not clean`), not on the prior `IS_MAIN` value from `create-branch.sh --check`; detached HEAD can report `IS_MAIN=true` with an empty `CURRENT_BRANCH`.
 
-Parse `SESSION_TMPDIR`, `SESSION_ID`, `SLACK_OK`, `SLACK_MISSING`, `REPO`, `REPO_UNAVAILABLE`, `CODEX_AVAILABLE`, `CURSOR_AVAILABLE`, `GEMINI_AVAILABLE`, `CODEX_HEALTHY`, `CURSOR_HEALTHY`, `GEMINI_HEALTHY`. `session-setup.sh` creates the tmpdir under `${XDG_CACHE_HOME:-$HOME/.cache}/larch/sessions/` when possible (legacy `/tmp` fallback), writes `$SESSION_TMPDIR/session-id`, and writes `$SESSION_TMPDIR/.larch-keepalive`. Set `IMPLEMENT_TMPDIR` = `SESSION_TMPDIR`, then write the session-env file:
-
-```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/write-session-env.sh --output "$IMPLEMENT_TMPDIR/session-env.sh" --slack-ok <value> --slack-missing <value> --repo <value> --repo-unavailable <value> --codex-healthy <value> --cursor-healthy <value> --gemini-healthy <value> --timing-ledger "$IMPLEMENT_TMPDIR/timing-ledger.tsv"
-```
+Parse `SESSION_TMPDIR`, `SESSION_ID`, `SLACK_OK`, `SLACK_MISSING`, `REPO`, `REPO_UNAVAILABLE`, `CODEX_AVAILABLE`, `CURSOR_AVAILABLE`, `GEMINI_AVAILABLE`, `CODEX_HEALTHY`, `CURSOR_HEALTHY`, `GEMINI_HEALTHY`. `session-setup.sh` creates the tmpdir under `${XDG_CACHE_HOME:-$HOME/.cache}/larch/sessions/` when possible (legacy `/tmp` fallback), writes `$SESSION_TMPDIR/session-id`, and writes `$SESSION_TMPDIR/.larch-keepalive`. Set `IMPLEMENT_TMPDIR` = `SESSION_TMPDIR`, then establish token context before writing the session-env file.
 
 Then:
 - Ensure a per-run session id exists for design-manifest freshness checks. `session-setup.sh` already wrote the value; this call is preserved as an idempotent no-op for older harnesses and fallback paths (see `scripts/write-session-id.md` for the contract):
@@ -241,6 +237,20 @@ Then:
   # failure leaves the env unset and the resolver falls back to mtime.
   "${CLAUDE_PLUGIN_ROOT}/scripts/token-claude-source.sh" > "$IMPLEMENT_TMPDIR/claude-source.env" 2>/dev/null && \
       export LARCH_CLAUDE_SOURCE_FILE="$IMPLEMENT_TMPDIR/claude-source.env" || true
+  session_env_args=(
+    --output "$IMPLEMENT_TMPDIR/session-env.sh"
+    --slack-ok <value>
+    --slack-missing <value>
+    --repo <value>
+    --repo-unavailable <value>
+    --codex-healthy <value>
+    --cursor-healthy <value>
+    --gemini-healthy <value>
+    --timing-ledger "$IMPLEMENT_TMPDIR/timing-ledger.tsv"
+    --token-session-id "$LARCH_TOKEN_SESSION_ID"
+  )
+  [[ -n "${LARCH_CLAUDE_SOURCE_FILE:-}" ]] && session_env_args+=(--claude-source-file "$LARCH_CLAUDE_SOURCE_FILE")
+  "${CLAUDE_PLUGIN_ROOT}/scripts/write-session-env.sh" "${session_env_args[@]}"
   "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 0 — preflight" || true
   "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 0 — preflight" || true
   # token-mark Step 0 — preflight
@@ -256,7 +266,20 @@ Then:
 
 The session-env file is passed to `/design` (Step 1) and `/review` (Step 5) via `--session-env`.
 
+Every Bash block after Step 0 that touches `token-ledger.sh` or `token-report.sh` MUST rehydrate `LARCH_TOKEN_SESSION_ID` and `LARCH_CLAUDE_SOURCE_FILE` from `$IMPLEMENT_TMPDIR/session-env.sh` via `read-session-env-key.sh` before invoking the script:
+
 ```bash
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
+```
+
+The immediate Step 0 report block uses this same pattern:
+
+```bash
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
 # token-step-end Step 0
@@ -264,7 +287,7 @@ The session-env file is passed to `/design` (Step 1) and `/review` (Step 5) via 
 
 ### Cross-Skill Health Propagation
 
-After each child skill returns (`/design` Step 1, `/review` Step 5), check `$IMPLEMENT_TMPDIR/session-env.sh.health`. If it exists, read `CODEX_HEALTHY` / `CURSOR_HEALTHY` / `GEMINI_HEALTHY`. If any flipped to `false` during the child, parse the non-health values (`SLACK_OK`, `SLACK_MISSING`, `REPO`, `REPO_UNAVAILABLE`) line-by-line from `$IMPLEMENT_TMPDIR/session-env.sh` (same safe parsing as `session-setup.sh` — do NOT source) and re-write via `write-session-env.sh` with preserved values plus updated health flags. Runtime timeouts propagate across skill boundaries without clobbering Slack / repo state.
+After each child skill returns (`/design` Step 1, `/review` Step 5), check `$IMPLEMENT_TMPDIR/session-env.sh.health`. If it exists, read `CODEX_HEALTHY` / `CURSOR_HEALTHY` / `GEMINI_HEALTHY`. If any flipped to `false` during the child, preserve every durable non-health key currently in `$IMPLEMENT_TMPDIR/session-env.sh` — at minimum `SLACK_OK`, `SLACK_MISSING`, `REPO`, `REPO_UNAVAILABLE`, `LARCH_TIMING_LEDGER`, `LARCH_TOKEN_SESSION_ID`, and `LARCH_CLAUDE_SOURCE_FILE` — when re-invoking `write-session-env.sh` to update health flags. Parse values line-by-line from `$IMPLEMENT_TMPDIR/session-env.sh` (same safe parsing as `session-setup.sh` — do NOT source). Runtime timeouts and token context propagate across skill boundaries without clobbering Slack / repo state.
 
 ## Execution Issues Tracking
 
@@ -340,6 +363,9 @@ If `oos-accepted-main-agent.md` does not exist, create it with the new entry. If
 ## Step 0.5 — Resolve Tracking Issue
 
 ```bash
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 0.5 — tracking issue" || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 0.5 — tracking issue" || true
 # token-mark Step 0.5 — tracking issue
@@ -610,6 +636,9 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/refresh-anchor.sh --sections-dir "$IMPLEMENT_TMPDI
 **Compose-time sanitization**: every fragment composed into an anchor section MUST apply prompt-level sanitization (secrets → `<REDACTED-TOKEN>`, internal URLs → `<INTERNAL-URL>`, PII → `<REDACTED-PII>`). `scripts/redact-secrets.sh` (invoked inside `tracking-issue-write.sh`) is the shell-layer backstop but does NOT cover internal URLs or PII — compose-time sanitization is the first-line defense. See `anchor-comment-template.md` Compose-time sanitization rule.
 
 ```bash
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
 # token-step-end Step 0.5
@@ -618,6 +647,9 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/refresh-anchor.sh --sections-dir "$IMPLEMENT_TMPDI
 ## Step 1 — Ensure Design Plan Exists
 
 ```bash
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 1 — design plan" || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 1 — design plan" || true
 # token-mark Step 1 — design plan
@@ -791,6 +823,9 @@ Runs unconditionally in both modes UNLESS `design_only=true` (per the design-onl
 Apply the Rebase Checkpoint Macro with `<step-prefix>=1.r` and `<short-name>=design plan`.
 
 ```bash
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
 # token-step-end Step 1
@@ -799,6 +834,9 @@ Apply the Rebase Checkpoint Macro with `<step-prefix>=1.r` and `<short-name>=des
 ## Step 2 — Implement the Feature
 
 ```bash
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 2 — implementation" || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 2 — implementation" || true
 # token-mark Step 2 — implementation
@@ -927,6 +965,9 @@ If `deferred=true` or `repo_unavailable=true`: local-only append; Step 11's post
 Material answers that change scope or approach also log here (same `Q/A` category).
 
 ```bash
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
 # token-step-end Step 2
@@ -935,6 +976,9 @@ Material answers that change scope or approach also log here (same `Q/A` categor
 ## Step 3 — Relevant Checks (first pass)
 
 ```bash
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 3 — checks first pass" || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 3 — checks first pass" || true
 # token-mark Step 3 — checks first pass
@@ -946,6 +990,9 @@ Material answers that change scope or approach also log here (same `Q/A` categor
 Invoke `/relevant-checks` via the Skill tool. If checks fail, diagnose and fix, then re-invoke to confirm.
 
 ```bash
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
 # token-step-end Step 3
@@ -954,6 +1001,9 @@ Invoke `/relevant-checks` via the Skill tool. If checks fail, diagnose and fix, 
 ## Step 4 — First Commit (implementation)
 
 ```bash
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 4 — commit implementation" || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 4 — commit implementation" || true
 # token-mark Step 4 — commit implementation
@@ -975,6 +1025,9 @@ Commit message describes WHAT was implemented and WHY, not HOW.
 Apply the Rebase Checkpoint Macro with `<step-prefix>=4.r` and `<short-name>=commit (impl)`.
 
 ```bash
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
 # token-step-end Step 4
@@ -983,6 +1036,9 @@ Apply the Rebase Checkpoint Macro with `<step-prefix>=4.r` and `<short-name>=com
 ## Step 5 — Code Review
 
 ```bash
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 5 — code review" || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 5 — code review" || true
 # token-mark Step 5 — code review
@@ -1117,7 +1173,7 @@ Log to `Warnings`: `Step 5 — quick-mode review loop did not converge after 7 r
 
 **IMPORTANT: Code review must ALWAYS be invoked via `/review`. Never skip regardless of the nature of changes — code, skills, documentation, data files, configuration — all changes require full review.**
 
-Invoke `/review` via the Skill tool. Canonical order: `--diff --step-prefix "5.::code review" --session-env $IMPLEMENT_TMPDIR/session-env.sh`. The `--diff` flag is required — `/review` without `--diff` or a positional description is an error. Launches the 6-reviewer panel (5 Cursor specialists + 1 Codex generic, with Claude fallbacks when required externals unavailable); implements accepted suggestions recursively until clean.
+Invoke `/review` via the Skill tool. Canonical order: `--diff --step-prefix "5.::code review" --session-env $IMPLEMENT_TMPDIR/session-env.sh`. The `--diff` flag is required — `/review` without `--diff` or a positional description is an error. Launches the 6-reviewer panel (5 Cursor specialists + 1 Codex generic, with Claude fallbacks when required externals unavailable); implements accepted suggestions recursively until clean. Nested review token-context propagation is pinned by `skills/implement/scripts/test-implement-review-token-propagation.sh` (sibling contract `skills/implement/scripts/test-implement-review-token-propagation.md`).
 
 After `/review` returns, follow the Cross-Skill Health Propagation procedure from Step 0.
 
@@ -1156,6 +1212,9 @@ If `ISSUE_NUMBER` is set, refresh the anchor immediately after compose (same mec
 Known limitation: accepted code-review findings are not currently captured in this fragment. The `/review` skill and the quick-mode 5.5 loop both accept findings without writing a byte-preserved `accepted-code-review-findings.md` artifact. The helper silently emits no records for the `accepted code-review` phase / outcome pair. See `scripts/compose-review-findings.md` "Known limitations" for follow-up wiring.
 
 ```bash
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
 # token-step-end Step 5
@@ -1164,6 +1223,9 @@ Known limitation: accepted code-review findings are not currently captured in th
 ## Step 6 — Relevant Checks (second pass)
 
 ```bash
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 6 — checks second pass" || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 6 — checks second pass" || true
 # token-mark Step 6 — checks second pass
@@ -1187,6 +1249,9 @@ Else (`FILES_CHANGED=true`):
 Invoke `/relevant-checks` via the Skill tool; on failure, diagnose + fix, re-invoke.
 
 ```bash
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
 # token-step-end Step 6
@@ -1195,6 +1260,9 @@ Invoke `/relevant-checks` via the Skill tool; on failure, diagnose + fix, re-inv
 ## Step 7 — Second Commit (review fixes)
 
 ```bash
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 7 — commit review fixes" || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 7 — commit review fixes" || true
 # token-mark Step 7 — commit review fixes
@@ -1216,6 +1284,9 @@ Only if `FILES_CHANGED=true` from Step 6 (Step 7 created a commit). If Steps 6�
 Apply the Rebase Checkpoint Macro with `<step-prefix>=7.r` and `<short-name>=commit (review)`.
 
 ```bash
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
 # token-step-end Step 7
@@ -1224,6 +1295,9 @@ Apply the Rebase Checkpoint Macro with `<step-prefix>=7.r` and `<short-name>=com
 ## Step 7a — Code Flow Diagram
 
 ```bash
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 7a — code flow diagram" || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 7a — code flow diagram" || true
 # token-mark Step 7a — code flow diagram
@@ -1256,6 +1330,9 @@ Safety net before version bump. `--skip-if-pushed` short-circuits this when the 
 Apply the Rebase Checkpoint Macro with `<step-prefix>=7a.r` and `<short-name>=code flow`.
 
 ```bash
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
 # token-step-end Step 7a
@@ -1264,6 +1341,9 @@ Apply the Rebase Checkpoint Macro with `<step-prefix>=7a.r` and `<short-name>=co
 ## Step 8 — Version Bump
 
 ```bash
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 8 — version bump" || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 8 — version bump" || true
 # token-mark Step 8 — version bump
@@ -1306,6 +1386,9 @@ Compose the `version-bump-reasoning` fragment from the contents of `$BUMP_REASON
 **Mid-loop refresh during rebase cycles**: `rebase-rebump-subprocedure.md` step 6 (Steps 10 / 12's rebase + re-bump path) refreshes the anchor's `version-bump-reasoning` section directly. It reads the session's tracking-issue sentinel via `${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-read.sh --sentinel`, rewrites this fragment when `/bump-version` produced a fresh reasoning file in that invocation (preserves the prior fragment otherwise), and calls `${CLAUDE_PLUGIN_ROOT}/scripts/refresh-anchor.sh` (the wrapper around `assemble-anchor.sh` + `upsert-anchor`). Umbrella #348 Phase 5 closed the earlier gap where sub-procedure step 6 refreshed a PR-body block that no longer existed in the slim PR body (Phase 3). Anchor refresh failure in that step is non-fatal (logged to `Warnings`); the next successful progressive upsert (this Step 8, or Step 11 post-execution) repairs any stale anchor state.
 
 ```bash
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
 # token-step-end Step 8
@@ -1314,6 +1397,9 @@ Compose the `version-bump-reasoning` fragment from the contents of `$BUMP_REASON
 ## Step 8a — CHANGELOG Update
 
 ```bash
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 8a — changelog" || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 8a — changelog" || true
 # token-mark Step 8a — changelog
@@ -1354,6 +1440,9 @@ Keeps the bump commit as the single HEAD commit containing both the version bump
 Print: `✅ 8a: changelog — updated for v<NEW_VERSION> (<elapsed>)`
 
 ```bash
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
 # token-step-end Step 8a
@@ -1362,6 +1451,9 @@ Print: `✅ 8a: changelog — updated for v<NEW_VERSION> (<elapsed>)`
 ## Step 8b — Rebase onto latest main (before PR creation)
 
 ```bash
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 8b — rebase" || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 8b — rebase" || true
 # token-mark Step 8b — rebase
@@ -1413,6 +1505,9 @@ Parse `STATE` (and `RC` for diagnostic logging). The script always exits 0; the 
 Detection is Git-based (not via `gh pr view`) so transient GitHub API failures do not silently degrade to a stale-remote path — see issue #818 for the failure-mode rationale.
 
 ```bash
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
 # token-step-end Step 8b
@@ -1421,6 +1516,9 @@ Detection is Git-based (not via `gh pr view`) so transient GitHub API failures d
 ## Step 9 — Create PR
 
 ```bash
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 9 — create PR" || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 9 — create PR" || true
 # token-mark Step 9 — create PR
@@ -1465,6 +1563,9 @@ Step 9a.1 writes and refreshes the data fragments needed for OOS publication and
 After writing `run-statistics.md`, append or replace the idempotent report blocks before assembling:
 
 ```bash
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --append-token-report "$IMPLEMENT_TMPDIR/anchor-sections/token-report.md" || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --append-timing-section "$IMPLEMENT_TMPDIR/anchor-sections/timing-report.md" || true
 ```
@@ -1497,6 +1598,9 @@ Print the PR URL. Save `PR_NUMBER`, `PR_URL`, `PR_TITLE` for Steps 10–15.
 **MANDATORY — READ ENTIRE FILE** before invoking the sub-procedure from Step 8's same-version `apply-bump.sh` failure branch, Step 8b, Step 10, or Step 12: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/rebase-rebump-subprocedure.md`. Contains the `Inputs` schema (`rebase_already_done`, `caller_kind`), Happy-path steps 1–7 (drop bump → rebase → fast-forward local main → re-bump → push with recovery → anchor `version-bump-reasoning` refresh → return to caller), Phase 4 caller path (`rebase_already_done=true, caller_kind=step12_phase4`), caller-family failure semantics (step12 = hard-bail to 12d; step10 = break to Step 11; step8 = STALL_TRACKING=true + skip to Step 18), and the anti-halt continuation reminder for `/bump-version`. **Do NOT load** when Step 12 early-exits on `merge=false` / `repo_unavailable=true`, when Step 10 returns `ACTION=merge` / `already_merged` / `evaluate_failure` / `bail`, or when Step 8b's `rebase-push.sh --no-push` returns exit 0 / 3 / other (only Step 8b exit 1 enters the sub-procedure; exit 3 / other still bail directly).
 
 ```bash
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
 # token-step-end Step 9
@@ -1505,6 +1609,9 @@ Print the PR URL. Save `PR_NUMBER`, `PR_URL`, `PR_TITLE` for Steps 10–15.
 ## Step 10 — CI Monitor (initial wait for green)
 
 ```bash
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 10 — CI monitor" || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 10 — CI monitor" || true
 # token-mark Step 10 — CI monitor
@@ -1556,6 +1663,9 @@ Log CI failures, transient retries, bail events to `CI Issues`. After any non-te
 > **Continue to Step 11.** Do NOT end the turn after CI monitoring completes.
 
 ```bash
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
 # token-step-end Step 10
@@ -1564,6 +1674,9 @@ Log CI failures, transient retries, bail events to `CI Issues`. After any non-te
 ## Step 11 — Post-execution Anchor `execution-issues` Refresh
 
 ```bash
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 11 — execution issues refresh" || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 11 — execution issues refresh" || true
 # token-mark Step 11 — execution issues refresh
@@ -1587,6 +1700,9 @@ Runs unconditionally. The Slack announcement of the tracking issue has moved to 
 
    c. Best-effort append or replace the current Token Report block in `$IMPLEMENT_TMPDIR/anchor-sections/token-report.md` before the refresh. This Step 11 table is an interim refresh only; Step 18 owns the authoritative final table:
       ```bash
+      LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+      LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+      export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
       "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --append-token-report "$IMPLEMENT_TMPDIR/anchor-sections/token-report.md" || true
       "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --append-timing-section "$IMPLEMENT_TMPDIR/anchor-sections/timing-report.md" || true
       ```
@@ -1602,6 +1718,9 @@ Print: `✅ 11: execution-issues — anchor refreshed (<elapsed>)` on success.
 > **Continue to Step 12.** Do NOT end the turn after anchor refresh.
 
 ```bash
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
 # token-step-end Step 11
@@ -1610,6 +1729,9 @@ Print: `✅ 11: execution-issues — anchor refreshed (<elapsed>)` on success.
 ## Step 12 — CI + Rebase + Merge Loop
 
 ```bash
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 12 — CI merge loop" || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 12 — CI merge loop" || true
 # token-mark Step 12 — CI merge loop
@@ -1716,6 +1838,9 @@ Bail if any: 3 fix iterations attempted without progress; failure fundamentally 
 - Set `STALL_TRACKING=true` — signals Step 18 to rename the tracking issue's title from `[IN PROGRESS]` to `[STALLED]` (see Step 18 "Title-prefix lifecycle terminal transition").
 
 ```bash
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
 # token-step-end Step 12
@@ -1756,6 +1881,9 @@ If `forked_target=true`, leave `ISSUE_NUMBER` blank and keep `REPO=$FORK_REPO` a
 ## Step 14 — Local Cleanup
 
 ```bash
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 14 — local cleanup" || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 14 — local cleanup" || true
 # token-mark Step 14 — local cleanup
@@ -1801,6 +1929,9 @@ Relay the script's Step 14 / Step 15 breadcrumbs verbatim. Tail records document
 > **Continue to Step 15.** Do NOT end the turn after local cleanup.
 
 ```bash
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
 # token-step-end Step 14
@@ -1809,6 +1940,9 @@ Relay the script's Step 14 / Step 15 breadcrumbs verbatim. Tail records document
 ## Step 15 — Verify Main
 
 ```bash
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 15 — verify main" || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 15 — verify main" || true
 # token-mark Step 15 — verify main
@@ -1820,6 +1954,9 @@ Handled by Step 14's `implement-finalize.sh postmerge` invocation. Step 15 runs 
 > **Continue to Step 16.** Do NOT end the turn after verifying main.
 
 ```bash
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
 # token-step-end Step 15
@@ -1828,6 +1965,9 @@ Handled by Step 14's `implement-finalize.sh postmerge` invocation. Step 15 runs 
 ## Step 16 — Rejected Code Review Findings Report
 
 ```bash
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 16 — rejected findings" || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 16 — rejected findings" || true
 # token-mark Step 16 — rejected findings
@@ -1839,6 +1979,9 @@ Report unimplemented code review suggestions without reprinting the full finding
 > **Continue to Step 16a.** Do NOT end the turn after printing rejected findings.
 
 ```bash
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
 # token-step-end Step 16
@@ -1847,6 +1990,9 @@ Report unimplemented code review suggestions without reprinting the full finding
 ## Step 16a — Post Slack Issue Announcement
 
 ```bash
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 16a — Slack issue announcement" || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 16a — Slack issue announcement" || true
 # token-mark Step 16a — Slack issue announcement
@@ -1868,6 +2014,9 @@ Relay the script's Step 16a breadcrumb verbatim. Tail records document the mecha
 > **Continue to Step 17.** Do NOT end the turn after Slack post.
 
 ```bash
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
 # token-step-end Step 16a
@@ -1876,6 +2025,9 @@ Relay the script's Step 16a breadcrumb verbatim. Tail records document the mecha
 ## Step 17 — Final Report
 
 ```bash
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 17 — final report" || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 17 — final report" || true
 # token-mark Step 17 — final report
@@ -1918,6 +2070,9 @@ If `quick_mode=false` and `DESIGN_ONLY_DONE` is not true: print a summary noting
 Print the full token table for immediate visibility:
 
 ```bash
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --full --markdown || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --full --markdown || true
 ```
@@ -1925,6 +2080,9 @@ Print the full token table for immediate visibility:
 > **Continue to Step 18.** Do NOT end the turn after the final report.
 
 ```bash
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
 # token-step-end Step 17
@@ -1933,6 +2091,9 @@ Print the full token table for immediate visibility:
 ## Step 18 — Cleanup and Final Warnings
 
 ```bash
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 18 — cleanup" || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 18 — cleanup" || true
 # token-mark Step 18 — cleanup
@@ -1946,6 +2107,9 @@ If `DESIGN_ONLY_DONE=true`, remind: `**Note: --design-only was set. No PR was cr
 Before teardown, perform the authoritative final token-report refresh while `$IMPLEMENT_TMPDIR` and its anchor fragments still exist:
 
 ```bash
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --append-token-report "$IMPLEMENT_TMPDIR/anchor-sections/token-report.md" || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --append-timing-section "$IMPLEMENT_TMPDIR/anchor-sections/timing-report.md" || true
 if [ "${forked_target:-false}" != "true" ] && [ -n "${ISSUE_NUMBER:-}" ] && [ "${repo_unavailable:-false}" != "true" ]; then
@@ -1964,6 +2128,9 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.sh teardown \
 Relay the script's tracking issue URL line and Step 18 breadcrumb verbatim. Tail records document the mechanical outcome: `RENAME_BRANCH=...`, `RENAME_STATUS=...`, `ISSUE_URL=...`, `STASH_REF=...`, `SENTINEL_WRITTEN=...`, `FINALIZE_SUBCOMMAND=teardown`, `FINALIZE_WARNINGS=...`.
 
 ```bash
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
 # token-step-end Step 18

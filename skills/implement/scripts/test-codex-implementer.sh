@@ -170,6 +170,9 @@ set -euo pipefail
 : "${STUB_LAST_ARG_FILE:?}"
 : "${STUB_SEPARATOR_INDEX_FILE:?}"
 : "${STUB_MANIFEST_PATH:?}"
+if [[ -n "${STUB_TOKEN_SESSION_FILE:-}" ]]; then
+    printf '%s\n' "${LARCH_TOKEN_SESSION_ID:-}" > "$STUB_TOKEN_SESSION_FILE"
+fi
 output_path=""
 separator_seen=false
 index=0
@@ -214,6 +217,11 @@ ARGV_FILE="$SCRATCH/codex-argv.txt"
 PROMPT_FILE="$SCRATCH/codex-prompt.txt"
 LAST_ARG_FILE="$SCRATCH/codex-last-arg.txt"
 SEPARATOR_INDEX_FILE="$SCRATCH/codex-separator-index.txt"
+TOKEN_SESSION_FILE="$SCRATCH/codex-token-session.txt"
+IMPLEMENT_TMPDIR_FIXTURE="$SCRATCH/implement-tmpdir"
+mkdir -p "$IMPLEMENT_TMPDIR_FIXTURE"
+printf 'mock-codex-session\n' > "$IMPLEMENT_TMPDIR_FIXTURE/session-id"
+printf 'SOURCE_FILE=/tmp/mock.jsonl\n' > "$IMPLEMENT_TMPDIR_FIXTURE/claude-source.env"
 
 OUT=$(cd "$REPO_ROOT" && \
     PATH="$STUB_BIN:$PATH" \
@@ -222,6 +230,9 @@ OUT=$(cd "$REPO_ROOT" && \
     STUB_LAST_ARG_FILE="$LAST_ARG_FILE" \
     STUB_SEPARATOR_INDEX_FILE="$SEPARATOR_INDEX_FILE" \
     STUB_MANIFEST_PATH="$MANIFEST" \
+    STUB_TOKEN_SESSION_FILE="$TOKEN_SESSION_FILE" \
+    IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR_FIXTURE" \
+    LARCH_TOKEN_SESSION_ID="stale-codex-session" \
     LARCH_CODEX_MODEL="stub-codex-model" \
     "$LAUNCHER" \
         --transcript-path "$TRANSCRIPT" \
@@ -238,6 +249,12 @@ if [[ "$OUT" == "$EXPECTED" ]]; then
     pass
 else
     fail 4 "launcher stdout contract mismatch; got: $OUT"
+fi
+
+if [[ "$(cat "$TOKEN_SESSION_FILE")" == "mock-codex-session" ]]; then
+    pass
+else
+    fail 4a "launcher did not overwrite stale LARCH_TOKEN_SESSION_ID from IMPLEMENT_TMPDIR/session-id"
 fi
 
 if [[ -s "$TRANSCRIPT" ]] && grep -Fq 'stub codex stdout' "$TRANSCRIPT"; then
@@ -279,6 +296,7 @@ RESUME_ARGV="$SCRATCH/resume-argv.txt"
 RESUME_PROMPT="$SCRATCH/resume-prompt.txt"
 RESUME_LAST_ARG="$SCRATCH/resume-last-arg.txt"
 RESUME_SEPARATOR_INDEX="$SCRATCH/resume-separator-index.txt"
+RESUME_TOKEN_SESSION_FILE="$SCRATCH/resume-token-session.txt"
 
 OUT=$(cd "$REPO_ROOT" && \
     PATH="$STUB_BIN:$PATH" \
@@ -287,6 +305,7 @@ OUT=$(cd "$REPO_ROOT" && \
     STUB_LAST_ARG_FILE="$RESUME_LAST_ARG" \
     STUB_SEPARATOR_INDEX_FILE="$RESUME_SEPARATOR_INDEX" \
     STUB_MANIFEST_PATH="$RESUME_MANIFEST" \
+    STUB_TOKEN_SESSION_FILE="$RESUME_TOKEN_SESSION_FILE" \
     LARCH_CODEX_MODEL="stub-codex-model" \
     "$LAUNCHER" \
         --transcript-path "$RESUME_TRANSCRIPT" \
@@ -320,6 +339,7 @@ T9_ARGV="$SCRATCH/t9-argv.txt"
 T9_PROMPT="$SCRATCH/t9-prompt.txt"
 T9_LAST_ARG="$SCRATCH/t9-last-arg.txt"
 T9_SEPARATOR_INDEX="$SCRATCH/t9-separator-index.txt"
+T9_TOKEN_SESSION_FILE="$SCRATCH/t9-token-session.txt"
 
 OUT=$(cd "$REPO_ROOT" && \
     PATH="$STUB_BIN:$PATH" \
@@ -328,6 +348,7 @@ OUT=$(cd "$REPO_ROOT" && \
     STUB_LAST_ARG_FILE="$T9_LAST_ARG" \
     STUB_SEPARATOR_INDEX_FILE="$T9_SEPARATOR_INDEX" \
     STUB_MANIFEST_PATH="$T9_MANIFEST" \
+    STUB_TOKEN_SESSION_FILE="$T9_TOKEN_SESSION_FILE" \
     LARCH_CODEX_MODEL="stub-codex-model" \
     "$LAUNCHER" \
         --transcript-path "$T9_TRANSCRIPT" \

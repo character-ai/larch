@@ -53,6 +53,9 @@ cat > "$STUB_BIN/codex" <<'STUB_CODEX'
 set -euo pipefail
 : "${CODEX_STUB_ARGV_LOG:?}"
 : "${CODEX_STUB_COUNT_FILE:?}"
+if [[ -n "${CODEX_STUB_TOKEN_SESSION_FILE:-}" ]]; then
+    printf '%s\n' "${LARCH_TOKEN_SESSION_ID:-}" > "$CODEX_STUB_TOKEN_SESSION_FILE"
+fi
 count=0
 if [[ -f "$CODEX_STUB_COUNT_FILE" ]]; then
     count=$(cat "$CODEX_STUB_COUNT_FILE")
@@ -81,13 +84,22 @@ ln -s "$OUTDIR_REAL" "$OUTDIR_LINK"
 OUTPUT="$OUTDIR_LINK/../out-link/review.txt"
 ARGV="$TMPDIR/argv.txt"
 COUNT="$TMPDIR/count.txt"
+TOKEN_SESSION_FILE="$TMPDIR/token-session.txt"
+IMPLEMENT_TMPDIR_FIXTURE="$TMPDIR/implement-tmpdir"
+mkdir -p "$IMPLEMENT_TMPDIR_FIXTURE"
+printf 'mock-codex-review-session\n' > "$IMPLEMENT_TMPDIR_FIXTURE/session-id"
+printf 'SOURCE_FILE=/tmp/mock.jsonl\n' > "$IMPLEMENT_TMPDIR_FIXTURE/claude-source.env"
 PATH="$STUB_BIN:$PATH" \
     CODEX_STUB_ARGV_LOG="$ARGV" \
     CODEX_STUB_COUNT_FILE="$COUNT" \
+    CODEX_STUB_TOKEN_SESSION_FILE="$TOKEN_SESSION_FILE" \
+    IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR_FIXTURE" \
+    LARCH_TOKEN_SESSION_ID="stale-codex-review-session" \
     LARCH_CODEX_MODEL="stub-model" \
     "$LAUNCHER" --output "$OUTPUT" --timeout 5 --prompt "review prompt" >/dev/null
 
 assert_eq "stub invoked once" "1" "$(cat "$COUNT")"
+assert_eq "token session id rehydrated" "mock-codex-review-session" "$(cat "$TOKEN_SESSION_FILE")"
 assert_eq "argv 1" "exec" "$(sed -n '1p' "$ARGV")"
 assert_eq "argv 2" "--full-auto" "$(sed -n '2p' "$ARGV")"
 assert_eq "argv 3" "-C" "$(sed -n '3p' "$ARGV")"

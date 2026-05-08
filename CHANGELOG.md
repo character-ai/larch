@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [15.15.2] - 2026-05-07
+
+### Fixed
+
+- Resolve #1428: token-ledger session id now propagates across Claude Code Bash tool calls and external launcher subshells. `LARCH_TOKEN_SESSION_ID` and `LARCH_CLAUDE_SOURCE_FILE` are persisted in `$IMPLEMENT_TMPDIR/session-env.sh` (extended `scripts/write-session-env.sh` with `--token-session-id` / `--claude-source-file`); every orchestrator-side `token-ledger.sh` / `token-report.sh` Bash block in `skills/implement/SKILL.md` now rehydrates both keys via `read-session-env-key.sh` before invoking the script. `step2-implement.sh` and all 6 launchers (`launch-codex-implement.sh`, `launch-codex-review.sh`, `launch-cursor-implement.sh`, `launch-cursor-review.sh`, `launch-gemini-implement.sh`, `launch-gemini-review.sh`) gain an authoritative-overwrite preamble that derives the canonical session id from `IMPLEMENT_TMPDIR/session-id` and overwrites any stale env value. `/review` (nested under `/implement` Step 5) inherits both keys via `session-setup.sh --caller-env`. A structure-test pin in `scripts/test-implement-structure.sh` asserts every SKILL.md `token-ledger.sh` / `token-report.sh` call site has the rehydrate prefix; `scripts/test-token-ledger.sh` gains a rehydrate-chain regression and an overwrite-stale assertion; new `skills/implement/scripts/test-implement-review-token-propagation.sh` proves the parent `/implement` → nested `/review` propagation. The result: every `/implement` run from the same cwd now writes to a session-id-keyed `larch-tokens-<sha>.jsonl` ledger that no other run shares; tracking-issue Token Reports no longer accumulate stale rows from prior runs. Code review accepted FINDING_4 — `scripts/token-report.sh::replace_token_block` now detects half-written anchor files (exactly one of `<!-- token-report-begin -->` / `<!-- token-report-end -->` present) and recovers via stderr warning + drop-adjacent-content + fresh append, instead of compounding duplicate sections.
+
 ## [15.15.1] - 2026-05-07
 
 ### Fixed

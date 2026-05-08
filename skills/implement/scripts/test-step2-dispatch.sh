@@ -2,7 +2,7 @@
 # test-step2-dispatch.sh — Offline harness for skills/implement/scripts/step2-implement.sh.
 #
 # Covers the dispatcher branches that do NOT require spawning an external implementer
-# (37 assertions; for the full per-test inventory see test-step2-dispatch.md):
+# (for the full per-test inventory see test-step2-dispatch.md):
 #   - --coder claude → STATUS=claude_fallback (no launcher run; no baseline-file leak).
 #   - default coder (no --coder flag) is codex.
 #   - Default codex path outside a git work-tree → exit 2.
@@ -525,6 +525,75 @@ if [[ "$AUTH_B_LINES" == "1" ]] \
     pass
 else
     fail 11b "pair invariant: external bailed must emit exactly one AUTH=forbidden line, got auth_lines=$AUTH_B_LINES out=$OUT_B"
+fi
+
+# ---------------------------------------------------------------------------
+# Test 12: canonical --tmpdir/session-id overwrites stale token session env
+# before the launcher subprocess runs.
+# ---------------------------------------------------------------------------
+STUB_BIN="$SCRATCH/stub-bin"; mkdir -p "$STUB_BIN"
+cat > "$STUB_BIN/codex" <<'STUB_CODEX'
+#!/usr/bin/env bash
+set -euo pipefail
+: "${STEP2_TOKEN_SESSION_FILE:?}"
+: "${STEP2_MANIFEST_PATH:?}"
+printf '%s\n' "${LARCH_TOKEN_SESSION_ID:-}" > "$STEP2_TOKEN_SESSION_FILE"
+output_path=""
+last=""
+for arg in "$@"; do
+    if [[ "$last" == "--output-last-message" ]]; then
+        output_path="$arg"
+    fi
+    last="$arg"
+done
+[[ -n "$output_path" ]] && printf 'stub transcript\n' > "$output_path"
+cat > "$STEP2_MANIFEST_PATH.tmp" <<JSON
+{
+  "schema_version": "1",
+  "status": "bailed",
+  "bail_reason": "stub-bailed"
+}
+JSON
+mv "$STEP2_MANIFEST_PATH.tmp" "$STEP2_MANIFEST_PATH"
+printf 'stub codex stdout\n'
+STUB_CODEX
+chmod +x "$STUB_BIN/codex"
+
+TMP12A="$SCRATCH/test12a"; mkdir -p "$TMP12A"
+printf 'fresh-step2-A\n' > "$TMP12A/session-id"
+TOKEN12A="$SCRATCH/token12a.txt"
+OUT_12A=$(cd "$REPO_ROOT" && \
+    PATH="$STUB_BIN:$PATH" \
+    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    STEP2_TOKEN_SESSION_FILE="$TOKEN12A" \
+    STEP2_MANIFEST_PATH="$TMP12A/manifest.json" \
+    LARCH_TOKEN_SESSION_ID=stale-step2 \
+    LARCH_CODEX_MODEL=stub-codex-model \
+    "$DISPATCHER" --tmpdir "$TMP12A" --plan-file "$PLAN" --feature-file "$FEATURE" \
+        --auto-mode false --coder codex 2>&1)
+if [[ "$OUT_12A" == *"STATUS=bailed"* ]] \
+   && [[ "$OUT_12A" == *"REASON=stub-bailed"* ]] \
+   && [[ "$(cat "$TOKEN12A")" == "fresh-step2-A" ]]; then
+    pass
+else
+    fail 12a "step2 should export fresh tmpdir session id to launcher, out=$OUT_12A token=$(cat "$TOKEN12A" 2>/dev/null)"
+fi
+
+TMP12B="$SCRATCH/test12b"; mkdir -p "$TMP12B"
+printf 'fresh-step2-B\n' > "$TMP12B/session-id"
+TOKEN12B="$SCRATCH/token12b.txt"
+OUT_12B=$(cd "$REPO_ROOT" && \
+    PATH="$STUB_BIN:$PATH" \
+    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    STEP2_TOKEN_SESSION_FILE="$TOKEN12B" \
+    STEP2_MANIFEST_PATH="$TMP12B/manifest.json" \
+    LARCH_CODEX_MODEL=stub-codex-model \
+    "$DISPATCHER" --tmpdir "$TMP12B" --plan-file "$PLAN" --feature-file "$FEATURE" \
+        --auto-mode false --coder codex 2>&1)
+if [[ "$OUT_12B" == *"STATUS=bailed"* ]] && [[ "$(cat "$TOKEN12B")" == "fresh-step2-B" ]]; then
+    pass
+else
+    fail 12b "second tmpdir should export its own session id, out=$OUT_12B token=$(cat "$TOKEN12B" 2>/dev/null)"
 fi
 
 # ---------------------------------------------------------------------------

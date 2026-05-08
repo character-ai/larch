@@ -5,6 +5,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 SCRIPT="$REPO_ROOT/scripts/token-ledger.sh"
+READ_SESSION_ENV_KEY="$REPO_ROOT/scripts/read-session-env-key.sh"
 PASS=0
 FAIL=0
 
@@ -64,6 +65,30 @@ env_slug=$(sha256 "env-id")
 file_slug=$(sha256 "session-file-id")
 assert_contains "env precedence" "$env_slug" "$env_path"
 assert_contains "session-file fallback" "$file_slug" "$file_path"
+
+SESSION_ENV_A="$TMP/session-env-A.sh"
+SESSION_ENV_B="$TMP/session-env-B.sh"
+printf 'LARCH_TOKEN_SESSION_ID=fresh-id-A\n' > "$SESSION_ENV_A"
+printf 'LARCH_TOKEN_SESSION_ID=fresh-id-B\n' > "$SESSION_ENV_B"
+rehydrated_a=$("$READ_SESSION_ENV_KEY" --file "$SESSION_ENV_A" --key LARCH_TOKEN_SESSION_ID --default "")
+rehydrated_b=$("$READ_SESSION_ENV_KEY" --file "$SESSION_ENV_B" --key LARCH_TOKEN_SESSION_ID --default "")
+rehydrated_path_a=$(env -u IMPLEMENT_TMPDIR LARCH_TOKEN_SESSION_ID="$rehydrated_a" "$SCRIPT" dump | sed -n '1p')
+rehydrated_path_b=$(env -u IMPLEMENT_TMPDIR LARCH_TOKEN_SESSION_ID="$rehydrated_b" "$SCRIPT" dump | sed -n '1p')
+assert_contains "rehydrated fixture A" "$(sha256 "fresh-id-A")" "$rehydrated_path_a"
+assert_contains "rehydrated fixture B" "$(sha256 "fresh-id-B")" "$rehydrated_path_b"
+if [[ "$rehydrated_path_a" != "$rehydrated_path_b" ]]; then pass; else fail "rehydrated fixtures should resolve distinct ledger paths"; fi
+
+OVERWRITE_TMP="$TMP/overwrite"
+mkdir -p "$OVERWRITE_TMP"
+printf 'fresh-overwrite\n' > "$OVERWRITE_TMP/session-id"
+overwrite_file_id=$(LARCH_TOKEN_SESSION_ID=stale IMPLEMENT_TMPDIR="$OVERWRITE_TMP" bash -c '
+    if [[ -n "${IMPLEMENT_TMPDIR:-}" && -s "${IMPLEMENT_TMPDIR}/session-id" ]]; then
+        file_id=$(tr -d "\r\n" < "${IMPLEMENT_TMPDIR}/session-id" 2>/dev/null || true)
+        if [[ -n "$file_id" ]]; then export LARCH_TOKEN_SESSION_ID="$file_id"; fi
+    fi
+    printf "%s\n" "$LARCH_TOKEN_SESSION_ID"
+')
+assert_eq "canonical tmpdir overwrite" "fresh-overwrite" "$overwrite_file_id"
 
 unsafe_path=$(LARCH_TOKEN_SESSION_ID=$'../bad/id\nx' "$SCRIPT" dump | sed -n '1p')
 case "$unsafe_path" in

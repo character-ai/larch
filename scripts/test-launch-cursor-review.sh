@@ -90,6 +90,9 @@ fi
 if [[ -n "${CURSOR_STUB_PWD_LOG:-}" ]]; then
     pwd -P > "$CURSOR_STUB_PWD_LOG"
 fi
+if [[ -n "${CURSOR_STUB_TOKEN_SESSION_FILE:-}" ]]; then
+    printf '%s\n' "${LARCH_TOKEN_SESSION_ID:-}" > "$CURSOR_STUB_TOKEN_SESSION_FILE"
+fi
 if [[ -n "${CURSOR_STUB_DELAY:-}" ]]; then
     sleep "$CURSOR_STUB_DELAY"
 fi
@@ -141,6 +144,19 @@ if cmp -s "$EXPECTED_C" "$PROMPT_LOG_C"; then
 else
     fail "case C wrapped prompt did not preserve trailing newlines"
 fi
+
+OUT_TOKEN="$TMPDIR/cursor-token.txt"
+TOKEN_SESSION_FILE="$TMPDIR/cursor-token-session.txt"
+IMPLEMENT_TMPDIR_FIXTURE="$TMPDIR/implement-tmpdir"
+mkdir -p "$IMPLEMENT_TMPDIR_FIXTURE"
+printf 'mock-cursor-review-session\n' > "$IMPLEMENT_TMPDIR_FIXTURE/session-id"
+printf 'SOURCE_FILE=/tmp/mock.jsonl\n' > "$IMPLEMENT_TMPDIR_FIXTURE/claude-source.env"
+PATH="$STUB_BIN:$PATH" \
+    CURSOR_STUB_TOKEN_SESSION_FILE="$TOKEN_SESSION_FILE" \
+    IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR_FIXTURE" \
+    LARCH_TOKEN_SESSION_ID="stale-cursor-review-session" \
+    "$LAUNCHER" --output "$OUT_TOKEN" --timeout 5 --prompt "token context" >/dev/null 2>"$TMPDIR/case-token.stderr"
+assert_equals "case token session id rehydrated" "mock-cursor-review-session" "$(cat "$TOKEN_SESSION_FILE")"
 
 # Case D: deterministic post-wrapper trap path promotes an existing inner
 # sentinel and may leave raw JSON because normal post-processing was interrupted.

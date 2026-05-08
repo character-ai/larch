@@ -288,10 +288,15 @@ render_jq() {
 replace_token_block() {
     local target="$1"
     local block_file="$2"
-    local tmp
+    local tmp has_begin=0 has_end=0
     mkdir -p "$(dirname "$target")"
     tmp="$target.tmp"
-    if [[ -f "$target" ]] && grep -Fq '<!-- token-report-begin -->' "$target" && grep -Fq '<!-- token-report-end -->' "$target"; then
+    if [[ -f "$target" ]]; then
+        grep -Fq '<!-- token-report-begin -->' "$target" && has_begin=1
+        grep -Fq '<!-- token-report-end -->' "$target" && has_end=1
+    fi
+    if (( has_begin == 1 && has_end == 1 )); then
+        # Both markers present — replace the bracketed region in place.
         awk -v repl="$block_file" '
           BEGIN {
             while ((getline line < repl) > 0) replacement = replacement line "\n"
@@ -305,6 +310,29 @@ replace_token_block() {
           /<!-- token-report-end -->/ && skip { skip=0; next }
           !skip { print }
         ' "$target" > "$tmp"
+    elif (( has_begin == 1 || has_end == 1 )); then
+        # Mismatched markers (lone begin or lone end) indicate a damaged or
+        # half-written prior write. Normalize: drop content from the first
+        # surviving marker through end-of-file (lone-begin) or the file head
+        # through the surviving marker (lone-end), then append a fresh block.
+        # Emit a stderr warning so the corruption is observable.
+        if (( has_begin == 1 )); then
+            printf 'token-report.sh: warning: %s has lone <!-- token-report-begin --> marker; truncating from marker and rewriting block\n' "$target" >&2
+            awk '/<!-- token-report-begin -->/ {found=1; next} !found {print}' "$target" > "$tmp"
+        else
+            printf 'token-report.sh: warning: %s has lone <!-- token-report-end --> marker; dropping head through marker and rewriting block\n' "$target" >&2
+            awk '/<!-- token-report-end -->/ {found=1; next} found {print}' "$target" > "$tmp"
+        fi
+        # Ensure trailing newline before appending the fresh block.
+        if [[ -s "$tmp" ]] && [[ "$(tail -c 1 "$tmp" | wc -c)" -gt 0 ]]; then
+            # tail -c 1 returns 1 byte if file does not end in newline, 0 if it does.
+            # If last byte is not newline, append one.
+            last=$(tail -c 1 "$tmp")
+            if [[ "$last" != $'\n' ]]; then
+                printf '\n' >> "$tmp"
+            fi
+        fi
+        cat "$block_file" >> "$tmp"
     else
         if [[ -f "$target" ]]; then
             cat "$target" > "$tmp"

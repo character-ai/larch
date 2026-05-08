@@ -150,6 +150,16 @@ done
 
 [[ -d "$TMPDIR_ARG" ]] || { echo "step2-implement.sh: --tmpdir not a directory: $TMPDIR_ARG" >&2; exit 2; }
 TMPDIR_ARG=$(cd "$TMPDIR_ARG" && pwd -P)
+export IMPLEMENT_TMPDIR="$TMPDIR_ARG"
+if [[ -s "$TMPDIR_ARG/session-id" ]]; then
+    file_id=$(tr -d '\r\n' < "$TMPDIR_ARG/session-id" 2>/dev/null || true)
+    if [[ -n "$file_id" ]]; then
+        export LARCH_TOKEN_SESSION_ID="$file_id"
+    fi
+fi
+if [[ -s "$TMPDIR_ARG/claude-source.env" ]]; then
+    export LARCH_CLAUDE_SOURCE_FILE="$TMPDIR_ARG/claude-source.env"
+fi
 [[ -f "$PLAN_FILE" ]]  || { echo "step2-implement.sh: --plan-file not found: $PLAN_FILE" >&2; exit 2; }
 [[ -f "$FEATURE_FILE" ]] || { echo "step2-implement.sh: --feature-file not found: $FEATURE_FILE" >&2; exit 2; }
 case "$AUTO_MODE" in

@@ -97,6 +97,15 @@ if (( 10#$TIMEOUT < 1 )); then
     echo "launch-cursor-implement.sh: --timeout must be a positive integer (seconds), got '$TIMEOUT'" >&2
     exit 2
 fi
+
+if [[ -n "${IMPLEMENT_TMPDIR:-}" && -s "${IMPLEMENT_TMPDIR}/session-id" ]]; then
+    file_id=$(tr -d '\r\n' < "${IMPLEMENT_TMPDIR}/session-id" 2>/dev/null || true)
+    if [[ -n "$file_id" ]]; then export LARCH_TOKEN_SESSION_ID="$file_id"; fi
+fi
+if [[ -n "${IMPLEMENT_TMPDIR:-}" && -s "${IMPLEMENT_TMPDIR}/claude-source.env" ]]; then
+    export LARCH_CLAUDE_SOURCE_FILE="${IMPLEMENT_TMPDIR}/claude-source.env"
+fi
+
 : "${TIMING_TASK_KIND:=cursor-implement}"
 TIMING_START_S=$(date +%s)
 
