@@ -78,6 +78,9 @@
 #      `OOS_ISSUES_PER_RUN_CAP`, the fail-closed warning string, and the
 #      skip-step wording so helper-script tests cannot pass after prompt-side
 #      integration is accidentally removed.
+#      (9h) The same procedure must pin Rule A and Rule B prepend, cascade
+#      order, override-independence semantics, worksheet artifact path and
+#      contract sub-pins, and sentinel-skip clauses.
 # (10) Cross-skill bail-token pin (umbrella #348 Phase 4): skills/implement/SKILL.md
 #      must contain the literal `IMPLEMENT_BAIL_REASON=adopted-issue-closed`.
 #      `/fix-issue` Step 6a scans this token in captured `/implement` output to
@@ -438,6 +441,36 @@ printf '%s\n' "$step_9a1_oos_procedure" | grep -Fq -- '**⚠ /implement: oos-iss
   || fail "(9g) Step 9a.1 OOS pipeline procedure must retain the oos-issue-cap fail-closed warning string"
 printf '%s\n' "$step_9a1_oos_procedure" | grep -Fq -- 'SKIP step 3.5 and step 4' \
   || fail "(9g) Step 9a.1 OOS pipeline procedure must document skipping step 3.5 and step 4 on cap helper failure"
+
+# ---------------------------------------------------------------------------
+# (9h) Step 9a.1 aggressive OOS combine cascade. Rules A/B are prompt-side
+#      orchestration policy, so pin the load-bearing literals in the canonical
+#      procedure: prepend order, hard-combine overrides, worksheet path and
+#      worksheet contract, sentinel recovery skip, and Rule B's singleton
+#      predicate.
+# ---------------------------------------------------------------------------
+printf '%s\n' "$step_9a1_oos_procedure" | grep -Fq -- 'Rule A — same logical concern' \
+  || fail "(9h) Step 9a.1 OOS pipeline procedure must document Rule A same logical concern"
+printf '%s\n' "$step_9a1_oos_procedure" | grep -Fq -- 'Rule B — leaked SIMPLE entries' \
+  || fail "(9h) Step 9a.1 OOS pipeline procedure must document Rule B leaked SIMPLE entries"
+printf '%s\n' "$step_9a1_oos_procedure" | grep -Fq -- 'Rule A is HARD COMBINE: it OVERRIDES' \
+  || fail "(9h) Step 9a.1 OOS pipeline procedure must document Rule A hard-combine override"
+printf '%s\n' "$step_9a1_oos_procedure" | grep -Fq -- 'Rule B is HARD COMBINE: same independence-override semantics as Rule A' \
+  || fail "(9h) Step 9a.1 OOS pipeline procedure must document Rule B hard-combine override"
+printf '%s\n' "$step_9a1_oos_procedure" | grep -Fq -- 'Rule A -> Rule B -> existing criteria 1-4' \
+  || fail "(9h) Step 9a.1 OOS pipeline procedure must document the Rule A/B cascade order"
+printf '%s\n' "$step_9a1_oos_procedure" | grep -Fq -- 'oos-grouping-worksheet.md' \
+  || fail "(9h) Step 9a.1 OOS pipeline procedure must document the grouping worksheet path"
+printf '%s\n' "$step_9a1_oos_procedure" | grep -Fq -- 'Rules A and B as well as criteria 1-6' \
+  || fail "(9h) Step 9a.1 OOS pipeline procedure must document sentinel recovery skipping Rules A/B and criteria 1-6"
+printf '%s\n' "$step_9a1_oos_procedure" | grep -Fq -- 'sentinel branch does NOT write' \
+  || fail "(9h) Step 9a.1 OOS pipeline procedure must document sentinel recovery skipping worksheet writes"
+printf '%s\n' "$step_9a1_oos_procedure" | grep -Fq -- 'Every input INPUT_' \
+  || fail "(9h) Step 9a.1 OOS pipeline procedure must document every worksheet input exactly once"
+printf '%s\n' "$step_9a1_oos_procedure" | grep -Fq -- 'g-singleton-' \
+  || fail "(9h) Step 9a.1 OOS pipeline procedure must document singleton group IDs"
+printf '%s\n' "$step_9a1_oos_procedure" | grep -Fq -- 'Let S be the set of entries that remained as singleton' \
+  || fail "(9h) Step 9a.1 OOS pipeline procedure must document Rule B singleton predicate"
 
 # ---------------------------------------------------------------------------
 # (10) Cross-skill bail-token pin (umbrella #348 Phase 4): SKILL.md must
