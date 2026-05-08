@@ -479,7 +479,7 @@ else
     pass
 fi
 
-# Issue #1480 Bug #2: defensive --timing-task-kind validation. Empty or
+# Issue #1480 Bug #2: defensive `--timing-task-kind` validation. Empty or
 # flag-like values must be rejected with exit 2 and a clear message.
 set +e
 "$LAUNCHER" --output "$TMPDIR/bad-empty-tk.txt" --timeout 5 --timing-task-kind "" --prompt "x" >/dev/null 2>"$TMPDIR/bad-empty-tk.stderr"

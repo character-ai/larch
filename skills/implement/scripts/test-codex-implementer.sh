@@ -468,9 +468,9 @@ else
     fail 12 "missing session tmpdir should exit 2 with the does-not-exist message, got $EXIT: $(cat "$T12_OUT")"
 fi
 
-# Test 13 (issue #1480 Bug #2): defensive --timing-task-kind validation.
+# Test 13 (issue #1480 Bug #2): defensive `--timing-task-kind` validation.
 # Empty or flag-like values must be rejected with exit 2 and a clear message.
-# Pass --timing-task-kind first so the new validation fires before any
+# Pass `--timing-task-kind` first so the new validation fires before any
 # unrelated argv check; required flags below the validation are not reached.
 T13_OUT="$SCRATCH/t13-empty.out"
 EXIT=0

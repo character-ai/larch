@@ -397,9 +397,9 @@ else
     fail 9 "leading-zero timeout 010 should be accepted with standard envelope; got: $OUT"
 fi
 
-# Test 10 (issue #1480 Bug #2): defensive --timing-task-kind validation.
+# Test 10 (issue #1480 Bug #2): defensive `--timing-task-kind` validation.
 # Empty or flag-like values must be rejected with exit 2 and a clear message.
-# Pass --timing-task-kind first so the new validation fires before any
+# Pass `--timing-task-kind` first so the new validation fires before any
 # unrelated argv check; required flags below the validation are not reached.
 T10_RC=0
 T10_OUT=$("$LAUNCHER" --timing-task-kind "" 2>&1) || T10_RC=$?

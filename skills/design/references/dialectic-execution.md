@@ -29,22 +29,38 @@
    - Cursor buckets write to `$DESIGN_TMPDIR/debate-<n>-cursor-thesis.txt` and `…-cursor-antithesis.txt`.
    - Codex buckets write to `$DESIGN_TMPDIR/debate-<n>-codex-thesis.txt` and `…-codex-antithesis.txt`.
 
-   Each Cursor launch (use `run_in_background: true` and `timeout: 1860000`). Substitute the timing-task-kind literal directly per side — use `cursor-debate-thesis` for the thesis launch and `cursor-debate-antithesis` for the antithesis launch. Pass a short bootstrap prompt that references the per-decision prompt file by path; the tool reads the file via its own filesystem access. This mirrors the voting pattern below ("Read the ballot from $DESIGN_TMPDIR/ballot.txt") and avoids `$(cat ...)` in the launch shell — which would trigger Claude Code permission prompts that break autonomous execution:
+   Each Cursor launch (use `run_in_background: true` and `timeout: 1860000`). Substitute the timing-task-kind literal directly per side: `--timing-task-kind cursor-debate-thesis` for the thesis launch, `--timing-task-kind cursor-debate-antithesis` for the antithesis launch. Pass a short bootstrap prompt that references the per-decision prompt file by path; the tool reads the file via its own filesystem access. This mirrors the voting pattern below ("Read the ballot from $DESIGN_TMPDIR/ballot.txt") and avoids `$(cat ...)` in the launch shell — which would trigger Claude Code permission prompts that break autonomous execution. Thesis launch:
    ```bash
    ${CLAUDE_PLUGIN_ROOT}/scripts/launch-cursor-review.sh \
-     --output "$DESIGN_TMPDIR/debate-<n>-cursor-<thesis|antithesis>.txt" \
+     --output "$DESIGN_TMPDIR/debate-<n>-cursor-thesis.txt" \
      --timeout 1800 \
-     --timing-task-kind cursor-debate-<thesis|antithesis> \
-     --prompt "Read the dialectic-debate task description from $DESIGN_TMPDIR/debate-<n>-<thesis|antithesis>-prompt.txt and follow it exactly to produce the structured tagged output it requests. Work at your maximum reasoning effort level."
+     --timing-task-kind cursor-debate-thesis \
+     --prompt "Read the dialectic-debate task description from $DESIGN_TMPDIR/debate-<n>-thesis-prompt.txt and follow it exactly to produce the structured tagged output it requests. Work at your maximum reasoning effort level."
+   ```
+   Antithesis launch is identical except for the side suffix in `--output` and `--prompt` paths and the `--timing-task-kind` value:
+   ```bash
+   ${CLAUDE_PLUGIN_ROOT}/scripts/launch-cursor-review.sh \
+     --output "$DESIGN_TMPDIR/debate-<n>-cursor-antithesis.txt" \
+     --timeout 1800 \
+     --timing-task-kind cursor-debate-antithesis \
+     --prompt "Read the dialectic-debate task description from $DESIGN_TMPDIR/debate-<n>-antithesis-prompt.txt and follow it exactly to produce the structured tagged output it requests. Work at your maximum reasoning effort level."
    ```
 
-   Each Codex launch (use `run_in_background: true` and `timeout: 1860000`). Same literal-substitution rule per side — use `codex-debate-thesis` for the thesis launch and `codex-debate-antithesis` for the antithesis launch. Same file-path-reference pattern:
+   Each Codex launch (use `run_in_background: true` and `timeout: 1860000`). Same literal-substitution rule per side: `--timing-task-kind codex-debate-thesis` for the thesis launch, `--timing-task-kind codex-debate-antithesis` for the antithesis launch. Thesis launch:
    ```bash
    ${CLAUDE_PLUGIN_ROOT}/scripts/launch-codex-review.sh \
-     --output "$DESIGN_TMPDIR/debate-<n>-codex-<thesis|antithesis>.txt" \
+     --output "$DESIGN_TMPDIR/debate-<n>-codex-thesis.txt" \
      --timeout 1800 \
-     --timing-task-kind codex-debate-<thesis|antithesis> \
-     --prompt "Read the dialectic-debate task description from $DESIGN_TMPDIR/debate-<n>-<thesis|antithesis>-prompt.txt and follow it exactly to produce the structured tagged output it requests. Work at your maximum reasoning effort level."
+     --timing-task-kind codex-debate-thesis \
+     --prompt "Read the dialectic-debate task description from $DESIGN_TMPDIR/debate-<n>-thesis-prompt.txt and follow it exactly to produce the structured tagged output it requests. Work at your maximum reasoning effort level."
+   ```
+   Antithesis launch is identical except for the side suffix in `--output` and `--prompt` paths and the `--timing-task-kind` value:
+   ```bash
+   ${CLAUDE_PLUGIN_ROOT}/scripts/launch-codex-review.sh \
+     --output "$DESIGN_TMPDIR/debate-<n>-codex-antithesis.txt" \
+     --timeout 1800 \
+     --timing-task-kind codex-debate-antithesis \
+     --prompt "Read the dialectic-debate task description from $DESIGN_TMPDIR/debate-<n>-antithesis-prompt.txt and follow it exactly to produce the structured tagged output it requests. Work at your maximum reasoning effort level."
    ```
 
    **Anti-pattern — do NOT use `VAR=value cmd ... "$VAR"` env-var-prefix idiom for these launches.** Bash expands `"$VAR"` in the parent shell BEFORE the env-var-prefix scope takes effect, so `"$VAR"` evaluates to empty in the parent (the assignment is only visible to `cmd`'s own environment). The launcher then receives `--timing-task-kind` followed immediately by the next flag (the empty value disappears under shell tokenization), which collapses argv into `--timing-task-kind --prompt "..."` and either passes `--prompt` as the timing-task-kind value or hits the unknown-flag branch — neither is the intended behavior. Always substitute the timing-task-kind literal directly per launch as shown above; do not factor it into a variable.

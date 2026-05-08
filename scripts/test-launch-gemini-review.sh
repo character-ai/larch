@@ -379,7 +379,7 @@ for ZERO_VAL in 00 000; do
   assert_no_launcher_artifacts "reject-timeout-${ZERO_VAL}" "$TZ_OUTPUT"
 done
 
-# Issue #1480 Bug #2: defensive --timing-task-kind validation. Empty or
+# Issue #1480 Bug #2: defensive `--timing-task-kind` validation. Empty or
 # flag-like values must be rejected with exit 2 and a clear message.
 TK_EMPTY_OUTPUT="$TMPDIR/bad-empty-tk.txt"
 TK_EMPTY_ERR="$TMPDIR/bad-empty-tk.stderr"

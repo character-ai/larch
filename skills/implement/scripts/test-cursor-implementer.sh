@@ -562,9 +562,9 @@ else
     fail K3 "preflight failure on Darwin should emit KV envelope with LAUNCHER_EXIT=2 and actionable SIDECAR_LOG; got stdout=$K3_OUT sidecar=$(cat "$K3_SIDECAR" 2>/dev/null)"
 fi
 
-# Test K4 (issue #1480 Bug #2): defensive --timing-task-kind validation.
+# Test K4 (issue #1480 Bug #2): defensive `--timing-task-kind` validation.
 # Empty or flag-like values must be rejected with exit 2 and a clear message.
-# Pass --timing-task-kind first so the new validation fires before any
+# Pass `--timing-task-kind` first so the new validation fires before any
 # unrelated argv check; required flags below the validation are not reached.
 K4_RC=0
 K4_OUT=$("$LAUNCHER" --timing-task-kind "" 2>&1) || K4_RC=$?

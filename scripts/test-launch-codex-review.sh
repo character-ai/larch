@@ -46,7 +46,7 @@ for bad_timeout in nope 0 00 000; do
     assert_grep "bad timeout $bad_timeout message" "must be a positive integer" "$TMPDIR/bad-${bad_timeout}.stderr"
 done
 
-# Issue #1480 Bug #2: defensive --timing-task-kind validation. Empty or
+# Issue #1480 Bug #2: defensive `--timing-task-kind` validation. Empty or
 # flag-like values must be rejected with exit 2 and a clear message, NOT
 # silently consumed (which would either pass `--prompt` as the timing-task-kind
 # value or hit the unknown-flag branch later, masking the original arg-shape
