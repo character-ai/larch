@@ -1013,6 +1013,14 @@ exclude = [
   # Makefile-only pattern as the other test-* harnesses above.
   "scripts/test-github-remote-repo.sh",
   "scripts/test-github-remote-repo.md",
+  # scripts/test-session-setup-repo-fallback.sh is the offline regression
+  # harness for session-setup.sh's gh-first / origin-fallback repository
+  # discovery. Referenced only from Makefile (test-session-setup-repo-fallback
+  # target), docs/linting.md, and the sibling contract
+  # scripts/test-session-setup-repo-fallback.md, matching the same
+  # Makefile-only pattern as the other test-* harnesses above.
+  "scripts/test-session-setup-repo-fallback.sh",
+  "scripts/test-session-setup-repo-fallback.md",
   # scripts/test-implement-fork-env.sh is the offline regression harness for
   # scripts/implement-fork-env.sh (the pre-Step-0 fork bootstrap helper used
   # by /implement --forked). Referenced only from Makefile

@@ -3,6 +3,7 @@ __pycache__/
 .claude/settings.local.json
 .claude/hook-audit.log
 .claude/scheduled_tasks.lock
+.health
 .agents/
 skills-lock.json
 node_modules/
