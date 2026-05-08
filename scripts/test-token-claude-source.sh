@@ -116,8 +116,10 @@ sleep 1
 : > "$T2"
 
 # Test 5: newest-by-mtime wins (T2 is newer than T1 by mtime even though T1
-# is lexicographically last).
-out=$(cd "$FAKE_REPO" && env -u LARCH_CLAUDE_SOURCE_FILE -u LARCH_TOKEN_SESSION_ID HOME="$FAKE_HOME" "$SCRIPT")
+# is lexicographically last). Clear LARCH_CLAUDE_SESSION_ID so a caller-
+# inherited value cannot override mtime selection (higher precedence in
+# scripts/token-claude-source.sh).
+out=$(cd "$FAKE_REPO" && env -u LARCH_CLAUDE_SOURCE_FILE -u LARCH_TOKEN_SESSION_ID -u LARCH_CLAUDE_SESSION_ID HOME="$FAKE_HOME" "$SCRIPT")
 contains "mtime newest transcript" "TRANSCRIPT_PATH=$T2" "$out"
 contains "mtime session_uuid" "SESSION_UUID=aaaa-newer-1111" "$out"
 
@@ -139,7 +141,7 @@ EMPTY_REPO_REAL=$(cd "$EMPTY_REPO" && git rev-parse --show-toplevel)
 EMPTY_REPO_REAL=$(cd "$EMPTY_REPO_REAL" && pwd -P)
 EMPTY_ENCODED=$(printf '%s' "$EMPTY_REPO_REAL" | sed 's#/#-#g')
 mkdir -p "$FAKE_HOME/.claude/projects/$EMPTY_ENCODED"
-out=$(cd "$EMPTY_REPO" && env -u LARCH_CLAUDE_SOURCE_FILE -u LARCH_TOKEN_SESSION_ID HOME="$FAKE_HOME" "$SCRIPT" 2>&1) || true
+out=$(cd "$EMPTY_REPO" && env -u LARCH_CLAUDE_SOURCE_FILE -u LARCH_TOKEN_SESSION_ID -u LARCH_CLAUDE_SESSION_ID HOME="$FAKE_HOME" "$SCRIPT" 2>&1) || true
 contains "empty project status" "STATUS=unavailable" "$out"
 contains "empty project reason" "no Claude transcript" "$out"
 
@@ -157,7 +159,7 @@ sleep 1
 : > "$T3"  # T3 is now newest by mtime
 
 # Without snapshot: T3 would win.
-out=$(cd "$FAKE_REPO" && env -u LARCH_CLAUDE_SOURCE_FILE -u LARCH_TOKEN_SESSION_ID HOME="$FAKE_HOME" "$SCRIPT")
+out=$(cd "$FAKE_REPO" && env -u LARCH_CLAUDE_SOURCE_FILE -u LARCH_TOKEN_SESSION_ID -u LARCH_CLAUDE_SESSION_ID HOME="$FAKE_HOME" "$SCRIPT")
 contains "without snapshot, newest concurrent wins" "TRANSCRIPT_PATH=$T3" "$out"
 
 # With snapshot pinning T1: T1 wins despite T3 being newer.
