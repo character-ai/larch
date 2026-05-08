@@ -135,7 +135,10 @@ render_jq() {
           output: n($r.output),
           cache_read: n($r.cache_read),
           cache_create: n($r.cache_create),
-          total: n($r.total)
+          total: (if ($r | has("total"))
+                  then n($r.total)
+                  else (n($r.input) + n($r.output) + n($r.cache_read) + n($r.cache_create))
+                  end)
         };
       def sumfield($rows; $field): reduce $rows[] as $r (0; . + ($r[$field] // 0));
       def totals($rows): {
@@ -176,15 +179,25 @@ render_jq() {
         else md_cell($vname)
         end;
 
-      # Shared 4-column header for the per-vendor tables.
+      # Claude-table 4-column header — used only by claude_table.
       def vendor_header($input_label; $output_label):
         "| Step | Skill | " + $input_label + " | " + $output_label + " |\n"
         + "| --- | --- | ---: | ---: |";
 
-      # 4-column row. Text cells route through md_cell.
+      # Claude-table 4-column row — used only by claude_table.
       def vrow($step; $name; $in; $out):
         "| " + md_cell($step) + " | " + md_cell($name) + " | "
         + ($in|tostring) + " | " + ($out|tostring) + " |";
+
+      # Vendor-table 5-column header — used only by vendor_table.
+      def vendor_header5:
+        "| Step | Skill | Input | Output | Total |\n"
+        + "| --- | --- | ---: | ---: | ---: |";
+
+      # Vendor-table 5-column row — used only by vendor_table.
+      def vrow5($step; $name; $in; $out; $tot):
+        "| " + md_cell($step) + " | " + md_cell($name) + " | "
+        + ($in|tostring) + " | " + ($out|tostring) + " | " + ($tot|tostring) + " |";
 
       # Single-array slice helper: the one-array analog of step_slice.
       def slice1($rows; $start; $end):
@@ -224,19 +237,21 @@ render_jq() {
         | ($vendor | map(select(.vendor == $vname and .ts != null and .ts >= $first))) as $vrows
         | if ($vrows | length) == 0 then null
           else
-            ["### " + vendor_label($vname), "", vendor_header("Input"; "Output")]
+            ["### " + vendor_label($vname), "", vendor_header5]
             + ([range(0; $marks|length) as $i
                 | ($marks[$i]) as $m
                 | (($marks[$i+1].ts) // null) as $end
                 | (slice1($vrows; $m.ts; $end)) as $sl
                 | (sumfield($sl; "input")) as $vi
                 | (sumfield($sl; "output")) as $vo
-                | vrow($m.step; "**step total**"; $vi; $vo)
+                | (sumfield($sl; "total")) as $vt
+                | vrow5($m.step; "**step total**"; $vi; $vo; $vt)
                ])
             + [
                 (sumfield($vrows; "input")) as $gi
                 | (sumfield($vrows; "output")) as $go
-                | vrow("**Grand total**"; ""; $gi; $go)
+                | (sumfield($vrows; "total")) as $gt
+                | vrow5("**Grand total**"; ""; $gi; $go; $gt)
               ]
             | join("\n")
           end;
