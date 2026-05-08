@@ -81,12 +81,12 @@ jobs:
         id: node-modules-cache
         with:
           path: node_modules
-          # Mirror the lockfile-keyed pattern from setup-node and the
-          # puppeteer cache so a lockfile bump invalidates this entry.
-          # On a hit, npm ci is skipped entirely (~12s saved per run).
-          # Closes #1576.
-          key: node-modules-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          # Key on both package.json and package-lock.json so a
+          # dependency-manifest change that doesn't update the lockfile
+          # still invalidates this cache (closes #1576).
+          key: node-modules-${{ runner.os }}-${{ hashFiles('package.json', 'package-lock.json') }}
       - uses: actions/cache@v5
+        id: puppeteer-cache
         with:
           path: ~/.cache/puppeteer
           # Mirror the cache-dependency-path key on the lockfile so the
@@ -107,9 +107,10 @@ jobs:
         # restores ~/.cache/puppeteer between runs so cold downloads
         # only happen when package-lock.json changes.
         #
-        # Skipped on node-modules-cache hit so npm ci does not
-        # re-extract packages that are already present (closes #1576).
-        if: steps.node-modules-cache.outputs.cache-hit != 'true'
+        # Skipped only when BOTH node_modules and Puppeteer caches hit:
+        # a node_modules hit with a puppeteer miss would leave Chromium
+        # absent and break the mermaid lint step (closes #1576).
+        if: steps.node-modules-cache.outputs.cache-hit != 'true' || steps.puppeteer-cache.outputs.cache-hit != 'true'
         run: npm ci
       - name: Lint Mermaid fences (changed only)
         run: scripts/lint-mermaid-fences.sh --changed-only
