@@ -2,23 +2,26 @@
 
 ## Purpose
 
-Offline regression harness for `skills/implement/scripts/check-review-changes.sh`. Pins the post-fix behavior for issue #651 (the false-positive scenario where ANY pre-existing untracked file flipped `FILES_CHANGED=true`), the empty-vs-missing baseline-state distinction introduced by the fix, the `printf '%s\n' ""` → `comm` → `sed` safety-net path for the empty-`CURRENT` case, and the issue #695 fix (untracked filenames matching `echo` flags such as `-n` / `-e` / `-nn` / `-E` must not be silently swallowed when CURRENT is fed to `comm`).
+Offline regression harness for `skills/implement/scripts/check-review-changes.sh`. Pins the post-fix behavior for issue #651 (the false-positive scenario where ANY pre-existing untracked file flipped `FILES_CHANGED=true`), the empty-vs-missing baseline-state distinction introduced by the fix, the `printf '%s\n' ""` → `comm` → `sed` safety-net path for the empty-`CURRENT` case, the issue #695 fix (untracked filenames matching `echo` flags such as `-n` / `-e` / `-nn` / `-E` must not be silently swallowed when CURRENT is fed to `comm`), and the issue #1485 `GIT_PROBE_FAILED` health-probe key with the `--strict` fail-closed mode.
 
 ## Test cases
 
-Each case sets up an isolated `git init` sandbox via `mktemp -d`, optionally writes a baseline file, optionally mutates the working tree, runs `check-review-changes.sh` (with or without `--baseline`), and asserts both stdout keys.
+Each case sets up an isolated `git init` sandbox via `mktemp -d` (or a non-git `mktemp -d` for the probe-failure cases), optionally writes a baseline file, optionally mutates the working tree, runs `check-review-changes.sh` (with or without `--baseline` and `--strict`), and asserts all three stdout keys.
 
 | Case | Setup | Expected output | What it pins |
 |------|-------|-----------------|--------------|
-| (a) | clean tree, no `--baseline` | `FILES_CHANGED=false UNTRACKED_BASELINE=missing` | clean baseline behavior |
-| (b) | pre-existing untracked file + baseline that includes it | `FILES_CHANGED=false UNTRACKED_BASELINE=present` | **THE regression case from #651** |
-| (c) | pre-existing untracked + baseline + new untracked added after baseline | `FILES_CHANGED=true UNTRACKED_BASELINE=present` | review-created new untracked is detected |
-| (d) | staged modification (with empty baseline) | `FILES_CHANGED=true UNTRACKED_BASELINE=present` | staged-only path is unchanged |
-| (e) | unstaged modification (with empty baseline) | `FILES_CHANGED=true UNTRACKED_BASELINE=present` | unstaged-only path is unchanged |
-| (f) | pre-existing untracked, NO `--baseline` flag | `FILES_CHANGED=false UNTRACKED_BASELINE=missing` | **deliberate behavior change** — see callout below |
-| (g) | zero-byte readable baseline + new untracked file | `FILES_CHANGED=true UNTRACKED_BASELINE=present` | empty-vs-missing distinction (readable zero-byte = present, delta = current) |
-| (h) | non-empty baseline + empty current untracked (file removed after snapshot) | `FILES_CHANGED=false UNTRACKED_BASELINE=present` | exercises the `printf '%s\n' ""` → `comm` → `sed '/^$/d'` safety net inside the SUT — pins the empty-`CURRENT` path that would otherwise yield a phantom delta entry if the trailing `sed` filter were removed |
-| (i) | untracked file named `-n` + empty external (outside-repo) baseline | `FILES_CHANGED=true UNTRACKED_BASELINE=present` | **issue #695 regression case** — feeding CURRENT to `comm` via `printf '%s\n'` instead of `echo` so filenames matching `echo` flags (`-n` / `-e` / `-nn` / `-E`) are detected; pre-fix the SUT reported `FILES_CHANGED=false` |
+| (a) | clean tree, no `--baseline` | `FILES_CHANGED=false UNTRACKED_BASELINE=missing GIT_PROBE_FAILED=false` | clean baseline behavior |
+| (b) | pre-existing untracked file + baseline that includes it | `FILES_CHANGED=false UNTRACKED_BASELINE=present GIT_PROBE_FAILED=false` | **THE regression case from #651** |
+| (c) | pre-existing untracked + baseline + new untracked added after baseline | `FILES_CHANGED=true UNTRACKED_BASELINE=present GIT_PROBE_FAILED=false` | review-created new untracked is detected |
+| (d) | staged modification (with empty baseline) | `FILES_CHANGED=true UNTRACKED_BASELINE=present GIT_PROBE_FAILED=false` | staged-only path is unchanged |
+| (e) | unstaged modification (with empty baseline) | `FILES_CHANGED=true UNTRACKED_BASELINE=present GIT_PROBE_FAILED=false` | unstaged-only path is unchanged |
+| (f) | pre-existing untracked, NO `--baseline` flag | `FILES_CHANGED=false UNTRACKED_BASELINE=missing GIT_PROBE_FAILED=false` | **deliberate behavior change** — see callout below |
+| (g) | zero-byte readable baseline + new untracked file | `FILES_CHANGED=true UNTRACKED_BASELINE=present GIT_PROBE_FAILED=false` | empty-vs-missing distinction (readable zero-byte = present, delta = current) |
+| (h) | non-empty baseline + empty current untracked (file removed after snapshot) | `FILES_CHANGED=false UNTRACKED_BASELINE=present GIT_PROBE_FAILED=false` | exercises the `printf '%s\n' ""` → `comm` → `sed '/^$/d'` safety net inside the SUT — pins the empty-`CURRENT` path that would otherwise yield a phantom delta entry if the trailing `sed` filter were removed |
+| (i) | untracked file named `-n` + empty external (outside-repo) baseline | `FILES_CHANGED=true UNTRACKED_BASELINE=present GIT_PROBE_FAILED=false` | **issue #695 regression case** — feeding CURRENT to `comm` via `printf '%s\n'` instead of `echo` so filenames matching `echo` flags (`-n` / `-e` / `-nn` / `-E`) are detected; pre-fix the SUT reported `FILES_CHANGED=false` |
+| (j) | non-git sandbox (no `.git` anywhere up-tree), default mode | `FILES_CHANGED=false UNTRACKED_BASELINE=missing GIT_PROBE_FAILED=true` | **issue #1485 health-probe key** — graceful degradation preserved by default; new `GIT_PROBE_FAILED` exposes the unknown-state signal so callers can decide independently |
+| (k) | non-git sandbox + `--strict` | `FILES_CHANGED=true UNTRACKED_BASELINE=missing GIT_PROBE_FAILED=true` | **issue #1485 fail-closed mode** — `--strict` promotes a probe failure to `FILES_CHANGED=true` so Step 6 enters the changes-found branch on transient git outages instead of silently skipping the post-/review checks pass |
+| (l) | clean tree + `--strict` | `FILES_CHANGED=false UNTRACKED_BASELINE=missing GIT_PROBE_FAILED=false` | `--strict` is a no-op when all probes succeed; it does NOT artificially flip `FILES_CHANGED` outside the probe-failure path |
 
 ## Case (f) is a deliberate behavior change — do NOT "fix" it
 

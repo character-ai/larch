@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # test-check-review-changes.sh — Offline regression harness for check-review-changes.sh.
 #
-# Pins nine cases that together cover the issue #651 regression
+# Pins cases that together cover the issue #651 regression
 # (pre-existing untracked → false positive), the empty-vs-missing
 # baseline-state distinction, the printf '%s\n' -> comm -> sed safety net
-# inside the SUT, and the issue #695 dash-prefixed-filename regression:
+# inside the SUT, the issue #695 dash-prefixed-filename regression, and
+# the issue #1485 GIT_PROBE_FAILED / --strict fail-closed mode:
 #   (a) clean tree, no baseline → FILES_CHANGED=false UNTRACKED_BASELINE=missing
 #   (b) pre-existing untracked + matching baseline →
 #       FILES_CHANGED=false UNTRACKED_BASELINE=present (THE regression case)
@@ -26,6 +27,15 @@
 #       feeding CURRENT to comm via printf '%s\n' instead of echo, so
 #       filenames matching echo flags like -n / -e / -nn / -E are not
 #       silently swallowed)
+#   (j) probe failure (run outside any git tree), default mode →
+#       FILES_CHANGED=false UNTRACKED_BASELINE=missing GIT_PROBE_FAILED=true
+#       (issue #1485: graceful degradation preserved by default; new
+#       GIT_PROBE_FAILED key exposes the unknown-state signal)
+#   (k) probe failure + --strict → FILES_CHANGED=true
+#       UNTRACKED_BASELINE=missing GIT_PROBE_FAILED=true (issue #1485
+#       fail-closed: --strict promotes probe failure to FILES_CHANGED=true)
+#   (l) clean tree + --strict → FILES_CHANGED=false UNTRACKED_BASELINE=missing
+#       GIT_PROBE_FAILED=false (--strict is a no-op when probes succeed)
 #
 # Usage:
 #   bash skills/implement/scripts/test-check-review-changes.sh
@@ -53,25 +63,44 @@ run_case() {
     local expected_baseline="$1"; shift
     local sandbox="$1"; shift
     local baseline_arg="$1"; shift
+    # Optional 6th: expected_git_probe_failed (default "false" — most
+    # legacy cases run inside a real git repo where probes succeed).
+    local expected_git_probe_failed="${1:-false}"
+    if [[ $# -gt 0 ]]; then
+        shift
+    fi
+    # Optional 7th: extra args passed verbatim to the SUT (e.g. --strict).
+    local extra_args="${1:-}"
 
     local out
     if [[ -n "$baseline_arg" ]]; then
-        out=$(cd "$sandbox" && "$SUT" --baseline "$baseline_arg")
+        if [[ -n "$extra_args" ]]; then
+            out=$(cd "$sandbox" && "$SUT" --baseline "$baseline_arg" "$extra_args")
+        else
+            out=$(cd "$sandbox" && "$SUT" --baseline "$baseline_arg")
+        fi
     else
-        out=$(cd "$sandbox" && "$SUT")
+        if [[ -n "$extra_args" ]]; then
+            out=$(cd "$sandbox" && "$SUT" "$extra_args")
+        else
+            out=$(cd "$sandbox" && "$SUT")
+        fi
     fi
 
-    local actual_fc actual_ub
+    local actual_fc actual_ub actual_gpf
     actual_fc=$(echo "$out" | awk -F= '$1=="FILES_CHANGED"{print $2}')
     actual_ub=$(echo "$out" | awk -F= '$1=="UNTRACKED_BASELINE"{print $2}')
+    actual_gpf=$(echo "$out" | awk -F= '$1=="GIT_PROBE_FAILED"{print $2}')
 
-    if [[ "$actual_fc" == "$expected_files_changed" ]] && [[ "$actual_ub" == "$expected_baseline" ]]; then
-        echo "PASS: $name (FILES_CHANGED=$actual_fc UNTRACKED_BASELINE=$actual_ub)"
+    if [[ "$actual_fc" == "$expected_files_changed" ]] \
+        && [[ "$actual_ub" == "$expected_baseline" ]] \
+        && [[ "$actual_gpf" == "$expected_git_probe_failed" ]]; then
+        echo "PASS: $name (FILES_CHANGED=$actual_fc UNTRACKED_BASELINE=$actual_ub GIT_PROBE_FAILED=$actual_gpf)"
         PASS=$((PASS + 1))
     else
         echo "FAIL: $name" >&2
-        echo "  expected: FILES_CHANGED=$expected_files_changed UNTRACKED_BASELINE=$expected_baseline" >&2
-        echo "  actual:   FILES_CHANGED=$actual_fc UNTRACKED_BASELINE=$actual_ub" >&2
+        echo "  expected: FILES_CHANGED=$expected_files_changed UNTRACKED_BASELINE=$expected_baseline GIT_PROBE_FAILED=$expected_git_probe_failed" >&2
+        echo "  actual:   FILES_CHANGED=$actual_fc UNTRACKED_BASELINE=$actual_ub GIT_PROBE_FAILED=$actual_gpf" >&2
         echo "  full output:" >&2
         printf '    %s\n' "${out//$'\n'/$'\n'    }" >&2
         FAIL=$((FAIL + 1))
@@ -180,8 +209,31 @@ run_case '(i) untracked filename "-n" + external empty baseline (#695)' \
     "true" "present" "$SBX_I" "$BL_I"
 rm -f "$BL_I"
 
+# Case (j): probe failure — run the SUT outside any git tree (no .git
+# anywhere up the chain). git diff and git ls-files both exit non-zero
+# with "fatal: not a git repository". Default mode preserves graceful
+# degradation (FILES_CHANGED=false), but GIT_PROBE_FAILED=true now
+# exposes the unknown-state signal so callers can fail-closed.
+SBX_J=$(mktemp -d)
+run_case "(j) probe failure (no git repo), default mode" \
+    "false" "missing" "$SBX_J" "" "true"
+
+# Case (k): probe failure + --strict. --strict promotes a probe failure
+# to FILES_CHANGED=true (fail-closed) so the caller does not silently
+# skip the post-/review checks pass on a transient git outage.
+SBX_K=$(mktemp -d)
+run_case "(k) probe failure (no git repo) + --strict (fail-closed)" \
+    "true" "missing" "$SBX_K" "" "true" "--strict"
+
+# Case (l): clean tree + --strict. --strict is a no-op when probes
+# succeed — FILES_CHANGED reflects the observed signal (no changes
+# here) and GIT_PROBE_FAILED stays false.
+SBX_L=$(mkrepo)
+run_case "(l) clean tree + --strict (no-op when probes succeed)" \
+    "false" "missing" "$SBX_L" "" "false" "--strict"
+
 # Cleanup sandboxes.
-rm -rf "$SBX_A" "$SBX_B" "$SBX_C" "$SBX_D" "$SBX_E" "$SBX_F" "$SBX_G" "$SBX_H" "$SBX_I"
+rm -rf "$SBX_A" "$SBX_B" "$SBX_C" "$SBX_D" "$SBX_E" "$SBX_F" "$SBX_G" "$SBX_H" "$SBX_I" "$SBX_J" "$SBX_K" "$SBX_L"
 
 echo ""
 echo "RESULTS: $PASS passed, $FAIL failed"
