@@ -717,6 +717,74 @@ assert_file_contains "IMPLEMENT_TMPDIR=$SANDBOX/tmp" "$SANDBOX/refresh-anchor-en
 assert_file_contains "## [17.0.4] -" "$SANDBOX/repo/CHANGELOG.md" "postbump: changelog contains new version"
 assert_file_contains "### Changed" "$SANDBOX/repo/CHANGELOG.md" "postbump: flat bullets default to Changed"
 
+# FINDING_1 regression: Unreleased section bullets must be preserved, not consumed.
+cat > "$SANDBOX/repo/CHANGELOG.md" <<'CHANGELOG_UNRELEASED'
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+### Added
+
+- pending feature one
+- pending feature two
+
+## [17.0.3] - 2026-05-01
+
+### Changed
+
+- Prior change.
+CHANGELOG_UNRELEASED
+write_postbump_state "$POSTBUMP_STATE"
+OUT=$(run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
+assert_contains "CHANGELOG_STATUS=updated" "$OUT" "postbump: Unreleased preserved happy path"
+assert_file_contains "pending feature one" "$SANDBOX/repo/CHANGELOG.md" "postbump: Unreleased bullets preserved"
+assert_file_contains "pending feature two" "$SANDBOX/repo/CHANGELOG.md" "postbump: all Unreleased bullets preserved"
+# Ensure the new release entry comes AFTER the Unreleased body, not before.
+awk '
+    /^## \[Unreleased\]/ { in_unrel=1; next }
+    in_unrel && /^## \[17\.0\.4\] -/ { print "ORDER_OK"; exit }
+    in_unrel && /^## \[/ && !/^## \[17\.0\.4\] -/ { print "ORDER_BAD"; exit }
+' "$SANDBOX/repo/CHANGELOG.md" > "$SANDBOX/order-check.txt"
+assert_file_contains "ORDER_OK" "$SANDBOX/order-check.txt" "postbump: new entry inserted after Unreleased section body"
+
+# FINDING_5 regression: duplicate target-version headers must be rejected (fail closed).
+cat > "$SANDBOX/repo/CHANGELOG.md" <<'CHANGELOG_DUP'
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [17.0.4] - 2026-05-01
+
+### Fixed
+
+- pre-existing duplicate.
+
+## [17.0.4] - 2026-04-30
+
+### Added
+
+- second pre-existing duplicate.
+
+## [17.0.3] - 2026-04-29
+
+### Changed
+
+- Prior change.
+CHANGELOG_DUP
+write_postbump_state "$POSTBUMP_STATE"
+OUT=$(run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
+assert_contains "CHANGELOG_STATUS=failed" "$OUT" "postbump: duplicate target headers fail closed"
+assert_contains "STATUS=changelog-failed" "$OUT" "postbump: duplicate target headers route to changelog-failed"
+assert_file_contains "multiple existing" "$SANDBOX/tmp/execution-issues.md" "postbump: duplicate-header warning logged"
+
 cp "$SANDBOX/original-CHANGELOG.md" "$SANDBOX/repo/CHANGELOG.md"
 printf '{"summary_bullets_categorized":{"Added":["new flow"],"Fixed":["resume bug"],"Security":["guard paths"]}}\n' > "$SANDBOX/tmp/manifest.json"
 write_postbump_state "$POSTBUMP_STATE"

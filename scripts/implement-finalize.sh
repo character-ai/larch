@@ -5,8 +5,10 @@ set -uo pipefail
 # Intentional: best-effort failure model. Every leaf-script invocation captures
 # its own rc explicitly via 'set +e'/'rc=$?' patterns; helper failures surface
 # through warning breadcrumbs and tail records, NEVER through script exit. Do
-# NOT enable -e without auditing every leaf-script call site (see existing
-# 'set +e ... set -e' guards throughout this file).
+# NOT enable -e without auditing every leaf-script call site. Each guarded
+# probe is bracketed by a 'set +e' / 'set +e' pair: the leading 'set +e' is a
+# defensive no-op (errexit is already off file-wide), and the trailing
+# 'set +e' restores the file-wide invariant after the probe.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -263,7 +265,7 @@ validate_postbump_state_branch() {
         set +e
         current=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
         rc=$?
-        set -e
+        set +e
         if [ "$rc" -ne 0 ] || [ "$current" != "$branch" ]; then
             return 1
         fi
@@ -412,7 +414,7 @@ write_version_reasoning_fragment() {
         set +e
         out=$("${args[@]}")
         rc=$?
-        set -e
+        set +e
         failed=$(kv_value FAILED "$out")
         if [ "$rc" -eq 0 ] && [ "$failed" != "true" ]; then
             ANCHOR_REFRESH_STATUS=ok
@@ -494,10 +496,22 @@ write_changelog_entry() {
         BEGIN {
             while ((getline line < entry) > 0) e[++en] = line
             close(entry)
+            has_unreleased = 0
             inserted = 0
             skipping = 0
+            in_unreleased = 0
+            match_count = 0
+        }
+        FNR == NR {
+            if (/^## \[Unreleased\]/) has_unreleased = 1
+            next
         }
         $0 ~ "^## \\[" version "\\] - " {
+            match_count++
+            if (match_count > 1) exit 4
+            if (in_unreleased) {
+                in_unreleased = 0
+            }
             if (!inserted) {
                 for (i = 1; i <= en; i++) print e[i]
                 inserted = 1
@@ -513,14 +527,24 @@ write_changelog_entry() {
         }
         /^## \[Unreleased\]/ {
             print
-            if (!inserted) {
-                print ""
-                for (i = 1; i <= en; i++) print e[i]
-                inserted = 1
-            }
+            in_unreleased = 1
             next
         }
-        /and this project adheres to \[Semantic Versioning\]/ {
+        in_unreleased && /^## \[/ {
+            in_unreleased = 0
+            if (!inserted) {
+                for (i = 1; i <= en; i++) print e[i]
+                print ""
+                inserted = 1
+            }
+            print
+            next
+        }
+        in_unreleased {
+            print
+            next
+        }
+        !has_unreleased && /and this project adheres to \[Semantic Versioning\]/ {
             print
             if (!inserted) {
                 print ""
@@ -535,9 +559,13 @@ write_changelog_entry() {
         }
         { print }
         END {
+            if (in_unreleased && !inserted) {
+                for (i = 1; i <= en; i++) print e[i]
+                inserted = 1
+            }
             if (!inserted) exit 3
         }
-    ' CHANGELOG.md > "$output"
+    ' CHANGELOG.md CHANGELOG.md > "$output"
     rc=$?
     rm -f "$tmp"
     return "$rc"
@@ -551,7 +579,7 @@ maybe_update_changelog() {
     set +e
     out=$("$SCRIPT_DIR/check-changelog-present.sh")
     rc=$?
-    set -e
+    set +e
     present=$(kv_value CHANGELOG_PRESENT "$out")
     if [ "$rc" -ne 0 ] || [ "$present" != "true" ]; then
         CHANGELOG_STATUS="skipped-absent"
@@ -601,7 +629,15 @@ maybe_update_changelog() {
     set +e
     write_changelog_entry "$new_version" "$categories_md" "$tmp_changelog"
     rc=$?
-    set -e
+    set +e
+    if [ "$rc" -eq 4 ]; then
+        CHANGELOG_STATUS=failed
+        append_execution_issue "Step 8a changelog failed because CHANGELOG.md has multiple existing ## [$new_version] - headings."
+        warn_line "**⚠ Step 8a: changelog update failed (multiple existing ## [$new_version] headings — fix CHANGELOG.md by hand and rerun). Bailing to cleanup.**"
+        rm -rf "$tmpdir"
+        postbump_report_since_mark
+        return 1
+    fi
     if [ "$rc" -ne 0 ]; then
         CHANGELOG_STATUS=failed
         append_execution_issue "Step 8a changelog failed because CHANGELOG.md had no insertion anchor."
@@ -621,7 +657,7 @@ maybe_update_changelog() {
     set +e
     out=$("$SCRIPT_DIR/git-amend-add.sh" CHANGELOG.md 2>&1)
     rc=$?
-    set -e
+    set +e
     if [ "$rc" -ne 0 ]; then
         git checkout -- CHANGELOG.md 2>/dev/null || true
         CHANGELOG_STATUS=failed
@@ -634,7 +670,7 @@ maybe_update_changelog() {
     set +e
     status_out=$(git status --porcelain CHANGELOG.md 2>/dev/null)
     rc=$?
-    set -e
+    set +e
     if [ "$rc" -ne 0 ] || [ -n "$status_out" ]; then
         git checkout -- CHANGELOG.md 2>/dev/null || true
         CHANGELOG_STATUS=failed
@@ -673,7 +709,7 @@ run_step8b_rebase() {
         out=$("$SCRIPT_DIR/rebase-push.sh" --no-push 2>&1)
     fi
     rc=$?
-    set -e
+    set +e
     skipped=$(kv_value SKIPPED_ALREADY_FRESH "$out")
     case "$rc" in
         0)
@@ -748,7 +784,7 @@ run_force_push_gate() {
     set +e
     out=$("$SCRIPT_DIR/check-remote-branch.sh" --branch "$branch")
     rc=$?
-    set -e
+    set +e
     state=$(kv_value STATE "$out")
     remote_rc=$(kv_value RC "$out")
     error=$(kv_value ERROR "$out")
@@ -757,7 +793,7 @@ run_force_push_gate() {
             set +e
             out=$("$SCRIPT_DIR/git-force-push.sh" 2>&1)
             rc=$?
-            set -e
+            set +e
             push_status=$(kv_value STATUS "$out")
             case "$push_status" in
                 pushed|noop_same_ref)
@@ -810,7 +846,7 @@ run_postbump() {
         set +e
         run_force_push_gate
         rc=$?
-        set -e
+        set +e
         case "$rc" in
             0) postbump_tail ok "$ANCHOR_REFRESH_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" "$FORCE_PUSH_STATUS" ;;
             3) postbump_tail push-failed "$ANCHOR_REFRESH_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" "$FORCE_PUSH_STATUS" ;;
@@ -829,7 +865,7 @@ run_postbump() {
     set +e
     run_step8b_rebase
     rc=$?
-    set -e
+    set +e
     case "$rc" in
         0) ;;
         1) postbump_tail conflict "$ANCHOR_REFRESH_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" absent force-push-gate; return 0 ;;
@@ -839,7 +875,7 @@ run_postbump() {
     set +e
     run_force_push_gate
     rc=$?
-    set -e
+    set +e
     case "$rc" in
         0) postbump_tail ok "$ANCHOR_REFRESH_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" "$FORCE_PUSH_STATUS" ;;
         3) postbump_tail push-failed "$ANCHOR_REFRESH_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" "$FORCE_PUSH_STATUS" ;;
@@ -927,7 +963,7 @@ run_postmerge() {
         set +e
         out=$("$SCRIPT_DIR/local-cleanup.sh" --branch "$branch")
         rc=$?
-        set -e
+        set +e
         cleanup_success=$(kv_value CLEANUP_SUCCESS "$out")
         current_branch=$(kv_value CURRENT_BRANCH "$out")
         branch_deleted=$(kv_value BRANCH_DELETED "$out")
@@ -946,7 +982,7 @@ run_postmerge() {
         set +e
         out=$("$SCRIPT_DIR/verify-main.sh" --expected-title "$expected_title")
         rc=$?
-        set -e
+        set +e
         verified=$(kv_value VERIFIED "$out")
         commit_hash=$(kv_value COMMIT_HASH "$out")
         commit_message=$(kv_value COMMIT_MESSAGE "$out")
@@ -1029,7 +1065,7 @@ run_slack() {
         set +e
         out=$("${args[@]}")
         rc=$?
-        set -e
+        set +e
         slack_ts=$(kv_value SLACK_TS "$out")
         if [ "$rc" -ne 0 ] || [ -z "$slack_ts" ]; then
             warn_line '**⚠ 16a: slack issue post — failed. Continuing.**'
@@ -1082,7 +1118,7 @@ rename_issue() {
         warn_line "Step 18: round-trip detection: gh issue view executed without --repo (resolve-repo.sh returned empty)"
     fi
     rc=$?
-    set -e
+    set +e
     if [ "$rc" -ne 0 ]; then
         # Preserve any stderr the gh call printed by relying on caller's
         # default stderr passthrough; emit our own warn here too (FINDING_F3).
@@ -1101,7 +1137,7 @@ rename_issue() {
         # operators can see degraded-path diagnostics (FINDING_F3).
         out=$("$SCRIPT_DIR/round-trip-detect.sh" --text-string "$title" --text-file "$body_tmp")
         rc=$?
-        set -e
+        set +e
         if [ "$rc" -ne 0 ]; then
             warn_line "Step 18: round-trip detection skipped: detector failed"
             round_trip=false
@@ -1124,7 +1160,7 @@ rename_issue() {
         out=$("$SCRIPT_DIR/tracking-issue-write.sh" rename --issue "$issue" --state "$state" --round-trip "$round_trip")
     fi
     rc=$?
-    set -e
+    set +e
     failed=$(kv_value FAILED "$out")
     if [ "$rc" -ne 0 ] || [ "$failed" = "true" ]; then
         warn_line "$(printf '**⚠ 18: tracking-issue rename to %s failed. Continuing.**' "$label")"
@@ -1141,7 +1177,7 @@ auto_stash_stalled_changes() {
     set +e
     repo_root=$(git rev-parse --show-toplevel 2>/dev/null)
     rc=$?
-    set -e
+    set +e
     if [ "$rc" -ne 0 ] || [ -z "$repo_root" ]; then
         warn_line '**⚠ 18: auto-stash failed: could not resolve repo root. Continuing.**'
         return 0
@@ -1150,7 +1186,7 @@ auto_stash_stalled_changes() {
     set +e
     status_out=$(git -C "$repo_root" status --porcelain 2>/dev/null)
     rc=$?
-    set -e
+    set +e
     # On `git status` failure we cannot tell clean from dirty; warn so the
     # operator does not falsely read teardown silence as proof of a clean tree.
     if [ "$rc" -ne 0 ]; then
@@ -1168,7 +1204,7 @@ auto_stash_stalled_changes() {
     set +e
     stash_out=$(git -C "$repo_root" stash push -u -m "$label" 2>&1)
     rc=$?
-    set -e
+    set +e
     if [ "$rc" -ne 0 ]; then
         warn_line "$(printf '**⚠ 18: auto-stash failed: %s. Continuing.**' "$stash_out")"
         return 0
@@ -1184,14 +1220,14 @@ auto_stash_stalled_changes() {
         | head -n 1 \
         | awk '{print $1}')
     rc=$?
-    set -e
+    set +e
     if [ "$rc" -ne 0 ] || [ -z "$stash_ref" ]; then
         # Fallback to the previous heuristic; emit a warning so a missing or
         # mismatched ref is observable.
         set +e
         stash_ref=$(git -C "$repo_root" stash list -1 --format='%gD' 2>/dev/null)
         rc=$?
-        set -e
+        set +e
         if [ "$rc" -ne 0 ] || [ -z "$stash_ref" ]; then
             warn_line '**⚠ 18: auto-stash succeeded but stash ref could not be resolved. Continuing.**'
             stash_ref=""
@@ -1207,7 +1243,7 @@ write_stalled_run_sentinel() {
     set +e
     git_dir=$(git rev-parse --git-dir 2>/dev/null)
     rc=$?
-    set -e
+    set +e
     if [ "$rc" -ne 0 ] || [ -z "$git_dir" ]; then
         warn_line '**⚠ 18: stalled-run sentinel write failed: could not resolve git dir. Continuing.**'
         return 1
@@ -1262,7 +1298,7 @@ run_teardown() {
             set +e
             out=$("$SCRIPT_DIR/get-issue-info.sh" --issue "$issue_number" --field state)
             rc=$?
-            set -e
+            set +e
             value=$(kv_value VALUE "$out")
             if [ "$rc" -eq 0 ] && [ "$value" = "OPEN" ]; then
                 if rename_issue "$issue_number" stalled STALLED "$repo"; then
@@ -1288,7 +1324,7 @@ run_teardown() {
         set +e
         out=$("$SCRIPT_DIR/get-issue-info.sh" --issue "$issue_number" --field url)
         rc=$?
-        set -e
+        set +e
         value=$(kv_value VALUE "$out")
         if [ "$rc" -eq 0 ] && [ -n "$value" ]; then
             issue_url=$value
@@ -1317,7 +1353,7 @@ run_teardown() {
         set +e
         out=$("$SCRIPT_DIR/cleanup-tmpdir.sh" --dir "$IMPLEMENT_TMPDIR")
         cleanup_rc=$?
-        set -e
+        set +e
         if [ "$cleanup_rc" -ne 0 ]; then
             warn_line '**⚠ 18: cleanup-tmpdir failed. Continuing.**'
         fi
