@@ -139,6 +139,19 @@ grep -q '^0$' "${OUTPUT}.done" \
 if grep -q '[{}]' "$OUTPUT"; then
   fail "Output should not contain raw JSON braces"
 fi
+# Dirty-tree sidecar parity with launch-cursor-review.sh / launch-codex-review.sh
+# (issue #1487, #1437 contract). On the agent-ran success path, the launcher
+# emits ${OUTPUT}.dirty-tree via check-mid-run-dirty-tree.sh --mode baseline.
+# Pin the keys (STATUS=, MODE=baseline) — STATUS value is detector-dependent
+# (clean/dirty/unknown), so just assert the key is present, parallel to the
+# dirty-tree sidecar assertions in scripts/test-launch-codex-review.sh and
+# scripts/test-launch-cursor-review.sh.
+[[ -s "${OUTPUT}.dirty-tree" ]] \
+  || fail "Expected ${OUTPUT}.dirty-tree sidecar to be written on success"
+grep -q '^STATUS=' "${OUTPUT}.dirty-tree" \
+  || fail "Expected dirty-tree sidecar STATUS= line on success"
+grep -q '^MODE=baseline$' "${OUTPUT}.dirty-tree" \
+  || fail "Expected dirty-tree sidecar MODE=baseline on success"
 
 make_mutation_repo() {
   local repo="$1"
@@ -179,6 +192,16 @@ grep -q 'poisoned-by-reviewer.txt' "${MUTATION_OUTPUT}.diag" \
   || fail "Expected snapshot guard to remove new untracked mutation"
 [[ -z "$(git -C "$MUTATION_REPO" status --porcelain)" ]] \
   || fail "Expected mutation repo to be clean after new-untracked guard revert"
+# Dirty-tree sidecar must publish on the snapshot-guard-triggered path:
+# AGENT_RAN=true (the agent was launched and mutated the tree) so the
+# guard-failure tail emits dirty-tree before write_meta. Catches a regression
+# that would drop the call from this branch (issue #1487).
+[[ -s "${MUTATION_OUTPUT}.dirty-tree" ]] \
+  || fail "Expected new-untracked-mutation run to publish dirty-tree sidecar"
+grep -q '^STATUS=' "${MUTATION_OUTPUT}.dirty-tree" \
+  || fail "Expected new-untracked-mutation dirty-tree sidecar STATUS= line"
+grep -q '^MODE=baseline$' "${MUTATION_OUTPUT}.dirty-tree" \
+  || fail "Expected new-untracked-mutation dirty-tree sidecar MODE=baseline"
 
 TRACKED_MUTATION_REPO="$TMPDIR/tracked-mutation-repo"
 make_mutation_repo "$TRACKED_MUTATION_REPO"
@@ -211,6 +234,12 @@ grep -q 'delete-me.txt' "${TRACKED_MUTATION_OUTPUT}.diag" \
   || fail "Expected snapshot guard to restore deleted tracked file"
 [[ -z "$(git -C "$TRACKED_MUTATION_REPO" status --porcelain)" ]] \
   || fail "Expected mutation repo to be clean after tracked guard revert"
+[[ -s "${TRACKED_MUTATION_OUTPUT}.dirty-tree" ]] \
+  || fail "Expected tracked-mutation run to publish dirty-tree sidecar"
+grep -q '^STATUS=' "${TRACKED_MUTATION_OUTPUT}.dirty-tree" \
+  || fail "Expected tracked-mutation dirty-tree sidecar STATUS= line"
+grep -q '^MODE=baseline$' "${TRACKED_MUTATION_OUTPUT}.dirty-tree" \
+  || fail "Expected tracked-mutation dirty-tree sidecar MODE=baseline"
 
 # --- index-state mutation case (FINDING_7): reviewer runs `git add` against an
 # already-modified tracked file. The on-disk content hash is unchanged
@@ -246,6 +275,12 @@ grep -q 'tracked.txt' "${INDEX_MUTATION_OUTPUT}.diag" \
 # Either way, the index MUST be clean of the reviewer's `git add`:
 [[ -z "$(git -C "$INDEX_MUTATION_REPO" diff --cached HEAD)" ]] \
   || fail "Expected guard to clear reviewer-added index entries via git reset HEAD --"
+[[ -s "${INDEX_MUTATION_OUTPUT}.dirty-tree" ]] \
+  || fail "Expected index-only-mutation run to publish dirty-tree sidecar"
+grep -q '^STATUS=' "${INDEX_MUTATION_OUTPUT}.dirty-tree" \
+  || fail "Expected index-only-mutation dirty-tree sidecar STATUS= line"
+grep -q '^MODE=baseline$' "${INDEX_MUTATION_OUTPUT}.dirty-tree" \
+  || fail "Expected index-only-mutation dirty-tree sidecar MODE=baseline"
 
 NONGIT_DIR="$TMPDIR/not-a-repo"
 mkdir -p "$NONGIT_DIR"
@@ -259,6 +294,16 @@ NONGIT_OUTPUT="$TMPDIR/gemini-nongit.txt"
   || fail "Expected non-git run to still normalize Gemini output"
 grep -q 'snapshot guard skipped: not inside a git working tree' "${NONGIT_OUTPUT}.diag" \
   || fail "Expected non-git run to report snapshot guard skip"
+# Dirty-tree sidecar must still publish on the non-git fail-open path: an
+# agent ran (AGENT_RAN=true) so _write_dirty_tree_sidecar runs at the
+# success-tail call. Catches a regression that would only emit dirty-tree
+# inside a git worktree (issue #1487 contract is non-conditional on git).
+[[ -s "${NONGIT_OUTPUT}.dirty-tree" ]] \
+  || fail "Expected non-git success run to publish dirty-tree sidecar"
+grep -q '^STATUS=' "${NONGIT_OUTPUT}.dirty-tree" \
+  || fail "Expected non-git dirty-tree sidecar STATUS= line"
+grep -q '^MODE=baseline$' "${NONGIT_OUTPUT}.dirty-tree" \
+  || fail "Expected non-git dirty-tree sidecar MODE=baseline"
 
 ERROR_OUTPUT="$TMPDIR/gemini-error.txt"
 set +e
@@ -309,10 +354,25 @@ grep -q 'MISSING_JQ' "${MISSING_JQ_OUTPUT}.diag" \
 if grep -q '^CMD_JSON=' "${MISSING_JQ_OUTPUT}.meta"; then
   fail "Missing-jq launcher meta should omit CMD_JSON"
 fi
+# Dirty-tree sidecar on the early-short-circuit (no-agent-ran) path: STATUS=unknown,
+# MODE=baseline, REASON=fail-closed-no-agent-ran. STATUS=unknown routes consumers
+# through the same recovery-safe path as a real detector failure rather than
+# letting them treat a present sidecar with STATUS=clean as "launcher proved
+# the tree clean." Mirrors the preflight-short-circuit dirty-tree assertions
+# in scripts/test-launch-cursor-review.sh (issue #1487).
+[[ -s "${MISSING_JQ_OUTPUT}.dirty-tree" ]] \
+  || fail "Expected ${MISSING_JQ_OUTPUT}.dirty-tree sidecar on MISSING_JQ short-circuit"
+grep -q '^STATUS=unknown$' "${MISSING_JQ_OUTPUT}.dirty-tree" \
+  || fail "Expected dirty-tree sidecar STATUS=unknown on MISSING_JQ short-circuit (no agent ran)"
+grep -q '^MODE=baseline$' "${MISSING_JQ_OUTPUT}.dirty-tree" \
+  || fail "Expected dirty-tree sidecar MODE=baseline on MISSING_JQ short-circuit"
+grep -q '^REASON=fail-closed-no-agent-ran$' "${MISSING_JQ_OUTPUT}.dirty-tree" \
+  || fail "Expected dirty-tree sidecar REASON=fail-closed-no-agent-ran on MISSING_JQ short-circuit"
 
 assert_model_rejected() {
   local label="$1"
   local value="$2"
+  local check_dirty_tree="${3:-false}"
   local output="$TMPDIR/gemini-model-$label.txt"
   local stdout="$TMPDIR/gemini-model-$label.stdout"
   local stderr="$TMPDIR/gemini-model-$label.stderr"
@@ -332,9 +392,23 @@ assert_model_rejected() {
     || fail "model-$label: expected .done exit code 2"
   grep -q 'ERROR: gemini model from LARCH_GEMINI_MODEL' "${output}.diag" \
     || fail "model-$label: expected gemini model diagnostic"
+  # Optional dirty-tree sidecar coverage (issue #1487): the model-resolve
+  # failure path is structurally a no-agent-ran fail_closed, so the sidecar
+  # contract is identical to MISSING_JQ. Asserting on at least one resolver
+  # rejection keeps coverage symmetric with the MISSING_JQ assertion above.
+  if [[ "$check_dirty_tree" == "true" ]]; then
+    [[ -s "${output}.dirty-tree" ]] \
+      || fail "model-$label: expected ${output}.dirty-tree sidecar on resolver rejection"
+    grep -q '^STATUS=unknown$' "${output}.dirty-tree" \
+      || fail "model-$label: expected dirty-tree STATUS=unknown on resolver rejection (no agent ran)"
+    grep -q '^MODE=baseline$' "${output}.dirty-tree" \
+      || fail "model-$label: expected dirty-tree MODE=baseline on resolver rejection"
+    grep -q '^REASON=fail-closed-no-agent-ran$' "${output}.dirty-tree" \
+      || fail "model-$label: expected dirty-tree REASON=fail-closed-no-agent-ran on resolver rejection"
+  fi
 }
 
-assert_model_rejected "empty" ""
+assert_model_rejected "empty" "" "true"
 assert_model_rejected "space" " "
 assert_model_rejected "newline" $'foo\n'
 assert_model_rejected "tab" $'\t'

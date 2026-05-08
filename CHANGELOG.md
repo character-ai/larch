@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [17.0.13] - 2026-05-08
+
+### Changed
+
+- Resolve #1487: bring `scripts/launch-gemini-review.sh` to dirty-tree sidecar parity with the contract introduced for Cursor/Codex by #1437. The Gemini reviewer launcher now publishes `${OUTPUT}.dirty-tree` via `scripts/check-mid-run-dirty-tree.sh --mode baseline` after every agent-ran path (success, JSON normalization failure, snapshot-guard-triggered revert, non-git fail-open) and emits `STATUS=unknown` with a documented `REASON=` token (`fail-closed-no-agent-ran` from `fail_closed`, `exit-trap-no-agent-ran` from the EXIT trap) on early short-circuits where no agent ran (MISSING_JQ, model-resolve failure, snapshot-guard setup failure). Pre-launch baseline capture via `scripts/snapshot-untracked.sh` and the sidecar variable assignments are sequenced before the EXIT trap registration so signal-driven exits in the narrow window between trap install and assignment can still publish a sidecar. Gemini reviewer call sites remain dormant per `SECURITY.md`; this is preparatory machinery so `/review` Step 5 sidecar consultation picks up Gemini coverage automatically when the call sites are reintroduced. The dirty-tree sidecar coexists with the existing repo-root snapshot guard (both run, covering overlapping but not identical surfaces). Regression coverage extended in `scripts/test-launch-gemini-review.sh` for success / `MISSING_JQ` / one resolver-rejection / non-git success / snapshot-guard mutation paths; sibling contracts at `scripts/launch-gemini-review.md`, `scripts/test-launch-gemini-review.md`, `docs/external-reviewers.md`, `docs/linting.md`, and `SECURITY.md`'s dormant-Gemini paragraph updated in lockstep.
+
 ## [17.0.12] - 2026-05-08
 
 ### Changed

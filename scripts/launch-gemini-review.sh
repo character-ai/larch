@@ -26,6 +26,10 @@ SNAPSHOT_REPO_ROOT=""
 SNAPSHOT_STATUS=0
 SNAPSHOT_ARTIFACT_EXACT=()
 SNAPSHOT_ARTIFACT_PREFIX=()
+DIRTY_TREE_WRITTEN=false
+UNTRACKED_BASELINE=""
+DIRTY_TREE_SIDECAR=""
+AGENT_RAN=false
 
 # Build a redacted copy of ORIGINAL_ARGS for write_meta() so the full --prompt
 # body (review instructions and any caller-provided context) is not duplicated
@@ -91,6 +95,52 @@ write_done() {
     mv "$tmp" "${OUTPUT}.done"
 }
 
+# shellcheck disable=SC2329 # invoked from fail_closed, success tail, and exit trap.
+_write_dirty_tree_sidecar() {
+    [[ -n "$OUTPUT" ]] || return 0
+    [[ "$DIRTY_TREE_WRITTEN" == "false" ]] || return 0
+    [[ -n "$DIRTY_TREE_SIDECAR" ]] || return 0
+    if [[ -x "$SCRIPT_DIR/check-mid-run-dirty-tree.sh" ]]; then
+        "$SCRIPT_DIR/check-mid-run-dirty-tree.sh" --mode baseline --baseline "$UNTRACKED_BASELINE" --sidecar "$DIRTY_TREE_SIDECAR" >/dev/null 2>&1 || true
+    fi
+    DIRTY_TREE_WRITTEN=true
+}
+
+# shellcheck disable=SC2329 # invoked from fail_closed and exit trap on early-short-circuit paths.
+_write_unknown_dirty_tree_sidecar() {
+    # Used when no detector probe ran (e.g., MISSING_JQ / model-resolve /
+    # snapshot-guard setup failure short-circuited before run-external-agent).
+    # STATUS=unknown routes consumers through the same recovery-safe path as a
+    # real detector failure, rather than letting them treat a present sidecar
+    # with STATUS=clean as "launcher proved the tree clean."
+    [[ -n "$OUTPUT" ]] || return 0
+    [[ "$DIRTY_TREE_WRITTEN" == "false" ]] || return 0
+    [[ -n "$DIRTY_TREE_SIDECAR" ]] || return 0
+    local reason="$1"
+    local tmp="${DIRTY_TREE_SIDECAR}.tmp.$$"
+    {
+        printf 'STATUS=unknown\n'
+        printf 'MODE=baseline\n'
+        if [[ -r "$UNTRACKED_BASELINE" ]]; then
+            printf 'UNTRACKED_BASELINE=present\n'
+        else
+            printf 'UNTRACKED_BASELINE=missing\n'
+        fi
+        printf 'REASON=%s\n' "$reason"
+    } > "$tmp" 2>/dev/null && mv -f "$tmp" "$DIRTY_TREE_SIDECAR" 2>/dev/null || rm -f "$tmp" 2>/dev/null || true
+    DIRTY_TREE_WRITTEN=true
+}
+
+# shellcheck disable=SC2317,SC2329 # invoked indirectly by EXIT trap.
+_publish_dirty_tree_on_exit() {
+    [[ "$DIRTY_TREE_WRITTEN" == "false" ]] || return 0
+    if [[ "$AGENT_RAN" == "true" ]]; then
+        _write_dirty_tree_sidecar
+    else
+        _write_unknown_dirty_tree_sidecar "exit-trap-no-agent-ran"
+    fi
+}
+
 write_meta() {
     local tmp
     tmp=$(mktemp "${OUTPUT}.meta.tmp.XXXXXX")
@@ -138,6 +188,11 @@ fail_closed() {
         [[ -n "$SNAPSHOT_GUARD_NOTICE" ]] && printf '%s\n' "$SNAPSHOT_GUARD_NOTICE"
         [[ -f "$RAW_OUTPUT.diag" ]] && cat "$RAW_OUTPUT.diag"
     } >> "${OUTPUT}.diag"
+    if [[ "$AGENT_RAN" == "true" ]]; then
+        _write_dirty_tree_sidecar
+    else
+        _write_unknown_dirty_tree_sidecar "fail-closed-no-agent-ran"
+    fi
     write_meta
     write_done "$code"
     exit "$code"
@@ -414,7 +469,11 @@ setup_snapshot_guard() {
     SNAPSHOT_BACKUP=$(mktemp -d "$tmp_parent/gemini-review-snapshot-backup.XXXXXX")
     # Register cleanup AFTER mktemp so a setup-stage capture failure still
     # unlinks the temp files. Cleanup is idempotent and tolerates partial state.
-    trap '_emit_timing_record $?; snapshot_cleanup_on_exit' EXIT
+    # _publish_dirty_tree_on_exit runs BEFORE snapshot_cleanup_on_exit so the
+    # dirty-tree sidecar is emitted before snapshot temps are removed. The
+    # sidecar lives at ${OUTPUT}.dirty-tree, separate from snapshot temps under
+    # $SNAPSHOT_BACKUP, so ordering is defensive but not strictly required.
+    trap '_emit_timing_record $?; _publish_dirty_tree_on_exit; snapshot_cleanup_on_exit' EXIT
 
     capture_snapshot "$SNAPSHOT_PRE" pre
     SNAPSHOT_STATUS=$?
@@ -608,7 +667,19 @@ fi
 
 : "${TIMING_TASK_KIND:=gemini-review}"
 TIMING_START_S=$(date +%s)
-trap '_emit_timing_record $?' EXIT
+
+# Assign DIRTY_TREE_SIDECAR / UNTRACKED_BASELINE BEFORE installing the EXIT
+# trap so an asynchronous exit (SIGINT / SIGTERM) between trap registration and
+# the stale-cleanup block below can still publish a sidecar. The helpers no-op
+# when these vars are empty, so without this ordering the narrow window between
+# trap install and assignment would silently produce no sidecar on early
+# signal-driven exits. The actual stale cleanup of these paths and the
+# baseline-capture call still happen below, after the MISSING_JQ check, so the
+# baseline reflects the post-stale-cleanup state of the working tree.
+DIRTY_TREE_SIDECAR="${OUTPUT}.dirty-tree"
+UNTRACKED_BASELINE="${OUTPUT}.untracked-baseline"
+
+trap '_emit_timing_record $?; _publish_dirty_tree_on_exit' EXIT
 
 EFFECTIVE_TIMEOUT="$TIMEOUT"
 if (( EFFECTIVE_TIMEOUT > 600 )); then
@@ -618,6 +689,24 @@ fi
 RAW_OUTPUT="${OUTPUT}.raw"
 rm -f "$OUTPUT" "${OUTPUT}.done" "${OUTPUT}.meta" "${OUTPUT}.diag" \
       "$RAW_OUTPUT" "${RAW_OUTPUT}.done" "${RAW_OUTPUT}.meta" "${RAW_OUTPUT}.diag"
+
+# Stale-cleanup of the dirty-tree sidecar paths (the variables themselves
+# were assigned earlier, before the EXIT trap was installed, so an early
+# signal-driven exit can already publish a sidecar). Capture the untracked
+# baseline AFTER stale cleanup so the baseline reflects the post-cleanup
+# state of the working tree. The capture itself happens BEFORE the
+# early-short-circuit fail_closed branches below (MISSING_JQ, model-resolve
+# failure, snapshot-guard setup failure — all reached AFTER this block) so
+# each of those paths can emit STATUS=unknown via
+# _write_unknown_dirty_tree_sidecar.
+# Gemini reviewer call sites are dormant per SECURITY.md; this machinery is
+# preparatory so /review Step 5 sidecar consultation picks up Gemini coverage
+# automatically when the call sites are reintroduced (issue #1487; matches
+# the contract introduced for Cursor/Codex by #1437).
+rm -f "$DIRTY_TREE_SIDECAR" "$UNTRACKED_BASELINE" \
+      "${DIRTY_TREE_SIDECAR}.tracked-paths" \
+      "${DIRTY_TREE_SIDECAR}.new-untracked-paths"
+"$SCRIPT_DIR/snapshot-untracked.sh" --output "$UNTRACKED_BASELINE" --nul
 
 if [[ "${LARCH_TEST_FORCE_MISSING_JQ:-}" == "true" ]] || ! command -v jq >/dev/null 2>&1; then
     RAW_OUTPUT="${OUTPUT}.raw"
@@ -649,6 +738,7 @@ if ! setup_snapshot_guard; then
 fi
 
 RUN_EXIT=0
+AGENT_RAN=true
 "$SCRIPT_DIR/run-external-agent.sh" \
     --tool gemini \
     --output "$RAW_OUTPUT" \
@@ -690,6 +780,7 @@ if [[ "$GUARD_EXIT" -ne 0 ]]; then
         [[ -n "$SNAPSHOT_GUARD_NOTICE" ]] && printf '%s\n' "$SNAPSHOT_GUARD_NOTICE"
         [[ -f "$RAW_OUTPUT.diag" ]] && cat "$RAW_OUTPUT.diag"
     } >> "${OUTPUT}.diag"
+    _write_dirty_tree_sidecar
     write_meta
     if [[ "$GUARD_EXIT" -eq 99 ]]; then
         write_done 99
@@ -701,6 +792,7 @@ fi
 if [[ -n "$SNAPSHOT_GUARD_NOTICE" ]]; then
     printf '%s\n' "$SNAPSHOT_GUARD_NOTICE" >> "${OUTPUT}.diag"
 fi
+_write_dirty_tree_sidecar
 write_meta
 write_done 0
 exit 0
