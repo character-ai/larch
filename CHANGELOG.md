@@ -11,7 +11,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Cache `node_modules` in the lint CI job so `npm ci` is skipped entirely when `package-lock.json` and `package.json` are unchanged, saving ~12s per run. `npm ci` now runs only when either the `node_modules` or Puppeteer cache misses.
 
-
 ## [18.0.7] - 2026-05-08
 
 ### Changed
