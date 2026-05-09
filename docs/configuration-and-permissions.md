@@ -217,28 +217,6 @@ The model name to pass to Cursor's `--model` flag (e.g., `gpt-5.4-medium`, `clau
 - Every substantive Cursor prompt is additionally wrapped by `scripts/cursor-wrap-prompt.sh` which prepends ` /max-mode on. Prompt: ` to engage Cursor's max-mode for this invocation
 - To opt back into the previous default (faster, lower reasoning budget), set `LARCH_CURSOR_MODEL=composer-2-fast`
 
-### `LARCH_CURSOR_SANDBOX`
-
-Gates whether `scripts/launch-cursor-review.sh` passes `--sandbox enabled` to the inner `cursor agent` argv.
-
-**Accepted values** (case-insensitive, surrounding whitespace tolerated):
-- `enabled` — splices `--sandbox enabled` into argv (issue #1529 default)
-- `disabled` — drops `--sandbox enabled` from argv; `--mode plan` is preserved
-
-**When set to `disabled`:**
-- The launcher's CLI-level read-only sandbox is opted out
-- The prompt-level HARD CONSTRAINTS preamble and the post-run dirty-tree sidecar remain as the read-only enforcement layers
-- Use this on hosts where `cursor-agent`'s sandbox runtime is unavailable — for example some macOS Darwin builds emit `Sandbox mode is enabled but not available on this system. Sandbox is unavailable.` on every launch
-
-**When unset, empty, or set to `enabled`:**
-- Default behavior preserved — `--sandbox enabled` is in argv
-
-**Other values:**
-- The launcher emits `**⚠ launch-cursor-review.sh: LARCH_CURSOR_SANDBOX=<value> not recognized; defaulting to enabled**` on stderr and resolves to default. Typos do not regress hosts where the sandbox actually works.
-
-**Scope:**
-- Review-launcher only. `scripts/launch-cursor-implement.sh` does not pass `--sandbox enabled` (uses `--force --trust`); `scripts/check-reviewers.sh`'s Cursor health probe deliberately does not pass `--sandbox` so probe-vs-launcher parity is asymmetric by design (the probe reports binary health, not configuration validity).
-
 ### `LARCH_CODEX_MODEL`
 
 The model name to pass to Codex's `-m` flag (e.g., `o3`, `o4-mini`).

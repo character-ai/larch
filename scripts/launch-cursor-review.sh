@@ -234,22 +234,12 @@ fi
 # Issue #1529: prepend a HARD-CONSTRAINTS read-only preamble to every Cursor
 # review prompt (specialist or generic, --prompt or --prompt-file or
 # --agent-file). Mirrors the GEMINI_REVIEW_HARDENING_PREAMBLE in
-# scripts/launch-gemini-review.sh. The cursor argv below also passes
-# `--mode plan --sandbox enabled` (replacing the prior `--force`) so the CLI
-# itself disables the agent's write tools; the preamble is the prompt-level
-# reinforcement so the model also reasons about its read-only role. The
-# launcher's existing dirty-tree-sidecar machinery (snapshot-untracked.sh
-# untracked-files baseline + _write_dirty_tree_sidecar EXIT trap) remains the
-# after-the-fact detector.
-#
-# Issue #1561: hosts where cursor-agent's sandbox runtime is unavailable
-# (e.g. macOS Darwin without a working sandbox backend) fail with
-# "Sandbox mode is enabled but not available on this system" on every launch.
-# Operators on such hosts can set `LARCH_CURSOR_SANDBOX=disabled` to opt out
-# of `--sandbox enabled` while keeping `--mode plan`. Read-only enforcement
-# then degrades to two layers: this prompt-level preamble and the post-run
-# dirty-tree sidecar. Default and any unrecognized value resolve to `enabled`
-# (current behavior); a stderr warning surfaces typos without aborting.
+# scripts/launch-gemini-review.sh. The cursor argv below passes `--mode plan`
+# so the CLI itself disables the agent's write tools; the preamble is the
+# prompt-level reinforcement so the model also reasons about its read-only
+# role. The launcher's existing dirty-tree-sidecar machinery
+# (snapshot-untracked.sh untracked-files baseline + _write_dirty_tree_sidecar
+# EXIT trap) remains the after-the-fact detector.
 #
 # Retry-replay safety: ${OUTPUT}.prompt is consumed by collect-agent-results.sh
 # empty-output retries via `--prompt-file`. To keep that replay idempotent
@@ -257,34 +247,7 @@ fi
 # (the user/specialist-rendered body BEFORE prepending the preamble) so that
 # on retry the launcher reads the body, prepends the preamble exactly once,
 # and produces an identical outgoing PROMPT — no preamble stacking.
-# Issue #1561: resolve LARCH_CURSOR_SANDBOX into the sandbox-portion of the
-# inner cursor argv. `disabled` (case-insensitive, surrounding whitespace
-# tolerated) drops `--sandbox enabled` for hosts whose cursor-agent sandbox
-# runtime is unavailable; any other value (including unset, empty, or
-# `enabled`) preserves the default. Unknown values warn on stderr but do
-# not abort — typos must not regress hosts where the sandbox actually works.
-# This must precede preamble assembly because the preamble's "launcher
-# enforces this with a CLI-level read-only sandbox" sentence is rendered
-# conditionally on the resolved state — a static sentence would lie to the
-# model on the disabled path and weaken prompt-level enforcement.
-CURSOR_SANDBOX_ARGS=(--sandbox enabled)
-CURSOR_SANDBOX_RESOLVED=enabled
-_cs_raw="${LARCH_CURSOR_SANDBOX:-}"
-_cs_norm="${_cs_raw#"${_cs_raw%%[![:space:]]*}"}"
-_cs_norm="${_cs_norm%"${_cs_norm##*[![:space:]]}"}"
-_cs_norm=$(printf '%s' "$_cs_norm" | LC_ALL=C tr '[:upper:]' '[:lower:]')
-case "$_cs_norm" in
-    disabled) CURSOR_SANDBOX_ARGS=(); CURSOR_SANDBOX_RESOLVED=disabled ;;
-    ''|enabled) ;;
-    *) printf '**⚠ launch-cursor-review.sh: LARCH_CURSOR_SANDBOX=%s not recognized; defaulting to enabled**\n' "$_cs_raw" >&2 ;;
-esac
-unset _cs_raw _cs_norm
-
-if [[ "$CURSOR_SANDBOX_RESOLVED" == "disabled" ]]; then
-    CURSOR_SANDBOX_ENFORCEMENT_LINE="The launcher passes --mode plan to the cursor CLI, but the CLI-level sandbox is opted out via LARCH_CURSOR_SANDBOX=disabled on this host. Read-only enforcement therefore relies on these prompt constraints plus the launcher's untracked-files baseline + dirty-tree sidecar; any post-run mutation will be detected after the fact, not blocked at the call."
-else
-    CURSOR_SANDBOX_ENFORCEMENT_LINE="The launcher enforces this with a CLI-level read-only sandbox (\`--mode plan --sandbox enabled\`); any write tool the agent attempts will be rejected by the sandbox. The launcher also captures an untracked-files baseline at entry, so any post-run mutation is detected and reported via the dirty-tree sidecar."
-fi
+CURSOR_SANDBOX_ENFORCEMENT_LINE="The launcher passes --mode plan to the cursor CLI. Read-only enforcement relies on these prompt constraints plus the launcher's untracked-files baseline + dirty-tree sidecar; any post-run mutation will be detected after the fact, not blocked at the call."
 CURSOR_REVIEW_HARDENING_PREAMBLE=$(cat <<EOF
 HARD CONSTRAINTS — your role is read-only review. You MUST NOT modify the working tree by any means:
 - Do not redirect, tee, append, or pipe into any file (no \`>\`, \`>>\`, \`tee\`, \`tee -a\`).
@@ -359,7 +322,6 @@ RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX=.inner.done \
         --capture-stdout-only \
         -- \
         cursor agent -p --trust --mode plan \
-        ${CURSOR_SANDBOX_ARGS[@]+"${CURSOR_SANDBOX_ARGS[@]}"} \
         --output-format json \
         ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
         ${CURSOR_AUTH_ARGS[@]+"${CURSOR_AUTH_ARGS[@]}"} \
