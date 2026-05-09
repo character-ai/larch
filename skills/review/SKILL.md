@@ -1,7 +1,7 @@
 ---
 name: review
 description: "Use when reviewing code changes (--diff for branch diff, or positional text for existing code review). Description mode files findings as issues by default (--no-issues suppresses)."
-argument-hint: "[--diff] [--no-issues] [--session-env <path>] [--step-prefix <prefix>] [<description>]"
+argument-hint: "[--diff] [--subagent] [--no-issues] [--session-env <path>] [--step-prefix <prefix>] [<description>]"
 allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task, WebFetch, Skill
 ---
 
