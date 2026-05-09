@@ -10,7 +10,7 @@
 
 **Arguments**:
 - `--agent-file <path>` (required): Path to the specialist agent definition file (e.g., `agents/reviewer-structure.md`).
-- `--mode <diff|description>` (required): Review mode. `diff` = branch changes vs main. `description` = existing code in a file list.
+- `--mode <diff|description>` (required): Review mode. `diff` = branch changes vs main (specialist slots produce dual-section output: `### In-Scope Findings` / `### Out-of-Scope Observations`). `description` = existing code in a file list (same dual-section output).
 - `--description-text <text>` (required when `--mode=description`): Verbal description of the review target.
 - `--scope-files <path>` (required when `--mode=description`): Path to the canonical file list.
 - `--competition-notice` (optional): Append the competition notice blockquote.
