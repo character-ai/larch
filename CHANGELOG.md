@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [18.0.11] - 2026-05-08
+
+### Added
+
+- Add --token-budget-cap N flag to all six external-tool launcher scripts (cursor/codex/gemini review and implement) to short-circuit fan-out when combined vendor tokens since the last ledger mark exceed the cap, with a one-line operator warning, STATUS=cap_hit output, and .cap-hit sidecar
+- Add scripts/check-step-token-budget.sh helper to read the session JSONL token-ledger and return cap_hit or under_cap status
+
+
 ## [18.0.10] - 2026-05-08
 
 ### Changed
