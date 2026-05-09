@@ -684,6 +684,53 @@ else
     fail K4b "flag-like timing-task-kind should exit 2 with non-empty-non-flag-like message, got rc=$K4b_RC: $K4b_OUT"
 fi
 
+# Test cap-hit: when the per-step token budget cap is exceeded, the launcher
+# exits immediately with LAUNCHER_EXIT=0 MANIFEST_WRITTEN=false STATUS=cap_hit
+# without invoking the underlying Cursor binary.
+CH_SESSION="cap-hit-cursor-$$-$RANDOM"
+if command -v shasum >/dev/null 2>&1; then
+    CH_SLUG=$(printf '%s' "$CH_SESSION" | shasum -a 256 | awk '{print $1}')
+else
+    CH_SLUG=$(printf '%s' "$CH_SESSION" | sha256sum | awk '{print $1}')
+fi
+CH_LEDGER="${TMPDIR:-/tmp}/larch-tokens-${CH_SLUG}.jsonl"
+printf '{"type":"vendor","vendor":"cursor","total":9999}\n' > "$CH_LEDGER"
+
+CH_ARGV="$SCRATCH/cap-hit-cursor-argv.txt"
+CH_OUT=$(cd "$REPO_ROOT" && \
+    PATH="$STUB_BIN:$PATH" \
+    STUB_ARGV_FILE="$CH_ARGV" \
+    STUB_PROMPT_FILE="$SCRATCH/cap-hit-cursor-prompt.txt" \
+    STUB_LAST_ARG_FILE="$SCRATCH/cap-hit-cursor-last-arg.txt" \
+    STUB_SEPARATOR_INDEX_FILE="$SCRATCH/cap-hit-cursor-sep.txt" \
+    STUB_MANIFEST_PATH="$SCRATCH/cap-hit-cursor-manifest.json" \
+    LARCH_TOKEN_SESSION_ID="$CH_SESSION" \
+    LARCH_TOKEN_BUDGET_CAP_IMPLEMENT=1 \
+    LARCH_CURSOR_MODEL="stub-cursor-model" \
+    "$LAUNCHER" \
+        --transcript-path "$SCRATCH/cap-hit-cursor-transcript.txt" \
+        --sidecar-log "$SCRATCH/cap-hit-cursor-sidecar.log" \
+        --manifest-path "$SCRATCH/cap-hit-cursor-manifest.json" \
+        --qa-pending-path "$SCRATCH/cap-hit-cursor-qa.json" \
+        --plan-file "$PLAN" \
+        --feature-file "$FEATURE" \
+        --agent-prompt "$AGENT_PROMPT" \
+        --timeout 30)
+rm -f "$CH_LEDGER"
+
+if printf '%s\n' "$CH_OUT" | grep -Fxq 'LAUNCHER_EXIT=0' && \
+   printf '%s\n' "$CH_OUT" | grep -Fxq 'MANIFEST_WRITTEN=false' && \
+   printf '%s\n' "$CH_OUT" | grep -Fxq 'STATUS=cap_hit'; then
+    pass
+else
+    fail "cap-hit-kv" "cap_hit path must emit LAUNCHER_EXIT=0 MANIFEST_WRITTEN=false STATUS=cap_hit; got: $CH_OUT"
+fi
+if [[ ! -f "$CH_ARGV" ]]; then
+    pass
+else
+    fail "cap-hit-no-invoke" "cap_hit path must not invoke the underlying Cursor binary"
+fi
+
 TOTAL=$((PASS_COUNT + FAIL_COUNT))
 if (( FAIL_COUNT == 0 )); then
     echo "PASS: test-cursor-implementer.sh — $PASS_COUNT/$TOTAL assertions"

@@ -429,6 +429,45 @@ else
     pass
 fi
 
+# Cap-hit path: when LARCH_TOKEN_BUDGET_CAP_REVIEW=1 and the token ledger
+# shows vendor spend >= 1, the launcher writes STATUS=cap_hit to the output
+# file and exits 0 without invoking the underlying Codex binary.
+CH_SESSION="cap-hit-codex-review-$$-$RANDOM"
+if command -v shasum >/dev/null 2>&1; then
+    CH_SLUG=$(printf '%s' "$CH_SESSION" | shasum -a 256 | awk '{print $1}')
+else
+    CH_SLUG=$(printf '%s' "$CH_SESSION" | sha256sum | awk '{print $1}')
+fi
+# Use a subprocess to discover the TMPDIR that check-step-token-budget.sh will
+# see (this test overrides $TMPDIR locally without exporting it, so the ledger
+# must land in the subprocess-visible temp root, not the test's local override).
+_CH_TMPROOT=$(bash -c 'printf "%s" "${TMPDIR:-/tmp}"')
+CH_LEDGER="${_CH_TMPROOT}/larch-tokens-${CH_SLUG}.jsonl"
+printf '{"type":"vendor","vendor":"codex","total":9999}\n' > "$CH_LEDGER"
+
+CH_OUTPUT="$TMPDIR/cap-hit-codex-review.txt"
+CH_COUNT="$TMPDIR/cap-hit-codex-count.txt"
+
+PATH="$STUB_BIN:$PATH" \
+    CODEX_STUB_ARGV_LOG="$TMPDIR/cap-hit-codex-argv.txt" \
+    CODEX_STUB_COUNT_FILE="$CH_COUNT" \
+    LARCH_CODEX_MODEL="stub-model" \
+    LARCH_TOKEN_SESSION_ID="$CH_SESSION" \
+    LARCH_TOKEN_BUDGET_CAP_REVIEW=1 \
+    "$LAUNCHER" --output "$CH_OUTPUT" --timeout 5 --prompt "cap hit review" >/dev/null 2>&1
+rm -f "$CH_LEDGER"
+
+if [[ -f "$CH_OUTPUT" ]] && [[ "$(head -1 "$CH_OUTPUT")" == "STATUS=cap_hit" ]]; then
+    pass
+else
+    fail "cap-hit output first line must be STATUS=cap_hit; got: $(head -1 "$CH_OUTPUT" 2>/dev/null)"
+fi
+if [[ ! -f "$CH_COUNT" ]]; then
+    pass
+else
+    fail "cap-hit path must not invoke the underlying Codex binary (count file written)"
+fi
+
 if (( FAIL > 0 )); then
     printf 'FAIL: test-launch-codex-review.sh - %s failed, %s passed\n' "$FAIL" "$PASS" >&2
     printf '  %s\n' "${FAILURES[@]}" >&2

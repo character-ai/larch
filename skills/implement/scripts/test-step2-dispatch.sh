@@ -674,6 +674,41 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# Test 14: cap-hit path. When LARCH_TOKEN_BUDGET_CAP_IMPLEMENT=1 and the
+# token ledger shows vendor spend >= 1, the launcher short-circuits with
+# STATUS=cap_hit on stdout. The dispatcher must surface STATUS=bailed
+# REASON=cap_hit ORCHESTRATOR_EDIT_AUTHORITY=forbidden without retrying.
+# No stub coder binary is needed — the launcher exits before spawning one.
+# ---------------------------------------------------------------------------
+TMP14="$SCRATCH/test14"; mkdir -p "$TMP14"
+CH14_SESSION="cap-hit-step2-$$-$RANDOM"
+if command -v shasum >/dev/null 2>&1; then
+    CH14_SLUG=$(printf '%s' "$CH14_SESSION" | shasum -a 256 | awk '{print $1}')
+else
+    CH14_SLUG=$(printf '%s' "$CH14_SESSION" | sha256sum | awk '{print $1}')
+fi
+CH14_LEDGER="${TMPDIR:-/tmp}/larch-tokens-${CH14_SLUG}.jsonl"
+printf '{"type":"vendor","vendor":"codex","total":9999}\n' > "$CH14_LEDGER"
+
+OUT_14=$(cd "$REPO_ROOT" && \
+    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    LARCH_TOKEN_SESSION_ID="$CH14_SESSION" \
+    LARCH_TOKEN_BUDGET_CAP_IMPLEMENT=1 \
+    LARCH_CODEX_MODEL=stub-codex-model \
+    "$DISPATCHER" --tmpdir "$TMP14" --plan-file "$PLAN" --feature-file "$FEATURE" \
+        --auto-mode false --coder codex 2>&1)
+rm -f "$CH14_LEDGER"
+
+if [[ "$OUT_14" == *"STATUS=bailed"* ]] \
+   && [[ "$OUT_14" == *"REASON=cap_hit"* ]] \
+   && [[ "$OUT_14" == *"ORCHESTRATOR_EDIT_AUTHORITY=forbidden"* ]] \
+   && [[ "$OUT_14" != *"ORCHESTRATOR_EDIT_AUTHORITY=allowed"* ]]; then
+    pass
+else
+    fail 14 "cap_hit path should emit STATUS=bailed REASON=cap_hit AUTH=forbidden; got: $OUT_14"
+fi
+
+# ---------------------------------------------------------------------------
 # Summary.
 # ---------------------------------------------------------------------------
 TOTAL=$((PASS_COUNT + FAIL_COUNT))
