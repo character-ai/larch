@@ -40,7 +40,7 @@ SIDECAR_LOG=<path>             # path to run-external-agent.sh chatter
 | `--timeout SECS` | yes | Wall-clock cap for Codex subprocess |
 | `--answers-file PATH` | optional | Operator answers from a prior `needs_qa` cycle (resume) |
 | `--timing-task-kind KIND` | optional | Timing attribution kind; defaults to `codex-implement` |
-| `--token-budget-cap N` | optional | Combined vendor token cap; exits 0 with `STATUS=cap_hit` in `$TRANSCRIPT_PATH` when exceeded |
+| `--token-budget-cap N` | optional | Combined vendor token cap; emits `LAUNCHER_EXIT=0 MANIFEST_WRITTEN=false STATUS=cap_hit` on stdout and writes `STATUS=cap_hit` to `$TRANSCRIPT_PATH` when exceeded; `step2-implement.sh` detects `STATUS=cap_hit` and emits `STATUS=bailed REASON=cap_hit` without retrying. `LARCH_TOKEN_BUDGET_CAP_IMPLEMENT` env var sets the cap when the flag is absent. |
 
 **Call sites**:
 - `skills/implement/scripts/step2-implement.sh` (dispatcher) — the only authorized caller.

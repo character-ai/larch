@@ -666,6 +666,15 @@ if [[ -n "${IMPLEMENT_TMPDIR:-}" && -s "${IMPLEMENT_TMPDIR}/claude-source.env" ]
     export LARCH_CLAUDE_SOURCE_FILE="${IMPLEMENT_TMPDIR}/claude-source.env"
 fi
 
+# Apply env-var cap when --token-budget-cap was not passed explicitly; validate
+# the value (invalid values silently disable the cap rather than exit 2).
+if [[ -z "$TOKEN_BUDGET_CAP" && -n "${LARCH_TOKEN_BUDGET_CAP_REVIEW:-}" ]]; then
+    case "$LARCH_TOKEN_BUDGET_CAP_REVIEW" in
+        ''|*[!0-9]*) ;;
+        *) (( 10#${LARCH_TOKEN_BUDGET_CAP_REVIEW} >= 1 )) && TOKEN_BUDGET_CAP="$LARCH_TOKEN_BUDGET_CAP_REVIEW" ;;
+    esac
+fi
+
 # Per-step token budget cap: short-circuit before spawning Gemini when the
 # combined vendor spend since the last ledger mark already exceeds the cap.
 if [[ -n "$TOKEN_BUDGET_CAP" ]]; then
