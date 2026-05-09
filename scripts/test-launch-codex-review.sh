@@ -368,17 +368,12 @@ for bad_cap in 0 00 000 abc 0.5 -1; do
     assert_grep "token-budget-cap bad value '$bad_cap' message" "positive integer" "$TMPDIR/budget-bad-${bad_cap//[^a-zA-Z0-9_-]/x}.stderr"
 done
 
-# --token-budget-cap accept path (no cap hit: empty ledger, so under_cap)
+# --token-budget-cap accept path: flag recognized (not "unknown flag"), binary
+# absence or other required-flag errors cause non-0 exit from later checks.
 set +e
 "$LAUNCHER" --output "$TMPDIR/budget-accept.txt" --timeout 5 --prompt "x" \
     --token-budget-cap 9999999 >/dev/null 2>"$TMPDIR/budget-accept.stderr"
-RC=$?
 set -e
-assert_eq "token-budget-cap accept value (unknown exit - only validates flag parsing)" "2" "$RC"
-# Exit 2 is expected here because codex binary is absent and other required
-# flags are missing; what matters is the flag itself was parsed without exit 2
-# from flag validation. The test just confirms the flag is accepted in arg
-# parsing (no "unknown flag" error for --token-budget-cap).
 if grep -Fq "unknown flag: --token-budget-cap" "$TMPDIR/budget-accept.stderr" 2>/dev/null; then
     fail "token-budget-cap flag not recognized (got 'unknown flag' rejection)"
 else

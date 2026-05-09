@@ -726,7 +726,8 @@ for bad_cap in 0 00 000 abc 0.5 -1; do
     assert_grep "token-budget-cap bad value '$bad_cap' message" "positive integer" "$TMPDIR/budget-bad-${bad_cap//[^a-zA-Z0-9_-]/x}.stderr"
 done
 
-# Accept path: flag recognized (not "unknown flag"), binary absence causes exit from other checks
+# Accept path: flag recognized (not "unknown flag"), binary absence or other
+# required-flag errors cause non-0 exit from later checks.
 set +e
 "$LAUNCHER" --output "$TMPDIR/budget-accept.txt" --timeout 5 --prompt "x" \
     --token-budget-cap 9999999 >/dev/null 2>"$TMPDIR/budget-accept.stderr"
