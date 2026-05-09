@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [18.2.1] - 2026-05-08
+
+### Added
+
+- LARCH_TOKEN_BUDGET_CAP_IMPLEMENT and LARCH_TOKEN_BUDGET_CAP_REVIEW env vars for automatic per-step budget caps without explicit --token-budget-cap flag passing
+
+### Fixed
+
+- Implement launchers now emit KV envelope (LAUNCHER_EXIT=0 MANIFEST_WRITTEN=false STATUS=cap_hit) on stdout when the token budget cap is hit, preventing step2-implement.sh from treating cap-hit as a retryable runtime failure
+- step2-implement.sh now emits STATUS=bailed REASON=cap_hit when a launcher hits the budget cap, surfacing a clean signal instead of codex-runtime-failure
+- collect-agent-results.sh now classifies STATUS=cap_hit review-launcher outputs as a first-class cap_hit state (HEALTHY=true) that bypasses substantive validation, preventing budget-cap stops from poisoning tool health
+
 ## [18.2.0] - 2026-05-08
 
 ### Changed
