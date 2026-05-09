@@ -1,5 +1,7 @@
 # scripts/test-implement-anti-halt.sh — contract
 
-`scripts/test-implement-anti-halt.sh` is a freestanding regression harness that asserts `/implement` retains the halt-prone step-boundary continuation literals for Step 2→3, Step 4→5, Step 7a→8, Step 12→14, and the Step 14→18 wind-down sequence. It also pins the shared `skills/shared/subskill-invocation.md` "Step-boundary anti-halt" section as the single source of truth for the canonical blockquote form.
+`scripts/test-implement-anti-halt.sh` is a freestanding regression harness that asserts `/implement` retains the halt-prone step-boundary continuation literals for Step 2→3, Step 4→5, Step 7a→8, Step 12d→14 (bail path), and the Step 14→18 wind-down sequence. It also pins the shared `skills/shared/subskill-invocation.md` "Step-boundary anti-halt" section as the single source of truth for the canonical blockquote form. Spot-checks for the highest-value `/design`, `/fix-issue`, and `/review` boundaries are included.
 
-The harness is wired into `make lint` via the `test-implement-anti-halt` Makefile target. When adding, renaming, or removing a halt-prone `/implement` boundary, update this harness and the corresponding SKILL.md boundary reminder in the same PR.
+**Duplicate-needle note**: "Continue to Step 3 IMMEDIATELY" appears at two sites in `skills/implement/SKILL.md` (Q/A re-dispatch §2.3 and the post-implementation handoff). "Continue to Step 14 IMMEDIATELY" appears at three sites (already-merged inline, merged! blockquote, and Step 12d bail blockquote). To avoid false coverage, the harness pins the unique reason clause of each newly added site rather than the shared opener substring — so deleting one site while keeping the other still fails CI.
+
+The harness is wired into `make lint` via the `test-implement-anti-halt` Makefile target. When adding, renaming, or removing a halt-prone boundary, update this harness and the corresponding SKILL.md boundary reminder in the same PR.

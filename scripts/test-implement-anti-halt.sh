@@ -35,16 +35,39 @@ check_contains() {
 
 echo "--- /implement step-boundary anti-halt coverage ---"
 
-check_contains "Step 2 to Step 3 reminder" "skills/implement/SKILL.md" "Continue to Step 3 IMMEDIATELY"
+# Step 2→3: pin the post-implementation-completion boundary specifically
+# ("Continue to Step 3 IMMEDIATELY" also appears at the Q/A re-dispatch
+# site on line 949 — use the unique reason clause to pin the right site).
+check_contains "Step 2 to Step 3 reminder (impl completion)" "skills/implement/SKILL.md" "Implementation is not the end of the run — checks"
 check_contains "Step 4 to Step 5 reminder" "skills/implement/SKILL.md" "Continue to Step 5 IMMEDIATELY"
 check_contains "Step 7a to Step 8 reminder" "skills/implement/SKILL.md" "Continue to Step 8 IMMEDIATELY"
-check_contains "Step 12 to Step 14 reminder" "skills/implement/SKILL.md" "Continue to Step 14 IMMEDIATELY"
+# Step 12d→14: pin the bail-path boundary specifically
+# ("Continue to Step 14 IMMEDIATELY" also appears at the 12b merged! and
+# 12a already_merged paths — use the unique reason clause to pin the bail site).
+check_contains "Step 12d to Step 14 reminder (bail path)" "skills/implement/SKILL.md" "Step 12d bail is not terminal"
 check_contains "Step 14 to Step 15 reminder" "skills/implement/SKILL.md" "Continue to Step 15."
 check_contains "Step 15 to Step 16 reminder" "skills/implement/SKILL.md" "Continue to Step 16."
 check_contains "Step 16 to Step 16a reminder" "skills/implement/SKILL.md" "Continue to Step 16a."
 check_contains "Step 16a to Step 17 reminder" "skills/implement/SKILL.md" "Continue to Step 17."
 check_contains "Step 17 to Step 18 reminder" "skills/implement/SKILL.md" "Continue to Step 18."
 check_contains "Shared SSOT section" "skills/shared/subskill-invocation.md" "Step-boundary anti-halt"
+
+echo ""
+echo "--- /design step-boundary anti-halt coverage ---"
+check_contains "/design Step 2b to Step 3 reminder" "skills/design/SKILL.md" "implementation plan is an intermediate design artifact"
+check_contains "/design Step 3b to Step 4 reminder" "skills/design/SKILL.md" "Continue to Step 4 IMMEDIATELY"
+check_contains "/design Step 4 to Step 5 reminder" "skills/design/SKILL.md" "Continue to Step 5 IMMEDIATELY"
+
+echo ""
+echo "--- /fix-issue step-boundary anti-halt coverage ---"
+check_contains "/fix-issue Step 6 to Step 7 reminder" "skills/fix-issue/SKILL.md" "Closing the issue is not terminal"
+check_contains "/fix-issue Step 7 to Step 8 reminder" "skills/fix-issue/SKILL.md" "Continue to Step 8 IMMEDIATELY"
+
+echo ""
+echo "--- /review step-boundary anti-halt coverage ---"
+check_contains "/review Step 3f to Step 4 reminder" "skills/review/SKILL.md" "non-substantial re-review convergence line is not terminal"
+check_contains "/review Step 4c to Step 4d reminder" "skills/review/SKILL.md" "Continue to Step 4d IMMEDIATELY"
+check_contains "/review Step 4d to Step 5 reminder" "skills/review/SKILL.md" "review-result footer is not terminal"
 
 echo ""
 echo "=== SUMMARY: $PASS_COUNT passed, $FAIL_COUNT failed ==="
