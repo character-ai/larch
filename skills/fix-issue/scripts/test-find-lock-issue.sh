@@ -58,6 +58,9 @@
 #      context keys include UMBRELLA_TITLE and LOCK_ACQUIRED=false.
 #  19. git status probe failure under the pre-lock --fail-closed probe →
 #      exit 2 with Cannot determine working-tree cleanliness and no lock call.
+#  20. auto-pick skips [UMBRELLA]-prefixed title (#1612) → exit 1;
+#      ELIGIBLE=false. Confirms the new [UMBRELLA] bracket-block signal is
+#      recognised by is_umbrella_title and skipped in auto-pick mode.
 #
 # Stub gh dispatches on positional + json args. Each fixture writes a stub
 # state file under a per-fixture tmpdir; the stub reads the file to decide
@@ -1125,6 +1128,40 @@ assert_contains "$OUT" "ELIGIBLE=false" "[19] ELIGIBLE=false on stdout"
 assert_contains "$OUT" "ERROR=Cannot determine working-tree cleanliness: git exited 1" "[19] probe-failure ERROR prefix"
 assert_equal "$(gh_log_count "$STUB_LOG" '^issue comment')" "0" "[19] no lock comment posted"
 assert_equal "$(gh_log_count "$STUB_LOG" '^issue edit')" "0" "[19] no rename attempted"
+
+# ---------------------------------------------------------------------------
+# Fixture 20: auto-pick skips [UMBRELLA]-prefixed title (#1612).
+# A single candidate with a [UMBRELLA] prefix title and GO as its last
+# comment must be skipped in auto-pick mode — the new [UMBRELLA] bracket-block
+# signal in is_umbrella_title returns IS_UMBRELLA=true and the auto-pick loop
+# skips it. With no other candidates the scan ends with exit 1.
+# ---------------------------------------------------------------------------
+echo "Fixture 20: auto-pick skips [UMBRELLA]-prefixed title (#1612 new signal)"
+run_fixture "fixture-20"
+{
+    echo "ISSUE_STATE=OPEN"
+    OPEN_ISSUES_LINES='{"number":201,"title":"[UMBRELLA] Token savings drive II"}'
+    printf "OPEN_ISSUES_JSON='%s'\n" "$OPEN_ISSUES_LINES"
+    echo "ISSUE_201_TITLE='[UMBRELLA] Token savings drive II'"
+    echo "ISSUE_201_BODY='Umbrella tracking issue for work items.'"
+    echo "ISSUE_201_STATE=OPEN"
+    echo "ISSUE_201_COMMENTS='$(make_comments_json GO)'"
+    echo "COMMENTS_JSON='$(make_comments_json GO)'"
+    echo "RENAME_FAIL=false"
+} > "$STUB_STATE_FILE"
+
+OUT_FILE="$TMPROOT/fixture-20/stdout.txt"
+ERR_FILE="$TMPROOT/fixture-20/stderr.txt"
+EXIT_CODE=0
+with_sterile_repo "fixture-20" "$SCRIPT" >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
+
+OUT=$(cat "$OUT_FILE")
+ERR=$(cat "$ERR_FILE")
+
+assert_equal "$EXIT_CODE" "1" "[20] exit code 1 (no eligible candidates — [UMBRELLA] title skipped)"
+assert_contains "$OUT" "ELIGIBLE=false" "[20] ELIGIBLE=false on stdout"
+assert_not_contains "$OUT" "LOCK_ACQUIRED=" "[20] LOCK_ACQUIRED= absent (lock never attempted)"
+assert_contains "$ERR" "Skipping issue #201: umbrella issue" "[20] stderr diagnostic confirms umbrella skip"
 
 # ---------------------------------------------------------------------------
 # Summary
