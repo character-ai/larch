@@ -6,10 +6,13 @@
 #   1. Find candidate (eligibility scan or explicit-issue verification).
 #   2. Probe the local working tree with scripts/check-clean-tree.sh
 #      --fail-closed. Dirty or unknown cleanliness aborts before any GitHub
-#      mutation so GO and the original title remain intact.
+#      mutation so the original title remains intact.
 #   3. Acquire the comment-based concurrency lock by delegating to
-#      issue-lifecycle.sh comment --lock (verifies tail GO, deletes GO,
-#      posts "IN PROGRESS", post-checks for duplicate IN PROGRESS races).
+#      issue-lifecycle.sh comment --lock (when GO is the last comment:
+#      deletes GO, posts "IN PROGRESS", post-checks for duplicate races) or
+#      --lock-no-go (when GO is absent: posts "IN PROGRESS", post-checks for
+#      races without deleting any prior comment). GO is no longer required
+#      for eligibility; its presence only selects the lock mode.
 #      The comment lock is the correctness invariant.
 #   4. Rename the issue title to "[IN PROGRESS] <title>" by delegating to
 #      tracking-issue-write.sh rename --state in-progress. Best-effort: a
@@ -17,27 +20,29 @@
 #      with LOCK_ACQUIRED=true RENAMED=false. /implement Step 0.5 Branch 2
 #      is the safety net (idempotent re-attempt on the next run-segment).
 #
-# Without --issue: lists open issues, checks each for the "GO" sentinel as
-# the last comment, excludes issues locked with "IN PROGRESS", excludes
-# issues blocked by other open issues (via GitHub's native issue dependencies
-# and prose blockers), excludes issues whose titles start with a managed
-# lifecycle prefix ([IN PROGRESS], [DONE], [STALLED]), excludes archival
+# Without --issue: lists open issues, excludes issues locked with
+# "IN PROGRESS", excludes issues blocked by other open issues (via GitHub's
+# native issue dependencies and prose blockers), excludes issues whose titles
+# start with a managed lifecycle prefix ([IN PROGRESS], [DONE], [STALLED]),
+# excludes issues matching the [... Report] pattern (case-insensitive
+# bracket-enclosed phrase ending with "report"), excludes archival
 # research/investigation titles ("research ", "[research] ", "investigate ",
 # "[investigate] ", "[research report] " after leading-whitespace trim +
-# lowercase — explicit-target mode is intentionally exempt), and emits the
-# first match. Selection order is two-key: titles matching the whole word "urgent"
-# (case-insensitive, word-boundary regex — does NOT match "non-urgent")
-# come first, then within each tier oldest-first by issue number. The
-# preference is a soft re-ordering, not an eligibility filter — a non-
-# Urgent issue is still picked when no Urgent eligible candidate exists.
+# lowercase — explicit-target mode is intentionally exempt from the archival
+# filter), and emits the first match. Selection order is two-key: titles
+# matching the whole word "urgent" (case-insensitive, word-boundary regex —
+# does NOT match "non-urgent") come first, then within each tier oldest-first
+# by issue number. The preference is a soft re-ordering, not an eligibility
+# filter — a non-Urgent issue is still picked when no Urgent eligible
+# candidate exists.
 #
 # With --issue: targets a specific issue (by number or GitHub URL), verifies
 # it is open, runs umbrella detection FIRST (issue #819 DECISION_1 — if the
 # issue is an umbrella, the umbrella branch is taken and managed-prefix
 # rejection is bypassed so umbrellas with `[IN PROGRESS]` / `[DONE]` /
 # `[STALLED]` titles remain explicitly targetable), then for non-umbrellas
-# verifies the title does not carry a managed lifecycle title prefix, has
-# "GO" as the last comment, and has no currently-open blocking dependencies.
+# verifies the title does not carry a managed lifecycle title prefix or a
+# [... Report] pattern, and has no currently-open blocking dependencies.
 # Auto-pick path is intentionally NOT mirrored — it excludes umbrellas
 # regardless of order.
 #
@@ -181,12 +186,11 @@ has_archival_prefix() {
 }
 
 # Returns 0 if the title matches the [... Report] pattern — a bracket-enclosed
-# phrase ending with " Report" at the start of the title (e.g. "[Weekly Report]",
-# "[Audit Report] Q3"). These are report/analytics issues not meant for automated
-# fixing. Case-sensitive; does not trim leading whitespace (title is already
-# trimmed by the gh API response).
+# phrase ending with " Report" (case-insensitive) at the start of the title
+# (e.g. "[Weekly Report]", "[AUDIT REPORT] Q3", "[analysis report]"). These
+# are report/analytics issues not meant for automated fixing.
 has_report_prefix() {
-    printf '%s' "$1" | grep -qE '^\[[^]]*[[:space:]]+Report\]'
+    printf '%s' "$1" | grep -qiE '^\[[^]]*[[:space:]]+report\]'
 }
 
 ISSUE_ARG=""
