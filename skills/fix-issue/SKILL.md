@@ -197,7 +197,7 @@ Decide whether the issue is still material against the codebase (see the referen
 
 Print `> **🔶 4: classify**`
 
-The reference loaded at Step 3 (`skills/fix-issue/references/triage-classification.md`) owns the decision rules for both dimensions — do not re-load it here.
+The triage-classification reference loaded at Step 3 (digest or full `triage-classification.md`) owns the decision rules for both dimensions — do not re-load it here. If only the digest was loaded and a classification edge case is genuinely uncertain, load full `triage-classification.md` at this step.
 
 - **Intent** (`PR` vs `NON_PR`): does this issue prescribe work whose natural output is a pull request, or something else (new issues, a written report)? Default to `PR` only when the issue is genuinely ambiguous; when the issue text explicitly forbids a PR or mandates research/issues as the deliverable, pick `NON_PR` regardless of the default.
 - **Complexity** (only when `INTENT=PR`): `SIMPLE` (isolated fix in ≤2 files with no architectural decisions) vs `HARD` (everything else). Default to `HARD` when uncertain. **Short-circuit**: when `quick_mode=true` AND `INTENT=PR`, set `COMPLEXITY=SIMPLE` without evaluating the HARD-vs-SIMPLE rules — the operator has explicitly opted into the SIMPLE pipeline by passing `--quick`. Leave `COMPLEXITY` unset when `INTENT=NON_PR` (the `--quick` short-circuit does not apply to the NON_PR path).
