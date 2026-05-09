@@ -211,16 +211,28 @@ PATH="$STUB_BIN:$PATH" \
     "$LAUNCHER" --output "$TMPDIR/bad-model.txt" --timeout 5 --prompt "review prompt" >/dev/null 2>"$TMPDIR/bad-model.stderr"
 RC=$?
 set -e
-if [[ "$RC" -ne 0 ]] && [[ ! -e "$TMPDIR/count-bad.txt" ]] && [[ ! -e "$TMPDIR/bad-model.txt.done" ]]; then
+if [[ "$RC" -ne 0 ]]; then pass; else fail "newline model wrapper must exit non-zero on model-args preflight failure"; fi
+if [[ ! -e "$TMPDIR/count-bad.txt" ]]; then pass; else fail "newline model should fail before invoking codex"; fi
+if [[ -s "$TMPDIR/bad-model.txt.done" ]]; then
     pass
 else
-    fail "newline model should fail before invoking codex or producing .done (rc=$RC count=$(cat "$TMPDIR/count-bad.txt" 2>/dev/null))"
+    fail "newline model preflight failure must write non-empty .done sentinel"
 fi
-assert_grep "newline model diagnostic" "[[:cntrl:]]" "$TMPDIR/bad-model.stderr"
-if [[ ! -e "$TMPDIR/bad-model.txt.done" ]]; then
+if [[ -s "$TMPDIR/bad-model.txt.diag" ]] && grep -Fq 'STATUS=FAILED' "$TMPDIR/bad-model.txt.diag"; then
     pass
 else
-    fail "newline model should not publish public done"
+    fail "newline model preflight failure must write .diag with STATUS=FAILED"
+fi
+assert_grep "newline model diag diagnostic" "agent-model-args.sh failed" "$TMPDIR/bad-model.txt.diag"
+if [[ -s "$TMPDIR/bad-model.txt.meta" ]] && grep -Fq 'CMD_JSON=[]' "$TMPDIR/bad-model.txt.meta"; then
+    pass
+else
+    fail "newline model preflight failure must write stub .meta with CMD_JSON=[]"
+fi
+if [[ -s "$TMPDIR/bad-model.txt.dirty-tree" ]] && grep -Fq 'STATUS=unknown' "$TMPDIR/bad-model.txt.dirty-tree"; then
+    pass
+else
+    fail "newline model preflight failure must write unknown dirty-tree sidecar"
 fi
 
 # Issue #1529: empty-output retry idempotency. The first run wrote
@@ -278,6 +290,43 @@ if grep -Fq -- 'HARD CONSTRAINTS' "$PROMPT_SIDECAR"; then
     fail "--prompt-file run must NOT include the preamble in the sidecar (retry-replay safety)"
 else
     pass
+fi
+
+AGENT_OUTPUT="$TMPDIR/agent-file-output.txt"
+AGENT_ARGV="$TMPDIR/agent-file-argv.txt"
+AGENT_COUNT="$TMPDIR/agent-file-count.txt"
+PATH="$STUB_BIN:$PATH" \
+    CODEX_STUB_ARGV_LOG="$AGENT_ARGV" \
+    CODEX_STUB_COUNT_FILE="$AGENT_COUNT" \
+    "$LAUNCHER" --output "$AGENT_OUTPUT" --timeout 5 \
+        --agent-file "$REPO_ROOT/agents/reviewer-correctness-edges.md" --mode diff >/dev/null
+if grep -Fq -- 'HARD CONSTRAINTS — your role is read-only review' "$AGENT_ARGV"; then
+    pass
+else
+    fail "--agent-file run must apply the HARD CONSTRAINTS preamble to the codex argv"
+fi
+if grep -Fq -- 'Correctness, Edge Cases, and Failure Recovery' "${AGENT_OUTPUT}.prompt"; then
+    pass
+else
+    fail "--agent-file OUTPUT.prompt sidecar must contain specialist-rendered body"
+fi
+if grep -Fq -- 'HARD CONSTRAINTS' "${AGENT_OUTPUT}.prompt"; then
+    fail "--agent-file OUTPUT.prompt sidecar must NOT include the preamble"
+else
+    pass
+fi
+AGENT_RETRY_ARGV="$TMPDIR/agent-file-retry-argv.txt"
+AGENT_RETRY_COUNT="$TMPDIR/agent-file-retry-count.txt"
+PATH="$STUB_BIN:$PATH" \
+    CODEX_STUB_ARGV_LOG="$AGENT_RETRY_ARGV" \
+    CODEX_STUB_COUNT_FILE="$AGENT_RETRY_COUNT" \
+    "$LAUNCHER" --output "$TMPDIR/agent-file-retry-output.txt" --timeout 5 \
+        --prompt-file "${AGENT_OUTPUT}.prompt" >/dev/null
+AGENT_PREAMBLE_COUNT_RETRY=$(grep -Fc -- 'HARD CONSTRAINTS — your role is read-only review' "$AGENT_RETRY_ARGV" || true)
+if [[ "$AGENT_PREAMBLE_COUNT_RETRY" == "1" ]]; then
+    pass
+else
+    fail "--agent-file replay via --prompt-file must produce exactly 1 preamble in argv; got $AGENT_PREAMBLE_COUNT_RETRY"
 fi
 
 if command -v jq >/dev/null 2>&1; then

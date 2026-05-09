@@ -153,12 +153,36 @@ if [[ "$_src_count" -eq 0 ]]; then
     exit 2
 fi
 
-if cursor_launcher_load_model_args; then
+MODEL_ARGS_ERR=$(mktemp)
+if cursor_launcher_load_model_args 2> "$MODEL_ARGS_ERR"; then
     :
 else
     rc=$?
+    _emit_timing_record "$rc"
+    : > "$OUTPUT" 2>/dev/null || true
+    {
+        printf 'STATUS=FAILED\n'
+        printf 'FAILURE_REASON=cursor_launcher_load_model_args failed (exit %s): %s\n' \
+            "$rc" "$(head -1 "$MODEL_ARGS_ERR" 2>/dev/null | tr '\n' ' ')"
+    } > "${OUTPUT}.diag" 2>/dev/null || true
+    rm -f "$MODEL_ARGS_ERR"
+    {
+        printf 'TOOL=cursor\n'
+        printf 'TIMEOUT=%s\n' "$TIMEOUT"
+        printf 'CAPTURE_STDOUT=false\n'
+        printf 'CAPTURE_STDOUT_ONLY=true\n'
+        printf 'OUTPUT_FILE=%s\n' "$OUTPUT"
+        printf 'CMD_JSON=[]\n'
+    } > "${OUTPUT}.meta" 2>/dev/null || true
+    _ma_dts_tmp="${OUTPUT}.dirty-tree.tmp.$$"
+    printf 'STATUS=unknown\nMODE=baseline\nUNTRACKED_BASELINE=missing\nREASON=model-args-preflight-no-agent-ran\n' \
+        > "$_ma_dts_tmp" 2>/dev/null && \
+        mv -f "$_ma_dts_tmp" "${OUTPUT}.dirty-tree" 2>/dev/null || \
+        rm -f "$_ma_dts_tmp" 2>/dev/null || true
+    printf '%s\n' "$rc" > "${OUTPUT}.done" 2>/dev/null || true
     exit "$rc"
 fi
+rm -f "$MODEL_ARGS_ERR"
 
 WRAPPER_PID=""
 DIRTY_TREE_WRITTEN=false

@@ -116,7 +116,7 @@ if [[ -n "$BASELINE" ]] && [[ -r "$BASELINE" ]]; then
         GIT_PROBE_FAILED="true"
         CURRENT=""
     fi
-    UNTRACKED_DELTA=$(comm -23 <(printf '%s\n' "$CURRENT") <(LC_ALL=C sort "$BASELINE") | sed '/^$/d' || echo "")
+    UNTRACKED_DELTA=$(comm -23 <(printf '%s\n' "$CURRENT") <(LC_ALL=C sort -- "$BASELINE") | sed '/^$/d' || echo "")
 fi
 
 FILES_CHANGED="false"

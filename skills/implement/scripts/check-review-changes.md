@@ -34,7 +34,7 @@ In **default mode** (no `--strict`), `FILES_CHANGED=true` if and only if any of:
 - `git diff --name-only --cached` (staged) is non-empty
 - `UNTRACKED_BASELINE=present` AND the untracked delta is non-empty
 
-The untracked delta is `comm -23 <(current-sorted) <(baseline-sorted)` — paths in the current untracked set that were NOT in the pre-/review snapshot.
+The untracked delta is `comm -23 <(current-sorted) <(baseline-sorted)` — paths in the current untracked set that were NOT in the pre-/review snapshot. The baseline sort uses `sort -- "$BASELINE"` so a dash-prefixed baseline path is treated as an operand, not as a `sort` flag.
 
 **`--strict` mode adds a fail-closed override**: when `--strict` is set AND `GIT_PROBE_FAILED=true`, `FILES_CHANGED` is forced to `true` regardless of whether any of the three signals above is non-empty. The fail-closed override lets the caller treat unknown working-tree state as may-have-changed instead of silently skipping the post-/review checks pass on a transient git outage.
 

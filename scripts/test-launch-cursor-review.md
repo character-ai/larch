@@ -26,6 +26,12 @@ effects.
   the outer launcher instead of the inner `cursor agent` command.
 - `${OUTPUT}.prompt` stores the original unwrapped prompt byte-for-byte, and
   `--prompt-file` preserves trailing newlines through the max-mode wrapper.
+- Specialist `--agent-file ... --mode diff` prompts store the specialist-rendered
+  body in `${OUTPUT}.prompt` without the hardening preamble, and replaying that
+  sidecar with `--prompt-file` yields exactly one preamble in Cursor argv.
+- Model-args preflight failure exits wrapper-level 0 with the five-line
+  `LAUNCHER_EXIT` / manifest / QA / transcript / sidecar KV envelope and
+  truncates stale `${OUTPUT}.sidecar` bytes before writing diagnostics.
 - `${OUTPUT}.dirty-tree` is published before public completion and carries the
   baseline-mode `check-mid-run-dirty-tree.sh` contract; auth-preflight
   short-circuit publishes `STATUS=unknown` with

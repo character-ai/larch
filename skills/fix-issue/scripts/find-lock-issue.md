@@ -12,7 +12,7 @@
 
 2. **Pre-lock dirty-tree probe** — immediately before either lock delegate runs, the script calls `scripts/check-clean-tree.sh --fail-closed`. A dirty tree exits 2 with `ERROR=Working tree is not clean. Commit or stash changes, then re-run /fix-issue. No issue was locked.` A failed `git status --porcelain` probe exits 2 with `ERROR=Cannot determine working-tree cleanliness: ...`. This probe is intentionally local-only: it does not fetch, rebase, create a session tmpdir, or mutate `larch-stalled-run.txt`.
 
-   The probe is intentionally fail-closed here, unlike `scripts/preflight.sh`'s clean check, which calls the same helper in default fail-open mode to preserve historical setup behavior. Do not reintroduce `2>/dev/null` around this pre-lock probe; doing so would silently reopen the dirty-tree-after-lock failure class.
+   The probe is fail-closed here. `scripts/preflight.sh` also calls the same helper with `--fail-closed` (wrapped in `|| true` for `set -e` compatibility), so both callers share fail-closed semantics. Do not reintroduce `2>/dev/null` around this pre-lock probe; doing so would silently reopen the dirty-tree-after-lock failure class.
 
 3. **Lock** — branches on whether the candidate is an ordinary issue or an umbrella-dispatched child:
    - **Ordinary issue**: delegates to `skills/fix-issue/scripts/issue-lifecycle.sh comment --issue $N --body "IN PROGRESS" --lock`. Same byte-for-byte behavior as before.

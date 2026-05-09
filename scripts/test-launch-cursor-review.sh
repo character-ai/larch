@@ -181,6 +181,44 @@ else
     pass
 fi
 
+# Case C2: model-args preflight failure synthesizes .done/.diag/.meta and
+# dirty-tree sidecar artifacts (matching the cursor-auth-preflight pattern)
+# so collect-agent-results.sh detects failure promptly without waiting for
+# the collector timeout.
+OUT_C2="$TMPDIR/cursor-c2.txt"
+set +e
+PATH="$STUB_BIN:$PATH" \
+    LARCH_CURSOR_MODEL=$'bad\nmodel' \
+    "$LAUNCHER" --output "$OUT_C2" --timeout 5 --prompt "case c2" >/dev/null 2>"$TMPDIR/case-c2.stderr"
+CODE_C2=$?
+set -e
+if [[ "$CODE_C2" -ne 0 ]]; then
+    pass
+else
+    fail "case C2 wrapper must exit non-zero on model-args preflight failure"
+fi
+if [[ -s "${OUT_C2}.done" ]]; then
+    pass
+else
+    fail "case C2 preflight failure must write non-empty .done sentinel"
+fi
+if [[ -s "${OUT_C2}.diag" ]] && grep -Fq 'STATUS=FAILED' "${OUT_C2}.diag"; then
+    pass
+else
+    fail "case C2 preflight failure must write .diag with STATUS=FAILED"
+fi
+assert_grep "case C2 diag diagnostic" "cursor_launcher_load_model_args failed" "${OUT_C2}.diag"
+if [[ -s "${OUT_C2}.meta" ]] && grep -Fq 'CMD_JSON=[]' "${OUT_C2}.meta"; then
+    pass
+else
+    fail "case C2 preflight failure must write stub .meta with CMD_JSON=[]"
+fi
+if [[ -s "${OUT_C2}.dirty-tree" ]] && grep -Fq 'STATUS=unknown' "${OUT_C2}.dirty-tree"; then
+    pass
+else
+    fail "case C2 preflight failure must write unknown dirty-tree sidecar"
+fi
+
 OUT_TOKEN="$TMPDIR/cursor-token.txt"
 TOKEN_SESSION_FILE="$TMPDIR/cursor-token-session.txt"
 IMPLEMENT_TMPDIR_FIXTURE="$TMPDIR/implement-tmpdir"
@@ -507,6 +545,48 @@ if [[ "$(cat "${OUT_AK1}.prompt")" == "case ak1" ]]; then
     pass
 else
     fail "issue #1529 OUTPUT.prompt sidecar must equal the user-original prompt"
+fi
+
+# Case AK1S: specialist --agent-file mode renders the agent body before the
+# hardening preamble is applied, stores only that rendered body in the prompt
+# sidecar, and replaying the sidecar via --prompt-file produces exactly one
+# preamble.
+OUT_AK1S="$TMPDIR/cursor-ak1s.txt"
+ARGV_LOG_AK1S="$TMPDIR/cursor-ak1s-argv.log"
+PATH="$STUB_BIN:$PATH" \
+    CURSOR_API_KEY="ak1-test-key-789" \
+    CURSOR_STUB_ARGV_LOG="$ARGV_LOG_AK1S" \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux \
+    "$LAUNCHER" --output "$OUT_AK1S" --timeout 5 \
+        --agent-file "$REPO_ROOT/agents/reviewer-correctness-edges.md" --mode diff \
+        >/dev/null 2>"$TMPDIR/case-ak1s.stderr"
+if grep -Fq -- 'HARD CONSTRAINTS — your role is read-only review' "$ARGV_LOG_AK1S"; then
+    pass
+else
+    fail "case AK1S specialist argv must carry the HARD CONSTRAINTS preamble"
+fi
+if grep -Fq -- 'Correctness, Edge Cases, and Failure Recovery' "${OUT_AK1S}.prompt"; then
+    pass
+else
+    fail "case AK1S prompt sidecar must contain specialist-rendered body"
+fi
+if grep -Fq -- 'HARD CONSTRAINTS' "${OUT_AK1S}.prompt"; then
+    fail "case AK1S prompt sidecar must NOT contain the hardening preamble"
+else
+    pass
+fi
+ARGV_LOG_AK1S_RETRY="$TMPDIR/cursor-ak1s-retry-argv.log"
+PATH="$STUB_BIN:$PATH" \
+    CURSOR_API_KEY="ak1-test-key-789" \
+    CURSOR_STUB_ARGV_LOG="$ARGV_LOG_AK1S_RETRY" \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux \
+    "$LAUNCHER" --output "$TMPDIR/cursor-ak1s-retry.txt" --timeout 5 \
+        --prompt-file "${OUT_AK1S}.prompt" >/dev/null 2>"$TMPDIR/case-ak1s-retry.stderr"
+AK1S_PREAMBLE_COUNT_RETRY=$(grep -Fc -- 'HARD CONSTRAINTS — your role is read-only review' "$ARGV_LOG_AK1S_RETRY" || true)
+if [[ "$AK1S_PREAMBLE_COUNT_RETRY" == "1" ]]; then
+    pass
+else
+    fail "case AK1S specialist replay via --prompt-file must produce exactly 1 preamble in argv; got $AK1S_PREAMBLE_COUNT_RETRY"
 fi
 
 # Case AK1B (issue #1583): LARCH_CURSOR_SANDBOX is now a no-op; the env var

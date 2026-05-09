@@ -750,7 +750,9 @@ HARD CONSTRAINTS — your role is read-only review. You MUST NOT modify the work
 The launcher enforces this with a working-tree snapshot guard: any mutation triggers a loud failure and a revert, regardless of how the mutation was performed.
 EOF
 )
+ORIGINAL_PROMPT="$PROMPT"
 PROMPT="${GEMINI_REVIEW_HARDENING_PREAMBLE}"$'\n\n'"${PROMPT}"
+printf '%s' "$ORIGINAL_PROMPT" > "${OUTPUT}.prompt"
 
 GEMINI_MODEL_ERR=$(mktemp "${OUTPUT}.gemini-model.tmp.XXXXXX")
 if GEMINI_MODEL=$(resolve_gemini_model 2> "$GEMINI_MODEL_ERR"); then

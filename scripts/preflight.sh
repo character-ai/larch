@@ -37,17 +37,16 @@ if [[ "$SKIP_BRANCH_CHECK" == "false" ]]; then
     fi
 fi
 
-# Check clean status. We delegate to check-clean-tree.sh (default fail-open
-# mode) but preserve the helper's stderr — the contract documented in
-# scripts/check-clean-tree.md promises raw `git status --porcelain` failure
-# diagnostics to operators, and previous `2>/dev/null` suppression broke
-# that promise on the preflight path. Empty / unknown CLEAN values are
-# treated as the dirty branch (fail-closed against partial helper output)
-# rather than silently continuing — a missing `CLEAN=` line means we
-# could not confirm cleanliness, which is operationally identical to a
-# dirty tree for preflight's gate purposes.
+# Check clean status. We delegate to check-clean-tree.sh in explicit
+# --fail-closed mode while preserving the helper's stderr — the contract
+# documented in scripts/check-clean-tree.md promises raw
+# `git status --porcelain` failure diagnostics to operators, and previous
+# `2>/dev/null` suppression broke that promise on the preflight path.
+# Keep `|| true` so `set -e` does not bypass the structured PREFLIGHT=fail
+# branch below. Empty / unknown CLEAN values are treated as dirty rather than
+# silently continuing, matching the helper's fail-closed intent.
 if [[ "$SKIP_CLEAN_CHECK" == "false" ]]; then
-    CLEAN_TREE_OUT=$("$SCRIPT_DIR/check-clean-tree.sh" || true)
+    CLEAN_TREE_OUT=$("$SCRIPT_DIR/check-clean-tree.sh" --fail-closed || true)
     CLEAN_TREE=$(echo "$CLEAN_TREE_OUT" | awk -F= '/^CLEAN=/ { v=$2 } END { print v }')
     case "$CLEAN_TREE" in
         true)

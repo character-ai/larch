@@ -228,12 +228,37 @@ PROMPT_FILE_SIDECAR="${OUTPUT}.prompt"
 printf '%s' "$ORIGINAL_PROMPT" > "$PROMPT_FILE_SIDECAR"
 rm -f "$DIRTY_TREE_SIDECAR" "$UNTRACKED_BASELINE" "${DIRTY_TREE_SIDECAR}.tracked-paths" "${DIRTY_TREE_SIDECAR}.new-untracked-paths"
 "$SCRIPT_DIR/snapshot-untracked.sh" --output "$UNTRACKED_BASELINE" --nul
-if "$SCRIPT_DIR/agent-model-args.sh" --tool codex --with-effort > "$MODEL_ARGS_TMP"; then
+MODEL_ARGS_ERR=$(mktemp)
+if "$SCRIPT_DIR/agent-model-args.sh" --tool codex --with-effort > "$MODEL_ARGS_TMP" 2> "$MODEL_ARGS_ERR"; then
     :
 else
     rc=$?
+    _emit_timing_record "$rc"
+    rm -f "$MODEL_ARGS_TMP"
+    _codex_ma_dts_tmp="${OUTPUT}.dirty-tree.tmp.$$"
+    printf 'STATUS=unknown\nMODE=baseline\nUNTRACKED_BASELINE=missing\nREASON=model-args-preflight-no-agent-ran\n' \
+        > "$_codex_ma_dts_tmp" 2>/dev/null && \
+        mv -f "$_codex_ma_dts_tmp" "${OUTPUT}.dirty-tree" 2>/dev/null || \
+        rm -f "$_codex_ma_dts_tmp" 2>/dev/null || true
+    : > "$OUTPUT" 2>/dev/null || true
+    {
+        printf 'STATUS=FAILED\n'
+        printf 'FAILURE_REASON=agent-model-args.sh failed (exit %s): %s\n' \
+            "$rc" "$(head -1 "$MODEL_ARGS_ERR" 2>/dev/null | tr '\n' ' ')"
+    } > "${OUTPUT}.diag" 2>/dev/null || true
+    rm -f "$MODEL_ARGS_ERR"
+    {
+        printf 'TOOL=codex\n'
+        printf 'TIMEOUT=%s\n' "$TIMEOUT"
+        printf 'CAPTURE_STDOUT=false\n'
+        printf 'OUTPUT_FILE=%s\n' "$OUTPUT"
+        printf 'CMD_JSON=[]\n'
+    } > "${OUTPUT}.meta" 2>/dev/null || true
+    printf '%s\n' "$rc" > "${OUTPUT}.done" 2>/dev/null || true
+    trap - EXIT
     exit "$rc"
 fi
+rm -f "$MODEL_ARGS_ERR"
 MODEL_ARGS=()
 while IFS= read -r arg; do
     MODEL_ARGS+=("$arg")
