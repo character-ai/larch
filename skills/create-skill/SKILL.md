@@ -173,32 +173,14 @@ Construct a concise feature description for `/im`:
 - Template: `multi-step` if `MULTI_STEP=true`, else `minimal`.
 - Feature-spec file path: `<RAW_DESC_FILE_PATH>` is the **resolved absolute path** of `$RAW_DESC_FILE` (e.g. `/tmp/create-skill-raw-desc-XXXXXX.txt`) captured at Step 1.4 — substitute the actual filesystem path here, NOT the literal variable name `$RAW_DESC_FILE`. The renderer's `--feature-spec-file` flag (#568) reads this file's content (raw passthrough — multi-line preserved) and emits it as the body's opening paragraph. Without this substitution, the implementing agent would invoke `render-skill-md.sh --feature-spec-file "$RAW_DESC_FILE"` literally and the file-existence check would fail with `ERROR=Cannot read --feature-spec-file: $RAW_DESC_FILE`.
 
-Feature description template (fill placeholders from the parsed values; note `<FRONTMATTER_DESCRIPTION>` is the validated single-line frontmatter from Step 1.5/1.6 and `<FEATURE_SPEC>` is the original raw description carried as a feature brief — these are TWO DISTINCT slots):
+Feature description template (fill placeholders; `<FRONTMATTER_DESCRIPTION>` and `<FEATURE_SPEC>` are TWO DISTINCT slots):
 
-```
-Scaffold new skill /<NAME> at <TARGET_DIR>. Frontmatter description: "<FRONTMATTER_DESCRIPTION>". Path mode: <plugin-dev|consumer>. Template: <minimal|multi-step>.
-
-Feature spec for the new skill (verbatim user input — multi-line allowed):
-<FEATURE_SPEC>
-
-Use ${CLAUDE_PLUGIN_ROOT}/skills/create-skill/scripts/render-skill-md.sh to write the scaffold:
-  render-skill-md.sh --name "<NAME>" --description "<FRONTMATTER_DESCRIPTION>" \
-    --target-dir "<TARGET_DIR>" \
-    --local-token "<LOCAL_TOKEN>" --plugin-token "${CLAUDE_PLUGIN_ROOT}" \
-    --multi-step <MULTI_STEP> \
-    --feature-spec-file "<RAW_DESC_FILE_PATH>"
-
-After scaffolding, run ${CLAUDE_PLUGIN_ROOT}/skills/create-skill/scripts/post-scaffold-hints.sh --target-dir "<TARGET_DIR>" --plugin <PLUGIN>. The hints script is the single source of truth for the post-scaffold doc-sync checklist — execute every reminder it emits verbatim (including README Skills catalog row + the docs/configuration-and-permissions.md "Strict-permissions consumers — Skill permission entries" subsection pointer, .claude/settings.json dual-form Skill permission entries with `sort -u`, docs/workflow-lifecycle.md orchestration/delegation/standalone updates, docs/agents.md, docs/review-agents.md, AGENTS.md Canonical sources, and any additional lines the hints script prints). Include the hints output verbatim in the PR body under a "Post-scaffold sync checklist" section.
-
-The renderer mechanically scaffolds the body from `--feature-spec-file`'s content (the raw `<FEATURE_SPEC>` written to `<RAW_DESC_FILE_PATH>` at Step 1.4); use <FRONTMATTER_DESCRIPTION> ONLY for the YAML frontmatter `description:` field via `render-skill-md.sh --description`. On the verbatim path the two slots carry the same string; on the synthesis path <FRONTMATTER_DESCRIPTION> is a one-line `Use when…` distillation of <FEATURE_SPEC>, both validated. The implementing agent then evolves the scaffolded body into the real skill — the renderer-provided opening paragraph is a starting point, not the final body.
-
-The full CLI grammar, body-vs-frontmatter contract, output-channel split (`RENDERED=` on stdout / `ERROR=` on stderr), backward-compat semantics, and edit-in-sync rules for `render-skill-md.sh` live in the sibling contract at `${CLAUDE_PLUGIN_ROOT}/skills/create-skill/scripts/render-skill-md.md`.
-
-MUST read ${CLAUDE_PLUGIN_ROOT}/skills/shared/skill-design-principles.md (full file) before writing any code. Section III mechanical rules A/B/C below override Section IV writing-style guidance on conflict:
-  A. Content and logic live in .sh scripts — shared at ${CLAUDE_PLUGIN_ROOT}/scripts/ when reusable, private at ${CLAUDE_PLUGIN_ROOT}/skills/<NAME>/scripts/ otherwise. Grep existing scripts/ before creating a new one.
-  B. No direct Bash-tool commands in SKILL.md — every shell command is a .sh wrapper call; no inline pipelines, loops, or multi-line `bash -c`.
-  C. No consecutive Bash-tool calls per step — combine multi-action steps into one coordinator .sh that invokes the individual scripts internally.
-```
+- Opening line: `Scaffold new skill /<NAME> at <TARGET_DIR>. Frontmatter description: "<FRONTMATTER_DESCRIPTION>". Path mode: <plugin-dev|consumer>. Template: <minimal|multi-step>.`
+- `Feature spec for the new skill (verbatim user input — multi-line allowed):` followed by `<FEATURE_SPEC>`
+- `render-skill-md.sh` invocation: `--name "<NAME>" --description "<FRONTMATTER_DESCRIPTION>" --target-dir "<TARGET_DIR>" --local-token "<LOCAL_TOKEN>" --plugin-token "${CLAUDE_PLUGIN_ROOT}" --multi-step <MULTI_STEP> --feature-spec-file "<RAW_DESC_FILE_PATH>"`
+- After scaffolding, run `post-scaffold-hints.sh --target-dir "<TARGET_DIR>" --plugin <PLUGIN>` and execute every hint verbatim (README catalog row, docs/configuration-and-permissions.md Strict-permissions entry, .claude/settings.json dual-form entries with `sort -u`, docs/workflow-lifecycle.md, docs/agents.md, docs/review-agents.md, AGENTS.md Canonical sources). Include hints output in the PR body under "Post-scaffold sync checklist".
+- Note: renderer uses `<FRONTMATTER_DESCRIPTION>` ONLY for the `description:` frontmatter field; on the synthesis path it is a one-line `Use when…` distillation of `<FEATURE_SPEC>`. Contract in `render-skill-md.md`.
+- `MUST read ${CLAUDE_PLUGIN_ROOT}/skills/shared/skill-design-principles.md` (full file). Section III mechanical rules A/B/C (scripts-not-SKILL.md, no inline Bash, no consecutive Bash calls) override Section IV on conflict.
 
 Print: `**Create-skill /<NAME> (<plugin-dev|consumer>, <minimal|multi-step>) — delegating to /im --quick --auto [--slack]**` (omit `--slack` when `SLACK=false`). `/im` auto-merges; `--merge` on `/create-skill` is a backward-compat no-op and is not forwarded.
 
