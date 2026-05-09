@@ -202,6 +202,9 @@ Compose the feature description from the issue content: use the issue title as t
 
 Invoke `/implement` via the Skill tool. Forwarding `--issue $ISSUE_NUMBER` makes `/implement` adopt the queue issue as its tracking issue (Phase 3 Branch 2 adoption), so the two skills converge on the same tracking issue and `/fix-issue` avoids a duplicate tracking-issue on its path:
 
+- **SIMPLE**: `/implement --quick --merge --session-env $FIX_ISSUE_TMPDIR/session-env.sh --issue $ISSUE_NUMBER [--auto if auto_mode] [--no-admin-fallback if no_admin_fallback] [--coder=$coder if coder set] <feature description>`
+- **HARD**: `/implement --merge --session-env $FIX_ISSUE_TMPDIR/session-env.sh --issue $ISSUE_NUMBER [--auto if auto_mode] [--no-admin-fallback if no_admin_fallback] [--coder=$coder if coder set] [--inline if inline_mode] [--quick if quick_mode] <feature description>`
+
 After `/implement` completes, capture the PR URL and PR number from its output. Save as `PR_URL` and `PR_NUMBER`.
 
 > **Continue after child returns (success path only).** If `/implement` succeeded and `PR_URL` / `PR_NUMBER` are captured, your next user-facing output MUST be the Step 6 breadcrumb (`> **🔶 6: close issue**`) — do NOT write a summary, status recap, or "returning to caller" message first. If `/implement` failed or bailed, ignore this directive and follow the failure-path branch below. See `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Anti-halt continuation reminder.
