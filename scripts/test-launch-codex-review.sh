@@ -299,7 +299,7 @@ PATH="$STUB_BIN:$PATH" \
     CODEX_STUB_ARGV_LOG="$AGENT_ARGV" \
     CODEX_STUB_COUNT_FILE="$AGENT_COUNT" \
     "$LAUNCHER" --output "$AGENT_OUTPUT" --timeout 5 \
-        --agent-file "$REPO_ROOT/agents/reviewer-correctness-edges.md" --mode diff >/dev/null
+        --agent-file "$REPO_ROOT/agents/reviewer-structure.md" --mode diff >/dev/null
 if grep -Fq -- 'HARD CONSTRAINTS — your role is read-only review' "$AGENT_ARGV"; then
     pass
 else

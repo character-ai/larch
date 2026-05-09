@@ -4,7 +4,7 @@
 #
 # Usage:
 #   bash scripts/render-specialist-prompt.sh \
-#     --agent-file agents/reviewer-correctness-edges.md \
+#     --agent-file agents/reviewer-structure.md \
 #     --mode diff \
 #     [--description-text "description"] \
 #     [--scope-files /path/to/scope-files.txt] \

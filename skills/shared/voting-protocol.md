@@ -20,7 +20,7 @@ FINDING_2: <reviewer attribution> — <finding description>
 ...
 ```
 
-Include the reviewer attribution so voters have context, but instruct voters to evaluate each finding on its merits regardless of who proposed it. Attribution labels are skill-specific: `/design` uses `Code` / `Codex` / `Cursor` (3-reviewer panel); `/review` uses specialist labels (`Correctness-Edges`, `Security-Structure-Tests`, `Codex`) for its 3-reviewer panel. `/research` does not participate in voting — it uses the Negotiation Protocol instead.
+Include the reviewer attribution so voters have context, but instruct voters to evaluate each finding on its merits regardless of who proposed it. Attribution labels are skill-specific: `/design` uses `Code` / `Codex` / `Cursor` (3-reviewer panel); `/review` uses specialist labels (`Structure`, `Correctness`, `Testing`, `Security`, `Edge-cases`, `Codex`, `Claude-Generic`) for its 7-reviewer panel. `/research` does not participate in voting — it uses the Negotiation Protocol instead.
 
 ## Voter Output Format
 
@@ -187,7 +187,7 @@ After voting, print a scoreboard to the session:
 | _label2_ | 2        | 1        | 0               | 1                             | 0                         | 0            | 0            | +1    |
 | _label3_ | 2        | 1        | 1               | 0                             | 0                         | 0            | 0            | +1    |
 
-Attribution labels are skill-specific (e.g., `/design` uses `Code`/`Codex`/`Cursor`; `/review` uses `Correctness-Edges`/`Security-Structure-Tests`/`Codex`). One row per independent reviewer. In future iterations, token allocation will be weighted proportionally to reviewer scores.
+Attribution labels are skill-specific (e.g., `/design` uses `Code`/`Codex`/`Cursor`; `/review` uses `Structure`/`Correctness`/`Testing`/`Security`/`Edge-cases`/`Codex`/`Claude-Generic`). One row per independent reviewer. In future iterations, token allocation will be weighted proportionally to reviewer scores.
 ```
 
 ## Out-of-Scope Observations

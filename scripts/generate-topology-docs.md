@@ -28,7 +28,7 @@ Registered in `scripts/generators.tsv` as the row `scripts/generate-topology-doc
 
 ## Out Of Scope
 
-Quick-mode `/implement` reviewer-loop phrases (`7 rounds`, `rounds 1-3`, `2 Cursor specialists`, `generic Codex`, and adjacent public-doc markers) are excluded from `skills/shared/topology.tsv`. They are owned by `scripts/test-quick-mode-docs-sync.sh` and its sibling contract.
+Quick-mode `/implement` reviewer-loop phrases (`7 rounds`, `rounds 1-3`, `5 Cursor specialists`, `generic Codex`, and adjacent public-doc markers) are excluded from `skills/shared/topology.tsv`. They are owned by `scripts/test-quick-mode-docs-sync.sh` and its sibling contract.
 
 ## Edit In Sync
 

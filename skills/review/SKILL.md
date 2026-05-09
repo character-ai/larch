@@ -7,7 +7,7 @@ allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task
 
 # Code Review Skill
 
-Review code changes using a 3-reviewer specialist panel (2 Cursor specialists + 1 Codex generic). Two modes: **diff mode** (`--diff`) reviews the current branch diff vs `main` and implements accepted suggestions; **description mode** (positional `<description>`) reviews existing code matching the description and files accepted findings as GitHub issues by default (`--no-issues` to suppress). Claude is not a reviewer but participates as a voter in the 3-voter adjudication panel.
+Review code changes using a 7-reviewer specialist panel (5 Cursor specialists + 1 Codex generic + 1 Claude generic). Two modes: **diff mode** (`--diff`) reviews the current branch diff vs `main` and implements accepted suggestions; **description mode** (positional `<description>`) reviews existing code matching the description and files accepted findings as GitHub issues by default (`--no-issues` to suppress). Claude is not a reviewer but participates as a voter in the 3-voter adjudication panel.
 
 **Anti-halt continuation reminder.** After every child `Skill` tool call (e.g., `/design`, `/review`, `/bump-version`, `/issue`, `/implement`) returns AND after every `Bash` tool call that completes a numbered step or sub-step, including `run-relevant-checks-captured.sh`, IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on the child's cleanup output, on a Bash result, or on a status message, and do NOT write a summary, handoff, status recap, or "returning to parent" message — those are halts in disguise. This applies to ALL step boundaries from Step 0 through Step 5, and to ALL sub-step transitions within Step 3's review loop (3a→3b→3c→3d→3e→3f→loop back to Step 1). **Critical: in diff mode, the review loop (Steps 1→2→3) repeats until convergence (0 findings, or Step 3f classifies the just-fixed round as non-substantial — a main-agent classification of accepted-and-fixed work, not a reading of reviewer prose) or the 7-round safety limit — completing one round's substantial fixes does NOT mean the review is done.** The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `skip to Step N`, `bail to cleanup`, `jump back`, `loop back`, `fall through`, `break out`). A normal sequential `proceed to Step N+1` instruction is the default continuation this rule reinforces, NOT an exception. Every relevant-checks helper call anywhere in this file is covered by this rule. See `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Anti-halt continuation reminder for the canonical rule.
 
@@ -56,7 +56,7 @@ Step Name Registry:
 After launching all reviewers (Step 2), maintain a mental tracker of each reviewer's status. Print a compact table after EACH status change:
 
 ```
-📊 Reviewers: | Correctness-Edges: ✅ 3m12s | Security-Structure-Tests: ⏳ | Codex: ⏳ |
+📊 Reviewers: | Structure: ✅ 3m12s | Correctness: ⏳ | Testing: ⏳ | Security: ⏳ | Edge-cases: ⏳ | Codex: ⏳ | Claude-Generic: ✅ 2m30s |
 ```
 
 Icons: ✅ done (with elapsed time since launch), ⏳ pending/in-progress, ❌ failed/timeout (with elapsed time since launch), ⊘ skipped (unavailable for replacement-style reviewers only). See `${CLAUDE_PLUGIN_ROOT}/skills/shared/progress-reporting.md` for elapsed time and step start formatting rules.
@@ -144,46 +144,43 @@ SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=review "${CLAUDE_PLUGIN_
 
 ### Reviewer panel composition
 
-The panel has 3 reviewers: **2 specialist reviewers** + **1 generic Codex reviewer**. Each specialist concentrates on a combined focus area using personality definitions from `${CLAUDE_PLUGIN_ROOT}/agents/reviewer-*.md`, rendered into tool-specific prompts by `${CLAUDE_PLUGIN_ROOT}/scripts/render-specialist-prompt.sh`.
+The panel has 7 reviewers: **5 specialist reviewers** + **1 generic Codex reviewer** + **1 Claude generic reviewer**. Each specialist concentrates on a narrow focus area using personality definitions from `${CLAUDE_PLUGIN_ROOT}/agents/reviewer-*.md`, rendered into tool-specific prompts by `${CLAUDE_PLUGIN_ROOT}/scripts/render-specialist-prompt.sh`.
 
-The 2 specialists and their attribution labels:
+The 5 specialists and their attribution labels:
 
 | Specialist | Agent file | Attribution label |
 |---|---|---|
-| Correctness/Edge-cases/Failure-recovery | `agents/reviewer-correctness-edges.md` | `Correctness-Edges` |
-| Security/Structure/Tests-CI-Regression | `agents/reviewer-security-structure-tests.md` | `Security-Structure-Tests` |
+| Structure/KISS/Maintainability | `agents/reviewer-structure.md` | `Structure` |
+| Correctness/Logic/Error-paths | `agents/reviewer-correctness.md` | `Correctness` |
+| Tests/CI/Regression | `agents/reviewer-testing.md` | `Testing` |
+| Security/Trust-boundaries | `agents/reviewer-security.md` | `Security` |
+| Edge-cases/Failure-recovery | `agents/reviewer-edge-cases.md` | `Edge-cases` |
 
-The generic Codex reviewer uses attribution label `Codex`.
+The generic Codex reviewer uses attribution label `Codex`. The Claude generic reviewer uses attribution label `Claude-Generic`.
 
-**Description mode is unchanged**: single round, no implement loop, not affected by the round-state machine below. Description mode launches the full 3-reviewer panel for its single round.
+**Description mode is unchanged**: single round, no implement loop, not affected by the round-state machine below. Description mode launches the full 7-reviewer panel for its single round.
 
 ### Fallback matrix
 
-| Cursor | Codex | Specialist slots (2) | Required generic slot (1) | Total |
-|---|---|---|---|---|
-| ✅ | ✅ | 2x Cursor specialist (`cursor-specialist-{name}-output.txt`) | 1x Codex generic (`codex-output.txt`) | 3 |
-| ❌ | ✅ | 2x Codex specialist (`codex-specialist-{name}-output.txt`) | 1x Codex generic (`codex-output.txt`) | 3 |
-| ✅ | ❌ | 2x Cursor specialist (`cursor-specialist-{name}-output.txt`) | 1x Claude generic (Agent tool, `larch:code-reviewer`, `"sonnet"`) | 3 |
-| ❌ | ❌ | — | 1x Claude generic (Agent tool, `larch:code-reviewer`, `"sonnet"`) | 1 |
+| Cursor | Codex | Specialist slots (5) | Required generic slot | Claude generic | Total |
+|---|---|---|---|---|---|
+| ✅ | ✅ | 5x Cursor specialist (`cursor-specialist-{name}-output.txt`) | 1x Codex generic (`codex-output.txt`) | 1x Claude generic (Agent tool) | 7 |
+| ❌ | ✅ | — | 1x Codex generic (`codex-output.txt`) | 1x Claude generic (Agent tool) | 2 |
+| ✅ | ❌ | 5x Cursor specialist (`cursor-specialist-{name}-output.txt`) | — | 1x Claude generic (Agent tool) | 6 |
+| ❌ | ❌ | — | — | 1x Claude generic (Agent tool, `larch:code-reviewer`, `"sonnet"`) | 1 |
 
 **Partial specialist failure**: if `collect-agent-results.sh` reports `STATUS != OK` for an individual specialist slot, follow Runtime Timeout Fallback for that slot's tool only — flip the tool to unavailable for the session. The round proceeds with whichever specialists returned valid output. Do NOT retry individual slots within the same round.
 
 ### Launch procedure
 
-Launch **all reviewers in a single message**. Spawn order: specialist slots first (slowest), then Codex generic.
+Launch **all reviewers in a single message**. Spawn order: specialist slots first (slowest), then Codex generic, then Claude generic.
 
-**2 specialist slots** — for each specialist (`correctness-edges`, `security-structure-tests`), determine which tool to use per the fallback matrix and invoke the appropriate launch wrapper. The wrappers handle prompt rendering (`render-specialist-prompt.sh`), model args (`agent-model-args.sh`), and prompt wrapping (`cursor-wrap-prompt.sh` for Cursor) internally:
+**5 specialist slots** — for each specialist (`structure`, `correctness`, `testing`, `security`, `edge-cases`), only launch when `cursor_available`. When `cursor_available` is false, skip all specialist slots (use only the generic Codex + Claude generic). The wrappers handle prompt rendering (`render-specialist-prompt.sh`), model args (`agent-model-args.sh`), and prompt wrapping (`cursor-wrap-prompt.sh` for Cursor) internally:
 
-**Cursor specialist** (if `cursor_available`; set `CURSOR_SPECIALIST_TIMING_KIND=cursor-specialist-<name>` with `<name>` replaced by `correctness-edges` or `security-structure-tests`):
+**Cursor specialist** (if `cursor_available`; set `CURSOR_SPECIALIST_TIMING_KIND=cursor-specialist-<name>` with `<name>` replaced by `structure`, `correctness`, `testing`, `security`, or `edge-cases`):
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/launch-cursor-review.sh --output "$REVIEW_TMPDIR/cursor-specialist-<name>-output.txt" --timeout 1800 --agent-file "${CLAUDE_PLUGIN_ROOT}/agents/reviewer-<name>.md" --mode <diff|description> [--description-text "${DESCRIPTION_TEXT}" --scope-files "$REVIEW_TMPDIR/scope-files.txt"] --competition-notice --timing-task-kind "$CURSOR_SPECIALIST_TIMING_KIND"
-```
-
-**Codex specialist** (fallback when `cursor_available` is false, `codex_available` is true; set `CODEX_SPECIALIST_TIMING_KIND=codex-specialist-<name>`):
-
-```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/launch-codex-review.sh --output "$REVIEW_TMPDIR/codex-specialist-<name>-output.txt" --timeout 1800 --agent-file "${CLAUDE_PLUGIN_ROOT}/agents/reviewer-<name>.md" --mode <diff|description> [--description-text "${DESCRIPTION_TEXT}" --scope-files "$REVIEW_TMPDIR/scope-files.txt"] --competition-notice --timing-task-kind "$CODEX_SPECIALIST_TIMING_KIND"
 ```
 
 Use `run_in_background: true` and `timeout: 1860000` on each specialist Bash tool call.
@@ -204,9 +201,11 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/launch-codex-review.sh --output "$REVIEW_TMPDIR/co
 
 Use `run_in_background: true` and `timeout: 1860000`.
 
-**Generic Codex fallback** (if `codex_available` is false): Launch a Claude Code Reviewer subagent via the Agent tool (subagent_type: `larch:code-reviewer`, model: `"sonnet"`) with the same code-review context. Use the Code Reviewer archetype from `${CLAUDE_PLUGIN_ROOT}/skills/shared/reviewer-templates.md` with mode-appropriate `{REVIEW_TARGET}` and `{CONTEXT_BLOCK}`, and the competition notice appended.
+**Generic Codex fallback** (if `codex_available` is false): when Codex is unavailable, skip the generic Codex slot entirely. The Claude generic reviewer (always launched) covers this gap.
 
-**Both-down path** (both `cursor_available` and `codex_available` are false): Launch only 1 Claude Code Reviewer subagent (generic, no specialists). Print: `**⚠ Both Cursor and Codex unavailable. Proceeding with 1 Claude generic reviewer. Voting will be skipped (insufficient reviewers).**`
+**1 Claude generic reviewer** (always launched, regardless of Cursor/Codex availability): Agent tool (subagent_type: `larch:code-reviewer`, model: `"sonnet"`) with the unified archetype from `${CLAUDE_PLUGIN_ROOT}/skills/shared/reviewer-templates.md`. Use mode-appropriate `{REVIEW_TARGET}` and `{CONTEXT_BLOCK}`, and append the competition notice. Attribution label: `Claude-Generic`.
+
+**Both-down path** (both `cursor_available` and `codex_available` are false): Only the Claude generic reviewer runs (no specialists, no generic Codex). Print: `**⚠ Both Cursor and Codex unavailable. Proceeding with 1 Claude generic reviewer. Voting will be skipped (insufficient reviewers).**`
 
 Append the following competition context to each reviewer's prompt (specialist and generic, all modes):
 
@@ -238,7 +237,7 @@ Use the round counter already tracked by the round state machine.
 
 | Rounds | Reviewer panel | Voting | OOS collection | Stop condition |
 |--------|---------------|--------|----------------|----------------|
-| 1-3 | Full 3-reviewer panel (2 specialists + 1 generic) | 3-voter panel (Claude + Codex + Cursor) each round | Yes | 0 findings accepted by vote, OR Step 3f classifies the just-fixed round as non-substantial, OR round 3 reached |
+| 1-3 | Full 7-reviewer panel (5 Cursor specialists + 1 Codex generic + 1 Claude generic) | 3-voter panel (Claude + Codex + Cursor) each round | Yes | 0 findings accepted by vote, OR Step 3f classifies the just-fixed round as non-substantial, OR round 3 reached |
 | 4-7 | Single generic reviewer per round, chain `Cursor → Codex → Claude` | No voting (auto-accept) | No | 0 findings, OR Step 3f classifies the just-fixed round as non-substantial, OR round 7 reached |
 
 **Description mode is unchanged**: single round, no implement loop. After Step 3d's round summary, jump directly to Step 4 (skip Step 3e implement-fixes and Step 3f re-review).
@@ -247,22 +246,25 @@ Symmetric `/review` ↔ `/implement` chain rule: rounds 4+ use `Cursor → Codex
 
 ### 3a — Collect
 
-**Rounds 1-3 (full 3-reviewer panel):** Collect and validate all external reviewer outputs using the shared collection script. Include output paths for all specialist and generic reviewers that were actually launched:
+**Rounds 1-3 (full 7-reviewer panel):** Collect and validate all external reviewer outputs using the shared collection script. Include output paths for all specialist and generic Codex reviewers that were actually launched as external tools. The Claude generic reviewer output is parsed directly from the Agent tool return (do not include it in `collect-agent-results.sh`):
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1860 --substantive-validation --validation-mode [--write-health "${SESSION_ENV_PATH}.health"] \
-  "$REVIEW_TMPDIR/cursor-specialist-correctness-edges-output.txt" \
-  "$REVIEW_TMPDIR/cursor-specialist-security-structure-tests-output.txt" \
+  "$REVIEW_TMPDIR/cursor-specialist-structure-output.txt" \
+  "$REVIEW_TMPDIR/cursor-specialist-correctness-output.txt" \
+  "$REVIEW_TMPDIR/cursor-specialist-testing-output.txt" \
+  "$REVIEW_TMPDIR/cursor-specialist-security-output.txt" \
+  "$REVIEW_TMPDIR/cursor-specialist-edge-cases-output.txt" \
   "$REVIEW_TMPDIR/codex-output.txt"
 ```
 
-Only include `--write-health` if `SESSION_ENV_PATH` is non-empty. Only include output paths for reviewers that were actually launched as external tools (adjust paths per the fallback matrix — e.g., `codex-specialist-*` when Cursor is down). If the required generic slot is a Claude fallback (both-down or Codex-down path), process its Agent tool output directly — do not include it in `collect-agent-results.sh`.
+Only include `--write-health` if `SESSION_ENV_PATH` is non-empty. Only include output paths for reviewers that were actually launched as external tools (adjust paths per the fallback matrix — e.g., omit all cursor-specialist-* paths and codex-output.txt when both are down; when Cursor is down, omit specialist paths and include only codex-output.txt when Codex is available). The Claude generic reviewer is always parsed directly from the Agent tool result — never passed to `collect-agent-results.sh`.
 
-Parse the structured output for each reviewer's `STATUS` and `REVIEWER_FILE`. For any reviewer with `STATUS` not `OK`, follow the **Runtime Timeout Fallback** procedure. Read valid output files. **In description mode**, reviewers produce **dual-list output** with '### In-Scope Findings' and '### Out-of-Scope Observations' section headers — parse both sections. Section-header fail-open rules: (1) if exactly one section header is present, the missing section is interpreted as empty (NOT a parse error); (2) if both section headers are absent AND the entire output is the literal 'NO_ISSUES_FOUND', the reviewer reported nothing — proceed; (3) if both section headers are absent AND the output is not 'NO_ISSUES_FOUND' (legacy unsectioned output), treat the entire body as in-scope. **In diff mode**, output shape depends on the slot kind. **Specialist slots** (`cursor-specialist-*` / `codex-specialist-*`) follow the same two-section template as description mode (their agent files mandate `### In-Scope Findings` / `### Out-of-Scope Observations`) — apply the same section-header fail-open rules. **Generic slots** (`codex-output.txt` and any Claude generic fallback) produce single-list output: treat findings whose first line carries an `[OUT_OF_SCOPE]` prefix as OOS observations and route them to the OOS bucket; treat all other findings as in-scope. OOS findings (from either slot kind) have their accepted form filed via `oos-accepted-review.md` for `/implement` Step 9a.1, not implemented as code edits this PR.
+Parse the structured output for each reviewer's `STATUS` and `REVIEWER_FILE`. For any reviewer with `STATUS` not `OK`, follow the **Runtime Timeout Fallback** procedure. Read valid output files. **In description mode**, reviewers produce **dual-list output** with '### In-Scope Findings' and '### Out-of-Scope Observations' section headers — parse both sections. Section-header fail-open rules: (1) if exactly one section header is present, the missing section is interpreted as empty (NOT a parse error); (2) if both section headers are absent AND the entire output is the literal 'NO_ISSUES_FOUND', the reviewer reported nothing — proceed; (3) if both section headers are absent AND the output is not 'NO_ISSUES_FOUND' (legacy unsectioned output), treat the entire body as in-scope. **In diff mode**, output shape depends on the slot kind. **Specialist slots** (`cursor-specialist-*`) follow the same two-section template as description mode (their agent files mandate `### In-Scope Findings` / `### Out-of-Scope Observations`) — apply the same section-header fail-open rules. **Generic slots** (`codex-output.txt` and Claude generic) produce single-list output: treat findings whose first line carries an `[OUT_OF_SCOPE]` prefix as OOS observations and route them to the OOS bucket; treat all other findings as in-scope. OOS findings (from either slot kind) have their accepted form filed via `oos-accepted-review.md` for `/implement` Step 9a.1, not implemented as code edits this PR.
 
 Immediately after each `collect-agent-results.sh` return, scan every launched external output's `${OUTPUT}.dirty-tree` sidecar. Treat missing, empty, dirty, or unknown sidecars as `STATUS=unknown` unless a checkpoint probe proves the tree clean. On `STATUS=dirty` or `STATUS=unknown`, fire `AskUserQuestion` regardless of parent `auto_mode` with restore / labeled stash / bail options scoped to the launcher's reported path files. Mark `RECOVERY_TAKEN=true` if the operator chooses restore or stash. The restore path must validate repo-relative paths, reject absolute paths, `..`, and `.git/`, then consume each NUL-delimited stream correctly: `git restore --pathspec-from-file=- --pathspec-file-nul -- < TRACKED_PATHS_FILE` for tracked changes, and `[ -s NEW_UNTRACKED_PATHS_FILE ] && xargs -0 git clean -f -- < NEW_UNTRACKED_PATHS_FILE` for new untracked files (`git clean` does NOT accept `--pathspec-from-file` / `--pathspec-file-nul`; the portable stdin form `xargs -0 ... < FILE` works on both GNU and BSD xargs, while `xargs -0 -a FILE ...` is GNU-only and fails on macOS); never run a blanket clean.
 
-Merge findings from all launched reviewers, attributing each finding to its specialist label (`Correctness-Edges`, `Security-Structure-Tests`, `Codex`). When deduplicating, credit all proposing reviewers. If the same issue appears in both in-scope and OOS from different reviewers, merge under in-scope.
+Merge findings from all launched reviewers, attributing each finding to its specialist label (`Structure`, `Correctness`, `Testing`, `Security`, `Edge-cases`, `Codex`, `Claude-Generic`). When deduplicating, credit all proposing reviewers. If the same issue appears in both in-scope and OOS from different reviewers, merge under in-scope.
 
 **Rounds 4-7 (diff mode only, single generic reviewer):** Launch a single Cursor generic reviewer (if `cursor_available`; else Codex generic if `codex_available`; else Claude Code Reviewer subagent). Use tool-qualified output paths: `$REVIEW_TMPDIR/cursor-round${round_num}-output.txt` or `$REVIEW_TMPDIR/codex-round${round_num}-output.txt`. Collect its output via `collect-agent-results.sh` with a single output path. If `STATUS` is not `OK`, follow Runtime Timeout Fallback and retry the round with the next available tool in the chain.
 
@@ -286,7 +288,7 @@ Merge findings from all reviewers into a single deduplicated list, grouped by fi
 
 Print to the user:
 - `## Review Round {N}` header
-- Bullet list of **accepted** findings with reviewer attribution (`Correctness-Edges` / `Security-Structure-Tests` / `Codex`, or `Claude` for the both-down fallback)
+- Bullet list of **accepted** findings with reviewer attribution (`Structure` / `Correctness` / `Testing` / `Security` / `Edge-cases` / `Codex` / `Claude-Generic`, or `Claude` for the both-down fallback)
 - If rounds 1-3: vote counts per finding, accepted OOS items, and any findings not accepted by vote
 - Total count of accepted findings for this round
 
@@ -324,7 +326,7 @@ After all fixes are applied, run validation checks:
 
 If `round_substantial=true`, increment the round number. IMMEDIATELY re-execute **Step 1** (gather the updated diff) then **Step 2** (launch reviewers again) then **Step 3** (collect, deduplicate, vote/evaluate, implement) as a fresh iteration of the review loop — do NOT halt, summarize, or wait for user input between rounds. The loop continues until reviewers report 0 findings, the last round produced only non-substantial findings (convergence), or the safety limit is reached (Step 3g).
 
-**Rounds 2-3 (full panel)**: Re-launch the full 3-reviewer panel per Step 2's launch procedure. Voting runs per Step 3c.1. The competition notice is included. This ensures multi-round specialist coverage with proper adjudication. If voting accepts 0 findings in any of rounds 1-3, the review loop terminates early.
+**Rounds 2-3 (full panel)**: Re-launch the full 7-reviewer panel per Step 2's launch procedure. Voting runs per Step 3c.1. The competition notice is included. This ensures multi-round specialist coverage with proper adjudication. If voting accepts 0 findings in any of rounds 1-3, the review loop terminates early.
 
 **Rounds 4-7 (single generic reviewer)**: Only launch **Cursor generic** (if `cursor_available`; else Codex generic if `codex_available`; else 1 Claude Code Reviewer subagent as fallback). Use the same generic diff-mode prompt from Step 2 (without the competition notice — there is no voting panel in rounds 4+). In rounds 4-7 Step 3a, collect from whichever single reviewer was launched: external output via `collect-agent-results.sh` (with Runtime Timeout Fallback on failure — retry the round with the next tool in the chain), or Claude subagent output directly. Findings that were rejected or exonerated by voting in rounds 1-3 are suppressed per Step 3c.1.
 
@@ -346,7 +348,7 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 
 Print a final summary:
 - Total number of review rounds (always 1 in description mode)
-- Findings per round (with per-reviewer breakdown: `Correctness-Edges` / `Security-Structure-Tests` / `Codex`, or `Claude` for fallback)
+- Findings per round (with per-reviewer breakdown: `Structure` / `Correctness` / `Testing` / `Security` / `Edge-cases` / `Codex` / `Claude-Generic`, or `Claude` for fallback)
 - Voting summary (rounds 1-3): total findings voted on, accepted (2+ YES), neutral (1 YES), exonerated (0 YES + 1+ EXONERATE), rejected (0 YES + 0 EXONERATE)
 - Reviewer Competition Scoreboard (cumulative across all voted rounds, with 3 independent players)
 - Total fixes applied across all rounds (diff mode only)
