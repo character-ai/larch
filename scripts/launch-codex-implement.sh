@@ -124,6 +124,15 @@ if [[ -n "${IMPLEMENT_TMPDIR:-}" && -s "${IMPLEMENT_TMPDIR}/claude-source.env" ]
     export LARCH_CLAUDE_SOURCE_FILE="${IMPLEMENT_TMPDIR}/claude-source.env"
 fi
 
+# Apply env-var cap when --token-budget-cap was not passed explicitly; validate
+# the value (invalid values silently disable the cap rather than exit 2).
+if [[ -z "$TOKEN_BUDGET_CAP" && -n "${LARCH_TOKEN_BUDGET_CAP_IMPLEMENT:-}" ]]; then
+    case "$LARCH_TOKEN_BUDGET_CAP_IMPLEMENT" in
+        ''|*[!0-9]*) ;;
+        *) (( 10#${LARCH_TOKEN_BUDGET_CAP_IMPLEMENT} >= 1 )) && TOKEN_BUDGET_CAP="$LARCH_TOKEN_BUDGET_CAP_IMPLEMENT" ;;
+    esac
+fi
+
 # Per-step token budget cap: short-circuit before spawning Codex when the
 # combined vendor spend since the last ledger mark already exceeds the cap.
 if [[ -n "$TOKEN_BUDGET_CAP" ]]; then
@@ -144,9 +153,6 @@ if [[ -n "$TOKEN_BUDGET_CAP" ]]; then
     fi
     unset _budget_out _budget_status
 fi
-
-# Apply env-var cap when --token-budget-cap was not passed explicitly.
-[[ -z "$TOKEN_BUDGET_CAP" && -n "${LARCH_TOKEN_BUDGET_CAP_IMPLEMENT:-}" ]] && TOKEN_BUDGET_CAP="$LARCH_TOKEN_BUDGET_CAP_IMPLEMENT"
 
 # Defensive: env-derived LARCH_TIMING_TASK_KIND may be empty or flag-shaped
 # (e.g. "--prompt") if a caller mis-parses argv. The CLI form was

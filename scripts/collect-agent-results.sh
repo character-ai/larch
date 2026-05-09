@@ -424,6 +424,7 @@ for i in "${!OUTPUT_FILES[@]}"; do
             # skipped; not a tool failure, so HEALTHY stays true and the output is
             # not forwarded to substantive validation or reviewer synthesis.
             STATUS="cap_hit"
+            FAILURE_REASON="Token budget cap hit; reviewer skipped"
         elif [[ ! -s "$OUTPUT" ]]; then
             # F4 fix: empty output is a retry candidate, NOT an immediate health failure.
             # Health is only set to false after retry also fails (see section 3 below).
