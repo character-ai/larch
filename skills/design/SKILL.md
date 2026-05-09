@@ -433,6 +433,8 @@ Produce a plan that includes:
 
 Write the plan to `$DESIGN_TMPDIR/plan.txt` with basename exactly `plan.txt`. If `SESSION_ENV_PATH` is empty, print the plan to the user under a `## Implementation Plan` header so reviewers can see it. If `SESSION_ENV_PATH` is non-empty, print only `✅ 2b: full plan — saved (<elapsed>)`; `/implement` reads the exported plan file. The plan is an intermediate deliverable — IMMEDIATELY continue to Step 3 (Plan Review) after saving/printing. Do NOT halt, summarize, or treat the plan as the end of the design.
 
+> **Continue to Step 3 IMMEDIATELY.** The implementation plan is an intermediate design artifact — plan review, optional discussion, diagram generation, rejected-findings reporting, and cleanup still must run. See `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Step-boundary anti-halt.
+
 ## Step 3 — Plan Review
 
 ```bash
@@ -539,6 +541,8 @@ After the plan-review collection boundary, consult launcher `${OUTPUT}.dirty-tre
 
 If **all reviewers** report no in-scope issues and no out-of-scope observations, skip voting and proceed to Step 3.5 if `auto_mode=false`, or Step 3b if `auto_mode=true`.
 
+> **Continue to Step 3.5 or Step 3b IMMEDIATELY.** The plan-review result is not terminal — follow the `auto_mode` branch into discussion or diagram generation.
+
 ## Step 3.5 — Design Discussion (Round 2)
 
 ```bash
@@ -600,6 +604,8 @@ On `STATUS=ok`, rename the candidate to `$DESIGN_TMPDIR/architecture-diagram.md`
 
 **If diagram generation fails** (e.g., the feature is too abstract to diagram meaningfully), print: `**⚠ 3b: arch diagram — generation failed, proceeding without diagram (<elapsed>)**` — then IMMEDIATELY continue to Step 4.
 
+> **Continue to Step 4 IMMEDIATELY.** The architecture diagram branch is not terminal — rejected-findings reporting and cleanup still must run.
+
 ## Step 4 — Rejected Plan Review Findings Report
 
 ```bash
@@ -615,6 +621,8 @@ Print any rejected plan review findings:
 5. If `$DESIGN_TMPDIR/rejected-findings.md` is empty (it always exists after item 1), print: `✅ 4: rejected findings — all suggestions implemented (<elapsed>)`
 
 After printing rejected findings (or the "all implemented" message), IMMEDIATELY continue to Step 5 — do NOT halt or treat this as the end of the design.
+
+> **Continue to Step 5 IMMEDIATELY.** Rejected-findings output is not terminal — cleanup and manifest export still must run.
 
 ## Step 5 — Cleanup and Final Warnings
 

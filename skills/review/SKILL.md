@@ -320,6 +320,8 @@ After all fixes are applied, run validation checks:
 
 **In diff mode**, classify the just-fixed round as `round_substantial=true|false` before incrementing the round number. Use the accepted-finding count from Step 3d plus the severity and fix-size judgment from Steps 3d-3e. If `round_substantial=false`, print `✅ 3f: re-review — round $round_num findings were not substantial; review converged` and IMMEDIATELY skip to Step 4. Do NOT launch another reviewer round for non-substantial findings.
 
+> **Continue to Step 4 IMMEDIATELY.** A non-substantial re-review convergence line is not terminal — final summary and cleanup still must run. See `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Step-boundary anti-halt.
+
 If `round_substantial=true`, increment the round number. IMMEDIATELY re-execute **Step 1** (gather the updated diff) then **Step 2** (launch reviewers again) then **Step 3** (collect, deduplicate, vote/evaluate, implement) as a fresh iteration of the review loop — do NOT halt, summarize, or wait for user input between rounds. The loop continues until reviewers report 0 findings, the last round produced only non-substantial findings (convergence), or the safety limit is reached (Step 3g).
 
 **Rounds 2-3 (full panel)**: Re-launch the full 3-reviewer panel per Step 2's launch procedure. Voting runs per Step 3c.1. The competition notice is included. This ensures multi-round specialist coverage with proper adjudication. If voting accepts 0 findings in any of rounds 1-3, the review loop terminates early.
@@ -428,6 +430,8 @@ Print the file's contents verbatim to terminal under a clearly-labeled block:
 
 Then print: `**⚠ Handle these findings per SECURITY.md's vulnerability-disclosure procedure. They are NOT filed as public GitHub issues.**` IMMEDIATELY continue to Step 4d — do NOT halt after the security warning.
 
+> **Continue to Step 4d IMMEDIATELY.** Security-findings output is not terminal — the description-mode KV footer still must be emitted.
+
 ### 4d — Description-mode KV footer (description mode only)
 
 Print the `### review-result` KV footer immediately before exiting Step 4.
@@ -442,6 +446,8 @@ PARSE_STATUS=ok
 ```
 
 Substitute `ISSUES_CREATED`, `ISSUES_DEDUPLICATED`, `ISSUES_FAILED` from Step 4b (or zero each if Step 4b was skipped — i.e., `no_issues=true` or the findings batch was empty). Substitute `SECURITY_FINDINGS_HELD` from Step 4c independently (zero only if Step 4c found no security findings — Step 4c always runs in description mode regardless of whether Step 4b ran). `PARSE_STATUS=ok` always (any error path emits a different `PARSE_STATUS` value or aborts before reaching here). After printing the KV footer, IMMEDIATELY continue to Step 5 (Cleanup) — do NOT halt after the footer.
+
+> **Continue to Step 5 IMMEDIATELY.** The review-result footer is not terminal — cleanup still must run.
 
 ## Step 5 — Cleanup
 
