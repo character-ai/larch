@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [18.3.0] - 2026-05-09
+
+### Added
+
+- Restore 5 specialist reviewer archetypes (structure, correctness, testing, security, edge-cases) that were merged into 2 in v18.0.0
+- Add Claude generic reviewer to rounds 1-3 of both /review and /implement --quick review panels (7 reviewers total when all available)
+
+### Changed
+
+- Cursor-down fallback in specialist slots now skips to 1 generic Codex instead of spawning N Codex specialist instances
+
 ## [18.2.2] - 2026-05-09
 
 ### Changed
