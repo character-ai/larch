@@ -502,6 +502,7 @@ write_changelog_entry() {
             skipping = 0
             in_unreleased = 0
             match_count = 0
+            entry_from_version_match = 0
         }
         FNR == NR {
             if (/^## \[Unreleased\]/) has_unreleased = 1
@@ -516,11 +517,13 @@ write_changelog_entry() {
             if (!inserted) {
                 for (i = 1; i <= en; i++) print e[i]
                 inserted = 1
+                entry_from_version_match = 1
             }
             skipping = 1
             next
         }
         skipping && /^## \[/ {
+            if (entry_from_version_match) print ""
             skipping = 0
         }
         skipping {
