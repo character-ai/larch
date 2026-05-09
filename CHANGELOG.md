@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [18.0.15] - 2026-05-08
+
+### Changed
+
+- Fix stale docs in skills/fix-issue/SKILL.md: update --quick description to reflect actual multi-round review topology (rounds 1-3 multi-reviewer, rounds 4-7 single generic — no voting panel)
+- Fix plugin.json description: remove dormant Gemini reviewer claim, update plan review from "3-reviewer panel" to "8-reviewer panel (4 Codex + 4 Cursor archetypes)", fix sketch count from 9-agent/3-quick to 4-agent/2-quick
+- Fix "Codex generic slot" label in docs/agents.md and docs/review-agents.md: rename to "Codex archetype slot", update fallback chain from Codex → Claude to Codex → Cursor (same archetype) → Claude, and add "same archetype" qualifier to Cursor → Codex fallbacks
+- Fix find-lock-issue.sh resolver prose in skills/fix-issue/SKILL.md Step 0: add fallback-chain detail (gh repo view → scripts/github-remote-repo.sh → git remote)
+
 ## [18.0.14] - 2026-05-08
 
 ### Changed
