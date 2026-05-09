@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [18.0.16] - 2026-05-08
+
+### Changed
+
+- Reviewer launcher model-args preflight failures now write .done/.diag/.meta/dirty-tree artifacts (matching cursor-auth-preflight pattern) so collect-agent-results.sh detects failures promptly instead of timing out.
+- Review prompt sidecars preserve the user or specialist body before hardening preambles, keeping replay paths idempotent.
+- preflight.sh now calls check-clean-tree.sh --fail-closed; sort -- added to check-review-changes.sh.
+- Design and review OOS public-boundary docs share the fenced/unfenced security discrimination contract with regression-test pins.
+
 ## [18.0.15] - 2026-05-08
 
 ### Changed
