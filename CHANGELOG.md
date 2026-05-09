@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [18.4.14] - 2026-05-09
+
+### Changed
+
+- Split anchor-comment-template.md (37 KB) into four per-step fragment files (anchor-template-canonical-body.md, anchor-template-execution-issues.md, anchor-template-oos-pipeline.md, anchor-template-quick-mode.md) so each /implement step loads only the fraction it needs
+- Update SKILL.md MANDATORY load directives to point each step at its relevant fragment and update CI structure-test assertions accordingly
+
 ## [18.4.13] - 2026-05-09
 
 ### Added
