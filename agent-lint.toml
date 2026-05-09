@@ -750,6 +750,17 @@ exclude = [
   # (contract), matching the same Makefile-only pattern as the other
   # test-implement-* harnesses above.
   "scripts/test-implement-post-design-boundary.sh",
+  # scripts/test-implement-anti-halt.sh is the step-boundary anti-halt
+  # regression harness for skills/implement/SKILL.md (specific per-boundary
+  # literal pins) and the SSOT section heading in
+  # skills/shared/subskill-invocation.md, plus spot-checks for the
+  # highest-value blockquotes in skills/design/SKILL.md,
+  # skills/fix-issue/SKILL.md, and skills/review/SKILL.md (closes #1606).
+  # Referenced only from Makefile (test-implement-anti-halt target) and the
+  # sibling scripts/test-implement-anti-halt.md (contract), matching the same
+  # Makefile-only pattern as the other test-implement-* harnesses above.
+  "scripts/test-implement-anti-halt.sh",
+  "scripts/test-implement-anti-halt.md",
   "scripts/test-references-headers.sh",
   "scripts/test-subskill-anchors.sh",
   # scripts/test-parse-args.sh is the regression harness for

@@ -946,6 +946,8 @@ If any check fails, synthesize an orchestrator-local bail: set `STATUS=bailed`, 
 3. Compose an answers file `$IMPLEMENT_TMPDIR/codex-answers-$RESUME_N.json` with shape `{"answers": [{"id": "q1", "text": "<answer>"}, ...]}` (`$RESUME_N` is the 1-indexed resume cycle counter the orchestrator tracks locally). The filename retains `codex-` for historical compatibility; the dispatcher accepts it for Cursor resumes too.
 4. Re-invoke the dispatcher with the additional flag `--answers "$IMPLEMENT_TMPDIR/codex-answers-$RESUME_N.json"`. **On every dispatcher return — including each `--answers` redispatch cycle — re-parse the KV envelope and run the §2.1.5 envelope-validation block in full BEFORE re-branching on `STATUS` per §2.2.** Q/A redispatch is not exempt from envelope validation: a malformed or AUTH-illegal envelope on a resume invocation must still fail-closed via `orchestrator-envelope-invalid` exactly as on the first dispatch. The dispatcher itself enforces the 5-cycle cap; on the 6th `--answers` invocation it returns `STATUS=bailed REASON=qa-loop-exceeded` automatically.
 
+> **Continue to Step 3 IMMEDIATELY after re-dispatch returns.** The Q/A loop re-dispatch is not a halting point — proceed to Step 3 checks as soon as the dispatcher exits. See `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Step-boundary anti-halt.
+
 The dispatcher does NOT git reset between cycles. The external implementer inspects branch state at the start of every invocation and — on the resume invocation — reads the answers file, decides if its prior partial work is consistent with the new answers, and either continues or bails with `resume-incompatible` (which the operator inspects manually). See `agents/codex-implementer.md` / `agents/cursor-implementer.md` / `agents/gemini-implementer.md` "Resume protocol".
 
 **2.4 — Claude-fallback branch** (entered ONLY when `STATUS=claude_fallback` AND `ORCHESTRATOR_EDIT_AUTHORITY=allowed`, validated in 2.1.5 — i.e. `coder=claude` was selected explicitly via `--coder=claude`, `coder=claude` was set by Step 1's Coder simplicity override (`coder_explicit=false` AND plan classified small), `coder=cursor` was selected but Cursor was unhealthy / unavailable so the dispatcher fell back to claude, `coder=gemini` was selected but Gemini was unhealthy / unavailable so the dispatcher fell back to claude, or the legacy `--codex-available false` was passed):
@@ -997,6 +999,8 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
 # token-step-end Step 2
 ```
+
+> **Continue to Step 3 IMMEDIATELY.** Implementation is not the end of the run — checks, commit, review, bump, PR, CI, and merge still must run.
 
 ## Step 3 — Relevant Checks (first pass)
 
@@ -1061,6 +1065,8 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
 # token-step-end Step 4
 ```
+
+> **Continue to Step 5 IMMEDIATELY.** The implementation commit is not the end of the run — code review, checks (2), commit, code flow diagram, bump, and PR still must run.
 
 ## Step 5 — Code Review
 
@@ -1376,6 +1382,8 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
 # token-step-end Step 7a
 ```
+
+> **Continue to Step 8 IMMEDIATELY.** The code flow diagram is not the end of the run — version bump, PR creation, CI monitoring, and merge still must run.
 
 ## Step 8 — Version Bump
 
@@ -1802,6 +1810,8 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
 # token-step-end Step 12
 ```
+
+> **Continue to Step 14 IMMEDIATELY.** Step 12d bail is not terminal — after writing Step 13.5 finalizer state, run local cleanup, rejected findings, Slack issue post, final report, and cleanup.
 
 ## Step 13.5 — Finalizer State
 

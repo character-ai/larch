@@ -327,6 +327,8 @@ Best-effort: on `FAILED=true` / non-zero exit / `FINALIZED=false` non-idempotent
 
 Print `✅ 6: close issue — #$ISSUE_NUMBER closed (<elapsed>)` (mention umbrella-finalized when applicable: `✅ 6: close issue — #$ISSUE_NUMBER closed; umbrella #$UMBRELLA_NUMBER finalized (<elapsed>)`).
 
+> **Continue to Step 7 IMMEDIATELY.** Closing the issue is not terminal — the NON_PR Slack decision and cleanup still must run. See `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Step-boundary anti-halt.
+
 ## Step 7 — Slack Announce (NON_PR path only)
 
 The PR path's Slack decision is handled by the child `/implement` at its Step 16a — this skill does NOT post again to avoid duplication. This step runs only for `INTENT=NON_PR`.
@@ -350,6 +352,8 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/post-issue-slack.sh \
 The script auto-resolves `--token` and `--channel-id` from environment variables when those flags are omitted. If the script exits non-zero, print `**⚠ 7: slack announce — failed. Continuing.**` and log to `Tool Failures`.
 
 Print `✅ 7: slack announce — posted (<elapsed>)`
+
+> **Continue to Step 8 IMMEDIATELY.** The Slack announce branch is not terminal — cleanup still must run.
 
 ## Step 8 — Cleanup
 

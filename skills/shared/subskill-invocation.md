@@ -142,6 +142,18 @@ The banner MUST NOT appear in pure-delegator SKILL.md files:
 
 Both presence and absence are enforced by `${CLAUDE_PLUGIN_ROOT}/scripts/test-anti-halt-banners.sh`, wired into `make lint` via the `test-anti-halt` target.
 
+## Step-boundary anti-halt
+
+**Scope**: this rule covers numbered-step boundaries where the parent skill has just completed a step or sub-step and the next action is another numbered step, not a child `Skill` return. It is especially important after `# token-step-end Step N` boundaries, skip breadcrumbs, status footers, and terminal-sounding helper output where there is no immediately adjacent Skill-tool micro-reminder to re-anchor continuation.
+
+**Canonical form**: use a two-line blockquote at the specific boundary:
+
+````markdown
+> **Continue to Step N IMMEDIATELY.** <One-sentence reason this boundary is not terminal and what remains.>
+````
+
+This is deliberately separate from the `Continue after child returns` micro-reminder above. The micro-reminder fires at Skill-tool call sites; the step-boundary reminder fires between numbered steps, including Bash-only or prose-only tails. Use the step-boundary form sparingly at halt-prone boundaries and include a pointer to this section on the first such reminder in each SKILL.md so future edits can find the single source of truth.
+
 ## Session-env handoff
 
 Environment variables **do not propagate reliably across `Skill` invocations** — treat every `Skill` call as a fresh bash environment. For any state that must cross skill boundaries (reviewer health flags, repo name, slack-ok, session tmpdir), use a session-env file:
