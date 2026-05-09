@@ -146,7 +146,7 @@ Read `$FIX_ISSUE_TMPDIR/issue-details.txt` to get the full issue content.
 
 Print `> **🔶 3: triage**`
 
-**MANDATORY — READ ENTIRE FILE** before beginning triage: `${CLAUDE_PLUGIN_ROOT}/skills/fix-issue/references/triage-classification.md`. Contains the triage check list, the not-material closure flow detail (rationale composition with research summary), and the Step 4 classification detail that shares the same file. **Do NOT load** outside Steps 3 and 4 — this file is not consumed anywhere else. **Do NOT load** on any path that has already branched to Step 8 (Steps 3 and 4 do not run there). Concrete examples: Step 0 returned exit 1 (no candidate), exit 2 (error / ineligible / pre-lock dirty-tree abort), or exit 3 (eligible but lock failed after eligibility); Step 1 setup aborted with `REPO_UNAVAILABLE=true`.
+**MANDATORY — load digest first**: `${CLAUDE_PLUGIN_ROOT}/skills/fix-issue/references/triage-classification.digest.md` covers the common triage and classification path. Load full `${CLAUDE_PLUGIN_ROOT}/skills/fix-issue/references/triage-classification.md` only when composing the not-material closure explanation (need detailed rationale) or when genuinely uncertain about a classification edge case. Contains the triage check list, the not-material closure flow detail (rationale composition with research summary), and the Step 4 classification detail that shares the same file. **Do NOT load** outside Steps 3 and 4 — this file is not consumed anywhere else. **Do NOT load** on any path that has already branched to Step 8 (Steps 3 and 4 do not run there). Concrete examples: Step 0 returned exit 1 (no candidate), exit 2 (error / ineligible / pre-lock dirty-tree abort), or exit 3 (eligible but lock failed after eligibility); Step 1 setup aborted with `REPO_UNAVAILABLE=true`.
 
 Decide whether the issue is still material against the codebase (see the reference for the check list and the triage-targets rule for investigation/review-only issues).
 
@@ -197,7 +197,7 @@ Decide whether the issue is still material against the codebase (see the referen
 
 Print `> **🔶 4: classify**`
 
-The reference loaded at Step 3 (`skills/fix-issue/references/triage-classification.md`) owns the decision rules for both dimensions — do not re-load it here.
+The triage-classification reference loaded at Step 3 (digest or full `triage-classification.md`) owns the decision rules for both dimensions — do not re-load it here. If only the digest was loaded and a classification edge case is genuinely uncertain, load full `triage-classification.md` at this step.
 
 - **Intent** (`PR` vs `NON_PR`): does this issue prescribe work whose natural output is a pull request, or something else (new issues, a written report)? Default to `PR` only when the issue is genuinely ambiguous; when the issue text explicitly forbids a PR or mandates research/issues as the deliverable, pick `NON_PR` regardless of the default.
 - **Complexity** (only when `INTENT=PR`): `SIMPLE` (isolated fix in ≤2 files with no architectural decisions) vs `HARD` (everything else). Default to `HARD` when uncertain. **Short-circuit**: when `quick_mode=true` AND `INTENT=PR`, set `COMPLEXITY=SIMPLE` without evaluating the HARD-vs-SIMPLE rules — the operator has explicitly opted into the SIMPLE pipeline by passing `--quick`. Leave `COMPLEXITY` unset when `INTENT=NON_PR` (the `--quick` short-circuit does not apply to the NON_PR path).
