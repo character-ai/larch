@@ -558,14 +558,14 @@ PATH="$STUB_BIN:$PATH" \
     CURSOR_STUB_ARGV_LOG="$ARGV_LOG_AK1S" \
     LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux \
     "$LAUNCHER" --output "$OUT_AK1S" --timeout 5 \
-        --agent-file "$REPO_ROOT/agents/reviewer-correctness-edges.md" --mode diff \
+        --agent-file "$REPO_ROOT/agents/reviewer-structure.md" --mode diff \
         >/dev/null 2>"$TMPDIR/case-ak1s.stderr"
 if grep -Fq -- 'HARD CONSTRAINTS — your role is read-only review' "$ARGV_LOG_AK1S"; then
     pass
 else
     fail "case AK1S specialist argv must carry the HARD CONSTRAINTS preamble"
 fi
-if grep -Fq -- 'Correctness, Edge Cases, and Failure Recovery' "${OUT_AK1S}.prompt"; then
+if grep -Fq -- 'Structure, KISS, and Maintainability' "${OUT_AK1S}.prompt"; then
     pass
 else
     fail "case AK1S prompt sidecar must contain specialist-rendered body"

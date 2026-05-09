@@ -28,7 +28,7 @@
 #                                         "Rounds 1-3" capitalization in
 #                                         docs/review-agents.md; encodes the
 #                                         multi-lane rounds-1-3 contract)
-#        - "2 Cursor specialists"        (case-sensitive, grep -F — pins the
+#        - "5 Cursor specialists"        (case-sensitive, grep -F — pins the
 #                                         specialist count in rounds 1-3)
 #        - "generic Codex"               (case-sensitive, grep -F — pins the
 #                                         generic Codex slot in rounds 1-3 and
@@ -95,7 +95,7 @@ readonly POS_MARKERS=(
   "Cursor → Codex → Claude|sensitive"
   "no voting panel|insensitive"
   "rounds 1-3|insensitive"
-  "2 Cursor specialists|sensitive"
+  "5 Cursor specialists|sensitive"
   "generic Codex|sensitive"
 )
 
@@ -298,7 +298,7 @@ This is a fixture describing quick-mode behavior.
 The review loop runs up to 7 rounds.
 Reviewer selection per round follows Cursor → Codex → Claude fallback.
 The loop has no voting panel — main agent accepts or rejects each finding.
-Rounds 1-3 launch 2 Cursor specialists in parallel plus a generic Codex reviewer.
+Rounds 1-3 launch 5 Cursor specialists in parallel plus a generic Codex reviewer.
 Rounds 4+ use a single generic reviewer per round.
 EOF
 
@@ -313,7 +313,7 @@ Stale-phrase fixture: contains every positive marker so only the stale phrase ca
 The review loop runs up to 7 rounds.
 Reviewer selection per round follows Cursor → Codex → Claude fallback.
 The loop has no voting panel — main agent accepts or rejects each finding.
-Rounds 1-3 launch 2 Cursor specialists in parallel plus a generic Codex reviewer.
+Rounds 1-3 launch 5 Cursor specialists in parallel plus a generic Codex reviewer.
 Stale phrase intentionally embedded: simplified code review (1 Claude Code Reviewer subagent, 1 round).
 EOF
 

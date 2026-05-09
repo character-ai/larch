@@ -17,7 +17,7 @@ suppress = [
   # apply to this use case. See `skills/shared/subskill-invocation.md`
   # (normative home of the anti-halt banner convention).
   "nested-ref-deep",
-  # template-count-mismatch is suppressed because the 5 specialist reviewer
+  # template-count-mismatch is suppressed because the specialist reviewer
   # agents (agents/reviewer-{structure,correctness,testing,security,edge-cases}.md)
   # are hand-authored specialist variants derived from the shared Code Reviewer
   # archetype but maintained independently — they do NOT each have a matching
@@ -37,7 +37,7 @@ suppress = [
   # template-marker-missing (A006) requires every agent file to carry the
   # 'Derived from skills/shared/reviewer-templates.md' marker. That marker
   # is meaningful for the Code Reviewer archetype family (code-reviewer.md
-  # and the five reviewer-*.md specialists), but agents/codex-implementer.md,
+  # and the reviewer-*.md specialists), but agents/codex-implementer.md,
   # agents/cursor-implementer.md, and agents/gemini-implementer.md are
   # NON-reviewer agents — system-prompt bodies loaded by the Step 2
   # implementer launchers, not review/synthesis agents.
@@ -784,7 +784,7 @@ exclude = [
   "scripts/test-render-reviewer-prompt.sh",
   # scripts/test-render-specialist-prompt.sh is the regression harness for
   # scripts/render-specialist-prompt.sh (the specialist reviewer prompt
-  # renderer for /review's 3-reviewer specialist panel). The renderer itself
+  # renderer for /review's 5-specialist panel). The renderer itself
   # IS structurally referenced from skills/review/SKILL.md Step 2 launch
   # procedure; the test harness is referenced only from Makefile
   # (test-render-specialist-prompt target) and scripts/test-render-specialist-prompt.md

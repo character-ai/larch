@@ -299,13 +299,13 @@ PATH="$STUB_BIN:$PATH" \
     CODEX_STUB_ARGV_LOG="$AGENT_ARGV" \
     CODEX_STUB_COUNT_FILE="$AGENT_COUNT" \
     "$LAUNCHER" --output "$AGENT_OUTPUT" --timeout 5 \
-        --agent-file "$REPO_ROOT/agents/reviewer-correctness-edges.md" --mode diff >/dev/null
+        --agent-file "$REPO_ROOT/agents/reviewer-structure.md" --mode diff >/dev/null
 if grep -Fq -- 'HARD CONSTRAINTS — your role is read-only review' "$AGENT_ARGV"; then
     pass
 else
     fail "--agent-file run must apply the HARD CONSTRAINTS preamble to the codex argv"
 fi
-if grep -Fq -- 'Correctness, Edge Cases, and Failure Recovery' "${AGENT_OUTPUT}.prompt"; then
+if grep -Fq -- 'Structure, KISS, and Maintainability' "${AGENT_OUTPUT}.prompt"; then
     pass
 else
     fail "--agent-file OUTPUT.prompt sidecar must contain specialist-rendered body"
