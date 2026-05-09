@@ -1721,7 +1721,6 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 
 **MANDATORY — READ ENTIRE FILE** before composing the `execution-issues` anchor section at Step 11: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/anchor-template-execution-issues.md`. **Do NOT load** `anchor-template-canonical-body.md` separately at Step 11 unless also planting/refreshing other sections — the `<details>` wrapper and sanitization rules needed here live entirely in `anchor-template-execution-issues.md`.
 
-
 **Branch on state**:
 
 0. If `forked_target=true`: print `⏭️ 11: execution-issues — skipped (--forked dry-run, no tracking anchor) (<elapsed>)` and proceed to Step 12. Do not enter the missing-`ISSUE_NUMBER` bug branch.
