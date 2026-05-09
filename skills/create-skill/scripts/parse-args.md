@@ -1,6 +1,5 @@
 # parse-args.sh contract
 
-`skills/create-skill/scripts/parse-args.sh` parses `/create-skill`'s `$ARGUMENTS` string and emits the six named values (`NAME`, `DESCRIPTION`, `PLUGIN`, `MULTI_STEP`, `MERGE`, `SLACK`) that Step 1 of `skills/create-skill/SKILL.md` consumes. The authoritative developer-facing specification is the in-file header — edits that change the flag list, the stdout `KEY=VALUE` grammar, the positional-argument rules, or the error-message format MUST update both the in-file header and this sibling in the same PR per `.claude/rules/script-md-siblings.md`.
 
 ## Stdout contract (success, one line per `KEY=VALUE`)
 
@@ -9,11 +8,9 @@
 - `PLUGIN=true|false` — whether `--plugin` was present.
 - `MULTI_STEP=true|false` — whether `--multi-step` was present.
 - `MERGE=true|false` — whether `--merge` was present. Retained for backward compatibility only; `/create-skill` already delegates to `/im` (which prepends `--merge`), so this value is NOT forwarded at delegation time.
-- `SLACK=true|false` — whether `--slack` was present. Forwarded to `/im` (and thence to `/implement`) when `true`, enabling the delegated run's Slack announcement when Slack env vars are configured. When `false` (the default), the delegated run does not post to Slack.
 
 ## Error contract
 
-- Unknown flag → emits `ERROR=Unknown flag '<flag>'. Valid flags: --plugin, --multi-step, --merge, --slack.` to stdout and exits non-zero.
 - Missing `<skill-name>` → emits `ERROR=Missing <skill-name>. Usage: ...` to stdout and exits non-zero.
 - Missing `<description>` → emits `ERROR=Missing <description>. Usage: ...` to stdout and exits non-zero.
 

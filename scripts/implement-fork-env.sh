@@ -15,7 +15,6 @@
 #   UPSTREAM_REPO=<owner/repo>
 #   FORK_OWNER=<owner>
 #   FORKED_TARGET=true
-#   SLACK_ENABLED=false
 #
 # Exit codes:
 #   0  Success
@@ -73,4 +72,3 @@ printf 'FORK_REPO=%s\n' "$FORK_REPO"
 printf 'UPSTREAM_REPO=%s\n' "$UPSTREAM_REPO"
 printf 'FORK_OWNER=%s\n' "$FORK_OWNER"
 printf 'FORKED_TARGET=true\n'
-printf 'SLACK_ENABLED=false\n'

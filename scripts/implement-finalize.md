@@ -1,15 +1,14 @@
 # scripts/implement-finalize.sh — contract
 
-`scripts/implement-finalize.sh` is the mechanical SSOT for `/implement` Step 8 anchor-fragment write, Step 8a CHANGELOG amend, Step 8b rebase + force-push gate, Steps 14, 15, 16a, and the mechanical part of Step 18. Prompt-only Steps 16 and 17, plus Step 18's external-reviewer warning replay and `--design-only` / `--draft` / `--merge=false` notes, stay in `skills/implement/SKILL.md` so the operator-facing final report remains chat-side.
+`scripts/implement-finalize.sh` is the mechanical SSOT for `/implement` Step 8 anchor-fragment write, Step 8a CHANGELOG amend, Step 8b rebase + force-push gate, Steps 14, 15, and the mechanical part of Step 18. Prompt-only Steps 16 and 17, plus Step 18's external-reviewer warning replay and `--design-only` / `--draft` / `--merge=false` notes, stay in `skills/implement/SKILL.md` so the operator-facing final report remains chat-side.
 
 ## Subcommands
 
 - `postbump --state-file PATH --implement-tmpdir PATH [--changelog-bullets-file PATH]` covers Step 8's version-bump-reasoning anchor fragment write, Step 8a's CHANGELOG amend, and Step 8b's rebase + force-push gate. It invokes `scripts/refresh-anchor.sh`, `scripts/check-changelog-present.sh`, `scripts/git-amend-add.sh`, `scripts/rebase-push.sh`, `scripts/check-remote-branch.sh`, and `scripts/git-force-push.sh`, and emits postbump-specific tail records ending with exactly one `STATUS=...` line.
 - `postmerge --state-file PATH --final-bail-reason-file PATH` covers Step 14 local cleanup and Step 15 verify-main. It invokes `scripts/local-cleanup.sh` and `scripts/verify-main.sh`, captures their stdout envelopes, forwards their stderr, and emits only Step 14/15 breadcrumbs plus tail records.
-- `slack --state-file PATH --final-bail-reason-file PATH` covers Step 16a. It computes `RUN_OUTCOME` with the Step 16a first-match-wins ladder, applies the existing Slack skip gates, invokes `scripts/post-issue-slack.sh` when eligible, and emits `RUN_OUTCOME=`, `SLACK_TS=`, `FINALIZE_SUBCOMMAND=slack`, and `FINALIZE_WARNINGS=`.
 - `teardown --state-file PATH --implement-tmpdir PATH` covers the Step 18 title-prefix terminal transition, tmpdir cleanup, tracking-issue URL print, and final `✅ 18` breadcrumb. It invokes `scripts/get-issue-info.sh`, `scripts/round-trip-detect.sh`, `scripts/tracking-issue-write.sh rename`, and, after a basename + session-id sanity check, `scripts/cleanup-tmpdir.sh`.
 
-Exit code `0` is not a complete outcome signal. Consumers must parse `STATUS=` for `postbump`, plus `RUN_OUTCOME=`, `LOCAL_CLEANUP_STATUS=`, `VERIFY_MAIN_STATUS=`, `RENAME_STATUS=`, `SLACK_TS=`, and `FINALIZE_WARNINGS=` for the post-PR subcommands. Exit code `2` is reserved for argument or state-file validation failures.
+Exit code `0` is not a complete outcome signal. Consumers must parse `STATUS=` for `postbump`, plus `LOCAL_CLEANUP_STATUS=`, `VERIFY_MAIN_STATUS=`, `RENAME_STATUS=`, and `FINALIZE_WARNINGS=` for the post-PR subcommands. Exit code `2` is reserved for argument or state-file validation failures.
 
 ## State File
 
@@ -17,7 +16,7 @@ The state file is plain `KEY=value` text written once by `skills/implement/SKILL
 
 Required keys:
 
-`BRANCH_NAME`, `PR_NUMBER`, `PR_TITLE`, `PR_URL`, `ISSUE_NUMBER`, `REPO`, `DRAFT`, `MERGE`, `SLACK_ENABLED`, `SLACK_AVAILABLE`, `DEFERRED`, `REPO_UNAVAILABLE`, `PR_CLOSED`, `DESIGN_ONLY_DONE`, `BAIL_NEEDS_USER_INPUT`, `STALL_TRACKING`, `DONE_RENAME_APPLIED`.
+`BRANCH_NAME`, `PR_NUMBER`, `PR_TITLE`, `PR_URL`, `ISSUE_NUMBER`, `REPO`, `DRAFT`, `MERGE`, `DEFERRED`, `REPO_UNAVAILABLE`, `PR_CLOSED`, `DESIGN_ONLY_DONE`, `BAIL_NEEDS_USER_INPUT`, `STALL_TRACKING`, `DONE_RENAME_APPLIED`.
 
 String keys may be present with empty values except `BRANCH_NAME` when `postmerge` actually attempts local cleanup. Boolean keys must be literal `true` or `false`.
 
@@ -27,7 +26,7 @@ Optional keys:
 
 `EXPECTED_SESSION_ID` and `EXPECTED_TMPDIR_BASENAME_PREFIX` bind Step 18 cleanup to the session created at Step 0. `EXPECTED_SESSION_ID` is compared to `$IMPLEMENT_TMPDIR/session-id`; when absent (older in-progress state), teardown warns and falls back to basename-only validation. `EXPECTED_TMPDIR_BASENAME_PREFIX` should be `claude-implement-<clone-tag>-`; when absent, teardown derives that prefix from `basename "$PWD"`.
 
-`--final-bail-reason-file` is a path, not the bail text itself. This keeps arbitrary bail prose out of argv and lets Step 16a normalize the detail text to a single 1024-character line only when Slack posting needs it.
+`--final-bail-reason-file` is a path, not the bail text itself. This keeps arbitrary bail prose out of argv.
 
 ## State File for postbump
 
@@ -72,15 +71,6 @@ FINALIZE_SUBCOMMAND=postmerge
 FINALIZE_WARNINGS=<N>
 ```
 
-`slack` prints one Step 16a breadcrumb for skip, success, or failure, then:
-
-```
-RUN_OUTCOME=closed|pr-opened|design-only|blocked|user-input
-SLACK_TS=<value-or-empty>
-FINALIZE_SUBCOMMAND=slack
-FINALIZE_WARNINGS=<N>
-```
-
 `teardown` prints the tracking issue URL when resolvable, then the final Step 18 breadcrumb, then:
 
 ```
@@ -105,7 +95,6 @@ FINALIZE_WARNINGS=<N>
 - Step 14 skips on `DRAFT=true`, then `MERGE!=true`, then a non-empty final-bail-reason file. These skips also force `VERIFY_MAIN_STATUS=skipped`.
 - Step 14 cleanup success/partial state comes from `local-cleanup.sh`'s `CLEANUP_SUCCESS`, `CURRENT_BRANCH`, and `BRANCH_DELETED` keys.
 - Step 15 runs only after Step 14 actually attempted cleanup. It calls `verify-main.sh --expected-title "$PR_TITLE (#$PR_NUMBER)"`.
-- Step 16a `RUN_OUTCOME` order is: `PR_CLOSED=true` → `closed`; `DESIGN_ONLY_DONE=true` → `design-only`; `BAIL_NEEDS_USER_INPUT=true` → `user-input`; non-empty bail file → `blocked`; `MERGE!=true` or `DRAFT=true` → `pr-opened`; fallback → `blocked`.
 - Step 18 first checks `ISSUE_NUMBER` is non-empty and `REPO_UNAVAILABLE=false` before any rename branch. Branch A (`STALL_TRACKING=true`) renames to `stalled` only when `get-issue-info.sh --field state` returns exactly `VALUE=OPEN`; empty `VALUE=` remains a silent skip. Branch B renames to `done` when no merge-path done rename has already applied and either `PR_NUMBER` is set or `DESIGN_ONLY_DONE=true`. Branch C is a no-op.
 - Before any Branch A/B rename, Step 18 fetches **both** the issue title and body with `gh issue view "$issue" --repo "$REPO" --json title,body --jq '"TITLE=\(.title // "")\n" + (.body // "")'`, splitting the response into the leading `TITLE=` line and the remaining body (written to a temp file under `--implement-tmpdir` when available), then runs `scripts/round-trip-detect.sh --text-string "$title" --text-file <body-file>` and passes `--round-trip true|false` to `tracking-issue-write.sh rename`. If `REPO` is empty in the state file, teardown first tries `scripts/resolve-repo.sh`; only if that fails does it preserve the prior ambient-repo fallback and emit a warning that `gh issue view` ran without `--repo`. The `--repo` flag matches the rename call's repo scope so transient `gh repo set-default` / cwd disagreements cannot fetch the wrong issue (post-review FINDING_F2). Detection is best-effort: fetch failure, missing detector, detector failure, or missing `ROUND_TRIP=` output logs `Step 18: round-trip detection skipped: <reason>` and defaults to `false`; the lifecycle rename still runs. Detector stderr is **not** redirected — `warn_false` diagnostics surface so degraded paths are visible to operators (post-review FINDING_F3). Sticky preservation of an existing marker is owned by `tracking-issue-write.sh`.
 - On stalled runs (`STALL_TRACKING=true`), Step 18 then probes the repo root with `git rev-parse --show-toplevel`. If `git status --porcelain` is non-empty, it best-effort stashes tracked and untracked edits with a `larch-stalled-<issue>-<step> <utc>` label and records the newest stash ref. Stash failures produce a warning and do not block teardown.
@@ -120,7 +109,7 @@ FINALIZE_WARNINGS=<N>
 - All leaf-script failures are best-effort except invocation/state validation. They surface through warning breadcrumbs and tail records, not non-zero exits.
 - `--implement-tmpdir` and `--state-file` must be under `/tmp/`, `/private/tmp/`, or the larch cache sessions root.
 - Round-trip detection never sends issue bodies through argv; bodies are file-backed per `scripts/round-trip-detect.md`.
-- post-Step-11 subcommands (`postmerge`, `slack`, `teardown`) MUST NOT append to `$IMPLEMENT_TMPDIR/execution-issues.md` because Step 11 has already published the anchor and Step 18 deletes the tmpdir. Pre-Step-11 subcommands (`postbump`) MAY append warnings to `$IMPLEMENT_TMPDIR/execution-issues.md`; Step 11 mirrors them into the tracking-issue anchor.
+- post-Step-11 subcommands (`postmerge`, `teardown`) MUST NOT append to `$IMPLEMENT_TMPDIR/execution-issues.md` because Step 11 has already published the anchor and Step 18 deletes the tmpdir. Pre-Step-11 subcommands (`postbump`) MAY append warnings to `$IMPLEMENT_TMPDIR/execution-issues.md`; Step 11 mirrors them into the tracking-issue anchor.
 - The literal phase identifier `force-push-gate`, the contents of `$IMPLEMENT_TMPDIR/.postbump-phase`, is reproduced byte-identically in `skills/implement/SKILL.md` Step 8 conflict-resume prose. Changes to the recognized-phase enum here require a paired SKILL.md update.
 - The orchestrator MUST parse the last `STATUS=` line in `postbump` stdout. The script emits exactly one `STATUS=...` line as part of the trailing tail records; future debug output is not permitted to emit `STATUS=...` lines.
 
@@ -128,12 +117,11 @@ FINALIZE_WARNINGS=<N>
 
 - `skills/implement/SKILL.md` Step 8 writes the postbump state file and invokes `postbump`.
 - `skills/implement/SKILL.md` Step 14 entry writes the state file and invokes `postmerge`.
-- `skills/implement/SKILL.md` Step 16a invokes `slack`.
 - `skills/implement/SKILL.md` Step 18 invokes `teardown`.
 
 ## Test Harness
 
-`scripts/test-implement-finalize.sh` is the offline regression harness. It copies this script into a `/tmp` sandbox with stub sibling helpers and git/gh shims, exercises all four subcommands, postbump changelog/category/checkpoint/error paths, round-trip detection pass-through/default-false behavior, stalled-run stash/sentinel handling, `.run-cleaned-up` Stop-hook release behavior before cleanup validation, and state-file parsing, normalizes elapsed-time parentheticals, and is wired through `make test-implement-finalize`. `scripts/test-finalize-sanity-check.sh` covers the Step 18 cleanup target sanity check specifically.
+`scripts/test-implement-finalize.sh` is the offline regression harness. It copies this script into a `/tmp` sandbox with stub sibling helpers and git/gh shims, exercises the subcommands, postbump changelog/category/checkpoint/error paths, round-trip detection pass-through/default-false behavior, stalled-run stash/sentinel handling, `.run-cleaned-up` Stop-hook release behavior before cleanup validation, and state-file parsing, normalizes elapsed-time parentheticals, and is wired through `make test-implement-finalize`. `scripts/test-finalize-sanity-check.sh` covers the Step 18 cleanup target sanity check specifically.
 
 ## Edit In Sync
 

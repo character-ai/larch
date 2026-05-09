@@ -2,7 +2,6 @@
 
 **Consumer**: `/fix-issue` Steps 3 (Triage) and 4 (Classify Intent and Complexity).
 
-**Contract**: Authoritative detail for the triage checks, the not-material closure flow, the intent dimension (PR vs NON_PR) with its "default to PR only when genuinely ambiguous" rule, and the complexity dimension (SIMPLE vs HARD, evaluated only when `INTENT=PR`) with its "default to HARD when uncertain" rule. SKILL.md carries the step-level breadcrumbs, the `issue-lifecycle.sh close` / `post-issue-slack.sh` invocations, and the `Print ✅ 4: classify — INTENT=**$INTENT** [COMPLEXITY=🟨 **$COMPLEXITY** 🟨]` line (bold is required for `INTENT`; yellow-square markers plus bold are required for `COMPLEXITY` so the classification values stand out at a glance); this file carries the judgment-heavy detail that would bloat the main-file knowledge delta.
 
 **When to load**: before executing Step 3 (Triage) OR Step 4 (Classify). Load once — the two step-bodies consume the same detail. **Do NOT load** in any other step — Steps 0 / 1 / 2 / 5 / 6 / 7 / 8 do not consume this content. **Do NOT load** on any path that has already branched to Step 8 — concrete examples: Step 0 `find-lock-issue.sh` exit 1 / 2 / 3 (no eligible issue, error, or lock-failed-after-eligibility-pass), Step 1 setup abort (`REPO_UNAVAILABLE=true`). Steps 3 and 4 do not run on those paths.
 
@@ -33,7 +32,6 @@ If the issue is no longer material (already fixed, invalid, or no longer relevan
    - `invalid` / `not-a-bug` / `false-positive` (the issue does not describe real work — e.g., the reported behavior is by design, or the OOS observation was filed in error) → `false-positive`
 3. SKILL.md Step 3 invokes `issue-lifecycle.sh close` with the detailed explanation as the `--comment` value and passes `--close-class <inferred>` from the mapping above. The enum deterministically drives the `[FALSE-POSITIVE]` title marker — applied for `false-positive`, `duplicate`, and `superseded`; suppressed for `done`. The closing comment is NOT scanned under `--close-class`, so legitimate research narrative containing words like "duplicate" or "superseded" cannot misclassify the close. The legacy `--mark-false-positive-if-keyword` flag remains available for unstructured-prose close paths but is NOT used here.
 4. SKILL.md Step 3 invokes `tracking-issue-write.sh rename --state done` (best-effort) to clear the `[IN PROGRESS]` title prefix Step 0 applied at lock time, replacing it with `[DONE]` so the closed issue's title accurately reflects that automated processing concluded.
-5. SKILL.md Step 3 invokes `post-issue-slack.sh` with a one-sentence reason summarizing the closure (only when `slack_available=true`).
 6. SKILL.md Step 3 prints the not-material breadcrumb and skips to Step 8.
 
 If the issue is still actual, SKILL.md Step 3 prints the active breadcrumb and continues to Step 4.

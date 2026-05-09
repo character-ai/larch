@@ -2,8 +2,7 @@
 # write-session-env.sh — Write session environment values to a file for child skills.
 #
 # Usage:
-#   write-session-env.sh --output <path> --slack-ok <true|false> \
-#                        [--slack-missing <csv>] --repo <owner/repo> \
+#   write-session-env.sh --output <path> --repo <owner/repo> \
 #                        --repo-unavailable <true|false> \
 #                        [--codex-healthy <true|false>] [--cursor-healthy <true|false>] [--gemini-healthy <true|false>] \
 #                        [--timing-ledger <path>] [--token-session-id <id>] \
@@ -11,7 +10,6 @@
 #
 # Options:
 #   --repo may be empty when --repo-unavailable is true (repo discovery failed).
-#   --slack-missing is optional (only meaningful when --slack-ok is false).
 #   --codex-healthy/--cursor-healthy/--gemini-healthy are optional (reviewer health state from probe).
 #   --timing-ledger is optional (shared timing ledger path for nested skills).
 #   --token-session-id is optional (token ledger session id for nested skills).
@@ -26,8 +24,6 @@
 set -euo pipefail
 
 OUTPUT=""
-SLACK_OK=""
-SLACK_MISSING=""
 REPO=""
 REPO_UNAVAILABLE=""
 CODEX_HEALTHY=""
@@ -40,8 +36,6 @@ CLAUDE_SOURCE_FILE=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --output)           OUTPUT="$2"; shift 2 ;;
-    --slack-ok)         SLACK_OK="$2"; shift 2 ;;
-    --slack-missing)    SLACK_MISSING="$2"; shift 2 ;;
     --repo)             REPO="$2"; shift 2 ;;
     --repo-unavailable) REPO_UNAVAILABLE="$2"; shift 2 ;;
     --codex-healthy)    CODEX_HEALTHY="$2"; shift 2 ;;
@@ -54,8 +48,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ -z "$OUTPUT" || -z "$SLACK_OK" || -z "$REPO_UNAVAILABLE" ]]; then
-  echo "ERROR=Missing required arguments: --output, --slack-ok, --repo-unavailable" >&2
+if [[ -z "$OUTPUT" || -z "$REPO_UNAVAILABLE" ]]; then
+  echo "ERROR=Missing required arguments: --output, --repo-unavailable" >&2
   exit 1
 fi
 
@@ -75,9 +69,7 @@ if [[ -n "$TIMING_LEDGER" && ( ${#TIMING_LEDGER} -gt 512 || ! "$TIMING_LEDGER" =
 fi
 
 # Build the content
-CONTENT="SLACK_OK=$SLACK_OK
-SLACK_MISSING=$SLACK_MISSING
-REPO=$REPO
+CONTENT="REPO=$REPO
 REPO_UNAVAILABLE=$REPO_UNAVAILABLE"
 [[ -n "$CODEX_HEALTHY" ]] && CONTENT="$CONTENT
 CODEX_HEALTHY=$CODEX_HEALTHY"

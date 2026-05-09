@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# implement-finalize.sh — Mechanical finalizer for /implement Step 8 post-bump work and Steps 14, 15, 16a, and 18.
+# implement-finalize.sh — Mechanical finalizer for /implement Step 8 post-bump work and Steps 14, 15, and 18.
 
 set -uo pipefail
 # Intentional: best-effort failure model. Errexit is OFF file-wide. Every
@@ -25,7 +25,6 @@ usage() {
 Usage:
   implement-finalize.sh postbump  --state-file PATH --implement-tmpdir PATH [--changelog-bullets-file PATH]
   implement-finalize.sh postmerge --state-file PATH --final-bail-reason-file PATH
-  implement-finalize.sh slack     --state-file PATH --final-bail-reason-file PATH
   implement-finalize.sh teardown  --state-file PATH --implement-tmpdir PATH
 USAGE
 }
@@ -167,7 +166,7 @@ require_state_keys() {
     local key
     for key in \
         BRANCH_NAME PR_NUMBER PR_TITLE PR_URL ISSUE_NUMBER REPO \
-        DRAFT MERGE SLACK_ENABLED SLACK_AVAILABLE DEFERRED REPO_UNAVAILABLE \
+        DRAFT MERGE DEFERRED REPO_UNAVAILABLE \
         PR_CLOSED DESIGN_ONLY_DONE BAIL_NEEDS_USER_INPUT STALL_TRACKING DONE_RENAME_APPLIED
     do
         state_has_key "$key" || die_usage "state-file missing required key: $key"
@@ -177,7 +176,7 @@ require_state_keys() {
 require_bool_state() {
     local key value
     for key in \
-        DRAFT MERGE SLACK_ENABLED SLACK_AVAILABLE DEFERRED REPO_UNAVAILABLE \
+        DRAFT MERGE DEFERRED REPO_UNAVAILABLE \
         PR_CLOSED DESIGN_ONLY_DONE BAIL_NEEDS_USER_INPUT STALL_TRACKING DONE_RENAME_APPLIED
     do
         value=$(read_state "$key")
@@ -1044,62 +1043,6 @@ compute_run_outcome() {
     fi
 }
 
-run_slack() {
-    local start slack_enabled slack_available deferred repo_unavailable issue_number
-    local repo pr_url run_outcome detail out rc slack_ts args
-
-    start=$(date +%s)
-    validate_bail_file_arg
-    load_and_validate_state
-
-    slack_enabled=$(read_state SLACK_ENABLED)
-    slack_available=$(read_state SLACK_AVAILABLE)
-    deferred=$(read_state DEFERRED)
-    repo_unavailable=$(read_state REPO_UNAVAILABLE)
-    issue_number=$(read_state ISSUE_NUMBER)
-    repo=$(read_state REPO)
-    pr_url=$(read_state PR_URL)
-    run_outcome=$(compute_run_outcome)
-    slack_ts=""
-
-    if [ "$slack_enabled" = "false" ]; then
-        printf '⏭️ 16a: slack issue post — skipped (--slack not set) (%s)\n' "$(elapsed "$start")"
-    elif [ "$slack_available" = "false" ]; then
-        printf '⏭️ 16a: slack issue post — skipped (Slack not configured) (%s)\n' "$(elapsed "$start")"
-    elif [ "$deferred" = "true" ] || [ -z "$issue_number" ]; then
-        printf '⏭️ 16a: slack issue post — skipped (no tracking issue) (%s)\n' "$(elapsed "$start")"
-    elif [ "$repo_unavailable" = "true" ]; then
-        printf '⏭️ 16a: slack issue post — skipped (repo unavailable) (%s)\n' "$(elapsed "$start")"
-    else
-        args=("$SCRIPT_DIR/post-issue-slack.sh" --issue-number "$issue_number" --status "$run_outcome" --repo "$repo")
-        if [ "$run_outcome" != "design-only" ] && [ -n "$pr_url" ]; then
-            args=("${args[@]}" --pr-url "$pr_url")
-        fi
-        if [ "$run_outcome" = "blocked" ] && bail_reason_nonempty; then
-            detail=$(normalized_bail_reason)
-            args=("${args[@]}" --detail "$detail")
-        elif [ "$run_outcome" = "user-input" ]; then
-            args=("${args[@]}" --detail "conflict resolution needs user input (auto-mode bail)")
-        fi
-
-        set +e
-        out=$("${args[@]}")
-        rc=$?
-        set +e
-        slack_ts=$(kv_value SLACK_TS "$out")
-        if [ "$rc" -ne 0 ] || [ -z "$slack_ts" ]; then
-            warn_line '**⚠ 16a: slack issue post — failed. Continuing.**'
-        else
-            printf '✅ 16a: slack issue post — posted (%s)\n' "$(elapsed "$start")"
-        fi
-    fi
-
-    echo "RUN_OUTCOME=$run_outcome"
-    echo "SLACK_TS=$slack_ts"
-    echo "FINALIZE_SUBCOMMAND=slack"
-    echo "FINALIZE_WARNINGS=$WARNINGS"
-}
-
 rename_issue() {
     local issue=$1 state=$2 label=$3 repo=$4 out rc failed round_trip body_tmp title
     round_trip=false
@@ -1409,10 +1352,6 @@ main() {
         postmerge)
             parse_common_args "$@"
             run_postmerge
-            ;;
-        slack)
-            parse_common_args "$@"
-            run_slack
             ;;
         teardown)
             parse_common_args "$@"

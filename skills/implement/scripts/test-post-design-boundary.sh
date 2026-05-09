@@ -89,7 +89,6 @@ assert_empty() {
 SESSION_WRITER_OUT="$TMPROOT/session-writer.env"
 "$WRITE_SESSION_ENV" \
     --output "$SESSION_WRITER_OUT" \
-    --slack-ok true \
     --repo owner/repo \
     --repo-unavailable false \
     --token-session-id token-session-1 \
@@ -99,18 +98,17 @@ grep -q "^LARCH_CLAUDE_SOURCE_FILE=$TMPROOT/claude-source.env$" "$SESSION_WRITER
 SESSION_WRITER_MIN="$TMPROOT/session-writer-min.env"
 "$WRITE_SESSION_ENV" \
     --output "$SESSION_WRITER_MIN" \
-    --slack-ok true \
     --repo owner/repo \
     --repo-unavailable false
 grep -q '^LARCH_TOKEN_SESSION_ID=' "$SESSION_WRITER_MIN" && fail "writer emitted absent LARCH_TOKEN_SESSION_ID"
 grep -q '^LARCH_CLAUDE_SOURCE_FILE=' "$SESSION_WRITER_MIN" && fail "writer emitted absent LARCH_CLAUDE_SOURCE_FILE"
-if "$WRITE_SESSION_ENV" --output /dev/null --slack-ok true --repo owner/repo --repo-unavailable false --token-session-id $'bad\nid' 2>/dev/null; then
+if "$WRITE_SESSION_ENV" --output /dev/null --repo owner/repo --repo-unavailable false --token-session-id $'bad\nid' 2>/dev/null; then
     fail "writer accepted newline in --token-session-id"
 fi
-if "$WRITE_SESSION_ENV" --output /dev/null --slack-ok true --repo owner/repo --repo-unavailable false --token-session-id 'bad=id' 2>/dev/null; then
+if "$WRITE_SESSION_ENV" --output /dev/null --repo owner/repo --repo-unavailable false --token-session-id 'bad=id' 2>/dev/null; then
     fail "writer accepted equals in --token-session-id"
 fi
-if "$WRITE_SESSION_ENV" --output /dev/null --slack-ok true --repo owner/repo --repo-unavailable false --claude-source-file $'bad\001path' 2>/dev/null; then
+if "$WRITE_SESSION_ENV" --output /dev/null --repo owner/repo --repo-unavailable false --claude-source-file $'bad\001path' 2>/dev/null; then
     fail "writer accepted control character in --claude-source-file"
 fi
 
@@ -178,8 +176,6 @@ make_manifest "$TMP4"
 make_git_repo "$GIT4"
 SESSION4="$TMP4/session-env.sh"
 cat > "$SESSION4" <<'EOF_SESSION'
-SLACK_OK=false
-SLACK_MISSING=token,channel
 REPO=owner/repo
 REPO_UNAVAILABLE=false
 CODEX_HEALTHY=true
@@ -196,8 +192,6 @@ GEMINI_HEALTHY=true
 EOF_HEALTH
 OUT=$(cd "$GIT4" && CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash "$WRAPPER" --implement-tmpdir "$TMP4" --session-env "$SESSION4")
 assert_contains "$OUT" '^POST_DESIGN_BOUNDARY_OK=true$' "health flip path did not continue"
-grep -q '^SLACK_OK=false$' "$SESSION4" || fail "health rewrite did not preserve SLACK_OK"
-grep -q '^SLACK_MISSING=token,channel$' "$SESSION4" || fail "health rewrite did not preserve SLACK_MISSING"
 grep -q '^REPO=owner/repo$' "$SESSION4" || fail "health rewrite did not preserve REPO"
 grep -q '^REPO_UNAVAILABLE=false$' "$SESSION4" || fail "health rewrite did not preserve REPO_UNAVAILABLE"
 grep -q '^CODEX_HEALTHY=false$' "$SESSION4" || fail "health rewrite did not degrade CODEX_HEALTHY"
@@ -227,8 +221,6 @@ make_manifest "$TMP6"
 make_git_repo "$GIT6"
 SESSION6="$TMP6/session-env.sh"
 cat > "$SESSION6" <<'EOF_SESSION'
-SLACK_OK=true
-SLACK_MISSING=
 REPO=owner/repo
 REPO_UNAVAILABLE=false
 CODEX_HEALTHY=true
@@ -263,8 +255,6 @@ EOF_FAIL
 chmod +x "$FAKE_ROOT/scripts/write-session-env.sh"
 SESSION7="$TMP7/session-env.sh"
 cat > "$SESSION7" <<'EOF_SESSION'
-SLACK_OK=true
-SLACK_MISSING=
 REPO=owner/repo
 REPO_UNAVAILABLE=false
 CODEX_HEALTHY=true

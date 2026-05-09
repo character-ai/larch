@@ -29,7 +29,6 @@ grep -Fxq 'FORK_REPO=fork-owner/fork-repo' <<<"$out" || fail "missing FORK_REPO 
 grep -Fxq 'UPSTREAM_REPO=upstream-owner/upstream-repo' <<<"$out" || fail "missing UPSTREAM_REPO stdout"
 grep -Fxq 'FORK_OWNER=fork-owner' <<<"$out" || fail "missing FORK_OWNER stdout"
 grep -Fxq 'FORKED_TARGET=true' <<<"$out" || fail "missing FORKED_TARGET stdout"
-grep -Fxq 'SLACK_ENABLED=false' <<<"$out" || fail "missing SLACK_ENABLED stdout"
 [[ "$(cat "$TMPROOT/session/caller-env.sh")" == "REPO=fork-owner/fork-repo" ]] \
     || fail "caller-env should contain only fork REPO"
 

@@ -39,7 +39,6 @@ trap 'rm -rf "$TMPDIR_TEST"' EXIT
 
 ENV_FILE="$TMPDIR_TEST/session-env.sh"
 cat > "$ENV_FILE" <<'EOF'
-SLACK_OK=true
 COMPLEX=a=b=c
 EMPTY=
 ENDS_EQ=foo=
@@ -131,7 +130,7 @@ OUT="$TMPDIR_TEST/out.sh"
 
 # B.1 — valid path is accepted.
 if "$WRITE_SCRIPT" \
-    --output "$OUT" --slack-ok true --repo a/b --repo-unavailable false \
+    --output "$OUT" --repo a/b --repo-unavailable false \
     --timing-ledger "$TMPDIR_TEST/timing-ledger.tsv" 2>/dev/null; then
     pass
 else
@@ -143,7 +142,7 @@ assert_eq "B.1 value persisted" "$TMPDIR_TEST/timing-ledger.tsv" "$got"
 
 # B.2 — path with disallowed characters is rejected with the expected error.
 if err=$("$WRITE_SCRIPT" \
-    --output "$OUT" --slack-ok true --repo a/b --repo-unavailable false \
+    --output "$OUT" --repo a/b --repo-unavailable false \
     --timing-ledger "/tmp/bad ledger.tsv" 2>&1); then
     fail "B.2 path with space accepted: $err"
 else
@@ -153,7 +152,7 @@ fi
 # B.3 — overlong path (> 512 chars) is rejected.
 LONG="$(printf '/tmp/%.0s' {1..200})ledger.tsv"  # ~ 800 chars
 if err=$("$WRITE_SCRIPT" \
-    --output "$OUT" --slack-ok true --repo a/b --repo-unavailable false \
+    --output "$OUT" --repo a/b --repo-unavailable false \
     --timing-ledger "$LONG" 2>&1); then
     fail "B.3 overlong path accepted"
 else
@@ -162,7 +161,7 @@ fi
 
 # B.4 — empty / absent --timing-ledger continues to be accepted.
 if "$WRITE_SCRIPT" \
-    --output "$OUT" --slack-ok true --repo a/b --repo-unavailable false 2>/dev/null; then
+    --output "$OUT" --repo a/b --repo-unavailable false 2>/dev/null; then
     pass
 else
     fail "B.4 absent timing-ledger rejected"

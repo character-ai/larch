@@ -7,7 +7,7 @@ Covered cases:
 - Missing manifest and invalid tmpdir: wrapper exits 0 with `MANIFEST_FAILED=true`, suppresses `POST_DESIGN_BOUNDARY_OK=true`, suppresses the imperative breadcrumb, and does not write `.boundary-gate-passed`.
 - Boundary sentinel write failure: read-only tmpdir permissions force `ERROR=boundary-gate-sentinel-write-failed` with no success markers.
 - Anchored reader-output parsing: an `IMPLEMENT_TMPDIR` path component containing `MANIFEST_FAILED=true` does not affect success classification when the reader emits anchored `MANIFEST_OK=true`.
-- Health sidecar behavior: monotonic degradation rewrites session-env while preserving `SLACK_OK`, `SLACK_MISSING`, `REPO`, and `REPO_UNAVAILABLE`; absent sidecar is a no-op with no warnings; malformed booleans warn and preserve prior values; `write-session-env.sh` failure warns and remains non-fatal.
+- Health sidecar behavior: monotonic degradation rewrites session-env while preserving `REPO` and `REPO_UNAVAILABLE`; absent sidecar is a no-op with no warnings; malformed booleans warn and preserve prior values; `write-session-env.sh` failure warns and remains non-fatal.
 - Branch capture: named branch emits `BRANCH=boundary-test`; persistent detached HEAD failure emits `MANIFEST_FAILED=true ERROR=branch-capture-failed` after retry and suppresses success output.
 - Design-only mode emits the design-only `➡️` variant.
 - Control-character path injection is rejected with `ERROR=invalid-tmpdir`.

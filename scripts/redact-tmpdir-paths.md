@@ -6,7 +6,7 @@ The helper is intentionally markdown-unaware and idempotent. Non-matching input 
 
 ## Callers
 
-Outbound publishers compose this helper before `scripts/redact-secrets.sh`, so tmpdir paths are removed before issue comments, PR bodies, Slack payloads, and GitHub error envelopes are emitted. The primary runtime callers are `scripts/tracking-issue-write.sh`, `scripts/post-slack-message.sh`, and `scripts/create-pr.sh`.
+Outbound publishers compose this helper before `scripts/redact-secrets.sh`, so tmpdir paths are removed before issue comments, PR bodies, and GitHub error envelopes are emitted. The primary runtime callers are `scripts/tracking-issue-write.sh` and `scripts/create-pr.sh`.
 
 ## Test Harness
 

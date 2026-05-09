@@ -17,8 +17,6 @@ IMPLEMENT_ENV="$TMP/implement-session-env.sh"
 REVIEW_ENV="$TMP/review-session-env.sh"
 TIMING_LEDGER="$TMP/timing-ledger.tsv"
 cat > "$IMPLEMENT_ENV" <<EOF_ENV
-SLACK_OK=true
-SLACK_MISSING=
 REPO=owner/repo
 REPO_UNAVAILABLE=false
 LARCH_TIMING_LEDGER=$TIMING_LEDGER
@@ -30,7 +28,6 @@ printf 'SOURCE_FILE=/tmp/mock-transcript.jsonl\n' > "$TMP/claude-source.env"
 OUT=$("$SESSION_SETUP" \
     --prefix claude-review-token-test \
     --skip-preflight \
-    --skip-slack-check \
     --skip-repo-check \
     --caller-env "$IMPLEMENT_ENV" \
     --write-session-env "$REVIEW_ENV")
@@ -55,8 +52,6 @@ UNSAFE_ENV="$TMP/unsafe-implement-session-env.sh"
 UNSAFE_REVIEW_ENV="$TMP/unsafe-review-session-env.sh"
 UNSAFE_ERR="$TMP/unsafe-session-setup.err"
 cat > "$UNSAFE_ENV" <<EOF_ENV
-SLACK_OK=true
-SLACK_MISSING=
 REPO=owner/repo
 REPO_UNAVAILABLE=false
 LARCH_TIMING_LEDGER=/etc/passwd
@@ -66,7 +61,6 @@ EOF_ENV
 if ! "$SESSION_SETUP" \
     --prefix claude-review-token-test \
     --skip-preflight \
-    --skip-slack-check \
     --skip-repo-check \
     --caller-env "$UNSAFE_ENV" \
     --write-session-env "$UNSAFE_REVIEW_ENV" \

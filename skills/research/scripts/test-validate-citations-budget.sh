@@ -94,8 +94,8 @@ FAKEEOF
             fi
         done
         # Bug-#662 leak behavior is ~15s (the fake-curl sleep); ceiling 15s
-        # filters that out while leaving slack for slow / shared CI.
-        assert "Test 20: validator returned within budget + slack (got ${ELAPSED}s)" "[[ \"$ELAPSED\" -le 15 ]]"
+        # filters that out while leaving headroom for slow / shared CI.
+        assert "Test 20: validator returned within budget + headroom (got ${ELAPSED}s)" "[[ \"$ELAPSED\" -le 15 ]]"
         # Fail-soft contract: validator MUST exit 0 even on budget timeout.
         # Catches the regression class where the kill path signals $$'s
         # process group and SIGTERMs the validator itself (exit 143, no
@@ -223,7 +223,7 @@ FAKEEOF
                     ORPHAN_COUNT=$((ORPHAN_COUNT + 1))
                 fi
             done
-            assert "Test 21: validator returned within budget + slack (got ${ELAPSED}s)" "[[ \"$ELAPSED\" -le 15 ]]"
+            assert "Test 21: validator returned within budget + headroom (got ${ELAPSED}s)" "[[ \"$ELAPSED\" -le 15 ]]"
             # Regression-detection assertion: if validate-citations.sh:765
             # is reverted to unconditional `kill -- -$$`, the validator
             # gets SIGTERM under outer setsid, exits 143, and this fails.

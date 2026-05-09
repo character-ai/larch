@@ -2,7 +2,6 @@
 
 Larch is distributed as a [Claude Code plugin](https://code.claude.com/docs/en/plugin-marketplaces). Installation starts by registering the marketplace that hosts larch, then installing the plugin from that marketplace.
 
-Slack integration is optional and opt-in. `/implement` posts a single tracking-issue status message near the end of a run only when you pass `--slack` and `LARCH_SLACK_BOT_TOKEN` plus `LARCH_SLACK_CHANNEL_ID` are configured. See [Environment Variables](configuration-and-permissions.md#environment-variables) — skills degrade gracefully when Slack is not configured.
 
 ## Install from GitHub
 
@@ -242,7 +241,6 @@ git remote -v
 git remote add upstream git@github.com:OWNER/UPSTREAM.git
 ```
 
-The fork mode refuses to run when `upstream` is missing or either remote cannot be parsed as a `github.com` owner/repo. It targets fork PR operations at `origin`, compares freshness against `upstream/main`, disables tracking-issue lifecycle and Slack, skips version bump / CHANGELOG / merge, waits for fork CI, and prints a manual `gh pr create --repo "$UPSTREAM_REPO" --base main --head "$FORK_OWNER:$BRANCH_NAME"` command for opening the upstream PR.
 
 ## Prerequisites
 
@@ -267,7 +265,6 @@ These tools enhance the workflow but are not required. Fallback behavior varies 
 - **Codex** — [OpenAI Codex CLI](https://github.com/openai/codex). Participates as an external reviewer and voter alongside Claude subagents. When unavailable, a Claude subagent replacement maintains the reviewer count.
 - **Cursor** — [Cursor AI editor](https://cursor.com/). Participates as an external reviewer and voter. When unavailable, a Claude subagent replacement maintains the reviewer count.
 - **Gemini** — [Gemini CLI](https://github.com/google-gemini/gemini-cli). Adds an optional external reviewer slot in rounds 1-3 and joins the external chain in rounds 4+ when available. When unavailable, reviewer use is skipped in rounds 1-3 and falls through to the next external reviewer in rounds 4+; `/implement --coder=gemini` falls back to Claude. See [Gemini](#gemini) for setup details.
-- **Slack** — Single tracking-issue status message per `/implement` run (and for `/fix-issue` NON_PR closures) when `--slack` is passed. Requires environment variables or plugin `userConfig` (see [Environment Variables](configuration-and-permissions.md#environment-variables)). When `--slack` is not passed, all Slack operations are skipped silently. When `--slack` is passed but env vars are missing, the operation is skipped with a warning at session setup. All other workflow steps proceed normally in either case.
 
 ### Contributor development
 

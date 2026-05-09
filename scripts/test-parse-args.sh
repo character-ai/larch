@@ -41,15 +41,13 @@ check "t1 DESCRIPTION" "$(echo "$out" | grep '^DESCRIPTION=')" "DESCRIPTION=Use 
 check "t1 PLUGIN"      "$(echo "$out" | grep '^PLUGIN=')"      "PLUGIN=false"
 check "t1 MULTI_STEP"  "$(echo "$out" | grep '^MULTI_STEP=')"  "MULTI_STEP=false"
 check "t1 MERGE"       "$(echo "$out" | grep '^MERGE=')"       "MERGE=false"
-check "t1 SLACK"       "$(echo "$out" | grep '^SLACK=')"       "SLACK=false"
 
 # --- Test 2: all flags set ----------------------------------------------------
-out=$("$PARSE_ARGS" --plugin --multi-step --merge --slack foo "Use when doing Y")
+out=$("$PARSE_ARGS" --plugin --multi-step --merge foo "Use when doing Y")
 check "t2 NAME"        "$(echo "$out" | grep '^NAME=')"        "NAME=foo"
 check "t2 PLUGIN"      "$(echo "$out" | grep '^PLUGIN=')"      "PLUGIN=true"
 check "t2 MULTI_STEP"  "$(echo "$out" | grep '^MULTI_STEP=')"  "MULTI_STEP=true"
 check "t2 MERGE"       "$(echo "$out" | grep '^MERGE=')"       "MERGE=true"
-check "t2 SLACK"       "$(echo "$out" | grep '^SLACK=')"       "SLACK=true"
 
 # --- Test 3: leading slash stripped -------------------------------------------
 out=$("$PARSE_ARGS" /bar "Use when doing Z")
@@ -68,27 +66,27 @@ if [[ $rc -eq 0 ]]; then
   ((fail_count++)) || true
   echo "FAIL: t5 expected non-zero exit on --bogus, got 0" >&2
 fi
-if [[ "$err" != *"ERROR=Unknown flag '--bogus'"* ]] || [[ "$err" != *"--slack"* ]]; then
+if [[ "$err" != *"ERROR=Unknown flag '--bogus'"* ]] || [[ "$err" != *"--merge"* ]]; then
   ((fail_count++)) || true
-  echo "FAIL: t5 expected ERROR= line mentioning '--bogus' and '--slack' in usage list; got: $err" >&2
+  echo "FAIL: t5 expected ERROR= line mentioning '--bogus' and '--merge' in usage list; got: $err" >&2
 else
   ((pass_count++)) || true
 fi
 
-# --- Test 6: rejected legacy --no-slack flag ----------------------------------
-# Post-rename, --no-slack should be rejected with an 'Unknown flag' error so existing
+# --- Test 6: removed announcement flag is rejected -----------------------------
+# The old announcement flag should be rejected with an 'Unknown flag' error so existing
 # invocations fail loudly rather than silently misparse. (The project explicitly
 # opted for a hard break; no deprecation shim.)
 set +e
-err=$("$PARSE_ARGS" --no-slack foo "desc" 2>&1)
+err=$("$PARSE_ARGS" --announce foo "desc" 2>&1)
 rc=$?
 set -e
 if [[ $rc -eq 0 ]]; then
   ((fail_count++)) || true
-  echo "FAIL: t6 expected non-zero exit on legacy --no-slack, got 0" >&2
+  echo "FAIL: t6 expected non-zero exit on removed announcement flag, got 0" >&2
 elif [[ "$err" != *"Unknown flag"* ]]; then
   ((fail_count++)) || true
-  echo "FAIL: t6 expected 'Unknown flag' error for legacy --no-slack; got: $err" >&2
+  echo "FAIL: t6 expected 'Unknown flag' error for removed announcement flag; got: $err" >&2
 else
   ((pass_count++)) || true
 fi

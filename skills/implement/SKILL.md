@@ -1,15 +1,15 @@
 ---
 name: implement
-description: "Use when shipping a feature end-to-end: design, implement, review, version bump, PR, CI-green merge, optional Slack issue announce. Triggers: 'ship X', 'land PR', 'merge this'. See /research, /design, /im (merge), /imaq (auto-merge)."
-argument-hint: "[--quick] [--auto] [--forked] [--design-only] [--inline] [--merge | --draft] [--slack] [--no-admin-fallback] [--coder=claude|codex|cursor|gemini] [--session-env <path>] [--issue <N>] <feature description>"
+description: "Use when shipping a feature end-to-end: design, implement, review, version bump, PR, CI-green merge. Triggers: 'ship X', 'land PR', 'merge this'. See /research, /design, /im (merge), /imaq (auto-merge)."
+argument-hint: "[--quick] [--auto] [--forked] [--design-only] [--inline] [--merge | --draft] [--no-admin-fallback] [--coder=claude|codex|cursor|gemini] [--session-env <path>] [--issue <N>] <feature description>"
 allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task, WebFetch, WebSearch, Skill
 ---
 
 # Implement Skill
 
-End-to-end: design, plan review, code, validate, commit, code review, validate, commit, code flow diagram, version bump, PR, CI monitor, cleanup, optional Slack announce of tracking issue. By default, no Slack message is posted. Pass `--slack` to post a single Slack message about the tracking issue near the end of the run (gated on Slack env vars — `LARCH_SLACK_BOT_TOKEN` + `LARCH_SLACK_CHANNEL_ID`). With `--merge`: also CI+rebase+merge loop, local branch delete, main verification.
+End-to-end: design, plan review, code, validate, commit, code review, validate, commit, code flow diagram, version bump, PR, CI monitor, cleanup. With `--merge`: also CI+rebase+merge loop, local branch delete, main verification.
 
-**Protocol Execution Directive.** You are now the `/implement` orchestrator. After parsing flags and checking for `--draft`/`--merge`, `--design-only`/`--merge`, and `--forked`/`--merge` mutual-exclusion aborts, your FIRST external action MUST be **Step 0**. Step 0 is one atomic failure domain with three ordered Bash invocations: first `${CLAUDE_PLUGIN_ROOT}/scripts/create-branch.sh --check`, then `${CLAUDE_PLUGIN_ROOT}/scripts/session-entry-gate.sh`, then `${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh` with `--skip-branch-check` toggled by the entry gate. **Step 0 fork-mode exception**: when `--forked` was parsed at flag-resolution time (`forked_target=true`), invoke `${CLAUDE_PLUGIN_ROOT}/scripts/implement-fork-env.sh` exactly once before the standard three-call setup begins. The helper allocates its own bootstrap tmpdir and emits `BOOTSTRAP_TMPDIR=…` plus `CALLER_ENV_PATH=…` on stdout (along with fork metadata: `FORK_REPO`, `UPSTREAM_REPO`, `FORK_OWNER`, `FORKED_TARGET`, `SLACK_ENABLED`); `IMPLEMENT_TMPDIR` does NOT exist yet at this point and is therefore NOT passed in (Round 1 plan-review FINDING_1 fix — passing an unset `$IMPLEMENT_TMPDIR` would make the helper write `caller-env.sh` to an empty path). That helper encapsulates the upstream prereq probe, both `github-remote-repo.sh` parses, the atomic caller-env write, and stdout emission of fork-mode orchestrator-local KV pairs. The standard three-call setup then runs unchanged with `--caller-env "$CALLER_ENV_PATH"` (the absolute path emitted on the helper's stdout). No other Bash or Write is permitted between flag parsing and the standard three-call setup beyond this single helper invocation. Step 0 is not complete until all required Bash invocations have completed successfully and their output has been parsed. No other `Read`/`Edit`/`Write`/`Bash`/child-`Skill` calls may appear between them or before them. Do not `Read`/`Grep`/`Glob` project files, do not `Edit`/`Write`, and do not invoke child skills until Step 0 completes and its output has been parsed. Freelancing the implementation without executing the step sequence is a protocol violation — every step from 0 through 18 must execute in order per this file.
+**Protocol Execution Directive.** You are now the `/implement` orchestrator. After parsing flags and checking for mutually exclusive options, your FIRST external action MUST be Step 0: first `${CLAUDE_PLUGIN_ROOT}/scripts/create-branch.sh --check`, then `${CLAUDE_PLUGIN_ROOT}/scripts/session-entry-gate.sh`, then `${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh` with `--skip-branch-check` toggled by the entry gate. When `--forked` was parsed, `${CLAUDE_PLUGIN_ROOT}/scripts/implement-fork-env.sh` is the only permitted pre-setup exception and runs before those three setup calls.
 
 **Anti-halt continuation reminder.** After every child `Skill` tool call (e.g., `/design`, `/review`, `/bump-version`, `/issue`, `/implement`) returns AND after every `Bash` tool call that completes a numbered step or sub-step, including `run-relevant-checks-captured.sh`, IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on the child's cleanup output, on a Bash result, or on a status message, and do NOT write a summary, handoff, status recap, or "returning to parent" message — those are halts in disguise. This applies to ALL step boundaries from Step 0 through Step 18. The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `skip to Step N`, `bail to cleanup`, `jump back`, `loop back`, `fall through`, `break out`). A normal sequential `proceed to Step N+1` instruction is the default continuation this rule reinforces, NOT an exception. Every relevant-checks helper call anywhere in this file is covered by this rule. **Critical boundary: after Step 9b (PR creation) completes, IMMEDIATELY proceed to Step 10 (CI monitor) — PR creation is NOT the end of the run.** **Critical boundary: after Step 8's pre-bump-decision branches resolve (whether via `/bump-version` returning, `BUMP_TYPE=NONE` skip, `HAS_BUMP=false` skip, or `forked_target=true` skip), IMMEDIATELY invoke `implement-finalize.sh postbump` to complete Steps 8a, 8b — version bump (or its skip) is NOT the end of the run; Steps 8a, 8b, 9, 10, 11, 12, 14-18 still must run. Do NOT write any text output (status narration, analysis prose, or the `✅ 8: version bump` breadcrumb) between `/bump-version`'s return and the sub-step 3 Bash call — any text followed by a turn end before that call skips sub-steps 3/3b and the postbump pipeline and is a halt in disguise. The `✅ 8: version bump` breadcrumb is printed ONLY at the `STATUS=ok/skipped` branch after `postbump` completes.** See `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Anti-halt continuation reminder for the canonical rule.
 
@@ -45,7 +45,7 @@ Each rule states WHY; per-site reminders reference by anchor name.
 
 6. **NEVER move the Step 5 quick-mode Cursor/Codex reviewer prompts (containing the five focus-area enum literals `code-quality` / `risk-integration` / `correctness` / `architecture` / `security`) out of `SKILL.md`.** **Why**: `.github/workflows/ci.yaml` inspects `skills/implement/SKILL.md` for the unquoted focus-area enum. **How to apply**: keep every Step 5 quick-mode Bash block that contains the slash-separated focus-area enum (Cursor and Codex variants for both the rounds 1-3 generic slot and the rounds 4+ generic reviewer) inline in Step 5; do not move them to a reference file unless the CI workflow's file list is extended in the same PR.
 
-7. **NEVER bail mid-run on orchestrator-judgment "scope" or "capacity" concerns without a mechanical justification.** **Why**: `/implement` is designed for long autonomous runs end-to-end. Subjective "this feels like a lot of remaining work" judgments are NOT valid bail reasons. The only sanctioned non-error halt paths between Step 1 and Step 18 are: (a) Step 12d under one of its three documented judgment conditions (3 fix iterations attempted without progress; failure fundamentally incompatible with codebase or CI; fix would require reverting the core feature); (b) explicit user halt mid-run via a fresh interactive turn; (c) hard tool failure (context overflow, persistent CI infrastructure outage, gh auth revocation). **How to apply**: this rule does not forbid the mechanical 12d routes already encoded as control flow (Rebase + Re-bump sub-procedure hard-bail, conflict-resolution abort, merge-pr.sh results that require Step 12d — `admin_failed`, `error`, `policy_denied`, `version_already_published`) — those land in 12d via documented sub-procedures, not via orchestrator judgment. At every step boundary between Step 1 and Step 18, the orchestrator continues according to the next explicit control-flow directive (sequential by default unless this file specifies a non-sequential redirect). If the orchestrator finds itself drafting an `AskUserQuestion` to halt or relitigate scope post Step 1, or composing a "let me check in before continuing" message that is not triggered by one of conditions (a)-(c) above, it MUST instead continue execution and log the concern as a `Warnings` entry in `$IMPLEMENT_TMPDIR/execution-issues.md` (which Step 11 publishes to the tracking issue's anchor). **Post-merge sub-clause (highest-stakes halt boundary)**: the `✅ 12: CI+merge loop — PR #<N> merged!` line at Step 12b (and the analogous `✅ PR was force-merged externally` line at Step 12a's `already_merged` branch) is the single most halt-prone moment in the orchestrator — the celebratory "merged!" tone makes the run feel complete, but Steps 14, 15, 16, 16a, 17, 18 still must run. Halting at the post-merge boundary, ending the turn after the merge breadcrumb, posting a "🎉 done" recap, or composing any handoff/summary message between the merge breadcrumb and Step 14's first action is a NEVER #7 violation regardless of how natural the boundary feels. The `pr_closed=true` and `DONE_RENAME_APPLIED=true` flags set by 12a/12b are PRE-conditions consumed by Steps 14–18 (the `pr_closed=true` flag in particular is consumed by Step 16a's outcome state machine — halting before Step 16a means the Slack announcement never fires) — they are NOT POST-conditions of a finished run.
+7. **NEVER bail mid-run on orchestrator-judgment "scope" or "capacity" concerns without a mechanical justification.** **Why**: `/implement` is designed for long autonomous runs end-to-end. Subjective "this feels like a lot of remaining work" judgments are NOT valid bail reasons. The only sanctioned non-error halt paths between Step 1 and Step 18 are: (a) Step 12d under one of its documented judgment conditions; (b) explicit user halt mid-run via a fresh interactive turn; (c) hard tool failure. **How to apply**: continue according to the next explicit control-flow directive unless a sanctioned halt path applies. **Post-merge sub-clause (highest-stakes halt boundary)**: the `✅ 12: CI+merge loop — PR #<N> merged!` line at Step 12b (and the analogous `✅ PR was force-merged externally` line at Step 12a's `already_merged` branch) is the single most halt-prone moment in the orchestrator — the celebratory "merged!" tone makes the run feel complete, but Steps 14, 15, 16, 17, 18 still must run. Halting at the post-merge boundary, ending the turn after the merge breadcrumb, posting a done recap, or composing any handoff/summary message between the merge breadcrumb and Step 14's first action is a NEVER #7 violation regardless of how natural the boundary feels. The `pr_closed=true` and `DONE_RENAME_APPLIED=true` flags set by 12a/12b are PRE-conditions consumed by Steps 14-18, not POST-conditions of a finished run.
 
 8. **NEVER use `step12_rebase` or `step10_rebase` (or any other non-`step8b_rebase` token) as the `caller_kind` when invoking the Rebase + Re-bump Sub-procedure from Step 8b's conflict handler.** **Why**: step10/step12 caller families have wrong post-success control flow for Step 8b — `step12_rebase` re-invokes `ci-wait.sh` (no PR exists at Step 8b, so `ci-wait.sh` would fail), `step10_rebase` falls through to a Step 10 → Step 11 path that is unreachable from Step 8b, and the failure semantics route to 12d (no PR to bail under) or break out of a non-existent CI loop. **How to apply**: `implement-finalize.sh postbump` emits `CALLER_KIND=step8b_rebase` on the conflict envelope, and the orchestrator must invoke the sub-procedure with that same token. The sub-procedure's step 7 has a dedicated `step8b_rebase` return branch that returns control to `postbump`'s checkpointed force-push phase without sleeping or re-invoking `ci-wait.sh`.
 
@@ -97,7 +97,6 @@ Step Name Registry:
 | 14 | local cleanup |
 | 15 | verify main |
 | 16 | rejected findings |
-| 16a | slack issue post |
 | 17 | final report |
 | 18 | cleanup |
 
@@ -154,12 +153,11 @@ The feature to implement is described by `$ARGUMENTS` after flag stripping.
 
 - `--quick`: `quick_mode=true`. Step 1 skips `/design` (inline plan instead); Step 5 skips `/review` (review loop: rounds 1-3 launch 5 Cursor specialists + a generic Codex reviewer + a Claude generic reviewer, rounds 4-7 use single generic Cursor → Codex → Claude fallback chain — no voting panel); Step 7a skips the Code Flow Diagram. All other steps run normally. Independent of `--merge`. Step 1 normal mode may also flip `quick_mode=true` at runtime via simplicity classification (see Step 1 "Simplicity classification" — auto-switch is unilateral, no user prompt, but skipped on resumed sessions where a reusable design manifest is present).
 - `--auto`: `auto_mode=true`. (a) forward `--auto` to `/design` in Step 1, suppressing its interactive checkpoints; (b) suppress this skill's Step 2 opportunistic questions; (c) in Step 12 merge-conflict resolution, suppress `AskUserQuestion` and use best-effort (bail if confidence too low). When `--quick` also set and `/design` skipped, `--auto` still suppresses Step 2 questions. Dirty-tree recovery `AskUserQuestion` prompts are NOT suppressed by `--auto`.
-- `--forked`: `forked_target=true`. Run the workflow as a fork-CI dry-run: target fork PR operations at `origin` (`FORK_REPO`), compare freshness against `upstream/main`, disable Slack (`slack_enabled=false`), disable tracking-issue lifecycle, skip version bump / CHANGELOG / merge, and print a final upstream-PR command for the operator. Compatible with `--quick`, `--draft`, `--design-only`, `--auto`, `--issue`, and `--coder=...`. **Mutually exclusive with `--merge`**; if both are present, print `**⚠ --forked and --merge are mutually exclusive. Aborting.**` and exit without Step 0.
-- `--merge`: `merge=true`. Steps 12–15 run (CI+rebase+merge loop, local cleanup, main verification). Otherwise those steps are skipped — PR is created and workflow stops after initial CI wait, rejected findings, final report, Step 16a (posts to Slack only when `--slack` and `slack_available`), temp cleanup. **Mutually exclusive with `--draft`.**
+- `--forked`: `forked_target=true`. Run the workflow as a fork-CI dry-run: target fork PR operations at `origin` (`FORK_REPO`), compare freshness against `upstream/main`, disable tracking-issue lifecycle, skip version bump / CHANGELOG / merge, and print a final upstream-PR command for the operator. Compatible with `--quick`, `--draft`, `--design-only`, `--auto`, `--issue`, and `--coder=...`. **Mutually exclusive with `--merge`**; if both are present, print `**⚠ --forked and --merge are mutually exclusive. Aborting.**` and exit without Step 0.
+- `--merge`: `merge=true`. Steps 12–15 run (CI+rebase+merge loop, local cleanup, main verification). Otherwise those steps are skipped — PR is created and workflow stops after initial CI wait, rejected findings, final report, and temp cleanup. **Mutually exclusive with `--draft`.**
 - `--design-only`: `design_only=true`. Run Step 0 / 0.5 / 1, publish the plan, plan-review tally, diagrams when available, and OOS fragments to the tracking issue, then stop without implementation, review, version bump, PR creation, CI, or merge. **Mutually exclusive with `--merge`**; if both are present, print `**⚠ --design-only and --merge are mutually exclusive. Aborting.**` and exit without Step 0. **Mutually exclusive with `--quick`** (quick mode bypasses /design's sketch+review machinery and produces a degraded inline plan that has no plan-review tally; combining the two would publish an empty/degraded review section to the tracking issue with no signal); if both are present, print `**⚠ --design-only and --quick are mutually exclusive (quick mode skips plan-review). Aborting.**` and exit without Step 0.
 - `--inline`: `inline_mode=true`. Default: `inline_mode=false`. **Execution topology only — does not change parent verbosity suppression.** Controls how /design's heavy non-interactive phase (sketches → plan → plan review → optionally Step 3b/4) executes. When `inline_mode=false` (default), /implement appends `--subagent` to its Step 1 /design invocation, so the heavy phase runs in an isolated Agent-tool subagent and only terse breadcrumbs reach the parent — preserves today's token-saving nested behavior. When `inline_mode=true`, /implement omits `--subagent`, so the heavy phase runs in /design's own in-turn context (richer tool transcript visible in the design step's output, higher token cost in the parent context). **Parent verbosity suppression is unchanged** — bulky inline artifact bodies remain file-backed via the manifest because /design's suppression rules are gated on `SESSION_ENV_PATH` (non-empty whenever /implement invokes /design). A separate verbosity flag would be required to actually unsuppress inline artifact prints; that is out of scope for this PR. Orthogonal to all other flags including `--design-only` (`--design-only --inline` is allowed). **No effect under `--quick`** — quick mode skips /design entirely, so the inline-vs-subagent distinction is moot.
 - `--draft`: `draft=true`. Step 9b creates the PR in draft state (`create-pr.sh --draft`); Step 14 is skipped so the local branch stays. `draft=true` implies `merge=false`. **Mutually exclusive with `--merge`.** If both are present, print `**⚠ --draft and --merge are mutually exclusive. Aborting.**` and exit without Step 0.
-- `--slack`: `slack_enabled=true`. Default: `slack_enabled=false`. When `slack_enabled=true`, Step 16a posts a single Slack message about the tracking issue near the end of the run (gated on `slack_available=true` — i.e. `LARCH_SLACK_BOT_TOKEN` and `LARCH_SLACK_CHANNEL_ID` set — and on having a resolved `ISSUE_NUMBER`). When `slack_enabled=false` (default), Step 16a skips the Slack API call regardless of environment configuration. Independent of all other flags.
 - `--no-admin-fallback`: `no_admin_fallback=true`. Default: `no_admin_fallback=false`. When `true`, forwarded into Step 12b's `merge-pr.sh` invocation; the script then tries only a plain squash merge once the admin-eligible gate (CI good + branch fresh) is reached, emits `MERGE_RESULT=policy_denied` if that plain merge fails, and Step 12b bails to Step 12d. Default behavior tries `--admin` first after the same gate, then retries without `--admin` if the privileged attempt is rejected. Applies to ALL admin-eligible `mergeStateStatus` values (`CLEAN`, `UNSTABLE`, `HAS_HOOKS`, `BLOCKED`) — not just review-required denials. Independent of all other flags (in particular: no special coupling with `--auto`).
 - `--coder=<value>`: sets `coder=<value>` AND `coder_explicit=true`. Defaults: `coder=codex` and `coder_explicit=false` (i.e. `coder_explicit=true` ONLY when this flag is explicitly present in the parsed args). Accepted values: `codex` (Step 2 spawns the Codex implementer via `step2-implement.sh`; this is the default when the flag is omitted), `claude` (Step 2 implementation runs in the main agent / Claude context — pre-Codex behavior), `cursor` (Step 2 spawns the Cursor implementer via `step2-implement.sh`), and `gemini` (Step 2 spawns the Gemini implementer via `step2-implement.sh`). When `coder=cursor` is requested but `cursor_available=false` or `CURSOR_HEALTHY=false` (or empty), the dispatcher falls back to `STATUS=claude_fallback` and the orchestrator runs the main-agent code-edit path — symmetric to passing `--coder=claude`. When `coder=gemini` is requested but `gemini_available=false` or `GEMINI_HEALTHY=false` (or empty), the dispatcher falls back to `STATUS=claude_fallback` and the orchestrator runs the main-agent code-edit path — symmetric to passing `--coder=claude`. (Codex unhealthy/unavailable is NOT silently rerouted at the dispatcher: when `coder=codex` is requested but Codex is unhealthy, the dispatcher proceeds with the spawn anyway and bails with `codex-runtime-failure` if Codex truly cannot run — operators who want a clean fallback in that case should pass `--coder=claude`.) Forwarded to the Step 2 dispatcher as `--coder $coder`. Independent of all other flags. The legacy `--codex-available true|false` knob is still accepted by the dispatcher for one release with a stderr deprecation warning (`true → coder=codex`, `false → coder=claude`); orchestrator-side, prefer `--coder` directly.
 - `--no-merge`: **Deprecated** no-op. On encounter, print `**ℹ '--no-merge' is now the default and no longer needed; the flag is recognized as a no-op for backward compatibility.**`
@@ -174,7 +172,6 @@ If `forked_target=true`, run the single fork pre-setup helper before the standar
 ${CLAUDE_PLUGIN_ROOT}/scripts/implement-fork-env.sh
 ```
 
-Parse stdout as orchestrator-local variables only: `BOOTSTRAP_TMPDIR`, `CALLER_ENV_PATH`, `FORK_REPO`, `UPSTREAM_REPO`, `FORK_OWNER`, `FORKED_TARGET`, `SLACK_ENABLED`. Set `slack_enabled=false`. Do NOT write any of these fork-only keys to session-env. The helper has atomically written `$CALLER_ENV_PATH` (= `$BOOTSTRAP_TMPDIR/caller-env.sh`) containing only `REPO=$FORK_REPO`; use that absolute path as the `session-setup.sh --caller-env` argument. After `session-setup.sh` creates the real `SESSION_TMPDIR` and the orchestrator sets `IMPLEMENT_TMPDIR=SESSION_TMPDIR`, the bootstrap directory is no longer needed (its only payload was `caller-env.sh`, which `session-setup.sh` already consumed); the orchestrator MAY `rm -rf "$BOOTSTRAP_TMPDIR"` immediately or leave it for OS tmp cleanup. `IMPLEMENT_TMPDIR` is never the bootstrap path. On non-zero helper exit, print stderr and abort without running the standard setup calls.
 
 Check the current branch before any setup side effects:
 
@@ -223,7 +220,6 @@ On non-zero exit, always print the raw `PREFLIGHT_ERROR=...` line first. Then pr
 
 Key any future sub-message on the substring inside `PREFLIGHT_ERROR` (for example, `Not on main branch` or `Working tree is not clean`), not on the prior `IS_MAIN` value from `create-branch.sh --check`; detached HEAD can report `IS_MAIN=true` with an empty `CURRENT_BRANCH`.
 
-Parse `SESSION_TMPDIR`, `SESSION_ID`, `SLACK_OK`, `SLACK_MISSING`, `REPO`, `REPO_UNAVAILABLE`, `CODEX_AVAILABLE`, `CURSOR_AVAILABLE`, `GEMINI_AVAILABLE`, `CODEX_HEALTHY`, `CURSOR_HEALTHY`, `GEMINI_HEALTHY`. `session-setup.sh` creates the tmpdir under `${XDG_CACHE_HOME:-$HOME/.cache}/larch/sessions/` when possible (legacy `/tmp` fallback), writes `$SESSION_TMPDIR/session-id`, and writes `$SESSION_TMPDIR/.larch-keepalive`. Set `IMPLEMENT_TMPDIR` = `SESSION_TMPDIR`, then establish token context before writing the session-env file.
 
 Then:
 - Ensure a per-run session id exists for design-manifest freshness checks. `session-setup.sh` already wrote the value; this call is preserved as an idempotent no-op for older harnesses and fallback paths (see `scripts/write-session-id.md` for the contract):
@@ -243,8 +239,6 @@ Then:
       export LARCH_CLAUDE_SOURCE_FILE="$IMPLEMENT_TMPDIR/claude-source.env" || true
   session_env_args=(
     --output "$IMPLEMENT_TMPDIR/session-env.sh"
-    --slack-ok <value>
-    --slack-missing <value>
     --repo <value>
     --repo-unavailable <value>
     --codex-healthy <value>
@@ -261,8 +255,6 @@ Then:
   # timing-mark Step 0 — preflight
   ```
   Step 1 compares this value to the design manifest's `SESSION_ID` before reusing any exported plan.
-- Set `slack_available` from `SLACK_OK` (`true` → `true`; `false` → `false`). Warn only when the user opted in: if `slack_enabled=true` AND `SLACK_OK=false`, print `**⚠ Slack is not fully configured (<SLACK_MISSING> not set). Issue Slack announcement (Step 16a) will be skipped.**` When `slack_enabled=false` (default; `--slack` not set), suppress the warning — Slack is not in use regardless of environment state.
-- If `forked_target=true`, keep `slack_enabled=false` even if `SLACK_OK=true`; fork dry-runs do not post Slack.
 - If `REPO_UNAVAILABLE=true`: print `**⚠ Could not determine repository name. CI monitoring (Steps 10, 12) and merge (Step 12b) will be skipped.**` Set `repo_unavailable=true`.
 - Set `codex_available=true` only when both `CODEX_AVAILABLE=true` and `CODEX_HEALTHY=true` (per the Binary Check and Health Probe mapping in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md`); same for `cursor_available`. Set `gemini_available=true` only when `GEMINI_AVAILABLE=true` AND `GEMINI_HEALTHY=true`; if either key is absent or false, default `gemini_available=false`. The Gemini flag is used for `--coder=gemini` dispatch gating, not review-panel selection.
 - If `CODEX_AVAILABLE=false`: print `**⚠ Codex not available (binary not found). Proceeding without Codex reviewer.**` Else if `CODEX_HEALTHY=false`: print `**⚠ Codex installed but not responding (health check failed). Using Claude replacement.**` Same for Cursor (only check `*_HEALTHY` when `*_AVAILABLE=true`).
@@ -291,7 +283,6 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 
 ### Cross-Skill Health Propagation
 
-After each child skill returns (`/design` Step 1, `/review` Step 5), check `$IMPLEMENT_TMPDIR/session-env.sh.health`. If it exists, read `CODEX_HEALTHY` / `CURSOR_HEALTHY` / `GEMINI_HEALTHY`. If any flipped to `false` during the child, preserve every durable non-health key currently in `$IMPLEMENT_TMPDIR/session-env.sh` — at minimum `SLACK_OK`, `SLACK_MISSING`, `REPO`, `REPO_UNAVAILABLE`, `LARCH_TIMING_LEDGER`, `LARCH_TOKEN_SESSION_ID`, and `LARCH_CLAUDE_SOURCE_FILE` — when re-invoking `write-session-env.sh` to update health flags. Parse values line-by-line from `$IMPLEMENT_TMPDIR/session-env.sh` (same safe parsing as `session-setup.sh` — do NOT source). Runtime timeouts and token context propagate across skill boundaries without clobbering Slack / repo state.
 
 ## Phantom Untracked Probe
 
@@ -856,7 +847,7 @@ This matrix is authoritative after the wrapper returns. It is informational pros
 | Wrapper output | `--design-only` | Permitted next-actions | Forbidden |
 |---|---|---|---|
 | `MANIFEST_OK=true` + `POST_DESIGN_BOUNDARY_OK=true` + ➡️ default | false | Bind `BRANCH_NAME` from `BRANCH=` → write `plan-goals-test` + `plan-review-tally` anchor fragments → Coder simplicity override (may flip `coder=claude` per the section above) → Step 1.r rebase → Step 2 entry | New orchestrator-authored prose between `/design` return and the wrapper Bash call; re-running `git-current-branch.sh`; manual repeat of the Cross-Skill Health Update procedure (the wrapper owns it); free-form recap / handoff / "design phase complete" prose anywhere between `/design` return and Step 1.r |
-| `MANIFEST_OK=true` + `POST_DESIGN_BOUNDARY_OK=true` + ➡️ design-only | true | Bind `BRANCH_NAME` from `BRANCH=` → write `plan-goals-test` + `plan-review-tally` anchor fragments → write `diagrams` anchor fragment → Step 9a.1 OOS pipeline → set `DESIGN_ONLY_DONE=true` → Step 16a → Step 18 | Same forbidden list as above; additionally: Steps 2 / 3 / 4 / 5 / 6 / 7 / 7a / 8 / 8a / 8b / 9 / 9b (per the existing design-only short-circuit) |
+| `MANIFEST_OK=true` + `POST_DESIGN_BOUNDARY_OK=true` + ➡️ design-only | true | Bind `BRANCH_NAME` from `BRANCH=` → write `plan-goals-test` + `plan-review-tally` anchor fragments → write `diagrams` anchor fragment → Step 9a.1 OOS pipeline → set `DESIGN_ONLY_DONE=true` → Step 16 → Step 18 | Same forbidden list as above; additionally: Steps 2 / 3 / 4 / 5 / 6 / 7 / 7a / 8 / 8a / 8b / 9 / 9b (per the existing design-only short-circuit) |
 | `MANIFEST_FAILED=true ERROR=<token>` | any | Print `**⚠ 1: design plan — design manifest unavailable: $ERROR. Bailing to cleanup.**` → set `STALL_TRACKING=true` → skip to Step 18 | Setting `MANIFEST_PATH`; entering Step 1.r / Step 2; treating `WARN=…` lines (if any) as failure (warnings are non-fatal) |
 
 **Always-permitted writes regardless of row**: writes under `$IMPLEMENT_TMPDIR/**`, `/relevant-checks` invocations, and reads of the wrapper's stdout for parsing. The "forbidden" column scopes to ORCHESTRATOR-AUTHORED prose between `/design` return and Step 1.r (or Step 18 on failure), not to all Bash/Write. If a downstream paragraph appears to disagree, the matrix wins. See NEVER #7.
@@ -888,7 +879,6 @@ If `design_only=true`:
 1. Compose the `diagrams` anchor fragment now (NOT later, since Steps 7/7a are skipped). The Code Flow Diagram is unavailable in design-only mode (no implementation has run), so the fragment carries: `## Architecture Diagram` + mermaid fence read from `ARCHITECTURE_DIAGRAM_FILE` (or `"Architecture diagram not available."` if that optional manifest key is absent or the file is missing), then `## Code Flow Diagram` + the literal placeholder `"(Code Flow Diagram unavailable — --design-only run, no implementation)"`. Write to `$IMPLEMENT_TMPDIR/anchor-sections/diagrams.md`. If `ISSUE_NUMBER` is set, assemble and upsert (same mechanism as Step 7a's `diagrams` fragment write — see Step 0.5).
 2. Skip the Step 1.r Rebase Checkpoint below — design-only does not modify code, so a rebase to latest main is unnecessary churn.
 3. Skip Steps 2 / 3 / 4 / 5 / 6 / 7 / 7a / 8 / 8a / 8b / 9 / 9b entirely. Proceed directly to Step 9a.1 so accepted OOS observations are filed and the Step 9a.1 anchor data fragments are refreshed.
-4. After Step 9a.1 completes, set `DESIGN_ONLY_DONE=true`, skip Steps 10–16, then proceed to Step 16a so the design-only Slack outcome and final report can run before Step 18 cleanup.
 
 ### Coder simplicity override
 
@@ -1635,7 +1625,7 @@ Run `create-pr.sh` with a concise title (under 70 chars). If `draft=true`, appen
 ${CLAUDE_PLUGIN_ROOT}/scripts/create-pr.sh --title "<title>" --body-file "$IMPLEMENT_TMPDIR/pr-body.md" [--draft] [--repo "$FORK_REPO" when forked_target=true]
 ```
 
-Parse `PR_NUMBER`, `PR_URL`, `PR_TITLE`, `PR_STATUS`. The script pushes the branch, detects existing PRs, creates new with `--assignee @me`. `PR_STATUS` is `created` or `existing`. Save — used in Step 16a. When `draft=true` and `PR_STATUS=existing`, the pre-existing PR's draft state is unchanged (`--draft` only affects new PRs).
+Parse `PR_NUMBER`, `PR_URL`, `PR_TITLE`, `PR_STATUS`. The script pushes the branch, detects existing PRs, creates new with `--assignee @me`. `PR_STATUS` is `created` or `existing`. Save — used in Step 16. When `draft=true` and `PR_STATUS=existing`, the pre-existing PR's draft state is unchanged (`--draft` only affects new PRs).
 
 On non-zero exit: print the error and abort. Do not proceed to Steps 10–18.
 
@@ -1671,7 +1661,6 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 
 If `repo_unavailable=true`: print `⏭️ 10: CI monitor — skipped (repo unavailable) (<elapsed>)` and proceed to Step 11.
 
-Wait for CI to go green so the post-PR reporting phase sees a passing PR. This step does **NOT merge** — Step 12 handles advancement and merging. The Slack issue announcement runs later at Step 16a.
 
 **Best-effort re-bump during CI wait**: Step 10's rebase handler invokes the Rebase + Re-bump Sub-procedure (same as Step 12) with step10-family semantics — hard failures degrade gracefully (warn + break to Step 11) rather than bailing. This keeps the PR's version fresh during the CI-wait phase while ensuring Step 10 never blocks the pipeline — Step 12 remains the last-chance enforcement point (Load-Bearing Invariant #1).
 
@@ -1736,7 +1725,6 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 
 **MANDATORY — READ ENTIRE FILE** before composing the `execution-issues` anchor section at Step 11: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/anchor-template-execution-issues.md`. **Do NOT load** `anchor-template-canonical-body.md` separately at Step 11 unless also planting/refreshing other sections — the `<details>` wrapper and sanitization rules needed here live entirely in `anchor-template-execution-issues.md`.
 
-Runs unconditionally. The Slack announcement of the tracking issue has moved to Step 16a (near end-of-run, once the final outcome is known) — Step 11 is now only the anchor refresh.
 
 **Branch on state**:
 
@@ -1815,8 +1803,8 @@ Use `timeout: 1860000` on the Bash call. Parse the same fields as Step 10.
 
    - **`ACTION=rebase`**: print a context-specific message from `CI_STATUS` — `CI_STATUS=pass` → `🔃 12: CI+merge loop — CI passed, main advanced, rebasing + re-bumping`; `CI_STATUS=pending` → `🔃 12: CI+merge loop — main advanced, rebasing + re-bumping`. **MANDATORY — READ ENTIRE FILE** before invoking the sub-procedure: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/rebase-rebump-subprocedure.md`. Invoke the sub-procedure with `rebase_already_done=false`, `caller_kind=step12_rebase`. Counter updates and `ci-wait.sh` re-invocation happen inside the sub-procedure's step 7. On hard failure, the sub-procedure bails to 12d directly.
    - **`ACTION=merge`**: print `✅ 12: CI+merge loop — CI passed, main up-to-date, merging! (<elapsed>)` → proceed to **12b**.
-   - **`ACTION=already_merged`**: print `✅ PR was force-merged externally — skipping CI wait and merge. (<elapsed>)`. Set `pr_closed=true` (consumed by Step 16a's outcome state machine). **Title-prefix lifecycle terminal transition**: if `$ISSUE_NUMBER` is set AND `repo_unavailable=false`, first write the issue body to a temp file (reuse an existing issue-body temp if available; otherwise fetch with null-safe `gh issue view "$ISSUE_NUMBER" --repo "$REPO" --json body --jq '.body // ""'`) and write merged PR text with `gh pr view "$PR_NUMBER" --repo "$REPO" --json title,body --jq '(.title // "") + "\n" + (.body // "")'` to `$IMPLEMENT_TMPDIR/round-trip-input-pr.txt`. Run `round-trip-detect.sh --text-file <issue-body-tmp> --text-file "$IMPLEMENT_TMPDIR/round-trip-input-pr.txt"`, parse `ROUND_TRIP=true|false`, and call `${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh rename --issue $ISSUE_NUMBER --state done --round-trip "$ROUND_TRIP" --repo "$REPO"` (applies to both fresh-created and adopted issues — title-prefix lifecycle is uniform across Branches 2/3/4). Do NOT OR with any pre-existing title marker; sticky preservation is owned by `tracking-issue-write.sh`. Best-effort: on `FAILED=true` or non-zero exit, log to `Tool Failures` and continue. Set `DONE_RENAME_APPLIED=true` on any return (including `RENAMED=false` no-op) so Step 18 does not double-fire. Skip 12b, proceed to Step 14. Counts as merged for Steps 14–15. **Continue to Step 14 IMMEDIATELY after this line — "force-merged externally" feels terminal but is mid-run; do NOT end the turn, summarize, or write a handoff message. Steps 14, 15, 16, 16a, 17, 18 still must run.**
-   - **`ACTION=rebase_then_evaluate`**: **MANDATORY — READ ENTIRE FILE** before invoking the sub-procedure: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/rebase-rebump-subprocedure.md`. Invoke the sub-procedure with `rebase_already_done=false`, `caller_kind=step12_rebase_then_evaluate`. On success, **fall through to 12c** (counter updates already done; do NOT re-invoke `ci-wait.sh` here — the sub-procedure's `step12_rebase_then_evaluate` branch skips the re-invocation for this path). On hard failure, the sub-procedure bails to 12d.
+   - **`ACTION=already_merged`**: print `✅ PR was force-merged externally — skipping CI wait and merge. (<elapsed>)`. Set `pr_closed=true` (consumed by final outcome state). **Title-prefix lifecycle terminal transition**: if `$ISSUE_NUMBER` is set AND `repo_unavailable=false`, first write the issue body to a temp file (reuse an existing issue-body temp if available; otherwise fetch with null-safe `gh issue view "$ISSUE_NUMBER" --repo "$REPO" --json body --jq '.body // ""'`) and write merged PR text with `gh pr view "$PR_NUMBER" --repo "$REPO" --json title,body --jq '(.title // "") + "\n" + (.body // "")'` to `$IMPLEMENT_TMPDIR/round-trip-input-pr.txt`. Run `round-trip-detect.sh --text-file <issue-body-tmp> --text-file "$IMPLEMENT_TMPDIR/round-trip-input-pr.txt"`, parse `ROUND_TRIP=true|false`, and call `${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh rename --issue $ISSUE_NUMBER --state done --round-trip "$ROUND_TRIP" --repo "$REPO"` (applies to both fresh-created and adopted issues — title-prefix lifecycle is uniform across Branches 2/3/4). Do NOT OR with any pre-existing title marker; sticky preservation is owned by `tracking-issue-write.sh`. Best-effort: on `FAILED=true` or non-zero exit, log to `Tool Failures` and continue. Set `DONE_RENAME_APPLIED=true` on any return (including `RENAMED=false` no-op) so Step 18 does not double-fire. Skip 12b, proceed to Step 14. Counts as merged for Steps 14–15. **Continue to Step 14 IMMEDIATELY after this line — "force-merged externally" feels terminal but is mid-run; do NOT end the turn, summarize, or write a handoff message. Steps 14, 15, 16, 17, 18 still must run.**
+   - **`ACTION=rebase_then_evaluate`**: invoke the sub-procedure with `rebase_already_done=false`, `caller_kind=step12_rebase_then_evaluate`. On success, **fall through to 12c** (counter updates already done; do NOT re-invoke `ci-wait.sh` here — the sub-procedure's `step12_rebase_then_evaluate` branch skips the re-invocation for this path). On hard failure, the sub-procedure bails to 12d.
    - **`ACTION=evaluate_failure`**: → **12c**.
    - **`ACTION=bail`**: print `BAIL_REASON` → **12d**.
 
@@ -1835,7 +1823,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/merge-pr.sh --pr <PR-NUMBER> --repo $REPO [--no-ad
 Append `--no-admin-fallback` to the invocation only when `no_admin_fallback=true` (parsed from the top-level flag). Default behavior tries `--admin` first after `merge-pr.sh` verifies CI is green and the branch is fresh, then retries without `--admin` if the privileged attempt is rejected. With `--no-admin-fallback`, `merge-pr.sh` skips the privileged attempt and tries only the plain squash merge.
 
 Parse `MERGE_RESULT` and `ERROR`:
-- **`merged`**: plain squash merge succeeded (default-mode fallback after `--admin` rejection, or the plain-only path under `--no-admin-fallback`). Print `✅ 12: CI+merge loop — PR #<NUMBER> merged! (<elapsed>)`. Set `pr_closed=true` (consumed by Step 16a's outcome state machine). **Title-prefix lifecycle terminal transition**: if `$ISSUE_NUMBER` set AND `repo_unavailable=false`, run the same issue-body + merged-PR-text round-trip detection procedure from Step 12a, then call `${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh rename --issue $ISSUE_NUMBER --state done --round-trip "$ROUND_TRIP"` (applies to both fresh-created and adopted issues). Best-effort (log to `Tool Failures` on failure; do not abort the run — the merge has already succeeded). Set `DONE_RENAME_APPLIED=true` on any return. Continue.
+- **`merged`**: plain squash merge succeeded (default-mode fallback after `--admin` rejection, or the plain-only path under `--no-admin-fallback`). Print `✅ 12: CI+merge loop — PR #<NUMBER> merged! (<elapsed>)`. Set `pr_closed=true` (consumed by final outcome state). **Title-prefix lifecycle terminal transition**: if `$ISSUE_NUMBER` set AND `repo_unavailable=false`, run the same issue-body + merged-PR-text round-trip detection procedure from Step 12a, then call `${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh rename --issue $ISSUE_NUMBER --state done --round-trip "$ROUND_TRIP"` (applies to both fresh-created and adopted issues). Best-effort (log to `Tool Failures` on failure; do not abort the run — the merge has already succeeded). Set `DONE_RENAME_APPLIED=true` on any return. Continue.
 - **`admin_merged`**: print `**⚠ Merged with --admin (review overridden).** ✅ 12: CI+merge loop — PR #<NUMBER> merged! (<elapsed>)`. Set `pr_closed=true`. Apply the same detector-backed terminal rename-to-done as the `merged` branch (same guards; same `DONE_RENAME_APPLIED=true` on return). **Then** post a best-effort PR comment recording the bypass:
   ```bash
   gh pr comment <PR-NUMBER> --repo $REPO --body "$ADMIN_AUDIT_COMMENT_BODY"
@@ -1859,7 +1847,7 @@ Parse `MERGE_RESULT` and `ERROR`:
 
 Save expected commit title for Step 15: `<PR_TITLE> (#<PR_NUMBER>)`.
 
-> **Continue to Step 14 IMMEDIATELY.** The `✅ 12: CI+merge loop — PR #<N> merged!` line is the single most halt-prone moment in the entire orchestrator: the celebratory "merged!" tone makes the run feel complete, but it is NOT — Steps 14 (local cleanup), 15 (verify main), 16 (rejected findings), 16a (Slack issue post), 17 (final report), and 18 (cleanup) still must run. Do NOT end the turn, write a summary, post a "🎉 done" recap, or compose a handoff message between Step 12b's merge breadcrumb and Step 14's first action. Halting here is a NEVER #7-family violation regardless of how natural the boundary feels. The `pr_closed=true` flag and the `DONE_RENAME_APPLIED=true` guard are PRE-conditions consumed by Steps 14–18, not POST-conditions of a finished run.
+> **Continue to Step 14 IMMEDIATELY.** The merge breadcrumb feels terminal but is mid-run: Steps 14, 15, 16, 17, 18 still must run. Halting here is a NEVER #7-family violation regardless of how natural the boundary feels.
 
 ### 12c — Evaluate CI Failure
 
@@ -1884,9 +1872,8 @@ Use `FAILED_RUN_ID` from `ci-status.sh`. If empty, identify manually via `${CLAU
 
 ### 12d — Bail Out
 
-Bail if any: 3 fix iterations attempted without progress; failure fundamentally incompatible with codebase or CI; fix would require reverting the core feature; `merge-pr.sh` returned `policy_denied`, `admin_failed`, `error`, or `version_already_published`. When bailing: if a rebase is in progress (exit 1 from `rebase-push.sh`), run `${CLAUDE_PLUGIN_ROOT}/scripts/git-rebase-abort.sh` first; clearly explain what failed, what was attempted, and suggest manual steps. **Do NOT skip Steps 14, 16, 16a, 17, 18** when bailing — still clean up, print the review report, and run Step 16a (which posts to Slack only when `--slack` and `slack_available`). **Skip Step 15** since the PR was not merged.
 
-**Before proceeding to Step 14**, persist the bail reason + user-input signal into parent scope so Step 16a's outcome state machine can read them:
+**Before proceeding to Step 14**, persist the bail reason + user-input signal into parent scope for final cleanup and reporting:
 - Set `FINAL_BAIL_REASON` = the `BAIL_REASON` value from the `ci-wait.sh` output that triggered the bail (or the caller-synthesized reason if the bail came from the Rebase + Re-bump Sub-procedure, a conflict, or fix-attempt exhaustion, or a mechanical `merge-pr.sh` bail result — in which case `FINAL_BAIL_REASON` is the literal `ERROR` string from the script, including `"branch protection denied merge; --no-admin-fallback set"` and `"origin/main HEAD already bumped to <X.Y.Z>; rebase and re-bump"`). Leave `BAIL_NEEDS_USER_INPUT` alone if it was already set by the Conflict Resolution Procedure Phase 2 under `auto_mode=true`; otherwise it stays `false`.
 - Set `STALL_TRACKING=true` — signals Step 18 to rename the tracking issue's title from `[IN PROGRESS]` to `[STALLED]` (see Step 18 "Title-prefix lifecycle terminal transition").
 
@@ -1899,11 +1886,10 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 # token-step-end Step 12
 ```
 
-> **Continue to Step 14 IMMEDIATELY.** Step 12d bail is not terminal — after writing Step 13.5 finalizer state, run local cleanup, rejected findings, Slack issue post, final report, and cleanup.
+> **Continue to Step 14 IMMEDIATELY.** Step 12d bail is not terminal — after writing Step 13.5 finalizer state, run local cleanup, rejected findings, final report, and cleanup.
 
 ## Step 13.5 — Finalizer State
 
-Write `$IMPLEMENT_TMPDIR/finalize-state.sh` before any post-PR cleanup/Slack/teardown branch. This always-run state file is required even when `merge=false`, `draft=true`, `forked_target=true`, or Step 12 bailed before local cleanup.
 
 `EXPECTED_TMPDIR_BASENAME_PREFIX` MUST mirror exactly what `session-setup.sh` and `scripts/implement-finalize.sh::clone_basename_prefix` produce, or Step 18's `verify_cleanup_target` sanity-check will refuse rm-rf and leak the session tmpdir. The four required steps — basename, sanitize via `tr` (NOT a one-pipe form, which bakes basename's trailing newline into a stray `_`; see #1563), truncate to 32 chars, empty-fallback to `_` — are computed inline into `CLONE_TAG_FULL` before writing the state file. The `${CLONE_TAG:-…}` operator-override semantics are preserved on the first line.
 
@@ -1916,12 +1902,33 @@ else
   CLONE_TAG_FULL=${CLONE_TAG_FULL:0:32}
   [ -n "$CLONE_TAG_FULL" ] || CLONE_TAG_FULL="_"
 fi
+cat > "$IMPLEMENT_TMPDIR/finalize-state.sh" <<EOF
+BRANCH_NAME=$BRANCH_NAME
+PR_NUMBER=$PR_NUMBER
+PR_TITLE=$PR_TITLE
+PR_URL=$PR_URL
+ISSUE_NUMBER=$ISSUE_NUMBER
+REPO=$REPO
+DRAFT=$draft
+MERGE=$merge
+DEFERRED=$deferred
+REPO_UNAVAILABLE=$repo_unavailable
+PR_CLOSED=${pr_closed:-false}
+DESIGN_ONLY_DONE=${DESIGN_ONLY_DONE:-false}
+BAIL_NEEDS_USER_INPUT=${BAIL_NEEDS_USER_INPUT:-false}
+STALL_TRACKING=${STALL_TRACKING:-false}
+STALL_STEP=${STALL_STEP:-}
+DONE_RENAME_APPLIED=${DONE_RENAME_APPLIED:-false}
+EXPECTED_SESSION_ID=$(cat "$IMPLEMENT_TMPDIR/session-id" 2>/dev/null || echo "")
+EXPECTED_TMPDIR_BASENAME_PREFIX=claude-implement-${CLONE_TAG_FULL}-
+EOF
+printf '%s' "${FINAL_BAIL_REASON:-}" > "$IMPLEMENT_TMPDIR/final-bail-reason.txt"
 ```
 
 Write `$IMPLEMENT_TMPDIR/finalize-state.sh` (one `KEY=VALUE` per line, awk-read by `postmerge`) with these 20 keys:
 
 - `BRANCH_NAME`, `PR_NUMBER`, `PR_TITLE`, `PR_URL`, `ISSUE_NUMBER`, `REPO`
-- `DRAFT`, `MERGE`, `SLACK_ENABLED`, `SLACK_AVAILABLE`, `DEFERRED`, `REPO_UNAVAILABLE`
+- `DRAFT`, `MERGE`, `DEFERRED`, `REPO_UNAVAILABLE`
 - `PR_CLOSED` (`${pr_closed:-false}`), `DESIGN_ONLY_DONE` (`${DESIGN_ONLY_DONE:-false}`)
 - `BAIL_NEEDS_USER_INPUT` (`${BAIL_NEEDS_USER_INPUT:-false}`)
 - `STALL_TRACKING` (`${STALL_TRACKING:-false}`), `STALL_STEP` (`${STALL_STEP:-}`)
@@ -1958,13 +1965,26 @@ else
   CLONE_TAG_FULL=${CLONE_TAG_FULL:0:32}
   [ -n "$CLONE_TAG_FULL" ] || CLONE_TAG_FULL="_"
 fi
-```
-
-Re-write `$IMPLEMENT_TMPDIR/finalize-state.sh` with the same 20-key schema as Step 13.5, using updated values for current Step 14 state (e.g., `PR_NUMBER`/`PR_URL`/`PR_TITLE` from Step 9b, `PR_CLOSED`/`DONE_RENAME_APPLIED` from Step 12, `STALL_TRACKING`/`STALL_STEP` from Step 12d). The `EXPECTED_TMPDIR_BASENAME_PREFIX=claude-implement-${CLONE_TAG_FULL}-` line uses the freshly computed `CLONE_TAG_FULL`. See Step 13.5 key list for all 20 keys.
-
-Then:
-
-```bash
+cat > "$IMPLEMENT_TMPDIR/finalize-state.sh" <<EOF
+BRANCH_NAME=$BRANCH_NAME
+PR_NUMBER=$PR_NUMBER
+PR_TITLE=$PR_TITLE
+PR_URL=$PR_URL
+ISSUE_NUMBER=$ISSUE_NUMBER
+REPO=$REPO
+DRAFT=$draft
+MERGE=$merge
+DEFERRED=$deferred
+REPO_UNAVAILABLE=$repo_unavailable
+PR_CLOSED=${pr_closed:-false}
+DESIGN_ONLY_DONE=${DESIGN_ONLY_DONE:-false}
+BAIL_NEEDS_USER_INPUT=${BAIL_NEEDS_USER_INPUT:-false}
+STALL_TRACKING=${STALL_TRACKING:-false}
+STALL_STEP=${STALL_STEP:-}
+DONE_RENAME_APPLIED=${DONE_RENAME_APPLIED:-false}
+EXPECTED_SESSION_ID=$(cat "$IMPLEMENT_TMPDIR/session-id" 2>/dev/null || echo "")
+EXPECTED_TMPDIR_BASENAME_PREFIX=claude-implement-${CLONE_TAG_FULL}-
+EOF
 printf '%s' "${FINAL_BAIL_REASON:-}" > "$IMPLEMENT_TMPDIR/final-bail-reason.txt"
 
 ${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.sh postmerge \
@@ -2024,7 +2044,7 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 
 Report unimplemented code review suggestions without reprinting the full findings inline. Check `$IMPLEMENT_TMPDIR/rejected-findings.md`. If non-empty, print `✅ 16: rejected findings — saved to anchor (<elapsed>)`; the full content was already posted via the `code-review-tally` anchor fragment. Otherwise print `✅ 16: rejected findings — all suggestions implemented (<elapsed>)`.
 
-> **Continue to Step 16a.** Do NOT end the turn after printing rejected findings.
+> **Continue to Step 17.** Do NOT end the turn after printing rejected findings.
 
 ```bash
 LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
@@ -2035,40 +2055,6 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 # token-step-end Step 16
 ```
 
-## Step 16a — Post Slack Issue Announcement
-
-```bash
-LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
-LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
-export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
-"${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 16a — Slack issue announcement" || true
-"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 16a — Slack issue announcement" || true
-# token-mark Step 16a — Slack issue announcement
-# timing-mark Step 16a — Slack issue announcement
-```
-
-Run the consolidated Slack subcommand. It preserves the Step 16a skip gates and first-match-wins outcome ladder, including `DESIGN_ONLY_DONE=true → RUN_OUTCOME=design-only`, `BAIL_NEEDS_USER_INPUT=true → RUN_OUTCOME=user-input`, and `merge=false` OR `draft=true` → `RUN_OUTCOME=pr-opened`. It omits `--pr-url` for design-only, passes bail/user-input detail when needed, and treats Slack failure as a non-fatal warning. Mechanical SSOT: `${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.md` § `slack`.
-
-If `forked_target=true`: print `⏭️ 16a: slack issue post — skipped (--forked dry-run) (<elapsed>)` and proceed to Step 17. `slack_enabled=false` was set at flag-resolution time, so no Slack API call is legal in fork mode.
-
-```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.sh slack \
-  --state-file "$IMPLEMENT_TMPDIR/finalize-state.sh" \
-  --final-bail-reason-file "$IMPLEMENT_TMPDIR/final-bail-reason.txt"
-```
-
-Relay the script's Step 16a breadcrumb verbatim. Tail records document the mechanical outcome: `RUN_OUTCOME=...`, `SLACK_TS=...`, `FINALIZE_SUBCOMMAND=slack`, `FINALIZE_WARNINGS=...`.
-
-> **Continue to Step 17.** Do NOT end the turn after Slack post.
-
-```bash
-LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
-LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
-export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
-"${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse || true
-"${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
-# token-step-end Step 16a
-```
 
 ## Step 17 — Final Report
 

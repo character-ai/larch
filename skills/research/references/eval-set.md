@@ -132,11 +132,8 @@
 - **notes**: Feasibility; should reference the current Step 3 template, identify the consumer boundary (today: human + this eval harness), and propose a side-by-side emission shape.
 
 ### eval-18: implement-fully-offline
-- **question**: Is it feasible to run `/implement` entirely offline with no GitHub API and no Slack, what subset of features survives, and which load-bearing invariants would degrade?
 - **category**: feasibility
 - **expected_provenance_count**: 3
-- **expected_keywords**: repo_unavailable, slack_available, deferred, parent-issue.md, Known Limitations
-- **notes**: Feasibility; should walk the `repo_unavailable=true` and `slack_enabled=false` paths and identify which steps degrade or skip cleanly versus which break.
 
 ### eval-19: research-planner-pre-pass-feasibility
 - **question**: How does `/research`'s planner pre-pass decompose a question into subquestions, and what dependencies does evaluating its marginal benefit have on this evaluation harness?

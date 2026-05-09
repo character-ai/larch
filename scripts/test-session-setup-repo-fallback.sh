@@ -46,7 +46,6 @@ run_session_setup() {
             --prefix test-session-setup-repo-fallback \
             --skip-preflight \
             --skip-branch-check \
-            --skip-slack-check \
             "$@"
     )
 }

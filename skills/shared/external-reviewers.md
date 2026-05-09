@@ -8,7 +8,6 @@ The binary check, health probe, and health status file write are now handled by 
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix <name> [--skip-preflight] [--skip-branch-check] \
-  [--skip-slack-check] [--skip-repo-check] --check-reviewers [--check-gemini-reviewer] [--caller-env <path>] \
   [--skip-codex-probe] [--skip-cursor-probe] [--skip-gemini-probe] [--write-health <path>]
 ```
 

@@ -141,13 +141,13 @@ Do NOT print the clean-main banner for `GATE_ERROR`; that banner is reserved for
 If `SKIP_BRANCH_CHECK=true`, run setup with `--skip-branch-check`:
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix claude-design --skip-branch-check --skip-slack-check --skip-repo-check --check-reviewers [--caller-env "$SESSION_ENV_PATH"] [--skip-codex-probe] [--skip-cursor-probe] [--write-health "${SESSION_ENV_PATH}.health"]
+${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix claude-design --skip-branch-check --skip-repo-check --check-reviewers [--caller-env "$SESSION_ENV_PATH"] [--skip-codex-probe] [--skip-cursor-probe] [--write-health "${SESSION_ENV_PATH}.health"]
 ```
 
 If `SKIP_BRANCH_CHECK=false`, run setup without `--skip-branch-check`; `preflight.sh` runs in default mode and enforces clean `main` plus fetch/rebase before design work begins:
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix claude-design --skip-slack-check --skip-repo-check --check-reviewers [--caller-env "$SESSION_ENV_PATH"] [--skip-codex-probe] [--skip-cursor-probe] [--write-health "${SESSION_ENV_PATH}.health"]
+${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix claude-design --skip-repo-check --check-reviewers [--caller-env "$SESSION_ENV_PATH"] [--skip-codex-probe] [--skip-cursor-probe] [--write-health "${SESSION_ENV_PATH}.health"]
 ```
 
 Only include `--caller-env "$SESSION_ENV_PATH"` and `--write-health "${SESSION_ENV_PATH}.health"` if `SESSION_ENV_PATH` is non-empty. This Anti-pattern #4 predicate is orthogonal to `branch_info_supplied`: session-env controls parent health I/O; branch-info controls whether `/design` trusts `/implement`'s already-gated branch state. If `SESSION_ENV_PATH` provides `CODEX_HEALTHY=false` or `CURSOR_HEALTHY=false`, the script auto-sets the corresponding `--skip-codex-probe` / `--skip-cursor-probe` flag — you do not need to pass these explicitly when using `--caller-env`.

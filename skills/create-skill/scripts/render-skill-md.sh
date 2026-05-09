@@ -186,7 +186,7 @@ If this skill invokes another skill via the \`Skill\` tool, read \`${PLUGIN_TOKE
 2. Use the bare name first (e.g., \`"implement"\`), then the fully-qualified \`larch:<name>\` fallback. Never start with the fully-qualified name.
 3. If this skill delegates to another skill, widen the \`allowed-tools\` frontmatter to include \`Skill\` — the scaffold default is \`Bash, Read\`, which silently blocks \`Skill\` invocations.
 4. For orchestrators that continue based on child side effects, pair the Skill call with a mechanical verification (commit-count delta, parsed stdout key, or sentinel file).
-5. For state that must cross skill boundaries (reviewer health, repo name, slack-ok, session tmpdir), write a \`session-env.sh\` and pass \`--session-env <path>\` to the child. Never \`source\` the file — parse it line-by-line.
+5. For state that must cross skill boundaries (reviewer health, repo name, session tmpdir), write a \`session-env.sh\` and pass \`--session-env <path>\` to the child. Never \`source\` the file — parse it line-by-line.
 6. **Anti-halt continuation reminder** (orchestrators only — closes #177): if this skill runs additional steps after a child Skill call returns, include the canonical top-of-file banner and per-call-site micro-reminders from \`${PLUGIN_TOKEN}/skills/shared/subskill-invocation.md\` section Anti-halt continuation reminder. Pure delegators (enumerated in \`${PLUGIN_TOKEN}/skills/shared/subskill-invocation.md\` section "Scope list") are exempt. The banner and micro-reminder substrings are asserted by \`${PLUGIN_TOKEN}/scripts/test-anti-halt-banners.sh\` (wired into \`make lint\` via the \`test-anti-halt\` target).
 
 If this skill does not delegate to any other skill, delete this entire section.
@@ -224,7 +224,7 @@ If this skill invokes another skill via the \`Skill\` tool, read \`${PLUGIN_TOKE
 2. Use the bare name first (e.g., \`"implement"\`), then the fully-qualified \`larch:<name>\` fallback. Never start with the fully-qualified name.
 3. If this skill delegates to another skill, widen the \`allowed-tools\` frontmatter to include \`Skill\` — the scaffold default is \`Bash, Read\`, which silently blocks \`Skill\` invocations.
 4. For orchestrators that continue based on child side effects, pair the Skill call with a mechanical verification (commit-count delta, parsed stdout key, or sentinel file).
-5. For state that must cross skill boundaries (reviewer health, repo name, slack-ok, session tmpdir), write a \`session-env.sh\` and pass \`--session-env <path>\` to the child. Never \`source\` the file — parse it line-by-line.
+5. For state that must cross skill boundaries (reviewer health, repo name, session tmpdir), write a \`session-env.sh\` and pass \`--session-env <path>\` to the child. Never \`source\` the file — parse it line-by-line.
 6. **Anti-halt continuation reminder** (orchestrators only — closes #177): if this skill runs additional steps after a child Skill call returns, include the canonical top-of-file banner and per-call-site micro-reminders from \`${PLUGIN_TOKEN}/skills/shared/subskill-invocation.md\` section Anti-halt continuation reminder. Pure delegators (enumerated in \`${PLUGIN_TOKEN}/skills/shared/subskill-invocation.md\` section "Scope list") are exempt. The banner and micro-reminder substrings are asserted by \`${PLUGIN_TOKEN}/scripts/test-anti-halt-banners.sh\` (wired into \`make lint\` via the \`test-anti-halt\` target).
 
 If this skill does not delegate to any other skill, delete this entire section.
