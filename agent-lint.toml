@@ -596,6 +596,10 @@ exclude = [
   # dirty-tree detector. Referenced only from Makefile
   # (test-check-mid-run-dirty-tree target) and its sibling contract.
   "scripts/test-check-mid-run-dirty-tree.sh",
+  # scripts/test-check-phantom-dirty.sh is the regression harness for
+  # scripts/check-phantom-dirty.sh. Referenced only from Makefile
+  # (test-check-phantom-dirty target) and its sibling contract.
+  "scripts/test-check-phantom-dirty.sh",
   # scripts/test-agent-model-args.sh is the regression harness for
   # scripts/agent-model-args.sh's line-token argv contract. Referenced only
   # from Makefile (test-agent-model-args target) and
@@ -997,6 +1001,8 @@ exclude = [
   "scripts/test-launch-codex-review.md",
   "scripts/check-mid-run-dirty-tree.md",
   "scripts/test-check-mid-run-dirty-tree.md",
+  "scripts/check-phantom-dirty.md",
+  "scripts/test-check-phantom-dirty.md",
   "scripts/check-clean-tree.md",
   "scripts/test-relevant-checks-byte-budget.md",
   "scripts/test-relevant-checks-validation.md",
