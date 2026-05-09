@@ -1261,7 +1261,7 @@ grep -Fq "$coder_override_breadcrumb" "$SKILL_MD" \
   || fail "(30c) skills/implement/SKILL.md missing pin '$coder_override_breadcrumb' — see #1512"
 
 # ---------------------------------------------------------------------------
-# (31) CLONE_TAG basename algorithm pin (closes #1563). The Step 13.5 / Step 14
+# (31) CLONE_TAG basename algorithm pin (closes #1563, #1572). The Step 13.5 / Step 14
 #      state-file snippets compute EXPECTED_TMPDIR_BASENAME_PREFIX, which
 #      Step 18's verify_cleanup_target compares against the actual session
 #      tmpdir basename to authorize rm-rf. The prefix MUST exactly mirror what
@@ -1273,14 +1273,18 @@ grep -Fq "$coder_override_breadcrumb" "$SKILL_MD" \
 #      Both Step 13.5 and Step 14 must compute the full algorithm into a
 #      pre-heredoc CLONE_TAG_FULL variable, so the positive pin requires at
 #      least 2 occurrences each of the 4 sentinel literals and the heredoc
-#      reference; the negative pin forbids the buggy one-pipe form anywhere.
+#      reference; the negative pins forbid the buggy one-pipe form and the
+#      literal-quote form (closes #1572 — surrounding double quotes in the
+#      heredoc cause read_state to return `"claude-implement-larch3-"` with
+#      literal quotes, so verify_cleanup_target's case-glob looks for a
+#      basename starting with `"` and refuses rm-rf even when session-id-match=y).
 # ---------------------------------------------------------------------------
 declare -a clone_tag_pins=(
   "31a:CLONE_TAG_FULL=\$(basename \"\$PWD\"):basename capture"
   "31b:CLONE_TAG_FULL=\$(printf '%s' \"\$CLONE_TAG_FULL\" | tr -c 'A-Za-z0-9_-' '_'):sanitize step"
   "31c:CLONE_TAG_FULL=\${CLONE_TAG_FULL:0:32}:truncate to 32 chars"
   '31d:[ -n "$CLONE_TAG_FULL" ] || CLONE_TAG_FULL="_":empty-fallback to _'
-  '31e:EXPECTED_TMPDIR_BASENAME_PREFIX="claude-implement-${CLONE_TAG_FULL}-":heredoc reference'
+  '31e:EXPECTED_TMPDIR_BASENAME_PREFIX=claude-implement-${CLONE_TAG_FULL}-:heredoc reference (unquoted form)'
 )
 for clone_tag_pin in "${clone_tag_pins[@]}"; do
   pin_id="${clone_tag_pin%%:*}"
@@ -1289,12 +1293,17 @@ for clone_tag_pin in "${clone_tag_pins[@]}"; do
   pin_desc="${rest##*:}"
   pin_count=$(grep -F -c "$pin_lit" "$SKILL_MD" || true)
   [[ "$pin_count" -ge 2 ]] \
-    || fail "($pin_id) skills/implement/SKILL.md must apply $pin_desc at both Step 13.5 and Step 14 (found $pin_count, expected >= 2) — see #1563"
+    || fail "($pin_id) skills/implement/SKILL.md must apply $pin_desc at both Step 13.5 and Step 14 (found $pin_count, expected >= 2) — see #1563 / #1572"
 done
 
 clone_tag_buggy_idiom='basename "$PWD" | tr -c'
 if grep -Fq "$clone_tag_buggy_idiom" "$SKILL_MD"; then
   fail "(31f) skills/implement/SKILL.md must NOT use the one-pipe CLONE_TAG form '$clone_tag_buggy_idiom' (tr sees basename's trailing newline before \$() strips it) — see #1563"
+fi
+
+clone_tag_quoted_form='EXPECTED_TMPDIR_BASENAME_PREFIX="claude-implement-'
+if grep -Fq "$clone_tag_quoted_form" "$SKILL_MD"; then
+  fail "(31g) skills/implement/SKILL.md must NOT use the quoted EXPECTED_TMPDIR_BASENAME_PREFIX form '$clone_tag_quoted_form...' — surrounding double quotes in the heredoc cause read_state to return the value with literal quotes, breaking verify_cleanup_target's case-glob — see #1572"
 fi
 
 echo "PASS: test-implement-structure.sh — structural invariants hold (assertion 5 retired)"
