@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [18.4.13] - 2026-05-09
+
+### Added
+
+- Tiered MANDATORY read pattern: digest companion files for `fix-issue/references/triage-classification.md` and `implement/references/bump-verification.md`; updated MANDATORY directives to load digest by default, full file only when step-specific condition requires it
+
 ## [18.4.12] - 2026-05-09
 
 ### Changed
