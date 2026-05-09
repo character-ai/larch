@@ -739,6 +739,22 @@ else
     ok "case Z env sanitized — hook sentinel did not fire"
 fi
 
+# Case cap_hit: output file whose first line is STATUS=cap_hit is classified
+# as STATUS=cap_hit HEALTHY=true by collect-agent-results.sh and does NOT
+# trigger a retry (no .meta file required, no retry output created).
+OUT_CAP="$TMPROOT/cap-hit.txt"
+HEALTH_CAP="$TMPROOT/cap-hit.health"
+printf 'STATUS=cap_hit\nSTATUS=cap_hit TOTAL=9999 CAP=1 STEP=cursor-review\n' > "$OUT_CAP"
+printf '0\n' > "${OUT_CAP}.done"
+RESULT_CAP=$(run_collector bash "$OUT_CAP" "$HEALTH_CAP")
+assert_line "cap_hit status" "STATUS=cap_hit" "$RESULT_CAP"
+assert_line "cap_hit healthy" "HEALTHY=true" "$RESULT_CAP"
+if [[ -e "${OUT_CAP%.txt}-retry.txt" ]]; then
+    fail "cap_hit should not generate a retry output"
+else
+    ok "cap_hit no retry output"
+fi
+
 echo ""
 echo "Summary: $PASS passed, $FAIL failed, $SKIP skipped"
 if (( FAIL > 0 )); then

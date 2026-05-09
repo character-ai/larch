@@ -789,6 +789,39 @@ else
     pass
 fi
 
+# Cap-hit path: when LARCH_TOKEN_BUDGET_CAP_REVIEW=1 and the token ledger
+# shows vendor spend >= 1, the launcher writes STATUS=cap_hit to the output
+# file and exits 0 without invoking the underlying Cursor binary.
+CH_SESSION="cap-hit-cursor-review-$$-$RANDOM"
+if command -v shasum >/dev/null 2>&1; then
+    CH_SLUG=$(printf '%s' "$CH_SESSION" | shasum -a 256 | awk '{print $1}')
+else
+    CH_SLUG=$(printf '%s' "$CH_SESSION" | sha256sum | awk '{print $1}')
+fi
+CH_LEDGER="${TMPDIR:-/tmp}/larch-tokens-${CH_SLUG}.jsonl"
+printf '{"type":"vendor","vendor":"cursor","total":9999}\n' > "$CH_LEDGER"
+
+CH_OUTPUT="$TMPDIR/cap-hit-cursor-review.txt"
+CH_PID_FILE="$TMPDIR/cap-hit-cursor-pid.txt"
+
+PATH="$STUB_BIN:$PATH" \
+    CURSOR_STUB_PID_FILE="$CH_PID_FILE" \
+    LARCH_TOKEN_SESSION_ID="$CH_SESSION" \
+    LARCH_TOKEN_BUDGET_CAP_REVIEW=1 \
+    "$LAUNCHER" --output "$CH_OUTPUT" --timeout 5 --prompt "cap hit review" >/dev/null 2>&1
+rm -f "$CH_LEDGER"
+
+if [[ -f "$CH_OUTPUT" ]] && [[ "$(head -1 "$CH_OUTPUT")" == "STATUS=cap_hit" ]]; then
+    pass
+else
+    fail "cap-hit output first line must be STATUS=cap_hit; got: $(head -1 "$CH_OUTPUT" 2>/dev/null)"
+fi
+if [[ ! -f "$CH_PID_FILE" ]]; then
+    pass
+else
+    fail "cap-hit path must not invoke the underlying Cursor binary (pid file written)"
+fi
+
 if [[ "$FAIL" -ne 0 ]]; then
     printf 'FAIL: test-launch-cursor-review.sh - %s failed, %s passed\n' "$FAIL" "$PASS" >&2
     printf '  %s\n' "${FAIL_DETAILS[@]}" >&2
