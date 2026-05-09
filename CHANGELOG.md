@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [18.4.3] - 2026-05-09
+
+### Changed
+
+- /fix-issue: issues with titles matching [... Report] are now rejected (case-insensitive) on both auto-pick and explicit-target paths
+- /fix-issue: GO comment is no longer required for eligibility; when present it is still removed at lock time via --lock; absent issues use --lock-no-go
+
 ## [18.4.2] - 2026-05-09
 
 ### Changed

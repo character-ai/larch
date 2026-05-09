@@ -61,6 +61,12 @@
 #  20. auto-pick skips [UMBRELLA]-prefixed title (#1612) → exit 1;
 #      ELIGIBLE=false. Confirms the new [UMBRELLA] bracket-block signal is
 #      recognised by is_umbrella_title and skipped in auto-pick mode.
+#  21. auto-pick picks an issue with no GO comment (no-GO path) → exit 0;
+#      ISSUE_NUMBER=210 LOCK_ACQUIRED=true. Confirms --lock-no-go is used
+#      when the last comment is neither GO nor IN PROGRESS.
+#  22. explicit-target picks an issue with no GO comment (no-GO path) →
+#      exit 0; ISSUE_NUMBER=220 LOCK_ACQUIRED=true. Confirms the explicit
+#      path uses --lock-no-go when GO is absent.
 #
 # Stub gh dispatches on positional + json args. Each fixture writes a stub
 # state file under a per-fixture tmpdir; the stub reads the file to decide
@@ -958,15 +964,17 @@ assert_equal "$EXIT_CODE" "0" "[14] exit code 0 (non-archival collision candidat
 assert_contains "$OUT" "ELIGIBLE=true" "[14] ELIGIBLE=true on stdout"
 assert_contains "$OUT" "ISSUE_NUMBER=106" "[14] ISSUE_NUMBER=106 (Investigation is not archival)"
 assert_contains "$OUT" "LOCK_ACQUIRED=true" "[14] LOCK_ACQUIRED=true"
-assert_contains "$ERR" "Skipping issue #97: archival title prefix" "[14] Analysis Report prefix skipped"
-assert_contains "$ERR" "Skipping issue #98: archival title prefix" "[14] Perf Report prefix skipped"
+assert_contains "$ERR" "Skipping issue #97: report title prefix" "[14] Analysis Report prefix skipped via has_report_prefix"
+assert_contains "$ERR" "Skipping issue #98: report title prefix" "[14] Perf Report prefix skipped via has_report_prefix"
 assert_contains "$ERR" "Skipping issue #100: archival title prefix" "[14] bare Research prefix skipped"
 assert_contains "$ERR" "Skipping issue #101: archival title prefix" "[14] bracketed Research prefix skipped"
 assert_contains "$ERR" "Skipping issue #102: archival title prefix" "[14] bare Investigate prefix skipped"
 assert_contains "$ERR" "Skipping issue #103: archival title prefix" "[14] bracketed Investigate prefix skipped"
-assert_contains "$ERR" "Skipping issue #104: archival title prefix" "[14] Research Report prefix skipped"
+assert_contains "$ERR" "Skipping issue #104: archival title prefix" "[14] Research Report prefix skipped by has_archival_prefix"
 assert_not_contains "$ERR" "Skipping issue #105: archival title prefix" "[14] Researches collision is not archival-skipped"
 assert_not_contains "$ERR" "Skipping issue #106: archival title prefix" "[14] Investigation collision is not archival-skipped"
+assert_not_contains "$ERR" "Skipping issue #105: report title prefix" "[14] Researches collision is not report-skipped"
+assert_not_contains "$ERR" "Skipping issue #106: report title prefix" "[14] Investigation collision is not report-skipped"
 
 # ---------------------------------------------------------------------------
 # Fixture 15: [ROUND-TRIP]-only titles remain pickable; lifecycle prefixes
@@ -1162,6 +1170,77 @@ assert_equal "$EXIT_CODE" "1" "[20] exit code 1 (no eligible candidates — [UMB
 assert_contains "$OUT" "ELIGIBLE=false" "[20] ELIGIBLE=false on stdout"
 assert_not_contains "$OUT" "LOCK_ACQUIRED=" "[20] LOCK_ACQUIRED= absent (lock never attempted)"
 assert_contains "$ERR" "Skipping issue #201: umbrella issue" "[20] stderr diagnostic confirms umbrella skip"
+
+# ---------------------------------------------------------------------------
+# Fixture 21: auto-pick picks an issue with no GO comment (no-GO path uses
+# --lock-no-go). Candidate #210 has an empty comment list; #211 is IN
+# PROGRESS (locked); #212 also has no comments. Expect #210 picked.
+# Requires RUNTIME_COMMENTS_DIR so the --lock-no-go post-check can find
+# the just-posted IN PROGRESS comment id (same as fixture 11).
+# ---------------------------------------------------------------------------
+echo "Fixture 21: auto-pick no-GO path (--lock-no-go)"
+run_fixture "fixture-21"
+mkdir -p "$TMPROOT/fixture-21/runtime-comments"
+export RUNTIME_COMMENTS_DIR="$TMPROOT/fixture-21/runtime-comments"
+{
+    echo "ISSUE_STATE=OPEN"
+    echo "RUNTIME_COMMENTS_DIR=\"\${RUNTIME_COMMENTS_DIR:-}\""
+    OPEN_ISSUES_LINES='{"number":210,"title":"No-GO eligible issue"}
+{"number":211,"title":"Locked issue"}
+{"number":212,"title":"Also no-GO eligible"}'
+    printf "OPEN_ISSUES_JSON='%s'\n" "$OPEN_ISSUES_LINES"
+    echo "ISSUE_210_COMMENTS='$(make_comments_json EMPTY)'"
+    echo "ISSUE_211_COMMENTS='$(make_comments_json IN_PROGRESS)'"
+    echo "ISSUE_212_COMMENTS='$(make_comments_json EMPTY)'"
+    echo "RENAME_FAIL=false"
+} > "$STUB_STATE_FILE"
+
+OUT_FILE="$TMPROOT/fixture-21/stdout.txt"
+ERR_FILE="$TMPROOT/fixture-21/stderr.txt"
+EXIT_CODE=0
+with_sterile_repo "fixture-21" "$SCRIPT" >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
+
+OUT=$(cat "$OUT_FILE")
+ERR=$(cat "$ERR_FILE")
+
+assert_equal "$EXIT_CODE" "0" "[21] exit code 0 (no-GO issue picked)"
+assert_contains "$OUT" "ELIGIBLE=true" "[21] ELIGIBLE=true on stdout"
+assert_contains "$OUT" "ISSUE_NUMBER=210" "[21] ISSUE_NUMBER=210 (first no-GO candidate)"
+assert_contains "$OUT" "LOCK_ACQUIRED=true" "[21] LOCK_ACQUIRED=true (--lock-no-go succeeded)"
+assert_contains "$OUT" "RENAMED=true" "[21] RENAMED=true"
+unset RUNTIME_COMMENTS_DIR
+
+# ---------------------------------------------------------------------------
+# Fixture 22: explicit-target issue with no GO comment (no-GO path uses
+# --lock-no-go). Expect ELIGIBLE=true, LOCK_ACQUIRED=true.
+# Requires RUNTIME_COMMENTS_DIR so the --lock-no-go post-check can find
+# the just-posted IN PROGRESS comment id.
+# ---------------------------------------------------------------------------
+echo "Fixture 22: explicit-target no-GO path (--lock-no-go)"
+run_fixture "fixture-22"
+mkdir -p "$TMPROOT/fixture-22/runtime-comments"
+export RUNTIME_COMMENTS_DIR="$TMPROOT/fixture-22/runtime-comments"
+{
+    echo "ISSUE_STATE=OPEN"
+    echo "ISSUE_TITLE='Explicit no-GO issue'"
+    echo "RUNTIME_COMMENTS_DIR=\"\${RUNTIME_COMMENTS_DIR:-}\""
+    echo "COMMENTS_JSON='$(make_comments_json EMPTY)'"
+    echo "RENAME_FAIL=false"
+} > "$STUB_STATE_FILE"
+
+OUT_FILE="$TMPROOT/fixture-22/stdout.txt"
+ERR_FILE="$TMPROOT/fixture-22/stderr.txt"
+EXIT_CODE=0
+with_sterile_repo "fixture-22" "$SCRIPT" 220 >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
+
+OUT=$(cat "$OUT_FILE")
+
+assert_equal "$EXIT_CODE" "0" "[22] exit code 0 (explicit no-GO issue picked)"
+assert_contains "$OUT" "ELIGIBLE=true" "[22] ELIGIBLE=true on stdout"
+assert_contains "$OUT" "ISSUE_NUMBER=220" "[22] ISSUE_NUMBER=220"
+assert_contains "$OUT" "LOCK_ACQUIRED=true" "[22] LOCK_ACQUIRED=true (--lock-no-go succeeded)"
+assert_contains "$OUT" "RENAMED=true" "[22] RENAMED=true"
+unset RUNTIME_COMMENTS_DIR
 
 # ---------------------------------------------------------------------------
 # Summary
