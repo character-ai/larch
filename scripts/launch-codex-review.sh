@@ -127,6 +127,9 @@ if [[ -n "$TOKEN_BUDGET_CAP" ]]; then
     unset _budget_out _budget_status
 fi
 
+# Apply env-var cap when --token-budget-cap was not passed explicitly.
+[[ -z "$TOKEN_BUDGET_CAP" && -n "${LARCH_TOKEN_BUDGET_CAP_REVIEW:-}" ]] && TOKEN_BUDGET_CAP="$LARCH_TOKEN_BUDGET_CAP_REVIEW"
+
 _src_count=0
 [[ -n "$PROMPT" ]] && _src_count=$((_src_count + 1))
 [[ -n "$AGENT_FILE" ]] && _src_count=$((_src_count + 1))

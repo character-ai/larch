@@ -685,6 +685,9 @@ if [[ -n "$TOKEN_BUDGET_CAP" ]]; then
     unset _budget_out _budget_status
 fi
 
+# Apply env-var cap when --token-budget-cap was not passed explicitly.
+[[ -z "$TOKEN_BUDGET_CAP" && -n "${LARCH_TOKEN_BUDGET_CAP_REVIEW:-}" ]] && TOKEN_BUDGET_CAP="$LARCH_TOKEN_BUDGET_CAP_REVIEW"
+
 # Defensive: env-derived LARCH_TIMING_TASK_KIND may be empty or flag-shaped
 # (e.g. "--prompt") if a caller mis-parses argv. The CLI form was
 # already validated above (#1480); apply the same predicate to the env path

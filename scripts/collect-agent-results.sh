@@ -59,7 +59,7 @@
 # Output (KEY=value blocks on stdout, one block per reviewer, separated by blank lines):
 #   REVIEWER_FILE=<output-path>
 #   TOOL=<registered external tool|unknown>
-#   STATUS=<OK|TIMED_OUT|FAILED|EMPTY_OUTPUT|SENTINEL_TIMEOUT|NOT_SUBSTANTIVE>
+#   STATUS=<OK|TIMED_OUT|FAILED|EMPTY_OUTPUT|SENTINEL_TIMEOUT|NOT_SUBSTANTIVE|cap_hit>
 #   EXIT_CODE=<N>
 #   HEALTHY=<true|false>
 #   FAILURE_REASON=<explanation>  (non-empty when STATUS != OK; explains the cause of failure)
@@ -419,6 +419,11 @@ for i in "${!OUTPUT_FILES[@]}"; do
             STATUS="FAILED"
             HEALTHY="false"
             FAILURE_REASON=$(build_failure_reason "$OUTPUT" "$STATUS" "$EXIT_CODE")
+        elif [[ -s "$OUTPUT" ]] && [[ "$(head -1 "$OUTPUT" 2>/dev/null)" == "STATUS=cap_hit" ]]; then
+            # Budget-cap sentinel written by review launchers: reviewer deliberately
+            # skipped; not a tool failure, so HEALTHY stays true and the output is
+            # not forwarded to substantive validation or reviewer synthesis.
+            STATUS="cap_hit"
         elif [[ ! -s "$OUTPUT" ]]; then
             # F4 fix: empty output is a retry candidate, NOT an immediate health failure.
             # Health is only set to false after retry also fails (see section 3 below).

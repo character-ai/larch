@@ -1513,7 +1513,7 @@ Runs unconditionally regardless of mode, except `forked_target=true`: in fork mo
 Step 9a.1 writes and refreshes the data fragments needed for OOS publication and run observability:
 
 - `$IMPLEMENT_TMPDIR/anchor-sections/oos-issues.md` — the Accepted OOS bullet list (with `#<N>` links from `/issue` batch output) plus the Rejected / Out-of-Scope Observations sub-block. Content per `anchor-comment-template.md` section `oos-issues`.
-- `$IMPLEMENT_TMPDIR/anchor-sections/run-statistics.md` — the Run Statistics table, with the `| OOS issues filed |` cell populated from the `ISSUES_CREATED` / `ISSUES_DEDUPLICATED` counts. Content per `anchor-comment-template.md` section `run-statistics`.
+- `$IMPLEMENT_TMPDIR/anchor-sections/run-statistics.md` — the Run Statistics table, with the `| OOS issues filed |` cell populated from the `ISSUES_CREATED` / `ISSUES_DEDUPLICATED` counts. Content per `anchor-comment-template.md` section `run-statistics`. The `| larch plugin version |`, `| Claude model |`, and `| effort level |` rows are auto-injected at render time; see `references/anchor-comment-template.md` for the full canonical auto-injected row list.
 - `$IMPLEMENT_TMPDIR/anchor-sections/token-report.md` — the sentinel-bracketed Token Report table produced by `token-report.sh`.
 - `$IMPLEMENT_TMPDIR/anchor-sections/timing-report.md` — the sentinel-bracketed Timing Report table produced by `timing-report.sh`.
 

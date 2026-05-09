@@ -111,10 +111,16 @@ if [[ -n "$TOKEN_BUDGET_CAP" ]]; then
         if [[ -n "${IMPLEMENT_TMPDIR:-}" ]]; then
             printf 'STATUS=cap_hit\n%s\n' "$_budget_out" > "${IMPLEMENT_TMPDIR}/step-budget-cap-hit.env"
         fi
+        printf 'LAUNCHER_EXIT=0\n'
+        printf 'MANIFEST_WRITTEN=false\n'
+        printf 'STATUS=cap_hit\n'
         exit 0
     fi
     unset _budget_out _budget_status
 fi
+
+# Apply env-var cap when --token-budget-cap was not passed explicitly.
+[[ -z "$TOKEN_BUDGET_CAP" && -n "${LARCH_TOKEN_BUDGET_CAP_IMPLEMENT:-}" ]] && TOKEN_BUDGET_CAP="$LARCH_TOKEN_BUDGET_CAP_IMPLEMENT"
 
 # Defensive: env-derived LARCH_TIMING_TASK_KIND may be empty or flag-shaped
 # (e.g. "--prompt") if a caller mis-parses argv. The CLI form was

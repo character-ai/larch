@@ -377,6 +377,9 @@ run_launcher() {
         --agent-prompt "$AGENT_PROMPT"
         --timeout "$LAUNCHER_TIMEOUT"
     )
+    if [[ -n "${LARCH_TOKEN_BUDGET_CAP_IMPLEMENT:-}" ]]; then
+        launcher_args+=(--token-budget-cap "$LARCH_TOKEN_BUDGET_CAP_IMPLEMENT")
+    fi
     if [[ -n "$ANSWERS_FILE" ]]; then
         launcher_args+=(--answers-file "$ANSWERS_FILE")
     fi
@@ -399,10 +402,17 @@ fi
 # Parse launcher KV lines.
 LAUNCHER_EXIT=$(printf '%s\n' "$LAUNCHER_OUT" | awk -F= '$1=="LAUNCHER_EXIT"{print $2; exit}')
 MANIFEST_WRITTEN=$(printf '%s\n' "$LAUNCHER_OUT" | awk -F= '$1=="MANIFEST_WRITTEN"{print $2; exit}')
+LAUNCHER_STATUS=$(printf '%s\n' "$LAUNCHER_OUT" | awk -F= '$1=="STATUS"{print $2; exit}')
 
 # Default to 'false' / 99 when missing (e.g., launcher itself crashed before emitting).
 LAUNCHER_EXIT=${LAUNCHER_EXIT:-99}
 MANIFEST_WRITTEN=${MANIFEST_WRITTEN:-false}
+
+# Budget-cap short-circuit: launcher emits STATUS=cap_hit when the per-step
+# token budget is exhausted; surface a clean bail instead of retrying.
+if [[ "$LAUNCHER_STATUS" == "cap_hit" ]]; then
+    emit_bailed "cap_hit"
+fi
 
 # Retry once on transient failure: launcher exit non-zero AND no manifest, AND clean state.
 if [[ "$WRAPPER_EXIT" != "0" || "$MANIFEST_WRITTEN" != "true" || "$LAUNCHER_EXIT" != "0" ]]; then
@@ -428,8 +438,12 @@ if [[ "$WRAPPER_EXIT" != "0" || "$MANIFEST_WRITTEN" != "true" || "$LAUNCHER_EXIT
         WRAPPER_EXIT="$WRAPPER_EXIT_RETRY"
         LAUNCHER_EXIT=$(printf '%s\n' "$LAUNCHER_OUT" | awk -F= '$1=="LAUNCHER_EXIT"{print $2; exit}')
         MANIFEST_WRITTEN=$(printf '%s\n' "$LAUNCHER_OUT" | awk -F= '$1=="MANIFEST_WRITTEN"{print $2; exit}')
+        LAUNCHER_STATUS=$(printf '%s\n' "$LAUNCHER_OUT" | awk -F= '$1=="STATUS"{print $2; exit}')
         LAUNCHER_EXIT=${LAUNCHER_EXIT:-99}
         MANIFEST_WRITTEN=${MANIFEST_WRITTEN:-false}
+        if [[ "$LAUNCHER_STATUS" == "cap_hit" ]]; then
+            emit_bailed "cap_hit"
+        fi
     fi
 fi
 
