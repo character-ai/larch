@@ -927,7 +927,9 @@ echo "Fixture 14: auto-pick skips archival prefixes without substring collisions
 run_fixture "fixture-14"
 {
     echo "ISSUE_STATE=OPEN"
-    OPEN_ISSUES_LINES='{"number":100,"title":"Research old duplicate report"}
+    OPEN_ISSUES_LINES='{"number":97,"title":"[Analysis Report] perf summary"}
+{"number":98,"title":"[Perf Report] 2025 results"}
+{"number":100,"title":"Research old duplicate report"}
 {"number":101,"title":"[Research] archived finding"}
 {"number":102,"title":"Investigate flaky hook"}
 {"number":103,"title":"[Investigate] old branch cleanup"}
@@ -953,6 +955,8 @@ assert_equal "$EXIT_CODE" "0" "[14] exit code 0 (non-archival collision candidat
 assert_contains "$OUT" "ELIGIBLE=true" "[14] ELIGIBLE=true on stdout"
 assert_contains "$OUT" "ISSUE_NUMBER=106" "[14] ISSUE_NUMBER=106 (Investigation is not archival)"
 assert_contains "$OUT" "LOCK_ACQUIRED=true" "[14] LOCK_ACQUIRED=true"
+assert_contains "$ERR" "Skipping issue #97: archival title prefix" "[14] Analysis Report prefix skipped"
+assert_contains "$ERR" "Skipping issue #98: archival title prefix" "[14] Perf Report prefix skipped"
 assert_contains "$ERR" "Skipping issue #100: archival title prefix" "[14] bare Research prefix skipped"
 assert_contains "$ERR" "Skipping issue #101: archival title prefix" "[14] bracketed Research prefix skipped"
 assert_contains "$ERR" "Skipping issue #102: archival title prefix" "[14] bare Investigate prefix skipped"
