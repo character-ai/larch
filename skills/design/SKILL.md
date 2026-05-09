@@ -1,13 +1,13 @@
 ---
 name: design
-description: "Use when designing any non-trivial feature, refactor, or architectural change — design, architecture, scope, approach validation. Sketch agents (4 regular, 2 quick) propose approaches; 8-reviewer panel validates via 3-voter dialectic."
+description: "Use when designing any non-trivial feature, refactor, or architectural change — design, architecture, scope, approach validation. Sketch agents (4 regular, 2 quick) propose approaches; 4-reviewer panel validates via 3-voter dialectic."
 argument-hint: "[--auto] [--quick] [--subagent] [--session-env <path>] <feature description>"
 allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task, WebFetch, WebSearch
 ---
 
 # Design Skill
 
-Design an implementation plan for a feature and review it with an 8-reviewer panel (4 Codex specialists + 4 Cursor specialists: Architecture/Standards, Edge-cases/Failure-modes, Innovation/Exploration, Pragmatism/Safety), adjudicated by a 3-voter panel (Claude + Codex + Cursor). The sketch phase (Step 2a) runs 4 agents in regular mode (Cursor-Arch + Cursor-Edge + Codex-Innovation + Codex-Pragmatic — one personality per vendor in a diagonal split) or 2 agents in quick mode (1 Cursor-Generic + 1 Codex-Generic).
+Design an implementation plan for a feature and review it with a 4-reviewer panel (2 Cursor: Arch, Edge + 2 Codex: Innovation, Pragmatic — a diagonal split matching the sketch phase), adjudicated by a 3-voter panel (Claude + Codex + Cursor). The sketch phase (Step 2a) runs 4 agents in regular mode (Cursor-Arch + Cursor-Edge + Codex-Innovation + Codex-Pragmatic — one personality per vendor in a diagonal split) or 2 agents in quick mode (1 Cursor-Generic + 1 Codex-Generic).
 
 **Flags**: Parse flags from the start of `$ARGUMENTS` before treating the remainder as the feature description. Flags may appear in any order; stop at the first non-flag token. **All boolean flags default to `false`. Only set a flag to `true` when its `--flag` token is explicitly present in the arguments. Flags are independent — the presence of one flag must not influence the default value of any other flag.**
 

@@ -37,7 +37,7 @@ Before executing, read these references in this order:
 
 (Use `${CLAUDE_PLUGIN_ROOT}/…` rather than bare repo-relative paths — the heavy subagent runs in the consumer repo's CWD, not the plugin install root, so unqualified paths could resolve to a different tree or to missing files.)
 
-Also read the Step 3 external reviewer launch Bash blocks directly from `${CLAUDE_PLUGIN_ROOT}/skills/design/SKILL.md` at the `### Cursor Archetype Reviewers (4 slots)` and `### Codex Archetype Reviewers (4 slots)` anchors. Those blocks intentionally stay inline in `SKILL.md` because `.github/workflows/ci.yaml` greps `skills/design/SKILL.md` for the focus-area enum (`code-quality / risk-integration / correctness / architecture / security`).
+Also read the Step 3 external reviewer launch Bash blocks directly from `${CLAUDE_PLUGIN_ROOT}/skills/design/SKILL.md` at the `### Cursor Archetype Reviewers (2 slots)` and `### Codex Archetype Reviewers (2 slots)` anchors. Those blocks intentionally stay inline in `SKILL.md` because `.github/workflows/ci.yaml` greps `skills/design/SKILL.md` for the focus-area enum (`code-quality / risk-integration / correctness / architecture / security`).
 
 ## Work
 
