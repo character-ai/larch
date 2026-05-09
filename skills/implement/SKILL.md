@@ -1893,7 +1893,7 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 
 Write `$IMPLEMENT_TMPDIR/finalize-state.sh` before any post-PR cleanup/Slack/teardown branch. This always-run state file is required even when `merge=false`, `draft=true`, `forked_target=true`, or Step 12 bailed before local cleanup.
 
-`EXPECTED_TMPDIR_BASENAME_PREFIX` MUST mirror exactly what `session-setup.sh` and `scripts/implement-finalize.sh::clone_basename_prefix` produce, or Step 18's `verify_cleanup_target` sanity-check will refuse rm-rf and leak the session tmpdir. The four required steps — basename, sanitize via `tr` (NOT a one-pipe form, which bakes basename's trailing newline into a stray `_`; see #1563), truncate to 32 chars, empty-fallback to `_` — are computed inline before the heredoc into `CLONE_TAG_FULL`, then referenced by the heredoc. The `${CLONE_TAG:-…}` operator-override semantics are preserved on the first line.
+`EXPECTED_TMPDIR_BASENAME_PREFIX` MUST mirror exactly what `session-setup.sh` and `scripts/implement-finalize.sh::clone_basename_prefix` produce, or Step 18's `verify_cleanup_target` sanity-check will refuse rm-rf and leak the session tmpdir. The four required steps — basename, sanitize via `tr` (NOT a one-pipe form, which bakes basename's trailing newline into a stray `_`; see #1563), truncate to 32 chars, empty-fallback to `_` — are computed inline into `CLONE_TAG_FULL` before writing the state file. The `${CLONE_TAG:-…}` operator-override semantics are preserved on the first line.
 
 ```bash
 if [ -n "${CLONE_TAG:-}" ]; then
@@ -1904,17 +1904,20 @@ else
   CLONE_TAG_FULL=${CLONE_TAG_FULL:0:32}
   [ -n "$CLONE_TAG_FULL" ] || CLONE_TAG_FULL="_"
 fi
-# Write $IMPLEMENT_TMPDIR/finalize-state.sh (one KEY=VALUE per line, awk-read by postmerge):
-# BRANCH_NAME  PR_NUMBER  PR_TITLE  PR_URL  ISSUE_NUMBER  REPO
-# DRAFT  MERGE  SLACK_ENABLED  SLACK_AVAILABLE  DEFERRED  REPO_UNAVAILABLE
-# PR_CLOSED=${pr_closed:-false}  DESIGN_ONLY_DONE=${DESIGN_ONLY_DONE:-false}
-# BAIL_NEEDS_USER_INPUT=${BAIL_NEEDS_USER_INPUT:-false}
-# STALL_TRACKING=${STALL_TRACKING:-false}  STALL_STEP=${STALL_STEP:-}
-# DONE_RENAME_APPLIED=${DONE_RENAME_APPLIED:-false}
-# EXPECTED_SESSION_ID=$(cat "$IMPLEMENT_TMPDIR/session-id" 2>/dev/null || echo "")
-# EXPECTED_TMPDIR_BASENAME_PREFIX=claude-implement-${CLONE_TAG_FULL}-
-printf '%s' "${FINAL_BAIL_REASON:-}" > "$IMPLEMENT_TMPDIR/final-bail-reason.txt"
 ```
+
+Write `$IMPLEMENT_TMPDIR/finalize-state.sh` (one `KEY=VALUE` per line, awk-read by `postmerge`) with these 20 keys:
+
+- `BRANCH_NAME`, `PR_NUMBER`, `PR_TITLE`, `PR_URL`, `ISSUE_NUMBER`, `REPO`
+- `DRAFT`, `MERGE`, `SLACK_ENABLED`, `SLACK_AVAILABLE`, `DEFERRED`, `REPO_UNAVAILABLE`
+- `PR_CLOSED` (`${pr_closed:-false}`), `DESIGN_ONLY_DONE` (`${DESIGN_ONLY_DONE:-false}`)
+- `BAIL_NEEDS_USER_INPUT` (`${BAIL_NEEDS_USER_INPUT:-false}`)
+- `STALL_TRACKING` (`${STALL_TRACKING:-false}`), `STALL_STEP` (`${STALL_STEP:-}`)
+- `DONE_RENAME_APPLIED` (`${DONE_RENAME_APPLIED:-false}`)
+- `EXPECTED_SESSION_ID` — `$(cat "$IMPLEMENT_TMPDIR/session-id" 2>/dev/null || echo "")`
+- `EXPECTED_TMPDIR_BASENAME_PREFIX=claude-implement-${CLONE_TAG_FULL}-`
+
+Then: `printf '%s' "${FINAL_BAIL_REASON:-}" > "$IMPLEMENT_TMPDIR/final-bail-reason.txt"`
 
 If `forked_target=true`, leave `ISSUE_NUMBER` blank and keep `REPO=$FORK_REPO` as resolved by session setup.
 
@@ -1943,10 +1946,13 @@ else
   CLONE_TAG_FULL=${CLONE_TAG_FULL:0:32}
   [ -n "$CLONE_TAG_FULL" ] || CLONE_TAG_FULL="_"
 fi
-# Re-write $IMPLEMENT_TMPDIR/finalize-state.sh with the same 20-key schema as Step 13.5,
-# using updated values for current Step 14 state (PR_NUMBER/PR_URL/PR_TITLE from Step 9b,
-# PR_CLOSED/DONE_RENAME_APPLIED from Step 12, STALL_TRACKING/STALL_STEP from Step 12d, etc.)
-# EXPECTED_TMPDIR_BASENAME_PREFIX=claude-implement-${CLONE_TAG_FULL}-
+```
+
+Re-write `$IMPLEMENT_TMPDIR/finalize-state.sh` with the same 20-key schema as Step 13.5, using updated values for current Step 14 state (e.g., `PR_NUMBER`/`PR_URL`/`PR_TITLE` from Step 9b, `PR_CLOSED`/`DONE_RENAME_APPLIED` from Step 12, `STALL_TRACKING`/`STALL_STEP` from Step 12d). The `EXPECTED_TMPDIR_BASENAME_PREFIX=claude-implement-${CLONE_TAG_FULL}-` line uses the freshly computed `CLONE_TAG_FULL`. See Step 13.5 key list for all 20 keys.
+
+Then:
+
+```bash
 printf '%s' "${FINAL_BAIL_REASON:-}" > "$IMPLEMENT_TMPDIR/final-bail-reason.txt"
 
 ${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.sh postmerge \

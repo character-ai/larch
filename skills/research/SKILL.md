@@ -153,13 +153,12 @@ Sanitize each `*_PROBE_ERROR` value before writing: strip embedded `=` and `|` c
 
 The four research lanes use the **Codex pre-launch status** (each lane is Codex-first; the per-lane fallback is Claude `Agent`). The `VALIDATION_CODE_*` slot uses pre-launch status `ok` (Claude code-reviewer subagent has no fallback path); `VALIDATION_CURSOR_*` and `VALIDATION_CODEX_*` use the Cursor/Codex pre-launch statuses respectively.
 
-The heredoc body uses a **quoted delimiter** (`<<'EOF'`) so that any residual shell metacharacters in a substituted reason value are preserved verbatim.
+Write `$RESEARCH_TMPDIR/lane-status.txt` using a quoted-delimiter heredoc (`<<'EOF'`) so that shell metacharacters in sanitized reason values are preserved verbatim. 14 keys (one `KEY=VALUE` per line):
 
-Write `$RESEARCH_TMPDIR/lane-status.txt` (shell key=value, quoted `<<'EOF'` delimiter; 14 keys):
-- `RESEARCH_{ARCH,EDGE,EXT,SEC}_STATUS` — codex pre-launch status for each lane
-- `RESEARCH_{ARCH,EDGE,EXT,SEC}_REASON` — sanitized reason or empty
+- `RESEARCH_ARCH_STATUS`, `RESEARCH_EDGE_STATUS`, `RESEARCH_EXT_STATUS`, `RESEARCH_SEC_STATUS` — codex pre-launch status for each lane
+- `RESEARCH_ARCH_REASON`, `RESEARCH_EDGE_REASON`, `RESEARCH_EXT_REASON`, `RESEARCH_SEC_REASON` — sanitized reason or empty
 - `VALIDATION_CODE_STATUS=ok`, `VALIDATION_CODE_REASON=` (always constant)
-- `VALIDATION_{CURSOR,CODEX}_{STATUS,REASON}` — per pre-launch probe result
+- `VALIDATION_CURSOR_STATUS`, `VALIDATION_CURSOR_REASON`, `VALIDATION_CODEX_STATUS`, `VALIDATION_CODEX_REASON` — per pre-launch probe result
 
 ### 0c — Record Research Context
 
@@ -258,8 +257,8 @@ If the helper exits non-zero, substitute the placeholder line `_Lane attribution
 Print the final research report under a `## Research Report` header. Required sections (in order):
 - `**Research question**:` — `<RESEARCH_QUESTION>`
 - `**Codebase context**:` — branch and commit
-- `**Research phase** (4 lanes):` — one bullet per `<X_ARCH/EDGE/EXT/SEC_HEADER>`
-- `**Validation phase** (3 reviewers):` — one bullet per `<VALIDATION_CODE/CURSOR/CODEX_HEADER>`
+- `**Research phase** (4 lanes):` — one bullet each for `<RESEARCH_ARCH_HEADER>`, `<RESEARCH_EDGE_HEADER>`, `<RESEARCH_EXT_HEADER>`, `<RESEARCH_SEC_HEADER>`
+- `**Validation phase** (3 reviewers):` — one bullet each for `<VALIDATION_CODE_HEADER>`, `<VALIDATION_CURSOR_HEADER>`, `<VALIDATION_CODEX_HEADER>`
 - `### Findings Summary` — synthesized validated findings by topic
 - `### Risk Assessment` — Low/Medium/High + rationale, or N/A
 - `### Difficulty Estimate` — S/M/L/XL + rationale, or N/A
