@@ -492,6 +492,41 @@ set -e
 grep -q 'non-empty, non-flag-like value' "$TK_FLAGLIKE_ERR" \
   || fail "reject-timing-task-kind-flaglike: expected non-empty-non-flag-like error message"
 
+# --token-budget-cap argv validation
+BUDGET_MISSING_ERR="$TMPDIR/budget-missing.stderr"
+set +e
+"$REPO_ROOT/scripts/launch-gemini-review.sh" --output "$TMPDIR/budget-missing.txt" --timeout 5 --prompt "x" \
+    --token-budget-cap >/dev/null 2>"$BUDGET_MISSING_ERR"
+BUDGET_MISSING_RC=$?
+set -e
+[[ "$BUDGET_MISSING_RC" -eq 2 ]] \
+  || fail "token-budget-cap-missing: expected exit 2, got $BUDGET_MISSING_RC"
+grep -q 'positive integer' "$BUDGET_MISSING_ERR" \
+  || fail "token-budget-cap-missing: expected 'positive integer' in stderr"
+
+for bad_cap in 0 00 000 abc 0.5 -1; do
+    set +e
+    "$REPO_ROOT/scripts/launch-gemini-review.sh" --output "$TMPDIR/budget-bad-${bad_cap}.txt" --timeout 5 --prompt "x" \
+        --token-budget-cap "$bad_cap" >/dev/null 2>"$TMPDIR/budget-bad-${bad_cap}.stderr"
+    BAD_CAP_RC=$?
+    set -e
+    [[ "$BAD_CAP_RC" -eq 2 ]] \
+      || fail "token-budget-cap-bad-$bad_cap: expected exit 2, got $BAD_CAP_RC"
+    grep -q 'positive integer' "$TMPDIR/budget-bad-${bad_cap}.stderr" \
+      || fail "token-budget-cap-bad-$bad_cap: expected 'positive integer' in stderr"
+done
+
+# Accept path: flag recognized (not "unknown flag")
+set +e
+"$REPO_ROOT/scripts/launch-gemini-review.sh" --output "$TMPDIR/budget-accept.txt" --timeout 5 --prompt "x" \
+    --token-budget-cap 9999999 >/dev/null 2>"$TMPDIR/budget-accept.stderr"
+set -e
+if grep -Fq "unknown flag: --token-budget-cap" "$TMPDIR/budget-accept.stderr" 2>/dev/null; then
+    fail "token-budget-cap-accept: flag not recognized (got 'unknown flag' rejection)"
+else
+    : # pass
+fi
+
 if [[ "$FAIL" -eq 1 ]]; then
   exit 1
 fi

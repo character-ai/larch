@@ -58,6 +58,7 @@ DESCRIPTION_TEXT=""
 SCOPE_FILES=""
 COMPETITION_NOTICE=false
 TIMING_TASK_KIND="${LARCH_TIMING_TASK_KIND:-}"
+TOKEN_BUDGET_CAP=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -71,6 +72,7 @@ while [[ $# -gt 0 ]]; do
         --scope-files) SCOPE_FILES="${2:?--scope-files requires a value}"; shift 2 ;;
         --competition-notice) COMPETITION_NOTICE=true; shift ;;
         --timing-task-kind) [[ -n "${2:-}" && "${2}" != --* ]] || { echo "launch-codex-review.sh: --timing-task-kind requires a non-empty, non-flag-like value" >&2; exit 2; }; TIMING_TASK_KIND="$2"; shift 2 ;;
+        --token-budget-cap) case "${2:-}" in ''|*[!0-9]*) echo "launch-codex-review.sh: --token-budget-cap requires a positive integer" >&2; exit 2 ;; esac; (( 10#${2:-0} >= 1 )) || { echo "launch-codex-review.sh: --token-budget-cap requires a positive integer" >&2; exit 2; }; TOKEN_BUDGET_CAP="$2"; shift 2 ;;
         *) echo "launch-codex-review.sh: unknown flag: $1" >&2; exit 2 ;;
     esac
 done
@@ -104,6 +106,25 @@ if [[ -n "${IMPLEMENT_TMPDIR:-}" && -s "${IMPLEMENT_TMPDIR}/session-id" ]]; then
 fi
 if [[ -n "${IMPLEMENT_TMPDIR:-}" && -s "${IMPLEMENT_TMPDIR}/claude-source.env" ]]; then
     export LARCH_CLAUDE_SOURCE_FILE="${IMPLEMENT_TMPDIR}/claude-source.env"
+fi
+
+# Per-step token budget cap: short-circuit before spawning Codex when the
+# combined vendor spend since the last ledger mark already exceeds the cap.
+if [[ -n "$TOKEN_BUDGET_CAP" ]]; then
+    _budget_out=$("$SCRIPT_DIR/check-step-token-budget.sh" --cap "$TOKEN_BUDGET_CAP" --step "${TIMING_TASK_KIND:-codex-review}" 2>/dev/null || true)
+    _budget_status=$(printf '%s' "$_budget_out" | awk '{for(i=1;i<=NF;i++){if($i~/^STATUS=/){print substr($i,8);exit}}}')
+    if [[ "$_budget_status" == "cap_hit" ]]; then
+        printf '⚠ launch-codex-review.sh: step token budget cap of %s tokens exceeded (%s combined vendor tokens); external reviewer fan-out skipped\n' \
+            "$TOKEN_BUDGET_CAP" "$(printf '%s' "$_budget_out" | awk '{for(i=1;i<=NF;i++){if($i~/^TOTAL=/){print substr($i,7);exit}}}')" >&2
+        printf 'STATUS=cap_hit\n' > "$OUTPUT"
+        printf 'STATUS=cap_hit\n%s\n' "$_budget_out" > "${OUTPUT}.cap-hit"
+        if [[ -n "${IMPLEMENT_TMPDIR:-}" ]]; then
+            printf 'STATUS=cap_hit\n%s\n' "$_budget_out" > "${IMPLEMENT_TMPDIR}/step-budget-cap-hit.env"
+        fi
+        printf '%s\n' "0" > "${OUTPUT}.done" 2>/dev/null || true
+        exit 0
+    fi
+    unset _budget_out _budget_status
 fi
 
 _src_count=0

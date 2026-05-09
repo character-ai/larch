@@ -22,7 +22,7 @@
 
 **Stdout contract**: Same stdout as `run-external-agent.sh`; no `LAUNCHER_EXIT=` line. Exit code is `run-external-agent.sh`'s exit code after the best-effort post-call token scrape.
 
-**Flags**: Same as `launch-cursor-review.sh` (see `scripts/launch-cursor-review.md`), including optional `--timing-task-kind <kind>`.
+**Flags**: Same as `launch-cursor-review.sh` (see `scripts/launch-cursor-review.md`), including optional `--timing-task-kind <kind>` and `--token-budget-cap N` (combined vendor token cap; exits 0 with `STATUS=cap_hit` output when exceeded).
 
 **Call sites**:
 - `skills/implement/SKILL.md` Step 5 (quick-mode specialists + generic reviewers)
@@ -32,4 +32,4 @@
 - `skills/review/SKILL.md` (Codex specialist + generic reviewer)
 - `scripts/collect-agent-results.sh` empty-output retry path, when valid Codex `OUTER_LAUNCHER*` metadata is present
 
-**Edit-in-sync**: `scripts/lib-codex-launcher-common.sh`, `scripts/lib-external-launcher-common.sh`, `scripts/lib-dirty-tree-sidecar.sh`, `scripts/check-mid-run-dirty-tree.sh`, `scripts/snapshot-untracked.sh`, `scripts/agent-model-args.sh`, `scripts/render-specialist-prompt.sh`, `scripts/run-external-agent.sh`, `scripts/collect-agent-results.sh`, `scripts/test-launch-codex-review.sh`, and `scripts/test-collect-agent-retry.sh`. Differs from `launch-cursor-review.sh` in: no `cursor-wrap-prompt.sh` call, no `--capture-stdout`, uses `--output-last-message`.
+**Edit-in-sync**: `scripts/check-step-token-budget.sh` (budget-cap helper), `scripts/lib-codex-launcher-common.sh`, `scripts/lib-external-launcher-common.sh`, `scripts/lib-dirty-tree-sidecar.sh`, `scripts/check-mid-run-dirty-tree.sh`, `scripts/snapshot-untracked.sh`, `scripts/agent-model-args.sh`, `scripts/render-specialist-prompt.sh`, `scripts/run-external-agent.sh`, `scripts/collect-agent-results.sh`, `scripts/test-launch-codex-review.sh`, and `scripts/test-collect-agent-retry.sh`. Differs from `launch-cursor-review.sh` in: no `cursor-wrap-prompt.sh` call, no `--capture-stdout`, uses `--output-last-message`.

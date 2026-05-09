@@ -19,6 +19,7 @@ OUTPUT=""
 TIMEOUT=""
 PROMPT=""
 TIMING_TASK_KIND="${LARCH_TIMING_TASK_KIND:-}"
+TOKEN_BUDGET_CAP=""
 SNAPSHOT_GUARD_STATE="uninitialized"
 SNAPSHOT_GUARD_NOTICE=""
 SNAPSHOT_GUARD_MESSAGE=""
@@ -627,6 +628,7 @@ while [[ $# -gt 0 ]]; do
         --timeout) TIMEOUT="${2:?--timeout requires a value}"; shift 2 ;;
         --prompt) PROMPT="${2:?--prompt requires a value}"; shift 2 ;;
         --timing-task-kind) [[ -n "${2:-}" && "${2}" != --* ]] || { echo "launch-gemini-review.sh: --timing-task-kind requires a non-empty, non-flag-like value" >&2; exit 2; }; TIMING_TASK_KIND="$2"; shift 2 ;;
+        --token-budget-cap) case "${2:-}" in ''|*[!0-9]*) echo "launch-gemini-review.sh: --token-budget-cap requires a positive integer" >&2; exit 2 ;; esac; (( 10#${2:-0} >= 1 )) || { echo "launch-gemini-review.sh: --token-budget-cap requires a positive integer" >&2; exit 2; }; TOKEN_BUDGET_CAP="$2"; shift 2 ;;
         --agent-file|--mode|--description-text|--scope-files|--competition-notice)
             echo "launch-gemini-review.sh: specialist mode is not supported in v1" >&2
             exit 2 ;;
@@ -662,6 +664,25 @@ if [[ -n "${IMPLEMENT_TMPDIR:-}" && -s "${IMPLEMENT_TMPDIR}/session-id" ]]; then
 fi
 if [[ -n "${IMPLEMENT_TMPDIR:-}" && -s "${IMPLEMENT_TMPDIR}/claude-source.env" ]]; then
     export LARCH_CLAUDE_SOURCE_FILE="${IMPLEMENT_TMPDIR}/claude-source.env"
+fi
+
+# Per-step token budget cap: short-circuit before spawning Gemini when the
+# combined vendor spend since the last ledger mark already exceeds the cap.
+if [[ -n "$TOKEN_BUDGET_CAP" ]]; then
+    _budget_out=$("$SCRIPT_DIR/check-step-token-budget.sh" --cap "$TOKEN_BUDGET_CAP" --step "${TIMING_TASK_KIND:-gemini-review}" 2>/dev/null || true)
+    _budget_status=$(printf '%s' "$_budget_out" | awk '{for(i=1;i<=NF;i++){if($i~/^STATUS=/){print substr($i,8);exit}}}')
+    if [[ "$_budget_status" == "cap_hit" ]]; then
+        printf '⚠ launch-gemini-review.sh: step token budget cap of %s tokens exceeded (%s combined vendor tokens); external reviewer fan-out skipped\n' \
+            "$TOKEN_BUDGET_CAP" "$(printf '%s' "$_budget_out" | awk '{for(i=1;i<=NF;i++){if($i~/^TOTAL=/){print substr($i,7);exit}}}')" >&2
+        printf 'STATUS=cap_hit\n' > "$OUTPUT"
+        printf 'STATUS=cap_hit\n%s\n' "$_budget_out" > "${OUTPUT}.cap-hit"
+        if [[ -n "${IMPLEMENT_TMPDIR:-}" ]]; then
+            printf 'STATUS=cap_hit\n%s\n' "$_budget_out" > "${IMPLEMENT_TMPDIR}/step-budget-cap-hit.env"
+        fi
+        printf '%s\n' "0" > "${OUTPUT}.done" 2>/dev/null || true
+        exit 0
+    fi
+    unset _budget_out _budget_status
 fi
 
 # Defensive: env-derived LARCH_TIMING_TASK_KIND may be empty or flag-shaped
