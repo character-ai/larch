@@ -1,7 +1,7 @@
 {
   "name": "larch",
-  "version": "18.4.8",
-  "description": "Multi-agent workflow automation for Claude Code: design, code review, implementation, and PR automation. Code review runs a 7-reviewer panel (5 Cursor specialists + 1 Codex generic + 1 Claude generic) with 3-voter adjudication; plan review runs an 8-reviewer panel (4 Codex archetypes + 4 Cursor archetypes: Architecture/Standards, Edge-cases/Failure-modes, Innovation/Exploration, Pragmatism/Safety); design sketches run a 4-agent diverge-then-converge phase in regular mode (2 Cursor + 2 Codex) or 2 in quick mode.",
+  "version": "18.4.9",
+  "description": "Multi-agent workflow automation for Claude Code: design, code review, implementation, and PR automation. Code review runs a 3-reviewer specialist panel (2 Cursor specialists + 1 Codex generic) with 3-voter adjudication; plan review runs a 4-reviewer diagonal panel (2 Cursor: Arch, Edge + 2 Codex: Innovation, Pragmatic); design sketches run a 4-agent diverge-then-converge phase in regular mode (2 Cursor + 2 Codex) or 2 in quick mode.",
   "author": {
     "name": "Sergey Zhupanov",
     "email": "zhupanov@yahoo.com"

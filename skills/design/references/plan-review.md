@@ -1,8 +1,8 @@
 # Plan Review Reference
 
-**Consumer**: `/design` Step 3 — Claude Code Reviewer subagent archetype (fallback + Voter 1), Collecting External Reviewer Results, Voting Panel launch + Finalize Plan Review + Track Rejected Plan Review Findings. The external reviewer launch Bash blocks (4 Cursor archetypes + 4 Codex archetypes) remain inline in SKILL.md because `.github/workflows/ci.yaml` greps SKILL.md for the focus-area enum they carry.
+**Consumer**: `/design` Step 3 — Claude Code Reviewer subagent archetype (fallback + Voter 1), Collecting External Reviewer Results, Voting Panel launch + Finalize Plan Review + Track Rejected Plan Review Findings. The external reviewer launch Bash blocks (2 Cursor archetypes + 2 Codex archetypes) remain inline in SKILL.md because `.github/workflows/ci.yaml` greps SKILL.md for the focus-area enum they carry.
 
-**Contract**: the plan-review panel described inline below (4 Codex specialists + 4 Cursor specialists: Architecture/Standards, Edge-cases/Failure-modes, Innovation/Exploration, Pragmatism/Safety; Cursor fallback: Cursor → Codex → Claude subagent; Codex fallback: Codex → Cursor → Claude subagent), single-list output from all externals (with `[OUT_OF_SCOPE]` tag-based OOS extraction), then a 3-voter panel using YES/NO/EXONERATE with 2+ YES threshold and the proportionality rule. Claude subagent voter replacement when external tool unavailable so the panel always remains at 3.
+**Contract**: the plan-review panel described inline below (2 Cursor + 2 Codex on a diagonal: Cursor-Arch, Cursor-Edge, Codex-Innovation, Codex-Pragmatic; Cursor fallback: Cursor → Codex → Claude subagent; Codex fallback: Codex → Cursor → Claude subagent), single-list output from all externals (with `[OUT_OF_SCOPE]` tag-based OOS extraction), then a 3-voter panel using YES/NO/EXONERATE with 2+ YES threshold and the proportionality rule. Claude subagent voter replacement when external tool unavailable so the panel always remains at 3.
 
 **When to load**: once Step 3 begins, via the MANDATORY directive at the top of Step 3 in SKILL.md. Do NOT load during Steps 0, 1, 2a, 2a.5, 2b, 3.5, 3b, 4, or 5 — the reviewer archetype, ballot handling, voting panel launch, finalize procedure, and rejected-findings template defined here are all Step-3-internal concerns.
 
@@ -16,7 +16,7 @@
 
 ## Claude Code Reviewer Subagent archetype (fallback reviewers + Voter 1)
 
-Claude is NOT a primary plan reviewer — the panel is all-external (4 Cursor + 4 Codex specialists). Claude participates as: (a) **per-slot fallback** when both external tools are unavailable for a reviewer slot (subagent_type: `larch:code-reviewer`, model: `"sonnet"`), and (b) **Voter 1** in the 3-voter adjudication panel (subagent_type: `larch:code-reviewer`, model: `"opus"`).
+Claude is NOT a primary plan reviewer — the panel is all-external (2 Cursor: Arch, Edge + 2 Codex: Innovation, Pragmatic). Claude participates as: (a) **per-slot fallback** when both external tools are unavailable for a reviewer slot (subagent_type: `larch:code-reviewer`, model: `"sonnet"`), and (b) **Voter 1** in the 3-voter adjudication panel (subagent_type: `larch:code-reviewer`, model: `"opus"`).
 
 Use the Code Reviewer archetype from `${CLAUDE_PLUGIN_ROOT}/skills/shared/reviewer-templates.md`, filling in the variables for **plan review**:
 
@@ -57,19 +57,19 @@ For Codex, Cursor, and their Claude replacement voters, instruct each: `"You are
 
 ## Collecting External Reviewer Results
 
-All 8 reviewers are external. Collect and validate outputs using the shared collection script. Only include output paths for reviewers that were actually launched as external tools (omit any slot where the tool was unavailable and a Claude subagent fallback is returning via Agent tool instead):
+All 4 reviewers are external. Collect and validate outputs using the shared collection script. Only include output paths for reviewers that were actually launched as external tools (omit any slot where the tool was unavailable and a Claude subagent fallback is returning via Agent tool instead):
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1860 --substantive-validation --validation-mode [--write-health "${SESSION_ENV_PATH}.health"] <all-external-output-paths...>
 ```
 
-Only include `--write-health` if `SESSION_ENV_PATH` is non-empty. Output paths include up to 4 Cursor archetype paths (`cursor-plan-{arch,edge,innovation,pragmatic}-output.txt`) and up to 4 Codex archetype paths (`codex-primary-plan-{arch,edge,innovation,pragmatic}-output.txt`). When Cursor is unavailable and Codex was used as fallback, those paths are `codex-fallback-cursor-plan-{arch,...}-output.txt`. When Codex is unavailable and Cursor was used as fallback, those are `cursor-fallback-codex-plan-{arch,...}-output.txt`. Omit paths for slots where a Claude subagent fallback was launched instead.
+Only include `--write-health` if `SESSION_ENV_PATH` is non-empty. Output paths include up to 2 Cursor archetype paths (`cursor-plan-arch-output.txt`, `cursor-plan-edge-output.txt`) and up to 2 Codex archetype paths (`codex-primary-plan-innovation-output.txt`, `codex-primary-plan-pragmatic-output.txt`). When Cursor is unavailable and Codex was used as fallback, those paths are `codex-fallback-cursor-plan-arch-output.txt` and `codex-fallback-cursor-plan-edge-output.txt`. When Codex is unavailable and Cursor was used as fallback, those are `cursor-fallback-codex-plan-innovation-output.txt` and `cursor-fallback-codex-plan-pragmatic-output.txt`. Omit paths for slots where a Claude subagent fallback was launched instead.
 
 Immediately after this collection returns, run the Mid-Run Dirty-Tree Probe Contract from `heavy-worker.md` for `STAGE=plan-review-collection`.
 
 Parse the structured output for each reviewer's `STATUS` and `REVIEWER_FILE`. For any reviewer with `STATUS` not `OK`, follow the **Runtime Timeout Fallback** procedure in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md`. Read valid output files.
 
-1. Parse each reviewer's output for findings. External reviewers produce single-list output. Extract `[OUT_OF_SCOPE]`-prefixed findings as OOS observations; remaining findings are in-scope. Also merge any fallback Claude subagent findings (when externals were unavailable) into the in-scope list, attributing them as `Code`. Attribute archetype findings with their tool+archetype label (Cursor-Arch, Cursor-Edge, Cursor-Innovation, Cursor-Pragmatic, Codex-Arch, Codex-Edge, Codex-Innovation, Codex-Pragmatic — or the fallback variant when applicable) for the competition scoreboard.
+1. Parse each reviewer's output for findings. External reviewers produce single-list output. Extract `[OUT_OF_SCOPE]`-prefixed findings as OOS observations; remaining findings are in-scope. Also merge any fallback Claude subagent findings (when externals were unavailable) into the in-scope list, attributing them as `Code`. Attribute archetype findings with their tool+archetype label (Cursor-Arch, Cursor-Edge, Codex-Innovation, Codex-Pragmatic — or the fallback variant when applicable) for the competition scoreboard.
 2. Deduplicate in-scope findings separately. Assign each a stable sequential ID (`FINDING_1`, `FINDING_2`, etc.) and note which reviewer(s) proposed each.
 3. Deduplicate out-of-scope observations separately. Assign each an `OOS_` prefixed ID (`OOS_1`, `OOS_2`, etc.). If the same issue appears in both in-scope and OOS from different reviewers, merge under the in-scope finding (in-scope takes precedence).
 
