@@ -565,7 +565,7 @@ if grep -Fq -- 'HARD CONSTRAINTS — your role is read-only review' "$ARGV_LOG_A
 else
     fail "case AK1S specialist argv must carry the HARD CONSTRAINTS preamble"
 fi
-if grep -Fq -- 'Correctness, Edge Cases, and Failure Recovery' "${OUT_AK1S}.prompt"; then
+if grep -Fq -- 'Structure, KISS, and Maintainability' "${OUT_AK1S}.prompt"; then
     pass
 else
     fail "case AK1S prompt sidecar must contain specialist-rendered body"
