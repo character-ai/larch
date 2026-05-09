@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [18.2.0] - 2026-05-08
+
+### Changed
+
+- Infer `inferred:<step>` labels for null-`attributionSkill` transcript rows within a step-mark window in `token-report.sh`, reducing the unattributed token bucket from ~8% to near-zero; document the Skill Attribution two-category model in `token-report.md`
+
 ## [18.1.0] - 2026-05-08
 
 ### Added
