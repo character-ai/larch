@@ -2,7 +2,6 @@
 
 **Consumer**: `/fix-issue` Steps 3 (Triage) and 4 (Classify Intent and Complexity).
 
-
 **When to load**: before executing Step 3 (Triage) OR Step 4 (Classify). Load once — the two step-bodies consume the same detail. **Do NOT load** in any other step — Steps 0 / 1 / 2 / 5 / 6 / 7 / 8 do not consume this content. **Do NOT load** on any path that has already branched to Step 8 — concrete examples: Step 0 `find-lock-issue.sh` exit 1 / 2 / 3 (no eligible issue, error, or lock-failed-after-eligibility-pass), Step 1 setup abort (`REPO_UNAVAILABLE=true`). Steps 3 and 4 do not run on those paths.
 
 **Sibling**: `skills/fix-issue/references/non-pr-execution.md` owns the NON_PR-path execution detail consumed by Step 5b.

@@ -1,6 +1,7 @@
 ---
 name: fix-issue
 description: "Use when fixing open GitHub issues. Processes one approved issue per invocation: skips issues with open blockers, triages, classifies intent, then either delegates to /implement or follows the issue's instructions inline for research/review tasks."
+argument-hint: "[--auto] [--no-admin-fallback] [--coder=<value>] [--inline] [--quick] [--issue <number-or-url>] [<number-or-url>]"
 allowed-tools: Bash, Read, Grep, Glob, Skill
 ---
 
@@ -9,7 +10,6 @@ allowed-tools: Bash, Read, Grep, Glob, Skill
 Process one open GitHub issue per invocation. Scans for open issues (or targets a specific one), skips any whose GitHub issue-dependencies list includes an open blocker, triages the remaining candidate against the codebase, classifies **intent** (PR-producing vs. non-PR task) and (for PR work) **complexity**, and either delegates to `/implement` or executes the issue's instructions inline. Non-PR tasks — e.g., "research topic X and summarize findings as issues", "code-review module Y and file issues for each problem" — are followed without `/implement`; any output issues are created via `/issue` and the source issue is closed with a work summary instead of a PR link.
 
 **Single-iteration design**: Each invocation handles at most one issue, then exits. The caller (cron, `/loop`, or manual invocation) is responsible for repeated execution.
-
 
 **Flags**: Parse flags from the start of `$ARGUMENTS`.
 
@@ -61,7 +61,6 @@ Each rule states **Why** (the specific consequence of breaking the rule) and **H
 
 4. **NEVER paraphrase the Step 5a adopted-issue-closed directive ``Do NOT call `issue-lifecycle.sh close` ``.** **Why**: when the adopted issue is already closed, a second `issue-lifecycle.sh close` would double-post a DONE comment on top of the externally-written closing comment and run the PR-backfill with an empty `PR_URL` (since `/implement` bailed before producing a PR) — visible doubled noise on the closed issue. The directive is phrased with the specific script name, not a bare "Do NOT call" fragment, because the harness's `awk` window also includes Step 5b (whose "Do NOT call `/implement`" sentence would otherwise mask the deletion). **How to apply**: preserve the full phrase verbatim; if `issue-lifecycle.sh` is ever renamed, update the harness in the same PR. **CI-backed**: yes — assertion (d).
 
-
 6. **NEVER allow the NON_PR path (Step 5b) to modify working-tree files.** **Why**: `NON_PR` tasks are defined by producing GitHub issues, research summaries, or comment output rather than code changes. Writing to the working tree on this path opens a cascade of unanswered questions: what to commit, what branch to use, whether to push, whether to create a PR — none of which the NON_PR workflow addresses. The invariant is editorial (the runtime does not block edits) and depends on the SKILL.md text making the rule unambiguous. **How to apply**: keep the "Do NOT call `/implement`. Do NOT modify files in the working tree" sentence inside Step 5b (in SKILL.md, not only in the reference). `--input-file` markdown for `/issue` batch mode lives under `$FIX_ISSUE_TMPDIR` per `skills/fix-issue/references/non-pr-execution.md`. **CI-backed**: no (editorial invariant).
 
 7. **NEVER auto-pick umbrellas in the no-arg find-lock-issue scan.** **Why**: the umbrella-PR design dialectic (DECISION_1, voted 2-1 ANTI_THESIS) chose explicit-target-only umbrella handling. Folding umbrella handling into the bulk sweep multiplies decision-surface complexity (umbrella resolution is a distinct state machine with non-GO locking, child-pick semantics, and finalization paths) and increases operator surprise (umbrellas can be passive long-lived planning trackers). **How to apply**: `umbrella-handler.sh` is invoked ONLY in the explicit-issue path of `find-lock-issue.sh`. Operators who want umbrella-tracked work to drain must explicitly pass the umbrella number (e.g., `/fix-issue <umbrella#>` once per dispatch cycle). **CI-backed**: yes — `test-find-lock-issue.sh` carries an `auto-pick-skips-umbrella` regression fixture.
@@ -69,7 +68,6 @@ Each rule states **Why** (the specific consequence of breaking the rule) and **H
 8. **NEVER improvise ScheduleWakeup outside skill-script direction.** **Why**: `/fix-issue` is single-iteration by contract — its terminal `✅ 8: cleanup — fix-issue complete!` line ends its transcript. The orchestrator (Claude) was observed calling `ScheduleWakeup` on its own initiative after Step 8 to fire another `/fix-issue` iteration, outside any of `/fix-issue`'s own steps. Recurring behavior is owned by `/loop`'s `<<autonomous-loop-dynamic>>` sentinel mechanism, not by orchestrator improvisation in `/fix-issue`'s terminal turn. **How to apply**: this skill has no step that calls `ScheduleWakeup`; do not call it anywhere from Step 0 through Step 8 or after Step 8 completes. See AGENTS.md for the project-wide rule that this entry mirrors. **CI-backed**: yes — `scripts/test-anti-improvised-wakeup.sh` pins the literal at this site.
 
 ## Step 0 — Find and Lock
-
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/skills/fix-issue/scripts/find-lock-issue.sh ["$ISSUE_ARG"]
@@ -108,10 +106,7 @@ Runs only after Step 0 successfully locked the issue. A failure here leaves the 
 ${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix claude-fix-issue --skip-branch-check
 ```
 
-
 If `REPO_UNAVAILABLE=true`, print `**⚠ Could not determine repository. GitHub issue access requires a valid repo. Aborting.**` and skip to Step 8.
-
-
 
 Write session-env for forwarding to `/implement`:
 
@@ -205,7 +200,6 @@ Compose the feature description from the issue content: use the issue title as t
 
 Invoke `/implement` via the Skill tool. Forwarding `--issue $ISSUE_NUMBER` makes `/implement` adopt the queue issue as its tracking issue (Phase 3 Branch 2 adoption), so the two skills converge on the same tracking issue and `/fix-issue` avoids a duplicate tracking-issue on its path:
 
-
 After `/implement` completes, capture the PR URL and PR number from its output. Save as `PR_URL` and `PR_NUMBER`.
 
 > **Continue after child returns (success path only).** If `/implement` succeeded and `PR_URL` / `PR_NUMBER` are captured, your next user-facing output MUST be the Step 6 breadcrumb (`> **🔶 6: close issue**`) — do NOT write a summary, status recap, or "returning to caller" message first. If `/implement` failed or bailed, ignore this directive and follow the failure-path branch below. See `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Anti-halt continuation reminder.
@@ -225,11 +219,9 @@ If `/implement` exits non-zero, branch on whether the captured output (stdout + 
 
 ### 5b — `INTENT=NON_PR` path (follow instructions inline)
 
-
 Read the issue details from Step 2 and execute the instructions directly using Read, Grep, Glob, and Bash. Do NOT call `/implement`. Do NOT modify files in the working tree — `NON_PR` tasks deliver their output as new GitHub issues, a written summary comment, or both.
 
 > **Continue after child returns.** When any child Skill (`/issue`, `/research`, ...) returns, execute the NEXT step of this skill — do NOT end the turn, and do NOT write a summary, handoff, or "returning to parent" message. See `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Anti-halt continuation reminder.
-
 
 If the work cannot be completed (e.g., `/issue` fails repeatedly, the issue's instructions are infeasible, or required external access is unavailable), print `**⚠ 5: execute — non-PR task failed. Issue #$ISSUE_NUMBER remains locked with IN PROGRESS comment and [IN PROGRESS] title prefix. (<elapsed>)**` and skip to Step 8. The IN PROGRESS comment serves as an indicator that manual intervention is needed — same recovery semantics as the `/implement` failure path.
 

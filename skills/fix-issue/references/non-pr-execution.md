@@ -2,7 +2,6 @@
 
 **Consumer**: `/fix-issue` Step 5b (`INTENT=NON_PR` path — follow instructions inline).
 
-
 **When to load**: only when Step 4's classifier sets `INTENT=NON_PR`. **Do NOT load** when `INTENT=PR` — Step 5a delegates to `/implement` and never references this file. **Do NOT load** in any step other than 5.
 
 **Sibling**: `skills/fix-issue/references/triage-classification.md` owns the triage (Step 3) and classification (Step 4) detail that produces the `INTENT` value this file gates on.
@@ -20,7 +19,6 @@ Read the issue details from Step 2 and execute the instructions directly using R
 - **Other investigative or planning tasks** — follow the body's instructions literally; when ambiguous, prefer the interpretation that produces actionable output (issues, documented findings) over the interpretation that produces code changes.
 
 ### WORK_SUMMARY running discipline
-
 
 Step 6b passes `--close-class done` to `issue-lifecycle.sh close`. The structured close-reason enum is set at decision time, not inferred from `WORK_SUMMARY` prose, so legitimate completion narrative containing words like "duplicate", "superseded", or "false positive" can never misclassify the close. Step 6b MUST NOT pass `--mark-false-positive-if-keyword` — the enum is authoritative on this path; the keyword flag remains available solely for unstructured-prose close paths external to `/fix-issue`.
 

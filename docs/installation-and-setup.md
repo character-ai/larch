@@ -2,7 +2,6 @@
 
 Larch is distributed as a [Claude Code plugin](https://code.claude.com/docs/en/plugin-marketplaces). Installation starts by registering the marketplace that hosts larch, then installing the plugin from that marketplace.
 
-
 ## Install from GitHub
 
 ### Latest stable release
@@ -240,7 +239,6 @@ Standalone `/design` prints the same message with `/design` substituted for `/im
 git remote -v
 git remote add upstream git@github.com:OWNER/UPSTREAM.git
 ```
-
 
 ## Prerequisites
 

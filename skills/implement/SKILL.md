@@ -172,7 +172,6 @@ If `forked_target=true`, run the single fork pre-setup helper before the standar
 ${CLAUDE_PLUGIN_ROOT}/scripts/implement-fork-env.sh
 ```
 
-
 Check the current branch before any setup side effects:
 
 ```bash
@@ -219,7 +218,6 @@ On non-zero exit, always print the raw `PREFLIGHT_ERROR=...` line first. Then pr
 **⚠ /implement requires clean main to start. To continue, choose one of: (a) `git checkout main && git status` clean → re-run; (b) check out or create a `<USER_PREFIX>/*` feature branch and re-run (the branch naming convention is the explicit opt-in to continue from current state); (c) commit or stash uncommitted changes on `main` first.**
 
 Key any future sub-message on the substring inside `PREFLIGHT_ERROR` (for example, `Not on main branch` or `Working tree is not clean`), not on the prior `IS_MAIN` value from `create-branch.sh --check`; detached HEAD can report `IS_MAIN=true` with an empty `CURRENT_BRANCH`.
-
 
 Then:
 - Ensure a per-run session id exists for design-manifest freshness checks. `session-setup.sh` already wrote the value; this call is preserved as an idempotent no-op for older harnesses and fallback paths (see `scripts/write-session-id.md` for the contract):
@@ -282,7 +280,6 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 ```
 
 ### Cross-Skill Health Propagation
-
 
 ## Phantom Untracked Probe
 
@@ -1661,7 +1658,6 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 
 If `repo_unavailable=true`: print `⏭️ 10: CI monitor — skipped (repo unavailable) (<elapsed>)` and proceed to Step 11.
 
-
 **Best-effort re-bump during CI wait**: Step 10's rebase handler invokes the Rebase + Re-bump Sub-procedure (same as Step 12) with step10-family semantics — hard failures degrade gracefully (warn + break to Step 11) rather than bailing. This keeps the PR's version fresh during the CI-wait phase while ensuring Step 10 never blocks the pipeline — Step 12 remains the last-chance enforcement point (Load-Bearing Invariant #1).
 
 **Fork-mode rebase carve-out**: when `forked_target=true`, the Rebase + Re-bump Sub-procedure MUST NOT run (per Load-Bearing Invariant #1's fork-mode carve-out — `/bump-version`, CHANGELOG, and the sub-procedure are all skipped). Step 10's `ACTION=rebase` and `ACTION=rebase_then_evaluate` handlers below carry an explicit fork-mode branch that runs a plain `rebase-push.sh --base-remote upstream --base-ref main` and re-invokes `ci-wait.sh` directly, never entering the sub-procedure (Round 1 plan-review FINDING_2 fix — without this carve-out, any upstream advancement during fork CI wait would route into the very re-bump path that fork mode promised to skip).
@@ -1872,7 +1868,6 @@ Use `FAILED_RUN_ID` from `ci-status.sh`. If empty, identify manually via `${CLAU
 
 ### 12d — Bail Out
 
-
 **Before proceeding to Step 14**, persist the bail reason + user-input signal into parent scope for final cleanup and reporting:
 - Set `FINAL_BAIL_REASON` = the `BAIL_REASON` value from the `ci-wait.sh` output that triggered the bail (or the caller-synthesized reason if the bail came from the Rebase + Re-bump Sub-procedure, a conflict, or fix-attempt exhaustion, or a mechanical `merge-pr.sh` bail result — in which case `FINAL_BAIL_REASON` is the literal `ERROR` string from the script, including `"branch protection denied merge; --no-admin-fallback set"` and `"origin/main HEAD already bumped to <X.Y.Z>; rebase and re-bump"`). Leave `BAIL_NEEDS_USER_INPUT` alone if it was already set by the Conflict Resolution Procedure Phase 2 under `auto_mode=true`; otherwise it stays `false`.
 - Set `STALL_TRACKING=true` — signals Step 18 to rename the tracking issue's title from `[IN PROGRESS]` to `[STALLED]` (see Step 18 "Title-prefix lifecycle terminal transition").
@@ -2054,7 +2049,6 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse || true
 # token-step-end Step 16
 ```
-
 
 ## Step 17 — Final Report
 

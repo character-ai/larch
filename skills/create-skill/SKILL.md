@@ -21,7 +21,6 @@ ${CLAUDE_PLUGIN_ROOT}/skills/create-skill/scripts/parse-args.sh $ARGUMENTS
 
 The full stdout grammar, error contract, positional-argument rules, and edit-in-sync obligations live in the sibling contract at `${CLAUDE_PLUGIN_ROOT}/skills/create-skill/scripts/parse-args.md`.
 
-
 If the script exits non-zero or emits an `ERROR=` line, print the error and abort.
 
 ## Step 1.4 — Capture Raw Description to Tmpfile
@@ -180,7 +179,6 @@ Feature description template (fill placeholders; `<FRONTMATTER_DESCRIPTION>` and
 - After scaffolding, run `post-scaffold-hints.sh --target-dir "<TARGET_DIR>" --plugin <PLUGIN>` and execute every hint verbatim (README catalog row, docs/configuration-and-permissions.md Strict-permissions entry, .claude/settings.json dual-form entries with `sort -u`, docs/workflow-lifecycle.md, docs/agents.md, docs/review-agents.md, AGENTS.md Canonical sources). Include hints output in the PR body under "Post-scaffold sync checklist".
 - Note: renderer uses `<FRONTMATTER_DESCRIPTION>` ONLY for the `description:` frontmatter field; on the synthesis path it is a one-line `Use when…` distillation of `<FEATURE_SPEC>`. Contract in `render-skill-md.md`.
 - `MUST read ${CLAUDE_PLUGIN_ROOT}/skills/shared/skill-design-principles.md` (full file). Section III mechanical rules A/B/C (scripts-not-SKILL.md, no inline Bash, no consecutive Bash calls) override Section IV on conflict.
-
 
 Invoke the Skill tool:
 - Try skill: `"im"` first (bare name). If no skill matches, try skill: `"larch:im"` (fully-qualified plugin name).

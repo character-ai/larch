@@ -1,6 +1,5 @@
 # parse-args.sh contract
 
-
 ## Stdout contract (success, one line per `KEY=VALUE`)
 
 - `NAME=<skill-name>` — first positional, leading `/` stripped, passed verbatim downstream (not validated here — `validate-args.sh` owns the regex and reserved-name checks).

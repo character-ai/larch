@@ -38,10 +38,10 @@ Example with merge: `/alias --merge i implement --merge` creates the alias AND m
 
 ## Step 1 — Parse Arguments
 
+Parse flags from the start of `$ARGUMENTS` before treating the remainder as positional arguments.
 
 - `--merge`: Set `alias_merge=true`. Default: `alias_merge=false`. When true, `--merge` is forwarded to the `/implement` invocation so the resulting PR is also merged.
 - `--private`: Set `alias_private=true`. Default: `alias_private=false`. When true, the new alias is forced under `.claude/skills/<alias-name>/` regardless of plugin-repo detection (escape hatch for creating a private alias inside a plugin source repo). When absent: target is `skills/<alias-name>/` if running in a plugin source repo, else `.claude/skills/<alias-name>/`. In non-plugin repos `--private` is a no-op (the default is already `.claude/skills/`). The flag is consumed by `/alias` only — it does NOT appear in the generated alias's preset flags.
-
 
 | Position | Meaning |
 |----------|---------|
@@ -51,7 +51,6 @@ After flag stripping, parse the remaining positional arguments:
 - First token = **alias name**
 - Second token = **target skill name** (without `/` prefix)
 - Remainder = **preset flags** (may be empty — a pure rename shortcut is valid)
-
 
 ## Step 2 — Validate
 
@@ -167,7 +166,6 @@ Invoke the Skill tool:
 - args: `"--quick --auto [--merge] <feature-description>"`
 
 Only include `--merge` in the args if `alias_merge=true`.
-
 
 > **Continue after child returns.** When `/implement` returns, execute Step 4 — do NOT end the turn, and do NOT write a summary, handoff, or "returning to parent" message. See `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Anti-halt continuation reminder. **Do NOT load** that reference for routine `/implement` returns — load only when adding a new child-Skill invocation to this file or when debugging a halt symptom.
 

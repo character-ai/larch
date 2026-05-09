@@ -1,6 +1,7 @@
 ---
 name: simplify-skill
 description: "Use when refactoring a larch skill to improve adherence to skill-design principles and reduce SKILL.md footprint. Partitions large files into references/*.md. Excludes sub-skills invoked via Skill tool. Behavior-preserving; delegates to /implement."
+argument-hint: "<skill-name>"
 allowed-tools: Bash, Skill
 ---
 
@@ -22,9 +23,7 @@ Example: `/simplify-skill implement` refactors `skills/implement/SKILL.md` plus 
 
 Parse flags from the start of `$ARGUMENTS` before the first positional token.
 
-
 After flag stripping, the next positional token is the **target skill name** — bare form (`implement`) or slash-prefixed (`/implement`). Strip a leading `/` if present. Reject names containing `:` (no plugin-qualified forms — see NEVER #5) or non-`[a-z0-9-]` characters.
-
 
 ## Step 2 — Validate Target and Build Feature Description
 
@@ -43,7 +42,6 @@ Parse stdout for `STATUS`, `TARGET_SKILL_MD`, `TARGET_DIR`, `INCLUDED_FILES`, an
 The helper enforces NEVER #1 (sub-skills not enumerated), NEVER #2 (missing SKILL.md → fail closed), and NEVER #5 (reject `:` in name). It does NOT enforce NEVER #3 — that contract lives inside the feature description passed to `/implement`.
 
 ## Step 3 — Delegate to /im
-
 
 Invoke the Skill tool:
 - Try skill: `"im"` first (bare name). If no skill matches, try skill: `"larch:im"` (fully-qualified plugin name).

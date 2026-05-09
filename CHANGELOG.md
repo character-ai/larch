@@ -433,7 +433,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-
 ### Fixed
 
 - `scripts/lint-mermaid-fences.sh` now passes `--no-sandbox` and `--disable-setuid-sandbox` to Chromium via a repo-pinned Puppeteer config (`scripts/lint-mermaid-puppeteer.json`) so the SVG-render fallback launches on Ubuntu 23.10+ runners with restricted unprivileged user namespaces. Previously CI (`Lint Mermaid fences (changed only)`) failed before any Mermaid syntax check on PRs touching `.md` files containing fences. Also fixes pre-existing `lint-mermaid-fences` failures in `docs/workflow-lifecycle.md` (parser choking on literal `(...)` text in pipe edge labels).
@@ -471,7 +470,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [15.15.0] - 2026-05-08
 
 ### Added
-
 
 ## [15.14.0] - 2026-05-07
 
@@ -1101,7 +1099,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-
 ## [15.11.16] - 2026-05-05
 
 ### Changed
@@ -1131,7 +1128,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [15.11.12] - 2026-05-05
 
 ### Changed
-
 
 ## [15.11.11] - 2026-05-05
 
@@ -1213,7 +1209,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [15.10.11] - 2026-05-05
 
 ### Changed
-
 
 ## [15.10.10] - 2026-05-05
 
@@ -2029,7 +2024,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-
 ## [7.17.17] - 2026-04-27
 
 ### Fixed
@@ -2707,7 +2701,6 @@ Supersedes #731 (paginate the back-link's `gh api blocked_by` call) — that cod
 
 ### Changed
 
-
 ## [7.9.0] - 2026-04-25
 
 ### Added
@@ -2970,7 +2963,6 @@ Supersedes #731 (paginate the back-link's `gh api blocked_by` call) — that cod
 
 ### Changed
 
-
 ## [7.3.1] - 2026-04-25
 
 ### Fixed
@@ -3095,9 +3087,7 @@ Supersedes #731 (paginate the back-link's `gh api blocked_by` call) — that cod
 
 ### Removed
 
-
 ### Added
-
 
 ## [6.3.1] - 2026-04-24
 
@@ -3120,7 +3110,6 @@ Supersedes #731 (paginate the back-link's `gh api blocked_by` call) — that cod
 ## [6.2.14] - 2026-04-23
 
 ### Changed
-
 
 ## [6.2.13] - 2026-04-23
 
@@ -3297,7 +3286,6 @@ Supersedes #731 (paginate the back-link's `gh api blocked_by` call) — that cod
 
 ### Added
 
-
 ## [6.0.10] - 2026-04-23
 
 ### Changed
@@ -3361,7 +3349,6 @@ Supersedes #731 (paginate the back-link's `gh api blocked_by` call) — that cod
 ## [6.0.0] - 2026-04-23
 
 ### Changed
-
 
 ## [5.2.9] - 2026-04-23
 
@@ -3658,7 +3645,6 @@ Supersedes #731 (paginate the back-link's `gh api blocked_by` call) — that cod
 
 ### Changed
 
-
 ## [4.2.10] - 2026-04-20
 
 ### Changed
@@ -3765,7 +3751,6 @@ Supersedes #731 (paginate the back-link's `gh api blocked_by` call) — that cod
 ## [4.0.19] - 2026-04-19
 
 ### Changed
-
 
 ## [4.0.18] - 2026-04-19
 
@@ -3949,7 +3934,6 @@ Supersedes #731 (paginate the back-link's `gh api blocked_by` call) — that cod
 ## [3.4.3] - 2026-04-19
 
 ### Fixed
-
 
 ## [3.4.2] - 2026-04-19
 
@@ -4478,7 +4462,6 @@ Supersedes #731 (paginate the back-link's `gh api blocked_by` call) — that cod
 ## [1.1.7] - 2026-04-10
 
 ### Added
-
 
 ### Changed
 

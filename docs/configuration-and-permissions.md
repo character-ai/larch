@@ -169,16 +169,9 @@ The legacy `--codex-available true|false` knob is still accepted by the dispatch
 
 ## Environment Variables
 
-
-
-
-
-
 - The token's presence is checked during session setup and its availability is propagated to child skills
 
 - All other workflow steps (design, implementation, code review, CI monitoring, merge) proceed normally
-
-
 
 - The issue status message is posted to this channel
 
