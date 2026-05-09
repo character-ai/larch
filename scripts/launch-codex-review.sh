@@ -228,12 +228,27 @@ PROMPT_FILE_SIDECAR="${OUTPUT}.prompt"
 printf '%s' "$ORIGINAL_PROMPT" > "$PROMPT_FILE_SIDECAR"
 rm -f "$DIRTY_TREE_SIDECAR" "$UNTRACKED_BASELINE" "${DIRTY_TREE_SIDECAR}.tracked-paths" "${DIRTY_TREE_SIDECAR}.new-untracked-paths"
 "$SCRIPT_DIR/snapshot-untracked.sh" --output "$UNTRACKED_BASELINE" --nul
-if "$SCRIPT_DIR/agent-model-args.sh" --tool codex --with-effort > "$MODEL_ARGS_TMP"; then
+MODEL_ARGS_ERR=$(mktemp)
+if "$SCRIPT_DIR/agent-model-args.sh" --tool codex --with-effort > "$MODEL_ARGS_TMP" 2> "$MODEL_ARGS_ERR"; then
     :
 else
     rc=$?
-    exit "$rc"
+    : > "${OUTPUT}.sidecar"
+    printf 'agent-model-args.sh failed with exit code %s\n' "$rc" >> "${OUTPUT}.sidecar"
+    cat "$MODEL_ARGS_ERR" >> "${OUTPUT}.sidecar" 2>/dev/null || true
+    rm -f "$MODEL_ARGS_ERR"
+    _emit_timing_record "$rc"
+    _write_dirty_tree_sidecar
+    printf 'LAUNCHER_EXIT=%s\n' "$rc"
+    printf 'MANIFEST_WRITTEN=false\n'
+    printf 'QA_PENDING_WRITTEN=false\n'
+    printf 'TRANSCRIPT=%s\n' "$OUTPUT"
+    printf 'SIDECAR_LOG=%s\n' "${OUTPUT}.sidecar"
+    rm -f "$MODEL_ARGS_TMP"
+    trap - EXIT
+    exit 0
 fi
+rm -f "$MODEL_ARGS_ERR"
 MODEL_ARGS=()
 while IFS= read -r arg; do
     MODEL_ARGS+=("$arg")

@@ -354,6 +354,10 @@ grep -F 'oos-accepted-review.md' "$VOTING_MD" \
   || fail "(20a) voting.md diff-mode oos-accepted-review.md write must exclude security-tagged OOS via canonical focus-area token"
 grep -Fq 'security-tagged findings (focus-area=security) are held locally and NEVER filed publicly' "$VOTING_MD" \
   || fail "(20b) voting.md description-mode security guard drifted"
+grep -Fq 'Match discrimination (false-positive guard)' "$VOTING_MD" \
+  || fail "(20c) voting.md missing Match discrimination (false-positive guard) procedure"
+grep -Fq 'Security counter-invariant' "$VOTING_MD" \
+  || fail "(20c) voting.md missing Security counter-invariant clause"
 
 echo "PASS: test-review-structure.sh — structural invariants hold (including security OOS exclusions)"
 exit 0

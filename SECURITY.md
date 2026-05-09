@@ -21,7 +21,7 @@ You should receive an acknowledgment within 72 hours. We will work with you to u
 
 ## Security Findings in OOS Workflows
 
-Accepted security-tagged review/design OOS findings (`focus-area=security`) are held locally and NEVER written to public OOS issue artifacts (`oos-accepted-design.md`, `oos-accepted-review.md`, or the `oos.md` visibility export). They are also NEVER filed via `/issue` or `/umbrella`; use the private disclosure flow above instead.
+Accepted security-tagged review/design OOS findings (`focus-area=security`) are held locally and NEVER written to public OOS issue artifacts (`oos-accepted-design.md`, `oos-accepted-review.md`, or the `oos.md` visibility export). Public-boundary writers apply the unified fenced/unfenced discrimination contract: for every literal occurrence of the canonical token in a block, classify it as fenced when inside an inline backtick code span or triple-backtick fenced code region, and unfenced otherwise; route as security only when at least one unfenced occurrence exists. If every occurrence is fenced, the block is meta-discussion and routes through the normal public OOS path. Real security findings MUST include at least one unfenced occurrence. Security findings are also NEVER filed via `/issue` or `/umbrella`; use the private disclosure flow above instead.
 
 The external implementer prompts (`agents/codex-implementer.md`, `agents/cursor-implementer.md`, `agents/gemini-implementer.md`) likewise prohibit folding security findings inline and prohibit emitting them in `oos_observations[]`. `/implement` Step 9a.1 defensively re-excludes any security-tagged OOS entries that slip through upstream filters before the `/issue` handoff.
 

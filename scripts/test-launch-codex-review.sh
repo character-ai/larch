@@ -204,19 +204,28 @@ else
 fi
 
 set +e
+printf 'STALE-SIDECAR\n' > "$TMPDIR/bad-model.txt.sidecar"
 PATH="$STUB_BIN:$PATH" \
     CODEX_STUB_ARGV_LOG="$TMPDIR/argv-bad.txt" \
     CODEX_STUB_COUNT_FILE="$TMPDIR/count-bad.txt" \
     LARCH_CODEX_MODEL=$'evil\nextra' \
-    "$LAUNCHER" --output "$TMPDIR/bad-model.txt" --timeout 5 --prompt "review prompt" >/dev/null 2>"$TMPDIR/bad-model.stderr"
+    "$LAUNCHER" --output "$TMPDIR/bad-model.txt" --timeout 5 --prompt "review prompt" >"$TMPDIR/bad-model.stdout" 2>"$TMPDIR/bad-model.stderr"
 RC=$?
 set -e
-if [[ "$RC" -ne 0 ]] && [[ ! -e "$TMPDIR/count-bad.txt" ]] && [[ ! -e "$TMPDIR/bad-model.txt.done" ]]; then
-    pass
+assert_eq "newline model wrapper exit" "0" "$RC"
+if [[ ! -e "$TMPDIR/count-bad.txt" ]]; then pass; else fail "newline model should fail before invoking codex"; fi
+assert_eq "newline model stdout line count" "5" "$(wc -l < "$TMPDIR/bad-model.stdout" | tr -d ' ')"
+assert_grep "newline model launcher exit key" "LAUNCHER_EXIT=1" "$TMPDIR/bad-model.stdout"
+assert_grep "newline model manifest key" "MANIFEST_WRITTEN=false" "$TMPDIR/bad-model.stdout"
+assert_grep "newline model qa key" "QA_PENDING_WRITTEN=false" "$TMPDIR/bad-model.stdout"
+assert_grep "newline model transcript key" "TRANSCRIPT=$TMPDIR/bad-model.txt" "$TMPDIR/bad-model.stdout"
+assert_grep "newline model sidecar key" "SIDECAR_LOG=$TMPDIR/bad-model.txt.sidecar" "$TMPDIR/bad-model.stdout"
+if grep -Fq -- 'STALE-SIDECAR' "$TMPDIR/bad-model.txt.sidecar"; then
+    fail "newline model preflight failure must truncate stale sidecar bytes"
 else
-    fail "newline model should fail before invoking codex or producing .done (rc=$RC count=$(cat "$TMPDIR/count-bad.txt" 2>/dev/null))"
+    pass
 fi
-assert_grep "newline model diagnostic" "[[:cntrl:]]" "$TMPDIR/bad-model.stderr"
+assert_grep "newline model sidecar diagnostic" "[[:cntrl:]]" "$TMPDIR/bad-model.txt.sidecar"
 if [[ ! -e "$TMPDIR/bad-model.txt.done" ]]; then
     pass
 else
@@ -278,6 +287,43 @@ if grep -Fq -- 'HARD CONSTRAINTS' "$PROMPT_SIDECAR"; then
     fail "--prompt-file run must NOT include the preamble in the sidecar (retry-replay safety)"
 else
     pass
+fi
+
+AGENT_OUTPUT="$TMPDIR/agent-file-output.txt"
+AGENT_ARGV="$TMPDIR/agent-file-argv.txt"
+AGENT_COUNT="$TMPDIR/agent-file-count.txt"
+PATH="$STUB_BIN:$PATH" \
+    CODEX_STUB_ARGV_LOG="$AGENT_ARGV" \
+    CODEX_STUB_COUNT_FILE="$AGENT_COUNT" \
+    "$LAUNCHER" --output "$AGENT_OUTPUT" --timeout 5 \
+        --agent-file "$REPO_ROOT/agents/reviewer-correctness-edges.md" --mode diff >/dev/null
+if grep -Fq -- 'HARD CONSTRAINTS — your role is read-only review' "$AGENT_ARGV"; then
+    pass
+else
+    fail "--agent-file run must apply the HARD CONSTRAINTS preamble to the codex argv"
+fi
+if grep -Fq -- 'Correctness, Edge Cases, and Failure Recovery' "${AGENT_OUTPUT}.prompt"; then
+    pass
+else
+    fail "--agent-file OUTPUT.prompt sidecar must contain specialist-rendered body"
+fi
+if grep -Fq -- 'HARD CONSTRAINTS' "${AGENT_OUTPUT}.prompt"; then
+    fail "--agent-file OUTPUT.prompt sidecar must NOT include the preamble"
+else
+    pass
+fi
+AGENT_RETRY_ARGV="$TMPDIR/agent-file-retry-argv.txt"
+AGENT_RETRY_COUNT="$TMPDIR/agent-file-retry-count.txt"
+PATH="$STUB_BIN:$PATH" \
+    CODEX_STUB_ARGV_LOG="$AGENT_RETRY_ARGV" \
+    CODEX_STUB_COUNT_FILE="$AGENT_RETRY_COUNT" \
+    "$LAUNCHER" --output "$TMPDIR/agent-file-retry-output.txt" --timeout 5 \
+        --prompt-file "${AGENT_OUTPUT}.prompt" >/dev/null
+AGENT_PREAMBLE_COUNT_RETRY=$(grep -Fc -- 'HARD CONSTRAINTS — your role is read-only review' "$AGENT_RETRY_ARGV" || true)
+if [[ "$AGENT_PREAMBLE_COUNT_RETRY" == "1" ]]; then
+    pass
+else
+    fail "--agent-file replay via --prompt-file must produce exactly 1 preamble in argv; got $AGENT_PREAMBLE_COUNT_RETRY"
 fi
 
 if command -v jq >/dev/null 2>&1; then

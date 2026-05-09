@@ -181,6 +181,31 @@ else
     pass
 fi
 
+# Case C2: model-args preflight failure emits the structured five-line KV
+# envelope, exits wrapper-level 0, and truncates any stale sidecar bytes.
+OUT_C2="$TMPDIR/cursor-c2.txt"
+STDOUT_C2="$TMPDIR/case-c2.stdout"
+printf 'STALE-SIDECAR\n' > "${OUT_C2}.sidecar"
+set +e
+PATH="$STUB_BIN:$PATH" \
+    LARCH_CURSOR_MODEL=$'bad\nmodel' \
+    "$LAUNCHER" --output "$OUT_C2" --timeout 5 --prompt "case c2" >"$STDOUT_C2" 2>"$TMPDIR/case-c2.stderr"
+CODE_C2=$?
+set -e
+assert_equals "case C2 wrapper exit" "0" "$CODE_C2"
+assert_equals "case C2 stdout line count" "5" "$(wc -l < "$STDOUT_C2" | tr -d ' ')"
+assert_grep "case C2 launcher exit key" "^LAUNCHER_EXIT=1$" "$STDOUT_C2"
+assert_grep "case C2 manifest key" "^MANIFEST_WRITTEN=false$" "$STDOUT_C2"
+assert_grep "case C2 qa key" "^QA_PENDING_WRITTEN=false$" "$STDOUT_C2"
+assert_grep "case C2 transcript key" "^TRANSCRIPT=${OUT_C2}$" "$STDOUT_C2"
+assert_grep "case C2 sidecar key" "^SIDECAR_LOG=${OUT_C2}.sidecar$" "$STDOUT_C2"
+if grep -Fq -- 'STALE-SIDECAR' "${OUT_C2}.sidecar"; then
+    fail "case C2 preflight failure must truncate stale sidecar bytes"
+else
+    pass
+fi
+assert_grep "case C2 sidecar diagnostic" "cursor_launcher_load_model_args failed" "${OUT_C2}.sidecar"
+
 OUT_TOKEN="$TMPDIR/cursor-token.txt"
 TOKEN_SESSION_FILE="$TMPDIR/cursor-token-session.txt"
 IMPLEMENT_TMPDIR_FIXTURE="$TMPDIR/implement-tmpdir"
@@ -507,6 +532,48 @@ if [[ "$(cat "${OUT_AK1}.prompt")" == "case ak1" ]]; then
     pass
 else
     fail "issue #1529 OUTPUT.prompt sidecar must equal the user-original prompt"
+fi
+
+# Case AK1S: specialist --agent-file mode renders the agent body before the
+# hardening preamble is applied, stores only that rendered body in the prompt
+# sidecar, and replaying the sidecar via --prompt-file produces exactly one
+# preamble.
+OUT_AK1S="$TMPDIR/cursor-ak1s.txt"
+ARGV_LOG_AK1S="$TMPDIR/cursor-ak1s-argv.log"
+PATH="$STUB_BIN:$PATH" \
+    CURSOR_API_KEY="ak1-test-key-789" \
+    CURSOR_STUB_ARGV_LOG="$ARGV_LOG_AK1S" \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux \
+    "$LAUNCHER" --output "$OUT_AK1S" --timeout 5 \
+        --agent-file "$REPO_ROOT/agents/reviewer-correctness-edges.md" --mode diff \
+        >/dev/null 2>"$TMPDIR/case-ak1s.stderr"
+if grep -Fq -- 'HARD CONSTRAINTS — your role is read-only review' "$ARGV_LOG_AK1S"; then
+    pass
+else
+    fail "case AK1S specialist argv must carry the HARD CONSTRAINTS preamble"
+fi
+if grep -Fq -- 'Correctness, Edge Cases, and Failure Recovery' "${OUT_AK1S}.prompt"; then
+    pass
+else
+    fail "case AK1S prompt sidecar must contain specialist-rendered body"
+fi
+if grep -Fq -- 'HARD CONSTRAINTS' "${OUT_AK1S}.prompt"; then
+    fail "case AK1S prompt sidecar must NOT contain the hardening preamble"
+else
+    pass
+fi
+ARGV_LOG_AK1S_RETRY="$TMPDIR/cursor-ak1s-retry-argv.log"
+PATH="$STUB_BIN:$PATH" \
+    CURSOR_API_KEY="ak1-test-key-789" \
+    CURSOR_STUB_ARGV_LOG="$ARGV_LOG_AK1S_RETRY" \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux \
+    "$LAUNCHER" --output "$TMPDIR/cursor-ak1s-retry.txt" --timeout 5 \
+        --prompt-file "${OUT_AK1S}.prompt" >/dev/null 2>"$TMPDIR/case-ak1s-retry.stderr"
+AK1S_PREAMBLE_COUNT_RETRY=$(grep -Fc -- 'HARD CONSTRAINTS — your role is read-only review' "$ARGV_LOG_AK1S_RETRY" || true)
+if [[ "$AK1S_PREAMBLE_COUNT_RETRY" == "1" ]]; then
+    pass
+else
+    fail "case AK1S specialist replay via --prompt-file must produce exactly 1 preamble in argv; got $AK1S_PREAMBLE_COUNT_RETRY"
 fi
 
 # Case AK1B (issue #1583): LARCH_CURSOR_SANDBOX is now a no-op; the env var

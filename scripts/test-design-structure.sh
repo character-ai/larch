@@ -364,6 +364,10 @@ grep -F 'oos.md' "$PLAN_REVIEW_MD" \
   | grep -F 'excluding security-tagged accepted OOS findings' \
   | grep -Fq 'focus-area\s*=\s*security' \
   || fail "(13b) plan-review.md oos.md visibility export must exclude security-tagged accepted OOS via canonical focus-area token"
+grep -Fq 'Match discrimination (false-positive guard)' "$PLAN_REVIEW_MD" \
+  || fail "(13c) plan-review.md missing Match discrimination (false-positive guard) procedure"
+grep -Fq 'Security counter-invariant' "$PLAN_REVIEW_MD" \
+  || fail "(13c) plan-review.md missing Security counter-invariant clause"
 
 echo "PASS: test-design-structure.sh — structural invariants hold (including security OOS exclusions)"
 exit 0

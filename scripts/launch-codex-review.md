@@ -5,7 +5,7 @@
 **Invariants**:
 - Prompt passed only as argv; no `eval`; no unsafe expansion
 - Validates `--output` via `lib-validate-meta-path.sh::validate_meta_scalar_path` BEFORE installing traps, sidecars, or any other side effects (parity with `scripts/launch-cursor-review.sh:60-62`); the same byte-exact `.meta`-sidecar contract enforced for Cursor review applies on the Codex path so retry substitution stays byte-identical with the recorded `CMD_JSON` element.
-- No additional stdout beyond what `run-external-agent.sh` produces
+- No additional stdout beyond what `run-external-agent.sh` produces, except the model-args preflight failure envelope documented under "Stdout contract"
 - Runs `run-external-agent.sh` without `exec` so the launcher can perform a best-effort post-call token scrape, then exits with `run-external-agent.sh`'s exit code
 - Sources `scripts/lib-codex-launcher-common.sh` for inner-sentinel promotion and outer-launcher retry metadata (canonical bodies live in `scripts/lib-external-launcher-common.sh`), and `scripts/lib-dirty-tree-sidecar.sh` for the shared `_write_dirty_tree_sidecar` helper used in the EXIT trap.
 - Redirects wrapper stderr to `${OUTPUT}.sidecar` when possible and silently scrapes the last `tokens used` block into `token-ledger.sh` as `codex_review`; if the sidecar cannot be opened, stderr falls back to `/dev/null`
@@ -18,9 +18,20 @@
 - **Read-only sandbox at spawn time (issue #1529)**: invokes `codex exec --sandbox read-only` (replacing the prior `--full-auto` workspace-write mode) so model-issued shell commands cannot mutate the working tree. Pairs with the `CODEX_REVIEW_HARDENING_PREAMBLE` heredoc that prepends a HARD CONSTRAINTS block to every prompt (specialist or generic, `--prompt` / `--prompt-file` / `--agent-file`) so the model also reasons about its read-only role. The dirty-tree-sidecar machinery (`snapshot-untracked.sh` baseline + `_write_dirty_tree_sidecar` on EXIT) remains as the after-the-fact detector consumed by `/review` Step 3a recovery and `/implement` Step 5's mid-run scan.
 - Grants Codex write access to the canonical parent directory of `--output` via `--add-dir "$CANON_OUTPUT_DIR"` immediately after `-C "$PWD"`. Under the read-only sandbox introduced in issue #1529, `--add-dir` is benign (the sandbox blocks writes regardless); the flag is preserved for consistency with the implementer-lane argv.
 - Reads `agent-model-args.sh` line-token stdout into a Bash array and expands it with `${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"}` so model values containing spaces remain one argv token and producer-side validation failures abort before Codex is launched.
+- On `agent-model-args.sh` failure, truncates `${OUTPUT}.sidecar`, writes the model-args diagnostic there, emits the five-line launcher KV envelope on stdout (`LAUNCHER_EXIT`, `MANIFEST_WRITTEN=false`, `QA_PENDING_WRITTEN=false`, `TRANSCRIPT`, `SIDECAR_LOG`), and exits wrapper-level 0 so callers receive a structured failure instead of an unclassified launcher exit.
 - Specialist mode calls `render-specialist-prompt.sh` internally, supporting all flags
 
-**Stdout contract**: Same stdout as `run-external-agent.sh`; no `LAUNCHER_EXIT=` line. Exit code is `run-external-agent.sh`'s exit code after the best-effort post-call token scrape.
+**Stdout contract**: Same stdout as `run-external-agent.sh`; no `LAUNCHER_EXIT=` line on normal runs. If `agent-model-args.sh` fails before Codex launch, stdout is exactly:
+
+```
+LAUNCHER_EXIT=<int>
+MANIFEST_WRITTEN=false
+QA_PENDING_WRITTEN=false
+TRANSCRIPT=<output>
+SIDECAR_LOG=<output>.sidecar
+```
+
+and the wrapper exits 0 after truncating `${OUTPUT}.sidecar` and writing the diagnostic there. Normal-run exit code is `run-external-agent.sh`'s exit code after the best-effort post-call token scrape.
 
 **Flags**: Same as `launch-cursor-review.sh` (see `scripts/launch-cursor-review.md`), including optional `--timing-task-kind <kind>` and `--token-budget-cap N` (combined vendor token cap; exits 0 with `STATUS=cap_hit` output when exceeded).
 

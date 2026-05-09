@@ -153,12 +153,24 @@ if [[ "$_src_count" -eq 0 ]]; then
     exit 2
 fi
 
-if cursor_launcher_load_model_args; then
+MODEL_ARGS_ERR=$(mktemp)
+if cursor_launcher_load_model_args 2> "$MODEL_ARGS_ERR"; then
     :
 else
     rc=$?
-    exit "$rc"
+    : > "${OUTPUT}.sidecar"
+    printf 'cursor_launcher_load_model_args failed with exit code %s\n' "$rc" >> "${OUTPUT}.sidecar"
+    cat "$MODEL_ARGS_ERR" >> "${OUTPUT}.sidecar" 2>/dev/null || true
+    rm -f "$MODEL_ARGS_ERR"
+    _emit_timing_record "$rc"
+    printf 'LAUNCHER_EXIT=%s\n' "$rc"
+    printf 'MANIFEST_WRITTEN=false\n'
+    printf 'QA_PENDING_WRITTEN=false\n'
+    printf 'TRANSCRIPT=%s\n' "$OUTPUT"
+    printf 'SIDECAR_LOG=%s\n' "${OUTPUT}.sidecar"
+    exit 0
 fi
+rm -f "$MODEL_ARGS_ERR"
 
 WRAPPER_PID=""
 DIRTY_TREE_WRITTEN=false
