@@ -449,6 +449,47 @@ contains "oversized claude head"  "### Claude"  "$big_body"
 contains "oversized codex head"   "### Codex"   "$big_body"
 contains "oversized cursor head"  "### Cursor"  "$big_body"
 
+# --- Inferred-skill attribution fixtures ---
+
+# Case A: null-attributionSkill row within a step-mark window →
+# rendered Skill cell contains "inferred:" prefix.
+INFER_LEDGER="$TMP/infer-ledger.jsonl"
+INFER_TRANSCRIPT="$TMP/infer-transcript.jsonl"
+cat > "$INFER_LEDGER" <<'JSONL'
+{"type":"mark","step":"Step 1 - design","ts":"2026-05-06T00:00:00Z"}
+{"type":"mark","step":"Step 2 - implement","ts":"2026-05-06T00:01:00Z"}
+JSONL
+# Row at 00:00:30 has no attributionSkill — falls in Step 1 window [00:00:00, 00:01:00)
+jq -c -n '{type:"assistant",timestamp:"2026-05-06T00:00:30.000Z",message:{usage:{input_tokens:5,cache_read_input_tokens:0,cache_creation_input_tokens:0,output_tokens:7}}}' > "$INFER_TRANSCRIPT"
+infer_md=$("$SCRIPT" --ledger "$INFER_LEDGER" --transcript "$INFER_TRANSCRIPT" --full --markdown)
+contains "case-A inferred prefix" "inferred:Step 1 - design" "$infer_md"
+
+# Case B: null-attributionSkill row BEFORE the first mark → row excluded
+# from the rendered table (claude_table renders only rows at or after the
+# first mark; such rows do not appear as "unattributed" in the output).
+PRE_MARK_TRANSCRIPT="$TMP/pre-mark-transcript.jsonl"
+# Row at 1999-01-01 is before any mark in INFER_LEDGER (first mark at 2026-05-06T00:00:00Z)
+jq -c -n '{type:"assistant",timestamp:"1999-01-01T00:00:00.000Z",message:{usage:{input_tokens:99,cache_read_input_tokens:0,cache_creation_input_tokens:0,output_tokens:99}}}' > "$PRE_MARK_TRANSCRIPT"
+pre_md=$("$SCRIPT" --ledger "$INFER_LEDGER" --transcript "$PRE_MARK_TRANSCRIPT" --full --markdown)
+# Grand total must be 0 (pre-mark row excluded entirely)
+if grep -Fq '| **Grand total** |  | 0 | 0 | 0 | 0 |' <<<"$pre_md"; then pass
+else fail "case-B: pre-mark null row should be excluded from grand total; got: $pre_md"
+fi
+
+# Case C: null-attributionSkill row at exactly a mark boundary ts → falls
+# in the mark whose ts equals row.ts (half-open interval: mark.ts <= row.ts
+# < next_mark.ts, so the boundary belongs to the opening mark).
+BOUNDARY_TRANSCRIPT="$TMP/boundary-transcript.jsonl"
+# Row timestamp equals Step 2 mark ts exactly → should be inferred as Step 2, not Step 1
+jq -c -n '{type:"assistant",timestamp:"2026-05-06T00:01:00.000Z",message:{usage:{input_tokens:3,cache_read_input_tokens:0,cache_creation_input_tokens:0,output_tokens:4}}}' > "$BOUNDARY_TRANSCRIPT"
+boundary_md=$("$SCRIPT" --ledger "$INFER_LEDGER" --transcript "$BOUNDARY_TRANSCRIPT" --full --markdown)
+contains "case-C boundary in step2 window" "inferred:Step 2 - implement" "$boundary_md"
+if grep -Fq "inferred:Step 1 - design" <<<"$boundary_md"; then
+    fail "case-C: boundary row must NOT be in Step 1 window"
+else
+    pass
+fi
+
 total=$((PASS + FAIL))
 if (( FAIL == 0 )); then
     echo "PASS: test-token-report.sh — $PASS/$total assertions"

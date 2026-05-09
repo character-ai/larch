@@ -158,10 +158,28 @@ render_jq() {
         + n($r.message.usage.cache_read_input_tokens)
         + n($r.message.usage.cache_creation_input_tokens)
         + n($r.message.usage.output_tokens);
-      def usage_row($r):
+      # Returns the step name whose window [mark.ts, next_mark.ts) contains $ts,
+      # or null when $ts falls outside all windows (e.g. before the first mark).
+      def enclosing_step_label($marks; $ts):
+        first(
+          range($marks | length) as $i |
+          select(
+            $marks[$i].ts != null and $marks[$i].ts <= $ts and
+            ($i + 1 >= ($marks | length) or $marks[$i + 1].ts == null or $marks[$i + 1].ts > $ts)
+          ) |
+          $marks[$i].step
+        ) // null;
+      def usage_row($r; $marks):
+        ($r.timestamp | epoch) as $ts |
         {
-          ts: ($r.timestamp | epoch),
-          skill: ($r.attributionSkill // "unattributed"),
+          ts: $ts,
+          skill: (if $r.attributionSkill != null then $r.attributionSkill
+                  else
+                    (enclosing_step_label($marks; $ts)) as $step_name |
+                    if $step_name != null then "inferred:" + $step_name
+                    else "unattributed"
+                    end
+                  end),
           input: n($r.message.usage.input_tokens),
           cache_read: n($r.message.usage.cache_read_input_tokens),
           cache_create: n($r.message.usage.cache_creation_input_tokens),
@@ -318,7 +336,7 @@ render_jq() {
       ($ledger // []) as $l
       | ($l | map(select(.type == "mark") | {step, ts: (.ts | epoch)}) | map(select(.ts != null))) as $marks
       | ($l | map(select(.type == "vendor") | vendor_row(.)) | map(select(.ts != null))) as $vendor
-      | (map(select(.type == "assistant" and .message.usage? and .timestamp?) | usage_row(.)) | map(select(.ts != null))) as $claude
+      | (map(select(.type == "assistant" and .message.usage? and .timestamp?) | usage_row(.; $marks)) | map(select(.ts != null))) as $claude
       | if ($marks | length) == 0 then error("no step marks in ledger")
         elif $mode == "terse" then terse_line($claude; $vendor; $marks[-1])
         else markdown($marks; $claude; $vendor)

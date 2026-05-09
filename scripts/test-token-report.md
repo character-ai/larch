@@ -8,6 +8,12 @@ Additional coverage for `LARCH_DEBUG_TOKEN_REPORT` (closes #1466 sub-item A; ref
 
 Whole-line marker regex parity with `assemble-anchor.sh` (closes #1511 sub-item A): the harness adds a prose-mention regression case (`PROSE_MARKER`) that places a backtick-wrapped marker mention BEFORE a real matched pair and verifies that the in-prose mention is preserved and only the real matched pair is rewritten. `replace_token_block`'s `has_begin` / `has_end` presence probes use the same whole-line anchored regex as the awk rewrite, so a file whose only marker mentions are inside prose / table cells does NOT enter the matched-pair or lone-marker branches and falls through to the no-marker append path. Two additional regression cases pin the data-loss avoidance: `WHOLE_BEGIN_PROSE_END` (whole-line begin + prose-only end mention) and `PROSE_BOTH_NO_WHOLE_LINE` (prose-only mentions of both markers, no whole-line markers).
 
+Inferred-skill attribution fixtures (three cases):
+
+- **Case A** (`INFER_LEDGER` / `INFER_TRANSCRIPT`): a transcript row with null `attributionSkill` whose timestamp falls within a step-mark window asserts that the rendered Skill cell contains the `inferred:` prefix with the enclosing step name.
+- **Case B** (`PRE_MARK_TRANSCRIPT`): a null-attribution row whose timestamp is before the first ledger mark asserts that the row is excluded from the rendered table entirely (grand-total columns are zero). `claude_table` renders only rows at or after the first mark; pre-mark rows are not rendered as "unattributed."
+- **Case C** (`BOUNDARY_TRANSCRIPT`): a null-attribution row whose timestamp equals a mark boundary exactly asserts that the half-open interval `[mark.ts, next_mark.ts)` places the row in the opening mark's window (Step 2, not Step 1).
+
 Run via `make test-token-report` or the shard that includes it.
 
 Update this harness when report columns, sentinel comments, source-resolution test hooks, or failure-mode wording changes.
