@@ -927,13 +927,13 @@ echo "Fixture 14: auto-pick skips archival prefixes without substring collisions
 run_fixture "fixture-14"
 {
     echo "ISSUE_STATE=OPEN"
-    OPEN_ISSUES_LINES='{"number":100,"title":"Research old duplicate report"}
+    OPEN_ISSUES_LINES='{"number":97,"title":"[Analysis Report] perf summary"}
+{"number":98,"title":"[Perf Report] 2025 results"}
+{"number":100,"title":"Research old duplicate report"}
 {"number":101,"title":"[Research] archived finding"}
 {"number":102,"title":"Investigate flaky hook"}
 {"number":103,"title":"[Investigate] old branch cleanup"}
 {"number":104,"title":"[Research Report] queue audit"}
-{"number":107,"title":"[Analysis Report] perf summary"}
-{"number":108,"title":"[Perf Report] 2025 results"}
 {"number":105,"title":"Researches went for a walk"}
 {"number":106,"title":"Investigation of slow query"}'
     printf "OPEN_ISSUES_JSON='%s'\n" "$OPEN_ISSUES_LINES"
@@ -955,13 +955,13 @@ assert_equal "$EXIT_CODE" "0" "[14] exit code 0 (non-archival collision candidat
 assert_contains "$OUT" "ELIGIBLE=true" "[14] ELIGIBLE=true on stdout"
 assert_contains "$OUT" "ISSUE_NUMBER=106" "[14] ISSUE_NUMBER=106 (Investigation is not archival)"
 assert_contains "$OUT" "LOCK_ACQUIRED=true" "[14] LOCK_ACQUIRED=true"
+assert_contains "$ERR" "Skipping issue #97: archival title prefix" "[14] Analysis Report prefix skipped"
+assert_contains "$ERR" "Skipping issue #98: archival title prefix" "[14] Perf Report prefix skipped"
 assert_contains "$ERR" "Skipping issue #100: archival title prefix" "[14] bare Research prefix skipped"
 assert_contains "$ERR" "Skipping issue #101: archival title prefix" "[14] bracketed Research prefix skipped"
 assert_contains "$ERR" "Skipping issue #102: archival title prefix" "[14] bare Investigate prefix skipped"
 assert_contains "$ERR" "Skipping issue #103: archival title prefix" "[14] bracketed Investigate prefix skipped"
 assert_contains "$ERR" "Skipping issue #104: archival title prefix" "[14] Research Report prefix skipped"
-assert_contains "$ERR" "Skipping issue #107: archival title prefix" "[14] Analysis Report prefix skipped"
-assert_contains "$ERR" "Skipping issue #108: archival title prefix" "[14] Perf Report prefix skipped"
 assert_not_contains "$ERR" "Skipping issue #105: archival title prefix" "[14] Researches collision is not archival-skipped"
 assert_not_contains "$ERR" "Skipping issue #106: archival title prefix" "[14] Investigation collision is not archival-skipped"
 
