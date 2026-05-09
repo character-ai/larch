@@ -175,7 +175,10 @@ SKILL_MD="$REPO_ROOT/skills/implement/SKILL.md"
 REFS_DIR="$REPO_ROOT/skills/implement/references"
 
 expected_refs=(
-  "anchor-comment-template.md"
+  "anchor-template-canonical-body.md"
+  "anchor-template-execution-issues.md"
+  "anchor-template-oos-pipeline.md"
+  "anchor-template-quick-mode.md"
   "bump-verification.md"
   "codex-manifest-schema.md"
   "conflict-resolution.md"
@@ -289,7 +292,7 @@ while IFS= read -r hit; do
 done <<< "$enum_hits"
 
 # ---------------------------------------------------------------------------
-# (7) Six expected references/*.md files exist.
+# (7) Expected references/*.md files exist (anchor fragments added per #1627).
 # ---------------------------------------------------------------------------
 for ref in "${expected_refs[@]}"; do
   [[ -f "$REFS_DIR/$ref" ]] \
@@ -328,17 +331,17 @@ fi
 
 # ---------------------------------------------------------------------------
 # (9a) Three load-bearing marker literals must appear at least once in
-#      skills/implement/references/anchor-comment-template.md (migrated from
-#      pr-body-template.md per umbrella #348 Phase 3). Step 9a.1 (OOS
+#      skills/implement/references/anchor-template-canonical-body.md (split
+#      from anchor-comment-template.md per #1627). Step 9a.1 (OOS
 #      issue-filing pipeline) parses and rewrites the OOS placeholder and the
 #      Run Statistics OOS cell in the anchor's `oos-issues` + `run-statistics`
 #      sections; Step 11 (post-execution anchor refresh) locates and rewrites
 #      the Execution Issues details block in the anchor's `execution-issues`
-#      section. A future rename or removal in anchor-comment-template.md
+#      section. A future rename or removal in anchor-template-canonical-body.md
 #      silently breaks runtime behavior with no other test failure. Use
 #      fixed-string matching since the literals contain regex metachars.
 # ---------------------------------------------------------------------------
-ANCHOR_TEMPLATE="$REFS_DIR/anchor-comment-template.md"
+ANCHOR_TEMPLATE="$REFS_DIR/anchor-template-canonical-body.md"
 anchor_markers=(
   'Accepted OOS (GitHub issues filed)'
   '| OOS issues filed |'
@@ -346,22 +349,25 @@ anchor_markers=(
 )
 for marker in "${anchor_markers[@]}"; do
   grep -Fq "$marker" "$ANCHOR_TEMPLATE" \
-    || fail "(9a) anchor-comment-template.md lost load-bearing marker literal: $marker"
+    || fail "(9a) anchor-template-canonical-body.md lost load-bearing marker literal: $marker"
 done
 
 # ---------------------------------------------------------------------------
-# (9b) skills/implement/SKILL.md must reference `anchor-comment-template.md`
-#      at least 3 times — one MANDATORY pointer at Step 0.5 + one prose
-#      binding in Step 9a.1 + one prose binding in Step 11's post-execution
-#      anchor refresh. Assertion (4) already checks the MANDATORY line exists;
-#      this guards against a future edit that keeps the MANDATORY pointer but
-#      orphans Step 9a.1 or Step 11 from the extracted reference (both steps
-#      delegate their procedure to anchor-comment-template.md sections).
+# (9b) skills/implement/SKILL.md must reference `anchor-template-canonical-body.md`
+#      at least 1 time (Step 0.5 MANDATORY) AND `anchor-template-oos-pipeline.md`
+#      at least 1 time (Step 9a.1 MANDATORY). These replace the old monolithic
+#      anchor-comment-template.md requirement (split per #1627). Assertion (4)
+#      already checks the MANDATORY lines exist; this guards against a future
+#      edit that orphans Steps 0.5 or 9a.1 from the extracted fragments.
 #      Use fixed-string matching so the `.` in the filename is literal.
 # ---------------------------------------------------------------------------
-anchor_refs=$(grep -cF 'anchor-comment-template.md' "$SKILL_MD" || true)
-if ! [[ "$anchor_refs" =~ ^[0-9]+$ ]] || (( anchor_refs < 3 )); then
-  fail "(9b) expected at least 3 references to 'anchor-comment-template.md' in SKILL.md (Step 0.5 MANDATORY + Step 9a.1 binding + Step 11 binding), found ${anchor_refs:-0}"
+canonical_body_refs=$(grep -cF 'anchor-template-canonical-body.md' "$SKILL_MD" || true)
+if ! [[ "$canonical_body_refs" =~ ^[0-9]+$ ]] || (( canonical_body_refs < 1 )); then
+  fail "(9b) expected at least 1 reference to 'anchor-template-canonical-body.md' in SKILL.md (Step 0.5 MANDATORY), found ${canonical_body_refs:-0}"
+fi
+oos_pipeline_refs=$(grep -cF 'anchor-template-oos-pipeline.md' "$SKILL_MD" || true)
+if ! [[ "$oos_pipeline_refs" =~ ^[0-9]+$ ]] || (( oos_pipeline_refs < 1 )); then
+  fail "(9b) expected at least 1 reference to 'anchor-template-oos-pipeline.md' in SKILL.md (Step 9a.1 MANDATORY), found ${oos_pipeline_refs:-0}"
 fi
 
 # ---------------------------------------------------------------------------
@@ -377,23 +383,28 @@ fi
 
 # ---------------------------------------------------------------------------
 # (9d) Step 9a.1 OOS issue-filing flag contract. Scope to the canonical
-#      procedure section only: it must require the `[OOS]` title prefix on the
-#      `/issue` batch invocation, must not contain any label flag token, and must
-#      document `--blocked-by-issue $ISSUE_NUMBER` forwarding only when
-#      `$ISSUE_NUMBER` is set, `deferred=false`, and `repo_unavailable=false`, with
-#      an explicit degraded-mode skip rule. This prevents the OOS pipeline from
-#      regressing to unlabeled-title output, from triggering label-not-found
-#      warnings in consumer repos, or from silently dropping the tracking-issue
-#      native blocking edge in the resolved-tracking-issue path.
+#      procedure section only (now in anchor-template-oos-pipeline.md per #1627):
+#      it must require the `[OOS]` title prefix on the `/issue` batch invocation,
+#      must not contain any label flag token, and must document
+#      `--blocked-by-issue $ISSUE_NUMBER` forwarding only when `$ISSUE_NUMBER` is
+#      set, `deferred=false`, and `repo_unavailable=false`, with an explicit
+#      degraded-mode skip rule. This prevents the OOS pipeline from regressing to
+#      unlabeled-title output, from triggering label-not-found warnings in
+#      consumer repos, or from silently dropping the tracking-issue native
+#      blocking edge in the resolved-tracking-issue path.
 # ---------------------------------------------------------------------------
+OOS_PIPELINE_TEMPLATE="$REFS_DIR/anchor-template-oos-pipeline.md"
+[[ -f "$OOS_PIPELINE_TEMPLATE" ]] \
+  || fail "(9d) anchor-template-oos-pipeline.md missing: $OOS_PIPELINE_TEMPLATE"
+
 step_9a1_oos_procedure=$(awk '
   /^## Step 9a\.1 OOS pipeline procedure/ { flag=1; next }
   /^## / { flag=0 }
   flag { print }
-' "$ANCHOR_TEMPLATE")
+' "$OOS_PIPELINE_TEMPLATE")
 
 [[ -n "$step_9a1_oos_procedure" ]] \
-  || fail "(9d) could not extract Step 9a.1 OOS pipeline procedure section from anchor-comment-template.md"
+  || fail "(9d) could not extract Step 9a.1 OOS pipeline procedure section from anchor-template-oos-pipeline.md"
 # Sentinel: catch silent slice truncation when a future PR inserts a new
 # "## " heading inside Step 9a.1. Without this guard the awk slice would
 # shrink and the (9d)-(9h) literal pins below would fail in opaque ways.
@@ -401,7 +412,7 @@ step_9a1_oos_procedure=$(awk '
 # truncation slice and well below normal evolution.
 extracted_bytes=$(printf '%s' "$step_9a1_oos_procedure" | wc -c | tr -d ' ')
 (( extracted_bytes >= 4000 )) \
-  || fail "(9d) extracted slice suspiciously short (${extracted_bytes} bytes) — has a new ## heading been inserted inside Step 9a.1 of anchor-comment-template.md?"
+  || fail "(9d) extracted slice suspiciously short (${extracted_bytes} bytes) — has a new ## heading been inserted inside Step 9a.1 of anchor-template-oos-pipeline.md?"
 printf '%s\n' "$step_9a1_oos_procedure" | grep -Fq -- '--title-prefix "[OOS]"' \
   || fail "(9d) Step 9a.1 OOS pipeline procedure must require '/issue --title-prefix \"[OOS]\"'"
 if printf '%s\n' "$step_9a1_oos_procedure" | grep -Fq -- '--label'; then
@@ -667,11 +678,11 @@ grep 'collect-agent-results.sh' "$SKILL_MD" \
 # ---------------------------------------------------------------------------
 DESIGN_SKILL_MD="$REPO_ROOT/skills/design/SKILL.md"
 PLAN_REVIEW_MD="$REPO_ROOT/skills/design/references/plan-review.md"
-ANCHOR_TEMPLATE_MD="$REFS_DIR/anchor-comment-template.md"
+ANCHOR_TEMPLATE_MD="$REFS_DIR/anchor-template-canonical-body.md"
 
 [[ -f "$DESIGN_SKILL_MD" ]] || fail "(16a) skills/design/SKILL.md missing: $DESIGN_SKILL_MD"
 [[ -f "$PLAN_REVIEW_MD" ]] || fail "(16a) skills/design/references/plan-review.md missing: $PLAN_REVIEW_MD"
-[[ -f "$ANCHOR_TEMPLATE_MD" ]] || fail "(16c) skills/implement/references/anchor-comment-template.md missing: $ANCHOR_TEMPLATE_MD"
+[[ -f "$ANCHOR_TEMPLATE_MD" ]] || fail "(16c) skills/implement/references/anchor-template-canonical-body.md missing: $ANCHOR_TEMPLATE_MD"
 
 grep -Fq '## Implementation Plan' "$DESIGN_SKILL_MD" \
   || fail "(16a) skills/design/SKILL.md missing producer heading literal '## Implementation Plan' — /design must print the plan under this heading for the /implement plan-goals-test consumer to synthesize from (closes #749)"
@@ -694,7 +705,7 @@ printf '%s\n' "$section_anchor_fragments" | grep -Fq '## Implementation Plan' \
 
 # (16c) Anchor-template placeholder prose references the synthesis source heading.
 grep -Fq '## Implementation Plan' "$ANCHOR_TEMPLATE_MD" \
-  || fail "(16c) skills/implement/references/anchor-comment-template.md missing '## Implementation Plan' reference — placeholder prose under <!-- section:plan-goals-test --> must name the synthesis source heading from /design (closes #749)"
+  || fail "(16c) skills/implement/references/anchor-template-canonical-body.md missing '## Implementation Plan' reference — placeholder prose under <!-- section:plan-goals-test --> must name the synthesis source heading from /design (closes #749)"
 
 # (16d) Broken-pattern negative pin: the contiguous legacy phrase must not
 #       appear in implement/SKILL.md. Backticks are escaped with backslashes
@@ -952,14 +963,14 @@ do
     || fail "(24b) $(basename "$implementer_prompt") missing post-triage oos_observations semantics"
 done
 
-grep -Fq 'defensively filter out any `### OOS_N:` block whose content contains the canonical token `focus-area\s*=\s*security`' "$REFS_DIR/anchor-comment-template.md" \
-  || fail "(24c) anchor-comment-template.md missing Step 9a.1 defensive security re-exclusion sub-bullet"
-grep -Fq 'post-filter entry list is logically empty after security re-exclusion' "$REFS_DIR/anchor-comment-template.md" \
-  || fail "(24c) anchor-comment-template.md missing post-filter empty-batch early-exit path"
-grep -Fq 'Match discrimination (false-positive guard)' "$REFS_DIR/anchor-comment-template.md" \
-  || fail "(24c) anchor-comment-template.md missing Match discrimination (false-positive guard) sub-bullet"
-grep -Fq 'Security counter-invariant' "$REFS_DIR/anchor-comment-template.md" \
-  || fail "(24c) anchor-comment-template.md missing Security counter-invariant clause"
+grep -Fq 'defensively filter out any `### OOS_N:` block whose content contains the canonical token `focus-area\s*=\s*security`' "$REFS_DIR/anchor-template-oos-pipeline.md" \
+  || fail "(24c) anchor-template-oos-pipeline.md missing Step 9a.1 defensive security re-exclusion sub-bullet"
+grep -Fq 'post-filter entry list is logically empty after security re-exclusion' "$REFS_DIR/anchor-template-oos-pipeline.md" \
+  || fail "(24c) anchor-template-oos-pipeline.md missing post-filter empty-batch early-exit path"
+grep -Fq 'Match discrimination (false-positive guard)' "$REFS_DIR/anchor-template-oos-pipeline.md" \
+  || fail "(24c) anchor-template-oos-pipeline.md missing Match discrimination (false-positive guard) sub-bullet"
+grep -Fq 'Security counter-invariant' "$REFS_DIR/anchor-template-oos-pipeline.md" \
+  || fail "(24c) anchor-template-oos-pipeline.md missing Security counter-invariant clause"
 
 # (25) Clean-main Step 0 entry gate pin. Scope positive checks to Step 0 so
 # the later Step 1 branch creation check cannot satisfy the entry-gate
@@ -1157,15 +1168,15 @@ if [[ -n "$token_rehydrate_gaps" ]]; then
   fail "(28a2) /implement token-ledger/token-report Bash blocks missing LARCH_TOKEN_SESSION_ID rehydrate prefix at code-fence starts: $token_rehydrate_gaps"
 fi
 
-grep -Fq '<!-- section:timing-report -->' "$REFS_DIR/anchor-comment-template.md" \
-  || fail "(28b) anchor-comment-template.md missing timing-report open marker"
-grep -Fq '<!-- section-end:timing-report -->' "$REFS_DIR/anchor-comment-template.md" \
-  || fail "(28b) anchor-comment-template.md missing timing-report close marker"
+grep -Fq '<!-- section:timing-report -->' "$REFS_DIR/anchor-template-canonical-body.md" \
+  || fail "(28b) anchor-template-canonical-body.md missing timing-report open marker"
+grep -Fq '<!-- section-end:timing-report -->' "$REFS_DIR/anchor-template-canonical-body.md" \
+  || fail "(28b) anchor-template-canonical-body.md missing timing-report close marker"
 
-grep -Fq '<!-- section:token-report -->' "$REFS_DIR/anchor-comment-template.md" \
-  || fail "(28b2) anchor-comment-template.md missing token-report open marker"
-grep -Fq '<!-- section-end:token-report -->' "$REFS_DIR/anchor-comment-template.md" \
-  || fail "(28b2) anchor-comment-template.md missing token-report close marker"
+grep -Fq '<!-- section:token-report -->' "$REFS_DIR/anchor-template-canonical-body.md" \
+  || fail "(28b2) anchor-template-canonical-body.md missing token-report open marker"
+grep -Fq '<!-- section-end:token-report -->' "$REFS_DIR/anchor-template-canonical-body.md" \
+  || fail "(28b2) anchor-template-canonical-body.md missing token-report close marker"
 
 workflow_path_count=$(grep -Fc 'timing-ledger.sh" workflow-path' "$SKILL_MD" || true)
 if [[ "$workflow_path_count" != "6" ]]; then

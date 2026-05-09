@@ -429,7 +429,7 @@ missing=0
 for file in \
     "$SCRIPT_DIR/oos-issue-cap.sh" \
     "$SCRIPT_DIR/oos-issue-cap.md" \
-    "$REPO_ROOT/skills/implement/references/anchor-comment-template.md" \
+    "$REPO_ROOT/skills/implement/references/anchor-template-oos-pipeline.md" \
     "$REPO_ROOT/docs/configuration-and-permissions.md"; do
     if ! grep -Fq "$warning" "$file"; then
         echo "  missing warning in $file" >&2
