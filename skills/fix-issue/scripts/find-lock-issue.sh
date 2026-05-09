@@ -173,15 +173,12 @@ has_archival_prefix() {
     local t
     t=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed 's/^[[:space:]]*//')
     case "$t" in
-        'research '*)   return 0 ;;
-        '[research] '*) return 0 ;;
-        'investigate '*) return 0 ;;
-        '[investigate] '*) return 0 ;;
-        *)
-            if printf '%s' "$t" | grep -qE '^\[.*report\] '; then
-                return 0
-            fi
-            return 1 ;;
+        'research '*)          return 0 ;;
+        '[research] '*)        return 0 ;;
+        'investigate '*)       return 0 ;;
+        '[investigate] '*)     return 0 ;;
+        '[research report] '*) return 0 ;;
+        *)                     return 1 ;;
     esac
 }
 
