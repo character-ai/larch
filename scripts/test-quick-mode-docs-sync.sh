@@ -33,7 +33,10 @@
 #        - "generic Codex"               (case-sensitive, grep -F — pins the
 #                                         generic Codex slot in rounds 1-3 and
 #                                         the rounds-4+ generic reviewer chain)
-#      The last three encode the rounds-1-3 vs rounds-4+ topology so future
+#        - "Claude generic"              (case-sensitive, grep -F — pins the
+#                                         always-present Claude generic reviewer
+#                                         slot in rounds 1-3)
+#      The last four encode the rounds-1-3 vs rounds-4+ topology so future
 #      Step 5 quick-mode reviewer-composition changes that don't propagate to
 #      every public surface fail CI (closes #1002).
 #
@@ -97,6 +100,7 @@ readonly POS_MARKERS=(
   "rounds 1-3|insensitive"
   "5 Cursor specialists|sensitive"
   "generic Codex|sensitive"
+  "Claude generic|sensitive"
 )
 
 # Stale phrases (forbidden in public docs; SKILL.md exempt).
@@ -298,7 +302,7 @@ This is a fixture describing quick-mode behavior.
 The review loop runs up to 7 rounds.
 Reviewer selection per round follows Cursor → Codex → Claude fallback.
 The loop has no voting panel — main agent accepts or rejects each finding.
-Rounds 1-3 launch 5 Cursor specialists in parallel plus a generic Codex reviewer.
+Rounds 1-3 launch 5 Cursor specialists in parallel plus a generic Codex reviewer and a Claude generic reviewer.
 Rounds 4+ use a single generic reviewer per round.
 EOF
 
@@ -313,7 +317,7 @@ Stale-phrase fixture: contains every positive marker so only the stale phrase ca
 The review loop runs up to 7 rounds.
 Reviewer selection per round follows Cursor → Codex → Claude fallback.
 The loop has no voting panel — main agent accepts or rejects each finding.
-Rounds 1-3 launch 5 Cursor specialists in parallel plus a generic Codex reviewer.
+Rounds 1-3 launch 5 Cursor specialists in parallel plus a generic Codex reviewer and a Claude generic reviewer.
 Stale phrase intentionally embedded: simplified code review (1 Claude Code Reviewer subagent, 1 round).
 EOF
 
