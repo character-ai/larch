@@ -358,15 +358,14 @@ set -e
 assert_eq "token-budget-cap missing value exit" "2" "$RC"
 assert_grep "token-budget-cap missing value message" "positive integer" "$TMPDIR/budget-missing.stderr"
 
-for bad_cap in "" abc 0.5 -1 ""; do
-    [[ -z "$bad_cap" ]] && continue
+for bad_cap in 0 00 000 abc 0.5 -1; do
     set +e
-    "$LAUNCHER" --output "$TMPDIR/budget-bad-${bad_cap}.txt" --timeout 5 --prompt "x" \
-        --token-budget-cap "$bad_cap" >/dev/null 2>"$TMPDIR/budget-bad-${bad_cap}.stderr"
+    "$LAUNCHER" --output "$TMPDIR/budget-bad-${bad_cap//[^a-zA-Z0-9_-]/x}.txt" --timeout 5 --prompt "x" \
+        --token-budget-cap "$bad_cap" >/dev/null 2>"$TMPDIR/budget-bad-${bad_cap//[^a-zA-Z0-9_-]/x}.stderr"
     RC=$?
     set -e
     assert_eq "token-budget-cap bad value '$bad_cap' exit" "2" "$RC"
-    assert_grep "token-budget-cap bad value '$bad_cap' message" "positive integer" "$TMPDIR/budget-bad-${bad_cap}.stderr"
+    assert_grep "token-budget-cap bad value '$bad_cap' message" "positive integer" "$TMPDIR/budget-bad-${bad_cap//[^a-zA-Z0-9_-]/x}.stderr"
 done
 
 # --token-budget-cap accept path (no cap hit: empty ledger, so under_cap)

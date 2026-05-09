@@ -628,7 +628,7 @@ while [[ $# -gt 0 ]]; do
         --timeout) TIMEOUT="${2:?--timeout requires a value}"; shift 2 ;;
         --prompt) PROMPT="${2:?--prompt requires a value}"; shift 2 ;;
         --timing-task-kind) [[ -n "${2:-}" && "${2}" != --* ]] || { echo "launch-gemini-review.sh: --timing-task-kind requires a non-empty, non-flag-like value" >&2; exit 2; }; TIMING_TASK_KIND="$2"; shift 2 ;;
-        --token-budget-cap) case "${2:-}" in ''|*[!0-9]*) echo "launch-gemini-review.sh: --token-budget-cap requires a positive integer" >&2; exit 2 ;; esac; TOKEN_BUDGET_CAP="$2"; shift 2 ;;
+        --token-budget-cap) case "${2:-}" in ''|*[!0-9]*) echo "launch-gemini-review.sh: --token-budget-cap requires a positive integer" >&2; exit 2 ;; esac; (( 10#${2:-0} >= 1 )) || { echo "launch-gemini-review.sh: --token-budget-cap requires a positive integer" >&2; exit 2; }; TOKEN_BUDGET_CAP="$2"; shift 2 ;;
         --agent-file|--mode|--description-text|--scope-files|--competition-notice)
             echo "launch-gemini-review.sh: specialist mode is not supported in v1" >&2
             exit 2 ;;
@@ -679,6 +679,7 @@ if [[ -n "$TOKEN_BUDGET_CAP" ]]; then
         if [[ -n "${IMPLEMENT_TMPDIR:-}" ]]; then
             printf 'STATUS=cap_hit\n%s\n' "$_budget_out" > "${IMPLEMENT_TMPDIR}/step-budget-cap-hit.env"
         fi
+        printf '%s\n' "0" > "${OUTPUT}.done" 2>/dev/null || true
         exit 0
     fi
     unset _budget_out _budget_status

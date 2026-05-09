@@ -504,7 +504,7 @@ set -e
 grep -q 'positive integer' "$BUDGET_MISSING_ERR" \
   || fail "token-budget-cap-missing: expected 'positive integer' in stderr"
 
-for bad_cap in abc 0.5 -1; do
+for bad_cap in 0 00 000 abc 0.5 -1; do
     set +e
     "$REPO_ROOT/scripts/launch-gemini-review.sh" --output "$TMPDIR/budget-bad-${bad_cap}.txt" --timeout 5 --prompt "x" \
         --token-budget-cap "$bad_cap" >/dev/null 2>"$TMPDIR/budget-bad-${bad_cap}.stderr"
