@@ -10,7 +10,7 @@
 check-clean-tree.sh [--fail-closed]
 ```
 
-Default mode is fail-open: if `git status --porcelain` fails, the script emits `CLEAN=true` and exits 0. This preserves `preflight.sh`'s prior `git status --porcelain 2>/dev/null` behavior.
+Default mode is fail-open: if `git status --porcelain` fails, the script emits `CLEAN=true` and exits 0.
 
 With `--fail-closed`, probe failure emits `CLEAN=unknown`, emits `PROBE_ERROR=<single-line summary>`, and exits 1. `find-lock-issue.sh` uses this mode because it must not mutate GitHub issue state when local cleanliness cannot be determined.
 
@@ -40,7 +40,7 @@ The `DIRTY_OUT` and `PROBE_ERROR` values collapse newlines, carriage returns, an
 
 ## Primary Callers
 
-- `scripts/preflight.sh` calls default fail-open mode so its historical behavior stays unchanged.
+- `scripts/preflight.sh` calls `--fail-closed` (with `|| true` to preserve `set -e` compatibility); the awk-based CLEAN extraction then treats an empty result as "could not determine cleanliness" and exits 2.
 - `skills/fix-issue/scripts/find-lock-issue.sh` calls `--fail-closed` immediately before issue-lock acquisition, so dirty trees abort before `GO` deletion, `IN PROGRESS` comments, or title renames.
 
 ## Test Harness

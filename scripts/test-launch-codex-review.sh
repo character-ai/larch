@@ -204,32 +204,35 @@ else
 fi
 
 set +e
-printf 'STALE-SIDECAR\n' > "$TMPDIR/bad-model.txt.sidecar"
 PATH="$STUB_BIN:$PATH" \
     CODEX_STUB_ARGV_LOG="$TMPDIR/argv-bad.txt" \
     CODEX_STUB_COUNT_FILE="$TMPDIR/count-bad.txt" \
     LARCH_CODEX_MODEL=$'evil\nextra' \
-    "$LAUNCHER" --output "$TMPDIR/bad-model.txt" --timeout 5 --prompt "review prompt" >"$TMPDIR/bad-model.stdout" 2>"$TMPDIR/bad-model.stderr"
+    "$LAUNCHER" --output "$TMPDIR/bad-model.txt" --timeout 5 --prompt "review prompt" >/dev/null 2>"$TMPDIR/bad-model.stderr"
 RC=$?
 set -e
-assert_eq "newline model wrapper exit" "0" "$RC"
+if [[ "$RC" -ne 0 ]]; then pass; else fail "newline model wrapper must exit non-zero on model-args preflight failure"; fi
 if [[ ! -e "$TMPDIR/count-bad.txt" ]]; then pass; else fail "newline model should fail before invoking codex"; fi
-assert_eq "newline model stdout line count" "5" "$(wc -l < "$TMPDIR/bad-model.stdout" | tr -d ' ')"
-assert_grep "newline model launcher exit key" "LAUNCHER_EXIT=1" "$TMPDIR/bad-model.stdout"
-assert_grep "newline model manifest key" "MANIFEST_WRITTEN=false" "$TMPDIR/bad-model.stdout"
-assert_grep "newline model qa key" "QA_PENDING_WRITTEN=false" "$TMPDIR/bad-model.stdout"
-assert_grep "newline model transcript key" "TRANSCRIPT=$TMPDIR/bad-model.txt" "$TMPDIR/bad-model.stdout"
-assert_grep "newline model sidecar key" "SIDECAR_LOG=$TMPDIR/bad-model.txt.sidecar" "$TMPDIR/bad-model.stdout"
-if grep -Fq -- 'STALE-SIDECAR' "$TMPDIR/bad-model.txt.sidecar"; then
-    fail "newline model preflight failure must truncate stale sidecar bytes"
-else
+if [[ -s "$TMPDIR/bad-model.txt.done" ]]; then
     pass
+else
+    fail "newline model preflight failure must write non-empty .done sentinel"
 fi
-assert_grep "newline model sidecar diagnostic" "[[:cntrl:]]" "$TMPDIR/bad-model.txt.sidecar"
-if [[ ! -e "$TMPDIR/bad-model.txt.done" ]]; then
+if [[ -s "$TMPDIR/bad-model.txt.diag" ]] && grep -Fq 'STATUS=FAILED' "$TMPDIR/bad-model.txt.diag"; then
     pass
 else
-    fail "newline model should not publish public done"
+    fail "newline model preflight failure must write .diag with STATUS=FAILED"
+fi
+assert_grep "newline model diag diagnostic" "agent-model-args.sh failed" "$TMPDIR/bad-model.txt.diag"
+if [[ -s "$TMPDIR/bad-model.txt.meta" ]] && grep -Fq 'CMD_JSON=[]' "$TMPDIR/bad-model.txt.meta"; then
+    pass
+else
+    fail "newline model preflight failure must write stub .meta with CMD_JSON=[]"
+fi
+if [[ -s "$TMPDIR/bad-model.txt.dirty-tree" ]] && grep -Fq 'STATUS=unknown' "$TMPDIR/bad-model.txt.dirty-tree"; then
+    pass
+else
+    fail "newline model preflight failure must write unknown dirty-tree sidecar"
 fi
 
 # Issue #1529: empty-output retry idempotency. The first run wrote

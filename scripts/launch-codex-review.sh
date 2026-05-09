@@ -233,20 +233,26 @@ if "$SCRIPT_DIR/agent-model-args.sh" --tool codex --with-effort > "$MODEL_ARGS_T
     :
 else
     rc=$?
-    : > "${OUTPUT}.sidecar"
-    printf 'agent-model-args.sh failed with exit code %s\n' "$rc" >> "${OUTPUT}.sidecar"
-    cat "$MODEL_ARGS_ERR" >> "${OUTPUT}.sidecar" 2>/dev/null || true
-    rm -f "$MODEL_ARGS_ERR"
     _emit_timing_record "$rc"
     _write_dirty_tree_sidecar
-    printf 'LAUNCHER_EXIT=%s\n' "$rc"
-    printf 'MANIFEST_WRITTEN=false\n'
-    printf 'QA_PENDING_WRITTEN=false\n'
-    printf 'TRANSCRIPT=%s\n' "$OUTPUT"
-    printf 'SIDECAR_LOG=%s\n' "${OUTPUT}.sidecar"
     rm -f "$MODEL_ARGS_TMP"
+    : > "$OUTPUT" 2>/dev/null || true
+    {
+        printf 'STATUS=FAILED\n'
+        printf 'FAILURE_REASON=agent-model-args.sh failed (exit %s): %s\n' \
+            "$rc" "$(head -1 "$MODEL_ARGS_ERR" 2>/dev/null | tr '\n' ' ')"
+    } > "${OUTPUT}.diag" 2>/dev/null || true
+    rm -f "$MODEL_ARGS_ERR"
+    {
+        printf 'TOOL=codex\n'
+        printf 'TIMEOUT=%s\n' "$TIMEOUT"
+        printf 'CAPTURE_STDOUT=false\n'
+        printf 'OUTPUT_FILE=%s\n' "$OUTPUT"
+        printf 'CMD_JSON=[]\n'
+    } > "${OUTPUT}.meta" 2>/dev/null || true
+    printf '%s\n' "$rc" > "${OUTPUT}.done" 2>/dev/null || true
     trap - EXIT
-    exit 0
+    exit "$rc"
 fi
 rm -f "$MODEL_ARGS_ERR"
 MODEL_ARGS=()

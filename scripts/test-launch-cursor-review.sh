@@ -181,30 +181,43 @@ else
     pass
 fi
 
-# Case C2: model-args preflight failure emits the structured five-line KV
-# envelope, exits wrapper-level 0, and truncates any stale sidecar bytes.
+# Case C2: model-args preflight failure synthesizes .done/.diag/.meta and
+# dirty-tree sidecar artifacts (matching the cursor-auth-preflight pattern)
+# so collect-agent-results.sh detects failure promptly without waiting for
+# the collector timeout.
 OUT_C2="$TMPDIR/cursor-c2.txt"
-STDOUT_C2="$TMPDIR/case-c2.stdout"
-printf 'STALE-SIDECAR\n' > "${OUT_C2}.sidecar"
 set +e
 PATH="$STUB_BIN:$PATH" \
     LARCH_CURSOR_MODEL=$'bad\nmodel' \
-    "$LAUNCHER" --output "$OUT_C2" --timeout 5 --prompt "case c2" >"$STDOUT_C2" 2>"$TMPDIR/case-c2.stderr"
+    "$LAUNCHER" --output "$OUT_C2" --timeout 5 --prompt "case c2" >/dev/null 2>"$TMPDIR/case-c2.stderr"
 CODE_C2=$?
 set -e
-assert_equals "case C2 wrapper exit" "0" "$CODE_C2"
-assert_equals "case C2 stdout line count" "5" "$(wc -l < "$STDOUT_C2" | tr -d ' ')"
-assert_grep "case C2 launcher exit key" "^LAUNCHER_EXIT=1$" "$STDOUT_C2"
-assert_grep "case C2 manifest key" "^MANIFEST_WRITTEN=false$" "$STDOUT_C2"
-assert_grep "case C2 qa key" "^QA_PENDING_WRITTEN=false$" "$STDOUT_C2"
-assert_grep "case C2 transcript key" "^TRANSCRIPT=${OUT_C2}$" "$STDOUT_C2"
-assert_grep "case C2 sidecar key" "^SIDECAR_LOG=${OUT_C2}.sidecar$" "$STDOUT_C2"
-if grep -Fq -- 'STALE-SIDECAR' "${OUT_C2}.sidecar"; then
-    fail "case C2 preflight failure must truncate stale sidecar bytes"
-else
+if [[ "$CODE_C2" -ne 0 ]]; then
     pass
+else
+    fail "case C2 wrapper must exit non-zero on model-args preflight failure"
 fi
-assert_grep "case C2 sidecar diagnostic" "cursor_launcher_load_model_args failed" "${OUT_C2}.sidecar"
+if [[ -s "${OUT_C2}.done" ]]; then
+    pass
+else
+    fail "case C2 preflight failure must write non-empty .done sentinel"
+fi
+if [[ -s "${OUT_C2}.diag" ]] && grep -Fq 'STATUS=FAILED' "${OUT_C2}.diag"; then
+    pass
+else
+    fail "case C2 preflight failure must write .diag with STATUS=FAILED"
+fi
+assert_grep "case C2 diag diagnostic" "cursor_launcher_load_model_args failed" "${OUT_C2}.diag"
+if [[ -s "${OUT_C2}.meta" ]] && grep -Fq 'CMD_JSON=[]' "${OUT_C2}.meta"; then
+    pass
+else
+    fail "case C2 preflight failure must write stub .meta with CMD_JSON=[]"
+fi
+if [[ -s "${OUT_C2}.dirty-tree" ]] && grep -Fq 'STATUS=unknown' "${OUT_C2}.dirty-tree"; then
+    pass
+else
+    fail "case C2 preflight failure must write unknown dirty-tree sidecar"
+fi
 
 OUT_TOKEN="$TMPDIR/cursor-token.txt"
 TOKEN_SESSION_FILE="$TMPDIR/cursor-token-session.txt"

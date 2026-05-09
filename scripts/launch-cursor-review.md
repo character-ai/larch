@@ -4,12 +4,12 @@
 
 **Invariants**:
 - Prompt passed only as argv; no `eval`; no unsafe expansion. The post-wrapper test hook is gated behind two opt-in env vars and `source`s a regular non-symlink file (no env-var → arbitrary-shell channel; see "Test hook" below)
-- No additional stdout beyond what `run-external-agent.sh` produces, except the model-args preflight failure envelope documented under "Stdout contract"
+- No additional stdout beyond what `run-external-agent.sh` produces on normal runs
 - Validates `--output` through `scripts/lib-validate-meta-path.sh`, rejects empty / non-numeric `--timeout`, and rejects `--timeout` values that arithmetic-evaluate to less than `1` (catches both literal `0` and zero-padded `00` / `000` / `0000`) before creating launcher sidecars or sentinels. Also rejects missing or multiple prompt sources before any side effect.
 - Runs `run-external-agent.sh` without `exec` so the launcher can perform best-effort post-call token handling, then exits with `run-external-agent.sh`'s exit code
 - Sources `scripts/lib-cursor-launcher-common.sh` for shared Cursor model-args hydration, auth-argv setup, outer `.meta` appends, and inner-sentinel promotion (canonical `*_append_outer_meta` and `*_promote_inner_done` bodies live in `scripts/lib-external-launcher-common.sh`), and `scripts/lib-dirty-tree-sidecar.sh` for the shared `_write_dirty_tree_sidecar` helper used in the EXIT trap.
 - Reads `agent-model-args.sh` line-token stdout into a Bash array and expands it with `${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"}` so model values containing spaces remain one argv token and producer-side validation failures abort before Cursor is launched
-- On `cursor_launcher_load_model_args` failure, truncates `${OUTPUT}.sidecar`, writes the model-args diagnostic there, emits the five-line launcher KV envelope on stdout (`LAUNCHER_EXIT`, `MANIFEST_WRITTEN=false`, `QA_PENDING_WRITTEN=false`, `TRANSCRIPT`, `SIDECAR_LOG`), and exits wrapper-level 0 so callers receive a structured failure instead of a missing sentinel
+- On `cursor_launcher_load_model_args` failure, writes `.done` / `.diag` / `.meta` / `dirty-tree` sidecar artifacts (matching the `cursor-auth-preflight` artifact pattern so `collect-agent-results.sh` detects the failure promptly) and exits with the failure rc
 - Redirects wrapper stderr to `${OUTPUT}.sidecar` when possible; if the sidecar cannot be opened, stderr falls back to `/dev/null`
 - Invokes `run-external-agent.sh` with `RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX=.inner.done`; the wrapper writes `${OUTPUT}.inner.done`, and this launcher publishes `${OUTPUT}.done` only after post-processing finishes on the normal success path
 - Before launching, removes stale `${OUTPUT}.dirty-tree` / `${OUTPUT}.untracked-baseline` sidecars and captures a NUL-delimited untracked baseline. After the wrapped agent returns, writes `${OUTPUT}.dirty-tree` via `check-mid-run-dirty-tree.sh --mode baseline` before promoting `${OUTPUT}.inner.done` to `${OUTPUT}.done`.
@@ -27,17 +27,7 @@
 - When `CURSOR_API_KEY` is non-empty, passes `--api-key "$CURSOR_API_KEY"` between the model-args array and `--workspace`. When empty, `cursor agent` runs without `--api-key` and falls back to its default auth resolution (e.g., the `cursor login` keychain entry on Darwin) — preserving backward compatibility with operators who haven't set the env var
 - **Read-only mode at spawn time (issue #1529)**: invokes `cursor agent` with `-p --trust --mode plan` (replacing the prior `-p --force --trust` argv). `--mode plan` is Cursor's documented "read-only/planning, analyze, propose plans, no edits" mode; `--force` is dropped because "Force allow commands unless explicitly denied" contradicts the read-only contract. Pairs with the `CURSOR_REVIEW_HARDENING_PREAMBLE` heredoc that prepends a HARD CONSTRAINTS block to every prompt (specialist or generic, `--prompt` / `--prompt-file` / `--agent-file`) so the model also reasons about its read-only role. The dirty-tree-sidecar machinery (`snapshot-untracked.sh` baseline + `_write_dirty_tree_sidecar` on EXIT) remains as the after-the-fact detector consumed by `/review` Step 3a recovery and `/implement` Step 5's mid-run scan.
 
-**Stdout contract**: Same stdout as `run-external-agent.sh`; no `LAUNCHER_EXIT=` line on normal runs. If `cursor_launcher_load_model_args` fails before Cursor launch, stdout is exactly:
-
-```
-LAUNCHER_EXIT=<int>
-MANIFEST_WRITTEN=false
-QA_PENDING_WRITTEN=false
-TRANSCRIPT=<output>
-SIDECAR_LOG=<output>.sidecar
-```
-
-and the wrapper exits 0 after truncating `${OUTPUT}.sidecar` and writing the diagnostic there. Normal-run exit code is `run-external-agent.sh`'s exit code after best-effort JSON-sidecar extraction and token scrape, OR `2` on `cursor_auth_preflight` failure (with sentinel/diag/meta synthesized first).
+**Stdout contract**: Same stdout as `run-external-agent.sh`; no `LAUNCHER_EXIT=` line. Normal-run exit code is `run-external-agent.sh`'s exit code after best-effort JSON-sidecar extraction and token scrape. If `cursor_launcher_load_model_args` fails before Cursor is launched, the launcher writes `.done` / `.diag` / `.meta` / `dirty-tree` sidecar files (matching the `cursor-auth-preflight` artifact pattern so `collect-agent-results.sh` detects the failure promptly) and exits non-zero; no KV envelope is emitted on stdout. Auth-preflight failure exits `2` with the same `.done` / `.diag` / `.meta` artifact set.
 
 **Flags**:
 - `--output FILE` — (required) output file path
