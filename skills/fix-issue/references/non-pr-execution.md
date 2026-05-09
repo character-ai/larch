@@ -2,6 +2,8 @@
 
 **Consumer**: `/fix-issue` Step 5b (`INTENT=NON_PR` path — follow instructions inline).
 
+**Contract**: Authoritative detail for the NON_PR execution path — what `NON_PR` tasks deliver, which child skills to invoke (`/research`, `/issue`), the no-working-tree-edits rule, the `WORK_SUMMARY` running-summary discipline that becomes Step 6b's closing comment, and the per-failure fallback. SKILL.md Step 5b carries the control-flow shell (the branch on `INTENT`, the `Do NOT call /implement` / `Do NOT modify files in the working tree` top-level invariants, the anti-halt continuation reminder for child-skill returns, and the failure-path breadcrumb that skips to Step 8); this file carries the per-pattern detail.
+
 **When to load**: only when Step 4's classifier sets `INTENT=NON_PR`. **Do NOT load** when `INTENT=PR` — Step 5a delegates to `/implement` and never references this file. **Do NOT load** in any step other than 5.
 
 **Sibling**: `skills/fix-issue/references/triage-classification.md` owns the triage (Step 3) and classification (Step 4) detail that produces the `INTENT` value this file gates on.
