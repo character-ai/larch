@@ -69,7 +69,7 @@ rollback_before_commit() {
 # untracked files — unlike `git diff-index --quiet HEAD --` which silently
 # ignores untracked entries.
 if [[ -n "$(git status --porcelain 2>/dev/null)" ]]; then
-  fail "Working tree is not clean (staged, unstaged, or untracked changes present); refusing to bump version. Commit, stash, or clean them first."
+  fail "Working tree is not clean (staged, unstaged, or untracked changes present); refusing to bump version. Mid-/implement run: check tracking issue Execution Issues section or \$IMPLEMENT_TMPDIR/execution-issues.md for phantom file warnings. Otherwise: commit, stash, or clean them first."
 fi
 
 # Step 2: Validate plugin.json parses.

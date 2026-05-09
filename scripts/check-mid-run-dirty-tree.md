@@ -2,7 +2,7 @@
 
 **Purpose**: detect working-tree pollution between a clean orchestration checkpoint and later external-reviewer boundaries. The script is a detector only: it never prompts the operator, never restores files, and always exits 0 so callers can fail closed by parsing `STATUS=unknown`.
 
-**Primary callers**: `scripts/launch-cursor-review.sh` and `scripts/launch-codex-review.sh` use `--mode baseline --baseline <path> --sidecar <path>` after an external reviewer returns. `/implement`, `/design`, and `/review` prompt prose use `--mode checkpoint` at orchestration boundaries.
+**Primary callers**: `scripts/launch-cursor-review.sh` and `scripts/launch-codex-review.sh` use `--mode baseline --baseline <path> --sidecar <path>` after an external reviewer returns. `scripts/check-phantom-dirty.sh` wraps baseline mode for `/implement` session-wide phantom untracked probes. `/implement`, `/design`, and `/review` prompt prose use `--mode checkpoint` at orchestration boundaries.
 
 **Output contract**:
 - Always emits stable key/value lines to stdout.

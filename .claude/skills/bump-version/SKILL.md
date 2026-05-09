@@ -51,7 +51,7 @@ If you escalate, append at most 5 sentences (≤100 words) to the reasoning log 
    - Emits `KEY=VALUE` lines on stdout: `CURRENT_VERSION`, `NEW_VERSION`, `BUMP_TYPE`, `REASONING_FILE`
 3. You (main agent) parse the output and review the diff for the **escalation-only** caveat (line 34). **Do not write commentary about that review unless you actually escalate** — no log append, no diff summary, no narration. If escalating, update `NEW_VERSION` and append the bounded reasoning per the Caveat above; otherwise proceed directly to `apply-bump.sh` with the emitted `NEW_VERSION`.
 4. You invoke `apply-bump.sh --new-version <NEW_VERSION>`, which:
-   - First verifies the working tree is clean (fails on any staged or unstaged changes)
+   - First verifies the working tree is clean (fails on any staged, unstaged, or untracked changes). Dirty-worktree failures include `/implement` phantom-file guidance pointing operators at the tracking issue Execution Issues section or the literal `\$IMPLEMENT_TMPDIR/execution-issues.md` path; the backslash keeps manual `set -u` invocations from expanding an unset variable.
    - Backs up `.claude-plugin/plugin.json`
    - Rewrites the `version` field via `jq` (atomic via tmp + mv)
    - Runs `git add`, then `git fetch origin main` before `git commit`. Fetch failure is fatal with rollback: restore from `$BACKUP`, `git reset HEAD "$PLUGIN_JSON"`, and emit `ERROR="git fetch origin main failed; cannot verify same-version race"`.

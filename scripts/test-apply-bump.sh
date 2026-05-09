@@ -290,6 +290,7 @@ run_case "dirty_worktree" invoke_dirty_apply
 assert_exit_code "dirty_worktree" "1" "F: dirty worktree exits 1"
 assert_stdout_contains "dirty_worktree" "APPLIED=false" "F: dirty worktree emits APPLIED=false"
 assert_stdout_matches "dirty_worktree" "^ERROR=Working tree is not clean" "F: dirty worktree error is stable"
+assert_stdout_matches "dirty_worktree" "phantom file warnings" "F: dirty worktree error mentions phantom guidance"
 assert_plugin_version "dirty_worktree" "1.0.0" "F: plugin.json unchanged"
 assert_commit_count "dirty_worktree" "1" "F: no new commit"
 

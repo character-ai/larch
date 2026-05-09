@@ -27,6 +27,11 @@ The script exits 0 only when the bump commit was created. It exits 1 for invalid
 ## Invariants
 
 - The working tree must be clean before any mutation. `git status --porcelain` covers staged, unstaged, and untracked files.
+- Dirty-worktree failures include `/implement` phantom-file guidance:
+  `Mid-/implement run: check tracking issue Execution Issues section or \$IMPLEMENT_TMPDIR/execution-issues.md for phantom file warnings.` The
+  `\$IMPLEMENT_TMPDIR` token is intentionally backslash-escaped in the script
+  string so manual invocations under `set -u` do not expand an unset
+  `IMPLEMENT_TMPDIR`.
 - `.claude-plugin/plugin.json` must parse as JSON before rewrite.
 - The rewrite is atomic: `jq` writes to a temp file, then `mv` replaces `plugin.json`.
 - The pre-commit same-version probe runs after `git add` and before `git commit`: fetch `origin main`, read `origin/main:.claude-plugin/plugin.json`, require strict `^[0-9]+\.[0-9]+\.[0-9]+$`, and fail closed if the origin version equals `NEW_VERSION`.
@@ -47,7 +52,7 @@ test-apply-bump:
 
 ## Test Harness
 
-`scripts/test-apply-bump.sh` creates temporary repos and PATH-stubs selected `git fetch` / `git show` calls while delegating normal git operations to the real binary. It covers success, fetch failure rollback, same-version rollback, differing-origin success, malformed-origin rollback, dirty worktree rejection, and commit-failure rollback.
+`scripts/test-apply-bump.sh` creates temporary repos and PATH-stubs selected `git fetch` / `git show` calls while delegating normal git operations to the real binary. It covers success, fetch failure rollback, same-version rollback, differing-origin success, malformed-origin rollback, dirty worktree rejection including the phantom-file guidance text, and commit-failure rollback.
 
 ## Edit-in-sync Rules
 

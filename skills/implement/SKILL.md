@@ -291,6 +291,59 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 
 After each child skill returns (`/design` Step 1, `/review` Step 5), check `$IMPLEMENT_TMPDIR/session-env.sh.health`. If it exists, read `CODEX_HEALTHY` / `CURSOR_HEALTHY` / `GEMINI_HEALTHY`. If any flipped to `false` during the child, preserve every durable non-health key currently in `$IMPLEMENT_TMPDIR/session-env.sh` — at minimum `SLACK_OK`, `SLACK_MISSING`, `REPO`, `REPO_UNAVAILABLE`, `LARCH_TIMING_LEDGER`, `LARCH_TOKEN_SESSION_ID`, and `LARCH_CLAUDE_SOURCE_FILE` — when re-invoking `write-session-env.sh` to update health flags. Parse values line-by-line from `$IMPLEMENT_TMPDIR/session-env.sh` (same safe parsing as `session-setup.sh` — do NOT source). Runtime timeouts and token context propagate across skill boundaries without clobbering Slack / repo state.
 
+## Phantom Untracked Probe
+
+At selected `/implement` boundaries, detect non-ignored untracked files that
+appeared after the Step 0.5 session baseline. This is advisory only: phantoms
+are logged to Execution Issues, never cleaned automatically.
+
+Call form:
+
+```bash
+PHANTOM_OUT=$("${CLAUDE_PLUGIN_ROOT}/scripts/check-phantom-dirty.sh" \
+  --baseline "$IMPLEMENT_TMPDIR/untracked-baseline.z" \
+  --step <step-id> \
+  --phantom-paths-dir "$IMPLEMENT_TMPDIR")
+```
+
+Parse `STATUS`, `REASON`, `PHANTOM_COUNT`, and `PHANTOM_PATHS_FILE` without
+`eval`/`source`. On `STATUS=phantom`, append this Warnings entry and continue:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/append-execution-issue.sh" \
+  --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
+  --category Warnings \
+  --entry "- **Step <step-id> — phantom untracked files:** $PHANTOM_COUNT file(s) appeared since session baseline (inspect $IMPLEMENT_TMPDIR/phantom-paths-<step-id>.z locally)"
+```
+
+On `STATUS=unknown`, append this Warnings entry and continue:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/append-execution-issue.sh" \
+  --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
+  --category Warnings \
+  --entry "- **Step <step-id> — phantom detection inconclusive:** STATUS=unknown REASON=${REASON:-unknown}"
+```
+
+If `append-execution-issue.sh` fails at a probe site, log a secondary Warnings
+entry if possible (`Step <step-id> — phantom warning append failed: <ERROR>`)
+and continue. On `STATUS=clean` or `STATUS=tracked-only`, continue silently.
+
+Probe locations:
+- After Step 2 dispatch returns on the external-implementer `STATUS=complete`
+  path only: `--step 2-post-dispatch`. Do not probe when
+  `STATUS=claude_fallback`; Claude-fallback implementation files are
+  uncommitted until Step 4.
+- After Step 4.r: `--step 4.r-post-rebase`.
+- After Step 7.r, only when `FILES_CHANGED=true`: `--step 7.r-post-rebase`.
+- After Step 7a.r: `--step 7a.r-post-rebase`.
+- Immediately before invoking `/bump-version`: `--step 8-pre-bump`.
+
+There is intentionally no post-Step-6 probe. When `FILES_CHANGED=true`,
+review-created files are legitimately untracked until Step 7 commits them; a
+post-Step-6 probe would false-positive. The post-Step-7.r probe covers the
+committed review-fix state.
+
 ## Execution Issues Tracking
 
 ### Follow-up Work Principle
@@ -637,6 +690,19 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/refresh-anchor.sh --sections-dir "$IMPLEMENT_TMPDI
 
 **Compose-time sanitization**: every fragment composed into an anchor section MUST apply prompt-level sanitization (secrets → `<REDACTED-TOKEN>`, internal URLs → `<INTERNAL-URL>`, PII → `<REDACTED-PII>`). `scripts/redact-secrets.sh` (invoked inside `tracking-issue-write.sh`) is the shell-layer backstop but does NOT cover internal URLs or PII — compose-time sanitization is the first-line defense. See `anchor-comment-template.md` Compose-time sanitization rule.
 
+### Session untracked baseline
+
+Before leaving Step 0.5, capture the session-wide untracked baseline used by
+the Phantom Untracked Probe:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/snapshot-untracked.sh" --output "$IMPLEMENT_TMPDIR/untracked-baseline.z" --nul || true
+```
+
+Use `snapshot-untracked.sh`, not a raw pipeline, so a `git ls-files` failure
+removes the output file instead of leaving an empty readable baseline that
+would misclassify pre-existing untracked files as phantoms on later probes.
+
 ```bash
 LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
 LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
@@ -934,7 +1000,7 @@ If any check fails, synthesize an orchestrator-local bail: set `STATUS=bailed`, 
 
 **2.2 — Branch on `STATUS`**:
 
-- `STATUS=complete` → set `$MANIFEST_PATH=$MANIFEST` and proceed to Step 3. Steps 4 / 8a / 9a / 9a.1 read this manifest; the orchestrator does not run `git diff` to figure out what changed.
+- `STATUS=complete` → set `$MANIFEST_PATH=$MANIFEST`, run the Phantom Untracked Probe with `--step 2-post-dispatch`, and proceed to Step 3. Steps 4 / 8a / 9a / 9a.1 read this manifest; the orchestrator does not run `git diff` to figure out what changed. This probe runs only on the external-implementer complete path, after the dispatcher has committed; do not run it on `STATUS=claude_fallback`.
 - `STATUS=needs_qa` → run the Q/A loop in 2.3.
 - `STATUS=bailed` → log `Step 2 — $TOOL_LABEL bailed: $REASON` to the `Warnings` section of `$IMPLEMENT_TMPDIR/execution-issues.md`. If `$REASON` ∈ {`resume-incompatible`, `branch-changed`, `protected-path-modified`, `submodule-dirty`, `commit-failed`, `cursor-modified-history`, `gemini-modified-history`}: bail to Step 12d (the branch may contain partial external-implementer work the operator must inspect). Otherwise (`codex-runtime-failure`, `cursor-runtime-failure`, `cursor-bailed-no-reason`, `gemini-runtime-failure`, `gemini-bailed-no-reason`, `dirty-state-after-timeout`, `manifest-schema-invalid`, `manifest-missing`, `qa-pending-missing`, `qa-loop-exceeded`, `redactor-not-executable`, free-form implementer token): print `**⚠ $TOOL_LABEL bailed: $REASON. Logs at $TRANSCRIPT and $SIDECAR_LOG.**`, then bail to Step 12d.
 - `STATUS=claude_fallback` (with `ORCHESTRATOR_EDIT_AUTHORITY=allowed`, validated mechanically in 2.1.5) → run the Claude-fallback branch in 2.4. If `ORCHESTRATOR_EDIT_AUTHORITY != allowed`, treat as envelope failure per 2.1.5 (do NOT enter 2.4).
@@ -1056,6 +1122,9 @@ Commit message describes WHAT was implemented and WHY, not HOW.
 ### Rebase onto latest main (after implementation commit)
 
 Apply the Rebase Checkpoint Macro with `<step-prefix>=4.r` and `<short-name>=commit (impl)`.
+
+After the macro returns successfully or silently skips, run the Phantom
+Untracked Probe with `--step 4.r-post-rebase`.
 
 ```bash
 LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
@@ -1324,6 +1393,11 @@ Only if `FILES_CHANGED=true` from Step 6 (Step 7 created a commit). If Steps 6�
 
 Apply the Rebase Checkpoint Macro with `<step-prefix>=7.r` and `<short-name>=commit (review)`.
 
+After the macro returns successfully or silently skips, run the Phantom
+Untracked Probe with `--step 7.r-post-rebase`. This probe is inside the
+`FILES_CHANGED=true` guard with the Step 7.r rebase; if Steps 6-7 were skipped,
+do not run it.
+
 ```bash
 LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
 LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
@@ -1370,6 +1444,9 @@ Safety net before version bump. `--skip-if-pushed` short-circuits this when the 
 
 Apply the Rebase Checkpoint Macro with `<step-prefix>=7a.r` and `<short-name>=code flow`.
 
+After the macro returns successfully or silently skips, run the Phantom
+Untracked Probe with `--step 7a.r-post-rebase`.
+
 ```bash
 LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
 LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
@@ -1403,6 +1480,11 @@ Parse `HAS_BUMP`, `COMMITS_BEFORE`, `STATUS` (`ok|missing_main_ref|git_error` pe
 **If `HAS_BUMP=true`**:
 
 > **Continue after child returns.** When the child Skill returns, execute the NEXT step — do NOT end the turn, and do NOT write a summary, handoff, or "returning to parent" message. See `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Anti-halt continuation reminder. (Branch-specific: `HAS_BUMP=false` jumps to the postbump invocation per the control-flow directive above, which overrides this rule.)
+
+Before sub-step 1, run the Phantom Untracked Probe with `--step 8-pre-bump`
+immediately before invoking `/bump-version`. This is the clearest pre-failure
+signal for phantom untracked files because `apply-bump.sh` refuses to run on a
+dirty working tree.
 
 1. Invoke `/bump-version` via the Skill tool.
 
