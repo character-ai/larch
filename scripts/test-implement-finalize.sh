@@ -44,6 +44,12 @@ assert_file_contains() {
     assert_contains "$needle" "$content" "$label"
 }
 
+assert_file_not_contains() {
+    local needle=$1 path=$2 label=$3 content
+    content=$(cat "$path" 2>/dev/null || true)
+    assert_not_contains "$needle" "$content" "$label"
+}
+
 assert_rc() {
     local actual=$1 expected=$2 label=$3
     if [ "$actual" -eq "$expected" ]; then
@@ -728,6 +734,9 @@ assert_file_contains "--repo" "$SANDBOX/refresh-anchor-argv.txt" "postbump: anch
 assert_file_contains "IMPLEMENT_TMPDIR=$SANDBOX/tmp" "$SANDBOX/refresh-anchor-env.txt" "postbump: exports IMPLEMENT_TMPDIR to children"
 assert_file_contains "## [17.0.4] -" "$SANDBOX/repo/CHANGELOG.md" "postbump: changelog contains new version"
 assert_file_contains "### Changed" "$SANDBOX/repo/CHANGELOG.md" "postbump: flat bullets default to Changed"
+awk 'prev_blank && /^$/ { print "DOUBLE_BLANK"; exit } /^$/ { prev_blank=1; next } { prev_blank=0 }' \
+    "$SANDBOX/repo/CHANGELOG.md" > "$SANDBOX/blank-check.txt"
+assert_file_not_contains "DOUBLE_BLANK" "$SANDBOX/blank-check.txt" "postbump: changelog has no consecutive blank lines"
 
 # FINDING_1 regression: Unreleased section bullets must be preserved, not consumed.
 cat > "$SANDBOX/repo/CHANGELOG.md" <<'CHANGELOG_UNRELEASED'
@@ -814,6 +823,34 @@ assert_contains "CHANGELOG_STATUS=updated" "$OUT" "postbump: Claude fallback bul
 assert_file_contains "### Fixed" "$SANDBOX/repo/CHANGELOG.md" "postbump: fallback categorized Fixed"
 assert_file_contains "### Added" "$SANDBOX/repo/CHANGELOG.md" "postbump: fallback categorized Added"
 assert_file_contains "### Changed" "$SANDBOX/repo/CHANGELOG.md" "postbump: fallback bare bullet defaults Changed"
+
+# Regression: when target version header already exists (replacement path), no double blank before next header.
+cat > "$SANDBOX/repo/CHANGELOG.md" <<'CHANGELOG_REPLACE'
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [17.0.4] - 2026-05-01
+
+### Fixed
+
+- old content to be replaced.
+
+## [17.0.3] - 2026-04-30
+
+### Changed
+
+- Prior change.
+CHANGELOG_REPLACE
+write_postbump_state "$POSTBUMP_STATE"
+OUT=$(run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
+assert_contains "CHANGELOG_STATUS=updated" "$OUT" "postbump: replacement path updates changelog"
+awk 'prev_blank && /^$/ { print "DOUBLE_BLANK"; exit } /^$/ { prev_blank=1; next } { prev_blank=0 }' \
+    "$SANDBOX/repo/CHANGELOG.md" > "$SANDBOX/blank-check-replace.txt"
+assert_file_not_contains "DOUBLE_BLANK" "$SANDBOX/blank-check-replace.txt" "postbump: replacement path has no consecutive blank lines"
 
 cp "$SANDBOX/original-CHANGELOG.md" "$SANDBOX/repo/CHANGELOG.md"
 write_postbump_state "$POSTBUMP_STATE" BUMP_TYPE=NONE

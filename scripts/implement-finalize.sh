@@ -435,13 +435,13 @@ changelog_categories_to_markdown() {
     for category in Added Changed Fixed Removed Security; do
         file="$dir/$category"
         [ -s "$file" ] || continue
+        [ "$had_any" = "true" ] && printf '\n' >> "$out"
         had_any=true
         printf '### %s\n\n' "$category" >> "$out"
         while IFS= read -r title || [ -n "$title" ]; do
             [ -n "$title" ] || continue
             printf -- '- %s\n' "$title" >> "$out"
         done < "$file"
-        printf '\n' >> "$out"
     done
     [ "$had_any" = "true" ]
 }
@@ -502,6 +502,7 @@ write_changelog_entry() {
             skipping = 0
             in_unreleased = 0
             match_count = 0
+            entry_from_version_match = 0
         }
         FNR == NR {
             if (/^## \[Unreleased\]/) has_unreleased = 1
@@ -516,11 +517,13 @@ write_changelog_entry() {
             if (!inserted) {
                 for (i = 1; i <= en; i++) print e[i]
                 inserted = 1
+                entry_from_version_match = 1
             }
             skipping = 1
             next
         }
         skipping && /^## \[/ {
+            if (entry_from_version_match) print ""
             skipping = 0
         }
         skipping {
@@ -556,6 +559,7 @@ write_changelog_entry() {
         }
         !inserted && /^## \[/ {
             for (i = 1; i <= en; i++) print e[i]
+            print ""
             inserted = 1
         }
         { print }
