@@ -69,7 +69,11 @@ registry_rows=(
   '| 7a.r | `7a.r`          | `code flow`      |'
 )
 for row in "${registry_rows[@]}"; do
-  { sed -n "${macro_section_start},${macro_section_end}p" "$SKILL_MD" || true; } | grep -Fq "$row" \
+  # Use grep --count to avoid `grep -q | sed` pipefail+SIGPIPE on Linux: `-q` causes
+  # grep to exit early, sending SIGPIPE to sed, which exits 141 and fails the pipeline
+  # under `set -o pipefail` even when the match succeeded.
+  count=$(sed -n "${macro_section_start},${macro_section_end}p" "$SKILL_MD" | grep -Fc "$row" || true)
+  [[ "$count" -ge 1 ]] \
     || fail "(B) macro Call-site registry missing row: $row"
 done
 
@@ -123,11 +127,11 @@ files_changed_line=$(sed -n "${step7_header_line},$((invoke_7r_line - 1))p" "$SK
 # (G) Macro section body contains rebase-push.sh invocation, conflict-resolution
 #     dispatch, and non-conflict bail line.
 # ---------------------------------------------------------------------------
-{ sed -n "${macro_section_start},${macro_section_end}p" "$SKILL_MD" || true; } | grep -Fq '${CLAUDE_PLUGIN_ROOT}/scripts/rebase-push.sh --no-push --skip-if-pushed --keep-on-conflict' \
+sed -n "${macro_section_start},${macro_section_end}p" "$SKILL_MD" | grep -Fq '${CLAUDE_PLUGIN_ROOT}/scripts/rebase-push.sh --no-push --skip-if-pushed --keep-on-conflict' \
   || fail "(G) macro body lacks 'rebase-push.sh --no-push --skip-if-pushed --keep-on-conflict' invocation"
-{ sed -n "${macro_section_start},${macro_section_end}p" "$SKILL_MD" || true; } | grep -Fq 'caller_kind=early_rebase' \
+sed -n "${macro_section_start},${macro_section_end}p" "$SKILL_MD" | grep -Fq 'caller_kind=early_rebase' \
   || fail "(G) macro body lacks caller_kind=early_rebase conflict-resolution dispatch"
-{ sed -n "${macro_section_start},${macro_section_end}p" "$SKILL_MD" || true; } | grep -Fq '**⚠ Rebase onto main failed (non-conflict): $REBASE_ERROR. Bailing to cleanup.**' \
+sed -n "${macro_section_start},${macro_section_end}p" "$SKILL_MD" | grep -Fq '**⚠ Rebase onto main failed (non-conflict): $REBASE_ERROR. Bailing to cleanup.**' \
   || fail "(G) macro body lacks non-conflict bail line"
 
 # ---------------------------------------------------------------------------

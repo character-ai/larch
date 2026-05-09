@@ -468,6 +468,43 @@ else
     fail "cap-hit path must not invoke the underlying Codex binary (count file written)"
 fi
 
+# --diff-file accept path: flag recognized (not "unknown flag").
+set +e
+"$LAUNCHER" --output "$TMPDIR/diff-file-accept.txt" --timeout 5 --prompt "x" \
+    --diff-file "/nonexistent/branch.diff" >/dev/null 2>"$TMPDIR/diff-file-accept.stderr"
+set -e
+if grep -Fq "unknown flag: --diff-file" "$TMPDIR/diff-file-accept.stderr" 2>/dev/null; then
+    fail "--diff-file flag not recognized by launch-codex-review.sh (got 'unknown flag' rejection)"
+else
+    pass
+fi
+
+# --diff-file specialist integration: when --agent-file + --diff-file are combined,
+# the rendered prompt references the diff file path and omits the 'git diff main...HEAD' instruction.
+DF_TMPFILE="$TMPDIR/test-branch.diff"
+printf 'diff --git a/foo.sh b/foo.sh\n--- a/foo.sh\n+++ b/foo.sh\n@@ -1 +1 @@\n-old\n+new\n' > "$DF_TMPFILE"
+DF_OUTPUT="$TMPDIR/codex-diff-file-specialist.txt"
+DF_ARGV="$TMPDIR/codex-diff-file-specialist-argv.log"
+DF_COUNT="$TMPDIR/codex-diff-file-specialist-count.txt"
+PATH="$STUB_BIN:$PATH" \
+    CODEX_STUB_ARGV_LOG="$DF_ARGV" \
+    CODEX_STUB_COUNT_FILE="$DF_COUNT" \
+    "$LAUNCHER" --output "$DF_OUTPUT" --timeout 5 \
+        --agent-file "$REPO_ROOT/agents/reviewer-structure.md" \
+        --mode diff \
+        --diff-file "$DF_TMPFILE" \
+        >/dev/null 2>"$TMPDIR/diff-file-specialist.stderr"
+if grep -Fq -- "$DF_TMPFILE" "$DF_ARGV" 2>/dev/null; then
+    pass
+else
+    fail "--diff-file specialist: diff file path must appear in rendered prompt argv"
+fi
+if grep -Fq -- "git diff main...HEAD" "$DF_ARGV" 2>/dev/null; then
+    fail "--diff-file specialist: 'git diff main...HEAD' must NOT appear when --diff-file is set"
+else
+    pass
+fi
+
 if (( FAIL > 0 )); then
     printf 'FAIL: test-launch-codex-review.sh - %s failed, %s passed\n' "$FAIL" "$PASS" >&2
     printf '  %s\n' "${FAILURES[@]}" >&2

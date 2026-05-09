@@ -133,6 +133,27 @@ for name in "${SPECIALISTS[@]}"; do
   assert_contains "${name}: output contains security" "security" "$output"
 done
 
+# 8. --diff-file flag: when provided, preamble references file path instead of instructing "Run git diff".
+TMPDIR_DIFFFILE=$(mktemp -d)
+SAMPLE_DIFF="$TMPDIR_DIFFFILE/branch.diff"
+printf 'diff --git a/foo.sh b/foo.sh\n--- a/foo.sh\n+++ b/foo.sh\n@@ -1 +1 @@\n-old\n+new\n' > "$SAMPLE_DIFF"
+output_with_diff=$(bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-structure.md" --mode diff --diff-file "$SAMPLE_DIFF" 2>/dev/null)
+if printf '%s' "$output_with_diff" | grep -qF "git diff main...HEAD"; then
+  FAIL=$((FAIL + 1))
+  echo "FAIL: --diff-file should suppress 'git diff main...HEAD' instruction" >&2
+else
+  PASS=$((PASS + 1))
+fi
+assert_contains "--diff-file: preamble references diff file path" "$SAMPLE_DIFF" "$output_with_diff"
+assert_contains "--diff-file: preamble mentions Read tool fallback" "Read tool" "$output_with_diff"
+assert_contains "--diff-file: focus-area tagging preserved" "code-quality / risk-integration / correctness / architecture / security" "$output_with_diff"
+# Without --diff-file, original "Run git diff" instruction is still present.
+output_no_diff=$(bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-structure.md" --mode diff 2>/dev/null)
+assert_contains "no --diff-file: original preamble still present" "git diff main...HEAD" "$output_no_diff"
+# --diff-file with nonexistent path must exit 2.
+assert_exit_code "--diff-file nonexistent path" "2" bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-structure.md" --mode diff --diff-file "/nonexistent/branch.diff"
+rm -rf "$TMPDIR_DIFFFILE"
+
 echo ""
 echo "render-specialist-prompt tests: $PASS passed, $FAIL failed"
 if [[ "$FAIL" -gt 0 ]]; then
