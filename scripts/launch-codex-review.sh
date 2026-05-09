@@ -234,8 +234,12 @@ if "$SCRIPT_DIR/agent-model-args.sh" --tool codex --with-effort > "$MODEL_ARGS_T
 else
     rc=$?
     _emit_timing_record "$rc"
-    _write_dirty_tree_sidecar
     rm -f "$MODEL_ARGS_TMP"
+    _codex_ma_dts_tmp="${OUTPUT}.dirty-tree.tmp.$$"
+    printf 'STATUS=unknown\nMODE=baseline\nUNTRACKED_BASELINE=missing\nREASON=model-args-preflight-no-agent-ran\n' \
+        > "$_codex_ma_dts_tmp" 2>/dev/null && \
+        mv -f "$_codex_ma_dts_tmp" "${OUTPUT}.dirty-tree" 2>/dev/null || \
+        rm -f "$_codex_ma_dts_tmp" 2>/dev/null || true
     : > "$OUTPUT" 2>/dev/null || true
     {
         printf 'STATUS=FAILED\n'
