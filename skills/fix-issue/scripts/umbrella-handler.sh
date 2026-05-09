@@ -121,11 +121,12 @@ source "$BLOCKER_HELPERS" || {
 # Helpers
 # ---------------------------------------------------------------------------
 
-# is_umbrella_title — return 0 if the title, after stripping zero or more
-# leading bracket-blocks of the form [...] and/or (...) (each with optional
-# surrounding whitespace), starts with "Umbrella: " or "Umbrella — "
-# (case-sensitive). The trailing space-or-em-dash distinguishes the marker
-# prefix from a leading word like "Umbrellas" or "Umbrella-Like".
+# is_umbrella_title — return 0 if the title satisfies either detection signal:
+# (1) any peeled [...]  block contains exactly "UMBRELLA" (case-sensitive); or
+# (2) after stripping all leading bracket-blocks of the form [...] and/or (...)
+# (each with optional surrounding whitespace), the remainder starts with
+# "Umbrella: " or "Umbrella — " (case-sensitive; trailing space/em-dash
+# distinguishes the marker from leading words like "Umbrellas").
 #
 # Grammar: an arbitrary sequence of `[...]` and `(...)` peeled left-to-right,
 # bounded by an iteration cap of 16 (defensive guard against pathological
