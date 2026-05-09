@@ -13,10 +13,10 @@
 **Pinned production filter**:
 
 ```jq
-select((.title // "" | ascii_downcase | sub("^[[:space:]]+"; "")) as $t | (($t | startswith("research ")) or ($t | startswith("[research] ")) or ($t | startswith("investigate ")) or ($t | startswith("[investigate] ")) or ($t | startswith("[research report] "))) | not)
+select((.title // "" | ascii_downcase | sub("^[[:space:]]+"; "")) as $t | (($t | startswith("research ")) or ($t | startswith("[research] ")) or ($t | startswith("investigate ")) or ($t | startswith("[investigate] ")) or ($t | test("^\\[.*report\\] "))) | not)
 ```
 
-The pinned skip prefixes are <code>research </code>, <code>[research] </code>, <code>investigate </code>, <code>[investigate] </code>, and <code>[research report] </code> — each requires an ASCII space immediately following the keyword (closes #1063). Substring-prefix collisions like `Researcher settings` (no space after `research`) and the exact token `[research]` (no space after `]`) are intentionally NOT archival and pass through Phase 1 dedup. `Research Report no brackets` is still filtered because the lowercased title starts with <code>research </code> (research + space).
+The pinned skip prefixes are <code>research </code>, <code>[research] </code>, <code>investigate </code>, <code>[investigate] </code>, and any `[* report]` pattern followed by a space (e.g. `[research report]`, `[analysis report]`, `[perf report]`) — each requires an ASCII space immediately following the closing bracket (closes #1063). The last clause uses a jq `test` regex rather than a fixed `startswith` so that any bracketed title ending in "report" is excluded without listing each variant. Substring-prefix collisions like `Researcher settings` (no space after `research`) and the exact token `[research]` (no space after `]`) are intentionally NOT archival and pass through Phase 1 dedup. `Research Report no brackets` is still filtered because the lowercased title starts with <code>research </code> (research + space).
 
 **Fixture shape**: `fixtures/list-issues/page1.json` and `fixtures/list-issues/page2.json` are JSON arrays matching the GitHub REST `repos/.../issues` response shape. The harness concatenates them with no separator to exercise jq's multi-document input behavior used with `gh api --paginate`.
 
@@ -32,7 +32,7 @@ The pinned skip prefixes are <code>research </code>, <code>[research] </code>, <
 
 - Any change to `DEDUP_SKIP_PREFIX_FILTER` in `list-issues.sh` must update the fixture matrix and expected TSV rows here.
 - Any change to either `JQ_FILTER` assignment in `list-issues.sh` must update this harness if emitted fields, state filtering, PR filtering, closed-window filtering, or TSV shaping changes.
-- Any change to the five-prefix skip list must update production and the fixture rows together.
+- Any change to the prefix skip list must update production and the fixture rows together.
 - Any change to the `gsub` set must update the production line, the escaped-control-character fixture row, and the expected TSV value.
 
 **Execution**: `bash skills/issue/scripts/test-list-issues.sh` exits 0 on success and 1 on any failure. Wired into `make lint` via `test-list-issues`, which is included in the `test-harnesses` aggregate through `test-harnesses-2`.

@@ -932,6 +932,8 @@ run_fixture "fixture-14"
 {"number":102,"title":"Investigate flaky hook"}
 {"number":103,"title":"[Investigate] old branch cleanup"}
 {"number":104,"title":"[Research Report] queue audit"}
+{"number":107,"title":"[Analysis Report] perf summary"}
+{"number":108,"title":"[Perf Report] 2025 results"}
 {"number":105,"title":"Researches went for a walk"}
 {"number":106,"title":"Investigation of slow query"}'
     printf "OPEN_ISSUES_JSON='%s'\n" "$OPEN_ISSUES_LINES"
@@ -958,6 +960,8 @@ assert_contains "$ERR" "Skipping issue #101: archival title prefix" "[14] bracke
 assert_contains "$ERR" "Skipping issue #102: archival title prefix" "[14] bare Investigate prefix skipped"
 assert_contains "$ERR" "Skipping issue #103: archival title prefix" "[14] bracketed Investigate prefix skipped"
 assert_contains "$ERR" "Skipping issue #104: archival title prefix" "[14] Research Report prefix skipped"
+assert_contains "$ERR" "Skipping issue #107: archival title prefix" "[14] Analysis Report prefix skipped"
+assert_contains "$ERR" "Skipping issue #108: archival title prefix" "[14] Perf Report prefix skipped"
 assert_not_contains "$ERR" "Skipping issue #105: archival title prefix" "[14] Researches collision is not archival-skipped"
 assert_not_contains "$ERR" "Skipping issue #106: archival title prefix" "[14] Investigation collision is not archival-skipped"
 
