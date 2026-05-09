@@ -57,8 +57,6 @@ write_state() {
         printf 'REPO=owner/repo\n'
         printf 'DRAFT=false\n'
         printf 'MERGE=false\n'
-        printf 'SLACK_ENABLED=false\n'
-        printf 'SLACK_AVAILABLE=false\n'
         printf 'DEFERRED=false\n'
         printf 'REPO_UNAVAILABLE=true\n'
         printf 'PR_CLOSED=false\n'

@@ -131,7 +131,7 @@ Step Name Registry:
 Run the shared session setup script:
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix claude-research --skip-preflight --skip-branch-check --skip-slack-check --skip-repo-check --check-reviewers
+${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix claude-research --skip-preflight --skip-branch-check --skip-repo-check --check-reviewers
 ```
 
 If the script exits non-zero, print the error and abort.

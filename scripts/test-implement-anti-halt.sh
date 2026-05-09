@@ -47,8 +47,7 @@ check_contains "Step 7a to Step 8 reminder" "skills/implement/SKILL.md" "Continu
 check_contains "Step 12d to Step 14 reminder (bail path)" "skills/implement/SKILL.md" "Step 12d bail is not terminal"
 check_contains "Step 14 to Step 15 reminder" "skills/implement/SKILL.md" "Continue to Step 15."
 check_contains "Step 15 to Step 16 reminder" "skills/implement/SKILL.md" "Continue to Step 16."
-check_contains "Step 16 to Step 16a reminder" "skills/implement/SKILL.md" "Continue to Step 16a."
-check_contains "Step 16a to Step 17 reminder" "skills/implement/SKILL.md" "Continue to Step 17."
+check_contains "Step 16 to Step 17 reminder" "skills/implement/SKILL.md" "Continue to Step 17."
 check_contains "Step 17 to Step 18 reminder" "skills/implement/SKILL.md" "Continue to Step 18."
 check_contains "Shared SSOT section" "skills/shared/subskill-invocation.md" "Step-boundary anti-halt"
 
@@ -60,8 +59,7 @@ check_contains "/design Step 4 to Step 5 reminder" "skills/design/SKILL.md" "Con
 
 echo ""
 echo "--- /fix-issue step-boundary anti-halt coverage ---"
-check_contains "/fix-issue Step 6 to Step 7 reminder" "skills/fix-issue/SKILL.md" "Closing the issue is not terminal"
-check_contains "/fix-issue Step 7 to Step 8 reminder" "skills/fix-issue/SKILL.md" "Continue to Step 8 IMMEDIATELY"
+check_contains "/fix-issue Step 6 to Step 8 reminder" "skills/fix-issue/SKILL.md" "Continue to Step 8 IMMEDIATELY"
 
 echo ""
 echo "--- /review step-boundary anti-halt coverage ---"

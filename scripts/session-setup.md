@@ -1,6 +1,6 @@
 # scripts/session-setup.sh — contract
 
-Shared setup wrapper for larch skills. It creates a fresh session tmpdir, optionally runs preflight, Slack and repo discovery, reviewer health probes, and can write a session-env file plus a `.health` sidecar.
+Shared setup wrapper for larch skills. It creates a fresh session tmpdir, optionally runs preflight and repo discovery, reviewer health probes, and can write a session-env file plus a `.health` sidecar.
 
 Session tmpdirs are named `${XDG_CACHE_HOME:-$HOME/.cache}/larch/sessions/<prefix>-<clone-tag>-XXXXXX`, where
 `<clone-tag>` is the current working directory basename with every character
@@ -29,7 +29,7 @@ advisory; write failures warn on stderr and do not abort setup.
 
 ## Session-env contract
 
-Recognized caller-env keys are `SLACK_OK`, `SLACK_MISSING`, `REPO`, `REPO_UNAVAILABLE`, `CODEX_HEALTHY`, `CURSOR_HEALTHY`, `GEMINI_HEALTHY`, `LARCH_TOKEN_SESSION_ID`, `LARCH_CLAUDE_SOURCE_FILE`, and `LARCH_TIMING_LEDGER`. The file is parsed line-by-line and never sourced.
+Recognized caller-env keys are `REPO`, `REPO_UNAVAILABLE`, `CODEX_HEALTHY`, `CURSOR_HEALTHY`, `GEMINI_HEALTHY`, `LARCH_TOKEN_SESSION_ID`, `LARCH_CLAUDE_SOURCE_FILE`, and `LARCH_TIMING_LEDGER`. The file is parsed line-by-line and never sourced.
 
 `LARCH_TOKEN_SESSION_ID`, `LARCH_CLAUDE_SOURCE_FILE`, and `LARCH_TIMING_LEDGER` are pass-through telemetry context for nested skills. `/implement` establishes them from its own session tmpdir, `/review` inherits them when invoked with `--session-env`, and standalone `/review` leaves them absent so token-ledger fallback behavior remains unchanged. `LARCH_TIMING_LEDGER` is validated against the timing-ledger containment roots before `session-setup.sh` forwards it to `write-session-env.sh`.
 

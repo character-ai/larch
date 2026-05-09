@@ -433,10 +433,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Make Slack notifications opt-in through `--slack` across `/implement` and downstream delegators. `/implement` now defaults `slack_enabled=false`; passing `--slack` explicitly opts in. The legacy `--no-slack` flag is removed; existing scripts and aliases that pass it must be updated. `/fix-issue`, `/alias`, `/create-skill`, `/compress-skill`, and `/simplify-skill` rename their `--no-slack` flag to `--slack` symmetrically and forward it to the delegated `/implement` run only when explicitly opted in. **BREAKING**: users who depended on default-on Slack must add `--slack` to their invocations.
-- Update `/create-skill` parser output to expose positive `SLACK=true|false` semantics and reject the legacy opt-out flag. `skills/create-skill/scripts/parse-args.sh` now parses `--slack`, emits `SLACK=true|false`, and rejects `--no-slack` with a hard `Unknown flag` error. Regression harness `scripts/test-parse-args.sh` was inverted: `--slack` is accepted; `--no-slack` is rejected.
-- Align docs, security guidance, and focused regression harnesses with Slack-off-by-default behavior. Updates `README.md`, `docs/configuration-and-permissions.md`, `docs/installation-and-setup.md`, `docs/skills.md`, `docs/workflow-lifecycle.md`, `SECURITY.md`, and `agent-lint.toml` to describe the new opt-in default. The `scripts/implement-finalize.sh` Step 16a skip breadcrumb now reads `⏭️ 16a: slack issue post — skipped (--slack not set)` when `SLACK_ENABLED=false`, with `scripts/test-implement-finalize.sh` updated accordingly.
-
 ### Fixed
 
 - `scripts/lint-mermaid-fences.sh` now passes `--no-sandbox` and `--disable-setuid-sandbox` to Chromium via a repo-pinned Puppeteer config (`scripts/lint-mermaid-puppeteer.json`) so the SVG-render fallback launches on Ubuntu 23.10+ runners with restricted unprivileged user namespaces. Previously CI (`Lint Mermaid fences (changed only)`) failed before any Mermaid syntax check on PRs touching `.md` files containing fences. Also fixes pre-existing `lint-mermaid-fences` failures in `docs/workflow-lifecycle.md` (parser choking on literal `(...)` text in pipe edge labels).
@@ -474,8 +470,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [15.15.0] - 2026-05-08
 
 ### Added
-
-- Resolve #1415: `/implement --forked` flag for fork-CI dry-runs. When contributing to an open-source repo via the fork-based PR workflow, `--forked` redirects the entire `/implement` run to target the contributor's fork (`origin`), opens the PR in the fork (`fork:branch → fork:main`), waits for the initial CI run on the fork PR, and stops with a copy-pasteable `gh pr create --repo <upstream> --base main --head <fork-owner>:<branch>` command for the contributor to land upstream by hand. Mutually exclusive with `--merge`; allowed with `--draft`, `--design-only`, `--quick`, `--auto`, `--issue`, `--coder=...`. Under `--forked` the orchestrator skips `/bump-version`, the CHANGELOG amend, the Step 0.5 tracking-issue lifecycle, the Step 9a.1 OOS issue creation, the Step 11 anchor refresh, and Step 16a Slack — all OOS findings are emitted as final-report text only, no GitHub-side persistence. New helpers under `scripts/`: `implement-fork-env.sh` (single permitted pre-Step-0 helper that allocates its own bootstrap tmpdir, parses `origin`/`upstream` via `github-remote-repo.sh`, writes `caller-env.sh`, and emits `BOOTSTRAP_TMPDIR`/`CALLER_ENV_PATH` plus fork metadata on stdout), `github-remote-repo.sh` (SSH/HTTPS GitHub URL parser with HTTPS userinfo redaction), `get-issue-context.sh` (upstream-issue body/title fetcher used by `--forked --issue N` to read FEATURE_DESCRIPTION while leaving the upstream issue untouched). Existing helpers `create-pr.sh` and `gh-pr-body-update.sh` accept `--repo` and thread it through every `gh pr view`/`pr create`/`pr edit`; `rebase-push.sh` accepts `--base-remote`/`--base-ref` (defaults preserve `origin/main`); `ci-status.sh` accepts `--empty-checks-grace` and emits a new `STATUS=NO_CHECKS` exit when the fork has no checks after the grace period; `ci-wait.sh` recognizes `NO_CHECKS` and exits the wait loop without burning the full timeout. Plan-review-driven hardening: Step 10's `ACTION=rebase`/`rebase_then_evaluate` carry an explicit `forked_target=true` carve-out that runs plain `rebase-push.sh` against `upstream/main` and re-invokes `ci-wait.sh` directly, never entering the Rebase + Re-bump Sub-procedure (which fork mode forbids). Five new offline regression harnesses under `scripts/test-*` cover all new helpers and the new flags on existing helpers; `scripts/test-implement-structure.sh` assertion (25-fork) now pins the no-`--tmpdir` invocation form, the absence of the old `--tmpdir "$IMPLEMENT_TMPDIR"` form (which would expand to an empty path), and the `CALLER_ENV_PATH` capture. Pairs with the just-landed `/set-up-forked-open-source-repo` skill (#1414); together they cover the fork-PR contribution workflow end-to-end.
 
 ## [15.14.0] - 2026-05-07
 
@@ -708,10 +702,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Structural hardening for `/implement` session tmpdirs (closes #1339, on top of #1333). Adds a shared `scripts/redact-tmpdir-paths.sh` helper that rewrites larch session-tmpdir literals to `<TMPDIR>` and chains it before `redact-secrets.sh` at every remote-publishing site (`tracking-issue-write.sh`, `post-slack-message.sh`, `create-pr.sh`) so per-session paths never leak into tracking-issue comments, anchor sections, PR bodies, or Slack payloads.
 - `scripts/session-setup.sh` now creates session tmpdirs under `${XDG_CACHE_HOME:-$HOME/.cache}/larch/sessions/<prefix>-<clone-tag>-XXXXXX` (with a `/tmp` fallback when the cache root is unwritable), writes `$SESSION_TMPDIR/.larch-keepalive` (PID/PPID/CLONE_PATH/SESSION_ID/PREFIX/CREATED + ext-cleaners-please-skip note), and emits `SESSION_ID=<value>` on stdout. `scripts/write-session-id.sh` is now idempotent — if the target file already has content (from session-setup.sh) it returns 0 without rewriting.
 - Path validators in `scripts/cleanup-tmpdir.sh`, `scripts/implement-finalize.sh` `is_tmp_path`, and `scripts/token-tally.sh` `validate_dir` accept the new cache-sessions root in addition to `/tmp/` and `/private/tmp/`.
-- `scripts/implement-finalize.sh teardown` adds a `verify_cleanup_target()` sanity check that runs before `cleanup-tmpdir.sh`: validates the basename starts with the expected `claude-implement-<clone-tag>-` prefix and that `cat $IMPLEMENT_TMPDIR/session-id` matches `EXPECTED_SESSION_ID` from the state file. On mismatch, appends a Tool Failures entry, emits the documented refusal warning, skips the `rm -rf`, and continues Step 18's remaining responsibilities (rename, Slack, breadcrumb). Step 14's `finalize-state.sh` write now records `EXPECTED_SESSION_ID` and `EXPECTED_TMPDIR_BASENAME_PREFIX`.
 - New regression harnesses (38 assertions): `scripts/test-redact-tmpdir-paths.sh`, `scripts/test-keepalive-sentinel.sh`, `scripts/test-cache-root-validation.sh`, `scripts/test-finalize-sanity-check.sh`. Wired through `make` targets and `test-harnesses-6`.
 
 ## [15.12.52] - 2026-05-06
@@ -1107,8 +1099,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Document Gemini optional integration semantics alongside Codex and Cursor in `docs/installation-and-setup.md`'s "Optional integrations" subsection (closes #1169). Also rewords the section lead-in away from the universal "Claude replacement agents fill in automatically" framing — accurate for Codex/Cursor only — to "Fallback behavior varies by tool — see each bullet below," reflecting that Gemini is additive (skipped when unavailable) and Slack silently skips per its own bullet's contract.
-
 ## [15.11.16] - 2026-05-05
 
 ### Changed
@@ -1138,8 +1128,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [15.11.12] - 2026-05-05
 
 ### Changed
-
-- Consolidate the mechanical bash work of `/implement` Steps 14, 15, 16a, and 18 into a new `scripts/implement-finalize.sh` with `postmerge`, `slack`, and `teardown` subcommands (closes #1134). Session state is passed via a single `$IMPLEMENT_TMPDIR/finalize-state.sh` KEY=value file (read via `awk`, never sourced — no shell-injection surface) plus a separate `--final-bail-reason-file` to keep multi-line bail text off `argv` and out of `ps` listings. `skills/implement/SKILL.md` drops three open-coded leaf-script invocations and the Step 18 Branch A/B/C rename selector in favor of three finalizer subcommand calls; prompt-only Steps 16, 17, and the Step 18 epilogue stay in SKILL.md so model-owned UX copy is not relocated into shell. Adds `scripts/implement-finalize.md` as the SSOT contract, `scripts/test-implement-finalize.sh` as an offline harness with sandbox-copied stub leaf scripts (no live `git`/`gh` calls), and `agent-lint.toml` + Makefile (`test-harnesses-5`) wiring.
 
 ## [15.11.11] - 2026-05-05
 
@@ -1221,8 +1209,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [15.10.11] - 2026-05-05
 
 ### Changed
-
-- Fortify `/implement` against unexpected halts at the post-merge boundary (`closes #1132`). The `✅ 12: CI+merge loop — PR #<N> merged!` line is the highest-stakes natural-feeling completion point in the orchestrator — every other step boundary already had an inline `> **Continue to Step N.**` reminder, but the post-merge moment uniquely lacked one. Adds three reinforcing reminders to `skills/implement/SKILL.md`: (a) the `ACTION=already_merged` branch in Step 12a now ends with an inline continuation reminder listing Steps 14, 15, 16, 16a, 17, 18; (b) Step 12b's post-merge path now carries a strong block-quote reminder right after "Save expected commit title for Step 15" calling out `pr_closed=true` / `DONE_RENAME_APPLIED=true` as PRE-conditions for Steps 14–18, not POST-conditions of a finished run; (c) NEVER #7 gets a post-merge sub-clause naming the merge breadcrumb as the highest-stakes halt boundary, with the explicit reasoning that halting before Step 16a means the Slack announcement never fires. Also widens NEVER #7's "between Step 1 and Step 17" range to "Step 1 and Step 18" so the opening clause matches the new sub-clause's through-Step-18 scope. Prose-only change; no script or workflow behavior altered.
 
 ## [15.10.10] - 2026-05-05
 
@@ -1515,7 +1501,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `/implement --design-only`: a new flag that runs Steps 0 / 0.5 / 1 (design + plan + plan-review + diagrams + OOS), publishes all artifacts to the tracking issue's anchor comment, marks the issue `[DONE]`, and stops without implementation, review, version bump, PR creation, CI, or merge. Mutually exclusive with `--merge` and `--quick`. The tracking issue URL is the deliverable. Step 16a posts a 🧭 design-complete Slack status; Step 18 prints a design-only PR-reminder branch instead of falsely claiming a PR exists. (Closes #984.)
 - File-backed `/design` → `/implement` handoff. New `skills/design/scripts/write-design-manifest.sh` exports plan / plan-review tally / contested-decisions / OOS / rejected findings / accepted findings (and optional architecture diagram) into `$IMPLEMENT_TMPDIR/design-export/` with a KV manifest at `manifest.env`; `skills/design/scripts/read-design-manifest.sh` parses + verifies the manifest in `/implement` Step 1 (no `source`/`eval`; rejects malformed keys, control characters / NUL, non-absolute paths, symlinks, paths outside `design-export/`, and duplicate load-bearing keys with `ERROR=duplicate-key:<KEY>`; emits `MANIFEST_OK=true` only after every path validation succeeds; ERR-trapped to preserve the "always exits 0 with envelope" contract). The writer canonicalizes both tmpdirs, rejects symlinked source artifacts (and any source resolving outside `$DESIGN_TMPDIR`), strips C0/DEL controls from `SESSION_ID`, and stages all artifacts to a fresh sibling tmpdir + poisons the live manifest before atomic per-file `mv` to eliminate mixed-vintage exports on partial-rerun failure.
 - `/implement` Step 1 manifest reuse: when a session-bound, valid manifest already exists (matched by `SESSION_ID` equality alone — `TIMESTAMP` is informational), `/implement` reuses it and hydrates ALL file variables (`PLAN_FILE`, `PLAN_REVIEW_TALLY_FILE`, `CONTESTED_CRITERIA_FILE`, `OOS_FILE`, `REJECTED_FINDINGS_FILE`, `ACCEPTED_PLAN_FINDINGS_FILE`, `ARCHITECTURE_DIAGRAM_FILE`) without re-spawning `/design`.
 - `skills/design/references/heavy-worker.md`: subagent runbook that the nested `/design` heavy phase delegates to (sketches + plan + plan-review under an isolated Agent-tool context). The main `/implement` context receives only `DESIGN_HEAVY=complete` (or `failed REASON=<token>`), saving ≈100–300K tokens per nested run. Required Reads use `${CLAUDE_PLUGIN_ROOT}/…` so the subagent loads from the shipped plugin tree regardless of consumer-repo CWD.
@@ -1527,7 +1512,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `/implement` Step 0 `uuidgen` snippet is now a self-contained Bash block with a `command -v uuidgen` guard + basename fallback so hosts without `uuidgen` no longer exit non-zero before the prose-only fallback ever runs.
 - `/implement` Step 18 PR-reminder block now branches on `DESIGN_ONLY_DONE=true` first so design-only runs no longer claim a draft or unmerged PR exists.
-- `/implement` Step 16a Slack outcome state machine adds `RUN_OUTCOME=design-only` (🧭 design complete); `scripts/post-issue-slack.sh` learns a matching `--status design-only` enum and validates `--pr-url` against an https + GHE-port-aware regex before embedding into Slack mrkdwn (degrades to plain status on validation failure).
 - `/implement` Step 1 anchor-comment template clarification: `PLAN_FILE` is the plan body; the `## Implementation Plan` / `## Goal` / `## Test plan` headings are fragment-level wrapping, not requirements on the source file.
 - `/design` Step 5 cleanup now gates `cleanup-tmpdir.sh` on a `MANIFEST_EXPORT_OK` flag so a manifest-export failure preserves `$DESIGN_TMPDIR` for parent inspection. `/design` `Finalize Plan Review` bullets 1 + 3 now branch on `SESSION_ENV_PATH` so nested runs no longer push voted-in findings + revised plan back into the parent context.
 - Anchor-comment template `Step 9a.1 OOS pipeline` documents that any of the three `oos-accepted-*.md` artifact files MAY be missing — missing-file is treated as empty (no entries from that phase), not as an error.
@@ -2039,8 +2023,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [7.17.18] - 2026-04-27
 
 ### Fixed
-
-- `scripts/post-issue-slack.md` — refreshed stale call-site step numbers to match the current `/fix-issue` SKILL.md numbering: not-material close moved from Step 4 to Step 3 (triage sub-flow), NON_PR Slack announce moved from Step 8b to Step 7b, and the PR-path Slack-skip note moved from Step 8a to Step 7. Mechanical text-only fix; no behavior change. Closes #751.
 
 ## [7.17.17] - 2026-04-27
 
@@ -2719,8 +2701,6 @@ Supersedes #731 (paginate the back-link's `gh api blocked_by` call) — that cod
 
 ### Changed
 
-- Broaden `/fix-issue` SKILL.md top-of-file Anti-halt continuation reminder to cover Bash tool calls in addition to child Skill tool calls. Production runs were observed halting after Bash returns in the terminal Step 6 → Step 7 → Step 8 sequence (which runs entirely on Bash invocations into `issue-lifecycle.sh`, `tracking-issue-write.sh`, `post-issue-slack.sh`, and `cleanup-tmpdir.sh`, with no intervening Skill tool call); the same gap applied to Step 3's not-material closure flow and the Step 6b → Step 7b → Step 8 NON_PR close path. The broadened rule names the canonical `/fix-issue` script set as the always-covered minimum and extends uniformly to any Bash tool call invoked as part of a `/fix-issue` step's primary work (including Step 5b's inline `gh` queries and ad-hoc Bash). The shared canonical rule at `skills/shared/subskill-invocation.md` remains scoped to Skill tool calls only — the broader Bash-call coverage is `/fix-issue`-local. `scripts/test-fix-issue-step-order.sh` adds a 13th preamble-scoped assertion pinning the literal broadening token `child Bash tool calls into the canonical` (closes #530).
-
 ## [7.9.0] - 2026-04-25
 
 ### Added
@@ -2983,8 +2963,6 @@ Supersedes #731 (paginate the back-link's `gh api blocked_by` call) — that cod
 
 ### Changed
 
-- `/fix-issue` defers session setup until after `fetch-eligible-issue.sh` finds an eligible issue (issue #437). Previously Step 0 (setup) created a tmpdir, derived `REPO` via `gh repo view`, checked Slack config, and wrote `session-env.sh` unconditionally; when the subsequent fetch returned no eligible issue (the common cron-style invocation outcome), all of that work was wasted. Step 0 is now `Fetch Eligible Issue` and Step 1 is `Setup`; on `fetch-eligible-issue.sh` exit 1 / 2+, the skill skips directly to Step 9 with `FIX_ISSUE_TMPDIR` unset. Step 1 sets `FIX_ISSUE_TMPDIR=$SESSION_TMPDIR` immediately after parsing — before any abort branch — so a post-mktemp setup failure (e.g., `REPO_UNAVAILABLE=true`) still cleans up. Step 9 cleanup is now gated on `FIX_ISSUE_TMPDIR` being non-empty; the no-tmpdir path emits `⏭️ 9: cleanup — skipped (no temp dir created)` and proceeds to the standard completion breadcrumb. In-body breadcrumb literals in the new Step 0 fetch body renamed from `1: fetch issue` → `0: fetch issue` to match the swapped Step Name Registry. Cross-reference touch-ups: anti-pattern #1, positional-argument flag prose, Step 4 'Do NOT load' gate, Known Limitations blocked-by line, plus `skills/shared/subskill-invocation.md` and `skills/fix-issue/references/triage-classification.md`. Test-harness pins (`### 6a`, `## Step 7`, `Skip to Step 9`) unaffected — `test-fix-issue-bail-detection.sh` still passes 6/6 assertions. A follow-up `fetch → lock → setup` reorder (raised by Codex during plan review) was filed as a separate issue rather than expanded into this PR's scope.
-
 ## [7.3.1] - 2026-04-25
 
 ### Fixed
@@ -3104,22 +3082,12 @@ Supersedes #731 (paginate the back-link's `gh api blocked_by` call) — that cod
 
 ### Changed
 
-- **BREAKING**: Rename `/implement`'s `--slack` flag to `--no-slack` and invert the default. Slack posting is now **on by default** when `LARCH_SLACK_BOT_TOKEN` and `LARCH_SLACK_CHANNEL_ID` are configured; pass `--no-slack` to opt out. The old `--slack` flag is rejected (no deprecation shim — existing aliases that embed `--slack` must be updated).
-- **BREAKING**: Remove all PR Slack posting. `/implement` no longer posts about the PR at Step 11 and no longer adds a `:merged:` emoji at Step 13 (both deleted). Replaced with a single **tracking-issue** Slack post at new Step 16a near the end of each run. Message body is a one-liner: `<emoji> <https://github.com/$REPO/issues/$N|Issue #$N> (<title>) — <status>[ — <detail>]`. Emoji: ✅ closed (PR merged and issue auto-closed via `Closes #N`), 📝 PR opened but not merged (`--merge` not set or `--draft`), ❌ blocked (CI failure, merge failure, Step 12d bail for non-user-input reason), ❓ needs user input (auto-mode conflict-resolution bail under `auto_mode=true`). `Issue #N` is a clickable GitHub link. The post identifies as the git user (`git config user.name` → Slack `chat.postMessage` `username` field), matching the identity the deleted PR-announce path used — not as the bot's display name.
-- `/fix-issue` drops its own Slack post on the PR path (Step 8a deleted) — the delegated `/implement` run handles the Slack post via its Step 16a. The NON_PR path (Step 8b) still posts directly, now via the new shared `scripts/post-issue-slack.sh` and now gated on `--no-slack` in addition to `slack_available`. `/fix-issue` accepts `--no-slack` and forwards it to `/implement`.
-- All downstream skills that forward the flag renamed `--slack` → `--no-slack`: `/alias` (dual-role preserved with the new name), `/simplify-skill`, `/compress-skill`, `/create-skill` (`SLACK=true|false` output key renamed to `NO_SLACK=true|false` in `scripts/parse-args.sh`), `/loop-improve-skill`, `/improve-skill`. Driver scripts updated: `skills/loop-improve-skill/scripts/driver.sh`, `skills/improve-skill/scripts/iteration.sh`.
-- `scripts/post-issue-slack.sh` (new, at repo-root `scripts/`): thin composer that accepts `--issue-number --status --repo [--pr-url] [--detail] --token --channel-id`. Fetches issue title and URL via `gh issue view --repo` (scoped to the caller-supplied repo so gh's default-repo context cannot fetch the wrong issue). Falls back to `gh repo view --json url` to derive the GHE-safe host before hardcoding github.com. Escapes mrkdwn-reserved characters in both title and detail. Delegates the API call to `scripts/post-slack-message.sh --username "$(git config user.name)"`. Sibling contract at `scripts/post-issue-slack.md` documents the interface, invariants, and edit-in-sync triggers.
-- `/implement` Step 12 now sets `pr_closed=true` on merge success (both Step 12b `MERGE_RESULT in (merged, admin_merged)` and `ACTION=already_merged`) so Step 16a's outcome state machine classifies externally-merged PRs as `closed` instead of `blocked`. Step 12d persists `FINAL_BAIL_REASON` into parent scope so the state machine has the bail reason available as the `--detail` tail.
-- `/implement` conflict-resolution procedure Phase 2 sets `BAIL_NEEDS_USER_INPUT=true` when bailing under `auto_mode=true` due to low confidence. Step 16a's state machine checks this flag (not a free-form BAIL_REASON grep) to emit the ❓ emoji.
+- `/implement` Step 12 now sets `pr_closed=true` on merge success (both Step 12b `MERGE_RESULT in (merged, admin_merged)` and `ACTION=already_merged`) so final outcome state classifies externally-merged PRs as `closed` instead of `blocked`. Step 12d persists `FINAL_BAIL_REASON` into parent scope so the state machine has the bail reason available as the `--detail` tail.
+- `/implement` conflict-resolution procedure Phase 2 sets `BAIL_NEEDS_USER_INPUT=true` when bailing under `auto_mode=true` due to low confidence. final state machine checks this flag (not a free-form BAIL_REASON grep) to emit the ❓ emoji.
 
 ### Removed
 
-- Scripts deleted as unused after the refactor: `scripts/post-pr-announce.sh`, `scripts/slack-announce.sh`, `scripts/post-merged-emoji.sh`, `scripts/add-merged-emoji.sh`, `scripts/add-slack-emoji.sh`, `scripts/parse-pr-summary.sh`, `skills/fix-issue/scripts/post-issue-slack.sh` (replaced by the repo-root version).
-- `LARCH_SLACK_USER_ID` env var and `slack_user_id` userConfig entry removed — they were only used for `@-mentioning` in the deleted PR-announce message. `scripts/session-setup.sh` stops exporting `LARCH_SLACK_USER_ID` from `CLAUDE_PLUGIN_OPTION_SLACK_USER_ID`.
-
 ### Added
-
-- `scripts/test-parse-args.sh` (new harness): 19 tests pinning the `skills/create-skill/scripts/parse-args.sh` stdout grammar (new `NO_SLACK` key), flag list, and error-message format. Wired into `make lint` via `Makefile` `test-parse-args` target + `test-harnesses` aggregate. Sibling `scripts/test-parse-args.md` contract.
 
 ## [6.3.1] - 2026-04-24
 
@@ -3142,8 +3110,6 @@ Supersedes #731 (paginate the back-link's `gh api blocked_by` call) — that cod
 ## [6.2.14] - 2026-04-23
 
 ### Changed
-
-- Remove `--auto` from the two `/implement` invocation examples in `skills/fix-issue/SKILL.md` Step 6a (closes #389). Both SIMPLE and HARD delegation paths now invoke `/implement` without `--auto`; all other flags (`--quick` on SIMPLE, `--merge`, `--session-env`, `--issue`, conditional `--slack`/`--debug`) and the `<feature description>` positional arg are unchanged. Surgical two-token prose edit; no behaviour gated on `--auto` elsewhere in `/fix-issue` was affected.
 
 ## [6.2.13] - 2026-04-23
 
@@ -3320,8 +3286,6 @@ Supersedes #731 (paginate the back-link's `gh api blocked_by` call) — that cod
 
 ### Added
 
-- `--slack` opt-in flag forwarded to `/implement` from every skill that invokes it: `/fix-issue`, `/simplify-skill`, `/compress-skill`, `/create-skill`, `/alias`, and `/loop-improve-skill`. Each skill accepts `--slack` and threads it through to its `/implement` (or `/im` / `/imaq`) invocation; without `--slack`, the delegated run does not post to Slack regardless of Slack env-var presence. `/alias` treats `--slack` as a dual-role flag (consumed when before the first positional, passed through verbatim as a preset flag afterwards), matching the pre-existing `--merge` dual-role. `/loop-improve-skill` propagates `--slack` to every iteration's `/larch:im` prompt, so an opt-in loop can post up to 10 Slack announcements. `/create-skill`'s `parse-args.sh` now emits `SLACK=true|false` alongside the existing output keys; a new sibling contract `skills/create-skill/scripts/parse-args.md` documents the stdout grammar, error contract, and edit-in-sync obligations per AGENTS.md. `README.md` and `docs/workflow-lifecycle.md` updated (flag table, Slash Commands rows, Standalone Usage bullets).
-
 ## [6.0.10] - 2026-04-23
 
 ### Changed
@@ -3385,8 +3349,6 @@ Supersedes #731 (paginate the back-link's `gh api blocked_by` call) — that cod
 ## [6.0.0] - 2026-04-23
 
 ### Changed
-
-- **BREAKING:** `/implement` Slack posting is now opt-in. Added `--slack` flag to `skills/implement/SKILL.md`; default is `slack_enabled=false`. Step 11 (PR announcement) and Step 13 (`:merged:` emoji) now skip Slack API calls unless `--slack` is passed, even when `LARCH_SLACK_BOT_TOKEN` and `LARCH_SLACK_CHANNEL_ID` are present. When `--slack` is passed but env vars are missing, the session-setup warning still prints; when `--slack` is omitted, no warning is printed. Consumers who previously relied on auto-posting based on env-var presence alone must now add `--slack` to their invocations. README.md and `docs/workflow-lifecycle.md` updated to document the new flag and opt-in semantics; the workflow-lifecycle mermaid diagram annotates Slack/`:merged:` nodes as conditional on `--slack`.
 
 ## [5.2.9] - 2026-04-23
 
@@ -3683,8 +3645,6 @@ Supersedes #731 (paginate the back-link's `gh api blocked_by` call) — that cod
 
 ### Changed
 
-- `/implement` — expand `description:` frontmatter with explicit trigger scenarios ("ship X", "land PR", "merge this"), keywords (CI-green squash-merge, version bump, Slack), and negative-space sibling pointers (`/research` read-only, `/design` plan, `/im` merge, `/imaq` auto-merge) to improve discoverability and disambiguate vs sibling skills. Stays within the 250-character S015 cap and preserves the "Use when..." trigger pattern required by agent-lint S017. `argument-hint:` and body retain full flag semantics (`--merge`, `--draft`). Closes #233 (follow-up to #227 / PR #229). No runtime behavior change.
-
 ## [4.2.10] - 2026-04-20
 
 ### Changed
@@ -3791,8 +3751,6 @@ Supersedes #731 (paginate the back-link's `gh api blocked_by` call) — that cod
 ## [4.0.19] - 2026-04-19
 
 ### Changed
-
-- `skills/fix-issue/SKILL.md` — Step 5 now classifies each eligible issue along two independent dimensions: **intent** (PR-producing vs. non-PR task) and, only when `INTENT=PR`, complexity (SIMPLE vs. HARD). Step 6 branches on intent: `PR` delegates to `/implement` as before; `NON_PR` follows the issue's instructions inline using Read/Grep/Glob/Bash and `/issue` (batch mode for multi-issue output, with the `--input-file` markdown written under `$FIX_ISSUE_TMPDIR` — never inside the working tree). Steps 7 and 8 mirror the branching: `NON_PR` closes with a `WORK_SUMMARY` comment (no PR URL, no body update) and announces on Slack via the pre-existing `--message` free-form path. Default to `PR` when uncertain preserves pre-existing behavior for any issue where the intent is ambiguous. Step 4 triage gains an explicit guidance bullet that for investigation/review-only issues, "still relevant" means the **task** is still meaningful rather than "the referenced bug is still in code".
 
 ## [4.0.18] - 2026-04-19
 
@@ -3976,8 +3934,6 @@ Supersedes #731 (paginate the back-link's `gh api blocked_by` call) — that cod
 ## [3.4.3] - 2026-04-19
 
 ### Fixed
-
-- Restored shell-layer secret redaction as defense-in-depth for `/issue` → `gh issue create` (closes #128). `skills/issue/scripts/create-one.sh` now pipes both the issue title (after `redact` + `emit_redaction_failure` split so ISSUE_FAILED/ISSUE_ERROR emissions reach the parent's stdout under command substitution) and the body (at a single structural choke point after all body-assembly paths converge) through the new `scripts/redact-secrets.sh` filter before invoking `gh`, and also redacts captured `gh` stderr on the failure-echo path so auth-failure output with embedded tokens cannot leak. The filter ports the six token families from the deleted `scripts/create-oos-issues.sh:redact_secrets()` — Anthropic/OpenAI `sk-*`, GitHub PATs (`ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, `github_pat_`), AWS long-term `AKIA…`, Slack `xox[baprs]-…`, generic JWT, PEM private keys — but fixes two latent bugs in the original: PEM handling now uses `awk` (not line-oriented `sed` that silently missed multi-line blocks) and the BEGIN/END markers tolerate leading whitespace and markdown `>` blockquote prefixes so indented/quoted keys are still redacted. Unterminated PEM blocks (BEGIN without END) fail-closed and emit a visible `[content truncated — unterminated PEM block…]` marker plus a stderr WARN for operator log visibility (previously the tail was dropped silently). Helper failure fail-closes with a new exit code 3 and `ISSUE_ERROR=redaction:…`. New `scripts/test-redact-secrets.sh` with 45 assertions (unit per family, idempotency, dry-run, end-to-end via stub `gh` covering both success and failure paths, indented/blockquoted PEM, unterminated PEM, missing helper, zero-URL multi-line output) is wired into `make lint` via a new `test-redact` prerequisite so the regression barrier runs on every local and CI invocation. `SECURITY.md` gains an outbound-redaction subsection documenting covered families and explicit non-coverage (AWS STS `ASIA…`, payment provider live keys, opaque bearer tokens, DB connection strings, private hostnames, PII).
 
 ## [3.4.2] - 2026-04-19
 
@@ -4277,7 +4233,6 @@ Supersedes #731 (paginate the back-link's `gh api blocked_by` call) — that cod
 - Moved lock step before triage in `/fix-issue` (Step 2 → before read details and triage) to eliminate race conditions where concurrent runs could claim the same issue during triage
 - Enhanced triage close to include detailed research summary explaining why the issue is no longer material
 - Combined `update-body` + `close` into a single `issue-lifecycle.sh close --pr-url` call, eliminating a consecutive Bash call anti-pattern in Step 7
-- Replaced saved `$SLACK_TOKEN`/`$SLACK_CHANNEL` variables with inline env var expansion to eliminate unnecessary env var resolution Bash call in Step 0
 - Fixed `cmd_update_body` using `exit` instead of `return` for error paths, which would bypass `cmd_close`'s error guard when called as an internal function
 
 ## [2.0.8] - 2026-04-13
@@ -4491,7 +4446,6 @@ Supersedes #731 (paginate the back-link's `gh api blocked_by` call) — that cod
 
 ### Fixed
 
-- Updated V19 header and function comments to include `LARCH_SLACK_USER_ID` (was stale after adding USER_ID to the loop).
 - Moved V23 (`validate_userconfig_sensitive_type`) function definition to after V22 to match numeric and `main()` call order.
 - Updated `smoke-test.sh` advisory comment to remove stale `$schema`/`description` examples.
 
@@ -4499,7 +4453,6 @@ Supersedes #731 (paginate the back-link's `gh api blocked_by` call) — that cod
 
 ### Fixed
 
-- V19: added `LARCH_SLACK_USER_ID` to Slack fallback consistency check (was only checking BOT_TOKEN and CHANNEL_ID).
 - V23: extracted from V18 into standalone `validate_userconfig_sensitive_type()` function with own `main()` call, matching the 1-function-per-validator pattern.
 
 ### Removed
@@ -4509,8 +4462,6 @@ Supersedes #731 (paginate the back-link's `gh api blocked_by` call) — that cod
 ## [1.1.7] - 2026-04-10
 
 ### Added
-
-- Validators 19-23 in `validate-plugin-structure.sh`: Slack fallback consistency (V19), userConfig key→env var mapping (V20), bidirectional agent-template count (V21), docs file reference existence (V22), userConfig sensitive boolean type check (V23).
 
 ### Changed
 
@@ -4547,7 +4498,6 @@ Supersedes #731 (paginate the back-link's `gh api blocked_by` call) — that cod
 
 ### Added
 
-- Plugin store readiness: enriched `marketplace.json` (`$schema`, `description`, `owner.email`, `category`) and `plugin.json` (`author.email`, `userConfig` for Slack, enriched `keywords`).
 - `SECURITY.md` with minimal security policy, trust model, and external tool delegation documentation.
 - `scripts/smoke-test.sh` validation-only smoke test wrapping `validate-plugin-structure.sh` plus advisory `claude plugin validate .`.
 - Three new validators (12-14) in `validate-plugin-structure.sh`: marketplace enriched metadata, plugin.json enriched metadata, SECURITY.md presence.
@@ -4559,9 +4509,7 @@ Supersedes #731 (paginate the back-link's `gh api blocked_by` call) — that cod
 
 - Fixed fallback behavior documentation in `docs/external-reviewers.md` and `docs/collaborative-sketches.md` to accurately describe Claude replacement agents maintaining constant participant counts and step-function voting thresholds.
 - Replaced dangling cross-references to non-existent `/admin-upgrade-clients` and `/admin-add-user` skills in `scripts/merge-pr.sh` and `skills/implement/SKILL.md` with canonical implementation notes.
-- Added `CLAUDE_PLUGIN_OPTION_*` fallback to all Slack-related scripts (`session-setup.sh`, `slack-announce.sh`, `post-pr-announce.sh`, `add-merged-emoji.sh`, `post-merged-emoji.sh`) so plugin `userConfig` Slack tokens propagate end-to-end.
 - Updated `CLAUDE.md` to reference 14 validators, document `SECURITY.md` as a protected file, and note `userConfig` env var convention.
-- Emphasized Slack env var requirements in `README.md` Environment Variables section with `userConfig` alternative documentation.
 
 ## [1.1.3] - 2026-04-09
 

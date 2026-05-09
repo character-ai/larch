@@ -12,7 +12,6 @@
 #   - Anthropic / OpenAI sk-* and sk-ant-* keys
 #   - GitHub PATs and fine-grained tokens: ghp_, gho_, ghu_, ghs_, ghr_, github_pat_
 #   - AWS long-term access key IDs (AKIA[0-9A-Z]{16})
-#   - Slack tokens (xoxb-, xoxa-, xoxp-, xoxr-, xoxs-)
 #   - Generic JWT (eyJ…header.payload.signature)
 #   - PEM-encoded private key blocks → <REDACTED-PRIVATE-KEY> (multi-line,
 #     tolerates leading whitespace and markdown blockquote prefixes on the
@@ -45,7 +44,7 @@
 
 set -euo pipefail
 
-# Single sed -E invocation collapsing all 5 line-local families into one pass.
+# Single sed -E invocation collapsing all line-local families into one pass.
 # Patterns are byte-for-byte ports of the vetted regexes from the deleted
 # scripts/create-oos-issues.sh (see commit 9cb59f5). The character classes
 # use [A-Za-z0-9_-] rather than \w so the script runs on BSD sed without
@@ -59,7 +58,6 @@ sed -E \
     -e 's/sk-(ant-)?[A-Za-z0-9_-]{20,}/<REDACTED-TOKEN>/g' \
     -e 's/(ghp|gho|ghu|ghs|ghr|github_pat)_[A-Za-z0-9_]{20,}/<REDACTED-TOKEN>/g' \
     -e 's/AKIA[0-9A-Z]{16}/<REDACTED-TOKEN>/g' \
-    -e 's/xox[baprs]-[A-Za-z0-9-]{10,}/<REDACTED-TOKEN>/g' \
     -e 's/eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/<REDACTED-TOKEN>/g' \
     | awk '
         # Allow leading whitespace and markdown blockquote prefixes (> ) so

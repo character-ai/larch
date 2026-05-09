@@ -2,11 +2,11 @@
 # session-setup.sh — Shared session setup for all skills.
 #
 # Consolidates the common Step 0 operations: preflight, temp dir creation,
-# Slack configuration check, repo name derivation, and reviewer health probe.
+# repo name derivation, and reviewer health probe.
 #
 # Usage:
 #   session-setup.sh --prefix <name> [--skip-preflight] [--skip-branch-check] \
-#     [--skip-slack-check] [--skip-repo-check] [--check-reviewers] [--check-gemini-reviewer] \
+#     [--skip-repo-check] [--check-reviewers] [--check-gemini-reviewer] \
 #     [--skip-codex-probe] [--skip-cursor-probe] [--skip-gemini-probe] [--write-health <path>] \
 #     [--write-session-env <path>] [--caller-env <path>]
 #
@@ -18,7 +18,6 @@
 #                          forwards --skip-clean-check, which session-setup.sh does NOT
 #                          do today). Continuation-from-feature-branch flows still
 #                          reject dirty trees by design; pre-stash any WIP first.
-#   --skip-slack-check    Skip LARCH_SLACK_BOT_TOKEN and LARCH_SLACK_CHANNEL_ID check entirely
 #   --skip-repo-check     Skip repo name derivation entirely
 #   --check-reviewers     Run check-reviewers.sh --probe and emit availability/health keys
 #   --check-gemini-reviewer
@@ -35,7 +34,7 @@
 #   --write-health <path> Write CODEX_HEALTHY/CURSOR_HEALTHY/GEMINI_HEALTHY to file (cross-skill propagation)
 #   --write-session-env <path>  Write full session-env file via write-session-env.sh
 #   --caller-env <path>   Path to KEY=value file with already-discovered values.
-#                          Recognized keys: SLACK_OK, SLACK_MISSING, REPO, REPO_UNAVAILABLE,
+#                          Recognized keys: REPO, REPO_UNAVAILABLE,
 #                          CODEX_HEALTHY, CURSOR_HEALTHY, GEMINI_HEALTHY,
 #                          LARCH_TOKEN_SESSION_ID, LARCH_CLAUDE_SOURCE_FILE,
 #                          LARCH_TIMING_LEDGER.
@@ -46,8 +45,6 @@
 # Output (KEY=value lines on stdout):
 #   SESSION_TMPDIR=<path>       Always output (fresh per invocation)
 #   SESSION_ID=<value>          Always output (also written to SESSION_TMPDIR/session-id)
-#   SLACK_OK=true|false         Output unless --skip-slack-check
-#   SLACK_MISSING=<csv>         Output when SLACK_OK=false (comma-separated missing var names)
 #   REPO=<owner/repo>           Output unless --skip-repo-check
 #   REPO_UNAVAILABLE=true|false Output unless --skip-repo-check
 #   CODEX_AVAILABLE=true|false  Output when --check-reviewers
@@ -80,7 +77,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PREFIX=""
 SKIP_PREFLIGHT=false
 SKIP_BRANCH_CHECK=false
-SKIP_SLACK_CHECK=false
 SKIP_REPO_CHECK=false
 CHECK_REVIEWERS=false
 CHECK_GEMINI_REVIEWER=false
@@ -100,8 +96,6 @@ while [[ $# -gt 0 ]]; do
             SKIP_PREFLIGHT=true; shift ;;
         --skip-branch-check)
             SKIP_BRANCH_CHECK=true; shift ;;
-        --skip-slack-check)
-            SKIP_SLACK_CHECK=true; shift ;;
         --skip-repo-check)
             SKIP_REPO_CHECK=true; shift ;;
         --check-reviewers)
@@ -136,8 +130,6 @@ fi
 
 # --- Read caller-env file (if provided and exists) ---
 # Parse line-by-line; do NOT source. Only recognized keys with non-empty values are used.
-CALLER_SLACK_OK=""
-CALLER_SLACK_MISSING=""
 CALLER_REPO=""
 CALLER_REPO_UNAVAILABLE=""
 CALLER_CODEX_HEALTHY=""
@@ -161,8 +153,6 @@ if [[ -n "$CALLER_ENV" && -f "$CALLER_ENV" ]]; then
         value="${line#*=}"
         [[ -z "$key" ]] && continue
         case "$key" in
-            SLACK_OK)          CALLER_SLACK_OK="$value" ;;
-            SLACK_MISSING)     CALLER_SLACK_MISSING="$value" ;;
             REPO)              CALLER_REPO="$value" ;;
             REPO_UNAVAILABLE)  CALLER_REPO_UNAVAILABLE="$value" ;;
             CODEX_HEALTHY)     CALLER_CODEX_HEALTHY="$value" ;;
@@ -285,7 +275,7 @@ write_keepalive_sentinel
 echo "SESSION_TMPDIR=$SESSION_TMPDIR"
 echo "SESSION_ID=$SESSION_ID"
 
-# --- 2a. Bridge reviewer model env vars from plugin userConfig (always, regardless of --skip-slack-check) ---
+# --- 2a. Bridge reviewer model env vars from plugin userConfig ---
 if [[ -z "${LARCH_CURSOR_MODEL:-}" && -n "${CLAUDE_PLUGIN_OPTION_CURSOR_MODEL:-}" ]]; then
     export LARCH_CURSOR_MODEL="${CLAUDE_PLUGIN_OPTION_CURSOR_MODEL}"
 fi
@@ -293,59 +283,7 @@ if [[ -z "${LARCH_CODEX_MODEL:-}" && -n "${CLAUDE_PLUGIN_OPTION_CODEX_MODEL:-}" 
     export LARCH_CODEX_MODEL="${CLAUDE_PLUGIN_OPTION_CODEX_MODEL}"
 fi
 
-# --- 3. Check Slack configuration (LARCH_SLACK_BOT_TOKEN + LARCH_SLACK_CHANNEL_ID) ---
-# Track values for potential --write-session-env use
-SLACK_OK_VALUE=""
-SLACK_MISSING_VALUE=""
-
-if [[ "$SKIP_SLACK_CHECK" == "false" ]]; then
-    if [[ -n "$CALLER_SLACK_OK" ]]; then
-        # Reuse caller's values
-        SLACK_OK_VALUE="$CALLER_SLACK_OK"
-        SLACK_MISSING_VALUE="$CALLER_SLACK_MISSING"
-        echo "SLACK_OK=$CALLER_SLACK_OK"
-        if [[ -n "$CALLER_SLACK_MISSING" ]]; then
-            echo "SLACK_MISSING=$CALLER_SLACK_MISSING"
-        fi
-    else
-        # Derive fresh: both vars must be set for Slack to be available.
-        # Check env vars first; fall back to CLAUDE_PLUGIN_OPTION_* (set by
-        # plugin userConfig when installed via marketplace). Env var wins.
-        EFFECTIVE_BOT_TOKEN="${LARCH_SLACK_BOT_TOKEN:-${CLAUDE_PLUGIN_OPTION_SLACK_BOT_TOKEN:-}}"
-        EFFECTIVE_CHANNEL_ID="${LARCH_SLACK_CHANNEL_ID:-${CLAUDE_PLUGIN_OPTION_SLACK_CHANNEL_ID:-}}"
-
-        # Export effective values so downstream scripts see them as LARCH_SLACK_*
-        if [[ -n "$EFFECTIVE_BOT_TOKEN" && -z "${LARCH_SLACK_BOT_TOKEN:-}" ]]; then
-            export LARCH_SLACK_BOT_TOKEN="$EFFECTIVE_BOT_TOKEN"
-        fi
-        if [[ -n "$EFFECTIVE_CHANNEL_ID" && -z "${LARCH_SLACK_CHANNEL_ID:-}" ]]; then
-            export LARCH_SLACK_CHANNEL_ID="$EFFECTIVE_CHANNEL_ID"
-        fi
-        SLACK_MISSING_VARS=""
-        if [[ -z "$EFFECTIVE_BOT_TOKEN" ]]; then
-            SLACK_MISSING_VARS="LARCH_SLACK_BOT_TOKEN"
-        fi
-        if [[ -z "$EFFECTIVE_CHANNEL_ID" ]]; then
-            if [[ -n "$SLACK_MISSING_VARS" ]]; then
-                SLACK_MISSING_VARS="$SLACK_MISSING_VARS,LARCH_SLACK_CHANNEL_ID"
-            else
-                SLACK_MISSING_VARS="LARCH_SLACK_CHANNEL_ID"
-            fi
-        fi
-
-        if [[ -z "$SLACK_MISSING_VARS" ]]; then
-            SLACK_OK_VALUE="true"
-            echo "SLACK_OK=true"
-        else
-            SLACK_OK_VALUE="false"
-            SLACK_MISSING_VALUE="$SLACK_MISSING_VARS"
-            echo "SLACK_OK=false"
-            echo "SLACK_MISSING=$SLACK_MISSING_VARS"
-        fi
-    fi
-fi
-
-# --- 4. Derive repository name ---
+# --- 3. Derive repository name ---
 # Track values for potential --write-session-env use
 REPO_VALUE=""
 REPO_UNAVAILABLE_VALUE="false"
@@ -386,7 +324,7 @@ if [[ "$SKIP_REPO_CHECK" == "false" ]]; then
     fi
 fi
 
-# --- 5. Reviewer health: either probe (--check-reviewers) or passthrough from caller-env ---
+# --- 4. Reviewer health: either probe (--check-reviewers) or passthrough from caller-env ---
 if [[ "$CHECK_REVIEWERS" == "true" ]]; then
     # Auto-set skip-probe flags from caller-env health values
     if [[ "$CALLER_CODEX_HEALTHY" == "false" ]]; then
@@ -573,7 +511,7 @@ if [[ "$CHECK_REVIEWERS" == "true" ]]; then
     fi
 fi
 
-# --- 6. Write health file (if requested) ---
+# --- 5. Write health file (if requested) ---
 if [[ -n "$WRITE_HEALTH" && "$WRITE_HEALTH" != "/dev/null" ]]; then
     HEALTH_TMPFILE=$(mktemp "${WRITE_HEALTH}.tmp.XXXXXX")
     {
@@ -590,19 +528,14 @@ if [[ -n "$WRITE_HEALTH" && "$WRITE_HEALTH" != "/dev/null" ]]; then
     mv "$HEALTH_TMPFILE" "$WRITE_HEALTH"
 fi
 
-# --- 7. Write session-env file (if requested) ---
+# --- 6. Write session-env file (if requested) ---
 # Runs after the probe so health keys are included.
 if [[ -n "$WRITE_SESSION_ENV" ]]; then
-    # Determine Slack values: from probe results above or from caller-env or empty
-    WSE_SLACK_OK="${SLACK_OK_VALUE:-false}"
-    WSE_SLACK_MISSING="${SLACK_MISSING_VALUE:-}"
     WSE_REPO="${REPO_VALUE:-}"
     WSE_REPO_UNAVAILABLE="${REPO_UNAVAILABLE_VALUE:-false}"
 
     WSE_ARGS=(--output "$WRITE_SESSION_ENV"
-              --slack-ok "$WSE_SLACK_OK"
               --repo-unavailable "$WSE_REPO_UNAVAILABLE")
-    [[ -n "$WSE_SLACK_MISSING" ]] && WSE_ARGS+=(--slack-missing "$WSE_SLACK_MISSING")
     [[ -n "$WSE_REPO" ]] && WSE_ARGS+=(--repo "$WSE_REPO")
     [[ -n "$FINAL_CODEX_HEALTHY" ]] && WSE_ARGS+=(--codex-healthy "$FINAL_CODEX_HEALTHY")
     [[ -n "$FINAL_CURSOR_HEALTHY" ]] && WSE_ARGS+=(--cursor-healthy "$FINAL_CURSOR_HEALTHY")

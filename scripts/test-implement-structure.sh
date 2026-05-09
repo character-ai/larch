@@ -162,7 +162,7 @@
 #      the NEVER #7 post-merge sub-clause, Step 12a ACTION=already_merged
 #      continuation reminder, and Step 12b post-merge blockquote opener so
 #      the merge breadcrumb cannot silently become a terminal boundary before
-#      Steps 14, 15, 16, 16a, 17, 18 run.
+#      Steps 14, 15, 16, 17, 18 run.
 #
 # Exit 0 on pass, exit 1 on any assertion failure.
 # shellcheck disable=SC2016 # single-quoted strings are intentional grep literals
@@ -863,8 +863,6 @@ grep -Fq -- 'DESIGN_ONLY_DONE=true' "$SKILL_MD" \
     || fail "(20) Step 1 missing DESIGN_ONLY_DONE short-circuit state"
 grep -Fq -- '$PR_NUMBER` is set OR `DESIGN_ONLY_DONE=true' "$SKILL_MD" \
     || fail "(20) Step 18 DONE branch must fire for PR_NUMBER or DESIGN_ONLY_DONE"
-grep -Fq -- 'RUN_OUTCOME=design-only' "$SKILL_MD" \
-    || fail "(20) Step 16a Slack outcome state machine missing design-only status"
 grep -Fq -- '$IMPLEMENT_TMPDIR/code-flow-diagram.md' "$SKILL_MD" \
     || fail "(20) Step 7a/9a must use code-flow diagram file path"
 
@@ -1061,14 +1059,14 @@ grep -Fq '**Fork-mode carve-out**: when `forked_target=true`' "$SKILL_MD" \
 # ---------------------------------------------------------------------------
 # (26) Post-merge anti-halt literal pin (issue #1143). The post-merge
 #      boundary is halt-prone because the merge breadcrumb sounds terminal
-#      while Steps 14, 15, 16, 16a, 17, 18 remain mandatory. Pin the three
+#      while Steps 14, 15, 16, 17, 18 remain mandatory. Pin the three
 #      reminder sites with fixed-string checks, plus a count floor for the
 #      shared enumeration so deleting either the NEVER #7 reminder or the
 #      ACTION=already_merged reminder fails closed.
 # ---------------------------------------------------------------------------
 post_merge_never7_literals=(
   '**Post-merge sub-clause (highest-stakes halt boundary)**'
-  'the celebratory "merged!" tone makes the run feel complete, but Steps 14, 15, 16, 16a, 17, 18 still must run'
+  'the celebratory "merged!" tone makes the run feel complete, but Steps 14, 15, 16, 17, 18 still must run'
 )
 for lit in "${post_merge_never7_literals[@]}"; do
   grep -Fq "$lit" "$SKILL_MD" \
@@ -1077,14 +1075,14 @@ done
 
 already_merged_literals=(
   '"force-merged externally" feels terminal but is mid-run'
-  'Steps 14, 15, 16, 16a, 17, 18 still must run.'
+  'Steps 14, 15, 16, 17, 18 still must run.'
 )
 for lit in "${already_merged_literals[@]}"; do
   grep -Fq "$lit" "$SKILL_MD" \
     || fail "(26b) SKILL.md lost Step 12a ACTION=already_merged continuation literal: $lit"
 done
 
-post_merge_step_count=$(grep -Fc 'Steps 14, 15, 16, 16a, 17, 18 still must run' "$SKILL_MD" || true)
+post_merge_step_count=$(grep -Fc 'Steps 14, 15, 16, 17, 18 still must run' "$SKILL_MD" || true)
 if ! [[ "$post_merge_step_count" =~ ^[0-9]+$ ]] || (( post_merge_step_count < 2 )); then
   fail "(26b-count) expected at least 2 post-merge Step 14-18 continuation enumerations in SKILL.md (NEVER #7 + Step 12a ACTION=already_merged), found ${post_merge_step_count:-0}"
 fi

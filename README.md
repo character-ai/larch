@@ -6,7 +6,6 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
 
 - **Setup**
   - [Installation and Setup](docs/installation-and-setup.md) — plugin install, local development, agent setup recipes (Claude / Codex / Cursor), [clean-main entry contract](docs/installation-and-setup.md#clean-main-entry-contract-for-implement-and-design) for `/implement` and `/design`, what the plugin provides, `/relevant-checks` consumer dependency, prerequisites
-  - [Configuration and Permissions](docs/configuration-and-permissions.md) — [Strict-permissions consumers](docs/configuration-and-permissions.md#strict-permissions-consumers--skill-permission-entries), [`--admin` merge behavior](docs/configuration-and-permissions.md#--admin-merge-behavior), [Environment Variables](docs/configuration-and-permissions.md#environment-variables) (`LARCH_SLACK_*`, `LARCH_CURSOR_MODEL`, `LARCH_CODEX_MODEL`, `LARCH_CODEX_EFFORT`, `LARCH_BUMP_FILES`)
 - **Reference**
   - [Features](#features)
   - [Skills](#skills)
@@ -27,7 +26,6 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
 - **[Multi-agent design planning, reviews, and adjudication](docs/collaborative-sketches.md)** — the [configured sketch topology](docs/topology.md#design.sketch.regular_slots) diverges, the [dialectic judge panel](docs/topology.md#design.dialectic.judge_panel) resolves contested decisions, and the [validation panel](docs/topology.md#design.plan_review.cursor_archetypes) reviews the final plan.
 - **[Voting-based review resolution](docs/voting-process.md)** — The YES/NO/EXONERATE panel protocol adjudicates plan and code review findings.
 - **[Reviewer competition scoring](docs/point-competition.md)** — Reviewers earn points based on finding quality; a scoreboard tracks accepted, neutral, exonerated, and rejected findings.
-- **[End-to-end automation](docs/workflow-lifecycle.md)** — From feature design through PR creation and initial CI wait in one command; `--merge` adds the CI+rebase+merge loop, local cleanup, and main verification. Pass `--slack` to post a single Slack status message about the tracking issue near the end (✅ closed / 📝 PR opened / 🧭 design complete / ❌ blocked / ❓ user input needed) when Slack is configured. `--draft` creates a draft PR and keeps the branch for further iteration; `--design-only` publishes the design artifacts to the tracking issue and stops before implementation. `--forked` targets a contributor fork for CI dry-run and prints the manual upstream PR command.
 - **[External reviewer integration](docs/external-reviewers.md)** — Codex and Cursor participate alongside Claude subagents as sketch agents, debaters, judges, reviewers, and voters. Gemini reviewer call sites have been removed from `/review` and `/implement --quick` review rounds; the reviewer launcher (`scripts/launch-gemini-review.sh`), its admin-policy file, and the regression harness remain as machinery, and Gemini can still be selected explicitly for implementation with `/implement --coder=gemini`.
 - **[Tracked runs](skills/implement/SKILL.md)** — `/implement` PRs link to a tracking issue whose anchor comment is the single source of truth for full report content (voting tallies, rejected findings, version-bump reasoning, diagrams, OOS links, execution issues, run statistics).
 
@@ -40,19 +38,19 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
   <tbody>
     <tr>
       <td><a href="docs/skills.md#alias"><code>/alias</code></a></td>
-      <td><code>[--merge] [--slack] [--private] &lt;alias-name&gt; &lt;target-skill&gt; [preset-flags...]</code></td>
+      <td><code>[--merge] [--private] &lt;alias-name&gt; &lt;target-skill&gt; [preset-flags...]</code></td>
     </tr>
     <tr><td colspan="2">Create an alias for a larch skill with preset flags. Auto-routes to <code>skills/&lt;n&gt;/</code> in plugin source repos and <code>.claude/skills/&lt;n&gt;/</code> elsewhere; <code>--private</code> forces the latter.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#compress-skill"><code>/compress-skill</code></a></td>
-      <td><code>[--slack] &lt;skill-name-or-path&gt;</code></td>
+      <td><code>&lt;skill-name-or-path&gt;</code></td>
     </tr>
     <tr><td colspan="2">Compress a skill's Markdown prose via a behavior-preserving rewrite.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#create-skill"><code>/create-skill</code></a></td>
-      <td><code>[--plugin] [--multi-step] [--merge] [--slack] &lt;skill-name&gt; &lt;description&gt;</code></td>
+      <td><code>[--plugin] [--multi-step] [--merge] &lt;skill-name&gt; &lt;description&gt;</code></td>
     </tr>
     <tr><td colspan="2">Scaffold a new larch-style skill from a name and description.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
@@ -64,15 +62,15 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#fix-issue"><code>/fix-issue</code></a></td>
-      <td><code>[--auto] [--slack] [--no-admin-fallback] [--coder=&lt;value&gt;] [--inline] [--quick] [&lt;number-or-url&gt;]</code></td>
+      <td><code>[--auto] [--no-admin-fallback] [--coder=&lt;value&gt;] [--inline] [--quick] [&lt;number-or-url&gt;]</code></td>
     </tr>
     <tr><td colspan="2">Process one approved GitHub issue per invocation, classifying intent and delegating PR work to <code>/implement</code>.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#implement"><code>/implement</code></a></td>
-      <td><code>[--quick] [--auto] [--forked] [--design-only] [--inline] [--merge | --draft] [--slack] [--no-admin-fallback] [--coder=claude|codex|cursor|gemini] [--session-env &lt;path&gt;] [--issue &lt;N&gt;] &lt;feature description&gt;</code></td>
+      <td><code>[--quick] [--auto] [--forked] [--design-only] [--inline] [--merge | --draft] [--no-admin-fallback] [--coder=claude|codex|cursor|gemini] [--session-env &lt;path&gt;] [--issue &lt;N&gt;] &lt;feature description&gt;</code></td>
     </tr>
-    <tr><td colspan="2">Full end-to-end feature workflow — design, implement, PR. <code>--design-only</code> publishes plan/review/diagram/OOS artifacts to the tracking issue and stops before implementation. <code>--forked</code> targets a fork PR against <code>origin</code>, compares freshness against <code>upstream/main</code>, skips tracking issue / Slack / version bump / merge, and prints the manual upstream PR command after fork CI. <code>--quick</code> skips <code>/design</code> and runs a code-review loop of up to 7 rounds (no voting panel): rounds 1-3 launch 5 Cursor specialists in parallel plus a generic Codex reviewer and a Claude generic reviewer; rounds 4-7 use a single generic reviewer per round with a Cursor → Codex → Claude fallback chain. <code>--coder</code> selects the Step 2 implementer. Default behavior when the flag is omitted: starts at <code>codex</code>; auto-routes to <code>claude</code> for small surgical plans (≤ ~100 LOC, no new abstractions, no new architectural contracts, no large refactors); pass <code>--coder=codex</code> explicitly to suppress the auto-route. Pass <code>claude</code> to run in the main agent / Claude context, <code>cursor</code> for the Cursor implementer, or <code>gemini</code> for the Gemini implementer; <code>cursor</code> and <code>gemini</code> fall back to the main-agent path when unhealthy or unavailable. <code>LARCH_CURSOR_MODEL</code> drives the Cursor implementer when <code>--coder=cursor</code>; <code>LARCH_GEMINI_MODEL</code> drives Gemini when <code>--coder=gemini</code>.</td></tr>
+    <tr><td colspan="2">Full end-to-end feature workflow — design, implement, PR. <code>--design-only</code> publishes plan/review/diagram/OOS artifacts to the tracking issue and stops before implementation. <code>--forked</code> targets a fork PR against <code>origin</code>, compares freshness against <code>upstream/main</code>, skips tracking issue / version bump / merge, and prints the manual upstream PR command after fork CI. <code>--quick</code> skips <code>/design</code> and runs a code-review loop of up to 7 rounds (no voting panel): rounds 1-3 launch 5 Cursor specialists in parallel plus a generic Codex reviewer and a Claude generic reviewer; rounds 4-7 use a single generic reviewer per round with a Cursor → Codex → Claude fallback chain. <code>--coder</code> selects the Step 2 implementer. Default behavior when the flag is omitted: starts at <code>codex</code>; auto-routes to <code>claude</code> for small surgical plans (≤ ~100 LOC, no new abstractions, no new architectural contracts, no large refactors); pass <code>--coder=codex</code> explicitly to suppress the auto-route. Pass <code>claude</code> to run in the main agent / Claude context, <code>cursor</code> for the Cursor implementer, or <code>gemini</code> for the Gemini implementer; <code>cursor</code> and <code>gemini</code> fall back to the main-agent path when unhealthy or unavailable. <code>LARCH_CURSOR_MODEL</code> drives the Cursor implementer when <code>--coder=cursor</code>; <code>LARCH_GEMINI_MODEL</code> drives Gemini when <code>--coder=gemini</code>.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#issue"><code>/issue</code></a></td>
@@ -106,7 +104,7 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#simplify-skill"><code>/simplify-skill</code></a></td>
-      <td><code>[--slack] &lt;skill-name&gt;</code></td>
+      <td><code>&lt;skill-name&gt;</code></td>
     </tr>
     <tr><td colspan="2">Refactor a skill for stronger adherence to design principles and reduced SKILL.md footprint.</td></tr>
     <tr><td colspan="2"><hr></td></tr>

@@ -8,7 +8,7 @@
 #   2. Idempotency: run a multi-pattern body through the helper twice;
 #      assert the two outputs are byte-equal.
 #   3. Integration (fake gh): drop a stub gh into PATH, invoke create-one.sh
-#      against a body containing all six families, and assert:
+#      against a body containing all covered families, and assert:
 #        - --dry-run path: DRY_RUN_TITLE and DRY_RUN_BODY_PREVIEW are
 #          redacted.
 #        - non-dry-run success path: body file passed to gh is redacted.
@@ -34,7 +34,6 @@ CREATE_ONE="$REPO_ROOT/skills/issue/scripts/create-one.sh"
 SK_TOKEN='sk-''ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD'
 GHP_TOKEN='ghp_abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGH'
 AKIA_TOKEN='AKIAIOSFODNN7EXAMPLE'
-XOXB_TOKEN='xoxb-FAKE-TEST-ONLY-NOT-A-REAL-SECRET'
 JWT_TOKEN='eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c'
 PEM_BLOCK='-----BEGIN RSA PRIVATE KEY-----
 MIIBOgIBAAJBAKj34GkxFhD90vcNLYLInFEX6Ppy1tPf9Cnzj4p4WGeKLs1Pt8Qu
@@ -85,10 +84,6 @@ out=$(printf '%s' "$AKIA_TOKEN" | "$HELPER")
 assert_contains "$out" '<REDACTED-TOKEN>' 'AKIA key → placeholder'
 assert_not_contains "$out" "$AKIA_TOKEN" 'AKIA key → raw absent'
 
-out=$(printf '%s' "$XOXB_TOKEN" | "$HELPER")
-assert_contains "$out" '<REDACTED-TOKEN>' 'xoxb- token → placeholder'
-assert_not_contains "$out" "$XOXB_TOKEN" 'xoxb- token → raw absent'
-
 out=$(printf '%s' "$JWT_TOKEN" | "$HELPER")
 assert_contains "$out" '<REDACTED-TOKEN>' 'JWT → placeholder'
 assert_not_contains "$out" "$JWT_TOKEN" 'JWT → raw absent'
@@ -121,13 +116,12 @@ echo "=== Section 3: Integration (fake gh) ==="
 TMPROOT=$(mktemp -d "${TMPDIR:-/tmp}/test-redact-XXXXXX")
 trap 'rm -rf "$TMPROOT"' EXIT
 
-# Build a body containing all six families.
+# Build a body containing the covered families.
 BODY_FILE="$TMPROOT/body.txt"
 cat > "$BODY_FILE" <<BODY_EOF
 Line with $SK_TOKEN in prose.
 Another line with $GHP_TOKEN PAT.
 AWS key line: $AKIA_TOKEN here.
-Slack: $XOXB_TOKEN here.
 JWT: $JWT_TOKEN here.
 $PEM_BLOCK
 Trailing normal text.

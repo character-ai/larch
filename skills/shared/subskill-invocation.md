@@ -156,9 +156,6 @@ This is deliberately separate from the `Continue after child returns` micro-remi
 
 ## Session-env handoff
 
-Environment variables **do not propagate reliably across `Skill` invocations** — treat every `Skill` call as a fresh bash environment. For any state that must cross skill boundaries (reviewer health flags, repo name, slack-ok, session tmpdir), use a session-env file:
-
-1. The parent writes a `session-env.sh` file via `${CLAUDE_PLUGIN_ROOT}/scripts/write-session-env.sh --output "$PARENT_TMPDIR/session-env.sh" --slack-ok <v> --repo <v> ...`.
 2. The parent passes `--session-env "$PARENT_TMPDIR/session-env.sh"` to the child.
 3. The child reads the file via `${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh ... --caller-env "$SESSION_ENV_PATH"`.
 
@@ -172,8 +169,6 @@ Canonical producers and consumers in the live tree:
 
 **Do NOT `source` `session-env.sh`.** Parse it line-by-line with `KEY=VALUE` matching. The file crosses a trust boundary (written by one skill, consumed by another), so `source` would execute arbitrary shell if any line contained `$(...)`, backticks, or command substitution. The canonical safe-parse pattern lives in `${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh` (the `--caller-env` reader).
 
-Note: the current writer (`${CLAUDE_PLUGIN_ROOT}/scripts/write-session-env.sh`) does **not** perform value-side escaping — it emits raw `KEY=value` lines. Safety today depends on (a) the safe line-by-line parser on the read side and (b) a narrowly-constrained value set (fixed schema of known keys: `SLACK_OK`, `SLACK_MISSING`, `REPO`, `REPO_UNAVAILABLE`, `CODEX_HEALTHY`, `CURSOR_HEALTHY`, `GEMINI_HEALTHY`, opt-in probe output `GEMINI_AVAILABLE`, `LARCH_TIMING_LEDGER`, `LARCH_TOKEN_SESSION_ID`, and `LARCH_CLAUDE_SOURCE_FILE` — each drawn from a bounded domain when propagated). `LARCH_TIMING_LEDGER` is path-shaped: when written, it MUST be a single-line absolute path under one of the containment roots `scripts/timing-ledger.sh` accepts (`${TMPDIR:-/tmp}`, `$IMPLEMENT_TMPDIR`, `$DESIGN_TMPDIR`, `$REVIEW_TMPDIR`, or `dirname("$SESSION_ENV_PATH")`). `LARCH_TOKEN_SESSION_ID` is id-shaped and must match `^[A-Za-z0-9_.-]{1,128}$`; `LARCH_CLAUDE_SOURCE_FILE` is path-shaped and must match `^[A-Za-z0-9_./~+-]{1,512}$`. Writers should use the matching `write-session-env.sh` flags only with validated values; never widen the writer to emit a caller-supplied unvalidated path or id. When your skill adds new fields to a session-env file, constrain the value set at the source (e.g., boolean flags, validated owner/repo strings) rather than relying on parser hardening — and never widen the writer to emit arbitrary user-supplied text without explicit escaping + regression coverage.
-
 When your skill consumes a session-env file, always route through `session-setup.sh --caller-env` rather than ad-hoc `while read` loops so the safe-parse invariant is centralized.
 
 ### Health sidecar
@@ -184,7 +179,6 @@ Cross-skill reviewer health state uses a `.health` sidecar next to `session-env.
 
 `--session-env` and `--subagent` address orthogonal concerns. Forward both when a parent orchestrator delegates heavy work to `/design`.
 
-- **`--session-env <path>` — I/O routing.** Threads file-backed state (reviewer health flags, repo name, slack-ok, timing ledger path, token ledger session id, and Claude transcript snapshot path) across the call boundary. Gates verbosity suppression, manifest export, and OOS routing in the child: `/design` keys those behaviors on `SESSION_ENV_PATH` being non-empty. Covered above.
 - **`--subagent` — execution topology.** Runs `/design`'s heavy non-interactive phase (sketches → plan → plan review → optional architecture diagram) inside an isolated Agent-tool subagent. The subagent writes raw artifacts to `$DESIGN_TMPDIR/` and returns terse status; the parent's transcript stays small. Without `--subagent`, the heavy phase runs in `/design`'s own in-turn context — richer transcript, higher token cost in the parent. See `skills/design/SKILL.md § Step 2a — Collaborative Approach Sketches` (Subagent heavy phase).
 
 The two flags are independent: `--session-env` shapes what crosses the call boundary; `--subagent` shapes where heavy work executes. Verbosity suppression remains gated on `SESSION_ENV_PATH` regardless of dispatch mode.
@@ -204,8 +198,6 @@ When an orchestrator (e.g. `/implement`) delegates heavy planning to `/design`, 
 - **`/design --quick`** still runs the (reduced) sketch and plan-review flow, but `--subagent` is ignored: `/design`'s Step 2a heavy-subagent branch is gated on `subagent_mode=true AND quick_mode=false`, so quick mode falls back to the inline path.
 
 ## Avoid conditional phrasing for sub-skill invocations
-
-**Scope**: this rule targets the **Skill-tool invocation itself** — not orchestration preconditions. Guards like "If `slack_available=false`, skip Slack" and "If `merge=false`, skip the merge loop" are normal orchestration preconditions and remain fine; the rule below is specifically about how you render a sub-skill invocation.
 
 The worst shape, and the one that gets skipped most often, is a single-line conditional paragraph like:
 

@@ -20,7 +20,7 @@ Reference for every slash command shipped by the larch plugin. Each section belo
 
 ## `/alias`
 
-**Arguments**: `[--merge] [--slack] [--private] <alias-name> <target-skill> [preset-flags...]`
+**Arguments**: `[--merge] [--private] <alias-name> <target-skill> [preset-flags...]`
 
 **Source**: [`skills/alias/SKILL.md`](../skills/alias/SKILL.md)
 
@@ -28,27 +28,25 @@ Create an alias for a larch skill with preset flags. Delegates to `/implement --
 
 **Target directory** is auto-resolved: inside a Claude plugin source repo (detected by the two-file predicate `.claude-plugin/plugin.json` AND `skills/implement/SKILL.md` at the git repo root), the alias is generated under `skills/<alias-name>/SKILL.md` (exported plugin skill, ships with the plugin); anywhere else, it's generated under `.claude/skills/<alias-name>/SKILL.md` (dev-only repo-private). `--private` forces `.claude/skills/<alias-name>/` even inside a plugin repo (escape hatch); in non-plugin repos it's a no-op.
 
-`--slack` (when placed before the first positional) forwards to the `/implement` invocation so the alias-creation PR posts to Slack when configured; `--slack` placed after the first positional is passed through verbatim as a preset flag for the generated alias.
-
 Example (in a plugin repo): `/alias i implement --merge` creates `<repo-root>/skills/i/SKILL.md` so that `/i <feature>` is equivalent to `/implement --merge <feature>`.
 
 Example with `--private` or in a consumer repo: `/alias i implement --merge` creates `<repo-root>/.claude/skills/i/SKILL.md` (dev-only).
 
 ## `/compress-skill`
 
-**Arguments**: `[--slack] <skill-name-or-path>`
+**Arguments**: `<skill-name-or-path>`
 
 **Source**: [`skills/compress-skill/SKILL.md`](../skills/compress-skill/SKILL.md)
 
-Compress an existing skill's Markdown prose to reduce size while preserving meaning. Discovers the transitive `.md` set (restricted to the skill's own directory tree — shared docs and sub-skills are excluded), snapshots baseline sizes, and delegates a behavior-preserving prose rewrite to `/imaq` applying Strunk & White's *Elements of Style* adapted for technical writing. Structural elements (YAML frontmatter, fenced code blocks, headings, link targets, inline code, file paths, numeric values) are preserved verbatim; only prose is rewritten. PR body includes a `## Token budget` section with per-file before/after byte and line deltas. `--slack` forwards to `/imaq` (and thence to `/implement`) so the compression run posts a Slack announcement when configured.
+Compress a skill's Markdown prose via a behavior-preserving rewrite.
 
 ## `/create-skill`
 
-**Arguments**: `[--plugin] [--multi-step] [--merge] [--slack] <skill-name> <description>`
+**Arguments**: `[--plugin] [--multi-step] [--merge] <skill-name> <description>`
 
 **Source**: [`skills/create-skill/SKILL.md`](../skills/create-skill/SKILL.md)
 
-Scaffold a new larch-style skill from a name and description. Validates the name (regex + reserved-name union + case-insensitive collision) and the description (length + XML / shell-dangerous pattern rejection), then delegates to `/im --quick --auto` which writes the scaffold via `skills/create-skill/scripts/render-skill-md.sh` and auto-merges the PR (via `/im`'s `--merge` pre-set). Default target is `.claude/skills/<name>/` (consumer mode); `--plugin` writes to `skills/<name>/`. `--multi-step` emits a multi-step scaffold; default is minimal. `--merge` is accepted as a backward-compat no-op since `/im` already auto-merges. `--slack` forwards to `/im` (and thence to `/implement`) so the scaffold run posts a Slack announcement when configured. See `skills/shared/skill-design-principles.md`.
+Scaffold a new larch-style skill from a name and description.
 
 ## `/design`
 
@@ -60,21 +58,21 @@ Design an implementation plan with collaborative multi-reviewer review. The [ske
 
 ## `/fix-issue`
 
-**Arguments**: `[--auto] [--slack] [--no-admin-fallback] [--coder=<value>] [--inline] [--quick] [<number-or-url>]`
+**Arguments**: `[--auto] [--no-admin-fallback] [--coder=<value>] [--inline] [--quick] [<number-or-url>]`
 
 **Source**: [`skills/fix-issue/SKILL.md`](../skills/fix-issue/SKILL.md)
 
-Process one approved GitHub issue per invocation. Step 0 (`find-lock-issue.sh`) atomically finds an eligible candidate (open, with `GO` sentinel comment as last comment, no managed lifecycle title prefix, not already locked, no open blocking dependencies via GitHub's native blocked-by API plus conservative prose-keyword scanning — `Depends on #N`, `Blocked by #N`, etc., with fail-open posture), acquires the comment lock, and renames the title to `[IN PROGRESS]` so the visual lifecycle reflects the active run immediately. Triages, and classifies intent (PR/NON_PR) and — for PR tasks — complexity (SIMPLE/HARD). PR tasks delegate to `/implement` with `--issue $ISSUE_NUMBER` forwarded so the queue issue is adopted as the tracking issue (no separate tracking issue is created); NON_PR tasks run inline (typically filing findings via `/issue`) and never call `/implement`. With a number or URL argument, targets a specific issue instead of auto-picking. Single-iteration design — the caller handles repetition. `--slack` is forwarded to the delegated `/implement` run (enabling its Step 16a issue Slack post when configured) AND enables `/fix-issue`'s own Step 7 NON_PR-path Slack announcement. Default (no `--slack`): Slack is skipped on both paths. `--no-admin-fallback` is forwarded to the delegated `/implement` run on both SIMPLE and HARD paths so the run skips the default `--admin`-first merge attempt and bails to Step 12d if the plain-only merge is denied. `--coder=<value>` is forwarded verbatim to the delegated `/implement` run on PR paths; `/implement` validates the value. `--auto` is forwarded verbatim to the delegated `/implement` run on PR paths so the autonomous-mode behavior (no `AskUserQuestion` checkpoints in `/design` Step 1, in `/implement` Step 2 opportunistic questions, or in Step 12 merge-conflict resolution) propagates through; when omitted, `/implement` is invoked without `--auto` and runs interactively per its own defaults. `--inline` is forwarded to the delegated `/implement` run on the **HARD bullet only** — SIMPLE uses `/implement --quick` which skips `/design` and renders `/implement`'s `--inline` a no-op; on HARD, `--inline` makes `/design`'s heavy phase run in `/design`'s in-turn context instead of the default isolated subagent (richer transcript, higher parent-context token cost — see `/implement`'s `--inline` for the full semantics). `--quick` is forwarded to the delegated `/implement` run on the **HARD bullet only** — SIMPLE already passes `--quick` unconditionally, so the flag is a no-op on the SIMPLE path. It is the operator's escape hatch for HARD classifications: pass `--quick` to override the HARD complexity classification and force `/implement` to skip `/design` (using an inline plan) and replace `/review`'s panel with a single-reviewer loop. When both `--quick` and `--inline` are forwarded on HARD, `--quick` wins because `/implement --quick` skips `/design` entirely.
+Process one approved GitHub issue per invocation, classifying intent and delegating PR work to `/implement`.
 
 **Umbrella support (explicit-target only)**: when `/fix-issue <umbrella#>` is invoked on an umbrella issue (detected post-#846 by title-only — title prefix `Umbrella:` / `Umbrella —` after stripping leading bracket-blocks per #819; body content is NOT consulted), `/fix-issue` dispatches to the umbrella's next eligible child instead of working on the umbrella body itself. Neither the umbrella nor the chosen child needs a `GO` comment — the umbrella's existence is the approval signal and children inherit approval. Children are parsed from markdown task-list items (`- [ ] #N — ...`) in body order; cross-repo references (`owner/repo#N`) and prose `#N` mentions are NOT considered children. When all parsed children close, the umbrella is automatically renamed to `[DONE]`, gets a closing comment posted, and is closed (idempotent: concurrent finalize attempts won't double-comment). Auto-pick mode (no positional argument) NEVER selects umbrellas — the umbrella state machine is opt-in only via explicit positional argument; the auto-pick scan keeps its `GO`-tail invariant unchanged. See `skills/fix-issue/SKILL.md` Known Limitations for the full umbrella contract.
 
 ## `/implement`
 
-**Arguments**: `[--quick] [--auto] [--design-only] [--inline] [--merge | --draft] [--slack] [--no-admin-fallback] [--coder=claude|codex|cursor|gemini] [--session-env <path>] [--issue <N>] <feature description>`
+**Arguments**: `[--quick] [--auto] [--forked] [--design-only] [--inline] [--merge | --draft] [--no-admin-fallback] [--coder=claude|codex|cursor|gemini] [--session-env <path>] [--issue <N>] <feature description>`
 
 **Source**: [`skills/implement/SKILL.md`](../skills/implement/SKILL.md) · [Diagram](../skills/implement/diagram.svg)
 
-Full end-to-end feature workflow — design, implement, PR, optional issue Slack announce. `--design-only` publishes design artifacts and OOS status to the tracking issue, marks it `[DONE]`, and stops before implementation or PR creation; it is mutually exclusive with `--merge`. `--quick` skips `/design` and runs a code-review loop of up to 7 rounds (no voting panel; main agent unilaterally accepts or rejects each finding): rounds 1-3 launch 5 Cursor specialists in parallel plus a generic Codex reviewer and a Claude generic reviewer; rounds 4-7 use a single generic reviewer per round with a `Cursor → Codex → Claude Code Reviewer subagent` fallback chain. `--auto` suppresses all interactive question checkpoints. `--merge` additionally runs the CI+rebase+merge loop, local branch cleanup, and main verification (without `--merge`, the PR is created and the workflow stops after the initial CI wait and reports). `--draft` creates the PR in draft state and skips local cleanup so the branch is kept for further iteration; mutually exclusive with `--merge`. `--coder` selects the Step 2 implementer. When `--coder` is omitted, behavior starts at `codex` (spawns the Codex implementer) and auto-routes to `claude` for small surgical plans (≤ ~100 LOC, no new abstractions, no new architectural contracts, no large refactors); pass `--coder=codex` explicitly to suppress the auto-route. Pass `claude` to run in the main agent / Claude context, `cursor` for the Cursor implementer, or `gemini` for the Gemini implementer; `cursor` and `gemini` fall back to the main-agent path when unhealthy or unavailable. When `--slack` is passed, near the end of the run (Step 16a) a single status message about the tracking issue is posted to Slack: `<emoji> <GitHub link|Issue #N> (<title>) — <status>`. Emoji: ✅ closed (PR merged + issue auto-closed), 📝 PR opened but not merged (`--merge` not set or `--draft`), 🧭 design complete (`--design-only`), ❌ blocked (CI failure, merge failure, or Step 12d bail), ❓ needs user input (auto-mode conflict bail). The post uses the git user identity (`git config user.name` → Slack `username`). Requires `LARCH_SLACK_BOT_TOKEN` and `LARCH_SLACK_CHANNEL_ID`. By default, Slack is skipped. By default, `merge-pr.sh` verifies CI and freshness, tries `gh pr merge --admin` first, and retries without `--admin` if the privileged attempt is rejected. `--no-admin-fallback` opts out of the privileged attempt — when set, `merge-pr.sh` tries only a plain squash merge after the same gate, returns `MERGE_RESULT=policy_denied` if that plain merge fails, and `/implement` bails to Step 12d. When `--admin` succeeds (default path), Step 12b posts a best-effort PR comment recording the bypass. `--issue <N>` attaches `/implement` to an existing tracking issue (Step 0.5 adoption); otherwise a fresh tracking issue is created at Step 0.5 Branch 4.
+Full end-to-end feature workflow — design, implement, PR. `--design-only` publishes design artifacts and OOS status to the tracking issue, marks it `[DONE]`, and stops before implementation or PR creation; it is mutually exclusive with `--merge`. `--quick` skips `/design` and runs a code-review loop of up to 7 rounds (no voting panel; main agent unilaterally accepts or rejects each finding): rounds 1-3 launch 5 Cursor specialists in parallel plus a generic Codex reviewer and a Claude generic reviewer; rounds 4-7 use a single generic reviewer per round with a `Cursor → Codex → Claude Code Reviewer subagent` fallback chain. `--auto` suppresses all interactive question checkpoints. `--merge` additionally runs the CI+rebase+merge loop, local branch cleanup, and main verification (without `--merge`, the PR is created and the workflow stops after the initial CI wait and reports). `--draft` creates the PR in draft state and skips local cleanup so the branch is kept for further iteration; mutually exclusive with `--merge`. `--coder` selects the Step 2 implementer. When `--coder` is omitted, behavior starts at `codex` (spawns the Codex implementer) and auto-routes to `claude` for small surgical plans (≤ ~100 LOC, no new abstractions, no new architectural contracts, no large refactors); pass `--coder=codex` explicitly to suppress the auto-route. Pass `claude` to run in the main agent / Claude context, `cursor` for the Cursor implementer, or `gemini` for the Gemini implementer; `cursor` and `gemini` fall back to the main-agent path when unhealthy or unavailable. By default, `merge-pr.sh` verifies CI and freshness, tries `gh pr merge --admin` first, and retries without `--admin` if the privileged attempt is rejected. `--no-admin-fallback` opts out of the privileged attempt — when set, `merge-pr.sh` tries only a plain squash merge after the same gate, returns `MERGE_RESULT=policy_denied` if that plain merge fails, and `/implement` bails to Step 12d. When `--admin` succeeds (default path), Step 12b posts a best-effort PR comment recording the bypass. `--issue <N>` attaches `/implement` to an existing tracking issue (Step 0.5 adoption); otherwise a fresh tracking issue is created at Step 0.5 Branch 4.
 
 ## `/issue`
 
@@ -128,11 +126,11 @@ The workflow is intentionally single-clone (per-clone single-flight lock; multip
 
 ## `/simplify-skill`
 
-**Arguments**: `[--slack] <skill-name>`
+**Arguments**: `<skill-name>`
 
 **Source**: [`skills/simplify-skill/SKILL.md`](../skills/simplify-skill/SKILL.md)
 
-Refactor an existing larch skill for stronger adherence to `skills/shared/skill-design-principles.md` and to reduce SKILL.md token footprint. Resolves the target skill directory (plugin tree first, then consumer `.claude/skills/`), enumerates every `.md` file under it (excluding `scripts/` and `tests/`), does NOT follow sub-skills invoked via the `Skill` tool, and delegates the refactor to `/im` with a pinned behavior-preserving feature description that requires a `## Token budget` section in the PR body. `--slack` forwards to `/im` (and thence to `/implement`) so the refactor run posts a Slack announcement when configured. Example: `/simplify-skill implement`.
+Refactor a skill for stronger adherence to design principles and reduced SKILL.md footprint.
 
 ## `/skill-evolver`
 

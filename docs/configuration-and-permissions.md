@@ -169,35 +169,6 @@ The legacy `--codex-available true|false` knob is still accepted by the dispatch
 
 ## Environment Variables
 
-Larch uses environment variables for Slack integration and external reviewer model configuration. All are optional — when not set, opted-in Slack features are skipped with warnings, and external reviewers use their default models.
-
-> **Important:** Slack posting in `/implement` is opt-in. `/implement` posts a single status message about its tracking issue near the end of each run (✅ closed / 📝 PR opened / ❌ blocked / ❓ user input needed) only when `--slack` is set. When both `LARCH_SLACK_BOT_TOKEN` and `LARCH_SLACK_CHANNEL_ID` are present in your shell environment, the post is made for opted-in runs; if either is missing, the post is skipped with a warning at session setup time identifying which variable(s) are absent. When `--slack` is not set, no Slack calls are made regardless of environment configuration. These variables must be present in the environment where `claude` is launched — they are not read from `.env` files or configuration.
-
-**Alternative: Plugin `userConfig`** — If you installed larch as a plugin, you can also configure Slack tokens via the plugin's `userConfig` (prompted at plugin enable time). The `userConfig` values are exported as `CLAUDE_PLUGIN_OPTION_*` environment variables to subprocesses. Larch checks both: environment variables take precedence if both are set.
-
-### `LARCH_SLACK_BOT_TOKEN`
-
-A Slack Bot User OAuth Token (starts with `xoxb-`) used to authenticate Slack API calls. The post body identifies the sender as the git user (via `git config user.name` → Slack `chat.postMessage` `username` parameter), so the message appears attributed to the human running the workflow rather than to the bot's display name.
-
-**When set (and `/implement` is invoked with `--slack`):**
-- `/implement` posts a one-line tracking-issue status message to Slack near the end of each run (Step 16a)
-- The token's presence is checked during session setup and its availability is propagated to child skills
-
-**When not set (or `/implement` is invoked without `--slack`):**
-- All Slack operations in `/implement` are skipped. When running with `--slack` but env vars are missing, a warning is printed at session setup (e.g., `⚠ Slack is not fully configured (LARCH_SLACK_BOT_TOKEN not set). Issue Slack announcement (Step 16a) will be skipped.`). When `--slack` is not set, no warning is printed — Slack is not in use.
-- All other workflow steps (design, implementation, code review, CI monitoring, merge) proceed normally
-
-### `LARCH_SLACK_CHANNEL_ID`
-
-The Slack channel ID (e.g., `C0123456789`) where tracking-issue status messages are posted.
-
-**When set (and `/implement` is invoked with `--slack`):**
-- The issue status message is posted to this channel
-
-**When not set (or `/implement` is invoked without `--slack`):**
-- All Slack operations in `/implement` are skipped. When running with `--slack` but env vars are missing, a warning is printed at session setup (e.g., `⚠ Slack is not fully configured (LARCH_SLACK_CHANNEL_ID not set).`). When `--slack` is not set, no warning is printed.
-- All other workflow steps proceed normally
-
 ### External Agent Model Configuration
 
 These variables control which model Cursor, Codex, and Gemini use when running as external agents. Cursor and Codex run reviews, sketches, voting, and implementation (when selected with `--coder`). Gemini's only currently-active path is implementation (when selected with `--coder=gemini`); the Gemini reviewer call sites have been removed from `/review` and `/implement --quick`, so the dormant reviewer launcher (`scripts/launch-gemini-review.sh`) and Gemini health probe still consume the same `LARCH_GEMINI_MODEL` resolution but the launcher itself is not invoked by any current skill. When unset, Cursor defaults to `composer-2` (with the `/max-mode on.` slash-command prefix applied to every substantive prompt via `scripts/cursor-wrap-prompt.sh`), Codex defaults to `gpt-5.5` (hardcoded in `scripts/agent-model-args.sh`), and Gemini defaults to `gemini-2.5-pro`. The model is passed via `--model` for Cursor and the Gemini implementer, and via `-m` for Codex and the dormant Gemini reviewer launcher. To restore the pre-`composer-2` behavior, set `LARCH_CURSOR_MODEL=composer-2-fast`.

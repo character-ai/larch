@@ -50,7 +50,6 @@ run_session_setup() {
     if ! "$SCRIPT" \
         --prefix "test-health-${label}" \
         --skip-preflight \
-        --skip-slack-check \
         --skip-repo-check \
         --caller-env "$caller_env" \
         --write-health "$health" \

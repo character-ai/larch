@@ -19,12 +19,11 @@ FORK_REPO=<owner/repo>
 UPSTREAM_REPO=<owner/repo>
 FORK_OWNER=<owner>
 FORKED_TARGET=true
-SLACK_ENABLED=false
 ```
 
 ## Caller contract
 
-The orchestrator captures stdout and parses these fields. It then invokes the canonical Step 0 sequence with `session-setup.sh --caller-env "$CALLER_ENV_PATH"`. Fork-specific metadata (`FORK_REPO`, `UPSTREAM_REPO`, `FORK_OWNER`, `FORKED_TARGET`, `SLACK_ENABLED`) stays orchestrator-local — none of it is persisted in `session-env.sh` (Round 1 plan-review FINDING_1).
+The orchestrator captures stdout and parses these fields. It then invokes the canonical Step 0 sequence with `session-setup.sh --caller-env "$CALLER_ENV_PATH"`. Fork-specific metadata (`FORK_REPO`, `UPSTREAM_REPO`, `FORK_OWNER`, `FORKED_TARGET`) stays orchestrator-local — none of it is persisted in `session-env.sh` (Round 1 plan-review FINDING_1).
 
 After session-setup creates the real `SESSION_TMPDIR` and the orchestrator sets `IMPLEMENT_TMPDIR=SESSION_TMPDIR`, the bootstrap directory is no longer needed; the orchestrator may `rm -rf "$BOOTSTRAP_TMPDIR"` immediately, or leave it for OS tmp cleanup. `IMPLEMENT_TMPDIR` is never the bootstrap path.
 
@@ -40,4 +39,4 @@ Step 0's atomic three-call setup (`create-branch.sh --check` → `session-entry-
 
 ## Harness
 
-`scripts/test-implement-fork-env.sh` (regression coverage: missing-upstream → exit 1, malformed-`origin` → exit 2, malformed-`upstream` → exit 2 even when origin is valid, success path emits BOOTSTRAP_TMPDIR + CALLER_ENV_PATH + FORK_REPO + UPSTREAM_REPO + FORK_OWNER + FORKED_TARGET + SLACK_ENABLED, and writes `caller-env.sh` containing only `REPO=...`). Wired into `make lint` via `test-implement-fork-env`.
+`scripts/test-implement-fork-env.sh` (regression coverage: missing-upstream → exit 1, malformed-`origin` → exit 2, malformed-`upstream` → exit 2 even when origin is valid, success path emits BOOTSTRAP_TMPDIR + CALLER_ENV_PATH + FORK_REPO + UPSTREAM_REPO + FORK_OWNER + FORKED_TARGET, and writes `caller-env.sh` containing only `REPO=...`). Wired into `make lint` via `test-implement-fork-env`.

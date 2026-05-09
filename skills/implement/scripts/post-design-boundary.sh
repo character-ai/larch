@@ -133,7 +133,7 @@ read_health_sidecar_value() {
 
 health_merge() {
     local sidecar="${SESSION_ENV_PATH}.health"
-    local slack_ok slack_missing repo repo_unavailable
+    local repo repo_unavailable
     local cur_codex cur_cursor cur_gemini cur_timing_ledger cur_token_session_id cur_claude_source_file
     local side_codex side_cursor side_gemini
     local merged_codex merged_cursor merged_gemini
@@ -141,8 +141,6 @@ health_merge() {
 
     [[ -n "$SESSION_ENV_PATH" && -f "$sidecar" ]] || return 0
 
-    slack_ok=$(parse_session_env_key "$SESSION_ENV_PATH" "SLACK_OK")
-    slack_missing=$(parse_session_env_key "$SESSION_ENV_PATH" "SLACK_MISSING")
     repo=$(parse_session_env_key "$SESSION_ENV_PATH" "REPO")
     repo_unavailable=$(parse_session_env_key "$SESSION_ENV_PATH" "REPO_UNAVAILABLE")
 
@@ -188,8 +186,6 @@ health_merge() {
     if [[ "$flipped" = true ]]; then
         local write_args=(
             --output "$SESSION_ENV_PATH"
-            --slack-ok "$slack_ok"
-            --slack-missing "$slack_missing"
             --repo "$repo"
             --repo-unavailable "$repo_unavailable"
             --codex-healthy "$merged_codex"

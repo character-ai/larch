@@ -2,7 +2,7 @@
 
 **Consumer**: `/fix-issue` Step 5b (`INTENT=NON_PR` path — follow instructions inline).
 
-**Contract**: Authoritative detail for the NON_PR execution path — what `NON_PR` tasks deliver, which child skills to invoke (`/research`, `/issue`), the no-working-tree-edits rule, the `WORK_SUMMARY` running-summary discipline that becomes Step 6b's closing comment and Step 7b's Slack message, and the per-failure fallback. SKILL.md Step 5b carries the control-flow shell (the branch on `INTENT`, the `Do NOT call /implement` / `Do NOT modify files in the working tree` top-level invariants, the anti-halt continuation reminder for child-skill returns, and the failure-path breadcrumb that skips to Step 8); this file carries the per-pattern detail.
+**Contract**: Authoritative detail for the NON_PR execution path — what `NON_PR` tasks deliver, which child skills to invoke (`/research`, `/issue`), the no-working-tree-edits rule, the `WORK_SUMMARY` running-summary discipline that becomes Step 6b's closing comment, and the per-failure fallback. SKILL.md Step 5b carries the control-flow shell (the branch on `INTENT`, the `Do NOT call /implement` / `Do NOT modify files in the working tree` top-level invariants, the anti-halt continuation reminder for child-skill returns, and the failure-path breadcrumb that skips to Step 8); this file carries the per-pattern detail.
 
 **When to load**: only when Step 4's classifier sets `INTENT=NON_PR`. **Do NOT load** when `INTENT=PR` — Step 5a delegates to `/implement` and never references this file. **Do NOT load** in any step other than 5.
 
@@ -21,8 +21,6 @@ Read the issue details from Step 2 and execute the instructions directly using R
 - **Other investigative or planning tasks** — follow the body's instructions literally; when ambiguous, prefer the interpretation that produces actionable output (issues, documented findings) over the interpretation that produces code changes.
 
 ### WORK_SUMMARY running discipline
-
-As work proceeds, maintain a running `WORK_SUMMARY` — a concise markdown summary of what was done and the output artifacts (links to any issues created, key findings, etc.). This summary becomes the closing comment in Step 6b and the one-sentence Slack message in Step 7b. Keep `PR_URL` and `PR_NUMBER` unset on this path.
 
 Step 6b passes `--close-class done` to `issue-lifecycle.sh close`. The structured close-reason enum is set at decision time, not inferred from `WORK_SUMMARY` prose, so legitimate completion narrative containing words like "duplicate", "superseded", or "false positive" can never misclassify the close. Step 6b MUST NOT pass `--mark-false-positive-if-keyword` — the enum is authoritative on this path; the keyword flag remains available solely for unstructured-prose close paths external to `/fix-issue`.
 

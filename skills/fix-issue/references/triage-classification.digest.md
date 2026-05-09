@@ -22,7 +22,7 @@ Check via Read/Grep/Glob:
 - superseded-by #N (replaced by later issue/PR) → `superseded`
 - invalid / not-a-bug / false-positive (behavior by design, filed in error) → `false-positive`
 
-SKILL.md Step 3 then invokes `issue-lifecycle.sh close --close-class <value>`, `tracking-issue-write.sh rename --state done` (best-effort), optional `post-issue-slack.sh`, and skips to Step 8.
+SKILL.md Step 3 then invokes `issue-lifecycle.sh close --close-class <value>`, `tracking-issue-write.sh rename --state done` (best-effort), and skips to Step 8.
 
 ## Classification rules (Step 4)
 

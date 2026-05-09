@@ -1,7 +1,7 @@
 ---
 name: alias
-description: "Use when creating shortcut aliases for existing larch skills with preset flags. Auto-routes to plugin tree skills/ inside Claude plugin source repos, dev-only .claude/skills/ elsewhere; --private forces dev-only. --merge / --slack passthrough."
-argument-hint: "[--merge] [--slack] [--private] <alias-name> <target-skill> [preset-flags...]"
+description: "Use when creating shortcut aliases for existing larch skills with preset flags. Auto-routes to plugin tree skills/ inside Claude plugin source repos, dev-only .claude/skills/ elsewhere; --private forces dev-only."
+argument-hint: "[--merge] [--private] <alias-name> <target-skill> [preset-flags...]"
 allowed-tools: Bash, Skill
 ---
 
@@ -30,7 +30,7 @@ Example with merge: `/alias --merge i implement --merge` creates the alias AND m
 2. **NEVER let an alias name shadow an existing larch skill** — neither in `skills/` (public) nor `.claude/skills/` (dev-only). **Why:** shadowing silently reroutes `/<name>` invocations. Enforced by Step 2 check #2 via dynamic probe.
 3. **NEVER auto-remediate when `VERIFIED=false` in Step 4** — do NOT retry `/implement`, roll back, or delete the PR. **Why:** under `--merge` the PR may already be merged; retry would create a divergent PR. Human judgment required.
 4. **NEVER assume success on `VERIFIED=false` just because `/implement` returned.** **Why:** `/implement` can return cleanly while writing the file to the wrong path, skipping the generator, or failing silently — the sentinel-file gate is the only authoritative signal.
-5. **NEVER parse `--merge`, `--slack`, or `--private` tokens after the first positional argument as flags for `/alias`.** **Why:** all three flags have a dual role (consumed by `/alias` when before the first positional; passed through to the alias's preset flags otherwise); conflating the two is a silent footgun.
+5. **NEVER parse `--merge` or `--private` tokens after the first positional argument as flags for `/alias`.** **Why:** both flags have a dual role (consumed by `/alias` when before the first positional; passed through to the alias's preset flags otherwise); conflating the two is a silent footgun.
 6. **NEVER hardcode `.claude/skills/<alias-name>` or `skills/<alias-name>` paths anywhere in Steps 2/3/4 — always thread `$TARGET_DIR`.** **Why:** the resolved target directory is the single source of truth (computed once at Step 2 by `resolve-target.sh`); a partial edit that re-introduces a hardcoded path in one site (e.g., the `/implement` recipe) but not another (e.g., the verify sentinel) creates a silent path split where `/implement` writes one tree and Step 4 verifies a different tree. Enforced by `scripts/test-alias-structure.sh` (CI).
 7. **NEVER use `eval "$(resolve-target.sh ...)"` to consume the helper's stdout.** **Why:** `eval` of a path that contains shell metacharacters (spaces, `$(...)`, backticks) creates shell-injection risk if the script's stdout contract ever drifts. Use the non-eval allowlist parser shown in Step 2's bash block. See `skills/alias/scripts/resolve-target.md` "Caller parsing requirement" for the required pattern.
 
@@ -38,25 +38,19 @@ Example with merge: `/alias --merge i implement --merge` creates the alias AND m
 
 ## Step 1 — Parse Arguments
 
-Parse flags from the start of `$ARGUMENTS` before treating the remainder as positional arguments. Stop at the first non-flag token (a token not starting with `--`). Only `--merge`, `--slack`, and `--private` appearing before the first positional argument are consumed as flags for `/alias` itself; any occurrence in the preset-flags remainder is passed through verbatim to the alias.
+Parse flags from the start of `$ARGUMENTS` before treating the remainder as positional arguments.
 
 - `--merge`: Set `alias_merge=true`. Default: `alias_merge=false`. When true, `--merge` is forwarded to the `/implement` invocation so the resulting PR is also merged.
-- `--slack`: Set `alias_slack=true`. Default: `alias_slack=false`. When true, `--slack` is forwarded to the `/implement` invocation so `/alias`'s own creation-time `/implement` run posts to Slack when Slack env vars are configured. Default (no `--slack`): `/alias`'s own `/implement` run does not post to Slack. This flag controls only `/alias`'s creation-time `/implement` run — it does NOT add `--slack` to the generated alias's preset flags (put `--slack` after the first positional for that behavior).
 - `--private`: Set `alias_private=true`. Default: `alias_private=false`. When true, the new alias is forced under `.claude/skills/<alias-name>/` regardless of plugin-repo detection (escape hatch for creating a private alias inside a plugin source repo). When absent: target is `skills/<alias-name>/` if running in a plugin source repo, else `.claude/skills/<alias-name>/`. In non-plugin repos `--private` is a no-op (the default is already `.claude/skills/`). The flag is consumed by `/alias` only — it does NOT appear in the generated alias's preset flags.
-
-**`--merge` / `--slack` / `--private` dual-role reference**:
 
 | Position | Meaning |
 |----------|---------|
-| Before first positional token | Consumed by /alias (`--merge` → `alias_merge=true`; `--slack` → `alias_slack=true`; `--private` → `alias_private=true`) |
 | After first positional token | Pass-through to the generated alias's preset flags |
 
 After flag stripping, parse the remaining positional arguments:
 - First token = **alias name**
 - Second token = **target skill name** (without `/` prefix)
 - Remainder = **preset flags** (may be empty — a pure rename shortcut is valid)
-
-If fewer than 2 positional tokens are provided, print: `**ERROR: Usage: /alias [--merge] [--slack] [--private] <alias-name> <target-skill> [preset-flags...]**` and abort.
 
 ## Step 2 — Validate
 
@@ -165,13 +159,13 @@ When constructing the feature description string, substitute the actual `$TARGET
 
 Omit the `<preset-flags>` segment from the leading sentence when empty (pure rename shortcut).
 
-Print: `**Alias /<alias-name> -> /<target-skill> <preset-flags> — target: $TARGET_DIR — delegating to /implement --quick --auto [--merge] [--slack]**` (interpolate the resolved `$TARGET_DIR` so the operator sees at a glance which target was selected; omit `<preset-flags>` if empty; omit `--merge` if `alias_merge=false`; omit `--slack` if `alias_slack=false`).
+Print: `**Alias /<alias-name> -> /<target-skill> <preset-flags> — target: $TARGET_DIR — delegating to /implement --quick --auto [--merge]**` (interpolate the resolved `$TARGET_DIR` so the operator sees at a glance which target was selected; omit `<preset-flags>` if empty; omit `--merge` if `alias_merge=false`).
 
 Invoke the Skill tool:
 - Try skill: `"implement"` first (bare name). If no skill matches, try skill: `"larch:implement"` (fully-qualified plugin name).
-- args: `"--quick --auto [--merge] [--slack] <feature-description>"`
+- args: `"--quick --auto [--merge] <feature-description>"`
 
-Only include `--merge` in the args if `alias_merge=true`. Only include `--slack` in the args if `alias_slack=true`.
+Only include `--merge` in the args if `alias_merge=true`.
 
 > **Continue after child returns.** When `/implement` returns, execute Step 4 — do NOT end the turn, and do NOT write a summary, handoff, or "returning to parent" message. See `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Anti-halt continuation reminder. **Do NOT load** that reference for routine `/implement` returns — load only when adding a new child-Skill invocation to this file or when debugging a halt symptom.
 

@@ -88,8 +88,6 @@ write_state() {
         printf 'REPO=%s\n' "$(override_value REPO owner/repo "$@")"
         printf 'DRAFT=%s\n' "$(override_value DRAFT false "$@")"
         printf 'MERGE=%s\n' "$(override_value MERGE true "$@")"
-        printf 'SLACK_ENABLED=%s\n' "$(override_value SLACK_ENABLED true "$@")"
-        printf 'SLACK_AVAILABLE=%s\n' "$(override_value SLACK_AVAILABLE true "$@")"
         printf 'DEFERRED=%s\n' "$(override_value DEFERRED false "$@")"
         printf 'REPO_UNAVAILABLE=%s\n' "$(override_value REPO_UNAVAILABLE false "$@")"
         printf 'PR_CLOSED=%s\n' "$(override_value PR_CLOSED false "$@")"
@@ -166,12 +164,6 @@ echo "VERIFIED=${STUB_VERIFIED:-true}"
 echo "COMMIT_HASH=${STUB_COMMIT_HASH:-abc1234}"
 echo "COMMIT_MESSAGE=${STUB_COMMIT_MESSAGE:-Implement finalizer (#123)}"
 exit "${STUB_VERIFY_RC:-0}"
-STUB
-    cat > "$SANDBOX/scripts/post-issue-slack.sh" <<STUB
-#!/usr/bin/env bash
-printf '%s\n' "\$@" > "$SANDBOX/slack-argv.txt"
-echo "SLACK_TS=\${STUB_SLACK_TS:-1700000000.000000}"
-exit "\${STUB_SLACK_RC:-0}"
 STUB
     cat > "$SANDBOX/scripts/get-issue-info.sh" <<'STUB'
 #!/usr/bin/env bash
@@ -467,59 +459,6 @@ run_subject_raw_rc postmerge --state-file "$STATE" --final-bail-reason-file "$BA
 assert_rc "$RC" 2 "postmerge: invalid boolean exits 2"
 assert_contains "MERGE must be true or false" "$OUT" "postmerge: invalid boolean diagnostic"
 
-write_state "$STATE" SLACK_ENABLED=false PR_CLOSED=true
-OUT=$(run_subject slack --state-file "$STATE" --final-bail-reason-file "$BAIL")
-assert_contains "⏭️ 16a: slack issue post — skipped (--slack not set) (<elapsed>)" "$OUT" "slack: --slack-not-set skip"
-assert_contains "RUN_OUTCOME=closed" "$OUT" "slack: closed outcome emitted on skip"
-
-write_state "$STATE" SLACK_ENABLED=false DESIGN_ONLY_DONE=true
-OUT=$(run_subject slack --state-file "$STATE" --final-bail-reason-file "$BAIL")
-assert_contains "RUN_OUTCOME=design-only" "$OUT" "slack: design-only outcome"
-
-write_state "$STATE" SLACK_ENABLED=false BAIL_NEEDS_USER_INPUT=true
-OUT=$(run_subject slack --state-file "$STATE" --final-bail-reason-file "$BAIL")
-assert_contains "RUN_OUTCOME=user-input" "$OUT" "slack: user-input outcome"
-
-printf 'blocked reason' > "$BAIL"
-write_state "$STATE" SLACK_ENABLED=false
-OUT=$(run_subject slack --state-file "$STATE" --final-bail-reason-file "$BAIL")
-assert_contains "RUN_OUTCOME=blocked" "$OUT" "slack: blocked outcome"
-: > "$BAIL"
-
-write_state "$STATE" SLACK_ENABLED=false MERGE=false
-OUT=$(run_subject slack --state-file "$STATE" --final-bail-reason-file "$BAIL")
-assert_contains "RUN_OUTCOME=pr-opened" "$OUT" "slack: merge=false maps to pr-opened"
-
-write_state "$STATE" SLACK_ENABLED=false DRAFT=true
-OUT=$(run_subject slack --state-file "$STATE" --final-bail-reason-file "$BAIL")
-assert_contains "RUN_OUTCOME=pr-opened" "$OUT" "slack: draft maps to pr-opened"
-
-write_state "$STATE"
-OUT=$(run_subject slack --state-file "$STATE" --final-bail-reason-file "$BAIL")
-assert_contains "✅ 16a: slack issue post — posted (<elapsed>)" "$OUT" "slack: posts when eligible"
-assert_contains "SLACK_TS=1700000000.000000" "$OUT" "slack: timestamp forwarded"
-
-write_state "$STATE" DESIGN_ONLY_DONE=true
-OUT=$(run_subject slack --state-file "$STATE" --final-bail-reason-file "$BAIL")
-SLACK_ARGV=$(cat "$SANDBOX/slack-argv.txt")
-assert_contains "--status" "$SLACK_ARGV" "slack: argv recorded"
-assert_not_contains "--pr-url" "$SLACK_ARGV" "slack: design-only omits pr-url"
-assert_contains "RUN_OUTCOME=design-only" "$OUT" "slack: design-only post outcome"
-
-printf 'line one\nline two\n' > "$BAIL"
-write_state "$STATE"
-OUT=$(run_subject slack --state-file "$STATE" --final-bail-reason-file "$BAIL")
-SLACK_ARGV=$(cat "$SANDBOX/slack-argv.txt")
-assert_contains "--detail" "$SLACK_ARGV" "slack: blocked detail flag"
-assert_contains "line one line two " "$SLACK_ARGV" "slack: blocked detail normalized"
-assert_contains "RUN_OUTCOME=blocked" "$OUT" "slack: blocked detail outcome"
-: > "$BAIL"
-
-write_state "$STATE"
-OUT=$(STUB_SLACK_TS='' STUB_SLACK_RC=1 run_subject slack --state-file "$STATE" --final-bail-reason-file "$BAIL")
-assert_contains "**⚠ 16a: slack issue post — failed. Continuing.**" "$OUT" "slack: failure warning"
-assert_contains "FINALIZE_WARNINGS=1" "$OUT" "slack: failure warning counted"
-
 write_state "$STATE" ISSUE_NUMBER=
 OUT=$(run_subject teardown --state-file "$STATE" --implement-tmpdir "$SANDBOX/tmp")
 assert_contains "RENAME_BRANCH=skipped" "$OUT" "teardown: empty issue skips rename"
@@ -693,21 +632,21 @@ assert_rc "$RC" 2 "teardown: implement tmpdir outside /tmp exits 2"
 assert_contains "--implement-tmpdir must be under /tmp/, /private/tmp/, or the larch cache sessions root" "$OUT" "teardown: implement tmpdir diagnostic"
 
 printf 'BRANCH_NAME: bad\n' > "$STATE"
-run_subject_raw_rc slack --state-file "$STATE" --final-bail-reason-file "$BAIL"
+run_subject_raw_rc postmerge --state-file "$STATE" --final-bail-reason-file "$BAIL"
 assert_rc "$RC" 2 "state parsing: malformed line exits 2"
 assert_contains "malformed state-file line 1" "$OUT" "state parsing: malformed line diagnostic"
 
 write_state "$STATE"
 grep -v '^MERGE=' "$STATE" > "$STATE.no-merge"
 mv "$STATE.no-merge" "$STATE"
-run_subject_raw_rc slack --state-file "$STATE" --final-bail-reason-file "$BAIL"
+run_subject_raw_rc postmerge --state-file "$STATE" --final-bail-reason-file "$BAIL"
 assert_rc "$RC" 2 "state parsing: missing key exits 2"
 assert_contains "state-file missing required key: MERGE" "$OUT" "state parsing: missing key diagnostic"
 
 INJECTED="$SANDBOX/injected"
 write_state "$STATE" "PR_TITLE=\$(touch $INJECTED)"
-OUT=$(run_subject slack --state-file "$STATE" --final-bail-reason-file "$BAIL")
-assert_contains "✅ 16a: slack issue post — posted (<elapsed>)" "$OUT" "state parsing: injection-shaped value accepted as data"
+OUT=$(run_subject postmerge --state-file "$STATE" --final-bail-reason-file "$BAIL")
+assert_contains "LOCAL_CLEANUP_STATUS=success" "$OUT" "state parsing: injection-shaped value accepted as data"
 if [ ! -e "$INJECTED" ]; then
     PASS=$((PASS + 1))
     echo "PASS: state parsing: injection value was not executed"

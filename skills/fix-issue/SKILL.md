@@ -1,7 +1,7 @@
 ---
 name: fix-issue
 description: "Use when fixing open GitHub issues. Processes one approved issue per invocation: skips issues with open blockers, triages, classifies intent, then either delegates to /implement or follows the issue's instructions inline for research/review tasks."
-argument-hint: "[--auto] [--slack] [--no-admin-fallback] [--coder=<value>] [--inline] [--quick] [--issue <number-or-url>] [<number-or-url>]"
+argument-hint: "[--auto] [--no-admin-fallback] [--coder=<value>] [--inline] [--quick] [--issue <number-or-url>] [<number-or-url>]"
 allowed-tools: Bash, Read, Grep, Glob, Skill
 ---
 
@@ -11,18 +11,16 @@ Process one open GitHub issue per invocation. Scans for open issues (or targets 
 
 **Single-iteration design**: Each invocation handles at most one issue, then exits. The caller (cron, `/loop`, or manual invocation) is responsible for repeated execution.
 
-**Anti-halt continuation reminder.** After every child tool call returns — both child `Skill` tool calls (e.g., `/design`, `/review`, `/relevant-checks`, `/bump-version`, `/issue`, `/implement`) AND child Bash tool calls into the canonical `/fix-issue` script set (`issue-lifecycle.sh`, `tracking-issue-write.sh`, `round-trip-detect.sh`, `post-issue-slack.sh`, `cleanup-tmpdir.sh`, `find-lock-issue.sh`, `session-setup.sh`, `write-session-env.sh`, `get-issue-details.sh`) — IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on the child's cleanup output, and do NOT write a summary, handoff, status recap, or "returning to parent" message — those are halts in disguise. The Bash-tool-call coverage is unique to this `/fix-issue` skill. The terminal Step 6 → Step 7 → Step 8 sequence has no intervening Skill tool calls. Step 6 always invokes `issue-lifecycle.sh close` (and additionally invokes `tracking-issue-write.sh rename` on the NON_PR sub-branch 6b); Step 8 invokes `cleanup-tmpdir.sh` when a temp dir was created (otherwise it is prose-only); on the PR path Step 7 is itself a prose-only skip with no Bash call at all. The same Skill-free **close/announce/cleanup tail** pattern recurs in Step 3's not-material closure flow (close + best-effort rename + Slack + skip-to-cleanup) and in the Step 6b → Step 7b → Step 8 NON_PR close path. Step 5b's NON_PR body is separate from this tail pattern: it may call `/issue` (covered by the Skill-tool reminder above) and run additional Bash (covered by the same Bash-tool reminder above, applied to its full scope as stated next). The enumerated script list is the always-covered minimum scope; the rule applies equally to **any** Bash tool call invoked as part of a `/fix-issue` step's primary work — including Step 5b's inline `gh` queries, shell `test` invocations, and ad-hoc Bash. The Read / Grep / Glob tools are first-class Claude Code tools, not Bash subprocesses — their returns are not directly governed by this Bash extension, but the same continuation discipline applies: do not treat a tool return inside `/fix-issue`'s step sequence as a turn boundary — continue to the next sequenced step unless this file's explicit control-flow directives (`skip to Step N`, `bail to cleanup`, etc.) tell you otherwise. The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `skip to Step N`, `bail to cleanup`, `jump back`, `loop back`, `fall through`, `break out`). A normal sequential `proceed to Step N+1` instruction is the default continuation this rule reinforces, NOT an exception. Every `/relevant-checks` invocation anywhere in this file is covered by this rule. See `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Anti-halt continuation reminder for the canonical rule — note that the shared file remains scoped to `Skill` tool calls only; the broader Bash-call coverage in the paragraph above is `/fix-issue`-local and does NOT propagate to other skills.
+**Anti-halt continuation reminder.** After every child tool call returns — both child `Skill` tool calls (e.g., `/design`, `/review`, `/relevant-checks`, `/bump-version`, `/issue`, `/implement`) AND child Bash tool calls into the canonical `/fix-issue` script set (`issue-lifecycle.sh`, `tracking-issue-write.sh`, `round-trip-detect.sh`, `cleanup-tmpdir.sh`, `find-lock-issue.sh`, `session-setup.sh`, `write-session-env.sh`, `get-issue-details.sh`) — IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on the child's cleanup output, and do NOT write a summary, handoff, status recap, or "returning to parent" message — those are halts in disguise. The Bash-tool-call coverage is unique to this `/fix-issue` skill. The terminal Step 6 → Step 7 → Step 8 sequence has no intervening Skill tool calls. Step 6 always invokes `issue-lifecycle.sh close` (and additionally invokes `tracking-issue-write.sh rename` on the NON_PR sub-branch 6b); Step 8 invokes `cleanup-tmpdir.sh` when a temp dir was created (otherwise it is prose-only); on the PR path Step 7 is itself a prose-only skip with no Bash call at all. The same Skill-free **close/cleanup tail** pattern recurs in Step 3's not-material closure flow (close + best-effort rename + skip-to-cleanup) and in the Step 6b → Step 7b → Step 8 NON_PR close path. Step 5b's NON_PR body is separate from this tail pattern: it may call `/issue` (covered by the Skill-tool reminder above) and run additional Bash (covered by the same Bash-tool reminder above, applied to its full scope as stated next). The enumerated script list is the always-covered minimum scope; the rule applies equally to **any** Bash tool call invoked as part of a `/fix-issue` step's primary work — including Step 5b's inline `gh` queries, shell `test` invocations, and ad-hoc Bash. The Read / Grep / Glob tools are first-class Claude Code tools, not Bash subprocesses — their returns are not directly governed by this Bash extension, but the same continuation discipline applies: do not treat a tool return inside `/fix-issue`'s step sequence as a turn boundary — continue to the next sequenced step unless this file's explicit control-flow directives (`skip to Step N`, `bail to cleanup`, etc.) tell you otherwise. The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `skip to Step N`, `bail to cleanup`, `jump back`, `loop back`, `fall through`, `break out`). A normal sequential `proceed to Step N+1` instruction is the default continuation this rule reinforces, NOT an exception. Every `/relevant-checks` invocation anywhere in this file is covered by this rule. See `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Anti-halt continuation reminder for the canonical rule — note that the shared file remains scoped to `Skill` tool calls only; the broader Bash-call coverage in the paragraph above is `/fix-issue`-local and does NOT propagate to other skills.
 
 **Flags**: Parse flags from the start of `$ARGUMENTS`.
 
 - `--auto`: Set `auto_mode=true`. Forward bare `--auto` to `/implement` in Step 5a (both SIMPLE and HARD bullets) when set; do NOT forward when unset. Default: `auto_mode=false`. When forwarded, `/implement` runs autonomously per its own `--auto` semantics — `/design` skips its interactive checkpoints, Step 2 opportunistic questions are suppressed, and Step 12 merge-conflict resolution uses best-effort instead of `AskUserQuestion`. `/fix-issue` itself does not currently issue interactive prompts in its own steps; the flag is purely a pass-through. Independent of all other flags.
-- `--slack`: Set `slack_enabled=true`. Forward `--slack` to `/implement` in Step 5a. Default: `slack_enabled=false`. When `slack_enabled=true`, the delegated `/implement` run posts to Slack (Step 16a) when Slack env vars are configured; the `NON_PR` path's Step 7 Slack announcement also posts via the shared `scripts/post-issue-slack.sh`. When `slack_enabled=false` (default; `--slack` not set), no Slack calls are made on either path.
 - `--no-admin-fallback`: Set `no_admin_fallback=true`. Forward `--no-admin-fallback` to `/implement` in Step 5a (both SIMPLE and HARD bullets). Default: `no_admin_fallback=false`. When `true`, the delegated `/implement` run instructs `merge-pr.sh` to skip the default `--admin`-first attempt once the admin-eligible gate (CI good + branch fresh) is reached, try only a plain squash merge, emit `MERGE_RESULT=policy_denied` if that plain merge fails, and bail to Step 12d with a documented reason. See `skills/implement/SKILL.md` `--no-admin-fallback` for the full semantics.
 - `--coder=<value>`: Set `coder=<value>`. Forward `--coder=$coder` to `/implement` in Step 5a (both SIMPLE and HARD bullets) exactly as provided, with no validation or interpretation by `/fix-issue`. Only the `--coder=<value>` form (single token, `=`-separated) is recognized — the space-separated `--coder <value>` form is NOT supported, so a positional issue argument like `/fix-issue --coder codex 42` would treat `codex` as the issue identifier; pass `--coder=codex 42` instead. Default: empty (flag absent, or `--coder=` with an empty value → not forwarded). `/implement`'s own `--coder` flag validates the value (`claude` / `codex` / `cursor` / `gemini` accepted).
 - `--inline`: Set `inline_mode=true`. Forward bare `--inline` to `/implement` in Step 5a on the **HARD bullet only** when set; do NOT forward when unset and do NOT forward on the SIMPLE bullet. Default: `inline_mode=false`. Per `skills/implement/SKILL.md` `--inline`, the flag controls whether `/design`'s heavy phase runs in an isolated subagent (`--inline` absent, default) or in `/design`'s in-turn context (`--inline` present). The SIMPLE bullet uses `/implement --quick`, which skips `/design` entirely — so `--inline` is a no-op there and is intentionally not forwarded to keep the SIMPLE invocation minimal. Independent of all other flags.
 - `--quick`: Set `quick_mode=true`. Default: `quick_mode=false`. **Short-circuits Step 4 classification on the PR path**: when `quick_mode=true` AND `INTENT=PR`, Step 4 forces `COMPLEXITY=SIMPLE` without running the HARD-vs-SIMPLE evaluation, and Step 5a takes the SIMPLE bullet (which already passes `--quick` to `/implement` unconditionally). The flag is the operator's explicit signal that the work is simple enough to skip the full `/design` + `/review` panel; the displayed classification therefore matches the runtime behavior. Per `skills/implement/SKILL.md` `--quick`, the forwarded flag forces `/implement` to skip `/design` (using an inline plan) and runs a reduced review loop (rounds 1-3: 5 Cursor specialists + generic Codex + Claude generic; rounds 4-7: single generic reviewer — no voting panel). Has no effect on the `INTENT=NON_PR` path (complexity is not meaningful there). The Step 5a HARD bullet still includes `[--quick if quick_mode]` as an unreachable no-op safety net (the short-circuit means HARD is never picked when `quick_mode=true` AND `INTENT=PR`); the segment is preserved verbatim because CI assertions and operator-readable parity demand it. When both `--quick` and `--inline` are set, `--inline` is irrelevant on the PR path because the SIMPLE bullet does not forward `--inline`. Independent of all other flags.
 - `--issue <number-or-url>`: **Deprecated** — recognized for backward compatibility. Prefer passing the issue number or URL as a positional argument (e.g., `/fix-issue 42`). When this flag is encountered, print: `**ℹ '--issue' is deprecated; pass the issue number or URL as a positional argument instead (e.g., /fix-issue 42).**`
-- **Positional argument** (after flag stripping): If any non-flag text remains in `$ARGUMENTS` after stripping all flags defined above (`--auto`, `--slack`, `--no-admin-fallback`, `--coder`, `--inline`, `--quick`, `--issue`), treat it as the issue number or URL. Set `ISSUE_ARG` to this value. When set, Step 0 targets this specific issue instead of scanning for an eligible candidate (auto-pick prefers issues with the whole word `urgent` anywhere in the title — case-insensitive, word-boundary; "non-urgent" does NOT match — and falls back to oldest-first within each tier). Accepts a bare issue number (e.g., `42`) or a full GitHub issue URL (e.g., `https://github.com/owner/repo/issues/42`). The issue must be open, not locked by another run (last comment `IN PROGRESS`), and have no currently-open blocking dependencies (see Step 0 for the degradation note when the dependency endpoint is unavailable). A `GO` comment is no longer required; if present it is removed at lock time. Default: empty (auto-pick mode). If both `--issue` and a positional argument are provided, print: `**⚠ Both --issue and a positional argument were provided. Using the positional argument.**` and use the positional argument.
 
 ## Mindset
 
@@ -51,7 +49,6 @@ Step Name Registry:
 | 4 | classify |
 | 5 | execute |
 | 6 | close issue |
-| 7 | slack announce |
 | 8 | cleanup |
 
 ## Anti-patterns
@@ -66,8 +63,6 @@ Each rule states **Why** (the specific consequence of breaking the rule) and **H
 
 4. **NEVER paraphrase the Step 5a adopted-issue-closed directive ``Do NOT call `issue-lifecycle.sh close` ``.** **Why**: when the adopted issue is already closed, a second `issue-lifecycle.sh close` would double-post a DONE comment on top of the externally-written closing comment and run the PR-backfill with an empty `PR_URL` (since `/implement` bailed before producing a PR) — visible doubled noise on the closed issue. The directive is phrased with the specific script name, not a bare "Do NOT call" fragment, because the harness's `awk` window also includes Step 5b (whose "Do NOT call `/implement`" sentence would otherwise mask the deletion). **How to apply**: preserve the full phrase verbatim; if `issue-lifecycle.sh` is ever renamed, update the harness in the same PR. **CI-backed**: yes — assertion (d).
 
-5. **NEVER re-route Step 5a failure branches away from `Skip to Step 8`.** **Why**: both failure branches (adopted-issue-closed and generic-failure) must drop into Step 8 cleanup, not into Step 6 (close issue) or Step 7 (Slack announce). Step 6 would either double-close an already-closed issue or DONE-comment a PR-less task; Step 7 would announce a merged PR that never existed. Step 8 cleanup is the only safe landing — the `IN PROGRESS` comment stays in place on generic failure as the manual-intervention signal. **How to apply**: keep `Skip to Step 8` in both 5a failure-branch bullets. **CI-backed**: yes — assertion (e).
-
 6. **NEVER allow the NON_PR path (Step 5b) to modify working-tree files.** **Why**: `NON_PR` tasks are defined by producing GitHub issues, research summaries, or comment output rather than code changes. Writing to the working tree on this path opens a cascade of unanswered questions: what to commit, what branch to use, whether to push, whether to create a PR — none of which the NON_PR workflow addresses. The invariant is editorial (the runtime does not block edits) and depends on the SKILL.md text making the rule unambiguous. **How to apply**: keep the "Do NOT call `/implement`. Do NOT modify files in the working tree" sentence inside Step 5b (in SKILL.md, not only in the reference). `--input-file` markdown for `/issue` batch mode lives under `$FIX_ISSUE_TMPDIR` per `skills/fix-issue/references/non-pr-execution.md`. **CI-backed**: no (editorial invariant).
 
 7. **NEVER auto-pick umbrellas in the no-arg find-lock-issue scan.** **Why**: the umbrella-PR design dialectic (DECISION_1, voted 2-1 ANTI_THESIS) chose explicit-target-only umbrella handling. Folding umbrella handling into the bulk sweep multiplies decision-surface complexity (umbrella resolution is a distinct state machine with non-GO locking, child-pick semantics, and finalization paths) and increases operator surprise (umbrellas can be passive long-lived planning trackers). **How to apply**: `umbrella-handler.sh` is invoked ONLY in the explicit-issue path of `find-lock-issue.sh`. Operators who want umbrella-tracked work to drain must explicitly pass the umbrella number (e.g., `/fix-issue <umbrella#>` once per dispatch cycle). **CI-backed**: yes — `test-find-lock-issue.sh` carries an `auto-pick-skips-umbrella` regression fixture.
@@ -75,8 +70,6 @@ Each rule states **Why** (the specific consequence of breaking the rule) and **H
 8. **NEVER improvise ScheduleWakeup outside skill-script direction.** **Why**: `/fix-issue` is single-iteration by contract — its terminal `✅ 8: cleanup — fix-issue complete!` line ends its transcript. The orchestrator (Claude) was observed calling `ScheduleWakeup` on its own initiative after Step 8 to fire another `/fix-issue` iteration, outside any of `/fix-issue`'s own steps. Recurring behavior is owned by `/loop`'s `<<autonomous-loop-dynamic>>` sentinel mechanism, not by orchestrator improvisation in `/fix-issue`'s terminal turn. **How to apply**: this skill has no step that calls `ScheduleWakeup`; do not call it anywhere from Step 0 through Step 8 or after Step 8 completes. See AGENTS.md for the project-wide rule that this entry mirrors. **CI-backed**: yes — `scripts/test-anti-improvised-wakeup.sh` pins the literal at this site.
 
 ## Step 0 — Find and Lock
-
-Run find + lock + title rename FIRST so that no setup work (tmpdir, preflight, Slack/repo derivation, session-env write) is performed when there is no eligible issue, and so the `[IN PROGRESS]` title prefix is applied immediately on lock acquisition rather than minutes later (closes #496 — the prior delay came from /implement Step 0.5 Branch 2 owning the rename, which only ran after `/fix-issue`'s Step 1 setup, Step 2 read-details, Step 3 triage, Step 4 classification, Step 5a delegation, and `/implement`'s own Step 0 setup all completed; mapped from the pre-renumber Step 2/3/4/5/6a names by the fold-find-and-lock refactor).
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/skills/fix-issue/scripts/find-lock-issue.sh ["$ISSUE_ARG"]
@@ -115,19 +108,12 @@ Runs only after Step 0 successfully locked the issue. A failure here leaves the 
 ${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix claude-fix-issue --skip-branch-check
 ```
 
-Parse output for `SESSION_TMPDIR`, `SLACK_OK`, `SLACK_MISSING`, `REPO`, `REPO_UNAVAILABLE`. **Set `FIX_ISSUE_TMPDIR` = `SESSION_TMPDIR` IMMEDIATELY after parsing — before any abort branch below** — so that a post-mktemp setup failure (e.g., `REPO_UNAVAILABLE=true`) still gets the tmpdir cleaned up by Step 8. If `SESSION_TMPDIR` is absent from output (preflight failed before mktemp), leave `FIX_ISSUE_TMPDIR` unset; Step 8's cleanup guard handles that case.
-
 If `REPO_UNAVAILABLE=true`, print `**⚠ Could not determine repository. GitHub issue access requires a valid repo. Aborting.**` and skip to Step 8.
-
-If `SLACK_OK=true`, set `slack_available=true`. **Do NOT make a separate Bash call to resolve Slack env vars.** When Slack tokens are needed (Steps 3 and 7), use inline shell expansion: `"${LARCH_SLACK_BOT_TOKEN:-$CLAUDE_PLUGIN_OPTION_SLACK_BOT_TOKEN}"` and `"${LARCH_SLACK_CHANNEL_ID:-$CLAUDE_PLUGIN_OPTION_SLACK_CHANNEL_ID}"`.
-
-If `SLACK_OK=false`, print (only when `slack_enabled=true`) `**⚠ Slack not configured ($SLACK_MISSING). Slack announcements will be skipped.**` Set `slack_available=false`. When `slack_enabled=false` (default; `--slack` not set), suppress the warning.
 
 Write session-env for forwarding to `/implement`:
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/write-session-env.sh --output "$FIX_ISSUE_TMPDIR/session-env.sh" \
-  --slack-ok <value> --slack-missing <value> --repo <value> --repo-unavailable <value> \
   --codex-healthy true --cursor-healthy true --gemini-healthy true
 ```
 
@@ -172,7 +158,6 @@ Decide whether the issue is still material against the codebase (see the referen
      --issue $ISSUE_NUMBER --state done --round-trip "$ROUND_TRIP"
    ```
    Idempotent and best-effort: on `FAILED=true` or non-zero exit, log to `Tool Failures` and continue. Without this rename, a closed not-material issue would persist with the misleading `[IN PROGRESS]` title prefix until manually edited (because `/implement` Step 12a/12b/18 terminal renames only run on the PR delegation path).
-3. **Umbrella finalize hook** (FINDING_7 — ordering: AFTER child rename in step 2, BEFORE Slack in step 4): if `$UMBRELLA_NUMBER` is set (Step 0 dispatched this child from an umbrella), check whether the umbrella is now empty and finalize if so:
    ```bash
    PICK_OUT=$(${CLAUDE_PLUGIN_ROOT}/skills/fix-issue/scripts/umbrella-handler.sh pick-child --issue $UMBRELLA_NUMBER 2>&1)
    ALL_CLOSED=$(echo "$PICK_OUT" | awk -F= '/^ALL_CLOSED=/ { v=$2 } END { print v }')
@@ -181,13 +166,10 @@ Decide whether the issue is still material against the codebase (see the referen
    fi
    ```
    Best-effort: on `FAILED=true` / non-zero exit / `FINALIZED=false` non-idempotent error, log to `Tool Failures` and continue. The next `/fix-issue <umbrella#>` invocation will re-attempt finalization via the Step 0 exit-4 path.
-4. If `slack_enabled=true` AND `slack_available=true`, post Slack notification via the shared script (carries the closure reason as `--detail`):
    ```bash
-   ${CLAUDE_PLUGIN_ROOT}/scripts/post-issue-slack.sh \
      --issue-number "$ISSUE_NUMBER" --status closed --repo "$REPO" \
      --detail "<one-sentence reason>"
    ```
-   The script auto-resolves `--token` and `--channel-id` from environment variables (`LARCH_SLACK_BOT_TOKEN` then `CLAUDE_PLUGIN_OPTION_SLACK_BOT_TOKEN`, `LARCH_SLACK_CHANNEL_ID` then `CLAUDE_PLUGIN_OPTION_SLACK_CHANNEL_ID`) when those flags are omitted.
    On non-zero exit, log to `Tool Failures` and continue. Do not abort.
 5. Print `✅ 3: triage — issue #$ISSUE_NUMBER closed, not material (<elapsed>)`. Skip to Step 8.
 
@@ -220,8 +202,8 @@ Compose the feature description from the issue content: use the issue title as t
 
 Invoke `/implement` via the Skill tool. Forwarding `--issue $ISSUE_NUMBER` makes `/implement` adopt the queue issue as its tracking issue (Phase 3 Branch 2 adoption), so the two skills converge on the same tracking issue and `/fix-issue` avoids a duplicate tracking-issue on its path:
 
-- **SIMPLE**: `/implement --quick --merge --session-env $FIX_ISSUE_TMPDIR/session-env.sh --issue $ISSUE_NUMBER [--auto if auto_mode] [--slack if slack_enabled] [--no-admin-fallback if no_admin_fallback] [--coder=$coder if coder set] <feature description>`
-- **HARD**: `/implement --merge --session-env $FIX_ISSUE_TMPDIR/session-env.sh --issue $ISSUE_NUMBER [--auto if auto_mode] [--slack if slack_enabled] [--no-admin-fallback if no_admin_fallback] [--coder=$coder if coder set] [--inline if inline_mode] [--quick if quick_mode] <feature description>`
+- **SIMPLE**: `/implement --quick --merge --session-env $FIX_ISSUE_TMPDIR/session-env.sh --issue $ISSUE_NUMBER [--auto if auto_mode] [--no-admin-fallback if no_admin_fallback] [--coder=$coder if coder set] <feature description>`
+- **HARD**: `/implement --merge --session-env $FIX_ISSUE_TMPDIR/session-env.sh --issue $ISSUE_NUMBER [--auto if auto_mode] [--no-admin-fallback if no_admin_fallback] [--coder=$coder if coder set] [--inline if inline_mode] [--quick if quick_mode] <feature description>`
 
 After `/implement` completes, capture the PR URL and PR number from its output. Save as `PR_URL` and `PR_NUMBER`.
 
@@ -242,13 +224,9 @@ If `/implement` exits non-zero, branch on whether the captured output (stdout + 
 
 ### 5b — `INTENT=NON_PR` path (follow instructions inline)
 
-**MANDATORY — READ ENTIRE FILE** before executing the NON_PR path: `${CLAUDE_PLUGIN_ROOT}/skills/fix-issue/references/non-pr-execution.md`. Contains the common NON_PR patterns (research, code-review, other investigative/planning tasks), the `WORK_SUMMARY` running-summary discipline that becomes Step 6b's closing comment and Step 7b's Slack message, and the failure fallback. **Do NOT load** when `INTENT=PR` — Step 5a delegates to `/implement` and never consumes this file. **Do NOT load** in any step other than 5.
-
 Read the issue details from Step 2 and execute the instructions directly using Read, Grep, Glob, and Bash. Do NOT call `/implement`. Do NOT modify files in the working tree — `NON_PR` tasks deliver their output as new GitHub issues, a written summary comment, or both.
 
 > **Continue after child returns.** When any child Skill (`/issue`, `/research`, ...) returns, execute the NEXT step of this skill — do NOT end the turn, and do NOT write a summary, handoff, or "returning to parent" message. See `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Anti-halt continuation reminder.
-
-Maintain a running `WORK_SUMMARY` per the reference — it becomes the closing comment in Step 6 and the Slack message in Step 7. Keep `PR_URL` and `PR_NUMBER` unset on this path.
 
 If the work cannot be completed (e.g., `/issue` fails repeatedly, the issue's instructions are infeasible, or required external access is unavailable), print `**⚠ 5: execute — non-PR task failed. Issue #$ISSUE_NUMBER remains locked with IN PROGRESS comment and [IN PROGRESS] title prefix. (<elapsed>)**` and skip to Step 8. The IN PROGRESS comment serves as an indicator that manual intervention is needed — same recovery semantics as the `/implement` failure path.
 
@@ -327,33 +305,7 @@ Best-effort: on `FAILED=true` / non-zero exit / `FINALIZED=false` non-idempotent
 
 Print `✅ 6: close issue — #$ISSUE_NUMBER closed (<elapsed>)` (mention umbrella-finalized when applicable: `✅ 6: close issue — #$ISSUE_NUMBER closed; umbrella #$UMBRELLA_NUMBER finalized (<elapsed>)`).
 
-> **Continue to Step 7 IMMEDIATELY.** Closing the issue is not terminal — the NON_PR Slack decision and cleanup still must run. See `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Step-boundary anti-halt.
-
-## Step 7 — Slack Announce (NON_PR path only)
-
-The PR path's Slack decision is handled by the child `/implement` at its Step 16a — this skill does NOT post again to avoid duplication. This step runs only for `INTENT=NON_PR`.
-
-If `INTENT=PR`, print `⏭️ 7: slack announce — skipped (PR path — /implement owns Step 16a) (<elapsed>)` and proceed to Step 8.
-
-If `slack_enabled=false` (default; `--slack` not set), print `⏭️ 7: slack announce — skipped (--slack not set) (<elapsed>)` and proceed to Step 8.
-
-If `slack_available=false`, print `⏭️ 7: slack announce — skipped (Slack not configured) (<elapsed>)` and proceed to Step 8.
-
-### 7b — `INTENT=NON_PR`
-
-Post a Slack message summarizing the non-PR work via the shared script. Compose the `--detail` value from `WORK_SUMMARY` — a one-sentence summary is ideal (e.g., "research complete, filed #123 and #124" or "code review complete, filed 5 issues"):
-
-```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/post-issue-slack.sh \
-  --issue-number "$ISSUE_NUMBER" --status closed --repo "$REPO" \
-  --detail "<one-sentence summary from WORK_SUMMARY>"
-```
-
-The script auto-resolves `--token` and `--channel-id` from environment variables when those flags are omitted. If the script exits non-zero, print `**⚠ 7: slack announce — failed. Continuing.**` and log to `Tool Failures`.
-
-Print `✅ 7: slack announce — posted (<elapsed>)`
-
-> **Continue to Step 8 IMMEDIATELY.** The Slack announce branch is not terminal — cleanup still must run.
+> **Continue to Step 8 IMMEDIATELY.** Closing the issue is not terminal — cleanup still must run. See `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Step-boundary anti-halt.
 
 ## Step 8 — Cleanup
 

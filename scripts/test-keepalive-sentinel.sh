@@ -36,7 +36,7 @@ assert_file_exists() {
     fi
 }
 
-OUT=$(XDG_CACHE_HOME="$TMPROOT/cache" "$SCRIPT" --prefix claude-implement --skip-preflight --skip-slack-check --skip-repo-check)
+OUT=$(XDG_CACHE_HOME="$TMPROOT/cache" "$SCRIPT" --prefix claude-implement --skip-preflight --skip-repo-check)
 SESSION_TMPDIR=$(printf '%s\n' "$OUT" | awk -F= '$1 == "SESSION_TMPDIR" {print substr($0, index($0, "=") + 1); exit}')
 SESSION_ID=$(printf '%s\n' "$OUT" | awk -F= '$1 == "SESSION_ID" {print substr($0, index($0, "=") + 1); exit}')
 

@@ -262,7 +262,7 @@ printf '%s\n' "$step0_section" | grep -F 'session-setup.sh' \
 # shellcheck disable=SC2016 # fixed-string grep literal contains backtick-quoted token names
 printf '%s\n' "$step0_section" | grep -Fq 'If `SKIP_BRANCH_CHECK=false`, run setup without `--skip-branch-check`' \
   || fail "(11) Step 0 must document the strict no-skip preflight path"
-printf '%s\n' "$step0_section" | grep -F 'session-setup.sh --prefix claude-design --skip-slack-check' >/dev/null \
+printf '%s\n' "$step0_section" | grep -F 'session-setup.sh --prefix claude-design' >/dev/null \
   || fail "(11) Step 0 must include the no-skip claude-design session-setup.sh invocation"
 printf '%s\n' "$step0_section" | grep -Fq '/design requires clean main to start' \
   || fail "(11) Step 0 must include the normalized /design clean-main failure message"

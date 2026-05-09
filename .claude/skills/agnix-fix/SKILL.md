@@ -152,5 +152,3 @@ Invoke the Skill tool:
 - args: the literal string `--forked --quick --auto --coder=codex $EXTRA $(cat "$FEATURE_FILE")` with `$EXTRA` and `$FEATURE_FILE` expanded.
 
 `--coder=codex` is passed explicitly so the auto-route to the main agent for small surgical plans (per issue #1481) does NOT fire on agnix work — agnix is a Rust codebase and Codex is the appropriate implementer regardless of plan size. Issue #1475 (the protected-path-modified false-positive) has landed, so the older `--coder=claude` workaround is no longer needed.
-
-> **Continue after child returns.** When `/implement` returns, this skill is done — do NOT write a summary, handoff, or "returning to parent" message. The final report (including the upstream-PR template) and Slack/issue handling are owned by `/implement`'s own Step 17 and Step 16a. See `$PWD/skills/shared/subskill-invocation.md` section Anti-halt continuation reminder (dev-only skills use `$PWD` per `.claude/rules/skill-runtime-root-paths.md`).

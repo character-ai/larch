@@ -1,7 +1,7 @@
 ---
 name: simplify-skill
 description: "Use when refactoring a larch skill to improve adherence to skill-design principles and reduce SKILL.md footprint. Partitions large files into references/*.md. Excludes sub-skills invoked via Skill tool. Behavior-preserving; delegates to /implement."
-argument-hint: "[--slack] <skill-name>"
+argument-hint: "<skill-name>"
 allowed-tools: Bash, Skill
 ---
 
@@ -23,11 +23,7 @@ Example: `/simplify-skill implement` refactors `skills/implement/SKILL.md` plus 
 
 Parse flags from the start of `$ARGUMENTS` before the first positional token.
 
-- `--slack`: Set `slack_enabled=true`. Default: `slack_enabled=false`. Forwarded to `/im` (and thence to `/implement`) so the delegated run posts a Slack announcement when Slack env vars are configured. Default (no `--slack`): delegated run does not post to Slack.
-
 After flag stripping, the next positional token is the **target skill name** — bare form (`implement`) or slash-prefixed (`/implement`). Strip a leading `/` if present. Reject names containing `:` (no plugin-qualified forms — see NEVER #5) or non-`[a-z0-9-]` characters.
-
-If zero positional tokens remain, print: `**ERROR: Usage: /simplify-skill [--slack] <skill-name>**` and abort.
 
 ## Step 2 — Validate Target and Build Feature Description
 
@@ -47,10 +43,7 @@ The helper enforces NEVER #1 (sub-skills not enumerated), NEVER #2 (missing SKIL
 
 ## Step 3 — Delegate to /im
 
-Print: `**Simplify-skill /<skill-name> — delegating to /im [--slack]**` (omit `--slack` when `slack_enabled=false`).
-
 Invoke the Skill tool:
 - Try skill: `"im"` first (bare name). If no skill matches, try skill: `"larch:im"` (fully-qualified plugin name).
-- args: `"[--slack] <FEATURE_DESCRIPTION>"` — prepend `--slack` only if `slack_enabled=true`. `--merge` is not forwarded (`/im` prepends it itself).
 
 The `/im` → `/implement --merge` chain runs design, implementation, code review, `/relevant-checks`, version bump, PR creation, CI monitoring, and auto-merge. No post-invocation verification is needed at this level — `/implement`'s own internal gates (rebase + re-bump, CI green, merge) are the authoritative signal, and this skill runs no further steps after `/im` returns.

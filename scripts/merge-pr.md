@@ -50,7 +50,7 @@ After CI and merge-state checks pass, the script also runs a same-version bump r
 
 ## Non-responsibilities
 
-This script does NOT post audit comments, Slack messages, or any human-facing observability about the bypass. The orchestrator (`skills/implement/SKILL.md` Step 12b's `admin_merged` branch) is responsible for posting a best-effort PR comment recording the bypass when `--admin` actually succeeds. Keeping audit side effects out of this script preserves the narrow `MERGE_RESULT`/`ERROR` stdout contract that callers parse.
+This script does NOT post audit comments or any human-facing observability about the bypass. The orchestrator (`skills/implement/SKILL.md` Step 12b's `admin_merged` branch) is responsible for posting a best-effort PR comment recording the bypass when `--admin` actually succeeds. Keeping audit side effects out of this script preserves the narrow `MERGE_RESULT`/`ERROR` stdout contract that callers parse.
 
 ## Edit-in-sync rules
 

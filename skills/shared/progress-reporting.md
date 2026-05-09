@@ -22,7 +22,6 @@ Every progress line follows:
 | `🔶` | Step start | Entering a new step |
 | `✅` | Completion | Step completed with informational payload |
 | `⏩` | Sub-step skip | Optimization or workflow-conditional skip (quick mode, no changes, etc.) |
-| `⏭️` | Precondition skip | Entire step skipped due to missing precondition (repo unavailable, Slack not configured, merge not set) |
 | `⚠` | Warning | Non-fatal issue within a step |
 | `🔃` | Rebase | Rebase-related operation |
 | `⏳` | Intermediate | Progress update within a long-running step |
