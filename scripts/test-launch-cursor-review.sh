@@ -789,6 +789,17 @@ else
     pass
 fi
 
+# --diff-file accept path: flag recognized (not "unknown flag").
+set +e
+"$LAUNCHER" --output "$TMPDIR/diff-file-accept.txt" --timeout 5 --prompt "x" \
+    --diff-file "/nonexistent/branch.diff" >/dev/null 2>"$TMPDIR/diff-file-accept.stderr"
+set -e
+if grep -Fq "unknown flag: --diff-file" "$TMPDIR/diff-file-accept.stderr" 2>/dev/null; then
+    fail "--diff-file flag not recognized by launch-cursor-review.sh (got 'unknown flag' rejection)"
+else
+    pass
+fi
+
 # Cap-hit path: when LARCH_TOKEN_BUDGET_CAP_REVIEW=1 and the token ledger
 # shows vendor spend >= 1, the launcher writes STATUS=cap_hit to the output
 # file and exits 0 without invoking the underlying Cursor binary.

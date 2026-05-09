@@ -468,6 +468,17 @@ else
     fail "cap-hit path must not invoke the underlying Codex binary (count file written)"
 fi
 
+# --diff-file accept path: flag recognized (not "unknown flag").
+set +e
+"$LAUNCHER" --output "$TMPDIR/diff-file-accept.txt" --timeout 5 --prompt "x" \
+    --diff-file "/nonexistent/branch.diff" >/dev/null 2>"$TMPDIR/diff-file-accept.stderr"
+set -e
+if grep -Fq "unknown flag: --diff-file" "$TMPDIR/diff-file-accept.stderr" 2>/dev/null; then
+    fail "--diff-file flag not recognized by launch-codex-review.sh (got 'unknown flag' rejection)"
+else
+    pass
+fi
+
 if (( FAIL > 0 )); then
     printf 'FAIL: test-launch-codex-review.sh - %s failed, %s passed\n' "$FAIL" "$PASS" >&2
     printf '  %s\n' "${FAILURES[@]}" >&2
