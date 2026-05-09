@@ -305,7 +305,7 @@ if grep -Fq -- 'HARD CONSTRAINTS — your role is read-only review' "$AGENT_ARGV
 else
     fail "--agent-file run must apply the HARD CONSTRAINTS preamble to the codex argv"
 fi
-if grep -Fq -- 'Correctness, Edge Cases, and Failure Recovery' "${AGENT_OUTPUT}.prompt"; then
+if grep -Fq -- 'Structure, KISS, and Maintainability' "${AGENT_OUTPUT}.prompt"; then
     pass
 else
     fail "--agent-file OUTPUT.prompt sidecar must contain specialist-rendered body"

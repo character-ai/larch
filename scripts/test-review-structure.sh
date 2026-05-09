@@ -276,7 +276,7 @@ grep -Fq -- '--mode' "$REPO_ROOT/scripts/render-specialist-prompt.sh" \
 #      Findings + Out-of-Scope Observations) is enforced by the specialist agent
 #      files' Output format section and by test-render-specialist-prompt.sh.
 #      This assertion verifies that scripts/render-specialist-prompt.sh exists
-#      and the 2 specialist agent files exist with the dual-list output headers.
+#      and the 5 specialist agent files exist with the dual-list output headers.
 # ---------------------------------------------------------------------------
 RENDERER="$REPO_ROOT/scripts/render-specialist-prompt.sh"
 [[ -f "$RENDERER" ]] \
