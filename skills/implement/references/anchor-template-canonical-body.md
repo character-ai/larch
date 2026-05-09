@@ -2,7 +2,7 @@
 
 **Consumer**: `/implement` Steps 0.5 (anchor planting, fragment composition) and 11 (post-execution `execution-issues` refresh). Load this file when composing any anchor-section fragment, planting a seed anchor, or invoking `tracking-issue-write.sh upsert-anchor`.
 
-**Contract**: canonical anchor body reference — anchor first-line marker, seed placeholder, full canonical template (all 11 sections including the three load-bearing literals and the `## Implementation Plan` synthesis source heading), section markers list, body-level collapse priority, voting tally extraction guidance, and compose-time sanitization rule. Single normative source for the anchor comment's shape.
+**Contract**: canonical anchor body reference — anchor first-line marker, seed placeholder, full canonical template (all 11 sections including the three load-bearing literals and the `## Implementation Plan` synthesis source heading), section markers exact slug list, and body-level collapse priority. Single normative source for the anchor comment's shape and the 11-section marker order. (Voting tally guidance lives in `anchor-comment-template.md`; compose-time sanitization rule lives in `anchor-template-execution-issues.md`.)
 
 **When to load**: before composing any anchor-section fragment or invoking `tracking-issue-write.sh upsert-anchor` at Steps 0.5 and 11. Do NOT load at Step 9a.1 — use `anchor-template-oos-pipeline.md` instead. Do NOT load at Step 2 Q/A upsert — use `anchor-template-execution-issues.md` instead.
 

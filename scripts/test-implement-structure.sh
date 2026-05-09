@@ -1,14 +1,14 @@
 #!/bin/bash
 # Structural regression test for /implement SKILL.md + references/ topology (closes #234).
-# Asserts live load-bearing invariants (assertion 5 retired; numbered list runs 1–4, 6–30, with lettered sub-pins) across skills/implement/SKILL.md and the six
-# reference docs extracted from it. Complements scripts/test-implement-rebase-macro.sh,
+# Asserts live load-bearing invariants (assertion 5 retired; numbered list runs 1–4, 6–30, with lettered sub-pins) across skills/implement/SKILL.md and the
+# reference docs under skills/implement/references/. Complements scripts/test-implement-rebase-macro.sh,
 # which owns the Rebase Checkpoint Macro mechanics; this harness owns top-level section
 # headings, the MANDATORY ↔ reference-file binding, the focus-area CI-parity check,
 # the no-`see Step N below|above` invariant in references/*.md, and (closes #323) the
-# three load-bearing marker literals in anchor-comment-template.md plus the ≥3
-# `anchor-comment-template.md` reference-count floor and ≥1 `pr-body-template.md`
-# floor in SKILL.md (migrated from pr-body-template.md to anchor-comment-template.md
-# as of umbrella #348 Phase 3). The cross-skill
+# three load-bearing marker literals in anchor-template-canonical-body.md (split from
+# anchor-comment-template.md per #1627) plus ≥1 references each to
+# `anchor-template-canonical-body.md` and `anchor-template-oos-pipeline.md` in SKILL.md,
+# and ≥1 `pr-body-template.md` floor in SKILL.md. The cross-skill
 # Consumer/Contract/When-to-load header triplet (formerly assertion 8 here, implement-
 # scoped) moved to scripts/test-references-headers.sh as of #308 and now applies repo-
 # wide to every skills/*/references/*.md. Intentional overlap: assertion (3) (single
@@ -34,7 +34,7 @@
 #  (2) Exactly 1 `^## NEVER List$` heading.
 #  (3) Exactly 1 `^## Rebase Checkpoint Macro$` heading.
 #  (4) At least 6 `MANDATORY — READ ENTIRE FILE` occurrences (floor, not ceiling),
-#      AND each of the six expected reference filenames appears on a `MANDATORY —
+#      AND each expected reference filename appears on a `MANDATORY —
 #      READ ENTIRE FILE` line in SKILL.md (step-to-reference binding from design FINDING_7).
 #  (6) CI-parity focus-area enum: at least one line in SKILL.md contains the literal
 #      `code-quality / risk-integration / correctness / architecture` AND that same
@@ -43,30 +43,28 @@
 #      prevents a false-pass when the five tokens appear in unrelated prose blocks
 #      (e.g., the NEVER List) but the actual Cursor/Codex quick-review prompt strings
 #      regress. Design FINDING_2.
-#  (7) Five `skills/implement/references/*.md` files exist with expected names.
+#  (7) Expected `skills/implement/references/*.md` files exist with expected names
+#      (anchor fragments added per #1627: four new per-step fragment files).
 #  (8) Zero occurrences of `see Step N below` / `see Step N above` patterns inside any
 #      references/*.md — progressive-disclosure invariant (references must not
 #      back-reference parent SKILL.md step numbers with direction words).
-#  (9) Load-bearing marker literals in skills/implement/references/anchor-comment-template.md
-#      (closes #323; migrated from pr-body-template.md per umbrella #348 Phase 3):
+#  (9) Load-bearing marker literals split across per-step fragment files per #1627
+#      (migrated from anchor-comment-template.md per umbrella #348 Phase 3):
 #      (9a) three byte-pinned marker literals must be present in
-#      anchor-comment-template.md (`Accepted OOS (GitHub issues filed)`,
+#      anchor-template-canonical-body.md (`Accepted OOS (GitHub issues filed)`,
 #      `| OOS issues filed |`, `<details><summary>Execution Issues</summary>`) —
 #      parsed and written at runtime by the Step 9a.1 OOS issue-filing pipeline
 #      (anchor's `oos-issues` + `run-statistics` sections) and the Step 11
 #      post-execution anchor refresh (anchor's `execution-issues` section).
 #      Renaming or removing any marker silently breaks runtime behavior with no
-#      other test failure. (9b) SKILL.md must reference `anchor-comment-template.md`
-#      at least 3 times (one MANDATORY pointer at Step 0.5 + one prose binding in
-#      Step 9a.1 + one prose binding in Step 11) to guard against a future edit
-#      that keeps the MANDATORY pointer but orphans Step 9a.1 or Step 11 from the
-#      extracted reference. (9c) SKILL.md must reference `pr-body-template.md` at
-#      least 1 time (the MANDATORY pointer at Step 9a) — lower floor than pre-Phase-3
-#      since rich report content moved to anchor-comment-template.md. (9d) The
-#      canonical Step 9a.1 procedure must require `--title-prefix "[OOS]"`
-#      while keeping `/issue` label flags out of that procedure, and must document
-#      `--blocked-by-issue $ISSUE_NUMBER` forwarding only when the tracking issue is
-#      resolved and non-degraded.
+#      other test failure. (9b) SKILL.md must reference `anchor-template-canonical-body.md`
+#      at least 1 time (Step 0.5 MANDATORY) AND `anchor-template-oos-pipeline.md`
+#      at least 1 time (Step 9a.1 MANDATORY). (9c) SKILL.md must reference
+#      `pr-body-template.md` at least 1 time (the MANDATORY pointer at Step 9a).
+#      (9d) The canonical Step 9a.1 procedure (now in anchor-template-oos-pipeline.md)
+#      must require `--title-prefix "[OOS]"` while keeping `/issue` label flags
+#      out of that procedure, and must document `--blocked-by-issue $ISSUE_NUMBER`
+#      forwarding only when the tracking issue is resolved and non-degraded.
 #      (9e) The same procedure must document conditional
 #      `--intra-batch-deps-file` forwarding for Step 9a.1's file-conflict
 #      pre-pass.
