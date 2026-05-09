@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [18.4.12] - 2026-05-09
+
+### Changed
+
+- Reorder /implement SKILL.md: Flags section moved after stable preamble sections (Single-runner, Mode matrix, Progress Reporting, Verbosity Control, Rebase Checkpoint Macro) for improved Anthropic prompt cache hit rate
+
 ## [18.4.11] - 2026-05-09
 
 ### Changed
