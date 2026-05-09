@@ -1904,28 +1904,15 @@ else
   CLONE_TAG_FULL=${CLONE_TAG_FULL:0:32}
   [ -n "$CLONE_TAG_FULL" ] || CLONE_TAG_FULL="_"
 fi
-cat > "$IMPLEMENT_TMPDIR/finalize-state.sh" <<EOF
-BRANCH_NAME=$BRANCH_NAME
-PR_NUMBER=$PR_NUMBER
-PR_TITLE=$PR_TITLE
-PR_URL=$PR_URL
-ISSUE_NUMBER=$ISSUE_NUMBER
-REPO=$REPO
-DRAFT=$draft
-MERGE=$merge
-SLACK_ENABLED=$slack_enabled
-SLACK_AVAILABLE=$slack_available
-DEFERRED=$deferred
-REPO_UNAVAILABLE=$repo_unavailable
-PR_CLOSED=${pr_closed:-false}
-DESIGN_ONLY_DONE=${DESIGN_ONLY_DONE:-false}
-BAIL_NEEDS_USER_INPUT=${BAIL_NEEDS_USER_INPUT:-false}
-STALL_TRACKING=${STALL_TRACKING:-false}
-STALL_STEP=${STALL_STEP:-}
-DONE_RENAME_APPLIED=${DONE_RENAME_APPLIED:-false}
-EXPECTED_SESSION_ID=$(cat "$IMPLEMENT_TMPDIR/session-id" 2>/dev/null || echo "")
-EXPECTED_TMPDIR_BASENAME_PREFIX=claude-implement-${CLONE_TAG_FULL}-
-EOF
+# Write $IMPLEMENT_TMPDIR/finalize-state.sh (one KEY=VALUE per line, awk-read by postmerge):
+# BRANCH_NAME  PR_NUMBER  PR_TITLE  PR_URL  ISSUE_NUMBER  REPO
+# DRAFT  MERGE  SLACK_ENABLED  SLACK_AVAILABLE  DEFERRED  REPO_UNAVAILABLE
+# PR_CLOSED=${pr_closed:-false}  DESIGN_ONLY_DONE=${DESIGN_ONLY_DONE:-false}
+# BAIL_NEEDS_USER_INPUT=${BAIL_NEEDS_USER_INPUT:-false}
+# STALL_TRACKING=${STALL_TRACKING:-false}  STALL_STEP=${STALL_STEP:-}
+# DONE_RENAME_APPLIED=${DONE_RENAME_APPLIED:-false}
+# EXPECTED_SESSION_ID=$(cat "$IMPLEMENT_TMPDIR/session-id" 2>/dev/null || echo "")
+# EXPECTED_TMPDIR_BASENAME_PREFIX=claude-implement-${CLONE_TAG_FULL}-
 printf '%s' "${FINAL_BAIL_REASON:-}" > "$IMPLEMENT_TMPDIR/final-bail-reason.txt"
 ```
 
@@ -1947,8 +1934,6 @@ If `forked_target=true`: print `⏭️ 14: local cleanup — skipped (--forked d
 
 Use the finalizer state from Step 13.5, then delegate Step 14 and Step 15 mechanical work to `implement-finalize.sh postmerge`. The state file is plain `KEY=value` text and is never sourced; the script reads it with `awk`. Mechanical SSOT: `${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.md` § `postmerge`.
 
-`CLONE_TAG_FULL` is computed inline using the same four-step algorithm as Step 13.5 (see Step 13.5 prose for the rationale and #1563); the heredoc references it on the `EXPECTED_TMPDIR_BASENAME_PREFIX` line.
-
 ```bash
 if [ -n "${CLONE_TAG:-}" ]; then
   CLONE_TAG_FULL="$CLONE_TAG"
@@ -1958,28 +1943,10 @@ else
   CLONE_TAG_FULL=${CLONE_TAG_FULL:0:32}
   [ -n "$CLONE_TAG_FULL" ] || CLONE_TAG_FULL="_"
 fi
-cat > "$IMPLEMENT_TMPDIR/finalize-state.sh" <<EOF
-BRANCH_NAME=$BRANCH_NAME
-PR_NUMBER=$PR_NUMBER
-PR_TITLE=$PR_TITLE
-PR_URL=$PR_URL
-ISSUE_NUMBER=$ISSUE_NUMBER
-REPO=$REPO
-DRAFT=$draft
-MERGE=$merge
-SLACK_ENABLED=$slack_enabled
-SLACK_AVAILABLE=$slack_available
-DEFERRED=$deferred
-REPO_UNAVAILABLE=$repo_unavailable
-PR_CLOSED=${pr_closed:-false}
-DESIGN_ONLY_DONE=${DESIGN_ONLY_DONE:-false}
-BAIL_NEEDS_USER_INPUT=${BAIL_NEEDS_USER_INPUT:-false}
-STALL_TRACKING=${STALL_TRACKING:-false}
-STALL_STEP=${STALL_STEP:-}
-DONE_RENAME_APPLIED=${DONE_RENAME_APPLIED:-false}
-EXPECTED_SESSION_ID=$(cat "$IMPLEMENT_TMPDIR/session-id" 2>/dev/null || echo "")
-EXPECTED_TMPDIR_BASENAME_PREFIX=claude-implement-${CLONE_TAG_FULL}-
-EOF
+# Re-write $IMPLEMENT_TMPDIR/finalize-state.sh with the same 20-key schema as Step 13.5,
+# using updated values for current Step 14 state (PR_NUMBER/PR_URL/PR_TITLE from Step 9b,
+# PR_CLOSED/DONE_RENAME_APPLIED from Step 12, STALL_TRACKING/STALL_STEP from Step 12d, etc.)
+# EXPECTED_TMPDIR_BASENAME_PREFIX=claude-implement-${CLONE_TAG_FULL}-
 printf '%s' "${FINAL_BAIL_REASON:-}" > "$IMPLEMENT_TMPDIR/final-bail-reason.txt"
 
 ${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.sh postmerge \
@@ -2099,31 +2066,11 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 
 If `DESIGN_ONLY_DONE=true`: print `✅ 17: final report — design-only complete; tracking issue contains plan, review tally, diagrams, and OOS status (<elapsed>)`.
 
-If `forked_target=true` and `DESIGN_ONLY_DONE` is not true: print:
-
-```markdown
-## Fork CI Dry-Run Complete
-
-Fork PR: <PR_URL>
-
-To open the upstream PR when CI is green on the fork, use these values:
-
-UPSTREAM_REPO: <UPSTREAM_REPO>
-FORK_OWNER:    <FORK_OWNER>
-BRANCH:        <BRANCH_NAME>
-BASE_REF:      <upstream default branch, falling back to main>
-
-Command template:
-
-gh pr create --repo "$UPSTREAM_REPO" --base "$BASE_REF" --head "$FORK_OWNER:$BRANCH_NAME"
-
-Caveats for fork CI fidelity:
-- Actions must be enabled on the fork repo for any workflow to run.
-- Workflows that consume upstream secrets will fail or skip in the fork.
-- Workflows guarded by `if: github.repository == 'owner/upstream-repo'` will skip on forks.
-- Green on the fork does not guarantee green on the upstream PR; treat this as a dry run only.
-- If `FORK_CI_NO_CHECKS=true`, no checks were observed after the grace period, so the fork produced no CI signal.
-```
+If `forked_target=true` and `DESIGN_ONLY_DONE` is not true: print a fork CI dry-run report with:
+- `## Fork CI Dry-Run Complete` header, then `Fork PR: <PR_URL>`
+- Upstream PR values: `UPSTREAM_REPO`, `FORK_OWNER`, `BRANCH`, `BASE_REF` (upstream default branch, fallback main)
+- `gh pr create` command template substituting those four values
+- Caveats (5 bullets): Actions must be enabled; secrets skip; `github.repository` guard skips; green on fork ≠ green upstream; `FORK_CI_NO_CHECKS=true` means no CI signal observed
 
 If `UPSTREAM_DESIGN_ISSUE` is set, append: `You may include Closes #<UPSTREAM_DESIGN_ISSUE> in the upstream PR body when you compose it manually.` If accepted-OOS items were skipped by Step 9a.1, append them under `## Out-of-Scope Observations` as text only. **Precedence**: `DESIGN_ONLY_DONE=true` wins over fork-mode report; never print fork-CI / fork-PR language on design-only completion.
 

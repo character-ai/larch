@@ -155,24 +155,11 @@ The four research lanes use the **Codex pre-launch status** (each lane is Codex-
 
 The heredoc body uses a **quoted delimiter** (`<<'EOF'`) so that any residual shell metacharacters in a substituted reason value are preserved verbatim.
 
-```bash
-cat > "$RESEARCH_TMPDIR/lane-status.txt" <<'EOF'
-RESEARCH_ARCH_STATUS=<codex pre-launch status>
-RESEARCH_ARCH_REASON=<codex sanitized reason or empty>
-RESEARCH_EDGE_STATUS=<codex pre-launch status>
-RESEARCH_EDGE_REASON=<codex sanitized reason or empty>
-RESEARCH_EXT_STATUS=<codex pre-launch status>
-RESEARCH_EXT_REASON=<codex sanitized reason or empty>
-RESEARCH_SEC_STATUS=<codex pre-launch status>
-RESEARCH_SEC_REASON=<codex sanitized reason or empty>
-VALIDATION_CODE_STATUS=ok
-VALIDATION_CODE_REASON=
-VALIDATION_CURSOR_STATUS=<cursor pre-launch status>
-VALIDATION_CURSOR_REASON=<cursor sanitized reason or empty>
-VALIDATION_CODEX_STATUS=<codex pre-launch status>
-VALIDATION_CODEX_REASON=<codex sanitized reason or empty>
-EOF
-```
+Write `$RESEARCH_TMPDIR/lane-status.txt` (shell key=value, quoted `<<'EOF'` delimiter; 14 keys):
+- `RESEARCH_{ARCH,EDGE,EXT,SEC}_STATUS` — codex pre-launch status for each lane
+- `RESEARCH_{ARCH,EDGE,EXT,SEC}_REASON` — sanitized reason or empty
+- `VALIDATION_CODE_STATUS=ok`, `VALIDATION_CODE_REASON=` (always constant)
+- `VALIDATION_{CURSOR,CODEX}_{STATUS,REASON}` — per pre-launch probe result
 
 ### 0c — Record Research Context
 
@@ -268,43 +255,17 @@ Parse the seven output lines via prefix-strip (NOT `cut -d=`, since rendered val
 
 If the helper exits non-zero, substitute the placeholder line `_Lane attribution unavailable._` for every header row and log: `**⚠ 3: report — render-lane-status failed; lane attribution unavailable.**`.
 
-Print the final research report under a `## Research Report` header with the following structure:
-
-```markdown
-## Research Report
-
-**Research question**: <RESEARCH_QUESTION>
-**Codebase context**: Branch `<CURRENT_BRANCH>`, commit `<HEAD_SHA>`
-
-**Research phase** (4 lanes):
-- <RESEARCH_ARCH_HEADER>
-- <RESEARCH_EDGE_HEADER>
-- <RESEARCH_EXT_HEADER>
-- <RESEARCH_SEC_HEADER>
-
-**Validation phase** (3 reviewers):
-- <VALIDATION_CODE_HEADER>
-- <VALIDATION_CURSOR_HEADER>
-- <VALIDATION_CODEX_HEADER>
-
-### Findings Summary
-<synthesized and validated findings, organized by topic>
-
-### Risk Assessment
-<Low/Medium/High with rationale, or N/A if not applicable to this research question>
-
-### Difficulty Estimate
-<S/M/L/XL with rationale, or N/A if not applicable>
-
-### Feasibility Verdict
-<assessment of feasibility with rationale, or N/A if not applicable>
-
-### Key Files and Areas
-<list of the most relevant files/modules/areas identified during research>
-
-### Open Questions
-<any unresolved questions or areas that need further investigation>
-```
+Print the final research report under a `## Research Report` header. Required sections (in order):
+- `**Research question**:` — `<RESEARCH_QUESTION>`
+- `**Codebase context**:` — branch and commit
+- `**Research phase** (4 lanes):` — one bullet per `<X_ARCH/EDGE/EXT/SEC_HEADER>`
+- `**Validation phase** (3 reviewers):` — one bullet per `<VALIDATION_CODE/CURSOR/CODEX_HEADER>`
+- `### Findings Summary` — synthesized validated findings by topic
+- `### Risk Assessment` — Low/Medium/High + rationale, or N/A
+- `### Difficulty Estimate` — S/M/L/XL + rationale, or N/A
+- `### Feasibility Verdict` — feasibility + rationale, or N/A
+- `### Key Files and Areas` — relevant files/modules/areas
+- `### Open Questions` — unresolved questions or areas needing further investigation
 
 When any external research lane ran as a Claude-fallback (`N_FALLBACK >= 1` per the §1.5 banner preamble in `${CLAUDE_PLUGIN_ROOT}/skills/research/references/research-phase.md`), Step 1.5 prepends a reduced-diversity banner under `## Research Synthesis`. The banner is computed by the canonical executable helper `${CLAUDE_PLUGIN_ROOT}/skills/research/scripts/compute-research-banner.sh` (contract in sibling `${CLAUDE_PLUGIN_ROOT}/skills/research/scripts/compute-research-banner.md`); the orchestrator forks the helper with the lane-status.txt path and prepends the helper's stdout to the synthesis subagent's body before writing `research-report.txt`. The banner contract is guarded by `${CLAUDE_PLUGIN_ROOT}/skills/research/scripts/test-research-banner.sh` (contract in sibling `${CLAUDE_PLUGIN_ROOT}/skills/research/scripts/test-research-banner.md`). Example degraded-path preview (one Codex angle fell back):
 
