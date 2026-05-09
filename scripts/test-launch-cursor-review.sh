@@ -798,7 +798,11 @@ if command -v shasum >/dev/null 2>&1; then
 else
     CH_SLUG=$(printf '%s' "$CH_SESSION" | sha256sum | awk '{print $1}')
 fi
-CH_LEDGER="${TMPDIR:-/tmp}/larch-tokens-${CH_SLUG}.jsonl"
+# Use a subprocess to discover the TMPDIR that check-step-token-budget.sh will
+# see (this test overrides $TMPDIR locally without exporting it, so the ledger
+# must land in the subprocess-visible temp root, not the test's local override).
+_CH_TMPROOT=$(bash -c 'printf "%s" "${TMPDIR:-/tmp}"')
+CH_LEDGER="${_CH_TMPROOT}/larch-tokens-${CH_SLUG}.jsonl"
 printf '{"type":"vendor","vendor":"cursor","total":9999}\n' > "$CH_LEDGER"
 
 CH_OUTPUT="$TMPDIR/cap-hit-cursor-review.txt"
