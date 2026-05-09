@@ -27,6 +27,8 @@
 #  20. detect — >16 bracket-block prefix → cap exhausted, NOT umbrella (#819)
 #  21. pick-child — skips prose-blocked first child to next ready sibling (#768 positive)
 #  22. pick-child — fail-open preserved on prose state-lookup failure (#768 negative)
+#  23. detect — [UMBRELLA] bracket-block standalone marker (#1612 positive)
+#  24. detect — [IN PROGRESS] [UMBRELLA] foo: managed prefix + UMBRELLA block (#1612 positive)
 #
 # Run manually:
 #   bash skills/fix-issue/scripts/test-umbrella-handler.sh
@@ -577,6 +579,36 @@ STATE_EOF
 OUT=$("$SCRIPT" pick-child --issue 2200 2>&1) || true
 assert_contains "$OUT" "CHILD_NUMBER=2201" "[22] fail-open preserved: first child eligible despite prose mention"
 assert_not_contains "$OUT" "NO_ELIGIBLE_CHILD=true" "[22] fail-open prevents fail-closed gate"
+
+# ---------------------------------------------------------------------------
+# Fixture 23: detect — [UMBRELLA] standalone bracket-block (#1612 positive)
+# The [UMBRELLA] block is found during the peel; is_umbrella_title returns 0
+# immediately, regardless of what follows.
+# ---------------------------------------------------------------------------
+echo "Fixture 23: detect — [UMBRELLA] Token savings drive II"
+run_fixture "fixture-23"
+cat > "$STUB_STATE_FILE" <<'STATE_EOF'
+ISSUE_230_TITLE='[UMBRELLA] Token savings drive II'
+ISSUE_230_BODY='No body literal here.'
+ISSUE_230_STATE=OPEN
+STATE_EOF
+OUT=$("$SCRIPT" detect --issue 230 2>&1) || true
+assert_contains "$OUT" "IS_UMBRELLA=true" "[23] [UMBRELLA] standalone block → IS_UMBRELLA=true"
+
+# ---------------------------------------------------------------------------
+# Fixture 24: detect — [IN PROGRESS] [UMBRELLA] foo (#1612 positive)
+# Managed lifecycle prefix first, then [UMBRELLA] block — both are peeled;
+# [UMBRELLA] fires the early-return during the peel loop.
+# ---------------------------------------------------------------------------
+echo "Fixture 24: detect — [IN PROGRESS] [UMBRELLA] foo"
+run_fixture "fixture-24"
+cat > "$STUB_STATE_FILE" <<'STATE_EOF'
+ISSUE_240_TITLE='[IN PROGRESS] [UMBRELLA] foo bar'
+ISSUE_240_BODY='No body literal here.'
+ISSUE_240_STATE=OPEN
+STATE_EOF
+OUT=$("$SCRIPT" detect --issue 240 2>&1) || true
+assert_contains "$OUT" "IS_UMBRELLA=true" "[24] [IN PROGRESS] [UMBRELLA] → IS_UMBRELLA=true"
 
 # ---------------------------------------------------------------------------
 # Summary

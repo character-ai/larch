@@ -96,4 +96,4 @@ mv "$OUT_TMP" "$OUT" || {
 }
 
 printf 'UMBRELLA_BODY_FILE=%s\n' "$OUT"
-printf 'UMBRELLA_TITLE_HINT=%s\n' "$TITLE_HINT"
+printf 'UMBRELLA_TITLE_HINT=[UMBRELLA] %s\n' "$TITLE_HINT"

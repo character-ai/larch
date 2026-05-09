@@ -15,17 +15,18 @@
 #   pick-child   --issue N
 #
 # Detection (title-only, post-#846):
-#   A title where, after stripping zero or more leading bracket-blocks of the
-#   form `[...]` and/or `(...)` (each with optional surrounding whitespace)
-#   via a bounded peel loop (cap=16, fail-closed on unbalanced/unclosed
-#   leading bracket), the remainder starts with `Umbrella: ` or `Umbrella — `
-#   — case-sensitive. The marker matches both /umbrella-created umbrellas
-#   (orchestrator-composed summaries conventionally start with "Umbrella:",
-#   not code-enforced — see existing umbrellas #774, #773, #770, #784) and
-#   hand-authored umbrellas like #348, including titles that already carry
-#   an operator tag (e.g. `[IN PROGRESS] Umbrella: foo`,
-#   `(urgent) Umbrella: foo`). The body is NOT consulted — see
-#   `is_umbrella_title` (below) for the implementation and the sibling
+#   Two independent signals — either is sufficient:
+#   1. A leading bracket-block [UMBRELLA] anywhere in the peel sequence
+#      (case-sensitive) — the marker /umbrella prepends to new tracking issues.
+#   2. After stripping all leading bracket-blocks of the form `[...]` and/or
+#      `(...)` via a bounded peel loop (cap=16, fail-closed on unbalanced/
+#      unclosed leading bracket), the remainder starts with `Umbrella: ` or
+#      `Umbrella — ` — case-sensitive (backward compat with pre-#1612 umbrellas
+#      and hand-authored umbrellas like #774, #773, #770, #784, #348).
+#   (e.g. `[UMBRELLA] foo`, `[IN PROGRESS] [UMBRELLA] foo`,
+#   `[IN PROGRESS] Umbrella: foo`, `(urgent) Umbrella: foo`). The body is NOT
+#   consulted — see `is_umbrella_title` (below) for the implementation and the
+#   sibling
 #   `umbrella-handler.md` Detection section for the full grammar contract
 #   (non-nesting, cap=16, silent fail-closed). Body-based detection was
 #   removed in #846 because the prior substring match on the literal
@@ -138,8 +139,8 @@ source "$BLOCKER_HELPERS" || {
 # indistinguishable from the standard non-match on stdout (no `ERROR=`
 # emitted; see umbrella-handler.md silent-fail-closed contract note).
 #
-# Positive examples (#819): "Umbrella: foo", "[IN PROGRESS] Umbrella: foo",
-# "[IN PROGRESS] (urgent) Umbrella: foo".
+# Positive examples (#819, #1612): "Umbrella: foo", "[IN PROGRESS] Umbrella: foo",
+# "[IN PROGRESS] (urgent) Umbrella: foo", "[UMBRELLA] foo", "[IN PROGRESS] [UMBRELLA] foo".
 # Negative examples (#819): "[IN PROGRESS] Do something umbrella related"
 # (Umbrella not at front after prefix strip), "/umbrella ..." (lowercase /
 # command syntax).
@@ -157,6 +158,11 @@ is_umbrella_title() {
                 local after_open="${remainder#?}"
                 case "$after_open" in
                     *']'*)
+                        # [UMBRELLA] bracket-block is a standalone umbrella marker.
+                        local block_content="${after_open%%]*}"
+                        if [ "$block_content" = "UMBRELLA" ]; then
+                            return 0
+                        fi
                         # Strip up to and including the first ']'.
                         remainder="${after_open#*]}"
                         ;;
