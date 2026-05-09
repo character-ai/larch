@@ -17,6 +17,6 @@ To use this skill, run the `run.sh` script with the following arguments:
 
 - `<file-path>`: The path to the file to extract the context from.
 - `<line-number>`: The line number to center the context around.
-- `<context-lines>`: The number of lines of context to extract on each side of the center line.
+- `<context-radius>`: The number of lines of context to extract on each side of the center line. The total number of lines extracted will be `2 * <context-radius> + 1`.
 
 The script will output the extracted context with line numbers.

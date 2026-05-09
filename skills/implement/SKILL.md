@@ -1885,7 +1885,6 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 
 ## Step 13.5 — Finalizer State
 
-
 `EXPECTED_TMPDIR_BASENAME_PREFIX` MUST mirror exactly what `session-setup.sh` and `scripts/implement-finalize.sh::clone_basename_prefix` produce, or Step 18's `verify_cleanup_target` sanity-check will refuse rm-rf and leak the session tmpdir. The four required steps — basename, sanitize via `tr` (NOT a one-pipe form, which bakes basename's trailing newline into a stray `_`; see #1563), truncate to 32 chars, empty-fallback to `_` — are computed inline into `CLONE_TAG_FULL` before writing the state file. The `${CLONE_TAG:-…}` operator-override semantics are preserved on the first line.
 
 ```bash

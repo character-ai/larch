@@ -169,14 +169,6 @@ The legacy `--codex-available true|false` knob is still accepted by the dispatch
 
 ## Environment Variables
 
-- The token's presence is checked during session setup and its availability is propagated to child skills
-
-- All other workflow steps (design, implementation, code review, CI monitoring, merge) proceed normally
-
-- The issue status message is posted to this channel
-
-- All other workflow steps proceed normally
-
 ### External Agent Model Configuration
 
 These variables control which model Cursor, Codex, and Gemini use when running as external agents. Cursor and Codex run reviews, sketches, voting, and implementation (when selected with `--coder`). Gemini's only currently-active path is implementation (when selected with `--coder=gemini`); the Gemini reviewer call sites have been removed from `/review` and `/implement --quick`, so the dormant reviewer launcher (`scripts/launch-gemini-review.sh`) and Gemini health probe still consume the same `LARCH_GEMINI_MODEL` resolution but the launcher itself is not invoked by any current skill. When unset, Cursor defaults to `composer-2` (with the `/max-mode on.` slash-command prefix applied to every substantive prompt via `scripts/cursor-wrap-prompt.sh`), Codex defaults to `gpt-5.5` (hardcoded in `scripts/agent-model-args.sh`), and Gemini defaults to `gemini-2.5-pro`. The model is passed via `--model` for Cursor and the Gemini implementer, and via `-m` for Codex and the dormant Gemini reviewer launcher. To restore the pre-`composer-2` behavior, set `LARCH_CURSOR_MODEL=composer-2-fast`.

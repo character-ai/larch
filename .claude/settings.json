@@ -67,7 +67,6 @@
       "Bash(REVIEW_TMPDIR=:*)",
       "Bash(SAFE_TITLE=:*)",
       "Bash(SECONDS=:*)",
-      "Bash(SLACK_TS=:*)",
       "Bash(STATUS=:*)",
       "Bash(SUMMARY_BULLETS=:*)",
       "Bash(TIMEOUT_SECONDS=:*)",
