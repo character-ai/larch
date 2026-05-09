@@ -7,7 +7,7 @@
 # summary line.)
 #
 #   (a)   Empty sections directory — anchor marker + placeholder + marker
-#         pairs + injected run-statistics version row.
+#         pairs + injected run-statistics metadata rows.
 #   (a2)  Empty sections directory — placeholder literal present.
 #   (a3)  Partial fragments — placeholder suppressed.
 #   (a4)  All whitespace-only fragments — placeholder fires (lenient).
@@ -16,8 +16,8 @@
 #   (b)   Partial fragments populated where present, empty pairs elsewhere.
 #   (b2)  Newline-terminated fragment — exactly one newline before close.
 #   (b3)  Fragment without trailing newline — newline inserted before close.
-#   (b4)  Populated run-statistics — strip trailing blanks, append version.
-#   (b5)  Hydrated run-statistics with stale version row — strip + dedupe.
+#   (b4)  Populated run-statistics — strip trailing blanks, append metadata.
+#   (b5)  Hydrated run-statistics with stale metadata rows — strip + dedupe.
 #   (b6)  Populated fragment normalized to empty — seed-style scaffold.
 #   (b7)  Diagrams sanitizer — offending fence placeholder + warning.
 #   (b8)  Legacy token-report block stripped from run-statistics.
@@ -26,6 +26,10 @@
 #   (b11) Multi-pair legacy blocks — every pair stripped (loop to fixed point).
 #   (b12) Matched pair + orphan end — orphan dropped as marker-line-only.
 #   (b13) Matched pair + orphan begin — orphan dropped as marker-line-only.
+#   (b16) Effort env precedence — CLAUDE_CODE_EFFORT_LEVEL, then CLAUDE_EFFORT.
+#   (b17) Metadata table sanitization — pipe characters do not corrupt rows.
+#   (b18) Claude model positive path — model read from transcript snapshot.
+#   (b19) Claude model fallback — unavailable transcript yields unknown.
 #   (c)   Full fragments — all SECTION_MARKERS slugs populated.
 #   (d)   Missing anchor-section-markers.sh helper — fail closed exit 1.
 #   (e)   Invalid --issue value — usage error, exit 1.
@@ -54,14 +58,14 @@
 #   (b3) Fragment without trailing newline → helper inserts newline so the
 #       close marker still appears on its own line.
 #   (b4) Populated run-statistics fragment → trailing blank lines are
-#       stripped and plugin-version row is appended as the final table row.
-#   (b5) Hydrated run-statistics fragment with a stale plugin-version row →
-#       the stale trailing version row is stripped before the freshly-
-#       captured one is appended (idempotency on resume / hydration).
+#       stripped and metadata rows are appended in canonical order.
+#   (b5) Hydrated run-statistics fragment with stale metadata rows →
+#       the stale trailing rows are stripped before freshly-captured rows
+#       are appended (idempotency on resume / hydration).
 #   (b6) Populated fragment whose entire content normalizes to empty (e.g.
-#       a single stale version row, no heading/header) → fall through to
-#       the seed-style scaffold (heading + table header + fresh version row)
-#       instead of emitting an orphan row.
+#       stale metadata rows, no heading/header) → fall through to the
+#       seed-style scaffold (heading + table header + fresh metadata rows)
+#       instead of emitting orphan rows.
 #   (c) Full fragments → all SECTION_MARKERS slugs populated.
 #   (d) Missing anchor-section-markers.sh helper → FAILED=true / ERROR=missing
 #       helper + exit 1.
@@ -95,6 +99,11 @@ source "$MARKERS_HELPER"
 
 tmpdir="$(mktemp -d -t assemble-anchor-test-XXXXXX)"
 trap 'rm -rf "$tmpdir"' EXIT
+test_home="$tmpdir/home"
+mkdir -p "$test_home"
+export HOME="$test_home"
+unset CLAUDE_CODE_EFFORT_LEVEL CLAUDE_EFFORT
+unset LARCH_CLAUDE_SOURCE_FILE LARCH_CLAUDE_SESSION_ID LARCH_TOKEN_SESSION_ID
 
 plugin_root="$tmpdir/plugin-root"
 mkdir -p "$plugin_root/.claude-plugin"
@@ -110,6 +119,21 @@ pass_count=0
 pass() {
     pass_count=$((pass_count + 1))
     echo "PASS: $1"
+}
+
+assert_metadata_row_counts() {
+    output_file="$1"
+    label="$2"
+
+    total_version_rows=$(grep -cE '^\| larch plugin version \|' "$output_file")
+    [ "$total_version_rows" = "1" ] \
+        || fail "$label expected exactly 1 plugin-version row, got $total_version_rows"
+    total_model_rows=$(grep -cE '^\| Claude model \|' "$output_file")
+    [ "$total_model_rows" = "1" ] \
+        || fail "$label expected exactly 1 Claude-model row, got $total_model_rows"
+    total_effort_rows=$(grep -cE '^\| effort level \|' "$output_file")
+    [ "$total_effort_rows" = "1" ] \
+        || fail "$label expected exactly 1 effort-level row, got $total_effort_rows"
 }
 
 # --------------------------------------------------------------------------
@@ -135,7 +159,7 @@ expected_lines_a=2  # first-line marker + placeholder line
 for _ in "${SECTION_MARKERS[@]}"; do
     expected_lines_a=$((expected_lines_a + 2))  # open + close marker pair
 done
-expected_lines_a=$((expected_lines_a + 5))  # run-statistics table interior
+expected_lines_a=$((expected_lines_a + 7))  # run-statistics table interior
 actual_lines_a=$(wc -l < "$output_a" | tr -d ' ')
 [ "$actual_lines_a" = "$expected_lines_a" ] \
     || fail "(a) expected $expected_lines_a lines, got $actual_lines_a; content: $(cat "$output_a")"
@@ -157,14 +181,23 @@ for slug in "${SECTION_MARKERS[@]}"; do
     if [ "$slug" = "run-statistics" ]; then
         sed -n "$((line_num + 1))p" "$output_a" | grep -qxF '## Run Statistics' \
             || fail "(a) run-statistics missing section heading"
+        blank_line=$(sed -n "$((line_num + 2))p" "$output_a")
+        [ -z "$blank_line" ] \
+            || fail "(a) run-statistics expected blank line after heading, got '$blank_line'"
         sed -n "$((line_num + 3))p" "$output_a" | grep -qxF '| Metric | Value |' \
             || fail "(a) run-statistics missing table header"
+        sed -n "$((line_num + 4))p" "$output_a" | grep -qxF '|---|---|' \
+            || fail "(a) run-statistics missing table separator"
         sed -n "$((line_num + 5))p" "$output_a" | grep -qxF '| larch plugin version | 9.8.7 |' \
             || fail "(a) run-statistics missing injected plugin version row"
-        close_line=$(sed -n "$((line_num + 6))p" "$output_a")
+        sed -n "$((line_num + 6))p" "$output_a" | grep -qxF '| Claude model | unknown |' \
+            || fail "(a) run-statistics missing injected Claude model row"
+        sed -n "$((line_num + 7))p" "$output_a" | grep -qxF '| effort level | unknown |' \
+            || fail "(a) run-statistics missing injected effort level row"
+        close_line=$(sed -n "$((line_num + 8))p" "$output_a")
         [ "$close_line" = "<!-- section-end:$slug -->" ] \
-            || fail "(a) line $((line_num + 6)): expected '<!-- section-end:$slug -->', got '$close_line'"
-        line_num=$((line_num + 7))
+            || fail "(a) line $((line_num + 8)): expected '<!-- section-end:$slug -->', got '$close_line'"
+        line_num=$((line_num + 9))
     else
         close_line=$(sed -n "$((line_num + 1))p" "$output_a")
         [ "$close_line" = "<!-- section-end:$slug -->" ] \
@@ -172,7 +205,7 @@ for slug in "${SECTION_MARKERS[@]}"; do
         line_num=$((line_num + 2))
     fi
 done
-pass "(a) empty sections directory → anchor marker + placeholder + marker pairs + injected run-statistics version row"
+pass "(a) empty sections directory → anchor marker + placeholder + marker pairs + injected run-statistics metadata rows"
 
 # --------------------------------------------------------------------------
 # (a2) Empty sections directory → placeholder literal present (regression
@@ -353,6 +386,8 @@ expected_b2="$tmpdir/expected-b2.md"
                 printf '| Metric | Value |\n'
                 printf '|---|---|\n'
                 printf '| larch plugin version | 9.8.7 |\n'
+                printf '| Claude model | unknown |\n'
+                printf '| effort level | unknown |\n'
                 ;;
         esac
         printf '<!-- section-end:%s -->\n' "$slug"
@@ -389,7 +424,7 @@ pass "(b3) fragment without trailing newline → newline inserted before close m
 
 # --------------------------------------------------------------------------
 # (b4) Populated run-statistics fragment → strip trailing blank lines and
-#      append plugin-version row as the final table row.
+#      append metadata rows in canonical order.
 # --------------------------------------------------------------------------
 sections_b4="$tmpdir/sections-b4"
 mkdir -p "$sections_b4"
@@ -405,22 +440,30 @@ output_b4="$tmpdir/out-b4.md"
 "$ASSEMBLE_ANCHOR" --sections-dir "$sections_b4" --issue 502 --output "$output_b4" > /dev/null
 
 version_line_num=$(grep -nF '| larch plugin version | 9.8.7 |' "$output_b4" | head -n 1 | cut -d: -f1)
+model_line_num=$(grep -nF '| Claude model | unknown |' "$output_b4" | head -n 1 | cut -d: -f1)
+effort_line_num=$(grep -nF '| effort level | unknown |' "$output_b4" | head -n 1 | cut -d: -f1)
 close_line_num=$(grep -nF '<!-- section-end:run-statistics -->' "$output_b4" | head -n 1 | cut -d: -f1)
 [ -n "$version_line_num" ] || fail "(b4) missing injected plugin-version row"
-[ "$version_line_num" = "$((close_line_num - 1))" ] \
-    || fail "(b4) plugin-version row should be immediately before run-statistics close marker"
+[ -n "$model_line_num" ] || fail "(b4) missing injected Claude-model row"
+[ -n "$effort_line_num" ] || fail "(b4) missing injected effort-level row"
+[ "$effort_line_num" = "$((close_line_num - 1))" ] \
+    || fail "(b4) effort-level row should be immediately before run-statistics close marker"
+[ "$model_line_num" = "$((close_line_num - 2))" ] \
+    || fail "(b4) Claude-model row should be two lines before run-statistics close marker"
+[ "$version_line_num" = "$((close_line_num - 3))" ] \
+    || fail "(b4) plugin-version row should be three lines before run-statistics close marker"
 prev_line=$(sed -n "$((version_line_num - 1))p" "$output_b4")
 [ "$prev_line" = '| OOS issues filed | 2 |' ] \
     || fail "(b4) trailing blank lines were not stripped before plugin-version row (previous line: '$prev_line')"
-pass "(b4) populated run-statistics fragment → strip trailing blanks and append plugin-version row"
+pass "(b4) populated run-statistics fragment → strip trailing blanks and append metadata rows"
 
 # --------------------------------------------------------------------------
 # (b5) Hydration / resume idempotency: a populated run-statistics fragment
-#      that ALREADY ends with a `| larch plugin version | ... |` row (the
+#      that ALREADY ends with metadata rows (the
 #      shape produced by a prior assembly that the next session hydrated
-#      back into run-statistics.md) must not produce duplicate version rows.
-#      The injection helper strips trailing pre-existing version rows AND
-#      blank lines, then appends a single freshly-captured row.
+#      back into run-statistics.md) must not produce duplicate metadata rows.
+#      The injection helper strips trailing pre-existing metadata rows AND
+#      blank lines, then appends a single freshly-captured row per label.
 # --------------------------------------------------------------------------
 sections_b5="$tmpdir/sections-b5"
 mkdir -p "$sections_b5"
@@ -430,34 +473,43 @@ mkdir -p "$sections_b5"
     printf '|---|---|\n'
     printf '| OOS issues filed | 4 |\n'
     printf '| larch plugin version | 1.2.3 |\n'
+    printf '| Claude model | stale-model |\n'
+    printf '| effort level | stale-effort |\n'
     printf '\n'
 } > "$sections_b5/run-statistics.md"
 
 output_b5="$tmpdir/out-b5.md"
 "$ASSEMBLE_ANCHOR" --sections-dir "$sections_b5" --issue 503 --output "$output_b5" > /dev/null
 
-# Exactly one plugin-version row, value 9.8.7 (the test fixture's CLAUDE_PLUGIN_ROOT).
-total_version_rows=$(grep -cE '^\| larch plugin version \|' "$output_b5")
-[ "$total_version_rows" = "1" ] \
-    || fail "(b5) expected exactly 1 plugin-version row, got $total_version_rows (content: $(cat "$output_b5"))"
+assert_metadata_row_counts "$output_b5" "(b5)"
 grep -qF '| larch plugin version | 9.8.7 |' "$output_b5" \
     || fail "(b5) plugin-version row should carry the freshly-captured 9.8.7 value, not the hydrated 1.2.3"
 if grep -qF '| larch plugin version | 1.2.3 |' "$output_b5"; then
     fail "(b5) stale hydrated plugin-version row should have been stripped"
 fi
-pass "(b5) hydrated run-statistics fragment with stale version row → strip stale row, single fresh row appended"
+if grep -qF '| Claude model | stale-model |' "$output_b5"; then
+    fail "(b5) stale hydrated Claude-model row should have been stripped"
+fi
+if grep -qF '| effort level | stale-effort |' "$output_b5"; then
+    fail "(b5) stale hydrated effort-level row should have been stripped"
+fi
+pass "(b5) hydrated run-statistics fragment with stale metadata rows → strip stale rows, single fresh rows appended"
 
 # --------------------------------------------------------------------------
 # (b6) Empty-after-normalization fallback: a populated run-statistics
-#      fragment whose entire content is a single stale version row (no
+#      fragment whose entire content is stale metadata rows (no
 #      `## Run Statistics` heading, no table header) normalizes down to
 #      empty after the strip loop. The helper must fall through to the
-#      seed-style scaffold (heading + table header + version row) so the
-#      assembled section is well-formed instead of an orphan row.
+#      seed-style scaffold (heading + table header + metadata rows) so the
+#      assembled section is well-formed instead of orphan rows.
 # --------------------------------------------------------------------------
 sections_b6="$tmpdir/sections-b6"
 mkdir -p "$sections_b6"
-printf '| larch plugin version | 0.0.1 |\n' > "$sections_b6/run-statistics.md"
+{
+    printf '| larch plugin version | 0.0.1 |\n'
+    printf '| Claude model | stale-model |\n'
+    printf '| effort level | stale-effort |\n'
+} > "$sections_b6/run-statistics.md"
 
 output_b6="$tmpdir/out-b6.md"
 "$ASSEMBLE_ANCHOR" --sections-dir "$sections_b6" --issue 504 --output "$output_b6" > /dev/null
@@ -469,16 +521,19 @@ grep -qxF '| Metric | Value |' "$output_b6" \
     || fail "(b6) missing table header after empty-normalization fallback"
 grep -qxF '|---|---|' "$output_b6" \
     || fail "(b6) missing table separator after empty-normalization fallback"
-# Exactly one fresh version row, value 9.8.7.
-total_version_rows_b6=$(grep -cE '^\| larch plugin version \|' "$output_b6")
-[ "$total_version_rows_b6" = "1" ] \
-    || fail "(b6) expected exactly 1 plugin-version row, got $total_version_rows_b6"
+assert_metadata_row_counts "$output_b6" "(b6)"
 grep -qF '| larch plugin version | 9.8.7 |' "$output_b6" \
     || fail "(b6) version row should carry the freshly-captured value (9.8.7)"
 if grep -qF '| larch plugin version | 0.0.1 |' "$output_b6"; then
     fail "(b6) stale version row should have been stripped"
 fi
-pass "(b6) populated fragment normalized to empty → seed-style scaffold + fresh version row"
+if grep -qF '| Claude model | stale-model |' "$output_b6"; then
+    fail "(b6) stale Claude-model row should have been stripped"
+fi
+if grep -qF '| effort level | stale-effort |' "$output_b6"; then
+    fail "(b6) stale effort-level row should have been stripped"
+fi
+pass "(b6) populated fragment normalized to empty → seed-style scaffold + fresh metadata rows"
 
 # --------------------------------------------------------------------------
 # (b8) Legacy-anchor migration: a hydrated run-statistics fragment that
@@ -529,10 +584,7 @@ grep -qxF '## Run Statistics' "$output_b8" \
 grep -qxF '| OOS issues filed | 1 |' "$output_b8" \
     || fail "(b8) Pre-existing OOS-issues row should be preserved across legacy strip"
 
-# Exactly one fresh plugin-version row, value 9.8.7.
-total_version_rows_b8=$(grep -cE '^\| larch plugin version \|' "$output_b8")
-[ "$total_version_rows_b8" = "1" ] \
-    || fail "(b8) expected exactly 1 plugin-version row, got $total_version_rows_b8"
+assert_metadata_row_counts "$output_b8" "(b8)"
 grep -qF '| larch plugin version | 9.8.7 |' "$output_b8" \
     || fail "(b8) plugin-version row should carry the freshly-captured 9.8.7 value"
 pass "(b8) legacy <!-- token-report-begin -->...<!-- token-report-end --> block stripped from run-statistics fragment"
@@ -713,6 +765,77 @@ fi
 grep -qxF '| OOS issues filed | 3 |' "$output_b10" \
     || fail "(b10) post-marker content should be preserved on lone-end strip"
 pass "(b10) lone <!-- token-report-end --> marker → strip from BOF through marker"
+
+# --------------------------------------------------------------------------
+# (b16) Effort env precedence: prefer CLAUDE_CODE_EFFORT_LEVEL, then
+#       CLAUDE_EFFORT, then unknown.
+# --------------------------------------------------------------------------
+sections_b16="$tmpdir/sections-b16"
+mkdir -p "$sections_b16"
+output_b16_high="$tmpdir/out-b16-high.md"
+CLAUDE_CODE_EFFORT_LEVEL=high CLAUDE_EFFORT=medium \
+    "$ASSEMBLE_ANCHOR" --sections-dir "$sections_b16" --issue 516 --output "$output_b16_high" > /dev/null
+grep -Fxq '| effort level | high |' "$output_b16_high" \
+    || fail "(b16) CLAUDE_CODE_EFFORT_LEVEL should take precedence over CLAUDE_EFFORT"
+
+output_b16_medium="$tmpdir/out-b16-medium.md"
+env -u CLAUDE_CODE_EFFORT_LEVEL CLAUDE_EFFORT=medium \
+    "$ASSEMBLE_ANCHOR" --sections-dir "$sections_b16" --issue 517 --output "$output_b16_medium" > /dev/null
+grep -Fxq '| effort level | medium |' "$output_b16_medium" \
+    || fail "(b16) CLAUDE_EFFORT should be used when CLAUDE_CODE_EFFORT_LEVEL is unset"
+pass "(b16) effort env precedence → CLAUDE_CODE_EFFORT_LEVEL, then CLAUDE_EFFORT"
+
+# --------------------------------------------------------------------------
+# (b17) Metadata table sanitization: pipe characters are replaced so env
+#       values cannot corrupt the Markdown table.
+# --------------------------------------------------------------------------
+sections_b17="$tmpdir/sections-b17"
+mkdir -p "$sections_b17"
+output_b17="$tmpdir/out-b17.md"
+CLAUDE_CODE_EFFORT_LEVEL='fo|bar' \
+    "$ASSEMBLE_ANCHOR" --sections-dir "$sections_b17" --issue 518 --output "$output_b17" > /dev/null
+grep -Fxq '| effort level | fo-bar |' "$output_b17" \
+    || fail "(b17) effort level pipe should be sanitized to hyphen"
+pass "(b17) metadata table sanitization → pipe characters replaced"
+
+# --------------------------------------------------------------------------
+# (b18) Positive Claude model path: LARCH_CLAUDE_SOURCE_FILE points to a
+#       transcript containing an assistant model.
+# --------------------------------------------------------------------------
+sections_b18="$tmpdir/sections-b18"
+mkdir -p "$sections_b18"
+transcript_b18="$tmpdir/transcript-b18.jsonl"
+snapshot_b18="$tmpdir/source-b18.env"
+printf '{"type":"assistant","message":{"model":"claude-sonnet-test"}}\n' > "$transcript_b18"
+printf 'TRANSCRIPT_PATH=%s\n' "$transcript_b18" > "$snapshot_b18"
+printf 'SESSION_DIR=%s\n' "$tmpdir/session-b18" >> "$snapshot_b18"
+printf 'SESSION_UUID=%s\n' 'session-b18' >> "$snapshot_b18"
+
+output_b18="$tmpdir/out-b18.md"
+env -u CLAUDE_CODE_EFFORT_LEVEL -u CLAUDE_EFFORT \
+    -u LARCH_CLAUDE_SESSION_ID -u LARCH_TOKEN_SESSION_ID \
+    LARCH_CLAUDE_SOURCE_FILE="$snapshot_b18" \
+    "$ASSEMBLE_ANCHOR" --sections-dir "$sections_b18" --issue 519 --output "$output_b18" > /dev/null
+grep -Fxq '| Claude model | claude-sonnet-test |' "$output_b18" \
+    || fail "(b18) Claude model should be read from transcript snapshot"
+pass "(b18) Claude model positive path → read model from transcript snapshot"
+
+# --------------------------------------------------------------------------
+# (b19) Unavailable transcript fallback: isolated HOME has no Claude
+#       project directory and no resolver env vars are set.
+# --------------------------------------------------------------------------
+sections_b19="$tmpdir/sections-b19"
+mkdir -p "$sections_b19"
+home_b19="$tmpdir/home-b19"
+mkdir -p "$home_b19"
+output_b19="$tmpdir/out-b19.md"
+env -u CLAUDE_CODE_EFFORT_LEVEL -u CLAUDE_EFFORT \
+    -u LARCH_CLAUDE_SOURCE_FILE -u LARCH_CLAUDE_SESSION_ID -u LARCH_TOKEN_SESSION_ID \
+    HOME="$home_b19" CLAUDE_PLUGIN_ROOT="$plugin_root" \
+    "$ASSEMBLE_ANCHOR" --sections-dir "$sections_b19" --issue 520 --output "$output_b19" > /dev/null
+grep -Fxq '| Claude model | unknown |' "$output_b19" \
+    || fail "(b19) unavailable transcript should inject unknown Claude model"
+pass "(b19) Claude model fallback → unavailable transcript yields unknown"
 
 # --------------------------------------------------------------------------
 # (c) Full fragments — all SECTION_MARKERS slugs populated

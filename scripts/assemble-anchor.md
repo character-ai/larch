@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Assemble the anchor comment body from local per-section fragment files under a sections directory. Walks the canonical `SECTION_MARKERS` slug list (sourced from `anchor-section-markers.sh`), emits paired `<!-- section:<slug> -->` / `<!-- section-end:<slug> -->` markers wrapping each fragment's content (empty marker pairs when a fragment file is absent), prepends the first-line HTML anchor marker `<!-- larch:implement-anchor v1 issue=<N> -->`, injects the larch plugin version into the `run-statistics` section, and writes the result to `--output`.
+Assemble the anchor comment body from local per-section fragment files under a sections directory. Walks the canonical `SECTION_MARKERS` slug list (sourced from `anchor-section-markers.sh`), emits paired `<!-- section:<slug> -->` / `<!-- section-end:<slug> -->` markers wrapping each fragment's content (empty marker pairs when a fragment file is absent), prepends the first-line HTML anchor marker `<!-- larch:implement-anchor v1 issue=<N> -->`, injects run metadata into the `run-statistics` section, and writes the result to `--output`.
 
 Umbrella #348 Phase 5 extracted this helper to eliminate prose-vs-shell drift across the multiple callsites that previously implemented the walk inline (SKILL.md Step 0.5 Branch 2/3 adoption-seed, Step 0.5 Branch 4 fresh-run first-remote-write, Steps 1/2/5/7a/8/9a.1/11 progressive upserts — Step 2 covers Q/A anchor refresh, and the rebase-rebump sub-procedure Step 6). Every anchor body creation and progressive upsert now routes through this one helper.
 
@@ -51,7 +51,7 @@ Parsers MUST use the `ERROR=` field (not exit code alone) to disambiguate — ex
 
 ### Marker order matches SECTION_MARKERS
 
-The assembly walk iterates `"${SECTION_MARKERS[@]}"` from `anchor-section-markers.sh`. Any consumer that depends on a specific section order (notably `scripts/tracking-issue-write.sh`'s truncation pass) MUST share the same source-of-truth array. Do not hardcode slug names in this script except for the documented `run-statistics` normalization hook (see "Run Statistics version-row injection" below) — the hook needs the literal slug to special-case that section's content shape, but it is intentional and gated by a single equality test rather than a parallel slug list.
+The assembly walk iterates `"${SECTION_MARKERS[@]}"` from `anchor-section-markers.sh`. Any consumer that depends on a specific section order (notably `scripts/tracking-issue-write.sh`'s truncation pass) MUST share the same source-of-truth array. Do not hardcode slug names in this script except for the documented `run-statistics` normalization hook (see "Run Statistics metadata-row injection" below) — the hook needs the literal slug to special-case that section's content shape, but it is intentional and gated by a single equality test rather than a parallel slug list.
 
 ### First-line marker exactness
 
@@ -61,23 +61,43 @@ Output always begins with `<!-- larch:implement-anchor v1 issue=<N> -->\n`. `tra
 
 Missing fragment files emit only the open/close marker pair with no content between. This preserves the skeleton required by `tracking-issue-write.sh`'s per-section truncation algorithm (which locates interiors by marker-pair boundaries).
 
-Exception — see "Run Statistics version-row injection" below for the full contract.
+Exception — see "Run Statistics metadata-row injection" below for the full contract.
 
-### Run Statistics version-row injection
+### Run Statistics metadata-row injection
 
-The `run-statistics` section is the one slug whose interior is normalized rather than emitted verbatim. The helper always appends a canonical `| larch plugin version | <value> |` table row inside the section, so the larch plugin version is visible in the anchor body from the seed plant at /implement Step 0.5 onward without depending on Step 9a.1's later run-statistics fragment write.
+The `run-statistics` section is the one slug whose interior is normalized rather than emitted verbatim. The helper always appends three canonical table rows inside the section, so run metadata is visible in the anchor body from the seed plant at /implement Step 0.5 onward without depending on Step 9a.1's later run-statistics fragment write.
+
+Rows are appended in this fixed order:
+
+1. `| larch plugin version | <value> |`
+2. `| Claude model | <value> |`
+3. `| effort level | <value> |`
 
 Behavior depends on the fragment's state:
 
-- **Empty / missing fragment** (seed case): the helper emits a self-contained minimal table — `## Run Statistics`, a blank line, the standard `| Metric | Value |` header + `|---|---|` separator, and the plugin-version row.
+- **Empty / missing fragment** (seed case): the helper emits a self-contained minimal table — `## Run Statistics`, a blank line, the standard `| Metric | Value |` header + `|---|---|` separator, and the three metadata rows.
 - **Populated fragment** (Step 9a.1's full table written by /implement): the helper emits the fragment content after three transforms, in order:
     1. **Legacy token-report block strip** — any `<!-- token-report-begin -->...<!-- token-report-end -->` pair embedded inside the fragment is removed (closes #1466 sub-item B; was #1440). Pre-#1429 anchors carried the Token Report inside `run-statistics`; after the split that block is published as its own `token-report` section, so leaving the legacy markers in `run-statistics` would publish duplicate Token Report content on resumed runs against pre-split anchors. Lone-begin (no closing marker) strips from the marker to EOF; lone-end (no opening marker) strips from BOF through the marker — both are degraded-input safe.
     2. **Trailing blank-line strip** — preserves the existing minimum-noise behavior.
-    3. **Trailing pre-existing version-row strip** — keeps the assembler idempotent across resume / hydration: a fragment that was hydrated from a prior anchor body (which already carried an injected version row) does not produce duplicate rows on the next assembly.
+    3. **Trailing pre-existing metadata-row strip** — keeps the assembler idempotent across resume / hydration: a fragment that was hydrated from a prior anchor body (which already carried injected metadata rows) does not produce duplicate rows on the next assembly.
 
-  After the strips, a freshly-captured plugin-version row is appended.
+  After the strips, freshly-captured metadata rows are appended.
 
-The `<value>` is read once per assembly from `scripts/read-plugin-version.sh`, which reads `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json` (default-derived from the script path when the env var is unset) and falls back to the literal `unknown` on any failure (missing file, missing `jq`, malformed JSON, null version). Any I/O error in `read-plugin-version.sh` is non-fatal at the assembly layer — the helper continues with `PLUGIN_VERSION=unknown`.
+The plugin-version `<value>` is read once per assembly from `scripts/read-plugin-version.sh`, which reads `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json` (default-derived from the script path when the env var is unset) and falls back to the literal `unknown` on any failure (missing file, missing `jq`, malformed JSON, null version). Any I/O error in `read-plugin-version.sh` is non-fatal at the assembly layer — the helper continues with `PLUGIN_VERSION=unknown`.
+
+The Claude-model `<value>` is read once per assembly from `scripts/read-claude-model.sh`, which resolves the transcript through `scripts/token-claude-source.sh` and reads the first assistant record's `.message.model` field. Missing `jq`, unavailable transcripts, malformed JSON, or records without a model fall back to `unknown`.
+
+The effort-level `<value>` is read from the ambient environment on every assembly: `CLAUDE_CODE_EFFORT_LEVEL` first, then `CLAUDE_EFFORT`, then `unknown`. This is best-effort live-env metadata, not durable session metadata. Resumed runs or anchor refreshes record the effort level from the shell at that time, which may differ from the original run if the environment changed.
+
+All three values are sanitized before insertion: carriage returns and line feeds collapse to spaces, and `|` becomes `-` so metadata cannot corrupt the Markdown table.
+
+#### Exact label spelling required
+
+The idempotency strip uses case-sensitive regexes matching the exact labels `larch plugin version`, `Claude model`, and `effort level`. Hydrated fragments with differently-cased labels will not strip. Normal assembler output always uses the fixed labels above; the constraint only matters if the user manually edits the anchor comment.
+
+#### Claude model on refresh paths
+
+`refresh-anchor.sh` calls `assemble-anchor.sh` without loading the session env, so `LARCH_CLAUDE_SOURCE_FILE` is not exported during refreshes. The Claude model row is then resolved by `token-claude-source.sh`'s newest-transcript fallback. On machines with a single active Claude session this is accurate; with concurrent sessions in the same checkout, the refreshed model row may reflect a different session.
 
 ### Seed-only visible placeholder
 
@@ -89,7 +109,7 @@ _/implement run in progress — sections below populate as the run proceeds._
 
 Why: an anchor body composed entirely of HTML comment markers renders invisible in GitHub's UI — the freshly planted seed comment looks blank to humans (issue #431). The placeholder is emitted on its own line, *outside* every section interior, so it never collides with `tracking-issue-write.sh`'s per-section truncation (which locates interiors by whole-line marker-pair boundaries).
 
-Populated runs — any fragment with at least one **non-whitespace byte** — suppress the placeholder. The output for partially or fully populated anchors is byte-for-byte unchanged from the pre-fix shape for every section EXCEPT `run-statistics`, which is normalized per the three ordered transforms documented above (legacy `<!-- token-report-begin -->...<!-- token-report-end -->` block strip, trailing blank lines, trailing pre-existing `| larch plugin version | ... |` rows) followed by a freshly-captured plugin-version row append. Other sections — and the seed-only placeholder line — are unchanged, so progressive upserts at Steps 1/2/5/7a/8/9a.1/11 see the same body shape for those sections and downstream parsers (truncation, hydration awk) are not affected.
+Populated runs — any fragment with at least one **non-whitespace byte** — suppress the placeholder. The output for partially or fully populated anchors is byte-for-byte unchanged from the pre-fix shape for every section EXCEPT `run-statistics`, which is normalized per the three ordered transforms documented above (legacy `<!-- token-report-begin -->...<!-- token-report-end -->` block strip, trailing blank lines, trailing pre-existing metadata rows) followed by freshly-captured metadata row append. Other sections — and the seed-only placeholder line — are unchanged, so progressive upserts at Steps 1/2/5/7a/8/9a.1/11 see the same body shape for those sections and downstream parsers (truncation, hydration awk) are not affected.
 
 The "all empty" detection runs as a separate pre-pass over `SECTION_MARKERS` after the readability pre-pass and before the assembly brace group. The predicate is `grep -q '[^[:space:]]'` against each candidate fragment file; the first non-whitespace byte hit short-circuits the walk to `ALL_EMPTY=false`. This predicate choice (lenient — whitespace-only fragments still trigger the placeholder) was resolved via dialectic adjudication and confirmed by the user during plan design.
 
@@ -99,7 +119,7 @@ The assembled body is first written to a `mktemp` sibling of `--output` and only
 
 ### No redaction, no network
 
-This helper performs pure text assembly of local files. The redaction pipeline lives in `scripts/tracking-issue-write.sh` (which runs compose -> redact -> truncate on the assembled body at publish time). Compose-time sanitization of fragment content (secrets -> `<REDACTED-TOKEN>`, internal URLs -> `<INTERNAL-URL>`, PII -> `<REDACTED-PII>`) is the caller's responsibility per `skills/implement/SKILL.md` "Compose-time sanitization" — this helper emits fragments verbatim for every section EXCEPT `run-statistics`, where the version-row injection rule above applies, and `diagrams`, where Mermaid fences are validated by `scripts/sanitize-mermaid-fragment.sh` as defense in depth.
+This helper performs pure text assembly of local files. The redaction pipeline lives in `scripts/tracking-issue-write.sh` (which runs compose -> redact -> truncate on the assembled body at publish time). Compose-time sanitization of fragment content (secrets -> `<REDACTED-TOKEN>`, internal URLs -> `<INTERNAL-URL>`, PII -> `<REDACTED-PII>`) is the caller's responsibility per `skills/implement/SKILL.md` "Compose-time sanitization" — this helper emits fragments verbatim for every section EXCEPT `run-statistics`, where the metadata-row injection rule above applies, and `diagrams`, where Mermaid fences are validated by `scripts/sanitize-mermaid-fragment.sh` as defense in depth.
 
 ### Diagrams slug Mermaid sanitizer
 
@@ -122,6 +142,7 @@ If the sanitizer is missing, non-executable, or exits 2, assembly fails closed f
 |---|---|
 | `scripts/anchor-section-markers.sh` | Single-source-of-truth for slug order (sourced). |
 | `scripts/read-plugin-version.sh` | Best-effort plugin-version reader for the auto-injected `run-statistics` row. |
+| `scripts/read-claude-model.sh` | Best-effort Claude-model reader for the auto-injected `run-statistics` row. |
 | `scripts/sanitize-mermaid-fragment.sh` | Defense-in-depth sanitizer for the `diagrams` slug. |
 | `scripts/append-execution-issue.sh` | Categorized warnings-log appender used for fail-closed sanitizer tool errors. |
 | `scripts/tracking-issue-write.sh` | Downstream publisher; receives the `--output` path via `upsert-anchor --body-file`. Truncation pass relies on the same SECTION_MARKERS ordering. |
@@ -134,7 +155,7 @@ If the sanitizer is missing, non-executable, or exits 2, assembly fails closed f
 
 `scripts/test-assemble-anchor.sh` covers the anchor assembly invariants, including:
 
-- **(a)** Empty sections directory: output has exactly `2 + 2*N + 5` lines — `<!-- larch:implement-anchor v1 issue=<N> -->` on line 1, the seed-only visible placeholder line on line 2, all non-run-statistics marker pairs, and the `run-statistics` marker pair wrapping a minimal table plus plugin-version row.
+- **(a)** Empty sections directory: output has exactly `2 + 2*N + 7` lines — `<!-- larch:implement-anchor v1 issue=<N> -->` on line 1, the seed-only visible placeholder line on line 2, all non-run-statistics marker pairs, and the `run-statistics` marker pair wrapping a minimal table plus three metadata rows. The line walk advances 9 lines for `run-statistics` (open marker, 7 interior lines, close marker).
 - **(a2)** Empty sections directory: the seed-only placeholder literal is present on line 2 (regression guard for issue #431).
 - **(a3)** Partial fragments (one slug populated): the placeholder is suppressed — only the all-empty seed case fires it.
 - **(a4)** All fragments contain only whitespace bytes (lenient predicate validation): the placeholder still fires.
@@ -144,10 +165,14 @@ If the sanitizer is missing, non-executable, or exits 2, assembly fails closed f
 - Diagrams sanitizer rejection: an unsafe fence is replaced with the matching placeholder while valid neighboring fences are preserved and a `Warnings` entry is appended.
 - **(b2)** Newline-terminated fragment → exactly one newline before the close marker (regression guard for the `$(tail -c 1 ...)` command-substitution newline-stripping bug that inserted an extra blank line). Full output compared against a byte-exact expected fixture.
 - **(b3)** Fragment without a trailing newline → helper inserts one so the close marker stays on its own line.
-- **(b4)** Populated `run-statistics` fragment: trailing blank lines are stripped and the plugin-version row is appended immediately before the section close marker.
-- **(b5)** Hydrated `run-statistics` fragment whose interior already ends with a stale `| larch plugin version | <X.Y.Z> |` row: the stale trailing version row is stripped before a freshly-captured row is appended, producing exactly one plugin-version row in the output. Regression guard against the resume / hydration duplicate-row case.
-- **(b6)** Populated `run-statistics` fragment whose entire content normalizes to empty after stripping (e.g. a single stale version row, no heading/header): the helper falls through to the seed-style scaffold (heading + table header + fresh version row) so the assembled section is well-formed instead of an orphan row.
-- **(b8)** Hydrated `run-statistics` fragment containing a legacy `<!-- token-report-begin -->...<!-- token-report-end -->` Token Report block: the legacy block is stripped before assembly, surrounding non-legacy content is preserved, and exactly one fresh plugin-version row is appended. Closes #1466 sub-item B (was #1440).
+- **(b4)** Populated `run-statistics` fragment: trailing blank lines are stripped and the three metadata rows are appended immediately before the section close marker, with `effort level` as the final row.
+- **(b5)** Hydrated `run-statistics` fragment whose interior already ends with stale metadata rows: the stale trailing rows are stripped before freshly-captured rows are appended, producing exactly one row for each metadata label in the output. Regression guard against the resume / hydration duplicate-row case.
+- **(b6)** Populated `run-statistics` fragment whose entire content normalizes to empty after stripping (e.g. only stale metadata rows, no heading/header): the helper falls through to the seed-style scaffold (heading + table header + fresh metadata rows) so the assembled section is well-formed instead of orphan rows.
+- **(b8)** Hydrated `run-statistics` fragment containing a legacy `<!-- token-report-begin -->...<!-- token-report-end -->` Token Report block: the legacy block is stripped before assembly, surrounding non-legacy content is preserved, and exactly one fresh row for each metadata label is appended. Closes #1466 sub-item B (was #1440).
+- **(b16)** Effort env precedence: `CLAUDE_CODE_EFFORT_LEVEL` wins over `CLAUDE_EFFORT`; `CLAUDE_EFFORT` is used when the primary env var is unset.
+- **(b17)** Metadata table sanitization: pipe characters in an effort value are replaced with hyphens.
+- **(b18)** Claude model positive path: a transcript snapshot via `LARCH_CLAUDE_SOURCE_FILE` produces the expected `Claude model` row.
+- **(b19)** Claude model fallback: isolated `HOME` with no Claude project directory and no resolver env vars produces `Claude model | unknown`.
 - **(b9)** Lone `<!-- token-report-begin -->` marker (degraded-input case): the helper strips from the marker through EOF and preserves pre-marker content.
 - **(b10)** Lone `<!-- token-report-end -->` marker (degraded-input case): the helper strips from BOF through the marker and preserves post-marker content.
 - **(b11)** Multi-pair legacy token-report blocks: every begin/end pair is stripped (the awk strip loop iterates to a fixed point). Inter-block and pre/post content is preserved.
