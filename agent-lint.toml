@@ -750,6 +750,14 @@ exclude = [
   # (contract), matching the same Makefile-only pattern as the other
   # test-implement-* harnesses above.
   "scripts/test-implement-post-design-boundary.sh",
+  # scripts/test-implement-anti-halt.sh is the boundary-coverage CI assertion
+  # for the anti-halt blockquote coverage across /implement, /design,
+  # /fix-issue, and /review (closes #1606). Referenced only from Makefile
+  # (test-implement-anti-halt target) and the sibling
+  # scripts/test-implement-anti-halt.md (contract), matching the same
+  # Makefile-only pattern as the other test-implement-* harnesses above.
+  "scripts/test-implement-anti-halt.sh",
+  "scripts/test-implement-anti-halt.md",
   "scripts/test-references-headers.sh",
   "scripts/test-subskill-anchors.sh",
   # scripts/test-parse-args.sh is the regression harness for
