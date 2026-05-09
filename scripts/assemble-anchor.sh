@@ -15,9 +15,11 @@
 # byte-for-byte for every section EXCEPT run-statistics, which is normalized
 # (legacy <!-- token-report-begin -->...<!-- token-report-end --> sentinel
 # pairs stripped, trailing blank lines stripped, any pre-existing trailing
-# `| larch plugin version | ... |` rows dropped) and a fresh canonical
-# version row is appended. See scripts/assemble-anchor.md "Seed-only visible
-# placeholder" and "Run Statistics version-row injection".
+# `| larch plugin version | ... |`, `| Claude model | ... |`, and
+# `| effort level | ... |` rows dropped) and fresh canonical metadata rows
+# are appended after a table-value sanitization pass. See
+# scripts/assemble-anchor.md "Seed-only visible placeholder" and
+# "Run Statistics metadata-row injection".
 #
 # Consumers:
 #   - skills/implement/SKILL.md Step 0.5 (Branch 2/3 adoption seed body, Branch 4
@@ -48,6 +50,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MARKERS_HELPER="$SCRIPT_DIR/anchor-section-markers.sh"
 PLUGIN_VERSION_HELPER="$SCRIPT_DIR/read-plugin-version.sh"
+CLAUDE_MODEL_HELPER="$SCRIPT_DIR/read-claude-model.sh"
 MERMAID_SANITIZER="$SCRIPT_DIR/sanitize-mermaid-fragment.sh"
 APPEND_ISSUE="$SCRIPT_DIR/append-execution-issue.sh"
 
@@ -69,6 +72,25 @@ if [ -x "$PLUGIN_VERSION_HELPER" ]; then
         [ -n "$PLUGIN_VERSION" ] || PLUGIN_VERSION="unknown"
     fi
 fi
+
+CLAUDE_MODEL="unknown"
+if [ -x "$CLAUDE_MODEL_HELPER" ]; then
+    model_stdout="$("$CLAUDE_MODEL_HELPER" 2>/dev/null || true)"
+    if model_line="$(printf '%s\n' "$model_stdout" | grep -m 1 '^CLAUDE_MODEL=' 2>/dev/null)"; then
+        CLAUDE_MODEL="${model_line#CLAUDE_MODEL=}"
+        [ -n "$CLAUDE_MODEL" ] || CLAUDE_MODEL="unknown"
+    fi
+fi
+
+EFFORT_LEVEL="${CLAUDE_CODE_EFFORT_LEVEL:-${CLAUDE_EFFORT:-unknown}}"
+
+sanitize_table_value() {
+    printf '%s' "$1" | tr '\r\n' '  ' | tr '|' '-'
+}
+
+PLUGIN_VERSION="$(sanitize_table_value "$PLUGIN_VERSION")"
+CLAUDE_MODEL="$(sanitize_table_value "$CLAUDE_MODEL")"
+EFFORT_LEVEL="$(sanitize_table_value "$EFFORT_LEVEL")"
 
 fail_usage() {
     echo "FAILED=true"
@@ -104,14 +126,15 @@ emit_run_statistics() {
         #     residue both normalize; each iteration drops at least one
         #     marker line so the loop terminates in O(N).
         #   Phase 2 — strip trailing blank lines.
-        #   Phase 3 — strip any trailing pre-existing
-        #     `| larch plugin version | ... |` rows. Stripping pre-existing
-        #     version rows prevents duplicates when the run-statistics
-        #     fragment was hydrated from a prior anchor body that already
-        #     carried an injected row (closes #348-Phase5-resume).
+        #   Phase 3 — strip any trailing pre-existing metadata rows:
+        #     `| larch plugin version | ... |`, `| Claude model | ... |`,
+        #     and `| effort level | ... |`. Stripping pre-existing metadata
+        #     rows prevents duplicates when the run-statistics fragment was
+        #     hydrated from a prior anchor body that already carried injected
+        #     rows (closes #348-Phase5-resume).
         #
-        # The freshly-captured plugin version is appended below as the
-        # canonical final table row.
+        # Freshly-captured metadata rows are appended below as the
+        # canonical final table rows.
         normalized=$(awk '
             { lines[NR] = $0 }
             END {
@@ -200,8 +223,11 @@ emit_run_statistics() {
                 }
 
                 # Phase 2+3 — strip trailing blank lines AND trailing
-                # pre-existing version rows from the kept set.
-                while (n > 0 && (lines[n] ~ /^[[:space:]]*$/ || lines[n] ~ /^[[:space:]]*\|[[:space:]]*larch plugin version[[:space:]]*\|/)) {
+                # pre-existing metadata rows from the kept set.
+                while (n > 0 && (lines[n] ~ /^[[:space:]]*$/ || \
+                    lines[n] ~ /^[[:space:]]*\|[[:space:]]*larch plugin version[[:space:]]*\|/ || \
+                    lines[n] ~ /^[[:space:]]*\|[[:space:]]*Claude model[[:space:]]*\|/ || \
+                    lines[n] ~ /^[[:space:]]*\|[[:space:]]*effort level[[:space:]]*\|/)) {
                     n--
                 }
 
@@ -216,9 +242,9 @@ emit_run_statistics() {
         printf '%s\n' "$normalized"
     else
         # Seed case OR populated fragment whose interior normalized down to
-        # nothing (e.g. a fragment that contained only a stale version row
+        # nothing (e.g. a fragment that contained only stale metadata rows
         # that the strip loop above removed). Either way the output needs a
-        # complete table scaffold so the appended version row renders as a
+        # complete table scaffold so the appended metadata rows render as a
         # well-formed table.
         printf '## Run Statistics\n\n'
         printf '| Metric | Value |\n'
@@ -226,6 +252,8 @@ emit_run_statistics() {
     fi
 
     printf '| larch plugin version | %s |\n' "$PLUGIN_VERSION"
+    printf '| Claude model | %s |\n' "$CLAUDE_MODEL"
+    printf '| effort level | %s |\n' "$EFFORT_LEVEL"
 }
 
 SECTIONS_DIR=""

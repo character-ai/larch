@@ -142,6 +142,8 @@ unchanged — this section is purely additive.>
 | CI wait duration | <mm:ss> |
 | Rebase count | <N> |
 | larch plugin version | <auto-injected from `.claude-plugin/plugin.json`, or `unknown`> |
+| Claude model | <auto-injected from transcript, or `unknown`> |
+| effort level | <auto-injected from `$CLAUDE_CODE_EFFORT_LEVEL` or `$CLAUDE_EFFORT`, or `unknown`> |
 
 <!-- section-end:run-statistics -->
 
@@ -296,6 +298,7 @@ This is a defense-in-depth layer above `scripts/redact-tmpdir-paths.sh` and `scr
 | `${CLAUDE_PLUGIN_ROOT}/scripts/compose-review-findings.sh` | Composes the additive `review-findings-full` fragment from `accepted-plan-findings.md`, plan-review rejected entries, and code-review rejected entries; falls back to `docs/review-archive/issue-<N>.jsonl` archive at the 30 KB inline threshold. Sibling contract: `scripts/compose-review-findings.md`. Invoked by `skills/implement/SKILL.md` Step 5 after `/review` returns or the quick-mode review loop completes. |
 | `scripts/assemble-anchor.sh` | Consumes `SECTION_MARKERS` via the shared helper; emits marker pairs and the first-line HTML marker documented here. |
 | `scripts/read-plugin-version.sh` | Supplies the best-effort larch plugin version row auto-injected into `run-statistics`. |
+| `scripts/read-claude-model.sh` | Supplies the best-effort Claude model row auto-injected into `run-statistics`. |
 | `scripts/timing-report.sh` | Writes the sentinel-bracketed `timing-report` fragment consumed by the anchor section. |
 | `scripts/tracking-issue-read.sh` | Anchor-marker filter uses the same strict `<!-- larch:implement-anchor v1` prefix. |
 | `skills/implement/references/pr-body-template.md` | Sibling slim-projection template for the PR body (Summary + Diagrams + Test plan + `Closes #<N>` + footer only); Phase 3+ the anchor comment is canonical for rich content. |
