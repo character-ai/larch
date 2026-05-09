@@ -437,8 +437,8 @@ else
     fail "case AK1 CMD_JSON in .meta must contain the literal key (no redaction)"
 fi
 
-# Issue #1529: Cursor review argv carries the read-only flag set --mode plan
-# + --sandbox enabled, --trust is preserved, and --force is gone.
+# Issue #1529: Cursor review argv carries the read-only flag set --mode plan,
+# --trust is preserved, --force and --sandbox enabled are gone (#1583).
 if grep -Fxq -- '--mode' "$ARGV_LOG_AK1" && grep -Fxq -- 'plan' "$ARGV_LOG_AK1"; then
     AK1_MODE_LINE=$(grep -Fxn -- '--mode' "$ARGV_LOG_AK1" | awk -F: 'NR==1 {print $1; exit}')
     AK1_PLAN_LINE=$(grep -Fxn -- 'plan' "$ARGV_LOG_AK1" | awk -F: 'NR==1 {print $1; exit}')
@@ -450,16 +450,10 @@ if grep -Fxq -- '--mode' "$ARGV_LOG_AK1" && grep -Fxq -- 'plan' "$ARGV_LOG_AK1";
 else
     fail "issue #1529 Cursor argv must include --mode plan (read-only)"
 fi
-if grep -Fxq -- '--sandbox' "$ARGV_LOG_AK1" && grep -Fxq -- 'enabled' "$ARGV_LOG_AK1"; then
-    AK1_SAND_LINE=$(grep -Fxn -- '--sandbox' "$ARGV_LOG_AK1" | awk -F: 'NR==1 {print $1; exit}')
-    AK1_ENAB_LINE=$(grep -Fxn -- 'enabled' "$ARGV_LOG_AK1" | awk -F: 'NR==1 {print $1; exit}')
-    if [[ -n "$AK1_SAND_LINE" && -n "$AK1_ENAB_LINE" ]] && (( AK1_ENAB_LINE == AK1_SAND_LINE + 1 )); then
-        pass
-    else
-        fail "issue #1529 --sandbox and enabled must be adjacent argv tokens; sandbox_line=$AK1_SAND_LINE enabled_line=$AK1_ENAB_LINE"
-    fi
+if grep -Fxq -- '--sandbox' "$ARGV_LOG_AK1"; then
+    fail "issue #1583 Cursor argv must NOT include --sandbox (sandbox never passed by default)"
 else
-    fail "issue #1529 Cursor argv must include --sandbox enabled (override config)"
+    pass
 fi
 if grep -Fxq -- '--trust' "$ARGV_LOG_AK1"; then
     pass
@@ -498,10 +492,10 @@ if grep -Fq -- 'HARD CONSTRAINTS — your role is read-only review' "$ARGV_LOG_A
 else
     fail "issue #1529 cursor argv must carry the HARD CONSTRAINTS preamble"
 fi
-if grep -Fq -- '--mode plan --sandbox enabled' "$ARGV_LOG_AK1"; then
+if grep -Fq -- 'The launcher passes --mode plan to the cursor CLI' "$ARGV_LOG_AK1"; then
     pass
 else
-    fail "issue #1529 preamble in argv must reference --mode plan --sandbox enabled"
+    fail "issue #1583 preamble in argv must reference --mode plan enforcement (no sandbox)"
 fi
 if grep -Fq -- 'HARD CONSTRAINTS' "${OUT_AK1}.prompt"; then
     fail "issue #1529 OUTPUT.prompt sidecar must NOT contain the preamble (retry-replay safety)"
@@ -515,10 +509,8 @@ else
     fail "issue #1529 OUTPUT.prompt sidecar must equal the user-original prompt"
 fi
 
-# Case AK1B (issue #1561): LARCH_CURSOR_SANDBOX=disabled drops the
-# `--sandbox enabled` argv tokens while preserving `--mode plan`, `--trust`,
-# and the HARD CONSTRAINTS preamble. Operators on macOS hosts where
-# cursor-agent's sandbox runtime is unavailable rely on this escape hatch.
+# Case AK1B (issue #1583): LARCH_CURSOR_SANDBOX is now a no-op; the env var
+# is ignored and the launcher never passes --sandbox regardless of its value.
 OUT_AK1B="$TMPDIR/cursor-ak1b.txt"
 ARGV_LOG_AK1B="$TMPDIR/cursor-ak1b-argv.log"
 PATH="$STUB_BIN:$PATH" \
@@ -529,54 +521,33 @@ PATH="$STUB_BIN:$PATH" \
     "$LAUNCHER" --output "$OUT_AK1B" --timeout 5 --prompt "case ak1b" >/dev/null 2>"$TMPDIR/case-ak1b.stderr"
 
 if grep -Fxq -- '--mode' "$ARGV_LOG_AK1B" && grep -Fxq -- 'plan' "$ARGV_LOG_AK1B"; then
-    AK1B_MODE_LINE=$(grep -Fxn -- '--mode' "$ARGV_LOG_AK1B" | awk -F: 'NR==1 {print $1; exit}')
-    AK1B_PLAN_LINE=$(grep -Fxn -- 'plan' "$ARGV_LOG_AK1B" | awk -F: 'NR==1 {print $1; exit}')
-    if [[ -n "$AK1B_MODE_LINE" && -n "$AK1B_PLAN_LINE" ]] && (( AK1B_PLAN_LINE == AK1B_MODE_LINE + 1 )); then
-        pass
-    else
-        fail "issue #1561 --mode and plan must be adjacent argv tokens under LARCH_CURSOR_SANDBOX=disabled; mode_line=$AK1B_MODE_LINE plan_line=$AK1B_PLAN_LINE"
-    fi
+    pass
 else
-    fail "issue #1561 Cursor argv must still include --mode plan under LARCH_CURSOR_SANDBOX=disabled"
+    fail "issue #1583 Cursor argv must still include --mode plan even when LARCH_CURSOR_SANDBOX=disabled"
 fi
 if grep -Fxq -- '--sandbox' "$ARGV_LOG_AK1B"; then
-    fail "issue #1561 Cursor argv must NOT include --sandbox under LARCH_CURSOR_SANDBOX=disabled"
+    fail "issue #1583 Cursor argv must NOT include --sandbox even when LARCH_CURSOR_SANDBOX=disabled"
 else
     pass
 fi
 if grep -Fxq -- '--trust' "$ARGV_LOG_AK1B"; then
     pass
 else
-    fail "issue #1561 Cursor argv must still include --trust under LARCH_CURSOR_SANDBOX=disabled"
-fi
-if grep -Fxq -- '--force' "$ARGV_LOG_AK1B"; then
-    fail "issue #1561 Cursor argv must NOT include --force under LARCH_CURSOR_SANDBOX=disabled"
-else
-    pass
+    fail "issue #1583 Cursor argv must still include --trust when LARCH_CURSOR_SANDBOX=disabled"
 fi
 if grep -Fq -- 'HARD CONSTRAINTS — your role is read-only review' "$ARGV_LOG_AK1B"; then
     pass
 else
-    fail "issue #1561 Cursor argv must still carry the HARD CONSTRAINTS preamble under LARCH_CURSOR_SANDBOX=disabled"
+    fail "issue #1583 Cursor argv must still carry the HARD CONSTRAINTS preamble when LARCH_CURSOR_SANDBOX=disabled"
 fi
-# The preamble's enforcement sentence MUST be rendered conditionally — under
-# LARCH_CURSOR_SANDBOX=disabled, the launcher must NOT claim that the CLI
-# sandbox is enforcing read-only (that would lie to the model and weaken
-# prompt-level enforcement; round-1 review finding for issue #1561), and
-# MUST contain the disabled-path enforcement wording instead.
 if grep -Fq -- 'rejected by the sandbox' "$ARGV_LOG_AK1B"; then
-    fail "issue #1561 disabled-path preamble MUST NOT claim writes are rejected by the sandbox"
+    fail "issue #1583 preamble MUST NOT claim writes are rejected by the sandbox"
 else
     pass
-fi
-if grep -Fq -- 'LARCH_CURSOR_SANDBOX=disabled' "$ARGV_LOG_AK1B"; then
-    pass
-else
-    fail "issue #1561 disabled-path preamble must reference LARCH_CURSOR_SANDBOX=disabled so the model knows the CLI sandbox is opted out"
 fi
 
-# Case AK1C (issue #1561): an unrecognized LARCH_CURSOR_SANDBOX value defaults
-# to enabled and emits a stderr warning so typos are visible without aborting.
+# Case AK1C (issue #1583): an unrecognized LARCH_CURSOR_SANDBOX value is now
+# silently ignored — no warning emitted, no sandbox in argv.
 OUT_AK1C="$TMPDIR/cursor-ak1c.txt"
 ARGV_LOG_AK1C="$TMPDIR/cursor-ak1c-argv.log"
 PATH="$STUB_BIN:$PATH" \
@@ -585,15 +556,15 @@ PATH="$STUB_BIN:$PATH" \
     LARCH_CURSOR_SANDBOX=bogus \
     LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux \
     "$LAUNCHER" --output "$OUT_AK1C" --timeout 5 --prompt "case ak1c" >/dev/null 2>"$TMPDIR/case-ak1c.stderr"
-if grep -Fxq -- '--sandbox' "$ARGV_LOG_AK1C" && grep -Fxq -- 'enabled' "$ARGV_LOG_AK1C"; then
-    pass
+if grep -Fxq -- '--sandbox' "$ARGV_LOG_AK1C"; then
+    fail "issue #1583 unrecognized LARCH_CURSOR_SANDBOX must NOT produce --sandbox in argv"
 else
-    fail "issue #1561 unrecognized LARCH_CURSOR_SANDBOX must default to --sandbox enabled in argv"
+    pass
 fi
 if grep -Fq -- 'LARCH_CURSOR_SANDBOX=bogus not recognized' "$TMPDIR/case-ak1c.stderr"; then
-    pass
+    fail "issue #1583 launcher must NOT emit a LARCH_CURSOR_SANDBOX warning (env var is ignored)"
 else
-    fail "issue #1561 unrecognized LARCH_CURSOR_SANDBOX must emit a stderr warning"
+    pass
 fi
 
 # Case AK2 (issue #1358): with CURSOR_API_KEY empty, --api-key MUST NOT appear
