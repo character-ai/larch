@@ -800,6 +800,32 @@ else
     pass
 fi
 
+# --diff-file specialist integration: when --agent-file + --diff-file are combined,
+# the rendered prompt references the diff file path and omits the 'git diff main...HEAD' instruction.
+DF_TMPFILE="$TMPDIR/test-branch.diff"
+printf 'diff --git a/foo.sh b/foo.sh\n--- a/foo.sh\n+++ b/foo.sh\n@@ -1 +1 @@\n-old\n+new\n' > "$DF_TMPFILE"
+OUT_DF="$TMPDIR/cursor-diff-file-specialist.txt"
+ARGV_DF="$TMPDIR/cursor-diff-file-specialist-argv.log"
+PATH="$STUB_BIN:$PATH" \
+    CURSOR_API_KEY="df-test-key" \
+    CURSOR_STUB_ARGV_LOG="$ARGV_DF" \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux \
+    "$LAUNCHER" --output "$OUT_DF" --timeout 5 \
+        --agent-file "$REPO_ROOT/agents/reviewer-structure.md" \
+        --mode diff \
+        --diff-file "$DF_TMPFILE" \
+        >/dev/null 2>"$TMPDIR/diff-file-specialist.stderr"
+if grep -Fq -- "$DF_TMPFILE" "$ARGV_DF" 2>/dev/null; then
+    pass
+else
+    fail "--diff-file specialist: diff file path must appear in rendered prompt argv"
+fi
+if grep -Fq -- "git diff main...HEAD" "$ARGV_DF" 2>/dev/null; then
+    fail "--diff-file specialist: 'git diff main...HEAD' must NOT appear when --diff-file is set"
+else
+    pass
+fi
+
 # Cap-hit path: when LARCH_TOKEN_BUDGET_CAP_REVIEW=1 and the token ledger
 # shows vendor spend >= 1, the launcher writes STATUS=cap_hit to the output
 # file and exits 0 without invoking the underlying Cursor binary.

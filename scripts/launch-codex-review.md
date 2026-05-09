@@ -23,7 +23,7 @@
 
 **Stdout contract**: Same stdout as `run-external-agent.sh`; no `LAUNCHER_EXIT=` line. Normal-run exit code is `run-external-agent.sh`'s exit code after the best-effort post-call token scrape. If `agent-model-args.sh` fails before Codex is launched, the launcher writes `.done` / `.diag` / `.meta` / `dirty-tree` sidecar files (matching the `cursor-auth-preflight` artifact pattern so `collect-agent-results.sh` detects the failure promptly) and exits non-zero; no KV envelope is emitted on stdout.
 
-**Flags**: Same as `launch-cursor-review.sh` (see `scripts/launch-cursor-review.md`), including optional `--timing-task-kind <kind>` and `--token-budget-cap N` (combined vendor token cap; exits 0 with `STATUS=cap_hit` output when exceeded; `LARCH_TOKEN_BUDGET_CAP_REVIEW` env var applies the cap when the flag is absent).
+**Flags**: Same as `launch-cursor-review.sh` (see `scripts/launch-cursor-review.md`), including optional `--timing-task-kind <kind>`, `--token-budget-cap N` (combined vendor token cap; exits 0 with `STATUS=cap_hit` output when exceeded; `LARCH_TOKEN_BUDGET_CAP_REVIEW` env var applies the cap when the flag is absent), and `--diff-file FILE` (optional, specialist diff mode only; path to a pre-computed diff file from `gather-branch-context.sh`; forwarded to `render-specialist-prompt.sh` so the rendered preamble references the file instead of instructing the reviewer to run `git diff main...HEAD`).
 
 **Call sites**:
 - `skills/implement/SKILL.md` Step 5 (quick-mode specialists + generic reviewers)
