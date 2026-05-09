@@ -164,59 +164,6 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/rebase-push.sh --no-push --skip-if-pushed --keep-o
 | 7.r  | `7.r`           | `commit (review)`|
 | 7a.r | `7a.r`          | `code flow`      |
 
-## Phantom Untracked Probe
-
-At selected `/implement` boundaries, detect non-ignored untracked files that
-appeared after the Step 0.5 session baseline. This is advisory only: phantoms
-are logged to Execution Issues, never cleaned automatically.
-
-Call form:
-
-```bash
-PHANTOM_OUT=$("${CLAUDE_PLUGIN_ROOT}/scripts/check-phantom-dirty.sh" \
-  --baseline "$IMPLEMENT_TMPDIR/untracked-baseline.z" \
-  --step <step-id> \
-  --phantom-paths-dir "$IMPLEMENT_TMPDIR")
-```
-
-Parse `STATUS`, `REASON`, `PHANTOM_COUNT`, and `PHANTOM_PATHS_FILE` without
-`eval`/`source`. On `STATUS=phantom`, append this Warnings entry and continue:
-
-```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/append-execution-issue.sh" \
-  --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
-  --category Warnings \
-  --entry "- **Step <step-id> — phantom untracked files:** $PHANTOM_COUNT file(s) appeared since session baseline (inspect $IMPLEMENT_TMPDIR/phantom-paths-<step-id>.z locally)"
-```
-
-On `STATUS=unknown`, append this Warnings entry and continue:
-
-```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/append-execution-issue.sh" \
-  --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
-  --category Warnings \
-  --entry "- **Step <step-id> — phantom detection inconclusive:** STATUS=unknown REASON=${REASON:-unknown}"
-```
-
-If `append-execution-issue.sh` fails at a probe site, log a secondary Warnings
-entry if possible (`Step <step-id> — phantom warning append failed: <ERROR>`)
-and continue. On `STATUS=clean` or `STATUS=tracked-only`, continue silently.
-
-Probe locations:
-- After Step 2 dispatch returns on the external-implementer `STATUS=complete`
-  path only: `--step 2-post-dispatch`. Do not probe when
-  `STATUS=claude_fallback`; Claude-fallback implementation files are
-  uncommitted until Step 4.
-- After Step 4.r: `--step 4.r-post-rebase`.
-- After Step 7.r, only when `FILES_CHANGED=true`: `--step 7.r-post-rebase`.
-- After Step 7a.r: `--step 7a.r-post-rebase`.
-- Immediately before invoking `/bump-version`: `--step 8-pre-bump`.
-
-There is intentionally no post-Step-6 probe. When `FILES_CHANGED=true`,
-review-created files are legitimately untracked until Step 7 commits them; a
-post-Step-6 probe would false-positive. The post-Step-7.r probe covers the
-committed review-fix state.
-
 ## Step 0 — Session Setup
 
 If `forked_target=true`, run the single fork pre-setup helper before the standard three-call sequence. Do NOT pass `--tmpdir`: at this point in Step 0, `$IMPLEMENT_TMPDIR` is not yet set (`session-setup.sh` has not run), so the helper allocates its own bootstrap tmpdir via `mktemp -d`. Round 1 plan-review FINDING_1 mandates this ordering — passing `--tmpdir "$IMPLEMENT_TMPDIR"` here would expand to an empty path and silently misroute the caller-env write.
@@ -343,6 +290,59 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 ### Cross-Skill Health Propagation
 
 After each child skill returns (`/design` Step 1, `/review` Step 5), check `$IMPLEMENT_TMPDIR/session-env.sh.health`. If it exists, read `CODEX_HEALTHY` / `CURSOR_HEALTHY` / `GEMINI_HEALTHY`. If any flipped to `false` during the child, preserve every durable non-health key currently in `$IMPLEMENT_TMPDIR/session-env.sh` — at minimum `SLACK_OK`, `SLACK_MISSING`, `REPO`, `REPO_UNAVAILABLE`, `LARCH_TIMING_LEDGER`, `LARCH_TOKEN_SESSION_ID`, and `LARCH_CLAUDE_SOURCE_FILE` — when re-invoking `write-session-env.sh` to update health flags. Parse values line-by-line from `$IMPLEMENT_TMPDIR/session-env.sh` (same safe parsing as `session-setup.sh` — do NOT source). Runtime timeouts and token context propagate across skill boundaries without clobbering Slack / repo state.
+
+## Phantom Untracked Probe
+
+At selected `/implement` boundaries, detect non-ignored untracked files that
+appeared after the Step 0.5 session baseline. This is advisory only: phantoms
+are logged to Execution Issues, never cleaned automatically.
+
+Call form:
+
+```bash
+PHANTOM_OUT=$("${CLAUDE_PLUGIN_ROOT}/scripts/check-phantom-dirty.sh" \
+  --baseline "$IMPLEMENT_TMPDIR/untracked-baseline.z" \
+  --step <step-id> \
+  --phantom-paths-dir "$IMPLEMENT_TMPDIR")
+```
+
+Parse `STATUS`, `REASON`, `PHANTOM_COUNT`, and `PHANTOM_PATHS_FILE` without
+`eval`/`source`. On `STATUS=phantom`, append this Warnings entry and continue:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/append-execution-issue.sh" \
+  --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
+  --category Warnings \
+  --entry "- **Step <step-id> — phantom untracked files:** $PHANTOM_COUNT file(s) appeared since session baseline (inspect $IMPLEMENT_TMPDIR/phantom-paths-<step-id>.z locally)"
+```
+
+On `STATUS=unknown`, append this Warnings entry and continue:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/append-execution-issue.sh" \
+  --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
+  --category Warnings \
+  --entry "- **Step <step-id> — phantom detection inconclusive:** STATUS=unknown REASON=${REASON:-unknown}"
+```
+
+If `append-execution-issue.sh` fails at a probe site, log a secondary Warnings
+entry if possible (`Step <step-id> — phantom warning append failed: <ERROR>`)
+and continue. On `STATUS=clean` or `STATUS=tracked-only`, continue silently.
+
+Probe locations:
+- After Step 2 dispatch returns on the external-implementer `STATUS=complete`
+  path only: `--step 2-post-dispatch`. Do not probe when
+  `STATUS=claude_fallback`; Claude-fallback implementation files are
+  uncommitted until Step 4.
+- After Step 4.r: `--step 4.r-post-rebase`.
+- After Step 7.r, only when `FILES_CHANGED=true`: `--step 7.r-post-rebase`.
+- After Step 7a.r: `--step 7a.r-post-rebase`.
+- Immediately before invoking `/bump-version`: `--step 8-pre-bump`.
+
+There is intentionally no post-Step-6 probe. When `FILES_CHANGED=true`,
+review-created files are legitimately untracked until Step 7 commits them; a
+post-Step-6 probe would false-positive. The post-Step-7.r probe covers the
+committed review-fix state.
 
 ## Execution Issues Tracking
 
