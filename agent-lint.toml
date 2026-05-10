@@ -1123,4 +1123,8 @@ exclude = [
   # scripts/test-ci-status.md.
   "scripts/test-ci-status.sh",
   "scripts/test-ci-status.md",
+  # skills/cleanup/scripts/cleanup.md is the sibling contract for
+  # skills/cleanup/scripts/cleanup.sh. Not cited from SKILL.md by design
+  # (contributors discover it by editing the sibling .sh).
+  "skills/cleanup/scripts/cleanup.md",
 ]
