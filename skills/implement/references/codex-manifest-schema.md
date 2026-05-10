@@ -154,3 +154,4 @@ Any change to this schema MUST be paired with edits in:
 - `agents/gemini-implementer.md` — Gemini prompt's manifest-writing instructions.
 - `skills/implement/SKILL.md` — Step 4 (commit verification), Step 8a (CHANGELOG), Step 9a (PR `## Summary`), Step 9a.1 (OOS pipeline) consumption blocks.
 - `skills/implement/scripts/test-step2-dispatch.sh` — golden manifest fixtures.
+- `skills/implement/references/codex-manifest-schema.digest.md` — required-keys table and bail-reason token list (keep in sync with the corresponding sections above).

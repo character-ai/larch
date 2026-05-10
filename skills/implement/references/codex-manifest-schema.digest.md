@@ -15,7 +15,8 @@
 | `schema_version` (`"1"`), `status` | req | req | req |
 | `files_touched` (`{path, lines_added, lines_removed}[]`) | req, non-empty | opt | opt |
 | `tests_added_or_modified` (string[]), `todos_left` (string[]), `oos_observations` (`{title,description,phase}[]`) | req (may be []) | opt | opt |
-| `summary_bullets` (string[], 1–5), `commit_message` (string) | req | opt | opt |
+| `summary_bullets` (string[], 1–5) | req | opt | opt |
+| `commit_message` (string, non-empty) | req | opt | opt |
 | `bail_reason` (string) | absent/empty | absent/empty | req, non-empty |
 | `needs_qa.questions` (`{id,text}[]`) | absent | req, non-empty | absent |
 
@@ -23,7 +24,7 @@
 
 ## Key validation rules
 
-1. `schema_version == "1"`. 2. `status` in enum. 3. Per-status required keys per table; failure → `manifest-schema-invalid`. 4. Paths repo-relative (no `..`, no `/`); `.claude-plugin/plugin.json` and submodule paths rejected. 5. On `complete`: dispatcher runs `git add -A && git commit -F <redacted-msg>`. 6. Text fields redacted via `scripts/redact-secrets.sh` post-validation.
+1. `schema_version == "1"`. 2. `status` in enum. 3. Per-status required keys per table; failure → `manifest-schema-invalid`. 4. Paths repo-relative (no `..`, no leading `/`); `.claude-plugin/plugin.json` and submodule paths rejected. 5. On `complete`: dispatcher runs `git add -A && git commit -F <redacted-msg>`. 6. Selected string fields (`summary_bullets`, `commit_message`, `todos_left`, `oos_observations[*].title/description`) are redacted via `scripts/redact-secrets.sh`; `bail_reason` and `needs_qa.questions[*].text` are NOT run through the redactor — see full doc §Sanitization.
 
 ## Bail-reason tokens
 
