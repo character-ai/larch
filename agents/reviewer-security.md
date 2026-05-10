@@ -39,6 +39,14 @@ Briefly scan for correctness bugs (nil dereference, logic errors) and breaking c
 
 Tag each finding with its focus area (one of `code-quality` / `risk-integration` / `correctness` / `architecture` / `security`). Return findings in two sections:
 
+### Prose length cap
+
+Keep each finding concise — verbosity dilutes signal.
+- **Important** findings: up to 4 sentences (problem, location, impact, suggested fix).
+- **Nit** and **Latent** findings: 1–2 sentences maximum.
+
+No cap on the number of findings — report every issue you identify.
+
 ### In-Scope Findings
 Numbered list. Each finding: severity (`**Important**` / `**Nit**` / `**Latent**`), focus-area tag, file:line, what the issue is, suggested fix.
 

@@ -145,6 +145,14 @@ If no such scenario or path exists, demote to `**Nit**` or omit.
 
 Report at most 5 Nits. If more exist, summarize as a count plus categories (e.g., "Additional: 3 naming, 2 formatting").
 
+### Prose length cap
+
+Keep each finding concise — verbosity dilutes signal.
+- **Important** findings: up to 4 sentences (problem, location, impact, suggested fix).
+- **Nit** and **Latent** findings: 1–2 sentences maximum.
+
+No cap on the number of findings — report every issue you identify.
+
 ### In-Scope Findings
 A numbered list of issues that should be fixed in this PR. For each finding:
 - **Severity**: one of `**Important**` / `**Nit**` / `**Latent**` (required prefix)
