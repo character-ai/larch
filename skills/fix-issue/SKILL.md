@@ -185,10 +185,11 @@ Print `> **🔶 4: classify**`
 The triage-classification reference loaded at Step 3 (digest or full `triage-classification.md`) owns the decision rules for both dimensions — do not re-load it here. If only the digest was loaded and a classification edge case is genuinely uncertain, load full `triage-classification.md` at this step.
 
 - **Intent** (`PR` vs `NON_PR`): does this issue prescribe work whose natural output is a pull request, or something else (new issues, a written report)? Default to `PR` only when the issue is genuinely ambiguous; when the issue text explicitly forbids a PR or mandates research/issues as the deliverable, pick `NON_PR` regardless of the default.
+- **Complexity** (`SIMPLE` vs `HARD`, only when `INTENT=PR`): default to `SIMPLE`; classify as `HARD` only when the approach is genuinely uncertain or the work introduces a major new shared abstraction. When `hard_mode=true`, skip the evaluation and set `COMPLEXITY=HARD` directly. See the triage-classification reference for the full decision rules.
 
-Set `INTENT` per those rules using the issue details and Step 3's codebase exploration.
+Set `INTENT` (and `COMPLEXITY` when `INTENT=PR`) per those rules using the issue details and Step 3's codebase exploration.
 
-Print `✅ 4: classify — INTENT=**$INTENT** (<elapsed>)`. The `**...**` bold around `$INTENT` is required — it makes the classification value visually prominent in the Claude Code transcript.
+When `INTENT=PR`: print `✅ 4: classify — INTENT=**$INTENT** COMPLEXITY=**$COMPLEXITY** (<elapsed>)` — or `COMPLEXITY=**$COMPLEXITY** (forced by --hard)` when `hard_mode=true`. When `INTENT=NON_PR`: print `✅ 4: classify — INTENT=**$INTENT** (<elapsed>)`. The `**...**` bold around both `$INTENT` and `$COMPLEXITY` (when printed) is required — it makes the classification values visually prominent in the Claude Code transcript.
 
 ## Step 5 — Execute
 

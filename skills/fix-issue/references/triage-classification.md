@@ -2,7 +2,7 @@
 
 **Consumer**: `/fix-issue` Steps 3 (Triage) and 4 (Classify Intent and Complexity).
 
-**Contract**: Authoritative detail for the triage checks, the not-material closure flow, the intent dimension (PR vs NON_PR) with its "default to PR only when genuinely ambiguous" rule, and the complexity dimension (SIMPLE vs HARD, evaluated only when `INTENT=PR`) with its "default to HARD when uncertain" rule. SKILL.md carries the step-level breadcrumbs, the `issue-lifecycle.sh close` invocations, and the `Print ✅ 4: classify — INTENT=**$INTENT** [COMPLEXITY=🟨 **$COMPLEXITY** 🟨]` line (bold is required for `INTENT`; yellow-square markers plus bold are required for `COMPLEXITY` so the classification values stand out at a glance); this file carries the judgment-heavy detail that would bloat the main-file knowledge delta.
+**Contract**: Authoritative detail for the triage checks, the not-material closure flow, the intent dimension (PR vs NON_PR) with its "default to PR only when genuinely ambiguous" rule, and the complexity dimension (SIMPLE vs HARD, evaluated only when `INTENT=PR`) with its "default to SIMPLE when uncertain" rule. SKILL.md carries the step-level breadcrumbs, the `issue-lifecycle.sh close` invocations, and the Step 4 breadcrumb (including `COMPLEXITY=**$COMPLEXITY**` when `INTENT=PR`); this file carries the judgment-heavy detail that would bloat the main-file knowledge delta.
 
 **When to load**: before executing Step 3 (Triage) OR Step 4 (Classify). Load once — the two step-bodies consume the same detail. **Do NOT load** in any other step — Steps 0 / 1 / 2 / 5 / 6 / 7 / 8 do not consume this content. **Do NOT load** on any path that has already branched to Step 8 — concrete examples: Step 0 `find-lock-issue.sh` exit 1 / 2 / 3 (no eligible issue, error, or lock-failed-after-eligibility-pass), Step 1 setup abort (`REPO_UNAVAILABLE=true`). Steps 3 and 4 do not run on those paths.
 
@@ -52,10 +52,10 @@ Does this issue prescribe work that should produce a pull request?
 
 ### Dimension 2 — Complexity (evaluated only when `INTENT=PR`)
 
-- **SIMPLE**: Isolated fix in 2 or fewer files. Obvious solution with no architectural decisions needed. Examples: typo fix, small bug with clear root cause, config change. **Default when uncertain.**
-- **HARD**: Multi-file changes, new features, architectural decisions, or genuinely complex root cause. Use `--hard` to force this path.
+- **SIMPLE**: The approach is clear from the issue description or codebase patterns, and the implementation is mostly mechanical. **Default when uncertain.** Multi-file changes are fine when the individual edits follow a clear pattern.
+- **HARD**: The correct approach is genuinely uncertain — reasonable engineers would debate it — or the work introduces a major new shared abstraction. Use `--hard` to force this path.
 
-**Default to SIMPLE when uncertain.** Most issues are isolated fixes; the SIMPLE path is faster and sufficient for the majority of cases. Use HARD for genuinely multi-file or architecturally complex work.
+**Default to SIMPLE when uncertain.** The bar for HARD is high: reserve it for tasks where design ceremony (competing sketches, trade-off voting) would produce meaningfully better outcomes than implementing the obvious approach. Multi-file changes, "some architectural considerations," and new helper scripts or functions are NOT sufficient for HARD on their own.
 
 **`--hard` short-circuit (overrides the HARD-vs-SIMPLE evaluation on the PR path).** When the operator passed `--hard` to `/fix-issue` (`hard_mode=true`) AND `INTENT=PR`, set `COMPLEXITY=HARD` without running the SIMPLE-vs-HARD decision rules above — the operator has explicitly opted into the HARD pipeline. SKILL.md Step 4 owns the short-circuit logic and the augmented breadcrumb (the `(forced by --hard)` suffix); this reference describes the same rule on the decision-detail side. The short-circuit does NOT apply when `INTENT=NON_PR` (complexity is not meaningful there).
 

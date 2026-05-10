@@ -795,14 +795,20 @@ Otherwise (no reusable manifest), continue with the normal-mode flow below (simp
 
 **Simplicity classification**: when the preamble condition holds, classify the task before invoking `/design`. Use `FEATURE_DESCRIPTION` plus a light codebase scan (Read / Grep / Glob of the obvious target files) to decide whether the work is SIMPLE.
 
-A task qualifies as SIMPLE only when all of these are true:
-- Contained scope: the change is well-scoped with no cascading architectural implications. Size in lines or file count is NOT the primary indicator — a change touching many files can still be trivial, and a single-file change can be genuinely complex.
-- No architectural decisions: the approach follows an existing pattern without needing competing sketches, trade-off analysis, or API/UX design choices.
-- No new abstractions: the work does not introduce a framework, shared helper, workflow contract, data model, or long-lived extension point.
-- Obvious verification path: `/relevant-checks`, a focused existing test, a dry-run, or direct grep/readback is enough to validate the change.
-- Low controversy: both the overall approach and individual implementation decisions are unambiguous. Competing valid approaches, non-obvious correctness judgments, or design decisions that reasonable engineers would debate are all indicators of HARD.
+**Default to SIMPLE.** A task is HARD only when running `/design` — with competing sketches, a voting panel, and a full reviewer suite — would produce meaningfully better outcomes than just implementing the obvious approach. That bar is high.
 
-When in doubt, default to SIMPLE — the cost of misclassifying a hard task as SIMPLE is a lighter review process; unnecessary ceremony on a simple task is worse.
+A task is HARD when at least one of these is true:
+- The correct approach is genuinely uncertain: reasonable engineers would propose substantially different architectures, and the choice between them has meaningful long-term consequences.
+- The work introduces a major new shared abstraction whose interface must be carefully designed (e.g., a new cross-skill workflow contract, data model, or protocol — NOT just a new helper function or script).
+- A mistake would be very hard to detect or revert, or would silently corrupt data or break a non-obvious invariant.
+
+Explicitly NOT sufficient for HARD:
+- Multi-file changes (even 20+ files), when the individual edits follow a clear pattern described in the issue.
+- "Architectural decisions" that the issue body or existing codebase patterns already resolve.
+- Needing to add tests or follow parity rules — these are known requirements, not ambiguous design choices.
+- Mechanical edits across many call sites (e.g., renaming a flag, removing a prose string from N launchers).
+
+When in doubt, classify SIMPLE — the cost of a lighter review on a genuinely hard task is manageable; unnecessary design ceremony on a simple task is pure waste and significantly delays delivery.
 
 When the task is SIMPLE: print `**⚡ 1: design plan — task classified as SIMPLE; auto-switching to quick workflow.**`, record `"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" workflow-path "SIMPLE" || true`, set `quick_mode=true`, and re-enter the Quick mode branch above (`### Quick mode (quick_mode=true)`). From there, handle branch creation, produce the inline plan, write `plan.txt` + `voting-tally.md`, and proceed to Step 2 exactly as ordinary quick mode does.
 
