@@ -24,4 +24,6 @@ The harness uses an accumulator pattern (`fail=1` set on each failure, exit at e
 
 The harness is wired into `make lint` via the `test-fix-issue-step-order` target in `Makefile`. It is added to `agent-lint.toml`'s `exclude` list alongside this sibling contract because agent-lint's dead-script and S030/orphaned-skill-files rules do not follow Makefile-only references.
 
+TSV encoding: the file must be UTF-8 with LF line endings and no BOM. The awk `$2` comparison will include `\r` if CRLF endings slip in, causing false CI failures.
+
 Edit-in-sync: if the Step Name Registry rows in `step-name-registry.tsv` change (assertions 1, 2, 8, 9), the section headings rename, anti-pattern #1 reverts, any find & lock breadcrumb literal moves, the find-lock-issue.sh invocation form changes, the setup-script invocation form changes, or the file-preamble anti-halt phrase `child Bash tool calls into the canonical` is reworded, update both this harness and this contract in the same PR. The block-extraction boundaries are pinned to the exact heading literals `## Step 0 — Find and Lock`, `## Step 1 — Setup`, and `## Step 2` (prefix); a Step 2 heading rename is the most likely silent breakage and is itself caught by assertion (3) / (4) on the start side, but the Step 2 prefix boundary should be re-pinned in the same PR if Step 2's heading changes.
