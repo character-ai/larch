@@ -22,6 +22,10 @@ Review code changes using a 7-reviewer specialist panel (5 Cursor specialists + 
 
 Reviewer dirty-tree changes are automatically discarded and logged — no operator prompt is issued and no stash is created.
 
+## Anti-patterns
+
+- **NEVER emit inline prose when `SESSION_ENV_PATH` is non-empty in diff mode.** **Why:** nested `/review --diff` runs under `/implement`, whose parent-visible transcript must obey the artifact-only return contract. **How to apply:** write summaries, tallies, scoreboards, rejected findings, and warning details to file-backed artifacts such as `$REVIEW_TMPDIR/review-round-summary.md` or `$IMPLEMENT_TMPDIR/execution-issues.md`, then emit only the terminal `### review-result` KV footer and required artifact paths.
+
 ## Mode activation
 
 Mode is determined by the parser state machine (fail-closed, evaluated in order):
@@ -64,6 +68,8 @@ After launching all reviewers (Step 2), maintain a mental tracker of each review
 Icons: ✅ done (with elapsed time since launch), ⏳ pending/in-progress, ❌ failed/timeout (with elapsed time since launch), ⊘ skipped (unavailable for replacement-style reviewers only). See `${CLAUDE_PLUGIN_ROOT}/skills/shared/progress-reporting.md` for elapsed time and step start formatting rules.
 
 Use empty `description` parameter on Bash tool calls and terse 3-5 word descriptions on Agent tool calls. Do not produce explanatory prose between tool call outputs — only print: step breadcrumb lines (start `🔶`, completion `✅`, skip `⏩`), all warning/error lines (`**⚠ ...`), structured summaries (voting tallies, scoreboards, round summaries, findings lists, final summary), and the reviewer status table.
+
+When `SESSION_ENV_PATH` is non-empty, follow `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Artifact-only return contract (nested mode): suppress parent-visible breadcrumbs, round summaries, voting tallies, reviewer scoreboards, and explanatory prose; write human-readable content to artifacts and emit only the terminal machine footer plus artifact paths required by the parent.
 
 ## Description Mode
 
@@ -128,7 +134,7 @@ Follow the instructions in ${CLAUDE_PLUGIN_ROOT}/skills/review/references/heavy-
 
 > **Continue after subagent returns.** When the Agent tool returns, parse the return text for `REVIEW_HEAVY=complete` or `REVIEW_HEAVY=failed REASON=<token>`. Do NOT end the turn, write a summary, or produce a handoff message — proceed immediately per the branch below.
 
-- **`REVIEW_HEAVY=complete`**: Read `$REVIEW_TMPDIR/review-round-summary.md` (exists when the subagent succeeded). The code edits made by Step 3e are already in the git working tree. `$REVIEW_TMPDIR/review-dirty-tree-summary.env` is already written by the subagent. Proceed to Step 4 using the file-backed artifacts: Step 4a reads `review-round-summary.md` verbatim for the final summary; Step 5a reads `review-dirty-tree-summary.env` as-is (already aggregated). **Skip Steps 1-3 entirely.**
+- **`REVIEW_HEAVY=complete`**: Read `$REVIEW_TMPDIR/review-round-summary.md` (exists when the subagent succeeded). The code edits made by Step 3e are already in the git working tree. `$REVIEW_TMPDIR/review-dirty-tree-summary.env` is already written by the subagent. Proceed to Step 4 using the file-backed artifacts: Step 4a prints `review-round-summary.md` only for standalone invocations; nested diff mode copies it to the parent tmpdir and emits only the `### review-result` footer. Step 5a reads `review-dirty-tree-summary.env` as-is (already aggregated). **Skip Steps 1-3 entirely.**
 - **`REVIEW_HEAVY=failed REASON=<token>`**: Print `**⚠ /review subagent failed: $REASON. Falling back to inline review.**`, set `subagent_mode=false`, and continue to Step 1 below (inline fallback).
 - **Return text missing `REVIEW_HEAVY=`** (subagent stalled or suspended): Print `**⚠ /review subagent returned without REVIEW_HEAVY sentinel. Falling back to inline review.**`, set `subagent_mode=false`, and continue to Step 1.
 
@@ -387,16 +393,31 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 
 ### 4a — Print summary (both modes)
 
-When `subagent_mode=true` AND `REVIEW_HEAVY=complete` was returned: print the contents of `$REVIEW_TMPDIR/review-round-summary.md` verbatim. Skip the inline summary composition below.
+`$REVIEW_TMPDIR/review-round-summary.md` is the file-backed source for Step 4 human-readable summary content. When `subagent_mode=true` AND `REVIEW_HEAVY=complete` was returned, this file already exists from the heavy worker. Otherwise (inline mode or subagent fallback), compose the final summary below and write it to `$REVIEW_TMPDIR/review-round-summary.md` before printing anything. When `SESSION_ENV_PATH` is non-empty, also copy the same content to `$(dirname "$SESSION_ENV_PATH")/review-round-summary.md` before emitting the footer; this stable parent-tmpdir path survives Step 5 cleanup and is the path `/implement` reads.
 
-Otherwise (inline mode or subagent fallback), print a final summary:
+Summary content:
 - Total number of review rounds (always 1 in description mode)
 - Findings per round (with per-reviewer breakdown: `Structure` / `Correctness` / `Testing` / `Security` / `Edge-cases` / `Codex` / `Claude-Generic`, or `Claude` for fallback)
 - Voting summary (rounds 1-3): total findings voted on, accepted (2+ YES), neutral (1 YES), exonerated (0 YES + 1+ EXONERATE), rejected (0 YES + 0 EXONERATE) (skip when both `cursor_available` and `codex_available` are false — no voted rounds)
-- Reviewer Competition Scoreboard (cumulative across all voted rounds, one row per independent reviewer): when `SESSION_ENV_PATH` is empty (standalone), print the full table; when `SESSION_ENV_PATH` is non-empty (nested), omit — the voting summary counts above carry the key data to the parent skill (skip when both `cursor_available` and `codex_available` are false — no voted rounds)
+- Reviewer Competition Scoreboard (cumulative across all voted rounds, one row per independent reviewer; skip when both `cursor_available` and `codex_available` are false — no voted rounds)
 - Total fixes applied across all rounds (diff mode only)
 - Build/test status (pass/fail)
 - **External reviewer warnings** (repeat any preflight or runtime warnings from Codex/Cursor here so they are visible at the end; also include any Gemini health/probe banners surfaced by `session-setup.sh` even though the Gemini reviewer lane is dormant)
+
+If `SESSION_ENV_PATH` is empty, print `$REVIEW_TMPDIR/review-round-summary.md` verbatim after it exists.
+
+If `SESSION_ENV_PATH` is non-empty AND diff mode is ON, suppress all Step 4 prose and emit only the terminal nested-mode footer:
+
+```text
+### review-result
+PARSE_STATUS=ok
+ROUNDS=<n>
+ACCEPTED=<n>
+REJECTED=<n>
+REVIEW_ROUND_SUMMARY_FILE=<path>
+```
+
+Substitute `ROUNDS` with the total diff-mode review rounds completed, `ACCEPTED` with the total accepted in-scope findings across all rounds, `REJECTED` with the total rejected or exonerated in-scope findings across all rounds, and `REVIEW_ROUND_SUMMARY_FILE` with `$(dirname "$SESSION_ENV_PATH")/review-round-summary.md`. Do not print `review-round-summary.md`, voting details, scoreboards, round summaries, breadcrumbs, or explanatory prose in nested diff mode; `/implement` reads the summary artifact directly.
 
 ### 4b — Description-mode /umbrella filing (default in description mode; skipped when --no-issues)
 

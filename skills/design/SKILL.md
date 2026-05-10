@@ -58,7 +58,7 @@ Step Name Registry:
 
 **Suppressed output:** explanatory prose, script paths, rationale for decisions between tool calls, per-reviewer individual completion messages.
 
-When `SESSION_ENV_PATH` is non-empty (nested under `/implement`), suppress bulky inline artifact bodies for the implementation plan, voting tally, architecture diagram, rejected findings, and discussion syntheses; print one-line saved breadcrumbs instead and rely on the files under `$DESIGN_TMPDIR/` plus the Step 5 design manifest. When `SESSION_ENV_PATH` is empty (standalone `/design`), preserve the existing verbose inline output and skip manifest export entirely.
+When `SESSION_ENV_PATH` is non-empty (nested under `/implement`), follow `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Artifact-only return contract (nested mode): suppress step breadcrumbs and bulky inline artifact bodies for the implementation plan, voting tally, architecture diagram, rejected findings, and discussion syntheses; rely on the files under `$DESIGN_TMPDIR/` plus the Step 5 design manifest. When `SESSION_ENV_PATH` is empty (standalone `/design`), preserve the existing verbose inline output and skip manifest export entirely.
 
 **Compact reviewer status table**: After launching sketch agents (Step 2a) or plan reviewers (Step 3), maintain a mental tracker of each agent's status. Print a compact table after EACH status change:
 
@@ -101,6 +101,8 @@ Consolidated NEVER rules collected from the procedural steps below. Each rule st
 5. **NEVER call `collect-agent-results.sh` with zero positional arguments.** **Why:** it exits 1 with "at least one output file is required". This is the zero-externals failure mode when every external slot has fallen back to a Claude subagent. **How to apply:** guard each collector call with an explicit check that at least one external slot was launched; the dialectic zero-externals guardrail (Step 2a.5 step 5) and the Step 3 collector both require this.
 
 6. **NEVER conflate the two timeout families.** **Why:** sketch-phase timeouts (sketches are shorter) differ from plan-review + dialectic timeouts (longer, deeper reasoning). **How to apply:** use `timeout: 1260000` (Bash tool) / `--timeout 1260` (collector) / `--timeout 1200` (reviewer script) for sketch-phase launches and sketch collection; use `timeout: 1860000` / `--timeout 1860` / `--timeout 1800` for plan-review launches, dialectic debaters, and dialectic judges.
+
+7. **NEVER emit step breadcrumbs when `SESSION_ENV_PATH` is non-empty.** **Why:** nested `/design` runs under `/implement`, whose parent-visible transcript must obey the artifact-only return contract. **How to apply:** write human-readable content to `$DESIGN_TMPDIR` artifacts, export the Step 5 design manifest, and emit only file-backed artifact paths plus the manifest machine footer.
 
 ## Step 0 — Session Setup
 
@@ -279,7 +281,7 @@ On `DESIGN_HEAVY=complete`:
 - **If `SESSION_ENV_PATH` is empty (standalone /design --subagent — NEW capability)**: read and print `$DESIGN_TMPDIR/plan.txt` under `## Implementation Plan`, `$DESIGN_TMPDIR/voting-tally.md` under `## Voting Tally and Reviewer Competition Scoreboard`, `$DESIGN_TMPDIR/accepted-plan-findings.md` under `## Plan Review Findings (Voted In)` (skip header if file is empty or missing), `$DESIGN_TMPDIR/oos.md` under `## Out-of-Scope Observations` (skip header if file is empty or missing), and — when `auto_mode=true` AND `$DESIGN_TMPDIR/architecture-diagram.md` exists and is non-empty — `$DESIGN_TMPDIR/architecture-diagram.md` under `## Architecture Diagram` with the mermaid fence (when `auto_mode=true` AND the file is missing/empty, print `**⚠ Architecture diagram unavailable (rejected by sanitizer).**` if the session's Warnings section contains a `mermaid sanitizer rejected` entry; otherwise print `**⚠ Architecture diagram unavailable (Step 3b generation failed in subagent).**`). When `auto_mode=true`, also read `$DESIGN_TMPDIR/rejected-findings.md`: if non-empty, print it under `## Unimplemented Plan Review Suggestions`; if empty or missing, print `## Plan Review — All Suggestions Implemented` (matches Step 4's standalone output). Then if `auto_mode=false` proceed to Step 3.5 (Discussion Round 2 still runs interactively against the displayed artifacts); if `auto_mode=true` proceed to Step 5 (cleanup). This replay matches the inline standalone output that today's empty-`SESSION_ENV_PATH` path produces, so the user sees the deliverables that `cleanup-tmpdir.sh` would otherwise delete.
 
 On `DESIGN_HEAVY=failed`:
-- **If `SESSION_ENV_PATH` is non-empty (nested)**: print `**⚠ 2a: sketches — heavy worker subagent failed: $REASON. No design manifest will be exported. Parent /implement will see MANIFEST_FAILED at Step 1 and re-invoke /design.**`, proceed to Step 5 for cleanup/export checks (Step 5 sets `MANIFEST_EXPORT_OK=false`, skips `cleanup-tmpdir.sh`, preserves `$DESIGN_TMPDIR`), and do not run the inline heavy steps. **Recovery**: the parent `/implement` Step 1 reads the manifest after `/design` returns; on missing/failed manifest it sets `STALL_TRACKING=true` and bails to Step 18 cleanup. To retry transient subagent failures (network blip, model timeout), the operator re-runs the same `/implement` invocation — Step 0.5 sentinel idempotency reuses the already-created tracking issue, and `/design` runs fresh.
+- **If `SESSION_ENV_PATH` is non-empty (nested)**: write the failure reason to `$DESIGN_TMPDIR/manifest-failure.md`, emit no inline warning, proceed to Step 5 for cleanup/export checks (Step 5 sets `MANIFEST_EXPORT_OK=false`, skips `cleanup-tmpdir.sh`, preserves `$DESIGN_TMPDIR`), and do not run the inline heavy steps. **Recovery**: the parent `/implement` Step 1 reads the manifest after `/design` returns; on missing/failed manifest it sets `STALL_TRACKING=true` and bails to Step 18 cleanup. To retry transient subagent failures (network blip, model timeout), the operator re-runs the same `/implement` invocation — Step 0.5 sentinel idempotency reuses the already-created tracking issue, and `/design` runs fresh.
 - **If `SESSION_ENV_PATH` is empty (standalone)**: print `**⚠ 2a: sketches — heavy worker subagent failed: $REASON. Preserving $DESIGN_TMPDIR for inspection.**`, set the mental flag `STANDALONE_HEAVY_FAILED=true`, skip the inline heavy steps, and proceed to Step 5. Step 5 sees `STANDALONE_HEAVY_FAILED=true` and skips `cleanup-tmpdir.sh`, preserving `$DESIGN_TMPDIR` so the operator can inspect partial artifacts. (No parent /implement consumer; no manifest needed for standalone.)
 
 If `subagent_mode=false` (or `quick_mode=true`), proceed to 2a.2 and run the inline flow below. (`SESSION_ENV_PATH` continues to govern nested I/O semantics — verbosity suppression, manifest export, OOS routing — orthogonally to dispatch mode.)
@@ -356,7 +358,7 @@ Read all sketches (or their Claude fallbacks if an external tool was unavailable
 
    List decisions in priority order: High impact first, then by degree of sketch disagreement (more agents on different sides = higher priority), then by order of appearance in the synthesis. If no sketches diverged (all agents agreed on all points), write exactly `NO_CONTESTED_DECISIONS` as the entire file content.
 
-Write the synthesis to `$DESIGN_TMPDIR/approach-synthesis.txt` so it can be referenced by Step 2b. If `SESSION_ENV_PATH` is empty, also print it under an `## Approach Synthesis` header. If `SESSION_ENV_PATH` is non-empty, print only `✅ 2a: sketches — synthesis saved (<elapsed>)`.
+Write the synthesis to `$DESIGN_TMPDIR/approach-synthesis.txt` so it can be referenced by Step 2b. If `SESSION_ENV_PATH` is empty, also print it under an `## Approach Synthesis` header. If `SESSION_ENV_PATH` is non-empty, print nothing for this save and continue; the Step 5 manifest is the parent-visible handoff.
 
 ### 2a.5 — Dialectic Resolution of Contested Decisions
 
@@ -431,7 +433,7 @@ Produce a plan that includes:
 - **Failure modes** (for non-trivial changes): The 3 most likely architectural/systemic failure paths, earliest warning signals, and simplest mitigations. May be omitted for purely cosmetic or documentation-only changes.
 - **Testing strategy**: What tests will be added or modified.
 
-Write the plan to `$DESIGN_TMPDIR/plan.txt` with basename exactly `plan.txt`. If `SESSION_ENV_PATH` is empty, print the plan to the user under a `## Implementation Plan` header so reviewers can see it. If `SESSION_ENV_PATH` is non-empty, print only `✅ 2b: full plan — saved (<elapsed>)`; `/implement` reads the exported plan file. The plan is an intermediate deliverable — IMMEDIATELY continue to Step 3 (Plan Review) after saving/printing. Do NOT halt, summarize, or treat the plan as the end of the design.
+Write the plan to `$DESIGN_TMPDIR/plan.txt` with basename exactly `plan.txt`. If `SESSION_ENV_PATH` is empty, print the plan to the user under a `## Implementation Plan` header so reviewers can see it. If `SESSION_ENV_PATH` is non-empty, print nothing for this save; `/implement` reads the exported plan file through the Step 5 manifest. The plan is an intermediate deliverable — IMMEDIATELY continue to Step 3 (Plan Review) after saving/printing. Do NOT halt, summarize, or treat the plan as the end of the design.
 
 > **Continue to Step 3 IMMEDIATELY.** The implementation plan is an intermediate design artifact — plan review, optional discussion, diagram generation, rejected-findings reporting, and cleanup still must run. See `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Step-boundary anti-halt.
 
@@ -570,11 +572,11 @@ On `STATUS=ok`, rename the candidate to `$DESIGN_TMPDIR/architecture-diagram.md`
 ```
 ```
 
-**If diagram generation and sanitizer validation succeed**, print: `✅ 3b: arch diagram — saved (<elapsed>)` when `SESSION_ENV_PATH` is non-empty, or `✅ 3b: arch diagram — generated (<elapsed>)` when standalone — then IMMEDIATELY continue to Step 4.
+**If diagram generation and sanitizer validation succeed**, print `✅ 3b: arch diagram — generated (<elapsed>)` only when `SESSION_ENV_PATH` is empty. When `SESSION_ENV_PATH` is non-empty, print nothing for this save; the Step 5 manifest carries the artifact path. Then IMMEDIATELY continue to Step 4.
 
-**If the sanitizer returns `STATUS=rejected` or exits 2**, do NOT promote the candidate. Delete `$DESIGN_TMPDIR/architecture-diagram.candidate.md`, print `**⚠ 3b: architecture diagram — rejected by mermaid sanitizer (REASON_TOKEN=<token>); proceeding without diagram.**`, and continue to Step 4. When `SESSION_ENV_PATH` is non-empty, append `- **Step 3b — architecture diagram rejected:** <REASON_TOKEN>` under `### Warnings` in `$(dirname "$SESSION_ENV_PATH")/execution-issues.md` via `${CLAUDE_PLUGIN_ROOT}/scripts/append-execution-issue.sh`. Use only `REASON_TOKEN` values, not raw diagram content.
+**If the sanitizer returns `STATUS=rejected` or exits 2**, do NOT promote the candidate. Delete `$DESIGN_TMPDIR/architecture-diagram.candidate.md`. When `SESSION_ENV_PATH` is empty, print `**⚠ 3b: architecture diagram — rejected by mermaid sanitizer (REASON_TOKEN=<token>); proceeding without diagram.**`. When `SESSION_ENV_PATH` is non-empty, emit no inline warning; append `- **Step 3b — architecture diagram rejected:** <REASON_TOKEN>` under `### Warnings` in `$(dirname "$SESSION_ENV_PATH")/execution-issues.md` via `${CLAUDE_PLUGIN_ROOT}/scripts/append-execution-issue.sh`. Use only `REASON_TOKEN` values, not raw diagram content. Then continue to Step 4.
 
-**If diagram generation fails** (e.g., the feature is too abstract to diagram meaningfully), print: `**⚠ 3b: arch diagram — generation failed, proceeding without diagram (<elapsed>)**` — then IMMEDIATELY continue to Step 4.
+**If diagram generation fails** (e.g., the feature is too abstract to diagram meaningfully), print `**⚠ 3b: arch diagram — generation failed, proceeding without diagram (<elapsed>)**` only when `SESSION_ENV_PATH` is empty. When `SESSION_ENV_PATH` is non-empty, emit no inline warning and append the failure to `$(dirname "$SESSION_ENV_PATH")/execution-issues.md`. Then IMMEDIATELY continue to Step 4.
 
 > **Continue to Step 4 IMMEDIATELY.** The architecture diagram branch is not terminal — rejected-findings reporting and cleanup still must run.
 
@@ -589,8 +591,8 @@ Print any rejected plan review findings:
 1. Ensure `$DESIGN_TMPDIR/rejected-findings.md`, `$DESIGN_TMPDIR/accepted-plan-findings.md`, and `$DESIGN_TMPDIR/oos.md` exist; create empty files for any missing may-be-empty artifact so Step 5 can export a complete manifest.
 2. Check if `$DESIGN_TMPDIR/rejected-findings.md` exists and is non-empty.
 3. If it has content and `SESSION_ENV_PATH` is empty, print it under a `## Unimplemented Plan Review Suggestions` header, formatted clearly with the reviewer name, the suggestion, and the reason for each.
-4. If it has content and `SESSION_ENV_PATH` is non-empty, print only `✅ 4: rejected findings — saved (<elapsed>)`.
-5. If `$DESIGN_TMPDIR/rejected-findings.md` is empty (it always exists after item 1), print: `✅ 4: rejected findings — all suggestions implemented (<elapsed>)`
+4. If it has content and `SESSION_ENV_PATH` is non-empty, print nothing; the Step 5 manifest carries the rejected-findings artifact path.
+5. If `$DESIGN_TMPDIR/rejected-findings.md` is empty (it always exists after item 1), print `✅ 4: rejected findings — all suggestions implemented (<elapsed>)` only when `SESSION_ENV_PATH` is empty.
 
 After printing rejected findings (or the "all implemented" message), IMMEDIATELY continue to Step 5 — do NOT halt or treat this as the end of the design.
 
@@ -614,7 +616,7 @@ If `SESSION_ENV_PATH` is non-empty, export design artifacts before cleanup:
 ${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/write-design-manifest.sh --design-tmpdir "$DESIGN_TMPDIR" --implement-tmpdir "$(dirname "$SESSION_ENV_PATH")"
 ```
 
-Parse `MANIFEST_WRITTEN=<path>` from stdout and set the mental flag `MANIFEST_EXPORT_OK=true` if the command exited 0 AND the manifest file exists AND is non-empty; otherwise set `MANIFEST_EXPORT_OK=false`, print `**⚠ 5: cleanup — design manifest export failed. Parent /implement will rerun /design. Preserving $DESIGN_TMPDIR for inspection.**`, and SKIP the `cleanup-tmpdir.sh` step below entirely so the parent /implement (or operator) can inspect the partial artifacts. If `SESSION_ENV_PATH` is empty, skip this manifest write and treat `MANIFEST_EXPORT_OK` as `true` for cleanup-gating purposes (standalone `/design` preserves visible inline output, has no parent consumer, and always cleans up on the normal path).
+Parse `MANIFEST_WRITTEN=<path>` from stdout and set the mental flag `MANIFEST_EXPORT_OK=true` if the command exited 0 AND the manifest file exists AND is non-empty. Otherwise set `MANIFEST_EXPORT_OK=false`; when `SESSION_ENV_PATH` is empty, print `**⚠ 5: cleanup — design manifest export failed. Preserving $DESIGN_TMPDIR for inspection.**`; when `SESSION_ENV_PATH` is non-empty, emit no inline warning because the missing/failed manifest is the parent-visible machine signal. SKIP the `cleanup-tmpdir.sh` step below entirely so the parent /implement (or operator) can inspect the partial artifacts. If `SESSION_ENV_PATH` is empty, skip this manifest write and treat `MANIFEST_EXPORT_OK` as `true` for cleanup-gating purposes (standalone `/design` preserves visible inline output, has no parent consumer, and always cleans up on the normal path).
 
 **Manifest helper contracts** (per `${CLAUDE_PLUGIN_ROOT}/.claude/rules/script-md-siblings.md`):
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/write-design-manifest.sh` — atomic writer invoked above. Sibling contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/write-design-manifest.md`.
