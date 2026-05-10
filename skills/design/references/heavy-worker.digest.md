@@ -6,6 +6,8 @@
 
 **Contract**: Runs token-heavy design machinery (sketches → dialectic → plan → plan review) in an isolated Agent-tool subagent context. Writes raw artifacts under `$DESIGN_TMPDIR/` only. Does NOT write `manifest.env` — parent `/design` Step 5 writes that after Steps 3.5/3b/4.
 
+**When to load**: by the parent `/design` orchestrator when consulting the dirty-tree probe contract (Step 2a.5 collection boundaries). Load the full `heavy-worker.md` when dispatching a subagent.
+
 ## Inputs
 
 Pass explicitly to the subagent: `DESIGN_TMPDIR`, `IMPLEMENT_TMPDIR`, `SESSION_ENV_PATH`, `FEATURE_DESCRIPTION`, `quick_mode`, `auto_mode`, current branch info, reviewer health flags (`codex_available`, `cursor_available`, `CODEX_HEALTHY`, `CURSOR_HEALTHY`).
