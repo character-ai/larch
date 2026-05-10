@@ -304,8 +304,8 @@ grep -qxF '```mermaid' "$output_b" \
     || fail "(b) missing diagrams mermaid fence"
 
 # Verify the order: diagrams (index 3) must appear before version-bump-reasoning (index 4).
-diagrams_line=$(grep -n '<!-- section:diagrams -->' "$output_b" | head -n 1 | cut -d: -f1)
-vbr_line=$(grep -n '<!-- section:version-bump-reasoning -->' "$output_b" | head -n 1 | cut -d: -f1)
+diagrams_line=$(grep -m 1 -n '<!-- section:diagrams -->' "$output_b" | cut -d: -f1)
+vbr_line=$(grep -m 1 -n '<!-- section:version-bump-reasoning -->' "$output_b" | cut -d: -f1)
 [ "$diagrams_line" -lt "$vbr_line" ] \
     || fail "(b) expected diagrams ($diagrams_line) before version-bump-reasoning ($vbr_line)"
 
@@ -439,10 +439,10 @@ mkdir -p "$sections_b4"
 output_b4="$tmpdir/out-b4.md"
 "$ASSEMBLE_ANCHOR" --sections-dir "$sections_b4" --issue 502 --output "$output_b4" > /dev/null
 
-version_line_num=$(grep -nF '| larch plugin version | 9.8.7 |' "$output_b4" | head -n 1 | cut -d: -f1)
-model_line_num=$(grep -nF '| Claude model | unknown |' "$output_b4" | head -n 1 | cut -d: -f1)
-effort_line_num=$(grep -nF '| effort level | unknown |' "$output_b4" | head -n 1 | cut -d: -f1)
-close_line_num=$(grep -nF '<!-- section-end:run-statistics -->' "$output_b4" | head -n 1 | cut -d: -f1)
+version_line_num=$(grep -m 1 -nF '| larch plugin version | 9.8.7 |' "$output_b4" | cut -d: -f1)
+model_line_num=$(grep -m 1 -nF '| Claude model | unknown |' "$output_b4" | cut -d: -f1)
+effort_line_num=$(grep -m 1 -nF '| effort level | unknown |' "$output_b4" | cut -d: -f1)
+close_line_num=$(grep -m 1 -nF '<!-- section-end:run-statistics -->' "$output_b4" | cut -d: -f1)
 [ -n "$version_line_num" ] || fail "(b4) missing injected plugin-version row"
 [ -n "$model_line_num" ] || fail "(b4) missing injected Claude-model row"
 [ -n "$effort_line_num" ] || fail "(b4) missing injected effort-level row"
