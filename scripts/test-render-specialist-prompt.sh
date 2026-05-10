@@ -148,6 +148,8 @@ else
 fi
 assert_contains "--diff-file: preamble references diff file path" "$SAMPLE_DIFF" "$output_with_diff"
 assert_contains "--diff-file: preamble mentions Read tool fallback" "Read tool" "$output_with_diff"
+# shellcheck disable=SC2016
+assert_contains "--diff-file: preamble includes merge-base git log instruction" 'git log $(git merge-base HEAD main)..HEAD --oneline' "$output_with_diff"
 assert_contains "--diff-file: focus-area tagging preserved" "code-quality / risk-integration / correctness / architecture / security" "$output_with_diff"
 # Without --diff-file, original "Run git diff" instruction is still present.
 output_no_diff=$(bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-structure.md" --mode diff 2>/dev/null)
