@@ -58,9 +58,11 @@ cat > "$LAUNCHER" <<'LARCH_REVIEW_CODEX_SHIM'
 exec "$LARCH_TEST_REPO_ROOT/scripts/launch-review.sh" --tool codex "$@"
 LARCH_REVIEW_CODEX_SHIM
 chmod +x "$LAUNCHER"
+# shellcheck disable=SC2030
 TMPDIR="$(mktemp -d /tmp/larch-test-launch-review-XXXXXX)"
 trap 'rm -rf "$TMPDIR"' EXIT
 
+# shellcheck disable=SC2030
 export RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05
 
 PASS=0
@@ -634,16 +636,18 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 LARCH_TEST_REPO_ROOT="$REPO_ROOT"
 export LARCH_TEST_REPO_ROOT
-LAUNCHER="$TMPDIR/bin/launch-review-cursor"
+LAUNCHER="$TMPROOT/bin/launch-review-cursor"
 mkdir -p "$(dirname "$LAUNCHER")"
 cat > "$LAUNCHER" <<'LARCH_REVIEW_CURSOR_SHIM'
 #!/usr/bin/env bash
 exec "$LARCH_TEST_REPO_ROOT/scripts/launch-review.sh" --tool cursor "$@"
 LARCH_REVIEW_CURSOR_SHIM
 chmod +x "$LAUNCHER"
+# shellcheck disable=SC2030
 TMPDIR="$(mktemp -d /tmp/larch-test-launch-cursor-XXXXXX)"
 trap 'rm -rf "$TMPDIR"' EXIT
 
+# shellcheck disable=SC2030,SC2031
 export RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05
 export LARCH_CURSOR_MODEL=test-cursor-model
 
@@ -1532,6 +1536,7 @@ trap 'rm -rf "$TMPDIR"' EXIT
 # Tighten run-external-agent.sh's poll cadence so each stub invocation does
 # not pay a 10s sleep cycle. Production callers inherit the default 10s.
 # See scripts/run-external-agent.md.
+# shellcheck disable=SC2030,SC2031
 export RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05
 
 FAIL=0
