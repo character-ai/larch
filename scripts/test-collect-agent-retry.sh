@@ -742,9 +742,9 @@ fi
 # Case corrupt-risk: OUTER_LAUNCHER_RISK=medium (invalid value) in the .meta file
 # must be normalized to 'high' and the outer launcher must still be retried
 # successfully (fail-closed: unknown risk → high effort).
-OUT_CORRUPT_RISK="$TMPDIR/cursor-corrupt-risk.txt"
-HEALTH_CORRUPT_RISK="$TMPDIR/case-corrupt-risk.health"
-WORKDIR_CORRUPT_RISK="$TMPDIR/workdir-corrupt-risk"
+OUT_CORRUPT_RISK="$TMPROOT/cursor-corrupt-risk.txt"
+HEALTH_CORRUPT_RISK="$TMPROOT/case-corrupt-risk.health"
+WORKDIR_CORRUPT_RISK="$TMPROOT/workdir-corrupt-risk"
 mkdir -p "$WORKDIR_CORRUPT_RISK"
 prepare_outer_candidate "$OUT_CORRUPT_RISK"
 write_outer_meta "$OUT_CORRUPT_RISK" "$REPO_ROOT/scripts/launch-cursor-review.sh" \
