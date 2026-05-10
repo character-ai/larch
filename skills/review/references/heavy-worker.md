@@ -55,7 +55,7 @@ NEVER return to the parent while any reviewer you launched with `run_in_backgrou
 
 ## Mid-Run Dirty-Tree Probe Contract
 
-After each external collection point (Step 2 launch → Step 3a collect; rounds 4-7 single-reviewer collect), scan `${OUTPUT}.dirty-tree` sidecars and run `${CLAUDE_PLUGIN_ROOT}/scripts/check-mid-run-dirty-tree.sh --mode checkpoint`. On `STATUS=dirty` or `STATUS=unknown`, fire `AskUserQuestion` with restore / labeled stash / bail options (same recovery flow as the inline path). Track `RECOVERY_TAKEN` across the loop and write it into `review-dirty-tree-summary.env`.
+After each external collection point (Step 2 launch → Step 3a collect; rounds 4-7 single-reviewer collect), scan `${OUTPUT}.dirty-tree` sidecars and run `${CLAUDE_PLUGIN_ROOT}/scripts/check-mid-run-dirty-tree.sh --mode checkpoint`. On `STATUS=dirty` or `STATUS=unknown`, automatically log and discard the reviewer-introduced changes — do NOT stash them and do NOT prompt the operator (same auto-discard flow as the inline path in `skills/review/SKILL.md` Step 3a). Track `RECOVERY_TAKEN` across the loop and write it into `review-dirty-tree-summary.env`.
 
 ## Return Value
 
