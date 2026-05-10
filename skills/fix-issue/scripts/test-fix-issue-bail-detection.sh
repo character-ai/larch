@@ -169,27 +169,35 @@ else
     exit 1
 fi
 
-# (a11) HARD bullet forwards --quick — preserved compatibility pin. Under the
-# current Step 4 short-circuit, quick_mode=true AND INTENT=PR forces
-# COMPLEXITY=SIMPLE directly, so this HARD-bullet segment is unreachable
-# on the PR path. The assertion is kept as a CI parity pin against
-# accidental removal and as a no-op safety net should the short-circuit
-# ever be reverted.
-assert_bullet_contains "a11: HARD bullet forwards --quick" '- **HARD**' '[--quick if quick_mode]'
-
-# (a12) SIMPLE bullet does NOT contain the conditional forwarding spell —
-# encodes that SIMPLE already passes --quick unconditionally (the conditional
-# forward would be redundant). Mirrors a10's spell-check approach.
-SIMPLE_LINE_QUICK=$(grep -F -- '- **SIMPLE**' <<<"$STEP5A_BLOCK" | head -1 || true)
-if [[ -n "$SIMPLE_LINE_QUICK" && "$SIMPLE_LINE_QUICK" != *"[--quick if quick_mode]"* ]]; then
+# (a11) HARD bullet does NOT contain [--quick if quick_mode] — SIMPLE is now
+# the default so the old no-op safety net is removed. Mirrors a10's spell-check
+# approach: checks for the exact spell rather than the bare substring.
+HARD_LINE_QUICK=$(grep -F -- '- **HARD**' <<<"$STEP5A_BLOCK" | head -1 || true)
+if [[ -n "$HARD_LINE_QUICK" && "$HARD_LINE_QUICK" != *"[--quick if quick_mode]"* ]]; then
     PASS_COUNT=$((PASS_COUNT + 1))
-    echo "  PASS: a12: SIMPLE bullet does NOT contain conditional --quick forward"
+    echo "  PASS: a11: HARD bullet does NOT contain [--quick if quick_mode]"
 else
-    echo "  FAIL: a12: SIMPLE bullet does NOT contain conditional --quick forward" >&2
+    echo "  FAIL: a11: HARD bullet does NOT contain [--quick if quick_mode]" >&2
+    if [[ -z "$HARD_LINE_QUICK" ]]; then
+        echo "    HARD bullet not found" >&2
+    else
+        echo "    HARD bullet unexpectedly contains '[--quick if quick_mode]': $HARD_LINE_QUICK" >&2
+    fi
+    exit 1
+fi
+
+# (a12) SIMPLE bullet unconditionally contains --quick — encodes that SIMPLE
+# always uses /implement --quick (the reduced review loop path).
+SIMPLE_LINE_QUICK=$(grep -F -- '- **SIMPLE**' <<<"$STEP5A_BLOCK" | head -1 || true)
+if [[ -n "$SIMPLE_LINE_QUICK" && "$SIMPLE_LINE_QUICK" == *"--quick"* ]]; then
+    PASS_COUNT=$((PASS_COUNT + 1))
+    echo "  PASS: a12: SIMPLE bullet unconditionally contains --quick"
+else
+    echo "  FAIL: a12: SIMPLE bullet unconditionally contains --quick" >&2
     if [[ -z "$SIMPLE_LINE_QUICK" ]]; then
         echo "    SIMPLE bullet not found" >&2
     else
-        echo "    SIMPLE bullet unexpectedly contains '[--quick if quick_mode]': $SIMPLE_LINE_QUICK" >&2
+        echo "    SIMPLE bullet missing '--quick': $SIMPLE_LINE_QUICK" >&2
     fi
     exit 1
 fi
