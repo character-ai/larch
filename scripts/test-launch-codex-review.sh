@@ -77,6 +77,12 @@ set -euo pipefail
 if [[ -n "${CODEX_STUB_TOKEN_SESSION_FILE:-}" ]]; then
     printf '%s\n' "${LARCH_TOKEN_SESSION_ID:-}" > "$CODEX_STUB_TOKEN_SESSION_FILE"
 fi
+if [[ -n "${CODEX_STUB_HOME_FILE:-}" ]]; then
+    printf '%s\n' "${CODEX_HOME:-}" > "$CODEX_STUB_HOME_FILE"
+fi
+if [[ -n "${CODEX_STUB_CONFIG_FILE:-}" && -n "${CODEX_HOME:-}" && -f "$CODEX_HOME/config.toml" ]]; then
+    cp "$CODEX_HOME/config.toml" "$CODEX_STUB_CONFIG_FILE"
+fi
 count=0
 if [[ -f "$CODEX_STUB_COUNT_FILE" ]]; then
     count=$(cat "$CODEX_STUB_COUNT_FILE")
@@ -106,6 +112,8 @@ OUTPUT="$OUTDIR_LINK/../out-link/review.txt"
 ARGV="$TMPDIR/argv.txt"
 COUNT="$TMPDIR/count.txt"
 TOKEN_SESSION_FILE="$TMPDIR/token-session.txt"
+CODEX_HOME_FILE="$TMPDIR/codex-home.txt"
+CODEX_CONFIG_FILE="$TMPDIR/codex-config.toml"
 IMPLEMENT_TMPDIR_FIXTURE="$TMPDIR/implement-tmpdir"
 mkdir -p "$IMPLEMENT_TMPDIR_FIXTURE"
 printf 'mock-codex-review-session\n' > "$IMPLEMENT_TMPDIR_FIXTURE/session-id"
@@ -114,6 +122,8 @@ PATH="$STUB_BIN:$PATH" \
     CODEX_STUB_ARGV_LOG="$ARGV" \
     CODEX_STUB_COUNT_FILE="$COUNT" \
     CODEX_STUB_TOKEN_SESSION_FILE="$TOKEN_SESSION_FILE" \
+    CODEX_STUB_HOME_FILE="$CODEX_HOME_FILE" \
+    CODEX_STUB_CONFIG_FILE="$CODEX_CONFIG_FILE" \
     IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR_FIXTURE" \
     LARCH_TOKEN_SESSION_ID="stale-codex-review-session" \
     LARCH_CODEX_MODEL="stub-model" \
@@ -121,6 +131,27 @@ PATH="$STUB_BIN:$PATH" \
 
 assert_eq "stub invoked once" "1" "$(cat "$COUNT")"
 assert_eq "token session id rehydrated" "mock-codex-review-session" "$(cat "$TOKEN_SESSION_FILE")"
+if [[ -s "$CODEX_HOME_FILE" ]] && [[ "$(cat "$CODEX_HOME_FILE")" == /tmp/larch-codex-review-home-* ]]; then
+    pass
+else
+    fail "review launcher did not set CODEX_HOME to a per-invocation /tmp directory"
+fi
+CODEX_HOME_VALUE=$(cat "$CODEX_HOME_FILE" 2>/dev/null || true)
+case "$CODEX_HOME_VALUE" in
+    "$OUTDIR_REAL"|"$OUTDIR_REAL"/*)
+        fail "review CODEX_HOME must be outside CANON_OUTPUT_DIR; got $CODEX_HOME_VALUE"
+        ;;
+    *)
+        pass
+        ;;
+esac
+if [[ -s "$CODEX_CONFIG_FILE" ]] \
+   && [[ "$(sed -n '1p' "$CODEX_CONFIG_FILE")" == "instructions = '''" ]] \
+   && grep -Fq -- 'HARD CONSTRAINTS — your role is read-only review' "$CODEX_CONFIG_FILE"; then
+    pass
+else
+    fail "review CODEX_HOME config.toml should carry top-level hardening instructions"
+fi
 assert_eq "argv 1" "exec" "$(sed -n '1p' "$ARGV")"
 # Issue #1529: read-only review sandbox replaces --full-auto.
 assert_eq "argv 2 sandbox flag" "--sandbox" "$(sed -n '2p' "$ARGV")"
@@ -139,15 +170,13 @@ assert_grep "outer launcher metadata" "OUTER_LAUNCHER=$REPO_ROOT/scripts/launch-
 assert_grep "outer prompt metadata" "OUTER_LAUNCHER_PROMPT_FILE=${OUTPUT}.prompt" "${OUTPUT}.meta"
 assert_grep "dirty-tree sidecar status" "STATUS=" "${OUTPUT}.dirty-tree"
 assert_grep "dirty-tree sidecar mode" "MODE=baseline" "${OUTPUT}.dirty-tree"
-# Issue #1529: the preamble is applied to the outgoing PROMPT (last argv
-# token before the closing newline) but NOT to the OUTPUT.prompt sidecar
-# (which stays the user-original body so collect-agent-results.sh empty-output
-# retry replays via --prompt-file without double-prepending). Argv contains the
-# preamble; sidecar does not.
+# Issue #1529 / #1708: the hardening preamble is applied through
+# CODEX_HOME/config.toml instructions, not the outgoing PROMPT or retry
+# sidecar.
 if grep -Fq -- 'HARD CONSTRAINTS — your role is read-only review' "$ARGV"; then
-    pass
+    fail "issue #1708 codex argv prompt must NOT carry the HARD CONSTRAINTS preamble"
 else
-    fail "issue #1529 codex argv must carry the HARD CONSTRAINTS preamble"
+    pass
 fi
 if grep -Fq -- 'HARD CONSTRAINTS' "${OUTPUT}.prompt"; then
     fail "issue #1529 OUTPUT.prompt sidecar must NOT contain the preamble (retry-replay safety)"
@@ -162,11 +191,21 @@ if cmp -s "$EXPECTED_SIDECAR" "${OUTPUT}.prompt"; then
 else
     fail "issue #1529 OUTPUT.prompt sidecar must equal the user-original prompt 'review prompt'"
 fi
+if awk 'prev == "--" && $0 == "review prompt" { found=1 } { prev=$0 } END { exit(found ? 0 : 1) }' "$ARGV"; then
+    pass
+else
+    fail "codex review argv should place -- immediately before the prompt"
+fi
 
 if [[ "$(grep -Fxc -- '-m' "$ARGV")" == "1" ]] && grep -Fxq -- 'stub-model' "$ARGV"; then
     pass
 else
     fail "model args should include one -m and literal stub-model"
+fi
+if grep -Fxq -- "projects.\"$REPO_ROOT\".trust_level=\"trusted\"" "$ARGV"; then
+    pass
+else
+    fail "codex review argv should include trusted-project config override"
 fi
 
 TIMING_ENV_LEDGER="$TMPDIR/lcr-timing-env.tsv"
@@ -235,12 +274,11 @@ else
     fail "newline model preflight failure must write unknown dirty-tree sidecar"
 fi
 
-# Issue #1529: empty-output retry idempotency. The first run wrote
+# Issue #1529 / #1708: empty-output retry idempotency. The first run wrote
 # "review prompt" to ${OUTPUT}.prompt (user-original, no preamble).
-# Replaying via --prompt-file pointing at that sidecar must produce an argv
-# with EXACTLY ONE preamble — not two. Catches a regression where the
-# launcher would also write the preamble into the sidecar (which would make
-# the replay double-prepend).
+# Replaying via --prompt-file pointing at that sidecar must keep the argv
+# prompt dynamic-only; the static preamble is delivered via fresh CODEX_HOME
+# instructions on each launch.
 RETRY_OUTPUT="$TMPDIR/retry-output.txt"
 RETRY_ARGV="$TMPDIR/retry-argv.txt"
 RETRY_COUNT="$TMPDIR/retry-count.txt"
@@ -249,12 +287,10 @@ PATH="$STUB_BIN:$PATH" \
     CODEX_STUB_COUNT_FILE="$RETRY_COUNT" \
     "$LAUNCHER" --output "$RETRY_OUTPUT" --timeout 5 --prompt-file "${OUTPUT}.prompt" >/dev/null
 PREAMBLE_COUNT_RETRY=$(grep -Fc -- 'HARD CONSTRAINTS — your role is read-only review' "$RETRY_ARGV" || true)
-# `grep -F` per-line: the preamble's first line is on one argv-line because
-# the prompt is one shell argv. So count must be exactly 1.
-if [[ "$PREAMBLE_COUNT_RETRY" == "1" ]]; then
+if [[ "$PREAMBLE_COUNT_RETRY" == "0" ]]; then
     pass
 else
-    fail "retry replay via --prompt-file must produce exactly 1 preamble in argv; got $PREAMBLE_COUNT_RETRY"
+    fail "retry replay via --prompt-file must not include preamble in argv; got $PREAMBLE_COUNT_RETRY"
 fi
 
 PROMPT_FILE="$TMPDIR/prompt-file.txt"
@@ -271,9 +307,9 @@ if [[ "$(cat "$COUNT_PROMPT_FILE")" == "1" ]]; then
 else
     fail "--prompt-file should still launch through Codex exactly once"
 fi
-# Issue #1529: --prompt-file's bytes are preserved verbatim in the sidecar
-# (no preamble there — retry-replay safety) and the preamble is applied to
-# the outgoing argv only.
+# Issue #1529 / #1708: --prompt-file's bytes are preserved verbatim in the
+# sidecar (no preamble there) and the preamble is applied through
+# CODEX_HOME instructions.
 EXPECTED_PROMPT_ARG="$TMPDIR/expected-prompt-arg.txt"
 printf 'from prompt file\n\n' > "$EXPECTED_PROMPT_ARG"
 if cmp -s "$EXPECTED_PROMPT_ARG" "$PROMPT_SIDECAR"; then
@@ -282,9 +318,9 @@ else
     fail "--prompt-file should preserve original bytes verbatim in OUTPUT.prompt sidecar"
 fi
 if grep -Fq -- 'HARD CONSTRAINTS — your role is read-only review' "$ARGV_PROMPT_FILE"; then
-    pass
+    fail "--prompt-file run must not include the HARD CONSTRAINTS preamble in codex argv"
 else
-    fail "--prompt-file run must still apply the HARD CONSTRAINTS preamble to the codex argv"
+    pass
 fi
 if grep -Fq -- 'HARD CONSTRAINTS' "$PROMPT_SIDECAR"; then
     fail "--prompt-file run must NOT include the preamble in the sidecar (retry-replay safety)"
@@ -301,9 +337,9 @@ PATH="$STUB_BIN:$PATH" \
     "$LAUNCHER" --output "$AGENT_OUTPUT" --timeout 5 \
         --agent-file "$REPO_ROOT/agents/reviewer-structure.md" --mode diff >/dev/null
 if grep -Fq -- 'HARD CONSTRAINTS — your role is read-only review' "$AGENT_ARGV"; then
-    pass
+    fail "--agent-file run must not include the HARD CONSTRAINTS preamble in codex argv"
 else
-    fail "--agent-file run must apply the HARD CONSTRAINTS preamble to the codex argv"
+    pass
 fi
 # agent-file sidecar is now a hash+kind sentinel (I/O optimization #1718),
 # not the full rendered body.
@@ -340,10 +376,10 @@ PATH="$STUB_BIN:$PATH" \
     "$LAUNCHER" --output "$TMPDIR/agent-file-retry-output.txt" --timeout 5 \
         --prompt-file "${AGENT_OUTPUT}.prompt" >/dev/null
 AGENT_PREAMBLE_COUNT_RETRY=$(grep -Fc -- 'HARD CONSTRAINTS — your role is read-only review' "$AGENT_RETRY_ARGV" || true)
-if [[ "$AGENT_PREAMBLE_COUNT_RETRY" == "1" ]]; then
+if [[ "$AGENT_PREAMBLE_COUNT_RETRY" == "0" ]]; then
     pass
 else
-    fail "--agent-file replay via --prompt-file must produce exactly 1 preamble in argv; got $AGENT_PREAMBLE_COUNT_RETRY"
+    fail "--agent-file replay via --prompt-file must not include preamble in argv; got $AGENT_PREAMBLE_COUNT_RETRY"
 fi
 
 if command -v jq >/dev/null 2>&1; then
@@ -469,6 +505,7 @@ PATH="$STUB_BIN:$PATH" \
     CODEX_STUB_ARGV_LOG="$TMPDIR/cap-hit-codex-argv.txt" \
     CODEX_STUB_COUNT_FILE="$CH_COUNT" \
     LARCH_CODEX_MODEL="stub-model" \
+    IMPLEMENT_TMPDIR='' \
     LARCH_TOKEN_SESSION_ID="$CH_SESSION" \
     LARCH_TOKEN_BUDGET_CAP_REVIEW=1 \
     "$LAUNCHER" --output "$CH_OUTPUT" --timeout 5 --prompt "cap hit review" >/dev/null 2>&1

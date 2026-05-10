@@ -173,6 +173,12 @@ set -euo pipefail
 if [[ -n "${STUB_TOKEN_SESSION_FILE:-}" ]]; then
     printf '%s\n' "${LARCH_TOKEN_SESSION_ID:-}" > "$STUB_TOKEN_SESSION_FILE"
 fi
+if [[ -n "${STUB_CODEX_HOME_FILE:-}" ]]; then
+    printf '%s\n' "${CODEX_HOME:-}" > "$STUB_CODEX_HOME_FILE"
+fi
+if [[ -n "${STUB_CODEX_CONFIG_FILE:-}" && -n "${CODEX_HOME:-}" && -f "$CODEX_HOME/config.toml" ]]; then
+    cp "$CODEX_HOME/config.toml" "$STUB_CODEX_CONFIG_FILE"
+fi
 output_path=""
 separator_seen=false
 index=0
@@ -218,6 +224,8 @@ PROMPT_FILE="$SCRATCH/codex-prompt.txt"
 LAST_ARG_FILE="$SCRATCH/codex-last-arg.txt"
 SEPARATOR_INDEX_FILE="$SCRATCH/codex-separator-index.txt"
 TOKEN_SESSION_FILE="$SCRATCH/codex-token-session.txt"
+CODEX_HOME_FILE="$SCRATCH/codex-home.txt"
+CODEX_CONFIG_FILE="$SCRATCH/codex-config.toml"
 IMPLEMENT_TMPDIR_FIXTURE="$SCRATCH/implement-tmpdir"
 mkdir -p "$IMPLEMENT_TMPDIR_FIXTURE"
 printf 'mock-codex-session\n' > "$IMPLEMENT_TMPDIR_FIXTURE/session-id"
@@ -231,6 +239,8 @@ OUT=$(cd "$REPO_ROOT" && \
     STUB_SEPARATOR_INDEX_FILE="$SEPARATOR_INDEX_FILE" \
     STUB_MANIFEST_PATH="$MANIFEST" \
     STUB_TOKEN_SESSION_FILE="$TOKEN_SESSION_FILE" \
+    STUB_CODEX_HOME_FILE="$CODEX_HOME_FILE" \
+    STUB_CODEX_CONFIG_FILE="$CODEX_CONFIG_FILE" \
     IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR_FIXTURE" \
     LARCH_TOKEN_SESSION_ID="stale-codex-session" \
     LARCH_CODEX_MODEL="stub-codex-model" \
@@ -257,6 +267,30 @@ else
     fail 4a "launcher did not overwrite stale LARCH_TOKEN_SESSION_ID from IMPLEMENT_TMPDIR/session-id"
 fi
 
+if [[ -s "$CODEX_HOME_FILE" ]] && [[ "$(cat "$CODEX_HOME_FILE")" == /tmp/larch-codex-home-* ]]; then
+    pass
+else
+    fail 4b "launcher did not set CODEX_HOME to a per-invocation /tmp directory"
+fi
+
+CODEX_HOME_VALUE=$(cat "$CODEX_HOME_FILE" 2>/dev/null || true)
+case "$CODEX_HOME_VALUE" in
+    "$IMPLEMENT_TMPDIR_FIXTURE"|"$IMPLEMENT_TMPDIR_FIXTURE"/*)
+        fail 4c "CODEX_HOME must be outside IMPLEMENT_TMPDIR/session tmpdir; got $CODEX_HOME_VALUE"
+        ;;
+    *)
+        pass
+        ;;
+esac
+
+if [[ -s "$CODEX_CONFIG_FILE" ]] \
+   && [[ "$(sed -n '1p' "$CODEX_CONFIG_FILE")" == "instructions = '''" ]] \
+   && grep -Fq "You are the Codex implementer for \`/implement\` Step 2" "$CODEX_CONFIG_FILE"; then
+    pass
+else
+    fail 4d "CODEX_HOME config.toml should carry top-level implementer instructions"
+fi
+
 if [[ -s "$TRANSCRIPT" ]] && grep -Fq 'stub codex stdout' "$TRANSCRIPT"; then
     pass
 else
@@ -273,6 +307,7 @@ if [[ "$(sed -n '1p' "$ARGV_FILE")" == "exec" ]] \
    && grep -Fxq -- 'stub-codex-model' "$ARGV_FILE" \
    && grep -Fxq -- '-c' "$ARGV_FILE" \
    && grep -Fxq -- 'model_reasoning_effort="high"' "$ARGV_FILE" \
+   && grep -Fxq -- "projects.\"$REPO_ROOT\".trust_level=\"trusted\"" "$ARGV_FILE" \
    && grep -Fxq -- '--output-last-message' "$ARGV_FILE"; then
     pass
 else
@@ -286,6 +321,22 @@ if [[ "$SEPARATOR_INDEX" == "$((ARG_INDEX - 1))" ]] \
     pass
 else
     fail 7 "Codex argv should end with -- then the composed prompt as the last positional arg"
+fi
+
+if grep -Fq "You are the Codex implementer for \`/implement\` Step 2" "$PROMPT_FILE"; then
+    fail 7a "dynamic prompt must not contain the static implementer preamble"
+else
+    pass
+fi
+if grep -Fq '## This invocation' "${TRANSCRIPT}.prompt"; then
+    pass
+else
+    fail 7b "dynamic prompt sidecar should contain invocation parameters"
+fi
+if cmp -s "$PROMPT_FILE" "${TRANSCRIPT}.prompt"; then
+    pass
+else
+    fail 7c "dynamic prompt sidecar should match the prompt passed to Codex"
 fi
 
 RESUME_TRANSCRIPT="$SCRATCH/resume-transcript.txt"
@@ -613,6 +664,7 @@ CH_OUT=$(cd "$REPO_ROOT" && \
     STUB_LAST_ARG_FILE="$SCRATCH/cap-hit-codex-last-arg.txt" \
     STUB_SEPARATOR_INDEX_FILE="$SCRATCH/cap-hit-codex-sep.txt" \
     STUB_MANIFEST_PATH="$SCRATCH/cap-hit-codex-manifest.json" \
+    IMPLEMENT_TMPDIR='' \
     LARCH_TOKEN_SESSION_ID="$CH_SESSION" \
     LARCH_TOKEN_BUDGET_CAP_IMPLEMENT=1 \
     LARCH_CODEX_MODEL="stub-codex-model" \

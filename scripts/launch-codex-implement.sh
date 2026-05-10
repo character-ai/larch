@@ -181,12 +181,11 @@ emit_timing_record() {
         >/dev/null 2>&1 || true
 }
 
-# Compose the Codex prompt by concatenating the agent system prompt with
-# inline references to the plan, feature, manifest path, qa-pending path,
-# and (optionally) the answers file. Keeping this composition in shell (not
-# in agent-side prose) lets the launcher's contract document exactly what
-# Codex sees on every invocation without depending on Codex's tool use to
-# read referenced files.
+# Compose the dynamic Codex prompt with inline references to the plan,
+# feature, manifest path, qa-pending path, and (optionally) the answers
+# file. The static implementer preamble is delivered through
+# CODEX_HOME/config.toml as the Codex `instructions` field so it stays out
+# of retry sidecars and can benefit from vendor prefix caching.
 RESUME_BLOCK=""
 if [[ -n "$ANSWERS_FILE" ]]; then
     RESUME_BLOCK="$(cat <<EOF
@@ -206,9 +205,44 @@ EOF
 )"
 fi
 
-PROMPT="$(cat "$AGENT_PROMPT")
+AGENT_BODY=$(awk 'BEGIN{n=0} /^---[[:space:]]*$/{n++; if(n==2){found=1; next}; next} found{print}' "$AGENT_PROMPT")
+if [[ -z "$AGENT_BODY" ]]; then
+    echo "launch-codex-implement.sh: agent prompt body is empty after frontmatter stripping: $AGENT_PROMPT" >&2
+    exit 2
+fi
+if grep -Fq "'''" <<< "$AGENT_BODY"; then
+    echo "launch-codex-implement.sh: agent prompt body contains TOML triple-single-quote delimiter" >&2
+    exit 2
+fi
 
-## This invocation's parameters
+CODEX_HOME_DIR=$(mktemp -d /tmp/larch-codex-home-XXXXXX)
+PROJECT_KEY=${PWD//\\/\\\\}
+PROJECT_KEY=${PROJECT_KEY//\"/\\\"}
+TRUST_CONFIG_ARG="projects.\"$PROJECT_KEY\".trust_level=\"trusted\""
+{
+    printf "instructions = '''\n%s\n'''\n\n" "$AGENT_BODY"
+    if [[ -f ~/.codex/config.toml ]]; then
+        # Strip any existing top-level `instructions` assignment to avoid duplicate
+        # keys — TOML parsers treat duplicate top-level keys as an error or silently
+        # drop the second value, either of which breaks the launch.
+        # Handles: triple-single-quote blocks ('''...'''), triple-double-quote blocks
+        # ("""..."""), and single-line string forms ("..." or '...').
+        awk "
+            /^[[:space:]]*instructions[[:space:]]*=[[:space:]]*'''/ { skip=1; block_end=\"'''\"; next }
+            /^[[:space:]]*instructions[[:space:]]*=[[:space:]]*\"\"\"/ { skip=1; block_end=\"\\\"\\\"\\\"\"; next }
+            skip && index(\$0, block_end) { skip=0; next }
+            skip { next }
+            /^[[:space:]]*instructions[[:space:]]*=/ { next }
+            { print }
+        " ~/.codex/config.toml
+        printf '\n'
+    fi
+} > "$CODEX_HOME_DIR/config.toml"
+if [[ -f ~/.codex/auth.json ]]; then
+    ln -sf "$(cd ~/.codex && pwd)/auth.json" "$CODEX_HOME_DIR/auth.json"
+fi
+
+PROMPT="## This invocation's parameters
 
 - Plan to implement: $PLAN_FILE
 - Original feature description: $FEATURE_FILE
@@ -219,8 +253,11 @@ $RESUME_BLOCK
 
 Begin by inspecting the current branch state, then proceed per the system prompt above."
 
+PROMPT_FILE_SIDECAR="${TRANSCRIPT_PATH}.prompt"
+printf '%s' "$PROMPT" > "$PROMPT_FILE_SIDECAR"
+
 MODEL_ARGS_TMP=$(mktemp)
-trap 'rm -f "$MODEL_ARGS_TMP"' EXIT
+trap 'rm -f "$MODEL_ARGS_TMP"; rm -rf "$CODEX_HOME_DIR"' EXIT
 MODEL_ARGS_ERR=$(mktemp)
 MODEL_ARGS_RC=0
 "$SCRIPT_DIR/agent-model-args.sh" --tool codex --with-effort > "$MODEL_ARGS_TMP" 2> "$MODEL_ARGS_ERR" || MODEL_ARGS_RC=$?
@@ -246,7 +283,7 @@ done < "$MODEL_ARGS_TMP"
 # Claude (the dispatcher's caller) never sees the wrapper's progress lines.
 # The wrapper's own exit code is captured into LAUNCHER_EXIT.
 LAUNCHER_EXIT=0
-"$SCRIPT_DIR/run-external-agent.sh" \
+CODEX_HOME="$CODEX_HOME_DIR" "$SCRIPT_DIR/run-external-agent.sh" \
     --tool codex \
     --output "$TRANSCRIPT_PATH" \
     --timeout "$TIMEOUT" \
@@ -254,6 +291,7 @@ LAUNCHER_EXIT=0
     codex exec --full-auto -C "$PWD" \
     --add-dir "$SESSION_TMPDIR" \
     ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
+    -c "$TRUST_CONFIG_ARG" \
     --output-last-message "$TRANSCRIPT_PATH" \
     -- \
     "$PROMPT" \
