@@ -1158,9 +1158,9 @@ Print: `> **🔶 5: code review — quick mode (rounds 1-3: 5 Cursor specialists
 
 Skip `/review`. Review loop up to **7 rounds** of review + fix, with an early-exit at Step 5.8 when the just-fixed round is classified non-substantial (see 5.8 for the definition). No voting panel — main agent unilaterally accepts/rejects each finding. **Rounds 1-3** launch 5 Cursor specialist reviewers in parallel (same specialists as `/review`) plus a generic Codex reviewer and a Claude generic reviewer (7 reviewers per round when all available); **rounds 4+** use a single generic reviewer per round.
 
-Track `round_num` from 1. Also track `pre_fix_sha=""` (HEAD SHA captured in Step 5.7 before each round's fix edits; empty before round 1) and `prev_had_security_correctness=false` (set in Step 5.5 when any accepted finding has focus area `security` or `correctness`). For each round:
+Track `round_num` from 1. Also track `pre_fix_sha=""` (HEAD SHA captured in Step 5.7 before each round's fix edits; empty before round 1) and `prev_had_security_correctness=false` (set in Step 5.5 when any accepted finding has focus area `security` or `correctness`; reset to `false` at the start of each round's iteration so the override reflects only the immediately preceding round's findings). For each round:
 
-At the top of each round iteration, before gathering context, record a review-skill timing mark:
+At the top of each round iteration, reset `prev_had_security_correctness=false`, then record a review-skill timing mark:
 
 ```bash
 LARCH_TIMING_SKILL=review "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "review Step 5 quick round ${round_num} — review cycle" || true
@@ -1177,10 +1177,10 @@ Parse `DIFF_FILE`, `FILE_LIST_FILE`, `COMMIT_LOG_FILE`.
 **5.2 — Select reviewer(s)**. **Diff-churn cap** (rounds 2+ only): when `round_num > 1` and `pre_fix_sha` is non-empty, compute:
 
 ```bash
-CHURN_LOC=$(git diff --numstat "${pre_fix_sha}" HEAD 2>/dev/null | awk '{add+=$1; del+=$2} END {print add+del+0}')
+CHURN_LOC=$(git diff --numstat "${pre_fix_sha}" 2>/dev/null | awk '{add+=$1; del+=$2} END {print add+del+0}')
 ```
 
-If `CHURN_LOC` < 10 AND `prev_had_security_correctness=false`: print `⚡ 5: code review — round $round_num diff-churn ${CHURN_LOC} LOC (<10, no security/correctness override); using single reviewer` and route directly to 5.3-generic. This bypasses the full panel because a trivial fix warrants a lighter review; the security/correctness override exists because a one-line change to a critical invariant can have large semantic impact. When `prev_had_security_correctness=true` (prior round had a security or correctness finding), skip the cap and proceed with normal panel selection below.
+If `CHURN_LOC` < 10 AND `prev_had_security_correctness=false`: print `⚡ 5: code review — round $round_num diff-churn ${CHURN_LOC} LOC (<10, no security/correctness override); using single reviewer` and route directly to 5.3-generic. Cap-triggered rounds 2-3 skip voting; treat single-reviewer findings as auto-accepted (same semantics as rounds 4+). This bypasses the full panel because a trivial fix warrants a lighter review; the security/correctness override exists because a one-line change to a critical invariant can have large semantic impact. When `prev_had_security_correctness=true` (prior round had a security or correctness finding), skip the cap and proceed with normal panel selection below.
 
 Then branch on `round_num`:
 
@@ -1254,7 +1254,7 @@ Then discard the changes using the sidecar's reported path streams: validate eve
 
 **5.6 — No accepted**: if zero accepted this round AND zero rule-1/2 triaged-inline findings (the latter MUST be folded in Step 5.7 even if no `oos-accepted-main-agent.md` append happened), no fixes applied — loop done. IMMEDIATELY proceed to Step 6 — do NOT write a summary. Triaged-inline findings count as accepted work for this predicate; only skip 5.7 when there is genuinely nothing to edit.
 
-**5.7 — Implement accepted fixes**: before making edits, capture `pre_fix_sha=$(git rev-parse HEAD 2>/dev/null || echo "")` — this SHA anchors the next round's diff-churn measurement at Step 5.2. Then edit files:
+**5.7 — Implement accepted fixes**: before making edits, capture `pre_fix_sha=$(git rev-parse HEAD 2>/dev/null || echo "")` — this SHA anchors the next round's diff-churn measurement at Step 5.2, which compares it against the working tree (not HEAD, since quick-mode review fixes are uncommitted between rounds). Then edit files:
 
 > **Continue after child returns.** On `RELEVANT_CHECKS_OK=true`, execute Step 5.8's re-review gate next — the next user-facing output is one of `✅ 5: code review — round $round_num findings were not substantial; review converged`, `⏳ 5: code review — round $round_num using <Cursor|Codex|Claude>`, or the Step 6 checks (2) breadcrumb. On `STATUS=fail`, first check for `FAILURE_REASON` (structural — e.g. `tmpdir-validation`, `site-validation`, `repo-root-unresolved`, `missing-check-script`, `redaction-failed`; act on the reason, no log file is produced); otherwise read `REDACTED_LOG_FILE` (checks failure — NOT raw `LOG_FILE`), diagnose + fix, and re-invoke the helper until clean BEFORE Step 5.8 — the re-invoke loop is in-Step-5.7, not a halt. In either case, do NOT end the turn, summarize, or write a handoff message.
 

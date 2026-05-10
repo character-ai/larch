@@ -246,9 +246,9 @@ External reviewer output collection, validation, and retry are handled by the sh
 
 ### Round-state machine (diff mode)
 
-**In diff mode**, this step repeats until reviewers find no more issues, the just-fixed round is classified non-substantial at Step 3f, or the round cap is hit. Track the current **round number** starting at 1. Also track `pre_fix_sha=""` (HEAD SHA captured before each round's Step 3e fix implementation; empty for round 1) and `prev_had_security_correctness=false` (set when an accepted finding in the current round has focus area `security` or `correctness`).
+**In diff mode**, this step repeats until reviewers find no more issues, the just-fixed round is classified non-substantial at Step 3f, or the round cap is hit. Track the current **round number** starting at 1. Also track `pre_fix_sha=""` (HEAD SHA captured before each round's Step 3e fix implementation; empty for round 1) and `prev_had_security_correctness=false` (set when an accepted finding in the current round has focus area `security` or `correctness`; reset to `false` at the start of each new round so the override reflects only the immediately preceding round's findings).
 
-At the top of each Step 3 round iteration's bash block (before `### 3a — Collect` for round N), invoke:
+At the top of each Step 3 round iteration, reset `prev_had_security_correctness=false` (so only the immediately preceding round's findings affect the next round's cap check), then invoke the bash timing block (before `### 3a — Collect` for round N):
 
 ```bash
 SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=review "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "review Step 3 round ${round_num} — review cycle" || true
@@ -329,7 +329,7 @@ After printing the round summary, IMMEDIATELY continue. **In diff mode**: if 0 f
 
 **SKIPPED in description mode.** Description mode is read-only — proceed directly to Step 4 after Step 3d.
 
-**In diff mode**, before applying fixes, capture `pre_fix_sha=$(git rev-parse HEAD 2>/dev/null || echo "")` — this SHA anchors Step 3f's diff-churn cap measurement for the next round. Then for each **accepted in-scope** finding (`FINDING_*` items only — exclude `OOS_*` items, which are processed separately for issue filing by `/implement`):
+**In diff mode**, before applying fixes, capture `pre_fix_sha=$(git rev-parse HEAD 2>/dev/null || echo "")` — this SHA anchors Step 3f's diff-churn cap, which compares it against the working tree (not HEAD, since review fixes are uncommitted between rounds). Then for each **accepted in-scope** finding (`FINDING_*` items only — exclude `OOS_*` items, which are processed separately for issue filing by `/implement`):
 
 1. Apply the suggested fix by editing the relevant file.
 2. If the fix involves creating new tests, write them.
@@ -360,10 +360,12 @@ If `round_substantial=true`, increment the round number. IMMEDIATELY re-execute 
 **Rounds 2-3 (diff-churn cap check first)**: Before re-launching the full panel, check whether the fix was trivial. When `pre_fix_sha` is non-empty, compute:
 
 ```bash
-CHURN_LOC=$(git diff --numstat "${pre_fix_sha}" HEAD 2>/dev/null | awk '{add+=$1; del+=$2} END {print add+del+0}')
+CHURN_LOC=$(git diff --numstat "${pre_fix_sha}" 2>/dev/null | awk '{add+=$1; del+=$2} END {print add+del+0}')
 ```
 
-If `CHURN_LOC` < 10 AND `prev_had_security_correctness=false`: print `⚡ 3f: re-review — round $round_num diff-churn ${CHURN_LOC} LOC (<10, no security/correctness override); using single reviewer` and launch only a single Cursor generic reviewer (fallback: Codex generic if `codex_available`; else Claude Code Reviewer subagent) instead of the full panel — the same chain as rounds 4-7. The security/correctness override ensures one-line changes to critical invariants still get full panel coverage. Reset `prev_had_security_correctness=false` at the start of each new round.
+(`pre_fix_sha` was captured against the working tree, so the `HEAD`-less form measures uncommitted edits since that snapshot.)
+
+If `CHURN_LOC` < 10 AND `prev_had_security_correctness=false`: print `⚡ 3f: re-review — round $round_num diff-churn ${CHURN_LOC} LOC (<10, no security/correctness override); using single reviewer` and launch only a single Cursor generic reviewer (fallback: Codex generic if `codex_available`; else Claude Code Reviewer subagent) instead of the full panel — the same chain as rounds 4-7. The security/correctness override ensures one-line changes to critical invariants still get full panel coverage.
 
 Otherwise (`CHURN_LOC >= 10` OR `prev_had_security_correctness=true`): Re-launch the full 7-reviewer panel per Step 2's launch procedure. Voting runs per Step 3c.1. The competition notice is included. This ensures multi-round specialist coverage with proper adjudication. If voting accepts 0 findings in any of rounds 1-3, the review loop terminates early.
 
