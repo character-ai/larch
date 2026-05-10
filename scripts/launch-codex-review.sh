@@ -185,11 +185,54 @@ _codex_exit_dispatcher() {
 trap '_rc=$?; _codex_exit_dispatcher "$_rc"' EXIT
 
 if [[ -n "$PROMPT_FILE" ]]; then
-    if ! PROMPT=$({ cat -- "$PROMPT_FILE"; _cat_status=$?; printf X; exit "$_cat_status"; }); then
-        echo "launch-codex-review.sh: failed to read --prompt-file $PROMPT_FILE" >&2
-        exit 1
+    _pf_first_line=$(head -1 -- "$PROMPT_FILE" 2>/dev/null || true)
+    if [[ "$_pf_first_line" == "LARCH_PROMPT_SENTINEL=1" ]]; then
+        # Hash+kind sentinel written by the non-retry (happy) path for --agent-file
+        # launches. Reconstruct the full prompt via render-specialist-prompt.sh and
+        # verify the SHA-256 hash to catch renderer changes between launch and retry.
+        _s_kind="" _s_hash="" _s_agent_file="" _s_mode="" _s_scope="" _s_comp=false _s_diff=""
+        while read -r _s_line; do
+            _s_k="${_s_line%%=*}"
+            _s_v="${_s_line#*=}"
+            case "$_s_k" in
+                KIND)              _s_kind="$_s_v" ;;
+                HASH)              _s_hash="$_s_v" ;;
+                AGENT_FILE)        _s_agent_file="$_s_v" ;;
+                MODE)              _s_mode="$_s_v" ;;
+                SCOPE_FILES)       _s_scope="$_s_v" ;;
+                COMPETITION_NOTICE) [[ "$_s_v" == "true" ]] && _s_comp=true ;;
+                DIFF_FILE)         _s_diff="$_s_v" ;;
+            esac
+        done < "$PROMPT_FILE"
+        if [[ "$_s_kind" != "specialist" || -z "$_s_agent_file" || -z "$_s_mode" ]]; then
+            echo "launch-codex-review.sh: malformed prompt sentinel in $PROMPT_FILE" >&2
+            exit 1
+        fi
+        _s_render_args=(--agent-file "$_s_agent_file" --mode "$_s_mode")
+        [[ -n "$_s_scope" ]] && _s_render_args+=(--scope-files "$_s_scope")
+        [[ "$_s_comp" == "true" ]] && _s_render_args+=(--competition-notice)
+        [[ -n "$_s_diff" ]] && _s_render_args+=(--diff-file "$_s_diff")
+        PROMPT=$("$SCRIPT_DIR/render-specialist-prompt.sh" "${_s_render_args[@]}")
+        _s_reconstructed_hash=""
+        if command -v shasum >/dev/null 2>&1; then
+            _s_reconstructed_hash=$(printf '%s' "$PROMPT" | LC_ALL=C shasum -a 256 | awk '{print $1}')
+        elif command -v sha256sum >/dev/null 2>&1; then
+            _s_reconstructed_hash=$(printf '%s' "$PROMPT" | sha256sum | awk '{print $1}')
+        fi
+        if [[ -n "$_s_reconstructed_hash" && -n "$_s_hash" && "$_s_reconstructed_hash" != "$_s_hash" ]]; then
+            echo "launch-codex-review.sh: prompt reconstruction hash mismatch (sentinel=$_s_hash reconstructed=$_s_reconstructed_hash)" >&2
+            exit 1
+        fi
+        unset _s_kind _s_hash _s_agent_file _s_mode _s_scope _s_comp _s_diff _s_render_args \
+              _s_reconstructed_hash _s_line _s_k _s_v
+    else
+        if ! PROMPT=$({ cat -- "$PROMPT_FILE"; _cat_status=$?; printf X; exit "$_cat_status"; }); then
+            echo "launch-codex-review.sh: failed to read --prompt-file $PROMPT_FILE" >&2
+            exit 1
+        fi
+        PROMPT=${PROMPT%X}
     fi
-    PROMPT=${PROMPT%X}
+    unset _pf_first_line
 fi
 
 if [[ -n "$AGENT_FILE" ]]; then
@@ -234,10 +277,37 @@ OUTPUT_DIR=$(dirname -- "$OUTPUT")
 CANON_OUTPUT_DIR=$(cd "$OUTPUT_DIR" && pwd -P)
 MODEL_ARGS_TMP=$(mktemp)
 PROMPT_FILE_SIDECAR="${OUTPUT}.prompt"
-# Retry-safe: store the user-original (pre-preamble) bytes so
-# collect-agent-results.sh `--prompt-file` replay re-prepends the preamble
-# exactly once. See ORIGINAL_PROMPT comment above.
-printf '%s' "$ORIGINAL_PROMPT" > "$PROMPT_FILE_SIDECAR"
+# Retry-safe: for specialist (--agent-file) launches without free-form
+# --description-text, write a compact hash+kind sentinel instead of the full
+# prompt body to reduce sidecar I/O on the happy path. On retry the launcher
+# reads the sentinel and reconstructs via render-specialist-prompt.sh.
+# For generic (--prompt / --prompt-file) and description-mode paths, write the
+# full prompt verbatim so retry replay always has the text available.
+if [[ -n "$AGENT_FILE" && -z "$DESCRIPTION_TEXT" ]]; then
+    _ps_hash=""
+    if command -v shasum >/dev/null 2>&1; then
+        _ps_hash=$(printf '%s' "$ORIGINAL_PROMPT" | LC_ALL=C shasum -a 256 | awk '{print $1}')
+    elif command -v sha256sum >/dev/null 2>&1; then
+        _ps_hash=$(printf '%s' "$ORIGINAL_PROMPT" | sha256sum | awk '{print $1}')
+    fi
+    if [[ -n "$_ps_hash" ]]; then
+        {
+            printf 'LARCH_PROMPT_SENTINEL=1\n'
+            printf 'KIND=specialist\n'
+            printf 'HASH=%s\n' "$_ps_hash"
+            printf 'AGENT_FILE=%s\n' "$AGENT_FILE"
+            printf 'MODE=%s\n' "$MODE"
+            [[ -n "$SCOPE_FILES" ]] && printf 'SCOPE_FILES=%s\n' "$SCOPE_FILES"
+            [[ "$COMPETITION_NOTICE" == "true" ]] && printf 'COMPETITION_NOTICE=true\n'
+            [[ -n "$DIFF_FILE" ]] && printf 'DIFF_FILE=%s\n' "$DIFF_FILE"
+        } > "$PROMPT_FILE_SIDECAR"
+    else
+        printf '%s' "$ORIGINAL_PROMPT" > "$PROMPT_FILE_SIDECAR"
+    fi
+    unset _ps_hash
+else
+    printf '%s' "$ORIGINAL_PROMPT" > "$PROMPT_FILE_SIDECAR"
+fi
 rm -f "$DIRTY_TREE_SIDECAR" "$UNTRACKED_BASELINE" "${DIRTY_TREE_SIDECAR}.tracked-paths" "${DIRTY_TREE_SIDECAR}.new-untracked-paths"
 "$SCRIPT_DIR/snapshot-untracked.sh" --output "$UNTRACKED_BASELINE" --nul
 MODEL_ARGS_ERR=$(mktemp)
