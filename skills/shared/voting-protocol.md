@@ -57,9 +57,9 @@ When voting is skipped due to insufficient voters, print: `**⚠ Voting skipped 
 - **Voter 3**: Cursor — via `run-external-agent.sh`
 
 **For code review** (`/review` Step 3):
-- **Voter 1**: Claude Code Reviewer subagent — launched as a fresh Agent tool invocation (subagent_type: `larch:code-reviewer`)
-- **Voter 2**: Codex — via `run-external-agent.sh`
-- **Voter 3**: Cursor — via `run-external-agent.sh`
+- **Voter 1**: Codex — via `run-external-agent.sh` (primary; always launched)
+- **Voter 2**: Cursor — via `run-external-agent.sh` (primary; always launched)
+- **Conditional Voter 3 (tie-breaker)**: Claude Code Reviewer subagent — launched as a fresh Agent tool invocation (subagent_type: `larch:code-reviewer`) **only when Voters 1 and 2 split 1Y/1N** on a finding; not launched unconditionally. See `skills/review/references/voting.md` for the full tie-breaker procedure.
 
 All voters vote on **all** findings — no self-voting exclusion. Voters are instructed to evaluate each finding objectively regardless of who proposed it.
 
@@ -97,7 +97,9 @@ You must vote on every item. Do NOT skip any. Do NOT modify files.
 
 ## Launching Voters
 
-Launch all 3 voters **in parallel** (in a single message). When external tools are unavailable, launch Claude replacement voters instead so the total voter count always remains 3. Spawn order: Cursor first (slowest), then Codex, then Claude subagent (fastest).
+**For plan review**: launch all 3 voters **in parallel** (in a single message). When external tools are unavailable, launch Claude replacement voters instead so the total voter count always remains 3. Spawn order: Cursor first (slowest), then Codex, then Claude subagent (fastest).
+
+**For code review**: launch 2 primary voters (Cursor + Codex) in parallel. Claude is a conditional tie-breaker only — do NOT launch Claude unconditionally. See `skills/review/references/voting.md` for the full code review voter launch procedure.
 
 **Cursor voter** (if `cursor_available`):
 

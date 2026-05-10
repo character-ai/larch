@@ -4,7 +4,7 @@ The voting protocol is used by `/design` (plan review) and `/review` (code revie
 
 ## Overview
 
-After reviewers submit findings and findings are deduplicated, a **3-agent voting panel** votes on each finding. Each voter casts one of three votes:
+After reviewers submit findings and findings are deduplicated, a voting panel votes on each finding. `/design` (plan review) uses a 3-voter panel (Claude + Codex + Cursor) unconditionally. `/review` (code review) uses a 2-voter primary panel (Cursor + Codex) and invokes Claude as a conditional tie-breaker only on a 1Y/1N split. Each voter casts one of three votes:
 
 | Vote | Meaning |
 |---|---|
@@ -29,14 +29,14 @@ The number of YES votes required depends on how many voters are available:
 
 ## Voter Panel Composition
 
-When all tools are available, the panel has 3 voters. The Claude voter is the same unified Code Reviewer subagent for both skills:
+The two skills use different panel sizes. All voters vote on all findings — there is no self-voting exclusion.
 
-| Skill | Voter 1 (Claude) | Voter 2 | Voter 3 |
-|---|---|---|---|
-| `/design` (plan review) | Claude Code Reviewer subagent | Codex | Cursor |
-| `/review` (code review) | Claude Code Reviewer subagent | Codex | Cursor |
+| Skill | Primary voters | Conditional voter |
+|---|---|---|
+| `/design` (plan review) | Claude Code Reviewer subagent + Codex + Cursor — all 3 always launched | N/A |
+| `/review` (code review) | Codex + Cursor — always launched in parallel | Claude Code Reviewer subagent — invoked only on a 1Y/1N split between primary voters |
 
-All voters vote on all findings — there is no self-voting exclusion. Voters evaluate each finding on its merits regardless of who proposed it.
+For code review, when Cursor and Codex split 1Y/1N on a finding, Claude is launched immediately as a tie-breaker and the full 3-voter threshold rules apply to the combined result.
 
 ## Ballot Format
 
@@ -69,7 +69,7 @@ FINDING_3: EXONERATE — <one-line reason>
 flowchart TD
     REVIEW[3 reviewers submit findings] --> DEDUP[Deduplicate findings]
     DEDUP --> BALLOT[Format ballot with IDs]
-    BALLOT --> LAUNCH[Launch 3 voters in parallel]
+    BALLOT --> LAUNCH[Launch voters — design: 3 in parallel; review: 2 primary + conditional Claude tie-breaker on 1Y/1N]
     LAUNCH --> COLLECT[Collect votes]
     COLLECT --> TALLY{Tally per finding}
 
