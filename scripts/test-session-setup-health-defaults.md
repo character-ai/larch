@@ -6,12 +6,12 @@
 
 **Background**: `session-setup.sh` originally wrote `CODEX_HEALTHY=${FINAL_CODEX_HEALTHY:-true}` (and the same for Cursor / Gemini). Empty `FINAL_*_HEALTHY` (a future refactor dropping the key from `check-reviewers.sh` probe output, or a passthrough caller-env that omits the key) silently re-masked unhealthy state as `true`, undoing the fail-closed contract from #1317. The fix flips the defaults to `:-false`. This harness pins the new behavior so a future revert to `:-true` is caught immediately.
 
-**Coverage**: four scenarios run via the passthrough caller-env path (`--skip-preflight`, no `--check-reviewers`):
+**Coverage**: four scenarios run via the passthrough caller-env path (`--skip-preflight`, no `--check-reviewers`). Note: `GEMINI_HEALTHY` is always hard-coded `false` by `session-setup.sh` (#1720 Part 1); tests verify this unconditional behavior.
 
-1. Empty caller-env, no `--check-gemini-reviewer`: `CODEX_HEALTHY=false`, `CURSOR_HEALTHY=false`, `GEMINI_HEALTHY` key absent (Gemini guard suppresses emission when neither flag nor explicit value is present).
-2. Empty caller-env with `--check-gemini-reviewer`: all three keys emitted as `false`. This case intentionally exercises the section-6 `.health` write guard (`if [[ "$CHECK_GEMINI_REVIEWER" == "true" || ... ]]`) in isolation — `--check-gemini-reviewer` is documented as "only meaningful with `--check-reviewers`" for the full reviewer probe workflow, but the write guard fires on the flag alone, so passing it without `--check-reviewers` is the correct way to test the guard's empty-`FINAL_GEMINI_HEALTHY` branch via the passthrough path. Do not "fix" by adding `--check-reviewers` — that would invoke the real probe and narrow coverage to whatever the live `check-reviewers.sh` happens to emit.
-3. Explicit caller-env `true` values for all three keys: passes through unchanged (the fail-closed default does not clobber explicit values).
-4. Explicit caller-env `false` values: passes through unchanged.
+1. Empty caller-env: `CODEX_HEALTHY=false`, `CURSOR_HEALTHY=false`, `GEMINI_HEALTHY=false`.
+3. Explicit caller-env `true` for CODEX/CURSOR: passes through unchanged; GEMINI always `false`.
+4. Explicit caller-env `false` for CODEX/CURSOR: passes through unchanged; GEMINI always `false`.
+5. `--check-reviewers` with caller-env `true`: CODEX/CURSOR values propagate correctly.
 
 **Wired into**: `Makefile` `test-harnesses-6` shard (`make test-session-setup-health-defaults`).
 

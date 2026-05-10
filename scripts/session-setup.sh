@@ -26,9 +26,11 @@
 #   --write-session-env <path>  Write full session-env file via write-session-env.sh
 #   --caller-env <path>   Path to KEY=value file with already-discovered values.
 #                          Recognized keys: REPO, REPO_UNAVAILABLE,
-#                          CODEX_HEALTHY, CURSOR_HEALTHY, GEMINI_HEALTHY (passthrough only),
+#                          CODEX_HEALTHY, CURSOR_HEALTHY,
 #                          LARCH_TOKEN_SESSION_ID, LARCH_CLAUDE_SOURCE_FILE,
 #                          LARCH_TIMING_LEDGER.
+#                          GEMINI_HEALTHY is always hard-coded to false; any value
+#                          in the caller-env for that key is silently ignored.
 #                          If a key is present and non-empty, the script skips re-deriving it.
 #                          SESSION_TMPDIR is never inherited — a fresh tmpdir is always created.
 #                          If the file does not exist or is empty, full discovery happens.

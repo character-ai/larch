@@ -32,17 +32,6 @@ assert_health_value() {
     fi
 }
 
-assert_no_key() {
-    local file=$1 key=$2 label=$3
-    if grep -Eq "^${key}=" "$file"; then
-        FAIL=$((FAIL + 1))
-        echo "FAIL: $label ($key was emitted, expected absent)"
-    else
-        PASS=$((PASS + 1))
-        echo "PASS: $label ($key absent)"
-    fi
-}
-
 run_session_setup() {
     local label=$1 caller_env=$2 health=$3
     shift 3
@@ -65,11 +54,10 @@ run_session_setup() {
 }
 
 # ---------------------------------------------------------------------------
-# Test 1 — Empty caller-env, no --check-gemini-reviewer.
+# Test 1 — Empty caller-env.
 # Regression for #1336: empty FINAL_CODEX_HEALTHY / FINAL_CURSOR_HEALTHY MUST
-# default to `false`, not `true`. The Gemini guard at the call site SHOULD
-# omit GEMINI_HEALTHY entirely on this path (CHECK_GEMINI_REVIEWER=false AND
-# FINAL_GEMINI_HEALTHY empty).
+# default to `false`, not `true`. GEMINI_HEALTHY is always hard-coded `false`
+# by session-setup.sh regardless of caller-env (#1720 Part 1).
 # ---------------------------------------------------------------------------
 ENV1="$SANDBOX/env1.txt"
 HEALTH1="$SANDBOX/health1.txt"
@@ -79,46 +67,27 @@ if run_session_setup "empty-caller-env" "$ENV1" "$HEALTH1"; then
         "empty caller-env: CODEX defaults fail-closed"
     assert_health_value "$HEALTH1" "CURSOR_HEALTHY" "false" \
         "empty caller-env: CURSOR defaults fail-closed"
-    assert_no_key "$HEALTH1" "GEMINI_HEALTHY" \
-        "empty caller-env, no --check-gemini: GEMINI key absent"
+    assert_health_value "$HEALTH1" "GEMINI_HEALTHY" "false" \
+        "empty caller-env: GEMINI always false"
 fi
 
 # ---------------------------------------------------------------------------
-# Test 2 — Empty caller-env WITH --check-gemini-reviewer.
-# When the caller asks for Gemini but FINAL_GEMINI_HEALTHY is empty, the key
-# MUST be emitted as `false` (the if-guard fires on CHECK_GEMINI_REVIEWER=true).
-# ---------------------------------------------------------------------------
-ENV2="$SANDBOX/env2.txt"
-HEALTH2="$SANDBOX/health2.txt"
-: > "$ENV2"
-if run_session_setup "check-gemini-empty" "$ENV2" "$HEALTH2" --check-gemini-reviewer; then
-    assert_health_value "$HEALTH2" "CODEX_HEALTHY" "false" \
-        "empty caller-env + --check-gemini: CODEX defaults fail-closed"
-    assert_health_value "$HEALTH2" "CURSOR_HEALTHY" "false" \
-        "empty caller-env + --check-gemini: CURSOR defaults fail-closed"
-    assert_health_value "$HEALTH2" "GEMINI_HEALTHY" "false" \
-        "empty caller-env + --check-gemini: GEMINI defaults fail-closed"
-fi
-
-# ---------------------------------------------------------------------------
-# Test 3 — Sanity: explicit caller-env values pass through unchanged.
-# Confirms the fail-closed default does not clobber explicit `true` health
-# values from the caller's session-env.
+# Test 3 — Sanity: explicit caller-env true values pass through for CODEX/CURSOR.
+# GEMINI_HEALTHY is always false regardless of caller-env (#1720 Part 1).
 # ---------------------------------------------------------------------------
 ENV3="$SANDBOX/env3.txt"
 HEALTH3="$SANDBOX/health3.txt"
 cat > "$ENV3" <<'EOF'
 CODEX_HEALTHY=true
 CURSOR_HEALTHY=true
-GEMINI_HEALTHY=true
 EOF
 if run_session_setup "explicit-true" "$ENV3" "$HEALTH3"; then
     assert_health_value "$HEALTH3" "CODEX_HEALTHY" "true" \
         "explicit caller-env true: CODEX passes through"
     assert_health_value "$HEALTH3" "CURSOR_HEALTHY" "true" \
         "explicit caller-env true: CURSOR passes through"
-    assert_health_value "$HEALTH3" "GEMINI_HEALTHY" "true" \
-        "explicit caller-env true: GEMINI passes through"
+    assert_health_value "$HEALTH3" "GEMINI_HEALTHY" "false" \
+        "explicit caller-env: GEMINI always false regardless"
 fi
 
 # ---------------------------------------------------------------------------
@@ -129,7 +98,6 @@ HEALTH4="$SANDBOX/health4.txt"
 cat > "$ENV4" <<'EOF'
 CODEX_HEALTHY=false
 CURSOR_HEALTHY=false
-GEMINI_HEALTHY=false
 EOF
 if run_session_setup "explicit-false" "$ENV4" "$HEALTH4"; then
     assert_health_value "$HEALTH4" "CODEX_HEALTHY" "false" \
@@ -137,7 +105,7 @@ if run_session_setup "explicit-false" "$ENV4" "$HEALTH4"; then
     assert_health_value "$HEALTH4" "CURSOR_HEALTHY" "false" \
         "explicit caller-env false: CURSOR passes through"
     assert_health_value "$HEALTH4" "GEMINI_HEALTHY" "false" \
-        "explicit caller-env false: GEMINI passes through"
+        "explicit caller-env false: GEMINI always false"
 fi
 
 # ---------------------------------------------------------------------------
