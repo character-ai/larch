@@ -2,6 +2,8 @@
 
 **Consumer**: `/design` Step 3 when `quick_mode=true`. Replaces `plan-review.md` (~17 KB) to save context on quick-mode runs.
 
+**Contract**: Claude-only inline plan review for quick-mode `/design` Step 3. Produces the same four artifact files as normal mode (`voting-tally.md`, `accepted-plan-findings.md`, `rejected-findings.md`, `oos.md`) without external reviewers or a voting panel. OOS security routing uses the same detection rules as `plan-review.md`.
+
 **When to load**: only when `quick_mode=true`. When `quick_mode=false`, load `plan-review.md` instead.
 
 ## Procedure
