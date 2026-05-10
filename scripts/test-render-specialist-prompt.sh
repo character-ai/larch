@@ -192,9 +192,9 @@ diff --git a/scripts/test-render-specialist-prompt.sh b/scripts/test-render-spec
 +new
 EOF_TESTS_DIFF
 cat > "$GENERATED_DIFF" <<'EOF_GENERATED_DIFF'
-diff --git a/docs/topology.md b/docs/topology.md
---- a/docs/topology.md
-+++ b/docs/topology.md
+diff --git a/agents/code-reviewer.md b/agents/code-reviewer.md
+--- a/agents/code-reviewer.md
++++ b/agents/code-reviewer.md
 @@ -1 +1 @@
 -old
 +new

@@ -48,8 +48,13 @@ classify_path() {
 
   base="$(basename "$path")"
   # Test classification: restrict to code/script/data files, not .md siblings.
+  # Directory patterns carry explicit extension lists to avoid classifying
+  # prose files under tests/ directories as test-only.
   case "$path" in
-    scripts/test-*.sh|scripts/test-*.py|skills/*/scripts/test-*.sh|*/tests/*|*/test/*)
+    scripts/test-*.sh|scripts/test-*.py|\
+skills/*/scripts/test-*.sh|\
+*/tests/*.sh|*/tests/*.py|*/tests/*.go|*/tests/*.bats|\
+*/test/*.sh|*/test/*.py|*/test/*.go|*/test/*.bats)
       printf 'test-only\n'
       return
       ;;
