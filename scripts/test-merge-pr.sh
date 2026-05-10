@@ -229,8 +229,8 @@ assert_line_order() {
 
     local first_line
     local second_line
-    first_line="$(grep -Fxn "$first" "$TMPDIR_BASE/$case_name/$log_name" | head -1 | cut -d: -f1)"
-    second_line="$(grep -Fxn "$second" "$TMPDIR_BASE/$case_name/$log_name" | head -1 | cut -d: -f1)"
+    first_line="$(grep -m 1 -Fxn "$first" "$TMPDIR_BASE/$case_name/$log_name" | cut -d: -f1)"
+    second_line="$(grep -m 1 -Fxn "$second" "$TMPDIR_BASE/$case_name/$log_name" | cut -d: -f1)"
 
     if [[ -n "$first_line" && -n "$second_line" && "$first_line" -lt "$second_line" ]]; then
         ok "$label"

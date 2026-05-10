@@ -114,6 +114,8 @@ jobs:
         run: npm ci
       - name: Lint Mermaid fences (changed only)
         run: scripts/lint-mermaid-fences.sh --changed-only
+      - name: Pipe SIGPIPE safety lint
+        run: bash scripts/test-pipe-sigpipe-safety.sh
 
   # Dedicated shellcheck job — runs in parallel with `lint`. During Phase 1
   # of the rollout, `shellcheck` ALSO runs inside `lint` so coverage is

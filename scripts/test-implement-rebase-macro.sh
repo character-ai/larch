@@ -34,7 +34,7 @@ macro_header_count=$(grep -c '^## Rebase Checkpoint Macro$' "$SKILL_MD" || true)
 [[ "$macro_header_count" == "1" ]] \
   || fail "(A) expected exactly one '## Rebase Checkpoint Macro' header, found $macro_header_count"
 
-macro_header_line=$(grep -n '^## Rebase Checkpoint Macro$' "$SKILL_MD" | head -1 | cut -d: -f1)
+macro_header_line=$(grep -m 1 -n '^## Rebase Checkpoint Macro$' "$SKILL_MD" | cut -d: -f1)
 
 # ---------------------------------------------------------------------------
 # (F) Placement: macro header between ### Verbosity Control and ## Step 0.

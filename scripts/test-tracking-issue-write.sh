@@ -837,7 +837,8 @@ else
     echo "  FAIL: (i) $invariant_out" >&2
 fi
 _cp_content=$(grep -E '^COLLAPSE_PRIORITY=\(' "$WRITE" || true)
-if bash -c "source '$REPO_ROOT/scripts/anchor-section-markers.sh'; printf '%s\n' \"\${SECTION_MARKERS[@]}\"" | grep -qxF 'timing-report' \
+_sm_content=$(bash -c "source '$REPO_ROOT/scripts/anchor-section-markers.sh'; printf '%s\n' \"\${SECTION_MARKERS[@]}\"")
+if printf '%s\n' "$_sm_content" | grep -qxF 'timing-report' \
     && [[ "$_cp_content" == *"timing-report"* ]]; then
     PASS=$((PASS + 1))
     echo "  ok: (i2) timing-report present in SECTION_MARKERS and COLLAPSE_PRIORITY"
@@ -846,7 +847,7 @@ else
     FAILED_TESTS+=("(i2) timing-report missing from SECTION_MARKERS or COLLAPSE_PRIORITY")
     echo "  FAIL: (i2) timing-report missing from SECTION_MARKERS or COLLAPSE_PRIORITY" >&2
 fi
-if bash -c "source '$REPO_ROOT/scripts/anchor-section-markers.sh'; printf '%s\n' \"\${SECTION_MARKERS[@]}\"" | grep -qxF 'token-report' \
+if printf '%s\n' "$_sm_content" | grep -qxF 'token-report' \
     && [[ "$_cp_content" == *"token-report"* ]]; then
     PASS=$((PASS + 1))
     echo "  ok: (i3) token-report present in SECTION_MARKERS and COLLAPSE_PRIORITY"
