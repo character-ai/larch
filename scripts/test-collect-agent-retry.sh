@@ -771,7 +771,7 @@ HEALTH_CORRUPT_RISK="$TMPROOT/case-corrupt-risk.health"
 WORKDIR_CORRUPT_RISK="$TMPROOT/workdir-corrupt-risk"
 mkdir -p "$WORKDIR_CORRUPT_RISK"
 prepare_outer_candidate "$OUT_CORRUPT_RISK"
-write_outer_meta "$OUT_CORRUPT_RISK" "$REPO_ROOT/scripts/launch-cursor-review.sh" \
+write_outer_meta "$OUT_CORRUPT_RISK" "$REPO_ROOT/scripts/launch-review.sh" \
     "${OUT_CORRUPT_RISK}.prompt" "$WORKDIR_CORRUPT_RISK" 'OUTER_LAUNCHER_RISK=medium'
 export CURSOR_STUB_RESULT="POST-PROCESSED OK"
 RESULT_CORRUPT_RISK=$(PATH="$CURSOR_STUB_BIN:$PATH" run_collector bash "$OUT_CORRUPT_RISK" "$HEALTH_CORRUPT_RISK")
