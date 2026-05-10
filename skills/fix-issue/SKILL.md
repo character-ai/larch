@@ -189,7 +189,7 @@ The triage-classification reference loaded at Step 3 (digest or full `triage-cla
 
 Set `INTENT` (and `COMPLEXITY` when `INTENT=PR`) per those rules using the issue details and Step 3's codebase exploration.
 
-When `INTENT=PR`: print `✅ 4: classify — INTENT=**$INTENT** COMPLEXITY=**$COMPLEXITY** (<elapsed>)` — or `COMPLEXITY=**$COMPLEXITY** (forced by --hard)` when `hard_mode=true`. When `INTENT=NON_PR`: print `✅ 4: classify — INTENT=**$INTENT** (<elapsed>)`. The `**...**` bold around both `$INTENT` and `$COMPLEXITY` (when printed) is required — it makes the classification values visually prominent in the Claude Code transcript.
+When `INTENT=PR` and `hard_mode=false`: print `✅ 4: classify — INTENT=**$INTENT** COMPLEXITY=**$COMPLEXITY** (<elapsed>)`. When `INTENT=PR` and `hard_mode=true`: print `✅ 4: classify — INTENT=**$INTENT** COMPLEXITY=**$COMPLEXITY** (forced by --hard) (<elapsed>)`. When `INTENT=NON_PR`: print `✅ 4: classify — INTENT=**$INTENT** (<elapsed>)`. The `**...**` bold around both `$INTENT` and `$COMPLEXITY` (when printed) is required — it makes the classification values visually prominent in the Claude Code transcript.
 
 ## Step 5 — Execute
 
