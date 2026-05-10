@@ -10,6 +10,7 @@ Reference for every slash command shipped by the larch plugin. Each section belo
 - [`/fix-issue`](#fix-issue)
 - [`/implement`](#implement)
 - [`/issue`](#issue)
+- [`/report-tokens`](#report-tokens)
 - [`/relevant-checks`](#relevant-checks)
 - [`/research`](#research)
 - [`/review`](#review)
@@ -93,6 +94,14 @@ Full end-to-end feature workflow — design, implement, PR. `--design-only` publ
 Create one or more GitHub issues with LLM-based semantic duplicate detection. Supports single mode (free-form description) and batch mode (`--input-file`). 2-phase dedup against open + recently-closed issues (default 90-day window). `--no-dedup` skips the entire dedup + dependency analysis pipeline and creates all items directly — useful for archival issues (e.g., `/research` reports) where each run produces genuinely different content. `/implement` Step 9a.1 calls this skill in batch mode to file OOS issues. `--go` posts a final `GO` comment on each newly-created issue so it becomes eligible for `/fix-issue` automation; works in both single and batch modes (duplicates, failed creates, and dry-run items never receive a GO comment). In single mode, if the sole item resolves to a duplicate, `--go` errors out; in batch mode, per-item duplicates are simply skipped for the GO comment.
 
 **Default-on inter-issue blocker-dependency analysis** (issue #546): unless `--no-dedup` is set, every invocation analyzes the new item(s) against existing OPEN issues and applies hard GitHub-native blocker dependencies via the Issue Dependencies REST API on detected pairs (merge-conflict risk or "must land first"). Hard-fail with retries (3 tries, 10s/30s sleeps); on retry exhaustion the failed item is rolled back (orphan close) — when multiple items are processed, unrelated items continue — and the run exits non-zero if any item failed, yielding a clean "create-then-close" recovery rather than a dangling issue with missing dependency wiring.
+
+## `/report-tokens`
+
+**Arguments**: *(none)*
+
+**Source**: [`skills/report-tokens/SKILL.md`](../skills/report-tokens/SKILL.md)
+
+Analyze structured token reports across closed GitHub issues in the current larch repository. The skill searches closed issues whose comments contain `token-report-begin`, fetches their bodies and comments via `gh`, writes a raw JSON cache under a temp directory, parses Claude/Codex/Cursor grand-total rows, estimates per-issue costs, classifies issues from `**Workflow path**`, generates SIMPLE and HARD cost-over-time PNGs, and prints a written analysis with top SIMPLE costs, HARD phase breakdown, cache-read dominance, and concrete cost-reduction suggestions. Dollar values are observability estimates, not billing truth; rates are printed and can be overridden with environment variables.
 
 ## `/relevant-checks`
 
