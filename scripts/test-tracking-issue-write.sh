@@ -802,7 +802,7 @@ invariant_out=$(bash -c "
     set -euo pipefail
     source '$REPO_ROOT/scripts/anchor-section-markers.sh'
     # COLLAPSE_PRIORITY lives inline in tracking-issue-write.sh; grep it out.
-    cp_line=\$(grep -E '^COLLAPSE_PRIORITY=\\(' '$WRITE' | head -n 1)
+    cp_line=\$(grep -m 1 -E '^COLLAPSE_PRIORITY=\\(' '$WRITE')
     if [ -z \"\$cp_line\" ]; then
         echo 'ERROR=COLLAPSE_PRIORITY= declaration not found in tracking-issue-write.sh'
         exit 1
@@ -836,8 +836,9 @@ else
     FAILED_TESTS+=("(i) SECTION_MARKERS ⊆ COLLAPSE_PRIORITY invariant")
     echo "  FAIL: (i) $invariant_out" >&2
 fi
+_cp_content=$(grep -E '^COLLAPSE_PRIORITY=\(' "$WRITE" || true)
 if bash -c "source '$REPO_ROOT/scripts/anchor-section-markers.sh'; printf '%s\n' \"\${SECTION_MARKERS[@]}\"" | grep -qxF 'timing-report' \
-    && grep -E '^COLLAPSE_PRIORITY=\(' "$WRITE" | grep -qF 'timing-report'; then
+    && [[ "$_cp_content" == *"timing-report"* ]]; then
     PASS=$((PASS + 1))
     echo "  ok: (i2) timing-report present in SECTION_MARKERS and COLLAPSE_PRIORITY"
 else
@@ -846,7 +847,7 @@ else
     echo "  FAIL: (i2) timing-report missing from SECTION_MARKERS or COLLAPSE_PRIORITY" >&2
 fi
 if bash -c "source '$REPO_ROOT/scripts/anchor-section-markers.sh'; printf '%s\n' \"\${SECTION_MARKERS[@]}\"" | grep -qxF 'token-report' \
-    && grep -E '^COLLAPSE_PRIORITY=\(' "$WRITE" | grep -qF 'token-report'; then
+    && [[ "$_cp_content" == *"token-report"* ]]; then
     PASS=$((PASS + 1))
     echo "  ok: (i3) token-report present in SECTION_MARKERS and COLLAPSE_PRIORITY"
 else

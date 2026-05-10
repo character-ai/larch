@@ -121,7 +121,7 @@ else
             ok "case 2: empty VAL_ARGS under /bin/bash 3.x, STATUS=OK, clean stderr"
         fi
     else
-        ACTUAL_STATUS="$(echo "$OUT2" | grep '^STATUS=' | head -1)"
+        ACTUAL_STATUS="$(grep -m 1 '^STATUS=' <<< "$OUT2")"
         if grep -q 'unbound variable' "$TMPROOT/case2.stderr"; then
             fail "case 2: bash 3.2 unbound-variable hazard fired — issue #511 regressed (got: $ACTUAL_STATUS)"
         else
@@ -146,7 +146,7 @@ else
     if echo "$OUT3a" | grep -q '^STATUS=OK$'; then
         ok "case 3 positive: NO_ISSUES_FOUND fixture under --validation-mode → STATUS=OK"
     else
-        ACTUAL_STATUS_A="$(echo "$OUT3a" | grep '^STATUS=' | head -1)"
+        ACTUAL_STATUS_A="$(grep -m 1 '^STATUS=' <<< "$OUT3a")"
         fail "case 3 positive: NO_ISSUES_FOUND under --validation-mode did not return OK (got: $ACTUAL_STATUS_A) — flag forwarding broken"
     fi
 
@@ -165,7 +165,7 @@ else
             ok "case 3 negative: NO_ISSUES_FOUND without --validation-mode → STATUS=NOT_SUBSTANTIVE (200-word floor)"
         fi
     else
-        ACTUAL_STATUS_B="$(echo "$OUT3b" | grep '^STATUS=' | head -1)"
+        ACTUAL_STATUS_B="$(grep -m 1 '^STATUS=' <<< "$OUT3b")"
         fail "case 3 negative: same fixture without --validation-mode did not reject (got: $ACTUAL_STATUS_B) — flag is not actually changing behavior"
     fi
 fi

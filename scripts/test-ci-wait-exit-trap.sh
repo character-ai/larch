@@ -202,7 +202,7 @@ EXPECTED_KEYS=("ACTION=" "CI_STATUS=" "BEHIND_COUNT=" "FAILED_RUN_ID=" "BAIL_REA
 ALL_KEYS_PRESENT=true
 LAST_LINE_NUM=0
 for key in "${EXPECTED_KEYS[@]}"; do
-    LINE_NUM="$(echo "$B_STDOUT" | grep -n -F "$key" | head -1 | cut -d: -f1)"
+    LINE_NUM="$(grep -m 1 -n -F "$key" <<< "$B_STDOUT" | cut -d: -f1)"
     if [ -z "$LINE_NUM" ]; then
         ALL_KEYS_PRESENT=false
         fail "B: expected stdout key '$key' not found"
