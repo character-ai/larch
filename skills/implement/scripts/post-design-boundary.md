@@ -6,6 +6,7 @@ Inputs:
 - `--implement-tmpdir <path>` is required. It must be an absolute path to an existing directory and must not contain ASCII control characters.
 - `--session-env <path>` is optional. Empty means no health propagation. Non-empty values are trusted caller-controlled paths from `/implement`'s own session machinery; the script still rejects non-absolute paths and ASCII control characters.
 - `--design-only true|false` is optional and defaults to `false`.
+- `--hook-mode true|false` is optional and defaults to `false`. When `true`, the halt-protection sentinel (`.boundary-gate-passed`) is NOT written and `POST_DESIGN_BOUNDARY_HOOK_INJECTED=true` is emitted instead of `POST_DESIGN_BOUNDARY_OK=true`. Used exclusively by `hook-post-design.sh` so that the Stop hook remains armed (sentinel absent) until the orchestrator's mandatory Bash wrapper call runs. See "Halt-Protection Sentinel" below.
 
 Logical failures are fail-closed envelopes, not process failures: the script exits 0 with `MANIFEST_FAILED=true` and `ERROR=<token>`. `invalid-tmpdir`, `invalid-session-env`, manifest-reader failures, `manifest-reader-no-status`, persistent branch-capture failure, and `boundary-gate-sentinel-write-failed` all emit ONLY the failure envelope on stdout — no `MANIFEST_OK=true` line, no `📥` reader breadcrumb, no `POST_DESIGN_BOUNDARY_OK=true`, and no `➡️` continuation line. The reader's success block (if produced) is buffered until every hard gate passes, so a late branch-capture or sentinel-write failure cannot leave a contradictory dual envelope on stdout. Unexpected internal errors are caught by the `ERR` trap and reported as `ERROR=internal-error`, matching the reader's contract.
 
@@ -21,15 +22,19 @@ Branch capture uses `scripts/git-current-branch.sh`, retries once on failure, an
 
 ## Halt-Protection Sentinel
 
-On the success path, after branch capture and before emitting the buffered success envelope, the wrapper writes `$IMPLEMENT_TMPDIR/.boundary-gate-passed`. This sentinel is load-bearing for `hook-stop-fail-close.sh`: its presence tells the Stop hook that `/implement` crossed the post-/design boundary and a later session stop is legitimate. Failure to write the sentinel emits `MANIFEST_FAILED=true ERROR=boundary-gate-sentinel-write-failed` and suppresses all success markers, because a success envelope without the sentinel would leave the Stop hook unable to distinguish success from a mid-Step-1 halt.
+The Stop hook (`hook-stop-fail-close.sh`) blocks a session stop when `manifest.env` is present and `.boundary-gate-passed` is absent. This window covers the period between `/design` returning and the orchestrator successfully running its mandatory Bash wrapper call.
 
-`NEXT_ACTION` is audit-only. The orchestrator must not use it as a parsing gate; the load-bearing continuation signal is the final `➡️` line. The default variant is:
+**Normal mode** (orchestrator-driven, `--hook-mode false`): after branch capture and before emitting the buffered success envelope, the wrapper writes `$IMPLEMENT_TMPDIR/.boundary-gate-passed`. This signals the Stop hook that the boundary was crossed and a later session stop is legitimate. Failure to write the sentinel emits `MANIFEST_FAILED=true ERROR=boundary-gate-sentinel-write-failed` and suppresses all success markers.
+
+**Hook mode** (`--hook-mode true`): the sentinel is NOT written. The Stop hook therefore remains armed after the PostToolUse hook fires. If the orchestrator ignores the injected `➡️` directive and halts, the Stop hook detects the absent sentinel and blocks the stop, giving the orchestrator one more chance to run the Bash wrapper. The hook emits `POST_DESIGN_BOUNDARY_HOOK_INJECTED=true` (not `POST_DESIGN_BOUNDARY_OK=true`) to prevent the orchestrator from thinking the boundary was already passed without running the wrapper. Only `hook-post-design.sh` passes `--hook-mode true`; the orchestrator's own Bash call always uses the default `--hook-mode false`.
+
+`NEXT_ACTION` is audit-only. The orchestrator must not use it as a parsing gate; the load-bearing continuation signal is the final `➡️` line. The default (non-hook-mode) variants are:
 
 `➡️ 1: design plan — boundary gate passed; NEXT REQUIRED: write anchor-section fragments → Step 1.r rebase → Step 2 entry`
 
-The design-only variant is:
-
 `➡️ 1: design plan — boundary gate passed (design-only); NEXT REQUIRED: write plan-goals-test + plan-review-tally anchor fragments → write diagrams anchor fragment → Step 9a.1 OOS pipeline`
+
+Hook-mode variants begin with `➡️ 1: design plan — hook injected boundary context` and instruct the orchestrator to invoke the Bash wrapper immediately.
 
 The design-only wording mirrors `skills/implement/SKILL.md` ordering: `plan-goals-test` and `plan-review-tally` are written first in all modes, then `diagrams` is written only on the design-only branch before Step 9a.1.
 
