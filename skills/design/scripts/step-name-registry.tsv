@@ -1,0 +1,13 @@
+step	name
+0	setup
+1	branch
+1c	questions
+1d	discussion r1
+2a	sketches
+2a.5	dialectic
+2b	full plan
+3	plan review
+3.5	discussion r2
+3b	arch diagram
+4	rejected findings
+5	cleanup

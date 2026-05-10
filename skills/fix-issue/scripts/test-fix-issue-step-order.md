@@ -1,18 +1,18 @@
 # skills/fix-issue/scripts/test-fix-issue-step-order.sh — contract
 
-`skills/fix-issue/scripts/test-fix-issue-step-order.sh` is the regression harness pinning the `/fix-issue` Step 0 = find & lock, Step 1 = setup structure established by the fold-find-and-lock refactor (closes #496). It is offline, hermetic, and runs against the on-disk `skills/fix-issue/SKILL.md` at harness invocation time — typically the commit checked out in CI, but local developer runs see the working tree. No network, no git state change, no mocks. The harness guards against accidental reversion of the fold or stale renumbering of the breadcrumbs. (Throughout this contract, "preamble" means the YAML front matter, the H1 title, and any body text that appears before the first flush-left line matching `^##` followed by a space (the harness uses a strict line-anchored prefix; CommonMark-style indented level-2 ATX is deliberately not matched, since SKILL.md headings are always flush-left) — not just YAML.)
+`skills/fix-issue/scripts/test-fix-issue-step-order.sh` is the regression harness pinning the `/fix-issue` Step 0 = find & lock, Step 1 = setup structure established by the fold-find-and-lock refactor (closes #496). It is offline, hermetic, and runs against the on-disk `skills/fix-issue/SKILL.md` and `skills/fix-issue/scripts/step-name-registry.tsv` at harness invocation time — typically the commit checked out in CI, but local developer runs see the working tree. No network, no git state change, no mocks. The harness guards against accidental reversion of the fold or stale renumbering of the breadcrumbs. (Throughout this contract, "preamble" means the YAML front matter, the H1 title, and any body text that appears before the first flush-left line matching `^##` followed by a space (the harness uses a strict line-anchored prefix; CommonMark-style indented level-2 ATX is deliberately not matched, since SKILL.md headings are always flush-left) — not just YAML.)
 
-Thirteen assertions against `skills/fix-issue/SKILL.md` — ten textual literal pins (1-9, 13) plus three operational ordering pins (10-12) via awk-scoped block extraction:
+Thirteen assertions — ten textual literal pins (1-9, 13) plus three operational ordering pins (10-12) via awk-scoped block extraction. Assertions (1), (2), (8), and (9) target `step-name-registry.tsv`; the remaining assertions target `SKILL.md`.
 
-1. Step Name Registry contains `| 0 | find & lock |`.
-2. Step Name Registry contains `| 1 | setup |`.
+1. `step-name-registry.tsv` contains row with `step=0, name=find & lock` (checked via `awk -F'\t'` exact column match).
+2. `step-name-registry.tsv` contains row with `step=1, name=setup` (same).
 3. Section heading `## Step 0 — Find and Lock` present.
 4. Section heading `## Step 1 — Setup` present.
 5. Anti-pattern #1 contains `treat Step 0 as structural`.
 6. Find & lock success breadcrumb literal `✅ 0: find & lock` present.
 7. Find & lock failure breadcrumb literal `⚠ 0: find & lock` present.
-8. No stale `| 1 | lock |` step-name-registry row remains (narrowed from bare `1: lock` substring to avoid false positives on unrelated text — see #889).
-9. No stale `| 2 | lock |` step-name-registry row remains (same narrowing).
+8. No stale `step=1, name=lock` row in `step-name-registry.tsv` (checked via `awk -F'\t'` exact column match to avoid false positives — see #889).
+9. No stale `step=2, name=lock` row in `step-name-registry.tsv` (same narrowing).
 10. The Step 0 block contains the `find-lock-issue.sh` invocation.
 11. The Step 0 block does NOT contain `session-setup.sh` (operational ordering).
 12. The Step 1 block contains `session-setup.sh --prefix claude-fix-issue --skip-branch-check`.
@@ -24,4 +24,4 @@ The harness uses an accumulator pattern (`fail=1` set on each failure, exit at e
 
 The harness is wired into `make lint` via the `test-fix-issue-step-order` target in `Makefile`. It is added to `agent-lint.toml`'s `exclude` list alongside this sibling contract because agent-lint's dead-script and S030/orphaned-skill-files rules do not follow Makefile-only references.
 
-Edit-in-sync: if the Step Name Registry order changes, the section headings rename, anti-pattern #1 reverts, any find & lock breadcrumb literal moves, the find-lock-issue.sh invocation form changes, the setup-script invocation form changes, or the file-preamble anti-halt phrase `child Bash tool calls into the canonical` is reworded, update both this harness and this contract in the same PR. The block-extraction boundaries are pinned to the exact heading literals `## Step 0 — Find and Lock`, `## Step 1 — Setup`, and `## Step 2` (prefix); a Step 2 heading rename is the most likely silent breakage and is itself caught by assertion (3) / (4) on the start side, but the Step 2 prefix boundary should be re-pinned in the same PR if Step 2's heading changes.
+Edit-in-sync: if the Step Name Registry rows in `step-name-registry.tsv` change (assertions 1, 2, 8, 9), the section headings rename, anti-pattern #1 reverts, any find & lock breadcrumb literal moves, the find-lock-issue.sh invocation form changes, the setup-script invocation form changes, or the file-preamble anti-halt phrase `child Bash tool calls into the canonical` is reworded, update both this harness and this contract in the same PR. The block-extraction boundaries are pinned to the exact heading literals `## Step 0 — Find and Lock`, `## Step 1 — Setup`, and `## Step 2` (prefix); a Step 2 heading rename is the most likely silent breakage and is itself caught by assertion (3) / (4) on the start side, but the Step 2 prefix boundary should be re-pinned in the same PR if Step 2's heading changes.

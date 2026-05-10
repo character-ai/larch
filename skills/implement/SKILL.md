@@ -69,37 +69,7 @@ Each rule states WHY; per-site reminders reference by anchor name.
 
 Every step MUST print breadcrumb status lines per `${CLAUDE_PLUGIN_ROOT}/skills/shared/progress-reporting.md`. Print a start line (`> **🔶 2: implementation**`) on entry; print a completion line only when it carries informational payload (Step 18 is the only unconditional completion). Long-running steps print intermediate progress (`⏳ 12: CI+merge loop — CI running (2m elapsed), main unchanged`).
 
-Step Name Registry:
-| Step | Short Name |
-|------|------------|
-| 0 | setup |
-| 0.5 | tracking issue |
-| 1 | design plan |
-| 1.m | update main |
-| 1.r | rebase |
-| 2 | implementation |
-| 3 | checks (1) |
-| 4 | commit (impl) |
-| 4.r | rebase |
-| 5 | code review |
-| 6 | checks (2) |
-| 7 | commit (review) |
-| 7.r | rebase |
-| 7a | code flow |
-| 7a.r | rebase |
-| 8 | version bump |
-| 8a | changelog |
-| 8b | rebase |
-| 9a.1 | OOS issues |
-| 9 | create PR |
-| 10 | CI monitor |
-| 11 | execution-issues |
-| 12 | CI+merge loop |
-| 14 | local cleanup |
-| 15 | verify main |
-| 16 | rejected findings |
-| 17 | final report |
-| 18 | cleanup |
+**MANDATORY at session start**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-name-registry.tsv` to get the Step Name Registry (step number → short name mapping for progress breadcrumbs).
 
 ### Verbosity Control
 

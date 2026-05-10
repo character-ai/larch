@@ -47,15 +47,7 @@ Mode is determined by the parser state machine (fail-closed, evaluated in order)
 - Print a **completion line** only when it carries informational payload. Pure "step complete" announcements without payload are not needed.
 - When `STEP_NUM_PREFIX` is non-empty, prepend it to step numbers. When `STEP_PATH_PREFIX` is non-empty, prepend it to breadcrumb paths. **This rule overrides the literal step numbers and names in `Print:` directives and examples throughout this file.** Examples shown below assume standalone mode; when nested, prepend the parent context.
 
-Step Name Registry:
-| Step | Short Name |
-|------|------------|
-| 0 | setup |
-| 1 | gather context |
-| 2 | launch reviewers |
-| 3 | review cycle |
-| 4 | final summary |
-| 5 | cleanup |
+**MANDATORY at session start**: Read `${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/step-name-registry.tsv` to get the Step Name Registry (step number → short name mapping for progress breadcrumbs).
 
 ### Reviewer status table
 

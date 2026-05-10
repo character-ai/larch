@@ -3,22 +3,24 @@
 # /fix-issue Step 0 = find & lock, Step 1 = setup ordering established
 # by the fold-find-and-lock refactor (closes #496).
 #
-# Asserts that skills/fix-issue/SKILL.md carries the load-bearing
-# literals the new step ordering depends on. The skill is prose;
+# Asserts that skills/fix-issue/SKILL.md and the companion
+# skills/fix-issue/scripts/step-name-registry.tsv carry the load-bearing
+# literals the step ordering depends on. The skill is prose;
 # this harness is a CI guard against accidental reversion of the
 # fold or stale renumbering.
 #
-# Thirteen assertions against skills/fix-issue/SKILL.md (ten textual literal
-# pins + three operational ordering pins via awk-scoped block extraction):
-#   (1) Step Name Registry contains "| 0 | find & lock |" row.
-#   (2) Step Name Registry contains "| 1 | setup |" row.
-#   (3) Section heading "## Step 0 — Find and Lock" present.
-#   (4) Section heading "## Step 1 — Setup" present.
+# Thirteen assertions — ten textual literal pins (1-9, 13) plus three
+# operational ordering pins (10-12) via awk-scoped block extraction.
+# Assertions (1), (2), (8), and (9) target the TSV; the rest target SKILL.md:
+#   (1) step-name-registry.tsv has step=0, name="find & lock".
+#   (2) step-name-registry.tsv has step=1, name="setup".
+#   (3) Section heading "## Step 0 — Find and Lock" present in SKILL.md.
+#   (4) Section heading "## Step 1 — Setup" present in SKILL.md.
 #   (5) Anti-pattern #1 contains "treat Step 0 as structural".
 #   (6) Find & lock success breadcrumb literal "✅ 0: find & lock" present.
 #   (7) Find & lock failure breadcrumb literal "⚠ 0: find & lock" present.
-#   (8) No stale "| 1 | lock |" step-name-registry row remains.
-#   (9) No stale "| 2 | lock |" step-name-registry row remains.
+#   (8) No stale step=1, name="lock" row in step-name-registry.tsv.
+#   (9) No stale step=2, name="lock" row in step-name-registry.tsv.
 #  (10) Step 0 (Find and Lock) block contains the find-lock-issue.sh invocation.
 #  (11) Step 0 block does NOT contain `session-setup.sh` (operational ordering).
 #  (12) Step 1 (Setup) block contains the session-setup.sh invocation.
@@ -58,9 +60,15 @@ set -euo pipefail
 
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
 SKILL_MD="$REPO_ROOT/skills/fix-issue/SKILL.md"
+REGISTRY_TSV="$REPO_ROOT/skills/fix-issue/scripts/step-name-registry.tsv"
 
 if [[ ! -f "$SKILL_MD" ]]; then
     echo "FAIL: SKILL.md not found at $SKILL_MD" >&2
+    exit 1
+fi
+
+if [[ ! -f "$REGISTRY_TSV" ]]; then
+    echo "FAIL: step-name-registry.tsv not found at $REGISTRY_TSV" >&2
     exit 1
 fi
 
@@ -84,9 +92,29 @@ assert_not_contains() {
     fi
 }
 
-# (1)-(2) Step Name Registry rows
-assert_contains '| 0 | find & lock |' '(1) Step Name Registry has "0 | find & lock"'
-assert_contains '| 1 | setup |' '(2) Step Name Registry has "1 | setup"'
+assert_tsv_row() {
+    local step="$1"
+    local name="$2"
+    local description="$3"
+    if ! awk -F'\t' -v s="$step" -v n="$name" 'NR>1 && $1==s && $2==n {found=1} END {exit !found}' "$REGISTRY_TSV"; then
+        echo "FAIL: $description (TSV row step=$step name=$name not found)" >&2
+        fail=1
+    fi
+}
+
+assert_tsv_no_row() {
+    local step="$1"
+    local name="$2"
+    local description="$3"
+    if awk -F'\t' -v s="$step" -v n="$name" 'NR>1 && $1==s && $2==n {found=1} END {exit !found}' "$REGISTRY_TSV"; then
+        echo "FAIL: $description (TSV row step=$step name=$name unexpectedly found)" >&2
+        fail=1
+    fi
+}
+
+# (1)-(2) Step Name Registry rows — now in TSV, not inline in SKILL.md
+assert_tsv_row '0' 'find & lock' '(1) step-name-registry.tsv has "0 -> find & lock"'
+assert_tsv_row '1' 'setup' '(2) step-name-registry.tsv has "1 -> setup"'
 
 # (3)-(4) Section headings
 assert_contains '## Step 0 — Find and Lock' '(3) section "Step 0 — Find and Lock" present'
@@ -99,9 +127,9 @@ assert_contains 'treat Step 0 as structural' '(5) anti-pattern #1 says "treat St
 assert_contains '✅ 0: find & lock' '(6) find & lock success breadcrumb uses "0: find & lock"'
 assert_contains '⚠ 0: find & lock' '(7) find & lock failure breadcrumb uses "0: find & lock"'
 
-# (8)-(9) No stale "lock" step-name-registry rows from the pre-fold structure
-assert_not_contains '| 1 | lock |' '(8) no stale "| 1 | lock |" registry row'
-assert_not_contains '| 2 | lock |' '(9) no stale "| 2 | lock |" registry row'
+# (8)-(9) No stale "lock" step-name-registry rows from the pre-fold structure (checked in TSV)
+assert_tsv_no_row '1' 'lock' '(8) no stale "1 -> lock" registry row in TSV'
+assert_tsv_no_row '2' 'lock' '(9) no stale "2 -> lock" registry row in TSV'
 
 # (10)-(12) Operational-ordering assertions on awk-scoped step blocks.
 # These guard against a future edit that keeps the headings/registry/

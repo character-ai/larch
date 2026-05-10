@@ -1,6 +1,6 @@
 # Progress Reporting Contract
 
-Shared formatting rules for step progress output across all larch skills. Each skill maintains its own **Step Name Registry** (mapping step numbers to short names) and references this contract for formatting.
+Shared formatting rules for step progress output across all larch skills. Each skill maintains its own **Step Name Registry** (mapping step numbers to short names) in `skills/<name>/scripts/step-name-registry.tsv` (tab-separated, `step` and `name` columns, header row first). Skills load this file via a MANDATORY directive at session start and reference it for breadcrumb name resolution.
 
 ## Breadcrumb Format
 
