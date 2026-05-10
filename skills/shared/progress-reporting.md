@@ -4,7 +4,7 @@ Shared formatting rules for step progress output across all larch skills. Each s
 
 ## Breadcrumb Format
 
-Every progress line follows:
+By default, progress lines use prose payloads:
 
 ```
 {icon} {step_number}: {breadcrumb_path}[ — {payload}]
@@ -14,6 +14,8 @@ Every progress line follows:
 - **`{step_number}`**: The full numeric step designation including any parent prefix (e.g., `1.2a.5` when `/design` step `2a.5` is called from `/implement` step `1`).
 - **`{breadcrumb_path}`**: Human-readable path from root to current step, segments joined by ` | `. Built from `STEP_PATH_PREFIX | step_short_name` when nested, or just `step_short_name` when standalone.
 - **`{payload}`**: Optional description, outcome, or reason — appended after ` — `.
+
+Exception: `/implement` step-boundary completion and skip lines (`✅`, `⏩`, `⏭️`) use the compact completion format below. `/implement` start lines (`🔶`), warnings (`⚠`), intermediate lines (`⏳`), rebase lines (`🔃`), reviewer status tables (`📊`), and child-skill breadcrumbs keep their normal formats.
 
 ## Icon Taxonomy
 
@@ -52,13 +54,40 @@ Every line that marks the **end** of a step or work item must include elapsed ti
 
 ### Step progress lines
 
-Append the elapsed time in parentheses at the end of the line, using short form. The timer starts when the step logically began (its `🔶` start line, or entry into the step if no `🔶` line exists).
+For prose-format lines, append the elapsed time in parentheses at the end of the line, using short form. The timer starts when the step logically began (its `🔶` start line, or entry into the step if no `🔶` line exists).
 
 ```
 ✅ 2a.5: dialectic — 2 voted, 1 fallback (1m42s)
 ⏩ 6: checks (2) — skipped, no review changes (1s)
-⏭️ 12: CI+merge loop — skipped (--merge not set) (0s)
 ⚠ 7a: code flow — generation failed, proceeding without diagram (12s)
+```
+
+### Compact Completion Format
+
+`/implement` step-boundary completion and skip lines use compact key/value payloads:
+
+```
+<icon> <step_number>: <step_short_name> [key=value ...]
+```
+
+- The icon, step number, and short name prefix are unchanged.
+- The separator ` — ` is omitted.
+- Required fields: `status=<token>` and `elapsed=<time>`.
+- `status=complete` maps to `✅`.
+- `status=skip` maps to `⏩`.
+- `status=bypass` maps to `⏭️`.
+- `status=ready` is reserved for transition lines where a step is ready for the next action but not yet complete.
+- Optional semantic fields include `reason=`, `outcome=`, `bump=`, `from=`, `to=`, `pr=`, `issue=`, `sha=`, `round=`, and `action=`.
+- Values must not contain spaces, quotes, or `=`. Use only alphanumerics, hyphens, dots, slashes, and digits.
+- Use lowercase hyphenated tokens for reasons and outcomes, except version bump class values (`PATCH`, `MINOR`, `MAJOR`) where uppercase is conventional.
+
+Examples:
+
+```
+✅ 8: version bump status=complete bump=PATCH from=20.0.0 to=20.0.1 elapsed=5s
+⏩ 8: version bump status=skip reason=bump-type-none elapsed=1s
+⏭️ 12: CI+merge loop status=bypass reason=merge-not-set elapsed=0s
+✅ 18: cleanup status=complete elapsed=45m
 ```
 
 ### Compact status tables (`📊` lines)

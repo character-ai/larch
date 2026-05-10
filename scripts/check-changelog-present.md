@@ -4,6 +4,6 @@
 
 The script always exits 0 — presence is informational, not an error condition — and prints exactly one stdout line `CHANGELOG_PRESENT=true|false`. The repo root is resolved via `git rev-parse --show-toplevel` with `$PWD` fallback when not inside a git work tree (defensive — Step 8a always runs inside a git repo, but keep the script standalone-callable).
 
-Step 8a parses the printed value and includes it verbatim in the skip-print breadcrumb (`⏩ 8a: changelog — skipped (CHANGELOG_PRESENT=false) (<elapsed>)`) so a false skip is visible in the transcript.
+Step 8a parses the printed value and maps false to the skip-print breadcrumb (`⏩ 8a: changelog status=skip reason=changelog-absent elapsed=<time>`) so a false skip is visible in the transcript.
 
 No regression harness yet — the script is small, dependency-free, and called only from `/implement` Step 8a; manual verification at write time covers both branches. Add a harness if behavior is extended (e.g., supporting alternative changelog filenames or non-root locations).

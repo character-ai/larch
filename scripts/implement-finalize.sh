@@ -424,7 +424,7 @@ write_version_reasoning_fragment() {
             warn_line '**⚠ 8: anchor — version-bump-reasoning refresh failed. Continuing.**'
         fi
     fi
-    printf '✅ 8: anchor — version-bump-reasoning fragment written (%s)\n' "$(elapsed "$start")"
+    printf '✅ 8: anchor status=complete elapsed=%s\n' "$(elapsed "$start")"
 }
 
 changelog_categories_to_markdown() {
@@ -588,14 +588,14 @@ maybe_update_changelog() {
     present=$(kv_value CHANGELOG_PRESENT "$out")
     if [ "$rc" -ne 0 ] || [ "$present" != "true" ]; then
         CHANGELOG_STATUS="skipped-absent"
-        printf '⏭️ 8a: changelog — skipped (CHANGELOG_PRESENT=false) (%s)\n' "$(elapsed "$start")"
+        printf '⏩ 8a: changelog status=skip reason=changelog-absent elapsed=%s\n' "$(elapsed "$start")"
         postbump_report_since_mark
         return 0
     fi
     forked_target=$(read_state FORKED_TARGET)
     if [ "$forked_target" = "true" ]; then
         CHANGELOG_STATUS="skipped-fork"
-        printf '⏭️ 8a: changelog — skipped (--forked dry-run) (%s)\n' "$(elapsed "$start")"
+        printf '⏩ 8a: changelog status=skip reason=forked-dry-run elapsed=%s\n' "$(elapsed "$start")"
         postbump_report_since_mark
         return 0
     fi
@@ -603,7 +603,7 @@ maybe_update_changelog() {
     bump_type=$(read_state BUMP_TYPE)
     if [ "$has_bump" != "true" ] || [ "$bump_type" = "NONE" ]; then
         CHANGELOG_STATUS="skipped-no-bump"
-        printf '⏭️ 8a: changelog — skipped (no bump commit) (%s)\n' "$(elapsed "$start")"
+        printf '⏩ 8a: changelog status=skip reason=no-bump-commit elapsed=%s\n' "$(elapsed "$start")"
         postbump_report_since_mark
         return 0
     fi
@@ -686,7 +686,7 @@ maybe_update_changelog() {
         return 1
     fi
     CHANGELOG_STATUS=updated
-    printf '✅ 8a: changelog — updated for v%s (%s)\n' "$new_version" "$(elapsed "$start")"
+    printf '✅ 8a: changelog status=complete to=v%s elapsed=%s\n' "$new_version" "$(elapsed "$start")"
     rm -rf "$tmpdir"
     postbump_report_since_mark
     return 0
@@ -722,7 +722,7 @@ run_step8b_rebase() {
                 REBASE_STATUS=already-fresh
             else
                 REBASE_STATUS=rebased
-                printf '✅ 8b: rebase — rebased onto latest main (%s)\n' "$(elapsed "$start")"
+                printf '✅ 8b: rebase status=complete outcome=rebased elapsed=%s\n' "$(elapsed "$start")"
             fi
             postbump_report_since_mark
             return 0
@@ -776,7 +776,7 @@ run_force_push_gate() {
     if [ "$repo_unavailable" = "true" ]; then
         FORCE_PUSH_STATUS="skipped-repo-unavailable"
         clear_postbump_checkpoint
-        printf '⏭️ 8b: rebase — force-push skipped (repo_unavailable=true) (%s)\n' "$(elapsed "$start")"
+        printf '⏭️ 8b: rebase status=bypass reason=repo-unavailable elapsed=%s\n' "$(elapsed "$start")"
         return 0
     fi
     if ! validate_postbump_state_branch true; then
@@ -804,7 +804,7 @@ run_force_push_gate() {
                 pushed|noop_same_ref)
                     FORCE_PUSH_STATUS=$push_status
                     clear_postbump_checkpoint
-                    printf '✅ 8b: rebase — force-pushed to origin (%s)\n' "$(elapsed "$start")"
+                    printf '✅ 8b: rebase status=complete outcome=force-pushed elapsed=%s\n' "$(elapsed "$start")"
                     return 0
                     ;;
                 *)
@@ -967,10 +967,10 @@ run_postmerge() {
     verify_status=skipped
 
     if [ "$draft" = "true" ]; then
-        printf '⏭️ 14: local cleanup — skipped (--draft set, staying on %s for further iteration) (%s)\n' "$branch" "$(elapsed "$start")"
+        printf '⏭️ 14: local cleanup status=bypass reason=draft-set elapsed=%s\n' "$(elapsed "$start")"
         local_status="skipped-draft"
     elif [ "$merge" != "true" ]; then
-        printf '⏭️ 14: local cleanup — skipped (--merge not set), still on %s (%s)\n' "$branch" "$(elapsed "$start")"
+        printf '⏭️ 14: local cleanup status=bypass reason=merge-not-set elapsed=%s\n' "$(elapsed "$start")"
         local_status="skipped-merge-false"
     elif bail_reason_nonempty; then
         warn_line "$(printf '**⚠ 14: local cleanup — skipped (PR not merged), still on %s (%s)**' "$branch" "$(elapsed "$start")")"
@@ -988,7 +988,7 @@ run_postmerge() {
         branch_deleted=$(kv_value BRANCH_DELETED "$out")
 
         if [ "$rc" -eq 0 ] && [ "$cleanup_success" = "true" ]; then
-            printf '✅ 14: local cleanup — switched to main, deleted %s (%s)\n' "$branch" "$(elapsed "$start")"
+            printf '✅ 14: local cleanup status=complete outcome=branch-deleted elapsed=%s\n' "$(elapsed "$start")"
             local_status=success
         else
             [ -n "$current_branch" ] || current_branch=unknown
@@ -1006,7 +1006,7 @@ run_postmerge() {
         commit_hash=$(kv_value COMMIT_HASH "$out")
         commit_message=$(kv_value COMMIT_MESSAGE "$out")
         if [ "$rc" -eq 0 ] && [ "$verified" = "true" ]; then
-            printf '✅ 15: verify main — at %s "%s" (%s)\n' "$commit_hash" "$commit_message" "$(elapsed "$start")"
+            printf '✅ 15: verify main status=complete sha=%s elapsed=%s\n' "$commit_hash" "$(elapsed "$start")"
             verify_status=verified
         else
             warn_line "$(printf '**⚠ 15: verify main — unexpected HEAD: %s "%s". Expected: "%s" (%s)**' "$commit_hash" "$commit_message" "$expected_title" "$(elapsed "$start")")"
@@ -1328,7 +1328,7 @@ run_teardown() {
         printf '📎 Tracking issue: %s\n' "$issue_url"
     fi
 
-    printf '✅ 18: cleanup — implement complete! (%s)\n' "$(elapsed "$start")"
+    printf '✅ 18: cleanup status=complete elapsed=%s\n' "$(elapsed "$start")"
     echo "RENAME_BRANCH=$rename_branch"
     echo "RENAME_STATUS=$rename_status"
     echo "ISSUE_URL=$issue_url"

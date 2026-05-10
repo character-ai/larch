@@ -1047,7 +1047,7 @@ printf '%s\n' "$step0_section" | grep -Fq 'implement-fork-env.sh --tmpdir "$IMPL
   && fail "(25-fork) Step 0 must NOT pass --tmpdir \"\$IMPLEMENT_TMPDIR\" (Round 1 FINDING_1 — IMPLEMENT_TMPDIR is unset at this point)"
 printf '%s\n' "$step0_section" | grep -Fq 'CALLER_ENV_PATH' \
   || fail "(25-fork) Step 0 fork-mode prose must mention CALLER_ENV_PATH (Round 1 FINDING_1 — capture from helper stdout)"
-grep -Fq 'If `forked_target=true`: print `⏭️ 11: execution-issues — skipped (--forked dry-run, no tracking anchor)' "$SKILL_MD" \
+grep -Fq 'If `forked_target=true`: print `⏭️ 11: execution-issues status=bypass reason=forked-dry-run elapsed=<elapsed>`' "$SKILL_MD" \
   || fail "(25-fork) Step 11 must have an explicit forked_target=true short-circuit"
 grep -Fq 'omit the `Closes #<TRACKING_ISSUE_NUMBER>` line unconditionally' "$SKILL_MD" \
   || fail "(25-fork) Step 9a must unconditionally suppress Closes under fork mode"
