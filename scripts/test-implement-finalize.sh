@@ -466,6 +466,26 @@ OUT=$(run_subject teardown --state-file "$STATE" --implement-tmpdir "$SANDBOX/tm
 assert_contains "RENAME_BRANCH=skipped" "$OUT" "teardown: empty issue skips rename"
 assert_contains "RENAME_STATUS=skipped" "$OUT" "teardown: empty issue skipped status"
 
+# kill_session_background_processes: a process launched with the session tmpdir in its
+# argv (argv[0] = $SANDBOX/tmp/bg-session-process.sh) should be killed during teardown.
+write_state "$STATE" ISSUE_NUMBER=
+BG_SCRIPT="$SANDBOX/tmp/bg-session-process.sh"
+printf '#!/usr/bin/env bash\nwhile true; do sleep 1; done\n' > "$BG_SCRIPT"
+chmod +x "$BG_SCRIPT"
+"$BG_SCRIPT" &
+BG_PID=$!
+OUT=$(run_subject teardown --state-file "$STATE" --implement-tmpdir "$SANDBOX/tmp")
+if ! kill -0 "$BG_PID" 2>/dev/null; then
+    PASS=$((PASS + 1))
+    echo "PASS: teardown: kill_session_background_processes killed stale background process"
+else
+    kill "$BG_PID" 2>/dev/null || true
+    FAIL=$((FAIL + 1))
+    echo "FAIL: teardown: stale background process still running after teardown"
+fi
+assert_contains "killed" "$OUT" "teardown: kill_session_background_processes emits warning"
+assert_contains "FINALIZE_WARNINGS=1" "$OUT" "teardown: kill counts as warning"
+
 write_state "$STATE" STALL_TRACKING=true
 : > "$SANDBOX/rename-argv.txt"
 rm -f "$SANDBOX/gh-issue-view-argv.txt"

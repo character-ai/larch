@@ -1232,6 +1232,30 @@ write_stalled_run_sentinel() {
     return 0
 }
 
+kill_session_background_processes() {
+    [ -n "$IMPLEMENT_TMPDIR" ] || return 0
+    command -v pgrep >/dev/null 2>&1 || return 0
+    local my_pid=$$
+    local pid killed=0 survivors=0 pids_out
+    pids_out=$(pgrep -f "$IMPLEMENT_TMPDIR" 2>/dev/null) || return 0
+    while IFS= read -r pid; do
+        [ -z "$pid" ] && continue
+        [ "$pid" = "$my_pid" ] && continue
+        if kill -TERM "$pid" 2>/dev/null; then killed=$((killed + 1)); fi
+    done <<< "$pids_out"
+    if [ "$killed" -gt 0 ]; then
+        sleep 1
+        while IFS= read -r pid; do
+            [ -z "$pid" ] && continue
+            [ "$pid" = "$my_pid" ] && continue
+            if kill -0 "$pid" 2>/dev/null; then
+                if kill -KILL "$pid" 2>/dev/null; then survivors=$((survivors + 1)); fi
+            fi
+        done <<< "$pids_out"
+        warn_line "$(printf '**⚠ 18: killed %d stale background process(es) from this session (SIGKILL applied to %d survivor(s)).**' "$killed" "$survivors")"
+    fi
+}
+
 run_teardown() {
     local start issue_number repo repo_unavailable stall_tracking done_rename_applied pr_number design_only
     local rename_branch rename_status out rc value issue_url cleanup_rc
@@ -1311,6 +1335,8 @@ run_teardown() {
     if ! touch "$IMPLEMENT_TMPDIR/.run-cleaned-up" 2>/dev/null; then
         warn_line '**⚠ 18: halt-protection sentinel write failed (touch .run-cleaned-up); Stop hook may continue blocking on next session. Continuing.**'
     fi
+
+    kill_session_background_processes
 
     if verify_cleanup_target; then
         set +e
