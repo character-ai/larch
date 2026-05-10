@@ -1,6 +1,6 @@
-# External Reviewer Procedures (Codex + Cursor; Gemini reviewer dormant)
+# External Reviewer Procedures (Codex + Cursor; Gemini probe removed)
 
-Shared mechanical procedures for running Codex and Cursor as external reviewers. The historical Gemini additive reviewer call sites in `/review` and `/implement --quick` have been removed; the launcher (`scripts/launch-gemini-review.sh`), policy file, regression harness, health probe, and `--check-gemini-reviewer` opt-in flag are retained as machinery for future re-enablement, and the `GEMINI_*` keys plumbed below still flow into `/implement --coder=gemini` dispatch and cross-skill `GEMINI_HEALTHY` propagation. The skip-style fallback wording in this file describes what would happen if those reviewer call sites were restored. Gemini is also available as `/implement --coder=gemini` for the implementer slot; that launcher is documented separately from reviewer-panel topology. Each skill provides its own reviewer invocation commands (prompts, output paths, tmpdir variables) — this file covers the common scaffolding.
+Shared mechanical procedures for running Codex and Cursor as external reviewers. The Gemini reviewer call sites and health probe have been removed (#1720 Part 1) — the probe ran with workspace-write access and modified the working tree. The launcher (`scripts/launch-gemini-review.sh`) and `--coder=gemini` implementer dispatch path are retained for future re-enablement with a proper read-only sandbox. `GEMINI_HEALTHY` is always `false`; `session-setup.sh` hard-codes this unconditionally. Each skill provides its own reviewer invocation commands (prompts, output paths, tmpdir variables) — this file covers the common scaffolding.
 
 ## Binary Check and Health Probe (Step 0)
 
@@ -8,19 +8,19 @@ The binary check, health probe, and health status file write are now handled by 
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix <name> [--skip-preflight] [--skip-branch-check] \
-  [--skip-codex-probe] [--skip-cursor-probe] [--skip-gemini-probe] [--write-health <path>]
+  [--skip-codex-probe] [--skip-cursor-probe] [--write-health <path>]
 ```
 
-The `--check-reviewers` flag runs `check-reviewers.sh --probe` internally and emits `CODEX_AVAILABLE`, `CURSOR_AVAILABLE`, `CODEX_HEALTHY`, `CURSOR_HEALTHY` on stdout. `--check-gemini-reviewer` opts into Gemini probing and adds `GEMINI_AVAILABLE` / `GEMINI_HEALTHY`; `/implement` and `/review` continue to pass it because those keys are consumed by `/implement --coder=gemini` dispatch gating and by cross-skill health propagation, even though the Gemini reviewer launcher is not currently invoked. Skills that need neither Gemini implementer dispatch nor cross-skill `GEMINI_HEALTHY` propagation may omit the flag.
+The `--check-reviewers` flag runs `check-reviewers.sh --probe` internally and emits `CODEX_AVAILABLE`, `CURSOR_AVAILABLE`, `CODEX_HEALTHY`, `CURSOR_HEALTHY` on stdout. `GEMINI_HEALTHY=false` and `GEMINI_AVAILABLE=false` are always emitted unconditionally; no `--check-gemini-reviewer` flag is needed or accepted.
 
-**Session-env override**: If `--caller-env` provides a non-empty `CODEX_HEALTHY`, `CURSOR_HEALTHY`, or `GEMINI_HEALTHY` value (either `true` or `false`), the script auto-sets the corresponding `--skip-codex-probe` / `--skip-cursor-probe` / `--skip-gemini-probe` flag internally and propagates the caller value — you do not need to pass these explicitly when using `--caller-env`.
+**Session-env override**: If `--caller-env` provides a non-empty `CODEX_HEALTHY` or `CURSOR_HEALTHY` value (either `true` or `false`), the script auto-sets the corresponding `--skip-codex-probe` / `--skip-cursor-probe` flag internally and propagates the caller value — you do not need to pass these explicitly when using `--caller-env`.
 
 Set mental flags `codex_available` and `cursor_available` based on the output:
 - If `CODEX_AVAILABLE=false`: `codex_available=false`. Print: `**⚠ Codex not available (binary not found). Proceeding without Codex reviewer.**`
 - Else if `CODEX_HEALTHY=false`: `codex_available=false`. Print: `**⚠ Codex installed but not responding (health check failed: <CODEX_PROBE_ERROR>). Using Claude replacement.**` where `<CODEX_PROBE_ERROR>` is the `CODEX_PROBE_ERROR` value from `session-setup.sh` output (if available; omit the parenthetical detail if not present).
 - Else: `codex_available=true`
 - Same logic for Cursor (using `CURSOR_PROBE_ERROR`).
-- For Gemini, set `gemini_available=true` only when `GEMINI_AVAILABLE=true` AND `GEMINI_HEALTHY=true`; absent keys default to false. If Gemini is unhealthy, use the skip-style warning below.
+- For Gemini, `gemini_available` is always `false` — `GEMINI_HEALTHY=false` is hard-coded by `session-setup.sh`. `--coder=gemini` falls back to the main-agent code-edit path via `STATUS=claude_fallback`.
 
 **Note**: `*_AVAILABLE` is a pure install-state signal (binary exists on PATH). `*_HEALTHY` indicates whether the tool actually responded to a trivial prompt within the 60-second probe timeout. Callers must combine both to determine runtime usability.
 
