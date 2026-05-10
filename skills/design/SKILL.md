@@ -637,4 +637,4 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-tmpdir.sh --dir "$DESIGN_TMPDIR"
 - `**⚠ 3b: arch diagram — generation failed, proceeding without diagram (<elapsed>)**`
 
 If `STEP_NUM_PREFIX` is empty (standalone mode): Print: `✅ 5: cleanup — design complete! (<elapsed>)`
-If `STEP_NUM_PREFIX` is non-empty (orchestrated mode): skip this final print — the parent orchestrator handles overall progress.
+If `STEP_NUM_PREFIX` is non-empty (orchestrated mode): skip this final print — the parent orchestrator handles overall progress. Do NOT write any farewell message such as "Design complete", "Returning to the /implement orchestrator", "Handing back control", or any other prose that signals the skill is done — those are halts in disguise that make the Skill tool appear to return a completed response and prompt the parent session to end its turn without invoking the mandatory `post-design-boundary.sh` Bash wrapper.

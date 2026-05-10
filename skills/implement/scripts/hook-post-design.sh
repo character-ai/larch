@@ -56,6 +56,7 @@ if ! "$PLUGIN_ROOT/skills/implement/scripts/post-design-boundary.sh" \
     --implement-tmpdir "$IMPLEMENT_TMPDIR" \
     --session-env "$IMPLEMENT_TMPDIR/session-env.sh" \
     --design-only "$DESIGN_ONLY" \
+    --hook-mode true \
     > "$TMPOUT" 2>/dev/null; then
     exit 0
 fi

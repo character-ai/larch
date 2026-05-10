@@ -305,7 +305,56 @@ case "$LAST_LINE" in
     *) fail "design-only path final line is not the design-only imperative breadcrumb: $LAST_LINE" ;;
 esac
 
-# PostToolUse hook injects byte-identical wrapper stdout, including trailing newline.
+# --hook-mode: sentinel NOT written, HOOK_INJECTED token emitted, ➡️ still present.
+TMP_HM="$TMPROOT/hook-mode"
+GIT_HM="$TMPROOT/git-hook-mode"
+make_manifest "$TMP_HM"
+make_git_repo "$GIT_HM"
+OUT=$(cd "$GIT_HM" && CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash "$WRAPPER" --implement-tmpdir "$TMP_HM" --hook-mode true)
+assert_contains "$OUT" '^MANIFEST_OK=true$' "hook-mode missing MANIFEST_OK=true"
+assert_contains "$OUT" '^BRANCH=boundary-test$' "hook-mode missing BRANCH="
+assert_contains "$OUT" '^POST_DESIGN_BOUNDARY_HOOK_INJECTED=true$' "hook-mode missing hook-injected token"
+assert_not_contains "$OUT" 'POST_DESIGN_BOUNDARY_OK=true' "hook-mode emitted orchestrator success token"
+[[ ! -f "$TMP_HM/.boundary-gate-passed" ]] || fail "hook-mode wrote .boundary-gate-passed sentinel"
+LAST_HM=$(printf '%s\n' "$OUT" | tail -n 1)
+case "$LAST_HM" in
+    "➡️ 1: design plan — hook injected boundary context;"*) ;;
+    *) fail "hook-mode final line is not hook-injected breadcrumb: $LAST_HM" ;;
+esac
+
+# --hook-mode design-only variant.
+TMP_HM_DO="$TMPROOT/hook-mode-do"
+GIT_HM_DO="$TMPROOT/git-hook-mode-do"
+make_manifest "$TMP_HM_DO"
+make_git_repo "$GIT_HM_DO"
+OUT=$(cd "$GIT_HM_DO" && CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash "$WRAPPER" --implement-tmpdir "$TMP_HM_DO" --hook-mode true --design-only true)
+assert_contains "$OUT" '^POST_DESIGN_BOUNDARY_HOOK_INJECTED=true$' "hook-mode design-only missing hook-injected token"
+assert_not_contains "$OUT" 'POST_DESIGN_BOUNDARY_OK=true' "hook-mode design-only emitted orchestrator success token"
+[[ ! -f "$TMP_HM_DO/.boundary-gate-passed" ]] || fail "hook-mode design-only wrote sentinel"
+LAST_HM_DO=$(printf '%s\n' "$OUT" | tail -n 1)
+case "$LAST_HM_DO" in
+    "➡️ 1: design plan — hook injected boundary context (design-only);"*) ;;
+    *) fail "hook-mode design-only final line is not hook-injected breadcrumb: $LAST_HM_DO" ;;
+esac
+
+# Stop hook still blocks after hook-mode (sentinel absent = hook did not write it).
+STOP_CACHE_HM="$TMPROOT/stop-cache-hm"
+STOP_CWD_HM="$TMPROOT/stop-cwd-hm"
+TMP_SHM="$STOP_CACHE_HM/larch/sessions/claude-implement-hook-stop"
+mkdir -p "$STOP_CWD_HM"
+make_manifest "$TMP_SHM"
+printf 'CLONE_PATH=%s\n' "$STOP_CWD_HM" > "$TMP_SHM/.larch-keepalive"
+# Simulate: hook ran (no sentinel), orchestrator halted — Stop hook should block.
+OUT=$(printf '{"cwd":"%s","stop_hook_active":false}' "$STOP_CWD_HM" \
+    | XDG_CACHE_HOME="$STOP_CACHE_HM" bash "$STOP_HOOK")
+assert_contains "$OUT" '"decision":"block"' "Stop hook did not block after hook-mode (sentinel absent)"
+# After orchestrator's Bash wrapper runs (non-hook-mode, writes sentinel), Stop allows.
+touch "$TMP_SHM/.boundary-gate-passed"
+OUT=$(printf '{"cwd":"%s","stop_hook_active":false}' "$STOP_CWD_HM" \
+    | XDG_CACHE_HOME="$STOP_CACHE_HM" bash "$STOP_HOOK")
+assert_empty "$OUT" "Stop hook blocked after orchestrator wrote sentinel"
+
+# PostToolUse hook passes --hook-mode true and injects hook-mode wrapper stdout.
 HOOK_CACHE="$TMPROOT/hook-cache"
 HOOK_CWD="$TMPROOT/hook-cwd"
 TMP12="$HOOK_CACHE/larch/sessions/claude-implement-hook"
@@ -315,14 +364,15 @@ make_manifest "$TMP12"
 make_git_repo "$GIT12"
 printf 'CLONE_PATH=%s\n' "$HOOK_CWD" > "$TMP12/.larch-keepalive"
 printf 'true\n' > "$TMP12/.design-only"
-DIRECT12="$TMPROOT/direct-hook.out"
-DECODED12="$TMPROOT/decoded-hook.out"
 JSON12="$TMPROOT/hook.json"
-(cd "$GIT12" && CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash "$WRAPPER" --implement-tmpdir "$TMP12" --session-env "$TMP12/session-env.sh" --design-only true > "$DIRECT12")
+DECODED12="$TMPROOT/decoded-hook.out"
 printf '{"tool_name":"Skill","tool_input":{"skill":"design"},"cwd":"%s"}' "$HOOK_CWD" \
     | (cd "$GIT12" && XDG_CACHE_HOME="$HOOK_CACHE" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash "$POST_HOOK") > "$JSON12"
 jq -j '.hookSpecificOutput.additionalContext' "$JSON12" > "$DECODED12"
-cmp "$DIRECT12" "$DECODED12" >/dev/null || fail "PostToolUse additionalContext was not byte-identical to wrapper stdout"
+# Hook output must be hook-mode (no sentinel written, HOOK_INJECTED token).
+assert_contains "$(cat "$DECODED12")" '^POST_DESIGN_BOUNDARY_HOOK_INJECTED=true$' "PostToolUse hook did not pass --hook-mode to wrapper"
+assert_not_contains "$(cat "$DECODED12")" 'POST_DESIGN_BOUNDARY_OK=true' "PostToolUse hook emitted orchestrator success token"
+[[ ! -f "$TMP12/.boundary-gate-passed" ]] || fail "PostToolUse hook wrote sentinel via --hook-mode"
 
 # PostToolUse no-op paths.
 OUT=$(printf '{"tool_name":"Skill","tool_input":{"skill":"review"},"cwd":"%s"}' "$HOOK_CWD" \
