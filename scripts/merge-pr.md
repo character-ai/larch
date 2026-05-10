@@ -21,7 +21,7 @@ Emits `MERGE_RESULT=...` and `ERROR=...` on stdout via an EXIT trap. Exits 0 unc
 | `version_already_published` | Same-version race gate found a literal bump commit in `origin/main..HEAD` and `origin/main` already publishes that same `.claude-plugin/plugin.json` version. Caller should bail so the branch can rebase and re-bump. |
 | `admin_failed` | Default-mode `--admin` attempt failed and the plain fallback also failed. Hard error. |
 | `policy_denied` | CI re-verified green + branch fresh (admin-eligible); `--no-admin-fallback` is set, so `--admin` was NOT invoked, and the plain merge attempt failed. Caller should bail to manual reviewer-approval flow. |
-| `error` | Catch-all unexpected failure. Also covers the case where `gh pr view --json mergeStateStatus` returns empty (API/network/`gh` failure) or `UNKNOWN` — the script cannot determine merge state, so it short-circuits with `error` rather than mis-routing to `main_advanced`. |
+| `error` | Catch-all unexpected failure. Also covers the case where `gh pr view --json mergeStateStatus,headRefOid` returns empty (API/network/`gh` failure) or `UNKNOWN` mergeStateStatus — the script cannot determine merge state, so it short-circuits with `error` rather than mis-routing to `main_advanced`. |
 
 ## --no-admin-fallback
 
@@ -42,11 +42,15 @@ Both gates are checked **before** any merge attempt: default-mode `--admin`, def
 
 After CI and merge-state checks pass, the script also runs a same-version bump race gate before any merge attempt:
 
-1. It verifies `git rev-parse HEAD` equals `gh pr view --json headRefOid` for the PR. This precondition ensures the local worktree state being inspected is the PR head GitHub would merge.
+1. It verifies `git rev-parse HEAD` equals the `headRefOid` fetched via the same upfront `gh pr view --json mergeStateStatus,headRefOid` compound call (see "Batched discovery" below). This precondition ensures the local worktree state being inspected is the PR head GitHub would merge.
 2. It refreshes `origin/main` and scans commit subjects in `origin/main..HEAD` for the newest literal `Bump version to X.Y.Z` subject. This branch-range scan catches a bump commit even when a follow-up `Fix CI failure` commit is on top.
 3. If the branch contains a bump commit, the origin-side version check reads `origin/main:.claude-plugin/plugin.json` content, not origin-side commit subjects. Squash-merge titles therefore cannot hide the already-published version.
 4. Every parsed version must satisfy `^[0-9]+\.[0-9]+\.[0-9]+$`. Fetch failure, unreadable or malformed origin `plugin.json`, missing/null version, local/remote OID mismatch, and malformed versions fail closed via `MERGE_RESULT=error`.
 5. If origin publishes the same version as the branch bump, the script emits `MERGE_RESULT=version_already_published` and `ERROR=origin/main HEAD already bumped to X.Y.Z; rebase and re-bump`. If origin publishes a different version and `origin/main` is no longer an ancestor of `HEAD`, the script emits `MERGE_RESULT=main_advanced`.
+
+## Batched discovery
+
+At startup the script issues one compound `gh pr view --json mergeStateStatus,headRefOid` call that populates both `MERGE_STATE` and `PR_HEAD_OID`. This avoids a second API round-trip later for the same-version bump race gate's OID precondition. Both fields are parsed from the JSON result via `jq -r '.<field> // ""'`. Failure handling is unchanged: an empty result (gh error or network failure) still routes through the existing empty/UNKNOWN short-circuit paths.
 
 ## Non-responsibilities
 

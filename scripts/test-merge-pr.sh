@@ -44,16 +44,13 @@ fi
 
 case "$2" in
     view)
-        if [[ "$*" == *"--json headRefOid"* ]]; then
-            printf '%s\n' "${STUB_PR_HEAD_OID:-aaaa1111}"
-            exit 0
-        fi
-        # __EMPTY__ sentinel renders an empty mergeStateStatus line (otherwise
-        # bash's `:-` would treat the empty value as "use default").
+        # Compound call: returns JSON with both mergeStateStatus and headRefOid.
+        # __EMPTY__ sentinel → null mergeStateStatus so jq // "" yields "".
+        HEAD_OID="${STUB_PR_HEAD_OID:-aaaa1111}"
         if [[ "${GH_MERGE_STATE:-CLEAN}" == "__EMPTY__" ]]; then
-            printf ''
+            printf '{"mergeStateStatus":null,"headRefOid":"%s"}\n' "$HEAD_OID"
         else
-            printf '%s\n' "${GH_MERGE_STATE:-CLEAN}"
+            printf '{"mergeStateStatus":"%s","headRefOid":"%s"}\n' "${GH_MERGE_STATE:-CLEAN}" "$HEAD_OID"
         fi
         ;;
     checks)
@@ -247,9 +244,8 @@ run_case "admin_success" \
 assert_stdout_contains "admin_success" "MERGE_RESULT=admin_merged" "A: admin success emits admin_merged"
 assert_command_count "admin_success" "gh.log" "pr merge 123 --repo owner/repo --squash --admin" "1" "A: exactly one --admin merge command"
 assert_command_count "admin_success" "gh.log" "pr merge 123 --repo owner/repo --squash" "0" "A: no plain fallback after admin success"
-assert_line_order "admin_success" "trace.log" "gh pr view 123 --repo owner/repo --json mergeStateStatus -q .mergeStateStatus" "gh pr merge 123 --repo owner/repo --squash --admin" "A: merge state is read before admin merge"
+assert_line_order "admin_success" "trace.log" "gh pr view 123 --repo owner/repo --json mergeStateStatus,headRefOid" "gh pr merge 123 --repo owner/repo --squash --admin" "A: merge state and head OID are read before admin merge (compound call)"
 assert_line_order "admin_success" "trace.log" "gh pr checks 123 --repo owner/repo --json name,state,bucket,link" "gh pr merge 123 --repo owner/repo --squash --admin" "A: checks are read before admin merge"
-assert_line_order "admin_success" "trace.log" "gh pr view 123 --repo owner/repo --json headRefOid -q .headRefOid" "gh pr merge 123 --repo owner/repo --squash --admin" "A: PR head OID is read before admin merge"
 assert_line_order "admin_success" "trace.log" "git fetch origin main --quiet" "gh pr merge 123 --repo owner/repo --squash --admin" "A: origin/main refresh happens before admin merge"
 assert_line_order "admin_success" "trace.log" "git log --format=%s origin/main..HEAD" "gh pr merge 123 --repo owner/repo --squash --admin" "A: branch-range scan happens before admin merge"
 

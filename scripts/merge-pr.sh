@@ -71,8 +71,10 @@ emit_output() {
 }
 trap 'emit_output' EXIT
 
-# --- Read merge state before any merge attempt ---
-MERGE_STATE=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json mergeStateStatus -q '.mergeStateStatus' 2>/dev/null || echo "")
+# --- Fetch PR metadata (mergeStateStatus + headRefOid) in one compound call ---
+PR_INFO=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json mergeStateStatus,headRefOid 2>/dev/null || echo "")
+MERGE_STATE=$(echo "$PR_INFO" | jq -r '.mergeStateStatus // ""' 2>/dev/null || echo "")
+PR_HEAD_OID=$(echo "$PR_INFO" | jq -r '.headRefOid // ""' 2>/dev/null || echo "")
 
 if [[ "$MERGE_STATE" == "BEHIND" ]]; then
     MERGE_RESULT="main_advanced"
@@ -88,7 +90,7 @@ fi
 # so the orchestrator bails to its error-handling path.
 if [[ -z "$MERGE_STATE" ]] || [[ "$MERGE_STATE" == "UNKNOWN" ]]; then
     MERGE_RESULT="error"
-    ERROR="could not read mergeStateStatus from gh pr view (state=\"$MERGE_STATE\")"
+    ERROR="could not read mergeStateStatus from gh pr view --json mergeStateStatus,headRefOid (state=\"$MERGE_STATE\")"
     exit 0
 fi
 
@@ -142,7 +144,6 @@ if [[ "$MERGE_STATE" != "CLEAN" ]] && [[ "$MERGE_STATE" != "UNSTABLE" ]] && [[ "
 fi
 
 # --- Same-version bump race gate ---
-PR_HEAD_OID=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json headRefOid -q '.headRefOid' 2>/dev/null || echo "")
 if [[ -z "$PR_HEAD_OID" ]]; then
     MERGE_RESULT="error"
     ERROR="could not resolve PR head OID via gh pr view"
