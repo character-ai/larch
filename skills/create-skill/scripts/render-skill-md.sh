@@ -5,7 +5,8 @@
 #   <target-dir>/
 #   ├── SKILL.md          (frontmatter + minimal or multi-step body scaffold)
 #   └── scripts/
-#       └── .gitkeep
+#       ├── .gitkeep
+#       └── step-name-registry.tsv  (multi-step only; tab-separated step→name registry)
 #
 # Required flags:
 #   --name <name>                Validated skill name.
@@ -113,6 +114,9 @@ fi
 
 mkdir "$TARGET_DIR/scripts"
 : > "$TARGET_DIR/scripts/.gitkeep"
+if [[ "$MULTI_STEP" == "true" ]]; then
+  printf 'step\tname\n0\tsetup\n1\tTODO\n' > "$TARGET_DIR/scripts/step-name-registry.tsv"
+fi
 
 # --- YAML-escape the description. YAML double-quoted scalars interpret
 # backslash as an escape character, so both \ and " must be escaped.
@@ -171,12 +175,7 @@ ${FEATURE_SPEC}
 
 Follow the formatting rules in \`${PLUGIN_TOKEN}/skills/shared/progress-reporting.md\`.
 
-Step Name Registry:
-| Step | Short Name |
-|------|------------|
-| 0 | setup |
-| 1 | TODO |
-| ... | ... |
+**MANDATORY at session start**: Read \`${LOCAL_TOKEN}/${SKILL_REL}/scripts/step-name-registry.tsv\` to get the Step Name Registry (step number → short name mapping for progress breadcrumbs).
 
 ## Sub-skill Invocation
 

@@ -27,7 +27,14 @@
 #       compat — explicit assertion, not implicit via existing cases),
 #  (10) when --feature-spec-file points to a missing path, exit 1 with
 #       ERROR=Cannot read --feature-spec-file: <path> on stderr (closes #568
-#       missing-file rejection).
+#       missing-file rejection),
+#  (11) for --multi-step true, scripts/step-name-registry.tsv is created with
+#       a header row and at least two data rows (closes #1794 — scaffold must
+#       generate the TSV so new orchestrators satisfy the progress-reporting.md
+#       contract without a manual post-scaffold step),
+#  (12) for --multi-step true, the rendered SKILL.md body contains the MANDATORY
+#       TSV-read directive (closes #1794 — inline table replaced by the directive
+#       that the progress-reporting.md contract requires).
 #
 # Invoked via:  bash skills/create-skill/scripts/test-render-skill-md.sh
 # Wired into:   make lint (via the test-render-skill Makefile target).
@@ -171,6 +178,41 @@ run_case() {
     printf '%s\n' "$content" >&2
     FAIL_COUNT=$((FAIL_COUNT + 1))
     return
+  fi
+
+  # Assertions (11) and (12) apply only to the multi-step variant — the
+  # minimal body has no Progress Reporting section and no TSV.
+  if [[ "$multi_step" == "true" ]]; then
+    # (11) scripts/step-name-registry.tsv must be created (closes #1794).
+    local tsv_path="$target_dir/scripts/step-name-registry.tsv"
+    if [[ ! -f "$tsv_path" ]]; then
+      echo "FAIL: scripts/step-name-registry.tsv not created for multi-step scaffold at $tsv_path" >&2
+      FAIL_COUNT=$((FAIL_COUNT + 1))
+      return
+    fi
+    local tsv_lines
+    tsv_lines="$(wc -l < "$tsv_path")"
+    if [[ "$tsv_lines" -lt 3 ]]; then
+      echo "FAIL: scripts/step-name-registry.tsv has fewer than 3 lines (header + 2 seed rows) at $tsv_path" >&2
+      FAIL_COUNT=$((FAIL_COUNT + 1))
+      return
+    fi
+
+    # (12) SKILL.md must contain the MANDATORY TSV-read directive (closes #1794).
+    if ! printf '%s\n' "$content" | grep -Fq 'MANDATORY at session start'; then
+      echo "FAIL: multi-step SKILL.md missing MANDATORY TSV-read directive in Progress Reporting section" >&2
+      echo "--- rendered content ---" >&2
+      printf '%s\n' "$content" >&2
+      FAIL_COUNT=$((FAIL_COUNT + 1))
+      return
+    fi
+    if ! printf '%s\n' "$content" | grep -Fq 'step-name-registry.tsv'; then
+      echo "FAIL: multi-step SKILL.md MANDATORY directive does not reference step-name-registry.tsv" >&2
+      echo "--- rendered content ---" >&2
+      printf '%s\n' "$content" >&2
+      FAIL_COUNT=$((FAIL_COUNT + 1))
+      return
+    fi
   fi
 
   # Body-vs-frontmatter assertion (closes #568). When `expected_body` is

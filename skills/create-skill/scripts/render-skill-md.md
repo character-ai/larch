@@ -11,7 +11,7 @@
 - `--target-dir <absolute-path>` — Absolute path where the new skill directory will live (e.g. `/path/.claude/skills/foo` or `/path/skills/foo`). The path's penultimate component (`/.claude/skills/<name>` or `/skills/<name>`) drives the `SKILL_REL` derivation used for `${LOCAL_TOKEN}/${SKILL_REL}/scripts/` reminders inside the scaffolded body.
 - `--local-token <token>` — Literal path token to embed in the generated `SKILL.md` for the new skill's OWN scripts directory: either `$PWD` (consumer mode) or `${CLAUDE_PLUGIN_ROOT}` (plugin-dev mode).
 - `--plugin-token <token>` — Literal path token to embed for SHARED larch references — always `${CLAUDE_PLUGIN_ROOT}`.
-- `--multi-step true|false` — Selects scaffold variant. `true` emits the multi-step body template (extra Flags / Progress Reporting / multiple Step headings); `false` emits the minimal one-shot delegator body template.
+- `--multi-step true|false` — Selects scaffold variant. `true` emits the multi-step body template (extra Flags / Progress Reporting / multiple Step headings) and creates `scripts/step-name-registry.tsv`; `false` emits the minimal one-shot delegator body template.
 
 ### Optional flags
 
@@ -46,6 +46,7 @@ The split is intentional: machine consumers grep `RENDERED=` from stdout (single
 - `mkdir` (no `-p`) for the final leaf — fails loudly on collision or concurrent run, surfacing as `ERROR=Target directory already exists: <path>`.
 - Atomic write: `<target>/SKILL.md.tmp` first, then `mv` into place. A killed render leaves a `.tmp` artifact, never a half-written `SKILL.md`.
 - `scripts/.gitkeep` placeholder created — no skeleton step scripts are scaffolded so the rendered SKILL.md never points at non-existent helper files.
+- `scripts/step-name-registry.tsv` created when `--multi-step true` (tab-separated, header row `step\tname`, seed rows `0\tsetup` and `1\tTODO`). The SKILL.md Progress Reporting section references this file via a MANDATORY TSV-read directive instead of an inline markdown table.
 - YAML escape pipeline: `ESCAPED_DESC="${DESCRIPTION//\\/\\\\}"` first (backslash-escape backslashes), then `ESCAPED_DESC="${ESCAPED_DESC//\"/\\\"}"` (backslash-escape double-quotes). Order is load-bearing — reversing it double-escapes the introduced backslashes.
 
 ## set -euo pipefail caveat
@@ -71,5 +72,6 @@ When changing this script:
 - Body assertions: presence of `## Sub-skill Invocation`, the `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` reference (closes #177's empty-token rooted-path injection guard), the `${CLAUDE_PLUGIN_ROOT}/skills/shared/skill-design-principles.md` reference (closes #216's canonical-principles surfacing).
 - Empty `--plugin-token` rejected with `ERROR=Missing required argument --plugin-token`.
 - `--feature-spec-file` cases (closes #568): multi-line file content distinct from `--description` lands in the body's opening paragraph; backward-compat (no `--feature-spec-file`) keeps body content equal to `--description`; missing/unreadable `--feature-spec-file` path produces `ERROR=Cannot read --feature-spec-file: ...` on stderr with exit 1.
+- For `--multi-step true`: `scripts/step-name-registry.tsv` is created with a header row and at least two seed data rows (closes #1794); the rendered SKILL.md body contains the MANDATORY TSV-read directive instead of an inline table (closes #1794).
 
 Add new test cases there whenever the flag list, frontmatter contract, body-vs-frontmatter contract, or error-message strings change.
