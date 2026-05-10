@@ -8,7 +8,9 @@
 #     --mode diff \
 #     [--description-text "description"] \
 #     [--scope-files /path/to/scope-files.txt] \
-#     [--competition-notice]
+#     [--competition-notice] \
+#     [--diff-mode generic|docs-only|test-only|generated-only] \
+#     [--diff-file /path/to/branch.diff]
 #
 # Determinism: no timestamps, no git state, no locale-dependent output (LC_ALL=C).
 # All diagnostics on stderr; ONLY the rendered prompt on stdout.
@@ -22,6 +24,7 @@ DESCRIPTION_TEXT=""
 SCOPE_FILES=""
 COMPETITION_NOTICE=false
 DIFF_FILE=""
+DIFF_MODE=""
 
 take_value() {
   local flag="$1"
@@ -41,6 +44,7 @@ while [[ $# -gt 0 ]]; do
     --scope-files) SCOPE_FILES="$(take_value --scope-files "${2:-}")"; shift 2 ;;
     --competition-notice) COMPETITION_NOTICE=true; shift ;;
     --diff-file) DIFF_FILE="$(take_value --diff-file "${2:-}")"; shift 2 ;;
+    --diff-mode) DIFF_MODE="$(take_value --diff-mode "${2:-}")"; shift 2 ;;
     *) echo "render-specialist-prompt.sh: unknown flag: $1" >&2; exit 2 ;;
   esac
 done
@@ -72,6 +76,33 @@ fi
 if [[ -n "$DIFF_FILE" && ! -f "$DIFF_FILE" ]]; then
   echo "render-specialist-prompt.sh: --diff-file not found: $DIFF_FILE" >&2
   exit 2
+fi
+case "$DIFF_MODE" in
+  ""|generic|docs-only|test-only|generated-only) ;;
+  *)
+    echo "render-specialist-prompt.sh: --diff-mode must be one of generic, docs-only, test-only, generated-only (got: '$DIFF_MODE')" >&2
+    exit 2
+    ;;
+esac
+
+if [[ "$MODE" == "diff" && -z "$DIFF_MODE" && -n "$DIFF_FILE" ]]; then
+  CLASSIFIER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/classify-diff-mode.sh"
+  if [[ -x "$CLASSIFIER" ]]; then
+    if CLASSIFIER_OUTPUT=$("$CLASSIFIER" "$DIFF_FILE" 2>/dev/null); then
+      CLASSIFIED_MODE="${CLASSIFIER_OUTPUT#DIFF_MODE=}"
+      case "$CLASSIFIED_MODE" in
+        generic|docs-only|test-only|generated-only) DIFF_MODE="$CLASSIFIED_MODE" ;;
+        *) DIFF_MODE="generic" ;;
+      esac
+    else
+      DIFF_MODE="generic"
+    fi
+  else
+    DIFF_MODE="generic"
+  fi
+fi
+if [[ -z "$DIFF_MODE" ]]; then
+  DIFF_MODE="generic"
 fi
 
 # Extract agent body (everything after the second --- line).
@@ -115,9 +146,28 @@ PREAMBLE
 
   # Focus-area tagging instruction (mode-specific).
   if [[ "$MODE" == "diff" ]]; then
-    cat <<'TAGGING_DIFF'
+    case "$DIFF_MODE" in
+      docs-only)
+        cat <<'TAGGING_DOCS'
+Review this docs-only diff for accuracy, clarity, stale statements, and broken or missing cross-references. Return findings in two clearly delimited sections: a section starting with the line '### In-Scope Findings' for documentation issues introduced or amplified by the branch diff, and a section starting with the line '### Out-of-Scope Observations' for pre-existing documentation issues. Each finding: docs tag, file:line, issue, and suggested fix. If you have neither in-scope findings nor out-of-scope observations, output exactly NO_ISSUES_FOUND. Do NOT modify files. Work at your maximum reasoning effort level.
+TAGGING_DOCS
+        ;;
+      test-only)
+        cat <<'TAGGING_TESTS'
+Review this test-only diff for coverage gaps, assertion correctness, fixture realism, edge cases, and harness reliability. Return findings in two clearly delimited sections: a section starting with the line '### In-Scope Findings' for test issues introduced or amplified by the branch diff, and a section starting with the line '### Out-of-Scope Observations' for pre-existing test issues. Each finding: tests tag, file:line, issue, and suggested fix. If you have neither in-scope findings nor out-of-scope observations, output exactly NO_ISSUES_FOUND. Do NOT modify files. Work at your maximum reasoning effort level.
+TAGGING_TESTS
+        ;;
+      generated-only)
+        cat <<'TAGGING_GENERATED'
+Review this generated-only diff for drift from the source template or generator, checked-in artifact consistency, and accidental manual edits to generated output. Return findings in two clearly delimited sections: a section starting with the line '### In-Scope Findings' for generated-artifact issues introduced or amplified by the branch diff, and a section starting with the line '### Out-of-Scope Observations' for pre-existing generated-artifact issues. Each finding: generated tag, file:line, issue, and suggested fix. If you have neither in-scope findings nor out-of-scope observations, output exactly NO_ISSUES_FOUND. Do NOT modify files. Work at your maximum reasoning effort level.
+TAGGING_GENERATED
+        ;;
+      generic)
+        cat <<'TAGGING_DIFF'
 Tag each finding with its focus area (one of code-quality / risk-integration / correctness / architecture / security). Return findings in two clearly delimited sections: a section starting with the line '### In-Scope Findings' for issues introduced or amplified by the branch diff, and a section starting with the line '### Out-of-Scope Observations' for pre-existing issues not introduced or amplified by the change. Each finding: focus-area tag, file:line, issue, and suggested fix. When the finding's issue text references repo files, include affected repo-relative file paths and line ranges in the form `path/to/file.sh:120-150` (or `path/to/file.sh` for whole-file edits) so /implement Step 9a.1's file-conflict pre-pass can emit serialization edges. If you have neither in-scope findings nor out-of-scope observations, output exactly NO_ISSUES_FOUND. Do NOT modify files. Work at your maximum reasoning effort level.
 TAGGING_DIFF
+        ;;
+    esac
   else
     cat <<'TAGGING_DESCRIPTION'
 Tag each finding with its focus area (one of code-quality / risk-integration / correctness / architecture / security). Mark any finding about a file NOT in the canonical file list as OOS. Return findings in two clearly delimited sections: a section starting with the line '### In-Scope Findings' for findings about files in the canonical list, and a section starting with the line '### Out-of-Scope Observations' for findings about files NOT in the canonical list. Each finding: focus-area tag, file:line, issue, and suggested fix. When emitting Out-of-Scope Observations whose issue text references repo files, include affected repo-relative file paths and line ranges in the form `path/to/file.sh:120-150` (or `path/to/file.sh` for whole-file edits) so /implement Step 9a.1's file-conflict pre-pass can emit serialization edges. If you have neither in-scope findings nor out-of-scope observations, output exactly NO_ISSUES_FOUND. Do NOT modify files. Work at your maximum reasoning effort level.

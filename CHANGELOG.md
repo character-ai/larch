@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Reviewer dirty-tree changes are now automatically logged and discarded instead of prompting the operator with a restore/stash/bail `AskUserQuestion`. When a Cursor, Codex, or Claude reviewer leaves uncommitted changes in the working tree, the orchestrator logs which reviewer caused it (to `execution-issues.md` under `Warnings` in `/implement` runs, or to the transcript in standalone `/review` runs) and immediately discards the changes via scoped `git restore` / `git clean` — no stash is created and `git stash list` remains clean. This replaces the three-option recovery prompt introduced by #1437. Updated: `skills/implement/SKILL.md` (Step 5.3.b quick mode, Step 5 normal mode, `--auto` flag description), `skills/review/SKILL.md` (Step 3a, line 22), `skills/review/references/heavy-worker.md`, `docs/external-reviewers.md`, `SECURITY.md`
 
+## [20.0.3] - 2026-05-09
+
+### Changed
+
+- Specialist review prompts now narrow docs-only, test-only, and generated-only diffs to focused checks while keeping ambiguous diffs on the full prompt.
+- Diff-mode routing is covered by renderer harness cases for explicit modes and auto-classification from precomputed diff files.
+
 ## [20.0.2] - 2026-05-09
 
 ### Changed
