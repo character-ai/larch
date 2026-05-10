@@ -28,7 +28,7 @@ The feature to design is described by the remainder of `$ARGUMENTS` after flags 
 
 ## Progress Reporting
 
-**Every step MUST print clearly visible breadcrumb status lines** so the user can instantly see where execution is and which parent steps they are inside. Follow the formatting rules in `${CLAUDE_PLUGIN_ROOT}/skills/shared/progress-reporting.md`.
+**Every step MUST print clearly visible breadcrumb status lines** so the user can instantly see where execution is and which parent steps they are inside. Follow shared/progress-reporting.md rules.
 
 - Print a **start line** when entering a step: e.g., `> **🔶 1: branch**` (standalone) or `> **🔶 1.1: design plan | branch**` (nested from `/implement`)
 - Print a **completion line** only when it carries informational payload. Only the final step (Step 5) prints an unconditional completion announcement.
@@ -58,7 +58,7 @@ or for Step 3 plan review (4-reviewer panel):
 📊 Reviewers: | Cursor-Arch: ✅ 4m12s | Cursor-Edge: ⏳ | Codex-Innovation: ⏳ | Codex-Pragmatic: ✅ 2m31s |
 ```
 
-Icons: ✅ done (with elapsed time since launch), ⏳ pending/in-progress, ❌ failed/timeout (with elapsed time since launch), ⊘ skipped (unavailable). This replaces individual per-agent completion messages. See `${CLAUDE_PLUGIN_ROOT}/skills/shared/progress-reporting.md` for elapsed time and step start formatting rules.
+Icons: ✅ done (with elapsed time since launch), ⏳ pending/in-progress, ❌ failed/timeout (with elapsed time since launch), ⊘ skipped (unavailable). This replaces individual per-agent completion messages. → shared/progress-reporting.md
 
 **Limitation**: Verbosity suppression is prompt-enforced and best-effort.
 
@@ -421,7 +421,7 @@ Produce a plan that includes:
 
 Write the plan to `$DESIGN_TMPDIR/plan.txt` with basename exactly `plan.txt`. If `SESSION_ENV_PATH` is empty, print the plan to the user under a `## Implementation Plan` header so reviewers can see it. If `SESSION_ENV_PATH` is non-empty, print nothing for this save; `/implement` reads the exported plan file through the Step 5 manifest. The plan is an intermediate deliverable — IMMEDIATELY continue to Step 3 (Plan Review) after saving/printing. Do NOT halt, summarize, or treat the plan as the end of the design.
 
-> **Continue to Step 3 IMMEDIATELY.** The implementation plan is an intermediate design artifact — plan review, optional discussion, diagram generation, rejected-findings reporting, and cleanup still must run. See `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Step-boundary anti-halt.
+> **Continue to Step 3 IMMEDIATELY.** The implementation plan is an intermediate design artifact — plan review, optional discussion, diagram generation, rejected-findings reporting, and cleanup still must run. → shared/subskill-invocation.md#step-boundary
 
 ## Step 3 — Plan Review
 

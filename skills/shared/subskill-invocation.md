@@ -83,6 +83,7 @@ If you cannot name a concrete mechanical check, the call is not actually mandato
 
 See `## Anti-halt continuation reminder` below — the two sections govern the same call-site boundary from complementary directions (verification asks "did the child run?"; anti-halt asks "did the parent continue?").
 
+<a id="anti-halt"></a>
 ## Anti-halt continuation reminder
 
 **Scope**: this rule applies to the same orchestrator set as `## Post-invocation verification` above — stateful orchestrators (`/fix-issue`, `/implement`, `/review`, `/alias`, `/research`) that run additional steps after a child `Skill` tool call returns. Pure forwarders (`/im`, `/imaq`, `/imq`, `/create-skill`, `/simplify-skill`, `/compress-skill`) are exempt — once they delegate, they do nothing further. The two sections are complementary: `## Post-invocation verification` asks **"did the child run?"**; this section asks **"did the parent continue?"** Both failure modes are distinct and real (see GitHub issue #177 for the originating report).
@@ -98,7 +99,7 @@ See `## Anti-halt continuation reminder` below — the two sections govern the s
 ### Canonical banner (top of each orchestrator SKILL.md, after the title body, before `## Progress Reporting`)
 
 ````markdown
-**Anti-halt continuation reminder.** After every child `Skill` tool call (e.g., `/design`, `/review`, `/bump-version`, `/issue`, `/implement`) returns AND after every numbered-step `Bash` helper call, including `run-relevant-checks-captured.sh`, IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on the child's cleanup output or helper stdout, and do NOT write a summary, handoff, status recap, or "returning to parent" message — those are halts in disguise. The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `skip to Step N`, `bail to cleanup`, `jump back`, `loop back`, `fall through`, `break out`). A normal sequential `proceed to Step N+1` instruction is the default continuation this rule reinforces, NOT an exception. Every relevant-checks helper call anywhere in this file is covered by this rule. See `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Anti-halt continuation reminder for the canonical rule.
+**Anti-halt continuation reminder.** After every child `Skill` tool call (e.g., `/design`, `/review`, `/bump-version`, `/issue`, `/implement`) returns AND after every numbered-step `Bash` helper call, including `run-relevant-checks-captured.sh`, IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on the child's cleanup output or helper stdout, and do NOT write a summary, handoff, status recap, or "returning to parent" message — those are halts in disguise. The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `skip to Step N`, `bail to cleanup`, `jump back`, `loop back`, `fall through`, `break out`). A normal sequential `proceed to Step N+1` instruction is the default continuation this rule reinforces, NOT an exception. Every relevant-checks helper call anywhere in this file is covered by this rule. → shared/subskill-invocation.md#anti-halt
 ````
 
 The substring `**Anti-halt continuation reminder.**` is a contract token asserted by `${CLAUDE_PLUGIN_ROOT}/scripts/test-anti-halt-banners.sh`.
@@ -110,13 +111,13 @@ Place the micro-reminder **inside the specific branch that actually invokes the 
 Standard variant:
 
 ````markdown
-> **Continue after child returns.** When the child Skill returns, execute the NEXT step of this skill — do NOT end the turn, and do NOT write a summary, handoff, or "returning to parent" message. See `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Anti-halt continuation reminder.
+> **Continue after child returns.** When the child Skill returns, execute the NEXT step of this skill — do NOT end the turn, and do NOT write a summary, handoff, or "returning to parent" message. → shared/subskill-invocation.md#anti-halt
 ````
 
 Loop-aware variant (for loop-internal Skill-tool call sites in orchestrators with explicit loop bodies):
 
 ````markdown
-> **Continue after child returns (loop-internal).** When the child Skill returns, continue the loop per the parent's explicit loop-back directive — do NOT exit the loop unless the exit condition fires, and do NOT write a summary, handoff, or "returning to parent" message. See `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Anti-halt continuation reminder.
+> **Continue after child returns (loop-internal).** When the child Skill returns, continue the loop per the parent's explicit loop-back directive — do NOT exit the loop unless the exit condition fires, and do NOT write a summary, handoff, or "returning to parent" message. → shared/subskill-invocation.md#anti-halt
 ````
 
 The substring `Continue after child returns` is a contract token asserted by `${CLAUDE_PLUGIN_ROOT}/scripts/test-anti-halt-banners.sh` (matches both the standard and loop-internal variants).
@@ -142,6 +143,7 @@ The banner MUST NOT appear in pure-delegator SKILL.md files:
 
 Both presence and absence are enforced by `${CLAUDE_PLUGIN_ROOT}/scripts/test-anti-halt-banners.sh`, wired into `make lint` via the `test-anti-halt` target.
 
+<a id="step-boundary"></a>
 ## Step-boundary anti-halt
 
 **Scope**: this rule covers numbered-step boundaries where the parent skill has just completed a step or sub-step and the next action is another numbered step, not a child `Skill` return. It is especially important after `# token-step-end Step N` boundaries, skip breadcrumbs, status footers, and terminal-sounding helper output where there is no immediately adjacent Skill-tool micro-reminder to re-anchor continuation.
@@ -165,6 +167,7 @@ Canonical producers and consumers in the live tree:
 - `skills/implement/SKILL.md § Step 0 — Session Setup` accepts `--session-env` from its parent and propagates a fresh `$IMPLEMENT_TMPDIR/session-env.sh` to `/design` and `/review` via `--session-env` on each invocation.
 - `skills/design/SKILL.md § Step 0 — Session Setup` and `skills/review/SKILL.md § Step 0 — Session Setup` both accept `--session-env` as an `--caller-env` forward.
 
+<a id="artifact-only-return"></a>
 ## Artifact-only return contract (nested mode)
 
 When `SESSION_ENV_PATH` is non-empty, a child skill is running in nested mode under a parent orchestrator such as `/implement`. In this mode, child skills emit ONLY:
@@ -221,6 +224,7 @@ The worst shape, and the one that gets skipped most often, is a single-line cond
 
 Prose conditionals bury the invocation and reliably slip past the executing model — especially mid-run. Rewrite as an explicit two-branch step, each branch its own numbered sub-step with its own `🔶` breadcrumb (or as Pattern B's heading + variant bullets shape), so the Skill-tool call is the visual center of the step.
 
+<a id="bare-name-fallback"></a>
 ## Bare-name-then-fully-qualified fallback
 
 Skill resolution from a consumer repo differs from resolution inside the larch plugin repo itself. In a consumer repo with the plugin installed, `"implement"` resolves correctly — but in a repo where the plugin is installed under a different namespace, the bare name may miss. Always use the two-step fallback:
