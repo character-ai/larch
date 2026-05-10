@@ -12,9 +12,9 @@
 #   --output-dir — Directory to write output files into (must exist)
 #
 # Creates:
-#   <output-dir>/diff.txt      — Diff with 20 lines of context per hunk (git diff -U20 main...HEAD)
-#   <output-dir>/file-list.txt — Changed file names (git diff main...HEAD --name-only)
-#   <output-dir>/commit-log.txt — Commit log (git log main...HEAD --oneline)
+#   <output-dir>/diff.txt      — Diff with 20 lines of context per hunk (git diff -U20 MERGE_BASE...HEAD)
+#   <output-dir>/file-list.txt — Changed file names (git diff MERGE_BASE...HEAD --name-only)
+#   <output-dir>/commit-log.txt — Commit log (git log MERGE_BASE..HEAD --oneline)
 #
 # Outputs (key=value to stdout):
 #   DIFF_FILE=<path>
@@ -54,9 +54,10 @@ DIFF_FILE="$OUTPUT_DIR/diff.txt"
 FILE_LIST_FILE="$OUTPUT_DIR/file-list.txt"
 COMMIT_LOG_FILE="$OUTPUT_DIR/commit-log.txt"
 
-git diff -U20 main...HEAD > "$DIFF_FILE"
-git diff main...HEAD --name-only > "$FILE_LIST_FILE"
-git log main...HEAD --oneline > "$COMMIT_LOG_FILE"
+MERGE_BASE=$(git merge-base HEAD main)
+git diff -U20 "${MERGE_BASE}"...HEAD > "$DIFF_FILE"
+git diff "${MERGE_BASE}"...HEAD --name-only > "$FILE_LIST_FILE"
+git log "${MERGE_BASE}"..HEAD --oneline > "$COMMIT_LOG_FILE"
 
 # --- Emit output ---
 echo "DIFF_FILE=$DIFF_FILE"

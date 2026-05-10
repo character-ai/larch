@@ -801,7 +801,7 @@ else
 fi
 
 # --diff-file specialist integration: when --agent-file + --diff-file are combined,
-# the rendered prompt references the diff file path and omits the 'git diff main...HEAD' instruction.
+# the rendered prompt references the diff file path and omits the 'git diff $(git merge-base HEAD main)...HEAD' instruction.
 DF_TMPFILE="$TMPDIR/test-branch.diff"
 printf 'diff --git a/foo.sh b/foo.sh\n--- a/foo.sh\n+++ b/foo.sh\n@@ -1 +1 @@\n-old\n+new\n' > "$DF_TMPFILE"
 OUT_DF="$TMPDIR/cursor-diff-file-specialist.txt"
@@ -820,8 +820,9 @@ if grep -Fq -- "$DF_TMPFILE" "$ARGV_DF" 2>/dev/null; then
 else
     fail "--diff-file specialist: diff file path must appear in rendered prompt argv"
 fi
-if grep -Fq -- "git diff main...HEAD" "$ARGV_DF" 2>/dev/null; then
-    fail "--diff-file specialist: 'git diff main...HEAD' must NOT appear when --diff-file is set"
+# shellcheck disable=SC2016
+if grep -Fq -- 'git diff $(git merge-base HEAD main)...HEAD' "$ARGV_DF" 2>/dev/null; then
+    fail "--diff-file specialist: 'git diff \$(git merge-base HEAD main)...HEAD' must NOT appear when --diff-file is set"
 else
     pass
 fi
