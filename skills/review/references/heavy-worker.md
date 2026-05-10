@@ -61,6 +61,6 @@ After each external collection point (Step 2 launch → Step 3a collect; rounds 
 
 On success, return only: `REVIEW_HEAVY=complete`
 
-On failure (e.g., dirty-tree bail, persistent reviewer outage, Step 3e checks that cannot be fixed), return only: `REVIEW_HEAVY=failed REASON=<short-token>`
+On failure (e.g., persistent reviewer outage, Step 3e checks that cannot be fixed), return only: `REVIEW_HEAVY=failed REASON=<short-token>`
 
 Do not include reviewer transcripts, round summaries, panel scores, or fix diffs in the Agent-tool return text — those must remain in files.
