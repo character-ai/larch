@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Reviewer dirty-tree changes are now automatically logged and discarded instead of prompting the operator with a restore/stash/bail `AskUserQuestion`. When a Cursor, Codex, or Claude reviewer leaves uncommitted changes in the working tree, the orchestrator logs which reviewer caused it (to `execution-issues.md` under `Warnings` in `/implement` runs, or to the transcript in standalone `/review` runs) and immediately discards the changes via scoped `git restore` / `git clean` — no stash is created and `git stash list` remains clean. This replaces the three-option recovery prompt introduced by #1437. Updated: `skills/implement/SKILL.md` (Step 5.3.b quick mode, Step 5 normal mode, `--auto` flag description), `skills/review/SKILL.md` (Step 3a, line 22), `skills/review/references/heavy-worker.md`, `docs/external-reviewers.md`, `SECURITY.md`
 
+## [20.6.0] - 2026-05-10
+
+### Changed
+
+- Gate Codex effort args and Cursor max-mode/suffix behavior behind launcher --risk, with conservative specialist diff classification and retry metadata preservation.
+- Remove hardcoded max-effort prose from reviewer, sketch, voter, judge, dialectic, and specialist prompt sources while leaving launcher-owned high-risk mechanisms intact.
+- Add regression coverage for high/low/invalid/derived risk paths, outer retry risk replay, specialist prompt prose absence, and a new prompt-source prose guard.
+
 ## [20.5.5] - 2026-05-10
 
 ### Changed
