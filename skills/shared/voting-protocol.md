@@ -4,7 +4,7 @@ Shared voting protocol for adjudicating review findings. Used by `/design` (plan
 
 ## Overview
 
-After reviewers submit findings and findings are deduplicated, a 3-agent voting panel votes YES/NO/EXONERATE on each finding. Findings with 2+ YES votes are accepted; others are not implemented. Original reviewers earn competition points based on how their findings perform in voting. EXONERATE is a third option meaning "legitimate concern, but not worth implementing in this PR" — it spares the proposing reviewer from losing a point on in-scope findings. (OOS observations use asymmetric reward-only scoring — see [OOS Scoring](#oos-scoring) below — so OOS rejection carries no penalty regardless.)
+After reviewers submit findings and findings are deduplicated, a voting panel votes YES/NO/EXONERATE on each finding. `/design` (plan review) uses a 3-voter panel (Claude + Codex + Cursor) unconditionally; findings with 2+ YES votes are accepted. `/review` (code review) uses a 2-voter primary panel (Codex + Cursor) and invokes Claude as a conditional tie-breaker only on a 1Y/1N split — see `skills/review/references/voting.md` for the full code review panel procedure. Original reviewers earn competition points based on how their findings perform in voting. EXONERATE is a third option meaning "legitimate concern, but not worth implementing in this PR" — it spares the proposing reviewer from losing a point on in-scope findings. (OOS observations use asymmetric reward-only scoring — see [OOS Scoring](#oos-scoring) below — so OOS rejection carries no penalty regardless.)
 
 ## Ballot Format
 
@@ -127,7 +127,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/run-external-agent.sh --tool cursor --output "<tmp
 
 Use `run_in_background: true` and `timeout: 1260000`.
 
-**Cursor voter replacement** (if `cursor_available` is false): Launch a Claude subagent voter via the Agent tool with the voter prompt. This replacement ensures the total voter count always remains 3.
+**Cursor voter replacement (plan review only)** (if `cursor_available` is false): Launch a Claude subagent voter via the Agent tool with the voter prompt. This replacement ensures the total voter count always remains 3. For code review, when a primary voter is unavailable, do NOT launch a Claude replacement — voting is skipped when fewer than 2 eligible primaries remain (see `skills/review/references/voting.md` rows 15-16).
 
 **Codex voter** (if `codex_available`):
 
@@ -148,7 +148,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/run-external-agent.sh --tool codex --output "<tmpd
 
 Use `run_in_background: true` and `timeout: 1260000`.
 
-**Codex voter replacement** (if `codex_available` is false): Launch a Claude subagent voter via the Agent tool with the voter prompt. This replacement ensures the total voter count always remains 3.
+**Codex voter replacement (plan review only)** (if `codex_available` is false): Launch a Claude subagent voter via the Agent tool with the voter prompt. This replacement ensures the total voter count always remains 3. For code review, when a primary voter is unavailable, do NOT launch a Claude replacement — voting is skipped when fewer than 2 eligible primaries remain (see `skills/review/references/voting.md` rows 15-16).
 
 **Claude voter**: Launch via Agent tool with the voter prompt.
 
