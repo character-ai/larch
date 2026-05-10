@@ -10,6 +10,8 @@
 5. Competition notice flag (absent without flag, present with flag)
 6. Error cases (missing args, invalid mode, nonexistent file, incomplete description args)
 7. Security focus-area presence in all specialist outputs
+8. `--diff-file` preamble routing
+9. Diff-mode classifier and focused prompt routing for docs-only, test-only, generated-only, and generic diffs
 
 **Makefile wiring**: `make test-harnesses` target.
 

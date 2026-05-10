@@ -15,6 +15,7 @@
 - `--scope-files <path>` (required when `--mode=description`): Path to the canonical file list.
 - `--competition-notice` (optional): Append the competition notice blockquote.
 - `--diff-file <path>` (optional, diff mode only): Path to a pre-computed diff file (e.g., from `gather-branch-context.sh`). When provided, the preamble tells reviewers to read the file at that path (capped at 20 lines per hunk; use the Read tool for full-file context) instead of running `git diff`. When absent, the preamble instructs reviewers to run `git diff $(git merge-base HEAD main)...HEAD` to see changes. The path must point to an existing file — a nonexistent path exits 2.
+- `--diff-mode <generic|docs-only|test-only|generated-only>` (optional): Pre-classified diff mode. In diff mode, non-`generic` modes render focused instructions instead of the full five-focus-area prompt. Without this flag, a provided `--diff-file` is classified by `scripts/classify-diff-mode.sh`; classifier failure falls back to `generic`.
 
 **Output**: Complete prompt string on stdout.
 

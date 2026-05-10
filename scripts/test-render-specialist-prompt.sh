@@ -7,6 +7,7 @@ export LC_ALL=C
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 RENDERER="$REPO_ROOT/scripts/render-specialist-prompt.sh"
+CLASSIFIER="$REPO_ROOT/scripts/classify-diff-mode.sh"
 
 PASS=0
 FAIL=0
@@ -39,6 +40,13 @@ assert_exit_code() {
   local rc=0
   "$@" >/dev/null 2>&1 || rc=$?
   assert_eq "$desc" "$expected" "$rc"
+}
+
+assert_diff_mode() {
+  local desc="$1" expected="$2" diff_file="$3"
+  local actual
+  actual=$(bash "$CLASSIFIER" "$diff_file")
+  assert_eq "$desc" "DIFF_MODE=$expected" "$actual"
 }
 
 SPECIALISTS=(
@@ -125,6 +133,7 @@ assert_exit_code "invalid mode" "2" bash "$RENDERER" --agent-file "$REPO_ROOT/ag
 assert_exit_code "nonexistent agent file" "2" bash "$RENDERER" --agent-file "/nonexistent/file.md" --mode diff
 assert_exit_code "description mode without --description-text" "2" bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-structure.md" --mode description --scope-files /tmp/f.txt
 assert_exit_code "description mode without --scope-files" "2" bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-structure.md" --mode description --description-text "test"
+assert_exit_code "invalid --diff-mode" "2" bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-structure.md" --mode diff --diff-mode invalid
 
 # 7. Each specialist output contains the security focus area.
 for name in "${SPECIALISTS[@]}"; do
@@ -158,6 +167,74 @@ assert_contains "no --diff-file: original preamble still present" 'git diff $(gi
 # --diff-file with nonexistent path must exit 2.
 assert_exit_code "--diff-file nonexistent path" "2" bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-structure.md" --mode diff --diff-file "/nonexistent/branch.diff"
 rm -rf "$TMPDIR_DIFFFILE"
+
+# 9. Diff-mode classifier and mode-specific prompt routing.
+TMPDIR_DIFFMODE=$(mktemp -d)
+DOCS_DIFF="$TMPDIR_DIFFMODE/docs.diff"
+TESTS_DIFF="$TMPDIR_DIFFMODE/tests.diff"
+GENERATED_DIFF="$TMPDIR_DIFFMODE/generated.diff"
+MIXED_DIFF="$TMPDIR_DIFFMODE/mixed.diff"
+EMPTY_DIFF="$TMPDIR_DIFFMODE/empty.diff"
+cat > "$DOCS_DIFF" <<'EOF_DOCS_DIFF'
+diff --git a/docs/installation-and-setup.md b/docs/installation-and-setup.md
+--- a/docs/installation-and-setup.md
++++ b/docs/installation-and-setup.md
+@@ -1 +1 @@
+-old
++new
+EOF_DOCS_DIFF
+cat > "$TESTS_DIFF" <<'EOF_TESTS_DIFF'
+diff --git a/scripts/test-render-specialist-prompt.sh b/scripts/test-render-specialist-prompt.sh
+--- a/scripts/test-render-specialist-prompt.sh
++++ b/scripts/test-render-specialist-prompt.sh
+@@ -1 +1 @@
+-old
++new
+EOF_TESTS_DIFF
+cat > "$GENERATED_DIFF" <<'EOF_GENERATED_DIFF'
+diff --git a/docs/topology.md b/docs/topology.md
+--- a/docs/topology.md
++++ b/docs/topology.md
+@@ -1 +1 @@
+-old
++new
+EOF_GENERATED_DIFF
+cat > "$MIXED_DIFF" <<'EOF_MIXED_DIFF'
+diff --git a/docs/installation-and-setup.md b/docs/installation-and-setup.md
+--- a/docs/installation-and-setup.md
++++ b/docs/installation-and-setup.md
+@@ -1 +1 @@
+-old
++new
+diff --git a/scripts/render-specialist-prompt.sh b/scripts/render-specialist-prompt.sh
+--- a/scripts/render-specialist-prompt.sh
++++ b/scripts/render-specialist-prompt.sh
+@@ -1 +1 @@
+-old
++new
+EOF_MIXED_DIFF
+: > "$EMPTY_DIFF"
+assert_diff_mode "classifier: docs-only" "docs-only" "$DOCS_DIFF"
+assert_diff_mode "classifier: test-only" "test-only" "$TESTS_DIFF"
+assert_diff_mode "classifier: generated-only" "generated-only" "$GENERATED_DIFF"
+assert_diff_mode "classifier: mixed is generic" "generic" "$MIXED_DIFF"
+assert_diff_mode "classifier: empty is generic" "generic" "$EMPTY_DIFF"
+
+output_docs_auto=$(bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-structure.md" --mode diff --diff-file "$DOCS_DIFF" 2>/dev/null)
+assert_contains "auto diff-mode docs: focused instruction" "docs-only diff" "$output_docs_auto"
+if printf '%s' "$output_docs_auto" | grep -qF "code-quality / risk-integration / correctness / architecture / security"; then
+  FAIL=$((FAIL + 1))
+  echo "FAIL: auto docs-only mode should suppress five-focus-area enum" >&2
+else
+  PASS=$((PASS + 1))
+fi
+output_tests_explicit=$(bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-structure.md" --mode diff --diff-mode test-only 2>/dev/null)
+assert_contains "explicit diff-mode tests without diff-file" "test-only diff" "$output_tests_explicit"
+output_generated_auto=$(bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-structure.md" --mode diff --diff-file "$GENERATED_DIFF" 2>/dev/null)
+assert_contains "auto diff-mode generated: focused instruction" "generated-only diff" "$output_generated_auto"
+output_mixed_auto=$(bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-structure.md" --mode diff --diff-file "$MIXED_DIFF" 2>/dev/null)
+assert_contains "auto diff-mode mixed: generic instruction" "code-quality / risk-integration / correctness / architecture / security" "$output_mixed_auto"
+rm -rf "$TMPDIR_DIFFMODE"
 
 echo ""
 echo "render-specialist-prompt tests: $PASS passed, $FAIL failed"
