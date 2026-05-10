@@ -326,14 +326,15 @@ fi
 
 # --- 4. Reviewer health: either probe (--check-reviewers) or passthrough from caller-env ---
 if [[ "$CHECK_REVIEWERS" == "true" ]]; then
-    # Auto-set skip-probe flags from caller-env health values
-    if [[ "$CALLER_CODEX_HEALTHY" == "false" ]]; then
+    # Auto-set skip-probe flags from caller-env health values.
+    # Skip whenever caller already provided a value (true or false); probe only when empty.
+    if [[ -n "$CALLER_CODEX_HEALTHY" ]]; then
         SKIP_CODEX_PROBE=true
     fi
-    if [[ "$CALLER_CURSOR_HEALTHY" == "false" ]]; then
+    if [[ -n "$CALLER_CURSOR_HEALTHY" ]]; then
         SKIP_CURSOR_PROBE=true
     fi
-    if [[ "$CALLER_GEMINI_HEALTHY" == "false" ]]; then
+    if [[ -n "$CALLER_GEMINI_HEALTHY" ]]; then
         SKIP_GEMINI_PROBE=true
     fi
 
@@ -394,6 +395,19 @@ if [[ "$CHECK_REVIEWERS" == "true" ]]; then
             GEMINI_TOOL_DRIFT_ARTIFACT) PROBED_GEMINI_TOOL_DRIFT_ARTIFACT="$value" ;;
         esac
     done <<< "$REVIEWER_OUTPUT"
+
+    # When a probe was skipped because the caller provided a known health value,
+    # override check-reviewers.sh's initial 'false' with the caller's value so
+    # the skip is transparent to downstream consumers.
+    if [[ "$SKIP_CODEX_PROBE" == "true" && -n "$CALLER_CODEX_HEALTHY" ]]; then
+        PROBED_CODEX_HEALTHY="$CALLER_CODEX_HEALTHY"
+    fi
+    if [[ "$SKIP_CURSOR_PROBE" == "true" && -n "$CALLER_CURSOR_HEALTHY" ]]; then
+        PROBED_CURSOR_HEALTHY="$CALLER_CURSOR_HEALTHY"
+    fi
+    if [[ "$SKIP_GEMINI_PROBE" == "true" && -n "$CALLER_GEMINI_HEALTHY" ]]; then
+        PROBED_GEMINI_HEALTHY="$CALLER_GEMINI_HEALTHY"
+    fi
 
     [[ -n "$PROBED_CODEX_AVAILABLE" ]] && echo "CODEX_AVAILABLE=$PROBED_CODEX_AVAILABLE"
     [[ -n "$PROBED_CURSOR_AVAILABLE" ]] && echo "CURSOR_AVAILABLE=$PROBED_CURSOR_AVAILABLE"

@@ -13,7 +13,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix <name> [--skip-preflight
 
 The `--check-reviewers` flag runs `check-reviewers.sh --probe` internally and emits `CODEX_AVAILABLE`, `CURSOR_AVAILABLE`, `CODEX_HEALTHY`, `CURSOR_HEALTHY` on stdout. `--check-gemini-reviewer` opts into Gemini probing and adds `GEMINI_AVAILABLE` / `GEMINI_HEALTHY`; `/implement` and `/review` continue to pass it because those keys are consumed by `/implement --coder=gemini` dispatch gating and by cross-skill health propagation, even though the Gemini reviewer launcher is not currently invoked. Skills that need neither Gemini implementer dispatch nor cross-skill `GEMINI_HEALTHY` propagation may omit the flag.
 
-**Session-env override**: If `--caller-env` provides `CODEX_HEALTHY=false`, `CURSOR_HEALTHY=false`, or `GEMINI_HEALTHY=false`, the script auto-sets the corresponding `--skip-codex-probe` / `--skip-cursor-probe` / `--skip-gemini-probe` flag internally — you do not need to pass these explicitly when using `--caller-env`.
+**Session-env override**: If `--caller-env` provides a non-empty `CODEX_HEALTHY`, `CURSOR_HEALTHY`, or `GEMINI_HEALTHY` value (either `true` or `false`), the script auto-sets the corresponding `--skip-codex-probe` / `--skip-cursor-probe` / `--skip-gemini-probe` flag internally and propagates the caller value — you do not need to pass these explicitly when using `--caller-env`.
 
 Set mental flags `codex_available` and `cursor_available` based on the output:
 - If `CODEX_AVAILABLE=false`: `codex_available=false`. Print: `**⚠ Codex not available (binary not found). Proceeding without Codex reviewer.**`

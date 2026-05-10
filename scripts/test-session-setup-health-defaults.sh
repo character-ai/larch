@@ -140,6 +140,25 @@ if run_session_setup "explicit-false" "$ENV4" "$HEALTH4"; then
         "explicit caller-env false: GEMINI passes through"
 fi
 
+# ---------------------------------------------------------------------------
+# Test 5 — --check-reviewers with caller-env true: health sidecar must echo
+# caller value, not check-reviewers.sh's initial 'false'. Regression for the
+# inverted skip-probe fix (== "false" → -n check).
+# ---------------------------------------------------------------------------
+ENV5="$SANDBOX/env5.txt"
+HEALTH5="$SANDBOX/health5.txt"
+cat > "$ENV5" <<'EOF'
+CODEX_HEALTHY=true
+CURSOR_HEALTHY=true
+EOF
+if run_session_setup "check-reviewers-caller-true" "$ENV5" "$HEALTH5" \
+    --check-reviewers; then
+    assert_health_value "$HEALTH5" "CODEX_HEALTHY" "true" \
+        "--check-reviewers + caller true: CODEX passes through"
+    assert_health_value "$HEALTH5" "CURSOR_HEALTHY" "true" \
+        "--check-reviewers + caller true: CURSOR passes through"
+fi
+
 echo
 echo "Results: $PASS passed, $FAIL failed"
 [[ $FAIL -eq 0 ]] || exit 1
