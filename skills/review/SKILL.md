@@ -24,7 +24,7 @@ Reviewer dirty-tree changes are automatically discarded and logged — no operat
 
 ## Anti-patterns
 
-- **NEVER emit inline prose when `SESSION_ENV_PATH` is non-empty in diff mode.** **Why:** nested `/review --diff` runs under `/implement`, whose parent-visible transcript must obey the artifact-only return contract. **How to apply:** write summaries, tallies, scoreboards, rejected findings, and warning details to file-backed artifacts such as `$REVIEW_TMPDIR/review-round-summary.md` or `$IMPLEMENT_TMPDIR/execution-issues.md`, then emit only the terminal `### review-result` KV footer and required artifact paths.
+- **NEVER emit inline prose when `SESSION_ENV_PATH` is non-empty.** **Why:** nested `/review` runs under `/implement` (or any parent orchestrator), whose parent-visible transcript must obey the artifact-only return contract. **How to apply:** write summaries, tallies, scoreboards, rejected findings, and warning details to file-backed artifacts such as `$REVIEW_TMPDIR/review-round-summary.md` or `$IMPLEMENT_TMPDIR/execution-issues.md`, then emit only the terminal `### review-result` KV footer and required artifact paths.
 
 ## Mode activation
 
@@ -393,7 +393,11 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 
 ### 4a — Print summary (both modes)
 
-`$REVIEW_TMPDIR/review-round-summary.md` is the file-backed source for Step 4 human-readable summary content. When `subagent_mode=true` AND `REVIEW_HEAVY=complete` was returned, this file already exists from the heavy worker. Otherwise (inline mode or subagent fallback), compose the final summary below and write it to `$REVIEW_TMPDIR/review-round-summary.md` before printing anything. When `SESSION_ENV_PATH` is non-empty, also copy the same content to `$(dirname "$SESSION_ENV_PATH")/review-round-summary.md` before emitting the footer; this stable parent-tmpdir path survives Step 5 cleanup and is the path `/implement` reads.
+`$REVIEW_TMPDIR/review-round-summary.md` is the file-backed source for Step 4 human-readable summary content.
+
+**Subagent path** (`subagent_mode=true` AND `REVIEW_HEAVY=complete`): the heavy worker already wrote the summary directly to `$(dirname "$SESSION_ENV_PATH")/review-round-summary.md` (the stable parent-tmpdir path). No copy is needed; the file at the parent-tmpdir path is already present.
+
+**Inline path** (inline mode or subagent fallback): compose the final summary below, write it to `$REVIEW_TMPDIR/review-round-summary.md`, and when `SESSION_ENV_PATH` is non-empty also copy it to `$(dirname "$SESSION_ENV_PATH")/review-round-summary.md` (the stable parent-tmpdir path that `/implement` reads and that survives Step 5 cleanup).
 
 Summary content:
 - Total number of review rounds (always 1 in description mode)
