@@ -122,7 +122,7 @@ while IFS= read -r arg; do CURSOR_MODEL_ARGS+=("$arg"); done < "$CURSOR_MODEL_AR
 
 ${CLAUDE_PLUGIN_ROOT}/scripts/run-external-agent.sh --tool cursor --output "<tmpdir>/cursor-vote-output.txt" --timeout 1200 --capture-stdout -- \
   cursor agent -p --force --trust ${CURSOR_MODEL_ARGS[@]+"${CURSOR_MODEL_ARGS[@]}"} ${CURSOR_AUTH_FLAGS[@]+"${CURSOR_AUTH_FLAGS[@]}"} --workspace "$PWD" \
-    "$("${CLAUDE_PLUGIN_ROOT}/scripts/cursor-wrap-prompt.sh" "<voter prompt with ballot>. Work at your maximum reasoning effort level.")"
+    "$("${CLAUDE_PLUGIN_ROOT}/scripts/cursor-wrap-prompt.sh" "<voter prompt with ballot>.")"
 ```
 
 Use `run_in_background: true` and `timeout: 1260000`.
@@ -143,7 +143,7 @@ while IFS= read -r arg; do CODEX_MODEL_ARGS+=("$arg"); done < "$CODEX_MODEL_ARGS
 ${CLAUDE_PLUGIN_ROOT}/scripts/run-external-agent.sh --tool codex --output "<tmpdir>/codex-vote-output.txt" --timeout 1200 -- \
   codex exec --full-auto -C "$PWD" ${CODEX_MODEL_ARGS[@]+"${CODEX_MODEL_ARGS[@]}"} \
     --output-last-message "<tmpdir>/codex-vote-output.txt" \
-    "<voter prompt with ballot>. Work at your maximum reasoning effort level."
+    "<voter prompt with ballot>."
 ```
 
 Use `run_in_background: true` and `timeout: 1260000`.

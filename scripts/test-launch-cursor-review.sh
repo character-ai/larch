@@ -128,6 +128,7 @@ PATH="$STUB_BIN:$PATH" "$LAUNCHER" --output "$OUT_B" --timeout 5 --prompt "origi
 assert_grep "case B outer launcher" "^OUTER_LAUNCHER=$REPO_ROOT/scripts/launch-cursor-review.sh$" "${OUT_B}.meta"
 assert_grep "case B outer prompt" "^OUTER_LAUNCHER_PROMPT_FILE=${OUT_B}.prompt$" "${OUT_B}.meta"
 assert_grep "case B workdir" "^OUTER_LAUNCHER_WORKDIR=$(pwd -P)$" "${OUT_B}.meta"
+assert_grep "case B outer launcher risk" "^OUTER_LAUNCHER_RISK=high$" "${OUT_B}.meta"
 # Issue #1529: the OUTPUT.prompt sidecar holds the user-original prompt
 # (no preamble) so collect-agent-results.sh empty-output retry can replay
 # via --prompt-file without double-prepending the HARD CONSTRAINTS block.
@@ -143,11 +144,14 @@ fi
 assert_grep "case B dirty-tree sidecar status" "^STATUS=" "${OUT_B}.dirty-tree"
 assert_grep "case B dirty-tree sidecar mode" "^MODE=baseline$" "${OUT_B}.dirty-tree"
 
-# Case C: --prompt-file preserves trailing newlines through the wrapper prompt.
+# Case C: --prompt-file preserves trailing newlines in the user-original
+# sidecar. In the high-risk outgoing Cursor argv, the launcher-owned effort
+# suffix follows those body bytes.
 # Issue #1529: the wrapper output (last argv to cursor) has the form
-# ` /max-mode on. Prompt: <preamble>\n\n<body>`. Verify the wrapper prefix,
-# preamble presence, and body tail. Also verify the OUTPUT.prompt sidecar is
-# the user-original body verbatim (no preamble — retry-replay safety).
+# ` /max-mode on. Prompt: <preamble>\n\n<body> <effort suffix>`. Verify the
+# wrapper prefix, preamble presence, and body-before-suffix preservation. Also
+# verify the OUTPUT.prompt sidecar is the user-original body verbatim (no
+# preamble — retry-replay safety).
 OUT_C="$TMPDIR/cursor-c.txt"
 PROMPT_C="$TMPDIR/cursor-c.prompt"
 PROMPT_LOG_C="$TMPDIR/cursor-c.prompt-log"
@@ -159,13 +163,16 @@ if grep -Fq -- ' /max-mode on. Prompt: ' "$PROMPT_LOG_C"; then
 else
     fail "case C wrapped prompt must contain the /max-mode wrapper prefix"
 fi
-assert_grep "case C wrapped prompt preamble" "HARD CONSTRAINTS — your role is read-only review" "$PROMPT_LOG_C"
-EXPECTED_C_TAIL="$TMPDIR/cursor-c.expected-tail"
-printf 'line one\n\n' > "$EXPECTED_C_TAIL"
-if tail -c "$(wc -c < "$EXPECTED_C_TAIL" | tr -d ' ')" "$PROMPT_LOG_C" | cmp -s - "$EXPECTED_C_TAIL"; then
+if grep -Fq -- 'Work at your maximum reasoning effort level.' "$PROMPT_LOG_C"; then
     pass
 else
-    fail "case C wrapped prompt did not preserve trailing newlines at the tail"
+    fail "case C default/high risk wrapped prompt must contain the effort suffix"
+fi
+assert_grep "case C wrapped prompt preamble" "HARD CONSTRAINTS — your role is read-only review" "$PROMPT_LOG_C"
+if grep -Fq $'line one\n\n Work at your maximum reasoning effort level.' "$PROMPT_LOG_C"; then
+    pass
+else
+    fail "case C wrapped prompt did not preserve prompt-file body bytes before the effort suffix"
 fi
 # Case C sidecar contract: original bytes preserved, no preamble.
 EXPECTED_C_SIDECAR="$TMPDIR/cursor-c.expected-sidecar"
@@ -180,6 +187,22 @@ if grep -Fq -- 'HARD CONSTRAINTS' "${OUT_C}.prompt"; then
 else
     pass
 fi
+
+OUT_C_LOW="$TMPDIR/cursor-c-low.txt"
+PROMPT_LOG_C_LOW="$TMPDIR/cursor-c-low.prompt-log"
+PATH="$STUB_BIN:$PATH" CURSOR_STUB_PROMPT_LOG="$PROMPT_LOG_C_LOW" \
+    "$LAUNCHER" --output "$OUT_C_LOW" --timeout 5 --risk low --prompt "low risk prompt" >/dev/null 2>"$TMPDIR/case-c-low.stderr"
+if grep -Fq -- ' /max-mode on. Prompt: ' "$PROMPT_LOG_C_LOW"; then
+    fail "--risk low Cursor prompt must not contain /max-mode wrapper prefix"
+else
+    pass
+fi
+if grep -Fq -- 'Work at your maximum reasoning effort level.' "$PROMPT_LOG_C_LOW"; then
+    fail "--risk low Cursor prompt must not contain the effort suffix"
+else
+    pass
+fi
+assert_grep "--risk low Cursor prompt still has read-only preamble" "HARD CONSTRAINTS — your role is read-only review" "$PROMPT_LOG_C_LOW"
 
 # Case C2: model-args preflight failure synthesizes .done/.diag/.meta and
 # dirty-tree sidecar artifacts (matching the cursor-auth-preflight pattern)
@@ -758,6 +781,13 @@ set -e
 assert_equals "flag-like timing-task-kind exit" "2" "$RC"
 assert_grep "flag-like timing-task-kind message" "non-empty, non-flag-like value" "$TMPDIR/bad-flaglike-tk.stderr"
 
+set +e
+"$LAUNCHER" --output "$TMPDIR/bad-risk.txt" --timeout 5 --risk medium --prompt "x" >/dev/null 2>"$TMPDIR/bad-risk.stderr"
+RC=$?
+set -e
+assert_equals "invalid risk exit" "2" "$RC"
+assert_grep "invalid risk message" "--risk must be 'high' or 'low'" "$TMPDIR/bad-risk.stderr"
+
 # --token-budget-cap argv validation
 set +e
 "$LAUNCHER" --output "$TMPDIR/budget-missing.txt" --timeout 5 --prompt "x" \
@@ -823,6 +853,122 @@ fi
 # shellcheck disable=SC2016
 if grep -Fq -- 'git diff $(git merge-base HEAD main)...HEAD' "$ARGV_DF" 2>/dev/null; then
     fail "--diff-file specialist: 'git diff \$(git merge-base HEAD main)...HEAD' must NOT appear when --diff-file is set"
+else
+    pass
+fi
+if grep -Fq -- ' /max-mode on. Prompt: ' "$ARGV_DF" && grep -Fq -- 'Work at your maximum reasoning effort level.' "$ARGV_DF"; then
+    pass
+else
+    fail "--agent-file generic diff should derive risk=high and include /max-mode plus effort suffix"
+fi
+
+DF_DOCS="$TMPDIR/test-docs-branch.diff"
+printf 'diff --git a/docs/installation-and-setup.md b/docs/installation-and-setup.md\n--- a/docs/installation-and-setup.md\n+++ b/docs/installation-and-setup.md\n@@ -1 +1 @@\n-old\n+new\n' > "$DF_DOCS"
+OUT_DF_DOCS="$TMPDIR/cursor-docs-diff-file-specialist.txt"
+ARGV_DF_DOCS="$TMPDIR/cursor-docs-diff-file-specialist-argv.log"
+PATH="$STUB_BIN:$PATH" \
+    CURSOR_API_KEY="df-docs-test-key" \
+    CURSOR_STUB_ARGV_LOG="$ARGV_DF_DOCS" \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux \
+    "$LAUNCHER" --output "$OUT_DF_DOCS" --timeout 5 \
+        --agent-file "$REPO_ROOT/agents/reviewer-structure.md" \
+        --mode diff \
+        --diff-file "$DF_DOCS" \
+        >/dev/null 2>"$TMPDIR/docs-diff-file-specialist.stderr"
+if grep -Fq -- ' /max-mode on. Prompt: ' "$ARGV_DF_DOCS"; then
+    fail "--agent-file docs-only diff should derive risk=low and omit /max-mode"
+else
+    pass
+fi
+if grep -Fq -- 'Work at your maximum reasoning effort level.' "$ARGV_DF_DOCS"; then
+    fail "--agent-file docs-only diff should derive risk=low and omit effort suffix"
+else
+    pass
+fi
+
+# test-only diff: a diff touching scripts/test-foo.sh derives risk=low → no /max-mode, no effort suffix.
+DF_TEST="$TMPDIR/test-only-branch.diff"
+printf 'diff --git a/scripts/test-foo.sh b/scripts/test-foo.sh\n--- a/scripts/test-foo.sh\n+++ b/scripts/test-foo.sh\n@@ -1 +1 @@\n-old\n+new\n' > "$DF_TEST"
+OUT_DF_TEST="$TMPDIR/cursor-test-diff-file-specialist.txt"
+ARGV_DF_TEST="$TMPDIR/cursor-test-diff-file-specialist-argv.log"
+PATH="$STUB_BIN:$PATH" \
+    CURSOR_API_KEY="df-test-only-key" \
+    CURSOR_STUB_ARGV_LOG="$ARGV_DF_TEST" \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux \
+    "$LAUNCHER" --output "$OUT_DF_TEST" --timeout 5 \
+        --agent-file "$REPO_ROOT/agents/reviewer-structure.md" \
+        --mode diff \
+        --diff-file "$DF_TEST" \
+        >/dev/null 2>"$TMPDIR/test-diff-file-specialist.stderr"
+if grep -Fq -- ' /max-mode on. Prompt: ' "$ARGV_DF_TEST"; then
+    fail "--agent-file test-only diff should derive risk=low and omit /max-mode"
+else
+    pass
+fi
+if grep -Fq -- 'Work at your maximum reasoning effort level.' "$ARGV_DF_TEST"; then
+    fail "--agent-file test-only diff should derive risk=low and omit effort suffix"
+else
+    pass
+fi
+
+# generated-only diff: agents/code-reviewer.md is listed in generators.tsv → risk=low.
+DF_GEN="$TMPDIR/generated-only-branch.diff"
+printf 'diff --git a/agents/code-reviewer.md b/agents/code-reviewer.md\n--- a/agents/code-reviewer.md\n+++ b/agents/code-reviewer.md\n@@ -1 +1 @@\n-old\n+new\n' > "$DF_GEN"
+OUT_DF_GEN="$TMPDIR/cursor-gen-diff-file-specialist.txt"
+ARGV_DF_GEN="$TMPDIR/cursor-gen-diff-file-specialist-argv.log"
+PATH="$STUB_BIN:$PATH" \
+    CURSOR_API_KEY="df-gen-only-key" \
+    CURSOR_STUB_ARGV_LOG="$ARGV_DF_GEN" \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux \
+    "$LAUNCHER" --output "$OUT_DF_GEN" --timeout 5 \
+        --agent-file "$REPO_ROOT/agents/reviewer-structure.md" \
+        --mode diff \
+        --diff-file "$DF_GEN" \
+        >/dev/null 2>"$TMPDIR/gen-diff-file-specialist.stderr"
+if grep -Fq -- ' /max-mode on. Prompt: ' "$ARGV_DF_GEN"; then
+    fail "--agent-file generated-only diff should derive risk=low and omit /max-mode"
+else
+    pass
+fi
+if grep -Fq -- 'Work at your maximum reasoning effort level.' "$ARGV_DF_GEN"; then
+    fail "--agent-file generated-only diff should derive risk=low and omit effort suffix"
+else
+    pass
+fi
+
+OUT_RETRY_LOW="$TMPDIR/cursor-retry-low.txt"
+HEALTH_RETRY_LOW="$TMPDIR/cursor-retry-low.health"
+WORKDIR_RETRY_LOW="$TMPDIR/cursor-retry-low-workdir"
+PROMPT_RETRY_LOW="$TMPDIR/cursor-retry-low.prompt-log"
+mkdir -p "$WORKDIR_RETRY_LOW"
+: > "$OUT_RETRY_LOW"
+printf '0\n' > "${OUT_RETRY_LOW}.done"
+printf 'retry prompt\n' > "${OUT_RETRY_LOW}.prompt"
+{
+    printf 'TOOL=cursor\n'
+    printf 'TIMEOUT=2\n'
+    printf 'CAPTURE_STDOUT=false\n'
+    printf 'CAPTURE_STDOUT_ONLY=true\n'
+    printf 'OUTPUT_FILE=%s\n' "$OUT_RETRY_LOW"
+    printf 'OUTER_LAUNCHER=%s\n' "$REPO_ROOT/scripts/launch-cursor-review.sh"
+    printf 'OUTER_LAUNCHER_PROMPT_FILE=%s\n' "${OUT_RETRY_LOW}.prompt"
+    printf 'OUTER_LAUNCHER_WORKDIR=%s\n' "$WORKDIR_RETRY_LOW"
+    printf 'OUTER_LAUNCHER_RISK=low\n'
+} > "${OUT_RETRY_LOW}.meta"
+PATH="$STUB_BIN:$PATH" \
+    CURSOR_API_KEY="retry-low-key" \
+    CURSOR_STUB_ARGV_LOG="$PROMPT_RETRY_LOW" \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux \
+    WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.05 \
+    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    "$REPO_ROOT/scripts/collect-agent-results.sh" --timeout 5 --write-health "$HEALTH_RETRY_LOW" "$OUT_RETRY_LOW" >/dev/null
+if grep -Fq -- ' /max-mode on. Prompt: ' "$PROMPT_RETRY_LOW"; then
+    fail "outer retry with OUTER_LAUNCHER_RISK=low must omit /max-mode"
+else
+    pass
+fi
+if grep -Fq -- 'Work at your maximum reasoning effort level.' "$PROMPT_RETRY_LOW"; then
+    fail "outer retry with OUTER_LAUNCHER_RISK=low must omit effort suffix"
 else
     pass
 fi

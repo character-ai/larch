@@ -29,7 +29,7 @@ The stderr wording for invalid tools remains `--tool must be 'cursor', 'codex', 
 | Flag | Purpose |
 |------|---------|
 | `--tool cursor\|codex\|gemini` | Required. Selects tool-specific fallback chain. |
-| `--with-effort` | Opt-in. Emits Codex reasoning-effort flag (`-c model_reasoning_effort="EFFORT"`). No-op for Cursor and Gemini. |
+| `--with-effort` | Opt-in. Emits Codex reasoning-effort flag (`-c model_reasoning_effort="EFFORT"`). No-op for Cursor and Gemini; Cursor max-mode is handled by `cursor-wrap-prompt.sh`, and the review launcher gates its prompt suffix via `--risk`. |
 | `--default-model MODEL` | Optional. Inserted into the Codex and Gemini fallback chains between plugin option and hardcoded default. |
 
 ## Rejection Rules

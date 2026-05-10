@@ -67,6 +67,13 @@ set -e
 assert_eq "flag-like timing-task-kind exit" "2" "$RC"
 assert_grep "flag-like timing-task-kind message" "non-empty, non-flag-like value" "$TMPDIR/bad-flaglike-tk.stderr"
 
+set +e
+"$LAUNCHER" --output "$TMPDIR/bad-risk.txt" --timeout 5 --risk medium --prompt "x" >/dev/null 2>"$TMPDIR/bad-risk.stderr"
+RC=$?
+set -e
+assert_eq "invalid risk exit" "2" "$RC"
+assert_grep "invalid risk message" "--risk must be 'high' or 'low'" "$TMPDIR/bad-risk.stderr"
+
 STUB_BIN="$TMPDIR/bin"
 mkdir -p "$STUB_BIN"
 cat > "$STUB_BIN/codex" <<'STUB_CODEX'
@@ -202,10 +209,28 @@ if [[ "$(grep -Fxc -- '-m' "$ARGV")" == "1" ]] && grep -Fxq -- 'stub-model' "$AR
 else
     fail "model args should include one -m and literal stub-model"
 fi
+if grep -Fxq -- 'model_reasoning_effort="high"' "$ARGV"; then
+    pass
+else
+    fail "default/high risk Codex launch should include model_reasoning_effort=high"
+fi
 if grep -Fxq -- "projects.\"$REPO_ROOT\".trust_level=\"trusted\"" "$ARGV"; then
     pass
 else
     fail "codex review argv should include trusted-project config override"
+fi
+
+LOW_ARGV="$TMPDIR/argv-low-risk.txt"
+LOW_COUNT="$TMPDIR/count-low-risk.txt"
+PATH="$STUB_BIN:$PATH" \
+    CODEX_STUB_ARGV_LOG="$LOW_ARGV" \
+    CODEX_STUB_COUNT_FILE="$LOW_COUNT" \
+    LARCH_CODEX_MODEL="stub-model" \
+    "$LAUNCHER" --output "$TMPDIR/low-risk.txt" --timeout 5 --risk low --prompt "review prompt" >/dev/null
+if grep -Fq -- 'model_reasoning_effort' "$LOW_ARGV"; then
+    fail "--risk low Codex launch must omit model_reasoning_effort"
+else
+    pass
 fi
 
 TIMING_ENV_LEDGER="$TMPDIR/lcr-timing-env.tsv"
@@ -556,6 +581,102 @@ fi
 # shellcheck disable=SC2016
 if grep -Fq -- 'git diff $(git merge-base HEAD main)...HEAD' "$DF_ARGV" 2>/dev/null; then
     fail "--diff-file specialist: 'git diff \$(git merge-base HEAD main)...HEAD' must NOT appear when --diff-file is set"
+else
+    pass
+fi
+if grep -Fxq -- 'model_reasoning_effort="high"' "$DF_ARGV"; then
+    pass
+else
+    fail "--agent-file generic diff should derive risk=high and include effort"
+fi
+
+DF_DOCS="$TMPDIR/docs-only.diff"
+printf 'diff --git a/docs/installation-and-setup.md b/docs/installation-and-setup.md\n--- a/docs/installation-and-setup.md\n+++ b/docs/installation-and-setup.md\n@@ -1 +1 @@\n-old\n+new\n' > "$DF_DOCS"
+DF_DOCS_OUTPUT="$TMPDIR/codex-docs-diff-file-specialist.txt"
+DF_DOCS_ARGV="$TMPDIR/codex-docs-diff-file-specialist-argv.log"
+DF_DOCS_COUNT="$TMPDIR/codex-docs-diff-file-specialist-count.txt"
+PATH="$STUB_BIN:$PATH" \
+    CODEX_STUB_ARGV_LOG="$DF_DOCS_ARGV" \
+    CODEX_STUB_COUNT_FILE="$DF_DOCS_COUNT" \
+    "$LAUNCHER" --output "$DF_DOCS_OUTPUT" --timeout 5 \
+        --agent-file "$REPO_ROOT/agents/reviewer-structure.md" \
+        --mode diff \
+        --diff-file "$DF_DOCS" \
+        >/dev/null 2>"$TMPDIR/docs-diff-file-specialist.stderr"
+if grep -Fq -- 'model_reasoning_effort' "$DF_DOCS_ARGV"; then
+    fail "--agent-file docs-only diff should derive risk=low and omit effort"
+else
+    pass
+fi
+
+# test-only diff: a diff touching scripts/test-foo.sh derives risk=low → no model_reasoning_effort.
+DF_TEST="$TMPDIR/test-only.diff"
+printf 'diff --git a/scripts/test-foo.sh b/scripts/test-foo.sh\n--- a/scripts/test-foo.sh\n+++ b/scripts/test-foo.sh\n@@ -1 +1 @@\n-old\n+new\n' > "$DF_TEST"
+DF_TEST_OUTPUT="$TMPDIR/codex-test-diff-file-specialist.txt"
+DF_TEST_ARGV="$TMPDIR/codex-test-diff-file-specialist-argv.log"
+DF_TEST_COUNT="$TMPDIR/codex-test-diff-file-specialist-count.txt"
+PATH="$STUB_BIN:$PATH" \
+    CODEX_STUB_ARGV_LOG="$DF_TEST_ARGV" \
+    CODEX_STUB_COUNT_FILE="$DF_TEST_COUNT" \
+    "$LAUNCHER" --output "$DF_TEST_OUTPUT" --timeout 5 \
+        --agent-file "$REPO_ROOT/agents/reviewer-structure.md" \
+        --mode diff \
+        --diff-file "$DF_TEST" \
+        >/dev/null 2>"$TMPDIR/test-diff-file-specialist.stderr"
+if grep -Fq -- 'model_reasoning_effort' "$DF_TEST_ARGV"; then
+    fail "--agent-file test-only diff should derive risk=low and omit model_reasoning_effort"
+else
+    pass
+fi
+
+# generated-only diff: agents/code-reviewer.md is listed in generators.tsv → risk=low.
+DF_GEN="$TMPDIR/generated-only.diff"
+printf 'diff --git a/agents/code-reviewer.md b/agents/code-reviewer.md\n--- a/agents/code-reviewer.md\n+++ b/agents/code-reviewer.md\n@@ -1 +1 @@\n-old\n+new\n' > "$DF_GEN"
+DF_GEN_OUTPUT="$TMPDIR/codex-gen-diff-file-specialist.txt"
+DF_GEN_ARGV="$TMPDIR/codex-gen-diff-file-specialist-argv.log"
+DF_GEN_COUNT="$TMPDIR/codex-gen-diff-file-specialist-count.txt"
+PATH="$STUB_BIN:$PATH" \
+    CODEX_STUB_ARGV_LOG="$DF_GEN_ARGV" \
+    CODEX_STUB_COUNT_FILE="$DF_GEN_COUNT" \
+    "$LAUNCHER" --output "$DF_GEN_OUTPUT" --timeout 5 \
+        --agent-file "$REPO_ROOT/agents/reviewer-structure.md" \
+        --mode diff \
+        --diff-file "$DF_GEN" \
+        >/dev/null 2>"$TMPDIR/gen-diff-file-specialist.stderr"
+if grep -Fq -- 'model_reasoning_effort' "$DF_GEN_ARGV"; then
+    fail "--agent-file generated-only diff should derive risk=low and omit model_reasoning_effort"
+else
+    pass
+fi
+
+OUT_RETRY_LOW="$TMPDIR/codex-retry-low.txt"
+HEALTH_RETRY_LOW="$TMPDIR/codex-retry-low.health"
+WORKDIR_RETRY_LOW="$TMPDIR/codex-retry-low-workdir"
+RETRY_LOW_ARGV="$TMPDIR/codex-retry-low-argv.log"
+RETRY_LOW_COUNT="$TMPDIR/codex-retry-low-count.txt"
+mkdir -p "$WORKDIR_RETRY_LOW"
+: > "$OUT_RETRY_LOW"
+printf '0\n' > "${OUT_RETRY_LOW}.done"
+printf 'retry prompt\n' > "${OUT_RETRY_LOW}.prompt"
+{
+    printf 'TOOL=codex\n'
+    printf 'TIMEOUT=2\n'
+    printf 'CAPTURE_STDOUT=false\n'
+    printf 'OUTPUT_FILE=%s\n' "$OUT_RETRY_LOW"
+    printf 'OUTER_LAUNCHER=%s\n' "$REPO_ROOT/scripts/launch-codex-review.sh"
+    printf 'OUTER_LAUNCHER_PROMPT_FILE=%s\n' "${OUT_RETRY_LOW}.prompt"
+    printf 'OUTER_LAUNCHER_WORKDIR=%s\n' "$WORKDIR_RETRY_LOW"
+    printf 'OUTER_LAUNCHER_RISK=low\n'
+} > "${OUT_RETRY_LOW}.meta"
+PATH="$STUB_BIN:$PATH" \
+    CODEX_STUB_ARGV_LOG="$RETRY_LOW_ARGV" \
+    CODEX_STUB_COUNT_FILE="$RETRY_LOW_COUNT" \
+    LARCH_CODEX_MODEL="stub-model" \
+    WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.05 \
+    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    "$REPO_ROOT/scripts/collect-agent-results.sh" --timeout 5 --write-health "$HEALTH_RETRY_LOW" "$OUT_RETRY_LOW" >/dev/null
+if grep -Fq -- 'model_reasoning_effort' "$RETRY_LOW_ARGV"; then
+    fail "outer retry with OUTER_LAUNCHER_RISK=low must omit model_reasoning_effort"
 else
     pass
 fi

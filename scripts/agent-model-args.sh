@@ -27,8 +27,9 @@
 #   CLAUDE_PLUGIN_OPTION_GEMINI_MODEL  → LARCH_GEMINI_MODEL
 #
 # Cursor effort: Cursor CLI has no dedicated reasoning-effort flag. No effort
-# tokens are emitted for Cursor; the "Work at maximum reasoning effort"
-# instruction is appended to Cursor prompts at the call site instead.
+# tokens are emitted for Cursor. Substantive high-risk Cursor review launches
+# use cursor-wrap-prompt.sh for max-mode, and launch-cursor-review.sh owns its
+# additional high-risk prompt suffix.
 #
 # Cursor max-mode: Cursor supports ~/.cursor/cli-config.json for max-mode, but
 # that path is user-managed. Larch enforces max-mode by wrapping Cursor prompts

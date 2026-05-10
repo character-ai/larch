@@ -59,6 +59,8 @@ DESCRIPTION_TEXT=""
 SCOPE_FILES=""
 COMPETITION_NOTICE=false
 DIFF_FILE=""
+RISK="high"
+RISK_EXPLICIT=false
 TIMING_TASK_KIND="${LARCH_TIMING_TASK_KIND:-}"
 TOKEN_BUDGET_CAP=""
 
@@ -74,6 +76,14 @@ while [[ $# -gt 0 ]]; do
         --scope-files) SCOPE_FILES="${2:?--scope-files requires a value}"; shift 2 ;;
         --competition-notice) COMPETITION_NOTICE=true; shift ;;
         --diff-file) DIFF_FILE="${2:?--diff-file requires a value}"; shift 2 ;;
+        --risk)
+            [[ -n "${2:-}" ]] || { echo "launch-cursor-review.sh: --risk requires a value" >&2; exit 2; }
+            case "$2" in
+                high|low) RISK="$2"; RISK_EXPLICIT=true ;;
+                *) echo "launch-cursor-review.sh: --risk must be 'high' or 'low'" >&2; exit 2 ;;
+            esac
+            shift 2
+            ;;
         --timing-task-kind) [[ -n "${2:-}" && "${2}" != --* ]] || { echo "launch-cursor-review.sh: --timing-task-kind requires a non-empty, non-flag-like value" >&2; exit 2; }; TIMING_TASK_KIND="$2"; shift 2 ;;
         --token-budget-cap) case "${2:-}" in ''|*[!0-9]*) echo "launch-cursor-review.sh: --token-budget-cap requires a positive integer" >&2; exit 2 ;; esac; (( 10#${2:-0} >= 1 )) || { echo "launch-cursor-review.sh: --token-budget-cap requires a positive integer" >&2; exit 2; }; TOKEN_BUDGET_CAP="$2"; shift 2 ;;
         *) echo "launch-cursor-review.sh: unknown flag: $1" >&2; exit 2 ;;
@@ -162,6 +172,25 @@ fi
 if [[ "$_src_count" -eq 0 ]]; then
     echo "launch-cursor-review.sh: one of --prompt, --agent-file, --prompt-file is required" >&2
     exit 2
+fi
+
+if [[ -n "$AGENT_FILE" && "$RISK_EXPLICIT" != "true" ]]; then
+    RISK="high"
+    if [[ -n "$DIFF_FILE" ]]; then
+        _diff_mode_line=""
+        if _diff_mode_line=$("$SCRIPT_DIR/classify-diff-mode.sh" "$DIFF_FILE" 2>/dev/null); then
+            case "$_diff_mode_line" in
+                DIFF_MODE=docs-only|DIFF_MODE=test-only|DIFF_MODE=generated-only) RISK="low" ;;
+                *) RISK="high" ;;
+            esac
+        fi
+        unset _diff_mode_line
+    fi
+    # Security-specialist override: fail-closed policy — the security agent always
+    # gets max reasoning effort regardless of diff classification.
+    case "$AGENT_FILE" in
+        *security*) RISK="high" ;;
+    esac
 fi
 
 MODEL_ARGS_ERR=$(mktemp)
@@ -296,8 +325,13 @@ EOF
 ORIGINAL_PROMPT="$PROMPT"
 PROMPT="${CURSOR_REVIEW_HARDENING_PREAMBLE}"$'\n\n'"${PROMPT}"
 
-WRAPPED_PROMPT=$({ "$SCRIPT_DIR/cursor-wrap-prompt.sh" "$PROMPT"; _wrap_status=$?; printf X; exit "$_wrap_status"; })
-WRAPPED_PROMPT=${WRAPPED_PROMPT%X}
+if [[ "$RISK" == "high" ]]; then
+    WRAPPED_PROMPT=$({ "$SCRIPT_DIR/cursor-wrap-prompt.sh" "$PROMPT"; _wrap_status=$?; printf X; exit "$_wrap_status"; })
+    WRAPPED_PROMPT=${WRAPPED_PROMPT%X}
+    WRAPPED_PROMPT="${WRAPPED_PROMPT} Work at your maximum reasoning effort level."
+else
+    WRAPPED_PROMPT="$PROMPT"
+fi
 RUN_EXTERNAL="$SCRIPT_DIR/run-external-agent.sh"
 SIDECAR="${OUTPUT}.sidecar"
 PROMPT_FILE_SIDECAR="${OUTPUT}.prompt"
@@ -367,7 +401,7 @@ RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX=.inner.done \
 WRAPPER_PID=$!
 wait "$WRAPPER_PID" && EXIT_CODE=0 || EXIT_CODE=$?
 
-cursor_launcher_append_outer_meta "${OUTPUT}.meta" "$SCRIPT_DIR/launch-cursor-review.sh" "$PROMPT_FILE_SIDECAR" "$PWD"
+cursor_launcher_append_outer_meta "${OUTPUT}.meta" "$SCRIPT_DIR/launch-cursor-review.sh" "$PROMPT_FILE_SIDECAR" "$PWD" "$RISK"
 
 # Test-only deterministic hook (FINDING_1 of /review round 1 hardening): the
 # legacy `eval "$LARCH_TEST_TRAP_AFTER_INNER_DONE"` was an env-var → arbitrary-

@@ -58,6 +58,8 @@ DESCRIPTION_TEXT=""
 SCOPE_FILES=""
 COMPETITION_NOTICE=false
 DIFF_FILE=""
+RISK="high"
+RISK_EXPLICIT=false
 TIMING_TASK_KIND="${LARCH_TIMING_TASK_KIND:-}"
 TOKEN_BUDGET_CAP=""
 
@@ -73,6 +75,14 @@ while [[ $# -gt 0 ]]; do
         --scope-files) SCOPE_FILES="${2:?--scope-files requires a value}"; shift 2 ;;
         --competition-notice) COMPETITION_NOTICE=true; shift ;;
         --diff-file) DIFF_FILE="${2:?--diff-file requires a value}"; shift 2 ;;
+        --risk)
+            [[ -n "${2:-}" ]] || { echo "launch-codex-review.sh: --risk requires a value" >&2; exit 2; }
+            case "$2" in
+                high|low) RISK="$2"; RISK_EXPLICIT=true ;;
+                *) echo "launch-codex-review.sh: --risk must be 'high' or 'low'" >&2; exit 2 ;;
+            esac
+            shift 2
+            ;;
         --timing-task-kind) [[ -n "${2:-}" && "${2}" != --* ]] || { echo "launch-codex-review.sh: --timing-task-kind requires a non-empty, non-flag-like value" >&2; exit 2; }; TIMING_TASK_KIND="$2"; shift 2 ;;
         --token-budget-cap) case "${2:-}" in ''|*[!0-9]*) echo "launch-codex-review.sh: --token-budget-cap requires a positive integer" >&2; exit 2 ;; esac; (( 10#${2:-0} >= 1 )) || { echo "launch-codex-review.sh: --token-budget-cap requires a positive integer" >&2; exit 2; }; TOKEN_BUDGET_CAP="$2"; shift 2 ;;
         *) echo "launch-codex-review.sh: unknown flag: $1" >&2; exit 2 ;;
@@ -149,6 +159,25 @@ fi
 if [[ "$_src_count" -eq 0 ]]; then
     echo "launch-codex-review.sh: one of --prompt, --agent-file, --prompt-file is required" >&2
     exit 2
+fi
+
+if [[ -n "$AGENT_FILE" && "$RISK_EXPLICIT" != "true" ]]; then
+    RISK="high"
+    if [[ -n "$DIFF_FILE" ]]; then
+        _diff_mode_line=""
+        if _diff_mode_line=$("$SCRIPT_DIR/classify-diff-mode.sh" "$DIFF_FILE" 2>/dev/null); then
+            case "$_diff_mode_line" in
+                DIFF_MODE=docs-only|DIFF_MODE=test-only|DIFF_MODE=generated-only) RISK="low" ;;
+                *) RISK="high" ;;
+            esac
+        fi
+        unset _diff_mode_line
+    fi
+    # Security-specialist override: fail-closed policy — the security agent always
+    # gets max reasoning effort regardless of diff classification.
+    case "$AGENT_FILE" in
+        *security*) RISK="high" ;;
+    esac
 fi
 
 # Defensive: env-derived LARCH_TIMING_TASK_KIND may be empty or flag-shaped
@@ -346,8 +375,12 @@ else
 fi
 rm -f "$DIRTY_TREE_SIDECAR" "$UNTRACKED_BASELINE" "${DIRTY_TREE_SIDECAR}.tracked-paths" "${DIRTY_TREE_SIDECAR}.new-untracked-paths"
 "$SCRIPT_DIR/snapshot-untracked.sh" --output "$UNTRACKED_BASELINE" --nul
+MODEL_ARGV=(--tool codex)
+if [[ "$RISK" == "high" ]]; then
+    MODEL_ARGV+=(--with-effort)
+fi
 MODEL_ARGS_ERR=$(mktemp)
-if "$SCRIPT_DIR/agent-model-args.sh" --tool codex --with-effort > "$MODEL_ARGS_TMP" 2> "$MODEL_ARGS_ERR"; then
+if "$SCRIPT_DIR/agent-model-args.sh" "${MODEL_ARGV[@]}" > "$MODEL_ARGS_TMP" 2> "$MODEL_ARGS_ERR"; then
     :
 else
     rc=$?
@@ -377,6 +410,7 @@ else
     exit "$rc"
 fi
 rm -f "$MODEL_ARGS_ERR"
+unset MODEL_ARGV
 MODEL_ARGS=()
 while IFS= read -r arg; do
     MODEL_ARGS+=("$arg")
@@ -420,7 +454,7 @@ else
         2>/dev/null || EXIT_CODE=$?
 fi
 
-codex_launcher_append_outer_meta "${OUTPUT}.meta" "$SCRIPT_DIR/launch-codex-review.sh" "$PROMPT_FILE_SIDECAR" "$PWD"
+codex_launcher_append_outer_meta "${OUTPUT}.meta" "$SCRIPT_DIR/launch-codex-review.sh" "$PROMPT_FILE_SIDECAR" "$PWD" "$RISK"
 
 N=$(awk '/^tokens used$/ { getline n; gsub(",","",n); last=n } END { print last }' "$SIDECAR" 2>/dev/null || true)
 if [[ "$N" =~ ^[0-9]+$ ]]; then

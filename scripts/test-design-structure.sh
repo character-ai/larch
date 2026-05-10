@@ -178,6 +178,10 @@ grep 'collect-agent-results.sh' "$PLAN_REVIEW_MD" \
   | grep -Fq -- '--validation-mode' \
   || fail "(7) no single plan-review.md line carries 'collect-agent-results.sh', '--timeout 1860', '--substantive-validation', and '--validation-mode' together — issue #661 substantive-validation contract pin is broken"
 
+# Check 7b: plan-review-quick.md must exist (structural pin alongside plan-review.md).
+PLAN_REVIEW_QUICK_MD="$REPO_ROOT/skills/design/references/plan-review-quick.md"
+[[ -f "$PLAN_REVIEW_QUICK_MD" ]] || fail "(7b) plan-review-quick.md missing: $PLAN_REVIEW_QUICK_MD"
+
 # Check 8: nested /implement design handoff must use the file-backed manifest
 # writer and heavy-worker contract, while standalone mode skips the manifest.
 [[ -f "$REPO_ROOT/skills/design/references/heavy-worker.md" ]] \
