@@ -305,10 +305,27 @@ if grep -Fq -- 'HARD CONSTRAINTS — your role is read-only review' "$AGENT_ARGV
 else
     fail "--agent-file run must apply the HARD CONSTRAINTS preamble to the codex argv"
 fi
-if grep -Fq -- 'Structure, KISS, and Maintainability' "${AGENT_OUTPUT}.prompt"; then
+# agent-file sidecar is now a hash+kind sentinel (I/O optimization #1718),
+# not the full rendered body.
+if grep -Fq -- 'LARCH_PROMPT_SENTINEL=1' "${AGENT_OUTPUT}.prompt"; then
     pass
 else
-    fail "--agent-file OUTPUT.prompt sidecar must contain specialist-rendered body"
+    fail "--agent-file OUTPUT.prompt sidecar must be a hash+kind sentinel (LARCH_PROMPT_SENTINEL=1)"
+fi
+if grep -Fq -- 'KIND=specialist' "${AGENT_OUTPUT}.prompt"; then
+    pass
+else
+    fail "--agent-file OUTPUT.prompt sidecar must contain KIND=specialist"
+fi
+if grep -Fq -- 'HASH=' "${AGENT_OUTPUT}.prompt"; then
+    pass
+else
+    fail "--agent-file OUTPUT.prompt sidecar must contain HASH= field"
+fi
+if grep -Fq -- 'Structure, KISS, and Maintainability' "${AGENT_OUTPUT}.prompt"; then
+    fail "--agent-file OUTPUT.prompt sidecar must NOT contain the specialist body (sentinel optimization)"
+else
+    pass
 fi
 if grep -Fq -- 'HARD CONSTRAINTS' "${AGENT_OUTPUT}.prompt"; then
     fail "--agent-file OUTPUT.prompt sidecar must NOT include the preamble"
