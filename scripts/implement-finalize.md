@@ -6,7 +6,7 @@
 
 - `postbump --state-file PATH --implement-tmpdir PATH [--changelog-bullets-file PATH]` covers Step 8's version-bump-reasoning anchor fragment write, Step 8a's CHANGELOG amend, and Step 8b's rebase + force-push gate. It invokes `scripts/refresh-anchor.sh`, `scripts/check-changelog-present.sh`, `scripts/git-amend-add.sh`, `scripts/rebase-push.sh`, `scripts/check-remote-branch.sh`, and `scripts/git-force-push.sh`, and emits postbump-specific tail records ending with exactly one `STATUS=...` line.
 - `postmerge --state-file PATH --final-bail-reason-file PATH` covers Step 14 local cleanup and Step 15 verify-main. It invokes `scripts/local-cleanup.sh` and `scripts/verify-main.sh`, captures their stdout envelopes, forwards their stderr, and emits only Step 14/15 breadcrumbs plus tail records.
-- `teardown --state-file PATH --implement-tmpdir PATH` covers the Step 18 title-prefix terminal transition, tmpdir cleanup, tracking-issue URL print, and final `✅ 18` breadcrumb. It invokes `scripts/get-issue-info.sh`, `scripts/round-trip-detect.sh`, `scripts/tracking-issue-write.sh rename`, and, after a basename + session-id sanity check, `scripts/cleanup-tmpdir.sh`.
+- `teardown --state-file PATH --implement-tmpdir PATH` covers the Step 18 title-prefix terminal transition, tmpdir cleanup, tracking-issue URL print, and final `✅ 18` compact breadcrumb. It invokes `scripts/get-issue-info.sh`, `scripts/round-trip-detect.sh`, `scripts/tracking-issue-write.sh rename`, and, after a basename + session-id sanity check, `scripts/cleanup-tmpdir.sh`.
 
 Exit code `0` is not a complete outcome signal. Consumers must parse `STATUS=` for `postbump`, plus `LOCAL_CLEANUP_STATUS=`, `VERIFY_MAIN_STATUS=`, `RENAME_STATUS=`, and `FINALIZE_WARNINGS=` for the post-PR subcommands. Exit code `2` is reserved for argument or state-file validation failures.
 
@@ -46,6 +46,14 @@ Conflict resume uses the implicit checkpoint file `$IMPLEMENT_TMPDIR/.postbump-p
 
 ## Output Contract
 
+Step-boundary completion and skip breadcrumbs emitted by this script use `/implement`'s compact key/value format:
+
+```
+<icon> <step>: <short-name> status=<complete|skip|bypass> [reason=<token>] [outcome=<token>] [sha=<hash>] elapsed=<time>
+```
+
+Warnings remain prose-format `**⚠ ...**` lines. Tail records remain `KEY=value` lines and are not breadcrumbs.
+
 `postbump` prints phase breadcrumbs, then:
 
 ```
@@ -62,7 +70,7 @@ FINALIZE_WARNINGS=<N>
 
 `RESUME_PHASE=force-push-gate` and `CALLER_KIND=step8b_rebase` are present only on `STATUS=conflict`. The resume phase line is informational; the checkpoint file is authoritative. Consumers MUST parse the last `STATUS=` line. The script emits exactly one `STATUS=...` tail record; future debug output must not emit `STATUS=...` lines.
 
-`postmerge` prints one Step 14 breadcrumb, optionally one Step 15 breadcrumb, then:
+`postmerge` prints one compact Step 14 breadcrumb, optionally one compact Step 15 breadcrumb, then:
 
 ```
 LOCAL_CLEANUP_STATUS=success|partial|skipped-draft|skipped-merge-false|skipped-bail
@@ -71,7 +79,7 @@ FINALIZE_SUBCOMMAND=postmerge
 FINALIZE_WARNINGS=<N>
 ```
 
-`teardown` prints the tracking issue URL when resolvable, then the final Step 18 breadcrumb, then:
+`teardown` prints the tracking issue URL when resolvable, then the final compact Step 18 breadcrumb, then:
 
 ```
 RENAME_BRANCH=A|B|C|skipped

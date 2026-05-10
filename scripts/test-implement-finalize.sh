@@ -62,7 +62,9 @@ assert_rc() {
 }
 
 normalize_elapsed() {
-    sed -E 's/\([0-9]+s\)/(<elapsed>)/g'
+    sed -E \
+        -e 's/\([0-9]+s\)/(<elapsed>)/g' \
+        -e 's/elapsed=[0-9]+[0-9hms]*/elapsed=<elapsed>/g'
 }
 
 override_value() {
@@ -425,13 +427,13 @@ BAIL="$SANDBOX/tmp/final-bail-reason.txt"
 
 write_state "$STATE" DRAFT=true
 OUT=$(run_subject postmerge --state-file "$STATE" --final-bail-reason-file "$BAIL")
-assert_contains "⏭️ 14: local cleanup — skipped (--draft set, staying on feature/finalize for further iteration) (<elapsed>)" "$OUT" "postmerge: draft skip breadcrumb"
+assert_contains "⏭️ 14: local cleanup status=bypass reason=draft-set elapsed=<elapsed>" "$OUT" "postmerge: draft skip breadcrumb"
 assert_contains "LOCAL_CLEANUP_STATUS=skipped-draft" "$OUT" "postmerge: draft status"
 assert_contains "VERIFY_MAIN_STATUS=skipped" "$OUT" "postmerge: draft skips verify"
 
 write_state "$STATE" MERGE=false
 OUT=$(run_subject postmerge --state-file "$STATE" --final-bail-reason-file "$BAIL")
-assert_contains "⏭️ 14: local cleanup — skipped (--merge not set), still on feature/finalize (<elapsed>)" "$OUT" "postmerge: merge=false skip"
+assert_contains "⏭️ 14: local cleanup status=bypass reason=merge-not-set elapsed=<elapsed>" "$OUT" "postmerge: merge=false skip"
 assert_contains "LOCAL_CLEANUP_STATUS=skipped-merge-false" "$OUT" "postmerge: merge=false status"
 
 printf 'merge blocked\n' > "$BAIL"
@@ -443,8 +445,8 @@ assert_contains "FINALIZE_WARNINGS=1" "$OUT" "postmerge: bail warning counted"
 
 write_state "$STATE"
 OUT=$(run_subject postmerge --state-file "$STATE" --final-bail-reason-file "$BAIL")
-assert_contains "✅ 14: local cleanup — switched to main, deleted feature/finalize (<elapsed>)" "$OUT" "postmerge: cleanup success"
-assert_contains "✅ 15: verify main — at abc1234 \"Implement finalizer (#123)\" (<elapsed>)" "$OUT" "postmerge: verify success"
+assert_contains "✅ 14: local cleanup status=complete outcome=branch-deleted elapsed=<elapsed>" "$OUT" "postmerge: cleanup success"
+assert_contains "✅ 15: verify main status=complete sha=abc1234 elapsed=<elapsed>" "$OUT" "postmerge: verify success"
 assert_contains "LOCAL_CLEANUP_STATUS=success" "$OUT" "postmerge: success status"
 assert_contains "VERIFY_MAIN_STATUS=verified" "$OUT" "postmerge: verified status"
 
@@ -572,7 +574,7 @@ assert_contains "FINALIZE_WARNINGS=1" "$OUT" "teardown: rename warning counted"
 write_state "$STATE"
 OUT=$(run_subject teardown --state-file "$STATE" --implement-tmpdir "$SANDBOX/tmp")
 assert_contains "📎 Tracking issue: https://github.example/owner/repo/issues/456" "$OUT" "teardown: tracking URL printed"
-assert_contains "✅ 18: cleanup — implement complete! (<elapsed>)" "$OUT" "teardown: final breadcrumb"
+assert_contains "✅ 18: cleanup status=complete elapsed=<elapsed>" "$OUT" "teardown: final breadcrumb"
 assert_contains "ISSUE_URL=https://github.example/owner/repo/issues/456" "$OUT" "teardown: issue URL tail"
 
 # Teardown MUST NOT emit the Step 18 — done closing mark. The cap is
@@ -590,7 +592,7 @@ assert_not_contains 'Step 18 — done' "$LEDGER_CALLS" "teardown: does NOT emit 
 write_state "$STATE"
 rm -f "$SANDBOX/tmp/.run-cleaned-up"
 OUT=$(STUB_REQUIRE_RUN_CLEANED_UP=true run_subject teardown --state-file "$STATE" --implement-tmpdir "$SANDBOX/tmp")
-assert_contains "✅ 18: cleanup — implement complete! (<elapsed>)" "$OUT" "teardown: run-cleaned-up exists before cleanup-tmpdir"
+assert_contains "✅ 18: cleanup status=complete elapsed=<elapsed>" "$OUT" "teardown: run-cleaned-up exists before cleanup-tmpdir"
 if [ -f "$SANDBOX/tmp/.run-cleaned-up" ]; then
     PASS=$((PASS + 1))
     echo "PASS: teardown: run-cleaned-up sentinel written"
@@ -616,7 +618,7 @@ rm -f "$SANDBOX/tmp/.run-cleaned-up"
 chmod 0500 "$SANDBOX/tmp"
 OUT=$(run_subject teardown --state-file "$STATE" --implement-tmpdir "$SANDBOX/tmp")
 chmod 0700 "$SANDBOX/tmp"
-assert_contains "✅ 18: cleanup — implement complete! (<elapsed>)" "$OUT" "teardown: run-cleaned-up touch failure is non-blocking"
+assert_contains "✅ 18: cleanup status=complete elapsed=<elapsed>" "$OUT" "teardown: run-cleaned-up touch failure is non-blocking"
 
 write_state "$STATE"
 OUT=$(STUB_CLEANUP_TMPDIR_RC=1 run_subject teardown --state-file "$STATE" --implement-tmpdir "$SANDBOX/tmp")
@@ -661,6 +663,11 @@ cp "$SANDBOX/original-CHANGELOG.md" "$SANDBOX/repo/CHANGELOG.md"
 rm -f "$SANDBOX/tmp/.postbump-phase" "$SANDBOX/ledger-calls.txt"
 write_postbump_state "$POSTBUMP_STATE"
 OUT=$(run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
+assert_contains "✅ 8: anchor status=complete elapsed=<elapsed>" "$OUT" "postbump: anchor compact breadcrumb"
+assert_contains "✅ 8a: changelog status=complete to=v17.0.4 elapsed=<elapsed>" "$OUT" "postbump: changelog compact success breadcrumb"
+assert_contains "✅ 8b: rebase status=complete outcome=rebased elapsed=<elapsed>" "$OUT" "postbump: rebase compact success breadcrumb"
+assert_contains "✅ 8b: rebase status=complete outcome=force-pushed elapsed=<elapsed>" "$OUT" "postbump: force-push compact success breadcrumb"
+assert_not_contains " — " "$OUT" "postbump: happy path avoids prose breadcrumb separator"
 assert_contains "ANCHOR_REFRESH_STATUS=ok" "$OUT" "postbump: happy path refreshes anchor"
 assert_contains "CHANGELOG_STATUS=updated" "$OUT" "postbump: happy path updates changelog"
 assert_contains "REBASE_STATUS=rebased" "$OUT" "postbump: happy path rebases"
@@ -792,13 +799,22 @@ awk 'prev_blank && /^$/ { print "DOUBLE_BLANK"; exit } /^$/ { prev_blank=1; next
 assert_file_not_contains "DOUBLE_BLANK" "$SANDBOX/blank-check-replace.txt" "postbump: replacement path has no consecutive blank lines"
 
 cp "$SANDBOX/original-CHANGELOG.md" "$SANDBOX/repo/CHANGELOG.md"
+write_postbump_state "$POSTBUMP_STATE"
+OUT=$(STUB_CHANGELOG_PRESENT=false run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
+assert_contains "⏩ 8a: changelog status=skip reason=changelog-absent elapsed=<elapsed>" "$OUT" "postbump: absent changelog compact skip breadcrumb"
+assert_contains "CHANGELOG_STATUS=skipped-absent" "$OUT" "postbump: absent changelog status"
+
+cp "$SANDBOX/original-CHANGELOG.md" "$SANDBOX/repo/CHANGELOG.md"
 write_postbump_state "$POSTBUMP_STATE" BUMP_TYPE=NONE
 OUT=$(run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
+assert_contains "⏩ 8a: changelog status=skip reason=no-bump-commit elapsed=<elapsed>" "$OUT" "postbump: no-bump compact skip breadcrumb"
 assert_contains "CHANGELOG_STATUS=skipped-no-bump" "$OUT" "postbump: BUMP_TYPE=NONE skips changelog"
 assert_contains "REBASE_STATUS=rebased" "$OUT" "postbump: BUMP_TYPE=NONE still rebases"
 
 write_postbump_state "$POSTBUMP_STATE" FORKED_TARGET=true REPO_UNAVAILABLE=true
 OUT=$(run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
+assert_contains "⏩ 8a: changelog status=skip reason=forked-dry-run elapsed=<elapsed>" "$OUT" "postbump: forked compact skip breadcrumb"
+assert_contains "⏭️ 8b: rebase status=bypass reason=repo-unavailable elapsed=<elapsed>" "$OUT" "postbump: repo-unavailable compact bypass breadcrumb"
 assert_contains "CHANGELOG_STATUS=skipped-fork" "$OUT" "postbump: forked target skips changelog"
 assert_contains "FORCE_PUSH_STATUS=skipped-repo-unavailable" "$OUT" "postbump: repo-unavailable skips force-push"
 assert_file_contains "--base-remote" "$SANDBOX/rebase-argv.txt" "postbump: forked target rebases against upstream"

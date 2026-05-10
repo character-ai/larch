@@ -45,7 +45,7 @@ Each rule states WHY; per-site reminders reference by anchor name.
 
 6. **NEVER move the Step 5 quick-mode Cursor/Codex reviewer prompts (containing the five focus-area enum literals `code-quality` / `risk-integration` / `correctness` / `architecture` / `security`) out of `SKILL.md`.** **Why**: `.github/workflows/ci.yaml` inspects `skills/implement/SKILL.md` for the unquoted focus-area enum. **How to apply**: keep every Step 5 quick-mode Bash block that contains the slash-separated focus-area enum (Cursor and Codex variants for both the rounds 1-3 generic slot and the rounds 4+ generic reviewer) inline in Step 5; do not move them to a reference file unless the CI workflow's file list is extended in the same PR.
 
-7. **NEVER bail mid-run on orchestrator-judgment "scope" or "capacity" concerns without a mechanical justification.** **Why**: `/implement` is designed for long autonomous runs end-to-end. Subjective "this feels like a lot of remaining work" judgments are NOT valid bail reasons. The only sanctioned non-error halt paths between Step 1 and Step 18 are: (a) Step 12d under one of its documented judgment conditions; (b) explicit user halt mid-run via a fresh interactive turn; (c) hard tool failure. **How to apply**: continue according to the next explicit control-flow directive unless a sanctioned halt path applies. **Post-merge sub-clause (highest-stakes halt boundary)**: the `✅ 12: CI+merge loop — PR #<N> merged!` line at Step 12b (and the analogous `✅ PR was force-merged externally` line at Step 12a's `already_merged` branch) is the single most halt-prone moment in the orchestrator — the celebratory "merged!" tone makes the run feel complete, but Steps 14, 15, 16, 17, 18 still must run. Halting at the post-merge boundary, ending the turn after the merge breadcrumb, posting a done recap, or composing any handoff/summary message between the merge breadcrumb and Step 14's first action is a NEVER #7 violation regardless of how natural the boundary feels. The `pr_closed=true` and `DONE_RENAME_APPLIED=true` flags set by 12a/12b are PRE-conditions consumed by Steps 14-18, not POST-conditions of a finished run.
+7. **NEVER bail mid-run on orchestrator-judgment "scope" or "capacity" concerns without a mechanical justification.** **Why**: `/implement` is designed for long autonomous runs end-to-end. Subjective "this feels like a lot of remaining work" judgments are NOT valid bail reasons. The only sanctioned non-error halt paths between Step 1 and Step 18 are: (a) Step 12d under one of its documented judgment conditions; (b) explicit user halt mid-run via a fresh interactive turn; (c) hard tool failure. **How to apply**: continue according to the next explicit control-flow directive unless a sanctioned halt path applies. **Post-merge sub-clause (highest-stakes halt boundary)**: the `✅ 12: CI+merge loop status=complete outcome=merged pr=<N> elapsed=<elapsed>` line at Step 12b (and the analogous `✅ 12: CI+merge loop status=complete outcome=force-merged-externally pr=<N> elapsed=<elapsed>` line at Step 12a's `already_merged` branch) is the single most halt-prone moment in the orchestrator — the celebratory "merged!" tone makes the run feel complete, but Steps 14, 15, 16, 17, 18 still must run. Halting at the post-merge boundary, ending the turn after the merge breadcrumb, posting a done recap, or composing any handoff/summary message between the merge breadcrumb and Step 14's first action is a NEVER #7 violation regardless of how natural the boundary feels. The `pr_closed=true` and `DONE_RENAME_APPLIED=true` flags set by 12a/12b are PRE-conditions consumed by Steps 14-18, not POST-conditions of a finished run.
 
 8. **NEVER use `step12_rebase` or `step10_rebase` (or any other non-`step8b_rebase` token) as the `caller_kind` when invoking the Rebase + Re-bump Sub-procedure from Step 8b's conflict handler.** **Why**: step10/step12 caller families have wrong post-success control flow for Step 8b — `step12_rebase` re-invokes `ci-wait.sh` (no PR exists at Step 8b, so `ci-wait.sh` would fail), `step10_rebase` falls through to a Step 10 → Step 11 path that is unreachable from Step 8b, and the failure semantics route to 12d (no PR to bail under) or break out of a non-existent CI loop. **How to apply**: `implement-finalize.sh postbump` emits `CALLER_KIND=step8b_rebase` on the conflict envelope, and the orchestrator must invoke the sub-procedure with that same token. The sub-procedure's step 7 has a dedicated `step8b_rebase` return branch that returns control to `postbump`'s checkpointed force-push phase without sleeping or re-invoking `ci-wait.sh`.
 
@@ -134,7 +134,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/rebase-push.sh --no-push --skip-if-pushed --keep-o
 - **M4 — On success**, branch on stdout (check `SKIPPED_ALREADY_PUSHED` BEFORE `SKIPPED_ALREADY_FRESH` — `rebase-push.sh` exits early on already-pushed before fetch):
   - If stdout contains `SKIPPED_ALREADY_PUSHED=true`: silently continue.
   - If stdout contains `SKIPPED_ALREADY_FRESH=true`: silently continue.
-  - Otherwise, print: `✅ <step-prefix>: <short-name> | rebase — rebased onto latest main (<elapsed>)`
+  - Otherwise, print: `✅ <step-prefix>: <short-name> | rebase status=complete elapsed=<elapsed>`
 
 **Call-site registry** (the four authorized instantiations; `scripts/test-implement-rebase-macro.sh` pins these rows):
 
@@ -436,7 +436,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-read.sh --sentinel "$IMPLEMENT_TMPD
 Parse stdout for `ISSUE_NUMBER`, `ANCHOR_COMMENT_ID`, `ADOPTED`.
 
 - **Mismatch guard**: if `ISSUE_ARG` is non-empty AND `ISSUE_NUMBER_in_sentinel != ISSUE_ARG`: print `**⚠ 0.5: tracking issue — sentinel mismatch (sentinel has #$ISSUE_NUMBER_in_sentinel, --issue requested #$ISSUE_ARG). Clearing sentinel and re-adopting.**`, remove the sentinel file and `rm -rf $IMPLEMENT_TMPDIR/anchor-sections/`, fall through to Branch 2.
-- **Reuse**: set `ISSUE_NUMBER` and `ANCHOR_COMMENT_ID` from sentinel. Print `✅ 0.5: tracking issue — reusing sentinel #$ISSUE_NUMBER (<elapsed>)`.
+- **Reuse**: set `ISSUE_NUMBER` and `ANCHOR_COMMENT_ID` from sentinel. Print `✅ 0.5: tracking issue status=complete outcome=reused-sentinel issue=$ISSUE_NUMBER elapsed=<elapsed>`.
 - **Hydration** (FINDING_8): if `$IMPLEMENT_TMPDIR/anchor-sections/` is empty or missing, fetch the remote anchor to avoid overwriting populated sections with empty fragments on the first resumed upsert. The wrapper fetches the comment body directly by ID (not via `tracking-issue-read.sh --issue`, whose anchor-marker filter unconditionally skips anchor comments) and runs the section-extraction loop matching `<!-- section:<slug> -->` / `<!-- section-end:<slug> -->` pairs:
 
   ```bash
@@ -520,7 +520,7 @@ ANCHOR_COMMENT_ID=<id>
 ADOPTED=true
 ```
 
-`ADOPTED=true` per the `scripts/tracking-issue-read.md` contract: Phase 3 Branch 2 adopts an existing open issue. Set `ISSUE_NUMBER=$ISSUE_ARG`. Print `✅ 0.5: tracking issue — adopted #$ISSUE_NUMBER via --issue (<elapsed>)`. Proceed to Step 1.
+`ADOPTED=true` per the `scripts/tracking-issue-read.md` contract: Phase 3 Branch 2 adopts an existing open issue. Set `ISSUE_NUMBER=$ISSUE_ARG`. Print `✅ 0.5: tracking issue status=complete outcome=adopted issue=$ISSUE_NUMBER elapsed=<elapsed>`. Proceed to Step 1.
 
 **Branch 3 — PR on current branch with `Closes #<N>`** (no sentinel, no `--issue`):
 
@@ -564,7 +564,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh rename --issue $RECOVERED_
 
 Best-effort: on `FAILED=true` or non-zero exit, log `Step 0.5 — Branch 3 rename to in-progress failed: $ERROR` to `Tool Failures` and continue. Idempotent (`RENAMED=false` when the title already starts with the target lifecycle prefix and the round-trip marker state already matches the desired `--round-trip` value after sticky preservation; see `scripts/tracking-issue-write.md`).
 
-Then write sentinel with `ADOPTED=true` (Phase 3 Branch 3 adopts an existing open issue via PR-body recovery; per the `scripts/tracking-issue-read.md` contract). Set `ISSUE_NUMBER=$RECOVERED_N`. Print `✅ 0.5: tracking issue — recovered #$ISSUE_NUMBER from PR body (<elapsed>)`. Proceed to Step 1.
+Then write sentinel with `ADOPTED=true` (Phase 3 Branch 3 adopts an existing open issue via PR-body recovery; per the `scripts/tracking-issue-read.md` contract). Set `ISSUE_NUMBER=$RECOVERED_N`. Print `✅ 0.5: tracking issue status=complete outcome=recovered-from-pr-body issue=$ISSUE_NUMBER elapsed=<elapsed>`. Proceed to Step 1.
 
 If no PR exists, no `Closes #<N>` match, or the match is not a valid adoptable issue: fall through to Branch 4.
 
@@ -627,13 +627,13 @@ Create the tracking issue **immediately** so all subsequent anchor-accumulation 
    ```
    Write to `$IMPLEMENT_TMPDIR/parent-issue.md`. `ADOPTED=false` per the `scripts/tracking-issue-read.md` contract: Branch 4 CREATED a fresh tracking issue, not adopted an existing one. Skip this step on any step-4/step-5 failure per the deferred-fallback wiring above.
 
-7. **Leave `deferred=false`** (the Step 0.5 entry default is unchanged on Branch 4 success — progressive upserts in subsequent steps are enabled). Print: `✅ 0.5: tracking issue — created #$ISSUE_NUMBER (Branch 4, fresh) (<elapsed>)` and proceed to Step 1.
+7. **Leave `deferred=false`** (the Step 0.5 entry default is unchanged on Branch 4 success — progressive upserts in subsequent steps are enabled). Print: `✅ 0.5: tracking issue status=complete outcome=created issue=$ISSUE_NUMBER elapsed=<elapsed>` and proceed to Step 1.
 
 **Orphan-issue recovery note**: if a session crashes between step 4 (issue created on GitHub) and step 6 (sentinel written locally), a rerun will Branch-4 again and create a duplicate. Recovery: the operator passes `--issue <N>` on rerun to adopt the originally-created issue via Branch 2 (same behavior as the pre-change deferred-creation orphan case — not a regression).
 
 ### repo_unavailable=true
 
-If `repo_unavailable=true`: skip all Step 0.5 branches, do NOT invoke `gh issue view` / `tracking-issue-write.sh`. Fragment accumulation at later steps writes only to local `$IMPLEMENT_TMPDIR/anchor-sections/` files. No tracking issue is created, no sentinel is written, and `$IMPLEMENT_TMPDIR/execution-issues.md` is the only audit trail (removed at Step 18). Print `⏩ 0.5: tracking issue — skipped (repo unavailable) (<elapsed>)`.
+If `repo_unavailable=true`: skip all Step 0.5 branches, do NOT invoke `gh issue view` / `tracking-issue-write.sh`. Fragment accumulation at later steps writes only to local `$IMPLEMENT_TMPDIR/anchor-sections/` files. No tracking issue is created, no sentinel is written, and `$IMPLEMENT_TMPDIR/execution-issues.md` is the only audit trail (removed at Step 18). Print `⏩ 0.5: tracking issue status=skip reason=repo-unavailable elapsed=<elapsed>`.
 
 ### forked_target=true
 
@@ -645,7 +645,7 @@ When `ISSUE_ARG` is non-empty, do not adopt it as a tracking issue. Instead set 
 ${CLAUDE_PLUGIN_ROOT}/scripts/get-issue-context.sh --issue "$ISSUE_ARG" --repo "$UPSTREAM_REPO" --tmpdir "$IMPLEMENT_TMPDIR"
 ```
 
-Parse `TITLE_FILE` and `BODY_FILE`. If the user-supplied `FEATURE_DESCRIPTION` is empty, replace it with the contents of `$BODY_FILE`; otherwise the user description wins. On helper failure, print `**⚠ 0.5: tracking issue — upstream issue context fetch failed: $ERROR. Aborting.**` and skip to Step 18. `ISSUE_NUMBER` MUST remain unset under fork mode so Step 9a cannot inject `Closes #N` into the fork PR body. Print `⏩ 0.5: tracking issue — skipped (--forked dry-run) (<elapsed>)`.
+Parse `TITLE_FILE` and `BODY_FILE`. If the user-supplied `FEATURE_DESCRIPTION` is empty, replace it with the contents of `$BODY_FILE`; otherwise the user description wins. On helper failure, print `**⚠ 0.5: tracking issue — upstream issue context fetch failed: $ERROR. Aborting.**` and skip to Step 18. `ISSUE_NUMBER` MUST remain unset under fork mode so Step 9a cannot inject `Closes #N` into the fork PR body. Print `⏩ 0.5: tracking issue status=skip reason=forked-dry-run elapsed=<elapsed>`.
 
 ### /fix-issue coordination
 
@@ -736,7 +736,7 @@ When `forked_target=true`, append `--base-remote upstream --base-ref main` to th
 
 When Step 0 ran with `continue_from_current=false`, its default preflight already fetched and rebased `main`, so this Step 1.m call should normally short-circuit with `SKIPPED_ALREADY_FRESH=true`. Keep the macro here for the `continue_from_current=true` path and for idempotent protection if Step 0's freshness work was already satisfied.
 
-On non-zero exit, print `**⚠ Failed to ensure local main is fresh. Bailing to cleanup.**`, set `STALL_TRACKING=true` (parallels Rebase Checkpoint Macro M3 and Step 12d — signals Step 18 to rename the tracking issue to `[STALLED]` when Step 0.5 Branch 4 has already created one), and skip to Step 18. On success: if stdout contains `SKIPPED_ALREADY_FRESH=true`, silently continue; otherwise print `✅ 1.m: design plan | update main — rebased onto latest <base> (<elapsed>)`, where `<base>` is `upstream/main` under fork mode and `origin/main` otherwise.
+On non-zero exit, print `**⚠ Failed to ensure local main is fresh. Bailing to cleanup.**`, set `STALL_TRACKING=true` (parallels Rebase Checkpoint Macro M3 and Step 12d — signals Step 18 to rename the tracking issue to `[STALLED]` when Step 0.5 Branch 4 has already created one), and skip to Step 18. On success: if stdout contains `SKIPPED_ALREADY_FRESH=true`, silently continue; otherwise print `✅ 1.m: design plan | update main status=complete outcome=rebased elapsed=<elapsed>`, where the rebase base is `upstream/main` under fork mode and `origin/main` otherwise.
 
 ### Quick mode (`quick_mode=true`)
 
@@ -1071,7 +1071,7 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 # timing-mark Step 3 — checks first pass
 ```
 
-> **Continue after child returns.** On `RELEVANT_CHECKS_OK=true`, execute Step 4's commit (impl) breadcrumb next — the next user-facing output is either `⏩ 4: commit (impl) — already committed by dispatcher (HEAD=<short-sha>)` on the external implementer path or the Step 4 implementation-commit flow on Claude fallback. On `STATUS=fail`, first check for `FAILURE_REASON` (structural — e.g. `tmpdir-validation`, `site-validation`, `repo-root-unresolved`, `missing-check-script`, `redaction-failed`; act on the reason, no log file is produced); otherwise read `REDACTED_LOG_FILE` (checks failure — NOT raw `LOG_FILE`), diagnose, fix, and re-invoke the helper until clean BEFORE Step 4 — the failure path is in-Step-3, not a halt. In either case, do NOT end the turn, summarize, or write a handoff message.
+> **Continue after child returns.** On `RELEVANT_CHECKS_OK=true`, execute Step 4's commit (impl) breadcrumb next — the next user-facing output is either `⏩ 4: commit (impl) status=skip reason=dispatcher-committed sha=<short-sha> elapsed=<elapsed>` on the external implementer path or the Step 4 implementation-commit flow on Claude fallback. On `STATUS=fail`, first check for `FAILURE_REASON` (structural — e.g. `tmpdir-validation`, `site-validation`, `repo-root-unresolved`, `missing-check-script`, `redaction-failed`; act on the reason, no log file is produced); otherwise read `REDACTED_LOG_FILE` (checks failure — NOT raw `LOG_FILE`), diagnose, fix, and re-invoke the helper until clean BEFORE Step 4 — the failure path is in-Step-3, not a halt. In either case, do NOT end the turn, summarize, or write a handoff message.
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/run-relevant-checks-captured.sh" --site step3 --tmpdir "$IMPLEMENT_TMPDIR"
@@ -1100,7 +1100,7 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 # timing-mark Step 4 — commit implementation
 ```
 
-**On the external implementer path** (`$MANIFEST_PATH` is non-empty, i.e. Step 2 returned `STATUS=complete`): the dispatcher has already committed `$TOOL_LABEL`'s working-tree edits using `manifest.commit_message` (`git add -A && git commit -F …`, with `commit_message` piped through `scripts/redact-secrets.sh` first so secrets do not land in git history). There is no Claude-side diff verification — `commit_message` is consumed as-is modulo the secrets-family redaction; the canonical on-disk manifest is sanitized by the same scrubber for downstream Steps 8a / 9a / 9a.1. Skip the `git-commit.sh` invocation. Print `⏩ 4: commit (impl) — already committed by dispatcher (HEAD=$(git rev-parse --short HEAD))`.
+**On the external implementer path** (`$MANIFEST_PATH` is non-empty, i.e. Step 2 returned `STATUS=complete`): the dispatcher has already committed `$TOOL_LABEL`'s working-tree edits using `manifest.commit_message` (`git add -A && git commit -F …`, with `commit_message` piped through `scripts/redact-secrets.sh` first so secrets do not land in git history). There is no Claude-side diff verification — `commit_message` is consumed as-is modulo the secrets-family redaction; the canonical on-disk manifest is sanitized by the same scrubber for downstream Steps 8a / 9a / 9a.1. Skip the `git-commit.sh` invocation. Print `⏩ 4: commit (impl) status=skip reason=dispatcher-committed sha=$(git rev-parse --short HEAD) elapsed=<elapsed>`.
 
 **On the Claude-fallback path** (Step 2 returned `STATUS=claude_fallback` AND `ORCHESTRATOR_EDIT_AUTHORITY=allowed` — the same dual predicate enforced by NEVER #10, the Step 2 entry preconditions matrix, and §2.1.5; if the AUTH key is missing, mismatched, or `forbidden`, Step 2 has already bailed via `orchestrator-envelope-invalid` and Step 4 is unreachable on this branch): stage and commit:
 
@@ -1256,7 +1256,7 @@ Then discard the changes using the sidecar's reported path streams: validate eve
 
 **5.7 — Implement accepted fixes**: before making edits, capture `pre_fix_sha=$(git rev-parse HEAD 2>/dev/null || echo "")` — this SHA anchors the next round's diff-churn measurement at Step 5.2, which compares it against the working tree (not HEAD, since quick-mode review fixes are uncommitted between rounds). Then edit files:
 
-> **Continue after child returns.** On `RELEVANT_CHECKS_OK=true`, execute Step 5.8's re-review gate next — the next user-facing output is one of `✅ 5: code review — round $round_num findings were not substantial; review converged`, `⏳ 5: code review — round $round_num using <Cursor|Codex|Claude>`, or the Step 6 checks (2) breadcrumb. On `STATUS=fail`, first check for `FAILURE_REASON` (structural — e.g. `tmpdir-validation`, `site-validation`, `repo-root-unresolved`, `missing-check-script`, `redaction-failed`; act on the reason, no log file is produced); otherwise read `REDACTED_LOG_FILE` (checks failure — NOT raw `LOG_FILE`), diagnose + fix, and re-invoke the helper until clean BEFORE Step 5.8 — the re-invoke loop is in-Step-5.7, not a halt. In either case, do NOT end the turn, summarize, or write a handoff message.
+> **Continue after child returns.** On `RELEVANT_CHECKS_OK=true`, execute Step 5.8's re-review gate next — the next user-facing output is one of `✅ 5: code review status=complete outcome=converged round=$round_num elapsed=<elapsed>`, `⏳ 5: code review — round $round_num using <Cursor|Codex|Claude>`, or the Step 6 checks (2) breadcrumb. On `STATUS=fail`, first check for `FAILURE_REASON` (structural — e.g. `tmpdir-validation`, `site-validation`, `repo-root-unresolved`, `missing-check-script`, `redaction-failed`; act on the reason, no log file is produced); otherwise read `REDACTED_LOG_FILE` (checks failure — NOT raw `LOG_FILE`), diagnose + fix, and re-invoke the helper until clean BEFORE Step 5.8 — the re-invoke loop is in-Step-5.7, not a halt. In either case, do NOT end the turn, summarize, or write a handoff message.
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/run-relevant-checks-captured.sh" --site step5-7 --tmpdir "$IMPLEMENT_TMPDIR"
@@ -1266,7 +1266,7 @@ Then discard the changes using the sidecar's reported path streams: validate eve
 
 **Substantial round definition**: A round's accepted findings are substantial if at least one accepted finding is a high-severity bug (correctness, security, race, data corruption, broken contract, or comparable — medium severity does NOT trigger another round), OR the applied fixes are significant in size (a non-trivial code change; as a judgment-call convention, a single fix touching >= ~60 LOC of non-comment code or aggregate fixes that meaningfully change structure), OR the accepted-fix count is large (`>= 5`). A round is not substantial only when no accepted finding is high severity, the applied fixes are small (below ~60 LOC), and the accepted-fix count is `< 5`. This is a main-agent judgment call parallel to the OOS triage thresholds; precise bookkeeping is not required, but the boundary directions (`>= 5`, `< 5`, and `>= ~60 LOC`) are fixed.
 
-Classify the just-fixed round as `round_substantial=true|false` before deciding whether to relaunch reviewers. If `round_substantial=false`, print `✅ 5: code review — round $round_num findings were not substantial; review converged`, log to `Warnings`: `Step 5 — quick-mode review loop stopped after round $round_num because accepted findings were not substantial (accepted=<count>; reasoning=<short classification>).`, and IMMEDIATELY proceed to Step 6. Do NOT launch another reviewer round for non-substantial findings.
+Classify the just-fixed round as `round_substantial=true|false` before deciding whether to relaunch reviewers. If `round_substantial=false`, print `✅ 5: code review status=complete outcome=converged round=$round_num elapsed=<elapsed>`, log to `Warnings`: `Step 5 — quick-mode review loop stopped after round $round_num because accepted findings were not substantial (accepted=<count>; reasoning=<short classification>).`, and IMMEDIATELY proceed to Step 6. Do NOT launch another reviewer round for non-substantial findings.
 
 Otherwise increment `round_num`; if `<= 7`, IMMEDIATELY loop back to 5.1 — do NOT write a round summary, status recap, or "review progress" message before starting the next round. Fixing substantial findings does NOT mean the review has converged — convergence requires reviewers to report no new issues in a fresh round, or the last round produced only non-substantial findings. If `> 7`, print:
 
@@ -1357,7 +1357,7 @@ ${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/check-review-changes.sh --baselin
 
 Parse all three stdout keys with key-based extraction (e.g., `awk -F= '$1=="FILES_CHANGED"{print $2}'`) — all keys are always emitted on every invocation in stable order: `FILES_CHANGED` first, `UNTRACKED_BASELINE` second, `GIT_PROBE_FAILED` third. Do NOT `eval`/`source` the script's stdout. If `UNTRACKED_BASELINE=missing` (snapshot was never written or got cleaned up after a Step 5 failure), log to `Warnings` (`Step 6 — pre-/review untracked baseline missing; untracked delta not computed for this run`) and continue — `FILES_CHANGED` is still authoritative for staged + unstaged. If `GIT_PROBE_FAILED=true` (one or more git probes returned non-zero — transient git outage, missing `.git` directory, etc.), log to `Warnings` (`Step 6 — git probe failed during review-change detection; FILES_CHANGED may have missed review-induced edits`) and continue. Step 6 does NOT pass `--strict` by default: today's contract is to preserve the historical graceful-degradation behavior on the `/implement` Step 6 path. The `--strict` flag exists for callers that want to fail-closed (treat a probe failure as `FILES_CHANGED=true`); adopting it project-wide is a separate decision tracked outside this PR. Issue #1485 added the `GIT_PROBE_FAILED` key and `--strict` flag.
 
-If `FILES_CHANGED=false`: print `⏩ 6: checks (2) — skipped, no review changes (<elapsed>)` and IMMEDIATELY skip to Step 7a (Code Flow Diagram runs unconditionally) — do NOT halt after the skip breadcrumb.
+If `FILES_CHANGED=false`: print `⏩ 6: checks (2) status=skip reason=no-review-changes elapsed=<elapsed>` and IMMEDIATELY skip to Step 7a (Code Flow Diagram runs unconditionally) — do NOT halt after the skip breadcrumb.
 
 Else (`FILES_CHANGED=true`):
 
@@ -1436,11 +1436,13 @@ Runs unconditionally after Step 7 (regardless of Steps 6-7 skip).
 
 **MANDATORY — READ ENTIRE FILE** before writing anchor sections under `quick_mode=true` (quick-mode-specific fallback text per section): `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/anchor-template-quick-mode.md`. **Do NOT load** outside quick-mode paths.
 
-If `quick_mode=true`: print `⏩ 7a: code flow — skipped (quick mode) (<elapsed>)`, still write the `diagrams` anchor fragment (Architecture Diagram + Code-Flow-skipped placeholder per the Anchor-section fragment — `diagrams` sub-section below) so the Architecture Diagram is not silently omitted from the anchor, then proceed to Step 8.
+If `quick_mode=true`: print `⏩ 7a: code flow status=skip reason=quick-mode elapsed=<elapsed>`, still write the `diagrams` anchor fragment (Architecture Diagram + Code-Flow-skipped placeholder per the Anchor-section fragment — `diagrams` sub-section below) so the Architecture Diagram is not silently omitted from the anchor, then proceed to Step 8.
 
 If `quick_mode=false`: generate a mermaid Code Flow Diagram from the actual committed implementation. Focus on **runtime behavior** — function call sequences, data flow, control flow. Do NOT duplicate the Architecture Diagram's structural view. Choose the appropriate mermaid type (`sequenceDiagram`, `flowchart`, `stateDiagram`, `graph`, etc.). Diagram contents must obey `${CLAUDE_PLUGIN_ROOT}/skills/shared/mermaid-safe-content.md`. Write the diagram to `$IMPLEMENT_TMPDIR/code-flow-diagram.candidate.md` first, including the `## Code Flow Diagram` heading and mermaid fence; validate it with `${CLAUDE_PLUGIN_ROOT}/scripts/sanitize-mermaid-fragment.sh --input "$IMPLEMENT_TMPDIR/code-flow-diagram.candidate.md" --from-md --warnings-step "7a"`, then promote it to `$IMPLEMENT_TMPDIR/code-flow-diagram.md` only on `STATUS=ok`. Print the promoted diagram under a `## Code Flow Diagram` header with a mermaid code fence.
 
-On success: `✅ 7a: code flow — diagram generated (<elapsed>)`. On generation failure (too abstract to diagram): `**⚠ 7a: code flow — generation failed, proceeding without diagram (<elapsed>)**` and log to `Warnings`. On sanitizer rejection or exit 2, delete the candidate, do not promote it, print `**⚠ 7a: code flow — rejected by mermaid sanitizer (REASON_TOKEN=<token>), proceeding without diagram (<elapsed>)**`, and append `- **Step 7a — code flow diagram rejected:** <REASON_TOKEN>` under `### Warnings` in `$IMPLEMENT_TMPDIR/execution-issues.md` via `${CLAUDE_PLUGIN_ROOT}/scripts/append-execution-issue.sh`. Use only `REASON_TOKEN` values, not raw diagram content.
+On success: `✅ 7a: code flow status=complete outcome=diagram-generated elapsed=<elapsed>`.
+
+On generation failure (too abstract to diagram): `**⚠ 7a: code flow — generation failed, proceeding without diagram (<elapsed>)**` and log to `Warnings`. On sanitizer rejection or exit 2, delete the candidate, do not promote it, print `**⚠ 7a: code flow — rejected by mermaid sanitizer (REASON_TOKEN=<token>), proceeding without diagram (<elapsed>)**`, and append `- **Step 7a — code flow diagram rejected:** <REASON_TOKEN>` under `### Warnings` in `$IMPLEMENT_TMPDIR/execution-issues.md` via `${CLAUDE_PLUGIN_ROOT}/scripts/append-execution-issue.sh`. Use only `REASON_TOKEN` values, not raw diagram content.
 
 ### Anchor-section fragment — `diagrams`
 
@@ -1484,7 +1486,7 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 ${CLAUDE_PLUGIN_ROOT}/scripts/check-bump-version.sh --mode pre
 ```
 
-If `forked_target=true`: print `⏩ 8: version bump — skipped (--forked dry-run) (<elapsed>)`, set `FORKED_TARGET=true` in the postbump-state values to write below, skip the `/bump-version` invocation, and jump to the `postbump` invocation. Phase 1 writes the fork-specific fallback fragment, Phase 2 skips, Phase 3 rebases against upstream/main, and Phase 4 skips when `repo_unavailable=true`. Do not run the Rebase + Re-bump Sub-procedure under fork mode.
+If `forked_target=true`: print `⏩ 8: version bump status=skip reason=forked-dry-run elapsed=<elapsed>`, set `FORKED_TARGET=true` in the postbump-state values to write below, skip the `/bump-version` invocation, and jump to the `postbump` invocation. Phase 1 writes the fork-specific fallback fragment, Phase 2 skips, Phase 3 rebases against upstream/main, and Phase 4 skips when `repo_unavailable=true`. Do not run the Rebase + Re-bump Sub-procedure under fork mode.
 
 Parse `HAS_BUMP`, `COMMITS_BEFORE`, `STATUS` (`ok|missing_main_ref|git_error` per #172). If `STATUS != ok`, the pre-mode count is untrustworthy — log `**⚠ 8: version bump — pre-check STATUS=$STATUS, commit count may be unreliable. Continuing.**` to `Warnings` and proceed. Step 8 is pre-PR and permissive; last-chance enforcement is in the Rebase + Re-bump Sub-procedure step 4 invoked by Step 12 (step12 family), which hard-bails on non-`ok` STATUS from either pre- or post-check.
 
@@ -1503,9 +1505,9 @@ dirty working tree.
 
    **If `/bump-version` fails because `apply-bump.sh` emitted `ERROR` matching `^origin/main has already bumped to .*; re-classify needed$`**: this is the pre-PR same-version race where origin/main advanced to the version the local classifier selected after Step 8's pre-check. **MANDATORY — READ ENTIRE FILE** before invoking the sub-procedure: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/rebase-rebump-subprocedure.md`. Invoke the Rebase + Re-bump Sub-procedure with `rebase_already_done=false`, `caller_kind=step8_apply_bump_same_version`; the sub-procedure drops any partial bump if present, rebases, syncs local main, and re-invokes `/bump-version` for one fresh classification. If that second classification/apply attempt fails with the same `ERROR` pattern, set `STALL_TRACKING=true`, set `FINAL_BAIL_REASON` to that literal `ERROR`, and skip directly to Step 18 (no PR exists yet, so skip Steps 9-17). Do not loop more than once.
 
-   **If `/bump-version` reported `BUMP_TYPE=NONE`** (non-deployable changes only, or HEAD is already a bump commit — no new version bump commit was created): skip sub-steps 2, 3, 3b. Write the sanitized postbump reasoning-input file with the fallback text (`"No version bump reasoning available (skill may have skipped via BUMP_TYPE=NONE, or /bump-version was not invoked)."`). Print `⏩ 8: version bump — skipped (BUMP_TYPE=NONE) (<elapsed>)`. Set `BUMP_TYPE=NONE` in postbump-state and jump to the `postbump` invocation.
+   **If `/bump-version` reported `BUMP_TYPE=NONE`** (non-deployable changes only, or HEAD is already a bump commit — no new version bump commit was created): skip sub-steps 2, 3, 3b. Write the sanitized postbump reasoning-input file with the fallback text (`"No version bump reasoning available (skill may have skipped via BUMP_TYPE=NONE, or /bump-version was not invoked)."`). Print `⏩ 8: version bump status=skip reason=bump-type-none elapsed=<elapsed>`. Set `BUMP_TYPE=NONE` in postbump-state and jump to the `postbump` invocation.
 
-> **Continue to sub-step 3 IMMEDIATELY — do NOT write ANY text output between `/bump-version`'s return and the sub-step 3 Bash call.** Sub-step 2 is a silent in-context parse: extract `REASONING_FILE`, `CURRENT_VERSION`, `NEW_VERSION`, and `BUMP_TYPE` from the visible skill output with NO text output and NO separate Bash call. Your FIRST external action after that silent parse MUST be the sub-step 3 Bash invocation (`check-bump-version.sh --mode post --before-count $COMMITS_BEFORE`). Do NOT write status narration ("Continuing to sub-step 2: BUMP_REASONING_FILE=..."), do NOT print the `✅ 8: version bump` breadcrumb, and do NOT write ANY analysis prose before that Bash call — each of those patterns ends the turn before the postbump pipeline runs, which is a halt in disguise that skips sub-steps 3/3b, the sanitized-reasoning-file write, `postbump-state.sh`, and `implement-finalize.sh postbump` (Steps 8a, 8b, 9–18). The `✅ 8: version bump — $BUMP_TYPE $CURRENT_VERSION → $NEW_VERSION` breadcrumb belongs ONLY at the `STATUS=ok/skipped` branch after `postbump` completes.
+> **Continue to sub-step 3 IMMEDIATELY — do NOT write ANY text output between `/bump-version`'s return and the sub-step 3 Bash call.** Sub-step 2 is a silent in-context parse: extract `REASONING_FILE`, `CURRENT_VERSION`, `NEW_VERSION`, and `BUMP_TYPE` from the visible skill output with NO text output and NO separate Bash call. Your FIRST external action after that silent parse MUST be the sub-step 3 Bash invocation (`check-bump-version.sh --mode post --before-count $COMMITS_BEFORE`). Do NOT write status narration ("Continuing to sub-step 2: BUMP_REASONING_FILE=..."), do NOT print the `✅ 8: version bump` breadcrumb, and do NOT write ANY analysis prose before that Bash call — each of those patterns ends the turn before the postbump pipeline runs, which is a halt in disguise that skips sub-steps 3/3b, the sanitized-reasoning-file write, `postbump-state.sh`, and `implement-finalize.sh postbump` (Steps 8a, 8b, 9–18). The `✅ 8: version bump status=complete bump=$BUMP_TYPE from=$CURRENT_VERSION to=$NEW_VERSION elapsed=<elapsed>` breadcrumb belongs ONLY at the `STATUS=ok/skipped` branch after `postbump` completes.
 
 2. **Capture the reasoning file path**: when invoked via Skill tool, `IMPLEMENT_TMPDIR` does not always propagate to the skill's bash env, so `classify-bump.sh` may write `bump-version-reasoning.md` to `${TMPDIR:-/tmp}`. The authoritative path is on stdout as `REASONING_FILE=<path>`. Parse and save as `BUMP_REASONING_FILE` for step 3b, Step 9a, and the sub-procedure step 6.
 3. Verify a new commit was created:
@@ -1546,7 +1548,7 @@ fi
 
 Parse the tail records and use the last `STATUS=` line. Branch:
 
-- `STATUS=ok` or `STATUS=skipped`: print `✅ 8: version bump — $BUMP_TYPE $CURRENT_VERSION → $NEW_VERSION (<elapsed>)` using values parsed from `/bump-version`'s `classify-bump.sh` output (`CURRENT_VERSION`, `NEW_VERSION`, `BUMP_TYPE`) in sub-step 2. (The `HAS_BUMP=false`, `forked_target=true`, and `BUMP_TYPE=NONE` paths already printed their respective skip breadcrumbs earlier; this breadcrumb fires only on the `HAS_BUMP=true` path where a bump commit was created and postbump succeeded.) IMMEDIATELY proceed to Step 9 — do NOT end the turn here; Steps 9 through 18 still must run.
+- `STATUS=ok` or `STATUS=skipped`: print `✅ 8: version bump status=complete bump=$BUMP_TYPE from=$CURRENT_VERSION to=$NEW_VERSION elapsed=<elapsed>` using values parsed from `/bump-version`'s `classify-bump.sh` output (`CURRENT_VERSION`, `NEW_VERSION`, `BUMP_TYPE`) in sub-step 2. (The `HAS_BUMP=false`, `forked_target=true`, and `BUMP_TYPE=NONE` paths already printed their respective skip breadcrumbs earlier; this breadcrumb fires only on the `HAS_BUMP=true` path where a bump commit was created and postbump succeeded.) IMMEDIATELY proceed to Step 9 — do NOT end the turn here; Steps 9 through 18 still must run.
 - `STATUS=conflict` with `RESUME_PHASE=force-push-gate` and `CALLER_KIND=step8b_rebase`: **MANDATORY — READ ENTIRE FILE** before invoking the sub-procedure: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/rebase-rebump-subprocedure.md`. Invoke the Rebase + Re-bump Sub-procedure with `rebase_already_done=false`, `caller_kind=step8b_rebase`. On normal return, re-invoke `implement-finalize.sh postbump` with the same `--state-file` and `--implement-tmpdir` flags. There is no resume flag; the script reads `$IMPLEMENT_TMPDIR/.postbump-phase` automatically and skips to the force-push gate phase. The conflict envelope's `RESUME_PHASE=force-push-gate` line is informational only; the orchestrator does not need to forward it.
 - `STATUS=rebase-failed`, `STATUS=push-failed`, `STATUS=remote-check-failed`, `STATUS=changelog-failed`, `STATUS=branch-mismatch`, or `STATUS=postbump-state-corrupt`: set `STALL_TRACKING=true`, set `STALL_STEP=8b`, and skip to Step 18.
 
@@ -1607,7 +1609,7 @@ The `[FALSE-POSITIVE]` marker is wired only on `/fix-issue` Step 3 (not-material
 
 **MANDATORY — READ ENTIRE FILE** before executing the Step 9a.1 OOS pipeline: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/anchor-template-oos-pipeline.md`. Contains the canonical OOS pipeline procedure (steps 1–7, Rules A/B, cap, dedup). **Do NOT load** outside Step 9a.1.
 
-Runs unconditionally regardless of mode, except `forked_target=true`: in fork mode, skip all `/issue` call sites and sentinel writes, compose accepted-OOS text for the final report only, print `⏩ 9a.1: OOS issues — skipped (--forked dry-run) (<elapsed>)`, and proceed to 9b. The canonical sequence for non-fork mode lives in `anchor-template-oos-pipeline.md` Step 9a.1 OOS pipeline procedure section — including the combine pass at step 3.4 that applies Rules A/B and criteria 1-6 across accepted OOS entries, the per-run issue cap pre-pass at step 3.4b (`OOS_ISSUES_PER_RUN_CAP`, default `5`, with `OOS_ISSUE_CAP_EXCERPT_MAX`, default `200`) that compacts surplus OOS items in place and fails closed by skipping issue filing on helper errors, the best-effort file-conflict pre-pass at step 3.5 with degraded-continue behavior, and the `/issue` batch-mode invocation at step 4 with `--title-prefix "[OOS]"` and conditional `--blocked-by-issue $ISSUE_NUMBER` forwarding. The cap helper contract lives at `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-issue-cap.md`.
+Runs unconditionally regardless of mode, except `forked_target=true`: in fork mode, skip all `/issue` call sites and sentinel writes, compose accepted-OOS text for the final report only, print `⏩ 9a.1: OOS issues status=skip reason=forked-dry-run elapsed=<elapsed>`, and proceed to 9b. The canonical sequence for non-fork mode lives in `anchor-template-oos-pipeline.md` Step 9a.1 OOS pipeline procedure section — including the combine pass at step 3.4 that applies Rules A/B and criteria 1-6 across accepted OOS entries, the per-run issue cap pre-pass at step 3.4b (`OOS_ISSUES_PER_RUN_CAP`, default `5`, with `OOS_ISSUE_CAP_EXCERPT_MAX`, default `200`) that compacts surplus OOS items in place and fails closed by skipping issue filing on helper errors, the best-effort file-conflict pre-pass at step 3.5 with degraded-continue behavior, and the `/issue` batch-mode invocation at step 4 with `--title-prefix "[OOS]"` and conditional `--blocked-by-issue $ISSUE_NUMBER` forwarding. The cap helper contract lives at `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-issue-cap.md`.
 
 > **Continue after child returns.** When `/issue` returns from batch mode, execute the next sub-steps (parse stdout; write fragments; upsert anchor; write sentinel) — do NOT end the turn, and do NOT write a summary, handoff, or "returning to parent" message. See `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Anti-halt continuation reminder.
 
@@ -1632,7 +1634,7 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 
 After fragments are written, assemble the anchor body and upsert (see Step 0.5 "Anchor-section accumulation"). Assembly order follows the sourced `SECTION_MARKERS` array; see `scripts/anchor-section-markers.sh` for the definitive sequence.
 
-Print: `✅ 9a.1: OOS issues — <ISSUES_CREATED> created, <ISSUES_DEDUPLICATED> deduplicated (<elapsed>)` (or the appropriate early-exit breadcrumb).
+Print: `✅ 9a.1: OOS issues status=complete created=<ISSUES_CREATED> deduplicated=<ISSUES_DEDUPLICATED> elapsed=<elapsed>` (or the appropriate early-exit breadcrumb).
 
 ### 9b — Create PR via script
 
@@ -1676,7 +1678,7 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 # timing-mark Step 10 — CI monitor
 ```
 
-If `repo_unavailable=true`: print `⏭️ 10: CI monitor — skipped (repo unavailable) (<elapsed>)` and proceed to Step 11.
+If `repo_unavailable=true`: print `⏭️ 10: CI monitor status=bypass reason=repo-unavailable elapsed=<elapsed>` and proceed to Step 11.
 
 **Best-effort re-bump during CI wait**: Step 10's rebase handler invokes the Rebase + Re-bump Sub-procedure (same as Step 12) with step10-family semantics — hard failures degrade gracefully (warn + break to Step 11) rather than bailing. This keeps the PR's version fresh during the CI-wait phase while ensuring Step 10 never blocks the pipeline — Step 12 remains the last-chance enforcement point (Load-Bearing Invariant #1).
 
@@ -1696,9 +1698,9 @@ Use `timeout: 1860000` on the Bash call. Parse `ACTION`, `CI_STATUS`, `BEHIND_CO
 
 **Execute**:
 
-   - **`ACTION=merge`**: CI passed, branch up-to-date. Print `✅ 10: CI monitor — CI passed! (<elapsed>)` and proceed to Step 11. **Do NOT merge here** — Step 12 handles merging.
+   - **`ACTION=merge`**: CI passed, branch up-to-date. Print `✅ 10: CI monitor status=complete outcome=ci-passed elapsed=<elapsed>` and proceed to Step 11. **Do NOT merge here** — Step 12 handles merging.
    - **`ACTION=bail` with `CI_STATUS=NO_CHECKS`**: set `FORK_CI_NO_CHECKS=true`, print `**⚠ 10: CI monitor — no checks observed on fork after grace period (<elapsed>)**`, and proceed to Step 11. This is non-terminal under `forked_target=true`; the final report explains the dry-run caveat. Outside fork mode, handle as ordinary bail below.
-   - **`ACTION=already_merged`**: PR merged externally. Print `✅ 10: CI monitor — PR merged externally (<elapsed>)` and proceed to Step 11. (Step 12 will detect `already_merged` again.)
+   - **`ACTION=already_merged`**: PR merged externally. Print `✅ 10: CI monitor status=complete outcome=pr-merged-externally elapsed=<elapsed>` and proceed to Step 11. (Step 12 will detect `already_merged` again.)
    - **`ACTION=rebase`**: main advanced. Branch on `forked_target`:
      - **`forked_target=true` (fork-mode rebase carve-out — Round 1 FINDING_2 fix)**: do NOT invoke the Rebase + Re-bump Sub-procedure. Run `${CLAUDE_PLUGIN_ROOT}/scripts/rebase-push.sh --base-remote upstream --base-ref main` against the upstream-rebased fork branch. On success, mirror the sub-procedure step-7 counter bookkeeping minus the bump (Round 2 FINDING_1 fix): increment `rebase_count` AND `iteration`, reset `transient_retries=0`, sleep 30s via `${CLAUDE_PLUGIN_ROOT}/scripts/sleep-seconds.sh 30`, then re-invoke `ci-wait.sh --base-remote upstream --base-ref main --empty-checks-grace 30 ...` with the updated counters. On non-zero exit (rebase conflict, push failure, transport error), warn and break out of Step 10 to Step 11 — same step10-family graceful-degrade semantics as the non-fork sub-procedure path. NEVER call `/bump-version` or any sub-procedure step on this branch.
      - **`forked_target=false` (default)**: **MANDATORY — READ ENTIRE FILE** before invoking the sub-procedure: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/rebase-rebump-subprocedure.md`. Invoke the sub-procedure with `rebase_already_done=false`, `caller_kind=step10_rebase`. Counter updates and `ci-wait.sh` re-invocation happen inside the sub-procedure's step 7. On failure, the sub-procedure warns and breaks out of Step 10 to Step 11 — it does NOT bail to 12d (Step 12 will re-run it under strict semantics).
@@ -1743,10 +1745,10 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 
 **Branch on state**:
 
-0. If `forked_target=true`: print `⏭️ 11: execution-issues — skipped (--forked dry-run, no tracking anchor) (<elapsed>)` and proceed to Step 12. Do not enter the missing-`ISSUE_NUMBER` bug branch.
-1. If `repo_unavailable=true`: print `⏭️ 11: execution-issues — skipped (repo unavailable) (<elapsed>)` and proceed to Step 12. No anchor exists; `$IMPLEMENT_TMPDIR/execution-issues.md` is the only audit trail (removed at Step 18; preserve tmpdir manually if audit needed).
-2. If `$IMPLEMENT_TMPDIR/execution-issues.md` does not exist or is empty: print `⏩ 11: execution-issues — skipped (no execution issues logged) (<elapsed>)` and IMMEDIATELY proceed to Step 12.
-3. If `$ISSUE_NUMBER` is absent at Step 11 entry AND `deferred=true` (Step 0.5 Branch 4 create-issue/anchor/sentinel failure): print `⏭️ 11: execution-issues — skipped (tracking issue creation failed at Step 0.5) (<elapsed>)` and proceed to Step 12. This is a legitimate degraded-clean path, NOT a bug — the Step 0.5 Branch 4 failure already logged the specific `ERROR` to `Tool Failures` and set `deferred=true`; no second warning is needed here.
+0. If `forked_target=true`: print `⏭️ 11: execution-issues status=bypass reason=forked-dry-run elapsed=<elapsed>` and proceed to Step 12. Do not enter the missing-`ISSUE_NUMBER` bug branch.
+1. If `repo_unavailable=true`: print `⏭️ 11: execution-issues status=bypass reason=repo-unavailable elapsed=<elapsed>` and proceed to Step 12. No anchor exists; `$IMPLEMENT_TMPDIR/execution-issues.md` is the only audit trail (removed at Step 18; preserve tmpdir manually if audit needed).
+2. If `$IMPLEMENT_TMPDIR/execution-issues.md` does not exist or is empty: print `⏩ 11: execution-issues status=skip reason=no-issues elapsed=<elapsed>` and IMMEDIATELY proceed to Step 12.
+3. If `$ISSUE_NUMBER` is absent at Step 11 entry AND `deferred=true` (Step 0.5 Branch 4 create-issue/anchor/sentinel failure): print `⏭️ 11: execution-issues status=bypass reason=tracking-issue-create-failed elapsed=<elapsed>` and proceed to Step 12. This is a legitimate degraded-clean path, NOT a bug — the Step 0.5 Branch 4 failure already logged the specific `ERROR` to `Tool Failures` and set `deferred=true`; no second warning is needed here.
 3b. If `$ISSUE_NUMBER` is absent at Step 11 entry AND `deferred=false` AND `repo_unavailable=false`: this IS a bug path — Step 0.5 Branch 4 should have set either success (`$ISSUE_NUMBER` populated, `deferred=false`) or failure (`$ISSUE_NUMBER` unset, `deferred=true`). Log to `Warnings`: `Step 11 — execution-issues refresh skipped: $ISSUE_NUMBER unset but deferred=false. Bug in Step 0.5 Branch 4 state machine.` and proceed to Step 12.
 4. Otherwise (`$ISSUE_NUMBER` set, `execution-issues.md` non-empty, `repo_unavailable=false`):
 
@@ -1769,7 +1771,7 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
       ```
       On `FAILED=true` (assemble or upsert step), print `**⚠ 11: execution-issues — anchor refresh failed: $ERROR. Continuing.**` and log to `Tool Failures`.
 
-Print: `✅ 11: execution-issues — anchor refreshed (<elapsed>)` on success.
+Print: `✅ 11: execution-issues status=complete outcome=anchor-refreshed elapsed=<elapsed>` on success.
 
 > **Continue to Step 12.** Do NOT end the turn after anchor refresh.
 
@@ -1794,7 +1796,7 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 # timing-mark Step 12 — CI merge loop
 ```
 
-If `forked_target=true`: print `⏭️ 12: CI+merge loop — skipped (--forked dry-run) (<elapsed>)` and proceed to Step 13.5. If `merge=false`: print `⏭️ 12: CI+merge loop — skipped (--merge not set) (<elapsed>)` and proceed to Step 13.5. If `repo_unavailable=true`: print `⏭️ 12: CI+merge loop — skipped (repo unavailable) (<elapsed>)` and proceed to Step 13.5.
+If `forked_target=true`: print `⏭️ 12: CI+merge loop status=bypass reason=forked-dry-run elapsed=<elapsed>` and proceed to Step 13.5. If `merge=false`: print `⏭️ 12: CI+merge loop status=bypass reason=merge-not-set elapsed=<elapsed>` and proceed to Step 13.5. If `repo_unavailable=true`: print `⏭️ 12: CI+merge loop status=bypass reason=repo-unavailable elapsed=<elapsed>` and proceed to Step 13.5.
 
 Monitor CI and main **in parallel** — don't wait for CI to finish before checking if main has advanced.
 
@@ -1817,8 +1819,8 @@ Use `timeout: 1860000` on the Bash call. Parse the same fields as Step 10.
 **Execute**:
 
    - **`ACTION=rebase`**: print a context-specific message from `CI_STATUS` — `CI_STATUS=pass` → `🔃 12: CI+merge loop — CI passed, main advanced, rebasing + re-bumping`; `CI_STATUS=pending` → `🔃 12: CI+merge loop — main advanced, rebasing + re-bumping`. **MANDATORY — READ ENTIRE FILE** before invoking the sub-procedure: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/rebase-rebump-subprocedure.md`. Invoke the sub-procedure with `rebase_already_done=false`, `caller_kind=step12_rebase`. Counter updates and `ci-wait.sh` re-invocation happen inside the sub-procedure's step 7. On hard failure, the sub-procedure bails to 12d directly.
-   - **`ACTION=merge`**: print `✅ 12: CI+merge loop — CI passed, main up-to-date, merging! (<elapsed>)` → proceed to **12b**.
-   - **`ACTION=already_merged`**: print `✅ PR was force-merged externally — skipping CI wait and merge. (<elapsed>)`. Set `pr_closed=true` (consumed by final outcome state). **Title-prefix lifecycle terminal transition**: if `$ISSUE_NUMBER` is set AND `repo_unavailable=false`, first write the issue body to a temp file (reuse an existing issue-body temp if available; otherwise fetch with null-safe `gh issue view "$ISSUE_NUMBER" --repo "$REPO" --json body --jq '.body // ""'`) and write merged PR text with `gh pr view "$PR_NUMBER" --repo "$REPO" --json title,body --jq '(.title // "") + "\n" + (.body // "")'` to `$IMPLEMENT_TMPDIR/round-trip-input-pr.txt`. Run `round-trip-detect.sh --text-file <issue-body-tmp> --text-file "$IMPLEMENT_TMPDIR/round-trip-input-pr.txt"`, parse `ROUND_TRIP=true|false`, and call `${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh rename --issue $ISSUE_NUMBER --state done --round-trip "$ROUND_TRIP" --repo "$REPO"` (applies to both fresh-created and adopted issues — title-prefix lifecycle is uniform across Branches 2/3/4). Do NOT OR with any pre-existing title marker; sticky preservation is owned by `tracking-issue-write.sh`. Best-effort: on `FAILED=true` or non-zero exit, log to `Tool Failures` and continue. Set `DONE_RENAME_APPLIED=true` on any return (including `RENAMED=false` no-op) so Step 18 does not double-fire. Skip 12b, proceed to Step 14. Counts as merged for Steps 14–15. **Continue to Step 14 IMMEDIATELY after this line — "force-merged externally" feels terminal but is mid-run; do NOT end the turn, summarize, or write a handoff message. Steps 14, 15, 16, 17, 18 still must run.**
+   - **`ACTION=merge`**: print `✅ 12: CI+merge loop status=ready action=merge elapsed=<elapsed>` → proceed to **12b**.
+   - **`ACTION=already_merged`**: print `✅ 12: CI+merge loop status=complete outcome=force-merged-externally pr=$PR_NUMBER elapsed=<elapsed>`. Set `pr_closed=true` (consumed by final outcome state). **Title-prefix lifecycle terminal transition**: if `$ISSUE_NUMBER` is set AND `repo_unavailable=false`, first write the issue body to a temp file (reuse an existing issue-body temp if available; otherwise fetch with null-safe `gh issue view "$ISSUE_NUMBER" --repo "$REPO" --json body --jq '.body // ""'`) and write merged PR text with `gh pr view "$PR_NUMBER" --repo "$REPO" --json title,body --jq '(.title // "") + "\n" + (.body // "")'` to `$IMPLEMENT_TMPDIR/round-trip-input-pr.txt`. Run `round-trip-detect.sh --text-file <issue-body-tmp> --text-file "$IMPLEMENT_TMPDIR/round-trip-input-pr.txt"`, parse `ROUND_TRIP=true|false`, and call `${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh rename --issue $ISSUE_NUMBER --state done --round-trip "$ROUND_TRIP" --repo "$REPO"` (applies to both fresh-created and adopted issues — title-prefix lifecycle is uniform across Branches 2/3/4). Do NOT OR with any pre-existing title marker; sticky preservation is owned by `tracking-issue-write.sh`. Best-effort: on `FAILED=true` or non-zero exit, log to `Tool Failures` and continue. Set `DONE_RENAME_APPLIED=true` on any return (including `RENAMED=false` no-op) so Step 18 does not double-fire. Skip 12b, proceed to Step 14. Counts as merged for Steps 14–15. **Continue to Step 14 IMMEDIATELY after this line — "force-merged externally" feels terminal but is mid-run; do NOT end the turn, summarize, or write a handoff message. Steps 14, 15, 16, 17, 18 still must run.**
    - **`ACTION=rebase_then_evaluate`**: invoke the sub-procedure with `rebase_already_done=false`, `caller_kind=step12_rebase_then_evaluate`. On success, **fall through to 12c** (counter updates already done; do NOT re-invoke `ci-wait.sh` here — the sub-procedure's `step12_rebase_then_evaluate` branch skips the re-invocation for this path). On hard failure, the sub-procedure bails to 12d.
    - **`ACTION=evaluate_failure`**: → **12c**.
    - **`ACTION=bail`**: print `BAIL_REASON` → **12d**.
@@ -1838,8 +1840,8 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/merge-pr.sh --pr <PR-NUMBER> --repo $REPO [--no-ad
 Append `--no-admin-fallback` to the invocation only when `no_admin_fallback=true` (parsed from the top-level flag). Default behavior tries `--admin` first after `merge-pr.sh` verifies CI is green and the branch is fresh, then retries without `--admin` if the privileged attempt is rejected. With `--no-admin-fallback`, `merge-pr.sh` skips the privileged attempt and tries only the plain squash merge.
 
 Parse `MERGE_RESULT` and `ERROR`:
-- **`merged`**: plain squash merge succeeded (default-mode fallback after `--admin` rejection, or the plain-only path under `--no-admin-fallback`). Print `✅ 12: CI+merge loop — PR #<NUMBER> merged! (<elapsed>)`. Set `pr_closed=true` (consumed by final outcome state). **Title-prefix lifecycle terminal transition**: if `$ISSUE_NUMBER` set AND `repo_unavailable=false`, run the same issue-body + merged-PR-text round-trip detection procedure from Step 12a, then call `${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh rename --issue $ISSUE_NUMBER --state done --round-trip "$ROUND_TRIP"` (applies to both fresh-created and adopted issues). Best-effort (log to `Tool Failures` on failure; do not abort the run — the merge has already succeeded). Set `DONE_RENAME_APPLIED=true` on any return. Continue.
-- **`admin_merged`**: print `**⚠ Merged with --admin (review overridden).** ✅ 12: CI+merge loop — PR #<NUMBER> merged! (<elapsed>)`. Set `pr_closed=true`. Apply the same detector-backed terminal rename-to-done as the `merged` branch (same guards; same `DONE_RENAME_APPLIED=true` on return). **Then** post a best-effort PR comment recording the bypass:
+- **`merged`**: plain squash merge succeeded (default-mode fallback after `--admin` rejection, or the plain-only path under `--no-admin-fallback`). Print `✅ 12: CI+merge loop status=complete outcome=merged pr=<NUMBER> elapsed=<elapsed>`. Set `pr_closed=true` (consumed by final outcome state). **Title-prefix lifecycle terminal transition**: if `$ISSUE_NUMBER` set AND `repo_unavailable=false`, run the same issue-body + merged-PR-text round-trip detection procedure from Step 12a, then call `${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh rename --issue $ISSUE_NUMBER --state done --round-trip "$ROUND_TRIP"` (applies to both fresh-created and adopted issues). Best-effort (log to `Tool Failures` on failure; do not abort the run — the merge has already succeeded). Set `DONE_RENAME_APPLIED=true` on any return. Continue.
+- **`admin_merged`**: print `**⚠ Merged with --admin (review overridden).** ✅ 12: CI+merge loop status=complete outcome=admin-merged pr=<NUMBER> elapsed=<elapsed>`. Set `pr_closed=true`. Apply the same detector-backed terminal rename-to-done as the `merged` branch (same guards; same `DONE_RENAME_APPLIED=true` on return). **Then** post a best-effort PR comment recording the bypass:
   ```bash
   gh pr comment <PR-NUMBER> --repo $REPO --body "$ADMIN_AUDIT_COMMENT_BODY"
   ```
@@ -1965,7 +1967,7 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 # timing-mark Step 14 — local cleanup
 ```
 
-If `forked_target=true`: print `⏭️ 14: local cleanup — skipped (--forked dry-run, branch retained) (<elapsed>)` and proceed to Step 15. If `merge=false`: print `⏭️ 14: local cleanup — skipped (--merge not set) (<elapsed>)` and proceed to Step 15.
+If `forked_target=true`: print `⏭️ 14: local cleanup status=bypass reason=forked-dry-run elapsed=<elapsed>` and proceed to Step 15. If `merge=false`: print `⏭️ 14: local cleanup status=bypass reason=merge-not-set elapsed=<elapsed>` and proceed to Step 15.
 
 Use the finalizer state from Step 13.5, then delegate Step 14 and Step 15 mechanical work to `implement-finalize.sh postmerge`. The state file is plain `KEY=value` text and is never sourced; the script reads it with `awk`. Mechanical SSOT: `${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.md` § `postmerge`.
 
@@ -2055,7 +2057,7 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 # timing-mark Step 16 — rejected findings
 ```
 
-Report unimplemented code review suggestions without reprinting the full findings inline. Check `$IMPLEMENT_TMPDIR/rejected-findings.md`. If non-empty, print `✅ 16: rejected findings — saved to anchor (<elapsed>)`; the full content was already posted via the `code-review-tally` anchor fragment. Otherwise print `✅ 16: rejected findings — all suggestions implemented (<elapsed>)`.
+Report unimplemented code review suggestions without reprinting the full findings inline. Check `$IMPLEMENT_TMPDIR/rejected-findings.md`. If non-empty, print `✅ 16: rejected findings status=complete outcome=saved-to-anchor elapsed=<elapsed>`; the full content was already posted via the `code-review-tally` anchor fragment. Otherwise print `✅ 16: rejected findings status=complete outcome=all-implemented elapsed=<elapsed>`.
 
 > **Continue to Step 17.** Do NOT end the turn after printing rejected findings.
 
@@ -2080,7 +2082,7 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 # timing-mark Step 17 — final report
 ```
 
-If `DESIGN_ONLY_DONE=true`: print `✅ 17: final report — design-only complete; tracking issue contains plan, review tally, diagrams, and OOS status (<elapsed>)`.
+If `DESIGN_ONLY_DONE=true`: print `✅ 17: final report status=complete outcome=design-only elapsed=<elapsed>`.
 
 If `forked_target=true` and `DESIGN_ONLY_DONE` is not true: print a fork CI dry-run report with:
 - `## Fork CI Dry-Run Complete` header, then `Fork PR: <PR_URL>`
@@ -2090,9 +2092,9 @@ If `forked_target=true` and `DESIGN_ONLY_DONE` is not true: print a fork CI dry-
 
 If `UPSTREAM_DESIGN_ISSUE` is set, append: `You may include Closes #<UPSTREAM_DESIGN_ISSUE> in the upstream PR body when you compose it manually.` If accepted-OOS items were skipped by Step 9a.1, append them under `## Out-of-Scope Observations` as text only. **Precedence**: `DESIGN_ONLY_DONE=true` wins over fork-mode report; never print fork-CI / fork-PR language on design-only completion.
 
-If `quick_mode=true` and `DESIGN_ONLY_DONE` is not true: print `✅ 17: final report — quick mode, /design skipped, 5 specialists + generic Codex + Claude generic rounds 1-3 + generic rounds 4+ (<elapsed>)`.
+If `quick_mode=true` and `DESIGN_ONLY_DONE` is not true: print `✅ 17: final report status=complete outcome=quick-mode elapsed=<elapsed>`.
 
-If `quick_mode=false` and `DESIGN_ONLY_DONE` is not true: print a summary noting plan review findings were reported by `/design` (via the tracking issue anchor) and code review findings by `/review` (visible above). If both phases reported all suggestions implemented, print `✅ 17: final report — all suggestions implemented, plan + code review (<elapsed>)`.
+If `quick_mode=false` and `DESIGN_ONLY_DONE` is not true: print a summary noting plan review findings were reported by `/design` (via the tracking issue anchor) and code review findings by `/review` (visible above). If both phases reported all suggestions implemented, print `✅ 17: final report status=complete outcome=all-suggestions-implemented elapsed=<elapsed>`.
 
 Print the full token table for immediate visibility:
 
