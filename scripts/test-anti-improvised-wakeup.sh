@@ -26,7 +26,7 @@ REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 
 PROJECT_TOKEN='NEVER improvise ScheduleWakeup outside skill-script direction'
 IMPLEMENT_LEGACY_TOKEN="NEVER call \`ScheduleWakeup\` anywhere in the \`/implement\` orchestrator"
-MANDATORY_TOKEN='orchestrator-never.md'
+MANDATORY_TOKEN='MANDATORY at session start'
 
 PROJECT_ANCHORS=(
   "AGENTS.md"
