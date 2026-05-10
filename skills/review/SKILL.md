@@ -393,7 +393,7 @@ Otherwise (inline mode or subagent fallback), print a final summary:
 - Total number of review rounds (always 1 in description mode)
 - Findings per round (with per-reviewer breakdown: `Structure` / `Correctness` / `Testing` / `Security` / `Edge-cases` / `Codex` / `Claude-Generic`, or `Claude` for fallback)
 - Voting summary (rounds 1-3): total findings voted on, accepted (2+ YES), neutral (1 YES), exonerated (0 YES + 1+ EXONERATE), rejected (0 YES + 0 EXONERATE)
-- Reviewer Competition Scoreboard (cumulative across all voted rounds, one row per independent reviewer)
+- Reviewer Competition Scoreboard (cumulative across all voted rounds, one row per independent reviewer): when `SESSION_ENV_PATH` is empty (standalone), print the full table; when `SESSION_ENV_PATH` is non-empty (nested), omit — the voting summary counts above carry the key data to the parent skill
 - Total fixes applied across all rounds (diff mode only)
 - Build/test status (pass/fail)
 - **External reviewer warnings** (repeat any preflight or runtime warnings from Codex/Cursor here so they are visible at the end; also include any Gemini health/probe banners surfaced by `session-setup.sh` even though the Gemini reviewer lane is dormant)
