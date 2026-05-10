@@ -157,7 +157,7 @@ Before scaffolding, ask yourself:
 | 1 | `im` (bare) | No bare match in the harness |
 | 2 | `larch:im` (fully-qualified plugin name) | — terminal |
 
-This ordering matches the bare-name-then-fully-qualified rule in `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md`.
+This ordering matches the bare-name-then-fully-qualified rule in shared/subskill-invocation.md.
 
 ## Step 3 — Delegate to /im
 

@@ -22,7 +22,7 @@ Example: `/skill-evolver design` or `/skill-evolver review`.
 - **`/research`** — ships with this plugin under `${CLAUDE_PLUGIN_ROOT}/skills/research/` (always available when the larch plugin is loaded).
 - **`/umbrella`** — ships with this plugin under `${CLAUDE_PLUGIN_ROOT}/skills/umbrella/` (always available when the larch plugin is loaded).
 
-**Anti-halt continuation reminder.** After every child `Skill` tool call (`/research`, `/umbrella`) returns, IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on the child's cleanup output, and do NOT write a summary, handoff, or "returning to parent" message — those are halts in disguise. The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (`exit cleanly`, `skip to Step N`). See `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Anti-halt continuation reminder for the canonical rule.
+**Anti-halt continuation reminder.** After every child `Skill` tool call (`/research`, `/umbrella`) returns, IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on the child's cleanup output, and do NOT write a summary, handoff, or "returning to parent" message — those are halts in disguise. The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (`exit cleanly`, `skip to Step N`). → shared/subskill-invocation.md#anti-halt
 
 ## Anti-patterns
 

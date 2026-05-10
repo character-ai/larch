@@ -16,7 +16,7 @@ hooks:
 
 Collaborative best-effort read-only-repo research task with a fixed-shape lane topology. The research phase runs a planner pre-pass that decomposes `RESEARCH_QUESTION` into 2–4 focused subquestions, then four Codex-first lanes (architecture / edge cases / external comparisons / security) covering those subquestions, each with a per-lane Claude `Agent` fallback when Codex is unavailable or fails. The validation phase runs three reviewers in parallel: 1 Claude Code Reviewer subagent + 1 Codex + 1 Cursor. Produces a structured research report; tracked repo files are not modified by Claude's `Edit | Write | NotebookEdit` tool surface (mechanically enforced by the skill-scoped PreToolUse hook permitting only canonical `/tmp`), while Bash and the external Cursor/Codex reviewers run with full filesystem access and are prompt-enforced only — see the Read-only-repo contract below. May invoke `/issue` via the Skill tool to file research-result issues.
 
-**Anti-halt continuation reminder.** After every child `Skill` tool call (e.g., `/issue`) returns, IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on the child's cleanup output, and do NOT write a summary, handoff, status recap, or "returning to parent" message — those are halts in disguise. The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `skip to Step N`, `bail to cleanup`, `jump back`, `loop back`, `fall through`, `break out`). A normal sequential `proceed to Step N+1` instruction is the default continuation this rule reinforces, NOT an exception. See `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Anti-halt continuation reminder for the canonical rule.
+**Anti-halt continuation reminder.** After every child `Skill` tool call (e.g., `/issue`) returns, IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on the child's cleanup output, and do NOT write a summary, handoff, status recap, or "returning to parent" message — those are halts in disguise. The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `skip to Step N`, `bail to cleanup`, `jump back`, `loop back`, `fall through`, `break out`). A normal sequential `proceed to Step N+1` instruction is the default continuation this rule reinforces, NOT an exception. → shared/subskill-invocation.md#anti-halt
 
 **Flags**: Parse flags from the start of `$ARGUMENTS` before treating the remainder as the research question. Flags may appear in any order; stop at the first non-flag token. After stripping all flags, save the remainder as `RESEARCH_QUESTION`.
 
@@ -60,9 +60,9 @@ The research question is described by `RESEARCH_QUESTION` (not raw `$ARGUMENTS`)
 
 ## Sub-skill invocation
 
-Invoke `/issue` via the Skill tool when the research brief calls for filing the findings as GitHub issues. Follow the Pattern B conventions in `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` — parse `/issue`'s stdout machine lines (`ISSUES_CREATED`, `ISSUES_FAILED`, `ISSUES_DEDUPLICATED`) and continue with the parent's next step after the child returns.
+Invoke `/issue` via the Skill tool when the research brief calls for filing the findings as GitHub issues. Follow Pattern B in shared/subskill-invocation.md — parse `/issue`'s stdout machine lines (`ISSUES_CREATED`, `ISSUES_FAILED`, `ISSUES_DEDUPLICATED`) and continue with the parent's next step after the child returns.
 
-> **Continue after child returns.** When the child Skill returns, execute the NEXT step of this skill — do NOT end the turn, and do NOT write a summary, handoff, or "returning to parent" message. See `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Anti-halt continuation reminder.
+> **Continue after child returns.** When the child Skill returns, execute the NEXT step of this skill — do NOT end the turn, and do NOT write a summary, handoff, or "returning to parent" message. → shared/subskill-invocation.md#anti-halt
 
 ## Filing findings as issues
 
@@ -100,7 +100,7 @@ Defense in depth: stdout parsing of `ISSUES_*` is the primary post-`/issue` mech
 
 ## Progress Reporting
 
-**Every step MUST print clearly visible breadcrumb status lines** so the user can instantly see where execution is. Follow the formatting rules in `${CLAUDE_PLUGIN_ROOT}/skills/shared/progress-reporting.md`.
+**Every step MUST print clearly visible breadcrumb status lines** so the user can instantly see where execution is. Follow shared/progress-reporting.md rules.
 
 - Print a **start line** when entering a step: e.g., `> **🔶 1: research**`
 - Print a **completion line** when done: e.g., `✅ 1: research — synthesis complete, 4 lanes (3m12s)`
@@ -354,7 +354,7 @@ Derive from `RESEARCH_QUESTION`: `[Research Report] <RESEARCH_QUESTION>`, trunca
 
 ### Invoke /issue
 
-> **Continue after child returns.** When the child Skill returns, execute the NEXT step of this skill — do NOT end the turn, and do NOT write a summary, handoff, or "returning to parent" message. See `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Anti-halt continuation reminder.
+> **Continue after child returns.** When the child Skill returns, execute the NEXT step of this skill — do NOT end the turn, and do NOT write a summary, handoff, or "returning to parent" message. → shared/subskill-invocation.md#anti-halt
 
 1. Clear stale sentinel:
 
