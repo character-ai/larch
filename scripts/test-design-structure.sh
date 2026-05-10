@@ -373,5 +373,17 @@ grep -Fq 'Match discrimination (false-positive guard)' "$PLAN_REVIEW_MD" \
 grep -Fq 'Security counter-invariant' "$PLAN_REVIEW_MD" \
   || fail "(13c) plan-review.md missing Security counter-invariant clause"
 
+# Check 13q: plan-review-quick.md security OOS exclusion pins (#1769).
+# plan-review-quick.md is a public-boundary OOS writer; these assertions ensure
+# the security exclusion clause is not accidentally dropped.
+grep -F 'oos-accepted-design.md' "$PLAN_REVIEW_QUICK_MD" \
+  | grep -Fq 'non-security' \
+  || fail "(13qa) plan-review-quick.md oos-accepted-design.md write must mention non-security OOS exclusion"
+grep -F 'oos.md' "$PLAN_REVIEW_QUICK_MD" \
+  | grep -Fq 'Exclude security-tagged OOS' \
+  || fail "(13qb) plan-review-quick.md oos.md write must include Exclude security-tagged OOS"
+grep -Fq 'security counter-invariant' "$PLAN_REVIEW_QUICK_MD" \
+  || fail "(13qc) plan-review-quick.md missing security counter-invariant clause"
+
 echo "PASS: test-design-structure.sh — structural invariants hold (including security OOS exclusions)"
 exit 0

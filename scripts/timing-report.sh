@@ -16,7 +16,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib-timing-paths.sh"
 
 unavailable() {
-    printf 'Timing report unavailable: %s\n' "$1"
+    printf 'Timing report unavailable: %s\n' "$1" >&2
     exit 0
 }
 
@@ -140,7 +140,7 @@ render_report() {
       END {
         if (mode == "terse") {
           if (last_terse_ts == "") {
-            print "Timing report unavailable: no step marks in ledger"
+            print "Timing report unavailable: no step marks in ledger" > "/dev/stderr"
             exit 0
           }
           codex = cursor = gemini = total = 0

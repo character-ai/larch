@@ -332,14 +332,14 @@ OUT="$TMP/table.md"
 "$SCRIPT" --ledger "$LEDGER" --transcript "$TRANSCRIPT" --full --markdown --output "$OUT"
 if [[ -s "$OUT" ]]; then pass; else fail "--output did not write table"; fi
 
-missing=$("$SCRIPT" --ledger "$LEDGER" --transcript "$TMP/missing.jsonl" --since-last-mark --terse)
+missing=$("$SCRIPT" --ledger "$LEDGER" --transcript "$TMP/missing.jsonl" --since-last-mark --terse 2>&1)
 contains "missing transcript" "Token report unavailable:" "$missing"
 
 # Malformed transcript JSONL routes through render_jq's jq parse failure to
 # RENDER_FAIL_REASON="failed to parse token sources" (issue #1351 Gap 3).
 MALFORMED_TRANSCRIPT="$TMP/malformed-transcript.jsonl"
 printf 'this is not json\n{also not json\n' > "$MALFORMED_TRANSCRIPT"
-malformed=$("$SCRIPT" --ledger "$LEDGER" --transcript "$MALFORMED_TRANSCRIPT" --since-last-mark --terse)
+malformed=$("$SCRIPT" --ledger "$LEDGER" --transcript "$MALFORMED_TRANSCRIPT" --since-last-mark --terse 2>&1)
 contains "malformed transcript reason" "Token report unavailable: failed to parse token sources" "$malformed"
 
 # Ledger with vendor-only entries (no "mark" rows) hits the in-jq error("no
@@ -349,38 +349,38 @@ LEDGER_NO_MARKS="$TMP/no-marks.jsonl"
 cat > "$LEDGER_NO_MARKS" <<'JSONL'
 {"type":"vendor","vendor":"codex","total":5,"ts":"2026-05-06T00:00:00Z"}
 JSONL
-no_marks=$("$SCRIPT" --ledger "$LEDGER_NO_MARKS" --transcript "$TRANSCRIPT" --since-last-mark --terse)
+no_marks=$("$SCRIPT" --ledger "$LEDGER_NO_MARKS" --transcript "$TRANSCRIPT" --since-last-mark --terse 2>&1)
 contains "no-step-marks reason" "Token report unavailable: failed to parse token sources" "$no_marks"
 
 # LARCH_DEBUG_TOKEN_REPORT — opt-in jq-stderr capture path. With the env
 # var set to a truthy spelling, render failure surfaces a fixed
-# "(jq stderr captured; debug)" suffix in the published unavailable
-# message (stdout) and emits the actual captured stderr file path on the
-# script's own stderr ("token-report.sh: jq stderr captured at <path>")
-# so the absolute TMPDIR/username-bearing path never reaches the
-# published surface (anchor / PR body). Falsy / unset values preserve
-# the default silent behavior. Closes #1466 sub-item A and #1511
-# sub-item B; tests re-use the malformed-transcript fixture above to
-# provoke a render failure.
+# "(jq stderr captured; debug)" suffix in the unavailable message
+# (stderr, since unavailable() routes to stderr) and emits the actual
+# captured stderr file path on the script's own stderr
+# ("token-report.sh: jq stderr captured at <path>") so the absolute
+# TMPDIR/username-bearing path never reaches the published surface
+# (anchor / PR body). Falsy / unset values preserve the default silent
+# behavior. Closes #1466 sub-item A and #1511 sub-item B; tests re-use
+# the malformed-transcript fixture above to provoke a render failure.
 # Truthy spellings — full enumerated allowlist from scripts/token-report.sh
 # (round-2 review FINDING_3: tests covered only `1` and `true`; documented
 # allowlist also includes case variants of yes/on). Each entry must surface
-# the fixed-phrase suffix on stdout, the stderr path line, and a non-empty
+# the fixed-phrase suffix on stderr, the stderr path line, and a non-empty
 # stderr file.
 for truthy_value in "1" "true" "TRUE" "True" "yes" "YES" "Yes" "on" "ON" "On"; do
     debug_stderr_file="$TMP/debug-stderr-$truthy_value.txt"
     debug_out=$(LARCH_DEBUG_TOKEN_REPORT="$truthy_value" "$SCRIPT" \
         --ledger "$LEDGER" --transcript "$MALFORMED_TRANSCRIPT" --since-last-mark --terse \
         2>"$debug_stderr_file")
-    case "$debug_out" in
+    debug_stderr_body=$(cat "$debug_stderr_file")
+    case "$debug_stderr_body" in
         *"(jq stderr captured; debug)"*) pass ;;
-        *) fail "truthy env value '$truthy_value' should surface fixed-phrase suffix on stdout: '$debug_out'" ;;
+        *) fail "truthy env value '$truthy_value' should surface fixed-phrase suffix on stderr: '$debug_stderr_body'" ;;
     esac
     case "$debug_out" in
         *"jq stderr at "*) fail "truthy env value '$truthy_value' MUST NOT leak absolute path on stdout: '$debug_out'" ;;
         *) pass ;;
     esac
-    debug_stderr_body=$(cat "$debug_stderr_file")
     case "$debug_stderr_body" in
         *"token-report.sh: jq stderr captured at "*) pass ;;
         *) fail "truthy env value '$truthy_value' should emit captured-path line on stderr: '$debug_stderr_body'" ;;

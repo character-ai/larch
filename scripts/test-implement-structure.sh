@@ -436,11 +436,12 @@ printf '%s\n' "$step_9a1_oos_procedure" | grep -Fq -- '--intra-batch-deps-file' 
   || fail "(9e) Step 9a.1 OOS pipeline procedure must document conditional '--intra-batch-deps-file' forwarding"
 
 # ---------------------------------------------------------------------------
-# (9e.1) Step 9a.1 --no-dep-llm gating. When the file-conflict pre-pass
-#        exits 0 with a non-empty TSV, the procedure must forward --no-dep-llm
-#        to /issue so the redundant Phase-2 LLM dep-edge call is skipped.
-#        Pin both the flag name and the OOS_FILE_CONFLICT_COMPLETE gating
-#        condition so a future edit cannot silently drop the optimization.
+# (9e.1) Step 9a.1 file-conflict dep-edge gating. When the file-conflict pre-pass
+#        exits 0 with a non-empty TSV, the procedure forwards --intra-batch-deps-file
+#        to /issue; Phase-2 LLM dep-analysis still runs for semantic deps between
+#        non-conflicting entries (the pre-pass supplies only same-file conflict edges).
+#        --no-dep-llm must NOT be forwarded based on OOS_FILE_CONFLICT_COMPLETE alone.
+#        Pin both flag name and the OOS_FILE_CONFLICT_COMPLETE gating variable.
 # ---------------------------------------------------------------------------
 printf '%s\n' "$step_9a1_oos_procedure" | grep -Fq -- '--no-dep-llm' \
   || fail "(9e.1) Step 9a.1 OOS pipeline procedure must document '--no-dep-llm' forwarding"

@@ -4,7 +4,7 @@ The voting protocol is used by `/design` (plan review) and `/review` (code revie
 
 ## Overview
 
-After reviewers submit findings and findings are deduplicated, a voting panel votes on each finding. `/design` (plan review) uses a 3-voter panel (Claude + Codex + Cursor) unconditionally. `/review` (code review) uses a 2-voter primary panel (Cursor + Codex) and invokes Claude as a conditional tie-breaker only on a 1Y/1N split. Each voter casts one of three votes:
+After reviewers submit findings and findings are deduplicated, a voting panel votes on each finding. `/design` (plan review) uses a 3-voter panel (Claude + Codex + Cursor) in normal mode; in `--quick` mode, plan review is Claude-only with no external reviewers or voting panel (see [`skills/design/references/plan-review-quick.md`](../skills/design/references/plan-review-quick.md)). `/review` (code review) uses a 2-voter primary panel (Cursor + Codex) and invokes Claude as a conditional tie-breaker only on a 1Y/1N split. Each voter casts one of three votes:
 
 | Vote | Meaning |
 |---|---|
@@ -33,7 +33,8 @@ The two skills use different panel sizes. All voters vote on all findings — th
 
 | Skill | Primary voters | Conditional voter |
 |---|---|---|
-| `/design` (plan review) | Claude Code Reviewer subagent + Codex + Cursor — all 3 always launched | N/A |
+| `/design` (plan review, normal mode) | Claude Code Reviewer subagent + Codex + Cursor — all 3 always launched | N/A |
+| `/design` (plan review, `--quick` mode) | Claude only — no external reviewers, no voting panel | N/A |
 | `/review` (code review) | Codex + Cursor — always launched in parallel | Claude Code Reviewer subagent — invoked only on a 1Y/1N split between primary voters |
 
 For code review, when Cursor and Codex split 1Y/1N on a finding, Claude is launched immediately as a tie-breaker and the full 3-voter threshold rules apply to the combined result.

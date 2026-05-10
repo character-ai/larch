@@ -7,6 +7,7 @@ paths:
   - "skills/design/references/sketch-launch.md"
   - "skills/design/references/flags.md"
   - "skills/design/references/plan-review.md"
+  - "skills/design/references/plan-review-quick.md"
   - "skills/shared/dialectic-protocol.md"
   - "skills/implement/references/conflict-resolution.md"
   - "skills/research/references/research-phase.md"
