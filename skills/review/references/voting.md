@@ -10,48 +10,32 @@
 
 ---
 
-**Pre-voting filter (before any voter is spawned)**: After deduplication (Step 3c), apply two passes to the in-scope finding set. OOS findings are unaffected — they always go to the voter panel.
+## Decision Table
 
-**Pass 1 — Unanimity auto-accept**: Determine the set of active reviewers for this round (every reviewer that returned parseable output, whether their slot was external or Claude). For each deduplicated in-scope finding, if the set of proposing reviewers equals the full active-reviewer set (i.e., every active reviewer flagged this finding), auto-accept it without spawning any voter. Log: `✅ FINDING_N unanimously proposed by all <N> active reviewers — auto-accepted (no vote needed)`. Award +1 to all proposing reviewers in the competition scoreboard. Remove the finding from the ballot. If a finding is both unanimously proposed AND nit-only, the unanimity pass fires first and it is auto-accepted (not exonerated).
+OOS findings are unaffected by Passes 1 and 2 — they always go to the voter panel.
 
-**Pass 2 — Nit-only auto-exonerate** (only when `SESSION_ENV_PATH` is non-empty AND `diff_mode=true`, i.e. running under `/implement` in diff mode): For each remaining in-scope finding that is classified as nit-only (cosmetic, style preference, or no functional impact — a finding whose concern is so minor that the panel would predictably exonerate rather than accept it), auto-exonerate it without spawning any voter. Log: `⏩ FINDING_N auto-exonerated (nit-only severity, running under /implement)`. Award 0 points (exonerate outcome) to all proposing reviewers. Remove from the ballot. When `SESSION_ENV_PATH` is empty or `diff_mode=false`, skip this pass entirely — nit-only findings proceed to the normal vote.
+| # | Scenario | Condition | Outcome | Notes |
+|---|---|---|---|---|
+| 1 | Pass 1 — unanimity auto-accept | Every active reviewer proposed this finding | Auto-accept; skip ballot | +1 to all proposers; if both unanimously proposed AND nit-only, Pass 1 wins |
+| 2 | Pass 2 — nit-only auto-exonerate | Finding is nit-only AND `diff_mode=true` AND `SESSION_ENV_PATH` non-empty | Auto-exonerate; skip ballot | 0 pts; omit Pass 2 when either condition false |
+| 3 | Post-filter: ballot empty; 0 auto-accepted; no OOS | All in-scope removed by Passes 1/2; no OOS items | Zero-in-scope short-circuit; no voters spawned | Skip to Step 4 |
+| 4 | Post-filter: ballot empty; ≥1 auto-accepted; no OOS | Pass 1 cleared all in-scope; no OOS | Skip voter launch; proceed to Step 3d | Auto-accepted set is the round's result |
+| 5 | Post-filter: ballot empty; OOS exists | In-scope cleared; OOS items present | Spawn voters for OOS only | Auto-accepted findings (if any) still accepted |
+| 6 | Post-filter: ≥1 in-scope on ballot | At least one in-scope finding not pre-filtered | Continue with 3-voter setup | OOS included on ballot with `[OUT_OF_SCOPE]` prefix |
+| 7 | 3 eligible; YES ≥ 2 | 2 or 3 YES votes | **Accept** | Threshold: 2+ YES with 3 voters |
+| 8 | 3 eligible; YES = 1; NO ≥ EXO | 1 YES; non-YES majority is NO | **Reject** | |
+| 9 | 3 eligible; YES = 1; EXO > NO | 1 YES; non-YES majority is EXO | **Exonerate** | See `voting-protocol.md` tie-break rules |
+| 10 | 3 eligible; YES = 0; all EXO | 0 YES; 3 EXONERATE | **Exonerate** | 0 pts |
+| 11 | 3 eligible; YES = 0; ≥1 NO | 0 YES; at least 1 NO | **Reject** | |
+| 12 | 2 eligible; YES = 2 | Both eligible voters voted YES | **Accept** (unanimous 2/2) | |
+| 13 | 2 eligible; YES < 2 | 0 or 1 YES | Reject or exonerate | Per `voting-protocol.md` |
+| 14 | < 2 eligible | Fewer than 2 eligible voters for this finding | Skip; no outcome | Not counted in accepted or rejected |
+| 15 | Zero accepted in-scope | Voting panel accepted 0 in-scope findings | Print no-changes notice; skip to Step 4 | OOS items still routed per diff/description mode |
 
-**After both passes** — branch on ballot state:
+## Summary
 
-- **No in-scope remain, zero were auto-accepted, AND no OOS items**: apply the zero-accepted-in-scope short-circuit below — no voters are spawned.
-- **No in-scope remain on ballot, at least one was auto-accepted in Pass 1, AND no OOS items**: skip voter launch entirely; proceed to Step 3d with the auto-accepted findings as the round's accepted in-scope set.
-- **No in-scope remain on ballot AND OOS items exist** (regardless of auto-accepted count): spawn voters for OOS only — do not include any in-scope entries in the ballot. Proceed to Step 3d after voting; the auto-accepted findings (if any) are part of the accepted set, exonerated findings are not implemented.
-- **At least one in-scope finding remains on the ballot**: continue with the three-voter setup for those remaining findings plus any OOS items.
-
-**In rounds 1-3**: Submit both remaining in-scope findings and out-of-scope observations to a 3-agent voting panel per the **Voting Protocol** in `${CLAUDE_PLUGIN_ROOT}/skills/shared/voting-protocol.md`. Include OOS items on the ballot with `[OUT_OF_SCOPE]` prefix per the protocol's OOS section. For code review:
-
-- **Voter 1**: **Claude Code Reviewer subagent** — fresh Agent tool invocation (subagent_type: `larch:code-reviewer`) with the voting prompt. Instruct: `"You are a very scrupulous senior code reviewer on a voting panel. You will vote YES, NO, or EXONERATE on proposed code changes. Be extremely rigorous — only vote YES for findings that identify genuine bugs, logic errors, security issues, or clearly important improvements. Vote EXONERATE if the concern is legitimate but not worth implementing in this PR. Vote NO for trivial style nits, subjective preferences, or speculative concerns. When voting, also consider proportionality: vote EXONERATE (not YES) if the finding's concern is legitimate but the proposed change would introduce more complexity than the issue warrants."`
-- **Voter 2**: Codex — via `run-external-agent.sh` with the ballot (use `--with-effort` and append "Work at maximum reasoning effort level." to the voter prompt). If `codex_available` is false, launch a Claude subagent voter instead per the Voting Protocol. Instruct similarly as a "very scrupulous senior code reviewer," including the proportionality guidance.
-- **Voter 3**: Cursor — via `run-external-agent.sh` with the ballot (use `--with-effort` and append "Work at maximum reasoning effort level." to the voter prompt). If `cursor_available` is false, launch a Claude subagent voter instead per the Voting Protocol. Instruct similarly, including the proportionality guidance.
-
-**Ballot file handling**: Use the Write tool (not `cat` with heredoc or Bash) to write the ballot to `$REVIEW_TMPDIR/ballot.txt`. For Codex and Cursor voter prompts, reference the ballot file path (e.g., "Read the ballot from $REVIEW_TMPDIR/ballot.txt") instead of inlining the ballot content. This avoids permission prompts from `cat > file << 'EOF'` or `BALLOT=$(cat file)` patterns.
-
-Launch all available voters **in parallel** (Cursor first, then Codex, then Claude subagent). Wait for external voter sentinels using `wait-for-reviewers.sh` per the Voting Protocol, then parse voter outputs.
-
-**Tally votes**: Apply the threshold rules from the Voting Protocol based on eligible voters per finding (2+ YES with 3 voters, unanimous 2/2 with 2 voters, skip if <2 eligible). Print vote breakdown per finding.
-
-**Competition scoring**: Compute and print the **Reviewer Competition Scoreboard** per the Voting Protocol with 7 independent players (`Structure`, `Correctness`, `Testing`, `Security`, `Edge-cases`, `Codex`, `Claude-Generic`; or `Claude` for the both-down fallback). Scores are cumulative across all voted rounds (1-3) — round 4+ findings are auto-accepted and do not contribute to scores.
-
-**Zero accepted in-scope findings**: If voting rejects all in-scope findings, print `**ℹ Voting panel rejected all in-scope findings. No changes to implement.**` (In diff mode driven by `/implement`, OOS items accepted for issue filing are processed by `/implement` Step 9a.1; in description mode, `/review` Step 4b files them via `/umbrella` by default — see the **Diff mode** / **Description mode** bullets below.) and skip to **Step 4**.
-
-**OOS items accepted by vote** (2+ YES in round 1): These are accepted for GitHub issue filing, NOT for code implementation.
-
-- **Diff mode** (`--diff` flag set per `SKILL.md` Mode activation section): **Only when `SESSION_ENV_PATH` is non-empty**, write accepted OOS items to `$(dirname "$SESSION_ENV_PATH")/oos-accepted-review.md` using the format below, excluding security-tagged findings. Security-tagged findings are held locally and NEVER written to this public OOS issue artifact (per SECURITY.md). The canonical token match is `focus-area\s*=\s*security` anywhere inside the accepted `### OOS_N:` block, case-insensitively, with optional whitespace around `=`; if prose indicates security without the literal token, apply the same "if uncertain whether security, do not file publicly" guidance. **Match discrimination (false-positive guard)**: for every literal occurrence of the canonical token in the block, classify as **fenced** when inside an inline backtick code span or triple-backtick fenced code region, and **unfenced** otherwise. Route as security only when at least one unfenced occurrence exists; if every occurrence is fenced, the block is meta-discussion and routes through the normal public OOS path. **Security counter-invariant**: real security findings MUST include at least one unfenced occurrence. When `SESSION_ENV_PATH` is empty (standalone invocation), skip the OOS artifact write — `/implement` is the only consumer.
-- **Description mode** (positional description text present per `SKILL.md` Mode activation section): **Bypass** the `oos-accepted-review.md` staging artifact entirely. `/review` Step 4b composes a findings batch (in-scope-accepted + OOS-accepted, excluding security-tagged) and invokes `/umbrella --input-file` by default (unless `--no-issues` is set, which skips Step 4b entirely). The `oos-accepted-review.md` artifact is `/implement`-specific (consumed by Step 9a.1's sentinel-driven OOS pipeline); description mode files directly via `/umbrella` instead. **OOS classification anchor in description mode**: a finding is OOS iff it concerns a file NOT in `$REVIEW_TMPDIR/scope-files.txt` (the canonical file list resolved by /review Step 1 from the verbal description). Reviewers may explore via Glob/Grep/Read for context but must anchor in/OOS classification to that list. Both in-scope-accepted AND OOS-accepted findings (2+ YES) are filed via /umbrella by default; security-tagged findings (focus-area=security) are held locally and NEVER filed publicly (per SECURITY.md).
-
-In both modes, accepted OOS items use this format. Include affected repo-relative file paths and line ranges in the Description when applicable so `/implement` Step 9a.1 can serialize same-file follow-up issues:
-
-```markdown
-### OOS_N: <short title>
-- **Description**: <full description of the observation>
-- **Reviewer**: <attribution>
-- **Vote tally**: <YES/NO/EXONERATE counts>
-- **Phase**: review
-```
-
-**Save not-accepted finding IDs**: Record the IDs of findings not accepted in rounds 1-3 — this includes (a) findings rejected or exonerated by the voter panel, AND (b) findings auto-exonerated by Pass 2 (they were not accepted, just bypassed the panel). Do NOT include auto-accepted findings from Pass 1 — those ARE accepted and must not be suppressed in later rounds. In rounds 4+, if the single generic reviewer re-raises a finding that was not accepted (by vote or by pre-filter) in any of rounds 1-3 (same file, same issue), suppress it — do not re-accept a finding the panel already voted down, exonerated, or that was auto-exonerated pre-ballot. The rounds-4+ skip-voting rule itself lives in `SKILL.md` at the Step 3c.1 branch selector (the file you are reading is loaded only on the rounds-1-3 branch, so duplicating that rule here would be dead content and a split-source maintenance risk).
+- **Voters (rounds 1-3)**: Voter 1 = Claude Code Reviewer subagent (`larch:code-reviewer`); Voter 2 = Codex via `run-external-agent.sh --with-effort` (→ Claude fallback if unavailable); Voter 3 = Cursor via `run-external-agent.sh --with-effort` (→ Claude fallback). Launch in parallel — Cursor first, then Codex, then Claude subagent. Wait via `wait-for-reviewers.sh`. Write ballot to `$REVIEW_TMPDIR/ballot.txt` using the Write tool (not a `cat` heredoc). Instruct each voter as a scrupulous senior code reviewer with proportionality guidance: vote EXONERATE rather than YES when the concern is legitimate but the proposed change introduces more complexity than it warrants.
+- **OOS accepted (2+ YES in round 1)**: diff mode with non-empty `SESSION_ENV_PATH` → write to `$(dirname "$SESSION_ENV_PATH")/oos-accepted-review.md` excluding security-tagged findings (canonical token `focus-area\s*=\s*security` anywhere in the block, case-insensitive, optional whitespace around `=`); security-tagged findings (focus-area=security) are held locally and NEVER filed publicly; **Match discrimination (false-positive guard)**: occurrences inside backtick or triple-backtick regions are fenced and do not count — only unfenced occurrences mark a finding as security-tagged; **Security counter-invariant**: real security findings MUST include at least one unfenced occurrence; each entry uses `### OOS_N:` with Description (include repo-relative file paths and line ranges when applicable, for Step 9a.1 serialization), Reviewer, Vote tally, Phase. Description mode → skip staging file; Step 4b files directly via `/umbrella --input-file`.
+- **Competition scoreboard**: 7 players — Structure, Correctness, Testing, Security, Edge-cases, Codex, Claude-Generic (or Claude for both-down fallback). Scores cumulative across voted rounds 1-3. Pass 1 auto-accepted findings award +1 to all proposers. Rounds 4+ findings auto-accepted and do NOT contribute to scores.
+- **Not-accepted IDs**: Record finding IDs not accepted in rounds 1-3 — voted down, exonerated by vote, or auto-exonerated by Pass 2 (exclude Pass 1 auto-accepts). In rounds 4+, suppress re-raises of any finding not accepted in rounds 1-3 (same file + same issue).
+- **Full threshold and tie-break rules**: `${CLAUDE_PLUGIN_ROOT}/skills/shared/voting-protocol.md` (proportionality guidance, score formulas, ballot protocol details).
