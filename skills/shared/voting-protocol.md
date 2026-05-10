@@ -176,7 +176,12 @@ If a deduplicated finding was proposed by multiple reviewers (merged during dedu
 
 ## Scoreboard
 
-After voting, print a scoreboard to the session:
+After voting, print the scoreboard. Branch on `SESSION_ENV_PATH`:
+
+- **When `SESSION_ENV_PATH` is empty (standalone run)**: print the full scoreboard table to the session.
+- **When `SESSION_ENV_PATH` is non-empty (nested run under `/implement`)**: print only a one-line count summary of the form `Round <N>: <A> accepted, <R> rejected, <E> exonerated` (in-scope findings only; neutral findings omitted). The full scoreboard is available in the workflow's file artifacts (e.g., `review-round-summary.md` written by the review heavy worker in subagent mode, `voting-tally.md` for plan review) for parent access.
+
+Full scoreboard format (used in standalone mode):
 
 ```
 ## Reviewer Competition Scoreboard
