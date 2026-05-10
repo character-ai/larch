@@ -483,7 +483,7 @@ else
     FAIL=$((FAIL + 1))
     echo "FAIL: teardown: stale background process still running after teardown"
 fi
-assert_contains "killed" "$OUT" "teardown: kill_session_background_processes emits warning"
+assert_contains "**⚠ 18: killed 1 stale background process(es)" "$OUT" "teardown: kill_session_background_processes emits warning"
 assert_contains "FINALIZE_WARNINGS=1" "$OUT" "teardown: kill counts as warning"
 
 write_state "$STATE" STALL_TRACKING=true

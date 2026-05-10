@@ -1234,13 +1234,18 @@ write_stalled_run_sentinel() {
 
 kill_session_background_processes() {
     [ -n "$IMPLEMENT_TMPDIR" ] || return 0
-    command -v pgrep >/dev/null 2>&1 || return 0
     local my_pid=$$
+    local ppid
+    ppid=$(ps -o ppid= -p "$my_pid" 2>/dev/null | tr -d ' ') || ppid=""
     local pid killed=0 survivors=0 pids_out
-    pids_out=$(pgrep -f "$IMPLEMENT_TMPDIR" 2>/dev/null) || return 0
+    # Use awk index() for fixed-string match: pgrep -f and grep -E treat the path as a regex,
+    # and larch session tmpdirs contain dots that would match unintended characters.
+    pids_out=$(ps -A -o pid= -o args= 2>/dev/null | awk -v needle="$IMPLEMENT_TMPDIR" 'index($0, needle) > 0 {print $1}') || return 0
+    [ -n "$pids_out" ] || return 0
     while IFS= read -r pid; do
         [ -z "$pid" ] && continue
         [ "$pid" = "$my_pid" ] && continue
+        [ -n "$ppid" ] && [ "$pid" = "$ppid" ] && continue
         if kill -TERM "$pid" 2>/dev/null; then killed=$((killed + 1)); fi
     done <<< "$pids_out"
     if [ "$killed" -gt 0 ]; then
@@ -1248,6 +1253,7 @@ kill_session_background_processes() {
         while IFS= read -r pid; do
             [ -z "$pid" ] && continue
             [ "$pid" = "$my_pid" ] && continue
+            [ -n "$ppid" ] && [ "$pid" = "$ppid" ] && continue
             if kill -0 "$pid" 2>/dev/null; then
                 if kill -KILL "$pid" 2>/dev/null; then survivors=$((survivors + 1)); fi
             fi
