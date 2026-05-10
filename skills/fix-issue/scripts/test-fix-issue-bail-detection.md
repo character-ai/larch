@@ -1,6 +1,6 @@
 # skills/fix-issue/scripts/test-fix-issue-bail-detection.sh — contract
 
-`skills/fix-issue/scripts/test-fix-issue-bail-detection.sh` is the regression harness for the Phase 4 bail-detection prose in `skills/fix-issue/SKILL.md` Step 5a (originally Phase 4 of umbrella #348; renumbered from Step 6a to Step 5a by the fold-find-and-lock refactor closes #496). It is offline, hermetic, and runs against the committed `SKILL.md` — no network, no git state change, no mocks. The harness guards against accidental removal of literal assertions inside the Step 5a block, covering ten conceptual checks:
+`skills/fix-issue/scripts/test-fix-issue-bail-detection.sh` is the regression harness for the Phase 4 bail-detection prose in `skills/fix-issue/SKILL.md` Step 5a (originally Phase 4 of umbrella #348; renumbered from Step 6a to Step 5a by the fold-find-and-lock refactor closes #496). It is offline, hermetic, and runs against the committed `SKILL.md` — no network, no git state change, no mocks. The harness guards against accidental removal of literal assertions inside the Step 5a block, covering eleven conceptual checks:
 
 - `--issue $ISSUE_NUMBER` in the invocation (forwarded to `/implement` so it adopts the queue issue via Phase 3 Branch 2).
 - `--no-admin-fallback` in the invocation (issue #559 — branch-protection bypass safety flag forwarded so `/fix-issue --no-admin-fallback` callers are not silently exposed to an `--admin` override).

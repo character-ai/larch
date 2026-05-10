@@ -9,7 +9,7 @@
 # conformance test. Runtime enforcement is the LLM-level orchestration of
 # Step 5a per the prose contract.
 #
-# Ten assertions against the extracted Step 5a block:
+# Eleven assertions against the extracted Step 5a block:
 #   (a1) Invocation forwards "--issue $ISSUE_NUMBER".
 #   (a2) Invocation forwards "--no-admin-fallback" (branch-protection bypass
 #        safety flag; issue #559).
