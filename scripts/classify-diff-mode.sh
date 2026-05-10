@@ -47,21 +47,25 @@ classify_path() {
   fi
 
   base="$(basename "$path")"
+  # Test classification: restrict to code/script/data files, not .md siblings.
   case "$path" in
-    scripts/test-*|skills/*/scripts/test-*|*/tests/*|*/test/*)
+    scripts/test-*.sh|scripts/test-*.py|skills/*/scripts/test-*.sh|*/tests/*|*/test/*)
       printf 'test-only\n'
       return
       ;;
   esac
   case "$base" in
-    test_*|*_test.*|*.test.*|*.bats)
+    test_*.sh|test_*.py|test_*.go|*_test.sh|*_test.py|*_test.go|*.test.sh|*.test.py|*.test.go|*.bats)
       printf 'test-only\n'
       return
       ;;
   esac
 
+  # Docs classification: restrict docs/ to prose extensions; bare executables
+  # or unknown extensions under docs/ are conservative → generic.
   case "$path" in
-    docs/*|scripts/*.md|README.md|CHANGELOG.md|SECURITY.md|AGENTS.md|CLAUDE.md|KARPATHY_CLAUDE.md)
+    docs/*.md|docs/*.txt|docs/*.rst|docs/*.adoc|\
+scripts/*.md|README.md|CHANGELOG.md|SECURITY.md|AGENTS.md|CLAUDE.md|KARPATHY_CLAUDE.md)
       printf 'docs-only\n'
       return
       ;;
