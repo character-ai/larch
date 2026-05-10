@@ -204,8 +204,8 @@ if [[ -n "$PROMPT_FILE" ]]; then
                 DIFF_FILE)         _s_diff="$_s_v" ;;
             esac
         done < "$PROMPT_FILE"
-        if [[ "$_s_kind" != "specialist" || -z "$_s_agent_file" || -z "$_s_mode" ]]; then
-            echo "launch-codex-review.sh: malformed prompt sentinel in $PROMPT_FILE" >&2
+        if [[ "$_s_kind" != "specialist" || -z "$_s_agent_file" || -z "$_s_mode" || -z "$_s_hash" ]]; then
+            echo "launch-codex-review.sh: malformed prompt sentinel in $PROMPT_FILE (missing or empty KIND/AGENT_FILE/MODE/HASH)" >&2
             exit 1
         fi
         _s_render_args=(--agent-file "$_s_agent_file" --mode "$_s_mode")
@@ -219,7 +219,13 @@ if [[ -n "$PROMPT_FILE" ]]; then
         elif command -v sha256sum >/dev/null 2>&1; then
             _s_reconstructed_hash=$(printf '%s' "$PROMPT" | sha256sum | awk '{print $1}')
         fi
-        if [[ -n "$_s_reconstructed_hash" && -n "$_s_hash" && "$_s_reconstructed_hash" != "$_s_hash" ]]; then
+        if [[ -z "$_s_reconstructed_hash" ]]; then
+            # No SHA-256 tool on this host; cannot verify reconstruction against stored HASH.
+            # Fail closed — sentinel replay requires integrity verification.
+            echo "launch-codex-review.sh: no SHA-256 tool (shasum/sha256sum) available; cannot verify sentinel reconstruction" >&2
+            exit 1
+        fi
+        if [[ "$_s_reconstructed_hash" != "$_s_hash" ]]; then
             echo "launch-codex-review.sh: prompt reconstruction hash mismatch (sentinel=$_s_hash reconstructed=$_s_reconstructed_hash)" >&2
             exit 1
         fi
