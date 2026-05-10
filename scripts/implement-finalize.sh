@@ -945,6 +945,15 @@ verify_cleanup_target() {
         return 0
     fi
 
+    # When EXPECTED_SESSION_ID was present and the session-id file matches, the UUID is a
+    # sufficient identity guarantee — authorize cleanup even if the basename prefix doesn't
+    # match. A prefix mismatch can result from the stray-underscore bug fixed in #1563 or
+    # the literal-quote bug fixed in #1572. See #1784.
+    if [ "$session_ok" = "true" ] && [ -n "$expected_session_id" ]; then
+        warn_line "$(printf '**⚠ 18: cleanup target basename prefix mismatch (expected=%s, actual=%s) — session-id match authorizes cleanup. Proceeding.**' "$expected_prefix" "$actual_basename")"
+        return 0
+    fi
+
     append_execution_issue "Step 18 cleanup target failed sanity check (basename=$actual_basename, session-id-match=$session_match_display); cleanup skipped."
     warn_line "$(printf '**⚠ 18: cleanup target failed sanity check (basename=%s, session-id-match=%s) — refusing to rm-rf. Operator must clean manually.**' "$actual_basename" "$session_match_display")"
     return 1
