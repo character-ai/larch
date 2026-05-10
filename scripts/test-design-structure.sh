@@ -149,7 +149,7 @@ forbidden_tokens=(
 
 for token in "${forbidden_tokens[@]}"; do
   if grep -rF -- "$token" "$DESIGN_DIR" >/dev/null 2>&1; then
-    matches=$(grep -rnF -- "$token" "$DESIGN_DIR" | head -3)
+    matches=$(grep -m 3 -rnF -- "$token" "$DESIGN_DIR")
     fail "skills/design/ contains forbidden Step-3a-removal-residue token '$token':
 $matches"
   fi
