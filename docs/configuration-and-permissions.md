@@ -36,10 +36,12 @@
 "Skill(larch:research)",
 "Skill(larch:review)",
 "Skill(larch:set-up-forked-open-source-repo)",
+"Skill(larch:show-skill)",
 "Skill(larch:umbrella)",
 "Skill(research)",
 "Skill(review)",
 "Skill(set-up-forked-open-source-repo)",
+"Skill(show-skill)",
 "Skill(umbrella)"
 ```
 

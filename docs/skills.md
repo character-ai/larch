@@ -13,6 +13,7 @@ Reference for every slash command shipped by the larch plugin. Each section belo
 - [`/research`](#research)
 - [`/review`](#review)
 - [`/set-up-forked-open-source-repo`](#set-up-forked-open-source-repo)
+- [`/show-skill`](#show-skill)
 - [`/simplify-skill`](#simplify-skill)
 - [`/skill-evolver`](#skill-evolver)
 - [`/umbrella`](#umbrella)
@@ -123,6 +124,14 @@ Code review with the specialist panel described in [Review Agents](review-agents
 Configure the current checkout for upstream/fork OSS contribution. The skill verifies that the fork exists on GitHub and that its immediate parent is the declared upstream, probes both repositories' `refs/heads/main`, optionally performs a destructive fork sync of branches and tags after explicit confirmation, then rewires local remotes so `origin` points at the fork and `upstream` points at upstream. It disables upstream pushes with an invalid-scheme push URL, fetches `origin`, sets `main` to track `origin/main`, and fast-forwards only from a clean `main` checkout.
 
 The workflow is intentionally single-clone (per-clone single-flight lock; multiple clones may run concurrently) and supports any GitHub-compatible host, with github.com as the default. It refuses dirty linked worktrees, in-progress git operations in any linked worktree, missing local `main`, non-`main` checkouts, local `main` ahead of `origin/main`, diverged local/remote `main`, ambiguous remote layouts, non-parseable / mixed-host URLs, duplicate fork remotes, multi-fetch URL remotes, and multi-push URL remotes. If the fork is missing, it prints fork-creation instructions and exits without local mutation. `--init-submodules` is opt-in; default runs ignore submodules.
+
+## `/show-skill`
+
+**Arguments**: `<skill-name>`
+
+**Source**: [`skills/show-skill/SKILL.md`](../skills/show-skill/SKILL.md)
+
+Display the contents of a skill's `SKILL.md` file. Accepts bare name (e.g., `implement`), `larch:`-prefixed form (e.g., `larch:review`), or leading-`/` form. Searches the plugin `skills/` tree first, then the consumer repo's `.claude/skills/`.
 
 ## `/simplify-skill`
 
