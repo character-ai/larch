@@ -76,7 +76,7 @@ SECOND_SHA=$(shasum -a 256 "$TARGET" | awk '{print $1}')
 
 EMPTY="$TMP_BASE/empty.tsv"
 : > "$EMPTY"
-"$REPO_ROOT/scripts/timing-report.sh" --ledger "$EMPTY" --full --markdown > "$TMP_BASE/empty.out"
+"$REPO_ROOT/scripts/timing-report.sh" --ledger "$EMPTY" --full --markdown > "$TMP_BASE/empty.out" 2>&1
 grep -Fq 'Timing report unavailable' "$TMP_BASE/empty.out"
 
 # Review FINDING_11: --full --output PATH branch is now tested.

@@ -343,13 +343,12 @@ render_jq() {
         end
     ' "${TRANSCRIPT_FILES[@]}" 2>"$jq_stderr_dest" || {
         if [[ -n "$jq_stderr_path" && -s "$jq_stderr_path" ]]; then
-            # Published surface (stdout via `unavailable`) flows into the
-            # tracking-issue anchor and PR body, so the absolute jq stderr
-            # path — which carries TMPDIR + username — must not appear in
-            # RENDER_FAIL_REASON. Emit a fixed phrase to stdout consumers
-            # and surface the actual path on stderr only, where it remains
-            # discoverable to operators tailing the script (closes #1511
-            # finding B).
+            # `unavailable` now routes to stderr; the tracking-issue anchor
+            # and PR body are populated via stdout-only calls (--append-*).
+            # The absolute jq stderr path — which carries TMPDIR + username —
+            # must not appear in RENDER_FAIL_REASON. Emit a fixed phrase via
+            # unavailable (stderr) and surface the actual path on stderr only
+            # (closes #1511 finding B).
             RENDER_FAIL_REASON="failed to parse token sources (jq stderr captured; debug)"
             printf 'token-report.sh: jq stderr captured at %s\n' "$jq_stderr_path" >&2
         else

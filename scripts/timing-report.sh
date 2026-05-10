@@ -140,7 +140,7 @@ render_report() {
       END {
         if (mode == "terse") {
           if (last_terse_ts == "") {
-            print "Timing report unavailable: no step marks in ledger"
+            print "Timing report unavailable: no step marks in ledger" > "/dev/stderr"
             exit 0
           }
           codex = cursor = gemini = total = 0
