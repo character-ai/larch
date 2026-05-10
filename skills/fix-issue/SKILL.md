@@ -39,18 +39,7 @@ Before processing each invocation, hold these four questions.
 
 Follow the formatting rules in `${CLAUDE_PLUGIN_ROOT}/skills/shared/progress-reporting.md`.
 
-Step Name Registry:
-
-| Step | Short Name |
-|------|-----------|
-| 0 | find & lock |
-| 1 | setup |
-| 2 | read details |
-| 3 | triage |
-| 4 | classify |
-| 5 | execute |
-| 6 | close issue |
-| 8 | cleanup |
+**MANDATORY at session start**: Read `${CLAUDE_PLUGIN_ROOT}/skills/fix-issue/scripts/step-name-registry.tsv` to get the Step Name Registry (step number → short name mapping for progress breadcrumbs).
 
 **MANDATORY at session start — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/shared/orchestrator-never.md`. Contains cross-skill NEVER rules that apply to this skill in addition to the skill-specific Anti-patterns below.
 

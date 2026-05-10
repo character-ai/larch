@@ -34,21 +34,7 @@ The feature to design is described by the remainder of `$ARGUMENTS` after flags 
 - Print a **completion line** only when it carries informational payload. Only the final step (Step 5) prints an unconditional completion announcement.
 - When `STEP_NUM_PREFIX` is non-empty, prepend it to step numbers: `{STEP_NUM_PREFIX}{local_step}`. When `STEP_PATH_PREFIX` is non-empty, prepend it to breadcrumb paths: `{STEP_PATH_PREFIX} | {step_short_name}`. **This rule overrides the literal step numbers and names in `Print:` directives and examples throughout this file.** Examples shown below assume standalone mode; when nested, prepend the parent context.
 
-Step Name Registry:
-| Step | Short Name |
-|------|------------|
-| 0 | setup |
-| 1 | branch |
-| 1c | questions |
-| 1d | discussion r1 |
-| 2a | sketches |
-| 2a.5 | dialectic |
-| 2b | full plan |
-| 3 | plan review |
-| 3.5 | discussion r2 |
-| 3b | arch diagram |
-| 4 | rejected findings |
-| 5 | cleanup |
+**MANDATORY at session start**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/step-name-registry.tsv` to get the Step Name Registry (step number → short name mapping for progress breadcrumbs).
 
 ### Verbosity Control
 

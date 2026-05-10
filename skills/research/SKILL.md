@@ -105,20 +105,7 @@ Defense in depth: stdout parsing of `ISSUES_*` is the primary post-`/issue` mech
 - Print a **start line** when entering a step: e.g., `> **🔶 1: research**`
 - Print a **completion line** when done: e.g., `✅ 1: research — synthesis complete, 4 lanes (3m12s)`
 
-Step Name Registry:
-| Step | Short Name |
-|------|------------|
-| 0 | setup |
-| 1 | research |
-| 1.1 | planner |
-| 1.1.c | interactive-review |
-| 1.2 | lane-assign |
-| 2 | validation |
-| 2.5 | citation-validation |
-| 2.6 | critique loop |
-| 3 | report |
-| 3.5 | auto-issue |
-| 4 | cleanup |
+**MANDATORY at session start**: Read `${CLAUDE_PLUGIN_ROOT}/skills/research/scripts/step-name-registry.tsv` to get the Step Name Registry (step number → short name mapping for progress breadcrumbs).
 
 **MANDATORY at session start — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/shared/orchestrator-never.md`. Contains cross-skill NEVER rules that apply to this skill in addition to the skill-specific Anti-patterns below.
 
