@@ -15,6 +15,8 @@ Display a skill's `SKILL.md` content. Accepts a skill name (e.g., `implement`, `
 ${CLAUDE_PLUGIN_ROOT}/skills/show-skill/scripts/show.sh $ARGUMENTS
 ```
 
+Script contract: `${CLAUDE_PLUGIN_ROOT}/skills/show-skill/scripts/show.md`.
+
 Parse `STATUS` and `SKILL_PATH` from stdout without `eval`/`source`. Verify the resolution succeeded before displaying:
 
 - **`STATUS=found`**: Read and display `$SKILL_PATH`.
