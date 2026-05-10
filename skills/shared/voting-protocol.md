@@ -24,14 +24,15 @@ Include the reviewer attribution so voters have context, but instruct voters to 
 
 ## Voter Output Format
 
-Each voter must output one line per ballot item, **using the same ID that appears on the ballot** — `FINDING_N` for in-scope items and `OOS_N` for out-of-scope items:
+Each voter must output one line per ballot item, **using the same ID that appears on the ballot** — `FINDING_N` for in-scope items and `OOS_N` for out-of-scope items. YES votes require no reason; NO and EXONERATE votes require a one-line reason:
 
 ```
-FINDING_1: YES — <one-line rationale>
-FINDING_2: NO — <one-line rationale>
-FINDING_3: EXONERATE — <one-line rationale>
-OOS_1: YES — <one-line rationale>
-OOS_2: NO — <one-line rationale>
+FINDING_1: YES
+FINDING_2: NO — <one-line reason>
+FINDING_3: EXONERATE — <one-line reason>
+OOS_1: YES
+OOS_2: NO — <one-line reason>
+OOS_3: EXONERATE — <one-line reason>
 ...
 ```
 
@@ -79,17 +80,17 @@ Be scrupulous — only vote YES for findings that genuinely improve the {REVIEW_
 {BALLOT}
 
 For each ballot item, output exactly one line using the same ID from the ballot (FINDING_N or OOS_N):
-FINDING_N: YES — <one-line rationale>
+FINDING_N: YES
 or
-FINDING_N: NO — <one-line rationale>
+FINDING_N: NO — <one-line reason>
 or
-FINDING_N: EXONERATE — <one-line rationale>
+FINDING_N: EXONERATE — <one-line reason>
 or
-OOS_N: YES — <one-line rationale>
+OOS_N: YES
 or
-OOS_N: NO — <one-line rationale>
+OOS_N: NO — <one-line reason>
 or
-OOS_N: EXONERATE — <one-line rationale>
+OOS_N: EXONERATE — <one-line reason>
 
 You must vote on every item. Do NOT skip any. Do NOT modify files.
 ```
