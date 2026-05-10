@@ -15,6 +15,6 @@
 **Call sites**:
 - `skills/implement/SKILL.md` Step 0.5 session-wide phantom baseline
 - `skills/implement/SKILL.md` Step 5 pre-review snapshot
-- `scripts/launch-cursor-review.sh` and `scripts/launch-codex-review.sh` pre-launch dirty-tree baselines
+- `scripts/launch-review.sh --tool cursor` and `scripts/launch-review.sh --tool codex` pre-launch dirty-tree baselines
 
 **Edit-in-sync**: `skills/implement/scripts/check-review-changes.sh` (newline-delimited consumer), `scripts/check-mid-run-dirty-tree.sh` (NUL-delimited consumer), and the review launchers.

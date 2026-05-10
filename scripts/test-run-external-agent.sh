@@ -132,7 +132,7 @@ assert_equals "reject-empty exit" "1" "$RUN_CODE"
 assert_grep "reject-empty stderr" "--output requires a value" "$RUN_STDERR"
 
 # 11b. --timeout 0 is rejected before side effects (parallel to #1115 + the
-# Gemini reviewer launcher's analogous rejection in test-launch-gemini-review.sh).
+# Gemini reviewer launcher's analogous rejection in test-launch-review.sh --tool gemini).
 TIMEOUT_ZERO_OUT="$TMPDIR/timeout-zero.txt"
 RUN_STDOUT="$TMPDIR/reject-timeout-zero.stdout"
 RUN_STDERR="$TMPDIR/reject-timeout-zero.stderr"

@@ -1,6 +1,6 @@
 # Larch reviewer mode: deny file-writing tools, allow read tools and shell.
 #
-# Loaded via --admin-policy by scripts/launch-gemini-review.sh so the deny
+# Loaded via --admin-policy by scripts/launch-review.sh --tool gemini so the deny
 # rules override --approval-mode yolo's default-allow. Verified
 # experimentally in issue #1234: user-tier --policy at priority 999 is
 # overridden by yolo; admin-tier at 5999 is not.

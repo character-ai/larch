@@ -329,10 +329,10 @@ grep -Fq -- '--pieces-json' "$SKILL_MD" \
 # reviewers and Step 0 no longer passes --check-gemini-reviewer; session-setup.sh
 # hard-codes GEMINI_HEALTHY=false. Negative pins remain to catch re-introduction.
 # ---------------------------------------------------------------------------
-# Negative pins: the launch-gemini-review.sh call sites were removed; ensure
+# Negative pins: the launch-review.sh --tool gemini call sites were removed; ensure
 # they don't quietly re-appear without an intentional reversal of this change.
-if grep -Fq 'launch-gemini-review.sh' "$SKILL_MD"; then
-  fail "(19b) /review unexpectedly re-introduced launch-gemini-review.sh call sites"
+if grep -Fq 'launch-review.sh --tool gemini' "$SKILL_MD"; then
+  fail "(19b) /review unexpectedly re-introduced launch-review.sh --tool gemini call sites"
 fi
 if grep 'collect-agent-results.sh' "$SKILL_MD" | grep -Fq 'gemini-output.txt'; then
   fail "(19c) /review collector argv unexpectedly re-introduced gemini-output.txt path"

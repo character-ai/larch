@@ -360,7 +360,11 @@ cmd_json_shape_valid_for_tool() {
             ;;
         gemini)
             case "$argv0_base" in
-                launch-gemini-review.sh|launch-gemini-implement.sh|gemini) ;;
+                launch-review.sh)
+                    cmd_has_token "--tool" "$@" || return 1
+                    cmd_has_token "gemini" "$@" || return 1
+                    ;;
+                launch-gemini-implement.sh|gemini) ;;
                 *) return 1 ;;
             esac
             cmd_lacks_forbidden_token "--add-dir" "$@" || return 1
@@ -575,11 +579,9 @@ if [[ ${#RETRY_FILES[@]} -gt 0 ]]; then
             esac
             _launcher_base=$(basename "$META_OUTER_LAUNCHER")
             case "$META_TOOL:$_launcher_base" in
-                cursor:launch-cursor-review.sh) _expected_launcher="$SCRIPT_DIR/launch-cursor-review.sh" ;;
-                codex:launch-codex-review.sh) _expected_launcher="$SCRIPT_DIR/launch-codex-review.sh" ;;
-                cursor:*) _expected_launcher="$SCRIPT_DIR/launch-cursor-review.sh" ;;
-                codex:*) _expected_launcher="$SCRIPT_DIR/launch-codex-review.sh" ;;
-                *) mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: OUTER_LAUNCHER not canonical launch-cursor-review.sh or launch-codex-review.sh"; continue ;;
+                cursor:launch-review.sh|codex:launch-review.sh|gemini:launch-review.sh) _expected_launcher="$SCRIPT_DIR/launch-review.sh" ;;
+                cursor:*|codex:*|gemini:*) _expected_launcher="$SCRIPT_DIR/launch-review.sh" ;;
+                *) mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: OUTER_LAUNCHER not canonical launch-review.sh"; continue ;;
             esac
             if ! _expected_launcher_dir=$(cd "$(dirname "$_expected_launcher")" 2>/dev/null && pwd -P 2>/dev/null); then
                 mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: OUTER_LAUNCHER not canonical $(basename "$_expected_launcher")"
@@ -647,6 +649,7 @@ if [[ ${#RETRY_FILES[@]} -gt 0 ]]; then
                     -u LARCH_TEST_TRAP_AFTER_INNER_DONE_FILE \
                     -u LARCH_TEST_TRAP_AFTER_INNER_DONE \
                     -- "$META_OUTER_LAUNCHER" \
+                        --tool "$META_TOOL" \
                         --output "$RETRY_OUTPUT" \
                         --timeout "$META_TIMEOUT" \
                         --risk "$META_OUTER_LAUNCHER_RISK" \

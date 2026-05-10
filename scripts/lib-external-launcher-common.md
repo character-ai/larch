@@ -9,6 +9,6 @@ Exposes:
 
 The library is sourced-only (no shebang, no `set -e`); callers own exit semantics. Loaded once per shell via the `LARCH_LIB_EXTERNAL_LAUNCHER_COMMON_LOADED` guard so the per-tool wrapper libs (`lib-codex-launcher-common.sh`, `lib-cursor-launcher-common.sh`) can both source it without double-defining functions.
 
-The per-tool wrappers (`codex_launcher_promote_inner_done`, `codex_launcher_append_outer_meta`, `cursor_launcher_promote_inner_done`, `cursor_launcher_append_outer_meta`) are thin one-line aliases retained in their respective per-tool libs so existing call sites in `launch-codex-review.sh`, `launch-cursor-review.sh`, and `launch-cursor-implement.sh` continue to work unchanged.
+The per-tool wrappers (`codex_launcher_promote_inner_done`, `codex_launcher_append_outer_meta`, `cursor_launcher_promote_inner_done`, `cursor_launcher_append_outer_meta`) are thin one-line aliases retained in their respective per-tool libs so existing call sites in `launch-review.sh --tool codex`, `launch-review.sh --tool cursor`, and `launch-cursor-implement.sh` continue to work unchanged.
 
-**Edit-in-sync**: `scripts/lib-codex-launcher-common.sh`, `scripts/lib-cursor-launcher-common.sh`, `scripts/launch-codex-review.sh`, `scripts/launch-cursor-review.sh`, `scripts/launch-cursor-implement.sh`.
+**Edit-in-sync**: `scripts/lib-codex-launcher-common.sh`, `scripts/lib-cursor-launcher-common.sh`, `scripts/launch-review.sh --tool codex`, `scripts/launch-review.sh --tool cursor`, `scripts/launch-cursor-implement.sh`.

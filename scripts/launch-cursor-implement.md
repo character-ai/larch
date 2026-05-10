@@ -1,6 +1,6 @@
 # launch-cursor-implement.sh
 
-**Purpose**: Spawn the Cursor implementer subprocess for `/implement` Step 2 with a tight, machine-parseable stdout contract. Wraps `run-external-agent.sh` + `cursor agent -p --force --trust` (parallel to `launch-cursor-review.sh`) but redirects the wrapper's human-readable progress lines to a sidecar log file so the dispatcher (`skills/implement/scripts/step2-implement.sh`) only sees deterministic `KEY=VALUE` lines.
+**Purpose**: Spawn the Cursor implementer subprocess for `/implement` Step 2 with a tight, machine-parseable stdout contract. Wraps `run-external-agent.sh` + `cursor agent -p --force --trust` (parallel to `launch-review.sh --tool cursor`) but redirects the wrapper's human-readable progress lines to a sidecar log file so the dispatcher (`skills/implement/scripts/step2-implement.sh`) only sees deterministic `KEY=VALUE` lines.
 
 **Invariants**:
 - Stdout contract is `KEY=VALUE` lines only: `LAUNCHER_EXIT`, `MANIFEST_WRITTEN`, `QA_PENDING_WRITTEN`, `TRANSCRIPT`, `SIDECAR_LOG`. The dispatcher relies on this; any progress text leaking to stdout would be parsed as garbage.
@@ -17,7 +17,7 @@
 - Composes Cursor's prompt by concatenating `--agent-prompt` (`agents/cursor-implementer.md`) with this-invocation parameters and an optional resume block. Composition is in shell, not in agent-side prose, so the contract is mechanically inspectable.
 - Reuses `agent-model-args.sh --tool cursor --with-effort`, reads its line-token stdout into a Bash array, then wraps the composed prompt with `cursor-wrap-prompt.sh` so Cursor max-mode is enforced exactly like the review path.
 - If Cursor model-args loading fails, the launcher truncates `SIDECAR_LOG`, appends the `agent-model-args.sh` diagnostic, emits the same five-line KV envelope used by Gemini model resolution failures with `MANIFEST_WRITTEN=false` and `QA_PENDING_WRITTEN=false`, records timing best-effort, and exits wrapper-level 0. Argv validation errors still exit 2 before this preflight envelope exists.
-- Cursor argv shape is pinned to `scripts/launch-cursor-review.sh`: `cursor agent -p --force --trust --output-format json ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} ${CURSOR_AUTH_ARGS[@]+"${CURSOR_AUTH_ARGS[@]}"} --workspace "$PWD" "$WRAPPED_PROMPT"`. There is intentionally no `--` end-of-options separator before the prompt; the wrapped prompt is the positional argument after `--workspace`.
+- Cursor argv shape is pinned to `scripts/launch-review.sh --tool cursor`: `cursor agent -p --force --trust --output-format json ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} ${CURSOR_AUTH_ARGS[@]+"${CURSOR_AUTH_ARGS[@]}"} --workspace "$PWD" "$WRAPPED_PROMPT"`. There is intentionally no `--` end-of-options separator before the prompt; the wrapped prompt is the positional argument after `--workspace`.
 - Sources `scripts/lib-cursor-auth.sh` and runs `cursor_auth_preflight` BEFORE invoking `run-external-agent.sh`. On Darwin with `CURSOR_API_KEY` empty AND no `cursor-user` keychain entry, emits the standard KV envelope (`LAUNCHER_EXIT=2 MANIFEST_WRITTEN=false QA_PENDING_WRITTEN=false TRANSCRIPT=... SIDECAR_LOG=...`), routes the actionable stderr to `$SIDECAR_LOG`, and exits 0 (the wrapper-level exit; `LAUNCHER_EXIT` value 2 is the failure signal the dispatcher reads). The existing wrapper process exit code 2 stays for genuine pre-flag-parsing wrapper errors that occur before `$SIDECAR_LOG` is even resolvable.
 - When `CURSOR_API_KEY` is non-empty, passes `--api-key "$CURSOR_API_KEY"` between the model-args array and `--workspace`. When empty, `cursor agent` runs without `--api-key` and falls back to its default auth resolution (e.g., the `cursor login` keychain entry on Darwin) — preserving backward compatibility with operators who haven't set the env var.
 
@@ -51,7 +51,7 @@ SIDECAR_LOG=<path>             # path to run-external-agent.sh chatter
 **Call sites**:
 - `skills/implement/scripts/step2-implement.sh` (dispatcher) — the only authorized caller.
 
-**Edit-in-sync**: `scripts/check-step-token-budget.sh` (budget-cap helper), `scripts/lib-cursor-launcher-common.sh`, `scripts/lib-external-launcher-common.sh`, `scripts/run-external-agent.sh`, `scripts/agent-model-args.sh`, `scripts/cursor-wrap-prompt.sh`, `scripts/cursor-wrap-prompt.md`, `agents/cursor-implementer.md`, `agents/gemini-implementer.md`, `skills/implement/references/codex-manifest-schema.md`, `scripts/launch-cursor-review.sh`, `scripts/launch-gemini-implement.md`, `skills/implement/scripts/test-cursor-implementer.sh`.
+**Edit-in-sync**: `scripts/check-step-token-budget.sh` (budget-cap helper), `scripts/lib-cursor-launcher-common.sh`, `scripts/lib-external-launcher-common.sh`, `scripts/run-external-agent.sh`, `scripts/agent-model-args.sh`, `scripts/cursor-wrap-prompt.sh`, `scripts/cursor-wrap-prompt.md`, `agents/cursor-implementer.md`, `agents/gemini-implementer.md`, `skills/implement/references/codex-manifest-schema.md`, `scripts/launch-review.sh --tool cursor`, `scripts/launch-gemini-implement.md`, `skills/implement/scripts/test-cursor-implementer.sh`.
 
 **Test harness**: `skills/implement/scripts/test-cursor-implementer.sh`.
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # launch-cursor-implement.sh — Launch the Cursor implementer subprocess for /implement Step 2.
 #
-# Modeled after launch-cursor-review.sh but with a tighter stdout contract:
+# Modeled after launch-review.sh --tool cursor but with a tighter stdout contract:
 # this wrapper redirects run-external-agent.sh's progress chatter (⏳, ✓, ❌)
 # to a sidecar log file so the dispatcher (skills/implement/scripts/step2-implement.sh)
 # only sees deterministic KEY=VALUE lines on stdout. The dispatcher's parser

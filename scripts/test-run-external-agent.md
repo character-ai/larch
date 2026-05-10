@@ -18,4 +18,4 @@ Target: `make test-run-external-agent`. Included in `make lint` via the `the tes
 
 ## Edit-in-sync
 
-Update with `scripts/run-external-agent.sh`, `scripts/run-external-agent.md`, `scripts/lib-validate-meta-path.sh`, `scripts/lib-validate-meta-path.md`, `scripts/launch-cursor-review.sh`, and `scripts/launch-gemini-review.sh` when the `.meta` output-path validation or sentinel contract changes.
+Update with `scripts/run-external-agent.sh`, `scripts/run-external-agent.md`, `scripts/lib-validate-meta-path.sh`, `scripts/lib-validate-meta-path.md`, `scripts/launch-review.sh --tool cursor`, and `scripts/launch-review.sh --tool gemini` when the `.meta` output-path validation or sentinel contract changes.

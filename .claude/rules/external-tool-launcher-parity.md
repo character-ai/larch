@@ -1,5 +1,5 @@
 ---
-paths: ["scripts/launch-codex-*.sh", "scripts/launch-cursor-*.sh", "scripts/launch-gemini-*.sh", "agents/codex-implementer.md", "agents/cursor-implementer.md", "agents/gemini-implementer.md", "scripts/run-external-agent.sh", "scripts/collect-agent-results.sh", "scripts/check-reviewers.sh", "skills/implement/scripts/step2-implement.sh", "docs/external-reviewers.md", "docs/configuration-and-permissions.md"]
+paths: ["scripts/launch-review.sh", "scripts/launch-codex-*.sh", "scripts/launch-cursor-*.sh", "scripts/launch-gemini-*.sh", "agents/codex-implementer.md", "agents/cursor-implementer.md", "agents/gemini-implementer.md", "scripts/run-external-agent.sh", "scripts/collect-agent-results.sh", "scripts/check-reviewers.sh", "skills/implement/scripts/step2-implement.sh", "docs/external-reviewers.md", "docs/configuration-and-permissions.md"]
 ---
 
 # External-Tool Launcher Parity
@@ -12,9 +12,9 @@ some lanes, plus review-side JSON normalization and admin-policy snapshots
 absent from implementers. Classify each asymmetry; don't force symmetry
 blindly.
 
-When changing `scripts/launch-codex-*.sh`,
-`scripts/launch-cursor-*.sh`, or `scripts/launch-gemini-*.sh`
-(implement and review variants), audit:
+When changing `scripts/launch-review.sh`,
+`scripts/launch-codex-*.sh`, `scripts/launch-cursor-*.sh`, or
+`scripts/launch-gemini-*.sh` (implement and review variants), audit:
 
 - **Argv validation** — `--timeout`, `--api-key`, `--model`, `--output`, `--prompt`, `--agent-file`; accepted in one launcher and rejected by another is a parity bug unless documented.
 - **Sibling agent prompt** — `agents/codex-implementer.md` / `agents/cursor-implementer.md` / `agents/gemini-implementer.md`; schema/wording changes usually apply to all.

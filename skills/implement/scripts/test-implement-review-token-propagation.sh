@@ -6,7 +6,7 @@ set -euo pipefail
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)
 SESSION_SETUP="$REPO_ROOT/scripts/session-setup.sh"
 READ_KEY="$REPO_ROOT/scripts/read-session-env-key.sh"
-LAUNCH_CURSOR_REVIEW="$REPO_ROOT/scripts/launch-cursor-review.sh"
+LAUNCH_CURSOR_REVIEW="$REPO_ROOT/scripts/launch-review.sh"
 
 fail() { echo "FAIL: $1" >&2; exit 1; }
 
@@ -94,7 +94,7 @@ PATH="$STUB_BIN:$PATH" \
     LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 \
     LIB_CURSOR_AUTH_TEST_UNAME=Linux \
     env -u IMPLEMENT_TMPDIR \
-    "$LAUNCH_CURSOR_REVIEW" --output "$OUTPUT" --timeout 5 --prompt "review prompt" >/dev/null
+    "$LAUNCH_CURSOR_REVIEW" --tool cursor --output "$OUTPUT" --timeout 5 --prompt "review prompt" >/dev/null
 
 [[ "$(cat "$TOKEN_CAPTURE")" == "parent-implement-session" ]] \
     || fail "cursor review launcher did not inherit parent token session id"

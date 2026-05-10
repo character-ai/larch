@@ -1,6 +1,6 @@
 # External Reviewer Procedures (Codex + Cursor; Gemini probe removed)
 
-Shared mechanical procedures for running Codex and Cursor as external reviewers. The Gemini reviewer call sites and health probe have been removed (#1720 Part 1) — the probe ran with workspace-write access and modified the working tree. The launcher (`scripts/launch-gemini-review.sh`) and `--coder=gemini` implementer dispatch path are retained for future re-enablement with a proper read-only sandbox. `GEMINI_HEALTHY` is always `false`; `session-setup.sh` hard-codes this unconditionally. Each skill provides its own reviewer invocation commands (prompts, output paths, tmpdir variables) — this file covers the common scaffolding.
+Shared mechanical procedures for running Codex and Cursor as external reviewers. The Gemini reviewer call sites and health probe have been removed (#1720 Part 1) — the probe ran with workspace-write access and modified the working tree. The launcher (`scripts/launch-review.sh --tool gemini`) and `--coder=gemini` implementer dispatch path are retained for future re-enablement with a proper read-only sandbox. `GEMINI_HEALTHY` is always `false`; `session-setup.sh` hard-codes this unconditionally. Each skill provides its own reviewer invocation commands (prompts, output paths, tmpdir variables) — this file covers the common scaffolding.
 
 ## Binary Check and Health Probe (Step 0)
 

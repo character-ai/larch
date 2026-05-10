@@ -7,7 +7,7 @@ Sourced library exposing two pure functions used by every live `cursor agent` ca
 
 ## Callers (parity contract)
 
-- `scripts/launch-cursor-review.sh` — review reviewer panel launcher.
+- `scripts/launch-review.sh --tool cursor` — review reviewer panel launcher.
 - `scripts/launch-cursor-implement.sh` — Cursor implementer launcher (Step 2 of `/implement`).
 - `scripts/check-reviewers.sh` — reviewer health probe (sources the lib; calls `cursor_auth_argv` only — preflight is intentionally NOT invoked from the probe, whose job is to report binary health).
 - `scripts/run-negotiation-round.sh` — negotiation runner.
@@ -17,7 +17,7 @@ Sourced library exposing two pure functions used by every live `cursor agent` ca
 
 - Never echoes the key on any path (including all error paths in `cursor_auth_preflight`).
 - Never mutates argv beyond the `CURSOR_AUTH_ARGS` global array; callers control the rest.
-- Returns rather than `exit`s — keeps callers in control of exit semantics so each launcher can synthesize its tool-specific failure channel (sentinel files for `launch-cursor-review.sh`, KV envelope for `launch-cursor-implement.sh`, plain `exit 3` for `run-negotiation-round.sh`).
+- Returns rather than `exit`s — keeps callers in control of exit semantics so each launcher can synthesize its tool-specific failure channel (sentinel files for `launch-review.sh --tool cursor`, KV envelope for `launch-cursor-implement.sh`, plain `exit 3` for `run-negotiation-round.sh`).
 - Darwin-only keychain probe (`security find-generic-password -a cursor-user`); on non-Darwin, preflight is a no-op.
 - Strictly read-only: never invokes `security delete-*`, never spawns a Cursor subprocess, never performs network I/O.
 - Bash 3.2-safe: forbids `declare -n`, `local -n`, `mapfile`, `readarray`, and `eval` for secret-bearing assembly. Whitespace trim uses Bash-3.2-safe parameter expansion only.
@@ -28,7 +28,7 @@ Every test-only branch in `lib-cursor-auth.sh` (`LIB_CURSOR_AUTH_TEST_UNAME`, `L
 
 ## Verified Cursor CLI behavior
 
-`cursor agent --help` documents `--api-key <key>` with the note `can also use CURSOR_API_KEY env var`. Explicit `--api-key` takes precedence over keychain. Locked here for future maintainers — a future Cursor release that changes the flag name or precedence will be detected by `scripts/test-launch-cursor-review.sh` and `scripts/test-cursor-implementer.sh` regression coverage (the harness asserts `--api-key <value>` appears as adjacent tokens in recorded argv when `CURSOR_API_KEY` is set).
+`cursor agent --help` documents `--api-key <key>` with the note `can also use CURSOR_API_KEY env var`. Explicit `--api-key` takes precedence over keychain. Locked here for future maintainers — a future Cursor release that changes the flag name or precedence will be detected by `scripts/test-launch-review.sh` and `scripts/test-cursor-implementer.sh` regression coverage (the harness asserts `--api-key <value>` appears as adjacent tokens in recorded argv when `CURSOR_API_KEY` is set).
 
 ## Test harness
 
@@ -37,11 +37,11 @@ Every test-only branch in `lib-cursor-auth.sh` (`LIB_CURSOR_AUTH_TEST_UNAME`, `L
 - `cursor_auth_preflight` returns 0 for non-empty key, 0 on non-Darwin, 0 on Darwin when keychain entry exists, 2 on Darwin with empty key + missing keychain entry.
 - All `LIB_CURSOR_AUTH_TEST_*` overrides are silently ignored unless `LARCH_LIB_CURSOR_AUTH_TEST_MODE=1`.
 
-Wired into `Makefile` `test-harnesses-2` shard alongside `test-launch-gemini-review`. Excluded from `agent-lint.toml` per the standard pattern for test scripts and their `.md` siblings.
+Wired into `Makefile` `test-harnesses-2` shard alongside `test-launch-review`. Excluded from `agent-lint.toml` per the standard pattern for test scripts and their `.md` siblings.
 
 ## Edit-in-sync rules
 
 When editing this library:
 - Mirror the parity contract: every caller above must continue to assemble argv via `cursor_auth_argv` and the conditional `"${CURSOR_AUTH_ARGS[@]}"` expansion in the same argv position (between `$AGENT_MODEL_ARGS` and `--workspace`).
 - Update the verified Cursor CLI version notes if a new release changes flag behavior.
-- Re-run `bash scripts/test-lib-cursor-auth.sh` and `bash scripts/test-launch-cursor-review.sh`.
+- Re-run `bash scripts/test-lib-cursor-auth.sh` and `bash scripts/test-launch-review.sh`.

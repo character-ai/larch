@@ -32,7 +32,7 @@
 - `scripts/launch-gemini-implement.md` — sibling launcher contract.
 - `agents/gemini-implementer.md` — prompt body path and resume block wording.
 - `scripts/run-external-agent.sh` — stdout capture semantics.
-- `scripts/lib-gemini-model-resolver.sh` — sourced by all three Gemini consumers (`launch-gemini-implement.sh`, `launch-gemini-review.sh`, `check-reviewers.sh` Gemini probe). Owns the runtime env-precedence chain (`LARCH_GEMINI_MODEL` → `CLAUDE_PLUGIN_OPTION_GEMINI_MODEL` → `gemini-2.5-pro`) plus blank/whitespace/cntrl rejection. Update this helper and `scripts/lib-gemini-model-resolver.md` together.
+- `scripts/lib-gemini-model-resolver.sh` — sourced by all three Gemini consumers (`launch-gemini-implement.sh`, `launch-review.sh --tool gemini`, `check-reviewers.sh` Gemini probe). Owns the runtime env-precedence chain (`LARCH_GEMINI_MODEL` → `CLAUDE_PLUGIN_OPTION_GEMINI_MODEL` → `gemini-2.5-pro`) plus blank/whitespace/cntrl rejection. Update this helper and `scripts/lib-gemini-model-resolver.md` together.
 - `scripts/agent-model-args.sh` — owns the canonical Gemini env-precedence chain documented in `scripts/agent-model-args.md`. Edit-in-sync with `lib-gemini-model-resolver.sh` when env names, plugin fallbacks, or the hardcoded default change (the helper and the agent-model-args.sh Gemini arm both implement the same chain).
-- `scripts/launch-gemini-review.sh` — sibling Gemini launcher; sources the same helper. One of the three call sites that must stay in lockstep with the resolver.
+- `scripts/launch-review.sh --tool gemini` — sibling Gemini launcher; sources the same helper. One of the three call sites that must stay in lockstep with the resolver.
 - `scripts/check-reviewers.sh` — Gemini health probe; sources the same helper. One of the three call sites that must stay in lockstep with the resolver.

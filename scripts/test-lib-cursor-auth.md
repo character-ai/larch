@@ -15,7 +15,7 @@ Hermetic regression harness for `scripts/lib-cursor-auth.sh` and `scripts/cursor
 
 ## Makefile wiring
 
-`make test-lib-cursor-auth` runs this harness directly. Wired into `make test-harnesses-2` (same shard as `test-launch-gemini-review`, `test-check-reviewers`, `test-cursor-implementer`).
+`make test-lib-cursor-auth` runs this harness directly. Wired into `make test-harnesses-2` (same shard as `test-launch-review`, `test-check-reviewers`, `test-cursor-implementer`).
 
 ## agent-lint
 

@@ -127,7 +127,7 @@ skipped.
 
 #### macOS keychain interaction
 
-When `CURSOR_API_KEY` is set in your environment, larch's launchers (`scripts/launch-cursor-review.sh`, `scripts/launch-cursor-implement.sh`, `scripts/run-negotiation-round.sh`, plus the runtime markdown templates that emit `cursor agent` invocations) pass `--api-key "$CURSOR_API_KEY"` explicitly to `cursor agent`, bypassing the macOS keychain entirely for that auth path. This is the recommended setup for larch.
+When `CURSOR_API_KEY` is set in your environment, larch's launchers (`scripts/launch-review.sh --tool cursor`, `scripts/launch-cursor-implement.sh`, `scripts/run-negotiation-round.sh`, plus the runtime markdown templates that emit `cursor agent` invocations) pass `--api-key "$CURSOR_API_KEY"` explicitly to `cursor agent`, bypassing the macOS keychain entirely for that auth path. This is the recommended setup for larch.
 
 When `CURSOR_API_KEY` is unset or empty, larch falls back to Cursor's default auth resolution, which on macOS may consult the keychain entry created by `cursor login` (account `cursor-user`).
 

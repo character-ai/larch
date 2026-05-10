@@ -419,7 +419,7 @@ exclude = [
   # via a `CLASSIFIER="$SCRIPT_DIR/classify-diff-mode.sh"` shell variable rather
   # than a literal path — agent-lint's G004/dead-script rule does not follow shell
   # variable indirection. render-specialist-prompt.sh itself IS structurally
-  # referenced from launch-cursor-review.sh / skills/review/SKILL.md.
+  # referenced from launch-review.sh --tool cursor / skills/review/SKILL.md.
   "scripts/classify-diff-mode.sh",
   # scripts/launch-codex-implement.sh is invoked by skills/implement/scripts/
   # step2-implement.sh via a `"$LAUNCHER"` variable rather than a literal
@@ -510,6 +510,10 @@ exclude = [
   # shebang, not invokable directly). It is referenced from shell consumers via
   # source directives only, which agent-lint does not follow.
   "scripts/lib-gemini-model-resolver.sh",
+  # scripts/lib-gemini-launcher-review.sh is a sourced-only shell library (no
+  # shebang, not invokable directly). scripts/launch-review.sh sources it only
+  # for --tool gemini.
+  "scripts/lib-gemini-launcher-review.sh",
   # scripts/lib-cursor-auth.sh is a sourced-only shell library (no shebang,
   # not invokable directly). It is referenced from shell consumers via source
   # directives only, which agent-lint does not follow.
@@ -530,8 +534,8 @@ exclude = [
   "scripts/lib-external-launcher-common.sh",
   # scripts/lib-dirty-tree-sidecar.sh is a sourced-only shell library (no
   # shebang, not invokable directly) carrying the canonical
-  # _write_dirty_tree_sidecar shared between launch-codex-review.sh and
-  # launch-cursor-review.sh (issue #1502 dedup). Referenced via source
+  # _write_dirty_tree_sidecar shared between launch-review.sh --tool codex and
+  # launch-review.sh --tool cursor (issue #1502 dedup). Referenced via source
   # directives only.
   "scripts/lib-dirty-tree-sidecar.sh",
   # scripts/cursor-auth-flags.sh is a small executable that prints the
@@ -589,21 +593,11 @@ exclude = [
   # (test-generate-topology-docs target) and scripts/test-generate-topology-docs.md
   # (sibling contract).
   "scripts/test-generate-topology-docs.sh",
-  # scripts/test-launch-gemini-review.sh is the regression harness for the
-  # Gemini launcher. Referenced only from Makefile (test-launch-gemini-review
-  # target) and scripts/test-launch-gemini-review.md (sibling contract).
-  "scripts/test-launch-gemini-review.sh",
-  # scripts/test-launch-cursor-review.sh is the regression harness for the
-  # Cursor review launcher (sentinel ordering, .meta enrichment, --prompt-file
-  # round-trip, EXIT trap, validate-before-side-effects). Referenced only from
-  # Makefile (test-launch-cursor-review target) and
-  # scripts/test-launch-cursor-review.md (sibling contract).
-  "scripts/test-launch-cursor-review.sh",
-  # scripts/test-launch-codex-review.sh is the regression harness for the
-  # Codex review launcher (--add-dir parity and model argv token safety).
-  # Referenced only from Makefile (test-launch-codex-review target) and
-  # scripts/test-launch-codex-review.md (sibling contract).
-  "scripts/test-launch-codex-review.sh",
+  # scripts/test-launch-review.sh is the unified regression harness for the
+  # Codex, Cursor, and Gemini review launcher paths. Referenced only from
+  # Makefile (test-launch-review target) and scripts/test-launch-review.md
+  # (sibling contract).
+  "scripts/test-launch-review.sh",
   # scripts/test-check-mid-run-dirty-tree.sh is the regression harness for the
   # dirty-tree detector. Referenced only from Makefile
   # (test-check-mid-run-dirty-tree target) and its sibling contract.
@@ -622,15 +616,6 @@ exclude = [
   # Referenced only from Makefile (test-lib-cursor-auth target) and
   # scripts/test-lib-cursor-auth.md (sibling contract).
   "scripts/test-lib-cursor-auth.sh",
-  # scripts/launch-gemini-review.sh is the Gemini reviewer launcher. The
-  # /implement and /review skills no longer invoke it — those call sites were
-  # removed deliberately while preserving the launcher, its policy file, its
-  # regression harness, and its sibling contract as machinery so the lane can
-  # be re-enabled without re-deriving the launcher contract. Referenced from
-  # scripts/launch-gemini-review.md (sibling contract), scripts/test-launch-gemini-review.sh
-  # (regression harness), SECURITY.md, docs/external-reviewers.md, and
-  # docs/configuration-and-permissions.md.
-  "scripts/launch-gemini-review.sh",
   # scripts/test-wait-for-reviewers.sh is the regression harness for
   # wait-for-reviewers.sh timeout validation and collect-agent-results.sh wait
   # passthrough (#1186 + #1188 / #1200). Referenced only from Makefile
@@ -1007,9 +992,7 @@ exclude = [
   "scripts/test-check-topology-rule-paths.md",
   "scripts/generate-topology-docs.md",
   "scripts/test-generate-topology-docs.md",
-  "scripts/test-launch-gemini-review.md",
-  "scripts/test-launch-cursor-review.md",
-  "scripts/test-launch-codex-review.md",
+  "scripts/test-launch-review.md",
   "scripts/check-mid-run-dirty-tree.md",
   "scripts/test-check-mid-run-dirty-tree.md",
   "scripts/check-phantom-dirty.md",
