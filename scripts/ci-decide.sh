@@ -8,7 +8,7 @@
 # regardless of safety limits. Safety limits only block non-merge actions:
 #   - iteration >= 50: bail (timeout)
 #   - rebase_count >= 20: bail (too many rebases)
-#   - fix_attempts >= 3: bail (too many fixes)
+#   - fix_attempts >= 10: bail (too many fixes)
 #
 # Decision matrix (when no safety limit triggers):
 #   CI_STATUS | BEHIND_COUNT > 0 | ACTION
@@ -116,9 +116,9 @@ if [[ "$REBASE_COUNT" -ge 20 ]]; then
     exit 0
 fi
 
-if [[ "$FIX_ATTEMPTS" -ge 3 ]]; then
+if [[ "$FIX_ATTEMPTS" -ge 10 ]]; then
     echo "ACTION=bail"
-    echo "BAIL_REASON=Too many fix attempts (3) without CI passing"
+    echo "BAIL_REASON=Too many fix attempts (10) without CI passing"
     exit 0
 fi
 
