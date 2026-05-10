@@ -51,7 +51,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 LARCH_TEST_REPO_ROOT="$REPO_ROOT"
 export LARCH_TEST_REPO_ROOT
-LAUNCHER="$TMPDIR/bin/launch-review-codex"
+LAUNCHER="$TMPROOT/bin/launch-review-codex"
 mkdir -p "$(dirname "$LAUNCHER")"
 cat > "$LAUNCHER" <<'LARCH_REVIEW_CODEX_SHIM'
 #!/usr/bin/env bash
