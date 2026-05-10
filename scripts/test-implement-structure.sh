@@ -1172,8 +1172,8 @@ grep -Fq '<!-- section-end:token-report -->' "$REFS_DIR/anchor-template-canonica
   || fail "(28b2) anchor-template-canonical-body.md missing token-report close marker"
 
 workflow_path_count=$(grep -Fc 'timing-ledger.sh" workflow-path' "$SKILL_MD" || true)
-if [[ "$workflow_path_count" != "6" ]]; then
-  fail "(28c) expected 6 /implement workflow-path emission sites, found $workflow_path_count"
+if [[ "$workflow_path_count" != "7" ]]; then
+  fail "(28c) expected 7 /implement workflow-path emission sites, found $workflow_path_count"
 fi
 
 REVIEW_SKILL_MD="$REPO_ROOT/skills/review/SKILL.md"
