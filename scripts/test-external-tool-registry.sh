@@ -112,10 +112,12 @@ else
 fi
 
 # 14. Registry-driven consumers handle every registered external tool and step2 resolves paths from a nested cwd.
+# Note: Gemini probe removed in #1720 (Part 1); check-reviewers.sh only emits CODEX/CURSOR_AVAILABLE.
+# GEMINI_AVAILABLE is hard-coded false by session-setup.sh, not by check-reviewers.sh.
 reviewer_err="$(mktemp /tmp/larch-registry-reviewers-err-XXXXXX)"
 reviewer_output=""
-if reviewer_output=$("$REPO_ROOT/scripts/check-reviewers.sh" --include-gemini 2>"$reviewer_err"); then
-    for tool in "${LARCH_EXTERNAL_TOOLS[@]}"; do
+if reviewer_output=$("$REPO_ROOT/scripts/check-reviewers.sh" 2>"$reviewer_err"); then
+    for tool in codex cursor; do
         upper=$(printf '%s' "$tool" | tr '[:lower:]' '[:upper:]')
         assert_contains "check-reviewers availability key for $tool" "${upper}_AVAILABLE=" "$reviewer_output"
     done
@@ -125,7 +127,7 @@ if reviewer_output=$("$REPO_ROOT/scripts/check-reviewers.sh" --include-gemini 2>
         pass
     fi
 else
-    fail "check-reviewers --include-gemini should not fail: $(cat "$reviewer_err")"
+    fail "check-reviewers should not fail: $(cat "$reviewer_err")"
 fi
 rm -f "$reviewer_err"
 

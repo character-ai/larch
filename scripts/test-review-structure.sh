@@ -325,14 +325,10 @@ grep -Fq -- '--pieces-json' "$SKILL_MD" \
   || fail "(18) SKILL.md lacks '--pieces-json' — Step 4b pieces.json composition contract (#778) is broken"
 
 # ---------------------------------------------------------------------------
-# (19) Gemini machinery pins. /review no longer launches Gemini reviewers
-# (the call sites were removed deliberately while preserving the launcher and
-# health-probe machinery), but Step 0 still passes --check-gemini-reviewer to
-# session-setup.sh because the probe stays as machinery for callers that
-# nest /review under /implement (which can dispatch --coder=gemini).
+# (19) Gemini probe removed (#1720, Part 1). /review no longer launches Gemini
+# reviewers and Step 0 no longer passes --check-gemini-reviewer; session-setup.sh
+# hard-codes GEMINI_HEALTHY=false. Negative pins remain to catch re-introduction.
 # ---------------------------------------------------------------------------
-grep -Fq -- '--check-gemini-reviewer' "$SKILL_MD" \
-  || fail "(19a) /review Step 0 does not opt into Gemini reviewer probing (machinery)"
 # Negative pins: the launch-gemini-review.sh call sites were removed; ensure
 # they don't quietly re-appear without an intentional reversal of this change.
 if grep -Fq 'launch-gemini-review.sh' "$SKILL_MD"; then

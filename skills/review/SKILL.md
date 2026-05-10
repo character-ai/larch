@@ -86,10 +86,10 @@ SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=review "${CLAUDE_PLUGIN_
 Run the shared session setup script. This handles temp directory creation, reviewer health probe, and health status file in a single call:
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix claude-review --skip-preflight --skip-branch-check --skip-repo-check --check-reviewers --check-gemini-reviewer [--caller-env "$SESSION_ENV_PATH"] [--skip-codex-probe] [--skip-cursor-probe] [--skip-gemini-probe] [--write-health "${SESSION_ENV_PATH}.health"]
+${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix claude-review --skip-preflight --skip-branch-check --skip-repo-check --check-reviewers [--caller-env "$SESSION_ENV_PATH"] [--skip-codex-probe] [--skip-cursor-probe] [--write-health "${SESSION_ENV_PATH}.health"]
 ```
 
-Only include `--caller-env "$SESSION_ENV_PATH"` and `--write-health "${SESSION_ENV_PATH}.health"` if `SESSION_ENV_PATH` is non-empty. If `SESSION_ENV_PATH` provides a non-empty `CODEX_HEALTHY`, `CURSOR_HEALTHY`, or `GEMINI_HEALTHY` value (either `true` or `false`), the script auto-sets the corresponding `--skip-codex-probe` / `--skip-cursor-probe` / `--skip-gemini-probe` flag and propagates the caller value.
+Only include `--caller-env "$SESSION_ENV_PATH"` and `--write-health "${SESSION_ENV_PATH}.health"` if `SESSION_ENV_PATH` is non-empty. If `SESSION_ENV_PATH` provides a non-empty `CODEX_HEALTHY` or `CURSOR_HEALTHY` value (either `true` or `false`), the script auto-sets the corresponding `--skip-codex-probe` / `--skip-cursor-probe` flag and propagates the caller value. `GEMINI_HEALTHY` is always hard-coded `false` by `session-setup.sh` (#1720 Part 1).
 
 If the script exits non-zero, print the error and abort.
 

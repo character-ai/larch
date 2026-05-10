@@ -202,16 +202,16 @@ Set `continue_from_current=true` iff `SKIP_BRANCH_CHECK=true`. This alias is ret
 If `SKIP_BRANCH_CHECK=true`, run setup with `--skip-branch-check`:
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix claude-implement --skip-branch-check --check-reviewers --check-gemini-reviewer [--caller-env "$SESSION_ENV_PATH" OR "$CALLER_ENV_PATH" under forked_target=true] [--skip-codex-probe] [--skip-cursor-probe] [--skip-gemini-probe]
+${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix claude-implement --skip-branch-check --check-reviewers [--caller-env "$SESSION_ENV_PATH" OR "$CALLER_ENV_PATH" under forked_target=true] [--skip-codex-probe] [--skip-cursor-probe]
 ```
 
 If `SKIP_BRANCH_CHECK=false`, run setup without `--skip-branch-check`:
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix claude-implement --check-reviewers --check-gemini-reviewer [--caller-env "$SESSION_ENV_PATH" OR "$CALLER_ENV_PATH" under forked_target=true] [--skip-codex-probe] [--skip-cursor-probe] [--skip-gemini-probe]
+${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix claude-implement --check-reviewers [--caller-env "$SESSION_ENV_PATH" OR "$CALLER_ENV_PATH" under forked_target=true] [--skip-codex-probe] [--skip-cursor-probe]
 ```
 
-`--skip-branch-check` is passed only when `SKIP_BRANCH_CHECK=true`. The default path runs `preflight.sh` in default mode, asserting on-main + clean tree + fetch + rebase before Step 1. Include `--caller-env` when `SESSION_ENV_PATH` is non-empty, or when `forked_target=true` using `$CALLER_ENV_PATH` (the absolute path emitted by `implement-fork-env.sh` on stdout — see the fork-mode exception block above; fork mode takes precedence if both exist). When a caller-env file is present, the script auto-sets `--skip-codex-probe` / `--skip-cursor-probe` / `--skip-gemini-probe` based on `CODEX_HEALTHY` / `CURSOR_HEALTHY` / `GEMINI_HEALTHY` in that file (don't pass them explicitly).
+`--skip-branch-check` is passed only when `SKIP_BRANCH_CHECK=true`. The default path runs `preflight.sh` in default mode, asserting on-main + clean tree + fetch + rebase before Step 1. Include `--caller-env` when `SESSION_ENV_PATH` is non-empty, or when `forked_target=true` using `$CALLER_ENV_PATH` (the absolute path emitted by `implement-fork-env.sh` on stdout — see the fork-mode exception block above; fork mode takes precedence if both exist). When a caller-env file is present, the script auto-sets `--skip-codex-probe` / `--skip-cursor-probe` based on `CODEX_HEALTHY` / `CURSOR_HEALTHY` in that file (don't pass them explicitly). `GEMINI_HEALTHY` is always hard-coded to `false` by `session-setup.sh` regardless of caller-env.
 
 On non-zero exit, always print the raw `PREFLIGHT_ERROR=...` line first. Then print the normalized skill-level message and abort:
 

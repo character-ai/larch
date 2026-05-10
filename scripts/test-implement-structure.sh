@@ -898,14 +898,11 @@ grep -Fq -- 'orchestrator-envelope-invalid' "$SKILL_MD" \
 grep -Fq -- 'NEVER #10' "$SKILL_MD" \
     || fail "(22) skills/implement/SKILL.md missing 'NEVER #10' cross-reference anchor — the orchestrator-edit-authority NEVER rule would have no inbound references"
 
-# (23) Gemini machinery pins. /implement no longer launches Gemini reviewers
+# (23) Gemini probe removed (#1720, Part 1). /implement no longer launches Gemini reviewers
 # in Step 5 quick mode (the review call sites were removed deliberately while
-# preserving the launcher and `--coder=gemini` dispatch path), but Step 0 must
-# still opt into Gemini probing for the `--coder=gemini` implementer dispatch
-# and for cross-skill GEMINI_HEALTHY propagation. Step 5 quick mode rounds 4+
-# now use the Cursor → Codex → Claude chain.
-grep -Fq -- '--check-gemini-reviewer' "$SKILL_MD" \
-  || fail "(23a) /implement Step 0 does not opt into Gemini reviewer probing"
+# preserving the `--coder=gemini` dispatch path). Step 0 no longer passes
+# --check-gemini-reviewer; session-setup.sh hard-codes GEMINI_HEALTHY=false.
+# Step 5 quick mode rounds 4+ now use the Cursor → Codex → Claude chain.
 grep -Fq -- '--gemini-healthy' "$SKILL_MD" \
   || fail "(23b) /implement does not write GEMINI_HEALTHY into session-env"
 grep -Fq 'gemini_available=false' "$SKILL_MD" \

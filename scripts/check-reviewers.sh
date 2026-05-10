@@ -9,45 +9,31 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/external-tool-registry.sh
 source "$SCRIPT_DIR/external-tool-registry.sh" || { echo "check-reviewers.sh: failed to source external-tool-registry.sh" >&2; exit 1; }
 [[ "${LARCH_EXTERNAL_TOOL_REGISTRY_LOADED:-}" == "1" ]] || { echo "check-reviewers.sh: external-tool-registry.sh sourced but sentinel missing" >&2; exit 1; }
-# shellcheck source=scripts/lib-gemini-tool-drift.sh
-source "$SCRIPT_DIR/lib-gemini-tool-drift.sh" || { echo "check-reviewers.sh: failed to source lib-gemini-tool-drift.sh" >&2; exit 1; }
 # shellcheck source=scripts/lib-cursor-auth.sh
 source "$SCRIPT_DIR/lib-cursor-auth.sh" || { echo "check-reviewers.sh: failed to source lib-cursor-auth.sh" >&2; exit 1; }
-# shellcheck source=scripts/lib-gemini-model-resolver.sh
-source "$SCRIPT_DIR/lib-gemini-model-resolver.sh" || { echo "check-reviewers.sh: failed to source lib-gemini-model-resolver.sh" >&2; exit 1; }
 
 PROBE=false
-INCLUDE_GEMINI=false
 SKIP_CODEX_PROBE=false
 SKIP_CURSOR_PROBE=false
-SKIP_GEMINI_PROBE=false
-ARTIFACT_DIR=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --probe)              PROBE=true; shift ;;
-        --include-gemini)     INCLUDE_GEMINI=true; shift ;;
         --skip-codex-probe)   SKIP_CODEX_PROBE=true; shift ;;
         --skip-cursor-probe)  SKIP_CURSOR_PROBE=true; shift ;;
-        --skip-gemini-probe)  SKIP_GEMINI_PROBE=true; shift ;;
-        --artifact-dir)        ARTIFACT_DIR="${2:?--artifact-dir requires a value}"; shift 2 ;;
+        --artifact-dir)        shift 2 ;; # accepted for backward compat; no-op (Gemini drift removed)
         *) echo "check-reviewers.sh: unknown argument: $1" >&2; exit 1 ;;
     esac
 done
 
 CODEX_AVAILABLE="false"
 CURSOR_AVAILABLE="false"
-GEMINI_AVAILABLE="false"
 
 command -v codex >/dev/null 2>&1 && CODEX_AVAILABLE="true"
 command -v cursor >/dev/null 2>&1 && CURSOR_AVAILABLE="true"
-if [[ "$INCLUDE_GEMINI" == "true" ]]; then
-    command -v gemini >/dev/null 2>&1 && GEMINI_AVAILABLE="true"
-fi
 
 echo "CODEX_AVAILABLE=$CODEX_AVAILABLE"
 echo "CURSOR_AVAILABLE=$CURSOR_AVAILABLE"
-[[ "$INCLUDE_GEMINI" == "true" ]] && echo "GEMINI_AVAILABLE=$GEMINI_AVAILABLE"
 
 normalize_probe_reply() {
     tr -d '[:space:]' | tr '[:upper:]' '[:lower:]'
@@ -57,7 +43,6 @@ get_available() {
     case "$1" in
         codex) echo "$CODEX_AVAILABLE" ;;
         cursor) echo "$CURSOR_AVAILABLE" ;;
-        gemini) echo "$GEMINI_AVAILABLE" ;;
         *) echo "check-reviewers.sh: internal error: unsupported reviewer tool: $1" >&2; exit 1 ;;
     esac
 }
@@ -66,7 +51,6 @@ get_healthy() {
     case "$1" in
         codex) echo "$CODEX_HEALTHY" ;;
         cursor) echo "$CURSOR_HEALTHY" ;;
-        gemini) echo "$GEMINI_HEALTHY" ;;
         *) echo "check-reviewers.sh: internal error: unsupported reviewer tool: $1" >&2; exit 1 ;;
     esac
 }
@@ -75,7 +59,6 @@ set_healthy() {
     case "$1" in
         codex) CODEX_HEALTHY="$2" ;;
         cursor) CURSOR_HEALTHY="$2" ;;
-        gemini) GEMINI_HEALTHY="$2" ;;
         *) echo "check-reviewers.sh: internal error: unsupported reviewer tool: $1" >&2; exit 1 ;;
     esac
 }
@@ -84,7 +67,6 @@ get_skip() {
     case "$1" in
         codex) echo "$SKIP_CODEX_PROBE" ;;
         cursor) echo "$SKIP_CURSOR_PROBE" ;;
-        gemini) echo "$SKIP_GEMINI_PROBE" ;;
         *) echo "check-reviewers.sh: internal error: unsupported reviewer tool: $1" >&2; exit 1 ;;
     esac
 }
@@ -93,7 +75,6 @@ set_probe_error() {
     case "$1" in
         codex) CODEX_PROBE_ERROR="$2" ;;
         cursor) CURSOR_PROBE_ERROR="$2" ;;
-        gemini) GEMINI_PROBE_ERROR="$2" ;;
         *) echo "check-reviewers.sh: internal error: unsupported reviewer tool: $1" >&2; exit 1 ;;
     esac
 }
@@ -102,7 +83,6 @@ get_probe_error() {
     case "$1" in
         codex) echo "$CODEX_PROBE_ERROR" ;;
         cursor) echo "$CURSOR_PROBE_ERROR" ;;
-        gemini) echo "$GEMINI_PROBE_ERROR" ;;
         *) echo "check-reviewers.sh: internal error: unsupported reviewer tool: $1" >&2; exit 1 ;;
     esac
 }
@@ -203,35 +183,6 @@ start_probe() {
                 "Respond with OK" \
                 >"$PROBE_DIR/cursor-wrapper-attempt${attempt}.log" 2>&1 &
             ;;
-        gemini)
-            # Probe model SHARES the same resolver as the Gemini launchers:
-            # reject blank / whitespace-only / [[:cntrl:]]-bearing values
-            # before they reach the gemini argv while preserving `-m "$model"`
-            # as one quoted token.
-            local probe_model model_err
-            model_err="$PROBE_DIR/gemini-model-attempt${attempt}.diag"
-            if probe_model=$(resolve_gemini_model 2> "$model_err"); then
-                rm -f "$model_err"
-            else
-                {
-                    printf 'Model argument validation failed before launching Gemini probe: '
-                    cat "$model_err"
-                } > "${output}.diag"
-                rm -f "$model_err"
-                : > "$output"
-                printf '1\n' > "${output}.done"
-                ( exit 0 ) &
-                printf '%s\n' "$!"
-                return
-            fi
-            "$SCRIPT_DIR/run-external-agent.sh" \
-                --tool gemini \
-                --output "$output" \
-                --timeout 60 \
-                --capture-stdout-only \
-                -- gemini -m "$probe_model" -p "Respond with OK" -o json --skip-trust --approval-mode plan \
-                >"$PROBE_DIR/gemini-wrapper-attempt${attempt}.log" 2>&1 &
-            ;;
         *)
             echo "check-reviewers.sh: internal error: unsupported reviewer tool: $tool" >&2
             exit 1
@@ -253,14 +204,7 @@ evaluate_probe() {
 
     exit_code=$(cat "${output}.done" 2>/dev/null || echo "99")
     if [[ "$exit_code" == "0" && -s "$output" ]]; then
-        if [[ "$tool" == "gemini" ]]; then
-            if jq -e '.error? // empty' "$output" >/dev/null 2>&1; then
-                error_text=$(jq -r '.error' "$output" 2>/dev/null | head -c 200 | tr '\n\r' '  ')
-                set_probe_error "$tool" "Probe attempt $attempt returned Gemini error: $error_text"
-                return
-            fi
-            reply=$(jq -r '.response // empty' "$output" 2>/dev/null | normalize_probe_reply)
-        elif [[ "$tool" == "cursor" ]]; then
+        if [[ "$tool" == "cursor" ]]; then
             # Cursor probe uses --output-format json (mirroring scripts/launch-cursor-review.sh).
             # The reply text lives at .result; fall back to the raw body for legacy
             # plain-text output if jq is missing or the body is not valid JSON.
@@ -296,14 +240,12 @@ evaluate_probe() {
 if [[ "$PROBE" == "true" ]]; then
     CODEX_HEALTHY="false"
     CURSOR_HEALTHY="false"
-    GEMINI_HEALTHY="false"
     CODEX_PROBE_ERROR=""
     CURSOR_PROBE_ERROR=""
-    GEMINI_PROBE_ERROR=""
 
     TOOLS=()
     for tool in "${LARCH_EXTERNAL_TOOLS[@]}"; do
-        [[ "$tool" == "gemini" && "$INCLUDE_GEMINI" != "true" ]] && continue
+        [[ "$tool" == "gemini" ]] && continue
         TOOLS+=("$tool")
     done
 
@@ -312,13 +254,6 @@ if [[ "$PROBE" == "true" ]]; then
 
     MAX_ATTEMPTS=3
     SLEEP_BETWEEN="${LARCH_TEST_PROBE_SLEEP_SECONDS:-10}"
-
-    if [[ "$INCLUDE_GEMINI" == "true" && "$GEMINI_AVAILABLE" == "true" ]]; then
-        if [[ "${LARCH_TEST_FORCE_MISSING_JQ:-}" == "true" ]] || ! command -v jq >/dev/null 2>&1; then
-            SKIP_GEMINI_PROBE=true
-            GEMINI_PROBE_ERROR="MISSING_JQ: jq is required to parse Gemini probe JSON"
-        fi
-    fi
 
     WAIT_PREFLIGHT_FAILED=false
     WAIT_PREFLIGHT_ERROR=""
@@ -423,9 +358,6 @@ if [[ "$PROBE" == "true" ]]; then
             fi
         done
     else
-        if [[ "$INCLUDE_GEMINI" == "true" && "$GEMINI_AVAILABLE" == "true" && "$SKIP_GEMINI_PROBE" == "false" && "$GEMINI_HEALTHY" == "true" ]]; then
-            check_gemini_tool_drift "$(probe_output_path gemini)"
-        fi
         for tool in "${TOOLS[@]}"; do
             upper=$(printf '%s' "$tool" | tr '[:lower:]' '[:upper:]')
             if [[ "$(get_available "$tool")" == "true" ]]; then
