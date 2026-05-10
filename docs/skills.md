@@ -3,6 +3,7 @@
 Reference for every slash command shipped by the larch plugin. Each section below covers one skill: invocation, arguments, behavior, and links to the canonical `SKILL.md` source.
 
 - [`/alias`](#alias)
+- [`/cleanup`](#cleanup)
 - [`/compress-skill`](#compress-skill)
 - [`/create-skill`](#create-skill)
 - [`/design`](#design)
@@ -32,6 +33,14 @@ Create an alias for a larch skill with preset flags. Delegates to `/implement --
 Example (in a plugin repo): `/alias i implement --merge` creates `<repo-root>/skills/i/SKILL.md` so that `/i <feature>` is equivalent to `/implement --merge <feature>`.
 
 Example with `--private` or in a consumer repo: `/alias i implement --merge` creates `<repo-root>/.claude/skills/i/SKILL.md` (dev-only).
+
+## `/cleanup`
+
+**Arguments**: *(none)*
+
+**Source**: [`skills/cleanup/SKILL.md`](../skills/cleanup/SKILL.md)
+
+Remove leftover larch session temp directories from `~/.cache/larch/sessions/` and `/tmp`. Checks for active sessions (`.larch-keepalive`) before deleting cache dirs, and aborts entirely if more than one `claude` process is detected. Reports counts removed from each location.
 
 ## `/compress-skill`
 

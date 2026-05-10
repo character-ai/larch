@@ -43,6 +43,12 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
     <tr><td colspan="2">Create an alias for a larch skill with preset flags. Auto-routes to <code>skills/&lt;n&gt;/</code> in plugin source repos and <code>.claude/skills/&lt;n&gt;/</code> elsewhere; <code>--private</code> forces the latter.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
+      <td><a href="docs/skills.md#cleanup"><code>/cleanup</code></a></td>
+      <td></td>
+    </tr>
+    <tr><td colspan="2">Remove leftover larch session temp directories from <code>~/.cache/larch/sessions/</code> and <code>/tmp</code>. Aborts when multiple Claude sessions are active; skips dirs with an active <code>.larch-keepalive</code> sentinel.</td></tr>
+    <tr><td colspan="2"><hr></td></tr>
+    <tr>
       <td><a href="docs/skills.md#compress-skill"><code>/compress-skill</code></a></td>
       <td><code>&lt;skill-name-or-path&gt;</code></td>
     </tr>
