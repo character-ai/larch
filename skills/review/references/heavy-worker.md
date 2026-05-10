@@ -6,6 +6,8 @@
 
 **When to load**: only by the heavy-phase subagent. The parent `/review` skill points the subagent here after completing Step 0 (session setup), then reads artifacts from `$REVIEW_TMPDIR/` after the subagent returns.
 
+**Binding convention**: single normative source for the review heavy-worker subagent contract — inputs, required reads, work (Steps 1-3), artifact paths, wait discipline, dirty-tree probe contract, and return-value grammar. The parent `/review` orchestrator reads this file before dispatching the subagent; the subagent reads it as its execution contract.
+
 ---
 
 ## Inputs
