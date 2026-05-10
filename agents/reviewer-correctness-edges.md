@@ -52,6 +52,14 @@ Briefly scan for security vulnerabilities (injection, secret leakage), code-reus
 
 Tag each finding with its focus area (one of `code-quality` / `risk-integration` / `correctness` / `architecture` / `security`). Return findings in two sections:
 
+### Prose length cap
+
+Keep each finding concise — verbosity dilutes signal.
+- **Important** and **Latent** findings: up to 4 sentences — one each for problem, location, concrete impact/scenario, and suggested fix. Never trim the mandatory concrete failing scenario to meet the cap; allow up to 5 sentences when the scenario cannot be compressed further.
+- **Nit** findings: 1–2 sentences maximum.
+
+No cap on the number of findings — report every issue you identify.
+
 ### In-Scope Findings
 Numbered list. Each finding: severity (`**Important**` / `**Nit**` / `**Latent**`), focus-area tag, file:line, what the issue is, suggested fix.
 
