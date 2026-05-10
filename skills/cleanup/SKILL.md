@@ -6,7 +6,7 @@ allowed-tools: Bash
 
 # cleanup
 
-Remove leftover larch session temp directories from `~/.cache/larch/sessions/` (the canonical new location) and from `/tmp` (the legacy fallback). Aborts if more than one Claude session is detected to avoid deleting active session state.
+Remove leftover larch session temp directories from `~/.cache/larch/sessions/` (the canonical new location) and from `/tmp` (the legacy fallback). Aborts if more than one Claude session is detected; skips any dir (in both locations) that contains a `.larch-keepalive` sentinel to protect running sessions.
 
 ## NEVER
 

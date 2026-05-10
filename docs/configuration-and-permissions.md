@@ -12,6 +12,7 @@
 
 ```json
 "Skill(alias)",
+"Skill(cleanup)",
 "Skill(compress-skill)",
 "Skill(create-skill)",
 "Skill(design)",
@@ -23,6 +24,7 @@
 "Skill(imq)",
 "Skill(issue)",
 "Skill(larch:alias)",
+"Skill(larch:cleanup)",
 "Skill(larch:compress-skill)",
 "Skill(larch:create-skill)",
 "Skill(larch:design)",

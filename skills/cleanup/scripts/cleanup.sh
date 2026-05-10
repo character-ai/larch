@@ -25,15 +25,20 @@ if [[ "$SESSION_COUNT" -gt 1 ]]; then
 fi
 
 # --- Clean ~/.cache/larch/sessions/ -------------------------------------------
+# Skip dirs with a .larch-keepalive file to protect any active session
+# (applies even when SESSION_COUNT == 1, i.e. only this Claude is running).
 CACHE_DIR="${XDG_CACHE_HOME:-${HOME}/.cache}/larch/sessions"
 CACHE_REMOVED=0
 
 if [[ -d "$CACHE_DIR" ]]; then
-    mapfile -d $'\0' entries < <(find "$CACHE_DIR" -mindepth 1 -maxdepth 1 -print0 2>/dev/null) || true
-    CACHE_REMOVED="${#entries[@]}"
-    if [[ "$CACHE_REMOVED" -gt 0 ]]; then
-        rm -rf "${entries[@]}"
-    fi
+    while IFS= read -r -d $'\0' entry; do
+        [[ -d "$entry" ]] || continue
+        if [[ -f "$entry/.larch-keepalive" ]]; then
+            continue  # skip active session
+        fi
+        rm -rf "$entry"
+        (( CACHE_REMOVED++ )) || true
+    done < <(find "$CACHE_DIR" -mindepth 1 -maxdepth 1 -print0 2>/dev/null) || true
 fi
 
 echo "CACHE_REMOVED=$CACHE_REMOVED"
@@ -44,7 +49,7 @@ TMP_PATTERNS=(
     "claude-implement-*"
     "claude-fix-issue-*"
     "claude-review-*"
-    "claudin-review-*"
+    "claudin-review-*"   # historical typo prefix from early larch sessions
     "claude-issue-test"
     "wait-reviewers-*"
     "test-health-check-gemini-empty-*"
@@ -61,14 +66,15 @@ TMP_PATTERNS=(
     "commit-msg-review-*.txt"
     "cr-debug-design"
     "issue-*-design-comment.md"
-    "plan-review-collect.txt"
-    "reviews.json"
 )
 
 for pattern in "${TMP_PATTERNS[@]}"; do
-    # Use nullglob-style expansion: iterate only when matches exist.
+    # Guard against non-matching glob: skip if entry does not exist.
     for entry in /tmp/${pattern}; do
         [[ -e "$entry" || -L "$entry" ]] || continue
+        # session-setup.sh falls back to /tmp when ~/.cache is unwritable;
+        # the same .larch-keepalive sentinel applies here.
+        [[ -d "$entry" && -f "$entry/.larch-keepalive" ]] && continue
         rm -rf "$entry"
         (( TMP_REMOVED++ )) || true
     done
