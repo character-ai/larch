@@ -163,6 +163,7 @@ fi
 TIMING_START_S=$(date +%s)
 
 MODEL_ARGS_TMP=""
+CODEX_HOME_DIR=""
 DIRTY_TREE_WRITTEN=false
 UNTRACKED_BASELINE="${OUTPUT}.untracked-baseline"
 DIRTY_TREE_SIDECAR="${OUTPUT}.dirty-tree"
@@ -177,6 +178,7 @@ _codex_exit_dispatcher() {
     local rc=${1:-$?}
     _emit_timing_record "$rc"
     [[ -n "$MODEL_ARGS_TMP" ]] && rm -f "$MODEL_ARGS_TMP"
+    [[ -n "$CODEX_HOME_DIR" ]] && rm -rf "$CODEX_HOME_DIR"
     _write_dirty_tree_sidecar
     codex_launcher_promote_inner_done "$OUTPUT"
     exit "$rc"
@@ -250,23 +252,23 @@ if [[ -n "$AGENT_FILE" ]]; then
     PROMPT=$("$SCRIPT_DIR/render-specialist-prompt.sh" "${RENDER_ARGS[@]}")
 fi
 
-# Issue #1529: prepend a HARD-CONSTRAINTS read-only preamble to every Codex
+# Issue #1529: deliver the HARD-CONSTRAINTS read-only preamble through
+# CODEX_HOME/config.toml as the Codex `instructions` field for every
 # review prompt (specialist or generic, --prompt or --prompt-file or
 # --agent-file). Mirrors the GEMINI_REVIEW_HARDENING_PREAMBLE in
 # scripts/launch-gemini-review.sh. The codex argv below also passes
 # `--sandbox read-only` (replacing the prior `--full-auto`'s workspace-write)
-# so the CLI itself rejects model-issued shell writes; the preamble is the
-# prompt-level reinforcement so the model also reasons about its read-only
-# role. The launcher's existing dirty-tree-sidecar machinery
+# so the CLI itself rejects model-issued shell writes; the instructions
+# field is the prompt-level reinforcement so the model also reasons about
+# its read-only role. The launcher's existing dirty-tree-sidecar machinery
 # (snapshot-untracked.sh untracked-files baseline + _write_dirty_tree_sidecar
 # EXIT trap) remains the after-the-fact detector.
 #
 # Retry-replay safety: ${OUTPUT}.prompt is consumed by collect-agent-results.sh
-# empty-output retries via `--prompt-file`. To keep that replay idempotent
-# (one preamble, not N), the sidecar is written from $ORIGINAL_PROMPT
-# (the user/specialist-rendered body BEFORE prepending the preamble) so that
-# on retry the launcher reads the body, prepends the preamble exactly once,
-# and produces an identical outgoing PROMPT — no preamble stacking.
+# empty-output retries via `--prompt-file`. Because the static hardening
+# preamble lives in CODEX_HOME config instead of PROMPT, the sidecar stores
+# the rendered dynamic prompt directly and replay receives the same outgoing
+# prompt plus a fresh CODEX_HOME.
 CODEX_REVIEW_HARDENING_PREAMBLE=$(cat <<'EOF'
 HARD CONSTRAINTS — your role is read-only review. You MUST NOT modify the working tree by any means:
 - Do not redirect, tee, append, or pipe into any file (no `>`, `>>`, `tee`, `tee -a`).
@@ -276,11 +278,27 @@ HARD CONSTRAINTS — your role is read-only review. You MUST NOT modify the work
 The launcher enforces this with a CLI-level read-only sandbox (`--sandbox read-only`); any write the agent attempts will be rejected by the sandbox. The launcher also captures an untracked-files baseline at entry, so any post-run mutation is detected and reported via the dirty-tree sidecar.
 EOF
 )
-ORIGINAL_PROMPT="$PROMPT"
-PROMPT="${CODEX_REVIEW_HARDENING_PREAMBLE}"$'\n\n'"${PROMPT}"
+if grep -Fq "'''" <<< "$CODEX_REVIEW_HARDENING_PREAMBLE"; then
+    echo "launch-codex-review.sh: hardening preamble contains TOML triple-single-quote delimiter" >&2
+    exit 2
+fi
 
 OUTPUT_DIR=$(dirname -- "$OUTPUT")
 CANON_OUTPUT_DIR=$(cd "$OUTPUT_DIR" && pwd -P)
+CODEX_HOME_DIR=$(mktemp -d /tmp/larch-codex-review-home-XXXXXX)
+PROJECT_KEY=${PWD//\\/\\\\}
+PROJECT_KEY=${PROJECT_KEY//\"/\\\"}
+TRUST_CONFIG_ARG="projects.\"$PROJECT_KEY\".trust_level=\"trusted\""
+{
+    printf "instructions = '''\n%s\n'''\n\n" "$CODEX_REVIEW_HARDENING_PREAMBLE"
+    if [[ -f ~/.codex/config.toml ]]; then
+        cat ~/.codex/config.toml
+        printf '\n'
+    fi
+} > "$CODEX_HOME_DIR/config.toml"
+if [[ -f ~/.codex/auth.json ]]; then
+    ln -sf "$(cd ~/.codex && pwd)/auth.json" "$CODEX_HOME_DIR/auth.json"
+fi
 MODEL_ARGS_TMP=$(mktemp)
 PROMPT_FILE_SIDECAR="${OUTPUT}.prompt"
 # Retry-safe: for specialist (--agent-file) launches without free-form
@@ -292,9 +310,9 @@ PROMPT_FILE_SIDECAR="${OUTPUT}.prompt"
 if [[ -n "$AGENT_FILE" && -z "$DESCRIPTION_TEXT" ]]; then
     _ps_hash=""
     if command -v shasum >/dev/null 2>&1; then
-        _ps_hash=$(printf '%s' "$ORIGINAL_PROMPT" | LC_ALL=C shasum -a 256 | awk '{print $1}')
+        _ps_hash=$(printf '%s' "$PROMPT" | LC_ALL=C shasum -a 256 | awk '{print $1}')
     elif command -v sha256sum >/dev/null 2>&1; then
-        _ps_hash=$(printf '%s' "$ORIGINAL_PROMPT" | sha256sum | awk '{print $1}')
+        _ps_hash=$(printf '%s' "$PROMPT" | sha256sum | awk '{print $1}')
     fi
     if [[ -n "$_ps_hash" ]]; then
         {
@@ -308,11 +326,11 @@ if [[ -n "$AGENT_FILE" && -z "$DESCRIPTION_TEXT" ]]; then
             [[ -n "$DIFF_FILE" ]] && printf 'DIFF_FILE=%s\n' "$DIFF_FILE"
         } > "$PROMPT_FILE_SIDECAR"
     else
-        printf '%s' "$ORIGINAL_PROMPT" > "$PROMPT_FILE_SIDECAR"
+        printf '%s' "$PROMPT" > "$PROMPT_FILE_SIDECAR"
     fi
     unset _ps_hash
 else
-    printf '%s' "$ORIGINAL_PROMPT" > "$PROMPT_FILE_SIDECAR"
+    printf '%s' "$PROMPT" > "$PROMPT_FILE_SIDECAR"
 fi
 rm -f "$DIRTY_TREE_SIDECAR" "$UNTRACKED_BASELINE" "${DIRTY_TREE_SIDECAR}.tracked-paths" "${DIRTY_TREE_SIDECAR}.new-untracked-paths"
 "$SCRIPT_DIR/snapshot-untracked.sh" --output "$UNTRACKED_BASELINE" --nul
@@ -356,6 +374,7 @@ SIDECAR="${OUTPUT}.sidecar"
 
 EXIT_CODE=0
 if : > "$SIDECAR" 2>/dev/null; then
+    CODEX_HOME="$CODEX_HOME_DIR" \
     RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX=.inner.done \
     "$RUN_EXTERNAL" \
         --tool codex \
@@ -365,11 +384,14 @@ if : > "$SIDECAR" 2>/dev/null; then
         codex exec --sandbox read-only -C "$PWD" \
         --add-dir "$CANON_OUTPUT_DIR" \
         ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
+        -c "$TRUST_CONFIG_ARG" \
         --output-last-message "$OUTPUT" \
+        -- \
         "$PROMPT" \
         2>>"$SIDECAR" || EXIT_CODE=$?
 else
     SIDECAR=/dev/null
+    CODEX_HOME="$CODEX_HOME_DIR" \
     RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX=.inner.done \
     "$RUN_EXTERNAL" \
         --tool codex \
@@ -379,7 +401,9 @@ else
         codex exec --sandbox read-only -C "$PWD" \
         --add-dir "$CANON_OUTPUT_DIR" \
         ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
+        -c "$TRUST_CONFIG_ARG" \
         --output-last-message "$OUTPUT" \
+        -- \
         "$PROMPT" \
         2>/dev/null || EXIT_CODE=$?
 fi
