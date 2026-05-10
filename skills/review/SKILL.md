@@ -55,15 +55,13 @@ Step Name Registry:
 
 ### Reviewer status table
 
-After launching all reviewers (Step 2), maintain a mental tracker of each reviewer's status. Print a compact table after EACH status change:
+After launching all reviewers (Step 2), maintain a mental tracker of each reviewer's status. Print a compact table at two points per round only: (1) after launching all reviewers (all ⏳ or ⊘), and (2) after `collect-agent-results.sh` returns (all external reviewers resolved):
 
 ```
 📊 Reviewers: | Structure: ✅ 3m12s | Correctness: ⏳ | Testing: ⏳ | Security: ⏳ | Edge-cases: ⏳ | Codex: ⏳ | Claude-Generic: ✅ 2m30s |
 ```
 
 Icons: ✅ done (with elapsed time since launch), ⏳ pending/in-progress, ❌ failed/timeout (with elapsed time since launch), ⊘ skipped (unavailable for replacement-style reviewers only). See `${CLAUDE_PLUGIN_ROOT}/skills/shared/progress-reporting.md` for elapsed time and step start formatting rules.
-
-**Status table updates**: (1) Print initial table after launching all reviewers (all ⏳ or ⊘). (2) Update after `collect-agent-results.sh` returns (all external reviewers resolved).
 
 Use empty `description` parameter on Bash tool calls and terse 3-5 word descriptions on Agent tool calls. Do not produce explanatory prose between tool call outputs — only print: step breadcrumb lines (start `🔶`, completion `✅`, skip `⏩`), all warning/error lines (`**⚠ ...`), structured summaries (voting tallies, scoreboards, round summaries, findings lists, final summary), and the reviewer status table.
 
