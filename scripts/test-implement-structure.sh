@@ -436,6 +436,18 @@ printf '%s\n' "$step_9a1_oos_procedure" | grep -Fq -- '--intra-batch-deps-file' 
   || fail "(9e) Step 9a.1 OOS pipeline procedure must document conditional '--intra-batch-deps-file' forwarding"
 
 # ---------------------------------------------------------------------------
+# (9e.1) Step 9a.1 --no-dep-llm gating. When the file-conflict pre-pass
+#        exits 0 with a non-empty TSV, the procedure must forward --no-dep-llm
+#        to /issue so the redundant Phase-2 LLM dep-edge call is skipped.
+#        Pin both the flag name and the OOS_FILE_CONFLICT_COMPLETE gating
+#        condition so a future edit cannot silently drop the optimization.
+# ---------------------------------------------------------------------------
+printf '%s\n' "$step_9a1_oos_procedure" | grep -Fq -- '--no-dep-llm' \
+  || fail "(9e.1) Step 9a.1 OOS pipeline procedure must document '--no-dep-llm' forwarding"
+printf '%s\n' "$step_9a1_oos_procedure" | grep -Fq -- 'OOS_FILE_CONFLICT_COMPLETE' \
+  || fail "(9e.1) Step 9a.1 OOS pipeline procedure must document 'OOS_FILE_CONFLICT_COMPLETE' gating condition"
+
+# ---------------------------------------------------------------------------
 # (9f) Step 9a.1 combine-pass output path. Pin the literal `oos-combined.md`
 #      inside the canonical procedure so a future edit cannot rename or drop
 #      the combine-pass output path (consumed by `oos-file-conflict-deps.sh`

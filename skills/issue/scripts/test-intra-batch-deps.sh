@@ -67,7 +67,7 @@ assert_present "intra-batch-deps-file-parser-limits" \
     "max 500 lines, max 64KB file size"
 
 assert_present "no-dep-llm-flag" \
-    "--no-dep-llm"
+    "no-dep-llm"
 
 assert_present "no-dep-llm-dep-edge-skip" \
     "no_dep_llm=true"

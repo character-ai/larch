@@ -15,7 +15,7 @@
 8. Step 1 contains "intra-batch-deps-file FILE" — pins the new flag in the supported flags list (needle omits leading `--` to avoid grep flag collision).
 9. Step 5 contains "Caller-supplied intra-batch deps merge" — pins the merge semantics heading.
 10. Step 1 contains "max 500 lines, max 64KB file size" — pins the parser-side limits.
-11. Step 1 contains "--no-dep-llm" — pins the new flag in the flags list.
+11. SKILL.md contains "no-dep-llm" — pins the new flag (needle omits leading `--` to avoid grep flag collision, matching the existing convention).
 12. Step 5 contains "no_dep_llm=true" — pins the dep-edge-skip gating prose.
 
 **Edit-in-sync rules**: if the asserted strings in SKILL.md change (e.g., rewording the Step 4E redirect or Step 5 gate), update this harness's `assert_present`/`assert_absent` needles in the same PR.

@@ -1,6 +1,6 @@
 ---
 name: issue
-description: "Use when creating GitHub issues with LLM-based semantic duplicate detection plus always-on inter-issue blocker-dependency analysis. Single or batch mode. Flags: --go, --dry-run, --no-dedup, --title-prefix, --label."
+description: "Use when creating GitHub issues with LLM-based semantic duplicate detection plus always-on inter-issue blocker-dependency analysis. Single or batch mode. Flags: --go, --dry-run, --no-dedup, --no-dep-llm, --title-prefix, --label."
 argument-hint: "[--input-file FILE] [--intra-batch-deps-file FILE] [--blocked-by-issue N] [--title-prefix PREFIX] [--label LABEL]... [--body-file FILE] [--dry-run] [--go] [--no-dedup] [--no-dep-llm] [--sentinel-file PATH] [<issue description or title>]"
 allowed-tools: Bash, Read, Write
 ---
