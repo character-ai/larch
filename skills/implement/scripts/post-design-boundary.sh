@@ -228,24 +228,20 @@ if ! BRANCH=$(capture_branch_once); then
     fi
 fi
 
-# All hard gates have passed. Emit the unified success envelope:
-# (1) reader stdout (MANIFEST_OK + KV + 📥 breadcrumb), then (2) wrapper extensions.
-# Buffering avoids the dual-envelope footgun where MANIFEST_OK and a later
-# MANIFEST_FAILED could coexist on a late-failure path.
-printf '%s\n' "$READER_OUT"
-printf 'BRANCH=%s\n' "$BRANCH"
-if [[ "$DESIGN_ONLY" = true ]]; then
-    echo "NEXT_ACTION=plan-goals-test-and-plan-review-tally-then-diagrams-then-step-9a1"
-else
-    echo "NEXT_ACTION=anchor-fragments-then-1r-then-step2"
-fi
-
 if [[ "$HOOK_MODE" = true ]]; then
     # Hook-mode: do NOT create .boundary-gate-passed. The Stop hook blocks when
     # the sentinel is absent, so skipping the touch here ensures that if the
     # orchestrator ignores the injected directive and halts, the Stop hook fires
     # and blocks the session. The orchestrator's mandatory Bash call (non-hook-mode)
     # is the load-bearing gate that creates the sentinel.
+    # All hard gates passed — emit success envelope immediately (no late-failure path).
+    printf '%s\n' "$READER_OUT"
+    printf 'BRANCH=%s\n' "$BRANCH"
+    if [[ "$DESIGN_ONLY" = true ]]; then
+        echo "NEXT_ACTION=plan-goals-test-and-plan-review-tally-then-diagrams-then-step-9a1"
+    else
+        echo "NEXT_ACTION=anchor-fragments-then-1r-then-step2"
+    fi
     echo "POST_DESIGN_BOUNDARY_HOOK_INJECTED=true"
     printf '%s' "$WARNINGS"
     if [[ "$DESIGN_ONLY" = true ]]; then
@@ -254,11 +250,22 @@ if [[ "$HOOK_MODE" = true ]]; then
         echo "➡️ 1: design plan — hook injected boundary context; NEXT REQUIRED: invoke post-design-boundary.sh --implement-tmpdir ... as a Bash tool call — do NOT skip the wrapper call"
     fi
 else
-    # Normal (orchestrator-driven) mode: write the sentinel that signals the
-    # boundary was crossed. Failure is fatal because the Stop hook treats sentinel
-    # absence as "halted mid-Step-1" and would otherwise trap a legitimate success path.
+    # Normal (orchestrator-driven) mode: write the sentinel BEFORE emitting buffered
+    # reader output. Failure is fatal because the Stop hook treats sentinel absence as
+    # "halted mid-Step-1" and would otherwise trap a legitimate success path.
+    # Buffering avoids the dual-envelope footgun where MANIFEST_OK and a later
+    # MANIFEST_FAILED could coexist on a late-failure path.
     if ! touch "$IMPLEMENT_TMPDIR/.boundary-gate-passed" 2>/dev/null; then
         fail_closed "boundary-gate-sentinel-write-failed"
+    fi
+    # All hard gates have passed. Emit the unified success envelope:
+    # (1) reader stdout (MANIFEST_OK + KV + 📥 breadcrumb), then (2) wrapper extensions.
+    printf '%s\n' "$READER_OUT"
+    printf 'BRANCH=%s\n' "$BRANCH"
+    if [[ "$DESIGN_ONLY" = true ]]; then
+        echo "NEXT_ACTION=plan-goals-test-and-plan-review-tally-then-diagrams-then-step-9a1"
+    else
+        echo "NEXT_ACTION=anchor-fragments-then-1r-then-step2"
     fi
     echo "POST_DESIGN_BOUNDARY_OK=true"
     printf '%s' "$WARNINGS"
