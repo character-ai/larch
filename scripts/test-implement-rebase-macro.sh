@@ -126,13 +126,18 @@ files_changed_line=$(sed -n "${step7_header_line},$((invoke_7r_line - 1))p" "$SK
 # ---------------------------------------------------------------------------
 # (G) Macro section body contains rebase-push.sh invocation, conflict-resolution
 #     dispatch, and non-conflict bail line.
+# Use a temp file instead of a pipe to avoid SIGPIPE/pipefail false failures on
+# Linux when grep -Fq exits 0 early and breaks the sed pipe (exit 141).
 # ---------------------------------------------------------------------------
-sed -n "${macro_section_start},${macro_section_end}p" "$SKILL_MD" | grep -Fq '${CLAUDE_PLUGIN_ROOT}/scripts/rebase-push.sh --no-push --skip-if-pushed --keep-on-conflict' \
+macro_body_tmp=$(mktemp)
+sed -n "${macro_section_start},${macro_section_end}p" "$SKILL_MD" > "$macro_body_tmp"
+grep -Fq '${CLAUDE_PLUGIN_ROOT}/scripts/rebase-push.sh --no-push --skip-if-pushed --keep-on-conflict' "$macro_body_tmp" \
   || fail "(G) macro body lacks 'rebase-push.sh --no-push --skip-if-pushed --keep-on-conflict' invocation"
-sed -n "${macro_section_start},${macro_section_end}p" "$SKILL_MD" | grep -Fq 'caller_kind=early_rebase' \
+grep -Fq 'caller_kind=early_rebase' "$macro_body_tmp" \
   || fail "(G) macro body lacks caller_kind=early_rebase conflict-resolution dispatch"
-sed -n "${macro_section_start},${macro_section_end}p" "$SKILL_MD" | grep -Fq '**⚠ Rebase onto main failed (non-conflict): $REBASE_ERROR. Bailing to cleanup.**' \
+grep -Fq '**⚠ Rebase onto main failed (non-conflict): $REBASE_ERROR. Bailing to cleanup.**' "$macro_body_tmp" \
   || fail "(G) macro body lacks non-conflict bail line"
+rm -f "$macro_body_tmp"
 
 # ---------------------------------------------------------------------------
 # (H) Exactly 1 occurrence of the macro's keep-on-conflict rebase-push flag combo.

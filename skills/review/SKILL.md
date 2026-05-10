@@ -1,7 +1,7 @@
 ---
 name: review
 description: "Use when reviewing code changes (--diff for branch diff, or positional text for existing code review). Description mode files findings as issues by default (--no-issues suppresses)."
-argument-hint: "[--diff] [--no-issues] [--session-env <path>] [--step-prefix <prefix>] [<description>]"
+argument-hint: "[--diff] [--subagent] [--no-issues] [--session-env <path>] [--step-prefix <prefix>] [<description>]"
 allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task, WebFetch, Skill
 ---
 
@@ -17,6 +17,7 @@ Review code changes using a 7-reviewer specialist panel (5 Cursor specialists + 
 - `--no-issues`: Set a mental flag `no_issues=true`. Suppresses issue filing in description mode. In diff mode, silently ignored (diff mode never files issues). Default: `no_issues=false`.
 - `--session-env <path>`: Set `SESSION_ENV_PATH` to the given path. This file contains already-discovered session values from a caller skill (e.g., `/implement`) including reviewer health state (`CODEX_HEALTHY`, `CURSOR_HEALTHY`, `GEMINI_HEALTHY`). If not provided, `SESSION_ENV_PATH` is empty (standalone invocation — full health probe at Step 0).
 - `--step-prefix <prefix>`: Encodes both numeric prefix and textual breadcrumb path using `::` delimiter — see `${CLAUDE_PLUGIN_ROOT}/skills/shared/progress-reporting.md` for the full encoding spec. Examples: `"5.::code review"` (numeric `5.`, path `code review`), `"5."` (numeric only, backward compat). Default: empty (standalone numbering). Internal orchestration flag.
+- `--subagent`: Set `subagent_mode=true`. Default: `subagent_mode=false`. When set AND `diff_mode=true`, the token-heavy Steps 1-3 (gather context, launch reviewers, recursive review+fix loop) run in an isolated Agent-tool subagent dispatched from `${CLAUDE_PLUGIN_ROOT}/skills/review/references/heavy-worker.md`. The parent handles Step 0 (session setup) and Steps 4-5 (final summary + cleanup), reading file-backed artifacts from `$REVIEW_TMPDIR/` after the subagent returns. Silently ignored when `diff_mode=false` (description mode stays inline; subagent benefit is minimal for read-only review). Operators running in environments without `SendMessage` should NOT use `--subagent` — a worker yield in those environments becomes a fatal stall. See `AGENTS.md` and `heavy-worker.md` for the project-wide reference.
 
 Dirty-tree recovery prompts are always allowed and are not suppressed by a parent skill's `--auto` mode.
 
@@ -108,6 +109,29 @@ Set mental flags `codex_available` and `cursor_available` based on the output:
 - Else if `CODEX_HEALTHY=false`: `codex_available=false`. Print: `**⚠ Codex installed but not responding (health check failed). Using Claude replacement.**`
 - Else: `codex_available=true`
 - Same logic for Cursor.
+
+## Subagent Dispatch (diff mode only, when `--subagent`)
+
+When `subagent_mode=true` AND `diff_mode=true`, dispatch the heavy-phase work (Steps 1-3) to an Agent-tool subagent **immediately after Step 0 completes**. The parent then skips Steps 1-3 and proceeds directly to reading artifacts for Step 4.
+
+**MANDATORY — READ ENTIRE FILE** before dispatching: `${CLAUDE_PLUGIN_ROOT}/skills/review/references/heavy-worker.md`. Contains the subagent contract, artifact contract, wait discipline, and return-value grammar.
+
+Dispatch the subagent via the Agent tool with `subagent_type: larch:reviewer-correctness` — use any available reviewer subagent type as the execution host, or use a general-purpose agent. Pass to the subagent prompt:
+
+```
+REVIEW_TMPDIR=<$REVIEW_TMPDIR>
+SESSION_ENV_PATH=<$SESSION_ENV_PATH>
+codex_available=<true|false>
+cursor_available=<true|false>
+
+Follow the instructions in ${CLAUDE_PLUGIN_ROOT}/skills/review/references/heavy-worker.md exactly.
+```
+
+> **Continue after subagent returns.** When the Agent tool returns, parse the return text for `REVIEW_HEAVY=complete` or `REVIEW_HEAVY=failed REASON=<token>`. Do NOT end the turn, write a summary, or produce a handoff message — proceed immediately per the branch below.
+
+- **`REVIEW_HEAVY=complete`**: Read `$REVIEW_TMPDIR/review-round-summary.md` (exists when the subagent succeeded). The code edits made by Step 3e are already in the git working tree. `$REVIEW_TMPDIR/review-dirty-tree-summary.env` is already written by the subagent. Proceed to Step 4 using the file-backed artifacts: Step 4a reads `review-round-summary.md` verbatim for the final summary; Step 5a reads `review-dirty-tree-summary.env` as-is (already aggregated). **Skip Steps 1-3 entirely.**
+- **`REVIEW_HEAVY=failed REASON=<token>`**: Print `**⚠ /review subagent failed: $REASON. Falling back to inline review.**`, set `subagent_mode=false`, and continue to Step 1 below (inline fallback).
+- **Return text missing `REVIEW_HEAVY=`** (subagent stalled or suspended): Print `**⚠ /review subagent returned without REVIEW_HEAVY sentinel. Falling back to inline review.**`, set `subagent_mode=false`, and continue to Step 1.
 
 ## Step 1 — Gather Context
 
@@ -346,7 +370,9 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 
 ### 4a — Print summary (both modes)
 
-Print a final summary:
+When `subagent_mode=true` AND `REVIEW_HEAVY=complete` was returned: print the contents of `$REVIEW_TMPDIR/review-round-summary.md` verbatim. Skip the inline summary composition below.
+
+Otherwise (inline mode or subagent fallback), print a final summary:
 - Total number of review rounds (always 1 in description mode)
 - Findings per round (with per-reviewer breakdown: `Structure` / `Correctness` / `Testing` / `Security` / `Edge-cases` / `Codex` / `Claude-Generic`, or `Claude` for fallback)
 - Voting summary (rounds 1-3): total findings voted on, accepted (2+ YES), neutral (1 YES), exonerated (0 YES + 1+ EXONERATE), rejected (0 YES + 0 EXONERATE)

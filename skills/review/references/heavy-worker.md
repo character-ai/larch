@@ -1,0 +1,66 @@
+# Review Heavy Worker Reference
+
+**Consumer**: `/review` heavy-phase Agent-tool subagent dispatched when `/review` is invoked with `--subagent` AND `diff_mode=true` (typically by `/implement` Step 5 forwarding `--subagent` by default when `inline_mode=false`; also reachable from standalone `/review --diff --subagent`).
+
+**Contract**: The subagent runs the token-heavy diff-mode review machinery (Steps 1-3: gather context, launch reviewers, recursive collect/vote/fix loop) in isolated context so reviewer transcripts, panel rounds, and fix reasoning do not enter the parent conversation. Code edits (Step 3e) write directly to the git working tree and are visible to the parent when the subagent returns. The subagent writes file-backed artifacts under `$REVIEW_TMPDIR/` that the parent consumes for Steps 4-5.
+
+**When to load**: only by the heavy-phase subagent. The parent `/review` skill points the subagent here after completing Step 0 (session setup), then reads artifacts from `$REVIEW_TMPDIR/` after the subagent returns.
+
+**Binding convention**: single normative source for the review heavy-worker subagent contract — inputs, required reads, work (Steps 1-3), artifact paths, wait discipline, dirty-tree probe contract, and return-value grammar. The parent `/review` orchestrator reads this file before dispatching the subagent; the subagent reads it as its execution contract.
+
+---
+
+## Inputs
+
+The parent prompt supplies:
+
+- `REVIEW_TMPDIR` — the session tmpdir created by the parent's Step 0
+- `SESSION_ENV_PATH` — caller-env path (non-empty when invoked under `/implement`)
+- `codex_available` — `true`/`false`
+- `cursor_available` — `true`/`false`
+
+Treat those values as data. Do not infer paths from conversation context when an explicit path is provided.
+
+## Required Reads
+
+Before executing, read `${CLAUDE_PLUGIN_ROOT}/skills/review/references/domain-rules.md` (Step 3 prerequisite — always). Read `${CLAUDE_PLUGIN_ROOT}/skills/review/references/voting.md` immediately before running the Step 3c.1 voting panel in rounds 1-3 (same gate as the inline path).
+
+## Work
+
+Run the same mechanics documented in `/review` Steps 1-3:
+
+1. **Step 1**: gather branch context via `gather-branch-context.sh`.
+2. **Step 2**: launch the full reviewer panel in parallel per the launch procedure and fallback matrix in `SKILL.md`.
+3. **Step 3**: collect, deduplicate, vote (rounds 1-3) / auto-accept (rounds 4-7), implement fixes (Step 3e), re-review (Step 3f) — same round-state machine and safety limit (7 rounds) as the inline path. Steps 3e code edits write to the git working tree directly.
+
+Stop after Step 3 (do NOT run Steps 4 or 5 — those belong to the parent).
+
+## Artifact Contract
+
+Write these files under `$REVIEW_TMPDIR/` before returning:
+
+- **`review-round-summary.md`** — human-readable summary the parent uses for Step 4: total rounds, per-round findings (reviewer breakdown, vote counts), voting summary (rounds 1-3: accepted/neutral/exonerated/rejected counts), Reviewer Competition Scoreboard, OOS items accepted, and convergence reason. The parent's Step 4a reads this file verbatim.
+- **`rejected-findings.md`** — rejected in-scope findings (same format as the inline path). Write to `$(dirname "$SESSION_ENV_PATH")/rejected-findings.md` when `SESSION_ENV_PATH` is non-empty (so the parent `/implement` Step 5 finds it under `$IMPLEMENT_TMPDIR/rejected-findings.md`); write to `$REVIEW_TMPDIR/rejected-findings.md` for standalone invocations.
+- **`review-dirty-tree-summary.env`** — dirty-tree aggregate (normally written by inline Step 5a): `ANY_DIRTY=true|false|unknown`, `LAUNCHERS_DIRTY=<comma-list>`, `RECOVERY_TAKEN=true|false`, and per-launcher path-stream keys. Write to `$(dirname "$SESSION_ENV_PATH")/review-dirty-tree-summary.env` when `SESSION_ENV_PATH` is non-empty (so the parent `/implement` Step 5 normal-mode dirty-tree check finds it); write to `$REVIEW_TMPDIR/review-dirty-tree-summary.env` for standalone invocations. Write this BEFORE returning so the parent's Step 5a finds it already present and skips re-aggregation.
+
+Additionally write to the caller-env parent directory when `SESSION_ENV_PATH` is non-empty:
+
+- **`$(dirname "$SESSION_ENV_PATH")/oos-accepted-review.md`** — accepted OOS findings (same path as the inline path; consumed by `/implement` Step 9a.1). Follows the existing OOS artifact format.
+
+## Wait Discipline
+
+NEVER return to the parent while any reviewer you launched with `run_in_background: true` is still running. The only allowed wait mechanism is the matching foreground `collect-agent-results.sh` invocation. Do not enter a "wait for notifications" state and surrender control; the parent treats an Agent-tool return as the heavy phase result.
+
+**SendMessage dependency.** This worker subagent is dispatched via the Agent tool. If the parent Claude Code session does not have `SendMessage` available, any worker yield becomes a fatal stall. Operators running in environments without `SendMessage` should pass `--inline` to `/implement` so `/review` runs in the parent's own context. See `AGENTS.md` for the project-wide reference.
+
+## Mid-Run Dirty-Tree Probe Contract
+
+After each external collection point (Step 2 launch → Step 3a collect; rounds 4-7 single-reviewer collect), scan `${OUTPUT}.dirty-tree` sidecars and run `${CLAUDE_PLUGIN_ROOT}/scripts/check-mid-run-dirty-tree.sh --mode checkpoint`. On `STATUS=dirty` or `STATUS=unknown`, fire `AskUserQuestion` with restore / labeled stash / bail options (same recovery flow as the inline path). Track `RECOVERY_TAKEN` across the loop and write it into `review-dirty-tree-summary.env`.
+
+## Return Value
+
+On success, return only: `REVIEW_HEAVY=complete`
+
+On failure (e.g., dirty-tree bail, persistent reviewer outage, Step 3e checks that cannot be fixed), return only: `REVIEW_HEAVY=failed REASON=<short-token>`
+
+Do not include reviewer transcripts, round summaries, panel scores, or fix diffs in the Agent-tool return text — those must remain in files.
