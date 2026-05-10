@@ -27,4 +27,4 @@ Subagent writes under `$DESIGN_TMPDIR/`:
 
 ## Mid-Run Dirty-Tree Probe Contract
 
-After each external collection boundary (sketch, dialectic-debate, dialectic-judge, plan-review), consult launcher `${OUTPUT}.dirty-tree` sidecars and run `${CLAUDE_PLUGIN_ROOT}/scripts/check-mid-run-dirty-tree.sh --mode checkpoint`. On `STATUS=dirty` or `STATUS=unknown`: write `$DESIGN_TMPDIR/dirty-tree-detected.env` with `STATUS=<status>`, `STAGE=<boundary>`, `RECOVERY_REQUIRED=true`, then return `DESIGN_HEAVY=failed REASON=dirty-tree`.
+After each external collection boundary (sketch, dialectic-debate, dialectic-judge, plan-review), consult launcher `${OUTPUT}.dirty-tree` sidecars and run `${CLAUDE_PLUGIN_ROOT}/scripts/check-mid-run-dirty-tree.sh --mode checkpoint`. On `STATUS=dirty` or `STATUS=unknown`: write `$DESIGN_TMPDIR/dirty-tree-detected.env` with `STATUS=<status>`, `STAGE=<boundary>`, `RECOVERY_REQUIRED=true`, then return `DESIGN_HEAVY=failed REASON=dirty-tree`. Dedup per boundary via `$DESIGN_TMPDIR/.dirty-tree-prompted-<boundary>`.
