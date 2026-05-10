@@ -61,7 +61,7 @@ Icons: ✅ done (with elapsed time since launch), ⏳ pending/in-progress, ❌ f
 
 Use empty `description` parameter on Bash tool calls and terse 3-5 word descriptions on Agent tool calls. Do not produce explanatory prose between tool call outputs — only print: step breadcrumb lines (start `🔶`, completion `✅`, skip `⏩`), all warning/error lines (`**⚠ ...`), structured summaries (voting tallies, scoreboards, round summaries, findings lists, final summary), and the reviewer status table.
 
-When `SESSION_ENV_PATH` is non-empty, follow shared/subskill-invocation.md#artifact-only-return (nested mode): suppress parent-visible breadcrumbs, round summaries, voting tallies, reviewer scoreboards, and explanatory prose; write human-readable content to artifacts and emit only the terminal machine footer plus artifact paths required by the parent.
+When `SESSION_ENV_PATH` is non-empty, follow `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Artifact-only return contract (nested mode): suppress parent-visible breadcrumbs, round summaries, voting tallies, reviewer scoreboards, and explanatory prose; write human-readable content to artifacts and emit only the terminal machine footer plus artifact paths required by the parent.
 
 ## Description Mode
 

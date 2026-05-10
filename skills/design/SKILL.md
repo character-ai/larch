@@ -44,7 +44,7 @@ The feature to design is described by the remainder of `$ARGUMENTS` after flags 
 
 **Suppressed output:** explanatory prose, script paths, rationale for decisions between tool calls, per-reviewer individual completion messages.
 
-When `SESSION_ENV_PATH` is non-empty (nested under `/implement`), follow shared/subskill-invocation.md#artifact-only-return (nested mode): suppress step breadcrumbs and bulky inline artifact bodies for the implementation plan, voting tally, architecture diagram, rejected findings, and discussion syntheses; rely on the files under `$DESIGN_TMPDIR/` plus the Step 5 design manifest. When `SESSION_ENV_PATH` is empty (standalone `/design`), preserve the existing verbose inline output and skip manifest export entirely.
+When `SESSION_ENV_PATH` is non-empty (nested under `/implement`), follow `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Artifact-only return contract (nested mode): suppress step breadcrumbs and bulky inline artifact bodies for the implementation plan, voting tally, architecture diagram, rejected findings, and discussion syntheses; rely on the files under `$DESIGN_TMPDIR/` plus the Step 5 design manifest. When `SESSION_ENV_PATH` is empty (standalone `/design`), preserve the existing verbose inline output and skip manifest export entirely.
 
 **Compact reviewer status table**: After launching sketch agents (Step 2a) or plan reviewers (Step 3), maintain a mental tracker of each agent's status. Print a compact table after EACH status change:
 

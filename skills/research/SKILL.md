@@ -60,7 +60,7 @@ The research question is described by `RESEARCH_QUESTION` (not raw `$ARGUMENTS`)
 
 ## Sub-skill invocation
 
-Invoke `/issue` via the Skill tool when the research brief calls for filing the findings as GitHub issues. Follow Pattern B in shared/subskill-invocation.md — parse `/issue`'s stdout machine lines (`ISSUES_CREATED`, `ISSUES_FAILED`, `ISSUES_DEDUPLICATED`) and continue with the parent's next step after the child returns.
+Invoke `/issue` via the Skill tool when the research brief calls for filing the findings as GitHub issues. Follow Pattern B conventions in `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` — parse `/issue`'s stdout machine lines (`ISSUES_CREATED`, `ISSUES_FAILED`, `ISSUES_DEDUPLICATED`) and continue with the parent's next step after the child returns.
 
 > **Continue after child returns.** When the child Skill returns, execute the NEXT step of this skill — do NOT end the turn, and do NOT write a summary, handoff, or "returning to parent" message. → shared/subskill-invocation.md#anti-halt
 
