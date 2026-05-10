@@ -2,7 +2,7 @@
 
 **Consumer**: `/fix-issue` Steps 3 (Triage) and 4 (Classify). Common-case reference; load full `triage-classification.md` only when composing the not-material closure explanation (need detailed rationale) or when genuinely uncertain about a classification edge case.
 
-**Contract**: Condensed decision guide covering the triage checklist, `--close-class` mapping, and the PR / NON_PR / SIMPLE / HARD classification rules. Full `triage-classification.md` carries the not-material closure flow step-by-step detail, complete rationale for each decision branch, and the `--quick` short-circuit prose.
+**Contract**: Condensed decision guide covering the triage checklist, `--close-class` mapping, and the PR / NON_PR / SIMPLE / HARD classification rules. Full `triage-classification.md` carries the not-material closure flow step-by-step detail, complete rationale for each decision branch, and the `--hard` short-circuit prose.
 
 **When to load**: before Step 3 (Triage) or Step 4 (Classify). For the common path (issue is material → classify intent and complexity), this digest is sufficient. Load full `triage-classification.md` when composing the not-material closure explanation or when uncertain about a classification edge case.
 
@@ -31,6 +31,6 @@ SKILL.md Step 3 then invokes `issue-lifecycle.sh close --close-class <value>`, `
 - `NON_PR`: research/review → issues or written report. Pick when the issue explicitly forbids a PR or mandates research/issues as the deliverable.
 
 **Dimension 2 — Complexity** (only when `INTENT=PR`):
-- `SIMPLE`: ≤2 files, obvious solution, no architectural decisions.
-- `HARD`: everything else. Default when uncertain.
-- `--quick` short-circuit: forces `COMPLEXITY=SIMPLE` when `quick_mode=true` and `INTENT=PR`.
+- `SIMPLE`: ≤2 files, obvious solution, no architectural decisions. Default when uncertain.
+- `HARD`: everything else (multi-file, new features, architectural decisions, unclear root cause).
+- `--hard` short-circuit: forces `COMPLEXITY=HARD` when `hard_mode=true` and `INTENT=PR`.

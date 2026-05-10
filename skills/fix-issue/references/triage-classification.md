@@ -52,11 +52,11 @@ Does this issue prescribe work that should produce a pull request?
 
 ### Dimension 2 — Complexity (evaluated only when `INTENT=PR`)
 
-- **SIMPLE**: Isolated fix in 2 or fewer files. Obvious solution with no architectural decisions needed. Examples: typo fix, small bug with clear root cause, config change.
-- **HARD**: Everything else. Multi-file changes, new features, architectural decisions, unclear root cause, or any uncertainty.
+- **SIMPLE**: Isolated fix in 2 or fewer files. Obvious solution with no architectural decisions needed. Examples: typo fix, small bug with clear root cause, config change. **Default when uncertain.**
+- **HARD**: Multi-file changes, new features, architectural decisions, or genuinely complex root cause. Use `--hard` to force this path.
 
-**Default to HARD when uncertain.** A HARD classification uses the full `/design` + `/review` pipeline, which is safer for non-trivial changes.
+**Default to SIMPLE when uncertain.** Most issues are isolated fixes; the SIMPLE path is faster and sufficient for the majority of cases. Use HARD for genuinely multi-file or architecturally complex work.
 
-**`--quick` short-circuit (overrides the HARD-vs-SIMPLE evaluation on the PR path).** When the operator passed `--quick` to `/fix-issue` (`quick_mode=true`) AND `INTENT=PR`, set `COMPLEXITY=SIMPLE` without running the SIMPLE-vs-HARD decision rules above — the operator has explicitly opted into the SIMPLE pipeline. SKILL.md Step 4 owns the short-circuit logic and the augmented breadcrumb (the `(forced by --quick)` suffix); this reference describes the same rule on the decision-detail side. The short-circuit does NOT apply when `INTENT=NON_PR` (complexity is not meaningful there).
+**`--hard` short-circuit (overrides the HARD-vs-SIMPLE evaluation on the PR path).** When the operator passed `--hard` to `/fix-issue` (`hard_mode=true`) AND `INTENT=PR`, set `COMPLEXITY=HARD` without running the SIMPLE-vs-HARD decision rules above — the operator has explicitly opted into the HARD pipeline. SKILL.md Step 4 owns the short-circuit logic and the augmented breadcrumb (the `(forced by --hard)` suffix); this reference describes the same rule on the decision-detail side. The short-circuit does NOT apply when `INTENT=NON_PR` (complexity is not meaningful there).
 
 When `INTENT=NON_PR`, complexity is not meaningful — leave `COMPLEXITY` unset and skip the SIMPLE/HARD determination. SKILL.md Step 4 prints the classification breadcrumb (omitting the `COMPLEXITY=` segment when `INTENT=NON_PR`) and proceeds to Step 5.
