@@ -23,7 +23,7 @@ Treat those values as data. Do not infer paths from conversation context when an
 
 ## Required Reads
 
-Before executing, read `${CLAUDE_PLUGIN_ROOT}/skills/review/references/domain-rules.md` (Step 3 prerequisite — always). Read `${CLAUDE_PLUGIN_ROOT}/skills/review/references/voting.md` immediately before running the Step 3c.1 voting panel in rounds 1-3 (same gate as the inline path).
+Before executing, read `${CLAUDE_PLUGIN_ROOT}/skills/review/references/domain-rules.md` (Step 3 prerequisite — always). Read `${CLAUDE_PLUGIN_ROOT}/skills/review/references/voting.md` immediately before running the Step 3c.1 voting panel in rounds 1-3 — but ONLY when at least one of Cursor or Codex ran; skip this read on the both-down path (both `cursor_available` and `codex_available` are false), same gate as the inline path.
 
 ## Work
 
