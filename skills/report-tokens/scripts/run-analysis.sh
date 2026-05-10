@@ -64,6 +64,7 @@ if [[ -n "$LIMIT" && ! "$LIMIT" =~ ^[0-9]+$ ]]; then
 fi
 
 TMPROOT="$(mktemp -d "${TMPDIR:-/tmp}/larch-report-tokens.XXXXXX")"
+trap 'rm -rf "${TMPROOT:-}"' EXIT
 SEARCH_JSONL="$TMPROOT/search.jsonl"
 ISSUES_JSONL="$TMPROOT/issues.jsonl"
 CACHE_TMP="$TMPROOT/issues-cache.json.tmp"
@@ -223,7 +224,8 @@ def parse_workflow_path(text):
     )
     if not match:
         return "unknown"
-    return match.group(1).upper()
+    val = match.group(1).upper()
+    return val if val in ("SIMPLE", "HARD") else "unknown"
 
 
 def empty_totals():
@@ -301,7 +303,11 @@ def cost_vendor(vendor, totals):
             + totals.get("cache_create", 0) * rate["cache_create"]
             + totals.get("output", 0) * rate["output"]
         ) / 1_000_000
-    rate = RATES.get(vendor, RATES["cursor"])
+    if vendor not in RATES:
+        import sys
+        print(f"Warning: unknown vendor '{vendor}' — skipping (no pricing data)", file=sys.stderr)
+        return 0.0
+    rate = RATES[vendor]
     input_tokens = totals.get("input", 0)
     output_tokens = totals.get("output", 0)
     total_tokens = totals.get("total", 0)
@@ -436,7 +442,7 @@ for workflow in ("SIMPLE", "HARD"):
     fig.autofmt_xdate()
     for x, y, number in zip(dates, costs, numbers):
         ax.annotate(f"#{number}", (x, y), xytext=(4, 5), textcoords="offset points", fontsize=8)
-    out = os.path.join(tempfile.gettempdir(), f"larch-report-tokens-{workflow.lower()}.png")
+    out = os.path.join(plot_dir, f"larch-report-tokens-{workflow.lower()}.png")
     fig.tight_layout()
     fig.savefig(out, dpi=160)
     plt.close(fig)
@@ -473,6 +479,7 @@ print(json.dumps(paths))
             try:
                 subprocess.run(["open", path], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             except FileNotFoundError:
+                print("Note: 'open' not available; plots saved but not opened automatically.")
                 break
     return out_paths
 
