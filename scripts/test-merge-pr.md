@@ -37,8 +37,7 @@ Each sub-test gets a fresh tmpdir under `$TMPDIR_BASE` containing:
 
 The stub responds to the production call shapes used by `merge-pr.sh`:
 
-- `gh pr view ... --json mergeStateStatus -q .mergeStateStatus` returns `$GH_MERGE_STATE` (default: `CLEAN`).
-- `gh pr view ... --json headRefOid -q .headRefOid` returns `$STUB_PR_HEAD_OID` (default: `aaaa1111`).
+- `gh pr view ... --json mergeStateStatus,headRefOid` returns a JSON object `{"mergeStateStatus":"<GH_MERGE_STATE>","headRefOid":"<STUB_PR_HEAD_OID>"}`. When `GH_MERGE_STATE=__EMPTY__`, `mergeStateStatus` is `null` so that `jq // ""` yields an empty string (matching the empty-state test). Defaults: `GH_MERGE_STATE=CLEAN`, `STUB_PR_HEAD_OID=aaaa1111`.
 - `gh pr checks ... --json name,state,bucket,link` returns `$GH_CHECKS_JSON` (default: one passing check).
 - `gh pr merge ... --squash [--admin]` exits with `$GH_ADMIN_EXIT` / `$GH_PLAIN_EXIT` and emits `$GH_ADMIN_OUTPUT` / `$GH_PLAIN_OUTPUT`.
 
