@@ -5,7 +5,8 @@ Regression harness for the `/implement` Step 18 cleanup target sanity check in `
 The harness copies the finalizer into a `/tmp` sandbox with a stub `cleanup-tmpdir.sh`, then covers:
 
 - happy-path basename prefix plus matching `session-id` invokes cleanup;
-- foreign basename refuses cleanup, emits the documented warning, and appends to `execution-issues.md`;
+- prefix mismatch with matching `session-id` warns and still invokes cleanup (session-id match authorizes cleanup);
+- session-id mismatch refuses cleanup even when the basename prefix matches;
 - missing `session-id` with an expected id refuses cleanup;
 - legacy state missing `EXPECTED_SESSION_ID` falls back to basename-only validation and still invokes cleanup.
 
