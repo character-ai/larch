@@ -27,7 +27,14 @@
 #       compat — explicit assertion, not implicit via existing cases),
 #  (10) when --feature-spec-file points to a missing path, exit 1 with
 #       ERROR=Cannot read --feature-spec-file: <path> on stderr (closes #568
-#       missing-file rejection).
+#       missing-file rejection),
+#  (11) for --multi-step true, scripts/step-name-registry.tsv is created with
+#       a header row and at least two data rows (closes #1794 — scaffold must
+#       generate the TSV so new orchestrators satisfy the progress-reporting.md
+#       contract without a manual post-scaffold step),
+#  (12) for --multi-step true, the rendered SKILL.md body contains the MANDATORY
+#       TSV-read directive (closes #1794 — inline table replaced by the directive
+#       that the progress-reporting.md contract requires).
 #
 # Invoked via:  bash skills/create-skill/scripts/test-render-skill-md.sh
 # Wired into:   make lint (via the test-render-skill Makefile target).
@@ -173,6 +180,41 @@ run_case() {
     return
   fi
 
+  # Assertions (11) and (12) apply only to the multi-step variant — the
+  # minimal body has no Progress Reporting section and no TSV.
+  if [[ "$multi_step" == "true" ]]; then
+    # (11) scripts/step-name-registry.tsv must be created with exact content
+    # (header row + two seed rows, tab-separated) — closes #1794.
+    local tsv_path="$target_dir/scripts/step-name-registry.tsv"
+    if [[ ! -f "$tsv_path" ]]; then
+      echo "FAIL: scripts/step-name-registry.tsv not created for multi-step scaffold at $tsv_path" >&2
+      FAIL_COUNT=$((FAIL_COUNT + 1))
+      return
+    fi
+    local expected_tsv actual_tsv
+    expected_tsv="$(printf 'step\tname\n0\tsetup\n1\tTODO\n')"
+    actual_tsv="$(cat "$tsv_path")"
+    if [[ "$actual_tsv" != "$expected_tsv" ]]; then
+      echo "FAIL: scripts/step-name-registry.tsv content mismatch at $tsv_path" >&2
+      echo "--- expected ---" >&2
+      printf '%s\n' "$expected_tsv" | cat -A >&2
+      echo "--- actual ---" >&2
+      printf '%s\n' "$actual_tsv" | cat -A >&2
+      FAIL_COUNT=$((FAIL_COUNT + 1))
+      return
+    fi
+
+    # (12) SKILL.md must contain the MANDATORY TSV-read directive that references
+    # step-name-registry.tsv on the same line — closes #1794.
+    if ! printf '%s\n' "$content" | grep -Eq 'MANDATORY at session start.*step-name-registry\.tsv'; then
+      echo "FAIL: multi-step SKILL.md missing MANDATORY TSV-read directive referencing step-name-registry.tsv" >&2
+      echo "--- rendered content ---" >&2
+      printf '%s\n' "$content" >&2
+      FAIL_COUNT=$((FAIL_COUNT + 1))
+      return
+    fi
+  fi
+
   # Body-vs-frontmatter assertion (closes #568). When `expected_body` is
   # set, verify the rendered body's opening paragraph equals it. The body
   # opening paragraph is everything between the `# <name>` heading line + 1
@@ -215,6 +257,14 @@ run_case "minimal consumer-mode" false \
   "${TMPROOT}/consumer-root/.claude/skills/bar-minimal" \
   "bar-minimal" \
   "Use when doing bar once."
+
+# Case 7: multi-step variant under a consumer-mode target dir — exercises
+# TSV creation and MANDATORY directive under the consumer SKILL_REL path
+# (.claude/skills/<name> vs. plugin-mode skills/<name>).
+run_case "multi-step consumer-mode" true \
+  "${TMPROOT}/consumer-root/.claude/skills/foo-multi-consumer" \
+  "foo-multi-consumer" \
+  "Use when doing foo across multiple steps (consumer mode)."
 
 # Case 4: --feature-spec-file with multi-line content distinct from --description.
 # Asserts body opens with the multi-line file content while frontmatter
