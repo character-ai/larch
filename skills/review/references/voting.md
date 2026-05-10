@@ -30,8 +30,8 @@ OOS findings are unaffected by Passes 1 and 2 — they always go to the voter pa
 | 12 | 3 eligible (post tie-breaker); YES = 1; NO ≥ EXO | Claude NO → 1Y/2N | **Reject** | |
 | 13 | 2 eligible; YES = 0; all EXO | Both voted EXONERATE | **Exonerate** | 0 pts |
 | 14 | 2 eligible; YES = 0; ≥1 NO | At least one NO vote (0Y/2N or 0Y/1N/1EXO) | **Reject** | EXO does not override NO when YES = 0 |
-| 15 | 1 eligible primary | One of Cursor/Codex unavailable | Skip; no outcome | Not counted in accepted or rejected |
-| 16 | 0 eligible | Both Cursor and Codex unavailable | Skip; no outcome | Not counted in accepted or rejected |
+| 15 | 1 eligible primary | One of Cursor/Codex unavailable | **Skip voting — all findings accepted** | Per voting-protocol.md threshold rules: < 2 eligible voters → fall back to accepting all; print `**⚠ Voting skipped (1 voter available, minimum 2 required). All findings accepted.**` |
+| 16 | 0 eligible | Both Cursor and Codex unavailable | **Skip voting — all findings accepted** | Per voting-protocol.md threshold rules: 0 eligible → fall back to accepting all; print `**⚠ Voting skipped (0 voters available, minimum 2 required). All findings accepted.**` |
 | 17 | Zero accepted in-scope | Voting panel accepted 0 in-scope findings | Print no-changes notice; skip to Step 4 | OOS items still routed per diff/description mode |
 
 ## Summary

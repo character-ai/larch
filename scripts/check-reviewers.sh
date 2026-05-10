@@ -21,7 +21,7 @@ while [[ $# -gt 0 ]]; do
         --probe)              PROBE=true; shift ;;
         --skip-codex-probe)   SKIP_CODEX_PROBE=true; shift ;;
         --skip-cursor-probe)  SKIP_CURSOR_PROBE=true; shift ;;
-        --artifact-dir)        shift 2 ;; # accepted for backward compat; no-op (Gemini drift removed)
+        --artifact-dir)        [[ $# -ge 2 ]] || { echo "check-reviewers.sh: --artifact-dir requires a value" >&2; exit 1; }; shift 2 ;; # accepted for backward compat; no-op (Gemini drift removed)
         *) echo "check-reviewers.sh: unknown argument: $1" >&2; exit 1 ;;
     esac
 done

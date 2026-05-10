@@ -292,7 +292,19 @@ TRUST_CONFIG_ARG="projects.\"$PROJECT_KEY\".trust_level=\"trusted\""
 {
     printf "instructions = '''\n%s\n'''\n\n" "$CODEX_REVIEW_HARDENING_PREAMBLE"
     if [[ -f ~/.codex/config.toml ]]; then
-        cat ~/.codex/config.toml
+        # Strip any existing top-level `instructions` assignment to avoid duplicate
+        # keys — TOML parsers treat duplicate top-level keys as an error or silently
+        # drop the second value, either of which breaks the launch.
+        # Handles: triple-single-quote blocks ('''...'''), triple-double-quote blocks
+        # ("""..."""), and single-line string forms ("..." or '...').
+        awk "
+            /^[[:space:]]*instructions[[:space:]]*=[[:space:]]*'''/ { skip=1; block_end=\"'''\"; next }
+            /^[[:space:]]*instructions[[:space:]]*=[[:space:]]*\"\"\"/ { skip=1; block_end=\"\\\"\\\"\\\"\"; next }
+            skip && index(\$0, block_end) { skip=0; next }
+            skip { next }
+            /^[[:space:]]*instructions[[:space:]]*=/ { next }
+            { print }
+        " ~/.codex/config.toml
         printf '\n'
     fi
 } > "$CODEX_HOME_DIR/config.toml"
