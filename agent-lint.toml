@@ -415,6 +415,12 @@ exclude = [
   # from oos-issue-cap.sh and its sibling contract stub.
   "skills/implement/scripts/oos-issue-cap-excerpt.py",
   "skills/implement/scripts/oos-issue-cap-excerpt.md",
+  # scripts/classify-diff-mode.sh is invoked from scripts/render-specialist-prompt.sh
+  # via a `CLASSIFIER="$SCRIPT_DIR/classify-diff-mode.sh"` shell variable rather
+  # than a literal path — agent-lint's G004/dead-script rule does not follow shell
+  # variable indirection. render-specialist-prompt.sh itself IS structurally
+  # referenced from launch-cursor-review.sh / skills/review/SKILL.md.
+  "scripts/classify-diff-mode.sh",
   # scripts/launch-codex-implement.sh is invoked by skills/implement/scripts/
   # step2-implement.sh via a `"$LAUNCHER"` variable rather than a literal
   # `${CLAUDE_PLUGIN_ROOT}/scripts/...` path — agent-lint's G004/dead-script
