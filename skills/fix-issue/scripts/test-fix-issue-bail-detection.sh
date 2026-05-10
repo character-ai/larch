@@ -9,28 +9,21 @@
 # conformance test. Runtime enforcement is the LLM-level orchestration of
 # Step 5a per the prose contract.
 #
-# Fourteen assertions against the extracted Step 5a block:
-#   (a1) SIMPLE bullet forwards "--issue $ISSUE_NUMBER".
-#   (a2) HARD bullet forwards "--issue $ISSUE_NUMBER".
-#   (a3) SIMPLE bullet forwards "--no-admin-fallback" (issue #559 — branch-protection bypass safety flag).
-#   (a4) HARD bullet forwards "--no-admin-fallback" (issue #559 — branch-protection bypass safety flag).
-#   (a5) SIMPLE bullet forwards "--coder=$coder" (pass-through implementer-selection flag).
-#   (a6) HARD bullet forwards "--coder=$coder" (pass-through implementer-selection flag).
-#   (a7) SIMPLE bullet forwards "--auto" (pass-through autonomous-mode flag).
-#   (a8) HARD bullet forwards "--auto" (pass-through autonomous-mode flag).
-#   (a9) HARD bullet forwards "--inline" (pass-through /design execution-topology
-#        flag; HARD-only because SIMPLE uses /implement --quick which skips
-#        /design and renders --inline a no-op).
-#   (a10) SIMPLE bullet does NOT contain the forwarding spell
-#        "[--inline if inline_mode]" (encodes the design decision that SIMPLE
-#        intentionally omits the forward; checks the spell rather than the
-#        bare substring "--inline" so adjacent prose mentions are tolerated).
-#   (a11) HARD bullet does NOT contain the forwarding spell
-#        "[--quick if quick_mode]" — SIMPLE is now the default so the old
-#        no-op safety net is removed; the HARD bullet no longer conditionally
-#        forwards --quick. Same spell-check approach as a10.
-#   (a12) SIMPLE bullet unconditionally contains "--quick" — encodes that
-#        SIMPLE always uses /implement --quick (the reduced review loop path).
+# Ten assertions against the extracted Step 5a block:
+#   (a1) Invocation forwards "--issue $ISSUE_NUMBER".
+#   (a2) Invocation forwards "--no-admin-fallback" (branch-protection bypass
+#        safety flag; issue #559).
+#   (a3) Invocation forwards "--coder=$coder" (pass-through implementer flag).
+#   (a4) Invocation forwards "[--auto if auto_mode]" (autonomous-mode flag).
+#   (a5) Invocation contains "[--hard if hard_mode]" — /fix-issue delegates
+#        HARD/SIMPLE selection to /implement via this conditional flag.
+#   (a6) Invocation does NOT unconditionally contain "--quick" — the old SIMPLE
+#        path that passed --quick unconditionally is gone; /implement now decides
+#        SIMPLE vs HARD via its own simplicity classification when --hard is
+#        absent.
+#   (a7) Invocation contains "[--inline if inline_mode and hard_mode]" — encodes
+#        that --inline is forwarded only when --hard is also set (because --inline
+#        only matters when /design runs, which requires HARD mode).
 #   (b)  Literal token "IMPLEMENT_BAIL_REASON=adopted-issue-closed" present.
 #   (c)  Warning prefix "/implement bailed: issue #" present.
 #   (d)  Specific directive "Do NOT call `issue-lifecycle.sh close`" present
@@ -92,110 +85,53 @@ assert_contains() {
     fi
 }
 
-# Assertion helper — a specific bullet line contains a literal.
-# Usage: assert_bullet_contains <label> <bullet_marker> <literal>
-# <bullet_marker> is matched at line start (e.g., "- **SIMPLE**").
-assert_bullet_contains() {
-    local label="$1" marker="$2" literal="$3"
-    local line
-    line=$(grep -F -- "$marker" <<<"$STEP5A_BLOCK" | head -1 || true)
-    if [[ -n "$line" && "$line" == *"$literal"* ]]; then
-        PASS_COUNT=$((PASS_COUNT + 1))
-        echo "  PASS: $label"
-    else
-        echo "  FAIL: $label" >&2
-        if [[ -z "$line" ]]; then
-            echo "    bullet not found: $marker" >&2
-        else
-            echo "    bullet: $line" >&2
-            echo "    missing literal: $literal" >&2
-        fi
-        exit 1
-    fi
-}
-
 echo "Running test-fix-issue-bail-detection against $SKILL_MD"
 
-# (a) --issue $ISSUE_NUMBER appears in both the SIMPLE and HARD /implement invocation bullets.
-assert_bullet_contains "a1: SIMPLE bullet forwards --issue \$ISSUE_NUMBER" '- **SIMPLE**' '--issue $ISSUE_NUMBER'
-assert_bullet_contains "a2: HARD bullet forwards --issue \$ISSUE_NUMBER"   '- **HARD**'   '--issue $ISSUE_NUMBER'
+# (a1) --issue $ISSUE_NUMBER must appear in the /implement invocation.
+assert_contains "a1: invocation forwards --issue \$ISSUE_NUMBER" '--issue $ISSUE_NUMBER'
 
-# (a3, a4) --no-admin-fallback forwarding — branch-protection bypass safety flag (issue #559).
+# (a2) --no-admin-fallback forwarding — branch-protection bypass safety flag (issue #559).
 # Without this guard, a future refactor could silently strip the forward, leaving
 # /fix-issue --no-admin-fallback callers exposed to the silent --admin override.
-assert_bullet_contains "a3: SIMPLE bullet forwards --no-admin-fallback" '- **SIMPLE**' '--no-admin-fallback'
-assert_bullet_contains "a4: HARD bullet forwards --no-admin-fallback"   '- **HARD**'   '--no-admin-fallback'
+assert_contains "a2: invocation forwards --no-admin-fallback" '--no-admin-fallback'
 
-# (a5, a6) --coder forwarding — pass-through implementer-selection flag.
-# Without this guard, a future refactor could silently drop the forward and
-# /fix-issue --coder=<value> callers would silently fall back to /implement's
-# default coder.
-assert_bullet_contains "a5: SIMPLE bullet forwards --coder=" '- **SIMPLE**' '--coder=$coder'
-assert_bullet_contains "a6: HARD bullet forwards --coder="   '- **HARD**'   '--coder=$coder'
+# (a3) --coder forwarding — pass-through implementer-selection flag.
+# Without this guard, /fix-issue --coder=<value> callers would silently fall
+# back to /implement's default coder.
+assert_contains "a3: invocation forwards --coder=\$coder" '--coder=$coder'
 
-# (a7, a8) --auto forwarding — pass-through autonomous-mode flag.
-# Without this guard, a future refactor could silently drop the forward and
-# /fix-issue --auto callers would silently lose autonomous behavior in the
-# delegated /implement run.
-assert_bullet_contains "a7: SIMPLE bullet forwards --auto" '- **SIMPLE**' '[--auto if auto_mode]'
-assert_bullet_contains "a8: HARD bullet forwards --auto"   '- **HARD**'   '[--auto if auto_mode]'
+# (a4) --auto forwarding — pass-through autonomous-mode flag.
+assert_contains "a4: invocation forwards [--auto if auto_mode]" '[--auto if auto_mode]'
 
-# (a9) HARD bullet forwards --inline. /implement's --inline only matters when
-# /design runs, which is the HARD path; SIMPLE uses /implement --quick which
-# skips /design entirely.
-assert_bullet_contains "a9: HARD bullet forwards --inline" '- **HARD**' '[--inline if inline_mode]'
+# (a5) [--hard if hard_mode] — /fix-issue delegates HARD/SIMPLE selection to
+# /implement. When --hard is passed by the operator, it is forwarded; otherwise
+# no HARD/SIMPLE control flag is sent and /implement decides via its own
+# simplicity classification.
+assert_contains "a5: invocation contains [--hard if hard_mode]" '[--hard if hard_mode]'
 
-# (a10) SIMPLE bullet does NOT contain the forwarding spell — encodes the
-# design decision that SIMPLE intentionally omits the forward (no-op there).
-# Checks for the exact spell '[--inline if inline_mode]' rather than the bare
-# substring '--inline', so future edits that mention --inline in adjacent
-# prose on the SIMPLE line do not false-fail.
-SIMPLE_LINE=$(grep -F -- '- **SIMPLE**' <<<"$STEP5A_BLOCK" | head -1 || true)
-if [[ -n "$SIMPLE_LINE" && "$SIMPLE_LINE" != *"[--inline if inline_mode]"* ]]; then
+# (a6) Invocation line does NOT unconditionally contain "--quick". The old
+# SIMPLE path that always passed --quick to /implement is removed; HARD/SIMPLE
+# selection is now delegated to /implement. Check for the unconditional token
+# "--quick" followed by a space or end-of-token (not part of "[--quick ...]").
+INVOCATION_LINE=$(grep -F -- '/implement --merge' <<<"$STEP5A_BLOCK" | head -1 || true)
+if [[ -n "$INVOCATION_LINE" && "$INVOCATION_LINE" != *" --quick "* && "$INVOCATION_LINE" != *"--quick]"* ]]; then
     PASS_COUNT=$((PASS_COUNT + 1))
-    echo "  PASS: a10: SIMPLE bullet does NOT forward --inline"
+    echo "  PASS: a6: invocation does NOT unconditionally contain --quick"
 else
-    echo "  FAIL: a10: SIMPLE bullet does NOT forward --inline" >&2
-    if [[ -z "$SIMPLE_LINE" ]]; then
-        echo "    SIMPLE bullet not found" >&2
+    echo "  FAIL: a6: invocation does NOT unconditionally contain --quick" >&2
+    if [[ -z "$INVOCATION_LINE" ]]; then
+        echo "    /implement --merge invocation line not found" >&2
     else
-        echo "    SIMPLE bullet unexpectedly contains '[--inline if inline_mode]': $SIMPLE_LINE" >&2
+        echo "    invocation line: $INVOCATION_LINE" >&2
+        echo "    found unconditional --quick in invocation" >&2
     fi
     exit 1
 fi
 
-# (a11) HARD bullet does NOT contain [--quick if quick_mode] — SIMPLE is now
-# the default so the old no-op safety net is removed. Mirrors a10's spell-check
-# approach: checks for the exact spell rather than the bare substring.
-HARD_LINE_QUICK=$(grep -F -- '- **HARD**' <<<"$STEP5A_BLOCK" | head -1 || true)
-if [[ -n "$HARD_LINE_QUICK" && "$HARD_LINE_QUICK" != *"[--quick if quick_mode]"* ]]; then
-    PASS_COUNT=$((PASS_COUNT + 1))
-    echo "  PASS: a11: HARD bullet does NOT contain [--quick if quick_mode]"
-else
-    echo "  FAIL: a11: HARD bullet does NOT contain [--quick if quick_mode]" >&2
-    if [[ -z "$HARD_LINE_QUICK" ]]; then
-        echo "    HARD bullet not found" >&2
-    else
-        echo "    HARD bullet unexpectedly contains '[--quick if quick_mode]': $HARD_LINE_QUICK" >&2
-    fi
-    exit 1
-fi
-
-# (a12) SIMPLE bullet unconditionally contains --quick — encodes that SIMPLE
-# always uses /implement --quick (the reduced review loop path).
-SIMPLE_LINE_QUICK=$(grep -F -- '- **SIMPLE**' <<<"$STEP5A_BLOCK" | head -1 || true)
-if [[ -n "$SIMPLE_LINE_QUICK" && "$SIMPLE_LINE_QUICK" == *"--quick"* ]]; then
-    PASS_COUNT=$((PASS_COUNT + 1))
-    echo "  PASS: a12: SIMPLE bullet unconditionally contains --quick"
-else
-    echo "  FAIL: a12: SIMPLE bullet unconditionally contains --quick" >&2
-    if [[ -z "$SIMPLE_LINE_QUICK" ]]; then
-        echo "    SIMPLE bullet not found" >&2
-    else
-        echo "    SIMPLE bullet missing '--quick': $SIMPLE_LINE_QUICK" >&2
-    fi
-    exit 1
-fi
+# (a7) [--inline if inline_mode and hard_mode] — encodes that --inline is only
+# forwarded when --hard is also set (--inline only matters when /design runs,
+# which requires HARD mode).
+assert_contains "a7: invocation forwards [--inline if inline_mode and hard_mode]" '[--inline if inline_mode and hard_mode]'
 
 # (b) Bail-token literal present.
 assert_contains "b: IMPLEMENT_BAIL_REASON=adopted-issue-closed literal" 'IMPLEMENT_BAIL_REASON=adopted-issue-closed'
