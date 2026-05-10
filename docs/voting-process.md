@@ -55,12 +55,12 @@ OOS_1: [OUT_OF_SCOPE] Code — <description of pre-existing issue>
 
 ## Voter Output Format
 
-Each voter outputs one line per finding:
+Each voter outputs one line per finding. YES votes require no reason; NO and EXONERATE votes require a one-line reason:
 
 ```text
-FINDING_1: YES — <one-line rationale>
-FINDING_2: NO — <one-line rationale>
-FINDING_3: EXONERATE — <one-line rationale>
+FINDING_1: YES
+FINDING_2: NO — <one-line reason>
+FINDING_3: EXONERATE — <one-line reason>
 ```
 
 ## Voting Flow

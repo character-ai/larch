@@ -24,7 +24,7 @@ Include the reviewer attribution so voters have context, but instruct voters to 
 
 ## Voter Output Format
 
-Each voter must output one line per ballot item, **using the same ID that appears on the ballot** — `FINDING_N` for in-scope items and `OOS_N` for out-of-scope items. YES votes require no rationale; NO and EXONERATE votes require a one-line reason:
+Each voter must output one line per ballot item, **using the same ID that appears on the ballot** — `FINDING_N` for in-scope items and `OOS_N` for out-of-scope items. YES votes require no reason; NO and EXONERATE votes require a one-line reason:
 
 ```
 FINDING_1: YES
@@ -32,6 +32,7 @@ FINDING_2: NO — <one-line reason>
 FINDING_3: EXONERATE — <one-line reason>
 OOS_1: YES
 OOS_2: NO — <one-line reason>
+OOS_3: EXONERATE — <one-line reason>
 ...
 ```
 
