@@ -103,6 +103,12 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
     <tr><td colspan="2">Configure the current checkout for upstream/fork OSS contribution: verify the fork, optionally sync it from upstream, rewire remotes, disable upstream pushes, and set <code>main</code> tracking.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
+      <td><a href="docs/skills.md#show-skill"><code>/show-skill</code></a></td>
+      <td><code>&lt;skill-name&gt;</code></td>
+    </tr>
+    <tr><td colspan="2">Display the contents of any skill's <code>SKILL.md</code> file. Accepts bare name, <code>larch:</code>-prefixed, or <code>/</code>-prefixed form.</td></tr>
+    <tr><td colspan="2"><hr></td></tr>
+    <tr>
       <td><a href="docs/skills.md#simplify-skill"><code>/simplify-skill</code></a></td>
       <td><code>&lt;skill-name&gt;</code></td>
     </tr>
