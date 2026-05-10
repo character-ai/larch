@@ -2,11 +2,13 @@
 # test-anti-improvised-wakeup.sh — Regression harness for the project-wide
 # guard against improvised ScheduleWakeup calls outside skill-script direction.
 #
-# Asserts two contracts:
+# Asserts three contracts:
 #
-#   (A) The project token appears in each project-wide / per-skill anchor that
-#       must forbid improvised ScheduleWakeup continuation.
-#   (B) The legacy /implement-specific token remains present in
+#   (A) The project token appears in the project-wide anchors:
+#       AGENTS.md and skills/shared/orchestrator-never.md.
+#   (B) The per-skill MANDATORY directive wiring is present in each skill
+#       that delegates to the shared file.
+#   (C) The legacy /implement-specific token remains present in
 #       skills/implement/SKILL.md, preserving its stricter NEVER #9 ratchet.
 #
 # Invoked via:  bash scripts/test-anti-improvised-wakeup.sh
@@ -24,13 +26,18 @@ REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 
 PROJECT_TOKEN='NEVER improvise ScheduleWakeup outside skill-script direction'
 IMPLEMENT_LEGACY_TOKEN="NEVER call \`ScheduleWakeup\` anywhere in the \`/implement\` orchestrator"
+MANDATORY_TOKEN='MANDATORY at session start'
 
 PROJECT_ANCHORS=(
   "AGENTS.md"
+  "skills/shared/orchestrator-never.md"
+)
+IMPLEMENT_LEGACY_ANCHOR="skills/implement/SKILL.md"
+
+MANDATORY_ANCHORS=(
   "skills/fix-issue/SKILL.md"
   "skills/research/SKILL.md"
 )
-IMPLEMENT_LEGACY_ANCHOR="skills/implement/SKILL.md"
 
 FAIL_COUNT=0
 PASS_COUNT=0
@@ -59,6 +66,12 @@ check_token_present() {
 echo "--- Project-wide improvised ScheduleWakeup guard ---"
 for rel in "${PROJECT_ANCHORS[@]}"; do
   check_token_present "$rel" "$PROJECT_TOKEN" "project token"
+done
+
+echo ""
+echo "--- Per-skill MANDATORY directive wiring ---"
+for rel in "${MANDATORY_ANCHORS[@]}"; do
+  check_token_present "$rel" "$MANDATORY_TOKEN" "MANDATORY directive token"
 done
 
 echo ""

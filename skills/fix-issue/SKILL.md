@@ -52,6 +52,8 @@ Step Name Registry:
 | 6 | close issue |
 | 8 | cleanup |
 
+**MANDATORY at session start — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/shared/orchestrator-never.md`. Contains cross-skill NEVER rules that apply to this skill in addition to the skill-specific Anti-patterns below.
+
 ## Anti-patterns
 
 Each rule states **Why** (the specific consequence of breaking the rule) and **How to apply** (where the invariant is load-bearing). Rules marked **CI-backed: yes** are mechanically enforced by `skills/fix-issue/scripts/test-fix-issue-bail-detection.sh` via an `awk` extraction over the `### 5a` block (under Step 5 — Execute); the remaining rules are editorial invariants that depend on the SKILL.md text being unambiguous.
@@ -68,7 +70,7 @@ Each rule states **Why** (the specific consequence of breaking the rule) and **H
 
 7. **NEVER auto-pick umbrellas in the no-arg find-lock-issue scan.** **Why**: the umbrella-PR design dialectic (DECISION_1, voted 2-1 ANTI_THESIS) chose explicit-target-only umbrella handling. Folding umbrella handling into the bulk sweep multiplies decision-surface complexity (umbrella resolution is a distinct state machine with non-GO locking, child-pick semantics, and finalization paths) and increases operator surprise (umbrellas can be passive long-lived planning trackers). **How to apply**: `umbrella-handler.sh` is invoked ONLY in the explicit-issue path of `find-lock-issue.sh`. Operators who want umbrella-tracked work to drain must explicitly pass the umbrella number (e.g., `/fix-issue <umbrella#>` once per dispatch cycle). **CI-backed**: yes — `test-find-lock-issue.sh` carries an `auto-pick-skips-umbrella` regression fixture.
 
-8. **NEVER improvise ScheduleWakeup outside skill-script direction.** **Why**: `/fix-issue` is single-iteration by contract — its terminal `✅ 8: cleanup — fix-issue complete!` line ends its transcript. The orchestrator (Claude) was observed calling `ScheduleWakeup` on its own initiative after Step 8 to fire another `/fix-issue` iteration, outside any of `/fix-issue`'s own steps. Recurring behavior is owned by `/loop`'s `<<autonomous-loop-dynamic>>` sentinel mechanism, not by orchestrator improvisation in `/fix-issue`'s terminal turn. **How to apply**: this skill has no step that calls `ScheduleWakeup`; do not call it anywhere from Step 0 through Step 8 or after Step 8 completes. See AGENTS.md for the project-wide rule that this entry mirrors. **CI-backed**: yes — `scripts/test-anti-improvised-wakeup.sh` pins the literal at this site.
+8. **NEVER improvise ScheduleWakeup outside skill-script direction.** See `${CLAUDE_PLUGIN_ROOT}/skills/shared/orchestrator-never.md` (loaded via MANDATORY above). **CI-backed**: yes — `scripts/test-anti-improvised-wakeup.sh` pins the literal in the shared file.
 
 ## Step 0 — Find and Lock
 
