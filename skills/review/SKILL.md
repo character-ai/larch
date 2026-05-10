@@ -246,7 +246,7 @@ External reviewer output collection, validation, and retry are handled by the sh
 
 ### Round-state machine (diff mode)
 
-**In diff mode**, this step repeats until reviewers find no more issues, the just-fixed round is classified non-substantial at Step 3f, or the round cap is hit. Track the current **round number** starting at 1.
+**In diff mode**, this step repeats until reviewers find no more issues, the just-fixed round is classified non-substantial at Step 3f, or the round cap is hit. Track the current **round number** starting at 1. Also track `pre_fix_sha=""` (HEAD SHA captured before each round's Step 3e fix implementation; empty for round 1) and `prev_had_security_correctness=false` (set when an accepted finding in the current round has focus area `security` or `correctness`).
 
 At the top of each Step 3 round iteration's bash block (before `### 3a — Collect` for round N), invoke:
 
@@ -323,13 +323,13 @@ Print to the user:
 - If rounds 1-3: vote counts per finding, accepted OOS items, and any findings not accepted by vote
 - Total count of accepted findings for this round
 
-After printing the round summary, IMMEDIATELY continue. **In diff mode**: if 0 findings were accepted this round, skip to Step 4; if >0 findings were accepted, proceed to Step 3e (Implement Fixes). **In description mode**: always skip to Step 4 after 3d (Step 3e is read-only skipped). Do NOT treat the summary as a stopping point.
+After printing the round summary, IMMEDIATELY continue. **In diff mode**: if 0 findings were accepted this round, skip to Step 4; if >0 findings were accepted, proceed to Step 3e (Implement Fixes). **In description mode**: always skip to Step 4 after 3d (Step 3e is read-only skipped). Do NOT treat the summary as a stopping point. **Churn-cap tracking** (diff mode only): if any accepted finding has focus area `security` or `correctness`, set `prev_had_security_correctness=true` so the next round's Step 3f diff-churn cap is bypassed.
 
 ### 3e — Implement Fixes
 
 **SKIPPED in description mode.** Description mode is read-only — proceed directly to Step 4 after Step 3d.
 
-**In diff mode**, for each **accepted in-scope** finding (`FINDING_*` items only — exclude `OOS_*` items, which are processed separately for issue filing by `/implement`):
+**In diff mode**, before applying fixes, capture `pre_fix_sha=$(git rev-parse HEAD 2>/dev/null || echo "")` — this SHA anchors Step 3f's diff-churn cap measurement for the next round. Then for each **accepted in-scope** finding (`FINDING_*` items only — exclude `OOS_*` items, which are processed separately for issue filing by `/implement`):
 
 1. Apply the suggested fix by editing the relevant file.
 2. If the fix involves creating new tests, write them.
@@ -357,7 +357,15 @@ After all fixes are applied, run validation checks:
 
 If `round_substantial=true`, increment the round number. IMMEDIATELY re-execute **Step 1** (gather the updated diff) then **Step 2** (launch reviewers again) then **Step 3** (collect, deduplicate, vote/evaluate, implement) as a fresh iteration of the review loop — do NOT halt, summarize, or wait for user input between rounds. The loop continues until reviewers report 0 findings, the last round produced only non-substantial findings (convergence), or the safety limit is reached (Step 3g).
 
-**Rounds 2-3 (full panel)**: Re-launch the full 7-reviewer panel per Step 2's launch procedure. Voting runs per Step 3c.1. The competition notice is included. This ensures multi-round specialist coverage with proper adjudication. If voting accepts 0 findings in any of rounds 1-3, the review loop terminates early.
+**Rounds 2-3 (diff-churn cap check first)**: Before re-launching the full panel, check whether the fix was trivial. When `pre_fix_sha` is non-empty, compute:
+
+```bash
+CHURN_LOC=$(git diff --numstat "${pre_fix_sha}" HEAD 2>/dev/null | awk '{add+=$1; del+=$2} END {print add+del+0}')
+```
+
+If `CHURN_LOC` < 10 AND `prev_had_security_correctness=false`: print `⚡ 3f: re-review — round $round_num diff-churn ${CHURN_LOC} LOC (<10, no security/correctness override); using single reviewer` and launch only a single Cursor generic reviewer (fallback: Codex generic if `codex_available`; else Claude Code Reviewer subagent) instead of the full panel — the same chain as rounds 4-7. The security/correctness override ensures one-line changes to critical invariants still get full panel coverage. Reset `prev_had_security_correctness=false` at the start of each new round.
+
+Otherwise (`CHURN_LOC >= 10` OR `prev_had_security_correctness=true`): Re-launch the full 7-reviewer panel per Step 2's launch procedure. Voting runs per Step 3c.1. The competition notice is included. This ensures multi-round specialist coverage with proper adjudication. If voting accepts 0 findings in any of rounds 1-3, the review loop terminates early.
 
 **Rounds 4-7 (single generic reviewer)**: Only launch **Cursor generic** (if `cursor_available`; else Codex generic if `codex_available`; else 1 Claude Code Reviewer subagent as fallback). Use the same generic diff-mode prompt from Step 2 (without the competition notice — there is no voting panel in rounds 4+). In rounds 4-7 Step 3a, collect from whichever single reviewer was launched: external output via `collect-agent-results.sh` (with Runtime Timeout Fallback on failure — retry the round with the next tool in the chain), or Claude subagent output directly. Findings that were rejected or exonerated by voting in rounds 1-3 are suppressed per Step 3c.1.
 
