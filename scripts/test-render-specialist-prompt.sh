@@ -34,6 +34,16 @@ assert_contains() {
   fi
 }
 
+assert_not_contains() {
+  local desc="$1" needle="$2" haystack="$3"
+  if printf '%s' "$haystack" | grep -qF "$needle"; then
+    FAIL=$((FAIL + 1))
+    echo "FAIL: $desc — should not contain: $needle" >&2
+  else
+    PASS=$((PASS + 1))
+  fi
+}
+
 assert_exit_code() {
   local desc="$1" expected="$2"
   shift 2
@@ -234,6 +244,18 @@ output_generated_auto=$(bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewe
 assert_contains "auto diff-mode generated: focused instruction" "generated-only diff" "$output_generated_auto"
 output_mixed_auto=$(bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-structure.md" --mode diff --diff-file "$MIXED_DIFF" 2>/dev/null)
 assert_contains "auto diff-mode mixed: generic instruction" "code-quality / risk-integration / correctness / architecture / security" "$output_mixed_auto"
+output_description_absence=$(bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-structure.md" --mode description --description-text "test description" --scope-files "$DOCS_DIFF" 2>/dev/null)
+for rendered_name in docs_auto tests_explicit generated_auto mixed_auto description; do
+  case "$rendered_name" in
+    docs_auto) rendered_output="$output_docs_auto" ;;
+    tests_explicit) rendered_output="$output_tests_explicit" ;;
+    generated_auto) rendered_output="$output_generated_auto" ;;
+    mixed_auto) rendered_output="$output_mixed_auto" ;;
+    description) rendered_output="$output_description_absence" ;;
+  esac
+  assert_not_contains "effort prose absent (${rendered_name}, your variant)" "Work at your maximum reasoning effort level." "$rendered_output"
+  assert_not_contains "effort prose absent (${rendered_name}, no-your variant)" "Work at maximum reasoning effort level." "$rendered_output"
+done
 rm -rf "$TMPDIR_DIFFMODE"
 
 echo ""

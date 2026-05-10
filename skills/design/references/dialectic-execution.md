@@ -12,7 +12,7 @@
 
 ---
 
-**Thesis/antithesis prompt templates**: these are loaded from the reference file below. Template bodies are byte-identical to Phase 1; only the delivery channel (external CLI via `run-external-agent.sh` rather than the Agent tool) and the call-site effort suffix change.
+**Thesis/antithesis prompt templates**: these are loaded from the reference file below. Template bodies are byte-identical to Phase 1; only the delivery channel changes (external CLI via `run-external-agent.sh` rather than the Agent tool). Reasoning effort is handled by the launcher wrappers.
 
 **MANDATORY — READ ENTIRE FILE before rendering debate prompts (step 6 below)**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/dialectic-debate.md` completely. It contains the byte-preserved Thesis agent template and Antithesis agent template with `{FEATURE_DESCRIPTION}`, `{SYNTHESIS_TEXT}`, `{DECISION_BLOCK}`, `{CHOSEN}`, `{ALTERNATIVE}`, `{TENSION}`, `{AFFECTED_FILES}` substitution placeholders plus the `<debater_synthesis>` and `<debater_decision>` reference-block wrappers.
 
@@ -35,7 +35,7 @@
      --output "$DESIGN_TMPDIR/debate-<n>-cursor-thesis.txt" \
      --timeout 1800 \
      --timing-task-kind cursor-debate-thesis \
-     --prompt "Read the dialectic-debate task description from $DESIGN_TMPDIR/debate-<n>-thesis-prompt.txt and follow it exactly to produce the structured tagged output it requests. Work at your maximum reasoning effort level."
+     --prompt "Read the dialectic-debate task description from $DESIGN_TMPDIR/debate-<n>-thesis-prompt.txt and follow it exactly to produce the structured tagged output it requests."
    ```
    Antithesis launch is identical except for the side suffix in `--output` and `--prompt` paths and the `--timing-task-kind` value:
    ```bash
@@ -43,7 +43,7 @@
      --output "$DESIGN_TMPDIR/debate-<n>-cursor-antithesis.txt" \
      --timeout 1800 \
      --timing-task-kind cursor-debate-antithesis \
-     --prompt "Read the dialectic-debate task description from $DESIGN_TMPDIR/debate-<n>-antithesis-prompt.txt and follow it exactly to produce the structured tagged output it requests. Work at your maximum reasoning effort level."
+     --prompt "Read the dialectic-debate task description from $DESIGN_TMPDIR/debate-<n>-antithesis-prompt.txt and follow it exactly to produce the structured tagged output it requests."
    ```
 
    Each Codex launch (use `run_in_background: true` and `timeout: 1860000`). Same literal-substitution rule per side: `--timing-task-kind codex-debate-thesis` for the thesis launch, `--timing-task-kind codex-debate-antithesis` for the antithesis launch. Thesis launch:
@@ -52,7 +52,7 @@
      --output "$DESIGN_TMPDIR/debate-<n>-codex-thesis.txt" \
      --timeout 1800 \
      --timing-task-kind codex-debate-thesis \
-     --prompt "Read the dialectic-debate task description from $DESIGN_TMPDIR/debate-<n>-thesis-prompt.txt and follow it exactly to produce the structured tagged output it requests. Work at your maximum reasoning effort level."
+     --prompt "Read the dialectic-debate task description from $DESIGN_TMPDIR/debate-<n>-thesis-prompt.txt and follow it exactly to produce the structured tagged output it requests."
    ```
    Antithesis launch is identical except for the side suffix in `--output` and `--prompt` paths and the `--timing-task-kind` value:
    ```bash
@@ -60,12 +60,12 @@
      --output "$DESIGN_TMPDIR/debate-<n>-codex-antithesis.txt" \
      --timeout 1800 \
      --timing-task-kind codex-debate-antithesis \
-     --prompt "Read the dialectic-debate task description from $DESIGN_TMPDIR/debate-<n>-antithesis-prompt.txt and follow it exactly to produce the structured tagged output it requests. Work at your maximum reasoning effort level."
+     --prompt "Read the dialectic-debate task description from $DESIGN_TMPDIR/debate-<n>-antithesis-prompt.txt and follow it exactly to produce the structured tagged output it requests."
    ```
 
    **Anti-pattern — do NOT use `VAR=value cmd ... "$VAR"` env-var-prefix idiom for these launches.** Bash expands `"$VAR"` in the parent shell BEFORE the env-var-prefix scope takes effect, so `"$VAR"` evaluates to empty in the parent (the assignment is only visible to `cmd`'s own environment). The launcher then receives `--timing-task-kind` followed immediately by the next flag (the empty value disappears under shell tokenization), which collapses argv into `--timing-task-kind --prompt "..."` and either passes `--prompt` as the timing-task-kind value or hits the unknown-flag branch — neither is the intended behavior. Always substitute the timing-task-kind literal directly per launch as shown above; do not factor it into a variable.
 
-   The trailing `Work at your maximum reasoning effort level.` is part of the prompt text (the wrapper scripts handle model-args and prompt-wrapping internally).
+   Reasoning effort is handled by the launcher wrappers (`--risk high` by default).
 
 8. **Collect** with health bookkeeping disabled (Option B enforcement):
    ```bash

@@ -12,6 +12,7 @@
 7. Security focus-area presence in all specialist outputs
 8. `--diff-file` preamble routing
 9. Diff-mode classifier and focused prompt routing for docs-only, test-only, generated-only, and generic diffs
+10. Absence of max-effort prose in all five tagging variants; launcher wrappers own effort handling
 
 **Makefile wiring**: `make test-harnesses` target.
 

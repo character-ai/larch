@@ -21,11 +21,17 @@ effects.
 - On normal success, `${OUTPUT}.done` appears only after `${OUTPUT}` contains
   extracted `.result` prose, not the raw Cursor JSON envelope.
 - `${OUTPUT}.meta` records `OUTER_LAUNCHER`,
-  `OUTER_LAUNCHER_PROMPT_FILE`, and `OUTER_LAUNCHER_WORKDIR` so
+  `OUTER_LAUNCHER_PROMPT_FILE`, `OUTER_LAUNCHER_WORKDIR`, and
+  `OUTER_LAUNCHER_RISK` so
   `scripts/collect-agent-results.sh` can replay empty Cursor outputs through
   the outer launcher instead of the inner `cursor agent` command.
-- `${OUTPUT}.prompt` stores the original unwrapped prompt byte-for-byte, and
-  `--prompt-file` preserves trailing newlines through the max-mode wrapper.
+- `${OUTPUT}.prompt` stores the original unwrapped prompt byte-for-byte. For
+  high-risk `--prompt-file` launches, the outgoing Cursor prompt preserves
+  those body bytes before the launcher-owned effort suffix.
+- `--risk high` (the default) applies Cursor max-mode wrapping plus the
+  launcher-owned effort suffix; `--risk low` skips both. Specialist
+  `--agent-file --diff-file` launches derive `low` only for docs-only,
+  test-only, or generated-only diffs, and outer retry preserves that risk.
 - Specialist `--agent-file ... --mode diff` prompts store the specialist-rendered
   body in `${OUTPUT}.prompt` without the hardening preamble, and replaying that
   sidecar with `--prompt-file` yields exactly one preamble in Cursor argv.

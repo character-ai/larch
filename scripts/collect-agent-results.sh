@@ -520,6 +520,7 @@ if [[ ${#RETRY_FILES[@]} -gt 0 ]]; then
         META_OUTER_LAUNCHER=""
         META_OUTER_LAUNCHER_PROMPT_FILE=""
         META_OUTER_LAUNCHER_WORKDIR=""
+        META_OUTER_LAUNCHER_RISK=""
         while IFS= read -r meta_line || [[ -n "$meta_line" ]]; do
             meta_key="${meta_line%%=*}"
             meta_val="${meta_line#*=}"
@@ -533,6 +534,7 @@ if [[ ${#RETRY_FILES[@]} -gt 0 ]]; then
                 OUTER_LAUNCHER) META_OUTER_LAUNCHER="$meta_val" ;;
                 OUTER_LAUNCHER_PROMPT_FILE) META_OUTER_LAUNCHER_PROMPT_FILE="$meta_val" ;;
                 OUTER_LAUNCHER_WORKDIR) META_OUTER_LAUNCHER_WORKDIR="$meta_val" ;;
+                OUTER_LAUNCHER_RISK) META_OUTER_LAUNCHER_RISK="$meta_val" ;;
             esac
         done < "$META"
 
@@ -622,6 +624,10 @@ if [[ ${#RETRY_FILES[@]} -gt 0 ]]; then
                 mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: OUTER_LAUNCHER_WORKDIR not a directory"
                 continue
             fi
+            case "$META_OUTER_LAUNCHER_RISK" in
+                high|low) ;;
+                *) META_OUTER_LAUNCHER_RISK=high ;;
+            esac
             (
                 cd "$META_OUTER_LAUNCHER_WORKDIR" || exit 1
                 # Sanitize test-hook env vars before exec (R2_FINDING_1 of
@@ -643,6 +649,7 @@ if [[ ${#RETRY_FILES[@]} -gt 0 ]]; then
                     -- "$META_OUTER_LAUNCHER" \
                         --output "$RETRY_OUTPUT" \
                         --timeout "$META_TIMEOUT" \
+                        --risk "$META_OUTER_LAUNCHER_RISK" \
                         --prompt-file "$META_OUTER_LAUNCHER_PROMPT_FILE"
             ) >/dev/null 2>&1 &
             RETRY_SENTINELS+=("${RETRY_OUTPUT}.done")

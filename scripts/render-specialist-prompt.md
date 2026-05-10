@@ -1,6 +1,6 @@
 # render-specialist-prompt.sh
 
-**Purpose**: Render a specialist reviewer agent definition from `agents/reviewer-*.md` into a complete review prompt suitable for `cursor agent -p` or `codex exec`. Extracts the agent body (after YAML frontmatter), prepends mode-specific review context, appends focus-area tagging instructions, and optionally appends the competition notice.
+**Purpose**: Render a specialist reviewer agent definition from `agents/reviewer-*.md` into a complete review prompt suitable for `cursor agent -p` or `codex exec`. Extracts the agent body (after YAML frontmatter), prepends mode-specific review context, appends focus-area tagging instructions, and optionally appends the competition notice. The renderer does not append reasoning-effort prose; launcher wrappers own risk-gated effort handling.
 
 **Invariants**:
 - Deterministic: no timestamps, no git state, no locale-dependent output (`LC_ALL=C`).

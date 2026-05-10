@@ -163,7 +163,7 @@ DECISION_N: ANTI_THESIS — <one-line rationale>
 You must vote on every DECISION_N on the ballot. Do NOT skip any. Do NOT modify files.
 ```
 
-For external judges, the bash launch suffix `Work at your maximum reasoning effort level.` is appended at the launch level (not in the protocol template body), mirroring the debater-launch convention in `skills/design/SKILL.md`. For the Claude subagent judge, session-default effort applies.
+For external judges, effort is handled via the launch mechanism (Codex: `--with-effort` via `agent-model-args.sh`; Cursor: `/max-mode on.` via `cursor-wrap-prompt.sh`). The prose suffix is not appended to judge prompts. For the Claude subagent judge, session-default effort applies.
 
 ## Launching Judges
 
@@ -195,7 +195,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/run-external-agent.sh --tool cursor \
     ${CURSOR_MODEL_ARGS[@]+"${CURSOR_MODEL_ARGS[@]}"} \
     ${CURSOR_AUTH_FLAGS[@]+"${CURSOR_AUTH_FLAGS[@]}"} \
     --workspace "$PWD" \
-    "$("${CLAUDE_PLUGIN_ROOT}/scripts/cursor-wrap-prompt.sh" "<judge prompt from template above>. Work at your maximum reasoning effort level.")"
+    "$("${CLAUDE_PLUGIN_ROOT}/scripts/cursor-wrap-prompt.sh" "<judge prompt from template above>.")"
 ```
 
 Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
@@ -219,7 +219,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/run-external-agent.sh --tool codex \
   codex exec --full-auto -C "$PWD" \
     ${CODEX_MODEL_ARGS[@]+"${CODEX_MODEL_ARGS[@]}"} \
     --output-last-message "$DIALECTIC_TMPDIR/codex-judge-output.txt" \
-    "<judge prompt from template above>. Work at your maximum reasoning effort level."
+    "<judge prompt from template above>."
 ```
 
 Use `run_in_background: true` and `timeout: 1860000`.

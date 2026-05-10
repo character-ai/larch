@@ -16,11 +16,17 @@ external_launcher_append_outer_meta() {
     local outer_launcher_path="$2"
     local prompt_file_sidecar="$3"
     local workdir="$4"
+    local risk="${5:-${RISK:-high}}"
     [[ -f "$meta_path" ]] || return 0
+    case "$risk" in
+        high|low) ;;
+        *) risk=high ;;
+    esac
     {
         printf 'OUTER_LAUNCHER=%s\n' "$outer_launcher_path"
         printf 'OUTER_LAUNCHER_PROMPT_FILE=%s\n' "$prompt_file_sidecar"
         printf 'OUTER_LAUNCHER_WORKDIR=%s\n' "$workdir"
+        printf 'OUTER_LAUNCHER_RISK=%s\n' "$risk"
     } >> "$meta_path"
 }
 

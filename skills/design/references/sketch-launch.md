@@ -12,7 +12,7 @@
 
 **Critical sequencing**: You MUST launch all external sketch Bash tool calls (with `run_in_background: true`) AND any Claude subagent fallback sketches in a single message. Issue Cursor slots first (slowest), then Codex slots, then any Claude subagent fallbacks.
 
-**Personality prompts**: the four personality prompts and the generic prompt are shared across external slots (Cursor/Codex) and Claude fallbacks (Agent tool). Token bodies are defined in `references/sketch-prompts.md` (loaded separately via the companion MANDATORY directive at Step 2a.2). For Claude fallback Agent-tool invocations, drop the "Work at your maximum reasoning effort level" trailing suffix — Claude uses session-default effort.
+**Personality prompts**: the four personality prompts and the generic prompt are shared across external slots (Cursor/Codex) and Claude fallbacks (Agent tool). Token bodies are defined in `references/sketch-prompts.md` (loaded separately via the companion MANDATORY directive at Step 2a.2). Prompt bodies do not carry reasoning-effort prose; external launcher wrappers apply their high-effort mechanisms by default, and Claude fallback Agent-tool invocations use session-default effort.
 
 ## Regular Mode (`quick_mode=false`)
 
@@ -26,7 +26,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/launch-cursor-review.sh --output "$DESIGN_TMPDIR/c
 
 Use `run_in_background: true` and `timeout: 1260000` on the Bash tool call.
 
-**Cursor — Architecture/Standards fallback** (if `cursor_available` is false): Launch a Claude subagent via the Agent tool with `<ARCH_PROMPT>` (drop the "Work at your maximum reasoning effort level" suffix — Claude uses session-default effort).
+**Cursor — Architecture/Standards fallback** (if `cursor_available` is false): Launch a Claude subagent via the Agent tool with `<ARCH_PROMPT>` (Claude uses session-default effort).
 
 **Cursor — Edge-cases/Failure-modes** (if `cursor_available`):
 
@@ -36,7 +36,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/launch-cursor-review.sh --output "$DESIGN_TMPDIR/c
 
 Use `run_in_background: true` and `timeout: 1260000` on the Bash tool call.
 
-**Cursor — Edge-cases/Failure-modes fallback** (if `cursor_available` is false): Claude subagent with `<EDGE_PROMPT>` (effort suffix dropped).
+**Cursor — Edge-cases/Failure-modes fallback** (if `cursor_available` is false): Claude subagent with `<EDGE_PROMPT>` (Claude uses session-default effort).
 
 **Codex — Innovation/Exploration** (if `codex_available`):
 
@@ -46,7 +46,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/launch-codex-review.sh --output "$DESIGN_TMPDIR/co
 
 Use `run_in_background: true` and `timeout: 1260000` on the Bash tool call.
 
-**Codex — Innovation/Exploration fallback** (if `codex_available` is false): Claude subagent with `<INNOVATION_PROMPT>` (effort suffix dropped).
+**Codex — Innovation/Exploration fallback** (if `codex_available` is false): Claude subagent with `<INNOVATION_PROMPT>` (Claude uses session-default effort).
 
 **Codex — Pragmatism/Safety** (if `codex_available`):
 
@@ -56,7 +56,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/launch-codex-review.sh --output "$DESIGN_TMPDIR/co
 
 Use `run_in_background: true` and `timeout: 1260000` on the Bash tool call.
 
-**Codex — Pragmatism/Safety fallback** (if `codex_available` is false): Claude subagent with `<PRAGMATIC_PROMPT>` (effort suffix dropped).
+**Codex — Pragmatism/Safety fallback** (if `codex_available` is false): Claude subagent with `<PRAGMATIC_PROMPT>` (Claude uses session-default effort).
 
 ## Quick Mode (`quick_mode=true`)
 
@@ -70,7 +70,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/launch-cursor-review.sh --output "$DESIGN_TMPDIR/c
 
 Use `run_in_background: true` and `timeout: 1260000` on the Bash tool call.
 
-**Cursor — Generic fallback** (if `cursor_available` is false): Claude subagent with `<GENERIC_PROMPT>` (effort suffix dropped).
+**Cursor — Generic fallback** (if `cursor_available` is false): Claude subagent with `<GENERIC_PROMPT>` (Claude uses session-default effort).
 
 **Codex — Generic** (if `codex_available`):
 
@@ -80,4 +80,4 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/launch-codex-review.sh --output "$DESIGN_TMPDIR/co
 
 Use `run_in_background: true` and `timeout: 1260000` on the Bash tool call.
 
-**Codex — Generic fallback** (if `codex_available` is false): Claude subagent with `<GENERIC_PROMPT>` (effort suffix dropped).
+**Codex — Generic fallback** (if `codex_available` is false): Claude subagent with `<GENERIC_PROMPT>` (Claude uses session-default effort).

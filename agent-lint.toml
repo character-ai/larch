@@ -443,6 +443,12 @@ exclude = [
   "scripts/pre-commit-shellcheck.sh",
   "scripts/pre-commit-shellcheck.md",
   "scripts/test-sessionstart-health.sh",
+  # scripts/test-effort-prose.sh is the regression harness for prompt-source
+  # max-effort prose drift. Referenced only from Makefile (test-effort-prose
+  # target), docs/linting.md, and scripts/test-effort-prose.md (sibling
+  # contract), matching the same Makefile-only pattern as other test-* harnesses.
+  "scripts/test-effort-prose.sh",
+  "scripts/test-effort-prose.md",
   # scripts/test-preflight-args.sh is the regression harness for
   # scripts/preflight.sh flag semantics and stalled-run sentinel clearing.
   # Referenced only from Makefile (test-preflight-args target) and
