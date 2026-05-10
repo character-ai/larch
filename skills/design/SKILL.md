@@ -400,7 +400,7 @@ Otherwise, read `$DESIGN_TMPDIR/approach-synthesis.txt` — this provides `{SYNT
 
 Execute steps 6 through the final `✅ 2a.5: dialectic — …` print directive as documented in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/dialectic-execution.md` (loaded via the MANDATORY directive above). That file is the single normative source for dialectic-execution mechanics. The final `Write $DESIGN_TMPDIR/dialectic-resolutions.md` sub-step (including the per-disposition field rules) lives inside that reference; print the `## Dialectic Resolutions` header at the end and the `✅ 2a.5: dialectic — <V> voted, <F> fallback, <S> bucket-skipped, <O> over-cap (<elapsed>)` print directive (omit a count if zero).
 
-After each dialectic collection boundary (debate results and judge results), follow the dirty-tree probe contract in `references/heavy-worker.md`: consult launcher sidecars, run `check-mid-run-dirty-tree.sh --mode checkpoint`, and ask for recovery on dirty/unknown regardless of `auto_mode`, deduped by `$DESIGN_TMPDIR/.dirty-tree-prompted-<boundary>`.
+After each dialectic collection boundary (debate results and judge results), follow the dirty-tree probe contract in `references/heavy-worker.digest.md`: consult launcher sidecars, run `check-mid-run-dirty-tree.sh --mode checkpoint`, and ask for recovery on dirty/unknown regardless of `auto_mode`, deduped by `$DESIGN_TMPDIR/.dirty-tree-prompted-<boundary>`.
 
 ## Step 2b — Design the Implementation Plan
 
