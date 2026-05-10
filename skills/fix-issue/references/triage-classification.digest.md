@@ -31,7 +31,6 @@ SKILL.md Step 3 then invokes `issue-lifecycle.sh close --close-class <value>`, `
 - `NON_PR`: research/review → issues or written report. Pick when the issue explicitly forbids a PR or mandates research/issues as the deliverable.
 
 **Dimension 2 — Complexity** (only when `INTENT=PR`):
-- `SIMPLE`: ≤2 files, obvious solution, no architectural decisions.
-- `SIMPLE`: default when uncertain.
-- `HARD`: everything else (multi-file, architectural decisions, unclear root cause).
+- `SIMPLE`: ≤2 files, obvious solution, no architectural decisions. Default when uncertain.
+- `HARD`: everything else (multi-file, new features, architectural decisions, unclear root cause).
 - `--hard` short-circuit: forces `COMPLEXITY=HARD` when `hard_mode=true` and `INTENT=PR`.

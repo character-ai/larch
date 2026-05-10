@@ -52,8 +52,8 @@ Does this issue prescribe work that should produce a pull request?
 
 ### Dimension 2 — Complexity (evaluated only when `INTENT=PR`)
 
-- **SIMPLE**: Isolated fix in 2 or fewer files. Obvious solution with no architectural decisions needed. Examples: typo fix, small bug with clear root cause, config change.
-- **HARD**: Everything else. Multi-file changes, new features, architectural decisions, unclear root cause, or any uncertainty.
+- **SIMPLE**: Isolated fix in 2 or fewer files. Obvious solution with no architectural decisions needed. Examples: typo fix, small bug with clear root cause, config change. **Default when uncertain.**
+- **HARD**: Multi-file changes, new features, architectural decisions, or genuinely complex root cause. Use `--hard` to force this path.
 
 **Default to SIMPLE when uncertain.** Most issues are isolated fixes; the SIMPLE path is faster and sufficient for the majority of cases. Use HARD for genuinely multi-file or architecturally complex work.
 

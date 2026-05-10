@@ -25,17 +25,12 @@
 #        "[--inline if inline_mode]" (encodes the design decision that SIMPLE
 #        intentionally omits the forward; checks the spell rather than the
 #        bare substring "--inline" so adjacent prose mentions are tolerated).
-#   (a11) HARD bullet forwards "[--quick if quick_mode]" (preserved
-#        compatibility pin — historically the operator escape hatch for
-#        HARD classifications; under the current Step 4 short-circuit,
-#        quick_mode=true AND INTENT=PR forces COMPLEXITY=SIMPLE directly,
-#        so the HARD-bullet segment is unreachable for the PR path. The
-#        assertion is preserved as CI parity protection against
-#        accidental removal during refactors and as a no-op safety net).
-#   (a12) SIMPLE bullet does NOT contain the forwarding spell
-#        "[--quick if quick_mode]" (SIMPLE already passes "--quick"
-#        unconditionally, so the conditional forward would be redundant; same
-#        spell-check approach as a10).
+#   (a11) HARD bullet does NOT contain the forwarding spell
+#        "[--quick if quick_mode]" — SIMPLE is now the default so the old
+#        no-op safety net is removed; the HARD bullet no longer conditionally
+#        forwards --quick. Same spell-check approach as a10.
+#   (a12) SIMPLE bullet unconditionally contains "--quick" — encodes that
+#        SIMPLE always uses /implement --quick (the reduced review loop path).
 #   (b)  Literal token "IMPLEMENT_BAIL_REASON=adopted-issue-closed" present.
 #   (c)  Warning prefix "/implement bailed: issue #" present.
 #   (d)  Specific directive "Do NOT call `issue-lifecycle.sh close`" present
