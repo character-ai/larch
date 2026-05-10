@@ -1,6 +1,6 @@
 # test-intra-batch-deps.sh — sibling contract
 
-**Purpose**: structural regression harness pinning the intra-batch dependency decoupling from external CANDIDATES in `/issue` SKILL.md. Asserts that Step 4D/4E redirect to Step 5 when `N_NON_MALFORMED >= 2`, Step 5's gate admits the intra-batch-only path, fetch is conditionally skipped, empty-CANDIDATES verdict guidance exists, the no-external-refs validation rule and FETCH_STATUS scope narrowing are pinned, and the old unconditional short-circuit clause is absent.
+**Purpose**: structural regression harness pinning the intra-batch dependency decoupling from external CANDIDATES in `/issue` SKILL.md. Asserts that Step 4D/4E redirect to Step 5 when `N_NON_MALFORMED >= 2`, Step 5's gate admits the intra-batch-only path, fetch is conditionally skipped, empty-CANDIDATES verdict guidance exists, the no-external-refs validation rule and FETCH_STATUS scope narrowing are pinned, the old unconditional short-circuit clause is absent, and the `--no-dep-llm` flag and its dep-edge-skip gating prose are present.
 
 **Makefile wiring**: `make test-intra-batch-deps` (listed in `.PHONY` and in exactly one `test-harnesses-N:` shard prerequisite list — the umbrella `test-harnesses` aggregates all six shards).
 
@@ -15,5 +15,7 @@
 8. Step 1 contains "intra-batch-deps-file FILE" — pins the new flag in the supported flags list (needle omits leading `--` to avoid grep flag collision).
 9. Step 5 contains "Caller-supplied intra-batch deps merge" — pins the merge semantics heading.
 10. Step 1 contains "max 500 lines, max 64KB file size" — pins the parser-side limits.
+11. SKILL.md contains "no-dep-llm" — pins the new flag (needle omits leading `--` to avoid grep flag collision, matching the existing convention).
+12. Step 5 contains "no_dep_llm=true" — pins the dep-edge-skip gating prose.
 
 **Edit-in-sync rules**: if the asserted strings in SKILL.md change (e.g., rewording the Step 4E redirect or Step 5 gate), update this harness's `assert_present`/`assert_absent` needles in the same PR.
