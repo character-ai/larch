@@ -198,7 +198,7 @@ The generic Codex reviewer uses attribution label `Codex`. The Claude generic re
 
 Launch **all reviewers in a single message**. Spawn order: specialist slots first (slowest), then Codex generic, then Claude generic.
 
-**5 specialist slots** — for each specialist (`structure`, `correctness`, `testing`, `security`, `edge-cases`), only launch when `cursor_available`. When `cursor_available` is false, skip all specialist slots (use only the generic Codex + Claude generic). The wrappers handle prompt rendering (`render-specialist-prompt.sh`), model args (`agent-model-args.sh`), and prompt wrapping (`cursor-wrap-prompt.sh` for Cursor) internally:
+**5 specialist slots** — for each specialist (`structure`, `correctness`, `testing`, `security`, `edge-cases`), only launch when `cursor_available`. When `cursor_available` is false, skip all specialist slots (use only the generic Codex + Claude generic). The wrappers handle prompt rendering (`render-specialist-prompt.sh`), model args (`agent-model-args.sh`), and prompt wrapping internally. `launch-cursor-review.sh` applies the `/max-mode on.` prefix and the max-effort prose suffix only when the effective risk is `high` (the default for generic and specialist diffs; `low` for docs-only, test-only, and generated-only diffs):
 
 **Cursor specialist** (if `cursor_available`; set `CURSOR_SPECIALIST_TIMING_KIND=cursor-specialist-<name>` with `<name>` replaced by `structure`, `correctness`, `testing`, `security`, or `edge-cases`):
 

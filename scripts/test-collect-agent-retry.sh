@@ -739,6 +739,22 @@ else
     ok "case Z env sanitized — hook sentinel did not fire"
 fi
 
+# Case corrupt-risk: OUTER_LAUNCHER_RISK=medium (invalid value) in the .meta file
+# must be normalized to 'high' and the outer launcher must still be retried
+# successfully (fail-closed: unknown risk → high effort).
+OUT_CORRUPT_RISK="$TMPDIR/cursor-corrupt-risk.txt"
+HEALTH_CORRUPT_RISK="$TMPDIR/case-corrupt-risk.health"
+WORKDIR_CORRUPT_RISK="$TMPDIR/workdir-corrupt-risk"
+mkdir -p "$WORKDIR_CORRUPT_RISK"
+prepare_outer_candidate "$OUT_CORRUPT_RISK"
+write_outer_meta "$OUT_CORRUPT_RISK" "$REPO_ROOT/scripts/launch-cursor-review.sh" \
+    "${OUT_CORRUPT_RISK}.prompt" "$WORKDIR_CORRUPT_RISK" 'OUTER_LAUNCHER_RISK=medium'
+export CURSOR_STUB_RESULT="POST-PROCESSED OK"
+RESULT_CORRUPT_RISK=$(PATH="$CURSOR_STUB_BIN:$PATH" run_collector bash "$OUT_CORRUPT_RISK" "$HEALTH_CORRUPT_RISK")
+assert_line "case corrupt-risk status" "STATUS=OK" "$RESULT_CORRUPT_RISK"
+assert_line "case corrupt-risk healthy" "HEALTHY=true" "$RESULT_CORRUPT_RISK"
+assert_line "case corrupt-risk reviewer file" "REVIEWER_FILE=${OUT_CORRUPT_RISK%.txt}-retry.txt" "$RESULT_CORRUPT_RISK"
+
 # Case cap_hit: output file whose first line is STATUS=cap_hit is classified
 # as STATUS=cap_hit HEALTHY=true by collect-agent-results.sh and does NOT
 # trigger a retry (no .meta file required, no retry output created).

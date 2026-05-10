@@ -128,6 +128,7 @@ PATH="$STUB_BIN:$PATH" "$LAUNCHER" --output "$OUT_B" --timeout 5 --prompt "origi
 assert_grep "case B outer launcher" "^OUTER_LAUNCHER=$REPO_ROOT/scripts/launch-cursor-review.sh$" "${OUT_B}.meta"
 assert_grep "case B outer prompt" "^OUTER_LAUNCHER_PROMPT_FILE=${OUT_B}.prompt$" "${OUT_B}.meta"
 assert_grep "case B workdir" "^OUTER_LAUNCHER_WORKDIR=$(pwd -P)$" "${OUT_B}.meta"
+assert_grep "case B outer launcher risk" "^OUTER_LAUNCHER_RISK=high$" "${OUT_B}.meta"
 # Issue #1529: the OUTPUT.prompt sidecar holds the user-original prompt
 # (no preamble) so collect-agent-results.sh empty-output retry can replay
 # via --prompt-file without double-prepending the HARD CONSTRAINTS block.
@@ -168,8 +169,7 @@ else
     fail "case C default/high risk wrapped prompt must contain the effort suffix"
 fi
 assert_grep "case C wrapped prompt preamble" "HARD CONSTRAINTS — your role is read-only review" "$PROMPT_LOG_C"
-PROMPT_LOG_C_BYTES=$(cat "$PROMPT_LOG_C")
-if [[ "$PROMPT_LOG_C_BYTES" == *$'line one\n\n Work at your maximum reasoning effort level.' ]]; then
+if grep -Fq $'line one\n\n Work at your maximum reasoning effort level.' "$PROMPT_LOG_C"; then
     pass
 else
     fail "case C wrapped prompt did not preserve prompt-file body bytes before the effort suffix"
@@ -882,6 +882,56 @@ else
 fi
 if grep -Fq -- 'Work at your maximum reasoning effort level.' "$ARGV_DF_DOCS"; then
     fail "--agent-file docs-only diff should derive risk=low and omit effort suffix"
+else
+    pass
+fi
+
+# test-only diff: a diff touching scripts/test-foo.sh derives risk=low → no /max-mode, no effort suffix.
+DF_TEST="$TMPDIR/test-only-branch.diff"
+printf 'diff --git a/scripts/test-foo.sh b/scripts/test-foo.sh\n--- a/scripts/test-foo.sh\n+++ b/scripts/test-foo.sh\n@@ -1 +1 @@\n-old\n+new\n' > "$DF_TEST"
+OUT_DF_TEST="$TMPDIR/cursor-test-diff-file-specialist.txt"
+ARGV_DF_TEST="$TMPDIR/cursor-test-diff-file-specialist-argv.log"
+PATH="$STUB_BIN:$PATH" \
+    CURSOR_API_KEY="df-test-only-key" \
+    CURSOR_STUB_ARGV_LOG="$ARGV_DF_TEST" \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux \
+    "$LAUNCHER" --output "$OUT_DF_TEST" --timeout 5 \
+        --agent-file "$REPO_ROOT/agents/reviewer-structure.md" \
+        --mode diff \
+        --diff-file "$DF_TEST" \
+        >/dev/null 2>"$TMPDIR/test-diff-file-specialist.stderr"
+if grep -Fq -- ' /max-mode on. Prompt: ' "$ARGV_DF_TEST"; then
+    fail "--agent-file test-only diff should derive risk=low and omit /max-mode"
+else
+    pass
+fi
+if grep -Fq -- 'Work at your maximum reasoning effort level.' "$ARGV_DF_TEST"; then
+    fail "--agent-file test-only diff should derive risk=low and omit effort suffix"
+else
+    pass
+fi
+
+# generated-only diff: agents/code-reviewer.md is listed in generators.tsv → risk=low.
+DF_GEN="$TMPDIR/generated-only-branch.diff"
+printf 'diff --git a/agents/code-reviewer.md b/agents/code-reviewer.md\n--- a/agents/code-reviewer.md\n+++ b/agents/code-reviewer.md\n@@ -1 +1 @@\n-old\n+new\n' > "$DF_GEN"
+OUT_DF_GEN="$TMPDIR/cursor-gen-diff-file-specialist.txt"
+ARGV_DF_GEN="$TMPDIR/cursor-gen-diff-file-specialist-argv.log"
+PATH="$STUB_BIN:$PATH" \
+    CURSOR_API_KEY="df-gen-only-key" \
+    CURSOR_STUB_ARGV_LOG="$ARGV_DF_GEN" \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux \
+    "$LAUNCHER" --output "$OUT_DF_GEN" --timeout 5 \
+        --agent-file "$REPO_ROOT/agents/reviewer-structure.md" \
+        --mode diff \
+        --diff-file "$DF_GEN" \
+        >/dev/null 2>"$TMPDIR/gen-diff-file-specialist.stderr"
+if grep -Fq -- ' /max-mode on. Prompt: ' "$ARGV_DF_GEN"; then
+    fail "--agent-file generated-only diff should derive risk=low and omit /max-mode"
+else
+    pass
+fi
+if grep -Fq -- 'Work at your maximum reasoning effort level.' "$ARGV_DF_GEN"; then
+    fail "--agent-file generated-only diff should derive risk=low and omit effort suffix"
 else
     pass
 fi

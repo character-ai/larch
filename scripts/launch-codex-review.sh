@@ -173,6 +173,11 @@ if [[ -n "$AGENT_FILE" && "$RISK_EXPLICIT" != "true" ]]; then
         fi
         unset _diff_mode_line
     fi
+    # Security-specialist override: fail-closed policy — the security agent always
+    # gets max reasoning effort regardless of diff classification.
+    case "$AGENT_FILE" in
+        *security*) RISK="high" ;;
+    esac
 fi
 
 # Defensive: env-derived LARCH_TIMING_TASK_KIND may be empty or flag-shaped

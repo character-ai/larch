@@ -191,7 +191,7 @@ The model name to pass to Cursor's `--model` flag (e.g., `gpt-5.4-medium`, `clau
 
 **When not set:**
 - Defaults to `composer-2` — Cursor's `cursor agent` CLI does not honor the model configured in `~/.cursor/cli-config.json`, so an explicit default is required to avoid falling back to a potentially rate-limited model
-- Every substantive Cursor prompt is additionally wrapped by `scripts/cursor-wrap-prompt.sh` which prepends ` /max-mode on. Prompt: ` to engage Cursor's max-mode for this invocation
+- Cursor review prompts are wrapped with `/max-mode on.` and an effort suffix only when the effective risk is `high` (the default). Risk is `low` for diffs classified as docs-only, test-only, or generated-only by `classify-diff-mode.sh`; the security specialist always forces `high` regardless of diff classification. Pass `--risk low` explicitly to suppress max-mode for a specific launch. Codex review analogously omits `--with-effort` when risk is `low`.
 - To opt back into the previous default (faster, lower reasoning budget), set `LARCH_CURSOR_MODEL=composer-2-fast`
 
 ### `LARCH_CODEX_MODEL`

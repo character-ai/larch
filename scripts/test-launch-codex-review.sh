@@ -609,6 +609,46 @@ else
     pass
 fi
 
+# test-only diff: a diff touching scripts/test-foo.sh derives risk=low → no model_reasoning_effort.
+DF_TEST="$TMPDIR/test-only.diff"
+printf 'diff --git a/scripts/test-foo.sh b/scripts/test-foo.sh\n--- a/scripts/test-foo.sh\n+++ b/scripts/test-foo.sh\n@@ -1 +1 @@\n-old\n+new\n' > "$DF_TEST"
+DF_TEST_OUTPUT="$TMPDIR/codex-test-diff-file-specialist.txt"
+DF_TEST_ARGV="$TMPDIR/codex-test-diff-file-specialist-argv.log"
+DF_TEST_COUNT="$TMPDIR/codex-test-diff-file-specialist-count.txt"
+PATH="$STUB_BIN:$PATH" \
+    CODEX_STUB_ARGV_LOG="$DF_TEST_ARGV" \
+    CODEX_STUB_COUNT_FILE="$DF_TEST_COUNT" \
+    "$LAUNCHER" --output "$DF_TEST_OUTPUT" --timeout 5 \
+        --agent-file "$REPO_ROOT/agents/reviewer-structure.md" \
+        --mode diff \
+        --diff-file "$DF_TEST" \
+        >/dev/null 2>"$TMPDIR/test-diff-file-specialist.stderr"
+if grep -Fq -- 'model_reasoning_effort' "$DF_TEST_ARGV"; then
+    fail "--agent-file test-only diff should derive risk=low and omit model_reasoning_effort"
+else
+    pass
+fi
+
+# generated-only diff: agents/code-reviewer.md is listed in generators.tsv → risk=low.
+DF_GEN="$TMPDIR/generated-only.diff"
+printf 'diff --git a/agents/code-reviewer.md b/agents/code-reviewer.md\n--- a/agents/code-reviewer.md\n+++ b/agents/code-reviewer.md\n@@ -1 +1 @@\n-old\n+new\n' > "$DF_GEN"
+DF_GEN_OUTPUT="$TMPDIR/codex-gen-diff-file-specialist.txt"
+DF_GEN_ARGV="$TMPDIR/codex-gen-diff-file-specialist-argv.log"
+DF_GEN_COUNT="$TMPDIR/codex-gen-diff-file-specialist-count.txt"
+PATH="$STUB_BIN:$PATH" \
+    CODEX_STUB_ARGV_LOG="$DF_GEN_ARGV" \
+    CODEX_STUB_COUNT_FILE="$DF_GEN_COUNT" \
+    "$LAUNCHER" --output "$DF_GEN_OUTPUT" --timeout 5 \
+        --agent-file "$REPO_ROOT/agents/reviewer-structure.md" \
+        --mode diff \
+        --diff-file "$DF_GEN" \
+        >/dev/null 2>"$TMPDIR/gen-diff-file-specialist.stderr"
+if grep -Fq -- 'model_reasoning_effort' "$DF_GEN_ARGV"; then
+    fail "--agent-file generated-only diff should derive risk=low and omit model_reasoning_effort"
+else
+    pass
+fi
+
 OUT_RETRY_LOW="$TMPDIR/codex-retry-low.txt"
 HEALTH_RETRY_LOW="$TMPDIR/codex-retry-low.health"
 WORKDIR_RETRY_LOW="$TMPDIR/codex-retry-low-workdir"
