@@ -1,0 +1,604 @@
+#!/usr/bin/env bash
+# run-analysis.sh - Analyze token-report costs across closed larch issues.
+
+set -euo pipefail
+
+usage() {
+    cat <<'EOF' >&2
+Usage: run-analysis.sh
+
+Environment overrides:
+  LARCH_REPORT_TOKENS_REPO=<owner/repo>   GitHub repository to scan; defaults to gh repo view.
+  LARCH_REPORT_TOKENS_LIMIT=<N>           Optional max issue count after search.
+  LARCH_REPORT_TOKENS_NO_OPEN=1           Do not open generated PNGs.
+  LARCH_RATE_<VENDOR>_<FIELD>=<USD/M>     Override default cost rates.
+
+Rate env names:
+  LARCH_RATE_CLAUDE_INPUT
+  LARCH_RATE_CLAUDE_CACHE_READ
+  LARCH_RATE_CLAUDE_CACHE_CREATE
+  LARCH_RATE_CLAUDE_OUTPUT
+  LARCH_RATE_CODEX_INPUT
+  LARCH_RATE_CODEX_OUTPUT
+  LARCH_RATE_CODEX_AGGREGATE
+  LARCH_RATE_CURSOR_INPUT
+  LARCH_RATE_CURSOR_OUTPUT
+  LARCH_RATE_CURSOR_AGGREGATE
+EOF
+}
+
+if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+    usage
+    exit 0
+fi
+
+need_cmd() {
+    command -v "$1" >/dev/null 2>&1 || {
+        echo "ERROR: required command not found: $1" >&2
+        exit 1
+    }
+}
+
+need_cmd gh
+need_cmd jq
+need_cmd python3
+
+resolve_repo() {
+    if [[ -n "${LARCH_REPORT_TOKENS_REPO:-}" ]]; then
+        printf '%s\n' "$LARCH_REPORT_TOKENS_REPO"
+        return 0
+    fi
+    gh repo view --json nameWithOwner --jq '.nameWithOwner'
+}
+
+REPO="$(resolve_repo)"
+if [[ -z "$REPO" || "$REPO" != */* ]]; then
+    echo "ERROR: could not resolve GitHub repo owner/name" >&2
+    exit 1
+fi
+
+LIMIT="${LARCH_REPORT_TOKENS_LIMIT:-}"
+if [[ -n "$LIMIT" && ! "$LIMIT" =~ ^[0-9]+$ ]]; then
+    echo "ERROR: LARCH_REPORT_TOKENS_LIMIT must be a non-negative integer" >&2
+    exit 1
+fi
+
+TMPROOT="$(mktemp -d "${TMPDIR:-/tmp}/larch-report-tokens.XXXXXX")"
+SEARCH_JSONL="$TMPROOT/search.jsonl"
+ISSUES_JSONL="$TMPROOT/issues.jsonl"
+CACHE_TMP="$TMPROOT/issues-cache.json.tmp"
+CACHE_JSON="$TMPROOT/issues-cache.json"
+ANALYZER="$TMPROOT/analyze-token-reports.py"
+
+echo "Scanning $REPO for closed issues with token-report-begin comments..."
+
+SEARCH_QUERY="repo:${REPO} is:issue is:closed token-report-begin in:comments"
+gh api --paginate -X GET search/issues \
+    -f "q=$SEARCH_QUERY" \
+    -f per_page=100 \
+    --jq '.items[] | {number, closed_at, title, html_url}' > "$SEARCH_JSONL"
+
+if [[ -n "$LIMIT" && "$LIMIT" != "0" ]]; then
+    head -n "$LIMIT" "$SEARCH_JSONL" > "$SEARCH_JSONL.limited"
+    mv "$SEARCH_JSONL.limited" "$SEARCH_JSONL"
+fi
+
+: > "$ISSUES_JSONL"
+while IFS= read -r item; do
+    [[ -n "$item" ]] || continue
+    number="$(printf '%s\n' "$item" | jq -r '.number')"
+    [[ "$number" =~ ^[0-9]+$ ]] || continue
+    echo "Fetching issue #$number..."
+    gh issue view "$number" \
+        --repo "$REPO" \
+        --comments \
+        --json number,title,url,closedAt,body,comments \
+        | jq -c . >> "$ISSUES_JSONL"
+done < "$SEARCH_JSONL"
+
+jq -s . "$ISSUES_JSONL" > "$CACHE_TMP"
+mv "$CACHE_TMP" "$CACHE_JSON"
+
+cat > "$ANALYZER" <<'PY'
+#!/usr/bin/env python3
+import datetime as dt
+import json
+import os
+import re
+import statistics
+import subprocess
+import sys
+import tempfile
+from collections import Counter, defaultdict
+
+
+def env_rate(name, default):
+    raw = os.environ.get(name)
+    if raw is None or raw == "":
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        print(f"WARNING: ignoring invalid {name}={raw!r}; using {default}", file=sys.stderr)
+        return default
+
+
+RATES = {
+    "claude": {
+        "input": env_rate("LARCH_RATE_CLAUDE_INPUT", 3.00),
+        "cache_read": env_rate("LARCH_RATE_CLAUDE_CACHE_READ", 0.30),
+        "cache_create": env_rate("LARCH_RATE_CLAUDE_CACHE_CREATE", 3.75),
+        "output": env_rate("LARCH_RATE_CLAUDE_OUTPUT", 15.00),
+    },
+    "codex": {
+        "input": env_rate("LARCH_RATE_CODEX_INPUT", 1.25),
+        "output": env_rate("LARCH_RATE_CODEX_OUTPUT", 10.00),
+        "aggregate": env_rate("LARCH_RATE_CODEX_AGGREGATE", 5.00),
+    },
+    "cursor": {
+        "input": env_rate("LARCH_RATE_CURSOR_INPUT", 3.00),
+        "output": env_rate("LARCH_RATE_CURSOR_OUTPUT", 15.00),
+        "aggregate": env_rate("LARCH_RATE_CURSOR_AGGREGATE", 0.30),
+    },
+}
+
+
+def parse_date(raw):
+    if not raw:
+        return None
+    try:
+        return dt.datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def split_md_row(line):
+    line = line.strip()
+    if not line.startswith("|"):
+        return []
+    if line.endswith("|"):
+        line = line[:-1]
+    line = line[1:]
+    cells = []
+    current = []
+    escaped = False
+    for ch in line:
+        if escaped:
+            current.append(ch)
+            escaped = False
+        elif ch == "\\":
+            escaped = True
+        elif ch == "|":
+            cells.append("".join(current).strip())
+            current = []
+        else:
+            current.append(ch)
+    cells.append("".join(current).strip())
+    return cells
+
+
+def clean_cell(value):
+    return re.sub(r"\s+", " ", value.replace("\\|", "|").strip())
+
+
+def parse_int(value):
+    value = clean_cell(value)
+    match = re.search(r"-?\d[\d,]*", value)
+    if not match:
+        return 0
+    return int(match.group(0).replace(",", ""))
+
+
+def section_name(line):
+    match = re.match(r"^###\s+(.+?)\s*$", line)
+    if not match:
+        return None
+    name = match.group(1).strip().lower()
+    if name.startswith("claude"):
+        return "claude"
+    if name.startswith("codex"):
+        return "codex"
+    if name.startswith("cursor"):
+        return "cursor"
+    return re.sub(r"[^a-z0-9_-]+", "-", name).strip("-") or "unknown"
+
+
+def latest_token_block(text):
+    pattern = re.compile(
+        r"(?ms)^<!-- token-report-begin -->\s*(.*?)^\s*<!-- token-report-end -->\s*$"
+    )
+    blocks = pattern.findall(text)
+    if blocks:
+        return blocks[-1]
+    if "### Claude" in text or "**Grand total**" in text:
+        return text
+    return ""
+
+
+def parse_workflow_path(text):
+    match = re.search(
+        r"\*\*Workflow path\*\*\s*:?\s*(SIMPLE|HARD|unknown)\b",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if not match:
+        return "unknown"
+    return match.group(1).upper()
+
+
+def empty_totals():
+    return {
+        "claude": {"input": 0, "cache_read": 0, "cache_create": 0, "output": 0},
+        "codex": {"input": 0, "output": 0, "total": 0},
+        "cursor": {"input": 0, "output": 0, "total": 0},
+    }
+
+
+def parse_report(markdown):
+    totals = empty_totals()
+    phase_rows = []
+    current = None
+    for line in markdown.splitlines():
+        maybe_section = section_name(line)
+        if maybe_section:
+            current = maybe_section
+            if current not in totals and current != "claude":
+                totals[current] = {"input": 0, "output": 0, "total": 0}
+            continue
+        if current is None or not line.lstrip().startswith("|"):
+            continue
+        cells = [clean_cell(c) for c in split_md_row(line)]
+        if not cells or any(re.fullmatch(r":?-{3,}:?", c) for c in cells):
+            continue
+        if len(cells) >= 3 and cells[0].lower() == "step":
+            continue
+        is_grand = any("Grand total" in c for c in cells[:2])
+        is_step_total = len(cells) >= 2 and "step total" in cells[1].lower()
+        if current == "claude":
+            if len(cells) >= 6:
+                row = {
+                    "input": parse_int(cells[-4]),
+                    "cache_read": parse_int(cells[-3]),
+                    "cache_create": parse_int(cells[-2]),
+                    "output": parse_int(cells[-1]),
+                }
+            elif len(cells) >= 4:
+                row = {
+                    "input": parse_int(cells[-2]),
+                    "cache_read": 0,
+                    "cache_create": 0,
+                    "output": parse_int(cells[-1]),
+                }
+            else:
+                continue
+            if is_grand:
+                totals["claude"] = row
+            elif is_step_total:
+                phase_rows.append({"vendor": "claude", "step": cells[0], **row})
+        else:
+            if len(cells) < 5:
+                continue
+            row = {
+                "input": parse_int(cells[-3]),
+                "output": parse_int(cells[-2]),
+                "total": parse_int(cells[-1]),
+            }
+            if current not in totals:
+                totals[current] = {"input": 0, "output": 0, "total": 0}
+            if is_grand:
+                totals[current] = row
+            elif is_step_total:
+                phase_rows.append({"vendor": current, "step": cells[0], **row})
+    return totals, phase_rows
+
+
+def cost_vendor(vendor, totals):
+    if vendor == "claude":
+        rate = RATES["claude"]
+        return (
+            totals.get("input", 0) * rate["input"]
+            + totals.get("cache_read", 0) * rate["cache_read"]
+            + totals.get("cache_create", 0) * rate["cache_create"]
+            + totals.get("output", 0) * rate["output"]
+        ) / 1_000_000
+    rate = RATES.get(vendor, RATES["cursor"])
+    input_tokens = totals.get("input", 0)
+    output_tokens = totals.get("output", 0)
+    total_tokens = totals.get("total", 0)
+    known = input_tokens + output_tokens
+    hidden_or_aggregate = max(total_tokens - known, 0)
+    if known == 0 and total_tokens > 0:
+        return total_tokens * rate.get("aggregate", rate.get("input", 0)) / 1_000_000
+    return (
+        input_tokens * rate.get("input", 0)
+        + output_tokens * rate.get("output", 0)
+        + hidden_or_aggregate * rate.get("aggregate", 0)
+    ) / 1_000_000
+
+
+def total_cost(totals):
+    return sum(cost_vendor(vendor, data) for vendor, data in totals.items())
+
+
+def normalize_step(step):
+    step = re.sub(r"^\s*Step\s*", "", step, flags=re.IGNORECASE)
+    step = re.sub(r"^\d+[a-z]?(?:\.\d+)?\s*[-:]\s*", "", step)
+    step = re.sub(r"\s+", " ", step).strip()
+    return step or "unknown"
+
+
+def dollars(value):
+    return f"${value:,.2f}"
+
+
+def pct(part, whole):
+    if not whole:
+        return "0.0%"
+    return f"{(100.0 * part / whole):.1f}%"
+
+
+def analyze(cache_path):
+    with open(cache_path, "r", encoding="utf-8") as fh:
+        issues = json.load(fh)
+
+    records = []
+    skipped = 0
+    for issue in issues:
+        text_parts = [issue.get("body") or ""]
+        comments = issue.get("comments") or []
+        for comment in comments:
+            text_parts.append(comment.get("body") or "")
+        combined = "\n\n".join(text_parts)
+        block = latest_token_block(combined)
+        if not block:
+            skipped += 1
+            continue
+        totals, phase_rows = parse_report(block)
+        cost = total_cost(totals)
+        workflow = parse_workflow_path(combined)
+        closed_at = parse_date(issue.get("closedAt"))
+        records.append(
+            {
+                "number": issue.get("number"),
+                "title": issue.get("title") or "",
+                "url": issue.get("url") or "",
+                "closed_at": closed_at,
+                "workflow": workflow,
+                "totals": totals,
+                "phase_rows": phase_rows,
+                "cost": cost,
+            }
+        )
+
+    records.sort(key=lambda r: (r["closed_at"] or dt.datetime.min.replace(tzinfo=dt.timezone.utc), r["number"] or 0))
+    return records, skipped
+
+
+def plot(records):
+    out_paths = []
+    if os.environ.get("LARCH_REPORT_TOKENS_NO_OPEN") in {"1", "true", "TRUE", "yes", "YES"}:
+        should_open = False
+    else:
+        should_open = True
+    plot_rows = []
+    for record in records:
+        if record["closed_at"] is None or record["workflow"] not in {"SIMPLE", "HARD"}:
+            continue
+        plot_rows.append(
+            {
+                "workflow": record["workflow"],
+                "closed_at": record["closed_at"].isoformat(),
+                "cost": record["cost"],
+                "number": record["number"],
+            }
+        )
+    if not plot_rows:
+        return out_paths
+
+    plot_dir = tempfile.mkdtemp(prefix="larch-report-tokens-plot.")
+    input_path = os.path.join(plot_dir, "plot-input.json")
+    script_path = os.path.join(plot_dir, "plot.py")
+    with open(input_path, "w", encoding="utf-8") as fh:
+        json.dump(plot_rows, fh)
+    with open(script_path, "w", encoding="utf-8") as fh:
+        fh.write(
+            r'''
+import datetime as dt
+import json
+import os
+import sys
+import tempfile
+
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.dates as mdates
+import matplotlib.pyplot as plt
+
+with open(sys.argv[1], "r", encoding="utf-8") as fh:
+    rows = json.load(fh)
+
+paths = []
+for workflow in ("SIMPLE", "HARD"):
+    selected = [r for r in rows if r["workflow"] == workflow]
+    if not selected:
+        continue
+    selected.sort(key=lambda r: (r["closed_at"], r["number"] or 0))
+    dates = [dt.datetime.fromisoformat(r["closed_at"]) for r in selected]
+    costs = [r["cost"] for r in selected]
+    numbers = [r["number"] for r in selected]
+    fig, ax = plt.subplots(figsize=(11, 5.5))
+    ax.plot(dates, costs, marker="o", linewidth=1.5)
+    ax.set_title(f"{workflow} token cost over time")
+    ax.set_ylabel("Estimated cost (USD)")
+    ax.set_xlabel("Issue closed date")
+    ax.grid(True, alpha=0.3)
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
+    fig.autofmt_xdate()
+    for x, y, number in zip(dates, costs, numbers):
+        ax.annotate(f"#{number}", (x, y), xytext=(4, 5), textcoords="offset points", fontsize=8)
+    out = os.path.join(tempfile.gettempdir(), f"larch-report-tokens-{workflow.lower()}.png")
+    fig.tight_layout()
+    fig.savefig(out, dpi=160)
+    plt.close(fig)
+    paths.append(out)
+
+print(json.dumps(paths))
+'''
+        )
+
+    env = dict(os.environ)
+    env.setdefault("MPLCONFIGDIR", os.path.join(plot_dir, "mpl"))
+    os.makedirs(env["MPLCONFIGDIR"], exist_ok=True)
+    result = subprocess.run(
+        [sys.executable, script_path, input_path],
+        check=False,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    if result.returncode != 0:
+        first_line = (result.stderr or "").strip().splitlines()
+        detail = f": {first_line[0]}" if first_line else ""
+        print(f"Plot generation skipped: matplotlib subprocess exited {result.returncode}{detail}")
+        return out_paths
+    try:
+        out_paths = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        print("Plot generation skipped: matplotlib subprocess returned invalid JSON")
+        return []
+
+    if should_open:
+        for path in out_paths:
+            try:
+                subprocess.run(["open", path], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except FileNotFoundError:
+                break
+    return out_paths
+
+
+def print_analysis(cache_path, records, skipped, plot_paths):
+    print("")
+    print("## Report Tokens Analysis")
+    print("")
+    print(f"Cache JSON: {cache_path}")
+    if plot_paths:
+        print("Plots:")
+        for path in plot_paths:
+            print(f"- {path}")
+    else:
+        print("Plots: not generated")
+    print("")
+    print("Default rates, USD per million tokens:")
+    print(
+        "- Claude input={input:g}, cache_read={cache_read:g}, cache_create={cache_create:g}, output={output:g}".format(
+            **RATES["claude"]
+        )
+    )
+    print(
+        "- Codex input={input:g}, output={output:g}, aggregate={aggregate:g}".format(
+            **RATES["codex"]
+        )
+    )
+    print(
+        "- Cursor input={input:g}, output={output:g}, aggregate/cache={aggregate:g}".format(
+            **RATES["cursor"]
+        )
+    )
+    print("")
+    if not records:
+        print("No parseable token reports found.")
+        if skipped:
+            print(f"Skipped issues without a parseable report: {skipped}")
+        return
+
+    dates = [r["closed_at"] for r in records if r["closed_at"]]
+    costs = [r["cost"] for r in records]
+    print(
+        f"Parsed {len(records)} issue(s); skipped {skipped}. "
+        f"Total estimated cost: {dollars(sum(costs))}; "
+        f"median issue cost: {dollars(statistics.median(costs))}."
+    )
+    if dates:
+        print(f"Closed date range: {min(dates).date()} to {max(dates).date()}.")
+    print("")
+
+    by_workflow = defaultdict(list)
+    for record in records:
+        by_workflow[record["workflow"]].append(record)
+    print("### Cost by workflow")
+    for workflow in ("SIMPLE", "HARD", "unknown"):
+        rows = by_workflow.get(workflow, [])
+        if not rows:
+            continue
+        values = [r["cost"] for r in rows]
+        print(
+            f"- {workflow}: {len(rows)} issue(s), total {dollars(sum(values))}, "
+            f"median {dollars(statistics.median(values))}, max {dollars(max(values))}"
+        )
+
+    simple = sorted(by_workflow.get("SIMPLE", []), key=lambda r: r["cost"], reverse=True)[:10]
+    print("")
+    print("### Top SIMPLE issues by estimated cost")
+    if simple:
+        for r in simple:
+            print(f"- #{r['number']} {dollars(r['cost'])} - {r['title']}")
+    else:
+        print("- No SIMPLE issues found.")
+
+    hard_rows = by_workflow.get("HARD", [])
+    phase_costs = Counter()
+    for record in hard_rows:
+        for row in record["phase_rows"]:
+            vendor = row["vendor"]
+            step = normalize_step(row["step"])
+            if vendor == "claude":
+                row_cost = cost_vendor("claude", row)
+            else:
+                row_cost = cost_vendor(vendor, row)
+            phase_costs[step] += row_cost
+    print("")
+    print("### HARD phase breakdown")
+    if phase_costs:
+        for step, value in phase_costs.most_common(12):
+            print(f"- {step}: {dollars(value)}")
+    else:
+        print("- No HARD phase rows found.")
+
+    claude_input = sum(r["totals"].get("claude", {}).get("input", 0) for r in records)
+    claude_cache_read = sum(r["totals"].get("claude", {}).get("cache_read", 0) for r in records)
+    claude_cache_create = sum(r["totals"].get("claude", {}).get("cache_create", 0) for r in records)
+    claude_output = sum(r["totals"].get("claude", {}).get("output", 0) for r in records)
+    claude_total_tokens = claude_input + claude_cache_read + claude_cache_create + claude_output
+    claude_cache_read_cost = claude_cache_read * RATES["claude"]["cache_read"] / 1_000_000
+    print("")
+    print("### Cache-read dominance")
+    print(
+        f"Claude cache-read tokens: {claude_cache_read:,} "
+        f"({pct(claude_cache_read, claude_total_tokens)} of Claude token volume), "
+        f"estimated cache-read cost {dollars(claude_cache_read_cost)}."
+    )
+
+    print("")
+    print("### Suggestions")
+    print("- Keep high-volume shared context in generated artifacts and have reviewers cite files instead of re-pasting long prompt context.")
+    print("- For expensive HARD phases, inspect the top phase rows above before optimizing; repeated review or design phases usually dominate more than implementation.")
+    print("- When cache-read volume dominates, prioritize trimming repeated static context and large unchanged markdown blocks before reducing output verbosity.")
+
+
+def main():
+    if len(sys.argv) != 2:
+        print("usage: analyze-token-reports.py <cache-json>", file=sys.stderr)
+        return 2
+    records, skipped = analyze(sys.argv[1])
+    plot_paths = plot(records)
+    print_analysis(sys.argv[1], records, skipped, plot_paths)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+PY
+
+chmod +x "$ANALYZER"
+python3 "$ANALYZER" "$CACHE_JSON"

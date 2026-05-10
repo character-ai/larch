@@ -85,6 +85,12 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
     <tr><td colspan="2">Create one or more GitHub issues with LLM-based semantic duplicate detection and always-on inter-issue blocker-dependency analysis.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
+      <td><a href="docs/skills.md#report-tokens"><code>/report-tokens</code></a></td>
+      <td></td>
+    </tr>
+    <tr><td colspan="2">Analyze structured token reports across closed GitHub issues, estimate per-issue Claude/Codex/Cursor costs, plot SIMPLE and HARD cost trends, and print cost-reduction suggestions.</td></tr>
+    <tr><td colspan="2"><hr></td></tr>
+    <tr>
       <td><a href="docs/skills.md#relevant-checks"><code>/relevant-checks</code></a></td>
       <td><em>(none)</em></td>
     </tr>
