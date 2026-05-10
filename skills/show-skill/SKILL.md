@@ -15,7 +15,7 @@ Display a skill's `SKILL.md` content. Accepts a skill name (e.g., `implement`, `
 ${CLAUDE_PLUGIN_ROOT}/skills/show-skill/scripts/show.sh $ARGUMENTS
 ```
 
-Script contract: `${CLAUDE_PLUGIN_ROOT}/skills/show-skill/scripts/show.md`.
+Script contract: `${CLAUDE_PLUGIN_ROOT}/skills/show-skill/scripts/show.md`. Regression harness: `${CLAUDE_PLUGIN_ROOT}/skills/show-skill/scripts/test-show-skill.sh` (contract: `${CLAUDE_PLUGIN_ROOT}/skills/show-skill/scripts/test-show-skill.md`; wired into `make test-show-skill`).
 
 Parse `STATUS` and `SKILL_PATH` from stdout without `eval`/`source`. Verify the resolution succeeded before displaying:
 

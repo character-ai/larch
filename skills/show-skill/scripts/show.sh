@@ -24,14 +24,15 @@ fi
 
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-}"
 if [[ -z "$PLUGIN_ROOT" ]]; then
-  PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+  # scripts/show-skill/scripts/ -> skills/show-skill/ -> skills/ -> repo root
+  PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 fi
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "")"
 
 for candidate in \
     "${PLUGIN_ROOT}/skills/${NAME}/SKILL.md" \
-    "${REPO_ROOT}/.claude/skills/${NAME}/SKILL.md" \
+    ${REPO_ROOT:+"${REPO_ROOT}/.claude/skills/${NAME}/SKILL.md"} \
     "${PLUGIN_ROOT}/.claude/skills/${NAME}/SKILL.md"
 do
   if [[ -f "$candidate" ]]; then

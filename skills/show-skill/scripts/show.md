@@ -31,7 +31,7 @@ Always exits 0. Callers parse `STATUS` without `eval`/`source`.
 2. `$(git rev-parse --show-toplevel)/.claude/skills/<name>/SKILL.md`
 3. `${CLAUDE_PLUGIN_ROOT}/.claude/skills/<name>/SKILL.md`
 
-First match wins. When `CLAUDE_PLUGIN_ROOT` is unset, the script derives the plugin root from its own path (`skills/show-skill/scripts/../../..`).
+First match wins. When `CLAUDE_PLUGIN_ROOT` is unset, the script derives the plugin root from its own path: `skills/show-skill/scripts/` + `../../..` = repo root (three levels up).
 
 ## Safety
 
@@ -40,3 +40,7 @@ Names containing `/` or `..` are rejected with `STATUS=not-found` — no path tr
 ## Callers
 
 - `skills/show-skill/SKILL.md` Step 1
+
+## Test harness
+
+`skills/show-skill/scripts/test-show-skill.sh` — regression harness covering bare name resolution, prefix stripping, path-traversal rejection, and `STATUS=not-found` on missing skills. Wired into `make lint` via the `test-show-skill` target.
