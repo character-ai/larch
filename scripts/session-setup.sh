@@ -326,14 +326,15 @@ fi
 
 # --- 4. Reviewer health: either probe (--check-reviewers) or passthrough from caller-env ---
 if [[ "$CHECK_REVIEWERS" == "true" ]]; then
-    # Auto-set skip-probe flags from caller-env health values
-    if [[ "$CALLER_CODEX_HEALTHY" == "false" ]]; then
+    # Auto-set skip-probe flags from caller-env health values.
+    # Skip whenever caller already provided a value (true or false); probe only when empty.
+    if [[ -n "$CALLER_CODEX_HEALTHY" ]]; then
         SKIP_CODEX_PROBE=true
     fi
-    if [[ "$CALLER_CURSOR_HEALTHY" == "false" ]]; then
+    if [[ -n "$CALLER_CURSOR_HEALTHY" ]]; then
         SKIP_CURSOR_PROBE=true
     fi
-    if [[ "$CALLER_GEMINI_HEALTHY" == "false" ]]; then
+    if [[ -n "$CALLER_GEMINI_HEALTHY" ]]; then
         SKIP_GEMINI_PROBE=true
     fi
 
