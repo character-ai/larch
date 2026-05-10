@@ -35,7 +35,7 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         --help) usage; exit 0 ;;
-        --output|--timeout|--prompt|--prompt-file|--agent-file|--mode|--description-text|--scope-files|--diff-file|--timing-task-kind|--token-budget-cap)
+        --output|--timeout|--prompt|--prompt-file|--agent-file|--mode|--description-text|--scope-files|--diff-file|--timing-task-kind|--token-budget-cap|--risk)
             ARGS+=("$1")
             if [[ $# -gt 1 ]]; then
                 ARGS+=("$2")
@@ -111,6 +111,7 @@ while [[ $# -gt 0 ]]; do
         --diff-file) DIFF_FILE="${2:?--diff-file requires a value}"; shift 2 ;;
         --timing-task-kind) [[ -n "${2:-}" && "${2}" != --* ]] || { echo "launch-review.sh: --timing-task-kind requires a non-empty, non-flag-like value" >&2; exit 2; }; TIMING_TASK_KIND="$2"; shift 2 ;;
         --token-budget-cap) case "${2:-}" in ''|*[!0-9]*) echo "launch-review.sh: --token-budget-cap requires a positive integer" >&2; exit 2 ;; esac; (( 10#${2:-0} >= 1 )) || { echo "launch-review.sh: --token-budget-cap requires a positive integer" >&2; exit 2; }; TOKEN_BUDGET_CAP="$2"; shift 2 ;;
+        --risk) [[ -n "${2:-}" ]] || { echo "launch-review.sh: --risk requires a value" >&2; exit 2; }; shift 2 ;;
         *) echo "launch-review.sh: unknown flag: $1" >&2; exit 2 ;;
     esac
 done
@@ -513,6 +514,7 @@ while [[ $# -gt 0 ]]; do
         --diff-file) DIFF_FILE="${2:?--diff-file requires a value}"; shift 2 ;;
         --timing-task-kind) [[ -n "${2:-}" && "${2}" != --* ]] || { echo "launch-review.sh: --timing-task-kind requires a non-empty, non-flag-like value" >&2; exit 2; }; TIMING_TASK_KIND="$2"; shift 2 ;;
         --token-budget-cap) case "${2:-}" in ''|*[!0-9]*) echo "launch-review.sh: --token-budget-cap requires a positive integer" >&2; exit 2 ;; esac; (( 10#${2:-0} >= 1 )) || { echo "launch-review.sh: --token-budget-cap requires a positive integer" >&2; exit 2; }; TOKEN_BUDGET_CAP="$2"; shift 2 ;;
+        --risk) [[ -n "${2:-}" ]] || { echo "launch-review.sh: --risk requires a value" >&2; exit 2; }; shift 2 ;;
         *) echo "launch-review.sh: unknown flag: $1" >&2; exit 2 ;;
     esac
 done
