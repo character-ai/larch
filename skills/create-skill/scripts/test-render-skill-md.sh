@@ -183,31 +183,31 @@ run_case() {
   # Assertions (11) and (12) apply only to the multi-step variant — the
   # minimal body has no Progress Reporting section and no TSV.
   if [[ "$multi_step" == "true" ]]; then
-    # (11) scripts/step-name-registry.tsv must be created (closes #1794).
+    # (11) scripts/step-name-registry.tsv must be created with exact content
+    # (header row + two seed rows, tab-separated) — closes #1794.
     local tsv_path="$target_dir/scripts/step-name-registry.tsv"
     if [[ ! -f "$tsv_path" ]]; then
       echo "FAIL: scripts/step-name-registry.tsv not created for multi-step scaffold at $tsv_path" >&2
       FAIL_COUNT=$((FAIL_COUNT + 1))
       return
     fi
-    local tsv_lines
-    tsv_lines="$(wc -l < "$tsv_path")"
-    if [[ "$tsv_lines" -lt 3 ]]; then
-      echo "FAIL: scripts/step-name-registry.tsv has fewer than 3 lines (header + 2 seed rows) at $tsv_path" >&2
+    local expected_tsv actual_tsv
+    expected_tsv="$(printf 'step\tname\n0\tsetup\n1\tTODO\n')"
+    actual_tsv="$(cat "$tsv_path")"
+    if [[ "$actual_tsv" != "$expected_tsv" ]]; then
+      echo "FAIL: scripts/step-name-registry.tsv content mismatch at $tsv_path" >&2
+      echo "--- expected ---" >&2
+      printf '%s\n' "$expected_tsv" | cat -A >&2
+      echo "--- actual ---" >&2
+      printf '%s\n' "$actual_tsv" | cat -A >&2
       FAIL_COUNT=$((FAIL_COUNT + 1))
       return
     fi
 
-    # (12) SKILL.md must contain the MANDATORY TSV-read directive (closes #1794).
-    if ! printf '%s\n' "$content" | grep -Fq 'MANDATORY at session start'; then
-      echo "FAIL: multi-step SKILL.md missing MANDATORY TSV-read directive in Progress Reporting section" >&2
-      echo "--- rendered content ---" >&2
-      printf '%s\n' "$content" >&2
-      FAIL_COUNT=$((FAIL_COUNT + 1))
-      return
-    fi
-    if ! printf '%s\n' "$content" | grep -Fq 'step-name-registry.tsv'; then
-      echo "FAIL: multi-step SKILL.md MANDATORY directive does not reference step-name-registry.tsv" >&2
+    # (12) SKILL.md must contain the MANDATORY TSV-read directive that references
+    # step-name-registry.tsv on the same line — closes #1794.
+    if ! printf '%s\n' "$content" | grep -Eq 'MANDATORY at session start.*step-name-registry\.tsv'; then
+      echo "FAIL: multi-step SKILL.md missing MANDATORY TSV-read directive referencing step-name-registry.tsv" >&2
       echo "--- rendered content ---" >&2
       printf '%s\n' "$content" >&2
       FAIL_COUNT=$((FAIL_COUNT + 1))
@@ -257,6 +257,14 @@ run_case "minimal consumer-mode" false \
   "${TMPROOT}/consumer-root/.claude/skills/bar-minimal" \
   "bar-minimal" \
   "Use when doing bar once."
+
+# Case 7: multi-step variant under a consumer-mode target dir — exercises
+# TSV creation and MANDATORY directive under the consumer SKILL_REL path
+# (.claude/skills/<name> vs. plugin-mode skills/<name>).
+run_case "multi-step consumer-mode" true \
+  "${TMPROOT}/consumer-root/.claude/skills/foo-multi-consumer" \
+  "foo-multi-consumer" \
+  "Use when doing foo across multiple steps (consumer mode)."
 
 # Case 4: --feature-spec-file with multi-line content distinct from --description.
 # Asserts body opens with the multi-line file content while frontmatter

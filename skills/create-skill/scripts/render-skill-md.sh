@@ -47,6 +47,9 @@
 #   - Atomic write: SKILL.md.tmp then mv into place.
 #   - scripts/.gitkeep created; no placeholder step scripts are generated
 #     (bodies are TODO-only so there are no dangling script references).
+#   - When --multi-step true, scripts/step-name-registry.tsv is also created
+#     with a header row and two seed rows (step 0 = setup, step 1 = TODO),
+#     tab-separated UTF-8 LF, matching the progress-reporting.md contract.
 #   - Description is YAML-escaped (always double-quoted, inner " backslash-escaped).
 #     Newlines and control chars are already rejected by validate-args.sh.
 #   - --feature-spec-file content is NOT YAML-escaped — it lands in body markdown

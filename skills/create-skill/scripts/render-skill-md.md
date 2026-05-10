@@ -1,6 +1,6 @@
 # render-skill-md.sh contract
 
-`skills/create-skill/scripts/render-skill-md.sh` is the scaffold renderer for the `/create-skill` Step 3 `/im` delegation path. It writes a fresh skill directory with a `SKILL.md` (frontmatter + body scaffold) and a `scripts/.gitkeep` placeholder, atomically. The authoritative developer-facing specification is the in-file header comment block at the top of the script (the banner through the documented flag list) — edits that change the flag list, the YAML escape rules, the body-vs-frontmatter contract, the stdout/stderr channel split, or any of the directory-creation invariants MUST update both the in-file header and this sibling in the same PR per `.claude/rules/script-md-siblings.md`.
+`skills/create-skill/scripts/render-skill-md.sh` is the scaffold renderer for the `/create-skill` Step 3 `/im` delegation path. It writes a fresh skill directory with a `SKILL.md` (frontmatter + body scaffold), a `scripts/.gitkeep` placeholder, and — when `--multi-step true` — a `scripts/step-name-registry.tsv` seed registry, atomically. The authoritative developer-facing specification is the in-file header comment block at the top of the script (the banner through the documented flag list) — edits that change the flag list, the YAML escape rules, the body-vs-frontmatter contract, the stdout/stderr channel split, or any of the directory-creation invariants MUST update both the in-file header and this sibling in the same PR per `.claude/rules/script-md-siblings.md`.
 
 ## Inputs
 
