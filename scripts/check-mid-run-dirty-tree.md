@@ -2,7 +2,7 @@
 
 **Purpose**: detect working-tree pollution between a clean orchestration checkpoint and later external-reviewer boundaries. The script is a detector only: it never prompts the operator, never restores files, and always exits 0 so callers can fail closed by parsing `STATUS=unknown`.
 
-**Primary callers**: `scripts/launch-cursor-review.sh` and `scripts/launch-codex-review.sh` use `--mode baseline --baseline <path> --sidecar <path>` after an external reviewer returns. `scripts/check-phantom-dirty.sh` wraps baseline mode for `/implement` session-wide phantom untracked probes. `/implement`, `/design`, and `/review` prompt prose use `--mode checkpoint` at orchestration boundaries.
+**Primary callers**: `scripts/launch-review.sh --tool cursor` and `scripts/launch-review.sh --tool codex` use `--mode baseline --baseline <path> --sidecar <path>` after an external reviewer returns. `scripts/check-phantom-dirty.sh` wraps baseline mode for `/implement` session-wide phantom untracked probes. `/implement`, `/design`, and `/review` prompt prose use `--mode checkpoint` at orchestration boundaries.
 
 **Output contract**:
 - Always emits stable key/value lines to stdout.
@@ -25,4 +25,4 @@ Baseline mode uses strict git probing: `git status --porcelain`, `git diff --nam
 
 **Harness**: `scripts/test-check-mid-run-dirty-tree.sh`, wired by `make test-check-mid-run-dirty-tree`.
 
-**Edit-in-sync**: update `scripts/test-check-mid-run-dirty-tree.sh`, `scripts/launch-cursor-review.sh`, `scripts/launch-codex-review.sh`, `docs/external-reviewers.md`, `SECURITY.md`, and the dirty-tree recovery prose in `skills/implement/SKILL.md`, `skills/design/SKILL.md`, and `skills/review/SKILL.md`.
+**Edit-in-sync**: update `scripts/test-check-mid-run-dirty-tree.sh`, `scripts/launch-review.sh --tool cursor`, `scripts/launch-review.sh --tool codex`, `docs/external-reviewers.md`, `SECURITY.md`, and the dirty-tree recovery prose in `skills/implement/SKILL.md`, `skills/design/SKILL.md`, and `skills/review/SKILL.md`.

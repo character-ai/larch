@@ -12,7 +12,7 @@
 - Env-derived `LARCH_TIMING_TASK_KIND=--prompt` falls back to `cursor-implement` in the timing TSV instead of leaking the flag-shaped value.
 - Invalid `LARCH_CURSOR_MODEL` values fail during model-args loading with wrapper exit 0, a non-zero `LAUNCHER_EXIT`, forced-false manifest flags, and a freshly truncated diagnostic sidecar. The dispatcher path retries that clean preflight failure once and then classifies it as `cursor-runtime-failure`.
 - `run-external-agent.sh --capture-stdout-only` captures Cursor stdout to the transcript path while preserving JSON parseability.
-- Cursor argv shape matches `scripts/launch-cursor-review.sh`: `cursor agent -p --force --trust --output-format json <model args> --workspace "$PWD" "$WRAPPED_PROMPT"`.
+- Cursor argv shape matches `scripts/launch-review.sh --tool cursor`: `cursor agent -p --force --trust --output-format json <model args> --workspace "$PWD" "$WRAPPED_PROMPT"`.
 - The implementer launcher writes `${TRANSCRIPT_PATH}.prompt`, appends `OUTER_LAUNCHER*` keys to `${TRANSCRIPT_PATH}.meta`, and publishes `${TRANSCRIPT_PATH}.done` only after post-processing completes.
 - No `--` end-of-options separator is inserted before the prompt.
 - The prompt is wrapped by `scripts/cursor-wrap-prompt.sh`.
@@ -32,7 +32,7 @@
 **Edit-in-sync**:
 - `scripts/launch-cursor-implement.sh` — launcher behavior under test.
 - `scripts/launch-cursor-implement.md` — sibling launcher contract.
-- `scripts/launch-cursor-review.sh` — argv parity source.
+- `scripts/launch-review.sh --tool cursor` — argv parity source.
 - `scripts/cursor-wrap-prompt.sh` and `scripts/cursor-wrap-prompt.md` — prompt wrapper contract and caller registry.
 - `scripts/run-external-agent.sh` — stdout capture semantics.
 - `scripts/agent-model-args.sh` — Cursor model argv generation.

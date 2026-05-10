@@ -44,7 +44,7 @@ SIDECAR_LOG=<path>             # path to run-external-agent.sh chatter
 **Call sites**:
 - `skills/implement/scripts/step2-implement.sh` (dispatcher) — the only authorized caller.
 
-**Edit-in-sync**: `scripts/check-step-token-budget.sh` (budget-cap helper), `scripts/lib-gemini-model-resolver.sh`, `scripts/run-external-agent.sh`, `scripts/agent-model-args.sh` (Gemini env-precedence chain must stay in lockstep — see Invariants), `agents/gemini-implementer.md`, `agents/cursor-implementer.md`, `scripts/launch-cursor-implement.md`, `scripts/launch-gemini-review.sh`, `scripts/check-reviewers.sh`, `skills/implement/references/codex-manifest-schema.md`, `skills/implement/scripts/test-gemini-implementer.sh`.
+**Edit-in-sync**: `scripts/check-step-token-budget.sh` (budget-cap helper), `scripts/lib-gemini-model-resolver.sh`, `scripts/run-external-agent.sh`, `scripts/agent-model-args.sh` (Gemini env-precedence chain must stay in lockstep — see Invariants), `agents/gemini-implementer.md`, `agents/cursor-implementer.md`, `scripts/launch-cursor-implement.md`, `scripts/launch-review.sh --tool gemini`, `scripts/check-reviewers.sh`, `skills/implement/references/codex-manifest-schema.md`, `skills/implement/scripts/test-gemini-implementer.sh`.
 
 **Test harness**: `skills/implement/scripts/test-gemini-implementer.sh`.
 

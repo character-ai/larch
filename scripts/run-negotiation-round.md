@@ -16,7 +16,7 @@ Sources `scripts/lib-cursor-auth.sh` in the Cursor branch and runs `cursor_auth_
 | 3 | `cursor_auth_preflight` failed before `cursor agent` launched |
 | other | Propagated from `scripts/agent-model-args.sh`; inspect that helper's stderr diagnostic |
 
-The negotiation flow is foreground-synchronous and has no sentinel collector, so a synthesized `.done`/`.diag` (as in `launch-cursor-review.sh`) is unnecessary here.
+The negotiation flow is foreground-synchronous and has no sentinel collector, so a synthesized `.done`/`.diag` (as in `launch-review.sh --tool cursor`) is unnecessary here.
 
 ## Stdout envelope symmetry
 

@@ -1,20 +1,21 @@
-#!/usr/bin/env bash
-# launch-gemini-review.sh — Launch a generic Gemini code review and normalize JSON output.
+# shellcheck shell=bash
+# Sourced-only library: no shebang and no `set -e`; callers own exit semantics.
+if [[ -n "${LARCH_LIB_GEMINI_LAUNCHER_REVIEW_LOADED:-}" ]]; then
+    return 0
+fi
 
-set -euo pipefail
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib-validate-meta-path.sh
 # shellcheck disable=SC1091
-source "$SCRIPT_DIR/lib-validate-meta-path.sh"
+source "${BASH_SOURCE[0]%/*}/lib-validate-meta-path.sh"
 # shellcheck source=scripts/lib-gemini-model-resolver.sh
 # shellcheck disable=SC1091
-source "$SCRIPT_DIR/lib-gemini-model-resolver.sh"
+source "${BASH_SOURCE[0]%/*}/lib-gemini-model-resolver.sh"
 # shellcheck source=scripts/lib-dirty-tree-sidecar.sh
 # shellcheck disable=SC1091
-source "$SCRIPT_DIR/lib-dirty-tree-sidecar.sh"
+source "${BASH_SOURCE[0]%/*}/lib-dirty-tree-sidecar.sh"
 
-ORIGINAL_ARGS=("$@")
+_launch_gemini() {
+ORIGINAL_ARGS=(--tool gemini "$@")
 OUTPUT=""
 TIMEOUT=""
 PROMPT=""
@@ -63,7 +64,7 @@ done
 unset _arg _skip_next _hash
 
 usage() {
-    echo "Usage: launch-gemini-review.sh --output FILE --timeout SECS --prompt TEXT" >&2
+    echo "Usage: launch-review.sh --output FILE --timeout SECS --prompt TEXT" >&2
 }
 
 # shellcheck disable=SC2317,SC2329 # invoked indirectly by EXIT traps.
@@ -161,7 +162,7 @@ write_meta() {
         # MISSING_JQ fail_closed path), omit CMD_JSON entirely; the collector
         # treats missing CMD_JSON as fail-closed while write_done() still runs.
         if command -v jq >/dev/null 2>&1 && [[ "${LARCH_TEST_FORCE_MISSING_JQ:-}" != "true" ]]; then
-            if META_CMD_JSON=$(jq -cn --args '$ARGS.positional' -- "$0" "${REDACTED_ARGS[@]}"); then
+            if META_CMD_JSON=$(jq -cn --args '$ARGS.positional' -- "$SCRIPT_DIR/launch-review.sh" "${REDACTED_ARGS[@]}"); then
                 printf 'CMD_JSON=%s\n' "$META_CMD_JSON"
             fi
         fi
@@ -273,7 +274,7 @@ snapshot_timeout_seconds() {
     # (`0`, `00`, ...). Forces base-10 so leading-zero values like `010`
     # are interpreted as 10s, not octal 8s. Non-positive values are
     # rejected rather than treated as "disable timeout" — disabling is
-    # not a supported mode (see launch-gemini-review.md).
+    # not a supported mode (see launch-review.md).
     local value="${LARCH_GEMINI_SNAPSHOT_TIMEOUT:-30}"
     local decimal
     case "$value" in
@@ -627,18 +628,18 @@ while [[ $# -gt 0 ]]; do
         --output) OUTPUT="${2:?--output requires a value}"; shift 2 ;;
         --timeout) TIMEOUT="${2:?--timeout requires a value}"; shift 2 ;;
         --prompt) PROMPT="${2:?--prompt requires a value}"; shift 2 ;;
-        --timing-task-kind) [[ -n "${2:-}" && "${2}" != --* ]] || { echo "launch-gemini-review.sh: --timing-task-kind requires a non-empty, non-flag-like value" >&2; exit 2; }; TIMING_TASK_KIND="$2"; shift 2 ;;
-        --token-budget-cap) case "${2:-}" in ''|*[!0-9]*) echo "launch-gemini-review.sh: --token-budget-cap requires a positive integer" >&2; exit 2 ;; esac; (( 10#${2:-0} >= 1 )) || { echo "launch-gemini-review.sh: --token-budget-cap requires a positive integer" >&2; exit 2; }; TOKEN_BUDGET_CAP="$2"; shift 2 ;;
+        --timing-task-kind) [[ -n "${2:-}" && "${2}" != --* ]] || { echo "launch-review.sh: --timing-task-kind requires a non-empty, non-flag-like value" >&2; exit 2; }; TIMING_TASK_KIND="$2"; shift 2 ;;
+        --token-budget-cap) case "${2:-}" in ''|*[!0-9]*) echo "launch-review.sh: --token-budget-cap requires a positive integer" >&2; exit 2 ;; esac; (( 10#${2:-0} >= 1 )) || { echo "launch-review.sh: --token-budget-cap requires a positive integer" >&2; exit 2; }; TOKEN_BUDGET_CAP="$2"; shift 2 ;;
         --agent-file|--mode|--description-text|--scope-files|--competition-notice)
-            echo "launch-gemini-review.sh: specialist mode is not supported in v1" >&2
+            echo "launch-review.sh: specialist mode is not supported in v1" >&2
             exit 2 ;;
         --help) usage; exit 0 ;;
-        *) echo "launch-gemini-review.sh: unknown flag: $1" >&2; usage; exit 2 ;;
+        *) echo "launch-review.sh: unknown flag: $1" >&2; usage; exit 2 ;;
     esac
 done
 
 if [[ -z "$OUTPUT" || -z "$TIMEOUT" || -z "$PROMPT" ]]; then
-    echo "launch-gemini-review.sh: --output, --timeout, and --prompt are required" >&2
+    echo "launch-review.sh: --output, --timeout, and --prompt are required" >&2
     usage
     exit 2
 fi
@@ -646,10 +647,10 @@ fi
 validate_meta_scalar_path --output "$OUTPUT" || exit 2
 
 case "$TIMEOUT" in
-    ''|*[!0-9]*|0) echo "launch-gemini-review.sh: --timeout must be a positive integer, got '$TIMEOUT'" >&2; exit 2 ;;
+    ''|*[!0-9]*|0) echo "launch-review.sh: --timeout must be a positive integer, got '$TIMEOUT'" >&2; exit 2 ;;
 esac
 if (( 10#$TIMEOUT < 1 )); then
-    echo "launch-gemini-review.sh: --timeout must be a positive integer, got '$TIMEOUT'" >&2
+    echo "launch-review.sh: --timeout must be a positive integer, got '$TIMEOUT'" >&2
     exit 2
 fi
 # Normalize to canonical decimal so downstream arithmetic (the > 600 clamp
@@ -681,7 +682,7 @@ if [[ -n "$TOKEN_BUDGET_CAP" ]]; then
     _budget_out=$("$SCRIPT_DIR/check-step-token-budget.sh" --cap "$TOKEN_BUDGET_CAP" --step "${TIMING_TASK_KIND:-gemini-review}" 2>/dev/null || true)
     _budget_status=$(printf '%s' "$_budget_out" | awk '{for(i=1;i<=NF;i++){if($i~/^STATUS=/){print substr($i,8);exit}}}')
     if [[ "$_budget_status" == "cap_hit" ]]; then
-        printf '⚠ launch-gemini-review.sh: step token budget cap of %s tokens exceeded (%s combined vendor tokens); external reviewer fan-out skipped\n' \
+        printf '⚠ launch-review.sh: step token budget cap of %s tokens exceeded (%s combined vendor tokens); external reviewer fan-out skipped\n' \
             "$TOKEN_BUDGET_CAP" "$(printf '%s' "$_budget_out" | awk '{for(i=1;i<=NF;i++){if($i~/^TOTAL=/){print substr($i,7);exit}}}')" >&2
         printf 'STATUS=cap_hit\n' > "$OUTPUT"
         printf 'STATUS=cap_hit\n%s\n' "$_budget_out" > "${OUTPUT}.cap-hit"
@@ -835,3 +836,7 @@ _write_dirty_tree_sidecar
 write_meta
 write_done 0
 exit 0
+
+}
+
+LARCH_LIB_GEMINI_LAUNCHER_REVIEW_LOADED=1

@@ -29,7 +29,7 @@
 # override pin (issue #1512, was #1482). Assertion 5 is retired, so the
 # numbered list runs 1–4, 6–30; assertion 23 pins Gemini machinery
 # preservation, including negative pin 23j against re-introducing
-# launch-gemini-review.sh.
+# launch-review.sh --tool gemini.
 #  (1) Exactly 1 `^## Load-Bearing Invariants$` heading in skills/implement/SKILL.md.
 #  (2) Exactly 1 `^## NEVER List$` heading.
 #  (3) Exactly 1 `^## Rebase Checkpoint Macro$` heading.
@@ -927,12 +927,6 @@ grep -Fq 'Cursor → Codex → Claude' "$SKILL_MD" \
   || fail "(23h) quick-mode rounds 4+ chain missing Cursor → Codex → Claude"
 grep -Fq 'GEMINI_HEALTHY' "$SKILL_MD" \
   || fail "(23i) /implement cross-skill health propagation omits GEMINI_HEALTHY"
-# Negative pins: the launch-gemini-review.sh call sites were removed; ensure
-# they don't quietly re-appear without an intentional reversal of this change.
-if grep -Fq 'launch-gemini-review.sh' "$SKILL_MD"; then
-  fail "(23j) /implement quick mode unexpectedly re-introduced launch-gemini-review.sh call sites"
-fi
-
 # (24) Cursor/Gemini implementer shared guardrails parity. The prose after
 # `## Shared guardrails` must be byte-identical modulo the per-tool token
 # substitution `cursor-modified-history` ↔ `gemini-modified-history` and

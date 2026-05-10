@@ -9,7 +9,7 @@ fi
 # caller-scope globals: OUTPUT, DIRTY_TREE_WRITTEN, UNTRACKED_BASELINE,
 # DIRTY_TREE_SIDECAR, SCRIPT_DIR. The single-shot guard via
 # DIRTY_TREE_WRITTEN matches the pre-extraction contract used by both
-# launch-codex-review.sh and launch-cursor-review.sh.
+# launch-review.sh --tool codex and launch-review.sh --tool cursor.
 # shellcheck disable=SC2329,SC2317  # callers invoke this from EXIT traps.
 _write_dirty_tree_sidecar() {
     [[ -n "$OUTPUT" ]] || return 0

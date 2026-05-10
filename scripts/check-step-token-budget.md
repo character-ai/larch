@@ -45,7 +45,7 @@ Always 0.
 
 ## Callers
 
-All six launcher scripts: `launch-cursor-review.sh`, `launch-codex-review.sh`, `launch-gemini-review.sh`, `launch-cursor-implement.sh`, `launch-codex-implement.sh`, `launch-gemini-implement.sh`.
+All six launcher scripts: `launch-review.sh --tool cursor`, `launch-review.sh --tool codex`, `launch-review.sh --tool gemini`, `launch-cursor-implement.sh`, `launch-codex-implement.sh`, `launch-gemini-implement.sh`.
 
 Each caller passes `--cap $TOKEN_BUDGET_CAP` when the `--token-budget-cap` flag was supplied.
 

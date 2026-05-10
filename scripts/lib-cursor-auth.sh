@@ -1,7 +1,7 @@
 # lib-cursor-auth.sh — Cursor CLI auth-argv builder + Darwin-gated keychain preflight.
 #
 # Sourced by:
-#   - scripts/launch-cursor-review.sh
+#   - scripts/launch-review.sh --tool cursor
 #   - scripts/launch-cursor-implement.sh
 #   - scripts/check-reviewers.sh
 #   - scripts/run-negotiation-round.sh
@@ -52,7 +52,7 @@ cursor_auth_argv() {
 
     # Reset to empty (defense in depth — callers should also reset, but a
     # double-call without reset would still produce correct argv here).
-    # CURSOR_AUTH_ARGS is consumed by callers (launch-cursor-review.sh,
+    # CURSOR_AUTH_ARGS is consumed by callers (launch-review.sh --tool cursor,
     # launch-cursor-implement.sh, check-reviewers.sh, run-negotiation-round.sh,
     # cursor-auth-flags.sh) after sourcing this lib — shellcheck cannot see
     # those callers from here.

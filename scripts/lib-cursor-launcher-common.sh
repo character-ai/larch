@@ -6,7 +6,7 @@ fi
 
 # Shared launcher mechanics common to Cursor and Codex live in
 # lib-external-launcher-common.sh; the cursor_launcher_* wrappers below
-# preserve the existing names so call sites in launch-cursor-review.sh
+# preserve the existing names so call sites in launch-review.sh --tool cursor
 # and launch-cursor-implement.sh stay untouched.
 # shellcheck source=scripts/lib-external-launcher-common.sh
 # shellcheck disable=SC1091

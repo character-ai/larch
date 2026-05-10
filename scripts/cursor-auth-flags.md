@@ -27,7 +27,7 @@ while IFS= read -r line; do CURSOR_AUTH_FLAGS+=("$line"); done < <("${CLAUDE_PLU
 
 ## Test harness
 
-Coverage rolls up into `scripts/test-lib-cursor-auth.sh` (which pins the underlying `cursor_auth_argv` behavior) and `scripts/test-launch-cursor-review.sh` (which pins the launcher-level argv shape). Direct stub-driven coverage of `cursor-auth-flags.sh`'s line-per-element output is exercised by `scripts/test-lib-cursor-auth.sh` `test_cursor_auth_flags_*` cases.
+Coverage rolls up into `scripts/test-lib-cursor-auth.sh` (which pins the underlying `cursor_auth_argv` behavior) and `scripts/test-launch-review.sh` (which pins the launcher-level argv shape). Direct stub-driven coverage of `cursor-auth-flags.sh`'s line-per-element output is exercised by `scripts/test-lib-cursor-auth.sh` `test_cursor_auth_flags_*` cases.
 
 ## Edit-in-sync rules
 

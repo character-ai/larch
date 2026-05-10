@@ -106,7 +106,7 @@ start_probe() {
 
     case "$tool" in
         codex)
-            # Argv MUST track scripts/launch-codex-review.sh / launch-codex-implement.sh:
+            # Argv MUST track scripts/launch-review.sh --tool codex / launch-codex-implement.sh:
             # --add-dir "$PROBE_DIR" exercises the same writable-roots flag production
             # uses; model args go through scripts/agent-model-args.sh so invalid
             # LARCH_CODEX_MODEL / CLAUDE_PLUGIN_OPTION_CODEX_MODEL is rejected at
@@ -162,7 +162,7 @@ start_probe() {
             while IFS= read -r arg; do
                 CURSOR_MODEL_ARGS+=("$arg")
             done < "$CURSOR_MODEL_ARGS_TMP"
-            # Argv MUST track scripts/launch-cursor-review.sh: --capture-stdout-only
+            # Argv MUST track scripts/launch-review.sh --tool cursor: --capture-stdout-only
             # plus --output-format json so the probe exercises the same Cursor CLI
             # path production review launches use. Drift here can produce false
             # healthy/unhealthy probe verdicts when the JSON output mode behaves
@@ -205,7 +205,7 @@ evaluate_probe() {
     exit_code=$(cat "${output}.done" 2>/dev/null || echo "99")
     if [[ "$exit_code" == "0" && -s "$output" ]]; then
         if [[ "$tool" == "cursor" ]]; then
-            # Cursor probe uses --output-format json (mirroring scripts/launch-cursor-review.sh).
+            # Cursor probe uses --output-format json (mirroring scripts/launch-review.sh --tool cursor).
             # The reply text lives at .result; fall back to the raw body for legacy
             # plain-text output if jq is missing or the body is not valid JSON.
             if command -v jq >/dev/null 2>&1 && jq -e . "$output" >/dev/null 2>&1; then

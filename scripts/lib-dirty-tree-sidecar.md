@@ -1,6 +1,6 @@
 # lib-dirty-tree-sidecar.sh
 
-Sourced-only helper carrying the canonical `_write_dirty_tree_sidecar` implementation shared between `scripts/launch-codex-review.sh`, `scripts/launch-cursor-review.sh`, and `scripts/launch-gemini-review.sh`. Resolves the byte-equivalent duplication that previously lived in each review-launch wrapper (issue #1502).
+Sourced-only helper carrying the canonical `_write_dirty_tree_sidecar` implementation shared between `scripts/launch-review.sh --tool codex`, `scripts/launch-review.sh --tool cursor`, and `scripts/launch-review.sh --tool gemini`. Resolves the byte-equivalent duplication that previously lived in each review-launch wrapper (issue #1502).
 
 Exposes:
 
@@ -10,4 +10,4 @@ Exposes:
 
 The library is sourced-only (no shebang, no `set -e`); callers own exit semantics. Loaded once per shell via the `LARCH_LIB_DIRTY_TREE_SIDECAR_LOADED` guard.
 
-**Edit-in-sync**: `scripts/launch-codex-review.sh`, `scripts/launch-cursor-review.sh`, `scripts/launch-gemini-review.sh`, `scripts/check-mid-run-dirty-tree.sh`.
+**Edit-in-sync**: `scripts/launch-review.sh --tool codex`, `scripts/launch-review.sh --tool cursor`, `scripts/launch-review.sh --tool gemini`, `scripts/check-mid-run-dirty-tree.sh`.

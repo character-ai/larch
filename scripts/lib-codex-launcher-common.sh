@@ -6,7 +6,7 @@ fi
 
 # Canonical bodies live in lib-external-launcher-common.sh; the wrappers
 # below preserve the codex_launcher_* names so existing call sites in
-# launch-codex-review.sh stay untouched.
+# launch-review.sh --tool codex stay untouched.
 # shellcheck source=scripts/lib-external-launcher-common.sh
 # shellcheck disable=SC1091
 source "${BASH_SOURCE[0]%/*}/lib-external-launcher-common.sh"

@@ -99,6 +99,12 @@ done
 printf 'OK\n' > "$out"
 CODEX_SHAPE_STUB
 chmod +x "$STUB_BIN/codex"
+cat > "$STUB_BIN/gemini" <<'GEMINI_SHAPE_STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '{"response":"Gemini retry OK"}\n'
+GEMINI_SHAPE_STUB
+chmod +x "$STUB_BIN/gemini"
 PATH="$STUB_BIN:$PATH"
 export PATH
 
@@ -540,6 +546,24 @@ RESULT_P3=$(run_collector bash "$OUT_P3" "$HEALTH_P3")
 assert_line "case P3 codex shape accepted" "STATUS=OK" "$RESULT_P3"
 assert_line "case P3 codex retry file" "REVIEWER_FILE=${OUT_P3%.txt}-retry.txt" "$RESULT_P3"
 
+# Case P3b: Gemini retry metadata may replay the unified launcher, provided
+# the command carries --tool gemini. This covers the redacted launcher-shaped
+# CMD_JSON emitted by launch-review.sh for Gemini reviews.
+OUT_P3B="$TMPROOT/gemini-p3b.txt"
+HEALTH_P3B="$TMPROOT/case-p3b.health"
+write_empty_candidate "$OUT_P3B"
+{
+    printf 'TOOL=gemini\n'
+    printf 'TIMEOUT=20\n'
+    printf 'CAPTURE_STDOUT=false\n'
+    printf 'CAPTURE_STDOUT_ONLY=false\n'
+    printf 'OUTPUT_FILE=%s\n' "$OUT_P3B"
+    printf 'CMD_JSON=%s\n' "$(jq -cn --args '$ARGS.positional' -- "$REPO_ROOT/scripts/launch-review.sh" --tool gemini --output "$OUT_P3B" --timeout 20 --prompt 'retry prompt')"
+} > "${OUT_P3B}.meta"
+RESULT_P3B=$(LARCH_GEMINI_MODEL=test-gemini-model run_collector bash "$OUT_P3B" "$HEALTH_P3B")
+assert_line "case P3b gemini launcher shape accepted" "STATUS=OK" "$RESULT_P3B"
+assert_line "case P3b gemini retry file" "REVIEWER_FILE=${OUT_P3B%.txt}-retry.txt" "$RESULT_P3B"
+
 # Case P4: unknown TOOL values fail closed instead of falling back to a less
 # constrained CMD_JSON path.
 OUT_P4="$TMPROOT/cursor-p4.txt"
@@ -548,7 +572,7 @@ write_meta_for_tool "$OUT_P4" unknown-tool "$(jq -cn --args '$ARGS.positional' -
 assert_fail_closed "case-p4" "$OUT_P4" "Retry metadata invalid: unknown TOOL for CMD_JSON"
 
 # Outer-launcher retry coverage. The retry metadata points at the real
-# launch-cursor-review.sh, while PATH supplies a stub cursor binary so the
+# launch-review.sh, while PATH supplies a stub cursor binary so the
 # launcher runs offline.
 CURSOR_STUB_BIN="$TMPROOT/cursor-stub-bin"
 mkdir -p "$CURSOR_STUB_BIN"
@@ -593,7 +617,7 @@ HEALTH_Q="$TMPROOT/case-q.health"
 WORKDIR_Q="$TMPROOT/workdir-q"
 mkdir -p "$WORKDIR_Q"
 prepare_outer_candidate "$OUT_Q"
-write_outer_meta "$OUT_Q" "$REPO_ROOT/scripts/launch-cursor-review.sh" "${OUT_Q}.prompt" "$WORKDIR_Q"
+write_outer_meta "$OUT_Q" "$REPO_ROOT/scripts/launch-review.sh" "${OUT_Q}.prompt" "$WORKDIR_Q"
 export CURSOR_STUB_RESULT="POST-PROCESSED OK"
 RESULT_Q=$(PATH="$CURSOR_STUB_BIN:$PATH" run_collector bash "$OUT_Q" "$HEALTH_Q")
 assert_line "case Q reviewer file" "REVIEWER_FILE=${OUT_Q%.txt}-retry.txt" "$RESULT_Q"
@@ -612,7 +636,7 @@ prepare_outer_candidate "$OUT_Q2"
     printf 'CAPTURE_STDOUT=false\n'
     printf 'CAPTURE_STDOUT_ONLY=false\n'
     printf 'OUTPUT_FILE=%s\n' "$OUT_Q2"
-    printf 'OUTER_LAUNCHER=%s\n' "$REPO_ROOT/scripts/launch-codex-review.sh"
+    printf 'OUTER_LAUNCHER=%s\n' "$REPO_ROOT/scripts/launch-review.sh"
     printf 'OUTER_LAUNCHER_PROMPT_FILE=%s\n' "${OUT_Q2}.prompt"
     printf 'OUTER_LAUNCHER_WORKDIR=%s\n' "$WORKDIR_Q2"
 } > "${OUT_Q2}.meta"
@@ -623,17 +647,17 @@ assert_equals "case Q2 codex outer output" "OK" "$(cat "${OUT_Q2%.txt}-retry.txt
 
 OUT_R1="$TMPROOT/cursor-r1.txt"
 prepare_outer_candidate "$OUT_R1"
-write_outer_meta "$OUT_R1" "$REPO_ROOT/scripts/launch-cursor-review.sh" "" "$WORKDIR_Q"
+write_outer_meta "$OUT_R1" "$REPO_ROOT/scripts/launch-review.sh" "" "$WORKDIR_Q"
 assert_fail_closed "case-r1" "$OUT_R1" "Retry metadata invalid: missing OUTER_LAUNCHER_PROMPT_FILE"
 
 OUT_R2="$TMPROOT/cursor-r2.txt"
 prepare_outer_candidate "$OUT_R2"
-write_outer_meta "$OUT_R2" "$REPO_ROOT/scripts/launch-cursor-review.sh" "${OUT_R2}.prompt" ""
+write_outer_meta "$OUT_R2" "$REPO_ROOT/scripts/launch-review.sh" "${OUT_R2}.prompt" ""
 assert_fail_closed "case-r2" "$OUT_R2" "Retry metadata invalid: missing OUTER_LAUNCHER_WORKDIR"
 
 OUT_S1="$TMPROOT/cursor-s1.txt"
 prepare_outer_candidate "$OUT_S1"
-write_outer_meta "$OUT_S1" "$REPO_ROOT/scripts/../scripts/launch-cursor-review.sh" "${OUT_S1}.prompt" "$WORKDIR_Q"
+write_outer_meta "$OUT_S1" "$REPO_ROOT/scripts/../scripts/launch-review.sh" "${OUT_S1}.prompt" "$WORKDIR_Q"
 assert_fail_closed "case-s1" "$OUT_S1" "Retry metadata invalid: OUTER_LAUNCHER contains .."
 if [[ -e "${OUT_S1%.txt}-retry.txt" ]]; then
     fail "case S1 should reject before creating retry output"
@@ -643,17 +667,17 @@ fi
 
 OUT_S2="$TMPROOT/cursor-s2.txt"
 prepare_outer_candidate "$OUT_S2"
-WRONG_LAUNCHER="$TMPROOT/not-launch-cursor-review.sh"
+WRONG_LAUNCHER="$TMPROOT/not-launch-review.sh"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$WRONG_LAUNCHER"
 chmod +x "$WRONG_LAUNCHER"
 write_outer_meta "$OUT_S2" "$WRONG_LAUNCHER" "${OUT_S2}.prompt" "$WORKDIR_Q"
-assert_fail_closed "case-s2" "$OUT_S2" "Retry metadata invalid: OUTER_LAUNCHER not canonical launch-cursor-review.sh"
+assert_fail_closed "case-s2" "$OUT_S2" "Retry metadata invalid: OUTER_LAUNCHER not canonical launch-review.sh"
 
 OUT_U1="$TMPROOT/cursor-u1.txt"
 prepare_outer_candidate "$OUT_U1"
 EVIL_PROMPT="$TMPROOT/evil-prompt.txt"
 printf 'evil\n' > "$EVIL_PROMPT"
-write_outer_meta "$OUT_U1" "$REPO_ROOT/scripts/launch-cursor-review.sh" "$EVIL_PROMPT" "$WORKDIR_Q"
+write_outer_meta "$OUT_U1" "$REPO_ROOT/scripts/launch-review.sh" "$EVIL_PROMPT" "$WORKDIR_Q"
 assert_fail_closed "case-u1" "$OUT_U1" "Retry metadata invalid: OUTER_LAUNCHER_PROMPT_FILE not the expected sidecar"
 
 OUT_U2="$TMPROOT/cursor-u2.txt"
@@ -661,13 +685,13 @@ write_empty_candidate "$OUT_U2"
 REAL_PROMPT_U2="$TMPROOT/real-u2.prompt"
 printf 'prompt\n' > "$REAL_PROMPT_U2"
 ln -s "$REAL_PROMPT_U2" "${OUT_U2}.prompt"
-write_outer_meta "$OUT_U2" "$REPO_ROOT/scripts/launch-cursor-review.sh" "${OUT_U2}.prompt" "$WORKDIR_Q"
+write_outer_meta "$OUT_U2" "$REPO_ROOT/scripts/launch-review.sh" "${OUT_U2}.prompt" "$WORKDIR_Q"
 assert_fail_closed "case-u2" "$OUT_U2" "Retry metadata invalid: OUTER_LAUNCHER_PROMPT_FILE not a readable regular non-symlink file"
 
 OUT_V="$TMPROOT/cursor-v.txt"
 HEALTH_V="$TMPROOT/case-v.health"
 prepare_outer_candidate "$OUT_V"
-write_outer_meta "$OUT_V" "$REPO_ROOT/scripts/launch-cursor-review.sh" "${OUT_V}.prompt" "$WORKDIR_Q" 'CMD_JSON=not-json'
+write_outer_meta "$OUT_V" "$REPO_ROOT/scripts/launch-review.sh" "${OUT_V}.prompt" "$WORKDIR_Q" 'CMD_JSON=not-json'
 export CURSOR_STUB_RESULT="BROKEN CMDJSON IGNORED"
 RESULT_V=$(PATH="$CURSOR_STUB_BIN:$PATH" run_collector bash "$OUT_V" "$HEALTH_V")
 assert_line "case V status" "STATUS=OK" "$RESULT_V"
@@ -679,7 +703,7 @@ PWD_LOG_W="$TMPROOT/case-w-pwd.log"
 WORKDIR_W="$TMPROOT/workdir-w"
 mkdir -p "$WORKDIR_W"
 prepare_outer_candidate "$OUT_W"
-write_outer_meta "$OUT_W" "$REPO_ROOT/scripts/launch-cursor-review.sh" "${OUT_W}.prompt" "$WORKDIR_W"
+write_outer_meta "$OUT_W" "$REPO_ROOT/scripts/launch-review.sh" "${OUT_W}.prompt" "$WORKDIR_W"
 export CURSOR_STUB_RESULT="POST-PROCESSED OK"
 export CURSOR_STUB_PWD_LOG="$PWD_LOG_W"
 RESULT_W=$(PATH="$CURSOR_STUB_BIN:$PATH" run_collector bash "$OUT_W" "$HEALTH_W")
@@ -689,7 +713,7 @@ unset CURSOR_STUB_PWD_LOG
 
 OUT_X="$TMPROOT/cursor-x.txt"
 prepare_outer_candidate "$OUT_X"
-write_outer_meta "$OUT_X" "$REPO_ROOT/scripts/../scripts/launch-cursor-review.sh" "${OUT_X}.prompt" "$WORKDIR_Q" 'CMD_JSON=not-json'
+write_outer_meta "$OUT_X" "$REPO_ROOT/scripts/../scripts/launch-review.sh" "${OUT_X}.prompt" "$WORKDIR_Q" 'CMD_JSON=not-json'
 assert_fail_closed "case-x" "$OUT_X" "Retry metadata invalid: OUTER_LAUNCHER contains .."
 if [[ -e "${OUT_X%.txt}-retry.txt" ]]; then
     fail "case X should reject before creating retry output"
@@ -699,7 +723,7 @@ fi
 
 # R2_FINDING_2 (-L rejection on OUTER_LAUNCHER) defense-in-depth note: a
 # leaf-symlink test would require planting a symlink at the canonical
-# $SCRIPT_DIR/launch-cursor-review.sh — the only path where the
+# $SCRIPT_DIR/launch-review.sh — the only path where the
 # canonicalization comparison succeeds before the new -L check runs. We
 # cannot pollute the live scripts/ directory from an offline harness; the
 # -L code path is exercised implicitly for any non-canonical leaf-symlink
@@ -720,7 +744,7 @@ HOOK_Z="$TMPROOT/case-z-hook.sh"
 HOOK_SENTINEL_Z="$TMPROOT/case-z-hook-fired"
 mkdir -p "$WORKDIR_Z"
 prepare_outer_candidate "$OUT_Z"
-write_outer_meta "$OUT_Z" "$REPO_ROOT/scripts/launch-cursor-review.sh" "${OUT_Z}.prompt" "$WORKDIR_Z"
+write_outer_meta "$OUT_Z" "$REPO_ROOT/scripts/launch-review.sh" "${OUT_Z}.prompt" "$WORKDIR_Z"
 printf 'touch %q\n' "$HOOK_SENTINEL_Z" > "$HOOK_Z"
 export CURSOR_STUB_RESULT="POST-PROCESSED OK"
 # Export the test-hook env vars in the parent shell so the collector
