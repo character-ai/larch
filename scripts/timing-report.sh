@@ -16,7 +16,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib-timing-paths.sh"
 
 unavailable() {
-    printf 'Timing report unavailable: %s\n' "$1"
+    printf 'Timing report unavailable: %s\n' "$1" >&2
     exit 0
 }
 

@@ -8,7 +8,7 @@ set -euo pipefail
 
 NAME="${1:-}"
 if [[ -z "$NAME" ]]; then
-  echo "STATUS=not-found" >&2
+  echo "STATUS=not-found"
   exit 0
 fi
 
@@ -18,7 +18,7 @@ NAME="${NAME#/}"
 
 # Reject path traversal
 if [[ "$NAME" == *"/"* || "$NAME" == *".."* ]]; then
-  echo "STATUS=not-found" >&2
+  echo "STATUS=not-found"
   exit 0
 fi
 
@@ -36,12 +36,12 @@ for candidate in \
     "${PLUGIN_ROOT}/.claude/skills/${NAME}/SKILL.md"
 do
   if [[ -f "$candidate" ]]; then
-    echo "STATUS=found" >&2
-    echo "SKILL_PATH=${candidate}" >&2
+    echo "STATUS=found"
+    echo "SKILL_PATH=${candidate}"
     cat "$candidate"
     exit 0
   fi
 done
 
-echo "STATUS=not-found" >&2
+echo "STATUS=not-found"
 exit 0

@@ -6,7 +6,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 unavailable() {
-    printf 'Token report unavailable: %s\n' "$1"
+    printf 'Token report unavailable: %s\n' "$1" >&2
     exit 0
 }
 

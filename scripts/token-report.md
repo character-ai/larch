@@ -31,7 +31,7 @@ When the target file is damaged so that exactly one of the two markers is presen
 
 Token reporting must never block `/implement`.
 
-- `token-report.sh`: prints `Token report unavailable: <reason>` to stdout and exits 0. With `LARCH_DEBUG_TOKEN_REPORT` enabled (see "LARCH_DEBUG_TOKEN_REPORT opt-in jq diagnostics" below) and a non-empty captured jq stderr, the message gains a fixed trailing parenthetical `(jq stderr captured; debug)` (preceded by a single space) — never the absolute path. The actual jq stderr file path is emitted to the script's own stderr as `token-report.sh: jq stderr captured at <path>`. Consumers matching the `Token report unavailable:` prefix continue to work; consumers expecting an exact-line match must accept the optional fixed-phrase suffix.
+- `token-report.sh`: prints `Token report unavailable: <reason>` to stderr and exits 0. With `LARCH_DEBUG_TOKEN_REPORT` enabled (see "LARCH_DEBUG_TOKEN_REPORT opt-in jq diagnostics" below) and a non-empty captured jq stderr, the message gains a fixed trailing parenthetical `(jq stderr captured; debug)` (preceded by a single space) — never the absolute path. The actual jq stderr file path is emitted to the script's own stderr as `token-report.sh: jq stderr captured at <path>`. Consumers matching the `Token report unavailable:` prefix continue to work; consumers expecting an exact-line match must accept the optional fixed-phrase suffix.
 - `token-ledger.sh`: warns on stderr and exits 0.
 - `token-claude-source.sh`: prints `STATUS=unavailable` / `REASON=<msg>` to stdout and exits 1.
 - Launcher scrape blocks: silent on failure; diagnostics stay in sidecars or stderr and never pollute launcher stdout.
