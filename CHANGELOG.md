@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+## [26.0.6] - 2026-05-11
+
+### Added
+
+- `--run-id <ID>` flag documented in all 22 plugin-exported skill SKILL.md files (preparatory for larch-logs run-correlation in #1438)
+
 ## [26.0.5] - 2026-05-11
 
 ### Fixed
