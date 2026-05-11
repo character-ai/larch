@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+## [26.0.1] - 2026-05-11
+
+### Added
+
+- /report-tokens: auto-post [Analysis Report] GitHub issue after each analysis run
+- /report-tokens: --no-issue flag to skip analysis report issue creation
+- /report-tokens: --no-plot flag to skip plot generation
+- /report-tokens: --plot-from <N> flag to re-plot from a prior report issue
+
+### Fixed
+
+- Fix plot_dir NameError in /report-tokens matplotlib subprocess (sys.argv[2] passthrough)
+
 ## [26.0.0] - 2026-05-11
 
 ### Changed
