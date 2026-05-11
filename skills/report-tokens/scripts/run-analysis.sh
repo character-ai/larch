@@ -490,9 +490,13 @@ print(json.dumps(paths))
         text=True,
     )
     if result.returncode != 0:
-        first_line = (result.stderr or "").strip().splitlines()
-        detail = f": {first_line[0]}" if first_line else ""
-        print(f"Plot generation skipped: matplotlib subprocess exited {result.returncode}{detail}")
+        stderr_text = (result.stderr or "").strip()
+        if stderr_text:
+            tail = stderr_text[-2000:]
+            print(f"Plot generation skipped: matplotlib subprocess exited {result.returncode}:")
+            print(tail)
+        else:
+            print(f"Plot generation skipped: matplotlib subprocess exited {result.returncode} with no stderr")
         return out_paths
     try:
         out_paths = json.loads(result.stdout)

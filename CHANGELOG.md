@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+## [26.0.3] - 2026-05-11
+
+### Fixed
+
+- fix duplicate step 9a.1 breadcrumb in /implement output (add explicit refresh-anchor.sh fence)
+- /report-tokens now surfaces full matplotlib subprocess errors via stderr tail instead of masking them behind the font-cache banner
+
 ## [26.0.2] - 2026-05-11
 
 ### Fixed
