@@ -4,6 +4,7 @@ Regression harness for `scripts/session-setup.sh` keepalive metadata. It runs `s
 
 - the session tmpdir is created under `${XDG_CACHE_HOME}/larch/sessions/`;
 - `SESSION_ID=` is emitted and matches `session-id`;
+- `LARCH_RENDER_CACHE_DIR=` points at `SESSION_TMPDIR/render-cache`;
 - `.larch-keepalive` exists and contains the documented header keys.
 
 Primary contract owner: `scripts/session-setup.md`.
