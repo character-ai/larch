@@ -104,7 +104,7 @@ If the reviewer panel finds no issues or all findings are addressed: proceed to 
 ## Phase 4 — Continue Rebase
 
 For `caller_kind=early_rebase`, run `${CLAUDE_PLUGIN_ROOT}/scripts/rebase-push.sh --continue --no-push --keep-on-conflict` and handle exit codes:
-- **Exit 0**: Local-only rebase succeeded. Return to the Rebase Checkpoint Macro's success path (M4). Do NOT invoke the Rebase + Re-bump Sub-procedure and do NOT push.
+- **Exit 0**: Local-only rebase succeeded. Return to the Rebase Checkpoint Macro's success path (M3). Do NOT invoke the Rebase + Re-bump Sub-procedure and do NOT push.
 - **Exit 1**: A later commit in the rebase conflicted. Loop back to **Phase 1** for the new conflict (the Conflict Resolution Procedure starts again for the new set of `CONFLICT_FILES`).
 - **Exit 3**: Check the `REBASE_ERROR` output. If it indicates an empty or already-applied commit (e.g., "nothing to commit", "No changes"), run `${CLAUDE_PLUGIN_ROOT}/scripts/git-rebase-skip.sh` (if it exits non-zero, run `${CLAUDE_PLUGIN_ROOT}/scripts/git-rebase-abort.sh`, set `STALL_TRACKING=true`, and **bail out** to Step 18) and then `${CLAUDE_PLUGIN_ROOT}/scripts/rebase-push.sh --continue --no-push --keep-on-conflict` again (handle the same exit codes). Otherwise, run `${CLAUDE_PLUGIN_ROOT}/scripts/git-rebase-abort.sh`, set `STALL_TRACKING=true`, and **bail out** to Step 18.
 

@@ -217,9 +217,17 @@ _codex_exit_dispatcher() {
     _emit_timing_record "$rc"
     [[ -n "$MODEL_ARGS_TMP" ]] && rm -f "$MODEL_ARGS_TMP"
     [[ -n "$CODEX_HOME_DIR" ]] && rm -rf "$CODEX_HOME_DIR"
-    # Skip dirty-tree sidecar when sandbox is read-only: the syscall block
-    # already prevents writes, making the after-the-fact scan redundant.
-    [[ "${CODEX_SANDBOX_MODE:-}" == "read-only" ]] || _write_dirty_tree_sidecar
+    # When sandbox is read-only the syscall block prevents writes, so emit a
+    # static clean sidecar (maintains consumer contract) without scanning.
+    if [[ "${CODEX_SANDBOX_MODE:-}" == "read-only" ]]; then
+        if [[ -n "${DIRTY_TREE_SIDECAR:-}" && "$DIRTY_TREE_WRITTEN" == "false" ]]; then
+            printf 'STATUS=clean\nMODE=baseline\nREASON=codex-sandbox-read-only\n' \
+                > "$DIRTY_TREE_SIDECAR" 2>/dev/null || true
+            DIRTY_TREE_WRITTEN=true
+        fi
+    else
+        _write_dirty_tree_sidecar
+    fi
     codex_launcher_promote_inner_done "$OUTPUT"
     exit "$rc"
 }
@@ -300,9 +308,9 @@ fi
 # `--sandbox read-only` (replacing the prior `--full-auto`'s workspace-write)
 # so the CLI itself rejects model-issued shell writes; the instructions
 # field is the prompt-level reinforcement so the model also reasons about
-# its read-only role. The dirty-tree-sidecar EXIT trap is suppressed for
-# Codex because --sandbox read-only already blocks writes at the syscall
-# level, making the after-the-fact scan redundant.
+# its read-only role. The dirty-tree-sidecar EXIT trap still emits a sidecar
+# for Codex, but writes a static STATUS=clean record instead of running the
+# scan — --sandbox read-only enforces write isolation at the syscall level.
 #
 # Retry-replay safety: ${OUTPUT}.prompt is consumed by collect-agent-results.sh
 # empty-output retries via `--prompt-file`. Because the static hardening
