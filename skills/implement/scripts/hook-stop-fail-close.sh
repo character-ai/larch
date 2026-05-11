@@ -73,4 +73,19 @@ if [[ -f "$IMPLEMENT_TMPDIR/review-round-summary.md" ]] && \
     exit 0
 fi
 
+# Block on post-/bump-version boundary halt: /bump-version ran (.bump-version-armed
+# written by check-bump-version.sh --mode pre) but postbump-state.sh not yet written
+# by the orchestrator after sub-steps 2/3 (issue #1878).
+if [[ -f "$IMPLEMENT_TMPDIR/.bump-version-armed" ]] && \
+   [[ ! -f "$IMPLEMENT_TMPDIR/postbump-state.sh" ]]; then
+    REASON=$'You halted mid-Step-8 (post-/bump-version boundary).\n\nNEXT REQUIRED: complete sub-step 2 (silent parse of REASONING_FILE, CURRENT_VERSION, NEW_VERSION, BUMP_TYPE — no text output), call check-bump-version.sh --mode post --before-count $COMMITS_BEFORE, sanitize the reasoning file, write postbump-state.sh, then invoke implement-finalize.sh postbump — per skills/implement/SKILL.md Step 8 continuation directives. Do NOT write any analysis prose (e.g. "No escalation needed", bump type summary, or echoed values) before that chain.\n\nOperator escape: hard-quit the session, OR touch .run-cleaned-up inside the active /implement tmpdir ('"$TMPDIR_BASENAME"$') to intentionally abandon the run.'
+    if command -v jq >/dev/null 2>&1; then
+        jq -cn --arg r "$REASON" '{decision:"block",reason:$r}' \
+            || printf '%s\n' '{"decision":"block","reason":"You halted mid-Step-8 (post-/bump-version boundary). Complete sub-step 2 silent parse, call check-bump-version.sh --mode post, write postbump-state.sh, then invoke implement-finalize.sh postbump."}'
+    else
+        printf '%s\n' '{"decision":"block","reason":"You halted mid-Step-8 (post-/bump-version boundary). Complete sub-step 2 silent parse, call check-bump-version.sh --mode post, write postbump-state.sh, then invoke implement-finalize.sh postbump."}'
+    fi
+    exit 0
+fi
+
 exit 0

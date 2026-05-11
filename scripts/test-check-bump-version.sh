@@ -245,6 +245,61 @@ out=$(cd "$REPO_1E" && bash "$PATCHED_1E" --mode pre 2>&1) || true
 assert_stdout_contains "1e: pre unknown-token STATUS=git_error" "$out" "STATUS=git_error"
 assert_stdout_not_contains "1e: pre unknown-token not passed through" "$out" "STATUS=bogus_token_not_in_enum"
 
+# 1f — Stop hook sentinel: IMPLEMENT_TMPDIR set + HAS_BUMP=true → sentinel written
+REPO_1F="$TMPROOT/repo-pre-sentinel"
+SENTINEL_TMPDIR_1F="$TMPROOT/sentinel-dir-1f"
+mkdir -p "$REPO_1F" "$SENTINEL_TMPDIR_1F"
+(
+    cd "$REPO_1F"
+    git init -q -b main
+    git config user.email "test@example.com"
+    git config user.name "Test"
+    git commit --allow-empty -q -m "init"
+    git checkout -q -b feature
+    git commit --allow-empty -q -m "feat"
+    mkdir -p .claude/skills/bump-version
+    touch .claude/skills/bump-version/SKILL.md
+)
+out=$(cd "$REPO_1F" && IMPLEMENT_TMPDIR="$SENTINEL_TMPDIR_1F" bash "$SCRIPT" --mode pre 2>&1) || true
+assert_stdout_contains "1f: pre sentinel HAS_BUMP=true" "$out" "HAS_BUMP=true"
+if [[ -f "$SENTINEL_TMPDIR_1F/.bump-version-armed" ]]; then
+    pass
+else
+    fail "1f: pre sentinel .bump-version-armed not written when IMPLEMENT_TMPDIR set and HAS_BUMP=true"
+fi
+
+# 1g — sentinel NOT written when HAS_BUMP=false (no bump-version skill)
+REPO_1G="$TMPROOT/repo-pre-no-bump"
+SENTINEL_TMPDIR_1G="$TMPROOT/sentinel-dir-1g"
+setup_git_repo "$REPO_1G" 1 1
+mkdir -p "$SENTINEL_TMPDIR_1G"
+out=$(cd "$REPO_1G" && IMPLEMENT_TMPDIR="$SENTINEL_TMPDIR_1G" bash "$SCRIPT" --mode pre 2>&1) || true
+assert_stdout_contains "1g: pre no-bump HAS_BUMP=false" "$out" "HAS_BUMP=false"
+if [[ ! -f "$SENTINEL_TMPDIR_1G/.bump-version-armed" ]]; then
+    pass
+else
+    fail "1g: pre sentinel .bump-version-armed should NOT be written when HAS_BUMP=false"
+fi
+
+# 1h — sentinel NOT written when IMPLEMENT_TMPDIR is unset (best-effort guard)
+REPO_1H="$TMPROOT/repo-pre-no-tmpdir"
+mkdir -p "$REPO_1H"
+(
+    cd "$REPO_1H"
+    git init -q -b main
+    git config user.email "test@example.com"
+    git config user.name "Test"
+    git commit --allow-empty -q -m "init"
+    git checkout -q -b feature
+    git commit --allow-empty -q -m "feat"
+    mkdir -p .claude/skills/bump-version
+    touch .claude/skills/bump-version/SKILL.md
+)
+# Run without IMPLEMENT_TMPDIR — should succeed (HAS_BUMP=true) with no sentinel error
+out=$(cd "$REPO_1H" && env -u IMPLEMENT_TMPDIR bash "$SCRIPT" --mode pre 2>&1) || true
+assert_stdout_contains "1h: pre no-tmpdir HAS_BUMP=true" "$out" "HAS_BUMP=true"
+assert_stdout_not_contains "1h: pre no-tmpdir no error output" "$out" "ERROR"
+
 # --- Section 2: --mode post (STATUS=ok paths) --------------------------------
 
 echo "=== Section 2: --mode post, STATUS=ok ==="
