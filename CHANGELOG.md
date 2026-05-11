@@ -11,6 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Reviewer dirty-tree changes are now automatically logged and discarded instead of prompting the operator with a restore/stash/bail `AskUserQuestion`. When a Cursor, Codex, or Claude reviewer leaves uncommitted changes in the working tree, the orchestrator logs which reviewer caused it (to `execution-issues.md` under `Warnings` in `/implement` runs, or to the transcript in standalone `/review` runs) and immediately discards the changes via scoped `git restore` / `git clean` — no stash is created and `git stash list` remains clean. This replaces the three-option recovery prompt introduced by #1437. Updated: `skills/implement/SKILL.md` (Step 5.3.b quick mode, Step 5 normal mode, `--auto` flag description), `skills/review/SKILL.md` (Step 3a, line 22), `skills/review/references/heavy-worker.md`, `docs/external-reviewers.md`, `SECURITY.md`
 
+## [23.0.0] - 2026-05-10
+
+### Changed
+
+- Add a jq-based run-params writer and regression harness for adaptive /design routing budgets.
+- Teach /design to consume run-params.json, support --full and forwarded classifications, and route sketch fan-out through 0/2/4 budgets with zero-sketch sentinels.
+- Update /implement routing prose for classification reuse, --design-classification forwarding, and POST_PLAN_WORKFLOW_PATH session state.
+- Refresh topology, user docs, security notes, and structural harnesses for the adaptive sketch model.
+
 ## [22.0.0] - 2026-05-10
 
 ### Fixed
