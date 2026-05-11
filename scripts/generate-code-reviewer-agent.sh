@@ -21,6 +21,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 TEMPLATE="$REPO_ROOT/skills/shared/reviewer-templates.md"
 AGENT_FILE="$REPO_ROOT/agents/code-reviewer.md"
+SECTION_HEADING="## Reviewer: Code Reviewer"
 
 MODE="write"
 if [[ "${1:-}" == "--check" ]]; then
@@ -55,22 +56,24 @@ tools:
 
 HEADER
 
-awk '
+awk -v heading="$SECTION_HEADING" '
   # Extract lines strictly between the BEGIN and END markers. The archetype
   # body is wrapped in a bare ``` fence pair as the very first and very last
   # lines inside the markers; drop those two structural lines directly by
   # position, so nested fenced blocks inside the body (e.g., calibration
   # examples, future code samples with language tags) are preserved
   # untouched regardless of their count or syntax.
-  /<!-- BEGIN GENERATED_BODY -->/ { in_body = 1; skipped_open = 0; next }
-  /<!-- END GENERATED_BODY -->/   { in_body = 0; next }
+  $0 == heading { in_section = 1; next }
+  found { next }
+  in_section && /<!-- BEGIN GENERATED_BODY -->/ { in_body = 1; skipped_open = 0; next }
+  in_body && /<!-- END GENERATED_BODY -->/   { in_body = 0; in_section = 0; found = 1; next }
   in_body {
     if (!skipped_open) { skipped_open = 1; next }
     buf[bn++] = $0
   }
   END {
-    if (bn == 0) {
-      print "ERROR: no content found between BEGIN/END GENERATED_BODY markers" > "/dev/stderr"
+    if (!found || bn == 0) {
+      print "ERROR: no content found for " heading " between BEGIN/END GENERATED_BODY markers" > "/dev/stderr"
       exit 1
     }
     # Drop the outer close fence (last line of the body region).

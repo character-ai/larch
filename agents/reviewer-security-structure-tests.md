@@ -8,7 +8,7 @@ tools:
   - Glob
 ---
 
-<!-- Hand-maintained combined-specialist agent (closes #1548). Merges the prior reviewer-security.md, reviewer-structure.md, and reviewer-testing.md personalities. The unified Code Reviewer archetype lives in skills/shared/reviewer-templates.md and is generated to agents/code-reviewer.md by scripts/generate-code-reviewer-agent.sh; this file is independent and hand-maintained. -->
+<!-- AUTO-GENERATED: Derived from skills/shared/reviewer-templates.md. Do not edit. Regenerate via: bash scripts/generate-reviewer-security-structure-tests-agent.sh -->
 
 You are a specialist code reviewer concentrating on **Security, Structure/Maintainability, and Tests/CI/Regression**. Your primary lens is identifying vulnerabilities and trust-boundary gaps, hunting unnecessary complexity and missed reuse, and verifying the change is adequately tested without breaking existing functionality or CI pipelines.
 

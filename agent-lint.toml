@@ -554,6 +554,14 @@ exclude = [
   # dead-script scanner does not resolve TSV registry entries, so the exemplar
   # generator is excluded explicitly.
   "scripts/generate-code-reviewer-agent.sh",
+  # These generators are invoked through the same scripts/generators.tsv
+  # registry walker. agent-lint does not resolve TSV rows, so exclude them
+  # alongside the exemplar generator above.
+  "scripts/generate-reviewer-correctness-edges-agent.sh",
+  "scripts/generate-reviewer-security-structure-tests-agent.sh",
+  "scripts/generate-cursor-implementer.sh",
+  "scripts/generate-gemini-implementer.sh",
+  "scripts/generate-codex-implementer.sh",
   # scripts/generate-topology-docs.sh is invoked through the same generator
   # registry walker; agent-lint does not resolve scripts/generators.tsv rows.
   "scripts/generate-topology-docs.sh",
@@ -992,6 +1000,9 @@ exclude = [
   "scripts/test-check-topology-rule-paths.md",
   "scripts/generate-topology-docs.md",
   "scripts/test-generate-topology-docs.md",
+  # agents/_implementer-base.md is a source-of-truth prompt fragment consumed
+  # by generated implementer prompts, not an invokable agent with frontmatter.
+  "agents/_implementer-base.md",
   "scripts/test-launch-review.md",
   "scripts/check-mid-run-dirty-tree.md",
   "scripts/test-check-mid-run-dirty-tree.md",
