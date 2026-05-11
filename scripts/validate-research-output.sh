@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # validate-research-output.sh — Substantive-content validator for /research outputs.
 #
-# Reads a single file, applies a fixed set of substantive-content checks, and
-# exits 0 if substantive or non-zero with a one-line diagnostic on stdout. The
-# intended consumer is `scripts/collect-agent-results.sh --substantive-validation`,
-# which translates a non-zero exit into a `STATUS=NOT_SUBSTANTIVE` entry with
-# `HEALTHY=false`. Phase 3 of umbrella issue #413 (closes #416, #447, #473).
+# Reads a single file, applies either a fixed set of substantive-content checks
+# or structured reviewer record checks, and exits 0 if valid or non-zero with a
+# one-line diagnostic on stdout. The intended consumer is
+# `scripts/collect-agent-results.sh --substantive-validation` and/or
+# `--structured-reviewer-validation`, which translates a non-zero exit into a
+# `STATUS=NOT_SUBSTANTIVE` entry with `HEALTHY=false`.
+# Phase 3 of umbrella issue #413 (closes #416, #447, #473).
 #
 # Substantive = ALL of:
 #   1. Body word count >= --min-words (default 200), excluding fenced-code-block
@@ -69,6 +71,22 @@
 # The preset is a defaults override: explicit `--min-words N` and
 # `--no-require-citations` flags still take precedence.
 #
+# Structured-reviewer mode (--structured-reviewer-mode): validates reviewer
+# records emitted as JSONL or TSV. This mode is independent of --validation-mode
+# and bypasses the prose word-count/citation gates when at least one valid
+# structured record is found. `--write-structured <path>` writes normalized valid
+# records to the given path; NO_ISSUES_FOUND writes an empty file and exits 0.
+# JSONL detection prefers `jq`: each candidate line must parse as a JSON object
+# with schema_version=1 and the required schema fields. Severity aliases
+# Important/Nit/Latent are normalized case-insensitively. If `jq` is unavailable,
+# JSONL detection falls back to the degraded strict prefix match
+# `{"schema_version":1,` with no leading spaces and no spaces around the colon
+# or comma. TSV detection requires the exact header:
+# `schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix`.
+# TSV rows must have at least 8 tab-separated fields; extra tabs are repaired by
+# folding fields 8..N into `suggested_fix` with spaces. Literal newlines cannot
+# be recovered after line-oriented output and are therefore not reconstructed.
+#
 # Known limitations (defense-in-depth, not authentication):
 #   - Tilde-fence variants (~~~ ... ~~~) are NOT recognized; only triple-
 #     backtick fences are.
@@ -81,7 +99,7 @@
 #     sanity gate, not a quality oracle.
 #
 # Usage:
-#   validate-research-output.sh [--min-words N] [--require-citations|--no-require-citations] [--validation-mode] <file>
+#   validate-research-output.sh [--min-words N] [--require-citations|--no-require-citations] [--validation-mode] [--structured-reviewer-mode] [--write-structured <path>] <file>
 #
 # Exit codes:
 #   0 — substantive (no stdout output)
@@ -89,11 +107,13 @@
 #   2 — body too thin (word count below --min-words after stripping fenced code)
 #   3 — no provenance marker found (only when --require-citations is on)
 #   4 — file missing or not readable
+#   5 — structured records not found after repair
 #
 # Diagnostic format:
 #   Exit 2: `body too thin: <count>/<min> words after stripping fenced code`
 #   Exit 3: `no provenance marker found`
 #   Exit 4: `file missing or not readable: <path>`
+#   Exit 5: `structured records not found after repair`
 #
 # Portability: uses `awk` (POSIX) and `grep -E` (BSD + GNU). No `\d`, no
 # lookarounds, no `\w` — all character classes are explicit `[...]`.
@@ -111,6 +131,8 @@ SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 MIN_WORDS=""
 REQUIRE_CITATIONS=true
 VALIDATION_MODE=false
+STRUCTURED_REVIEWER_MODE=false
+WRITE_STRUCTURED=""
 INPUT=""
 
 while [[ $# -gt 0 ]]; do
@@ -123,8 +145,12 @@ while [[ $# -gt 0 ]]; do
             REQUIRE_CITATIONS=false; shift ;;
         --validation-mode)
             VALIDATION_MODE=true; shift ;;
+        --structured-reviewer-mode)
+            STRUCTURED_REVIEWER_MODE=true; shift ;;
+        --write-structured)
+            WRITE_STRUCTURED="${2:?--write-structured requires a value}"; shift 2 ;;
         --help)
-            sed -n '/^# /,/^[^#]/p' "$0" | head -n 95
+            sed -n '/^# /,/^[^#]/p' "$0" | head -n 120
             exit 0 ;;
         -*)
             echo "validate-research-output.sh: unknown option: $1" >&2
@@ -160,6 +186,152 @@ if [[ ! -r "$INPUT" ]]; then
     exit 4
 fi
 
+write_structured_output() {
+    local target="$1"
+    local source="$2"
+    local tmp
+    [[ -n "$target" ]] || return 0
+    tmp=$(mktemp "${target}.tmp.XXXXXX") || return 1
+    if [[ -n "$source" ]]; then
+        cat "$source" > "$tmp" || { rm -f "$tmp"; return 1; }
+    else
+        : > "$tmp" || { rm -f "$tmp"; return 1; }
+    fi
+    mv "$tmp" "$target"
+}
+
+trimmed_nonblank_content() {
+    awk 'NF { gsub(/^[[:space:]]+|[[:space:]]+$/, ""); print }' "$1"
+}
+
+validate_structured_jsonl_with_jq() {
+    local input="$1"
+    local output="$2"
+    local tmp_line
+    : > "$output"
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        case "$line" in
+            ''|[[:space:]]*) ;;
+        esac
+        if printf '%s\n' "$line" | grep -Eq '^[[:space:]]*```'; then
+            continue
+        fi
+        tmp_line=$(printf '%s' "$line" | jq -c '
+            if type == "object" then
+              .severity = (if (.severity | type) == "string" then (.severity | ascii_downcase) else .severity end)
+            else
+              .
+            end
+            | select(
+                type == "object"
+                and .schema_version == 1
+                and (.scope == "in_scope" or .scope == "out_of_scope")
+                and (.severity == "important" or .severity == "nit" or .severity == "latent")
+                and (.focus_area == "code-quality" or .focus_area == "risk-integration" or .focus_area == "correctness" or .focus_area == "architecture" or .focus_area == "security")
+                and (.location | type == "string")
+                and (.what | type == "string")
+                and (.scenario_or_breakage | type == "string")
+                and (.suggested_fix | type == "string")
+              )
+        ' 2>/dev/null)
+        if [[ -n "$tmp_line" ]]; then
+            printf '%s\n' "$tmp_line" >> "$output"
+        fi
+    done < "$input"
+    [[ -s "$output" ]]
+}
+
+validate_structured_jsonl_prefix_fallback() {
+    local input="$1"
+    local output="$2"
+    : > "$output"
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        case "$line" in
+            '{"schema_version":1,'*) printf '%s\n' "$line" >> "$output" ;;
+        esac
+    done < "$input"
+    [[ -s "$output" ]]
+}
+
+validate_structured_tsv() {
+    local input="$1"
+    local output="$2"
+    local header
+    header=$'schema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix'
+    awk -F '\t' -v OFS='\t' -v header="$header" '
+        function clean(s) {
+            gsub(/\r/, " ", s)
+            gsub(/\n/, " ", s)
+            gsub(/[[:space:]]+/, " ", s)
+            sub(/^ /, "", s)
+            sub(/ $/, "", s)
+            return s
+        }
+        /^[[:space:]]*```/ { next }
+        !seen {
+            if ($0 == header) {
+                print header
+                seen = 1
+            }
+            next
+        }
+        seen && NF == 0 { next }
+        seen {
+            if (NF < 8) next
+            schema = clean($1)
+            scope = clean($2)
+            severity = tolower(clean($3))
+            focus = clean($4)
+            location = clean($5)
+            what = clean($6)
+            scenario = clean($7)
+            fix = clean($8)
+            if (NF > 8) {
+                for (i = 9; i <= NF; i++) {
+                    fix = fix " " clean($i)
+                }
+            }
+            if (schema != "1") next
+            if (scope != "in_scope" && scope != "out_of_scope") next
+            if (severity != "important" && severity != "nit" && severity != "latent") next
+            if (focus != "code-quality" && focus != "risk-integration" && focus != "correctness" && focus != "architecture" && focus != "security") next
+            print schema, scope, severity, focus, location, what, scenario, fix
+            records++
+        }
+        END { exit(records > 0 ? 0 : 1) }
+    ' "$input" > "$output"
+}
+
+if [[ "$STRUCTURED_REVIEWER_MODE" == "true" ]]; then
+    TRIMMED=$(trimmed_nonblank_content "$INPUT")
+    if [[ "$TRIMMED" == "NO_ISSUES_FOUND" ]]; then
+        write_structured_output "$WRITE_STRUCTURED" ""
+        exit 0
+    fi
+
+    STRUCTURED_TMP=$(mktemp "${TMPDIR:-/tmp}/structured-reviewer.XXXXXX") || exit 1
+    trap 'rm -f "$STRUCTURED_TMP"' EXIT
+
+    if command -v jq >/dev/null 2>&1; then
+        if validate_structured_jsonl_with_jq "$INPUT" "$STRUCTURED_TMP"; then
+            write_structured_output "$WRITE_STRUCTURED" "$STRUCTURED_TMP"
+            exit 0
+        fi
+    elif validate_structured_jsonl_prefix_fallback "$INPUT" "$STRUCTURED_TMP"; then
+        write_structured_output "$WRITE_STRUCTURED" "$STRUCTURED_TMP"
+        exit 0
+    fi
+
+    if validate_structured_tsv "$INPUT" "$STRUCTURED_TMP"; then
+        write_structured_output "$WRITE_STRUCTURED" "$STRUCTURED_TMP"
+        exit 0
+    fi
+
+    write_structured_output "$WRITE_STRUCTURED" ""
+    echo "structured records not found after repair"
+    exit 5
+fi
+
 # --- 0. Validation-mode short-circuit: accept the literal NO_ISSUES_FOUND
 # token (the explicit "no findings" signal emitted by /research's Step 2.4
 # validators per scripts/render-reviewer-prompt.sh) as substantive without
@@ -172,7 +344,7 @@ if [[ "$VALIDATION_MODE" == "true" ]]; then
     # Concatenate non-blank lines after stripping per-line leading and trailing
     # whitespace. If the result equals exactly `NO_ISSUES_FOUND`, the file is
     # the literal token (possibly surrounded by blank lines) and is accepted.
-    TRIMMED=$(awk 'NF { gsub(/^[[:space:]]+|[[:space:]]+$/, ""); print }' "$INPUT")
+    TRIMMED=$(trimmed_nonblank_content "$INPUT")
     if [[ "$TRIMMED" == "NO_ISSUES_FOUND" ]]; then
         exit 0
     fi

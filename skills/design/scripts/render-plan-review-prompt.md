@@ -8,6 +8,7 @@
 - Every prompt includes the slash-separated focus-area enum `code-quality / risk-integration / correctness / architecture / security`.
 - Every prompt includes `NO_ISSUES_FOUND` as the no-findings sentinel instruction.
 - Codex prompts stay terse and command-like; Cursor prompts stay path/file-list-centric.
+- Cursor prompts include a TSV structured-record block contract so `/design` Step 3 can pass native Cursor archetype outputs through `collect-agent-results.sh --structured-reviewer-validation`. Codex prompts remain prose-only until their prompt contract is updated.
 - Invalid arguments exit 2 with diagnostics on stderr.
 
 ## Primary Callers
@@ -21,4 +22,4 @@ Run `make test-plan-review-prompt` or `bash skills/design/scripts/test-plan-revi
 
 ## Edit In Sync
 
-Update `skills/design/SKILL.md`, `skills/design/references/plan-review.md`, `skills/design/scripts/test-plan-review-prompt.sh`, `Makefile`, and `docs/linting.md` when changing the renderer interface, vendor styles, archetype names, or output invariants.
+Update `skills/design/SKILL.md`, `skills/design/references/plan-review.md`, `skills/design/scripts/test-plan-review-prompt.sh`, `Makefile`, and `docs/linting.md` when changing the renderer interface, vendor styles, archetype names, structured-output contract, or output invariants.

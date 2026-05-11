@@ -204,6 +204,13 @@ run_collector() {
     RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 "$shell_path" "$COLLECTOR" --timeout 5 --write-health "$health" "$output" 2>"${health}.stderr"
 }
 
+run_collector_structured() {
+    local shell_path="$1"
+    local output="$2"
+    local health="$3"
+    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 "$shell_path" "$COLLECTOR" --timeout 5 --write-health "$health" --structured-reviewer-validation "$output" 2>"${health}.stderr"
+}
+
 assert_fail_closed() {
     local label="$1"
     local output="$2"
@@ -277,6 +284,33 @@ RESULT_A=$(run_collector bash "$OUT_A" "$HEALTH_A")
 assert_line "case A reviewer file" "REVIEWER_FILE=${OUT_A%.txt}-retry.txt" "$RESULT_A"
 assert_line "case A status" "STATUS=OK" "$RESULT_A"
 assert_line "case A healthy" "HEALTHY=true" "$RESULT_A"
+
+# Case A2: structured reviewer validation writes a normalized TSV sidecar and
+# emits the STRUCTURED_SIDECAR field before FAILURE_REASON.
+OUT_A2="$TMPROOT/cursor-a2.txt"
+HEALTH_A2="$TMPROOT/case-a2.health"
+{
+    printf 'schema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix\n'
+    printf '1\tin_scope\tImportant\tcorrectness\tfoo.sh:7\tbad branch\tinput fails\tadd guard\n'
+} > "$OUT_A2"
+printf '0\n' > "${OUT_A2}.done"
+RESULT_A2=$(run_collector_structured bash "$OUT_A2" "$HEALTH_A2")
+assert_line "case A2 status" "STATUS=OK" "$RESULT_A2"
+assert_line "case A2 structured sidecar field" "STRUCTURED_SIDECAR=${OUT_A2}.tsv" "$RESULT_A2"
+assert_line "case A2 healthy" "HEALTHY=true" "$RESULT_A2"
+assert_line "case A2 sidecar normalized" $'1\tin_scope\timportant\tcorrectness\tfoo.sh:7\tbad branch\tinput fails\tadd guard' "$(cat "${OUT_A2}.tsv")"
+
+# Case A3: structured reviewer validation fails closed when STATUS=OK output
+# has no valid records.
+OUT_A3="$TMPROOT/cursor-a3.txt"
+HEALTH_A3="$TMPROOT/case-a3.health"
+printf 'ordinary prose only\n' > "$OUT_A3"
+printf '0\n' > "${OUT_A3}.done"
+RESULT_A3=$(run_collector_structured bash "$OUT_A3" "$HEALTH_A3")
+assert_line "case A3 status" "STATUS=NOT_SUBSTANTIVE" "$RESULT_A3"
+assert_line "case A3 structured sidecar empty field" "STRUCTURED_SIDECAR=" "$RESULT_A3"
+assert_line "case A3 reason" "FAILURE_REASON=structured records not found after repair" "$RESULT_A3"
+assert_line "case A3 health-file" "CURSOR_HEALTHY=false" "$(cat "$HEALTH_A3")"
 
 # Case B: malformed JSON fails closed and flips tool health.
 OUT_B="$TMPROOT/cursor-b.txt"
@@ -468,7 +502,7 @@ RESULT_K=$(
         build_missing_retry_sentinel_result "/tmp/cursor-k.txt" "cursor"
     ' _ "$COLLECTOR" 2>/dev/null
 )
-assert_line "case K reviewer file" "REVIEWER_FILE=/tmp/cursor-k.txt|TOOL=cursor|STATUS=EMPTY_OUTPUT|EXIT_CODE=99|HEALTHY=false|FAILURE_REASON=Retry process did not complete (sentinel file missing)" "$RESULT_K"
+assert_line "case K reviewer file" "REVIEWER_FILE=/tmp/cursor-k.txt|TOOL=cursor|STATUS=EMPTY_OUTPUT|EXIT_CODE=99|HEALTHY=false|STRUCTURED_SIDECAR=|FAILURE_REASON=Retry process did not complete (sentinel file missing)" "$RESULT_K"
 
 # Case L: malformed initial sentinel content containing the pipe field delimiter
 # is coerced before result construction, so no injected field appears in stdout.
@@ -479,7 +513,7 @@ printf '0|EXTRA\n' > "${OUT_L}.done"
 RESULT_L=$(run_collector bash "$OUT_L" "$HEALTH_L")
 assert_line "case L exit-code coerced" "EXIT_CODE=99" "$RESULT_L"
 LINE_COUNT_L=$(printf '%s\n' "$RESULT_L" | wc -l | tr -d '[:space:]')
-if [[ "$LINE_COUNT_L" == "6" ]]; then
+if [[ "$LINE_COUNT_L" == "7" ]]; then
     ok "case L field-count"
 else
     fail "case L field injection: $LINE_COUNT_L lines"

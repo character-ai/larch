@@ -113,6 +113,15 @@ if [[ -z "$BODY" ]]; then
   exit 2
 fi
 
+# External specialist prompts do not carry the internal Claude calibration
+# examples. Keep the strip scoped to the agent body before mode-specific
+# instructions are appended.
+BODY=$(printf '%s\n' "$BODY" | awk '
+  /^## Calibration examples[[:space:]]*$/ { skip = 1; next }
+  skip && /^## [^#]/ { skip = 0 }
+  !skip { print }
+')
+
 # Compose the prompt.
 {
   # Mode-specific preamble.

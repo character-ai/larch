@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # test-validate-research-output.sh — Regression test for scripts/validate-research-output.sh.
 #
+# Cases (per the acceptance criteria in issue #416, extended for #447, #473, and structured-reviewer-mode):
+#   52-59: --structured-reviewer-mode coverage (JSONL valid, TSV valid, NO_ISSUES_FOUND, fence repair,
+#          preamble repair, severity alias, unrepairable → exit 5, --write-structured sidecar written)
+#
 # Cases (per the acceptance criteria in issue #416, extended for #447):
 #   1. Happy path: substantive prose with one file:line citation → exit 0
 #   2. Empty file → exit 2 (body thin)
@@ -55,6 +59,15 @@
 #   49. `kernel/spin.lock` (slash qualifier, no line-ref) → exit 0 (short-tier strict rule, / signal)
 #   50. `parser_state.h` (underscore qualifier, no line-ref) → exit 0 (short-tier strict rule, _ signal — snake_case)
 #   51. `kernel-mod.h` (dash qualifier, no line-ref) → exit 0 (short-tier strict rule, - signal — kebab-case)
+# Structured-reviewer mode cases:
+#   52. JSONL valid record → exit 0
+#   53. TSV valid record → exit 0
+#   54. NO_ISSUES_FOUND short-circuit → exit 0
+#   55. JSONL inside code fence → exit 0
+#   56. JSONL after prose preamble → exit 0
+#   57. Severity alias normalization → exit 0
+#   58. No valid structured records → exit 5
+#   59. --write-structured writes normalized records
 #
 # Usage:
 #   bash scripts/test-validate-research-output.sh
@@ -416,6 +429,59 @@ F51="$TMPROOT/case51-kernel-mod-h.txt"
 make_words 250 "$F51"
 echo 'Header kernel-mod.h declares the loadable-module ABI.' >> "$F51"
 run_case "case 51: kernel-mod.h accepted (#473 short-tier - signal in stem — kebab-case)" 0 "$F51"
+
+# --- Structured-reviewer mode tests (cases 52-59) ---
+
+# Case 52: JSONL-only file with one valid record → exit 0
+F52="$TMPROOT/case52-jsonl-valid.txt"
+printf '{"schema_version":1,"scope":"in_scope","severity":"important","focus_area":"correctness","location":"foo.sh:42","what":"null deref","scenario_or_breakage":"crash on empty input","suggested_fix":"add null check"}\n' > "$F52"
+run_case "case 52: JSONL valid record → exit 0 (structured-reviewer-mode)" 0 --structured-reviewer-mode "$F52"
+
+# Case 53: TSV-only file with valid record → exit 0
+F53="$TMPROOT/case53-tsv-valid.txt"
+printf 'schema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix\n' > "$F53"
+printf '1\tin_scope\timportant\tcorrectness\tbar.sh:7\toff-by-one\tloop exits one early\tadd <=\n' >> "$F53"
+run_case "case 53: TSV valid record → exit 0 (structured-reviewer-mode)" 0 --structured-reviewer-mode "$F53"
+
+# Case 54: NO_ISSUES_FOUND short-circuit → exit 0
+F54="$TMPROOT/case54-no-issues.txt"
+printf 'NO_ISSUES_FOUND\n' > "$F54"
+run_case "case 54: NO_ISSUES_FOUND → exit 0 (structured-reviewer-mode)" 0 --structured-reviewer-mode "$F54"
+
+# Case 55: JSONL record inside code fence → exit 0 (repair removes fence)
+F55="$TMPROOT/case55-fenced-jsonl.txt"
+# shellcheck disable=SC2016
+printf '```\n{"schema_version":1,"scope":"out_of_scope","severity":"nit","focus_area":"code-quality","location":"baz.sh:1","what":"style nit","scenario_or_breakage":"","suggested_fix":"rename"}\n```\n' > "$F55"
+run_case "case 55: JSONL in code fence → exit 0 (structured-reviewer-mode repair)" 0 --structured-reviewer-mode "$F55"
+
+# Case 56: Prose preamble before JSONL record → exit 0 (repair strips preamble)
+F56="$TMPROOT/case56-preamble-jsonl.txt"
+printf 'Here are my findings:\n\n{"schema_version":1,"scope":"in_scope","severity":"nit","focus_area":"architecture","location":"x.sh:5","what":"issue","scenario_or_breakage":"","suggested_fix":"fix"}\n' > "$F56"
+run_case "case 56: JSONL with prose preamble → exit 0 (structured-reviewer-mode)" 0 --structured-reviewer-mode "$F56"
+
+# Case 57: Severity alias normalization (Important → important) → exit 0
+F57="$TMPROOT/case57-alias.txt"
+printf '{"schema_version":1,"scope":"in_scope","severity":"Important","focus_area":"security","location":"y.sh:3","what":"injection","scenario_or_breakage":"attacker input","suggested_fix":"sanitize"}\n' > "$F57"
+run_case "case 57: severity alias normalization → exit 0 (structured-reviewer-mode)" 0 --structured-reviewer-mode "$F57"
+
+# Case 58: Unrepairable prose file → exit 5
+F58="$TMPROOT/case58-unrepairable.txt"
+make_words 300 "$F58"
+run_case "case 58: no valid structured records → exit 5 (structured-reviewer-mode)" 5 --structured-reviewer-mode "$F58"
+
+# Case 59: --write-structured path is written on success
+F59="$TMPROOT/case59-write-structured.txt"
+SIDECAR59="$TMPROOT/case59-sidecar.jsonl"
+printf '{"schema_version":1,"scope":"in_scope","severity":"nit","focus_area":"code-quality","location":"z.sh:9","what":"nit","scenario_or_breakage":"","suggested_fix":"rename"}\n' > "$F59"
+run_case "case 59: --write-structured sidecar written on success" 0 --structured-reviewer-mode --write-structured "$SIDECAR59" "$F59"
+if [[ -f "$SIDECAR59" ]]; then
+    PASS=$((PASS + 1))
+    echo "  ok: case 59b: sidecar file exists"
+else
+    FAIL=$((FAIL + 1))
+    FAILED_TESTS+=("case 59b: sidecar file not written to $SIDECAR59")
+    echo "  FAIL: case 59b: sidecar file not written" >&2
+fi
 
 echo ""
 echo "=== Summary ==="

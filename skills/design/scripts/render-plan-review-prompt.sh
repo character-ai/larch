@@ -101,6 +101,11 @@ Review the implementation plan file at ${PLAN_FILE}. Explore the codebase follow
 Walk five focus areas: code-quality / risk-integration / correctness / architecture / security.
 Return numbered findings with focus-area tag, repo-relative file:line when applicable, concern, and suggested revision.
 Prefix out-of-scope but worth-tracking items with [OUT_OF_SCOPE]; include affected repo-relative file paths and line ranges so downstream issue filing can detect same-file conflicts.
+Also include a TSV structured-record block with this exact header:
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+For each finding, add one record:
+1	<scope>	<severity>	<focus_area>	<location>	<what>	<scenario_or_breakage>	<suggested_fix>
+Use scope in_scope or out_of_scope; severity important, nit, or latent; and replace literal tabs or newlines inside field values with spaces.
 If NO issues, output exactly NO_ISSUES_FOUND. Do NOT modify files.
 EOF
 fi

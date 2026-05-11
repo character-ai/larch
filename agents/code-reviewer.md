@@ -124,6 +124,14 @@ Rationale for suppression: The diff modified `example://calibration/logger.py:84
 
 ## Output format
 
+## Structured Output Schema (JSON)
+
+In addition to the prose output below, write one JSON object per finding to a sidecar JSONL file. Derive the sidecar path from the primary output path by appending `.jsonl` (for example, `cursor-plan-arch-output.txt.jsonl`). Write structured records only to the sidecar; do not append them to the prose output.
+
+Each JSONL record has these fields: `schema_version` (integer `1`), `scope` (`"in_scope"` or `"out_of_scope"`), `severity` (`"important"`, `"nit"`, or `"latent"`), `focus_area` (`"code-quality"`, `"risk-integration"`, `"correctness"`, `"architecture"`, or `"security"`), `location` (file:line or plan section, string), `what` (finding text, string), `scenario_or_breakage` (concrete failing scenario or breakage path, or empty string), and `suggested_fix` (string).
+
+Emit exactly one JSONL record for each prose finding or observation. If there are no findings or observations, leave the sidecar empty (0 records).
+
 Return findings in two separate sections.
 
 ### Severity

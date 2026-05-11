@@ -167,6 +167,14 @@ Rationale for suppression: The diff modified `example://calibration/logger.py:84
 
 ## Output format
 
+## Structured Output Schema (JSON)
+
+In addition to the prose output below, write one JSON object per finding to a sidecar JSONL file. Derive the sidecar path from the primary output path by appending `.jsonl` (for example, `cursor-plan-arch-output.txt.jsonl`). Write structured records only to the sidecar; do not append them to the prose output.
+
+Each JSONL record has these fields: `schema_version` (integer `1`), `scope` (`"in_scope"` or `"out_of_scope"`), `severity` (`"important"`, `"nit"`, or `"latent"`), `focus_area` (`"code-quality"`, `"risk-integration"`, `"correctness"`, `"architecture"`, or `"security"`), `location` (file:line or plan section, string), `what` (finding text, string), `scenario_or_breakage` (concrete failing scenario or breakage path, or empty string), and `suggested_fix` (string).
+
+Emit exactly one JSONL record for each prose finding or observation. If there are no findings or observations, leave the sidecar empty (0 records).
+
 Return findings in two separate sections.
 
 ### Severity
@@ -274,6 +282,22 @@ Numbered list. Each finding: severity (`**Important**` / `**Nit**` / `**Latent**
 ### Out-of-Scope Observations
 Numbered list of pre-existing issues worth surfacing. Same format plus why it is out of scope.
 
+## Structured Output (TSV Sidecar)
+
+In addition to the prose output above, write one TSV record per finding to a sidecar file derived from the primary output path by appending `.tsv`. Write structured records only to the sidecar; do not append them to the prose output. If there are no findings or observations, leave the sidecar empty.
+
+The TSV sidecar must start with this exact header:
+```
+schema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix
+```
+
+Each following record must use this exact field order:
+```
+1\t<scope>\t<severity>\t<focus_area>\t<location>\t<what>\t<scenario_or_breakage>\t<suggested_fix>
+```
+
+Use `in_scope` or `out_of_scope` for `scope`; `important`, `nit`, or `latent` for `severity`; and one of `code-quality`, `risk-integration`, `correctness`, `architecture`, or `security` for `focus_area`. If a field value contains a literal tab or newline, replace it with a single space.
+
 If no in-scope issues found, say "No in-scope issues found." If no out-of-scope observations, omit that section. Do NOT edit any files.
 ```
 <!-- END GENERATED_BODY -->
@@ -342,6 +366,22 @@ Numbered list. Each finding: severity (`**Important**` / `**Nit**` / `**Latent**
 
 ### Out-of-Scope Observations
 Numbered list of pre-existing issues worth surfacing. Same format plus why it is out of scope.
+
+## Structured Output (TSV Sidecar)
+
+In addition to the prose output above, write one TSV record per finding to a sidecar file derived from the primary output path by appending `.tsv`. Write structured records only to the sidecar; do not append them to the prose output. If there are no findings or observations, leave the sidecar empty.
+
+The TSV sidecar must start with this exact header:
+```
+schema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix
+```
+
+Each following record must use this exact field order:
+```
+1\t<scope>\t<severity>\t<focus_area>\t<location>\t<what>\t<scenario_or_breakage>\t<suggested_fix>
+```
+
+Use `in_scope` or `out_of_scope` for `scope`; `important`, `nit`, or `latent` for `severity`; and one of `code-quality`, `risk-integration`, `correctness`, `architecture`, or `security` for `focus_area`. If a field value contains a literal tab or newline, replace it with a single space.
 
 If no in-scope issues found, say "No in-scope issues found." If no out-of-scope observations, omit that section. Do NOT edit any files.
 ```
