@@ -67,6 +67,13 @@ check_contains "/design Step 4 to Step 5 reminder" "skills/design/SKILL.md" "Con
 echo ""
 echo "--- /fix-issue step-boundary anti-halt coverage ---"
 check_contains "/fix-issue Step 6 to Step 8 reminder" "skills/fix-issue/SKILL.md" "Continue to Step 8 IMMEDIATELY"
+# Post-/implement boundary in /fix-issue (issue #1846 — same gap PR #1817 fixed for
+# post-/design and post-/review in /implement): pin that the directive explicitly says
+# "do NOT end the turn" and not just "do NOT write a summary" (covers silent halts).
+# Uses the "status recap" phrase (unique to fix-issue context) to distinguish this
+# directive from implement's post-/design and post-/review directives.
+check_contains "Post-/implement boundary in /fix-issue — silent halt covered" "skills/fix-issue/SKILL.md" \
+  "do NOT end the turn (neither silently nor after text output), and do NOT write a summary, status recap"
 
 echo ""
 echo "--- /review step-boundary anti-halt coverage ---"
