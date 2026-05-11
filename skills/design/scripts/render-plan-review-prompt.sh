@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+# Render vendor-specific /design plan-review prompts.
+
+set -euo pipefail
+
+ARCHETYPE=""
+VENDOR=""
+PLAN_FILE=""
+
+usage() {
+    cat >&2 <<'EOF'
+Usage: render-plan-review-prompt.sh --archetype <arch|edge|innovation|pragmatic> --vendor <codex|cursor> --plan-file <path>
+EOF
+}
+
+take_value() {
+    local flag="$1"
+    local value="${2:-}"
+    if [[ -z "$value" || "$value" == --* ]]; then
+        echo "render-plan-review-prompt.sh: $flag requires a non-flag value" >&2
+        exit 2
+    fi
+    printf '%s' "$value"
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --archetype) ARCHETYPE="$(take_value --archetype "${2:-}")"; shift 2 ;;
+        --vendor) VENDOR="$(take_value --vendor "${2:-}")"; shift 2 ;;
+        --plan-file) PLAN_FILE="$(take_value --plan-file "${2:-}")"; shift 2 ;;
+        -h|--help) usage; exit 0 ;;
+        *) echo "render-plan-review-prompt.sh: unknown argument: $1" >&2; usage; exit 2 ;;
+    esac
+done
+
+case "$ARCHETYPE" in
+    arch)
+        role_name="Architecture/Standards"
+        short_role="Architecture reviewer: maintainability, engineering standards, separation of concerns, reuse."
+        full_role="You are an Architecture/Standards reviewer. Emphasize maintainability, engineering standards, separation of concerns, and reuse of existing patterns."
+        ;;
+    edge)
+        role_name="Edge-case/Failure-mode"
+        short_role="Edge-case reviewer: boundary conditions, error handling, failure recovery, races, silent data corruption."
+        full_role="You are an Edge-case/Failure-mode reviewer. Focus on boundary conditions, error handling, failure recovery, race conditions, and silent data corruption."
+        ;;
+    innovation)
+        role_name="Innovation/Exploration"
+        short_role="Innovation reviewer: question assumptions, alternatives, and missed simpler or stronger approaches."
+        full_role="You are an Innovation/Exploration reviewer. Question assumptions, suggest creative alternatives, and flag plans that ignore unconventional but stronger solutions."
+        ;;
+    pragmatic)
+        role_name="Pragmatism/Safety"
+        short_role="Pragmatism reviewer: minimize scope, avoid unnecessary complexity, protect existing behavior."
+        full_role="You are a Pragmatism/Safety reviewer. Minimize scope, avoid unnecessary complexity, and ensure existing features are not broken."
+        ;;
+    "")
+        echo "render-plan-review-prompt.sh: --archetype is required" >&2
+        exit 2
+        ;;
+    *)
+        echo "render-plan-review-prompt.sh: invalid --archetype '$ARCHETYPE'" >&2
+        exit 2
+        ;;
+esac
+
+case "$VENDOR" in
+    codex|cursor) ;;
+    "")
+        echo "render-plan-review-prompt.sh: --vendor is required" >&2
+        exit 2
+        ;;
+    *)
+        echo "render-plan-review-prompt.sh: invalid --vendor '$VENDOR'" >&2
+        exit 2
+        ;;
+esac
+
+if [[ -z "$PLAN_FILE" ]]; then
+    echo "render-plan-review-prompt.sh: --plan-file is required" >&2
+    exit 2
+fi
+if [[ ! -r "$PLAN_FILE" ]]; then
+    echo "render-plan-review-prompt.sh: --plan-file path is missing or unreadable: $PLAN_FILE" >&2
+    exit 2
+fi
+
+if [[ "$VENDOR" == "codex" ]]; then
+    cat <<EOF
+You are a ${role_name} plan reviewer. ${short_role}
+Review the implementation plan at ${PLAN_FILE}. Read it, inspect the repo as needed, and report findings only.
+Walk five focus areas: code-quality / risk-integration / correctness / architecture / security - tag each.
+Return numbered findings with focus-area tag, concern, and suggested revision.
+Prefix out-of-scope but worth-tracking items with [OUT_OF_SCOPE] and include repo-relative file paths and line ranges when applicable.
+If NO issues, output exactly NO_ISSUES_FOUND. Do NOT modify files.
+EOF
+else
+    cat <<EOF
+${full_role}
+Review the implementation plan file at ${PLAN_FILE}. Explore the codebase following file paths named in the plan, then inspect adjacent files only when needed to validate contracts and integration points.
+Walk five focus areas: code-quality / risk-integration / correctness / architecture / security.
+Return numbered findings with focus-area tag, repo-relative file:line when applicable, concern, and suggested revision.
+Prefix out-of-scope but worth-tracking items with [OUT_OF_SCOPE]; include affected repo-relative file paths and line ranges so downstream issue filing can detect same-file conflicts.
+If NO issues, output exactly NO_ISSUES_FOUND. Do NOT modify files.
+EOF
+fi

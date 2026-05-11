@@ -20,6 +20,9 @@ Gemini remains generic-only and rejects specialist flags.
   be non-empty and non-flag-like.
 - Token budget cap handling is shared across all three tool paths via
   `--token-budget-cap` or `LARCH_TOKEN_BUDGET_CAP_REVIEW`.
+- Codex receives a compact read-only hardening preamble through
+  per-invocation `CODEX_HOME/config.toml`; Cursor receives the same compact
+  prohibition in the wrapped prompt plus a `--mode plan` enforcement note.
 
 ## Primary Callers
 

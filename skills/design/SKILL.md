@@ -489,7 +489,7 @@ Read `review_budget` from `$DESIGN_TMPDIR/run-params.json`. Valid values are `qu
 
 **IMPORTANT: Plan review MUST ALWAYS run with all 4 reviewers (2 Cursor: Arch, Edge + 2 Codex: Innovation, Pragmatic). Never skip or abbreviate this step regardless of how straightforward the plan appears — even when all sketch agents agreed, the plan is short, or the change seems trivial. Reviewers validate against the actual codebase state, catching issues that sketch-phase reasoning alone cannot detect. When Cursor is unavailable, each Cursor archetype slot falls back to Codex; when Codex is unavailable, each Codex archetype slot falls back to Cursor; when both are unavailable, each falls back to a Claude subagent.**
 
-**MANDATORY — READ ENTIRE FILE before launching reviewers**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/plan-review.md` completely. The reference is the normative source for the reviewer-prompt content and post-launch procedures: the byte-preserved Competition notice blockquote (appended to EACH reviewer prompt), the voter-1 / voter-2 / voter-3 detailed quoted prompts, the ballot file handling paragraph, the Collecting External Reviewer Results procedure (4 reviewers: 2 Cursor archetypes (Arch, Edge) + 2 Codex archetypes (Innovation, Pragmatic), all external), the Voting Panel launch-order + threshold + Competition scoring rules, the Finalize Plan Review 4-step procedure plus OOS artifact write rule, the Track Rejected Plan Review Findings rule, and the accepted `FINDING_N` template, accepted `oos-accepted-design.md` format, and rejected-findings template. Step 3 control flow that remains inline in SKILL.md below (not in plan-review.md): the 4-reviewer "MUST ALWAYS run" IMPORTANT banner, the overall parallel-launch + spawn-order rule, `### External Reviewer Setup` (writing `$DESIGN_TMPDIR/plan.txt` + the focus-area enum summary line), and the external reviewer launch Bash blocks (2 Cursor archetypes + 2 Codex archetypes) which must stay inline because CI greps SKILL.md for the focus-area enum they carry. The Competition notice must be in context before any reviewer launch below — reading this file now guarantees that.
+**MANDATORY — READ ENTIRE FILE before launching reviewers**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/plan-review.md` completely. The reference is the normative source for the reviewer-prompt content and post-launch procedures: the byte-preserved Competition notice blockquote (appended to EACH reviewer prompt), the external prompt renderer contract, the voter-1 / voter-2 / voter-3 detailed quoted prompts, the ballot file handling paragraph, the Collecting External Reviewer Results procedure (4 reviewers: 2 Cursor archetypes (Arch, Edge) + 2 Codex archetypes (Innovation, Pragmatic), all external), the Voting Panel launch-order + threshold + Competition scoring rules, the Finalize Plan Review 4-step procedure plus OOS artifact write rule, the Track Rejected Plan Review Findings rule, and the accepted `FINDING_N` template, accepted `oos-accepted-design.md` format, and rejected-findings template. Step 3 control flow that remains inline in SKILL.md below (not in plan-review.md): the 4-reviewer "MUST ALWAYS run" IMPORTANT banner, the overall parallel-launch + spawn-order rule, `### External Reviewer Setup` (writing `$DESIGN_TMPDIR/plan.txt` + the focus-area enum summary line), and the external reviewer launch Bash blocks (2 Cursor archetypes + 2 Codex archetypes) which must stay inline because CI greps SKILL.md for focus-area enum anchor comments before each renderer call. Renderer details live in `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-plan-review-prompt.md`; harness coverage lives in `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-plan-review-prompt.sh` and `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-plan-review-prompt.md`. The Competition notice must be in context before any reviewer launch below — reading this file now guarantees that.
 
 Launch **all 4 reviewers in parallel** (in a single message). When Cursor is unavailable, each Cursor archetype slot falls back to Codex; when Codex is unavailable, each Codex archetype slot falls back to Cursor; when both are unavailable, each archetype slot falls back to a Claude subagent. **Spawn order matters for parallelism** — launch the slowest reviewers first: 2 Cursor archetypes (Arch, Edge), then 2 Codex archetypes (Innovation, Pragmatic). Each reviewer receives the plan text and the feature description. Each must **only report findings** — never edit files.
 
@@ -506,7 +506,15 @@ Launch 2 Cursor archetype plan reviewers **first** in the parallel message (Arch
 **Cursor — Architecture/Standards** (if `cursor_available`):
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/launch-review.sh --tool cursor --output "$DESIGN_TMPDIR/cursor-plan-arch-output.txt" --timeout 1800 --timing-task-kind cursor-plan-arch --prompt "You are an Architecture/Standards reviewer. Review the implementation plan in $DESIGN_TMPDIR/plan.txt for this project. Read the plan file, then explore the codebase to validate the plan. Your role is to emphasize maintainability, engineering standards, separation of concerns, and reuse of existing patterns. Walk five focus areas: (1) Code Quality: logical flaws, code reuse, test coverage, backward compat, style consistency. (2) Risk/Integration: breaking changes, side effects, thread safety, deployment risks, regressions, CI. (3) Correctness: logic errors, off-by-one, nil handling, type mismatches, races, error paths. (4) Architecture: separation of concerns, contract boundaries, invariants, semantic boundaries. (5) Security: injection, authn/authz, secret handling, crypto, deserialization, SSRF, path traversal, dependency CVEs. Tag each finding with its focus area (one of code-quality / risk-integration / correctness / architecture / security). Return numbered findings with focus-area tag, concern, and suggested revision. If a finding is out of scope for this PR but worth tracking, prefix it with [OUT_OF_SCOPE]. When emitting [OUT_OF_SCOPE] findings, include affected repo-relative file paths and line ranges (e.g., skills/foo/bar.sh:120-150) in the finding's concern text when applicable, so /implement Step 9a.1's file-conflict pre-pass can emit serialization edges. If NO issues, output exactly NO_ISSUES_FOUND. Do NOT modify files."
+# Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
+_arch_prompt_file="$DESIGN_TMPDIR/render-plan-arch.prompt"
+bash "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-plan-review-prompt.sh" \
+  --archetype arch --vendor cursor --plan-file "$DESIGN_TMPDIR/plan.txt" \
+  > "$_arch_prompt_file"
+${CLAUDE_PLUGIN_ROOT}/scripts/launch-review.sh --tool cursor \
+  --output "$DESIGN_TMPDIR/cursor-plan-arch-output.txt" \
+  --timeout 1800 --timing-task-kind cursor-plan-arch \
+  --prompt-file "$_arch_prompt_file"
 ```
 
 Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
@@ -514,12 +522,20 @@ Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
 **Cursor — Edge-cases/Failure-modes** (if `cursor_available`):
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/launch-review.sh --tool cursor --output "$DESIGN_TMPDIR/cursor-plan-edge-output.txt" --timeout 1800 --timing-task-kind cursor-plan-edge --prompt "You are an Edge-case/Failure-mode reviewer. Review the implementation plan in $DESIGN_TMPDIR/plan.txt for this project. Read the plan file, then explore the codebase to validate the plan. Your role is to focus on what can go wrong: boundary conditions, error handling, failure recovery, race conditions, and silent data corruption. Walk five focus areas: (1) Code Quality: logical flaws, code reuse, test coverage, backward compat, style consistency. (2) Risk/Integration: breaking changes, side effects, thread safety, deployment risks, regressions, CI. (3) Correctness: logic errors, off-by-one, nil handling, type mismatches, races, error paths. (4) Architecture: separation of concerns, contract boundaries, invariants, semantic boundaries. (5) Security: injection, authn/authz, secret handling, crypto, deserialization, SSRF, path traversal, dependency CVEs. Tag each finding with its focus area (one of code-quality / risk-integration / correctness / architecture / security). Return numbered findings with focus-area tag, concern, and suggested revision. If a finding is out of scope for this PR but worth tracking, prefix it with [OUT_OF_SCOPE]. When emitting [OUT_OF_SCOPE] findings, include affected repo-relative file paths and line ranges (e.g., skills/foo/bar.sh:120-150) in the finding's concern text when applicable, so /implement Step 9a.1's file-conflict pre-pass can emit serialization edges. If NO issues, output exactly NO_ISSUES_FOUND. Do NOT modify files."
+# Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
+_edge_prompt_file="$DESIGN_TMPDIR/render-plan-edge.prompt"
+bash "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-plan-review-prompt.sh" \
+  --archetype edge --vendor cursor --plan-file "$DESIGN_TMPDIR/plan.txt" \
+  > "$_edge_prompt_file"
+${CLAUDE_PLUGIN_ROOT}/scripts/launch-review.sh --tool cursor \
+  --output "$DESIGN_TMPDIR/cursor-plan-edge-output.txt" \
+  --timeout 1800 --timing-task-kind cursor-plan-edge \
+  --prompt-file "$_edge_prompt_file"
 ```
 
 Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
 
-**Cursor archetype fallback** (per slot, if `cursor_available` is false): For each Cursor archetype slot where Cursor is unavailable, try Codex first (if `codex_available`). Use the same archetype prompt but launch via the Codex pattern (no `--capture-stdout`; uses `--output-last-message`) with distinct per-archetype output paths: `$DESIGN_TMPDIR/codex-fallback-cursor-plan-arch-output.txt`, `$DESIGN_TMPDIR/codex-fallback-cursor-plan-edge-output.txt`. If both Cursor and Codex are unavailable for a slot, launch a Claude subagent fallback (subagent_type: `larch:code-reviewer`, model: `"sonnet"`) with the archetype personality prepended to the plan-review context.
+**Cursor archetype fallback** (per slot, if `cursor_available` is false): For each Cursor archetype slot where Cursor is unavailable, try Codex first (if `codex_available`). Render the same archetype with `render-plan-review-prompt.sh --archetype arch --vendor codex` or `--archetype edge --vendor codex`, write it to an explicit temp prompt file, then launch via `launch-review.sh --tool codex --prompt-file` with distinct per-archetype output paths: `$DESIGN_TMPDIR/codex-fallback-cursor-plan-arch-output.txt`, `$DESIGN_TMPDIR/codex-fallback-cursor-plan-edge-output.txt`. If both Cursor and Codex are unavailable for a slot, launch a Claude subagent fallback (subagent_type: `larch:code-reviewer`, model: `"sonnet"`) using the reviewer-templates.md path in `plan-review.md`.
 
 ### Codex Archetype Reviewers (2 slots)
 
@@ -528,7 +544,15 @@ Launch 2 Codex archetype plan reviewers **second** in the parallel message (Inno
 **Codex — Innovation/Exploration** (if `codex_available`):
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/launch-review.sh --tool codex --output "$DESIGN_TMPDIR/codex-primary-plan-innovation-output.txt" --timeout 1800 --timing-task-kind codex-plan-innovation --prompt "You are an Innovation/Exploration reviewer. Review the implementation plan in $DESIGN_TMPDIR/plan.txt for this project. Read the plan file, then explore the codebase to validate the plan. Your role is to question assumptions, suggest creative alternatives, and flag when the plan takes the obvious path without considering unconventional but potentially superior solutions. Walk five focus areas: (1) Code Quality: logical flaws, code reuse, test coverage, backward compat, style consistency. (2) Risk/Integration: breaking changes, side effects, thread safety, deployment risks, regressions, CI. (3) Correctness: logic errors, off-by-one, nil handling, type mismatches, races, error paths. (4) Architecture: separation of concerns, contract boundaries, invariants, semantic boundaries. (5) Security: injection, authn/authz, secret handling, crypto, deserialization, SSRF, path traversal, dependency CVEs. Tag each finding with its focus area (one of code-quality / risk-integration / correctness / architecture / security). Return numbered findings with focus-area tag, concern, and suggested revision. If a finding is out of scope for this PR but worth tracking, prefix it with [OUT_OF_SCOPE]. When emitting [OUT_OF_SCOPE] findings, include affected repo-relative file paths and line ranges (e.g., skills/foo/bar.sh:120-150) in the finding's concern text when applicable, so /implement Step 9a.1's file-conflict pre-pass can emit serialization edges. If NO issues, output exactly NO_ISSUES_FOUND. Do NOT modify files."
+# Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
+_innovation_prompt_file="$DESIGN_TMPDIR/render-plan-innovation.prompt"
+bash "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-plan-review-prompt.sh" \
+  --archetype innovation --vendor codex --plan-file "$DESIGN_TMPDIR/plan.txt" \
+  > "$_innovation_prompt_file"
+${CLAUDE_PLUGIN_ROOT}/scripts/launch-review.sh --tool codex \
+  --output "$DESIGN_TMPDIR/codex-primary-plan-innovation-output.txt" \
+  --timeout 1800 --timing-task-kind codex-plan-innovation \
+  --prompt-file "$_innovation_prompt_file"
 ```
 
 Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
@@ -536,12 +560,20 @@ Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
 **Codex — Pragmatism/Safety** (if `codex_available`):
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/launch-review.sh --tool codex --output "$DESIGN_TMPDIR/codex-primary-plan-pragmatic-output.txt" --timeout 1800 --timing-task-kind codex-plan-pragmatic --prompt "You are a Pragmatism/Safety reviewer. Review the implementation plan in $DESIGN_TMPDIR/plan.txt for this project. Read the plan file, then explore the codebase to validate the plan. Your role is to minimize the scope of changes, avoid unnecessary complexity, and ensure existing features are not broken. Walk five focus areas: (1) Code Quality: logical flaws, code reuse, test coverage, backward compat, style consistency. (2) Risk/Integration: breaking changes, side effects, thread safety, deployment risks, regressions, CI. (3) Correctness: logic errors, off-by-one, nil handling, type mismatches, races, error paths. (4) Architecture: separation of concerns, contract boundaries, invariants, semantic boundaries. (5) Security: injection, authn/authz, secret handling, crypto, deserialization, SSRF, path traversal, dependency CVEs. Tag each finding with its focus area (one of code-quality / risk-integration / correctness / architecture / security). Return numbered findings with focus-area tag, concern, and suggested revision. If a finding is out of scope for this PR but worth tracking, prefix it with [OUT_OF_SCOPE]. When emitting [OUT_OF_SCOPE] findings, include affected repo-relative file paths and line ranges (e.g., skills/foo/bar.sh:120-150) in the finding's concern text when applicable, so /implement Step 9a.1's file-conflict pre-pass can emit serialization edges. If NO issues, output exactly NO_ISSUES_FOUND. Do NOT modify files."
+# Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
+_pragmatic_prompt_file="$DESIGN_TMPDIR/render-plan-pragmatic.prompt"
+bash "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-plan-review-prompt.sh" \
+  --archetype pragmatic --vendor codex --plan-file "$DESIGN_TMPDIR/plan.txt" \
+  > "$_pragmatic_prompt_file"
+${CLAUDE_PLUGIN_ROOT}/scripts/launch-review.sh --tool codex \
+  --output "$DESIGN_TMPDIR/codex-primary-plan-pragmatic-output.txt" \
+  --timeout 1800 --timing-task-kind codex-plan-pragmatic \
+  --prompt-file "$_pragmatic_prompt_file"
 ```
 
 Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
 
-**Codex archetype fallback** (per slot, if `codex_available` is false): For each Codex archetype slot where Codex is unavailable, try Cursor first (if `cursor_available`). Use the same archetype prompt but launch via the Cursor pattern (with `--capture-stdout`) with distinct per-archetype output paths: `$DESIGN_TMPDIR/cursor-fallback-codex-plan-innovation-output.txt`, `$DESIGN_TMPDIR/cursor-fallback-codex-plan-pragmatic-output.txt`. If both Codex and Cursor are unavailable for a slot, launch a Claude subagent fallback (subagent_type: `larch:code-reviewer`, model: `"sonnet"`) with the archetype personality prepended to the plan-review context.
+**Codex archetype fallback** (per slot, if `codex_available` is false): For each Codex archetype slot where Codex is unavailable, try Cursor first (if `cursor_available`). Render the same archetype with `render-plan-review-prompt.sh --archetype innovation --vendor cursor` or `--archetype pragmatic --vendor cursor`, write it to an explicit temp prompt file, then launch via `launch-review.sh --tool cursor --prompt-file` with distinct per-archetype output paths: `$DESIGN_TMPDIR/cursor-fallback-codex-plan-innovation-output.txt`, `$DESIGN_TMPDIR/cursor-fallback-codex-plan-pragmatic-output.txt`. If both Codex and Cursor are unavailable for a slot, launch a Claude subagent fallback (subagent_type: `larch:code-reviewer`, model: `"sonnet"`) using the reviewer-templates.md path in `plan-review.md`.
 
 ### Collecting, Voting, Finalize, Track Rejected
 

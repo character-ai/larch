@@ -307,12 +307,7 @@ fi
 # the rendered dynamic prompt directly and replay receives the same outgoing
 # prompt plus a fresh CODEX_HOME.
 CODEX_REVIEW_HARDENING_PREAMBLE=$(cat <<'EOF'
-HARD CONSTRAINTS — your role is read-only review. You MUST NOT modify the working tree by any means:
-- Do not redirect, tee, append, or pipe into any file (no `>`, `>>`, `tee`, `tee -a`).
-- Do not run `rm`, `mv`, `cp` (when target is in the repo), `mkdir`, `touch`, `sed -i`, `awk -i inplace`, `perl -i`, or any command with an in-place / write effect.
-- Do not run `git add`, `git commit`, `git checkout <path>`, `git reset <path>`, `git restore`, `git stash`, `git rebase`, `git merge`, `git push`, or any command that mutates branch state, the index, or refs.
-- Do not invoke any tool that writes files (write_file, replace, edit, edit_file, delete_file, or any future-renamed equivalent).
-The launcher enforces this with a CLI-level read-only sandbox (`--sandbox read-only`); any write the agent attempts will be rejected by the sandbox. The launcher also captures an untracked-files baseline at entry, so any post-run mutation is detected and reported via the dirty-tree sidecar.
+HARD CONSTRAINTS — your role is read-only review. Do not create, edit, delete, or overwrite files, and do not run mutating shell or git commands. The launcher enforces this with --sandbox read-only (CLI rejects writes).
 EOF
 )
 if grep -Fq "'''" <<< "$CODEX_REVIEW_HARDENING_PREAMBLE"; then
@@ -722,13 +717,9 @@ fi
 # (the user/specialist-rendered body BEFORE prepending the preamble) so that
 # on retry the launcher reads the body, prepends the preamble exactly once,
 # and produces an identical outgoing PROMPT — no preamble stacking.
-CURSOR_SANDBOX_ENFORCEMENT_LINE="The launcher passes --mode plan to the cursor CLI. Read-only enforcement relies on these prompt constraints plus the launcher's untracked-files baseline + dirty-tree sidecar; any post-run mutation will be detected after the fact, not blocked at the call."
+CURSOR_SANDBOX_ENFORCEMENT_LINE="The launcher passes --mode plan to the cursor CLI. Any post-run mutation will be detected by the dirty-tree sidecar."
 CURSOR_REVIEW_HARDENING_PREAMBLE=$(cat <<EOF
-HARD CONSTRAINTS — your role is read-only review. You MUST NOT modify the working tree by any means:
-- Do not redirect, tee, append, or pipe into any file (no \`>\`, \`>>\`, \`tee\`, \`tee -a\`).
-- Do not run \`rm\`, \`mv\`, \`cp\` (when target is in the repo), \`mkdir\`, \`touch\`, \`sed -i\`, \`awk -i inplace\`, \`perl -i\`, or any command with an in-place / write effect.
-- Do not run \`git add\`, \`git commit\`, \`git checkout <path>\`, \`git reset <path>\`, \`git restore\`, \`git stash\`, \`git rebase\`, \`git merge\`, \`git push\`, or any command that mutates branch state, the index, or refs.
-- Do not invoke any tool that writes files (write_file, replace, edit, edit_file, delete_file, or any future-renamed equivalent).
+HARD CONSTRAINTS — your role is read-only review. Do not create, edit, delete, or overwrite files, and do not run mutating shell or git commands.
 ${CURSOR_SANDBOX_ENFORCEMENT_LINE}
 EOF
 )
