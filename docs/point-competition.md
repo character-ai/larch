@@ -43,7 +43,7 @@ Voters decide whether each OOS item deserves a GitHub issue:
 
 ## Scoreboard
 
-After voting completes, a scoreboard is printed showing each reviewer's performance. Attribution labels are skill-specific — `/review` uses 7 independent players (`Structure`, `Correctness`, `Testing`, `Security`, `Edge-cases`, `Codex`, `Claude-Generic`); `/design` uses 3 players (`Code`, `Codex`, `Cursor`). One row per independent reviewer:
+After voting completes, a scoreboard is printed showing each reviewer's performance. Attribution labels are skill-specific — `/review` uses 11 independent players (`Structure`, `Correctness`, `Testing`, `Security`, `Edge-cases`, `Codex-Structure`, `Codex-Correctness`, `Codex-Testing`, `Codex-Security`, `Codex-Edge-cases`, `Claude-Generic`); `/design` uses 3 players (`Code`, `Codex`, `Cursor`). One row per independent reviewer:
 
 | Reviewer | Findings | Accepted | Neutral (1 YES) | Exonerated (0 YES, 1+ EXON.) | Rejected (0 YES, 0 EXON.) | OOS Proposed | OOS Accepted | Score |
 |----------|----------|----------|-----------------|-------------------------------|---------------------------|--------------|--------------|-------|
@@ -52,7 +52,11 @@ After voting completes, a scoreboard is printed showing each reviewer's performa
 | Testing | 2 | 1 | 0 | 1 | 0 | 1 | 1 | +2 |
 | Security | 4 | 2 | 0 | 1 | 1 | 1 | 1 | +2 |
 | Edge-cases | 3 | 2 | 0 | 0 | 1 | 0 | 0 | +2 |
-| Codex | 2 | 1 | 0 | 0 | 1 | 0 | 0 | 0 |
+| Codex-Structure | 2 | 1 | 0 | 0 | 1 | 0 | 0 | 0 |
+| Codex-Correctness | 2 | 1 | 0 | 0 | 1 | 0 | 0 | 0 |
+| Codex-Testing | 2 | 1 | 0 | 0 | 1 | 0 | 0 | 0 |
+| Codex-Security | 2 | 1 | 0 | 0 | 1 | 0 | 0 | 0 |
+| Codex-Edge-cases | 2 | 1 | 0 | 0 | 1 | 0 | 0 | 0 |
 | Claude-Generic | 2 | 1 | 0 | 0 | 1 | 0 | 0 | 0 |
 
 ## Future Plans

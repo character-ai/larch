@@ -20,7 +20,7 @@ FINDING_2: <reviewer attribution> — <finding description>
 ...
 ```
 
-Include the reviewer attribution so voters have context, but instruct voters to evaluate each finding on its merits regardless of who proposed it. Attribution labels are skill-specific: `/design` uses `Code` / `Codex` / `Cursor` (3-reviewer panel); `/review` uses specialist labels (`Structure`, `Correctness`, `Testing`, `Security`, `Edge-cases`, `Codex`, `Claude-Generic`) for its 7-reviewer panel. `/research` does not participate in voting — it uses the Negotiation Protocol instead.
+Include the reviewer attribution so voters have context, but instruct voters to evaluate each finding on its merits regardless of who proposed it. Attribution labels are skill-specific: `/design` uses `Code` / `Codex` / `Cursor` (3-reviewer panel); `/review` uses specialist labels (`Structure`, `Correctness`, `Testing`, `Security`, `Edge-cases`, `Codex-Structure`, `Codex-Correctness`, `Codex-Testing`, `Codex-Security`, `Codex-Edge-cases`, `Claude-Generic`) for its 11-reviewer panel. `/research` does not participate in voting — it uses the Negotiation Protocol instead.
 
 ## Voter Output Format
 
@@ -195,7 +195,7 @@ Full scoreboard format (used in standalone mode):
 | _label2_ | 2        | 1        | 0               | 1                             | 0                         | 0            | 0            | +1    |
 | _label3_ | 2        | 1        | 1               | 0                             | 0                         | 0            | 0            | +1    |
 
-Attribution labels are skill-specific (e.g., `/design` uses `Code`/`Codex`/`Cursor`; `/review` uses `Structure`/`Correctness`/`Testing`/`Security`/`Edge-cases`/`Codex`/`Claude-Generic`). One row per independent reviewer. In future iterations, token allocation will be weighted proportionally to reviewer scores.
+Attribution labels are skill-specific (e.g., `/design` uses `Code`/`Codex`/`Cursor`; `/review` uses `Structure`/`Correctness`/`Testing`/`Security`/`Edge-cases`/`Codex-Structure`/`Codex-Correctness`/`Codex-Testing`/`Codex-Security`/`Codex-Edge-cases`/`Claude-Generic`). One row per independent reviewer. In future iterations, token allocation will be weighted proportionally to reviewer scores.
 ```
 
 ## Out-of-Scope Observations
@@ -249,7 +249,7 @@ OOS items are **not** written to `rejected-findings.md`. They follow a separate 
 - **Unified filing**: `/implement` Step 9a.1 reads all three artifacts, deduplicates across phases, and creates GitHub issues via `/issue` (batch mode) with LLM-based semantic duplicate detection against open + recently-closed GitHub issues. All three artifacts share the same `### OOS_N:` schema (Description, Reviewer, Vote tally, Phase). Main-agent items use Reviewer=`Main agent`, Vote tally=`N/A — auto-filed per policy`, Phase=`implement`.
 - **Non-accepted OOS items**: Collected and reported in a dedicated `<details><summary>Out-of-Scope Observations</summary>` section in the PR body for future reference.
 
-External reviewers **in diff mode** differ by slot type. **Generic external slots** (Codex generic, Cursor generic) use single-list prompts — their entire output is treated as in-scope findings; `[OUT_OF_SCOPE]`-prefixed lines are routed to the OOS bucket. **Specialist external slots** (Cursor specialists loaded from `agents/reviewer-*.md`) use dual-list output (with `### In-Scope Findings` and `### Out-of-Scope Observations` section headers) and can contribute OOS items via voting. **In `/review` description mode**, all external reviewers produce dual-list output matching the Claude subagent contract and contribute OOS observations via voting — see `${CLAUDE_PLUGIN_ROOT}/skills/review/SKILL.md` Step 3a. Claude subagent reviewers (which use the dual-list templates from `reviewer-templates.md`) produce OOS items via voting in both modes; the main agent's dual-write path produces OOS items without voting.
+External reviewers **in diff mode** differ by slot type. **Specialist external slots** (Cursor and Codex specialists loaded from `agents/reviewer-*.md`) use dual-list output (with `### In-Scope Findings` and `### Out-of-Scope Observations` section headers) and can contribute OOS items via voting. **In `/review` description mode**, all external reviewers produce dual-list output matching the Claude subagent contract and contribute OOS observations via voting — see `${CLAUDE_PLUGIN_ROOT}/skills/review/SKILL.md` Step 3a. Claude subagent reviewers (which use the dual-list templates from `reviewer-templates.md`) produce OOS items via voting in both modes; the main agent's dual-write path produces OOS items without voting.
 
 ## Zero Accepted Findings
 

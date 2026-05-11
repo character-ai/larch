@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+## [25.0.0] - 2026-05-11
+
+### Changed
+
+- **HARD-path `/review` panel expanded to 11 reviewers**: Added 5 Codex specialist reviewers (Codex-Structure, Codex-Correctness, Codex-Testing, Codex-Security, Codex-Edge-cases) alongside the existing 5 Cursor specialists + Claude generic. Rounds 4-7 (single-reviewer tail) removed; hard cap is now 3 rounds. New convergence thresholds: ≥2 high-severity findings OR ≥~100 LOC OR ≥8 accepted findings (round 3 escalation: ≥3 high-severity OR ≥~150 LOC). `--full` flag removed.
+- **SIMPLE-path quick-mode review restructured to 6 reviewers**: Dropped Claude generic from rounds 1-3 (new panel: 5 Cursor specialists + 1 Codex generic). Rounds 4-7 removed; hard cap is now 3 rounds. Matching convergence thresholds. Claude generic fallback retained for the both-externals-down case. SIMPLE nit-only early exit added.
+- **5 new Codex specialist timing-task-kind slugs**: `codex-specialist-structure`, `codex-specialist-correctness`, `codex-specialist-testing`, `codex-specialist-security`, `codex-specialist-edge-cases` added to `lib-timing-kinds.sh`.
+
+### Changed
+
 - Reviewer dirty-tree changes are now automatically logged and discarded instead of prompting the operator with a restore/stash/bail `AskUserQuestion`. When a Cursor, Codex, or Claude reviewer leaves uncommitted changes in the working tree, the orchestrator logs which reviewer caused it (to `execution-issues.md` under `Warnings` in `/implement` runs, or to the transcript in standalone `/review` runs) and immediately discards the changes via scoped `git restore` / `git clean` — no stash is created and `git stash list` remains clean. This replaces the three-option recovery prompt introduced by #1437. Updated: `skills/implement/SKILL.md` (Step 5.3.b quick mode, Step 5 normal mode, `--auto` flag description), `skills/review/SKILL.md` (Step 3a, line 22), `skills/review/references/heavy-worker.md`, `docs/external-reviewers.md`, `SECURITY.md`
 
 ## [24.2.2] - 2026-05-11
