@@ -21,6 +21,7 @@ Design an implementation plan for a feature and review it with a 4-reviewer pane
 | `--step-prefix <prefix>` | empty | Nested-numbering prefix from `/implement` | `::` delimiter splits numeric prefix from breadcrumb path; `"1."` (bare numeric) is backward-compat |
 | `--branch-info <values>` | — | Skip redundant branch-state check when called from `/implement` | 4 keys required: `IS_MAIN`/`IS_USER_BRANCH`/`USER_PREFIX`/`CURRENT_BRANCH`; fallback on validation failure to `create-branch.sh --check`; power-user / nested-call flag with no standalone value validation |
 | `--design-classification <value>` | empty | Accept caller-forwarded `TRIVIAL_DOC_ONLY`/`SIMPLE`/`HARD` classification | Trusted only when `branch_info_supplied=true`; standalone `/design` ignores it and classifies locally |
+| `--run-id <ID>` | empty | Optional run identifier | When set, used as the run ID for this invocation instead of the auto-generated one |
 
 **MANDATORY — READ ENTIRE FILE before parsing argument flags**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/flags.md` completely. This reference is the single normative source for flag semantics — validation rules, fallback behaviors, `::` delimiter encoding spec, 4-key `--branch-info` requirement, and backward-compat notes. The table above is a non-normative index.
 

@@ -15,6 +15,7 @@ Pass any of these after the skill name (e.g. `/report-tokens --no-issue`):
 - `--no-issue` — skip posting the `[Analysis Report]` GitHub issue.
 - `--no-plot` — skip plot generation; text analysis is still printed.
 - `--plot-from <N>` — re-plot from a prior `[Analysis Report]` issue number (skips the GitHub scan).
+- `--run-id <ID>` — optional run identifier; when set, used as the run ID for this invocation instead of the auto-generated one. Default: empty (auto-generate).
 
 ## Step 1 - Run analysis
 

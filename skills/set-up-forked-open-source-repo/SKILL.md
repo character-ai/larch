@@ -68,6 +68,7 @@ The sibling contract for the coordinator lives at
   present.
 - `--init-submodules` — opt into `git submodule update --init --recursive`
   after remotes are configured. Submodule setup is intentionally not default.
+- `--run-id <ID>` — optional run identifier; when set, used as the run ID for this invocation instead of the auto-generated one. Default: empty (auto-generate).
 
 ## Anti-Patterns
 

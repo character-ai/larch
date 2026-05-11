@@ -11,6 +11,10 @@ Scaffold a new larch-style skill and delegate to `/im --quick --auto` for the fu
 
 Example: `/create-skill foo "Use when doing X"` creates `.claude/skills/foo/SKILL.md` in the consumer repo. With `--plugin`, creates `skills/foo/SKILL.md` inside the larch plugin repo.
 
+## Flags
+
+- `--run-id <ID>`: Optional run identifier; when set, used as the run ID for this invocation instead of the auto-generated one. Default: empty (auto-generate).
+
 ## Step 1 — Parse Arguments
 
 Invoke the argument parser:

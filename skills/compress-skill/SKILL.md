@@ -35,6 +35,8 @@ The directory-tree restriction is the mechanical filter: references to files out
 
 Parse flags from the start of `$ARGUMENTS` before the first positional token.
 
+- `--run-id <ID>`: Optional run identifier; when set, used as the run ID for this invocation instead of the auto-generated one. Default: empty (auto-generate).
+
 After flag stripping, the next positional token is the **target skill name** (bare form, e.g. `implement`) or an **absolute path** to a skill directory. Strip a leading `/` if present on a bare name. Reject names containing `:` (no plugin-qualified forms — see NEVER #4).
 
 ## Step 2 — Resolve Target and Build Feature Description

@@ -32,6 +32,10 @@ Example: `/skill-evolver design` or `/skill-evolver review`.
 - **NEVER call `/umbrella` when `/research` returns zero actionable improvements.** Why: an empty umbrella creates a tracking issue with no children — pure noise. Print the canonical Step 3 zero-branch message (the `**ℹ /skill-evolver: …**` line whose verbatim text lives in Step 3) and exit cleanly.
 - **NEVER accept a target skill name without verifying the SKILL.md exists.** Why: a typo (`/skill-evolver dezign`) would otherwise burn a full deep-mode `/research` run on a nonexistent target before failing at the umbrella step. `validate-args.sh` checks `skills/<name>/SKILL.md` and `.claude/skills/<name>/SKILL.md` and aborts before any `/research` call.
 
+## Flags
+
+- `--run-id <ID>`: Optional run identifier; when set, used as the run ID for this invocation instead of the auto-generated one. Default: empty (auto-generate).
+
 ## Step 1 — Validate Arguments
 
 ```bash

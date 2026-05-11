@@ -21,6 +21,7 @@ Collaborative best-effort read-only-repo research task with a fixed-shape lane t
 **Flags**: Parse flags from the start of `$ARGUMENTS` before treating the remainder as the research question. Flags may appear in any order; stop at the first non-flag token. After stripping all flags, save the remainder as `RESEARCH_QUESTION`.
 
 - `--no-issue` (boolean): Set a mental flag `RESEARCH_NO_ISSUE=true`. When set, Step 3.5 (auto-issue) is skipped — no GitHub issue is created for the research results. Default: `RESEARCH_NO_ISSUE=false`. When `RESEARCH_NO_ISSUE=false` (default), Step 3.5 creates a GitHub issue containing the research question, full report, and token spend metadata via `/issue` single mode.
+- `--run-id <ID>`: Optional run identifier; when set, used as the run ID for this invocation instead of the auto-generated one. Default: empty (auto-generate).
 
 **Fail-closed unknown-flag guard**: After flag parsing finishes, inspect the next token of `$ARGUMENTS`. If it begins with `--`, abort:
 
