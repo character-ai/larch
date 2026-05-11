@@ -63,7 +63,7 @@ fi
 # is written by the orchestrator at the start of Step 6 (issue #1862).
 if [[ -f "$IMPLEMENT_TMPDIR/review-round-summary.md" ]] && \
    [[ ! -f "$IMPLEMENT_TMPDIR/.review-boundary-passed" ]]; then
-    REASON=$'You halted mid-Step-5 (post-/review boundary).\n\nNEXT REQUIRED: execute the Cross-Skill Health Propagation + Track Rejected Code Review Findings + Step 6 breadcrumb in order per skills/implement/SKILL.md Step 5 post-/review directives, then write .review-boundary-passed inside the active /implement tmpdir ('"$TMPDIR_BASENAME"$'):\n  touch '"$IMPLEMENT_TMPDIR"$'/.review-boundary-passed\n\nOperator escape: hard-quit the session, OR touch .run-cleaned-up inside the active /implement tmpdir to intentionally abandon the run.'
+    REASON=$'You halted mid-Step-5 (post-/review boundary).\n\nNEXT REQUIRED: execute the Cross-Skill Health Propagation + Track Rejected Code Review Findings + Step 6 breadcrumb in order per skills/implement/SKILL.md Step 5 post-/review directives, then touch .review-boundary-passed inside the active /implement tmpdir ('"$TMPDIR_BASENAME"$') to release this guard.\n\nOperator escape: hard-quit the session, OR touch .run-cleaned-up inside the active /implement tmpdir to intentionally abandon the run.'
     if command -v jq >/dev/null 2>&1; then
         jq -cn --arg r "$REASON" '{decision:"block",reason:$r}' \
             || printf '%s\n' '{"decision":"block","reason":"You halted mid-Step-5 (post-/review boundary). Execute Cross-Skill Health Propagation + Step 6 breadcrumb, then touch .review-boundary-passed inside the active /implement tmpdir."}'
