@@ -146,7 +146,7 @@ Both presence and absence are enforced by `${CLAUDE_PLUGIN_ROOT}/scripts/test-an
 <a id="step-boundary"></a>
 ## Step-boundary anti-halt
 
-**Scope**: this rule covers numbered-step boundaries where the parent skill has just completed a step or sub-step and the next action is another numbered step, not a child `Skill` return. It is especially important after `# token-step-end Step N` boundaries, skip breadcrumbs, status footers, and terminal-sounding helper output where there is no immediately adjacent Skill-tool micro-reminder to re-anchor continuation.
+**Scope**: this rule covers numbered-step boundaries where the parent skill has just completed a step or sub-step and the next action is another numbered step, not a child `Skill` return. It is especially important after skip breadcrumbs, status footers, and terminal-sounding helper output where there is no immediately adjacent Skill-tool micro-reminder to re-anchor continuation.
 
 **Canonical form**: use a two-line blockquote at the specific boundary:
 

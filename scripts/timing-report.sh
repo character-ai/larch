@@ -158,6 +158,23 @@ render_report() {
           printf "%s: elapsed=%s vendor-tasks=%d (codex=%d, cursor=%d, gemini=%d)\n", last_terse_step, hms(now - last_terse_ts), total, codex, cursor, gemini
           exit 0
         }
+        if (mode == "summary") {
+          if (mark_count == 0) {
+            print "Timing report unavailable: no step marks in ledger" > "/dev/stderr"
+            exit 0
+          }
+          total = codex = cursor = gemini = 0
+          for (i = 1; i <= vendor_count; i++) {
+            if (vendor_end[i] >= mark_ts[1]) {
+              total++
+              if (vendor_name[i] == "codex") codex++
+              else if (vendor_name[i] == "cursor") cursor++
+              else if (vendor_name[i] == "gemini") gemini++
+            }
+          }
+          printf "Total: elapsed=%s vendor-tasks=%d (codex=%d, cursor=%d, gemini=%d)\n", hms(now - mark_ts[1]), total, codex, cursor, gemini
+          exit 0
+        }
         if (mark_count == 0) {
           print "Timing report unavailable: no step marks in ledger"
           exit 0
@@ -283,6 +300,7 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --since-last-mark) MODE="terse"; shift ;;
         --terse) shift ;;
+        --summary) MODE="summary"; shift ;;
         --full) MODE="full"; shift ;;
         --markdown) shift ;;
         --output) OUTPUT="${2:?--output requires a value}"; shift 2 ;;
