@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+## [26.0.2] - 2026-05-11
+
+### Fixed
+
+- Add post-/review Stop hook guard in hook-stop-fail-close.sh (issue #1862) — blocks session stop between /review return and Step 6 breadcrumb via review-round-summary.md + .review-boundary-passed sentinel pair
+- Extend lib-resolve-implement-tmpdir.sh to accept review-round-summary.md as a fallback sentinel, covering the both-externals-down path that skips /design
+- Add two regression-test assertions in test-implement-anti-halt.sh and extend test-post-design-boundary.sh with review-boundary Stop hook fixtures
+
 ## [26.0.1] - 2026-05-11
 
 ### Added
