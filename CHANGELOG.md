@@ -11,6 +11,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Reviewer dirty-tree changes are now automatically logged and discarded instead of prompting the operator with a restore/stash/bail `AskUserQuestion`. When a Cursor, Codex, or Claude reviewer leaves uncommitted changes in the working tree, the orchestrator logs which reviewer caused it (to `execution-issues.md` under `Warnings` in `/implement` runs, or to the transcript in standalone `/review` runs) and immediately discards the changes via scoped `git restore` / `git clean` — no stash is created and `git stash list` remains clean. This replaces the three-option recovery prompt introduced by #1437. Updated: `skills/implement/SKILL.md` (Step 5.3.b quick mode, Step 5 normal mode, `--auto` flag description), `skills/review/SKILL.md` (Step 3a, line 22), `skills/review/references/heavy-worker.md`, `docs/external-reviewers.md`, `SECURITY.md`
 
+## [24.1.6] - 2026-05-11
+
+### Changed
+
+- Add session-scoped render cache (LARCH_RENDER_CACHE_DIR) for render-specialist-prompt.sh; all reviewer launchers in the same session share cached render output
+- Ship pre-rendered reviewer agent body files (agents/pre-rendered/) to avoid per-launch awk extraction; generate-pre-rendered-reviewer-prompts.sh wired into generators.tsv CI
+
+### Security
+
+- Gate Gemini reviewer lane behind GEMINI_REVIEW=1 env var (default off); launch-review.sh --tool gemini exits 0 with empty output when unset
+
 ## [24.1.5] - 2026-05-11
 
 ### Changed
