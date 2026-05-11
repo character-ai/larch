@@ -47,6 +47,7 @@ DELEGATORS=(
   "skills/im/SKILL.md"
   "skills/imaq/SKILL.md"
   "skills/imq/SKILL.md"
+  "skills/block-issue/SKILL.md"     # pure delegator: resolve node IDs + call addBlockedBy mutation; no post-delegation logic
   "skills/create-skill/SKILL.md"
   "skills/simplify-skill/SKILL.md"  # pure delegator: validate target + build feature description + forward to /im; no post-delegation logic
   "skills/compress-skill/SKILL.md"  # pure delegator: validate target + build feature description + forward to /imaq; no post-delegation logic
