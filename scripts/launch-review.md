@@ -23,6 +23,9 @@ Gemini remains generic-only and rejects specialist flags.
 - Codex receives a compact read-only hardening preamble through
   per-invocation `CODEX_HOME/config.toml`; Cursor receives the same compact
   prohibition in the wrapped prompt plus a `--mode plan` enforcement note.
+- Codex sets `CODEX_SANDBOX_MODE=read-only` and skips the dirty-tree-sidecar
+  EXIT trap scan — `--sandbox read-only` blocks writes at the syscall level,
+  making the after-the-fact scan redundant. Cursor still runs the scan.
 
 ## Primary Callers
 
