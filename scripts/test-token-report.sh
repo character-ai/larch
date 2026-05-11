@@ -490,6 +490,35 @@ else
     pass
 fi
 
+# --- --summary mode ---
+
+# Case 1: normal summary — Total: prefix + correct claude grand total + vendor parenthetical.
+# Fixture: LEDGER (codex=100, cursor=10) + TRANSCRIPT (claude input/cache_read/cache_create/output = 11/22/33/44 grand totals).
+summary=$("$SCRIPT" --ledger "$LEDGER" --transcript "$TRANSCRIPT" --summary)
+contains "summary Total prefix"          "Total:"                            "$summary"
+contains "summary claude grand total"    "claude=110 tokens"                 "$summary"
+contains "summary vendor parenthetical"  "(codex=100, cursor=10)"            "$summary"
+
+# Case 2: zero-vendor run — vendor=0 with no parenthetical.
+# Build a mark-only ledger so the vendor total is 0; the existing TRANSCRIPT
+# still contributes Claude usage, confirming the claude portion renders normally.
+SUMMARY_NO_VENDOR_LEDGER="$TMP/summary-no-vendor-ledger.jsonl"
+cat > "$SUMMARY_NO_VENDOR_LEDGER" <<'JSONL'
+{"type":"mark","step":"Step 1 - design","ts":"2026-05-06T00:00:00Z"}
+JSONL
+summary_no_vendor=$("$SCRIPT" --ledger "$SUMMARY_NO_VENDOR_LEDGER" --transcript "$TRANSCRIPT" --summary)
+contains "summary zero-vendor Total prefix" "Total:"    "$summary_no_vendor"
+contains "summary zero-vendor vendor=0"     "vendor=0"  "$summary_no_vendor"
+case "$summary_no_vendor" in
+    *"vendor=0 ("*) fail "zero-vendor summary must not include parenthetical: $summary_no_vendor" ;;
+    *) pass ;;
+esac
+
+# Case 3: no-marks ledger — prints unavailable warning and exits 0.
+# Reuse LEDGER_NO_MARKS (vendor-only rows, no marks).
+no_marks_summary=$("$SCRIPT" --ledger "$LEDGER_NO_MARKS" --transcript "$TRANSCRIPT" --summary 2>&1)
+contains "summary no-marks unavailable" "Token report unavailable:" "$no_marks_summary"
+
 total=$((PASS + FAIL))
 if (( FAIL == 0 )); then
     echo "PASS: test-token-report.sh — $PASS/$total assertions"

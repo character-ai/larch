@@ -99,4 +99,43 @@ cp "$LEDGER" "$NONTMP_LEDGER"
 IMPLEMENT_TMPDIR="$NONTMP_DIR" LARCH_TEST_TIMING_NOW=310 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$NONTMP_LEDGER" --full --markdown > "$TMP_BASE/nontmp.out"
 grep -Fq '**Workflow path**: HARD' "$TMP_BASE/nontmp.out"
 
+# --- --summary mode ---
+
+# Case 1: normal summary — Total: prefix + correct elapsed + vendor-tasks parenthetical.
+# Fixture: LEDGER (2 codex + 1 cursor tasks, all end_s >= mark_ts[1]=0), now=310.
+# elapsed = 310 - 0 = 310 s = 00:05:10; codex=2, cursor=1 → vendor-tasks=3.
+SUMMARY_OUT=$(LARCH_TEST_TIMING_NOW=310 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$LEDGER" --summary)
+expected_summary="Total: elapsed=00:05:10 vendor-tasks=3 (codex=2, cursor=1, gemini=0)"
+if [[ "$SUMMARY_OUT" == "$expected_summary" ]]; then
+    echo "PASS: summary normal"
+else
+    echo "FAIL: summary normal: expected '$expected_summary' got '$SUMMARY_OUT'" >&2
+    exit 1
+fi
+
+# Case 2: zero-vendor summary — parenthetical shows all zeros.
+# Build a mark-only ledger (no vendor rows); now=150 gives elapsed=00:02:30.
+SUMMARY_NO_VENDOR_LEDGER="$TMP_BASE/summary-no-vendor.tsv"
+cat > "$SUMMARY_NO_VENDOR_LEDGER" <<'EOF'
+v1	mark	0	implement	Step 1 — design plan	-	-	-	-	-	-	-	-
+v1	mark	100	implement	Step 2 — implementation	-	-	-	-	-	-	-	-
+EOF
+SUMMARY_NO_VENDOR_OUT=$(LARCH_TEST_TIMING_NOW=150 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$SUMMARY_NO_VENDOR_LEDGER" --summary)
+expected_summary_no_vendor="Total: elapsed=00:02:30 vendor-tasks=0 (codex=0, cursor=0, gemini=0)"
+if [[ "$SUMMARY_NO_VENDOR_OUT" == "$expected_summary_no_vendor" ]]; then
+    echo "PASS: summary zero-vendor"
+else
+    echo "FAIL: summary zero-vendor: expected '$expected_summary_no_vendor' got '$SUMMARY_NO_VENDOR_OUT'" >&2
+    exit 1
+fi
+
+# Case 3: no-marks ledger — prints unavailable warning to stderr and exits 0.
+NO_MARKS_SUMMARY_ERR=$("$REPO_ROOT/scripts/timing-report.sh" --ledger "$EMPTY" --summary 2>&1)
+if [[ "$NO_MARKS_SUMMARY_ERR" == "Timing report unavailable: no step marks in ledger" ]]; then
+    echo "PASS: summary no-marks unavailable"
+else
+    echo "FAIL: summary no-marks unavailable: got '$NO_MARKS_SUMMARY_ERR'" >&2
+    exit 1
+fi
+
 echo "PASS: test-timing-report.sh"
