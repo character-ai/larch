@@ -594,7 +594,7 @@ write_empty_candidate "$OUT_P3B"
     printf 'OUTPUT_FILE=%s\n' "$OUT_P3B"
     printf 'CMD_JSON=%s\n' "$(jq -cn --args '$ARGS.positional' -- "$REPO_ROOT/scripts/launch-review.sh" --tool gemini --output "$OUT_P3B" --timeout 20 --prompt 'retry prompt')"
 } > "${OUT_P3B}.meta"
-RESULT_P3B=$(LARCH_GEMINI_MODEL=test-gemini-model run_collector bash "$OUT_P3B" "$HEALTH_P3B")
+RESULT_P3B=$(LARCH_GEMINI_MODEL=test-gemini-model GEMINI_REVIEW=1 run_collector bash "$OUT_P3B" "$HEALTH_P3B")
 assert_line "case P3b gemini launcher shape accepted" "STATUS=OK" "$RESULT_P3B"
 assert_line "case P3b gemini retry file" "REVIEWER_FILE=${OUT_P3B%.txt}-retry.txt" "$RESULT_P3B"
 
