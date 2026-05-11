@@ -167,6 +167,8 @@ Rationale for suppression: The diff modified `example://calibration/logger.py:84
 
 ## Output format
 
+Each finding must appear in both the prose sections below and as a structured record in the JSONL sidecar. The prose sections are the primary human-readable output; the sidecar is the machine-parseable complement.
+
 ## Structured Output Schema (JSON)
 
 In addition to the prose output below, write one JSON object per finding to a sidecar JSONL file. Derive the sidecar path from the primary output path by appending `.jsonl` (for example, `cursor-plan-arch-output.txt.jsonl`). Write structured records only to the sidecar; do not append them to the prose output.

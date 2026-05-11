@@ -211,7 +211,7 @@ validate_structured_jsonl_with_jq() {
     : > "$output"
     while IFS= read -r line || [[ -n "$line" ]]; do
         case "$line" in
-            ''|[[:space:]]*) ;;
+            ''|[[:space:]]*) continue ;;
         esac
         if printf '%s\n' "$line" | grep -Eq '^[[:space:]]*```'; then
             continue
