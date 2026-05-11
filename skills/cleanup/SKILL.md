@@ -8,6 +8,10 @@ allowed-tools: Bash
 
 Remove leftover larch session temp directories from `~/.cache/larch/sessions/` (the canonical new location) and from `/tmp` (the legacy fallback). Aborts if more than one Claude session is detected; skips any dir (in both locations) that contains a `.larch-keepalive` sentinel to protect running sessions.
 
+## Flags
+
+- `--run-id <ID>`: Optional run identifier; when set, used as the run ID for this invocation instead of the auto-generated one. Default: empty (auto-generate).
+
 ## NEVER
 
 1. **NEVER run cleanup when multiple Claude sessions are active.** The script detects this and aborts automatically. Why: a concurrent `/implement` or `/fix-issue` run's session tmpdir could be deleted mid-flight, corrupting its execution state.

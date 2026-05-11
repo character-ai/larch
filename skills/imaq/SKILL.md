@@ -11,6 +11,10 @@ Auto-generated alias created by larch /alias. Invokes /implement with preset fla
 
 /imaq <arguments> is equivalent to /implement --merge --auto --quick <arguments>
 
+## Flags
+
+All `/implement` flags are accepted, including `--run-id <ID>` (optional run identifier), and passed through via `$ARGUMENTS`.
+
 ## Behavior
 
 Invoke the Skill tool:

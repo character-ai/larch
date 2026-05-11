@@ -23,6 +23,8 @@ Example: `/simplify-skill implement` refactors `skills/implement/SKILL.md` plus 
 
 Parse flags from the start of `$ARGUMENTS` before the first positional token.
 
+- `--run-id <ID>`: Optional run identifier; when set, used as the run ID for this invocation instead of the auto-generated one. Default: empty (auto-generate).
+
 After flag stripping, the next positional token is the **target skill name** — bare form (`implement`) or slash-prefixed (`/implement`). Strip a leading `/` if present. Reject names containing `:` (no plugin-qualified forms — see NEVER #5) or non-`[a-z0-9-]` characters.
 
 ## Step 2 — Validate Target and Build Feature Description

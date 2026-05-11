@@ -6,6 +6,10 @@ allowed-tools: Bash
 
 Upgrade the larch plugin to the latest version. This skill is for the standard GitHub install (`claude plugin marketplace add character-ai/larch`). Contributors using a local checkout (`claude --plugin-dir .` or `claude plugin marketplace add .`) should `git pull` instead.
 
+## Flags
+
+- `--run-id <ID>`: Optional run identifier; when set, used as the run ID for this invocation instead of the auto-generated one. Default: empty (auto-generate).
+
 ## Steps
 
 1. Run the upgrade script:
