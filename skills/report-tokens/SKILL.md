@@ -6,17 +6,29 @@ allowed-tools: Bash, Read
 
 # Report Tokens
 
-Analyze token-report data across closed GitHub issues in the current larch repository. The script finds issues whose comments contain the token-report sentinel, parses the latest structured report on each issue, estimates costs, writes a JSON cache, generates SIMPLE and HARD cost-over-time plots, opens the plots when supported, and prints the written analysis.
+Analyze token-report data across closed GitHub issues in the current larch repository. The script finds issues whose comments contain the token-report sentinel, parses the latest structured report on each issue, estimates costs, generates SIMPLE and HARD cost-over-time plots, prints the analysis, and posts a GitHub `[Analysis Report]` issue.
+
+## Flags
+
+Pass any of these after the skill name (e.g. `/report-tokens --no-issue`):
+
+- `--no-issue` — skip posting the `[Analysis Report]` GitHub issue.
+- `--no-plot` — skip plot generation; text analysis is still printed.
+- `--plot-from <N>` — re-plot from a prior `[Analysis Report]` issue number (skips the GitHub scan).
 
 ## Step 1 - Run analysis
 
+Parse any `--no-issue`, `--no-plot`, or `--plot-from <N>` flags from the skill invocation arguments. Then:
+
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/skills/report-tokens/scripts/run-analysis.sh"
+"${CLAUDE_PLUGIN_ROOT}/skills/report-tokens/scripts/run-analysis.sh" [FLAGS]
 ```
+
+where `[FLAGS]` are the validated flags from the invocation (empty if none were provided).
 
 Script contract: `${CLAUDE_PLUGIN_ROOT}/skills/report-tokens/scripts/run-analysis.md`.
 
-Verify the script exited successfully and stdout includes `## Report Tokens Analysis` plus `Cache JSON:`. If it exits non-zero, stop and surface the error; do not invent partial cost results.
+Verify the script exited successfully. On a normal run, stdout includes `## Report Tokens Analysis` plus `Cache JSON:`. On a `--plot-from` run, stdout includes `Plots written to:` or `No plots generated.`. If it exits non-zero, stop and surface the error; do not invent partial cost results.
 
 ## NEVER
 

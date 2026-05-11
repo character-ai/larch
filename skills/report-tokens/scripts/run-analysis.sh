@@ -5,7 +5,12 @@ set -euo pipefail
 
 usage() {
     cat <<'EOF' >&2
-Usage: run-analysis.sh
+Usage: run-analysis.sh [--no-issue] [--no-plot] [--plot-from <issue-number>]
+
+Flags:
+  --no-issue               Skip posting the analysis report GitHub issue.
+  --no-plot                Skip plot generation (text analysis still printed).
+  --plot-from <N>          Re-plot from a prior [Analysis Report] issue body (skips scan).
 
 Environment overrides:
   LARCH_REPORT_TOKENS_REPO=<owner/repo>   GitHub repository to scan; defaults to gh repo view.
@@ -27,10 +32,21 @@ Rate env names:
 EOF
 }
 
-if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-    usage
-    exit 0
-fi
+NO_ISSUE=
+NO_PLOT=
+PLOT_FROM=
+
+while [[ $# -gt 0 ]]; do
+    case "${1:-}" in
+        --help|-h) usage; exit 0 ;;
+        --no-issue) NO_ISSUE=1; shift ;;
+        --no-plot)  NO_PLOT=1;  shift ;;
+        --plot-from)
+            [[ -n "${2:-}" ]] || { echo "ERROR: --plot-from requires an issue number" >&2; exit 1; }
+            PLOT_FROM="$2"; shift 2 ;;
+        *) echo "ERROR: unknown argument: $1" >&2; usage; exit 1 ;;
+    esac
+done
 
 need_cmd() {
     command -v "$1" >/dev/null 2>&1 || {
@@ -57,6 +73,10 @@ if [[ -z "$REPO" || "$REPO" != */* ]]; then
     exit 1
 fi
 
+export LARCH_REPORT_TOKENS_REPO_FULL="$REPO"
+export LARCH_REPORT_TOKENS_NO_ISSUE="${NO_ISSUE:-}"
+export LARCH_REPORT_TOKENS_NO_PLOT="${NO_PLOT:-}"
+
 LIMIT="${LARCH_REPORT_TOKENS_LIMIT:-}"
 if [[ -n "$LIMIT" && ! "$LIMIT" =~ ^[0-9]+$ ]]; then
     echo "ERROR: LARCH_REPORT_TOKENS_LIMIT must be a non-negative integer" >&2
@@ -71,38 +91,42 @@ CACHE_TMP="$TMPROOT/issues-cache.json.tmp"
 CACHE_JSON="$TMPROOT/issues-cache.json"
 ANALYZER="$TMPROOT/analyze-token-reports.py"
 
-echo "Scanning $REPO for closed issues with token-report-begin comments..."
+if [[ -z "$PLOT_FROM" ]]; then
+    echo "Scanning $REPO for closed issues with token-report-begin comments..."
 
-SEARCH_QUERY="repo:${REPO} is:issue is:closed token-report-begin in:comments"
-gh api --paginate -X GET search/issues \
-    -f "q=$SEARCH_QUERY" \
-    -f per_page=100 \
-    --jq '.items[] | {number, closed_at, title, html_url}' > "$SEARCH_JSONL"
+    SEARCH_QUERY="repo:${REPO} is:issue is:closed token-report-begin in:comments"
+    gh api --paginate -X GET search/issues \
+        -f "q=$SEARCH_QUERY" \
+        -f per_page=100 \
+        --jq '.items[] | {number, closed_at, title, html_url}' > "$SEARCH_JSONL"
 
-if [[ -n "$LIMIT" && "$LIMIT" != "0" ]]; then
-    head -n "$LIMIT" "$SEARCH_JSONL" > "$SEARCH_JSONL.limited"
-    mv "$SEARCH_JSONL.limited" "$SEARCH_JSONL"
+    if [[ -n "$LIMIT" && "$LIMIT" != "0" ]]; then
+        head -n "$LIMIT" "$SEARCH_JSONL" > "$SEARCH_JSONL.limited"
+        mv "$SEARCH_JSONL.limited" "$SEARCH_JSONL"
+    fi
+
+    : > "$ISSUES_JSONL"
+    while IFS= read -r item; do
+        [[ -n "$item" ]] || continue
+        number="$(printf '%s\n' "$item" | jq -r '.number')"
+        [[ "$number" =~ ^[0-9]+$ ]] || continue
+        echo "Fetching issue #$number..."
+        gh issue view "$number" \
+            --repo "$REPO" \
+            --comments \
+            --json number,title,url,closedAt,body,comments \
+            | jq -c . >> "$ISSUES_JSONL"
+    done < "$SEARCH_JSONL"
+
+    jq -s . "$ISSUES_JSONL" > "$CACHE_TMP"
+    mv "$CACHE_TMP" "$CACHE_JSON"
 fi
-
-: > "$ISSUES_JSONL"
-while IFS= read -r item; do
-    [[ -n "$item" ]] || continue
-    number="$(printf '%s\n' "$item" | jq -r '.number')"
-    [[ "$number" =~ ^[0-9]+$ ]] || continue
-    echo "Fetching issue #$number..."
-    gh issue view "$number" \
-        --repo "$REPO" \
-        --comments \
-        --json number,title,url,closedAt,body,comments \
-        | jq -c . >> "$ISSUES_JSONL"
-done < "$SEARCH_JSONL"
-
-jq -s . "$ISSUES_JSONL" > "$CACHE_TMP"
-mv "$CACHE_TMP" "$CACHE_JSON"
 
 cat > "$ANALYZER" <<'PY'
 #!/usr/bin/env python3
+import contextlib
 import datetime as dt
+import io
 import json
 import os
 import re
@@ -382,6 +406,8 @@ def analyze(cache_path):
 
 def plot(records):
     out_paths = []
+    if os.environ.get("LARCH_REPORT_TOKENS_NO_PLOT") in {"1", "true", "TRUE", "yes", "YES"}:
+        return out_paths
     if os.environ.get("LARCH_REPORT_TOKENS_NO_OPEN") in {"1", "true", "TRUE", "yes", "YES"}:
         should_open = False
     else:
@@ -413,7 +439,6 @@ import datetime as dt
 import json
 import os
 import sys
-import tempfile
 
 import matplotlib
 matplotlib.use("Agg")
@@ -423,6 +448,7 @@ import matplotlib.pyplot as plt
 with open(sys.argv[1], "r", encoding="utf-8") as fh:
     rows = json.load(fh)
 
+plot_dir = sys.argv[2]
 paths = []
 for workflow in ("SIMPLE", "HARD"):
     selected = [r for r in rows if r["workflow"] == workflow]
@@ -456,7 +482,7 @@ print(json.dumps(paths))
     env.setdefault("MPLCONFIGDIR", os.path.join(plot_dir, "mpl"))
     os.makedirs(env["MPLCONFIGDIR"], exist_ok=True)
     result = subprocess.run(
-        [sys.executable, script_path, input_path],
+        [sys.executable, script_path, input_path, plot_dir],
         check=False,
         env=env,
         stdout=subprocess.PIPE,
@@ -593,13 +619,101 @@ def print_analysis(cache_path, records, skipped, plot_paths):
     print("- When cache-read volume dominates, prioritize trimming repeated static context and large unchanged markdown blocks before reducing output verbosity.")
 
 
+def load_raw_records(body_file):
+    with open(body_file, encoding="utf-8") as fh:
+        body = fh.read()
+    # Anchor on the "## Raw per-issue data" heading to avoid matching earlier code fences
+    section_match = re.search(r"## Raw per-issue data\s*\n", body)
+    if not section_match:
+        print("ERROR: could not find '## Raw per-issue data' section in issue body", file=sys.stderr)
+        return None
+    tail = body[section_match.end():]
+    fence_match = re.search(r"```(?:json)?\s*\n(.*?)\n```", tail, re.DOTALL)
+    if not fence_match:
+        print("ERROR: could not find raw per-issue data block in issue body", file=sys.stderr)
+        return None
+    try:
+        raw = json.loads(fence_match.group(1))
+    except json.JSONDecodeError as exc:
+        print(f"ERROR: failed to parse raw data: {exc}", file=sys.stderr)
+        return None
+    records = []
+    for item in raw:
+        records.append({
+            "number": item.get("number"),
+            "workflow": item.get("workflow", "unknown"),
+            "closed_at": parse_date(item.get("closed_at")),
+            "cost": float(item.get("cost") or 0),
+            "title": "",
+            "url": "",
+            "totals": {},
+            "phase_rows": [],
+        })
+    return records
+
+
+def create_report_issue(records, analysis_text):
+    raw_rows = [
+        {
+            "number": r["number"],
+            "workflow": r["workflow"],
+            "closed_at": r["closed_at"].isoformat() if r["closed_at"] else None,
+            "cost": r["cost"],
+        }
+        for r in records
+    ]
+    now = dt.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+    title = f"[Analysis Report] Token costs as of {now}"
+    body = (
+        analysis_text
+        + "\n\n## Raw per-issue data\n\n```json\n"
+        + json.dumps(raw_rows, indent=2)
+        + "\n```\n"
+    )
+    repo = os.environ.get("LARCH_REPORT_TOKENS_REPO_FULL", "")
+    args = ["gh", "issue", "create", "--title", title, "--body", body]
+    if repo:
+        args += ["--repo", repo]
+    result = subprocess.run(args, check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    if result.returncode == 0:
+        print(f"\nAnalysis report issue created: {result.stdout.strip()}")
+    else:
+        print(f"\nWarning: failed to create analysis report issue: {result.stderr.strip()}", file=sys.stderr)
+
+
 def main():
+    if len(sys.argv) >= 2 and sys.argv[1] == "--plot-from":
+        if len(sys.argv) != 3:
+            print("usage: analyze-token-reports.py --plot-from <issue-body-file>", file=sys.stderr)
+            return 2
+        records = load_raw_records(sys.argv[2])
+        if records is None:
+            return 1
+        plot_paths = plot(records)
+        if plot_paths:
+            print("Plots written to:")
+            for p in plot_paths:
+                print(f"  {p}")
+        else:
+            print("No plots generated.")
+        return 0
+
     if len(sys.argv) != 2:
         print("usage: analyze-token-reports.py <cache-json>", file=sys.stderr)
         return 2
+
     records, skipped = analyze(sys.argv[1])
     plot_paths = plot(records)
-    print_analysis(sys.argv[1], records, skipped, plot_paths)
+
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        print_analysis(sys.argv[1], records, skipped, plot_paths)
+    analysis_text = buf.getvalue()
+    sys.stdout.write(analysis_text)
+
+    if not os.environ.get("LARCH_REPORT_TOKENS_NO_ISSUE") in {"1", "true", "TRUE", "yes", "YES"}:
+        create_report_issue(records, analysis_text)
+
     return 0
 
 
@@ -608,4 +722,13 @@ if __name__ == "__main__":
 PY
 
 chmod +x "$ANALYZER"
+
+if [[ -n "$PLOT_FROM" ]]; then
+    echo "Fetching analysis report issue #$PLOT_FROM..."
+    ISSUE_BODY_FILE="$TMPROOT/plot-from-body.txt"
+    gh issue view "$PLOT_FROM" --repo "$REPO" --json body --jq '.body' > "$ISSUE_BODY_FILE"
+    python3 "$ANALYZER" --plot-from "$ISSUE_BODY_FILE"
+    exit $?
+fi
+
 python3 "$ANALYZER" "$CACHE_JSON"
