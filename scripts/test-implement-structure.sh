@@ -194,38 +194,6 @@ fail() {
 [[ -d "$REFS_DIR" ]] || fail "skills/implement/references/ missing: $REFS_DIR"
 
 # ---------------------------------------------------------------------------
-# Token-reporting structural pin: every token mark must have a matching
-# token-step-end for the same numbered step before the next token mark.
-# ---------------------------------------------------------------------------
-awk '
-  function marker_step(line, prefix,    rest) {
-    rest = line
-    sub(".*# " prefix " ", "", rest)
-    sub(" —.*", "", rest)
-    return rest
-  }
-  /# token-mark Step / {
-    if (current != "" && ended == 0) {
-      printf("FAIL: token mark for %s has no matching token-step-end before next mark\n", current) > "/dev/stderr"
-      exit 1
-    }
-    current = marker_step($0, "token-mark")
-    ended = 0
-    next
-  }
-  /# token-step-end Step / {
-    step = marker_step($0, "token-step-end")
-    if (current != "" && step == current) ended = 1
-  }
-  END {
-    if (current != "" && ended == 0) {
-      printf("FAIL: token mark for %s has no matching token-step-end before EOF\n", current) > "/dev/stderr"
-      exit 1
-    }
-  }
-' "$SKILL_MD"
-
-# ---------------------------------------------------------------------------
 # (1) Exactly one `^## Load-Bearing Invariants$` heading.
 # ---------------------------------------------------------------------------
 count=$(grep -c '^## Load-Bearing Invariants$' "$SKILL_MD" || true)

@@ -14,6 +14,8 @@ Subcommands:
 
 Full reports include the latest workflow path (`HARD`, `SIMPLE`, or `unknown`), per-step durations, and vendor task averages by `(vendor, task_kind)`. Failed rows (`status != complete` or `exit_code != 0`) are excluded from averages and summarized below the table.
 
+**Quick-mode review rows**: `/implement` quick-mode review rounds no longer emit per-round `LARCH_TIMING_SKILL=review` timing marks; quick-mode review cycles therefore no longer appear as nested `↳ review` rows under implement steps in the `--full` verbose table. The `--summary` and `--since-last-mark --terse` outputs are unaffected.
+
 Duration rules:
 
 - Implement marks are top-level rows when present.

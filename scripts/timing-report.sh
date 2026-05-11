@@ -165,10 +165,12 @@ render_report() {
           }
           total = codex = cursor = gemini = 0
           for (i = 1; i <= vendor_count; i++) {
-            total++
-            if (vendor_name[i] == "codex") codex++
-            else if (vendor_name[i] == "cursor") cursor++
-            else if (vendor_name[i] == "gemini") gemini++
+            if (vendor_end[i] >= mark_ts[1]) {
+              total++
+              if (vendor_name[i] == "codex") codex++
+              else if (vendor_name[i] == "cursor") cursor++
+              else if (vendor_name[i] == "gemini") gemini++
+            }
           }
           printf "Total: elapsed=%s vendor-tasks=%d (codex=%d, cursor=%d, gemini=%d)\n", hms(now - mark_ts[1]), total, codex, cursor, gemini
           exit 0
