@@ -4,7 +4,7 @@
 
 ## Purpose
 
-Fetch closed GitHub issues in the current larch repository whose comments contain `token-report-begin`, parse the latest structured token report on each issue, estimate per-issue dollar costs for Claude/Codex/Cursor, classify issues by `**Workflow path**`, generate SIMPLE and HARD cost-over-time PNG plots, print a written analysis, and optionally post a GitHub `[Analysis Report]` issue with the results and raw per-issue data.
+Fetch closed GitHub issues in the current larch repository whose comments contain `token-report-begin`, parse the latest structured token report on each issue, estimate per-issue dollar costs for Claude/Codex/Cursor/Gemini, classify issues by `**Workflow path**`, generate SIMPLE and HARD cost-over-time PNG plots, print a written analysis, and optionally post a GitHub `[Analysis Report]` issue with the results and raw per-issue data.
 
 ## Primary caller
 
@@ -24,6 +24,7 @@ Optional environment variables:
 - `LARCH_REPORT_TOKENS_LIMIT=<N>` limits the number of matching issues fetched after search.
 - `LARCH_REPORT_TOKENS_NO_OPEN=1` suppresses opening generated PNGs.
 - `LARCH_RATE_<VENDOR>_<FIELD>` overrides the printed default rates in USD per million tokens.
+- `LARCH_REPORT_TOKENS_ACTUAL_SPEND=<USD>` when set, prints a reconciliation line at the end of the report (`tracked=$X  actual=$Y  delta=Z%`). Contains billing data — use `--no-issue` when set to avoid posting actual spend figures to a public GitHub issue.
 
 ## GitHub access
 
@@ -38,7 +39,7 @@ The script uses:
 
 - Token reports are found by whole-line sentinel blocks from `scripts/token-report.sh`: `<!-- token-report-begin -->` through `<!-- token-report-end -->`. If no sentinel pair exists but token-report headings are present, the whole text is parsed as a fallback.
 - Claude `**Grand total**` rows support both the current six-cell table shape (`Step`, `Skill`, input, cache read, cache create, output) and the legacy four-cell shape (`Step`, `Skill`, input, output).
-- Codex/Cursor `**Grand total**` rows use the five-cell vendor table shape (`Step`, `Skill`, input, output, total).
+- Codex/Cursor/Gemini `**Grand total**` rows use the five-cell vendor table shape (`Step`, `Skill`, input, output, total).
 - `**Workflow path**: SIMPLE|HARD|unknown` is parsed from the combined issue body and comments.
 - Issue-level JSON is cached under a fresh `${TMPDIR:-/tmp}/larch-report-tokens.*` directory. The cache file is written via a temporary file and `mv`.
 
@@ -61,7 +62,12 @@ Generated plots are written to a temporary directory as `larch-report-tokens-sim
 
 ## Cost model
 
-The default rates are transparent estimates, not billing truth. Claude uses separate input/cache-read/cache-create/output rates; Codex and Cursor use input/output plus an aggregate rate for total-only or hidden cache-like vendor tokens. Override rates with environment variables whenever model routing or vendor pricing changes.
+The default rates are transparent estimates, not billing truth. Claude uses separate input/cache-read/cache-create/output rates; Codex, Cursor, and Gemini use input/output plus an optional aggregate rate for total-only or hidden cache-like vendor tokens. Codex (GPT-5.5) reports only an aggregate `tokens used` value on stderr, so the `aggregate=$5/M` is a working approximation of the true input-heavy mix. Override rates with environment variables whenever model routing or vendor pricing changes. Source URLs for default values are cited in the RATES dict comment block in the Python section.
+
+## Known limitations
+
+- **Codex long-context surcharge (D7)**: GPT-5.5 prompts >272K input tokens incur 2× input and 1.5× output pricing for the full session. larch does not track prompt length per-run, so this surcharge is silently dropped. Impact is low in practice (most Codex reviewer calls are under 272K).
+- **Codex cached vs uncached input (D8)**: OpenAI charges $0.50/M for cached Codex input vs $5/M for uncached — a 10× difference. Codex CLI does not expose cache hit info on stderr today. Until it does, the analyzer uses only the aggregate rate and cannot distinguish cached vs uncached spend. When cache info is exposed, mirror the Claude `cache_read`/`cache_create` column shape in the Codex rate dict.
 
 ## Edit-in-sync
 
