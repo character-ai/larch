@@ -145,8 +145,9 @@ if [[ -n "${LARCH_RENDER_CACHE_DIR:-}" ]]; then
     if CACHE_KEY=$(printf '%s' "$CACHE_KEY_INPUT" | sha256_stdin); then
       if mkdir -p "$LARCH_RENDER_CACHE_DIR" 2>/dev/null; then
         RENDER_CACHE_FILE="$LARCH_RENDER_CACHE_DIR/r-$CACHE_KEY"
-        if [[ -f "$RENDER_CACHE_FILE" ]] && cat "$RENDER_CACHE_FILE"; then
-          exit 0
+        if [[ -f "$RENDER_CACHE_FILE" ]]; then
+          if cat "$RENDER_CACHE_FILE"; then exit 0; fi
+          RENDER_CACHE_FILE=""
         fi
       else
         RENDER_CACHE_FILE=""
