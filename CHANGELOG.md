@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+## [26.0.5] - 2026-05-11
+
+### Fixed
+
+- fix(implement): capture Codex stdout+stderr in review sidecar so "tokens used" lines land in the token ledger; export IMPLEMENT_TMPDIR for reliable session-id propagation to reviewer subprocesses
+
 ## [26.0.4] - 2026-05-11
 
 ### Added
