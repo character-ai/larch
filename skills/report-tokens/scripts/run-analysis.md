@@ -24,7 +24,7 @@ Optional environment variables:
 - `LARCH_REPORT_TOKENS_LIMIT=<N>` limits the number of matching issues fetched after search.
 - `LARCH_REPORT_TOKENS_NO_OPEN=1` suppresses opening generated PNGs.
 - `LARCH_RATE_<VENDOR>_<FIELD>` overrides the printed default rates in USD per million tokens.
-- `LARCH_REPORT_TOKENS_ACTUAL_SPEND=<USD>` when set, prints a reconciliation line at the end of the report: `tracked=$X  actual=$Y  delta=Z%`.
+- `LARCH_REPORT_TOKENS_ACTUAL_SPEND=<USD>` when set, prints a reconciliation line at the end of the report (`tracked=$X  actual=$Y  delta=Z%`). Contains billing data — use `--no-issue` when set to avoid posting actual spend figures to a public GitHub issue.
 
 ## GitHub access
 

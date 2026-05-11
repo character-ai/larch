@@ -32,9 +32,12 @@ Rate env names:
   LARCH_RATE_CURSOR_AGGREGATE
   LARCH_RATE_GEMINI_INPUT
   LARCH_RATE_GEMINI_OUTPUT
+  LARCH_RATE_GEMINI_AGGREGATE
 
 Reconciliation:
   LARCH_REPORT_TOKENS_ACTUAL_SPEND=<USD>  When set, prints tracked vs actual spend delta at report end.
+                                           Contains billing data — use --no-issue when set to avoid
+                                           posting actual spend figures to a public GitHub issue.
 EOF
 }
 
@@ -186,16 +189,17 @@ RATES = {
         "output": env_rate("LARCH_RATE_CURSOR_OUTPUT", 2.50),
         "aggregate": env_rate("LARCH_RATE_CURSOR_AGGREGATE", 0.20),
     },
-    # Gemini 2.5 Pro. No aggregate path yet; cost_vendor falls back to input
-    # rate for total-only rows.
+    # Gemini 2.5 Pro. aggregate approximates hidden-token cost (e.g. cache-inclusive
+    # totals where total > input + output); defaults to input rate.
     "gemini": {
         "input": env_rate("LARCH_RATE_GEMINI_INPUT", 1.25),
         "output": env_rate("LARCH_RATE_GEMINI_OUTPUT", 10.00),
+        "aggregate": env_rate("LARCH_RATE_GEMINI_AGGREGATE", 1.25),
     },
 }
 
 
-ACTUAL_SPEND = float(os.environ.get("LARCH_REPORT_TOKENS_ACTUAL_SPEND", "") or 0)
+ACTUAL_SPEND = env_rate("LARCH_REPORT_TOKENS_ACTUAL_SPEND", 0.0)
 
 
 def parse_date(raw):

@@ -17,9 +17,10 @@ check "codex cache_read 0.50"     'LARCH_RATE_CODEX_CACHE_READ.*0\.50'
 check "cursor input 0.50"         'LARCH_RATE_CURSOR_INPUT.*0\.50'
 check "cursor output 2.50"        'LARCH_RATE_CURSOR_OUTPUT.*2\.50'
 check "cursor aggregate 0.20"     'LARCH_RATE_CURSOR_AGGREGATE.*0\.20'
-check "gemini vendor key"         '"gemini"'
+check "gemini vendor key"          '"gemini"'
 check "gemini input 1.25"         'LARCH_RATE_GEMINI_INPUT.*1\.25'
 check "gemini output 10.00"       'LARCH_RATE_GEMINI_OUTPUT.*10\.00'
+check "gemini aggregate 1.25"     'LARCH_RATE_GEMINI_AGGREGATE.*1\.25'
 
 TMPFILE=$(mktemp /tmp/test-rate-assertions.XXXXXX.py)
 trap 'rm -f "$TMPFILE"' EXIT
@@ -43,15 +44,16 @@ def _check(label, actual, expected):
         failures.append(f"{label}: got {actual}, expected {expected}")
 
 expected_rates = [
-    ("codex", "input",      5.00),
-    ("codex", "output",    30.00),
-    ("codex", "aggregate",  5.00),
-    ("codex", "cache_read", 0.50),
-    ("cursor", "input",     0.50),
-    ("cursor", "output",    2.50),
-    ("cursor", "aggregate", 0.20),
-    ("gemini", "input",     1.25),
-    ("gemini", "output",   10.00),
+    ("codex", "input",       5.00),
+    ("codex", "output",     30.00),
+    ("codex", "aggregate",   5.00),
+    ("codex", "cache_read",  0.50),
+    ("cursor", "input",      0.50),
+    ("cursor", "output",     2.50),
+    ("cursor", "aggregate",  0.20),
+    ("gemini", "input",      1.25),
+    ("gemini", "output",    10.00),
+    ("gemini", "aggregate",  1.25),
 ]
 for vendor, field, expected in expected_rates:
     if vendor not in RATES:
@@ -61,10 +63,11 @@ for vendor, field, expected in expected_rates:
     else:
         _check(f"RATES[{vendor!r}][{field!r}]", RATES[vendor][field], expected)
 
-_check("codex agg 1M",     cost_vendor("codex",  {"input": 0, "output": 0, "total": 1_000_000}), 5.00)
-_check("cursor input 1M",  cost_vendor("cursor", {"input": 1_000_000, "output": 0, "total": 1_000_000}), 0.50)
-_check("gemini input 1M",  cost_vendor("gemini", {"input": 1_000_000, "output": 0, "total": 1_000_000}), 1.25)
-_check("gemini output 1M", cost_vendor("gemini", {"input": 0, "output": 1_000_000, "total": 1_000_000}), 10.00)
+_check("codex agg 1M",      cost_vendor("codex",  {"input": 0, "output": 0, "total": 1_000_000}), 5.00)
+_check("cursor input 1M",   cost_vendor("cursor", {"input": 1_000_000, "output": 0, "total": 1_000_000}), 0.50)
+_check("gemini input 1M",   cost_vendor("gemini", {"input": 1_000_000, "output": 0, "total": 1_000_000}), 1.25)
+_check("gemini output 1M",  cost_vendor("gemini", {"input": 0, "output": 1_000_000, "total": 1_000_000}), 10.00)
+_check("gemini agg 1M",     cost_vendor("gemini", {"input": 0, "output": 0, "total": 1_000_000}), 1.25)
 
 if failures:
     for f in failures:
