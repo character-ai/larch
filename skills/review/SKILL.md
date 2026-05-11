@@ -52,7 +52,7 @@ Mode is determined by the parser state machine (fail-closed, evaluated in order)
 After launching all reviewers (Step 2), maintain a mental tracker of each reviewer's status. Print a compact table at two points per round only: (1) after launching all reviewers (all ⏳ or ⊘), and (2) after `collect-agent-results.sh` returns (all external reviewers resolved):
 
 ```
-📊 Reviewers: | Structure: ✅ 3m12s | Correctness: ⏳ | Testing: ⏳ | Security: ⏳ | Edge-cases: ⏳ | Codex: ⏳ | Claude-Generic: ✅ 2m30s |
+📊 Reviewers: | Structure: ✅ 3m12s | Correctness: ⏳ | Testing: ⏳ | Security: ⏳ | Edge-cases: ⏳ | Codex-Structure: ⏳ | Codex-Correctness: ⏳ | Codex-Testing: ⏳ | Codex-Security: ⏳ | Codex-Edge-cases: ⏳ | Claude-Generic: ✅ 2m30s |
 ```
 
 Icons: ✅ done (with elapsed time since launch), ⏳ pending/in-progress, ❌ failed/timeout (with elapsed time since launch), ⊘ skipped (unavailable for replacement-style reviewers only). → shared/progress-reporting.md
