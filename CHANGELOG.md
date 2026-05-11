@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+## [26.0.7] - 2026-05-11
+
+### Fixed
+
+- Add Stop-hook guard for post-/bump-version halt boundary (issue #1878)
+
 ## [26.0.6] - 2026-05-11
 
 ### Added

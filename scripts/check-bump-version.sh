@@ -112,6 +112,14 @@ case "$MODE" in
   pre)
     if [[ -f "$PWD/.claude/skills/bump-version/SKILL.md" ]]; then
       echo "HAS_BUMP=true"
+      # Arm the Stop hook guard: the hook blocks session stop while this
+      # sentinel exists without a paired postbump-state.sh, catching halts
+      # between /bump-version return and the orchestrator's postbump-state.sh
+      # write (issue #1878).  Best-effort — a missing IMPLEMENT_TMPDIR or a
+      # write failure does not abort the pre-check.
+      if [[ -n "${IMPLEMENT_TMPDIR:-}" && -d "${IMPLEMENT_TMPDIR}" ]]; then
+          touch "${IMPLEMENT_TMPDIR}/.bump-version-armed" 2>/dev/null || true
+      fi
     else
       echo "HAS_BUMP=false"
     fi
