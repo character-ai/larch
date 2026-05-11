@@ -10,7 +10,7 @@
 | `ISSUE_B` (positional 2) | yes | Issue that blocks ISSUE_A |
 | `--repo owner/name` | no | Repository; auto-detected via `gh repo view` if omitted |
 
-Both issue numbers must be positive integers.
+Both issue numbers must be positive integers (≥1).
 
 ## Output
 
@@ -25,10 +25,10 @@ Failure (exit 1): `ERROR=<message>` on stderr.
 ## Behavior
 
 1. Auto-detects repo from `gh repo view` when `--repo` is omitted.
-2. Resolves both issue numbers to GraphQL node IDs in a single `gh api graphql` call.
-3. Calls `addBlockedBy(input: {issueId: <A>, blockingIssueId: <B>})`.
+2. Resolves both issue numbers to GraphQL node IDs in a single `gh api graphql` call using GraphQL variables (no string interpolation — safe from injection via `--repo`).
+3. Calls `addBlockedBy` mutation via GraphQL variables.
 4. Verifies by comparing `issue_dependencies_summary.blocked_by` on issue A before and after. A non-increase is warned but not treated as a hard error (already-blocked is acceptable).
-5. Requires `python3` in PATH for JSON parsing of the GraphQL node-ID response.
+5. Requires `python3` in PATH for JSON parsing.
 
 ## Callers
 

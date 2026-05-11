@@ -35,6 +35,14 @@ Example (in a plugin repo): `/alias i implement --merge` creates `<repo-root>/sk
 
 Example with `--private` or in a consumer repo: `/alias i implement --merge` creates `<repo-root>/.claude/skills/i/SKILL.md` (dev-only).
 
+## `/block-issue`
+
+**Arguments**: `<ISSUE_A> <ISSUE_B> [--repo owner/name]`
+
+**Source**: [`skills/block-issue/SKILL.md`](../skills/block-issue/SKILL.md)
+
+Express a native GitHub blocked-by relationship between two issues using the `addBlockedBy` GraphQL mutation. ISSUE_A is marked as blocked by ISSUE_B. Repo is auto-detected from `gh repo view` when `--repo` is omitted. Verifies the relationship was recorded before confirming.
+
 ## `/cleanup`
 
 **Arguments**: *(none)*

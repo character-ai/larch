@@ -1,7 +1,7 @@
 ---
 name: block-issue
-description: "use when you need to express the fact that issue A is blocked by issue B. The skill should take issue numbers A and B as arguments and use the above GitHub native blocking relationship API you just discovered and used."
-argument-hint: "<ISSUE_A> <ISSUE_B>"
+description: "Use when expressing a native GitHub blocked-by relationship between two issues. Takes the blocked issue number and the blocking issue number as arguments."
+argument-hint: "<ISSUE_A> <ISSUE_B> [--repo owner/name]"
 allowed-tools: Bash
 ---
 
@@ -11,12 +11,17 @@ Express a native GitHub blocking relationship: issue ISSUE_A is blocked by issue
 
 ## Arguments
 
-Positional: `ISSUE_A ISSUE_B` — plain issue numbers. Example: `/block-issue 1842 1827` marks #1842 as blocked by #1827.
+Positional: `ISSUE_A ISSUE_B` — plain issue numbers (≥1). Optional: `--repo owner/name` (auto-detected from `gh repo view` when omitted). Example: `/block-issue 1842 1827` marks #1842 as blocked by #1827.
 
 ## Step 1 — Add blocked-by relationship
 
+Script contract: `${CLAUDE_PLUGIN_ROOT}/skills/block-issue/scripts/add-blocked-by.md`.
+
 ```bash
-${CLAUDE_PLUGIN_ROOT}/skills/block-issue/scripts/add-blocked-by.sh <ISSUE_A> <ISSUE_B>
+${CLAUDE_PLUGIN_ROOT}/skills/block-issue/scripts/add-blocked-by.sh $ARGUMENTS
 ```
 
-Parse `SUCCESS=true` and the confirmation line from stdout. On non-zero exit, surface the `ERROR=` message and stop.
+Parse `SUCCESS` and the confirmation line from stdout without `eval`/`source`. Verify the relationship was established before reporting:
+
+- **`SUCCESS=true`**: Print the confirmation line (e.g., `✓ #1842 is now blocked by #1827`).
+- Non-zero exit: Surface the `ERROR=` message from stderr and stop.
