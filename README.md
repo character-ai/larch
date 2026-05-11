@@ -49,6 +49,12 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
     <tr><td colspan="2">Remove leftover larch session temp directories from <code>~/.cache/larch/sessions/</code> and <code>/tmp</code>. Aborts when multiple Claude sessions are active; skips dirs with an active <code>.larch-keepalive</code> sentinel.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
+      <td><a href="docs/skills.md#block-issue"><code>/block-issue</code></a></td>
+      <td><code>&lt;ISSUE_A&gt; &lt;ISSUE_B&gt;</code></td>
+    </tr>
+    <tr><td colspan="2">Express a native GitHub blocked-by relationship between two issues using the <code>addBlockedBy</code> GraphQL mutation.</td></tr>
+    <tr><td colspan="2"><hr></td></tr>
+    <tr>
       <td><a href="docs/skills.md#compress-skill"><code>/compress-skill</code></a></td>
       <td><code>&lt;skill-name-or-path&gt;</code></td>
     </tr>

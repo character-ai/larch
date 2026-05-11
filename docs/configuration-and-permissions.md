@@ -12,6 +12,7 @@
 
 ```json
 "Skill(alias)",
+"Skill(block-issue)",
 "Skill(cleanup)",
 "Skill(compress-skill)",
 "Skill(create-skill)",
@@ -23,6 +24,7 @@
 "Skill(imq)",
 "Skill(issue)",
 "Skill(larch:alias)",
+"Skill(larch:block-issue)",
 "Skill(larch:cleanup)",
 "Skill(larch:compress-skill)",
 "Skill(larch:create-skill)",
