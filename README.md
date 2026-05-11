@@ -62,9 +62,9 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#design"><code>/design</code></a></td>
-      <td><code>[--auto] [--quick] [--subagent] [--session-env &lt;path&gt;] &lt;feature description&gt;</code></td>
+      <td><code>[--auto] [--quick] [--full] [--subagent] [--session-env &lt;path&gt;] &lt;feature description&gt;</code></td>
     </tr>
-    <tr><td colspan="2">Design an implementation plan with the <a href="docs/topology.md#design.sketch.regular_slots">configured sketch topology</a>, dialectic adjudication, and the <a href="docs/topology.md#design.plan_review.cursor_archetypes">validation panel</a> described in the design workflow.</td></tr>
+    <tr><td colspan="2">Design an implementation plan with the <a href="docs/topology.md#design.sketch.regular_slots">configured sketch topology</a>, dialectic adjudication, and the <a href="docs/topology.md#design.plan_review.cursor_archetypes">validation panel</a> described in the design workflow. <code>--quick</code> caps sketch fan-out and uses quick plan review; <code>--full</code> forces the full sketch fan-out.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#fix-issue"><code>/fix-issue</code></a></td>

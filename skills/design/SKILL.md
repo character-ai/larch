@@ -1,24 +1,26 @@
 ---
 name: design
-description: "Use when designing any non-trivial feature, refactor, or architectural change — design, architecture, scope, approach validation. Sketch agents (4 regular, 2 quick) propose approaches; 4-reviewer panel validates via 3-voter dialectic."
-argument-hint: "[--auto] [--quick] [--subagent] [--session-env <path>] <feature description>"
+description: "Use when designing non-trivial features, refactors, or architecture changes. Adaptive sketches (0 trivial, 2 quick/simple, 4 full) propose approaches; 4-reviewer panel validates via 3-voter dialectic."
+argument-hint: "[--auto] [--quick] [--full] [--subagent] [--session-env <path>] [--design-classification <value>] <feature description>"
 allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task, WebFetch, WebSearch
 ---
 
 # Design Skill
 
-Design an implementation plan for a feature and review it with a 4-reviewer panel (2 Cursor: Arch, Edge + 2 Codex: Innovation, Pragmatic — a diagonal split matching the sketch phase), adjudicated by a 3-voter panel (Claude + Codex + Cursor). The sketch phase (Step 2a) runs 4 agents in regular mode (Cursor-Arch + Cursor-Edge + Codex-Innovation + Codex-Pragmatic — one personality per vendor in a diagonal split) or 2 agents in quick mode (1 Cursor-Generic + 1 Codex-Generic).
+Design an implementation plan for a feature and review it with a 4-reviewer panel (2 Cursor: Arch, Edge + 2 Codex: Innovation, Pragmatic — a diagonal split matching the sketch phase), adjudicated by a 3-voter panel (Claude + Codex + Cursor). The sketch phase (Step 2a) reads `run-params.json` and runs 0 agents for codebase-scan-confirmed trivial doc-only work, 2 generic agents for quick/simple work, or 4 agents in full mode (Cursor-Arch + Cursor-Edge + Codex-Innovation + Codex-Pragmatic — one personality per vendor in a diagonal split).
 
 **Flags**: Parse flags from the start of `$ARGUMENTS` before treating the remainder as the feature description. Flags may appear in any order; stop at the first non-flag token. **All boolean flags default to `false`. Only set a flag to `true` when its `--flag` token is explicitly present in the arguments. Flags are independent — the presence of one flag must not influence the default value of any other flag.**
 
 | Flag | Default | Purpose | Load-bearing detail |
 |------|---------|---------|---------------------|
 | `--auto` | `false` | Skip interactive question checkpoints (1c, 1d, 3.5) | No-op when `/implement --quick` skips `/design` entirely; dirty-tree recovery prompts are not suppressed |
-| `--quick` | `false` | Quick sketch mode: 2 agents instead of 4 | Independent of `--auto`; see `flags.md` for `/implement --quick` vs `/design --quick` distinction |
+| `--quick` | `false` | Quick review mode; caps sketch fan-out at 2 unless `--full` is also set | Independent of `--auto`; see `flags.md` for `/implement --quick` vs `/design --quick` distinction |
+| `--full` | `false` | Force full sketch fan-out | Sets `full_mode=true`; forces `sketch_budget=4` even with `--quick`; plan review still follows `quick_mode` |
 | `--subagent` | `false` | Run Step 2a heavy phase in an isolated Agent-tool subagent (`heavy-worker.md`); writes artifacts only to `$DESIGN_TMPDIR/` and returns terse status; standalone (`--session-env` empty) parents replay artifacts before cleanup | No-op when `--quick` is set; orthogonal to `--session-env` |
 | `--session-env <path>` | empty | Forward discovered session values to `session-setup.sh` | Empty = standalone invocation, full discovery |
 | `--step-prefix <prefix>` | empty | Nested-numbering prefix from `/implement` | `::` delimiter splits numeric prefix from breadcrumb path; `"1."` (bare numeric) is backward-compat |
 | `--branch-info <values>` | — | Skip redundant branch-state check when called from `/implement` | 4 keys required: `IS_MAIN`/`IS_USER_BRANCH`/`USER_PREFIX`/`CURRENT_BRANCH`; fallback on validation failure to `create-branch.sh --check`; power-user / nested-call flag with no standalone value validation |
+| `--design-classification <value>` | empty | Accept caller-forwarded `TRIVIAL_DOC_ONLY`/`SIMPLE`/`HARD` classification | Trusted only when `branch_info_supplied=true`; standalone `/design` ignores it and classifies locally |
 
 **MANDATORY — READ ENTIRE FILE before parsing argument flags**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/flags.md` completely. This reference is the single normative source for flag semantics — validation rules, fallback behaviors, `::` delimiter encoding spec, 4-key `--branch-info` requirement, and backward-compat notes. The table above is a non-normative index.
 
@@ -76,7 +78,7 @@ Before invoking `/design`, the orchestrator should internalize these questions. 
 
 Consolidated NEVER rules collected from the procedural steps below. Each rule states the WHY so edits can respect the original constraint. Inline step-local mentions remain where they carry load-bearing context.
 
-1. **NEVER skip Step 2a** (the sketch phase). **Why:** anchoring bias locks architectural direction before alternatives are considered. **How to apply:** always run all 4 sketch slots in regular mode or all 2 in quick mode, even when the feature seems trivial; Claude fallbacks preserve the configured lane count when externals are unavailable.
+1. **NEVER skip Step 2a** (the sketch phase), except for the router-confirmed trivial-task carve-out. **Why:** anchoring bias locks architectural direction before alternatives are considered. **How to apply:** normally run the configured `sketch_budget` slots (4 full or 2 quick/simple), with Claude fallbacks preserving the configured lane count when externals are unavailable. **Exception:** when the Step 0 router classifies `TRIVIAL_DOC_ONLY` after a codebase scan, `sketch_budget=0` is permitted. The router/Step 2a path must write sentinel stubs (`approach-synthesis.txt` = `NO_SKETCHES_CLASSIFIED_TRIVIAL`, `contested-decisions.md` = `NO_CONTESTED_DECISIONS`, and empty `dialectic-resolutions.md`) so downstream steps have stable inputs.
 
 2. **NEVER substitute a Claude subagent into a dialectic debate bucket.** **Why:** the debate path is externals-only (Cursor/Codex) because model-specific writing style could encode tool identity into adversarial arguments; the judge path uses the repo-wide replacement-first pattern because judges merely adjudicate pre-authored defenses. See GitHub issue #98. **How to apply:** Step 2a.5 skips debate buckets whose assigned tool is unavailable — do NOT reassign to Claude. Judge-panel slots (after debate) DO use Claude replacements per `dialectic-protocol.md`.
 
@@ -154,6 +156,32 @@ Set mental flags `codex_available` and `cursor_available` based on the output:
 
 The `--write-health` flag writes the health status file for cross-skill propagation. It will be updated by `collect-agent-results.sh --write-health` during runtime if any reviewer times out.
 
+### Step 0 tail — Run-Depth Router
+
+After `session-setup.sh` returns and `DESIGN_TMPDIR` is confirmed, compute run parameters once and write them to `$DESIGN_TMPDIR/run-params.json`:
+
+1. If `--design-classification <value>` was supplied AND `branch_info_supplied=true`, accept the forwarded value (`TRIVIAL_DOC_ONLY`, `SIMPLE`, or `HARD`) without re-classifying. Set `design_classification_source=caller-forwarded`.
+2. Otherwise, classify from `FEATURE_DESCRIPTION` plus a light codebase scan of the obvious target files (Read / Grep / Glob; roughly the same ~30 LOC scan used by `/implement`'s SIMPLE classifier). Set `design_classification_source=router-pre-design`.
+3. `TRIVIAL_DOC_ONLY` is allowed only when the codebase scan confirms the change is documentation/prose-only and no runtime files, scripts, hooks, generated artifacts, or security behavior need edits. If the scan cannot confirm that, default to `SIMPLE`.
+4. Derive `sketch_budget`: if `full_mode=true`, use `4`; else if `quick_mode=true`, use `min(classification_budget, 2)` — where `classification_budget` is derived in the next step (so `TRIVIAL_DOC_ONLY -> 0`, `SIMPLE -> 2`, `HARD -> 4`; the min preserves the 0-budget path, not just caps non-trivial tasks); else use `classification_budget` directly.
+5. Derive `review_budget`: `quick` when `quick_mode=true`, otherwise `full`.
+6. Derive `workflow_path`: `SIMPLE` for `TRIVIAL_DOC_ONLY` or `SIMPLE`, otherwise `HARD`.
+
+Write the file using the shared helper:
+
+```bash
+${CLAUDE_PLUGIN_ROOT}/scripts/write-run-params.sh \
+  --classification "$design_classification" \
+  --reason "$design_classification_reason" \
+  --source "$design_classification_source" \
+  --sketch-budget "$sketch_budget" \
+  --review-budget "$review_budget" \
+  --workflow-path "$workflow_path" \
+  --output "$DESIGN_TMPDIR/run-params.json"
+```
+
+If the helper exits non-zero, print `**⚠ 0: router — run-params write failed; defaulting to HARD sketch budget.**`, set in-memory defaults `design_classification=HARD`, `sketch_budget=4`, `review_budget=full`, `workflow_path=HARD`, and continue. Consumers treat missing or schema-invalid `run-params.json` the same way.
+
 ## Step 1 — Create Branch
 
 ```bash
@@ -214,11 +242,25 @@ Print: `> **🔶 1d: discussion r1**`
 SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 2a — sketches" || true
 ```
 
-**IMPORTANT: The collaborative sketch phase MUST ALWAYS run with all configured sketch agents — 4 in regular mode, 2 in quick mode (using Claude replacements when external tools are unavailable). Never skip or abbreviate this phase regardless of how simple, obvious, or documentation-only the feature appears. The sketch synthesis is required architectural input for the implementation plan — skipping it causes anchoring bias where a single perspective locks in the direction before alternatives are considered.**
+Before branching, read `$DESIGN_TMPDIR/run-params.json` and parse `sketch_budget`. Valid values are `0`, `2`, and `4`. If the file is absent or schema-invalid, default to `sketch_budget=4`. `review_budget` is consumed later by Step 3. Do not re-classify here; Step 0 owns router judgment.
+
+**IMPORTANT: The collaborative sketch phase MUST run with the configured `sketch_budget` — 4 in full mode, 2 in quick/simple mode, or 0 only for codebase-scan-confirmed `TRIVIAL_DOC_ONLY` (using Claude replacements when external tools are unavailable on non-zero budgets). Never abbreviate a non-zero sketch budget regardless of how simple or obvious the feature appears. The sketch synthesis is required architectural input for the implementation plan — skipping it outside the explicit zero-sketch carve-out causes anchoring bias where a single perspective locks in the direction before alternatives are considered.**
 
 A diverge-then-converge phase where multiple agents independently produce short architectural sketches before writing the full plan. This surfaces different perspectives early — when they can still influence architectural direction — rather than waiting for review when the plan is already anchored.
 
-### Regular mode (`quick_mode=false`) — 4 sketch agents
+### Zero-sketch mode (`sketch_budget=0`) — no sketch agents
+
+This path is allowed only when Step 0 classified `TRIVIAL_DOC_ONLY` after a codebase scan. Launch no external agents and no Claude fallback agents. Write sentinel artifacts:
+
+```bash
+printf '%s\n' 'NO_SKETCHES_CLASSIFIED_TRIVIAL' > "$DESIGN_TMPDIR/approach-synthesis.txt"
+printf '%s\n' 'NO_CONTESTED_DECISIONS' > "$DESIGN_TMPDIR/contested-decisions.md"
+: > "$DESIGN_TMPDIR/dialectic-resolutions.md"
+```
+
+Skip Step 2a.5 and proceed directly to Step 2b. Do NOT call `collect-agent-results.sh`.
+
+### Regular mode (`sketch_budget=4`) — 4 sketch agents
 
 The 4 sketch agents are **2 Cursor + 2 Codex**, with per-slot Claude fallback when an external tool is unavailable:
 
@@ -229,7 +271,7 @@ The 4 sketch agents are **2 Cursor + 2 Codex**, with per-slot Claude fallback wh
 
 When the assigned external is unavailable, the slot's Claude fallback uses the same personality prompt; the configured 4-agent shape is preserved.
 
-### Quick mode (`quick_mode=true`) — 2 sketch agents
+### Quick/simple mode (`sketch_budget=2`) — 2 sketch agents
 
 1. **Cursor — Generic** — or **Claude (Generic)** fallback: a broad-scope sketch without personality specialization.
 2. **Codex — Generic** — or **Claude (Generic)** fallback: same generic prompt as Cursor-Generic.
@@ -238,7 +280,7 @@ When the assigned external is unavailable, the slot's Claude fallback uses the s
 
 Print `> **🔶 2a: sketches**`.
 
-**Subagent heavy phase**: If `subagent_mode=true` (i.e., `--subagent` was passed) AND `quick_mode=false`, invoke a single Agent-tool subagent (subagent_type: `general-purpose`) for the heavy non-interactive phase before entering 2a.2. The subagent MUST read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/heavy-worker.md`, receive `DESIGN_TMPDIR`, `IMPLEMENT_TMPDIR`, `SESSION_ENV_PATH`, `FEATURE_DESCRIPTION`, `quick_mode`, `auto_mode`, branch info, and reviewer health flags as explicit data, and write raw artifacts to `$DESIGN_TMPDIR/`. The subagent returns only `DESIGN_HEAVY=complete` or `DESIGN_HEAVY=failed REASON=<short-token>`; it does not write the manifest and does not return plan/reviewer/tally prose.
+**Subagent heavy phase**: If `subagent_mode=true` (i.e., `--subagent` was passed) AND `quick_mode=false`, invoke a single Agent-tool subagent (subagent_type: `general-purpose`) for the heavy non-interactive phase before entering 2a.2. The subagent MUST read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/heavy-worker.md`, receive `DESIGN_TMPDIR`, `IMPLEMENT_TMPDIR`, `SESSION_ENV_PATH`, `FEATURE_DESCRIPTION`, `quick_mode`, `auto_mode`, `$DESIGN_TMPDIR/run-params.json`, branch info, and reviewer health flags as explicit data, and write raw artifacts to `$DESIGN_TMPDIR/`. The subagent returns only `DESIGN_HEAVY=complete` or `DESIGN_HEAVY=failed REASON=<short-token>`; it does not write the manifest and does not return plan/reviewer/tally prose.
 
 Immediately after the Agent tool returns, parse the heavy-worker status line. Before following the success path, fail closed if the worker omitted a valid status line or returned success without the required artifacts. The gate has two tiers, drawn from two distinct normative sources: **Tier 1 (non-empty)** for substantive artifacts the `heavy-worker.md` "Artifact Contract" mandates as non-empty regardless of manifest export; **Tier 2 (must-exist)** for may-be-empty artifacts that `skills/design/scripts/write-design-manifest.sh` requires on disk for manifest export (`copy_required_may_be_empty` calls in that script). On the nested+`auto_mode=true` path, parent Step 4 (which creates missing empty files) is skipped, so Tier 2 is the load-bearing existence check before manifest export at Step 5; Tier 1 is the heavy-worker contract check independent of manifest export.
 
@@ -274,9 +316,11 @@ If `subagent_mode=false` (or `quick_mode=true`), proceed to 2a.2 and run the inl
 
 ### 2a.2 — Launch Sketches in Parallel
 
-**Regular mode**: 4 sketch agents run in parallel: 2 Cursor slots (Architecture/Standards, Edge-cases/Failure-modes) + 2 Codex slots (Innovation/Exploration, Pragmatism/Safety), with per-slot Claude Agent-tool fallback when an external tool is unavailable so the 4-agent count is preserved.
+If `sketch_budget=0`, perform the Zero-sketch mode sentinel writes above and proceed directly to Step 2b.
 
-**Quick mode**: 2 sketch agents run in parallel: 1 Cursor-Generic + 1 Codex-Generic, with per-slot Claude Agent-tool fallback so the 2-agent count is preserved.
+**Regular mode**: when `sketch_budget=4`, 4 sketch agents run in parallel: 2 Cursor slots (Architecture/Standards, Edge-cases/Failure-modes) + 2 Codex slots (Innovation/Exploration, Pragmatism/Safety), with per-slot Claude Agent-tool fallback when an external tool is unavailable so the 4-agent count is preserved.
+
+**Quick/simple mode**: when `sketch_budget=2`, 2 sketch agents run in parallel: 1 Cursor-Generic + 1 Codex-Generic, with per-slot Claude Agent-tool fallback so the 2-agent count is preserved.
 
 **MANDATORY — READ ENTIRE FILE (load FIRST)**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/sketch-prompts.md` completely. It defines `ARCH_PROMPT`, `EDGE_PROMPT`, `INNOVATION_PROMPT`, `PRAGMATIC_PROMPT`, and `GENERIC_PROMPT` — the four personality-prompt bodies and the quick-mode generic prompt, substituted into the launch shell blocks via the corresponding `<…>` token names.
 
@@ -288,6 +332,8 @@ Execute the launches per `sketch-launch.md` — all external and fallback launch
 
 Collect and validate external sketch outputs using the shared collection script. Pass the output paths for whichever external slots were actually launched (omit any slot where the tool was unavailable and a Claude subagent fallback is returning via Agent tool instead).
 
+If `sketch_budget=0`, skip this section entirely. Do NOT call `collect-agent-results.sh`.
+
 **Regular mode** (4 external output files when both tools available):
 
 ```bash
@@ -298,7 +344,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1260 \
   "$DESIGN_TMPDIR/codex-sketch-pragmatic-output.txt"
 ```
 
-**Quick mode** (2 external output files when both tools available):
+**Quick mode** (2 external output files when both tools available; `sketch_budget=2`):
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1260 \
@@ -322,14 +368,14 @@ Read all sketches (or their Claude fallbacks if an external tool was unavailable
 2. Identifies where they **diverge** and makes a reasoned call on each contested point with justification
 3. Notes which ideas from each sketch are being incorporated into the full plan
 
-**Regular mode only** (personality-specific highlights — skip these in quick mode):
+**Regular mode only** (`sketch_budget=4`, personality-specific highlights — skip these when `sketch_budget=2`):
 
 4. Highlights any **Architecture/Standards** concerns that should be addressed in the plan
 5. Highlights any **Pragmatism/Safety** warnings about regression risk or unnecessary complexity
 6. Surfaces any **Edge-case/Failure-mode** risks that should be addressed in the plan's Failure modes section
 7. Notes any **Innovation/Exploration** alternatives worth preserving as options even when not chosen
 
-**Quick mode**: attribute sketches by tool (Cursor-Generic vs Codex-Generic). Skip personality-specific highlight bullets 4-7 above. Use generic agreement/divergence analysis only.
+**Quick mode** (`sketch_budget=2`): attribute sketches by tool (Cursor-Generic vs Codex-Generic). Skip personality-specific highlight bullets 4-7 above. Use generic agreement/divergence analysis only.
 
 8. Lists contested decisions as a structured markdown list in `$DESIGN_TMPDIR/contested-decisions.md`. Use this schema:
 
@@ -353,6 +399,8 @@ SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_
 ```
 
 Print: `> **🔶 2a.5: dialectic**`
+
+If `sketch_budget=0`, print `⏩ 2a.5: dialectic — skipped (trivial doc-only) (<elapsed>)` and proceed directly to Step 2b. Do NOT load `dialectic-execution.md`.
 
 Read `$DESIGN_TMPDIR/contested-decisions.md`. If the file contains only `NO_CONTESTED_DECISIONS` (ignoring leading/trailing whitespace and newlines), print `⏩ 2a.5: dialectic — no contested decisions (<elapsed>)` and IMMEDIATELY proceed to Step 2b — do NOT halt after the skip breadcrumb.
 
@@ -398,7 +446,7 @@ SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_
 
 Before writing any code, create a concrete implementation plan. Research the codebase (read relevant files, grep for patterns, understand existing architecture). See CLAUDE.md for project-specific development references and conventions.
 
-Read `$DESIGN_TMPDIR/approach-synthesis.txt` from Step 2a and incorporate the synthesis into the plan. The synthesis should inform architectural decisions, file selection, and tradeoff resolutions.
+Read `$DESIGN_TMPDIR/approach-synthesis.txt` from Step 2a and incorporate the synthesis into the plan. The synthesis should inform architectural decisions, file selection, and tradeoff resolutions. If it contains exactly `NO_SKETCHES_CLASSIFIED_TRIVIAL`, treat that as a sentinel that no sketches ran because the router confirmed trivial doc-only scope; write the plan from direct codebase/doc inspection instead of fabricating sketch agreement.
 
 Also read `$DESIGN_TMPDIR/discussion-round1.md` if it exists and is non-empty. Incorporate the scope boundaries and hard constraints established during the design discussion into the plan — these define what is in-scope, what must not break, and what the user explicitly does not want.
 
@@ -433,9 +481,11 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 1 — design Step 3 plan review" || true
 ```
 
-**If `quick_mode=true`**: **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/plan-review-quick.md` completely. It defines the quick-mode plan-review procedure (self-review checklist, output file requirements, acceptance policy). After executing the procedure, proceed to Step 3.5 if `auto_mode=false`, or Step 3b if `auto_mode=true`.
+Read `review_budget` from `$DESIGN_TMPDIR/run-params.json`. Valid values are `quick` and `full`; if absent or invalid, derive the fallback from `quick_mode` (`quick` when true, otherwise `full`).
 
-**If `quick_mode=false`**:
+**If `review_budget=quick`**: **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/plan-review-quick.md` completely. It defines the quick-mode plan-review procedure (self-review checklist, output file requirements, acceptance policy). After executing the procedure, proceed to Step 3.5 if `auto_mode=false`, or Step 3b if `auto_mode=true`.
+
+**If `review_budget=full`**:
 
 **IMPORTANT: Plan review MUST ALWAYS run with all 4 reviewers (2 Cursor: Arch, Edge + 2 Codex: Innovation, Pragmatic). Never skip or abbreviate this step regardless of how straightforward the plan appears — even when all sketch agents agreed, the plan is short, or the change seems trivial. Reviewers validate against the actual codebase state, catching issues that sketch-phase reasoning alone cannot detect. When Cursor is unavailable, each Cursor archetype slot falls back to Codex; when Codex is unavailable, each Codex archetype slot falls back to Cursor; when both are unavailable, each falls back to a Claude subagent.**
 

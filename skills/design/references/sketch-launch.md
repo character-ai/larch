@@ -2,19 +2,31 @@
 
 **Consumer**: `/design` Step 2a.2 — external sketch launches (Cursor/Codex) and per-slot Claude fallbacks.
 
-**Contract**: wrapper-based launch invocations for the external slots — the regular-mode launch blocks below (2 Cursor + 2 Codex, one per personality on a diagonal split: Cursor-Arch + Cursor-Edge + Codex-Innovation + Codex-Pragmatic) or the quick-mode launch blocks (1 Cursor-Generic + 1 Codex-Generic) — the spawn-order rule, the `run_in_background: true` + `timeout: 1260000` requirements, and the per-slot Claude fallback rules. Token bodies (`<ARCH_PROMPT>` etc.) are resolved from the companion `references/sketch-prompts.md`, not here. Sketch-phase collection (`collect-agent-results.sh` for Step 2a.3) is NOT defined here — that invocation stays single-source in SKILL.md. Launch wrappers (`launch-review.sh --tool cursor`, `launch-review.sh --tool codex`) absorb the `$(...)` command substitution chain internally so SKILL.md Bash blocks are simple invocations.
+**Contract**: wrapper-based launch invocations for the external slots selected by `sketch_budget` — `0` launches no agents and writes sentinel artifacts, `4 regular` uses 2 Cursor + 2 Codex on the personality diagonal split (Cursor-Arch + Cursor-Edge + Codex-Innovation + Codex-Pragmatic), and `2 sketch agents` uses 1 Cursor-Generic + 1 Codex-Generic — plus the spawn-order rule, the `run_in_background: true` + `timeout: 1260000` requirements, and the per-slot Claude fallback rules. Token bodies (`<ARCH_PROMPT>` etc.) are resolved from the companion `references/sketch-prompts.md`, not here. Sketch-phase collection (`collect-agent-results.sh` for Step 2a.3) is NOT defined here — that invocation stays single-source in SKILL.md. Launch wrappers (`launch-review.sh --tool cursor`, `launch-review.sh --tool codex`) absorb the `$(...)` command substitution chain internally so SKILL.md Bash blocks are simple invocations.
 
 **When to load**: at Step 2a.2 entry, AFTER `references/sketch-prompts.md` has been loaded (so the placeholder tokens are resolvable). Do NOT load during Steps 0, 1, 2a.3, 2a.4, 2a.5, 2b, 3, 3.5, 3b, 4, or 5.
 
-**Binding convention**: single normative source for the external-slot launch shell blocks (4 regular + 2 quick), the spawn-order rule, the per-slot `run_in_background: true` / `timeout: 1260000` requirements, and the per-slot Claude fallback notes. Token substitution placeholders (`<ARCH_PROMPT>`, `<EDGE_PROMPT>`, `<INNOVATION_PROMPT>`, `<PRAGMATIC_PROMPT>`, `<GENERIC_PROMPT>`) are resolved from `references/sketch-prompts.md`, which the caller loads first. Sketch-phase collection is NOT defined here — the `collect-agent-results.sh` invocation for Step 2a.3 remains single-source in SKILL.md.
+**Binding convention**: single normative source for the external-slot launch shell blocks (4 regular + 2 quick), the zero-sketch sentinel path, the spawn-order rule, the per-slot `run_in_background: true` / `timeout: 1260000` requirements, and the per-slot Claude fallback notes. Token substitution placeholders (`<ARCH_PROMPT>`, `<EDGE_PROMPT>`, `<INNOVATION_PROMPT>`, `<PRAGMATIC_PROMPT>`, `<GENERIC_PROMPT>`) are resolved from `references/sketch-prompts.md`, which the caller loads first. Sketch-phase collection is NOT defined here — the `collect-agent-results.sh` invocation for Step 2a.3 remains single-source in SKILL.md.
 
 ---
 
-**Critical sequencing**: You MUST launch all external sketch Bash tool calls (with `run_in_background: true`) AND any Claude subagent fallback sketches in a single message. Issue Cursor slots first (slowest), then Codex slots, then any Claude subagent fallbacks.
+**Critical sequencing**: For `sketch_budget=2` or `sketch_budget=4`, you MUST launch all external sketch Bash tool calls (with `run_in_background: true`) AND any Claude subagent fallback sketches in a single message. Issue Cursor slots first (slowest), then Codex slots, then any Claude subagent fallbacks. For `sketch_budget=0`, launch nothing and do not call `collect-agent-results.sh`.
 
 **Personality prompts**: the four personality prompts and the generic prompt are shared across external slots (Cursor/Codex) and Claude fallbacks (Agent tool). Token bodies are defined in `references/sketch-prompts.md` (loaded separately via the companion MANDATORY directive at Step 2a.2). Prompt bodies do not carry reasoning-effort prose; external launcher wrappers apply their high-effort mechanisms by default, and Claude fallback Agent-tool invocations use session-default effort.
 
-## Regular Mode (`quick_mode=false`)
+## Zero-Sketch Mode (`sketch_budget=0`)
+
+Use only when the Step 0 router classified `TRIVIAL_DOC_ONLY` after a codebase scan. This path uses 0 sketch agents: launch no external agents and no Claude fallback agents. Write these sentinel artifacts immediately, then skip Step 2a.5 and proceed directly to Step 2b:
+
+```bash
+printf '%s\n' 'NO_SKETCHES_CLASSIFIED_TRIVIAL' > "$DESIGN_TMPDIR/approach-synthesis.txt"
+printf '%s\n' 'NO_CONTESTED_DECISIONS' > "$DESIGN_TMPDIR/contested-decisions.md"
+: > "$DESIGN_TMPDIR/dialectic-resolutions.md"
+```
+
+Do not call `collect-agent-results.sh` on this path.
+
+## Regular Mode (`sketch_budget=4`)
 
 **Spawn order**: all 2 Cursor slots first (slowest), then all 2 Codex slots, then any Claude subagent fallbacks. Issue all Bash and Agent tool calls in a single message.
 
@@ -58,7 +70,7 @@ Use `run_in_background: true` and `timeout: 1260000` on the Bash tool call.
 
 **Codex — Pragmatism/Safety fallback** (if `codex_available` is false): Claude subagent with `<PRAGMATIC_PROMPT>` (Claude uses session-default effort).
 
-## Quick Mode (`quick_mode=true`)
+## Quick Mode (`sketch_budget=2`)
 
 **Spawn order**: Cursor-Generic first (slowest), then Codex-Generic, then any Claude subagent fallbacks. Issue all Bash and Agent tool calls in a single message.
 

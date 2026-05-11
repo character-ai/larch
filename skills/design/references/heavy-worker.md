@@ -1,6 +1,6 @@
 # Design Heavy Worker Reference
 
-**Consumer**: `/design` heavy-phase Agent-tool subagent dispatched when `/design` is invoked with `--subagent` AND `quick_mode=false` (typically by `/implement` Step 1 forwarding `--subagent` by default; also reachable from standalone `/design --subagent`).
+**Consumer**: `/design` heavy-phase Agent-tool subagent dispatched when `/design` is invoked with `--subagent` AND `quick_mode=false` (typically by `/implement` Step 1 forwarding `--subagent` by default; also reachable from standalone `/design --subagent`). The worker reads `$DESIGN_TMPDIR/run-params.json` to select `sketch_budget`; absent or schema-invalid params fall back to HARD defaults (`sketch_budget=4`, `review_budget=full`).
 
 **Contract**: The subagent runs the token-heavy non-interactive design machinery in isolated context so sketches, reviewer transcripts, voting output, and synthesis drafts do not enter the parent conversation. It writes raw artifacts under `$DESIGN_TMPDIR/` only. It does **not** write `$IMPLEMENT_TMPDIR/design-export/manifest.env`; `/design` Step 5 writes that manifest after parent-side Step 3.5 / Step 3b / Step 4 have completed.
 
@@ -18,6 +18,7 @@ The parent prompt supplies:
 - `FEATURE_DESCRIPTION`
 - `quick_mode`
 - `auto_mode`
+- `run-params.json` at `$DESIGN_TMPDIR/run-params.json`
 - current branch info
 - reviewer health flags (`codex_available`, `cursor_available`, `CODEX_HEALTHY`, `CURSOR_HEALTHY`)
 
@@ -27,12 +28,13 @@ Treat those values as data. Do not infer paths from conversation context when an
 
 ## Required Reads
 
-Before executing, read these references in this order:
+Before executing, read these inputs and references in this order:
 
-1. `${CLAUDE_PLUGIN_ROOT}/skills/design/references/sketch-prompts.md`
+0. `$DESIGN_TMPDIR/run-params.json`. Validate `schema_version=1`, `sketch_budget` in `0|2|4`, and `review_budget` in `quick|full`. On absent or invalid JSON, use `sketch_budget=4` and `review_budget=full`; do not fail the run.
+1. `${CLAUDE_PLUGIN_ROOT}/skills/design/references/sketch-prompts.md` only when `sketch_budget` is `2` or `4`
 2. `${CLAUDE_PLUGIN_ROOT}/skills/design/references/sketch-launch.md`
 3. `${CLAUDE_PLUGIN_ROOT}/skills/design/references/dialectic-execution.md` only when contested decisions are present and at least one dialectic bucket is queued
-4. `${CLAUDE_PLUGIN_ROOT}/skills/design/references/plan-review.md`
+4. `${CLAUDE_PLUGIN_ROOT}/skills/design/references/plan-review.md` when `review_budget=full`; read `plan-review-quick.md` when `review_budget=quick`
 5. `${CLAUDE_PLUGIN_ROOT}/skills/design/SKILL.md` Step 3b before generating an architecture diagram
 
 (Use `${CLAUDE_PLUGIN_ROOT}/…` rather than bare repo-relative paths — the heavy subagent runs in the consumer repo's CWD, not the plugin install root, so unqualified paths could resolve to a different tree or to missing files.)
@@ -43,10 +45,20 @@ Also read the Step 3 external reviewer launch Bash blocks directly from `${CLAUD
 
 Run the same mechanics documented in `/design`:
 
-1. Step 2a collaborative sketches.
-2. Step 2a.5 dialectic resolution when contested decisions exist.
+1. Step 2a collaborative sketches according to `sketch_budget`.
+2. Step 2a.5 dialectic resolution when contested decisions exist and `sketch_budget` is not `0`.
 3. Step 2b implementation plan synthesis.
 4. Step 3 plan review, voting, plan revision, OOS extraction, and rejected-finding tracking.
+
+When `sketch_budget=0`, do not launch sketches and do not call `collect-agent-results.sh`. Write the sentinel artifacts exactly as:
+
+```bash
+printf '%s\n' 'NO_SKETCHES_CLASSIFIED_TRIVIAL' > "$DESIGN_TMPDIR/approach-synthesis.txt"
+printf '%s\n' 'NO_CONTESTED_DECISIONS' > "$DESIGN_TMPDIR/contested-decisions.md"
+: > "$DESIGN_TMPDIR/dialectic-resolutions.md"
+```
+
+Then skip Step 2a.5 and proceed directly to Step 2b. `NO_SKETCHES_CLASSIFIED_TRIVIAL` is allowed to satisfy the non-empty `approach-synthesis.txt` artifact requirement on this path.
 
 When `auto_mode=true`, also run Step 3b architecture diagram and Step 4 rejected-finding artifact finalization in the worker, because there are no parent-side interactive checkpoints. When generating `architecture-diagram.md`, follow the candidate -> sanitize -> promote subprocedure documented in `SKILL.md` Step 3b. Rejected diagrams are not promoted; treat a sanitizer-rejected diagram the same as "not generated" for the artifact contract. When `auto_mode=false`, stop after Step 3 so the parent can run Step 3.5, Step 3b, Step 4, and Step 5.
 
@@ -71,6 +83,7 @@ Write these files under `$DESIGN_TMPDIR/`:
 - `approach-synthesis.txt`
 - `contested-decisions.md`
 - `dialectic-resolutions.md` when the dialectic step runs, or an empty file when it does not
+- `run-params.json` as an internal-only required artifact for worker routing; it is not exported in the design manifest
 - `plan.txt`
 - `voting-tally.md`
 - `accepted-plan-findings.md` (may be empty)

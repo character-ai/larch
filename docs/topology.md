@@ -8,6 +8,7 @@ Quick-mode `/implement` reviewer-loop phrases such as `7 rounds`, `rounds 1-3`, 
 
 | Key | Value | Composition | Runtime Authority |
 |---|---:|---|---|
+| <a id="design.sketch.zero_slots"></a>`design.sketch.zero_slots` | 0 sketch agents | trivial doc-only sentinel path | `skills/design/references/sketch-launch.md` |
 | <a id="design.sketch.regular_slots"></a>`design.sketch.regular_slots` | 4 regular | 2 Cursor + 2 Codex | `skills/design/references/sketch-launch.md` |
 | <a id="design.sketch.quick_slots"></a>`design.sketch.quick_slots` | 2 sketch agents | 1 Cursor-Generic + 1 Codex-Generic | `skills/design/references/flags.md` |
 | <a id="design.plan_review.cursor_archetypes"></a>`design.plan_review.cursor_archetypes` | 2 Cursor | Architecture/Standards Edge-cases/Failure-modes | `skills/design/references/plan-review.md` |
