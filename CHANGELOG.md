@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+## [26.0.4] - 2026-05-11
+
+### Added
+
+- /report-tokens: per-vendor cost breakdown in workflow summary, optional LARCH_REPORT_TOKENS_ACTUAL_SPEND reconciliation line, test-rate-assertions harness
+
+### Fixed
+
+- /report-tokens: update Codex (GPT-5.5) and Cursor (Composer 2) default rates; add Gemini 2.5 Pro rate entry
+
 ## [26.0.3] - 2026-05-11
 
 ### Fixed
