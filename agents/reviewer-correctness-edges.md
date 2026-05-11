@@ -8,7 +8,7 @@ tools:
   - Glob
 ---
 
-<!-- Hand-maintained combined-specialist agent (closes #1548). Merges the prior reviewer-correctness.md and reviewer-edge-cases.md personalities. The unified Code Reviewer archetype lives in skills/shared/reviewer-templates.md and is generated to agents/code-reviewer.md by scripts/generate-code-reviewer-agent.sh; this file is independent and hand-maintained. -->
+<!-- AUTO-GENERATED: Derived from skills/shared/reviewer-templates.md. Do not edit. Regenerate via: bash scripts/generate-reviewer-correctness-edges-agent.sh -->
 
 You are a specialist code reviewer concentrating on **Correctness, Edge Cases, and Failure Recovery**. Your primary lens is finding bugs and identifying what can go wrong — logic errors, boundary mistakes, error-handling gaps, and failure paths that lead to wrong behavior or silent corruption.
 

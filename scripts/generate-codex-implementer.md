@@ -1,0 +1,5 @@
+# scripts/generate-codex-implementer.sh — contract
+
+`scripts/generate-codex-implementer.sh` regenerates `agents/codex-implementer.md` from the shared implementer body in `agents/_implementer-base.md` plus Codex-specific frontmatter, intro prose, sandbox note, and substitutions. Default mode rewrites the agent file in place; `--check` exits non-zero if the committed file would drift from generator output.
+
+Codex shares the common implementer body but rewrites hard guard #2 to describe `workspace-write` `.git/` restrictions, substitutes `TOOL_COMMIT_STDERR` with `codex-commit-stderr.txt`, and removes the unsandboxed `TOOL_MODIFIED_HISTORY` manifest-checklist suffix. Determinism is load-bearing: `LC_ALL=C`, no timestamps, no git state, and hard-coded substitutions. Enforcement comes from `scripts/check-generators.sh`, which dispatches every row in `scripts/generators.tsv` in `--check` mode. Edit `agents/_implementer-base.md` for shared prompt changes and rerun this generator in the same PR.

@@ -20,9 +20,10 @@
 # assertion 19 added the Step 2 external implementer dispatcher pin; assertion
 # 20 added the design-manifest + --design-only path pin; assertion 21 added the
 # --inline / --subagent forwarding pin, issue #1036; assertion 22 added the
-# orchestrator-edit-authority gate pin; assertion 24 added Gemini implementer
-# structural parity with Cursor's shared guardrails and later OOS triage
-# sub-pins; assertion 25 added the clean-main Step 0 entry gate; assertion 26
+# orchestrator-edit-authority gate pin; assertion 24 added implementer base
+# inclusion/generated-marker checks, Gemini structural parity with Cursor's
+# shared guardrails, and later OOS triage sub-pins; assertion 25 added the
+# clean-main Step 0 entry gate; assertion 26
 # added the post-merge anti-halt literal pin, issue #1143; assertion 28 added
 # timing instrumentation pins; assertion 29 added the anti-pattern doc-drift
 # pin (issue #1512, was #1498); assertion 30 added the Coder simplicity
@@ -934,13 +935,25 @@ grep -Fq 'Cursor → Codex → Claude' "$SKILL_MD" \
   || fail "(23h) quick-mode rounds 4+ chain missing Cursor → Codex → Claude"
 grep -Fq 'GEMINI_HEALTHY' "$SKILL_MD" \
   || fail "(23i) /implement cross-skill health propagation omits GEMINI_HEALTHY"
-# (24) Cursor/Gemini implementer shared guardrails parity. The prose after
-# `## Shared guardrails` must be byte-identical modulo the per-tool token
-# substitution `cursor-modified-history` ↔ `gemini-modified-history` and
+# (24) Implementer generated-prompt structure. The shared implementer body
+# lives in agents/_implementer-base.md, and generated prompts carry
+# AUTO-GENERATED markers. Cursor/Gemini prose after `## Shared guardrails`
+# remains byte-identical modulo the per-tool token substitution
+# `cursor-modified-history` ↔ `gemini-modified-history` and
 # `cursor-commit-stderr.txt` ↔ `gemini-commit-stderr.txt`, so the two
-# unsandboxed implementer prompts do not drift in safety-critical
-# instructions while still showing each implementer the concrete token it
-# will see in a bail.
+# unsandboxed implementer prompts do not drift in safety-critical instructions
+# while still showing each implementer the concrete token it will see in a
+# bail.
+[[ -f "$REPO_ROOT/agents/_implementer-base.md" ]] \
+  || fail "(24) agents/_implementer-base.md missing"
+for implementer_prompt in \
+  "$REPO_ROOT/agents/codex-implementer.md" \
+  "$REPO_ROOT/agents/cursor-implementer.md" \
+  "$REPO_ROOT/agents/gemini-implementer.md"
+do
+  grep -Fq '<!-- AUTO-GENERATED:' "$implementer_prompt" \
+    || fail "(24) $(basename "$implementer_prompt") missing AUTO-GENERATED marker"
+done
 CURSOR_SHARED=$(awk 'found { print } /^## Shared guardrails$/ { found=1 }' "$REPO_ROOT/agents/cursor-implementer.md" \
   | sed -e 's/cursor-modified-history/TOOL-modified-history/g' -e 's/cursor-commit-stderr\.txt/TOOL-commit-stderr.txt/g')
 GEMINI_SHARED=$(awk 'found { print } /^## Shared guardrails$/ { found=1 }' "$REPO_ROOT/agents/gemini-implementer.md" \

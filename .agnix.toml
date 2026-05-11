@@ -10,11 +10,14 @@ tools = ["claude-code"]
 #   halt-rate harness (see tests/fixtures/loop-halt-rate/SKILL.md). They
 #   are designed to be graded below-A; AS-010 "missing Use when... trigger"
 #   is expected and must NOT be fixed on the fixture itself.
+# - agents/_implementer-base.md — source-of-truth prompt fragment for the
+#   generated implementer agents, not an invokable Claude Code agent.
 exclude = [
   "node_modules/**",
   ".git/**",
   "target/**",
   "tests/fixtures/**",
+  "agents/_implementer-base.md",
 ]
 
 # Pin versions so version-dependent rules (VER-001 family) evaluate against
