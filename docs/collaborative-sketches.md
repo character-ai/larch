@@ -50,7 +50,7 @@ The handling of unavailable external tools differs across workflow phases:
 |---|---|
 | **Sketch phase** (`/design`) | Per-slot Claude fallbacks with matching prompt — the mode-specific topology stays intact |
 | **Plan review** (`/design`) | Per-archetype Cursor → Codex → Claude fallback chain; Codex generic → Claude — the configured panel stays intact |
-| **Code review** (`/review`) | Cursor down → Codex fills specialist slots; Codex down → Claude generic replaces Codex slot; both down → Claude generic (voting skipped per threshold rules) |
+| **Code review** (`/review`) | Cursor down → skip Cursor specialist slots; Codex down → skip Codex specialist slots; both down → Claude generic (voting skipped per threshold rules) |
 | **Voting (plan review)** | Claude replacement voters used — always 3 voters. 3 voters: 2+ YES to accept; 2 voters: unanimous YES; <2 voters: voting skipped, all findings accepted |
 | **Voting (code review)** | 2 primary voters (Cursor + Codex); Claude invoked as conditional tie-breaker only on 1Y/1N. If one primary fails: 1 eligible → voting skipped, all findings accepted |
 | **Dialectic debate** (`/design`) | **No Claude substitution for debaters** — when the assigned external tool (Cursor for odd-indexed decisions, Codex for even-indexed) is unavailable, that decision's debater bucket is skipped entirely and a `Disposition: bucket-skipped` resolution is written (synthesis decision stands). Intentional divergence from the rules above for debate execution only; see Step 2a.5 in `skills/design/SKILL.md` |

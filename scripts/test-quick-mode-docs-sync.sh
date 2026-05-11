@@ -20,8 +20,7 @@
 #
 #   1. POSITIVE ANCHORS (required markers) — each target file MUST contain
 #      all of the following strings:
-#        - "7 rounds"                    (case-sensitive, grep -F)
-#        - "Cursor → Codex → Claude"     (case-sensitive, grep -F, UTF-8 U+2192)
+#        - "3 rounds"                    (case-sensitive, grep -F)
 #        - "no voting panel"             (case-INSENSITIVE, grep -iF — tolerates
 #                                         legitimate sentence-case rewrites)
 #        - "rounds 1-3"                  (case-INSENSITIVE, grep -iF — tolerates
@@ -31,12 +30,8 @@
 #        - "5 Cursor specialists"        (case-sensitive, grep -F — pins the
 #                                         specialist count in rounds 1-3)
 #        - "generic Codex"               (case-sensitive, grep -F — pins the
-#                                         generic Codex slot in rounds 1-3 and
-#                                         the rounds-4+ generic reviewer chain)
-#        - "Claude generic"              (case-sensitive, grep -F — pins the
-#                                         always-present Claude generic reviewer
-#                                         slot in rounds 1-3)
-#      The last four encode the rounds-1-3 vs rounds-4+ topology so future
+#                                         generic Codex slot in rounds 1-3)
+#      The last three encode the rounds-1-3 topology so future
 #      Step 5 quick-mode reviewer-composition changes that don't propagate to
 #      every public surface fail CI (closes #1002).
 #
@@ -94,13 +89,11 @@ REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # Format: "marker|casing" where casing is "sensitive" or "insensitive".
 # To add a marker, append a new entry — `check_file` iterates this array.
 readonly POS_MARKERS=(
-  "7 rounds|sensitive"
-  "Cursor → Codex → Claude|sensitive"
+  "3 rounds|sensitive"
   "no voting panel|insensitive"
   "rounds 1-3|insensitive"
   "5 Cursor specialists|sensitive"
   "generic Codex|sensitive"
-  "Claude generic|sensitive"
 )
 
 # Stale phrases (forbidden in public docs; SKILL.md exempt).
@@ -299,11 +292,9 @@ run_self_test() {
   # Canonical-correct fixture: contains all positive markers, no stale phrases.
   cat > "$good" <<'EOF'
 This is a fixture describing quick-mode behavior.
-The review loop runs up to 7 rounds.
-Reviewer selection per round follows Cursor → Codex → Claude fallback.
+The review loop runs up to 3 rounds.
 The loop has no voting panel — main agent accepts or rejects each finding.
-Rounds 1-3 launch 5 Cursor specialists in parallel plus a generic Codex reviewer and a Claude generic reviewer.
-Rounds 4+ use a single generic reviewer per round.
+Rounds 1-3 launch 5 Cursor specialists in parallel plus a generic Codex reviewer.
 EOF
 
   # Stale-phrase fixture: contains ALL positive markers PLUS exactly one stale
@@ -314,10 +305,9 @@ EOF
   # designed to catch.
   cat > "$bad" <<'EOF'
 Stale-phrase fixture: contains every positive marker so only the stale phrase can drive failure.
-The review loop runs up to 7 rounds.
-Reviewer selection per round follows Cursor → Codex → Claude fallback.
+The review loop runs up to 3 rounds.
 The loop has no voting panel — main agent accepts or rejects each finding.
-Rounds 1-3 launch 5 Cursor specialists in parallel plus a generic Codex reviewer and a Claude generic reviewer.
+Rounds 1-3 launch 5 Cursor specialists in parallel plus a generic Codex reviewer.
 Stale phrase intentionally embedded: simplified code review (1 Claude Code Reviewer subagent, 1 round).
 EOF
 

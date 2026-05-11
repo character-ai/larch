@@ -890,17 +890,18 @@ grep -Fq -- 'NEVER #10' "$SKILL_MD" \
 # in Step 5 quick mode (the review call sites were removed deliberately while
 # preserving the `--coder=gemini` dispatch path). Step 0 no longer passes
 # --check-gemini-reviewer; session-setup.sh hard-codes GEMINI_HEALTHY=false.
-# Step 5 quick mode rounds 4+ now use the Cursor → Codex → Claude chain.
+# Step 5 quick mode uses a 3-round 6-reviewer panel.
 grep -Fq -- '--gemini-healthy' "$SKILL_MD" \
   || fail "(23b) /implement does not write GEMINI_HEALTHY into session-env"
 grep -Fq 'gemini_available=false' "$SKILL_MD" \
   || fail "(23c) /implement lacks gemini_available=false default for --coder=gemini gating"
-grep -Fq 'cursor-quick-review-round${round_num}.txt' "$SKILL_MD" \
-  || fail "(23f) quick-mode rounds 4+ missing tool-qualified Cursor output path"
-grep -Fq 'codex-quick-review-round${round_num}.txt' "$SKILL_MD" \
-  || fail "(23g) quick-mode rounds 4+ missing tool-qualified Codex output path"
-grep -Fq 'Cursor → Codex → Claude' "$SKILL_MD" \
-  || fail "(23h) quick-mode rounds 4+ chain missing Cursor → Codex → Claude"
+grep -Fq 'up to 3 rounds' "$SKILL_MD" \
+  || fail "(23f) quick-mode missing 3-round cap"
+grep -Fq '5 Cursor specialists + generic Codex' "$SKILL_MD" \
+  || fail "(23g) quick-mode missing 6-reviewer panel wording"
+if grep -Fq 'Cursor → Codex → Claude' "$SKILL_MD"; then
+  fail "(23h) quick-mode must not retain rounds 4+ Cursor → Codex → Claude chain"
+fi
 grep -Fq 'GEMINI_HEALTHY' "$SKILL_MD" \
   || fail "(23i) /implement cross-skill health propagation omits GEMINI_HEALTHY"
 # (24) Implementer generated-prompt structure. The shared implementer body
@@ -1197,6 +1198,16 @@ while IFS= read -r kind; do
   grep -qxF "$kind" "$allowed_tmp" \
     || fail "(28g) --timing-task-kind literal not present in TIMING_TASK_KINDS_ALLOWED: $kind"
 done < "$actual_tmp"
+for kind in \
+  codex-specialist-structure \
+  codex-specialist-correctness \
+  codex-specialist-testing \
+  codex-specialist-security \
+  codex-specialist-edge-cases
+do
+  grep -qxF "$kind" "$allowed_tmp" \
+    || fail "(28g) codex specialist timing kind missing from TIMING_TASK_KINDS_ALLOWED: $kind"
+done
 
 # ---------------------------------------------------------------------------
 # (29) Anti-pattern doc-drift pin (closes #1512, was #1498). Issue #1480 added

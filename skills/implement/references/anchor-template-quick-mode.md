@@ -18,7 +18,7 @@
 
 Quick mode (`/implement --quick`) skips `/design` and `/review`, so the `plan-review-tally` and `code-review-tally` sections have no standard content. Quick-mode consumers should:
 
-- Leave the `plan-review-tally` and `code-review-tally` sections present (with section markers preserved) but populate the interior with `(plan review skipped — quick mode)` / `(single-reviewer loop — no voting panel)` as appropriate.
+- Leave the `plan-review-tally` and `code-review-tally` sections present (with section markers preserved) but populate the interior with `(plan review skipped — quick mode)` / `(quick-mode review loop — no voting panel)` as appropriate.
 - Populate `diagrams` with only the Architecture Diagram (Code Flow Diagram is skipped in quick mode per SKILL.md Step 7a).
 - All other sections are populated normally.
 

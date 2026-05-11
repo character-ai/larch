@@ -39,6 +39,11 @@ TIMING_TASK_KINDS_ALLOWED=(
     cursor-specialist-testing
     cursor-specialist-security
     cursor-specialist-edge-cases
+    codex-specialist-structure
+    codex-specialist-correctness
+    codex-specialist-testing
+    codex-specialist-security
+    codex-specialist-edge-cases
     codex-debate-thesis
     codex-debate-antithesis
     cursor-debate-thesis
