@@ -611,4 +611,36 @@ assert_contains "$OUT" '"decision":"block"' "stdin session_id match did not bloc
 touch "$TMP24/.run-cleaned-up"
 rm -f "$TMP24/design-export/manifest.env"
 
+# Review-boundary Stop hook tests (issue #1862): review-round-summary.md serves
+# as the "review ran" sentinel; .review-boundary-passed clears the guard.
+# Uses a tmpdir without design-export/manifest.env to cover the both-externals-down
+# path (resolver now accepts review-round-summary.md as an alternative sentinel).
+REVIEW_CACHE="$TMPROOT/review-boundary-cache"
+REVIEW_CWD="$TMPROOT/review-boundary-cwd"
+TMP_REV="$REVIEW_CACHE/larch/sessions/claude-implement-review-boundary"
+mkdir -p "$REVIEW_CWD" "$TMP_REV"
+printf 'review summary content\n' > "$TMP_REV/review-round-summary.md"
+printf 'CLONE_PATH=%s\n' "$REVIEW_CWD" > "$TMP_REV/.larch-keepalive"
+
+# Blocks: review ran, boundary not yet cleared (no manifest needed).
+OUT=$(printf '{"cwd":"%s","stop_hook_active":false}' "$REVIEW_CWD" \
+    | XDG_CACHE_HOME="$REVIEW_CACHE" bash "$STOP_HOOK")
+assert_contains "$OUT" '"decision":"block"' "Stop hook did not block post-/review boundary"
+assert_contains "$OUT" "post-/review boundary" "Stop hook reason missing review-boundary text"
+assert_contains "$OUT" "$(basename "$TMP_REV")" "Stop hook reason missing tmpdir basename for review"
+assert_not_contains "$OUT" "$TMP_REV" "Stop hook leaked full review tmpdir path"
+
+# Allows after .review-boundary-passed sentinel is written.
+touch "$TMP_REV/.review-boundary-passed"
+OUT=$(printf '{"cwd":"%s","stop_hook_active":false}' "$REVIEW_CWD" \
+    | XDG_CACHE_HOME="$REVIEW_CACHE" bash "$STOP_HOOK")
+assert_empty "$OUT" "Stop hook blocked after .review-boundary-passed"
+
+# Allows after .run-cleaned-up (teardown path).
+rm -f "$TMP_REV/.review-boundary-passed"
+touch "$TMP_REV/.run-cleaned-up"
+OUT=$(printf '{"cwd":"%s","stop_hook_active":false}' "$REVIEW_CWD" \
+    | XDG_CACHE_HOME="$REVIEW_CACHE" bash "$STOP_HOOK")
+assert_empty "$OUT" "Stop hook blocked after .run-cleaned-up (review-boundary path)"
+
 echo "PASS: post-design-boundary wrapper integration tests"
