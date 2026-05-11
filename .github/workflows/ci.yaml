@@ -282,6 +282,7 @@ jobs:
             agents/reviewer-testing.md
             agents/reviewer-security.md
             agents/reviewer-edge-cases.md
+            skills/shared/focus-area-prompt.md
             docs/review-agents.md
           )
           # Files where the enum appears unquoted (slash-separated) inside

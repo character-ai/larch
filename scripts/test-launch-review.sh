@@ -208,6 +208,7 @@ if [[ -s "$CODEX_CONFIG_FILE" ]] \
 else
     fail "review CODEX_HOME config.toml should carry top-level hardening instructions"
 fi
+assert_grep "codex compact prohibition" "Do not create, edit, delete, or overwrite files, and do not run mutating shell or git commands." "$CODEX_CONFIG_FILE"
 assert_eq "argv 1" "exec" "$(sed -n '1p' "$ARGV")"
 # Issue #1529: read-only review sandbox replaces --full-auto.
 assert_eq "argv 2 sandbox flag" "--sandbox" "$(sed -n '2p' "$ARGV")"
@@ -1169,10 +1170,15 @@ if grep -Fq -- 'HARD CONSTRAINTS — your role is read-only review' "$ARGV_LOG_A
 else
     fail "issue #1529 cursor argv must carry the HARD CONSTRAINTS preamble"
 fi
+if grep -Fq -- 'Do not create, edit, delete, or overwrite files, and do not run mutating shell or git commands.' "$ARGV_LOG_AK1"; then
+    pass
+else
+    fail "cursor argv preamble must carry compact explicit mutation prohibition"
+fi
 if grep -Fq -- 'The launcher passes --mode plan to the cursor CLI' "$ARGV_LOG_AK1"; then
     pass
 else
-    fail "issue #1583 preamble in argv must reference --mode plan enforcement (no sandbox)"
+    fail "issue #1583 preamble in argv must reference --mode plan enforcement"
 fi
 if grep -Fq -- 'HARD CONSTRAINTS' "${OUT_AK1}.prompt"; then
     fail "issue #1529 OUTPUT.prompt sidecar must NOT contain the preamble (retry-replay safety)"
