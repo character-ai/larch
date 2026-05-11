@@ -19,13 +19,13 @@ Pass any of these after the skill name (e.g. `/report-tokens --no-issue`):
 
 ## Step 1 - Run analysis
 
-Parse any `--no-issue`, `--no-plot`, or `--plot-from <N>` flags from the skill invocation arguments. Then:
+Parse any `--no-issue`, `--no-plot`, `--plot-from <N>`, or `--run-id <ID>` flags. The `--run-id` flag is consumed by the orchestrator and NOT forwarded to `run-analysis.sh`. Then:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/skills/report-tokens/scripts/run-analysis.sh" [FLAGS]
 ```
 
-where `[FLAGS]` are the validated flags from the invocation (empty if none were provided).
+where `[FLAGS]` are only the flags supported by the script (`--no-issue`, `--no-plot`, `--plot-from <N>`); `--run-id` is never included.
 
 Script contract: `${CLAUDE_PLUGIN_ROOT}/skills/report-tokens/scripts/run-analysis.md`. Rate harness: `${CLAUDE_PLUGIN_ROOT}/skills/report-tokens/scripts/test-rate-assertions.sh` (contract: `${CLAUDE_PLUGIN_ROOT}/skills/report-tokens/scripts/test-rate-assertions.md`).
 

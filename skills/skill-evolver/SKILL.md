@@ -34,9 +34,11 @@ Example: `/skill-evolver design` or `/skill-evolver review`.
 
 ## Flags
 
-- `--run-id <ID>`: Optional run identifier; when set, used as the run ID for this invocation instead of the auto-generated one. Default: empty (auto-generate).
+- `--run-id <ID>`: Optional run identifier; when set, used as the run ID for this invocation instead of the auto-generated one. Default: empty (auto-generate). Consumed by the orchestrator before Step 1; NOT forwarded to `validate-args.sh`.
 
 ## Step 1 — Validate Arguments
+
+After stripping `--run-id`, invoke the validator:
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/skills/skill-evolver/scripts/validate-args.sh $ARGUMENTS

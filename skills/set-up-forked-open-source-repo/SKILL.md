@@ -49,7 +49,7 @@ NOT see transport-time `insteadOf` rewrites.
 
 ## Run
 
-Invoke the coordinator:
+Strip `--run-id <ID>` from `$ARGUMENTS` before invoking the coordinator (the script does not accept this flag). Then invoke the coordinator:
 
 ```bash
 bash "${CLAUDE_PLUGIN_ROOT}/skills/set-up-forked-open-source-repo/scripts/setup-forked-open-source-repo.sh" $ARGUMENTS

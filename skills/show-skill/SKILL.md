@@ -15,6 +15,8 @@ Display a skill's `SKILL.md` content. Accepts a skill name (e.g., `implement`, `
 
 ## Step 1 — Resolve and display
 
+Strip `--run-id <ID>` from `$ARGUMENTS` before invoking the script (the script does not accept this flag).
+
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/skills/show-skill/scripts/show.sh $ARGUMENTS
 ```

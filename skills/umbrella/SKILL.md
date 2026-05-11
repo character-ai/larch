@@ -35,7 +35,7 @@ Parse flags from the start of `$ARGUMENTS`. Flags may appear in any order; stop 
 | `--input-file PATH` | Activates pre-decomposed-input mode. Bypasses Step 1 (task resolve) and Step 3B.1 (LLM decomposition). The file MUST be a pre-built `/issue --input-file` batch markdown. Required to be paired with `--umbrella-summary-file`. Mutually exclusive with positional TASK. |
 | `--umbrella-summary-file PATH` | Caller-composed 1-2 sentence summary paragraph for the umbrella issue body's lead in Step 3B.3 (replaces the LLM-composed summary). Required to be paired with `--input-file`. |
 | `--pieces-json PATH` | Optional. Caller-supplied inter-piece dependency edges for pre-decomposed-input mode. JSON array of `{title, body, depends_on: [int,...]}` objects matching the `/issue --input-file` batch items by index. Required to be paired with `--input-file` (asymmetric: `--input-file` does NOT require `--pieces-json`). When supplied, Step 3B.4 reads `depends_on` fields to compose inter-child edges (resolving piece indices to issue numbers via `/issue` batch return). Validated by `validate-pieces-json.sh` before Step 3B.2. |
-| `--run-id <ID>` | Optional run identifier; when set, used as the run ID for this invocation instead of the auto-generated one. Default: empty (auto-generate). |
+| `--run-id <ID>` | Optional run identifier; when set, used as the run ID for this invocation instead of the auto-generated one. Default: empty (auto-generate). Consumed by the orchestrator before Step 0; NOT forwarded to `parse-args.sh`. |
 
 ## Step 0 — Setup
 
