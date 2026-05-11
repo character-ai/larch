@@ -439,6 +439,35 @@ else
     fail "--agent-file replay via --prompt-file must not include preamble in argv; got $AGENT_PREAMBLE_COUNT_RETRY"
 fi
 
+# --commit-count is stored in the specialist sentinel and restored on retry.
+AGENT_CC_OUTPUT="$TMPDIR/agent-commit-count-output.txt"
+AGENT_CC_ARGV="$TMPDIR/agent-commit-count-argv.txt"
+AGENT_CC_COUNT="$TMPDIR/agent-commit-count-count.txt"
+PATH="$STUB_BIN:$PATH" \
+    CODEX_STUB_ARGV_LOG="$AGENT_CC_ARGV" \
+    CODEX_STUB_COUNT_FILE="$AGENT_CC_COUNT" \
+    "$LAUNCHER" --output "$AGENT_CC_OUTPUT" --timeout 5 \
+        --agent-file "$REPO_ROOT/agents/reviewer-structure.md" --mode diff --commit-count 3 >/dev/null
+if grep -Fq -- 'COMMIT_COUNT=3' "${AGENT_CC_OUTPUT}.prompt"; then
+    pass
+else
+    fail "--commit-count should be stored in specialist sentinel"
+fi
+# Retry replay with commit-count sentinel: rendered prompt must omit git-log.
+AGENT_CC_RETRY_ARGV="$TMPDIR/agent-commit-count-retry-argv.txt"
+AGENT_CC_RETRY_COUNT="$TMPDIR/agent-commit-count-retry-count.txt"
+PATH="$STUB_BIN:$PATH" \
+    CODEX_STUB_ARGV_LOG="$AGENT_CC_RETRY_ARGV" \
+    CODEX_STUB_COUNT_FILE="$AGENT_CC_RETRY_COUNT" \
+    "$LAUNCHER" --output "$TMPDIR/agent-commit-count-retry-output.txt" --timeout 5 \
+        --prompt-file "${AGENT_CC_OUTPUT}.prompt" >/dev/null 2>/dev/null
+# shellcheck disable=SC2016
+if grep -Fq -- 'git log $(git merge-base HEAD main)..HEAD --oneline' "$AGENT_CC_RETRY_ARGV" 2>/dev/null; then
+    fail "--commit-count 3 retry: git log instruction should be omitted in rendered prompt"
+else
+    pass
+fi
+
 if command -v jq >/dev/null 2>&1; then
     LCR_BIN="$TMPDIR/lcr-bin"
     mkdir -p "$LCR_BIN"

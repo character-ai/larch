@@ -176,7 +176,7 @@ fi
 assert_contains "--diff-file: preamble references diff file path" "$SAMPLE_DIFF" "$output_with_diff"
 assert_contains "--diff-file: preamble mentions Read tool fallback" "Read tool" "$output_with_diff"
 # shellcheck disable=SC2016
-assert_contains "--diff-file: preamble includes merge-base git log instruction" 'git log $(git merge-base HEAD main)..HEAD --oneline' "$output_with_diff"
+assert_contains "--diff-file: preamble includes merge-base git log instruction (no commit-count)" 'git log $(git merge-base HEAD main)..HEAD --oneline' "$output_with_diff"
 assert_contains "--diff-file: focus-area tagging preserved" "code-quality / risk-integration / correctness / architecture / security" "$output_with_diff"
 # Without --diff-file, original "Run git diff" instruction is still present.
 output_no_diff=$(bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-structure.md" --mode diff 2>/dev/null)
@@ -184,6 +184,26 @@ output_no_diff=$(bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-struc
 assert_contains "no --diff-file: original preamble still present" 'git diff $(git merge-base HEAD main)...HEAD' "$output_no_diff"
 # --diff-file with nonexistent path must exit 2.
 assert_exit_code "--diff-file nonexistent path" "2" bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-structure.md" --mode diff --diff-file "/nonexistent/branch.diff"
+
+# --commit-count: omit git-log instruction when branch has ≤5 commits.
+output_1commit=$(bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-structure.md" --mode diff --diff-file "$SAMPLE_DIFF" --commit-count 1 2>/dev/null)
+# shellcheck disable=SC2016
+assert_not_contains "--commit-count 1: git log instruction omitted" 'git log $(git merge-base HEAD main)..HEAD --oneline' "$output_1commit"
+assert_contains "--commit-count 1: diff-file reference preserved" "$SAMPLE_DIFF" "$output_1commit"
+output_5commit=$(bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-structure.md" --mode diff --diff-file "$SAMPLE_DIFF" --commit-count 5 2>/dev/null)
+# shellcheck disable=SC2016
+assert_not_contains "--commit-count 5: git log instruction omitted" 'git log $(git merge-base HEAD main)..HEAD --oneline' "$output_5commit"
+output_6commit=$(bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-structure.md" --mode diff --diff-file "$SAMPLE_DIFF" --commit-count 6 2>/dev/null)
+# shellcheck disable=SC2016
+assert_contains "--commit-count 6: git log instruction present" 'git log $(git merge-base HEAD main)..HEAD --oneline' "$output_6commit"
+# --commit-count 0 or empty: safe fallback keeps git-log.
+output_0commit=$(bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-structure.md" --mode diff --diff-file "$SAMPLE_DIFF" --commit-count 0 2>/dev/null)
+# shellcheck disable=SC2016
+assert_contains "--commit-count 0: git log instruction kept (safe fallback)" 'git log $(git merge-base HEAD main)..HEAD --oneline' "$output_0commit"
+# No-diff-file path: git-log omitted when commit-count=1.
+output_nodiff_1commit=$(bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-structure.md" --mode diff --commit-count 1 2>/dev/null)
+# shellcheck disable=SC2016
+assert_not_contains "--commit-count 1, no diff-file: git log instruction omitted" 'git log $(git merge-base HEAD main)..HEAD --oneline' "$output_nodiff_1commit"
 rm -rf "$TMPDIR_DIFFFILE"
 
 # 9. Diff-mode classifier and mode-specific prompt routing.
@@ -296,6 +316,23 @@ cache_output_3=$(LARCH_RENDER_CACHE_DIR="$CACHE_DIR" bash "$RENDERER" --agent-fi
 assert_contains "render cache: changed options miss cache" "Competition notice" "$cache_output_3"
 cache_count_2=$(find "$CACHE_DIR" -maxdepth 1 -type f -name 'r-*' | wc -l | tr -d ' ')
 assert_eq "render cache: changed options create second cache file" "2" "$cache_count_2"
+# --commit-count changes the cache key: use a fresh cache dir to test in isolation.
+CACHE_DIR2="$TMPDIR_CACHE/render-cache-2"
+cache_cc5_first=$(LARCH_RENDER_CACHE_DIR="$CACHE_DIR2" bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-structure.md" --mode diff --commit-count 5 2>/dev/null)
+assert_contains "render cache: commit-count=5 initial miss renders prompt" "Structure, KISS, and Maintainability" "$cache_cc5_first"
+cache_count_cc=$(find "$CACHE_DIR2" -maxdepth 1 -type f -name 'r-*' | wc -l | tr -d ' ')
+assert_eq "render cache: commit-count=5 writes one cache file" "1" "$cache_count_cc"
+# Overwrite with a sentinel so we can verify commit-count=5 hits this file.
+cache_file_cc5=$(find "$CACHE_DIR2" -maxdepth 1 -type f -name 'r-*' | head -1)
+printf 'CC5 SENTINEL\n' > "$cache_file_cc5"
+cache_cc5_hit=$(LARCH_RENDER_CACHE_DIR="$CACHE_DIR2" bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-structure.md" --mode diff --commit-count 5 2>/dev/null)
+assert_eq "render cache: commit-count=5 second render hits cache" "CC5 SENTINEL" "$cache_cc5_hit"
+# commit-count=6 must create a different cache entry (different key from count=5).
+cache_cc6=$(LARCH_RENDER_CACHE_DIR="$CACHE_DIR2" bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-structure.md" --mode diff --commit-count 6 2>/dev/null)
+# shellcheck disable=SC2016
+assert_contains "render cache: commit-count=6 misses cc5 cache and includes git-log" 'git log $(git merge-base HEAD main)..HEAD --oneline' "$cache_cc6"
+cache_count_cc6=$(find "$CACHE_DIR2" -maxdepth 1 -type f -name 'r-*' | wc -l | tr -d ' ')
+assert_eq "render cache: commit-count=6 creates a second cache entry" "2" "$cache_count_cc6"
 CACHE_SCOPE="$TMPDIR_CACHE/scope.txt"
 printf 'a.md\n' > "$CACHE_SCOPE"
 cache_desc_1=$(LARCH_RENDER_CACHE_DIR="$CACHE_DIR" bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-structure.md" --mode description --description-text "first description" --scope-files "$CACHE_SCOPE" 2>/dev/null)

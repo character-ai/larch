@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# gh-run-logs.sh — View failed CI run logs.
+# gh-run-logs.sh — View failed CI run logs (last 100 lines).
 #
 # Wraps `gh run view --log-failed` for diagnostic purposes.
-# Output is raw log text to stdout (not KEY=value) since callers
-# need the full unstructured log for AI-driven diagnosis.
+# Output is capped at the last 100 lines to prevent arbitrarily large logs
+# from flooding the orchestrator context. A pointer to the full log artifact
+# is prepended on stdout so callers can fetch more lines when needed.
 #
 # Usage:
 #   gh-run-logs.sh --run-id <id> --repo <owner/repo>
@@ -36,4 +37,6 @@ if [[ -z "$RUN_ID" ]] || [[ -z "$REPO" ]]; then
     usage; exit 1
 fi
 
-gh run view "$RUN_ID" --repo "$REPO" --log-failed
+printf -- '--- CI log (run %s, repo %s) — last 100 lines shown. Full log: https://github.com/%s/actions/runs/%s ---\n' \
+    "$RUN_ID" "$REPO" "$REPO" "$RUN_ID"
+gh run view "$RUN_ID" --repo "$REPO" --log-failed | tail -100

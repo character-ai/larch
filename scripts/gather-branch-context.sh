@@ -20,6 +20,7 @@
 #   DIFF_FILE=<path>
 #   FILE_LIST_FILE=<path>
 #   COMMIT_LOG_FILE=<path>
+#   COMMIT_COUNT=<n>   — number of commits on the branch vs main
 #
 # Exit codes:
 #   0 — success
@@ -58,8 +59,10 @@ MERGE_BASE=$(git merge-base HEAD main)
 git diff -U20 "${MERGE_BASE}"...HEAD > "$DIFF_FILE"
 git diff "${MERGE_BASE}"...HEAD --name-only > "$FILE_LIST_FILE"
 git log "${MERGE_BASE}"..HEAD --oneline > "$COMMIT_LOG_FILE"
+COMMIT_COUNT=$(wc -l < "$COMMIT_LOG_FILE" | tr -d ' ')
 
 # --- Emit output ---
 echo "DIFF_FILE=$DIFF_FILE"
 echo "FILE_LIST_FILE=$FILE_LIST_FILE"
 echo "COMMIT_LOG_FILE=$COMMIT_LOG_FILE"
+echo "COMMIT_COUNT=$COMMIT_COUNT"
