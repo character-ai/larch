@@ -533,6 +533,74 @@ STUB_EOF
         fi
         rm -f "$LCR_LEDGER"
     fi
+
+    # Issue #1874 regression: verify ### Codex section appears in token-report.sh output.
+    # Stub writes "tokens used\n42\n" to STDOUT (not stderr) to exercise the
+    # stdout-capture fix (>>"$SIDECAR" 2>&1) in launch-review.sh Codex section.
+    LCR_STDOUT_BIN="$TMPDIR/lcr-stdout-bin"
+    mkdir -p "$LCR_STDOUT_BIN"
+    cat > "$LCR_STDOUT_BIN/codex" <<'STUB_EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+output_path=""
+last=""
+for arg in "$@"; do
+    if [[ "$last" == "--output-last-message" ]]; then output_path="$arg"; fi
+    last="$arg"
+done
+[[ -n "$output_path" ]] || exit 9
+printf 'stub codex review payload\n' > "$output_path"
+printf 'tokens used\n42\n'
+STUB_EOF
+    chmod +x "$LCR_STDOUT_BIN/codex"
+
+    LCR_REPORT_SESSION="lcr-codex-report-$$"
+    LCR_REPORT_OUT="$TMPDIR/lcr-codex-report-output.txt"
+    LCR_REPORT_STDERR="$TMPDIR/lcr-report.stderr"
+
+    LARCH_TOKEN_SESSION_ID="$LCR_REPORT_SESSION" \
+        "$REPO_ROOT/scripts/token-ledger.sh" mark "Step 5 — code review" >/dev/null 2>&1 || true
+
+    set +e
+    LARCH_TOKEN_SESSION_ID="$LCR_REPORT_SESSION" \
+    IMPLEMENT_TMPDIR='' \
+    PATH="$LCR_STDOUT_BIN:$PATH" \
+    LARCH_CODEX_MODEL="stub-model" \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+        "$LAUNCHER" \
+            --output "$LCR_REPORT_OUT" \
+            --timeout 30 \
+            --prompt "review" \
+            >/dev/null 2>"$LCR_REPORT_STDERR"
+    LCR_REPORT_RC=$?
+    set -e
+
+    if [[ "$LCR_REPORT_RC" -ne 0 ]]; then
+        fail "issue#1874 codex-stdout-sidecar: launcher exited rc=$LCR_REPORT_RC; stderr=$(cat "$LCR_REPORT_STDERR" 2>/dev/null)"
+    else
+        LCR_REPORT_LEDGER=$(LARCH_TOKEN_SESSION_ID="$LCR_REPORT_SESSION" \
+            "$REPO_ROOT/scripts/token-ledger.sh" dump | sed -n '1p')
+        if [[ -s "$LCR_REPORT_LEDGER" ]] \
+           && jq -e 'select(.type=="vendor" and .vendor=="codex" and .raw=="codex_review" and .total==42)' \
+               "$LCR_REPORT_LEDGER" >/dev/null 2>&1; then
+            pass
+        else
+            fail "issue#1874 codex-stdout-sidecar: vendor record missing; ledger=$(cat "$LCR_REPORT_LEDGER" 2>/dev/null); stderr=$(cat "$LCR_REPORT_STDERR" 2>/dev/null)"
+        fi
+        LCR_EMPTY_TRANSCRIPT=$(mktemp "$TMPDIR/lcr-empty-XXXXXX")
+        : > "$LCR_EMPTY_TRANSCRIPT"
+        CODEX_REPORT_MD=$(LARCH_TOKEN_SESSION_ID="$LCR_REPORT_SESSION" \
+            "$REPO_ROOT/scripts/token-report.sh" \
+            --ledger "$LCR_REPORT_LEDGER" \
+            --transcript "$LCR_EMPTY_TRANSCRIPT" \
+            --full --markdown 2>/dev/null || true)
+        if printf '%s\n' "$CODEX_REPORT_MD" | grep -Fq '### Codex'; then
+            pass
+        else
+            fail "issue#1874 codex-stdout-sidecar: ### Codex missing from token-report.sh output; got=$(printf '%s' "$CODEX_REPORT_MD")"
+        fi
+        rm -f "$LCR_REPORT_LEDGER" "$LCR_EMPTY_TRANSCRIPT"
+    fi
 else
     pass
 fi
