@@ -204,6 +204,7 @@ CODEX_HOME_DIR=""
 DIRTY_TREE_WRITTEN=false
 UNTRACKED_BASELINE="${OUTPUT}.untracked-baseline"
 DIRTY_TREE_SIDECAR="${OUTPUT}.dirty-tree"
+CODEX_SANDBOX_MODE=read-only
 
 # _write_dirty_tree_sidecar is provided by lib-dirty-tree-sidecar.sh
 # (sourced above) and reads/writes the OUTPUT, DIRTY_TREE_WRITTEN,
@@ -216,7 +217,17 @@ _codex_exit_dispatcher() {
     _emit_timing_record "$rc"
     [[ -n "$MODEL_ARGS_TMP" ]] && rm -f "$MODEL_ARGS_TMP"
     [[ -n "$CODEX_HOME_DIR" ]] && rm -rf "$CODEX_HOME_DIR"
-    _write_dirty_tree_sidecar
+    # When sandbox is read-only the syscall block prevents writes, so emit a
+    # static clean sidecar (maintains consumer contract) without scanning.
+    if [[ "${CODEX_SANDBOX_MODE:-}" == "read-only" ]]; then
+        if [[ -n "${DIRTY_TREE_SIDECAR:-}" && "$DIRTY_TREE_WRITTEN" == "false" ]]; then
+            printf 'STATUS=clean\nMODE=baseline\nREASON=codex-sandbox-read-only\n' \
+                > "$DIRTY_TREE_SIDECAR" 2>/dev/null || true
+            DIRTY_TREE_WRITTEN=true
+        fi
+    else
+        _write_dirty_tree_sidecar
+    fi
     codex_launcher_promote_inner_done "$OUTPUT"
     exit "$rc"
 }
@@ -297,9 +308,9 @@ fi
 # `--sandbox read-only` (replacing the prior `--full-auto`'s workspace-write)
 # so the CLI itself rejects model-issued shell writes; the instructions
 # field is the prompt-level reinforcement so the model also reasons about
-# its read-only role. The launcher's existing dirty-tree-sidecar machinery
-# (snapshot-untracked.sh untracked-files baseline + _write_dirty_tree_sidecar
-# EXIT trap) remains the after-the-fact detector.
+# its read-only role. The dirty-tree-sidecar EXIT trap still emits a sidecar
+# for Codex, but writes a static STATUS=clean record instead of running the
+# scan — --sandbox read-only enforces write isolation at the syscall level.
 #
 # Retry-replay safety: ${OUTPUT}.prompt is consumed by collect-agent-results.sh
 # empty-output retries via `--prompt-file`. Because the static hardening

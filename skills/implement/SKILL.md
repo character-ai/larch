@@ -87,22 +87,20 @@ Standardizes the four post-step rebase checkpoints (Steps 1.r, 4.r, 7.r, 7a.r). 
 
 **Invocation form** (exact, one line per call site): `Apply the Rebase Checkpoint Macro with <step-prefix>=<X> and <short-name>=<Y>.`
 
-**Procedure** (M1-M4 labels avoid collision with outer Step 0-18 numbering):
+**Procedure** (M1-M3 labels avoid collision with outer Step 0-18 numbering):
 
-- **M1 — Print start line**: `🔃 <step-prefix>: <short-name> | rebase`
-
-- **M2 — Run rebase**:
+- **M1 — Run rebase**:
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/rebase-push.sh --no-push --skip-if-pushed --keep-on-conflict [--base-remote upstream --base-ref main when forked_target=true]
 ```
   Capture stdout and exit code as `rc`.
 
-- **M3 — On non-zero exit**, branch on `rc`:
-  - **Exit 1** (rebase conflict): print `🔃 <step-prefix>: <short-name> | rebase — conflict detected, invoking Conflict Resolution Procedure (caller_kind=early_rebase)`. Parse `CONFLICT_FILES=<comma-separated list>` from M2's captured stdout; `--keep-on-conflict` leaves the rebase in progress so this list is authoritative for Phase 1. (If the line is missing — defensive only — fall back to `git diff --name-only --diff-filter=U` to enumerate the in-progress rebase's unmerged paths.) **MANDATORY — READ ENTIRE FILE** before executing the Conflict Resolution Procedure: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/conflict-resolution.md`. Invoke the Conflict Resolution Procedure with `caller_kind=early_rebase` and the parsed `CONFLICT_FILES`. On success, continue to M4. On hard failure, the procedure runs `${CLAUDE_PLUGIN_ROOT}/scripts/git-rebase-abort.sh`, sets `STALL_TRACKING=true` (signals Step 18 to rename the tracking issue to `[STALLED]` — see "Title-prefix lifecycle" below), and skips to Step 18.
+- **M2 — On non-zero exit**, branch on `rc`:
+  - **Exit 1** (rebase conflict): print `🔃 <step-prefix>: <short-name> | rebase — conflict detected, invoking Conflict Resolution Procedure (caller_kind=early_rebase)`. Parse `CONFLICT_FILES=<comma-separated list>` from M1's captured stdout; `--keep-on-conflict` leaves the rebase in progress so this list is authoritative for Phase 1. (If the line is missing — defensive only — fall back to `git diff --name-only --diff-filter=U` to enumerate the in-progress rebase's unmerged paths.) **MANDATORY — READ ENTIRE FILE** before executing the Conflict Resolution Procedure: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/conflict-resolution.md`. Invoke the Conflict Resolution Procedure with `caller_kind=early_rebase` and the parsed `CONFLICT_FILES`. On success, continue to M3. On hard failure, the procedure runs `${CLAUDE_PLUGIN_ROOT}/scripts/git-rebase-abort.sh`, sets `STALL_TRACKING=true` (signals Step 18 to rename the tracking issue to `[STALLED]` — see "Title-prefix lifecycle" below), and skips to Step 18.
   - **Exit 3** (non-conflict rebase failure — fetch error, detached HEAD, etc.; `REBASE_ERROR=...` printed on stderr): print `**⚠ Rebase onto main failed (non-conflict): $REBASE_ERROR. Bailing to cleanup.**`, set `STALL_TRACKING=true`, and skip to Step 18.
   - **Other non-zero exit**: print `**⚠ Rebase onto main failed unexpectedly (exit $rc). Bailing to cleanup.**`, set `STALL_TRACKING=true`, and skip to Step 18.
 
-- **M4 — On success**, branch on stdout (check `SKIPPED_ALREADY_PUSHED` BEFORE `SKIPPED_ALREADY_FRESH` — `rebase-push.sh` exits early on already-pushed before fetch):
+- **M3 — On success**, branch on stdout (check `SKIPPED_ALREADY_PUSHED` BEFORE `SKIPPED_ALREADY_FRESH` — `rebase-push.sh` exits early on already-pushed before fetch):
   - If stdout contains `SKIPPED_ALREADY_PUSHED=true`: silently continue.
   - If stdout contains `SKIPPED_ALREADY_FRESH=true`: silently continue.
   - Otherwise, print: `✅ <step-prefix>: <short-name> | rebase status=complete elapsed=<elapsed>`
@@ -711,7 +709,7 @@ When `forked_target=true`, append `--base-remote upstream --base-ref main` to th
 
 When Step 0 ran with `continue_from_current=false`, its default preflight already fetched and rebased `main`, so this Step 1.m call should normally short-circuit with `SKIPPED_ALREADY_FRESH=true`. Keep the macro here for the `continue_from_current=true` path and for idempotent protection if Step 0's freshness work was already satisfied.
 
-On non-zero exit, print `**⚠ Failed to ensure local main is fresh. Bailing to cleanup.**`, set `STALL_TRACKING=true` (parallels Rebase Checkpoint Macro M3 and Step 12d — signals Step 18 to rename the tracking issue to `[STALLED]` when Step 0.5 Branch 4 has already created one), and skip to Step 18. On success: if stdout contains `SKIPPED_ALREADY_FRESH=true`, silently continue; otherwise print `✅ 1.m: design plan | update main status=complete outcome=rebased elapsed=<elapsed>`, where the rebase base is `upstream/main` under fork mode and `origin/main` otherwise.
+On non-zero exit, print `**⚠ Failed to ensure local main is fresh. Bailing to cleanup.**`, set `STALL_TRACKING=true` (parallels Rebase Checkpoint Macro M2 and Step 12d — signals Step 18 to rename the tracking issue to `[STALLED]` when Step 0.5 Branch 4 has already created one), and skip to Step 18. On success: if stdout contains `SKIPPED_ALREADY_FRESH=true`, silently continue; otherwise print `✅ 1.m: design plan | update main status=complete outcome=rebased elapsed=<elapsed>`, where the rebase base is `upstream/main` under fork mode and `origin/main` otherwise.
 
 ### Quick mode (`quick_mode=true`)
 
@@ -1501,7 +1499,7 @@ If `forked_target=true`: print `⏩ 8: version bump status=skip reason=forked-dr
 
 Parse `HAS_BUMP`, `COMMITS_BEFORE`, `STATUS` (`ok|missing_main_ref|git_error` per #172). If `STATUS != ok`, the pre-mode count is untrustworthy — log `**⚠ 8: version bump — pre-check STATUS=$STATUS, commit count may be unreliable. Continuing.**` to `Warnings` and proceed. Step 8 is pre-PR and permissive; last-chance enforcement is in the Rebase + Re-bump Sub-procedure step 4 invoked by Step 12 (step12 family), which hard-bails on non-`ok` STATUS from either pre- or post-check.
 
-**If `HAS_BUMP=false`**: print `**⚠ VERSION BUMP SKIPPED: No /bump-version skill found at .claude/skills/bump-version/SKILL.md. To enable automatic version bumps, create a /bump-version skill in this repo. The skill should determine the current version, classify the bump type, compute the new version, edit the version file, and commit.**`, set `HAS_BUMP=false` in postbump-state, skip `/bump-version`, and jump to the `postbump` invocation. Phase 2 skips because there is no bump commit to amend; Phase 3 still refreshes before PR creation.
+**If `HAS_BUMP=false`**: print `**⚠ VERSION BUMP SKIPPED: No /bump-version skill found at .claude/skills/bump-version/SKILL.md. To enable automatic version bumps, create a /bump-version skill in this repo.**`, set `HAS_BUMP=false` in postbump-state, skip `/bump-version`, and jump to the `postbump` invocation. Phase 2 skips because there is no bump commit to amend; Phase 3 still refreshes before PR creation.
 
 **If `HAS_BUMP=true`**:
 

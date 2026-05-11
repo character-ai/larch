@@ -8,7 +8,7 @@
 #  (F) Macro header line number is BETWEEN `### Verbosity Control` and `## Step 0`.
 #  (G) Macro section body contains the keep-on-conflict rebase-push.sh invocation, the
 #      early_rebase conflict-resolution dispatch, and the non-conflict bail line.
-#  (H) Exactly 1 `rebase-push.sh --no-push --skip-if-pushed --keep-on-conflict` occurrence (only the macro M2 uses
+#  (H) Exactly 1 `rebase-push.sh --no-push --skip-if-pushed --keep-on-conflict` occurrence (only the macro M1 uses
 #      that flag combo; Step 1.m, Step 8b, and the Rebase + Re-bump Sub-procedure use `--no-push`
 #      alone). Also asserts the 7.r Apply invocation is inside the Step 7 slice and that all
 #      three `--no-push`-only call sites (Step 1.m + Step 8b + Sub-procedure) remain.
@@ -148,7 +148,7 @@ rm -f "$macro_body_tmp"
 # ---------------------------------------------------------------------------
 rebase_push_skip_count=$(grep -cF '${CLAUDE_PLUGIN_ROOT}/scripts/rebase-push.sh --no-push --skip-if-pushed --keep-on-conflict' "$SKILL_MD" || true)
 [[ "$rebase_push_skip_count" == "1" ]] \
-  || fail "(H) expected exactly 1 'rebase-push.sh --no-push --skip-if-pushed --keep-on-conflict' occurrence (macro M2 only), found $rebase_push_skip_count — residual inline rebase block may have survived the refactor"
+  || fail "(H) expected exactly 1 'rebase-push.sh --no-push --skip-if-pushed --keep-on-conflict' occurrence (macro M1 only), found $rebase_push_skip_count — residual inline rebase block may have survived the refactor"
 
 # Sanity check: all three non-macro --no-push call sites must still exist:
 #   - Step 1.m in SKILL.md (pre-Step-1 main freshness)
