@@ -1435,7 +1435,15 @@ Runs unconditionally after Step 7 (regardless of Steps 6-7 skip).
 
 If `quick_mode=true`: print `⏩ 7a: code flow status=skip reason=quick-mode elapsed=<elapsed>`, still write the `diagrams` anchor fragment (Architecture Diagram + Code-Flow-skipped placeholder per the Anchor-section fragment — `diagrams` sub-section below) so the Architecture Diagram is not silently omitted from the anchor, then proceed to Step 8.
 
-If `quick_mode=false`: generate a mermaid Code Flow Diagram from the actual committed implementation. Focus on **runtime behavior** — function call sequences, data flow, control flow. Do NOT duplicate the Architecture Diagram's structural view. Choose the appropriate mermaid type (`sequenceDiagram`, `flowchart`, `stateDiagram`, `graph`, etc.). Diagram contents must obey `${CLAUDE_PLUGIN_ROOT}/skills/shared/mermaid-safe-content.md`. Write the diagram to `$IMPLEMENT_TMPDIR/code-flow-diagram.candidate.md` first, including the `## Code Flow Diagram` heading and mermaid fence; validate it with `${CLAUDE_PLUGIN_ROOT}/scripts/sanitize-mermaid-fragment.sh --input "$IMPLEMENT_TMPDIR/code-flow-diagram.candidate.md" --from-md --warnings-step "7a"`, then promote it to `$IMPLEMENT_TMPDIR/code-flow-diagram.md` only on `STATUS=ok`. Print the promoted diagram under a `## Code Flow Diagram` header with a mermaid code fence.
+If `quick_mode=false`: first check whether the committed diff is small and non-runtime. Count the files changed between the feature branch and `origin/main`:
+
+```bash
+CHANGED_COUNT=$(git diff --name-only "$(git merge-base HEAD origin/main 2>/dev/null)" 2>/dev/null | wc -l | tr -d ' ')
+```
+
+Check whether every changed path is non-runtime (documentation or configuration only — all files have extensions `.md`, `.txt`, or `.tsv`, are named `CHANGELOG` or `CHANGELOG.md`, or reside under `docs/`). If both conditions hold (`CHANGED_COUNT -le 2` AND every changed file is non-runtime): print `⏩ 7a: code flow status=skip reason=small-non-runtime-change elapsed=<elapsed>`, still write the `diagrams` anchor fragment (Architecture Diagram + placeholder `"(Code Flow Diagram skipped — small/non-runtime change)"` for Code Flow — see the `diagrams` sub-section below), and proceed to Step 8. On any `git` command failure, treat this check as inconclusive and proceed with normal generation.
+
+Otherwise, generate a mermaid Code Flow Diagram from the actual committed implementation. Focus on **runtime behavior** — function call sequences, data flow, control flow. Do NOT duplicate the Architecture Diagram's structural view. Choose the appropriate mermaid type (`sequenceDiagram`, `flowchart`, `stateDiagram`, `graph`, etc.). Diagram contents must obey `${CLAUDE_PLUGIN_ROOT}/skills/shared/mermaid-safe-content.md`. Write the diagram to `$IMPLEMENT_TMPDIR/code-flow-diagram.candidate.md` first, including the `## Code Flow Diagram` heading and mermaid fence; validate it with `${CLAUDE_PLUGIN_ROOT}/scripts/sanitize-mermaid-fragment.sh --input "$IMPLEMENT_TMPDIR/code-flow-diagram.candidate.md" --from-md --warnings-step "7a"`, then promote it to `$IMPLEMENT_TMPDIR/code-flow-diagram.md` only on `STATUS=ok`. Print the promoted diagram under a `## Code Flow Diagram` header with a mermaid code fence.
 
 On success: `✅ 7a: code flow status=complete outcome=diagram-generated elapsed=<elapsed>`.
 
@@ -1446,7 +1454,7 @@ On generation failure (too abstract to diagram): `**⚠ 7a: code flow — genera
 Compose the `diagrams` fragment from both diagrams (matching the two-sub-section shape in `anchor-template-canonical-body.md`):
 
 - `## Architecture Diagram` + mermaid code fence read from `ARCHITECTURE_DIAGRAM_FILE`, or `"Architecture diagram not available."` if that optional manifest key is absent or the file is missing.
-- `## Code Flow Diagram` + mermaid code fence read from `$IMPLEMENT_TMPDIR/code-flow-diagram.md`, or `"(Code Flow Diagram skipped — quick mode)"` if `quick_mode=true`, or `"Code flow diagram not available."` if generation failed.
+- `## Code Flow Diagram` + mermaid code fence read from `$IMPLEMENT_TMPDIR/code-flow-diagram.md`, or `"(Code Flow Diagram skipped — quick mode)"` if `quick_mode=true`, or `"(Code Flow Diagram skipped — small/non-runtime change)"` if the small/non-runtime-change skip fired, or `"Code flow diagram not available."` if generation failed.
 
 Write to `$IMPLEMENT_TMPDIR/anchor-sections/diagrams.md`. If `ISSUE_NUMBER` is set, assemble and upsert (see Step 0.5). In quick mode, Step 7a is skipped entirely for Code Flow generation but the fragment is still written with the Architecture Diagram + skipped placeholder — do NOT skip the fragment write just because Code Flow was skipped, or the Architecture Diagram will be silently omitted on the deferred path.
 

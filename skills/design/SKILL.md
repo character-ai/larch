@@ -613,7 +613,11 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 
 Print: `> **🔶 3b: arch diagram**`
 
-**This step runs on ALL paths through Step 3** — whether voting produced revisions, rejected all findings, or was skipped entirely because all reviewers reported no issues. It always executes before Step 4.
+**This step runs on most paths through Step 3** — whether voting produced revisions, rejected all findings, or was skipped entirely because all reviewers reported no issues. It executes before Step 4, with one exception: non-architectural plans emit a placeholder and skip generation (see below).
+
+Before generating the diagram, classify the plan type by reading `$DESIGN_TMPDIR/plan.txt`. The plan is **non-architectural** when ALL files to be modified are exclusively: documentation files (`.md`, `CHANGELOG`, `docs/**`), configuration files (`.json`, `.yaml`, `.yml`, `.tsv`), or plain text (`.txt`) — with no new behavioral components, public APIs, or cross-skill contracts introduced. Apply a **conservative classifier** — SKILL.md files, `.sh` scripts, and `.py` scripts count as potentially architectural regardless of change size; when uncertain, generate the diagram rather than skip.
+
+If the plan is non-architectural: write the literal text `N/A — no architectural change` to `$DESIGN_TMPDIR/architecture-diagram.md` (plain-text placeholder, not a mermaid diagram — do NOT run the sanitizer). When `SESSION_ENV_PATH` is empty, print `⏩ 3b: arch diagram status=skip reason=no-architectural-change elapsed=<elapsed>`. When `SESSION_ENV_PATH` is non-empty, print nothing. Then IMMEDIATELY continue to Step 4.
 
 Generate a mermaid Architecture Diagram that represents the high-level system/component structure of the feature based on the finalized implementation plan (revised or original). The diagram should focus on **modules, boundaries, and their relationships** — not runtime behavior or code flow.
 
