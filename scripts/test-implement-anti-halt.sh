@@ -51,9 +51,9 @@ check_contains "Step 16 to Step 17 reminder" "skills/implement/SKILL.md" "Contin
 check_contains "Step 17 to Step 18 reminder" "skills/implement/SKILL.md" "Continue to Step 18."
 check_contains "Shared SSOT section" "skills/shared/subskill-invocation.md" "Step-boundary anti-halt"
 # Post-/bump-version boundary halt directives (issue #1850 — same halt pattern as the
-# post-/design and post-/review boundaries; pins that the Step 8 direct path and the
-# rebase-rebump sub-procedure both say the Skill-tool return is NOT a run-completion
-# signal, covering the silent turn-end halts observed in issue #1850's transcripts).
+# post-/design and post-/review boundaries): Step 8 direct path uses the unique
+# "halt in disguise … skips sub-steps 3/3b" clause; rebase-rebump sub-procedure uses
+# the "in the tool result is NOT a run-completion signal" clause.
 check_contains "Post-/bump-version boundary — Step 8 direct halt covered" "skills/implement/SKILL.md" \
   "before that Bash call is a halt in disguise that skips sub-steps 3/3b"
 check_contains "Post-/bump-version boundary — rebase-rebump path halt covered" "skills/implement/references/rebase-rebump-subprocedure.md" \
