@@ -26,9 +26,15 @@ Rate env names:
   LARCH_RATE_CODEX_INPUT
   LARCH_RATE_CODEX_OUTPUT
   LARCH_RATE_CODEX_AGGREGATE
+  LARCH_RATE_CODEX_CACHE_READ
   LARCH_RATE_CURSOR_INPUT
   LARCH_RATE_CURSOR_OUTPUT
   LARCH_RATE_CURSOR_AGGREGATE
+  LARCH_RATE_GEMINI_INPUT
+  LARCH_RATE_GEMINI_OUTPUT
+
+Reconciliation:
+  LARCH_REPORT_TOKENS_ACTUAL_SPEND=<USD>  When set, prints tracked vs actual spend delta at report end.
 EOF
 }
 
@@ -148,6 +154,11 @@ def env_rate(name, default):
         return default
 
 
+# Rates in USD per million tokens. Sources verified May 2026:
+#   Claude Sonnet/Opus: https://anthropic.com/pricing
+#   Codex (GPT-5.5 via OpenAI): https://developers.openai.com/api/docs/models/gpt-5.5
+#   Cursor Composer 2: https://cursor.com/docs/models-and-pricing
+#   Gemini 2.5 Pro: https://ai.google.dev/pricing
 RATES = {
     "claude": {
         "input": env_rate("LARCH_RATE_CLAUDE_INPUT", 3.00),
@@ -155,17 +166,36 @@ RATES = {
         "cache_create": env_rate("LARCH_RATE_CLAUDE_CACHE_CREATE", 3.75),
         "output": env_rate("LARCH_RATE_CLAUDE_OUTPUT", 15.00),
     },
+    # GPT-5.5 via Codex CLI. Input/Output columns are always 0 in token reports
+    # (Codex CLI only reports an aggregate "tokens used" on stderr); the aggregate
+    # rate is a working approximation of the true input-heavy mix at ~$5/M.
+    # cache_read and output are documented here for future use when Codex CLI
+    # exposes per-bucket token counts. Known limitation: the 2x/1.5x long-context
+    # surcharge for prompts >272K tokens is not modeled.
     "codex": {
-        "input": env_rate("LARCH_RATE_CODEX_INPUT", 1.25),
-        "output": env_rate("LARCH_RATE_CODEX_OUTPUT", 10.00),
+        "input": env_rate("LARCH_RATE_CODEX_INPUT", 5.00),
+        "output": env_rate("LARCH_RATE_CODEX_OUTPUT", 30.00),
         "aggregate": env_rate("LARCH_RATE_CODEX_AGGREGATE", 5.00),
+        "cache_read": env_rate("LARCH_RATE_CODEX_CACHE_READ", 0.50),
     },
+    # Cursor Composer 2 Standard tier. Known limitation: cached vs uncached
+    # input distinction is not tracked — cache hits are 10x cheaper ($0.50/M)
+    # but not reported separately.
     "cursor": {
-        "input": env_rate("LARCH_RATE_CURSOR_INPUT", 3.00),
-        "output": env_rate("LARCH_RATE_CURSOR_OUTPUT", 15.00),
-        "aggregate": env_rate("LARCH_RATE_CURSOR_AGGREGATE", 0.30),
+        "input": env_rate("LARCH_RATE_CURSOR_INPUT", 0.50),
+        "output": env_rate("LARCH_RATE_CURSOR_OUTPUT", 2.50),
+        "aggregate": env_rate("LARCH_RATE_CURSOR_AGGREGATE", 0.20),
+    },
+    # Gemini 2.5 Pro. No aggregate path yet; cost_vendor falls back to input
+    # rate for total-only rows.
+    "gemini": {
+        "input": env_rate("LARCH_RATE_GEMINI_INPUT", 1.25),
+        "output": env_rate("LARCH_RATE_GEMINI_OUTPUT", 10.00),
     },
 }
+
+
+ACTUAL_SPEND = float(os.environ.get("LARCH_REPORT_TOKENS_ACTUAL_SPEND", "") or 0)
 
 
 def parse_date(raw):
@@ -225,6 +255,8 @@ def section_name(line):
         return "codex"
     if name.startswith("cursor"):
         return "cursor"
+    if name.startswith("gemini"):
+        return "gemini"
     return re.sub(r"[^a-z0-9_-]+", "-", name).strip("-") or "unknown"
 
 
@@ -533,13 +565,18 @@ def print_analysis(cache_path, records, skipped, plot_paths):
         )
     )
     print(
-        "- Codex input={input:g}, output={output:g}, aggregate={aggregate:g}".format(
+        "- Codex (GPT-5.5) input={input:g}, output={output:g}, aggregate={aggregate:g}, cache_read={cache_read:g}".format(
             **RATES["codex"]
         )
     )
     print(
-        "- Cursor input={input:g}, output={output:g}, aggregate/cache={aggregate:g}".format(
+        "- Cursor (Composer 2) input={input:g}, output={output:g}, aggregate/cache={aggregate:g}".format(
             **RATES["cursor"]
+        )
+    )
+    print(
+        "- Gemini (2.5 Pro) input={input:g}, output={output:g}".format(
+            **RATES["gemini"]
         )
     )
     print("")
@@ -573,6 +610,14 @@ def print_analysis(cache_path, records, skipped, plot_paths):
             f"- {workflow}: {len(rows)} issue(s), total {dollars(sum(values))}, "
             f"median {dollars(statistics.median(values))}, max {dollars(max(values))}"
         )
+        vendor_costs: dict = {}
+        for r in rows:
+            for vendor, data in r["totals"].items():
+                vendor_costs[vendor] = vendor_costs.get(vendor, 0.0) + cost_vendor(vendor, data)
+        for vendor in sorted(vendor_costs):
+            vc = vendor_costs[vendor]
+            if vc > 0:
+                print(f"  - {vendor}: {dollars(vc)}")
 
     simple = sorted(by_workflow.get("SIMPLE", []), key=lambda r: r["cost"], reverse=True)[:10]
     print("")
@@ -621,6 +666,13 @@ def print_analysis(cache_path, records, skipped, plot_paths):
     print("- Keep high-volume shared context in generated artifacts and have reviewers cite files instead of re-pasting long prompt context.")
     print("- For expensive HARD phases, inspect the top phase rows above before optimizing; repeated review or design phases usually dominate more than implementation.")
     print("- When cache-read volume dominates, prioritize trimming repeated static context and large unchanged markdown blocks before reducing output verbosity.")
+
+    if ACTUAL_SPEND > 0:
+        tracked = sum(r["cost"] for r in records)
+        delta_pct = (tracked - ACTUAL_SPEND) / ACTUAL_SPEND * 100 if ACTUAL_SPEND else 0
+        print("")
+        print(f"### Reconciliation (LARCH_REPORT_TOKENS_ACTUAL_SPEND)")
+        print(f"tracked={dollars(tracked)}  actual={dollars(ACTUAL_SPEND)}  delta={delta_pct:+.1f}%")
 
 
 def load_raw_records(body_file):

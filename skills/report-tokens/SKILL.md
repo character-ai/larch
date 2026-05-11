@@ -26,7 +26,7 @@ Parse any `--no-issue`, `--no-plot`, or `--plot-from <N>` flags from the skill i
 
 where `[FLAGS]` are the validated flags from the invocation (empty if none were provided).
 
-Script contract: `${CLAUDE_PLUGIN_ROOT}/skills/report-tokens/scripts/run-analysis.md`.
+Script contract: `${CLAUDE_PLUGIN_ROOT}/skills/report-tokens/scripts/run-analysis.md`. Rate harness: `${CLAUDE_PLUGIN_ROOT}/skills/report-tokens/scripts/test-rate-assertions.sh` (contract: `${CLAUDE_PLUGIN_ROOT}/skills/report-tokens/scripts/test-rate-assertions.md`).
 
 Verify the script exited successfully. On a normal run, stdout includes `## Report Tokens Analysis` plus `Cache JSON:`. On a `--plot-from` run, stdout includes `Plots written to:` or `No plots generated.`. If it exits non-zero, stop and surface the error; do not invent partial cost results.
 
