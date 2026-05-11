@@ -40,6 +40,7 @@ Stop after Step 3 (do NOT run Steps 4 or 5 — those belong to the parent).
 Write these files under `$REVIEW_TMPDIR/` before returning:
 
 - **`review-round-summary.md`** — human-readable summary the parent uses for Step 4: total rounds, per-round findings (reviewer breakdown, vote counts), voting summary (rounds 1-3: accepted/neutral/exonerated/rejected counts), Reviewer Competition Scoreboard, OOS items accepted, and convergence reason. The parent `/review` Step 4 prints this file verbatim only for standalone invocations; when `SESSION_ENV_PATH` is non-empty, Step 4 suppresses inline prose, copies the summary to `$(dirname "$SESSION_ENV_PATH")/review-round-summary.md`, and `/implement` reads that stable parent-tmpdir copy for the `code-review-tally` anchor fragment.
+- **`review-summary.json`** — structured summary the parent copies to `$(dirname "$SESSION_ENV_PATH")/review-summary.json` when `SESSION_ENV_PATH` is non-empty. Keep it ≤2 KB.
 - **`rejected-findings.md`** — rejected in-scope findings (same format as the inline path). Write to `$(dirname "$SESSION_ENV_PATH")/rejected-findings.md` when `SESSION_ENV_PATH` is non-empty (so the parent `/implement` Step 5 finds it under `$IMPLEMENT_TMPDIR/rejected-findings.md`); write to `$REVIEW_TMPDIR/rejected-findings.md` for standalone invocations.
 - **`review-dirty-tree-summary.env`** — dirty-tree aggregate (normally written by inline Step 5a): `ANY_DIRTY=true|false|unknown`, `LAUNCHERS_DIRTY=<comma-list>`, `RECOVERY_TAKEN=true|false`, and per-launcher path-stream keys. Write to `$(dirname "$SESSION_ENV_PATH")/review-dirty-tree-summary.env` when `SESSION_ENV_PATH` is non-empty (so the parent `/implement` Step 5 normal-mode dirty-tree check finds it); write to `$REVIEW_TMPDIR/review-dirty-tree-summary.env` for standalone invocations. Write this BEFORE returning so the parent's Step 5a finds it already present and skips re-aggregation.
 
@@ -59,7 +60,32 @@ After each external collection point (Step 2 launch → Step 3a collect), scan `
 
 ## Return Value
 
-On success, return only: `REVIEW_HEAVY=complete`
+Before returning success, write `$REVIEW_TMPDIR/review-summary.json` with the Write tool (not a heredoc or shell redirection). The JSON schema is:
+
+```json
+{
+  "schema_version": 1,
+  "rounds_completed": 1,
+  "reviewer_output_paths": ["<abs-path>", "..."],
+  "finding_counts": {
+    "total_accepted": 0,
+    "total_rejected": 0
+  },
+  "accepted_count": 0,
+  "rejected_count": 0
+}
+```
+
+`accepted_count` and `rejected_count` are the canonical top-level counts. Mirror them under `finding_counts.total_accepted` and `finding_counts.total_rejected` for forward compatibility.
+
+On success, return a terse KV block. The **first line** MUST be exactly `REVIEW_HEAVY=complete`. Optional additional `KEY=value` lines may follow, for example:
+
+```text
+REVIEW_HEAVY=complete
+REVIEW_SUMMARY_FILE=$REVIEW_TMPDIR/review-summary.json
+```
+
+No prose, no artifact content, and no blank lines between KV lines.
 
 On failure (e.g., persistent reviewer outage, Step 3e checks that cannot be fixed), return only: `REVIEW_HEAVY=failed REASON=<short-token>`
 

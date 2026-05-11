@@ -63,6 +63,11 @@ if [[ -z "$REPO" ]]; then
   fi
 fi
 
+if ! [[ "$REPO" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; then
+  echo "ERROR=--repo must be exactly owner/name (got: '$REPO')" >&2
+  exit 1
+fi
+
 OWNER="${REPO%%/*}"
 NAME="${REPO##*/}"
 
