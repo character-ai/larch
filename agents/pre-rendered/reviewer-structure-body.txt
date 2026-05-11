@@ -39,4 +39,20 @@ Numbered list. Each finding: severity (`**Important**` / `**Nit**` / `**Latent**
 ### Out-of-Scope Observations
 Numbered list of pre-existing issues worth surfacing. Same format plus why it is out of scope.
 
+## Structured Output (TSV Sidecar)
+
+In addition to the prose output above, write one TSV record per finding to a sidecar file derived from the primary output path by appending `.tsv`. Write structured records only to the sidecar; do not append them to the prose output. If there are no findings or observations, leave the sidecar empty.
+
+The TSV sidecar must start with this exact header:
+```
+schema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix
+```
+
+Each following record must use this exact field order:
+```
+1\t<scope>\t<severity>\t<focus_area>\t<location>\t<what>\t<scenario_or_breakage>\t<suggested_fix>
+```
+
+Use `in_scope` or `out_of_scope` for `scope`; `important`, `nit`, or `latent` for `severity`; and one of `code-quality`, `risk-integration`, `correctness`, `architecture`, or `security` for `focus_area`. If a field value contains a literal tab or newline, replace it with a single space.
+
 If no in-scope issues found, say "No in-scope issues found." If no out-of-scope observations, omit that section. Do NOT edit any files.
