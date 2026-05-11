@@ -10,7 +10,7 @@
 | `ISSUE_B` (positional 2) | yes | Issue that blocks ISSUE_A |
 | `--repo owner/name` | no | Repository; auto-detected via `gh repo view` if omitted |
 
-Both issue numbers must be positive integers (≥1).
+Both issue numbers must be positive integers (≥1). The `--repo` value (whether passed explicitly or auto-detected) must match `^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$` (exactly one `/`, no extra components); malformed values exit 1 with `ERROR=`.
 
 ## Output
 

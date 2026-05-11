@@ -211,7 +211,7 @@ Use `run_in_background: true` and `timeout: 1860000` on each specialist Bash too
 **Codex specialist** (if `codex_available`; set `CODEX_SPECIALIST_TIMING_KIND=codex-specialist-<name>` with `<name>` replaced by `structure`, `correctness`, `testing`, `security`, or `edge-cases`):
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/launch-review.sh --tool codex --output "$REVIEW_TMPDIR/codex-specialist-<name>-output.txt" --timeout 1800 --agent-file "${CLAUDE_PLUGIN_ROOT}/agents/reviewer-<name>.md" --mode <diff|description> [--diff-file "$DIFF_FILE" in diff mode] [--description-text "${DESCRIPTION_TEXT}" --scope-files "$REVIEW_TMPDIR/scope-files.txt"] --competition-notice --timing-task-kind "$CODEX_SPECIALIST_TIMING_KIND"
+${CLAUDE_PLUGIN_ROOT}/scripts/launch-review.sh --tool codex --output "$REVIEW_TMPDIR/codex-specialist-<name>-output.txt" --timeout 1800 --agent-file "${CLAUDE_PLUGIN_ROOT}/agents/reviewer-<name>.md" --mode <diff|description> [--diff-file "$DIFF_FILE" in diff mode] [--commit-count "$COMMIT_COUNT" in diff mode] [--description-text "${DESCRIPTION_TEXT}" --scope-files "$REVIEW_TMPDIR/scope-files.txt"] --competition-notice --timing-task-kind "$CODEX_SPECIALIST_TIMING_KIND"
 ```
 
 Use `run_in_background: true` and `timeout: 1860000`.
