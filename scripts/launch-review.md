@@ -34,6 +34,11 @@ Gemini remains generic-only and rejects specialist flags.
   `STATUS=clean MODE=baseline REASON=codex-sandbox-read-only` sidecar without
   running the scan — `--sandbox read-only` blocks writes at the syscall level,
   making the after-the-fact scan redundant. Cursor still runs the full scan.
+- `--commit-count <n>` (optional): passed through to `render-specialist-prompt.sh`
+  on `--agent-file` paths; when `1 ≤ n ≤ 5`, the rendered specialist prompt omits
+  the `git log` instruction from its diff preamble. Stored in the specialist prompt
+  sentinel (`${OUTPUT}.prompt`) so retry replay produces an identical prompt.
+  Ignored on `--prompt` / `--prompt-file` paths.
 
 ## Primary Callers
 

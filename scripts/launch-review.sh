@@ -94,6 +94,7 @@ DESCRIPTION_TEXT=""
 SCOPE_FILES=""
 COMPETITION_NOTICE=false
 DIFF_FILE=""
+COMMIT_COUNT=""
 TIMING_TASK_KIND="${LARCH_TIMING_TASK_KIND:-}"
 TOKEN_BUDGET_CAP=""
 
@@ -109,6 +110,7 @@ while [[ $# -gt 0 ]]; do
         --scope-files) SCOPE_FILES="${2:?--scope-files requires a value}"; shift 2 ;;
         --competition-notice) COMPETITION_NOTICE=true; shift ;;
         --diff-file) DIFF_FILE="${2:?--diff-file requires a value}"; shift 2 ;;
+        --commit-count) COMMIT_COUNT="${2:-}"; shift 2 ;;
         --timing-task-kind) [[ -n "${2:-}" && "${2}" != --* ]] || { echo "launch-review.sh: --timing-task-kind requires a non-empty, non-flag-like value" >&2; exit 2; }; TIMING_TASK_KIND="$2"; shift 2 ;;
         --token-budget-cap) case "${2:-}" in ''|*[!0-9]*) echo "launch-review.sh: --token-budget-cap requires a positive integer" >&2; exit 2 ;; esac; (( 10#${2:-0} >= 1 )) || { echo "launch-review.sh: --token-budget-cap requires a positive integer" >&2; exit 2; }; TOKEN_BUDGET_CAP="$2"; shift 2 ;;
         --risk) [[ -n "${2:-}" ]] || { echo "launch-review.sh: --risk requires a value" >&2; exit 2; }; shift 2 ;;
@@ -247,7 +249,7 @@ if [[ -n "$PROMPT_FILE" ]]; then
         # Hash+kind sentinel written by the non-retry (happy) path for --agent-file
         # launches. Reconstruct the full prompt via render-specialist-prompt.sh and
         # verify the SHA-256 hash to catch renderer changes between launch and retry.
-        _s_kind="" _s_hash="" _s_agent_file="" _s_mode="" _s_scope="" _s_comp=false _s_diff=""
+        _s_kind="" _s_hash="" _s_agent_file="" _s_mode="" _s_scope="" _s_comp=false _s_diff="" _s_commit_count=""
         while read -r _s_line; do
             _s_k="${_s_line%%=*}"
             _s_v="${_s_line#*=}"
@@ -259,6 +261,7 @@ if [[ -n "$PROMPT_FILE" ]]; then
                 SCOPE_FILES)       _s_scope="$_s_v" ;;
                 COMPETITION_NOTICE) [[ "$_s_v" == "true" ]] && _s_comp=true ;;
                 DIFF_FILE)         _s_diff="$_s_v" ;;
+                COMMIT_COUNT)      _s_commit_count="$_s_v" ;;
             esac
         done < "$PROMPT_FILE"
         if [[ "$_s_kind" != "specialist" || -z "$_s_agent_file" || -z "$_s_mode" || -z "$_s_hash" ]]; then
@@ -269,6 +272,7 @@ if [[ -n "$PROMPT_FILE" ]]; then
         [[ -n "$_s_scope" ]] && _s_render_args+=(--scope-files "$_s_scope")
         [[ "$_s_comp" == "true" ]] && _s_render_args+=(--competition-notice)
         [[ -n "$_s_diff" ]] && _s_render_args+=(--diff-file "$_s_diff")
+        [[ -n "$_s_commit_count" ]] && _s_render_args+=(--commit-count "$_s_commit_count")
         PROMPT=$("$SCRIPT_DIR/render-specialist-prompt.sh" "${_s_render_args[@]}")
         _s_reconstructed_hash=""
         if command -v shasum >/dev/null 2>&1; then
@@ -286,7 +290,7 @@ if [[ -n "$PROMPT_FILE" ]]; then
             echo "launch-review.sh: prompt reconstruction hash mismatch (sentinel=$_s_hash reconstructed=$_s_reconstructed_hash)" >&2
             exit 1
         fi
-        unset _s_kind _s_hash _s_agent_file _s_mode _s_scope _s_comp _s_diff _s_render_args \
+        unset _s_kind _s_hash _s_agent_file _s_mode _s_scope _s_comp _s_diff _s_commit_count _s_render_args \
               _s_reconstructed_hash _s_line _s_k _s_v
     else
         if ! PROMPT=$({ cat -- "$PROMPT_FILE"; _cat_status=$?; printf X; exit "$_cat_status"; }); then
@@ -304,6 +308,7 @@ if [[ -n "$AGENT_FILE" ]]; then
     [[ -n "$SCOPE_FILES" ]] && RENDER_ARGS+=(--scope-files "$SCOPE_FILES")
     [[ "$COMPETITION_NOTICE" == "true" ]] && RENDER_ARGS+=(--competition-notice)
     [[ -n "$DIFF_FILE" ]] && RENDER_ARGS+=(--diff-file "$DIFF_FILE")
+    [[ -n "$COMMIT_COUNT" ]] && RENDER_ARGS+=(--commit-count "$COMMIT_COUNT")
     PROMPT=$("$SCRIPT_DIR/render-specialist-prompt.sh" "${RENDER_ARGS[@]}")
 fi
 
@@ -386,6 +391,7 @@ if [[ -n "$AGENT_FILE" && -z "$DESCRIPTION_TEXT" ]]; then
             [[ -n "$SCOPE_FILES" ]] && printf 'SCOPE_FILES=%s\n' "$SCOPE_FILES"
             [[ "$COMPETITION_NOTICE" == "true" ]] && printf 'COMPETITION_NOTICE=true\n'
             [[ -n "$DIFF_FILE" ]] && printf 'DIFF_FILE=%s\n' "$DIFF_FILE"
+            [[ -n "$COMMIT_COUNT" ]] && printf 'COMMIT_COUNT=%s\n' "$COMMIT_COUNT"
         } > "$PROMPT_FILE_SIDECAR"
     else
         printf '%s' "$PROMPT" > "$PROMPT_FILE_SIDECAR"
@@ -510,6 +516,7 @@ DESCRIPTION_TEXT=""
 SCOPE_FILES=""
 COMPETITION_NOTICE=false
 DIFF_FILE=""
+COMMIT_COUNT=""
 TIMING_TASK_KIND="${LARCH_TIMING_TASK_KIND:-}"
 TOKEN_BUDGET_CAP=""
 
@@ -525,6 +532,7 @@ while [[ $# -gt 0 ]]; do
         --scope-files) SCOPE_FILES="${2:?--scope-files requires a value}"; shift 2 ;;
         --competition-notice) COMPETITION_NOTICE=true; shift ;;
         --diff-file) DIFF_FILE="${2:?--diff-file requires a value}"; shift 2 ;;
+        --commit-count) COMMIT_COUNT="${2:-}"; shift 2 ;;
         --timing-task-kind) [[ -n "${2:-}" && "${2}" != --* ]] || { echo "launch-review.sh: --timing-task-kind requires a non-empty, non-flag-like value" >&2; exit 2; }; TIMING_TASK_KIND="$2"; shift 2 ;;
         --token-budget-cap) case "${2:-}" in ''|*[!0-9]*) echo "launch-review.sh: --token-budget-cap requires a positive integer" >&2; exit 2 ;; esac; (( 10#${2:-0} >= 1 )) || { echo "launch-review.sh: --token-budget-cap requires a positive integer" >&2; exit 2; }; TOKEN_BUDGET_CAP="$2"; shift 2 ;;
         --risk) [[ -n "${2:-}" ]] || { echo "launch-review.sh: --risk requires a value" >&2; exit 2; }; shift 2 ;;
@@ -716,6 +724,7 @@ if [[ -n "$AGENT_FILE" ]]; then
     [[ -n "$SCOPE_FILES" ]] && RENDER_ARGS+=(--scope-files "$SCOPE_FILES")
     [[ "$COMPETITION_NOTICE" == "true" ]] && RENDER_ARGS+=(--competition-notice)
     [[ -n "$DIFF_FILE" ]] && RENDER_ARGS+=(--diff-file "$DIFF_FILE")
+    [[ -n "$COMMIT_COUNT" ]] && RENDER_ARGS+=(--commit-count "$COMMIT_COUNT")
     PROMPT=$("$SCRIPT_DIR/render-specialist-prompt.sh" "${RENDER_ARGS[@]}")
 fi
 

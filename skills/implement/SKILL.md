@@ -1101,7 +1101,7 @@ At the top of each round iteration, reset `prev_had_security_correctness=false`.
 ${CLAUDE_PLUGIN_ROOT}/scripts/gather-branch-context.sh --output-dir "$IMPLEMENT_TMPDIR"
 ```
 
-Parse `DIFF_FILE`, `FILE_LIST_FILE`, `COMMIT_LOG_FILE`.
+Parse `DIFF_FILE`, `FILE_LIST_FILE`, `COMMIT_LOG_FILE`, `COMMIT_COUNT`.
 
 **5.2 — Select reviewer(s)**. **Diff-churn cap** (rounds 2+ only): when `round_num > 1` and `pre_fix_sha` is non-empty, compute:
 
@@ -1122,7 +1122,7 @@ Launch all 5 Cursor specialists (when Cursor is available) AND a generic Codex r
 
 For each specialist, set `CURSOR_SPECIALIST_TIMING_KIND=cursor-specialist-<name>` with `<name>` replaced by one of `structure`, `correctness`, `testing`, `security`, or `edge-cases`. When **Cursor** is available:
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/launch-review.sh --tool cursor --output "$IMPLEMENT_TMPDIR/cursor-quick-review-specialist-<name>-round${round_num}.txt" --timeout 1800 --agent-file "${CLAUDE_PLUGIN_ROOT}/agents/reviewer-<name>.md" --mode diff --diff-file "$DIFF_FILE" --timing-task-kind "$CURSOR_SPECIALIST_TIMING_KIND"
+${CLAUDE_PLUGIN_ROOT}/scripts/launch-review.sh --tool cursor --output "$IMPLEMENT_TMPDIR/cursor-quick-review-specialist-<name>-round${round_num}.txt" --timeout 1800 --agent-file "${CLAUDE_PLUGIN_ROOT}/agents/reviewer-<name>.md" --mode diff --diff-file "$DIFF_FILE" --commit-count "$COMMIT_COUNT" --timing-task-kind "$CURSOR_SPECIALIST_TIMING_KIND"
 ```
 
 When **Cursor unavailable**: skip all 5 specialist slots. Do NOT fall back to Codex specialist instances.

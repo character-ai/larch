@@ -176,7 +176,7 @@ fi
 assert_contains "--diff-file: preamble references diff file path" "$SAMPLE_DIFF" "$output_with_diff"
 assert_contains "--diff-file: preamble mentions Read tool fallback" "Read tool" "$output_with_diff"
 # shellcheck disable=SC2016
-assert_contains "--diff-file: preamble includes merge-base git log instruction" 'git log $(git merge-base HEAD main)..HEAD --oneline' "$output_with_diff"
+assert_contains "--diff-file: preamble includes merge-base git log instruction (no commit-count)" 'git log $(git merge-base HEAD main)..HEAD --oneline' "$output_with_diff"
 assert_contains "--diff-file: focus-area tagging preserved" "code-quality / risk-integration / correctness / architecture / security" "$output_with_diff"
 # Without --diff-file, original "Run git diff" instruction is still present.
 output_no_diff=$(bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-structure.md" --mode diff 2>/dev/null)
@@ -184,6 +184,26 @@ output_no_diff=$(bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-struc
 assert_contains "no --diff-file: original preamble still present" 'git diff $(git merge-base HEAD main)...HEAD' "$output_no_diff"
 # --diff-file with nonexistent path must exit 2.
 assert_exit_code "--diff-file nonexistent path" "2" bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-structure.md" --mode diff --diff-file "/nonexistent/branch.diff"
+
+# --commit-count: omit git-log instruction when branch has ≤5 commits.
+output_1commit=$(bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-structure.md" --mode diff --diff-file "$SAMPLE_DIFF" --commit-count 1 2>/dev/null)
+# shellcheck disable=SC2016
+assert_not_contains "--commit-count 1: git log instruction omitted" 'git log $(git merge-base HEAD main)..HEAD --oneline' "$output_1commit"
+assert_contains "--commit-count 1: diff-file reference preserved" "$SAMPLE_DIFF" "$output_1commit"
+output_5commit=$(bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-structure.md" --mode diff --diff-file "$SAMPLE_DIFF" --commit-count 5 2>/dev/null)
+# shellcheck disable=SC2016
+assert_not_contains "--commit-count 5: git log instruction omitted" 'git log $(git merge-base HEAD main)..HEAD --oneline' "$output_5commit"
+output_6commit=$(bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-structure.md" --mode diff --diff-file "$SAMPLE_DIFF" --commit-count 6 2>/dev/null)
+# shellcheck disable=SC2016
+assert_contains "--commit-count 6: git log instruction present" 'git log $(git merge-base HEAD main)..HEAD --oneline' "$output_6commit"
+# --commit-count 0 or empty: safe fallback keeps git-log.
+output_0commit=$(bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-structure.md" --mode diff --diff-file "$SAMPLE_DIFF" --commit-count 0 2>/dev/null)
+# shellcheck disable=SC2016
+assert_contains "--commit-count 0: git log instruction kept (safe fallback)" 'git log $(git merge-base HEAD main)..HEAD --oneline' "$output_0commit"
+# No-diff-file path: git-log omitted when commit-count=1.
+output_nodiff_1commit=$(bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-structure.md" --mode diff --commit-count 1 2>/dev/null)
+# shellcheck disable=SC2016
+assert_not_contains "--commit-count 1, no diff-file: git log instruction omitted" 'git log $(git merge-base HEAD main)..HEAD --oneline' "$output_nodiff_1commit"
 rm -rf "$TMPDIR_DIFFFILE"
 
 # 9. Diff-mode classifier and mode-specific prompt routing.

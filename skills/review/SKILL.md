@@ -144,7 +144,7 @@ Run the gather script to collect the diff and context:
 ${CLAUDE_PLUGIN_ROOT}/scripts/gather-branch-context.sh --output-dir "$REVIEW_TMPDIR"
 ```
 
-Parse the output for `DIFF_FILE`, `FILE_LIST_FILE`, and `COMMIT_LOG_FILE`. Read these files to get the full diff, file list, and commit log — you will pass these to each subagent.
+Parse the output for `DIFF_FILE`, `FILE_LIST_FILE`, `COMMIT_LOG_FILE`, and `COMMIT_COUNT`. Read these files to get the full diff, file list, and commit log — you will pass these to each subagent.
 
 ### Description mode (positional description text)
 
@@ -201,7 +201,7 @@ Launch **all reviewers in a single message**. Spawn order: specialist slots firs
 **Cursor specialist** (if `cursor_available`; set `CURSOR_SPECIALIST_TIMING_KIND=cursor-specialist-<name>` with `<name>` replaced by `structure`, `correctness`, `testing`, `security`, or `edge-cases`):
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/launch-review.sh --tool cursor --output "$REVIEW_TMPDIR/cursor-specialist-<name>-output.txt" --timeout 1800 --agent-file "${CLAUDE_PLUGIN_ROOT}/agents/reviewer-<name>.md" --mode <diff|description> [--diff-file "$DIFF_FILE" in diff mode] [--description-text "${DESCRIPTION_TEXT}" --scope-files "$REVIEW_TMPDIR/scope-files.txt"] --competition-notice --timing-task-kind "$CURSOR_SPECIALIST_TIMING_KIND"
+${CLAUDE_PLUGIN_ROOT}/scripts/launch-review.sh --tool cursor --output "$REVIEW_TMPDIR/cursor-specialist-<name>-output.txt" --timeout 1800 --agent-file "${CLAUDE_PLUGIN_ROOT}/agents/reviewer-<name>.md" --mode <diff|description> [--diff-file "$DIFF_FILE" in diff mode] [--commit-count "$COMMIT_COUNT" in diff mode] [--description-text "${DESCRIPTION_TEXT}" --scope-files "$REVIEW_TMPDIR/scope-files.txt"] --competition-notice --timing-task-kind "$CURSOR_SPECIALIST_TIMING_KIND"
 ```
 
 Use `run_in_background: true` and `timeout: 1860000` on each specialist Bash tool call.

@@ -10,7 +10,7 @@
 5. Competition notice flag (absent without flag, present with flag)
 6. Error cases (missing args, invalid mode, nonexistent file, incomplete description args)
 7. Security focus-area presence in all specialist outputs
-8. `--diff-file` preamble routing
+8. `--diff-file` preamble routing; `--commit-count` git-log omission (≤5 commits → omit, 6+ → keep, 0 → safe fallback keep, no diff-file path)
 9. Diff-mode classifier and focused prompt routing for docs-only, test-only, generated-only, and generic diffs
 10. Absence of max-effort prose in all five tagging variants; launcher wrappers own effort handling
 11. Pre-rendered reviewer body lookup
