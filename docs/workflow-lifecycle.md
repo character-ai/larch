@@ -81,7 +81,8 @@ flowchart TD
     subgraph DESIGN_PHASE["Design Phase (/design)"]
         BRANCH[Create branch] --> QUESTIONS[Clarifying questions]
         QUESTIONS --> DISCUSS1[Design discussion round 1]
-        DISCUSS1 --> SKETCHES[Collaborative sketches]
+        DISCUSS1 --> ROUTER[Run-depth router]
+        ROUTER --> SKETCHES[Adaptive collaborative sketches]
         SKETCHES --> SYNTHESIS[Approach synthesis]
         SYNTHESIS --> DIALECTIC[Dialectic: debate + judge adjudication on contested decisions]
         DIALECTIC --> PLAN[Write implementation plan]
@@ -126,7 +127,7 @@ flowchart TD
 
 Not every task requires the full `/implement` pipeline. Skills can be used independently:
 
-- **`/design [--auto] [--quick] <feature>`** — Plan a feature without implementing it. Creates a branch, runs the collaborative sketch topology documented in [Collaborative Sketches](collaborative-sketches.md), writes the plan, and reviews it with the validation panel + voting.
+- **`/design [--auto] [--quick] [--full] <feature>`** — Plan a feature without implementing it. Creates a branch, writes run parameters once, runs the collaborative sketch topology documented in [Collaborative Sketches](collaborative-sketches.md) when the sketch budget is non-zero, writes the plan, and reviews it with the validation panel + voting. `--quick` caps sketches and uses quick plan review; `--full` forces full sketch fan-out.
 - **`/review [--diff] [--no-issues] [<description>]`** — Supports `--diff`, which reviews the current branch's changes (implements accepted fixes in a recursive loop), and positional `<description>`, which reviews existing code and files accepted findings as GitHub issues by default (`--no-issues` to suppress).
 - **`/research [--no-issue] <topic>`** — Best-effort read-only-repo investigation with the fixed-shape topology documented in the research skill: a planner pre-pass (always on) decomposes the question into focused subquestions, then Codex-first research lanes by angle fan out, followed by the validation panel. Step 2.5 (citation validation, unconditional) runs between validation and synthesis: a deterministic shell validator extracts cited URLs / DOIs / file:line references, HEAD-fetches URLs under SSRF guards, validates DOIs, spot-checks file:line ranges against the git tree, and writes the PASS / FAIL / UNKNOWN ledger sidecar that Step 3 splices into the final report — fail-soft (the report is never blocked). On a TTY, the planner pauses after subquestion proposal so the operator can review, edit, or abort; on non-TTY, the run continues without prompting. Does not create branches or make commits. The skill-scoped `scripts/deny-edit-write.sh` PreToolUse hook mechanically guards Claude's `Edit`/`Write`/`NotebookEdit` tool surface, permitting only paths under canonical `/tmp`; **the hook does not cover Bash or external reviewers** (Cursor/Codex launch directly against `$PWD` with full filesystem access — non-modification is prompt-enforced only). See [`SECURITY.md` § External reviewer write surface in /research](../SECURITY.md#external-reviewer-write-surface-in-research) for the full residual-risk framing. Step 3.5 auto-archives the full report as a GitHub issue on each successful run (via `/issue` single mode); `--no-issue` skips this step. May also invoke `/issue` via the Skill tool when the research brief calls for filing findings as issues.
 - **`/show-skill <skill-name>`** — Display the contents of a skill's `SKILL.md` file. Accepts bare name, `larch:`-prefixed form, or leading-`/` form. Searches the plugin `skills/` tree first, then the consumer repo's `.claude/skills/`. Read-only.
@@ -148,6 +149,8 @@ Flags modify behavior across the skill hierarchy:
 | Flag | Available on | Effect |
 |---|---|---|
 | `--quick` | `/implement` | Skips `/design` (produces inline plan instead). Code review runs up to 7 rounds (no voting panel): rounds 1-3 launch 5 Cursor specialists in parallel plus a generic Codex reviewer and a Claude generic reviewer; rounds 4-7 use a single generic reviewer per round with a Cursor → Codex → Claude Code Reviewer subagent fallback chain. |
+| `--quick` | `/design` | Caps sketch fan-out at the quick topology and uses quick plan review. This is separate from `/implement --quick`, which skips `/design` entirely. |
+| `--full` | `/design` | Forces full sketch fan-out. When combined with `/design --quick`, sketches use the full topology while plan review remains quick. |
 | `--auto` | `/implement`, `/design`, `/fix-issue` (forwarded to `/implement` on PR paths) | Suppresses all interactive question checkpoints. Skills run fully autonomously without user interaction. |
 | `--design-only` | `/implement` | Runs through design and anchor/OOS publication, then stops before implementation, review, version bump, PR, CI, and merge. Mutually exclusive with `--merge`; the tracking issue URL is the deliverable. |
 | `--no-issues` | `/implement` | Requires `--design-only`. Skips tracking-issue creation (Steps 0.5, 9a.1, 11 bypass). Design output is ephemeral — no GitHub issue opened, no anchor maintained. |

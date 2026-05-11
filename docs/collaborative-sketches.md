@@ -8,7 +8,11 @@ Without the sketch phase, the first idea considered tends to dominate the plan. 
 
 ## Sketch Agents
 
-The sketch phase runs the topology listed in the mode-specific tables below. Each external slot has a Claude subagent fallback that activates when the respective tool is unavailable, preserving the configured lane shape.
+The sketch phase runs the topology selected by `/design`'s run-depth router. Each non-zero external slot has a Claude subagent fallback that activates when the respective tool is unavailable, preserving the configured lane shape.
+
+### Zero-Sketch Mode
+
+For codebase-scan-confirmed trivial doc-only work, the router may choose [0 sketch agents](topology.md#design.sketch.zero_slots). `/design` writes sentinel synthesis artifacts and proceeds directly to plan writing; no collector runs on this path.
 
 ### Regular Mode
 
@@ -56,9 +60,10 @@ The handling of unavailable external tools differs across workflow phases:
 
 ```mermaid
 flowchart TD
-    START([Feature description]) --> MODE{Quick mode?}
-    MODE -->|No| LAUNCH_REG
-    MODE -->|Yes| LAUNCH_QUICK
+    START([Feature description]) --> ROUTER{Sketch budget?}
+    ROUTER -->|4| LAUNCH_REG
+    ROUTER -->|2| LAUNCH_QUICK
+    ROUTER -->|0| SENTINEL[Write sentinel artifacts]
 
     subgraph LAUNCH_REG["Regular: Launch 4 external in parallel"]
         direction LR
@@ -75,6 +80,7 @@ flowchart TD
     LAUNCH_REG --> WAIT[Wait for all sketches]
     LAUNCH_QUICK --> WAIT
     WAIT --> SYNTHESIS[Synthesis]
+    SENTINEL --> PLAN[Full implementation plan]
 
     subgraph SYNTHESIS["Approach Synthesis"]
         AGREE[Where agents agree] ~~~ DIVERGE[Where agents diverge]
@@ -102,7 +108,7 @@ flowchart TD
     style CHECK fill:#f6ad55,color:#000
 ```
 
-1. **Parallel launch** — All external and per-slot Claude fallback sketches are launched simultaneously. In regular mode: all Cursor slots first (slowest), then all Codex slots, then any Claude fallback sketches. In quick mode: Cursor-Generic first, then Codex-Generic.
+1. **Parallel launch** — For non-zero sketch budgets, all external and per-slot Claude fallback sketches are launched simultaneously. In regular mode: all Cursor slots first (slowest), then all Codex slots, then any Claude fallback sketches. In quick mode: Cursor-Generic first, then Codex-Generic. The zero-sketch path launches nothing and writes sentinel artifacts instead.
 
 2. **Each agent produces** a short sketch covering:
    - Key architectural decisions and approach
@@ -115,6 +121,7 @@ flowchart TD
    - Notes which ideas from each sketch are incorporated
    - (Regular mode only) Highlights personality-specific concerns: **Architecture/Standards**, **Pragmatism/Safety**, **Edge-case/Failure-mode**, **Innovation/Exploration**
    - (Quick mode) Attributes by tool (Cursor-Generic vs Codex-Generic)
+   - (Zero-sketch mode) Uses the sentinel `NO_SKETCHES_CLASSIFIED_TRIVIAL` instead of fabricated agreement
    - Lists contested decisions in a structured format for the dialectic debate phase
 
 4. **Dialectic debate and adjudication** (`/design` only) — If the synthesis identifies contested decisions (points where sketches genuinely diverged), the prioritized set is submitted to structured thesis/antithesis debates run on Cursor and Codex via deterministic per-decision bucketing. For each contested decision, a thesis agent defends the synthesis choice and an antithesis agent argues for the strongest alternative. Both run in parallel with codebase access. Successful debates are then forwarded to the binary judge panel described in `skills/shared/dialectic-protocol.md`, which casts `THESIS` / `ANTI_THESIS` votes on each decision. The orchestrator writes resolutions as directed by the panel, recording `Disposition: voted | fallback-to-synthesis | bucket-skipped | over-cap` per decision. This step is skipped when all sketches agree. See [Dialectic Debate](#dialectic-debate-design-only) below for details.

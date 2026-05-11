@@ -198,7 +198,7 @@ Cross-skill reviewer health state uses a `.health` sidecar next to `session-env.
 
 `--session-env` and `--subagent` address orthogonal concerns. Forward both when a parent orchestrator delegates heavy work to `/design`.
 
-- **`--subagent` — execution topology.** Runs `/design`'s heavy non-interactive phase (sketches → plan → plan review → optional architecture diagram) inside an isolated Agent-tool subagent. The subagent writes raw artifacts to `$DESIGN_TMPDIR/` and returns terse status; the parent's transcript stays small. Without `--subagent`, the heavy phase runs in `/design`'s own in-turn context — richer transcript, higher token cost in the parent. See `skills/design/SKILL.md § Step 2a — Collaborative Approach Sketches` (Subagent heavy phase).
+- **`--subagent` — execution topology.** Runs `/design`'s heavy non-interactive phase (adaptive sketches → plan → plan review → optional architecture diagram) inside an isolated Agent-tool subagent. The subagent reads `$DESIGN_TMPDIR/run-params.json`, writes raw artifacts to `$DESIGN_TMPDIR/`, and returns terse status; the parent's transcript stays small. Without `--subagent`, the heavy phase runs in `/design`'s own in-turn context — richer transcript, higher token cost in the parent. See `skills/design/SKILL.md § Step 2a — Collaborative Approach Sketches` (Subagent heavy phase).
 
 The two flags are independent: `--session-env` shapes what crosses the call boundary; `--subagent` shapes where heavy work executes. Verbosity suppression remains gated on `SESSION_ENV_PATH` regardless of dispatch mode.
 
@@ -211,10 +211,12 @@ When an orchestrator (e.g. `/implement`) delegates heavy planning to `/design`, 
 
 `--inline` controls execution topology only — verbosity suppression in the child is unchanged because `SESSION_ENV_PATH` remains non-empty under both settings. See `skills/implement/SKILL.md § Step 1 — Ensure Design Plan Exists` (canonical invocation order) and the `--inline` flag definition at the top of that file.
 
-`--quick` interacts with `--subagent` along two different paths:
+`--quick`, `--full`, and caller-forwarded classification interact with `--subagent` along these paths:
 
 - **`/implement --quick`** skips its Step 1 `/design` invocation entirely, so the inline-vs-subagent distinction does not arise on the parent side.
-- **`/design --quick`** still runs the (reduced) sketch and plan-review flow, but `--subagent` is ignored: `/design`'s Step 2a heavy-subagent branch is gated on `subagent_mode=true AND quick_mode=false`, so quick mode falls back to the inline path.
+- **`/design --quick`** still runs the sketch and plan-review flow, but `--subagent` is ignored: `/design`'s Step 2a heavy-subagent branch is gated on `subagent_mode=true AND quick_mode=false`, so quick mode falls back to the inline path.
+- **`/design --full`** forces `sketch_budget=4`. When combined with `--quick`, the sketch budget stays full while plan review remains quick.
+- **`/implement` normal mode** may pass `--design-classification "$ROUTER_CLASSIFICATION"` immediately before `--step-prefix` in the canonical `/design` argument list. `/design` trusts that value only with complete `--branch-info`; standalone invocations classify locally and write `design_classification_source=router-pre-design`.
 
 ## Avoid conditional phrasing for sub-skill invocations
 

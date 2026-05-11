@@ -61,11 +61,11 @@ Scaffold a new larch-style skill from a name and description.
 
 ## `/design`
 
-**Arguments**: `[--auto] [--quick] [--subagent] [--session-env <path>] <feature description>`
+**Arguments**: `[--auto] [--quick] [--full] [--subagent] [--session-env <path>] <feature description>`
 
 **Source**: [`skills/design/SKILL.md`](../skills/design/SKILL.md) · [Diagram](../skills/design/diagram.svg)
 
-Design an implementation plan with collaborative multi-reviewer review. The [sketch topology](topology.md#design.sketch.regular_slots) documented in [Collaborative Sketches](collaborative-sketches.md) independently proposes architectural approaches, then the dialectic debate and [judge panel](topology.md#design.dialectic.judge_panel) described in `skills/shared/dialectic-protocol.md` resolves contested decisions. The [validation panel](topology.md#design.plan_review.cursor_archetypes) documented in [Review Agents](review-agents.md) then reviews the full plan. `--auto` suppresses all interactive question checkpoints. `--quick` runs the [quick sketch topology](topology.md#design.sketch.quick_slots) instead of the regular one.
+Design an implementation plan with collaborative multi-reviewer review. The [sketch topology](topology.md#design.sketch.regular_slots) documented in [Collaborative Sketches](collaborative-sketches.md) independently proposes architectural approaches when the router assigns a non-zero sketch budget, then the dialectic debate and [judge panel](topology.md#design.dialectic.judge_panel) described in `skills/shared/dialectic-protocol.md` resolves contested decisions. The [validation panel](topology.md#design.plan_review.cursor_archetypes) documented in [Review Agents](review-agents.md) then reviews the full plan. `--auto` suppresses all interactive question checkpoints. `--quick` caps sketch fan-out at the [quick sketch topology](topology.md#design.sketch.quick_slots) and uses quick plan review; `--full` forces the full sketch fan-out.
 
 ## `/fix-issue`
 

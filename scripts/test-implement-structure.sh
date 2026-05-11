@@ -891,6 +891,12 @@ grep -Fq -- '[--subagent]' "$SKILL_MD" \
   || fail "(21b) skills/implement/SKILL.md missing '[--subagent]' in canonical /design invocation order (issue #1036)"
 grep -Fq -- 'inline_mode=false' "$SKILL_MD" \
   || fail "(21c) skills/implement/SKILL.md missing 'inline_mode=false' default-forwarding rule (issue #1036)"
+grep -Fq -- '[--design-classification "$ROUTER_CLASSIFICATION"]' "$SKILL_MD" \
+  || fail "(21d) skills/implement/SKILL.md missing --design-classification in canonical /design invocation order"
+grep -Fq -- 'POST_PLAN_WORKFLOW_PATH' "$SKILL_MD" \
+  || fail "(21e) skills/implement/SKILL.md missing POST_PLAN_WORKFLOW_PATH post-plan router key"
+grep -Fq -- 'Do not run the pre-design router or overwrite a reused classification' "$SKILL_MD" \
+  || fail "(21f) manifest-reuse path must not overwrite reused design classification"
 
 # (22) Orchestrator-edit-authority gate pin: SKILL.md must reference the
 # mechanical gate literals introduced by the dispatcher contract — NEVER #10,

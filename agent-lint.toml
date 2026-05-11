@@ -1083,6 +1083,13 @@ exclude = [
   # same Makefile-only pattern as the other test-* harnesses above.
   "scripts/test-session-env-roundtrip.sh",
   "scripts/test-session-env-roundtrip.md",
+  # scripts/test-write-run-params.sh is the offline regression harness for
+  # scripts/write-run-params.sh (the /design run-params.json writer).
+  # Referenced only from Makefile (test-write-run-params target), docs/linting.md,
+  # and the sibling contract scripts/test-write-run-params.md, matching the same
+  # Makefile-only pattern as the other test-* harnesses above.
+  "scripts/test-write-run-params.sh",
+  "scripts/test-write-run-params.md",
   # scripts/test-implement-fork-env.sh is the offline regression harness for
   # scripts/implement-fork-env.sh (the pre-Step-0 fork bootstrap helper used
   # by /implement --forked). Referenced only from Makefile

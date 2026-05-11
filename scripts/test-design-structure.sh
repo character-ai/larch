@@ -136,6 +136,27 @@ for output in "${dropped_regular_sketch_outputs[@]}"; do
   fi
 done
 
+# Check 4c: adaptive sketch budget pins. The runtime docs must preserve all
+# three paths, including the zero-sketch path's collector prohibition.
+grep -Fq 'sketch_budget=0' "$SKILL_MD" \
+  || fail "(4c) SKILL.md missing sketch_budget=0 path"
+grep -Fq 'sketch_budget=2' "$SKILL_MD" \
+  || fail "(4c) SKILL.md missing sketch_budget=2 path"
+grep -Fq 'sketch_budget=4' "$SKILL_MD" \
+  || fail "(4c) SKILL.md missing sketch_budget=4 path"
+grep -Fq 'NO_SKETCHES_CLASSIFIED_TRIVIAL' "$SKILL_MD" \
+  || fail "(4c) SKILL.md missing zero-sketch approach-synthesis sentinel"
+# shellcheck disable=SC2016 # literal backticked command phrase pinned in SKILL.md prose.
+grep -Fq 'Do NOT call `collect-agent-results.sh`' "$SKILL_MD" \
+  || fail "(4c) SKILL.md missing zero-sketch collect-agent-results prohibition"
+grep -Fq 'run-params.json' "$REPO_ROOT/skills/design/references/heavy-worker.md" \
+  || fail "(4c) heavy-worker.md must read run-params.json"
+grep -Fq 'internal-only required artifact' "$REPO_ROOT/skills/design/references/heavy-worker.md" \
+  || fail "(4c) heavy-worker.md must document run-params.json as internal-only"
+if grep -Fq 'run-params.json' "$REPO_ROOT/skills/design/scripts/write-design-manifest.sh"; then
+  fail "(4c) write-design-manifest.sh must not export internal-only run-params.json"
+fi
+
 # Check 5: skills/design/ tree must contain zero Step-3a removal residue tokens (issue #453).
 [[ -d "$DESIGN_DIR" ]] || fail "skills/design/ directory missing: $DESIGN_DIR"
 
