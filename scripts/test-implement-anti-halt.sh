@@ -90,6 +90,19 @@ check_contains "/review Step 4c to Step 4d reminder" "skills/review/SKILL.md" "C
 check_contains "/review Step 4d to Step 5 reminder" "skills/review/SKILL.md" "review-result footer is not terminal"
 
 echo ""
+echo "--- /implement post-/review Stop hook coverage (issue #1862) ---"
+# Mechanical enforcement for post-/review boundary (analogous to the post-/design
+# Stop hook guard): hook-stop-fail-close.sh blocks session stop while
+# review-round-summary.md exists without .review-boundary-passed, and SKILL.md Step 6
+# writes .review-boundary-passed to release the guard once the boundary is cleared.
+check_contains "Post-/review boundary — Stop hook reads review-round-summary.md sentinel" \
+  "skills/implement/scripts/hook-stop-fail-close.sh" \
+  "review-round-summary.md"
+check_contains "Post-/review boundary — review-boundary-passed sentinel write in SKILL.md" \
+  "skills/implement/SKILL.md" \
+  ".review-boundary-passed"
+
+echo ""
 echo "=== SUMMARY: $PASS_COUNT passed, $FAIL_COUNT failed ==="
 
 if [[ "$FAIL_COUNT" -gt 0 ]]; then
