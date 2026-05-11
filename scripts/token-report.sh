@@ -339,6 +339,15 @@ render_jq() {
       | (map(select(.type == "assistant" and .message.usage? and .timestamp?) | usage_row(.; $marks)) | map(select(.ts != null))) as $claude
       | if ($marks | length) == 0 then error("no step marks in ledger")
         elif $mode == "terse" then terse_line($claude; $vendor; $marks[-1])
+        elif $mode == "summary" then
+          (step_slice($claude; $vendor; $marks[0].ts; null)) as $s
+          | (totals($s.claude)) as $ct
+          | (sumfield($s.vendor; "total")) as $vt
+          | (vendor_breakdown($s.vendor)) as $vb
+          | ("Total: claude=" + fmt($ct.total) + " tokens (input=" + fmt($ct.input)
+            + " cache_read=" + fmt($ct.cache_read) + " cache_create=" + fmt($ct.cache_create)
+            + " output=" + fmt($ct.output) + "); vendor=" + fmt($vt)
+            + (if $vt > 0 then " (" + ($vb | map(.vendor + "=" + (.total|tostring)) | join(", ")) + ")" else "" end))
         else markdown($marks; $claude; $vendor)
         end
     ' "${TRANSCRIPT_FILES[@]}" 2>"$jq_stderr_dest" || {
@@ -456,6 +465,7 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --since-last-mark) MODE="terse"; shift ;;
         --terse) shift ;;
+        --summary) MODE="summary"; shift ;;
         --full) MODE="full"; shift ;;
         --markdown) shift ;;
         --output) OUTPUT="${2:?--output requires a value}"; shift 2 ;;

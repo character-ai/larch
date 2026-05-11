@@ -10,6 +10,9 @@
 
 - `--since-last-mark --terse` prints one line for the most recent ledger mark:
   `Step N — <name>: claude=<total> tokens (input=A cache_read=B cache_create=C output=D); vendor=<sum> (codex=X, cursor=Y)`.
+- `--summary` prints one grand-total line spanning all marks from the first to the present:
+  `Total: claude=<total> tokens (input=A cache_read=B cache_create=C output=D); vendor=<sum>`.
+  Used as the default brief output in Step 17 when `LARCH_VERBOSE_TOKENS` is unset.
 - `--full --markdown [--output FILE]` renders a markdown table grouped by step with indented skill rows and vendor rows.
 - `--append-token-report FILE` renders the full table and idempotently replaces or appends a sentinel-bracketed block in `FILE`. Production `/implement` calls write this to `$IMPLEMENT_TMPDIR/anchor-sections/token-report.md`:
 

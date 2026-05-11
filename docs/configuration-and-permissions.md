@@ -248,6 +248,10 @@ Per-million-token cost rate (USD) used by `/research`'s Step 4 token report (`##
 
 **Scope**: Token telemetry covers Claude subagent (Agent-tool) invocations only. Claude inline (orchestrator) and external lanes (Cursor/Codex) are unmeasurable and excluded from both the totals and the cost column. The report labels itself "Claude tokens only; external lanes excluded" so operators see the coverage honestly. See [`scripts/token-tally.md`](../scripts/token-tally.md) for the helper contract.
 
+### `LARCH_VERBOSE_TOKENS`
+
+When set to `true`, `/implement` Step 17 prints the full per-step token/timing table to chat (the same output as before v25). When unset or set to any other value (the default), Step 17 prints a single grand-total summary line (`Total: claude=N tokens ...; vendor=N` / `Total: elapsed=HH:MM:SS ...`) instead. The full breakdown is always written to the tracking-issue anchor comment via `--append-token-report` in Step 18 regardless of this setting.
+
 ### `LARCH_BUMP_FILES`
 
 Colon-separated list of bump files that `scripts/drop-bump-commit.sh` Guard 4 accepts as the allowed non-changelog file set. Uses **replacement semantics**: when set, this list replaces the built-in default (`.claude-plugin/plugin.json`) — it is NOT additive. `CHANGELOG.md` is always allowed regardless of this setting (never required, always optional).
