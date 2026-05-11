@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Reviewer dirty-tree changes are now automatically logged and discarded instead of prompting the operator with a restore/stash/bail `AskUserQuestion`. When a Cursor, Codex, or Claude reviewer leaves uncommitted changes in the working tree, the orchestrator logs which reviewer caused it (to `execution-issues.md` under `Warnings` in `/implement` runs, or to the transcript in standalone `/review` runs) and immediately discards the changes via scoped `git restore` / `git clean` — no stash is created and `git stash list` remains clean. This replaces the three-option recovery prompt introduced by #1437. Updated: `skills/implement/SKILL.md` (Step 5.3.b quick mode, Step 5 normal mode, `--auto` flag description), `skills/review/SKILL.md` (Step 3a, line 22), `skills/review/references/heavy-worker.md`, `docs/external-reviewers.md`, `SECURITY.md`
 
+## [24.1.0] - 2026-05-10
+
+### Changed
+
+- Centralize combined-specialist reviewer prompts in skills/shared/reviewer-templates.md and generate the specialist agents from registered scripts.
+- Extract the shared external implementer prompt body into agents/_implementer-base.md with Codex, Cursor, and Gemini generator wrappers.
+- Update structural and lint configuration so generated prompt sources and registry-driven scripts are validated without false positives.
+
 ## [24.0.0] - 2026-05-10
 
 ### Changed
