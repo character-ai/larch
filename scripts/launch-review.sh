@@ -110,7 +110,7 @@ while [[ $# -gt 0 ]]; do
         --scope-files) SCOPE_FILES="${2:?--scope-files requires a value}"; shift 2 ;;
         --competition-notice) COMPETITION_NOTICE=true; shift ;;
         --diff-file) DIFF_FILE="${2:?--diff-file requires a value}"; shift 2 ;;
-        --commit-count) COMMIT_COUNT="${2:-}"; shift 2 ;;
+        --commit-count) COMMIT_COUNT="${2:?--commit-count requires a value}"; shift 2 ;;
         --timing-task-kind) [[ -n "${2:-}" && "${2}" != --* ]] || { echo "launch-review.sh: --timing-task-kind requires a non-empty, non-flag-like value" >&2; exit 2; }; TIMING_TASK_KIND="$2"; shift 2 ;;
         --token-budget-cap) case "${2:-}" in ''|*[!0-9]*) echo "launch-review.sh: --token-budget-cap requires a positive integer" >&2; exit 2 ;; esac; (( 10#${2:-0} >= 1 )) || { echo "launch-review.sh: --token-budget-cap requires a positive integer" >&2; exit 2; }; TOKEN_BUDGET_CAP="$2"; shift 2 ;;
         --risk) [[ -n "${2:-}" ]] || { echo "launch-review.sh: --risk requires a value" >&2; exit 2; }; shift 2 ;;
@@ -391,7 +391,9 @@ if [[ -n "$AGENT_FILE" && -z "$DESCRIPTION_TEXT" ]]; then
             [[ -n "$SCOPE_FILES" ]] && printf 'SCOPE_FILES=%s\n' "$SCOPE_FILES"
             [[ "$COMPETITION_NOTICE" == "true" ]] && printf 'COMPETITION_NOTICE=true\n'
             [[ -n "$DIFF_FILE" ]] && printf 'DIFF_FILE=%s\n' "$DIFF_FILE"
-            [[ -n "$COMMIT_COUNT" ]] && printf 'COMMIT_COUNT=%s\n' "$COMMIT_COUNT"
+            # Only write COMMIT_COUNT when it is a non-negative integer; reject
+            # multi-line or non-numeric values to keep the sentinel line-oriented.
+            [[ "$COMMIT_COUNT" =~ ^[0-9]+$ ]] && printf 'COMMIT_COUNT=%s\n' "$COMMIT_COUNT"
         } > "$PROMPT_FILE_SIDECAR"
     else
         printf '%s' "$PROMPT" > "$PROMPT_FILE_SIDECAR"
@@ -532,7 +534,7 @@ while [[ $# -gt 0 ]]; do
         --scope-files) SCOPE_FILES="${2:?--scope-files requires a value}"; shift 2 ;;
         --competition-notice) COMPETITION_NOTICE=true; shift ;;
         --diff-file) DIFF_FILE="${2:?--diff-file requires a value}"; shift 2 ;;
-        --commit-count) COMMIT_COUNT="${2:-}"; shift 2 ;;
+        --commit-count) COMMIT_COUNT="${2:?--commit-count requires a value}"; shift 2 ;;
         --timing-task-kind) [[ -n "${2:-}" && "${2}" != --* ]] || { echo "launch-review.sh: --timing-task-kind requires a non-empty, non-flag-like value" >&2; exit 2; }; TIMING_TASK_KIND="$2"; shift 2 ;;
         --token-budget-cap) case "${2:-}" in ''|*[!0-9]*) echo "launch-review.sh: --token-budget-cap requires a positive integer" >&2; exit 2 ;; esac; (( 10#${2:-0} >= 1 )) || { echo "launch-review.sh: --token-budget-cap requires a positive integer" >&2; exit 2; }; TOKEN_BUDGET_CAP="$2"; shift 2 ;;
         --risk) [[ -n "${2:-}" ]] || { echo "launch-review.sh: --risk requires a value" >&2; exit 2; }; shift 2 ;;

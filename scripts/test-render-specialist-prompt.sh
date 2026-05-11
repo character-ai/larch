@@ -316,6 +316,23 @@ cache_output_3=$(LARCH_RENDER_CACHE_DIR="$CACHE_DIR" bash "$RENDERER" --agent-fi
 assert_contains "render cache: changed options miss cache" "Competition notice" "$cache_output_3"
 cache_count_2=$(find "$CACHE_DIR" -maxdepth 1 -type f -name 'r-*' | wc -l | tr -d ' ')
 assert_eq "render cache: changed options create second cache file" "2" "$cache_count_2"
+# --commit-count changes the cache key: use a fresh cache dir to test in isolation.
+CACHE_DIR2="$TMPDIR_CACHE/render-cache-2"
+cache_cc5_first=$(LARCH_RENDER_CACHE_DIR="$CACHE_DIR2" bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-structure.md" --mode diff --commit-count 5 2>/dev/null)
+assert_contains "render cache: commit-count=5 initial miss renders prompt" "Structure, KISS, and Maintainability" "$cache_cc5_first"
+cache_count_cc=$(find "$CACHE_DIR2" -maxdepth 1 -type f -name 'r-*' | wc -l | tr -d ' ')
+assert_eq "render cache: commit-count=5 writes one cache file" "1" "$cache_count_cc"
+# Overwrite with a sentinel so we can verify commit-count=5 hits this file.
+cache_file_cc5=$(find "$CACHE_DIR2" -maxdepth 1 -type f -name 'r-*' | head -1)
+printf 'CC5 SENTINEL\n' > "$cache_file_cc5"
+cache_cc5_hit=$(LARCH_RENDER_CACHE_DIR="$CACHE_DIR2" bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-structure.md" --mode diff --commit-count 5 2>/dev/null)
+assert_eq "render cache: commit-count=5 second render hits cache" "CC5 SENTINEL" "$cache_cc5_hit"
+# commit-count=6 must create a different cache entry (different key from count=5).
+cache_cc6=$(LARCH_RENDER_CACHE_DIR="$CACHE_DIR2" bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-structure.md" --mode diff --commit-count 6 2>/dev/null)
+# shellcheck disable=SC2016
+assert_contains "render cache: commit-count=6 misses cc5 cache and includes git-log" 'git log $(git merge-base HEAD main)..HEAD --oneline' "$cache_cc6"
+cache_count_cc6=$(find "$CACHE_DIR2" -maxdepth 1 -type f -name 'r-*' | wc -l | tr -d ' ')
+assert_eq "render cache: commit-count=6 creates a second cache entry" "2" "$cache_count_cc6"
 CACHE_SCOPE="$TMPDIR_CACHE/scope.txt"
 printf 'a.md\n' > "$CACHE_SCOPE"
 cache_desc_1=$(LARCH_RENDER_CACHE_DIR="$CACHE_DIR" bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-structure.md" --mode description --description-text "first description" --scope-files "$CACHE_SCOPE" 2>/dev/null)

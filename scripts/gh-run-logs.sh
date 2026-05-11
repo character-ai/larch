@@ -37,6 +37,6 @@ if [[ -z "$RUN_ID" ]] || [[ -z "$REPO" ]]; then
     usage; exit 1
 fi
 
-printf '--- CI log (run %s, repo %s) — last 100 lines shown. Full log: https://github.com/%s/actions/runs/%s ---\n' \
+printf -- '--- CI log (run %s, repo %s) — last 100 lines shown. Full log: https://github.com/%s/actions/runs/%s ---\n' \
     "$RUN_ID" "$REPO" "$REPO" "$RUN_ID"
 gh run view "$RUN_ID" --repo "$REPO" --log-failed | tail -100
