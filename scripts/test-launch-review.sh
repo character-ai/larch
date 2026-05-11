@@ -1619,6 +1619,24 @@ printf 'diagnostic noise\n' >&2
 STUB
 chmod +x "$STUB_BIN/gemini"
 
+DISABLED_OUTPUT="$TMPDIR/gemini-disabled.txt"
+DISABLED_STDERR="$TMPDIR/gemini-disabled.stderr"
+set +e
+PATH="$STUB_BIN:$PATH" GEMINI_REVIEW=0 \
+  "$GEMINI_LAUNCHER" --output "$DISABLED_OUTPUT" --timeout 1800 --prompt "test" >/dev/null 2>"$DISABLED_STDERR"
+DISABLED_CODE=$?
+set -e
+[[ "$DISABLED_CODE" -eq 0 ]] \
+  || fail "Expected disabled Gemini reviewer to exit 0, got $DISABLED_CODE"
+[[ -f "$DISABLED_OUTPUT" && ! -s "$DISABLED_OUTPUT" ]] \
+  || fail "Expected disabled Gemini reviewer to write an empty output file"
+grep -q 'disabled (set GEMINI_REVIEW=1 to enable)' "$DISABLED_STDERR" \
+  || fail "Expected disabled Gemini reviewer stderr guidance"
+[[ ! -e "${DISABLED_OUTPUT}.done" && ! -e "${DISABLED_OUTPUT}.meta" && ! -e "${DISABLED_OUTPUT}.diag" ]] \
+  || fail "Disabled Gemini reviewer should not write lifecycle sidecars"
+
+export GEMINI_REVIEW=1
+
 OUTPUT="$TMPDIR/gemini-review.txt"
 PROMPT_LOG="$TMPDIR/gemini-prompt.log"
 TOKEN_SESSION_FILE="$TMPDIR/gemini-token-session.txt"

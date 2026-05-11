@@ -18,6 +18,8 @@
 set -euo pipefail
 export LC_ALL=C
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+
 AGENT_FILE=""
 MODE=""
 DESCRIPTION_TEXT=""
@@ -25,6 +27,27 @@ SCOPE_FILES=""
 COMPETITION_NOTICE=false
 DIFF_FILE=""
 DIFF_MODE=""
+
+sha256_file() {
+  local path="$1"
+  if command -v shasum >/dev/null 2>&1; then
+    LC_ALL=C shasum -a 256 "$path" 2>/dev/null | awk '{print $1}'
+  elif command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$path" | awk '{print $1}'
+  else
+    return 1
+  fi
+}
+
+sha256_stdin() {
+  if command -v shasum >/dev/null 2>&1; then
+    LC_ALL=C shasum -a 256 2>/dev/null | awk '{print $1}'
+  elif command -v sha256sum >/dev/null 2>&1; then
+    sha256sum | awk '{print $1}'
+  else
+    return 1
+  fi
+}
 
 take_value() {
   local flag="$1"
@@ -86,7 +109,7 @@ case "$DIFF_MODE" in
 esac
 
 if [[ "$MODE" == "diff" && -z "$DIFF_MODE" && -n "$DIFF_FILE" ]]; then
-  CLASSIFIER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/classify-diff-mode.sh"
+  CLASSIFIER="$SCRIPT_DIR/classify-diff-mode.sh"
   if [[ -x "$CLASSIFIER" ]]; then
     if CLASSIFIER_OUTPUT=$("$CLASSIFIER" "$DIFF_FILE" 2>/dev/null); then
       CLASSIFIED_MODE="${CLASSIFIER_OUTPUT#DIFF_MODE=}"
@@ -105,8 +128,50 @@ if [[ -z "$DIFF_MODE" ]]; then
   DIFF_MODE="generic"
 fi
 
-# Extract agent body (everything after the second --- line).
-BODY=$(awk 'BEGIN{n=0} /^---[[:space:]]*$/{n++; if(n==2){found=1; next}} found{print}' "$AGENT_FILE")
+RENDER_CACHE_FILE=""
+if [[ -n "${LARCH_RENDER_CACHE_DIR:-}" ]]; then
+  AGENT_SHA=""
+  CACHE_KEY=""
+  if AGENT_SHA=$(sha256_file "$AGENT_FILE"); then
+    CACHE_KEY_INPUT=$(
+      printf 'agent_sha=%s\n' "$AGENT_SHA"
+      printf 'mode=%s\n' "$MODE"
+      printf 'description_text=%s\n' "$DESCRIPTION_TEXT"
+      printf 'scope_files=%s\n' "$SCOPE_FILES"
+      printf 'diff_mode=%s\n' "$DIFF_MODE"
+      printf 'diff_file=%s\n' "$DIFF_FILE"
+      printf 'competition_notice=%s\n' "$COMPETITION_NOTICE"
+    )
+    if CACHE_KEY=$(printf '%s' "$CACHE_KEY_INPUT" | sha256_stdin); then
+      if mkdir -p "$LARCH_RENDER_CACHE_DIR" 2>/dev/null; then
+        RENDER_CACHE_FILE="$LARCH_RENDER_CACHE_DIR/r-$CACHE_KEY"
+        if [[ -f "$RENDER_CACHE_FILE" ]]; then
+          if cat "$RENDER_CACHE_FILE"; then exit 0; fi
+          RENDER_CACHE_FILE=""
+        fi
+      else
+        RENDER_CACHE_FILE=""
+      fi
+    fi
+  fi
+fi
+
+load_agent_body() {
+  local agent_file="$1"
+  local agent_base
+  local pre_rendered
+  agent_base=$(basename "$agent_file" .md)
+  pre_rendered="$SCRIPT_DIR/../agents/pre-rendered/${agent_base}-body.txt"
+  if [[ -s "$pre_rendered" ]]; then
+    cat "$pre_rendered"
+  else
+    awk 'BEGIN{n=0} /^---[[:space:]]*$/{n++; if(n==2){found=1; next}} found{print}' "$agent_file"
+  fi
+}
+
+# Extract agent body (everything after the second --- line), or use the
+# generated static body when present.
+BODY=$(load_agent_body "$AGENT_FILE")
 
 if [[ -z "$BODY" ]]; then
   echo "render-specialist-prompt.sh: no body found in $AGENT_FILE (expected YAML frontmatter between --- fences)" >&2
@@ -122,8 +187,7 @@ BODY=$(printf '%s\n' "$BODY" | awk '
   !skip { print }
 ')
 
-# Compose the prompt.
-{
+render_prompt() {
   # Mode-specific preamble.
   if [[ "$MODE" == "diff" ]]; then
     if [[ -n "$DIFF_FILE" ]]; then
@@ -190,4 +254,21 @@ TAGGING_DESCRIPTION
 **Competition notice**: Your findings will be voted on by a 2-voter primary panel (Codex + Cursor); Claude acts as a conditional tie-breaker only on a 1Y/1N split. A finding accepted by 2+ YES votes earns you +1 point. Findings with exactly 1 YES earn 0 points. Findings with 0 YES but at least 1 EXONERATE earn 0 points (the panel recognized your concern as legitimate). Findings with 0 YES and 0 EXONERATE cost you -1 point. Focus on high-quality, actionable findings. Out-of-scope observations use **asymmetric scoring** — accepted OOS items (2+ YES) earn +1 point and are filed as GitHub issues; all other OOS outcomes (including unanimous rejection) score 0.
 COMPETITION
   fi
-} # All output goes to stdout.
+}
+
+if [[ -n "$RENDER_CACHE_FILE" ]]; then
+  RENDER_CACHE_TMP=""
+  if RENDER_CACHE_TMP=$(mktemp "${RENDER_CACHE_FILE}.tmp.XXXXXX" 2>/dev/null); then
+    if render_prompt > "$RENDER_CACHE_TMP"; then
+      mv "$RENDER_CACHE_TMP" "$RENDER_CACHE_FILE"
+      cat "$RENDER_CACHE_FILE"
+      exit 0
+    else
+      rc=$?
+      rm -f "$RENDER_CACHE_TMP"
+      exit "$rc"
+    fi
+  fi
+fi
+
+render_prompt

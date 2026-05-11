@@ -12,9 +12,10 @@
 - Cursor review launcher assertions from the former per-tool harness: JSON
   post-processing, outer retry metadata, prompt byte preservation, signal-trap
   sentinel publication, auth-preflight short-circuit, and dirty-tree sidecars.
-- Gemini review launcher assertions from the former per-tool harness: JSON
-  normalization, `jq` fail-closed behavior, model rejection, prompt hardening,
-  token-session rehydration, timeout clamping, and snapshot guard behavior.
+- Gemini review launcher assertions from the former per-tool harness:
+  `GEMINI_REVIEW=1` gating, JSON normalization, `jq` fail-closed behavior,
+  model rejection, prompt hardening, token-session rehydration, timeout
+  clamping, and snapshot guard behavior.
 
 ## Makefile
 

@@ -42,6 +42,7 @@ SESSION_ID=$(printf '%s\n' "$OUT" | awk -F= '$1 == "SESSION_ID" {print substr($0
 
 assert_contains "SESSION_TMPDIR=$TMPROOT/cache/larch/sessions/claude-implement-" "$OUT" "session tmpdir uses cache sessions root"
 assert_contains "SESSION_ID=" "$OUT" "session setup emits SESSION_ID"
+assert_contains "LARCH_RENDER_CACHE_DIR=$SESSION_TMPDIR/render-cache" "$OUT" "session setup emits render cache dir"
 assert_file_exists "$SESSION_TMPDIR/session-id" "session-id file written"
 assert_file_exists "$SESSION_TMPDIR/.larch-keepalive" "keepalive sentinel written"
 

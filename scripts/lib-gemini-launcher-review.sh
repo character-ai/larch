@@ -659,6 +659,12 @@ fi
 # under `set -e` with "value too great for base".
 TIMEOUT=$((10#$TIMEOUT))
 
+if [[ "${GEMINI_REVIEW:-0}" != "1" ]]; then
+    write_empty_output
+    printf 'launch-review.sh --tool gemini: disabled (set GEMINI_REVIEW=1 to enable)\n' >&2
+    exit 0
+fi
+
 if [[ -n "${IMPLEMENT_TMPDIR:-}" && -s "${IMPLEMENT_TMPDIR}/session-id" ]]; then
     file_id=$(tr -d '\r\n' < "${IMPLEMENT_TMPDIR}/session-id" 2>/dev/null || true)
     if [[ -n "$file_id" ]]; then export LARCH_TOKEN_SESSION_ID="$file_id"; fi

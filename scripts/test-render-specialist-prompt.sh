@@ -266,6 +266,44 @@ for rendered_name in docs_auto tests_explicit generated_auto mixed_auto descript
 done
 rm -rf "$TMPDIR_DIFFMODE"
 
+# 10. Pre-rendered body files are preferred when present.
+TMPDIR_PRERENDER=$(mktemp -d)
+cat > "$TMPDIR_PRERENDER/reviewer-structure.md" <<'EOF_PRERENDER_AGENT'
+---
+name: reviewer-structure
+---
+
+THIS TEMP BODY SHOULD NOT APPEAR
+EOF_PRERENDER_AGENT
+output_prerender=$(bash "$RENDERER" --agent-file "$TMPDIR_PRERENDER/reviewer-structure.md" --mode diff 2>/dev/null)
+assert_contains "pre-rendered body: uses generated reviewer body" "Structure, KISS, and Maintainability" "$output_prerender"
+assert_not_contains "pre-rendered body: ignores source body when generated body exists" "THIS TEMP BODY SHOULD NOT APPEAR" "$output_prerender"
+rm -rf "$TMPDIR_PRERENDER"
+
+# 11. LARCH_RENDER_CACHE_DIR caches exact render-option shapes and misses when
+# output-affecting inputs differ.
+TMPDIR_CACHE=$(mktemp -d)
+CACHE_DIR="$TMPDIR_CACHE/render-cache"
+cache_output_1=$(LARCH_RENDER_CACHE_DIR="$CACHE_DIR" bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-structure.md" --mode diff 2>/dev/null)
+assert_contains "render cache: initial miss renders prompt" "Structure, KISS, and Maintainability" "$cache_output_1"
+cache_count_1=$(find "$CACHE_DIR" -maxdepth 1 -type f -name 'r-*' | wc -l | tr -d ' ')
+assert_eq "render cache: first render writes one cache file" "1" "$cache_count_1"
+cache_file=$(find "$CACHE_DIR" -maxdepth 1 -type f -name 'r-*' | sed -n '1p')
+printf 'CACHE HIT SENTINEL\n' > "$cache_file"
+cache_output_2=$(LARCH_RENDER_CACHE_DIR="$CACHE_DIR" bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-structure.md" --mode diff 2>/dev/null)
+assert_eq "render cache: second identical render uses cached bytes" "CACHE HIT SENTINEL" "$cache_output_2"
+cache_output_3=$(LARCH_RENDER_CACHE_DIR="$CACHE_DIR" bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-structure.md" --mode diff --competition-notice 2>/dev/null)
+assert_contains "render cache: changed options miss cache" "Competition notice" "$cache_output_3"
+cache_count_2=$(find "$CACHE_DIR" -maxdepth 1 -type f -name 'r-*' | wc -l | tr -d ' ')
+assert_eq "render cache: changed options create second cache file" "2" "$cache_count_2"
+CACHE_SCOPE="$TMPDIR_CACHE/scope.txt"
+printf 'a.md\n' > "$CACHE_SCOPE"
+cache_desc_1=$(LARCH_RENDER_CACHE_DIR="$CACHE_DIR" bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-structure.md" --mode description --description-text "first description" --scope-files "$CACHE_SCOPE" 2>/dev/null)
+cache_desc_2=$(LARCH_RENDER_CACHE_DIR="$CACHE_DIR" bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-structure.md" --mode description --description-text "second description" --scope-files "$CACHE_SCOPE" 2>/dev/null)
+assert_contains "render cache: first description text present" "first description" "$cache_desc_1"
+assert_contains "render cache: second description text present after cache miss" "second description" "$cache_desc_2"
+rm -rf "$TMPDIR_CACHE"
+
 echo ""
 echo "render-specialist-prompt tests: $PASS passed, $FAIL failed"
 if [[ "$FAIL" -gt 0 ]]; then

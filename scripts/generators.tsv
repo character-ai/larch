@@ -7,6 +7,7 @@
 scripts/generate-code-reviewer-agent.sh	agents/code-reviewer.md
 scripts/generate-reviewer-correctness-edges-agent.sh	agents/reviewer-correctness-edges.md
 scripts/generate-reviewer-security-structure-tests-agent.sh	agents/reviewer-security-structure-tests.md
+scripts/generate-pre-rendered-reviewer-prompts.sh	agents/pre-rendered/.manifest
 scripts/generate-cursor-implementer.sh	agents/cursor-implementer.md
 scripts/generate-gemini-implementer.sh	agents/gemini-implementer.md
 scripts/generate-codex-implementer.sh	agents/codex-implementer.md

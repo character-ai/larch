@@ -199,6 +199,13 @@ fi
 : "${TIMING_TASK_KIND:=codex-review}"
 TIMING_START_S=$(date +%s)
 
+# Propagate render-specialist-prompt.sh cache dir from session context when not
+# already set. All reviewer launchers in the same Bash invocation inherit this,
+# enabling within-session cache sharing across parallel specialist launches.
+if [[ -z "${LARCH_RENDER_CACHE_DIR:-}" ]] && [[ -n "${IMPLEMENT_TMPDIR:-}" ]]; then
+    export LARCH_RENDER_CACHE_DIR="$IMPLEMENT_TMPDIR/render-cache"
+fi
+
 MODEL_ARGS_TMP=""
 CODEX_HOME_DIR=""
 DIRTY_TREE_WRITTEN=false

@@ -8,6 +8,13 @@ Gemini remains generic-only and rejects specialist flags.
 ## Invariants
 
 - `--tool` is required and must be one of `codex`, `cursor`, or `gemini`.
+- `--tool gemini` exits 0 with an empty output file unless `GEMINI_REVIEW=1`
+  is set in the environment (default off). No lifecycle sidecars are written
+  on the disabled path.
+- When `IMPLEMENT_TMPDIR` is set and `LARCH_RENDER_CACHE_DIR` is unset,
+  the launcher exports `LARCH_RENDER_CACHE_DIR=$IMPLEMENT_TMPDIR/render-cache`
+  so all `render-specialist-prompt.sh` subprocesses in the same Bash invocation
+  share the session render cache.
 - `--output` is validated through `scripts/lib-validate-meta-path.sh` before
   launcher side effects.
 - Codex and Cursor append `OUTER_LAUNCHER=<repo>/scripts/launch-review.sh`
