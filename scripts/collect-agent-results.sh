@@ -14,7 +14,8 @@
 #
 # Usage:
 #   collect-agent-results.sh --timeout <seconds> [--write-health <path>] \
-#     [--substantive-validation] <output-file> [<output-file> ...]
+#     [--substantive-validation] [--structured-reviewer-validation] \
+#     <output-file> [<output-file> ...]
 #
 # Options:
 #   --timeout <seconds>            Timeout for wait-for-reviewers.sh (e.g., 1860)
@@ -50,6 +51,15 @@
 #                                  --substantive-validation is not also passed.
 #                                  See docs/external-reviewers.md Output Validation
 #                                  for the per-skill opt-in matrix.
+#   --structured-reviewer-validation
+#                                  After retry and substantive validation settle,
+#                                  invoke scripts/validate-research-output.sh
+#                                  --structured-reviewer-mode on each STATUS=OK
+#                                  entry. Valid records are written to a derived
+#                                  sidecar path and emitted as STRUCTURED_SIDECAR.
+#                                  On validator failure, rewrite the entry as
+#                                  STATUS=NOT_SUBSTANTIVE and mark the tool
+#                                  unhealthy. Default OFF — opt-in per caller.
 #
 # Arguments:
 #   One or more output file paths (from run-external-agent.sh invocations).
@@ -62,6 +72,7 @@
 #   STATUS=<OK|TIMED_OUT|FAILED|EMPTY_OUTPUT|SENTINEL_TIMEOUT|NOT_SUBSTANTIVE|cap_hit>
 #   EXIT_CODE=<N>
 #   HEALTHY=<true|false>
+#   STRUCTURED_SIDECAR=<path>  (non-empty only when structured validation succeeds)
 #   FAILURE_REASON=<explanation>  (non-empty when STATUS != OK; explains the cause of failure)
 #
 # Exit codes:
@@ -106,7 +117,7 @@ exit_code_was_coerced() {
 build_missing_retry_sentinel_result() {
     local orig_output="$1"
     local tool="$2"
-    printf 'REVIEWER_FILE=%s|TOOL=%s|STATUS=EMPTY_OUTPUT|EXIT_CODE=99|HEALTHY=false|FAILURE_REASON=Retry process did not complete (sentinel file missing)' \
+    printf 'REVIEWER_FILE=%s|TOOL=%s|STATUS=EMPTY_OUTPUT|EXIT_CODE=99|HEALTHY=false|STRUCTURED_SIDECAR=|FAILURE_REASON=Retry process did not complete (sentinel file missing)' \
         "$orig_output" "$tool"
 }
 
@@ -118,6 +129,7 @@ TIMEOUT=""
 WRITE_HEALTH=""
 SUBSTANTIVE_VALIDATION="false"
 VALIDATION_MODE="false"
+STRUCTURED_REVIEWER_VALIDATION="false"
 OUTPUT_FILES=()
 
 while [[ $# -gt 0 ]]; do
@@ -130,8 +142,10 @@ while [[ $# -gt 0 ]]; do
             SUBSTANTIVE_VALIDATION="true"; shift ;;
         --validation-mode)
             VALIDATION_MODE="true"; shift ;;
+        --structured-reviewer-validation)
+            STRUCTURED_REVIEWER_VALIDATION="true"; shift ;;
         --help)
-            echo "Usage: collect-agent-results.sh --timeout <seconds> [--write-health <path>] [--substantive-validation [--validation-mode]] <output-file>..." >&2
+            echo "Usage: collect-agent-results.sh --timeout <seconds> [--write-health <path>] [--substantive-validation [--validation-mode]] [--structured-reviewer-validation] <output-file>..." >&2
             exit 0 ;;
         -*)
             echo "collect-agent-results.sh: unknown option: $1" >&2; exit 1 ;;
@@ -282,6 +296,19 @@ sanitize_failure_reason() {
             print;
         }
     }'
+}
+
+with_structured_sidecar_field() {
+    local entry="$1"
+    local sidecar="$2"
+    if [[ "$entry" == *"|STRUCTURED_SIDECAR="* ]]; then
+        printf '%s' "$entry"
+        return 0
+    fi
+    printf '%s|STRUCTURED_SIDECAR=%s|FAILURE_REASON=%s' \
+        "${entry%|FAILURE_REASON=*}" \
+        "$sidecar" \
+        "${entry##*|FAILURE_REASON=}"
 }
 
 # --- Helper: build failure reason from .diag file or status ---
@@ -866,6 +893,42 @@ if [[ "$SUBSTANTIVE_VALIDATION" == "true" ]]; then
     done
 fi
 
+# --- 3.6. Structured reviewer validation (opt-in) ---
+if [[ "$STRUCTURED_REVIEWER_VALIDATION" == "true" ]]; then
+    VALIDATOR="$SCRIPT_DIR/validate-research-output.sh"
+    for j in "${!RESULTS[@]}"; do
+        entry="${RESULTS[$j]}"
+        rf_field="${entry%%|*}"
+        REVIEWER_FILE="${rf_field#REVIEWER_FILE=}"
+        rest1="${entry#*|}"
+        tool_field="${rest1%%|*}"
+        ENTRY_TOOL="${tool_field#TOOL=}"
+        rest2="${rest1#*|}"
+        status_field="${rest2%%|*}"
+        ENTRY_STATUS="${status_field#STATUS=}"
+
+        if [[ "$ENTRY_STATUS" != "OK" ]]; then
+            RESULTS[j]=$(with_structured_sidecar_field "$entry" "")
+            continue
+        fi
+
+        case "$ENTRY_TOOL" in
+            cursor|codex|gemini) STRUCTURED_SIDECAR="${REVIEWER_FILE}.tsv" ;;
+            *) STRUCTURED_SIDECAR="${REVIEWER_FILE}.jsonl" ;;
+        esac
+
+        DIAG=$("$VALIDATOR" --structured-reviewer-mode --write-structured "$STRUCTURED_SIDECAR" "$REVIEWER_FILE" 2>&1)
+        VAL_EXIT=$?
+        if [[ "$VAL_EXIT" -eq 0 ]]; then
+            RESULTS[j]=$(with_structured_sidecar_field "$entry" "$STRUCTURED_SIDECAR")
+        else
+            DIAG_SAN=$(printf '%s' "$DIAG" | tr '|\n' '/ ' | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//' | cut -c1-200)
+            RESULTS[j]="REVIEWER_FILE=$REVIEWER_FILE|TOOL=$ENTRY_TOOL|STATUS=NOT_SUBSTANTIVE|EXIT_CODE=0|HEALTHY=false|STRUCTURED_SIDECAR=|FAILURE_REASON=$DIAG_SAN"
+            set_tool_unhealthy "$ENTRY_TOOL"
+        fi
+    done
+fi
+
 # --- 4. Emit structured results ---
 FIRST=true
 for result in "${RESULTS[@]}"; do
@@ -875,6 +938,7 @@ for result in "${RESULTS[@]}"; do
         echo ""
     fi
     # Convert pipe-delimited to newlines
+    result=$(with_structured_sidecar_field "$result" "")
     echo "$result" | tr '|' '\n'
 done
 

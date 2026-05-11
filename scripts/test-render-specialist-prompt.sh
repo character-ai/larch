@@ -65,6 +65,8 @@ SPECIALISTS=(
   reviewer-testing
   reviewer-security
   reviewer-edge-cases
+  reviewer-security-structure-tests
+  reviewer-correctness-edges
 )
 
 # 1. All specialist agent files exist.
@@ -135,6 +137,12 @@ else
   PASS=$((PASS + 1))
 fi
 assert_contains "competition notice present with flag" "Competition notice" "$output_with_comp"
+
+# 5b. Internal Claude calibration examples are stripped from external renders.
+output_code_reviewer=$(bash "$RENDERER" --agent-file "$REPO_ROOT/agents/code-reviewer.md" --mode diff 2>/dev/null)
+assert_not_contains "calibration strip: example URI absent" "example://calibration" "$output_code_reviewer"
+assert_not_contains "calibration strip: Example A absent" "Example A" "$output_code_reviewer"
+assert_not_contains "calibration strip: Example B absent" "Example B" "$output_code_reviewer"
 
 # 6. Error cases.
 assert_exit_code "missing --agent-file" "2" bash "$RENDERER" --mode diff

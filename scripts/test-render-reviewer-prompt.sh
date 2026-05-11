@@ -88,6 +88,12 @@ if grep -Fq 'No in-scope issues found.' "$HAPPY_OUT"; then
 fi
 note_pass
 
+# Assertion: internal Claude calibration examples are stripped from external renders.
+if grep -Fq 'example://calibration' "$HAPPY_OUT" || grep -Fq 'Example A' "$HAPPY_OUT" || grep -Fq 'Example B' "$HAPPY_OUT"; then
+  fail "happy: calibration examples should be stripped from external render"
+fi
+note_pass
+
 # Assertion: each in-scope instruction line appears as its own bullet.
 while IFS= read -r line; do
   [[ -n "$line" ]] || continue
