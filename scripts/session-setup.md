@@ -17,6 +17,11 @@ Immediately after `mktemp -d`, the script writes `session-id` and emits
 `PREFIX=`, `CREATED=`, and `NOTE=ext-cleaners-please-skip`. The sentinel is
 advisory; write failures warn on stderr and do not abort setup.
 
+The script also emits `LARCH_RENDER_CACHE_DIR=$SESSION_TMPDIR/render-cache`.
+Callers that evaluate the session-env output inherit a session-scoped cache for
+`scripts/render-specialist-prompt.sh`; the renderer creates the directory
+lazily and falls back to uncached rendering if the directory cannot be created.
+
 ## Reviewer probe contract
 
 - `--check-reviewers` probes Codex and Cursor. Gemini probe removed in #1720 (Part 1) — it ran with workspace-write access and modified the working tree.

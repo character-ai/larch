@@ -177,7 +177,7 @@ The legacy `--codex-available true|false` knob is still accepted by the dispatch
 
 ### External Agent Model Configuration
 
-These variables control which model Cursor, Codex, and Gemini use when running as external agents. Cursor and Codex run reviews, sketches, voting, and implementation (when selected with `--coder`). Gemini's only currently-active path is implementation (when selected with `--coder=gemini`); the Gemini reviewer call sites have been removed from `/review` and `/implement --quick`, so the dormant reviewer launcher (`scripts/launch-review.sh --tool gemini`) and Gemini health probe still consume the same `LARCH_GEMINI_MODEL` resolution but the launcher itself is not invoked by any current skill. When unset, Cursor defaults to `composer-2` (with the `/max-mode on.` slash-command prefix applied to every substantive prompt via `scripts/cursor-wrap-prompt.sh`), Codex defaults to `gpt-5.5` (hardcoded in `scripts/agent-model-args.sh`), and Gemini defaults to `gemini-2.5-pro`. The model is passed via `--model` for Cursor and the Gemini implementer, and via `-m` for Codex and the dormant Gemini reviewer launcher. To restore the pre-`composer-2` behavior, set `LARCH_CURSOR_MODEL=composer-2-fast`.
+These variables control which model Cursor, Codex, and Gemini use when running as external agents. Cursor and Codex run reviews, sketches, voting, and implementation (when selected with `--coder`). Gemini's only currently-active path is implementation (when selected with `--coder=gemini`); the Gemini reviewer call sites have been removed from `/review` and `/implement --quick`, so the dormant reviewer launcher (`scripts/launch-review.sh --tool gemini`) is additionally gated behind `GEMINI_REVIEW=1`. When unset, Cursor defaults to `composer-2` (with the `/max-mode on.` slash-command prefix applied to every substantive prompt via `scripts/cursor-wrap-prompt.sh`), Codex defaults to `gpt-5.5` (hardcoded in `scripts/agent-model-args.sh`), and Gemini defaults to `gemini-2.5-pro`. The model is passed via `--model` for Cursor and the Gemini implementer, and via `-m` for Codex and the dormant Gemini reviewer launcher when explicitly enabled. To restore the pre-`composer-2` behavior, set `LARCH_CURSOR_MODEL=composer-2-fast`.
 
 `scripts/agent-model-args.sh` emits one argv token per stdout line. In-tree consumers read that stream into Bash arrays and expand the arrays directly; out-of-tree callers must not use command substitution plus shell word-splitting. Explicit blank / whitespace-only model values and values containing POSIX `[[:cntrl:]]` characters are rejected before an external CLI is launched. Human diagnostics and Codex effort warnings are stderr-only.
 
@@ -221,6 +221,24 @@ The model name to pass to the dormant Gemini reviewer launcher's `-m` flag and t
 - Falls back to plugin `gemini_model` userConfig (`CLAUDE_PLUGIN_OPTION_GEMINI_MODEL`) when configured, otherwise defaults to `gemini-2.5-pro`
 - If your Gemini installation does not support `gemini-2.5-pro`, set this variable (or the plugin userConfig) to a supported model
 - Gemini has no separate reasoning-effort CLI flag; choose the model value to trade reasoning depth versus latency/cost
+
+### `GEMINI_REVIEW`
+
+Opt-in gate for the dormant Gemini reviewer launcher
+(`scripts/launch-review.sh --tool gemini`).
+
+**When set to `1`:**
+- The Gemini reviewer launcher proceeds after normal argv validation and uses
+  `LARCH_GEMINI_MODEL` resolution.
+- You still need a working Gemini CLI/API setup, including any `GEMINI_API_KEY`
+  or equivalent authentication your Gemini CLI installation requires.
+
+**When unset or set to any other value:**
+- A valid `launch-review.sh --tool gemini` invocation writes an empty output
+  file, prints `disabled (set GEMINI_REVIEW=1 to enable)` on stderr, and exits
+  0 without launching Gemini.
+- Gemini implementation (`/implement --coder=gemini`) is unaffected; this gate
+  applies only to the reviewer launcher.
 
 ### `LARCH_CODEX_EFFORT`
 

@@ -7,6 +7,9 @@
 
 - No shebang and no `set -e`; the caller owns process semantics.
 - Guarded by `LARCH_LIB_GEMINI_LAUNCHER_REVIEW_LOADED` for idempotent sourcing.
+- `GEMINI_REVIEW=1` is required to run the dormant reviewer lane. Without it,
+  a valid invocation writes an empty output file, prints an enablement hint on
+  stderr, and exits 0 before launching Gemini or writing lifecycle sidecars.
 - Defines `_launch_gemini`, which preserves Gemini review JSON normalization,
   model resolution, prompt hardening, dirty-tree sidecar publication, timing
   rows, and the tracked/index snapshot guard.

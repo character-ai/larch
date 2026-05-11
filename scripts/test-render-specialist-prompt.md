@@ -13,6 +13,8 @@
 8. `--diff-file` preamble routing
 9. Diff-mode classifier and focused prompt routing for docs-only, test-only, generated-only, and generic diffs
 10. Absence of max-effort prose in all five tagging variants; launcher wrappers own effort handling
+11. Pre-rendered reviewer body lookup
+12. `LARCH_RENDER_CACHE_DIR` cache hit and cache miss behavior
 
 **Makefile wiring**: `make test-harnesses` target.
 

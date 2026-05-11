@@ -38,6 +38,7 @@
 # Output (KEY=value lines on stdout):
 #   SESSION_TMPDIR=<path>       Always output (fresh per invocation)
 #   SESSION_ID=<value>          Always output (also written to SESSION_TMPDIR/session-id)
+#   LARCH_RENDER_CACHE_DIR=<path> Always output (session-scoped renderer cache)
 #   REPO=<owner/repo>           Output unless --skip-repo-check
 #   REPO_UNAVAILABLE=true|false Output unless --skip-repo-check
 #   CODEX_AVAILABLE=true|false  Output when --check-reviewers
@@ -256,6 +257,7 @@ printf '%s\n' "$SESSION_ID" > "$SESSION_TMPDIR/session-id"
 write_keepalive_sentinel
 echo "SESSION_TMPDIR=$SESSION_TMPDIR"
 echo "SESSION_ID=$SESSION_ID"
+echo "LARCH_RENDER_CACHE_DIR=$SESSION_TMPDIR/render-cache"
 
 # --- 2a. Bridge reviewer model env vars from plugin userConfig ---
 if [[ -z "${LARCH_CURSOR_MODEL:-}" && -n "${CLAUDE_PLUGIN_OPTION_CURSOR_MODEL:-}" ]]; then
