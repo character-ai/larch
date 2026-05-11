@@ -71,5 +71,6 @@ done
 assert_exit_2 invalid-archetype bash "$RENDERER" --archetype bogus --vendor codex --plan-file "$PLAN_FILE"
 assert_exit_2 invalid-vendor bash "$RENDERER" --archetype arch --vendor claude --plan-file "$PLAN_FILE"
 assert_exit_2 missing-plan-file bash "$RENDERER" --archetype arch --vendor cursor
+assert_exit_2 nonexistent-plan-file bash "$RENDERER" --archetype arch --vendor cursor --plan-file /nonexistent/plan.txt
 
 echo "test-plan-review-prompt: ok"
