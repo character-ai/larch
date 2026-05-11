@@ -30,8 +30,15 @@ resolve_implement_tmpdir() {
         [[ -d "$root" ]] || continue
         for dir in "$root"/claude-implement-*; do
             [[ -d "$dir" ]] || continue
-            manifest="$dir/design-export/manifest.env"
-            [[ -f "$manifest" ]] || continue
+            # Accept design manifest (normal path) or review summary (both-externals-down
+            # path that skips /design but still runs /review — issue #1862).
+            local manifest=""
+            if [[ -f "$dir/design-export/manifest.env" ]]; then
+                manifest="$dir/design-export/manifest.env"
+            elif [[ -f "$dir/review-round-summary.md" ]]; then
+                manifest="$dir/review-round-summary.md"
+            fi
+            [[ -n "$manifest" ]] || continue
 
             keepalive="$dir/.larch-keepalive"
             [[ -f "$keepalive" ]] || continue

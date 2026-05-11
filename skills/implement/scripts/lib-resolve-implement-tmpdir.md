@@ -1,12 +1,14 @@
 # skills/implement/scripts/lib-resolve-implement-tmpdir.sh — contract
 
 `lib-resolve-implement-tmpdir.sh` is a sourced-only helper for the
-post-/design hook scripts. It exposes `resolve_implement_tmpdir <hook-cwd>`,
+post-/design and post-/review hook scripts. It exposes `resolve_implement_tmpdir <hook-cwd>`,
 enumerates `${XDG_CACHE_HOME:-$HOME/.cache}/larch/sessions`, `/tmp`, and
-`/private/tmp` for `claude-implement-*` directories with
-`design-export/manifest.env`, requires every candidate to provide
-`.larch-keepalive` whose `CLONE_PATH` exactly matches the supplied hook cwd,
-and returns the freshest eligible manifest mtime with lexicographic tie-break.
+`/private/tmp` for `claude-implement-*` directories that have either
+`design-export/manifest.env` (normal path) or `review-round-summary.md`
+(both-externals-down path that skips `/design` — issue #1862), requires every
+candidate to provide `.larch-keepalive` whose `CLONE_PATH` exactly matches the
+supplied hook cwd, and returns the freshest eligible sentinel mtime with
+lexicographic tie-break.
 **Empty `<hook-cwd>` is fail-open by construction**: the helper returns
 immediately without scanning any session root, so a hook stdin that omits
 `cwd` (or has `cwd=""`, or whose cwd field could not be parsed because `jq`
@@ -32,7 +34,7 @@ Candidate eligibility additionally applies two layered checks on top of
    exact-match branch reachable in production.
 2. **Wall-clock TTL backstop.** Applied only when session-id binding did not
    produce an exact match (i.e. env unset OR session check skipped).
-   Candidates whose `manifest.env` mtime age `now - mtime` is greater than or
+   Candidates whose accepted sentinel mtime age `now - mtime` is greater than or
    equal to `LARCH_IMPLEMENT_TMPDIR_TTL_SECONDS` (default 21600 = 6 hours;
    set to 0 to disable) are skipped. The window is `[0, ttl)` exclusive at
    the right boundary — a candidate exactly `ttl` seconds old is treated as

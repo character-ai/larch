@@ -1236,6 +1236,12 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 # timing-mark Step 6 — checks second pass
 ```
 
+**Post-/review boundary sentinel**: the three required post-/review actions (Cross-Skill Health Propagation + Track Rejected Code Review Findings + Step 6 breadcrumb) are all complete once this step is reached. Write `.review-boundary-passed` immediately at Step 6 entry to release `hook-stop-fail-close.sh`'s post-/review Stop hook guard (which blocks session stop while `review-round-summary.md` exists without this sentinel — issue #1862):
+
+```bash
+touch "$IMPLEMENT_TMPDIR/.review-boundary-passed"
+```
+
 Check whether Step 5 modified files (both modes). Detection covers staged + unstaged + (current untracked − pre-/review snapshot, when the snapshot is present):
 
 ```bash
