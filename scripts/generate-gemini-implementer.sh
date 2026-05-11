@@ -66,6 +66,11 @@ sed \
   -e 's/TOOL_COMMIT_STDERR/gemini-commit-stderr.txt/g' \
   "$BASE" >>"$TMP"
 
+if grep -q 'TOOL_MODIFIED_HISTORY\|TOOL_COMMIT_STDERR' "$TMP"; then
+  echo "ERROR: unresolved placeholder in generated Gemini prompt" >&2
+  exit 1
+fi
+
 if [[ "$MODE" == "check" ]]; then
   if ! diff -u "$AGENT_FILE" "$TMP"; then
     echo "" >&2
