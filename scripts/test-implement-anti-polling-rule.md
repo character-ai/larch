@@ -7,14 +7,14 @@ Regression harness pinning the AGENTS.md anti-polling-loop rule and its mirror i
 Issue #1011 extended the original Monitor-only rule to forbid Bash `run_in_background` polling loops (`for`/`while`/`until` + `sleep`) used to wait on another `run_in_background` job. The rule lives in two places:
 
 - `AGENTS.md` — the canonical bullet covering both Monitor and Bash polling loops.
-- `skills/implement/SKILL.md` — inline reminders at the two Step 5 quick-mode parallel-Bash-spawning sites (`5.3-rounds1to3` and `5.3-generic`) that `collect-agent-results.sh` is the wait point.
+- `skills/implement/SKILL.md` — inline reminder at the Step 5 quick-mode parallel-Bash-spawning site (`5.3-rounds1to3`) that `collect-agent-results.sh` is the wait point. (The `5.3-generic` site was removed when rounds 4-7 were eliminated.)
 
 Without the inline reminders, future quick-mode review work tends to re-introduce the same anti-pattern under time pressure (the failure mode that motivated #1011 in the first place: a 30-minute stale poller waiting on a Codex run that had already failed).
 
 ## Invariants asserted
 
 - `AGENTS.md` carries the extended phrasing `Don't spawn a Monitor or a Bash` and explicitly mentions the `for`/`while`/`until` + `sleep` form.
-- `skills/implement/SKILL.md` contains the literal `Do NOT add a Bash polling loop to wait` inside BOTH the `**5.3-rounds1to3` heading-bounded block AND the `**5.3-generic` heading-bounded block (each block is extracted by an `awk` range up to the next `**5.3` / `**5.4` boundary). A global count is insufficient — the per-site assertion catches a refactor that duplicates the reminder under one heading while dropping it from the other.
+- `skills/implement/SKILL.md` contains the literal `Do NOT add a Bash polling loop to wait` inside the `**5.3-rounds1to3` heading-bounded block (extracted by an `awk` range up to the next `**5.3` / `**5.4` boundary).
 - The same file references `collect-agent-results.sh` as the wait point.
 
 ## Wiring
