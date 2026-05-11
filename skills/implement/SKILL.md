@@ -1435,13 +1435,19 @@ Runs unconditionally after Step 7 (regardless of Steps 6-7 skip).
 
 If `quick_mode=true`: print `⏩ 7a: code flow status=skip reason=quick-mode elapsed=<elapsed>`, still write the `diagrams` anchor fragment (Architecture Diagram + Code-Flow-skipped placeholder per the Anchor-section fragment — `diagrams` sub-section below) so the Architecture Diagram is not silently omitted from the anchor, then proceed to Step 8.
 
-If `quick_mode=false`: first check whether the committed diff is small and non-runtime. Count the files changed between the feature branch and `origin/main`:
+If `quick_mode=false`: first check whether the committed diff is small and non-runtime. Compute the merge-base, then enumerate changed files relative to `origin/main`:
 
 ```bash
-CHANGED_COUNT=$(git diff --name-only "$(git merge-base HEAD origin/main 2>/dev/null)" 2>/dev/null | wc -l | tr -d ' ')
+MERGE_BASE=$(git merge-base HEAD origin/main 2>/dev/null) || MERGE_BASE=""
+if [ -n "$MERGE_BASE" ]; then
+  CHANGED_FILES=$(git diff --name-only "${MERGE_BASE}..HEAD" 2>/dev/null)
+else
+  CHANGED_FILES=""
+fi
+CHANGED_COUNT=$(printf '%s\n' "$CHANGED_FILES" | grep -c . 2>/dev/null || echo 0)
 ```
 
-Check whether every changed path is non-runtime (documentation or configuration only — all files have extensions `.md`, `.txt`, or `.tsv`, are named `CHANGELOG` or `CHANGELOG.md`, or reside under `docs/`). If both conditions hold (`CHANGED_COUNT -le 2` AND every changed file is non-runtime): print `⏩ 7a: code flow status=skip reason=small-non-runtime-change elapsed=<elapsed>`, still write the `diagrams` anchor fragment (Architecture Diagram + placeholder `"(Code Flow Diagram skipped — small/non-runtime change)"` for Code Flow — see the `diagrams` sub-section below), and proceed to Step 8. On any `git` command failure, treat this check as inconclusive and proceed with normal generation.
+If `MERGE_BASE` is empty, or `CHANGED_COUNT` is 0 (diff failed or branch has no commits vs main), treat this check as inconclusive and proceed with normal generation. Otherwise check whether `CHANGED_COUNT` is 1 or 2 AND every path in `CHANGED_FILES` is non-runtime: all files reside under `docs/`, are named `CHANGELOG` or `CHANGELOG.md`, or have extension `.txt` or `.tsv` (note: `.md` files outside `docs/` — including `skills/**`, `agents/**`, and `SKILL.md` — are not automatically non-runtime and do not qualify). If both conditions hold: print `⏩ 7a: code flow status=skip reason=small-non-runtime-change elapsed=<elapsed>`, still write the `diagrams` anchor fragment (Architecture Diagram + placeholder `"(Code Flow Diagram skipped — small/non-runtime change)"` for Code Flow — see the `diagrams` sub-section below), and proceed to Step 8.
 
 Otherwise, generate a mermaid Code Flow Diagram from the actual committed implementation. Focus on **runtime behavior** — function call sequences, data flow, control flow. Do NOT duplicate the Architecture Diagram's structural view. Choose the appropriate mermaid type (`sequenceDiagram`, `flowchart`, `stateDiagram`, `graph`, etc.). Diagram contents must obey `${CLAUDE_PLUGIN_ROOT}/skills/shared/mermaid-safe-content.md`. Write the diagram to `$IMPLEMENT_TMPDIR/code-flow-diagram.candidate.md` first, including the `## Code Flow Diagram` heading and mermaid fence; validate it with `${CLAUDE_PLUGIN_ROOT}/scripts/sanitize-mermaid-fragment.sh --input "$IMPLEMENT_TMPDIR/code-flow-diagram.candidate.md" --from-md --warnings-step "7a"`, then promote it to `$IMPLEMENT_TMPDIR/code-flow-diagram.md` only on `STATUS=ok`. Print the promoted diagram under a `## Code Flow Diagram` header with a mermaid code fence.
 
