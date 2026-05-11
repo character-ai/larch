@@ -458,7 +458,7 @@ if : > "$SIDECAR" 2>/dev/null; then
         --output-last-message "$OUTPUT" \
         -- \
         "$PROMPT" \
-        2>>"$SIDECAR" || EXIT_CODE=$?
+        >>"$SIDECAR" 2>&1 || EXIT_CODE=$?
 else
     SIDECAR=/dev/null
     CODEX_HOME="$CODEX_HOME_DIR" \
@@ -475,7 +475,7 @@ else
         --output-last-message "$OUTPUT" \
         -- \
         "$PROMPT" \
-        2>/dev/null || EXIT_CODE=$?
+        >/dev/null 2>&1 || EXIT_CODE=$?
 fi
 
 codex_launcher_append_outer_meta "${OUTPUT}.meta" "$SCRIPT_DIR/launch-review.sh" "$PROMPT_FILE_SIDECAR" "$PWD"
