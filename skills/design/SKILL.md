@@ -163,7 +163,7 @@ After `session-setup.sh` returns and `DESIGN_TMPDIR` is confirmed, compute run p
 1. If `--design-classification <value>` was supplied AND `branch_info_supplied=true`, accept the forwarded value (`TRIVIAL_DOC_ONLY`, `SIMPLE`, or `HARD`) without re-classifying. Set `design_classification_source=caller-forwarded`.
 2. Otherwise, classify from `FEATURE_DESCRIPTION` plus a light codebase scan of the obvious target files (Read / Grep / Glob; roughly the same ~30 LOC scan used by `/implement`'s SIMPLE classifier). Set `design_classification_source=router-pre-design`.
 3. `TRIVIAL_DOC_ONLY` is allowed only when the codebase scan confirms the change is documentation/prose-only and no runtime files, scripts, hooks, generated artifacts, or security behavior need edits. If the scan cannot confirm that, default to `SIMPLE`.
-4. Derive `sketch_budget`: if `full_mode=true`, use `4`; else if `quick_mode=true`, cap the classification budget at `2`; else map `TRIVIAL_DOC_ONLY -> 0`, `SIMPLE -> 2`, `HARD -> 4`.
+4. Derive `sketch_budget`: if `full_mode=true`, use `4`; else if `quick_mode=true`, use `min(classification_budget, 2)` — where `classification_budget` is derived in the next step (so `TRIVIAL_DOC_ONLY -> 0`, `SIMPLE -> 2`, `HARD -> 4`; the min preserves the 0-budget path, not just caps non-trivial tasks); else use `classification_budget` directly.
 5. Derive `review_budget`: `quick` when `quick_mode=true`, otherwise `full`.
 6. Derive `workflow_path`: `SIMPLE` for `TRIVIAL_DOC_ONLY` or `SIMPLE`, otherwise `HARD`.
 
