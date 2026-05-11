@@ -122,9 +122,9 @@ cursor_available=<true|false>
 Follow the instructions in ${CLAUDE_PLUGIN_ROOT}/skills/review/references/heavy-worker.md exactly.
 ```
 
-> **Continue after subagent returns.** When the Agent tool returns, parse the return text for `REVIEW_HEAVY=complete` or `REVIEW_HEAVY=failed REASON=<token>`. Do NOT end the turn, write a summary, or produce a handoff message — proceed immediately per the branch below.
+> **Continue after subagent returns.** When the Agent tool returns, parse the return text for `REVIEW_HEAVY=complete` or `REVIEW_HEAVY=failed REASON=<token>`. The success return may include additional `KEY=value` lines such as `REVIEW_SUMMARY_FILE=<path>` after the first line. Do NOT end the turn, write a summary, or produce a handoff message — proceed immediately per the branch below.
 
-- **`REVIEW_HEAVY=complete`**: Read `$REVIEW_TMPDIR/review-round-summary.md` (exists when the subagent succeeded). The code edits made by Step 3e are already in the git working tree. `$REVIEW_TMPDIR/review-dirty-tree-summary.env` is already written by the subagent. Proceed to Step 4 using the file-backed artifacts: Step 4a prints `review-round-summary.md` only for standalone invocations; nested diff mode copies it to the parent tmpdir and emits only the `### review-result` footer. Step 5a reads `review-dirty-tree-summary.env` as-is (already aggregated). **Skip Steps 1-3 entirely.**
+- **`REVIEW_HEAVY=complete`**: Read `$REVIEW_TMPDIR/review-round-summary.md` (exists when the subagent succeeded). Parse `REVIEW_SUMMARY_FILE` from the return KV block as a routing signal only. For security, validate the fixed path `$REVIEW_TMPDIR/review-summary.json` rather than trusting the returned path: it must be a non-symlink regular file, size ≤2 KB, `jq . "$REVIEW_TMPDIR/review-summary.json"` must parse, and `.schema_version == 1`. When `SESSION_ENV_PATH` is non-empty and validation succeeds, copy it to `$(dirname "$SESSION_ENV_PATH")/review-summary.json`; validation failure only disables the structured footer field and consumers fall back to `REVIEW_ROUND_SUMMARY_FILE` / footer counts. The code edits made by Step 3e are already in the git working tree. `$REVIEW_TMPDIR/review-dirty-tree-summary.env` is already written by the subagent. Proceed to Step 4 using the file-backed artifacts: Step 4a prints `review-round-summary.md` only for standalone invocations; nested diff mode copies it to the parent tmpdir and emits only the `### review-result` footer. Step 5a reads `review-dirty-tree-summary.env` as-is (already aggregated). **Skip Steps 1-3 entirely.**
 - **`REVIEW_HEAVY=failed REASON=<token>`**: Print `**⚠ /review subagent failed: $REASON. Falling back to inline review.**`, set `subagent_mode=false`, and continue to Step 1 below (inline fallback).
 - **Return text missing `REVIEW_HEAVY=`** (subagent stalled or suspended): Print `**⚠ /review subagent returned without REVIEW_HEAVY sentinel. Falling back to inline review.**`, set `subagent_mode=false`, and continue to Step 1.
 
@@ -360,7 +360,7 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 
 `$REVIEW_TMPDIR/review-round-summary.md` is the file-backed source for Step 4 human-readable summary content.
 
-**Subagent path** (`subagent_mode=true` AND `REVIEW_HEAVY=complete`): the heavy worker already wrote the summary directly to `$(dirname "$SESSION_ENV_PATH")/review-round-summary.md` (the stable parent-tmpdir path). No copy is needed; the file at the parent-tmpdir path is already present.
+**Subagent path** (`subagent_mode=true` AND `REVIEW_HEAVY=complete`): the heavy worker already wrote the Markdown summary directly to `$(dirname "$SESSION_ENV_PATH")/review-round-summary.md` (the stable parent-tmpdir path). No copy is needed for the Markdown file; the file at the parent-tmpdir path is already present. If the fixed `$REVIEW_TMPDIR/review-summary.json` validated after the subagent returned, the parent has already copied it to `$(dirname "$SESSION_ENV_PATH")/review-summary.json`.
 
 **Inline path** (inline mode or subagent fallback): compose the final summary below, write it to `$REVIEW_TMPDIR/review-round-summary.md`, and when `SESSION_ENV_PATH` is non-empty also copy it to `$(dirname "$SESSION_ENV_PATH")/review-round-summary.md` (the stable parent-tmpdir path that `/implement` reads and that survives Step 5 cleanup).
 
@@ -384,9 +384,10 @@ ROUNDS=<n>
 ACCEPTED=<n>
 REJECTED=<n>
 REVIEW_ROUND_SUMMARY_FILE=<path>
+[REVIEW_SUMMARY_FILE=<path>]
 ```
 
-Substitute `ROUNDS` with the total diff-mode review rounds completed, `ACCEPTED` with the total accepted in-scope findings across all rounds, `REJECTED` with the total rejected or exonerated in-scope findings across all rounds, and `REVIEW_ROUND_SUMMARY_FILE` with `$(dirname "$SESSION_ENV_PATH")/review-round-summary.md`. Do not print `review-round-summary.md`, voting details, scoreboards, round summaries, breadcrumbs, or explanatory prose in nested diff mode; `/implement` reads the summary artifact directly.
+Substitute `ROUNDS` with the total diff-mode review rounds completed, `ACCEPTED` with the total accepted in-scope findings across all rounds, `REJECTED` with the total rejected or exonerated in-scope findings across all rounds, and `REVIEW_ROUND_SUMMARY_FILE` with `$(dirname "$SESSION_ENV_PATH")/review-round-summary.md`. Include `REVIEW_SUMMARY_FILE=$(dirname "$SESSION_ENV_PATH")/review-summary.json` only when that fixed parent-tmpdir copy exists and passed the validation above; otherwise omit the line. Do not print `review-round-summary.md`, voting details, scoreboards, round summaries, breadcrumbs, or explanatory prose in nested diff mode; `/implement` reads the summary artifact directly.
 
 ### 4b — Description-mode /umbrella filing (default in description mode; skipped when --no-issues)
 

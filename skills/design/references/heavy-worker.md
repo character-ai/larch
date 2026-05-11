@@ -89,9 +89,35 @@ Write these files under `$DESIGN_TMPDIR/`:
 - `accepted-plan-findings.md` (may be empty)
 - `rejected-findings.md` (may be empty)
 - `oos.md` (may be empty; parent `/implement` also consumes `$(dirname "$SESSION_ENV_PATH")/oos-accepted-design.md` for accepted OOS filing)
+- `design-summary.json` (structured summary, ≤2 KB)
 - `architecture-diagram.md` when generated
 - `dirty-tree-detected.env` when a collection boundary detects dirty or unknown working-tree state
 
 Sentinel content such as `NO_CONTESTED_DECISIONS` belongs inside the relevant artifact body, never as a manifest value.
 
-On success, return only `DESIGN_HEAVY=complete`. On failure, return only `DESIGN_HEAVY=failed REASON=<short-token>`. Do not include plan, tally, diagram, reviewer prose, or summaries in the Agent-tool return text; those must remain in files.
+Before returning success, write `$DESIGN_TMPDIR/design-summary.json` with the Write tool (not a heredoc or shell redirection). The JSON schema is:
+
+```json
+{
+  "schema_version": 1,
+  "plan_path": "<abs-path to plan.txt>",
+  "review_tally_path": "<abs-path to voting-tally.md>",
+  "finding_counts": {
+    "in_scope_accepted": 0,
+    "in_scope_rejected": 0,
+    "oos_accepted": 0,
+    "oos_rejected": 0
+  }
+}
+```
+
+Count `in_scope_accepted` from `### FINDING_N:` blocks in `accepted-plan-findings.md`. Count `in_scope_rejected` from `### [Plan Review]` blocks in `rejected-findings.md`. Count OOS entries from `### OOS_N:` blocks in `oos.md`: entries whose `Vote tally:` contains `YES` are accepted; the rest are rejected. On parse failure for any artifact, write zero for the corresponding count. Keep the file under 2 KB.
+
+On success, return a terse KV block. The **first line** MUST be exactly `DESIGN_HEAVY=complete`. Optional additional `KEY=value` lines may follow, for example:
+
+```text
+DESIGN_HEAVY=complete
+DESIGN_SUMMARY_FILE=$DESIGN_TMPDIR/design-summary.json
+```
+
+No prose, no artifact content, and no blank lines between KV lines. On failure, return only `DESIGN_HEAVY=failed REASON=<short-token>`. Do not include plan, tally, diagram, reviewer prose, or summaries in the Agent-tool return text; those must remain in files.

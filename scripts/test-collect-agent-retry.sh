@@ -60,6 +60,18 @@ assert_equals() {
     fi
 }
 
+assert_no_line_prefix() {
+    local label="$1"
+    local prefix="$2"
+    local haystack="$3"
+    if printf '%s\n' "$haystack" | grep -q "^$prefix"; then
+        fail "$label: unexpected line prefix '$prefix'"
+        printf '%s\n' "$haystack" >&2
+    else
+        ok "$label"
+    fi
+}
+
 STUB_BIN="$TMPROOT/bin"
 mkdir -p "$STUB_BIN"
 cat > "$STUB_BIN/cursor" <<'CURSOR_SHAPE_STUB'
@@ -211,6 +223,13 @@ run_collector_structured() {
     RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 "$shell_path" "$COLLECTOR" --timeout 5 --write-health "$health" --structured-reviewer-validation "$output" 2>"${health}.stderr"
 }
 
+run_collector_summary_structured() {
+    local shell_path="$1"
+    local output="$2"
+    local health="$3"
+    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 "$shell_path" "$COLLECTOR" --timeout 5 --write-health "$health" --structured-reviewer-validation --summary-only "$output" 2>"${health}.stderr"
+}
+
 assert_fail_closed() {
     local label="$1"
     local output="$2"
@@ -311,6 +330,23 @@ assert_line "case A3 status" "STATUS=NOT_SUBSTANTIVE" "$RESULT_A3"
 assert_line "case A3 structured sidecar empty field" "STRUCTURED_SIDECAR=" "$RESULT_A3"
 assert_line "case A3 reason" "FAILURE_REASON=structured records not found after repair" "$RESULT_A3"
 assert_line "case A3 health-file" "CURSOR_HEALTHY=false" "$(cat "$HEALTH_A3")"
+
+# Case A4: --summary-only preserves status/health fields while suppressing
+# diagnostic-heavy fields, even when structured validation would normally emit
+# STRUCTURED_SIDECAR and FAILURE_REASON.
+OUT_A4="$TMPROOT/cursor-a4.txt"
+HEALTH_A4="$TMPROOT/case-a4.health"
+{
+    printf 'schema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix\n'
+    printf '1\tin_scope\tImportant\tcorrectness\tfoo.sh:7\tbad branch\tinput fails\tadd guard\n'
+} > "$OUT_A4"
+printf '0\n' > "${OUT_A4}.done"
+RESULT_A4=$(run_collector_summary_structured bash "$OUT_A4" "$HEALTH_A4")
+assert_line "case A4 reviewer file" "REVIEWER_FILE=$OUT_A4" "$RESULT_A4"
+assert_line "case A4 status" "STATUS=OK" "$RESULT_A4"
+assert_line "case A4 healthy" "HEALTHY=true" "$RESULT_A4"
+assert_no_line_prefix "case A4 suppresses structured sidecar" "STRUCTURED_SIDECAR=" "$RESULT_A4"
+assert_no_line_prefix "case A4 suppresses failure reason" "FAILURE_REASON=" "$RESULT_A4"
 
 # Case B: malformed JSON fails closed and flips tool health.
 OUT_B="$TMPROOT/cursor-b.txt"

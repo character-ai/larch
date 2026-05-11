@@ -15,6 +15,7 @@
 # Usage:
 #   collect-agent-results.sh --timeout <seconds> [--write-health <path>] \
 #     [--substantive-validation] [--structured-reviewer-validation] \
+#     [--summary-only] \
 #     <output-file> [<output-file> ...]
 #
 # Options:
@@ -60,6 +61,11 @@
 #                                  On validator failure, rewrite the entry as
 #                                  STATUS=NOT_SUBSTANTIVE and mark the tool
 #                                  unhealthy. Default OFF — opt-in per caller.
+#   --summary-only                 Emit only REVIEWER_FILE, TOOL, STATUS,
+#                                  EXIT_CODE, and HEALTHY for each reviewer.
+#                                  Wait/retry/validation and --write-health
+#                                  behavior is unchanged; FAILURE_REASON and
+#                                  STRUCTURED_SIDECAR are suppressed.
 #
 # Arguments:
 #   One or more output file paths (from run-external-agent.sh invocations).
@@ -74,6 +80,8 @@
 #   HEALTHY=<true|false>
 #   STRUCTURED_SIDECAR=<path>  (non-empty only when structured validation succeeds)
 #   FAILURE_REASON=<explanation>  (non-empty when STATUS != OK; explains the cause of failure)
+#   With --summary-only, only REVIEWER_FILE, TOOL, STATUS, EXIT_CODE, and
+#   HEALTHY are emitted.
 #
 # Exit codes:
 #   0 — normal completion (results are informational, not errors)
@@ -130,6 +138,7 @@ WRITE_HEALTH=""
 SUBSTANTIVE_VALIDATION="false"
 VALIDATION_MODE="false"
 STRUCTURED_REVIEWER_VALIDATION="false"
+SUMMARY_ONLY="false"
 OUTPUT_FILES=()
 
 while [[ $# -gt 0 ]]; do
@@ -144,8 +153,10 @@ while [[ $# -gt 0 ]]; do
             VALIDATION_MODE="true"; shift ;;
         --structured-reviewer-validation)
             STRUCTURED_REVIEWER_VALIDATION="true"; shift ;;
+        --summary-only)
+            SUMMARY_ONLY="true"; shift ;;
         --help)
-            echo "Usage: collect-agent-results.sh --timeout <seconds> [--write-health <path>] [--substantive-validation [--validation-mode]] [--structured-reviewer-validation] <output-file>..." >&2
+            echo "Usage: collect-agent-results.sh --timeout <seconds> [--write-health <path>] [--substantive-validation [--validation-mode]] [--structured-reviewer-validation] [--summary-only] <output-file>..." >&2
             exit 0 ;;
         -*)
             echo "collect-agent-results.sh: unknown option: $1" >&2; exit 1 ;;
@@ -930,12 +941,38 @@ if [[ "$STRUCTURED_REVIEWER_VALIDATION" == "true" ]]; then
 fi
 
 # --- 4. Emit structured results ---
+emit_summary_result() {
+    local entry="$1"
+    local rest="$entry"
+    local field=""
+    local emitted=0
+    while [[ -n "$rest" && $emitted -lt 5 ]]; do
+        if [[ "$rest" == *"|"* ]]; then
+            field="${rest%%|*}"
+            rest="${rest#*|}"
+        else
+            field="$rest"
+            rest=""
+        fi
+        case "$field" in
+            REVIEWER_FILE=*|TOOL=*|STATUS=*|EXIT_CODE=*|HEALTHY=*)
+                echo "$field"
+                emitted=$((emitted + 1))
+                ;;
+        esac
+    done
+}
+
 FIRST=true
 for result in "${RESULTS[@]}"; do
     if [[ "$FIRST" == "true" ]]; then
         FIRST=false
     else
         echo ""
+    fi
+    if [[ "$SUMMARY_ONLY" == "true" ]]; then
+        emit_summary_result "$result"
+        continue
     fi
     # Convert pipe-delimited to newlines
     result=$(with_structured_sidecar_field "$result" "")
