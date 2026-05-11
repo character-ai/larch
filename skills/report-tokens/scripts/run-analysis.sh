@@ -622,12 +622,18 @@ def print_analysis(cache_path, records, skipped, plot_paths):
 def load_raw_records(body_file):
     with open(body_file, encoding="utf-8") as fh:
         body = fh.read()
-    match = re.search(r"```(?:json)?\s*\n(\[.*?\])\s*\n```", body, re.DOTALL)
-    if not match:
+    # Anchor on the "## Raw per-issue data" heading to avoid matching earlier code fences
+    section_match = re.search(r"## Raw per-issue data\s*\n", body)
+    if not section_match:
+        print("ERROR: could not find '## Raw per-issue data' section in issue body", file=sys.stderr)
+        return None
+    tail = body[section_match.end():]
+    fence_match = re.search(r"```(?:json)?\s*\n(.*?)\n```", tail, re.DOTALL)
+    if not fence_match:
         print("ERROR: could not find raw per-issue data block in issue body", file=sys.stderr)
         return None
     try:
-        raw = json.loads(match.group(1))
+        raw = json.loads(fence_match.group(1))
     except json.JSONDecodeError as exc:
         print(f"ERROR: failed to parse raw data: {exc}", file=sys.stderr)
         return None
@@ -637,7 +643,7 @@ def load_raw_records(body_file):
             "number": item.get("number"),
             "workflow": item.get("workflow", "unknown"),
             "closed_at": parse_date(item.get("closed_at")),
-            "cost": float(item.get("cost", 0)),
+            "cost": float(item.get("cost") or 0),
             "title": "",
             "url": "",
             "totals": {},
