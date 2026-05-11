@@ -1505,7 +1505,13 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --append-timing-section "$IMPLEMENT_TMPDIR/anchor-sections/timing-report.md" || true
 ```
 
-After fragments are written, assemble the anchor body and upsert (see Step 0.5 "Anchor-section accumulation"). Assembly order follows the sourced `SECTION_MARKERS` array; see `scripts/anchor-section-markers.sh` for the definitive sequence.
+Assemble the anchor body and upsert (see Step 0.5 "Anchor-section accumulation" and `scripts/refresh-anchor.md`):
+
+```bash
+${CLAUDE_PLUGIN_ROOT}/scripts/refresh-anchor.sh --sections-dir "$IMPLEMENT_TMPDIR/anchor-sections" --issue "$ISSUE_NUMBER" --anchor-id "$ANCHOR_COMMENT_ID" --output "$IMPLEMENT_TMPDIR/anchor-assembled.md"
+```
+
+On `FAILED=true`, log to `Warnings` (`Step 9a.1 — anchor refresh failed: $ERROR`) and proceed.
 
 Print: `✅ 9a.1: OOS issues status=complete created=<ISSUES_CREATED> deduplicated=<ISSUES_DEDUPLICATED> elapsed=<elapsed>` (or the appropriate early-exit breadcrumb).
 
