@@ -626,7 +626,7 @@ Parse `TITLE_FILE` and `BODY_FILE`. If the user-supplied `FEATURE_DESCRIPTION` i
 
 ### Larch-log Batches and Summary Comments
 
-Steps 1, 2, 5, 7a, 8, 9a.1, 11, and 18 write durable run payloads through `scripts/larch-log.sh`. Replacement batches use `write --batch <slug> --input-file <file>`; append batches use `append --batch <slug> --record-file <file>`. `scripts/larch-log-batches.sh` is the canonical slug table and defines each batch's extension, mode, and sanitizer. `larch-log.sh` redacts tmpdir paths and secrets before writing, validates diagrams through the Mermaid sanitizer, and emits the standard `LOG_WRITTEN`, `LOG_PATH`, `BYTES`, `SHA256`, `COMMIT_SHA`, and `UNCHANGED` envelope.
+Steps 1, 2, 5, 7a, 8, 9a.1, 11, and 18 write durable run payloads through `scripts/larch-log.sh`. Replacement batches use `write --batch <slug> --input-file <file>`; append batches use `append --batch <slug> --record-file <file>`. `scripts/larch-log-batches.sh` is the canonical slug table and defines each batch's extension, mode, and sanitizer. `larch-log.sh` redacts tmpdir paths and secrets before writing, and emits the standard `LOG_WRITTEN`, `LOG_PATH`, `BYTES`, `SHA256`, `COMMIT_SHA`, and `UNCHANGED` envelope. Diagrams are not written through a larch-log batch; they are posted only to the tracking issue via the `larch:diagrams` summary comment, with Mermaid validation happening at Step 7a compose time (`sanitize-mermaid-fragment.sh`).
 
 **Batch mapping**:
 
@@ -1319,7 +1319,7 @@ Runs unconditionally after Step 7 (regardless of Steps 6-7 skip).
 
 **MANDATORY — READ ENTIRE FILE** before writing diagram summary comments under `quick_mode=true`: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/summary-comment-template.md`. **Do NOT load** outside quick-mode paths.
 
-If `quick_mode=true`: print `⏩ 7a: code flow status=skip reason=quick-mode elapsed=<elapsed>`, still post the `larch:diagrams` summary comment (Architecture Diagram + Code-Flow-skipped placeholder per the `diagrams` sub-section below), then proceed to the Pre-bump log flush subsection below (which leads into the 7a.r rebase checkpoint and then Step 8).
+If `quick_mode=true`: print `⏩ 7a: code flow status=skip reason=quick-mode elapsed=<elapsed>`, still post the `larch:diagrams` summary comment (Architecture Diagram + Code-Flow-skipped placeholder per the `Diagrams summary comment` sub-section below), then proceed to the Pre-bump log flush subsection below (which leads into the 7a.r rebase checkpoint and then Step 8).
 
 If `quick_mode=false`: first check whether the committed diff is small and non-runtime. Compute the merge-base, then enumerate changed files relative to `origin/main`:
 
@@ -1498,7 +1498,7 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 
 Repeat any external reviewer warnings from earlier (from `/design`, `/review`, or Step 5 runtime-fallback flips). Examples: `**⚠ Codex not available: <reason>**`, `**⚠ Cursor review failed: <reason>**`.
 
-If `DESIGN_ONLY_DONE=true` AND `no_issues=true`, remind: `**Note: --design-only --no-issues was set. No PR was created and no tracking issue was opened. Design artifacts are ephemeral and were removed with the session tmpdir.**` Else if `DESIGN_ONLY_DONE=true`, remind: `**Note: --design-only was set. No PR was created. The tracking issue's summary comments point to the committed plan, plan-review tally, diagrams, and accepted/rejected findings.**` Otherwise, if `draft=true`, remind: `**Note: --draft was set. Draft PR created; local branch retained. Mark the PR ready-for-review and merge manually when ready.**` Otherwise if `merge=false`, remind: `**Note: --merge was not set. PR was created but not merged. Merge manually when ready.**`
+If `DESIGN_ONLY_DONE=true` AND `no_issues=true`, remind: `**Note: --design-only --no-issues was set. No PR was created and no tracking issue was opened. Design artifacts are ephemeral and were removed with the session tmpdir.**` Else if `DESIGN_ONLY_DONE=true`, remind: `**Note: --design-only was set. No PR was created. The tracking issue's summary comments point to the committed plan, plan-review tally, and accepted/rejected findings; diagrams (if any) were posted to the larch:diagrams summary comment.**` Otherwise, if `draft=true`, remind: `**Note: --draft was set. Draft PR created; local branch retained. Mark the PR ready-for-review and merge manually when ready.**` Otherwise if `merge=false`, remind: `**Note: --merge was not set. PR was created but not merged. Merge manually when ready.**`
 
 Before teardown, refresh the token report artifact (the log batches and flush commit were already written at the pre-bump log flush step):
 

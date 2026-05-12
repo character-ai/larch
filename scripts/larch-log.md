@@ -24,8 +24,10 @@ UNCHANGED=true|false
 ```
 
 Payload content is never written to stdout. Payloads pass through
-`redact-tmpdir-paths.sh` and `redact-secrets.sh`; the `diagrams` batch also
-uses `sanitize-mermaid-fragment.sh --from-md` and fails closed on rejection.
+`redact-tmpdir-paths.sh` and `redact-secrets.sh`. Batches that declare the
+`mermaid` sanitizer (in `larch-log-batches.sh`) also use
+`sanitize-mermaid-fragment.sh --from-md` and fail closed on rejection; no
+current batch uses this sanitizer — it is reserved for future opt-in.
 
 **Log-root resolution** — three-tier precedence (see `lib-larch-log.sh`):
 

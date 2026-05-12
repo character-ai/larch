@@ -5,5 +5,4 @@ pointing at a temporary directory so it does not leave runtime artifacts in the
 repository.
 
 Coverage includes manifest creation, replace-mode redaction, idempotent retry,
-append-mode newline handling, `exists`, mutable manifest updates, and
-Mermaid-sanitizer fail-closed behavior.
+append-mode newline handling, `exists`, and mutable manifest updates.
