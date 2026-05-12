@@ -1,0 +1,131 @@
+# Larch Run Logs
+
+Every `/implement` run commits a directory of structured log files alongside the PR it creates. These committed files are the single source of truth for full run content — voting tallies, rejected findings, version-bump reasoning, OOS observations, execution issues, run statistics, token/timing reports, and the session transcript. The tracking issue and PR body carry only slim projections.
+
+## Directory structure
+
+```
+larch-logs/
+  implement/
+    <RUN_ID>/
+      manifest.json
+      plan-goals-test.md
+      plan-review-tally.ndjson
+      code-review-tally.ndjson
+      review-findings-full.ndjson
+      version-bump-reasoning.md
+      oos-issues.ndjson
+      run-statistics.md
+      token-report.md
+      timing-report.md
+      execution-issues.ndjson
+      session-transcript.jsonl
+```
+
+`<RUN_ID>` is the UUID assigned at the start of each `/implement` session. Files under a run directory are redacted for secrets and tmpdir paths before commit.
+
+## manifest.json
+
+Created by `scripts/larch-log.sh init` at Step 0.5 when the tracking issue is first resolved. Updated by `larch-log.sh manifest` calls throughout the run. Contains: skill name, run ID, tracking-issue number, PR number (once created), and final run status. Authoritative contract: `scripts/larch-log.md`.
+
+## Batch files
+
+### plan-goals-test.md
+
+**Mode**: replace (one file per run). **Written**: Step 1, after the design plan is finalized.
+
+Contains the implementation plan: goal statement, files to modify, approach, edge cases, and testing strategy. In normal mode the content comes from `/design`'s exported `plan.txt`; in quick mode it is the inline plan produced by the orchestrator.
+
+### plan-review-tally.ndjson
+
+**Mode**: append (NDJSON records). **Written**: Step 1 tail, after the plan-review voting tally is exported.
+
+One NDJSON record per `/implement` session. Contains the plan-review voting outcome (accepted count, rejected count, round summaries) plus any rejected plan-review findings under a `## Rejected Plan Review Findings` sub-header. In quick mode the record contains `"Quick mode — no plan review voting."`.
+
+### code-review-tally.ndjson
+
+**Mode**: append (NDJSON records). **Written**: Step 5, after `/review` returns (normal mode) or the quick-mode review loop completes.
+
+One record per `/implement` session. Contains the code-review voting outcome and a round-by-round summary. Also includes rejected code-review findings under a `## Rejected Code Review Findings` sub-header — making this the load-bearing source for rejected findings (the terminal session transcript only prints a breadcrumb, not the full content).
+
+### review-findings-full.ndjson
+
+**Mode**: append (NDJSON records). **Written**: Step 5, immediately after the `code-review-tally` batch.
+
+Per-finding payloads for plan-review accepted, plan-review rejected, and code-review rejected entries. Each record contains: finding id, phase, outcome, reviewer, category, and verbatim prose body. Accepted code-review findings are not yet captured here (see `scripts/compose-review-findings.md` known limitations).
+
+### version-bump-reasoning.md
+
+**Mode**: replace. **Written**: Step 8, after `ship-pr.sh` completes the version-bump phase.
+
+Markdown explanation of the version bump classification: which bump type was chosen (PATCH / MINOR / MAJOR), which changed files drove the decision, and the reasoning applied. Useful for auditing unexpected version jumps.
+
+### oos-issues.ndjson
+
+**Mode**: append (NDJSON records). **Written**: Step 9a.1, after out-of-scope issue filing.
+
+Two sub-blocks per record: accepted OOS observations that were filed as GitHub issues (each entry includes the filed issue URL), and rejected / out-of-scope observations that were voted down or not filed (each entry includes the rejection reason). Security findings are never filed via this path.
+
+### run-statistics.md
+
+**Mode**: replace. **Written**: Step 9a.1 alongside `oos-issues`.
+
+Summary statistics for the run: number of accepted and rejected OOS items, filed-issue URLs, round counts, and other aggregate metrics.
+
+### token-report.md
+
+**Mode**: replace. **Written**: Step 7a tail (pre-bump log flush) and refreshed at Step 9a.1. A final refresh runs at Step 18 before the transcript commit.
+
+Per-step Claude token usage table for the session. The pre-bump flush captures cost up through implementation and review; each CI retry in Steps 10/12 refreshes this file so the merged PR carries the most recent data.
+
+### timing-report.md
+
+**Mode**: replace. **Written**: same lifecycle as `token-report.md`.
+
+Per-step elapsed-time table for the session, measured from the timing ledger marks at each step entry. Useful for identifying slow steps (e.g., long Codex spawns, extended CI waits).
+
+### execution-issues.ndjson
+
+**Mode**: append (NDJSON records). **Written**: Step 2 (Q/A entries, progressive), Step 11 (final flush of `execution-issues.md`).
+
+Log of noteworthy events during the run, grouped by category: `Pre-existing Code Issues`, `Tool Failures`, `Permission Prompts`, `External Reviewer Issues`, `CI Issues`, `Warnings`, and `Q/A`. Entries from Step 2's Q/A loop are appended progressively; all remaining entries from `$IMPLEMENT_TMPDIR/execution-issues.md` are flushed at Step 11 after CI passes. This batch is the durable audit trail for follow-up work and operational events.
+
+### session-transcript.jsonl
+
+**Mode**: replace. **Written**: Step 18, terminal cleanup.
+
+The redacted Claude Code session transcript (`.jsonl` format) captured for post-hoc auditability. Redacted for tmpdir paths and secrets. Allows replaying the full session reasoning, tool calls, and assistant turns after the run completes.
+
+## Tracking issue comments
+
+The tracking issue for each run carries four slim marker-keyed summary comments maintained by `/implement` as the run progresses. These are projections only — their content points at the committed `larch-logs/` files rather than embedding bulky payloads inline.
+
+### `larch:metadata`
+
+Written at Step 0.5 when the tracking issue is adopted or created.
+
+Content: run ID, log directory path (`larch-logs/implement/<RUN_ID>/`), agent (implementer coder), and larch plugin version.
+
+### `larch:plan`
+
+Written at Step 1 tail after the plan is finalized.
+
+Content: a slim pointer to `larch-logs/implement/<RUN_ID>/plan-goals-test.md` plus the current plan-review tally status (voting outcome or quick-mode note).
+
+### `larch:diagrams`
+
+Written at Step 7a.
+
+Content: the Architecture Diagram (from `/design`) and Code Flow Diagram (generated at Step 7a from the committed implementation diff), both embedded as Mermaid fences. Diagrams are embedded directly in this comment rather than written as a larch-log batch.
+
+### `larch:final-summary`
+
+Written at Step 18 during terminal cleanup.
+
+Content: final run status (`STALL_TRACKING` value), PR URL, and log directory path.
+
+## Authoritative sources
+
+- `scripts/larch-log.md` — `larch-log.sh` verb contracts, log-root resolution, redaction rules
+- `scripts/larch-log-batches.md` — canonical batch slug table (extension, mode, sanitizer)
+- `skills/implement/references/summary-comment-template.md` — marker literals and comment contracts

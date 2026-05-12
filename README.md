@@ -11,6 +11,7 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
   - [Skills](#skills)
   - [Aliases](#aliases)
   - [Review Agents](docs/review-agents.md) — the unified `code-reviewer` archetype
+  - [Run Logs](docs/run-logs.md) — committed `larch-logs/` batch files, manifest, and tracking-issue comments
   - [Topology Projection](docs/topology.md) — stable anchors for cross-doc topology counts
   - [Linting](docs/linting.md) — linters, Makefile targets, halt-rate regression harness
 - **Architecture and workflow**
@@ -27,7 +28,7 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
 - **[Voting-based review resolution](docs/voting-process.md)** — The YES/NO/EXONERATE panel protocol adjudicates plan and code review findings.
 - **[Reviewer competition scoring](docs/point-competition.md)** — Reviewers earn points based on finding quality; a scoreboard tracks accepted, neutral, exonerated, and rejected findings.
 - **[External reviewer integration](docs/external-reviewers.md)** — Codex and Cursor participate alongside Claude subagents as sketch agents, debaters, judges, reviewers, and voters. Gemini reviewer call sites have been removed from `/review` and `/implement --quick` review rounds; the reviewer launcher (`scripts/launch-review.sh --tool gemini`), its admin-policy file, and the regression harness remain as machinery, and Gemini can still be selected explicitly for implementation with `/implement --coder=gemini`.
-- **[Tracked runs](skills/implement/SKILL.md)** — `/implement` writes full run artifacts to committed `larch-logs/` files and keeps the tracking issue slim with marker-keyed summary comments.
+- **[Tracked runs](docs/run-logs.md)** — `/implement` writes full run artifacts to committed `larch-logs/` files and keeps the tracking issue slim with marker-keyed summary comments.
 
 ## Skills
 
