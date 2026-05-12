@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Replace tracking-issue anchor-comment storage with committed `larch-logs/` run artifacts plus five slim marker-keyed tracking comments. Adds `scripts/larch-log.sh`, `scripts/tracking-issue-summary.sh`, batch/manifest harnesses, and removes the old anchor assembly/hydration/refresh scripts.
 
+## [26.0.13] - 2026-05-11
+
+### Fixed
+
+- /implement Step 8 postbump directive now marks changelog-bullets composition as required (not optional) when MANIFEST_PATH is empty; removes misleading "Claude fallback path" qualifier and "skip only on manifest-backed" wording
+- Remove stale reference to "Step 18's final larch-log.sh commit" from rebase-rebump-subprocedure.md step 6e (log-flush moved to Step 7a tail in v26.0.12)
+
 ## [26.0.12] - 2026-05-11
 
 ### Fixed
