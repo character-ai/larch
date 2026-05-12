@@ -530,8 +530,8 @@ run_evaluate_failure() {
 }
 
 run_rebase_rebump() {
-    local phase=$1 drop_out rebase_out rebase_rc conflict_out run_id classify_out apply_out
-    local new_version bump_type continue_rc
+    local phase=$1 drop_out rebase_out rebase_rc conflict_out run_id classify_out classify_rc
+    local apply_out new_version bump_type reasoning_file
 
     # 1. Drop existing bump commit (non-fatal; CI-fix commits may sit on top)
     drop_out=$("$SCRIPT_DIR/drop-bump-commit.sh" 2>&1) || true
@@ -559,15 +559,13 @@ run_rebase_rebump() {
         fi
         "$SCRIPT_DIR/append-token-record.sh" --input "${conflict_out}.token-record" \
             --tmpdir "$IMPLEMENT_TMPDIR" || true
-        # Continue the in-progress rebase after vendor fix; exit 3 means vendor
-        # already completed it via git rebase --continue
-        rebase_out=$("$SCRIPT_DIR/rebase-push.sh" --continue --no-push --keep-on-conflict 2>&1)
-        continue_rc=$?
+        # Fresh rebase after vendor fix: if vendor ran git rebase --continue, the
+        # branch is already rebased and this returns SKIPPED_ALREADY_FRESH. If the
+        # vendor left a conflict or broke the tree it fails, causing exit_stall.
+        rebase_out=$("$SCRIPT_DIR/rebase-push.sh" --no-push 2>&1)
+        rebase_rc=$?
         printf '%s\n' "$rebase_out"
-        case "$continue_rc" in
-            0|3) ;;   # 0: continued cleanly; 3: vendor already completed rebase
-            *) exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)" ;;
-        esac
+        [ "$rebase_rc" -eq 0 ] || exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
     elif [ "$rebase_rc" -ne 0 ]; then
         exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
     fi
@@ -577,11 +575,14 @@ run_rebase_rebump() {
 
     # 5. Re-bump using classify-bump.sh + apply-bump.sh directly
     if [ "$(read_state HAS_BUMP)" != "false" ]; then
-        classify_out=$("$PLUGIN_ROOT/.claude/skills/bump-version/scripts/classify-bump.sh" 2>&1) || true
+        classify_out=$("$PLUGIN_ROOT/.claude/skills/bump-version/scripts/classify-bump.sh" 2>&1)
+        classify_rc=$?
         printf '%s\n' "$classify_out"
+        [ "$classify_rc" -eq 0 ] || exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
         new_version=$(kv_value NEW_VERSION "$classify_out")
         bump_type=$(kv_value BUMP_TYPE "$classify_out")
-        state_set_many BUMP_TYPE "$bump_type" NEW_VERSION "$new_version"
+        reasoning_file=$(kv_value REASONING_FILE "$classify_out")
+        state_set_many BUMP_TYPE "$bump_type" NEW_VERSION "$new_version" BUMP_REASONING_FILE "$reasoning_file"
         if [ "$bump_type" != "NONE" ] && [ -n "$new_version" ]; then
             apply_out=$("$PLUGIN_ROOT/.claude/skills/bump-version/scripts/apply-bump.sh" \
                 --new-version "$new_version" 2>&1) || true
