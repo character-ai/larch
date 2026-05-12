@@ -1,0 +1,1 @@
+{"schema_version":1,"phase":"execution-summary","body":"No significant execution issues. Phantom untracked probe detected 3 files (session artifacts). Version-bump-reasoning validation warning (path validation) — fallback text used, non-fatal. Mermaid lintignore note: larch-logs/ excluded from lint as runtime artifacts."}

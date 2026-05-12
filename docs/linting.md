@@ -7,11 +7,11 @@ Larch uses [pre-commit](https://pre-commit.com/) as the source of truth for lint
 | Linter | File Types | Description |
 |--------|-----------|-------------|
 | [shellcheck](https://www.shellcheck.net/) | `.sh` | Shell script analysis, supplied by the pre-commit hook env through pinned `shellcheck-py==0.10.0.1` |
-| [markdownlint](https://github.com/igorshubovych/markdownlint-cli) | `.md` | Markdown style enforcement (config: `.markdownlint.json`) |
+| [markdownlint](https://github.com/igorshubovych/markdownlint-cli) | `.md` | Markdown style enforcement (config: `.markdownlint.json`). `larch-logs/` is excluded via `.markdownlintignore` — those files are runtime artifact archives, not authoring-quality docs. |
 | [jq](https://jqlang.github.io/jq/) | `.json` | JSON syntax validation |
 | [actionlint](https://github.com/rhysd/actionlint) | `.yml`, `.yaml` | GitHub Actions workflow validation |
 | [agnix](https://github.com/agent-sh/agnix) | `SKILL.md`, `CLAUDE.md`, agent configs | AI agent configuration linting (config: `.agnix.toml`). Runs in strict mode (warnings fail) in both the local pre-commit hook and the dedicated CI job. |
-| Mermaid CLI (`mmdc`) | `.md` Mermaid fences | Parses top-level Mermaid fences in changed Markdown files via `scripts/lint-mermaid-fences.sh`; local hook requires `@mermaid-js/mermaid-cli` installed or can be skipped with `SKIP=lint-mermaid-fences`. |
+| Mermaid CLI (`mmdc`) | `.md` Mermaid fences | Parses top-level Mermaid fences in changed Markdown files via `scripts/lint-mermaid-fences.sh`; local hook requires `@mermaid-js/mermaid-cli` installed or can be skipped with `SKIP=lint-mermaid-fences`. `larch-logs/` paths are excluded from the `--changed-only` file set — those are runtime artifact archives. |
 | [gitleaks](https://github.com/gitleaks/gitleaks) | all tracked files | Secret detection (pre-commit + dedicated CI job, full-history). Path allowlist in `.gitleaks.toml`. See `SECURITY.md` → "Layered secret scanning". |
 
 ## Usage
