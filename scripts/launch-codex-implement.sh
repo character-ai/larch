@@ -242,6 +242,7 @@ if [[ -f ~/.codex/auth.json ]]; then
     ln -sf "$(cd ~/.codex && pwd)/auth.json" "$CODEX_HOME_DIR/auth.json"
 fi
 
+# intentionally non-stable: plan/feature file paths are per-session; initial task for Codex (not Claude API)
 PROMPT="## This invocation's parameters
 
 - Plan to implement: $PLAN_FILE
