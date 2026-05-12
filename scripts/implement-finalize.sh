@@ -1284,7 +1284,7 @@ kill_session_background_processes() {
 }
 
 run_teardown() {
-    local start issue_number repo repo_unavailable stall_tracking done_rename_applied pr_number design_only
+    local start issue_number repo repo_unavailable stall_tracking done_rename_applied pr_number design_only pr_closed
     local rename_branch rename_status out rc value issue_url cleanup_rc
     local stall_step stash_ref sentinel_written
 
@@ -1391,7 +1391,13 @@ run_teardown() {
                 --field "status=done" \
                 2>/dev/null || true
         fi
-        "$SCRIPT_DIR/larch-log.sh" commit --skill implement --run-id "$larch_flush_run_id" --no-push 2>/dev/null || true
+        # Push if the PR was already merged; otherwise let the branch push carry it
+        pr_closed=$(read_state PR_CLOSED)
+        if [ "$pr_closed" = "true" ]; then
+            "$SCRIPT_DIR/larch-log.sh" commit --skill implement --run-id "$larch_flush_run_id" 2>/dev/null || true
+        else
+            "$SCRIPT_DIR/larch-log.sh" commit --skill implement --run-id "$larch_flush_run_id" --no-push 2>/dev/null || true
+        fi
     fi
 
     kill_session_background_processes
