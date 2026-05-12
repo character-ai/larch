@@ -86,6 +86,13 @@ case "$1" in
     ;;
 esac
 SH
+    cat > "$root/scripts/larch-log.sh" <<'SH'
+#!/usr/bin/env bash
+# Stub: record whether IMPLEMENT_TMPDIR was exported to this child process.
+sentinel_dir="${LARCH_LOG_STUB_SENTINEL_DIR:-/tmp}"
+printf 'LARCH_LOG_INHERIT_IMPLEMENT_TMPDIR=%s\n' "${IMPLEMENT_TMPDIR:-UNSET}" \
+    >> "$sentinel_dir/larch-log-calls.txt"
+SH
     cat > "$root/scripts/ci-wait.sh" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -284,6 +291,30 @@ if [ -f "$tmp/summary-upsert-called" ]; then
 else
     ok "postmerge does not call tracking-issue-summary.sh (Step 18 owns it)"
 fi
+
+# Regression test: IMPLEMENT_TMPDIR is exported to larch-log.sh child processes
+# even when ship-pr.sh is invoked from a fresh shell without the variable in env.
+root=$(make_repo export_regression)
+tmp=$(make_tmpdir)
+sentinel_dir=$(mktemp -d /tmp/ship-pr-export-test.XXXXXX)
+write_state "$tmp/ship-pr-state.sh" ci-merge
+# Run WITHOUT IMPLEMENT_TMPDIR in the environment (simulates fresh-shell invocation).
+set +e
+(cd "$root" && unset IMPLEMENT_TMPDIR && LARCH_LOG_STUB_SENTINEL_DIR="$sentinel_dir" CLAUDE_PLUGIN_ROOT="$root" \
+    "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
+    --merge true --draft false --forked false --repo owner/repo \
+    > "$tmp/stdout-export" 2> "$tmp/stderr-export")
+set -e
+if [ -f "$sentinel_dir/larch-log-calls.txt" ]; then
+    if grep -q "LARCH_LOG_INHERIT_IMPLEMENT_TMPDIR=$tmp" "$sentinel_dir/larch-log-calls.txt"; then
+        ok "IMPLEMENT_TMPDIR exported to larch-log.sh child in ci-merge flush (fresh shell)"
+    else
+        fail "IMPLEMENT_TMPDIR not exported correctly to larch-log.sh; got: $(cat "$sentinel_dir/larch-log-calls.txt")"
+    fi
+else
+    fail "larch-log.sh stub was not called during ci-merge flush"
+fi
+rm -rf "$sentinel_dir"
 
 if [[ "$FAIL_COUNT" -ne 0 ]]; then
     echo "test-ship-pr: $FAIL_COUNT failure(s), $PASS_COUNT pass(es)" >&2

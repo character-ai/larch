@@ -128,6 +128,10 @@ validate_tmpdir_arg() {
         "$IMPLEMENT_TMPDIR"/*) ;;
         *) die_usage "--state-file must live under --implement-tmpdir for teardown" ;;
     esac
+    # Export so child processes (larch-log.sh) inherit the session tmpdir path.
+    # The postbump path also has export in load_and_validate_postbump_state;
+    # this covers the teardown path which calls validate_tmpdir_arg directly.
+    export IMPLEMENT_TMPDIR
 }
 
 validate_state_file_syntax() {
