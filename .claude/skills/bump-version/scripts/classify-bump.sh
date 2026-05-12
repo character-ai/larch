@@ -233,20 +233,17 @@ log ""
 if [[ ${#MAJOR_REASONS[@]} -gt 0 ]]; then
   log "### MAJOR evidence"
   for r in "${MAJOR_REASONS[@]}"; do log "- $r"; done
-  log ""
 fi
 
 if [[ ${#MINOR_REASONS[@]} -gt 0 ]]; then
   log "### MINOR evidence"
   for r in "${MINOR_REASONS[@]}"; do log "- $r"; done
-  log ""
 fi
 
 if [[ "$BUMP_TYPE" == "PATCH" ]]; then
   log "### PATCH rationale"
   log ""
   log "No MAJOR or MINOR evidence found in the public plugin surface. Defaulting to PATCH per policy (\"every PR must bump at least PATCH\")."
-  log ""
 fi
 
 # Emit machine-parseable output.
