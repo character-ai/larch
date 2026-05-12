@@ -352,8 +352,8 @@ render_jq() {
         end
     ' "${TRANSCRIPT_FILES[@]}" 2>"$jq_stderr_dest" || {
         if [[ -n "$jq_stderr_path" && -s "$jq_stderr_path" ]]; then
-            # `unavailable` now routes to stderr; the tracking-issue anchor
-            # and PR body are populated via stdout-only calls (--append-*).
+            # `unavailable` now routes to stderr; tracking summaries, log
+            # batches, and PR bodies are populated via stdout-only calls.
             # The absolute jq stderr path — which carries TMPDIR + username —
             # must not appear in RENDER_FAIL_REASON. Emit a fixed phrase via
             # unavailable (stderr) and surface the actual path on stderr only
@@ -403,7 +403,7 @@ replace_token_block() {
         # merely *mentions* the marker substring is not treated as a
         # structural sentinel. token-report.sh always emits the markers on
         # their own line, so this is the author-side contract; parity with
-        # assemble-anchor.sh marker-pair walks (closes #1511 finding A).
+        # token-report structural marker handling (closes #1511 finding A).
         awk -v repl="$block_file" '
           BEGIN {
             while ((getline line < repl) > 0) replacement = replacement line "\n"

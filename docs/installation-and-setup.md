@@ -58,7 +58,7 @@ claude plugin install larch@larch-local
 Contributors editing any `.md` file in this repo trigger the
 `lint-mermaid-fences` pre-commit hook, which runs `mmdc` against every
 ` ```mermaid ` fence in the staged Markdown to catch unsafe content
-before it lands in anchor comments or PR bodies. The hook hard-fails
+before it lands in tracking-issue summaries or PR bodies. The hook hard-fails
 (exit 2) when the Mermaid CLI is not installed, so a one-time
 installation is required:
 
@@ -217,7 +217,7 @@ Larch's own copy at `.claude/skills/relevant-checks/` serves as a reference impl
 
 ## Clean-main entry contract for `/implement` and `/design`
 
-`/implement` and standalone `/design` fail closed at entry unless one of two preconditions holds. The check runs in `preflight.sh` before any side effects — for `/implement`, before any tracking-issue side effects (no issue is created, no anchor comment is planted) and before any branch is created; for standalone `/design` (which does not create a tracking issue at entry), before any branch is created. An aborted entry leaves no remote state behind.
+`/implement` and standalone `/design` fail closed at entry unless one of two preconditions holds. The check runs in `preflight.sh` before any side effects — for `/implement`, before any tracking-issue side effects (no issue is created, no metadata summary is planted) and before any branch is created; for standalone `/design` (which does not create a tracking issue at entry), before any branch is created. An aborted entry leaves no remote state behind.
 
 **(a) Default — clean `main`.** The skill asserts that the working tree is on `main`, has no uncommitted changes, fetches `origin/main`, and rebases local `main` onto it. A dirty tree, a non-`main` branch with no recognized prefix, or a fetch failure aborts with a normalized error.
 

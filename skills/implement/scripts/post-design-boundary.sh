@@ -240,7 +240,7 @@ if [[ "$HOOK_MODE" = true ]]; then
     if [[ "$DESIGN_ONLY" = true ]]; then
         echo "NEXT_ACTION=plan-goals-test-and-plan-review-tally-then-diagrams-then-step-9a1"
     else
-        echo "NEXT_ACTION=anchor-fragments-then-1r-then-step2"
+        echo "NEXT_ACTION=larch-log-batches-then-1r-then-step2"
     fi
     echo "POST_DESIGN_BOUNDARY_HOOK_INJECTED=true"
     printf '%s' "$WARNINGS"
@@ -270,8 +270,8 @@ else
     echo "POST_DESIGN_BOUNDARY_OK=true"
     printf '%s' "$WARNINGS"
     if [[ "$DESIGN_ONLY" = true ]]; then
-        echo "➡️ 1: design plan — boundary gate passed (design-only); NEXT REQUIRED: write plan-goals-test + plan-review-tally anchor fragments → write diagrams anchor fragment → Step 9a.1 OOS pipeline"
+        echo "➡️ 1: design plan — boundary gate passed (design-only); NEXT REQUIRED: write plan-goals-test + plan-review-tally log batches → write diagrams log batch → Step 9a.1 OOS pipeline"
     else
-        echo "➡️ 1: design plan — boundary gate passed; NEXT REQUIRED: write anchor-section fragments → Step 1.r rebase → Step 2 entry"
+        echo "➡️ 1: design plan — boundary gate passed; NEXT REQUIRED: write larch-log batches → Step 1.r rebase → Step 2 entry"
     fi
 fi

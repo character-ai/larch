@@ -38,7 +38,7 @@ The extractor is a fenced-block state machine:
 - A fence closes only on a column-0 backtick run at least as long as the opener with whitespace-only remainder.
 - Mermaid examples nested inside larger documentation fences are ignored.
 
-This prevents `skills/implement/references/anchor-comment-template.md` style examples inside quadruple-backtick documentation fences from being linted as real diagrams.
+This prevents large fenced documentation examples inside quadruple-backtick documentation fences from being linted as real diagrams.
 
 ## Exit Codes
 

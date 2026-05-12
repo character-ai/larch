@@ -116,7 +116,7 @@ F="$TMPROOT/a.md"
 printf 'ADOPTED=true\n' > "$F"
 run_sentinel "$F"
 assert_equal_exit "$LAST_EXIT" "0" "(a) exit 0"
-assert_equal_stdout "$LAST_STDOUT" "$(printf 'ISSUE_NUMBER=\nANCHOR_COMMENT_ID=\nADOPTED=true')" "(a) stdout"
+assert_equal_stdout "$LAST_STDOUT" "$(printf 'ISSUE_NUMBER=\nADOPTED=true')" "(a) stdout"
 
 # (b) ADOPTED=false only
 echo "(b) ADOPTED=false — exact stdout"
@@ -124,15 +124,15 @@ F="$TMPROOT/b.md"
 printf 'ADOPTED=false\n' > "$F"
 run_sentinel "$F"
 assert_equal_exit "$LAST_EXIT" "0" "(b) exit 0"
-assert_equal_stdout "$LAST_STDOUT" "$(printf 'ISSUE_NUMBER=\nANCHOR_COMMENT_ID=\nADOPTED=false')" "(b) stdout"
+assert_equal_stdout "$LAST_STDOUT" "$(printf 'ISSUE_NUMBER=\nADOPTED=false')" "(b) stdout"
 
-# (c) empty file → all three keys absent from source; keys still emitted with empty values
+# (c) empty file → all two keys absent from source; keys still emitted with empty values
 echo "(c) empty file — all values empty (keys still emitted with empty value)"
 F="$TMPROOT/c.md"
 : > "$F"
 run_sentinel "$F"
 assert_equal_exit "$LAST_EXIT" "0" "(c) exit 0"
-assert_equal_stdout "$LAST_STDOUT" "$(printf 'ISSUE_NUMBER=\nANCHOR_COMMENT_ID=\nADOPTED=')" "(c) stdout"
+assert_equal_stdout "$LAST_STDOUT" "$(printf 'ISSUE_NUMBER=\nADOPTED=')" "(c) stdout"
 
 # (d) ADOPTED= (explicit empty) → same stdout as (c)
 echo "(d) ADOPTED= (explicit empty)"
@@ -140,7 +140,7 @@ F="$TMPROOT/d.md"
 printf 'ADOPTED=\n' > "$F"
 run_sentinel "$F"
 assert_equal_exit "$LAST_EXIT" "0" "(d) exit 0"
-assert_equal_stdout "$LAST_STDOUT" "$(printf 'ISSUE_NUMBER=\nANCHOR_COMMENT_ID=\nADOPTED=')" "(d) stdout"
+assert_equal_stdout "$LAST_STDOUT" "$(printf 'ISSUE_NUMBER=\nADOPTED=')" "(d) stdout"
 
 # (e) ADOPTED=yes → invalid, exit 1, exact envelope
 echo "(e) ADOPTED=yes — invalid"
@@ -181,13 +181,13 @@ run_sentinel "$F"
 assert_equal_exit "$LAST_EXIT" "1" "(i) exit 1"
 assert_equal_stdout "$LAST_STDOUT" "$(printf 'FAILED=true\nERROR=sentinel file not found: %s' "$F")" "(i) stdout"
 
-# (j) all three keys valid
-echo "(j) all three keys valid"
+# (j) all two keys valid
+echo "(j) all two keys valid"
 F="$TMPROOT/j.md"
-printf 'ISSUE_NUMBER=123\nANCHOR_COMMENT_ID=456\nADOPTED=true\n' > "$F"
+printf 'ISSUE_NUMBER=123\nADOPTED=true\n' > "$F"
 run_sentinel "$F"
 assert_equal_exit "$LAST_EXIT" "0" "(j) exit 0"
-assert_equal_stdout "$LAST_STDOUT" "$(printf 'ISSUE_NUMBER=123\nANCHOR_COMMENT_ID=456\nADOPTED=true')" "(j) stdout"
+assert_equal_stdout "$LAST_STDOUT" "$(printf 'ISSUE_NUMBER=123\nADOPTED=true')" "(j) stdout"
 
 # (k) duplicate ADOPTED lines — first wins
 echo "(k) duplicate ADOPTED — first wins"
@@ -195,15 +195,15 @@ F="$TMPROOT/k.md"
 printf 'ADOPTED=true\nADOPTED=false\n' > "$F"
 run_sentinel "$F"
 assert_equal_exit "$LAST_EXIT" "0" "(k) exit 0"
-assert_equal_stdout "$LAST_STDOUT" "$(printf 'ISSUE_NUMBER=\nANCHOR_COMMENT_ID=\nADOPTED=true')" "(k) stdout"
+assert_equal_stdout "$LAST_STDOUT" "$(printf 'ISSUE_NUMBER=\nADOPTED=true')" "(k) stdout"
 
-# (l) CRLF line endings — \r stripped from value (all three keys)
-printf '(l) CRLF line endings -- \\r stripped (all three keys)\n'
+# (l) CRLF line endings — \r stripped from value (all two keys)
+printf '(l) CRLF line endings -- \\r stripped (all two keys)\n'
 F="$TMPROOT/l.md"
-printf 'ISSUE_NUMBER=123\r\nANCHOR_COMMENT_ID=456\r\nADOPTED=true\r\n' > "$F"
+printf 'ISSUE_NUMBER=123\r\nADOPTED=true\r\n' > "$F"
 run_sentinel "$F"
 assert_equal_exit "$LAST_EXIT" "0" "(l) exit 0"
-assert_equal_stdout "$LAST_STDOUT" "$(printf 'ISSUE_NUMBER=123\nANCHOR_COMMENT_ID=456\nADOPTED=true')" "(l) stdout (all three values \\r-stripped)"
+assert_equal_stdout "$LAST_STDOUT" "$(printf 'ISSUE_NUMBER=123\nADOPTED=true')" "(l) stdout (all two values \\r-stripped)"
 
 # (m) UTF-8 BOM at start — stripped before parsing
 echo "(m) UTF-8 BOM — stripped"
@@ -211,7 +211,7 @@ F="$TMPROOT/m.md"
 printf '\xef\xbb\xbfISSUE_NUMBER=42\nADOPTED=true\n' > "$F"
 run_sentinel "$F"
 assert_equal_exit "$LAST_EXIT" "0" "(m) exit 0"
-assert_equal_stdout "$LAST_STDOUT" "$(printf 'ISSUE_NUMBER=42\nANCHOR_COMMENT_ID=\nADOPTED=true')" "(m) stdout"
+assert_equal_stdout "$LAST_STDOUT" "$(printf 'ISSUE_NUMBER=42\nADOPTED=true')" "(m) stdout"
 
 # (n) Leading whitespace — column-0 rule; indented line treated as absent
 echo "(n) leading whitespace — column-0 rule"
@@ -219,7 +219,7 @@ F="$TMPROOT/n.md"
 printf '  ADOPTED=true\n' > "$F"
 run_sentinel "$F"
 assert_equal_exit "$LAST_EXIT" "0" "(n) exit 0"
-assert_equal_stdout "$LAST_STDOUT" "$(printf 'ISSUE_NUMBER=\nANCHOR_COMMENT_ID=\nADOPTED=')" "(n) stdout"
+assert_equal_stdout "$LAST_STDOUT" "$(printf 'ISSUE_NUMBER=\nADOPTED=')" "(n) stdout"
 
 # (o) Unreadable sentinel file (mode 000) — fail-closed with envelope.
 # Skipped when running as root because chmod 000 does not block root reads

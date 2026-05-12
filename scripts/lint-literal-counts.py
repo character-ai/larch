@@ -77,7 +77,7 @@ def iter_markdown_files(root: Path) -> list[Path]:
             for rel in result.stdout.split(b"\0")
             if rel
         ]
-        return sorted(path for path in files if not path.is_symlink())
+        return sorted(path for path in files if path.is_file() and not path.is_symlink())
 
     files: list[Path] = []
     for dirpath, dirnames, filenames in os.walk(root, followlinks=False):

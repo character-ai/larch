@@ -19,7 +19,7 @@ Anchor comments and PR bodies embed Mermaid diagrams that GitHub renders publicl
 ## Enforcement Layers
 
 - Write-time sanitizer: `/design` Step 3b, `/implement` Step 7a, and `/implement` Step 9a validate diagram candidates with `scripts/sanitize-mermaid-fragment.sh`. Rejected diagrams are dropped and replaced with placeholders.
-- Anchor assembly sanitizer: `scripts/assemble-anchor.sh` revalidates the `diagrams` slug as defense in depth and fails closed on sanitizer tooling errors.
+- larch-log sanitizer: `scripts/larch-log.sh` validates the `diagrams` batch as defense in depth and fails closed on sanitizer tooling errors.
 - CI Mermaid lint: `scripts/lint-mermaid-fences.sh` runs Mermaid CLI over changed Markdown fences and catches syntax outside the narrow sanitizer policy.
 
 ## For Tool Authors

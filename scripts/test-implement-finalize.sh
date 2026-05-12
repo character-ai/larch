@@ -106,9 +106,9 @@ write_state() {
 write_postbump_state() {
     local path=$1 reasoning_file manifest_path
     shift
-    reasoning_file=$(override_value BUMP_REASONING_FILE "$SANDBOX/tmp/anchor-sections-input/version-bump-reasoning-sanitized.md" "$@")
+    reasoning_file=$(override_value BUMP_REASONING_FILE "$SANDBOX/tmp/larch-log-batches-input/version-bump-reasoning-sanitized.md" "$@")
     manifest_path=$(override_value MANIFEST_PATH "$SANDBOX/tmp/manifest.json" "$@")
-    mkdir -p "$SANDBOX/tmp/anchor-sections-input"
+    mkdir -p "$SANDBOX/tmp/larch-log-batches-input"
     [ -e "$reasoning_file" ] || printf 'Bump reasoning\n' > "$reasoning_file"
     if [ -n "$manifest_path" ] && [ ! -e "$manifest_path" ]; then
         printf '{"summary_bullets":["Ship postbump finalization"]}\n' > "$manifest_path"
@@ -125,7 +125,6 @@ write_postbump_state() {
         printf 'BUMP_REASONING_FILE=%s\n' "$reasoning_file"
         printf 'MANIFEST_PATH=%s\n' "$manifest_path"
         printf 'TOOL_LABEL=%s\n' "$(override_value TOOL_LABEL codex "$@")"
-        printf 'ANCHOR_COMMENT_ID=%s\n' "$(override_value ANCHOR_COMMENT_ID 123456 "$@")"
         printf 'EXPECTED_SESSION_ID=%s\n' "$(override_value EXPECTED_SESSION_ID session-123 "$@")"
         printf 'EXPECTED_TMPDIR_BASENAME_PREFIX=%s\n' "$(override_value EXPECTED_TMPDIR_BASENAME_PREFIX tmp "$@")"
     } > "$path"
@@ -250,17 +249,20 @@ STUB
 echo "timing report"
 exit 0
 STUB
-    cat > "$SANDBOX/scripts/refresh-anchor.sh" <<STUB
+    cat > "$SANDBOX/scripts/larch-log.sh" <<STUB
 #!/usr/bin/env bash
-printf '%s\n' "\$@" > "$SANDBOX/refresh-anchor-argv.txt"
-printf 'IMPLEMENT_TMPDIR=%s\n' "\${IMPLEMENT_TMPDIR:-}" > "$SANDBOX/refresh-anchor-env.txt"
-if [ "\${STUB_REFRESH_ANCHOR_FAIL:-false}" = "true" ]; then
+printf '%s\n' "\$@" > "$SANDBOX/larch-log-argv.txt"
+if [ "\${STUB_LARCH_LOG_FAIL:-false}" = "true" ]; then
   echo "FAILED=true"
-  echo "ERROR=stub refresh failure"
+  echo "ERROR=stub larch-log failure"
   exit 2
 fi
-echo "ASSEMBLED=true"
-echo "UPDATED=true"
+echo "LOG_WRITTEN=true"
+echo "LOG_PATH=$SANDBOX/repo/larch-logs/implement/tmp/version-bump-reasoning.md"
+echo "BYTES=15"
+echo "SHA256=stub"
+echo "COMMIT_SHA="
+echo "UNCHANGED=false"
 exit 0
 STUB
     cat > "$SANDBOX/scripts/check-changelog-present.sh" <<'STUB'
@@ -374,6 +376,22 @@ case "\${1:-} \${2:-} \${3:-}" in
     ;;
 esac
 STUB
+    cat > "$SANDBOX/bin/ps" <<'STUB'
+#!/usr/bin/env bash
+if [ "${STUB_PS_MODE:-}" = "background" ]; then
+  case "$*" in
+    "-o ppid= -p "*)
+      echo "${STUB_PS_PPID:-1}"
+      exit 0
+      ;;
+    "-A -o pid= -o args=")
+      printf '%s %s\n' "$STUB_PS_BG_PID" "$STUB_PS_BG_ARG"
+      exit 0
+      ;;
+  esac
+fi
+exec /bin/ps "$@"
+STUB
     cat > "$SANDBOX/bin/gh" <<STUB
 #!/usr/bin/env bash
 if [ "\${1:-}" = "issue" ] && [ "\${2:-}" = "view" ]; then
@@ -404,7 +422,7 @@ echo "unexpected gh invocation: \$*" >&2
 exit 99
 STUB
     chmod +x "$SANDBOX/scripts/"*.sh
-    chmod +x "$SANDBOX/bin/git" "$SANDBOX/bin/gh"
+    chmod +x "$SANDBOX/bin/git" "$SANDBOX/bin/gh" "$SANDBOX/bin/ps"
 }
 
 run_subject() {
@@ -474,7 +492,7 @@ printf '#!/usr/bin/env bash\nwhile true; do sleep 1; done\n' > "$BG_SCRIPT"
 chmod +x "$BG_SCRIPT"
 "$BG_SCRIPT" &
 BG_PID=$!
-OUT=$(run_subject teardown --state-file "$STATE" --implement-tmpdir "$SANDBOX/tmp")
+OUT=$(STUB_PS_MODE=background STUB_PS_BG_PID="$BG_PID" STUB_PS_BG_ARG="$BG_SCRIPT" run_subject teardown --state-file "$STATE" --implement-tmpdir "$SANDBOX/tmp")
 if ! kill -0 "$BG_PID" 2>/dev/null; then
     PASS=$((PASS + 1))
     echo "PASS: teardown: kill_session_background_processes killed stale background process"
@@ -683,21 +701,23 @@ cp "$SANDBOX/original-CHANGELOG.md" "$SANDBOX/repo/CHANGELOG.md"
 rm -f "$SANDBOX/tmp/.postbump-phase" "$SANDBOX/ledger-calls.txt"
 write_postbump_state "$POSTBUMP_STATE"
 OUT=$(run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
-assert_contains "✅ 8: anchor status=complete elapsed=<elapsed>" "$OUT" "postbump: anchor compact breadcrumb"
+assert_contains "✅ 8: larch-log status=complete elapsed=<elapsed>" "$OUT" "postbump: larch-log compact breadcrumb"
 assert_contains "✅ 8a: changelog status=complete to=v17.0.4 elapsed=<elapsed>" "$OUT" "postbump: changelog compact success breadcrumb"
 assert_contains "✅ 8b: rebase status=complete outcome=rebased elapsed=<elapsed>" "$OUT" "postbump: rebase compact success breadcrumb"
 assert_contains "✅ 8b: rebase status=complete outcome=force-pushed elapsed=<elapsed>" "$OUT" "postbump: force-push compact success breadcrumb"
 assert_not_contains " — " "$OUT" "postbump: happy path avoids prose breadcrumb separator"
-assert_contains "ANCHOR_REFRESH_STATUS=ok" "$OUT" "postbump: happy path refreshes anchor"
+assert_contains "LOG_WRITE_STATUS=ok" "$OUT" "postbump: happy path writes larch-log batch"
 assert_contains "CHANGELOG_STATUS=updated" "$OUT" "postbump: happy path updates changelog"
 assert_contains "REBASE_STATUS=rebased" "$OUT" "postbump: happy path rebases"
 assert_contains "FORCE_PUSH_STATUS=pushed" "$OUT" "postbump: happy path force-pushes"
 assert_contains "STATUS=ok" "$OUT" "postbump: happy path status ok"
 assert_file_contains "Step 8a — changelog" "$SANDBOX/ledger-calls.txt" "postbump: emits Step 8a ledger mark"
 assert_file_contains "Step 8b — rebase" "$SANDBOX/ledger-calls.txt" "postbump: emits Step 8b ledger mark"
-assert_file_contains "--anchor-id" "$SANDBOX/refresh-anchor-argv.txt" "postbump: anchor refresh passes anchor id"
-assert_file_contains "--repo" "$SANDBOX/refresh-anchor-argv.txt" "postbump: anchor refresh passes repo"
-assert_file_contains "IMPLEMENT_TMPDIR=$SANDBOX/tmp" "$SANDBOX/refresh-anchor-env.txt" "postbump: exports IMPLEMENT_TMPDIR to children"
+assert_file_contains "write" "$SANDBOX/larch-log-argv.txt" "postbump: larch-log write verb"
+assert_file_contains "--skill" "$SANDBOX/larch-log-argv.txt" "postbump: larch-log passes skill"
+assert_file_contains "implement" "$SANDBOX/larch-log-argv.txt" "postbump: larch-log skill is implement"
+assert_file_contains "--batch" "$SANDBOX/larch-log-argv.txt" "postbump: larch-log passes batch"
+assert_file_contains "version-bump-reasoning" "$SANDBOX/larch-log-argv.txt" "postbump: larch-log writes version-bump-reasoning"
 assert_file_contains "## [17.0.4] -" "$SANDBOX/repo/CHANGELOG.md" "postbump: changelog contains new version"
 assert_file_contains "### Changed" "$SANDBOX/repo/CHANGELOG.md" "postbump: flat bullets default to Changed"
 awk 'prev_blank && /^$/ { print "DOUBLE_BLANK"; exit } /^$/ { prev_blank=1; next } { prev_blank=0 }' \

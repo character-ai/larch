@@ -26,12 +26,12 @@
 - **expected_keywords**: deny-edit-write.sh, /tmp, PreToolUse, best-effort, Bash, external reviewers, SECURITY.md
 - **notes**: Lookup; should cite `scripts/deny-edit-write.sh` for the mechanical tier (Edit/Write/NotebookEdit confined to canonical `/tmp`), name Bash + external Cursor/Codex reviewers as the prompt-enforced tier, and reference the SECURITY.md residual-risk framing.
 
-### eval-3: anchor-section-slugs
-- **question**: What are the 11 canonical anchor section slugs in `/implement`, in assembly order, and which script defines them?
+### eval-3: larch-log-batch-slugs
+- **question**: What are the 11 canonical larch-log batch slugs in `/implement`, in assembly order, and which script defines them?
 - **category**: lookup
 - **expected_provenance_count**: 1
-- **expected_keywords**: SECTION_MARKERS, plan-goals-test, run-statistics, anchor-section-markers.sh
-- **notes**: Lookup; should list all 11 slugs verbatim and cite `scripts/anchor-section-markers.sh`. A correct answer reproduces the array order from the canonical script.
+- **expected_keywords**: larch-log-batches.sh, plan-goals-test, run-statistics, token-report
+- **notes**: Lookup; should list the log batch slugs verbatim and cite `scripts/larch-log-batches.sh`. A correct answer reproduces the table order from the canonical script.
 
 ### eval-4: eval-baseline-q1-2026
 - **question**: What was the result of the `/research` evaluation harness's 2026-Q1 baseline run, and what were the per-entry judge scores?
@@ -51,8 +51,8 @@
 - **question**: What is the relationship between `/implement` Step 0.5 Branches 1 through 4 and the `parent-issue.md` sentinel file, and how does the sentinel preserve idempotency across resumed runs?
 - **category**: architecture
 - **expected_provenance_count**: 2
-- **expected_keywords**: parent-issue.md, ADOPTED, Branch 1, Branch 4, Load-Bearing Invariant, ANCHOR_COMMENT_ID
-- **notes**: Architecture; should cover sentinel-reuse (Branch 1), `--issue` adoption (Branch 2), PR-body recovery (Branch 3), fresh creation (Branch 4), and the ordering invariant in Branch 4 (create-issue → upsert-anchor → write sentinel last).
+- **expected_keywords**: parent-issue.md, ADOPTED, Branch 1, Branch 4, Load-Bearing Invariant, tracking-issue-summary.sh
+- **notes**: Architecture; should cover sentinel-reuse (Branch 1), `--issue` adoption (Branch 2), PR-body recovery (Branch 3), fresh creation (Branch 4), and the ordering invariant in Branch 4 (create issue → post summary metadata → write sentinel last).
 
 ### eval-7: rebase-rebump-step12-interaction
 - **question**: How does the rebase-rebump sub-procedure interact with `/implement` Step 12's CI+merge loop, and what is the difference between step12-family and step10-family failure semantics?

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Read the active Claude model from the resolved Claude transcript and emit a single `CLAUDE_MODEL=<value>` line for anchor-comment metadata.
+Read the active Claude model from the resolved Claude transcript and emit a single `CLAUDE_MODEL=<value>` line for run metadata.
 
 The helper is best-effort by design: missing `jq`, unavailable transcript source, unreadable JSONL, malformed records, or a missing assistant model all produce `CLAUDE_MODEL=unknown`.
 
@@ -32,17 +32,17 @@ The helper always exits 0. Callers must treat the value as display metadata only
 
 `token-claude-source.sh` falls back to the newest transcript in the repo's Claude project directory when no durable session snapshot is available. On machines with concurrent sessions in the same checkout, that mtime fallback can select a different session's transcript.
 
-`refresh-anchor.sh` calls `assemble-anchor.sh` without loading the original session env, so `LARCH_CLAUDE_SOURCE_FILE` is not exported on refresh paths. Refreshes therefore use the mtime fallback unless the operator supplies another resolver env var.
+`read-claude-model.sh` is retained for diagnostic use; committed run manifests do not depend on transcript fallback metadata.
 
 ## Edit-in-sync pointers
 
 | File | Relationship |
 |---|---|
-| `scripts/assemble-anchor.sh` | Primary caller; injects the emitted model into the anchor comment's `run-statistics` section. |
+| `scripts/larch-log.sh` | Runtime log writer; manifests may carry model metadata. |
 | `scripts/token-claude-source.sh` | Transcript resolver used by this helper. |
-| `scripts/test-assemble-anchor.sh` | Regression harness for positive transcript and unavailable-transcript fallback behavior. |
-| `skills/implement/references/anchor-comment-template.md` | Human-readable anchor template documenting the auto-injected row. |
+| `scripts/test-larch-log.sh` | Regression harness for runtime log writes. |
+| `scripts/larch-log.md` | Human-readable log contract. |
 
 ## Test harness
 
-Covered by `scripts/test-assemble-anchor.sh`, which is wired into `make test-harnesses` and available standalone via `make test-assemble-anchor`. There is no standalone Makefile target for this helper.
+Covered by `scripts/test-larch-log.sh`, which is wired into `make test-harnesses`.

@@ -19,14 +19,12 @@
 #      → write prompt verbatim to TASK_FILE, never touches GitHub.
 #      Emits TASK_SOURCE=prompt.
 #   4. --sentinel PATH (alone; no --issue/--prompt/--out-dir/--repo)
-#      → parse local markdown file, emit ISSUE_NUMBER/ANCHOR_COMMENT_ID/
-#      ADOPTED. No network.
+#      → parse local markdown file, emit ISSUE_NUMBER/ADOPTED. No network.
 #
 # Output contract (KEY=value on stdout):
 #   ISSUE_NUMBER=<N or empty>
 #   TASK_SOURCE=issue-plus-prompt|issue-only|prompt  (omitted for --sentinel)
 #   TASK_FILE=<path>                                  (omitted for --sentinel)
-#   ANCHOR_COMMENT_ID=<id>                            (only --sentinel)
 #   ADOPTED=<true|false|>                             (only --sentinel; strict
 #                                                      contract: 'true' or
 #                                                      'false' when the key is
@@ -56,10 +54,10 @@
 #   Exceeding any cap inserts an inline [TRUNCATED — <scope> exceeded <N>
 #   chars] marker at the cut (line-boundary-snapped) in TASK_FILE.
 #
-# Anchor-marker filter (strict v1):
-#   Comments whose first line begins with <!-- larch:implement-anchor v1
-#   are SKIPPED from TASK_FILE. Feedback-loop guard: prevents a previously-
-#   written anchor from recursively entering its own next write.
+# Summary-marker filter:
+#   Comments whose first line is one of the marker-keyed larch summary
+#   comments are SKIPPED from TASK_FILE. Feedback-loop guard: prevents
+#   previously-written summaries from recursively entering the next run.
 #
 # Lifecycle-marker filter:
 #   Comments whose first line begins with <!-- larch:lifecycle-marker:
@@ -94,7 +92,6 @@ set -euo pipefail
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 WRITE_HELPER="$SCRIPT_DIR/tracking-issue-write.sh"
 
-ANCHOR_MARKER_V1_PREFIX='<!-- larch:implement-anchor v1'
 LIFECYCLE_MARKER_PREFIX='<!-- larch:lifecycle-marker:'
 
 DEFAULT_MAX_BODY_CHARS=8000
@@ -261,7 +258,6 @@ if $HAVE_SENTINEL; then
         printf '%s' "${val:-}"
     }
     ISSUE_NUMBER_VAL=$(extract_sentinel_key ISSUE_NUMBER)
-    ANCHOR_COMMENT_ID_VAL=$(extract_sentinel_key ANCHOR_COMMENT_ID)
     ADOPTED_VAL=$(extract_sentinel_key ADOPTED)
     if [[ -n "$ADOPTED_VAL" && "$ADOPTED_VAL" != "true" && "$ADOPTED_VAL" != "false" ]]; then
         echo "FAILED=true"
@@ -269,7 +265,6 @@ if $HAVE_SENTINEL; then
         exit 1
     fi
     printf 'ISSUE_NUMBER=%s\n' "$ISSUE_NUMBER_VAL"
-    printf 'ANCHOR_COMMENT_ID=%s\n' "$ANCHOR_COMMENT_ID_VAL"
     printf 'ADOPTED=%s\n' "$ADOPTED_VAL"
     exit 0
 fi
@@ -319,9 +314,7 @@ fi
 # output from set -e paths that are NOT redacted).
 if $HAVE_PROMPT; then
     PROMPT_TMP=$(mktemp)
-    # shellcheck disable=SC2317
-    cleanup_prompt() { rm -f "$PROMPT_TMP"; }
-    trap cleanup_prompt EXIT
+        trap 'rm -f "$PROMPT_TMP"' EXIT
     printf '%s' "$PROMPT" > "$PROMPT_TMP"
     # Delegate to write.sh append-comment.
     WRITE_OUT=$(bash "$WRITE_HELPER" append-comment --issue "$ISSUE" --body-file "$PROMPT_TMP" --repo "$REPO" 2>&1) || WRITE_EXIT=$?
@@ -339,9 +332,7 @@ fi
 # failure paths redact captured stderr through redact_gh_error before
 # emitting the envelope (parity with tracking-issue-write.sh).
 ERR_TMP=$(mktemp)
-# shellcheck disable=SC2317
-cleanup_err() { rm -f "${ERR_TMP:-}" "${PROMPT_TMP:-}"; }
-trap cleanup_err EXIT
+trap 'rm -f "${ERR_TMP:-}" "${PROMPT_TMP:-}"' EXIT
 
 ISSUE_BODY=$(gh api "/repos/${REPO}/issues/${ISSUE}" --jq '.body // ""' 2>"$ERR_TMP") || {
     ERR_CONTENT=$(cat "$ERR_TMP")
@@ -400,10 +391,16 @@ ISSUE_BODY=$(snap_truncate "$ISSUE_BODY" "$MAX_BODY_CHARS" "issue-body")
             if [[ "${first_line:0:3}" == $'\xef\xbb\xbf' ]]; then
                 first_line="${first_line:3}"
             fi
-            # Anchor-marker filter (strict v1).
-            if [[ "$first_line" == "$ANCHOR_MARKER_V1_PREFIX"* ]]; then
-                continue
-            fi
+            # Summary-marker filter.
+            case "$first_line" in
+                '<!-- larch:metadata v1 runid='*' -->'|\
+                '<!-- larch:diagrams v1 runid='*' -->'|\
+                '<!-- larch:plan v1 runid='*' -->'|\
+                '<!-- larch:token-report v1 runid='*' -->'|\
+                '<!-- larch:final-summary v1 runid='*' -->')
+                    continue
+                    ;;
+            esac
             # Lifecycle-marker filter.
             if [[ "$first_line" == "$LIFECYCLE_MARKER_PREFIX"* ]]; then
                 continue

@@ -13,7 +13,7 @@ Four accepted combinations. Any other combination exits 1 with `FAILED=true ERRO
 | 1 | `--issue N --prompt TEXT --out-dir PATH [--repo OWNER/REPO]` | Post prompt via `tracking-issue-write.sh append-comment`, then fetch issue+comments, filter+cap+wrap into `TASK_FILE`, append the prompt unwrapped at the end. | `issue-plus-prompt` |
 | 2 | `--issue N --out-dir PATH [--repo OWNER/REPO]` | Fetch issue+comments (no writes), filter+cap+wrap into `TASK_FILE`. | `issue-only` |
 | 3 | `--prompt TEXT --out-dir PATH` OR `<stdin> --out-dir PATH` | Write prompt verbatim to `TASK_FILE`, never touches GitHub. | `prompt` |
-| 4 | `--sentinel PATH` (alone) | Parse a local markdown file, emit `ISSUE_NUMBER=` / `ANCHOR_COMMENT_ID=` / `ADOPTED=`. No network. | — (N/A) |
+| 4 | `--sentinel PATH` (alone) | Parse a local markdown file, emit `ISSUE_NUMBER=` `ADOPTED=`. No network. | — (N/A) |
 
 Combinations 1–3 share optional cap flags: `--max-body-chars N` (default 8000), `--max-comments N` (default 50), `--max-total-chars N` (default 100000).
 
@@ -33,7 +33,6 @@ TASK_FILE=<absolute path>
 
 ```
 ISSUE_NUMBER=<N or empty>
-ANCHOR_COMMENT_ID=<id or empty>
 ADOPTED=true|false|
 ```
 
@@ -43,7 +42,7 @@ ADOPTED=true|false|
 - **Absence semantics**: an empty `ADOPTED=` line means **"sentinel is not usable for adoption decisions"**. Absent key and explicit empty (`ADOPTED=`) are semantically identical on the output side.
 - **Consumer obligation**: consumers MUST treat empty/absent `ADOPTED=` as "unusable" and fall back to their fresh-creation path. Consumers MUST NOT treat empty as equivalent to `false`. A `false` value is a positive statement ("sentinel records that adoption did not occur"); an empty value is the absence of that statement.
 - **Fail-closed posture**: any non-empty value other than `true` or `false` (e.g. `TRUE`, `True`, `1`, `yes`, or `true` with a trailing space) is rejected with `FAILED=true` / `ERROR=invalid ADOPTED value in sentinel: '<val>' (expected 'true' or 'false' or absent)` and exit 1. Producers writing invalid values see a loud parse failure at the consumer boundary rather than silent misclassification.
-- **Phase 3 producer semantics** (`/implement` Step 0.5): `ADOPTED=true` is written by Branch 2 (`--issue <N>` explicit adoption) and Branch 3 (PR-body recovery from an existing `Closes #<N>` line). `ADOPTED=false` is written by Step 0.5 Branch 4's first-remote-write (truly fresh run — a new tracking issue was CREATED, not adopted; Branch 4 performs create-issue + upsert-anchor + sentinel immediately at Step 0.5, not deferred to Step 9a.1). Branch 1 (sentinel reuse) preserves whatever was originally written — `/implement` does not rewrite `ADOPTED=` on resume.
+- **Producer semantics** (`/implement` Step 0.5): `ADOPTED=true` is written when a run adopts an existing tracking issue. `ADOPTED=false` is written for a fresh tracking issue. Summary comments are posted by `tracking-issue-summary.sh`; durable payloads are written through `larch-log.sh`.
 
 ### Failure keys
 
@@ -61,9 +60,9 @@ The newline-flatten + 500-byte cap applies to `ERROR=` values derived from captu
 
 ## Filters
 
-### Anchor-marker filter (strict v1)
+### Summary-marker Filter
 
-Comments whose first line begins with `<!-- larch:implement-anchor v1` are SKIPPED from `TASK_FILE`. Feedback-loop guard: prevents a previously-written anchor from recursively entering its own next write. The `v1` version match is strict — mirrors `tracking-issue-write.sh`'s upsert behavior. Future `v2` markers are not filtered here; that filter belongs to a future `v2`-aware tool version.
+Comments whose first line is one of the marker-keyed larch summary comments (`metadata`, `diagrams`, `plan`, `token-report`, or `final-summary`) are SKIPPED from `TASK_FILE`. Feedback-loop guard: prevents a previously-written summary from recursively entering the next run.
 
 ### Lifecycle-marker filter
 
@@ -83,7 +82,7 @@ Three deterministic caps prevent context bloat. Exceeding any cap inserts an inl
 | `--max-comments N` | 50 | After this many surviving (post-filter) comments, inserts `[TRUNCATED — comment-count exceeded <N> comments]` and stops appending |
 | `--max-total-chars N` | 100000 | Applied to final `TASK_FILE` content as a safety net (`task-file-total` scope label) |
 
-Precedent: `skills/issue/scripts/fetch-issue-details.sh:17-147` applies similar body/comment caps to prevent context bloat. The `--max-comments` default of 50 is higher than `/issue`'s 20 because tracking-issue anchors legitimately accumulate more lifecycle history.
+Precedent: `skills/issue/scripts/fetch-issue-details.sh` applies similar body/comment caps to prevent context bloat. The `--max-comments` default of 50 is higher than `/issue`'s because tracking issues legitimately accumulate more lifecycle history.
 
 ## TASK_FILE envelope (FINDING_11 data-not-instructions wrapping)
 
@@ -121,10 +120,9 @@ Each invocation of combination 1 appends a new prompt comment. Retrying the same
 
 ## `--sentinel` mode parser
 
-Reads a local markdown file (typically `$IMPLEMENT_TMPDIR/parent-issue.md` written by a future Phase 5 caller) and grep-extracts three keys:
+Reads a local markdown file (typically `$IMPLEMENT_TMPDIR/parent-issue.md`) and grep-extracts two keys:
 
 - `ISSUE_NUMBER=<value>`
-- `ANCHOR_COMMENT_ID=<value>`
 - `ADOPTED=true|false|` (strict contract — see `ADOPTED=` field contract above)
 
 Parser behavior:
@@ -145,8 +143,8 @@ Uses Bash 3.2-compatible constructs (indexed arrays only; no associative arrays,
 | File | Relationship |
 |---|---|
 | `scripts/tracking-issue-write.sh` | Delegated-to for `append-comment` in combination 1. Its `--lifecycle-marker` emits the markers filtered here. |
-| `SECURITY.md` | Documents the data-not-instructions envelope as active mitigation, anchor-filter feedback-loop guard. |
-| `skills/implement/references/anchor-comment-template.md` | Defines the anchor first-line marker literal that the filter matches. |
+| `SECURITY.md` | Documents the data-not-instructions envelope as active mitigation and summary-marker feedback-loop guard. |
+| `scripts/tracking-issue-summary.sh` | Emits the summary markers filtered here. |
 | `skills/issue/scripts/fetch-issue-details.sh` | Precedent for caps + pagination handling (consulted during design). |
 | `scripts/test-tracking-issue-read-sentinel.sh` | Regression harness for the `--sentinel` branch's `ADOPTED=` field contract. Must stay in sync with the contract defined above; new behaviors in the `--sentinel` branch require new harness cases. |
 | `scripts/test-tracking-issue-read-sentinel.md` | Contract + invariants for the regression harness. Edit in the same PR as behavior or assertion changes. |

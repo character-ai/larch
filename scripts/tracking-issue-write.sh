@@ -1,21 +1,16 @@
 #!/usr/bin/env bash
 # tracking-issue-write.sh — outbound helper for the tracking-issue lifecycle.
 #
-# Phase 1 (umbrella #348) foundation layer. Ships six narrow subcommands —
-# five writes (create-issue, append-comment, upsert-anchor, rename,
-# mark-false-positive) that each perform exactly one GitHub write, plus one
-# read-only lookup (find-anchor)
-# that lists comments and returns the v1 anchor id (or empty / fail-closed
-# on multi-anchor) — all sharing the same KEY=value stdout envelope and
+# Phase 1 (umbrella #348) foundation layer. Ships narrow subcommands —
+# create-issue, append-comment, rename, and mark-false-positive — that each
+# perform exactly one GitHub write while sharing the same KEY=value stdout envelope and
 # fail-closed redaction posture as skills/issue/scripts/create-one.sh.
 #
 # Subcommands:
 #   create-issue   --title T --body-file F [--repo OWNER/REPO]
 #   append-comment --issue N --body-file F [--lifecycle-marker ID] [--repo OWNER/REPO]
-#   upsert-anchor  --issue N [--anchor-id ID] --body-file F [--repo OWNER/REPO]
 #   rename         --issue N --state in-progress|done|stalled [--round-trip BOOL] [--repo OWNER/REPO]
 #   mark-false-positive --issue N [--repo OWNER/REPO]
-#   find-anchor    --issue N [--repo OWNER/REPO]                (read-only)
 #
 # Output contract (KEY=value on stdout; warnings on stderr). NAMESPACE note:
 # this script emits FAILED=true / ERROR=<msg> on failure — NOT the
@@ -29,15 +24,9 @@
 # Success keys:
 #   create-issue:   ISSUE_NUMBER=<N>  ISSUE_URL=<url>
 #   append-comment: COMMENT_ID=<id>   COMMENT_URL=<url>
-#   upsert-anchor:  ANCHOR_COMMENT_ID=<id>  ANCHOR_COMMENT_URL=<url>  UPDATED=true|false
 #   rename:         RENAMED=true|false  NEW_TITLE=<title>
 #                   ROUND_TRIP_APPLIED=true|false (only when --round-trip was passed)
 #   mark-false-positive: MARKED=true|false  NEW_TITLE=<title>
-#   find-anchor:    ANCHOR_COMMENT_ID=<id-or-empty>
-#                   (one match → ANCHOR_COMMENT_ID=<id>; zero matches →
-#                   ANCHOR_COMMENT_ID= empty value; multiple matches →
-#                   FAILED=true ERROR=multiple anchor comments found
-#                   (ids: <comma-list>) and exit 2.)
 #
 # Rename semantics (tracking-issue title-prefix lifecycle):
 #   Strips exactly ONE leading lifecycle prefix (anchored regex
@@ -74,34 +63,15 @@
 #     stderr separately. On non-success paths, captured stderr is piped
 #     through scripts/redact-secrets.sh before emission in ERROR=. This
 #     mirrors create-one.sh:247-280's posture for /issue outbound.
-#   * Anchor skeleton preservation — truncation operates on section
-#     interiors, NEVER on section marker literals or the HTML anchor
-#     first-line marker. Phase 3 consumers parse by these markers.
-#
-# Anchor version policy (strict v1):
-#   This script matches and emits only <!-- larch:implement-anchor v1 … -->.
-#   Future versions (v2, …) introduce a new marker handled by a new tool
-#   version. Mixed-version state on a single issue is fail-closed via
-#   upsert-anchor's "multiple anchor comments" branch.
+#   * Summary comments are owned by tracking-issue-summary.sh; durable run
+#     payloads are owned by larch-log.sh.
 #
 # Conventions:
 #   Uses Bash 3.2-compatible constructs (indexed arrays only; no
 #   associative arrays, no `mapfile`) so macOS-default bash runs match
 #   Ubuntu CI. Precedent: scripts/dialectic-smoke-test.sh.
-#   Truncation is character-length based under bash's UTF-8 string
-#   semantics, with line-boundary snapping (inline
-#   TRUNCATED marker always begins on its own line so open code fences
-#   cannot consume the marker or subsequent section markers). When the
-#   kept prefix ends with an unclosed column-0 backtick fence (the
-#   line-by-line scan tracks opener length and requires the close to be
-#   at least that long, per GFM), a closing fence line of matching
-#   length is inserted before the TRUNCATED marker so the unclosed
-#   fence cannot swallow the rest of the comment body (diagrams +
-#   tables + sibling sections rendering as raw code on GitHub). Tilde
-#   fences and indented fences are out of scope — anchor sections are
-#   machine-composed by /implement and only emit column-0 backtick
-#   fences. Multibyte UTF-8 splitting is tolerated as section interiors
-#   are machine-composed (no human multibyte content expected).
+#   Truncation is intentionally not applied here anymore; bulky run payloads
+#   live in committed larch-logs files rather than in GitHub comments.
 
 set -euo pipefail
 
@@ -110,47 +80,15 @@ REPO_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
 REDACT_HELPER="$REPO_ROOT/scripts/redact-secrets.sh"
 REDACT_TMPDIR_HELPER="$REPO_ROOT/scripts/redact-tmpdir-paths.sh"
 
-# 11 canonical section slugs in declaration order. Single source of truth
-# lives in scripts/anchor-section-markers.sh; sourced here to keep the
-# truncation pass and scripts/assemble-anchor.sh's assembly walk in
-# lockstep. Missing helper is fail-closed so the FAILED=true / ERROR= stdout
-# contract is preserved (test-tracking-issue-write.sh covers this case).
-MARKERS_HELPER="$SCRIPT_DIR/anchor-section-markers.sh"
 TITLE_MARKERS_HELPER="$SCRIPT_DIR/lib-title-markers.sh"
-if [ ! -f "$MARKERS_HELPER" ]; then
-    echo "FAILED=true"
-    echo "ERROR=missing helper: $MARKERS_HELPER"
-    exit 1
-fi
-# shellcheck source=scripts/anchor-section-markers.sh
-# shellcheck disable=SC1091
-source "$MARKERS_HELPER"
-
-# Per-section 14000-char cap. Exceeded interiors are replaced in place
-# with a line-snapped truncated prefix, an OPTIONAL closing-fence line
-# of matching length when the kept prefix leaves a column-0 backtick
-# fence open (GFM rule: closer length >= opener length, and a closer
-# line must be backticks followed by only whitespace), and a final
-# inline [TRUNCATED — <id> exceeded 14000 chars] marker on its own line.
-PER_SECTION_CAP=14000
-
-# Body-level 60000-char cap. Exceeding collapses sections to a single
-# placeholder in priority order (most-ephemeral first, most user-value
-# last). All slugs below come from SECTION_MARKERS above.
-BODY_CAP=60000
-COLLAPSE_PRIORITY=(execution-issues review-findings-full plan-review-tally code-review-tally oos-issues token-report run-statistics timing-report version-bump-reasoning diagrams plan-goals-test)
-
-ANCHOR_MARKER_V1_PREFIX='<!-- larch:implement-anchor v1'
 
 usage() {
     cat <<'USAGE' >&2
 Usage:
   tracking-issue-write.sh create-issue   --title T --body-file F [--repo OWNER/REPO]
   tracking-issue-write.sh append-comment --issue N --body-file F [--lifecycle-marker ID] [--repo OWNER/REPO]
-  tracking-issue-write.sh upsert-anchor  --issue N [--anchor-id ID] --body-file F [--repo OWNER/REPO]
   tracking-issue-write.sh rename         --issue N --state in-progress|done|stalled [--round-trip BOOL] [--repo OWNER/REPO]
   tracking-issue-write.sh mark-false-positive --issue N [--repo OWNER/REPO]
-  tracking-issue-write.sh find-anchor    --issue N [--repo OWNER/REPO]
 USAGE
 }
 
@@ -300,223 +238,9 @@ emit_gh_failure() {
     exit 2
 }
 
-# truncate_body <body> — two-pass truncation per the skeleton-preservation
-# invariant. Prints the truncated body to stdout.
-#
-# Pass 1 (per-section): for each SECTION_MARKERS slug, if the interior
-# between the section-open and section-end markers exceeds PER_SECTION_CAP,
-# replace the interior with a truncated prefix (snapped to newline), an
-# OPTIONAL matching-length closing fence line when the kept prefix leaves
-# a column-0 backtick fence open (GFM closer rule applied), then an
-# inline TRUNCATED marker on its own line. Section markers themselves
-# are preserved.
-#
-# Pass 2 (body-level): if total length still exceeds BODY_CAP, walk
-# COLLAPSE_PRIORITY in order. For each slug, replace the interior with
-# the single-line placeholder. Stop once total length fits.
-#
-# Implementation: the new-interior content can contain newlines, which
-# awk -v cannot accept. For each section we write the replacement
-# interior to a per-section temp file and have awk splice it in via
-# getline. A single work_dir (mktemp -d) holds these temps. The
-# function body uses a subshell `( … )` rather than a brace group so
-# the EXIT trap below is structurally scoped to the function's own
-# subshell — it cannot clobber the caller's EXIT trap regardless of
-# how the function is invoked. The trap fires whenever this subshell
-# exits (normal return, explicit exit, or propagated failure),
-# guaranteeing work_dir cleanup without relying on the caller's own
-# EXIT trap (which is installed later and only names
-# BODY_TMP/ERR_TMP/JSON_TMP, not work_dir). Note: Bash 3.2's errexit
-# behavior inside nested subshells is known to be inconsistent for
-# some inner-command failure patterns — the cleanup guarantee here
-# rests on subshell exit, not on errexit specifically triggering.
-truncate_body() (
-    local body="$1"
-    local slug interior new_interior open_marker close_marker
-    local work_dir
-    work_dir=$(mktemp -d)
-    # Expand $work_dir at trap-install time (double-quoted outer + single-
-    # quoted path inside): work_dir is `local`, so by the time the EXIT
-    # trap fires the local binding is gone. Single-quoting the whole trap
-    # body (or using double quotes around the inner path) would see an
-    # empty variable at EXIT and leak the real directory. The disable
-    # below turns off the SC2064 lint that flags this exact pattern.
-    # shellcheck disable=SC2064
-    trap "rm -rf '$work_dir'" EXIT
-
-    # Pass 1: per-section cap
-    for slug in "${SECTION_MARKERS[@]}"; do
-        open_marker="<!-- section:${slug} -->"
-        close_marker="<!-- section-end:${slug} -->"
-        # Extract section interior: everything between open_marker line
-        # and close_marker line (exclusive). Emit "__NOT_FOUND__" if the
-        # section markers are absent.
-        interior=$(awk -v o="$open_marker" -v c="$close_marker" '
-            BEGIN { in_section = 0; found = 0 }
-            $0 == o { in_section = 1; found = 1; next }
-            $0 == c { in_section = 0; next }
-            in_section { print }
-            END { if (!found) print "__NOT_FOUND__" }
-        ' <<<"$body")
-        if [[ "$interior" == "__NOT_FOUND__" ]]; then
-            continue
-        fi
-        if (( ${#interior} <= PER_SECTION_CAP )); then
-            continue
-        fi
-        # Note: ${#var} is character-length under bash UTF-8 locale (not
-        # strictly bytes). Anchor interiors are machine-composed ASCII so
-        # the count matches what the cap check above uses; the warning text
-        # says "chars" by user-locked spec (issue #1429 discussion-round1.md).
-        # Future multibyte content would diverge — tracked by a separate
-        # follow-up issue.
-        printf '**⚠ tracking-issue-write: section %s truncated at %s chars (was %s chars)**\n' "$slug" "$PER_SECTION_CAP" "${#interior}" >&2
-        # Snap to previous newline at or before the cap so the TRUNCATED
-        # marker begins on its own line (prevents open-fence corruption).
-        local truncated_at="$PER_SECTION_CAP"
-        while (( truncated_at > 0 )) && [[ "${interior:$truncated_at:1}" != $'\n' ]]; do
-            truncated_at=$((truncated_at - 1))
-        done
-        if (( truncated_at == 0 )); then
-            truncated_at="$PER_SECTION_CAP"
-        fi
-        local kept_prefix="${interior:0:$truncated_at}"
-        # Fence-aware close: scan the kept prefix line-by-line for
-        # column-0 backtick-fence delimiters and decide whether the cut
-        # left an unclosed fenced code block. Without an explicit
-        # closing fence the open block swallows the TRUNCATED marker
-        # AND all subsequent sections (diagrams, voting tables,
-        # run-statistics) — they render as raw code on GitHub instead
-        # of as the intended markdown. The close MUST be at least as
-        # long as the opener (GFM rule), so we track the opener's
-        # backtick length explicitly. Tilde fences (`~~~`) and indented
-        # fences are out of scope: anchor sections are machine-composed
-        # by /implement and only emit column-0 backtick fences.
-        local fence_state fence_open fence_len
-        # GFM closer rule: only a line whose backtick run is followed by
-        # optional whitespace through end-of-line is a closing fence
-        # delimiter. A line like ```python at column 0 INSIDE an open
-        # fence is content (an info string requires the run to be an
-        # opener), not a closer — flipping state on it would falsely
-        # report the fence closed and skip the synthetic close.
-        fence_state=$(printf '%s\n' "$kept_prefix" | awk '
-            BEGIN { open = 0; len = 0 }
-            {
-                if (match($0, /^`+/)) {
-                    n = RLENGTH
-                    if (n >= 3) {
-                        rest = substr($0, n + 1)
-                        if (open == 0) {
-                            open = 1
-                            len = n
-                        } else if (n >= len && rest ~ /^[[:space:]]*$/) {
-                            open = 0
-                            len = 0
-                        }
-                    }
-                }
-            }
-            END { print open, len }
-        ')
-        fence_open=${fence_state%% *}
-        fence_len=${fence_state##* }
-        if [[ "$fence_open" == "1" ]] && (( fence_len >= 3 )); then
-            local close_fence
-            close_fence=$(printf '%*s' "$fence_len" '' | tr ' ' '`')
-            new_interior="${kept_prefix}"$'\n'"${close_fence}"$'\n'"[TRUNCATED — ${slug} exceeded ${PER_SECTION_CAP} chars]"
-        else
-            new_interior="${kept_prefix}"$'\n'"[TRUNCATED — ${slug} exceeded ${PER_SECTION_CAP} chars]"
-        fi
-        # Write the replacement to a file so awk can read it via getline
-        # (awk -v does not accept newlines in the value).
-        local ni_file="$work_dir/ni-$slug.txt"
-        printf '%s' "$new_interior" > "$ni_file"
-        body=$(awk -v o="$open_marker" -v c="$close_marker" -v nif="$ni_file" '
-            BEGIN { in_section = 0; emitted = 0 }
-            $0 == o { in_section = 1; print; next }
-            $0 == c {
-                if (in_section && !emitted) {
-                    while ((getline line < nif) > 0) print line
-                    close(nif)
-                    emitted = 1
-                }
-                in_section = 0
-                print
-                next
-            }
-            in_section { next }
-            { print }
-        ' <<<"$body")
-    done
-
-    # Pass 2: body-level cap
-    if (( ${#body} > BODY_CAP )); then
-        for slug in "${COLLAPSE_PRIORITY[@]}"; do
-            open_marker="<!-- section:${slug} -->"
-            close_marker="<!-- section-end:${slug} -->"
-            local placeholder="[section '${slug}' truncated — see execution-issues.md locally]"
-            body=$(awk -v o="$open_marker" -v c="$close_marker" -v ph="$placeholder" '
-                BEGIN { in_section = 0; emitted = 0 }
-                $0 == o { in_section = 1; print; emitted = 0; next }
-                $0 == c {
-                    if (in_section && !emitted) {
-                        print ph
-                        emitted = 1
-                    }
-                    in_section = 0
-                    print
-                    next
-                }
-                in_section { next }
-                { print }
-            ' <<<"$body")
-            if (( ${#body} <= BODY_CAP )); then
-                break
-            fi
-        done
-    fi
-
-    printf '%s' "$body"
-)
-
-# list_anchor_comments <issue-number> <repo> — prints tab-separated
-# "id<TAB>first-line-of-body" lines (one per comment) to stdout, order
-# preserved. gh api pagination handles >100 comments. On gh failure
-# stashes the captured stderr in LIST_ANCHOR_ERROR and returns 2. The
-# CALLER is responsible for calling emit_gh_failure with that message.
-#
-# Why this contract: when invoked via command substitution (the caller
-# does LIST_OUT=$(list_anchor_comments …)), any stdout emission from a
-# nested emit_gh_failure would go into LIST_OUT rather than the parent
-# process's stdout — the caller's stdout would be empty even though
-# emit_gh_failure printed FAILED=/ERROR= lines. Returning non-zero and
-# letting the caller emit the envelope restores the documented
-# stdout-visible failure contract.
-LIST_ANCHOR_ERROR=""
-list_anchor_comments() {
-    local issue="$1"
-    local repo="$2"
-    local err_tmp
-    err_tmp=$(mktemp)
-    local out
-    if ! out=$(gh api "/repos/${repo}/issues/${issue}/comments" --paginate --jq '.[] | (.id|tostring) + "\t" + (.body // "" | split("\n")[0])' 2>"$err_tmp"); then
-        LIST_ANCHOR_ERROR=$(cat "$err_tmp")
-        rm -f "$err_tmp"
-        return 2
-    fi
-    rm -f "$err_tmp"
-    printf '%s' "$out"
-}
-
-# filter_anchor_ids <tab-separated-id-firstline-lines> — stdin → ids of
-# comments whose first line begins with ANCHOR_MARKER_V1_PREFIX.
-filter_anchor_ids() {
-    LC_ALL=C awk -F'\t' -v prefix="$ANCHOR_MARKER_V1_PREFIX" '
-        { line = $2 }
-        # Strip UTF-8 BOM if present on first byte.
-        substr(line, 1, 3) == "\357\273\277" { line = substr(line, 4) }
-        index(line, prefix) == 1 { print $1 }
-    '
+# truncate_body <body> — payloads are no longer comment-truncated; bulky content lives in larch-logs.
+truncate_body() {
+    printf '%s' "$1"
 }
 
 cmd="${1:-}"
@@ -570,9 +294,7 @@ case "$cmd" in
         BODY_CONTENT=$(truncate_body "$BODY_CONTENT")
         BODY_TMP=$(mktemp)
         ERR_TMP=$(mktemp)
-        # shellcheck disable=SC2317
-        cleanup() { rm -f "$BODY_TMP" "$ERR_TMP"; }
-        trap cleanup EXIT
+                trap 'rm -f "$BODY_TMP" "$ERR_TMP"' EXIT
         printf '%s' "$BODY_CONTENT" > "$BODY_TMP"
         if ISSUE_URL=$(gh issue create --repo "$REPO" --title "$TITLE" --body-file "$BODY_TMP" 2>"$ERR_TMP"); then
             URL_LINE=$(echo "$ISSUE_URL" | grep -oE 'https?://[^[:space:]]+/issues/[0-9]+' | tail -1 || true)
@@ -659,9 +381,7 @@ case "$cmd" in
         BODY_CONTENT=$(truncate_body "$BODY_CONTENT")
         BODY_TMP=$(mktemp)
         ERR_TMP=$(mktemp)
-        # shellcheck disable=SC2317
-        cleanup() { rm -f "$BODY_TMP" "$ERR_TMP"; }
-        trap cleanup EXIT
+                trap 'rm -f "$BODY_TMP" "$ERR_TMP"' EXIT
         printf '%s' "$BODY_CONTENT" > "$BODY_TMP"
         if COMMENT_URL=$(gh issue comment "$ISSUE" --repo "$REPO" --body-file "$BODY_TMP" 2>"$ERR_TMP"); then
             URL_LINE=$(echo "$COMMENT_URL" | grep -oE 'https?://[^[:space:]]+#issuecomment-[0-9]+' | tail -1 || true)
@@ -672,141 +392,6 @@ case "$cmd" in
             CID=$(echo "$URL_LINE" | grep -oE '[0-9]+$')
             echo "COMMENT_ID=$CID"
             echo "COMMENT_URL=$URL_LINE"
-            exit 0
-        else
-            ERR_CONTENT=$(cat "$ERR_TMP")
-            emit_gh_failure "$ERR_CONTENT"
-        fi
-        ;;
-
-    upsert-anchor)
-        ISSUE=""
-        ANCHOR_ID=""
-        BODY_FILE=""
-        REPO=""
-        while [[ $# -gt 0 ]]; do
-            case "$1" in
-                --issue) ISSUE="${2:?--issue requires a value}"; shift 2 ;;
-                --anchor-id) ANCHOR_ID="${2:?--anchor-id requires a value}"; shift 2 ;;
-                --body-file) BODY_FILE="${2:?--body-file requires a value}"; shift 2 ;;
-                --repo) REPO="${2:?--repo requires a value}"; shift 2 ;;
-                *) echo "Unknown option for upsert-anchor: $1" >&2; usage; exit 1 ;;
-            esac
-        done
-        if [[ -z "$ISSUE" ]] || [[ -z "$BODY_FILE" ]]; then
-            usage
-            exit 1
-        fi
-        if [[ ! -f "$BODY_FILE" ]]; then
-            echo "FAILED=true"
-            echo "ERROR=body file not found: $BODY_FILE"
-            exit 1
-        fi
-        if [[ -z "$REPO" ]]; then
-            REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null) || REPO=""
-            if [[ -z "$REPO" ]]; then
-                echo "FAILED=true"
-                echo "ERROR=could not determine repo"
-                exit 2
-            fi
-        fi
-        BODY_CONTENT=$(cat "$BODY_FILE")
-        if [[ -z "$BODY_CONTENT" ]]; then
-            echo "FAILED=true"
-            echo "ERROR=empty body"
-            exit 1
-        fi
-        # Ensure anchor first-line marker is present; prepend if not.
-        # Use parameter expansion (not `head -n 1 | ...`) to avoid SIGPIPE
-        # under set -o pipefail for large bodies.
-        FIRST_LINE="${BODY_CONTENT%%$'\n'*}"
-        ANCHOR_FIRSTLINE="<!-- larch:implement-anchor v1 issue=${ISSUE} -->"
-        if [[ "$FIRST_LINE" != "<!-- larch:implement-anchor v1"* ]]; then
-            BODY_CONTENT="${ANCHOR_FIRSTLINE}"$'\n'"$BODY_CONTENT"
-        fi
-        # Compose → redact → truncate (structural choke point).
-        BODY_CONTENT=$(redact "$BODY_CONTENT") || emit_redaction_failure
-        BODY_CONTENT=$(truncate_body "$BODY_CONTENT")
-        BODY_TMP=$(mktemp)
-        ERR_TMP=$(mktemp)
-        # shellcheck disable=SC2317
-        cleanup() { rm -f "$BODY_TMP" "$ERR_TMP"; }
-        trap cleanup EXIT
-        printf '%s' "$BODY_CONTENT" > "$BODY_TMP"
-
-        if [[ -n "$ANCHOR_ID" ]]; then
-            TARGET_ID="$ANCHOR_ID"
-            UPDATED=true
-        else
-            # Marker-search fallback. List anchor-marker comments.
-            # list_anchor_comments returns 2 on gh failure and stashes
-            # the captured error in LIST_ANCHOR_ERROR; we emit the
-            # envelope here (caller's stdout) rather than letting the
-            # helper emit it from within the command substitution
-            # subshell.
-            if ! LIST_OUT=$(list_anchor_comments "$ISSUE" "$REPO"); then
-                emit_gh_failure "${LIST_ANCHOR_ERROR:-gh api list comments failed}"
-            fi
-            ANCHOR_IDS=$(printf '%s\n' "$LIST_OUT" | filter_anchor_ids)
-            ANCHOR_COUNT=0
-            if [[ -n "$ANCHOR_IDS" ]]; then
-                ANCHOR_COUNT=$(printf '%s\n' "$ANCHOR_IDS" | wc -l | tr -d '[:space:]')
-            fi
-            if (( ANCHOR_COUNT == 0 )); then
-                # No anchor — create fresh comment.
-                if COMMENT_URL=$(gh issue comment "$ISSUE" --repo "$REPO" --body-file "$BODY_TMP" 2>"$ERR_TMP"); then
-                    URL_LINE=$(echo "$COMMENT_URL" | grep -oE 'https?://[^[:space:]]+#issuecomment-[0-9]+' | tail -1 || true)
-                    if [[ -z "$URL_LINE" ]]; then
-                        ERR_CONTENT=$(cat "$ERR_TMP")
-                        emit_gh_failure "gh issue comment did not emit a URL (stderr: $ERR_CONTENT)"
-                    fi
-                    CID=$(echo "$URL_LINE" | grep -oE '[0-9]+$')
-                    echo "ANCHOR_COMMENT_ID=$CID"
-                    echo "ANCHOR_COMMENT_URL=$URL_LINE"
-                    echo "UPDATED=false"
-                    exit 0
-                else
-                    ERR_CONTENT=$(cat "$ERR_TMP")
-                    emit_gh_failure "$ERR_CONTENT"
-                fi
-            elif (( ANCHOR_COUNT == 1 )); then
-                TARGET_ID="$ANCHOR_IDS"
-                UPDATED=true
-            else
-                # Multiple anchors — fail closed.
-                IDS_FLAT=$(printf '%s' "$ANCHOR_IDS" | tr '\n' ',' | sed 's/,$//')
-                echo "FAILED=true"
-                echo "ERROR=multiple anchor comments found (ids: $IDS_FLAT)"
-                exit 2
-            fi
-        fi
-
-        # PATCH the target comment via gh api. Build a JSON object
-        # {"body": "..."} using jq -Rs (read raw, slurp) to handle all
-        # escape cases (newlines, quotes, backslashes) and pass via
-        # --input. This keeps --body-file / --input as the single
-        # body-transport convention for the stub harness to key on.
-        JSON_TMP=$(mktemp)
-        # shellcheck disable=SC2317
-        cleanup2() { rm -f "$BODY_TMP" "$ERR_TMP" "$JSON_TMP"; }
-        trap cleanup2 EXIT
-        if ! jq -Rs '{body: .}' < "$BODY_TMP" > "$JSON_TMP" 2>"$ERR_TMP"; then
-            ERR_CONTENT=$(cat "$ERR_TMP")
-            emit_gh_failure "jq JSON encode failed: $ERR_CONTENT"
-        fi
-        if PATCH_OUT=$(gh api -X PATCH "/repos/${REPO}/issues/comments/${TARGET_ID}" --input "$JSON_TMP" 2>"$ERR_TMP"); then
-            # Successful PATCH returns JSON with id + html_url. Parse
-            # with jq (robust against pretty-printed output, multiple
-            # html_url-named fields, or JSON escaping quirks) rather
-            # than grep|sed.
-            PATCH_URL=$(printf '%s' "$PATCH_OUT" | jq -r '.html_url // empty' 2>/dev/null || echo "")
-            if [[ -z "$PATCH_URL" ]]; then
-                ERR_CONTENT=$(cat "$ERR_TMP")
-                emit_gh_failure "gh api PATCH did not emit html_url (stderr: $ERR_CONTENT)"
-            fi
-            echo "ANCHOR_COMMENT_ID=$TARGET_ID"
-            echo "ANCHOR_COMMENT_URL=$PATCH_URL"
-            echo "UPDATED=$UPDATED"
             exit 0
         else
             ERR_CONTENT=$(cat "$ERR_TMP")
@@ -859,9 +444,7 @@ case "$cmd" in
             fi
         fi
         ERR_TMP=$(mktemp)
-        # shellcheck disable=SC2317
-        cleanup() { rm -f "$ERR_TMP"; }
-        trap cleanup EXIT
+                trap 'rm -f "$ERR_TMP"' EXIT
         if ! CUR_TITLE=$(gh issue view "$ISSUE" --repo "$REPO" --json title --jq '.title' 2>"$ERR_TMP"); then
             ERR_CONTENT=$(cat "$ERR_TMP")
             emit_gh_failure "gh issue view failed: $ERR_CONTENT"
@@ -972,9 +555,7 @@ case "$cmd" in
             fi
         fi
         ERR_TMP=$(mktemp)
-        # shellcheck disable=SC2317
-        cleanup() { rm -f "$ERR_TMP"; }
-        trap cleanup EXIT
+                trap 'rm -f "$ERR_TMP"' EXIT
         if ! CUR_TITLE=$(gh issue view "$ISSUE" --repo "$REPO" --json title --jq '.title' 2>"$ERR_TMP"); then
             ERR_CONTENT=$(cat "$ERR_TMP")
             emit_gh_failure "gh issue view failed: $ERR_CONTENT"
@@ -994,56 +575,6 @@ case "$cmd" in
         echo "MARKED=true"
         echo "NEW_TITLE=$NEW_TITLE"
         exit 0
-        ;;
-
-    find-anchor)
-        ISSUE=""
-        REPO=""
-        while [[ $# -gt 0 ]]; do
-            case "$1" in
-                --issue) ISSUE="${2:?--issue requires a value}"; shift 2 ;;
-                --repo) REPO="${2:?--repo requires a value}"; shift 2 ;;
-                *) echo "Unknown option for find-anchor: $1" >&2; usage; exit 1 ;;
-            esac
-        done
-        if [[ -z "$ISSUE" ]]; then
-            usage
-            exit 1
-        fi
-        if [[ -z "$REPO" ]]; then
-            REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null) || REPO=""
-            if [[ -z "$REPO" ]]; then
-                echo "FAILED=true"
-                echo "ERROR=could not determine repo"
-                exit 2
-            fi
-        fi
-
-        # Reuse the same paginated listing pipeline upsert-anchor uses for
-        # marker-search-fallback (lines ~568-609 above). list_anchor_comments
-        # returns 2 on gh failure with the captured stderr stashed in
-        # LIST_ANCHOR_ERROR; emit_gh_failure runs in the main script process
-        # (not nested in $(...)) so FAILED= lines reach the caller's stdout.
-        if ! LIST_OUT=$(list_anchor_comments "$ISSUE" "$REPO"); then
-            emit_gh_failure "${LIST_ANCHOR_ERROR:-gh api list comments failed}"
-        fi
-        ANCHOR_IDS=$(printf '%s\n' "$LIST_OUT" | filter_anchor_ids)
-        ANCHOR_COUNT=0
-        if [[ -n "$ANCHOR_IDS" ]]; then
-            ANCHOR_COUNT=$(printf '%s\n' "$ANCHOR_IDS" | wc -l | tr -d '[:space:]')
-        fi
-        if (( ANCHOR_COUNT == 0 )); then
-            echo "ANCHOR_COMMENT_ID="
-            exit 0
-        elif (( ANCHOR_COUNT == 1 )); then
-            echo "ANCHOR_COMMENT_ID=$ANCHOR_IDS"
-            exit 0
-        else
-            IDS_FLAT=$(printf '%s' "$ANCHOR_IDS" | tr '\n' ',' | sed 's/,$//')
-            echo "FAILED=true"
-            echo "ERROR=multiple anchor comments found (ids: $IDS_FLAT)"
-            exit 2
-        fi
         ;;
 
     *)

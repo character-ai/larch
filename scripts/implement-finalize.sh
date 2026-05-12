@@ -228,7 +228,7 @@ require_postbump_state_keys() {
     local key
     for key in \
         BRANCH_NAME ISSUE_NUMBER REPO REPO_UNAVAILABLE FORKED_TARGET HAS_BUMP \
-        BUMP_TYPE NEW_VERSION BUMP_REASONING_FILE MANIFEST_PATH TOOL_LABEL ANCHOR_COMMENT_ID
+        BUMP_TYPE NEW_VERSION BUMP_REASONING_FILE MANIFEST_PATH TOOL_LABEL
     do
         state_has_key "$key" || die_usage "state-file missing required key: $key"
     done
@@ -329,7 +329,7 @@ clear_postbump_checkpoint() {
 
 postbump_tail() {
     local status=$1 anchor_status=$2 changelog_status=$3 rebase_status=$4 force_push_status=$5 resume_phase=${6:-}
-    echo "ANCHOR_REFRESH_STATUS=$anchor_status"
+    echo "LOG_WRITE_STATUS=$anchor_status"
     echo "CHANGELOG_STATUS=$changelog_status"
     echo "REBASE_STATUS=$rebase_status"
     echo "FORCE_PUSH_STATUS=$force_push_status"
@@ -389,42 +389,43 @@ validate_small_tmp_file() {
 }
 
 write_version_reasoning_fragment() {
-    local start issue_number repo repo_unavailable reasoning_file anchor_id content out rc failed args
+    local start issue_number repo_unavailable reasoning_file content out rc failed run_id input_file
     start=$(date +%s)
     issue_number=$(read_state ISSUE_NUMBER)
-    repo=$(read_state REPO)
     repo_unavailable=$(read_state REPO_UNAVAILABLE)
     reasoning_file=$(read_state BUMP_REASONING_FILE)
-    anchor_id=$(read_state ANCHOR_COMMENT_ID)
-    mkdir -p "$IMPLEMENT_TMPDIR/anchor-sections"
+    mkdir -p "$IMPLEMENT_TMPDIR/larch-log-batches"
     if validate_bump_reasoning_file "$reasoning_file"; then
         content=$(cat "$reasoning_file" 2>/dev/null || true)
     else
         content="No version bump reasoning available (skill may have skipped via BUMP_TYPE=NONE, or /bump-version was not invoked)."
-        append_execution_issue "Step 8 postbump anchor used fallback version-bump reasoning because BUMP_REASONING_FILE failed validation."
-        warn_line '**⚠ 8: anchor — version-bump-reasoning input failed validation; fallback text used. Continuing.**'
+        append_execution_issue "Step 8 postbump larch-log used fallback version-bump reasoning because BUMP_REASONING_FILE failed validation."
+        warn_line '**⚠ 8: larch-log — version-bump-reasoning input failed validation; fallback text used. Continuing.**'
     fi
-    printf '%s\n' "$content" > "$IMPLEMENT_TMPDIR/anchor-sections/version-bump-reasoning.md"
+    input_file="$IMPLEMENT_TMPDIR/larch-log-batches/version-bump-reasoning.md"
+    printf '%s\n' "$content" > "$input_file"
 
-    ANCHOR_REFRESH_STATUS=skipped
+    LOG_WRITE_STATUS=skipped
     if [ -n "$issue_number" ] && [ "$repo_unavailable" = "false" ]; then
-        args=("$SCRIPT_DIR/refresh-anchor.sh" --sections-dir "$IMPLEMENT_TMPDIR/anchor-sections" --issue "$issue_number" --output "$IMPLEMENT_TMPDIR/anchor-assembled.md")
-        [ -z "$anchor_id" ] || args=("${args[@]}" --anchor-id "$anchor_id")
-        [ -z "$repo" ] || args=("${args[@]}" --repo "$repo")
+        run_id="${LARCH_RUN_ID:-${RUN_ID:-}}"
+        if [ -z "$run_id" ]; then
+            run_id="$(basename "$IMPLEMENT_TMPDIR")"
+            run_id="${run_id##*-}"
+        fi
         set +e
-        out=$("${args[@]}")
+        out=$("$SCRIPT_DIR/larch-log.sh" write --skill implement --run-id "$run_id" --batch version-bump-reasoning --input-file "$input_file")
         rc=$?
         set +e
         failed=$(kv_value FAILED "$out")
         if [ "$rc" -eq 0 ] && [ "$failed" != "true" ]; then
-            ANCHOR_REFRESH_STATUS=ok
+            LOG_WRITE_STATUS=ok
         else
-            ANCHOR_REFRESH_STATUS=failed
-            append_execution_issue "Step 8 postbump anchor refresh failed."
-            warn_line '**⚠ 8: anchor — version-bump-reasoning refresh failed. Continuing.**'
+            LOG_WRITE_STATUS=failed
+            append_execution_issue "Step 8 postbump version-bump-reasoning log write failed."
+            warn_line '**⚠ 8: larch-log — version-bump-reasoning write failed. Continuing.**'
         fi
     fi
-    printf '✅ 8: anchor status=complete elapsed=%s\n' "$(elapsed "$start")"
+    printf '✅ 8: larch-log status=complete elapsed=%s\n' "$(elapsed "$start")"
 }
 
 changelog_categories_to_markdown() {
@@ -833,7 +834,7 @@ run_force_push_gate() {
 
 run_postbump() {
     local rc repo_root
-    ANCHOR_REFRESH_STATUS=skipped
+    LOG_WRITE_STATUS=skipped
     CHANGELOG_STATUS="skipped-resume"
     REBASE_STATUS="skipped-resume"
     FORCE_PUSH_STATUS=absent
@@ -859,7 +860,7 @@ run_postbump() {
         return 0
     fi
     if [ "$POSTBUMP_CHECKPOINT_PHASE" = "force-push-gate" ]; then
-        ANCHOR_REFRESH_STATUS=skipped
+        LOG_WRITE_STATUS=skipped
         CHANGELOG_STATUS="skipped-resume"
         REBASE_STATUS="skipped-resume"
         set +e
@@ -867,18 +868,18 @@ run_postbump() {
         rc=$?
         set +e
         case "$rc" in
-            0) postbump_tail ok "$ANCHOR_REFRESH_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" "$FORCE_PUSH_STATUS" ;;
-            3) postbump_tail push-failed "$ANCHOR_REFRESH_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" "$FORCE_PUSH_STATUS" ;;
-            4) postbump_tail branch-mismatch "$ANCHOR_REFRESH_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" "$FORCE_PUSH_STATUS" ;;
-            5) postbump_tail remote-check-failed "$ANCHOR_REFRESH_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" "$FORCE_PUSH_STATUS" ;;
-            *) postbump_tail push-failed "$ANCHOR_REFRESH_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" "$FORCE_PUSH_STATUS" ;;
+            0) postbump_tail ok "$LOG_WRITE_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" "$FORCE_PUSH_STATUS" ;;
+            3) postbump_tail push-failed "$LOG_WRITE_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" "$FORCE_PUSH_STATUS" ;;
+            4) postbump_tail branch-mismatch "$LOG_WRITE_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" "$FORCE_PUSH_STATUS" ;;
+            5) postbump_tail remote-check-failed "$LOG_WRITE_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" "$FORCE_PUSH_STATUS" ;;
+            *) postbump_tail push-failed "$LOG_WRITE_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" "$FORCE_PUSH_STATUS" ;;
         esac
         return 0
     fi
 
     write_version_reasoning_fragment
     if ! maybe_update_changelog; then
-        postbump_tail changelog-failed "$ANCHOR_REFRESH_STATUS" "$CHANGELOG_STATUS" skipped-resume absent
+        postbump_tail changelog-failed "$LOG_WRITE_STATUS" "$CHANGELOG_STATUS" skipped-resume absent
         return 0
     fi
     set +e
@@ -887,20 +888,20 @@ run_postbump() {
     set +e
     case "$rc" in
         0) ;;
-        1) postbump_tail conflict "$ANCHOR_REFRESH_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" absent force-push-gate; return 0 ;;
-        4) postbump_tail branch-mismatch "$ANCHOR_REFRESH_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" absent; return 0 ;;
-        *) postbump_tail rebase-failed "$ANCHOR_REFRESH_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" absent; return 0 ;;
+        1) postbump_tail conflict "$LOG_WRITE_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" absent force-push-gate; return 0 ;;
+        4) postbump_tail branch-mismatch "$LOG_WRITE_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" absent; return 0 ;;
+        *) postbump_tail rebase-failed "$LOG_WRITE_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" absent; return 0 ;;
     esac
     set +e
     run_force_push_gate
     rc=$?
     set +e
     case "$rc" in
-        0) postbump_tail ok "$ANCHOR_REFRESH_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" "$FORCE_PUSH_STATUS" ;;
-        3) postbump_tail push-failed "$ANCHOR_REFRESH_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" "$FORCE_PUSH_STATUS" ;;
-        4) postbump_tail branch-mismatch "$ANCHOR_REFRESH_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" "$FORCE_PUSH_STATUS" ;;
-        5) postbump_tail remote-check-failed "$ANCHOR_REFRESH_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" "$FORCE_PUSH_STATUS" ;;
-        *) postbump_tail push-failed "$ANCHOR_REFRESH_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" "$FORCE_PUSH_STATUS" ;;
+        0) postbump_tail ok "$LOG_WRITE_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" "$FORCE_PUSH_STATUS" ;;
+        3) postbump_tail push-failed "$LOG_WRITE_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" "$FORCE_PUSH_STATUS" ;;
+        4) postbump_tail branch-mismatch "$LOG_WRITE_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" "$FORCE_PUSH_STATUS" ;;
+        5) postbump_tail remote-check-failed "$LOG_WRITE_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" "$FORCE_PUSH_STATUS" ;;
+        *) postbump_tail push-failed "$LOG_WRITE_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" "$FORCE_PUSH_STATUS" ;;
     esac
 }
 
@@ -1246,10 +1247,14 @@ kill_session_background_processes() {
     local my_pid=$$
     local ppid
     ppid=$(ps -o ppid= -p "$my_pid" 2>/dev/null | tr -d ' ') || ppid=""
-    local pid killed=0 survivors=0 pids_out
+    local pid killed=0 survivors=0 pids_out canonical_tmpdir
+    canonical_tmpdir=$(cd "$IMPLEMENT_TMPDIR" 2>/dev/null && pwd -P) || canonical_tmpdir=""
     # Use awk index() for fixed-string match: pgrep -f and grep -E treat the path as a regex,
-    # and larch session tmpdirs contain dots that would match unintended characters.
-    pids_out=$(ps -A -o pid= -o args= 2>/dev/null | awk -v needle="$IMPLEMENT_TMPDIR" 'index($0, needle) > 0 {print $1}') || return 0
+    # and larch session tmpdirs contain dots that would match unintended characters. Check the
+    # lexical and physical tmpdir forms because /tmp may appear as /private/tmp in process argv.
+    pids_out=$(ps -A -o pid= -o args= 2>/dev/null | awk -v needle="$IMPLEMENT_TMPDIR" -v physical="$canonical_tmpdir" '
+        index($0, needle) > 0 || (physical != "" && physical != needle && index($0, physical) > 0) {print $1}
+    ') || return 0
     [ -n "$pids_out" ] || return 0
     while IFS= read -r pid; do
         [ -z "$pid" ] && continue
