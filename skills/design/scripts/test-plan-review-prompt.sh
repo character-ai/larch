@@ -57,19 +57,9 @@ for archetype in "${archetypes[@]}"; do
         [[ "$last_line" != "NO_ISSUES_FOUND" ]] \
             || fail "$vendor/$archetype: output ends with only NO_ISSUES_FOUND"
 
-        if [[ "$vendor" == "codex" ]]; then
-            chars=$(wc -c <"$out" | tr -d '[:space:]')
-            [[ "$chars" -lt 1200 ]] \
-                || fail "codex/$archetype: expected terse prompt under 1200 chars, got $chars"
-            if grep -Fq 'schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix' "$out"; then
-                fail "codex/$archetype: TSV structured contract should remain Cursor-only"
-            fi
-        else
-            grep -Eiq 'path|file' "$out" \
-                || fail "cursor/$archetype: expected path/file-centric wording"
-            assert_contains "$vendor/$archetype TSV header" "schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix" "$out"
-            assert_contains "$vendor/$archetype TSV record shape" "1	<scope>	<severity>	<focus_area>	<location>	<what>	<scenario_or_breakage>	<suggested_fix>" "$out"
-        fi
+        assert_contains "$vendor/$archetype full_role prose" "You are a" "$out"
+        assert_contains "$vendor/$archetype TSV header" "schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix" "$out"
+        assert_contains "$vendor/$archetype TSV record shape" "1	<scope>	<severity>	<focus_area>	<location>	<what>	<scenario_or_breakage>	<suggested_fix>" "$out"
     done
 done
 

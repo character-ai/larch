@@ -35,23 +35,15 @@ done
 
 case "$ARCHETYPE" in
     arch)
-        role_name="Architecture/Standards"
-        short_role="Architecture reviewer: maintainability, engineering standards, separation of concerns, reuse."
         full_role="You are an Architecture/Standards reviewer. Emphasize maintainability, engineering standards, separation of concerns, and reuse of existing patterns."
         ;;
     edge)
-        role_name="Edge-case/Failure-mode"
-        short_role="Edge-case reviewer: boundary conditions, error handling, failure recovery, races, silent data corruption."
         full_role="You are an Edge-case/Failure-mode reviewer. Focus on boundary conditions, error handling, failure recovery, race conditions, and silent data corruption."
         ;;
     innovation)
-        role_name="Innovation/Exploration"
-        short_role="Innovation reviewer: question assumptions, alternatives, and missed simpler or stronger approaches."
         full_role="You are an Innovation/Exploration reviewer. Question assumptions, suggest creative alternatives, and flag plans that ignore unconventional but stronger solutions."
         ;;
     pragmatic)
-        role_name="Pragmatism/Safety"
-        short_role="Pragmatism reviewer: minimize scope, avoid unnecessary complexity, protect existing behavior."
         full_role="You are a Pragmatism/Safety reviewer. Minimize scope, avoid unnecessary complexity, and ensure existing features are not broken."
         ;;
     "")
@@ -85,17 +77,7 @@ if [[ ! -r "$PLAN_FILE" ]]; then
     exit 2
 fi
 
-if [[ "$VENDOR" == "codex" ]]; then
-    cat <<EOF
-You are a ${role_name} plan reviewer. ${short_role}
-Review the implementation plan at ${PLAN_FILE}. Read it, inspect the repo as needed, and report findings only.
-Walk five focus areas: code-quality / risk-integration / correctness / architecture / security - tag each.
-Return numbered findings with focus-area tag, concern, and suggested revision.
-Prefix out-of-scope but worth-tracking items with [OUT_OF_SCOPE] and include repo-relative file paths and line ranges when applicable.
-If NO issues, output exactly NO_ISSUES_FOUND. Do NOT modify files.
-EOF
-else
-    cat <<EOF
+cat <<EOF
 ${full_role}
 Review the implementation plan file at ${PLAN_FILE}. Explore the codebase following file paths named in the plan, then inspect adjacent files only when needed to validate contracts and integration points.
 Walk five focus areas: code-quality / risk-integration / correctness / architecture / security.
@@ -108,4 +90,3 @@ For each finding, add one record:
 Use scope in_scope or out_of_scope; severity important, nit, or latent; and replace literal tabs or newlines inside field values with spaces.
 If NO issues, output exactly NO_ISSUES_FOUND. Do NOT modify files.
 EOF
-fi

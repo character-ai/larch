@@ -7,8 +7,7 @@
 - `--vendor claude` is intentionally unsupported; Claude fallback reviewers use `skills/shared/reviewer-templates.md` through `skills/design/references/plan-review.md`.
 - Every prompt includes the slash-separated focus-area enum `code-quality / risk-integration / correctness / architecture / security`.
 - Every prompt includes `NO_ISSUES_FOUND` as the no-findings sentinel instruction.
-- Codex prompts stay terse and command-like; Cursor prompts stay path/file-list-centric.
-- Cursor prompts include a TSV structured-record block contract so `/design` Step 3 can pass native Cursor archetype outputs through `collect-agent-results.sh --structured-reviewer-validation`. Codex prompts remain prose-only until their prompt contract is updated.
+- Both Cursor and Codex prompts include the full `full_role` personality prose and a TSV structured-record block contract so all archetype outputs can pass through `collect-agent-results.sh --structured-reviewer-validation`.
 - Invalid arguments exit 2 with diagnostics on stderr.
 
 ## Primary Callers

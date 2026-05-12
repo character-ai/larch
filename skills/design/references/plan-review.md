@@ -59,16 +59,10 @@ For Codex, Cursor, and their Claude replacement voters, instruct each: `"You are
 
 All 4 reviewers are external. Collect and validate outputs using the shared collection script. Only include output paths for reviewers that were actually launched as external tools (omit any slot where the tool was unavailable and a Claude subagent fallback is returning via Agent tool instead).
 
-Native Cursor archetype slots (`cursor-plan-arch-output.txt`, `cursor-plan-edge-output.txt`) opt into structured reviewer validation:
+All archetype slots (Cursor and Codex) and cross-tool fallback slots use structured reviewer validation:
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1860 --substantive-validation --validation-mode --structured-reviewer-validation [--write-health "${SESSION_ENV_PATH}.health"] <native-cursor-archetype-output-paths...>
-```
-
-Collect Codex archetype slots and cross-tool fallback slots without structured reviewer validation until their prompts are updated:
-
-```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1860 --substantive-validation --validation-mode [--write-health "${SESSION_ENV_PATH}.health"] <codex-and-fallback-output-paths...>
+${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1860 --substantive-validation --validation-mode --structured-reviewer-validation [--write-health "${SESSION_ENV_PATH}.health"] <all-archetype-output-paths...>
 ```
 
 Only include `--write-health` if `SESSION_ENV_PATH` is non-empty. Output paths include up to 2 Cursor archetype paths (`cursor-plan-arch-output.txt`, `cursor-plan-edge-output.txt`) and up to 2 Codex archetype paths (`codex-primary-plan-innovation-output.txt`, `codex-primary-plan-pragmatic-output.txt`). When Cursor is unavailable and Codex was used as fallback, those paths are `codex-fallback-cursor-plan-arch-output.txt` and `codex-fallback-cursor-plan-edge-output.txt`. When Codex is unavailable and Cursor was used as fallback, those are `cursor-fallback-codex-plan-innovation-output.txt` and `cursor-fallback-codex-plan-pragmatic-output.txt`. Omit paths for slots where a Claude subagent fallback was launched instead.
