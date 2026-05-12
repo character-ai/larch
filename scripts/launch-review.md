@@ -41,7 +41,12 @@ Gemini remains generic-only and rejects specialist flags.
   after ~10 s. The lock is released `LARCH_CURSOR_SERIAL_LOCK_DELAY` seconds
   (default 2) after the cursor process starts; fail-open after
   `LARCH_CURSOR_SERIAL_LOCK_TRIES`×0.1 s (default 30 s).
+  The lock is acquired before cursor spawns; the delayed `rmdir` is scheduled
+  immediately after cursor is spawned so the delay window starts from cursor
+  startup, not from lock acquisition.
   `LARCH_CURSOR_SERIAL_LOCK_FORCE_UNAME` overrides `uname -s` in tests.
+  Note: the `/tmp`-scoped fallback (when `IMPLEMENT_TMPDIR` is unset) uses a
+  user-guessable directory name — prefer `IMPLEMENT_TMPDIR` on shared hosts.
 - Codex sets `CODEX_SANDBOX_MODE=read-only` and emits a static
   `STATUS=clean MODE=baseline REASON=codex-sandbox-read-only` sidecar without
   running the scan — `--sandbox read-only` blocks writes at the syscall level,

@@ -1648,6 +1648,12 @@ wait "$PID_SL_B"; RC_SL_B=$?
 set -e
 assert_equals "SL-parallel launcher A completes (exit 0)" "0" "$RC_SL_A"
 assert_equals "SL-parallel launcher B completes (exit 0)" "0" "$RC_SL_B"
+# Lock dir must be gone after both launchers complete (DELAY=0 releases immediately post-spawn).
+if [[ -d "${IMPLEMENT_TMPDIR_SL}/larch-cursor-serial.lock" ]]; then
+    fail "SL-parallel: lock dir still present after both launchers completed"
+else
+    pass
+fi
 
 # Case SL-failopen: when the lock directory pre-exists (simulates a crashed
 # prior run leaving a stale lock) and LARCH_CURSOR_SERIAL_LOCK_TRIES=1 caps

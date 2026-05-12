@@ -824,13 +824,14 @@ fi
 # cursor-user/cursor-access-token from the macOS keychain at startup even
 # when --api-key is provided; parallel specialist fan-outs race that read,
 # causing some instances to fail (exit 1, "Password not found", ~10s).
-# A mkdir-based lock (POSIX-atomic on macOS/Linux local filesystems) scoped
-# to IMPLEMENT_TMPDIR (shared across parallel reviewer subprocesses) or /tmp
-# staggered cursor starts so each process completes its keychain init before
-# the next one begins. The lock is released LARCH_CURSOR_SERIAL_LOCK_DELAY
-# seconds (default 2) after the cursor process starts via a disowned
-# background job. Fail-open: after LARCH_CURSOR_SERIAL_LOCK_TRIES*0.1s
+# A mkdir-based lock (POSIX-atomic on macOS/Linux local filesystems) is
+# acquired here; the lock is released LARCH_CURSOR_SERIAL_LOCK_DELAY seconds
+# (default 2) after cursor is spawned below via a disowned background job,
+# giving each cursor process a window to complete its keychain init before
+# the next one starts. Fail-open: after LARCH_CURSOR_SERIAL_LOCK_TRIES*0.1s
 # (default 300*0.1=30s), give up and proceed without the lock.
+# Scope: IMPLEMENT_TMPDIR when set (session-private); /tmp otherwise (note:
+# /tmp/larch-cursor-serial-$USER.lock is user-guessable on shared hosts).
 # Test override: LARCH_CURSOR_SERIAL_LOCK_FORCE_UNAME overrides uname -s.
 _CURSOR_SERIAL_LOCK=""
 if [[ "${LARCH_CURSOR_SERIAL_LOCK_FORCE_UNAME:-$(uname -s 2>/dev/null)}" == "Darwin" ]]; then
@@ -849,10 +850,8 @@ if [[ "${LARCH_CURSOR_SERIAL_LOCK_FORCE_UNAME:-$(uname -s 2>/dev/null)}" == "Dar
         sleep 0.1
     done
     unset _cursor_serial_tries
-    if [[ -n "$_CURSOR_SERIAL_LOCK" ]]; then
-        { sleep "${LARCH_CURSOR_SERIAL_LOCK_DELAY:-2}"; rmdir "$_CURSOR_SERIAL_LOCK" 2>/dev/null || true; } &
-        disown $!
-    fi
+    # Lock release is scheduled below, after cursor spawns, so the delay
+    # window starts from cursor startup (not from lock acquisition here).
 fi
 
 # shellcheck disable=SC2086
@@ -879,6 +878,13 @@ RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX=.inner.done \
         "$WRAPPED_PROMPT" \
         2>>"$_STDERR_TARGET" &
 WRAPPER_PID=$!
+# Release the serial lock now that cursor has been spawned. The delay window
+# starts from cursor startup so the next launcher can acquire the lock only
+# after LARCH_CURSOR_SERIAL_LOCK_DELAY seconds of this cursor's keychain init.
+if [[ -n "$_CURSOR_SERIAL_LOCK" ]]; then
+    { sleep "${LARCH_CURSOR_SERIAL_LOCK_DELAY:-2}"; rmdir "$_CURSOR_SERIAL_LOCK" 2>/dev/null || true; } &
+    disown $!
+fi
 wait "$WRAPPER_PID" && EXIT_CODE=0 || EXIT_CODE=$?
 
 cursor_launcher_append_outer_meta "${OUTPUT}.meta" "$SCRIPT_DIR/launch-review.sh" "$PROMPT_FILE_SIDECAR" "$PWD"
