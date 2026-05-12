@@ -42,12 +42,13 @@ logs land in the consumer repo rather than the plugin install cache. Both use th
 two-assignment pattern to avoid `(A || B) && C` shell-precedence issues; both fall
 back to `SCRIPT_DIR/..` outside a git repo.
 
-**`commit` copy semantics**: when `$IMPLEMENT_TMPDIR` is set, the run directory lives
-under `$IMPLEMENT_TMPDIR/larch-logs/`. The `commit` subcommand copies it to the
-canonical repo path (`$LARCH_LOG_REPO_ROOT/larch-logs/<skill>/<run-id>/`) before
-running `git add` / `git commit`, so the committed files always land in the repo tree
-regardless of where they were staged. When `$IMPLEMENT_TMPDIR` is unset (standalone
-usage) the source and destination are the same path and no copy is performed.
+**`commit` copy semantics**: `commit` computes `src_path` via `larch_log_run_dir`
+(which may resolve under `$IMPLEMENT_TMPDIR`) and `repo_path` via
+`larch_log_repo_run_dir` (always `$LARCH_LOG_REPO_ROOT/larch-logs/<skill>/<run-id>/`).
+When the two paths differ, `commit` copies the staging tree into the repo path before
+running `git add` / `git commit`. When they are equal (no `$IMPLEMENT_TMPDIR` override,
+or `$LARCH_LOG_ROOT` already pointing at the canonical repo subtree), no copy is
+performed.
 
 **Batch registry**: all slugs, extensions, modes, and sanitizer hooks live in
 `scripts/larch-log-batches.sh`. See `scripts/larch-log-batches.md` for the full

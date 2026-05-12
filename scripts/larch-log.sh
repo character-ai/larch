@@ -265,7 +265,7 @@ case "$cmd" in
         [ -d "$src_path" ] || larch_log_fail 1 "log directory not found: $src_path"
         if [ "$src_path" != "$repo_path" ]; then
             mkdir -p "$repo_path" || larch_log_fail 3 "cannot create repo log directory"
-            cp -rp "$src_path/." "$repo_path/" 2>/dev/null || larch_log_fail 3 "cannot copy logs from temp to repo"
+            cp -rp "$src_path/." "$repo_path/" || larch_log_fail 3 "cannot copy logs from temp to repo"
         fi
         path="$repo_path"
         rel="${path#"$REPO_ROOT"/}"

@@ -7,8 +7,8 @@ sibling-contract rule for `lib-*.sh` files.
 
 Key exports:
 
-- `larch_log_root()` — three-tier precedence: `$LARCH_LOG_ROOT` (explicit override) >
-  `$IMPLEMENT_TMPDIR/larch-logs` (staging during a run) >
+- `larch_log_root()` — three-tier precedence: `$LARCH_LOG_ROOT` (explicit override,
+  highest priority) then `$IMPLEMENT_TMPDIR/larch-logs` (staging during a run) then
   `$LARCH_LOG_REPO_ROOT/larch-logs` (canonical repo destination).
   `LARCH_LOG_REPO_ROOT` is resolved via `git -C "$PWD" rev-parse --show-toplevel`
   (consumer repo) using a two-assignment pattern to avoid `(A || B) && C`
