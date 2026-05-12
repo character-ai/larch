@@ -1,0 +1,2 @@
+### Warnings
+- **Step 1 (drop-bump-commit)**: DROPPED=false before rebase; worktree had untracked larch-log file. Re-bump ran successfully.
