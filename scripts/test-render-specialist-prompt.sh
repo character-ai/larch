@@ -66,7 +66,8 @@ SPECIALISTS=(
   reviewer-security
   reviewer-edge-cases
   reviewer-security-structure-tests
-  reviewer-correctness-edges
+  reviewer-plan-fidelity
+  reviewer-code-robustness
 )
 
 # 1. All specialist agent files exist.

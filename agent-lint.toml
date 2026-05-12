@@ -578,7 +578,8 @@ exclude = [
   # These generators are invoked through the same scripts/generators.tsv
   # registry walker. agent-lint does not resolve TSV rows, so exclude them
   # alongside the exemplar generator above.
-  "scripts/generate-reviewer-correctness-edges-agent.sh",
+  "scripts/generate-reviewer-plan-fidelity-agent.sh",
+  "scripts/generate-reviewer-code-robustness-agent.sh",
   "scripts/generate-reviewer-security-structure-tests-agent.sh",
   "scripts/generate-pre-rendered-reviewer-prompts.sh",
   "scripts/generate-cursor-implementer.sh",
