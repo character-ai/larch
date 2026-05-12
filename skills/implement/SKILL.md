@@ -1503,19 +1503,24 @@ Capture and commit the session transcript (best-effort — never fatal):
 ```bash
 LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
 if [ -n "$LARCH_CLAUDE_SOURCE_FILE" ] && [ -f "$LARCH_CLAUDE_SOURCE_FILE" ]; then
-  TRANSCRIPT_PATH=$(awk -F= '/^TRANSCRIPT_PATH=/ { v=$2 } END { print v }' "$LARCH_CLAUDE_SOURCE_FILE")
+  TRANSCRIPT_PATH=$(grep '^TRANSCRIPT_PATH=' "$LARCH_CLAUDE_SOURCE_FILE" | head -1 | cut -d= -f2-)
   if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
-    "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write \
-      --skill implement --run-id "$RUN_ID" \
-      --batch session-transcript \
-      --input-file "$TRANSCRIPT_PATH" && \
-    "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" commit \
-      --skill implement --run-id "$RUN_ID" --no-push || true
+    if "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write \
+        --skill implement --run-id "$RUN_ID" \
+        --batch session-transcript \
+        --input-file "$TRANSCRIPT_PATH"; then
+      "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" commit \
+        --skill implement --run-id "$RUN_ID" --no-push || \
+        "${CLAUDE_PLUGIN_ROOT}/scripts/append-execution-issue.sh" \
+          --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
+          --category Warnings \
+          --entry "- **Step 18 — session-transcript commit failed:** write succeeded but git commit failed; transcript on disk under larch-logs/ but not committed" || true
+    fi
   fi
 fi
 ```
 
-The transcript path was snapshotted at Step 0 via `token-claude-source.sh` and stored in `$IMPLEMENT_TMPDIR/claude-source.env`. `larch-log.sh write` automatically applies `redact-tmpdir-paths.sh` and `redact-secrets.sh` before committing. The commit uses `--no-push` because the branch will be pushed (or already was) by Steps 9b/12; the log-flush commit rides along at the next push. On any failure (source file absent, transcript missing, redaction error), the entire block is silently skipped via `|| true`.
+The transcript path was snapshotted at Step 0 via `token-claude-source.sh` and stored in `$IMPLEMENT_TMPDIR/claude-source.env`. `larch-log.sh write` automatically applies `redact-tmpdir-paths.sh` and `redact-secrets.sh` before writing. The commit uses `--no-push`; for `--merge` runs the transcript lands on local main after the merge and is pushed on the next `git push`. A `write` failure (source file absent, transcript missing, redaction error) silently skips the whole block; a `commit` failure logs a `Warnings` entry.
 
 Run the consolidated teardown subcommand after the prompt-side warnings/notes and authoritative token refresh above. Under `forked_target=true`, skip only the tracking-issue rename / summary-refresh portions by leaving `ISSUE_NUMBER` unset; still run `implement-finalize.sh teardown` so `$IMPLEMENT_TMPDIR` is cleaned up and final warnings are repeated. It performs the title-prefix terminal transition first: Branch A renames to `[STALLED]` only when `STALL_TRACKING=true` and the issue state is exactly `OPEN`; Branch B renames to `[DONE]` when `STALL_TRACKING=false`, `DONE_RENAME_APPLIED!=true`, and `$PR_NUMBER` is set OR `DESIGN_ONLY_DONE=true`; Branch C is a no-op. Finalize-time round-trip detection runs inside `scripts/implement-finalize.sh` immediately before Branch A/B renames. On stalled paths, it then best-effort stashes leftover working-tree edits with a `larch-stalled-...` label and writes `.git/larch-stalled-run.txt` so the next SessionStart/preflight can surface or clear the leftover state. Before `cleanup-tmpdir.sh` runs (and before `verify_cleanup_target`, so even a refused cleanup releases the Stop hook), teardown writes `$IMPLEMENT_TMPDIR/.run-cleaned-up`. Teardown then best-effort kills stale background processes from this session whose argv references `$IMPLEMENT_TMPDIR` (fixed-string match via `awk index()` against lexical and physical tmpdir paths; current process and its direct parent are excluded; SIGTERM + 1s wait + SIGKILL backstop; emits a warning breadcrumb if any were killed). Before tmpdir removal, it verifies the tmpdir basename prefix and `session-id` against the Step 14 state file. When both match, cleanup proceeds. When only the session-id matches (prefix mismatch), it emits a warning and still invokes cleanup — this handles prefix bugs fixed in #1563/#1572. When the session-id doesn't match (or is absent), it logs a Tool Failures entry, emits the documented refusal warning, skips `rm -rf`, and continues. It then prints the tracking-issue URL when resolvable and prints the final Step 18 breadcrumb. Mechanical SSOT: `${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.md` § `teardown`.
 
