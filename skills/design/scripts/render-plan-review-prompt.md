@@ -1,6 +1,6 @@
 # render-plan-review-prompt.sh
 
-**Purpose**: Render `/design` Step 3 plan-review prompts for external reviewer slots. The renderer accepts an archetype (`arch`, `edge`, `innovation`, or `pragmatic`), a vendor (`codex` or `cursor`), and a plan file path, then writes the complete prompt to stdout.
+**Purpose**: Render `/design` Step 3 plan-review prompts for external reviewer slots. The renderer accepts an archetype (`arch`, `edge`, `innovation`, `pragmatic`, or `requirements`), a vendor (`codex` or `cursor`), and a plan file path, then writes the complete prompt to stdout.
 
 ## Invariants
 

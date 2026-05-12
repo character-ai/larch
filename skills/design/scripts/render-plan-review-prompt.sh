@@ -9,7 +9,7 @@ PLAN_FILE=""
 
 usage() {
     cat >&2 <<'EOF'
-Usage: render-plan-review-prompt.sh --archetype <arch|edge|innovation|pragmatic> --vendor <codex|cursor> --plan-file <path>
+Usage: render-plan-review-prompt.sh --archetype <arch|edge|innovation|pragmatic|requirements> --vendor <codex|cursor> --plan-file <path>
 EOF
 }
 
@@ -45,6 +45,9 @@ case "$ARCHETYPE" in
         ;;
     pragmatic)
         full_role="You are a Pragmatism/Safety reviewer. Minimize scope, avoid unnecessary complexity, and ensure existing features are not broken."
+        ;;
+    requirements)
+        full_role="You are a Requirements/Completeness reviewer. Verify that every stated goal, acceptance criterion, and constraint from the feature description is addressed in the plan — flag gaps where the plan is silent, drifts from the stated requirements, or fails to mention required testing or validation for new acceptance criteria."
         ;;
     "")
         echo "render-plan-review-prompt.sh: --archetype is required" >&2

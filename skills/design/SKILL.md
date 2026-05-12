@@ -1,13 +1,13 @@
 ---
 name: design
-description: "Use when designing non-trivial features, refactors, or architecture changes. Adaptive sketches (0 trivial, 2 quick/simple, 4 full) propose approaches; 4-reviewer panel validates via 3-voter dialectic."
+description: "Use when designing non-trivial features, refactors, or architecture changes. Adaptive sketches (0 trivial, 2 quick/simple, 4 full) propose approaches; 10-reviewer panel (5 personalities × 2 tools) validates via 3-voter dialectic."
 argument-hint: "[--auto] [--quick] [--full] [--subagent] [--session-env <path>] [--design-classification <value>] <feature description>"
 allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task, WebFetch, WebSearch
 ---
 
 # Design Skill
 
-Design an implementation plan for a feature and review it with a 4-reviewer panel (2 Cursor: Arch, Edge + 2 Codex: Innovation, Pragmatic — a diagonal split matching the sketch phase), adjudicated by a 3-voter panel (Claude + Codex + Cursor). The sketch phase (Step 2a) reads `run-params.json` and runs 0 agents for codebase-scan-confirmed trivial doc-only work, 2 generic agents for quick/simple work, or 4 agents in full mode (Cursor-Arch + Cursor-Edge + Codex-Innovation + Codex-Pragmatic — one personality per vendor in a diagonal split).
+Design an implementation plan for a feature and review it with a 10-reviewer panel (5 personalities × Cursor + Codex: Arch, Edge, Innovation, Pragmatic, Requirements — each personality runs on both tools), adjudicated by a 3-voter panel (Claude + Codex + Cursor). The sketch phase (Step 2a) reads `run-params.json` and runs 0 agents for codebase-scan-confirmed trivial doc-only work, 2 generic agents for quick/simple work, or 4 agents in full mode (Cursor-Arch + Cursor-Edge + Codex-Innovation + Codex-Pragmatic — one personality per vendor in a diagonal split).
 
 **Flags**: Parse flags from the start of `$ARGUMENTS` before treating the remainder as the feature description. Flags may appear in any order; stop at the first non-flag token. **All boolean flags default to `false`. Only set a flag to `true` when its `--flag` token is explicitly present in the arguments. Flags are independent — the presence of one flag must not influence the default value of any other flag.**
 
@@ -56,9 +56,9 @@ When `SESSION_ENV_PATH` is non-empty (nested under `/implement`), follow `${CLAU
 
 📊 Sketches (quick): | Cursor-Generic: ⏳ | Codex-Generic: ✅ 3m5s |
 
-or for Step 3 plan review (4-reviewer panel):
+or for Step 3 plan review (10-reviewer panel):
 
-📊 Reviewers: | Cursor-Arch: ✅ 4m12s | Cursor-Edge: ⏳ | Codex-Innovation: ⏳ | Codex-Pragmatic: ✅ 2m31s |
+📊 Reviewers: | Cursor-Arch: ✅ 4m12s | Cursor-Edge: ⏳ | Cursor-Innovation: ⏳ | Cursor-Pragmatic: ✅ 2m31s | Cursor-Requirements: ⏳ | Codex-Arch: ⏳ | Codex-Edge: ✅ 3m10s | Codex-Innovation: ⏳ | Codex-Pragmatic: ✅ 2m31s | Codex-Requirements: ⏳ |
 ```
 
 Icons: ✅ done (with elapsed time since launch), ⏳ pending/in-progress, ❌ failed/timeout (with elapsed time since launch), ⊘ skipped (unavailable). This replaces individual per-agent completion messages. → shared/progress-reporting.md
@@ -490,11 +490,11 @@ Read `review_budget` from `$DESIGN_TMPDIR/run-params.json`. Valid values are `qu
 
 **If `review_budget=full`**:
 
-**IMPORTANT: Plan review MUST ALWAYS run with all 4 reviewers (2 Cursor: Arch, Edge + 2 Codex: Innovation, Pragmatic). Never skip or abbreviate this step regardless of how straightforward the plan appears — even when all sketch agents agreed, the plan is short, or the change seems trivial. Reviewers validate against the actual codebase state, catching issues that sketch-phase reasoning alone cannot detect. When Cursor is unavailable, each Cursor archetype slot falls back to Codex; when Codex is unavailable, each Codex archetype slot falls back to Cursor; when both are unavailable, each falls back to a Claude subagent.**
+**IMPORTANT: Plan review MUST ALWAYS run with all 10 reviewers (5 Cursor: Arch, Edge, Innovation, Pragmatic, Requirements + 5 Codex: Arch, Edge, Innovation, Pragmatic, Requirements). Never skip or abbreviate this step regardless of how straightforward the plan appears — even when all sketch agents agreed, the plan is short, or the change seems trivial. Reviewers validate against the actual codebase state, catching issues that sketch-phase reasoning alone cannot detect. When Cursor is unavailable, each Cursor archetype slot falls back to Codex; when Codex is unavailable, each Codex archetype slot falls back to Cursor; when both are unavailable, each falls back to a Claude subagent.**
 
-**MANDATORY — READ ENTIRE FILE before launching reviewers**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/plan-review.md` completely. The reference is the normative source for the reviewer-prompt content and post-launch procedures: the byte-preserved Competition notice blockquote (appended to EACH reviewer prompt), the external prompt renderer contract, the voter-1 / voter-2 / voter-3 detailed quoted prompts, the ballot file handling paragraph, the Collecting External Reviewer Results procedure (4 reviewers: 2 Cursor archetypes (Arch, Edge) + 2 Codex archetypes (Innovation, Pragmatic), all external), the Voting Panel launch-order + threshold + Competition scoring rules, the Finalize Plan Review 4-step procedure plus OOS artifact write rule, the Track Rejected Plan Review Findings rule, and the accepted `FINDING_N` template, accepted `oos-accepted-design.md` format, and rejected-findings template. Step 3 control flow that remains inline in SKILL.md below (not in plan-review.md): the 4-reviewer "MUST ALWAYS run" IMPORTANT banner, the overall parallel-launch + spawn-order rule, `### External Reviewer Setup` (writing `$DESIGN_TMPDIR/plan.txt` + the focus-area enum summary line), and the external reviewer launch Bash blocks (2 Cursor archetypes + 2 Codex archetypes) which must stay inline because CI greps SKILL.md for focus-area enum anchor comments before each renderer call. Renderer details live in `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-plan-review-prompt.md`; harness coverage lives in `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-plan-review-prompt.sh` and `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-plan-review-prompt.md`. The Competition notice must be in context before any reviewer launch below — reading this file now guarantees that.
+**MANDATORY — READ ENTIRE FILE before launching reviewers**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/plan-review.md` completely. The reference is the normative source for the reviewer-prompt content and post-launch procedures: the byte-preserved Competition notice blockquote (appended to EACH reviewer prompt), the external prompt renderer contract, the voter-1 / voter-2 / voter-3 detailed quoted prompts, the ballot file handling paragraph, the Collecting External Reviewer Results procedure (10 reviewers: 5 Cursor archetypes (Arch, Edge, Innovation, Pragmatic, Requirements) + 5 Codex archetypes (Arch, Edge, Innovation, Pragmatic, Requirements), all external), the Voting Panel launch-order + threshold + Competition scoring rules, the Finalize Plan Review 4-step procedure plus OOS artifact write rule, the Track Rejected Plan Review Findings rule, and the accepted `FINDING_N` template, accepted `oos-accepted-design.md` format, and rejected-findings template. Step 3 control flow that remains inline in SKILL.md below (not in plan-review.md): the 10-reviewer "MUST ALWAYS run" IMPORTANT banner, the overall parallel-launch + spawn-order rule, `### External Reviewer Setup` (writing `$DESIGN_TMPDIR/plan.txt` + the focus-area enum summary line), and the external reviewer launch Bash blocks (5 Cursor archetypes + 5 Codex archetypes) which must stay inline because CI greps SKILL.md for focus-area enum anchor comments before each renderer call. Renderer details live in `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-plan-review-prompt.md`; harness coverage lives in `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-plan-review-prompt.sh` and `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-plan-review-prompt.md`. The Competition notice must be in context before any reviewer launch below — reading this file now guarantees that.
 
-Launch **all 4 reviewers in parallel** (in a single message). When Cursor is unavailable, each Cursor archetype slot falls back to Codex; when Codex is unavailable, each Codex archetype slot falls back to Cursor; when both are unavailable, each archetype slot falls back to a Claude subagent. **Spawn order matters for parallelism** — launch the slowest reviewers first: 2 Cursor archetypes (Arch, Edge), then 2 Codex archetypes (Innovation, Pragmatic). Each reviewer receives the plan text and the feature description. Each must **only report findings** — never edit files.
+Launch **all 10 reviewers in parallel** (in a single message). When Cursor is unavailable, each Cursor archetype slot falls back to Codex; when Codex is unavailable, each Codex archetype slot falls back to Cursor; when both are unavailable, each archetype slot falls back to a Claude subagent. **Spawn order matters for parallelism** — launch the slowest reviewers first: 5 Cursor archetypes (Arch, Edge, Innovation, Pragmatic, Requirements), then 5 Codex archetypes (Arch, Edge, Innovation, Pragmatic, Requirements). Each reviewer receives the plan text and the feature description. Each must **only report findings** — never edit files.
 
 ### External Reviewer Setup (if `codex_available` or `cursor_available`)
 
@@ -502,9 +502,9 @@ Before launching external reviewers, verify the implementation plan exists at `$
 
 Each reviewer walks five focus areas: code-quality / risk-integration / correctness / architecture / security.
 
-### Cursor Archetype Reviewers (2 slots)
+### Cursor Archetype Reviewers (5 slots)
 
-Launch 2 Cursor archetype plan reviewers **first** in the parallel message (Arch and Edge — they take the longest). Each archetype reviews the plan from its specialized perspective. Each Cursor reviewer has full repo access. **Fallback chain per slot**: Cursor → Codex → Claude subagent (subagent_type: `larch:code-reviewer`, model: `"sonnet"` with the archetype personality prepended).
+Launch 5 Cursor archetype plan reviewers **first** in the parallel message (Arch, Edge, Innovation, Pragmatic, Requirements — they take the longest). Each archetype reviews the plan from its specialized perspective. Each Cursor reviewer has full repo access. **Fallback chain per slot**: Cursor → Codex → Claude subagent (subagent_type: `larch:code-reviewer`, model: `"sonnet"` with the archetype personality prepended).
 
 **Cursor — Architecture/Standards** (if `cursor_available`):
 
@@ -538,11 +538,91 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/launch-review.sh --tool cursor \
 
 Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
 
-**Cursor archetype fallback** (per slot, if `cursor_available` is false): For each Cursor archetype slot where Cursor is unavailable, try Codex first (if `codex_available`). Render the same archetype with `render-plan-review-prompt.sh --archetype arch --vendor codex` or `--archetype edge --vendor codex`, write it to an explicit temp prompt file, then launch via `launch-review.sh --tool codex --prompt-file` with distinct per-archetype output paths: `$DESIGN_TMPDIR/codex-fallback-cursor-plan-arch-output.txt`, `$DESIGN_TMPDIR/codex-fallback-cursor-plan-edge-output.txt`. If both Cursor and Codex are unavailable for a slot, launch a Claude subagent fallback (subagent_type: `larch:code-reviewer`, model: `"sonnet"`) using the reviewer-templates.md path in `plan-review.md`.
+**Cursor — Innovation/Exploration** (if `cursor_available`):
 
-### Codex Archetype Reviewers (2 slots)
+```bash
+# Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
+_cursor_innovation_prompt_file="$DESIGN_TMPDIR/render-plan-cursor-innovation.prompt"
+bash "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-plan-review-prompt.sh" \
+  --archetype innovation --vendor cursor --plan-file "$DESIGN_TMPDIR/plan.txt" \
+  > "$_cursor_innovation_prompt_file"
+${CLAUDE_PLUGIN_ROOT}/scripts/launch-review.sh --tool cursor \
+  --output "$DESIGN_TMPDIR/cursor-plan-innovation-output.txt" \
+  --timeout 1800 --timing-task-kind cursor-plan-innovation \
+  --prompt-file "$_cursor_innovation_prompt_file"
+```
 
-Launch 2 Codex archetype plan reviewers **second** in the parallel message (Innovation and Pragmatic, after Cursor). Each archetype reviews the plan from its specialized perspective. Each Codex reviewer has full repo access. **Fallback chain per slot**: Codex → Cursor → Claude subagent (subagent_type: `larch:code-reviewer`, model: `"sonnet"` with the archetype personality prepended).
+Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
+
+**Cursor — Pragmatism/Safety** (if `cursor_available`):
+
+```bash
+# Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
+_cursor_pragmatic_prompt_file="$DESIGN_TMPDIR/render-plan-cursor-pragmatic.prompt"
+bash "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-plan-review-prompt.sh" \
+  --archetype pragmatic --vendor cursor --plan-file "$DESIGN_TMPDIR/plan.txt" \
+  > "$_cursor_pragmatic_prompt_file"
+${CLAUDE_PLUGIN_ROOT}/scripts/launch-review.sh --tool cursor \
+  --output "$DESIGN_TMPDIR/cursor-plan-pragmatic-output.txt" \
+  --timeout 1800 --timing-task-kind cursor-plan-pragmatic \
+  --prompt-file "$_cursor_pragmatic_prompt_file"
+```
+
+Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
+
+**Cursor — Requirements/Completeness** (if `cursor_available`):
+
+```bash
+# Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
+_cursor_requirements_prompt_file="$DESIGN_TMPDIR/render-plan-cursor-requirements.prompt"
+bash "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-plan-review-prompt.sh" \
+  --archetype requirements --vendor cursor --plan-file "$DESIGN_TMPDIR/plan.txt" \
+  > "$_cursor_requirements_prompt_file"
+${CLAUDE_PLUGIN_ROOT}/scripts/launch-review.sh --tool cursor \
+  --output "$DESIGN_TMPDIR/cursor-plan-requirements-output.txt" \
+  --timeout 1800 --timing-task-kind cursor-plan-requirements \
+  --prompt-file "$_cursor_requirements_prompt_file"
+```
+
+Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
+
+**Cursor archetype fallback** (per slot, if `cursor_available` is false): For each Cursor archetype slot where Cursor is unavailable, try Codex first (if `codex_available`). Render the same archetype with `render-plan-review-prompt.sh --archetype <arch|edge|innovation|pragmatic|requirements> --vendor codex`, write it to an explicit temp prompt file, then launch via `launch-review.sh --tool codex --prompt-file` with distinct per-archetype output paths: `$DESIGN_TMPDIR/codex-fallback-cursor-plan-arch-output.txt`, `$DESIGN_TMPDIR/codex-fallback-cursor-plan-edge-output.txt`, `$DESIGN_TMPDIR/codex-fallback-cursor-plan-innovation-output.txt`, `$DESIGN_TMPDIR/codex-fallback-cursor-plan-pragmatic-output.txt`, `$DESIGN_TMPDIR/codex-fallback-cursor-plan-requirements-output.txt`. If both Cursor and Codex are unavailable for a slot, launch a Claude subagent fallback (subagent_type: `larch:code-reviewer`, model: `"sonnet"`) using the reviewer-templates.md path in `plan-review.md`.
+
+### Codex Archetype Reviewers (5 slots)
+
+Launch 5 Codex archetype plan reviewers **second** in the parallel message (Arch, Edge, Innovation, Pragmatic, Requirements, after Cursor). Each archetype reviews the plan from its specialized perspective. Each Codex reviewer has full repo access. **Fallback chain per slot**: Codex → Cursor → Claude subagent (subagent_type: `larch:code-reviewer`, model: `"sonnet"` with the archetype personality prepended).
+
+**Codex — Architecture/Standards** (if `codex_available`):
+
+```bash
+# Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
+_codex_arch_prompt_file="$DESIGN_TMPDIR/render-plan-codex-arch.prompt"
+bash "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-plan-review-prompt.sh" \
+  --archetype arch --vendor codex --plan-file "$DESIGN_TMPDIR/plan.txt" \
+  > "$_codex_arch_prompt_file"
+${CLAUDE_PLUGIN_ROOT}/scripts/launch-review.sh --tool codex \
+  --output "$DESIGN_TMPDIR/codex-primary-plan-arch-output.txt" \
+  --timeout 1800 --timing-task-kind codex-plan-arch \
+  --prompt-file "$_codex_arch_prompt_file"
+```
+
+Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
+
+**Codex — Edge-cases/Failure-modes** (if `codex_available`):
+
+```bash
+# Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
+_codex_edge_prompt_file="$DESIGN_TMPDIR/render-plan-codex-edge.prompt"
+bash "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-plan-review-prompt.sh" \
+  --archetype edge --vendor codex --plan-file "$DESIGN_TMPDIR/plan.txt" \
+  > "$_codex_edge_prompt_file"
+${CLAUDE_PLUGIN_ROOT}/scripts/launch-review.sh --tool codex \
+  --output "$DESIGN_TMPDIR/codex-primary-plan-edge-output.txt" \
+  --timeout 1800 --timing-task-kind codex-plan-edge \
+  --prompt-file "$_codex_edge_prompt_file"
+```
+
+Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
 
 **Codex — Innovation/Exploration** (if `codex_available`):
 
@@ -576,11 +656,27 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/launch-review.sh --tool codex \
 
 Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
 
-**Codex archetype fallback** (per slot, if `codex_available` is false): For each Codex archetype slot where Codex is unavailable, try Cursor first (if `cursor_available`). Render the same archetype with `render-plan-review-prompt.sh --archetype innovation --vendor cursor` or `--archetype pragmatic --vendor cursor`, write it to an explicit temp prompt file, then launch via `launch-review.sh --tool cursor --prompt-file` with distinct per-archetype output paths: `$DESIGN_TMPDIR/cursor-fallback-codex-plan-innovation-output.txt`, `$DESIGN_TMPDIR/cursor-fallback-codex-plan-pragmatic-output.txt`. If both Codex and Cursor are unavailable for a slot, launch a Claude subagent fallback (subagent_type: `larch:code-reviewer`, model: `"sonnet"`) using the reviewer-templates.md path in `plan-review.md`.
+**Codex — Requirements/Completeness** (if `codex_available`):
+
+```bash
+# Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
+_codex_requirements_prompt_file="$DESIGN_TMPDIR/render-plan-codex-requirements.prompt"
+bash "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-plan-review-prompt.sh" \
+  --archetype requirements --vendor codex --plan-file "$DESIGN_TMPDIR/plan.txt" \
+  > "$_codex_requirements_prompt_file"
+${CLAUDE_PLUGIN_ROOT}/scripts/launch-review.sh --tool codex \
+  --output "$DESIGN_TMPDIR/codex-primary-plan-requirements-output.txt" \
+  --timeout 1800 --timing-task-kind codex-plan-requirements \
+  --prompt-file "$_codex_requirements_prompt_file"
+```
+
+Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
+
+**Codex archetype fallback** (per slot, if `codex_available` is false): For each Codex archetype slot where Codex is unavailable, try Cursor first (if `cursor_available`). Render the same archetype with `render-plan-review-prompt.sh --archetype <arch|edge|innovation|pragmatic|requirements> --vendor cursor`, write it to an explicit temp prompt file, then launch via `launch-review.sh --tool cursor --prompt-file` with distinct per-archetype output paths: `$DESIGN_TMPDIR/cursor-fallback-codex-plan-arch-output.txt`, `$DESIGN_TMPDIR/cursor-fallback-codex-plan-edge-output.txt`, `$DESIGN_TMPDIR/cursor-fallback-codex-plan-innovation-output.txt`, `$DESIGN_TMPDIR/cursor-fallback-codex-plan-pragmatic-output.txt`, `$DESIGN_TMPDIR/cursor-fallback-codex-plan-requirements-output.txt`. If both Codex and Cursor are unavailable for a slot, launch a Claude subagent fallback (subagent_type: `larch:code-reviewer`, model: `"sonnet"`) using the reviewer-templates.md path in `plan-review.md`.
 
 ### Collecting, Voting, Finalize, Track Rejected
 
-Follow `plan-review.md` (loaded via the MANDATORY at the top of Step 3) for: Collecting External Reviewer Results (`collect-agent-results.sh` for all 4 external reviewers, dedup in-scope and OOS separately), Voting Panel launch-order + threshold + Competition scoring, writing `$DESIGN_TMPDIR/voting-tally.md`, Finalize Plan Review (accepted findings revise plan, write `$DESIGN_TMPDIR/accepted-plan-findings.md`, write accepted OOS to `$(dirname "$SESSION_ENV_PATH")/oos-accepted-design.md` when `SESSION_ENV_PATH` is non-empty, write all OOS visibility content to `$DESIGN_TMPDIR/oos.md`, print non-accepted OOS under `## Out-of-Scope Observations` only when `SESSION_ENV_PATH` is empty), and Track Rejected Plan Review Findings (append to `$DESIGN_TMPDIR/rejected-findings.md`, in-scope only). Accepted OOS Descriptions should include affected repo-relative file paths and line ranges when applicable; `/implement` Step 9a.1 serializes same-file OOS issues unless the exposed ranges are parseable and non-overlapping.
+Follow `plan-review.md` (loaded via the MANDATORY at the top of Step 3) for: Collecting External Reviewer Results (`collect-agent-results.sh` for all launched external reviewers (up to 10 archetype slots), dedup in-scope and OOS separately), Voting Panel launch-order + threshold + Competition scoring, writing `$DESIGN_TMPDIR/voting-tally.md`, Finalize Plan Review (accepted findings revise plan, write `$DESIGN_TMPDIR/accepted-plan-findings.md`, write accepted OOS to `$(dirname "$SESSION_ENV_PATH")/oos-accepted-design.md` when `SESSION_ENV_PATH` is non-empty, write all OOS visibility content to `$DESIGN_TMPDIR/oos.md`, print non-accepted OOS under `## Out-of-Scope Observations` only when `SESSION_ENV_PATH` is empty), and Track Rejected Plan Review Findings (append to `$DESIGN_TMPDIR/rejected-findings.md`, in-scope only). Accepted OOS Descriptions should include affected repo-relative file paths and line ranges when applicable; `/implement` Step 9a.1 serializes same-file OOS issues unless the exposed ranges are parseable and non-overlapping.
 
 After the plan-review collection boundary, consult launcher `${OUTPUT}.dirty-tree` sidecars, run `check-mid-run-dirty-tree.sh --mode checkpoint`, and ask for recovery on dirty/unknown regardless of `auto_mode`, deduped by `$DESIGN_TMPDIR/.dirty-tree-prompted-plan-review`.
 
