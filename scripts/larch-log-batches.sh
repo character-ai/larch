@@ -12,8 +12,8 @@ diagrams .md replace mermaid
 version-bump-reasoning .md replace none
 oos-issues .ndjson append none
 run-statistics .json replace none
-token-report .ndjson append none
-timing-report .ndjson append none
+token-report .md replace none
+timing-report .md replace none
 execution-issues .ndjson append none
 "
 

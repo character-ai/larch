@@ -259,7 +259,8 @@ case "$cmd" in
         path="$(larch_log_run_dir "$SKILL" "$RUN_ID")"
         [ -d "$path" ] || larch_log_fail 1 "log directory not found: $path"
         rel="${path#"$REPO_ROOT"/}"
-        if git -C "$REPO_ROOT" diff --quiet -- "$rel" && git -C "$REPO_ROOT" diff --cached --quiet -- "$rel"; then
+        # Check status first: git diff alone misses untracked files.
+        if ! git -C "$REPO_ROOT" status --porcelain -- "$rel" | grep -q .; then
             larch_log_emit_success "$path" false true
             exit 0
         fi

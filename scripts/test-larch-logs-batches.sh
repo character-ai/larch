@@ -38,7 +38,10 @@ for slug in $actual; do
 done
 
 [ "$(larch_log_batch_extension diagrams)" = ".md" ]
-[ "$(larch_log_batch_mode token-report)" = "append" ]
+[ "$(larch_log_batch_mode token-report)" = "replace" ]
+[ "$(larch_log_batch_extension token-report)" = ".md" ]
+[ "$(larch_log_batch_mode timing-report)" = "replace" ]
+[ "$(larch_log_batch_extension timing-report)" = ".md" ]
 [ "$(larch_log_batch_sanitizer diagrams)" = "mermaid" ]
 
 echo "All assertions passed."

@@ -1939,8 +1939,11 @@ Before teardown, perform the authoritative final token/timing log refresh while 
 LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
 LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
 export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
-"${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" append --skill implement --run-id "$RUN_ID" --batch token-report --record-file "$IMPLEMENT_TMPDIR/token-report-record.ndjson" || true
-"${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" append --skill implement --run-id "$RUN_ID" --batch timing-report --record-file "$IMPLEMENT_TMPDIR/timing-report-record.ndjson" || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --full --output "$IMPLEMENT_TMPDIR/token-report-rendered.md" || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --full --output "$IMPLEMENT_TMPDIR/timing-report-rendered.md" || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --skill implement --run-id "$RUN_ID" --batch token-report --input-file "$IMPLEMENT_TMPDIR/token-report-rendered.md" || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --skill implement --run-id "$RUN_ID" --batch timing-report --input-file "$IMPLEMENT_TMPDIR/timing-report-rendered.md" || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" commit --skill implement --run-id "$RUN_ID" --no-push || true
 if [ "${forked_target:-false}" != "true" ] && [ -n "${ISSUE_NUMBER:-}" ] && [ "${repo_unavailable:-false}" != "true" ]; then
   ${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-summary.sh upsert-summary --issue "$ISSUE_NUMBER" --marker "<!-- larch:token-report v1 runid=$RUN_ID -->" --content-file "$IMPLEMENT_TMPDIR/summary-token-report.md" || true
   ${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-summary.sh upsert-summary --issue "$ISSUE_NUMBER" --marker "<!-- larch:final-summary v1 runid=$RUN_ID -->" --content-file "$IMPLEMENT_TMPDIR/summary-final.md" || true

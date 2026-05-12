@@ -391,13 +391,14 @@ ISSUE_BODY=$(snap_truncate "$ISSUE_BODY" "$MAX_BODY_CHARS" "issue-body")
             if [[ "${first_line:0:3}" == $'\xef\xbb\xbf' ]]; then
                 first_line="${first_line:3}"
             fi
-            # Summary-marker filter.
+            # Summary-marker filter (new format + legacy anchor for migration window).
             case "$first_line" in
                 '<!-- larch:metadata v1 runid='*' -->'|\
                 '<!-- larch:diagrams v1 runid='*' -->'|\
                 '<!-- larch:plan v1 runid='*' -->'|\
                 '<!-- larch:token-report v1 runid='*' -->'|\
-                '<!-- larch:final-summary v1 runid='*' -->')
+                '<!-- larch:final-summary v1 runid='*' -->'|\
+                '<!-- larch:implement-anchor v1 '*)
                     continue
                     ;;
             esac
