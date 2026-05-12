@@ -49,6 +49,7 @@ The script also writes `$IMPLEMENT_TMPDIR/postbump-state.sh` before `implement-f
 
 - Postbump conflict preserves `CALLER_KIND=step8b_rebase`.
 - `ci-initial` treats `ACTION=merge` as CI passed and exits `0`; `ci-merge` treats it as permission to call `merge-pr.sh`.
+- At the start of `ci-merge` phase (after the `REPO_UNAVAILABLE` early-return block), ship-pr.sh calls `larch-log.sh commit --skill implement --run-id <RUN_ID>` (best-effort) to flush pending larch-log writes before merge. This covers `version-bump-reasoning`, `oos-issues`, `run-statistics`, `token-report`, `timing-report`, and `execution-issues` batches written after the pre-bump log flush. The rebase-rebump sub-procedure step 1b performs the same flush on any rebase path; this covers the happy path where no rebase was needed. The commit is pushed so it lands in the PR before `merge-pr.sh` is called; push failure is non-fatal.
 - Fork mode skips bump application and uses direct `rebase-push.sh --base-remote upstream --base-ref main`.
 - State writes use `tmp.$$` plus `mv`.
 

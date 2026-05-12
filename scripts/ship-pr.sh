@@ -529,6 +529,18 @@ run_ci_phase() {
         fi
         return 0
     fi
+    # Flush pending larch-log writes (version-bump-reasoning, oos-issues,
+    # execution-issues, etc.) before merge so they land in the PR. The
+    # rebase-rebump sub-procedure (step 1b) already does this on any rebase
+    # path; this covers the happy path where no rebase was needed.
+    if [ "$phase" = "ci-merge" ]; then
+        local flush_run_id
+        flush_run_id=$(read_state RUN_ID)
+        if [ -n "$flush_run_id" ]; then
+            "$SCRIPT_DIR/larch-log.sh" commit --skill implement --run-id "$flush_run_id" 2>/dev/null || true
+        fi
+    fi
+
     if [ "$phase" = "ci-merge" ] && { [ "$(read_state MERGE)" != "true" ] || [ "$(read_state DRAFT)" = "true" ] || [ "$(read_state FORKED_TARGET)" = "true" ]; }; then
         advance_phase postmerge
         return 0

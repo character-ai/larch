@@ -407,7 +407,7 @@ write_version_reasoning_fragment() {
 
     LOG_WRITE_STATUS=skipped
     if [ -n "$issue_number" ] && [ "$repo_unavailable" = "false" ]; then
-        run_id="${LARCH_RUN_ID:-${RUN_ID:-}}"
+        run_id="${LARCH_RUN_ID:-${RUN_ID:-$(read_state RUN_ID)}}"
         if [ -z "$run_id" ]; then
             run_id="$(basename "$IMPLEMENT_TMPDIR")"
             run_id="${run_id##*-}"
@@ -1357,6 +1357,16 @@ run_teardown() {
     # FINALIZE_WARNINGS) and continue with best-effort posture.
     if ! touch "$IMPLEMENT_TMPDIR/.run-cleaned-up" 2>/dev/null; then
         warn_line '**⚠ 18: halt-protection sentinel write failed (touch .run-cleaned-up); Stop hook may continue blocking on next session. Continuing.**'
+    fi
+
+    # Flush any pending larch-log writes for the current run (best-effort).
+    # This handles stalled/failed runs where the ci-merge flush in ship-pr.sh
+    # never ran. Root-cause prevention lives in ship-pr.sh (ci-merge flush) and
+    # write_version_reasoning_fragment (correct run-id from state file).
+    local larch_flush_run_id
+    larch_flush_run_id=$(read_state RUN_ID)
+    if [ -n "$larch_flush_run_id" ] && [ "$repo_unavailable" = "false" ]; then
+        "$SCRIPT_DIR/larch-log.sh" commit --skill implement --run-id "$larch_flush_run_id" --no-push 2>/dev/null || true
     fi
 
     kill_session_background_processes
