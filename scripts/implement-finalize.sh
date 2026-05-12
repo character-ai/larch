@@ -45,7 +45,7 @@ is_tmp_path() {
     local cache_root
     cache_root="${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}/larch/sessions"
     case "$1" in
-        /tmp/*|/private/tmp/*) return 0 ;;
+        /tmp/*|/private/tmp/*|/var/folders/*) return 0 ;;
         "$cache_root"/*) return 0 ;;
         *) return 1 ;;
     esac
@@ -96,7 +96,7 @@ parse_postbump_args() {
             --changelog-bullets-file)
                 [ $# -ge 2 ] || die_usage "--changelog-bullets-file requires a value"
                 CHANGELOG_BULLETS_FILE=$2
-                is_tmp_path "$CHANGELOG_BULLETS_FILE" || die_usage "--changelog-bullets-file must be under /tmp/, /private/tmp/, or the larch cache sessions root"
+                is_tmp_path "$CHANGELOG_BULLETS_FILE" || die_usage "--changelog-bullets-file must be under /tmp/, /private/tmp/, /var/folders/, or the larch cache sessions root"
                 shift 2
                 ;;
             --help)
@@ -112,18 +112,18 @@ parse_postbump_args() {
 
 validate_common_state_args() {
     [ -n "$STATE_FILE" ] || die_usage "--state-file is required"
-    is_tmp_path "$STATE_FILE" || die_usage "--state-file must be under /tmp/, /private/tmp/, or the larch cache sessions root"
+    is_tmp_path "$STATE_FILE" || die_usage "--state-file must be under /tmp/, /private/tmp/, /var/folders/, or the larch cache sessions root"
     [ -r "$STATE_FILE" ] || die_usage "--state-file must exist and be readable"
 }
 
 validate_bail_file_arg() {
     [ -n "$FINAL_BAIL_REASON_FILE" ] || die_usage "--final-bail-reason-file is required"
-    is_tmp_path "$FINAL_BAIL_REASON_FILE" || die_usage "--final-bail-reason-file must be under /tmp/, /private/tmp/, or the larch cache sessions root"
+    is_tmp_path "$FINAL_BAIL_REASON_FILE" || die_usage "--final-bail-reason-file must be under /tmp/, /private/tmp/, /var/folders/, or the larch cache sessions root"
 }
 
 validate_tmpdir_arg() {
     [ -n "$IMPLEMENT_TMPDIR" ] || die_usage "--implement-tmpdir is required"
-    is_tmp_path "$IMPLEMENT_TMPDIR" || die_usage "--implement-tmpdir must be under /tmp/, /private/tmp/, or the larch cache sessions root"
+    is_tmp_path "$IMPLEMENT_TMPDIR" || die_usage "--implement-tmpdir must be under /tmp/, /private/tmp/, /var/folders/, or the larch cache sessions root"
     case "$STATE_FILE" in
         "$IMPLEMENT_TMPDIR"/*) ;;
         *) die_usage "--state-file must live under --implement-tmpdir for teardown" ;;

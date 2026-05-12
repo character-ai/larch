@@ -669,7 +669,7 @@ assert_rc "$RC" 2 "teardown: state-file outside implement tmpdir exits 2"
 
 run_subject_raw_rc teardown --state-file "$STATE" --implement-tmpdir /var/not-larch-tmp
 assert_rc "$RC" 2 "teardown: implement tmpdir outside /tmp exits 2"
-assert_contains "--implement-tmpdir must be under /tmp/, /private/tmp/, or the larch cache sessions root" "$OUT" "teardown: implement tmpdir diagnostic"
+assert_contains "--implement-tmpdir must be under /tmp/, /private/tmp/, /var/folders/, or the larch cache sessions root" "$OUT" "teardown: implement tmpdir diagnostic"
 
 printf 'BRANCH_NAME: bad\n' > "$STATE"
 run_subject_raw_rc postmerge --state-file "$STATE" --final-bail-reason-file "$BAIL"
