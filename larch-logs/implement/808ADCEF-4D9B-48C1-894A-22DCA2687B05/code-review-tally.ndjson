@@ -1,0 +1,3 @@
+Quick mode — no voting panel. Rounds 1: Codex generic reviewer.
+Accepted: 1 (correctness — missing RUN_ID in write_postbump_state/write_finalize_state).
+Rejected: 0.
