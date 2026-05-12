@@ -1,0 +1,6 @@
+### Pre-existing Code Issues
+- **Step 5**: `skills/fix-issue/SKILL.md` Step 1 hardcodes `--codex-healthy true --cursor-healthy true --gemini-healthy true` in the `write-session-env.sh` call, but `session-setup.sh` is not invoked with `--check-reviewers` so actual tool health is not probed. Reviewers may be treated as healthy when they are down. Flagged as out-of-scope by edge-cases reviewer (requires separate behavior change to add `--check-reviewers` and forward probed health keys).
+
+## Tool Failures
+
+- Step 8 postbump larch-log used fallback version-bump reasoning because BUMP_REASONING_FILE failed validation.
