@@ -107,6 +107,8 @@ Write session-env for forwarding to `/implement`:
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/write-session-env.sh --output "$FIX_ISSUE_TMPDIR/session-env.sh" \
+  --repo "$REPO" \
+  --repo-unavailable "$REPO_UNAVAILABLE" \
   --codex-healthy true --cursor-healthy true --gemini-healthy true
 ```
 
