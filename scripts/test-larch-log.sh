@@ -71,7 +71,7 @@ echo "=== manifest updates mutable fields ==="
 out="$("$LARCH_LOG" manifest --skill implement --run-id abc123 --field status=done --field pr_number=99)"
 assert_contains "$out" "LOG_WRITTEN=true" "manifest update writes"
 if grep -q '"status": "done"' "$manifest"; then pass "manifest status updated"; else fail "manifest status updated"; fi
-if grep -q '"pr_number": "99"' "$manifest"; then pass "manifest field updated"; else fail "manifest field updated"; fi
+if grep -q '"pr_number": 99' "$manifest"; then pass "manifest field stored as JSON number"; else fail "manifest field stored as JSON number"; fi
 
 echo "=== mermaid sanitizer rejects unsafe diagrams ==="
 bad="$TMP/bad.md"
