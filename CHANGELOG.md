@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Replace tracking-issue anchor-comment storage with committed `larch-logs/` run artifacts plus five slim marker-keyed tracking comments. Adds `scripts/larch-log.sh`, `scripts/tracking-issue-summary.sh`, batch/manifest harnesses, and removes the old anchor assembly/hydration/refresh scripts.
 
+## [26.0.17] - 2026-05-12
+
+### Fixed
+
+- `scripts/larch-log.sh`, `scripts/lib-larch-log.sh`: corrected `REPO_ROOT`/`LARCH_LOG_REPO_ROOT` fallback — `(A || B) && C` shell-precedence caused `pwd -P` to always run, doubling the path; now uses a two-assignment pattern so git operations target the project repo rather than the plugin cache.
+- `scripts/ship-pr.sh` `run_postmerge_phase`: wired `larch:token-report` and `larch:final-summary` tracking-issue summary upserts before teardown; moved `advance_phase "done"` before teardown so the state file exists when updated; added `exit 0` to bypass the stale state-machine loop after teardown removes the state file.
+- `scripts/implement-finalize.sh` `collect_changelog_bullets`: treat missing `CHANGELOG_BULLETS_FILE` as empty (not an error) on the no-manifest path, routing to `skipped-no-bullets` instead of `changelog-failed`.
+
 ## [26.0.15] - 2026-05-12
 
 ### Changed

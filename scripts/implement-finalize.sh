@@ -464,6 +464,8 @@ collect_changelog_bullets() {
             jq -r '(.summary_bullets // []) | if type == "array" then .[] else empty end' "$manifest_path" 2>/dev/null >> "$dir/Changed" || return 1
         fi
     else
+        # No manifest and no bullets file → empty categories, not an error (skipped-no-bullets path)
+        [ -n "${CHANGELOG_BULLETS_FILE:-}" ] || return 0
         validate_small_tmp_file "$CHANGELOG_BULLETS_FILE" || return 1
         while IFS= read -r line || [ -n "$line" ]; do
             [ -n "$line" ] || continue
