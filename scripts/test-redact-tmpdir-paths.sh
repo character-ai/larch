@@ -33,6 +33,8 @@ assert_eq "$(run_redactor '/tmp/claude-implement-larch1-G2GITf')" '<TMPDIR>' "cl
 assert_eq "$(run_redactor '/Users/example/.cache/larch/sessions/claude-design-cache123')" '<TMPDIR>' "cache session path redacted"
 assert_eq "$(run_redactor 'see /tmp/claude-research-a_b-C/log.txt now')" 'see <TMPDIR>/log.txt now' "embedded path redacted in prose"
 assert_eq "$(run_redactor '/tmp/not-larch-session and /var/tmp/claude-implement-abc')" '/tmp/not-larch-session and /var/tmp/claude-implement-abc' "non-matching paths preserved"
+assert_eq "$(run_redactor '/var/folders/kf/abc123/T/claude-implement-larch5-XyZ')" '<TMPDIR>' "/var/folders macOS session path redacted"
+assert_eq "$(run_redactor '/private/var/folders/kf/abc123/T/larch-fix-issue-XyZ')" '<TMPDIR>' "/private/var/folders canonical macOS session path redacted"
 
 once=$(run_redactor 'see /private/tmp/larch-issue-idempotent')
 twice=$(run_redactor "$once")

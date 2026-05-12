@@ -45,7 +45,7 @@ is_tmp_path() {
     local cache_root
     cache_root="${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}/larch/sessions"
     case "$1" in
-        /tmp/*|/private/tmp/*|/var/folders/*) return 0 ;;
+        /tmp/*|/private/tmp/*|/var/folders/*|/private/var/folders/*) return 0 ;;
         "$cache_root"/*) return 0 ;;
         *) return 1 ;;
     esac

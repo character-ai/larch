@@ -42,7 +42,7 @@ is_tmp_path() {
     local cache_root
     cache_root="${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}/larch/sessions"
     case "$1" in
-        /tmp/*|/private/tmp/*|/var/folders/*) return 0 ;;
+        /tmp/*|/private/tmp/*|/var/folders/*|/private/var/folders/*) return 0 ;;
         "$cache_root"/*) return 0 ;;
         *) return 1 ;;
     esac
@@ -66,8 +66,8 @@ done
 
 [ -n "$STATE_FILE" ] || die_usage "--state-file is required"
 [ -n "$IMPLEMENT_TMPDIR" ] || die_usage "--implement-tmpdir is required"
-is_tmp_path "$STATE_FILE" || die_usage "--state-file must be under /tmp/, /private/tmp/, or the larch cache sessions root"
-is_tmp_path "$IMPLEMENT_TMPDIR" || die_usage "--implement-tmpdir must be under /tmp/, /private/tmp/, or the larch cache sessions root"
+is_tmp_path "$STATE_FILE" || die_usage "--state-file must be under /tmp/, /private/tmp/, /var/folders/, or the larch cache sessions root"
+is_tmp_path "$IMPLEMENT_TMPDIR" || die_usage "--implement-tmpdir must be under /tmp/, /private/tmp/, /var/folders/, or the larch cache sessions root"
 [ -d "$IMPLEMENT_TMPDIR" ] || die_usage "--implement-tmpdir must exist"
 case "$STATE_FILE" in "$IMPLEMENT_TMPDIR"/*) ;; *) die_usage "--state-file must live under --implement-tmpdir" ;; esac
 is_bool "$AUTO_MODE" || die_usage "--auto-mode must be true or false"

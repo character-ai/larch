@@ -28,7 +28,7 @@ is_allowed_tmpdir() {
     local cache_root
     cache_root=$(cache_sessions_root)
     case "$dir" in
-        /tmp/*|/private/tmp/*) return 0 ;;
+        /tmp/*|/private/tmp/*|/var/folders/*|/private/var/folders/*) return 0 ;;
         "$cache_root"/*) return 0 ;;
         *) return 1 ;;
     esac
@@ -51,7 +51,7 @@ fi
 
 # Validate path is under an accepted larch temp root.
 if ! is_allowed_tmpdir "$DIR"; then
-    echo "ERROR: --dir must be under /tmp/, /private/tmp/, or $(cache_sessions_root)/ (got: $DIR)" >&2
+    echo "ERROR: --dir must be under /tmp/, /private/tmp/, /var/folders/, or $(cache_sessions_root)/ (got: $DIR)" >&2
     exit 1
 fi
 
