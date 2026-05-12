@@ -1,0 +1,3 @@
+Quick mode — no voting panel. Rounds 1-3: 5 Cursor specialists in parallel + generic Codex. Main agent reviewed findings across 1 round.
+
+Round 1: 4 findings accepted (SKILL.md stale count, plan-review.md Consumer line, attribution guidance, render-plan-review-prompt.md Makefile). 1 finding rejected (feature-file for requirements reviewer: out of scope).
