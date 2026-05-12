@@ -19,7 +19,8 @@ oos-issues
 run-statistics
 token-report
 timing-report
-execution-issues'
+execution-issues
+session-transcript'
 
 actual="$(larch_log_batch_list)"
 [ "$actual" = "$expected" ] || {
@@ -32,7 +33,7 @@ for slug in $actual; do
     ext="$(larch_log_batch_extension "$slug")"
     mode="$(larch_log_batch_mode "$slug")"
     sanitizer="$(larch_log_batch_sanitizer "$slug")"
-    case "$ext" in .md|.ndjson|.json) ;; *) echo "FAIL: invalid extension for $slug: $ext" >&2; exit 1 ;; esac
+    case "$ext" in .md|.ndjson|.json|.jsonl) ;; *) echo "FAIL: invalid extension for $slug: $ext" >&2; exit 1 ;; esac
     case "$mode" in replace|append) ;; *) echo "FAIL: invalid mode for $slug: $mode" >&2; exit 1 ;; esac
     case "$sanitizer" in none|mermaid) ;; *) echo "FAIL: invalid sanitizer for $slug: $sanitizer" >&2; exit 1 ;; esac
 done
