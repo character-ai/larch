@@ -28,7 +28,26 @@ After the initial version bump in Step 8, every subsequent rebase of the feature
    ```bash
    ${CLAUDE_PLUGIN_ROOT}/scripts/drop-bump-commit.sh
    ```
-   Parse `DROPPED`. If `DROPPED=false`, log to `$IMPLEMENT_TMPDIR/execution-issues.md` under `Warnings`: `Step <N> — drop-bump-commit.sh reported DROPPED=false before rebase; HEAD was not a bump commit (CI fix commit may have landed on top, worktree was dirty, or the commit touched files outside the configured bump-file set — see LARCH_BUMP_FILES in docs/configuration-and-permissions.md). Re-bump will still run but branch history may temporarily contain two bump commits and the rebase may encounter a bump-file conflict routed through Phase 1–3.` Continue to step 2. (The guard in `drop-bump-commit.sh` is defense-in-depth — the sub-procedure does not treat `DROPPED=false` as a hard failure.)
+   Parse `DROPPED`. If `DROPPED=false`, log to `$IMPLEMENT_TMPDIR/execution-issues.md` under `Warnings`: `Step <N> — drop-bump-commit.sh reported DROPPED=false before rebase; HEAD was not a bump commit (CI fix commit may have landed on top, worktree was dirty, or the commit touched files outside the configured bump-file set — see LARCH_BUMP_FILES in docs/configuration-and-permissions.md). Re-bump will still run but branch history may temporarily contain two bump commits and the rebase may encounter a bump-file conflict routed through Phase 1–3.` Continue to step 1b. (The guard in `drop-bump-commit.sh` is defense-in-depth — the sub-procedure does not treat `DROPPED=false` as a hard failure.)
+
+1b. **Refresh token/timing log batches** (step10/step12 family only; best-effort, non-fatal):
+
+   **step8 family — SKIP this step entirely** (same exemption as step 5 — push and log flush ownership belong to `implement-finalize.sh postbump`).
+
+   **step10 / step12 family**: after dropping the bump commit, re-write the token/timing batches with updated data and create a new log-flush commit. Running this BEFORE the rebase (step 2) serves two purposes: (1) it cleans up any uncommitted larch-log writes from Steps 9a.1/11 that would otherwise cause `rebase-push.sh --no-push` to fail on a dirty working tree; (2) it keeps the log-flush commit below the fresh bump commit so `drop-bump-commit.sh` can correctly drop the bump on subsequent retries. The `--no-push` is correct because step 5 performs the push.
+
+   ```bash
+   LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+   LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+   export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
+   "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --full --output "$IMPLEMENT_TMPDIR/token-report-rendered.md" || true
+   "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --full --output "$IMPLEMENT_TMPDIR/timing-report-rendered.md" || true
+   "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --skill implement --run-id "$RUN_ID" --batch token-report --input-file "$IMPLEMENT_TMPDIR/token-report-rendered.md" || true
+   "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --skill implement --run-id "$RUN_ID" --batch timing-report --input-file "$IMPLEMENT_TMPDIR/timing-report-rendered.md" || true
+   "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" commit --skill implement --run-id "$RUN_ID" --no-push || true
+   ```
+
+   On any failure, log to `$IMPLEMENT_TMPDIR/execution-issues.md` under `Warnings` and continue — log refresh failure is non-fatal.
 
 2. **Rebase without pushing**:
    ```bash
@@ -92,25 +111,6 @@ After the initial version bump in Step 8, every subsequent rebase of the feature
 
 4a. **Re-apply CHANGELOG update** (mirrors Step 8a):
    If `CHANGELOG.md` exists in the project root (check via Read tool) and a new bump commit was created (`VERIFIED=true` from step 4), update the CHANGELOG entry to reflect the new version from the re-bump. Follow the same logic as `implement-finalize.sh postbump` Phase 2: read `CHANGELOG.md`, compose an entry with the `NEW_VERSION` from the re-bump and the same Summary bullets, insert it (or replace the existing entry for the prior version if present), stage, and amend the bump commit via `${CLAUDE_PLUGIN_ROOT}/scripts/git-amend-add.sh CHANGELOG.md`. If CHANGELOG.md does not exist or the bump was skipped, skip this sub-step silently. **This is best-effort and non-blocking** — failure to update CHANGELOG does not affect the bump or push. **Edit-in-sync note:** keep this step's CHANGELOG-update semantics aligned with `postbump` Phase 2 when category, idempotency, or insertion-order rules change.
-
-4b. **Refresh token/timing log batches** (step10/step12 family only; best-effort, non-fatal):
-
-   **step8 family — SKIP this step entirely** (same exemption as step 5 — push and log flush ownership belong to `implement-finalize.sh postbump`).
-
-   **step10 / step12 family**: re-write the token/timing batches with updated data and create a new log-flush commit so the most recent token/timing snapshot lands in the merged PR. The `--no-push` is correct because step 5 performs the push.
-
-   ```bash
-   LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
-   LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
-   export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
-   "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --full --output "$IMPLEMENT_TMPDIR/token-report-rendered.md" || true
-   "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --full --output "$IMPLEMENT_TMPDIR/timing-report-rendered.md" || true
-   "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --skill implement --run-id "$RUN_ID" --batch token-report --input-file "$IMPLEMENT_TMPDIR/token-report-rendered.md" || true
-   "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --skill implement --run-id "$RUN_ID" --batch timing-report --input-file "$IMPLEMENT_TMPDIR/timing-report-rendered.md" || true
-   "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" commit --skill implement --run-id "$RUN_ID" --no-push || true
-   ```
-
-   On any failure, log to `$IMPLEMENT_TMPDIR/execution-issues.md` under `Warnings` and continue — log refresh failure is non-fatal.
 
 5. **Push with recovery**:
 
