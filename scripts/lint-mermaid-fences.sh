@@ -103,7 +103,11 @@ if [ "$changed_only" = true ]; then
         exit "$cf_rc"
     fi
     while IFS= read -r f; do
-        [ -n "$f" ] && files+=("$f")
+        case "$f" in
+            larch-logs/*) ;;  # runtime artifact files excluded from mermaid lint
+            "") ;;
+            *) files+=("$f") ;;
+        esac
     done <<<"$cf_out"
 fi
 
