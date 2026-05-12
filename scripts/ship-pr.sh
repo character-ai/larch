@@ -639,15 +639,8 @@ run_postmerge_phase() {
     export LARCH_TOKEN_SESSION_ID=$token_session LARCH_CLAUDE_SOURCE_FILE=$source_file
     "$SCRIPT_DIR/token-report.sh" --full --output "$IMPLEMENT_TMPDIR/token-report-rendered.md" 2>/dev/null || true
     if [ "$forked" != "true" ] && [ -n "$issue_number" ] && [ "$repo_unavailable" != "true" ]; then
-        cp "$IMPLEMENT_TMPDIR/token-report-rendered.md" "$IMPLEMENT_TMPDIR/summary-token-report.md" 2>/dev/null \
-            || printf 'Token report: see larch-logs/implement/%s/token-report.md\n' "$run_id" > "$IMPLEMENT_TMPDIR/summary-token-report.md"
         printf 'Status: %s | PR: %s\nLogs: larch-logs/implement/%s/\n' \
             "$stall_tracking" "${pr_url:-N/A}" "$run_id" > "$IMPLEMENT_TMPDIR/summary-final.md"
-        "$SCRIPT_DIR/tracking-issue-summary.sh" upsert-summary \
-            --issue "$issue_number" \
-            --marker "<!-- larch:token-report v1 runid=${run_id} -->" \
-            --content-file "$IMPLEMENT_TMPDIR/summary-token-report.md" \
-            --repo "$repo" 2>/dev/null || true
         "$SCRIPT_DIR/tracking-issue-summary.sh" upsert-summary \
             --issue "$issue_number" \
             --marker "<!-- larch:final-summary v1 runid=${run_id} -->" \
