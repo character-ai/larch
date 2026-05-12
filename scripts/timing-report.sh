@@ -77,8 +77,10 @@ render_report() {
     local ledger="$2"
     local now="${LARCH_TEST_TIMING_NOW:-$(date +%s)}"
     local skill="${LARCH_TIMING_SKILL:-implement}"
+    local outlier_threshold="${LARCH_TIMING_OUTLIER_THRESHOLD_S:-14400}"
     [[ -f "$ledger" ]] || unavailable "ledger not found"
-    awk -F '\t' -v mode="$mode" -v now="$now" -v terse_skill="$skill" '
+    awk -F '\t' -v mode="$mode" -v now="$now" -v terse_skill="$skill" -v outlier_threshold="$outlier_threshold" '
+      BEGIN { outlier_threshold += 0; if (outlier_threshold <= 0) outlier_threshold = 14400 }
       function hms(sec, h, m, s) {
         if (sec < 0) sec = 0
         h = int(sec / 3600)
@@ -193,7 +195,14 @@ render_report() {
           for (i = 1; i <= skill_count["implement"]; i++) {
             s = skill_mark_ts["implement" SUBSEP i]
             e = (i < skill_count["implement"]) ? skill_mark_ts["implement" SUBSEP (i + 1)] : last_event_ts()
-            print "| implement | " md(skill_mark_step["implement" SUBSEP i]) " | " hms(e - s) " |"
+            dur = e - s
+            dur_str = hms(dur)
+            if (dur > outlier_threshold) {
+              dur_str = dur_str " [OUTLIER]"
+              outlier_count++
+              outlier_steps[outlier_count] = md(skill_mark_step["implement" SUBSEP i])
+            }
+            print "| implement | " md(skill_mark_step["implement" SUBSEP i]) " | " dur_str " |"
             emit_child_rows("design", s, e)
             emit_child_rows("review", s, e)
           }
@@ -203,10 +212,26 @@ render_report() {
           total_duration = last_mark_ts - first_mark_ts
           for (i = 1; i <= mark_count; i++) {
             e = (i < mark_count) ? mark_ts[i + 1] : last_event_ts()
-            print "| " md(mark_skill[i]) " | " md(mark_step[i]) " | " hms(e - mark_ts[i]) " |"
+            dur = e - mark_ts[i]
+            dur_str = hms(dur)
+            if (dur > outlier_threshold) {
+              dur_str = dur_str " [OUTLIER]"
+              outlier_count++
+              outlier_steps[outlier_count] = md(mark_step[i])
+            }
+            print "| " md(mark_skill[i]) " | " md(mark_step[i]) " | " dur_str " |"
           }
         }
         print "| **Total** | | " hms(total_duration) " |"
+        if (outlier_count > 0) {
+          msg = ""
+          for (oi = 1; oi <= outlier_count; oi++) {
+            if (oi > 1) msg = msg ", "
+            msg = msg outlier_steps[oi]
+          }
+          print ""
+          print "(*Outlier steps: " msg " — duration exceeds " hms(outlier_threshold) " threshold; may reflect hung sessions.)"
+        }
         print ""
         print "## Vendor Task Averages"
         print ""
@@ -273,7 +298,14 @@ render_report() {
             e = skill_interval_end(skill, i)
             if (e > end) e = end
             step = skill_mark_step[skill SUBSEP i]
-            print "|   ↳ " md(skill) " | " md(step) " | " hms(e - s) " |"
+            dur = e - s
+            dur_str = hms(dur)
+            if (dur > outlier_threshold) {
+              dur_str = dur_str " [OUTLIER]"
+              outlier_count++
+              outlier_steps[outlier_count] = md(skill) ":" md(step)
+            }
+            print "|   ↳ " md(skill) " | " md(step) " | " dur_str " |"
           }
         }
       }
