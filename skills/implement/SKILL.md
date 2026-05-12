@@ -1485,9 +1485,12 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --skill implement --run-id "$RUN_ID" --batch timing-report --input-file "$IMPLEMENT_TMPDIR/timing-report-rendered.md" || true
 ```
 
-If `$ISSUE_NUMBER` is set, update the terminal summary pointer for this phase:
+If `$ISSUE_NUMBER` is set, compose and post the final-summary comment:
 
 ```bash
+printf 'Status: %s | PR: %s\nLogs: `larch-logs/implement/%s/`\n' \
+  "${STALL_TRACKING:-false}" "${PR_URL:-N/A}" "$RUN_ID" \
+  > "$IMPLEMENT_TMPDIR/summary-final.md"
 ${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-summary.sh upsert-summary \
   --issue "$ISSUE_NUMBER" \
   --marker "<!-- larch:final-summary v1 runid=$RUN_ID -->" \
@@ -1613,8 +1616,9 @@ If `design_only=true` AND `no_issues=true`: print `⏭️ 11: execution-issues s
       "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --skill implement --run-id "$RUN_ID" --batch timing-report --input-file "$IMPLEMENT_TMPDIR/timing-report-rendered.md" || true
       ```
 
-   d. Refresh the token-report summary comment:
+   d. Compose and refresh the token-report summary comment:
       ```bash
+      "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --full --output "$IMPLEMENT_TMPDIR/summary-token-report.md" || true
       ${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-summary.sh upsert-summary \
         --issue "$ISSUE_NUMBER" \
         --marker "<!-- larch:token-report v1 runid=$RUN_ID -->" \
@@ -1947,6 +1951,11 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --skill implement --run-id "$RUN_ID" --batch timing-report --input-file "$IMPLEMENT_TMPDIR/timing-report-rendered.md" || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" commit --skill implement --run-id "$RUN_ID" --no-push || true
 if [ "${forked_target:-false}" != "true" ] && [ -n "${ISSUE_NUMBER:-}" ] && [ "${repo_unavailable:-false}" != "true" ]; then
+  cp "$IMPLEMENT_TMPDIR/token-report-rendered.md" "$IMPLEMENT_TMPDIR/summary-token-report.md" 2>/dev/null || \
+    printf 'Token report: see larch-logs/implement/%s/token-report.md\n' "$RUN_ID" > "$IMPLEMENT_TMPDIR/summary-token-report.md"
+  printf 'Status: %s | PR: %s\nLogs: larch-logs/implement/%s/\n' \
+    "${STALL_TRACKING:-false}" "${PR_URL:-N/A}" "$RUN_ID" \
+    > "$IMPLEMENT_TMPDIR/summary-final.md"
   ${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-summary.sh upsert-summary --issue "$ISSUE_NUMBER" --marker "<!-- larch:token-report v1 runid=$RUN_ID -->" --content-file "$IMPLEMENT_TMPDIR/summary-token-report.md" || true
   ${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-summary.sh upsert-summary --issue "$ISSUE_NUMBER" --marker "<!-- larch:final-summary v1 runid=$RUN_ID -->" --content-file "$IMPLEMENT_TMPDIR/summary-final.md" || true
 fi

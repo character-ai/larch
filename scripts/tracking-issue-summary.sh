@@ -5,6 +5,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 REDACT="$SCRIPT_DIR/redact-secrets.sh"
+REDACT_PATHS="$SCRIPT_DIR/redact-tmpdir-paths.sh"
 
 usage() {
     cat <<'USAGE' >&2
@@ -53,6 +54,9 @@ case "$cmd" in
         fi
         content="$(cat "$CONTENT_FILE")"
         body="$MARKER"$'\n\n'"$content"
+        if [ -x "$REDACT_PATHS" ]; then
+            body="$(printf '%s' "$body" | "$REDACT_PATHS" 2>/dev/null || printf '%s' "$body")"
+        fi
         body="$(redact_text "$body")"
         list_err="$(mktemp)"
         list_out="$(gh api "/repos/${REPO}/issues/${ISSUE}/comments" --paginate --jq '.[] | (.id|tostring) + "\t" + (.body // "" | split("\n")[0])' 2>"$list_err")" || {

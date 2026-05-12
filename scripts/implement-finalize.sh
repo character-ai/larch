@@ -417,7 +417,8 @@ write_version_reasoning_fragment() {
         rc=$?
         set +e
         written=$(kv_value LOG_WRITTEN "$out")
-        if [ "$rc" -eq 0 ] && [ "$written" = "true" ]; then
+        unchanged=$(kv_value UNCHANGED "$out")
+        if [ "$rc" -eq 0 ] && { [ "$written" = "true" ] || [ "$unchanged" = "true" ]; }; then
             LOG_WRITE_STATUS=ok
         else
             LOG_WRITE_STATUS=failed

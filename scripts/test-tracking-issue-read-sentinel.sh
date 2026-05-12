@@ -181,13 +181,21 @@ run_sentinel "$F"
 assert_equal_exit "$LAST_EXIT" "1" "(i) exit 1"
 assert_equal_stdout "$LAST_STDOUT" "$(printf 'FAILED=true\nERROR=sentinel file not found: %s' "$F")" "(i) stdout"
 
-# (j) all three keys valid
-echo "(j) all three keys valid"
+# (j) all three keys valid (no RUN_ID in file)
+echo "(j) all three keys valid (no RUN_ID)"
 F="$TMPROOT/j.md"
 printf 'ISSUE_NUMBER=123\nADOPTED=true\n' > "$F"
 run_sentinel "$F"
 assert_equal_exit "$LAST_EXIT" "0" "(j) exit 0"
 assert_equal_stdout "$LAST_STDOUT" "$(printf 'ISSUE_NUMBER=123\nRUN_ID=\nADOPTED=true')" "(j) stdout"
+
+# (j2) all three keys valid with non-empty RUN_ID
+echo "(j2) all three keys valid with non-empty RUN_ID"
+F="$TMPROOT/j2.md"
+printf 'ISSUE_NUMBER=456\nRUN_ID=abc123\nADOPTED=false\n' > "$F"
+run_sentinel "$F"
+assert_equal_exit "$LAST_EXIT" "0" "(j2) exit 0"
+assert_equal_stdout "$LAST_STDOUT" "$(printf 'ISSUE_NUMBER=456\nRUN_ID=abc123\nADOPTED=false')" "(j2) stdout with RUN_ID"
 
 # (k) duplicate ADOPTED lines — first wins
 echo "(k) duplicate ADOPTED — first wins"

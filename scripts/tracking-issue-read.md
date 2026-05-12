@@ -13,7 +13,7 @@ Four accepted combinations. Any other combination exits 1 with `FAILED=true ERRO
 | 1 | `--issue N --prompt TEXT --out-dir PATH [--repo OWNER/REPO]` | Post prompt via `tracking-issue-write.sh append-comment`, then fetch issue+comments, filter+cap+wrap into `TASK_FILE`, append the prompt unwrapped at the end. | `issue-plus-prompt` |
 | 2 | `--issue N --out-dir PATH [--repo OWNER/REPO]` | Fetch issue+comments (no writes), filter+cap+wrap into `TASK_FILE`. | `issue-only` |
 | 3 | `--prompt TEXT --out-dir PATH` OR `<stdin> --out-dir PATH` | Write prompt verbatim to `TASK_FILE`, never touches GitHub. | `prompt` |
-| 4 | `--sentinel PATH` (alone) | Parse a local markdown file, emit `ISSUE_NUMBER=` `ADOPTED=`. No network. | — (N/A) |
+| 4 | `--sentinel PATH` (alone) | Parse a local markdown file, emit `ISSUE_NUMBER=` `RUN_ID=` `ADOPTED=`. No network. | — (N/A) |
 
 Combinations 1–3 share optional cap flags: `--max-body-chars N` (default 8000), `--max-comments N` (default 50), `--max-total-chars N` (default 100000).
 
@@ -33,6 +33,7 @@ TASK_FILE=<absolute path>
 
 ```
 ISSUE_NUMBER=<N or empty>
+RUN_ID=<token or empty>
 ADOPTED=true|false|
 ```
 
