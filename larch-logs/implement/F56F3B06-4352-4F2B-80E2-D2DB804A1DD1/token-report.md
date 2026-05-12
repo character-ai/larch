@@ -26,6 +26,8 @@
 | Step 8b — rebase | **step total** | 51 | 11334514 | 56042 | 18067 |
 |  | bump-version | 26 | 5672017 | 12655 | 6131 |
 |  | larch:implement | 25 | 5662497 | 43387 | 11936 |
-| Step 11 — execution-issues | **step total** | 74 | 18619445 | 46372 | 29395 |
-|  | bump-version | 74 | 18619445 | 46372 | 29395 |
-| **Grand total** |  | 191 | 43081337 | 165077 | 92633 |
+| Step 11 — execution-issues | **step total** | 90 | 22348961 | 55337 | 33452 |
+|  | bump-version | 90 | 22348961 | 55337 | 33452 |
+| Step 11 — execution-issues | **step total** | 4 | 1078869 | 2752 | 1034 |
+|  | bump-version | 4 | 1078869 | 2752 | 1034 |
+| **Grand total** |  | 211 | 47889722 | 176794 | 97724 |
