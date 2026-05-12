@@ -35,7 +35,7 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         --help) usage; exit 0 ;;
-        --output|--timeout|--prompt|--prompt-file|--agent-file|--mode|--description-text|--scope-files|--diff-file|--timing-task-kind|--token-budget-cap|--risk)
+        --output|--timeout|--prompt|--prompt-file|--agent-file|--mode|--description-text|--scope-files|--diff-file|--timing-task-kind|--token-budget-cap|--risk|--plan-file|--feature-file)
             ARGS+=("$1")
             if [[ $# -gt 1 ]]; then
                 ARGS+=("$2")
@@ -56,7 +56,7 @@ fi
 if [[ "$TOOL" == "gemini" ]]; then
     for _arg in "${ARGS[@]+"${ARGS[@]}"}"; do
         case "$_arg" in
-            --agent-file|--mode|--description-text|--scope-files|--competition-notice|--diff-file|--prompt-file)
+            --agent-file|--mode|--description-text|--scope-files|--competition-notice|--diff-file|--prompt-file|--plan-file|--feature-file)
                 echo "launch-review.sh: $_arg is not supported for --tool gemini" >&2
                 exit 2
                 ;;
@@ -95,6 +95,8 @@ SCOPE_FILES=""
 COMPETITION_NOTICE=false
 DIFF_FILE=""
 COMMIT_COUNT=""
+PLAN_FILE=""
+FEATURE_FILE=""
 TIMING_TASK_KIND="${LARCH_TIMING_TASK_KIND:-}"
 TOKEN_BUDGET_CAP=""
 
@@ -111,6 +113,8 @@ while [[ $# -gt 0 ]]; do
         --competition-notice) COMPETITION_NOTICE=true; shift ;;
         --diff-file) DIFF_FILE="${2:?--diff-file requires a value}"; shift 2 ;;
         --commit-count) COMMIT_COUNT="${2:?--commit-count requires a value}"; shift 2 ;;
+        --plan-file) PLAN_FILE="${2:?--plan-file requires a value}"; shift 2 ;;
+        --feature-file) FEATURE_FILE="${2:?--feature-file requires a value}"; shift 2 ;;
         --timing-task-kind) [[ -n "${2:-}" && "${2}" != --* ]] || { echo "launch-review.sh: --timing-task-kind requires a non-empty, non-flag-like value" >&2; exit 2; }; TIMING_TASK_KIND="$2"; shift 2 ;;
         --token-budget-cap) case "${2:-}" in ''|*[!0-9]*) echo "launch-review.sh: --token-budget-cap requires a positive integer" >&2; exit 2 ;; esac; (( 10#${2:-0} >= 1 )) || { echo "launch-review.sh: --token-budget-cap requires a positive integer" >&2; exit 2; }; TOKEN_BUDGET_CAP="$2"; shift 2 ;;
         --risk) [[ -n "${2:-}" ]] || { echo "launch-review.sh: --risk requires a value" >&2; exit 2; }; shift 2 ;;
@@ -249,7 +253,7 @@ if [[ -n "$PROMPT_FILE" ]]; then
         # Hash+kind sentinel written by the non-retry (happy) path for --agent-file
         # launches. Reconstruct the full prompt via render-specialist-prompt.sh and
         # verify the SHA-256 hash to catch renderer changes between launch and retry.
-        _s_kind="" _s_hash="" _s_agent_file="" _s_mode="" _s_scope="" _s_comp=false _s_diff="" _s_commit_count=""
+        _s_kind="" _s_hash="" _s_agent_file="" _s_mode="" _s_scope="" _s_comp=false _s_diff="" _s_commit_count="" _s_plan_file="" _s_feature_file=""
         while read -r _s_line; do
             _s_k="${_s_line%%=*}"
             _s_v="${_s_line#*=}"
@@ -262,6 +266,8 @@ if [[ -n "$PROMPT_FILE" ]]; then
                 COMPETITION_NOTICE) [[ "$_s_v" == "true" ]] && _s_comp=true ;;
                 DIFF_FILE)         _s_diff="$_s_v" ;;
                 COMMIT_COUNT)      _s_commit_count="$_s_v" ;;
+                PLAN_FILE)         _s_plan_file="$_s_v" ;;
+                FEATURE_FILE)      _s_feature_file="$_s_v" ;;
             esac
         done < "$PROMPT_FILE"
         if [[ "$_s_kind" != "specialist" || -z "$_s_agent_file" || -z "$_s_mode" || -z "$_s_hash" ]]; then
@@ -273,6 +279,8 @@ if [[ -n "$PROMPT_FILE" ]]; then
         [[ "$_s_comp" == "true" ]] && _s_render_args+=(--competition-notice)
         [[ -n "$_s_diff" ]] && _s_render_args+=(--diff-file "$_s_diff")
         [[ -n "$_s_commit_count" ]] && _s_render_args+=(--commit-count "$_s_commit_count")
+        [[ -n "$_s_plan_file" ]] && _s_render_args+=(--plan-file "$_s_plan_file")
+        [[ -n "$_s_feature_file" ]] && _s_render_args+=(--feature-file "$_s_feature_file")
         PROMPT=$("$SCRIPT_DIR/render-specialist-prompt.sh" "${_s_render_args[@]}")
         _s_reconstructed_hash=""
         if command -v shasum >/dev/null 2>&1; then
@@ -290,7 +298,7 @@ if [[ -n "$PROMPT_FILE" ]]; then
             echo "launch-review.sh: prompt reconstruction hash mismatch (sentinel=$_s_hash reconstructed=$_s_reconstructed_hash)" >&2
             exit 1
         fi
-        unset _s_kind _s_hash _s_agent_file _s_mode _s_scope _s_comp _s_diff _s_commit_count _s_render_args \
+        unset _s_kind _s_hash _s_agent_file _s_mode _s_scope _s_comp _s_diff _s_commit_count _s_plan_file _s_feature_file _s_render_args \
               _s_reconstructed_hash _s_line _s_k _s_v
     else
         if ! PROMPT=$({ cat -- "$PROMPT_FILE"; _cat_status=$?; printf X; exit "$_cat_status"; }); then
@@ -309,6 +317,8 @@ if [[ -n "$AGENT_FILE" ]]; then
     [[ "$COMPETITION_NOTICE" == "true" ]] && RENDER_ARGS+=(--competition-notice)
     [[ -n "$DIFF_FILE" ]] && RENDER_ARGS+=(--diff-file "$DIFF_FILE")
     [[ -n "$COMMIT_COUNT" ]] && RENDER_ARGS+=(--commit-count "$COMMIT_COUNT")
+    [[ -n "$PLAN_FILE" ]] && RENDER_ARGS+=(--plan-file "$PLAN_FILE")
+    [[ -n "$FEATURE_FILE" ]] && RENDER_ARGS+=(--feature-file "$FEATURE_FILE")
     PROMPT=$("$SCRIPT_DIR/render-specialist-prompt.sh" "${RENDER_ARGS[@]}")
 fi
 
@@ -394,6 +404,8 @@ if [[ -n "$AGENT_FILE" && -z "$DESCRIPTION_TEXT" ]]; then
             # Only write COMMIT_COUNT when it is a non-negative integer; reject
             # multi-line or non-numeric values to keep the sentinel line-oriented.
             [[ "$COMMIT_COUNT" =~ ^[0-9]+$ ]] && printf 'COMMIT_COUNT=%s\n' "$COMMIT_COUNT"
+            [[ -n "$PLAN_FILE" ]] && printf 'PLAN_FILE=%s\n' "$PLAN_FILE"
+            [[ -n "$FEATURE_FILE" ]] && printf 'FEATURE_FILE=%s\n' "$FEATURE_FILE"
         } > "$PROMPT_FILE_SIDECAR"
     else
         printf '%s' "$PROMPT" > "$PROMPT_FILE_SIDECAR"
@@ -519,6 +531,8 @@ SCOPE_FILES=""
 COMPETITION_NOTICE=false
 DIFF_FILE=""
 COMMIT_COUNT=""
+PLAN_FILE=""
+FEATURE_FILE=""
 TIMING_TASK_KIND="${LARCH_TIMING_TASK_KIND:-}"
 TOKEN_BUDGET_CAP=""
 
@@ -535,6 +549,8 @@ while [[ $# -gt 0 ]]; do
         --competition-notice) COMPETITION_NOTICE=true; shift ;;
         --diff-file) DIFF_FILE="${2:?--diff-file requires a value}"; shift 2 ;;
         --commit-count) COMMIT_COUNT="${2:?--commit-count requires a value}"; shift 2 ;;
+        --plan-file) PLAN_FILE="${2:?--plan-file requires a value}"; shift 2 ;;
+        --feature-file) FEATURE_FILE="${2:?--feature-file requires a value}"; shift 2 ;;
         --timing-task-kind) [[ -n "${2:-}" && "${2}" != --* ]] || { echo "launch-review.sh: --timing-task-kind requires a non-empty, non-flag-like value" >&2; exit 2; }; TIMING_TASK_KIND="$2"; shift 2 ;;
         --token-budget-cap) case "${2:-}" in ''|*[!0-9]*) echo "launch-review.sh: --token-budget-cap requires a positive integer" >&2; exit 2 ;; esac; (( 10#${2:-0} >= 1 )) || { echo "launch-review.sh: --token-budget-cap requires a positive integer" >&2; exit 2; }; TOKEN_BUDGET_CAP="$2"; shift 2 ;;
         --risk) [[ -n "${2:-}" ]] || { echo "launch-review.sh: --risk requires a value" >&2; exit 2; }; shift 2 ;;
@@ -727,6 +743,8 @@ if [[ -n "$AGENT_FILE" ]]; then
     [[ "$COMPETITION_NOTICE" == "true" ]] && RENDER_ARGS+=(--competition-notice)
     [[ -n "$DIFF_FILE" ]] && RENDER_ARGS+=(--diff-file "$DIFF_FILE")
     [[ -n "$COMMIT_COUNT" ]] && RENDER_ARGS+=(--commit-count "$COMMIT_COUNT")
+    [[ -n "$PLAN_FILE" ]] && RENDER_ARGS+=(--plan-file "$PLAN_FILE")
+    [[ -n "$FEATURE_FILE" ]] && RENDER_ARGS+=(--feature-file "$FEATURE_FILE")
     PROMPT=$("$SCRIPT_DIR/render-specialist-prompt.sh" "${RENDER_ARGS[@]}")
 fi
 
