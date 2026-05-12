@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - step2-implement.sh now accepts `--workflow SIMPLE|HARD` to tune coder timeout: 1 h for SIMPLE (default), 2 h for HARD
 
+### Fixed
+
+- Repair non-standard `qa-pending.json` `items[]` format on `needs_qa` path in `step2-implement.sh`, routing to the Q&A loop instead of bailing with `manifest-schema-invalid`
+
 ## [26.0.8] - 2026-05-11
 
 ### Changed
