@@ -404,8 +404,10 @@ if [[ -n "$AGENT_FILE" && -z "$DESCRIPTION_TEXT" ]]; then
             # Only write COMMIT_COUNT when it is a non-negative integer; reject
             # multi-line or non-numeric values to keep the sentinel line-oriented.
             [[ "$COMMIT_COUNT" =~ ^[0-9]+$ ]] && printf 'COMMIT_COUNT=%s\n' "$COMMIT_COUNT"
-            [[ -n "$PLAN_FILE" ]] && printf 'PLAN_FILE=%s\n' "$PLAN_FILE"
-            [[ -n "$FEATURE_FILE" ]] && printf 'FEATURE_FILE=%s\n' "$FEATURE_FILE"
+            # Only write PLAN_FILE/FEATURE_FILE when they contain no newlines or control characters;
+            # the sentinel is line-oriented and a path with embedded newlines would corrupt replay parsing.
+            [[ -n "$PLAN_FILE" && "$PLAN_FILE" == "${PLAN_FILE//$'\n'/}" ]] && printf 'PLAN_FILE=%s\n' "$PLAN_FILE"
+            [[ -n "$FEATURE_FILE" && "$FEATURE_FILE" == "${FEATURE_FILE//$'\n'/}" ]] && printf 'FEATURE_FILE=%s\n' "$FEATURE_FILE"
         } > "$PROMPT_FILE_SIDECAR"
     else
         printf '%s' "$PROMPT" > "$PROMPT_FILE_SIDECAR"

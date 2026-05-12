@@ -359,6 +359,9 @@ assert_contains "--plan-file + --feature-file: feature content embedded" "Add fr
 # Plan/feature not present in description mode (flags validated at exit-2 level, not silently injected).
 assert_exit_code "--plan-file nonexistent" "2" bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-correctness.md" --mode diff --plan-file "/nonexistent/plan.txt"
 assert_exit_code "--feature-file nonexistent" "2" bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-correctness.md" --mode diff --feature-file "/nonexistent/feature.txt"
+# Plan not embedded when diff-mode is non-generic (e.g. docs-only narrows review surface).
+output_docsonly_plan=$(bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-correctness.md" --mode diff --diff-mode docs-only --plan-file "$PLAN_F" 2>/dev/null)
+assert_not_contains "--plan-file with diff-mode=docs-only: no plan injection" "<implementation_plan>" "$output_docsonly_plan"
 # Flags not embedded when mode=description (files pass validation, but tag injection is diff-only).
 SCOPE_F="$TMPDIR_PLANFILE/scope.txt"
 printf 'agents/reviewer-correctness.md\n' > "$SCOPE_F"
