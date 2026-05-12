@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Replace tracking-issue anchor-comment storage with committed `larch-logs/` run artifacts plus five slim marker-keyed tracking comments. Adds `scripts/larch-log.sh`, `scripts/tracking-issue-summary.sh`, batch/manifest harnesses, and removes the old anchor assembly/hydration/refresh scripts.
 
+## [26.0.15] - 2026-05-12
+
+### Changed
+
+- Added ship-pr.sh as a post-review /implement state machine with postbump, PR, CI, merge, and teardown phases.
+- Added Cursor and Codex CI-fix launchers plus token sidecar normalization and timing allow-list entries.
+- Collapsed the /implement post-review tail to the ship-pr entrypoint and wired offline harnesses, Makefile targets, lint docs, and security notes.
+
 ## [26.0.14] - 2026-05-11
 
 ### Changed

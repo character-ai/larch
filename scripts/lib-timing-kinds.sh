@@ -12,6 +12,8 @@ TIMING_TASK_KINDS_ALLOWED=(
     codex-implement
     cursor-implement
     gemini-implement
+    codex-ci-fix
+    cursor-ci-fix
     codex-sketch-arch
     codex-sketch-edge
     codex-sketch-innovation
