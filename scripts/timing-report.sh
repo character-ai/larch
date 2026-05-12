@@ -80,6 +80,7 @@ render_report() {
     local outlier_threshold="${LARCH_TIMING_OUTLIER_THRESHOLD_S:-14400}"
     [[ -f "$ledger" ]] || unavailable "ledger not found"
     awk -F '\t' -v mode="$mode" -v now="$now" -v terse_skill="$skill" -v outlier_threshold="$outlier_threshold" '
+      BEGIN { outlier_threshold += 0; if (outlier_threshold <= 0) outlier_threshold = 14400 }
       function hms(sec, h, m, s) {
         if (sec < 0) sec = 0
         h = int(sec / 3600)

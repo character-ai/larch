@@ -268,6 +268,10 @@ Per-million-token cost rate (USD) used by `/research`'s Step 4 token report (`##
 
 **Scope**: Token telemetry covers Claude subagent (Agent-tool) invocations only. Claude inline (orchestrator) and external lanes (Cursor/Codex) are unmeasurable and excluded from both the totals and the cost column. The report labels itself "Claude tokens only; external lanes excluded" so operators see the coverage honestly. See [`scripts/token-tally.md`](../scripts/token-tally.md) for the helper contract.
 
+### `LARCH_TIMING_OUTLIER_THRESHOLD_S`
+
+Step duration threshold (in seconds) used by `scripts/timing-report.sh --full` to identify hung-session rows. Steps whose duration exceeds this value are tagged `[OUTLIER]` in the Per-Step Durations table and listed in a trailing note. Default: `14400` (4 hours). Set to a positive integer; zero, negative, or non-numeric values fall back to the default. `--summary` and `--terse` modes are unaffected.
+
 ### `LARCH_VERBOSE_TOKENS`
 
 When set to `true`, `/implement` Step 17 prints the full per-step token/timing table to chat (the same output as before v25). When unset or set to any other value (the default), Step 17 prints a single grand-total summary line (`Total: claude=N tokens ...; vendor=N` / `Total: elapsed=HH:MM:SS ...`) instead. The full breakdown is always appended to the committed `token-report` and `timing-report` larch-log batches in Step 18 regardless of this setting.

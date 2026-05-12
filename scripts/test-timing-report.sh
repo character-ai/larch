@@ -6,7 +6,8 @@ set -euo pipefail
 # Hermetic: clear any caller-supplied timing/session env so the test exercises
 # the resolver fallback chain deterministically.
 unset LARCH_TIMING_LEDGER LARCH_TIMING_SKILL LARCH_TIMING_TASK_KIND \
-      IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR SESSION_ENV_PATH || true
+      IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR SESSION_ENV_PATH \
+      LARCH_TIMING_OUTLIER_THRESHOLD_S || true
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP_BASE=$(mktemp -d "${TMPDIR:-/tmp}/larch-timing-report-test.XXXXXX")
@@ -170,6 +171,18 @@ LARCH_TEST_TIMING_NOW=50020 LARCH_TIMING_OUTLIER_THRESHOLD_S=100 \
   "$REPO_ROOT/scripts/timing-report.sh" --ledger "$OUTLIER_LEDGER" --full --markdown > "$OUTLIER_CUSTOM_OUT"
 grep -q 'Step 2 — implementation.*\[OUTLIER\]' "$OUTLIER_CUSTOM_OUT" || { echo "FAIL: outlier custom threshold: step not tagged" >&2; exit 1; }
 echo "PASS: outlier custom threshold"
+
+# Case 2b: child row (design) whose duration exceeds threshold is also tagged.
+CHILD_OUTLIER_LEDGER="$TMP_BASE/child-outlier.tsv"
+cat > "$CHILD_OUTLIER_LEDGER" <<'EOF'
+v1	mark	0	implement	Step 1 — design plan	-	-	-	-	-	-	-	-
+v1	mark	20	design	Step 0 sketch	-	-	-	-	-	-	-	-
+v1	mark	50020	implement	Step 2 — implementation	-	-	-	-	-	-	-	-
+EOF
+CHILD_OUTLIER_OUT="$TMP_BASE/child-outlier.md"
+LARCH_TEST_TIMING_NOW=50030 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$CHILD_OUTLIER_LEDGER" --full --markdown > "$CHILD_OUTLIER_OUT"
+grep -q 'Step 0 sketch.*\[OUTLIER\]' "$CHILD_OUTLIER_OUT" || { echo "FAIL: child outlier step not tagged" >&2; exit 1; }
+echo "PASS: child row outlier tagged"
 
 # Case 3: no steps exceed threshold — no outlier note.
 LARCH_TEST_TIMING_NOW=310 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$LEDGER" --full --markdown > "$TMP_BASE/no-outlier.md"
