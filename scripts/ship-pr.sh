@@ -512,7 +512,11 @@ run_evaluate_failure() {
         rerun_out=$("$SCRIPT_DIR/ci-rerun-failed.sh" --run-id "$failed_run" --repo "$(read_state REPO)" 2>&1)
         printf '%s\n' "$rerun_out"
         if [ "$(kv_value RERUN_SUBMITTED "$rerun_out")" = "true" ]; then
-            state_set TRANSIENT_RETRIES "$((retries + 1))"
+            # Only count toward the retry budget when a new rerun was actually submitted;
+            # "already running" means CI is in flight and no new run was queued.
+            if [ "$(kv_value ALREADY_RUNNING "$rerun_out")" != "true" ]; then
+                state_set TRANSIENT_RETRIES "$((retries + 1))"
+            fi
             return 0
         fi
     fi

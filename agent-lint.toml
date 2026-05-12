@@ -1139,6 +1139,12 @@ exclude = [
   # scripts/test-gh-pr-body-update.md.
   "scripts/test-gh-pr-body-update.sh",
   "scripts/test-gh-pr-body-update.md",
+  # scripts/test-ci-rerun-failed.sh is the offline regression harness for
+  # scripts/ci-rerun-failed.sh's "already running" success path. Referenced
+  # only from Makefile (test-ci-rerun-failed target) and the sibling contract
+  # scripts/test-ci-rerun-failed.md.
+  "scripts/test-ci-rerun-failed.sh",
+  "scripts/test-ci-rerun-failed.md",
   # scripts/test-ci-status.sh is the offline regression harness for
   # scripts/ci-status.sh's --empty-checks-grace flag and STATUS=NO_CHECKS
   # exit (added for /implement --forked fork-CI dry-run). Referenced only
