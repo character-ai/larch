@@ -33,7 +33,15 @@ Gemini remains generic-only and rejects specialist flags.
 - Cursor auth setup runs the Darwin preflight, then best-effort pre-reads the
   `cursor-user` / `cursor-access-token` keychain service into `CURSOR_API_KEY`
   before composing argv. A successful pre-read becomes an explicit `--api-key`
-  argument, avoiding Cursor's own concurrent keychain read path.
+  argument. On Darwin, cursor agent startups are additionally serialized through
+  a `mkdir`-based per-session lock (`$IMPLEMENT_TMPDIR/larch-cursor-serial.lock`
+  when set; `/tmp/larch-cursor-serial-$USER.lock` otherwise) because cursor reads
+  the macOS keychain internally at initialization even when `--api-key` is
+  provided; concurrent instances race that read, causing some to fail with exit 1
+  after ~10 s. The lock is released `LARCH_CURSOR_SERIAL_LOCK_DELAY` seconds
+  (default 2) after the cursor process starts; fail-open after
+  `LARCH_CURSOR_SERIAL_LOCK_TRIES`×0.1 s (default 30 s).
+  `LARCH_CURSOR_SERIAL_LOCK_FORCE_UNAME` overrides `uname -s` in tests.
 - Codex sets `CODEX_SANDBOX_MODE=read-only` and emits a static
   `STATUS=clean MODE=baseline REASON=codex-sandbox-read-only` sidecar without
   running the scan — `--sandbox read-only` blocks writes at the syscall level,

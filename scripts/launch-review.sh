@@ -820,6 +820,41 @@ if [[ "$PREFLIGHT_RC" != "0" ]]; then
     exit "$PREFLIGHT_RC"
 fi
 
+# Serialize concurrent cursor-agent startups on Darwin. cursor reads
+# cursor-user/cursor-access-token from the macOS keychain at startup even
+# when --api-key is provided; parallel specialist fan-outs race that read,
+# causing some instances to fail (exit 1, "Password not found", ~10s).
+# A mkdir-based lock (POSIX-atomic on macOS/Linux local filesystems) scoped
+# to IMPLEMENT_TMPDIR (shared across parallel reviewer subprocesses) or /tmp
+# staggered cursor starts so each process completes its keychain init before
+# the next one begins. The lock is released LARCH_CURSOR_SERIAL_LOCK_DELAY
+# seconds (default 2) after the cursor process starts via a disowned
+# background job. Fail-open: after LARCH_CURSOR_SERIAL_LOCK_TRIES*0.1s
+# (default 300*0.1=30s), give up and proceed without the lock.
+# Test override: LARCH_CURSOR_SERIAL_LOCK_FORCE_UNAME overrides uname -s.
+_CURSOR_SERIAL_LOCK=""
+if [[ "${LARCH_CURSOR_SERIAL_LOCK_FORCE_UNAME:-$(uname -s 2>/dev/null)}" == "Darwin" ]]; then
+    if [[ -n "${IMPLEMENT_TMPDIR:-}" ]]; then
+        _CURSOR_SERIAL_LOCK="${IMPLEMENT_TMPDIR}/larch-cursor-serial.lock"
+    else
+        _CURSOR_SERIAL_LOCK="/tmp/larch-cursor-serial-${USER:-larch}.lock"
+    fi
+    _cursor_serial_tries=0
+    while ! mkdir "$_CURSOR_SERIAL_LOCK" 2>/dev/null; do
+        _cursor_serial_tries=$((_cursor_serial_tries + 1))
+        if (( _cursor_serial_tries >= ${LARCH_CURSOR_SERIAL_LOCK_TRIES:-300} )); then
+            _CURSOR_SERIAL_LOCK=""
+            break
+        fi
+        sleep 0.1
+    done
+    unset _cursor_serial_tries
+    if [[ -n "$_CURSOR_SERIAL_LOCK" ]]; then
+        { sleep "${LARCH_CURSOR_SERIAL_LOCK_DELAY:-2}"; rmdir "$_CURSOR_SERIAL_LOCK" 2>/dev/null || true; } &
+        disown $!
+    fi
+fi
+
 # shellcheck disable=SC2086
 EXIT_CODE=0
 if : > "$SIDECAR" 2>/dev/null; then
