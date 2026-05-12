@@ -37,6 +37,8 @@
 #   - --workflow SIMPLE passed to a stub-Codex run results in --timeout 3600 passed
 #     to the launcher (verified via the .meta file written by run-external-agent.sh).
 #   - --workflow HARD passed to a stub-Codex run results in --timeout 7200.
+#   - --workflow omitted (default) passed to a stub-Codex run results in --timeout 3600
+#     (default workflow resolves to SIMPLE).
 #
 # External-implementer spawning paths (manifest validation, dispatcher-side commit,
 # sanitization, launcher-retry) are covered by separate launcher / end-to-end tests;
@@ -895,6 +897,24 @@ if [[ "$TIMEOUT17B" == "7200" ]]; then
     pass
 else
     fail 17b "--workflow HARD should set launcher --timeout 7200, got TIMEOUT=$TIMEOUT17B (out=$OUT_17B meta=$(cat "$META17B" 2>/dev/null))"
+fi
+
+# Test 17c: --workflow omitted (default) → default workflow is SIMPLE → --timeout 3600.
+TMP17C="$SCRATCH/test17c"; mkdir -p "$TMP17C"
+printf 'fresh-step2-17c\n' > "$TMP17C/session-id"
+OUT_17C=$(cd "$REPO_ROOT" && \
+    PATH="$STUB17:$PATH" \
+    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    STEP2_MANIFEST_PATH="$TMP17C/manifest.json" \
+    LARCH_CODEX_MODEL=stub-codex-model \
+    "$DISPATCHER" --tmpdir "$TMP17C" --plan-file "$PLAN" --feature-file "$FEATURE" \
+        --auto-mode false --coder codex 2>&1)
+META17C="$TMP17C/codex-impl-transcript.txt.meta"
+TIMEOUT17C=$(awk -F= '/^TIMEOUT=/{print $2; exit}' "$META17C" 2>/dev/null || true)
+if [[ "$TIMEOUT17C" == "3600" ]]; then
+    pass
+else
+    fail 17c "default --workflow (SIMPLE) should set launcher --timeout 3600, got TIMEOUT=$TIMEOUT17C (out=$OUT_17C meta=$(cat "$META17C" 2>/dev/null))"
 fi
 
 # ---------------------------------------------------------------------------
