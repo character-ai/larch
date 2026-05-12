@@ -28,6 +28,6 @@
 |  | larch:implement | 25 | 5662497 | 43387 | 11936 |
 | Step 11 — execution-issues | **step total** | 90 | 22348961 | 55337 | 33452 |
 |  | bump-version | 90 | 22348961 | 55337 | 33452 |
-| Step 11 — execution-issues | **step total** | 4 | 1078869 | 2752 | 1034 |
-|  | bump-version | 4 | 1078869 | 2752 | 1034 |
-| **Grand total** |  | 211 | 47889722 | 176794 | 97724 |
+| Step 11 — execution-issues | **step total** | 96 | 27316321 | 79944 | 45395 |
+|  | bump-version | 96 | 27316321 | 79944 | 45395 |
+| **Grand total** |  | 303 | 74127174 | 253986 | 142085 |
