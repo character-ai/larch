@@ -7,5 +7,5 @@ sibling-contract rule for `lib-*.sh` files.
 
 Key export: `larch_log_root()` — returns `$LARCH_LOG_ROOT` when set, otherwise
 `$LARCH_LOG_REPO_ROOT/larch-logs`. `LARCH_LOG_REPO_ROOT` is resolved via
-`git -C "$PWD" rev-parse --show-toplevel` (consumer repo) with fallback to
-`SCRIPT_DIR/..`.
+`git -C "$PWD" rev-parse --show-toplevel` (consumer repo) using a two-assignment
+pattern to avoid `(A || B) && C` shell-precedence issues; falls back to `SCRIPT_DIR/..`.

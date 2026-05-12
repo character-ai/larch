@@ -6,7 +6,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 # Resolve repo root from caller's CWD so git operations target the consumer
 # repo, not the plugin install cache. Falls back to script parent on non-git.
-REPO_ROOT="$(git -C "$PWD" rev-parse --show-toplevel 2>/dev/null || cd "$SCRIPT_DIR/.." && pwd -P)"
+REPO_ROOT="$(git -C "$PWD" rev-parse --show-toplevel 2>/dev/null)" || true
+[ -n "$REPO_ROOT" ] || REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 
 # shellcheck source=scripts/lib-larch-log.sh
 # shellcheck disable=SC1091

@@ -52,6 +52,10 @@ The script also writes `$IMPLEMENT_TMPDIR/postbump-state.sh` before `implement-f
 - Fork mode skips bump application and uses direct `rebase-push.sh --base-remote upstream --base-ref main`.
 - State writes use `tmp.$$` plus `mv`.
 
+## Postmerge Summary Comments
+
+`run_postmerge_phase` posts `larch:token-report` and `larch:final-summary` tracking-issue comments before teardown, rehydrating `LARCH_TOKEN_SESSION_ID`/`LARCH_CLAUDE_SOURCE_FILE` from `$IMPLEMENT_TMPDIR/session-env.sh`. The upserts are skipped when `FORKED_TARGET=true`, `ISSUE_NUMBER` is empty, or `REPO_UNAVAILABLE=true`. `advance_phase "done"` runs before teardown so the state file is updated while it still exists; the function ends with `exit 0` to bypass the state-machine loop after teardown removes the state file.
+
 ## Harness
 
 `scripts/test-ship-pr.sh` runs offline state/transition coverage with stubbed helpers. It is wired through `make test-ship-pr`.

@@ -608,10 +608,41 @@ EOF
 }
 
 run_postmerge_phase() {
+    local issue_number repo repo_unavailable forked run_id stall_tracking pr_url
+    local token_session source_file
     write_finalize_state
     "$SCRIPT_DIR/implement-finalize.sh" postmerge --state-file "$IMPLEMENT_TMPDIR/finalize-state.sh" --final-bail-reason-file "$IMPLEMENT_TMPDIR/final-bail-reason.txt"
-    "$SCRIPT_DIR/implement-finalize.sh" teardown --state-file "$IMPLEMENT_TMPDIR/finalize-state.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR"
+
+    issue_number=$(read_state ISSUE_NUMBER)
+    repo=$(read_state REPO)
+    repo_unavailable=$(read_state REPO_UNAVAILABLE)
+    forked=$(read_state FORKED_TARGET)
+    run_id=$(read_state RUN_ID)
+    stall_tracking=$(read_state STALL_TRACKING)
+    pr_url=$(read_state PR_URL)
+    token_session=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "" 2>/dev/null || true)
+    source_file=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "" 2>/dev/null || true)
+    export LARCH_TOKEN_SESSION_ID=$token_session LARCH_CLAUDE_SOURCE_FILE=$source_file
+    "$SCRIPT_DIR/token-report.sh" --full --output "$IMPLEMENT_TMPDIR/token-report-rendered.md" 2>/dev/null || true
+    if [ "$forked" != "true" ] && [ -n "$issue_number" ] && [ "$repo_unavailable" != "true" ]; then
+        cp "$IMPLEMENT_TMPDIR/token-report-rendered.md" "$IMPLEMENT_TMPDIR/summary-token-report.md" 2>/dev/null \
+            || printf 'Token report: see larch-logs/implement/%s/token-report.md\n' "$run_id" > "$IMPLEMENT_TMPDIR/summary-token-report.md"
+        printf 'Status: %s | PR: %s\nLogs: larch-logs/implement/%s/\n' \
+            "$stall_tracking" "${pr_url:-N/A}" "$run_id" > "$IMPLEMENT_TMPDIR/summary-final.md"
+        "$SCRIPT_DIR/tracking-issue-summary.sh" upsert-summary \
+            --issue "$issue_number" \
+            --marker "<!-- larch:token-report v1 runid=${run_id} -->" \
+            --content-file "$IMPLEMENT_TMPDIR/summary-token-report.md" \
+            --repo "$repo" 2>/dev/null || true
+        "$SCRIPT_DIR/tracking-issue-summary.sh" upsert-summary \
+            --issue "$issue_number" \
+            --marker "<!-- larch:final-summary v1 runid=${run_id} -->" \
+            --content-file "$IMPLEMENT_TMPDIR/summary-final.md" \
+            --repo "$repo" 2>/dev/null || true
+    fi
     advance_phase "done"
+    "$SCRIPT_DIR/implement-finalize.sh" teardown --state-file "$IMPLEMENT_TMPDIR/finalize-state.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR"
+    exit 0
 }
 
 if [ -n "$RESUME_PHASE" ]; then
