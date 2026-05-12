@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Replace tracking-issue anchor-comment storage with committed `larch-logs/` run artifacts plus five slim marker-keyed tracking comments. Adds `scripts/larch-log.sh`, `scripts/tracking-issue-summary.sh`, batch/manifest harnesses, and removes the old anchor assembly/hydration/refresh scripts.
 
+## [26.0.10] - 2026-05-11
+
+### Fixed
+
+- Restore Step 9a.1 OOS pipeline numbered procedure inline in `skills/implement/SKILL.md` (removed with `anchor-template-oos-pipeline.md` in v26.0.8)
+- Correct 4 stale `summary-comment-template.md step 3.4` references to point to `Step 9a.1 step 3.4`
+
 ## [26.0.9] - 2026-05-11
 
 ### Changed
