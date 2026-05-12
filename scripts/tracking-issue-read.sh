@@ -258,6 +258,7 @@ if $HAVE_SENTINEL; then
         printf '%s' "${val:-}"
     }
     ISSUE_NUMBER_VAL=$(extract_sentinel_key ISSUE_NUMBER)
+    RUN_ID_VAL=$(extract_sentinel_key RUN_ID)
     ADOPTED_VAL=$(extract_sentinel_key ADOPTED)
     if [[ -n "$ADOPTED_VAL" && "$ADOPTED_VAL" != "true" && "$ADOPTED_VAL" != "false" ]]; then
         echo "FAILED=true"
@@ -265,6 +266,7 @@ if $HAVE_SENTINEL; then
         exit 1
     fi
     printf 'ISSUE_NUMBER=%s\n' "$ISSUE_NUMBER_VAL"
+    printf 'RUN_ID=%s\n' "$RUN_ID_VAL"
     printf 'ADOPTED=%s\n' "$ADOPTED_VAL"
     exit 0
 fi

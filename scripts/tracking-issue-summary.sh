@@ -68,7 +68,10 @@ case "$cmd" in
         trap 'rm -f "$tmp" "${json_tmp:-}"' EXIT
         printf '%s' "$body" > "$tmp"
         if [ "$count" -eq 0 ]; then
-            out="$(gh issue comment "$ISSUE" --repo "$REPO" --body-file "$tmp")" || fail 2 "gh issue comment failed"
+            err_tmp="$(mktemp)"
+            trap 'rm -f "$tmp" "${json_tmp:-}" "${err_tmp:-}"' EXIT
+            out="$(gh issue comment "$ISSUE" --repo "$REPO" --body-file "$tmp" 2>"$err_tmp")" \
+                || fail 2 "gh issue comment failed: $(redact_text "$(cat "$err_tmp")" | tr '\n' ' ' | head -c 500)"
             url="$(printf '%s\n' "$out" | grep -oE 'https?://[^[:space:]]+' | tail -1 || true)"
             echo "COMMENT_ID="
             echo "COMMENT_URL=$url"
@@ -76,9 +79,11 @@ case "$cmd" in
         elif [ "$count" -eq 1 ]; then
             id="$(printf '%s\n' "$ids" | awk 'NF { print; exit }')"
             json_tmp="$(mktemp)"
+            err_tmp="$(mktemp)"
+            trap 'rm -f "$tmp" "${json_tmp:-}" "${err_tmp:-}"' EXIT
             jq -n --arg body "$body" '{body:$body}' > "$json_tmp"
-            out="$(gh api "/repos/${REPO}/issues/comments/${id}" -X PATCH --input "$json_tmp" --jq '.html_url // ""')" \
-                || fail 2 "gh api comment patch failed"
+            out="$(gh api "/repos/${REPO}/issues/comments/${id}" -X PATCH --input "$json_tmp" --jq '.html_url // ""' 2>"$err_tmp")" \
+                || fail 2 "gh api comment patch failed: $(redact_text "$(cat "$err_tmp")" | tr '\n' ' ' | head -c 500)"
             echo "COMMENT_ID=$id"
             echo "COMMENT_URL=$out"
             echo "UPDATED=true"

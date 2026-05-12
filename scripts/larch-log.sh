@@ -50,7 +50,7 @@ write_manifest_file() {
     local parent_skill="$2"
     local issue="$3"
     local status="$4"
-    local ts version parent_json issue_json
+    local ts version parent_json issue_json tmp
     ts="$(now_utc)"
     version="$(plugin_version)"
     [ -n "$version" ] || version="unknown"
@@ -269,8 +269,10 @@ case "$cmd" in
             larch_log_emit_success "$path" false true
             exit 0
         fi
-        git -C "$REPO_ROOT" commit -m "chore(larch-logs): flush $SKILL run $RUN_ID" -- "$rel" >/dev/null \
-            || larch_log_fail 3 "git commit failed"
+        git -C "$REPO_ROOT" commit -m "chore(larch-logs): flush $SKILL run $RUN_ID" -- "$rel" >/dev/null || {
+            git -C "$REPO_ROOT" reset HEAD -- "$rel" 2>/dev/null || true
+            larch_log_fail 3 "git commit failed"
+        }
         commit_sha="$(git -C "$REPO_ROOT" rev-parse HEAD)"
         if [ "$NO_PUSH" = false ]; then
             git -C "$REPO_ROOT" push >/dev/null || larch_log_fail 3 "git push failed"

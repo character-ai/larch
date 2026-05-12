@@ -55,15 +55,15 @@ assert_contains "$out" "UNCHANGED=true" "write unchanged retry"
 echo "=== append writes newline-delimited records ==="
 record="$TMP/record.ndjson"
 printf '{"event":"one"}' > "$record"
-out="$("$LARCH_LOG" append --skill implement --run-id abc123 --batch token-report --record-file "$record")"
+out="$("$LARCH_LOG" append --skill implement --run-id abc123 --batch execution-issues --record-file "$record")"
 assert_contains "$out" "LOG_WRITTEN=true" "append emits written"
 printf '{"event":"two"}\n' > "$record"
-"$LARCH_LOG" append --skill implement --run-id abc123 --batch token-report --record-file "$record" >/dev/null
-line_count="$(wc -l < "$LARCH_LOG_ROOT/implement/abc123/token-report.ndjson" | tr -d ' ')"
+"$LARCH_LOG" append --skill implement --run-id abc123 --batch execution-issues --record-file "$record" >/dev/null
+line_count="$(wc -l < "$LARCH_LOG_ROOT/implement/abc123/execution-issues.ndjson" | tr -d ' ')"
 if [ "$line_count" = "2" ]; then pass "append line count"; else fail "append line count got $line_count"; fi
 
 echo "=== exists reports path without writing ==="
-out="$("$LARCH_LOG" exists --skill implement --run-id abc123 --batch token-report)"
+out="$("$LARCH_LOG" exists --skill implement --run-id abc123 --batch execution-issues)"
 assert_contains "$out" "LOG_WRITTEN=false" "exists no write"
 assert_contains "$out" "UNCHANGED=true" "exists found"
 

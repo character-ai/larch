@@ -1460,9 +1460,7 @@ Before embedding each diagram source file into `$IMPLEMENT_TMPDIR/pr-body.md`, r
 
 The `[FALSE-POSITIVE]` marker is wired only on `/fix-issue` Step 3 (not-material close) in v1 — see `skills/fix-issue/SKILL.md` and `skills/fix-issue/scripts/issue-lifecycle.md`. `/issue` dedup verdicts skip creation rather than closing, and orphan-rollback closes are infrastructure recovery, not won't-fix decisions; future deliberate OOS-close hooks should call the marker at their close site and be tracked in a separate issue.
 
-**MANDATORY — READ ENTIRE FILE** before executing the Step 9a.1 OOS pipeline: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/summary-comment-template.md`. Contains the canonical OOS pipeline procedure (steps 1–7, Rules A/B, cap, dedup). **Do NOT load** outside Step 9a.1.
-
-Runs unconditionally regardless of mode, except: (a) `forked_target=true`: in fork mode, skip all `/issue` call sites and sentinel writes, compose accepted-OOS text for the final report only, print `⏩ 9a.1: OOS issues status=skip reason=forked-dry-run elapsed=<elapsed>`, and proceed to 9b; (b) `design_only=true AND no_issues=true`: skip all `/issue` call sites and summary comments, set `DESIGN_ONLY_DONE=true`, print `⏩ 9a.1: OOS issues status=skip reason=design-only-no-issues elapsed=<elapsed>`, and proceed to Step 16. The canonical sequence for non-fork, non-no-issues mode lives in `summary-comment-template.md` Step 9a.1 OOS pipeline procedure section — including the combine pass at step 3.4 that applies Rules A/B and criteria 1-6 across accepted OOS entries, the per-run issue cap pre-pass at step 3.4b (`OOS_ISSUES_PER_RUN_CAP`, default `5`, with `OOS_ISSUE_CAP_EXCERPT_MAX`, default `200`) that compacts surplus OOS items in place and fails closed by skipping issue filing on helper errors, the best-effort file-conflict pre-pass at step 3.5 with degraded-continue behavior, and the `/issue` batch-mode invocation at step 4 with `--title-prefix "[OOS]"` and conditional `--blocked-by-issue $ISSUE_NUMBER` forwarding. The cap helper contract lives at `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-issue-cap.md`.
+Runs unconditionally regardless of mode, except: (a) `forked_target=true`: in fork mode, skip all `/issue` call sites and sentinel writes, compose accepted-OOS text for the final report only, print `⏩ 9a.1: OOS issues status=skip reason=forked-dry-run elapsed=<elapsed>`, and proceed to 9b; (b) `design_only=true AND no_issues=true`: skip all `/issue` call sites and summary comments, set `DESIGN_ONLY_DONE=true`, print `⏩ 9a.1: OOS issues status=skip reason=design-only-no-issues elapsed=<elapsed>`, and proceed to Step 16. The canonical OOS pipeline sequence (steps 1–7, Rules A/B, cap, dedup) is described inline in this SKILL.md at this step — including the combine pass at step 3.4 that applies Rules A/B and criteria 1-6 across accepted OOS entries, the per-run issue cap pre-pass at step 3.4b (`OOS_ISSUES_PER_RUN_CAP`, default `5`, with `OOS_ISSUE_CAP_EXCERPT_MAX`, default `200`) that compacts surplus OOS items in place and fails closed by skipping issue filing on helper errors, the best-effort file-conflict pre-pass at step 3.5 with degraded-continue behavior, and the `/issue` batch-mode invocation at step 4 with `--title-prefix "[OOS]"` and conditional `--blocked-by-issue $ISSUE_NUMBER` forwarding. The cap helper contract lives at `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-issue-cap.md`.
 
 > **Continue after child returns.** When `/issue` returns from batch mode, execute the next sub-steps (parse stdout; write larch-log batches; refresh summary comments; write sentinel) — do NOT end the turn, and do NOT write a summary, handoff, or "returning to parent" message. → shared/subskill-invocation.md#anti-halt
 
@@ -1475,14 +1473,16 @@ Step 9a.1 writes the batches needed for OOS publication and run observability:
 - `token-report` — append token-report records rendered by `token-report.sh`.
 - `timing-report` — append timing-report records rendered by `timing-report.sh`.
 
-After writing `run-statistics`, append the current token and timing records:
+After writing `run-statistics`, write the current token and timing reports:
 
 ```bash
 LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
 LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
 export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
-"${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" append --skill implement --run-id "$RUN_ID" --batch token-report --record-file "$IMPLEMENT_TMPDIR/token-report-record.ndjson" || true
-"${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" append --skill implement --run-id "$RUN_ID" --batch timing-report --record-file "$IMPLEMENT_TMPDIR/timing-report-record.ndjson" || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --full --output "$IMPLEMENT_TMPDIR/token-report-rendered.md" || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --full --output "$IMPLEMENT_TMPDIR/timing-report-rendered.md" || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --skill implement --run-id "$RUN_ID" --batch token-report --input-file "$IMPLEMENT_TMPDIR/token-report-rendered.md" || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --skill implement --run-id "$RUN_ID" --batch timing-report --input-file "$IMPLEMENT_TMPDIR/timing-report-rendered.md" || true
 ```
 
 If `$ISSUE_NUMBER` is set, update the terminal summary pointer for this phase:
@@ -1602,13 +1602,15 @@ If `design_only=true` AND `no_issues=true`: print `⏭️ 11: execution-issues s
 
    b. Append records with `larch-log.sh append --skill implement --run-id "$RUN_ID" --batch execution-issues --record-file <record-file>`.
 
-   c. Best-effort append current token/timing records. This Step 11 data is interim only; Step 18 owns the authoritative final report:
+   c. Best-effort write current token/timing reports. This Step 11 data is interim only; Step 18 owns the authoritative final report:
       ```bash
       LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
       LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
       export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
-      "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" append --skill implement --run-id "$RUN_ID" --batch token-report --record-file "$IMPLEMENT_TMPDIR/token-report-record.ndjson" || true
-      "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" append --skill implement --run-id "$RUN_ID" --batch timing-report --record-file "$IMPLEMENT_TMPDIR/timing-report-record.ndjson" || true
+      "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --full --output "$IMPLEMENT_TMPDIR/token-report-rendered.md" || true
+      "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --full --output "$IMPLEMENT_TMPDIR/timing-report-rendered.md" || true
+      "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --skill implement --run-id "$RUN_ID" --batch token-report --input-file "$IMPLEMENT_TMPDIR/token-report-rendered.md" || true
+      "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --skill implement --run-id "$RUN_ID" --batch timing-report --input-file "$IMPLEMENT_TMPDIR/timing-report-rendered.md" || true
       ```
 
    d. Refresh the token-report summary comment:

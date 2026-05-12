@@ -416,8 +416,8 @@ write_version_reasoning_fragment() {
         out=$("$SCRIPT_DIR/larch-log.sh" write --skill implement --run-id "$run_id" --batch version-bump-reasoning --input-file "$input_file")
         rc=$?
         set +e
-        failed=$(kv_value FAILED "$out")
-        if [ "$rc" -eq 0 ] && [ "$failed" != "true" ]; then
+        written=$(kv_value LOG_WRITTEN "$out")
+        if [ "$rc" -eq 0 ] && [ "$written" = "true" ]; then
             LOG_WRITE_STATUS=ok
         else
             LOG_WRITE_STATUS=failed
