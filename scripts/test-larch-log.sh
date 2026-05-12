@@ -73,6 +73,34 @@ assert_contains "$out" "LOG_WRITTEN=true" "manifest update writes"
 if grep -q '"status": "done"' "$manifest"; then pass "manifest status updated"; else fail "manifest status updated"; fi
 if grep -q '"pr_number": 99' "$manifest"; then pass "manifest field stored as JSON number"; else fail "manifest field stored as JSON number"; fi
 
+echo "=== commit copies staged files from IMPLEMENT_TMPDIR to repo ==="
+_saved_log_root="$LARCH_LOG_ROOT"
+unset LARCH_LOG_ROOT
+_staging="$TMP/staging"
+_repo="$TMP/fake-repo"
+mkdir -p "$_staging"
+git init "$_repo" >/dev/null 2>&1
+git -C "$_repo" config user.email "ci@test"
+git -C "$_repo" config user.name "Test CI"
+touch "$_repo/.gitkeep"
+git -C "$_repo" add .
+git -C "$_repo" commit -q -m "init"
+export IMPLEMENT_TMPDIR="$_staging"
+_rid="testcommit123"
+_cpayload="$TMP/commit-payload.md"
+printf 'staged content\n' > "$_cpayload"
+(cd "$_repo" && "$LARCH_LOG" init --skill implement --run-id "$_rid" --issue 42) >/dev/null
+(cd "$_repo" && "$LARCH_LOG" write --skill implement --run-id "$_rid" --batch plan-goals-test --input-file "$_cpayload") >/dev/null
+_commit_out="$(cd "$_repo" && "$LARCH_LOG" commit --skill implement --run-id "$_rid" --no-push)"
+assert_contains "$_commit_out" "LOG_WRITTEN=true" "commit --no-push reports written"
+_batch="$_repo/larch-logs/implement/$_rid/plan-goals-test.md"
+if [ -f "$_batch" ]; then pass "commit copies batch to repo under larch-logs/<skill>/<run-id>/"; else fail "commit copies batch to repo (missing $_batch)"; fi
+_mf="$_repo/larch-logs/implement/$_rid/manifest.json"
+if [ -f "$_mf" ]; then pass "commit copies manifest to repo"; else fail "commit copies manifest to repo (missing $_mf)"; fi
+if git -C "$_repo" log -1 --format=%s | grep -qF "larch-logs"; then pass "commit creates git commit in repo"; else fail "commit creates git commit in repo"; fi
+unset IMPLEMENT_TMPDIR
+export LARCH_LOG_ROOT="$_saved_log_root"
+
 echo
 echo "Passed: $PASS"
 echo "Failed: $FAIL"
