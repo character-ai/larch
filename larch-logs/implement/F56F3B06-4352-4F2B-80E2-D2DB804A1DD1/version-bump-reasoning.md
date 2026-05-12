@@ -1,12 +1,12 @@
 # Version Bump Reasoning
 
-- **Base commit**: `b76354c` (Bump version to 26.0.22 (#1927))
-- **Current version**: `26.0.22`
+- **Base commit**: `cdafac5` (Bump version to 26.0.23 (#1930))
+- **Current version**: `26.0.23`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: PATCH
 
-- **New version**: `26.0.23`
+- **New version**: `26.0.24`
 
 ### PATCH rationale
 
