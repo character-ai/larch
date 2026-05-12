@@ -391,6 +391,7 @@ Resolve a stable `ISSUE_NUMBER` and `RUN_ID` for the session. Committed `larch-l
 
 ```bash
 RUN_ID=$(tr -d '\r\n' < "$IMPLEMENT_TMPDIR/session-id" 2>/dev/null || true)
+# intentionally non-stable: without --run-id, fallbacks below use uuidgen(1) and date(1) when session-id is empty (identifiers for this run; not literal-stable).
 [ -n "$RUN_ID" ] || RUN_ID=$(uuidgen 2>/dev/null | tr -d '\r\n' || true)
 [ -n "$RUN_ID" ] || RUN_ID=$(od -vAn -N16 -tx1 /dev/urandom 2>/dev/null | tr -d ' \n' || true)
 [ -n "$RUN_ID" ] || RUN_ID="unknown-$(date +%s)"
