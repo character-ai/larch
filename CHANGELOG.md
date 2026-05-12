@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Replace tracking-issue anchor-comment storage with committed `larch-logs/` run artifacts plus five slim marker-keyed tracking comments. Adds `scripts/larch-log.sh`, `scripts/tracking-issue-summary.sh`, batch/manifest harnesses, and removes the old anchor assembly/hydration/refresh scripts.
 
+## [26.0.14] - 2026-05-11
+
+### Changed
+
+- correctness reviewer now verifies code against --plan-file and --feature-file when provided via launch-review.sh
+- render-specialist-prompt.sh embeds plan/feature content inline in generic diff-mode prompts
+- /implement quick mode and /review normal mode wire plan/feature paths to the correctness specialist
+
 ## [26.0.13] - 2026-05-11
 
 ### Fixed

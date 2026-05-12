@@ -2182,6 +2182,76 @@ echo "PASS: test-launch-review.sh --tool gemini — launcher lifecycle tests pas
 
 ) || OVERALL_FAIL=1
 
+# --plan-file and --feature-file: flag recognition tests (offline, no vendor launch).
+# REPO_ROOT may have been shadowed inside subshell groups above; capture afresh here.
+_PLAN_FILE_TESTS_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
+_PLAN_FILE_TESTS_LAUNCHER="$_PLAN_FILE_TESTS_ROOT/scripts/launch-review.sh"
+_plan_file_tests() {
+    local fail=0
+    local tmpd
+    tmpd=$(mktemp -d /tmp/larch-test-launch-review-plan-XXXXXX)
+    trap 'rm -rf "$tmpd"' RETURN
+
+    # Gemini must reject --plan-file and --feature-file.
+    local gemini_plan_stderr gemini_feat_stderr rc
+    gemini_plan_stderr="$tmpd/gemini-plan.stderr"
+    set +e
+    "$_PLAN_FILE_TESTS_LAUNCHER" --tool gemini --output "$tmpd/gp.txt" --timeout 1 \
+        --prompt "x" --plan-file "/some/plan.txt" >/dev/null 2>"$gemini_plan_stderr"
+    rc=$?
+    set -e
+    if [[ "$rc" -ne 2 ]] || ! grep -Fq -- "--plan-file is not supported for --tool gemini" "$gemini_plan_stderr" 2>/dev/null; then
+        echo "FAIL: plan-file/feature-file: gemini should reject --plan-file" >&2
+        fail=1
+    fi
+
+    gemini_feat_stderr="$tmpd/gemini-feat.stderr"
+    set +e
+    "$_PLAN_FILE_TESTS_LAUNCHER" --tool gemini --output "$tmpd/gf.txt" --timeout 1 \
+        --prompt "x" --feature-file "/some/feature.txt" >/dev/null 2>"$gemini_feat_stderr"
+    rc=$?
+    set -e
+    if [[ "$rc" -ne 2 ]] || ! grep -Fq -- "--feature-file is not supported for --tool gemini" "$gemini_feat_stderr" 2>/dev/null; then
+        echo "FAIL: plan-file/feature-file: gemini should reject --feature-file" >&2
+        fail=1
+    fi
+
+    # Codex and Cursor must not reject --plan-file/--feature-file as "unknown flag"
+    # (they will fail for other reasons like missing codex/cursor binary, but the
+    # flag parsing must accept them). We check stderr does NOT contain "unknown flag".
+    for tool in codex cursor; do
+        local pf_stderr
+        pf_stderr="$tmpd/${tool}-plan.stderr"
+        set +e
+        "$_PLAN_FILE_TESTS_LAUNCHER" --tool "$tool" --output "$tmpd/${tool}-p.txt" --timeout 1 \
+            --agent-file "$_PLAN_FILE_TESTS_ROOT/agents/reviewer-correctness.md" --mode diff \
+            --plan-file "/nonexistent/plan.txt" >/dev/null 2>"$pf_stderr"
+        set -e
+        if grep -Fq "unknown flag: --plan-file" "$pf_stderr" 2>/dev/null; then
+            echo "FAIL: plan-file/feature-file: $tool incorrectly rejects --plan-file as unknown flag" >&2
+            fail=1
+        fi
+
+        local ff_stderr
+        ff_stderr="$tmpd/${tool}-feature.stderr"
+        set +e
+        "$_PLAN_FILE_TESTS_LAUNCHER" --tool "$tool" --output "$tmpd/${tool}-f.txt" --timeout 1 \
+            --agent-file "$_PLAN_FILE_TESTS_ROOT/agents/reviewer-correctness.md" --mode diff \
+            --feature-file "/nonexistent/feature.txt" >/dev/null 2>"$ff_stderr"
+        set -e
+        if grep -Fq "unknown flag: --feature-file" "$ff_stderr" 2>/dev/null; then
+            echo "FAIL: plan-file/feature-file: $tool incorrectly rejects --feature-file as unknown flag" >&2
+            fail=1
+        fi
+    done
+
+    if [[ "$fail" -eq 0 ]]; then
+        echo "PASS: plan-file/feature-file flag recognition"
+    fi
+    return "$fail"
+}
+_plan_file_tests || OVERALL_FAIL=1
+
 if [[ "$OVERALL_FAIL" -ne 0 ]]; then
     echo "FAIL: test-launch-review.sh" >&2
     exit 1

@@ -341,6 +341,35 @@ assert_contains "render cache: first description text present" "first descriptio
 assert_contains "render cache: second description text present after cache miss" "second description" "$cache_desc_2"
 rm -rf "$TMPDIR_CACHE"
 
+# 14. --plan-file and --feature-file: content embedded inline in diff mode.
+TMPDIR_PLANFILE=$(mktemp -d)
+PLAN_F="$TMPDIR_PLANFILE/plan.txt"
+FEATURE_F="$TMPDIR_PLANFILE/feature.txt"
+printf 'Implement the frobnitz widget\n' > "$PLAN_F"
+printf 'Add frobnitz support to the API\n' > "$FEATURE_F"
+output_with_plan=$(bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-correctness.md" --mode diff --plan-file "$PLAN_F" 2>/dev/null)
+assert_contains "--plan-file: plan content embedded" "Implement the frobnitz widget" "$output_with_plan"
+assert_contains "--plan-file: implementation_plan tag present" "<implementation_plan>" "$output_with_plan"
+output_with_feature=$(bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-correctness.md" --mode diff --feature-file "$FEATURE_F" 2>/dev/null)
+assert_contains "--feature-file: feature content embedded" "Add frobnitz support to the API" "$output_with_feature"
+assert_contains "--feature-file: feature_description tag present" "<feature_description>" "$output_with_feature"
+output_with_both=$(bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-correctness.md" --mode diff --plan-file "$PLAN_F" --feature-file "$FEATURE_F" 2>/dev/null)
+assert_contains "--plan-file + --feature-file: plan content embedded" "Implement the frobnitz widget" "$output_with_both"
+assert_contains "--plan-file + --feature-file: feature content embedded" "Add frobnitz support to the API" "$output_with_both"
+# Plan/feature not present in description mode (flags validated at exit-2 level, not silently injected).
+assert_exit_code "--plan-file nonexistent" "2" bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-correctness.md" --mode diff --plan-file "/nonexistent/plan.txt"
+assert_exit_code "--feature-file nonexistent" "2" bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-correctness.md" --mode diff --feature-file "/nonexistent/feature.txt"
+# Plan not embedded when diff-mode is non-generic (e.g. docs-only narrows review surface).
+# Check that the plan FILE CONTENT is absent (the reviewer body contains literal <implementation_plan> text in instructions).
+output_docsonly_plan=$(bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-correctness.md" --mode diff --diff-mode docs-only --plan-file "$PLAN_F" 2>/dev/null)
+assert_not_contains "--plan-file with diff-mode=docs-only: plan content not injected" "Implement the frobnitz widget" "$output_docsonly_plan"
+# Flags not embedded when mode=description (files pass validation, but content injection is diff-generic-only).
+SCOPE_F="$TMPDIR_PLANFILE/scope.txt"
+printf 'agents/reviewer-correctness.md\n' > "$SCOPE_F"
+output_desc_plan=$(bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-correctness.md" --mode description --description-text "test" --scope-files "$SCOPE_F" --plan-file "$PLAN_F" 2>/dev/null)
+assert_not_contains "--plan-file in description mode: plan content not injected" "Implement the frobnitz widget" "$output_desc_plan"
+rm -rf "$TMPDIR_PLANFILE"
+
 echo ""
 echo "render-specialist-prompt tests: $PASS passed, $FAIL failed"
 if [[ "$FAIL" -gt 0 ]]; then

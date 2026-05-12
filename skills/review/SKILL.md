@@ -145,6 +145,13 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/gather-branch-context.sh --output-dir "$REVIEW_TMP
 
 Parse the output for `DIFF_FILE`, `FILE_LIST_FILE`, `COMMIT_LOG_FILE`, and `COMMIT_COUNT`. Read these files to get the full diff, file list, and commit log — you will pass these to each subagent.
 
+When `SESSION_ENV_PATH` is non-empty, also read the implementation plan and feature description paths for correctness-specialist plan verification:
+
+```bash
+PLAN_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$SESSION_ENV_PATH" --key PLAN_FILE --default "") || PLAN_FILE=""
+FEATURE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$SESSION_ENV_PATH" --key FEATURE_FILE --default "") || FEATURE_FILE=""
+```
+
 ### Description mode (positional description text)
 
 Skip `gather-branch-context.sh`. Resolve the verbal description to a canonical file list:
@@ -205,6 +212,8 @@ Specialist review prompts must preserve the focus-area enum code-quality / risk-
 ${CLAUDE_PLUGIN_ROOT}/scripts/launch-review.sh --tool cursor --output "$REVIEW_TMPDIR/cursor-specialist-<name>-output.txt" --timeout 1800 --agent-file "${CLAUDE_PLUGIN_ROOT}/agents/reviewer-<name>.md" --mode <diff|description> [--diff-file "$DIFF_FILE" in diff mode] [--commit-count "$COMMIT_COUNT" in diff mode] [--description-text "${DESCRIPTION_TEXT}" --scope-files "$REVIEW_TMPDIR/scope-files.txt"] --competition-notice --timing-task-kind "$CURSOR_SPECIALIST_TIMING_KIND"
 ```
 
+For the `correctness` specialist in diff mode, also pass `--plan-file "$PLAN_FILE"` when `$PLAN_FILE` is non-empty and the file exists, and `--feature-file "$FEATURE_FILE"` when `$FEATURE_FILE` is non-empty and the file exists.
+
 Use `run_in_background: true` and `timeout: 1860000` on each specialist Bash tool call.
 
 **5 Codex specialist slots** — for each specialist (`structure`, `correctness`, `testing`, `security`, `edge-cases`), only launch when `codex_available`. When `codex_available` is false, skip all Codex specialist slots.
@@ -214,6 +223,8 @@ Use `run_in_background: true` and `timeout: 1860000` on each specialist Bash too
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/launch-review.sh --tool codex --output "$REVIEW_TMPDIR/codex-specialist-<name>-output.txt" --timeout 1800 --agent-file "${CLAUDE_PLUGIN_ROOT}/agents/reviewer-<name>.md" --mode <diff|description> [--diff-file "$DIFF_FILE" in diff mode] [--commit-count "$COMMIT_COUNT" in diff mode] [--description-text "${DESCRIPTION_TEXT}" --scope-files "$REVIEW_TMPDIR/scope-files.txt"] --competition-notice --timing-task-kind "$CODEX_SPECIALIST_TIMING_KIND"
 ```
+
+For the `correctness` specialist in diff mode, also pass `--plan-file "$PLAN_FILE"` when `$PLAN_FILE` is non-empty and the file exists, and `--feature-file "$FEATURE_FILE"` when `$FEATURE_FILE` is non-empty and the file exists.
 
 Use `run_in_background: true` and `timeout: 1860000`.
 

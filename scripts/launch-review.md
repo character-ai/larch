@@ -42,6 +42,15 @@ Gemini remains generic-only and rejects specialist flags.
   the `git log` instruction from its diff preamble. Stored in the specialist prompt
   sentinel (`${OUTPUT}.prompt`) so retry replay produces an identical prompt.
   Ignored on `--prompt` / `--prompt-file` paths.
+- `--plan-file <path>` (optional): forwarded to `render-specialist-prompt.sh` on `--agent-file`
+  diff-mode paths. Embeds the plan file's content inline in the prompt between `<implementation_plan>`
+  tags so the reviewer can verify code against the plan. Stored in the Codex specialist prompt
+  sentinel so retry replay reconstructs the identical prompt. Rejected for `--tool gemini`.
+  Ignored on `--prompt` / `--prompt-file` paths.
+- `--feature-file <path>` (optional): forwarded to `render-specialist-prompt.sh` on `--agent-file`
+  diff-mode paths. Embeds the feature description file's content inline between `<feature_description>`
+  tags. Stored in the Codex specialist prompt sentinel. Rejected for `--tool gemini`.
+  Ignored on `--prompt` / `--prompt-file` paths.
 
 ## Primary Callers
 

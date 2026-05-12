@@ -789,6 +789,8 @@ At Step 1 tail, after `post-design-boundary.sh` has loaded `PLAN_FILE` (or after
 
 Use plan size and file count from `PLAN_FILE`: choose `POST_PLAN_WORKFLOW_PATH=SIMPLE` when the plan describes a small, obvious implementation (roughly ≤ ~100 LOC, no new abstractions, no broad refactor, no new cross-skill contract); otherwise choose `POST_PLAN_WORKFLOW_PATH=HARD`. Persist the key to `$IMPLEMENT_TMPDIR/session-env.sh` atomically: filter out any prior `POST_PLAN_WORKFLOW_PATH=` line using `grep -v '^POST_PLAN_WORKFLOW_PATH='` (anchored prefix, NOT a partial match) to a tmp file under `$IMPLEMENT_TMPDIR`, append the new `POST_PLAN_WORKFLOW_PATH=<SIMPLE|HARD>` line, and `mv` the tmp file in place. The `grep -v` pattern MUST be anchored to `^POST_PLAN_WORKFLOW_PATH=` — a looser pattern risks stripping unrelated keys. Downstream review/round logic may read this key; no existing `design_classification`, `sketch_budget`, or manifest variable is changed.
 
+**Also persist plan and feature file paths** for use by `/review`'s correctness specialist: using the same atomic pattern, write `PLAN_FILE=$PLAN_FILE` and `FEATURE_FILE=$IMPLEMENT_TMPDIR/feature-description.txt` to `$IMPLEMENT_TMPDIR/session-env.sh` — filter out any prior `PLAN_FILE=` or `FEATURE_FILE=` lines (anchored with `^PLAN_FILE=` and `^FEATURE_FILE=`), append the new values, and `mv` the tmp file in place. This makes the paths available to `/review` via `read-session-env-key.sh` at Step 5 (normal mode). Feature file path is the fixed conventional path `$IMPLEMENT_TMPDIR/feature-description.txt` regardless of how the plan was produced.
+
 ### post-/design legal next-actions matrix
 
 This matrix is authoritative after the wrapper returns. It is informational prose for the orchestrator; it does not introduce a new parsed envelope key. The wrapper's imperative `➡️` line remains the load-bearing continuation directive.
@@ -1096,6 +1098,8 @@ For each specialist, set `CURSOR_SPECIALIST_TIMING_KIND=cursor-specialist-<name>
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/launch-review.sh --tool cursor --output "$IMPLEMENT_TMPDIR/cursor-quick-review-specialist-<name>-round${round_num}.txt" --timeout 1800 --agent-file "${CLAUDE_PLUGIN_ROOT}/agents/reviewer-<name>.md" --mode diff --diff-file "$DIFF_FILE" --commit-count "$COMMIT_COUNT" --timing-task-kind "$CURSOR_SPECIALIST_TIMING_KIND"
 ```
+
+For the `correctness` specialist, also pass `--plan-file "$PLAN_FILE"` when `$PLAN_FILE` is non-empty and the file exists, and `--feature-file "$IMPLEMENT_TMPDIR/feature-description.txt"` when that file exists.
 
 When **Cursor unavailable**: skip all 5 specialist slots. Do NOT fall back to Codex specialist instances.
 
