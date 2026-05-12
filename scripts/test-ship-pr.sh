@@ -122,6 +122,22 @@ case "$(basename "$0")" in
 esac
 SH
     done
+    cat > "$root/scripts/read-session-env-key.sh" <<'SH'
+#!/usr/bin/env bash
+while [[ $# -gt 0 ]]; do
+    [[ "$1" == --default ]] && { printf '%s\n' "$2"; exit 0; }; shift
+done
+SH
+    cat > "$root/scripts/token-report.sh" <<'SH'
+#!/usr/bin/env bash
+while [[ $# -gt 0 ]]; do
+    [[ "$1" == --output ]] && { touch "$2"; break; }; shift
+done
+SH
+    cat > "$root/scripts/tracking-issue-summary.sh" <<'SH'
+#!/usr/bin/env bash
+touch "${IMPLEMENT_TMPDIR:-/tmp}/summary-upsert-called"
+SH
     chmod +x "$root"/scripts/*.sh "$root"/.claude/skills/bump-version/scripts/*.sh
 }
 
@@ -256,6 +272,18 @@ write_state "$tmp/ship-pr-state.sh" checks
 printf 'lowercase_bad=true\n' >> "$tmp/ship-pr-state.sh"
 run_subject "$root" "$tmp" "$tmp/rc"
 assert_rc "$tmp/rc" 2 "malformed lowercase state exits 2"
+
+root=$(make_repo postmerge)
+tmp=$(make_tmpdir)
+write_state "$tmp/ship-pr-state.sh" postmerge
+run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 0 "postmerge phase exits 0"
+assert_state_line "$tmp/ship-pr-state.sh" "PHASE=done" "postmerge writes PHASE=done before teardown"
+if [ -f "$tmp/summary-upsert-called" ]; then
+    ok "postmerge calls tracking-issue-summary.sh"
+else
+    fail "postmerge did not call tracking-issue-summary.sh"
+fi
 
 if [[ "$FAIL_COUNT" -ne 0 ]]; then
     echo "test-ship-pr: $FAIL_COUNT failure(s), $PASS_COUNT pass(es)" >&2
