@@ -1354,7 +1354,7 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 
 Best-effort: failures are non-fatal.
 
-On each retry (CI failure, merge conflict, rebase in Steps 10/12), the Rebase + Re-bump Sub-procedure step 4b re-writes these batches with updated data and creates a new log-flush commit before step 5 pushes the branch, so the most recent token/timing data lands in the merged PR.
+On each retry (CI failure, merge conflict, rebase in Steps 10/12), the Rebase + Re-bump Sub-procedure step 1b re-writes these batches with updated data and creates a new log-flush commit before the rebase, so the most recent token/timing data lands in the merged PR.
 
 ## Step 8 — Version Bump
 
@@ -1964,7 +1964,7 @@ If `quick_mode=true` and `DESIGN_ONLY_DONE` is not true: print `✅ 17: final re
 
 If `quick_mode=false` and `DESIGN_ONLY_DONE` is not true: print a summary noting plan review findings were written by `/design` into larch-log batches and code review findings by `/review` (visible above). If both phases reported all suggestions implemented, print `✅ 17: final report status=complete outcome=all-suggestions-implemented elapsed=<elapsed>`.
 
-Print a token summary to chat. When `LARCH_VERBOSE_TOKENS=true`, print the full per-step table; otherwise print a single grand-total line. The full breakdown is appended to the `token-report` and `timing-report` log batches at the pre-bump log flush (Step 7a tail); on each retry the sub-procedure step 4b refreshes those batches so the merged PR carries the most recent data.
+Print a token summary to chat. When `LARCH_VERBOSE_TOKENS=true`, print the full per-step table; otherwise print a single grand-total line. The full breakdown is appended to the `token-report` and `timing-report` log batches at the pre-bump log flush (Step 7a tail); on each retry the sub-procedure step 1b refreshes those batches so the merged PR carries the most recent data.
 
 ```bash
 LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")

@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Replace tracking-issue anchor-comment storage with committed `larch-logs/` run artifacts plus five slim marker-keyed tracking comments. Adds `scripts/larch-log.sh`, `scripts/tracking-issue-summary.sh`, batch/manifest harnesses, and removes the old anchor assembly/hydration/refresh scripts.
 
+## [26.0.12] - 2026-05-11
+
+### Fixed
+
+- Fix larch-logs commit order: move log-flush commit to pre-bump so logs ride inside the PR
+- Add retry log refresh in rebase sub-procedure to keep token/timing data current on CI retries
+- Fix quick-mode and small-skip paths to run pre-bump log flush before Step 8
+
 ## [26.0.11] - 2026-05-11
 
 ### Changed
