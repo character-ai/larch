@@ -1512,7 +1512,7 @@ if [ "${forked_target:-false}" != "true" ] && [ -n "${ISSUE_NUMBER:-}" ] && [ "$
   printf 'Status: %s | PR: %s\nLogs: larch-logs/implement/%s/\n' \
     "${STALL_TRACKING:-false}" "${PR_URL:-N/A}" "$RUN_ID" \
     > "$IMPLEMENT_TMPDIR/summary-final.md"
-  ${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-summary.sh upsert-summary --issue "$ISSUE_NUMBER" --marker "<!-- larch:final-summary v1 runid=$RUN_ID -->" --content-file "$IMPLEMENT_TMPDIR/summary-final.md" || true
+  ${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-summary.sh upsert-summary --issue "$ISSUE_NUMBER" --marker "<!-- larch:final-summary v1 runid=$RUN_ID -->" --content-file "$IMPLEMENT_TMPDIR/summary-final.md" --repo "${REPO:-}" || true
 fi
 ```
 

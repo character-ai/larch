@@ -280,9 +280,9 @@ run_subject "$root" "$tmp" "$tmp/rc"
 assert_rc "$tmp/rc" 0 "postmerge phase exits 0"
 assert_state_line "$tmp/ship-pr-state.sh" "PHASE=done" "postmerge writes PHASE=done before teardown"
 if [ -f "$tmp/summary-upsert-called" ]; then
-    ok "postmerge calls tracking-issue-summary.sh"
+    fail "postmerge should not call tracking-issue-summary.sh (owned by prompt-side Step 18)"
 else
-    fail "postmerge did not call tracking-issue-summary.sh"
+    ok "postmerge does not call tracking-issue-summary.sh (Step 18 owns it)"
 fi
 
 if [[ "$FAIL_COUNT" -ne 0 ]]; then

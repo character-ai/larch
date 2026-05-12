@@ -1,6 +1,6 @@
 # ship-pr.sh
 
-`scripts/ship-pr.sh` is the mechanical state machine for the post-review tail of `/implement`: relevant checks, version bump, PR body/create, CI polling/fix dispatch, merge, postmerge finalization, and teardown.
+`scripts/ship-pr.sh` is the mechanical state machine for the post-review tail of `/implement`: relevant checks, version bump, PR body/create, CI polling/fix dispatch, merge, and postmerge finalization (local cleanup + verify-main). Teardown, token-report refresh, and final tracking-issue summary are owned by the prompt-side Step 18 orchestrator, which runs after ship-pr.sh exits with `PHASE=done`.
 
 ## Interface
 
@@ -26,7 +26,7 @@ Checkpoint phases:
 - `postmerge`
 - `done`
 
-The script also writes `$IMPLEMENT_TMPDIR/postbump-state.sh` before `implement-finalize.sh postbump` and `$IMPLEMENT_TMPDIR/finalize-state.sh` before postmerge/teardown.
+The script also writes `$IMPLEMENT_TMPDIR/postbump-state.sh` before `implement-finalize.sh postbump` and `$IMPLEMENT_TMPDIR/finalize-state.sh` before `postmerge`.
 
 ## Exit Codes
 
@@ -53,9 +53,9 @@ The script also writes `$IMPLEMENT_TMPDIR/postbump-state.sh` before `implement-f
 - Fork mode skips bump application and uses direct `rebase-push.sh --base-remote upstream --base-ref main`.
 - State writes use `tmp.$$` plus `mv`.
 
-## Postmerge Summary Comments
+## Postmerge Phase
 
-`run_postmerge_phase` posts the `larch:final-summary` tracking-issue comment before teardown, rehydrating `LARCH_TOKEN_SESSION_ID`/`LARCH_CLAUDE_SOURCE_FILE` from `$IMPLEMENT_TMPDIR/session-env.sh`. The upsert is skipped when `FORKED_TARGET=true`, `ISSUE_NUMBER` is empty, or `REPO_UNAVAILABLE=true`. `advance_phase "done"` runs before teardown so the state file is updated while it still exists; the function ends with `exit 0` to bypass the state-machine loop after teardown removes the state file.
+`run_postmerge_phase` calls `implement-finalize.sh postmerge` (Steps 14+15: local cleanup and verify-main), then calls `advance_phase "done"` and exits 0. Token-report refresh, `larch:final-summary` upsert, session-transcript commit, manifest finalization, and tmpdir teardown all run in the prompt-side Step 18 orchestrator after ship-pr.sh exits with `PHASE=done`; `$IMPLEMENT_TMPDIR` remains intact for Step 18 to use.
 
 ## Harness
 

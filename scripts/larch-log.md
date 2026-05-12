@@ -9,7 +9,7 @@ Primary verbs:
 - `write` atomically replaces replace-mode batches.
 - `append` atomically appends append-mode NDJSON batches.
 - `exists` probes a batch path.
-- `manifest` updates mutable manifest fields.
+- `manifest` updates mutable manifest fields. Values that look like JSON-native scalars (`null`, `true`, `false`, integers) are passed via `--argjson` so they are stored with the correct JSON type; all other values are passed via `--arg` (stored as strings). This matters for numeric fields like `pr_number`.
 - `commit` stages and commits one run directory at terminal time.
 
 Every verb emits a quiet KEY=value envelope:
