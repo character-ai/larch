@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Replace tracking-issue anchor-comment storage with committed `larch-logs/` run artifacts plus five slim marker-keyed tracking comments. Adds `scripts/larch-log.sh`, `scripts/tracking-issue-summary.sh`, batch/manifest harnesses, and removes the old anchor assembly/hydration/refresh scripts.
 
+## [26.0.20] - 2026-05-12
+
+### Changed
+
+- Pre-read Cursor macOS cursor-access-token service into CURSOR_API_KEY before shared Cursor launcher argv hydration.
+- Make Cursor auth preflight service-specific for cursor-user / cursor-access-token.
+- Cover the pre-read helper and shared launcher wiring in the Cursor auth harness and update security/auth docs.
+
 ## [26.0.17] - 2026-05-12
 
 ### Fixed

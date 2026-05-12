@@ -30,6 +30,10 @@ Gemini remains generic-only and rejects specialist flags.
 - Codex receives a compact read-only hardening preamble through
   per-invocation `CODEX_HOME/config.toml`; Cursor receives the same compact
   prohibition in the wrapped prompt plus a `--mode plan` enforcement note.
+- Cursor auth setup runs the Darwin preflight, then best-effort pre-reads the
+  `cursor-user` / `cursor-access-token` keychain service into `CURSOR_API_KEY`
+  before composing argv. A successful pre-read becomes an explicit `--api-key`
+  argument, avoiding Cursor's own concurrent keychain read path.
 - Codex sets `CODEX_SANDBOX_MODE=read-only` and emits a static
   `STATUS=clean MODE=baseline REASON=codex-sandbox-read-only` sidecar without
   running the scan — `--sandbox read-only` blocks writes at the syscall level,

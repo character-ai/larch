@@ -1,4 +1,4 @@
-# lib-cursor-auth.sh — Cursor CLI auth-argv builder + Darwin-gated keychain preflight.
+# lib-cursor-auth.sh — Cursor CLI auth-argv builder + Darwin-gated keychain helpers.
 #
 # Sourced by:
 #   - scripts/launch-review.sh --tool cursor
@@ -28,6 +28,44 @@
 # implementer's machine at the time of this PR; future Cursor releases that
 # change the flag will be detected by the regression tests in
 # scripts/test-lib-cursor-auth.sh.
+
+# cursor_preread_service_token — best-effort Darwin keychain pre-read for the
+# exact service Cursor reads at runtime. When CURSOR_API_KEY is already set
+# after trim, this is a no-op. On Darwin with no env key, it reads
+# cursor-user/cursor-access-token via `security ... -w`; a successful non-empty
+# value is exported as CURSOR_API_KEY so cursor_auth_argv can pass `--api-key`
+# and the Cursor binary does not perform its own keychain read. Failures are
+# silent and return 0 to preserve the existing Cursor fallback path.
+cursor_preread_service_token() {
+    local key
+    key="${CURSOR_API_KEY:-}"
+    key="${key#"${key%%[![:space:]]*}"}"
+    key="${key%"${key##*[![:space:]]}"}"
+    if [ -n "$key" ]; then
+        return 0
+    fi
+
+    local uname_out
+    if [ "${LARCH_LIB_CURSOR_AUTH_TEST_MODE:-}" = "1" ] && [ -n "${LIB_CURSOR_AUTH_TEST_UNAME:-}" ]; then
+        uname_out="$LIB_CURSOR_AUTH_TEST_UNAME"
+    else
+        uname_out=$(uname -s 2>/dev/null || echo unknown)
+    fi
+    if [ "$uname_out" != "Darwin" ]; then
+        return 0
+    fi
+
+    local token
+    if [ "${LARCH_LIB_CURSOR_AUTH_TEST_MODE:-}" = "1" ]; then
+        token="${LIB_CURSOR_AUTH_TEST_PREREAD_TOKEN:-}"
+    else
+        token=$(security find-generic-password -a cursor-user -s cursor-access-token -w 2>/dev/null || true)
+    fi
+    if [ -n "$token" ]; then
+        export CURSOR_API_KEY="$token"
+    fi
+    return 0
+}
 
 # cursor_auth_argv — populate the global CURSOR_AUTH_ARGS array with the
 # conditional --api-key argument. The helper:
@@ -95,8 +133,8 @@ cursor_auth_argv() {
 #   1. If CURSOR_API_KEY non-empty after whitespace trim: return 0 (env wins).
 #   2. If `uname -s` is not Darwin: return 0 (Linux/CI no-op — CURSOR_API_KEY
 #      is the only path; we don't second-guess Linux's auth chain).
-#   3. On Darwin with empty key: probe the macOS keychain for the
-#      `cursor-user` generic-password entry. If it exists, return 0 (let
+#   3. On Darwin with empty key: probe the macOS keychain for the exact
+#      `cursor-user`/`cursor-access-token` service entry. If it exists, return 0 (let
 #      Cursor surface its own keychain failure if it strikes).
 #   4. On Darwin with empty key AND no keychain entry: write a multi-line
 #      actionable message to stderr (caller identity, doc pointer, two
@@ -133,7 +171,7 @@ cursor_auth_preflight() {
     if [ "${LARCH_LIB_CURSOR_AUTH_TEST_MODE:-}" = "1" ] && [ -n "${LIB_CURSOR_AUTH_TEST_SECURITY_RC:-}" ]; then
         rc="$LIB_CURSOR_AUTH_TEST_SECURITY_RC"
     else
-        if security find-generic-password -a cursor-user >/dev/null 2>&1; then
+        if security find-generic-password -a cursor-user -s cursor-access-token >/dev/null 2>&1; then
             rc=0
         else
             rc=1
@@ -162,8 +200,8 @@ cursor_auth_preflight() {
     # substitution. Single quotes intentionally suppress expansion.
     {
         printf '%s: cursor-auth-preflight failed.\n' "$caller"
-        printf '  CURSOR_API_KEY is unset/empty AND no `cursor-user` keychain\n'
-        printf '  entry exists on this Darwin host. Cursor would otherwise emit\n'
+        printf '  CURSOR_API_KEY is unset/empty AND no `cursor-user` / `cursor-access-token`\n'
+        printf '  keychain entry exists on this Darwin host. Cursor would otherwise emit\n'
         printf '  the cryptic `Security process exited with code: 45`.\n'
         printf '\n'
         printf '  See docs/installation-and-setup.md (Cursor section) for setup.\n'
