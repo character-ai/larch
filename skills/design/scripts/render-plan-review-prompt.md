@@ -21,4 +21,4 @@ Run `make test-plan-review-prompt` or `bash skills/design/scripts/test-plan-revi
 
 ## Edit In Sync
 
-Update `skills/design/SKILL.md`, `skills/design/references/plan-review.md`, `skills/design/scripts/test-plan-review-prompt.sh`, and `docs/linting.md` when changing the renderer interface, vendor styles, archetype names, structured-output contract, or output invariants.
+Update `skills/design/SKILL.md`, `skills/design/references/plan-review.md`, `skills/design/scripts/test-plan-review-prompt.sh`, `Makefile`, and `docs/linting.md` when changing the renderer interface, vendor styles, archetype names, structured-output contract, or output invariants.
