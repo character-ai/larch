@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Replace tracking-issue anchor-comment storage with committed `larch-logs/` run artifacts plus five slim marker-keyed tracking comments. Adds `scripts/larch-log.sh`, `scripts/tracking-issue-summary.sh`, batch/manifest harnesses, and removes the old anchor assembly/hydration/refresh scripts.
 
+## [26.0.9] - 2026-05-11
+
+### Changed
+
+- step2-implement.sh now accepts `--workflow SIMPLE|HARD` to tune coder timeout: 1 h for SIMPLE (default), 2 h for HARD
+
 ## [26.0.8] - 2026-05-11
 
 ### Changed
