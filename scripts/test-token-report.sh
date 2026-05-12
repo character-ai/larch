@@ -240,7 +240,7 @@ else
     pass
 fi
 
-# Whole-line marker regex parity with assemble-anchor.sh — a prose line
+# Whole-line marker regex parity — a prose line
 # that merely *mentions* the marker substring (e.g. inside a backtick
 # code span or table cell) MUST NOT be treated as a structural sentinel
 # (closes #1511 finding A). Set up a file with a prose mention BEFORE a

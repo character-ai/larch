@@ -73,8 +73,7 @@ Makefile-only test-harness pattern.
 When behavior changes, update these files together:
 
 - `skills/implement/SKILL.md` Step 9a.1 narrative.
-- `skills/implement/references/anchor-template-oos-pipeline.md` Step 9a.1
-  procedure.
+- `skills/implement/SKILL.md` Step 9a.1 procedure.
 - `scripts/file-line-regex-lib.sh` and its contract when the path grammar
   changes.
 - `skills/issue/scripts/parse-input.sh` and its contract when parser stdout

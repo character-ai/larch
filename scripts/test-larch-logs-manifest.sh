@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# test-larch-logs-manifest.sh — manifest schema and atomicity checks.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+LARCH_LOG="$SCRIPT_DIR/larch-log.sh"
+TMP="$(mktemp -d "${TMPDIR:-/tmp}/test-larch-logs-manifest.XXXXXX")"
+trap 'rm -rf "$TMP"' EXIT
+export LARCH_LOG_ROOT="$TMP/larch-logs"
+
+"$LARCH_LOG" init --skill design --run-id run999 --parent-skill implement --issue 7 >/dev/null
+manifest="$LARCH_LOG_ROOT/design/run999/manifest.json"
+
+if command -v jq >/dev/null 2>&1; then
+    jq -e '
+      .schema_version == 1 and
+      .skill == "design" and
+      .run_id == "run999" and
+      .parent_skill == "implement" and
+      .issue_number == 7 and
+      .status == "in-progress" and
+      (.model_roster | type == "object") and
+      (.flags | type == "object")
+    ' "$manifest" >/dev/null
+else
+    grep -q '"schema_version": 1' "$manifest"
+    grep -q '"skill": "design"' "$manifest"
+fi
+
+before="$(cat "$manifest")"
+"$LARCH_LOG" init --skill design --run-id run999 --parent-skill implement --issue 7 >/dev/null
+after="$(cat "$manifest")"
+[ "$before" = "$after" ] || {
+    echo "FAIL: init retry changed manifest" >&2
+    exit 1
+}
+
+leftovers="$(find "$(dirname "$manifest")" -name '.tmp.manifest.*' -print)"
+[ -z "$leftovers" ] || {
+    echo "FAIL: manifest temp file left behind: $leftovers" >&2
+    exit 1
+}
+
+echo "All assertions passed."

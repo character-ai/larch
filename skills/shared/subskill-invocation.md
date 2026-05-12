@@ -181,7 +181,7 @@ All human-readable content must be file-backed. Step breadcrumbs, round summarie
 Canonical examples:
 
 - `/design` writes plan, tally, OOS, rejected-finding, accepted-finding, and optional architecture-diagram artifacts, then exports the design manifest for `/implement`.
-- `/review --diff` writes `$REVIEW_TMPDIR/review-round-summary.md` before Step 4 returns. When nested, Step 4 copies it to `$(dirname "$SESSION_ENV_PATH")/review-round-summary.md`, suppresses inline prose, and emits only the `### review-result` KV footer plus that artifact path; `/implement` reads the stable parent-tmpdir summary file for its `code-review-tally` anchor fragment.
+- `/review --diff` writes `$REVIEW_TMPDIR/review-round-summary.md` before Step 4 returns. When nested, Step 4 copies it to `$(dirname "$SESSION_ENV_PATH")/review-round-summary.md`, suppresses inline prose, and emits only the `### review-result` KV footer plus that artifact path; `/implement` reads the stable parent-tmpdir summary file for its `code-review-tally` log batch.
 
 Standalone invocations (`SESSION_ENV_PATH` empty) preserve their normal visible prose and artifact replay behavior.
 

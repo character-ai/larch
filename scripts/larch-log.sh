@@ -1,0 +1,288 @@
+#!/usr/bin/env bash
+# larch-log.sh — router for committed larch-logs artifacts.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
+
+# shellcheck source=scripts/lib-larch-log.sh
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib-larch-log.sh"
+
+usage() {
+    cat <<'USAGE' >&2
+Usage:
+  larch-log.sh init --skill S --run-id R [--parent-skill P] [--issue N]
+  larch-log.sh write --skill S --run-id R --batch B --input-file F
+  larch-log.sh append --skill S --run-id R --batch B --record-file F
+  larch-log.sh exists --skill S --run-id R --batch B
+  larch-log.sh commit --skill S --run-id R [--no-push]
+  larch-log.sh manifest --skill S --run-id R --field K=V...
+USAGE
+}
+
+json_escape() {
+    if command -v jq >/dev/null 2>&1; then
+        jq -Rn --arg v "$1" '$v'
+    else
+        printf '"%s"' "$(printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+    fi
+}
+
+now_utc() {
+    date -u '+%Y-%m-%dT%H:%M:%SZ'
+}
+
+plugin_version() {
+    "$SCRIPT_DIR/read-plugin-version.sh" 2>/dev/null | awk -F= '/^LARCH_PLUGIN_VERSION=/{print $2; exit}'
+}
+
+require_common() {
+    [ -n "${SKILL:-}" ] || { usage; larch_log_fail 1 "--skill is required"; }
+    [ -n "${RUN_ID:-}" ] || { usage; larch_log_fail 1 "--run-id is required"; }
+    larch_log_validate_slug skill "$SKILL"
+    larch_log_validate_slug run-id "$RUN_ID"
+}
+
+write_manifest_file() {
+    local path="$1"
+    local parent_skill="$2"
+    local issue="$3"
+    local status="$4"
+    local ts version parent_json issue_json effort_json tmp
+    ts="$(now_utc)"
+    version="$(plugin_version)"
+    [ -n "$version" ] || version="unknown"
+    if [ -n "$parent_skill" ]; then
+        parent_json="$(json_escape "$parent_skill")"
+    else
+        parent_json="null"
+    fi
+    if [ -n "$issue" ]; then
+        issue_json="$issue"
+    else
+        issue_json="null"
+    fi
+    effort_json="$(json_escape "${CLAUDE_CODE_EFFORT_LEVEL:-${CLAUDE_EFFORT:-unknown}}")"
+    mkdir -p "$(dirname "$path")" || larch_log_fail 2 "cannot create manifest directory"
+    tmp="$(mktemp "$(dirname "$path")/.tmp.manifest.XXXXXX")" || larch_log_fail 2 "cannot create manifest temp"
+    cat > "$tmp" <<EOF
+{
+  "schema_version": 1,
+  "skill": "$SKILL",
+  "run_id": "$RUN_ID",
+  "parent_skill": $parent_json,
+  "issue_number": $issue_json,
+  "pr_number": null,
+  "status": "$status",
+  "larch_version": "$version",
+  "model_roster": {},
+  "effort": $effort_json,
+  "started_at": "$ts",
+  "updated_at": "$ts",
+  "attempt": 1,
+  "superseded_by": null,
+  "stalled_at_step": null,
+  "flags": {}
+}
+EOF
+    mv -f "$tmp" "$path" || {
+        rm -f "$tmp"
+        larch_log_fail 2 "cannot publish manifest"
+    }
+}
+
+cmd="${1:-}"
+[ -n "$cmd" ] || { usage; exit 1; }
+shift
+
+case "$cmd" in
+    init)
+        SKILL=""; RUN_ID=""; PARENT_SKILL=""; ISSUE=""
+        while [ $# -gt 0 ]; do
+            case "$1" in
+                --skill) SKILL="${2:?--skill requires a value}"; shift 2 ;;
+                --run-id) RUN_ID="${2:?--run-id requires a value}"; shift 2 ;;
+                --parent-skill) PARENT_SKILL="${2:?--parent-skill requires a value}"; shift 2 ;;
+                --issue) ISSUE="${2:?--issue requires a value}"; shift 2 ;;
+                *) usage; larch_log_fail 1 "unknown option for init: $1" ;;
+            esac
+        done
+        require_common
+        [ -z "$PARENT_SKILL" ] || larch_log_validate_slug parent-skill "$PARENT_SKILL"
+        case "$ISSUE" in ""|*[!0-9]*) [ -z "$ISSUE" ] || larch_log_fail 1 "invalid issue: $ISSUE" ;; esac
+        path="$(larch_log_run_dir "$SKILL" "$RUN_ID")/manifest.json"
+        if [ -f "$path" ]; then
+            larch_log_emit_success "$path" false true
+            exit 0
+        fi
+        write_manifest_file "$path" "$PARENT_SKILL" "$ISSUE" "in-progress"
+        larch_log_emit_success "$path" true false
+        ;;
+
+    write)
+        SKILL=""; RUN_ID=""; BATCH=""; INPUT_FILE=""
+        while [ $# -gt 0 ]; do
+            case "$1" in
+                --skill) SKILL="${2:?--skill requires a value}"; shift 2 ;;
+                --run-id) RUN_ID="${2:?--run-id requires a value}"; shift 2 ;;
+                --batch) BATCH="${2:?--batch requires a value}"; shift 2 ;;
+                --input-file) INPUT_FILE="${2:?--input-file requires a value}"; shift 2 ;;
+                --commit) shift ;;
+                *) usage; larch_log_fail 1 "unknown option for write: $1" ;;
+            esac
+        done
+        require_common
+        [ -n "$BATCH" ] || larch_log_fail 1 "--batch is required"
+        [ -f "$INPUT_FILE" ] || larch_log_fail 1 "input file not found: $INPUT_FILE"
+        mode="$(larch_log_batch_mode "$BATCH")" || larch_log_fail 1 "unknown batch: $BATCH"
+        [ "$mode" = "replace" ] || larch_log_fail 1 "batch $BATCH is append-only; use append"
+        path="$(larch_log_batch_path "$SKILL" "$RUN_ID" "$BATCH")"
+        tmp="$(mktemp "${TMPDIR:-/tmp}/larch-log-write.XXXXXX")" || larch_log_fail 2 "cannot create temp payload"
+        trap 'rm -f "${tmp:-}"' EXIT
+        larch_log_redact_file "$INPUT_FILE" "$tmp"
+        larch_log_validate_batch_payload "$BATCH" "$tmp"
+        if [ -f "$path" ] && cmp -s "$tmp" "$path"; then
+            larch_log_emit_success "$path" false true
+            exit 0
+        fi
+        larch_log_atomic_replace "$tmp" "$path"
+        larch_log_emit_success "$path" true false
+        ;;
+
+    append)
+        SKILL=""; RUN_ID=""; BATCH=""; RECORD_FILE=""
+        while [ $# -gt 0 ]; do
+            case "$1" in
+                --skill) SKILL="${2:?--skill requires a value}"; shift 2 ;;
+                --run-id) RUN_ID="${2:?--run-id requires a value}"; shift 2 ;;
+                --batch) BATCH="${2:?--batch requires a value}"; shift 2 ;;
+                --record-file) RECORD_FILE="${2:?--record-file requires a value}"; shift 2 ;;
+                *) usage; larch_log_fail 1 "unknown option for append: $1" ;;
+            esac
+        done
+        require_common
+        [ -n "$BATCH" ] || larch_log_fail 1 "--batch is required"
+        [ -f "$RECORD_FILE" ] || larch_log_fail 1 "record file not found: $RECORD_FILE"
+        mode="$(larch_log_batch_mode "$BATCH")" || larch_log_fail 1 "unknown batch: $BATCH"
+        [ "$mode" = "append" ] || larch_log_fail 1 "batch $BATCH is replace-only; use write"
+        path="$(larch_log_batch_path "$SKILL" "$RUN_ID" "$BATCH")"
+        dir="$(dirname "$path")"
+        mkdir -p "$dir" || larch_log_fail 2 "cannot create log directory: $dir"
+        redacted="$(mktemp "${TMPDIR:-/tmp}/larch-log-record.XXXXXX")" || larch_log_fail 2 "cannot create record temp"
+        staged="$(mktemp "$dir/.tmp.$(basename "$path").XXXXXX")" || larch_log_fail 2 "cannot create append temp"
+        trap 'rm -f "${redacted:-}" "${staged:-}"' EXIT
+        larch_log_redact_file "$RECORD_FILE" "$redacted"
+        larch_log_validate_batch_payload "$BATCH" "$redacted"
+        [ -f "$path" ] && cat "$path" > "$staged"
+        cat "$redacted" >> "$staged"
+        tail_char="$(tail -c 1 "$staged" 2>/dev/null || true)"
+        [ "$tail_char" = "" ] || printf '\n' >> "$staged"
+        mv -f "$staged" "$path" || larch_log_fail 2 "cannot append log record"
+        larch_log_emit_success "$path" true false
+        ;;
+
+    exists)
+        SKILL=""; RUN_ID=""; BATCH=""
+        while [ $# -gt 0 ]; do
+            case "$1" in
+                --skill) SKILL="${2:?--skill requires a value}"; shift 2 ;;
+                --run-id) RUN_ID="${2:?--run-id requires a value}"; shift 2 ;;
+                --batch) BATCH="${2:?--batch requires a value}"; shift 2 ;;
+                *) usage; larch_log_fail 1 "unknown option for exists: $1" ;;
+            esac
+        done
+        require_common
+        path="$(larch_log_batch_path "$SKILL" "$RUN_ID" "$BATCH")"
+        if [ -f "$path" ]; then
+            larch_log_emit_success "$path" false true
+        else
+            larch_log_emit_success "$path" false false
+        fi
+        ;;
+
+    manifest)
+        SKILL=""; RUN_ID=""; FIELDS=()
+        while [ $# -gt 0 ]; do
+            case "$1" in
+                --skill) SKILL="${2:?--skill requires a value}"; shift 2 ;;
+                --run-id) RUN_ID="${2:?--run-id requires a value}"; shift 2 ;;
+                --field) FIELDS+=("${2:?--field requires a value}"); shift 2 ;;
+                *) usage; larch_log_fail 1 "unknown option for manifest: $1" ;;
+            esac
+        done
+        require_common
+        path="$(larch_log_run_dir "$SKILL" "$RUN_ID")/manifest.json"
+        [ -f "$path" ] || larch_log_fail 1 "manifest not found: $path"
+        command -v jq >/dev/null 2>&1 || larch_log_fail 2 "jq is required for manifest updates"
+        # shellcheck disable=SC2016 # jq variables are expanded by jq, not the shell.
+        filter='.updated_at = $updated'
+        args=(--arg updated "$(now_utc)")
+        for field in "${FIELDS[@]}"; do
+            case "$field" in
+                *=*) key="${field%%=*}"; value="${field#*=}" ;;
+                *) larch_log_fail 1 "invalid --field: $field" ;;
+            esac
+            case "$key" in
+                schema_version|skill|run_id|started_at) larch_log_fail 1 "manifest field is immutable: $key" ;;
+                *[!A-Za-z0-9_]*|"") larch_log_fail 1 "invalid manifest field: $key" ;;
+            esac
+            var="v${#args[@]}"
+            args+=(--arg "$var" "$value")
+            filter="$filter | .$key = \$$var"
+        done
+        tmp="$(mktemp "$(dirname "$path")/.tmp.manifest.XXXXXX")" || larch_log_fail 2 "cannot create manifest temp"
+        jq "${args[@]}" "$filter" "$path" > "$tmp" || {
+            rm -f "$tmp"
+            larch_log_fail 2 "manifest update failed"
+        }
+        if cmp -s "$tmp" "$path"; then
+            rm -f "$tmp"
+            larch_log_emit_success "$path" false true
+        else
+            mv -f "$tmp" "$path" || larch_log_fail 2 "cannot publish manifest"
+            larch_log_emit_success "$path" true false
+        fi
+        ;;
+
+    commit)
+        SKILL=""; RUN_ID=""; NO_PUSH=false
+        while [ $# -gt 0 ]; do
+            case "$1" in
+                --skill) SKILL="${2:?--skill requires a value}"; shift 2 ;;
+                --run-id) RUN_ID="${2:?--run-id requires a value}"; shift 2 ;;
+                --no-push) NO_PUSH=true; shift ;;
+                *) usage; larch_log_fail 1 "unknown option for commit: $1" ;;
+            esac
+        done
+        require_common
+        path="$(larch_log_run_dir "$SKILL" "$RUN_ID")"
+        [ -d "$path" ] || larch_log_fail 1 "log directory not found: $path"
+        rel="${path#"$REPO_ROOT"/}"
+        # Check status first: git diff alone misses untracked files.
+        if ! git -C "$REPO_ROOT" status --porcelain -- "$rel" | grep -q .; then
+            larch_log_emit_success "$path" false true
+            exit 0
+        fi
+        git -C "$REPO_ROOT" add -- "$rel" || larch_log_fail 3 "git add failed"
+        if git -C "$REPO_ROOT" diff --cached --quiet -- "$rel"; then
+            larch_log_emit_success "$path" false true
+            exit 0
+        fi
+        git -C "$REPO_ROOT" commit -m "chore(larch-logs): flush $SKILL run $RUN_ID" -- "$rel" >/dev/null || {
+            git -C "$REPO_ROOT" reset HEAD -- "$rel" 2>/dev/null || true
+            larch_log_fail 3 "git commit failed"
+        }
+        commit_sha="$(git -C "$REPO_ROOT" rev-parse HEAD)"
+        if [ "$NO_PUSH" = false ]; then
+            git -C "$REPO_ROOT" push >/dev/null || larch_log_fail 3 "git push failed"
+        fi
+        larch_log_emit_success "$path" true false "$commit_sha"
+        ;;
+
+    *)
+        usage
+        larch_log_fail 1 "unknown command: $cmd"
+        ;;
+esac

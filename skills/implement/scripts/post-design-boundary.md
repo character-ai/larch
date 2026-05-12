@@ -30,9 +30,9 @@ The Stop hook (`hook-stop-fail-close.sh`) blocks a session stop when `manifest.e
 
 `NEXT_ACTION` is audit-only. The orchestrator must not use it as a parsing gate; the load-bearing continuation signal is the final `➡️` line. The default (non-hook-mode) variants are:
 
-`➡️ 1: design plan — boundary gate passed; NEXT REQUIRED: write anchor-section fragments → Step 1.r rebase → Step 2 entry`
+`➡️ 1: design plan — boundary gate passed; NEXT REQUIRED: write larch-log batches → Step 1.r rebase → Step 2 entry`
 
-`➡️ 1: design plan — boundary gate passed (design-only); NEXT REQUIRED: write plan-goals-test + plan-review-tally anchor fragments → write diagrams anchor fragment → Step 9a.1 OOS pipeline`
+`➡️ 1: design plan — boundary gate passed (design-only); NEXT REQUIRED: write plan-goals-test + plan-review-tally log batches → write diagrams log batch → Step 9a.1 OOS pipeline`
 
 Hook-mode variants begin with `➡️ 1: design plan — hook injected boundary context` and instruct the orchestrator to invoke the Bash wrapper immediately.
 

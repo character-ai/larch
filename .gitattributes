@@ -16,3 +16,7 @@
 *.tsv    text eol=lf
 *.toml   text eol=lf
 *.txt    text eol=lf
+
+# Runtime logs are committed in development branches for auditability, but
+# they must not ship in the plugin archive consumed by users.
+larch-logs/ export-ignore

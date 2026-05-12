@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Validate Mermaid fragments before they are written to public anchor comments or PR bodies. The sanitizer is intentionally narrow: it rejects the two anchor-breaking classes seen in issue #1404 and leaves all broader Mermaid syntax validation to `scripts/lint-mermaid-fences.sh` and Mermaid CLI.
+Validate Mermaid fragments before they are written to public tracking-issue summaries, larch-log batches, or PR bodies. The sanitizer is intentionally narrow: it rejects the two Mermaid-breaking classes seen in issue #1404 and leaves all broader Mermaid syntax validation to `scripts/lint-mermaid-fences.sh` and Mermaid CLI.
 
 See `skills/shared/mermaid-safe-content.md` for contributor-facing authoring guidance.
 

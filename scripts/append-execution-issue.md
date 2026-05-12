@@ -33,4 +33,4 @@ Failures use `FAILED=true` / `ERROR=<message>` and exit non-zero.
 
 ## Edit-in-sync
 
-Update callers in `scripts/sanitize-mermaid-fragment.sh`, `scripts/assemble-anchor.sh`, and Mermaid-related skill prose when changing this contract.
+Update callers in `scripts/sanitize-mermaid-fragment.sh`, `scripts/larch-log.sh`, and Mermaid-related skill prose when changing this contract.
