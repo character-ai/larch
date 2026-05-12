@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Expand `/design` Step 3 plan-review panel from 4 reviewers to 10 (5 personalities × 2 tools). Each of the 5 archetypes (Architecture/Standards, Edge-case/Failure-mode, Innovation/Exploration, Pragmatism/Safety, Requirements/Completeness) now runs on both Cursor and Codex. Adds `requirements` to `render-plan-review-prompt.sh`, adds new launch blocks in `skills/design/SKILL.md` Step 3, updates `plan-review.md` panel contract and output paths, extends test coverage for the new archetype, and updates `topology.tsv` + `docs/topology.md`.
 - Align Codex plan-reviewer prompts with Cursor: switch `render-plan-review-prompt.sh` Codex branch from `short_role` to `full_role` and add TSV structured-record block; update `plan-review.md` collection call to pass `--structured-reviewer-validation` for all archetype slots; extend `test-plan-review-prompt.sh` to assert Codex TSV output and `full_role` prose.
 - Replace tracking-issue anchor-comment storage with committed `larch-logs/` run artifacts plus five slim marker-keyed tracking comments. Adds `scripts/larch-log.sh`, `scripts/tracking-issue-summary.sh`, batch/manifest harnesses, and removes the old anchor assembly/hydration/refresh scripts.
 

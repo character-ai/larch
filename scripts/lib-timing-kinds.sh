@@ -28,10 +28,12 @@ TIMING_TASK_KINDS_ALLOWED=(
     codex-plan-edge
     codex-plan-innovation
     codex-plan-pragmatic
+    codex-plan-requirements
     cursor-plan-arch
     cursor-plan-edge
     cursor-plan-innovation
     cursor-plan-pragmatic
+    cursor-plan-requirements
     codex-plan-voter
     cursor-plan-voter
     codex-review-voter

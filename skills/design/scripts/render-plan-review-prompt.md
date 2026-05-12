@@ -1,6 +1,6 @@
 # render-plan-review-prompt.sh
 
-**Purpose**: Render `/design` Step 3 plan-review prompts for external reviewer slots. The renderer accepts an archetype (`arch`, `edge`, `innovation`, or `pragmatic`), a vendor (`codex` or `cursor`), and a plan file path, then writes the complete prompt to stdout.
+**Purpose**: Render `/design` Step 3 plan-review prompts for external reviewer slots. The renderer accepts an archetype (`arch`, `edge`, `innovation`, `pragmatic`, or `requirements`), a vendor (`codex` or `cursor`), and a plan file path, then writes the complete prompt to stdout.
 
 ## Invariants
 
@@ -21,4 +21,4 @@ Run `make test-plan-review-prompt` or `bash skills/design/scripts/test-plan-revi
 
 ## Edit In Sync
 
-Update `skills/design/SKILL.md`, `skills/design/references/plan-review.md`, `skills/design/scripts/test-plan-review-prompt.sh`, `Makefile`, and `docs/linting.md` when changing the renderer interface, vendor styles, archetype names, structured-output contract, or output invariants.
+Update `skills/design/SKILL.md`, `skills/design/references/plan-review.md`, `skills/design/scripts/test-plan-review-prompt.sh`, and `docs/linting.md` when changing the renderer interface, vendor styles, archetype names, structured-output contract, or output invariants.

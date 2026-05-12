@@ -2,7 +2,7 @@
 
 **Consumer**: `/design` Step 3 — Claude Code Reviewer subagent archetype (fallback + Voter 1), external prompt renderer contract, Collecting External Reviewer Results, Voting Panel launch + Finalize Plan Review + Track Rejected Plan Review Findings. The external reviewer launch Bash blocks (2 Cursor archetypes + 2 Codex archetypes) remain inline in SKILL.md and call `skills/design/scripts/render-plan-review-prompt.sh`; SKILL.md keeps focus-area enum anchor comments because `.github/workflows/ci.yaml` greps SKILL.md for that enum.
 
-**Contract**: the plan-review panel described inline below (2 Cursor + 2 Codex on a diagonal: Cursor-Arch, Cursor-Edge, Codex-Innovation, Codex-Pragmatic; Cursor fallback: Cursor → Codex → Claude subagent; Codex fallback: Codex → Cursor → Claude subagent), single-list output from all externals (with `[OUT_OF_SCOPE]` tag-based OOS extraction), then a 3-voter panel using YES/NO/EXONERATE with 2+ YES threshold and the proportionality rule. Primary and fallback external launch blocks render explicit temp prompt files through `render-plan-review-prompt.sh --archetype <arch|edge|innovation|pragmatic> --vendor <codex|cursor> --plan-file "$DESIGN_TMPDIR/plan.txt"` before passing `--prompt-file` to `launch-review.sh`; Claude subagent fallbacks do not use the renderer and continue through `skills/shared/reviewer-templates.md`. Claude subagent voter replacement when external tool unavailable so the panel always remains at 3.
+**Contract**: the plan-review panel described inline below (5 Cursor + 5 Codex: Cursor-Arch, Cursor-Edge, Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements, Codex-Arch, Codex-Edge, Codex-Innovation, Codex-Pragmatic, Codex-Requirements; Cursor fallback per slot: Cursor → Codex → Claude subagent; Codex fallback per slot: Codex → Cursor → Claude subagent), single-list output from all externals (with `[OUT_OF_SCOPE]` tag-based OOS extraction), then a 3-voter panel using YES/NO/EXONERATE with 2+ YES threshold and the proportionality rule. Primary and fallback external launch blocks render explicit temp prompt files through `render-plan-review-prompt.sh --archetype <arch|edge|innovation|pragmatic|requirements> --vendor <codex|cursor> --plan-file "$DESIGN_TMPDIR/plan.txt"` before passing `--prompt-file` to `launch-review.sh`; Claude subagent fallbacks do not use the renderer and continue through `skills/shared/reviewer-templates.md`. Claude subagent voter replacement when external tool unavailable so the panel always remains at 3.
 
 **When to load**: once Step 3 begins, via the MANDATORY directive at the top of Step 3 in SKILL.md. Do NOT load during Steps 0, 1, 2a, 2a.5, 2b, 3.5, 3b, 4, or 5 — the reviewer archetype, ballot handling, voting panel launch, finalize procedure, and rejected-findings template defined here are all Step-3-internal concerns.
 
@@ -16,7 +16,7 @@
 
 ## Claude Code Reviewer Subagent archetype (fallback reviewers + Voter 1)
 
-Claude is NOT a primary plan reviewer — the panel is all-external (2 Cursor: Arch, Edge + 2 Codex: Innovation, Pragmatic). Claude participates as: (a) **per-slot fallback** when both external tools are unavailable for a reviewer slot (subagent_type: `larch:code-reviewer`, model: `"sonnet"`), and (b) **Voter 1** in the 3-voter adjudication panel (subagent_type: `larch:code-reviewer`, model: `"opus"`).
+Claude is NOT a primary plan reviewer — the panel is all-external (5 Cursor: Arch, Edge, Innovation, Pragmatic, Requirements + 5 Codex: Arch, Edge, Innovation, Pragmatic, Requirements). Claude participates as: (a) **per-slot fallback** when both external tools are unavailable for a reviewer slot (subagent_type: `larch:code-reviewer`, model: `"sonnet"`), and (b) **Voter 1** in the 3-voter adjudication panel (subagent_type: `larch:code-reviewer`, model: `"opus"`).
 
 Use the Code Reviewer archetype from `${CLAUDE_PLUGIN_ROOT}/skills/shared/reviewer-templates.md`, filling in the variables for **plan review**:
 
@@ -57,7 +57,7 @@ For Codex, Cursor, and their Claude replacement voters, instruct each: `"You are
 
 ## Collecting External Reviewer Results
 
-All 4 reviewers are external. Collect and validate outputs using the shared collection script. Only include output paths for reviewers that were actually launched as external tools (omit any slot where the tool was unavailable and a Claude subagent fallback is returning via Agent tool instead).
+All 10 reviewers are external. Collect and validate outputs using the shared collection script. Only include output paths for reviewers that were actually launched as external tools (omit any slot where the tool was unavailable and a Claude subagent fallback is returning via Agent tool instead).
 
 All archetype slots (Cursor and Codex) and cross-tool fallback slots use structured reviewer validation:
 
@@ -65,7 +65,7 @@ All archetype slots (Cursor and Codex) and cross-tool fallback slots use structu
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1860 --substantive-validation --validation-mode --structured-reviewer-validation [--write-health "${SESSION_ENV_PATH}.health"] <all-archetype-output-paths...>
 ```
 
-Only include `--write-health` if `SESSION_ENV_PATH` is non-empty. Output paths include up to 2 Cursor archetype paths (`cursor-plan-arch-output.txt`, `cursor-plan-edge-output.txt`) and up to 2 Codex archetype paths (`codex-primary-plan-innovation-output.txt`, `codex-primary-plan-pragmatic-output.txt`). When Cursor is unavailable and Codex was used as fallback, those paths are `codex-fallback-cursor-plan-arch-output.txt` and `codex-fallback-cursor-plan-edge-output.txt`. When Codex is unavailable and Cursor was used as fallback, those are `cursor-fallback-codex-plan-innovation-output.txt` and `cursor-fallback-codex-plan-pragmatic-output.txt`. Omit paths for slots where a Claude subagent fallback was launched instead.
+Only include `--write-health` if `SESSION_ENV_PATH` is non-empty. Output paths include up to 5 Cursor archetype paths (`cursor-plan-arch-output.txt`, `cursor-plan-edge-output.txt`, `cursor-plan-innovation-output.txt`, `cursor-plan-pragmatic-output.txt`, `cursor-plan-requirements-output.txt`) and up to 5 Codex archetype paths (`codex-primary-plan-arch-output.txt`, `codex-primary-plan-edge-output.txt`, `codex-primary-plan-innovation-output.txt`, `codex-primary-plan-pragmatic-output.txt`, `codex-primary-plan-requirements-output.txt`). When Cursor is unavailable and Codex was used as fallback, those paths are `codex-fallback-cursor-plan-{arch,edge,innovation,pragmatic,requirements}-output.txt`. When Codex is unavailable and Cursor was used as fallback, those are `cursor-fallback-codex-plan-{arch,edge,innovation,pragmatic,requirements}-output.txt`. Omit paths for slots where a Claude subagent fallback was launched instead.
 
 Immediately after this collection returns, run the Mid-Run Dirty-Tree Probe Contract from `heavy-worker.md` for `STAGE=plan-review-collection`.
 
