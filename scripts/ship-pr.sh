@@ -635,7 +635,12 @@ while :; do
         ci-initial) run_ci_phase ci-initial ;;
         ci-merge) run_ci_phase ci-merge ;;
         evaluate-failure)
-            run_evaluate_failure ci-merge
+            # Use CALLER_KIND to pass the originating CI phase so stall-step
+            # numbers are correct (step 10 vs 12c).
+            case "$(read_state CALLER_KIND)" in
+                step10_rebase_then_evaluate) run_evaluate_failure ci-initial ;;
+                *)                          run_evaluate_failure ci-merge ;;
+            esac
             advance_phase ci-merge
             ;;
         postmerge) run_postmerge_phase ;;
