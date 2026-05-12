@@ -1,0 +1,11 @@
+### Warnings
+
+- **Step 7a.r-post-rebase — phantom untracked files:** 1 file(s) appeared since session baseline (inspect <TMPDIR>/phantom-paths-7a.r-post-rebase.z locally)
+
+## Tool Failures
+
+- Step 8 postbump larch-log used fallback version-bump reasoning because BUMP_REASONING_FILE failed validation.
+
+## Tool Failures
+
+- Step 8a changelog skipped because no summary bullets were available.

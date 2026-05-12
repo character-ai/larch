@@ -14,7 +14,7 @@ Wait usage errors (for example, invalid `--timeout` from the caller) and other w
 
 ## Structured reviewer validation (`--structured-reviewer-validation`)
 
-When `--structured-reviewer-validation` is passed, the collector adds a Section 3.6 pass after substantive validation for each `STATUS=OK` entry. This flag is used for renderer-backed specialist slots (e.g., Cursor plan-review archetype slots in `skills/design/references/plan-review.md`) that emit JSONL/TSV structured records alongside prose output. Generic external reviewer slots launched with inline prompts are NOT wired to this flag.
+When `--structured-reviewer-validation` is passed, the collector adds a Section 3.6 pass after substantive validation for each `STATUS=OK` entry. This flag is used for renderer-backed specialist slots (e.g., Cursor and Codex plan-review archetype slots in `skills/design/references/plan-review.md`) that emit JSONL/TSV structured records alongside prose output. Generic external reviewer slots launched with inline prompts are NOT wired to this flag.
 
 **Section 3.6 — structured sidecar validation**:
 1. Derive the sidecar path: `<REVIEWER_FILE>.jsonl` for Claude-path outputs, `<REVIEWER_FILE>.tsv` for specialist (Cursor/Codex external) outputs.
@@ -22,4 +22,4 @@ When `--structured-reviewer-validation` is passed, the collector adds a Section 
 3. On exit 0: emit `STRUCTURED_SIDECAR=<sidecar-path>` as a new field appended before `FAILURE_REASON`. The output grammar is 7 fields: `REVIEWER_FILE|TOOL|STATUS|EXIT_CODE|HEALTHY|STRUCTURED_SIDECAR|FAILURE_REASON`. Consumers that parse by KEY=value are unaffected; consumers parsing by field position must be updated to expect 7 fields.
 4. On exit 5 or non-zero: rewrite the entry to `STATUS=NOT_SUBSTANTIVE` with a diagnostic in `FAILURE_REASON`; call `set_tool_unhealthy`.
 
-**Callers wired in this PR**: `skills/design/references/plan-review.md` Step 3 collect call for native Cursor archetype slots (`cursor-plan-arch-output.txt`, `cursor-plan-edge-output.txt`). Codex archetype slots and generic reviewer slots in `skills/review/SKILL.md`, `skills/implement/SKILL.md`, and `skills/research/references/validation-phase.md` are NOT wired and continue with `--substantive-validation --validation-mode` only.
+**Callers wired**: `skills/design/references/plan-review.md` Step 3 collect call for all archetype slots (Cursor and Codex: `cursor-plan-arch-output.txt`, `cursor-plan-edge-output.txt`, `codex-primary-plan-innovation-output.txt`, `codex-primary-plan-pragmatic-output.txt`, and their cross-tool fallback variants). Generic reviewer slots in `skills/review/SKILL.md`, `skills/implement/SKILL.md`, and `skills/research/references/validation-phase.md` are NOT wired and continue with `--substantive-validation --validation-mode` only.
