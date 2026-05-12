@@ -1,0 +1,3 @@
+### Warnings
+- **Step 5 (round 1) — Cursor keychain race**: Cursor parallel reviewer slots failed (exit code 1, keychain race on macOS). Filed as #1918. Claude fallback not triggered (Codex covered the review). Codex found 1 correctness issue (missing RUN_ID in state writers — fixed).
+- **Step 8 postbump — version-bump-reasoning validation**: REASONING_FILE at /var/folders path failed is_tmp_path validation; fallback text used in larch-log batch.
