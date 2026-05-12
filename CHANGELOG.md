@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Replace tracking-issue anchor-comment storage with committed `larch-logs/` run artifacts plus five slim marker-keyed tracking comments. Adds `scripts/larch-log.sh`, `scripts/tracking-issue-summary.sh`, batch/manifest harnesses, and removes the old anchor assembly/hydration/refresh scripts.
 
+## [26.0.11] - 2026-05-11
+
+### Changed
+
+- Add a cache-key discipline harness for audited prompt-construction surfaces and wire it into shard 7.
+- Annotate existing per-session external-tool prompt path interpolations as intentionally non-stable.
+- Document the new harness in its sibling contract and linting target table, and exclude the Makefile-only harness from dead-script lint.
+
 ## [26.0.10] - 2026-05-11
 
 ### Fixed
