@@ -43,4 +43,9 @@ grep -Fq 'code-quality / risk-integration / correctness / architecture' "$SKILL_
 grep 'code-quality / risk-integration / correctness / architecture' "$SKILL_MD" | grep -q 'security' \
   || fail "focus-area enum line must include security"
 
+grep -Fq '### Larch-log batches' "$SKILL_MD" \
+  || fail "SKILL.md must contain the Larch-log batches section heading"
+grep -q 'Skip.*Normal mode.*post.*design.*sections' "$SKILL_MD" \
+  || fail "quick mode must explicitly skip Normal mode before the Larch-log batches tail"
+
 echo "All assertions passed."
