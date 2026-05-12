@@ -57,10 +57,20 @@ for archetype in "${archetypes[@]}"; do
         [[ "$last_line" != "NO_ISSUES_FOUND" ]] \
             || fail "$vendor/$archetype: output ends with only NO_ISSUES_FOUND"
 
-        assert_contains "$vendor/$archetype full_role prose" "You are a" "$out"
         assert_contains "$vendor/$archetype TSV header" "schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix" "$out"
         assert_contains "$vendor/$archetype TSV record shape" "1	<scope>	<severity>	<focus_area>	<location>	<what>	<scenario_or_breakage>	<suggested_fix>" "$out"
+        assert_contains "$vendor/$archetype file paths wording" "file paths named in the plan" "$out"
+        assert_contains "$vendor/$archetype no-findings mutual exclusion" "do NOT include a TSV block" "$out"
     done
+done
+
+# Archetype-specific full_role prose check (once per archetype, vendor=codex as the representative)
+for _arch_check in "arch:Emphasize maintainability" "edge:boundary conditions" "innovation:Question assumptions" "pragmatic:Minimize scope"; do
+    _arch="${_arch_check%%:*}"
+    _phrase="${_arch_check#*:}"
+    _out="$TMPROOT/full-role-${_arch}.txt"
+    bash "$RENDERER" --archetype "$_arch" --vendor codex --plan-file "$PLAN_FILE" >"$_out"
+    assert_contains "$_arch full_role" "$_phrase" "$_out"
 done
 
 assert_exit_2 invalid-archetype bash "$RENDERER" --archetype bogus --vendor codex --plan-file "$PLAN_FILE"

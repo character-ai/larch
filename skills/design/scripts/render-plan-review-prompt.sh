@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Render vendor-specific /design plan-review prompts.
+# Render /design plan-review prompts; vendor flag is accepted for CLI compatibility but both vendors produce the same full_role + TSV output.
 
 set -euo pipefail
 
@@ -83,10 +83,10 @@ Review the implementation plan file at ${PLAN_FILE}. Explore the codebase follow
 Walk five focus areas: code-quality / risk-integration / correctness / architecture / security.
 Return numbered findings with focus-area tag, repo-relative file:line when applicable, concern, and suggested revision.
 Prefix out-of-scope but worth-tracking items with [OUT_OF_SCOPE]; include affected repo-relative file paths and line ranges so downstream issue filing can detect same-file conflicts.
-Also include a TSV structured-record block with this exact header:
+When you have findings, include a TSV structured-record block with this exact header (literal tab characters between fields; no markdown fences around the TSV):
 schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
 For each finding, add one record:
 1	<scope>	<severity>	<focus_area>	<location>	<what>	<scenario_or_breakage>	<suggested_fix>
 Use scope in_scope or out_of_scope; severity important, nit, or latent; and replace literal tabs or newlines inside field values with spaces.
-If NO issues, output exactly NO_ISSUES_FOUND. Do NOT modify files.
+If NO issues found, output exactly NO_ISSUES_FOUND on a single line — do NOT include a TSV block. Do NOT modify files.
 EOF
