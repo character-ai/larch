@@ -93,6 +93,25 @@ After the initial version bump in Step 8, every subsequent rebase of the feature
 4a. **Re-apply CHANGELOG update** (mirrors Step 8a):
    If `CHANGELOG.md` exists in the project root (check via Read tool) and a new bump commit was created (`VERIFIED=true` from step 4), update the CHANGELOG entry to reflect the new version from the re-bump. Follow the same logic as `implement-finalize.sh postbump` Phase 2: read `CHANGELOG.md`, compose an entry with the `NEW_VERSION` from the re-bump and the same Summary bullets, insert it (or replace the existing entry for the prior version if present), stage, and amend the bump commit via `${CLAUDE_PLUGIN_ROOT}/scripts/git-amend-add.sh CHANGELOG.md`. If CHANGELOG.md does not exist or the bump was skipped, skip this sub-step silently. **This is best-effort and non-blocking** — failure to update CHANGELOG does not affect the bump or push. **Edit-in-sync note:** keep this step's CHANGELOG-update semantics aligned with `postbump` Phase 2 when category, idempotency, or insertion-order rules change.
 
+4b. **Refresh token/timing log batches** (step10/step12 family only; best-effort, non-fatal):
+
+   **step8 family — SKIP this step entirely** (same exemption as step 5 — push and log flush ownership belong to `implement-finalize.sh postbump`).
+
+   **step10 / step12 family**: re-write the token/timing batches with updated data and create a new log-flush commit so the most recent token/timing snapshot lands in the merged PR. The `--no-push` is correct because step 5 performs the push.
+
+   ```bash
+   LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+   LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+   export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
+   "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --full --output "$IMPLEMENT_TMPDIR/token-report-rendered.md" || true
+   "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --full --output "$IMPLEMENT_TMPDIR/timing-report-rendered.md" || true
+   "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --skill implement --run-id "$RUN_ID" --batch token-report --input-file "$IMPLEMENT_TMPDIR/token-report-rendered.md" || true
+   "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --skill implement --run-id "$RUN_ID" --batch timing-report --input-file "$IMPLEMENT_TMPDIR/timing-report-rendered.md" || true
+   "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" commit --skill implement --run-id "$RUN_ID" --no-push || true
+   ```
+
+   On any failure, log to `$IMPLEMENT_TMPDIR/execution-issues.md` under `Warnings` and continue — log refresh failure is non-fatal.
+
 5. **Push with recovery**:
 
    **step8 family — SKIP this step entirely**. For `step8b_rebase`, `implement-finalize.sh postbump` Phase 4 already encodes the correct remote-branch trichotomy through `${CLAUDE_PLUGIN_ROOT}/scripts/check-remote-branch.sh`: present → force-push, absent → skip push (fresh-branch path, `create-pr.sh` will perform the initial push at Step 9b), error → bail with `STALL_TRACKING=true` to Step 18. For `step8_apply_bump_same_version`, no PR exists yet and Step 9's create-PR path owns the first push. The shared `${CLAUDE_PLUGIN_ROOT}/scripts/git-force-push.sh` wrapper used by step12/step10 below has no "branch absent on origin" or "remote-check transport failure" outcome, so duplicating a push here would either lose the fresh-branch path or create drift. Proceed directly to step 6 (version-bump reasoning log refresh).

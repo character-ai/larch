@@ -616,10 +616,11 @@ Steps 1, 2, 5, 7a, 8, 9a.1, 11, and 18 write durable run payloads through `scrip
 | Step 2 (after each Q/A append) | `execution-issues` |
 | Step 5 (after `/review` writes `review-round-summary.md`, or after quick-mode loop) | `code-review-tally` and `review-findings-full` |
 | Step 7a (after Code Flow Diagram generated) | `diagrams` (both Architecture + Code Flow) |
+| Step 7a tail (pre-bump log flush) | `token-report`, `timing-report`, and log-flush commit |
 | Step 8 (after `/bump-version` returns `REASONING_FILE`) | `version-bump-reasoning` |
 | Step 9a.1 (after OOS filing) | `oos-issues`, `run-statistics`, `token-report`, and `timing-report` |
 | Step 11 (post-execution) | `execution-issues` |
-| Step 18 (terminal summary) | `token-report`, `timing-report`, manifest `status=done`, and log-flush commit |
+| Step 18 (terminal summary) | manifest `status=done` |
 
 **Summary comments** are slim projections only. Use `tracking-issue-summary.sh upsert-summary --issue "$ISSUE_NUMBER" --marker "<!-- larch:<name> v1 runid=$RUN_ID -->" --content-file <file>` for the five markers defined in `summary-comment-template.md`. Do not assemble a monolithic comment, do not fetch summary comments back into local state, and do not publish bulky reviewer or token payloads to GitHub comments.
 
@@ -1336,6 +1337,25 @@ Untracked Probe with `--step 7a.r-post-rebase`.
 
 > **Continue to Step 8 IMMEDIATELY.** The code flow diagram is not the end of the run — version bump, PR creation, CI monitoring, and merge still must run.
 
+### Pre-bump log flush
+
+Before the version bump, write the current token/timing reports to the committed log so the flush commit rides inside the PR when the branch is pushed at Step 9b. The `--no-push` is correct here because the branch has not been pushed yet.
+
+```bash
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --full --output "$IMPLEMENT_TMPDIR/token-report-rendered.md" || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --full --output "$IMPLEMENT_TMPDIR/timing-report-rendered.md" || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --skill implement --run-id "$RUN_ID" --batch token-report --input-file "$IMPLEMENT_TMPDIR/token-report-rendered.md" || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --skill implement --run-id "$RUN_ID" --batch timing-report --input-file "$IMPLEMENT_TMPDIR/timing-report-rendered.md" || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" commit --skill implement --run-id "$RUN_ID" --no-push || true
+```
+
+Best-effort: failures are non-fatal.
+
+On each retry (CI failure, merge conflict, rebase in Steps 10/12), the Rebase + Re-bump Sub-procedure step 4b re-writes these batches with updated data and creates a new log-flush commit before step 5 pushes the branch, so the most recent token/timing data lands in the merged PR.
+
 ## Step 8 — Version Bump
 
 ```bash
@@ -1944,7 +1964,7 @@ If `quick_mode=true` and `DESIGN_ONLY_DONE` is not true: print `✅ 17: final re
 
 If `quick_mode=false` and `DESIGN_ONLY_DONE` is not true: print a summary noting plan review findings were written by `/design` into larch-log batches and code review findings by `/review` (visible above). If both phases reported all suggestions implemented, print `✅ 17: final report status=complete outcome=all-suggestions-implemented elapsed=<elapsed>`.
 
-Print a token summary to chat. When `LARCH_VERBOSE_TOKENS=true`, print the full per-step table; otherwise print a single grand-total line. The full breakdown is always appended to the `token-report` and `timing-report` log batches in Step 18.
+Print a token summary to chat. When `LARCH_VERBOSE_TOKENS=true`, print the full per-step table; otherwise print a single grand-total line. The full breakdown is appended to the `token-report` and `timing-report` log batches at the pre-bump log flush (Step 7a tail); on each retry the sub-procedure step 4b refreshes those batches so the merged PR carries the most recent data.
 
 ```bash
 LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
@@ -1977,17 +1997,13 @@ Repeat any external reviewer warnings from earlier (from `/design`, `/review`, o
 
 If `DESIGN_ONLY_DONE=true` AND `no_issues=true`, remind: `**Note: --design-only --no-issues was set. No PR was created and no tracking issue was opened. Design artifacts are ephemeral and were removed with the session tmpdir.**` Else if `DESIGN_ONLY_DONE=true`, remind: `**Note: --design-only was set. No PR was created. The tracking issue's summary comments point to the committed plan, plan-review tally, diagrams, and accepted/rejected findings.**` Otherwise, if `draft=true`, remind: `**Note: --draft was set. Draft PR created; local branch retained. Mark the PR ready-for-review and merge manually when ready.**` Otherwise if `merge=false`, remind: `**Note: --merge was not set. PR was created but not merged. Merge manually when ready.**`
 
-Before teardown, perform the authoritative final token/timing log refresh while `$IMPLEMENT_TMPDIR` still exists:
+Before teardown, refresh the token report for the summary comment (the log batches and flush commit were already written at the pre-bump log flush step):
 
 ```bash
 LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
 LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
 export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --full --output "$IMPLEMENT_TMPDIR/token-report-rendered.md" || true
-"${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --full --output "$IMPLEMENT_TMPDIR/timing-report-rendered.md" || true
-"${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --skill implement --run-id "$RUN_ID" --batch token-report --input-file "$IMPLEMENT_TMPDIR/token-report-rendered.md" || true
-"${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --skill implement --run-id "$RUN_ID" --batch timing-report --input-file "$IMPLEMENT_TMPDIR/timing-report-rendered.md" || true
-"${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" commit --skill implement --run-id "$RUN_ID" --no-push || true
 if [ "${forked_target:-false}" != "true" ] && [ -n "${ISSUE_NUMBER:-}" ] && [ "${repo_unavailable:-false}" != "true" ]; then
   cp "$IMPLEMENT_TMPDIR/token-report-rendered.md" "$IMPLEMENT_TMPDIR/summary-token-report.md" 2>/dev/null || \
     printf 'Token report: see larch-logs/implement/%s/token-report.md\n' "$RUN_ID" > "$IMPLEMENT_TMPDIR/summary-token-report.md"
