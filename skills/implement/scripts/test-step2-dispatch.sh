@@ -31,6 +31,9 @@
 #   - --workflow SIMPLE is accepted (STATUS=claude_fallback as normal).
 #   - --workflow HARD is accepted (STATUS=claude_fallback as normal).
 #   - --workflow bogus exits 2 with the exact error message.
+#   - needs_qa repair path: stub-Codex writes a needs_qa manifest without
+#     needs_qa.questions and a qa-pending.json with items[] format; dispatcher
+#     normalizes to questions[] and emits STATUS=needs_qa (not bailed — issue #1883).
 #
 # External-implementer spawning paths (manifest validation, dispatcher-side commit,
 # sanitization, launcher-retry) are covered by separate launcher / end-to-end tests;
@@ -746,6 +749,81 @@ if [[ "$EXIT" == "2" ]] && [[ "$ERR" == *"--workflow must be 'SIMPLE' or 'HARD'"
     pass
 else
     fail 15c "--workflow bogus should exit 2 with message, got exit=$EXIT err=$ERR"
+fi
+
+# ---------------------------------------------------------------------------
+# Test 16: needs_qa repair path. When the implementer writes a manifest with
+# status=needs_qa but no needs_qa.questions, and qa-pending.json uses a
+# non-standard items[] shape, the dispatcher must normalize items[] to
+# questions[] and emit STATUS=needs_qa (not STATUS=bailed REASON=manifest-
+# schema-invalid). Regression coverage for issue #1883.
+# ---------------------------------------------------------------------------
+TMP16="$SCRATCH/test16"; mkdir -p "$TMP16"
+printf 'fresh-step2-16\n' > "$TMP16/session-id"
+
+SCRATCH_REPO16="$SCRATCH/scratch-repo-16"
+mkdir -p "$SCRATCH_REPO16"
+git -C "$SCRATCH_REPO16" init -q -b main
+git -C "$SCRATCH_REPO16" config user.email "test@example.com"
+git -C "$SCRATCH_REPO16" config user.name "Test"
+echo "initial" > "$SCRATCH_REPO16/README.md"
+git -C "$SCRATCH_REPO16" add README.md
+git -C "$SCRATCH_REPO16" commit -q -m "init"
+
+STUB16="$SCRATCH/stub-bin-16"; mkdir -p "$STUB16"
+cat > "$STUB16/codex" <<'STUB16_CODEX'
+#!/usr/bin/env bash
+set -euo pipefail
+: "${STEP2_MANIFEST_PATH:?}"
+: "${IMPLEMENT_TMPDIR:?}"
+output_path=""
+last=""
+for arg in "$@"; do
+    if [[ "$last" == "--output-last-message" ]]; then
+        output_path="$arg"
+    fi
+    last="$arg"
+done
+[[ -n "$output_path" ]] && printf 'stub transcript\n' > "$output_path"
+# Write manifest with status=needs_qa but non-standard shape (no needs_qa.questions).
+cat > "$STEP2_MANIFEST_PATH.tmp" <<'JSON'
+{"schema_version":"1","status":"needs_qa"}
+JSON
+mv "$STEP2_MANIFEST_PATH.tmp" "$STEP2_MANIFEST_PATH"
+# Write qa-pending.json with non-standard items[] format.
+cat > "$IMPLEMENT_TMPDIR/qa-pending.json.tmp" <<'JSON'
+{"status":"needs_qa","items":[{"area":"area1","risk":"risk1","suggested_check":"check1"}]}
+JSON
+mv "$IMPLEMENT_TMPDIR/qa-pending.json.tmp" "$IMPLEMENT_TMPDIR/qa-pending.json"
+printf 'stub codex stdout\n'
+STUB16_CODEX
+chmod +x "$STUB16/codex"
+
+OUT_16=$(cd "$SCRATCH_REPO16" && \
+    PATH="$STUB16:$PATH" \
+    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    STEP2_MANIFEST_PATH="$TMP16/manifest.json" \
+    LARCH_CODEX_MODEL=stub-codex-model \
+    "$DISPATCHER" --tmpdir "$TMP16" --plan-file "$PLAN" --feature-file "$FEATURE" \
+        --auto-mode false --coder codex 2>&1)
+
+if [[ "$OUT_16" == *"STATUS=needs_qa"* ]] \
+   && [[ "$OUT_16" != *"STATUS=bailed"* ]] \
+   && [[ "$OUT_16" == *"QA_PENDING="* ]] \
+   && [[ "$OUT_16" == *"ORCHESTRATOR_EDIT_AUTHORITY=forbidden"* ]]; then
+    pass
+else
+    fail 16 "items[] qa-pending.json should be repaired to STATUS=needs_qa (not bailed); got: $OUT_16"
+fi
+
+# Verify the repaired qa-pending.json contains questions[] not items[].
+QA_PENDING_16="$TMP16/qa-pending.json"
+if [[ -s "$QA_PENDING_16" ]] \
+   && jq -e '(.questions | type == "array" and length > 0)' "$QA_PENDING_16" >/dev/null 2>&1 \
+   && ! jq -e '.items' "$QA_PENDING_16" >/dev/null 2>&1; then
+    pass
+else
+    fail 16 "repaired qa-pending.json should have questions[] and no items[]; contents: $(cat "$QA_PENDING_16" 2>/dev/null)"
 fi
 
 # ---------------------------------------------------------------------------
