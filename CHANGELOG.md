@@ -11,6 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Replace tracking-issue anchor-comment storage with committed `larch-logs/` run artifacts plus five slim marker-keyed tracking comments. Adds `scripts/larch-log.sh`, `scripts/tracking-issue-summary.sh`, batch/manifest harnesses, and removes the old anchor assembly/hydration/refresh scripts.
 
+## [26.0.8] - 2026-05-11
+
+### Changed
+
+- Replace tracking issue anchor storage with committed larch-log batches and slim marker-keyed summaries.
+- Migrate implement, review, design, fix-issue, and research consumers away from removed anchor scripts.
+- Add larch-log and tracking-summary script families with regression coverage for manifests, batches, and publication.
+- Harden implement finalization around version-bump logging and stale background-process cleanup.
+
 ## [26.0.7] - 2026-05-11
 
 ### Fixed
