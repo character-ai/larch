@@ -282,6 +282,8 @@ jobs:
             agents/reviewer-testing.md
             agents/reviewer-security.md
             agents/reviewer-edge-cases.md
+            agents/reviewer-plan-fidelity.md
+            agents/reviewer-code-robustness.md
             skills/shared/focus-area-prompt.md
             docs/review-agents.md
           )
