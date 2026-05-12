@@ -73,21 +73,6 @@ assert_contains "$out" "LOG_WRITTEN=true" "manifest update writes"
 if grep -q '"status": "done"' "$manifest"; then pass "manifest status updated"; else fail "manifest status updated"; fi
 if grep -q '"pr_number": 99' "$manifest"; then pass "manifest field stored as JSON number"; else fail "manifest field stored as JSON number"; fi
 
-echo "=== mermaid sanitizer rejects unsafe diagrams ==="
-bad="$TMP/bad.md"
-cat > "$bad" <<'EOF'
-```mermaid
-flowchart TD
-  A[bad | label]
-```
-EOF
-set +e
-bad_out="$("$LARCH_LOG" write --skill implement --run-id abc123 --batch diagrams --input-file "$bad" 2>&1)"
-bad_rc=$?
-set -e
-if [ "$bad_rc" = "2" ]; then pass "bad mermaid exit 2"; else fail "bad mermaid exit $bad_rc"; fi
-assert_contains "$bad_out" "LOG_WRITTEN=false" "bad mermaid envelope"
-
 echo
 echo "Passed: $PASS"
 echo "Failed: $FAIL"

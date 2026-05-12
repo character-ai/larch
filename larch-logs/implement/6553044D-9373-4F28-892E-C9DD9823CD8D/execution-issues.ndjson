@@ -1,0 +1,1 @@
+{"phase":"implement","step":"11","category":"Warnings","body":"Phantom untracked files at Step 4.r and 7.r post-rebase (larch-logs/ manifest files from session baseline, expected). Security finding on mermaid sanitizer gap rejected as OOS."}
