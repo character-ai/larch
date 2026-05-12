@@ -668,8 +668,15 @@ run_subject_raw_rc teardown --state-file "$STATE" --implement-tmpdir "$SANDBOX/n
 assert_rc "$RC" 2 "teardown: state-file outside implement tmpdir exits 2"
 
 run_subject_raw_rc teardown --state-file "$STATE" --implement-tmpdir /var/not-larch-tmp
-assert_rc "$RC" 2 "teardown: implement tmpdir outside /tmp exits 2"
-assert_contains "--implement-tmpdir must be under /tmp/, /private/tmp/, or the larch cache sessions root" "$OUT" "teardown: implement tmpdir diagnostic"
+assert_rc "$RC" 2 "teardown: implement tmpdir outside allowed roots exits 2"
+assert_contains "--implement-tmpdir must be under /tmp/, /private/tmp/, /var/folders/, or the larch cache sessions root" "$OUT" "teardown: implement tmpdir diagnostic"
+
+# Unit test: is_tmp_path accepts /var/folders/* and /private/var/folders/* patterns
+_itp_func=$(sed -n '/^is_tmp_path()/,/^}/p' "$REAL_SCRIPT")
+_itp_result=$(eval "$_itp_func"; is_tmp_path "/var/folders/kf/abc123/T/larch-test.tmp" && echo "ok" || echo "fail")
+assert_contains "ok" "$_itp_result" "is_tmp_path: /var/folders/* accepted"
+_itp_result2=$(eval "$_itp_func"; is_tmp_path "/private/var/folders/kf/abc123/T/larch-test.tmp" && echo "ok" || echo "fail")
+assert_contains "ok" "$_itp_result2" "is_tmp_path: /private/var/folders/* accepted"
 
 printf 'BRANCH_NAME: bad\n' > "$STATE"
 run_subject_raw_rc postmerge --state-file "$STATE" --final-bail-reason-file "$BAIL"
