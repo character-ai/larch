@@ -41,5 +41,7 @@ done
 [ "$(larch_log_batch_extension token-report)" = ".md" ]
 [ "$(larch_log_batch_mode timing-report)" = "replace" ]
 [ "$(larch_log_batch_extension timing-report)" = ".md" ]
+[ "$(larch_log_batch_mode run-statistics)" = "replace" ]
+[ "$(larch_log_batch_extension run-statistics)" = ".md" ]
 
 echo "All assertions passed."

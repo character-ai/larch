@@ -10,7 +10,7 @@ code-review-tally .ndjson append none
 review-findings-full .ndjson append none
 version-bump-reasoning .md replace none
 oos-issues .ndjson append none
-run-statistics .json replace none
+run-statistics .md replace none
 token-report .md replace none
 timing-report .md replace none
 execution-issues .ndjson append none

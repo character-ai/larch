@@ -333,6 +333,22 @@ run_bump_phase() {
     status=$(kv_value STATUS "$finalize_out")
     case "$status" in
         ok|skipped)
+            local _cur _new _btype
+            _cur=$(kv_value CURRENT_VERSION "$classify_out")
+            _new=$(read_state NEW_VERSION)
+            _btype=$(read_state BUMP_TYPE)
+            case "$_btype" in
+                PATCH|MINOR|MAJOR)
+                    printf '✅ 8: version bump — %s → %s (%s)\n' "$_cur" "$_new" "$_btype"
+                    ;;
+                *)
+                    if [ "$forked" = "true" ]; then
+                        printf '⏩ 8: version bump status=skip reason=forked\n'
+                    else
+                        printf '⏩ 8: version bump status=skip reason=%s\n' "${_btype:-NONE}"
+                    fi
+                    ;;
+            esac
             advance_phase pr-prep
             ;;
         conflict)
