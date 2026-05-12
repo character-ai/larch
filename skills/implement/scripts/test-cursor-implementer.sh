@@ -22,6 +22,7 @@ if [[ "${1-}" == "--real-smoke" ]]; then
     fi
     SCRATCH=$(mktemp -d -t cursor-implementer-smoke.XXXXXX)
     trap 'rm -rf "$SCRATCH"' EXIT
+    export LARCH_TIMING_LEDGER="$SCRATCH/timing-ledger.tsv"
     PLAN="$SCRATCH/plan.md"
     FEATURE="$SCRATCH/feature.txt"
     printf 'Write a bailed test manifest only.\n' > "$PLAN"
@@ -45,6 +46,7 @@ pass() { PASS_COUNT=$((PASS_COUNT + 1)); }
 
 SCRATCH=$(mktemp -d -t cursor-implementer-test.XXXXXX)
 trap 'rm -rf "$SCRATCH"' EXIT
+export LARCH_TIMING_LEDGER="$SCRATCH/timing-ledger.tsv"
 
 # Tighten run-external-agent.sh's poll cadence so the wrapper does not pay a
 # 10s sleep per stub invocation. Production callers (real Cursor) inherit the
