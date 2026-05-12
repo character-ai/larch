@@ -155,7 +155,7 @@ After the initial version bump in Step 8, every subsequent rebase of the feature
       ```
       Parse the standard `LOG_WRITTEN` envelope. Summary comments remain the responsibility of `tracking-issue-summary.sh`.
 
-   e. **Non-fatal failure handling**: if the refresh step reports `FAILED=true` OR exits non-zero, print `**⚠ Step <N> — version-bump reasoning log refresh failed. Continuing.**` and log the specific `ERROR=<msg>` to `$IMPLEMENT_TMPDIR/execution-issues.md` under `Warnings`. **Log refresh failure is NOT a hard failure** — the bump is already pushed and the merge will be correct; the stale log batch is documentation-only. Step 18's final `larch-log.sh commit` may still publish other successfully written batches.
+   e. **Non-fatal failure handling**: if the refresh step reports `FAILED=true` OR exits non-zero, print `**⚠ Step <N> — version-bump reasoning log refresh failed. Continuing.**` and log the specific `ERROR=<msg>` to `$IMPLEMENT_TMPDIR/execution-issues.md` under `Warnings`. **Log refresh failure is NOT a hard failure** — the bump is already pushed and the merge will be correct; the stale log batch is documentation-only and does not affect the merge.
 
 7. **Return to caller based on `caller_kind`**:
    - **`step12_rebase`** (from 12a `ACTION=rebase`): increment `rebase_count`, `iteration`, reset `transient_retries`, **sleep 30s** via `${CLAUDE_PLUGIN_ROOT}/scripts/sleep-seconds.sh 30` (give GitHub CI time to register the force-push before polling again), then re-invoke `ci-wait.sh` in Step 12.
