@@ -7,7 +7,8 @@ LARCH_LOG_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 # Resolve repo root from caller's CWD (consumer repo) so larch-logs land
 # in the project being worked on, not the plugin install cache. Falls back
 # to the script's parent directory when invoked outside any git repo.
-LARCH_LOG_REPO_ROOT="$(git -C "$PWD" rev-parse --show-toplevel 2>/dev/null || cd "$LARCH_LOG_LIB_DIR/.." && pwd -P)"
+LARCH_LOG_REPO_ROOT="$(git -C "$PWD" rev-parse --show-toplevel 2>/dev/null)" || true
+[ -n "$LARCH_LOG_REPO_ROOT" ] || LARCH_LOG_REPO_ROOT="$(cd "$LARCH_LOG_LIB_DIR/.." && pwd -P)"
 
 # shellcheck source=scripts/larch-log-batches.sh
 # shellcheck disable=SC1091
