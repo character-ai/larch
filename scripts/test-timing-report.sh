@@ -138,4 +138,45 @@ else
     exit 1
 fi
 
+# --- Outlier detection ---
+
+# Case 1: step duration exceeds default 4h threshold (14400 s).
+# Build a ledger with one normal step (10 s) and one outlier step (50000 s ~= 13h 53m).
+OUTLIER_LEDGER="$TMP_BASE/outlier.tsv"
+cat > "$OUTLIER_LEDGER" <<'EOF'
+v1	mark	0	implement	Step 1 — design plan	-	-	-	-	-	-	-	-
+v1	mark	10	implement	Step 2 — implementation	-	-	-	-	-	-	-	-
+v1	mark	50010	implement	Step 3 — checks first pass	-	-	-	-	-	-	-	-
+EOF
+OUTLIER_OUT="$TMP_BASE/outlier.md"
+LARCH_TEST_TIMING_NOW=50020 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$OUTLIER_LEDGER" --full --markdown > "$OUTLIER_OUT"
+# Normal step must NOT be tagged
+if grep -q 'Step 1 — design plan.*\[OUTLIER\]' "$OUTLIER_OUT"; then
+    echo "FAIL: outlier: normal step tagged as OUTLIER" >&2
+    exit 1
+fi
+echo "PASS: outlier normal step not tagged"
+# Outlier step must be tagged
+grep -q 'Step 2 — implementation.*\[OUTLIER\]' "$OUTLIER_OUT" || { echo "FAIL: outlier step not tagged" >&2; exit 1; }
+echo "PASS: outlier step tagged"
+# Outlier note line must appear
+grep -q '\*Outlier steps:' "$OUTLIER_OUT" || { echo "FAIL: outlier note line missing" >&2; exit 1; }
+echo "PASS: outlier note present"
+
+# Case 2: custom threshold via LARCH_TIMING_OUTLIER_THRESHOLD_S — 100 s makes
+# the 10-second first step non-outlier and the 50000-second second step an outlier.
+OUTLIER_CUSTOM_OUT="$TMP_BASE/outlier-custom.md"
+LARCH_TEST_TIMING_NOW=50020 LARCH_TIMING_OUTLIER_THRESHOLD_S=100 \
+  "$REPO_ROOT/scripts/timing-report.sh" --ledger "$OUTLIER_LEDGER" --full --markdown > "$OUTLIER_CUSTOM_OUT"
+grep -q 'Step 2 — implementation.*\[OUTLIER\]' "$OUTLIER_CUSTOM_OUT" || { echo "FAIL: outlier custom threshold: step not tagged" >&2; exit 1; }
+echo "PASS: outlier custom threshold"
+
+# Case 3: no steps exceed threshold — no outlier note.
+LARCH_TEST_TIMING_NOW=310 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$LEDGER" --full --markdown > "$TMP_BASE/no-outlier.md"
+if grep -q '\*Outlier steps:' "$TMP_BASE/no-outlier.md"; then
+    echo "FAIL: outlier note present when no outliers" >&2
+    exit 1
+fi
+echo "PASS: no outlier note when no outliers"
+
 echo "PASS: test-timing-report.sh"

@@ -22,6 +22,7 @@ Duration rules:
 - Design and review marks are nested under the implement interval in which their timestamp falls.
 - Per-skill intervals are measured to the next mark of the same skill. The final mark of a skill runs until the latest workflow/vendor timestamp, or now.
 - Total duration is the last implement mark minus the first implement mark when implement marks exist; otherwise it is the last mark minus the first mark.
+- Steps whose duration exceeds the outlier threshold (default 14 400 s = 4 h, configurable via `LARCH_TIMING_OUTLIER_THRESHOLD_S`) are tagged `[OUTLIER]` in the `--full` table and listed in a trailing note. `--summary` and `--terse` modes are unaffected.
 
 The renderer is shell/awk-only and has no `jq` dependency. It skips rows whose first column is not `v1`, and warns to stderr when a `v1` row does not have exactly 13 columns.
 
