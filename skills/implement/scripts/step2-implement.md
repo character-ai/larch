@@ -66,6 +66,7 @@ ORCHESTRATOR_EDIT_AUTHORITY=<allowed|forbidden>
 | `--cursor-healthy VALUE` | optional | `true`, `false`, or empty. Empty/missing normalizes to false. Consulted only on `--coder=cursor`; non-`true` falls back to `STATUS=claude_fallback` before `REPO_ROOT` lookup. |
 | `--gemini-healthy VALUE` | optional | `true`, `false`, or empty. Non-empty values validate regardless of `--coder`; empty/missing normalizes to false on `--coder=gemini`. Non-`true` falls back to `STATUS=claude_fallback` before `REPO_ROOT` lookup. |
 | `--answers PATH` | optional | Operator answers to a prior `needs_qa` cycle; presence increments the resume counter |
+| `--workflow VALUE` | optional (default `SIMPLE`) | `SIMPLE` or `HARD`; sets the coder timeout (`SIMPLE`=3600s, `HARD`=7200s). Invalid values exit 2. |
 
 **Outcomes** (`STATUS` values):
 - `complete` — all post-Codex mechanical checks passed; the dispatcher committed Codex's working-tree edits using `manifest.commit_message` (redacted via `scripts/redact-secrets.sh` immediately before `git commit -F`); the canonical manifest is sanitized and emitted at `$TMPDIR/manifest.json`.

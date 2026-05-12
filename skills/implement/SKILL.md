@@ -892,6 +892,7 @@ Step 2 invokes a single dispatcher (`skills/implement/scripts/step2-implement.sh
 ```bash
 cursor_healthy=$(${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CURSOR_HEALTHY --default false)
 gemini_healthy=$(${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh --file "$IMPLEMENT_TMPDIR/session-env.sh" --key GEMINI_HEALTHY --default false)
+implement_workflow=$( [[ "$quick_mode" == "true" ]] && echo SIMPLE || echo HARD )
 
 ${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step2-implement.sh \
     --tmpdir "$IMPLEMENT_TMPDIR" \
@@ -900,7 +901,8 @@ ${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step2-implement.sh \
     --auto-mode "$auto_mode" \
     --coder "$coder" \
     --cursor-healthy "$cursor_healthy" \
-    --gemini-healthy "$gemini_healthy"
+    --gemini-healthy "$gemini_healthy" \
+    --workflow "$implement_workflow"
 ```
 
 `$PLAN_FILE` is the path written at Step 1 (`/design`'s plan, or the inline quick-mode plan). `$FEATURE_FILE` is `$IMPLEMENT_TMPDIR/feature-description.txt` (created at Step 0). Parse the dispatcher's stdout into local KV variables: `STATUS`, `TOOL`, `MANIFEST`, `QA_PENDING`, `REASON`, `TRANSCRIPT`, `SIDECAR_LOG`, `ORCHESTRATOR_EDIT_AUTHORITY`. Then run the envelope-validation block in 2.1.5 BEFORE branching on `STATUS` in 2.2. Derive:
@@ -942,7 +944,7 @@ If any check fails, synthesize an orchestrator-local bail: set `STATUS=bailed`, 
 1. Read `$QA_PENDING` (a JSON file containing `{"questions": [{"id": "q1", "text": "..."}, ...]}`).
 2. **If `auto_mode=false`**: pose the questions to the operator via `AskUserQuestion` in a single batched call (one prompt per question, preserving the `id`). **If `auto_mode=true`**: derive best-effort answers from the plan + codebase + `CLAUDE.md`. Either way, log every Q/A pair to `$IMPLEMENT_TMPDIR/execution-issues.md` under `### Q/A` per the schema in 2.5 below.
 3. Compose an answers file `$IMPLEMENT_TMPDIR/codex-answers-$RESUME_N.json` with shape `{"answers": [{"id": "q1", "text": "<answer>"}, ...]}` (`$RESUME_N` is the 1-indexed resume cycle counter the orchestrator tracks locally). The filename retains `codex-` for historical compatibility; the dispatcher accepts it for Cursor resumes too.
-4. Re-invoke the dispatcher with the additional flag `--answers "$IMPLEMENT_TMPDIR/codex-answers-$RESUME_N.json"`. **On every dispatcher return — including each `--answers` redispatch cycle — re-parse the KV envelope and run the §2.1.5 envelope-validation block in full BEFORE re-branching on `STATUS` per §2.2.** Q/A redispatch is not exempt from envelope validation: a malformed or AUTH-illegal envelope on a resume invocation must still fail-closed via `orchestrator-envelope-invalid` exactly as on the first dispatch. The dispatcher itself enforces the 5-cycle cap; on the 6th `--answers` invocation it returns `STATUS=bailed REASON=qa-loop-exceeded` automatically.
+4. Re-invoke the dispatcher with the same flags as §2.1 (including `--workflow "$implement_workflow"`) plus the additional flag `--answers "$IMPLEMENT_TMPDIR/codex-answers-$RESUME_N.json"`. **On every dispatcher return — including each `--answers` redispatch cycle — re-parse the KV envelope and run the §2.1.5 envelope-validation block in full BEFORE re-branching on `STATUS` per §2.2.** Q/A redispatch is not exempt from envelope validation: a malformed or AUTH-illegal envelope on a resume invocation must still fail-closed via `orchestrator-envelope-invalid` exactly as on the first dispatch. The dispatcher itself enforces the 5-cycle cap; on the 6th `--answers` invocation it returns `STATUS=bailed REASON=qa-loop-exceeded` automatically.
 
 > **Continue to Step 3 IMMEDIATELY after re-dispatch returns.** The Q/A loop re-dispatch is not a halting point — proceed to Step 3 checks as soon as the dispatcher exits. → shared/subskill-invocation.md#step-boundary
 
