@@ -1,6 +1,8 @@
 # Larch Run Logs
 
-Every `/implement` run commits a directory of structured log files alongside the PR it creates. These committed files are the single source of truth for full run content — voting tallies, rejected findings, version-bump reasoning, OOS observations, execution issues, run statistics, token/timing reports, and the session transcript. The tracking issue and PR body carry only slim projections.
+On a default `/implement --merge` run, a directory of structured log files is committed alongside the PR. These committed files are the single source of truth for full run content — voting tallies, rejected findings, version-bump reasoning, OOS observations, execution issues, run statistics, token/timing reports, and the session transcript. The tracking issue and PR body carry only slim projections.
+
+Exceptions: `--design-only --no-issues` and `repo_unavailable=true` produce no committed log at all (`$IMPLEMENT_TMPDIR/execution-issues.md` is the only audit trail and is removed at cleanup). Fork dry-run mode (`--forked`) does not create a tracking issue. In all cases, session-derived content in `larch-logs/` passes through secrets and tmpdir-path redaction, but redaction is best-effort — operators should avoid pasting sensitive content into `/implement` prompts.
 
 ## Directory structure
 
@@ -52,7 +54,7 @@ One record per `/implement` session. Contains the code-review voting outcome and
 
 **Mode**: append (NDJSON records). **Written**: Step 5, immediately after the `code-review-tally` batch.
 
-Per-finding payloads for plan-review accepted, plan-review rejected, and code-review rejected entries. Each record contains: finding id, phase, outcome, reviewer, category, and verbatim prose body. Accepted code-review findings are not yet captured here (see `scripts/compose-review-findings.md` known limitations).
+Per-finding payloads for plan-review accepted, plan-review rejected, and code-review rejected entries. Each record contains: finding id, phase, outcome, reviewer, category, and verbatim prose body. Accepted code-review findings are not yet captured here; `scripts/compose-review-findings.sh` only reads plan-review and code-review rejection artifacts, not the accepted-code-review path.
 
 ### version-bump-reasoning.md
 
@@ -74,9 +76,9 @@ Summary statistics for the run: number of accepted and rejected OOS items, filed
 
 ### token-report.md
 
-**Mode**: replace. **Written**: Step 7a tail (pre-bump log flush) and refreshed at Step 9a.1. A final refresh runs at Step 18 before the transcript commit.
+**Mode**: replace. **Written**: Step 7a tail (pre-bump log flush) and refreshed at Step 9a.1. Each CI retry in the Rebase + Re-bump Sub-procedure also refreshes the batch so the merged PR carries the most recent data.
 
-Per-step Claude token usage table for the session. The pre-bump flush captures cost up through implementation and review; each CI retry in Steps 10/12 refreshes this file so the merged PR carries the most recent data.
+Per-step Claude token usage table for the session. The pre-bump flush captures cost up through implementation and review.
 
 ### timing-report.md
 
@@ -98,7 +100,7 @@ The redacted Claude Code session transcript (`.jsonl` format) captured for post-
 
 ## Tracking issue comments
 
-The tracking issue for each run carries four slim marker-keyed summary comments maintained by `/implement` as the run progresses. These are projections only — their content points at the committed `larch-logs/` files rather than embedding bulky payloads inline.
+The tracking issue for each run carries four slim marker-keyed summary comments maintained by `/implement` as the run progresses. These are projections only — their content points at the committed `larch-logs/` files rather than embedding bulky payloads inline, with one exception: `larch:diagrams` embeds Mermaid diagram bodies directly (Architecture Diagram + Code Flow Diagram) rather than pointing at a batch file.
 
 ### `larch:metadata`
 
@@ -114,7 +116,7 @@ Content: a slim pointer to `larch-logs/implement/<RUN_ID>/plan-goals-test.md` pl
 
 ### `larch:diagrams`
 
-Written at Step 7a.
+Written at Step 7a for full implementation runs. For `--design-only` runs with a tracking issue, this comment is posted at Step 1 tail alongside `larch:plan` (implementation steps including 7a are skipped).
 
 Content: the Architecture Diagram (from `/design`) and Code Flow Diagram (generated at Step 7a from the committed implementation diff), both embedded as Mermaid fences. Diagrams are embedded directly in this comment rather than written as a larch-log batch.
 
