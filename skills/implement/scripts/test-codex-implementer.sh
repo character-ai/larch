@@ -21,6 +21,7 @@ pass() { PASS_COUNT=$((PASS_COUNT + 1)); }
 
 SCRATCH=$(mktemp -d -t codex-implementer-test.XXXXXX)
 trap 'rm -rf "$SCRATCH"' EXIT
+export LARCH_TIMING_LEDGER="$SCRATCH/timing-ledger.tsv"
 
 # Tighten run-external-agent.sh's poll cadence so the wrapper does not pay a
 # 10s sleep per stub invocation. Production callers (real Codex) inherit the
