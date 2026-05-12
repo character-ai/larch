@@ -645,7 +645,7 @@ run_postmerge_phase() {
             --issue "$issue_number" \
             --marker "<!-- larch:final-summary v1 runid=${run_id} -->" \
             --content-file "$IMPLEMENT_TMPDIR/summary-final.md" \
-            --repo "$repo" 2>/dev/null || true
+            --repo "$repo" >/dev/null || true
     fi
     advance_phase "done"
     "$SCRIPT_DIR/implement-finalize.sh" teardown --state-file "$IMPLEMENT_TMPDIR/finalize-state.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR"
