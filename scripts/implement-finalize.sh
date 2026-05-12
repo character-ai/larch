@@ -1284,7 +1284,7 @@ kill_session_background_processes() {
 }
 
 run_teardown() {
-    local start issue_number repo repo_unavailable stall_tracking done_rename_applied pr_number design_only
+    local start issue_number repo repo_unavailable stall_tracking done_rename_applied pr_number design_only pr_closed
     local rename_branch rename_status out rc value issue_url cleanup_rc
     local stall_step stash_ref sentinel_written
 
