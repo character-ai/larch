@@ -5,7 +5,7 @@ slugs, file extensions, write modes, and sanitizer hooks.
 
 The table intentionally covers the legacy tracking sections as durable files:
 `plan-goals-test`, `plan-review-tally`, `code-review-tally`,
-`review-findings-full`, `diagrams`, `version-bump-reasoning`, `oos-issues`,
+`review-findings-full`, `version-bump-reasoning`, `oos-issues`,
 `run-statistics`, `token-report`, `timing-report`, `execution-issues`, and
 `session-transcript` (the redacted Claude Code session transcript captured at
 Step 18 for full post-hoc auditability).

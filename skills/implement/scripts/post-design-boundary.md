@@ -32,11 +32,11 @@ The Stop hook (`hook-stop-fail-close.sh`) blocks a session stop when `manifest.e
 
 `➡️ 1: design plan — boundary gate passed; NEXT REQUIRED: write larch-log batches → Step 1.r rebase → Step 2 entry`
 
-`➡️ 1: design plan — boundary gate passed (design-only); NEXT REQUIRED: write plan-goals-test + plan-review-tally log batches → write diagrams log batch → Step 9a.1 OOS pipeline`
+`➡️ 1: design plan — boundary gate passed (design-only); NEXT REQUIRED: write plan-goals-test + plan-review-tally log batches → post larch:diagrams summary comment → Step 9a.1 OOS pipeline`
 
 Hook-mode variants begin with `➡️ 1: design plan — hook injected boundary context` and instruct the orchestrator to invoke the Bash wrapper immediately.
 
-The design-only wording mirrors `skills/implement/SKILL.md` ordering: `plan-goals-test` and `plan-review-tally` are written first in all modes, then `diagrams` is written only on the design-only branch before Step 9a.1.
+The design-only wording mirrors `skills/implement/SKILL.md` ordering: `plan-goals-test` and `plan-review-tally` are written first in all modes, then the `larch:diagrams` summary comment is posted (to the tracking issue only, not to larch-logs) on the design-only branch before Step 9a.1.
 
 The manifest reader remains the schema authority. This wrapper buffers the reader's stdout and emits it only when every hard gate (manifest read, session-env validation, branch capture) passes; on success the reader's `📥 1: design plan — manifest loaded (plan=<basename>)` breadcrumb is preserved as a verification artifact. On reader failure the wrapper re-emits the reader's failure envelope verbatim. The wrapper then appends the branch, audit key, success key, warnings, and the imperative `➡️` line on the success path. Late failures (branch capture, internal errors) emit only the failure envelope — they do not also emit the buffered reader success block.
 

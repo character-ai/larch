@@ -381,7 +381,7 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 # timing-mark Step 0.5 — tracking issue
 ```
 
-Resolve a stable `ISSUE_NUMBER` and `RUN_ID` for the session. Committed `larch-logs/implement/<RUN_ID>/` files are the single source of truth for Phase 3+ report content (voting tallies, diagrams, version bump reasoning, OOS list, execution issues, run statistics, token reports, and timing reports); the tracking issue carries only four slim marker-keyed summary comments, and the PR body remains a slim projection.
+Resolve a stable `ISSUE_NUMBER` and `RUN_ID` for the session. Committed `larch-logs/implement/<RUN_ID>/` files are the single source of truth for Phase 3+ report content (voting tallies, version bump reasoning, OOS list, execution issues, run statistics, token reports, and timing reports); the tracking issue carries only four slim marker-keyed summary comments, and the PR body remains a slim projection.
 
 **MANDATORY — READ ENTIRE FILE** before composing any tracking-issue summary comment at Steps 0.5, 1, 9a.1, 11, or 18: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/summary-comment-template.md`. It defines the four allowed marker literals (`larch:metadata`, `larch:diagrams`, `larch:plan`, `larch:final-summary`) and the rule that bulky payloads live in `larch-logs/`, not in GitHub comments.
 
@@ -636,7 +636,6 @@ Steps 1, 2, 5, 7a, 8, 9a.1, 11, and 18 write durable run payloads through `scrip
 | Step 1 tail (after `/design` exports the voting tally artifact) | `plan-review-tally` |
 | Step 2 (after each Q/A append) | `execution-issues` |
 | Step 5 (after `/review` writes `review-round-summary.md`, or after quick-mode loop) | `code-review-tally` and `review-findings-full` |
-| Step 7a (after Code Flow Diagram generated) | `diagrams` (both Architecture + Code Flow) |
 | Step 7a tail (pre-bump log flush) | `token-report`, `timing-report`, and log-flush commit |
 | Step 8 (after `/bump-version` returns `REASONING_FILE`) | `version-bump-reasoning` |
 | Step 9a.1 (after OOS filing) | `oos-issues`, `run-statistics`, `token-report`, and `timing-report` |
@@ -820,7 +819,7 @@ This matrix is authoritative after the wrapper returns. It is informational pros
 |---|---|---|---|
 | `MANIFEST_OK=true` + `POST_DESIGN_BOUNDARY_HOOK_INJECTED=true` + ➡️ hook-injected (from PostToolUse hook context) | any | Invoke the mandatory Bash wrapper call (`post-design-boundary.sh` without `--hook-mode`) as the FIRST orchestrator action — do NOT proceed to larch-log writes or Step 1.r yet | Treating `POST_DESIGN_BOUNDARY_HOOK_INJECTED=true` as a substitute for `POST_DESIGN_BOUNDARY_OK=true`; skipping the Bash wrapper; ending the turn after seeing the hook-injected context |
 | `MANIFEST_OK=true` + `POST_DESIGN_BOUNDARY_OK=true` + ➡️ default | false | Bind `BRANCH_NAME` from `BRANCH=` → write `plan-goals-test` + `plan-review-tally` larch-log batches → post the `larch:plan` summary when `$ISSUE_NUMBER` is set → Coder simplicity override (may flip `coder=claude` per the section above) → Step 1.r rebase → Step 2 entry | New orchestrator-authored prose between `/design` return and the wrapper Bash call; re-running `git-current-branch.sh`; manual repeat of the Cross-Skill Health Update procedure (the wrapper owns it); free-form recap / handoff / "design phase complete" prose anywhere between `/design` return and Step 1.r |
-| `MANIFEST_OK=true` + `POST_DESIGN_BOUNDARY_OK=true` + ➡️ design-only | true | Bind `BRANCH_NAME` from `BRANCH=` → write `plan-goals-test` + `plan-review-tally` larch-log batches → write `diagrams` batch → post `larch:plan` and `larch:diagrams` summaries when `$ISSUE_NUMBER` is set → Step 9a.1 OOS pipeline → set `DESIGN_ONLY_DONE=true` → Step 16 → Step 18 | Same forbidden list as above; additionally: Steps 2 / 3 / 4 / 5 / 6 / 7 / 7a / 8 / 8a / 8b / 9 / 9b (per the existing design-only short-circuit) |
+| `MANIFEST_OK=true` + `POST_DESIGN_BOUNDARY_OK=true` + ➡️ design-only | true | Bind `BRANCH_NAME` from `BRANCH=` → write `plan-goals-test` + `plan-review-tally` larch-log batches → post `larch:plan` and `larch:diagrams` summaries when `$ISSUE_NUMBER` is set → Step 9a.1 OOS pipeline → set `DESIGN_ONLY_DONE=true` → Step 16 → Step 18 | Same forbidden list as above; additionally: Steps 2 / 3 / 4 / 5 / 6 / 7 / 7a / 8 / 8a / 8b / 9 / 9b (per the existing design-only short-circuit) |
 | `MANIFEST_FAILED=true ERROR=<token>` | any | Print `**⚠ 1: design plan — design manifest unavailable: $ERROR. Bailing to cleanup.**` → set `STALL_TRACKING=true` → skip to Step 18 | Setting `MANIFEST_PATH`; entering Step 1.r / Step 2; treating `WARN=…` lines (if any) as failure (warnings are non-fatal) |
 
 **Always-permitted writes regardless of row**: writes under `$IMPLEMENT_TMPDIR/**`, `/relevant-checks` invocations, and reads of the wrapper's stdout for parsing. The "forbidden" column scopes to ORCHESTRATOR-AUTHORED prose between `/design` return and Step 1.r (or Step 18 on failure), not to all Bash/Write. If a downstream paragraph appears to disagree, the matrix wins. See NEVER #7.
@@ -849,7 +848,7 @@ Write two larch-log batches from file-backed design artifacts. See Step 0.5 "Lar
 
 If `design_only=true`:
 
-1. Compose the `diagrams` batch now (NOT later, since Steps 7/7a are skipped). The Code Flow Diagram is unavailable in design-only mode (no implementation has run), so the batch carries: `## Architecture Diagram` + mermaid fence read from `ARCHITECTURE_DIAGRAM_FILE` (or `"Architecture diagram not available."` if that optional manifest key is absent or the file is missing), then `## Code Flow Diagram` + the literal placeholder `"(Code Flow Diagram unavailable — --design-only run, no implementation)"`. Write with `larch-log.sh write --skill implement --run-id "$RUN_ID" --batch diagrams --input-file <composed-file>`. If `ISSUE_NUMBER` is set, post the `larch:diagrams` summary comment.
+1. If `ISSUE_NUMBER` is set, compose a `larch:diagrams` summary comment from `ARCHITECTURE_DIAGRAM_FILE` (or `"Architecture diagram not available."` if absent/missing) plus the Code Flow placeholder `"(Code Flow Diagram unavailable — --design-only run, no implementation)"`, and post it via `tracking-issue-summary.sh upsert-summary --issue "$ISSUE_NUMBER" --marker "<!-- larch:diagrams v1 runid=$RUN_ID -->"`. Do NOT write a `diagrams` larch-log batch.
 2. Skip the Step 1.r Rebase Checkpoint below — design-only does not modify code, so a rebase to latest main is unnecessary churn.
 3. Skip Steps 2 / 3 / 4 / 5 / 6 / 7 / 7a / 8 / 8a / 8b / 9 / 9b entirely. Proceed directly to Step 9a.1 so accepted OOS observations are filed and the Step 9a.1 log batches are refreshed.
 
@@ -1320,7 +1319,7 @@ Runs unconditionally after Step 7 (regardless of Steps 6-7 skip).
 
 **MANDATORY — READ ENTIRE FILE** before writing diagram summary comments under `quick_mode=true`: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/summary-comment-template.md`. **Do NOT load** outside quick-mode paths.
 
-If `quick_mode=true`: print `⏩ 7a: code flow status=skip reason=quick-mode elapsed=<elapsed>`, still write the `diagrams` larch-log batch (Architecture Diagram + Code-Flow-skipped placeholder per the `diagrams` sub-section below), then proceed to the Pre-bump log flush subsection below (which leads into the 7a.r rebase checkpoint and then Step 8).
+If `quick_mode=true`: print `⏩ 7a: code flow status=skip reason=quick-mode elapsed=<elapsed>`, still post the `larch:diagrams` summary comment (Architecture Diagram + Code-Flow-skipped placeholder per the `diagrams` sub-section below), then proceed to the Pre-bump log flush subsection below (which leads into the 7a.r rebase checkpoint and then Step 8).
 
 If `quick_mode=false`: first check whether the committed diff is small and non-runtime. Compute the merge-base, then enumerate changed files relative to `origin/main`:
 
@@ -1334,7 +1333,7 @@ fi
 CHANGED_COUNT=$(printf '%s\n' "$CHANGED_FILES" | grep -c . 2>/dev/null || echo 0)
 ```
 
-If `MERGE_BASE` is empty, or `CHANGED_COUNT` is 0 (diff failed or branch has no commits vs main), treat this check as inconclusive and proceed with normal generation. Otherwise check whether `CHANGED_COUNT` is 1 or 2 AND every path in `CHANGED_FILES` is non-runtime: all files reside under `docs/`, are named `CHANGELOG` or `CHANGELOG.md`, or have extension `.txt` or `.tsv` (note: `.md` files outside `docs/` — including `skills/**`, `agents/**`, and `SKILL.md` — are not automatically non-runtime and do not qualify). If both conditions hold: print `⏩ 7a: code flow status=skip reason=small-non-runtime-change elapsed=<elapsed>`, still write the `diagrams` batch (Architecture Diagram + placeholder `"(Code Flow Diagram skipped — small/non-runtime change)"` for Code Flow — see the `diagrams` sub-section below), and proceed to the Pre-bump log flush subsection below (which leads into the 7a.r rebase checkpoint and then Step 8).
+If `MERGE_BASE` is empty, or `CHANGED_COUNT` is 0 (diff failed or branch has no commits vs main), treat this check as inconclusive and proceed with normal generation. Otherwise check whether `CHANGED_COUNT` is 1 or 2 AND every path in `CHANGED_FILES` is non-runtime: all files reside under `docs/`, are named `CHANGELOG` or `CHANGELOG.md`, or have extension `.txt` or `.tsv` (note: `.md` files outside `docs/` — including `skills/**`, `agents/**`, and `SKILL.md` — are not automatically non-runtime and do not qualify). If both conditions hold: print `⏩ 7a: code flow status=skip reason=small-non-runtime-change elapsed=<elapsed>`, still post the `larch:diagrams` summary comment (Architecture Diagram + placeholder `"(Code Flow Diagram skipped — small/non-runtime change)"` for Code Flow — see the `diagrams` sub-section below), and proceed to the Pre-bump log flush subsection below (which leads into the 7a.r rebase checkpoint and then Step 8).
 
 Otherwise, generate a mermaid Code Flow Diagram from the actual committed implementation. Focus on **runtime behavior** — function call sequences, data flow, control flow. Do NOT duplicate the Architecture Diagram's structural view. Choose the appropriate mermaid type (`sequenceDiagram`, `flowchart`, `stateDiagram`, `graph`, etc.). Diagram contents must obey `${CLAUDE_PLUGIN_ROOT}/skills/shared/mermaid-safe-content.md`. Write the diagram to `$IMPLEMENT_TMPDIR/code-flow-diagram.candidate.md` first, including the `## Code Flow Diagram` heading and mermaid fence; validate it with `${CLAUDE_PLUGIN_ROOT}/scripts/sanitize-mermaid-fragment.sh --input "$IMPLEMENT_TMPDIR/code-flow-diagram.candidate.md" --from-md --warnings-step "7a"`, then promote it to `$IMPLEMENT_TMPDIR/code-flow-diagram.md` only on `STATUS=ok`. Print the promoted diagram under a `## Code Flow Diagram` header with a mermaid code fence.
 
@@ -1342,14 +1341,14 @@ On success: `✅ 7a: code flow status=complete outcome=diagram-generated elapsed
 
 On generation failure (too abstract to diagram): `**⚠ 7a: code flow — generation failed, proceeding without diagram (<elapsed>)**` and log to `Warnings`. On sanitizer rejection or exit 2, delete the candidate, do not promote it, print `**⚠ 7a: code flow — rejected by mermaid sanitizer (REASON_TOKEN=<token>), proceeding without diagram (<elapsed>)**`, and append `- **Step 7a — code flow diagram rejected:** <REASON_TOKEN>` under `### Warnings` in `$IMPLEMENT_TMPDIR/execution-issues.md` via `${CLAUDE_PLUGIN_ROOT}/scripts/append-execution-issue.sh`. Use only `REASON_TOKEN` values, not raw diagram content.
 
-### Larch-log batch — `diagrams`
+### Diagrams summary comment — `larch:diagrams`
 
-Compose the `diagrams` batch from both diagrams:
+Compose the diagrams content from both diagrams:
 
 - `## Architecture Diagram` + mermaid code fence read from `ARCHITECTURE_DIAGRAM_FILE`, or `"Architecture diagram not available."` if that optional manifest key is absent or the file is missing.
 - `## Code Flow Diagram` + mermaid code fence read from `$IMPLEMENT_TMPDIR/code-flow-diagram.md`, or `"(Code Flow Diagram skipped — quick mode)"` if `quick_mode=true`, or `"(Code Flow Diagram skipped — small/non-runtime change)"` if the small/non-runtime-change skip fired, or `"Code flow diagram not available."` if generation failed.
 
-Write with `larch-log.sh write --skill implement --run-id "$RUN_ID" --batch diagrams --input-file <composed-file>`. If `ISSUE_NUMBER` is set, post the `larch:diagrams` summary with `tracking-issue-summary.sh upsert-summary`. In quick mode, Step 7a is skipped entirely for Code Flow generation but the batch is still written with the Architecture Diagram + skipped placeholder.
+Do NOT write a `diagrams` larch-log batch. If `ISSUE_NUMBER` is set, post the `larch:diagrams` summary with `tracking-issue-summary.sh upsert-summary`. In quick mode, Step 7a is skipped entirely for Code Flow generation but the summary comment is still posted with the Architecture Diagram + skipped placeholder.
 
 ### Rebase onto latest main (before version bump)
 

@@ -13,7 +13,6 @@ expected='plan-goals-test
 plan-review-tally
 code-review-tally
 review-findings-full
-diagrams
 version-bump-reasoning
 oos-issues
 run-statistics
@@ -38,11 +37,9 @@ for slug in $actual; do
     case "$sanitizer" in none|mermaid) ;; *) echo "FAIL: invalid sanitizer for $slug: $sanitizer" >&2; exit 1 ;; esac
 done
 
-[ "$(larch_log_batch_extension diagrams)" = ".md" ]
 [ "$(larch_log_batch_mode token-report)" = "replace" ]
 [ "$(larch_log_batch_extension token-report)" = ".md" ]
 [ "$(larch_log_batch_mode timing-report)" = "replace" ]
 [ "$(larch_log_batch_extension timing-report)" = ".md" ]
-[ "$(larch_log_batch_sanitizer diagrams)" = "mermaid" ]
 
 echo "All assertions passed."
