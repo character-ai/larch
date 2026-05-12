@@ -174,6 +174,7 @@ EOF
 )"
 fi
 
+# intentionally non-stable: plan/feature file paths are per-session; initial task for Gemini (not Claude API)
 PROMPT="$(cat "$AGENT_PROMPT")
 
 ## This invocation's parameters
