@@ -507,10 +507,33 @@ case "$STATUS" in
         ' "$MANIFEST_RAW_PATH" >/dev/null 2>&1 || emit_bailed "manifest-schema-invalid"
         ;;
     needs_qa)
-        jq -e '
+        if ! jq -e '
             (.needs_qa | type == "object") and
             (.needs_qa.questions | type == "array" and length > 0)
-        ' "$MANIFEST_RAW_PATH" >/dev/null 2>&1 || emit_bailed "manifest-schema-invalid"
+        ' "$MANIFEST_RAW_PATH" >/dev/null 2>&1; then
+            # Attempt repair: normalize qa-pending.json from non-standard items[]
+            # format when manifest.needs_qa.questions is absent/malformed.
+            _did_repair=false
+            if [[ -s "$QA_PENDING_PATH" ]] \
+               && jq -e '(.items | type == "array" and length > 0)' "$QA_PENDING_PATH" >/dev/null 2>&1; then
+                _REPAIRED_QA="$TMPDIR_ARG/qa-pending-repaired.json"
+                if jq '{questions: [.items | to_entries[] | {
+                        id: "q\(.key + 1)",
+                        text: ([
+                            if (.value.area // "") != "" then "Area: \(.value.area)" else empty end,
+                            if (.value.risk // "") != "" then "Risk: \(.value.risk)" else empty end,
+                            if (.value.suggested_check // "") != "" then "Suggested check: \(.value.suggested_check)" else empty end
+                        ] | join(". "))
+                    }]}' "$QA_PENDING_PATH" > "$_REPAIRED_QA" 2>/dev/null \
+                   && jq -e '(.questions | type == "array" and length > 0)' "$_REPAIRED_QA" >/dev/null 2>&1; then
+                    cp "$_REPAIRED_QA" "$QA_PENDING_PATH"
+                    _did_repair=true
+                fi
+            fi
+            if [[ "$_did_repair" != "true" ]]; then
+                emit_bailed "manifest-schema-invalid"
+            fi
+        fi
         # qa-pending.json must exist, be non-empty, and contain a non-empty
         # questions array — Step 2.3 of /implement reads it directly via
         # AskUserQuestion. A missing companion file would strand the orchestrator.
