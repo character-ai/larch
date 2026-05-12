@@ -1366,6 +1366,27 @@ run_teardown() {
     local larch_flush_run_id
     larch_flush_run_id=$(read_state RUN_ID)
     if [ -n "$larch_flush_run_id" ] && [ "$repo_unavailable" = "false" ]; then
+        # Finalize manifest status before committing so the update lands in the
+        # same flush commit. Best-effort: manifest may not exist (deferred/repo-
+        # unavailable paths) — the 2>/dev/null suppresses the "not found" error.
+        if [ "$stall_tracking" = "true" ]; then
+            "$SCRIPT_DIR/larch-log.sh" manifest \
+                --skill implement --run-id "$larch_flush_run_id" \
+                --field "status=stalled" \
+                --field "stalled_at_step=$stall_step" \
+                2>/dev/null || true
+        elif [ -n "$pr_number" ]; then
+            "$SCRIPT_DIR/larch-log.sh" manifest \
+                --skill implement --run-id "$larch_flush_run_id" \
+                --field "status=done" \
+                --field "pr_number=$pr_number" \
+                2>/dev/null || true
+        elif [ "$design_only" = "true" ]; then
+            "$SCRIPT_DIR/larch-log.sh" manifest \
+                --skill implement --run-id "$larch_flush_run_id" \
+                --field "status=done" \
+                2>/dev/null || true
+        fi
         "$SCRIPT_DIR/larch-log.sh" commit --skill implement --run-id "$larch_flush_run_id" --no-push 2>/dev/null || true
     fi
 

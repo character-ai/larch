@@ -232,7 +232,13 @@ case "$cmd" in
                 *[!A-Za-z0-9_]*|"") larch_log_fail 1 "invalid manifest field: $key" ;;
             esac
             var="v${#args[@]}"
-            args+=(--arg "$var" "$value")
+            # Use --argjson for JSON-native scalar types so numeric fields
+            # like pr_number are stored as numbers rather than strings.
+            if printf '%s' "$value" | grep -Eq '^(null|true|false|-?[0-9]+)$'; then
+                args+=(--argjson "$var" "$value")
+            else
+                args+=(--arg "$var" "$value")
+            fi
             filter="$filter | .$key = \$$var"
         done
         tmp="$(mktemp "$(dirname "$path")/.tmp.manifest.XXXXXX")" || larch_log_fail 2 "cannot create manifest temp"
