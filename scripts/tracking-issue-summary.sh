@@ -17,8 +17,8 @@ USAGE
 fail() {
     local code="$1"
     local msg="$2"
-    echo "FAILED=true"
-    echo "ERROR=$msg"
+    echo "FAILED=true" >&2
+    echo "ERROR=$msg" >&2
     exit "$code"
 }
 
