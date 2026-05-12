@@ -1146,6 +1146,16 @@ exclude = [
   # scripts/test-ci-status.md.
   "scripts/test-ci-status.sh",
   "scripts/test-ci-status.md",
+  # scripts/test-ship-pr.sh and the two CI launcher argv harnesses are
+  # Makefile-only regression entrypoints for the ship-pr state machine. They
+  # are referenced from Makefile, docs/linting.md, and sibling contracts, not
+  # from runtime skill prose.
+  "scripts/test-ship-pr.sh",
+  "scripts/test-ship-pr.md",
+  "scripts/test-launch-cursor-ci.sh",
+  "scripts/test-launch-cursor-ci.md",
+  "scripts/test-launch-codex-ci.sh",
+  "scripts/test-launch-codex-ci.md",
   # skills/cleanup/scripts/cleanup.md is the sibling contract for
   # skills/cleanup/scripts/cleanup.sh. Not cited from SKILL.md by design
   # (contributors discover it by editing the sibling .sh).
