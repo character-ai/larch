@@ -36,5 +36,10 @@ uses a two-assignment pattern (`VAR="$(git ...)" || true; [ -n "$VAR" ] || VAR="
 back to `SCRIPT_DIR/..` when invoked outside a git repo. `LARCH_LOG_ROOT`
 in the environment overrides the `lib-larch-log.sh` path (existing escape hatch).
 
+**Batch registry**: all slugs, extensions, modes, and sanitizer hooks live in
+`scripts/larch-log-batches.sh`. See `scripts/larch-log-batches.md` for the full
+list, including `session-transcript` (the redacted Claude Code session `.jsonl`
+captured at Step 18 of `/implement` for post-hoc auditability).
+
 Related files: `scripts/lib-larch-log.sh`, `scripts/larch-log-batches.sh`, and
 the `scripts/test-larch-log.sh` harness.

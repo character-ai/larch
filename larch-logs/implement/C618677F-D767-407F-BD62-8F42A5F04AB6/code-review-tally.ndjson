@@ -1,0 +1,1 @@
+{"phase":"code-review","mode":"quick","rounds":1,"accepted":2,"rejected":4,"summary":"Round 1: 4 Cursor specialists (security failed) + Codex generic. Fixed: awk-F= path parsing, commit failure visibility. Rejected: redundant env re-read nit, test coverage nit, prose-wording nit, Codex tmpdir-removed finding (incorrect)."}
