@@ -59,6 +59,10 @@ RERUN_EXIT=$?
 if [[ $RERUN_EXIT -eq 0 ]]; then
     RERUN_SUBMITTED="true"
     ERROR=""
+elif printf '%s' "$RERUN_OUTPUT" | grep -qi "already running"; then
+    # Workflow is already in progress — no rerun needed; treat as submitted.
+    RERUN_SUBMITTED="true"
+    ERROR=""
 else
     RERUN_SUBMITTED="false"
     ERROR="gh run rerun failed (exit $RERUN_EXIT): $RERUN_OUTPUT"
