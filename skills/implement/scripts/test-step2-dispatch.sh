@@ -28,6 +28,9 @@
 #   - In a scratch git repo without .claude-plugin/plugin.json, a stub-Codex
 #     run that touches only non-protected files reaches STATUS=complete
 #     (no false-positive REASON=protected-path-modified — issue #1475).
+#   - --workflow SIMPLE is accepted (STATUS=claude_fallback as normal).
+#   - --workflow HARD is accepted (STATUS=claude_fallback as normal).
+#   - --workflow bogus exits 2 with the exact error message.
 #
 # External-implementer spawning paths (manifest validation, dispatcher-side commit,
 # sanitization, launcher-retry) are covered by separate launcher / end-to-end tests;
@@ -706,6 +709,43 @@ if [[ "$OUT_14" == *"STATUS=bailed"* ]] \
     pass
 else
     fail 14 "cap_hit path should emit STATUS=bailed REASON=cap_hit AUTH=forbidden; got: $OUT_14"
+fi
+
+# ---------------------------------------------------------------------------
+# Test 15a: --workflow SIMPLE is accepted (STATUS=claude_fallback as normal).
+# ---------------------------------------------------------------------------
+TMP15A="$SCRATCH/test15a"; mkdir -p "$TMP15A"
+OUT=$(  "$DISPATCHER" --tmpdir "$TMP15A" --plan-file "$PLAN" --feature-file "$FEATURE" \
+    --auto-mode false --coder claude --workflow SIMPLE 2>&1)
+if [[ "$OUT" == *"STATUS=claude_fallback"* ]] && [[ "$OUT" == *"ORCHESTRATOR_EDIT_AUTHORITY=allowed"* ]]; then
+    pass
+else
+    fail 15a "--workflow SIMPLE should be accepted, got: $OUT"
+fi
+
+# ---------------------------------------------------------------------------
+# Test 15b: --workflow HARD is accepted (STATUS=claude_fallback as normal).
+# ---------------------------------------------------------------------------
+TMP15B="$SCRATCH/test15b"; mkdir -p "$TMP15B"
+OUT=$(  "$DISPATCHER" --tmpdir "$TMP15B" --plan-file "$PLAN" --feature-file "$FEATURE" \
+    --auto-mode false --coder claude --workflow HARD 2>&1)
+if [[ "$OUT" == *"STATUS=claude_fallback"* ]] && [[ "$OUT" == *"ORCHESTRATOR_EDIT_AUTHORITY=allowed"* ]]; then
+    pass
+else
+    fail 15b "--workflow HARD should be accepted, got: $OUT"
+fi
+
+# ---------------------------------------------------------------------------
+# Test 15c: --workflow bogus → exit 2.
+# ---------------------------------------------------------------------------
+TMP15C="$SCRATCH/test15c"; mkdir -p "$TMP15C"
+EXIT=0
+ERR=$("$DISPATCHER" --tmpdir "$TMP15C" --plan-file "$PLAN" --feature-file "$FEATURE" \
+    --auto-mode false --coder claude --workflow bogus 2>&1 >/dev/null) || EXIT=$?
+if [[ "$EXIT" == "2" ]] && [[ "$ERR" == *"--workflow must be 'SIMPLE' or 'HARD'"* ]]; then
+    pass
+else
+    fail 15c "--workflow bogus should exit 2 with message, got exit=$EXIT err=$ERR"
 fi
 
 # ---------------------------------------------------------------------------

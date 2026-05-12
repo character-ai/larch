@@ -84,6 +84,7 @@ CODEX_AVAILABLE=""
 CURSOR_HEALTHY_ARG=""
 GEMINI_HEALTHY_ARG=""
 ANSWERS_FILE=""
+WORKFLOW_PATH=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -96,6 +97,7 @@ while [[ $# -gt 0 ]]; do
         --cursor-healthy)    CURSOR_HEALTHY_ARG="${2-}"; shift 2 ;;
         --gemini-healthy)    GEMINI_HEALTHY_ARG="${2-}"; shift 2 ;;
         --answers)           ANSWERS_FILE="${2:?--answers requires a value}"; shift 2 ;;
+        --workflow)          WORKFLOW_PATH="${2:?--workflow requires a value}"; shift 2 ;;
         *) echo "step2-implement.sh: unknown flag: $1" >&2; exit 2 ;;
     esac
 done
@@ -173,6 +175,12 @@ if [[ -n "$GEMINI_HEALTHY_ARG" ]]; then
         *) echo "step2-implement.sh: --gemini-healthy must be 'true', 'false', or empty, got: $GEMINI_HEALTHY_ARG" >&2; exit 2 ;;
     esac
 fi
+
+WORKFLOW_PATH="${WORKFLOW_PATH:-SIMPLE}"
+case "$WORKFLOW_PATH" in
+    SIMPLE|HARD) ;;
+    *) echo "step2-implement.sh: --workflow must be 'SIMPLE' or 'HARD', got: '$WORKFLOW_PATH'" >&2; exit 2 ;;
+esac
 
 # Branch 1: coder=claude → emit claude_fallback and return.
 # Run BEFORE the PLUGIN_ROOT / REPO_ROOT resolution so the fallback path stays
@@ -364,7 +372,11 @@ rm -f "$MANIFEST_PATH" "$MANIFEST_RAW_PATH" "$QA_PENDING_PATH" "$TRANSCRIPT_PATH
 
 # Step 4: launch external implementer. Up to 1 retry on transient failure (timeout / non-zero
 # exit before manifest written) — but only when post-failure state is clean.
-LAUNCHER_TIMEOUT=1800
+if [[ "$WORKFLOW_PATH" == "HARD" ]]; then
+    LAUNCHER_TIMEOUT=7200
+else
+    LAUNCHER_TIMEOUT=3600
+fi
 
 run_launcher() {
     local launcher_args=(

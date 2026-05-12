@@ -892,6 +892,7 @@ Step 2 invokes a single dispatcher (`skills/implement/scripts/step2-implement.sh
 ```bash
 cursor_healthy=$(${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CURSOR_HEALTHY --default false)
 gemini_healthy=$(${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh --file "$IMPLEMENT_TMPDIR/session-env.sh" --key GEMINI_HEALTHY --default false)
+implement_workflow=$( [[ "$quick_mode" == "true" ]] && echo SIMPLE || echo HARD )
 
 ${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step2-implement.sh \
     --tmpdir "$IMPLEMENT_TMPDIR" \
@@ -900,7 +901,8 @@ ${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step2-implement.sh \
     --auto-mode "$auto_mode" \
     --coder "$coder" \
     --cursor-healthy "$cursor_healthy" \
-    --gemini-healthy "$gemini_healthy"
+    --gemini-healthy "$gemini_healthy" \
+    --workflow "$implement_workflow"
 ```
 
 `$PLAN_FILE` is the path written at Step 1 (`/design`'s plan, or the inline quick-mode plan). `$FEATURE_FILE` is `$IMPLEMENT_TMPDIR/feature-description.txt` (created at Step 0). Parse the dispatcher's stdout into local KV variables: `STATUS`, `TOOL`, `MANIFEST`, `QA_PENDING`, `REASON`, `TRANSCRIPT`, `SIDECAR_LOG`, `ORCHESTRATOR_EDIT_AUTHORITY`. Then run the envelope-validation block in 2.1.5 BEFORE branching on `STATUS` in 2.2. Derive:
