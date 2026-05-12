@@ -38,9 +38,16 @@ larch_log_validate_slug() {
 larch_log_root() {
     if [ -n "${LARCH_LOG_ROOT:-}" ]; then
         printf '%s\n' "$LARCH_LOG_ROOT"
+    elif [ -n "${IMPLEMENT_TMPDIR:-}" ]; then
+        printf '%s/larch-logs\n' "$IMPLEMENT_TMPDIR"
     else
         printf '%s/larch-logs\n' "$LARCH_LOG_REPO_ROOT"
     fi
+}
+
+larch_log_repo_run_dir() {
+    local skill="$1" run_id="$2"
+    printf '%s/larch-logs/%s/%s\n' "$LARCH_LOG_REPO_ROOT" "$skill" "$run_id"
 }
 
 larch_log_run_dir() {

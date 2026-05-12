@@ -27,14 +27,27 @@ Payload content is never written to stdout. Payloads pass through
 `redact-tmpdir-paths.sh` and `redact-secrets.sh`; the `diagrams` batch also
 uses `sanitize-mermaid-fragment.sh --from-md` and fails closed on rejection.
 
-**Repo-root resolution**: `REPO_ROOT` (used by `commit`) and `LARCH_LOG_REPO_ROOT`
-(used by `write`/`append`/`init` via `lib-larch-log.sh`) both resolve via
-`git -C "$PWD" rev-parse --show-toplevel` so logs land in the consumer
-repo's `larch-logs/` tree rather than the plugin install cache. Resolution
-uses a two-assignment pattern (`VAR="$(git ...)" || true; [ -n "$VAR" ] || VAR="$(fallback)"`) to avoid the
-`(A || B) && C` shell-precedence trap where `C` (`pwd -P`) always runs even when `A` (git) succeeds. Both fall
-back to `SCRIPT_DIR/..` when invoked outside a git repo. `LARCH_LOG_ROOT`
-in the environment overrides the `lib-larch-log.sh` path (existing escape hatch).
+**Log-root resolution** — three-tier precedence (see `lib-larch-log.sh`):
+
+1. `$LARCH_LOG_ROOT` (explicit override — used by tests to isolate writes).
+2. `$IMPLEMENT_TMPDIR/larch-logs` (staging tier — when a `/implement` run is active,
+   `init`/`write`/`append` write here to keep the git working tree clean until
+   `commit` is called).
+3. `$LARCH_LOG_REPO_ROOT/larch-logs` (canonical repo destination — used when neither
+   override nor tmpdir is set, e.g. standalone `larch-log.sh` invocations).
+
+`REPO_ROOT` (used by `commit`) and `LARCH_LOG_REPO_ROOT` (used by `write`/`append`/`init`
+via `lib-larch-log.sh`) both resolve via `git -C "$PWD" rev-parse --show-toplevel` so
+logs land in the consumer repo rather than the plugin install cache. Both use the
+two-assignment pattern to avoid `(A || B) && C` shell-precedence issues; both fall
+back to `SCRIPT_DIR/..` outside a git repo.
+
+**`commit` copy semantics**: when `$IMPLEMENT_TMPDIR` is set, the run directory lives
+under `$IMPLEMENT_TMPDIR/larch-logs/`. The `commit` subcommand copies it to the
+canonical repo path (`$LARCH_LOG_REPO_ROOT/larch-logs/<skill>/<run-id>/`) before
+running `git add` / `git commit`, so the committed files always land in the repo tree
+regardless of where they were staged. When `$IMPLEMENT_TMPDIR` is unset (standalone
+usage) the source and destination are the same path and no copy is performed.
 
 **Batch registry**: all slugs, extensions, modes, and sanitizer hooks live in
 `scripts/larch-log-batches.sh`. See `scripts/larch-log-batches.md` for the full
