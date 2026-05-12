@@ -55,7 +55,7 @@ The script also writes `$IMPLEMENT_TMPDIR/postbump-state.sh` before `implement-f
 
 ## Postmerge Summary Comments
 
-`run_postmerge_phase` posts `larch:token-report` and `larch:final-summary` tracking-issue comments before teardown, rehydrating `LARCH_TOKEN_SESSION_ID`/`LARCH_CLAUDE_SOURCE_FILE` from `$IMPLEMENT_TMPDIR/session-env.sh`. The upserts are skipped when `FORKED_TARGET=true`, `ISSUE_NUMBER` is empty, or `REPO_UNAVAILABLE=true`. `advance_phase "done"` runs before teardown so the state file is updated while it still exists; the function ends with `exit 0` to bypass the state-machine loop after teardown removes the state file.
+`run_postmerge_phase` posts the `larch:final-summary` tracking-issue comment before teardown, rehydrating `LARCH_TOKEN_SESSION_ID`/`LARCH_CLAUDE_SOURCE_FILE` from `$IMPLEMENT_TMPDIR/session-env.sh`. The upsert is skipped when `FORKED_TARGET=true`, `ISSUE_NUMBER` is empty, or `REPO_UNAVAILABLE=true`. `advance_phase "done"` runs before teardown so the state file is updated while it still exists; the function ends with `exit 0` to bypass the state-machine loop after teardown removes the state file.
 
 ## Harness
 
