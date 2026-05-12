@@ -265,7 +265,7 @@ else
     if [[ "$DESIGN_ONLY" = true ]]; then
         echo "NEXT_ACTION=plan-goals-test-and-plan-review-tally-then-diagrams-then-step-9a1"
     else
-        echo "NEXT_ACTION=anchor-fragments-then-1r-then-step2"
+        echo "NEXT_ACTION=larch-log-batches-then-1r-then-step2"
     fi
     echo "POST_DESIGN_BOUNDARY_OK=true"
     printf '%s' "$WARNINGS"
