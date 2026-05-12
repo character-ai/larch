@@ -22,7 +22,7 @@ Note: `/create-skill` forwards to `/im` (not directly to `/implement`); `/im` in
 
 ### Pattern B — Stateful orchestrator (inline)
 
-Used when the parent runs setup, forwards `--session-env`, invokes the child, and then parses structured output to continue. Appears in `skills/fix-issue/SKILL.md § Step 5 — Execute` (parent step heading + explicit "Invoke `/implement` via the Skill tool" line + SIMPLE/HARD variant bullets) and in `skills/implement/SKILL.md § Step 1 — Ensure Design Plan Exists`, `skills/implement/SKILL.md § Step 5 — Code Review`, `skills/implement/SKILL.md § Step 8 — Version Bump` (around `/design`, `/review`, `/bump-version` calls). Canonical form:
+Used when the parent runs setup, forwards `--session-env`, invokes the child, and then parses structured output to continue. Appears in `skills/fix-issue/SKILL.md § Step 5 — Execute` (parent step heading + explicit "Invoke `/implement` via the Skill tool" line + SIMPLE/HARD variant bullets) and in `skills/implement/SKILL.md § Step 1 — Ensure Design Plan Exists`, `skills/implement/SKILL.md § Step 5 — Code Review`, `skills/implement/SKILL.md § Step 8+ — Ship PR State Machine` (around `/design`, `/review`, `/bump-version` calls). Canonical form:
 
 ```
 Invoke `/implement` via the Skill tool:
@@ -71,9 +71,9 @@ Canonical examples:
   # VERIFIED=false when STATUS != ok, independent of the numeric comparison.
   ```
 
-  See `skills/implement/SKILL.md § Step 8 — Version Bump` for the full recipe. `--mode post` **requires** `--before-count $COMMITS_BEFORE` — calling `--mode post` without it errors out at the script level.
+  See `skills/implement/SKILL.md § Step 8+ — Ship PR State Machine` for the full recipe. `--mode post` **requires** `--before-count $COMMITS_BEFORE` — calling `--mode post` without it errors out at the script level.
 
-- **Parsed stdout machine value after `/issue`** — the orchestrator reads `ISSUES_CREATED=<N>` / `ISSUES_FAILED=<N>` / per-issue `ISSUE_N_NUMBER`/`ISSUE_N_URL` lines from `/issue`'s stdout. Without those parsed values, the parent cannot file the created issue links into the PR body. See `skills/implement/SKILL.md § 9a.1 — Create OOS GitHub Issues`.
+- **Parsed stdout machine value after `/issue`** — the orchestrator reads `ISSUES_CREATED=<N>` / `ISSUES_FAILED=<N>` / per-issue `ISSUE_N_NUMBER`/`ISSUE_N_URL` lines from `/issue`'s stdout. Without those parsed values, the parent cannot file the created issue links into the PR body. See `skills/implement/SKILL.md § Step 8+ — Ship PR State Machine` (the OOS pipeline runs as a checkpoint inside the ship-pr orchestration).
 
 - **Sentinel file** — nested `/design` exports the full file-backed bundle (plan, plan-review tally, OOS, rejected findings, accepted-plan findings, optional architecture diagram) through `$IMPLEMENT_TMPDIR/design-export/manifest.env`. `/implement` Step 1 reads that manifest (or notices its absence / `MANIFEST_FAILED=true`) to hydrate `PLAN_FILE`, `PLAN_REVIEW_TALLY_FILE`, `CONTESTED_CRITERIA_FILE`, `OOS_FILE`, `REJECTED_FINDINGS_FILE`, `ACCEPTED_PLAN_FINDINGS_FILE`, and `ARCHITECTURE_DIAGRAM_FILE` — the manifest is the single file-backed handoff for the entire exported design bundle, not just one path. See `skills/design/scripts/{read,write}-design-manifest.md` for the schema.
 
