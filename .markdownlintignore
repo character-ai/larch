@@ -1,0 +1,3 @@
+# larch-logs/ contains runtime data artifacts extracted from historical sources.
+# Content is not authoring-quality markdown and should not be linted.
+larch-logs/

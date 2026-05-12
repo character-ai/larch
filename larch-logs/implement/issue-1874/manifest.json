@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "skill": "implement",
+  "run_id": "issue-1874",
+  "parent_skill": null,
+  "issue_number": 1874,
+  "pr_number": null,
+  "status": "done",
+  "larch_version": "26.0.2",
+  "model_roster": {},
+  "effort": "max",
+  "started_at": "2026-05-11T20:42:24Z",
+  "updated_at": "2026-05-11T20:42:24Z",
+  "attempt": 1,
+  "superseded_by": null,
+  "stalled_at_step": null,
+  "flags": {}
+}

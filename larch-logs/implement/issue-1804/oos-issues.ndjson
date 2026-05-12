@@ -1,0 +1,1 @@
+{"schema_version": 1, "phase": "retroactive-backfill", "body": "## Accepted OOS (GitHub issues filed)\n\n- [OOS] Research: vendor efficiency improvements for reviewer launcher (smaller model + session threading) — #1820\n\n## Rejected / Out-of-Scope Observations (not filed)\n\n(none)"}
