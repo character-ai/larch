@@ -1,9 +1,10 @@
 # lib-cursor-auth.sh
 
-Sourced library exposing two pure functions used by every live `cursor agent` call site:
+Sourced library exposing Cursor auth helpers used by every live `cursor agent` call site:
 
 - `cursor_auth_argv` — populates the global `CURSOR_AUTH_ARGS` array with `(--api-key "$CURSOR_API_KEY")` when the env var is non-empty after whitespace trim, else leaves the array empty (preserves today's `cursor login` keychain fallback).
 - `cursor_auth_preflight` — Darwin-gated read-only sanity check. Returns 0 when the launcher should proceed (env or keychain looks viable), returns 2 when both auth sources are demonstrably absent on Darwin. Writes an actionable multi-line message to stderr on the failure path.
+- `cursor_preread_service_token` — Darwin-gated, best-effort pre-read of the exact `cursor-user` / `cursor-access-token` keychain service. When `CURSOR_API_KEY` is already non-empty it is a no-op; otherwise a successful non-empty read is exported as `CURSOR_API_KEY` so `cursor_auth_argv` emits `--api-key` before `cursor agent` can race on its own keychain read.
 
 ## Callers (parity contract)
 
@@ -18,13 +19,14 @@ Sourced library exposing two pure functions used by every live `cursor agent` ca
 - Never echoes the key on any path (including all error paths in `cursor_auth_preflight`).
 - Never mutates argv beyond the `CURSOR_AUTH_ARGS` global array; callers control the rest.
 - Returns rather than `exit`s — keeps callers in control of exit semantics so each launcher can synthesize its tool-specific failure channel (sentinel files for `launch-review.sh --tool cursor`, KV envelope for `launch-cursor-implement.sh`, plain `exit 3` for `run-negotiation-round.sh`).
-- Darwin-only keychain probe (`security find-generic-password -a cursor-user`); on non-Darwin, preflight is a no-op.
+- Darwin-only service-specific keychain probe (`security find-generic-password -a cursor-user -s cursor-access-token`); on non-Darwin, preflight is a no-op.
+- Darwin-only keychain pre-read uses `security find-generic-password -a cursor-user -s cursor-access-token -w`; failures and empty reads are silent no-ops so callers retain Cursor's default auth fallback.
 - Strictly read-only: never invokes `security delete-*`, never spawns a Cursor subprocess, never performs network I/O.
 - Bash 3.2-safe: forbids `declare -n`, `local -n`, `mapfile`, `readarray`, and `eval` for secret-bearing assembly. Whitespace trim uses Bash-3.2-safe parameter expansion only.
 
 ## Test-mode gating (FINDING_6)
 
-Every test-only branch in `lib-cursor-auth.sh` (`LIB_CURSOR_AUTH_TEST_UNAME`, `LIB_CURSOR_AUTH_TEST_SECURITY_RC`) is reachable ONLY when `LARCH_LIB_CURSOR_AUTH_TEST_MODE=1`. Production code paths ignore all `LIB_CURSOR_AUTH_TEST_*` vars unless that single sentinel is also set, so an operator setting one of the test vars alone cannot disable Darwin preflight on a real machine.
+Every test-only branch in `lib-cursor-auth.sh` (`LIB_CURSOR_AUTH_TEST_UNAME`, `LIB_CURSOR_AUTH_TEST_SECURITY_RC`, `LIB_CURSOR_AUTH_TEST_PREREAD_TOKEN`) is reachable ONLY when `LARCH_LIB_CURSOR_AUTH_TEST_MODE=1`. Production code paths ignore all `LIB_CURSOR_AUTH_TEST_*` vars unless that single sentinel is also set, so an operator setting one of the test vars alone cannot disable Darwin preflight or inject a fake pre-read token on a real machine.
 
 ## Verified Cursor CLI behavior
 
@@ -35,6 +37,8 @@ Every test-only branch in `lib-cursor-auth.sh` (`LIB_CURSOR_AUTH_TEST_UNAME`, `L
 `scripts/test-lib-cursor-auth.sh` (sibling contract `scripts/test-lib-cursor-auth.md`). Verifies:
 - `cursor_auth_argv` populates `CURSOR_AUTH_ARGS` correctly for empty / whitespace-only / single-line / leading-or-trailing-whitespace key values.
 - `cursor_auth_preflight` returns 0 for non-empty key, 0 on non-Darwin, 0 on Darwin when keychain entry exists, 2 on Darwin with empty key + missing keychain entry.
+- `cursor_preread_service_token` preserves an existing key, no-ops on non-Darwin, exports a mocked Darwin token, and no-ops on empty token reads.
+- `cursor_launcher_setup_auth_argv` wires the pre-read before argv hydration.
 - All `LIB_CURSOR_AUTH_TEST_*` overrides are silently ignored unless `LARCH_LIB_CURSOR_AUTH_TEST_MODE=1`.
 
 Wired into `Makefile` `test-harnesses-2` shard alongside `test-launch-review`. Excluded from `agent-lint.toml` per the standard pattern for test scripts and their `.md` siblings.

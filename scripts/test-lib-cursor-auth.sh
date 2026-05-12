@@ -166,6 +166,59 @@ else
     fail 16 "cursor-auth-flags.sh on non-Darwin empty key should exit 0 with no flags; got: $FLAGS_OUT"
 fi
 
+_preread_run() {
+    # shellcheck disable=SC2016 # Child shell expands env vars set for this test.
+    env -u CURSOR_API_KEY LIB_CURSOR_AUTH_PATH="$LIB" "$@" bash -c '
+        set -euo pipefail
+        # shellcheck source=/dev/null
+        . "$LIB_CURSOR_AUTH_PATH"
+        cursor_preread_service_token
+        printf "%s\n" "${CURSOR_API_KEY-__unset__}"
+    '
+}
+
+# Test 17: pre-read is a no-op when CURSOR_API_KEY is already set.
+OUT=$(_preread_run CURSOR_API_KEY=already-set LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Darwin LIB_CURSOR_AUTH_TEST_PREREAD_TOKEN=mocked-token)
+if [[ "$OUT" == "already-set" ]]; then pass; else fail 17 "pre-read should not overwrite existing CURSOR_API_KEY; got: $OUT"; fi
+
+# Test 18: pre-read is a no-op on non-Darwin.
+OUT=$(_preread_run LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux LIB_CURSOR_AUTH_TEST_PREREAD_TOKEN=mocked-token)
+if [[ "$OUT" == "__unset__" ]]; then pass; else fail 18 "pre-read on non-Darwin should leave CURSOR_API_KEY unset; got: $OUT"; fi
+
+# Test 19: pre-read on Darwin exports a non-empty mocked token.
+OUT=$(_preread_run LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Darwin LIB_CURSOR_AUTH_TEST_PREREAD_TOKEN=mocked-token)
+if [[ "$OUT" == "mocked-token" ]]; then pass; else fail 19 "pre-read on Darwin should export mocked token; got: $OUT"; fi
+
+# Test 20: pre-read on Darwin with an empty mocked token leaves CURSOR_API_KEY unset.
+OUT=$(_preread_run LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Darwin LIB_CURSOR_AUTH_TEST_PREREAD_TOKEN=)
+if [[ "$OUT" == "__unset__" ]]; then pass; else fail 20 "pre-read with empty token should leave CURSOR_API_KEY unset; got: $OUT"; fi
+
+# Test 21: the shared Cursor launcher auth setup calls the pre-read before
+# cursor_auth_argv, so a readable Darwin service becomes adjacent --api-key argv
+# elements.
+_launcher_preread_run() {
+    # shellcheck disable=SC2016 # Child shell expands REPO_ROOT_PATH and CURSOR_AUTH_ARGS.
+    env -u CURSOR_API_KEY \
+        LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 \
+        LIB_CURSOR_AUTH_TEST_UNAME=Darwin \
+        LIB_CURSOR_AUTH_TEST_SECURITY_RC=0 \
+        LIB_CURSOR_AUTH_TEST_PREREAD_TOKEN=mocked-token \
+        REPO_ROOT_PATH="$REPO_ROOT" \
+        bash -c '
+        set -euo pipefail
+        SCRIPT_DIR="$REPO_ROOT_PATH/scripts"
+        # shellcheck source=/dev/null
+        . "$SCRIPT_DIR/lib-cursor-launcher-common.sh"
+        cursor_launcher_setup_auth_argv
+        for arg in ${CURSOR_AUTH_ARGS[@]+"${CURSOR_AUTH_ARGS[@]}"}; do
+            printf "%s\n" "$arg"
+        done
+    '
+}
+OUT=$(_launcher_preread_run)
+EXPECTED=$'--api-key\nmocked-token'
+if [[ "$OUT" == "$EXPECTED" ]]; then pass; else fail 21 "launcher setup should emit --api-key from pre-read token; expected '$EXPECTED', got: $OUT"; fi
+
 TOTAL=$((PASS_COUNT + FAIL_COUNT))
 if (( FAIL_COUNT == 0 )); then
     echo "PASS: test-lib-cursor-auth.sh — $PASS_COUNT/$TOTAL assertions"

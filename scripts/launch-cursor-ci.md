@@ -12,7 +12,7 @@ launch-cursor-ci.sh --role fix|resolve-conflict|bump-classify|changelog-draft --
 
 ## Behavior
 
-The launcher builds a fixed prompt containing only trusted path and identifier values, wraps it through `cursor-wrap-prompt.sh`, and runs Cursor through `run-external-agent.sh --capture-stdout-only`. It writes retry metadata via `lib-cursor-launcher-common.sh`, emits timing with `--timing-task-kind cursor-ci-fix`, and writes a best-effort `${OUTPUT}.token-record` sidecar from Cursor JSON usage.
+The launcher builds a fixed prompt containing only trusted path and identifier values, wraps it through `cursor-wrap-prompt.sh`, and runs Cursor through `run-external-agent.sh --capture-stdout-only`. It writes retry metadata via `lib-cursor-launcher-common.sh`, emits timing with `--timing-task-kind cursor-ci-fix`, and writes a best-effort `${OUTPUT}.token-record` sidecar from Cursor JSON usage. Cursor auth setup is shared with `launch-review.sh --tool cursor`: after the Darwin preflight, the helper best-effort pre-reads the `cursor-user` / `cursor-access-token` keychain service into `CURSOR_API_KEY` so the Cursor child receives `--api-key` when the service is readable.
 
 ## Harness
 

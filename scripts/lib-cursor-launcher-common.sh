@@ -36,6 +36,7 @@ cursor_launcher_setup_auth_argv() {
     cursor_auth_preflight || return $?
     # shellcheck disable=SC2034 # Fixed global consumed by the sourcing launcher.
     CURSOR_AUTH_ARGS=()
+    cursor_preread_service_token
     cursor_auth_argv
 }
 

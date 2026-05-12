@@ -129,7 +129,7 @@ skipped.
 
 When `CURSOR_API_KEY` is set in your environment, larch's launchers (`scripts/launch-review.sh --tool cursor`, `scripts/launch-cursor-implement.sh`, `scripts/run-negotiation-round.sh`, plus the runtime markdown templates that emit `cursor agent` invocations) pass `--api-key "$CURSOR_API_KEY"` explicitly to `cursor agent`, bypassing the macOS keychain entirely for that auth path. This is the recommended setup for larch.
 
-When `CURSOR_API_KEY` is unset or empty, larch falls back to Cursor's default auth resolution, which on macOS may consult the keychain entry created by `cursor login` (account `cursor-user`).
+When `CURSOR_API_KEY` is unset or empty on macOS, larch's shared Cursor launchers first pre-read the service that Cursor itself uses (`cursor-user` / `cursor-access-token`) and export the result as `CURSOR_API_KEY` for the child invocation. If that read succeeds, the Cursor child receives `--api-key` and does not perform its own keychain read. If the pre-read fails or returns empty, larch falls back to Cursor's default auth resolution, which may consult the keychain entry created by `cursor login`.
 
 A stale or transiently-unhealthy `cursor-user` keychain entry can produce intermittent failures during parallel reviewer launches with errors like:
 
@@ -148,7 +148,7 @@ export CURSOR_API_KEY="<your-key>"   # recommended for larch (env-only, determin
 cursor login                          # recreates the keychain entry interactively
 ```
 
-On Darwin only, larch's launchers run a read-only pre-launch check: if `CURSOR_API_KEY` is empty AND no `cursor-user` keychain entry exists, the launcher exits early with an actionable message rather than letting `cursor agent` emit the cryptic `Security process exited with code: 45`. The check is strictly read-only — it does NOT delete keychain entries or invoke `cursor` as a subprocess. On Linux/CI, the check is a no-op (`CURSOR_API_KEY` is the only auth path).
+On Darwin only, larch's launchers run a read-only pre-launch check: if `CURSOR_API_KEY` is empty AND no `cursor-user` / `cursor-access-token` keychain entry exists, the launcher exits early with an actionable message rather than letting `cursor agent` emit the cryptic `Security process exited with code: 45`. The check and pre-read are strictly read-only — they do NOT delete keychain entries or invoke `cursor` as a subprocess. On Linux/CI, the check and pre-read are no-ops (`CURSOR_API_KEY` is the only auth path).
 
 For the at-rest secret-persistence tradeoff (the API key appears in `.meta` `CMD_JSON` sidecars under the session tmpdir, because the collector's empty-output retry path relies on faithful argv reconstruction), see `SECURITY.md`.
 
