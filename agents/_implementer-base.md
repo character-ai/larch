@@ -55,6 +55,8 @@ Then write `qa-pending.json` (atomically) with one or more questions:
 {"questions": [{"id": "q1", "text": "Full text of the question"}, {"id": "q2", "text": "..."}]}
 ```
 
+The `questions` key is **required** — a non-empty array with `id` and `text` per entry. Do NOT use `items`, `data`, or any other top-level key. Do NOT add a `status` field to `qa-pending.json`. The dispatcher validates the exact schema and bails with `manifest-schema-invalid` when the format is wrong (a repair path exists for `items[]` but prompt-correct output is always preferable).
+
 Then write the manifest with `status=needs_qa`, mirror the same questions array under `manifest.needs_qa.questions`, and exit cleanly. Do NOT print the questions to stdout — the orchestrator reads them from `qa-pending.json`, not from your transcript.
 
 **Question-text sanitization**: the dispatcher does NOT pipe `needs_qa.questions[*].text` through `redact-secrets.sh` — the orchestrator surfaces questions verbatim via `AskUserQuestion` (and they may flow into session logs). Phrase questions WITHOUT secrets, internal hostnames/URLs, PII, or any sensitive content. If you need to ask about a specific value, refer to it indirectly (e.g., "the API token at line N of file F" rather than the token's literal value).
