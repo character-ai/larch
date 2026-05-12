@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [27.0.0] - 2026-05-12
+
+### Changed
+
+- Split `agents/reviewer-correctness-edges.md` (generated combined "Correctness + Edge Cases" archetype) into two new specialist archetypes: `agents/reviewer-plan-fidelity.md` (plan-to-implementation traceability; requires the design plan as input) and `agents/reviewer-code-robustness.md` (edge cases, failure recovery, and silent data corruption; diff-only, no plan required). Replaces the old generator script and `agents/reviewer-correctness-edges.md`; adds `scripts/generate-reviewer-plan-fidelity-agent.sh` and `scripts/generate-reviewer-code-robustness-agent.sh`; updates `scripts/generators.tsv`, CI focus-area enum check, and `docs/review-agents.md`.
+
 ### Changed
 
 - Expand `/design` Step 3 plan-review panel from 4 reviewers to 10 (5 personalities × 2 tools). Each of the 5 archetypes (Architecture/Standards, Edge-case/Failure-mode, Innovation/Exploration, Pragmatism/Safety, Requirements/Completeness) now runs on both Cursor and Codex. Adds `requirements` to `render-plan-review-prompt.sh`, adds new launch blocks in `skills/design/SKILL.md` Step 3, updates `plan-review.md` panel contract and output paths, extends test coverage for the new archetype, and updates `topology.tsv` + `docs/topology.md`.

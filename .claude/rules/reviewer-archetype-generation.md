@@ -5,8 +5,10 @@ paths:
   - "agents/reviewer-*.md"
   - "scripts/generate-code-reviewer-agent.sh"
   - "scripts/generate-code-reviewer-agent.md"
-  - "scripts/generate-reviewer-correctness-edges-agent.sh"
-  - "scripts/generate-reviewer-correctness-edges-agent.md"
+  - "scripts/generate-reviewer-plan-fidelity-agent.sh"
+  - "scripts/generate-reviewer-plan-fidelity-agent.md"
+  - "scripts/generate-reviewer-code-robustness-agent.sh"
+  - "scripts/generate-reviewer-code-robustness-agent.md"
   - "scripts/generate-reviewer-security-structure-tests-agent.sh"
   - "scripts/generate-reviewer-security-structure-tests-agent.md"
   - "scripts/check-generators.sh"
@@ -20,7 +22,8 @@ paths:
 there), then regenerate the affected agent file(s):
 
 - `bash scripts/generate-code-reviewer-agent.sh` → `agents/code-reviewer.md`
-- `bash scripts/generate-reviewer-correctness-edges-agent.sh` → `agents/reviewer-correctness-edges.md`
+- `bash scripts/generate-reviewer-plan-fidelity-agent.sh` → `agents/reviewer-plan-fidelity.md`
+- `bash scripts/generate-reviewer-code-robustness-agent.sh` → `agents/reviewer-code-robustness.md`
 - `bash scripts/generate-reviewer-security-structure-tests-agent.sh` → `agents/reviewer-security-structure-tests.md`
 
 CI's `agent-sync` job runs `scripts/check-generators.sh` to enforce drift across all registered generators.

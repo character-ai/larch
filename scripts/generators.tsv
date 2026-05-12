@@ -5,7 +5,8 @@
 # walker contract and scripts/generate-code-reviewer-agent.md for the
 # exemplar generator.
 scripts/generate-code-reviewer-agent.sh	agents/code-reviewer.md
-scripts/generate-reviewer-correctness-edges-agent.sh	agents/reviewer-correctness-edges.md
+scripts/generate-reviewer-plan-fidelity-agent.sh	agents/reviewer-plan-fidelity.md
+scripts/generate-reviewer-code-robustness-agent.sh	agents/reviewer-code-robustness.md
 scripts/generate-reviewer-security-structure-tests-agent.sh	agents/reviewer-security-structure-tests.md
 scripts/generate-pre-rendered-reviewer-prompts.sh	agents/pre-rendered/.manifest
 scripts/generate-cursor-implementer.sh	agents/cursor-implementer.md

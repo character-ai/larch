@@ -253,8 +253,8 @@ assert_equals "sequential log" $'gen-a\ngen-b' "$(<"$dir/scripts/order.log")"
 # assertions below in the same PR. The pin acts as a guardrail so an accidental
 # row removal fails CI loudly.
 data_rows="$(awk -F '\t' '!/^#/ && NF == 2 && $1 != "" && $2 != "" { print $1 "\t" $2 }' "$REPO_ROOT/scripts/generators.tsv")"
-assert_equals "real registry row count" "8" "$(printf '%s\n' "$data_rows" | sed '/^$/d' | wc -l | tr -d ' ')"
-assert_equals "real registry canonical rows" $'scripts/generate-code-reviewer-agent.sh\tagents/code-reviewer.md\nscripts/generate-reviewer-correctness-edges-agent.sh\tagents/reviewer-correctness-edges.md\nscripts/generate-reviewer-security-structure-tests-agent.sh\tagents/reviewer-security-structure-tests.md\nscripts/generate-pre-rendered-reviewer-prompts.sh\tagents/pre-rendered/.manifest\nscripts/generate-cursor-implementer.sh\tagents/cursor-implementer.md\nscripts/generate-gemini-implementer.sh\tagents/gemini-implementer.md\nscripts/generate-codex-implementer.sh\tagents/codex-implementer.md\nscripts/generate-topology-docs.sh\tdocs/topology.md' "$data_rows"
+assert_equals "real registry row count" "9" "$(printf '%s\n' "$data_rows" | sed '/^$/d' | wc -l | tr -d ' ')"
+assert_equals "real registry canonical rows" $'scripts/generate-code-reviewer-agent.sh\tagents/code-reviewer.md\nscripts/generate-reviewer-plan-fidelity-agent.sh\tagents/reviewer-plan-fidelity.md\nscripts/generate-reviewer-code-robustness-agent.sh\tagents/reviewer-code-robustness.md\nscripts/generate-reviewer-security-structure-tests-agent.sh\tagents/reviewer-security-structure-tests.md\nscripts/generate-pre-rendered-reviewer-prompts.sh\tagents/pre-rendered/.manifest\nscripts/generate-cursor-implementer.sh\tagents/cursor-implementer.md\nscripts/generate-gemini-implementer.sh\tagents/gemini-implementer.md\nscripts/generate-codex-implementer.sh\tagents/codex-implementer.md\nscripts/generate-topology-docs.sh\tdocs/topology.md' "$data_rows"
 
 # o. Post-run drift detection.
 dir="$(new_fixture post-run-drift)"

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Generate agents/reviewer-correctness-edges.md from the canonical archetype in
+# Generate agents/reviewer-code-robustness.md from the canonical archetype in
 # skills/shared/reviewer-templates.md. The generated file is not hand-edited;
 # CI enforces that the committed agent file matches generator output.
 #
 # Usage:
-#   bash scripts/generate-reviewer-correctness-edges-agent.sh
-#   bash scripts/generate-reviewer-correctness-edges-agent.sh --check
+#   bash scripts/generate-reviewer-code-robustness-agent.sh
+#   bash scripts/generate-reviewer-code-robustness-agent.sh --check
 #
 # Determinism: no timestamps, no git state, no locale-dependent output
 # (LC_ALL=C). The YAML frontmatter and preamble comment are hard-coded below.
@@ -16,8 +16,8 @@ export LC_ALL=C
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 TEMPLATE="$REPO_ROOT/skills/shared/reviewer-templates.md"
-AGENT_FILE="$REPO_ROOT/agents/reviewer-correctness-edges.md"
-SECTION_HEADING="## Reviewer: Correctness + Edge Cases"
+AGENT_FILE="$REPO_ROOT/agents/reviewer-code-robustness.md"
+SECTION_HEADING="## Reviewer: Code Robustness"
 
 MODE="write"
 if [[ "${1:-}" == "--check" ]]; then
@@ -37,8 +37,8 @@ trap 'rm -f "$TMP"' EXIT
 
 cat >"$TMP" <<'HEADER'
 ---
-name: reviewer-correctness-edges
-description: "Specialist code reviewer concentrating on correctness and edge cases: logic errors, off-by-one, nil/null handling, type mismatches, race conditions, error paths, math errors, boundary conditions, defensive design, silent data corruption, and architectural invariants."
+name: reviewer-code-robustness
+description: "Specialist code reviewer concentrating on code robustness: edge cases, boundary behavior, failure recovery, partial failure, resource cleanup, retry/idempotency, silent data corruption, and invariants at failure boundaries. Does not require or expect a design plan."
 model: sonnet
 tools:
   - Read
@@ -46,7 +46,7 @@ tools:
   - Glob
 ---
 
-<!-- AUTO-GENERATED: Derived from skills/shared/reviewer-templates.md. Do not edit. Regenerate via: bash scripts/generate-reviewer-correctness-edges-agent.sh -->
+<!-- AUTO-GENERATED: Derived from skills/shared/reviewer-templates.md. Do not edit. Regenerate via: bash scripts/generate-reviewer-code-robustness-agent.sh -->
 
 HEADER
 
@@ -76,8 +76,8 @@ awk -v heading="$SECTION_HEADING" '
 if [[ "$MODE" == "check" ]]; then
   if ! diff -u "$AGENT_FILE" "$TMP"; then
     echo "" >&2
-    echo "agents/reviewer-correctness-edges.md is out of sync with skills/shared/reviewer-templates.md." >&2
-    echo "Run: bash scripts/generate-reviewer-correctness-edges-agent.sh" >&2
+    echo "agents/reviewer-code-robustness.md is out of sync with skills/shared/reviewer-templates.md." >&2
+    echo "Run: bash scripts/generate-reviewer-code-robustness-agent.sh" >&2
     exit 1
   fi
   exit 0
