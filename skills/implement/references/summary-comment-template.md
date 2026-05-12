@@ -8,7 +8,6 @@
 <!-- larch:metadata v1 runid=<R> -->
 <!-- larch:diagrams v1 runid=<R> -->
 <!-- larch:plan v1 runid=<R> -->
-<!-- larch:token-report v1 runid=<R> -->
 <!-- larch:final-summary v1 runid=<R> -->
 ```
 
