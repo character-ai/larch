@@ -34,6 +34,11 @@
 #   - needs_qa repair path: stub-Codex writes a needs_qa manifest without
 #     needs_qa.questions and a qa-pending.json with items[] format; dispatcher
 #     normalizes to questions[] and emits STATUS=needs_qa (not bailed — issue #1883).
+#   - --workflow SIMPLE passed to a stub-Codex run results in --timeout 3600 passed
+#     to the launcher (verified via the .meta file written by run-external-agent.sh).
+#   - --workflow HARD passed to a stub-Codex run results in --timeout 7200.
+#   - --workflow omitted (default) passed to a stub-Codex run results in --timeout 3600
+#     (default workflow resolves to SIMPLE).
 #
 # External-implementer spawning paths (manifest validation, dispatcher-side commit,
 # sanitization, launcher-retry) are covered by separate launcher / end-to-end tests;
@@ -824,6 +829,92 @@ if [[ -s "$QA_PENDING_16" ]] \
     pass
 else
     fail 16 "repaired qa-pending.json should have questions[] and no items[]; contents: $(cat "$QA_PENDING_16" 2>/dev/null)"
+fi
+
+# ---------------------------------------------------------------------------
+# Tests 17a/17b: --workflow SIMPLE/HARD selects the correct --timeout for the
+# launcher. The wiring LAUNCHER_TIMEOUT=3600 (SIMPLE) / 7200 (HARD) in
+# step2-implement.sh is verified via the TIMEOUT= key written by
+# run-external-agent.sh to the .meta sidecar before spawning the subprocess.
+# ---------------------------------------------------------------------------
+STUB17="$SCRATCH/stub-bin-17"; mkdir -p "$STUB17"
+cat > "$STUB17/codex" <<'STUB17_CODEX'
+#!/usr/bin/env bash
+set -euo pipefail
+: "${STEP2_MANIFEST_PATH:?}"
+output_path=""
+last=""
+for arg in "$@"; do
+    if [[ "$last" == "--output-last-message" ]]; then
+        output_path="$arg"
+    fi
+    last="$arg"
+done
+[[ -n "$output_path" ]] && printf 'stub transcript\n' > "$output_path"
+cat > "$STEP2_MANIFEST_PATH.tmp" <<'JSON'
+{
+  "schema_version": "1",
+  "status": "bailed",
+  "bail_reason": "stub-bailed"
+}
+JSON
+mv "$STEP2_MANIFEST_PATH.tmp" "$STEP2_MANIFEST_PATH"
+printf 'stub codex stdout\n'
+STUB17_CODEX
+chmod +x "$STUB17/codex"
+
+# Test 17a: --workflow SIMPLE → launcher must receive --timeout 3600.
+TMP17A="$SCRATCH/test17a"; mkdir -p "$TMP17A"
+printf 'fresh-step2-17a\n' > "$TMP17A/session-id"
+OUT_17A=$(cd "$REPO_ROOT" && \
+    PATH="$STUB17:$PATH" \
+    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    STEP2_MANIFEST_PATH="$TMP17A/manifest.json" \
+    LARCH_CODEX_MODEL=stub-codex-model \
+    "$DISPATCHER" --tmpdir "$TMP17A" --plan-file "$PLAN" --feature-file "$FEATURE" \
+        --auto-mode false --coder codex --workflow SIMPLE 2>&1)
+META17A="$TMP17A/codex-impl-transcript.txt.meta"
+TIMEOUT17A=$(awk -F= '/^TIMEOUT=/{print $2; exit}' "$META17A" 2>/dev/null || true)
+if [[ "$TIMEOUT17A" == "3600" ]]; then
+    pass
+else
+    fail 17a "--workflow SIMPLE should set launcher --timeout 3600, got TIMEOUT=$TIMEOUT17A (out=$OUT_17A meta=$(cat "$META17A" 2>/dev/null))"
+fi
+
+# Test 17b: --workflow HARD → launcher must receive --timeout 7200.
+TMP17B="$SCRATCH/test17b"; mkdir -p "$TMP17B"
+printf 'fresh-step2-17b\n' > "$TMP17B/session-id"
+OUT_17B=$(cd "$REPO_ROOT" && \
+    PATH="$STUB17:$PATH" \
+    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    STEP2_MANIFEST_PATH="$TMP17B/manifest.json" \
+    LARCH_CODEX_MODEL=stub-codex-model \
+    "$DISPATCHER" --tmpdir "$TMP17B" --plan-file "$PLAN" --feature-file "$FEATURE" \
+        --auto-mode false --coder codex --workflow HARD 2>&1)
+META17B="$TMP17B/codex-impl-transcript.txt.meta"
+TIMEOUT17B=$(awk -F= '/^TIMEOUT=/{print $2; exit}' "$META17B" 2>/dev/null || true)
+if [[ "$TIMEOUT17B" == "7200" ]]; then
+    pass
+else
+    fail 17b "--workflow HARD should set launcher --timeout 7200, got TIMEOUT=$TIMEOUT17B (out=$OUT_17B meta=$(cat "$META17B" 2>/dev/null))"
+fi
+
+# Test 17c: --workflow omitted (default) → default workflow is SIMPLE → --timeout 3600.
+TMP17C="$SCRATCH/test17c"; mkdir -p "$TMP17C"
+printf 'fresh-step2-17c\n' > "$TMP17C/session-id"
+OUT_17C=$(cd "$REPO_ROOT" && \
+    PATH="$STUB17:$PATH" \
+    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    STEP2_MANIFEST_PATH="$TMP17C/manifest.json" \
+    LARCH_CODEX_MODEL=stub-codex-model \
+    "$DISPATCHER" --tmpdir "$TMP17C" --plan-file "$PLAN" --feature-file "$FEATURE" \
+        --auto-mode false --coder codex 2>&1)
+META17C="$TMP17C/codex-impl-transcript.txt.meta"
+TIMEOUT17C=$(awk -F= '/^TIMEOUT=/{print $2; exit}' "$META17C" 2>/dev/null || true)
+if [[ "$TIMEOUT17C" == "3600" ]]; then
+    pass
+else
+    fail 17c "default --workflow (SIMPLE) should set launcher --timeout 3600, got TIMEOUT=$TIMEOUT17C (out=$OUT_17C meta=$(cat "$META17C" 2>/dev/null))"
 fi
 
 # ---------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 # test-step2-dispatch.sh
 
-**Purpose**: Offline regression harness for `skills/implement/scripts/step2-implement.sh`. Most tests cover dispatcher branches that do not require spawning a real external implementer; a small number (Test 12, Test 13) inject a stub `codex` binary on PATH to exercise the spawn → manifest → Step 6/7 → dispatcher-side commit flow. Runs in <1s with no real `codex`/`cursor`/`gemini` binary and no network.
+**Purpose**: Offline regression harness for `skills/implement/scripts/step2-implement.sh`. Most tests cover dispatcher branches that do not require spawning a real external implementer; several (Tests 12, 13, 16, 17) inject a stub `codex` binary on PATH to exercise the spawn → manifest → dispatcher flow. Runs with no real `codex`/`cursor`/`gemini` binary and no network.
 
 **Coverage**:
 1. `--coder claude` emits `STATUS=claude_fallback` and `ORCHESTRATOR_EDIT_AUTHORITY=allowed` (and no other KV keys — no `MANIFEST=`, no `TRANSCRIPT=`, etc.), and writes no baseline files.
@@ -39,6 +39,7 @@
 15b. `--workflow HARD` is accepted; dispatcher emits `STATUS=claude_fallback` as normal.
 15c. `--workflow bogus` exits with code 2 and stderr contains `--workflow must be 'SIMPLE' or 'HARD'`.
 16. `needs_qa` repair path (issue #1883): stub Codex writes a manifest with `status=needs_qa` but no `needs_qa.questions`, and a `qa-pending.json` with non-standard `items[]` format. The dispatcher must normalize `items[]` to canonical `questions[]` and emit `STATUS=needs_qa` (not `STATUS=bailed REASON=manifest-schema-invalid`). Two assertions: (a) dispatcher stdout contains `STATUS=needs_qa` and `QA_PENDING=` with `ORCHESTRATOR_EDIT_AUTHORITY=forbidden`; (b) the repaired `qa-pending.json` contains `questions[]` and no `items[]`.
+17. Timeout-selection wiring (`--workflow` → launcher `--timeout`): stub Codex that writes a `status=bailed` manifest; the `.meta` sidecar written by `run-external-agent.sh` before subprocess launch records `TIMEOUT=$TIMEOUT_SECONDS`. Test 17a asserts `--workflow SIMPLE` results in `TIMEOUT=3600`; Test 17b asserts `--workflow HARD` results in `TIMEOUT=7200`; Test 17c asserts that omitting `--workflow` (default SIMPLE) results in `TIMEOUT=3600`. Regression coverage for the `LAUNCHER_TIMEOUT=7200 / 3600` branch in `step2-implement.sh` that tests 15a–15c did not exercise (those use `--coder claude`, which early-returns before the launcher is spawned).
 
 All `--coder codex` invocations that proceed past argument parsing are run with cwd pinned to `$REPO_ROOT` so the dispatcher's git resolution targets the harness's own git tree. Cursor and Gemini health-gate tests also use `cd "$REPO_ROOT"` unless the assertion specifically covers outside-git ordering.
 
