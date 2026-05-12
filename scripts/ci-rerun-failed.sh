@@ -14,7 +14,8 @@
 #
 # Outputs (key=value to stdout, always emitted via EXIT trap):
 #   RERUN_SUBMITTED=true|false
-#   ERROR=<message>    (empty string on success)
+#   ALREADY_RUNNING=true|false   (true when gh reported the workflow is already in progress)
+#   ERROR=<message>              (empty string on success)
 #
 # Exit codes:
 #   0 — always (result communicated via output keys)
@@ -43,11 +44,13 @@ fi
 
 # --- Output defaults ---
 RERUN_SUBMITTED="false"
+ALREADY_RUNNING="false"
 ERROR="ci-rerun-failed.sh exited unexpectedly"
 
 # shellcheck disable=SC2329,SC2317  # invoked via EXIT trap
 emit_output() {
     echo "RERUN_SUBMITTED=$RERUN_SUBMITTED"
+    echo "ALREADY_RUNNING=$ALREADY_RUNNING"
     echo "ERROR=$ERROR"
 }
 trap 'emit_output' EXIT
@@ -61,7 +64,9 @@ if [[ $RERUN_EXIT -eq 0 ]]; then
     ERROR=""
 elif printf '%s' "$RERUN_OUTPUT" | grep -qi "already running"; then
     # Workflow is already in progress — no rerun needed; treat as submitted.
+    # ALREADY_RUNNING=true so callers can skip incrementing retry budgets.
     RERUN_SUBMITTED="true"
+    ALREADY_RUNNING="true"
     ERROR=""
 else
     RERUN_SUBMITTED="false"
