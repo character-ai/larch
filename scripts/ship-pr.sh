@@ -499,7 +499,11 @@ run_ci_fix_vendor() {
     rc=$?
     printf '%s\n' "$checks_out"
     [ "$rc" -eq 0 ] && printf '%s\n' "$checks_out" | grep -q '^RELEVANT_CHECKS_OK=true ' || return 1
-    "$SCRIPT_DIR/git-commit.sh" -m "Fix CI failure" || return 1
+    # Only commit when the vendor left uncommitted changes; vendor may have
+    # committed its own fix (working tree clean in that case).
+    if ! git diff --quiet HEAD 2>/dev/null; then
+        "$SCRIPT_DIR/git-commit.sh" -m "Fix CI failure" || return 1
+    fi
     "$SCRIPT_DIR/git-push.sh" || return 1
 }
 
@@ -523,6 +527,85 @@ run_evaluate_failure() {
     "$SCRIPT_DIR/gh-run-logs.sh" --run-id "$failed_run" --repo "$(read_state REPO)" || true
     run_ci_fix_vendor "$phase" "$failed_run" || exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12c)"
     state_set_many TRANSIENT_RETRIES 0 FIX_ATTEMPTS "$(( $(read_state FIX_ATTEMPTS) + 1 ))"
+}
+
+run_rebase_rebump() {
+    local phase=$1 drop_out rebase_out rebase_rc conflict_out run_id classify_out classify_rc
+    local apply_out new_version bump_type reasoning_file
+
+    # 1. Drop existing bump commit (non-fatal; CI-fix commits may sit on top)
+    drop_out=$("$SCRIPT_DIR/drop-bump-commit.sh" 2>&1) || true
+    printf '%s\n' "$drop_out"
+
+    # 2. Flush pending larch-log writes before rebase to avoid dirty-tree failures
+    run_id=$(read_state RUN_ID)
+    if [ -n "$run_id" ]; then
+        "$SCRIPT_DIR/larch-log.sh" commit --skill implement --run-id "$run_id" --no-push 2>/dev/null || true
+    fi
+
+    # 3. Rebase without pushing; keep in-progress on conflict for vendor resolution
+    rebase_out=$("$SCRIPT_DIR/rebase-push.sh" --no-push --keep-on-conflict 2>&1)
+    rebase_rc=$?
+    printf '%s\n' "$rebase_out"
+    if [ "$rebase_rc" -eq 1 ]; then
+        # Conflict — vendor waterfall with resolve-conflict role
+        conflict_out="$IMPLEMENT_TMPDIR/rebase-conflict-$(date +%s).out"
+        if command -v cursor >/dev/null 2>&1; then
+            "$SCRIPT_DIR/launch-cursor-ci.sh" --role resolve-conflict --output "$conflict_out" \
+                --run-id "$run_id" --repo "$(read_state REPO)" --timeout 1800 || true
+        else
+            "$SCRIPT_DIR/launch-codex-ci.sh" --role resolve-conflict --output "$conflict_out" \
+                --run-id "$run_id" --repo "$(read_state REPO)" --timeout 1800 || true
+        fi
+        "$SCRIPT_DIR/append-token-record.sh" --input "${conflict_out}.token-record" \
+            --tmpdir "$IMPLEMENT_TMPDIR" || true
+        # Fresh rebase after vendor fix: if vendor ran git rebase --continue, the
+        # branch is already rebased and this returns SKIPPED_ALREADY_FRESH. If the
+        # vendor left a conflict or broke the tree it fails, causing exit_stall.
+        rebase_out=$("$SCRIPT_DIR/rebase-push.sh" --no-push 2>&1)
+        rebase_rc=$?
+        printf '%s\n' "$rebase_out"
+        [ "$rebase_rc" -eq 0 ] || exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
+    elif [ "$rebase_rc" -ne 0 ]; then
+        exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
+    fi
+
+    # 4. Fast-forward local main so classify-bump.sh uses the correct merge-base
+    "$SCRIPT_DIR/git-sync-local-main.sh" 2>/dev/null || true
+
+    # 5. Re-bump using classify-bump.sh + apply-bump.sh directly
+    if [ "$(read_state HAS_BUMP)" != "false" ]; then
+        classify_out=$("$PLUGIN_ROOT/.claude/skills/bump-version/scripts/classify-bump.sh" 2>&1)
+        classify_rc=$?
+        printf '%s\n' "$classify_out"
+        [ "$classify_rc" -eq 0 ] || exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
+        new_version=$(kv_value NEW_VERSION "$classify_out")
+        bump_type=$(kv_value BUMP_TYPE "$classify_out")
+        reasoning_file=$(kv_value REASONING_FILE "$classify_out")
+        state_set_many BUMP_TYPE "$bump_type" NEW_VERSION "$new_version" BUMP_REASONING_FILE "$reasoning_file"
+        if [ "$bump_type" != "NONE" ] && [ -n "$new_version" ]; then
+            apply_out=$("$PLUGIN_ROOT/.claude/skills/bump-version/scripts/apply-bump.sh" \
+                --new-version "$new_version" 2>&1) || true
+            printf '%s\n' "$apply_out"
+            if [ "$(kv_value APPLIED "$apply_out")" != "true" ]; then
+                exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
+            fi
+        fi
+    fi
+
+    # 6. Force-push the rebased + re-bumped branch
+    "$SCRIPT_DIR/git-force-push.sh" || exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
+
+    # 7. Refresh larch-log after push (best-effort)
+    if [ -n "$run_id" ]; then
+        "$SCRIPT_DIR/larch-log.sh" commit --skill implement --run-id "$run_id" --no-push 2>/dev/null || true
+    fi
+
+    # 8. Increment counters, reset transient retries
+    state_set_many \
+        REBASE_COUNT "$(( $(read_state REBASE_COUNT) + 1 ))" \
+        ITERATION "$(( $(read_state ITERATION) + 1 ))" \
+        TRANSIENT_RETRIES 0
 }
 
 run_ci_phase() {
@@ -597,12 +680,12 @@ EOF
                 state_set_many REBASE_COUNT "$(( $(read_state REBASE_COUNT) + 1 ))" ITERATION "$(( $(read_state ITERATION) + 1 ))" TRANSIENT_RETRIES 0
                 return 0
             fi
-            state_set_many RESUME_PHASE "$phase" CALLER_KIND "$([ "$phase" = "ci-initial" ] && echo step10_rebase || echo step12_rebase)"
-            exit 5
+            run_rebase_rebump "$phase"
+            return 0
             ;;
         rebase_then_evaluate)
-            state_set_many RESUME_PHASE evaluate-failure CALLER_KIND "$([ "$phase" = "ci-initial" ] && echo step10_rebase_then_evaluate || echo step12_rebase_then_evaluate)"
-            exit 5
+            run_rebase_rebump "$phase"
+            run_evaluate_failure "$phase"
             ;;
         already_merged)
             state_set PR_CLOSED true
