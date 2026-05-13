@@ -44,7 +44,9 @@ After the initial version bump in Step 8, every subsequent rebase of the feature
    "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --full --output "$IMPLEMENT_TMPDIR/timing-report-rendered.md" || true
    "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch token-report --input-file "$IMPLEMENT_TMPDIR/token-report-rendered.md" || true
    "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch timing-report --input-file "$IMPLEMENT_TMPDIR/timing-report-rendered.md" || true
-   "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" commit --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --no-push || true
+   if [ "${no_logs_commit:-false}" != "true" ]; then
+     "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" commit --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --no-push || true
+   fi
    ```
 
    On any failure, log to `$IMPLEMENT_TMPDIR/execution-issues.md` under `Warnings` and continue — log refresh failure is non-fatal.
