@@ -1,0 +1,7 @@
+Quick mode review — round 1.
+Accepted 3 findings (all folded inline, rules 1-2):
+1. [correctness] ci.yaml:178 step name "of 7" → "of 8"
+2. [correctness] docs/linting.md harness table: 3 stale shard references updated
+3. [risk-integration] scripts/lib-cursor-auth.md: stale "alongside test-launch-review" claim
+
+No rejected findings. Round classified non-substantial (doc/label drift only).
