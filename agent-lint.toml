@@ -1174,6 +1174,12 @@ exclude = [
   # from runtime skill prose.
   "scripts/test-ship-pr.sh",
   "scripts/test-ship-pr.md",
+  # scripts/test-ci-wait.sh is the offline regression harness for the
+  # poll-count budget and suspend-resilience in ci-wait.sh. Referenced only
+  # from Makefile (test-ci-wait target) and the sibling contract
+  # scripts/test-ci-wait.md.
+  "scripts/test-ci-wait.sh",
+  "scripts/test-ci-wait.md",
   "scripts/test-launch-cursor-ci.sh",
   "scripts/test-launch-cursor-ci.md",
   "scripts/test-launch-codex-ci.sh",

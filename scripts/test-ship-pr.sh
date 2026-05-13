@@ -659,6 +659,138 @@ else
 fi
 rm -rf "$call_dir"
 
+# --- Transient-net exit-6 tests (Part C) ---
+
+# Positive case 1: create-pr transient — stub emits a network error signature, expect exit 6.
+root=$(make_repo transient_create_pr)
+tmp=$(make_tmpdir)
+cat > "$root/scripts/create-pr.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "ERROR: Failed to push branch: fatal: unable to access 'https://github.com/owner/repo/'" >&2
+echo "ERROR: Failed to push branch: fatal: unable to access 'https://github.com/owner/repo/'"
+exit 1
+STUB
+chmod +x "$root/scripts/create-pr.sh"
+write_state "$tmp/ship-pr-state.sh" pr-create
+run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 6 "transient create-pr: exits 6 on network signature"
+assert_state_line "$tmp/ship-pr-state.sh" "STALL_TRACKING=false" "transient create-pr: STALL_TRACKING=false"
+
+# Positive case 2: merge-pr transient — stub emits MERGE_RESULT=error with network signature.
+root=$(make_repo transient_merge_pr)
+tmp=$(make_tmpdir)
+cat > "$root/scripts/merge-pr.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "MERGE_RESULT=error"
+echo "ERROR=git fetch origin main failed (network/auth issue)"
+STUB
+chmod +x "$root/scripts/merge-pr.sh"
+write_state "$tmp/ship-pr-state.sh" ci-merge
+run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 6 "transient merge-pr: exits 6 on network/auth signature"
+assert_state_line "$tmp/ship-pr-state.sh" "STALL_TRACKING=false" "transient merge-pr: STALL_TRACKING=false"
+
+# Positive case 3: ci-wait bail with transient network signature — expect exit 6.
+root=$(make_repo transient_ci_wait_bail)
+tmp=$(make_tmpdir)
+cat > "$root/scripts/ci-wait.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "ACTION=bail"
+echo "BAIL_REASON=ci-status.sh returned no valid output 3 times consecutively"
+echo "CI_STATUS=pending"
+echo "BEHIND_COUNT=0"
+echo "FAILED_RUN_ID="
+echo "ITERATION=0"
+echo "ELAPSED=30"
+STUB
+chmod +x "$root/scripts/ci-wait.sh"
+write_state "$tmp/ship-pr-state.sh" ci-merge
+run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 6 "transient ci-wait bail: exits 6 on no-valid-output-3-times signature"
+assert_state_line "$tmp/ship-pr-state.sh" "STALL_TRACKING=false" "transient ci-wait bail: STALL_TRACKING=false"
+
+# Verify Wall-clock timeout (poll budget exhausted) does NOT trigger exit 6 — it's not network-transient.
+root=$(make_repo non_transient_ci_timeout)
+tmp=$(make_tmpdir)
+cat > "$root/scripts/ci-wait.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "ACTION=bail"
+echo "BAIL_REASON=Wall-clock timeout (1800s) exceeded"
+echo "CI_STATUS=pending"
+echo "BEHIND_COUNT=0"
+echo "FAILED_RUN_ID="
+echo "ITERATION=0"
+echo "ELAPSED=1800"
+STUB
+chmod +x "$root/scripts/ci-wait.sh"
+write_state "$tmp/ship-pr-state.sh" ci-merge
+run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 4 "non-transient ci-wait timeout: exits 4 (poll budget exhaustion is not network-transient)"
+assert_state_line "$tmp/ship-pr-state.sh" "STALL_TRACKING=true" "non-transient ci-wait timeout: STALL_TRACKING=true"
+
+# Positive case 4: rebase-push transient — stub emits network error, expect exit 6.
+root=$(make_repo transient_rebase_push)
+tmp=$(make_tmpdir)
+cat > "$root/scripts/rebase-push.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "REBASE_ERROR=git fetch origin main failed (network/auth issue)" >&2
+echo "REBASE_ERROR=git fetch origin main failed (network/auth issue)"
+exit 3
+STUB
+chmod +x "$root/scripts/rebase-push.sh"
+write_state "$tmp/ship-pr-state.sh" ci-initial
+# Set up so ci-wait returns rebase action
+cat > "$root/scripts/ci-wait.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "ACTION=rebase"
+echo "CI_STATUS=pending"
+echo "BEHIND_COUNT=1"
+echo "FAILED_RUN_ID="
+echo "BAIL_REASON="
+echo "ITERATION=0"
+echo "ELAPSED=0"
+STUB
+chmod +x "$root/scripts/ci-wait.sh"
+run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 6 "transient rebase-push: exits 6 on network/auth signature"
+assert_state_line "$tmp/ship-pr-state.sh" "STALL_TRACKING=false" "transient rebase-push: STALL_TRACKING=false"
+
+# Negative case 1: merge-pr non-transient error — should exit 4.
+root=$(make_repo non_transient_merge_pr)
+tmp=$(make_tmpdir)
+cat > "$root/scripts/merge-pr.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "MERGE_RESULT=error"
+echo "ERROR=could not parse origin/main published version (got: corrupt)"
+STUB
+chmod +x "$root/scripts/merge-pr.sh"
+write_state "$tmp/ship-pr-state.sh" ci-merge
+run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 4 "non-transient merge-pr: exits 4 (not 6)"
+assert_state_line "$tmp/ship-pr-state.sh" "STALL_TRACKING=true" "non-transient merge-pr: STALL_TRACKING=true"
+
+# Negative case 2: create-pr non-transient error — should exit 4.
+root=$(make_repo non_transient_create_pr)
+tmp=$(make_tmpdir)
+cat > "$root/scripts/create-pr.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "ERROR: Body file not found: /tmp/pr-body.md"
+exit 1
+STUB
+chmod +x "$root/scripts/create-pr.sh"
+write_state "$tmp/ship-pr-state.sh" pr-create
+run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 4 "non-transient create-pr: exits 4 (not 6)"
+assert_state_line "$tmp/ship-pr-state.sh" "STALL_TRACKING=true" "non-transient create-pr: STALL_TRACKING=true"
+
 if [[ "$FAIL_COUNT" -ne 0 ]]; then
     echo "test-ship-pr: $FAIL_COUNT failure(s), $PASS_COUNT pass(es)" >&2
     exit 1
