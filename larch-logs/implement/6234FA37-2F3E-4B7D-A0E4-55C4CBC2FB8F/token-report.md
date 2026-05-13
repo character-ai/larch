@@ -20,6 +20,10 @@
 |  | larch:implement | 3 | 780678 | 1399 | 1562 |
 | Step 7 — commit review fixes | **step total** | 6 | 1568994 | 1833 | 1741 |
 |  | larch:implement | 6 | 1568994 | 1833 | 1741 |
-| Step 7a — code flow diagram | **step total** | 1 | 262060 | 199 | 608 |
-|  | larch:implement | 1 | 262060 | 199 | 608 |
-| **Grand total** |  | 94 | 22347310 | 98914 | 47595 |
+| Step 7a — code flow diagram | **step total** | 10 | 2634544 | 5347 | 4155 |
+|  | larch:implement | 10 | 2634544 | 5347 | 4155 |
+| Step 8a — changelog | **step total** | 0 | 0 | 0 | 0 |
+| Step 8b — rebase | **step total** | 2 | 530662 | 1736 | 602 |
+|  | larch:implement | 2 | 530662 | 1736 | 602 |
+| Step 11 — execution-issues | **step total** | 0 | 0 | 0 | 0 |
+| **Grand total** |  | 105 | 25250456 | 105798 | 51744 |

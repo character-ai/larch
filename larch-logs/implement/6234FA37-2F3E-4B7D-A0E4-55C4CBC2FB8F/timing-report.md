@@ -381,8 +381,9 @@
 | implement | Step 5 — code review | 00:05:35 |
 | implement | Step 6 — checks second pass | 00:00:14 |
 | implement | Step 7 — commit review fixes | 00:00:32 |
-| implement | Step 7a — code flow diagram | 00:00:10 |
-| **Total** | | 130:47:19 |
+| implement | Step 7a — code flow diagram | 00:03:32 |
+| implement | Step 11 — execution-issues | 00:00:01 |
+| **Total** | | 130:50:51 |
 
 (*Outlier steps: Step 18 — cleanup, Step 18 — cleanup, Step 8 — version bump, Step 9 — create PR, Step 18 — cleanup, Step 18 — cleanup, Step 0.5 — tracking issue — duration exceeds 04:00:00 threshold; may reflect hung sessions.)
 
