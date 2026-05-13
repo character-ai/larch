@@ -71,9 +71,15 @@ if [[ -n "$TIMING_LEDGER" && ( ${#TIMING_LEDGER} -gt 512 || ! "$TIMING_LEDGER" =
   exit 1
 fi
 
-if [[ -n "$PREV_IMPLEMENT_TMPDIR_ARG" && ( ${#PREV_IMPLEMENT_TMPDIR_ARG} -gt 512 || ! "$PREV_IMPLEMENT_TMPDIR_ARG" =~ ^[A-Za-z0-9_./~+-]+$ ) ]]; then
-  echo "ERROR=Invalid --prev-implement-tmpdir: must match ^[A-Za-z0-9_./~+-]{1,512}$" >&2
-  exit 1
+if [[ -n "$PREV_IMPLEMENT_TMPDIR_ARG" ]]; then
+  if [[ ${#PREV_IMPLEMENT_TMPDIR_ARG} -gt 512 || ! "$PREV_IMPLEMENT_TMPDIR_ARG" =~ ^[A-Za-z0-9_./~+-]+$ ]]; then
+    echo "ERROR=Invalid --prev-implement-tmpdir: must match ^[A-Za-z0-9_./~+-]{1,512}$" >&2
+    exit 1
+  fi
+  if [[ "$PREV_IMPLEMENT_TMPDIR_ARG" != /* ]]; then
+    echo "ERROR=Invalid --prev-implement-tmpdir: must be an absolute path" >&2
+    exit 1
+  fi
 fi
 
 # Build the content
