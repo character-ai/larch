@@ -4,7 +4,7 @@
 
 ## Purpose
 
-Fetch closed GitHub issues in the current larch repository whose comments contain `token-report-begin`, parse the latest structured token report on each issue, estimate per-issue dollar costs for Claude/Codex/Cursor/Gemini, classify issues by `**Workflow path**`, generate SIMPLE and HARD cost-over-time PNG plots, print a written analysis, and optionally post a GitHub `[Analysis Report]` issue with the results and raw per-issue data.
+Scan committed larch run logs under `larch-logs/implement/*/` in the current git repository root, parse the token report for each run (reading `manifest.json` for metadata, `token-report.md` for token data, and `plan-review-tally.ndjson` for workflow-path inference), estimate per-run dollar costs for Claude/Codex/Cursor/Gemini, generate SIMPLE and HARD cost-over-time PNG plots, print a written analysis, and optionally post a GitHub `[Analysis Report]` issue with the results and raw per-run data.
 
 ## Primary caller
 
@@ -26,22 +26,24 @@ Optional environment variables:
 - `LARCH_RATE_<VENDOR>_<FIELD>` overrides the printed default rates in USD per million tokens.
 - `LARCH_REPORT_TOKENS_ACTUAL_SPEND=<USD>` when set, prints a reconciliation line at the end of the report (`tracked=$X  actual=$Y  delta=Z%`). Contains billing data — use `--no-issue` when set to avoid posting actual spend figures to a public GitHub issue.
 
-## GitHub access
+## File access
 
-The script uses:
+The scan uses:
 
-- `gh api --paginate -X GET search/issues -f q="repo:<owner/repo> is:issue is:closed token-report-begin in:comments" -f per_page=100 --jq ...`
-- `gh issue view <number> --repo <owner/repo> --comments --json number,title,url,closedAt,body,comments`
+- `git -C "$(pwd)" rev-parse --show-toplevel` to locate the repository root.
+- `larch-logs/implement/*/manifest.json` — provides `issue_number`, `updated_at`, `started_at` per run.
+- `larch-logs/implement/*/token-report.md` — provides token data (read directly; no sentinel wrappers needed).
+- `larch-logs/implement/*/plan-review-tally.ndjson` — first record's `.body // .tally` field: starts with `"Quick mode"` or `"Both externals unavailable"` → `SIMPLE`; non-empty other value → `HARD`; absent or unrecognized → `unknown`. Falls back to reading the first raw line when the file is not valid NDJSON (handles older plain-text format).
 
-`gh`, `jq`, and `python3` are required. Missing commands are hard failures.
+`gh` is required for repository resolution (`gh repo view`, used for URL construction; bypass via `LARCH_REPORT_TOKENS_REPO`), for posting the `[Analysis Report]` issue (active when `--no-issue` is absent), and for `--plot-from` (fetching a prior report issue body). `jq` and `python3` are always required. Missing commands are hard failures.
 
 ## Parsing invariants
 
-- Token reports are found by whole-line sentinel blocks from `scripts/token-report.sh`: `<!-- token-report-begin -->` through `<!-- token-report-end -->`. If no sentinel pair exists but token-report headings are present, the whole text is parsed as a fallback.
+- Token data is read directly from `token-report.md` files, which contain `### Claude` / `**Grand total**` headings without sentinel wrappers. The `latest_token_block` function's fallback (`if "### Claude" in text or "**Grand total**" in text: return text`) handles this format.
 - Claude `**Grand total**` rows support both the current six-cell table shape (`Step`, `Skill`, input, cache read, cache create, output) and the legacy four-cell shape (`Step`, `Skill`, input, output).
 - Codex/Cursor/Gemini `**Grand total**` rows use the five-cell vendor table shape (`Step`, `Skill`, input, output, total).
-- `**Workflow path**: SIMPLE|HARD|unknown` is parsed from the combined issue body and comments.
-- Issue-level JSON is cached under a fresh `${TMPDIR:-/tmp}/larch-report-tokens.*` directory. The cache file is written via a temporary file and `mv`.
+- `**Workflow path**: SIMPLE|HARD|unknown` is injected into the body text by the scan loop (inferred from `plan-review-tally.ndjson`) so the Python `parse_workflow_path` function finds it without changes.
+- Run-level JSON is cached under a fresh `${TMPDIR:-/tmp}/larch-report-tokens.*` directory. The cache file is written via a temporary file and `mv`.
 
 ## Outputs
 

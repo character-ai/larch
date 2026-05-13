@@ -1,12 +1,12 @@
 ---
 name: report-tokens
-description: "Use when analyzing token costs across closed GitHub issues in the current larch repo: parses token-report data, estimates Claude/Codex/Cursor cost, plots SIMPLE/HARD trends, and prints cost-reduction suggestions."
+description: "Use when analyzing token costs across committed larch run logs (larch-logs/implement/*/): parses token-report.md and manifest.json per run, estimates Claude/Codex/Cursor cost, plots SIMPLE/HARD trends, and prints cost-reduction suggestions."
 allowed-tools: Bash, Read
 ---
 
 # Report Tokens
 
-Analyze token-report data across closed GitHub issues in the current larch repository. The script finds issues whose comments contain the token-report sentinel, parses the latest structured report on each issue, estimates costs, generates SIMPLE and HARD cost-over-time plots, prints the analysis, and posts a GitHub `[Analysis Report]` issue.
+Analyze token costs from committed larch run logs in the current git repository. The script scans `larch-logs/implement/*/` directories, parses `token-report.md` per run, infers the SIMPLE/HARD workflow path from `plan-review-tally.ndjson`, estimates per-run dollar costs, generates SIMPLE and HARD cost-over-time plots, prints the analysis, and optionally posts a GitHub `[Analysis Report]` issue.
 
 ## Flags
 

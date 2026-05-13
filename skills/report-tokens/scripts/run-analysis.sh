@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run-analysis.sh - Analyze token-report costs across closed larch issues.
+# run-analysis.sh - Analyze token costs from committed larch run logs.
 
 set -euo pipefail
 
@@ -94,38 +94,63 @@ fi
 
 TMPROOT="$(mktemp -d "${TMPDIR:-/tmp}/larch-report-tokens.XXXXXX")"
 trap 'rm -rf "${TMPROOT:-}"' EXIT
-SEARCH_JSONL="$TMPROOT/search.jsonl"
 ISSUES_JSONL="$TMPROOT/issues.jsonl"
 CACHE_TMP="$TMPROOT/issues-cache.json.tmp"
 CACHE_JSON="$TMPROOT/issues-cache.json"
 ANALYZER="$TMPROOT/analyze-token-reports.py"
 
 if [[ -z "$PLOT_FROM" ]]; then
-    echo "Scanning $REPO for closed issues with token-report-begin comments..."
-
-    SEARCH_QUERY="repo:${REPO} is:issue is:closed token-report-begin in:comments"
-    gh api --paginate -X GET search/issues \
-        -f "q=$SEARCH_QUERY" \
-        -f per_page=100 \
-        --jq '.items[] | {number, closed_at, title, html_url}' > "$SEARCH_JSONL"
-
-    if [[ -n "$LIMIT" && "$LIMIT" != "0" ]]; then
-        head -n "$LIMIT" "$SEARCH_JSONL" > "$SEARCH_JSONL.limited"
-        mv "$SEARCH_JSONL.limited" "$SEARCH_JSONL"
-    fi
+    REPO_ROOT=$(git -C "$(pwd)" rev-parse --show-toplevel 2>/dev/null || pwd)
+    LOG_BASE="$REPO_ROOT/larch-logs/implement"
+    echo "Scanning $LOG_BASE for larch run logs..."
 
     : > "$ISSUES_JSONL"
-    while IFS= read -r item; do
-        [[ -n "$item" ]] || continue
-        number="$(printf '%s\n' "$item" | jq -r '.number')"
-        [[ "$number" =~ ^[0-9]+$ ]] || continue
-        echo "Fetching issue #$number..."
-        gh issue view "$number" \
-            --repo "$REPO" \
-            --comments \
-            --json number,title,url,closedAt,body,comments \
-            | jq -c . >> "$ISSUES_JSONL"
-    done < "$SEARCH_JSONL"
+    run_count=0
+    while IFS= read -r dir; do
+        manifest="$dir/manifest.json"
+        token_report="$dir/token-report.md"
+        plan_tally="$dir/plan-review-tally.ndjson"
+
+        [[ -f "$manifest" && -f "$token_report" ]] || continue
+
+        issue_number=$(jq -r '.issue_number // empty' "$manifest" 2>/dev/null)
+        [[ -n "$issue_number" && "$issue_number" != "null" ]] || continue
+        [[ "$issue_number" =~ ^[0-9]+$ ]] || continue
+
+        closed_at=$(jq -r '(.updated_at // .started_at) // ""' "$manifest" 2>/dev/null)
+
+        workflow_path="unknown"
+        if [[ -f "$plan_tally" ]]; then
+            tally_body=""
+            if ! tally_body=$(jq -r 'select((.body // .tally) != null) | (.body // .tally)' "$plan_tally" 2>/dev/null | head -1); then
+                tally_body=$(head -1 "$plan_tally" 2>/dev/null || true)
+            fi
+            if [[ "$tally_body" == "Quick mode"* || "$tally_body" == "Both externals unavailable"* ]]; then
+                workflow_path="SIMPLE"
+            elif [[ -n "$tally_body" ]]; then
+                workflow_path="HARD"
+            fi
+        fi
+
+        token_content=$(cat "$token_report")
+        combined_body="${token_content}
+
+**Workflow path**: ${workflow_path}"
+
+        echo "Processing run for issue #${issue_number}..."
+        jq -cn \
+            --argjson number "$issue_number" \
+            --arg title "Issue #${issue_number}" \
+            --arg url "https://github.com/${REPO}/issues/${issue_number}" \
+            --arg closedAt "$closed_at" \
+            --arg body "$combined_body" \
+            '{number: $number, title: $title, url: $url, closedAt: $closedAt, body: $body, comments: []}' >> "$ISSUES_JSONL"
+
+        run_count=$((run_count + 1))
+        if [[ -n "$LIMIT" && "$LIMIT" != "0" && "$run_count" -ge "$LIMIT" ]]; then
+            break
+        fi
+    done < <(find "$LOG_BASE" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort)
 
     jq -s . "$ISSUES_JSONL" > "$CACHE_TMP"
     mv "$CACHE_TMP" "$CACHE_JSON"
@@ -498,7 +523,7 @@ for workflow in ("SIMPLE", "HARD"):
     ax.plot(dates, costs, marker="o", linewidth=1.5)
     ax.set_title(f"{workflow} token cost over time")
     ax.set_ylabel("Estimated cost (USD)")
-    ax.set_xlabel("Issue closed date")
+    ax.set_xlabel("Run date")
     ax.grid(True, alpha=0.3)
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
     fig.autofmt_xdate()
@@ -587,15 +612,15 @@ def print_analysis(cache_path, records, skipped, plot_paths):
     if not records:
         print("No parseable token reports found.")
         if skipped:
-            print(f"Skipped issues without a parseable report: {skipped}")
+            print(f"Skipped runs without a parseable report: {skipped}")
         return
 
     dates = [r["closed_at"] for r in records if r["closed_at"]]
     costs = [r["cost"] for r in records]
     print(
-        f"Parsed {len(records)} issue(s); skipped {skipped}. "
+        f"Parsed {len(records)} run(s); skipped {skipped}. "
         f"Total estimated cost: {dollars(sum(costs))}; "
-        f"median issue cost: {dollars(statistics.median(costs))}."
+        f"median run cost: {dollars(statistics.median(costs))}."
     )
     if dates:
         print(f"Closed date range: {min(dates).date()} to {max(dates).date()}.")
@@ -611,7 +636,7 @@ def print_analysis(cache_path, records, skipped, plot_paths):
             continue
         values = [r["cost"] for r in rows]
         print(
-            f"- {workflow}: {len(rows)} issue(s), total {dollars(sum(values))}, "
+            f"- {workflow}: {len(rows)} run(s), total {dollars(sum(values))}, "
             f"median {dollars(statistics.median(values))}, max {dollars(max(values))}"
         )
         vendor_costs: dict = {}
@@ -625,12 +650,12 @@ def print_analysis(cache_path, records, skipped, plot_paths):
 
     simple = sorted(by_workflow.get("SIMPLE", []), key=lambda r: r["cost"], reverse=True)[:10]
     print("")
-    print("### Top SIMPLE issues by estimated cost")
+    print("### Top SIMPLE runs by estimated cost")
     if simple:
         for r in simple:
             print(f"- #{r['number']} {dollars(r['cost'])} - {r['title']}")
     else:
-        print("- No SIMPLE issues found.")
+        print("- No SIMPLE runs found.")
 
     hard_rows = by_workflow.get("HARD", [])
     phase_costs = Counter()
