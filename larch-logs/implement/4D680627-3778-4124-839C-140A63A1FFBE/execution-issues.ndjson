@@ -1,0 +1,1 @@
+{"phase":"implement","step":"11","category":"Warnings","body":"Pre-existing gitleaks false positive in larch-logs/implement/A91477F0-FCB7-4D18-921B-9B8093CFA4E0/session-transcript.jsonl (LARCH_TOKEN_SESSION_ID UUID flagged as generic-api-key). Fixed by adding larch-logs/ to .gitleaks.toml allowlist."}
