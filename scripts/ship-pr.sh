@@ -533,7 +533,7 @@ run_evaluate_failure() {
     failed_run=$(read_state FAILED_RUN_ID)
     [ -n "$failed_run" ] || exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12c)"
     retries=$(read_state TRANSIENT_RETRIES)
-    if [ "$retries" -lt 2 ]; then
+    if [ "$retries" -lt 1 ]; then
         rerun_out=$("$SCRIPT_DIR/ci-rerun-failed.sh" --run-id "$failed_run" --repo "$(read_state REPO)" 2>&1)
         printf '%s\n' "$rerun_out"
         if [ "$(kv_value RERUN_SUBMITTED "$rerun_out")" = "true" ]; then
