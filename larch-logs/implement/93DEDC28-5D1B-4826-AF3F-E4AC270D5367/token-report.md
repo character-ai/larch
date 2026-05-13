@@ -21,9 +21,13 @@
 |  | inferred:Step 6 — checks second pass | 2 | 378811 | 691 | 698 |
 | Step 7 — commit review fixes | **step total** | 36 | 7115848 | 27320 | 18529 |
 |  | inferred:Step 7 — commit review fixes | 36 | 7115848 | 27320 | 18529 |
-| Step 7a — code flow diagram | **step total** | 6 | 1247283 | 2319 | 1569 |
-|  | inferred:Step 7a — code flow diagram | 6 | 1247283 | 2319 | 1569 |
-| **Grand total** |  | 178 | 26948344 | 834603 | 93524 |
+| Step 7a — code flow diagram | **step total** | 12 | 2502914 | 5627 | 4143 |
+|  | inferred:Step 7a — code flow diagram | 12 | 2502914 | 5627 | 4143 |
+| Step 8a — changelog | **step total** | 0 | 0 | 0 | 0 |
+| Step 8b — rebase | **step total** | 47 | 9242820 | 772519 | 92696 |
+|  | inferred:Step 8b — rebase | 47 | 9242820 | 772519 | 92696 |
+| Step 11 — execution-issues | **step total** | 0 | 0 | 0 | 0 |
+| **Grand total** |  | 231 | 37446795 | 1610430 | 188794 |
 
 ### Codex
 
@@ -39,6 +43,9 @@
 | Step 6 — checks second pass | **step total** | 0 | 0 | 0 |
 | Step 7 — commit review fixes | **step total** | 0 | 0 | 0 |
 | Step 7a — code flow diagram | **step total** | 0 | 0 | 0 |
+| Step 8a — changelog | **step total** | 0 | 0 | 0 |
+| Step 8b — rebase | **step total** | 0 | 0 | 0 |
+| Step 11 — execution-issues | **step total** | 0 | 0 | 0 |
 | **Grand total** |  | 0 | 0 | 263061 |
 
 ### Cursor
@@ -55,4 +62,7 @@
 | Step 6 — checks second pass | **step total** | 0 | 0 | 0 |
 | Step 7 — commit review fixes | **step total** | 0 | 0 | 0 |
 | Step 7a — code flow diagram | **step total** | 0 | 0 | 0 |
+| Step 8a — changelog | **step total** | 0 | 0 | 0 |
+| Step 8b — rebase | **step total** | 0 | 0 | 0 |
+| Step 11 — execution-issues | **step total** | 0 | 0 | 0 |
 | **Grand total** |  | 0 | 0 | 0 |
