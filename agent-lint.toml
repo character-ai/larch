@@ -776,6 +776,12 @@ exclude = [
   # Same Makefile-only pattern as other test-* harnesses.
   "scripts/test-rebase-push-keep-on-conflict.sh",
   "scripts/test-implement-structure.sh",
+  # scripts/test-implement-timing-rehydration.sh pins /implement's
+  # timing-aware session-env rehydration template so timing-ledger/report calls
+  # stay scoped to the per-run ledger instead of falling back to the cwd-hash
+  # shared ledger. Referenced only from Makefile
+  # (test-implement-timing-rehydration target) and the sibling contract.
+  "scripts/test-implement-timing-rehydration.sh",
   "scripts/test-implement-step2-routing.sh",
   "scripts/test-implement-step2-routing.md",
   # scripts/test-implement-cleanup-roundtrip.sh is the round-trip integration
@@ -1066,6 +1072,7 @@ exclude = [
   "scripts/test-alias-target-resolution.md",
   "scripts/test-alias-structure.md",
   "scripts/test-rebase-push-keep-on-conflict.md",
+  "scripts/test-implement-timing-rehydration.md",
   # scripts/promote-release.sh is a standalone operator utility for promoting
   # a GitHub Release to "Latest". It is not invoked by any SKILL.md — operators
   # call it directly from the terminal. Its sibling contract
