@@ -75,9 +75,10 @@ is_bool "$NO_ADMIN_FALLBACK" || die_usage "--no-admin-fallback must be true or f
 [ -z "$MERGE" ] || is_bool "$MERGE" || die_usage "--merge must be true or false"
 [ -z "$DRAFT" ] || is_bool "$DRAFT" || die_usage "--draft must be true or false"
 [ -z "$FORKED_TARGET" ] || is_bool "$FORKED_TARGET" || die_usage "--forked must be true or false"
-# Export so child processes (larch-log.sh, implement-finalize.sh) inherit the
-# session tmpdir path regardless of whether the caller shell already had it
-# exported (e.g. after a session restart where the orchestrator env was fresh).
+# Export so child processes inherit the session tmpdir path regardless of
+# whether the caller shell already had it exported (e.g. after a session
+# restart where the orchestrator env was fresh). larch-log.sh receives its root
+# explicitly via --log-root.
 export IMPLEMENT_TMPDIR
 
 validate_state_syntax() {
@@ -560,7 +561,7 @@ run_rebase_rebump() {
     # 2. Flush pending larch-log writes before rebase to avoid dirty-tree failures
     run_id=$(read_state RUN_ID)
     if [ -n "$run_id" ]; then
-        "$SCRIPT_DIR/larch-log.sh" commit --skill implement --run-id "$run_id" --no-push || true
+        "$SCRIPT_DIR/larch-log.sh" commit --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$run_id" --no-push || true
     fi
 
     # 3. Rebase without pushing; keep in-progress on conflict for vendor resolution
@@ -618,7 +619,7 @@ run_rebase_rebump() {
 
     # 7. Refresh larch-log after push (best-effort)
     if [ -n "$run_id" ]; then
-        "$SCRIPT_DIR/larch-log.sh" commit --skill implement --run-id "$run_id" --no-push || true
+        "$SCRIPT_DIR/larch-log.sh" commit --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$run_id" --no-push || true
     fi
 
     # 8. Increment counters, reset transient retries
@@ -646,7 +647,7 @@ run_ci_phase() {
         local flush_run_id
         flush_run_id=$(read_state RUN_ID)
         if [ -n "$flush_run_id" ]; then
-            "$SCRIPT_DIR/larch-log.sh" commit --skill implement --run-id "$flush_run_id" || true
+            "$SCRIPT_DIR/larch-log.sh" commit --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$flush_run_id" || true
         fi
     fi
 

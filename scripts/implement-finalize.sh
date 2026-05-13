@@ -128,7 +128,8 @@ validate_tmpdir_arg() {
         "$IMPLEMENT_TMPDIR"/*) ;;
         *) die_usage "--state-file must live under --implement-tmpdir for teardown" ;;
     esac
-    # Export so child processes (larch-log.sh) inherit the session tmpdir path.
+    # Export so child processes inherit the session tmpdir path. larch-log.sh
+    # receives its root explicitly via --log-root.
     # The postbump path also has export in load_and_validate_postbump_state;
     # this covers the teardown path which calls validate_tmpdir_arg directly.
     export IMPLEMENT_TMPDIR
@@ -417,7 +418,7 @@ write_version_reasoning_fragment() {
             run_id="${run_id##*-}"
         fi
         set +e
-        out=$("$SCRIPT_DIR/larch-log.sh" write --skill implement --run-id "$run_id" --batch version-bump-reasoning --input-file "$input_file")
+        out=$("$SCRIPT_DIR/larch-log.sh" write --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$run_id" --batch version-bump-reasoning --input-file "$input_file")
         rc=$?
         set +e
         written=$(kv_value LOG_WRITTEN "$out")
@@ -1375,18 +1376,21 @@ run_teardown() {
         # unavailable paths) — the 2>/dev/null suppresses the "not found" error.
         if [ "$stall_tracking" = "true" ]; then
             "$SCRIPT_DIR/larch-log.sh" manifest \
+                --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
                 --skill implement --run-id "$larch_flush_run_id" \
                 --field "status=stalled" \
                 --field "stalled_at_step=$stall_step" \
                 2>/dev/null || true
         elif [ -n "$pr_number" ]; then
             "$SCRIPT_DIR/larch-log.sh" manifest \
+                --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
                 --skill implement --run-id "$larch_flush_run_id" \
                 --field "status=done" \
                 --field "pr_number=$pr_number" \
                 2>/dev/null || true
         elif [ "$design_only" = "true" ]; then
             "$SCRIPT_DIR/larch-log.sh" manifest \
+                --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
                 --skill implement --run-id "$larch_flush_run_id" \
                 --field "status=done" \
                 2>/dev/null || true
@@ -1394,9 +1398,9 @@ run_teardown() {
         # Push if the PR was already merged; otherwise let the branch push carry it
         pr_closed=$(read_state PR_CLOSED)
         if [ "$pr_closed" = "true" ]; then
-            "$SCRIPT_DIR/larch-log.sh" commit --skill implement --run-id "$larch_flush_run_id" 2>/dev/null || true
+            "$SCRIPT_DIR/larch-log.sh" commit --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$larch_flush_run_id" 2>/dev/null || true
         else
-            "$SCRIPT_DIR/larch-log.sh" commit --skill implement --run-id "$larch_flush_run_id" --no-push 2>/dev/null || true
+            "$SCRIPT_DIR/larch-log.sh" commit --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$larch_flush_run_id" --no-push 2>/dev/null || true
         fi
     fi
 

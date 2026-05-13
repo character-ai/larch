@@ -38,10 +38,8 @@ larch_log_validate_slug() {
 larch_log_root() {
     if [ -n "${LARCH_LOG_ROOT:-}" ]; then
         printf '%s\n' "$LARCH_LOG_ROOT"
-    elif [ -n "${IMPLEMENT_TMPDIR:-}" ]; then
-        printf '%s/larch-logs\n' "$IMPLEMENT_TMPDIR"
     else
-        printf '%s/larch-logs\n' "$LARCH_LOG_REPO_ROOT"
+        larch_log_fail 1 "LARCH_LOG_ROOT is not set; pass --log-root to larch-log.sh (or export LARCH_LOG_ROOT for test isolation)"
     fi
 }
 

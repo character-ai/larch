@@ -6,7 +6,7 @@
 #                        --repo-unavailable <true|false> \
 #                        [--codex-healthy <true|false>] [--cursor-healthy <true|false>] [--gemini-healthy <true|false>] \
 #                        [--timing-ledger <path>] [--token-session-id <id>] \
-#                        [--claude-source-file <path>]
+#                        [--claude-source-file <path>] [--prev-implement-tmpdir <path>]
 #
 # Options:
 #   --repo may be empty when --repo-unavailable is true (repo discovery failed).
@@ -14,6 +14,7 @@
 #   --timing-ledger is optional (shared timing ledger path for nested skills).
 #   --token-session-id is optional (token ledger session id for nested skills).
 #   --claude-source-file is optional (Claude transcript snapshot for token reports).
+#   --prev-implement-tmpdir is optional (previous /implement tmpdir for larch-log handoff).
 #
 # Output: Writes a KEY=VALUE file to --output path (atomic via temp+mv).
 #         This file is not safe to source; parse with read-session-env-key.sh.
@@ -32,6 +33,7 @@ GEMINI_HEALTHY=""
 TIMING_LEDGER=""
 TOKEN_SESSION_ID=""
 CLAUDE_SOURCE_FILE=""
+PREV_IMPLEMENT_TMPDIR_ARG=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -44,6 +46,7 @@ while [[ $# -gt 0 ]]; do
     --timing-ledger)    TIMING_LEDGER="$2"; shift 2 ;;
     --token-session-id) TOKEN_SESSION_ID="$2"; shift 2 ;;
     --claude-source-file) CLAUDE_SOURCE_FILE="$2"; shift 2 ;;
+    --prev-implement-tmpdir) PREV_IMPLEMENT_TMPDIR_ARG="$2"; shift 2 ;;
     *) echo "ERROR=Unknown argument: $1" >&2; exit 1 ;;
   esac
 done
@@ -68,6 +71,11 @@ if [[ -n "$TIMING_LEDGER" && ( ${#TIMING_LEDGER} -gt 512 || ! "$TIMING_LEDGER" =
   exit 1
 fi
 
+if [[ -n "$PREV_IMPLEMENT_TMPDIR_ARG" && ( ${#PREV_IMPLEMENT_TMPDIR_ARG} -gt 512 || "$PREV_IMPLEMENT_TMPDIR_ARG" != /* || "$PREV_IMPLEMENT_TMPDIR_ARG" != "${PREV_IMPLEMENT_TMPDIR_ARG//$'\n'/}" || "$PREV_IMPLEMENT_TMPDIR_ARG" != "${PREV_IMPLEMENT_TMPDIR_ARG//$'\r'/}" ) ]]; then
+  echo "ERROR=Invalid --prev-implement-tmpdir: must be an absolute path of 512 characters or fewer" >&2
+  exit 1
+fi
+
 # Build the content
 CONTENT="REPO=$REPO
 REPO_UNAVAILABLE=$REPO_UNAVAILABLE"
@@ -83,6 +91,8 @@ LARCH_TIMING_LEDGER=$TIMING_LEDGER"
 LARCH_TOKEN_SESSION_ID=$TOKEN_SESSION_ID"
 [[ -n "$CLAUDE_SOURCE_FILE" ]] && CONTENT="$CONTENT
 LARCH_CLAUDE_SOURCE_FILE=$CLAUDE_SOURCE_FILE"
+[[ -n "$PREV_IMPLEMENT_TMPDIR_ARG" ]] && CONTENT="$CONTENT
+PREV_IMPLEMENT_TMPDIR=$PREV_IMPLEMENT_TMPDIR_ARG"
 
 # Write atomically via temp+mv for regular paths.
 # Skip /dev/null — mktemp and mv both fail on device nodes.

@@ -28,7 +28,7 @@
 #                          Recognized keys: REPO, REPO_UNAVAILABLE,
 #                          CODEX_HEALTHY, CURSOR_HEALTHY,
 #                          LARCH_TOKEN_SESSION_ID, LARCH_CLAUDE_SOURCE_FILE,
-#                          LARCH_TIMING_LEDGER.
+#                          LARCH_TIMING_LEDGER, PREV_IMPLEMENT_TMPDIR.
 #                          GEMINI_HEALTHY is always hard-coded to false; any value
 #                          in the caller-env for that key is silently ignored.
 #                          If a key is present and non-empty, the script skips re-deriving it.
@@ -122,6 +122,7 @@ CALLER_CURSOR_HEALTHY=""
 CALLER_TOKEN_SESSION_ID=""
 CALLER_CLAUDE_SOURCE_FILE=""
 CALLER_TIMING_LEDGER=""
+CALLER_PREV_IMPLEMENT_TMPDIR=""
 
 if [[ -n "$CALLER_ENV" && -f "$CALLER_ENV" ]]; then
     # Use explicit `${line%%=*}` / `${line#*=}` parameter expansion instead
@@ -144,6 +145,7 @@ if [[ -n "$CALLER_ENV" && -f "$CALLER_ENV" ]]; then
             LARCH_TOKEN_SESSION_ID) CALLER_TOKEN_SESSION_ID="$value" ;;
             LARCH_CLAUDE_SOURCE_FILE) CALLER_CLAUDE_SOURCE_FILE="$value" ;;
             LARCH_TIMING_LEDGER) CALLER_TIMING_LEDGER="$value" ;;
+            PREV_IMPLEMENT_TMPDIR) CALLER_PREV_IMPLEMENT_TMPDIR="$value" ;;
             *)                 ;; # Ignore unknown keys
         esac
     done < "$CALLER_ENV"
@@ -258,6 +260,13 @@ write_keepalive_sentinel
 echo "SESSION_TMPDIR=$SESSION_TMPDIR"
 echo "SESSION_ID=$SESSION_ID"
 echo "LARCH_RENDER_CACHE_DIR=$SESSION_TMPDIR/render-cache"
+
+if [[ -n "${CALLER_PREV_IMPLEMENT_TMPDIR:-}" && \
+      -d "${CALLER_PREV_IMPLEMENT_TMPDIR}/larch-logs" ]]; then
+    mkdir -p "$SESSION_TMPDIR/larch-logs" 2>/dev/null || true
+    cp -rp "${CALLER_PREV_IMPLEMENT_TMPDIR}/larch-logs/." \
+           "$SESSION_TMPDIR/larch-logs/" 2>/dev/null || true
+fi
 
 # --- 2a. Bridge reviewer model env vars from plugin userConfig ---
 if [[ -z "${LARCH_CURSOR_MODEL:-}" && -n "${CLAUDE_PLUGIN_OPTION_CURSOR_MODEL:-}" ]]; then

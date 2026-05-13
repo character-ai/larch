@@ -29,14 +29,15 @@ Payload content is never written to stdout. Payloads pass through
 `sanitize-mermaid-fragment.sh --from-md` and fail closed on rejection; no
 current batch uses this sanitizer — it is reserved for future opt-in.
 
-**Log-root resolution** — three-tier precedence (see `lib-larch-log.sh`):
+**Log-root resolution** is single-tier (see `lib-larch-log.sh`):
 
-1. `$LARCH_LOG_ROOT` (explicit override — used by tests to isolate writes).
-2. `$IMPLEMENT_TMPDIR/larch-logs` (staging tier — when a `/implement` run is active,
-   `init`/`write`/`append` write here to keep the git working tree clean until
-   `commit` is called).
-3. `$LARCH_LOG_REPO_ROOT/larch-logs` (canonical repo destination — used when neither
-   override nor tmpdir is set, e.g. standalone `larch-log.sh` invocations).
+1. `$LARCH_LOG_ROOT`, set by the required `--log-root <dir>` flag or explicitly
+   exported for test isolation.
+
+The `init`, `write`, `append`, `exists`, `manifest`, and `commit` verbs require
+an absolute `--log-root <dir>` unless `$LARCH_LOG_ROOT` is already exported.
+`/implement` passes `$IMPLEMENT_TMPDIR/larch-logs` explicitly so in-progress
+runtime payloads stay out of the git working tree until `commit` is called.
 
 `REPO_ROOT` (used by `commit`) and `LARCH_LOG_REPO_ROOT` (used by `write`/`append`/`init`
 via `lib-larch-log.sh`) both resolve via `git -C "$PWD" rev-parse --show-toplevel` so
@@ -45,12 +46,11 @@ two-assignment pattern to avoid `(A || B) && C` shell-precedence issues; both fa
 back to `SCRIPT_DIR/..` outside a git repo.
 
 **`commit` copy semantics**: `commit` computes `src_path` via `larch_log_run_dir`
-(which may resolve under `$IMPLEMENT_TMPDIR`) and `repo_path` via
+(which resolves under the explicit log root) and `repo_path` via
 `larch_log_repo_run_dir` (always `$LARCH_LOG_REPO_ROOT/larch-logs/<skill>/<run-id>/`).
 When the two paths differ, `commit` copies the staging tree into the repo path before
-running `git add` / `git commit`. When they are equal (no `$IMPLEMENT_TMPDIR` override,
-or `$LARCH_LOG_ROOT` already pointing at the canonical repo subtree), no copy is
-performed.
+running `git add` / `git commit`. When they are equal (the explicit log root already
+points at the canonical repo subtree), no copy is performed.
 
 **Batch registry**: all slugs, extensions, modes, and sanitizer hooks live in
 `scripts/larch-log-batches.sh`. See `scripts/larch-log-batches.md` for the full

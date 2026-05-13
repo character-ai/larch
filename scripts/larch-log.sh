@@ -16,12 +16,12 @@ source "$SCRIPT_DIR/lib-larch-log.sh"
 usage() {
     cat <<'USAGE' >&2
 Usage:
-  larch-log.sh init --skill S --run-id R [--parent-skill P] [--issue N]
-  larch-log.sh write --skill S --run-id R --batch B --input-file F
-  larch-log.sh append --skill S --run-id R --batch B --record-file F
-  larch-log.sh exists --skill S --run-id R --batch B
-  larch-log.sh commit --skill S --run-id R [--no-push]
-  larch-log.sh manifest --skill S --run-id R --field K=V...
+  larch-log.sh init --log-root D --skill S --run-id R [--parent-skill P] [--issue N]
+  larch-log.sh write --log-root D --skill S --run-id R --batch B --input-file F
+  larch-log.sh append --log-root D --skill S --run-id R --batch B --record-file F
+  larch-log.sh exists --log-root D --skill S --run-id R --batch B
+  larch-log.sh commit --log-root D --skill S --run-id R [--no-push]
+  larch-log.sh manifest --log-root D --skill S --run-id R --field K=V...
 USAGE
 }
 
@@ -46,6 +46,19 @@ require_common() {
     [ -n "${RUN_ID:-}" ] || { usage; larch_log_fail 1 "--run-id is required"; }
     larch_log_validate_slug skill "$SKILL"
     larch_log_validate_slug run-id "$RUN_ID"
+}
+
+require_log_root() {
+    if [ -n "${LOG_ROOT:-}" ]; then
+        [[ "$LOG_ROOT" == /* ]] || larch_log_fail 1 "--log-root must be an absolute path: $LOG_ROOT"
+        export LARCH_LOG_ROOT="$LOG_ROOT"
+        return 0
+    fi
+    if [ -n "${LARCH_LOG_ROOT:-}" ]; then
+        [[ "$LARCH_LOG_ROOT" == /* ]] || larch_log_fail 1 "LARCH_LOG_ROOT must be an absolute path: $LARCH_LOG_ROOT"
+        return 0
+    fi
+    larch_log_fail 1 "--log-root is required (or export LARCH_LOG_ROOT for test isolation)"
 }
 
 write_manifest_file() {
@@ -102,9 +115,10 @@ shift
 
 case "$cmd" in
     init)
-        SKILL=""; RUN_ID=""; PARENT_SKILL=""; ISSUE=""
+        LOG_ROOT=""; SKILL=""; RUN_ID=""; PARENT_SKILL=""; ISSUE=""
         while [ $# -gt 0 ]; do
             case "$1" in
+                --log-root) LOG_ROOT="${2:?--log-root requires a value}"; shift 2 ;;
                 --skill) SKILL="${2:?--skill requires a value}"; shift 2 ;;
                 --run-id) RUN_ID="${2:?--run-id requires a value}"; shift 2 ;;
                 --parent-skill) PARENT_SKILL="${2:?--parent-skill requires a value}"; shift 2 ;;
@@ -112,6 +126,7 @@ case "$cmd" in
                 *) usage; larch_log_fail 1 "unknown option for init: $1" ;;
             esac
         done
+        require_log_root
         require_common
         [ -z "$PARENT_SKILL" ] || larch_log_validate_slug parent-skill "$PARENT_SKILL"
         case "$ISSUE" in ""|*[!0-9]*) [ -z "$ISSUE" ] || larch_log_fail 1 "invalid issue: $ISSUE" ;; esac
@@ -125,9 +140,10 @@ case "$cmd" in
         ;;
 
     write)
-        SKILL=""; RUN_ID=""; BATCH=""; INPUT_FILE=""
+        LOG_ROOT=""; SKILL=""; RUN_ID=""; BATCH=""; INPUT_FILE=""
         while [ $# -gt 0 ]; do
             case "$1" in
+                --log-root) LOG_ROOT="${2:?--log-root requires a value}"; shift 2 ;;
                 --skill) SKILL="${2:?--skill requires a value}"; shift 2 ;;
                 --run-id) RUN_ID="${2:?--run-id requires a value}"; shift 2 ;;
                 --batch) BATCH="${2:?--batch requires a value}"; shift 2 ;;
@@ -136,6 +152,7 @@ case "$cmd" in
                 *) usage; larch_log_fail 1 "unknown option for write: $1" ;;
             esac
         done
+        require_log_root
         require_common
         [ -n "$BATCH" ] || larch_log_fail 1 "--batch is required"
         [ -f "$INPUT_FILE" ] || larch_log_fail 1 "input file not found: $INPUT_FILE"
@@ -155,9 +172,10 @@ case "$cmd" in
         ;;
 
     append)
-        SKILL=""; RUN_ID=""; BATCH=""; RECORD_FILE=""
+        LOG_ROOT=""; SKILL=""; RUN_ID=""; BATCH=""; RECORD_FILE=""
         while [ $# -gt 0 ]; do
             case "$1" in
+                --log-root) LOG_ROOT="${2:?--log-root requires a value}"; shift 2 ;;
                 --skill) SKILL="${2:?--skill requires a value}"; shift 2 ;;
                 --run-id) RUN_ID="${2:?--run-id requires a value}"; shift 2 ;;
                 --batch) BATCH="${2:?--batch requires a value}"; shift 2 ;;
@@ -165,6 +183,7 @@ case "$cmd" in
                 *) usage; larch_log_fail 1 "unknown option for append: $1" ;;
             esac
         done
+        require_log_root
         require_common
         [ -n "$BATCH" ] || larch_log_fail 1 "--batch is required"
         [ -f "$RECORD_FILE" ] || larch_log_fail 1 "record file not found: $RECORD_FILE"
@@ -187,15 +206,17 @@ case "$cmd" in
         ;;
 
     exists)
-        SKILL=""; RUN_ID=""; BATCH=""
+        LOG_ROOT=""; SKILL=""; RUN_ID=""; BATCH=""
         while [ $# -gt 0 ]; do
             case "$1" in
+                --log-root) LOG_ROOT="${2:?--log-root requires a value}"; shift 2 ;;
                 --skill) SKILL="${2:?--skill requires a value}"; shift 2 ;;
                 --run-id) RUN_ID="${2:?--run-id requires a value}"; shift 2 ;;
                 --batch) BATCH="${2:?--batch requires a value}"; shift 2 ;;
                 *) usage; larch_log_fail 1 "unknown option for exists: $1" ;;
             esac
         done
+        require_log_root
         require_common
         path="$(larch_log_batch_path "$SKILL" "$RUN_ID" "$BATCH")"
         if [ -f "$path" ]; then
@@ -206,15 +227,17 @@ case "$cmd" in
         ;;
 
     manifest)
-        SKILL=""; RUN_ID=""; FIELDS=()
+        LOG_ROOT=""; SKILL=""; RUN_ID=""; FIELDS=()
         while [ $# -gt 0 ]; do
             case "$1" in
+                --log-root) LOG_ROOT="${2:?--log-root requires a value}"; shift 2 ;;
                 --skill) SKILL="${2:?--skill requires a value}"; shift 2 ;;
                 --run-id) RUN_ID="${2:?--run-id requires a value}"; shift 2 ;;
                 --field) FIELDS+=("${2:?--field requires a value}"); shift 2 ;;
                 *) usage; larch_log_fail 1 "unknown option for manifest: $1" ;;
             esac
         done
+        require_log_root
         require_common
         path="$(larch_log_run_dir "$SKILL" "$RUN_ID")/manifest.json"
         [ -f "$path" ] || larch_log_fail 1 "manifest not found: $path"
@@ -256,15 +279,17 @@ case "$cmd" in
         ;;
 
     commit)
-        SKILL=""; RUN_ID=""; NO_PUSH=false
+        LOG_ROOT=""; SKILL=""; RUN_ID=""; NO_PUSH=false
         while [ $# -gt 0 ]; do
             case "$1" in
+                --log-root) LOG_ROOT="${2:?--log-root requires a value}"; shift 2 ;;
                 --skill) SKILL="${2:?--skill requires a value}"; shift 2 ;;
                 --run-id) RUN_ID="${2:?--run-id requires a value}"; shift 2 ;;
                 --no-push) NO_PUSH=true; shift ;;
                 *) usage; larch_log_fail 1 "unknown option for commit: $1" ;;
             esac
         done
+        require_log_root
         require_common
         src_path="$(larch_log_run_dir "$SKILL" "$RUN_ID")"
         repo_path="$(larch_log_repo_run_dir "$SKILL" "$RUN_ID")"
