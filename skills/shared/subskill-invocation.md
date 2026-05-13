@@ -165,7 +165,7 @@ This is deliberately separate from the `Continue after child returns` micro-remi
 Canonical producers and consumers in the live tree:
 
 - `skills/fix-issue/SKILL.md § Step 1 — Setup` writes `$FIX_ISSUE_TMPDIR/session-env.sh` and passes it to `/implement` (Step 0 acquires the `IN PROGRESS` comment lock and applies the `[IN PROGRESS]` title prefix before the tmpdir / session-env exist).
-- `skills/implement/SKILL.md § Step 0 — Session Setup` accepts `--session-env` from its parent and propagates a fresh `$IMPLEMENT_TMPDIR/session-env.sh` to `/design` and `/review` via `--session-env` on each invocation.
+- `skills/implement/SKILL.md § Step 0 — Session Setup` accepts `--session-env` from its parent and propagates a fresh `$IMPLEMENT_TMPDIR/session-env.sh` to `/design` and `/review` via `--session-env` on each invocation. It also writes `PREV_IMPLEMENT_TMPDIR=$IMPLEMENT_TMPDIR` so a future `/implement` session can copy the previous session's `larch-logs` subtree into its fresh tmpdir.
 - `skills/design/SKILL.md § Step 0 — Session Setup` and `skills/review/SKILL.md § Step 0 — Session Setup` both accept `--session-env` as an `--caller-env` forward.
 
 <a id="artifact-only-return"></a>

@@ -7,6 +7,8 @@ Regression harness for `scripts/session-setup.sh` repository discovery.
 - Exercises the gh-first ordering in Section 4 when a real `gh repo view` call is available.
 - Stubs `gh` failure and verifies the `origin` fallback resolves GitHub SSH and HTTPS remotes through `scripts/github-remote-repo.sh`.
 - Verifies malformed and missing `origin` remotes fail soft with `REPO=` and `REPO_UNAVAILABLE=true`.
+- Verifies `PREV_IMPLEMENT_TMPDIR` in caller-env best-effort copies the previous
+  session's `larch-logs` subtree into the fresh session tmpdir.
 
 ## Fixture Layout
 
@@ -14,4 +16,4 @@ The harness creates isolated temporary git repositories under `${TMPDIR:-/tmp}` 
 
 ## Edit-in-sync
 
-Update with `scripts/session-setup.sh` Section 4 and `scripts/github-remote-repo.sh` when changing repository discovery ordering, accepted remote URL shapes, or fail-soft behavior.
+Update with `scripts/session-setup.sh` Section 4 and `scripts/github-remote-repo.sh` when changing repository discovery ordering, accepted remote URL shapes, or fail-soft behavior. Update with `scripts/write-session-env.sh` when changing `PREV_IMPLEMENT_TMPDIR` handoff semantics.

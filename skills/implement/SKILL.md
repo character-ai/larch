@@ -41,7 +41,7 @@ Each rule states WHY; per-site reminders reference by anchor name.
 
 4. **NEVER skip the `/review` step regardless of the nature of changes.** **Why**: all changes — code, skills, documentation, data files, configuration — require full reviewer-panel vetting. **How to apply**: Step 5 normal mode always invokes `/review`; quick mode runs a multi-round review loop (rounds 1-3: 5 specialists + generic Codex) but still mandates review.
 
-5. **NEVER let the Step 9a.1 sentinel short-circuit silently skip the larch-log OOS update.** **Why**: idempotency recovery MUST write the recovered accepted-OOS URLs to the `oos-issues` log batch and refresh the terminal summary content; silent skip breaks the committed run-log contract. **How to apply**: the idempotent-rerun branch in Step 9a.1 performs the same `larch-log.sh append --batch oos-issues` / `larch-log.sh write --batch run-statistics` operations using URLs recovered from `oos-issues-created.md` as the normal create-script branch steps. **Fork-mode carve-out**: when `forked_target=true`, tracking-issue lifecycle and OOS issue creation are disabled, so Step 9a.1 skips issue filing and larch-log Accepted-OOS updates; accepted OOS items are emitted in the final report as text only.
+5. **NEVER let the Step 9a.1 sentinel short-circuit silently skip the larch-log OOS update.** **Why**: idempotency recovery MUST write the recovered accepted-OOS URLs to the `oos-issues` log batch and refresh the terminal summary content; silent skip breaks the committed run-log contract. **How to apply**: the idempotent-rerun branch in Step 9a.1 performs the same `larch-log.sh append --log-root "$IMPLEMENT_TMPDIR/larch-logs" --batch oos-issues` / `larch-log.sh write --log-root "$IMPLEMENT_TMPDIR/larch-logs" --batch run-statistics` operations using URLs recovered from `oos-issues-created.md` as the normal create-script branch steps. **Fork-mode carve-out**: when `forked_target=true`, tracking-issue lifecycle and OOS issue creation are disabled, so Step 9a.1 skips issue filing and larch-log Accepted-OOS updates; accepted OOS items are emitted in the final report as text only.
 
 6. **NEVER move the Step 5 quick-mode Cursor/Codex reviewer prompts (containing the five focus-area enum literals `code-quality` / `risk-integration` / `correctness` / `architecture` / `security`) out of `SKILL.md`.** **Why**: `.github/workflows/ci.yaml` inspects `skills/implement/SKILL.md` for the unquoted focus-area enum. **How to apply**: keep every Step 5 quick-mode Bash block that contains the slash-separated focus-area enum (the rounds 1-3 generic Codex slot) inline in Step 5; do not move it to a reference file unless the CI workflow's file list is extended in the same PR.
 
@@ -219,6 +219,7 @@ Then:
     --gemini-healthy <value>
     --timing-ledger "$IMPLEMENT_TMPDIR/timing-ledger.tsv"
     --token-session-id "$LARCH_TOKEN_SESSION_ID"
+    --prev-implement-tmpdir "$IMPLEMENT_TMPDIR"
   )
   [[ -n "${LARCH_CLAUDE_SOURCE_FILE:-}" ]] && session_env_args+=(--claude-source-file "$LARCH_CLAUDE_SOURCE_FILE")
   "${CLAUDE_PLUGIN_ROOT}/scripts/write-session-env.sh" "${session_env_args[@]}"
@@ -414,11 +415,11 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-read.sh --sentinel "$IMPLEMENT_TMPD
 Parse stdout for `ISSUE_NUMBER`, `RUN_ID`, `ADOPTED`.
 
 - **Mismatch guard**: if `ISSUE_ARG` is non-empty AND `ISSUE_NUMBER_in_sentinel != ISSUE_ARG`: print `**⚠ 0.5: tracking issue — sentinel mismatch (sentinel has #$ISSUE_NUMBER_in_sentinel, --issue requested #$ISSUE_ARG). Clearing sentinel and re-adopting.**`, remove the sentinel file, preserve any existing `larch-logs/` files, and fall through to Branch 2.
-- **Reuse**: set `ISSUE_NUMBER` and `RUN_ID` from sentinel. Ensure the manifest still exists with `larch-log.sh init --skill implement --run-id "$RUN_ID" --issue "$ISSUE_NUMBER"`; this is idempotent and emits `UNCHANGED=true` on an existing manifest. Print `✅ 0.5: tracking issue status=complete outcome=reused-sentinel issue=$ISSUE_NUMBER elapsed=<elapsed>`.
+- **Reuse**: set `ISSUE_NUMBER` and `RUN_ID` from sentinel. Ensure the manifest still exists with `larch-log.sh init --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --issue "$ISSUE_NUMBER"`; this is idempotent and emits `UNCHANGED=true` on an existing manifest. Print `✅ 0.5: tracking issue status=complete outcome=reused-sentinel issue=$ISSUE_NUMBER elapsed=<elapsed>`.
 - **No hydration step**: marker-keyed summary comments are projections only. Never fetch GitHub comment bodies to reconstruct run state; resume state comes from the committed `larch-logs/implement/<RUN_ID>/` tree plus session tmpdir artifacts.
 
   ```bash
-  ${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh init --skill implement --run-id "$RUN_ID" --issue "$ISSUE_NUMBER"
+  ${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh init --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --issue "$ISSUE_NUMBER"
   ```
 
 - **Resume rename safety net**: if `ISSUE_NUMBER` is set, run a best-effort idempotent rename to `[IN PROGRESS]`. This recovers from the case where a prior session wrote the sentinel but its Branch 2 / Branch 3 / Branch 4 rename failed (best-effort, logged but non-blocking) — without this, a resumed run could complete with merge/Step 18 renames while the GitHub title never received `[IN PROGRESS]`:
@@ -452,7 +453,7 @@ If `STATE=CLOSED`: print `**⚠ 0.5: tracking issue — adopted issue #$ISSUE_AR
 Else (`STATE=OPEN`): adopt the issue, initialize the run manifest, and publish the metadata summary comment. No existing tracking-issue comment is read or hydrated; marker-keyed summary comments are projections and `tracking-issue-summary.sh` is responsible for upserting the one comment matching the marker literal.
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh init --skill implement --run-id "$RUN_ID" --issue "$ISSUE_ARG"
+${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh init --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --issue "$ISSUE_ARG"
 LARCH_VER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-plugin-version.sh" 2>/dev/null | awk -F= '/^LARCH_PLUGIN_VERSION=/{print $2; exit}')
 [ -n "$LARCH_VER" ] || LARCH_VER="unknown"
 printf 'Run `%s` adopted issue #%s. Logs: `larch-logs/implement/%s/`.\nAgent: `%s` | Larch: `%s`\n' \
@@ -502,7 +503,7 @@ If a number emerges as `RECOVERED_N`: validate the target issue via `${CLAUDE_PL
 Initialize the run manifest and publish the metadata summary comment using the same marker-keyed flow as Branch 2:
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh init --skill implement --run-id "$RUN_ID" --issue "$RECOVERED_N"
+${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh init --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --issue "$RECOVERED_N"
 LARCH_VER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-plugin-version.sh" 2>/dev/null | awk -F= '/^LARCH_PLUGIN_VERSION=/{print $2; exit}')
 [ -n "$LARCH_VER" ] || LARCH_VER="unknown"
 printf 'Run `%s` recovered issue #%s from the current PR body. Logs: `larch-logs/implement/%s/`.\nAgent: `%s` | Larch: `%s`\n' \
@@ -580,7 +581,7 @@ Create the tracking issue **immediately** so subsequent summary comments and com
 
 5. **Initialize larch-log manifest and publish metadata summary** as a marker-keyed comment on the newly-created issue:
    ```bash
-   ${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh init --skill implement --run-id "$RUN_ID" --issue "$ISSUE_NUMBER"
+   ${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh init --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --issue "$ISSUE_NUMBER"
    LARCH_VER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-plugin-version.sh" 2>/dev/null | awk -F= '/^LARCH_PLUGIN_VERSION=/{print $2; exit}')
    [ -n "$LARCH_VER" ] || LARCH_VER="unknown"
    printf 'Run `%s` created issue #%s. Logs: `larch-logs/implement/%s/`.\nAgent: `%s` | Larch: `%s`\n' \
@@ -626,7 +627,7 @@ Parse `TITLE_FILE` and `BODY_FILE`. If the user-supplied `FEATURE_DESCRIPTION` i
 
 ### Larch-log Batches and Summary Comments
 
-Steps 1, 2, 5, 7a, 8, 9a.1, 11, and 18 write durable run payloads through `scripts/larch-log.sh`. Replacement batches use `write --batch <slug> --input-file <file>`; append batches use `append --batch <slug> --record-file <file>`. `scripts/larch-log-batches.sh` is the canonical slug table and defines each batch's extension, mode, and sanitizer. `larch-log.sh` redacts tmpdir paths and secrets before writing, and emits the standard `LOG_WRITTEN`, `LOG_PATH`, `BYTES`, `SHA256`, `COMMIT_SHA`, and `UNCHANGED` envelope. Diagrams are not written through a larch-log batch; they are posted only to the tracking issue via the `larch:diagrams` summary comment, with Mermaid validation happening at Step 7a compose time (`sanitize-mermaid-fragment.sh`).
+Steps 1, 2, 5, 7a, 8, 9a.1, 11, and 18 write durable run payloads through `scripts/larch-log.sh` with `--log-root "$IMPLEMENT_TMPDIR/larch-logs"`. Replacement batches use `write --batch <slug> --input-file <file>`; append batches use `append --batch <slug> --record-file <file>`. `scripts/larch-log-batches.sh` is the canonical slug table and defines each batch's extension, mode, and sanitizer. `larch-log.sh` redacts tmpdir paths and secrets before writing, and emits the standard `LOG_WRITTEN`, `LOG_PATH`, `BYTES`, `SHA256`, `COMMIT_SHA`, and `UNCHANGED` envelope. Diagrams are not written through a larch-log batch; they are posted only to the tracking issue via the `larch:diagrams` summary comment, with Mermaid validation happening at Step 7a compose time (`sanitize-mermaid-fragment.sh`).
 
 **Batch mapping**:
 
@@ -842,8 +843,8 @@ Parse `BRANCH=<name>` and save as `BRANCH_NAME`. Referenced by Step 14 (`local-c
 
 Write two larch-log batches from file-backed design artifacts. See Step 0.5 "Larch-log Batches and Summary Comments" for the mechanism.
 
-1. **`plan-goals-test` batch** — compose by reading `PLAN_FILE` (manifest path in normal mode, `$IMPLEMENT_TMPDIR/design-export/plan.txt` in quick mode). Treat the file's full body as the implementation plan — do NOT assume it begins with or contains a literal `## Implementation Plan` heading; `/design` writes plain plan content to `plan.txt` and any normative wrapping is provided by this batch, not the source file. Include a `## Goal` header with a one-sentence objective, then the complete plan body (approach, files to modify, edge cases, testing strategy), then a `## Test plan` header with the testing strategy extracted from the plan. Write with `larch-log.sh write --skill implement --run-id "$RUN_ID" --batch plan-goals-test --input-file <composed-file>`.
-2. **`plan-review-tally` batch** — compose an NDJSON record from `PLAN_REVIEW_TALLY_FILE` (manifest path in normal mode, `$IMPLEMENT_TMPDIR/design-export/voting-tally.md` in quick mode). Use fallback text only if the file is missing on a degraded quick-mode path. If `REJECTED_FINDINGS_FILE` exists and contains `[Plan Review]` entries, include those rejected findings in the record payload. Append with `larch-log.sh append --skill implement --run-id "$RUN_ID" --batch plan-review-tally --record-file <record-file>`.
+1. **`plan-goals-test` batch** — compose by reading `PLAN_FILE` (manifest path in normal mode, `$IMPLEMENT_TMPDIR/design-export/plan.txt` in quick mode). Treat the file's full body as the implementation plan — do NOT assume it begins with or contains a literal `## Implementation Plan` heading; `/design` writes plain plan content to `plan.txt` and any normative wrapping is provided by this batch, not the source file. Include a `## Goal` header with a one-sentence objective, then the complete plan body (approach, files to modify, edge cases, testing strategy), then a `## Test plan` header with the testing strategy extracted from the plan. Write with `larch-log.sh write --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch plan-goals-test --input-file <composed-file>`.
+2. **`plan-review-tally` batch** — compose an NDJSON record from `PLAN_REVIEW_TALLY_FILE` (manifest path in normal mode, `$IMPLEMENT_TMPDIR/design-export/voting-tally.md` in quick mode). Use fallback text only if the file is missing on a degraded quick-mode path. If `REJECTED_FINDINGS_FILE` exists and contains `[Plan Review]` entries, include those rejected findings in the record payload. Append with `larch-log.sh append --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch plan-review-tally --record-file <record-file>`.
 3. If `$ISSUE_NUMBER` is set, compose `$IMPLEMENT_TMPDIR/summary-plan.md` as a slim pointer to `larch-logs/implement/$RUN_ID/plan-goals-test.md` plus the current plan-review tally status, then run `tracking-issue-summary.sh upsert-summary --issue "$ISSUE_NUMBER" --marker "<!-- larch:plan v1 runid=$RUN_ID -->" --content-file "$IMPLEMENT_TMPDIR/summary-plan.md" || true`. On non-zero exit, log `Step 1 — larch:plan upsert failed` to `Tool Failures` and continue — the plan is still committed in `larch-logs/`. If `deferred=true` or `repo_unavailable=true`, skip only the summary upsert.
 
 If `design_only=true`:
@@ -1007,7 +1008,7 @@ After each `AskUserQuestion` return (Codex Q/A loop in 2.3, Claude-fallback oppo
 1. Compose an NDJSON record with `phase="implement"`, `step="2"`, `category="Q/A"`, and a sanitized markdown `body`.
 2. Append it with:
    ```bash
-   ${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh append --skill implement --run-id "$RUN_ID" --batch execution-issues --record-file "$IMPLEMENT_TMPDIR/execution-issue-record.ndjson"
+   ${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh append --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch execution-issues --record-file "$IMPLEMENT_TMPDIR/execution-issue-record.ndjson"
    ```
 3. On `LOG_WRITTEN=false` with `ERROR=`, log `Step 2 — Q/A larch-log append failed: $ERROR` to `Warnings` and continue. Non-fatal.
 
@@ -1204,7 +1205,7 @@ After `/review` returns (normal mode) or the quick-mode loop completes, compose 
 2. Otherwise, in standalone/degraded normal mode, fall back to the visible per-finding vote breakdown and Reviewer Competition Scoreboard.
 3. Otherwise, for quick mode, use the round-by-round summary or fallback text `"Quick mode — no voting panel. Rounds 1-3: 5 Cursor specialists in parallel + generic Codex. Main agent reviewed findings across up to 3 rounds."`.
 
-**After the tally content**, if `$IMPLEMENT_TMPDIR/rejected-findings.md` exists and is non-empty, include its full contents under a `## Rejected Code Review Findings` sub-header in the record payload. This ensures rejected findings are committed to the run log (not just printed to the terminal at Step 16). Append with `larch-log.sh append --skill implement --run-id "$RUN_ID" --batch code-review-tally --record-file <record-file>`.
+**After the tally content**, if `$IMPLEMENT_TMPDIR/rejected-findings.md` exists and is non-empty, include its full contents under a `## Rejected Code Review Findings` sub-header in the record payload. This ensures rejected findings are committed to the run log (not just printed to the terminal at Step 16). Append with `larch-log.sh append --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch code-review-tally --record-file <record-file>`.
 
 ### Track Rejected Code Review Findings
 
@@ -1228,7 +1229,7 @@ After the `code-review-tally` batch is written above (Step 5 normal mode after `
     --output "$IMPLEMENT_TMPDIR/review-findings-full.ndjson"
 ```
 
-Best-effort: parse `COMPOSED=true` / `FINDINGS_TOTAL=<N>` from stdout. On `FAILED=true` or non-zero exit, log `Step 5 — review-findings-full compose failed: $ERROR` to `Warnings` and continue without writing the batch. If composed, append each record to `review-findings-full` with `larch-log.sh append --skill implement --run-id "$RUN_ID" --batch review-findings-full --record-file "$IMPLEMENT_TMPDIR/review-findings-full.ndjson"`.
+Best-effort: parse `COMPOSED=true` / `FINDINGS_TOTAL=<N>` from stdout. On `FAILED=true` or non-zero exit, log `Step 5 — review-findings-full compose failed: $ERROR` to `Warnings` and continue without writing the batch. If composed, append each record to `review-findings-full` with `larch-log.sh append --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch review-findings-full --record-file "$IMPLEMENT_TMPDIR/review-findings-full.ndjson"`.
 
 Known limitation: accepted code-review findings are not currently captured in this fragment. The `/review` skill and the quick-mode 5.5 loop both accept findings without writing a byte-preserved `accepted-code-review-findings.md` artifact. The helper silently emits no records for the `accepted code-review` phase / outcome pair. See `scripts/compose-review-findings.md` "Known limitations" for follow-up wiring.
 
@@ -1371,9 +1372,9 @@ LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.s
 export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --full --output "$IMPLEMENT_TMPDIR/token-report-rendered.md" || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --full --output "$IMPLEMENT_TMPDIR/timing-report-rendered.md" || true
-"${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --skill implement --run-id "$RUN_ID" --batch token-report --input-file "$IMPLEMENT_TMPDIR/token-report-rendered.md" || true
-"${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --skill implement --run-id "$RUN_ID" --batch timing-report --input-file "$IMPLEMENT_TMPDIR/timing-report-rendered.md" || true
-"${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" commit --skill implement --run-id "$RUN_ID" --no-push || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch token-report --input-file "$IMPLEMENT_TMPDIR/token-report-rendered.md" || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch timing-report --input-file "$IMPLEMENT_TMPDIR/timing-report-rendered.md" || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" commit --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --no-push || true
 ```
 
 Best-effort: failures are non-fatal.
@@ -1525,10 +1526,12 @@ if [ -n "$LARCH_CLAUDE_SOURCE_FILE" ] && [ -f "$LARCH_CLAUDE_SOURCE_FILE" ]; the
   TRANSCRIPT_PATH=$(grep '^TRANSCRIPT_PATH=' "$LARCH_CLAUDE_SOURCE_FILE" | head -1 | cut -d= -f2-)
   if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
     if "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write \
+        --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
         --skill implement --run-id "$RUN_ID" \
         --batch session-transcript \
         --input-file "$TRANSCRIPT_PATH"; then
       "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" commit \
+        --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
         --skill implement --run-id "$RUN_ID" --no-push || \
         "${CLAUDE_PLUGIN_ROOT}/scripts/append-execution-issue.sh" \
           --log "$IMPLEMENT_TMPDIR/execution-issues.md" \

@@ -15,6 +15,8 @@ session-env script pair:
   `--claude-source-file` checks (defense-in-depth complementing #1463's
   session-setup-side validation; protects direct callers like test harnesses
   and future skills).
+- **C. `write-session-env.sh`** — `--prev-implement-tmpdir` accepts absolute
+  handoff paths, persists `PREV_IMPLEMENT_TMPDIR`, and rejects relative paths.
 
 ## Inputs / outputs
 

@@ -92,4 +92,16 @@ no_origin_repo=$(make_repo "no-origin")
 out=$(PATH="$FAIL_GH_BIN:$PATH" run_session_setup "$no_origin_repo")
 assert_repo_output "$out" "" "true" "gh fails, no origin"
 
+handoff_repo=$(make_repo "handoff-origin" "git@github.com:owner/repo.git")
+prev_tmp="$TMPROOT/prev-implement"
+mkdir -p "$prev_tmp/larch-logs/implement/run-1"
+printf 'payload\n' > "$prev_tmp/larch-logs/implement/run-1/plan-goals-test.md"
+caller_env="$TMPROOT/caller-env.sh"
+printf 'PREV_IMPLEMENT_TMPDIR=%s\n' "$prev_tmp" > "$caller_env"
+out=$(PATH="$FAIL_GH_BIN:$PATH" run_session_setup "$handoff_repo" --caller-env "$caller_env")
+session_tmp=$(awk -F= '$1 == "SESSION_TMPDIR" { print substr($0, index($0, "=") + 1); exit }' <<< "$out")
+if [[ -z "$session_tmp" || ! -f "$session_tmp/larch-logs/implement/run-1/plan-goals-test.md" ]]; then
+    fail "prev implement larch-logs subtree was not copied into fresh session tmpdir"
+fi
+
 echo "PASS: test-session-setup-repo-fallback.sh"

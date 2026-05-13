@@ -31,9 +31,14 @@ lazily and falls back to uncached rendering if the directory cannot be created.
 
 ## Session-env contract
 
-Recognized caller-env keys are `REPO`, `REPO_UNAVAILABLE`, `CODEX_HEALTHY`, `CURSOR_HEALTHY`, `GEMINI_HEALTHY`, `LARCH_TOKEN_SESSION_ID`, `LARCH_CLAUDE_SOURCE_FILE`, and `LARCH_TIMING_LEDGER`. The file is parsed line-by-line and never sourced.
+Recognized caller-env keys are `REPO`, `REPO_UNAVAILABLE`, `CODEX_HEALTHY`, `CURSOR_HEALTHY`, `GEMINI_HEALTHY`, `LARCH_TOKEN_SESSION_ID`, `LARCH_CLAUDE_SOURCE_FILE`, `LARCH_TIMING_LEDGER`, and `PREV_IMPLEMENT_TMPDIR`. The file is parsed line-by-line and never sourced.
 
 `LARCH_TOKEN_SESSION_ID`, `LARCH_CLAUDE_SOURCE_FILE`, and `LARCH_TIMING_LEDGER` are pass-through telemetry context for nested skills. `/implement` establishes them from its own session tmpdir, `/review` inherits them when invoked with `--session-env`, and standalone `/review` leaves them absent so token-ledger fallback behavior remains unchanged. `LARCH_TIMING_LEDGER` is validated against the timing-ledger containment roots before `session-setup.sh` forwards it to `write-session-env.sh`.
+
+`PREV_IMPLEMENT_TMPDIR` is a cross-session handoff pointer. When it is present
+and `<prev>/larch-logs` exists, setup best-effort copies that subtree into the
+fresh `$SESSION_TMPDIR/larch-logs` before later skill steps write additional
+run-log batches. Missing paths and copy failures are ignored.
 
 When `--write-health` is provided, the health sidecar always contains Codex, Cursor, and `GEMINI_HEALTHY=false`. The defaults at the write site are fail-closed: an empty `FINAL_*_HEALTHY` emits `=false` rather than re-masking unhealthy state as `true`. Regression coverage lives in `scripts/test-session-setup-health-defaults.sh` (sibling contract: `scripts/test-session-setup-health-defaults.md`), wired through `make test-session-setup-health-defaults` and `test-harnesses-6`.
 

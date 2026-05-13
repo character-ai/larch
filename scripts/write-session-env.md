@@ -14,7 +14,12 @@ It may also write `LARCH_TIMING_LEDGER` when the caller passes `--timing-ledger 
 
 It may also write `LARCH_TOKEN_SESSION_ID` when the caller passes `--token-session-id <id>` and `LARCH_CLAUDE_SOURCE_FILE` when the caller passes `--claude-source-file <path>`. `/implement` writes both keys so every orchestrator-side token-ledger / token-report Bash block can rehydrate the parent run's token context, and `/review` can forward that context to nested review launchers. `/fix-issue` does not pass these keys; `/implement` always establishes its own token session id and Claude source snapshot.
 
-Values must stay narrow and caller-controlled (`true|false` for health booleans; validated repo strings for repo identity; caller-owned tmp paths for timing ledgers). `--token-session-id` must match `^[A-Za-z0-9_.-]{1,128}$`; `--claude-source-file` and `--timing-ledger` must match `^[A-Za-z0-9_./~+-]{1,512}$`. Empty optional values are omitted from the file.
+It may also write `PREV_IMPLEMENT_TMPDIR` when the caller passes
+`--prev-implement-tmpdir <path>`. `/implement` uses this to let the next
+session setup copy the previous session's `larch-logs` subtree into the fresh
+tmpdir before additional batches are written.
+
+Values must stay narrow and caller-controlled (`true|false` for health booleans; validated repo strings for repo identity; caller-owned tmp paths for timing ledgers). `--token-session-id` must match `^[A-Za-z0-9_.-]{1,128}$`; `--claude-source-file` and `--timing-ledger` must match `^[A-Za-z0-9_./~+-]{1,512}$`; `--prev-implement-tmpdir` must be an absolute path of 512 characters or fewer. Empty optional values are omitted from the file.
 
 ## Invariants
 

@@ -7,6 +7,7 @@
 #   B. write-session-env.sh validates --timing-ledger paths via the
 #      regex/length guard ^[A-Za-z0-9_./~+-]{1,512}$ shared with
 #      --claude-source-file.
+#   C. write-session-env.sh validates and persists PREV_IMPLEMENT_TMPDIR.
 
 set -euo pipefail
 
@@ -165,6 +166,28 @@ if "$WRITE_SCRIPT" \
     pass
 else
     fail "B.4 absent timing-ledger rejected"
+fi
+
+# ------------------------------------------------------------
+# C. write-session-env.sh — --prev-implement-tmpdir validation
+# ------------------------------------------------------------
+
+if "$WRITE_SCRIPT" \
+    --output "$OUT" --repo a/b --repo-unavailable false \
+    --prev-implement-tmpdir "$TMPDIR_TEST/prev-implement" 2>/dev/null; then
+    pass
+else
+    fail "C.1 valid prev-implement-tmpdir rejected"
+fi
+got=$("$READ_SCRIPT" --file "$OUT" --key PREV_IMPLEMENT_TMPDIR)
+assert_eq "C.1 value persisted" "$TMPDIR_TEST/prev-implement" "$got"
+
+if err=$("$WRITE_SCRIPT" \
+    --output "$OUT" --repo a/b --repo-unavailable false \
+    --prev-implement-tmpdir "relative/path" 2>&1); then
+    fail "C.2 relative prev-implement-tmpdir accepted"
+else
+    assert_contains "C.2 error message" "Invalid --prev-implement-tmpdir" "$err"
 fi
 
 # ------------------------------------------------------------

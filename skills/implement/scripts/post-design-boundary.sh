@@ -160,6 +160,7 @@ health_merge() {
     cur_timing_ledger=$(parse_session_env_key "$SESSION_ENV_PATH" "LARCH_TIMING_LEDGER")
     cur_token_session_id=$(parse_session_env_key "$SESSION_ENV_PATH" "LARCH_TOKEN_SESSION_ID")
     cur_claude_source_file=$(parse_session_env_key "$SESSION_ENV_PATH" "LARCH_CLAUDE_SOURCE_FILE")
+    cur_prev_implement_tmpdir=$(parse_session_env_key "$SESSION_ENV_PATH" "PREV_IMPLEMENT_TMPDIR")
     [[ -z "$cur_timing_ledger" ]] && cur_timing_ledger="$IMPLEMENT_TMPDIR/timing-ledger.tsv"
 
     side_codex=$(read_health_sidecar_value "$sidecar" "CODEX_HEALTHY")
@@ -205,6 +206,7 @@ health_merge() {
         )
         [[ -n "$cur_token_session_id" ]] && write_args+=(--token-session-id "$cur_token_session_id")
         [[ -n "$cur_claude_source_file" ]] && write_args+=(--claude-source-file "$cur_claude_source_file")
+        [[ -n "$cur_prev_implement_tmpdir" ]] && write_args+=(--prev-implement-tmpdir "$cur_prev_implement_tmpdir")
         if ! "$PLUGIN_ROOT/scripts/write-session-env.sh" "${write_args[@]}" >/dev/null 2>&1; then
             append_warning "health-merge-failed"
         fi

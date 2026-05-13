@@ -42,9 +42,9 @@ After the initial version bump in Step 8, every subsequent rebase of the feature
    export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
    "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --full --output "$IMPLEMENT_TMPDIR/token-report-rendered.md" || true
    "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --full --output "$IMPLEMENT_TMPDIR/timing-report-rendered.md" || true
-   "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --skill implement --run-id "$RUN_ID" --batch token-report --input-file "$IMPLEMENT_TMPDIR/token-report-rendered.md" || true
-   "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --skill implement --run-id "$RUN_ID" --batch timing-report --input-file "$IMPLEMENT_TMPDIR/timing-report-rendered.md" || true
-   "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" commit --skill implement --run-id "$RUN_ID" --no-push || true
+   "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch token-report --input-file "$IMPLEMENT_TMPDIR/token-report-rendered.md" || true
+   "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch timing-report --input-file "$IMPLEMENT_TMPDIR/timing-report-rendered.md" || true
+   "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" commit --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --no-push || true
    ```
 
    On any failure, log to `$IMPLEMENT_TMPDIR/execution-issues.md` under `Warnings` and continue — log refresh failure is non-fatal.
@@ -148,6 +148,7 @@ After the initial version bump in Step 8, every subsequent rebase of the feature
    d. **Write the log batch** through `larch-log.sh`:
       ```bash
       ${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh write \
+        --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
         --skill implement \
         --run-id "$RUN_ID" \
         --batch version-bump-reasoning \

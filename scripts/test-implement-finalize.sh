@@ -950,25 +950,26 @@ else
     echo "PASS: postbump: SKILL.md legacy skip phrase absent"
 fi
 
-# Regression: IMPLEMENT_TMPDIR is exported to larch-log.sh in teardown even
-# when implement-finalize.sh is invoked from a fresh shell without the var set.
+# Regression: teardown passes an explicit larch-log root even when
+# implement-finalize.sh is invoked from a fresh shell without IMPLEMENT_TMPDIR.
 rm -f "$SANDBOX/larch-log-env.txt"
+rm -f "$SANDBOX/larch-log-argv.txt"
 write_state "$STATE" PR_NUMBER=99 EXPECTED_SESSION_ID=session-123 EXPECTED_TMPDIR_BASENAME_PREFIX=tmp
 printf 'RUN_ID=test-run-export\n' >> "$STATE"
 (cd "$SANDBOX/repo" && unset IMPLEMENT_TMPDIR && PATH="$SANDBOX/bin:$PATH" \
     "$SANDBOX/scripts/implement-finalize.sh" teardown \
     --state-file "$STATE" --implement-tmpdir "$SANDBOX/tmp" 2>&1) | normalize_elapsed > /dev/null || true
-if [ -f "$SANDBOX/larch-log-env.txt" ]; then
-    if grep -qF "IMPLEMENT_TMPDIR=$SANDBOX/tmp" "$SANDBOX/larch-log-env.txt"; then
+if [ -f "$SANDBOX/larch-log-argv.txt" ]; then
+    if grep -qF -- "--log-root" "$SANDBOX/larch-log-argv.txt" && grep -qF "$SANDBOX/tmp/larch-logs" "$SANDBOX/larch-log-argv.txt"; then
         PASS=$((PASS + 1))
-        echo "PASS: teardown: IMPLEMENT_TMPDIR exported to larch-log.sh (fresh shell)"
+        echo "PASS: teardown: explicit --log-root passed to larch-log.sh (fresh shell)"
     else
         FAIL=$((FAIL + 1))
-        echo "FAIL: teardown: IMPLEMENT_TMPDIR not exported correctly; got: $(cat "$SANDBOX/larch-log-env.txt")"
+        echo "FAIL: teardown: explicit --log-root missing; got: $(cat "$SANDBOX/larch-log-argv.txt")"
     fi
 else
     FAIL=$((FAIL + 1))
-    echo "FAIL: teardown: larch-log.sh stub not called (no env-record file)"
+    echo "FAIL: teardown: larch-log.sh stub not called (no argv record)"
 fi
 
 echo

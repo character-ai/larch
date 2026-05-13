@@ -88,9 +88,9 @@ esac
 SH
     cat > "$root/scripts/larch-log.sh" <<'SH'
 #!/usr/bin/env bash
-# Stub: record whether IMPLEMENT_TMPDIR was exported to this child process.
+# Stub: record the explicit log root passed to this child process.
 sentinel_dir="${LARCH_LOG_STUB_SENTINEL_DIR:-/tmp}"
-printf 'LARCH_LOG_INHERIT_IMPLEMENT_TMPDIR=%s\n' "${IMPLEMENT_TMPDIR:-UNSET}" \
+printf 'LARCH_LOG_ARGS=%s\n' "$*" \
     >> "$sentinel_dir/larch-log-calls.txt"
 SH
     cat > "$root/scripts/ci-wait.sh" <<'SH'
@@ -292,8 +292,8 @@ else
     ok "postmerge does not call tracking-issue-summary.sh (Step 18 owns it)"
 fi
 
-# Regression test: IMPLEMENT_TMPDIR is exported to larch-log.sh child processes
-# even when ship-pr.sh is invoked from a fresh shell without the variable in env.
+# Regression test: ship-pr.sh passes an explicit larch-log root even when
+# invoked from a fresh shell without IMPLEMENT_TMPDIR in the environment.
 root=$(make_repo export_regression)
 tmp=$(make_tmpdir)
 sentinel_dir=$(mktemp -d /tmp/ship-pr-export-test.XXXXXX)
@@ -306,10 +306,10 @@ set +e
     > "$tmp/stdout-export" 2> "$tmp/stderr-export")
 set -e
 if [ -f "$sentinel_dir/larch-log-calls.txt" ]; then
-    if grep -q "LARCH_LOG_INHERIT_IMPLEMENT_TMPDIR=$tmp" "$sentinel_dir/larch-log-calls.txt"; then
-        ok "IMPLEMENT_TMPDIR exported to larch-log.sh child in ci-merge flush (fresh shell)"
+    if grep -q -- "--log-root $tmp/larch-logs" "$sentinel_dir/larch-log-calls.txt"; then
+        ok "explicit --log-root passed to larch-log.sh in ci-merge flush (fresh shell)"
     else
-        fail "IMPLEMENT_TMPDIR not exported correctly to larch-log.sh; got: $(cat "$sentinel_dir/larch-log-calls.txt")"
+        fail "explicit --log-root missing for larch-log.sh; got: $(cat "$sentinel_dir/larch-log-calls.txt")"
     fi
 else
     fail "larch-log.sh stub was not called during ci-merge flush"
