@@ -122,13 +122,15 @@ larch_log_validate_batch_payload() {
             fi
             if awk '
                 NF {
-                    line = $0
-                    gsub(/^[[:space:]]+|[[:space:]]+$/, "", line)
                     count++
-                    if (count == 1) first = tolower(line)
+                    if (count == 1) {
+                        line = $0
+                        gsub(/^[[:space:]]+|[[:space:]]+$/, "", line)
+                        first = tolower(line)
+                    }
                 }
                 END {
-                    if (count == 1 && first ~ /^(see plan\.txt|see attached|see linked|tbd|todo)\.?$/) exit 0
+                    if (first ~ /^(see plan\.txt|see attached|see linked|tbd|todo)\.?$/) exit 0
                     exit 1
                 }
             ' "$impl_tmp"; then

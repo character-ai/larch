@@ -49,30 +49,17 @@ done
 plan_bytes="$(wc -c < "$PLAN_FILE" | tr -d ' ')"
 [ "$plan_bytes" -ge 64 ] || fail "plan file is too short: $PLAN_FILE ($plan_bytes bytes)"
 
-if awk '
-    NF {
-        line = $0
-        gsub(/^[[:space:]]+|[[:space:]]+$/, "", line)
-        count++
-        if (count == 1) first = tolower(line)
-    }
-    END {
-        if (count == 1 && first ~ /^(see plan\.txt|see attached|see linked|tbd|todo)\.?$/) exit 0
-        exit 1
-    }
-' "$PLAN_FILE"; then
+# Reject if first non-blank line matches a pointer-only placeholder.
+first_nonblank="$(awk 'NF { gsub(/^[[:space:]]+|[[:space:]]+$/, "", $0); print tolower($0); exit }' "$PLAN_FILE")"
+if printf '%s\n' "$first_nonblank" | grep -Eiq "^(see plan\.txt|see attached|see linked|tbd|todo)\.?$"; then
     fail "plan file is a pointer-only placeholder: $PLAN_FILE"
 fi
 
+# Extract test plan section (any level-1/2/3 "Test plan" heading, trimmed match).
 test_plan="$(
     awk '
-        found {
-            print
-            next
-        }
-        $0 == "# Test plan" || $0 == "## Test plan" {
-            found = 1
-        }
+        found { print; next }
+        /^#{1,3}[[:space:]]+[Tt]est[[:space:]][Pp]lan[[:space:]]*$/ { found = 1 }
     ' "$PLAN_FILE"
 )"
 
@@ -83,8 +70,7 @@ fi
 printf '## Goal\n'
 printf '%s\n\n' "$GOAL_TEXT"
 printf '## Implementation Plan\n'
-sed -n '1,$p' "$PLAN_FILE"
-tail_char="$(tail -c 1 "$PLAN_FILE" 2>/dev/null || true)"
-[ -z "$tail_char" ] || printf '\n'
+# Stop before any test plan section to avoid duplicating content under ## Test plan below.
+awk '/^#{1,3}[[:space:]]+[Tt]est[[:space:]][Pp]lan[[:space:]]*$/ { exit } { print }' "$PLAN_FILE"
 printf '\n## Test plan\n'
 printf '%s\n' "$test_plan"
