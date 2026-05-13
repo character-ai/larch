@@ -31,7 +31,7 @@ mkdir -p "$(dirname "$OUTPUT_FILE")"
         [[ -n "$label" ]] || continue
         score=0
         if [[ -n "$TALLY_FILE" && -f "$TALLY_FILE" ]]; then
-            score=$(awk -v label="$label" '$0 ~ label && $0 ~ /ACCEPTED=true/ { n++ } END { print n + 0 }' "$TALLY_FILE")
+            score=$(awk -v label="$label" '$0 ~ "REVIEWER=" label " " && $0 ~ /ACCEPTED=true/ { n++ } END { print n + 0 }' "$TALLY_FILE")
         fi
         printf '| %s | %s |\n' "$label" "$score"
     done
