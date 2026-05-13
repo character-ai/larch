@@ -1,0 +1,6 @@
+Quick mode — no voting panel. Rounds 1-3: 5 Cursor specialists in parallel + generic Codex. Main agent reviewed findings across round 1.
+
+Round 1 summary:
+- Accepted: 1 (SECURITY.md update documenting larch-logs/ allowlist blind spot)
+- Rejected: 3 (§2.3 restatement — covered by §2.1; shorten prose — verbosity appropriate; Bash timeout — pre-existing orthogonal issue)
+- OOS: 0
