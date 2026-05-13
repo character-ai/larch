@@ -408,7 +408,10 @@ write_version_reasoning_fragment() {
         warn_line '**⚠ 8: larch-log — version-bump-reasoning input failed validation; fallback text used. Continuing.**'
     fi
     input_file="$IMPLEMENT_TMPDIR/larch-log-batches/version-bump-reasoning.md"
-    printf '%s\n' "$content" > "$input_file"
+    printf '%s\n' "$content" \
+        | awk '/^[[:space:]]*$/{blank=1; next} {if(blank){print ""; blank=0}; print}' \
+        > "$input_file"
+    [ -s "$input_file" ] || printf '\n' > "$input_file"
 
     LOG_WRITE_STATUS=skipped
     if [ -n "$issue_number" ] && [ "$repo_unavailable" = "false" ]; then
