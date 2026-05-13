@@ -572,6 +572,11 @@ exclude = [
   # launch-review.sh --tool cursor (issue #1502 dedup). Referenced via source
   # directives only.
   "scripts/lib-dirty-tree-sidecar.sh",
+  # scripts/lib-net.sh is a sourced-only shell library (no shebang,
+  # not invokable directly). It provides is_transient_net_signature() to
+  # scripts/collect-agent-results.sh and scripts/ship-pr.sh via source directives only,
+  # which agent-lint does not follow.
+  "scripts/lib-net.sh",
   # scripts/cursor-auth-flags.sh is a small executable that prints the
   # conditional --api-key argv elements for runtime skill markdown blocks.
   # Referenced from skills/shared/voting-protocol.md, skills/shared/dialectic-protocol.md,
@@ -1051,6 +1056,7 @@ exclude = [
   "scripts/test-run-external-agent-args.md",
   "scripts/test-collect-agent-retry.md",
   "scripts/test-collect-agent-results.md",
+  "scripts/lib-net.md",
   "skills/simplify-skill/scripts/build-feature-description.md",
   # scripts/test-alias-target-resolution.md and scripts/test-alias-structure.md
   # are the sibling contracts for the two alias-rework regression harnesses

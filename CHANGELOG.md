@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [27.5.5] - 2026-05-13
+
+### Changed
+
+- Added scripts/lib-net.sh as the shared transient-network signature classifier with a source guard and sibling documentation.
+- Updated collect-agent-results.sh and ship-pr.sh to source the shared helper and removed their duplicate local implementations.
+- Extended collector and ship-pr harness coverage for the shared helper and synthetic-repo sourcing path.
+
 ## [27.5.4] - 2026-05-13
 
 ### Changed

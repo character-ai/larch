@@ -148,6 +148,40 @@ run_collector() {
     RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 bash "$COLLECTOR" --timeout "$timeout" --write-health "$health" "$output" 2>"${health}.stderr"
 }
 
+# shellcheck source=scripts/lib-net.sh
+if source "$REPO_ROOT/scripts/lib-net.sh" && [[ "${LARCH_LIB_NET_LOADED:-}" == "1" ]]; then
+    ok "lib-net source guard"
+else
+    fail "lib-net source guard"
+fi
+
+assert_transient_signature() {
+    local label="$1"
+    local text="$2"
+    if is_transient_net_signature "$text"; then
+        ok "$label"
+    else
+        fail "$label: expected transient signature"
+    fi
+}
+
+assert_not_transient_signature() {
+    local label="$1"
+    local text="$2"
+    if is_transient_net_signature "$text"; then
+        fail "$label: expected non-transient signature"
+    else
+        ok "$label"
+    fi
+}
+
+assert_transient_signature "lib-net detects DNS failures" "fatal: Could not resolve host: example.invalid"
+assert_transient_signature "lib-net detects connection reset" "read tcp: connection reset by peer"
+assert_transient_signature "lib-net detects context deadline" "rpc error: context deadline exceeded"
+assert_transient_signature "lib-net detects no valid output retry exhaustion" "ci-status.sh returned no valid output 3 times consecutively"
+assert_transient_signature "lib-net detects git fetch failures" "git fetch origin main failed (network/auth issue)"
+assert_not_transient_signature "lib-net rejects non-network errors" "reviewer prompt malformed"
+
 # C_T1: initial FAILED with transient network diagnostic retries and recovers.
 OUT_T1="$TMPROOT/cursor-t1.txt"
 : > "$OUT_T1"

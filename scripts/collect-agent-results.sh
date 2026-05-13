@@ -97,6 +97,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/external-tool-registry.sh
 source "$SCRIPT_DIR/external-tool-registry.sh" || { echo "collect-agent-results.sh: failed to source external-tool-registry.sh" >&2; exit 1; }
 [[ "${LARCH_EXTERNAL_TOOL_REGISTRY_LOADED:-}" == "1" ]] || { echo "collect-agent-results.sh: external-tool-registry.sh sourced but sentinel missing" >&2; exit 1; }
+# shellcheck source=scripts/lib-net.sh
+source "$SCRIPT_DIR/lib-net.sh" || { echo "collect-agent-results.sh: failed to source lib-net.sh" >&2; exit 1; }
+[[ "${LARCH_LIB_NET_LOADED:-}" == "1" ]] || { echo "collect-agent-results.sh: lib-net.sh sourced but sentinel missing" >&2; exit 1; }
 
 normalize_exit_code_or_99() {
     local raw="$1"
@@ -344,17 +347,6 @@ build_failure_reason() {
         esac
     fi
     sanitize_failure_reason "$raw"
-}
-
-is_transient_net_signature() {
-    local text="$1"
-    case "$text" in
-        *"Could not resolve"*|*"unable to access"*|*"Connection refused"*|\
-        *"Temporary failure"*|*"timed out"*|*"TLS handshake"*|*"HTTP 5"*|\
-        *"network/auth issue"*|*"connection reset"*|*"EOF"*"during"*|\
-        *"context deadline exceeded"*) return 0 ;;
-        *) return 1 ;;
-    esac
 }
 
 mark_retry_metadata_invalid() {
