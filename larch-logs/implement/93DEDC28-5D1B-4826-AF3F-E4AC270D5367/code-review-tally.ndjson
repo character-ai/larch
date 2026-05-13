@@ -1,0 +1,28 @@
+Quick mode — no voting panel. Rounds 1-3: 5 Cursor specialists in parallel + generic Codex. Main agent reviewed findings across 1 round. Accepted: 3 findings (codex auth grep, token scraping, non-auth test). Rejected: 7 findings (see code-review-tally log).
+### [Code Review] Cursor-Correctness (round 1)
+**Finding**: Default hold time reduced from 2s (prior cursor-review default) to 0.5s. On slow macOS hosts, a second launcher could acquire the lock before the first cursor process finishes keychain init, potentially reintroducing the parallel keychain race.
+**Reason not implemented**: The issue design spec (issue #1978) explicitly specifies 0.5s as the hold time: "Hold time = 0.5s | LARCH_EXTERNAL_SERIAL_LOCK_DELAY". The outer-retry layer (LARCH_EXTERNAL_AUTH_RETRIES) catches any residual keychain-race fallout. The prior 2s was acknowledged as "conservative" in the issue. Operators on slow machines can raise LARCH_EXTERNAL_SERIAL_LOCK_DELAY per the documented env var.
+
+### [Code Review] Cursor-Correctness (round 1)
+**Finding**: Spawn-site count in the feature description says "9 spawn sites" but only 8 lock-acquire callsites exist in the code. The two codex paths in launch-review.sh (if/else for SIDECAR availability) share one lock-acquire call before the branch.
+**Reason not implemented**: The if/else is two code paths for one logical spawn site (the lock is acquired once before both branches). 8 lock acquisitions cover all 9 physical spawn lines correctly. No missing site.
+
+### [Code Review] Cursor-Testing (round 1)
+**Finding**: No backward-compatible alias for renamed env vars `LARCH_CURSOR_SERIAL_LOCK_*` → `LARCH_EXTERNAL_SERIAL_LOCK_*`. CI or operators still exporting the old names would get no serialization.
+**Reason not implemented**: The issue spec explicitly prefers the clean rename: "Choose (a) [rename] unless there's a known external caller; this repo is the plugin, so internal renames are fine." No known external callers use these env vars; they were internal testing/tuning knobs. A CHANGELOG migration note is sufficient.
+
+### [Code Review] Cursor-Testing (round 1)
+**Finding**: Global lock scope (always `/tmp/larch-<tool>-serial-${USER}.lock`) removes the previous option to scope the cursor lock under `$IMPLEMENT_TMPDIR` when set. Two unrelated larch sessions from the same user now serialize externally.
+**Reason not implemented**: This is the explicit design intent of issue #1978: "Replace [the session-scoped branch] with: `_CURSOR_SERIAL_LOCK="/tmp/larch-cursor-serial-${USER:-larch}.lock"`". The global scope is the fix; session-scoped locks were the bug (cross-session races).
+
+### [Code Review] Cursor-Testing (round 1)
+**Finding**: CI launcher test harnesses (`test-launch-cursor-ci.sh`, `test-launch-codex-ci.sh`) were not updated with lock-acquisition or outer-retry assertions.
+**Reason not implemented**: The plan's test scope covered `test-launch-review.sh` and the implementer harnesses. CI launcher harnesses are a separate coverage gap; filed as out-of-scope for a follow-up PR.
+
+### [Code Review] Cursor-Testing (round 1)
+**Finding**: gitleaks allowlist `^larch-logs/` excludes entire run-log tree from Layer 1-2 scanning.
+**Reason not implemented**: This is pre-existing behavior not introduced by this PR. Out of scope.
+
+### [Code Review] Cursor-Testing (round 1)
+**Finding**: `ship-pr.sh` post-push larch-log commit removed from run_rebase_rebump.
+**Reason not implemented**: Out of scope — this change is unrelated to the external CLI startup serialization feature and was not part of the issue spec.
