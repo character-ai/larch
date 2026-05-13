@@ -1,0 +1,7 @@
+Quick mode — round 1: 5 Cursor specialists + generic Codex. 4 accepted findings (all folded inline). Nits rejected.
+
+## Rejected Code Review Findings
+
+### [Code Review] Cursor-Testing (round 1)
+**Finding**: No automated regression tests for --no-logs-commit path (test-ship-pr.sh or test-implement-*.sh).
+**Reason not implemented**: Test coverage for this flag requires a new test file with stub-based assertions. Filed as OOS #1 for a follow-up PR.
