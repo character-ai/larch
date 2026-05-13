@@ -6,7 +6,7 @@
 
 ## Guards (all must pass for `DROPPED=true`)
 
-1. **Clean worktree** — `git status --porcelain` must be empty.
+1. **Clean worktree (tracked files)** — `git status --porcelain --untracked-files=no` must be empty. Untracked files are excluded because `git reset --hard HEAD~1` does not affect them; excluding them prevents spurious `DROPPED=false` when larch-log writes are pending in the worktree.
 2. **Bump subject** — HEAD subject must match `^Bump version to [0-9]+\.[0-9]+\.[0-9]+$`.
 3. **HEAD~1 exists** — branch must have at least 2 commits.
 4. **Allowed files** — every file in `git diff --name-only HEAD~1 HEAD` must be in the allowed set:

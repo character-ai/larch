@@ -617,12 +617,7 @@ run_rebase_rebump() {
     # 6. Force-push the rebased + re-bumped branch
     "$SCRIPT_DIR/git-force-push.sh" || exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
 
-    # 7. Refresh larch-log after push (best-effort)
-    if [ -n "$run_id" ]; then
-        "$SCRIPT_DIR/larch-log.sh" commit --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$run_id" --no-push || true
-    fi
-
-    # 8. Increment counters, reset transient retries
+    # 7. Increment counters, reset transient retries
     state_set_many \
         REBASE_COUNT "$(( $(read_state REBASE_COUNT) + 1 ))" \
         ITERATION "$(( $(read_state ITERATION) + 1 ))" \

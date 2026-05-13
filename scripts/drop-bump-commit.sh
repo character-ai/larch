@@ -4,7 +4,9 @@
 # Narrow primitive used by /implement's Rebase + Re-bump Sub-procedure to
 # strip a stale version-bump commit before rebasing onto latest main.
 # Refuses to do anything destructive unless ALL of these hold:
-#   1. Working tree is clean (no staged, unstaged, or untracked changes).
+#   1. Working tree has no uncommitted changes to tracked files.
+#      Untracked files are excluded from this check because git reset --hard
+#      HEAD~1 does not affect them.
 #   2. HEAD subject matches ^Bump version to [0-9]+\.[0-9]+\.[0-9]+$.
 #   3. HEAD~1 exists (branch has at least 2 commits).
 #   4. HEAD touches only allowed bump files (optionally together with
@@ -38,13 +40,14 @@ set -uo pipefail
 # Note: not using set -e — we handle errors explicitly so all no-op paths
 # exit 0 with DROPPED=false, matching the contract used by callers.
 
-# --- Guard 1: clean working tree ---
-# Defense in depth: even though callers are expected to ensure the worktree
-# is clean before invoking, this script refuses destructive `git reset --hard`
-# if anything is uncommitted. `git status --porcelain` covers staged, unstaged,
-# and untracked files — unlike `git diff-index --quiet` which skips untracked.
-if [[ -n "$(git status --porcelain 2>/dev/null)" ]]; then
-    echo "WARN: worktree has uncommitted changes; refusing to drop bump commit" >&2
+# --- Guard 1: clean working tree (tracked files only) ---
+# Defense in depth: `git reset --hard HEAD~1` destroys uncommitted changes to
+# TRACKED files. Untracked files are unaffected by `git reset --hard`, so
+# they are excluded from this check via --untracked-files=no. This avoids
+# spurious DROPPED=false when larch-log writes are pending in the worktree
+# (untracked until the next larch-log.sh commit call).
+if [[ -n "$(git status --porcelain --untracked-files=no 2>/dev/null)" ]]; then
+    echo "WARN: worktree has uncommitted tracked changes; refusing to drop bump commit" >&2
     echo "DROPPED=false"
     exit 0
 fi

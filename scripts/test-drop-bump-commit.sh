@@ -168,6 +168,14 @@ git commit -q -m "Initial commit"
 git commit --allow-empty -q -m "Bump version to 1.2.3"
 run_test "Custom: empty-diff → DROPPED=false" "false" "version.go"
 
+# Test 17: untracked file present — Guard 1 must not block on untracked files
+# (git reset --hard does not affect untracked files, so they are safe to ignore)
+REPO="$TMPDIR_BASE/test17"
+setup_repo "$REPO" .claude-plugin/plugin.json
+# Add an untracked file (simulates pending larch-log writes)
+echo "pending" > "$REPO/larch-logs-pending.txt"
+run_test "Untracked file present → DROPPED=true" "true"
+
 # --- Summary ---
 TOTAL=$((PASS + FAIL))
 echo ""
