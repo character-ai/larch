@@ -314,6 +314,13 @@ suppress = [
 # scripts/test-quick-mode-docs-sync.md (sibling contract); matches the
 # Makefile-only pattern as the other harnesses above.
 #
+# scripts/test-implement-step2-routing.sh is the structural regression harness
+# for /implement Step 2 omitted-coder routing, /design diff-lines export, and
+# /review wholesale-rejection protocol. Referenced only from Makefile
+# (test-implement-step2-routing target) and
+# scripts/test-implement-step2-routing.md (sibling contract); matches the
+# Makefile-only pattern as the other test-* harnesses above.
+#
 # scripts/test-research-structure.sh is the structural regression harness
 # for skills/research/SKILL.md and skills/research/references/ invariants
 # (2-reference progressive-disclosure topology introduced by the /research
@@ -758,6 +765,8 @@ exclude = [
   # Same Makefile-only pattern as other test-* harnesses.
   "scripts/test-rebase-push-keep-on-conflict.sh",
   "scripts/test-implement-structure.sh",
+  "scripts/test-implement-step2-routing.sh",
+  "scripts/test-implement-step2-routing.md",
   # scripts/test-implement-cleanup-roundtrip.sh is the round-trip integration
   # test for the EXPECTED_TMPDIR_BASENAME_PREFIX state-file convention used by
   # skills/implement/SKILL.md Steps 13.5 and 14 and validated by

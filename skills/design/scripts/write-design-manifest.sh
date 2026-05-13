@@ -124,6 +124,7 @@ copy_required_may_be_empty() {
 # variables in the manifest still use $EXPORT_DIR — the rename below makes
 # those paths valid only after every copy succeeds.
 copy_required_nonempty "$DESIGN_TMPDIR/plan.txt" "$STAGE_DIR/plan.txt"
+copy_required_nonempty "$DESIGN_TMPDIR/diff-lines.txt" "$STAGE_DIR/diff-lines.txt"
 copy_required_nonempty "$DESIGN_TMPDIR/voting-tally.md" "$STAGE_DIR/voting-tally.md"
 copy_required_may_be_empty "$DESIGN_TMPDIR/contested-decisions.md" "$STAGE_DIR/contested-decisions.md"
 copy_required_may_be_empty "$DESIGN_TMPDIR/oos.md" "$STAGE_DIR/oos.md"

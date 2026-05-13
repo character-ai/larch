@@ -85,6 +85,7 @@ Write these files under `$DESIGN_TMPDIR/`:
 - `dialectic-resolutions.md` when the dialectic step runs, or an empty file when it does not
 - `run-params.json` as an internal-only required artifact for worker routing; it is not exported in the design manifest
 - `plan.txt`
+- `diff-lines.txt` containing only the integer from the plan's final `diff_lines: <N>` line
 - `voting-tally.md`
 - `accepted-plan-findings.md` (may be empty)
 - `rejected-findings.md` (may be empty)
@@ -101,6 +102,7 @@ Before returning success, write `$DESIGN_TMPDIR/design-summary.json` with the Wr
 {
   "schema_version": 1,
   "plan_path": "<abs-path to plan.txt>",
+  "diff_lines_path": "<abs-path to diff-lines.txt>",
   "review_tally_path": "<abs-path to voting-tally.md>",
   "finding_counts": {
     "in_scope_accepted": 0,

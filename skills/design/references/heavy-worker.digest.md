@@ -16,7 +16,7 @@ Pass explicitly to the subagent: `DESIGN_TMPDIR`, `IMPLEMENT_TMPDIR`, `SESSION_E
 
 Subagent writes under `$DESIGN_TMPDIR/`:
 
-- **Required non-empty**: `approach-synthesis.txt`, `plan.txt`, `voting-tally.md`
+- **Required non-empty**: `approach-synthesis.txt`, `plan.txt`, `diff-lines.txt`, `voting-tally.md`
 - **Required, may be empty**: `contested-decisions.md`, `oos.md`, `rejected-findings.md`, `accepted-plan-findings.md`
 - **Conditional**: `dialectic-resolutions.md` (empty file when dialectic skipped), `architecture-diagram.md` (`auto_mode=true` only), `dirty-tree-detected.env` (on dirty-tree at any collection boundary)
 
