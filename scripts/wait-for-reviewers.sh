@@ -61,6 +61,8 @@ if [[ "$WAIT_POLL_INTERVAL" != *.* ]]; then
         exit 1
     fi
 fi
+MAX_POLLS=$(awk -v t="$TIMEOUT" -v p="$WAIT_POLL_INTERVAL" 'BEGIN{print int((t + p - 0.001) / p)}')
+[ "${MAX_POLLS:-0}" -ge 1 ] 2>/dev/null || MAX_POLLS=1
 
 if [[ $# -eq 0 ]]; then
     echo "ERROR: at least one sentinel file path is required" >&2
@@ -108,7 +110,8 @@ last_progress_minute=0
 # Check before first sleep — detect pre-existing sentinels immediately
 check_sentinels "$@"
 
-while [ "$found_count" -lt "$TOTAL" ] && [ "$SECONDS" -lt "$TIMEOUT" ]; do
+while [ "$found_count" -lt "$TOTAL" ] && [ "$checks" -lt "$MAX_POLLS" ]; do
+    iter_start=$(date +%s)
     # Print dot progress
     printf "." >&2
     checks=$((checks + 1))
@@ -127,6 +130,11 @@ while [ "$found_count" -lt "$TOTAL" ] && [ "$SECONDS" -lt "$TIMEOUT" ]; do
     sleep "$WAIT_POLL_INTERVAL"
 
     check_sentinels "$@"
+    iter_delta=$(( $(date +%s) - iter_start ))
+    if [ "$iter_delta" -gt 60 ]; then
+        printf "\n⚠ suspend detected — iteration took %ds, not counting toward poll budget\n" "$iter_delta" >&2
+        checks=$((checks - 1))
+    fi
 done
 
 # Snapshot elapsed time before summary output
