@@ -4,7 +4,9 @@
 # Narrow primitive used by /implement's Rebase + Re-bump Sub-procedure to
 # strip a stale version-bump commit before rebasing onto latest main.
 # Refuses to do anything destructive unless ALL of these hold:
-#   1. Working tree is clean (no staged, unstaged, or untracked changes).
+#   1. Working tree has no uncommitted changes to tracked files.
+#      Untracked files are excluded from this check because git reset --hard
+#      HEAD~1 does not affect them.
 #   2. HEAD subject matches ^Bump version to [0-9]+\.[0-9]+\.[0-9]+$.
 #   3. HEAD~1 exists (branch has at least 2 commits).
 #   4. HEAD touches only allowed bump files (optionally together with
