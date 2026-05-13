@@ -28,9 +28,13 @@
 |  | inferred:Step 6 — checks second pass | 5 | 885998 | 208286 | 1672 |
 | Step 7 — commit review fixes | **step total** | 8 | 1554126 | 208422 | 2444 |
 |  | inferred:Step 7 — commit review fixes | 8 | 1554126 | 208422 | 2444 |
-| Step 7a — code flow diagram | **step total** | 8 | 1775583 | 4586 | 3314 |
-|  | inferred:Step 7a — code flow diagram | 8 | 1775583 | 4586 | 3314 |
-| **Grand total** |  | 465 | 54840252 | 4961707 | 157875 |
+| Step 7a — code flow diagram | **step total** | 14 | 3119801 | 8143 | 6331 |
+|  | inferred:Step 7a — code flow diagram | 14 | 3119801 | 8143 | 6331 |
+| Step 8a — changelog | **step total** | 0 | 0 | 0 | 0 |
+| Step 8b — rebase | **step total** | 32 | 6958169 | 75918 | 14715 |
+|  | inferred:Step 8b — rebase | 11 | 2498353 | 6167 | 4823 |
+|  | larch:issue | 21 | 4459816 | 69751 | 9892 |
+| **Grand total** |  | 503 | 63142639 | 5041182 | 175607 |
 
 ### Codex
 
@@ -48,4 +52,6 @@
 | Step 6 — checks second pass | **step total** | 0 | 0 | 0 |
 | Step 7 — commit review fixes | **step total** | 0 | 0 | 0 |
 | Step 7a — code flow diagram | **step total** | 0 | 0 | 0 |
+| Step 8a — changelog | **step total** | 0 | 0 | 0 |
+| Step 8b — rebase | **step total** | 0 | 0 | 0 |
 | **Grand total** |  | 0 | 0 | 2503951 |
