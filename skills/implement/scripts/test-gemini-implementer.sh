@@ -248,6 +248,21 @@ set -euo pipefail
 if [[ -n "${STUB_TOKEN_SESSION_FILE:-}" ]]; then
     printf '%s\n' "${LARCH_TOKEN_SESSION_ID:-}" > "$STUB_TOKEN_SESSION_FILE"
 fi
+if [[ -n "${STUB_LOCK_PATH:-}" && -n "${STUB_LOCK_SEEN_FILE:-}" && -d "$STUB_LOCK_PATH" ]]; then
+    printf 'present\n' > "$STUB_LOCK_SEEN_FILE"
+fi
+stub_count=0
+if [[ -n "${STUB_COUNT_FILE:-}" && -f "$STUB_COUNT_FILE" ]]; then
+    stub_count=$(cat "$STUB_COUNT_FILE")
+fi
+stub_count=$((stub_count + 1))
+if [[ -n "${STUB_COUNT_FILE:-}" ]]; then
+    printf '%s\n' "$stub_count" > "$STUB_COUNT_FILE"
+fi
+if [[ -n "${STUB_AUTH_FAIL_UNTIL:-}" && "$stub_count" -le "$STUB_AUTH_FAIL_UNTIL" ]]; then
+    printf 'auth-error: authentication required\n' >&2
+    exit 1
+fi
 prompt_next=false
 for arg in "$@"; do
     printf '%s\n' "$arg" >> "$STUB_ARGV_FILE"
@@ -318,6 +333,66 @@ if [[ -s "$TRANSCRIPT" ]] && grep -Fq 'stub gemini stdout' "$TRANSCRIPT"; then
     pass
 else
     fail 5 "stub Gemini stdout was not captured to transcript"
+fi
+
+LOCK_USER="larch-test-gemini-impl-$$"
+LOCK_PATH="/tmp/larch-gemini-serial-${LOCK_USER}.lock"
+LOCK_SEEN="$SCRATCH/gemini-lock-seen.txt"
+rm -rf "$LOCK_PATH"
+LOCK_OUT=$(cd "$REPO_ROOT" && \
+    PATH="$STUB_BIN:$PATH" \
+    USER="$LOCK_USER" \
+    STUB_ARGV_FILE="$SCRATCH/gemini-lock-argv.txt" \
+    STUB_PROMPT_FILE="$SCRATCH/gemini-lock-prompt.txt" \
+    STUB_MANIFEST_PATH="$SCRATCH/gemini-lock-manifest.json" \
+    STUB_LOCK_PATH="$LOCK_PATH" \
+    STUB_LOCK_SEEN_FILE="$LOCK_SEEN" \
+    IMPLEMENT_TMPDIR='' \
+    LARCH_TOKEN_SESSION_ID="gemini-lock-$LOCK_USER" \
+    LARCH_EXTERNAL_SERIAL_LOCK_FORCE_UNAME=Darwin \
+    LARCH_EXTERNAL_SERIAL_LOCK_DELAY=1 \
+    LARCH_GEMINI_MODEL="stub-gemini-model" \
+    "$LAUNCHER" \
+        --transcript-path "$SCRATCH/gemini-lock-transcript.txt" \
+        --sidecar-log "$SCRATCH/gemini-lock-sidecar.log" \
+        --manifest-path "$SCRATCH/gemini-lock-manifest.json" \
+        --qa-pending-path "$SCRATCH/gemini-lock-qa.json" \
+        --plan-file "$PLAN" \
+        --feature-file "$FEATURE" \
+        --agent-prompt "$AGENT_PROMPT" \
+        --timeout 30)
+if [[ "$LOCK_OUT" == *"LAUNCHER_EXIT=0"* && "$(cat "$LOCK_SEEN" 2>/dev/null)" == "present" ]]; then
+    pass
+else
+    fail 5a "Gemini implementer should hold /tmp serial lock while spawning gemini; out=$LOCK_OUT"
+fi
+rm -rf "$LOCK_PATH"
+
+RETRY_COUNT="$SCRATCH/gemini-retry-count.txt"
+RETRY_OUT=$(cd "$REPO_ROOT" && \
+    PATH="$STUB_BIN:$PATH" \
+    STUB_ARGV_FILE="$SCRATCH/gemini-retry-argv.txt" \
+    STUB_PROMPT_FILE="$SCRATCH/gemini-retry-prompt.txt" \
+    STUB_MANIFEST_PATH="$SCRATCH/gemini-retry-manifest.json" \
+    STUB_COUNT_FILE="$RETRY_COUNT" \
+    STUB_AUTH_FAIL_UNTIL=1 \
+    IMPLEMENT_TMPDIR='' \
+    LARCH_TOKEN_SESSION_ID="gemini-retry-$$" \
+    LARCH_EXTERNAL_AUTH_RETRIES=2 \
+    LARCH_GEMINI_MODEL="stub-gemini-model" \
+    "$LAUNCHER" \
+        --transcript-path "$SCRATCH/gemini-retry-transcript.txt" \
+        --sidecar-log "$SCRATCH/gemini-retry-sidecar.log" \
+        --manifest-path "$SCRATCH/gemini-retry-manifest.json" \
+        --qa-pending-path "$SCRATCH/gemini-retry-qa.json" \
+        --plan-file "$PLAN" \
+        --feature-file "$FEATURE" \
+        --agent-prompt "$AGENT_PROMPT" \
+        --timeout 30)
+if [[ "$RETRY_OUT" == *"LAUNCHER_EXIT=0"* && "$(cat "$RETRY_COUNT" 2>/dev/null)" == "2" ]]; then
+    pass
+else
+    fail 5b "Gemini implementer should retry one auth failure; count=$(cat "$RETRY_COUNT" 2>/dev/null) out=$RETRY_OUT"
 fi
 
 if grep -Fxq -- '--prompt' "$ARGV_FILE" \
@@ -463,13 +538,7 @@ fi
 # exits immediately with LAUNCHER_EXIT=0 MANIFEST_WRITTEN=false STATUS=cap_hit
 # without invoking the underlying Gemini binary.
 CH_SESSION="cap-hit-gemini-$$-$RANDOM"
-if command -v shasum >/dev/null 2>&1; then
-    CH_SLUG=$(printf '%s' "$CH_SESSION" | shasum -a 256 | awk '{print $1}')
-else
-    CH_SLUG=$(printf '%s' "$CH_SESSION" | sha256sum | awk '{print $1}')
-fi
-CH_LEDGER="${TMPDIR:-/tmp}/larch-tokens-${CH_SLUG}.jsonl"
-printf '{"type":"vendor","vendor":"gemini","total":9999}\n' > "$CH_LEDGER"
+LARCH_TOKEN_SESSION_ID="$CH_SESSION" "$REPO_ROOT/scripts/token-ledger.sh" record-vendor gemini total=9999 raw=cap_hit_test >/dev/null
 
 CH_ARGV="$SCRATCH/cap-hit-gemini-argv.txt"
 CH_OUT=$(cd "$REPO_ROOT" && \
@@ -478,6 +547,7 @@ CH_OUT=$(cd "$REPO_ROOT" && \
     STUB_PROMPT_FILE="$SCRATCH/cap-hit-gemini-prompt.txt" \
     STUB_MANIFEST_PATH="$SCRATCH/cap-hit-gemini-manifest.json" \
     LARCH_TOKEN_SESSION_ID="$CH_SESSION" \
+    IMPLEMENT_TMPDIR='' \
     LARCH_TOKEN_BUDGET_CAP_IMPLEMENT=1 \
     LARCH_GEMINI_MODEL="stub-gemini-model" \
     "$LAUNCHER" \
@@ -489,7 +559,6 @@ CH_OUT=$(cd "$REPO_ROOT" && \
         --feature-file "$FEATURE" \
         --agent-prompt "$AGENT_PROMPT" \
         --timeout 30)
-rm -f "$CH_LEDGER"
 
 if printf '%s\n' "$CH_OUT" | grep -Fxq 'LAUNCHER_EXIT=0' && \
    printf '%s\n' "$CH_OUT" | grep -Fxq 'MANIFEST_WRITTEN=false' && \

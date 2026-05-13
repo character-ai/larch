@@ -139,6 +139,9 @@ fi
 if [[ -n "${CODEX_STUB_CONFIG_FILE:-}" && -n "${CODEX_HOME:-}" && -f "$CODEX_HOME/config.toml" ]]; then
     cp "$CODEX_HOME/config.toml" "$CODEX_STUB_CONFIG_FILE"
 fi
+if [[ -n "${CODEX_STUB_LOCK_PATH:-}" && -n "${CODEX_STUB_LOCK_SEEN_FILE:-}" && -d "$CODEX_STUB_LOCK_PATH" ]]; then
+    printf 'present\n' > "$CODEX_STUB_LOCK_SEEN_FILE"
+fi
 count=0
 if [[ -f "$CODEX_STUB_COUNT_FILE" ]]; then
     count=$(cat "$CODEX_STUB_COUNT_FILE")
@@ -264,6 +267,27 @@ if grep -Fxq -- "projects.\"$REPO_ROOT\".trust_level=\"trusted\"" "$ARGV"; then
 else
     fail "codex review argv should include trusted-project config override"
 fi
+
+CODEX_LOCK_USER="larch-test-codex-$$"
+CODEX_LOCK_PATH="/tmp/larch-codex-serial-${CODEX_LOCK_USER}.lock"
+CODEX_LOCK_SEEN="$TMPDIR/codex-lock-seen.txt"
+rm -rf "$CODEX_LOCK_PATH"
+PATH="$STUB_BIN:$PATH" \
+    USER="$CODEX_LOCK_USER" \
+    CODEX_STUB_ARGV_LOG="$TMPDIR/argv-lock.txt" \
+    CODEX_STUB_COUNT_FILE="$TMPDIR/count-lock.txt" \
+    CODEX_STUB_LOCK_PATH="$CODEX_LOCK_PATH" \
+    CODEX_STUB_LOCK_SEEN_FILE="$CODEX_LOCK_SEEN" \
+    LARCH_EXTERNAL_SERIAL_LOCK_FORCE_UNAME=Darwin \
+    LARCH_EXTERNAL_SERIAL_LOCK_DELAY=1 \
+    LARCH_CODEX_MODEL="stub-model" \
+    "$LAUNCHER" --output "$TMPDIR/codex-lock.txt" --timeout 5 --prompt "review prompt" >/dev/null
+if [[ "$(cat "$CODEX_LOCK_SEEN" 2>/dev/null)" == "present" ]]; then
+    pass
+else
+    fail "codex review should hold /tmp serial lock while spawning codex"
+fi
+rm -rf "$CODEX_LOCK_PATH"
 
 TIMING_ENV_LEDGER="$TMPDIR/lcr-timing-env.tsv"
 TIMING_ENV_ARGV="$TMPDIR/argv-timing-env.txt"
@@ -1610,10 +1634,13 @@ fi
 # cursor reads cursor-user/cursor-access-token from the macOS keychain at
 # startup even when --api-key is provided; 5 parallel launchers race that read
 # and some fail (exit 1, ~10s). The fix serializes cursor starts via a
-# POSIX-atomic mkdir lock. These cases use LARCH_CURSOR_SERIAL_LOCK_FORCE_UNAME
+# POSIX-atomic mkdir lock. These cases use LARCH_EXTERNAL_SERIAL_LOCK_FORCE_UNAME
 # to exercise the Darwin path on any OS.
 IMPLEMENT_TMPDIR_SL="$TMPDIR/implement-sl"
 mkdir -p "$IMPLEMENT_TMPDIR_SL"
+SERIAL_LOCK_USER="larch-test-sl-$$"
+SERIAL_LOCK_PATH="/tmp/larch-cursor-serial-${SERIAL_LOCK_USER}.lock"
+rm -rf "$SERIAL_LOCK_PATH"
 
 # Restore a minimal cursor stub that produces valid JSON output.
 cat > "$STUB_BIN/cursor-sl" <<'STUB_SL'
@@ -1632,14 +1659,16 @@ OUT_SL_A="$TMPDIR/cursor-sl-a.txt"
 OUT_SL_B="$TMPDIR/cursor-sl-b.txt"
 set +e
 (PATH="$STUB_BIN:$PATH" \
-    LARCH_CURSOR_SERIAL_LOCK_FORCE_UNAME=Darwin \
-    LARCH_CURSOR_SERIAL_LOCK_DELAY=0 \
+    USER="$SERIAL_LOCK_USER" \
+    LARCH_EXTERNAL_SERIAL_LOCK_FORCE_UNAME=Darwin \
+    LARCH_EXTERNAL_SERIAL_LOCK_DELAY=0 \
     IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR_SL" \
     "$LAUNCHER" --output "$OUT_SL_A" --timeout 10 --prompt "sl-a" >/dev/null 2>&1) &
 PID_SL_A=$!
 (PATH="$STUB_BIN:$PATH" \
-    LARCH_CURSOR_SERIAL_LOCK_FORCE_UNAME=Darwin \
-    LARCH_CURSOR_SERIAL_LOCK_DELAY=0 \
+    USER="$SERIAL_LOCK_USER" \
+    LARCH_EXTERNAL_SERIAL_LOCK_FORCE_UNAME=Darwin \
+    LARCH_EXTERNAL_SERIAL_LOCK_DELAY=0 \
     IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR_SL" \
     "$LAUNCHER" --output "$OUT_SL_B" --timeout 10 --prompt "sl-b" >/dev/null 2>&1) &
 PID_SL_B=$!
@@ -1649,24 +1678,26 @@ set -e
 assert_equals "SL-parallel launcher A completes (exit 0)" "0" "$RC_SL_A"
 assert_equals "SL-parallel launcher B completes (exit 0)" "0" "$RC_SL_B"
 # Lock dir must be gone after both launchers complete (DELAY=0 releases immediately post-spawn).
-if [[ -d "${IMPLEMENT_TMPDIR_SL}/larch-cursor-serial.lock" ]]; then
+if [[ -d "$SERIAL_LOCK_PATH" ]]; then
     fail "SL-parallel: lock dir still present after both launchers completed"
 else
     pass
 fi
 
 # Case SL-failopen: when the lock directory pre-exists (simulates a crashed
-# prior run leaving a stale lock) and LARCH_CURSOR_SERIAL_LOCK_TRIES=1 caps
+# prior run leaving a stale lock) and LARCH_EXTERNAL_SERIAL_LOCK_TRIES=1 caps
 # the wait, the launcher fails open and still runs the cursor process.
 IMPLEMENT_TMPDIR_SL2="$TMPDIR/implement-sl2"
 mkdir -p "$IMPLEMENT_TMPDIR_SL2"
-STALE_LOCK_SL="${IMPLEMENT_TMPDIR_SL2}/larch-cursor-serial.lock"
+STALE_LOCK_SL="/tmp/larch-cursor-serial-${SERIAL_LOCK_USER}-stale.lock"
+rm -rf "$STALE_LOCK_SL"
 mkdir "$STALE_LOCK_SL"
 OUT_SL2="$TMPDIR/cursor-sl2.txt"
 set +e
 PATH="$STUB_BIN:$PATH" \
-    LARCH_CURSOR_SERIAL_LOCK_FORCE_UNAME=Darwin \
-    LARCH_CURSOR_SERIAL_LOCK_TRIES=1 \
+    USER="${SERIAL_LOCK_USER}-stale" \
+    LARCH_EXTERNAL_SERIAL_LOCK_FORCE_UNAME=Darwin \
+    LARCH_EXTERNAL_SERIAL_LOCK_TRIES=1 \
     IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR_SL2" \
     "$LAUNCHER" --output "$OUT_SL2" --timeout 10 --prompt "sl-failopen" >/dev/null 2>&1
 RC_SL2=$?
@@ -1674,20 +1705,106 @@ set -e
 assert_equals "SL-failopen exits 0 when lock stuck (TRIES=1)" "0" "$RC_SL2"
 rmdir "$STALE_LOCK_SL"
 
+# Case SL-stale-recovery: an old global lock directory is removed and
+# re-acquired instead of forcing every caller through the fail-open path.
+STALE_RECOVERY_USER="${SERIAL_LOCK_USER}-recover"
+STALE_RECOVERY_LOCK="/tmp/larch-cursor-serial-${STALE_RECOVERY_USER}.lock"
+rm -rf "$STALE_RECOVERY_LOCK"
+mkdir "$STALE_RECOVERY_LOCK"
+touch -t 200001010000 "$STALE_RECOVERY_LOCK"
+_RECOVERED_LOCK=""
+USER="$STALE_RECOVERY_USER" \
+    LARCH_EXTERNAL_SERIAL_LOCK_FORCE_UNAME=Darwin \
+    LARCH_EXTERNAL_SERIAL_LOCK_TTL=1 \
+    bash -c 'source "$1"; external_serial_lock_acquire _RECOVERED_LOCK cursor; printf "%s" "$_RECOVERED_LOCK"' \
+    bash "$REPO_ROOT/scripts/lib-external-launcher-common.sh" > "$TMPDIR/stale-recovered-lock.txt"
+if [[ "$(cat "$TMPDIR/stale-recovered-lock.txt")" == "$STALE_RECOVERY_LOCK" ]]; then
+    pass
+else
+    fail "SL-stale-recovery: expected helper to recover stale lock, got $(cat "$TMPDIR/stale-recovered-lock.txt" 2>/dev/null)"
+fi
+rmdir "$STALE_RECOVERY_LOCK" 2>/dev/null || true
+
 # Case SL-noop-linux: on non-Darwin (simulated via FORCE_UNAME=Linux), no lock
 # directory is created in IMPLEMENT_TMPDIR even when it is set.
 IMPLEMENT_TMPDIR_SL3="$TMPDIR/implement-sl3"
 mkdir -p "$IMPLEMENT_TMPDIR_SL3"
 OUT_SL3="$TMPDIR/cursor-sl3.txt"
 PATH="$STUB_BIN:$PATH" \
-    LARCH_CURSOR_SERIAL_LOCK_FORCE_UNAME=Linux \
+    USER="${SERIAL_LOCK_USER}-linux" \
+    LARCH_EXTERNAL_SERIAL_LOCK_FORCE_UNAME=Linux \
     IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR_SL3" \
     "$LAUNCHER" --output "$OUT_SL3" --timeout 10 --prompt "sl-noop-linux" >/dev/null 2>"$TMPDIR/case-sl3.stderr"
-if [[ -d "${IMPLEMENT_TMPDIR_SL3}/larch-cursor-serial.lock" ]]; then
+if [[ -d "/tmp/larch-cursor-serial-${SERIAL_LOCK_USER}-linux.lock" ]]; then
     fail "SL-noop-linux: serial lock dir must NOT be created on non-Darwin"
 else
     pass
 fi
+rm -rf "$SERIAL_LOCK_PATH" "$STALE_LOCK_SL" "/tmp/larch-cursor-serial-${SERIAL_LOCK_USER}-linux.lock"
+
+# Case SL-auth-retry: a cursor stub that writes the verified auth-error string
+# to stderr on the first call and exits 1; exits 0 with valid JSON on the second.
+# Assert the launcher retried exactly once (total 2 attempts).
+SL_AUTH_COUNT="$TMPDIR/sl-auth-count.txt"
+printf '0' > "$SL_AUTH_COUNT"
+cat > "$STUB_BIN/cursor-auth-retry" <<STUB_AUTH_RETRY
+#!/usr/bin/env bash
+count=\$(cat "${SL_AUTH_COUNT}" 2>/dev/null || echo 0)
+count=\$((count + 1))
+printf '%s' "\$count" > "${SL_AUTH_COUNT}"
+if (( count == 1 )); then
+    printf "Error: Password not found for account 'cursor-user' and service 'cursor-access-token'\n" >&2
+    exit 1
+fi
+printf '{"result":"auth-retry OK","usage":{"inputTokens":1,"outputTokens":2,"cacheReadTokens":0,"cacheWriteTokens":0}}\n'
+STUB_AUTH_RETRY
+chmod +x "$STUB_BIN/cursor-auth-retry"
+ln -sf "$STUB_BIN/cursor-auth-retry" "$STUB_BIN/cursor"
+OUT_SL_AUTH="$TMPDIR/cursor-sl-auth.txt"
+set +e
+USER="${SERIAL_LOCK_USER}-auth" \
+    LARCH_EXTERNAL_SERIAL_LOCK_FORCE_UNAME=Darwin \
+    LARCH_EXTERNAL_SERIAL_LOCK_DELAY=0 \
+    LARCH_EXTERNAL_AUTH_RETRIES=2 \
+    PATH="$STUB_BIN:$PATH" \
+    "$LAUNCHER" --output "$OUT_SL_AUTH" --timeout 10 --prompt "sl-auth-retry" >/dev/null 2>&1
+RC_SL_AUTH=$?
+set -e
+assert_equals "SL-auth-retry launcher exits 0 after one retry" "0" "$RC_SL_AUTH"
+SL_AUTH_ATTEMPTS=$(cat "$SL_AUTH_COUNT" 2>/dev/null || echo "0")
+assert_equals "SL-auth-retry stub invoked exactly 2 times" "2" "$SL_AUTH_ATTEMPTS"
+rm -f "$SL_AUTH_COUNT"
+
+# Case SL-no-retry: a cursor stub that writes a non-auth error to stderr and
+# exits 1. Assert the launcher does NOT retry (exactly 1 attempt) even when
+# LARCH_EXTERNAL_AUTH_RETRIES is high.
+SL_NORETRY_COUNT="$TMPDIR/sl-noretry-count.txt"
+printf '0' > "$SL_NORETRY_COUNT"
+cat > "$STUB_BIN/cursor-no-retry" <<STUB_NO_RETRY
+#!/usr/bin/env bash
+count=\$(cat "${SL_NORETRY_COUNT}" 2>/dev/null || echo 0)
+count=\$((count + 1))
+printf '%s' "\$count" > "${SL_NORETRY_COUNT}"
+printf "Error: workspace initialization failed (exit code 1)\n" >&2
+exit 1
+STUB_NO_RETRY
+chmod +x "$STUB_BIN/cursor-no-retry"
+ln -sf "$STUB_BIN/cursor-no-retry" "$STUB_BIN/cursor"
+OUT_SL_NORETRY="$TMPDIR/cursor-sl-noretry.txt"
+set +e
+USER="${SERIAL_LOCK_USER}-noretry" \
+    LARCH_EXTERNAL_SERIAL_LOCK_FORCE_UNAME=Darwin \
+    LARCH_EXTERNAL_SERIAL_LOCK_DELAY=0 \
+    LARCH_EXTERNAL_AUTH_RETRIES=5 \
+    PATH="$STUB_BIN:$PATH" \
+    "$LAUNCHER" --output "$OUT_SL_NORETRY" --timeout 10 --prompt "sl-no-retry" >/dev/null 2>&1
+set -e
+SL_NORETRY_ATTEMPTS=$(cat "$SL_NORETRY_COUNT" 2>/dev/null || echo "0")
+assert_equals "SL-no-retry stub invoked exactly 1 time (non-auth failures must not retry)" "1" "$SL_NORETRY_ATTEMPTS"
+rm -f "$SL_NORETRY_COUNT"
+
+# Restore normal cursor stub for remaining tests.
+ln -sf "$STUB_BIN/cursor-sl" "$STUB_BIN/cursor"
 
 if [[ "$FAIL" -ne 0 ]]; then
     printf 'FAIL: test-launch-review.sh --tool cursor - %s failed, %s passed\n' "$FAIL" "$PASS" >&2
@@ -1787,6 +1904,9 @@ fi
 if [[ -n "\${GEMINI_TOKEN_SESSION_FILE:-}" ]]; then
   printf '%s\n' "\${LARCH_TOKEN_SESSION_ID:-}" > "\$GEMINI_TOKEN_SESSION_FILE"
 fi
+if [[ -n "\${GEMINI_STUB_LOCK_PATH:-}" && -n "\${GEMINI_STUB_LOCK_SEEN_FILE:-}" && -d "\$GEMINI_STUB_LOCK_PATH" ]]; then
+  printf 'present\n' > "\$GEMINI_STUB_LOCK_SEEN_FILE"
+fi
 case "\${GEMINI_STUB_MODE:-ok}" in
   ok) printf '{"response":"Plain review text"}\n' ;;
   error) printf '{"error":"auth failed"}\n' ;;
@@ -1864,6 +1984,23 @@ ADMIN_POLICY_PATH=$(awk 'prev=="--admin-policy"{print; exit} {prev=$0}' "$ARGV_L
   || fail "Expected gemini argv to include --admin-policy <path>/gemini-reviewer-policy.toml, got '$ADMIN_POLICY_PATH'"
 [[ -s "$ADMIN_POLICY_PATH" ]] \
   || fail "Expected --admin-policy path '$ADMIN_POLICY_PATH' to exist and be non-empty"
+GEMINI_LOCK_USER="larch-test-gemini-$$"
+GEMINI_LOCK_PATH="/tmp/larch-gemini-serial-${GEMINI_LOCK_USER}.lock"
+GEMINI_LOCK_SEEN="$TMPDIR/gemini-lock-seen.txt"
+rm -rf "$GEMINI_LOCK_PATH"
+PATH="$STUB_BIN:$PATH" \
+  USER="$GEMINI_LOCK_USER" \
+  GEMINI_STUB_LOCK_PATH="$GEMINI_LOCK_PATH" \
+  GEMINI_STUB_LOCK_SEEN_FILE="$GEMINI_LOCK_SEEN" \
+  LARCH_EXTERNAL_SERIAL_LOCK_FORCE_UNAME=Darwin \
+  LARCH_EXTERNAL_SERIAL_LOCK_DELAY=1 \
+  "$GEMINI_LAUNCHER" --output "$TMPDIR/gemini-lock.txt" --timeout 1800 --prompt "test" >/dev/null
+if [[ "$(cat "$GEMINI_LOCK_SEEN" 2>/dev/null)" == "present" ]]; then
+  :
+else
+  fail "Expected Gemini review to hold /tmp serial lock while spawning gemini"
+fi
+rm -rf "$GEMINI_LOCK_PATH"
 grep -q '^0$' "${OUTPUT}.done" \
   || fail "Expected success .done exit code 0"
 if grep -q '[{}]' "$OUTPUT"; then

@@ -45,6 +45,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"
+# shellcheck source=scripts/lib-codex-launcher-common.sh
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib-codex-launcher-common.sh"
 
 TRANSCRIPT_PATH=""
 SIDECAR_LOG=""
@@ -284,19 +287,35 @@ done < "$MODEL_ARGS_TMP"
 # Claude (the dispatcher's caller) never sees the wrapper's progress lines.
 # The wrapper's own exit code is captured into LAUNCHER_EXIT.
 LAUNCHER_EXIT=0
-CODEX_HOME="$CODEX_HOME_DIR" "$SCRIPT_DIR/run-external-agent.sh" \
-    --tool codex \
-    --output "$TRANSCRIPT_PATH" \
-    --timeout "$TIMEOUT" \
-    -- \
-    codex exec --full-auto -C "$PWD" \
-    --add-dir "$SESSION_TMPDIR" \
-    ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
-    -c "$TRUST_CONFIG_ARG" \
-    --output-last-message "$TRANSCRIPT_PATH" \
-    -- \
-    "$PROMPT" \
-    >"$SIDECAR_LOG" 2>&1 || LAUNCHER_EXIT=$?
+MAX_AUTH_RETRIES=${LARCH_EXTERNAL_AUTH_RETRIES:-5}
+case "$MAX_AUTH_RETRIES" in ''|*[!0-9]*|0) MAX_AUTH_RETRIES=5 ;; esac
+HOLD=${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}
+AUTH_ATTEMPT=1
+while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
+    _SERIAL_LOCK=""
+    external_serial_lock_acquire _SERIAL_LOCK "codex"
+    external_serial_lock_release_after "$_SERIAL_LOCK" "$HOLD"
+    LAUNCHER_EXIT=0
+    CODEX_HOME="$CODEX_HOME_DIR" "$SCRIPT_DIR/run-external-agent.sh" \
+        --tool codex \
+        --output "$TRANSCRIPT_PATH" \
+        --timeout "$TIMEOUT" \
+        -- \
+        codex exec --full-auto -C "$PWD" \
+        --add-dir "$SESSION_TMPDIR" \
+        ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
+        -c "$TRUST_CONFIG_ARG" \
+        --output-last-message "$TRANSCRIPT_PATH" \
+        -- \
+        "$PROMPT" \
+        >"$SIDECAR_LOG" 2>&1 || LAUNCHER_EXIT=$?
+    if (( LAUNCHER_EXIT != 0 && AUTH_ATTEMPT < MAX_AUTH_RETRIES )) && external_is_auth_failure "codex" "$SIDECAR_LOG"; then
+        AUTH_ATTEMPT=$((AUTH_ATTEMPT + 1))
+        : > "$SIDECAR_LOG" 2>/dev/null || true
+        continue
+    fi
+    break
+done
 
 MANIFEST_WRITTEN=false
 QA_PENDING_WRITTEN=false

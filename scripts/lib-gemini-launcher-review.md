@@ -13,6 +13,11 @@
 - Defines `_launch_gemini`, which preserves Gemini review JSON normalization,
   model resolution, prompt hardening, dirty-tree sidecar publication, timing
   rows, and the tracked/index snapshot guard.
+- The Gemini CLI spawn uses `scripts/lib-external-launcher-common.sh` for the
+  per-tool Darwin serial lock and outer auth-startup retry loop. Retry
+  classification reads `${RAW_OUTPUT}.diag`, where `run-external-agent.sh
+  --capture-stdout-only` routes Gemini stderr before `fail_closed` handles the
+  final non-zero exit.
 - Rejects specialist-only flags through the unified launcher before this library
   runs; the Gemini path remains generic-only.
 

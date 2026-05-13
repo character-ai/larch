@@ -65,19 +65,35 @@ printf '%s' "$PROMPT" > "$PROMPT_FILE"
 
 TIMING_START_S=$(date +%s)
 LAUNCHER_EXIT=0
-RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX=.inner.done \
-"$SCRIPT_DIR/run-external-agent.sh" \
-    --tool cursor \
-    --output "$OUTPUT" \
-    --timeout "$TIMEOUT" \
-    --capture-stdout-only \
-    -- \
-    cursor agent -p --force --trust \
-    --output-format json \
-    ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
-    ${CURSOR_AUTH_ARGS[@]+"${CURSOR_AUTH_ARGS[@]}"} \
-    --workspace "$PWD" \
-    "$WRAPPED_PROMPT" || LAUNCHER_EXIT=$?
+MAX_AUTH_RETRIES=${LARCH_EXTERNAL_AUTH_RETRIES:-5}
+case "$MAX_AUTH_RETRIES" in ''|*[!0-9]*|0) MAX_AUTH_RETRIES=5 ;; esac
+HOLD=${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}
+AUTH_ATTEMPT=1
+while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
+    _SERIAL_LOCK=""
+    external_serial_lock_acquire _SERIAL_LOCK "cursor"
+    external_serial_lock_release_after "$_SERIAL_LOCK" "$HOLD"
+    LAUNCHER_EXIT=0
+    RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX=.inner.done \
+    "$SCRIPT_DIR/run-external-agent.sh" \
+        --tool cursor \
+        --output "$OUTPUT" \
+        --timeout "$TIMEOUT" \
+        --capture-stdout-only \
+        -- \
+        cursor agent -p --force --trust \
+        --output-format json \
+        ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
+        ${CURSOR_AUTH_ARGS[@]+"${CURSOR_AUTH_ARGS[@]}"} \
+        --workspace "$PWD" \
+        "$WRAPPED_PROMPT" || LAUNCHER_EXIT=$?
+    if (( LAUNCHER_EXIT != 0 && AUTH_ATTEMPT < MAX_AUTH_RETRIES )) && external_is_auth_failure "cursor" "${OUTPUT}.diag"; then
+        AUTH_ATTEMPT=$((AUTH_ATTEMPT + 1))
+        : > "${OUTPUT}.diag" 2>/dev/null || true
+        continue
+    fi
+    break
+done
 
 cursor_launcher_append_outer_meta "${OUTPUT}.meta" "$SCRIPT_DIR/launch-cursor-ci.sh" "$PROMPT_FILE" "$PWD"
 cursor_launcher_promote_inner_done "$OUTPUT"

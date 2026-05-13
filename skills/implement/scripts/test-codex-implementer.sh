@@ -180,6 +180,21 @@ fi
 if [[ -n "${STUB_CODEX_CONFIG_FILE:-}" && -n "${CODEX_HOME:-}" && -f "$CODEX_HOME/config.toml" ]]; then
     cp "$CODEX_HOME/config.toml" "$STUB_CODEX_CONFIG_FILE"
 fi
+if [[ -n "${STUB_LOCK_PATH:-}" && -n "${STUB_LOCK_SEEN_FILE:-}" && -d "$STUB_LOCK_PATH" ]]; then
+    printf 'present\n' > "$STUB_LOCK_SEEN_FILE"
+fi
+stub_count=0
+if [[ -n "${STUB_COUNT_FILE:-}" && -f "$STUB_COUNT_FILE" ]]; then
+    stub_count=$(cat "$STUB_COUNT_FILE")
+fi
+stub_count=$((stub_count + 1))
+if [[ -n "${STUB_COUNT_FILE:-}" ]]; then
+    printf '%s\n' "$stub_count" > "$STUB_COUNT_FILE"
+fi
+if [[ -n "${STUB_AUTH_FAIL_UNTIL:-}" && "$stub_count" -le "$STUB_AUTH_FAIL_UNTIL" ]]; then
+    printf 'auth-error: authentication required\n' >&2
+    exit 1
+fi
 output_path=""
 separator_seen=false
 index=0
@@ -296,6 +311,70 @@ if [[ -s "$TRANSCRIPT" ]] && grep -Fq 'stub codex stdout' "$TRANSCRIPT"; then
     pass
 else
     fail 5 "stub Codex output-last-message payload was not captured to transcript"
+fi
+
+LOCK_USER="larch-test-codex-impl-$$"
+LOCK_PATH="/tmp/larch-codex-serial-${LOCK_USER}.lock"
+LOCK_SEEN="$SCRATCH/codex-lock-seen.txt"
+rm -rf "$LOCK_PATH"
+LOCK_OUT=$(cd "$REPO_ROOT" && \
+    PATH="$STUB_BIN:$PATH" \
+    USER="$LOCK_USER" \
+    STUB_ARGV_FILE="$SCRATCH/codex-lock-argv.txt" \
+    STUB_PROMPT_FILE="$SCRATCH/codex-lock-prompt.txt" \
+    STUB_LAST_ARG_FILE="$SCRATCH/codex-lock-last.txt" \
+    STUB_SEPARATOR_INDEX_FILE="$SCRATCH/codex-lock-sep.txt" \
+    STUB_MANIFEST_PATH="$SCRATCH/codex-lock-manifest.json" \
+    STUB_LOCK_PATH="$LOCK_PATH" \
+    STUB_LOCK_SEEN_FILE="$LOCK_SEEN" \
+    IMPLEMENT_TMPDIR='' \
+    LARCH_TOKEN_SESSION_ID="codex-lock-$LOCK_USER" \
+    LARCH_EXTERNAL_SERIAL_LOCK_FORCE_UNAME=Darwin \
+    LARCH_EXTERNAL_SERIAL_LOCK_DELAY=1 \
+    LARCH_CODEX_MODEL="stub-codex-model" \
+    "$LAUNCHER" \
+        --transcript-path "$SCRATCH/codex-lock-transcript.txt" \
+        --sidecar-log "$SCRATCH/codex-lock-sidecar.log" \
+        --manifest-path "$SCRATCH/codex-lock-manifest.json" \
+        --qa-pending-path "$SCRATCH/codex-lock-qa.json" \
+        --plan-file "$PLAN" \
+        --feature-file "$FEATURE" \
+        --agent-prompt "$AGENT_PROMPT" \
+        --timeout 30)
+if [[ "$LOCK_OUT" == *"LAUNCHER_EXIT=0"* && "$(cat "$LOCK_SEEN" 2>/dev/null)" == "present" ]]; then
+    pass
+else
+    fail 5a "Codex implementer should hold /tmp serial lock while spawning codex; out=$LOCK_OUT"
+fi
+rm -rf "$LOCK_PATH"
+
+RETRY_COUNT="$SCRATCH/codex-retry-count.txt"
+RETRY_OUT=$(cd "$REPO_ROOT" && \
+    PATH="$STUB_BIN:$PATH" \
+    STUB_ARGV_FILE="$SCRATCH/codex-retry-argv.txt" \
+    STUB_PROMPT_FILE="$SCRATCH/codex-retry-prompt.txt" \
+    STUB_LAST_ARG_FILE="$SCRATCH/codex-retry-last.txt" \
+    STUB_SEPARATOR_INDEX_FILE="$SCRATCH/codex-retry-sep.txt" \
+    STUB_MANIFEST_PATH="$SCRATCH/codex-retry-manifest.json" \
+    STUB_COUNT_FILE="$RETRY_COUNT" \
+    STUB_AUTH_FAIL_UNTIL=1 \
+    IMPLEMENT_TMPDIR='' \
+    LARCH_TOKEN_SESSION_ID="codex-retry-$$" \
+    LARCH_EXTERNAL_AUTH_RETRIES=2 \
+    LARCH_CODEX_MODEL="stub-codex-model" \
+    "$LAUNCHER" \
+        --transcript-path "$SCRATCH/codex-retry-transcript.txt" \
+        --sidecar-log "$SCRATCH/codex-retry-sidecar.log" \
+        --manifest-path "$SCRATCH/codex-retry-manifest.json" \
+        --qa-pending-path "$SCRATCH/codex-retry-qa.json" \
+        --plan-file "$PLAN" \
+        --feature-file "$FEATURE" \
+        --agent-prompt "$AGENT_PROMPT" \
+        --timeout 30)
+if [[ "$RETRY_OUT" == *"LAUNCHER_EXIT=0"* && "$(cat "$RETRY_COUNT" 2>/dev/null)" == "2" ]]; then
+    pass
+else
+    fail 5b "Codex implementer should retry one auth failure; count=$(cat "$RETRY_COUNT" 2>/dev/null) out=$RETRY_OUT"
 fi
 
 if [[ "$(sed -n '1p' "$ARGV_FILE")" == "exec" ]] \
