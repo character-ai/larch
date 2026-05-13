@@ -17,7 +17,7 @@ EOF
 
 out=$("$SCRIPT" --tally-file "$TMP/tally.env" --accepted-findings-file "$TMP/accepted.md" --oos-file "$TMP/oos.md" --review-tmpdir "$TMP" --round 1 --mode diff)
 grep -Fq 'EMIT_OK=true' <<< "$out"
-jq -e '.schema_version == 1 and .accepted == 1 and .rejected == 1' "$TMP/review-summary.json" >/dev/null
+jq -e '.schema_version == 1 and .accepted_count == 1 and .rejected_count == 1' "$TMP/review-summary.json" >/dev/null
 grep -Fq 'Review Round 1' "$TMP/review-round-summary.md"
 
 echo "All assertions passed."

@@ -101,6 +101,8 @@ ${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/tally-votes.sh --findings-file "$REV
 ${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/detect-wholesale-rejection.sh --accepted-count "$ACCEPTED_COUNT"
 ```
 
+After `tally-votes.sh` and `detect-wholesale-rejection.sh`, compute and record `WHOLESALE_REJECTED=true|false` per `${CLAUDE_PLUGIN_ROOT}/skills/shared/voting-protocol.md` (include `WHOLESALE_REJECTED=true` cases in the round summary before applying fixes).
+
 Rounds 4+ do NOT load `${CLAUDE_PLUGIN_ROOT}/skills/review/references/voting.md`; apply the cap path and proceed to summary.
 
 ### 3c — Emit Tally
@@ -113,13 +115,15 @@ ${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/emit-tally.sh --tally-file "$TALLY_F
 
 ### 3d — Implement Fixes
 
-Diff mode only: implement accepted findings with the main agent using Edit/Write. Do not implement OOS findings. Run the relevant-checks captured helper after non-trivial fixes:
-
-```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/run-relevant-checks-captured.sh" --site review-step3d --tmpdir "$REVIEW_TMPDIR"
-```
+Diff mode only: implement accepted findings with the main agent using Edit/Write. Do not implement OOS findings. After non-trivial fixes, Step 3e runs the relevant-checks captured helper before re-review classification.
 
 ### 3e — Re-review Classification
+
+> **Continue after child returns.** On `RELEVANT_CHECKS_OK=true`, execute Step 3e classification next (paragraph below), using Step 3f when exiting the Step 3 loop after a non-substantial round — do NOT end the turn on helper output alone. On `STATUS=fail`, first check for `FAILURE_REASON` (structural — e.g. `tmpdir-validation`, `site-validation`, `repo-root-unresolved`, `missing-check-script`, `redaction-failed`; act on the reason, no log file is produced); otherwise read `REDACTED_LOG_FILE` (checks failure — NOT raw `LOG_FILE`), diagnose, fix, and re-invoke the helper until clean BEFORE Step 3e classification — the re-invoke loop stays in Step 3e, not a halt. In either case, do NOT end the turn, summarize, or write a handoff message.
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/run-relevant-checks-captured.sh" --site review-step3e --tmpdir "$REVIEW_TMPDIR"
+```
 
 Classify the just-fixed round as substantial or non-substantial using main-agent judgment. If substantial and under the round cap, loop to Step 1. If non-substantial, no findings, wholesale rejection, description mode, or cap reached, proceed to Step 4.
 
