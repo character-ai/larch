@@ -5,10 +5,12 @@ slugs, file extensions, write modes, and sanitizer hooks.
 
 The table intentionally covers the legacy tracking sections as durable files:
 `plan-goals-test`, `plan-review-tally`, `code-review-tally`,
-`review-findings-full`, `version-bump-reasoning`, `oos-issues`,
-`run-statistics`, `token-report`, `timing-report`, `execution-issues`, and
-`session-transcript` (the redacted Claude Code session transcript captured at
-Step 18 for full post-hoc auditability).
+`review-findings-full`, review runtime batches (`review-context`,
+`review-findings`, `review-panel-manifest`, `review-round-summary`,
+`review-tally`), `version-bump-reasoning`, `oos-issues`, `run-statistics`,
+`token-report`, `timing-report`, `execution-issues`, and `session-transcript`
+(the redacted Claude Code session transcript captured at Step 18 for full
+post-hoc auditability).
 
 Edit in sync with `scripts/larch-log.sh`, `scripts/larch-log.md`, and
 `scripts/test-larch-logs-batches.sh`.

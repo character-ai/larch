@@ -13,6 +13,11 @@ expected='plan-goals-test
 plan-review-tally
 code-review-tally
 review-findings-full
+review-context
+review-findings
+review-panel-manifest
+review-round-summary
+review-tally
 version-bump-reasoning
 oos-issues
 run-statistics

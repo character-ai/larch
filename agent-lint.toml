@@ -388,6 +388,12 @@ exclude = [
   "scripts/test-tracking-issue-summary.md",
   "scripts/test-compose-review-findings.sh",
   "scripts/test-compose-review-findings.md",
+  # scripts/test-launch-claude-subprocess.sh is the Makefile-only regression
+  # harness for scripts/launch-claude-subprocess.sh. The launcher itself is
+  # runtime-referenced from /review; the harness is not invoked from skill
+  # prose and is covered by the test-launch-claude-subprocess target.
+  "scripts/test-launch-claude-subprocess.sh",
+  "scripts/test-launch-claude-subprocess.md",
   # larch-log-batches.sh is sourced by lib-larch-log.sh; agent-lint does not
   # follow Bash source edges.
   "scripts/larch-log-batches.sh",

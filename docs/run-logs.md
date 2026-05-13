@@ -22,9 +22,19 @@ larch-logs/
       timing-report.md
       execution-issues.ndjson
       session-transcript.jsonl
+  review/
+    <RUN_ID>/
+      manifest.json
+      review-context.md
+      review-panel-manifest.ndjson
+      review-findings.ndjson
+      review-tally.md
+      review-round-summary.md
 ```
 
 `<RUN_ID>` is the UUID assigned at the start of each `/implement` session. Files under a run directory are redacted for secrets and tmpdir paths before commit.
+
+`/review` uses the same `larch-logs/<skill>/<RUN_ID>/` layout when a run ID is provided. Review phase names are encoded in flat batch slugs, not subdirectories: `review-context` for gathered context, `review-panel-manifest` for launched slots, `review-findings` for collected finding records, `review-tally` for vote results, and `review-round-summary` for the human-readable round summary.
 
 ## manifest.json
 
