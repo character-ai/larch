@@ -5,8 +5,10 @@
 ## Interface
 
 ```text
-ship-pr.sh --state-file PATH --implement-tmpdir PATH --merge true|false --draft true|false --forked true|false --repo OWNER/REPO [--auto-mode true|false] [--no-admin-fallback true|false] [--resume-phase PHASE]
+ship-pr.sh --state-file PATH --implement-tmpdir PATH --merge true|false --draft true|false --forked true|false --repo OWNER/REPO [--auto-mode true|false] [--no-admin-fallback true|false] [--no-logs-commit true|false] [--resume-phase PHASE]
 ```
+
+`--no-logs-commit true` suppresses all `larch-log.sh commit` calls in the state machine (the pre-rebase flush in `run_rebase_rebump`, the ci-merge happy-path flush, and the postmerge manifest commit). Log files are still written to `$IMPLEMENT_TMPDIR/larch-logs/` for local inspection; they are simply not committed to the branch. The value is propagated into `finalize-state.sh` so `implement-finalize.sh teardown` also skips its commit. Default: `false`.
 
 `--state-file` must live under `--implement-tmpdir`. If the state file does not exist, the script writes an initial uppercase-key state file atomically.
 

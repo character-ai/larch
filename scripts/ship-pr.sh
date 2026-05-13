@@ -18,13 +18,14 @@ DRAFT=""
 FORKED_TARGET=""
 AUTO_MODE="false"
 NO_ADMIN_FALLBACK="false"
+NO_LOGS_COMMIT="false"
 REPO_ARG=""
 RESUME_PHASE=""
 
 usage() {
     cat >&2 <<'USAGE'
 Usage:
-  ship-pr.sh --state-file PATH --implement-tmpdir PATH --merge true|false --draft true|false --forked true|false --repo OWNER/REPO [--auto-mode true|false] [--no-admin-fallback true|false] [--resume-phase PHASE]
+  ship-pr.sh --state-file PATH --implement-tmpdir PATH --merge true|false --draft true|false --forked true|false --repo OWNER/REPO [--auto-mode true|false] [--no-admin-fallback true|false] [--no-logs-commit true|false] [--resume-phase PHASE]
 USAGE
 }
 
@@ -57,6 +58,7 @@ while [ $# -gt 0 ]; do
         --forked) [ $# -ge 2 ] || die_usage "--forked requires a value"; FORKED_TARGET=$2; shift 2 ;;
         --auto-mode) [ $# -ge 2 ] || die_usage "--auto-mode requires a value"; AUTO_MODE=$2; shift 2 ;;
         --no-admin-fallback) [ $# -ge 2 ] || die_usage "--no-admin-fallback requires a value"; NO_ADMIN_FALLBACK=$2; shift 2 ;;
+        --no-logs-commit) [ $# -ge 2 ] || die_usage "--no-logs-commit requires a value"; NO_LOGS_COMMIT=$2; shift 2 ;;
         --repo) [ $# -ge 2 ] || die_usage "--repo requires a value"; REPO_ARG=$2; shift 2 ;;
         --resume-phase) [ $# -ge 2 ] || die_usage "--resume-phase requires a value"; RESUME_PHASE=$2; shift 2 ;;
         --help) usage; exit 0 ;;
@@ -72,6 +74,7 @@ is_tmp_path "$IMPLEMENT_TMPDIR" || die_usage "--implement-tmpdir must be under /
 case "$STATE_FILE" in "$IMPLEMENT_TMPDIR"/*) ;; *) die_usage "--state-file must live under --implement-tmpdir" ;; esac
 is_bool "$AUTO_MODE" || die_usage "--auto-mode must be true or false"
 is_bool "$NO_ADMIN_FALLBACK" || die_usage "--no-admin-fallback must be true or false"
+is_bool "$NO_LOGS_COMMIT" || die_usage "--no-logs-commit must be true or false"
 [ -z "$MERGE" ] || is_bool "$MERGE" || die_usage "--merge must be true or false"
 [ -z "$DRAFT" ] || is_bool "$DRAFT" || die_usage "--draft must be true or false"
 [ -z "$FORKED_TARGET" ] || is_bool "$FORKED_TARGET" || die_usage "--forked must be true or false"
@@ -281,6 +284,7 @@ write_finalize_state() {
         printf 'RUN_ID=%s\n' "$(read_state RUN_ID)"
         printf 'EXPECTED_SESSION_ID=%s\n' "$(read_state EXPECTED_SESSION_ID)"
         printf 'EXPECTED_TMPDIR_BASENAME_PREFIX=%s\n' "$(read_state EXPECTED_TMPDIR_BASENAME_PREFIX)"
+        printf 'NO_LOGS_COMMIT=%s\n' "$NO_LOGS_COMMIT"
     } > "$tmp" && mv "$tmp" "$IMPLEMENT_TMPDIR/finalize-state.sh"
     printf '%s' "$(read_state BAIL_REASON)" > "$IMPLEMENT_TMPDIR/final-bail-reason.txt"
 }
@@ -560,7 +564,7 @@ run_rebase_rebump() {
 
     # 2. Flush pending larch-log writes before rebase to avoid dirty-tree failures
     run_id=$(read_state RUN_ID)
-    if [ -n "$run_id" ]; then
+    if [ -n "$run_id" ] && [ "$NO_LOGS_COMMIT" != "true" ]; then
         "$SCRIPT_DIR/larch-log.sh" commit --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$run_id" --no-push || true
     fi
 
@@ -641,7 +645,7 @@ run_ci_phase() {
     if [ "$phase" = "ci-merge" ]; then
         local flush_run_id
         flush_run_id=$(read_state RUN_ID)
-        if [ -n "$flush_run_id" ]; then
+        if [ -n "$flush_run_id" ] && [ "$NO_LOGS_COMMIT" != "true" ]; then
             "$SCRIPT_DIR/larch-log.sh" commit --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$flush_run_id" || true
         fi
     fi
@@ -740,10 +744,12 @@ run_postmerge_phase() {
             --field "status=done" \
             --field "pr_number=$pr_num" \
             2>/dev/null || true
-        "$SCRIPT_DIR/larch-log.sh" commit \
-            --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
-            --skill implement --run-id "$flush_run_id" \
-            2>/dev/null || true
+        if [ "$NO_LOGS_COMMIT" != "true" ]; then
+            "$SCRIPT_DIR/larch-log.sh" commit \
+                --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
+                --skill implement --run-id "$flush_run_id" \
+                2>/dev/null || true
+        fi
     fi
     advance_phase "done"
     exit 0

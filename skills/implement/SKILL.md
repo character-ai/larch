@@ -1399,6 +1399,7 @@ Before invoking the script, write `$IMPLEMENT_TMPDIR/ship-pr-state.sh` with uppe
 - `PR_NUMBER=`, `PR_URL=`, `PR_TITLE=`, `RESUME_PHASE=`, `CALLER_KIND=`
 - `REBASE_COUNT=0`, `FIX_ATTEMPTS=0`, `ITERATION=0`, `TRANSIENT_RETRIES=0`, `FAILED_RUN_ID=`
 - `MANIFEST_PATH`, `TOOL_LABEL`, `DESIGN_ONLY_DONE=false`, `EXPECTED_SESSION_ID`, `EXPECTED_TMPDIR_BASENAME_PREFIX`
+- `NO_LOGS_COMMIT=$no_logs_commit`
 
 Invoke:
 
@@ -1411,6 +1412,7 @@ Invoke:
   --forked "$forked_target" \
   --auto-mode "$auto_mode" \
   --no-admin-fallback "$no_admin_fallback" \
+  --no-logs-commit "$no_logs_commit" \
   --repo "$REPO"
 ```
 
