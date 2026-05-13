@@ -518,8 +518,9 @@
 | implement | Step 5 — code review | 00:07:33 |
 | implement | Step 6 — checks second pass | 00:00:12 |
 | implement | Step 7 — commit review fixes | 00:00:24 |
-| implement | Step 7a — code flow diagram | 00:00:57 |
-| **Total** | | 129:05:10 |
+| implement | Step 7a — code flow diagram | 00:05:55 |
+| implement | Step 11 — execution-issues | 00:00:00 |
+| **Total** | | 129:11:05 |
 
 (*Outlier steps: Step 0 — preflight, Step 0 — preflight, design:design Step 0 — session setup, review:review Step 3 round 1 — review cycle, Step 5 — code review, review:review Step 5 quick round 1 — review cycle, Step 12 — CI merge loop, Step 1 — design plan, Step 18 — done, Step 18 — done, Step 10 — CI monitor — duration exceeds 04:00:00 threshold; may reflect hung sessions.)
 
