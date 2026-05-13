@@ -1,0 +1,1 @@
+{"phase":"implement","step":"11","category":"Warnings","body":"Step 5 — finding triaged inline (rule 2): post-design-boundary.sh dropped PREV_IMPLEMENT_TMPDIR; fixed. Write-session-env.sh validation aligned with stricter pattern. OOS: local-cleanup.sh change reverted."}
