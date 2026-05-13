@@ -1,7 +1,7 @@
 # Larch Makefile
 # Thin wrapper around pre-commit. Linter definitions live in .pre-commit-config.yaml.
 
-.PHONY: lint lint-only test-harnesses test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 test-harnesses-6 test-harnesses-7 test-harnesses-8 shellcheck markdownlint jsonlint actionlint agent-lint agnix gitleaks trufflehog setup test-pipe-sigpipe-safety test-redact test-redact-tmpdir-paths test-validate-research-output test-validate-citations test-validate-citations-budget test-collect-agent-bash32 test-collect-agent-retry test-parse-input test-allocate-candidates test-add-blocked-by test-list-issues test-parse-args test-prepare-description test-parse-prose-blockers test-issue-lifecycle test-fix-issue-bail-detection test-anti-improvised-wakeup test-fix-issue-step-order test-find-lock-issue test-umbrella-handler test-finalize-umbrella test-sentinel-write test-sessionstart test-keepalive-sentinel test-check-clean-tree test-preflight-args test-cleanup-tmpdir test-cache-root-validation test-cache-key-discipline test-finalize-sanity-check test-session-entry-gate test-session-setup-health-defaults test-session-setup-repo-fallback test-session-env-roundtrip test-audit-edit-write test-block-submodule test-deny-edit-write test-post-scaffold-hints test-render-skill test-show-skill test-render-lane-status test-verify-skill-called test-check-bump-version test-run-checks test-relevant-checks-byte-budget test-relevant-checks-validation test-relevant-checks-helper-failure test-hook-block-skill-relevant-checks test-review-relevant-checks-helper test-drop-bump-commit test-ci-wait-exit-trap test-ci-rerun-failed test-ci-status test-merge-pr test-apply-bump test-lint-skill-invocations test-lint-literal-counts test-mermaid-fragments test-anti-halt test-orchestrator-scope-sync test-alias-target-resolution test-alias-structure test-design-structure test-design-manifest test-write-run-params test-plan-review-prompt test-implement-rebase-macro test-implement-step2-routing test-rebase-push-keep-on-conflict test-implement-structure test-implement-cleanup-roundtrip test-implement-anti-polling-rule test-implement-relevant-checks-anti-halt test-implement-anti-halt test-post-design-boundary test-implement-post-design-boundary test-implement-review-token-propagation test-step2-dispatch test-cursor-implementer test-gemini-implementer test-codex-implementer test-ship-pr test-launch-cursor-ci test-launch-codex-ci test-run-external-agent test-run-external-agent-args test-quick-mode-docs-sync test-implement-finalize test-harness-shards-coverage test-references-headers test-render-reviewer-prompt test-render-specialist-prompt test-research-structure test-review-structure test-run-research-planner test-render-findings-batch test-research-banner test-synthesis-subagent test-research-angle-prompts test-subskill-anchors test-tracking-issue-write test-larch-log test-larch-logs-manifest test-larch-logs-batches test-tracking-issue-summary test-false-positive-keywords test-round-trip-detect test-tracking-issue-read-sentinel test-compose-review-findings test-token-tally test-token-ledger test-token-report test-timing-ledger test-timing-report test-token-vendor-scrapers test-token-claude-source test-umbrella-helpers test-umbrella-parse-args test-umbrella-blocked-by-issue test-umbrella-emit-output-contract test-umbrella-render-batch-input test-render-umbrella-body test-check-review-changes test-check-mid-run-dirty-tree test-check-phantom-dirty test-check-reviewers test-check-generators test-check-topology-rule-paths test-generate-topology-docs test-external-tool-registry test-agent-model-args test-effort-prose test-launch-review test-lib-cursor-auth test-github-remote-repo test-implement-fork-env test-get-issue-context test-create-pr test-resolve-repo test-gh-pr-body-update test-validate-pieces-json smoke-dialectic eval-research test-eval-set-structure test-eval-research-baseline-flag test-body-file-title test-intra-batch-deps test-blocked-by-issue test-oos-file-conflict-deps test-oos-issue-cap test-wait-for-reviewers test-set-up-forked-open-source-repo test-analyze test-rate-assertions
+.PHONY: lint lint-only test-harnesses test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 test-harnesses-6 test-harnesses-7 test-harnesses-8 shellcheck markdownlint jsonlint actionlint agent-lint agnix gitleaks trufflehog setup test-pipe-sigpipe-safety test-redact test-redact-tmpdir-paths test-validate-research-output test-validate-citations test-validate-citations-budget test-collect-agent-bash32 test-collect-agent-retry test-parse-input test-allocate-candidates test-add-blocked-by test-list-issues test-parse-args test-prepare-description test-parse-prose-blockers test-issue-lifecycle test-fix-issue-bail-detection test-anti-improvised-wakeup test-fix-issue-step-order test-find-lock-issue test-umbrella-handler test-finalize-umbrella test-sentinel-write test-sessionstart test-keepalive-sentinel test-check-clean-tree test-preflight-args test-cleanup-tmpdir test-cache-root-validation test-cache-key-discipline test-finalize-sanity-check test-session-entry-gate test-session-setup-health-defaults test-session-setup-repo-fallback test-session-env-roundtrip test-audit-edit-write test-block-submodule test-deny-edit-write test-post-scaffold-hints test-render-skill test-show-skill test-render-lane-status test-verify-skill-called test-check-bump-version test-run-checks test-relevant-checks-byte-budget test-relevant-checks-validation test-relevant-checks-helper-failure test-hook-block-skill-relevant-checks test-review-relevant-checks-helper test-drop-bump-commit test-ci-wait-exit-trap test-ci-rerun-failed test-ci-status test-merge-pr test-apply-bump test-lint-skill-invocations test-lint-literal-counts test-mermaid-fragments test-anti-halt test-orchestrator-scope-sync test-alias-target-resolution test-alias-structure test-design-structure test-design-manifest test-write-run-params test-plan-review-prompt test-implement-rebase-macro test-implement-step2-routing test-rebase-push-keep-on-conflict test-implement-structure test-implement-cleanup-roundtrip test-implement-anti-polling-rule test-implement-relevant-checks-anti-halt test-implement-anti-halt test-post-design-boundary test-implement-post-design-boundary test-implement-review-token-propagation test-step2-dispatch test-cursor-implementer test-gemini-implementer test-codex-implementer test-ship-pr test-launch-cursor-ci test-launch-codex-ci test-launch-claude-subprocess test-run-external-agent test-run-external-agent-args test-quick-mode-docs-sync test-implement-finalize test-harness-shards-coverage test-references-headers test-render-reviewer-prompt test-render-specialist-prompt test-research-structure test-review-structure test-gather-context test-dispatch-panel test-collect-findings test-tally-votes test-detect-wholesale-rejection test-emit-tally test-log-phase test-ballot-parse test-tally-vote test-scoreboard test-oos-serialize test-run-research-planner test-render-findings-batch test-research-banner test-synthesis-subagent test-research-angle-prompts test-subskill-anchors test-tracking-issue-write test-larch-log test-larch-logs-manifest test-larch-logs-batches test-tracking-issue-summary test-false-positive-keywords test-round-trip-detect test-tracking-issue-read-sentinel test-compose-review-findings test-token-tally test-token-ledger test-token-report test-timing-ledger test-timing-report test-token-vendor-scrapers test-token-claude-source test-umbrella-helpers test-umbrella-parse-args test-umbrella-blocked-by-issue test-umbrella-emit-output-contract test-umbrella-render-batch-input test-render-umbrella-body test-check-review-changes test-check-mid-run-dirty-tree test-check-phantom-dirty test-check-reviewers test-check-generators test-check-topology-rule-paths test-generate-topology-docs test-external-tool-registry test-agent-model-args test-effort-prose test-launch-review test-lib-cursor-auth test-github-remote-repo test-implement-fork-env test-get-issue-context test-create-pr test-resolve-repo test-gh-pr-body-update test-validate-pieces-json smoke-dialectic eval-research test-eval-set-structure test-eval-research-baseline-flag test-body-file-title test-intra-batch-deps test-blocked-by-issue test-oos-file-conflict-deps test-oos-issue-cap test-wait-for-reviewers test-set-up-forked-open-source-repo test-analyze test-rate-assertions
 
 # CI splits `lint` into `lint-only` (pre-commit) and `test-harnesses`
 # (regression harnesses). `lint` remains the local-dev convenience target
@@ -40,7 +40,7 @@ test-harnesses-7: test-session-entry-gate test-research-structure test-research-
 
 # Shard-8 leads with the partition-invariant guard so partition bugs surface.
 # test-launch-review dominates at ~66s; isolated here to keep CI parallelism efficient.
-test-harnesses-8: test-harness-shards-coverage test-launch-review
+test-harnesses-8: test-harness-shards-coverage test-launch-review test-launch-claude-subprocess test-gather-context test-dispatch-panel test-collect-findings test-tally-votes test-detect-wholesale-rejection test-emit-tally test-log-phase test-ballot-parse test-tally-vote test-scoreboard test-oos-serialize
 
 test-pipe-sigpipe-safety:
 	bash scripts/test-pipe-sigpipe-safety.sh
@@ -356,6 +356,39 @@ test-research-structure:
 test-review-structure:
 	bash scripts/test-review-structure.sh
 
+test-gather-context:
+	bash skills/review/scripts/test-gather-context.sh
+
+test-dispatch-panel:
+	bash skills/review/scripts/test-dispatch-panel.sh
+
+test-collect-findings:
+	bash skills/review/scripts/test-collect-findings.sh
+
+test-tally-votes:
+	bash skills/review/scripts/test-tally-votes.sh
+
+test-detect-wholesale-rejection:
+	bash skills/review/scripts/test-detect-wholesale-rejection.sh
+
+test-emit-tally:
+	bash skills/review/scripts/test-emit-tally.sh
+
+test-log-phase:
+	bash skills/review/scripts/test-log-phase.sh
+
+test-ballot-parse:
+	bash skills/shared/scripts/test-ballot-parse.sh
+
+test-tally-vote:
+	bash skills/shared/scripts/test-tally-vote.sh
+
+test-scoreboard:
+	bash skills/shared/scripts/test-scoreboard.sh
+
+test-oos-serialize:
+	bash skills/shared/scripts/test-oos-serialize.sh
+
 test-run-research-planner:
 	bash skills/research/scripts/test-run-research-planner.sh
 
@@ -445,6 +478,9 @@ test-external-tool-registry:
 
 test-launch-review:
 	bash scripts/test-launch-review.sh
+
+test-launch-claude-subprocess:
+	bash scripts/test-launch-claude-subprocess.sh
 
 test-agent-model-args:
 	bash scripts/test-agent-model-args.sh

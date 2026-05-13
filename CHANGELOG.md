@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [27.5.0] - 2026-05-13
+
+### Changed
+
+- Extracted /review gather, dispatch, collect, voting, emit, and log phases into script-backed contracts with harness coverage.
+- Added shared ballot, vote tally, scoreboard, and OOS serialization helpers for review/design reuse.
+- Added a Claude subprocess review launcher with sidecar, path-validation, and security documentation.
+- Reduced skills/review/SKILL.md to a thin orchestration prompt and updated larch-log review batch wiring.
+
 ## [27.0.16] - 2026-05-12
 
 ### Changed

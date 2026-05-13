@@ -39,6 +39,7 @@ set -euo pipefail
 REPO_ROOT=$(cd "$(dirname "$0")/.." && pwd -P)
 SKILL_MD="$REPO_ROOT/skills/review/SKILL.md"
 REFS_DIR="$REPO_ROOT/skills/review/references"
+REVIEW_SCRIPTS_DIR="$REPO_ROOT/skills/review/scripts"
 
 expected_refs=(
   "domain-rules.md"
@@ -55,6 +56,31 @@ fail() {
 # ---------------------------------------------------------------------------
 [[ -f "$SKILL_MD" ]] || fail "(1) skills/review/SKILL.md missing: $SKILL_MD"
 [[ -d "$REFS_DIR" ]] || fail "(1) skills/review/references/ missing: $REFS_DIR"
+[[ -d "$REVIEW_SCRIPTS_DIR" ]] || fail "(1) skills/review/scripts/ missing: $REVIEW_SCRIPTS_DIR"
+
+skill_lines=$(wc -l < "$SKILL_MD" | tr -d ' ')
+[[ "$skill_lines" -le 200 ]] \
+  || fail "(1) skills/review/SKILL.md must stay <= 200 lines after script extraction (found $skill_lines)"
+
+review_scripts=(
+  gather-context
+  dispatch-panel
+  collect-findings
+  tally-votes
+  detect-wholesale-rejection
+  emit-tally
+  log-phase
+)
+[[ "${#review_scripts[@]}" -eq 7 ]] \
+  || fail "(1) internal harness error: expected review script list must contain 7 entries"
+for script in "${review_scripts[@]}"; do
+  [[ -f "$REVIEW_SCRIPTS_DIR/${script}.sh" ]] \
+    || fail "(1) missing review script: skills/review/scripts/${script}.sh"
+  [[ -f "$REVIEW_SCRIPTS_DIR/${script}.md" ]] \
+    || fail "(1) missing review script contract: skills/review/scripts/${script}.md"
+  [[ -f "$REVIEW_SCRIPTS_DIR/test-${script}.sh" ]] \
+    || fail "(1) missing review script harness: skills/review/scripts/test-${script}.sh"
+done
 
 # ---------------------------------------------------------------------------
 # (2) Each expected baseline reference file exists.
@@ -252,11 +278,11 @@ grep -Fq '**⚠ /review requires either --diff (branch diff review) or a descrip
 #      line granularity. A future edit that drops either flag, or splits the
 #      invocation across multiple lines, fails closed under `set -o pipefail`.
 # ---------------------------------------------------------------------------
-grep 'collect-agent-results.sh' "$SKILL_MD" \
+grep 'collect-agent-results.sh' "$REVIEW_SCRIPTS_DIR/collect-findings.sh" \
   | grep -F -- '--timeout 1860' \
   | grep -F -- '--substantive-validation' \
   | grep -Fq -- '--validation-mode' \
-  || fail "(13) no single SKILL.md line carries 'collect-agent-results.sh', '--timeout 1860', '--substantive-validation', and '--validation-mode' together — issue #661 substantive-validation contract pin is broken"
+  || fail "(13) no collect-findings.sh line carries 'collect-agent-results.sh', '--timeout 1860', '--substantive-validation', and '--validation-mode' together — issue #661 substantive-validation contract pin is broken"
 
 # ---------------------------------------------------------------------------
 # (14) Specialist prompt rendering is wired (#659).
@@ -297,11 +323,11 @@ done
 #      '### In-Scope Findings', AND '### Out-of-Scope Observations' together —
 #      pinning the parser-side mode-conditional wording in Step 3a item 2.
 # ---------------------------------------------------------------------------
-grep 'In description mode' "$SKILL_MD" \
+grep 'In description mode' "$REVIEW_SCRIPTS_DIR/collect-findings.sh" \
   | grep -F 'dual-list output' \
   | grep -F '### In-Scope Findings' \
   | grep -Fq '### Out-of-Scope Observations' \
-  || fail "(16) no single SKILL.md line carries 'In description mode', 'dual-list output', '### In-Scope Findings', AND '### Out-of-Scope Observations' together — Step 3a description-mode dual-list parsing contract is broken"
+  || fail "(16) no collect-findings.sh line carries 'In description mode', 'dual-list output', '### In-Scope Findings', AND '### Out-of-Scope Observations' together — Step 3a description-mode dual-list parsing contract is broken"
 
 # ---------------------------------------------------------------------------
 # (17) Step 3a diff-mode external-reviewer single-list preservation (#659).
@@ -309,10 +335,10 @@ grep 'In description mode' "$SKILL_MD" \
 #      'entire output' together — pinning Step 3a item 2's diff-mode preservation
 #      so a future blanket rewrite cannot flatten the description/diff modes.
 # ---------------------------------------------------------------------------
-grep 'In diff mode' "$SKILL_MD" \
+grep 'In diff mode' "$REVIEW_SCRIPTS_DIR/collect-findings.sh" \
   | grep -F 'single-list output' \
   | grep -Fq 'entire output' \
-  || fail "(17) no single SKILL.md line carries 'In diff mode', 'single-list output', AND 'entire output' together — Step 3a diff-mode single-list preservation is broken"
+  || fail "(17) no collect-findings.sh line carries 'In diff mode', 'single-list output', AND 'entire output' together — Step 3a diff-mode single-list preservation is broken"
 
 # ---------------------------------------------------------------------------
 # (18) Step 4b pieces.json composition contract (#778). A single SKILL.md line

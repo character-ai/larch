@@ -8,6 +8,11 @@ plan-goals-test .md replace none
 plan-review-tally .ndjson append none
 code-review-tally .ndjson append none
 review-findings-full .ndjson append none
+review-context .md replace none
+review-findings .ndjson append none
+review-panel-manifest .ndjson replace none
+review-round-summary .md replace none
+review-tally .md replace none
 version-bump-reasoning .md replace none
 oos-issues .ndjson append none
 run-statistics .md replace none
