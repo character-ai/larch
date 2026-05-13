@@ -733,6 +733,22 @@ awk 'prev_blank && /^$/ { print "DOUBLE_BLANK"; exit } /^$/ { prev_blank=1; next
     "$SANDBOX/repo/CHANGELOG.md" > "$SANDBOX/blank-check.txt"
 assert_file_not_contains "DOUBLE_BLANK" "$SANDBOX/blank-check.txt" "postbump: changelog has no consecutive blank lines"
 
+# Double-blank-line regression: a reasoning file with consecutive blank lines
+# must produce a batch input file with no consecutive blank lines (MD012 guard).
+db_reasoning="$SANDBOX/tmp/larch-log-batches-input/double-blank-reasoning.md"
+printf '# Version Bump Reasoning\n\nPATCH\n\n\nExtra blank above.\n' > "$db_reasoning"
+rm -f "$SANDBOX/tmp/larch-log-batches/version-bump-reasoning.md"
+cp "$SANDBOX/original-CHANGELOG.md" "$SANDBOX/repo/CHANGELOG.md"
+: > "$SANDBOX/tmp/execution-issues.md"
+rm -f "$SANDBOX/tmp/.postbump-phase" "$SANDBOX/ledger-calls.txt"
+write_postbump_state "$POSTBUMP_STATE" "BUMP_REASONING_FILE=$db_reasoning"
+OUT=$(run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
+assert_contains "LOG_WRITE_STATUS=ok" "$OUT" "postbump: double-blank reasoning writes larch-log batch"
+awk 'prev_blank && /^$/ { print "DOUBLE_BLANK"; exit } /^$/ { prev_blank=1; next } { prev_blank=0 }' \
+    "$SANDBOX/tmp/larch-log-batches/version-bump-reasoning.md" > "$SANDBOX/blank-check-reasoning.txt"
+assert_file_not_contains "DOUBLE_BLANK" "$SANDBOX/blank-check-reasoning.txt" \
+    "postbump: version-bump-reasoning.md batch input has no consecutive blank lines"
+
 # FINDING_1 regression: Unreleased section bullets must be preserved, not consumed.
 cat > "$SANDBOX/repo/CHANGELOG.md" <<'CHANGELOG_UNRELEASED'
 # Changelog
