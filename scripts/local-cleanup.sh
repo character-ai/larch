@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # local-cleanup.sh — Post-merge local cleanup: switch to main and delete feature branch.
 #
-# Switches to main, fetches and pulls the latest, then deletes the
+# Switches to main, fetches and resets to origin/main, then deletes the
 # specified feature branch. Each action is logged to stderr for
 # user-visible progress. Treats branch deletion failure as non-fatal
 # (the branch may have already been deleted).
@@ -67,24 +67,22 @@ if ! git checkout main >/dev/null 2>&1; then
 fi
 CURRENT_BRANCH="main"
 
-# --- Step 2: Fetch origin main ---
-echo "🔄 Fetching origin main..." >&2
-if ! git fetch origin main >/dev/null 2>&1; then
-    echo "⚠ Failed to fetch origin main (continuing)" >&2
-fi
-
-# --- Step 3: Reset to origin/main ---
+# --- Step 2: Sync to origin/main ---
 # fetch+reset is unconditionally fast-forward-safe; git pull can fail when
 # local main has diverged (e.g. orphaned commits from a prior stalled run).
-echo "🔄 Fetching origin main..." >&2
-git fetch origin main >/dev/null 2>&1 || true  # best-effort; reset below uses origin/main ref
-echo "🔄 Resetting to origin/main..." >&2
+# A failed fetch exits 0 with CLEANUP_SUCCESS=false (same signal as the old
+# git pull failure path), preserving the caller's ability to detect staleness.
+echo "🔄 Syncing to origin/main..." >&2
+if ! git fetch origin main >/dev/null 2>&1; then
+    echo "❌ Failed to fetch origin main" >&2
+    exit 0
+fi
 if ! git reset --hard origin/main >/dev/null 2>&1; then
     echo "❌ Failed to reset to origin/main" >&2
     exit 0
 fi
 
-# --- Step 4: Delete feature branch ---
+# --- Step 3: Delete feature branch ---
 echo "🔄 Deleting local branch $BRANCH_NAME..." >&2
 if git branch -D "$BRANCH_NAME" >/dev/null 2>&1; then
     BRANCH_DELETED="true"
