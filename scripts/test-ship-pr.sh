@@ -406,6 +406,174 @@ else
 fi
 rm -rf "$call_dir"
 
+# ──────────────────────────────────────────────────────────────────────────────
+# --no-logs-commit: run_rebase_rebump flush
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Helper: override ci-wait.sh (rebase first call, merge second) and add stubs
+# required by run_rebase_rebump that are not in write_stubs.
+_make_rebase_stubs() {
+    local root=$1 count_dir=$2
+    cat > "$root/scripts/ci-wait.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+count_file="$count_dir/ci-wait-count"
+count=\$(cat "\$count_file" 2>/dev/null || echo 0)
+printf '%s\n' "\$((count + 1))" > "\$count_file"
+if [ "\$count" -eq 0 ]; then
+    printf 'ACTION=rebase\nCI_STATUS=fail\nBEHIND_COUNT=1\nFAILED_RUN_ID=\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n'
+else
+    printf 'ACTION=merge\nCI_STATUS=pass\nBEHIND_COUNT=0\nFAILED_RUN_ID=\nBAIL_REASON=\nITERATION=1\nELAPSED=1\n'
+fi
+STUB
+    for extra in drop-bump-commit.sh git-sync-local-main.sh git-force-push.sh; do
+        printf '#!/usr/bin/env bash\nexit 0\n' > "$root/scripts/$extra"
+    done
+    chmod +x "$root/scripts/ci-wait.sh" \
+             "$root/scripts/drop-bump-commit.sh" \
+             "$root/scripts/git-sync-local-main.sh" \
+             "$root/scripts/git-force-push.sh"
+}
+
+root=$(make_repo rebump_flush_enabled)
+tmp=$(make_tmpdir)
+sentinel_dir=$(mktemp -d /tmp/ship-pr-rebump-enabled.XXXXXX)
+# Use ci-initial so run_rebase_rebump fires (on ACTION=rebase) before any
+# ci-merge pre-merge flush; the scenario exits 0 after the second ci-wait
+# returns ACTION=merge, advancing to ci-merge without entering postmerge.
+write_state "$tmp/ship-pr-state.sh" ci-initial
+_make_rebase_stubs "$root" "$sentinel_dir"
+set +e
+(cd "$root" && LARCH_LOG_STUB_SENTINEL_DIR="$sentinel_dir" CLAUDE_PLUGIN_ROOT="$root" \
+    "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
+    --merge true --draft false --forked false --repo owner/repo --no-logs-commit false \
+    > "$tmp/stdout-rebump-enabled" 2>&1)
+printf '%s' "$?" > "$tmp/rc-rebump-enabled"
+set -e
+assert_rc "$tmp/rc-rebump-enabled" 0 "run_rebase_rebump (--no-logs-commit false): ship-pr exits 0"
+if [ -f "$sentinel_dir/larch-log-calls.txt" ] && \
+   grep -q "^LARCH_LOG_ARGS=commit" "$sentinel_dir/larch-log-calls.txt"; then
+    ok "run_rebase_rebump: larch-log commit called when --no-logs-commit false"
+else
+    fail "run_rebase_rebump: larch-log commit not called when --no-logs-commit false"
+fi
+rm -rf "$sentinel_dir"
+
+root=$(make_repo rebump_flush_suppressed)
+tmp=$(make_tmpdir)
+sentinel_dir=$(mktemp -d /tmp/ship-pr-rebump-suppressed.XXXXXX)
+write_state "$tmp/ship-pr-state.sh" ci-initial
+_make_rebase_stubs "$root" "$sentinel_dir"
+set +e
+(cd "$root" && LARCH_LOG_STUB_SENTINEL_DIR="$sentinel_dir" CLAUDE_PLUGIN_ROOT="$root" \
+    "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
+    --merge true --draft false --forked false --repo owner/repo --no-logs-commit true \
+    > "$tmp/stdout-rebump-suppressed" 2>&1)
+printf '%s' "$?" > "$tmp/rc-rebump-suppressed"
+set -e
+assert_rc "$tmp/rc-rebump-suppressed" 0 "run_rebase_rebump (--no-logs-commit true): ship-pr exits 0"
+if [ -f "$sentinel_dir/larch-log-calls.txt" ] && \
+   grep -q "^LARCH_LOG_ARGS=commit" "$sentinel_dir/larch-log-calls.txt"; then
+    fail "run_rebase_rebump: larch-log commit called despite --no-logs-commit true"
+else
+    ok "run_rebase_rebump: larch-log commit suppressed when --no-logs-commit true"
+fi
+rm -rf "$sentinel_dir"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# --no-logs-commit: ci-merge pre-merge flush
+# ──────────────────────────────────────────────────────────────────────────────
+
+root=$(make_repo ci_merge_flush_enabled)
+tmp=$(make_tmpdir)
+sentinel_dir=$(mktemp -d /tmp/ship-pr-ci-merge-enabled.XXXXXX)
+write_state "$tmp/ship-pr-state.sh" ci-merge
+set +e
+(cd "$root" && LARCH_LOG_STUB_SENTINEL_DIR="$sentinel_dir" CLAUDE_PLUGIN_ROOT="$root" \
+    "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
+    --merge true --draft false --forked false --repo owner/repo --no-logs-commit false \
+    > "$tmp/stdout-ci-merge-enabled" 2>&1)
+printf '%s' "$?" > "$tmp/rc-ci-merge-enabled"
+set -e
+assert_rc "$tmp/rc-ci-merge-enabled" 0 "ci-merge pre-merge flush (--no-logs-commit false): ship-pr exits 0"
+if [ -f "$sentinel_dir/larch-log-calls.txt" ] && \
+   grep -q "^LARCH_LOG_ARGS=commit" "$sentinel_dir/larch-log-calls.txt"; then
+    ok "ci-merge pre-merge flush: larch-log commit called when --no-logs-commit false"
+else
+    fail "ci-merge pre-merge flush: larch-log commit not called when --no-logs-commit false"
+fi
+rm -rf "$sentinel_dir"
+
+root=$(make_repo ci_merge_flush_suppressed)
+tmp=$(make_tmpdir)
+sentinel_dir=$(mktemp -d /tmp/ship-pr-ci-merge-suppressed.XXXXXX)
+write_state "$tmp/ship-pr-state.sh" ci-merge
+set +e
+(cd "$root" && LARCH_LOG_STUB_SENTINEL_DIR="$sentinel_dir" CLAUDE_PLUGIN_ROOT="$root" \
+    "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
+    --merge true --draft false --forked false --repo owner/repo --no-logs-commit true \
+    > "$tmp/stdout-ci-merge-suppressed" 2>&1)
+printf '%s' "$?" > "$tmp/rc-ci-merge-suppressed"
+set -e
+assert_rc "$tmp/rc-ci-merge-suppressed" 0 "ci-merge pre-merge flush (--no-logs-commit true): ship-pr exits 0"
+if [ -f "$sentinel_dir/larch-log-calls.txt" ] && \
+   grep -q "^LARCH_LOG_ARGS=commit" "$sentinel_dir/larch-log-calls.txt"; then
+    fail "ci-merge pre-merge flush: larch-log commit called despite --no-logs-commit true"
+else
+    ok "ci-merge pre-merge flush: larch-log commit suppressed when --no-logs-commit true"
+fi
+rm -rf "$sentinel_dir"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# --no-logs-commit: run_postmerge_phase flush
+# ──────────────────────────────────────────────────────────────────────────────
+
+root=$(make_repo postmerge_no_logs_enabled)
+tmp=$(make_tmpdir)
+sentinel_dir=$(mktemp -d /tmp/ship-pr-pm-enabled.XXXXXX)
+write_state "$tmp/ship-pr-state.sh" postmerge
+awk -F= '{if ($1=="PR_CLOSED") print "PR_CLOSED=true"; else print}' \
+    "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" \
+    && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
+set +e
+(cd "$root" && LARCH_LOG_STUB_SENTINEL_DIR="$sentinel_dir" CLAUDE_PLUGIN_ROOT="$root" \
+    "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
+    --merge true --draft false --forked false --repo owner/repo --no-logs-commit false \
+    > "$tmp/stdout-pm-enabled" 2>&1)
+printf '%s' "$?" > "$tmp/rc-pm-enabled"
+set -e
+assert_rc "$tmp/rc-pm-enabled" 0 "run_postmerge_phase (--no-logs-commit false): ship-pr exits 0"
+if [ -f "$sentinel_dir/larch-log-calls.txt" ] && \
+   grep -q "^LARCH_LOG_ARGS=commit" "$sentinel_dir/larch-log-calls.txt"; then
+    ok "run_postmerge_phase: larch-log commit called when --no-logs-commit false (PR_CLOSED=true)"
+else
+    fail "run_postmerge_phase: larch-log commit not called when --no-logs-commit false (PR_CLOSED=true)"
+fi
+rm -rf "$sentinel_dir"
+
+root=$(make_repo postmerge_no_logs_suppressed)
+tmp=$(make_tmpdir)
+sentinel_dir=$(mktemp -d /tmp/ship-pr-pm-suppressed.XXXXXX)
+write_state "$tmp/ship-pr-state.sh" postmerge
+awk -F= '{if ($1=="PR_CLOSED") print "PR_CLOSED=true"; else print}' \
+    "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" \
+    && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
+set +e
+(cd "$root" && LARCH_LOG_STUB_SENTINEL_DIR="$sentinel_dir" CLAUDE_PLUGIN_ROOT="$root" \
+    "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
+    --merge true --draft false --forked false --repo owner/repo --no-logs-commit true \
+    > "$tmp/stdout-pm-suppressed" 2>&1)
+printf '%s' "$?" > "$tmp/rc-pm-suppressed"
+set -e
+assert_rc "$tmp/rc-pm-suppressed" 0 "run_postmerge_phase (--no-logs-commit true): ship-pr exits 0"
+if [ -f "$sentinel_dir/larch-log-calls.txt" ] && \
+   grep -q "^LARCH_LOG_ARGS=commit" "$sentinel_dir/larch-log-calls.txt"; then
+    fail "run_postmerge_phase: larch-log commit called despite --no-logs-commit true"
+else
+    ok "run_postmerge_phase: larch-log commit suppressed when --no-logs-commit true"
+fi
+rm -rf "$sentinel_dir"
+
 if [[ "$FAIL_COUNT" -ne 0 ]]; then
     echo "test-ship-pr: $FAIL_COUNT failure(s), $PASS_COUNT pass(es)" >&2
     exit 1
