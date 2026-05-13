@@ -123,11 +123,23 @@ Diff mode only: implement accepted findings with the main agent using Edit/Write
 
 Classify the just-fixed round as substantial or non-substantial using main-agent judgment. If substantial and under the round cap, loop to Step 1. If non-substantial, no findings, wholesale rejection, description mode, or cap reached, proceed to Step 4.
 
+### 3f — Anti-halt at convergence exit
+
+When exiting the Step 3 loop after a non-substantial classification, treat any printed convergence prose as a status marker only: the non-substantial re-review convergence line is not terminal — continue into Step 4 without ending the turn.
+
 ## Step 4 — Final Summary and Issues
+
+### 4c — Emit summaries and footers
 
 Standalone diff mode prints `review-round-summary.md`. Nested mode copies artifacts and emits only the `### review-result` footer. Description mode composes issue pieces, then invokes `/umbrella` via the Skill tool with `--pieces-json` unless `--no-issues` is set, and holds security-tagged findings locally.
 
+**Continue to Step 4d IMMEDIATELY** after the above outputs for the applicable mode — do not end the turn on summaries or umbrella dispatch alone.
+
+### 4d — Run logging and pre-cleanup boundary
+
 If `RUN_ID` is non-empty, write flat review larch-log batches with `log-phase.sh`: `review-context`, `review-panel-manifest`, `review-findings`, `review-tally`, and `review-round-summary`.
+
+The nested-mode `### review-result` machine footer marks artifact handoff only; the review-result footer is not terminal until Step 5 cleanup (or parent-owned tmpdir rules) completes — continue without ending the turn after emitting it.
 
 ## Step 5 — Cleanup
 
