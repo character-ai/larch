@@ -20,6 +20,7 @@ write_subject() {
     local root=$1
     mkdir -p "$root/scripts" "$root/.claude/skills/bump-version/scripts"
     cp "$REPO_ROOT/scripts/ship-pr.sh" "$root/scripts/ship-pr.sh"
+    cp "$REPO_ROOT/scripts/lib-net.sh" "$root/scripts/lib-net.sh"
     chmod +x "$root/scripts/ship-pr.sh"
 }
 

@@ -10,6 +10,9 @@ export LC_ALL
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"
+# shellcheck source=scripts/lib-net.sh
+source "$SCRIPT_DIR/lib-net.sh" || { echo "ship-pr.sh: failed to source lib-net.sh" >&2; exit 1; }
+[[ "${LARCH_LIB_NET_LOADED:-}" == "1" ]] || { echo "ship-pr.sh: lib-net.sh sourced but sentinel missing" >&2; exit 1; }
 
 STATE_FILE=""
 IMPLEMENT_TMPDIR=""
@@ -248,14 +251,6 @@ exit_transient_net() {
     reason=$(printf '%s' "$1" | head -1 | cut -c1-200)
     state_set_many BAIL_REASON "$reason" STALL_TRACKING false
     exit 6
-}
-
-is_transient_net_signature() {
-    local text=$1
-    case "$text" in
-        *"Could not resolve"*|*"unable to access"*|*"Connection refused"*|*"Temporary failure"*|*"timed out"*|*"TLS handshake"*|*"HTTP 5"*|*"no valid output 3 times"*|*"git fetch"*"failed"*|*"network/auth issue"*) return 0 ;;
-        *) return 1 ;;
-    esac
 }
 
 write_postbump_state() {
