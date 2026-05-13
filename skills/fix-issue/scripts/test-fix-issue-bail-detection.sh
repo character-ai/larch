@@ -9,7 +9,7 @@
 # conformance test. Runtime enforcement is the LLM-level orchestration of
 # Step 5a per the prose contract.
 #
-# Eleven assertions against the extracted Step 5a block:
+# Twelve assertions against the extracted Step 5a block:
 #   (a1) Invocation forwards "--issue $ISSUE_NUMBER".
 #   (a2) Invocation forwards "--no-admin-fallback" (branch-protection bypass
 #        safety flag; issue #559).
@@ -32,6 +32,8 @@
 #        window also includes section 5b, which contains the unrelated
 #        sentence "Do NOT call `/implement`"; a bare match would false-pass.
 #   (e)  Literal "Skip to Step 8" present (cleanup redirect guard).
+#   (f)  Delegation mandate "Invoke `/implement` via the Skill tool" present
+#        (anti-pattern #5 guard against inline implementation at Step 5a).
 #
 # Block extraction boundary: "### 5a " (start) through "## Step 6" prefix match
 # (end — the real heading is "## Step 6 — Close Issue"; prefix pattern handles it).
@@ -147,6 +149,12 @@ assert_contains "d: 'Do NOT call \`issue-lifecycle.sh close\`' directive (Step-6
 
 # (e) Cleanup redirect present.
 assert_contains "e: 'Skip to Step 8' cleanup redirect" 'Skip to Step 8'
+
+# (f) Delegation mandate present — guards anti-pattern #5 (NEVER implement inline
+# at Step 5a using Edit/Write/Bash file-modification tools instead of delegating
+# to /implement via the Skill tool). Without this literal the orchestrator has no
+# prose anchor stating that the Skill tool is the required dispatch mechanism.
+assert_contains "f: delegation mandate 'Invoke \`/implement\` via the Skill tool'" 'Invoke `/implement` via the Skill tool'
 
 echo
 echo "All $PASS_COUNT assertions passed."
