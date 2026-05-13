@@ -66,7 +66,8 @@ After the sentinel file exists, `scripts/collect-agent-results.sh` performs:
 1. Read the output file.
 2. Check that it is non-empty.
 3. If empty despite exit code 0, **retry once** with a fresh invocation (output file gets a `-retry` suffix).
-4. If still empty after retry, or if the exit code is non-zero, emit `STATUS=EMPTY_OUTPUT` / `STATUS=FAILED` / `STATUS=TIMED_OUT` / `STATUS=SENTINEL_TIMEOUT` and the caller falls back per its skill-specific contract (typically Runtime Timeout Fallback — see `skills/shared/external-reviewers.md`).
+4. If the initial row is `FAILED`, `TIMED_OUT`, or `SENTINEL_TIMEOUT` with a transient-network diagnostic, retry once through the same `.meta` replay path.
+5. If still empty after retry, if retry also fails, or if the initial failure is not retry-eligible, emit `STATUS=EMPTY_OUTPUT` / `STATUS=FAILED` / `STATUS=TIMED_OUT` / `STATUS=SENTINEL_TIMEOUT` and the caller falls back per its skill-specific contract (typically Runtime Timeout Fallback — see `skills/shared/external-reviewers.md`).
 
 Treat `STATUS=OK` with empty `FAILURE_REASON` as the success signal; do not use `EXIT_CODE` alone. `EXIT_CODE=0` can still appear on retry-failure rows when the retry sentinel was `0` but the retry output stayed empty (`STATUS=EMPTY_OUTPUT`). See `scripts/collect-agent-results.md` for the full retry-row exit-code semantics.
 

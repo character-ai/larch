@@ -173,7 +173,9 @@ ci_failures=0
 # Poll-count budget: each normal iteration consumes one slot. Suspend-detected
 # iterations (wall-clock delta > 60s) are not counted so a resume after a
 # long suspend does not immediately exhaust the budget.
-MAX_POLLS=$((TIMEOUT / 10))
+MAX_POLLS=$(( (TIMEOUT + 9) / 10 ))
+# Ensure at least one poll even for very small timeouts.
+[ "$MAX_POLLS" -ge 1 ] || MAX_POLLS=1
 
 printf "⏳ CI: waiting" >&2
 
@@ -181,7 +183,7 @@ while true; do
     # Poll-count timeout (suspend-resilient)
     if [[ $checks -ge $MAX_POLLS ]]; then
         ACTION="bail"
-        BAIL_REASON="Wall-clock timeout (${TIMEOUT}s) exceeded"
+        BAIL_REASON="Poll budget (${MAX_POLLS} polls / ${TIMEOUT}s) exhausted"
         printf "\n⚠ CI wait timed out after %d polls (%ds budget, %ds elapsed)\n" "$checks" "$TIMEOUT" "$SECONDS" >&2
         exit 0
     fi

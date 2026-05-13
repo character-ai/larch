@@ -2,8 +2,9 @@
 # collect-agent-results.sh — Collect, validate, and optionally retry external reviewer outputs.
 #
 # Consolidates the post-launch validation+retry pattern used across all skills.
-# Wraps wait-for-reviewers.sh, validates each output, retries once on empty via
-# .meta files written by run-external-agent.sh, and emits structured results.
+# Wraps wait-for-reviewers.sh, validates each output, retries once on empty or
+# transient network failure via .meta files written by run-external-agent.sh,
+# and emits structured results.
 #
 # Runtime prerequisites: bash >= 3.2 (the retry block is portable to macOS
 # /bin/bash 3.2). The empty-output retry path additionally requires `jq` (to
@@ -345,6 +346,17 @@ build_failure_reason() {
     sanitize_failure_reason "$raw"
 }
 
+is_transient_net_signature() {
+    local text="$1"
+    case "$text" in
+        *"Could not resolve"*|*"unable to access"*|*"Connection refused"*|\
+        *"Temporary failure"*|*"timed out"*|*"TLS handshake"*|*"HTTP 5"*|\
+        *"network/auth issue"*|*"connection reset"*|*"EOF"*"during"*|\
+        *"context deadline exceeded"*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 mark_retry_metadata_invalid() {
     local idx="$1"
     local orig_output="$2"
@@ -513,6 +525,35 @@ for i in "${!OUTPUT_FILES[@]}"; do
         EXIT_CODE="124"
         HEALTHY="false"
         FAILURE_REASON=$(build_failure_reason "$OUTPUT" "$STATUS" "$EXIT_CODE")
+    fi
+
+    # Require a .diag file so the generic TIMED_OUT fallback text ("Process timed
+    # out (exit code 124)") — which contains "timed out" — does not falsely match
+    # the transient-network heuristic.  Real network failures always produce a
+    # .diag because the launcher captures the CLI stderr there.
+    if [[ "$STATUS" == "FAILED" || "$STATUS" == "TIMED_OUT" || "$STATUS" == "SENTINEL_TIMEOUT" ]] \
+        && [[ -f "${OUTPUT}.diag" ]] \
+        && is_transient_net_signature "$FAILURE_REASON" \
+        && [[ -f "$META" ]]; then
+        ORIG_TIMEOUT=""
+        while IFS= read -r meta_line || [[ -n "$meta_line" ]]; do
+            meta_key="${meta_line%%=*}"
+            meta_val="${meta_line#*=}"
+            [[ "$meta_key" == "TIMEOUT" ]] && ORIG_TIMEOUT="$meta_val"
+        done < "$META"
+        case "$ORIG_TIMEOUT" in
+            ''|*[!0-9]*) ;;
+            *)
+                if (( 10#$ORIG_TIMEOUT >= 1 )); then
+                    ORIG_TIMEOUT=$((10#$ORIG_TIMEOUT))
+                    STATUS="EMPTY_OUTPUT"
+                    HEALTHY="true"
+                    RETRY_FILES+=("$OUTPUT")
+                    RETRY_INDICES+=("$i")
+                    RETRY_TIMEOUTS+=("$ORIG_TIMEOUT")
+                fi
+                ;;
+        esac
     fi
 
     # Monotonic health: if this tool was already marked unhealthy, keep it

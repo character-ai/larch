@@ -10,7 +10,7 @@ TMPDIR=$(mktemp -d "${TMPDIR:-/tmp}/larch-test-wait-XXXXXX")
 trap 'rm -rf "$TMPDIR"' EXIT
 
 # Fast poll so the DONE case finishes quickly. The TIMEOUT case still spends
-# about 1s wall-clock because wait's loop is gated on $SECONDS vs $TIMEOUT.
+# about 1s wall-clock because wait's loop runs MAX_POLLS checks (ceiling of TIMEOUT/POLL).
 export WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.05
 
 FAIL=0
@@ -107,6 +107,52 @@ set -e
   || fail "R8: expected exit 1 on WAIT_FOR_REVIEWERS_POLL_INTERVAL=000, got $R8_CODE"
 grep -q "^Error: WAIT_FOR_REVIEWERS_POLL_INTERVAL must be a positive number, got '000'" "$TMPDIR/r8.stderr" \
   || fail "R8: expected poll-interval 000 rejection message"
+
+# S1: suspend detection discounts a long poll iteration from the poll budget.
+S1_DIR="$TMPDIR/s1"
+S1_MOCK_BIN="$S1_DIR/mock-bin"
+S1_SENTINEL="$S1_DIR/suspended.done"
+S1_DATE_STATE="$S1_DIR/date-state"
+mkdir -p "$S1_MOCK_BIN"
+REAL_DATE=$(command -v date)
+cat > "$S1_MOCK_BIN/date" <<S1_DATE_EOF
+#!/usr/bin/env bash
+set -euo pipefail
+state="$S1_DATE_STATE"
+count=0
+if [[ -f "\$state" ]]; then
+  count=\$(cat "\$state")
+fi
+count=\$((count + 1))
+printf '%s\n' "\$count" > "\$state"
+if [[ "\${1:-}" == "+%s" ]]; then
+  case "\$count" in
+    1) printf '1700000000\n' ;;
+    2) printf '1700000090\n' ;;
+    *) exec "$REAL_DATE" "\$@" ;;
+  esac
+else
+  exec "$REAL_DATE" "\$@"
+fi
+S1_DATE_EOF
+chmod +x "$S1_MOCK_BIN/date"
+cat > "$S1_MOCK_BIN/sleep" <<S1_SLEEP_EOF
+#!/usr/bin/env bash
+set -euo pipefail
+printf '0\n' > "$S1_SENTINEL"
+S1_SLEEP_EOF
+chmod +x "$S1_MOCK_BIN/sleep"
+set +e
+PATH="$S1_MOCK_BIN:$PATH" \
+  "$REPO_ROOT/scripts/wait-for-reviewers.sh" --timeout 5 "$S1_SENTINEL" >"$TMPDIR/s1.stdout" 2>"$TMPDIR/s1.stderr"
+S1_CODE=$?
+set -e
+[[ "$S1_CODE" -eq 0 ]] \
+  || fail "S1: expected exit 0 after suspend-discounted completion, got $S1_CODE"
+grep -q '^DONE 1 suspended: exit=0$' "$TMPDIR/s1.stdout" \
+  || fail "S1: expected DONE stdout grammar after suspend-discounted iteration"
+grep -q 'suspend detected' "$TMPDIR/s1.stderr" \
+  || fail "S1: expected suspend detection warning on stderr"
 
 # C1: collector swallows nothing on --timeout 0.
 set +e
