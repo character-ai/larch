@@ -735,7 +735,7 @@ assert_file_not_contains "DOUBLE_BLANK" "$SANDBOX/blank-check.txt" "postbump: ch
 
 # Double-blank-line regression: a reasoning file with consecutive blank lines
 # must produce a batch input file with no consecutive blank lines (MD012 guard).
-db_reasoning="$SANDBOX/tmp/larch-log-batches-input/double-blank-reasoning.md"
+db_reasoning="$SANDBOX/tmp/larch-log-batches-input/bump-version-reasoning-double-blank.md"
 printf '# Version Bump Reasoning\n\nPATCH\n\n\nExtra blank above.\n' > "$db_reasoning"
 rm -f "$SANDBOX/tmp/larch-log-batches/version-bump-reasoning.md"
 cp "$SANDBOX/original-CHANGELOG.md" "$SANDBOX/repo/CHANGELOG.md"
