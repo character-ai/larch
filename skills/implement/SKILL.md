@@ -850,7 +850,22 @@ Write two larch-log batches from file-backed design artifacts. See Step 0.5 "Lar
 
 If `design_only=true`:
 
-1. If `ISSUE_NUMBER` is set, compose a `larch:diagrams` summary comment from `ARCHITECTURE_DIAGRAM_FILE` (or `"Architecture diagram not available."` if absent/missing) plus the Code Flow placeholder `"(Code Flow Diagram unavailable — --design-only run, no implementation)"`, and post it via `tracking-issue-summary.sh upsert-summary --issue "$ISSUE_NUMBER" --marker "<!-- larch:diagrams v1 runid=$RUN_ID -->"`. Do NOT write a `diagrams` larch-log batch.
+1. If `ISSUE_NUMBER` is set, compose and post the `larch:diagrams` summary comment using Bash file operations to keep diagram content out of the orchestrator's context (same approach as Step 7a's Bash block):
+   ```bash
+   {
+     if [ -n "${ARCHITECTURE_DIAGRAM_FILE:-}" ] && [ -f "${ARCHITECTURE_DIAGRAM_FILE:-}" ]; then
+       cat "$ARCHITECTURE_DIAGRAM_FILE"
+     else
+       printf 'Architecture diagram not available.'
+     fi
+     printf '\n\n(Code Flow Diagram unavailable — --design-only run, no implementation)'
+   } > "$IMPLEMENT_TMPDIR/summary-diagrams.md"
+   ${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-summary.sh upsert-summary \
+     --issue "$ISSUE_NUMBER" \
+     --marker "<!-- larch:diagrams v1 runid=$RUN_ID -->" \
+     --content-file "$IMPLEMENT_TMPDIR/summary-diagrams.md" || true
+   ```
+   Do NOT write a `diagrams` larch-log batch.
 2. Skip the Step 1.r Rebase Checkpoint below — design-only does not modify code, so a rebase to latest main is unnecessary churn.
 3. Skip Steps 2 / 3 / 4 / 5 / 6 / 7 / 7a / 8 / 8a / 8b / 9 / 9b entirely. Proceed directly to Step 9a.1 so accepted OOS observations are filed and the Step 9a.1 log batches are refreshed.
 
@@ -1339,7 +1354,7 @@ CHANGED_COUNT=$(printf '%s\n' "$CHANGED_FILES" | grep -c . 2>/dev/null || echo 0
 
 If `MERGE_BASE` is empty, or `CHANGED_COUNT` is 0 (diff failed or branch has no commits vs main), treat this check as inconclusive and proceed with normal generation. Otherwise check whether `CHANGED_COUNT` is 1 or 2 AND every path in `CHANGED_FILES` is non-runtime: all files reside under `docs/`, are named `CHANGELOG` or `CHANGELOG.md`, or have extension `.txt` or `.tsv` (note: `.md` files outside `docs/` — including `skills/**`, `agents/**`, and `SKILL.md` — are not automatically non-runtime and do not qualify). If both conditions hold: print `⏩ 7a: code flow status=skip reason=small-non-runtime-change elapsed=<elapsed>`, still post the `larch:diagrams` summary comment (Architecture Diagram + placeholder `"(Code Flow Diagram skipped — small/non-runtime change)"` for Code Flow — see the `diagrams` sub-section below), and proceed to the Pre-bump log flush subsection below (which leads into the 7a.r rebase checkpoint and then Step 8).
 
-Otherwise, generate a mermaid Code Flow Diagram from the actual committed implementation. Focus on **runtime behavior** — function call sequences, data flow, control flow. Do NOT duplicate the Architecture Diagram's structural view. Choose the appropriate mermaid type (`sequenceDiagram`, `flowchart`, `stateDiagram`, `graph`, etc.). Diagram contents must obey `${CLAUDE_PLUGIN_ROOT}/skills/shared/mermaid-safe-content.md`. Write the diagram to `$IMPLEMENT_TMPDIR/code-flow-diagram.candidate.md` first, including the `## Code Flow Diagram` heading and mermaid fence; validate it with `${CLAUDE_PLUGIN_ROOT}/scripts/sanitize-mermaid-fragment.sh --input "$IMPLEMENT_TMPDIR/code-flow-diagram.candidate.md" --from-md --warnings-step "7a"`, then promote it to `$IMPLEMENT_TMPDIR/code-flow-diagram.md` only on `STATUS=ok`. Print the promoted diagram under a `## Code Flow Diagram` header with a mermaid code fence.
+Otherwise, generate a mermaid Code Flow Diagram from the actual committed implementation. Focus on **runtime behavior** — function call sequences, data flow, control flow. Do NOT duplicate the Architecture Diagram's structural view. Choose the appropriate mermaid type (`sequenceDiagram`, `flowchart`, `stateDiagram`, `graph`, etc.). Diagram contents must obey `${CLAUDE_PLUGIN_ROOT}/skills/shared/mermaid-safe-content.md`. Write the diagram to `$IMPLEMENT_TMPDIR/code-flow-diagram.candidate.md` first, including the `## Code Flow Diagram` heading and mermaid fence; validate it with `${CLAUDE_PLUGIN_ROOT}/scripts/sanitize-mermaid-fragment.sh --input "$IMPLEMENT_TMPDIR/code-flow-diagram.candidate.md" --from-md --warnings-step "7a"`, then promote it to `$IMPLEMENT_TMPDIR/code-flow-diagram.md` only on `STATUS=ok`.
 
 On success: `✅ 7a: code flow status=complete outcome=diagram-generated elapsed=<elapsed>`.
 
@@ -1347,12 +1362,35 @@ On generation failure (too abstract to diagram): `**⚠ 7a: code flow — genera
 
 ### Diagrams summary comment — `larch:diagrams`
 
-Compose the diagrams content from both diagrams:
+Compose the diagrams content using Bash file operations (not Read/Write tools) to keep diagram content out of the orchestrator's context. Determine `CODE_FLOW_SKIP_REASON` from the earlier Step 7a path: empty string when the diagram file was generated successfully (`$IMPLEMENT_TMPDIR/code-flow-diagram.md` exists; the file is used directly below); `"(Code Flow Diagram skipped — quick mode)"` when `quick_mode=true`; `"(Code Flow Diagram skipped — small/non-runtime change)"` when the small/non-runtime-change skip fired; `"Code flow diagram not available."` when generation failed or was rejected by the sanitizer.
 
-- `## Architecture Diagram` + mermaid code fence read from `ARCHITECTURE_DIAGRAM_FILE`, or `"Architecture diagram not available."` if that optional manifest key is absent or the file is missing.
-- `## Code Flow Diagram` + mermaid code fence read from `$IMPLEMENT_TMPDIR/code-flow-diagram.md`, or `"(Code Flow Diagram skipped — quick mode)"` if `quick_mode=true`, or `"(Code Flow Diagram skipped — small/non-runtime change)"` if the small/non-runtime-change skip fired, or `"Code flow diagram not available."` if generation failed.
+```bash
+CODE_FLOW_SKIP_REASON="<set per above>"
+{
+  if [ -n "${ARCHITECTURE_DIAGRAM_FILE:-}" ] && [ -f "${ARCHITECTURE_DIAGRAM_FILE:-}" ]; then
+    cat "$ARCHITECTURE_DIAGRAM_FILE"
+  else
+    printf 'Architecture diagram not available.'
+  fi
+  printf '\n\n'
+  if [ -f "$IMPLEMENT_TMPDIR/code-flow-diagram.md" ]; then
+    cat "$IMPLEMENT_TMPDIR/code-flow-diagram.md"
+  else
+    printf '%s' "$CODE_FLOW_SKIP_REASON"
+  fi
+} > "$IMPLEMENT_TMPDIR/summary-diagrams.md"
+```
 
-Do NOT write a `diagrams` larch-log batch. If `ISSUE_NUMBER` is set, post the `larch:diagrams` summary with `tracking-issue-summary.sh upsert-summary`. In quick mode, Step 7a is skipped entirely for Code Flow generation but the summary comment is still posted with the Architecture Diagram + skipped placeholder.
+Do NOT write a `diagrams` larch-log batch. If `$ISSUE_NUMBER` is set, post the `larch:diagrams` summary comment (best-effort):
+
+```bash
+${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-summary.sh upsert-summary \
+  --issue "$ISSUE_NUMBER" \
+  --marker "<!-- larch:diagrams v1 runid=$RUN_ID -->" \
+  --content-file "$IMPLEMENT_TMPDIR/summary-diagrams.md" || true
+```
+
+On non-zero exit, log `Step 7a — larch:diagrams upsert failed` to `Tool Failures` and continue. In quick mode, Step 7a is skipped entirely for Code Flow generation but the summary comment is still posted with the Architecture Diagram + skipped placeholder.
 
 ### Rebase onto latest main (before version bump)
 

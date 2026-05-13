@@ -84,7 +84,7 @@ COMMENTS=$(gh api --paginate --slurp "repos/${REPO}/issues/${ISSUE_NUMBER}/comme
     if [ "$COMMENT_COUNT" -eq 0 ]; then
         printf '%s\n' "No comments."
     else
-        printf '%s\n' "$COMMENTS" | jq -r '.[] | "### Comment by \(.user.login) at \(.created_at)\n\n\(.body)\n"'
+        printf '%s\n' "$COMMENTS" | jq -r '.[] | select((.body // "" | split("\n")[0] | startswith("<!-- larch:")) | not) | "### Comment by \(.user.login) at \(.created_at)\n\n\(.body)\n"'
     fi
 } > "$OUTPUT_PATH"
 

@@ -18,7 +18,7 @@ On success, stdout emits:
 OUTPUT_FILE=<path>
 ```
 
-The output file includes title, labels, created-at timestamp, issue body, and each comment body with author attribution. Exit 1 covers argument errors and GitHub fetch failures.
+The output file includes title, labels, created-at timestamp, issue body, and each comment body with author attribution. Comments whose first line starts with `<!-- larch:` (any larch-generated summary marker from prior `/implement` runs) are excluded to prevent feedback-loop context pollution on retry runs. Exit 1 covers argument errors and GitHub fetch failures.
 
 ## Edit-in-sync
 
