@@ -73,10 +73,14 @@ if ! git fetch origin main >/dev/null 2>&1; then
     echo "⚠ Failed to fetch origin main (continuing)" >&2
 fi
 
-# --- Step 3: Pull origin main ---
-echo "🔄 Pulling latest main..." >&2
-if ! git pull origin main >/dev/null 2>&1; then
-    echo "❌ Failed to pull origin main" >&2
+# --- Step 3: Reset to origin/main ---
+# fetch+reset is unconditionally fast-forward-safe; git pull can fail when
+# local main has diverged (e.g. orphaned commits from a prior stalled run).
+echo "🔄 Fetching origin main..." >&2
+git fetch origin main >/dev/null 2>&1 || true  # best-effort; reset below uses origin/main ref
+echo "🔄 Resetting to origin/main..." >&2
+if ! git reset --hard origin/main >/dev/null 2>&1; then
+    echo "❌ Failed to reset to origin/main" >&2
     exit 0
 fi
 
