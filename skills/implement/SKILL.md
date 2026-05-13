@@ -1,7 +1,7 @@
 ---
 name: implement
 description: "Use when shipping a feature end-to-end: design, implement, review, version bump, PR, CI-green merge. Triggers: 'ship X', 'land PR', 'merge this'. See /research, /design, /im (merge), /imaq (auto-merge)."
-argument-hint: "[--quick] [--hard] [--auto] [--forked] [--design-only] [--no-issues] [--inline] [--merge | --draft] [--no-admin-fallback] [--coder=claude|codex|cursor|gemini] [--session-env <path>] [--issue <N>] <feature description>"
+argument-hint: "[--quick] [--hard] [--auto] [--forked] [--design-only] [--no-issues] [--inline] [--merge | --draft] [--no-admin-fallback] [--no-logs-commit] [--coder=claude|codex|cursor|gemini] [--session-env <path>] [--issue <N>] <feature description>"
 allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task, WebFetch, WebSearch, Skill
 ---
 
@@ -125,13 +125,14 @@ The feature to implement is described by `$ARGUMENTS` after flag stripping.
 - `--quick`: `quick_mode=true`. Step 1 skips `/design` (inline plan instead); Step 5 skips `/review` (review loop: rounds 1-3 launch 5 Cursor specialists + a generic Codex reviewer — no voting panel); Step 7a skips the Code Flow Diagram. All other steps run normally. Independent of `--merge`. Step 1 normal mode may also flip `quick_mode=true` at runtime via simplicity classification (see Step 1 "Simplicity classification" — auto-switch is unilateral, no user prompt, but skipped on resumed sessions where a reusable design manifest is present).
 - `--hard`: `hard_mode=true`. Forces the HARD workflow by skipping the simplicity classification preamble — the task always proceeds with `/design` (collaborative sketches, plan review, voting) and a full 11-reviewer `/review` panel regardless of apparent scope. Default: `hard_mode=false`. Use this when the task clearly warrants the full design ceremony. Has no meaningful effect when `quick_mode=true` (quick mode already bypasses the simplicity classification and `/design`). Independent of all other flags.
 - `--auto`: `auto_mode=true`. (a) forward `--auto` to `/design` in Step 1, suppressing its interactive checkpoints; (b) suppress this skill's Step 2 opportunistic questions; (c) in Step 12 merge-conflict resolution, suppress `AskUserQuestion` and use best-effort (bail if confidence too low). When `--quick` also set and `/design` skipped, `--auto` still suppresses Step 2 questions. Reviewer dirty-tree changes (Step 5 / 5.3.b) are always auto-discarded regardless of `--auto` — no `AskUserQuestion` is fired for reviewer dirty trees.
-- `--forked`: `forked_target=true`. Run the workflow as a fork-CI dry-run: target fork PR operations at `origin` (`FORK_REPO`), compare freshness against `upstream/main`, disable tracking-issue lifecycle, skip version bump / CHANGELOG / merge, and print a final upstream-PR command for the operator. Compatible with `--quick`, `--draft`, `--design-only`, `--auto`, `--issue`, and `--coder=...`. **Mutually exclusive with `--merge`**; if both are present, print `**⚠ --forked and --merge are mutually exclusive. Aborting.**` and exit without Step 0.
+- `--forked`: `forked_target=true`. Run the workflow as a fork-CI dry-run: target fork PR operations at `origin` (`FORK_REPO`), compare freshness against `upstream/main`, disable tracking-issue lifecycle, skip version bump / CHANGELOG / merge, and print a final upstream-PR command for the operator. Compatible with `--quick`, `--draft`, `--design-only`, `--auto`, `--no-logs-commit`, `--issue`, and `--coder=...`. **Mutually exclusive with `--merge`**; if both are present, print `**⚠ --forked and --merge are mutually exclusive. Aborting.**` and exit without Step 0.
 - `--merge`: `merge=true`. Steps 12–15 run (CI+rebase+merge loop, local cleanup, main verification). Otherwise those steps are skipped — PR is created and workflow stops after initial CI wait, rejected findings, final report, and temp cleanup. **Mutually exclusive with `--draft`.**
 - `--design-only`: `design_only=true`. Run Step 0 / 0.5 / 1, publish the plan, plan-review tally, diagrams when available, and OOS fragments to the tracking issue, then stop without implementation, review, version bump, PR creation, CI, or merge. **Mutually exclusive with `--merge`**; if both are present, print `**⚠ --design-only and --merge are mutually exclusive. Aborting.**` and exit without Step 0. **Mutually exclusive with `--quick`** (quick mode bypasses /design's sketch+review machinery and produces a degraded inline plan that has no plan-review tally; combining the two would publish an empty/degraded review section to the tracking issue with no signal); if both are present, print `**⚠ --design-only and --quick are mutually exclusive (quick mode skips plan-review). Aborting.**` and exit without Step 0. Compatible with `--no-issues`; when combined, Steps 0.5, 9a.1, and 11 are skipped entirely — see that flag.
 - `--no-issues`: `no_issues=true`. When combined with `--design-only`, skips Step 0.5 (tracking issue creation), Step 9a.1 (OOS issue filing), and Step 11 (execution-issues summary refresh) entirely. Design output is ephemeral — no GitHub tracking issue is created and no marker-keyed summary comments are maintained. `$IMPLEMENT_TMPDIR/execution-issues.md` is the only audit trail (removed at Step 18). Default: `no_issues=false`. **Requires `--design-only`**; if `--no-issues` is present without `--design-only`, print `**⚠ --no-issues requires --design-only. Aborting.**` and exit without Step 0. **Mutually exclusive with `--issue <N>`**; if both are present, print `**⚠ --no-issues and --issue are mutually exclusive. Aborting.**` and exit without Step 0.
 - `--inline`: `inline_mode=true`. Default: `inline_mode=false`. **Execution topology only — does not change parent verbosity suppression.** Controls how /design's heavy non-interactive phase (sketches → plan → plan review → optionally Step 3b/4) executes. When `inline_mode=false` (default), /implement appends `--subagent` to its Step 1 /design invocation, so the heavy phase runs in an isolated Agent-tool subagent and only the nested machine footer plus artifact paths reach the parent. When `inline_mode=true`, /implement omits `--subagent`, so the heavy phase runs in /design's own in-turn context (richer tool transcript visible in the design step's output, higher token cost in the parent context). **Parent verbosity suppression is unchanged** — bulky inline artifact bodies remain file-backed via the manifest because /design's suppression rules are gated on `SESSION_ENV_PATH` (non-empty whenever /implement invokes /design). A separate verbosity flag would be required to actually unsuppress inline artifact prints; that is out of scope for this PR. Orthogonal to all other flags including `--design-only` (`--design-only --inline` is allowed). **No effect under `--quick`** — quick mode skips /design entirely, so the inline-vs-subagent distinction is moot.
 - `--draft`: `draft=true`. Step 9b creates the PR in draft state (`create-pr.sh --draft`); Step 14 is skipped so the local branch stays. `draft=true` implies `merge=false`. **Mutually exclusive with `--merge`.** If both are present, print `**⚠ --draft and --merge are mutually exclusive. Aborting.**` and exit without Step 0.
 - `--no-admin-fallback`: `no_admin_fallback=true`. Default: `no_admin_fallback=false`. When `true`, forwarded into Step 12b's `merge-pr.sh` invocation; the script then tries only a plain squash merge once the admin-eligible gate (CI good + branch fresh) is reached, emits `MERGE_RESULT=policy_denied` if that plain merge fails, and Step 12b bails to Step 12d. Default behavior tries `--admin` first after the same gate, then retries without `--admin` if the privileged attempt is rejected. Applies to ALL admin-eligible `mergeStateStatus` values (`CLEAN`, `UNSTABLE`, `HAS_HOOKS`, `BLOCKED`) — not just review-required denials. Independent of all other flags (in particular: no special coupling with `--auto`).
+- `--no-logs-commit`: `no_logs_commit=true`. Default: `no_logs_commit=false`. When `true`, skips the `larch-log.sh commit` calls that flush log files from the session tmpdir into the git working tree — the three affected sites are: the pre-bump log flush at Step 7a tail, the rebase-retry log-flush commit in the Rebase + Re-bump Sub-procedure step 1b, and the session-transcript commit in Step 18. Log files are still written to `$IMPLEMENT_TMPDIR/larch-logs/` for local inspection; they are simply not committed to the branch. Useful when operators want to suppress the larch-logs commits from the PR. Independent of all other flags.
 - `--coder=<value>`: sets `coder=<value>` AND `coder_explicit=true`. Defaults: `coder=codex` and `coder_explicit=false` (i.e. `coder_explicit=true` ONLY when this flag is explicitly present in the parsed args). Accepted values: `codex` (Step 2 spawns the Codex implementer via `step2-implement.sh`; this is the default when the flag is omitted), `claude` (Step 2 implementation runs in the main agent / Claude context — pre-Codex behavior), `cursor` (Step 2 spawns the Cursor implementer via `step2-implement.sh`), and `gemini` (Step 2 spawns the Gemini implementer via `step2-implement.sh`). When `coder=cursor` is requested but `cursor_available=false` or `CURSOR_HEALTHY=false` (or empty), the dispatcher falls back to `STATUS=claude_fallback` and the orchestrator runs the main-agent code-edit path — symmetric to passing `--coder=claude`. When `coder=gemini` is requested but `gemini_available=false` or `GEMINI_HEALTHY=false` (or empty), the dispatcher falls back to `STATUS=claude_fallback` and the orchestrator runs the main-agent code-edit path — symmetric to passing `--coder=claude`. (Codex unhealthy/unavailable is NOT silently rerouted at the dispatcher: when `coder=codex` is requested but Codex is unhealthy, the dispatcher proceeds with the spawn anyway and bails with `codex-runtime-failure` if Codex truly cannot run — operators who want a clean fallback in that case should pass `--coder=claude`.) Forwarded to the Step 2 dispatcher as `--coder $coder`. Independent of all other flags. The legacy `--codex-available true|false` knob is still accepted by the dispatcher for one release with a stderr deprecation warning (`true → coder=codex`, `false → coder=claude`); orchestrator-side, prefer `--coder` directly.
 - `--run-id <ID>`: Optional run identifier; when set, used as the run ID for this invocation instead of the auto-generated one. Default: empty (auto-generate).
 - `--no-merge`: **Deprecated** no-op. On encounter, print `**ℹ '--no-merge' is now the default and no longer needed; the flag is recognized as a no-op for backward compatibility.**`
@@ -1376,7 +1377,9 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --full --output "$IMPLEMENT_TMPDIR/timing-report-rendered.md" || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch token-report --input-file "$IMPLEMENT_TMPDIR/token-report-rendered.md" || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch timing-report --input-file "$IMPLEMENT_TMPDIR/timing-report-rendered.md" || true
-"${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" commit --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --no-push || true
+if [ "${no_logs_commit:-false}" != "true" ]; then
+  "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" commit --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --no-push || true
+fi
 ```
 
 Best-effort: failures are non-fatal.
@@ -1396,6 +1399,7 @@ Before invoking the script, write `$IMPLEMENT_TMPDIR/ship-pr-state.sh` with uppe
 - `PR_NUMBER=`, `PR_URL=`, `PR_TITLE=`, `RESUME_PHASE=`, `CALLER_KIND=`
 - `REBASE_COUNT=0`, `FIX_ATTEMPTS=0`, `ITERATION=0`, `TRANSIENT_RETRIES=0`, `FAILED_RUN_ID=`
 - `MANIFEST_PATH`, `TOOL_LABEL`, `DESIGN_ONLY_DONE=false`, `EXPECTED_SESSION_ID`, `EXPECTED_TMPDIR_BASENAME_PREFIX`
+- `NO_LOGS_COMMIT=$no_logs_commit`
 
 Invoke:
 
@@ -1408,6 +1412,7 @@ Invoke:
   --forked "$forked_target" \
   --auto-mode "$auto_mode" \
   --no-admin-fallback "$no_admin_fallback" \
+  --no-logs-commit "$no_logs_commit" \
   --repo "$REPO"
 ```
 
@@ -1472,7 +1477,7 @@ If `quick_mode=true` and `DESIGN_ONLY_DONE` is not true: print `✅ 17: final re
 
 If `quick_mode=false` and `DESIGN_ONLY_DONE` is not true: print a summary noting plan review findings were written by `/design` into larch-log batches and code review findings by `/review` (visible above). If both phases reported all suggestions implemented, print `✅ 17: final report status=complete outcome=all-suggestions-implemented elapsed=<elapsed>`.
 
-Print a token summary to chat. When `LARCH_VERBOSE_TOKENS=true`, print the full per-step table; otherwise print a single grand-total line. The full breakdown is appended to the `token-report` and `timing-report` log batches at the pre-bump log flush (Step 7a tail); on each retry the sub-procedure step 1b refreshes those batches so the merged PR carries the most recent data.
+Print a token summary to chat. When `LARCH_VERBOSE_TOKENS=true`, print the full per-step table; otherwise print a single grand-total line. The full breakdown is appended to the `token-report` and `timing-report` log batches at the pre-bump log flush (Step 7a tail); on each retry the sub-procedure step 1b refreshes those batches so the merged PR carries the most recent data (unless `--no-logs-commit` is set, in which case log files stay in the session tmpdir only).
 
 ```bash
 LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
@@ -1532,13 +1537,15 @@ if [ -n "$LARCH_CLAUDE_SOURCE_FILE" ] && [ -f "$LARCH_CLAUDE_SOURCE_FILE" ]; the
         --skill implement --run-id "$RUN_ID" \
         --batch session-transcript \
         --input-file "$TRANSCRIPT_PATH"; then
-      "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" commit \
-        --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
-        --skill implement --run-id "$RUN_ID" --no-push || \
-        "${CLAUDE_PLUGIN_ROOT}/scripts/append-execution-issue.sh" \
-          --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
-          --category Warnings \
-          --entry "- **Step 18 — session-transcript commit failed:** write succeeded but git commit failed; transcript on disk under larch-logs/ but not committed" || true
+      if [ "${no_logs_commit:-false}" != "true" ]; then
+        "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" commit \
+          --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
+          --skill implement --run-id "$RUN_ID" --no-push || \
+          "${CLAUDE_PLUGIN_ROOT}/scripts/append-execution-issue.sh" \
+            --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
+            --category Warnings \
+            --entry "- **Step 18 — session-transcript commit failed:** write succeeded but git commit failed; transcript on disk under larch-logs/ but not committed" || true
+      fi
     fi
   fi
 fi
