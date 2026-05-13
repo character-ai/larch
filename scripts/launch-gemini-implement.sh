@@ -37,6 +37,9 @@ PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"
 # shellcheck source=scripts/lib-gemini-model-resolver.sh
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib-gemini-model-resolver.sh"
+# shellcheck source=scripts/lib-external-launcher-common.sh
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib-external-launcher-common.sh"
 
 TRANSCRIPT_PATH=""
 SIDECAR_LOG=""
@@ -206,15 +209,33 @@ else
 fi
 
 LAUNCHER_EXIT=0
-"$SCRIPT_DIR/run-external-agent.sh" \
-    --tool gemini \
-    --output "$TRANSCRIPT_PATH" \
-    --timeout "$TIMEOUT" \
-    --capture-stdout \
-    -- \
-    gemini --prompt "$PROMPT" --approval-mode yolo --skip-trust \
-    --model "$GEMINI_MODEL" \
-    >"$SIDECAR_LOG" 2>&1 || LAUNCHER_EXIT=$?
+MAX_AUTH_RETRIES=${LARCH_EXTERNAL_AUTH_RETRIES:-5}
+case "$MAX_AUTH_RETRIES" in ''|*[!0-9]*|0) MAX_AUTH_RETRIES=5 ;; esac
+HOLD=${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}
+AUTH_ATTEMPT=1
+while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
+    _SERIAL_LOCK=""
+    external_serial_lock_acquire _SERIAL_LOCK "gemini"
+    external_serial_lock_release_after "$_SERIAL_LOCK" "$HOLD"
+    LAUNCHER_EXIT=0
+    "$SCRIPT_DIR/run-external-agent.sh" \
+        --tool gemini \
+        --output "$TRANSCRIPT_PATH" \
+        --timeout "$TIMEOUT" \
+        --capture-stdout \
+        -- \
+        gemini --prompt "$PROMPT" --approval-mode yolo --skip-trust \
+        --model "$GEMINI_MODEL" \
+        >"$SIDECAR_LOG" 2>&1 || LAUNCHER_EXIT=$?
+    if (( LAUNCHER_EXIT != 0 && AUTH_ATTEMPT < MAX_AUTH_RETRIES )) \
+        && { external_is_auth_failure "gemini" "$SIDECAR_LOG" || external_is_auth_failure "gemini" "$TRANSCRIPT_PATH"; }; then
+        AUTH_ATTEMPT=$((AUTH_ATTEMPT + 1))
+        : > "$SIDECAR_LOG" 2>/dev/null || true
+        : > "$TRANSCRIPT_PATH" 2>/dev/null || true
+        continue
+    fi
+    break
+done
 
 MANIFEST_WRITTEN=false
 QA_PENDING_WRITTEN=false

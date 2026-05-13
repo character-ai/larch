@@ -13,6 +13,9 @@ source "${BASH_SOURCE[0]%/*}/lib-gemini-model-resolver.sh"
 # shellcheck source=scripts/lib-dirty-tree-sidecar.sh
 # shellcheck disable=SC1091
 source "${BASH_SOURCE[0]%/*}/lib-dirty-tree-sidecar.sh"
+# shellcheck source=scripts/lib-external-launcher-common.sh
+# shellcheck disable=SC1091
+source "${BASH_SOURCE[0]%/*}/lib-external-launcher-common.sh"
 
 _launch_gemini() {
 ORIGINAL_ARGS=(--tool gemini "$@")
@@ -785,12 +788,28 @@ fi
 
 RUN_EXIT=0
 AGENT_RAN=true
-"$SCRIPT_DIR/run-external-agent.sh" \
-    --tool gemini \
-    --output "$RAW_OUTPUT" \
-    --timeout "$EFFECTIVE_TIMEOUT" \
-    --capture-stdout-only \
-    -- gemini -m "$GEMINI_MODEL" -p "$PROMPT" -o json --skip-trust --approval-mode yolo --admin-policy "$SCRIPT_DIR/gemini-reviewer-policy.toml" || RUN_EXIT=$?
+MAX_AUTH_RETRIES=${LARCH_EXTERNAL_AUTH_RETRIES:-5}
+case "$MAX_AUTH_RETRIES" in ''|*[!0-9]*|0) MAX_AUTH_RETRIES=5 ;; esac
+HOLD=${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}
+AUTH_ATTEMPT=1
+while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
+    _SERIAL_LOCK=""
+    external_serial_lock_acquire _SERIAL_LOCK "gemini"
+    external_serial_lock_release_after "$_SERIAL_LOCK" "$HOLD"
+    RUN_EXIT=0
+    "$SCRIPT_DIR/run-external-agent.sh" \
+        --tool gemini \
+        --output "$RAW_OUTPUT" \
+        --timeout "$EFFECTIVE_TIMEOUT" \
+        --capture-stdout-only \
+        -- gemini -m "$GEMINI_MODEL" -p "$PROMPT" -o json --skip-trust --approval-mode yolo --admin-policy "$SCRIPT_DIR/gemini-reviewer-policy.toml" || RUN_EXIT=$?
+    if (( RUN_EXIT != 0 && AUTH_ATTEMPT < MAX_AUTH_RETRIES )) && external_is_auth_failure "gemini" "${RAW_OUTPUT}.diag"; then
+        AUTH_ATTEMPT=$((AUTH_ATTEMPT + 1))
+        : > "${RAW_OUTPUT}.diag" 2>/dev/null || true
+        continue
+    fi
+    break
+done
 
 if [[ "$RUN_EXIT" -ne 0 ]]; then
     fail_closed "$RUN_EXIT" "Gemini exited with code $RUN_EXIT"

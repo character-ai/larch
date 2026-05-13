@@ -5,6 +5,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"
+# shellcheck source=scripts/lib-codex-launcher-common.sh
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib-codex-launcher-common.sh"
 
 ROLE=""
 OUTPUT=""
@@ -72,17 +75,34 @@ TRUST_CONFIG_ARG="projects.\"$PROJECT_KEY\".trust_level=\"trusted\""
 
 TIMING_START_S=$(date +%s)
 LAUNCHER_EXIT=0
-CODEX_HOME="$CODEX_HOME_DIR" "$SCRIPT_DIR/run-external-agent.sh" \
-    --tool codex \
-    --output "$OUTPUT" \
-    --timeout "$TIMEOUT" \
-    -- \
-    codex exec --full-auto -C "$PWD" \
-    ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
-    -c "$TRUST_CONFIG_ARG" \
-    --output-last-message "$OUTPUT" \
-    -- \
-    "$PROMPT" || LAUNCHER_EXIT=$?
+SIDECAR_LOG="${OUTPUT}.sidecar"
+MAX_AUTH_RETRIES=${LARCH_EXTERNAL_AUTH_RETRIES:-5}
+case "$MAX_AUTH_RETRIES" in ''|*[!0-9]*|0) MAX_AUTH_RETRIES=5 ;; esac
+HOLD=${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}
+AUTH_ATTEMPT=1
+while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
+    _SERIAL_LOCK=""
+    external_serial_lock_acquire _SERIAL_LOCK "codex"
+    external_serial_lock_release_after "$_SERIAL_LOCK" "$HOLD"
+    LAUNCHER_EXIT=0
+    CODEX_HOME="$CODEX_HOME_DIR" "$SCRIPT_DIR/run-external-agent.sh" \
+        --tool codex \
+        --output "$OUTPUT" \
+        --timeout "$TIMEOUT" \
+        -- \
+        codex exec --full-auto -C "$PWD" \
+        ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
+        -c "$TRUST_CONFIG_ARG" \
+        --output-last-message "$OUTPUT" \
+        -- \
+        "$PROMPT" >"$SIDECAR_LOG" 2>&1 || LAUNCHER_EXIT=$?
+    if (( LAUNCHER_EXIT != 0 && AUTH_ATTEMPT < MAX_AUTH_RETRIES )) && external_is_auth_failure "codex" "$SIDECAR_LOG"; then
+        AUTH_ATTEMPT=$((AUTH_ATTEMPT + 1))
+        : > "$SIDECAR_LOG" 2>/dev/null || true
+        continue
+    fi
+    break
+done
 
 END_S=$(date +%s)
 "$PLUGIN_ROOT/scripts/timing-ledger.sh" record-vendor-task \

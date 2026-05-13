@@ -458,39 +458,59 @@ SIDECAR="${OUTPUT}.sidecar"
 
 EXIT_CODE=0
 if : > "$SIDECAR" 2>/dev/null; then
-    CODEX_HOME="$CODEX_HOME_DIR" \
-    RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX=.inner.done \
-    "$RUN_EXTERNAL" \
-        --tool codex \
-        --output "$OUTPUT" \
-        --timeout "$TIMEOUT" \
-        -- \
-        codex exec --sandbox read-only -C "$PWD" \
-        --add-dir "$CANON_OUTPUT_DIR" \
-        ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
-        -c "$TRUST_CONFIG_ARG" \
-        --output-last-message "$OUTPUT" \
-        -- \
-        "$PROMPT" \
-        >>"$SIDECAR" 2>&1 || EXIT_CODE=$?
+    :
 else
     SIDECAR=/dev/null
-    CODEX_HOME="$CODEX_HOME_DIR" \
-    RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX=.inner.done \
-    "$RUN_EXTERNAL" \
-        --tool codex \
-        --output "$OUTPUT" \
-        --timeout "$TIMEOUT" \
-        -- \
-        codex exec --sandbox read-only -C "$PWD" \
-        --add-dir "$CANON_OUTPUT_DIR" \
-        ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
-        -c "$TRUST_CONFIG_ARG" \
-        --output-last-message "$OUTPUT" \
-        -- \
-        "$PROMPT" \
-        >/dev/null 2>&1 || EXIT_CODE=$?
 fi
+MAX_AUTH_RETRIES=${LARCH_EXTERNAL_AUTH_RETRIES:-5}
+case "$MAX_AUTH_RETRIES" in ''|*[!0-9]*|0) MAX_AUTH_RETRIES=5 ;; esac
+HOLD=${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}
+AUTH_ATTEMPT=1
+while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
+    _SERIAL_LOCK=""
+    external_serial_lock_acquire _SERIAL_LOCK "codex"
+    external_serial_lock_release_after "$_SERIAL_LOCK" "$HOLD"
+    EXIT_CODE=0
+    if [[ "$SIDECAR" != "/dev/null" ]]; then
+        CODEX_HOME="$CODEX_HOME_DIR" \
+        RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX=.inner.done \
+        "$RUN_EXTERNAL" \
+            --tool codex \
+            --output "$OUTPUT" \
+            --timeout "$TIMEOUT" \
+            -- \
+            codex exec --sandbox read-only -C "$PWD" \
+            --add-dir "$CANON_OUTPUT_DIR" \
+            ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
+            -c "$TRUST_CONFIG_ARG" \
+            --output-last-message "$OUTPUT" \
+            -- \
+            "$PROMPT" \
+            >>"$SIDECAR" 2>&1 || EXIT_CODE=$?
+    else
+        CODEX_HOME="$CODEX_HOME_DIR" \
+        RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX=.inner.done \
+        "$RUN_EXTERNAL" \
+            --tool codex \
+            --output "$OUTPUT" \
+            --timeout "$TIMEOUT" \
+            -- \
+            codex exec --sandbox read-only -C "$PWD" \
+            --add-dir "$CANON_OUTPUT_DIR" \
+            ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
+            -c "$TRUST_CONFIG_ARG" \
+            --output-last-message "$OUTPUT" \
+            -- \
+            "$PROMPT" \
+            >/dev/null 2>&1 || EXIT_CODE=$?
+    fi
+    if (( EXIT_CODE != 0 && AUTH_ATTEMPT < MAX_AUTH_RETRIES )) && external_is_auth_failure "codex" "$SIDECAR"; then
+        AUTH_ATTEMPT=$((AUTH_ATTEMPT + 1))
+        : > "$SIDECAR" 2>/dev/null || true
+        continue
+    fi
+    break
+done
 
 codex_launcher_append_outer_meta "${OUTPUT}.meta" "$SCRIPT_DIR/launch-review.sh" "$PROMPT_FILE_SIDECAR" "$PWD"
 
@@ -820,40 +840,6 @@ if [[ "$PREFLIGHT_RC" != "0" ]]; then
     exit "$PREFLIGHT_RC"
 fi
 
-# Serialize concurrent cursor-agent startups on Darwin. cursor reads
-# cursor-user/cursor-access-token from the macOS keychain at startup even
-# when --api-key is provided; parallel specialist fan-outs race that read,
-# causing some instances to fail (exit 1, "Password not found", ~10s).
-# A mkdir-based lock (POSIX-atomic on macOS/Linux local filesystems) is
-# acquired here; the lock is released LARCH_CURSOR_SERIAL_LOCK_DELAY seconds
-# (default 2) after cursor is spawned below via a disowned background job,
-# giving each cursor process a window to complete its keychain init before
-# the next one starts. Fail-open: after LARCH_CURSOR_SERIAL_LOCK_TRIES*0.1s
-# (default 300*0.1=30s), give up and proceed without the lock.
-# Scope: IMPLEMENT_TMPDIR when set (session-private); /tmp otherwise (note:
-# /tmp/larch-cursor-serial-$USER.lock is user-guessable on shared hosts).
-# Test override: LARCH_CURSOR_SERIAL_LOCK_FORCE_UNAME overrides uname -s.
-_CURSOR_SERIAL_LOCK=""
-if [[ "${LARCH_CURSOR_SERIAL_LOCK_FORCE_UNAME:-$(uname -s 2>/dev/null)}" == "Darwin" ]]; then
-    if [[ -n "${IMPLEMENT_TMPDIR:-}" ]]; then
-        _CURSOR_SERIAL_LOCK="${IMPLEMENT_TMPDIR}/larch-cursor-serial.lock"
-    else
-        _CURSOR_SERIAL_LOCK="/tmp/larch-cursor-serial-${USER:-larch}.lock"
-    fi
-    _cursor_serial_tries=0
-    while ! mkdir "$_CURSOR_SERIAL_LOCK" 2>/dev/null; do
-        _cursor_serial_tries=$((_cursor_serial_tries + 1))
-        if (( _cursor_serial_tries >= ${LARCH_CURSOR_SERIAL_LOCK_TRIES:-300} )); then
-            _CURSOR_SERIAL_LOCK=""
-            break
-        fi
-        sleep 0.1
-    done
-    unset _cursor_serial_tries
-    # Lock release is scheduled below, after cursor spawns, so the delay
-    # window starts from cursor startup (not from lock acquisition here).
-fi
-
 # shellcheck disable=SC2086
 EXIT_CODE=0
 if : > "$SIDECAR" 2>/dev/null; then
@@ -863,29 +849,40 @@ else
     _STDERR_TARGET=/dev/null
 fi
 
-RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX=.inner.done \
-"$RUN_EXTERNAL" \
-        --tool cursor \
-        --output "$OUTPUT" \
-        --timeout "$TIMEOUT" \
-        --capture-stdout-only \
-        -- \
-        cursor agent -p --trust --mode plan \
-        --output-format json \
-        ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
-        ${CURSOR_AUTH_ARGS[@]+"${CURSOR_AUTH_ARGS[@]}"} \
-        --workspace "$PWD" \
-        "$WRAPPED_PROMPT" \
-        2>>"$_STDERR_TARGET" &
-WRAPPER_PID=$!
-# Release the serial lock now that cursor has been spawned. The delay window
-# starts from cursor startup so the next launcher can acquire the lock only
-# after LARCH_CURSOR_SERIAL_LOCK_DELAY seconds of this cursor's keychain init.
-if [[ -n "$_CURSOR_SERIAL_LOCK" ]]; then
-    { sleep "${LARCH_CURSOR_SERIAL_LOCK_DELAY:-2}"; rmdir "$_CURSOR_SERIAL_LOCK" 2>/dev/null || true; } &
-    disown $!
-fi
-wait "$WRAPPER_PID" && EXIT_CODE=0 || EXIT_CODE=$?
+MAX_AUTH_RETRIES=${LARCH_EXTERNAL_AUTH_RETRIES:-5}
+case "$MAX_AUTH_RETRIES" in ''|*[!0-9]*|0) MAX_AUTH_RETRIES=5 ;; esac
+HOLD=${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}
+AUTH_ATTEMPT=1
+while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
+    _SERIAL_LOCK=""
+    external_serial_lock_acquire _SERIAL_LOCK "cursor"
+    RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX=.inner.done \
+    "$RUN_EXTERNAL" \
+            --tool cursor \
+            --output "$OUTPUT" \
+            --timeout "$TIMEOUT" \
+            --capture-stdout-only \
+            -- \
+            cursor agent -p --trust --mode plan \
+            --output-format json \
+            ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
+            ${CURSOR_AUTH_ARGS[@]+"${CURSOR_AUTH_ARGS[@]}"} \
+            --workspace "$PWD" \
+            "$WRAPPED_PROMPT" \
+            2>>"$_STDERR_TARGET" &
+    WRAPPER_PID=$!
+    external_serial_lock_release_after "$_SERIAL_LOCK" "$HOLD"
+    wait "$WRAPPER_PID" && EXIT_CODE=0 || EXIT_CODE=$?
+    WRAPPER_PID=""
+    if (( EXIT_CODE != 0 && AUTH_ATTEMPT < MAX_AUTH_RETRIES )) \
+        && { external_is_auth_failure "cursor" "$SIDECAR" || external_is_auth_failure "cursor" "${OUTPUT}.diag"; }; then
+        AUTH_ATTEMPT=$((AUTH_ATTEMPT + 1))
+        : > "$SIDECAR" 2>/dev/null || true
+        : > "${OUTPUT}.diag" 2>/dev/null || true
+        continue
+    fi
+    break
+done
 
 cursor_launcher_append_outer_meta "${OUTPUT}.meta" "$SCRIPT_DIR/launch-review.sh" "$PROMPT_FILE_SIDECAR" "$PWD"
 

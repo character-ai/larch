@@ -12,7 +12,7 @@ launch-codex-ci.sh --role fix|resolve-conflict|bump-classify|changelog-draft --o
 
 ## Behavior
 
-The launcher builds a fixed prompt containing only trusted path and identifier values, then runs `codex exec` through `run-external-agent.sh`. It emits timing with `--timing-task-kind codex-ci-fix` and writes a best-effort `${OUTPUT}.token-record` sidecar when token usage can be scraped.
+The launcher builds a fixed prompt containing only trusted path and identifier values, then runs `codex exec` through `run-external-agent.sh`. It emits timing with `--timing-task-kind codex-ci-fix` and writes a best-effort `${OUTPUT}.token-record` sidecar when token usage can be scraped. The spawn site uses `lib-external-launcher-common.sh`'s per-tool Darwin serial lock and outer auth retry wrapper; wrapper chatter and Codex startup stderr are captured to `${OUTPUT}.sidecar` so auth retries can be classified without leaking progress text into the final `KEY=VALUE` stdout line.
 
 Gemini is intentionally not added in v1. This is a scoped CI-fix launcher pair for the two active state-machine vendor slots.
 

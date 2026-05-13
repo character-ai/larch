@@ -33,20 +33,16 @@ Gemini remains generic-only and rejects specialist flags.
 - Cursor auth setup runs the Darwin preflight, then best-effort pre-reads the
   `cursor-user` / `cursor-access-token` keychain service into `CURSOR_API_KEY`
   before composing argv. A successful pre-read becomes an explicit `--api-key`
-  argument. On Darwin, cursor agent startups are additionally serialized through
-  a `mkdir`-based per-session lock (`$IMPLEMENT_TMPDIR/larch-cursor-serial.lock`
-  when set; `/tmp/larch-cursor-serial-$USER.lock` otherwise) because cursor reads
-  the macOS keychain internally at initialization even when `--api-key` is
-  provided; concurrent instances race that read, causing some to fail with exit 1
-  after ~10 s. The lock is released `LARCH_CURSOR_SERIAL_LOCK_DELAY` seconds
-  (default 2) after the cursor process starts; fail-open after
-  `LARCH_CURSOR_SERIAL_LOCK_TRIES`×0.1 s (default 30 s).
-  The lock is acquired before cursor spawns; the delayed `rmdir` is scheduled
-  immediately after cursor is spawned so the delay window starts from cursor
-  startup, not from lock acquisition.
-  `LARCH_CURSOR_SERIAL_LOCK_FORCE_UNAME` overrides `uname -s` in tests.
-  Note: the `/tmp`-scoped fallback (when `IMPLEMENT_TMPDIR` is unset) uses a
-  user-guessable directory name — prefer `IMPLEMENT_TMPDIR` on shared hosts.
+  argument.
+- Every external spawn site is wrapped by the shared helpers in
+  `scripts/lib-external-launcher-common.sh`: Darwin-only per-tool startup locks
+  (`/tmp/larch-<tool>-serial-$USER.lock`) serialize Cursor, Codex, and Gemini
+  CLI initialization, delayed release starts at process spawn, stale locks are
+  recovered, and auth/startup failures are retried up to
+  `LARCH_EXTERNAL_AUTH_RETRIES` attempts. Tunables:
+  `LARCH_EXTERNAL_SERIAL_LOCK_DELAY`, `LARCH_EXTERNAL_SERIAL_LOCK_TTL`,
+  `LARCH_EXTERNAL_SERIAL_LOCK_TRIES`, and
+  `LARCH_EXTERNAL_SERIAL_LOCK_FORCE_UNAME`.
 - Codex sets `CODEX_SANDBOX_MODE=read-only` and emits a static
   `STATUS=clean MODE=baseline REASON=codex-sandbox-read-only` sidecar without
   running the scan — `--sandbox read-only` blocks writes at the syscall level,
