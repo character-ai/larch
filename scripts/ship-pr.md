@@ -36,6 +36,7 @@ The script also writes `$IMPLEMENT_TMPDIR/postbump-state.sh` before `implement-f
 - `3` means the CI loop needs user input. `BAIL_REASON` and `BAIL_NEEDS_USER_INPUT=true` are written to state.
 - `4` means stalled cleanup. `STALL_TRACKING=true` and `STALL_STEP` are written to state.
 - `5` means the prompt-side Rebase + Re-bump Sub-procedure must run. `RESUME_PHASE` and `CALLER_KIND` are written to state.
+- `6` — transient network failure. Orchestrator retries the same `PHASE` after a short sleep. `BAIL_REASON` carries the underlying network-signature; `STALL_TRACKING=false` distinguishes it from `exit 4`.
 
 ## Helper Contracts
 

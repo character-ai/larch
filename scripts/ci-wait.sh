@@ -167,12 +167,18 @@ trap 'EXIT_STATUS=$?; if emit_output && [[ -n "$OUTPUT_FILE" ]]; then printf "%s
 SECONDS=0
 checks=0
 ci_failures=0
+# Poll-count budget: each normal iteration consumes one slot. Suspend-detected
+# iterations (wall-clock delta > 60s) are not counted so a resume after a
+# long suspend does not immediately exhaust the budget.
+MAX_POLLS=$((TIMEOUT / 10))
 
 printf "⏳ CI: waiting" >&2
 
 while true; do
-    # Wall-clock timeout
-    if [[ "$SECONDS" -ge "$TIMEOUT" ]]; then
+    iter_start=$(date +%s)
+
+    # Poll-count timeout (suspend-resilient)
+    if [[ $checks -ge $MAX_POLLS ]]; then
         ACTION="bail"
         BAIL_REASON="Wall-clock timeout (${TIMEOUT}s) exceeded"
         printf "\n⚠ CI wait timed out after %ds\n" "$TIMEOUT" >&2
@@ -249,7 +255,6 @@ while true; do
     # 4. ACTION=wait — print dot, sleep, continue
     # Note: ITERATION is NOT incremented on internal wait polls. It counts outer-loop
     # cycles (caller re-invocations after rebase/fix), not internal 10s polls.
-    # The 1800s wall-clock timeout is the safety net for long waits.
     # ci-decide.sh's iteration limit (50) guards against infinite rebase/fix loops.
     checks=$((checks + 1))
 
@@ -261,4 +266,13 @@ while true; do
     fi
 
     sleep 10
+
+    # Detect laptop suspend: if the iteration wall-clock delta is implausibly
+    # large (> 60s when we only slept 10s), the machine was suspended. Don't
+    # charge that iteration against the poll budget.
+    iter_delta=$(( $(date +%s) - iter_start ))
+    if [[ $iter_delta -gt 60 ]]; then
+        printf "\n⚠ suspend detected — iteration took %ds, not counting toward poll budget\n" "$iter_delta" >&2
+        checks=$((checks - 1))
+    fi
 done

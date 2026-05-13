@@ -242,6 +242,19 @@ exit_stall() {
     exit 4
 }
 
+exit_transient_net() {
+    state_set_many BAIL_REASON "$1" STALL_TRACKING false
+    exit 6
+}
+
+is_transient_net_signature() {
+    local text=$1
+    case "$text" in
+        *"Could not resolve"*|*"unable to access"*|*"Connection refused"*|*"Temporary failure"*|*"timed out"*|*"TLS handshake"*|*"HTTP 5"*|*"Wall-clock timeout"*|*"no valid output 3 times"*|*"network/auth issue"*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 write_postbump_state() {
     local tmp
     tmp="$IMPLEMENT_TMPDIR/postbump-state.sh.tmp.$$"
@@ -456,6 +469,9 @@ run_pr_create_phase() {
     out=$("$SCRIPT_DIR/create-pr.sh" --title "$title" --body-file "$IMPLEMENT_TMPDIR/pr-body.md" "${draft_args[@]+"${draft_args[@]}"}" "${repo_args[@]+"${repo_args[@]}"}" 2>&1)
     rc=$?
     printf '%s\n' "$out"
+    if [ "$rc" -ne 0 ] && is_transient_net_signature "$out"; then
+        exit_transient_net "create-pr: $out"
+    fi
     [ "$rc" -eq 0 ] || exit_stall 9b
     pr_number=$(kv_value PR_NUMBER "$out")
     pr_url=$(kv_value PR_URL "$out")
@@ -601,6 +617,9 @@ run_rebase_rebump() {
         printf '%s\n' "$rebase_out"
         [ "$rebase_rc" -eq 0 ] || exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
     elif [ "$rebase_rc" -ne 0 ]; then
+        if is_transient_net_signature "$rebase_out"; then
+            exit_transient_net "rebase: $rebase_out"
+        fi
         exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
     fi
 
@@ -697,6 +716,9 @@ EOF
                     return 0
                     ;;
                 version_already_published|policy_denied|admin_failed|error)
+                    if [[ "$merge_result" == "error" || "$merge_result" == "admin_failed" ]] && is_transient_net_signature "$error_text"; then
+                        exit_transient_net "merge-pr: $error_text"
+                    fi
                     state_set_many BAIL_REASON "$error_text" STALL_TRACKING true STALL_STEP 12d
                     exit 4
                     ;;
@@ -727,6 +749,9 @@ EOF
         bail)
             bail_reason=$(kv_value BAIL_REASON "$out")
             state_set BAIL_REASON "$bail_reason"
+            if is_transient_net_signature "$bail_reason"; then
+                exit_transient_net "ci-wait: $bail_reason"
+            fi
             if needs_user_bail_reason "$bail_reason"; then
                 state_set BAIL_NEEDS_USER_INPUT true
                 exit 3

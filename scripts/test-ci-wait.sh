@@ -1,0 +1,211 @@
+#!/usr/bin/env bash
+# test-ci-wait.sh — Offline regression tests for scripts/ci-wait.sh.
+# Tests the poll-count timeout, suspend-resilience, and happy paths.
+# Wired via: make test-ci-wait
+
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+TMP_BASE="$(mktemp -d -t ci-wait-test.XXXXXX)"
+PASS_COUNT=0
+FAIL_COUNT=0
+
+cleanup() { rm -rf "$TMP_BASE"; }
+trap cleanup EXIT
+
+ok()   { echo "  PASS: $1"; PASS_COUNT=$((PASS_COUNT + 1)); }
+fail() { echo "  FAIL: $1"; FAIL_COUNT=$((FAIL_COUNT + 1)); }
+
+# Build a minimal stub tree for ci-wait.sh: ci-status.sh and ci-decide.sh.
+make_env() {
+    local name=$1
+    local root="$TMP_BASE/$name"
+    mkdir -p "$root/scripts"
+    cp "$REPO_ROOT/scripts/ci-wait.sh" "$root/scripts/ci-wait.sh"
+    chmod +x "$root/scripts/ci-wait.sh"
+    printf '%s\n' "$root"
+}
+
+write_ci_status_stub() {
+    local root=$1
+    # STUB_STATUSES is a colon-separated list of CI_STATUS values to return
+    # sequentially. After the list is exhausted, return the last value.
+    # Uses a call-count file under the root to track invocations.
+    cat > "$root/scripts/ci-status.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+count_file="$(dirname "$0")/../.ci-status-count"
+count=$(cat "$count_file" 2>/dev/null || echo 0)
+count=$((count + 1))
+printf '%s\n' "$count" > "$count_file"
+IFS=: read -ra statuses <<< "${STUB_STATUSES:-pass}"
+idx=$((count - 1))
+[ "$idx" -ge "${#statuses[@]}" ] && idx=$(( ${#statuses[@]} - 1 ))
+status="${statuses[$idx]}"
+
+# Simulate a slow iteration if requested (STUB_SLOW_CALL_N=N; slowness = STUB_SLOW_SECS seconds)
+slow_n="${STUB_SLOW_CALL_N:-0}"
+slow_secs="${STUB_SLOW_SECS:-0}"
+if [ "$slow_n" -gt 0 ] && [ "$count" -eq "$slow_n" ] && [ "$slow_secs" -gt 0 ]; then
+    sleep "$slow_secs"
+fi
+
+printf 'CI_STATUS=%s\nBEHIND_COUNT=0\nFAILED_RUN_ID=\n' "$status"
+SH
+    chmod +x "$root/scripts/ci-status.sh"
+}
+
+write_ci_decide_stub() {
+    local root=$1
+    cat > "$root/scripts/ci-decide.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+# Read --status argument
+while [[ $# -gt 0 ]]; do
+    [[ "$1" == --status ]] && { CI_STATUS="$2"; shift 2; continue; }
+    shift
+done
+CI_STATUS="${CI_STATUS:-pending}"
+case "$CI_STATUS" in
+    pass)   printf 'ACTION=merge\nBAIL_REASON=\n' ;;
+    fail)   printf 'ACTION=bail\nBAIL_REASON=CI failed\n' ;;
+    *)      printf 'ACTION=wait\nBAIL_REASON=\n' ;;
+esac
+SH
+    chmod +x "$root/scripts/ci-decide.sh"
+}
+
+run_subject() {
+    local root=$1 rc_file=$2
+    shift 2
+    set +e
+    (cd "$root" && PATH="$root/scripts:$PATH" "$root/scripts/ci-wait.sh" --pr 1 --repo owner/repo "$@" > "$root/.stdout" 2>"$root/.stderr")
+    local rc=$?
+    set -e
+    printf '%s' "$rc" > "$rc_file"
+}
+
+assert_stdout_contains() {
+    local root=$1 pattern=$2 label=$3
+    if grep -q "$pattern" "$root/.stdout"; then
+        ok "$label"
+    else
+        fail "$label (pattern '$pattern' not found in stdout)"
+        sed 's/^/    stdout: /' "$root/.stdout"
+    fi
+}
+
+assert_rc() {
+    local file=$1 expected=$2 label=$3 actual
+    actual=$(cat "$file")
+    if [[ "$actual" == "$expected" ]]; then
+        ok "$label"
+    else
+        fail "$label (expected $expected, got $actual)"
+    fi
+}
+
+# --- Case 1: happy path — ci-status returns pass on first call ---
+root=$(make_env happy_path)
+write_ci_status_stub "$root"
+write_ci_decide_stub "$root"
+STUB_STATUSES=pass run_subject "$root" "$root/.rc" --timeout 60
+assert_rc "$root/.rc" 0 "happy path: exits 0"
+assert_stdout_contains "$root" "ACTION=merge" "happy path: ACTION=merge"
+
+# --- Case 2: pending-then-pass — 3x pending then pass ---
+root=$(make_env pending_then_pass)
+write_ci_status_stub "$root"
+write_ci_decide_stub "$root"
+STUB_STATUSES=pending:pending:pending:pass run_subject "$root" "$root/.rc" --timeout 120
+assert_rc "$root/.rc" 0 "pending-then-pass: exits 0"
+assert_stdout_contains "$root" "ACTION=merge" "pending-then-pass: ACTION=merge"
+call_count=$(cat "$root/.ci-status-count" 2>/dev/null || echo 0)
+if [[ "$call_count" -eq 4 ]]; then
+    ok "pending-then-pass: exactly 4 ci-status calls"
+else
+    fail "pending-then-pass: expected 4 ci-status calls, got $call_count"
+fi
+
+# --- Case 3: suspend simulation — first iteration is slow but loop continues ---
+# We use STUB_SLOW_CALL_N=1 STUB_SLOW_SECS=65 to make ci-status.sh sleep 65s on
+# call 1, simulating a suspended laptop. The iter_delta check in ci-wait.sh
+# should detect this and not count that iteration toward the budget.
+# To keep tests fast we can't literally sleep 65s, so instead we override the
+# 'date' command to return a large delta for the first post-sleep call.
+root=$(make_env suspend_sim)
+write_ci_status_stub "$root"
+write_ci_decide_stub "$root"
+
+# Wrap 'date' to simulate a large elapsed time on the first iteration's post-sleep call.
+# ci-wait.sh calls: date +%s (iter_start) then date +%s (iter_delta calc after sleep).
+# We make the second date call return iter_start + 70 the first time around.
+REAL_DATE=$(command -v date)
+cat > "$root/scripts/date" <<SH
+#!/usr/bin/env bash
+# Fake date stub: returns base epoch on first call, base+70 on second call.
+count_file="\$(dirname "\$0")/../.date-count"
+count=\$(cat "\$count_file" 2>/dev/null || echo 0)
+count=\$((count + 1))
+printf '%s\\n' "\$count" > "\$count_file"
+base_file="\$(dirname "\$0")/../.date-base"
+real_ts=\$("$REAL_DATE" +%s)
+if [ "\$count" -eq 1 ]; then
+    printf '%s\\n' "\$real_ts" > "\$base_file"
+    printf '%s\\n' "\$real_ts"
+elif [ "\$count" -eq 2 ]; then
+    base=\$(cat "\$base_file" 2>/dev/null || echo "\$real_ts")
+    printf '%s\\n' "\$((base + 70))"
+else
+    printf '%s\\n' "\$real_ts"
+fi
+SH
+chmod +x "$root/scripts/date"
+
+# Run with a short timeout and two status calls: pending (slow), then pass.
+STUB_STATUSES=pending:pass run_subject "$root" "$root/.rc" --timeout 30
+assert_rc "$root/.rc" 0 "suspend sim: exits 0 (slow iteration does not exhaust budget)"
+assert_stdout_contains "$root" "ACTION=merge" "suspend sim: ACTION=merge after suspended iteration"
+if grep -q "suspend detected" "$root/.stderr" 2>/dev/null; then
+    ok "suspend sim: suspend detected warning emitted"
+else
+    fail "suspend sim: expected 'suspend detected' warning on stderr"
+    sed 's/^/    stderr: /' "$root/.stderr"
+fi
+
+# --- Case 4: genuine timeout — always pending, timeout 30 → MAX_POLLS=3 ---
+root=$(make_env genuine_timeout)
+write_ci_status_stub "$root"
+write_ci_decide_stub "$root"
+# Override sleep to be instantaneous so test completes quickly
+cat > "$root/scripts/fake-sleep.sh" <<'SH'
+#!/usr/bin/env bash
+# no-op sleep stub
+exit 0
+SH
+chmod +x "$root/scripts/fake-sleep.sh"
+ln -sf "$root/scripts/fake-sleep.sh" "$root/scripts/sleep"
+
+STUB_STATUSES=pending run_subject "$root" "$root/.rc" --timeout 30
+assert_rc "$root/.rc" 0 "genuine timeout: exits 0"
+assert_stdout_contains "$root" "ACTION=bail" "genuine timeout: ACTION=bail"
+if grep -q "Wall-clock timeout" "$root/.stdout"; then
+    ok "genuine timeout: BAIL_REASON contains Wall-clock timeout"
+else
+    fail "genuine timeout: expected BAIL_REASON containing Wall-clock timeout"
+    sed 's/^/    stdout: /' "$root/.stdout"
+fi
+call_count=$(cat "$root/.ci-status-count" 2>/dev/null || echo 0)
+# MAX_POLLS=30/10=3; each poll increments checks before the guard (checks starts at 0,
+# becomes 1 after first iteration, ... bails when checks >= 3).
+if [[ "$call_count" -le 4 ]]; then
+    ok "genuine timeout: ci-status called at most 4 times (MAX_POLLS=3)"
+else
+    fail "genuine timeout: expected ≤4 ci-status calls, got $call_count"
+fi
+
+if [[ "$FAIL_COUNT" -ne 0 ]]; then
+    echo "test-ci-wait: $FAIL_COUNT failure(s), $PASS_COUNT pass(es)" >&2
+    exit 1
+fi
+echo "test-ci-wait: $PASS_COUNT pass(es)"
