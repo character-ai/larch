@@ -1606,6 +1606,89 @@ else
     fail "cap-hit path must not invoke the underlying Cursor binary (pid file written)"
 fi
 
+# ── Serial lock regression (issue #1960) ──────────────────────────────────────
+# cursor reads cursor-user/cursor-access-token from the macOS keychain at
+# startup even when --api-key is provided; 5 parallel launchers race that read
+# and some fail (exit 1, ~10s). The fix serializes cursor starts via a
+# POSIX-atomic mkdir lock. These cases use LARCH_CURSOR_SERIAL_LOCK_FORCE_UNAME
+# to exercise the Darwin path on any OS.
+IMPLEMENT_TMPDIR_SL="$TMPDIR/implement-sl"
+mkdir -p "$IMPLEMENT_TMPDIR_SL"
+
+# Restore a minimal cursor stub that produces valid JSON output.
+cat > "$STUB_BIN/cursor-sl" <<'STUB_SL'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ -n "${CURSOR_STUB_DELAY:-}" ]]; then sleep "$CURSOR_STUB_DELAY"; fi
+printf '{"result":"SL OK","usage":{"inputTokens":1,"outputTokens":2,"cacheReadTokens":3,"cacheWriteTokens":4}}\n'
+STUB_SL
+chmod +x "$STUB_BIN/cursor-sl"
+ln -sf "$STUB_BIN/cursor-sl" "$STUB_BIN/cursor"
+
+# Case SL-parallel: two concurrent launchers with FORCE_UNAME=Darwin and
+# DELAY=0 (lock released immediately) both complete successfully — neither
+# permanently blocks the other.
+OUT_SL_A="$TMPDIR/cursor-sl-a.txt"
+OUT_SL_B="$TMPDIR/cursor-sl-b.txt"
+set +e
+(PATH="$STUB_BIN:$PATH" \
+    LARCH_CURSOR_SERIAL_LOCK_FORCE_UNAME=Darwin \
+    LARCH_CURSOR_SERIAL_LOCK_DELAY=0 \
+    IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR_SL" \
+    "$LAUNCHER" --output "$OUT_SL_A" --timeout 10 --prompt "sl-a" >/dev/null 2>&1) &
+PID_SL_A=$!
+(PATH="$STUB_BIN:$PATH" \
+    LARCH_CURSOR_SERIAL_LOCK_FORCE_UNAME=Darwin \
+    LARCH_CURSOR_SERIAL_LOCK_DELAY=0 \
+    IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR_SL" \
+    "$LAUNCHER" --output "$OUT_SL_B" --timeout 10 --prompt "sl-b" >/dev/null 2>&1) &
+PID_SL_B=$!
+wait "$PID_SL_A"; RC_SL_A=$?
+wait "$PID_SL_B"; RC_SL_B=$?
+set -e
+assert_equals "SL-parallel launcher A completes (exit 0)" "0" "$RC_SL_A"
+assert_equals "SL-parallel launcher B completes (exit 0)" "0" "$RC_SL_B"
+# Lock dir must be gone after both launchers complete (DELAY=0 releases immediately post-spawn).
+if [[ -d "${IMPLEMENT_TMPDIR_SL}/larch-cursor-serial.lock" ]]; then
+    fail "SL-parallel: lock dir still present after both launchers completed"
+else
+    pass
+fi
+
+# Case SL-failopen: when the lock directory pre-exists (simulates a crashed
+# prior run leaving a stale lock) and LARCH_CURSOR_SERIAL_LOCK_TRIES=1 caps
+# the wait, the launcher fails open and still runs the cursor process.
+IMPLEMENT_TMPDIR_SL2="$TMPDIR/implement-sl2"
+mkdir -p "$IMPLEMENT_TMPDIR_SL2"
+STALE_LOCK_SL="${IMPLEMENT_TMPDIR_SL2}/larch-cursor-serial.lock"
+mkdir "$STALE_LOCK_SL"
+OUT_SL2="$TMPDIR/cursor-sl2.txt"
+set +e
+PATH="$STUB_BIN:$PATH" \
+    LARCH_CURSOR_SERIAL_LOCK_FORCE_UNAME=Darwin \
+    LARCH_CURSOR_SERIAL_LOCK_TRIES=1 \
+    IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR_SL2" \
+    "$LAUNCHER" --output "$OUT_SL2" --timeout 10 --prompt "sl-failopen" >/dev/null 2>&1
+RC_SL2=$?
+set -e
+assert_equals "SL-failopen exits 0 when lock stuck (TRIES=1)" "0" "$RC_SL2"
+rmdir "$STALE_LOCK_SL"
+
+# Case SL-noop-linux: on non-Darwin (simulated via FORCE_UNAME=Linux), no lock
+# directory is created in IMPLEMENT_TMPDIR even when it is set.
+IMPLEMENT_TMPDIR_SL3="$TMPDIR/implement-sl3"
+mkdir -p "$IMPLEMENT_TMPDIR_SL3"
+OUT_SL3="$TMPDIR/cursor-sl3.txt"
+PATH="$STUB_BIN:$PATH" \
+    LARCH_CURSOR_SERIAL_LOCK_FORCE_UNAME=Linux \
+    IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR_SL3" \
+    "$LAUNCHER" --output "$OUT_SL3" --timeout 10 --prompt "sl-noop-linux" >/dev/null 2>"$TMPDIR/case-sl3.stderr"
+if [[ -d "${IMPLEMENT_TMPDIR_SL3}/larch-cursor-serial.lock" ]]; then
+    fail "SL-noop-linux: serial lock dir must NOT be created on non-Darwin"
+else
+    pass
+fi
+
 if [[ "$FAIL" -ne 0 ]]; then
     printf 'FAIL: test-launch-review.sh --tool cursor - %s failed, %s passed\n' "$FAIL" "$PASS" >&2
     printf '  %s\n' "${FAIL_DETAILS[@]}" >&2
