@@ -61,6 +61,7 @@ chmod +x "$LAUNCHER"
 # shellcheck disable=SC2030
 TMPDIR="$(mktemp -d /tmp/larch-test-launch-review-XXXXXX)"
 trap 'rm -rf "$TMPDIR"' EXIT
+export LARCH_TIMING_LEDGER="$TMPDIR/timing-ledger.tsv"
 
 # shellcheck disable=SC2030
 export RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05
