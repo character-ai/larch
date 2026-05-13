@@ -292,6 +292,51 @@ else
     ok "postmerge does not call tracking-issue-summary.sh (Step 18 owns it)"
 fi
 
+# Postmerge manifest flush: with PR_CLOSED=true, larch-log manifest+commit run.
+root=$(make_repo postmerge_flush)
+tmp=$(make_tmpdir)
+sentinel_dir=$(mktemp -d /tmp/ship-pr-postmerge-flush.XXXXXX)
+write_state "$tmp/ship-pr-state.sh" postmerge
+awk -F= '{if ($1=="PR_CLOSED") print "PR_CLOSED=true"; else print}' \
+    "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" \
+    && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
+set +e
+(cd "$root" && LARCH_LOG_STUB_SENTINEL_DIR="$sentinel_dir" CLAUDE_PLUGIN_ROOT="$root" \
+    "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
+    --merge true --draft false --forked false --repo owner/repo \
+    > "$tmp/stdout-flush" 2>&1)
+set -e
+if [ -f "$sentinel_dir/larch-log-calls.txt" ]; then
+    if grep -q "manifest" "$sentinel_dir/larch-log-calls.txt" && \
+       grep -q "status=done" "$sentinel_dir/larch-log-calls.txt"; then
+        ok "postmerge flush calls larch-log manifest with status=done when PR_CLOSED=true"
+    else
+        fail "postmerge flush: expected larch-log manifest with status=done; got: $(cat "$sentinel_dir/larch-log-calls.txt")"
+    fi
+else
+    fail "postmerge flush: larch-log.sh stub was not called (PR_CLOSED=true path)"
+fi
+rm -rf "$sentinel_dir"
+
+# Postmerge manifest flush: with PR_CLOSED=false (draft/no-merge), no flush.
+root=$(make_repo postmerge_no_flush)
+tmp=$(make_tmpdir)
+sentinel_dir=$(mktemp -d /tmp/ship-pr-postmerge-noflush.XXXXXX)
+write_state "$tmp/ship-pr-state.sh" postmerge
+set +e
+(cd "$root" && LARCH_LOG_STUB_SENTINEL_DIR="$sentinel_dir" CLAUDE_PLUGIN_ROOT="$root" \
+    "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
+    --merge true --draft false --forked false --repo owner/repo \
+    > "$tmp/stdout-noflush" 2>&1)
+set -e
+if [ -f "$sentinel_dir/larch-log-calls.txt" ] && \
+   grep -q "manifest" "$sentinel_dir/larch-log-calls.txt"; then
+    fail "postmerge with PR_CLOSED=false should not call larch-log manifest"
+else
+    ok "postmerge with PR_CLOSED=false skips larch-log manifest flush"
+fi
+rm -rf "$sentinel_dir"
+
 # Regression test: ship-pr.sh passes an explicit larch-log root even when
 # invoked from a fresh shell without IMPLEMENT_TMPDIR in the environment.
 root=$(make_repo export_regression)

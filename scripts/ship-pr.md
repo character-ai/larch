@@ -57,7 +57,7 @@ The script also writes `$IMPLEMENT_TMPDIR/postbump-state.sh` before `implement-f
 
 ## Postmerge Phase
 
-`run_postmerge_phase` calls `implement-finalize.sh postmerge` (Steps 14+15: local cleanup and verify-main), then calls `advance_phase "done"` and exits 0. Token-report refresh, `larch:final-summary` upsert, session-transcript commit, manifest finalization, and tmpdir teardown all run in the prompt-side Step 18 orchestrator after ship-pr.sh exits with `PHASE=done`; `$IMPLEMENT_TMPDIR` remains intact for Step 18 to use.
+`run_postmerge_phase` calls `implement-finalize.sh postmerge` (Steps 14+15: local cleanup and verify-main), then finalizes the larch-log manifest (`status=done`, `pr_number=N`) and commits+pushes the update to main (best-effort, errors swallowed). This post-postmerge manifest flush runs inside the ship-pr.sh subprocess so the manifest is finalized even when the LLM session ends before prompt-side Step 18 teardown. Token-report refresh, `larch:final-summary` upsert, session-transcript commit, and tmpdir teardown still run in the prompt-side Step 18 orchestrator; the teardown manifest update there is an idempotent no-op when ship-pr.sh already pushed the done manifest. `$IMPLEMENT_TMPDIR` remains intact for Step 18 to use.
 
 ## Harness
 

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [27.0.14] - 2026-05-13
+
+### Fixed
+
+- Manifest finalization now runs inside `ship-pr.sh run_postmerge_phase` (gated on `PR_CLOSED=true`) so `manifest.json` is updated to `status=done` even when the LLM session ends before Step 18 teardown.
+- Added regression tests for postmerge manifest flush in `test-ship-pr.sh`.
+
 ## [27.0.11] - 2026-05-12
 
 ### Changed

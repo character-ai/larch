@@ -732,6 +732,24 @@ EOF
 run_postmerge_phase() {
     write_finalize_state
     "$SCRIPT_DIR/implement-finalize.sh" postmerge --state-file "$IMPLEMENT_TMPDIR/finalize-state.sh" --final-bail-reason-file "$IMPLEMENT_TMPDIR/final-bail-reason.txt"
+    # Finalize manifest to status=done here so the update survives if the
+    # LLM session ends before prompt-side Step 18 teardown runs. The teardown
+    # manifest update remains as an idempotent no-op fallback.
+    local flush_run_id pr_num
+    flush_run_id=$(read_state RUN_ID)
+    pr_num=$(read_state PR_NUMBER)
+    if [ -n "$flush_run_id" ] && [ -n "$pr_num" ] && [ "$(read_state REPO_UNAVAILABLE)" = "false" ] && [ "$(read_state PR_CLOSED)" = "true" ]; then
+        "$SCRIPT_DIR/larch-log.sh" manifest \
+            --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
+            --skill implement --run-id "$flush_run_id" \
+            --field "status=done" \
+            --field "pr_number=$pr_num" \
+            2>/dev/null || true
+        "$SCRIPT_DIR/larch-log.sh" commit \
+            --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
+            --skill implement --run-id "$flush_run_id" \
+            2>/dev/null || true
+    fi
     advance_phase "done"
     exit 0
 }
