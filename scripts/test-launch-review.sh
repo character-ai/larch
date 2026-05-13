@@ -1785,7 +1785,7 @@ cat > "$STUB_BIN/cursor-no-retry" <<STUB_NO_RETRY
 count=\$(cat "${SL_NORETRY_COUNT}" 2>/dev/null || echo 0)
 count=\$((count + 1))
 printf '%s' "\$count" > "${SL_NORETRY_COUNT}"
-printf "Error: workspace initialization failed (non-auth error)\n" >&2
+printf "Error: workspace initialization failed (exit code 1)\n" >&2
 exit 1
 STUB_NO_RETRY
 chmod +x "$STUB_BIN/cursor-no-retry"

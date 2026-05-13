@@ -53,7 +53,19 @@ external_serial_lock_acquire() {
     attempt=0
     while ! mkdir "$lock_path" 2>/dev/null; do
         if (( ttl > 0 )); then
-            if mtime=$(stat -f %m "$lock_path" 2>/dev/null || stat -c %Y "$lock_path" 2>/dev/null); then
+            # GNU stat uses -c %Y for mtime; BSD/macOS stat uses -f %m.
+            # GNU stat treats -f as --file-system (not a format flag), so its
+            # output is multi-line and non-numeric. Use a temp var so mtime is
+            # only set to a valid epoch string — never to garbage output.
+            local _tmp_mtime
+            mtime=""
+            _tmp_mtime=""
+            if _tmp_mtime=$(stat -c %Y "$lock_path" 2>/dev/null) && [[ "$_tmp_mtime" =~ ^[0-9]+$ ]]; then
+                mtime="$_tmp_mtime"
+            elif _tmp_mtime=$(stat -f %m "$lock_path" 2>/dev/null) && [[ "$_tmp_mtime" =~ ^[0-9]+$ ]]; then
+                mtime="$_tmp_mtime"
+            fi
+            if [[ -n "$mtime" ]]; then
                 now=$(date +%s)
                 age=$((now - mtime))
                 if (( age >= ttl )); then
@@ -89,7 +101,7 @@ external_is_auth_failure() {
 
     case "$tool" in
         cursor)
-            grep -Eiq 'Password not found|cursor-user|cursor-access-token|keychain.*(not found|failed)|auth[-_ ]?error|authentication (failed|required)' "$sidecar"
+            grep -Eiq 'Password not found|cursor-user|cursor-access-token|keychain.*(not found|failed)|([^-]|^)auth[-_ ]?error|authentication (failed|required)' "$sidecar"
             ;;
         codex)
             # Defensive net; unlike the Cursor keychain signature, these Codex
