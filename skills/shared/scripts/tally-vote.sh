@@ -36,7 +36,7 @@ while [[ "$idx" -le "$count" ]]; do
         [[ -f "$vf" ]] || continue
         vote=$(awk -v n="$idx" '
             BEGIN { vote="" }
-            $0 ~ ("FINDING_" n) {
+            $0 ~ ("^FINDING_" n "([^0-9]|$)") {
                 if ($0 ~ /EXONERATE/) vote="EXONERATE";
                 else if ($0 ~ /YES/) vote="YES";
                 else if ($0 ~ /NO/) vote="NO";
@@ -50,11 +50,15 @@ while [[ "$idx" -le "$count" ]]; do
         esac
     done
     accepted=false
-    if [[ "$yes" -ge 2 ]]; then
+    voter_count="${#VOTER_FILES[@]}"
+    if [[ "$voter_count" -lt 2 ]]; then
+        # Fewer than 2 eligible voters: voting protocol requires accept-all (rows 15-16).
         accepted=true
-    elif [[ "$yes" -eq 1 && "${#VOTER_FILES[@]}" -eq 1 ]]; then
+    elif [[ "$yes" -ge 2 ]]; then
         accepted=true
     fi
+    # 1Y/1N split (tie-breaker) is handled by the caller (tally-votes.sh);
+    # tally-vote.sh only reports raw YES/NO/EXONERATE counts.
     printf 'FINDING_%s_ACCEPTED=%s\n' "$idx" "$accepted"
     printf 'FINDING_%s_VOTES_YES=%s\n' "$idx" "$yes"
     printf 'FINDING_%s_VOTES_NO=%s\n' "$idx" "$no"

@@ -68,15 +68,9 @@ parse_output() {
     if grep -Fxq 'NO_ISSUES_FOUND' "$file"; then
         return 0
     fi
-    if [[ "$MODE" == "description" ]]; then
-        # In description mode, parse dual-list output with ### In-Scope Findings and ### Out-of-Scope Observations; missing one header is fail-open.
-        if grep -Fq '### Out-of-Scope Observations' "$file"; then
-            :
-        fi
-    else
-        # In diff mode, preserve single-list output by treating the entire output as in-scope findings.
-        :
-    fi
+    # Both modes: awk handles dual-section (### In-Scope Findings / ### Out-of-Scope Observations)
+    # with fail-open when headers are absent. In diff mode specialist outputs use the same dual
+    # section format. Claude generic produces single-list output; [OUT_OF_SCOPE] prefix routes OOS.
     awk -v label="$label" -v mode="$MODE" '
     BEGIN { oos=0; body=""; title="" }
     function flush() {

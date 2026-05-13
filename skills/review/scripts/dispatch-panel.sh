@@ -18,6 +18,7 @@ CURSOR_AVAILABLE=""
 COMPETITION_NOTICE_FILE=""
 PLAN_FILE=""
 FEATURE_FILE=""
+DESCRIPTION_TEXT=""
 TIMING_TASK_PREFIX="review"
 LAUNCH_CLAUDE="$PLUGIN_ROOT/scripts/launch-claude-subprocess.sh"
 
@@ -33,6 +34,7 @@ while [[ $# -gt 0 ]]; do
         --competition-notice-file) COMPETITION_NOTICE_FILE="${2:?--competition-notice-file requires a value}"; shift 2 ;;
         --plan-file) PLAN_FILE="${2:?--plan-file requires a value}"; shift 2 ;;
         --feature-file) FEATURE_FILE="${2:?--feature-file requires a value}"; shift 2 ;;
+        --description-text) DESCRIPTION_TEXT="${2:?--description-text requires a value}"; shift 2 ;;
         --timing-task-prefix) TIMING_TASK_PREFIX="${2:?--timing-task-prefix requires a value}"; shift 2 ;;
         --launch-claude-subprocess) LAUNCH_CLAUDE="${2:?--launch-claude-subprocess requires a value}"; shift 2 ;;
         --help) usage; exit 0 ;;
@@ -59,6 +61,7 @@ make_prompt() {
         printf 'Review mode: %s\n' "$MODE"
         printf 'Reviewer: %s\n' "$name"
         printf 'Focus areas: code-quality / risk-integration / correctness / architecture / security\n'
+        [[ -n "$DESCRIPTION_TEXT" ]] && printf 'Description: %s\n' "$DESCRIPTION_TEXT"
         [[ -n "$COMPETITION_NOTICE_FILE" && -f "$COMPETITION_NOTICE_FILE" ]] && cat "$COMPETITION_NOTICE_FILE"
     } > "$prompt"
     printf '%s' "$prompt"
@@ -81,7 +84,7 @@ launch_external_slot() {
     local agent="$PLUGIN_ROOT/agents/reviewer-${name}.md"
     args=(--tool "$tool" --output "$out" --timeout 1800 --agent-file "$agent" --mode "$MODE" --competition-notice --timing-task-kind "${tool}-specialist-${name}")
     [[ "$MODE" == "diff" && -n "$DIFF_FILE" ]] && args+=(--diff-file "$DIFF_FILE" --commit-count "$COMMIT_COUNT")
-    [[ "$MODE" == "description" && -n "$SCOPE_FILES" ]] && args+=(--description-text "description review" --scope-files "$SCOPE_FILES")
+    [[ "$MODE" == "description" && -n "$SCOPE_FILES" ]] && args+=(--description-text "${DESCRIPTION_TEXT:-description review}" --scope-files "$SCOPE_FILES")
     [[ "$name" == "correctness" && -n "$PLAN_FILE" && -f "$PLAN_FILE" ]] && args+=(--plan-file "$PLAN_FILE")
     [[ "$name" == "correctness" && -n "$FEATURE_FILE" && -f "$FEATURE_FILE" ]] && args+=(--feature-file "$FEATURE_FILE")
     "$PLUGIN_ROOT/scripts/launch-review.sh" "${args[@]}" >/dev/null &
@@ -91,6 +94,9 @@ launch_external_slot() {
 }
 
 specialists=(structure correctness testing security edge-cases)
+# Fallback matrix (from SKILL.md): when a tool is unavailable, skip its specialist
+# slots entirely — do NOT substitute Claude fallback slots for partial outages.
+# Only the both-down path (no external tools) uses a single Claude generic reviewer.
 if [[ "$CODEX_AVAILABLE" == "false" && "$CURSOR_AVAILABLE" == "false" ]]; then
     launch_claude_slot "generic" "$REVIEW_TMPDIR/claude-generic-output.txt"
     panel_mode="both-down"
@@ -99,14 +105,12 @@ else
     for name in "${specialists[@]}"; do
         if [[ "$CURSOR_AVAILABLE" == "true" ]]; then
             launch_external_slot cursor "$name" "$REVIEW_TMPDIR/cursor-specialist-${name}-output.txt"
-        else
-            launch_claude_slot "cursor-fallback-${name}" "$REVIEW_TMPDIR/claude-cursor-fallback-${name}-output.txt"
         fi
+        # Cursor unavailable: skip Cursor specialist slots (no Claude substitution).
         if [[ "$CODEX_AVAILABLE" == "true" ]]; then
             launch_external_slot codex "$name" "$REVIEW_TMPDIR/codex-specialist-${name}-output.txt"
-        else
-            launch_claude_slot "codex-fallback-${name}" "$REVIEW_TMPDIR/claude-codex-fallback-${name}-output.txt"
         fi
+        # Codex unavailable: skip Codex specialist slots (no Claude substitution).
     done
     launch_claude_slot "generic" "$REVIEW_TMPDIR/claude-generic-output.txt"
 fi

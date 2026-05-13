@@ -69,7 +69,7 @@ Run:
 
 ```bash
 SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=review "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "review Step 2 — reviewer panel" || true
-${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/dispatch-panel.sh --mode "$MODE" --diff-file "$DIFF_FILE" --commit-count "$COMMIT_COUNT" --scope-files "$FILE_LIST_FILE" --review-tmpdir "$REVIEW_TMPDIR" --codex-available "$codex_available" --cursor-available "$cursor_available" --competition-notice-file "$REVIEW_TMPDIR/competition-notice.md" --plan-file "$PLAN_FILE" --feature-file "$FEATURE_FILE" --timing-task-prefix "review-round${round_num}" --launch-claude-subprocess "${CLAUDE_PLUGIN_ROOT}/scripts/launch-claude-subprocess.sh"
+${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/dispatch-panel.sh --mode "$MODE" --diff-file "$DIFF_FILE" --commit-count "$COMMIT_COUNT" --scope-files "$FILE_LIST_FILE" --review-tmpdir "$REVIEW_TMPDIR" --codex-available "$codex_available" --cursor-available "$cursor_available" --competition-notice-file "$REVIEW_TMPDIR/competition-notice.md" --plan-file "$PLAN_FILE" --feature-file "$FEATURE_FILE" --description-text "$DESCRIPTION_TEXT" --timing-task-prefix "review-round${round_num}" --launch-claude-subprocess "${CLAUDE_PLUGIN_ROOT}/scripts/launch-claude-subprocess.sh"
 ```
 
 Parse `EXTERNAL_OUTPUT_FILES`, `CLAUDE_OUTPUT_FILES`, `PANEL_MODE`, `SLOT_COUNT`, and `DISPATCH_OK`. Both-down path: if `PANEL_MODE=both-down`, print `**⚠ Both Cursor and Codex unavailable. Proceeding with 1 Claude generic reviewer. Voting will be skipped (insufficient reviewers).**`

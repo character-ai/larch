@@ -61,8 +61,28 @@ rejected=$(grep -c 'ACCEPTED=false' "$TALLY_FILE" || true)
     grep -n 'ACCEPTED=false' "$TALLY_FILE" || true
 } > "$REJECTED_FINDINGS_FILE"
 
-jq -n --argjson round "$ROUND" --argjson accepted "$accepted" --argjson rejected "$rejected" \
-    '{schema_version:1, rounds:[{round:$round, accepted:$accepted, rejected:$rejected}], accepted:$accepted, rejected:$rejected}' \
+# Collect reviewer output paths from the review tmpdir for the JSON schema.
+reviewer_paths=()
+while IFS= read -r f; do
+    reviewer_paths+=("$f")
+done < <(find "$REVIEW_TMPDIR" -maxdepth 1 -name '*-output.txt' 2>/dev/null | sort)
+reviewer_paths_json=$(printf '%s\n' "${reviewer_paths[@]+"${reviewer_paths[@]}"}" | jq -R . | jq -s .)
+
+# Emit schema matching heavy-worker.md contract: schema_version, rounds_completed,
+# reviewer_output_paths, finding_counts.{total_accepted,total_rejected}, accepted_count, rejected_count.
+jq -n \
+    --argjson round "$ROUND" \
+    --argjson accepted "$accepted" \
+    --argjson rejected "$rejected" \
+    --argjson paths "$reviewer_paths_json" \
+    '{
+        schema_version: 1,
+        rounds_completed: $round,
+        reviewer_output_paths: $paths,
+        finding_counts: { total_accepted: $accepted, total_rejected: $rejected },
+        accepted_count: $accepted,
+        rejected_count: $rejected
+    }' \
     > "$REVIEW_SUMMARY_FILE"
 
 if [[ -n "$OOS_FILE" && -f "$OOS_FILE" ]]; then
