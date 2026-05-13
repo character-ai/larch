@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [27.0.11] - 2026-05-12
+
+### Changed
+
+- Added explicit --log-root handling to larch-log.sh and removed IMPLEMENT_TMPDIR/repo-root fallback from lib-larch-log.sh.
+- Updated /implement, ship-pr, and implement-finalize log call sites to pass $IMPLEMENT_TMPDIR/larch-logs explicitly.
+- Added PREV_IMPLEMENT_TMPDIR session-env handoff and best-effort larch-logs copy during session setup.
+- Updated docs, security notes, and regression harnesses for the new log-root contract.
+
 ## [27.0.0] - 2026-05-12
 
 ### Changed
