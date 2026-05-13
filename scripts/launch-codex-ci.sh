@@ -114,7 +114,7 @@ END_S=$(date +%s)
     --exit-code "$LAUNCHER_EXIT" \
     --status "$([ "$LAUNCHER_EXIT" -eq 0 ] && echo complete || echo signal)" >/dev/null 2>&1 || true
 
-TOKENS=$(awk '/^tokens used$/ { getline n; gsub(",","",n); last=n } END { print last }' "${OUTPUT}.diag" "$OUTPUT" 2>/dev/null || true)
+TOKENS=$(awk '/^tokens used$/ { getline n; gsub(",","",n); last=n } END { print last }' "${OUTPUT}.diag" "$OUTPUT" "$SIDECAR_LOG" 2>/dev/null || true)
 if [[ "$TOKENS" =~ ^[0-9]+$ ]]; then
     printf 'TOOL=codex\nTOTAL=%s\nRAW=codex_ci_fix\n' "$TOKENS" > "${OUTPUT}.token-record"
 fi

@@ -1742,6 +1742,70 @@ else
 fi
 rm -rf "$SERIAL_LOCK_PATH" "$STALE_LOCK_SL" "/tmp/larch-cursor-serial-${SERIAL_LOCK_USER}-linux.lock"
 
+# Case SL-auth-retry: a cursor stub that writes the verified auth-error string
+# to stderr on the first call and exits 1; exits 0 with valid JSON on the second.
+# Assert the launcher retried exactly once (total 2 attempts).
+SL_AUTH_COUNT="$TMPDIR/sl-auth-count.txt"
+printf '0' > "$SL_AUTH_COUNT"
+cat > "$STUB_BIN/cursor-auth-retry" <<STUB_AUTH_RETRY
+#!/usr/bin/env bash
+count=\$(cat "${SL_AUTH_COUNT}" 2>/dev/null || echo 0)
+count=\$((count + 1))
+printf '%s' "\$count" > "${SL_AUTH_COUNT}"
+if (( count == 1 )); then
+    printf "Error: Password not found for account 'cursor-user' and service 'cursor-access-token'\n" >&2
+    exit 1
+fi
+printf '{"result":"auth-retry OK","usage":{"inputTokens":1,"outputTokens":2,"cacheReadTokens":0,"cacheWriteTokens":0}}\n'
+STUB_AUTH_RETRY
+chmod +x "$STUB_BIN/cursor-auth-retry"
+ln -sf "$STUB_BIN/cursor-auth-retry" "$STUB_BIN/cursor"
+OUT_SL_AUTH="$TMPDIR/cursor-sl-auth.txt"
+set +e
+USER="${SERIAL_LOCK_USER}-auth" \
+    LARCH_EXTERNAL_SERIAL_LOCK_FORCE_UNAME=Darwin \
+    LARCH_EXTERNAL_SERIAL_LOCK_DELAY=0 \
+    LARCH_EXTERNAL_AUTH_RETRIES=2 \
+    PATH="$STUB_BIN:$PATH" \
+    "$LAUNCHER" --output "$OUT_SL_AUTH" --timeout 10 --prompt "sl-auth-retry" >/dev/null 2>&1
+RC_SL_AUTH=$?
+set -e
+assert_equals "SL-auth-retry launcher exits 0 after one retry" "0" "$RC_SL_AUTH"
+SL_AUTH_ATTEMPTS=$(cat "$SL_AUTH_COUNT" 2>/dev/null || echo "0")
+assert_equals "SL-auth-retry stub invoked exactly 2 times" "2" "$SL_AUTH_ATTEMPTS"
+rm -f "$SL_AUTH_COUNT"
+
+# Case SL-no-retry: a cursor stub that writes a non-auth error to stderr and
+# exits 1. Assert the launcher does NOT retry (exactly 1 attempt) even when
+# LARCH_EXTERNAL_AUTH_RETRIES is high.
+SL_NORETRY_COUNT="$TMPDIR/sl-noretry-count.txt"
+printf '0' > "$SL_NORETRY_COUNT"
+cat > "$STUB_BIN/cursor-no-retry" <<STUB_NO_RETRY
+#!/usr/bin/env bash
+count=\$(cat "${SL_NORETRY_COUNT}" 2>/dev/null || echo 0)
+count=\$((count + 1))
+printf '%s' "\$count" > "${SL_NORETRY_COUNT}"
+printf "Error: workspace initialization failed (non-auth error)\n" >&2
+exit 1
+STUB_NO_RETRY
+chmod +x "$STUB_BIN/cursor-no-retry"
+ln -sf "$STUB_BIN/cursor-no-retry" "$STUB_BIN/cursor"
+OUT_SL_NORETRY="$TMPDIR/cursor-sl-noretry.txt"
+set +e
+USER="${SERIAL_LOCK_USER}-noretry" \
+    LARCH_EXTERNAL_SERIAL_LOCK_FORCE_UNAME=Darwin \
+    LARCH_EXTERNAL_SERIAL_LOCK_DELAY=0 \
+    LARCH_EXTERNAL_AUTH_RETRIES=5 \
+    PATH="$STUB_BIN:$PATH" \
+    "$LAUNCHER" --output "$OUT_SL_NORETRY" --timeout 10 --prompt "sl-no-retry" >/dev/null 2>&1
+set -e
+SL_NORETRY_ATTEMPTS=$(cat "$SL_NORETRY_COUNT" 2>/dev/null || echo "0")
+assert_equals "SL-no-retry stub invoked exactly 1 time (non-auth failures must not retry)" "1" "$SL_NORETRY_ATTEMPTS"
+rm -f "$SL_NORETRY_COUNT"
+
+# Restore normal cursor stub for remaining tests.
+ln -sf "$STUB_BIN/cursor-sl" "$STUB_BIN/cursor"
+
 if [[ "$FAIL" -ne 0 ]]; then
     printf 'FAIL: test-launch-review.sh --tool cursor - %s failed, %s passed\n' "$FAIL" "$PASS" >&2
     printf '  %s\n' "${FAIL_DETAILS[@]}" >&2

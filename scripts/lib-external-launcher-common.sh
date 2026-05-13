@@ -94,7 +94,9 @@ external_is_auth_failure() {
         codex)
             # Defensive net; unlike the Cursor keychain signature, these Codex
             # auth strings are not tied to one verified startup-race incident.
-            grep -Eiq 'auth[-_ ]?error|not logged in|login required|authentication (failed|required)|unauthorized|invalid api key|OPENAI_API_KEY' "$sidecar"
+            # OPENAI_API_KEY is intentionally excluded: it appears in benign
+            # diagnostic output and would cause non-auth failures to retry.
+            grep -Eiq 'auth[-_ ]?error|not logged in|login required|authentication (failed|required)|unauthorized|invalid api key' "$sidecar"
             ;;
         gemini)
             # Defensive net; Gemini auth failures vary by install and account
