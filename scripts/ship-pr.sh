@@ -208,6 +208,52 @@ kv_value() {
     printf '%s\n' "$input" | awk -F= -v k="$key" '$1 == k {print substr($0, index($0, "=") + 1); found=1} END {if (!found) print ""}' | tail -n 1
 }
 
+FAILURE_LOG_SEQ=0
+
+failure_capture_path() {
+    local phase=$1
+    FAILURE_LOG_SEQ=$((FAILURE_LOG_SEQ + 1))
+    printf '%s/ship-pr-fail-%s-%s.log' "$IMPLEMENT_TMPDIR" "$phase" "$FAILURE_LOG_SEQ"
+}
+
+append_tool_failure_local() {
+    local site="" tool="" exit_code="" category="Tool Failures" output_file="" log_tmpdir
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --site) site=$2; shift 2 ;;
+            --tool) tool=$2; shift 2 ;;
+            --exit-code) exit_code=$2; shift 2 ;;
+            --category) category=$2; shift 2 ;;
+            --output-file) output_file=$2; shift 2 ;;
+            *) echo "ship-pr.sh: append_tool_failure_local: unknown option: $1" >&2; return 2 ;;
+        esac
+    done
+    log_tmpdir=$(read_state IMPLEMENT_TMPDIR "$IMPLEMENT_TMPDIR")
+    if [ -z "$log_tmpdir" ] || [ ! -x "$SCRIPT_DIR/append-tool-failure.sh" ]; then
+        echo "ship-pr.sh: cannot append tool failure for $tool (site=$site); helper or tmpdir unavailable" >&2
+        [ -n "$output_file" ] && [ -f "$output_file" ] && cat "$output_file" >&2
+        return 0
+    fi
+    "$SCRIPT_DIR/append-tool-failure.sh" \
+        --log "$log_tmpdir/execution-issues.md" \
+        --site "$site" \
+        --tool "$tool" \
+        --exit-code "$exit_code" \
+        --category "$category" \
+        --output-file "$output_file" \
+        --redact >/dev/null 2>&1 || true
+}
+
+record_failure() {
+    local site=$1 tool=$2 exit_code=$3 output_file=$4 category=${5:-Tool Failures}
+    append_tool_failure_local \
+        --site "$site" \
+        --tool "$tool" \
+        --exit-code "$exit_code" \
+        --category "$category" \
+        --output-file "$output_file"
+}
+
 state_set() {
     local key=$1 value=$2 tmp
     tmp="$STATE_FILE.tmp.$$"
@@ -301,39 +347,50 @@ write_finalize_state() {
 }
 
 run_checks_phase() {
-    local out rc
-    out=$("$SCRIPT_DIR/run-relevant-checks-captured.sh" --site step6 --tmpdir "$IMPLEMENT_TMPDIR" 2>&1)
+    local out rc fail_file
+    fail_file=$(failure_capture_path checks)
+    out=$("$SCRIPT_DIR/run-relevant-checks-captured.sh" --site step6 --tmpdir "$IMPLEMENT_TMPDIR" 2>"$fail_file")
     rc=$?
+    printf '%s\n' "$out" >> "$fail_file"
     printf '%s\n' "$out"
     if [ "$rc" -eq 0 ] && printf '%s\n' "$out" | grep -q '^RELEVANT_CHECKS_OK=true '; then
         advance_phase bump
         return 0
     fi
+    record_failure checks "run-relevant-checks-captured.sh" "$rc" "$fail_file"
     exit_stall 6
 }
 
 run_bump_phase() {
-    local forked has_bump commits_before classify_out apply_out finalize_out status resume_phase error_text rc
+    local forked has_bump commits_before classify_out apply_out finalize_out status resume_phase error_text rc fail_file
     forked=$(read_state FORKED_TARGET)
     has_bump=$(read_state HAS_BUMP)
     if [ "$forked" = "true" ] || [ "$has_bump" = "false" ]; then
         state_set_many HAS_BUMP false BUMP_TYPE NONE NEW_VERSION "" BUMP_REASONING_FILE ""
     else
         commits_before=$(git rev-list --count HEAD 2>/dev/null || echo 0)
-        classify_out=$("$PLUGIN_ROOT/.claude/skills/bump-version/scripts/classify-bump.sh" 2>&1)
+        fail_file=$(failure_capture_path bump)
+        classify_out=$("$PLUGIN_ROOT/.claude/skills/bump-version/scripts/classify-bump.sh" 2>"$fail_file")
         rc=$?
+        printf '%s\n' "$classify_out" >> "$fail_file"
         printf '%s\n' "$classify_out"
-        [ "$rc" -eq 0 ] || exit_stall 8
+        if [ "$rc" -ne 0 ]; then
+            record_failure bump "classify-bump.sh" "$rc" "$fail_file"
+            exit_stall 8
+        fi
         state_set_many \
             HAS_BUMP true \
             BUMP_TYPE "$(kv_value BUMP_TYPE "$classify_out")" \
             NEW_VERSION "$(kv_value NEW_VERSION "$classify_out")" \
             BUMP_REASONING_FILE "$(kv_value REASONING_FILE "$classify_out")"
         if [ "$(read_state BUMP_TYPE)" != "NONE" ]; then
-            apply_out=$("$PLUGIN_ROOT/.claude/skills/bump-version/scripts/apply-bump.sh" --new-version "$(read_state NEW_VERSION)" 2>&1)
+            fail_file=$(failure_capture_path bump)
+            apply_out=$("$PLUGIN_ROOT/.claude/skills/bump-version/scripts/apply-bump.sh" --new-version "$(read_state NEW_VERSION)" 2>"$fail_file")
             rc=$?
+            printf '%s\n' "$apply_out" >> "$fail_file"
             printf '%s\n' "$apply_out"
             if [ "$rc" -ne 0 ] || [ "$(kv_value APPLIED "$apply_out")" != "true" ]; then
+                record_failure bump "apply-bump.sh" "$rc" "$fail_file"
                 error_text=$(kv_value ERROR "$apply_out")
                 case "$error_text" in
                     origin/main\ has\ already\ bumped\ to*)
@@ -343,14 +400,27 @@ run_bump_phase() {
                     *) exit_stall 8 ;;
                 esac
             fi
-            "$SCRIPT_DIR/check-bump-version.sh" --mode post --before-count "$commits_before" || exit_stall 8
+            fail_file=$(failure_capture_path bump)
+            "$SCRIPT_DIR/check-bump-version.sh" --mode post --before-count "$commits_before" > "$fail_file" 2>&1
+            rc=$?
+            cat "$fail_file"
+            if [ "$rc" -ne 0 ]; then
+                record_failure bump "check-bump-version.sh" "$rc" "$fail_file"
+                exit_stall 8
+            fi
         fi
     fi
 
     write_postbump_state
-    finalize_out=$("$SCRIPT_DIR/implement-finalize.sh" postbump --state-file "$IMPLEMENT_TMPDIR/postbump-state.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" 2>&1)
+    fail_file=$(failure_capture_path bump)
+    finalize_out=$("$SCRIPT_DIR/implement-finalize.sh" postbump --state-file "$IMPLEMENT_TMPDIR/postbump-state.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" 2>"$fail_file")
+    rc=$?
+    printf '%s\n' "$finalize_out" >> "$fail_file"
     printf '%s\n' "$finalize_out"
     status=$(kv_value STATUS "$finalize_out")
+    if [ "$rc" -ne 0 ]; then
+        record_failure bump "implement-finalize.sh postbump" "$rc" "$fail_file"
+    fi
     case "$status" in
         ok|skipped)
             local _cur _new _btype
@@ -405,13 +475,17 @@ manifest_tests() {
 }
 
 sanitize_diagram_or_placeholder() {
-    local file=$1 placeholder=$2 label=$3 out reason
+    local file=$1 placeholder=$2 label=$3 out reason rc fail_file
     if [ -n "$file" ] && [ -f "$file" ]; then
-        out=$("$SCRIPT_DIR/sanitize-mermaid-fragment.sh" --input "$file" --from-md --warnings-step "9a" 2>&1)
-        if printf '%s\n' "$out" | grep -q '^STATUS=ok$'; then
+        fail_file=$(failure_capture_path pr-prep)
+        out=$("$SCRIPT_DIR/sanitize-mermaid-fragment.sh" --input "$file" --from-md --warnings-step "9a" 2>"$fail_file")
+        rc=$?
+        printf '%s\n' "$out" >> "$fail_file"
+        if [ "$rc" -eq 0 ] && printf '%s\n' "$out" | grep -q '^STATUS=ok$'; then
             cat "$file"
             return 0
         fi
+        record_failure pr-prep "sanitize-mermaid-fragment.sh ($label)" "$rc" "$fail_file" Warnings
         reason=$(kv_value REASON_TOKEN "$out")
         [ -n "$reason" ] || reason="unknown"
         "$SCRIPT_DIR/append-execution-issue.sh" --log "$IMPLEMENT_TMPDIR/execution-issues.md" --category Warnings --entry "Step 9a — PR-body diagram $label rejected: $reason" >/dev/null 2>&1 || true
@@ -456,7 +530,7 @@ run_pr_prep_phase() {
 }
 
 run_pr_create_phase() {
-    local title out rc pr_number pr_url pr_status repo_args draft_args
+    local title out rc pr_number pr_url pr_status repo_args draft_args fail_file
     title=$(git log -1 --format=%s 2>/dev/null || echo "Implement requested changes")
     repo_args=()
     if [ -n "$(read_state REPO)" ]; then
@@ -464,19 +538,29 @@ run_pr_create_phase() {
     fi
     draft_args=()
     [ "$(read_state DRAFT)" = "true" ] && draft_args=(--draft)
-    out=$("$SCRIPT_DIR/create-pr.sh" --title "$title" --body-file "$IMPLEMENT_TMPDIR/pr-body.md" "${draft_args[@]+"${draft_args[@]}"}" "${repo_args[@]+"${repo_args[@]}"}" 2>&1)
+    fail_file=$(failure_capture_path pr-create)
+    out=$("$SCRIPT_DIR/create-pr.sh" --title "$title" --body-file "$IMPLEMENT_TMPDIR/pr-body.md" "${draft_args[@]+"${draft_args[@]}"}" "${repo_args[@]+"${repo_args[@]}"}" 2>"$fail_file")
     rc=$?
+    printf '%s\n' "$out" >> "$fail_file"
     printf '%s\n' "$out"
     if [ "$rc" -ne 0 ] && is_transient_net_signature "$out"; then
+        record_failure pr-create "create-pr.sh" "$rc" "$fail_file"
         exit_transient_net "create-pr: $out"
     fi
-    [ "$rc" -eq 0 ] || exit_stall 9b
+    if [ "$rc" -ne 0 ]; then
+        record_failure pr-create "create-pr.sh" "$rc" "$fail_file"
+        exit_stall 9b
+    fi
     pr_number=$(kv_value PR_NUMBER "$out")
     pr_url=$(kv_value PR_URL "$out")
     pr_status=$(kv_value PR_STATUS "$out")
     state_set_many PR_NUMBER "$pr_number" PR_URL "$pr_url" PR_TITLE "$title"
     if [ "$pr_status" = "existing" ]; then
-        "$SCRIPT_DIR/gh-pr-body-update.sh" --pr "$pr_number" --body-file "$IMPLEMENT_TMPDIR/pr-body.md" "${repo_args[@]+"${repo_args[@]}"}" || true
+        fail_file=$(failure_capture_path pr-create)
+        "$SCRIPT_DIR/gh-pr-body-update.sh" --pr "$pr_number" --body-file "$IMPLEMENT_TMPDIR/pr-body.md" "${repo_args[@]+"${repo_args[@]}"}" > "$fail_file" 2>&1
+        rc=$?
+        cat "$fail_file"
+        [ "$rc" -eq 0 ] || record_failure pr-create "gh-pr-body-update.sh" "$rc" "$fail_file"
     fi
     advance_phase ci-initial
 }
@@ -512,49 +596,84 @@ needs_user_bail_reason() {
 }
 
 rename_done_best_effort() {
-    local issue repo
+    local issue repo rc fail_file
     issue=$(read_state ISSUE_NUMBER)
     repo=$(read_state REPO)
     [ -n "$issue" ] || return 0
     [ "$(read_state REPO_UNAVAILABLE)" = "false" ] || return 0
+    fail_file=$(failure_capture_path postmerge)
     if [ -n "$repo" ]; then
-        "$SCRIPT_DIR/tracking-issue-write.sh" rename --issue "$issue" --state "done" --round-trip false --repo "$repo" >/dev/null 2>&1 || true
+        "$SCRIPT_DIR/tracking-issue-write.sh" rename --issue "$issue" --state "done" --round-trip false --repo "$repo" > "$fail_file" 2>&1
+        rc=$?
     else
-        "$SCRIPT_DIR/tracking-issue-write.sh" rename --issue "$issue" --state "done" --round-trip false >/dev/null 2>&1 || true
+        "$SCRIPT_DIR/tracking-issue-write.sh" rename --issue "$issue" --state "done" --round-trip false > "$fail_file" 2>&1
+        rc=$?
     fi
+    [ "$rc" -eq 0 ] || record_failure postmerge "tracking-issue-write.sh rename" "$rc" "$fail_file"
     state_set DONE_RENAME_APPLIED true
 }
 
 run_ci_fix_vendor() {
-    local phase=$1 run_id=$2 output rc checks_out
+    local phase=$1 run_id=$2 output rc checks_out fail_file tool_label
     output="$IMPLEMENT_TMPDIR/ci-fix-${phase}-$(date +%s).out"
+    fail_file=$(failure_capture_path "$phase")
     if command -v cursor >/dev/null 2>&1; then
-        "$SCRIPT_DIR/launch-cursor-ci.sh" --role fix --output "$output" --run-id "$run_id" --repo "$(read_state REPO)" --timeout 1800 || true
+        tool_label="launch-cursor-ci.sh fix"
+        "$SCRIPT_DIR/launch-cursor-ci.sh" --role fix --output "$output" --run-id "$run_id" --repo "$(read_state REPO)" --timeout 1800 > "$fail_file" 2>&1
+        rc=$?
     else
-        "$SCRIPT_DIR/launch-codex-ci.sh" --role fix --output "$output" --run-id "$run_id" --repo "$(read_state REPO)" --timeout 1800 || true
+        tool_label="launch-codex-ci.sh fix"
+        "$SCRIPT_DIR/launch-codex-ci.sh" --role fix --output "$output" --run-id "$run_id" --repo "$(read_state REPO)" --timeout 1800 > "$fail_file" 2>&1
+        rc=$?
     fi
-    "$SCRIPT_DIR/append-token-record.sh" --input "${output}.token-record" --tmpdir "$IMPLEMENT_TMPDIR" || true
-    checks_out=$("$SCRIPT_DIR/run-relevant-checks-captured.sh" --site "$([ "$phase" = "ci-initial" ] && echo step10 || echo step12c)" --tmpdir "$IMPLEMENT_TMPDIR" 2>&1)
+    [ "$rc" -eq 0 ] || record_failure "$phase" "$tool_label" "$rc" "$fail_file" "CI Issues"
+    fail_file=$(failure_capture_path "$phase")
+    "$SCRIPT_DIR/append-token-record.sh" --input "${output}.token-record" --tmpdir "$IMPLEMENT_TMPDIR" > "$fail_file" 2>&1
     rc=$?
+    [ "$rc" -eq 0 ] || record_failure "$phase" "append-token-record.sh" "$rc" "$fail_file" Warnings
+    fail_file=$(failure_capture_path "$phase")
+    checks_out=$("$SCRIPT_DIR/run-relevant-checks-captured.sh" --site "$([ "$phase" = "ci-initial" ] && echo step10 || echo step12c)" --tmpdir "$IMPLEMENT_TMPDIR" 2>"$fail_file")
+    rc=$?
+    printf '%s\n' "$checks_out" >> "$fail_file"
     printf '%s\n' "$checks_out"
-    [ "$rc" -eq 0 ] && printf '%s\n' "$checks_out" | grep -q '^RELEVANT_CHECKS_OK=true ' || return 1
+    if ! { [ "$rc" -eq 0 ] && printf '%s\n' "$checks_out" | grep -q '^RELEVANT_CHECKS_OK=true '; }; then
+        record_failure "$phase" "run-relevant-checks-captured.sh" "$rc" "$fail_file" "CI Issues"
+        return 1
+    fi
     # Only commit when the vendor left uncommitted changes; vendor may have
     # committed its own fix (working tree clean in that case).
     if ! git diff --quiet HEAD 2>/dev/null; then
-        "$SCRIPT_DIR/git-commit.sh" -m "Fix CI failure" || return 1
+        fail_file=$(failure_capture_path "$phase")
+        "$SCRIPT_DIR/git-commit.sh" -m "Fix CI failure" > "$fail_file" 2>&1
+        rc=$?
+        cat "$fail_file"
+        if [ "$rc" -ne 0 ]; then
+            record_failure "$phase" "git-commit.sh" "$rc" "$fail_file" "CI Issues"
+            return 1
+        fi
     fi
-    "$SCRIPT_DIR/git-push.sh" || return 1
+    fail_file=$(failure_capture_path "$phase")
+    "$SCRIPT_DIR/git-push.sh" > "$fail_file" 2>&1
+    rc=$?
+    cat "$fail_file"
+    if [ "$rc" -ne 0 ]; then
+        record_failure "$phase" "git-push.sh" "$rc" "$fail_file" "CI Issues"
+        return 1
+    fi
 }
 
 run_evaluate_failure() {
-    local phase=$1 failed_run rerun_out retries local_attempt
+    local phase=$1 failed_run rerun_out retries local_attempt rc fail_file
     failed_run=$(read_state FAILED_RUN_ID)
     [ -n "$failed_run" ] || exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12c)"
     retries=$(read_state TRANSIENT_RETRIES)
     if [ "$retries" -lt 1 ]; then
-        rerun_out=$("$SCRIPT_DIR/ci-rerun-failed.sh" --run-id "$failed_run" --repo "$(read_state REPO)" 2>&1)
+        fail_file=$(failure_capture_path "$phase")
+        rerun_out=$("$SCRIPT_DIR/ci-rerun-failed.sh" --run-id "$failed_run" --repo "$(read_state REPO)" 2>"$fail_file")
+        rc=$?
+        printf '%s\n' "$rerun_out" >> "$fail_file"
         printf '%s\n' "$rerun_out"
-        if [ "$(kv_value RERUN_SUBMITTED "$rerun_out")" = "true" ]; then
+        if [ "$rc" -eq 0 ] && [ "$(kv_value RERUN_SUBMITTED "$rerun_out")" = "true" ]; then
             # Only count toward the retry budget when a new rerun was actually submitted;
             # "already running" means CI is in flight and no new run was queued.
             if [ "$(kv_value ALREADY_RUNNING "$rerun_out")" != "true" ]; then
@@ -562,8 +681,13 @@ run_evaluate_failure() {
             fi
             return 0
         fi
+        record_failure "$phase" "ci-rerun-failed.sh" "$rc" "$fail_file" "CI Issues"
     fi
-    "$SCRIPT_DIR/gh-run-logs.sh" --run-id "$failed_run" --repo "$(read_state REPO)" || true
+    fail_file=$(failure_capture_path "$phase")
+    "$SCRIPT_DIR/gh-run-logs.sh" --run-id "$failed_run" --repo "$(read_state REPO)" > "$fail_file" 2>&1
+    rc=$?
+    cat "$fail_file"
+    [ "$rc" -eq 0 ] || record_failure "$phase" "gh-run-logs.sh" "$rc" "$fail_file" "CI Issues"
     # Local fix loop: fix → run local tests → repeat until passing, then push once.
     # Only bail to the caller (exit_stall) when all attempts are exhausted.
     for local_attempt in 1 2 3; do
@@ -580,41 +704,68 @@ run_evaluate_failure() {
 run_rebase_rebump() {
     local phase=$1 drop_out rebase_out rebase_rc conflict_out run_id classify_out classify_rc
     local apply_out new_version bump_type reasoning_file
+    local fail_file rc tool_label
 
     # 1. Drop existing bump commit (non-fatal; CI-fix commits may sit on top)
-    drop_out=$("$SCRIPT_DIR/drop-bump-commit.sh" 2>&1) || true
+    fail_file=$(failure_capture_path rebase)
+    drop_out=$("$SCRIPT_DIR/drop-bump-commit.sh" 2>"$fail_file")
+    rc=$?
+    printf '%s\n' "$drop_out" >> "$fail_file"
     printf '%s\n' "$drop_out"
+    [ "$rc" -eq 0 ] || record_failure rebase "drop-bump-commit.sh" "$rc" "$fail_file" Warnings
 
     # 2. Flush pending larch-log writes before rebase to avoid dirty-tree failures
     run_id=$(read_state RUN_ID)
     if [ -n "$run_id" ] && [ "$NO_LOGS_COMMIT" != "true" ]; then
-        "$SCRIPT_DIR/larch-log.sh" commit --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$run_id" --no-push || true
+        fail_file=$(failure_capture_path rebase)
+        "$SCRIPT_DIR/larch-log.sh" commit --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$run_id" --no-push > "$fail_file" 2>&1
+        rc=$?
+        cat "$fail_file"
+        [ "$rc" -eq 0 ] || record_failure rebase "larch-log.sh commit --no-push" "$rc" "$fail_file" Warnings
     fi
 
     # 3. Rebase without pushing; keep in-progress on conflict for vendor resolution
-    rebase_out=$("$SCRIPT_DIR/rebase-push.sh" --no-push --keep-on-conflict 2>&1)
+    fail_file=$(failure_capture_path rebase)
+    rebase_out=$("$SCRIPT_DIR/rebase-push.sh" --no-push --keep-on-conflict 2>"$fail_file")
     rebase_rc=$?
+    printf '%s\n' "$rebase_out" >> "$fail_file"
     printf '%s\n' "$rebase_out"
     if [ "$rebase_rc" -eq 1 ]; then
+        record_failure rebase "rebase-push.sh --keep-on-conflict" "$rebase_rc" "$fail_file" "CI Issues"
         # Conflict — vendor waterfall with resolve-conflict role
         conflict_out="$IMPLEMENT_TMPDIR/rebase-conflict-$(date +%s).out"
+        fail_file=$(failure_capture_path conflict-resolution)
         if command -v cursor >/dev/null 2>&1; then
+            tool_label="launch-cursor-ci.sh resolve-conflict"
             "$SCRIPT_DIR/launch-cursor-ci.sh" --role resolve-conflict --output "$conflict_out" \
-                --run-id "$run_id" --repo "$(read_state REPO)" --timeout 1800 || true
+                --run-id "$run_id" --repo "$(read_state REPO)" --timeout 1800 > "$fail_file" 2>&1
+            rc=$?
         else
+            tool_label="launch-codex-ci.sh resolve-conflict"
             "$SCRIPT_DIR/launch-codex-ci.sh" --role resolve-conflict --output "$conflict_out" \
-                --run-id "$run_id" --repo "$(read_state REPO)" --timeout 1800 || true
+                --run-id "$run_id" --repo "$(read_state REPO)" --timeout 1800 > "$fail_file" 2>&1
+            rc=$?
         fi
+        [ "$rc" -eq 0 ] || record_failure conflict-resolution "$tool_label" "$rc" "$fail_file" "External Reviewer Issues"
+        fail_file=$(failure_capture_path conflict-resolution)
         "$SCRIPT_DIR/append-token-record.sh" --input "${conflict_out}.token-record" \
-            --tmpdir "$IMPLEMENT_TMPDIR" || true
+            --tmpdir "$IMPLEMENT_TMPDIR" > "$fail_file" 2>&1
+        rc=$?
+        [ "$rc" -eq 0 ] || record_failure conflict-resolution "append-token-record.sh" "$rc" "$fail_file" Warnings
         # Fresh rebase after vendor fix: if vendor ran git rebase --continue, the
         # branch is already rebased and this returns SKIPPED_ALREADY_FRESH. If the
         # vendor left a conflict or broke the tree it fails, causing exit_stall.
-        rebase_out=$("$SCRIPT_DIR/rebase-push.sh" --no-push 2>&1)
+        fail_file=$(failure_capture_path rebase)
+        rebase_out=$("$SCRIPT_DIR/rebase-push.sh" --no-push 2>"$fail_file")
         rebase_rc=$?
+        printf '%s\n' "$rebase_out" >> "$fail_file"
         printf '%s\n' "$rebase_out"
-        [ "$rebase_rc" -eq 0 ] || exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
+        if [ "$rebase_rc" -ne 0 ]; then
+            record_failure rebase "rebase-push.sh --no-push" "$rebase_rc" "$fail_file" "CI Issues"
+            exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
+        fi
     elif [ "$rebase_rc" -ne 0 ]; then
+        record_failure rebase "rebase-push.sh --keep-on-conflict" "$rebase_rc" "$fail_file" "CI Issues"
         if is_transient_net_signature "$rebase_out"; then
             exit_transient_net "rebase: $rebase_out"
         fi
@@ -622,30 +773,49 @@ run_rebase_rebump() {
     fi
 
     # 4. Fast-forward local main so classify-bump.sh uses the correct merge-base
-    "$SCRIPT_DIR/git-sync-local-main.sh" 2>/dev/null || true
+    fail_file=$(failure_capture_path rebase)
+    "$SCRIPT_DIR/git-sync-local-main.sh" > "$fail_file" 2>&1
+    rc=$?
+    [ "$rc" -eq 0 ] || record_failure rebase "git-sync-local-main.sh" "$rc" "$fail_file" Warnings
 
     # 5. Re-bump using classify-bump.sh + apply-bump.sh directly
     if [ "$(read_state HAS_BUMP)" != "false" ]; then
-        classify_out=$("$PLUGIN_ROOT/.claude/skills/bump-version/scripts/classify-bump.sh" 2>&1)
+        fail_file=$(failure_capture_path rebase)
+        classify_out=$("$PLUGIN_ROOT/.claude/skills/bump-version/scripts/classify-bump.sh" 2>"$fail_file")
         classify_rc=$?
+        printf '%s\n' "$classify_out" >> "$fail_file"
         printf '%s\n' "$classify_out"
-        [ "$classify_rc" -eq 0 ] || exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
+        if [ "$classify_rc" -ne 0 ]; then
+            record_failure rebase "classify-bump.sh" "$classify_rc" "$fail_file" "CI Issues"
+            exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
+        fi
         new_version=$(kv_value NEW_VERSION "$classify_out")
         bump_type=$(kv_value BUMP_TYPE "$classify_out")
         reasoning_file=$(kv_value REASONING_FILE "$classify_out")
         state_set_many BUMP_TYPE "$bump_type" NEW_VERSION "$new_version" BUMP_REASONING_FILE "$reasoning_file"
         if [ "$bump_type" != "NONE" ] && [ -n "$new_version" ]; then
+            fail_file=$(failure_capture_path rebase)
             apply_out=$("$PLUGIN_ROOT/.claude/skills/bump-version/scripts/apply-bump.sh" \
-                --new-version "$new_version" 2>&1) || true
+                --new-version "$new_version" 2>"$fail_file")
+            rc=$?
+            printf '%s\n' "$apply_out" >> "$fail_file"
             printf '%s\n' "$apply_out"
-            if [ "$(kv_value APPLIED "$apply_out")" != "true" ]; then
+            if [ "$rc" -ne 0 ] || [ "$(kv_value APPLIED "$apply_out")" != "true" ]; then
+                record_failure rebase "apply-bump.sh" "$rc" "$fail_file" "CI Issues"
                 exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
             fi
         fi
     fi
 
     # 6. Force-push the rebased + re-bumped branch
-    "$SCRIPT_DIR/git-force-push.sh" || exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
+    fail_file=$(failure_capture_path rebase)
+    "$SCRIPT_DIR/git-force-push.sh" > "$fail_file" 2>&1
+    rc=$?
+    cat "$fail_file"
+    if [ "$rc" -ne 0 ]; then
+        record_failure rebase "git-force-push.sh" "$rc" "$fail_file" "CI Issues"
+        exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
+    fi
 
     # 7. Increment counters, reset transient retries
     state_set_many \
@@ -655,7 +825,7 @@ run_rebase_rebump() {
 }
 
 run_ci_phase() {
-    local phase=$1 out action bail_reason merge_out merge_result error_text rc ci_args merge_args
+    local phase=$1 out action bail_reason merge_out merge_result error_text rc ci_args merge_args fail_file
     if [ "$(read_state REPO_UNAVAILABLE)" = "true" ] || [ -z "$(read_state PR_NUMBER)" ]; then
         if [ "$phase" = "ci-initial" ]; then
             advance_phase ci-merge
@@ -672,7 +842,11 @@ run_ci_phase() {
         local flush_run_id
         flush_run_id=$(read_state RUN_ID)
         if [ -n "$flush_run_id" ] && [ "$NO_LOGS_COMMIT" != "true" ]; then
-            "$SCRIPT_DIR/larch-log.sh" commit --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$flush_run_id" || true
+            fail_file=$(failure_capture_path ci-merge)
+            "$SCRIPT_DIR/larch-log.sh" commit --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$flush_run_id" > "$fail_file" 2>&1
+            rc=$?
+            cat "$fail_file"
+            [ "$rc" -eq 0 ] || record_failure ci-merge "larch-log.sh commit" "$rc" "$fail_file" Warnings
         fi
     fi
 
@@ -685,10 +859,15 @@ run_ci_phase() {
     while IFS= read -r arg; do ci_args+=("$arg"); done <<EOF
 $(ci_common_args)
 EOF
-    out=$("$SCRIPT_DIR/ci-wait.sh" "${ci_args[@]}" 2>&1)
+    fail_file=$(failure_capture_path "$phase")
+    out=$("$SCRIPT_DIR/ci-wait.sh" "${ci_args[@]}" 2>"$fail_file")
     rc=$?
+    printf '%s\n' "$out" >> "$fail_file"
     printf '%s\n' "$out"
-    [ "$rc" -eq 0 ] || exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
+    if [ "$rc" -ne 0 ]; then
+        record_failure "$phase" "ci-wait.sh" "$rc" "$fail_file" "CI Issues"
+        exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
+    fi
     record_ci_counters "$out"
     action=$(kv_value ACTION "$out")
     case "$action" in
@@ -700,10 +879,16 @@ EOF
             fi
             merge_args=(--pr "$(read_state PR_NUMBER)" --repo "$(read_state REPO)")
             [ "$NO_ADMIN_FALLBACK" = "true" ] && merge_args+=(--no-admin-fallback)
-            merge_out=$("$SCRIPT_DIR/merge-pr.sh" "${merge_args[@]}" 2>&1)
+            fail_file=$(failure_capture_path ci-merge)
+            merge_out=$("$SCRIPT_DIR/merge-pr.sh" "${merge_args[@]}" 2>"$fail_file")
+            rc=$?
+            printf '%s\n' "$merge_out" >> "$fail_file"
             printf '%s\n' "$merge_out"
             merge_result=$(kv_value MERGE_RESULT "$merge_out")
             error_text=$(kv_value ERROR "$merge_out")
+            if [ "$rc" -ne 0 ]; then
+                record_failure ci-merge "merge-pr.sh" "$rc" "$fail_file" "CI Issues"
+            fi
             case "$merge_result" in
                 merged|admin_merged)
                     state_set PR_CLOSED true
@@ -714,6 +899,7 @@ EOF
                     return 0
                     ;;
                 version_already_published|policy_denied|admin_failed|error)
+                    [ "$rc" -ne 0 ] || record_failure ci-merge "merge-pr.sh envelope" 1 "$fail_file" "CI Issues"
                     if [[ "$merge_result" == "error" || "$merge_result" == "admin_failed" ]] && is_transient_net_signature "$error_text"; then
                         exit_transient_net "merge-pr: $error_text"
                     fi
@@ -725,7 +911,14 @@ EOF
             ;;
         rebase)
             if [ "$(read_state FORKED_TARGET)" = "true" ]; then
-                "$SCRIPT_DIR/rebase-push.sh" --base-remote upstream --base-ref main || exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
+                fail_file=$(failure_capture_path rebase)
+                "$SCRIPT_DIR/rebase-push.sh" --base-remote upstream --base-ref main > "$fail_file" 2>&1
+                rc=$?
+                cat "$fail_file"
+                if [ "$rc" -ne 0 ]; then
+                    record_failure rebase "rebase-push.sh fork" "$rc" "$fail_file" "CI Issues"
+                    exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
+                fi
                 state_set_many REBASE_COUNT "$(( $(read_state REBASE_COUNT) + 1 ))" ITERATION "$(( $(read_state ITERATION) + 1 ))" TRANSIENT_RETRIES 0
                 return 0
             fi
@@ -761,8 +954,13 @@ EOF
 }
 
 run_postmerge_phase() {
+    local rc fail_file
     write_finalize_state
-    "$SCRIPT_DIR/implement-finalize.sh" postmerge --state-file "$IMPLEMENT_TMPDIR/finalize-state.sh" --final-bail-reason-file "$IMPLEMENT_TMPDIR/final-bail-reason.txt"
+    fail_file=$(failure_capture_path postmerge)
+    "$SCRIPT_DIR/implement-finalize.sh" postmerge --state-file "$IMPLEMENT_TMPDIR/finalize-state.sh" --final-bail-reason-file "$IMPLEMENT_TMPDIR/final-bail-reason.txt" > "$fail_file" 2>&1
+    rc=$?
+    cat "$fail_file"
+    [ "$rc" -eq 0 ] || record_failure postmerge "implement-finalize.sh postmerge" "$rc" "$fail_file"
     # Finalize manifest to status=done here so the update survives if the
     # LLM session ends before prompt-side Step 18 teardown runs. The teardown
     # manifest update remains as an idempotent no-op fallback.
@@ -770,17 +968,23 @@ run_postmerge_phase() {
     flush_run_id=$(read_state RUN_ID)
     pr_num=$(read_state PR_NUMBER)
     if [ -n "$flush_run_id" ] && [ -n "$pr_num" ] && [ "$(read_state REPO_UNAVAILABLE)" = "false" ] && [ "$(read_state PR_CLOSED)" = "true" ]; then
+        fail_file=$(failure_capture_path postmerge)
         "$SCRIPT_DIR/larch-log.sh" manifest \
             --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
             --skill implement --run-id "$flush_run_id" \
             --field "status=done" \
             --field "pr_number=$pr_num" \
-            2>/dev/null || true
+            > "$fail_file" 2>&1
+        rc=$?
+        [ "$rc" -eq 0 ] || record_failure postmerge "larch-log.sh manifest" "$rc" "$fail_file" Warnings
         if [ "$NO_LOGS_COMMIT" != "true" ]; then
+            fail_file=$(failure_capture_path postmerge)
             "$SCRIPT_DIR/larch-log.sh" commit \
                 --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
                 --skill implement --run-id "$flush_run_id" \
-                2>/dev/null || true
+                > "$fail_file" 2>&1
+            rc=$?
+            [ "$rc" -eq 0 ] || record_failure postmerge "larch-log.sh commit" "$rc" "$fail_file" Warnings
         fi
     fi
     advance_phase "done"

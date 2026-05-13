@@ -37,6 +37,8 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/step-name-registry.tsv` at ses
 
 Script contracts and harnesses: `${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/gather-context.md` / `test-gather-context.sh` / `test-gather-context.md`, `${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/dispatch-panel.md` / `test-dispatch-panel.sh` / `test-dispatch-panel.md`, `${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/collect-findings.md` / `test-collect-findings.sh` / `test-collect-findings.md`, `${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/tally-votes.md` / `test-tally-votes.sh` / `test-tally-votes.md`, `${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/detect-wholesale-rejection.md` / `test-detect-wholesale-rejection.sh` / `test-detect-wholesale-rejection.md`, `${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/emit-tally.md` / `test-emit-tally.sh` / `test-emit-tally.md`, `${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/log-phase.md` / `test-log-phase.sh` / `test-log-phase.md`, and `${CLAUDE_PLUGIN_ROOT}/scripts/launch-claude-subprocess.md` / `test-launch-claude-subprocess.sh` / `test-launch-claude-subprocess.md`.
 
+**Execution-issues logging**: In nested mode, any failing external reviewer launch, collector, wait, or reviewer `STATUS` not equal to `OK` must be appended verbatim to `$(dirname "$SESSION_ENV_PATH")/execution-issues.md` via `${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh` under `External Reviewer Issues`. The review scripts own this for `dispatch-panel.sh` and `collect-findings.sh`; if an Agent-tool fallback itself returns an explicit failure, capture the full returned text to `$REVIEW_TMPDIR/agent-failure-<slot>.log` and append it with `--site "review Step <N>" --tool "Agent <slot>" --exit-code 1`.
+
 ## Step 0 — Session Setup
 
 Run:
@@ -69,7 +71,7 @@ Run:
 
 ```bash
 SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=review "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "review Step 2 — reviewer panel" || true
-${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/dispatch-panel.sh --mode "$MODE" --diff-file "$DIFF_FILE" --commit-count "$COMMIT_COUNT" --scope-files "$FILE_LIST_FILE" --review-tmpdir "$REVIEW_TMPDIR" --codex-available "$codex_available" --cursor-available "$cursor_available" --competition-notice-file "$REVIEW_TMPDIR/competition-notice.md" --plan-file "$PLAN_FILE" --feature-file "$FEATURE_FILE" --description-text "$DESCRIPTION_TEXT" --timing-task-prefix "review-round${round_num}" --launch-claude-subprocess "${CLAUDE_PLUGIN_ROOT}/scripts/launch-claude-subprocess.sh"
+${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/dispatch-panel.sh --mode "$MODE" --diff-file "$DIFF_FILE" --commit-count "$COMMIT_COUNT" --scope-files "$FILE_LIST_FILE" --review-tmpdir "$REVIEW_TMPDIR" --codex-available "$codex_available" --cursor-available "$cursor_available" --competition-notice-file "$REVIEW_TMPDIR/competition-notice.md" --plan-file "$PLAN_FILE" --feature-file "$FEATURE_FILE" --description-text "$DESCRIPTION_TEXT" --timing-task-prefix "review-round${round_num}" --launch-claude-subprocess "${CLAUDE_PLUGIN_ROOT}/scripts/launch-claude-subprocess.sh" --session-env-path "$SESSION_ENV_PATH"
 ```
 
 Parse `EXTERNAL_OUTPUT_FILES`, `CLAUDE_OUTPUT_FILES`, `PANEL_MODE`, `SLOT_COUNT`, and `DISPATCH_OK`. Both-down path: if `PANEL_MODE=both-down`, print `**⚠ Both Cursor and Codex unavailable. Proceeding with 1 Claude generic reviewer. Voting will be skipped (insufficient reviewers).**`

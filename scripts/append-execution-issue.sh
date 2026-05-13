@@ -52,14 +52,34 @@ if [ ! -f "$LOG_FILE" ]; then
     }
 fi
 
+entry_tmp="$(mktemp "${LOG_FILE}.entry.XXXXXX")" || {
+    echo "FAILED=true"
+    echo "ERROR=cannot create temp entry file next to log"
+    exit 2
+}
+
+printf '%s\n' "$ENTRY" > "$entry_tmp" || {
+    echo "FAILED=true"
+    echo "ERROR=cannot stage entry"
+    rm -f "$entry_tmp"
+    exit 2
+}
+
 tmp="$(mktemp "${LOG_FILE}.XXXXXX")" || {
     echo "FAILED=true"
     echo "ERROR=cannot create temp file next to log"
+    rm -f "$entry_tmp"
     exit 2
 }
-trap 'rm -f "$tmp"' EXIT
+trap 'rm -f "$tmp" "$entry_tmp"' EXIT
 
-awk -v category="$CATEGORY" -v entry="$ENTRY" '
+awk -v category="$CATEGORY" -v entry_file="$entry_tmp" '
+    function print_entry(    line) {
+        while ((getline line < entry_file) > 0) {
+            print line
+        }
+        close(entry_file)
+    }
     BEGIN {
         header = "### " category
         found = 0
@@ -74,7 +94,7 @@ awk -v category="$CATEGORY" -v entry="$ENTRY" '
     in_target && /^### / {
         if (!inserted) {
             print ""
-            print entry
+            print_entry()
             inserted = 1
         }
         in_target = 0
@@ -83,12 +103,12 @@ awk -v category="$CATEGORY" -v entry="$ENTRY" '
     END {
         if (found && !inserted) {
             print ""
-            print entry
+            print_entry()
         } else if (!found) {
             if (NR > 0) print ""
             print header
             print ""
-            print entry
+            print_entry()
         }
     }
 ' "$LOG_FILE" > "$tmp" || {
@@ -103,6 +123,7 @@ mv -f "$tmp" "$LOG_FILE" || {
     exit 2
 }
 trap - EXIT
+rm -f "$entry_tmp"
 
 echo "APPENDED=true"
 echo "LOG=$LOG_FILE"

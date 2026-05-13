@@ -6,6 +6,8 @@
 
 **When to load**: once Step 3 begins, via the MANDATORY directive at the top of Step 3 in SKILL.md. Do NOT load during Steps 0, 1, 2a, 2a.5, 2b, 3.5, 3b, 4, or 5 — the reviewer archetype, ballot handling, voting panel launch, finalize procedure, and rejected-findings template defined here are all Step-3-internal concerns.
 
+**Failure logging**: In nested runs (`SESSION_ENV_PATH` non-empty), all external reviewer launch failures, collector failures, non-`OK` collector statuses, and voter launch/wait failures must append verbatim captured output to `$(dirname "$SESSION_ENV_PATH")/execution-issues.md` via `${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh` under `External Reviewer Issues`. Capture launch stdout/stderr to `$DESIGN_TMPDIR/<slot>-launch.failure.log`; for collector statuses, include the structured collector block, `REVIEWER_FILE` content, and `${REVIEWER_FILE}.diag` content in `$DESIGN_TMPDIR/<slot>-collector.failure.log`. Do not summarize or truncate.
+
 ---
 
 ## Competition notice
@@ -70,6 +72,8 @@ Only include `--write-health` if `SESSION_ENV_PATH` is non-empty. Output paths i
 Immediately after this collection returns, run the Mid-Run Dirty-Tree Probe Contract from `heavy-worker.md` for `STAGE=plan-review-collection`.
 
 Parse the structured output for each reviewer's `STATUS` and `REVIEWER_FILE`. For any reviewer with `STATUS` not `OK`, follow the **Runtime Timeout Fallback** procedure in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md`. Read valid output files.
+
+For every non-`OK` result, append the collector failure capture described in the Failure logging contract before applying the runtime fallback. Use `--site "design Step 3" --tool "collect-agent-results.sh <tool> <status>" --exit-code <EXIT_CODE-or-1> --category "External Reviewer Issues" --redact`.
 
 1. Parse each reviewer's output for findings. External reviewers produce single-list output. Extract `[OUT_OF_SCOPE]`-prefixed findings as OOS observations; remaining findings are in-scope. Also merge any fallback Claude subagent findings (when externals were unavailable) into the in-scope list, attributing them as `Code`. Attribute archetype findings with their tool+archetype label using the pattern `{Tool}-{Archetype}` (e.g. Cursor-Arch, Cursor-Edge, Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements, Codex-Arch, Codex-Edge, Codex-Innovation, Codex-Pragmatic, Codex-Requirements — or the fallback variant when applicable, e.g. `codex-fallback-cursor-plan-arch`) for the competition scoreboard.
 2. Deduplicate in-scope findings separately. Assign each a stable sequential ID (`FINDING_1`, `FINDING_2`, etc.) and note which reviewer(s) proposed each.

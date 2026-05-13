@@ -47,6 +47,11 @@ The script also writes `$IMPLEMENT_TMPDIR/postbump-state.sh` before `implement-f
 - `create-pr.sh` emits `PR_NUMBER`, `PR_URL`, `PR_TITLE`, and `PR_STATUS`; existing PRs trigger `gh-pr-body-update.sh`.
 - `ci-wait.sh` emits `ACTION`, counters, `FAILED_RUN_ID`, and `BAIL_REASON`.
 - `merge-pr.sh` emits `MERGE_RESULT` and `ERROR`.
+- Failing helper/tool invocations capture stdout/stderr into
+  `$IMPLEMENT_TMPDIR/ship-pr-fail-<phase>-<n>.log` and call
+  `append-tool-failure.sh --redact` before the existing retry/stall/continue
+  decision. Logging failures are best-effort and do not change phase
+  outcomes.
 
 Transient network classification uses `is_transient_net_signature` from `scripts/lib-net.sh`, sourced fail-closed through the `LARCH_LIB_NET_LOADED` sentinel before any phase logic runs. Matching create-PR, rebase, merge, or CI-bail text exits `6` through `exit_transient_net`; non-matching failures continue through the normal stall or user-input paths.
 
@@ -60,6 +65,10 @@ Transient network classification uses `is_transient_net_signature` from `scripts
 - Fork mode skips bump application and uses direct `rebase-push.sh --base-remote upstream --base-ref main`.
 - `run_evaluate_failure` retries the vendor fix locally up to 3 times before stalling. Each attempt calls the vendor tool and runs local checks; only when local checks pass does it commit and push to CI. `FIX_ATTEMPTS` is incremented once per successful push (not per local attempt).
 - State writes use `tmp.$$` plus `mv`.
+- The local execution-issue logger resolves the log root from the state file's
+  `IMPLEMENT_TMPDIR` key when present, falling back to the validated
+  `--implement-tmpdir` argument. The state file is parsed with `read_state`;
+  it is never sourced.
 
 ## Postmerge Phase
 

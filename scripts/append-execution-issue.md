@@ -28,7 +28,9 @@ Failures use `FAILED=true` / `ERROR=<message>` and exit non-zero.
 ## Conventions
 
 - `set -euo pipefail`.
-- Atomic write through a sibling temp file and `mv`.
+- Atomic write through sibling temp files and `mv`.
+- Multi-line entries are staged in a sibling temp file and read by `awk`;
+  callers may pass fenced blocks without newline-collapsing.
 - Entries must already be sanitized by the caller; this helper does not redact.
 
 ## Edit-in-sync

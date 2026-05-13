@@ -322,6 +322,21 @@ Durable, actionable follow-up identified during design / implementation / review
 
 Log noteworthy issues to `$IMPLEMENT_TMPDIR/execution-issues.md` throughout execution. **Any step** may append. Log pre-existing code issues not fixed, tool failures, permission prompts, external reviewer failures, CI transients, and any uncategorized `⚠` warning.
 
+For tool, Bash, helper, or agent failures where stdout/stderr or a returned error body exists, capture the full content into a step-local file under `$IMPLEMENT_TMPDIR` and append it with:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" \
+  --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
+  --site "<step-id>" \
+  --tool "<tool label>" \
+  --exit-code "<exit-code>" \
+  --category "<Tool Failures|External Reviewer Issues|CI Issues|Warnings>" \
+  --output-file "$IMPLEMENT_TMPDIR/<failure-capture>.log" \
+  --redact || true
+```
+
+Do not summarize, truncate, or replace the captured body with only an `ERROR=` token. Existing one-line `append-execution-issue.sh` calls remain appropriate for synthetic warnings that do not have tool output, but any real failed invocation must preserve its captured output through `append-tool-failure.sh`.
+
 **Entry format** — entries grouped by category. If the category header exists, insert the bullet at the end of its list; else add header + bullet at EOF.
 
 ```markdown
@@ -1425,7 +1440,7 @@ Otherwise, generate a mermaid Code Flow Diagram from the actual committed implem
 
 On success: `✅ 7a: code flow status=complete outcome=diagram-generated elapsed=<elapsed>`.
 
-On generation failure (too abstract to diagram): `**⚠ 7a: code flow — generation failed, proceeding without diagram (<elapsed>)**` and log to `Warnings`. On sanitizer rejection or exit 2, delete the candidate, do not promote it, print `**⚠ 7a: code flow — rejected by mermaid sanitizer (REASON_TOKEN=<token>), proceeding without diagram (<elapsed>)**`, and append `- **Step 7a — code flow diagram rejected:** <REASON_TOKEN>` under `### Warnings` in `$IMPLEMENT_TMPDIR/execution-issues.md` via `${CLAUDE_PLUGIN_ROOT}/scripts/append-execution-issue.sh`. Use only `REASON_TOKEN` values, not raw diagram content.
+On generation failure (too abstract to diagram): `**⚠ 7a: code flow — generation failed, proceeding without diagram (<elapsed>)**` and log to `Warnings` with the full captured generator output via `append-tool-failure.sh` when any output exists. On sanitizer rejection or exit 2, delete the candidate, do not promote it, print `**⚠ 7a: code flow — rejected by mermaid sanitizer (REASON_TOKEN=<token>), proceeding without diagram (<elapsed>)**`, capture the sanitizer's full stdout/stderr to `$IMPLEMENT_TMPDIR/code-flow-sanitizer.failure.log`, and append that file under `### Warnings` in `$IMPLEMENT_TMPDIR/execution-issues.md` via `${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh --site "Step 7a" --tool "sanitize-mermaid-fragment.sh code-flow" --exit-code <exit-code-or-2> --category Warnings --output-file "$IMPLEMENT_TMPDIR/code-flow-sanitizer.failure.log" --redact || true`. Do not log the raw diagram content unless it is already part of the sanitizer failure output; the capture is for tool diagnostics.
 
 ### Diagrams summary comment — `larch:diagrams`
 
@@ -1490,7 +1505,7 @@ if [ "${no_logs_commit:-false}" != "true" ]; then
 fi
 ```
 
-Best-effort: failures are non-fatal.
+Best-effort: failures are non-fatal, but each non-zero `token-report.sh`, `timing-report.sh`, `larch-log.sh write`, or `larch-log.sh commit` result must first be captured to `$IMPLEMENT_TMPDIR/pre-bump-log-flush-<tool>.log` and appended with `append-tool-failure.sh` under `Tool Failures` (use `Warnings` only for report rendering that is known to be documentation-only). Do not leave a bare `|| true` on these calls without the adjacent capture and append.
 
 On each retry (CI failure, merge conflict, rebase in Steps 10/12), the Rebase + Re-bump Sub-procedure step 1b re-writes these batches with updated data and creates a new log-flush commit before the rebase, so the most recent token/timing data lands in the merged PR.
 
@@ -1507,7 +1522,7 @@ Before invoking the script, write `$IMPLEMENT_TMPDIR/ship-pr-state.sh` with uppe
 - `PR_NUMBER=`, `PR_URL=`, `PR_TITLE=`, `RESUME_PHASE=`, `CALLER_KIND=`
 - `REBASE_COUNT=0`, `FIX_ATTEMPTS=0`, `ITERATION=0`, `TRANSIENT_RETRIES=0`, `FAILED_RUN_ID=`
 - `MANIFEST_PATH`, `TOOL_LABEL`, `DESIGN_ONLY_DONE=false`, `EXPECTED_SESSION_ID`, `EXPECTED_TMPDIR_BASENAME_PREFIX`
-- `NO_LOGS_COMMIT=$no_logs_commit`
+- `NO_LOGS_COMMIT=$no_logs_commit`, `IMPLEMENT_TMPDIR=$IMPLEMENT_TMPDIR`
 
 Invoke:
 
@@ -1539,6 +1554,8 @@ Parse the process exit code and then read `$IMPLEMENT_TMPDIR/ship-pr-state.sh` w
 The OOS cap helper contract remains `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-issue-cap.md`; apply it before any `/issue --input-file` batch emission so per-run issue count limits and excerpt behavior stay unchanged.
 
 **Execution-issues checkpoint**: when `CI_PASSED=true`, execute the existing Step 11 execution-issues refresh from this file. After the refresh completes, set `CI_PASSED=false` in the state file and re-enter with `--resume-phase ci-merge`.
+
+Step 11 refresh contract: convert the current `$IMPLEMENT_TMPDIR/execution-issues.md` into one or more `execution-issues` NDJSON records, append them with `larch-log.sh append`, and write the SHA-256 of the exact markdown source to `$IMPLEMENT_TMPDIR/.execution-issues-flushed.sha` only after the append succeeds. Include `source_sha256` in the record payload so `implement-finalize.sh teardown` can detect whether the safety-net flush would duplicate the same source body. If the append fails, capture the full `larch-log.sh append` output and log it back to `execution-issues.md` with `append-tool-failure.sh` under `Tool Failures`; the teardown safety net will retry before cleanup.
 
 The state machine writes `postbump-state.sh` for `implement-finalize.sh postbump`, writes `finalize-state.sh` for `postmerge`/`teardown`, parses postbump `STATUS=` from stdout, preserves `CALLER_KIND=step8b_rebase` for Step 8b conflicts, treats Step 10 `ACTION=merge` as a CI-passed checkpoint, and treats Step 12 `ACTION=merge` as permission to call `merge-pr.sh`. If CI failure metadata lacks a failed run id, use `${CLAUDE_PLUGIN_ROOT}/scripts/gh-pr-checks.sh` as the fallback diagnostic path before deciding whether to stall. Within `PHASE=ci-merge`, after merge succeeds ship-pr.sh delegates local cleanup (Step 14 equivalent) to `implement-finalize.sh postmerge`; after that returns, **Continue to Step 15.** (main verification, also inside postmerge). Do NOT end the turn between the merge output and the postmerge delegation.
 
@@ -1648,6 +1665,8 @@ if [ "${forked_target:-false}" != "true" ] && [ -n "${ISSUE_NUMBER:-}" ] && [ "$
   ${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-summary.sh upsert-summary --issue "$ISSUE_NUMBER" --marker "<!-- larch:final-summary v1 runid=$RUN_ID -->" --content-file "$IMPLEMENT_TMPDIR/summary-final.md" --repo "${REPO:-}" || true
 fi
 ```
+
+For Step 18's `token-report.sh` and `tracking-issue-summary.sh upsert-summary`, preserve the best-effort behavior but capture any non-zero stdout/stderr to `$IMPLEMENT_TMPDIR/step18-<tool>.failure.log` and append with `append-tool-failure.sh` before continuing.
 
 Capture and commit the session transcript (best-effort — never fatal):
 
