@@ -261,7 +261,7 @@ case "$cmd" in
                 *) larch_log_fail 1 "invalid --field: $field" ;;
             esac
             case "$key" in
-                schema_version|skill|run_id|started_at) larch_log_fail 1 "manifest field is immutable: $key" ;;
+                schema_version|skill|run_id|started_at|operator_cwd|operator_repo_root) larch_log_fail 1 "manifest field is immutable: $key" ;;
                 *[!A-Za-z0-9_]*|"") larch_log_fail 1 "invalid manifest field: $key" ;;
             esac
             var="v${#args[@]}"

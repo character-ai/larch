@@ -43,6 +43,16 @@ while [ $# -gt 0 ]; do
     esac
 done
 
+if [ -z "$LOG_ROOT" ] || [ -z "$SKILL" ] || [ -z "$RUN_ID" ]; then
+    echo "SESSION_TRANSCRIPT_STATUS=usage-error" >&1
+    usage
+    exit 0
+fi
+case "${NO_LOGS_COMMIT:-}" in
+    true|false) ;;
+    *) echo "SESSION_TRANSCRIPT_STATUS=usage-error" >&1; usage; exit 0 ;;
+esac
+
 append_warning() {
     local status="$1"
     local message="$2"
