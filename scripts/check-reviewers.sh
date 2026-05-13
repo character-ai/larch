@@ -11,6 +11,8 @@ source "$SCRIPT_DIR/external-tool-registry.sh" || { echo "check-reviewers.sh: fa
 [[ "${LARCH_EXTERNAL_TOOL_REGISTRY_LOADED:-}" == "1" ]] || { echo "check-reviewers.sh: external-tool-registry.sh sourced but sentinel missing" >&2; exit 1; }
 # shellcheck source=scripts/lib-cursor-auth.sh
 source "$SCRIPT_DIR/lib-cursor-auth.sh" || { echo "check-reviewers.sh: failed to source lib-cursor-auth.sh" >&2; exit 1; }
+# shellcheck source=scripts/lib-external-launcher-common.sh
+source "$SCRIPT_DIR/lib-external-launcher-common.sh" || { echo "check-reviewers.sh: failed to source lib-external-launcher-common.sh" >&2; exit 1; }
 
 PROBE=false
 SKIP_CODEX_PROBE=false
@@ -100,7 +102,7 @@ clear_probe_files() {
 start_probe() {
     local tool="$1"
     local attempt="$2"
-    local output
+    local output _probe_lock _probe_pid
     output=$(probe_output_path "$tool")
     clear_probe_files "$tool"
 
@@ -132,6 +134,8 @@ start_probe() {
             while IFS= read -r arg; do
                 CODEX_MODEL_ARGS+=("$arg")
             done < "$CODEX_MODEL_ARGS_TMP"
+            _probe_lock=""
+            external_serial_lock_acquire _probe_lock "codex"
             "$SCRIPT_DIR/run-external-agent.sh" \
                 --tool codex \
                 --output "$output" \
@@ -142,6 +146,10 @@ start_probe() {
                 --output-last-message "$output" \
                 "Respond with OK" \
                 >"$PROBE_DIR/codex-wrapper-attempt${attempt}.log" 2>&1 &
+            _probe_pid=$!
+            external_serial_lock_release_after "$_probe_lock" "${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}"
+            printf '%s\n' "$_probe_pid"
+            return
             ;;
         cursor)
             CURSOR_MODEL_ARGS_TMP=$(mktemp "$PROBE_DIR/cursor-model-args.XXXXXX") || exit 1
@@ -174,6 +182,8 @@ start_probe() {
             # at launch time.
             CURSOR_AUTH_ARGS=()
             cursor_auth_argv
+            _probe_lock=""
+            external_serial_lock_acquire _probe_lock "cursor"
             "$SCRIPT_DIR/run-external-agent.sh" \
                 --tool cursor \
                 --output "$output" \
@@ -182,13 +192,16 @@ start_probe() {
                 -- cursor agent -p --force --trust --output-format json ${CURSOR_MODEL_ARGS[@]+"${CURSOR_MODEL_ARGS[@]}"} ${CURSOR_AUTH_ARGS[@]+"${CURSOR_AUTH_ARGS[@]}"} --workspace "$PWD" \
                 "Respond with OK" \
                 >"$PROBE_DIR/cursor-wrapper-attempt${attempt}.log" 2>&1 &
+            _probe_pid=$!
+            external_serial_lock_release_after "$_probe_lock" "${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}"
+            printf '%s\n' "$_probe_pid"
+            return
             ;;
         *)
             echo "check-reviewers.sh: internal error: unsupported reviewer tool: $tool" >&2
             exit 1
             ;;
     esac
-    printf '%s\n' "$!"
 }
 
 evaluate_probe() {
