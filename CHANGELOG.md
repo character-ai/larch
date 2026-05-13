@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [27.0.16] - 2026-05-12
+
+### Changed
+
+- Added shared external launcher helpers for Darwin per-tool startup locks, stale-lock recovery, delayed release, and auth-failure classification.
+- Wrapped Cursor, Codex, and Gemini review, implement, and CI spawn sites with shared serialization plus bounded auth-startup retry logic.
+- Migrated cursor-specific lock env vars to LARCH_EXTERNAL_* names and updated launcher docs, SECURITY.md, and regression harness coverage.
+
 ## [27.0.14] - 2026-05-13
 
 ### Fixed
