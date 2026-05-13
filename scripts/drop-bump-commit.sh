@@ -38,13 +38,14 @@ set -uo pipefail
 # Note: not using set -e — we handle errors explicitly so all no-op paths
 # exit 0 with DROPPED=false, matching the contract used by callers.
 
-# --- Guard 1: clean working tree ---
-# Defense in depth: even though callers are expected to ensure the worktree
-# is clean before invoking, this script refuses destructive `git reset --hard`
-# if anything is uncommitted. `git status --porcelain` covers staged, unstaged,
-# and untracked files — unlike `git diff-index --quiet` which skips untracked.
-if [[ -n "$(git status --porcelain 2>/dev/null)" ]]; then
-    echo "WARN: worktree has uncommitted changes; refusing to drop bump commit" >&2
+# --- Guard 1: clean working tree (tracked files only) ---
+# Defense in depth: `git reset --hard HEAD~1` destroys uncommitted changes to
+# TRACKED files. Untracked files are unaffected by `git reset --hard`, so
+# they are excluded from this check via --untracked-files=no. This avoids
+# spurious DROPPED=false when larch-log writes are pending in the worktree
+# (untracked until the next larch-log.sh commit call).
+if [[ -n "$(git status --porcelain --untracked-files=no 2>/dev/null)" ]]; then
+    echo "WARN: worktree has uncommitted tracked changes; refusing to drop bump commit" >&2
     echo "DROPPED=false"
     exit 0
 fi
