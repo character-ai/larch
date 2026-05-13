@@ -30,7 +30,9 @@ UNCHANGED=true|false
 
 Payload content is never written to stdout. Payloads pass through
 `redact-tmpdir-paths.sh` and `redact-secrets.sh`. Batches that declare the
-`mermaid` sanitizer (in `larch-log-batches.sh`) also use
+`plan-goals` sanitizer must contain a non-empty `## Implementation Plan` section
+that is not a pointer-only placeholder. Batches that declare the `mermaid`
+sanitizer (in `larch-log-batches.sh`) also use
 `sanitize-mermaid-fragment.sh --from-md` and fail closed on rejection; no
 current batch uses this sanitizer — it is reserved for future opt-in.
 

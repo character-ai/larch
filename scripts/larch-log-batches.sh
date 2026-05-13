@@ -4,7 +4,7 @@
 set -euo pipefail
 
 LARCH_LOG_BATCHES="
-plan-goals-test .md replace none
+plan-goals-test .md replace plan-goals
 plan-review-tally .ndjson append none
 code-review-tally .ndjson append none
 review-findings-full .ndjson append none

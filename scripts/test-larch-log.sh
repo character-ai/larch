@@ -46,7 +46,20 @@ if grep -q '"status": "in-progress"' "$manifest"; then pass "manifest status"; e
 
 echo "=== replace write is redacted and idempotent ==="
 payload="$TMP/payload.md"
-printf 'token sk-ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD\n' > "$payload"
+cat > "$payload" <<'EOF'
+## Goal
+Verify redaction.
+
+## Implementation Plan
+Write a sectioned plan-goals-test payload that includes a token-like secret so
+the larch-log write path can prove redaction while still satisfying the
+plan-goals sanitizer contract.
+
+token sk-ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD
+
+## Test plan
+Run scripts/test-larch-log.sh.
+EOF
 out="$("$LARCH_LOG" write --skill implement --run-id abc123 --batch plan-goals-test --input-file "$payload")"
 assert_contains "$out" "LOG_WRITTEN=true" "write emits written"
 log_file="$LARCH_LOG_ROOT/implement/abc123/plan-goals-test.md"
@@ -100,7 +113,18 @@ git -C "$_repo" add .
 git -C "$_repo" commit -q -m "init"
 _rid="testcommit123"
 _cpayload="$TMP/commit-payload.md"
-printf 'staged content\n' > "$_cpayload"
+cat > "$_cpayload" <<'EOF'
+## Goal
+Verify staged commit copying.
+
+## Implementation Plan
+Write a valid plan-goals-test payload into an explicit staging log root, then
+commit the run so the harness can verify the batch is copied into the fake repo
+under larch-logs/implement/<run-id>/.
+
+## Test plan
+Run scripts/test-larch-log.sh.
+EOF
 (cd "$_repo" && "$LARCH_LOG" init --log-root "$_staging/larch-logs" --skill implement --run-id "$_rid" --issue 42) >/dev/null
 (cd "$_repo" && "$LARCH_LOG" write --log-root "$_staging/larch-logs" --skill implement --run-id "$_rid" --batch plan-goals-test --input-file "$_cpayload") >/dev/null
 _commit_out="$(cd "$_repo" && "$LARCH_LOG" commit --log-root "$_staging/larch-logs" --skill implement --run-id "$_rid" --no-push)"

@@ -386,6 +386,8 @@ exclude = [
   "scripts/test-larch-logs-manifest.md",
   "scripts/test-larch-logs-batches.sh",
   "scripts/test-larch-logs-batches.md",
+  "scripts/test-compose-plan-goals-test.sh",
+  "scripts/test-compose-plan-goals-test.md",
   "scripts/test-tracking-issue-summary.sh",
   "scripts/test-tracking-issue-summary.md",
   "scripts/test-compose-review-findings.sh",

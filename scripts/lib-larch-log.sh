@@ -89,10 +89,54 @@ larch_log_redact_file() {
 larch_log_validate_batch_payload() {
     local batch="$1"
     local file="$2"
-    local sanitizer
+    local sanitizer impl_tmp
     sanitizer="$(larch_log_batch_sanitizer "$batch")" || larch_log_fail 1 "unknown batch: $batch"
     case "$sanitizer" in
         none) ;;
+        plan-goals)
+            impl_tmp="$(mktemp "${TMPDIR:-/tmp}/larch-log-plan-goals.XXXXXX")" \
+                || larch_log_fail 2 "cannot create plan-goals sanitizer temp"
+            if ! awk '
+                $0 == "## Implementation Plan" {
+                    if (!saw) in_section = 1
+                    saw = 1
+                    next
+                }
+                in_section {
+                    lines[++count] = $0
+                    if ($0 == "## Test plan") last_test_plan = count
+                }
+                END {
+                    if (!saw) exit 3
+                    limit = count
+                    if (last_test_plan > 0) limit = last_test_plan - 1
+                    for (i = 1; i <= limit; i++) print lines[i]
+                }
+            ' "$file" > "$impl_tmp"; then
+                rm -f "$impl_tmp"
+                larch_log_fail 2 "plan-goals sanitizer rejected: missing Implementation Plan section"
+            fi
+            if ! awk 'NF { found = 1 } END { exit(found ? 0 : 1) }' "$impl_tmp"; then
+                rm -f "$impl_tmp"
+                larch_log_fail 2 "plan-goals sanitizer rejected: Implementation Plan body is empty"
+            fi
+            if awk '
+                NF {
+                    line = $0
+                    gsub(/^[[:space:]]+|[[:space:]]+$/, "", line)
+                    count++
+                    if (count == 1) first = tolower(line)
+                }
+                END {
+                    if (count == 1 && first ~ /^(see plan\.txt|see attached|see linked|tbd|todo)\.?$/) exit 0
+                    exit 1
+                }
+            ' "$impl_tmp"; then
+                rm -f "$impl_tmp"
+                larch_log_fail 2 "plan-goals sanitizer rejected: Implementation Plan body is a pointer-only placeholder"
+            fi
+            rm -f "$impl_tmp"
+            ;;
         mermaid)
             "$LARCH_LOG_LIB_DIR/sanitize-mermaid-fragment.sh" --input "$file" --from-md >/dev/null \
                 || larch_log_fail 2 "mermaid sanitizer rejected $batch"

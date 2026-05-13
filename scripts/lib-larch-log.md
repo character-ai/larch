@@ -17,3 +17,6 @@ Key exports:
 - `larch_log_repo_run_dir(skill, run_id)` — always returns the canonical repo path
   (`$LARCH_LOG_REPO_ROOT/larch-logs/<skill>/<run_id>`), bypassing the tmpdir tier.
   Used by `larch-log.sh commit` to locate the copy destination.
+- `larch_log_validate_batch_payload(batch, file)` — dispatches batch sanitizers.
+  The `plan-goals` sanitizer requires a non-empty `## Implementation Plan`
+  section and rejects pointer-only placeholders before the payload is committed.
