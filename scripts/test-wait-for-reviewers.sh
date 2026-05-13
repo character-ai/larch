@@ -10,7 +10,7 @@ TMPDIR=$(mktemp -d "${TMPDIR:-/tmp}/larch-test-wait-XXXXXX")
 trap 'rm -rf "$TMPDIR"' EXIT
 
 # Fast poll so the DONE case finishes quickly. The TIMEOUT case still spends
-# about 1s wall-clock because wait's loop is gated on $SECONDS vs $TIMEOUT.
+# about 1s wall-clock because wait's loop runs MAX_POLLS checks (ceiling of TIMEOUT/POLL).
 export WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.05
 
 FAIL=0

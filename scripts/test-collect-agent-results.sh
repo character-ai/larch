@@ -7,7 +7,7 @@ export WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.05
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COLLECTOR="$REPO_ROOT/scripts/collect-agent-results.sh"
-TMPROOT="$(mktemp -d "${TMPDIR:-/tmp}/test-collect-agent-results-XXXXXX")"
+TMPROOT="$(mktemp -d "${TMPDIR:-/tmp}/test-collect-agent-results-XXXXXX")" || { echo "mktemp failed" >&2; exit 1; }
 trap 'rm -rf "$TMPROOT" 2>/dev/null' EXIT
 
 PASS=0

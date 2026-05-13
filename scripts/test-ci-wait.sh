@@ -192,10 +192,10 @@ ln -sf "$root/scripts/fake-sleep.sh" "$root/scripts/sleep"
 STUB_STATUSES=pending run_subject "$root" "$root/.rc" --timeout 30
 assert_rc "$root/.rc" 0 "genuine timeout: exits 0"
 assert_stdout_contains "$root" "ACTION=bail" "genuine timeout: ACTION=bail"
-if grep -q "Wall-clock timeout" "$root/.stdout"; then
-    ok "genuine timeout: BAIL_REASON contains Wall-clock timeout"
+if grep -q "Poll budget" "$root/.stdout"; then
+    ok "genuine timeout: BAIL_REASON contains Poll budget"
 else
-    fail "genuine timeout: expected BAIL_REASON containing Wall-clock timeout"
+    fail "genuine timeout: expected BAIL_REASON containing Poll budget"
     sed 's/^/    stdout: /' "$root/.stdout"
 fi
 call_count=$(cat "$root/.ci-status-count" 2>/dev/null || echo 0)

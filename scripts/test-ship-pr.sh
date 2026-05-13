@@ -712,14 +712,14 @@ run_subject "$root" "$tmp" "$tmp/rc"
 assert_rc "$tmp/rc" 6 "transient ci-wait bail: exits 6 on no-valid-output-3-times signature"
 assert_state_line "$tmp/ship-pr-state.sh" "STALL_TRACKING=false" "transient ci-wait bail: STALL_TRACKING=false"
 
-# Verify Wall-clock timeout (poll budget exhausted) does NOT trigger exit 6 — it's not network-transient.
+# Verify poll-budget exhaustion does NOT trigger exit 6 — it's not network-transient.
 root=$(make_repo non_transient_ci_timeout)
 tmp=$(make_tmpdir)
 cat > "$root/scripts/ci-wait.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 echo "ACTION=bail"
-echo "BAIL_REASON=Wall-clock timeout (1800s) exceeded"
+echo "BAIL_REASON=Poll budget (180 polls / 1800s) exhausted"
 echo "CI_STATUS=pending"
 echo "BEHIND_COUNT=0"
 echo "FAILED_RUN_ID="

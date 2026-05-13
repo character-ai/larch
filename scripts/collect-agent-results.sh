@@ -527,7 +527,12 @@ for i in "${!OUTPUT_FILES[@]}"; do
         FAILURE_REASON=$(build_failure_reason "$OUTPUT" "$STATUS" "$EXIT_CODE")
     fi
 
+    # Require a .diag file so the generic TIMED_OUT fallback text ("Process timed
+    # out (exit code 124)") — which contains "timed out" — does not falsely match
+    # the transient-network heuristic.  Real network failures always produce a
+    # .diag because the launcher captures the CLI stderr there.
     if [[ "$STATUS" == "FAILED" || "$STATUS" == "TIMED_OUT" || "$STATUS" == "SENTINEL_TIMEOUT" ]] \
+        && [[ -f "${OUTPUT}.diag" ]] \
         && is_transient_net_signature "$FAILURE_REASON" \
         && [[ -f "$META" ]]; then
         ORIG_TIMEOUT=""

@@ -105,6 +105,7 @@ check_sentinels() {
 SECONDS=0
 found_count=0
 checks=0
+suspend_refunds=0
 last_progress_minute=0
 
 # Check before first sleep — detect pre-existing sentinels immediately
@@ -133,7 +134,12 @@ while [ "$found_count" -lt "$TOTAL" ] && [ "$checks" -lt "$MAX_POLLS" ]; do
     iter_delta=$(( $(date +%s) - iter_start ))
     if [ "$iter_delta" -gt 60 ]; then
         printf "\n⚠ suspend detected — iteration took %ds, not counting toward poll budget\n" "$iter_delta" >&2
-        checks=$((checks - 1))
+        # Cap refunds at MAX_POLLS to prevent an infinite wait when the host is
+        # so slow that *every* iteration exceeds 60s (e.g. heavy load, debugger).
+        if [ "$suspend_refunds" -lt "$MAX_POLLS" ]; then
+            checks=$((checks - 1))
+            suspend_refunds=$((suspend_refunds + 1))
+        fi
     fi
 done
 
