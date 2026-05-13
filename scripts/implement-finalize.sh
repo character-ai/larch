@@ -213,21 +213,19 @@ sha256_file() {
     fi
 }
 
-json_escape_stream() {
-    awk '
-        BEGIN { printf "\"" }
-        {
-            gsub(/\\/, "\\\\")
-            gsub(/"/, "\\\"")
-            gsub(/\t/, "\\t")
-            printf "%s\\n", $0
-        }
-        END { printf "\"" }
-    '
+json_escape_stream_python() {
+    # python3 JSON-escape fallback when jq is absent. Handles full string
+    # contract (control chars, \r, \b, \f, NUL, surrogate-safe). Returns
+    # non-zero if python3 is unavailable; caller routes to a loud failure.
+    command -v python3 >/dev/null 2>&1 || return 2
+    python3 -c '
+import json, sys
+sys.stdout.write(json.dumps(sys.stdin.read()))
+' || return 1
 }
 
 write_execution_issues_record() {
-    local input_file=$1 record_file=$2 sha=$3 body_json
+    local input_file=$1 record_file=$2 sha=$3 body_json escape_rc
     if command -v jq >/dev/null 2>&1; then
         jq -Rs --arg sha "$sha" '{
             phase: "implement",
@@ -237,13 +235,25 @@ write_execution_issues_record() {
             source_sha256: $sha,
             body: .
         }' "$input_file" > "$record_file"
-    else
-        body_json=$(json_escape_stream < "$input_file")
-        {
-            printf '{"phase":"implement","step":"18","category":"Tool Failures",'
-            printf '"source":"execution-issues.md safety-net","source_sha256":"%s","body":%s}\n' "$sha" "$body_json"
-        } > "$record_file"
+        return $?
     fi
+    # No jq: fall back to python3. The awk-only escape was incomplete (no
+    # \r/\b/\f/control-char handling), which produced invalid NDJSON for
+    # binary-ish stderr captures and silently broke larch-log append on
+    # hosts without jq. Refuse to write a record at all rather than emit
+    # malformed NDJSON.
+    set +e
+    body_json=$(json_escape_stream_python < "$input_file")
+    escape_rc=$?
+    set -e
+    if [ "$escape_rc" -ne 0 ]; then
+        warn_line '**⚠ 18: execution-issues safety-net needs jq or python3 to compose NDJSON. Neither found. Skipping safety-net flush.**'
+        return 1
+    fi
+    {
+        printf '{"phase":"implement","step":"18","category":"Tool Failures",'
+        printf '"source":"execution-issues.md safety-net","source_sha256":"%s","body":%s}\n' "$sha" "$body_json"
+    } > "$record_file"
 }
 
 flush_execution_issues_safety_net() {
@@ -276,7 +286,7 @@ flush_execution_issues_safety_net() {
         --batch execution-issues \
         --record-file "$record_file" 2>&1)
     rc=$?
-    set +e
+    set -e
     if [ "$rc" -eq 0 ]; then
         printf '%s\n' "$sha" > "$sentinel" 2>/dev/null || true
     else

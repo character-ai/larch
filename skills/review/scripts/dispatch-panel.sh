@@ -100,8 +100,14 @@ launch_claude_slot() {
     [[ -n "$SCOPE_FILES" && -f "$SCOPE_FILES" ]] && args+=(--context-files "$SCOPE_FILES")
     {
         launch_log="$REVIEW_TMPDIR/dispatch-claude-${name}.log"
+        # set +e: capture launcher non-zero exits and surface them via
+        # append_launch_failure. Without this, set -e (inherited from the
+        # parent) aborts the subshell before rc capture and the failure
+        # logging path is bypassed.
+        set +e
         "$LAUNCH_CLAUDE" "${args[@]}" > "$launch_log" 2>&1
         rc=$?
+        set -e
         [[ "$rc" -eq 0 ]] || append_launch_failure "review Step 2" "launch-claude-subprocess.sh $name" "$rc" "$launch_log"
     } &
     printf '{"slot":"%s","tool":"claude","output":"%s"}\n' "$name" "$out" >> "$manifest"
@@ -119,8 +125,14 @@ launch_external_slot() {
     [[ "$name" == "correctness" && -n "$FEATURE_FILE" && -f "$FEATURE_FILE" ]] && args+=(--feature-file "$FEATURE_FILE")
     {
         launch_log="$REVIEW_TMPDIR/dispatch-${tool}-${name}.log"
+        # set +e: capture launcher non-zero exits and surface them via
+        # append_launch_failure. Without this, set -e (inherited from the
+        # parent) aborts the subshell before rc capture and the failure
+        # logging path is bypassed.
+        set +e
         "$PLUGIN_ROOT/scripts/launch-review.sh" "${args[@]}" > "$launch_log" 2>&1
         rc=$?
+        set -e
         [[ "$rc" -eq 0 ]] || append_launch_failure "review Step 2" "launch-review.sh $tool $name" "$rc" "$launch_log"
     } &
     printf '{"slot":"%s","tool":"%s","output":"%s"}\n' "$name" "$tool" "$out" >> "$manifest"

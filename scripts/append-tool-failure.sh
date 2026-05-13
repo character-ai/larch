@@ -119,4 +119,4 @@ entry_file="$(mktemp "${TMPDIR:-/tmp}/append-tool-failure-entry.XXXXXX")" || {
 "$SCRIPT_DIR/append-execution-issue.sh" \
     --log "$LOG_FILE" \
     --category "$CATEGORY" \
-    --entry "$(cat "$entry_file")"
+    --entry-file "$entry_file"

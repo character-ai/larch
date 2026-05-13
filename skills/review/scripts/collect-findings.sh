@@ -73,12 +73,12 @@ append_non_ok_collector_results() {
                     printf 'TOOL=%s\n' "${tool:-unknown}"
                     printf 'EXIT_CODE=%s\n\n' "${exit_code:-0}"
                     if [[ -f "$reviewer_file" ]]; then
-                        printf '--- reviewer output ---\n'
+                        printf -- '--- reviewer output ---\n'
                         cat "$reviewer_file"
                         printf '\n'
                     fi
                     if [[ -f "${reviewer_file}.diag" ]]; then
-                        printf '\n--- diagnostic sidecar ---\n'
+                        printf -- '\n--- diagnostic sidecar ---\n'
                         cat "${reviewer_file}.diag"
                         printf '\n'
                     fi
@@ -132,7 +132,13 @@ if [[ "$EXTERNAL_COUNT" -gt 0 ]]; then
     printf '%s\n' "$collector_out" >> "$collector_log"
     if [[ "$collector_rc" -ne 0 ]]; then
         append_review_failure "review Step 3a" "collect-agent-results.sh" "$collector_rc" "$collector_log"
-        cat "$collector_log" >&2
+        # Redact stderr replay; the unredacted file is already captured in
+        # the verbatim execution-issues entry via --redact above.
+        if [[ -x "$PLUGIN_ROOT/scripts/redact-secrets.sh" ]]; then
+            "$PLUGIN_ROOT/scripts/redact-secrets.sh" < "$collector_log" >&2 || cat "$collector_log" >&2
+        else
+            cat "$collector_log" >&2
+        fi
         exit "$collector_rc"
     fi
     append_non_ok_collector_results "$collector_out"
@@ -148,7 +154,13 @@ if [[ "$CLAUDE_COUNT" -gt 0 ]]; then
     set -e
     if [[ "$wait_rc" -ne 0 ]]; then
         append_review_failure "review Step 3a" "wait-for-reviewers.sh" "$wait_rc" "$wait_log"
-        cat "$wait_log" >&2
+        # Redact stderr replay; the unredacted file is already captured in
+        # the verbatim execution-issues entry via --redact above.
+        if [[ -x "$PLUGIN_ROOT/scripts/redact-secrets.sh" ]]; then
+            "$PLUGIN_ROOT/scripts/redact-secrets.sh" < "$wait_log" >&2 || cat "$wait_log" >&2
+        else
+            cat "$wait_log" >&2
+        fi
         exit "$wait_rc"
     fi
 fi

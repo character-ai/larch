@@ -229,19 +229,42 @@ append_tool_failure_local() {
         esac
     done
     log_tmpdir=$(read_state IMPLEMENT_TMPDIR "$IMPLEMENT_TMPDIR")
+    # Re-validate the state-supplied tmpdir against the same allowed-roots
+    # set as the argv-supplied one. A tampered ship-pr-state.sh value must
+    # NOT redirect failure logging outside the validated session tree.
+    if [ -n "$log_tmpdir" ] && ! is_tmp_path "$log_tmpdir"; then
+        echo "ship-pr.sh: refusing state-supplied IMPLEMENT_TMPDIR outside allowed roots: $log_tmpdir" >&2
+        log_tmpdir="$IMPLEMENT_TMPDIR"
+    fi
     if [ -z "$log_tmpdir" ] || [ ! -x "$SCRIPT_DIR/append-tool-failure.sh" ]; then
         echo "ship-pr.sh: cannot append tool failure for $tool (site=$site); helper or tmpdir unavailable" >&2
-        [ -n "$output_file" ] && [ -f "$output_file" ] && cat "$output_file" >&2
+        # Pipe the capture through redact-secrets.sh before stderr replay so
+        # the fallback path mirrors the success-path --redact behavior and
+        # never leaks tokens to operator transcripts.
+        if [ -n "$output_file" ] && [ -f "$output_file" ]; then
+            if [ -x "$SCRIPT_DIR/redact-secrets.sh" ]; then
+                "$SCRIPT_DIR/redact-secrets.sh" < "$output_file" >&2 || cat "$output_file" >&2
+            else
+                cat "$output_file" >&2
+            fi
+        fi
         return 0
     fi
-    "$SCRIPT_DIR/append-tool-failure.sh" \
+    # Tee append-tool-failure diagnostics to a sibling log so post-mortem can
+    # see when the failure-logging helper itself failed (issue: operators
+    # otherwise lose signal that the verbatim record never landed).
+    local append_diag="$log_tmpdir/ship-pr-append-failure.log"
+    if ! "$SCRIPT_DIR/append-tool-failure.sh" \
         --log "$log_tmpdir/execution-issues.md" \
         --site "$site" \
         --tool "$tool" \
         --exit-code "$exit_code" \
         --category "$category" \
         --output-file "$output_file" \
-        --redact >/dev/null 2>&1 || true
+        --redact >>"$append_diag" 2>&1; then
+        echo "ship-pr.sh: append-tool-failure.sh failed for $tool (site=$site); see $append_diag" >&2
+    fi
+    return 0
 }
 
 record_failure() {
@@ -543,7 +566,11 @@ run_pr_create_phase() {
     rc=$?
     printf '%s\n' "$out" >> "$fail_file"
     printf '%s\n' "$out"
-    if [ "$rc" -ne 0 ] && is_transient_net_signature "$out"; then
+    # Classify against combined stderr + stdout (fail_file) — real helpers
+    # emit common network failures on stderr; checking only $out (stdout)
+    # would stall transient failures as non-transient. Streamed via cat to
+    # avoid argv-sized payloads on huge logs.
+    if [ "$rc" -ne 0 ] && is_transient_net_signature "$(cat "$fail_file" 2>/dev/null)"; then
         record_failure pr-create "create-pr.sh" "$rc" "$fail_file"
         exit_transient_net "create-pr: $out"
     fi
@@ -766,7 +793,9 @@ run_rebase_rebump() {
         fi
     elif [ "$rebase_rc" -ne 0 ]; then
         record_failure rebase "rebase-push.sh --keep-on-conflict" "$rebase_rc" "$fail_file" "CI Issues"
-        if is_transient_net_signature "$rebase_out"; then
+        # Classify against combined stderr + stdout — git/network helpers
+        # emit transient signals on stderr that $rebase_out alone misses.
+        if is_transient_net_signature "$(cat "$fail_file" 2>/dev/null)"; then
             exit_transient_net "rebase: $rebase_out"
         fi
         exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
