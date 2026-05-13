@@ -929,6 +929,8 @@ ${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step2-implement.sh \
     --workflow "$implement_workflow"
 ```
 
+**Do NOT poll or print sidecar output while dispatching.** Invoke `step2-implement.sh` as a foreground-blocking Bash call (no `run_in_background: true`). While the external implementer runs, do NOT read the sidecar log and do NOT print intermediate output to the user — polling floods the terminal with non-actionable messages. The dispatcher blocks; parse its stdout as KV after it exits.
+
 `$PLAN_FILE` is the path written at Step 1 (`/design`'s plan, or the inline quick-mode plan). `$FEATURE_FILE` is `$IMPLEMENT_TMPDIR/feature-description.txt` (created at Step 0). Parse the dispatcher's stdout into local KV variables: `STATUS`, `TOOL`, `MANIFEST`, `QA_PENDING`, `REASON`, `TRANSCRIPT`, `SIDECAR_LOG`, `ORCHESTRATOR_EDIT_AUTHORITY`. Then run the envelope-validation block in 2.1.5 BEFORE branching on `STATUS` in 2.2. Derive:
 
 ```bash
