@@ -850,7 +850,22 @@ Write two larch-log batches from file-backed design artifacts. See Step 0.5 "Lar
 
 If `design_only=true`:
 
-1. If `ISSUE_NUMBER` is set, compose a `larch:diagrams` summary comment from `ARCHITECTURE_DIAGRAM_FILE` (or `"Architecture diagram not available."` if absent/missing) plus the Code Flow placeholder `"(Code Flow Diagram unavailable — --design-only run, no implementation)"`, and post it via `tracking-issue-summary.sh upsert-summary --issue "$ISSUE_NUMBER" --marker "<!-- larch:diagrams v1 runid=$RUN_ID -->"`. Do NOT write a `diagrams` larch-log batch.
+1. If `ISSUE_NUMBER` is set, compose and post the `larch:diagrams` summary comment using Bash file operations to keep diagram content out of the orchestrator's context (same approach as Step 7a's Bash block):
+   ```bash
+   {
+     if [ -n "${ARCHITECTURE_DIAGRAM_FILE:-}" ] && [ -f "${ARCHITECTURE_DIAGRAM_FILE:-}" ]; then
+       cat "$ARCHITECTURE_DIAGRAM_FILE"
+     else
+       printf 'Architecture diagram not available.'
+     fi
+     printf '\n\n(Code Flow Diagram unavailable — --design-only run, no implementation)'
+   } > "$IMPLEMENT_TMPDIR/summary-diagrams.md"
+   ${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-summary.sh upsert-summary \
+     --issue "$ISSUE_NUMBER" \
+     --marker "<!-- larch:diagrams v1 runid=$RUN_ID -->" \
+     --content-file "$IMPLEMENT_TMPDIR/summary-diagrams.md" || true
+   ```
+   Do NOT write a `diagrams` larch-log batch.
 2. Skip the Step 1.r Rebase Checkpoint below — design-only does not modify code, so a rebase to latest main is unnecessary churn.
 3. Skip Steps 2 / 3 / 4 / 5 / 6 / 7 / 7a / 8 / 8a / 8b / 9 / 9b entirely. Proceed directly to Step 9a.1 so accepted OOS observations are filed and the Step 9a.1 log batches are refreshed.
 

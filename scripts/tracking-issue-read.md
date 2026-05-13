@@ -113,7 +113,7 @@ Combination 3 (prompt-only) writes `TASK_FILE` verbatim with no envelope — pro
 
 ## Truncation-marker preservation
 
-Inline `[TRUNCATED — …]` and `[section '<id>' truncated — …]` markers produced by `tracking-issue-write.sh` are preserved verbatim in `TASK_FILE`. This script does NOT reinterpret or strip these markers. Downstream consumers that want marker-free content should strip at the consumer boundary, not at the read boundary. Rationale: the read script's job is transmission, not reinterpretation; existing repo readers (`skills/fix-issue/scripts/get-issue-details.sh`, `skills/issue/scripts/fetch-issue-details.sh`) are mechanical pass-throughs. (DECISION_2 voted 3-0 THESIS at design phase.)
+Inline `[TRUNCATED — …]` and `[section '<id>' truncated — …]` markers produced by `tracking-issue-write.sh` are preserved verbatim in `TASK_FILE`. This script does NOT reinterpret or strip these markers. Downstream consumers that want marker-free content should strip at the consumer boundary, not at the read boundary. Rationale: the read script's job is transmission, not reinterpretation; existing repo readers are mechanical pass-throughs for truncation markers specifically (`skills/issue/scripts/fetch-issue-details.sh` is a complete pass-through; `skills/fix-issue/scripts/get-issue-details.sh` filters larch summary-marker comments via a separate jq rule but does not strip truncation markers). (DECISION_2 voted 3-0 THESIS at design phase.)
 
 ## Known limitation: `--issue + --prompt` is not idempotent
 
