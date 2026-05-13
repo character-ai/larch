@@ -5,7 +5,12 @@
 
 Primary verbs:
 
-- `init` creates `manifest.json`.
+- `init` creates `manifest.json`. Schema version 2 auto-captures
+  `operator_cwd` from the caller's `$PWD` and `operator_repo_root` from
+  `git -C "$PWD" rev-parse --show-toplevel`; outside a git repo,
+  `operator_repo_root` is `null`. These provenance fields are written to
+  the manifest directly and are not passed through the batch payload
+  redaction pipeline.
 - `write` atomically replaces replace-mode batches.
 - `append` atomically appends append-mode NDJSON batches.
 - `exists` probes a batch path.

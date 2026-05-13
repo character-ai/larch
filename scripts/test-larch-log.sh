@@ -39,7 +39,9 @@ out="$("$LARCH_LOG" init --skill implement --run-id abc123 --issue 1438)"
 assert_contains "$out" "LOG_WRITTEN=true" "init writes"
 manifest="$LARCH_LOG_ROOT/implement/abc123/manifest.json"
 if [ -f "$manifest" ]; then pass "manifest exists"; else fail "manifest missing"; fi
-if grep -q '"schema_version": 1' "$manifest"; then pass "manifest schema version"; else fail "manifest schema version"; fi
+if grep -q '"schema_version": 2' "$manifest"; then pass "manifest schema version"; else fail "manifest schema version"; fi
+if grep -q '"operator_cwd":' "$manifest"; then pass "manifest operator cwd"; else fail "manifest operator cwd"; fi
+if grep -q '"operator_repo_root":' "$manifest"; then pass "manifest operator repo root"; else fail "manifest operator repo root"; fi
 if grep -q '"status": "in-progress"' "$manifest"; then pass "manifest status"; else fail "manifest status"; fi
 
 echo "=== replace write is redacted and idempotent ==="

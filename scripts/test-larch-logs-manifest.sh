@@ -13,10 +13,12 @@ export LARCH_LOG_ROOT="$TMP/larch-logs"
 manifest="$LARCH_LOG_ROOT/design/run999/manifest.json"
 
 if command -v jq >/dev/null 2>&1; then
-    jq -e '
-      .schema_version == 1 and
+    jq -e --arg cwd "$PWD" '
+      .schema_version == 2 and
       .skill == "design" and
       .run_id == "run999" and
+      .operator_cwd == $cwd and
+      ((.operator_repo_root | type) == "string" or .operator_repo_root == null) and
       .parent_skill == "implement" and
       .issue_number == 7 and
       .status == "in-progress" and
@@ -24,8 +26,10 @@ if command -v jq >/dev/null 2>&1; then
       (.flags | type == "object")
     ' "$manifest" >/dev/null
 else
-    grep -q '"schema_version": 1' "$manifest"
+    grep -q '"schema_version": 2' "$manifest"
     grep -q '"skill": "design"' "$manifest"
+    grep -q '"operator_cwd":' "$manifest"
+    grep -q '"operator_repo_root":' "$manifest"
 fi
 
 before="$(cat "$manifest")"

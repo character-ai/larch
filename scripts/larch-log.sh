@@ -66,10 +66,18 @@ write_manifest_file() {
     local parent_skill="$2"
     local issue="$3"
     local status="$4"
-    local ts version parent_json issue_json effort_json tmp
+    local ts version parent_json issue_json effort_json operator_cwd operator_repo_root operator_cwd_json operator_repo_root_json tmp
     ts="$(now_utc)"
     version="$(plugin_version)"
     [ -n "$version" ] || version="unknown"
+    operator_cwd="$PWD"
+    operator_repo_root="$(git -C "$operator_cwd" rev-parse --show-toplevel 2>/dev/null)" || true
+    operator_cwd_json="$(json_escape "$operator_cwd")"
+    if [ -n "$operator_repo_root" ]; then
+        operator_repo_root_json="$(json_escape "$operator_repo_root")"
+    else
+        operator_repo_root_json="null"
+    fi
     if [ -n "$parent_skill" ]; then
         parent_json="$(json_escape "$parent_skill")"
     else
@@ -85,9 +93,11 @@ write_manifest_file() {
     tmp="$(mktemp "$(dirname "$path")/.tmp.manifest.XXXXXX")" || larch_log_fail 2 "cannot create manifest temp"
     cat > "$tmp" <<EOF
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "skill": "$SKILL",
   "run_id": "$RUN_ID",
+  "operator_cwd": $operator_cwd_json,
+  "operator_repo_root": $operator_repo_root_json,
   "parent_skill": $parent_json,
   "issue_number": $issue_json,
   "pr_number": null,
