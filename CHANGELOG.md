@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [27.5.4] - 2026-05-13
+
+### Changed
+
+- Changed wait-for-reviewers to use a poll-count timeout budget and discount suspend-length poll iterations.
+- Extended collect-agent-results so transient-network FAILED, TIMED_OUT, and SENTINEL_TIMEOUT rows can reuse the existing .meta retry path.
+- Added collector transient retry coverage and updated Makefile, agent-lint, and docs wiring.
+
 ## [27.5.0] - 2026-05-13
 
 ### Changed
