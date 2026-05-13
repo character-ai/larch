@@ -71,8 +71,8 @@ if [[ -n "$TIMING_LEDGER" && ( ${#TIMING_LEDGER} -gt 512 || ! "$TIMING_LEDGER" =
   exit 1
 fi
 
-if [[ -n "$PREV_IMPLEMENT_TMPDIR_ARG" && ( ${#PREV_IMPLEMENT_TMPDIR_ARG} -gt 512 || "$PREV_IMPLEMENT_TMPDIR_ARG" != /* || "$PREV_IMPLEMENT_TMPDIR_ARG" != "${PREV_IMPLEMENT_TMPDIR_ARG//$'\n'/}" || "$PREV_IMPLEMENT_TMPDIR_ARG" != "${PREV_IMPLEMENT_TMPDIR_ARG//$'\r'/}" ) ]]; then
-  echo "ERROR=Invalid --prev-implement-tmpdir: must be an absolute path of 512 characters or fewer" >&2
+if [[ -n "$PREV_IMPLEMENT_TMPDIR_ARG" && ( ${#PREV_IMPLEMENT_TMPDIR_ARG} -gt 512 || ! "$PREV_IMPLEMENT_TMPDIR_ARG" =~ ^[A-Za-z0-9_./~+-]+$ ) ]]; then
+  echo "ERROR=Invalid --prev-implement-tmpdir: must match ^[A-Za-z0-9_./~+-]{1,512}$" >&2
   exit 1
 fi
 
