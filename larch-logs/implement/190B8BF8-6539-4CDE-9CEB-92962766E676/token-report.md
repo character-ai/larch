@@ -19,9 +19,12 @@
 |  | inferred:Step 7 — commit review fixes | 13042 | 19839371 | 339858 | 38977 |
 | Step 7 — commit review fixes | **step total** | 4 | 1093749 | 1541 | 1245 |
 |  | inferred:Step 7 — commit review fixes | 4 | 1093749 | 1541 | 1245 |
-| Step 7a — code flow diagram | **step total** | 5 | 1371246 | 2029 | 1578 |
-|  | inferred:Step 7a — code flow diagram | 5 | 1371246 | 2029 | 1578 |
-| **Grand total** |  | 13215 | 50981039 | 1017858 | 130589 |
+| Step 7a — code flow diagram | **step total** | 10 | 2751048 | 4533 | 4133 |
+|  | inferred:Step 7a — code flow diagram | 10 | 2751048 | 4533 | 4133 |
+| Step 8a — changelog | **step total** | 0 | 0 | 0 | 0 |
+| Step 8b — rebase | **step total** | 30 | 7277641 | 321203 | 9186 |
+|  | inferred:Step 8b — rebase | 30 | 7277641 | 321203 | 9186 |
+| **Grand total** |  | 13250 | 59638482 | 1341565 | 142330 |
 
 ### Codex
 
@@ -36,4 +39,6 @@
 | Step 7 — commit review fixes | **step total** | 0 | 0 | 0 |
 | Step 7 — commit review fixes | **step total** | 0 | 0 | 0 |
 | Step 7a — code flow diagram | **step total** | 0 | 0 | 0 |
+| Step 8a — changelog | **step total** | 0 | 0 | 0 |
+| Step 8b — rebase | **step total** | 0 | 0 | 0 |
 | **Grand total** |  | 0 | 0 | 384859 |

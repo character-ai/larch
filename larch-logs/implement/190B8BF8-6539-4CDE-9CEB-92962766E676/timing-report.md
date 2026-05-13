@@ -229,7 +229,7 @@
 | implement | Step 5 — code review | 00:08:52 |
 | implement | Step 7 — commit review fixes | 00:08:24 |
 | implement | Step 7 — commit review fixes | 00:00:16 |
-| implement | Step 7a — code flow diagram | 00:00:32 |
+| implement | Step 7a — code flow diagram | 00:13:14 |
 | **Total** | | 119:10:40 |
 
 (*Outlier steps: Step 0 — preflight, Step 8 — version bump, Step 18 — done, Step 18 — done, Step 18 — done, Step 8 — version bump, Step 18 — done, Step 18 — done, Step 18 — done — duration exceeds 04:00:00 threshold; may reflect hung sessions.)
