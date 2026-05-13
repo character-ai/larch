@@ -533,7 +533,7 @@ run_ci_fix_vendor() {
 }
 
 run_evaluate_failure() {
-    local phase=$1 failed_run rerun_out retries
+    local phase=$1 failed_run rerun_out retries local_attempt
     failed_run=$(read_state FAILED_RUN_ID)
     [ -n "$failed_run" ] || exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12c)"
     retries=$(read_state TRANSIENT_RETRIES)
@@ -550,8 +550,17 @@ run_evaluate_failure() {
         fi
     fi
     "$SCRIPT_DIR/gh-run-logs.sh" --run-id "$failed_run" --repo "$(read_state REPO)" || true
-    run_ci_fix_vendor "$phase" "$failed_run" || exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12c)"
-    state_set_many TRANSIENT_RETRIES 0 FIX_ATTEMPTS "$(( $(read_state FIX_ATTEMPTS) + 1 ))"
+    # Local fix loop: fix → run local tests → repeat until passing, then push once.
+    # Only bail to the caller (exit_stall) when all attempts are exhausted.
+    for local_attempt in 1 2 3; do
+        run_ci_fix_vendor "$phase" "$failed_run" && {
+            state_set_many TRANSIENT_RETRIES 0 FIX_ATTEMPTS "$(( $(read_state FIX_ATTEMPTS) + 1 ))"
+            return 0
+        }
+        [ "$local_attempt" -lt 3 ] && \
+            printf 'ci-fix: local attempt %d/3 failed; retrying fix locally before pushing to CI...\n' "$local_attempt"
+    done
+    exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12c)"
 }
 
 run_rebase_rebump() {
