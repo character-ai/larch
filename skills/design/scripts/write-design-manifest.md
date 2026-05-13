@@ -2,6 +2,7 @@
 
 Contract:
 - `PLAN_FILE` and `PLAN_REVIEW_TALLY_FILE` are required non-empty artifacts.
+- `diff-lines.txt` is a required non-empty exported artifact outside the manifest KV schema. It contains only the integer from the final plan's `diff_lines: <N>` line and is copied to `$IMPLEMENT_TMPDIR/design-export/diff-lines.txt` for `/implement` Step 1 coder routing.
 - `CONTESTED_CRITERIA_FILE`, `OOS_FILE`, `REJECTED_FINDINGS_FILE`, and `ACCEPTED_PLAN_FINDINGS_FILE` are required files that may be empty.
 - `ARCHITECTURE_DIAGRAM_FILE` is optional and omitted when generation soft-failed.
 - `run-params.json` is internal-only. It is consumed during the same `/design` run and is deliberately not copied into `design-export/manifest.env`.

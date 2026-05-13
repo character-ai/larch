@@ -18,7 +18,8 @@ trap 'rm -rf "$TMPROOT"' EXIT
 make_design_tree() {
     local dir="$1"
     mkdir -p "$dir"
-    printf '# Plan\n\nDo the work.\n' > "$dir/plan.txt"
+    printf '# Plan\n\nDo the work.\n\ndiff_lines: 42\n' > "$dir/plan.txt"
+    printf '42\n' > "$dir/diff-lines.txt"
     printf '# Tally\n\nReviewer | Score\n' > "$dir/voting-tally.md"
     printf 'NO_CONTESTED_DECISIONS\n' > "$dir/contested-decisions.md"
     : > "$dir/oos.md"
@@ -46,6 +47,7 @@ out=$("$READER" --implement-tmpdir "$IMPLEMENT")
 printf '%s\n' "$out" | grep -q '^MANIFEST_OK=true$' || fail "reader did not accept valid manifest"
 IMPLEMENT_CANON=$(cd -P "$IMPLEMENT" && pwd -P)
 printf '%s\n' "$out" | grep -q "^PLAN_FILE=$IMPLEMENT_CANON/design-export/plan.txt$" || fail "reader did not emit normalized plan path"
+[[ "$(cat "$IMPLEMENT/design-export/diff-lines.txt")" = "42" ]] || fail "writer did not export diff-lines.txt"
 
 DESIGN_MISSING="$TMPROOT/design-missing"
 IMPLEMENT_MISSING="$TMPROOT/implement-missing"
@@ -60,6 +62,7 @@ fi
 BASE_EXPORT="$TMPROOT/manual/design-export"
 mkdir -p "$BASE_EXPORT"
 printf '# Plan\n' > "$BASE_EXPORT/plan.txt"
+printf '42\n' > "$BASE_EXPORT/diff-lines.txt"
 printf '# Tally\n' > "$BASE_EXPORT/voting-tally.md"
 : > "$BASE_EXPORT/contested-decisions.md"
 : > "$BASE_EXPORT/oos.md"

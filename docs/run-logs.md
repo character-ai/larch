@@ -28,7 +28,7 @@ larch-logs/
 
 ## manifest.json
 
-Created by `scripts/larch-log.sh init` at Step 0.5 when the tracking issue is first resolved. Updated by `larch-log.sh manifest` calls throughout the run. Contains: skill name, run ID, tracking-issue number, PR number (once created), and final run status. Authoritative contract: `scripts/larch-log.md`.
+Created by `scripts/larch-log.sh init` at Step 0.5 when the tracking issue is first resolved. Updated by `larch-log.sh manifest` calls throughout the run. Contains: skill name, run ID, tracking-issue number, PR number (once created), final run status, and optional routing flags such as `coder_fallback=true` when omitted-`--coder` routing fell past Codex. Authoritative contract: `scripts/larch-log.md`.
 
 ## Batch files
 

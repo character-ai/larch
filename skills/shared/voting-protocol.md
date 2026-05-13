@@ -6,6 +6,12 @@ Shared voting protocol for adjudicating review findings. Used by `/design` (plan
 
 After reviewers submit findings and findings are deduplicated, a voting panel votes YES/NO/EXONERATE on each finding. `/design` (plan review) uses a 3-voter panel (Claude + Codex + Cursor) unconditionally; findings with 2+ YES votes are accepted. `/review` (code review) uses a 2-voter primary panel (Codex + Cursor) and invokes Claude as a conditional tie-breaker only on a 1Y/1N split — see `skills/review/references/voting.md` for the full code review panel procedure. Original reviewers earn competition points based on how their findings perform in voting. EXONERATE is a third option meaning "legitimate concern, but not worth implementing in this PR" — it spares the proposing reviewer from losing a point on in-scope findings. (OOS observations use asymmetric reward-only scoring — see [OOS Scoring](#oos-scoring) below — so OOS rejection carries no penalty regardless.)
 
+## Wholesale Rejection Flag
+
+`/review` diff mode also computes `WHOLESALE_REJECTED=true|false` for each round after specialist outputs are collected and before accepted fixes are applied. Set `WHOLESALE_REJECTED=true` when any specialist reviewer returns a `WRONG_DIRECTION` tag, or when at least 50% of specialist reviewers that produced substantive output return `BLOCKING` in the same round. This is a direction-of-work signal, not an ordinary finding vote.
+
+When `WHOLESALE_REJECTED=true`, the round summary must include the flag and `/review` must escalate to the Claude main agent for a redo regardless of external-tool availability, passing the prior implementer output and the round's rejected-direction evidence as context. Do not route the redo through Cursor/Codex/Gemini, and do not treat ordinary voter acceptance as sufficient to proceed with incremental fixes.
+
 ## Ballot Format
 
 Before sending to voters, assign each deduplicated finding a stable sequential ID. Format the ballot as:
