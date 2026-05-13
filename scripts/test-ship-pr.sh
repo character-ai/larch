@@ -361,6 +361,51 @@ else
 fi
 rm -rf "$sentinel_dir"
 
+# Regression: second evaluate_failure (TRANSIENT_RETRIES=1) escalates to fix agent,
+# not another rerun. Guards the threshold change in run_evaluate_failure (issue #1987).
+root=$(make_repo ci_fix_escalation)
+tmp=$(make_tmpdir)
+call_dir=$(mktemp -d /tmp/ship-pr-escalation.XXXXXX)
+
+# ci-wait.sh: return evaluate_failure on first call, merge on subsequent calls.
+cat > "$root/scripts/ci-wait.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+count_file="$call_dir/ci-wait-count"
+count=\$(cat "\$count_file" 2>/dev/null || echo 0)
+printf '%s\n' "\$((count + 1))" > "\$count_file"
+if [ "\$count" -eq 0 ]; then
+    printf 'ACTION=evaluate_failure\nCI_STATUS=fail\nBEHIND_COUNT=0\nFAILED_RUN_ID=run123\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n'
+else
+    printf 'ACTION=merge\nCI_STATUS=pass\nBEHIND_COUNT=0\nFAILED_RUN_ID=\nBAIL_REASON=\nITERATION=1\nELAPSED=1\n'
+fi
+STUB
+chmod +x "$root/scripts/ci-wait.sh"
+
+# ci-rerun-failed.sh: write sentinel if called — must NOT be called when TRANSIENT_RETRIES=1.
+cat > "$root/scripts/ci-rerun-failed.sh" <<'STUB'
+#!/usr/bin/env bash
+printf 'RERUN_SUBMITTED=true\nALREADY_RUNNING=false\nERROR=\n'
+touch "${RERUN_SENTINEL_FILE:-/tmp/rerun-called}"
+STUB
+chmod +x "$root/scripts/ci-rerun-failed.sh"
+
+write_state "$tmp/ship-pr-state.sh" ci-initial
+awk '/^TRANSIENT_RETRIES=/ {print "TRANSIENT_RETRIES=1"; next}
+     /^FAILED_RUN_ID=/ {print "FAILED_RUN_ID=run123"; next}
+     {print}' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" \
+    && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
+
+rerun_sentinel="$call_dir/rerun-called"
+RERUN_SENTINEL_FILE="$rerun_sentinel" run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 0 "second evaluate_failure (TRANSIENT_RETRIES=1) exits 0 via fix-agent path"
+if [ -f "$rerun_sentinel" ]; then
+    fail "second evaluate_failure must NOT submit another rerun when TRANSIENT_RETRIES=1"
+else
+    ok "second evaluate_failure skips rerun and escalates to fix agent (TRANSIENT_RETRIES=1)"
+fi
+rm -rf "$call_dir"
+
 if [[ "$FAIL_COUNT" -ne 0 ]]; then
     echo "test-ship-pr: $FAIL_COUNT failure(s), $PASS_COUNT pass(es)" >&2
     exit 1
