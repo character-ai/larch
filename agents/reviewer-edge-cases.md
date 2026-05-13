@@ -67,6 +67,6 @@ Each following record must use this exact field order:
 1\t<scope>\t<severity>\t<focus_area>\t<location>\t<what>\t<scenario_or_breakage>\t<suggested_fix>
 ```
 
-Use `in_scope` or `out_of_scope` for `scope`; `important`, `nit`, or `latent` for `severity`; and one of `code-quality`, `risk-integration`, `correctness`, `architecture`, or `security` for `focus_area`. If a field value contains a literal tab or newline, replace it with a single space.
+Use `in_scope` or `out_of_scope` for `scope`; `important`, `nit`, `latent`, or `blocking` for `severity`; and one of `code-quality`, `risk-integration`, `correctness`, `architecture`, or `security` for `focus_area`. If a field value contains a literal tab or newline, replace it with a single space.
 
 If no in-scope issues found, say "No in-scope issues found." If no out-of-scope observations, omit that section. Do NOT edit any files.
