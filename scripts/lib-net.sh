@@ -1,6 +1,6 @@
 # shellcheck shell=bash
 # Sourced-only library: no shebang and no `set -e`; callers own exit semantics.
-if [[ -n "${LARCH_LIB_NET_LOADED:-}" ]]; then
+if [[ "${LARCH_LIB_NET_LOADED:-}" == "1" ]]; then
     return 0
 fi
 
