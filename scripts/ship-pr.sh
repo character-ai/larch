@@ -738,7 +738,7 @@ run_postmerge_phase() {
     local flush_run_id pr_num
     flush_run_id=$(read_state RUN_ID)
     pr_num=$(read_state PR_NUMBER)
-    if [ -n "$flush_run_id" ] && [ -n "$pr_num" ] && [ "$(read_state REPO_UNAVAILABLE)" = "false" ]; then
+    if [ -n "$flush_run_id" ] && [ -n "$pr_num" ] && [ "$(read_state REPO_UNAVAILABLE)" = "false" ] && [ "$(read_state PR_CLOSED)" = "true" ]; then
         "$SCRIPT_DIR/larch-log.sh" manifest \
             --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
             --skill implement --run-id "$flush_run_id" \
