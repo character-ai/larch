@@ -76,8 +76,11 @@ grep -q 'read-design-manifest.sh.*--emit-load-breadcrumb' "$WRAPPER" \
 
 # (L) SKILL.md Step 1 normal mode invokes the wrapper with the three required
 #     flags. Quoting may vary; this assertion pins the logical Bash block.
+#     Anchor on skills/implement/scripts/post-design-boundary.sh — a plain
+#     post-design-boundary.sh match would also fire inside test-post-design-boundary.sh
+#     (earlier false first-match if the canonical fenced block is absent).
 WRAPPER_BLOCK=$(awk '
-    /post-design-boundary\.sh/ { in_block=1 }
+    /skills\/implement\/scripts\/post-design-boundary\.sh/ { in_block=1 }
     in_block { print }
     in_block && /--design-only/ { exit }
 ' "$SKILL_MD")
