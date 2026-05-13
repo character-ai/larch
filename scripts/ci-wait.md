@@ -4,7 +4,7 @@
 
 ## Synchronous-only invocation contract
 
-`ci-wait.sh` MUST be invoked synchronously (no `run_in_background: true` in Bash tool calls). The recommended `timeout: 1860000` (31 minutes) on the Bash tool call covers the script's `1800`-second wall-clock default plus generous overhead.
+`ci-wait.sh` MUST be invoked synchronously (no `run_in_background: true` in Bash tool calls). The recommended `timeout: 1860000` (31 minutes) on the Bash tool call covers the script's `1800`-second poll budget (180 poll slots × 10s each) plus generous overhead. The `--timeout` flag controls the poll budget (`MAX_POLLS = floor(TIMEOUT / 10)`) rather than a hard wall-clock cap; suspend-detected iterations (sleep window ran >60s) are not counted against the budget so the script is resilient to laptop suspend/resume.
 
 Backgrounding `ci-wait.sh` disconnects the orchestrator from the script's return code AND creates a leaked-polling-loop risk: when the harness later force-kills the wrapper shell mid-poll, the EXIT trap fires only on trap-deliverable signals (SIGTERM, etc.), and any operator-improvised polling loop watching the harness's `<task-id>.output.done` (rather than this script's optional `--output-file <path>.done`) will spin forever because the harness only writes its own sentinel on clean wrapper-shell exit. See issue #842 for the full failure-mode trace.
 

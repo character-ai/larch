@@ -21,7 +21,10 @@
 #   --rebase-count   Current rebase count, passed through to ci-decide.sh (default: 0)
 #   --fix-attempts   Current fix attempt count, passed through to ci-decide.sh (default: 0)
 #   --iteration      Starting iteration count (default: 0). Incremented internally each poll cycle.
-#   --timeout        Wall-clock timeout in seconds (default: 1800 = 30 minutes)
+#   --timeout        Poll-budget in seconds: MAX_POLLS=floor(TIMEOUT/10) poll slots.
+#                    Each normal 10-second iteration consumes one slot. Suspend-detected
+#                    iterations (sleep ran >60s) are not counted, so the budget is
+#                    resilient to laptop suspend. Default: 1800 (180 poll slots).
 #   --output-file    Optional. Redirect KV output to <path> via atomic publish
 #                    (write to <path>.tmp, then mv -f to <path>) and write the
 #                    numeric exit code to <path>.done on any trap-deliverable
@@ -175,13 +178,11 @@ MAX_POLLS=$((TIMEOUT / 10))
 printf "⏳ CI: waiting" >&2
 
 while true; do
-    iter_start=$(date +%s)
-
     # Poll-count timeout (suspend-resilient)
     if [[ $checks -ge $MAX_POLLS ]]; then
         ACTION="bail"
         BAIL_REASON="Wall-clock timeout (${TIMEOUT}s) exceeded"
-        printf "\n⚠ CI wait timed out after %ds\n" "$TIMEOUT" >&2
+        printf "\n⚠ CI wait timed out after %d polls (%ds budget, %ds elapsed)\n" "$checks" "$TIMEOUT" "$SECONDS" >&2
         exit 0
     fi
 
@@ -265,11 +266,11 @@ while true; do
             "$((SECONDS / 60))" "$checks" "$CI_STATUS" >&2
     fi
 
+    # Detect laptop suspend: measure only the sleep window. If sleep ran far
+    # longer than expected (> 60s when we only asked for 10s), the machine was
+    # suspended. Don't charge that iteration against the poll budget.
+    iter_start=$(date +%s)
     sleep 10
-
-    # Detect laptop suspend: if the iteration wall-clock delta is implausibly
-    # large (> 60s when we only slept 10s), the machine was suspended. Don't
-    # charge that iteration against the poll budget.
     iter_delta=$(( $(date +%s) - iter_start ))
     if [[ $iter_delta -gt 60 ]]; then
         printf "\n⚠ suspend detected — iteration took %ds, not counting toward poll budget\n" "$iter_delta" >&2

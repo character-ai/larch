@@ -243,14 +243,17 @@ exit_stall() {
 }
 
 exit_transient_net() {
-    state_set_many BAIL_REASON "$1" STALL_TRACKING false
+    # Truncate to first line to keep BAIL_REASON a single KEY=value line in state.
+    local reason
+    reason=$(printf '%s' "$1" | head -1 | cut -c1-200)
+    state_set_many BAIL_REASON "$reason" STALL_TRACKING false
     exit 6
 }
 
 is_transient_net_signature() {
     local text=$1
     case "$text" in
-        *"Could not resolve"*|*"unable to access"*|*"Connection refused"*|*"Temporary failure"*|*"timed out"*|*"TLS handshake"*|*"HTTP 5"*|*"Wall-clock timeout"*|*"no valid output 3 times"*|*"network/auth issue"*) return 0 ;;
+        *"Could not resolve"*|*"unable to access"*|*"Connection refused"*|*"Temporary failure"*|*"timed out"*|*"TLS handshake"*|*"HTTP 5"*|*"no valid output 3 times"*|*"git fetch"*"failed"*|*"network/auth issue"*) return 0 ;;
         *) return 1 ;;
     esac
 }

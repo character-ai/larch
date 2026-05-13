@@ -141,9 +141,12 @@ write_ci_decide_stub "$root"
 # ci-wait.sh calls: date +%s (iter_start) then date +%s (iter_delta calc after sleep).
 # We make the second date call return iter_start + 70 the first time around.
 REAL_DATE=$(command -v date)
+# After the iter_start/sleep/iter_delta fix, ci-wait.sh calls date twice per iteration:
+# call 1: iter_start (just before sleep) → return current ts (save as base)
+# call 2: after sleep, for delta → return base+70 (simulate 70s sleep = suspend)
+# Subsequent calls return real ts so the loop proceeds normally.
 cat > "$root/scripts/date" <<SH
 #!/usr/bin/env bash
-# Fake date stub: returns base epoch on first call, base+70 on second call.
 count_file="\$(dirname "\$0")/../.date-count"
 count=\$(cat "\$count_file" 2>/dev/null || echo 0)
 count=\$((count + 1))

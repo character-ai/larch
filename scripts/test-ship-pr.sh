@@ -692,8 +692,28 @@ run_subject "$root" "$tmp" "$tmp/rc"
 assert_rc "$tmp/rc" 6 "transient merge-pr: exits 6 on network/auth signature"
 assert_state_line "$tmp/ship-pr-state.sh" "STALL_TRACKING=false" "transient merge-pr: STALL_TRACKING=false"
 
-# Positive case 3: ci-wait bail with Wall-clock timeout signature — expect exit 6.
+# Positive case 3: ci-wait bail with transient network signature — expect exit 6.
 root=$(make_repo transient_ci_wait_bail)
+tmp=$(make_tmpdir)
+cat > "$root/scripts/ci-wait.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "ACTION=bail"
+echo "BAIL_REASON=ci-status.sh returned no valid output 3 times consecutively"
+echo "CI_STATUS=pending"
+echo "BEHIND_COUNT=0"
+echo "FAILED_RUN_ID="
+echo "ITERATION=0"
+echo "ELAPSED=30"
+STUB
+chmod +x "$root/scripts/ci-wait.sh"
+write_state "$tmp/ship-pr-state.sh" ci-merge
+run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 6 "transient ci-wait bail: exits 6 on no-valid-output-3-times signature"
+assert_state_line "$tmp/ship-pr-state.sh" "STALL_TRACKING=false" "transient ci-wait bail: STALL_TRACKING=false"
+
+# Verify Wall-clock timeout (poll budget exhausted) does NOT trigger exit 6 — it's not network-transient.
+root=$(make_repo non_transient_ci_timeout)
 tmp=$(make_tmpdir)
 cat > "$root/scripts/ci-wait.sh" <<'STUB'
 #!/usr/bin/env bash
@@ -709,8 +729,8 @@ STUB
 chmod +x "$root/scripts/ci-wait.sh"
 write_state "$tmp/ship-pr-state.sh" ci-merge
 run_subject "$root" "$tmp" "$tmp/rc"
-assert_rc "$tmp/rc" 6 "transient ci-wait bail: exits 6 on Wall-clock timeout signature"
-assert_state_line "$tmp/ship-pr-state.sh" "STALL_TRACKING=false" "transient ci-wait bail: STALL_TRACKING=false"
+assert_rc "$tmp/rc" 4 "non-transient ci-wait timeout: exits 4 (poll budget exhaustion is not network-transient)"
+assert_state_line "$tmp/ship-pr-state.sh" "STALL_TRACKING=true" "non-transient ci-wait timeout: STALL_TRACKING=true"
 
 # Positive case 4: rebase-push transient — stub emits network error, expect exit 6.
 root=$(make_repo transient_rebase_push)
