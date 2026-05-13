@@ -48,6 +48,8 @@ No cap on the number of findings — report every issue you identify.
 ### In-Scope Findings
 Numbered list. Each finding: severity (`**Important**` / `**Nit**` / `**Latent**`), focus-area tag, file:line, what the issue is, suggested fix.
 
+**Wholesale direction signal**: if the entire implementation direction is fundamentally wrong (not just fixable), tag the most critical finding `WRONG_DIRECTION` instead of a normal focus-area tag. Use `**BLOCKING**` severity for a finding so severe it would prevent any reasonable merge. These tags inform the orchestrator's wholesale-rejection escalation.
+
 ### Out-of-Scope Observations
 Numbered list of pre-existing issues worth surfacing. Same format plus why it is out of scope.
 
