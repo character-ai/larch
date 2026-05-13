@@ -33,9 +33,9 @@ The scan uses:
 - `git -C "$(pwd)" rev-parse --show-toplevel` to locate the repository root.
 - `larch-logs/implement/*/manifest.json` — provides `issue_number`, `updated_at`, `started_at` per run.
 - `larch-logs/implement/*/token-report.md` — provides token data (read directly; no sentinel wrappers needed).
-- `larch-logs/implement/*/plan-review-tally.ndjson` — first record's `.body` field: starts with `"Quick mode"` → `SIMPLE`; non-empty other value → `HARD`; absent or unrecognized → `unknown`.
+- `larch-logs/implement/*/plan-review-tally.ndjson` — first record's `.body // .tally` field: starts with `"Quick mode"` or `"Both externals unavailable"` → `SIMPLE`; non-empty other value → `HARD`; absent or unrecognized → `unknown`. Falls back to reading the first raw line when the file is not valid NDJSON (handles older plain-text format).
 
-`gh` is still required for `--no-issue` (posting the analysis report issue) and `--plot-from` (fetching a prior report issue for re-plotting). `jq` and `python3` are always required. Missing commands are hard failures.
+`gh` is required for repository resolution (`gh repo view`, used for URL construction; bypass via `LARCH_REPORT_TOKENS_REPO`), for posting the `[Analysis Report]` issue (active when `--no-issue` is absent), and for `--plot-from` (fetching a prior report issue body). `jq` and `python3` are always required. Missing commands are hard failures.
 
 ## Parsing invariants
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run-analysis.sh - Analyze token-report costs across closed larch issues.
+# run-analysis.sh - Analyze token costs from committed larch run logs.
 
 set -euo pipefail
 
@@ -122,10 +122,10 @@ if [[ -z "$PLOT_FROM" ]]; then
         workflow_path="unknown"
         if [[ -f "$plan_tally" ]]; then
             tally_body=""
-            if ! tally_body=$(jq -r 'select(.body != null) | .body' "$plan_tally" 2>/dev/null | head -1); then
+            if ! tally_body=$(jq -r 'select((.body // .tally) != null) | (.body // .tally)' "$plan_tally" 2>/dev/null | head -1); then
                 tally_body=$(head -1 "$plan_tally" 2>/dev/null || true)
             fi
-            if [[ "$tally_body" == "Quick mode"* ]]; then
+            if [[ "$tally_body" == "Quick mode"* || "$tally_body" == "Both externals unavailable"* ]]; then
                 workflow_path="SIMPLE"
             elif [[ -n "$tally_body" ]]; then
                 workflow_path="HARD"
@@ -523,7 +523,7 @@ for workflow in ("SIMPLE", "HARD"):
     ax.plot(dates, costs, marker="o", linewidth=1.5)
     ax.set_title(f"{workflow} token cost over time")
     ax.set_ylabel("Estimated cost (USD)")
-    ax.set_xlabel("Issue closed date")
+    ax.set_xlabel("Run date")
     ax.grid(True, alpha=0.3)
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
     fig.autofmt_xdate()
@@ -612,15 +612,15 @@ def print_analysis(cache_path, records, skipped, plot_paths):
     if not records:
         print("No parseable token reports found.")
         if skipped:
-            print(f"Skipped issues without a parseable report: {skipped}")
+            print(f"Skipped runs without a parseable report: {skipped}")
         return
 
     dates = [r["closed_at"] for r in records if r["closed_at"]]
     costs = [r["cost"] for r in records]
     print(
-        f"Parsed {len(records)} issue(s); skipped {skipped}. "
+        f"Parsed {len(records)} run(s); skipped {skipped}. "
         f"Total estimated cost: {dollars(sum(costs))}; "
-        f"median issue cost: {dollars(statistics.median(costs))}."
+        f"median run cost: {dollars(statistics.median(costs))}."
     )
     if dates:
         print(f"Closed date range: {min(dates).date()} to {max(dates).date()}.")
@@ -636,7 +636,7 @@ def print_analysis(cache_path, records, skipped, plot_paths):
             continue
         values = [r["cost"] for r in rows]
         print(
-            f"- {workflow}: {len(rows)} issue(s), total {dollars(sum(values))}, "
+            f"- {workflow}: {len(rows)} run(s), total {dollars(sum(values))}, "
             f"median {dollars(statistics.median(values))}, max {dollars(max(values))}"
         )
         vendor_costs: dict = {}
@@ -650,12 +650,12 @@ def print_analysis(cache_path, records, skipped, plot_paths):
 
     simple = sorted(by_workflow.get("SIMPLE", []), key=lambda r: r["cost"], reverse=True)[:10]
     print("")
-    print("### Top SIMPLE issues by estimated cost")
+    print("### Top SIMPLE runs by estimated cost")
     if simple:
         for r in simple:
             print(f"- #{r['number']} {dollars(r['cost'])} - {r['title']}")
     else:
-        print("- No SIMPLE issues found.")
+        print("- No SIMPLE runs found.")
 
     hard_rows = by_workflow.get("HARD", [])
     phase_costs = Counter()
