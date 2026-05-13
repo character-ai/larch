@@ -574,6 +574,91 @@ else
 fi
 rm -rf "$sentinel_dir"
 
+# ──────────────────────────────────────────────────────────────────────────────
+# run_evaluate_failure: inner local fix loop
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Inner loop retries: first 2 local check attempts fail, 3rd succeeds -> exits 0.
+root=$(make_repo ci_fix_local_retry)
+tmp=$(make_tmpdir)
+call_dir=$(mktemp -d /tmp/ship-pr-local-retry.XXXXXX)
+cat > "$root/scripts/ci-wait.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+count_file="$call_dir/ci-wait-count"
+count=\$(cat "\$count_file" 2>/dev/null || echo 0)
+printf '%s\n' "\$((count + 1))" > "\$count_file"
+if [ "\$count" -eq 0 ]; then
+    printf 'ACTION=evaluate_failure\nCI_STATUS=fail\nBEHIND_COUNT=0\nFAILED_RUN_ID=run123\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n'
+else
+    printf 'ACTION=merge\nCI_STATUS=pass\nBEHIND_COUNT=0\nFAILED_RUN_ID=\nBAIL_REASON=\nITERATION=1\nELAPSED=1\n'
+fi
+STUB
+chmod +x "$root/scripts/ci-wait.sh"
+cat > "$root/scripts/run-relevant-checks-captured.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+count_file="$call_dir/checks-count"
+count=\$(cat "\$count_file" 2>/dev/null || echo 0)
+printf '%s\n' "\$((count + 1))" > "\$count_file"
+if [ "\$count" -lt 2 ]; then
+    echo "STATUS=fail FAILURE_REASON=stubbed"
+    exit 1
+fi
+echo "RELEVANT_CHECKS_OK=true SITE=step10 COVERAGE=full"
+exit 0
+STUB
+chmod +x "$root/scripts/run-relevant-checks-captured.sh"
+write_state "$tmp/ship-pr-state.sh" ci-initial
+awk '/^TRANSIENT_RETRIES=/ {print "TRANSIENT_RETRIES=1"; next}
+     /^FAILED_RUN_ID=/ {print "FAILED_RUN_ID=run123"; next}
+     {print}' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" \
+    && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
+run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 0 "local fix loop: 2 failures then success exits 0"
+check_count=$(cat "$call_dir/checks-count" 2>/dev/null || echo 0)
+if [ "$check_count" -eq 3 ]; then
+    ok "local fix loop: ran 3 local check attempts before succeeding"
+else
+    fail "local fix loop: expected 3 check attempts, got $check_count"
+fi
+rm -rf "$call_dir"
+
+# Inner loop exhausted: all 3 attempts fail -> stall (exits 4).
+root=$(make_repo ci_fix_exhausted)
+tmp=$(make_tmpdir)
+call_dir=$(mktemp -d /tmp/ship-pr-exhausted.XXXXXX)
+cat > "$root/scripts/ci-wait.sh" <<'STUB'
+#!/usr/bin/env bash
+printf 'ACTION=evaluate_failure\nCI_STATUS=fail\nBEHIND_COUNT=0\nFAILED_RUN_ID=run123\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n'
+STUB
+chmod +x "$root/scripts/ci-wait.sh"
+cat > "$root/scripts/run-relevant-checks-captured.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+count_file="$call_dir/checks-count"
+count=\$(cat "\$count_file" 2>/dev/null || echo 0)
+printf '%s\n' "\$((count + 1))" > "\$count_file"
+echo "STATUS=fail FAILURE_REASON=stubbed"
+exit 1
+STUB
+chmod +x "$root/scripts/run-relevant-checks-captured.sh"
+write_state "$tmp/ship-pr-state.sh" ci-initial
+awk '/^TRANSIENT_RETRIES=/ {print "TRANSIENT_RETRIES=1"; next}
+     /^FAILED_RUN_ID=/ {print "FAILED_RUN_ID=run123"; next}
+     {print}' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" \
+    && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
+run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 4 "local fix loop: all 3 attempts exhausted stalls (exits 4)"
+assert_state_line "$tmp/ship-pr-state.sh" "STALL_TRACKING=true" "local fix loop exhausted marks stall"
+check_count=$(cat "$call_dir/checks-count" 2>/dev/null || echo 0)
+if [ "$check_count" -eq 3 ]; then
+    ok "local fix loop exhausted: ran all 3 check attempts"
+else
+    fail "local fix loop exhausted: expected 3 check attempts, got $check_count"
+fi
+rm -rf "$call_dir"
+
 if [[ "$FAIL_COUNT" -ne 0 ]]; then
     echo "test-ship-pr: $FAIL_COUNT failure(s), $PASS_COUNT pass(es)" >&2
     exit 1
