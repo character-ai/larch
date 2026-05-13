@@ -1,6 +1,6 @@
 # skills/fix-issue/scripts/test-fix-issue-bail-detection.sh — contract
 
-`skills/fix-issue/scripts/test-fix-issue-bail-detection.sh` is the regression harness for the Phase 4 bail-detection prose in `skills/fix-issue/SKILL.md` Step 5a (originally Phase 4 of umbrella #348; renumbered from Step 6a to Step 5a by the fold-find-and-lock refactor closes #496). It is offline, hermetic, and runs against the committed `SKILL.md` — no network, no git state change, no mocks. The harness guards against accidental removal of literal assertions inside the Step 5a block, covering eleven conceptual checks:
+`skills/fix-issue/scripts/test-fix-issue-bail-detection.sh` is the regression harness for the Phase 4 bail-detection prose in `skills/fix-issue/SKILL.md` Step 5a (originally Phase 4 of umbrella #348; renumbered from Step 6a to Step 5a by the fold-find-and-lock refactor closes #496). It is offline, hermetic, and runs against the committed `SKILL.md` — no network, no git state change, no mocks. The harness guards against accidental removal of literal assertions inside the Step 5a block, covering twelve conceptual checks:
 
 - `--issue $ISSUE_NUMBER` in the invocation (forwarded to `/implement` so it adopts the queue issue via Phase 3 Branch 2).
 - `--no-admin-fallback` in the invocation (issue #559 — branch-protection bypass safety flag forwarded so `/fix-issue --no-admin-fallback` callers are not silently exposed to an `--admin` override).
@@ -13,6 +13,7 @@
 - `/implement bailed: issue #` — the user-visible warning prefix printed on the bail branch.
 - `` Do NOT call `issue-lifecycle.sh close` `` — specific directive fragment (not a bare `Do NOT call` substring) that prevents silent re-routing of the bail path back to Step 6's close call. The full phrase is required because the awk extraction window also includes section 5b, which contains an unrelated `Do NOT call \`/implement\`` sentence.
 - `Skip to Step 8` — cleanup redirect on the bail branch.
+- `Invoke` followed by `/implement` via the Skill tool — delegation mandate that anchors anti-pattern #5 (NEVER implement inline at Step 5a using Edit/Write/Bash file-modification tools instead of delegating to `/implement` via the Skill tool; closes #1988).
 
 Extraction boundary: `^### 5a` (start, prefix match) through `^## Step 6` (end, prefix match; the real heading is `## Step 6 — Close Issue`). This scopes the assertions to Step 5a so stray mentions of these literals elsewhere in `SKILL.md` cannot false-pass the harness.
 
