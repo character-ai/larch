@@ -18,6 +18,6 @@
 |  | larch:implement | 15 | 4216466 | 16687 | 10269 |
 | Step 6 — checks second pass | **step total** | 2 | 573974 | 3899 | 2376 |
 |  | larch:implement | 2 | 573974 | 3899 | 2376 |
-| Step 7a — code flow diagram | **step total** | 7 | 2032825 | 4808 | 4002 |
-|  | larch:implement | 7 | 2032825 | 4808 | 4002 |
-| **Grand total** |  | 76 | 20301466 | 79299 | 43460 |
+| Step 7a — code flow diagram | **step total** | 14 | 4086125 | 9270 | 8035 |
+|  | larch:implement | 14 | 4086125 | 9270 | 8035 |
+| **Grand total** |  | 83 | 22354766 | 83761 | 47493 |
