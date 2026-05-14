@@ -21,6 +21,7 @@ FEATURE_FILE=""
 DESCRIPTION_TEXT=""
 TIMING_TASK_PREFIX="review"
 LAUNCH_CLAUDE="$PLUGIN_ROOT/scripts/launch-claude-subprocess.sh"
+SESSION_ENV_PATH="${SESSION_ENV_PATH:-}"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -37,6 +38,7 @@ while [[ $# -gt 0 ]]; do
         --description-text) DESCRIPTION_TEXT="${2:?--description-text requires a value}"; shift 2 ;;
         --timing-task-prefix) TIMING_TASK_PREFIX="${2:?--timing-task-prefix requires a value}"; shift 2 ;;
         --launch-claude-subprocess) LAUNCH_CLAUDE="${2:?--launch-claude-subprocess requires a value}"; shift 2 ;;
+        --session-env-path) SESSION_ENV_PATH="${2:?--session-env-path requires a value}"; shift 2 ;;
         --help) usage; exit 0 ;;
         *) echo "dispatch-panel.sh: unknown option: $1" >&2; usage; exit 2 ;;
     esac
@@ -53,6 +55,29 @@ manifest="$REVIEW_TMPDIR/panel-manifest.ndjson"
 external_outputs=()
 claude_outputs=()
 slot_count=0
+
+execution_issue_log() {
+    if [[ -n "$SESSION_ENV_PATH" ]]; then
+        printf '%s/execution-issues.md' "$(dirname "$SESSION_ENV_PATH")"
+    elif [[ -n "${IMPLEMENT_TMPDIR:-}" ]]; then
+        printf '%s/execution-issues.md' "$IMPLEMENT_TMPDIR"
+    else
+        printf '%s/execution-issues.md' "$REVIEW_TMPDIR"
+    fi
+}
+
+append_launch_failure() {
+    local site="$1" tool="$2" rc="$3" output_file="$4"
+    [[ -x "$PLUGIN_ROOT/scripts/append-tool-failure.sh" ]] || return 0
+    "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+        --log "$(execution_issue_log)" \
+        --site "$site" \
+        --tool "$tool" \
+        --exit-code "$rc" \
+        --category "External Reviewer Issues" \
+        --output-file "$output_file" \
+        --redact >/dev/null 2>&1 || true
+}
 
 make_prompt() {
     local name="$1"
@@ -73,7 +98,18 @@ launch_claude_slot() {
     args=(--prompt-file "$prompt" --output-file "$out" --timeout 1800 --timing-task-kind "${TIMING_TASK_PREFIX}-claude-${name}")
     [[ -n "$DIFF_FILE" && -f "$DIFF_FILE" ]] && args+=(--context-files "$DIFF_FILE")
     [[ -n "$SCOPE_FILES" && -f "$SCOPE_FILES" ]] && args+=(--context-files "$SCOPE_FILES")
-    "$LAUNCH_CLAUDE" "${args[@]}" >/dev/null &
+    {
+        launch_log="$REVIEW_TMPDIR/dispatch-claude-${name}.log"
+        # set +e: capture launcher non-zero exits and surface them via
+        # append_launch_failure. Without this, set -e (inherited from the
+        # parent) aborts the subshell before rc capture and the failure
+        # logging path is bypassed.
+        set +e
+        "$LAUNCH_CLAUDE" "${args[@]}" > "$launch_log" 2>&1
+        rc=$?
+        set -e
+        [[ "$rc" -eq 0 ]] || append_launch_failure "review Step 2" "launch-claude-subprocess.sh $name" "$rc" "$launch_log"
+    } &
     printf '{"slot":"%s","tool":"claude","output":"%s"}\n' "$name" "$out" >> "$manifest"
     claude_outputs+=("$out")
     slot_count=$((slot_count + 1))
@@ -87,7 +123,18 @@ launch_external_slot() {
     [[ "$MODE" == "description" && -n "$SCOPE_FILES" ]] && args+=(--description-text "${DESCRIPTION_TEXT:-description review}" --scope-files "$SCOPE_FILES")
     [[ "$name" == "correctness" && -n "$PLAN_FILE" && -f "$PLAN_FILE" ]] && args+=(--plan-file "$PLAN_FILE")
     [[ "$name" == "correctness" && -n "$FEATURE_FILE" && -f "$FEATURE_FILE" ]] && args+=(--feature-file "$FEATURE_FILE")
-    "$PLUGIN_ROOT/scripts/launch-review.sh" "${args[@]}" >/dev/null &
+    {
+        launch_log="$REVIEW_TMPDIR/dispatch-${tool}-${name}.log"
+        # set +e: capture launcher non-zero exits and surface them via
+        # append_launch_failure. Without this, set -e (inherited from the
+        # parent) aborts the subshell before rc capture and the failure
+        # logging path is bypassed.
+        set +e
+        "$PLUGIN_ROOT/scripts/launch-review.sh" "${args[@]}" > "$launch_log" 2>&1
+        rc=$?
+        set -e
+        [[ "$rc" -eq 0 ]] || append_launch_failure "review Step 2" "launch-review.sh $tool $name" "$rc" "$launch_log"
+    } &
     printf '{"slot":"%s","tool":"%s","output":"%s"}\n' "$name" "$tool" "$out" >> "$manifest"
     external_outputs+=("$out")
     slot_count=$((slot_count + 1))

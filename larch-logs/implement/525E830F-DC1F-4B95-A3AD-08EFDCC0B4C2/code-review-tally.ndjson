@@ -1,0 +1,1 @@
+{"run_id":"525E830F-DC1F-4B95-A3AD-08EFDCC0B4C2","phase":"code-review","rounds":2,"workflow":"quick","accepted_count":10,"rejected_count":6,"all_fail_guard_triggered":true,"all_fail_round":2,"all_fail_reason":"Cursor transient network failures (5 timeouts/DNS) + Codex timeout; fell back to Claude generic reviewer"}

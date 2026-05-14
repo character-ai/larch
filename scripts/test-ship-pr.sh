@@ -116,7 +116,7 @@ SH
 set -euo pipefail
 echo "RENAMED=true"
 SH
-    for helper in create-pr.sh gh-pr-body-update.sh rebase-push.sh ci-rerun-failed.sh gh-run-logs.sh launch-cursor-ci.sh launch-codex-ci.sh append-token-record.sh git-commit.sh git-push.sh sanitize-mermaid-fragment.sh append-execution-issue.sh resolve-repo.sh; do
+    for helper in create-pr.sh gh-pr-body-update.sh rebase-push.sh ci-rerun-failed.sh gh-run-logs.sh launch-cursor-ci.sh launch-codex-ci.sh append-token-record.sh git-commit.sh git-push.sh sanitize-mermaid-fragment.sh append-execution-issue.sh append-tool-failure.sh resolve-repo.sh; do
         cat > "$root/scripts/$helper" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -125,6 +125,28 @@ case "$(basename "$0")" in
     echo "PR_NUMBER=123"; echo "PR_URL=https://example.invalid/pr/123"; echo "PR_TITLE=Title"; echo "PR_STATUS=created" ;;
   sanitize-mermaid-fragment.sh)
     echo "STATUS=ok" ;;
+  append-tool-failure.sh)
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --log) log=$2; shift 2 ;;
+        --category) category=$2; shift 2 ;;
+        --site) site=$2; shift 2 ;;
+        --tool) tool=$2; shift 2 ;;
+        --exit-code) exit_code=$2; shift 2 ;;
+        --output-file) output_file=$2; shift 2 ;;
+        --redact) shift ;;
+        *) shift ;;
+      esac
+    done
+    mkdir -p "$(dirname "${log:-/tmp/execution-issues.md}")"
+    {
+      printf '### %s\n\n' "${category:-Tool Failures}"
+      printf -- '- Step %s — %s failed (exit %s)\n' "${site:-unknown}" "${tool:-unknown}" "${exit_code:-unknown}"
+      cat "${output_file:-/dev/null}" 2>/dev/null || true
+    } >> "${log:-/tmp/execution-issues.md}"
+    echo "APPENDED=true"
+    echo "LOG=${log:-}"
+    ;;
   resolve-repo.sh)
     echo "REPO=owner/repo" ;;
 esac
@@ -170,6 +192,8 @@ make_tmpdir() {
 
 write_state() {
     local file=$1 phase=$2
+    local state_tmpdir
+    state_tmpdir=$(dirname "$file")
     cat > "$file" <<EOF
 PHASE=$phase
 BRANCH_NAME=master
@@ -205,6 +229,7 @@ FAILED_RUN_ID=
 MANIFEST_PATH=
 TOOL_LABEL=claude
 DESIGN_ONLY_DONE=false
+IMPLEMENT_TMPDIR=$state_tmpdir
 EXPECTED_SESSION_ID=
 EXPECTED_TMPDIR_BASENAME_PREFIX=claude-implement-test-
 EOF
@@ -791,6 +816,13 @@ write_state "$tmp/ship-pr-state.sh" pr-create
 run_subject "$root" "$tmp" "$tmp/rc"
 assert_rc "$tmp/rc" 4 "non-transient create-pr: exits 4 (not 6)"
 assert_state_line "$tmp/ship-pr-state.sh" "STALL_TRACKING=true" "non-transient create-pr: STALL_TRACKING=true"
+assert_state_line "$tmp/execution-issues.md" "### Tool Failures" "non-transient create-pr: execution issue category logged"
+if grep -Fq "Body file not found: /tmp/pr-body.md" "$tmp/execution-issues.md"; then
+    ok "non-transient create-pr: captured stderr logged verbatim"
+else
+    fail "non-transient create-pr: captured stderr logged verbatim"
+    sed 's/^/    /' "$tmp/execution-issues.md" 2>/dev/null || true
+fi
 
 if [[ "$FAIL_COUNT" -ne 0 ]]; then
     echo "test-ship-pr: $FAIL_COUNT failure(s), $PASS_COUNT pass(es)" >&2

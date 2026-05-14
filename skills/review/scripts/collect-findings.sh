@@ -36,19 +36,138 @@ done
 [[ -n "$FINDINGS_FILE" ]] || { echo "collect-findings.sh: --findings-file is required" >&2; exit 2; }
 [[ -n "$OOS_FILE" ]] || { echo "collect-findings.sh: --oos-file is required" >&2; exit 2; }
 mkdir -p "$(dirname "$FINDINGS_FILE")" "$(dirname "$OOS_FILE")"
+REVIEW_TMPDIR="$(dirname "$FINDINGS_FILE")"
+
+execution_issue_log() {
+    if [[ -n "$SESSION_ENV_PATH" ]]; then
+        printf '%s/execution-issues.md' "$(dirname "$SESSION_ENV_PATH")"
+    elif [[ -n "${IMPLEMENT_TMPDIR:-}" ]]; then
+        printf '%s/execution-issues.md' "$IMPLEMENT_TMPDIR"
+    else
+        printf '%s/execution-issues.md' "$REVIEW_TMPDIR"
+    fi
+}
+
+append_review_failure() {
+    local site="$1" tool="$2" rc="$3" output_file="$4"
+    [[ -x "$PLUGIN_ROOT/scripts/append-tool-failure.sh" ]] || return 0
+    "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+        --log "$(execution_issue_log)" \
+        --site "$site" \
+        --tool "$tool" \
+        --exit-code "$rc" \
+        --category "External Reviewer Issues" \
+        --output-file "$output_file" \
+        --redact >/dev/null 2>&1 || true
+}
+
+append_non_ok_collector_results() {
+    local collector_text="$1" reviewer_file="" tool="" status="" exit_code="" line combined
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        if [[ -z "$line" ]]; then
+            # STATUS=cap_hit is a deliberate slot-skip (reviewer's budget cap;
+            # HEALTHY=true per collect-agent-results.md), NOT a failure — don't
+            # log it as External Reviewer Issues.
+            if [[ -n "$reviewer_file" && "$status" != "" && "$status" != "OK" && "$status" != "cap_hit" ]]; then
+                combined=$(mktemp "${TMPDIR:-/tmp}/review-collector-failure.XXXXXX")
+                {
+                    printf 'COLLECTOR_STATUS=%s\n' "$status"
+                    printf 'REVIEWER_FILE=%s\n' "$reviewer_file"
+                    printf 'TOOL=%s\n' "${tool:-unknown}"
+                    printf 'EXIT_CODE=%s\n\n' "${exit_code:-0}"
+                    if [[ -f "$reviewer_file" ]]; then
+                        printf -- '--- reviewer output ---\n'
+                        cat "$reviewer_file"
+                        printf '\n'
+                    fi
+                    if [[ -f "${reviewer_file}.diag" ]]; then
+                        printf -- '\n--- diagnostic sidecar ---\n'
+                        cat "${reviewer_file}.diag"
+                        printf '\n'
+                    fi
+                } > "$combined"
+                append_review_failure "review Step 3a" "collect-agent-results.sh ${tool:-unknown} $status" "${exit_code:-1}" "$combined"
+                rm -f "$combined"
+            fi
+            reviewer_file=""; tool=""; status=""; exit_code=""
+            continue
+        fi
+        case "$line" in
+            REVIEWER_FILE=*) reviewer_file="${line#REVIEWER_FILE=}" ;;
+            TOOL=*) tool="${line#TOOL=}" ;;
+            STATUS=*) status="${line#STATUS=}" ;;
+            EXIT_CODE=*) exit_code="${line#EXIT_CODE=}" ;;
+        esac
+    done <<< "$collector_text"
+    # STATUS=cap_hit is a deliberate slot-skip (reviewer's budget cap;
+    # HEALTHY=true per collect-agent-results.md), NOT a failure.
+    if [[ -n "$reviewer_file" && "$status" != "" && "$status" != "OK" && "$status" != "cap_hit" ]]; then
+        combined=$(mktemp "${TMPDIR:-/tmp}/review-collector-failure.XXXXXX")
+        {
+            printf 'COLLECTOR_STATUS=%s\n' "$status"
+            printf 'REVIEWER_FILE=%s\n' "$reviewer_file"
+            printf 'TOOL=%s\n' "${tool:-unknown}"
+            printf 'EXIT_CODE=%s\n\n' "${exit_code:-0}"
+            if [[ -f "$reviewer_file" ]]; then
+                printf -- '--- reviewer output ---\n'
+                cat "$reviewer_file"
+                printf '\n'
+            fi
+            if [[ -f "${reviewer_file}.diag" ]]; then
+                printf -- '\n--- diagnostic sidecar ---\n'
+                cat "${reviewer_file}.diag"
+                printf '\n'
+            fi
+        } > "$combined"
+        append_review_failure "review Step 3a" "collect-agent-results.sh ${tool:-unknown} $status" "${exit_code:-1}" "$combined"
+        rm -f "$combined"
+    fi
+}
 
 collector_out=""
 if [[ "$EXTERNAL_COUNT" -gt 0 ]]; then
     # Pin: collect-agent-results.sh --timeout 1860 --substantive-validation --validation-mode
     args=(--timeout "$TIMEOUT" --substantive-validation --validation-mode)
     [[ -n "$SESSION_ENV_PATH" ]] && args+=(--write-health "${SESSION_ENV_PATH}.health")
-    collector_out=$("$PLUGIN_ROOT/scripts/collect-agent-results.sh" "${args[@]}" "${EXTERNAL_OUTPUT_FILES[@]}")
+    collector_log="$REVIEW_TMPDIR/collect-agent-results.log"
+    set +e
+    collector_out=$("$PLUGIN_ROOT/scripts/collect-agent-results.sh" "${args[@]}" "${EXTERNAL_OUTPUT_FILES[@]}" 2>"$collector_log")
+    collector_rc=$?
+    set -e
+    printf '%s\n' "$collector_out" >> "$collector_log"
+    if [[ "$collector_rc" -ne 0 ]]; then
+        append_review_failure "review Step 3a" "collect-agent-results.sh" "$collector_rc" "$collector_log"
+        # Redact stderr replay; the unredacted file is already captured in
+        # the verbatim execution-issues entry via --redact above.
+        if [[ -x "$PLUGIN_ROOT/scripts/redact-secrets.sh" ]]; then
+            "$PLUGIN_ROOT/scripts/redact-secrets.sh" < "$collector_log" >&2 || cat "$collector_log" >&2
+        else
+            cat "$collector_log" >&2
+        fi
+        exit "$collector_rc"
+    fi
+    append_non_ok_collector_results "$collector_out"
 fi
 
 if [[ "$CLAUDE_COUNT" -gt 0 ]]; then
     sentinels=()
     for f in "${CLAUDE_OUTPUT_FILES[@]}"; do sentinels+=("${f}.done"); done
-    WAIT_FOR_REVIEWERS_POLL_INTERVAL="${WAIT_FOR_REVIEWERS_POLL_INTERVAL:-1}" "$PLUGIN_ROOT/scripts/wait-for-reviewers.sh" --timeout "$TIMEOUT" "${sentinels[@]}" >/dev/null
+    wait_log="$REVIEW_TMPDIR/wait-for-claude-reviewers.log"
+    set +e
+    WAIT_FOR_REVIEWERS_POLL_INTERVAL="${WAIT_FOR_REVIEWERS_POLL_INTERVAL:-1}" "$PLUGIN_ROOT/scripts/wait-for-reviewers.sh" --timeout "$TIMEOUT" "${sentinels[@]}" > "$wait_log" 2>&1
+    wait_rc=$?
+    set -e
+    if [[ "$wait_rc" -ne 0 ]]; then
+        append_review_failure "review Step 3a" "wait-for-reviewers.sh" "$wait_rc" "$wait_log"
+        # Redact stderr replay; the unredacted file is already captured in
+        # the verbatim execution-issues entry via --redact above.
+        if [[ -x "$PLUGIN_ROOT/scripts/redact-secrets.sh" ]]; then
+            "$PLUGIN_ROOT/scripts/redact-secrets.sh" < "$wait_log" >&2 || cat "$wait_log" >&2
+        else
+            cat "$wait_log" >&2
+        fi
+        exit "$wait_rc"
+    fi
 fi
 
 DIRTY_DETECTED=false

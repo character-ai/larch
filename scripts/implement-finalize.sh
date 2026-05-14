@@ -205,6 +205,96 @@ kv_value() {
     printf '%s' "$line"
 }
 
+sha256_file() {
+    if command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "$1" | awk '{print $1}'
+    else
+        sha256sum "$1" | awk '{print $1}'
+    fi
+}
+
+json_escape_stream_python() {
+    # python3 JSON-escape fallback when jq is absent. Handles full string
+    # contract (control chars, \r, \b, \f, NUL, surrogate-safe). Returns
+    # non-zero if python3 is unavailable; caller routes to a loud failure.
+    command -v python3 >/dev/null 2>&1 || return 2
+    python3 -c '
+import json, sys
+sys.stdout.write(json.dumps(sys.stdin.read()))
+' || return 1
+}
+
+write_execution_issues_record() {
+    local input_file=$1 record_file=$2 sha=$3 body_json escape_rc
+    if command -v jq >/dev/null 2>&1; then
+        jq -Rs --arg sha "$sha" '{
+            phase: "implement",
+            step: "18",
+            category: "Tool Failures",
+            source: "execution-issues.md safety-net",
+            source_sha256: $sha,
+            body: .
+        }' "$input_file" > "$record_file"
+        return $?
+    fi
+    # No jq: fall back to python3. The awk-only escape was incomplete (no
+    # \r/\b/\f/control-char handling), which produced invalid NDJSON for
+    # binary-ish stderr captures and silently broke larch-log append on
+    # hosts without jq. Refuse to write a record at all rather than emit
+    # malformed NDJSON.
+    set +e
+    body_json=$(json_escape_stream_python < "$input_file")
+    escape_rc=$?
+    set -e
+    if [ "$escape_rc" -ne 0 ]; then
+        warn_line '**⚠ 18: execution-issues safety-net needs jq or python3 to compose NDJSON. Neither found. Skipping safety-net flush.**'
+        return 1
+    fi
+    {
+        printf '{"phase":"implement","step":"18","category":"Tool Failures",'
+        printf '"source":"execution-issues.md safety-net","source_sha256":"%s","body":%s}\n' "$sha" "$body_json"
+    } > "$record_file"
+}
+
+flush_execution_issues_safety_net() {
+    local run_id issue_log sha sentinel batch_path record_file out rc
+    run_id=$(read_state RUN_ID)
+    [ -n "$run_id" ] || return 0
+    issue_log="$IMPLEMENT_TMPDIR/execution-issues.md"
+    [ -s "$issue_log" ] || return 0
+    sha=$(sha256_file "$issue_log" 2>/dev/null || true)
+    [ -n "$sha" ] || return 0
+    sentinel="$IMPLEMENT_TMPDIR/.execution-issues-flushed.sha"
+    if [ -f "$sentinel" ] && [ "$(cat "$sentinel" 2>/dev/null || true)" = "$sha" ]; then
+        return 0
+    fi
+    batch_path="$IMPLEMENT_TMPDIR/larch-logs/implement/$run_id/execution-issues.ndjson"
+    if [ -f "$batch_path" ] && grep -Fq "$sha" "$batch_path" 2>/dev/null; then
+        printf '%s\n' "$sha" > "$sentinel" 2>/dev/null || true
+        return 0
+    fi
+    record_file="$IMPLEMENT_TMPDIR/execution-issues-safety-net.ndjson"
+    write_execution_issues_record "$issue_log" "$record_file" "$sha" || {
+        warn_line '**⚠ 18: execution-issues safety-net record compose failed. Continuing.**'
+        return 0
+    }
+    set +e
+    out=$("$SCRIPT_DIR/larch-log.sh" append \
+        --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
+        --skill implement \
+        --run-id "$run_id" \
+        --batch execution-issues \
+        --record-file "$record_file" 2>&1)
+    rc=$?
+    set -e
+    if [ "$rc" -eq 0 ]; then
+        printf '%s\n' "$sha" > "$sentinel" 2>/dev/null || true
+    else
+        warn_line '**⚠ 18: execution-issues safety-net flush failed. Continuing.**'
+        printf '%s\n' "$out" >&2
+    fi
+}
+
 bail_reason_nonempty() {
     [ -f "$FINAL_BAIL_REASON_FILE" ] && [ -s "$FINAL_BAIL_REASON_FILE" ]
 }
@@ -1374,6 +1464,7 @@ run_teardown() {
     # write_version_reasoning_fragment (correct run-id from state file).
     local larch_flush_run_id
     larch_flush_run_id=$(read_state RUN_ID)
+    flush_execution_issues_safety_net
     if [ -n "$larch_flush_run_id" ] && [ "$repo_unavailable" = "false" ]; then
         # Finalize manifest status before committing so the update lands in the
         # same flush commit. Best-effort: manifest may not exist (deferred/repo-

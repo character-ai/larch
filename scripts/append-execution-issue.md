@@ -8,7 +8,10 @@ Append one public-safe bullet to a categorized `/implement` execution-issues log
 
 ```
 append-execution-issue.sh --log <path> --category <category> --entry <bullet>
+append-execution-issue.sh --log <path> --category <category> --entry-file <path>
 ```
+
+Exactly one of `--entry` and `--entry-file` is required. Use `--entry-file` for unbounded captures (multi-MB tool stderr, full CI logs) where argv-sized payloads would risk `E2BIG` or trailing-newline loss from command substitution; the file contents are streamed verbatim into the section without crossing argv.
 
 Supported categories are the exact headers from `skills/implement/SKILL.md`: `Pre-existing Code Issues`, `Tool Failures`, `Permission Prompts`, `External Reviewer Issues`, `CI Issues`, `Warnings`, and `Q/A`.
 
@@ -28,7 +31,9 @@ Failures use `FAILED=true` / `ERROR=<message>` and exit non-zero.
 ## Conventions
 
 - `set -euo pipefail`.
-- Atomic write through a sibling temp file and `mv`.
+- Atomic write through sibling temp files and `mv`.
+- Multi-line entries are staged in a sibling temp file and read by `awk`;
+  callers may pass fenced blocks without newline-collapsing.
 - Entries must already be sanitized by the caller; this helper does not redact.
 
 ## Edit-in-sync
