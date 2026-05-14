@@ -55,11 +55,15 @@ if printf '%s\n' "$first_nonblank" | grep -Eiq "^(see plan\.txt|see attached|see
     fail "plan file is a pointer-only placeholder: $PLAN_FILE"
 fi
 
-# Extract test plan section (any level-1/2/3 "Test plan" heading, trimmed match).
+# Extract test plan section (any level-1/2/3 recognized test/verification heading).
 test_plan="$(
     awk '
-        found { print; next }
-        /^#{1,3}[[:space:]]+[Tt]est[[:space:]][Pp]lan[[:space:]]*$/ { found = 1 }
+        found {
+            if (/^#{1,3}[[:space:]]/) exit
+            print
+            next
+        }
+        /^#{1,3}[[:space:]]+([Tt]est[[:space:]][Pp]lan|[Tt]ests|[Tt]esting|[Vv]erification|[Tt]est[[:space:]][Ss]trategy|[Vv]erification[[:space:]][Ss]trategy)[[:space:]]*$/ { found = 1 }
     ' "$PLAN_FILE"
 )"
 
@@ -71,6 +75,8 @@ printf '## Goal\n'
 printf '%s\n\n' "$GOAL_TEXT"
 printf '## Implementation Plan\n'
 # Stop before any test plan section to avoid duplicating content under ## Test plan below.
-awk '/^#{1,3}[[:space:]]+[Tt]est[[:space:]][Pp]lan[[:space:]]*$/ { exit } { print }' "$PLAN_FILE"
+awk '/^#{1,3}[[:space:]]+[Ii]mplementation[[:space:]][Pp]lan[[:space:]]*$/ && !seen++ { next }
+     /^#{1,3}[[:space:]]+([Tt]est[[:space:]][Pp]lan|[Tt]ests|[Tt]esting|[Vv]erification|[Tt]est[[:space:]][Ss]trategy|[Vv]erification[[:space:]][Ss]trategy)[[:space:]]*$/ { exit }
+     { print }' "$PLAN_FILE"
 printf '\n## Test plan\n'
 printf '%s\n' "$test_plan"

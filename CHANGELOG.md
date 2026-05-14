@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added skill-path prefixes to visible step-start headers across the planned orchestrator skill docs.
 - Extended the shared progress-reporting contract and /design step-prefix parsing docs with an optional parent skill path field.
 - Updated /implement child /design and /review invocations to pass /implement as the parent skill path, plus the structural breadcrumb test pin.
+- Strip the first source Implementation Plan heading from plan-goals-test output so the wrapper heading is not duplicated.
+- Recognize Test plan, Tests, Testing, Verification, Test strategy, and Verification strategy headings at levels 1 through 3 and stop extraction at the next heading.
+- Expand the compose-plan-goals-test regression harness and sibling docs for the new heading behavior.
 
 ## [27.5.22] - 2026-05-13
 
