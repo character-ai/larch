@@ -122,7 +122,7 @@ After the initial version bump in Step 8, every subsequent rebase of the feature
    ```bash
    ${CLAUDE_PLUGIN_ROOT}/scripts/git-force-push.sh
    ```
-   The wrapper performs `git push --force-with-lease` with the full recovery logic internally: on failure, it refreshes the local tracking ref, compares local HEAD vs `origin/<branch>`, returns success if they match (race landed), otherwise sleeps 5s and retries the push once. Parse stdout for `PUSHED=true|false` and `STATUS=pushed|noop_same_ref|diverged_retry_failed`. Exit code 0 on success (PUSHED=true), exit code 1 on `diverged_retry_failed`.
+   The wrapper performs a best-effort `git fetch origin <branch>` to refresh the local tracking ref before the lease check, then tries `git push --force-with-lease` once. On failure, it refreshes the tracking ref again, compares local HEAD vs `origin/<branch>`, returns success if they match (race landed), otherwise sleeps 5s and retries the push once. Parse stdout for `PUSHED=true|false` and `STATUS=pushed|noop_same_ref|diverged_retry_failed`. Exit code 0 on success (PUSHED=true), exit code 1 on `diverged_retry_failed`.
 
    - **On `STATUS=pushed` or `STATUS=noop_same_ref`** (PUSHED=true): proceed to step 6.
    - **On `STATUS=diverged_retry_failed`** (PUSHED=false): log to `$IMPLEMENT_TMPDIR/execution-issues.md` under `CI Issues`: `Step <N> — force-with-lease push failed twice; local and remote feature branches diverge after re-bump.` Then:

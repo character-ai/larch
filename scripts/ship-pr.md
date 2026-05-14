@@ -16,7 +16,7 @@ ship-pr.sh --state-file PATH --implement-tmpdir PATH --merge true|false --draft 
 
 `ship-pr-state.sh` is plain `KEY=value` text and is never sourced. Required keys include `PHASE`, branch/repo/issue identity, PR fields, bump fields, CI counters, checkpoint fields, and finalizer fields. Every non-comment line must match `^[A-Z_][A-Z0-9_]*=.*$`.
 
-`MERGE_RESULT` is written to state by `run_ci_phase` the moment a merge succeeds (`merged` or `admin_merged`) or when CI reports the branch was already merged (`already_merged`). `scripts/refresh-run-logs.sh` reads this key as its fail-closed post-merge guard; when the key is absent the PR has not merged yet and the helper proceeds.
+`MERGE_RESULT` is written to state by `run_ci_phase` the moment a merge succeeds (`merged` or `admin_merged`), when CI reports the branch was already merged (`already_merged`), or when `merge-pr.sh` returns `version_already_published` and `gh pr view` confirms the PR is `MERGED` (also set to `already_merged`). `scripts/refresh-run-logs.sh` reads this key as its fail-closed post-merge guard; when the key is absent the PR has not merged yet and the helper proceeds.
 
 Checkpoint phases:
 
@@ -87,7 +87,7 @@ Transient network classification uses `is_transient_net_signature` from `scripts
 - **Trigger B** (`run_ci_fix_vendor`): after fix commit, before `git-push.sh`.
 - **Trigger C** (`run_bump_phase`): after bump block, before `write_postbump_state`.
 
-All three calls use `|| true` so refresh failure is non-fatal. The helper exits 0 with no commit when `MERGE_RESULT=merged|admin_merged` is in state, and also when the state file is missing (fail-closed).
+All three calls use `|| true` so refresh failure is non-fatal. The helper exits 0 with no commit when `MERGE_RESULT=merged|admin_merged|already_merged` is in state, and also when the state file is missing (fail-closed).
 
 ## Harness
 
