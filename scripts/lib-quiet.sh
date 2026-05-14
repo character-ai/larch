@@ -40,6 +40,13 @@ larch_quiet_init() {
     if larch_quiet_truthy "${LARCH_QUIET_DISABLE:-}"; then
         return 0
     fi
+    # ACTIVE=1 without LARCH_QUIET_PID is not a bound quiet session (e.g. a
+    # stray env export): do not redirect ordinary stdout. A subprocess that
+    # inherits a real parent session always has LARCH_QUIET_PID set to the
+    # parent's PID (≠ $$), so it still runs full init below.
+    if larch_quiet_truthy "${LARCH_QUIET_ACTIVE:-}" && [ -z "${LARCH_QUIET_PID:-}" ]; then
+        return 0
+    fi
     # Use PID as the idempotency key so subprocess re-initialization is correct.
     # Inheriting LARCH_QUIET_ACTIVE=1 from a parent must NOT skip init in the
     # child: the child's FD1 may differ (command substitution, file redirect),
