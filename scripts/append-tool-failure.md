@@ -49,7 +49,8 @@ output.
 - Bash 3.2 portable.
 - No truncation of captured output.
 - The write is delegated to `append-execution-issue.sh`, preserving its
-  sibling-temp plus `mv` atomic insertion behavior.
+  sibling-temp plus `mv` atomic insertion behavior and its cross-process
+  serialization via `mkdir` mutex (see `scripts/append-execution-issue.md`).
 - Missing input files fail before the log is modified.
 
 ## Harness
