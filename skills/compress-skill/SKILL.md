@@ -31,7 +31,7 @@ The directory-tree restriction is the mechanical filter: references to files out
 4. **NEVER target a plugin-namespaced form (e.g., `larch:implement`).** **Why:** the colon is not a valid directory character in the resolver's probed paths; the resolver rejects it. Pass the bare skill name only.
 5. **NEVER inline shell logic in this `SKILL.md`.** **Why:** Mechanical rule B — non-trivial shell lives in `.sh` scripts. Keeps this `SKILL.md` scannable; avoids copy-paste drift with `/simplify-skill`, `/alias`, and `/create-skill`.
 
-## Step 1 — Parse Arguments
+<!-- step:1 — Parse Arguments -->
 
 Parse flags from the start of `$ARGUMENTS` before the first positional token.
 
@@ -39,7 +39,7 @@ Parse flags from the start of `$ARGUMENTS` before the first positional token.
 
 After flag stripping, the next positional token is the **target skill name** (bare form, e.g. `implement`) or an **absolute path** to a skill directory. Strip a leading `/` if present on a bare name. Reject names containing `:` (no plugin-qualified forms — see NEVER #4).
 
-## Step 2 — Resolve Target and Build Feature Description
+<!-- step:2 — Resolve Target and Build Feature Description -->
 
 Resolve the target skill directory, enumerate the in-scope `.md` files, snapshot baseline sizes, and compose the feature description for `/implement`. All of this runs in a single coordinator script per mechanical rule C (no consecutive Bash calls). The full stdout contract, exit-code semantics, and resolution order are documented in the sibling contract `${CLAUDE_PLUGIN_ROOT}/skills/compress-skill/scripts/build-feature-description.md`.
 
@@ -56,9 +56,7 @@ ${CLAUDE_PLUGIN_ROOT}/skills/compress-skill/scripts/build-feature-description.sh
 
 The coordinator invokes `discover-md-set.sh` internally to BFS the transitive `.md` set from `SKILL.md`, then measures each file's byte and line count for the baseline. The style guide, anti-patterns, and judgment rules are embedded in the feature description so that `/implement`'s Step 2 has them inline.
 
-Print: `✅ 2: resolve — <FILE_COUNT> file(s) under <TARGET_DIR>`
-
-## Step 3 — Delegate to /imaq
+<!-- step:3 — Delegate to /imaq -->
 
 Invoke the Skill tool:
 - Try skill: `"imaq"` first (bare name). If no skill matches, try skill: `"larch:imaq"` (fully-qualified plugin name).

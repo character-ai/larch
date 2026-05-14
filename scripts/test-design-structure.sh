@@ -33,8 +33,8 @@ fail() {
 flag_mandatory_line=$(grep -n 'MANDATORY — READ ENTIRE FILE before parsing argument flags' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
 [[ -n "$flag_mandatory_line" ]] || fail "SKILL.md lacks 'MANDATORY — READ ENTIRE FILE before parsing argument flags' pointer to references/flags.md"
 
-step0_line=$(grep -n '^## Step 0' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
-[[ -n "$step0_line" ]] || fail "SKILL.md lacks '## Step 0' heading"
+step0_line=$(grep -n '^<!-- step:0 — Session Setup -->$' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
+[[ -n "$step0_line" ]] || fail "SKILL.md lacks '<!-- step:0 — Session Setup -->' anchor"
 
 if (( flag_mandatory_line >= step0_line )); then
   fail "flag-table MANDATORY pointer (line $flag_mandatory_line) must appear BEFORE Step 0 (line $step0_line). Flag parsing runs before Step 0; MANDATORY must be adjacent to the flag table."
@@ -255,8 +255,8 @@ fi
 # standalone /design derives branch facts first, nested /design uses the
 # --branch-info facts, and both paths feed session-entry-gate.sh before setup.
 step0_section=$(awk '
-  /^## Step 0 — Session Setup$/ { flag=1; next }
-  /^## / && flag { flag=0 }
+  /^<!-- step:0 — Session Setup -->$/ { flag=1; next }
+  /^<!-- step:1 / && flag { flag=0 }
   flag { print }
 ' "$SKILL_MD")
 [[ -n "$step0_section" ]] \

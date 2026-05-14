@@ -17,14 +17,13 @@ By default, progress lines use prose payloads:
 
 `🔶` **step start lines** include an additional `/{skill_path}` token between the icon and step number — see `## Step Start Formatting` below.
 
-Exception: `/implement` step-boundary completion and skip lines (`✅`, `⏩`, `⏭️`) use the compact completion format below. `/implement` start lines (`🔶`), warnings (`⚠`), intermediate lines (`⏳`), rebase lines (`🔃`), reviewer status tables (`📊`), and child-skill breadcrumbs keep their normal formats.
+Exception: `/implement` step-boundary skip lines (`⏩`, `⏭️`) use the compact skip format below. `/implement` start lines (`🔶`), warnings (`⚠`), intermediate lines (`⏳`), rebase lines (`🔃`), reviewer status tables (`📊`), and child-skill breadcrumbs keep their normal formats.
 
 ## Icon Taxonomy
 
 | Icon | Line type | When to use |
 |------|-----------|-------------|
 | `🔶` | Step start | Entering a new step |
-| `✅` | Completion | Step completed with informational payload |
 | `⏩` | Sub-step skip | Optimization or workflow-conditional skip (quick mode, no changes, etc.) |
 | `⚠` | Warning | Non-fatal issue within a step |
 | `🔃` | Rebase | Rebase-related operation |
@@ -47,11 +46,11 @@ Step start lines (`🔶`) get special visual treatment to make them easy to spot
 > **🔶 /implement 2: implementation**
 ```
 
-Only `🔶` step start lines get the separator, blockquote, bold, and `/{skill_path}` treatment. Completion (`✅`), skip (`⏩`/`⏭️`), warning (`⚠`), and other lines do NOT get separators, blockquotes, bold, or the skill-path prefix.
+Only `🔶` step start lines get the separator, blockquote, bold, and `/{skill_path}` treatment. Skip (`⏩`/`⏭️`), warning (`⚠`), and other lines do NOT get separators, blockquotes, bold, or the skill-path prefix.
 
 ## Elapsed Time
 
-Every line that marks the **end** of a step or work item must include elapsed time — whether it completed successfully, was skipped, failed, or timed out. This applies to: `✅`, `⏩`, `⏭️`, and step-ending `⚠` lines.
+Every line that marks the **end** of a skipped, failed, or timed-out step/work item must include elapsed time. This applies to: `⏩`, `⏭️`, and step-ending `⚠` lines.
 
 **Step-ending `⚠`** means any `⚠` that contains a step-number prefix (e.g., `⚠ 7a: ...`, `⚠ 14: ...`). Unnumbered bail lines (e.g., `⚠ Rebase onto main failed. Bailing to cleanup.`) do not require elapsed time.
 
@@ -60,14 +59,13 @@ Every line that marks the **end** of a step or work item must include elapsed ti
 For prose-format lines, append the elapsed time in parentheses at the end of the line, using short form. The timer starts when the step logically began (its `🔶` start line, or entry into the step if no `🔶` line exists).
 
 ```
-✅ 2a.5: dialectic — 2 voted, 1 fallback (1m42s)
 ⏩ 6: checks (2) — skipped, no review changes (1s)
 ⚠ 7a: code flow — generation failed, proceeding without diagram (12s)
 ```
 
-### Compact Completion Format
+### Compact Skip Format
 
-`/implement` step-boundary completion and skip lines use compact key/value payloads:
+`/implement` step-boundary skip lines use compact key/value payloads:
 
 ```
 <icon> <step_number>: <step_short_name> [key=value ...]
@@ -76,7 +74,6 @@ For prose-format lines, append the elapsed time in parentheses at the end of the
 - The icon, step number, and short name prefix are unchanged.
 - The separator ` — ` is omitted.
 - Required fields: `status=<token>` and `elapsed=<time>`.
-- `status=complete` maps to `✅`.
 - `status=skip` maps to `⏩`.
 - `status=bypass` maps to `⏭️`.
 - `status=ready` is reserved for transition lines where a step is ready for the next action but not yet complete.
@@ -87,10 +84,8 @@ For prose-format lines, append the elapsed time in parentheses at the end of the
 Examples:
 
 ```
-✅ 8: version bump status=complete bump=PATCH from=20.0.0 to=20.0.1 elapsed=5s
 ⏩ 8: version bump status=skip reason=bump-type-none elapsed=1s
 ⏭️ 12: CI+merge loop status=bypass reason=merge-not-set elapsed=0s
-✅ 18: cleanup status=complete elapsed=45m
 ```
 
 ### Compact status tables (`📊` lines)
@@ -166,7 +161,6 @@ Standalone `/design` (no `--step-prefix`):
 > **🔶 /design 2a: sketches**
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 > **🔶 /design 2a.5: dialectic**
-✅ 2a.5: dialectic — 2 voted, 1 fallback (1m42s)
 ```
 
 `/design` called from `/implement` with `--step-prefix "1.::design plan::/implement"`:
@@ -175,7 +169,6 @@ Standalone `/design` (no `--step-prefix`):
 > **🔶 /implement:/design 1.2a: design plan | sketches**
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 > **🔶 /implement:/design 1.2a.5: design plan | dialectic**
-✅ 1.2a.5: design plan | dialectic — 2 voted, 1 fallback (1m42s)
 ```
 
 `/review` called from `/implement` with `--step-prefix "5.::code review::/implement"`:
@@ -189,3 +182,11 @@ Standalone `/design` (no `--step-prefix`):
 ## Section headers and structured output
 
 Do NOT prefix section headers (e.g., `## Implementation Plan`), structured output headers, artifact labels, or compact reviewer status tables with breadcrumb formatting. Breadcrumbs apply only to progress status lines.
+
+Markdown step headers such as `## Step N — Description` and `### Step Na — Description` MUST be written as HTML comments instead:
+
+```
+<!-- step:N — Description -->
+```
+
+`🔶` start breadcrumbs are the only step markers rendered in chat output.

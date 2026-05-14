@@ -4,7 +4,7 @@
 
 **Contract**: fixed-shape findings-validation invariant — 3 reviewer lanes: 1 Claude Code Reviewer subagent + 1 Codex + 1 Cursor, with Claude Code Reviewer subagent fallbacks when an external tool is unavailable. Owns the launch-order rule, Cursor and Codex validation-reviewer launch bash blocks with their long reviewer prompts, per-slot fallback rules, the Claude Code Reviewer subagent archetype variable bindings (`{REVIEW_TARGET}` / `{CONTEXT_BLOCK}` / `{OUTPUT_INSTRUCTION}`) for research validation, the process-Claude-findings-immediately rule, Step 2.4 collection with zero-externals branch + runtime-timeout replacement, Codex/Cursor negotiation delegation, and the Finalize Validation procedure.
 
-**When to load**: once Step 2 is about to execute. Do NOT load during Step 0, Step 1, Step 2.5, Step 2.6, Step 3, or Step 4. SKILL.md emits the Step 2 entry breadcrumb and the Step 2 completion print; this file does NOT emit those.
+**When to load**: once Step 2 is about to execute. Do NOT load during Step 0, Step 1, Step 2.5, Step 2.6, Step 3, or Step 4. SKILL.md emits the Step 2 entry breadcrumb; this file does NOT emit it.
 
 ---
 
@@ -249,4 +249,4 @@ If any findings were accepted (from Claude subagents, Codex, or Cursor):
 
 5. **Atomically rewrite `$RESEARCH_TMPDIR/research-report.txt`** with the same envelope shape used by Step 1.5: original `RESEARCH_QUESTION` → branch+commit lines → `## Research Synthesis` header → `$BANNER` (when non-empty) → revised marker-delimited body. Write atomically (`mktemp` + `mv`). Print the revised synthesis under a `## Revised Research Findings` header to the terminal for operator visibility.
 
-If all reviewers report no issues, the SKILL.md caller emits the `✅ 2: validation` no-corrections breadcrumb. This reference does not print breadcrumbs.
+If all reviewers report no issues, the SKILL.md caller proceeds without printing a completion line. This reference does not print breadcrumbs.

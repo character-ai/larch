@@ -9,9 +9,7 @@ allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task
 
 Review code changes with a specialist panel and a scripted collection/voting pipeline. Diff mode (`--diff`) reviews the current branch against `main`, applies accepted fixes, and repeats until convergence or the round cap. Description mode reviews a resolved file set, is read-only, and files accepted findings as issues unless `--no-issues` is set.
 
-**Anti-halt continuation reminder.** After every child `Skill` tool call (e.g., `/design`, `/review`, `/bump-version`, `/issue`, `/implement`) returns AND after every `Bash` tool call that completes a numbered step or sub-step, including `run-relevant-checks-captured.sh`, IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on the child's cleanup output, on a Bash result, or on a status message, and do NOT write a summary, handoff, status recap, or "returning to parent" message — those are halts in disguise. This applies to ALL step boundaries from Step 0 through Step 5, and to ALL sub-step transitions within Step 3's review loop (3a→3b→3c→3d→3e→3f→loop back to Step 1). **Critical: in diff mode, the review loop (Steps 1→2→3) repeats until convergence (0 findings, or Step 3f classifies the just-fixed round as non-substantial — a main-agent classification of accepted-and-fixed work, not a reading of reviewer prose) or the 3-round safety limit — completing one round's substantial fixes does NOT mean the review is done.** → shared/subskill-invocation.md#anti-halt
-
-**Continue after child returns.** Treat every script and child-skill result as input to the next step, not as a stopping point.
+**Anti-halt continuation reminder.** After every child `Skill` tool call (e.g., `/design`, `/review`, `/bump-version`, `/issue`, `/implement`) returns AND after every `Bash` tool call that completes a numbered step or sub-step, including `run-relevant-checks-captured.sh`, IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on the child's cleanup output, on a Bash result, or on a status message, and do NOT write a summary, handoff, status recap, or "returning to parent" message — those are halts in disguise. This applies to ALL step boundaries from Step 0 through Step 5, and to ALL sub-step transitions within Step 3's review loop (3a→3b→3c→3d→3e→3f→loop back to Step 1). **Critical: in diff mode, the review loop (Steps 1→2→3) repeats until convergence (0 findings, or Step 3f classifies the just-fixed round as non-substantial — a main-agent classification of accepted-and-fixed work, not a reading of reviewer prose) or the 3-round safety limit — completing one round's substantial fixes does NOT mean the review is done.** → shared/subskill-invocation.md#anti-halt **Continue after child returns.** Treat every script and child-skill result as input to the next step, not as a stopping point.
 
 ## Flags
 
@@ -36,10 +34,12 @@ Mode activation is fail-closed:
 Read `${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/step-name-registry.tsv` at session start. Print breadcrumb start lines with `/review` in standalone runs, or the nested skill path from `--step-prefix` (for example, `/implement:/review`) when visible. Suppress parent-visible prose when `SESSION_ENV_PATH` is non-empty. Reviewer prompts preserve the focus-area enum `code-quality / risk-integration / correctness / architecture / security`. Specialist prompts are rendered through `${CLAUDE_PLUGIN_ROOT}/scripts/render-specialist-prompt.sh`.
 
 Script contracts and harnesses: `${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/gather-context.md` / `test-gather-context.sh` / `test-gather-context.md`, `${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/dispatch-panel.md` / `test-dispatch-panel.sh` / `test-dispatch-panel.md`, `${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/collect-findings.md` / `test-collect-findings.sh` / `test-collect-findings.md`, `${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/tally-votes.md` / `test-tally-votes.sh` / `test-tally-votes.md`, `${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/detect-wholesale-rejection.md` / `test-detect-wholesale-rejection.sh` / `test-detect-wholesale-rejection.md`, `${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/emit-tally.md` / `test-emit-tally.sh` / `test-emit-tally.md`, `${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/log-phase.md` / `test-log-phase.sh` / `test-log-phase.md`, and `${CLAUDE_PLUGIN_ROOT}/scripts/launch-claude-subprocess.md` / `test-launch-claude-subprocess.sh` / `test-launch-claude-subprocess.md`.
-
 **Execution-issues logging**: In nested mode, any failing external reviewer launch, collector, wait, or reviewer `STATUS` not equal to `OK` must be appended verbatim to `$(dirname "$SESSION_ENV_PATH")/execution-issues.md` via `${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh` under `External Reviewer Issues`. The review scripts own this for `dispatch-panel.sh` and `collect-findings.sh`; if an Agent-tool fallback itself returns an explicit failure, capture the full returned text to `$REVIEW_TMPDIR/agent-failure-<slot>.log` and append it with `--site "review Step <N>" --tool "Agent <slot>" --exit-code 1`.
 
+<!-- step:0 — Session Setup -->
 ## Step 0 — Session Setup
+
+Print: `> **🔶 /review 0: setup**`
 
 Run:
 
@@ -56,7 +56,9 @@ Parse `SESSION_TMPDIR`, reviewer health, token session fields, and set `REVIEW_T
 
 If `subagent_mode=true` AND `diff_mode=true`, **MANDATORY — READ ENTIRE FILE** before dispatching: `${CLAUDE_PLUGIN_ROOT}/skills/review/references/heavy-worker.md`. If the worker returns `REVIEW_HEAVY=complete`, validate `$REVIEW_TMPDIR/review-summary.json` and proceed to Step 4. If it fails or omits the sentinel, fall back inline at Step 1.
 
-## Step 1 — Gather Context
+<!-- step:1 — Gather Context -->
+
+Print: `> **🔶 /review 1: gather context**`
 
 Run:
 
@@ -73,7 +75,9 @@ Parse `DIFF_FILE`, `FILE_LIST_FILE`, `COMMIT_LOG_FILE`, `COMMIT_COUNT`, `SCOPE_F
 
 When nested under `/implement`, read `PLAN_FILE` and `FEATURE_FILE` from `SESSION_ENV_PATH` for correctness-specialist plan verification.
 
-## Step 2 — Launch Reviewer Panel
+<!-- step:2 — Launch Reviewer Panel -->
+
+Print: `> **🔶 /review 2: launch reviewers**`
 
 Run:
 
@@ -88,7 +92,9 @@ ${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/dispatch-panel.sh --mode "$MODE" --d
 
 Parse `EXTERNAL_OUTPUT_FILES`, `CLAUDE_OUTPUT_FILES`, `PANEL_MODE`, `SLOT_COUNT`, and `DISPATCH_OK`. Both-down path: if `PANEL_MODE=both-down`, print `**⚠ Both Cursor and Codex unavailable. Proceeding with 1 Claude generic reviewer. Voting will be skipped (insufficient reviewers).**`
 
-## Step 3 — Review Cycle
+<!-- step:3 — Review Cycle -->
+
+Print: `> **🔶 /review 3: review cycle**`
 
 **MANDATORY — READ ENTIRE FILE** before executing Step 3: `${CLAUDE_PLUGIN_ROOT}/skills/review/references/domain-rules.md`.
 
@@ -161,7 +167,9 @@ Classify the just-fixed round as substantial or non-substantial using main-agent
 
 When exiting the Step 3 loop after a non-substantial classification, treat any printed convergence prose as a status marker only: the non-substantial re-review convergence line is not terminal — continue into Step 4 without ending the turn.
 
-## Step 4 — Final Summary and Issues
+<!-- step:4 — Final Summary and Issues -->
+
+Print: `> **🔶 /review 4: final summary**`
 
 ### 4c — Emit summaries and footers
 
@@ -175,7 +183,9 @@ If `RUN_ID` is non-empty, write flat review larch-log batches with `log-phase.sh
 
 The nested-mode `### review-result` machine footer marks artifact handoff only; the review-result footer is not terminal until Step 5 cleanup (or parent-owned tmpdir rules) completes — continue without ending the turn after emitting it.
 
-## Step 5 — Cleanup
+<!-- step:5 — Cleanup -->
+
+Print: `> **🔶 /review 5: cleanup**`
 
 Run cleanup unless a parent owns the tmpdir:
 
@@ -187,4 +197,4 @@ export CLAUDE_PLUGIN_ROOT
 ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-tmpdir.sh "$REVIEW_TMPDIR"
 ```
 
-End with `✅ review complete` for standalone mode or the machine footer for nested mode.
+End with the machine footer for nested mode.

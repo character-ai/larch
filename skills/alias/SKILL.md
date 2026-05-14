@@ -36,7 +36,7 @@ Example with merge: `/alias --merge i implement --merge` creates the alias AND m
 
 **Anti-halt continuation reminder.** After every child `Skill` tool call (e.g., `/implement`) returns, IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on the child's cleanup output, and do NOT write a summary, handoff, status recap, or "returning to parent" message — those are halts in disguise. The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `bail`, `skip to Step N`). A normal sequential `proceed to Step N+1` instruction is the default continuation this rule reinforces, NOT an exception. Every `/relevant-checks` invocation anywhere in this file is covered by this rule. → shared/subskill-invocation.md#anti-halt; do not load for routine invocations — load only when debugging or adding a child-Skill invocation.
 
-## Step 1 — Parse Arguments
+<!-- step:1 — Parse Arguments -->
 
 Parse flags from the start of `$ARGUMENTS` before treating the remainder as positional arguments.
 
@@ -53,7 +53,7 @@ After flag stripping, parse the remaining positional arguments:
 - Second token = **target skill name** (without `/` prefix)
 - Remainder = **preset flags** (may be empty — a pure rename shortcut is valid)
 
-## Step 2 — Validate
+<!-- step:2 — Validate -->
 
 All validation uses Bash since `${CLAUDE_PLUGIN_ROOT}` is a shell variable not resolvable in Read/Glob.
 
@@ -131,7 +131,7 @@ One conceptual rule — "alias cannot shadow any larch skill" — replacing the 
 | `E_RECURSION` | `**ERROR: Cannot create an alias that targets /alias (no alias-to-alias recursion).**` |
 | `E_COLLISION` | `**ERROR: '$TARGET_DIR/' already exists. Remove it first or choose a different name.**` (interpolate the resolved `$TARGET_DIR` so the operator sees the actual path) |
 
-## Step 3 — Delegate to /implement
+<!-- step:3 — Delegate to /implement -->
 
 ### Before delegating, ask
 
@@ -170,7 +170,7 @@ Only include `--merge` in the args if `alias_merge=true`.
 
 > **Continue after child returns.** When `/implement` returns, execute Step 4 — do NOT end the turn, and do NOT write a summary, handoff, or "returning to parent" message. → shared/subskill-invocation.md#anti-halt; do not load for routine returns — load only when adding a child-Skill invocation or debugging.
 
-## Step 4 — Verify
+<!-- step:4 — Verify -->
 
 After `/implement` returns, verify the alias SKILL.md actually landed on disk. The sentinel path uses the `$TARGET_DIR` resolved at Step 2 (no separate `git rev-parse` here — the resolved value is the single source of truth, fail-closed at Step 2 if git failed):
 
@@ -181,7 +181,7 @@ After `/implement` returns, verify the alias SKILL.md actually landed on disk. T
 
 Parse stdout for `VERIFIED=true|false` and `REASON=<token>`.
 
-- **If `VERIFIED=true`**: print `✅ /alias — created $TARGET_DIR/SKILL.md` (interpolate the resolved path) and exit 0.
+- **If `VERIFIED=true`**: exit 0.
 - **If `VERIFIED=false`**: print a fail-closed error and exit 1. Branch the message on `alias_merge`:
   - **If `alias_merge=false`** (PR created but not merged):
     ```
@@ -197,7 +197,7 @@ Parse stdout for `VERIFIED=true|false` and `REASON=<token>`.
 
 | State | Condition | Printed string (summary) |
 |-------|-----------|--------------------------|
-| Success | `VERIFIED=true` | `✅ /alias — created $TARGET_DIR/SKILL.md` (interpolated) |
+| Success | `VERIFIED=true` | Created `$TARGET_DIR/SKILL.md` |
 | Validation fail | Any Step 2 check fails | one of the `E_*` strings from the Step 2 `Error strings (reference)` table |
 | Verify fail (unmerged) | `VERIFIED=false` AND `alias_merge=false` | `**ERROR: /implement returned but $TARGET_DIR/SKILL.md was not written (REASON=<token>). DO NOT merge the PR. ...**` (full string above) |
 | Verify fail (merged) | `VERIFIED=false` AND `alias_merge=true` | `**ERROR: /implement returned but $TARGET_DIR/SKILL.md was not written (REASON=<token>). The PR may have already been merged ...**` (full string above) |

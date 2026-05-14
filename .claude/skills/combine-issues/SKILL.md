@@ -19,7 +19,7 @@ Good candidates share at least one of:
 
 Do NOT combine issues that are genuinely independent and benefit from separate review (e.g., a bug fix and an unrelated feature).
 
-## Step 1 — Fetch Eligible Issues
+<!-- step:1 — Fetch Eligible Issues -->
 
 ```bash
 $PWD/.claude/skills/combine-issues/scripts/fetch-combinable-issues.sh
@@ -29,7 +29,7 @@ Parse `ISSUES_FILE` and `COUNT` from stdout. If `COUNT=0`, print `No open issues
 
 Read the JSON file at `$ISSUES_FILE` to get the full issue list (number, title, body, labels).
 
-## Step 2 — Analyze and Propose Groups
+<!-- step:2 — Analyze and Propose Groups -->
 
 Read each issue's title and body. Identify groups of 2+ issues that meet the combination criteria above. For each proposed group:
 
@@ -41,7 +41,7 @@ Present all proposed groups to the user in a numbered list. If no groups are ide
 
 Ask the user which groups to apply (e.g., "all", "1,3", or "none").
 
-## Step 3 — Apply Approved Combinations
+<!-- step:3 — Apply Approved Combinations -->
 
 For each approved group, write the combined body to a temp file, then invoke:
 

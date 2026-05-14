@@ -104,7 +104,6 @@ Defense in depth: stdout parsing of `ISSUES_*` is the primary post-`/issue` mech
 **Every step MUST print clearly visible breadcrumb status lines** so the user can instantly see where execution is. Follow shared/progress-reporting.md rules.
 
 - Print a **start line** when entering a step: e.g., `> **🔶 /research 1: research**`
-- Print a **completion line** when done: e.g., `✅ 1: research — synthesis complete, 4 lanes (3m12s)`
 
 **MANDATORY at session start**: Read `${CLAUDE_PLUGIN_ROOT}/skills/research/scripts/step-name-registry.tsv` to get the Step Name Registry (step number → short name mapping for progress breadcrumbs).
 
@@ -114,7 +113,9 @@ Defense in depth: stdout parsing of `ISSUES_*` is the primary post-`/issue` mech
 
 1. **NEVER improvise ScheduleWakeup outside skill-script direction.** See `${CLAUDE_PLUGIN_ROOT}/skills/shared/orchestrator-never.md` (loaded via MANDATORY above). **CI-backed**: yes — `scripts/test-anti-improvised-wakeup.sh` pins the literal in the shared file.
 
-## Step 0 — Session Setup
+<!-- step:0 — Session Setup -->
+
+Print: `> **🔶 /research 0: setup**`
 
 ### 0a — Session Setup and Reviewer Check
 
@@ -160,27 +161,23 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/git-branch-info.sh
 
 Parse the output for `HEAD_SHA` and `CURRENT_BRANCH`. If `CURRENT_BRANCH` is empty (detached HEAD), use `"(detached HEAD)"` in the report.
 
-Print: `✅ 0: setup — researching on branch <CURRENT_BRANCH> at <HEAD_SHA> (<elapsed>)`
-
-## Step 1 — Collaborative Research Perspectives
+<!-- step:1 — Collaborative Research Perspectives -->
 
 Print: `> **🔶 /research 1: research**`
 
 **MANDATORY — READ ENTIRE FILE** before executing Step 1: `${CLAUDE_PLUGIN_ROOT}/skills/research/references/research-phase.md`. It carries the planner pre-pass (Step 1.1, always on), the TTY-only interactive review checkpoint (Step 1.1.c, no hard-fail when stdin is not a TTY — passthrough proceeds with the planner output), the fixed 4-lane mapping (architecture / edge cases / external comparisons / security), the four named angle-prompt literals (`RESEARCH_PROMPT_ARCH`, `RESEARCH_PROMPT_EDGE`, `RESEARCH_PROMPT_EXT`, `RESEARCH_PROMPT_SEC`), the single collection block at Step 1.4, and the single synthesis branch at Step 1.5 using `compute-research-banner.sh`. Each external lane is Codex-first with a per-lane Claude `Agent` fallback. Cursor is NOT used for research lanes (still in validation panel). **Do NOT load `${CLAUDE_PLUGIN_ROOT}/skills/research/references/validation-phase.md` at Step 1** — that reference is Step 2's body. **Do NOT load `${CLAUDE_PLUGIN_ROOT}/skills/research/references/citation-validation-phase.md` at Step 1** — that reference is Step 2.5's body. **Do NOT load `${CLAUDE_PLUGIN_ROOT}/skills/research/references/critique-loop-phase.md` at Step 1** — that reference is Step 2.6's body.
 
-Execute Step 1 per the reference file above. SKILL.md is the sole owner of Step 1 entry and completion breadcrumbs; the reference file emits none. Step 1.1 invokes `${CLAUDE_PLUGIN_ROOT}/skills/research/scripts/run-research-planner.sh` (contract in sibling `${CLAUDE_PLUGIN_ROOT}/skills/research/scripts/run-research-planner.md`); the script's offline regression harness is `${CLAUDE_PLUGIN_ROOT}/skills/research/scripts/test-run-research-planner.sh` (contract in sibling `${CLAUDE_PLUGIN_ROOT}/skills/research/scripts/test-run-research-planner.md`), wired into `make lint`. The Step 1.5 synthesis-subagent contract is structurally pinned by `${CLAUDE_PLUGIN_ROOT}/skills/research/scripts/test-synthesis-subagent.sh` (contract in sibling `${CLAUDE_PLUGIN_ROOT}/skills/research/scripts/test-synthesis-subagent.md`), also wired into `make lint`. On completion print: `✅ 1: research — synthesis complete, 4 lanes (<elapsed>)`.
+Execute Step 1 per the reference file above. SKILL.md is the sole owner of Step 1 entry breadcrumbs; the reference file emits none. Step 1.1 invokes `${CLAUDE_PLUGIN_ROOT}/skills/research/scripts/run-research-planner.sh` (contract in sibling `${CLAUDE_PLUGIN_ROOT}/skills/research/scripts/run-research-planner.md`); the script's offline regression harness is `${CLAUDE_PLUGIN_ROOT}/skills/research/scripts/test-run-research-planner.sh` (contract in sibling `${CLAUDE_PLUGIN_ROOT}/skills/research/scripts/test-run-research-planner.md`), wired into `make lint`. The Step 1.5 synthesis-subagent contract is structurally pinned by `${CLAUDE_PLUGIN_ROOT}/skills/research/scripts/test-synthesis-subagent.sh` (contract in sibling `${CLAUDE_PLUGIN_ROOT}/skills/research/scripts/test-synthesis-subagent.md`), also wired into `make lint`.
 
-## Step 2 — Findings Validation
+<!-- step:2 — Findings Validation -->
 
 Print: `> **🔶 /research 2: validation**`
 
 **MANDATORY — READ ENTIRE FILE** before executing Step 2: `${CLAUDE_PLUGIN_ROOT}/skills/research/references/validation-phase.md`. It carries the 3-reviewer panel (1 Claude Code Reviewer subagent + 1 Codex + 1 Cursor), the always-on Claude Code Reviewer subagent lane with the research-validation variable bindings (`{REVIEW_TARGET}` / `{CONTEXT_BLOCK}` / `{OUTPUT_INSTRUCTION}`) and research-specific acceptance criteria, the Cursor and Codex validation-reviewer launch bash blocks with their per-slot Claude Code Reviewer subagent fallbacks, the process-Claude-findings-immediately rule, Step 2.4 `COLLECT_ARGS` + zero-externals branch + runtime-timeout replacement, the Codex/Cursor negotiation delegation to `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md`, and the Finalize Validation procedure (where synthesis revision is routed to a separate Claude Agent subagent when accepted findings exist, with the same per-profile structural validator and atomic rewrite of `$RESEARCH_TMPDIR/research-report.txt`). **Do NOT load `${CLAUDE_PLUGIN_ROOT}/skills/research/references/research-phase.md` at Step 2** — that reference is Step 1's body. **Do NOT load `${CLAUDE_PLUGIN_ROOT}/skills/research/references/citation-validation-phase.md` at Step 2** — that reference is Step 2.5's body. **Do NOT load `${CLAUDE_PLUGIN_ROOT}/skills/research/references/critique-loop-phase.md` at Step 2** — that reference is Step 2.6's body.
 
-Execute Step 2 per the reference file above. SKILL.md is the sole owner of Step 2 entry and completion breadcrumbs; the reference file emits none. On completion, print one of the two branches depending on the Finalize Validation outcome:
-- If all reviewers reported no issues: `✅ 2: validation — all findings validated, no corrections needed (3 reviewers) (<elapsed>)`
-- If any findings were accepted and the synthesis was revised: `✅ 2: validation — corrections applied, <N> findings accepted (3 reviewers) (<elapsed>)`
+Execute Step 2 per the reference file above. SKILL.md is the sole owner of Step 2 entry breadcrumbs; the reference file emits none.
 
-## Step 2.5 — Citation Validation
+<!-- step:2.5 — Citation Validation -->
 
 Print: `> **🔶 /research 2.5: citation-validation**`
 
@@ -197,11 +194,7 @@ ${CLAUDE_PLUGIN_ROOT}/skills/research/scripts/validate-citations.sh \
   --tmpdir "$RESEARCH_TMPDIR"
 ```
 
-The script always exits 0 (fail-soft). Parse the last stdout line `SUMMARY=PASS=<n> FAIL=<n> UNKNOWN=<n> TOTAL=<n>` to drive the completion breadcrumb. Print:
-
-```
-✅ 2.5: citation-validation — <pass> PASS, <fail> FAIL, <unknown> UNKNOWN (<total> claims) (<elapsed>)
-```
+The script always exits 0 (fail-soft). Parse the last stdout line `SUMMARY=PASS=<n> FAIL=<n> UNKNOWN=<n> TOTAL=<n>` to drive advisory warnings.
 
 Then conditionally print advisory warnings (not errors — fail-soft):
 
@@ -210,7 +203,7 @@ Then conditionally print advisory warnings (not errors — fail-soft):
 
 The sidecar at `$RESEARCH_TMPDIR/citation-validation.md` is consumed by Step 3 (splice contract: appended as a `## Citation Validation` section to `research-report-final.md` before the user-visible `cat`). See `${CLAUDE_PLUGIN_ROOT}/skills/research/scripts/validate-citations.md` for the full validator contract; the offline regression harness is `${CLAUDE_PLUGIN_ROOT}/skills/research/scripts/test-validate-citations.sh` (contract in sibling `${CLAUDE_PLUGIN_ROOT}/skills/research/scripts/test-validate-citations.md`), wired into `make lint`. Real-time budget-exhaustion coverage (Tests 20 / 21) lives in the sibling harness `${CLAUDE_PLUGIN_ROOT}/skills/research/scripts/test-validate-citations-budget.sh` (contract in `${CLAUDE_PLUGIN_ROOT}/skills/research/scripts/test-validate-citations-budget.md`) so its real sleeps can be billed to a different CI matrix shard.
 
-## Step 2.6 — Critique Loop
+<!-- step:2.6 — Critique Loop -->
 
 Print: `> **🔶 /research 2.6: critique loop**`
 
@@ -218,12 +211,9 @@ Print: `> **🔶 /research 2.6: critique loop**`
 
 **MANDATORY — READ ENTIRE FILE** before executing Step 2.6: `${CLAUDE_PLUGIN_ROOT}/skills/research/references/critique-loop-phase.md`. It carries the loop control (cap `RESEARCH_CRITIQUE_MAX=2`, per-iteration critique-pass + categorical-Important gate + refine-pass + citation re-validation), the critique prompt template, the in-scope `**Important**`-finding parser-scope rule, the parser fail-safe, the refine-subagent contract, the canonical slot-name list (`Critique-1`, `Critique-2`, `Revision-Critique-1`, `Revision-Critique-2`), and the citation-revalidation invariant. **Do NOT load `${CLAUDE_PLUGIN_ROOT}/skills/research/references/research-phase.md` at Step 2.6** — that reference is Step 1's body. **Do NOT load `${CLAUDE_PLUGIN_ROOT}/skills/research/references/validation-phase.md` at Step 2.6** — that reference is Step 2's body. **Do NOT load `${CLAUDE_PLUGIN_ROOT}/skills/research/references/citation-validation-phase.md` at Step 2.6** — that reference is Step 2.5's body.
 
-Execute Step 2.6 per the reference file above. SKILL.md is the sole owner of Step 2.6 entry and completion breadcrumbs; the reference file does NOT emit those, but the reference DOES own intermediate operator prints — notably the per-iteration citation-revalidation breadcrumb. On completion, print one of these branches:
-- If the loop converged before reaching the cap (zero in-scope `**Important**` findings): `✅ 2.6: critique loop — converged at iter <N> (no Important findings) (<elapsed>)`
-- If the loop ran to the cap: `✅ 2.6: critique loop — <N> iterations completed (<elapsed>)`
-- If the byte-equal idle-cycle guard fired with zero Important findings: `⏩ 2.6: critique loop — refine produced no change at iter <N>; exiting loop (<elapsed>)`
+Execute Step 2.6 per the reference file above. SKILL.md is the sole owner of Step 2.6 entry breadcrumbs; the reference owns intermediate operator prints — notably the per-iteration citation-revalidation breadcrumb. If the byte-equal idle-cycle guard fires with zero Important findings, print `⏩ 2.6: critique loop — refine produced no change at iter <N>; exiting loop (<elapsed>)`.
 
-## Step 3 — Final Research Report
+<!-- step:3 — Final Research Report -->
 
 Print: `> **🔶 /research 3: report**`
 
@@ -268,7 +258,7 @@ When any external research lane ran as a Claude-fallback (`N_FALLBACK >= 1` per 
 
 If risk assessment, difficulty estimate, or feasibility verdict are not applicable to the nature of the research question (e.g., a pure "how does X work?" question), mark them as **N/A** with a brief explanation.
 
-### Step 3 final-report write + sidecar generation
+<!-- step:3 final-report write + sidecar generation -->
 
 Single authoritative emission: write the full templated report block (header lines + every section above, with substituted values) to `$RESEARCH_TMPDIR/research-report-final.md` first, **append the Step 2.5 citation-validation sidecar** when present, then `cat` the file for user-visible output.
 
@@ -311,9 +301,7 @@ if [[ "$SKIP_SIDECAR" != "true" ]] && [[ -s "$RESEARCH_TMPDIR/research-report-fi
 fi
 ```
 
-Print: `✅ 3: report — complete (<elapsed>)`
-
-## Step 3.5 — Auto-file Research Issue
+<!-- step:3.5 — Auto-file Research Issue -->
 
 Print: `> **🔶 /research 3.5: auto-issue**`
 
@@ -381,13 +369,15 @@ Derive from `RESEARCH_QUESTION`: `[Research Report] <RESEARCH_QUESTION>`, trunca
 
    Parse `VERIFIED` and `REASON`.
 
-5. **On success** (`VERIFIED=true` AND `ISSUES_CREATED >= 1`): print `✅ 3.5: auto-issue — archived as #<ISSUE_NUMBER> (<elapsed>)`.
+5. **On success** (`VERIFIED=true` AND `ISSUES_CREATED >= 1`): proceed to Step 4.
 
-6. **On dedup** (`VERIFIED=true` AND `ISSUES_CREATED == 0` AND `ISSUES_DEDUPLICATED >= 1`): print `✅ 3.5: auto-issue — deduplicated (<elapsed>)`.
+6. **On dedup** (`VERIFIED=true` AND `ISSUES_CREATED == 0` AND `ISSUES_DEDUPLICATED >= 1`): proceed to Step 4.
 
 7. **On failure** (`VERIFIED=false`, or `/issue` error, or `ISSUES_FAILED >= 1`): print `**⚠ 3.5: auto-issue — /issue failed (REASON=<token>). Research results were not archived to GitHub. Continuing.**` and proceed to Step 4.
 
-## Step 4 — Cleanup and Final Warnings
+<!-- step:4 — Cleanup and Final Warnings -->
+
+Print: `> **🔶 /research 4: cleanup**`
 
 ### Token Spend report
 
@@ -411,5 +401,3 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-tmpdir.sh --dir "$RESEARCH_TMPDIR"
 - `**⚠ Codex not available: <reason>**`
 - `**⚠ Cursor review failed: <reason>**`
 - `**⚠ Codex research timed out / produced empty output**`
-
-Print: `✅ 4: cleanup — research complete! (<elapsed>)`

@@ -193,15 +193,15 @@ If this skill invokes another skill via the \`Skill\` tool, read \`${PLUGIN_TOKE
 
 If this skill does not delegate to any other skill, delete this entire section.
 
-## Step 0 — Setup
+<!-- step:0 — Setup -->
 
 <!-- TODO: invoke ${LOCAL_TOKEN}/${SKILL_REL}/scripts/setup.sh -->
 
-## Step 1 — TODO
+<!-- step:1 — TODO -->
 
 <!-- TODO: invoke ${LOCAL_TOKEN}/${SKILL_REL}/scripts/step1.sh -->
 
-## Step N — Cleanup
+<!-- step:N — Cleanup -->
 
 <!-- TODO: invoke ${PLUGIN_TOKEN}/scripts/cleanup-tmpdir.sh --dir "\$<SKILL>_TMPDIR" -->
 MULTI_STEP_BODY

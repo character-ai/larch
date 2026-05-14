@@ -17,7 +17,7 @@ Pass any of these after the skill name (e.g. `/report-tokens --no-issue`):
 - `--plot-from <N>` — re-plot from a prior `[Analysis Report]` issue number (skips the GitHub scan).
 - `--run-id <ID>` — optional run identifier; when set, used as the run ID for this invocation instead of the auto-generated one. Default: empty (auto-generate).
 
-## Step 1 - Run analysis
+<!-- step:1 — Run analysis -->
 
 Parse any `--no-issue`, `--no-plot`, `--plot-from <N>`, or `--run-id <ID>` flags. The `--run-id` flag is consumed by the orchestrator and NOT forwarded to `run-analysis.sh`. Then:
 

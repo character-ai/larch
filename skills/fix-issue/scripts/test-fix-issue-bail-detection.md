@@ -15,7 +15,7 @@
 - `Skip to Step 8` — cleanup redirect on the bail branch.
 - `Invoke` followed by `/implement` via the Skill tool — delegation mandate that anchors anti-pattern #5 (NEVER implement inline at Step 5a using Edit/Write/Bash file-modification tools instead of delegating to `/implement` via the Skill tool; closes #1988).
 
-Extraction boundary: `^### 5a` (start, prefix match) through `^## Step 6` (end, prefix match; the real heading is `## Step 6 — Finalize`). This scopes the assertions to Step 5a so stray mentions of these literals elsewhere in `SKILL.md` cannot false-pass the harness.
+Extraction boundary: `^### 5a` (start, prefix match) through `^<!-- step:6` (end, prefix match; the real anchor is `<!-- step:6 — Finalize -->`). This scopes the assertions to Step 5a so stray mentions of these literals elsewhere in `SKILL.md` cannot false-pass the harness.
 
 The harness is wired into `make lint` via the `test-fix-issue-bail-detection` target in `Makefile`. It is added to `agent-lint.toml`'s `exclude` list alongside its sibling contract `.md` because agent-lint's dead-script and S030/orphaned-skill-files rules do not follow Makefile-only references. The paired token-literal assertion on the emitter side lives in `scripts/test-implement-structure.sh` (pins the same token in `skills/implement/SKILL.md`); a rename of the bail token is therefore a dual-repo change caught by CI.
 

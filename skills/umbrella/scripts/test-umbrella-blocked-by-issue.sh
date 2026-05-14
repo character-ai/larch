@@ -72,8 +72,8 @@ assert_present "flag-table row" \
 
 # 3. Step 3A block: must include --blocked-by-issue in args grammar AND
 #    the diagnostic note about /issue rejection. Extract the Step 3A block
-#    (from "## Step 3A" heading to next "## " heading).
-STEP_3A_BLOCK=$(extract_block '^## Step 3A' '^## Step 3B')
+#    (from Step 3A anchor to Step 3B anchor).
+STEP_3A_BLOCK=$(extract_block '^<!-- step:3A' '^<!-- step:3B')
 
 assert_in_block "step-3A args grammar lists --blocked-by-issue" \
     "$STEP_3A_BLOCK" \

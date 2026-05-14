@@ -63,15 +63,15 @@ Pin the load-bearing literals of the new `created-eq-1` bypass branch (closes #7
 - (a2) Single-emission-point invariant: Step 4 is the only place in SKILL.md that emits the breadcrumb (Step 3B.3's umbrella-creation-failure path defers to Step 4).
 - (a3 / a3b / a3c) UMBRELLA_DOWNGRADE schema parenthetical lists all 3 emission sites (`decomposition-lt-2`, `input-file-distinct-lt-2`, `created-eq-1`) — added in #717. Pinned because the previous wording mentioned only Step 3B.1, which became stale once `input-file-distinct-lt-2` (Step 2) and `created-eq-1` (Step 3B.2) were added.
 - (c1)–(c8) plus (c6b) — the nine concrete breadcrumb shape literals on disk:
-  - (c1) one-shot filed: `✅ /umbrella: filed #<N> — <url>`
+  - (c1) one-shot filed: report followed by `filed #<N> — <url>`
   - (c2) one-shot dedup'd: `ℹ /umbrella: dedup'd to #<N> — <url>`
   - (c3) one-shot failed: `**⚠ /umbrella: failed — <error>**`
-  - (c4) multi-piece success: `✅ /umbrella: <T> pieces, filed umbrella #<M> with <C> children (<D> deduplicated), <E> dependency edge(s), <B> back-link(s) — <umbrella-url>`
+  - (c4) multi-piece success: report followed by `<T> pieces, filed umbrella #<M> with <C> children (<D> deduplicated), <E> dependency edge(s), <B> back-link(s) — <umbrella-url>`
   - (c5) multi-piece dry-run: `ℹ /umbrella: dry-run — <T> pieces, would file umbrella with <N> children`
   - (c6) multi-piece partial — fallback (no `UMBRELLA_FAILURE_REASON`): `**⚠ /umbrella: <T> pieces → <N> children created but umbrella creation failed. Children remain unlinked.**`
   - (c6b) multi-piece partial — with `UMBRELLA_FAILURE_REASON` parenthetical: `**⚠ /umbrella: <T> pieces → <N> children created but umbrella creation failed (<UMBRELLA_FAILURE_REASON>). Children remain unlinked.**`
   - (c7) multi-piece children-batch-failed (umbrella never attempted): `**⚠ /umbrella: <T> pieces → /issue batch reported <F> failure(s); refusing to create a half-populated umbrella. <N> children remain unlinked.**`
-  - (c8) created-eq-1 bypass — multi-piece downgraded one-shot (added in #717): `✅ /umbrella: <T> pieces → 1 created, <D> deduplicated; filed #<N> — <url> (downgraded — created-eq-1, no umbrella issue created)`
+  - (c8) created-eq-1 bypass — multi-piece downgraded one-shot (added in #717): report followed by `<T> pieces → 1 created, <D> deduplicated; filed #<N> — <url> (downgraded — created-eq-1, no umbrella issue created)`
 
   Issue #602 specifies "the four canonical shape templates" but explicitly includes "dry-run and partial-failure variants of multi-piece as documented in Step 4". On disk, Step 4 now contains nine concrete breadcrumb literals — the multi-piece partial case has dual shapes (with-reason / fallback) that #644 surfaced as both load-bearing, the children-batch-failed variant was added after #602 was filed, and the created-eq-1 bypass shape was added in #717. The harness pins each concrete literal to guard against silent shape deletion — pinning fewer would let one variant disappear unnoticed.
 
@@ -115,15 +115,15 @@ The `k*` family pins the inter-piece dependency edge composition from `--pieces-
 
 | Block | Start regex | End regex |
 |-------|-------------|-----------|
-| SKILL.md Step 2 | `^## Step 2 — Classify One-Shot vs Multi-Piece` (full heading) | `^## Step 3A` (prefix only) |
+| SKILL.md Step 2 | `^<!-- step:2 — Classify One-Shot vs Multi-Piece -->` (full anchor) | `^<!-- step:3A` (prefix only) |
 | SKILL.md Step 3B.1 | `^### 3B\.1` plus space (subheading prefix) | `^### 3B\.2` plus space (next subheading prefix) |
 | SKILL.md Step 3B.2 | `^### 3B\.2` plus space (subheading prefix) | `^### 3B\.3` plus space (next subheading prefix) |
 | SKILL.md Step 3B.3 | `^### 3B\.3` plus space (subheading prefix) | `^### 3B\.4` plus space (next subheading prefix) |
-| SKILL.md Step 3B.4 | `^### 3B\.4` plus space (subheading prefix) | `^## Step 4 — Emit Output` (full heading) |
-| SKILL.md Step 4 | `^## Step 4 — Emit Output` (full heading) | `^## Step 5` (prefix only) |
+| SKILL.md Step 3B.4 | `^### 3B\.4` plus space (subheading prefix) | `^<!-- step:4 — Emit Output -->` (full anchor) |
+| SKILL.md Step 4 | `^<!-- step:4 — Emit Output -->` (full anchor) | `^<!-- step:5` (prefix only) |
 | helpers.md emit-output | `^## .emit-output` | `^###` followed by a space (first triple-hash) |
 
-The Step 5 end regex is deliberately a prefix match (not the full heading): it tolerates Step 5 subtitle changes while still bounding the block. The end pattern for helpers.md (`^###` followed by a space) matches the first triple-hash heading after the `## emit-output` heading — today, `### Edit-in-sync rules`. Empty extraction is treated as a hard failure with both boundary regexes printed to stderr.
+The Step 5 end regex is deliberately a prefix match (not the full anchor): it tolerates Step 5 subtitle changes while still bounding the block. The end pattern for helpers.md (`^###` followed by a space) matches the first triple-hash heading after the `## emit-output` heading — today, `### Edit-in-sync rules`. Empty extraction is treated as a hard failure with both boundary regexes printed to stderr.
 
 **Known limitation**: if a future PR adds a `###` subheading inside the emit-output section above `### Edit-in-sync rules`, the helpers.md extractor will truncate the block early and (b1)/(b2)/(b3) may false-fail. The current placement of `### Edit-in-sync rules` is the de facto end boundary; an editor adding intermediate `###` headings should also update the end pattern in this harness. (Considered and exonerated during plan review — voted 1 YES + 2 EXONERATE.)
 

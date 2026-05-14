@@ -13,7 +13,7 @@ Display a skill's `SKILL.md` content. Accepts a skill name (e.g., `implement`, `
 
 - `--run-id <ID>`: Optional run identifier; when set, used as the run ID for this invocation instead of the auto-generated one. Default: empty (auto-generate).
 
-## Step 1 — Resolve and display
+<!-- step:1 — Resolve and display -->
 
 Strip `--run-id <ID>` from `$ARGUMENTS` before invoking the script (the script does not accept this flag).
 

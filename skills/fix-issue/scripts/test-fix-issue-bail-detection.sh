@@ -35,8 +35,7 @@
 #   (f)  Delegation mandate "Invoke `/implement` via the Skill tool" present
 #        (anti-pattern #5 guard against inline implementation at Step 5a).
 #
-# Block extraction boundary: "### 5a " (start) through "## Step 6" prefix match
-# (end — the real heading is "## Step 6 — Finalize"; prefix pattern handles it).
+# Block extraction boundary: "### 5a " (start) through the Step 6 anchor.
 #
 # Wired into `make lint` via the `test-fix-issue-bail-detection` target.
 # Referenced in agent-lint.toml's exclude list (Makefile-only harness pattern).
@@ -58,16 +57,16 @@ if [[ ! -f "$SKILL_MD" ]]; then
 fi
 
 # Extract the Step 5a block: from "### 5a " up to (but not including) the
-# next "## Step 6" heading. awk range using two regexes.
+# next Step 6 anchor. awk range using two regexes.
 STEP5A_BLOCK=$(awk '
     /^### 5a / { in_block=1 }
-    /^## Step 6/ { in_block=0 }
+    /^<!-- step:6 / { in_block=0 }
     in_block { print }
 ' "$SKILL_MD")
 
 if [[ -z "$STEP5A_BLOCK" ]]; then
     echo "FAIL: Step 5a block extraction produced empty output." >&2
-    echo "  Boundary regexes: '^### 5a ' (start) and '^## Step 6' (end)." >&2
+    echo "  Boundary regexes: '^### 5a ' (start) and '^<!-- step:6 ' (end)." >&2
     exit 1
 fi
 
@@ -144,7 +143,7 @@ assert_contains "c: warning prefix '/implement bailed: issue #'" '/implement bai
 # (d) Skip-Step-6 directive present — guard against silent re-route back to Step 6.
 # The specific phrase "Do NOT call `issue-lifecycle.sh close`" is required; a
 # bare "Do NOT call" substring would false-pass on section 5b's unrelated
-# "Do NOT call `/implement`" line (the awk window includes 5b up to ## Step 6).
+# "Do NOT call `/implement`" line (the awk window includes 5b up to the Step 6 anchor).
 assert_contains "d: 'Do NOT call \`issue-lifecycle.sh close\`' directive (Step-6-skip guard)" 'Do NOT call `issue-lifecycle.sh close`'
 
 # (e) Cleanup redirect present.

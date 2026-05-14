@@ -36,7 +36,7 @@ Example: `/skill-evolver design` or `/skill-evolver review`.
 
 - `--run-id <ID>`: Optional run identifier; when set, used as the run ID for this invocation instead of the auto-generated one. Default: empty (auto-generate). Consumed by the orchestrator before Step 1; NOT forwarded to `validate-args.sh`.
 
-## Step 1 — Validate Arguments
+<!-- step:1 — Validate Arguments -->
 
 After stripping `--run-id`, invoke the validator:
 
@@ -57,7 +57,7 @@ The full stdout grammar, error contract, positional-argument rules, and edit-in-
 
 Save `SKILL_NAME`, `SKILL_DIR`, `DEBUG` for Steps 2 and 3.
 
-## Step 2 — Run /research
+<!-- step:2 — Run /research -->
 
 Compose the research prompt by substituting `<SKILL_NAME>` and `<SKILL_DIR>` into the template below. Verify both substitutions before invoking `/research`. The lanes have full `Read | Grep | Glob | Bash` and can read the target skill themselves — pass the **path**, not the contents.
 
@@ -95,7 +95,7 @@ After `/research` returns, read its `## Research Report` from conversation conte
 
 If no such line is present (the `/research` lane synthesis dropped the requested footer), fall back to a deterministic count: scan the `## Research Report` body for findings shaped per the (a)/(b)/(c)/(d) template above (each item must explicitly cite both (a) a target file path AND (c) cited evidence — sibling-skill `file:line` or external URL — to count). Bind the resulting integer to `ACTIONABLE_IMPROVEMENTS_COUNT` and proceed. If the report is empty, malformed, or contains no shape-conformant findings, treat the count as `0` (Step 3 zero branch) — do NOT abort the skill on a missing count line.
 
-## Step 3 — Decide and Delegate to /umbrella
+<!-- step:3 — Decide and Delegate to /umbrella -->
 
 **Branch on `ACTIONABLE_IMPROVEMENTS_COUNT`**:
 
@@ -114,8 +114,8 @@ If no such line is present (the `/research` lane synthesis dropped the requested
   - args: `--label evolved-by:skill-evolver --label skill:<SKILL_NAME> --title-prefix "[skill-evolver:<SKILL_NAME>] " <umbrella-task-description>`.
 
   After `/umbrella` returns, branch on its `UMBRELLA_VERDICT` line (per `skills/umbrella/SKILL.md` Step 4 stdout grammar — `UMBRELLA_NUMBER` and `UMBRELLA_URL` are emitted only on the multi-piece success path; one-shot success emits `CHILD_1_URL` instead; failure paths omit `UMBRELLA_NUMBER` and `UMBRELLA_URL` entirely; `CHILDREN_CREATED=<N>` and `CHILDREN_DEDUPLICATED=<N>` are emitted on every multi-piece path AND on the one-shot path — consumers must branch on these counters to distinguish a newly-filed issue from one deduplicated to an existing GitHub issue, since `CHILD_1_URL` is populated in both cases per `/umbrella`'s renormalized `CHILD_*` set rule):
-  - `UMBRELLA_VERDICT=multi-piece` AND `UMBRELLA_URL` present: print `✅ /skill-evolver: filed umbrella #<UMBRELLA_NUMBER> at <UMBRELLA_URL> with <CHILDREN_CREATED> child issues.`
-  - `UMBRELLA_VERDICT=one-shot` AND `CHILDREN_CREATED=1` AND `CHILD_1_URL` present: print `✅ /skill-evolver: filed as a single issue at <CHILD_1_URL> (one-shot per /umbrella's classifier — see /umbrella's UMBRELLA_RATIONALE for the classification reason).` Note: `UMBRELLA_VERDICT=one-shot` does NOT mean `ACTIONABLE_IMPROVEMENTS_COUNT=1` — `/umbrella`'s classifier may downgrade a multi-finding task description to one-shot when decomposition produces fewer than two pieces (see `skills/umbrella/SKILL.md` UMBRELLA_DOWNGRADE=decomposition-lt-2 path). Do NOT claim "single actionable improvement" in the success line — the runtime predicate is the verdict, not the count.
+  - `UMBRELLA_VERDICT=multi-piece` AND `UMBRELLA_URL` present: report the filed umbrella number, URL, and child issue count.
+  - `UMBRELLA_VERDICT=one-shot` AND `CHILDREN_CREATED=1` AND `CHILD_1_URL` present: report the single issue URL and note that `/umbrella` classified it as one-shot. Note: `UMBRELLA_VERDICT=one-shot` does NOT mean `ACTIONABLE_IMPROVEMENTS_COUNT=1` — `/umbrella`'s classifier may downgrade a multi-finding task description to one-shot when decomposition produces fewer than two pieces (see `skills/umbrella/SKILL.md` UMBRELLA_DOWNGRADE=decomposition-lt-2 path). Do NOT claim "single actionable improvement" in the success line — the runtime predicate is the verdict, not the count.
   - `UMBRELLA_VERDICT=one-shot` AND `CHILDREN_CREATED=0` AND `CHILDREN_DEDUPLICATED=1` AND `CHILD_1_URL` present: print `**ℹ /skill-evolver: dedup'd to existing issue at <CHILD_1_URL> (one-shot per /umbrella's classifier — no new issue created; see /umbrella's UMBRELLA_RATIONALE for the classification reason).**` The `CHILDREN_CREATED=0` predicate makes this branch mutually exclusive with the filed branch — on the `UMBRELLA_DOWNGRADE=created-eq-1` bypass path, `/umbrella` emits both `CHILDREN_CREATED=1` AND `CHILDREN_DEDUPLICATED=<D>` simultaneously (see `skills/umbrella/SKILL.md` Step 3B.2 created-eq-1 bypass), in which case the filed branch fires (correct: a new issue WAS created; deduplicated siblings are secondary).
   - Any other shape (failure, dry-run, partial): print `**⚠ /skill-evolver: /umbrella did not return a recognized success shape. See /umbrella's stdout above for status.**` Do NOT fabricate a URL. Continue cleanly.
 

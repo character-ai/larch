@@ -37,7 +37,9 @@ Parse flags from the start of `$ARGUMENTS`. Flags may appear in any order; stop 
 | `--pieces-json PATH` | Optional. Caller-supplied inter-piece dependency edges for pre-decomposed-input mode. JSON array of `{title, body, depends_on: [int,...]}` objects matching the `/issue --input-file` batch items by index. Required to be paired with `--input-file` (asymmetric: `--input-file` does NOT require `--pieces-json`). When supplied, Step 3B.4 reads `depends_on` fields to compose inter-child edges (resolving piece indices to issue numbers via `/issue` batch return). Validated by `validate-pieces-json.sh` before Step 3B.2. |
 | `--run-id <ID>` | Optional run identifier; when set, used as the run ID for this invocation instead of the auto-generated one. Default: empty (auto-generate). Consumed by the orchestrator before Step 0; NOT forwarded to `parse-args.sh`. |
 
-## Step 0 — Setup
+## Workflow
+
+<!-- step:0 — Setup -->
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/skills/umbrella/scripts/parse-args.sh "$ARGUMENTS"
@@ -51,7 +53,7 @@ When forwarding labels to `/issue` in Steps 3A, 3B.2, and 3B.3 below, reconstruc
 
 On non-zero exit, print the `ERROR=` line and abort.
 
-## Step 1 — Resolve Task Description
+<!-- step:1 — Resolve Task Description -->
 
 **Skip Step 1 entirely when `INPUT_FILE` is non-empty** (pre-decomposed-input mode). The caller has already produced a `/issue --input-file` batch markdown directly, so there is no `TASK` to resolve and no LLM decomposition needed downstream. Proceed directly to Step 2.
 
@@ -59,7 +61,7 @@ If `TASK` is non-empty, use it verbatim.
 
 If `TASK` is empty, deduce the task from session context — the most recent unambiguous user request (e.g., a feature spec discussed in the prior turns, a research finding, a /research output the user just acted on). Surface the deduced task to the user as a single quoted line prefixed by `Deduced task:` so they can interrupt if you got it wrong. If the context is genuinely ambiguous (multiple plausible tasks, or none), abort with the error message: `/umbrella requires a task description and could not deduce one from context. Re-invoke with the description as a positional argument.`
 
-## Step 2 — Classify One-Shot vs Multi-Piece
+<!-- step:2 — Classify One-Shot vs Multi-Piece -->
 
 ### Pre-decomposed-input mode (when `INPUT_FILE` is non-empty)
 
@@ -101,7 +103,7 @@ UMBRELLA_RATIONALE=<one short sentence — under 120 chars — explaining the ca
 
 Then branch: `one-shot` → Step 3A; `multi-piece` → Step 3B.
 
-## Step 3A — One-Shot Path
+<!-- step:3A — One-Shot Path -->
 
 Forward the entire `TASK` to `/issue` (single mode). Do NOT add or strip any flag the user did not pass.
 
@@ -116,7 +118,7 @@ Parse `/issue`'s stdout for `ISSUES_CREATED`, `ISSUES_DEDUPLICATED`, `ISSUES_FAI
 
 Continue at Step 4. (No umbrella issue, no DAG, no back-links — there is only one child.)
 
-## Step 3B — Multi-Piece Path
+<!-- step:3B — Multi-Piece Path -->
 
 Four sub-steps run in order. Each is exactly one Bash tool call (Section III rule C). The LLM owns the decomposition; the scripts own the I/O and GitHub mechanics. On the multi-piece dry-run path (`DRY_RUN=true`), 3B.2's children-batch-failure abort or 3B.3's dry-run guard may short-circuit to Step 4, skipping the remaining sub-steps; this is the canonical exit shape, not an exception.
 
@@ -266,7 +268,7 @@ Parse stdout for `TITLES_RENAMED`, `TITLES_SKIPPED_EXISTING`, `TITLES_FAILED`. T
 
 **Path coverage**: title prefixing runs only when Step 3B.4 itself runs — i.e., on the multi-piece-with-real-umbrella path. The Step 3B.2 `created-eq-1` bypass (where `N-1` of `N` decomposed pieces deduplicated and only one new child was created) explicitly skips Steps 3B.3 and 3B.4 *as a unit*: no umbrella is created, so no `$UMBRELLA_NUMBER` exists, and the title-prefix marker is undefined on that path. This is intentional, not an orchestrator bug — operators inspecting a `created-eq-1` downgrade run should not expect the new child's title to carry an <code>(Umbrella: &lt;N&gt;) </code> marker. Likewise: one-shot path (Step 3A), multi-piece children-batch-failure (3B.2 abort), multi-piece umbrella-creation-failure (3B.3 fault), and the `--dry-run` early-exit at the top of 3B.4 all skip the prefix pass for the same reason — the umbrella that would own the marker does not exist.
 
-## Step 4 — Emit Output
+<!-- step:4 — Emit Output -->
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/skills/umbrella/scripts/helpers.sh emit-output --kv-file "$UMBRELLA_TMPDIR/output.kv"
@@ -298,14 +300,14 @@ Global dry-run ⇒ every resolved-non-failed child uses the dry-run child shape;
 
 After `emit-output` returns, the orchestrator (the LLM running this skill) MUST print exactly one human summary breadcrumb of the form below. Step 4 is the single emission point for this summary — Step 3B.3's umbrella-creation-failure path defers to Step 4 instead of printing inline. The orchestrator composes each shape using both `output.kv` values AND any session state captured from earlier sub-steps (e.g., `/issue`'s stdout for the one-shot dedup'd / failed cases — `ISSUE_1_DUPLICATE_OF_NUMBER`/`ISSUE_1_DUPLICATE_OF_URL` and the `/issue` failure context). The multi-piece partial shape interpolates the optional `UMBRELLA_FAILURE_REASON` field documented in the canonical grammar above; the remaining shapes (one-shot, multi-piece success, multi-piece dry-run) compose from `output.kv` values and earlier-step session state without additional canonical fields:
 
-- one-shot: `✅ /umbrella: filed #<N> — <url>` (or `ℹ /umbrella: dedup'd to #<N> — <url>` / `**⚠ /umbrella: failed — <error>**` etc.).
-- created-eq-1 bypass (Step 3B.2 normal-mode `ISSUES_CREATED==1` downgrade): `✅ /umbrella: <T> pieces → 1 created, <D> deduplicated; filed #<N> — <url> (downgraded — created-eq-1, no umbrella issue created)` where `<T>` is `CHILDREN_CREATED + CHILDREN_DEDUPLICATED + CHILDREN_FAILED`, `<N>` / `<url>` are `CHILD_1_NUMBER` / `CHILD_1_URL`, and `<D>` is `CHILDREN_DEDUPLICATED` from `output.kv`.
-- multi-piece success: `✅ /umbrella: <T> pieces, filed umbrella #<M> with <C> children (<D> deduplicated), <E> dependency edge(s), <B> back-link(s) — <umbrella-url>` where `<T>` is `CHILDREN_CREATED + CHILDREN_DEDUPLICATED + CHILDREN_FAILED`, `<C>` is `CHILDREN_CREATED`, `<D>` is `CHILDREN_DEDUPLICATED`.
+- one-shot: report `filed #<N> — <url>` (or `ℹ /umbrella: dedup'd to #<N> — <url>` / `**⚠ /umbrella: failed — <error>**` etc.).
+- created-eq-1 bypass (Step 3B.2 normal-mode `ISSUES_CREATED==1` downgrade): report `<T> pieces → 1 created, <D> deduplicated; filed #<N> — <url> (downgraded — created-eq-1, no umbrella issue created)` where `<T>` is `CHILDREN_CREATED + CHILDREN_DEDUPLICATED + CHILDREN_FAILED`, `<N>` / `<url>` are `CHILD_1_NUMBER` / `CHILD_1_URL`, and `<D>` is `CHILDREN_DEDUPLICATED` from `output.kv`.
+- multi-piece success: report `<T> pieces, filed umbrella #<M> with <C> children (<D> deduplicated), <E> dependency edge(s), <B> back-link(s) — <umbrella-url>` where `<T>` is `CHILDREN_CREATED + CHILDREN_DEDUPLICATED + CHILDREN_FAILED`, `<C>` is `CHILDREN_CREATED`, `<D>` is `CHILDREN_DEDUPLICATED`.
 - multi-piece dry-run: `ℹ /umbrella: dry-run — <T> pieces, would file umbrella with <N> children` where `<T>` is `CHILDREN_CREATED + CHILDREN_DEDUPLICATED + CHILDREN_FAILED` and `<N>` is `CHILDREN_CREATED`.
 - multi-piece partial (children created, umbrella failed): when `UMBRELLA_FAILURE_REASON` is present in `output.kv`, render `**⚠ /umbrella: <T> pieces → <N> children created but umbrella creation failed (<UMBRELLA_FAILURE_REASON>). Children remain unlinked.**`; when omitted (no failure signal could be extracted), fall back to `**⚠ /umbrella: <T> pieces → <N> children created but umbrella creation failed. Children remain unlinked.**`. `<T>` is `CHILDREN_CREATED + CHILDREN_DEDUPLICATED + CHILDREN_FAILED`.
 - multi-piece children-batch-failed (some children failed during batch creation, umbrella never attempted): `**⚠ /umbrella: <T> pieces → /issue batch reported <F> failure(s); refusing to create a half-populated umbrella. <N> children remain unlinked.**` where `<T>` is `CHILDREN_CREATED + CHILDREN_DEDUPLICATED + CHILDREN_FAILED`.
 
-## Step 5 — Cleanup
+<!-- step:5 — Cleanup -->
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-tmpdir.sh --dir "$UMBRELLA_TMPDIR"

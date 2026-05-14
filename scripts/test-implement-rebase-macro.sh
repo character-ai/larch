@@ -5,7 +5,7 @@
 #  (B) Four canonical Call-site registry rows present (1.r/4.r/7.r/7a.r with their short-names).
 #  (C) Exactly four `Apply the Rebase Checkpoint Macro with ...` invocation lines matching canonical pairs.
 #  (E) Step 7.r section retains `FILES_CHANGED=true` prose above the macro invocation.
-#  (F) Macro header line number is BETWEEN `### Verbosity Control` and `## Step 0`.
+#  (F) Macro header line number is BETWEEN `### Verbosity Control` and the Step 0 anchor.
 #  (G) Macro section body contains the keep-on-conflict rebase-push.sh invocation, the
 #      early_rebase conflict-resolution dispatch, and the non-conflict bail line.
 #  (H) Exactly 1 `rebase-push.sh --no-push --skip-if-pushed --keep-on-conflict` occurrence (only the macro M1 uses
@@ -37,24 +37,24 @@ macro_header_count=$(grep -c '^## Rebase Checkpoint Macro$' "$SKILL_MD" || true)
 macro_header_line=$(grep -m 1 -n '^## Rebase Checkpoint Macro$' "$SKILL_MD" | cut -d: -f1)
 
 # ---------------------------------------------------------------------------
-# (F) Placement: macro header between ### Verbosity Control and ## Step 0.
+# (F) Placement: macro header between ### Verbosity Control and the Step 0 anchor.
 # ---------------------------------------------------------------------------
 verbosity_line=$(grep -n '^### Verbosity Control$' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
 [[ -n "$verbosity_line" ]] || fail "(F) SKILL.md lacks '### Verbosity Control' header"
 
-step0_line=$(grep -n '^## Step 0' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
-[[ -n "$step0_line" ]] || fail "(F) SKILL.md lacks '## Step 0' heading"
+step0_line=$(grep -n '^<!-- step:0 — Session Setup -->$' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
+[[ -n "$step0_line" ]] || fail "(F) SKILL.md lacks '<!-- step:0 — Session Setup -->' anchor"
 
 if (( macro_header_line <= verbosity_line )); then
   fail "(F) macro header (line $macro_header_line) must appear AFTER '### Verbosity Control' (line $verbosity_line)"
 fi
 if (( macro_header_line >= step0_line )); then
-  fail "(F) macro header (line $macro_header_line) must appear BEFORE '## Step 0' (line $step0_line)"
+  fail "(F) macro header (line $macro_header_line) must appear BEFORE Step 0 anchor (line $step0_line)"
 fi
 
 # ---------------------------------------------------------------------------
 # Compute macro section line range: from macro_header_line to the next top-level
-# '## ' heading (Step 0). Inclusive start, exclusive end.
+# Step 0 anchor. Inclusive start, exclusive end.
 # ---------------------------------------------------------------------------
 macro_section_start=$macro_header_line
 macro_section_end=$step0_line
@@ -99,23 +99,23 @@ done
 # ---------------------------------------------------------------------------
 # (E) Step 7.r section retains `FILES_CHANGED=true` prose above the invocation.
 #     The 7.r macro invocation must appear within the Step 7 slice, AFTER a
-#     line containing 'FILES_CHANGED=true' (same slice), and BEFORE '## Step 7a'.
+#     line containing 'FILES_CHANGED=true' (same slice), and BEFORE the Step 7a anchor.
 # ---------------------------------------------------------------------------
-step7_header_line=$(grep -n '^## Step 7 —' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
-[[ -n "$step7_header_line" ]] || fail "(E) SKILL.md lacks '## Step 7 —' heading"
+step7_header_line=$(grep -n '^<!-- step:7 — Second Commit (review fixes) -->$' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
+[[ -n "$step7_header_line" ]] || fail "(E) SKILL.md lacks Step 7 anchor"
 
-step7a_header_line=$(grep -n '^## Step 7a' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
-[[ -n "$step7a_header_line" ]] || fail "(E) SKILL.md lacks '## Step 7a' heading"
+step7a_header_line=$(grep -n '^<!-- step:7a — Code Flow Diagram -->$' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
+[[ -n "$step7a_header_line" ]] || fail "(E) SKILL.md lacks Step 7a anchor"
 
 # Find the 7.r invocation line (should be exactly one in the 7.r slice).
 invoke_7r_line=$(grep -nF 'Apply the Rebase Checkpoint Macro with `<step-prefix>=7.r`' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
 [[ -n "$invoke_7r_line" ]] || fail "(E) 7.r macro invocation not found"
 
 if (( invoke_7r_line <= step7_header_line )); then
-  fail "(E) 7.r invocation (line $invoke_7r_line) must be AFTER '## Step 7 —' (line $step7_header_line)"
+  fail "(E) 7.r invocation (line $invoke_7r_line) must be AFTER Step 7 anchor (line $step7_header_line)"
 fi
 if (( invoke_7r_line >= step7a_header_line )); then
-  fail "(E) 7.r invocation (line $invoke_7r_line) must be BEFORE '## Step 7a' (line $step7a_header_line)"
+  fail "(E) 7.r invocation (line $invoke_7r_line) must be BEFORE Step 7a anchor (line $step7a_header_line)"
 fi
 
 # Find a line containing FILES_CHANGED=true within the Step 7 slice that is ABOVE the 7.r invocation.

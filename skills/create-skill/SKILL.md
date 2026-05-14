@@ -15,7 +15,7 @@ Example: `/create-skill foo "Use when doing X"` creates `.claude/skills/foo/SKIL
 
 - `--run-id <ID>`: Optional run identifier; when set, used as the run ID for this invocation instead of the auto-generated one. Default: empty (auto-generate). Consumed by the orchestrator before Step 1; NOT forwarded to `parse-args.sh`.
 
-## Step 1 — Parse Arguments
+<!-- step:1 — Parse Arguments -->
 
 Invoke the argument parser after stripping `--run-id`:
 
@@ -27,7 +27,7 @@ The full stdout grammar, error contract, positional-argument rules, and edit-in-
 
 If the script exits non-zero or emits an `ERROR=` line, print the error and abort.
 
-## Step 1.4 — Capture Raw Description to Tmpfile
+<!-- step:1.4 — Capture Raw Description to Tmpfile -->
 
 `parse-args.sh`'s `DESCRIPTION` field is the space-joined remainder reconstructed via `"$*"`. SKILL.md Step 1's invocation passes `$ARGUMENTS` UNQUOTED to `parse-args.sh`, so word-splitting on whitespace can flatten embedded newlines from a multi-line user description before the parser sees them. For the synthesis path to handle the multi-line case from #549 reproducibly, the orchestrator must capture the user's ORIGINAL raw description (the LLM-side view of `$ARGUMENTS` before shell flattening) to a tmpfile.
 
@@ -35,7 +35,7 @@ Use the Write tool to create `$RAW_DESC_FILE` (mktemp under the orchestrator's w
 
 Save the path as `$RAW_DESC_FILE` for the next step.
 
-## Step 1.5 — Validate Raw Description
+<!-- step:1.5 — Validate Raw Description -->
 
 Invoke the coordinator script. Include `--plugin` only when `PLUGIN=true`:
 
@@ -58,7 +58,7 @@ Branch on `MODE`:
   - Proceed to Step 1.6.
 - **`MODE=abort`**: print `ERROR` and stop.
 
-## Step 1.6 — Re-validate Synthesized Line
+<!-- step:1.6 — Re-validate Synthesized Line -->
 
 Runs only on the `MODE=needs-synthesis` branch from Step 1.5.
 
@@ -80,7 +80,7 @@ Parse the output for `MODE`. Branch:
 | Step 1.6 (only on `MODE=needs-synthesis`) | Re-validate synthesized line via `prepare-description.sh --description` | 2 max |
 | Step 1.6 failure (`MODE=abort` or `needs-synthesis`) | Abort with validator's last `ERROR`. No further retry. | 2 (terminal) |
 
-## Step 2 — Validate Arguments
+<!-- step:2 — Validate Arguments -->
 
 Defense-in-depth re-validation on `$FRONTMATTER_DESCRIPTION` (the validated value from Step 1.5 verbatim path or Step 1.6 synthesized path). Idempotent on both paths — guards against bugs in `prepare-description.sh`. Include `--plugin` only when `PLUGIN=true`:
 
@@ -100,7 +100,7 @@ The validator enforces:
 
 Before scaffolding, ask yourself:
 
-- **Before picking `--multi-step` vs minimal:** does the new skill have ≥2 distinct phases that each need their own `## Step N` heading, or is it a single-call forwarder? One-shot delegators read cleaner as `minimal`; the `multi-step` template only earns its scaffolding when there is genuine sequencing.
+- **Before picking `--multi-step` vs minimal:** does the new skill have ≥2 distinct phases that each need their own `<!-- step:N — … -->` anchor, or is it a single-call forwarder? One-shot delegators read cleaner as `minimal`; the `multi-step` template only earns its scaffolding when there is genuine sequencing.
 - **Before choosing a name:** will this name graze a harness keyword? `validate-args.sh` probes the Anthropic/larch-static list + plugin skills + local `.claude/skills/` — but a name that approximates a common verb (`review`, `test`, `run`) or an Anthropic-adjacent prefix (`claude-*`) risks ambiguous `Skill` permission matching even when the static check passes.
 - **Before writing the description:** are you giving a one-line *frontmatter trigger* or a *feature spec*? They are TWO DISTINCT CONCEPTS in `/create-skill`. The frontmatter `description:` is a single-line YAML field used by the harness for trigger matching; the feature spec is the freeform brief forwarded to `/im` describing what the new skill should do. If your input is a multi-line spec or exceeds 1024 chars (with no other anti-patterns), Step 1.5 will trigger LLM-side synthesis: you'll see the synthesized one-liner echoed before delegation, and the original spec will reach `/im` as the feature brief. If your input is a single-line `Use when…` trigger, both the frontmatter and the feature brief will use it verbatim. Mixed inputs (multi-line spec containing XML tags / backticks / `$(` / heredoc tokens) will abort cleanly via the Step 1.5 pre-synthesis security scan rather than synthesizing around banned content.
 - **Before inlining prompt logic:** would a shared script at `${CLAUDE_PLUGIN_ROOT}/scripts/` or a skill-private `scripts/` file be a better home? Mechanical rule A (see Principles) says non-trivial shell logic always belongs in a `.sh`. Inline Bash in `SKILL.md` is the #1 source of copy-paste drift across sibling skills.
@@ -163,6 +163,7 @@ Before scaffolding, ask yourself:
 
 This ordering matches the bare-name-then-fully-qualified rule in shared/subskill-invocation.md.
 
+<!-- step:3 — Delegate to /im -->
 ## Step 3 — Delegate to /im
 
 Construct a concise feature description for `/im`:
