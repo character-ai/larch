@@ -434,6 +434,12 @@ run_bump_phase() {
         fi
     fi
 
+    # Refresh larch-log token/timing artifacts before push via postbump (Trigger C).
+    fail_file=$(failure_capture_path bump)
+    "$SCRIPT_DIR/refresh-run-logs.sh" \
+        --state-file "$STATE_FILE" \
+        --implement-tmpdir "$IMPLEMENT_TMPDIR" > "$fail_file" 2>&1 || true
+
     write_postbump_state
     fail_file=$(failure_capture_path bump)
     finalize_out=$("$SCRIPT_DIR/implement-finalize.sh" postbump --state-file "$IMPLEMENT_TMPDIR/postbump-state.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" 2>"$fail_file")
@@ -679,6 +685,12 @@ run_ci_fix_vendor() {
             return 1
         fi
     fi
+    # Refresh larch-log token/timing artifacts before push (Trigger B).
+    fail_file=$(failure_capture_path "$phase")
+    "$SCRIPT_DIR/refresh-run-logs.sh" \
+        --state-file "$STATE_FILE" \
+        --implement-tmpdir "$IMPLEMENT_TMPDIR" > "$fail_file" 2>&1 || true
+
     fail_file=$(failure_capture_path "$phase")
     "$SCRIPT_DIR/git-push.sh" > "$fail_file" 2>&1
     rc=$?
@@ -836,6 +848,12 @@ run_rebase_rebump() {
         fi
     fi
 
+    # Refresh larch-log token/timing artifacts before push (Trigger A).
+    fail_file=$(failure_capture_path rebase)
+    "$SCRIPT_DIR/refresh-run-logs.sh" \
+        --state-file "$STATE_FILE" \
+        --implement-tmpdir "$IMPLEMENT_TMPDIR" > "$fail_file" 2>&1 || true
+
     # 6. Force-push the rebased + re-bumped branch
     fail_file=$(failure_capture_path rebase)
     "$SCRIPT_DIR/git-force-push.sh" > "$fail_file" 2>&1
@@ -920,7 +938,7 @@ EOF
             fi
             case "$merge_result" in
                 merged|admin_merged)
-                    state_set PR_CLOSED true
+                    state_set_many PR_CLOSED true MERGE_RESULT "$merge_result"
                     rename_done_best_effort
                     advance_phase postmerge
                     ;;
@@ -959,7 +977,7 @@ EOF
             run_evaluate_failure "$phase"
             ;;
         already_merged)
-            state_set PR_CLOSED true
+            state_set_many PR_CLOSED true MERGE_RESULT already_merged
             rename_done_best_effort
             advance_phase postmerge
             ;;
