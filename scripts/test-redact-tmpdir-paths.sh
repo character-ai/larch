@@ -40,6 +40,31 @@ once=$(run_redactor 'see /private/tmp/larch-issue-idempotent')
 twice=$(run_redactor "$once")
 assert_eq "$twice" "$once" "redaction is idempotent"
 
+# E1: numeric exit code must not be consumed by larch/sessions match
+# \n here is two literal chars (backslash + n), as in JSONL-encoded content
+assert_eq \
+    "$(run_redactor 'Error: Exit code 1\nFoo /Users/example/.cache/larch/sessions/claude-implement-XYZ/step3.log')" \
+    'Error: Exit code 1\nFoo <TMPDIR>/step3.log' \
+    "E1: exit code number not consumed by larch/sessions match"
+
+# E2: variable-assignment prefix must be preserved
+assert_eq \
+    "$(run_redactor 'export IMPLEMENT_TMPDIR=/Users/example/.cache/larch/sessions/claude-implement-XYZ/foo')" \
+    'export IMPLEMENT_TMPDIR=<TMPDIR>/foo' \
+    "E2: variable-assignment prefix preserved by boundary anchor"
+
+# Happy path: space-delimited path is redacted normally
+assert_eq \
+    "$(run_redactor 'Some text /Users/example/.cache/larch/sessions/claude-implement-XYZ/foo')" \
+    'Some text <TMPDIR>/foo' \
+    "larch/sessions path with space boundary redacted"
+
+# No-match: input without /larch/sessions/ passes through unchanged
+assert_eq \
+    "$(run_redactor 'plain text no larch path here')" \
+    'plain text no larch path here' \
+    "non-larch/sessions input passes through unchanged"
+
 echo
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

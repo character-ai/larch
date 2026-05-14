@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [27.5.22] - 2026-05-13
+
+### Fixed
+
+- `scripts/redact-tmpdir-paths.sh`: add left boundary anchor `(^|[^[:alnum:]_./-])` to expression 3 so numeric exit codes and variable-name prefixes are no longer consumed when redacting `/larch/sessions/` paths from session transcripts.
+
 ## [27.5.16] - 2026-05-13
 
 ### Changed
