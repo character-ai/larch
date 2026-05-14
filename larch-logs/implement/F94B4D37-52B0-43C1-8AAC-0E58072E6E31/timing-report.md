@@ -16,7 +16,7 @@
 | implement | Step 8 — version bump | 00:01:00 |
 | implement | Step 8a — changelog | 00:00:01 |
 | implement | Step 8b — rebase | 00:01:56 |
-| implement | Step 11 — execution-issues | 00:00:02 |
+| implement | Step 11 — execution-issues | 00:03:15 |
 | **Total** | | 00:22:16 |
 
 ## Vendor Task Averages
@@ -25,6 +25,7 @@
 | --- | --- | ---: | ---: | --- |
 | codex | codex-implement | 1 | 5.5 min | (1 sample) |
 | codex | codex-review-generic | 1 | 4.2 min | (1 sample) |
+| cursor | cursor-ci-fix | 1 | 1.2 min | (1 sample) |
 | cursor | cursor-specialist-correctness | 1 | 3.5 min | (1 sample) |
 | cursor | cursor-specialist-edge-cases | 1 | 3.0 min | (1 sample) |
 | cursor | cursor-specialist-security | 1 | 2.7 min | (1 sample) |
