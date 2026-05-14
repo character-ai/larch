@@ -75,21 +75,21 @@
       {
         "step": "Step 5 — code review",
         "totals": {
-          "input": 49,
-          "cache_read": 11681749,
-          "cache_create": 32050,
-          "output": 20532,
-          "total": 11734380
+          "input": 50,
+          "cache_read": 11928216,
+          "cache_create": 32353,
+          "output": 21487,
+          "total": 11982106
         },
         "skills": [
           {
             "skill": "larch:implement",
             "totals": {
-              "input": 49,
-              "cache_read": 11681749,
-              "cache_create": 32050,
-              "output": 20532,
-              "total": 11734380
+              "input": 50,
+              "cache_read": 11928216,
+              "cache_create": 32353,
+              "output": 21487,
+              "total": 11982106
             }
           }
         ]
@@ -97,21 +97,32 @@
       {
         "step": "Step 8 — version bump",
         "totals": {
-          "input": 0,
-          "cache_read": 0,
-          "cache_create": 0,
-          "output": 0,
-          "total": 0
+          "input": 4,
+          "cache_read": 988132,
+          "cache_create": 4056,
+          "output": 2520,
+          "total": 994712
         },
-        "skills": []
+        "skills": [
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 4,
+              "cache_read": 988132,
+              "cache_create": 4056,
+              "output": 2520,
+              "total": 994712
+            }
+          }
+        ]
       }
     ],
     "totals": {
-      "input": 208,
-      "cache_read": 41198093,
-      "cache_create": 202688,
-      "output": 90985,
-      "total": 41491974
+      "input": 213,
+      "cache_read": 42432692,
+      "cache_create": 207047,
+      "output": 94460,
+      "total": 42734412
     }
   },
   "codex": {
