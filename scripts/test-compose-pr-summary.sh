@@ -126,6 +126,19 @@ n/a
 EOF
 assert_fails "(d) no Goal section exits non-zero" "$COMPOSER" --plan-goals-file "$plan_goals_d"
 
+echo "=== (e) empty Goal section does not bleed into next heading ==="
+plan_goals_e="$TMP/plan-goals-e.md"
+cat > "$plan_goals_e" <<'EOF'
+## Goal
+
+## Implementation Plan
+This should not appear as the goal bullet.
+
+## Test plan
+n/a
+EOF
+assert_fails "(e) empty Goal section exits non-zero" "$COMPOSER" --plan-goals-file "$plan_goals_e"
+
 cd "$OLDPWD"
 
 echo

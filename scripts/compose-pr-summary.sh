@@ -39,8 +39,8 @@ if ! [ -f "$PLAN_GOALS_FILE" ] || ! [ -s "$PLAN_GOALS_FILE" ]; then
     fail "plan-goals file missing or empty: $PLAN_GOALS_FILE"
 fi
 
-# Bullet 1: first non-blank line of the ## Goal section.
-goal_line=$(awk '/^## Goal/{found=1; next} found && NF{print; exit}' "$PLAN_GOALS_FILE")
+# Bullet 1: first non-blank line of the ## Goal section (stop at next heading).
+goal_line=$(awk '/^## Goal/{found=1; next} found && /^#/{exit} found && NF{print; exit}' "$PLAN_GOALS_FILE")
 [ -n "$goal_line" ] || fail "no Goal line found in $PLAN_GOALS_FILE"
 
 printf -- '- %s\n' "$goal_line"
