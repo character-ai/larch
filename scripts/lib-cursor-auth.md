@@ -41,7 +41,7 @@ Every test-only branch in `lib-cursor-auth.sh` (`LIB_CURSOR_AUTH_TEST_UNAME`, `L
 - `cursor_launcher_setup_auth_argv` wires the pre-read before argv hydration.
 - All `LIB_CURSOR_AUTH_TEST_*` overrides are silently ignored unless `LARCH_LIB_CURSOR_AUTH_TEST_MODE=1`.
 
-Wired into `Makefile` `test-harnesses-2` shard (`test-launch-review` is on shard 8). Excluded from `agent-lint.toml` per the standard pattern for test scripts and their `.md` siblings.
+Wired into `Makefile` `test-harnesses-2` shard (`test-launch-review` is on shard 9). Excluded from `agent-lint.toml` per the standard pattern for test scripts and their `.md` siblings.
 
 ## Edit-in-sync rules
 
