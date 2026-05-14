@@ -123,6 +123,34 @@ read_session_plan_file() {
     awk 'BEGIN{k="PLAN_FILE"; kl=length(k)} substr($0,1,kl)==k && substr($0,kl+1,1)=="=" {print substr($0,kl+2); exit}' "$session_env"
 }
 
+# Returns a validated plan file path (under IMPLEMENT_TMPDIR, file exists) or empty.
+# Logs a Warnings entry and returns empty on security/availability violations.
+resolve_plan_file() {
+    local path
+    path=$(read_session_plan_file)
+    [ -n "$path" ] || return 0
+    case "$path" in
+        "$IMPLEMENT_TMPDIR"/*)
+            ;;
+        *)
+            "$SCRIPT_DIR/append-execution-issue.sh" \
+                --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
+                --category Warnings \
+                --entry "PLAN_FILE ($path) is outside IMPLEMENT_TMPDIR; skipping plan context." \
+                >/dev/null 2>&1 || true
+            return 0 ;;
+    esac
+    if [ ! -f "$path" ]; then
+        "$SCRIPT_DIR/append-execution-issue.sh" \
+            --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
+            --category Warnings \
+            --entry "PLAN_FILE ($path) set but file not found; proceeding without plan context." \
+            >/dev/null 2>&1 || true
+        return 0
+    fi
+    printf '%s\n' "$path"
+}
+
 write_initial_state() {
     local tmp branch repo issue run_id session_id clone_tag clone_tag_full
     mkdir -p "$IMPLEMENT_TMPDIR" || die_usage "cannot create --implement-tmpdir"
@@ -660,8 +688,8 @@ run_ci_fix_vendor() {
     local phase=$1 run_id=$2 output rc checks_out fail_file tool_label plan_file
     local plan_args=()
     output="$IMPLEMENT_TMPDIR/ci-fix-${phase}-$(date +%s).out"
-    plan_file=$(read_session_plan_file)
-    if [ -n "$plan_file" ] && [ -f "$plan_file" ]; then
+    plan_file=$(resolve_plan_file)
+    if [ -n "$plan_file" ]; then
         plan_args=(--plan-file "$plan_file")
     fi
     fail_file=$(failure_capture_path "$phase")
@@ -755,8 +783,8 @@ run_rebase_rebump() {
     local apply_out new_version bump_type reasoning_file
     local fail_file rc tool_label plan_file
     local plan_args=()
-    plan_file=$(read_session_plan_file)
-    if [ -n "$plan_file" ] && [ -f "$plan_file" ]; then
+    plan_file=$(resolve_plan_file)
+    if [ -n "$plan_file" ]; then
         plan_args=(--plan-file "$plan_file")
     fi
 
