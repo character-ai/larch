@@ -7,6 +7,8 @@ REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)
 SCRIPT="$REPO_ROOT/skills/review/scripts/collect-findings.sh"
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-collect-findings.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT
+unset LARCH_EXECUTION_ISSUES_LOG SESSION_ENV_PATH IMPLEMENT_TMPDIR REVIEW_TMPDIR || true
+export LARCH_EXECUTION_ISSUES_LOG="$TMP/execution-issues.md"
 
 outf="$TMP/claude.txt"
 cat > "$outf" <<'EOF'

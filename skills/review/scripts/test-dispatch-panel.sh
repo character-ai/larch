@@ -7,6 +7,8 @@ REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)
 SCRIPT="$REPO_ROOT/skills/review/scripts/dispatch-panel.sh"
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-dispatch-panel.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT
+unset LARCH_EXECUTION_ISSUES_LOG SESSION_ENV_PATH IMPLEMENT_TMPDIR REVIEW_TMPDIR || true
+export LARCH_EXECUTION_ISSUES_LOG="$TMP/execution-issues.md"
 
 stub="$TMP/launch-claude.sh"
 cat > "$stub" <<'STUB'
