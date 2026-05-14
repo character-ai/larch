@@ -108,10 +108,14 @@ if [[ -z "$PLOT_FROM" ]]; then
     run_count=0
     while IFS= read -r dir; do
         manifest="$dir/manifest.json"
-        token_report="$dir/token-report.md"
-        plan_tally="$dir/plan-review-tally.ndjson"
+        token_report_json="$dir/token-report.json"
+        token_report_md="$dir/token-report.md"
+        timing_report_json="$dir/timing-report.json"
+        plan_tally_json="$dir/plan-review-tally.json"
+        plan_tally_ndjson="$dir/plan-review-tally.ndjson"
 
-        [[ -f "$manifest" && -f "$token_report" ]] || continue
+        [[ -f "$manifest" ]] || continue
+        [[ -f "$token_report_json" || -f "$token_report_md" ]] || continue
 
         issue_number=$(jq -r '.issue_number // empty' "$manifest" 2>/dev/null)
         [[ -n "$issue_number" && "$issue_number" != "null" ]] || continue
@@ -120,10 +124,22 @@ if [[ -z "$PLOT_FROM" ]]; then
         closed_at=$(jq -r '(.updated_at // .started_at) // ""' "$manifest" 2>/dev/null)
 
         workflow_path="unknown"
-        if [[ -f "$plan_tally" ]]; then
+        if [[ -f "$timing_report_json" ]]; then
+            workflow_path=$(jq -r '.workflow_path // "unknown"' "$timing_report_json" 2>/dev/null || printf 'unknown')
+            case "$workflow_path" in SIMPLE|HARD|unknown) ;; *) workflow_path="unknown" ;; esac
+        fi
+        if [[ "$workflow_path" == "unknown" && -f "$plan_tally_json" ]]; then
+            tally_body=$(jq -r '(.body // .tally) // ""' "$plan_tally_json" 2>/dev/null || true)
+            if [[ "$tally_body" == "Quick mode"* || "$tally_body" == "Both externals unavailable"* ]]; then
+                workflow_path="SIMPLE"
+            elif [[ -n "$tally_body" ]]; then
+                workflow_path="HARD"
+            fi
+        fi
+        if [[ "$workflow_path" == "unknown" && -f "$plan_tally_ndjson" ]]; then
             tally_body=""
-            if ! tally_body=$(jq -r 'select((.body // .tally) != null) | (.body // .tally)' "$plan_tally" 2>/dev/null | head -1); then
-                tally_body=$(head -1 "$plan_tally" 2>/dev/null || true)
+            if ! tally_body=$(jq -r 'select((.body // .tally) != null) | (.body // .tally)' "$plan_tally_ndjson" 2>/dev/null | head -1); then
+                tally_body=$(head -1 "$plan_tally_ndjson" 2>/dev/null || true)
             fi
             if [[ "$tally_body" == "Quick mode"* || "$tally_body" == "Both externals unavailable"* ]]; then
                 workflow_path="SIMPLE"
@@ -132,19 +148,33 @@ if [[ -z "$PLOT_FROM" ]]; then
             fi
         fi
 
-        token_content=$(cat "$token_report")
-        combined_body="${token_content}
+        if [[ -f "$token_report_json" ]]; then
+            combined_body="**Workflow path**: ${workflow_path}"
+            echo "Processing run for issue #${issue_number}..."
+            jq -cn \
+                --argjson number "$issue_number" \
+                --arg title "Issue #${issue_number}" \
+                --arg url "https://github.com/${REPO}/issues/${issue_number}" \
+                --arg closedAt "$closed_at" \
+                --arg workflow_path "$workflow_path" \
+                --arg body "$combined_body" \
+                --slurpfile token_report "$token_report_json" \
+                '{number: $number, title: $title, url: $url, closedAt: $closedAt, workflow_path: $workflow_path, body: $body, token_report: $token_report[0], comments: []}' >> "$ISSUES_JSONL"
+        else
+            token_content=$(cat "$token_report_md")
+            combined_body="${token_content}
 
 **Workflow path**: ${workflow_path}"
 
-        echo "Processing run for issue #${issue_number}..."
-        jq -cn \
-            --argjson number "$issue_number" \
-            --arg title "Issue #${issue_number}" \
-            --arg url "https://github.com/${REPO}/issues/${issue_number}" \
-            --arg closedAt "$closed_at" \
-            --arg body "$combined_body" \
-            '{number: $number, title: $title, url: $url, closedAt: $closedAt, body: $body, comments: []}' >> "$ISSUES_JSONL"
+            echo "Processing run for issue #${issue_number}..."
+            jq -cn \
+                --argjson number "$issue_number" \
+                --arg title "Issue #${issue_number}" \
+                --arg url "https://github.com/${REPO}/issues/${issue_number}" \
+                --arg closedAt "$closed_at" \
+                --arg body "$combined_body" \
+                '{number: $number, title: $title, url: $url, closedAt: $closedAt, body: $body, comments: []}' >> "$ISSUES_JSONL"
+        fi
 
         run_count=$((run_count + 1))
         if [[ -n "$LIMIT" && "$LIMIT" != "0" && "$run_count" -ge "$LIMIT" ]]; then
@@ -379,6 +409,58 @@ def parse_report(markdown):
     return totals, phase_rows
 
 
+def parse_json_report(report):
+    totals = empty_totals()
+    phase_rows = []
+    if not isinstance(report, dict):
+        return totals, phase_rows
+
+    claude = report.get("claude") if isinstance(report.get("claude"), dict) else {}
+    claude_totals = claude.get("totals") if isinstance(claude.get("totals"), dict) else {}
+    totals["claude"] = {
+        "input": int(claude_totals.get("input") or 0),
+        "cache_read": int(claude_totals.get("cache_read") or 0),
+        "cache_create": int(claude_totals.get("cache_create") or 0),
+        "output": int(claude_totals.get("output") or 0),
+    }
+    for row in claude.get("per_step") or []:
+        if not isinstance(row, dict):
+            continue
+        row_totals = row.get("totals") if isinstance(row.get("totals"), dict) else {}
+        phase_rows.append({
+            "vendor": "claude",
+            "step": str(row.get("step") or ""),
+            "input": int(row_totals.get("input") or 0),
+            "cache_read": int(row_totals.get("cache_read") or 0),
+            "cache_create": int(row_totals.get("cache_create") or 0),
+            "output": int(row_totals.get("output") or 0),
+        })
+
+    vendor_names = report.get("vendors") if isinstance(report.get("vendors"), list) else []
+    for vendor in vendor_names:
+        if vendor == "claude" or not isinstance(vendor, str):
+            continue
+        section = report.get(vendor) if isinstance(report.get(vendor), dict) else {}
+        section_totals = section.get("totals") if isinstance(section.get("totals"), dict) else {}
+        totals[vendor] = {
+            "input": int(section_totals.get("input") or 0),
+            "output": int(section_totals.get("output") or 0),
+            "total": int(section_totals.get("total") or 0),
+        }
+        for row in section.get("per_step") or []:
+            if not isinstance(row, dict):
+                continue
+            row_totals = row.get("totals") if isinstance(row.get("totals"), dict) else {}
+            phase_rows.append({
+                "vendor": vendor,
+                "step": str(row.get("step") or ""),
+                "input": int(row_totals.get("input") or 0),
+                "output": int(row_totals.get("output") or 0),
+                "total": int(row_totals.get("total") or 0),
+            })
+    return totals, phase_rows
+
+
 def cost_vendor(vendor, totals):
     if vendor == "claude":
         rate = RATES["claude"]
@@ -435,18 +517,24 @@ def analyze(cache_path):
     records = []
     skipped = 0
     for issue in issues:
+        token_report = issue.get("token_report")
         text_parts = [issue.get("body") or ""]
         comments = issue.get("comments") or []
         for comment in comments:
             text_parts.append(comment.get("body") or "")
         combined = "\n\n".join(text_parts)
-        block = latest_token_block(combined)
-        if not block:
-            skipped += 1
-            continue
-        totals, phase_rows = parse_report(block)
+        if isinstance(token_report, dict):
+            totals, phase_rows = parse_json_report(token_report)
+        else:
+            block = latest_token_block(combined)
+            if not block:
+                skipped += 1
+                continue
+            totals, phase_rows = parse_report(block)
         cost = total_cost(totals)
-        workflow = parse_workflow_path(combined)
+        workflow = issue.get("workflow_path") or parse_workflow_path(combined)
+        if workflow not in ("SIMPLE", "HARD", "unknown"):
+            workflow = "unknown"
         closed_at = parse_date(issue.get("closedAt"))
         records.append(
             {

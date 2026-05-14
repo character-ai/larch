@@ -1,8 +1,8 @@
 # compose-tally-record.sh contract
 
 `scripts/compose-tally-record.sh` wraps a file-backed plan-review or
-code-review tally body in the canonical one-line JSON record used by
-`plan-review-tally.ndjson` and `code-review-tally.ndjson`.
+code-review tally body in the canonical JSON object used by
+`plan-review-tally.json` and `code-review-tally.json`.
 
 Inputs:
 
@@ -23,4 +23,4 @@ embedded verbatim as a JSON string by `jq --rawfile`.
 
 The helper rejects missing body files, symlinks, invalid phase or mode values,
 and non-numeric tally counts. It does not redact content; `larch-log.sh` still
-applies the standard tmpdir and secret redaction pass before appending.
+applies the standard tmpdir and secret redaction pass before writing.

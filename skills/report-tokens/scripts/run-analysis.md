@@ -4,7 +4,7 @@
 
 ## Purpose
 
-Scan committed larch run logs under `larch-logs/implement/*/` in the current git repository root, parse the token report for each run (reading `manifest.json` for metadata, `token-report.md` for token data, and `plan-review-tally.ndjson` for workflow-path inference), estimate per-run dollar costs for Claude/Codex/Cursor/Gemini, generate SIMPLE and HARD cost-over-time PNG plots, print a written analysis, and optionally post a GitHub `[Analysis Report]` issue with the results and raw per-run data.
+Scan committed larch run logs under `larch-logs/implement/*/` in the current git repository root, parse the token report for each run (reading `manifest.json` for metadata, `token-report.json` for token data with `token-report.md` fallback, and `timing-report.json` or the plan-review tally for workflow-path inference), estimate per-run dollar costs for Claude/Codex/Cursor/Gemini, generate SIMPLE and HARD cost-over-time PNG plots, print a written analysis, and optionally post a GitHub `[Analysis Report]` issue with the results and raw per-run data.
 
 ## Primary caller
 
@@ -32,17 +32,20 @@ The scan uses:
 
 - `git -C "$(pwd)" rev-parse --show-toplevel` to locate the repository root.
 - `larch-logs/implement/*/manifest.json` — provides `issue_number`, `updated_at`, `started_at` per run.
-- `larch-logs/implement/*/token-report.md` — provides token data (read directly; no sentinel wrappers needed).
-- `larch-logs/implement/*/plan-review-tally.ndjson` — first record's `.body // .tally` field: starts with `"Quick mode"` or `"Both externals unavailable"` → `SIMPLE`; non-empty other value → `HARD`; absent or unrecognized → `unknown`. Falls back to reading the first raw line when the file is not valid NDJSON (handles older plain-text format).
+- `larch-logs/implement/*/token-report.json` — preferred structured token data. The script falls back to `token-report.md` for older logs.
+- `larch-logs/implement/*/timing-report.json` — preferred workflow path source via `.workflow_path`.
+- `larch-logs/implement/*/plan-review-tally.json` — fallback workflow-path source via `.body // .tally`; starts with `"Quick mode"` or `"Both externals unavailable"` → `SIMPLE`; non-empty other value → `HARD`; absent or unrecognized → `unknown`.
+- `larch-logs/implement/*/plan-review-tally.ndjson` — legacy fallback with the same `.body // .tally` rule. Falls back to reading the first raw line when the file is not valid NDJSON (handles older plain-text format).
 
 `gh` is required for repository resolution (`gh repo view`, used for URL construction; bypass via `LARCH_REPORT_TOKENS_REPO`), for posting the `[Analysis Report]` issue (active when `--no-issue` is absent), and for `--plot-from` (fetching a prior report issue body). `jq` and `python3` are always required. Missing commands are hard failures.
 
 ## Parsing invariants
 
-- Token data is read directly from `token-report.md` files, which contain `### Claude` / `**Grand total**` headings without sentinel wrappers. The `latest_token_block` function's fallback (`if "### Claude" in text or "**Grand total**" in text: return text`) handles this format.
+- Token data is read directly from `token-report.json` files when present and converted to the existing cost totals without markdown parsing.
+- Legacy token data is read directly from `token-report.md` files, which contain `### Claude` / `**Grand total**` headings without sentinel wrappers. The `latest_token_block` function's fallback (`if "### Claude" in text or "**Grand total**" in text: return text`) handles this format.
 - Claude `**Grand total**` rows support both the current six-cell table shape (`Step`, `Skill`, input, cache read, cache create, output) and the legacy four-cell shape (`Step`, `Skill`, input, output).
 - Codex/Cursor/Gemini `**Grand total**` rows use the five-cell vendor table shape (`Step`, `Skill`, input, output, total).
-- `**Workflow path**: SIMPLE|HARD|unknown` is injected into the body text by the scan loop (inferred from `plan-review-tally.ndjson`) so the Python `parse_workflow_path` function finds it without changes.
+- `workflow_path` is stored directly in the cache for structured logs. Legacy markdown runs still inject `**Workflow path**: SIMPLE|HARD|unknown` into the body text so the Python `parse_workflow_path` function finds it without changes.
 - Run-level JSON is cached under a fresh `${TMPDIR:-/tmp}/larch-report-tokens.*` directory. The cache file is written via a temporary file and `mv`.
 
 ## Outputs

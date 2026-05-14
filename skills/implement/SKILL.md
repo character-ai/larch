@@ -870,7 +870,7 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 
 **Inline design**: research the codebase (Read / Grep / Glob), then produce a concrete plan under `## Implementation Plan`: files to modify, approach, edge cases, testing strategy (TDD where applicable; else a concrete verification — `/relevant-checks`, grep, dry-run, or manual repro), failure modes. Same content `/design` would produce, without collaborative sketches, plan review, or voting. Print: `⚡ 1: design plan — quick mode, inline plan`
 
-Create the export directory if needed (`mkdir -p "$IMPLEMENT_TMPDIR/design-export"`), then write the inline plan to `$IMPLEMENT_TMPDIR/design-export/plan.txt` (basename exactly `plan.txt`) and set `PLAN_FILE` to that path. Also write `$IMPLEMENT_TMPDIR/design-export/voting-tally.md` containing `Quick mode — no plan review voting.` and set `PLAN_REVIEW_TALLY_FILE` to that path so the Step 1 `plan-review-tally` batch composer (and downstream PR-body composition) have a file-backed source. The Step 1 batch composer MUST wrap this prose file through `${CLAUDE_PLUGIN_ROOT}/scripts/compose-tally-record.sh --phase plan-review --mode simple --body-file "$PLAN_REVIEW_TALLY_FILE"` before appending; never append `voting-tally.md` directly to the `.ndjson` batch.
+Create the export directory if needed (`mkdir -p "$IMPLEMENT_TMPDIR/design-export"`), then write the inline plan to `$IMPLEMENT_TMPDIR/design-export/plan.txt` (basename exactly `plan.txt`) and set `PLAN_FILE` to that path. Also write `$IMPLEMENT_TMPDIR/design-export/voting-tally.md` containing `Quick mode — no plan review voting.` and set `PLAN_REVIEW_TALLY_FILE` to that path so the Step 1 `plan-review-tally` batch composer (and downstream PR-body composition) have a file-backed source. The Step 1 batch composer MUST wrap this prose file through `${CLAUDE_PLUGIN_ROOT}/scripts/compose-tally-record.sh --phase plan-review --mode simple --body-file "$PLAN_REVIEW_TALLY_FILE"` before writing; never write `voting-tally.md` directly to the `.json` batch.
 
 Skip `### Normal mode` and the post-`/design` sections. Run the following Step 1 tail in order: **`### Capture branch name`** (bind `BRANCH_NAME` from branch creation above) → **`### Larch-log batches`** (write `plan-goals-test` + `plan-review-tally` batches and post the `larch:plan` summary to the tracking issue when `$ISSUE_NUMBER` is set) → **`### Coder simplicity override`** → **`### Rebase onto latest main`** → Step 2.
 
@@ -1039,7 +1039,7 @@ Write two larch-log batches from file-backed design artifacts. See Step 0.5 "Lar
      --goal-text "<one-sentence objective>" > "$IMPLEMENT_TMPDIR/plan-goals-test.md"
    ```
    The script fails closed when the plan body is absent, short, or pointer-only. Write the output with `larch-log.sh write --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch plan-goals-test --input-file "$IMPLEMENT_TMPDIR/plan-goals-test.md"`.
-2. **`plan-review-tally` batch** — compose an NDJSON record from `PLAN_REVIEW_TALLY_FILE` (manifest path in normal mode, `$IMPLEMENT_TMPDIR/design-export/voting-tally.md` in quick mode). Use fallback text only if the file is missing on a degraded quick-mode path. First build a temporary body file under `$IMPLEMENT_TMPDIR/larch-log-batches-input/`: copy the tally source into it, then if `REJECTED_FINDINGS_FILE` exists and contains `[Plan Review]` entries, append those rejected findings under a `## Rejected Plan Review Findings` sub-header. Then run `${CLAUDE_PLUGIN_ROOT}/scripts/compose-tally-record.sh --phase plan-review --mode <simple|hard> --body-file <body-file> > <record-file>`, using `--mode simple` for quick/SIMPLE paths and `--mode hard` for normal design-backed or both-externals-down paths. Append with `larch-log.sh append --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch plan-review-tally --record-file <record-file>`. The append record file MUST be the composer output, not the raw markdown tally body.
+2. **`plan-review-tally` batch** — compose a JSON object from `PLAN_REVIEW_TALLY_FILE` (manifest path in normal mode, `$IMPLEMENT_TMPDIR/design-export/voting-tally.md` in quick mode). Use fallback text only if the file is missing on a degraded quick-mode path. First build a temporary body file under `$IMPLEMENT_TMPDIR/larch-log-batches-input/`: copy the tally source into it, then if `REJECTED_FINDINGS_FILE` exists and contains `[Plan Review]` entries, append those rejected findings under a `## Rejected Plan Review Findings` sub-header. Then run `${CLAUDE_PLUGIN_ROOT}/scripts/compose-tally-record.sh --phase plan-review --mode <simple|hard> --body-file <body-file> > <record-file>`, using `--mode simple` for quick/SIMPLE paths and `--mode hard` for normal design-backed or both-externals-down paths. Write with `larch-log.sh write --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch plan-review-tally --input-file <record-file>`. The input file MUST be the composer output, not the raw markdown tally body.
 3. If `$ISSUE_NUMBER` is set, compose `$IMPLEMENT_TMPDIR/summary-plan.md` as a slim pointer to `larch-logs/implement/$RUN_ID/plan-goals-test.md` plus the current plan-review tally status, then run `tracking-issue-summary.sh upsert-summary --issue "$ISSUE_NUMBER" --marker "<!-- larch:plan v1 runid=$RUN_ID -->" --content-file "$IMPLEMENT_TMPDIR/summary-plan.md" || true`. On non-zero exit, log `Step 1 — larch:plan upsert failed` to `Tool Failures` and continue — the plan is still committed in `larch-logs/`. If `deferred=true` or `repo_unavailable=true`, skip only the summary upsert.
 
 If `design_only=true`:
@@ -1513,7 +1513,7 @@ After `/review` returns (normal mode) or the quick-mode loop completes, compose 
 2. Otherwise, in standalone/degraded normal mode, fall back to the visible per-finding vote breakdown and Reviewer Competition Scoreboard.
 3. Otherwise, for quick mode, use the round-by-round summary or fallback text `"Quick mode — no voting panel. Rounds 1-3: 5 Cursor specialists in parallel + generic Codex. Main agent reviewed findings across up to 3 rounds."`.
 
-**After the tally content**, if `$IMPLEMENT_TMPDIR/rejected-findings.md` exists and is non-empty, include its full contents under a `## Rejected Code Review Findings` sub-header in the record body. This ensures rejected findings are committed to the run log (not just printed to the terminal at Step 16). Write the complete body to a temporary file under `$IMPLEMENT_TMPDIR/larch-log-batches-input/`, then run `${CLAUDE_PLUGIN_ROOT}/scripts/compose-tally-record.sh --phase code-review --mode <simple|hard> --rounds <N> --accepted <N> --rejected <N> --body-file <body-file> > <record-file>`. Use counts from the structured summary or footer KV when available; otherwise use zeroes. Use `--mode simple` for quick/SIMPLE paths and `--mode hard` for normal design-backed paths. Append with `larch-log.sh append --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch code-review-tally --record-file <record-file>`. The append record file MUST be the composer output, not the raw markdown tally body.
+**After the tally content**, if `$IMPLEMENT_TMPDIR/rejected-findings.md` exists and is non-empty, include its full contents under a `## Rejected Code Review Findings` sub-header in the record body. This ensures rejected findings are committed to the run log (not just printed to the terminal at Step 16). Write the complete body to a temporary file under `$IMPLEMENT_TMPDIR/larch-log-batches-input/`, then run `${CLAUDE_PLUGIN_ROOT}/scripts/compose-tally-record.sh --phase code-review --mode <simple|hard> --rounds <N> --accepted <N> --rejected <N> --body-file <body-file> > <record-file>`. Use counts from the structured summary or footer KV when available; otherwise use zeroes. Use `--mode simple` for quick/SIMPLE paths and `--mode hard` for normal design-backed paths. Write with `larch-log.sh write --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch code-review-tally --input-file <record-file>`. The input file MUST be the composer output, not the raw markdown tally body.
 
 ### Track Rejected Code Review Findings
 
@@ -1527,7 +1527,7 @@ After review (`/review` in normal mode or the quick-mode loop), for any **in-sco
 
 ### Larch-log batch — `review-findings-full`
 
-After the `code-review-tally` batch is written above (Step 5 normal mode after `/review` returns, or after the quick-mode review loop completes), compose the additive `review-findings-full` records that persist per-finding payloads (id, phase, outcome, reviewer, category, verbatim prose body) for plan-review accepted, plan-review rejected, and code-review rejected entries. This batch carries the load-bearing miner content per issue #1402.
+After the `code-review-tally` batch is written above (Step 5 normal mode after `/review` returns, or after the quick-mode review loop completes), compose the `review-findings-full` markdown sections that persist per-finding payloads (id, phase, outcome, reviewer, and verbatim prose body) for plan-review accepted, plan-review rejected, and code-review rejected entries. This batch carries the load-bearing miner content per issue #1402.
 
 ```bash
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
@@ -1538,12 +1538,12 @@ export CLAUDE_PLUGIN_ROOT
     --design-artifacts-dir "$IMPLEMENT_TMPDIR/design-export" \
     --implement-tmpdir "$IMPLEMENT_TMPDIR" \
     --issue "${ISSUE_NUMBER:-0}" \
-    --output "$IMPLEMENT_TMPDIR/review-findings-full.ndjson"
+    --output "$IMPLEMENT_TMPDIR/review-findings-full.md"
 ```
 
-Best-effort: parse `COMPOSED=true` / `FINDINGS_TOTAL=<N>` from stdout. On `FAILED=true` or non-zero exit, log `Step 5 — review-findings-full compose failed: $ERROR` to `Warnings` and continue without writing the batch. If composed, append each record to `review-findings-full` with `larch-log.sh append --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch review-findings-full --record-file "$IMPLEMENT_TMPDIR/review-findings-full.ndjson"`.
+Best-effort: parse `COMPOSED=true` / `FINDINGS_TOTAL=<N>` from stdout. On `FAILED=true` or non-zero exit, log `Step 5 — review-findings-full compose failed: $ERROR` to `Warnings` and continue without writing the batch. If composed, replace `review-findings-full` with `larch-log.sh write --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch review-findings-full --input-file "$IMPLEMENT_TMPDIR/review-findings-full.md"`.
 
-Known limitation: accepted code-review findings are not currently captured in this fragment. The `/review` skill and the quick-mode 5.5 loop both accept findings without writing a byte-preserved `accepted-code-review-findings.md` artifact. The helper silently emits no records for the `accepted code-review` phase / outcome pair. See `scripts/compose-review-findings.md` "Known limitations" for follow-up wiring.
+Comment: accepted code-review findings are not currently captured in this fragment. The `/review` skill and the quick-mode 5.5 loop both accept findings without writing a byte-preserved `accepted-code-review-findings.md` artifact, so the helper emits no section for the `accepted code-review` phase / outcome pair.
 
 <!-- step:6 — Relevant Checks (second pass) -->
 
@@ -1758,10 +1758,10 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 8 — version bump" || true
 # token-mark Step 8 — version bump
 # timing-mark Step 8 — version bump
-"${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --full --output "$IMPLEMENT_TMPDIR/token-report-rendered.md" || true
-"${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --full --output "$IMPLEMENT_TMPDIR/timing-report-rendered.md" || true
-"${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch token-report --input-file "$IMPLEMENT_TMPDIR/token-report-rendered.md" || true
-"${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch timing-report --input-file "$IMPLEMENT_TMPDIR/timing-report-rendered.md" || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --full --format json --output "$IMPLEMENT_TMPDIR/token-report-rendered.json" || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --full --format json --output "$IMPLEMENT_TMPDIR/timing-report-rendered.json" || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch token-report --input-file "$IMPLEMENT_TMPDIR/token-report-rendered.json" || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch timing-report --input-file "$IMPLEMENT_TMPDIR/timing-report-rendered.json" || true
 if [ "${no_logs_commit:-false}" != "true" ]; then
   "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" commit --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --no-push || true
 fi
@@ -1950,7 +1950,7 @@ LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh"
 LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
 LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
 export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
-"${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --full --output "$IMPLEMENT_TMPDIR/token-report-rendered.md" || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --full --format json --output "$IMPLEMENT_TMPDIR/token-report-rendered.json" || true
 if [ "${forked_target:-false}" != "true" ] && [ -n "${ISSUE_NUMBER:-}" ] && [ "${repo_unavailable:-false}" != "true" ]; then
   printf 'Status: %s | PR: %s\nLogs: larch-logs/implement/%s/\n' \
     "${STALL_TRACKING:-false}" "${PR_URL:-N/A}" "$RUN_ID" \

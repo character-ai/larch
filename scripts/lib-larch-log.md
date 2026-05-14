@@ -20,4 +20,5 @@ Key exports:
 - `larch_log_validate_batch_payload(batch, file)` — dispatches batch sanitizers.
   The `plan-goals` sanitizer requires a non-empty `## Implementation Plan`
   section and rejects pointer-only placeholders. The `json-lines` sanitizer
-  accepts empty files and requires every non-empty line to parse as JSON.
+  accepts empty files and requires every non-empty line to parse as JSON. The
+  `json-object` sanitizer requires the whole file to parse as a JSON object.

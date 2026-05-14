@@ -86,6 +86,7 @@ RENDER_FAIL_REASON=""
 render_jq() {
     local mode="$1"
     local ledger="$2"
+    local format="$3"
     if ! command -v jq >/dev/null 2>&1; then
         RENDER_FAIL_REASON="jq not found"
         return 1
@@ -140,7 +141,7 @@ render_jq() {
             ;;
     esac
 
-    jq -r -s --slurpfile ledger "$ledger" --arg mode "$mode" '
+    jq -r -s --slurpfile ledger "$ledger" --arg mode "$mode" --arg format "$format" '
       def epoch:
         if . == null then null
         else (tostring | gsub("\\.[0-9]+Z$"; "Z") | fromdateiso8601? // null)
@@ -327,6 +328,43 @@ render_jq() {
         | (["codex", "cursor"] | map(select(. as $v | $present | index($v) != null)))
         + ($present - ["codex", "cursor"] | sort);
 
+      def skill_totals($rows):
+        ($rows
+         | group_by(.skill)
+         | map({skill: .[0].skill, totals: totals(.)}));
+
+      def claude_json($marks; $claude):
+        ($marks[0].ts) as $first
+        | {
+            per_step: [
+              range(0; $marks|length) as $i
+              | ($marks[$i]) as $m
+              | (($marks[$i+1].ts) // null) as $end
+              | (slice1($claude; $m.ts; $end)) as $sl
+              | {step: $m.step, totals: totals($sl), skills: skill_totals($sl)}
+            ],
+            totals: (totals(slice1($claude; $first; null)))
+          };
+
+      def vendor_json($vname; $marks; $vendor):
+        ($marks[0].ts) as $first
+        | ($vendor | map(select(.vendor == $vname and .ts != null and .ts >= $first))) as $vrows
+        | {
+            per_step: [
+              range(0; $marks|length) as $i
+              | ($marks[$i]) as $m
+              | (($marks[$i+1].ts) // null) as $end
+              | (slice1($vrows; $m.ts; $end)) as $sl
+              | {step: $m.step, totals: {input: sumfield($sl; "input"), output: sumfield($sl; "output"), total: sumfield($sl; "total")}}
+            ],
+            totals: {input: sumfield($vrows; "input"), output: sumfield($vrows; "output"), total: sumfield($vrows; "total")}
+          };
+
+      def report_json($marks; $claude; $vendor):
+        (vendor_names($marks; $vendor)) as $names
+        | ({vendors: (["claude"] + $names), claude: claude_json($marks; $claude)}
+           + reduce $names[] as $v ({}; . + {($v): vendor_json($v; $marks; $vendor)}));
+
       def markdown($marks; $claude; $vendor):
         ([claude_table($marks; $claude)]
          + (vendor_names($marks; $vendor) | map(vendor_table(.; $marks; $vendor)))
@@ -348,6 +386,7 @@ render_jq() {
             + " cache_read=" + fmt($ct.cache_read) + " cache_create=" + fmt($ct.cache_create)
             + " output=" + fmt($ct.output) + "); vendor=" + fmt($vt)
             + (if $vt > 0 then " (" + ($vb | map(.vendor + "=" + (.total|tostring)) | join(", ")) + ")" else "" end))
+        elif $mode == "full" and $format == "json" then report_json($marks; $claude; $vendor)
         else markdown($marks; $claude; $vendor)
         end
     ' "${TRANSCRIPT_FILES[@]}" 2>"$jq_stderr_dest" || {
@@ -455,6 +494,7 @@ replace_token_block() {
 }
 
 MODE=""
+FORMAT="markdown"
 OUTPUT=""
 LEDGER_OVERRIDE=""
 TRANSCRIPT_OVERRIDE=""
@@ -467,7 +507,8 @@ while [[ $# -gt 0 ]]; do
         --terse) shift ;;
         --summary) MODE="summary"; shift ;;
         --full) MODE="full"; shift ;;
-        --markdown) shift ;;
+        --markdown) FORMAT="markdown"; shift ;;
+        --format) FORMAT="${2:?--format requires a value}"; shift 2 ;;
         --output) OUTPUT="${2:?--output requires a value}"; shift 2 ;;
         --ledger) LEDGER_OVERRIDE="${2:?--ledger requires a value}"; shift 2 ;;
         --transcript) TRANSCRIPT_OVERRIDE="${2:?--transcript requires a value}"; shift 2 ;;
@@ -478,6 +519,10 @@ while [[ $# -gt 0 ]]; do
 done
 
 [[ -n "$MODE" ]] || unavailable "missing report mode"
+case "$FORMAT" in
+    markdown|json) ;;
+    *) unavailable "unknown format: $FORMAT" ;;
+esac
 
 if [[ -n "$LEDGER_OVERRIDE" ]]; then
     LEDGER=$(validate_tmp_path "$LEDGER_OVERRIDE") || unavailable "invalid ledger path"
@@ -490,7 +535,7 @@ resolve_sources "$TRANSCRIPT_OVERRIDE" "$SESSION_DIR_OVERRIDE"
 
 if [[ "$MODE" == "append" ]]; then
     rendered_file=$(mktemp "${TMPDIR:-/tmp}/token-report-rendered.XXXXXX")
-    if ! render_jq full "$LEDGER" > "$rendered_file"; then
+    if ! render_jq full "$LEDGER" markdown > "$rendered_file"; then
         rm -f "$rendered_file"
         unavailable "${RENDER_FAIL_REASON:-failed to render token report}"
     fi
@@ -505,13 +550,13 @@ if [[ "$MODE" == "append" ]]; then
     rm -f "$block" "$rendered_file"
 elif [[ "$MODE" == "full" && -n "$OUTPUT" ]]; then
     tmp="$OUTPUT.tmp"
-    if ! render_jq full "$LEDGER" > "$tmp"; then
+    if ! render_jq full "$LEDGER" "$FORMAT" > "$tmp"; then
         rm -f "$tmp"
         unavailable "${RENDER_FAIL_REASON:-failed to render token report}"
     fi
     mv "$tmp" "$OUTPUT"
 else
-    if ! render_jq "$MODE" "$LEDGER"; then
+    if ! render_jq "$MODE" "$LEDGER" "$FORMAT"; then
         unavailable "${RENDER_FAIL_REASON:-failed to render token report}"
     fi
 fi

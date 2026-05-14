@@ -52,12 +52,12 @@ export IMPLEMENT_TMPDIR="$IMPL_TMPDIR"
 log_root="$IMPL_TMPDIR/larch-logs"
 
 # Re-render and write token and timing reports.
-"$SCRIPT_DIR/token-report.sh"  --full --output "$IMPL_TMPDIR/token-report-refresh.md"  2>/dev/null || true
+"$SCRIPT_DIR/token-report.sh"  --full --format json --output "$IMPL_TMPDIR/token-report-refresh.json"  2>/dev/null || true
 "$SCRIPT_DIR/larch-log.sh" write --log-root "$log_root" --skill implement --run-id "$run_id" \
-    --batch token-report --input-file "$IMPL_TMPDIR/token-report-refresh.md" 2>/dev/null || true
-"$SCRIPT_DIR/timing-report.sh" --full --output "$IMPL_TMPDIR/timing-report-refresh.md" 2>/dev/null || true
+    --batch token-report --input-file "$IMPL_TMPDIR/token-report-refresh.json" 2>/dev/null || true
+"$SCRIPT_DIR/timing-report.sh" --full --format json --output "$IMPL_TMPDIR/timing-report-refresh.json" 2>/dev/null || true
 "$SCRIPT_DIR/larch-log.sh" write --log-root "$log_root" --skill implement --run-id "$run_id" \
-    --batch timing-report --input-file "$IMPL_TMPDIR/timing-report-refresh.md" 2>/dev/null || true
+    --batch timing-report --input-file "$IMPL_TMPDIR/timing-report-refresh.json" 2>/dev/null || true
 
 # Commit via larch-log.sh, which handles the tmpdir→repo copy and git operations.
 # No push — caller owns the push.

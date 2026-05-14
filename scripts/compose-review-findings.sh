@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# compose-review-findings.sh — compose review-findings-full NDJSON records.
+# compose-review-findings.sh — compose review-findings-full markdown sections.
 
 set -euo pipefail
 
@@ -76,20 +76,11 @@ FINDINGS_TOTAL=0
 
 emit_record() {
     local id="$1" phase="$2" outcome="$3" reviewer="$4" body="$5"
-    local reviewer_redacted body_redacted category
+    local reviewer_redacted body_redacted
     reviewer_redacted="$(redact_field "$reviewer")" || fail "redaction failed for reviewer in $id"
     body_redacted="$(redact_field "$body")" || fail "redaction failed for prose_body in $id"
-    category="$(derive_category "$reviewer_redacted $body_redacted")"
-    jq -nc \
-        --arg id "$id" \
-        --arg issue_number "$ISSUE" \
-        --arg phase "$phase" \
-        --arg outcome "$outcome" \
-        --arg reviewer "$reviewer_redacted" \
-        --arg category "$category" \
-        --arg prose_body "$body_redacted" \
-        '{id:$id, issue_number:($issue_number|tonumber), phase:$phase, outcome:$outcome, reviewer:$reviewer, category:$category, prose_body:$prose_body}' \
-        >> "$TMP_OUT" || fail "failed to encode record for $id"
+    printf '### %s: %s [%s/%s]\n\n%s\n\n' "$id" "$reviewer_redacted" "$phase" "$outcome" "$body_redacted" \
+        >> "$TMP_OUT" || fail "failed to write section for $id"
     FINDINGS_TOTAL=$((FINDINGS_TOTAL + 1))
 }
 
@@ -166,4 +157,4 @@ trap - EXIT
 echo "COMPOSED=true"
 echo "OUTPUT=$OUTPUT"
 echo "FINDINGS_TOTAL=$FINDINGS_TOTAL"
-echo "MODE=ndjson"
+echo "MODE=markdown"

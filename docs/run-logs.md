@@ -12,14 +12,14 @@ larch-logs/
     <RUN_ID>/
       manifest.json
       plan-goals-test.md
-      plan-review-tally.ndjson
-      code-review-tally.ndjson
-      review-findings-full.ndjson
+      plan-review-tally.json
+      code-review-tally.json
+      review-findings-full.md
       version-bump-reasoning.md
       oos-issues.ndjson
       run-statistics.md
-      token-report.md
-      timing-report.md
+      token-report.json
+      timing-report.json
       execution-issues.ndjson
       session-transcript.jsonl
   review/
@@ -48,33 +48,33 @@ Created by `scripts/larch-log.sh init` at Step 0.5 when the tracking issue is fi
 
 Contains the implementation plan: goal statement, files to modify, approach, edge cases, and testing strategy. In normal mode the content comes from `/design`'s exported `plan.txt`; in quick mode it is the inline plan produced by the orchestrator.
 
-### plan-review-tally.ndjson
+### plan-review-tally.json
 
-**Mode**: append (NDJSON records). **Written**: Step 1 tail, after the plan-review voting tally is exported.
+**Mode**: replace (JSON object). **Written**: Step 1 tail, after the plan-review voting tally is exported.
 
-One JSON record per `/implement` session. The canonical fields are
+One JSON object per `/implement` session. The canonical fields are
 `schema_version`, `phase`, `batch`, `mode`, `rounds`, `accepted_count`,
 `rejected_count`, and `body`. The `body` contains the plan-review voting outcome
 (accepted count, rejected count, round summaries) plus any rejected plan-review
 findings under a `## Rejected Plan Review Findings` sub-header. In quick mode
 the body contains `"Quick mode — no plan review voting."`.
 
-### code-review-tally.ndjson
+### code-review-tally.json
 
-**Mode**: append (NDJSON records). **Written**: Step 5, after `/review` returns (normal mode) or the quick-mode review loop completes.
+**Mode**: replace (JSON object). **Written**: Step 5, after `/review` returns (normal mode) or the quick-mode review loop completes.
 
-One JSON record per `/implement` session with the same tally envelope fields as
-`plan-review-tally.ndjson`. The body contains the code-review voting outcome and
+One JSON object per `/implement` session with the same tally envelope fields as
+`plan-review-tally.json`. The body contains the code-review voting outcome and
 a round-by-round summary. It also includes rejected code-review findings under a
 `## Rejected Code Review Findings` sub-header — making this the load-bearing
 source for rejected findings (the terminal session transcript only prints a
 breadcrumb, not the full content).
 
-### review-findings-full.ndjson
+### review-findings-full.md
 
-**Mode**: append (NDJSON records). **Written**: Step 5, immediately after the `code-review-tally` batch.
+**Mode**: replace (markdown sections). **Written**: Step 5, immediately after the `code-review-tally` batch.
 
-Per-finding payloads for plan-review accepted, plan-review rejected, and code-review rejected entries. Each record contains: finding id, phase, outcome, reviewer, category, and verbatim prose body. Accepted code-review findings are not yet captured here; `scripts/compose-review-findings.sh` only reads plan-review and code-review rejection artifacts, not the accepted-code-review path.
+Per-finding payloads for plan-review accepted, plan-review rejected, and code-review rejected entries. Each section heading carries finding id, reviewer, phase, and outcome, followed by the redacted prose body. Accepted code-review findings are not yet captured here; `scripts/compose-review-findings.sh` only reads plan-review and code-review rejection artifacts, not the accepted-code-review path.
 
 ### version-bump-reasoning.md
 
@@ -94,17 +94,17 @@ Two sub-blocks per record: accepted OOS observations that were filed as GitHub i
 
 Summary statistics for the run: number of accepted and rejected OOS items, filed-issue URLs, round counts, and other aggregate metrics.
 
-### token-report.md
+### token-report.json
 
 **Mode**: replace. **Written**: Step 7a tail (pre-bump log flush) and refreshed at Step 9a.1. Each CI retry in the Rebase + Re-bump Sub-procedure also refreshes the batch so the merged PR carries the most recent data.
 
-Per-step Claude token usage table for the session. The pre-bump flush captures cost up through implementation and review.
+Structured per-step Claude and external-vendor token usage for the session. The pre-bump flush captures cost up through implementation and review.
 
-### timing-report.md
+### timing-report.json
 
-**Mode**: replace. **Written**: same lifecycle as `token-report.md`.
+**Mode**: replace. **Written**: same lifecycle as `token-report.json`.
 
-Per-step elapsed-time table for the session, measured from the timing ledger marks at each step entry. Useful for identifying slow steps (e.g., long Codex spawns, extended CI waits).
+Structured per-step elapsed-time data for the session, measured from the timing ledger marks at each step entry. Useful for identifying slow steps (e.g., long Codex spawns, extended CI waits).
 
 ### execution-issues.ndjson
 

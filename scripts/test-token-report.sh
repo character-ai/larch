@@ -49,6 +49,24 @@ contains "claude header row" "| Step | Skill | Claude Input | Claude Cache Read 
 contains "vendor header row" "| Step | Skill | Input | Output | Total |" "$md"
 contains "claude skill row"  "larch:implement" "$md"
 
+json_out=$("$SCRIPT" --ledger "$LEDGER" --transcript "$TRANSCRIPT" --full --format json)
+if printf '%s' "$json_out" | jq -e '
+  (.vendors == ["claude","codex","cursor"]) and
+  (.claude.totals.input == 11) and
+  (.claude.totals.cache_read == 22) and
+  (.claude.totals.cache_create == 33) and
+  (.claude.totals.output == 44) and
+  (.claude.per_step[1].skills[0].skill == "larch:implement") and
+  (.codex.totals.total == 100) and
+  (.cursor.totals.input == 1) and
+  (.cursor.totals.output == 2) and
+  (.cursor.totals.total == 10)
+' >/dev/null; then
+    pass
+else
+    fail "json full report shape or totals wrong: $json_out"
+fi
+
 # Pin the codex step-total and grand-total rows to aggregate-only fixture
 # values so total-only rows cannot silently render as all-zero vendor rows.
 expected_codex_row="| Step 1 - design | **step total** | 0 | 0 | 100 |"

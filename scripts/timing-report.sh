@@ -75,11 +75,12 @@ replace_timing_block() {
 render_report() {
     local mode="$1"
     local ledger="$2"
+    local format="$3"
     local now="${LARCH_TEST_TIMING_NOW:-$(date +%s)}"
     local skill="${LARCH_TIMING_SKILL:-implement}"
     local outlier_threshold="${LARCH_TIMING_OUTLIER_THRESHOLD_S:-14400}"
     [[ -f "$ledger" ]] || unavailable "ledger not found"
-    awk -F '\t' -v mode="$mode" -v now="$now" -v terse_skill="$skill" -v outlier_threshold="$outlier_threshold" '
+    awk -F '\t' -v mode="$mode" -v format="$format" -v now="$now" -v terse_skill="$skill" -v outlier_threshold="$outlier_threshold" '
       BEGIN { outlier_threshold += 0; if (outlier_threshold <= 0) outlier_threshold = 14400 }
       function hms(sec, h, m, s) {
         if (sec < 0) sec = 0
@@ -96,6 +97,15 @@ render_report() {
         gsub(/\r/, " ", s)
         gsub(/\n/, " ", s)
         return s
+      }
+      function js(s, t) {
+        t = s
+        gsub(/\\/, "\\\\", t)
+        gsub(/"/, "\\\"", t)
+        gsub(/\r/, "\\r", t)
+        gsub(/\n/, "\\n", t)
+        gsub(/\t/, "\\t", t)
+        return "\"" t "\""
       }
       function vendor_index(v) {
         return v == "codex" ? 1 : (v == "cursor" ? 2 : (v == "gemini" ? 3 : 4))
@@ -182,6 +192,10 @@ render_report() {
           exit 0
         }
         if (workflow == "") workflow = "unknown"
+        if (format == "json") {
+          emit_json_report()
+          exit 0
+        }
         print "**Workflow path**: " workflow
         print ""
         print "## Per-Step Durations"
@@ -309,6 +323,75 @@ render_report() {
           }
         }
       }
+      function emit_json_step(skill, step, dur, outlier,    comma) {
+        comma = json_step_count++ ? "," : ""
+        printf "%s{\"skill\":%s,\"step\":%s,\"duration_seconds\":%d,\"duration_hms\":%s,\"outlier\":%s}", comma, js(skill), js(step), dur, js(hms(dur)), outlier ? "true" : "false"
+      }
+      function emit_json_child_steps(skill, start, end,    i, s, e, dur, step, outlier) {
+        for (i = 1; i <= skill_count[skill]; i++) {
+          s = skill_mark_ts[skill SUBSEP i]
+          if (s >= start && s < end) {
+            e = skill_interval_end(skill, i)
+            if (e > end) e = end
+            step = skill_mark_step[skill SUBSEP i]
+            dur = e - s
+            outlier = dur > outlier_threshold
+            emit_json_step(skill, step, dur, outlier)
+          }
+        }
+      }
+      function emit_json_report(    i, s, e, dur, outlier, key, parts, n, avg, comma) {
+        printf "{\"workflow_path\":%s,\"per_step\":[", js(workflow)
+        json_step_count = 0
+        if (skill_count["implement"] > 0) {
+          first_impl_ts = skill_mark_ts["implement" SUBSEP 1]
+          last_impl_ts = skill_mark_ts["implement" SUBSEP skill_count["implement"]]
+          total_duration = last_impl_ts - first_impl_ts
+          for (i = 1; i <= skill_count["implement"]; i++) {
+            s = skill_mark_ts["implement" SUBSEP i]
+            e = (i < skill_count["implement"]) ? skill_mark_ts["implement" SUBSEP (i + 1)] : last_event_ts()
+            dur = e - s
+            outlier = dur > outlier_threshold
+            emit_json_step("implement", skill_mark_step["implement" SUBSEP i], dur, outlier)
+            emit_json_child_steps("design", s, e)
+            emit_json_child_steps("review", s, e)
+          }
+        } else {
+          first_mark_ts = mark_ts[1]
+          last_mark_ts = mark_ts[mark_count]
+          total_duration = last_mark_ts - first_mark_ts
+          for (i = 1; i <= mark_count; i++) {
+            e = (i < mark_count) ? mark_ts[i + 1] : last_event_ts()
+            dur = e - mark_ts[i]
+            outlier = dur > outlier_threshold
+            emit_json_step(mark_skill[i], mark_step[i], dur, outlier)
+          }
+        }
+        printf "],\"total_seconds\":%d,\"total_hms\":%s,\"vendor_task_averages\":[", total_duration, js(hms(total_duration))
+        for (i = 1; i <= vendor_count; i++) {
+          key = vendor_name[i] SUBSEP vendor_kind[i]
+          if (vendor_status[i] == "complete" && vendor_exit[i] == 0) {
+            sample_count[key]++
+            sample_sum[key] += vendor_duration[i]
+            if (!(key in sample_min) || vendor_duration[i] < sample_min[key]) sample_min[key] = vendor_duration[i]
+            if (!(key in sample_max) || vendor_duration[i] > sample_max[key]) sample_max[key] = vendor_duration[i]
+            if (!(key in key_seen)) {
+              key_seen[key] = 1
+              key_order[++key_order_count] = key
+            }
+          }
+        }
+        sort_keys()
+        for (i = 1; i <= key_order_count; i++) {
+          key = key_order[i]
+          split(key, parts, SUBSEP)
+          n = sample_count[key]
+          avg = sample_sum[key] / n
+          comma = i > 1 ? "," : ""
+          printf "%s{\"vendor\":%s,\"task_kind\":%s,\"samples\":%d,\"average_seconds\":%.3f,\"average_hms\":%s,\"min_seconds\":%d,\"max_seconds\":%d}", comma, js(parts[1]), js(parts[2]), n, avg, js(hms(int(avg + 0.5))), sample_min[key], sample_max[key]
+        }
+        printf "]}\n"
+      }
       function sort_keys(    i, j, tmp, a, b, av, bv) {
         for (i = 1; i <= key_order_count; i++) {
           for (j = i + 1; j <= key_order_count; j++) {
@@ -324,6 +407,7 @@ render_report() {
 }
 
 MODE=""
+FORMAT="markdown"
 OUTPUT=""
 LEDGER_OVERRIDE=""
 TIMING_TARGET=""
@@ -334,7 +418,8 @@ while [[ $# -gt 0 ]]; do
         --terse) shift ;;
         --summary) MODE="summary"; shift ;;
         --full) MODE="full"; shift ;;
-        --markdown) shift ;;
+        --markdown) FORMAT="markdown"; shift ;;
+        --format) FORMAT="${2:?--format requires a value}"; shift 2 ;;
         --output) OUTPUT="${2:?--output requires a value}"; shift 2 ;;
         --ledger) LEDGER_OVERRIDE="${2:?--ledger requires a value}"; shift 2 ;;
         --append-timing-section) TIMING_TARGET="${2:?--append-timing-section requires a value}"; MODE="append"; shift 2 ;;
@@ -343,6 +428,10 @@ while [[ $# -gt 0 ]]; do
 done
 
 [[ -n "$MODE" ]] || unavailable "missing report mode"
+case "$FORMAT" in
+    markdown|json) ;;
+    *) unavailable "unknown format: $FORMAT" ;;
+esac
 
 if [[ -n "$LEDGER_OVERRIDE" ]]; then
     LEDGER=$(validate_ledger_override "$LEDGER_OVERRIDE") || unavailable "invalid ledger path"
@@ -353,7 +442,7 @@ fi
 
 if [[ "$MODE" == "append" ]]; then
     rendered_file=$(mktemp "${TMPDIR:-/tmp}/timing-report-rendered.XXXXXX")
-    render_report full "$LEDGER" > "$rendered_file"
+    render_report full "$LEDGER" markdown > "$rendered_file"
     block=$(mktemp "${TMPDIR:-/tmp}/timing-report-block.XXXXXX")
     {
         printf '<!-- timing-report-begin -->\n'
@@ -365,8 +454,8 @@ if [[ "$MODE" == "append" ]]; then
     rm -f "$block" "$rendered_file"
 elif [[ "$MODE" == "full" && -n "$OUTPUT" ]]; then
     tmp="$OUTPUT.tmp"
-    render_report full "$LEDGER" > "$tmp"
+    render_report full "$LEDGER" "$FORMAT" > "$tmp"
     mv "$tmp" "$OUTPUT"
 else
-    render_report "$MODE" "$LEDGER"
+    render_report "$MODE" "$LEDGER" "$FORMAT"
 fi

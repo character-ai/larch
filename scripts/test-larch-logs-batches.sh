@@ -42,16 +42,25 @@ for slug in $actual; do
     sanitizer="$(larch_log_batch_sanitizer "$slug")"
     case "$ext" in .md|.ndjson|.json|.jsonl) ;; *) echo "FAIL: invalid extension for $slug: $ext" >&2; exit 1 ;; esac
     case "$mode" in replace|append) ;; *) echo "FAIL: invalid mode for $slug: $mode" >&2; exit 1 ;; esac
-    case "$sanitizer" in none|mermaid|plan-goals|json-lines) ;; *) echo "FAIL: invalid sanitizer for $slug: $sanitizer" >&2; exit 1 ;; esac
+    case "$sanitizer" in none|mermaid|plan-goals|json-lines|json-object) ;; *) echo "FAIL: invalid sanitizer for $slug: $sanitizer" >&2; exit 1 ;; esac
 done
 
 [ "$(larch_log_batch_mode token-report)" = "replace" ]
-[ "$(larch_log_batch_extension token-report)" = ".md" ]
+[ "$(larch_log_batch_extension token-report)" = ".json" ]
 [ "$(larch_log_batch_mode timing-report)" = "replace" ]
-[ "$(larch_log_batch_extension timing-report)" = ".md" ]
+[ "$(larch_log_batch_extension timing-report)" = ".json" ]
 [ "$(larch_log_batch_mode run-statistics)" = "replace" ]
 [ "$(larch_log_batch_extension run-statistics)" = ".md" ]
 [ "$(larch_log_batch_sanitizer plan-goals-test)" = "plan-goals" ]
+[ "$(larch_log_batch_mode plan-review-tally)" = "replace" ]
+[ "$(larch_log_batch_extension plan-review-tally)" = ".json" ]
+[ "$(larch_log_batch_sanitizer plan-review-tally)" = "json-object" ]
+[ "$(larch_log_batch_mode code-review-tally)" = "replace" ]
+[ "$(larch_log_batch_extension code-review-tally)" = ".json" ]
+[ "$(larch_log_batch_sanitizer code-review-tally)" = "json-object" ]
+[ "$(larch_log_batch_mode review-findings-full)" = "replace" ]
+[ "$(larch_log_batch_extension review-findings-full)" = ".md" ]
+[ "$(larch_log_batch_sanitizer review-findings-full)" = "none" ]
 
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/test-larch-log-batches.XXXXXX")"
 tmpdir=""
@@ -94,10 +103,14 @@ LARCH_LOG_ROOT="$tmp/logs" "$SCRIPT_DIR/larch-log.sh" write --skill implement --
 
 tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/larch-log-batches-test.XXXXXX")"
 
+LARCH_LOG_BATCHES="$LARCH_LOG_BATCHES
+test-json-lines .ndjson append json-lines
+"
+
 assert_json_lines_accepts() {
     local label="$1"
     local file="$2"
-    if ! larch_log_validate_batch_payload plan-review-tally "$file" >/dev/null; then
+    if ! larch_log_validate_batch_payload test-json-lines "$file" >/dev/null; then
         echo "FAIL: expected json-lines validator to accept $label" >&2
         exit 1
     fi
@@ -111,7 +124,10 @@ assert_json_lines_rejects() {
     output="$(bash -c '
         set -euo pipefail
         source "$1/lib-larch-log.sh"
-        larch_log_validate_batch_payload plan-review-tally "$2"
+        LARCH_LOG_BATCHES="$LARCH_LOG_BATCHES
+test-json-lines .ndjson append json-lines
+"
+        larch_log_validate_batch_payload test-json-lines "$2"
     ' _ "$SCRIPT_DIR" "$file" 2>&1)"
     rc=$?
     set -e
@@ -120,7 +136,7 @@ assert_json_lines_rejects() {
         exit 1
     fi
     case "$output" in
-        *"ERROR=json-lines sanitizer rejected plan-review-tally: invalid JSON line"*) ;;
+        *"ERROR=json-lines sanitizer rejected test-json-lines: invalid JSON line"*) ;;
         *)
             echo "FAIL: expected ERROR= line for rejected $label" >&2
             printf '%s\n' "$output" >&2
@@ -155,5 +171,56 @@ assert_json_lines_accepts "empty file" "$empty_file"
 assert_json_lines_accepts "multi-line NDJSON" "$valid_multi"
 assert_json_lines_rejects "mixed JSON and text" "$mixed"
 assert_json_lines_accepts "whitespace-only lines" "$whitespace_only"
+
+assert_json_object_accepts() {
+    local label="$1"
+    local file="$2"
+    if ! larch_log_validate_batch_payload plan-review-tally "$file" >/dev/null; then
+        echo "FAIL: expected json-object validator to accept $label" >&2
+        exit 1
+    fi
+}
+
+assert_json_object_rejects() {
+    local label="$1"
+    local file="$2"
+    local expected="$3"
+    local output rc
+    set +e
+    output="$(bash -c '
+        set -euo pipefail
+        source "$1/lib-larch-log.sh"
+        larch_log_validate_batch_payload plan-review-tally "$2"
+    ' _ "$SCRIPT_DIR" "$file" 2>&1)"
+    rc=$?
+    set -e
+    if [ "$rc" -eq 0 ]; then
+        echo "FAIL: expected json-object validator to reject $label" >&2
+        exit 1
+    fi
+    case "$output" in
+        *"$expected"*) ;;
+        *)
+            echo "FAIL: expected ERROR= line for rejected $label" >&2
+            printf '%s\n' "$output" >&2
+            exit 1
+            ;;
+    esac
+}
+
+valid_object="$tmpdir/valid-object.json"
+invalid_object_text="$tmpdir/invalid-object-text.json"
+array_object="$tmpdir/array.json"
+primitive_object="$tmpdir/primitive.json"
+
+printf '{"schema_version":1,"body":"ok"}\n' > "$valid_object"
+printf 'plain text\n' > "$invalid_object_text"
+printf '[{"schema_version":1}]\n' > "$array_object"
+printf '"text"\n' > "$primitive_object"
+
+assert_json_object_accepts "single JSON object" "$valid_object"
+assert_json_object_rejects "plain text" "$invalid_object_text" "ERROR=json-object sanitizer rejected plan-review-tally: invalid JSON"
+assert_json_object_rejects "array" "$array_object" "ERROR=json-object sanitizer rejected plan-review-tally: expected JSON object"
+assert_json_object_rejects "primitive" "$primitive_object" "ERROR=json-object sanitizer rejected plan-review-tally: expected JSON object"
 
 echo "All assertions passed."

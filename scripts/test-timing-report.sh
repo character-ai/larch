@@ -47,6 +47,17 @@ if grep -Fq '/tmp/secret/full.txt' "$OUT"; then
     exit 1
 fi
 
+JSON_OUT="$TMP_BASE/report.json"
+LARCH_TEST_TIMING_NOW=310 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$LEDGER" --full --format json --output "$JSON_OUT"
+jq -e '
+  .workflow_path == "HARD" and
+  .total_seconds == 250 and
+  .total_hms == "00:04:10" and
+  (.per_step | length) == 6 and
+  (.per_step[] | select(.skill == "implement" and .step == "Step 2 — implementation" and .duration_seconds == 120)) and
+  (.vendor_task_averages[] | select(.vendor == "codex" and .task_kind == "codex-implement" and .samples == 2 and .min_seconds == 120 and .max_seconds == 180))
+' "$JSON_OUT" >/dev/null
+
 TERSE=$(LARCH_TEST_TIMING_NOW=310 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$LEDGER" --since-last-mark --terse)
 # Review FINDING_5: terse mode now counts vendor rows whose --end-s ($9) is
 # >= the latest mark timestamp, instead of the row's wall-clock log timestamp.
