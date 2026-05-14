@@ -33,8 +33,10 @@ Failures use `FAILED=true` / `ERROR=<message>` and exit non-zero.
 - `set -euo pipefail`.
 - Concurrent-safe: a `mkdir "$LOG_FILE.lock.d"` mutex serializes concurrent
   appenders so no entry is lost when multiple callers race on the same log file.
-  The lock is released via `trap EXIT` on all exit paths; acquisition is bounded
-  to 100 retries (5 s max) before failing with `FAILED=true`.
+  Acquisition is bounded to 100 attempts (~5 s) before failing with
+  `FAILED=true`; the lock is released explicitly on the success path and via
+  `trap EXIT` on all error paths. If the holding process is killed with SIGKILL,
+  the lock directory may remain until the session tmpdir is cleaned up.
 - Atomic write through sibling temp files and `mv`.
 - Multi-line entries are staged in a sibling temp file and read by `awk`;
   callers may pass fenced blocks without newline-collapsing.
