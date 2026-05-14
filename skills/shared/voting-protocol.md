@@ -28,7 +28,7 @@ Before sending to voters, assign each deduplicated finding a stable sequential I
 - **Suggested revision**: <what to change>
 ```
 
-Prepend the voter instructions as free prose before the first `### FINDING_N:` block (they are ignored by the parsers). Include the reviewer attribution so voters have context, but instruct voters to evaluate each finding on its merits regardless of who proposed it. Attribution labels are skill-specific: `/design` uses `Code` / `Codex` / `Cursor` (3-reviewer panel); `/review` uses specialist labels (`Structure`, `Correctness`, `Testing`, `Security`, `Edge-cases`, `Codex-Structure`, `Codex-Correctness`, `Codex-Testing`, `Codex-Security`, `Codex-Edge-cases`, `Claude-Generic`) for its 11-reviewer panel. `/research` does not participate in voting — it uses the Negotiation Protocol instead.
+Prepend the voter instructions as free prose before the first `### FINDING_N:` block (they are ignored by the parsers). Include the reviewer attribution so voters have context, but instruct voters to evaluate each finding on its merits regardless of who proposed it. Attribution labels are skill-specific: `/design` uses `Code` / `Codex` / `Cursor` (3-reviewer panel); `/review` uses specialist labels (`Structure`, `Correctness`, `Testing`, `Security`, `Edge-cases`, `Plan-fidelity`, `Codex-Structure`, `Codex-Correctness`, `Codex-Testing`, `Codex-Security`, `Codex-Edge-cases`, `Codex-Plan-fidelity`, `Claude-Generic`) for its 13-reviewer panel. `/research` does not participate in voting — it uses the Negotiation Protocol instead.
 
 ## Voter Output Format
 

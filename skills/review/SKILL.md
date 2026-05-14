@@ -73,7 +73,7 @@ ${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/gather-context.sh --mode <diff|descr
 
 Parse `DIFF_FILE`, `FILE_LIST_FILE`, `COMMIT_LOG_FILE`, `COMMIT_COUNT`, `SCOPE_FILES_COUNT`, and `MODE` using safe key readers. In description mode, `SCOPE_FILES_COUNT=0` means print `**⚠ Description resolved to zero files. Nothing to review. Exiting.**`, emit the `### review-result` footer, and proceed to Step 5.
 
-When nested under `/implement`, read `PLAN_FILE` and `FEATURE_FILE` from `SESSION_ENV_PATH` for correctness-specialist plan verification.
+When nested under `/implement`, read `PLAN_FILE` and `FEATURE_FILE` from `SESSION_ENV_PATH` for plan-aware specialist verification (`correctness`, `testing`, `structure`, `plan-fidelity`).
 
 <!-- step:2 — Launch Reviewer Panel -->
 

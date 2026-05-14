@@ -129,8 +129,8 @@ launch_external_slot() {
     args=(--tool "$tool" --output "$out" --timeout 1800 --agent-file "$agent" --mode "$MODE" --competition-notice --timing-task-kind "${tool}-specialist-${name}")
     [[ "$MODE" == "diff" && -n "$DIFF_FILE" ]] && args+=(--diff-file "$DIFF_FILE" --commit-count "$COMMIT_COUNT")
     [[ "$MODE" == "description" && -n "$SCOPE_FILES" ]] && args+=(--description-text "${DESCRIPTION_TEXT:-description review}" --scope-files "$SCOPE_FILES")
-    [[ "$name" == "correctness" && -n "$PLAN_FILE" && -f "$PLAN_FILE" ]] && args+=(--plan-file "$PLAN_FILE")
-    [[ "$name" == "correctness" && -n "$FEATURE_FILE" && -f "$FEATURE_FILE" ]] && args+=(--feature-file "$FEATURE_FILE")
+    [[ ( "$name" == "correctness" || "$name" == "testing" || "$name" == "structure" || "$name" == "plan-fidelity" ) && -n "$PLAN_FILE" && -f "$PLAN_FILE" ]] && args+=(--plan-file "$PLAN_FILE")
+    [[ ( "$name" == "correctness" || "$name" == "testing" || "$name" == "structure" || "$name" == "plan-fidelity" ) && -n "$FEATURE_FILE" && -f "$FEATURE_FILE" ]] && args+=(--feature-file "$FEATURE_FILE")
     {
         launch_log="$REVIEW_TMPDIR/dispatch-${tool}-${name}.log"
         # set +e: capture launcher non-zero exits and surface them via
@@ -148,7 +148,7 @@ launch_external_slot() {
     slot_count=$((slot_count + 1))
 }
 
-specialists=(structure correctness testing security edge-cases)
+specialists=(structure correctness testing security edge-cases plan-fidelity)
 # Fallback matrix (from SKILL.md): when a tool is unavailable, skip its specialist
 # slots entirely — do NOT substitute Claude fallback slots for partial outages.
 # Only the both-down path (no external tools) uses a single Claude generic reviewer.
