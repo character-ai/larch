@@ -3,7 +3,7 @@
 Assertions:
 - (A) `Post-/design boundary checkpoint` header present in SKILL.md, and the awk-extracted slice (header line through the next blank line) is non-empty.
 - (B) Anti-pattern strings `returning control`, `design phase complete`, `handing off` present **inside the boundary-checkpoint slice** from (A) (case-insensitive). These literal phrases are load-bearing — they are the exact patterns the reminder warns against; drifting them out of the warning text silently weakens the reminder, so the assertion is scoped to the slice rather than file-wide.
-- (C) Both breadcrumb literals present in SKILL.md: `🔃 1.r: design plan | rebase` and `🔶 2: implementation`.
+- (C) Both breadcrumb literals present in SKILL.md: `🔃 1.r: design plan | rebase` and `🔶 /implement 2: implementation`.
 - (D) `NEVER #7` reference present in SKILL.md.
 - (E) Manifest-loaded breadcrumb literal `📥 1: design plan — manifest loaded (plan=` present in SKILL.md.
 - (F') SKILL.md invokes `post-design-boundary.sh`, and the wrapper invokes `read-design-manifest.sh --emit-load-breadcrumb`.

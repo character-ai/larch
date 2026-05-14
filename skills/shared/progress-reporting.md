@@ -7,10 +7,11 @@ Shared formatting rules for step progress output across all larch skills. Each *
 By default, progress lines use prose payloads:
 
 ```
-{icon} {step_number}: {breadcrumb_path}[ — {payload}]
+{icon} {skill_path} {step_number}: {breadcrumb_path}[ — {payload}]
 ```
 
 - **`{icon}`**: One of the icons below, indicating the line type.
+- **`{skill_path}`**: The slash-prefixed skill path. Standalone runs use the local skill name (for example, `/design`). Nested runs append the child skill to the parent skill path from the third `--step-prefix` field (for example, `/implement:/design`).
 - **`{step_number}`**: The full numeric step designation including any parent prefix (e.g., `1.2a.5` when `/design` step `2a.5` is called from `/implement` step `1`).
 - **`{breadcrumb_path}`**: Human-readable path from root to current step, segments joined by ` | `. Built from `STEP_PATH_PREFIX | step_short_name` when nested, or just `step_short_name` when standalone.
 - **`{payload}`**: Optional description, outcome, or reason — appended after ` — `.
@@ -41,7 +42,7 @@ Step start lines (`🔶`) get special visual treatment to make them easy to spot
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-> **🔶 2: implementation**
+> **🔶 /implement 2: implementation**
 ```
 
 Only `🔶` step start lines get the separator, blockquote, and bold treatment. Completion (`✅`), skip (`⏩`/`⏭️`), warning (`⚠`), and other lines do NOT get separators, blockquotes, or bold.
@@ -57,9 +58,9 @@ Every line that marks the **end** of a step or work item must include elapsed ti
 For prose-format lines, append the elapsed time in parentheses at the end of the line, using short form. The timer starts when the step logically began (its `🔶` start line, or entry into the step if no `🔶` line exists).
 
 ```
-✅ 2a.5: dialectic — 2 voted, 1 fallback (1m42s)
-⏩ 6: checks (2) — skipped, no review changes (1s)
-⚠ 7a: code flow — generation failed, proceeding without diagram (12s)
+✅ /design 2a.5: dialectic — 2 voted, 1 fallback (1m42s)
+⏩ /implement 6: checks (2) — skipped, no review changes (1s)
+⚠ /implement 7a: code flow — generation failed, proceeding without diagram (12s)
 ```
 
 ### Compact Completion Format
@@ -67,7 +68,7 @@ For prose-format lines, append the elapsed time in parentheses at the end of the
 `/implement` step-boundary completion and skip lines use compact key/value payloads:
 
 ```
-<icon> <step_number>: <step_short_name> [key=value ...]
+<icon> <skill_path> <step_number>: <step_short_name> [key=value ...]
 ```
 
 - The icon, step number, and short name prefix are unchanged.
@@ -84,10 +85,10 @@ For prose-format lines, append the elapsed time in parentheses at the end of the
 Examples:
 
 ```
-✅ 8: version bump status=complete bump=PATCH from=20.0.0 to=20.0.1 elapsed=5s
-⏩ 8: version bump status=skip reason=bump-type-none elapsed=1s
-⏭️ 12: CI+merge loop status=bypass reason=merge-not-set elapsed=0s
-✅ 18: cleanup status=complete elapsed=45m
+✅ /implement 8: version bump status=complete bump=PATCH from=20.0.0 to=20.0.1 elapsed=5s
+⏩ /implement 8: version bump status=skip reason=bump-type-none elapsed=1s
+⏭️ /implement 12: CI+merge loop status=bypass reason=merge-not-set elapsed=0s
+✅ /implement 18: cleanup status=complete elapsed=45m
 ```
 
 ### Compact status tables (`📊` lines)
@@ -132,23 +133,26 @@ Omit zero components: use `2m` not `2m0s`, use `1h` not `1h0m`.
 When a parent skill invokes a child skill (e.g., `/implement` → `/design`), it passes step context via `--step-prefix` using this encoding:
 
 ```
---step-prefix "NUM_PREFIX::TEXT_PATH"
+--step-prefix "NUM_PREFIX::TEXT_PATH::PARENT_SKILL_PATH"
 ```
 
 - **`NUM_PREFIX`**: The numeric prefix to prepend to the child's step numbers (e.g., `"1."` means child step `2a` becomes `1.2a`).
 - **`TEXT_PATH`**: The human-readable breadcrumb segment(s) from the parent (e.g., `"design plan"`).
-- **Delimiter**: Split on the first `::` to separate numeric from textual parts.
+- **`PARENT_SKILL_PATH`**: Optional slash-prefixed parent skill path (e.g., `"/implement"`). The child appends its own slash-prefixed skill name with `:` as the separator.
+- **Delimiter**: Split on the first two `::` delimiters to separate numeric prefix, textual breadcrumb path, and optional parent skill path.
 - **Backward compatibility**: If `::` is absent, treat the entire value as a numeric-only prefix. The text path defaults to empty — breadcrumbs show only the leaf step name.
 
 ### Parsing in child skills
 
-Child skills parse `--step-prefix` into two mental variables:
+Child skills parse `--step-prefix` into three mental variables:
 
 - `STEP_NUM_PREFIX`: Everything before the first `::` (or the entire value if `::` absent).
-- `STEP_PATH_PREFIX`: Everything after the first `::` (or empty if `::` absent).
+- `STEP_PATH_PREFIX`: Everything after the first `::` and before the second `::` (or empty if absent).
+- `PARENT_SKILL_PATH`: Everything after the second `::` (or empty if absent).
 
 When outputting a step:
 
+- **Skill path**: Standalone uses the local skill name, e.g., `/design`. Nested uses `{PARENT_SKILL_PATH}:/{local_skill_name}` when `PARENT_SKILL_PATH` is non-empty.
 - **Step number**: `{STEP_NUM_PREFIX}{local_step_number}` (e.g., `1.` + `2a.5` = `1.2a.5`)
 - **Breadcrumb path**: If `STEP_PATH_PREFIX` is non-empty: `{STEP_PATH_PREFIX} | {step_short_name}`. Otherwise: just `{step_short_name}`.
 
@@ -157,27 +161,27 @@ When outputting a step:
 Standalone `/design` (no `--step-prefix`):
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-> **🔶 2a: sketches**
+> **🔶 /design 2a: sketches**
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-> **🔶 2a.5: dialectic**
-✅ 2a.5: dialectic — 2 voted, 1 fallback (1m42s)
+> **🔶 /design 2a.5: dialectic**
+✅ /design 2a.5: dialectic — 2 voted, 1 fallback (1m42s)
 ```
 
-`/design` called from `/implement` with `--step-prefix "1.::design plan"`:
+`/design` called from `/implement` with `--step-prefix "1.::design plan::/implement"`:
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-> **🔶 1.2a: design plan | sketches**
+> **🔶 /implement:/design 1.2a: design plan | sketches**
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-> **🔶 1.2a.5: design plan | dialectic**
-✅ 1.2a.5: design plan | dialectic — 2 voted, 1 fallback (1m42s)
+> **🔶 /implement:/design 1.2a.5: design plan | dialectic**
+✅ /implement:/design 1.2a.5: design plan | dialectic — 2 voted, 1 fallback (1m42s)
 ```
 
-`/review` called from `/implement` with `--step-prefix "5.::code review"`:
+`/review` called from `/implement` with `--step-prefix "5.::code review::/implement"`:
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-> **🔶 5.2: code review | launch reviewers**
+> **🔶 /implement:/review 5.2: code review | launch reviewers**
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-> **🔶 5.3: code review | review cycle**
+> **🔶 /implement:/review 5.3: code review | review cycle**
 ```
 
 ## Section headers and structured output

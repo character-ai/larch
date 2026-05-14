@@ -21,7 +21,7 @@ The orchestrator decomposes `RESEARCH_QUESTION` into 2–4 focused subquestions 
 
 ### 1.1.a — Invoke the planner subagent
 
-Print: `> **🔶 1.1: planner**`
+Print: `> **🔶 /research 1.1: planner**`
 
 Launch a single Claude Agent subagent (no `subagent_type` — the `code-reviewer` archetype's dual-list output shape would conflict with the prose-list output the planner returns). Capture the subagent's response to `$RESEARCH_TMPDIR/planner-raw.txt` via the `Write` tool.
 
@@ -128,7 +128,7 @@ The suffix is appended to the lane's angle base prompt at launch time.
 
 ## 1.3 — Launch Research Perspectives in Parallel
 
-Print: `> **🔶 1.3: lane-launch**`
+Print: `> **🔶 /research 1.3: lane-launch**`
 
 **Critical sequencing**: launch all four lanes in a single message — Codex Bash invocations (with `run_in_background: true`) AND any per-lane Claude `Agent` fallbacks together.
 
