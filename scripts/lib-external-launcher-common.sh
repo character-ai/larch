@@ -121,4 +121,22 @@ external_is_auth_failure() {
     esac
 }
 
+external_auth_verdict() {
+    local tool="$1" sidecar readable=false
+    shift || true
+    for sidecar in "$@"; do
+        [[ -r "$sidecar" ]] || continue
+        readable=true
+        if external_is_auth_failure "$tool" "$sidecar"; then
+            printf 'auth\n'
+            return 0
+        fi
+    done
+    if [[ "$readable" == "true" ]]; then
+        printf 'non-auth\n'
+    else
+        printf 'unclassified\n'
+    fi
+}
+
 LARCH_LIB_EXTERNAL_LAUNCHER_COMMON_LOADED=1

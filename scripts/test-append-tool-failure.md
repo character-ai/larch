@@ -12,5 +12,5 @@ scripts/test-append-tool-failure.sh
 
 The test creates temporary execution-issues logs and captured-output
 files, then verifies verbatim preservation, category routing, redaction,
-missing-input failure behavior, and log preservation when the delegated
-append helper fails.
+verdict / retry-count header suffixes, missing-input failure behavior, and
+log preservation when the delegated append helper fails.

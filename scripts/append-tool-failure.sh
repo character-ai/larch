@@ -17,6 +17,8 @@ TOOL_LABEL=""
 EXIT_CODE=""
 CATEGORY=""
 OUTPUT_FILE=""
+VERDICT=""
+RETRY_COUNT=""
 REDACT=false
 
 while [ $# -gt 0 ]; do
@@ -39,6 +41,12 @@ while [ $# -gt 0 ]; do
         --output-file)
             [ $# -ge 2 ] || fail_usage "--output-file requires a value"
             OUTPUT_FILE=$2; shift 2 ;;
+        --verdict)
+            [ $# -ge 2 ] || fail_usage "--verdict requires a value"
+            VERDICT=$2; shift 2 ;;
+        --retry-count)
+            [ $# -ge 2 ] || fail_usage "--retry-count requires a value"
+            RETRY_COUNT=$2; shift 2 ;;
         --redact)
             REDACT=true; shift ;;
         *)
@@ -60,6 +68,14 @@ esac
 
 case "$EXIT_CODE" in
     ""|*[!0-9]*) fail_usage "--exit-code must be a non-negative integer" ;;
+esac
+
+case "$RETRY_COUNT" in
+    ""|*[!0-9]*) [ -z "$RETRY_COUNT" ] || fail_usage "--retry-count must be a non-negative integer" ;;
+esac
+
+case "$VERDICT" in
+    *$'\n'*|*$'\r'*) fail_usage "--verdict must be a single line" ;;
 esac
 
 if [ ! -f "$OUTPUT_FILE" ]; then
@@ -101,9 +117,16 @@ entry_file="$(mktemp "${TMPDIR:-/tmp}/append-tool-failure-entry.XXXXXX")" || {
     echo "ERROR=cannot create entry temp file"
     exit 2
 }
+header_suffix=""
+if [ -n "$VERDICT" ]; then
+    header_suffix="${header_suffix} — ${VERDICT}"
+fi
+if [ -n "$RETRY_COUNT" ]; then
+    header_suffix="${header_suffix} — retries=${RETRY_COUNT}"
+fi
 
 {
-    printf -- '- **Step %s — %s failed (exit %s)**:\n' "$SITE" "$TOOL_LABEL" "$EXIT_CODE"
+    printf -- '- **Step %s — %s failed (exit %s%s)**:\n' "$SITE" "$TOOL_LABEL" "$EXIT_CODE" "$header_suffix"
     printf '  ```\n'
     cat "$content_file"
     if [ -s "$content_file" ] && [ "$(tail -c 1 "$content_file" | tr -d '\n' | wc -c | tr -d ' ')" != "0" ]; then

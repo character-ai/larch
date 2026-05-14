@@ -90,6 +90,28 @@ for category in "Tool Failures" "External Reviewer Issues" "CI Issues" "Warnings
     assert_contains "category routing: $category" "$cat_log" "### $category"
 done
 
+verdict_input="$TMPDIR_BASE/verdict-input.txt"
+printf 'auth failure\n' > "$verdict_input"
+verdict_log="$TMPDIR_BASE/verdict-log.md"
+"$SCRIPT" --log "$verdict_log" --site "2" --tool "codex-implement" --exit-code 1 --category "Tool Failures" --output-file "$verdict_input" --verdict "auth-retries-exhausted" >/dev/null
+assert_contains "verdict: header suffix" "$verdict_log" "- **Step 2 — codex-implement failed (exit 1 — auth-retries-exhausted)**:"
+
+retry_log="$TMPDIR_BASE/retry-log.md"
+"$SCRIPT" --log "$retry_log" --site "2" --tool "cursor-implement" --exit-code 2 --category "Tool Failures" --output-file "$verdict_input" --retry-count 5 >/dev/null
+assert_contains "retry-count: header suffix" "$retry_log" "- **Step 2 — cursor-implement failed (exit 2 — retries=5)**:"
+
+combined_log="$TMPDIR_BASE/combined-log.md"
+"$SCRIPT" --log "$combined_log" --site "review Step 2" --tool "cursor-review" --exit-code 99 --category "External Reviewer Issues" --output-file "$verdict_input" --verdict "non-auth" --retry-count 1 >/dev/null
+assert_contains "verdict and retry-count: header suffix" "$combined_log" "- **Step review Step 2 — cursor-review failed (exit 99 — non-auth — retries=1)**:"
+
+set +e
+bad_retry_out=$("$SCRIPT" --log "$TMPDIR_BASE/bad-retry-log.md" --site "2" --tool "tool" --exit-code 1 --category "Tool Failures" --output-file "$verdict_input" --retry-count nope 2>&1)
+bad_retry_rc=$?
+set -e
+assert_rc "retry-count: invalid value exits non-zero" "$bad_retry_rc" 1
+printf '%s\n' "$bad_retry_out" > "$TMPDIR_BASE/bad-retry-out.txt"
+assert_contains "retry-count: invalid value diagnostic" "$TMPDIR_BASE/bad-retry-out.txt" "ERROR=usage: --retry-count must be a non-negative integer"
+
 redact_input="$TMPDIR_BASE/redact.txt"
 redact_log="$TMPDIR_BASE/redact-log.md"
 secret_token="ghp_""123456789012""345678901234""567890123456"
