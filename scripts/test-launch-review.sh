@@ -2473,6 +2473,86 @@ _plan_file_tests() {
 }
 _plan_file_tests || OVERALL_FAIL=1
 
+# CURSOR_CONFIG_DIR isolation: each parallel cursor invocation must receive a
+# distinct private config dir (issue #2022).
+_cursor_config_dir_tests() {
+    local fail=0
+    local tmpd
+    tmpd=$(mktemp -d /tmp/larch-test-cursor-cfgdir-XXXXXX)
+    trap 'rm -rf "$tmpd"' RETURN
+
+    local stub_bin="$tmpd/bin"
+    mkdir -p "$stub_bin"
+
+    # Stub cursor that records its CURSOR_CONFIG_DIR to a caller-specified file.
+    cat > "$stub_bin/cursor" <<'CFGSTUB'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ -n "${CURSOR_STUB_CFGDIR_LOG:-}" ]]; then
+    printf '%s\n' "${CURSOR_CONFIG_DIR:-UNSET}" >> "$CURSOR_STUB_CFGDIR_LOG"
+fi
+printf '{"result":"cfg-ok","usage":{"inputTokens":1,"outputTokens":1,"cacheReadTokens":0,"cacheWriteTokens":0}}\n'
+CFGSTUB
+    chmod +x "$stub_bin/cursor"
+
+    local launcher="$_PLAN_FILE_TESTS_ROOT/scripts/launch-review.sh"
+    local log1="$tmpd/cfgdir-inv1.log"
+    local log2="$tmpd/cfgdir-inv2.log"
+    local out1="$tmpd/cfgdir-out1.txt"
+    local out2="$tmpd/cfgdir-out2.txt"
+
+    # Launch two parallel cursor reviewers with the stub.
+    PATH="$stub_bin:$PATH" \
+        CURSOR_STUB_CFGDIR_LOG="$log1" \
+        LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux \
+        "$launcher" --tool cursor --output "$out1" --timeout 10 --prompt "inv1" \
+        >/dev/null 2>"$tmpd/cfgdir-err1.txt" &
+    local pid1=$!
+
+    PATH="$stub_bin:$PATH" \
+        CURSOR_STUB_CFGDIR_LOG="$log2" \
+        LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux \
+        "$launcher" --tool cursor --output "$out2" --timeout 10 --prompt "inv2" \
+        >/dev/null 2>"$tmpd/cfgdir-err2.txt" &
+    local pid2=$!
+
+    wait "$pid1" 2>/dev/null || true
+    wait "$pid2" 2>/dev/null || true
+
+    local dir1 dir2
+    dir1=$(head -1 "$log1" 2>/dev/null || echo "MISSING")
+    dir2=$(head -1 "$log2" 2>/dev/null || echo "MISSING")
+
+    # Each invocation must have received a CURSOR_CONFIG_DIR.
+    if [[ "$dir1" == "UNSET" || "$dir1" == "MISSING" ]]; then
+        echo "FAIL: cursor-config-dir: invocation 1 did not receive CURSOR_CONFIG_DIR" >&2
+        fail=1
+    fi
+    if [[ "$dir2" == "UNSET" || "$dir2" == "MISSING" ]]; then
+        echo "FAIL: cursor-config-dir: invocation 2 did not receive CURSOR_CONFIG_DIR" >&2
+        fail=1
+    fi
+
+    # The two invocations must have received distinct config dirs.
+    if [[ "$dir1" == "$dir2" ]]; then
+        echo "FAIL: cursor-config-dir: invocations 1 and 2 shared CURSOR_CONFIG_DIR='$dir1'" >&2
+        fail=1
+    fi
+
+    # Neither dir should equal the shared ~/.cursor path.
+    local home_cursor="$HOME/.cursor"
+    if [[ "$dir1" == "$home_cursor" || "$dir2" == "$home_cursor" ]]; then
+        echo "FAIL: cursor-config-dir: CURSOR_CONFIG_DIR must not equal ~/.cursor (got '$dir1', '$dir2')" >&2
+        fail=1
+    fi
+
+    if [[ "$fail" -eq 0 ]]; then
+        echo "PASS: cursor-config-dir isolation (distinct per-invocation CURSOR_CONFIG_DIR)"
+    fi
+    return "$fail"
+}
+_cursor_config_dir_tests || OVERALL_FAIL=1
+
 if [[ "$OVERALL_FAIL" -ne 0 ]]; then
     echo "FAIL: test-launch-review.sh" >&2
     exit 1

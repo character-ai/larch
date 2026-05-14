@@ -524,6 +524,9 @@ exit "$EXIT_CODE"
 }
 
 _launch_cursor() {
+# Prevent any inherited CURSOR_CONFIG_DIR_TMP from triggering spurious
+# rm -rf in the EXIT trap before cursor_launcher_setup_private_config_dir runs.
+unset CURSOR_CONFIG_DIR_TMP CURSOR_CONFIG_DIR
 # shellcheck disable=SC2329 # invoked indirectly by the EXIT trap.
 _emit_timing_record() {
     local rc=${1:-$?}
@@ -733,12 +736,16 @@ _write_unknown_dirty_tree_sidecar() {
 _publish_done_on_exit() {
     # The shell exit status is fixed at trap entry; this trap only publishes sidecars.
     if [[ -z "$OUTPUT" || -f "${OUTPUT}.done" ]]; then
+        cursor_launcher_cleanup_private_config_dir
         return
     fi
     if [[ -n "$WRAPPER_PID" ]] && kill -0 "$WRAPPER_PID" 2>/dev/null; then
         kill "$WRAPPER_PID" 2>/dev/null || true
         wait "$WRAPPER_PID" 2>/dev/null || true
     fi
+    # Clean up the private config dir only after the wrapper has stopped so the
+    # cursor agent process no longer needs the directory.
+    cursor_launcher_cleanup_private_config_dir
     _write_dirty_tree_sidecar
     if [[ -f "${OUTPUT}.inner.done" ]]; then
         mv -f "${OUTPUT}.inner.done" "${OUTPUT}.done" 2>/dev/null || true
@@ -849,6 +856,7 @@ else
     _STDERR_TARGET=/dev/null
 fi
 
+cursor_launcher_setup_private_config_dir
 MAX_AUTH_RETRIES=${LARCH_EXTERNAL_AUTH_RETRIES:-5}
 case "$MAX_AUTH_RETRIES" in ''|*[!0-9]*|0) MAX_AUTH_RETRIES=5 ;; esac
 HOLD=${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}
