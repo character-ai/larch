@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [27.5.49] - 2026-05-14
+
+### Changed
+
+- Converted step section headings in skills and referenced phase docs to HTML comment anchors.
+- Removed orchestrator-authored checkmark completion print directives while preserving skip, warning, and reviewer status table markers.
+- Added missing start breadcrumb directives and updated progress-reporting plus harness expectations.
+
 ## [27.5.45] - 2026-05-14
 
 ### Changed
