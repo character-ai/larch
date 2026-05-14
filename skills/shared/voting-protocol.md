@@ -14,19 +14,21 @@ When `WHOLESALE_REJECTED=true`, the round summary must include the flag and `/re
 
 ## Ballot Format
 
-Before sending to voters, assign each deduplicated finding a stable sequential ID. Format the ballot as:
+Before sending to voters, assign each deduplicated finding a stable sequential ID. The ballot file uses `### FINDING_N:` markdown heading blocks — one block per finding — matching the grammar that `skills/shared/scripts/ballot-parse.sh` and `skills/design/scripts/tally-plan-review.sh` parse:
 
+```markdown
+### FINDING_1: <short title>
+- **Reviewer**: <reviewer attribution>
+- **Concern**: <finding description>
+- **Suggested revision**: <what to change>
+
+### FINDING_2: <short title>
+- **Reviewer**: <reviewer attribution>
+- **Concern**: <finding description>
+- **Suggested revision**: <what to change>
 ```
-## Findings Ballot
 
-Vote YES, NO, or EXONERATE on each finding. A finding should receive YES if it is correct, important, and worth implementing. Vote NO if the finding is incorrect, trivial, or would cause more harm than good. Vote EXONERATE if the finding raises a legitimate concern worth noting, but is not worth implementing in this PR — this spares the proposing reviewer from a penalty on in-scope findings (OOS items use reward-only scoring — rejection carries no penalty regardless).
-
-FINDING_1: <reviewer attribution> — <finding description>
-FINDING_2: <reviewer attribution> — <finding description>
-...
-```
-
-Include the reviewer attribution so voters have context, but instruct voters to evaluate each finding on its merits regardless of who proposed it. Attribution labels are skill-specific: `/design` uses `Code` / `Codex` / `Cursor` (3-reviewer panel); `/review` uses specialist labels (`Structure`, `Correctness`, `Testing`, `Security`, `Edge-cases`, `Codex-Structure`, `Codex-Correctness`, `Codex-Testing`, `Codex-Security`, `Codex-Edge-cases`, `Claude-Generic`) for its 11-reviewer panel. `/research` does not participate in voting — it uses the Negotiation Protocol instead.
+Prepend the voter instructions as free prose before the first `### FINDING_N:` block (they are ignored by the parsers). Include the reviewer attribution so voters have context, but instruct voters to evaluate each finding on its merits regardless of who proposed it. Attribution labels are skill-specific: `/design` uses `Code` / `Codex` / `Cursor` (3-reviewer panel); `/review` uses specialist labels (`Structure`, `Correctness`, `Testing`, `Security`, `Edge-cases`, `Codex-Structure`, `Codex-Correctness`, `Codex-Testing`, `Codex-Security`, `Codex-Edge-cases`, `Claude-Generic`) for its 11-reviewer panel. `/research` does not participate in voting — it uses the Negotiation Protocol instead.
 
 ## Voter Output Format
 
@@ -210,11 +212,15 @@ Reviewers may return a second list of **out-of-scope observations** — pre-exis
 
 ### OOS on the Ballot
 
-Out-of-scope items are deduplicated separately from in-scope findings and assigned IDs with an `OOS_` prefix (e.g., `OOS_1`, `OOS_2`). They are included on the same ballot as in-scope findings, labeled with `[OUT_OF_SCOPE]`:
+Out-of-scope items are deduplicated separately from in-scope findings and assigned IDs with an `OOS_` prefix (e.g., `OOS_1`, `OOS_2`). They are included on the same ballot as in-scope findings using `### OOS_N:` heading blocks (the format `tally-plan-review.sh` parses for `/design` plan review):
 
+```markdown
+### OOS_1: <short title of pre-existing issue>
+- **Reviewer**: <reviewer attribution>
+- **Concern**: <description of pre-existing issue>
 ```
-OOS_1: [OUT_OF_SCOPE] Code — <description of pre-existing issue>
-```
+
+In `/review` code review, `collect-findings.sh` writes OOS items using `FINDING_N` IDs with `[OUT_OF_SCOPE]` in the title (e.g., `### FINDING_N: [OUT_OF_SCOPE] <title>`); `ballot-parse.sh` detects OOS via the `[OUT_OF_SCOPE]` title prefix.
 
 ### OOS Vote Semantics
 
