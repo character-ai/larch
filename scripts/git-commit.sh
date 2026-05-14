@@ -84,3 +84,4 @@ if [[ "$NO_TRAILER" == false ]]; then
 fi
 
 git commit --file "$TMPFILE"
+"$(dirname "${BASH_SOURCE[0]}")/larch-log-flush.sh" || true

@@ -1442,7 +1442,7 @@ kill_session_background_processes() {
 }
 
 run_teardown() {
-    local start issue_number repo repo_unavailable stall_tracking done_rename_applied pr_number design_only pr_closed no_logs_commit
+    local start issue_number repo repo_unavailable stall_tracking done_rename_applied pr_number design_only pr_closed
     local rename_branch rename_status out rc value issue_url cleanup_rc
     local stall_step stash_ref sentinel_written
 
@@ -1457,7 +1457,6 @@ run_teardown() {
     done_rename_applied=$(read_state DONE_RENAME_APPLIED)
     pr_number=$(read_state PR_NUMBER)
     design_only=$(read_state DESIGN_ONLY_DONE)
-    no_logs_commit=$(read_state NO_LOGS_COMMIT false)
     rename_branch=skipped
     rename_status=skipped
     issue_url=""
@@ -1581,16 +1580,6 @@ run_teardown() {
                 --skill implement --run-id "$larch_flush_run_id" \
                 --field "status=done" \
                 2>/dev/null || true
-        fi
-        # Push if the PR was already merged; otherwise let the branch push carry it.
-        # Only commit when recovery_ok: a failed synthesis would publish a manifest-less dir.
-        pr_closed=$(read_state PR_CLOSED)
-        if [ "$larch_recovery_ok" = "true" ] && [ "$no_logs_commit" != "true" ]; then
-            if [ "$pr_closed" = "true" ]; then
-                "$SCRIPT_DIR/larch-log.sh" commit --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$larch_flush_run_id" 2>/dev/null || true
-            else
-                "$SCRIPT_DIR/larch-log.sh" commit --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$larch_flush_run_id" --no-push 2>/dev/null || true
-            fi
         fi
     fi
 

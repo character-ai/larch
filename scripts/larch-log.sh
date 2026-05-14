@@ -20,7 +20,7 @@ Usage:
   larch-log.sh write --log-root D --skill S --run-id R --batch B --input-file F
   larch-log.sh append --log-root D --skill S --run-id R --batch B --record-file F
   larch-log.sh exists --log-root D --skill S --run-id R --batch B
-  larch-log.sh commit --log-root D --skill S --run-id R [--no-push]
+  larch-log.sh commit --log-root D --skill S --run-id R
   larch-log.sh manifest --log-root D --skill S --run-id R --field K=V...
 USAGE
 }
@@ -290,13 +290,12 @@ case "$cmd" in
         ;;
 
     commit)
-        LOG_ROOT=""; SKILL=""; RUN_ID=""; NO_PUSH=false
+        LOG_ROOT=""; SKILL=""; RUN_ID=""
         while [ $# -gt 0 ]; do
             case "$1" in
                 --log-root) LOG_ROOT="${2:?--log-root requires a value}"; shift 2 ;;
                 --skill) SKILL="${2:?--skill requires a value}"; shift 2 ;;
                 --run-id) RUN_ID="${2:?--run-id requires a value}"; shift 2 ;;
-                --no-push) NO_PUSH=true; shift ;;
                 *) usage; larch_log_fail 1 "unknown option for commit: $1" ;;
             esac
         done
@@ -326,9 +325,6 @@ case "$cmd" in
             larch_log_fail 3 "git commit failed"
         }
         commit_sha="$(git -C "$REPO_ROOT" rev-parse HEAD)"
-        if [ "$NO_PUSH" = false ]; then
-            git -C "$REPO_ROOT" push >/dev/null || larch_log_fail 3 "git push failed"
-        fi
         larch_log_emit_success "$path" true false "$commit_sha"
         ;;
 

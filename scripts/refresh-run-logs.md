@@ -35,8 +35,9 @@ Always exits 0.
   the key holds `merged` or `admin_merged`, exits 0 with no commit. When the state file
   is missing, also exits 0 (fail-closed — treat as post-merge when probe fails). The
   key is written by `ship-pr.sh` in `run_ci_phase` at the moment a merge succeeds.
-- **No push**: commits with `--` pathspec limited to `larch-logs/implement/<RUN_ID>/`;
-  the caller (`ship-pr.sh`) owns the subsequent push.
+- **No push**: `larch-log.sh commit` never pushes and limits its pathspec to
+  `larch-logs/implement/<RUN_ID>/`; the caller (`ship-pr.sh`) owns any
+  subsequent push.
 - **Best-effort renders**: `token-report.sh`, `timing-report.sh`, and `larch-log.sh write`
   calls use `|| true`; render failures are non-fatal.
 - **`NO_LOGS_COMMIT` honoured**: reads the flag from the state file; skips the commit

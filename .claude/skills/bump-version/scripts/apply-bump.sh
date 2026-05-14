@@ -107,6 +107,7 @@ fi
 
 COMMIT_MSG="Bump version to $NEW_VERSION"
 if git commit -m "$COMMIT_MSG" --quiet; then
+  "$(dirname "${BASH_SOURCE[0]}")/../../../../scripts/larch-log-flush.sh" || true
   # Success — remove backup, emit result.
   rm -f "$BACKUP"
   COMMIT_SHA=$(git rev-parse HEAD)

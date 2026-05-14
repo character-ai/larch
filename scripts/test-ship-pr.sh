@@ -47,6 +47,10 @@ SH
     cat > "$root/.claude/skills/bump-version/scripts/apply-bump.sh" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
+if [[ -n "${LARCH_LOG_STUB_SENTINEL_DIR:-}" ]]; then
+  mkdir -p "$LARCH_LOG_STUB_SENTINEL_DIR"
+  printf 'APPLY_BUMP_LARCH_NO_LOGS_COMMIT=%s\n' "${LARCH_NO_LOGS_COMMIT:-unset}" >> "$LARCH_LOG_STUB_SENTINEL_DIR/env-calls.txt"
+fi
 if [[ "${STUB_APPLY_SAME_VERSION:-false}" == true ]]; then
   echo "APPLIED=false"
   echo "ERROR=origin/main has already bumped to 1.0.1; re-classify needed"
@@ -389,8 +393,7 @@ chmod +x "$root/scripts/ci-wait.sh" \
          "$root/scripts/git-force-push.sh"
 PATH="$root/scripts:$PATH" LARCH_LOG_STUB_SENTINEL_DIR="$sentinel_dir" STUB_MERGE_RESULT=version_already_published STUB_GH_PR_VIEW_STATE=OPEN run_subject "$root" "$tmp" "$tmp/rc"
 assert_rc "$tmp/rc" 0 "version_already_published + open PR exits 0 after re-bump"
-if [ -f "$sentinel_dir/larch-log-calls.txt" ] && \
-   grep -q "^LARCH_LOG_ARGS=commit" "$sentinel_dir/larch-log-calls.txt"; then
+if [ "$(cat "$sentinel_dir/ci-wait-count" 2>/dev/null || echo 0)" -ge 2 ]; then
     ok "version_already_published + open PR falls through to run_rebase_rebump"
 else
     fail "version_already_published + open PR should fall through to run_rebase_rebump"
@@ -416,7 +419,7 @@ else
     ok "postmerge does not call tracking-issue-summary.sh (Step 18 owns it)"
 fi
 
-# Postmerge manifest flush: with PR_CLOSED=true, larch-log manifest+commit run.
+# Postmerge manifest finalization: with PR_CLOSED=true, larch-log manifest runs.
 root=$(make_repo postmerge_flush)
 tmp=$(make_tmpdir)
 sentinel_dir=$(mktemp -d /tmp/ship-pr-postmerge-flush.XXXXXX)
@@ -435,16 +438,16 @@ set -e
 if [ -f "$sentinel_dir/larch-log-calls.txt" ]; then
     if grep -q "manifest" "$sentinel_dir/larch-log-calls.txt" && \
        grep -q "status=done" "$sentinel_dir/larch-log-calls.txt"; then
-        ok "postmerge flush calls larch-log manifest with status=done when PR_CLOSED=true"
+        ok "postmerge manifest finalization calls larch-log manifest with status=done when PR_CLOSED=true"
     else
-        fail "postmerge flush: expected larch-log manifest with status=done; got: $(cat "$sentinel_dir/larch-log-calls.txt")"
+        fail "postmerge manifest finalization: expected larch-log manifest with status=done; got: $(cat "$sentinel_dir/larch-log-calls.txt")"
     fi
 else
-    fail "postmerge flush: larch-log.sh stub was not called (PR_CLOSED=true path)"
+    fail "postmerge manifest finalization: larch-log.sh stub was not called (PR_CLOSED=true path)"
 fi
 rm -rf "$sentinel_dir"
 
-# Postmerge manifest flush: missing manifest is synthesized before final status.
+# Postmerge manifest finalization: missing manifest is synthesized before final status.
 root=$(make_repo postmerge_missing_manifest)
 tmp=$(make_tmpdir)
 sentinel_dir=$(mktemp -d /tmp/ship-pr-postmerge-recovery.XXXXXX)
@@ -463,7 +466,7 @@ if [ -f "$sentinel_dir/larch-log-calls.txt" ]; then
     if grep -q "^LARCH_LOG_ARGS=init" "$sentinel_dir/larch-log-calls.txt" && \
        grep -q "recovery_reason=manifest_lost_mid_run" "$sentinel_dir/larch-log-calls.txt" && \
        grep -q -- "--issue" "$sentinel_dir/larch-log-calls.txt"; then
-        ok "postmerge flush synthesizes and tags a missing manifest (with --issue) before final status"
+        ok "postmerge manifest finalization synthesizes and tags a missing manifest (with --issue) before final status"
     else
         fail "postmerge missing-manifest recovery: expected init + partial tag + --issue; got: $(cat "$sentinel_dir/larch-log-calls.txt")"
     fi
@@ -472,7 +475,7 @@ else
 fi
 rm -rf "$sentinel_dir"
 
-# Postmerge manifest flush: with PR_CLOSED=false (draft/no-merge), no flush.
+# Postmerge manifest finalization: with PR_CLOSED=false (draft/no-merge), no manifest update.
 root=$(make_repo postmerge_no_flush)
 tmp=$(make_tmpdir)
 sentinel_dir=$(mktemp -d /tmp/ship-pr-postmerge-noflush.XXXXXX)
@@ -487,31 +490,7 @@ if [ -f "$sentinel_dir/larch-log-calls.txt" ] && \
    grep -q "manifest" "$sentinel_dir/larch-log-calls.txt"; then
     fail "postmerge with PR_CLOSED=false should not call larch-log manifest"
 else
-    ok "postmerge with PR_CLOSED=false skips larch-log manifest flush"
-fi
-rm -rf "$sentinel_dir"
-
-# Regression test: ship-pr.sh passes an explicit larch-log root even when
-# invoked from a fresh shell without IMPLEMENT_TMPDIR in the environment.
-root=$(make_repo export_regression)
-tmp=$(make_tmpdir)
-sentinel_dir=$(mktemp -d /tmp/ship-pr-export-test.XXXXXX)
-write_state "$tmp/ship-pr-state.sh" ci-merge
-# Run WITHOUT IMPLEMENT_TMPDIR in the environment (simulates fresh-shell invocation).
-set +e
-(cd "$root" && unset IMPLEMENT_TMPDIR && LARCH_LOG_STUB_SENTINEL_DIR="$sentinel_dir" CLAUDE_PLUGIN_ROOT="$root" \
-    "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
-    --merge true --draft false --forked false --repo owner/repo \
-    > "$tmp/stdout-export" 2> "$tmp/stderr-export")
-set -e
-if [ -f "$sentinel_dir/larch-log-calls.txt" ]; then
-    if grep -q -- "--log-root $tmp/larch-logs" "$sentinel_dir/larch-log-calls.txt"; then
-        ok "explicit --log-root passed to larch-log.sh in ci-merge flush (fresh shell)"
-    else
-        fail "explicit --log-root missing for larch-log.sh; got: $(cat "$sentinel_dir/larch-log-calls.txt")"
-    fi
-else
-    fail "larch-log.sh stub was not called during ci-merge flush"
+    ok "postmerge with PR_CLOSED=false skips larch-log manifest finalization"
 fi
 rm -rf "$sentinel_dir"
 
@@ -657,7 +636,7 @@ fi
 rm -rf "$call_dir"
 
 # ──────────────────────────────────────────────────────────────────────────────
-# --no-logs-commit: run_rebase_rebump flush
+# --no-logs-commit: exported to commit primitive subprocess tree
 # ──────────────────────────────────────────────────────────────────────────────
 
 # Helper: override ci-wait.sh (rebase first call, merge second) and add stubs
@@ -689,7 +668,7 @@ root=$(make_repo rebump_flush_enabled)
 tmp=$(make_tmpdir)
 sentinel_dir=$(mktemp -d /tmp/ship-pr-rebump-enabled.XXXXXX)
 # Use ci-initial so run_rebase_rebump fires (on ACTION=rebase) before any
-# ci-merge pre-merge flush; the scenario exits 0 after the second ci-wait
+# ci-merge entry; the scenario exits 0 after the second ci-wait
 # returns ACTION=merge, advancing to ci-merge without entering postmerge.
 write_state "$tmp/ship-pr-state.sh" ci-initial
 _make_rebase_stubs "$root" "$sentinel_dir"
@@ -701,11 +680,11 @@ set +e
 printf '%s' "$?" > "$tmp/rc-rebump-enabled"
 set -e
 assert_rc "$tmp/rc-rebump-enabled" 0 "run_rebase_rebump (--no-logs-commit false): ship-pr exits 0"
-if [ -f "$sentinel_dir/larch-log-calls.txt" ] && \
-   grep -q "^LARCH_LOG_ARGS=commit" "$sentinel_dir/larch-log-calls.txt"; then
-    ok "run_rebase_rebump: larch-log commit called when --no-logs-commit false"
+if [ -f "$sentinel_dir/env-calls.txt" ] && \
+   grep -q "^APPLY_BUMP_LARCH_NO_LOGS_COMMIT=false$" "$sentinel_dir/env-calls.txt"; then
+    ok "run_rebase_rebump: LARCH_NO_LOGS_COMMIT=false exported to apply-bump"
 else
-    fail "run_rebase_rebump: larch-log commit not called when --no-logs-commit false"
+    fail "run_rebase_rebump: expected LARCH_NO_LOGS_COMMIT=false in apply-bump env"
 fi
 rm -rf "$sentinel_dir"
 
@@ -722,105 +701,11 @@ set +e
 printf '%s' "$?" > "$tmp/rc-rebump-suppressed"
 set -e
 assert_rc "$tmp/rc-rebump-suppressed" 0 "run_rebase_rebump (--no-logs-commit true): ship-pr exits 0"
-if [ -f "$sentinel_dir/larch-log-calls.txt" ] && \
-   grep -q "^LARCH_LOG_ARGS=commit" "$sentinel_dir/larch-log-calls.txt"; then
-    fail "run_rebase_rebump: larch-log commit called despite --no-logs-commit true"
+if [ -f "$sentinel_dir/env-calls.txt" ] && \
+   grep -q "^APPLY_BUMP_LARCH_NO_LOGS_COMMIT=true$" "$sentinel_dir/env-calls.txt"; then
+    ok "run_rebase_rebump: LARCH_NO_LOGS_COMMIT=true exported to apply-bump"
 else
-    ok "run_rebase_rebump: larch-log commit suppressed when --no-logs-commit true"
-fi
-rm -rf "$sentinel_dir"
-
-# ──────────────────────────────────────────────────────────────────────────────
-# --no-logs-commit: ci-merge pre-merge flush
-# ──────────────────────────────────────────────────────────────────────────────
-
-root=$(make_repo ci_merge_flush_enabled)
-tmp=$(make_tmpdir)
-sentinel_dir=$(mktemp -d /tmp/ship-pr-ci-merge-enabled.XXXXXX)
-write_state "$tmp/ship-pr-state.sh" ci-merge
-set +e
-(cd "$root" && LARCH_LOG_STUB_SENTINEL_DIR="$sentinel_dir" CLAUDE_PLUGIN_ROOT="$root" \
-    "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
-    --merge true --draft false --forked false --repo owner/repo --no-logs-commit false \
-    > "$tmp/stdout-ci-merge-enabled" 2>&1)
-printf '%s' "$?" > "$tmp/rc-ci-merge-enabled"
-set -e
-assert_rc "$tmp/rc-ci-merge-enabled" 0 "ci-merge pre-merge flush (--no-logs-commit false): ship-pr exits 0"
-if [ -f "$sentinel_dir/larch-log-calls.txt" ] && \
-   grep -q "^LARCH_LOG_ARGS=commit" "$sentinel_dir/larch-log-calls.txt"; then
-    ok "ci-merge pre-merge flush: larch-log commit called when --no-logs-commit false"
-else
-    fail "ci-merge pre-merge flush: larch-log commit not called when --no-logs-commit false"
-fi
-rm -rf "$sentinel_dir"
-
-root=$(make_repo ci_merge_flush_suppressed)
-tmp=$(make_tmpdir)
-sentinel_dir=$(mktemp -d /tmp/ship-pr-ci-merge-suppressed.XXXXXX)
-write_state "$tmp/ship-pr-state.sh" ci-merge
-set +e
-(cd "$root" && LARCH_LOG_STUB_SENTINEL_DIR="$sentinel_dir" CLAUDE_PLUGIN_ROOT="$root" \
-    "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
-    --merge true --draft false --forked false --repo owner/repo --no-logs-commit true \
-    > "$tmp/stdout-ci-merge-suppressed" 2>&1)
-printf '%s' "$?" > "$tmp/rc-ci-merge-suppressed"
-set -e
-assert_rc "$tmp/rc-ci-merge-suppressed" 0 "ci-merge pre-merge flush (--no-logs-commit true): ship-pr exits 0"
-if [ -f "$sentinel_dir/larch-log-calls.txt" ] && \
-   grep -q "^LARCH_LOG_ARGS=commit" "$sentinel_dir/larch-log-calls.txt"; then
-    fail "ci-merge pre-merge flush: larch-log commit called despite --no-logs-commit true"
-else
-    ok "ci-merge pre-merge flush: larch-log commit suppressed when --no-logs-commit true"
-fi
-rm -rf "$sentinel_dir"
-
-# ──────────────────────────────────────────────────────────────────────────────
-# --no-logs-commit: run_postmerge_phase flush
-# ──────────────────────────────────────────────────────────────────────────────
-
-root=$(make_repo postmerge_no_logs_enabled)
-tmp=$(make_tmpdir)
-sentinel_dir=$(mktemp -d /tmp/ship-pr-pm-enabled.XXXXXX)
-write_state "$tmp/ship-pr-state.sh" postmerge
-awk -F= '{if ($1=="PR_CLOSED") print "PR_CLOSED=true"; else print}' \
-    "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" \
-    && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
-set +e
-(cd "$root" && LARCH_LOG_STUB_SENTINEL_DIR="$sentinel_dir" CLAUDE_PLUGIN_ROOT="$root" \
-    "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
-    --merge true --draft false --forked false --repo owner/repo --no-logs-commit false \
-    > "$tmp/stdout-pm-enabled" 2>&1)
-printf '%s' "$?" > "$tmp/rc-pm-enabled"
-set -e
-assert_rc "$tmp/rc-pm-enabled" 0 "run_postmerge_phase (--no-logs-commit false): ship-pr exits 0"
-if [ -f "$sentinel_dir/larch-log-calls.txt" ] && \
-   grep -q "^LARCH_LOG_ARGS=commit" "$sentinel_dir/larch-log-calls.txt"; then
-    ok "run_postmerge_phase: larch-log commit called when --no-logs-commit false (PR_CLOSED=true)"
-else
-    fail "run_postmerge_phase: larch-log commit not called when --no-logs-commit false (PR_CLOSED=true)"
-fi
-rm -rf "$sentinel_dir"
-
-root=$(make_repo postmerge_no_logs_suppressed)
-tmp=$(make_tmpdir)
-sentinel_dir=$(mktemp -d /tmp/ship-pr-pm-suppressed.XXXXXX)
-write_state "$tmp/ship-pr-state.sh" postmerge
-awk -F= '{if ($1=="PR_CLOSED") print "PR_CLOSED=true"; else print}' \
-    "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" \
-    && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
-set +e
-(cd "$root" && LARCH_LOG_STUB_SENTINEL_DIR="$sentinel_dir" CLAUDE_PLUGIN_ROOT="$root" \
-    "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
-    --merge true --draft false --forked false --repo owner/repo --no-logs-commit true \
-    > "$tmp/stdout-pm-suppressed" 2>&1)
-printf '%s' "$?" > "$tmp/rc-pm-suppressed"
-set -e
-assert_rc "$tmp/rc-pm-suppressed" 0 "run_postmerge_phase (--no-logs-commit true): ship-pr exits 0"
-if [ -f "$sentinel_dir/larch-log-calls.txt" ] && \
-   grep -q "^LARCH_LOG_ARGS=commit" "$sentinel_dir/larch-log-calls.txt"; then
-    fail "run_postmerge_phase: larch-log commit called despite --no-logs-commit true"
-else
-    ok "run_postmerge_phase: larch-log commit suppressed when --no-logs-commit true"
+    fail "run_rebase_rebump: expected LARCH_NO_LOGS_COMMIT=true in apply-bump env"
 fi
 rm -rf "$sentinel_dir"
 

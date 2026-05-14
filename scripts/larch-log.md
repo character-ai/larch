@@ -16,7 +16,7 @@ Primary verbs:
 - `append` atomically appends append-mode NDJSON batches.
 - `exists` probes a batch path.
 - `manifest` updates mutable manifest fields. Values that look like JSON-native scalars (`null`, `true`, `false`, integers) are passed via `--argjson` so they are stored with the correct JSON type; all other values are passed via `--arg` (stored as strings). This matters for numeric fields like `pr_number`.
-- `commit` stages and commits one run directory at terminal time.
+- `commit` stages and commits one run directory without pushing.
 
 Every verb emits a quiet KEY=value envelope:
 
@@ -67,25 +67,13 @@ points at the canonical repo subtree), no copy is performed.
 list, including `session-transcript` (the redacted Claude Code session `.jsonl`
 captured at Step 18 of `/implement` for post-hoc auditability).
 
-## `--no-push` discipline
+## Push Ownership
 
-`commit` pushes by default. Callers should pass `--no-push` when a subsequent
-branch push, force-with-lease push, or code-commit push is guaranteed to follow
-and can carry the larch-log commit together with nearby work. This avoids
-standalone larch-log-only push events.
-
-Use a direct push (no `--no-push`) when:
-
-- The caller is a terminal lifecycle step with no later push guaranteed (e.g.,
-  the `PR_CLOSED=true` teardown path in `implement-finalize.sh`, where the PR
-  branch has already been merged or removed).
-- Omitting the push would violate a downstream invariant (e.g., the ci-merge
-  pre-merge flush in `ship-pr.sh`, where `merge-pr.sh` requires
-  `local HEAD == remote PR headRefOid`; an unpushed local commit would fail
-  that check and stall the merge).
-
-In `/implement`, the rebase-retry flush (`scripts/ship-pr.sh`, Step 8b path)
-is the canonical `--no-push` call site — the surrounding force-push carries it.
+`commit` never pushes. `/implement` log persistence is owned by
+`scripts/larch-log-flush.sh`, which is tail-called by commit primitives after
+business commits, and by the surrounding lifecycle push that carries those
+commits to the remote. Dedicated larch-log-only pushes are intentionally avoided.
 
 Related files: `scripts/lib-larch-log.sh`, `scripts/larch-log-batches.sh`, and
-the `scripts/test-larch-log.sh` harness.
+the `scripts/larch-log-flush.sh` helper plus `scripts/test-larch-log.sh`
+harness.
