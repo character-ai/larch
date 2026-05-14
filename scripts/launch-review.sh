@@ -732,6 +732,7 @@ _write_unknown_dirty_tree_sidecar() {
 # shellcheck disable=SC2329,SC2317  # body invoked indirectly by the EXIT trap below.
 _publish_done_on_exit() {
     # The shell exit status is fixed at trap entry; this trap only publishes sidecars.
+    cursor_launcher_cleanup_private_config_dir
     if [[ -z "$OUTPUT" || -f "${OUTPUT}.done" ]]; then
         return
     fi
@@ -849,6 +850,7 @@ else
     _STDERR_TARGET=/dev/null
 fi
 
+cursor_launcher_setup_private_config_dir
 MAX_AUTH_RETRIES=${LARCH_EXTERNAL_AUTH_RETRIES:-5}
 case "$MAX_AUTH_RETRIES" in ''|*[!0-9]*|0) MAX_AUTH_RETRIES=5 ;; esac
 HOLD=${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}

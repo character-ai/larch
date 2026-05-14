@@ -11,7 +11,7 @@
 
 ## Why
 
-Cursor supports `~/.cursor/cli-config.json` for model pinning and max-mode, but that config path is user-managed and cannot be enforced programmatically across contributor environments or CI. The prompt-level `/max-mode on.` slash command is the mechanism larch controls from its own invocations. This wrapper owns the literal so every Cursor invocation goes through one file.
+Cursor supports `~/.cursor/cli-config.json` for model pinning and max-mode. Each larch invocation uses a private per-invocation config directory (exported via `CURSOR_CONFIG_DIR` by `cursor_launcher_setup_private_config_dir` in `lib-cursor-launcher-common.sh`) seeded from the user's `cli-config.json` to avoid the rename race under parallel `cursor agent` processes (issue #2022). The prompt-level `/max-mode on.` slash command is the additional mechanism larch controls to request max-mode from its own invocations, independent of the config file. This wrapper owns the literal so every Cursor invocation goes through one file.
 
 Cursor also has no way to configure a non-default model via config file that overrides the CLI's own fallback; larch passes `--model` on the command line via `scripts/agent-model-args.sh`. The two concerns are kept in separate single-source-of-truth files.
 

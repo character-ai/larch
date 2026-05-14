@@ -43,6 +43,17 @@ Gemini remains generic-only and rejects specialist flags.
   `LARCH_EXTERNAL_SERIAL_LOCK_DELAY`, `LARCH_EXTERNAL_SERIAL_LOCK_TTL`,
   `LARCH_EXTERNAL_SERIAL_LOCK_TRIES`, and
   `LARCH_EXTERNAL_SERIAL_LOCK_FORCE_UNAME`.
+- The Cursor path calls `cursor_launcher_setup_private_config_dir` (from
+  `lib-cursor-launcher-common.sh`) immediately before the auth-retry loop to
+  give each invocation a fresh private `CURSOR_CONFIG_DIR` directory (seeded
+  from `~/.cursor/cli-config.json` when present). This eliminates the
+  `cli-config.json` rename race that occurs when many `cursor agent` processes
+  share the default `~/.cursor` config dir. Cleanup runs in the EXIT trap
+  (`_publish_done_on_exit`) so leaked dirs are removed even on timeout or
+  signal. Auth state (keychain entries `cursor-user` / `cursor-access-token`)
+  lives in macOS Keychain, not in `cli-config.json`, so the private dir does
+  not affect keychain-based auth; the existing `external_serial_lock_acquire`
+  keychain-bootstrap lock is retained unchanged.
 - Codex sets `CODEX_SANDBOX_MODE=read-only` and emits a static
   `STATUS=clean MODE=baseline REASON=codex-sandbox-read-only` sidecar without
   running the scan — `--sandbox read-only` blocks writes at the syscall level,

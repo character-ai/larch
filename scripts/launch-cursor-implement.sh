@@ -254,6 +254,7 @@ fi
 # Claude (the dispatcher's caller) never sees the wrapper's progress lines.
 # The wrapper's own exit code is captured into LAUNCHER_EXIT.
 LAUNCHER_EXIT=0
+cursor_launcher_setup_private_config_dir
 MAX_AUTH_RETRIES=${LARCH_EXTERNAL_AUTH_RETRIES:-5}
 case "$MAX_AUTH_RETRIES" in ''|*[!0-9]*|0) MAX_AUTH_RETRIES=5 ;; esac
 HOLD=${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}
@@ -287,6 +288,7 @@ while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
     fi
     break
 done
+cursor_launcher_cleanup_private_config_dir
 
 cursor_launcher_append_outer_meta "${TRANSCRIPT_PATH}.meta" "$SCRIPT_DIR/launch-cursor-implement.sh" "$PROMPT_FILE_SIDECAR" "$PWD"
 

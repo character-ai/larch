@@ -48,4 +48,26 @@ cursor_launcher_promote_inner_done() {
     external_launcher_promote_inner_done "$@"
 }
 
+# Give each cursor agent invocation its own private config directory so
+# parallel processes do not race on the shared ~/.cursor/cli-config.json.
+# CURSOR_CONFIG_DIR is documented at https://cursor.com/docs/cli/reference/configuration
+# (not surfaced in `cursor agent --help` as of v2026.05.09-0afadcc).
+cursor_launcher_setup_private_config_dir() {
+    local cfg_tmp
+    cfg_tmp=$(mktemp -d "${TMPDIR:-/tmp}/larch-cursor-cfg.XXXXXX") || return 1
+    if [[ -f "$HOME/.cursor/cli-config.json" ]]; then
+        cp "$HOME/.cursor/cli-config.json" "$cfg_tmp/cli-config.json" 2>/dev/null || true
+    fi
+    export CURSOR_CONFIG_DIR="$cfg_tmp"
+    # shellcheck disable=SC2034  # consumed by cursor_launcher_cleanup_private_config_dir
+    CURSOR_CONFIG_DIR_TMP="$cfg_tmp"
+}
+
+cursor_launcher_cleanup_private_config_dir() {
+    if [[ -n "${CURSOR_CONFIG_DIR_TMP:-}" ]]; then
+        rm -rf "$CURSOR_CONFIG_DIR_TMP" 2>/dev/null || true
+        unset CURSOR_CONFIG_DIR_TMP CURSOR_CONFIG_DIR
+    fi
+}
+
 LARCH_LIB_CURSOR_LAUNCHER_COMMON_LOADED=1
