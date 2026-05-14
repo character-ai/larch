@@ -25,3 +25,7 @@ harness is wired through the `test-collect-agent-results` Makefile target and a
 `test-harnesses` shard. Update this file when changing
 `is_transient_net_signature`, the statuses eligible for transient retry, or the
 collector's retry-row result semantics.
+
+The harness unsets inherited session tempdir variables and points
+`LARCH_EXECUTION_ISSUES_LOG` at its tempdir so failures cannot append to a
+parent `/implement` run's log.

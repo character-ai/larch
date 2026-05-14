@@ -15,6 +15,9 @@ Regression harness for `scripts/run-external-agent.sh`; the primary behavioral c
 ## Wiring
 
 Target: `make test-run-external-agent`. Included in `make lint` via the `the test-harnesses-N shard partition` shard. Exit 0 on all-pass, exit 1 on any failure.
+The harness unsets inherited session tempdir variables and points
+`LARCH_EXECUTION_ISSUES_LOG` at its tempdir so failures cannot append to a
+parent `/implement` run's log.
 
 ## Edit-in-sync
 

@@ -24,6 +24,7 @@
 - The test sets `LARCH_CODEX_MODEL=stub-codex-model` to avoid environment-specific model drift and to pin model forwarding.
 - The test relies on the default Codex effort (`high`) emitted by `agent-model-args.sh --with-effort`.
 - The stub writes the manifest atomically (`.tmp` then `mv`) so launcher detection mirrors production.
+- The harness unsets inherited session tempdir variables and points `LARCH_EXECUTION_ISSUES_LOG` at its scratch dir so failures cannot append to a parent `/implement` run's log.
 
 **Call sites**:
 - `make test-codex-implementer`.

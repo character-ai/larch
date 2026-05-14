@@ -21,6 +21,9 @@
 
 Run directly as `scripts/test-launch-review.sh` or through
 `make test-launch-review`. The target is included in `test-harnesses-2`.
+The harness unsets inherited session tempdir variables and points
+`LARCH_EXECUTION_ISSUES_LOG` at each suite's tempdir so offline launch failures
+cannot append to a parent `/implement` run's log.
 
 ## Edit In Sync
 

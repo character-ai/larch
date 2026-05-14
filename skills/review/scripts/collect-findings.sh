@@ -39,6 +39,10 @@ mkdir -p "$(dirname "$FINDINGS_FILE")" "$(dirname "$OOS_FILE")"
 REVIEW_TMPDIR="$(dirname "$FINDINGS_FILE")"
 
 execution_issue_log() {
+    if [[ -n "${LARCH_EXECUTION_ISSUES_LOG:-}" ]]; then
+        printf '%s' "$LARCH_EXECUTION_ISSUES_LOG"
+        return
+    fi
     if [[ -n "$SESSION_ENV_PATH" ]]; then
         printf '%s/execution-issues.md' "$(dirname "$SESSION_ENV_PATH")"
     elif [[ -n "${IMPLEMENT_TMPDIR:-}" ]]; then

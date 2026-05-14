@@ -4,6 +4,9 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 TMPROOT="$(mktemp -d /tmp/larch-test-launch-review-XXXXXX)"
+unset LARCH_EXECUTION_ISSUES_LOG SESSION_ENV_PATH IMPLEMENT_TMPDIR REVIEW_TMPDIR || true
+# shellcheck disable=SC2030
+export LARCH_EXECUTION_ISSUES_LOG="$TMPROOT/execution-issues.md"
 trap 'rm -rf "$TMPROOT"' EXIT
 
 OVERALL_FAIL=0
@@ -61,6 +64,9 @@ chmod +x "$LAUNCHER"
 # shellcheck disable=SC2030
 TMPDIR="$(mktemp -d /tmp/larch-test-launch-review-XXXXXX)"
 trap 'rm -rf "$TMPDIR"' EXIT
+unset LARCH_EXECUTION_ISSUES_LOG SESSION_ENV_PATH IMPLEMENT_TMPDIR REVIEW_TMPDIR || true
+# shellcheck disable=SC2030
+export LARCH_EXECUTION_ISSUES_LOG="$TMPDIR/execution-issues.md"
 export LARCH_TIMING_LEDGER="$TMPDIR/timing-ledger.tsv"
 
 # shellcheck disable=SC2030
@@ -761,6 +767,9 @@ chmod +x "$LAUNCHER"
 # shellcheck disable=SC2030
 TMPDIR="$(mktemp -d /tmp/larch-test-launch-cursor-XXXXXX)"
 trap 'rm -rf "$TMPDIR"' EXIT
+unset LARCH_EXECUTION_ISSUES_LOG SESSION_ENV_PATH IMPLEMENT_TMPDIR REVIEW_TMPDIR || true
+# shellcheck disable=SC2030,SC2031
+export LARCH_EXECUTION_ISSUES_LOG="$TMPDIR/execution-issues.md"
 
 # shellcheck disable=SC2030,SC2031
 export RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05
@@ -1810,6 +1819,9 @@ set -euo pipefail
 
 REPO_ROOT=$(cd "$(dirname "$0")/.." && pwd -P)
 TMPDIR=$(mktemp -d /tmp/larch-test-launch-gemini-XXXXXX)
+unset LARCH_EXECUTION_ISSUES_LOG SESSION_ENV_PATH IMPLEMENT_TMPDIR REVIEW_TMPDIR || true
+# shellcheck disable=SC2031
+export LARCH_EXECUTION_ISSUES_LOG="$TMPDIR/execution-issues.md"
 LARCH_TEST_REPO_ROOT="$REPO_ROOT"
 export LARCH_TEST_REPO_ROOT
 GEMINI_LAUNCHER="$TMPDIR/bin/launch-review-gemini"
