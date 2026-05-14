@@ -22,4 +22,9 @@
 |  | larch:implement | 15 | 3849190 | 29307 | 16098 |
 | Step 7a — code flow diagram | **step total** | 11 | 2915916 | 6883 | 5341 |
 |  | larch:implement | 11 | 2915916 | 6883 | 5341 |
-| **Grand total** |  | 95 | 22525612 | 102896 | 68142 |
+| Step 8a — changelog | **step total** | 0 | 0 | 0 | 0 |
+| Step 8b — rebase | **step total** | 4 | 1073478 | 3386 | 4580 |
+|  | larch:implement | 4 | 1073478 | 3386 | 4580 |
+| Step 11 — execution-issues | **step total** | 2 | 538432 | 2384 | 2211 |
+|  | larch:implement | 2 | 538432 | 2384 | 2211 |
+| **Grand total** |  | 101 | 24137522 | 108666 | 74933 |
