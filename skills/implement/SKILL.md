@@ -1280,11 +1280,7 @@ if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
 fi
 export CLAUDE_PLUGIN_ROOT
-```
-
-> **Continue after child returns.** On `STATUS=fail` with checks output, read `REDACTED_LOG_FILE` (checks failure — NOT raw `LOG_FILE`); full triage prose is in the Step 3 block above.
-
-```bash
+# > **Continue after child returns.** On checks failures read REDACTED_LOG_FILE (checks failure — NOT raw `LOG_FILE`); prose block above has full triage.
 "${CLAUDE_PLUGIN_ROOT}/scripts/run-relevant-checks-captured.sh" --site step3 --tmpdir "$IMPLEMENT_TMPDIR"
 ```
 
@@ -1454,11 +1450,7 @@ if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
 fi
 export CLAUDE_PLUGIN_ROOT
-```
-
-> **Continue after child returns.** On `STATUS=fail` with checks output, read `REDACTED_LOG_FILE` (checks failure — NOT raw `LOG_FILE`); full triage prose is in the Step 5.7 block above.
-
-```bash
+# > **Continue after child returns.** On checks failures read REDACTED_LOG_FILE (checks failure — NOT raw `LOG_FILE`); prose block above has full triage.
 "${CLAUDE_PLUGIN_ROOT}/scripts/run-relevant-checks-captured.sh" --site step5-7 --tmpdir "$IMPLEMENT_TMPDIR"
 ```
 
@@ -1584,11 +1576,7 @@ if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
 fi
 export CLAUDE_PLUGIN_ROOT
-```
-
-> **Continue after child returns.** On `STATUS=fail` with checks output, read `REDACTED_LOG_FILE` (checks failure — NOT raw `LOG_FILE`); full triage prose is in the Step 6 block above.
-
-```bash
+# > **Continue after child returns.** On checks failures read REDACTED_LOG_FILE (checks failure — NOT raw `LOG_FILE`); prose block above has full triage.
 "${CLAUDE_PLUGIN_ROOT}/scripts/run-relevant-checks-captured.sh" --site step6 --tmpdir "$IMPLEMENT_TMPDIR"
 ```
 
