@@ -2,7 +2,7 @@
 
 **Consumer**: `/design` Step 2a.5 — loaded after the short-circuit + zero-externals guardrail check when contested decisions exist. This file owns the dialectic-execution mechanics: per-decision prompt rendering, parallel debater launch, collection, eligibility gate, judge re-probe, ballot construction, judge launch, tally, and resolution writing.
 
-**Contract**: single normative source for dialectic-execution mechanics — step-6 through final `✅ 2a.5: dialectic` print directive, including the nested MANDATORY pointer to `references/dialectic-debate.md`, the externals-only debate-path carve-out (GitHub issue #98), the Option B snapshot pattern via `dialectic_*_available` shadow flags, and the `dialectic-resolutions.md` schema for voted / fallback-to-synthesis / bucket-skipped / over-cap dispositions.
+**Contract**: single normative source for dialectic-execution mechanics, including the nested MANDATORY pointer to `references/dialectic-debate.md`, the externals-only debate-path carve-out (GitHub issue #98), the Option B snapshot pattern via `dialectic_*_available` shadow flags, and the `dialectic-resolutions.md` schema for voted / fallback-to-synthesis / bucket-skipped / over-cap dispositions.
 
 **When to load**: once Step 2a.5 has passed the short-circuit (`NO_CONTESTED_DECISIONS`) check. Do NOT load when `contested-decisions.md` contains only `NO_CONTESTED_DECISIONS`. On the zero-externals guardrail path (step 5 of Step 2a.5 in SKILL.md): debate-execution mechanics in this file MUST NOT fire (no debaters, no judges, no ballot) — skip loading entirely if the orchestrator already has the `dialectic-resolutions.md` schema in context from a prior run; otherwise a one-time load of this file is acceptable solely to consult the schema, but the per-decision prompt rendering, parallel debater launch, collection, eligibility gate, judge re-probe, ballot construction, judge launch, and tally steps remain suppressed. This mirrors the conditional permission granted by the SKILL.md caller contract at Step 2a.5.
 
@@ -192,4 +192,4 @@ Print resolutions under a `## Dialectic Resolutions` header.
 
 **Scope**: Dialectic resolutions are **binding for Step 2b plan generation only** for entries with `Disposition: voted`. All other dispositions mean synthesis stands for that point. Even `voted` entries may be superseded by accepted Step 3 review findings. The finalized plan (after Step 3 review) remains the sole canonical output.
 
-Print: `✅ 2a.5: dialectic — <V> voted, <F> fallback, <S> bucket-skipped, <O> over-cap (<elapsed>)` where V/F/S/O are per-disposition counts (omit a count if zero — e.g., `<V> voted, <F> fallback`).
+Record V/F/S/O per-disposition counts for downstream reporting (omit a count if zero — e.g., `<V> voted, <F> fallback`).

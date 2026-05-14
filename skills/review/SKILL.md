@@ -39,7 +39,9 @@ Script contracts and harnesses: `${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/gat
 
 **Execution-issues logging**: In nested mode, any failing external reviewer launch, collector, wait, or reviewer `STATUS` not equal to `OK` must be appended verbatim to `$(dirname "$SESSION_ENV_PATH")/execution-issues.md` via `${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh` under `External Reviewer Issues`. The review scripts own this for `dispatch-panel.sh` and `collect-findings.sh`; if an Agent-tool fallback itself returns an explicit failure, capture the full returned text to `$REVIEW_TMPDIR/agent-failure-<slot>.log` and append it with `--site "review Step <N>" --tool "Agent <slot>" --exit-code 1`.
 
-## Step 0 — Session Setup
+<!-- step:0 — Session Setup -->
+
+Print: `> **🔶 /review 0: setup**`
 
 Run:
 
@@ -56,7 +58,9 @@ Parse `SESSION_TMPDIR`, reviewer health, token session fields, and set `REVIEW_T
 
 If `subagent_mode=true` AND `diff_mode=true`, **MANDATORY — READ ENTIRE FILE** before dispatching: `${CLAUDE_PLUGIN_ROOT}/skills/review/references/heavy-worker.md`. If the worker returns `REVIEW_HEAVY=complete`, validate `$REVIEW_TMPDIR/review-summary.json` and proceed to Step 4. If it fails or omits the sentinel, fall back inline at Step 1.
 
-## Step 1 — Gather Context
+<!-- step:1 — Gather Context -->
+
+Print: `> **🔶 /review 1: gather context**`
 
 Run:
 
@@ -73,7 +77,9 @@ Parse `DIFF_FILE`, `FILE_LIST_FILE`, `COMMIT_LOG_FILE`, `COMMIT_COUNT`, `SCOPE_F
 
 When nested under `/implement`, read `PLAN_FILE` and `FEATURE_FILE` from `SESSION_ENV_PATH` for correctness-specialist plan verification.
 
-## Step 2 — Launch Reviewer Panel
+<!-- step:2 — Launch Reviewer Panel -->
+
+Print: `> **🔶 /review 2: launch reviewers**`
 
 Run:
 
@@ -88,7 +94,9 @@ ${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/dispatch-panel.sh --mode "$MODE" --d
 
 Parse `EXTERNAL_OUTPUT_FILES`, `CLAUDE_OUTPUT_FILES`, `PANEL_MODE`, `SLOT_COUNT`, and `DISPATCH_OK`. Both-down path: if `PANEL_MODE=both-down`, print `**⚠ Both Cursor and Codex unavailable. Proceeding with 1 Claude generic reviewer. Voting will be skipped (insufficient reviewers).**`
 
-## Step 3 — Review Cycle
+<!-- step:3 — Review Cycle -->
+
+Print: `> **🔶 /review 3: review cycle**`
 
 **MANDATORY — READ ENTIRE FILE** before executing Step 3: `${CLAUDE_PLUGIN_ROOT}/skills/review/references/domain-rules.md`.
 
@@ -161,7 +169,9 @@ Classify the just-fixed round as substantial or non-substantial using main-agent
 
 When exiting the Step 3 loop after a non-substantial classification, treat any printed convergence prose as a status marker only: the non-substantial re-review convergence line is not terminal — continue into Step 4 without ending the turn.
 
-## Step 4 — Final Summary and Issues
+<!-- step:4 — Final Summary and Issues -->
+
+Print: `> **🔶 /review 4: final summary**`
 
 ### 4c — Emit summaries and footers
 
@@ -175,7 +185,9 @@ If `RUN_ID` is non-empty, write flat review larch-log batches with `log-phase.sh
 
 The nested-mode `### review-result` machine footer marks artifact handoff only; the review-result footer is not terminal until Step 5 cleanup (or parent-owned tmpdir rules) completes — continue without ending the turn after emitting it.
 
-## Step 5 — Cleanup
+<!-- step:5 — Cleanup -->
+
+Print: `> **🔶 /review 5: cleanup**`
 
 Run cleanup unless a parent owns the tmpdir:
 
@@ -187,4 +199,4 @@ export CLAUDE_PLUGIN_ROOT
 ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-tmpdir.sh "$REVIEW_TMPDIR"
 ```
 
-End with `✅ review complete` for standalone mode or the machine footer for nested mode.
+End with the machine footer for nested mode.

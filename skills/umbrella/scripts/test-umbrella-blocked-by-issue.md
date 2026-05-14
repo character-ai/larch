@@ -6,4 +6,4 @@
 
 **Makefile wiring**: `make test-umbrella-blocked-by-issue` runs this harness. It is wired into `make lint` through the same `test-harnesses-4` shard as `test-umbrella-parse-args`.
 
-**Edit-in-sync rules**: any change to the literals asserted by this harness requires a same-PR update to `skills/umbrella/SKILL.md`, and any change to the corresponding `SKILL.md` contract requires updating this harness. Keep the scoped block boundaries aligned with the Step 3A / 3B.2 / 3B.3 headings if those headings are renamed.
+**Edit-in-sync rules**: any change to the literals asserted by this harness requires a same-PR update to `skills/umbrella/SKILL.md`, and any change to the corresponding `SKILL.md` contract requires updating this harness. Keep the scoped block boundaries aligned with the Step 3A / 3B.2 / 3B.3 anchors/headings if those anchors or headings are renamed.

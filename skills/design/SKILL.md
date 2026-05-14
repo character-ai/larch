@@ -34,7 +34,7 @@ The feature to design is described by the remainder of `$ARGUMENTS` after flags 
 **Every step MUST print clearly visible breadcrumb status lines** so the user can instantly see where execution is and which parent steps they are inside. Follow shared/progress-reporting.md rules.
 
 - Print a **start line** when entering a step: e.g., `> **🔶 /design 1: branch**` (standalone) or `> **🔶 /implement:/design 1.1: design plan | branch**` (nested from `/implement`)
-- Print a **completion line** only when it carries informational payload. Only the final step (Step 5) prints an unconditional completion announcement.
+- Do not print step completion lines; start breadcrumbs are the visible step markers.
 - When `STEP_NUM_PREFIX` is non-empty, prepend it to step numbers: `{STEP_NUM_PREFIX}{local_step}`. When `STEP_PATH_PREFIX` is non-empty, prepend it to breadcrumb paths: `{STEP_PATH_PREFIX} | {step_short_name}`. When `PARENT_SKILL_PATH` is non-empty, print the skill path as `{PARENT_SKILL_PATH}:/design`; otherwise print `/design`. **This rule overrides the literal skill paths, step numbers, and names in `Print:` directives and examples throughout this file.** Examples shown below assume standalone mode; when nested, prepend the parent context and parent skill path.
 
 **MANDATORY at session start**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/step-name-registry.tsv` to get the Step Name Registry (step number → short name mapping for progress breadcrumbs).
@@ -43,7 +43,7 @@ The feature to design is described by the remainder of `$ARGUMENTS` after flags 
 
 - Use empty string for the `description` parameter on all Bash tool calls.
 - Use terse 3-5 word descriptions for Agent tool calls.
-- Do not produce explanatory prose between tool call outputs — only print: step breadcrumb lines (start `🔶`, completion `✅`, skip `⏩`), final completion line (Step 5), all warning/error lines (`**⚠ ...`), structured summaries (voting tallies, scoreboards, round summaries, findings lists, approach synthesis, dialectic resolutions, implementation plans, architecture diagrams), and the compact reviewer status table (see below).
+- Do not produce explanatory prose between tool call outputs — only print: step breadcrumb lines (start `🔶`, skip `⏩`), all warning/error lines (`**⚠ ...`), structured summaries (voting tallies, scoreboards, round summaries, findings lists, approach synthesis, dialectic resolutions, implementation plans, architecture diagrams), and the compact reviewer status table (see below).
 
 **Suppressed output:** explanatory prose, script paths, rationale for decisions between tool calls, per-reviewer individual completion messages.
 
@@ -93,7 +93,9 @@ Consolidated NEVER rules collected from the procedural steps below. Each rule st
 
 7. **NEVER emit step breadcrumbs when `SESSION_ENV_PATH` is non-empty.** **Why:** nested `/design` runs under `/implement`, whose parent-visible transcript must obey the artifact-only return contract. **How to apply:** write human-readable content to `$DESIGN_TMPDIR` artifacts, export the Step 5 design manifest, and emit only file-backed artifact paths plus the manifest machine footer.
 
-## Step 0 — Session Setup
+<!-- step:0 — Session Setup -->
+
+Print: `> **🔶 /design 0: setup**`
 
 ```bash
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
@@ -179,7 +181,7 @@ The `--write-health` flag writes the health status file for cross-skill propagat
 
 **Execution-issues logging for nested runs**: When `SESSION_ENV_PATH` is non-empty, the parent log is `$(dirname "$SESSION_ENV_PATH")/execution-issues.md`. Any failing Bash tool, external reviewer launch, external reviewer collector status not equal to `OK`, or Agent-tool fallback failure must append the full captured stdout/stderr or returned text verbatim through `${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh` under `External Reviewer Issues` (or `Warnings` for diagram generation/sanitizer failures). Capture into a `$DESIGN_TMPDIR/*-failure.log` file first; include `${OUTPUT}.diag` sidecar content for reviewer collector failures. Do not summarize or truncate these captures.
 
-### Step 0 tail — Run-Depth Router
+<!-- step:0 tail — Run-Depth Router -->
 
 After `session-setup.sh` returns and `DESIGN_TMPDIR` is confirmed, compute run parameters once and write them to `$DESIGN_TMPDIR/run-params.json`:
 
@@ -217,7 +219,9 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/write-run-params.sh \
 
 If the helper exits non-zero, print `**⚠ 0: router — run-params write failed; defaulting to HARD sketch budget.**`, set in-memory defaults `design_classification=HARD`, `sketch_budget=4`, `review_budget=full`, `workflow_path=HARD`, and continue. Consumers treat missing or schema-invalid `run-params.json` the same way.
 
-## Step 1 — Create Branch
+<!-- step:1 — Create Branch -->
+
+Print: `> **🔶 /design 1: branch**`
 
 ```bash
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
@@ -255,7 +259,7 @@ Parse the output for `CURRENT_BRANCH`, `IS_MAIN`, `IS_USER_BRANCH`, and `USER_PR
 
 - Otherwise (non-main, non-user branch): Print a warning: `**⚠ Currently on branch '<branch-name>' which doesn't match the expected '<USER_PREFIX>/*' pattern. Creating a new branch from main.**` Then derive a name and create as above.
 
-## Step 1c — Clarifying Questions
+<!-- step:1c — Clarifying Questions -->
 
 ```bash
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
@@ -271,7 +275,7 @@ Print: `> **🔶 /design 1c: questions**`
 
 **If `auto_mode=false`**: **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/discussion-rounds.md` completely. Execute the Step 1c body in that file. **Do NOT load `discussion-rounds.md` when `auto_mode=true`** — the short-circuit above exits first.
 
-## Step 1d — Design Discussion (Round 1)
+<!-- step:1d — Design Discussion (Round 1) -->
 
 ```bash
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
@@ -287,7 +291,7 @@ Print: `> **🔶 /design 1d: discussion r1**`
 
 **If `auto_mode=false`**: Execute the Step 1d body in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/discussion-rounds.md`. If already loaded at Step 1c, no need to re-load; otherwise **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/discussion-rounds.md` completely.
 
-## Step 2a — Collaborative Approach Sketches
+<!-- step:2a — Collaborative Approach Sketches -->
 
 ```bash
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
@@ -506,11 +510,13 @@ Otherwise, read `$DESIGN_TMPDIR/approach-synthesis.txt` — this provides `{SYNT
 
 **Do NOT load `dialectic-execution.md` when the zero-externals guardrail fired (zero buckets queued in step 5 above)** — instead, jump directly to the final sub-step of `dialectic-execution.md` conceptually (emit only `bucket-skipped` / `over-cap` entries into `dialectic-resolutions.md`) without loading the full execution procedure. The dialectic-resolutions schema for these entries is documented in the **Write `$DESIGN_TMPDIR/dialectic-resolutions.md`** section of `dialectic-execution.md`; if the orchestrator already has the schema in context from a prior run, skip the load entirely. Otherwise, a one-time load of `dialectic-execution.md` is acceptable but the debate-execution mechanics inside it MUST NOT fire (no debaters, no judges, no ballot).
 
-Execute steps 6 through the final `✅ 2a.5: dialectic — …` print directive as documented in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/dialectic-execution.md` (loaded via the MANDATORY directive above). That file is the single normative source for dialectic-execution mechanics. The final `Write $DESIGN_TMPDIR/dialectic-resolutions.md` sub-step (including the per-disposition field rules) lives inside that reference; print the `## Dialectic Resolutions` header at the end and the `✅ 2a.5: dialectic — <V> voted, <F> fallback, <S> bucket-skipped, <O> over-cap (<elapsed>)` print directive (omit a count if zero).
+Execute steps 6 through final dialectic resolution writing as documented in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/dialectic-execution.md` (loaded via the MANDATORY directive above). That file is the single normative source for dialectic-execution mechanics. The final `Write $DESIGN_TMPDIR/dialectic-resolutions.md` sub-step (including the per-disposition field rules) lives inside that reference; print the `## Dialectic Resolutions` header at the end.
 
 After each dialectic collection boundary (debate results and judge results), follow the dirty-tree probe contract in `references/heavy-worker.digest.md`: consult launcher sidecars, run `check-mid-run-dirty-tree.sh --mode checkpoint`, and ask for recovery on dirty/unknown regardless of `auto_mode`, deduped by `$DESIGN_TMPDIR/.dirty-tree-prompted-<boundary>`.
 
-## Step 2b — Design the Implementation Plan
+<!-- step:2b — Design the Implementation Plan -->
+
+Print: `> **🔶 /design 2b: full plan**`
 
 ```bash
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
@@ -557,7 +563,9 @@ If the driver exits non-zero or emits `EMIT_PLAN_STATUS=missing-diff-lines`, tre
 
 > **Continue to Step 3 IMMEDIATELY.** The implementation plan is an intermediate design artifact — plan review, optional discussion, diagram generation, rejected-findings reporting, and cleanup still must run. → shared/subskill-invocation.md#step-boundary
 
-## Step 3 — Plan Review
+<!-- step:3 — Plan Review -->
+
+Print: `> **🔶 /design 3: plan review**`
 
 ```bash
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
@@ -833,7 +841,7 @@ If **all reviewers** report no in-scope issues and no out-of-scope observations,
 
 > **Continue to Step 3.5 or Step 3b IMMEDIATELY.** The plan-review result is not terminal — follow the `auto_mode` branch into discussion or diagram generation.
 
-## Step 3.5 — Design Discussion (Round 2)
+<!-- step:3.5 — Design Discussion (Round 2) -->
 
 ```bash
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
@@ -853,7 +861,7 @@ Print: `> **🔶 /design 3.5: discussion r2**`
 
 **If `auto_mode=false`**: Execute the Step 3.5 body in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/discussion-rounds.md`. If already loaded at Step 1c, no need to re-load; otherwise **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/discussion-rounds.md` completely. The body defines Inputs, Behavior (still-contested criteria including close 2-1 voted, fallback-to-synthesis, bucket-skipped, over-cap), Short-circuit, Output schema, Cap, and Terse-answer rules.
 
-## Step 3b — Architecture Diagram
+<!-- step:3b — Architecture Diagram -->
 
 ```bash
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
@@ -904,7 +912,7 @@ On `STATUS=ok`, rename the candidate to `$DESIGN_TMPDIR/architecture-diagram.md`
 ```
 ```
 
-**If diagram generation and sanitizer validation succeed**, print `✅ 3b: arch diagram — generated (<elapsed>)` only when `SESSION_ENV_PATH` is empty. When `SESSION_ENV_PATH` is non-empty, print nothing for this save; the Step 5 manifest carries the artifact path. Then IMMEDIATELY continue to Step 4.
+**If diagram generation and sanitizer validation succeed**, continue to Step 4; the Step 5 manifest carries the artifact path when `SESSION_ENV_PATH` is non-empty.
 
 **If the sanitizer returns `STATUS=rejected` or exits 2**, do NOT promote the candidate. Delete `$DESIGN_TMPDIR/architecture-diagram.candidate.md`. When `SESSION_ENV_PATH` is empty, print `**⚠ 3b: architecture diagram — rejected by mermaid sanitizer (REASON_TOKEN=<token>); proceeding without diagram.**`. When `SESSION_ENV_PATH` is non-empty, emit no inline warning; capture the sanitizer's full stdout/stderr to `$DESIGN_TMPDIR/architecture-diagram-sanitizer.failure.log` and append it under `### Warnings` in `$(dirname "$SESSION_ENV_PATH")/execution-issues.md` via `${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh --site "design Step 3b" --tool "sanitize-mermaid-fragment.sh architecture" --exit-code <exit-code-or-2> --category Warnings --output-file "$DESIGN_TMPDIR/architecture-diagram-sanitizer.failure.log" --redact || true`. Then continue to Step 4.
 
@@ -912,7 +920,9 @@ On `STATUS=ok`, rename the candidate to `$DESIGN_TMPDIR/architecture-diagram.md`
 
 > **Continue to Step 4 IMMEDIATELY.** The architecture diagram branch is not terminal — rejected-findings reporting and cleanup still must run.
 
-## Step 4 — Rejected Plan Review Findings Report
+<!-- step:4 — Rejected Plan Review Findings Report -->
+
+Print: `> **🔶 /design 4: rejected findings**`
 
 ```bash
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
@@ -933,13 +943,15 @@ Print any rejected plan review findings:
 2. Check if `$DESIGN_TMPDIR/rejected-findings.md` exists and is non-empty.
 3. If it has content and `SESSION_ENV_PATH` is empty, print it under a `## Unimplemented Plan Review Suggestions` header, formatted clearly with the reviewer name, the suggestion, and the reason for each.
 4. If it has content and `SESSION_ENV_PATH` is non-empty, print nothing; the Step 5 manifest carries the rejected-findings artifact path.
-5. If `$DESIGN_TMPDIR/rejected-findings.md` is empty (it always exists after item 1), print `✅ 4: rejected findings — all suggestions implemented (<elapsed>)` only when `SESSION_ENV_PATH` is empty.
+5. If `$DESIGN_TMPDIR/rejected-findings.md` is empty (it always exists after item 1), continue.
 
 After printing rejected findings (or the "all implemented" message), IMMEDIATELY continue to Step 5 — do NOT halt or treat this as the end of the design.
 
 > **Continue to Step 5 IMMEDIATELY.** Rejected-findings output is not terminal — cleanup and manifest export still must run.
 
-## Step 5 — Cleanup and Final Warnings
+<!-- step:5 — Cleanup and Final Warnings -->
+
+Print: `> **🔶 /design 5: cleanup**`
 
 ```bash
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
@@ -994,5 +1006,4 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-tmpdir.sh --dir "$DESIGN_TMPDIR"
 - `**⚠ Codex sketch timed out / produced empty output**`
 - `**⚠ 3b: arch diagram — generation failed, proceeding without diagram (<elapsed>)**`
 
-If `STEP_NUM_PREFIX` is empty (standalone mode): Print: `✅ 5: cleanup — design complete! (<elapsed>)`
-If `STEP_NUM_PREFIX` is non-empty (orchestrated mode): skip this final print — the parent orchestrator handles overall progress. Do NOT write any farewell message such as "Design complete", "Returning to the /implement orchestrator", "Handing back control", or any other prose that signals the skill is done — those are halts in disguise that make the Skill tool appear to return a completed response and prompt the parent session to end its turn without invoking the mandatory `post-design-boundary.sh` Bash wrapper.
+Do NOT write any farewell message such as "Design complete", "Returning to the /implement orchestrator", "Handing back control", or any other prose that signals the skill is done — those are halts in disguise that make the Skill tool appear to return a completed response and prompt the parent session to end its turn without invoking the mandatory `post-design-boundary.sh` Bash wrapper.

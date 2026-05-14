@@ -65,7 +65,9 @@ Each rule states **Why** (the specific consequence of breaking the rule) and **H
 
 8. **NEVER improvise ScheduleWakeup outside skill-script direction.** See `${CLAUDE_PLUGIN_ROOT}/skills/shared/orchestrator-never.md` (loaded via MANDATORY above). **CI-backed**: yes — `scripts/test-anti-improvised-wakeup.sh` pins the literal in the shared file.
 
-## Step 0 — Find and Lock
+<!-- step:0 — Find and Lock -->
+
+Print `> **🔶 /fix-issue 0: find & lock**`
 
 ```bash
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${FIX_ISSUE_TMPDIR:-}" ] && [ -f "$FIX_ISSUE_TMPDIR/session-env.sh" ]; then
@@ -88,19 +90,21 @@ Candidates are required to be open, not locked by a prior `IN PROGRESS` comment,
 Handle exit codes:
 
 - **Exit 0**: Parse `ISSUE_NUMBER`, `ISSUE_TITLE`, `LOCK_ACQUIRED=true`, `RENAMED`, plus the umbrella-only keys (`IS_UMBRELLA`, `UMBRELLA_NUMBER`, `UMBRELLA_TITLE`, `UMBRELLA_ACTION`) when present. **Hold `$UMBRELLA_NUMBER` as a session variable across Steps 1-7** so Steps 3, 5a, and 6 can run the umbrella-finalization hook (FINDING_1).
-  - **Non-umbrella path** (`IS_UMBRELLA` absent or empty): If `RENAMED=true`, print `✅ 0: find & lock — found and locked #$ISSUE_NUMBER: $ISSUE_TITLE, titled [IN PROGRESS] (<elapsed>)`. If `RENAMED=false`, the title rename failed best-effort — print `**⚠ 0: find & lock — found and locked #$ISSUE_NUMBER: $ISSUE_TITLE; title rename failed, /implement Branch 2 will retry. (<elapsed>)**`. Continue to Step 1.
-  - **Umbrella-dispatched path** (`IS_UMBRELLA=true UMBRELLA_ACTION=dispatched`): If `RENAMED=true`, print `✅ 0: find & lock — found and locked child #$ISSUE_NUMBER of umbrella #$UMBRELLA_NUMBER: $ISSUE_TITLE, titled [IN PROGRESS] (<elapsed>)`. If `RENAMED=false`, print `**⚠ 0: find & lock — found and locked child #$ISSUE_NUMBER of umbrella #$UMBRELLA_NUMBER: $ISSUE_TITLE; title rename failed, /implement Branch 2 will retry. (<elapsed>)**`. The literal substring `found and locked` is preserved in both sub-cases so callers recognize the success path with a single sentinel — see FINDING_2 from the umbrella-PR code-review panel. Continue to Step 1 — `$ISSUE_NUMBER` refers to the chosen child; downstream `/implement` adopts the CHILD via `--issue $ISSUE_NUMBER`.
-- **Exit 1**: Print `✅ 0: find & lock — no eligible issues found (<elapsed>)`. Skip to Step 8. **Note**: `FIX_ISSUE_TMPDIR` is unset on this path; Step 8's cleanup guard handles the no-tmpdir case.
+  - **Non-umbrella path** (`IS_UMBRELLA` absent or empty): If `RENAMED=false`, the title rename failed best-effort — print `**⚠ 0: find & lock — found and locked #$ISSUE_NUMBER: $ISSUE_TITLE; title rename failed, /implement Branch 2 will retry. (<elapsed>)**`. Continue to Step 1.
+  - **Umbrella-dispatched path** (`IS_UMBRELLA=true UMBRELLA_ACTION=dispatched`): If `RENAMED=false`, print `**⚠ 0: find & lock — found and locked child #$ISSUE_NUMBER of umbrella #$UMBRELLA_NUMBER: $ISSUE_TITLE; title rename failed, /implement Branch 2 will retry. (<elapsed>)**`. The literal substring `found and locked` is preserved in both sub-cases so callers recognize the success path with a single sentinel — see FINDING_2 from the umbrella-PR code-review panel. Continue to Step 1 — `$ISSUE_NUMBER` refers to the chosen child; downstream `/implement` adopts the CHILD via `--issue $ISSUE_NUMBER`.
+- **Exit 1**: Skip to Step 8. **Note**: `FIX_ISSUE_TMPDIR` is unset on this path; Step 8's cleanup guard handles the no-tmpdir case.
 - **Exit 2**: Parse `ERROR` from stdout. Print `**⚠ 0: find & lock — error: $ERROR (<elapsed>)**`. Skip to Step 8. Dirty-tree pre-lock abort is one exit-2 sub-case: operator action is commit or stash local changes, then re-run; no manual unlock is needed because no GitHub state was touched. This differs from a narrow post-lock TOCTOU dirty tree that Step 1 preflight catches after lock acquisition; that path still follows the Stale-IN-PROGRESS recovery guidance below. **Note**: `FIX_ISSUE_TMPDIR` is unset on this path; Step 8's cleanup guard handles the no-tmpdir case.
 - **Exit 3**: Eligibility passed but lock acquisition failed (concurrent runner won the race, or `gh` API failed mid-sequence; for umbrella-dispatched paths, the failure is on the chosen child and the `ERROR` carries umbrella context — `Failed to lock chosen child #C of umbrella #U: <reason>`). Parse `ISSUE_NUMBER` and `ERROR`. Print `**⚠ 0: find & lock — lock failed for #$ISSUE_NUMBER: $ERROR. Another run may have claimed this issue, or the IN PROGRESS comment stream may have been partially mutated — see Known Limitations "Stale IN PROGRESS lock" for recovery before re-running. (<elapsed>)**`. Skip to Step 8. The candidate may NOT be cleanly recoverable: when GO was present, `issue-lifecycle.sh comment --lock` deletes GO BEFORE posting `IN PROGRESS`, so a `gh issue comment` failure between those two writes leaves the issue with no comment sentinel; a duplicate-`IN PROGRESS` post-check failure leaves both `IN PROGRESS` comments present. Both states require manual recovery per Known Limitations "Stale IN PROGRESS lock".
 - **Exit 4** (umbrella complete — all parsed children CLOSED): parse `UMBRELLA_NUMBER` and `UMBRELLA_TITLE`. Print `> **🔶 /fix-issue 0: find & lock — umbrella #$UMBRELLA_NUMBER all-closed; finalizing**`. Invoke:
   ```bash
   ${CLAUDE_PLUGIN_ROOT}/skills/fix-issue/scripts/finalize-umbrella.sh finalize --issue $UMBRELLA_NUMBER
   ```
-  Parse `FINALIZED`, `ALREADY_FINALIZED`, `RENAMED`, `CLOSED`, `ERROR`. On `FINALIZED=true`: print `✅ 0: find & lock — umbrella #$UMBRELLA_NUMBER finalized ([DONE] + closed) (<elapsed>)`. On `ALREADY_FINALIZED=true`: print `✅ 0: find & lock — umbrella #$UMBRELLA_NUMBER already finalized (<elapsed>)`. On `FINALIZED=false` non-idempotent failure: print `**⚠ 0: find & lock — umbrella #$UMBRELLA_NUMBER finalize failed: $ERROR (<elapsed>)**`. In all three sub-cases, skip to Step 8.
+  Parse `FINALIZED`, `ALREADY_FINALIZED`, `RENAMED`, `CLOSED`, `ERROR`. On `FINALIZED=false` non-idempotent failure, print `**⚠ 0: find & lock — umbrella #$UMBRELLA_NUMBER finalize failed: $ERROR (<elapsed>)**`. In all sub-cases, skip to Step 8.
 - **Exit 5** (umbrella detected but no eligible child): parse `UMBRELLA_NUMBER` and `ERROR`. Print `**⚠ 0: find & lock — umbrella #$UMBRELLA_NUMBER has no eligible child: $ERROR (<elapsed>)**`. Skip to Step 8. The umbrella stays open; the next `/fix-issue` invocation re-evaluates its children.
 
-## Step 1 — Setup
+<!-- step:1 — Setup -->
+
+Print `> **🔶 /fix-issue 1: setup**`
 
 Runs only after Step 0 successfully locked the issue. A failure here leaves the issue locked with `IN PROGRESS` (and the title prefixed `[IN PROGRESS]`) — same recovery semantics as any mid-run crash (manual `IN PROGRESS` comment clearance + title-prefix strip).
 
@@ -127,7 +131,9 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/write-session-env.sh --output "$FIX_ISSUE_TMPDIR/s
   --codex-healthy true --cursor-healthy true --gemini-healthy true
 ```
 
-## Step 2 — Read Issue Details
+<!-- step:2 — Read Issue Details -->
+
+Print `> **🔶 /fix-issue 2: read details**`
 
 ```bash
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${FIX_ISSUE_TMPDIR:-}" ] && [ -f "$FIX_ISSUE_TMPDIR/session-env.sh" ]; then
@@ -142,7 +148,7 @@ Sibling contract: `${CLAUDE_PLUGIN_ROOT}/skills/fix-issue/scripts/get-issue-deta
 
 Read `$FIX_ISSUE_TMPDIR/issue-details.txt` to get the full issue content.
 
-## Step 3 — Triage
+<!-- step:3 — Triage -->
 
 Print `> **🔶 /fix-issue 3: triage**`
 
@@ -185,11 +191,11 @@ Decide whether the issue is still material against the codebase (see the referen
      --detail "<one-sentence reason>"
    ```
    On non-zero exit, log to `Tool Failures` and continue. Do not abort.
-5. Print `✅ 3: triage — issue #$ISSUE_NUMBER closed, not material (<elapsed>)`. Skip to Step 8.
+5. Skip to Step 8.
 
-**If the issue is still actual**, print `✅ 3: triage — issue is active, proceeding (<elapsed>)` and continue.
+**If the issue is still actual**, continue.
 
-## Step 4 — Classify Intent and Complexity
+<!-- step:4 — Classify Intent and Complexity -->
 
 Print `> **🔶 /fix-issue 4: classify**`
 
@@ -200,9 +206,9 @@ The triage-classification reference loaded at Step 3 (digest or full `triage-cla
 
 Set `INTENT` (and `COMPLEXITY` when `INTENT=PR`) per those rules using the issue details and Step 3's codebase exploration.
 
-When `INTENT=PR` and `hard_mode=false`: print `✅ 4: classify — INTENT=**$INTENT** COMPLEXITY=**$COMPLEXITY** (<elapsed>)`. When `INTENT=PR` and `hard_mode=true`: print `✅ 4: classify — INTENT=**$INTENT** COMPLEXITY=**$COMPLEXITY** (forced by --hard) (<elapsed>)`. When `INTENT=NON_PR`: print `✅ 4: classify — INTENT=**$INTENT** (<elapsed>)`. The `**...**` bold around both `$INTENT` and `$COMPLEXITY` (when printed) is required — it makes the classification values visually prominent in the Claude Code transcript.
+When `INTENT=PR`, record `INTENT` and `COMPLEXITY` for downstream branching. When `INTENT=NON_PR`, record `INTENT` only.
 
-## Step 5 — Execute
+<!-- step:5 — Execute -->
 
 Print `> **🔶 /fix-issue 5: execute**`
 
@@ -245,7 +251,7 @@ Read the issue details from Step 2 and execute the instructions directly using R
 
 If the work cannot be completed (e.g., `/issue` fails repeatedly, the issue's instructions are infeasible, or required external access is unavailable), print `**⚠ 5: execute — non-PR task failed. Issue #$ISSUE_NUMBER remains locked with IN PROGRESS comment and [IN PROGRESS] title prefix. (<elapsed>)**` and skip to Step 8. The IN PROGRESS comment serves as an indicator that manual intervention is needed — same recovery semantics as the `/implement` failure path.
 
-## Step 6 — Finalize
+<!-- step:6 — Finalize -->
 
 Print `> **🔶 /fix-issue 6: finalize**`
 
@@ -307,11 +313,11 @@ fi
 
 Best-effort: on `FAILED=true` / non-zero exit / `FINALIZED=false` non-idempotent error, log to `Tool Failures` and continue. The next `/fix-issue <umbrella#>` invocation will re-attempt finalization via the Step 0 exit-4 path. The `finalize-umbrella.sh` idempotency guard ensures concurrent or repeated invocations do not double-comment (FINDING_2). If `$UMBRELLA_NUMBER` is empty, this hook is a no-op.
 
-Print `✅ 6: finalize — #$ISSUE_NUMBER done (<elapsed>)` (mention umbrella-finalized when applicable: `✅ 6: finalize — #$ISSUE_NUMBER done; umbrella #$UMBRELLA_NUMBER finalized (<elapsed>)`).
-
 > **Continue to Step 8 IMMEDIATELY.** This step is not terminal — cleanup still must run. → shared/subskill-invocation.md#step-boundary
 
-## Step 8 — Cleanup
+<!-- step:8 — Cleanup -->
+
+Print `> **🔶 /fix-issue 8: cleanup**`
 
 **This step ALWAYS runs**, regardless of the outcome of prior steps (success, failure, early exit, or abort). "Always runs" is a control-flow guarantee — the cleanup-tmpdir.sh invocation itself is gated on `FIX_ISSUE_TMPDIR` being set, since Step 0 find-and-lock may short-circuit before Step 1 setup creates the tmpdir.
 
@@ -326,8 +332,6 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-tmpdir.sh --dir "$FIX_ISSUE_TMPDIR"
 ```
 
 Otherwise (Step 0 exited 1 / 2 / 3 — i.e., no eligible issue, error, or lock-failed-after-eligibility-pass — or Step 1 setup failed before mktemp), print `⏭️ 8: cleanup — skipped (no temp dir created) (<elapsed>)`. (`cleanup-tmpdir.sh` rejects empty `--dir` with exit 1 as a backstop, so the guard is defense in depth, not the only line.)
-
-Then unconditionally print `✅ 8: cleanup — fix-issue complete! (<elapsed>)`
 
 ## Known Limitations
 

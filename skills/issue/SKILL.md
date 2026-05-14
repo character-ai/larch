@@ -24,7 +24,7 @@ GitHub issue bodies and comments fetched in Phase 2 are **untrusted** content. T
 
 `${CLAUDE_PLUGIN_ROOT}/skills/issue/scripts/create-one.sh` pipes both the issue title and the issue body through `${CLAUDE_PLUGIN_ROOT}/scripts/redact-secrets.sh` before `gh issue create`, and also redacts captured `gh` stderr on the failure path. This is a deterministic defense-in-depth backstop for tokens (`sk-*`, `ghp_`, `AKIA…`, `xox-`, JWTs, PEM private keys) that slipped past prompt-level sanitization. Helper failure is fail-closed (`exit 3`, `ISSUE_ERROR=redaction:…`). Regression test: `${CLAUDE_PLUGIN_ROOT}/scripts/test-redact-secrets.sh` (wired into `make lint`). See `SECURITY.md` "Outbound shell-layer redaction" for covered families and explicit non-coverage.
 
-## Step 1 — Parse Arguments
+<!-- step:1 — Parse Arguments -->
 
 Parse flags from the start of `$ARGUMENTS`. Stop at the first non-flag token; the remainder (if any) is the free-form description for single mode.
 
@@ -62,7 +62,7 @@ Validations:
 - `MODE=single` + `--blocked-by-issue`: abort with `**ERROR: --blocked-by-issue requires --input-file (batch mode); single-mode is not supported in this release.**`
 - `--blocked-by-issue` value not a positive integer: abort with `**ERROR: --blocked-by-issue must be a positive integer.**`
 
-## Step 2 — Resolve Repository
+<!-- step:2 — Resolve Repository -->
 
 ```bash
 REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null)
@@ -72,7 +72,7 @@ If `--repo` was passed, use it instead. If `REPO` is empty:
 - Batch mode or `--dry-run`: emit `**ERROR: Could not determine the current repository.**` and abort.
 - Single mode non-dry-run: same error, abort.
 
-## Step 3 — Build the Item List
+<!-- step:3 — Build the Item List -->
 
 **Session tmpdir (required before either mode)**: at the top of Step 3, create the session temp directory and the `bodies/` subdirectory that carries per-item body files produced in this step. `$ISSUE_TMPDIR` is used by Step 3 (parser body output + single-mode body file), Step 5 (candidates corpus), and Step 6 (OOS template assembly), then removed at Step 9.
 
@@ -115,7 +115,7 @@ Malformed items are pre-counted into the final `ISSUES_FAILED` — they never re
 
 If `ITEMS_TOTAL=0`, emit `ISSUES_CREATED=0`, `ISSUES_FAILED=0`, `ISSUES_DEDUPLICATED=0` and exit.
 
-## Step 4 — Phase 1: Two-Tier Title Triage (dedup + dependency)
+<!-- step:4 — Phase 1: Two-Tier Title Triage (dedup + dependency) -->
 
 If `no_dedup=true`: skip Steps 4 and 5 entirely. Set `ITEM_<i>_VERDICT=CREATE` for every non-malformed item, with empty `BLOCKED_BY` / `BLOCKS` lists. Jump to Step 6 (Create).
 
@@ -131,7 +131,7 @@ Regression coverage for the title snapshot helper lives in `${CLAUDE_PLUGIN_ROOT
 
 Parse for `LIST_STATUS`. If `LIST_STATUS=failed` and `BLOCKED_BY_ISSUE` is empty, emit a stderr warning `**⚠ /issue: Phase 1 title snapshot failed; skipping dedup and dep-analysis, creating all items with no blocker edges.**` and jump to Step 6 (Create) — fail-open consistent with the existing dedup contract; dep-analysis cannot run without a candidate snapshot, so creating without dep edges is the safest default. (The /issue exit will still be non-zero only if `ISSUES_FAILED>0` from create or dep-link failures; missing dep analysis due to snapshot-fail is a degraded-warning state, not a hard fail.) If `LIST_STATUS=failed` and `BLOCKED_BY_ISSUE` is set, continue through the Step 4.0 probe below, then jump to Step 6 with `STEP5_SKIPPED_REASON=list-status-failed` so the validated policy edge can still be applied.
 
-### Step 4.0 — Open-issue precondition probe
+<!-- step:4.0 — Open-issue precondition probe -->
 
 When `BLOCKED_BY_ISSUE` is non-empty, probe the target issue before Tier-1 reasoning. This probe also runs in `--dry-run`; it is a read-only GET, and dry-run output must include only edges whose caller-supplied blocker passed the same validation as a real run. The probe uses one JSON fetch, one local `jq` parse, rejects pull requests, rejects non-open issues, categorizes missing issues separately, and sanitizes captured stderr before surfacing it:
 
@@ -243,7 +243,7 @@ The Step 4E/Step 5 gating logic and intra-batch dependency decoupling are pinned
 
 The `--blocked-by-issue` flag surface, Step 4 probe, Step 5 merge/carve-out, and Step 6 cached-id application path are pinned by `${CLAUDE_PLUGIN_ROOT}/skills/issue/scripts/test-blocked-by-issue.sh` (sibling contract: `${CLAUDE_PLUGIN_ROOT}/skills/issue/scripts/test-blocked-by-issue.md`; wired into `make lint` via the `test-blocked-by-issue` target).
 
-## Step 5 — Phase 2: Body+Comments Semantic Filter
+<!-- step:5 — Phase 2: Body+Comments Semantic Filter -->
 
 Only run this step if `CANDIDATES` is non-empty OR `N_NON_MALFORMED >= 2`.
 
@@ -312,7 +312,7 @@ For each non-malformed new item, emit exactly one verdict line plus zero or more
 
 **Conservatism**: only mark DUPLICATE when near-certain; ambiguous matches tie-break toward CREATE. Same conservatism applies to dep edges — only emit `BLOCKED_BY` / `BLOCKS` when the link is strongly supported by description content (same files, same module surface, explicit "this requires" / "depends on" prose). False negatives (no edge) are preferable to false positives (wrong edge), since blocker links are visible to operators.
 
-## Step 6 — Create Surviving Items
+<!-- step:6 — Create Surviving Items -->
 
 **Single-mode duplicate + `--go` pre-flight** (MODE=single only; runs before the iteration below): if `MODE=single` AND `--go` is set AND the sole item resolved to `DUPLICATE` (either `DUPLICATE_OF=<N>` or `DUPLICATE_OF_ITEM=<j>`), abort with:
 
@@ -458,7 +458,7 @@ For `DUPLICATE` outcomes (both `DUPLICATE_OF=<N>` and `DUPLICATE_OF_ITEM=<j>` br
 - `${CLAUDE_PLUGIN_ROOT}/skills/issue/scripts/fetch-issue-details.sh` — fetches body/comment details for Phase 2 candidate reasoning. Sibling contract: `fetch-issue-details.md`.
 - Regression coverage: `${CLAUDE_PLUGIN_ROOT}/skills/issue/scripts/test-add-blocked-by.sh` (sibling `test-add-blocked-by.md`), wired into `make lint` via the `test-add-blocked-by` Makefile target.
 
-## Step 7 — Emit Aggregate Counters and Final Output
+<!-- step:7 — Emit Aggregate Counters and Final Output -->
 
 After iterating all items, emit to **stdout**:
 
@@ -525,18 +525,18 @@ TIMESTAMP=<ISO 8601 UTC>
 
 **Helper**: `${CLAUDE_PLUGIN_ROOT}/skills/issue/scripts/write-sentinel.sh`. Sibling contract: `write-sentinel.md`. Regression coverage: `${CLAUDE_PLUGIN_ROOT}/skills/issue/scripts/test-sentinel-write.sh` (sibling `test-sentinel-write.md`), wired into `make lint` via the `test-sentinel-write` target.
 
-## Step 8 — Single-Mode Human Summary (backward compat)
+<!-- step:8 — Single-Mode Human Summary (backward compat) -->
 
 Only when `MODE=single`, also print one human-readable summary line (after all machine lines, to stderr so it does not corrupt the structured stdout stream for programmatic consumers):
 
-- `ISSUES_CREATED=1`, no `--go`: `✅ Created issue #<N> — <URL>`
-- `ISSUES_CREATED=1`, `--go` and `ISSUE_1_GO_POSTED=true` (GO comment succeeded in Step 6): `✅ Created issue #<N> with GO comment — <URL>`
-- `ISSUES_CREATED=1`, `--go` and `ISSUE_1_GO_POSTED=false` (GO comment failed in Step 6; the per-item warning was already emitted there): `✅ Created issue #<N> — <URL> (⚠ GO comment failed — see warning above)`
+- `ISSUES_CREATED=1`, no `--go`: `Created issue #<N> — <URL>`
+- `ISSUES_CREATED=1`, `--go` and `ISSUE_1_GO_POSTED=true` (GO comment succeeded in Step 6): `Created issue #<N> with GO comment — <URL>`
+- `ISSUES_CREATED=1`, `--go` and `ISSUE_1_GO_POSTED=false` (GO comment failed in Step 6; the per-item warning was already emitted there): `Created issue #<N> — <URL> (⚠ GO comment failed — see warning above)`
 - `ISSUES_DEDUPLICATED=1`: `ℹ Skipped as duplicate of #<N> — <URL>`
 - `ISSUES_FAILED=1`: `**⚠ Create failed: <error>**`
 - `DRY_RUN=true`: `ℹ Dry-run: would create "<title>"`
 
-## Step 9 — Cleanup
+<!-- step:9 — Cleanup -->
 
 Remove `$ISSUE_TMPDIR` if it exists.
 

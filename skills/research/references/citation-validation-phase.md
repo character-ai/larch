@@ -4,15 +4,15 @@
 
 **Contract**: citation-credibility check. Runs unconditionally on every `/research` invocation that produced a `research-report.txt`, executing between Step 2 (validation) and Step 2.6 (critique loop). The phase reads the validated synthesis at `$RESEARCH_TMPDIR/research-report.txt`, extracts cited provenance (file:line, URL, DOI), HEAD-fetches each unique URL with bounded timeout in parallel under SSRF guards (HTTPS-only, `--max-redirs 0`, `--noproxy '*'`, RFC1918/IPv6 link-local/RFC6598 hostname pre-rejection, DNS resolved-IP private-range check via `host`→`nslookup` fallback chain, connection-pinning via `--resolve` to mitigate rebinding TOCTOU), classifies domain credibility heuristically (advisory only — never flips PASS to FAIL), validates DOIs syntactically + via `HEAD https://doi.org/<doi>` under the same SSRF rules, spot-checks file:line existence + line-range against `git rev-parse --show-toplevel` with `realpath` canonical-path containment check, and writes a 3-state per-claim ledger (`PASS` / `FAIL` / `UNKNOWN` with reason classifier on `UNKNOWN`) to `$RESEARCH_TMPDIR/citation-validation.md` (sidecar). Step 3 splices the sidecar as a `## Citation Validation` section into `research-report-final.md` after the standard report block. **Fail-soft**: per-claim failures surface as warnings only; the validator script always exits 0 on validation paths (exit 2 only for argument/flag errors); Step 3 is never blocked.
 
-**When to load**: once Step 2.5 is about to execute. Do NOT load during Step 0, Step 1, Step 2, Step 2.5, Step 3, or Step 4. SKILL.md emits the Step 2.5 entry breadcrumb and the Step 2.5 completion print; this file does NOT emit those — it owns body content only.
+**When to load**: once Step 2.5 is about to execute. Do NOT load during Step 0, Step 1, Step 2, Step 2.5, Step 3, or Step 4. SKILL.md emits the Step 2.5 entry breadcrumb; this file does NOT emit it — it owns body content only.
 
 ---
 
-## Step 2.5 — Citation Validation
+<!-- step:2.5 — Citation Validation -->
 
 **IMPORTANT: Citation validation runs unconditionally when a synthesis exists. The phase is fail-soft: every per-claim failure is recorded in the sidecar; the validator exits 0 on validation paths (exit 2 only for argument/flag errors); Step 3 never blocks on this phase. Domain credibility is advisory only — it never flips a `PASS` to `FAIL`.**
 
-### 2.5.1 — Skip preconditions (input gate)
+## 2.5.1 — Skip preconditions (input gate)
 
 **Empty-synthesis gate.** If `$RESEARCH_TMPDIR/research-report.txt` does not exist OR is empty (zero bytes), skip Step 2.5 entirely and proceed to Step 3. Print:
 
@@ -22,7 +22,7 @@
 
 The empty-synthesis path is reachable when Step 1 inline-fallback synthesis failed and produced no body.
 
-### 2.5.2 — Invoke the validator
+## 2.5.2 — Invoke the validator
 
 Invoke the shell validator (it owns argv/curl-flag/SSRF/regex contracts):
 
@@ -37,7 +37,7 @@ The script writes the sidecar to the path passed via `--output` and exits 0 on v
 
 See `${CLAUDE_PLUGIN_ROOT}/skills/research/scripts/validate-citations.md` for the full contract (argv, exit codes, sidecar schema, SSRF defenses, regex tiers, idempotency rerun semantics, budget-exhaustion process-group kill — Linux `setsid` available: `kill -- -$$` gated on `__VC_SETSID_DONE=1`; Linux `setsid` absent: per-PID `kill` over `CURL_PIDS` with no `kill -- -$$` because the validator is not a session leader on that branch (issue #779); macOS `set -m` + per-background `kill -- -<pid>` with no `kill -- -$$` fallback because that would self-signal the validator).
 
-### 2.5.3 — Sidecar schema
+## 2.5.3 — Sidecar schema
 
 The sidecar is an operator-readable Markdown document. The single source of truth lives in `validate-citations.md` § Sidecar Schema; the structural shape is:
 
@@ -67,16 +67,16 @@ The sidecar is an operator-readable Markdown document. The single source of trut
 
 `Status` is one of `PASS` / `FAIL` / `UNKNOWN`. `Reason` is empty on `PASS` and a short token on `FAIL` / `UNKNOWN` per `validate-citations.md` § Reason vocabulary. URL and DOI claims are deduplicated — a single fetch produces one ledger row. The `Cited by` column is reserved for a future enhancement that will list every claim-index reference (`claim-<N>` matching the synthesis-walk index); v1 of the validator emits an empty `Cited by` cell while preserving the 1:1 fetch-to-row contract. Operators inspecting the sidecar can grep the synthesis directly for now.
 
-### 2.5.4 — Idempotency rerun
+## 2.5.4 — Idempotency rerun
 
 The sidecar path (`--output`) is overwritten on every invocation. Two consecutive runs against an unchanged synthesis MUST produce byte-identical sidecars (deterministic stdout ordering, no timestamps in the body — the audit-context line is captured externally by the orchestrator's prelude prints). Operators can re-invoke the validator against the same `$RESEARCH_TMPDIR/research-report.txt` to re-validate after a transient network failure without polluting the audit trail.
 
-### 2.5.5 — Failure surfaces
+## 2.5.5 — Failure surfaces
 
-Per-claim failures are written into the sidecar's `Status` column. The orchestrator does NOT print per-claim failures to stdout; instead, the Step 2.5 completion line summarizes:
+Per-claim failures are written into the sidecar's `Status` column. The orchestrator does NOT print per-claim failures to stdout; instead, Step 2.5 records this summary:
 
 ```
-✅ 2.5: citation-validation — <pass> PASS, <fail> FAIL, <unknown> UNKNOWN (<total> claims) (<elapsed>)
+Record citation-validation summary: `<pass> PASS, <fail> FAIL, <unknown> UNKNOWN (<total> claims)`.
 ```
 
 When `<fail> > 0` OR `<unknown> > 0`, ALSO print one of these advisory warnings (not errors — fail-soft contract):
@@ -84,9 +84,9 @@ When `<fail> > 0` OR `<unknown> > 0`, ALSO print one of these advisory warnings 
 - `<fail> > 0`: `**⚠ 2.5: citation-validation — <fail> claim(s) FAILED. See ## Citation Validation in the report.**`
 - `<unknown> > 0` (regardless of `<fail>`): `**ℹ 2.5: citation-validation — <unknown> claim(s) UNKNOWN. Common reasons: HEAD not supported (try GET manually), DNS resolution unavailable, git tree not detected. See ## Citation Validation in the report.**`
 
-The script's stdout summary (parsed by the orchestrator from the validator's last line `SUMMARY=PASS=<n> FAIL=<n> UNKNOWN=<n> TOTAL=<n>`) drives both the completion line and the conditional warnings.
+The script's stdout summary (parsed by the orchestrator from the validator's last line `SUMMARY=PASS=<n> FAIL=<n> UNKNOWN=<n> TOTAL=<n>`) drives the conditional warnings.
 
-### 2.5.6 — Step 3 splice contract
+## 2.5.6 — Step 3 splice contract
 
 Step 3 (final-report write) is the sole consumer of the sidecar. After writing the report block to `research-report-final.md` and BEFORE the helper-driven sidecar generation (`render-findings-batch.sh`), Step 3:
 
@@ -96,7 +96,7 @@ Step 3 (final-report write) is the sole consumer of the sidecar. After writing t
 
 The splice happens BEFORE `cat`-ing the report for user-visible output, so the final report displayed to the operator includes the citation-validation section.
 
-### Why a separate phase, not a 6th Step 2 reviewer
+## Why a separate phase, not a 6th Step 2 reviewer
 
 Per the design dialectic on issue #516 DECISION_1 (resolved via the plan-review panel's 2-1 sidecar vote, user-confirmed at Step 3.5 round 2), Step 2.5 is a separate phase that writes a sidecar — NOT a 6th reviewer added to Step 2's validation panel. Phase separation:
 
@@ -104,7 +104,7 @@ Per the design dialectic on issue #516 DECISION_1 (resolved via the plan-review 
 2. Lets the validator be a deterministic shell script with no LLM call, costing zero measurable Claude tokens (parallel to Step 0.5's classifier).
 3. Keeps the validator failure mode local — a transient network failure during URL HEAD-fetch surfaces as `UNKNOWN(network-error)` rows in the sidecar, NOT as a vote-skewing reviewer fallback.
 
-### Failure modes and fail-soft posture
+## Failure modes and fail-soft posture
 
 The validator script always exits 0 on validation paths; exit 2 only for argument/flag errors. Failure modes that would otherwise abort a strict validator are reclassified into `UNKNOWN` reasons in the per-claim ledger:
 
@@ -129,26 +129,26 @@ The validator script always exits 0 on validation paths; exit 2 only for argumen
 
 The `UNKNOWN` bucket is deliberately broad: every transient or environment-dependent failure ends there so the validator's strictness scales with the operator's environment without false negatives skewing the audit.
 
-### Process-group kill semantics for budget exhaustion
+## Process-group kill semantics for budget exhaustion
 
 When the overall validator budget elapses (`--budget-seconds`, default 300), in-flight curl HEAD fetches MUST be terminated cleanly — orphaned curl processes can outlive the validator and skew network telemetry. On Linux when `setsid` is available, the script self-execs into a new session if not already a session leader and a single `kill -- -$$` sweeps every descendant; the kill is gated on `__VC_SETSID_DONE=1` (the dedicated-session marker). When `setsid` is absent from PATH the re-exec is skipped and the timeout handler falls back to per-PID `kill "$pid"` over `CURL_PIDS` so the validator does not self-signal in its caller's process group (issue #779; orphan curls bounded by `$PER_FETCH_TIMEOUT`). macOS `setsid` is non-portable, so the script enables `set -m` (job control) which places each backgrounded `fetch_url` subshell in its own process group; on timeout the script signals each recorded `$!` via `kill -- -<pid>` (terminating the subshell + curl substitution + descendants together). `kill -- -$$` is **not** used as a Darwin fallback: with `set -m` active, `$$`'s process group still contains the validator itself, so signaling it would kill the script before it writes the per-claim `UNKNOWN(timeout)` rows and the sidecar — exit 143, sidecar absent, fail-soft contract broken. The OS detection branch lives in `validate-citations.sh`; the macOS path is asserted by Test 20 in `test-validate-citations.sh` (Darwin-only — exercised on developer macOS), and the Linux no-setsid path is asserted by Test 21 (Linux-only, issue #849 — exercised by current Ubuntu CI; runs when `setsid` is available on the runner so the harness can isolate the validator in its own session).
 
-### Curl-flag MUST / MUST-NOT contract
+## Curl-flag MUST / MUST-NOT contract
 
 Every curl invocation in `validate-citations.sh` MUST include `--max-redirs 0`, `--max-time <per-fetch>`, `--noproxy '*'`, AND HTTPS-only enforcement (the URL passed as the last positional argument MUST start with `https://`). MUST-NOT include `--insecure`, `-k`, `--proxy`, `--socks*`, `--cacert` — these would weaken the SSRF posture. The test harness pins this via fake-curl argv assertions; a future edit that adds `--insecure` for "local-CA convenience" fails the harness immediately.
 
-### Domain-credibility heuristic (advisory only)
+## Domain-credibility heuristic (advisory only)
 
 A small allow-list of widely-recognized reputable hosts (e.g., `*.wikipedia.org`, `*.arxiv.org`, `*.acm.org`, `*.ietf.org`, `doi.org`, `github.com`, `*.python.org`, `*.rust-lang.org`) tags matching domains as `allow` in the credibility table. Other domains are tagged `unknown`. The credibility tier NEVER flips a claim's primary status (`PASS` stays `PASS` even for an `unknown` domain). The operator allow-list flag (`--trusted-domains=`) is deferred to issue #514 — that flag will, when shipped, expand the heuristic into operator-supplied policy.
 
-### Step 2.5 → Step 3 control-flow summary
+## Step 2.5 → Step 3 control-flow summary
 
 ```
 2.5 entry breadcrumb (SKILL.md)
   → § 2.5.1 input gates (evaluated in order):
       empty-synthesis gate → skip 2.5 → Step 3
     → § 2.5.2 validator invocation (exits 0 on validation paths; exit 2 only on argument errors)
-    → § 2.5.5 completion line + conditional advisory warnings
+    → § 2.5.5 conditional advisory warnings
   → Step 3 splice (§ 2.5.6) appends sidecar to research-report-final.md
   → Step 3 cat displays the spliced report to stdout
 ```

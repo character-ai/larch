@@ -19,7 +19,7 @@ Example: `/simplify-skill implement` refactors `skills/implement/SKILL.md` plus 
 4. **NEVER inline the feature description inside the `SKILL.md` body.** **Why:** Mechanical rule B — shell logic (and the enumeration + feature-prose assembly) lives in a `.sh`. Keeps this SKILL.md scannable; avoids copy-paste drift with `/alias` and `/create-skill`.
 5. **NEVER target a skill name that is actually a plugin-namespaced form (e.g., `larch:implement`).** **Why:** the colon is not a valid directory character in the resolver's probed paths; the resolver rejects it. Pass the bare skill name only.
 
-## Step 1 — Parse Arguments
+<!-- step:1 — Parse Arguments -->
 
 Parse flags from the start of `$ARGUMENTS` before the first positional token.
 
@@ -27,7 +27,7 @@ Parse flags from the start of `$ARGUMENTS` before the first positional token.
 
 After flag stripping, the next positional token is the **target skill name** — bare form (`implement`) or slash-prefixed (`/implement`). Strip a leading `/` if present. Reject names containing `:` (no plugin-qualified forms — see NEVER #5) or non-`[a-z0-9-]` characters.
 
-## Step 2 — Validate Target and Build Feature Description
+<!-- step:2 — Validate Target and Build Feature Description -->
 
 Resolve the target skill directory, enumerate its in-scope `.md` files, and compose the feature description for `/implement`. All of this runs in a single helper script per mechanical rule C (no consecutive Bash calls):
 
@@ -43,7 +43,7 @@ Parse stdout for `STATUS`, `TARGET_SKILL_MD`, `TARGET_DIR`, `INCLUDED_FILES`, an
 
 The helper enforces NEVER #1 (sub-skills not enumerated), NEVER #2 (missing SKILL.md → fail closed), and NEVER #5 (reject `:` in name). It does NOT enforce NEVER #3 — that contract lives inside the feature description passed to `/implement`.
 
-## Step 3 — Delegate to /im
+<!-- step:3 — Delegate to /im -->
 
 Invoke the Skill tool:
 - Try skill: `"im"` first (bare name). If no skill matches, try skill: `"larch:im"` (fully-qualified plugin name).

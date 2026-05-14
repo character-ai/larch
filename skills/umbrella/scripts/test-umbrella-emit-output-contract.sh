@@ -59,38 +59,36 @@ if [[ ! -f "$HELPERS_MD" ]]; then
     exit 1
 fi
 
-# Extract the Step 4 block from SKILL.md: from "## Step 4 — Emit Output" up to
-# (but not including) the next "## Step 5" prefix match. The end pattern is a
-# prefix match (not the full heading) deliberately — it tolerates Step 5
-# subtitle changes while still bounding the block.
+# Extract the Step 4 block from SKILL.md: from the Step 4 anchor up to
+# (but not including) the next Step 5 anchor.
 STEP4_BLOCK=$(awk '
-    /^## Step 4 — Emit Output/ { in_block=1 }
-    /^## Step 5/ { in_block=0 }
+    /^<!-- step:4 — Emit Output -->/ { in_block=1 }
+    /^<!-- step:5 / { in_block=0 }
     in_block { print }
 ' "$SKILL_MD")
 
 if [[ -z "$STEP4_BLOCK" ]]; then
     echo "FAIL: SKILL.md Step 4 block extraction produced empty output." >&2
-    echo "  Boundary regexes: '^## Step 4 — Emit Output' (start) and '^## Step 5' (end)." >&2
-    echo "  If Step 4's heading was renamed or renumbered, update both regexes here AND in" >&2
+    echo "  Boundary regexes: '^<!-- step:4 — Emit Output -->' (start) and '^<!-- step:5 ' (end)." >&2
+    echo "  If Step 4's anchor was renamed or renumbered, update both regexes here AND in" >&2
     echo "  the sibling test-umbrella-emit-output-contract.md edit-in-sync rules." >&2
     exit 1
 fi
 
-# Extract the Step 2 block from SKILL.md: from "## Step 2 — Classify One-Shot
-# vs Multi-Piece" up to (but not including) the next "## Step 3A" prefix match.
+# Extract the Step 2 block from SKILL.md: from the Step 2 anchor up to (but
+# not including) the next Step 3A anchor.
 # Step 2 owns the dry-run-safe distinct-resolved-child-count rule that governs
 # the input-file mode classification — pinned by (f1)–(f4) below for #724.
 STEP2_BLOCK=$(awk '
-    /^## Step 2 — Classify One-Shot vs Multi-Piece/ { in_block=1 }
-    /^## Step 3A/ { in_block=0 }
+    /^<!-- step:2 — Classify One-Shot vs Multi-Piece -->/ { in_block=1 }
+    /^<!-- step:3A/ { in_block=0 }
     in_block { print }
 ' "$SKILL_MD")
 
 if [[ -z "$STEP2_BLOCK" ]]; then
     echo "FAIL: SKILL.md Step 2 block extraction produced empty output." >&2
-    echo "  Boundary regexes: '^## Step 2 — Classify One-Shot vs Multi-Piece' (start) and '^## Step 3A' (end)." >&2
-    echo "  If Step 2's heading was renamed or renumbered, update both regexes here AND in" >&2
+    echo "  Boundary regexes: '^<!-- step:2 — Classify One-Shot vs Multi-Piece -->' (start) and '^<!-- step:3A' (end)." >&2
+    echo "  If Step 2's anchor was renamed or renumbered, update both regexes here AND in" >&2
     echo "  the sibling test-umbrella-emit-output-contract.md edit-in-sync rules." >&2
     exit 1
 fi
@@ -147,17 +145,17 @@ if [[ -z "$STEP3B3_BLOCK" ]]; then
 fi
 
 # Extract the Step 3B.4 block from SKILL.md: from "### 3B.4 " up to (but not
-# including) "## Step 4 — Emit Output" (full heading anchor).
+# including) the Step 4 anchor.
 STEP3B4_BLOCK=$(awk '
     /^### 3B\.4 / { in_block=1 }
-    /^## Step 4 — Emit Output/ { in_block=0 }
+    /^<!-- step:4 — Emit Output -->/ { in_block=0 }
     in_block { print }
 ' "$SKILL_MD")
 
 if [[ -z "$STEP3B4_BLOCK" ]]; then
     echo "FAIL: SKILL.md Step 3B.4 block extraction produced empty output." >&2
-    echo "  Boundary regexes: '^### 3B\\.4 ' (start) and '^## Step 4 — Emit Output' (end)." >&2
-    echo "  If Step 3B.4 or Step 4's heading was renamed or renumbered, update both regexes" >&2
+    echo "  Boundary regexes: '^### 3B\\.4 ' (start) and '^<!-- step:4 — Emit Output -->' (end)." >&2
+    echo "  If Step 3B.4 heading or Step 4 anchor was renamed or renumbered, update both regexes" >&2
     echo "  here AND in the sibling test-umbrella-emit-output-contract.md edit-in-sync rules." >&2
     exit 1
 fi
@@ -221,7 +219,7 @@ assert_contains "a2: single-emission-point invariant" \
 # UMBRELLA_FAILURE_REASON-parenthetical respectively). Pinning each concrete
 # literal guards against silent shape deletion.
 assert_contains "c1: one-shot filed" \
-    '✅ /umbrella: filed #<N> — <url>' \
+    'report `filed #<N> — <url>`' \
     "$STEP4_BLOCK"
 assert_contains "c2: one-shot dedup'd" \
     "ℹ /umbrella: dedup'd to #<N> — <url>" \
@@ -230,7 +228,7 @@ assert_contains "c3: one-shot failed" \
     '**⚠ /umbrella: failed — <error>**' \
     "$STEP4_BLOCK"
 assert_contains "c4: multi-piece success" \
-    '✅ /umbrella: <T> pieces, filed umbrella #<M> with <C> children (<D> deduplicated), <E> dependency edge(s), <B> back-link(s) — <umbrella-url>' \
+    'report `<T> pieces, filed umbrella #<M> with <C> children (<D> deduplicated), <E> dependency edge(s), <B> back-link(s) — <umbrella-url>`' \
     "$STEP4_BLOCK"
 assert_contains "c5: multi-piece dry-run" \
     'ℹ /umbrella: dry-run — <T> pieces, would file umbrella with <N> children' \
@@ -253,7 +251,7 @@ assert_contains "c7: multi-piece children-batch-failed (umbrella never attempted
 # that renames the bypass shape's "(downgraded — created-eq-1, ...)"
 # parenthetical or its surrounding template breaks CI.
 assert_contains "c8: created-eq-1 bypass — multi-piece downgraded one-shot" \
-    '✅ /umbrella: <T> pieces → 1 created, <D> deduplicated; filed #<N> — <url> (downgraded — created-eq-1, no umbrella issue created)' \
+    'report `<T> pieces → 1 created, <D> deduplicated; filed #<N> — <url> (downgraded — created-eq-1, no umbrella issue created)`' \
     "$STEP4_BLOCK"
 
 # (a3) Step 4 schema parenthetical for UMBRELLA_DOWNGRADE — must enumerate all 3

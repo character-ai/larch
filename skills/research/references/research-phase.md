@@ -4,7 +4,7 @@
 
 **Contract**: fixed-shape research-lane topology. Planner pre-pass is always on; the planner decomposes `RESEARCH_QUESTION` into 2–4 focused subquestions. Four research lanes — one per named angle (architecture / edge cases / external comparisons / security) — run Codex-first with a per-lane Claude `Agent` fallback when Codex is unavailable or fails. Cursor is NOT used in the research phase (it remains a validation reviewer). Owns the four named angle-prompt literals, the launch bash blocks, the per-lane fallback rules, Step 1.4 collection, and Step 1.5 synthesis with the orchestrator-owned reduced-diversity banner.
 
-**When to load**: once Step 1 is about to execute. Do NOT load during Step 0, Step 2, Step 2.5, Step 2.6, Step 3, or Step 4. SKILL.md emits the Step 1 entry and completion breadcrumbs; this file does NOT emit those.
+**When to load**: once Step 1 is about to execute. Do NOT load during Step 0, Step 2, Step 2.5, Step 2.6, Step 3, or Step 4. SKILL.md emits the Step 1 entry breadcrumb; this file does NOT emit it.
 
 **CI-vs-TTY determinism**: the Step 1.1.c interactive checkpoint is TTY-only. When stdin is not a TTY (CI, eval), the checkpoint is a passthrough — the planner output proceeds to Step 1.2 unchanged. Subquestion plans are deterministic in the CI/eval path because no operator edit is offered.
 
@@ -39,7 +39,7 @@ ${CLAUDE_PLUGIN_ROOT}/skills/research/scripts/run-research-planner.sh \
 
 **Token telemetry (planner)**: After the planner Agent subagent returns, parse `total_tokens` from the subagent's `<usage>` block and write a per-lane token sidecar via `${CLAUDE_PLUGIN_ROOT}/scripts/token-tally.sh write --phase research --lane planner --tool claude --total-tokens <N|unknown> --dir "$RESEARCH_TMPDIR"`.
 
-**On exit 0** (success): parse `COUNT=<N>` from stdout via prefix-strip, save as `RESEARCH_PLAN_N`. Print: `✅ 1.1: planner — $RESEARCH_PLAN_N subquestions decomposed (<elapsed>)`. Proceed to Step 1.1.c.
+**On exit 0** (success): parse `COUNT=<N>` from stdout via prefix-strip, save as `RESEARCH_PLAN_N`. Proceed to Step 1.1.c.
 
 **On non-zero exit** (validation failure): parse `REASON=<token>` from stdout via prefix-strip. Print the fallback warning: `**⚠ 1.1: planner — fallback to single-question mode (<token>).**` Set `RESEARCH_PLAN_N=0` and treat the run as single-question (each lane runs its angle base prompt with no per-lane suffix). Proceed to Step 1.3.
 
@@ -60,7 +60,7 @@ if [[ -t 0 ]]; then
   CHOICE_LC=$(printf '%s' "$CHOICE" | tr '[:upper:]' '[:lower:]')
   case "$CHOICE_LC" in
     "")
-      echo "✅ 1.1.c: interactive-review — operator confirmed planner subquestions"
+      echo "interactive-review: operator confirmed planner subquestions"
       ;;
     abort)
       echo "**⚠ /research: aborted by operator at Step 1.1.c.**"
@@ -86,7 +86,7 @@ if [[ -t 0 ]]; then
             --raw "$RESEARCH_TMPDIR/subquestions-edit.txt" \
             --output "$RESEARCH_TMPDIR/subquestions.txt" 2>&1); then
         RESEARCH_PLAN_N=$(printf '%s\n' "$VALIDATOR_OUT" | sed -n 's/^COUNT=//p' | head -1)
-        echo "✅ 1.1.c: interactive-review — operator-edited subquestions accepted, $RESEARCH_PLAN_N retained"
+        echo "interactive-review: operator-edited subquestions accepted, $RESEARCH_PLAN_N retained"
       else
         REASON=$(printf '%s\n' "$VALIDATOR_OUT" | sed -n 's/^REASON=//p' | head -1)
         echo "**⚠ /research: edited subquestions failed validation (REASON=$REASON). Aborting.**"

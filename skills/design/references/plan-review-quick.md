@@ -22,7 +22,7 @@ Revise `$DESIGN_TMPDIR/plan.txt` for each accepted finding, preserving and updat
 
 ## Output (verbosity depends on SESSION_ENV_PATH)
 
-**When `SESSION_ENV_PATH` is non-empty** (nested under `/implement`): suppress inline prints; emit only a terse `✅ 3: plan review — <N> findings accepted (<elapsed>)` breadcrumb. (Token-reduction contract: nested runs MUST NOT push the full findings list into the parent context.)
+**When `SESSION_ENV_PATH` is non-empty** (nested under `/implement`): suppress inline prints. Token-reduction contract: nested runs MUST NOT push the full findings list into the parent context.
 
 **When `SESSION_ENV_PATH` is empty** (standalone): print accepted findings under `## Plan Review Findings (Voted In)` and the tally inline.
 

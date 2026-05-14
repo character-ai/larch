@@ -71,7 +71,7 @@ Each rule states WHY; per-site reminders reference by anchor name.
 
 ## Progress Reporting
 
-Every step MUST print breadcrumb status lines per shared/progress-reporting.md. Print a start line (`> **🔶 /implement 2: implementation**`) on entry; print a completion line only when it carries informational payload (Step 18 is the only unconditional completion). Long-running steps print intermediate progress (`⏳ 12: CI+merge loop — CI running (2m elapsed), main unchanged`).
+Every step MUST print breadcrumb status lines per shared/progress-reporting.md. Print a start line (`> **🔶 /implement 2: implementation**`) on entry. Long-running steps print intermediate progress (`⏳ 12: CI+merge loop — CI running (2m elapsed), main unchanged`).
 
 **MANDATORY at session start**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-name-registry.tsv` to get the Step Name Registry (step number → short name mapping for progress breadcrumbs).
 
@@ -79,7 +79,7 @@ Every step MUST print breadcrumb status lines per shared/progress-reporting.md. 
 
 Use empty `description` on Bash calls; terse 3-5-word `description` on Agent calls; no explanatory prose between tool outputs beyond the preserved categories below.
 
-**Preserved:** step breadcrumb lines (start `🔶`, completion `✅`, skip `⏩`/`⏭️`); final completion (Step 18); warning / error lines (`**⚠ ...`); structured summaries (voting tallies, scoreboards, round summaries, final reports); diagrams; implementation plans; dialectic resolutions; accepted / rejected findings; out-of-scope observations; PR body sections.
+**Preserved:** step breadcrumb lines (start `🔶`, skip `⏩`/`⏭️`); warning / error lines (`**⚠ ...`); structured summaries (voting tallies, scoreboards, round summaries, final reports); diagrams; implementation plans; dialectic resolutions; accepted / rejected findings; out-of-scope observations; PR body sections.
 
 **Suppressed:** explanatory prose, script paths, inter-call rationale, per-reviewer individual completion messages (replaced by status table in child skills). Rebase-skip cases at Steps 1.m, 1.r, 4.r, 7.r, 7a.r, and 8b silently continue (no `⏩` line) because the rebase had no effect. Non-rebase `⏩` skip messages and rebase outcomes inside the Rebase + Re-bump Sub-procedure (Steps 10/12) are NOT suppressed — they carry CI-debugging semantics.
 
@@ -111,7 +111,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/rebase-push.sh --no-push --skip-if-pushed --keep-o
 - **M3 — On success**, branch on stdout (check `SKIPPED_ALREADY_PUSHED` BEFORE `SKIPPED_ALREADY_FRESH` — `rebase-push.sh` exits early on already-pushed before fetch):
   - If stdout contains `SKIPPED_ALREADY_PUSHED=true`: silently continue.
   - If stdout contains `SKIPPED_ALREADY_FRESH=true`: silently continue.
-  - Otherwise, print: `✅ <step-prefix>: <short-name> | rebase status=complete elapsed=<elapsed>`
+  - Otherwise, continue.
 
 **Call-site registry** (the four authorized instantiations; `scripts/test-implement-rebase-macro.sh` pins these rows):
 
@@ -145,7 +145,9 @@ The feature to implement is described by `$ARGUMENTS` after flag stripping.
 - `--session-env <path>`: sets `SESSION_ENV_PATH`. Forwarded to `session-setup.sh` via `--caller-env` and to `/design` via `--session-env`. Empty = standalone invocation (full discovery).
 - `--issue <N>`: sets `ISSUE_ARG=<N>`. Default: empty. When non-empty, Step 0.5 Branch 2 adopts the given tracking issue instead of Branch 4 creating a new one. Compatible with all other flags except `--no-issues` (which skips Step 0.5 entirely, discarding `--issue`). If the target issue is CLOSED, Step 0.5 emits `IMPLEMENT_BAIL_REASON=adopted-issue-closed` on stdout and exits non-zero (cleanup still runs).
 
-## Step 0 — Session Setup
+<!-- step:0 — Session Setup -->
+
+Print: `> **🔶 /implement 0: setup**`
 
 If `forked_target=true`, run the single fork pre-setup helper before the standard three-call sequence. Do NOT pass `--tmpdir`: at this point in Step 0, `$IMPLEMENT_TMPDIR` is not yet set (`session-setup.sh` has not run), so the helper allocates its own bootstrap tmpdir via `mktemp -d`. Round 1 plan-review FINDING_1 mandates this ordering — passing `--tmpdir "$IMPLEMENT_TMPDIR"` here would expand to an empty path and silently misroute the caller-env write.
 
@@ -449,7 +451,9 @@ Whenever the main agent identifies a Pre-existing code issue, log it under `Pre-
 
 If `oos-accepted-main-agent.md` does not exist, create it with the new entry. If `repo_unavailable=true`, still append (Step 9a.1 skips filing). **Repo-unavailable audit-loss disclosure**: in `repo_unavailable=true` mode, neither tracking-issue summary comments nor the PR body's Execution Issues block exist (Phase 3 slim PR body dropped the Execution Issues block, and without repo access no summary comments can be created). `$IMPLEMENT_TMPDIR/execution-issues.md` is the only audit trail and is removed at Step 18. Operators running with `repo_unavailable=true` must preserve the tmpdir manually if an audit trail is required.
 
-## Step 0.5 — Resolve Tracking Issue
+<!-- step:0.5 — Resolve Tracking Issue -->
+
+Print: `> **🔶 /implement 0.5: tracking issue**`
 
 ```bash
 IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
@@ -505,7 +509,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-read.sh --sentinel "$IMPLEMENT_TMPD
 Parse stdout for `ISSUE_NUMBER`, `RUN_ID`, `ADOPTED`.
 
 - **Mismatch guard**: if `ISSUE_ARG` is non-empty AND `ISSUE_NUMBER_in_sentinel != ISSUE_ARG`: print `**⚠ 0.5: tracking issue — sentinel mismatch (sentinel has #$ISSUE_NUMBER_in_sentinel, --issue requested #$ISSUE_ARG). Clearing sentinel and re-adopting.**`, remove the sentinel file, preserve any existing `larch-logs/` files, and fall through to Branch 2.
-- **Reuse**: set `ISSUE_NUMBER` and `RUN_ID` from sentinel. Ensure the manifest still exists with `larch-log.sh init --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --issue "$ISSUE_NUMBER"`; this is idempotent and emits `UNCHANGED=true` on an existing manifest. Print `✅ 0.5: tracking issue status=complete outcome=reused-sentinel issue=$ISSUE_NUMBER elapsed=<elapsed>`.
+- **Reuse**: set `ISSUE_NUMBER` and `RUN_ID` from sentinel. Ensure the manifest still exists with `larch-log.sh init --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --issue "$ISSUE_NUMBER"`; this is idempotent and emits `UNCHANGED=true` on an existing manifest.
 - **No hydration step**: marker-keyed summary comments are projections only. Never fetch GitHub comment bodies to reconstruct run state; resume state comes from the committed `larch-logs/implement/<RUN_ID>/` tree plus session tmpdir artifacts.
 
   ```bash
@@ -590,7 +594,7 @@ RUN_ID=$RUN_ID
 ADOPTED=true
 ```
 
-`ADOPTED=true` per the `scripts/tracking-issue-read.md` contract: Phase 3 Branch 2 adopts an existing open issue. Set `ISSUE_NUMBER=$ISSUE_ARG`. Print `✅ 0.5: tracking issue status=complete outcome=adopted issue=$ISSUE_NUMBER elapsed=<elapsed>`. Proceed to Step 1.
+`ADOPTED=true` per the `scripts/tracking-issue-read.md` contract: Phase 3 Branch 2 adopts an existing open issue. Set `ISSUE_NUMBER=$ISSUE_ARG`. Proceed to Step 1.
 
 **Branch 3 — PR on current branch with `Closes #<N>`** (no sentinel, no `--issue`):
 
@@ -644,7 +648,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh rename --issue $RECOVERED_
 
 Best-effort: on `FAILED=true` or non-zero exit, log `Step 0.5 — Branch 3 rename to in-progress failed: $ERROR` to `Tool Failures` and continue. Idempotent (`RENAMED=false` when the title already starts with the target lifecycle prefix and the round-trip marker state already matches the desired `--round-trip` value after sticky preservation; see `scripts/tracking-issue-write.md`).
 
-Then write sentinel with `ADOPTED=true` (Phase 3 Branch 3 adopts an existing open issue via PR-body recovery; per the `scripts/tracking-issue-read.md` contract). Set `ISSUE_NUMBER=$RECOVERED_N`. Print `✅ 0.5: tracking issue status=complete outcome=recovered-from-pr-body issue=$ISSUE_NUMBER elapsed=<elapsed>`. Proceed to Step 1.
+Then write sentinel with `ADOPTED=true` (Phase 3 Branch 3 adopts an existing open issue via PR-body recovery; per the `scripts/tracking-issue-read.md` contract). Set `ISSUE_NUMBER=$RECOVERED_N`. Proceed to Step 1.
 
 If no PR exists, no `Closes #<N>` match, or the match is not a valid adoptable issue: fall through to Branch 4.
 
@@ -717,7 +721,7 @@ Create the tracking issue **immediately** so subsequent summary comments and com
    ```
    Write to `$IMPLEMENT_TMPDIR/parent-issue.md`. `ADOPTED=false` per the `scripts/tracking-issue-read.md` contract: Branch 4 CREATED a fresh tracking issue, not adopted an existing one. Skip this step on any step-4/step-5 failure per the deferred-fallback wiring above.
 
-7. **Leave `deferred=false`** (the Step 0.5 entry default is unchanged on Branch 4 success — larch-log writes and summary updates in subsequent steps are enabled). Print: `✅ 0.5: tracking issue status=complete outcome=created issue=$ISSUE_NUMBER elapsed=<elapsed>` and proceed to Step 1.
+7. **Leave `deferred=false`** (the Step 0.5 entry default is unchanged on Branch 4 success — larch-log writes and summary updates in subsequent steps are enabled) and proceed to Step 1.
 
 **Orphan-issue recovery note**: if a session crashes between step 4 (issue created on GitHub) and step 6 (sentinel written locally), a rerun will Branch-4 again and create a duplicate. Recovery: the operator passes `--issue <N>` on rerun to adopt the originally-created issue via Branch 2 (same behavior as the pre-change deferred-creation orphan case — not a regression).
 
@@ -785,7 +789,9 @@ Use `snapshot-untracked.sh`, not a raw pipeline, so a `git ls-files` failure
 removes the output file instead of leaving an empty readable baseline that
 would misclassify pre-existing untracked files as phantoms on later probes.
 
-## Step 1 — Ensure Design Plan Exists
+<!-- step:1 — Ensure Design Plan Exists -->
+
+Print: `> **🔶 /implement 1: design plan**`
 
 ```bash
 IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
@@ -834,7 +840,7 @@ When `forked_target=true`, append `--base-remote upstream --base-ref main` to th
 
 When Step 0 ran with `continue_from_current=false`, its default preflight already fetched and rebased `main`, so this Step 1.m call should normally short-circuit with `SKIPPED_ALREADY_FRESH=true`. Keep the macro here for the `continue_from_current=true` path and for idempotent protection if Step 0's freshness work was already satisfied.
 
-On non-zero exit, print `**⚠ Failed to ensure local main is fresh. Bailing to cleanup.**`, set `STALL_TRACKING=true` (parallels Rebase Checkpoint Macro M2 and Step 12d — signals Step 18 to rename the tracking issue to `[STALLED]` when Step 0.5 Branch 4 has already created one), and skip to Step 18. On success: if stdout contains `SKIPPED_ALREADY_FRESH=true`, silently continue; otherwise print `✅ 1.m: design plan | update main status=complete outcome=rebased elapsed=<elapsed>`, where the rebase base is `upstream/main` under fork mode and `origin/main` otherwise.
+On non-zero exit, print `**⚠ Failed to ensure local main is fresh. Bailing to cleanup.**`, set `STALL_TRACKING=true` (parallels Rebase Checkpoint Macro M2 and Step 12d — signals Step 18 to rename the tracking issue to `[STALLED]` when Step 0.5 Branch 4 has already created one), and skip to Step 18. On success, continue.
 
 ### Quick mode (`quick_mode=true`)
 
@@ -1099,7 +1105,9 @@ Runs unconditionally in both modes UNLESS `design_only=true` (per the design-onl
 
 Apply the Rebase Checkpoint Macro with `<step-prefix>=1.r` and `<short-name>=design plan`.
 
-## Step 2 — Implement the Feature
+<!-- step:2 — Implement the Feature -->
+
+Print: `> **🔶 /implement 2: implementation**`
 
 ```bash
 IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
@@ -1118,7 +1126,7 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 # timing-mark Step 2 — implementation
 ```
 
-### Step 2 entry preconditions — legal next-actions matrix
+<!-- step:2 entry preconditions — legal next-actions matrix -->
 
 This matrix is authoritative for Step 2. After parsing the dispatcher's stdout in 2.1 AND completing envelope validation in 2.1.5, the orchestrator's permitted next-actions are exactly the rows below — no others. **If a downstream paragraph in 2.2 / 2.4 appears to disagree, the matrix wins.** See NEVER #10.
 
@@ -1136,7 +1144,7 @@ This matrix is authoritative for Step 2. After parsing the dispatcher's stdout i
 
 **No mid-run scope re-litigation.** Once Step 2 begins with a plan in hand, the orchestrator does not relitigate scope, capacity, or "should I stop" via its own `AskUserQuestion`; if the plan is too large, that should have surfaced at earlier planning checkpoints (`/design` Step 1c/1d when normal mode runs, or `/design` Step 3.5). Mid-implementation, the dispatcher (or, on Claude fallback, the orchestrator) executes the plan or hits a concrete Step 12d bail condition; the orchestrator does not invent a third halting path. This rule does NOT suppress `AskUserQuestion` calls in the Codex Q/A loop below or in the Claude-fallback branch's opportunistic questions. See NEVER #7.
 
-### Step 2 dispatch — coder selection
+<!-- step:2 dispatch — coder selection -->
 
 Step 2 invokes a single dispatcher (`skills/implement/scripts/step2-implement.sh`). The dispatcher is the ONLY place that branches on the chosen `coder`. On external implementer paths (`coder=codex`, `coder=cursor`, or `coder=gemini`) the dispatcher spawns the tool, validates the returned manifest mechanically, and emits a deterministic KV envelope; the orchestrator MUST NOT inspect the transcript, MUST NOT `git diff` to reconstruct what the tool did, and MUST NOT fall back to a Claude-driven Edit/Write code-edit pass except when BOTH `STATUS=claude_fallback` AND `ORCHESTRATOR_EDIT_AUTHORITY=allowed` (validated mechanically in 2.1.5; see NEVER #10 and the entry preconditions matrix above). On the Claude path (`coder=claude`) the dispatcher emits `STATUS=claude_fallback` + `ORCHESTRATOR_EDIT_AUTHORITY=allowed` immediately and the orchestrator runs the Edit/Write code-edit pass at 2.4. See `agents/codex-implementer.md`, `agents/cursor-implementer.md`, `agents/gemini-implementer.md`, and `skills/implement/scripts/step2-implement.md` for the contracts. The dispatcher invokes `${CLAUDE_PLUGIN_ROOT}/scripts/launch-codex-implement.sh`, `${CLAUDE_PLUGIN_ROOT}/scripts/launch-cursor-implement.sh`, or `${CLAUDE_PLUGIN_ROOT}/scripts/launch-gemini-implement.sh` on the matching external path; launcher coverage lives in `skills/implement/scripts/test-codex-implementer.sh` (sibling contract `skills/implement/scripts/test-codex-implementer.md`), `skills/implement/scripts/test-cursor-implementer.sh` (sibling contract `skills/implement/scripts/test-cursor-implementer.md`), and `skills/implement/scripts/test-gemini-implementer.sh` (sibling contract `skills/implement/scripts/test-gemini-implementer.md`). When `coder=codex` is selected explicitly and Codex is unavailable, Step 1's waterfall is bypassed and the dispatcher proceeds with the Codex spawn, then bails with `codex-runtime-failure` if Codex truly cannot run. When `--coder` is omitted, Step 1 resolves the default waterfall before dispatch: `diff_lines < 30` routes to `claude`; otherwise Codex is preferred, Cursor is the fallback implementer when Codex is unavailable, and Claude is the final fallback when both Codex and Cursor are unavailable. When `coder=cursor` is requested but Cursor is unhealthy or unavailable, the dispatcher emits `STATUS=claude_fallback` + `ORCHESTRATOR_EDIT_AUTHORITY=allowed` and the orchestrator runs the main-agent code-edit pass at 2.4 (symmetric to an explicit `--coder=claude` request). Gemini has the same fallback semantics as Cursor: when `coder=gemini` is requested but Gemini is unhealthy or unavailable, the dispatcher emits `STATUS=claude_fallback` + `ORCHESTRATOR_EDIT_AUTHORITY=allowed`.
 
@@ -1254,7 +1262,9 @@ Material answers that change scope or approach also log here (same `Q/A` categor
 
 > **Continue to Step 3 IMMEDIATELY.** Implementation is not the end of the run — checks, commit, review, bump, PR, CI, and merge still must run.
 
-## Step 3 — Relevant Checks (first pass)
+<!-- step:3 — Relevant Checks (first pass) -->
+
+Print: `> **🔶 /implement 3: checks (1)**`
 
 ```bash
 IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
@@ -1286,7 +1296,9 @@ export CLAUDE_PLUGIN_ROOT
 
 After the helper returns clean (or after failure triage has made it clean), close Step 3 telemetry:
 
-## Step 4 — First Commit (implementation)
+<!-- step:4 — First Commit (implementation) -->
+
+Print: `> **🔶 /implement 4: commit (impl)**`
 
 ```bash
 IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
@@ -1328,7 +1340,9 @@ Untracked Probe with `--step 4.r-post-rebase`.
 
 > **Continue to Step 5 IMMEDIATELY.** The implementation commit is not the end of the run — code review, checks (2), commit, code flow diagram, bump, and PR still must run.
 
-## Step 5 — Code Review
+<!-- step:5 — Code Review -->
+
+If `quick_mode=false`, print: `> **🔶 /implement 5: code review**`
 
 ```bash
 IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
@@ -1443,7 +1457,7 @@ Then discard the changes using the sidecar's reported path streams: validate eve
 
 **5.7 — Implement accepted fixes**: edit files:
 
-> **Continue after child returns.** On `RELEVANT_CHECKS_OK=true`, execute Step 5.8's re-review gate next — the next user-facing output is one of `✅ 5: code review status=complete outcome=converged round=$round_num elapsed=<elapsed>`, `⏳ 5: code review — round $round_num using <Cursor|Codex|Claude>`, or the Step 6 checks (2) breadcrumb. On `STATUS=fail`, first check for `FAILURE_REASON` (structural — e.g. `tmpdir-validation`, `site-validation`, `repo-root-unresolved`, `missing-check-script`, `redaction-failed`; act on the reason, no log file is produced); otherwise read `REDACTED_LOG_FILE` (checks failure — NOT raw `LOG_FILE`), diagnose + fix, and re-invoke the helper until clean BEFORE Step 5.8 — the re-invoke loop is in-Step-5.7, not a halt. In either case, do NOT end the turn, summarize, or write a handoff message.
+> **Continue after child returns.** On `RELEVANT_CHECKS_OK=true`, execute Step 5.8's re-review gate next — the next user-facing output is one of the Step 5 progress lines, the next review-round progress line, or the Step 6 checks (2) breadcrumb. On `STATUS=fail`, first check for `FAILURE_REASON` (structural — e.g. `tmpdir-validation`, `site-validation`, `repo-root-unresolved`, `missing-check-script`, `redaction-failed`; act on the reason, no log file is produced); otherwise read `REDACTED_LOG_FILE` (checks failure — NOT raw `LOG_FILE`), diagnose + fix, and re-invoke the helper until clean BEFORE Step 5.8 — the re-invoke loop is in-Step-5.7, not a halt. In either case, do NOT end the turn, summarize, or write a handoff message.
 
 ```bash
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
@@ -1458,7 +1472,7 @@ export CLAUDE_PLUGIN_ROOT
 
 **Substantial round definition**: A round's accepted findings are substantial if at least two accepted findings are high-severity bugs (correctness, security, race, data corruption, broken contract, or comparable — medium severity does NOT trigger another round), OR the applied fixes are significant in size (a non-trivial code change; as a judgment-call convention, a single fix touching >= ~100 LOC of non-comment code or aggregate fixes that meaningfully change structure), OR the accepted-fix count is large (`>= 8`). A round is not substantial only when fewer than two accepted findings are high severity, the applied fixes are small (below ~100 LOC), and the accepted-fix count is `< 8`. This is a main-agent judgment call parallel to the OOS triage thresholds; precise bookkeeping is not required, but the boundary directions (`>= 2`, `< 2`, `>= 8`, `< 8`, and `>= ~100 LOC`) are fixed. **Round 3 escalation**: if round 3's accepted-and-fixed work includes at least three high-severity findings OR touches >= ~150 LOC of non-comment code, print a warning before stopping at the 3-round cap so the operator can decide whether to run a fresh review.
 
-Classify the just-fixed round as `round_substantial=true|false` before deciding whether to relaunch reviewers. If `round_substantial=false`, print `✅ 5: code review status=complete outcome=converged round=$round_num elapsed=<elapsed>`, log to `Warnings`: `Step 5 — quick-mode review loop stopped after round $round_num because accepted findings were not substantial (accepted=<count>; reasoning=<short classification>).`, and IMMEDIATELY proceed to Step 6. Do NOT launch another reviewer round for non-substantial findings.
+Classify the just-fixed round as `round_substantial=true|false` before deciding whether to relaunch reviewers. If `round_substantial=false`, log to `Warnings`: `Step 5 — quick-mode review loop stopped after round $round_num because accepted findings were not substantial (accepted=<count>; reasoning=<short classification>).`, and IMMEDIATELY proceed to Step 6. Do NOT launch another reviewer round for non-substantial findings.
 
 Otherwise increment `round_num`; if `<= 3`, IMMEDIATELY loop back to 5.1 — do NOT write a round summary, status recap, or "review progress" message before starting the next round. Fixing substantial findings does NOT mean the review has converged — convergence requires reviewers to report no new issues in a fresh round, or the last round produced only non-substantial findings. If `> 3`, print:
 
@@ -1528,7 +1542,9 @@ Best-effort: parse `COMPOSED=true` / `FINDINGS_TOTAL=<N>` from stdout. On `FAILE
 
 Known limitation: accepted code-review findings are not currently captured in this fragment. The `/review` skill and the quick-mode 5.5 loop both accept findings without writing a byte-preserved `accepted-code-review-findings.md` artifact. The helper silently emits no records for the `accepted code-review` phase / outcome pair. See `scripts/compose-review-findings.md` "Known limitations" for follow-up wiring.
 
-## Step 6 — Relevant Checks (second pass)
+<!-- step:6 — Relevant Checks (second pass) -->
+
+Print: `> **🔶 /implement 6: checks (2)**`
 
 ```bash
 IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
@@ -1582,7 +1598,9 @@ export CLAUDE_PLUGIN_ROOT
 
 After the helper returns clean (or after failure triage has made it clean), close Step 6 telemetry:
 
-## Step 7 — Second Commit (review fixes)
+<!-- step:7 — Second Commit (review fixes) -->
+
+Print: `> **🔶 /implement 7: commit (review)**`
 
 ```bash
 IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
@@ -1624,7 +1642,7 @@ Untracked Probe with `--step 7.r-post-rebase`. This probe is inside the
 `FILES_CHANGED=true` guard with the Step 7.r rebase; if Steps 6-7 were skipped,
 do not run it.
 
-## Step 7a — Code Flow Diagram
+<!-- step:7a — Code Flow Diagram -->
 
 ```bash
 IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
@@ -1667,7 +1685,7 @@ If `MERGE_BASE` is empty, or `CHANGED_COUNT` is 0 (diff failed or branch has no 
 
 Otherwise, generate a mermaid Code Flow Diagram from the actual committed implementation. Focus on **runtime behavior** — function call sequences, data flow, control flow. Do NOT duplicate the Architecture Diagram's structural view. Choose the appropriate mermaid type (`sequenceDiagram`, `flowchart`, `stateDiagram`, `graph`, etc.). Diagram contents must obey `${CLAUDE_PLUGIN_ROOT}/skills/shared/mermaid-safe-content.md`. Write the diagram to `$IMPLEMENT_TMPDIR/code-flow-diagram.candidate.md` first, including the `## Code Flow Diagram` heading and mermaid fence; validate it with `${CLAUDE_PLUGIN_ROOT}/scripts/sanitize-mermaid-fragment.sh --input "$IMPLEMENT_TMPDIR/code-flow-diagram.candidate.md" --from-md --warnings-step "7a"`, then promote it to `$IMPLEMENT_TMPDIR/code-flow-diagram.md` only on `STATUS=ok`.
 
-On success: `✅ 7a: code flow status=complete outcome=diagram-generated elapsed=<elapsed>`.
+On success, continue.
 
 On generation failure (too abstract to diagram): `**⚠ 7a: code flow — generation failed, proceeding without diagram (<elapsed>)**` and log to `Warnings` with the full captured generator output via `append-tool-failure.sh` when any output exists. On sanitizer rejection or exit 2, delete the candidate, do not promote it, print `**⚠ 7a: code flow — rejected by mermaid sanitizer (REASON_TOKEN=<token>), proceeding without diagram (<elapsed>)**`, capture the sanitizer's full stdout/stderr to `$IMPLEMENT_TMPDIR/code-flow-sanitizer.failure.log`, and append that file under `### Warnings` in `$IMPLEMENT_TMPDIR/execution-issues.md` via `${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh --site "Step 7a" --tool "sanitize-mermaid-fragment.sh code-flow" --exit-code <exit-code-or-2> --category Warnings --output-file "$IMPLEMENT_TMPDIR/code-flow-sanitizer.failure.log" --redact || true`. Do not log the raw diagram content unless it is already part of the sanitizer failure output; the capture is for tool diagnostics.
 
@@ -1750,7 +1768,7 @@ Best-effort: failures are non-fatal, but each non-zero `token-report.sh`, `timin
 
 On each retry (CI failure, merge conflict, rebase in Steps 10/12), `scripts/refresh-run-logs.sh` (Triggers A-C in `ship-pr.sh`) re-renders and commits the `token-report` and `timing-report` batches before each push, so the merged PR carries up-to-date token/timing data. The Rebase + Re-bump Sub-procedure step 1b also flushes pending larch-log writes before the rebase (the existing behavior).
 
-## Step 8+ — Ship PR State Machine
+<!-- step:8+ — Ship PR State Machine -->
 
 Steps 8, 8a, 8b, 9, 10, 11, 12, 13.5, and 14 are mechanically delegated to `${CLAUDE_PLUGIN_ROOT}/scripts/ship-pr.sh`. Step 6 relevant checks remain documented above for prompt-side review-change handling, but the delegated state machine reruns the Step 6 helper as its first phase so resumed post-review runs have one deterministic entrypoint. Step 16, Step 17, and Step 18 remain prompt-side because they replay rejected findings, final notes, and the terminal token/timing cap.
 
@@ -1806,7 +1824,9 @@ The state machine writes `postbump-state.sh` for `implement-finalize.sh postbump
 
 > **Continue to Step 16 after ship-pr reaches `PHASE=done`.** Do NOT stop after PR creation, merge, local cleanup, or teardown output; Steps 16 and 18 still own prompt-side rejected-findings replay and final token/timing caps.
 
-## Step 16 — Rejected Code Review Findings Report
+<!-- step:16 — Rejected Code Review Findings Report -->
+
+Print: `> **🔶 /implement 16: rejected findings**`
 
 ```bash
 IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
@@ -1825,11 +1845,13 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 # timing-mark Step 16 — rejected findings
 ```
 
-Report unimplemented code review suggestions without reprinting the full findings inline. Check `$IMPLEMENT_TMPDIR/rejected-findings.md`. If non-empty, print `✅ 16: rejected findings status=complete outcome=saved-to-larch-log elapsed=<elapsed>`; the full content was already written through the `code-review-tally` log batch. Otherwise print `✅ 16: rejected findings status=complete outcome=all-implemented elapsed=<elapsed>`.
+Report unimplemented code review suggestions without reprinting the full findings inline. Check `$IMPLEMENT_TMPDIR/rejected-findings.md`. If non-empty, the full content was already written through the `code-review-tally` log batch.
 
 > **Continue to Step 17.** Do NOT end the turn after printing rejected findings.
 
-## Step 17 — Final Report
+<!-- step:17 — Final Report -->
+
+Print: `> **🔶 /implement 17: final report**`
 
 ```bash
 IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
@@ -1848,7 +1870,7 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 # timing-mark Step 17 — final report
 ```
 
-If `DESIGN_ONLY_DONE=true`: print `✅ 17: final report status=complete outcome=design-only elapsed=<elapsed>`.
+If `DESIGN_ONLY_DONE=true`, continue to the token summary.
 
 If `forked_target=true` and `DESIGN_ONLY_DONE` is not true: print a fork CI dry-run report with:
 - `## Fork CI Dry-Run Complete` header, then `Fork PR: <PR_URL>`
@@ -1858,9 +1880,9 @@ If `forked_target=true` and `DESIGN_ONLY_DONE` is not true: print a fork CI dry-
 
 If `UPSTREAM_DESIGN_ISSUE` is set, append: `You may include Closes #<UPSTREAM_DESIGN_ISSUE> in the upstream PR body when you compose it manually.` If accepted-OOS items were skipped by Step 9a.1, append them under `## Out-of-Scope Observations` as text only. **Precedence**: `DESIGN_ONLY_DONE=true` wins over fork-mode report; never print fork-CI / fork-PR language on design-only completion.
 
-If `quick_mode=true` and `DESIGN_ONLY_DONE` is not true: print `✅ 17: final report status=complete outcome=quick-mode elapsed=<elapsed>`.
+If `quick_mode=true` and `DESIGN_ONLY_DONE` is not true, continue to the token summary.
 
-If `quick_mode=false` and `DESIGN_ONLY_DONE` is not true: print a summary noting plan review findings were written by `/design` into larch-log batches and code review findings by `/review` (visible above). If both phases reported all suggestions implemented, print `✅ 17: final report status=complete outcome=all-suggestions-implemented elapsed=<elapsed>`.
+If `quick_mode=false` and `DESIGN_ONLY_DONE` is not true: print a summary noting plan review findings were written by `/design` into larch-log batches and code review findings by `/review` (visible above).
 
 Print a token summary to chat. When `LARCH_VERBOSE_TOKENS=true`, print the full per-step table; otherwise print a single grand-total line. The full breakdown is appended to the `token-report` and `timing-report` log batches at the pre-bump log flush (Step 7a tail); on each retry `scripts/refresh-run-logs.sh` (Triggers A-C in `ship-pr.sh`) re-renders and commits the batches before each push so the merged PR carries the most recent data (unless `--no-logs-commit` is set, in which case log files stay in the session tmpdir only).
 
@@ -1886,7 +1908,9 @@ fi
 
 > **Continue to Step 18.** Do NOT end the turn after the final report.
 
-## Step 18 — Cleanup and Final Warnings
+<!-- step:18 — Cleanup and Final Warnings -->
+
+Print: `> **🔶 /implement 18: cleanup**`
 
 ```bash
 IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
