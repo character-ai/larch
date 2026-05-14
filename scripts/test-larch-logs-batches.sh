@@ -134,6 +134,7 @@ invalid_text="$tmpdir/invalid-text.ndjson"
 empty_file="$tmpdir/empty.ndjson"
 valid_multi="$tmpdir/valid-multi.ndjson"
 mixed="$tmpdir/mixed.ndjson"
+whitespace_only="$tmpdir/whitespace-only.ndjson"
 
 printf '{"schema_version":1,"body":"ok"}\n' > "$valid_single"
 printf 'plain text\n' > "$invalid_text"
@@ -146,11 +147,13 @@ printf 'plain text\n' > "$invalid_text"
     printf '{"schema_version":1,"body":"one"}\n'
     printf 'plain text\n'
 } > "$mixed"
+printf '   \n\t\n' > "$whitespace_only"
 
 assert_json_lines_accepts "single JSON line" "$valid_single"
 assert_json_lines_rejects "plain text" "$invalid_text"
 assert_json_lines_accepts "empty file" "$empty_file"
 assert_json_lines_accepts "multi-line NDJSON" "$valid_multi"
 assert_json_lines_rejects "mixed JSON and text" "$mixed"
+assert_json_lines_accepts "whitespace-only lines" "$whitespace_only"
 
 echo "All assertions passed."
