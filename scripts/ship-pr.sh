@@ -492,13 +492,13 @@ run_bump_phase() {
             _btype=$(read_state BUMP_TYPE)
             case "$_btype" in
                 PATCH|MINOR|MAJOR)
-                    emit_breadcrumb "$(printf '✅ 8: version bump — %s → %s (%s)' "$_cur" "$_new" "$_btype")"
+                    emit "$(printf '✅ 8: version bump — %s → %s (%s)' "$_cur" "$_new" "$_btype")"
                     ;;
                 *)
                     if [ "$forked" = "true" ]; then
-                        emit_breadcrumb '⏩ 8: version bump status=skip reason=forked'
+                        emit '⏩ 8: version bump status=skip reason=forked'
                     else
-                        emit_breadcrumb "$(printf '⏩ 8: version bump status=skip reason=%s' "${_btype:-NONE}")"
+                        emit "$(printf '⏩ 8: version bump status=skip reason=%s' "${_btype:-NONE}")"
                     fi
                     ;;
             esac

@@ -378,7 +378,7 @@ normalized_bail_reason() {
 
 warn_line() {
     WARNINGS=$((WARNINGS + 1))
-    printf '%s\n' "$1"
+    emit "$1"
 }
 
 append_execution_issue() {

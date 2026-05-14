@@ -40,7 +40,12 @@ larch_quiet_init() {
     if larch_quiet_truthy "${LARCH_QUIET_DISABLE:-}"; then
         return 0
     fi
-    if [ "${LARCH_QUIET_ACTIVE:-}" = "1" ]; then
+    # Use PID as the idempotency key so subprocess re-initialization is correct.
+    # Inheriting LARCH_QUIET_ACTIVE=1 from a parent must NOT skip init in the
+    # child: the child's FD1 may differ (command substitution, file redirect),
+    # and exec 3>&1 must capture the child's current FD1 so emit/emit_kv route
+    # contract output to the child's immediate caller, not the grandparent.
+    if [ "${LARCH_QUIET_PID:-}" = "$$" ]; then
         return 0
     fi
 
@@ -54,12 +59,13 @@ larch_quiet_init() {
 
     exec 3>&1
     export LARCH_QUIET_ACTIVE=1
+    export LARCH_QUIET_PID=$$
     export LARCH_QUIET_LOG_FILE="$log_file"
     exec >>"$log_file" 2>&1
 }
 
 emit() {
-    if [ "${LARCH_QUIET_ACTIVE:-}" = "1" ]; then
+    if [ "${LARCH_QUIET_PID:-}" = "$$" ]; then
         printf '%s\n' "$*" >&3
     else
         printf '%s\n' "$*"
@@ -68,7 +74,7 @@ emit() {
 
 emit_kv() {
     local key=$1 value=${2-}
-    if [ "${LARCH_QUIET_ACTIVE:-}" = "1" ]; then
+    if [ "${LARCH_QUIET_PID:-}" = "$$" ]; then
         printf '%s=%s\n' "$key" "$value" >&3
     else
         printf '%s=%s\n' "$key" "$value"
