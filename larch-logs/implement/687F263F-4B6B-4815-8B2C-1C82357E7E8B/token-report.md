@@ -24,7 +24,11 @@
 |  | larch:implement | 4 | 919543 | 2844 | 3563 |
 | Step 8 — version bump | **step total** | 3 | 695244 | 3093 | 1419 |
 |  | larch:implement | 3 | 695244 | 3093 | 1419 |
-| **Grand total** |  | 115 | 22931949 | 128648 | 87598 |
+| Step 8b — rebase | **step total** | 4 | 933596 | 1164 | 2606 |
+|  | larch:implement | 4 | 933596 | 1164 | 2606 |
+| Step 11 — execution-issues | **step total** | 2 | 467380 | 1389 | 1426 |
+|  | larch:implement | 2 | 467380 | 1389 | 1426 |
+| **Grand total** |  | 121 | 24332925 | 131201 | 91630 |
 
 ### Codex
 
@@ -41,6 +45,8 @@
 | Step 7 — commit review fixes | **step total** | 0 | 0 | 0 |
 | Step 7a — code flow diagram | **step total** | 0 | 0 | 0 |
 | Step 8 — version bump | **step total** | 0 | 0 | 0 |
+| Step 8b — rebase | **step total** | 0 | 0 | 0 |
+| Step 11 — execution-issues | **step total** | 0 | 0 | 0 |
 | **Grand total** |  | 0 | 0 | 100908 |
 
 ### Cursor
@@ -58,4 +64,6 @@
 | Step 7 — commit review fixes | **step total** | 0 | 0 | 0 |
 | Step 7a — code flow diagram | **step total** | 0 | 0 | 0 |
 | Step 8 — version bump | **step total** | 0 | 0 | 0 |
+| Step 8b — rebase | **step total** | 0 | 0 | 0 |
+| Step 11 — execution-issues | **step total** | 0 | 0 | 0 |
 | **Grand total** |  | 176816 | 25269 | 1037413 |
