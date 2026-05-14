@@ -106,10 +106,14 @@ make_prompt_file() {
     TEMP_PROMPTS+=("$prompt_file")
     {
         printf 'You are a senior engineer on a voting panel deciding which proposed plan modifications should be accepted.\n'
-        printf 'Vote YES, NO, or EXONERATE for every item in the ballot.\n'
         printf 'Vote EXONERATE, not YES, if the concern is legitimate but the proposed change would introduce more complexity than the issue warrants.\n'
         printf 'Do NOT modify files. Do NOT commit. Do NOT push.\n'
         printf 'Read the ballot from this path: %s\n' "$BALLOT_FILE"
+        printf '\nFor each ballot item output exactly one line using the same ID from the ballot:\n'
+        printf '  FINDING_N: YES\n'
+        printf '  FINDING_N: NO -- one-line reason\n'
+        printf '  FINDING_N: EXONERATE -- one-line reason\n'
+        printf 'For OOS_N items: YES means file a GitHub issue; NO or EXONERATE means skip.\n'
     } > "$prompt_file"
     PROMPT_FILE_RESULT="$prompt_file"
 }
@@ -133,7 +137,7 @@ launch_codex_voter() {
         while IFS= read -r arg; do codex_model_args+=("$arg"); done < "$model_args_tmp"
         prompt_text=$(cat "$prompt_file")
         "$RUN_EXTERNAL_AGENT" --tool codex --output "$out" --timeout 1200 -- \
-            codex exec --sandbox read-only -C "$PWD" "${codex_model_args[@]+"${codex_model_args[@]}"}" \
+            codex exec --full-auto -C "$PWD" --add-dir "$DESIGN_TMPDIR" "${codex_model_args[@]+"${codex_model_args[@]}"}" \
                 --output-last-message "$out" \
                 "$prompt_text" >> "$launch_log" 2>&1
         rc=$?
@@ -245,6 +249,8 @@ VOTER_2_PATH=""
 VOTER_3_PATH=""
 VOTER_2_STATUS="fallback"
 VOTER_3_STATUS="fallback"
+VOTER_2_SENTINEL_IDX=0
+VOTER_3_SENTINEL_IDX=0
 SENTINELS=()
 
 if [[ "$CODEX_AVAILABLE" == "true" ]]; then
@@ -255,6 +261,7 @@ if [[ "$CODEX_AVAILABLE" == "true" ]]; then
     ( trap - EXIT; launch_codex_voter "$VOTER_2_PATH" "$codex_prompt_file" ) &
     PIDS+=("$!")
     SENTINELS+=("$VOTER_2_PATH.done")
+    VOTER_2_SENTINEL_IDX=${#SENTINELS[@]}
 fi
 
 if [[ "$CURSOR_AVAILABLE" == "true" ]]; then
@@ -265,9 +272,31 @@ if [[ "$CURSOR_AVAILABLE" == "true" ]]; then
     ( trap - EXIT; launch_cursor_voter "$VOTER_3_PATH" "$cursor_prompt_file" ) &
     PIDS+=("$!")
     SENTINELS+=("$VOTER_3_PATH.done")
+    VOTER_3_SENTINEL_IDX=${#SENTINELS[@]}
 fi
 
 wait_for_launched_voters "${SENTINELS[@]+"${SENTINELS[@]}"}"
+
+# Update per-voter status based on wait outcomes (timeout or non-zero exit).
+WAIT_STDOUT="$DESIGN_TMPDIR/dispatch-plan-voters-wait.stdout"
+if [[ -f "$WAIT_STDOUT" ]]; then
+    while IFS= read -r _wline; do
+        _wid="${_wline#* }" ; _wid="${_wid%% *}"
+        case "$_wline" in
+            TIMEOUT\ *)
+                [[ "$VOTER_2_SENTINEL_IDX" -gt 0 && "$_wid" == "$VOTER_2_SENTINEL_IDX" ]] && VOTER_2_STATUS="failed"
+                [[ "$VOTER_3_SENTINEL_IDX" -gt 0 && "$_wid" == "$VOTER_3_SENTINEL_IDX" ]] && VOTER_3_STATUS="failed"
+                ;;
+            DONE\ *exit=*)
+                _wec="${_wline##*exit=}"
+                if [[ "$_wec" != "0" && -n "$_wec" ]]; then
+                    [[ "$VOTER_2_SENTINEL_IDX" -gt 0 && "$_wid" == "$VOTER_2_SENTINEL_IDX" ]] && VOTER_2_STATUS="failed"
+                    [[ "$VOTER_3_SENTINEL_IDX" -gt 0 && "$_wid" == "$VOTER_3_SENTINEL_IDX" ]] && VOTER_3_STATUS="failed"
+                fi
+                ;;
+        esac
+    done < "$WAIT_STDOUT"
+fi
 
 printf 'VOTER_2_PATH=%q\n' "$VOTER_2_PATH"
 printf 'VOTER_3_PATH=%q\n' "$VOTER_3_PATH"

@@ -137,7 +137,8 @@ grep -Fq 'VOTER_3_STATUS=launched' <<< "$out"
 grep -Fq 'DISPATCH_OK=true' <<< "$out"
 assert_contains "codex launched through wrapper" "INVOCATION tool=codex" "$RUN_LOG"
 assert_contains "cursor launched through wrapper" "INVOCATION tool=cursor" "$RUN_LOG"
-assert_contains "codex read-only sandbox" "ARG --sandbox" "$RUN_LOG"
+assert_contains "codex full-auto" "ARG --full-auto" "$RUN_LOG"
+assert_contains "codex add-dir for tmpdir" "ARG --add-dir" "$RUN_LOG"
 assert_contains "cursor plan mode" "ARG --mode" "$RUN_LOG"
 assert_contains "codex output arg" "ARG --output-last-message" "$RUN_LOG"
 assert_contains "cursor wrapped prompt" "ARG  /max-mode on. Prompt:" "$RUN_LOG"
@@ -176,9 +177,20 @@ out=$(FAIL_TOOL=codex CLAUDE_PLUGIN_ROOT="$PLUGIN" "$SCRIPT" \
     --codex-available true \
     --cursor-available false \
     --session-env-path "$TMP/session.env")
-grep -Fq 'VOTER_2_STATUS=launched' <<< "$out"
+grep -Fq 'VOTER_2_STATUS=failed' <<< "$out"
 grep -Fq 'DISPATCH_OK=false' <<< "$out"
 assert_contains "launch failure appended" "run-external-agent.sh codex plan voter" "$APPEND_LOG"
+
+: > "$RUN_LOG"
+out=$(CLAUDE_PLUGIN_ROOT="$PLUGIN" "$SCRIPT" \
+    --ballot-file "$BALLOT" \
+    --design-tmpdir "$TMP/both-fallback" \
+    --codex-available false \
+    --cursor-available false)
+grep -Fq 'VOTER_2_STATUS=fallback' <<< "$out"
+grep -Fq 'VOTER_3_STATUS=fallback' <<< "$out"
+grep -Fq 'DISPATCH_OK=true' <<< "$out"
+assert_not_contains "no tool launched when both unavailable" "INVOCATION" "$RUN_LOG"
 
 assert_contains "wrapper reference present" "run-external-agent.sh" "$SCRIPT"
 awk '
