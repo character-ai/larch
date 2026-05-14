@@ -24,7 +24,11 @@
 |  | larch:implement | 7 | 1476786 | 2414 | 2542 |
 | Step 8 — version bump | **step total** | 4 | 848815 | 3590 | 2321 |
 |  | larch:implement | 4 | 848815 | 3590 | 2321 |
-| **Grand total** |  | 138 | 23727412 | 685802 | 110700 |
+| Step 8a — changelog | **step total** | 0 | 0 | 0 | 0 |
+| Step 8b — rebase | **step total** | 83 | 19338501 | 581098 | 36296 |
+|  | larch:implement | 7 | 1504953 | 2678 | 1381 |
+|  | larch:issue | 76 | 17833548 | 578420 | 34915 |
+| **Grand total** |  | 221 | 43065913 | 1266900 | 146996 |
 
 ### Codex
 
@@ -41,4 +45,6 @@
 | Step 7 — commit review fixes | **step total** | 0 | 0 | 0 |
 | Step 7a — code flow diagram | **step total** | 0 | 0 | 0 |
 | Step 8 — version bump | **step total** | 0 | 0 | 0 |
+| Step 8a — changelog | **step total** | 0 | 0 | 0 |
+| Step 8b — rebase | **step total** | 0 | 0 | 0 |
 | **Grand total** |  | 0 | 0 | 184254 |
