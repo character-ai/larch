@@ -189,6 +189,24 @@ if [[ -n "$BUMP_SUBJECT" ]]; then
     fi
 fi
 
+# --- Pre-merge re-fetch: tighten the TOCTOU window on the same-version race gate ---
+# Between the version check above and the merge call below, a concurrent runner could
+# land the same version on main. A second fetch immediately before the merge shrinks
+# the race window to the network latency of the merge API call itself.
+if [[ -n "$BUMP_SUBJECT" ]]; then
+    if ! git fetch origin main --quiet 2>/dev/null; then
+        MERGE_RESULT="error"
+        ERROR="git fetch origin main failed (pre-merge re-fetch)"
+        exit 0
+    fi
+    PREMERGE_ORIGIN_VERSION=$(git show origin/main:.claude-plugin/plugin.json 2>/dev/null | jq -r -e '.version // empty' 2>/dev/null || echo "")
+    if [[ "$PREMERGE_ORIGIN_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && [[ "$PREMERGE_ORIGIN_VERSION" == "$LOCAL_VERSION" ]]; then
+        MERGE_RESULT="version_already_published"
+        ERROR="origin/main HEAD already bumped to $LOCAL_VERSION (pre-merge re-fetch); rebase and re-bump"
+        exit 0
+    fi
+fi
+
 # --- All checks passed — merge with selected privilege path ---
 if [[ "$NO_ADMIN_FALLBACK" == "true" ]]; then
     MERGE_OUTPUT=$(gh pr merge "$PR_NUMBER" --repo "$REPO" --squash 2>&1)

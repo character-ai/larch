@@ -855,6 +855,27 @@ run_rebase_rebump() {
                 record_failure rebase "apply-bump.sh" "$rc" "$fail_file" "CI Issues"
                 exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
             fi
+            # Sync the PR title to the re-bumped version so the squash-merge
+            # commit on main is not misattributed to the superseded version.
+            local pr_n repo_r
+            pr_n=$(read_state PR_NUMBER); repo_r=$(read_state REPO)
+            if [ -n "$pr_n" ] && [ -n "$repo_r" ]; then
+                gh pr edit "$pr_n" --repo "$repo_r" \
+                    --title "Bump version to $new_version" >/dev/null 2>&1 || true
+            fi
+            # Refresh version-bump-reasoning larch-log so the audit trail
+            # reflects the actually-landed version rather than the race target.
+            if [ -n "$reasoning_file" ] && [ -f "$reasoning_file" ]; then
+                run_id=$(read_state RUN_ID)
+                if [ -n "$run_id" ]; then
+                    "$SCRIPT_DIR/larch-log.sh" write \
+                        --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
+                        --skill implement \
+                        --run-id "$run_id" \
+                        --batch version-bump-reasoning \
+                        --input-file "$reasoning_file" 2>/dev/null || true
+                fi
+            fi
         fi
     fi
 
@@ -955,7 +976,11 @@ EOF
                 main_advanced|ci_not_ready)
                     return 0
                     ;;
-                version_already_published|policy_denied|admin_failed|error)
+                version_already_published)
+                    run_rebase_rebump "$phase"
+                    return 0
+                    ;;
+                policy_denied|admin_failed|error)
                     [ "$rc" -ne 0 ] || record_failure ci-merge "merge-pr.sh envelope" 1 "$fail_file" "CI Issues"
                     if [[ "$merge_result" == "error" || "$merge_result" == "admin_failed" ]] && is_transient_net_signature "$error_text"; then
                         exit_transient_net "merge-pr: $error_text"
