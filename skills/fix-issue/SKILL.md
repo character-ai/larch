@@ -11,7 +11,7 @@ Process one open GitHub issue per invocation. Scans for open issues (or targets 
 
 **Single-iteration design**: Each invocation handles at most one issue, then exits. The caller (cron, `/loop`, or manual invocation) is responsible for repeated execution.
 
-**Anti-halt continuation reminder.** After every child tool call returns — both child `Skill` tool calls (e.g., `/design`, `/review`, `/relevant-checks`, `/bump-version`, `/issue`, `/implement`) AND child Bash tool calls into the canonical `/fix-issue` script set (`issue-lifecycle.sh`, `tracking-issue-write.sh`, `round-trip-detect.sh`, `cleanup-tmpdir.sh`, `find-lock-issue.sh`, `session-setup.sh`, `write-session-env.sh`, `get-issue-details.sh`) — IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on the child's cleanup output, and do NOT write a summary, handoff, status recap, or "returning to parent" message — those are halts in disguise. The Bash-tool-call coverage is unique to this `/fix-issue` skill. The terminal Step 6 → Step 7 → Step 8 sequence has no intervening Skill tool calls. Step 6 always invokes `issue-lifecycle.sh close` (and additionally invokes `tracking-issue-write.sh rename` on the NON_PR sub-branch 6b); Step 8 invokes `cleanup-tmpdir.sh` when a temp dir was created (otherwise it is prose-only); on the PR path Step 7 is itself a prose-only skip with no Bash call at all. The same Skill-free **close/cleanup tail** pattern recurs in Step 3's not-material closure flow (close + best-effort rename + skip-to-cleanup) and in the Step 6b → Step 7b → Step 8 NON_PR close path. Step 5b's NON_PR body is separate from this tail pattern: it may call `/issue` (covered by the Skill-tool reminder above) and run additional Bash (covered by the same Bash-tool reminder above, applied to its full scope as stated next). The enumerated script list is the always-covered minimum scope; the rule applies equally to **any** Bash tool call invoked as part of a `/fix-issue` step's primary work — including Step 5b's inline `gh` queries, shell `test` invocations, and ad-hoc Bash. The Read / Grep / Glob tools are first-class Claude Code tools, not Bash subprocesses — their returns are not directly governed by this Bash extension, but the same continuation discipline applies: do not treat a tool return inside `/fix-issue`'s step sequence as a turn boundary — continue to the next sequenced step unless this file's explicit control-flow directives (`skip to Step N`, `bail to cleanup`, etc.) tell you otherwise. The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `skip to Step N`, `bail to cleanup`, `jump back`, `loop back`, `fall through`, `break out`). A normal sequential `proceed to Step N+1` instruction is the default continuation this rule reinforces, NOT an exception. Every `/relevant-checks` invocation anywhere in this file is covered by this rule. → shared/subskill-invocation.md#anti-halt — note: shared rule covers Skill tool calls only; Bash-call coverage above is /fix-issue-local.
+**Anti-halt continuation reminder.** After every child tool call returns — both child `Skill` tool calls (e.g., `/design`, `/review`, `/relevant-checks`, `/bump-version`, `/issue`, `/implement`) AND child Bash tool calls into the canonical `/fix-issue` script set (`issue-lifecycle.sh`, `tracking-issue-write.sh`, `round-trip-detect.sh`, `cleanup-tmpdir.sh`, `find-lock-issue.sh`, `session-setup.sh`, `write-session-env.sh`, `get-issue-details.sh`) — IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on the child's cleanup output, and do NOT write a summary, handoff, status recap, or "returning to parent" message — those are halts in disguise. The Bash-tool-call coverage is unique to this `/fix-issue` skill. The terminal Step 6 → Step 7 → Step 8 sequence has no intervening Skill tool calls. On the NON_PR sub-branch 6b, Step 6 invokes `issue-lifecycle.sh close` and `tracking-issue-write.sh rename`; on the PR sub-branch 6a, Step 6 runs no Bash calls (GitHub auto-closes the issue on PR merge via `Closes #N`). Step 8 invokes `cleanup-tmpdir.sh` when a temp dir was created (otherwise it is prose-only); on the PR path Step 7 is itself a prose-only skip with no Bash call at all. The same Skill-free **close/cleanup tail** pattern recurs in Step 3's not-material closure flow (close + best-effort rename + skip-to-cleanup) and in the Step 6b → Step 7b → Step 8 NON_PR close path. Step 5b's NON_PR body is separate from this tail pattern: it may call `/issue` (covered by the Skill-tool reminder above) and run additional Bash (covered by the same Bash-tool reminder above, applied to its full scope as stated next). The enumerated script list is the always-covered minimum scope; the rule applies equally to **any** Bash tool call invoked as part of a `/fix-issue` step's primary work — including Step 5b's inline `gh` queries, shell `test` invocations, and ad-hoc Bash. The Read / Grep / Glob tools are first-class Claude Code tools, not Bash subprocesses — their returns are not directly governed by this Bash extension, but the same continuation discipline applies: do not treat a tool return inside `/fix-issue`'s step sequence as a turn boundary — continue to the next sequenced step unless this file's explicit control-flow directives (`skip to Step N`, `bail to cleanup`, etc.) tell you otherwise. The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `skip to Step N`, `bail to cleanup`, `jump back`, `loop back`, `fall through`, `break out`). A normal sequential `proceed to Step N+1` instruction is the default continuation this rule reinforces, NOT an exception. Every `/relevant-checks` invocation anywhere in this file is covered by this rule. → shared/subskill-invocation.md#anti-halt — note: shared rule covers Skill tool calls only; Bash-call coverage above is /fix-issue-local.
 
 **Flags**: Parse flags from the start of `$ARGUMENTS`.
 
@@ -134,7 +134,7 @@ Print `> **🔶 3: triage**`
 
 Decide whether the issue is still material against the codebase (see the reference for the check list and the triage-targets rule for investigation/review-only issues).
 
-**Round-trip detection for terminal renames**: before any Step 3 / Step 6 terminal `tracking-issue-write.sh rename --state done`, run `${CLAUDE_PLUGIN_ROOT}/scripts/round-trip-detect.sh` and pass its `ROUND_TRIP=true|false` value as `--round-trip "$ROUND_TRIP"`. Use `$FIX_ISSUE_TMPDIR/issue-details.txt` from Step 2 as the canonical issue text source and pass `$ISSUE_TITLE` via `--text-string` only because it is short. For PR-path Step 6a, also fetch PR text into a temp file with `gh pr view "$PR_NUMBER" --repo "$REPO" --json title,body --jq '(.title // "") + "\n" + (.body // "")'` and include that as an additional `--text-file`. Bodies and PR descriptions MUST be file-backed, not argv-backed. Best-effort: on any `gh` or detector failure, log a warning under `Tool Failures`, set `ROUND_TRIP=false`, and still run the rename. See `${CLAUDE_PLUGIN_ROOT}/scripts/round-trip-detect.md` and `${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.md`.
+**Round-trip detection for terminal renames**: before any Step 3 / Step 6b terminal `tracking-issue-write.sh rename --state done`, run `${CLAUDE_PLUGIN_ROOT}/scripts/round-trip-detect.sh` and pass its `ROUND_TRIP=true|false` value as `--round-trip "$ROUND_TRIP"`. Use `$FIX_ISSUE_TMPDIR/issue-details.txt` from Step 2 as the canonical issue text source and pass `$ISSUE_TITLE` via `--text-string` only because it is short. Bodies MUST be file-backed, not argv-backed. Best-effort: on any `gh` or detector failure, log a warning under `Tool Failures`, set `ROUND_TRIP=false`, and still run the rename. See `${CLAUDE_PLUGIN_ROOT}/scripts/round-trip-detect.md` and `${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.md`.
 
 **If the issue is no longer material** (already fixed, invalid, or no longer relevant): compose a detailed explanation with a research summary per the reference, then:
 
@@ -206,7 +206,7 @@ Invoke `/implement` via the Skill tool. Forwarding `--issue $ISSUE_NUMBER` makes
 
 After `/implement` completes, capture the PR URL and PR number from its output. Save as `PR_URL` and `PR_NUMBER`.
 
-> **Continue after child returns (success path only).** If `/implement` succeeded and `PR_URL` / `PR_NUMBER` are captured, your next user-facing output MUST be the Step 6 breadcrumb (`> **🔶 6: close issue**`) — do NOT end the turn (neither silently nor after text output), and do NOT write a summary, status recap, or "returning to caller" message first. If `/implement` failed or bailed, ignore this directive and follow the failure-path branch below. → shared/subskill-invocation.md#anti-halt
+> **Continue after child returns (success path only).** If `/implement` succeeded and `PR_URL` / `PR_NUMBER` are captured, your next user-facing output MUST be the Step 6 breadcrumb (`> **🔶 6: finalize**`) — do NOT end the turn (neither silently nor after text output), and do NOT write a summary, status recap, or "returning to caller" message first. If `/implement` failed or bailed, ignore this directive and follow the failure-path branch below. → shared/subskill-invocation.md#anti-halt
 
 If `/implement` exits non-zero, branch on whether the captured output (stdout + transcript surface) contains the literal token `IMPLEMENT_BAIL_REASON=adopted-issue-closed` (emitted by `/implement` Step 0.5 Branch 2 when the adopted tracking issue is closed):
 
@@ -229,38 +229,15 @@ Read the issue details from Step 2 and execute the instructions directly using R
 
 If the work cannot be completed (e.g., `/issue` fails repeatedly, the issue's instructions are infeasible, or required external access is unavailable), print `**⚠ 5: execute — non-PR task failed. Issue #$ISSUE_NUMBER remains locked with IN PROGRESS comment and [IN PROGRESS] title prefix. (<elapsed>)**` and skip to Step 8. The IN PROGRESS comment serves as an indicator that manual intervention is needed — same recovery semantics as the `/implement` failure path.
 
-## Step 6 — Close Issue
+## Step 6 — Finalize
 
-Print `> **🔶 6: close issue**`
-
-`issue-lifecycle.sh close` is **idempotent**: if the issue was auto-closed externally before Step 6 runs (e.g., GitHub's `Closes #<N>` PR-merge auto-close from a `/implement --merge` invocation), the call still succeeds cheaply — the DONE comment and `--pr-url` body backfill still run, only the `gh issue close` call is skipped. The stdout contract (`CLOSED=true` on success) is identical across the open and already-closed paths, so this step does not need to branch on whether the issue was already closed (stderr carries a diagnostic `INFO` or `WARNING` signal when relevant). See `skills/fix-issue/scripts/issue-lifecycle.md` for the full contract including probe-failure fallback and partial-success semantics.
+Print `> **🔶 6: finalize**`
 
 Branch on `INTENT`.
 
 ### 6a — `INTENT=PR`
 
-Update the issue body with the PR link and close with a DONE comment (single call):
-
-```bash
-${CLAUDE_PLUGIN_ROOT}/skills/fix-issue/scripts/issue-lifecycle.sh close \
-  --issue $ISSUE_NUMBER --pr-url "$PR_URL" --comment "DONE"
-```
-
-The `[IN PROGRESS]` title prefix Step 0 applied at lock time has usually already been flipped to `[DONE]` by `/implement` Step 12a/12b on PR merge. Run a best-effort marker refresh anyway so `/fix-issue` can add `[ROUND-TRIP]` when the merged PR text carries a marker and `/implement` did not already apply it:
-
-```bash
-PR_ROUND_TRIP_FILE=$(mktemp "$FIX_ISSUE_TMPDIR/round-trip-pr.XXXXXX")
-gh pr view "$PR_NUMBER" --repo "$REPO" --json title,body --jq '(.title // "") + "\n" + (.body // "")' > "$PR_ROUND_TRIP_FILE"
-ROUND_TRIP_OUT=$(${CLAUDE_PLUGIN_ROOT}/scripts/round-trip-detect.sh \
-  --text-file "$FIX_ISSUE_TMPDIR/issue-details.txt" \
-  --text-file "$PR_ROUND_TRIP_FILE" 2>&1) || ROUND_TRIP_OUT="ROUND_TRIP=false"
-ROUND_TRIP=$(echo "$ROUND_TRIP_OUT" | awk -F= '/^ROUND_TRIP=/ { v=$2 } END { print v }')
-case "$ROUND_TRIP" in true|false) ;; *) ROUND_TRIP=false ;; esac
-${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh rename \
-  --issue $ISSUE_NUMBER --state done --round-trip "$ROUND_TRIP"
-```
-
-Best-effort: on `FAILED=true` / non-zero exit / detector failure, log to `Tool Failures` and continue.
+When `/implement --merge` merges the PR, GitHub automatically closes the issue via `Closes #N` in the PR body, and `/implement` Step 12a/12b already renames the title to `[DONE]`. No explicit `issue-lifecycle.sh close` call is needed. Step 6a is a no-op on the PR path — proceed directly to Step 6c.
 
 ### 6b — `INTENT=NON_PR`
 
@@ -302,9 +279,9 @@ fi
 
 Best-effort: on `FAILED=true` / non-zero exit / `FINALIZED=false` non-idempotent error, log to `Tool Failures` and continue. The next `/fix-issue <umbrella#>` invocation will re-attempt finalization via the Step 0 exit-4 path. The `finalize-umbrella.sh` idempotency guard ensures concurrent or repeated invocations do not double-comment (FINDING_2). If `$UMBRELLA_NUMBER` is empty, this hook is a no-op.
 
-Print `✅ 6: close issue — #$ISSUE_NUMBER closed (<elapsed>)` (mention umbrella-finalized when applicable: `✅ 6: close issue — #$ISSUE_NUMBER closed; umbrella #$UMBRELLA_NUMBER finalized (<elapsed>)`).
+Print `✅ 6: finalize — #$ISSUE_NUMBER done (<elapsed>)` (mention umbrella-finalized when applicable: `✅ 6: finalize — #$ISSUE_NUMBER done; umbrella #$UMBRELLA_NUMBER finalized (<elapsed>)`).
 
-> **Continue to Step 8 IMMEDIATELY.** Closing the issue is not terminal — cleanup still must run. → shared/subskill-invocation.md#step-boundary
+> **Continue to Step 8 IMMEDIATELY.** This step is not terminal — cleanup still must run. → shared/subskill-invocation.md#step-boundary
 
 ## Step 8 — Cleanup
 
