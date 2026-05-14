@@ -64,9 +64,9 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 **Probe commands should not create false error rows.**
 
-For orchestrator-generated grep-family or find probes where "no match" is informational, guard the command so Bash transcripts stay clean:
-- Use `|| true` when the absence of output is enough.
-- Use `|| echo 0` when the probe is producing a count.
+For orchestrator-generated grep-family probes where "no match" is informational, guard the command so Bash transcripts stay clean:
+- Use `|| true` to suppress the non-zero exit (works for all grep variants, including `grep -c` which already prints `0` on no-match).
+- Use `|| echo 0` only for probes that produce **no stdout** on no-match — not for `grep -c`, which already emits a count before exiting 1.
 
 Do not add these guards to conditionals like `if grep -q PATTERN file; then`, where exit 1 is the branch signal.
 
