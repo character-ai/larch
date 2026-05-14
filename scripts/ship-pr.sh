@@ -921,7 +921,7 @@ run_ci_phase() {
         flush_run_id=$(read_state RUN_ID)
         if [ -n "$flush_run_id" ] && [ "$NO_LOGS_COMMIT" != "true" ]; then
             fail_file=$(failure_capture_path ci-merge)
-            "$SCRIPT_DIR/larch-log.sh" commit --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$flush_run_id" --no-push > "$fail_file" 2>&1
+            "$SCRIPT_DIR/larch-log.sh" commit --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$flush_run_id" > "$fail_file" 2>&1
             rc=$?
             cat "$fail_file"
             [ "$rc" -eq 0 ] || record_failure ci-merge "larch-log.sh commit" "$rc" "$fail_file" Warnings
@@ -1101,7 +1101,6 @@ run_postmerge_phase() {
                 "$SCRIPT_DIR/larch-log.sh" commit \
                     --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
                     --skill implement --run-id "$flush_run_id" \
-                    --no-push \
                     > "$fail_file" 2>&1
                 rc=$?
                 [ "$rc" -eq 0 ] || record_failure postmerge "larch-log.sh commit" "$rc" "$fail_file" Warnings

@@ -67,17 +67,23 @@ captured at Step 18 of `/implement` for post-hoc auditability).
 
 ## `--no-push` discipline
 
-`commit` pushes by default. Callers should pass `--no-push` unless they are the
-last operation that can carry the larch-log commit to the remote branch. The
-intended pattern is to create the flush commit locally, then let a following
-branch push, force-with-lease push, or final teardown push carry it together with
-nearby work. This avoids standalone larch-log pushes while keeping the commit in
-the eventual PR or terminal branch state.
+`commit` pushes by default. Callers should pass `--no-push` when a subsequent
+branch push, force-with-lease push, or code-commit push is guaranteed to follow
+and can carry the larch-log commit together with nearby work. This avoids
+standalone larch-log-only push events.
 
-The push-capable call is reserved for terminal paths with no later push. For
-`/implement`, the `PR_CLOSED=true` teardown path remains that safety net because
-the PR branch has already been merged or removed; earlier flushes use
-`--no-push` and rely on the next lifecycle push.
+Use a direct push (no `--no-push`) when:
+
+- The caller is a terminal lifecycle step with no later push guaranteed (e.g.,
+  the `PR_CLOSED=true` teardown path in `implement-finalize.sh`, where the PR
+  branch has already been merged or removed).
+- Omitting the push would violate a downstream invariant (e.g., the ci-merge
+  pre-merge flush in `ship-pr.sh`, where `merge-pr.sh` requires
+  `local HEAD == remote PR headRefOid`; an unpushed local commit would fail
+  that check and stall the merge).
+
+In `/implement`, the rebase-retry flush (`scripts/ship-pr.sh`, Step 8b path)
+is the canonical `--no-push` call site — the surrounding force-push carries it.
 
 Related files: `scripts/lib-larch-log.sh`, `scripts/larch-log-batches.sh`, and
 the `scripts/test-larch-log.sh` harness.
