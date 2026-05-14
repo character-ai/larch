@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [27.5.15] - 2026-05-13
+
+### Changed
+
+- Add a behavioral guideline for grep-family and find probe exit-code handling.
+- Document guard patterns for informational no-match probes while preserving grep conditionals.
+- Validate the Markdown-only change with the repo relevant-checks script.
+
 ## [27.5.14] - 2026-05-13
 
 ### Changed
