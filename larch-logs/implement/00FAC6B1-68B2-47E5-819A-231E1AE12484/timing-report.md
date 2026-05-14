@@ -9,7 +9,7 @@
 | implement | Step 1 — design plan | 00:19:01 |
 | implement | Step 3 — checks first pass | 00:00:09 |
 | implement | Step 4 — commit implementation | 00:00:21 |
-| implement | Step 5 — code review | 00:10:32 |
+| implement | Step 5 — code review | 00:11:16 |
 | **Total** | | 00:20:27 |
 
 ## Vendor Task Averages

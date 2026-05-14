@@ -19,11 +19,13 @@
 |  | inferred:Step 5 — code review | 67 | 15033377 | 74852 | 46244 |
 | Step 6 — checks second pass | **step total** | 6 | 1455479 | 5115 | 2462 |
 |  | inferred:Step 6 — checks second pass | 6 | 1455479 | 5115 | 2462 |
-| Step 7 — commit review fixes | **step total** | 4 | 976254 | 1784 | 1121 |
-|  | inferred:Step 7 — commit review fixes | 4 | 976254 | 1784 | 1121 |
-| Step 7a — code flow diagram | **step total** | 0 | 0 | 0 | 0 |
-| Step 8 — version bump | **step total** | 0 | 0 | 0 | 0 |
-| **Grand total** |  | 157 | 29672729 | 592986 | 100640 |
+| Step 7 — commit review fixes | **step total** | 5 | 1221073 | 2041 | 2143 |
+|  | inferred:Step 7 — commit review fixes | 5 | 1221073 | 2041 | 2143 |
+| Step 7a — code flow diagram | **step total** | 1 | 244819 | 257 | 1022 |
+|  | inferred:Step 7a — code flow diagram | 1 | 244819 | 257 | 1022 |
+| Step 8 — version bump | **step total** | 7 | 1722536 | 6294 | 3386 |
+|  | inferred:Step 8 — version bump | 7 | 1722536 | 6294 | 3386 |
+| **Grand total** |  | 166 | 31884903 | 599794 | 106070 |
 
 ### Codex
 
