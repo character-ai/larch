@@ -1,0 +1,1 @@
+{"phase":"ci","step":"ci-initial","category":"CI Issues","body":"CI failures during first run (25836273316) were caused by test harnesses relying on removed cwd-hash token-ledger fallback; fixed by adding explicit LARCH_TOKEN_LEDGER to affected tests."}
