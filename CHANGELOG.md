@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [27.5.16] - 2026-05-13
+
+### Changed
+
+- Add script-owned /design plan-review external voter dispatch for Codex and Cursor through run-external-agent.sh.
+- Document the dispatcher contract and update design voting instructions, shared voting protocol, SECURITY.md, lint docs, and Makefile wiring.
+- Add an offline dispatcher harness covering happy path, fallback statuses, launch-failure logging, wrapper use, read-only argv, and prompt cleanup.
+
 ## [27.5.15] - 2026-05-13
 
 ### Changed
