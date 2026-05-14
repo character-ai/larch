@@ -8,7 +8,14 @@ SCRIPT="$REPO_ROOT/skills/review/scripts/gather-context.sh"
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-gather-context.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT
 
+assert_stdout_cap() {
+    local text="$1" cap="${2:-2048}" bytes
+    bytes=${#text}
+    [[ "$bytes" -le "$cap" ]] || { echo "FAIL: stdout ${bytes}B > ${cap}B cap" >&2; exit 1; }
+}
+
 out=$(cd "$REPO_ROOT" && "$SCRIPT" --mode description --description-text "review skill" --output-dir "$TMP")
+assert_stdout_cap "$out"
 grep -Fq 'MODE=description' <<< "$out"
 scope=$(printf '%s\n' "$out" | awk -F= '$1=="FILE_LIST_FILE"{print $2}')
 scope=$(printf '%b' "${scope//\\x/\\x}")

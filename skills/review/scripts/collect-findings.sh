@@ -65,8 +65,8 @@ append_review_failure() {
         --redact >/dev/null 2>&1 || true
 }
 
-append_non_ok_collector_results() {
-    local collector_text="$1" reviewer_file="" tool="" status="" exit_code="" line combined
+append_non_ok_collector_results_from_file() {
+    local collector_results_file="$1" reviewer_file="" tool="" status="" exit_code="" line combined
     while IFS= read -r line || [[ -n "$line" ]]; do
         if [[ -z "$line" ]]; then
             # STATUS=cap_hit is a deliberate slot-skip (reviewer's budget cap;
@@ -102,7 +102,7 @@ append_non_ok_collector_results() {
             STATUS=*) status="${line#STATUS=}" ;;
             EXIT_CODE=*) exit_code="${line#EXIT_CODE=}" ;;
         esac
-    done <<< "$collector_text"
+    done < "$collector_results_file"
     # STATUS=cap_hit is a deliberate slot-skip (reviewer's budget cap;
     # HEALTHY=true per collect-agent-results.md), NOT a failure.
     if [[ -n "$reviewer_file" && "$status" != "" && "$status" != "OK" && "$status" != "cap_hit" ]]; then
@@ -128,17 +128,18 @@ append_non_ok_collector_results() {
     fi
 }
 
-collector_out=""
+collector_results_file="$REVIEW_TMPDIR/collector-results.env"
+: > "$collector_results_file"
 if [[ "$EXTERNAL_COUNT" -gt 0 ]]; then
     # Pin: collect-agent-results.sh --timeout 1860 --substantive-validation --validation-mode
     args=(--timeout "$TIMEOUT" --substantive-validation --validation-mode)
     [[ -n "$SESSION_ENV_PATH" ]] && args+=(--write-health "${SESSION_ENV_PATH}.health")
     collector_log="$REVIEW_TMPDIR/collect-agent-results.log"
     set +e
-    collector_out=$("$PLUGIN_ROOT/scripts/collect-agent-results.sh" "${args[@]}" "${EXTERNAL_OUTPUT_FILES[@]}" 2>"$collector_log")
+    "$PLUGIN_ROOT/scripts/collect-agent-results.sh" "${args[@]}" "${EXTERNAL_OUTPUT_FILES[@]}" > "$collector_results_file" 2>"$collector_log"
     collector_rc=$?
     set -e
-    printf '%s\n' "$collector_out" >> "$collector_log"
+    cat "$collector_results_file" >> "$collector_log"
     if [[ "$collector_rc" -ne 0 ]]; then
         append_review_failure "review Step 3a" "collect-agent-results.sh" "$collector_rc" "$collector_log"
         # Redact stderr replay; the unredacted file is already captured in
@@ -150,7 +151,7 @@ if [[ "$EXTERNAL_COUNT" -gt 0 ]]; then
         fi
         exit "$collector_rc"
     fi
-    append_non_ok_collector_results "$collector_out"
+    append_non_ok_collector_results_from_file "$collector_results_file"
 fi
 
 if [[ "$CLAUDE_COUNT" -gt 0 ]]; then
@@ -241,8 +242,8 @@ while IFS=$'\t' read -r title label body || [[ -n "${title:-}" ]]; do
     fi
 done < "$tmp.sorted"
 
-printf '%s\n' "$collector_out" > "$(dirname "$FINDINGS_FILE")/collector-results.env"
 printf 'FINDINGS_COUNT=%s\n' "$count"
 printf 'OOS_COUNT=%s\n' "$oos_count"
 printf 'DIRTY_DETECTED=%s\n' "$DIRTY_DETECTED"
 printf 'COLLECT_OK=true\n'
+printf 'COLLECTOR_OUTPUT_FILE=%q\n' "$collector_results_file"

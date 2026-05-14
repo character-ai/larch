@@ -10,6 +10,12 @@ trap 'rm -rf "$TMP"' EXIT
 unset LARCH_EXECUTION_ISSUES_LOG SESSION_ENV_PATH IMPLEMENT_TMPDIR REVIEW_TMPDIR || true
 export LARCH_EXECUTION_ISSUES_LOG="$TMP/execution-issues.md"
 
+assert_stdout_cap() {
+    local text="$1" cap="${2:-2048}" bytes
+    bytes=${#text}
+    [[ "$bytes" -le "$cap" ]] || { echo "FAIL: stdout ${bytes}B > ${cap}B cap" >&2; exit 1; }
+}
+
 outf="$TMP/claude.txt"
 cat > "$outf" <<'EOF'
 ### In-Scope Findings
@@ -22,15 +28,18 @@ printf '0\n' > "$outf.done"
 printf 'STATUS=clean\n' > "$outf.dirty-tree"
 
 out=$(WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.01 "$SCRIPT" --claude-output-files "$outf" --mode description --timeout 1 --findings-file "$TMP/findings.md" --oos-file "$TMP/oos.md")
+assert_stdout_cap "$out"
 grep -Fq 'FINDINGS_COUNT=2' <<< "$out"
 grep -Fq 'OOS_COUNT=1' <<< "$out"
 grep -Fq 'DIRTY_DETECTED=false' <<< "$out"
+grep -Fq 'COLLECTOR_OUTPUT_FILE=' <<< "$out"
 grep -Fq '### FINDING_1:' "$TMP/findings.md"
 
 printf 'NO_ISSUES_FOUND\n' > "$TMP/no.txt"
 printf '0\n' > "$TMP/no.txt.done"
 printf 'STATUS=clean\n' > "$TMP/no.txt.dirty-tree"
 out=$(WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.01 "$SCRIPT" --claude-output-files "$TMP/no.txt" --mode diff --timeout 1 --findings-file "$TMP/findings2.md" --oos-file "$TMP/oos2.md")
+assert_stdout_cap "$out"
 grep -Fq 'FINDINGS_COUNT=0' <<< "$out"
 
 echo "All assertions passed."

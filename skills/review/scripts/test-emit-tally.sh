@@ -8,6 +8,12 @@ SCRIPT="$REPO_ROOT/skills/review/scripts/emit-tally.sh"
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-emit-tally.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT
 
+assert_stdout_cap() {
+    local text="$1" cap="${2:-2048}" bytes
+    bytes=${#text}
+    [[ "$bytes" -le "$cap" ]] || { echo "FAIL: stdout ${bytes}B > ${cap}B cap" >&2; exit 1; }
+}
+
 printf 'FINDING_1_ACCEPTED=true\nFINDING_2_ACCEPTED=false\n' > "$TMP/tally.env"
 cat > "$TMP/accepted.md" <<'EOF'
 ### FINDING_1: A
@@ -16,6 +22,7 @@ EOF
 : > "$TMP/oos.md"
 
 out=$("$SCRIPT" --tally-file "$TMP/tally.env" --accepted-findings-file "$TMP/accepted.md" --oos-file "$TMP/oos.md" --review-tmpdir "$TMP" --round 1 --mode diff)
+assert_stdout_cap "$out"
 grep -Fq 'EMIT_OK=true' <<< "$out"
 jq -e '.schema_version == 1 and .accepted_count == 1 and .rejected_count == 1' "$TMP/review-summary.json" >/dev/null
 grep -Fq 'Review Round 1' "$TMP/review-round-summary.md"
