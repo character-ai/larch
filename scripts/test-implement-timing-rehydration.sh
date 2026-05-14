@@ -5,7 +5,7 @@
 #
 #   A) The legacy two-key rehydration export has been retired everywhere
 #      (no `export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE` lines remain).
-#   B) Every fenced ```bash block AFTER Step 0 that invokes
+#   B) Every fenced ```bash block (including indented ones) AFTER Step 0 that invokes
 #      `timing-ledger.sh` or `timing-report.sh` is preceded — inside the SAME
 #      bash fence — by an `LARCH_TIMING_LEDGER=$(... read-session-env-key.sh ...)`
 #      rehydration line. This catches the workflow-path one-liner regression
@@ -32,15 +32,16 @@ stale_count=$(grep -Fxc 'export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE'
 [[ "$stale_count" == "0" ]] \
   || fail "stale two-key rehydration export remains ($stale_count matches)"
 
-# Invariant B: in every fenced bash block (after Step 0) that calls
-# timing-ledger.sh or timing-report.sh, the same fence MUST contain an
+# Invariant B: in every fenced bash block (after Step 0, including indented
+# fences inside list items) that calls timing-ledger.sh or timing-report.sh,
+# the same fence MUST contain an
 # `LARCH_TIMING_LEDGER=$(... read-session-env-key.sh ...)` line.
 awk '
   BEGIN { in_fence=0; has_timing=0; has_rehydration=0; fence_start=0; offending=0 }
-  /^```bash$/ {
+  /^[[:space:]]*```bash$/ {
     in_fence=1; has_timing=0; has_rehydration=0; fence_start=NR; next
   }
-  /^```$/ && in_fence {
+  /^[[:space:]]*```$/ && in_fence {
     if (has_timing && !has_rehydration && !is_step0) {
       printf "skills/implement/SKILL.md fence starting at line %d: timing-ledger/timing-report call lacks LARCH_TIMING_LEDGER rehydration in the same fence\n", fence_start > "/dev/stderr"
       offending=1
