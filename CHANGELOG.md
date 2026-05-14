@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [27.5.45] - 2026-05-14
+
+### Changed
+
+- Add a /design ACTION dispatcher plus extracted classify, emit-plan, tally-plan-review, and finalize-plan helper scripts with sibling contracts.
+- Wire /design SKILL.md and heavy-worker.md to the helper scripts while preserving inline model-judgment steps and focus-area enum anchors.
+- Register five new design harnesses in Makefile, agent-lint exclusions, docs/linting.md, and structural pins.
+
 ## [27.5.39] - 2026-05-13
 
 ### Changed

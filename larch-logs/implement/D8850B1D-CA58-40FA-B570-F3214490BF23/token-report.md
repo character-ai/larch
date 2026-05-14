@@ -25,8 +25,9 @@
 |  | larch:review | 7 | 1639452 | 2391 | 3033 |
 | Step 7a — code flow diagram | **step total** | 7 | 1649735 | 4318 | 4480 |
 |  | larch:review | 7 | 1649735 | 4318 | 4480 |
-| Step 8 — version bump | **step total** | 0 | 0 | 0 | 0 |
-| **Grand total** |  | 38898 | 60315395 | 2445678 | 197202 |
+| Step 8 — version bump | **step total** | 4 | 951464 | 4104 | 3075 |
+|  | larch:review | 4 | 951464 | 4104 | 3075 |
+| **Grand total** |  | 38902 | 61266859 | 2449782 | 200277 |
 
 ### Codex
 
