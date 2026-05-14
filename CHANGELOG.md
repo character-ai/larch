@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [27.5.31] - 2026-05-13
+
+### Changed
+
+- Add LARCH_EXECUTION_ISSUES_LOG precedence to all execution_issue_log resolvers
+- Isolate affected test harness execution-issues.md writes inside their temporary sandboxes
+- Document the override chain and harness isolation in sibling script contracts
+
 ## [27.5.30] - 2026-05-13
 
 ### Changed
