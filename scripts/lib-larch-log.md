@@ -19,4 +19,5 @@ Key exports:
   Used by `larch-log.sh commit` to locate the copy destination.
 - `larch_log_validate_batch_payload(batch, file)` — dispatches batch sanitizers.
   The `plan-goals` sanitizer requires a non-empty `## Implementation Plan`
-  section and rejects pointer-only placeholders before the payload is committed.
+  section and rejects pointer-only placeholders. The `json-lines` sanitizer
+  accepts empty files and requires every non-empty line to parse as JSON.

@@ -143,6 +143,14 @@ larch_log_validate_batch_payload() {
             "$LARCH_LOG_LIB_DIR/sanitize-mermaid-fragment.sh" --input "$file" --from-md >/dev/null \
                 || larch_log_fail 2 "mermaid sanitizer rejected $batch"
             ;;
+        json-lines)
+            [ -s "$file" ] || return 0
+            while IFS= read -r line || [ -n "$line" ]; do
+                [ -z "$line" ] && continue
+                printf '%s' "$line" | jq . >/dev/null 2>&1 \
+                    || larch_log_fail 2 "json-lines sanitizer rejected $batch: invalid JSON line"
+            done < "$file"
+            ;;
         *) larch_log_fail 1 "unknown sanitizer for $batch: $sanitizer" ;;
     esac
 }

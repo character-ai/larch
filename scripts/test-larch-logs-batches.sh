@@ -8,6 +8,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 # shellcheck source=scripts/larch-log-batches.sh
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/larch-log-batches.sh"
+# shellcheck source=scripts/lib-larch-log.sh
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib-larch-log.sh"
 
 expected='plan-goals-test
 plan-review-tally
@@ -39,7 +42,7 @@ for slug in $actual; do
     sanitizer="$(larch_log_batch_sanitizer "$slug")"
     case "$ext" in .md|.ndjson|.json|.jsonl) ;; *) echo "FAIL: invalid extension for $slug: $ext" >&2; exit 1 ;; esac
     case "$mode" in replace|append) ;; *) echo "FAIL: invalid mode for $slug: $mode" >&2; exit 1 ;; esac
-    case "$sanitizer" in none|mermaid|plan-goals) ;; *) echo "FAIL: invalid sanitizer for $slug: $sanitizer" >&2; exit 1 ;; esac
+    case "$sanitizer" in none|mermaid|plan-goals|json-lines) ;; *) echo "FAIL: invalid sanitizer for $slug: $sanitizer" >&2; exit 1 ;; esac
 done
 
 [ "$(larch_log_batch_mode token-report)" = "replace" ]
@@ -87,5 +90,67 @@ set -e
 [ "$pointer_rc" -ne 0 ] || { echo "FAIL: pointer-only plan-goals payload should be rejected" >&2; exit 1; }
 
 LARCH_LOG_ROOT="$tmp/logs" "$SCRIPT_DIR/larch-log.sh" write --skill implement --run-id valid --batch plan-goals-test --input-file "$valid_payload" >/dev/null
+
+tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/larch-log-batches-test.XXXXXX")"
+trap 'rm -rf "$tmpdir"' EXIT
+
+assert_json_lines_accepts() {
+    local label="$1"
+    local file="$2"
+    if ! larch_log_validate_batch_payload plan-review-tally "$file" >/dev/null; then
+        echo "FAIL: expected json-lines validator to accept $label" >&2
+        exit 1
+    fi
+}
+
+assert_json_lines_rejects() {
+    local label="$1"
+    local file="$2"
+    local output rc
+    set +e
+    output="$(bash -c '
+        set -euo pipefail
+        source "$1/lib-larch-log.sh"
+        larch_log_validate_batch_payload plan-review-tally "$2"
+    ' _ "$SCRIPT_DIR" "$file" 2>&1)"
+    rc=$?
+    set -e
+    if [ "$rc" -eq 0 ]; then
+        echo "FAIL: expected json-lines validator to reject $label" >&2
+        exit 1
+    fi
+    case "$output" in
+        *"ERROR=json-lines sanitizer rejected plan-review-tally: invalid JSON line"*) ;;
+        *)
+            echo "FAIL: expected ERROR= line for rejected $label" >&2
+            printf '%s\n' "$output" >&2
+            exit 1
+            ;;
+    esac
+}
+
+valid_single="$tmpdir/valid-single.ndjson"
+invalid_text="$tmpdir/invalid-text.ndjson"
+empty_file="$tmpdir/empty.ndjson"
+valid_multi="$tmpdir/valid-multi.ndjson"
+mixed="$tmpdir/mixed.ndjson"
+
+printf '{"schema_version":1,"body":"ok"}\n' > "$valid_single"
+printf 'plain text\n' > "$invalid_text"
+: > "$empty_file"
+{
+    printf '{"schema_version":1,"body":"one"}\n'
+    printf '{"schema_version":1,"body":"two"}\n'
+} > "$valid_multi"
+{
+    printf '{"schema_version":1,"body":"one"}\n'
+    printf 'plain text\n'
+} > "$mixed"
+
+assert_json_lines_accepts "single JSON line" "$valid_single"
+assert_json_lines_rejects "plain text" "$invalid_text"
+assert_json_lines_accepts "empty file" "$empty_file"
+assert_json_lines_accepts "multi-line NDJSON" "$valid_multi"
+assert_json_lines_rejects "mixed JSON and text" "$mixed"
 
 echo "All assertions passed."

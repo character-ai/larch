@@ -52,13 +52,23 @@ Contains the implementation plan: goal statement, files to modify, approach, edg
 
 **Mode**: append (NDJSON records). **Written**: Step 1 tail, after the plan-review voting tally is exported.
 
-One NDJSON record per `/implement` session. Contains the plan-review voting outcome (accepted count, rejected count, round summaries) plus any rejected plan-review findings under a `## Rejected Plan Review Findings` sub-header. In quick mode the record contains `"Quick mode — no plan review voting."`.
+One JSON record per `/implement` session. The canonical fields are
+`schema_version`, `phase`, `batch`, `mode`, `rounds`, `accepted_count`,
+`rejected_count`, and `body`. The `body` contains the plan-review voting outcome
+(accepted count, rejected count, round summaries) plus any rejected plan-review
+findings under a `## Rejected Plan Review Findings` sub-header. In quick mode
+the body contains `"Quick mode — no plan review voting."`.
 
 ### code-review-tally.ndjson
 
 **Mode**: append (NDJSON records). **Written**: Step 5, after `/review` returns (normal mode) or the quick-mode review loop completes.
 
-One record per `/implement` session. Contains the code-review voting outcome and a round-by-round summary. Also includes rejected code-review findings under a `## Rejected Code Review Findings` sub-header — making this the load-bearing source for rejected findings (the terminal session transcript only prints a breadcrumb, not the full content).
+One JSON record per `/implement` session with the same tally envelope fields as
+`plan-review-tally.ndjson`. The body contains the code-review voting outcome and
+a round-by-round summary. It also includes rejected code-review findings under a
+`## Rejected Code Review Findings` sub-header — making this the load-bearing
+source for rejected findings (the terminal session transcript only prints a
+breadcrumb, not the full content).
 
 ### review-findings-full.ndjson
 

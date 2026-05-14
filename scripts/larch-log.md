@@ -31,10 +31,11 @@ UNCHANGED=true|false
 Payload content is never written to stdout. Payloads pass through
 `redact-tmpdir-paths.sh` and `redact-secrets.sh`. Batches that declare the
 `plan-goals` sanitizer must contain a non-empty `## Implementation Plan` section
-that is not a pointer-only placeholder. Batches that declare the `mermaid`
-sanitizer (in `larch-log-batches.sh`) also use
+that is not a pointer-only placeholder. Batches that declare the `json-lines`
+sanitizer must be empty or contain one valid JSON value per non-empty line.
+Batches that declare the `mermaid` sanitizer (in `larch-log-batches.sh`) also use
 `sanitize-mermaid-fragment.sh --from-md` and fail closed on rejection; no
-current batch uses this sanitizer — it is reserved for future opt-in.
+current batch uses the Mermaid sanitizer — it is reserved for future opt-in.
 
 **Log-root resolution** is single-tier (see `lib-larch-log.sh`):
 
