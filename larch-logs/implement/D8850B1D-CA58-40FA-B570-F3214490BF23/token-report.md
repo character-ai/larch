@@ -27,7 +27,11 @@
 |  | larch:review | 7 | 1649735 | 4318 | 4480 |
 | Step 8 — version bump | **step total** | 4 | 951464 | 4104 | 3075 |
 |  | larch:review | 4 | 951464 | 4104 | 3075 |
-| **Grand total** |  | 38902 | 61266859 | 2449782 | 200277 |
+| Step 8a — changelog | **step total** | 0 | 0 | 0 | 0 |
+| Step 8b — rebase | **step total** | 34 | 7866199 | 81672 | 15140 |
+|  | larch:issue | 20 | 4478534 | 70680 | 7002 |
+|  | larch:review | 14 | 3387665 | 10992 | 8138 |
+| **Grand total** |  | 38936 | 69133058 | 2531454 | 215417 |
 
 ### Codex
 
@@ -44,4 +48,6 @@
 | Step 7 — commit review fixes | **step total** | 0 | 0 | 0 |
 | Step 7a — code flow diagram | **step total** | 0 | 0 | 0 |
 | Step 8 — version bump | **step total** | 0 | 0 | 0 |
+| Step 8a — changelog | **step total** | 0 | 0 | 0 |
+| Step 8b — rebase | **step total** | 0 | 0 | 0 |
 | **Grand total** |  | 0 | 0 | 193887 |
