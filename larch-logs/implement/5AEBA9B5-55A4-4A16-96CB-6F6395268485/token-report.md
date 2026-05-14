@@ -22,8 +22,9 @@
 |  | larch:implement | 4 | 808431 | 1653 | 1406 |
 | Step 7a — code flow diagram | **step total** | 3 | 608287 | 1502 | 975 |
 |  | larch:implement | 3 | 608287 | 1502 | 975 |
-| Step 8 — version bump | **step total** | 0 | 0 | 0 | 0 |
-| **Grand total** |  | 68 | 12751723 | 54843 | 45778 |
+| Step 8 — version bump | **step total** | 3 | 612042 | 2188 | 2093 |
+|  | larch:implement | 3 | 612042 | 2188 | 2093 |
+| **Grand total** |  | 71 | 13363765 | 57031 | 47871 |
 
 ### Codex
 
