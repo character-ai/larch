@@ -10,7 +10,7 @@
 | implement | Step 2 — implementation | 00:05:51 |
 | implement | Step 5 — code review | 00:09:20 |
 | implement | Step 8a — changelog | 00:00:00 |
-| implement | Step 8b — rebase | 00:00:48 |
+| implement | Step 8b — rebase | 00:01:03 |
 | **Total** | | 00:17:35 |
 
 ## Vendor Task Averages
