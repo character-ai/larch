@@ -50,13 +50,26 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+if [ -f "$SCRIPT_DIR/lib-quiet.sh" ]; then
+  source "$SCRIPT_DIR/lib-quiet.sh"
+elif [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -f "$CLAUDE_PLUGIN_ROOT/scripts/lib-quiet.sh" ]; then
+  source "$CLAUDE_PLUGIN_ROOT/scripts/lib-quiet.sh"
+else
+  larch_quiet_init() { :; }
+  emit() { printf '%s\n' "$*"; }
+  emit_kv() { printf '%s=%s\n' "$1" "${2-}"; }
+fi
+larch_quiet_init
+
 # count_commits is defined in the shared library scripts/lib-count-commits.sh
 # so scripts/verify-skill-called.sh (#160) can reuse the exact same base-ref
 # resolution and git-error handling. The stderr WARN prefix remains
 # `WARN: check-bump-version.sh:` for log parity with operators' existing grep
 # patterns; see lib-count-commits.sh's header for rationale.
 # shellcheck source=scripts/lib-count-commits.sh
-source "$(dirname "${BASH_SOURCE[0]}")/lib-count-commits.sh"
+source "$SCRIPT_DIR/lib-count-commits.sh"
 
 MODE=""
 BEFORE_COUNT=""
@@ -65,12 +78,12 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --mode)         MODE="$2"; shift 2 ;;
     --before-count) BEFORE_COUNT="$2"; shift 2 ;;
-    *) echo "ERROR=Unknown argument: $1" >&2; exit 1 ;;
+    *) emit_kv ERROR "Unknown argument: $1"; exit 1 ;;
   esac
 done
 
 if [[ -z "$MODE" ]]; then
-  echo "ERROR=Missing required argument: --mode" >&2
+  emit_kv ERROR "Missing required argument: --mode"
   exit 1
 fi
 
@@ -111,7 +124,7 @@ count_commits_with_status() {
 case "$MODE" in
   pre)
     if [[ -f "$PWD/.claude/skills/bump-version/SKILL.md" ]]; then
-      echo "HAS_BUMP=true"
+      emit_kv HAS_BUMP "true"
       # Arm the Stop hook guard: the hook blocks session stop while this
       # sentinel exists without a paired postbump-state.sh, catching halts
       # between /bump-version return and the orchestrator's postbump-state.sh
@@ -121,15 +134,15 @@ case "$MODE" in
           touch "${IMPLEMENT_TMPDIR}/.bump-version-armed" 2>/dev/null || true
       fi
     else
-      echo "HAS_BUMP=false"
+      emit_kv HAS_BUMP "false"
     fi
     read -r pre_count pre_status < <(count_commits_with_status)
-    echo "COMMITS_BEFORE=$pre_count"
-    echo "STATUS=$pre_status"
+    emit_kv COMMITS_BEFORE "$pre_count"
+    emit_kv STATUS "$pre_status"
     ;;
   post)
     if [[ -z "$BEFORE_COUNT" ]]; then
-      echo "ERROR=--before-count required for --mode post" >&2
+      emit_kv ERROR "--before-count required for --mode post"
       exit 1
     fi
     read -r post_count post_status < <(count_commits_with_status)
@@ -140,16 +153,16 @@ case "$MODE" in
     # false-pass (where a git_error on both pre and post would coerce
     # counts to 0 and numerically "match" EXPECTED=0).
     if [[ "$post_status" == "ok" && "$post_count" -eq "$EXPECTED" ]]; then
-      echo "VERIFIED=true"
+      emit_kv VERIFIED "true"
     else
-      echo "VERIFIED=false"
+      emit_kv VERIFIED "false"
     fi
-    echo "COMMITS_AFTER=$post_count"
-    echo "EXPECTED=$EXPECTED"
-    echo "STATUS=$post_status"
+    emit_kv COMMITS_AFTER "$post_count"
+    emit_kv EXPECTED "$EXPECTED"
+    emit_kv STATUS "$post_status"
     ;;
   *)
-    echo "ERROR=Invalid mode: $MODE (expected pre or post)" >&2
+    emit_kv ERROR "Invalid mode: $MODE (expected pre or post)"
     exit 1
     ;;
 esac

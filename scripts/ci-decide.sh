@@ -41,6 +41,11 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
+
 usage() { echo "Usage: ci-decide.sh --status STATUS --behind N --iteration N --rebase-count N --fix-attempts N" >&2; }
 
 CI_STATUS=""
@@ -73,8 +78,8 @@ fi
 
 # ci-status.sh emits "error" when it fails to parse its own arguments
 if [[ "$CI_STATUS" == "error" ]]; then
-    echo "ACTION=bail"
-    echo "BAIL_REASON=ci-status.sh returned error — check script arguments"
+    emit_kv ACTION "bail"
+    emit_kv BAIL_REASON "ci-status.sh returned error — check script arguments"
     exit 0
 fi
 
@@ -89,7 +94,7 @@ done
 # --- Decision matrix ---
 # PR already merged (force-merged by user) — stop waiting immediately
 if [[ "$CI_STATUS" == "merged" ]]; then
-    echo "ACTION=already_merged"
+    emit_kv ACTION "already_merged"
     exit 0
 fi
 
@@ -99,26 +104,26 @@ BEHIND=$( [[ "$BEHIND_COUNT" -gt 0 ]] && echo "true" || echo "false" )
 
 # Allow merge regardless of safety limits
 if [[ "$CI_STATUS" == "pass" ]] && [[ "$BEHIND" == "false" ]]; then
-    echo "ACTION=merge"
+    emit_kv ACTION "merge"
     exit 0
 fi
 
 # --- Safety limits (checked before non-merge actions) ---
 if [[ "$ITERATION" -ge 50 ]]; then
-    echo "ACTION=bail"
-    echo "BAIL_REASON=Timeout: 50 iterations (~25 minutes) without successful merge"
+    emit_kv ACTION "bail"
+    emit_kv BAIL_REASON "Timeout: 50 iterations (~25 minutes) without successful merge"
     exit 0
 fi
 
 if [[ "$REBASE_COUNT" -ge 20 ]]; then
-    echo "ACTION=bail"
-    echo "BAIL_REASON=Too many rebases (20) without converging — main branch too active"
+    emit_kv ACTION "bail"
+    emit_kv BAIL_REASON "Too many rebases (20) without converging — main branch too active"
     exit 0
 fi
 
 if [[ "$FIX_ATTEMPTS" -ge 10 ]]; then
-    echo "ACTION=bail"
-    echo "BAIL_REASON=Too many fix attempts (10) without CI passing"
+    emit_kv ACTION "bail"
+    emit_kv BAIL_REASON "Too many fix attempts (10) without CI passing"
     exit 0
 fi
 
@@ -126,20 +131,20 @@ fi
 case "$CI_STATUS" in
     pending)
         if [[ "$BEHIND" == "true" ]]; then
-            echo "ACTION=rebase"
+            emit_kv ACTION "rebase"
         else
-            echo "ACTION=wait"
+            emit_kv ACTION "wait"
         fi
         ;;
     pass)
         # pass + behind=true (pass + behind=false handled above)
-        echo "ACTION=rebase"
+        emit_kv ACTION "rebase"
         ;;
     fail)
         if [[ "$BEHIND" == "true" ]]; then
-            echo "ACTION=rebase_then_evaluate"
+            emit_kv ACTION "rebase_then_evaluate"
         else
-            echo "ACTION=evaluate_failure"
+            emit_kv ACTION "evaluate_failure"
         fi
         ;;
 esac

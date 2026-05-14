@@ -29,18 +29,22 @@
 set -euo pipefail
 
 SLEEP_SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$SLEEP_SCRIPT_DIR"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
 
 if ! BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null); then
     echo "git-force-push.sh: not on a named branch" >&2
     exit 2
 fi
-echo "BRANCH=$BRANCH"
+emit_kv BRANCH "$BRANCH"
 
 # Refresh the tracking ref before the lease check, then make the first attempt.
 git fetch origin "$BRANCH" 2>/dev/null || true
 if git push --force-with-lease; then
-    echo "PUSHED=true"
-    echo "STATUS=pushed"
+    emit_kv PUSHED "true"
+    emit_kv STATUS "pushed"
     exit 0
 fi
 
@@ -53,8 +57,8 @@ REMOTE=$(git rev-parse "origin/$BRANCH" 2>/dev/null || echo "")
 
 if [[ -n "$REMOTE" && "$LOCAL" == "$REMOTE" ]]; then
     # Remote accepted the push in the race; client didn't observe the success.
-    echo "PUSHED=true"
-    echo "STATUS=noop_same_ref"
+    emit_kv PUSHED "true"
+    emit_kv STATUS "noop_same_ref"
     exit 0
 fi
 
@@ -62,11 +66,11 @@ fi
 "$SLEEP_SCRIPT_DIR/sleep-seconds.sh" 5 >/dev/null 2>&1 || sleep 5
 
 if git push --force-with-lease; then
-    echo "PUSHED=true"
-    echo "STATUS=pushed"
+    emit_kv PUSHED "true"
+    emit_kv STATUS "pushed"
     exit 0
 fi
 
-echo "PUSHED=false"
-echo "STATUS=diverged_retry_failed"
+emit_kv PUSHED "false"
+emit_kv STATUS "diverged_retry_failed"
 exit 1

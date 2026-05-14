@@ -2,6 +2,8 @@
 # Regression harness for scripts/create-pr.sh --repo gh threading.
 set -euo pipefail
 
+export LARCH_QUIET_DISABLE=1
+
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 SCRIPT="$REPO_ROOT/scripts/create-pr.sh"
 TMPROOT="$(mktemp -d "${TMPDIR:-/tmp}/larch-create-pr.XXXXXX")"

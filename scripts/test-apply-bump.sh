@@ -6,6 +6,8 @@
 
 set -euo pipefail
 
+export LARCH_QUIET_DISABLE=1
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REAL_GIT="$(command -v git)"
 TMPDIR_BASE="$(mktemp -d -t apply-bump-test.XXXXXX)"

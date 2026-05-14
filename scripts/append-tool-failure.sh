@@ -4,10 +4,13 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
 
 fail_usage() {
-    echo "FAILED=true"
-    echo "ERROR=usage: $1"
+    emit_kv FAILED "true"
+    emit_kv ERROR "usage: $1"
     exit 1
 }
 
@@ -79,8 +82,8 @@ case "$VERDICT" in
 esac
 
 if [ ! -f "$OUTPUT_FILE" ]; then
-    echo "FAILED=true"
-    echo "ERROR=output file not found: $OUTPUT_FILE"
+    emit_kv FAILED "true"
+    emit_kv ERROR "output file not found: $OUTPUT_FILE"
     exit 2
 fi
 
@@ -95,26 +98,26 @@ trap cleanup EXIT
 
 if [ "$REDACT" = "true" ]; then
     [ -x "$SCRIPT_DIR/redact-secrets.sh" ] || {
-        echo "FAILED=true"
-        echo "ERROR=redaction helper missing: $SCRIPT_DIR/redact-secrets.sh"
+        emit_kv FAILED "true"
+        emit_kv ERROR "redaction helper missing: $SCRIPT_DIR/redact-secrets.sh"
         exit 2
     }
     tmp_content="$(mktemp "${TMPDIR:-/tmp}/append-tool-failure-redacted.XXXXXX")" || {
-        echo "FAILED=true"
-        echo "ERROR=cannot create redaction temp file"
+        emit_kv FAILED "true"
+        emit_kv ERROR "cannot create redaction temp file"
         exit 2
     }
     if ! "$SCRIPT_DIR/redact-secrets.sh" < "$OUTPUT_FILE" > "$tmp_content"; then
-        echo "FAILED=true"
-        echo "ERROR=redaction failed for: $OUTPUT_FILE"
+        emit_kv FAILED "true"
+        emit_kv ERROR "redaction failed for: $OUTPUT_FILE"
         exit 2
     fi
     content_file=$tmp_content
 fi
 
 entry_file="$(mktemp "${TMPDIR:-/tmp}/append-tool-failure-entry.XXXXXX")" || {
-    echo "FAILED=true"
-    echo "ERROR=cannot create entry temp file"
+    emit_kv FAILED "true"
+    emit_kv ERROR "cannot create entry temp file"
     exit 2
 }
 header_suffix=""
@@ -134,8 +137,8 @@ fi
     fi
     printf '  ```\n'
 } > "$entry_file" || {
-    echo "FAILED=true"
-    echo "ERROR=failed to compose entry"
+    emit_kv FAILED "true"
+    emit_kv ERROR "failed to compose entry"
     exit 2
 }
 

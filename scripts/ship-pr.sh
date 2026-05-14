@@ -9,6 +9,9 @@ LC_ALL=C
 export LC_ALL
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"
 # shellcheck source=scripts/lib-net.sh
 source "$SCRIPT_DIR/lib-net.sh" || { echo "ship-pr.sh: failed to source lib-net.sh" >&2; exit 1; }
@@ -304,7 +307,7 @@ append_tool_failure_local() {
 
 record_failure() {
     local site=$1 tool=$2 exit_code=$3 output_file=$4 category=${5:-Tool Failures}
-    printf 'FAILURE_DETAIL_LOG=%s\n' "$output_file"
+    emit_kv FAILURE_DETAIL_LOG "$output_file"
     append_tool_failure_local \
         --site "$site" \
         --tool "$tool" \
@@ -489,13 +492,13 @@ run_bump_phase() {
             _btype=$(read_state BUMP_TYPE)
             case "$_btype" in
                 PATCH|MINOR|MAJOR)
-                    printf '✅ 8: version bump — %s → %s (%s)\n' "$_cur" "$_new" "$_btype"
+                    emit "$(printf '✅ 8: version bump — %s → %s (%s)' "$_cur" "$_new" "$_btype")"
                     ;;
                 *)
                     if [ "$forked" = "true" ]; then
-                        printf '⏩ 8: version bump status=skip reason=forked\n'
+                        emit '⏩ 8: version bump status=skip reason=forked'
                     else
-                        printf '⏩ 8: version bump status=skip reason=%s\n' "${_btype:-NONE}"
+                        emit "$(printf '⏩ 8: version bump status=skip reason=%s' "${_btype:-NONE}")"
                     fi
                     ;;
             esac

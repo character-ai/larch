@@ -5,6 +5,8 @@
 
 set -euo pipefail
 
+export LARCH_QUIET_DISABLE=1
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP_BASE="$(mktemp -d -t ci-wait-test.XXXXXX)"
 unset LARCH_EXECUTION_ISSUES_LOG SESSION_ENV_PATH IMPLEMENT_TMPDIR REVIEW_TMPDIR || true
@@ -24,6 +26,7 @@ make_env() {
     local root="$TMP_BASE/$name"
     mkdir -p "$root/scripts"
     cp "$REPO_ROOT/scripts/ci-wait.sh" "$root/scripts/ci-wait.sh"
+    cp "$REPO_ROOT/scripts/lib-quiet.sh" "$root/scripts/lib-quiet.sh"
     chmod +x "$root/scripts/ci-wait.sh"
     printf '%s\n' "$root"
 }

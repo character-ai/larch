@@ -2,6 +2,8 @@
 # Regression harness for rebase-push.sh --keep-on-conflict local-only conflicts.
 set -euo pipefail
 
+export LARCH_QUIET_DISABLE=1
+
 REPO_ROOT=$(cd "$(dirname "$0")/.." && pwd -P)
 SCRIPT="$REPO_ROOT/scripts/rebase-push.sh"
 
@@ -107,8 +109,9 @@ invalid_rc=$?
 set -e
 [[ "$invalid_rc" == "3" ]] || fail "--keep-on-conflict without --no-push expected exit 3, got $invalid_rc"
 grep -Fq 'REBASE_ERROR=--keep-on-conflict is only valid with --no-push' "$TMPDIR_ROOT/invalid.err" \
-  || fail "--keep-on-conflict invalid usage did not emit the expected REBASE_ERROR"
-[[ -z "$invalid_output" ]] || fail "invalid usage should not emit stdout, got: $invalid_output"
+  && fail "--keep-on-conflict invalid usage should not emit REBASE_ERROR on stderr"
+[[ "$invalid_output" == "REBASE_ERROR=--keep-on-conflict is only valid with --no-push" ]] \
+  || fail "invalid usage should emit REBASE_ERROR on stdout, got: $invalid_output"
 
 # Defense-in-depth: --continue --no-push without --keep-on-conflict is rejected
 # at parse time so a future caller can never silently abort an in-progress
@@ -119,7 +122,8 @@ require_keep_rc=$?
 set -e
 [[ "$require_keep_rc" == "3" ]] || fail "--continue --no-push without --keep-on-conflict expected exit 3, got $require_keep_rc"
 grep -Fq 'REBASE_ERROR=--continue --no-push requires --keep-on-conflict to safely handle nested conflicts' "$TMPDIR_ROOT/require-keep.err" \
-  || fail "--continue --no-push without --keep-on-conflict did not emit the expected REBASE_ERROR"
-[[ -z "$require_keep_output" ]] || fail "--continue --no-push without --keep-on-conflict should not emit stdout, got: $require_keep_output"
+  && fail "--continue --no-push without --keep-on-conflict should not emit REBASE_ERROR on stderr"
+[[ "$require_keep_output" == "REBASE_ERROR=--continue --no-push requires --keep-on-conflict to safely handle nested conflicts" ]] \
+  || fail "--continue --no-push without --keep-on-conflict should emit REBASE_ERROR on stdout, got: $require_keep_output"
 
 echo "PASS: test-rebase-push-keep-on-conflict.sh"

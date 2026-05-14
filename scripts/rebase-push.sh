@@ -75,6 +75,11 @@
 set -uo pipefail
 # Note: not using set -e — we need to capture exit codes explicitly
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
+
 # --- Parse flags ---
 CONTINUE_MODE=false
 NO_PUSH=false
@@ -95,29 +100,29 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ ! "$BASE_REMOTE" =~ ^[A-Za-z0-9._/-]+$ ]]; then
-    echo "REBASE_ERROR=--base-remote contains unsupported characters" >&2
+    emit_kv REBASE_ERROR "--base-remote contains unsupported characters"
     exit 3
 fi
 
 if [[ ! "$BASE_REF" =~ ^[A-Za-z0-9._/-]+$ ]]; then
-    echo "REBASE_ERROR=--base-ref contains unsupported characters" >&2
+    emit_kv REBASE_ERROR "--base-ref contains unsupported characters"
     exit 3
 fi
 
 BASE_TARGET="${BASE_REMOTE}/${BASE_REF}"
 
 if [[ "$SKIP_IF_PUSHED" == "true" && "$NO_PUSH" != "true" ]]; then
-    echo "REBASE_ERROR=--skip-if-pushed is only valid with --no-push" >&2
+    emit_kv REBASE_ERROR "--skip-if-pushed is only valid with --no-push"
     exit 3
 fi
 
 if [[ "$SKIP_IF_PUSHED" == "true" && "$CONTINUE_MODE" == "true" ]]; then
-    echo "REBASE_ERROR=--skip-if-pushed cannot be used with --continue" >&2
+    emit_kv REBASE_ERROR "--skip-if-pushed cannot be used with --continue"
     exit 3
 fi
 
 if [[ "$KEEP_ON_CONFLICT" == "true" && "$NO_PUSH" != "true" ]]; then
-    echo "REBASE_ERROR=--keep-on-conflict is only valid with --no-push" >&2
+    emit_kv REBASE_ERROR "--keep-on-conflict is only valid with --no-push"
     exit 3
 fi
 
@@ -132,7 +137,7 @@ fi
 # passes --keep-on-conflict, so this is defense-in-depth, not a behavior
 # change for any documented call site.
 if [[ "$CONTINUE_MODE" == "true" && "$NO_PUSH" == "true" && "$KEEP_ON_CONFLICT" != "true" ]]; then
-    echo "REBASE_ERROR=--continue --no-push requires --keep-on-conflict to safely handle nested conflicts" >&2
+    emit_kv REBASE_ERROR "--continue --no-push requires --keep-on-conflict to safely handle nested conflicts"
     exit 3
 fi
 
@@ -148,7 +153,7 @@ if [[ "$SKIP_IF_PUSHED" == "true" ]]; then
         # If ls-remote fails (network/auth), we fall through to the normal
         # rebase path; the subsequent fetch will surface the real error.
         if REMOTE_REFS=$(git ls-remote --heads origin "refs/heads/$CURRENT_BRANCH" 2>/dev/null) && [[ -n "$REMOTE_REFS" ]]; then
-            echo "SKIPPED_ALREADY_PUSHED=true"
+            emit_kv SKIPPED_ALREADY_PUSHED "true"
             exit 0
         fi
     fi
@@ -158,7 +163,7 @@ if [[ "$CONTINUE_MODE" == "true" ]]; then
     # --- Guard: must have a rebase in progress ---
     GIT_DIR=$(git rev-parse --git-dir 2>/dev/null)
     if [[ -z "$GIT_DIR" || (! -d "$GIT_DIR/rebase-merge" && ! -d "$GIT_DIR/rebase-apply") ]]; then
-        echo "REBASE_ERROR=--continue called but no rebase is in progress" >&2
+        emit_kv REBASE_ERROR "--continue called but no rebase is in progress"
         exit 3
     fi
 
@@ -168,7 +173,7 @@ if [[ "$CONTINUE_MODE" == "true" ]]; then
 else
     # --- Guard: must be on a branch, not detached HEAD ---
     if ! git symbolic-ref --quiet HEAD > /dev/null 2>&1; then
-        echo "REBASE_ERROR=Not on a branch (detached HEAD)" >&2
+        emit_kv REBASE_ERROR "Not on a branch (detached HEAD)"
         exit 3
     fi
 
@@ -177,7 +182,7 @@ else
     # In default mode, fetch failure is tolerated to allow rebasing against the cached $BASE_TARGET.
     if [[ "$NO_PUSH" == "true" ]]; then
         if ! git fetch "$BASE_REMOTE" "$BASE_REF" --quiet 2>/dev/null; then
-            echo "REBASE_ERROR=git fetch $BASE_REMOTE $BASE_REF failed (network/auth issue)" >&2
+            emit_kv REBASE_ERROR "git fetch $BASE_REMOTE $BASE_REF failed (network/auth issue)"
             exit 3
         fi
     else
@@ -194,7 +199,7 @@ else
     # that have never been pushed, and HEAD containing $BASE_TARGET says
     # nothing about whether the remote tracking branch is up to date.
     if [[ "$NO_PUSH" == "true" ]] && git merge-base --is-ancestor "$BASE_TARGET" HEAD 2>/dev/null; then
-        echo "SKIPPED_ALREADY_FRESH=true"
+        emit_kv SKIPPED_ALREADY_FRESH "true"
         exit 0
     fi
 
@@ -212,14 +217,14 @@ if [[ $REBASE_EXIT -ne 0 ]]; then
             git rebase --abort 2>/dev/null || true
             exit 1
         fi
-        echo "CONFLICT_FILES=$CONFLICT_FILES"
+        emit_kv CONFLICT_FILES "$CONFLICT_FILES"
         # Leave the rebase in progress so caller can resolve and --continue
         exit 1
     else
         # Rebase failed for another reason (not conflicts)
         # Sanitize multi-line git output to single line for key=value protocol
         REBASE_OUTPUT="${REBASE_OUTPUT//$'\n'/ }"
-        echo "REBASE_ERROR=$REBASE_OUTPUT" >&2
+        emit_kv REBASE_ERROR "$REBASE_OUTPUT"
         if [[ "$CONTINUE_MODE" == "true" ]]; then
             # In --continue mode, leave rebase in progress to avoid destroying
             # already-resolved work. Caller can inspect and retry.
@@ -242,7 +247,7 @@ PUSH_EXIT=$?
 
 if [[ $PUSH_EXIT -ne 0 ]]; then
     PUSH_OUTPUT="${PUSH_OUTPUT//$'\n'/ }"
-    echo "PUSH_ERROR=$PUSH_OUTPUT" >&2
+    emit_kv PUSH_ERROR "$PUSH_OUTPUT"
     exit 2
 fi
 

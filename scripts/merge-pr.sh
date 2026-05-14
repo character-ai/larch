@@ -39,6 +39,11 @@
 
 set -uo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
+
 usage() { echo "Usage: merge-pr.sh --pr NUMBER --repo OWNER/REPO [--no-admin-fallback]" >&2; }
 
 # --- Parse arguments (before installing EXIT trap) ---
@@ -66,8 +71,8 @@ ERROR="merge-pr.sh exited unexpectedly"
 
 # shellcheck disable=SC2329,SC2317  # invoked via EXIT trap
 emit_output() {
-    echo "MERGE_RESULT=$MERGE_RESULT"
-    echo "ERROR=$ERROR"
+    emit_kv MERGE_RESULT "$MERGE_RESULT"
+    emit_kv ERROR "$ERROR"
 }
 trap 'emit_output' EXIT
 

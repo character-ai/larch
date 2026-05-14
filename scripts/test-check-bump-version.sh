@@ -46,7 +46,10 @@
 
 set -euo pipefail
 
+export LARCH_QUIET_DISABLE=1
+
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+export CLAUDE_PLUGIN_ROOT="$REPO_ROOT"
 SCRIPT="$REPO_ROOT/scripts/check-bump-version.sh"
 LIB="$REPO_ROOT/scripts/lib-count-commits.sh"
 
@@ -239,7 +242,7 @@ STUB
 # instead of the real lib. This keeps the assertion purely black-box over
 # the script's stdout without having to PATH-shim `source`.
 PATCHED_1E="$TMPROOT/check-bump-version-stubbed-1e.sh"
-sed -e "s|^source .*/lib-count-commits.sh.*$|source \"$STUB_LIB_1E\"|" "$SCRIPT" > "$PATCHED_1E"
+sed -e "s|^source .*lib-count-commits.sh.*$|source \"$STUB_LIB_1E\"|" "$SCRIPT" > "$PATCHED_1E"
 chmod +x "$PATCHED_1E"
 out=$(cd "$REPO_1E" && bash "$PATCHED_1E" --mode pre 2>&1) || true
 assert_stdout_contains "1e: pre unknown-token STATUS=git_error" "$out" "STATUS=git_error"
@@ -362,7 +365,7 @@ REPO_3C="$TMPROOT/repo-post-unknown-token"
 setup_git_repo "$REPO_3C" 1 0
 # Reuse the stub from 1e.
 PATCHED_3C="$TMPROOT/check-bump-version-stubbed-3c.sh"
-sed -e "s|^source .*/lib-count-commits.sh.*$|source \"$STUB_LIB_1E\"|" "$SCRIPT" > "$PATCHED_3C"
+sed -e "s|^source .*lib-count-commits.sh.*$|source \"$STUB_LIB_1E\"|" "$SCRIPT" > "$PATCHED_3C"
 chmod +x "$PATCHED_3C"
 out=$(cd "$REPO_3C" && bash "$PATCHED_3C" --mode post --before-count 7 2>&1) || true
 # Even when COMMITS_AFTER=7 and EXPECTED=8 (mismatch → VERIFIED=false naturally),
@@ -384,7 +387,7 @@ count_commits() {
 }
 STUB
 PATCHED_3D="$TMPROOT/check-bump-version-stubbed-3d.sh"
-sed -e "s|^source .*/lib-count-commits.sh.*$|source \"$STUB_LIB_3D\"|" "$SCRIPT" > "$PATCHED_3D"
+sed -e "s|^source .*lib-count-commits.sh.*$|source \"$STUB_LIB_3D\"|" "$SCRIPT" > "$PATCHED_3D"
 chmod +x "$PATCHED_3D"
 out=$(cd "$REPO_3C" && bash "$PATCHED_3D" --mode post --before-count 6 2>&1) || true
 # count=7, before=6 → naive numeric arithmetic would return VERIFIED=true,

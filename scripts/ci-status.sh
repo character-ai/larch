@@ -18,13 +18,18 @@
 set -uo pipefail
 # Note: not using set -e — we need to guarantee output on all paths
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
+
 # Defaults — these will always be emitted even on unexpected errors
 CI_STATUS="pending"
 BEHIND_COUNT="0"
 FAILED_RUN_ID=""
 
 # Ensure output is always emitted, even on unexpected errors
-trap 'echo "CI_STATUS=$CI_STATUS"; echo "BEHIND_COUNT=$BEHIND_COUNT"; echo "FAILED_RUN_ID=$FAILED_RUN_ID"' EXIT
+trap 'emit_kv CI_STATUS "$CI_STATUS"; emit_kv BEHIND_COUNT "$BEHIND_COUNT"; emit_kv FAILED_RUN_ID "$FAILED_RUN_ID"' EXIT
 
 usage() { echo "Usage: ci-status.sh --pr NUMBER --repo OWNER/REPO" >&2; }
 

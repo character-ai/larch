@@ -3,6 +3,8 @@
 # Run via: make test-refresh-run-logs
 set -euo pipefail
 
+export LARCH_QUIET_DISABLE=1
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 HELPER="$SCRIPT_DIR/refresh-run-logs.sh"
 PASS=0

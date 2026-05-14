@@ -12,7 +12,8 @@ SANDBOX=$(mktemp -d /tmp/larch-finalize-sanity-test.XXXXXX)
 trap 'rm -rf "$SANDBOX"' EXIT
 mkdir -p "$SANDBOX/scripts"
 cp "$REAL_SCRIPT" "$SANDBOX/scripts/implement-finalize.sh"
-chmod +x "$SANDBOX/scripts/implement-finalize.sh"
+cp "$REPO_ROOT/scripts/lib-quiet.sh" "$SANDBOX/scripts/lib-quiet.sh"
+chmod +x "$SANDBOX/scripts/implement-finalize.sh" "$SANDBOX/scripts/lib-quiet.sh"
 
 cat > "$SANDBOX/scripts/cleanup-tmpdir.sh" <<STUB
 #!/usr/bin/env bash

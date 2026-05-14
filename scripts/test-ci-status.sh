@@ -2,6 +2,8 @@
 # Regression harness for scripts/ci-status.sh base-ref and empty-check behavior.
 set -euo pipefail
 
+export LARCH_QUIET_DISABLE=1
+
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 SCRIPT="$REPO_ROOT/scripts/ci-status.sh"
 TMPROOT="$(mktemp -d "${TMPDIR:-/tmp}/larch-ci-status.XXXXXX")"

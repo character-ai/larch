@@ -62,6 +62,9 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
 
 usage() { echo "Usage: ci-wait.sh --pr NUMBER --repo OWNER/REPO [--rebase-count N] [--fix-attempts N] [--iteration N] [--timeout SECONDS] [--output-file PATH] [--base-remote NAME] [--base-ref BRANCH] [--empty-checks-grace SECONDS]" >&2; }
 
@@ -134,24 +137,24 @@ emit_output() {
         # write/mv failure aborts before the trap proceeds to .done write,
         # leaving consumers waiting on .done that never arrives (fail-closed).
         {
-            echo "ACTION=$ACTION"
-            echo "CI_STATUS=$CI_STATUS"
-            echo "BEHIND_COUNT=$BEHIND_COUNT"
-            echo "FAILED_RUN_ID=$FAILED_RUN_ID"
-            echo "BAIL_REASON=$BAIL_REASON"
-            echo "ITERATION=$ITERATION"
-            echo "ELAPSED=$SECONDS"
+            printf 'ACTION=%s\n' "$ACTION"
+            printf 'CI_STATUS=%s\n' "$CI_STATUS"
+            printf 'BEHIND_COUNT=%s\n' "$BEHIND_COUNT"
+            printf 'FAILED_RUN_ID=%s\n' "$FAILED_RUN_ID"
+            printf 'BAIL_REASON=%s\n' "$BAIL_REASON"
+            printf 'ITERATION=%s\n' "$ITERATION"
+            printf 'ELAPSED=%s\n' "$SECONDS"
         } > "${OUTPUT_FILE}.tmp" && mv -f "${OUTPUT_FILE}.tmp" "$OUTPUT_FILE"
     else
         # Default: stdout (byte-identical to the original behavior).
-        echo "ACTION=$ACTION"
-        echo "CI_STATUS=$CI_STATUS"
-        echo "BEHIND_COUNT=$BEHIND_COUNT"
-        echo "FAILED_RUN_ID=$FAILED_RUN_ID"
-        echo "BAIL_REASON=$BAIL_REASON"
-        echo "ITERATION=$ITERATION"
+        emit_kv ACTION "$ACTION"
+        emit_kv CI_STATUS "$CI_STATUS"
+        emit_kv BEHIND_COUNT "$BEHIND_COUNT"
+        emit_kv FAILED_RUN_ID "$FAILED_RUN_ID"
+        emit_kv BAIL_REASON "$BAIL_REASON"
+        emit_kv ITERATION "$ITERATION"
         # ELAPSED is per-invocation only (resets each time ci-wait.sh is called)
-        echo "ELAPSED=$SECONDS"
+        emit_kv ELAPSED "$SECONDS"
     fi
 }
 # Capture the script's exit status FIRST (before emit_output mutates $?),

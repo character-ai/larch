@@ -3,6 +3,8 @@
 
 set -euo pipefail
 
+export LARCH_QUIET_DISABLE=1
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REAL_SCRIPT="$SCRIPT_DIR/implement-finalize.sh"
 
@@ -150,6 +152,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 CHANGELOG
     cp "$SANDBOX/repo/CHANGELOG.md" "$SANDBOX/original-CHANGELOG.md"
     cp "$REAL_SCRIPT" "$SANDBOX/scripts/implement-finalize.sh"
+    cp "$SCRIPT_DIR/lib-quiet.sh" "$SANDBOX/scripts/lib-quiet.sh"
     chmod +x "$SANDBOX/scripts/implement-finalize.sh"
 
     cat > "$SANDBOX/scripts/local-cleanup.sh" <<'STUB'
