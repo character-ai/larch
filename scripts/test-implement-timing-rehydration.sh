@@ -38,10 +38,10 @@ stale_count=$(grep -Fxc 'export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE'
 # `LARCH_TIMING_LEDGER=$(... read-session-env-key.sh ...)` line.
 awk '
   BEGIN { in_fence=0; has_timing=0; has_rehydration=0; fence_start=0; offending=0 }
-  /^[[:space:]]*```bash$/ {
+  /^[[:space:]]*```bash[[:space:]]*$/ {
     in_fence=1; has_timing=0; has_rehydration=0; fence_start=NR; next
   }
-  /^[[:space:]]*```$/ && in_fence {
+  /^[[:space:]]*```[[:space:]]*$/ && in_fence {
     if (has_timing && !has_rehydration && !is_step0) {
       printf "skills/implement/SKILL.md fence starting at line %d: timing-ledger/timing-report call lacks LARCH_TIMING_LEDGER rehydration in the same fence\n", fence_start > "/dev/stderr"
       offending=1
@@ -62,7 +62,13 @@ awk '
       has_timing=1
     }
   }
-  END { exit offending }
+  END {
+    if (in_fence && has_timing && !has_rehydration && !is_step0) {
+      printf "skills/implement/SKILL.md fence starting at line %d: timing-ledger/timing-report call lacks LARCH_TIMING_LEDGER rehydration in the same fence\n", fence_start > "/dev/stderr"
+      offending=1
+    }
+    exit offending
+  }
 ' "$SKILL_MD" || fail "one or more timing-ledger / timing-report fences are missing LARCH_TIMING_LEDGER rehydration (see stderr above)"
 
 # Additional consistency check: every read-session-env-key.sh fetch of
