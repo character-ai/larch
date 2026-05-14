@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [27.5.30] - 2026-05-13
+
+### Changed
+
+- Recover missing larch-log manifests before postmerge run-log commits
+- Recover missing manifests during Step 18 teardown before final flush commits
+- Split Branch 4 handling so larch-log init failure stalls while summary-comment failure remains deferred
+- Document the recovery contract and cover the postmerge missing-manifest path
+
 ## [27.5.29] - 2026-05-13
 
 ### Changed
