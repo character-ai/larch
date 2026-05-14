@@ -103,6 +103,7 @@ Handle exit codes:
 - **Exit 5** (umbrella detected but no eligible child): parse `UMBRELLA_NUMBER` and `ERROR`. Print `**⚠ 0: find & lock — umbrella #$UMBRELLA_NUMBER has no eligible child: $ERROR (<elapsed>)**`. Skip to Step 8. The umbrella stays open; the next `/fix-issue` invocation re-evaluates its children.
 
 <!-- step:1 — Setup -->
+## Step 1 — Setup
 
 Print `> **🔶 /fix-issue 1: setup**`
 
@@ -209,6 +210,7 @@ Set `INTENT` (and `COMPLEXITY` when `INTENT=PR`) per those rules using the issue
 When `INTENT=PR`, record `INTENT` and `COMPLEXITY` for downstream branching. When `INTENT=NON_PR`, record `INTENT` only.
 
 <!-- step:5 — Execute -->
+## Step 5 — Execute
 
 Print `> **🔶 /fix-issue 5: execute**`
 

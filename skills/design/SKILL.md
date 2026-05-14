@@ -94,6 +94,7 @@ Consolidated NEVER rules collected from the procedural steps below. Each rule st
 7. **NEVER emit step breadcrumbs when `SESSION_ENV_PATH` is non-empty.** **Why:** nested `/design` runs under `/implement`, whose parent-visible transcript must obey the artifact-only return contract. **How to apply:** write human-readable content to `$DESIGN_TMPDIR` artifacts, export the Step 5 design manifest, and emit only file-backed artifact paths plus the manifest machine footer.
 
 <!-- step:0 — Session Setup -->
+## Step 0 — Session Setup
 
 Print: `> **🔶 /design 0: setup**`
 
@@ -292,6 +293,7 @@ Print: `> **🔶 /design 1d: discussion r1**`
 **If `auto_mode=false`**: Execute the Step 1d body in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/discussion-rounds.md`. If already loaded at Step 1c, no need to re-load; otherwise **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/discussion-rounds.md` completely.
 
 <!-- step:2a — Collaborative Approach Sketches -->
+## Step 2a — Collaborative Approach Sketches
 
 ```bash
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then

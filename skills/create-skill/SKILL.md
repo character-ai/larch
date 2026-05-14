@@ -164,6 +164,7 @@ Before scaffolding, ask yourself:
 This ordering matches the bare-name-then-fully-qualified rule in shared/subskill-invocation.md.
 
 <!-- step:3 — Delegate to /im -->
+## Step 3 — Delegate to /im
 
 Construct a concise feature description for `/im`:
 

@@ -146,6 +146,7 @@ The feature to implement is described by `$ARGUMENTS` after flag stripping.
 - `--issue <N>`: sets `ISSUE_ARG=<N>`. Default: empty. When non-empty, Step 0.5 Branch 2 adopts the given tracking issue instead of Branch 4 creating a new one. Compatible with all other flags except `--no-issues` (which skips Step 0.5 entirely, discarding `--issue`). If the target issue is CLOSED, Step 0.5 emits `IMPLEMENT_BAIL_REASON=adopted-issue-closed` on stdout and exits non-zero (cleanup still runs).
 
 <!-- step:0 — Session Setup -->
+## Step 0 — Session Setup
 
 Print: `> **🔶 /implement 0: setup**`
 
@@ -790,6 +791,7 @@ removes the output file instead of leaving an empty readable baseline that
 would misclassify pre-existing untracked files as phantoms on later probes.
 
 <!-- step:1 — Ensure Design Plan Exists -->
+## Step 1 — Ensure Design Plan Exists
 
 Print: `> **🔶 /implement 1: design plan**`
 
@@ -1341,6 +1343,7 @@ Untracked Probe with `--step 4.r-post-rebase`.
 > **Continue to Step 5 IMMEDIATELY.** The implementation commit is not the end of the run — code review, checks (2), commit, code flow diagram, bump, and PR still must run.
 
 <!-- step:5 — Code Review -->
+## Step 5 — Code Review
 
 If `quick_mode=false`, print: `> **🔶 /implement 5: code review**`
 
@@ -1769,6 +1772,7 @@ Best-effort: failures are non-fatal, but each non-zero `token-report.sh`, `timin
 On each retry (CI failure, merge conflict, rebase in Steps 10/12), `scripts/refresh-run-logs.sh` (Triggers A-C in `ship-pr.sh`) re-renders and commits the `token-report` and `timing-report` batches before each push, so the merged PR carries up-to-date token/timing data. The Rebase + Re-bump Sub-procedure step 1b also flushes pending larch-log writes before the rebase (the existing behavior).
 
 <!-- step:8+ — Ship PR State Machine -->
+## Step 8+ — Ship PR State Machine
 
 Steps 8, 8a, 8b, 9, 10, 11, 12, 13.5, and 14 are mechanically delegated to `${CLAUDE_PLUGIN_ROOT}/scripts/ship-pr.sh`. Step 6 relevant checks remain documented above for prompt-side review-change handling, but the delegated state machine reruns the Step 6 helper as its first phase so resumed post-review runs have one deterministic entrypoint. Step 16, Step 17, and Step 18 remain prompt-side because they replay rejected findings, final notes, and the terminal token/timing cap.
 
