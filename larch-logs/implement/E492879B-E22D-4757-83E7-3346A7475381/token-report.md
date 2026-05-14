@@ -23,8 +23,9 @@
 |  | inferred:Step 7 — commit review fixes | 5 | 1138564 | 1675 | 2122 |
 | Step 7a — code flow diagram | **step total** | 1 | 228152 | 263 | 604 |
 |  | inferred:Step 7a — code flow diagram | 1 | 228152 | 263 | 604 |
-| Step 8 — version bump | **step total** | 0 | 0 | 0 | 0 |
-| **Grand total** |  | 108 | 20132639 | 247250 | 46994 |
+| Step 8 — version bump | **step total** | 9 | 2076339 | 6541 | 5140 |
+|  | inferred:Step 8 — version bump | 9 | 2076339 | 6541 | 5140 |
+| **Grand total** |  | 117 | 22208978 | 253791 | 52134 |
 
 ### Codex
 
