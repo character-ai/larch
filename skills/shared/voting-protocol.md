@@ -14,7 +14,7 @@ When `WHOLESALE_REJECTED=true`, the round summary must include the flag and `/re
 
 ## Ballot Format
 
-Before sending to voters, assign each deduplicated finding a stable sequential ID. The ballot file uses `### FINDING_N:` markdown heading blocks — one block per finding — matching the grammar that `skills/shared/scripts/ballot-parse.sh` and `skills/design/scripts/tally-plan-review.sh` parse:
+Before sending to voters, assign each deduplicated finding a stable sequential ID. The ballot file uses `### FINDING_N:` markdown heading blocks — one block per finding. For `/design` plan review, `tally-plan-review.sh` also splits `### OOS_N:` blocks; for `/review` code review, `ballot-parse.sh` exports per-finding fields from `### FINDING_N:` blocks only:
 
 ```markdown
 ### FINDING_1: <short title>
@@ -32,7 +32,12 @@ Prepend the voter instructions as free prose before the first `### FINDING_N:` b
 
 ## Voter Output Format
 
-Each voter must output one line per ballot item, **using the same ID that appears on the ballot** — `FINDING_N` for in-scope items and `OOS_N` for out-of-scope items. YES votes require no reason; NO and EXONERATE votes require a one-line reason:
+Each voter must output one line per ballot item, **using the same ID that appears on the ballot heading for this run**. The ID form depends on the skill:
+
+- **`/design` plan review**: in-scope headings are `### FINDING_N:`, OOS headings are `### OOS_N:` — vote lines use `FINDING_N:` and `OOS_N:` respectively.
+- **`/review` code review**: all headings (including OOS-tagged ones) are `### FINDING_N:` — vote lines always use `FINDING_N:`, even for `[OUT_OF_SCOPE]` rows. `tally-vote.sh` only matches `FINDING_<n>` patterns; `OOS_N:` lines are ignored.
+
+YES votes require no reason; NO and EXONERATE votes require a one-line reason:
 
 ```
 FINDING_1: YES
@@ -87,7 +92,7 @@ Be scrupulous — only vote YES for findings that genuinely improve the {REVIEW_
 
 {BALLOT}
 
-For each ballot item, output exactly one line using the same ID from the ballot (FINDING_N or OOS_N):
+For each ballot item, output exactly one line using the same ID from the ballot heading:
 FINDING_N: YES
 or
 FINDING_N: NO — <one-line reason>
@@ -99,6 +104,8 @@ or
 OOS_N: NO — <one-line reason>
 or
 OOS_N: EXONERATE — <one-line reason>
+
+Note: for /review code review, all rows (including [OUT_OF_SCOPE] ones) use FINDING_N: vote lines since the ballot only contains ### FINDING_N: headings.
 
 You must vote on every item. Do NOT skip any. Do NOT modify files.
 ```
@@ -212,15 +219,17 @@ Reviewers may return a second list of **out-of-scope observations** — pre-exis
 
 ### OOS on the Ballot
 
-Out-of-scope items are deduplicated separately from in-scope findings and assigned IDs with an `OOS_` prefix (e.g., `OOS_1`, `OOS_2`). They are included on the same ballot as in-scope findings using `### OOS_N:` heading blocks (the format `tally-plan-review.sh` parses for `/design` plan review):
+The ballot format for OOS items depends on the skill:
 
-```markdown
-### OOS_1: <short title of pre-existing issue>
-- **Reviewer**: <reviewer attribution>
-- **Concern**: <description of pre-existing issue>
-```
+- **`/design` plan review** (`tally-plan-review.sh`): OOS items get `OOS_` prefixed IDs (e.g., `OOS_1`, `OOS_2`) and appear as `### OOS_N:` heading blocks on the ballot:
 
-In `/review` code review, `collect-findings.sh` writes OOS items using `FINDING_N` IDs with `[OUT_OF_SCOPE]` in the title (e.g., `### FINDING_N: [OUT_OF_SCOPE] <title>`); `ballot-parse.sh` detects OOS via the `[OUT_OF_SCOPE]` title prefix.
+  ```markdown
+  ### OOS_1: <short title of pre-existing issue>
+  - **Reviewer**: <reviewer attribution>
+  - **Concern**: <description of pre-existing issue>
+  ```
+
+- **`/review` code review** (`ballot-parse.sh` / `tally-vote.sh`): `collect-findings.sh` writes OOS items using sequential `FINDING_N` IDs with `[OUT_OF_SCOPE]` (or `[OOS]`) in the title (e.g., `### FINDING_N: [OUT_OF_SCOPE] <title>`). Voters vote with `FINDING_N:` lines, not `OOS_N:` lines — `tally-vote.sh` only matches `FINDING_<n>` patterns.
 
 ### OOS Vote Semantics
 
