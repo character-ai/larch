@@ -1,1 +1,3 @@
 {"schema":"execution-issues","phase":"implement","source_sha256":"","body":"# Execution Issues\n\n_No issues recorded._\n"}
+{"phase":"implement","step":"18","category":"Tool Failures","source":"execution-issues.md safety-net","source_sha256":"875504f2db144e9b04935ad3177777d0bf958eb2a73a95459a7830842787676d","body":"# Execution Issues\n\n_No issues recorded._\n\n"}
+{"phase":"implement","step":"18","category":"Warnings","source":"execution-issues.md safety-net","source_sha256":"875504f2db144e9b04935ad3177777d0bf958eb2a73a95459a7830842787676d","body":"\n- **Step 18 — session-transcript status=captured:** session transcript was written and committed.\n"}
