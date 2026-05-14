@@ -27,13 +27,11 @@ For every `**Important**` finding, state a **concrete failing scenario**: inputs
 
 ## Plan and requirements verification
 
-When `<feature_description>` or `<implementation_plan>` sections appear in the prompt, verify the diff against them:
+When `<feature_description>` or `<implementation_plan>` sections appear in the prompt, verify the diff against them. Classify each finding into exactly one subsection below; identify which subsection it belongs to in the finding text. Tag each finding `correctness` and note its source (`plan`, `requirements`, or `both`).
 
-- **Spec violations**: Code that contradicts or omits a behavior required by the plan or feature description.
-- **Contradictions between requirements and plan**: When the feature description and implementation plan disagree, name the conflict and state which one the code actually implements.
-- **Incomplete implementation**: Behaviors required by the plan or feature description that are absent from the diff.
-
-For each such finding, tag it `correctness` and note its source (`plan`, `requirements`, or `both`).
+- **Plan-correctness**: Code implements a behavior specified by the plan but does so in a way that contradicts the plan's stated intent — wrong algorithm, wrong scope, inverted semantics, or a shortcut that compiles but does not satisfy the goal.
+- **Completeness w.r.t. plan**: Behaviors specified by the plan or feature description that are absent from the diff entirely. Walk the plan requirement-by-requirement.
+- **Contradictions between requirements and plan**: When the feature description and implementation plan disagree with each other, name the conflict and state which one the code actually implements. This is distinct from the two items above.
 
 ## Secondary scan (flag only critical issues)
 
