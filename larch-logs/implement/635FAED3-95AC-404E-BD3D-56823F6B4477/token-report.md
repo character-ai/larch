@@ -24,4 +24,6 @@
 |  | larch:implement | 5 | 846930 | 3301 | 3559 |
 | Step 8 — version bump | **step total** | 8 | 1373948 | 4995 | 3010 |
 |  | larch:implement | 8 | 1373948 | 4995 | 3010 |
-| **Grand total** |  | 98 | 15087026 | 61792 | 55164 |
+| Step 8b — rebase | **step total** | 6 | 1044717 | 4256 | 4019 |
+|  | larch:implement | 6 | 1044717 | 4256 | 4019 |
+| **Grand total** |  | 104 | 16131743 | 66048 | 59183 |
