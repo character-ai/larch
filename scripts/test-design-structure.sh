@@ -406,5 +406,31 @@ grep -F 'oos.md' "$PLAN_REVIEW_QUICK_MD" \
 grep -Fq 'security counter-invariant' "$PLAN_REVIEW_QUICK_MD" \
   || fail "(13qc) plan-review-quick.md missing security counter-invariant clause"
 
+# Check 14: design ACTION dispatcher pins. The focus-area enum must remain in
+# SKILL.md because CI and prompt rendering scan the inline reviewer launch
+# blocks, while scriptable mechanics route through ACTION records and the heavy
+# worker documents the same helper invocations.
+focus_anchor_count=$(grep -Fc 'Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security' "$SKILL_MD")
+[[ "$focus_anchor_count" == "10" ]] \
+  || fail "(14a) SKILL.md must keep 10 focus-area enum anchor comments; found $focus_anchor_count"
+grep -Fq 'ACTION=CLASSIFY' "$SKILL_MD" \
+  || fail "(14b) SKILL.md missing ACTION=CLASSIFY emission"
+grep -Fq 'ACTION=EMIT_PLAN' "$SKILL_MD" \
+  || fail "(14b) SKILL.md missing ACTION=EMIT_PLAN emission"
+grep -Fq 'ACTION=TALLY' "$SKILL_MD" \
+  || fail "(14b) SKILL.md missing ACTION=TALLY emission"
+grep -Fq 'ACTION=FINALIZE' "$SKILL_MD" \
+  || fail "(14b) SKILL.md missing ACTION=FINALIZE emission"
+grep -Fq 'design-driver.sh' "$SKILL_MD" \
+  || fail "(14b) SKILL.md missing design-driver.sh dispatcher invocation"
+# shellcheck disable=SC2016 # fixed-string grep literal intentionally contains shell variable syntax.
+grep -Fq 'emit-plan.sh --design-tmpdir "$DESIGN_TMPDIR"' "$REPO_ROOT/skills/design/references/heavy-worker.md" \
+  || fail "(14c) heavy-worker.md missing emit-plan.sh invocation pin"
+grep -Fq 'tally-plan-review.sh' "$REPO_ROOT/skills/design/references/heavy-worker.md" \
+  || fail "(14c) heavy-worker.md missing tally-plan-review.sh invocation pin"
+# shellcheck disable=SC2016 # fixed-string grep literal intentionally contains shell variable syntax.
+grep -Fq 'finalize-plan.sh --design-tmpdir "$DESIGN_TMPDIR"' "$REPO_ROOT/skills/design/references/heavy-worker.md" \
+  || fail "(14c) heavy-worker.md missing finalize-plan.sh invocation pin"
+
 echo "PASS: test-design-structure.sh — structural invariants hold (including security OOS exclusions)"
 exit 0

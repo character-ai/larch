@@ -36,6 +36,10 @@ Before executing, read these inputs and references in this order:
 3. `${CLAUDE_PLUGIN_ROOT}/skills/design/references/dialectic-execution.md` only when contested decisions are present and at least one dialectic bucket is queued
 4. `${CLAUDE_PLUGIN_ROOT}/skills/design/references/plan-review.md` when `review_budget=full`; read `plan-review-quick.md` when `review_budget=quick`
 5. `${CLAUDE_PLUGIN_ROOT}/skills/design/SKILL.md` Step 3b before generating an architecture diagram
+6. `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-driver.md`
+7. `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-plan.md`
+8. `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/tally-plan-review.md`
+9. `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/finalize-plan.md`
 
 (Use `${CLAUDE_PLUGIN_ROOT}/…` rather than bare repo-relative paths — the heavy subagent runs in the consumer repo's CWD, not the plugin install root, so unqualified paths could resolve to a different tree or to missing files.)
 
@@ -47,8 +51,10 @@ Run the same mechanics documented in `/design`:
 
 1. Step 2a collaborative sketches according to `sketch_budget`.
 2. Step 2a.5 dialectic resolution when contested decisions exist and `sketch_budget` is not `0`.
-3. Step 2b implementation plan synthesis.
-4. Step 3 plan review, voting, plan revision, OOS extraction, and rejected-finding tracking.
+3. Step 2b implementation plan synthesis, then call `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-plan.sh --design-tmpdir "$DESIGN_TMPDIR"`. Treat `EMIT_PLAN_STATUS=missing-diff-lines` as a hard failure and repair `plan.txt` before Step 3.
+4. Step 3 plan review, voting, plan revision, OOS extraction, and rejected-finding tracking. Tally voting through `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/tally-plan-review.sh` with explicit `--ballot-file`, `--voter-files`, and `--design-tmpdir` arguments using the voter file paths returned by `dispatch-plan-voters.sh`.
+5. After accepted findings revise `plan.txt`, call `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-plan.sh --design-tmpdir "$DESIGN_TMPDIR"` again so `diff-lines.txt` matches the finalized plan.
+6. Before returning success, call `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/finalize-plan.sh --design-tmpdir "$DESIGN_TMPDIR"` to create may-be-empty artifacts and validate `plan.txt`, `diff-lines.txt`, and `voting-tally.md`.
 
 When `sketch_budget=0`, do not launch sketches and do not call `collect-agent-results.sh`. Write the sentinel artifacts exactly as:
 
