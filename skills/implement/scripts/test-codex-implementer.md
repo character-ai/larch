@@ -12,7 +12,7 @@
 - Env-derived `LARCH_TIMING_TASK_KIND=--prompt` falls back to `codex-implement` in the timing TSV instead of leaking the flag-shaped value.
 - Invalid `LARCH_CODEX_MODEL` values fail during model-args resolution with wrapper exit 0, a non-zero `LAUNCHER_EXIT`, forced-false manifest flags, and a freshly truncated diagnostic sidecar. The dispatcher path retries that clean preflight failure once and then classifies it as `codex-runtime-failure`.
 - Codex's `--output-last-message` transcript path receives the stubbed output payload.
-- Codex argv shape includes `exec`, `--full-auto`, `-C "$PWD"`, canonical `--add-dir "$(cd "$(dirname "$MANIFEST")" && pwd -P)"` immediately after `-C "$REPO_ROOT"`, `--output-last-message`, and model/effort args from `scripts/agent-model-args.sh --tool codex --with-effort`.
+- Codex argv shape includes `exec`, `--full-auto`, `-C "$PWD"`, `--add-dir "$(cd "$(dirname "$MANIFEST")" && pwd -P)"` (session tmpdir, immediately after `-C "$REPO_ROOT"`), `--add-dir "$REPO_ROOT"` (repo root, immediately after the session tmpdir grant), `--output-last-message`, and model/effort args from `scripts/agent-model-args.sh --tool codex --with-effort`.
 - The composed prompt is passed after a `--` end-of-options separator and is the last positional argv argument.
 - Passing `--answers-file` adds the `## Resume invocation` block to the composed prompt.
 - The launcher exits 2 with a "must share the same parent directory" error when `--manifest-path` and `--qa-pending-path` resolve to different parents.
