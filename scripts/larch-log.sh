@@ -66,7 +66,7 @@ write_manifest_file() {
     local parent_skill="$2"
     local issue="$3"
     local status="$4"
-    local ts version parent_json issue_json effort_json operator_cwd operator_repo_root operator_cwd_json operator_repo_root_json tmp
+    local ts version parent_json issue_json model_json effort_json operator_cwd operator_repo_root operator_cwd_json operator_repo_root_json tmp
     ts="$(now_utc)"
     version="$(plugin_version)"
     [ -n "$version" ] || version="unknown"
@@ -88,6 +88,7 @@ write_manifest_file() {
     else
         issue_json="null"
     fi
+    model_json="$(json_escape "${CLAUDE_CODE_MODEL:-${CLAUDE_MODEL:-unknown}}")"
     effort_json="$(json_escape "${CLAUDE_CODE_EFFORT_LEVEL:-${CLAUDE_EFFORT:-unknown}}")"
     mkdir -p "$(dirname "$path")" || larch_log_fail 2 "cannot create manifest directory"
     tmp="$(mktemp "$(dirname "$path")/.tmp.manifest.XXXXXX")" || larch_log_fail 2 "cannot create manifest temp"
@@ -103,7 +104,7 @@ write_manifest_file() {
   "pr_number": null,
   "status": "$status",
   "larch_version": "$version",
-  "model_roster": {},
+  "model_roster": {"main": $model_json},
   "effort": $effort_json,
   "started_at": "$ts",
   "updated_at": "$ts",

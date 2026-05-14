@@ -23,6 +23,7 @@ if command -v jq >/dev/null 2>&1; then
       .issue_number == 7 and
       .status == "in-progress" and
       (.model_roster | type == "object") and
+      (.model_roster.main | type == "string" and length > 0) and
       (.flags | type == "object")
     ' "$manifest" >/dev/null
 else

@@ -35,20 +35,27 @@ run_helper() {
 
     # Create a dummy token-report file so larch-log.sh write has something to stage.
     mkdir -p "$impl_tmpdir/larch-logs/implement/$run_id"
-    printf 'token data\n' > "$impl_tmpdir/larch-logs/implement/$run_id/token-report.md"
-    git -C "$tmp" add -- "impl/larch-logs/implement/$run_id/token-report.md" 2>/dev/null || true
+    printf '{"vendors":[]}\n' > "$impl_tmpdir/larch-logs/implement/$run_id/token-report.json"
+    git -C "$tmp" add -- "impl/larch-logs/implement/$run_id/token-report.json" 2>/dev/null || true
 
     # Stub token-report.sh, timing-report.sh, larch-log.sh, read-session-env-key.sh in PATH.
     stub_dir="$tmp/stubs"
     mkdir -p "$stub_dir"
-    # shellcheck disable=SC2016  # ${4:-/dev/null} is the script content, not expanded here
     cat > "$stub_dir/token-report.sh"  << 'STUB'
 #!/usr/bin/env bash
-printf "stub-token\n" > "${4:-/dev/null}"
+out=/dev/null
+while [ $# -gt 0 ]; do
+  case "$1" in --output) out="$2"; shift 2 ;; *) shift ;; esac
+done
+printf '{"vendors":[]}\n' > "$out"
 STUB
     cat > "$stub_dir/timing-report.sh" << 'STUB'
 #!/usr/bin/env bash
-printf "stub-timing\n" > "${4:-/dev/null}"
+out=/dev/null
+while [ $# -gt 0 ]; do
+  case "$1" in --output) out="$2"; shift 2 ;; *) shift ;; esac
+done
+printf '{"workflow_path":"unknown","per_step":[],"total_seconds":0,"total_hms":"00:00:00","vendor_task_averages":[]}\n' > "$out"
 STUB
     printf '#!/usr/bin/env bash\nexit 0\n' > "$stub_dir/larch-log.sh"
     printf '#!/usr/bin/env bash\nprintf ""\n' > "$stub_dir/read-session-env-key.sh"

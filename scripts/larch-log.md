@@ -6,9 +6,10 @@
 Primary verbs:
 
 - `init` creates `manifest.json`. Schema version 2 auto-captures
-  `operator_cwd` from the caller's `$PWD` and `operator_repo_root` from
+  `operator_cwd` from the caller's `$PWD`, `operator_repo_root` from
   `git -C "$PWD" rev-parse --show-toplevel`; outside a git repo,
-  `operator_repo_root` is `null`. These provenance fields are written to
+  `operator_repo_root` is `null`, and `model_roster.main` from
+  `${CLAUDE_CODE_MODEL:-${CLAUDE_MODEL:-unknown}}`. These provenance fields are written to
   the manifest directly and are not passed through the batch payload
   redaction pipeline.
 - `write` atomically replaces replace-mode batches.
@@ -33,6 +34,7 @@ Payload content is never written to stdout. Payloads pass through
 `plan-goals` sanitizer must contain a non-empty `## Implementation Plan` section
 that is not a pointer-only placeholder. Batches that declare the `json-lines`
 sanitizer must be empty or contain one valid JSON value per non-empty line.
+Batches that declare the `json-object` sanitizer must parse as one JSON object.
 Batches that declare the `mermaid` sanitizer (in `larch-log-batches.sh`) also use
 `sanitize-mermaid-fragment.sh --from-md` and fail closed on rejection; no
 current batch uses the Mermaid sanitizer — it is reserved for future opt-in.

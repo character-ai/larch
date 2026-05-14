@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# compose-review-findings.sh — compose review-findings-full NDJSON records.
+# compose-review-findings.sh — compose review-findings-full markdown sections.
 
 set -euo pipefail
 
@@ -44,30 +44,11 @@ done
 [ -n "$ISSUE" ] || { usage; fail "--issue is required"; }
 [ -n "$OUTPUT" ] || { usage; fail "--output is required"; }
 case "$ISSUE" in *[!0-9]*|"") fail "invalid value for --issue: '$ISSUE' (expected non-negative integer)" ;; esac
-command -v jq >/dev/null 2>&1 || fail "jq is required"
 [ -x "$REDACT_TMP" ] || fail "redaction helper not executable: $REDACT_TMP"
 [ -x "$REDACT_SECRETS" ] || fail "redaction helper not executable: $REDACT_SECRETS"
 
 redact_field() {
     printf '%s' "$1" | "$REDACT_TMP" | "$REDACT_SECRETS"
-}
-
-derive_category() {
-    local name_lower
-    name_lower="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
-    case "$name_lower" in
-        *architecture*|*standards*) echo "architecture" ;;
-        *correctness*)              echo "correctness" ;;
-        *structure*)                echo "structure" ;;
-        *edge*|*failure*mode*)      echo "edge-cases" ;;
-        *innovation*|*exploration*) echo "innovation" ;;
-        *pragmati*|*safety*)        echo "pragmatism" ;;
-        *security*)                 echo "security" ;;
-        *testing*|*tests*)          echo "testing" ;;
-        *docs*|*documentation*)     echo "docs" ;;
-        *generic*|*claude*|*cursor*|*codex*|*gemini*) echo "generic" ;;
-        *)                          echo "other" ;;
-    esac
 }
 
 TMP_OUT="$(mktemp "${TMPDIR:-/tmp}/review-findings-full.XXXXXX")" || fail "cannot create temp output"
@@ -76,20 +57,11 @@ FINDINGS_TOTAL=0
 
 emit_record() {
     local id="$1" phase="$2" outcome="$3" reviewer="$4" body="$5"
-    local reviewer_redacted body_redacted category
+    local reviewer_redacted body_redacted
     reviewer_redacted="$(redact_field "$reviewer")" || fail "redaction failed for reviewer in $id"
     body_redacted="$(redact_field "$body")" || fail "redaction failed for prose_body in $id"
-    category="$(derive_category "$reviewer_redacted $body_redacted")"
-    jq -nc \
-        --arg id "$id" \
-        --arg issue_number "$ISSUE" \
-        --arg phase "$phase" \
-        --arg outcome "$outcome" \
-        --arg reviewer "$reviewer_redacted" \
-        --arg category "$category" \
-        --arg prose_body "$body_redacted" \
-        '{id:$id, issue_number:($issue_number|tonumber), phase:$phase, outcome:$outcome, reviewer:$reviewer, category:$category, prose_body:$prose_body}' \
-        >> "$TMP_OUT" || fail "failed to encode record for $id"
+    printf '### %s: %s [%s/%s]\n\n%s\n\n' "$id" "$reviewer_redacted" "$phase" "$outcome" "$body_redacted" \
+        >> "$TMP_OUT" || fail "failed to write section for $id"
     FINDINGS_TOTAL=$((FINDINGS_TOTAL + 1))
 }
 
@@ -166,4 +138,4 @@ trap - EXIT
 echo "COMPOSED=true"
 echo "OUTPUT=$OUTPUT"
 echo "FINDINGS_TOTAL=$FINDINGS_TOTAL"
-echo "MODE=ndjson"
+echo "MODE=markdown"

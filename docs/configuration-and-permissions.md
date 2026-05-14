@@ -274,7 +274,7 @@ Step duration threshold (in seconds) used by `scripts/timing-report.sh --full` t
 
 ### `LARCH_VERBOSE_TOKENS`
 
-When set to `true`, `/implement` Step 17 prints the full per-step token/timing table to chat (the same output as before v25). When unset or set to any other value (the default), Step 17 prints a single grand-total summary line (`Total: claude=N tokens ...; vendor=N` / `Total: elapsed=HH:MM:SS ...`) instead. The full breakdown is always appended to the committed `token-report` and `timing-report` larch-log batches in Step 18 regardless of this setting.
+When set to `true`, `/implement` Step 17 prints the full per-step token/timing table to chat (the same output as before v25). When unset or set to any other value (the default), Step 17 prints a single grand-total summary line (`Total: claude=N tokens ...; vendor=N` / `Total: elapsed=HH:MM:SS ...`) instead. The full breakdown is always written to the committed `token-report` and `timing-report` larch-log batches regardless of this setting.
 
 ### `LARCH_BUMP_FILES`
 

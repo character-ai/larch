@@ -10,6 +10,7 @@ Subcommands:
   `Total: elapsed=<HH:MM:SS> vendor-tasks=<N> (codex=<n>, cursor=<m>, gemini=<k>)`.
   Used as the default brief output in Step 17 when `LARCH_VERBOSE_TOKENS` is unset.
 - `--full --markdown [--output FILE]` renders the full markdown report.
+- `--full --format json [--output FILE]` renders a JSON object with `workflow_path`, `per_step`, `total_seconds`, `total_hms`, and `vendor_task_averages`.
 - `--append-timing-section FILE` renders the full report and idempotently replaces the block bracketed by `<!-- timing-report-begin -->` / `<!-- timing-report-end -->`.
 
 Full reports include the latest workflow path (`HARD`, `SIMPLE`, or `unknown`), per-step durations, and vendor task averages by `(vendor, task_kind)`. Failed rows (`status != complete` or `exit_code != 0`) are excluded from averages and summarized below the table.

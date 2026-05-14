@@ -59,6 +59,20 @@ assert_eq \
     'Some text <TMPDIR>/foo' \
     "larch/sessions path with space boundary redacted"
 
+jsonl_multi='{"a":"/Users/example/.cache/larch/sessions/claude-implement-ONE/a.log","b":"/Users/example/.cache/larch/sessions/claude-implement-TWO/b.log"}'
+jsonl_multi_redacted="$(run_redactor "$jsonl_multi")"
+assert_eq \
+    "$jsonl_multi_redacted" \
+    '{"a":"<TMPDIR>/a.log","b":"<TMPDIR>/b.log"}' \
+    "multiple JSON string larch/sessions paths redacted independently"
+if printf '%s' "$jsonl_multi_redacted" | python3 -c 'import json,sys; json.loads(sys.stdin.read())'; then
+    PASS=$((PASS + 1))
+    echo "PASS: multi-redaction JSON remains parseable"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: multi-redaction JSON remains parseable"
+fi
+
 # No-match: input without /larch/sessions/ passes through unchanged
 assert_eq \
     "$(run_redactor 'plain text no larch path here')" \

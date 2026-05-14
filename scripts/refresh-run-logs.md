@@ -1,6 +1,6 @@
 # refresh-run-logs.sh
 
-Re-renders the `token-report` and `timing-report` larch-log batches from the
+Re-renders the JSON `token-report` and `timing-report` larch-log batches from the
 current session state and commits the updated files to the branch, so every push
 (rebase, CI-fix, version-bump retry) carries up-to-date log artifacts.
 

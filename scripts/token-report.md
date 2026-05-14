@@ -14,6 +14,7 @@
   `Total: claude=<total> tokens (input=A cache_read=B cache_create=C output=D); vendor=<sum>`.
   Used as the default brief output in Step 17 when `LARCH_VERBOSE_TOKENS` is unset.
 - `--full --markdown [--output FILE]` renders a markdown table grouped by step with indented skill rows and vendor rows.
+- `--full --format json [--output FILE]` renders a JSON object with `vendors`, `claude.per_step`, `claude.totals`, and one sibling object per non-Claude vendor.
 - `--append-token-report FILE` renders the full table and idempotently replaces or appends a sentinel-bracketed block in `FILE`. Legacy callers may still use this mode; production `/implement` now appends structured records through `scripts/larch-log.sh`:
 
 ```
@@ -68,4 +69,4 @@ The four numeric Claude columns are kept separate (rather than collapsed into a 
 
 ## Test Harness
 
-`scripts/test-token-report.sh` owns fixture ledger + transcript cases, missing-source graceful output, sentinel replacement idempotency, hydrated prior-report replacement, and an oversized-report smoke case.
+`scripts/test-token-report.sh` owns fixture ledger + transcript cases, markdown and JSON full-report output, missing-source graceful output, sentinel replacement idempotency, hydrated prior-report replacement, and an oversized-report smoke case.

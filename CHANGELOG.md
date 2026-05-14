@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [27.5.59] - 2026-05-14
+
+### Changed
+
+- Rationalized larch-log batch registry to JSON objects for tallies, markdown for full review findings, and JSON token/timing reports.
+- Added JSON output modes to token-report.sh and timing-report.sh, and taught report-tokens to consume structured logs with legacy fallbacks.
+- Fixed cache-session tmpdir redaction so multiple quoted JSON paths redact independently while preserving parseability.
+- Populated manifest model_roster.main from the active Claude model environment and updated docs/security contracts.
+
 ## [27.5.58] - 2026-05-14
 
 ### Changed

@@ -151,6 +151,10 @@ larch_log_validate_batch_payload() {
                     || larch_log_fail 2 "json-lines sanitizer rejected $batch: invalid JSON line"
             done < "$file"
             ;;
+        json-object)
+            jq -e -s 'length == 1 and (.[0] | type == "object")' "$file" >/dev/null 2>&1 \
+                || larch_log_fail 2 "json-object sanitizer rejected $batch: expected exactly one top-level JSON object"
+            ;;
         *) larch_log_fail 1 "unknown sanitizer for $batch: $sanitizer" ;;
     esac
 }
