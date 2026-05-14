@@ -9,7 +9,7 @@
 set -euo pipefail
 
 # Tighten run-external-agent.sh's poll cadence so each probe stub does not pay
-# a 3s sleep cycle. Production probes inherit the default 3s.
+# a 10s sleep cycle. Production probes inherit the default 10s.
 export RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05
 # wait-for-reviewers.sh polls sentinel-files every 5s by default; drop to
 # 0.05s for stub-binary tests.
