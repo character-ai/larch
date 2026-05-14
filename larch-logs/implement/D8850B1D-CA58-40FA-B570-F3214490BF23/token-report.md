@@ -28,10 +28,10 @@
 | Step 8 — version bump | **step total** | 4 | 951464 | 4104 | 3075 |
 |  | larch:review | 4 | 951464 | 4104 | 3075 |
 | Step 8a — changelog | **step total** | 0 | 0 | 0 | 0 |
-| Step 8b — rebase | **step total** | 34 | 7866199 | 81672 | 15140 |
-|  | larch:issue | 20 | 4478534 | 70680 | 7002 |
+| Step 8b — rebase | **step total** | 47 | 11401574 | 91729 | 26639 |
+|  | larch:issue | 33 | 8013909 | 80737 | 18501 |
 |  | larch:review | 14 | 3387665 | 10992 | 8138 |
-| **Grand total** |  | 38936 | 69133058 | 2531454 | 215417 |
+| **Grand total** |  | 38949 | 72668433 | 2541511 | 226916 |
 
 ### Codex
 
