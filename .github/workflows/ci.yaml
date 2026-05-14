@@ -5,6 +5,8 @@ on:
   pull_request:
     branches:
       - main
+    paths-ignore:
+      - 'larch-logs/**'
   # Run the full workflow on push to main so the pre-commit hook-env
   # cache populates under the default-branch scope. PRs from feature
   # branches can read default-branch caches but cannot read each
@@ -15,6 +17,8 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - 'larch-logs/**'
 
 permissions:
   contents: read

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [27.5.50] - 2026-05-14
+
+### Changed
+
+- Add larch-logs/** paths-ignore filters to CI and release-tag workflow push/PR triggers.
+- Make ship-pr ci-merge and postmerge larch-log flush commits local-only with --no-push.
+- Document the shared larch-log --no-push discipline and cover the updated ship-pr flush arguments in the harness.
+
 ## [27.5.49] - 2026-05-14
 
 ### Changed

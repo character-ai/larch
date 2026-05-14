@@ -65,5 +65,25 @@ points at the canonical repo subtree), no copy is performed.
 list, including `session-transcript` (the redacted Claude Code session `.jsonl`
 captured at Step 18 of `/implement` for post-hoc auditability).
 
+## `--no-push` discipline
+
+`commit` pushes by default. Callers should pass `--no-push` when a subsequent
+branch push, force-with-lease push, or code-commit push is guaranteed to follow
+and can carry the larch-log commit together with nearby work. This avoids
+standalone larch-log-only push events.
+
+Use a direct push (no `--no-push`) when:
+
+- The caller is a terminal lifecycle step with no later push guaranteed (e.g.,
+  the `PR_CLOSED=true` teardown path in `implement-finalize.sh`, where the PR
+  branch has already been merged or removed).
+- Omitting the push would violate a downstream invariant (e.g., the ci-merge
+  pre-merge flush in `ship-pr.sh`, where `merge-pr.sh` requires
+  `local HEAD == remote PR headRefOid`; an unpushed local commit would fail
+  that check and stall the merge).
+
+In `/implement`, the rebase-retry flush (`scripts/ship-pr.sh`, Step 8b path)
+is the canonical `--no-push` call site — the surrounding force-push carries it.
+
 Related files: `scripts/lib-larch-log.sh`, `scripts/larch-log-batches.sh`, and
 the `scripts/test-larch-log.sh` harness.
