@@ -322,6 +322,8 @@ fi
 root=$(make_repo postmerge_flush)
 tmp=$(make_tmpdir)
 sentinel_dir=$(mktemp -d /tmp/ship-pr-postmerge-flush.XXXXXX)
+mkdir -p "$tmp/larch-logs/implement/test-run"
+printf '{"status":"in-progress"}\n' > "$tmp/larch-logs/implement/test-run/manifest.json"
 write_state "$tmp/ship-pr-state.sh" postmerge
 awk -F= '{if ($1=="PR_CLOSED") print "PR_CLOSED=true"; else print}' \
     "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" \
@@ -341,6 +343,33 @@ if [ -f "$sentinel_dir/larch-log-calls.txt" ]; then
     fi
 else
     fail "postmerge flush: larch-log.sh stub was not called (PR_CLOSED=true path)"
+fi
+rm -rf "$sentinel_dir"
+
+# Postmerge manifest flush: missing manifest is synthesized before final status.
+root=$(make_repo postmerge_missing_manifest)
+tmp=$(make_tmpdir)
+sentinel_dir=$(mktemp -d /tmp/ship-pr-postmerge-recovery.XXXXXX)
+mkdir -p "$tmp/larch-logs/implement/test-run"
+write_state "$tmp/ship-pr-state.sh" postmerge
+awk -F= '{if ($1=="PR_CLOSED") print "PR_CLOSED=true"; else print}' \
+    "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" \
+    && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
+set +e
+(cd "$root" && LARCH_LOG_STUB_SENTINEL_DIR="$sentinel_dir" CLAUDE_PLUGIN_ROOT="$root" \
+    "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
+    --merge true --draft false --forked false --repo owner/repo \
+    > "$tmp/stdout-recovery" 2>&1)
+set -e
+if [ -f "$sentinel_dir/larch-log-calls.txt" ]; then
+    if grep -q "^LARCH_LOG_ARGS=init" "$sentinel_dir/larch-log-calls.txt" && \
+       grep -q "recovery_reason=manifest_lost_mid_run" "$sentinel_dir/larch-log-calls.txt"; then
+        ok "postmerge flush synthesizes and tags a missing manifest before final status"
+    else
+        fail "postmerge missing-manifest recovery: expected init and partial tag; got: $(cat "$sentinel_dir/larch-log-calls.txt")"
+    fi
+else
+    fail "postmerge missing-manifest recovery: larch-log.sh stub was not called"
 fi
 rm -rf "$sentinel_dir"
 

@@ -1486,13 +1486,26 @@ run_teardown() {
     # This handles stalled/failed runs where the ci-merge flush in ship-pr.sh
     # never ran. Root-cause prevention lives in ship-pr.sh (ci-merge flush) and
     # write_version_reasoning_fragment (correct run-id from state file).
-    local larch_flush_run_id
+    local larch_flush_run_id manifest_path_teardown
     larch_flush_run_id=$(read_state RUN_ID)
     flush_execution_issues_safety_net
     if [ -n "$larch_flush_run_id" ] && [ "$repo_unavailable" = "false" ]; then
+        manifest_path_teardown="$IMPLEMENT_TMPDIR/larch-logs/implement/$larch_flush_run_id/manifest.json"
+        if [ ! -f "$manifest_path_teardown" ]; then
+            "$SCRIPT_DIR/larch-log.sh" init \
+                --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
+                --skill implement --run-id "$larch_flush_run_id" \
+                2>/dev/null || warn_line '**⚠ 18: larch-log manifest recovery init failed. Continuing.**'
+            "$SCRIPT_DIR/larch-log.sh" manifest \
+                --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
+                --skill implement --run-id "$larch_flush_run_id" \
+                --field "status=partial" \
+                --field "recovery_reason=manifest_lost_mid_run" \
+                2>/dev/null || warn_line '**⚠ 18: larch-log manifest recovery partial-tag failed. Continuing.**'
+        fi
         # Finalize manifest status before committing so the update lands in the
-        # same flush commit. Best-effort: manifest may not exist (deferred/repo-
-        # unavailable paths) — the 2>/dev/null suppresses the "not found" error.
+        # same flush commit. Best-effort recovery above synthesizes a manifest
+        # when the run directory survived but manifest.json was lost mid-run.
         if [ "$stall_tracking" = "true" ]; then
             "$SCRIPT_DIR/larch-log.sh" manifest \
                 --log-root "$IMPLEMENT_TMPDIR/larch-logs" \

@@ -615,7 +615,9 @@ Create the tracking issue **immediately** so subsequent summary comments and com
      --marker "<!-- larch:metadata v1 runid=$RUN_ID -->" \
      --content-file "$IMPLEMENT_TMPDIR/summary-metadata.md"
    ```
-   On `LOG_WRITTEN=false` with `ERROR=` from `larch-log.sh`, or `FAILED=true` from `tracking-issue-summary.sh`, print `**⚠ 0.5: tracking issue — Branch 4 metadata publication failed: $ERROR. Continuing with deferred/absent tracking issue.**`, log to `Tool Failures`, set `deferred=true`, clear `$ISSUE_NUMBER`, and proceed to Step 1 (skipping the sentinel write in step 6).
+   On `LOG_WRITTEN=false` with `ERROR=` from `larch-log.sh init`, print `**⚠ 0.5: tracking issue — Branch 4 manifest initialization failed: $ERROR. Aborting.**`, log to `Tool Failures`, set `deferred=true`, clear `$ISSUE_NUMBER`, set `STALL_TRACKING=true`, and skip to Step 18 (skipping the sentinel write in step 6).
+
+   On `FAILED=true` from `tracking-issue-summary.sh`, print `**⚠ 0.5: tracking issue — Branch 4 metadata publication failed: $ERROR. Continuing with deferred/absent tracking issue.**`, log to `Tool Failures`, set `deferred=true`, clear `$ISSUE_NUMBER`, and proceed to Step 1 (skipping the sentinel write in step 6).
 
 6. **Write the sentinel LAST**, only after `$ISSUE_NUMBER` and `$RUN_ID` are non-empty and step 5 succeeded (Load-Bearing Invariant #4 ordering):
    ```
