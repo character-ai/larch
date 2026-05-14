@@ -1,0 +1,9 @@
+## Accepted Out-of-Scope Observations
+
+| # | Title | Filed |
+|---|-------|-------|
+| 1 | fix(redact-tmpdir-paths): handle \n/path JSONL edge case (expression 3) | #2051 |
+
+## Rejected / Out-of-Scope Observations (not filed)
+
+(none)
