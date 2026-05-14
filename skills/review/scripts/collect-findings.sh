@@ -65,7 +65,10 @@ append_non_ok_collector_results() {
     local collector_text="$1" reviewer_file="" tool="" status="" exit_code="" line combined
     while IFS= read -r line || [[ -n "$line" ]]; do
         if [[ -z "$line" ]]; then
-            if [[ -n "$reviewer_file" && "$status" != "" && "$status" != "OK" ]]; then
+            # STATUS=cap_hit is a deliberate slot-skip (reviewer's budget cap;
+            # HEALTHY=true per collect-agent-results.md), NOT a failure — don't
+            # log it as External Reviewer Issues.
+            if [[ -n "$reviewer_file" && "$status" != "" && "$status" != "OK" && "$status" != "cap_hit" ]]; then
                 combined=$(mktemp "${TMPDIR:-/tmp}/review-collector-failure.XXXXXX")
                 {
                     printf 'COLLECTOR_STATUS=%s\n' "$status"
@@ -96,7 +99,9 @@ append_non_ok_collector_results() {
             EXIT_CODE=*) exit_code="${line#EXIT_CODE=}" ;;
         esac
     done <<< "$collector_text"
-    if [[ -n "$reviewer_file" && "$status" != "" && "$status" != "OK" ]]; then
+    # STATUS=cap_hit is a deliberate slot-skip (reviewer's budget cap;
+    # HEALTHY=true per collect-agent-results.md), NOT a failure.
+    if [[ -n "$reviewer_file" && "$status" != "" && "$status" != "OK" && "$status" != "cap_hit" ]]; then
         combined=$(mktemp "${TMPDIR:-/tmp}/review-collector-failure.XXXXXX")
         {
             printf 'COLLECTOR_STATUS=%s\n' "$status"
@@ -104,12 +109,12 @@ append_non_ok_collector_results() {
             printf 'TOOL=%s\n' "${tool:-unknown}"
             printf 'EXIT_CODE=%s\n\n' "${exit_code:-0}"
             if [[ -f "$reviewer_file" ]]; then
-                printf '--- reviewer output ---\n'
+                printf -- '--- reviewer output ---\n'
                 cat "$reviewer_file"
                 printf '\n'
             fi
             if [[ -f "${reviewer_file}.diag" ]]; then
-                printf '\n--- diagnostic sidecar ---\n'
+                printf -- '\n--- diagnostic sidecar ---\n'
                 cat "${reviewer_file}.diag"
                 printf '\n'
             fi
