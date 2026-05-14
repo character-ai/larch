@@ -47,6 +47,7 @@ After CI and merge-state checks pass, the script also runs a same-version bump r
 3. If the branch contains a bump commit, the origin-side version check reads `origin/main:.claude-plugin/plugin.json` content, not origin-side commit subjects. Squash-merge titles therefore cannot hide the already-published version.
 4. Every parsed version must satisfy `^[0-9]+\.[0-9]+\.[0-9]+$`. Fetch failure, unreadable or malformed origin `plugin.json`, missing/null version, local/remote OID mismatch, and malformed versions fail closed via `MERGE_RESULT=error`.
 5. If origin publishes the same version as the branch bump, the script emits `MERGE_RESULT=version_already_published` and `ERROR=origin/main HEAD already bumped to X.Y.Z; rebase and re-bump`. If origin publishes a different version and `origin/main` is no longer an ancestor of `HEAD`, the script emits `MERGE_RESULT=main_advanced`.
+6. Immediately before the `gh pr merge` call (after all the checks above pass), the script performs a second `git fetch origin main` and re-runs the same-version check. This pre-merge re-fetch shrinks the TOCTOU window between the initial version check and the actual merge API call, preventing concurrent runners that both passed the initial check from both publishing the same version.
 
 ## Batched discovery
 
