@@ -247,9 +247,9 @@ if [[ "$HOOK_MODE" = true ]]; then
     echo "POST_DESIGN_BOUNDARY_HOOK_INJECTED=true"
     printf '%s' "$WARNINGS"
     if [[ "$DESIGN_ONLY" = true ]]; then
-        echo "➡️ 1: design plan — hook injected boundary context (design-only); NEXT REQUIRED: invoke post-design-boundary.sh --implement-tmpdir ... as a Bash tool call — do NOT skip the wrapper call"
+        echo "➡️ 1: design plan — hook injected boundary context (design-only); NEXT REQUIRED: invoke $PLUGIN_ROOT/skills/implement/scripts/post-design-boundary.sh --implement-tmpdir \"$IMPLEMENT_TMPDIR\" --session-env \"${SESSION_ENV_PATH:-$IMPLEMENT_TMPDIR/session-env.sh}\" --design-only $DESIGN_ONLY as a Bash tool call — do NOT skip the wrapper call"
     else
-        echo "➡️ 1: design plan — hook injected boundary context; NEXT REQUIRED: invoke post-design-boundary.sh --implement-tmpdir ... as a Bash tool call — do NOT skip the wrapper call"
+        echo "➡️ 1: design plan — hook injected boundary context; NEXT REQUIRED: invoke $PLUGIN_ROOT/skills/implement/scripts/post-design-boundary.sh --implement-tmpdir \"$IMPLEMENT_TMPDIR\" --session-env \"${SESSION_ENV_PATH:-$IMPLEMENT_TMPDIR/session-env.sh}\" --design-only $DESIGN_ONLY as a Bash tool call — do NOT skip the wrapper call"
     fi
 else
     # Normal (orchestrator-driven) mode: write the sentinel BEFORE emitting buffered
