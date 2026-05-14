@@ -24,4 +24,8 @@
 |  | larch:implement | 7 | 1002127 | 2155 | 3222 |
 | Step 8 — version bump | **step total** | 5 | 723911 | 3677 | 2019 |
 |  | larch:implement | 5 | 723911 | 3677 | 2019 |
-| **Grand total** |  | 108 | 13378388 | 96349 | 54138 |
+| Step 8b — rebase | **step total** | 5 | 733623 | 3321 | 3553 |
+|  | larch:implement | 5 | 733623 | 3321 | 3553 |
+| Step 11 — execution-issues | **step total** | 1 | 147522 | 1191 | 566 |
+|  | larch:implement | 1 | 147522 | 1191 | 566 |
+| **Grand total** |  | 114 | 14259533 | 100861 | 58257 |
