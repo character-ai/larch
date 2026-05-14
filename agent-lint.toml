@@ -784,6 +784,11 @@ exclude = [
   "scripts/test-alias-structure.sh",
   "scripts/test-design-structure.sh",
   "skills/design/scripts/test-design-manifest.sh",
+  "skills/design/scripts/test-design-driver.sh",
+  "skills/design/scripts/test-classify-issue.sh",
+  "skills/design/scripts/test-emit-plan.sh",
+  "skills/design/scripts/test-tally-plan-review.sh",
+  "skills/design/scripts/test-finalize-plan.sh",
   "scripts/test-implement-rebase-macro.sh",
   # scripts/test-rebase-push-keep-on-conflict.sh is the offline regression
   # harness for scripts/rebase-push.sh's --keep-on-conflict local-only rebase
@@ -1087,6 +1092,15 @@ exclude = [
   # test-find-lock-issue.md entries above.
   "scripts/test-alias-target-resolution.md",
   "scripts/test-alias-structure.md",
+  # skills/design/scripts/test-*.md files below are sibling contracts for
+  # Makefile-only regression harnesses added with the design ACTION dispatcher
+  # refactor. The primary scripts are cited from /design runtime prose; the
+  # harnesses are referenced only from Makefile and their sibling contracts.
+  "skills/design/scripts/test-design-driver.md",
+  "skills/design/scripts/test-classify-issue.md",
+  "skills/design/scripts/test-emit-plan.md",
+  "skills/design/scripts/test-tally-plan-review.md",
+  "skills/design/scripts/test-finalize-plan.md",
   "scripts/test-rebase-push-keep-on-conflict.md",
   "scripts/test-implement-timing-rehydration.md",
   # scripts/promote-release.sh is a standalone operator utility for promoting

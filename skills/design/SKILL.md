@@ -184,7 +184,15 @@ The `--write-health` flag writes the health status file for cross-skill propagat
 After `session-setup.sh` returns and `DESIGN_TMPDIR` is confirmed, compute run parameters once and write them to `$DESIGN_TMPDIR/run-params.json`:
 
 1. If `--design-classification <value>` was supplied AND `branch_info_supplied=true`, accept the forwarded value (`TRIVIAL_DOC_ONLY`, `SIMPLE`, or `HARD`) without re-classifying. Set `design_classification_source=caller-forwarded`.
-2. Otherwise, classify from `FEATURE_DESCRIPTION` plus a light codebase scan of the obvious target files (Read / Grep / Glob; roughly the same ~30 LOC scan used by `/implement`'s SIMPLE classifier). Set `design_classification_source=router-pre-design`.
+2. Otherwise, write the feature text to `$DESIGN_TMPDIR/feature-description.txt` and classify through the ACTION driver. Set `design_classification_source=router-pre-design` for `write-run-params.sh`; the richer `CLASSIFICATION_SOURCE=deterministic|cursor-validated|cursor-fallback` value from `classify-issue.sh` is diagnostic stdout only and is not written to `run-params.json`.
+
+```bash
+printf '%s\n' "$FEATURE_DESCRIPTION" > "$DESIGN_TMPDIR/feature-description.txt"
+printf 'ACTION=CLASSIFY ARGS=--feature-description %s\n' "$DESIGN_TMPDIR/feature-description.txt" \
+  | "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-driver.sh" --design-tmpdir "$DESIGN_TMPDIR"
+```
+
+Parse `CLASSIFICATION=<value>` and `CLASSIFICATION_REASON=<text>` from the driver output. If the driver exits non-zero or emits no valid classification, default to `HARD` with reason `classification failed`.
 3. `TRIVIAL_DOC_ONLY` is allowed only when the codebase scan confirms the change is documentation/prose-only and no runtime files, scripts, hooks, generated artifacts, or security behavior need edits. If the scan cannot confirm that, default to `SIMPLE`.
 4. Derive `sketch_budget`: if `full_mode=true`, use `4`; else if `quick_mode=true`, use `min(classification_budget, 2)` — where `classification_budget` is derived in the next step (so `TRIVIAL_DOC_ONLY -> 0`, `SIMPLE -> 2`, `HARD -> 4`; the min preserves the 0-budget path, not just caps non-trivial tasks); else use `classification_budget` directly.
 5. Derive `review_budget`: `quick` when `quick_mode=true`, otherwise `full`.
@@ -534,9 +542,18 @@ Produce a plan that includes:
 - **Edge cases**: Note important input/boundary conditions and how they'll be handled.
 - **Failure modes** (for non-trivial changes): The 3 most likely architectural/systemic failure paths, earliest warning signals, and simplest mitigations. May be omitted for purely cosmetic or documentation-only changes.
 - **Testing strategy**: What tests will be added or modified.
-- **Diff size estimate**: Estimate the total diff size in changed lines for the planned implementation. Append a final line `diff_lines: <N>` to `$DESIGN_TMPDIR/plan.txt`, where `<N>` is a non-negative integer. Also write the same integer and a trailing newline to `$DESIGN_TMPDIR/diff-lines.txt`. This estimate drives `/implement` Step 1's `diff_lines < 30` Claude inline carve-out; use best judgment, but do not omit the line.
+- **Diff size estimate**: Estimate the total diff size in changed lines for the planned implementation. Append a final line `diff_lines: <N>` to `$DESIGN_TMPDIR/plan.txt`, where `<N>` is a non-negative integer. This estimate drives `/implement` Step 1's `diff_lines < 30` Claude inline carve-out; use best judgment, but do not omit the line.
 
 Write the plan to `$DESIGN_TMPDIR/plan.txt` with basename exactly `plan.txt`. If `SESSION_ENV_PATH` is empty, print the plan to the user under a `## Implementation Plan` header so reviewers can see it. If `SESSION_ENV_PATH` is non-empty, print nothing for this save; `/implement` reads the exported plan file through the Step 5 manifest. The plan is an intermediate deliverable — IMMEDIATELY continue to Step 3 (Plan Review) after saving/printing. Do NOT halt, summarize, or treat the plan as the end of the design.
+
+Immediately after saving `plan.txt`, emit the mechanical plan-validation ACTION. This writes `$DESIGN_TMPDIR/diff-lines.txt` atomically and fails closed if the final `diff_lines: <N>` line is missing or malformed:
+
+```bash
+printf '%s\n' 'ACTION=EMIT_PLAN' \
+  | "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-driver.sh" --design-tmpdir "$DESIGN_TMPDIR"
+```
+
+If the driver exits non-zero or emits `EMIT_PLAN_STATUS=missing-diff-lines`, treat it as a hard Step 2b failure and repair `$DESIGN_TMPDIR/plan.txt` before proceeding to Step 3.
 
 > **Continue to Step 3 IMMEDIATELY.** The implementation plan is an intermediate design artifact — plan review, optional discussion, diagram generation, rejected-findings reporting, and cleanup still must run. → shared/subskill-invocation.md#step-boundary
 
@@ -786,7 +803,27 @@ Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
 
 ### Collecting, Voting, Finalize, Track Rejected
 
-Follow `plan-review.md` (loaded via the MANDATORY at the top of Step 3) for: Collecting External Reviewer Results (`collect-agent-results.sh` for all launched external reviewers (up to 10 archetype slots), dedup in-scope and OOS separately), Voting Panel launch-order through `dispatch-plan-voters.sh` + threshold + Competition scoring, writing `$DESIGN_TMPDIR/voting-tally.md`, Finalize Plan Review (accepted findings revise plan, write `$DESIGN_TMPDIR/accepted-plan-findings.md`, write accepted OOS to `$(dirname "$SESSION_ENV_PATH")/oos-accepted-design.md` when `SESSION_ENV_PATH` is non-empty, write all OOS visibility content to `$DESIGN_TMPDIR/oos.md`, print non-accepted OOS under `## Out-of-Scope Observations` only when `SESSION_ENV_PATH` is empty), and Track Rejected Plan Review Findings (append to `$DESIGN_TMPDIR/rejected-findings.md`, in-scope only). Accepted OOS Descriptions should include affected repo-relative file paths and line ranges when applicable; `/implement` Step 9a.1 serializes same-file OOS issues unless the exposed ranges are parseable and non-overlapping.
+Follow `plan-review.md` (loaded via the MANDATORY at the top of Step 3) for: Collecting External Reviewer Results (`collect-agent-results.sh` for all launched external reviewers (up to 10 archetype slots), dedup in-scope and OOS separately), Voting Panel launch-order through `dispatch-plan-voters.sh` + threshold + Competition scoring, writing the ballot file and explicit voter output files, Finalize Plan Review (accepted findings revise plan, write accepted OOS to `$(dirname "$SESSION_ENV_PATH")/oos-accepted-design.md` when `SESSION_ENV_PATH` is non-empty, print non-accepted OOS under `## Out-of-Scope Observations` only when `SESSION_ENV_PATH` is empty), and Track Rejected Plan Review Findings (in-scope only). Accepted OOS Descriptions should include affected repo-relative file paths and line ranges when applicable; `/implement` Step 9a.1 serializes same-file OOS issues unless the exposed ranges are parseable and non-overlapping.
+
+After `dispatch-plan-voters.sh` returns Voter 2/3 output paths and the local Voter 1 ballot path is available, emit the tally ACTION with explicit files. This script writes `$DESIGN_TMPDIR/voting-tally.md`, `$DESIGN_TMPDIR/accepted-plan-findings.md`, `$DESIGN_TMPDIR/rejected-findings.md`, `$DESIGN_TMPDIR/oos.md`, and `$DESIGN_TMPDIR/oos-accepted-design.md` using the design-local parser for `### FINDING_N:` and `### OOS_N:` blocks:
+
+```bash
+printf 'ACTION=TALLY ARGS=--ballot-file %s --voter-files %s %s %s\n' \
+  "$DESIGN_TMPDIR/plan-review-ballot.md" \
+  "$DESIGN_TMPDIR/plan-review-voter-1.md" \
+  "$DESIGN_TMPDIR/plan-review-voter-2.md" \
+  "$DESIGN_TMPDIR/plan-review-voter-3.md" \
+  | "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-driver.sh" --design-tmpdir "$DESIGN_TMPDIR"
+```
+
+If accepted findings revise `$DESIGN_TMPDIR/plan.txt`, immediately re-run plan emission so `diff-lines.txt` reflects the final plan:
+
+```bash
+printf '%s\n' 'ACTION=EMIT_PLAN' \
+  | "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-driver.sh" --design-tmpdir "$DESIGN_TMPDIR"
+```
+
+If the second `EMIT_PLAN` fails, repair the revised plan before continuing.
 
 After the plan-review collection boundary, consult launcher `${OUTPUT}.dirty-tree` sidecars, run `check-mid-run-dirty-tree.sh --mode checkpoint`, and ask for recovery on dirty/unknown regardless of `auto_mode`, deduped by `$DESIGN_TMPDIR/.dirty-tree-prompted-plan-review`.
 
@@ -885,7 +922,12 @@ SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_
 
 Print any rejected plan review findings:
 
-1. Ensure `$DESIGN_TMPDIR/rejected-findings.md`, `$DESIGN_TMPDIR/accepted-plan-findings.md`, and `$DESIGN_TMPDIR/oos.md` exist; create empty files for any missing may-be-empty artifact so Step 5 can export a complete manifest.
+1. Emit `ACTION=FINALIZE` to ensure `$DESIGN_TMPDIR/rejected-findings.md`, `$DESIGN_TMPDIR/accepted-plan-findings.md`, and `$DESIGN_TMPDIR/oos.md` exist and to validate non-empty manifest-required artifacts before Step 5 export:
+   ```bash
+   printf '%s\n' 'ACTION=FINALIZE' \
+     | "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-driver.sh" --design-tmpdir "$DESIGN_TMPDIR"
+   ```
+   If this exits non-zero, repair the missing artifact before Step 5.
 2. Check if `$DESIGN_TMPDIR/rejected-findings.md` exists and is non-empty.
 3. If it has content and `SESSION_ENV_PATH` is empty, print it under a `## Unimplemented Plan Review Suggestions` header, formatted clearly with the reviewer name, the suggestion, and the reason for each.
 4. If it has content and `SESSION_ENV_PATH` is non-empty, print nothing; the Step 5 manifest carries the rejected-findings artifact path.
@@ -924,6 +966,11 @@ ${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/write-design-manifest.sh --design-tm
 Parse `MANIFEST_WRITTEN=<path>` from stdout and set the mental flag `MANIFEST_EXPORT_OK=true` if the command exited 0 AND the manifest file exists AND is non-empty. Otherwise set `MANIFEST_EXPORT_OK=false`; when `SESSION_ENV_PATH` is empty, print `**⚠ 5: cleanup — design manifest export failed. Preserving $DESIGN_TMPDIR for inspection.**`; when `SESSION_ENV_PATH` is non-empty, emit no inline warning because the missing/failed manifest is the parent-visible machine signal. SKIP the `cleanup-tmpdir.sh` step below entirely so the parent /implement (or operator) can inspect the partial artifacts. If `SESSION_ENV_PATH` is empty, skip this manifest write and treat `MANIFEST_EXPORT_OK` as `true` for cleanup-gating purposes (standalone `/design` preserves visible inline output, has no parent consumer, and always cleans up on the normal path).
 
 **Manifest helper contracts** (per `${CLAUDE_PLUGIN_ROOT}/.claude/rules/script-md-siblings.md`):
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-driver.sh` — ACTION dispatcher for scriptable `/design` mechanics. Sibling contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-driver.md`.
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/classify-issue.sh` — deterministic plus Cursor-validated run-depth classifier used by the `ACTION=CLASSIFY` path. Sibling contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/classify-issue.md`.
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-plan.sh` — fail-closed `plan.txt` / `diff-lines.txt` validator used by the `ACTION=EMIT_PLAN` path. Sibling contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-plan.md`.
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/tally-plan-review.sh` — design-local vote tally and scoreboard renderer used by the `ACTION=TALLY` path. Sibling contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/tally-plan-review.md`.
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/finalize-plan.sh` — final design artifact validator used by the `ACTION=FINALIZE` path. Sibling contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/finalize-plan.md`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/write-design-manifest.sh` — atomic writer invoked above; it also exports `diff-lines.txt` so `/implement` can route on `diff_lines < 30` after `$DESIGN_TMPDIR` cleanup. Sibling contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/write-design-manifest.md`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/read-design-manifest.sh` — consumer-side reader/verifier invoked from `skills/implement/SKILL.md` Step 1 after `/design` returns. Producer/reader colocation under `skills/design/scripts/` is intentional (plan-review FINDING_12 vote: keep colocated, do not relocate to `skills/implement/scripts/`). Sibling contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/read-design-manifest.md`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-manifest.sh` — regression harness for both writer and reader (atomicity, missing-required-artifact rejection, KV grammar, source/eval injection rejection, path-traversal rejection, symlink rejection, control-character rejection, malformed-key rejection). Wired into `make lint` via the `test-design-manifest` Makefile target. Sibling contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-manifest.md`.
