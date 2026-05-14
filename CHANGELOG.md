@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [27.5.39] - 2026-05-13
+
+### Changed
+
+- Log Step 0 token-claude-source.sh snapshot failures under Warnings instead of silently swallowing them
+- Recover missing session transcript source snapshots by discovering recent Claude project JSONL transcripts
+- Add regression coverage and script contracts for fallback discovery and recovery warnings
+
 ## [27.5.31] - 2026-05-13
 
 ### Changed
