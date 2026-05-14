@@ -1046,46 +1046,65 @@ run_postmerge_phase() {
     # Finalize manifest to status=done here so the update survives if the
     # LLM session ends before prompt-side Step 18 teardown runs. The teardown
     # manifest update remains as an idempotent no-op fallback.
-    local flush_run_id pr_num manifest_path_pm
+    local flush_run_id pr_num manifest_path_pm flush_issue_num recovery_ok
     flush_run_id=$(read_state RUN_ID)
     pr_num=$(read_state PR_NUMBER)
     if [ -n "$flush_run_id" ] && [ -n "$pr_num" ] && [ "$(read_state REPO_UNAVAILABLE)" = "false" ] && [ "$(read_state PR_CLOSED)" = "true" ]; then
         manifest_path_pm="$IMPLEMENT_TMPDIR/larch-logs/implement/$flush_run_id/manifest.json"
+        recovery_ok=true
         if [ ! -f "$manifest_path_pm" ]; then
+            flush_issue_num=$(read_state ISSUE_NUMBER)
             fail_file=$(failure_capture_path postmerge)
-            "$SCRIPT_DIR/larch-log.sh" init \
-                --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
-                --skill implement --run-id "$flush_run_id" \
-                > "$fail_file" 2>&1
+            if [ -n "$flush_issue_num" ]; then
+                "$SCRIPT_DIR/larch-log.sh" init \
+                    --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
+                    --skill implement --run-id "$flush_run_id" \
+                    --issue "$flush_issue_num" \
+                    > "$fail_file" 2>&1
+            else
+                "$SCRIPT_DIR/larch-log.sh" init \
+                    --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
+                    --skill implement --run-id "$flush_run_id" \
+                    > "$fail_file" 2>&1
+            fi
             rc=$?
-            [ "$rc" -eq 0 ] || record_failure postmerge "larch-log.sh init (manifest-recovery)" "$rc" "$fail_file" Warnings
+            if [ "$rc" -ne 0 ]; then
+                record_failure postmerge "larch-log.sh init (manifest-recovery)" "$rc" "$fail_file" Warnings
+                recovery_ok=false
+            else
+                fail_file=$(failure_capture_path postmerge)
+                "$SCRIPT_DIR/larch-log.sh" manifest \
+                    --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
+                    --skill implement --run-id "$flush_run_id" \
+                    --field "status=partial" \
+                    --field "recovery_reason=manifest_lost_mid_run" \
+                    > "$fail_file" 2>&1
+                rc=$?
+                [ "$rc" -eq 0 ] || record_failure postmerge "larch-log.sh manifest (partial-tag)" "$rc" "$fail_file" Warnings
+            fi
+        fi
+        if [ "$recovery_ok" = "false" ]; then
+            # Skip commit: manifest synthesis failed, committing would produce a partial dir.
+            :
+        else
             fail_file=$(failure_capture_path postmerge)
             "$SCRIPT_DIR/larch-log.sh" manifest \
                 --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
                 --skill implement --run-id "$flush_run_id" \
-                --field "status=partial" \
-                --field "recovery_reason=manifest_lost_mid_run" \
+                --field "status=done" \
+                --field "pr_number=$pr_num" \
                 > "$fail_file" 2>&1
             rc=$?
-            [ "$rc" -eq 0 ] || record_failure postmerge "larch-log.sh manifest (partial-tag)" "$rc" "$fail_file" Warnings
-        fi
-        fail_file=$(failure_capture_path postmerge)
-        "$SCRIPT_DIR/larch-log.sh" manifest \
-            --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
-            --skill implement --run-id "$flush_run_id" \
-            --field "status=done" \
-            --field "pr_number=$pr_num" \
-            > "$fail_file" 2>&1
-        rc=$?
-        [ "$rc" -eq 0 ] || record_failure postmerge "larch-log.sh manifest" "$rc" "$fail_file" Warnings
-        if [ "$NO_LOGS_COMMIT" != "true" ]; then
-            fail_file=$(failure_capture_path postmerge)
-            "$SCRIPT_DIR/larch-log.sh" commit \
-                --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
-                --skill implement --run-id "$flush_run_id" \
-                > "$fail_file" 2>&1
-            rc=$?
-            [ "$rc" -eq 0 ] || record_failure postmerge "larch-log.sh commit" "$rc" "$fail_file" Warnings
+            [ "$rc" -eq 0 ] || record_failure postmerge "larch-log.sh manifest" "$rc" "$fail_file" Warnings
+            if [ "$NO_LOGS_COMMIT" != "true" ]; then
+                fail_file=$(failure_capture_path postmerge)
+                "$SCRIPT_DIR/larch-log.sh" commit \
+                    --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
+                    --skill implement --run-id "$flush_run_id" \
+                    > "$fail_file" 2>&1
+                rc=$?
+                [ "$rc" -eq 0 ] || record_failure postmerge "larch-log.sh commit" "$rc" "$fail_file" Warnings
+            fi
         fi
     fi
     advance_phase "done"

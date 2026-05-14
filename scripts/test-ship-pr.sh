@@ -363,10 +363,11 @@ set +e
 set -e
 if [ -f "$sentinel_dir/larch-log-calls.txt" ]; then
     if grep -q "^LARCH_LOG_ARGS=init" "$sentinel_dir/larch-log-calls.txt" && \
-       grep -q "recovery_reason=manifest_lost_mid_run" "$sentinel_dir/larch-log-calls.txt"; then
-        ok "postmerge flush synthesizes and tags a missing manifest before final status"
+       grep -q "recovery_reason=manifest_lost_mid_run" "$sentinel_dir/larch-log-calls.txt" && \
+       grep -q -- "--issue" "$sentinel_dir/larch-log-calls.txt"; then
+        ok "postmerge flush synthesizes and tags a missing manifest (with --issue) before final status"
     else
-        fail "postmerge missing-manifest recovery: expected init and partial tag; got: $(cat "$sentinel_dir/larch-log-calls.txt")"
+        fail "postmerge missing-manifest recovery: expected init + partial tag + --issue; got: $(cat "$sentinel_dir/larch-log-calls.txt")"
     fi
 else
     fail "postmerge missing-manifest recovery: larch-log.sh stub was not called"

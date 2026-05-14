@@ -1486,27 +1486,42 @@ run_teardown() {
     # This handles stalled/failed runs where the ci-merge flush in ship-pr.sh
     # never ran. Root-cause prevention lives in ship-pr.sh (ci-merge flush) and
     # write_version_reasoning_fragment (correct run-id from state file).
-    local larch_flush_run_id manifest_path_teardown
+    local larch_flush_run_id manifest_path_teardown larch_recovery_ok
     larch_flush_run_id=$(read_state RUN_ID)
     flush_execution_issues_safety_net
     if [ -n "$larch_flush_run_id" ] && [ "$repo_unavailable" = "false" ]; then
         manifest_path_teardown="$IMPLEMENT_TMPDIR/larch-logs/implement/$larch_flush_run_id/manifest.json"
+        larch_recovery_ok=true
         if [ ! -f "$manifest_path_teardown" ]; then
-            "$SCRIPT_DIR/larch-log.sh" init \
-                --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
-                --skill implement --run-id "$larch_flush_run_id" \
-                2>/dev/null || warn_line '**⚠ 18: larch-log manifest recovery init failed. Continuing.**'
-            "$SCRIPT_DIR/larch-log.sh" manifest \
-                --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
-                --skill implement --run-id "$larch_flush_run_id" \
-                --field "status=partial" \
-                --field "recovery_reason=manifest_lost_mid_run" \
-                2>/dev/null || warn_line '**⚠ 18: larch-log manifest recovery partial-tag failed. Continuing.**'
+            if [ -n "$issue_number" ]; then
+                "$SCRIPT_DIR/larch-log.sh" init \
+                    --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
+                    --skill implement --run-id "$larch_flush_run_id" \
+                    --issue "$issue_number" \
+                    2>/dev/null || { warn_line '**⚠ 18: larch-log manifest recovery init failed. Continuing.**'; larch_recovery_ok=false; }
+            else
+                "$SCRIPT_DIR/larch-log.sh" init \
+                    --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
+                    --skill implement --run-id "$larch_flush_run_id" \
+                    2>/dev/null || { warn_line '**⚠ 18: larch-log manifest recovery init failed. Continuing.**'; larch_recovery_ok=false; }
+            fi
+            if [ "$larch_recovery_ok" = "true" ]; then
+                "$SCRIPT_DIR/larch-log.sh" manifest \
+                    --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
+                    --skill implement --run-id "$larch_flush_run_id" \
+                    --field "status=partial" \
+                    --field "recovery_reason=manifest_lost_mid_run" \
+                    2>/dev/null || warn_line '**⚠ 18: larch-log manifest recovery partial-tag failed. Continuing.**'
+            fi
         fi
         # Finalize manifest status before committing so the update lands in the
         # same flush commit. Best-effort recovery above synthesizes a manifest
         # when the run directory survived but manifest.json was lost mid-run.
-        if [ "$stall_tracking" = "true" ]; then
+        # Skip all manifest + commit calls when synthesis failed (larch_recovery_ok=false)
+        # to avoid committing a manifest-less run directory.
+        if [ "$larch_recovery_ok" = "false" ]; then
+            :
+        elif [ "$stall_tracking" = "true" ]; then
             "$SCRIPT_DIR/larch-log.sh" manifest \
                 --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
                 --skill implement --run-id "$larch_flush_run_id" \
@@ -1527,9 +1542,10 @@ run_teardown() {
                 --field "status=done" \
                 2>/dev/null || true
         fi
-        # Push if the PR was already merged; otherwise let the branch push carry it
+        # Push if the PR was already merged; otherwise let the branch push carry it.
+        # Only commit when recovery_ok: a failed synthesis would publish a manifest-less dir.
         pr_closed=$(read_state PR_CLOSED)
-        if [ "$no_logs_commit" != "true" ]; then
+        if [ "$larch_recovery_ok" = "true" ] && [ "$no_logs_commit" != "true" ]; then
             if [ "$pr_closed" = "true" ]; then
                 "$SCRIPT_DIR/larch-log.sh" commit --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$larch_flush_run_id" 2>/dev/null || true
             else
