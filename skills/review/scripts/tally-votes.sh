@@ -38,8 +38,9 @@ mkdir -p "$REVIEW_TMPDIR"
 OUTPUT_TALLY="${OUTPUT_TALLY:-$REVIEW_TMPDIR/review-tally.env}"
 OUTPUT_ACCEPTED="${OUTPUT_ACCEPTED:-$REVIEW_TMPDIR/accepted-findings.md}"
 
-parse_out=$("$SHARED_DIR/ballot-parse.sh" --ballot-file "$FINDINGS_FILE")
-count=$(printf '%s\n' "$parse_out" | awk -F= '$1=="FINDING_COUNT"{print $2}')
+ballot_parse_file="$REVIEW_TMPDIR/ballot-parse.env"
+"$SHARED_DIR/ballot-parse.sh" --ballot-file "$FINDINGS_FILE" > "$ballot_parse_file"
+count=$(awk -F= '$1=="FINDING_COUNT"{print $2}' "$ballot_parse_file")
 count=${count:-0}
 
 : > "$OUTPUT_TALLY"

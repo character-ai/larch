@@ -36,8 +36,7 @@ validate_rel_file() {
 }
 
 if [[ "$MODE" == "diff" ]]; then
-    out=$("$PLUGIN_ROOT/scripts/gather-branch-context.sh" --output-dir "$OUTPUT_DIR")
-    printf '%s\n' "$out"
+    "$PLUGIN_ROOT/scripts/gather-branch-context.sh" --output-dir "$OUTPUT_DIR"
     printf 'SCOPE_FILES_COUNT=0\n'
     printf 'MODE=diff\n'
     exit 0

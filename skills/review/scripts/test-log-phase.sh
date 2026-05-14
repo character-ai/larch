@@ -8,8 +8,15 @@ SCRIPT="$REPO_ROOT/skills/review/scripts/log-phase.sh"
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-log-phase.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT
 
+assert_stdout_cap() {
+    local text="$1" cap="${2:-2048}" bytes
+    bytes=${#text}
+    [[ "$bytes" -le "$cap" ]] || { echo "FAIL: stdout ${bytes}B > ${cap}B cap" >&2; exit 1; }
+}
+
 printf 'payload\n' > "$TMP/payload.md"
 out=$(cd "$REPO_ROOT" && "$SCRIPT" --log-root "$TMP/logs" --run-id run1 --batch review-context --action write --payload-file "$TMP/payload.md")
+assert_stdout_cap "$out"
 grep -Fq 'LOG_WRITTEN=true' <<< "$out"
 [[ -f "$TMP/logs/review/run1/review-context.md" ]]
 
