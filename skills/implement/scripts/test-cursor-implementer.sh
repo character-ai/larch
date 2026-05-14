@@ -611,11 +611,13 @@ STUB_EOF
     RV_MANIFEST="$SCRATCH/rv-manifest.json"
     RV_QA="$SCRATCH/rv-qa.json"
 
+    RV_LEDGER="$SCRATCH/rv-cursor-token-ledger.jsonl"
     cd "$REPO_ROOT" && \
         PATH="$RV_STUB_BIN:$PATH" \
         STUB_MANIFEST_PATH="$RV_MANIFEST" \
         LARCH_CURSOR_MODEL="stub-model" \
         LARCH_TOKEN_SESSION_ID="$RV_SESSION_ID" \
+        LARCH_TOKEN_LEDGER="$RV_LEDGER" \
         IMPLEMENT_TMPDIR='' \
         CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
         "$LAUNCHER" \
@@ -628,7 +630,6 @@ STUB_EOF
             --agent-prompt "$AGENT_PROMPT" \
             --timeout 30 >/dev/null
 
-    RV_LEDGER=$(LARCH_TOKEN_SESSION_ID="$RV_SESSION_ID" "$REPO_ROOT/scripts/token-ledger.sh" dump | sed -n '1p')
     if [[ -f "$RV_LEDGER" ]] && jq -e \
         'select(.type=="vendor" and .vendor=="cursor" and .raw=="cursor_implement" and .input==11 and .output==22 and .cache_read==33 and .cache_create==44 and .total==110)' \
         "$RV_LEDGER" >/dev/null 2>&1; then
@@ -771,7 +772,8 @@ fi
 # exits immediately with LAUNCHER_EXIT=0 MANIFEST_WRITTEN=false STATUS=cap_hit
 # without invoking the underlying Cursor binary.
 CH_SESSION="cap-hit-cursor-$$-$RANDOM"
-LARCH_TOKEN_SESSION_ID="$CH_SESSION" "$REPO_ROOT/scripts/token-ledger.sh" record-vendor cursor total=9999 raw=cap_hit_test >/dev/null
+CH_LEDGER="$SCRATCH/cap-hit-cursor-ledger.jsonl"
+"$REPO_ROOT/scripts/token-ledger.sh" --ledger "$CH_LEDGER" record-vendor cursor total=9999 raw=cap_hit_test >/dev/null
 
 CH_ARGV="$SCRATCH/cap-hit-cursor-argv.txt"
 CH_OUT=$(cd "$REPO_ROOT" && \
@@ -782,6 +784,7 @@ CH_OUT=$(cd "$REPO_ROOT" && \
     STUB_SEPARATOR_INDEX_FILE="$SCRATCH/cap-hit-cursor-sep.txt" \
     STUB_MANIFEST_PATH="$SCRATCH/cap-hit-cursor-manifest.json" \
     LARCH_TOKEN_SESSION_ID="$CH_SESSION" \
+    LARCH_TOKEN_LEDGER="$CH_LEDGER" \
     IMPLEMENT_TMPDIR='' \
     LARCH_TOKEN_BUDGET_CAP_IMPLEMENT=1 \
     LARCH_CURSOR_MODEL="stub-cursor-model" \

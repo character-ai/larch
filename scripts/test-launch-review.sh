@@ -521,6 +521,7 @@ STUB_EOF
     chmod +x "$LCR_BIN/codex"
 
     LCR_SESSION="lcr-codex-review-$$"
+    LCR_LEDGER="$TMPDIR/lcr-codex-review-ledger.jsonl"
     LCR_OUT="$TMPDIR/lcr-codex-review-output.txt"
     LCR_ARGV="$TMPDIR/lcr-argv.txt"
     LCR_COUNT="$TMPDIR/lcr-count.txt"
@@ -528,6 +529,7 @@ STUB_EOF
 
     set +e
     LARCH_TOKEN_SESSION_ID="$LCR_SESSION" \
+    LARCH_TOKEN_LEDGER="$LCR_LEDGER" \
     IMPLEMENT_TMPDIR='' \
     PATH="$LCR_BIN:$PATH" \
     CODEX_STUB_ARGV_LOG="$LCR_ARGV" \
@@ -545,8 +547,6 @@ STUB_EOF
     if [[ "$LCR_RC" -ne 0 ]]; then
         fail "launch-review.sh --tool codex smoke exited rc=$LCR_RC; stderr=$(cat "$LCR_STDERR" 2>/dev/null)"
     else
-        LCR_LEDGER=$(LARCH_TOKEN_SESSION_ID="$LCR_SESSION" \
-            "$REPO_ROOT/scripts/token-ledger.sh" dump | sed -n '1p')
         EXPECTED_TOTAL=42
         if [[ -s "$LCR_LEDGER" ]] \
            && jq -e --argjson total "$EXPECTED_TOTAL" \
@@ -580,14 +580,16 @@ STUB_EOF
     chmod +x "$LCR_STDOUT_BIN/codex"
 
     LCR_REPORT_SESSION="lcr-codex-report-$$"
+    LCR_REPORT_LEDGER="$TMPDIR/lcr-codex-report-ledger.jsonl"
     LCR_REPORT_OUT="$TMPDIR/lcr-codex-report-output.txt"
     LCR_REPORT_STDERR="$TMPDIR/lcr-report.stderr"
 
-    LARCH_TOKEN_SESSION_ID="$LCR_REPORT_SESSION" \
+    LARCH_TOKEN_SESSION_ID="$LCR_REPORT_SESSION" LARCH_TOKEN_LEDGER="$LCR_REPORT_LEDGER" \
         "$REPO_ROOT/scripts/token-ledger.sh" mark "Step 5 — code review" >/dev/null 2>&1 || true
 
     set +e
     LARCH_TOKEN_SESSION_ID="$LCR_REPORT_SESSION" \
+    LARCH_TOKEN_LEDGER="$LCR_REPORT_LEDGER" \
     IMPLEMENT_TMPDIR='' \
     PATH="$LCR_STDOUT_BIN:$PATH" \
     LARCH_CODEX_MODEL="stub-model" \
@@ -603,8 +605,6 @@ STUB_EOF
     if [[ "$LCR_REPORT_RC" -ne 0 ]]; then
         fail "issue#1874 codex-stdout-sidecar: launcher exited rc=$LCR_REPORT_RC; stderr=$(cat "$LCR_REPORT_STDERR" 2>/dev/null)"
     else
-        LCR_REPORT_LEDGER=$(LARCH_TOKEN_SESSION_ID="$LCR_REPORT_SESSION" \
-            "$REPO_ROOT/scripts/token-ledger.sh" dump | sed -n '1p')
         if [[ -s "$LCR_REPORT_LEDGER" ]] \
            && jq -e 'select(.type=="vendor" and .vendor=="codex" and .raw=="codex_review" and .total==42)' \
                "$LCR_REPORT_LEDGER" >/dev/null 2>&1; then
@@ -665,16 +665,7 @@ fi
 # shows vendor spend >= 1, the launcher writes STATUS=cap_hit to the output
 # file and exits 0 without invoking the underlying Codex binary.
 CH_SESSION="cap-hit-codex-review-$$-$RANDOM"
-if command -v shasum >/dev/null 2>&1; then
-    CH_SLUG=$(printf '%s' "$CH_SESSION" | shasum -a 256 | awk '{print $1}')
-else
-    CH_SLUG=$(printf '%s' "$CH_SESSION" | sha256sum | awk '{print $1}')
-fi
-# Use a subprocess to discover the TMPDIR that check-step-token-budget.sh will
-# see (this test overrides $TMPDIR locally without exporting it, so the ledger
-# must land in the subprocess-visible temp root, not the test's local override).
-_CH_TMPROOT=$(bash -c 'printf "%s" "${TMPDIR:-/tmp}"')
-CH_LEDGER="${_CH_TMPROOT}/larch-tokens-${CH_SLUG}.jsonl"
+CH_LEDGER="$TMPDIR/cap-hit-codex-review-ledger.jsonl"
 printf '{"type":"vendor","vendor":"codex","total":9999}\n' > "$CH_LEDGER"
 
 CH_OUTPUT="$TMPDIR/cap-hit-codex-review.txt"
@@ -685,6 +676,7 @@ PATH="$STUB_BIN:$PATH" \
     CODEX_STUB_COUNT_FILE="$CH_COUNT" \
     LARCH_CODEX_MODEL="stub-model" \
     IMPLEMENT_TMPDIR='' \
+    LARCH_TOKEN_LEDGER="$CH_LEDGER" \
     LARCH_TOKEN_SESSION_ID="$CH_SESSION" \
     LARCH_TOKEN_BUDGET_CAP_REVIEW=1 \
     "$LAUNCHER" --output "$CH_OUTPUT" --timeout 5 --prompt "cap hit review" >/dev/null 2>&1
@@ -1598,16 +1590,7 @@ fi
 # shows vendor spend >= 1, the launcher writes STATUS=cap_hit to the output
 # file and exits 0 without invoking the underlying Cursor binary.
 CH_SESSION="cap-hit-cursor-review-$$-$RANDOM"
-if command -v shasum >/dev/null 2>&1; then
-    CH_SLUG=$(printf '%s' "$CH_SESSION" | shasum -a 256 | awk '{print $1}')
-else
-    CH_SLUG=$(printf '%s' "$CH_SESSION" | sha256sum | awk '{print $1}')
-fi
-# Use a subprocess to discover the TMPDIR that check-step-token-budget.sh will
-# see (this test overrides $TMPDIR locally without exporting it, so the ledger
-# must land in the subprocess-visible temp root, not the test's local override).
-_CH_TMPROOT=$(bash -c 'printf "%s" "${TMPDIR:-/tmp}"')
-CH_LEDGER="${_CH_TMPROOT}/larch-tokens-${CH_SLUG}.jsonl"
+CH_LEDGER="$TMPDIR/cap-hit-cursor-review-ledger.jsonl"
 printf '{"type":"vendor","vendor":"cursor","total":9999}\n' > "$CH_LEDGER"
 
 CH_OUTPUT="$TMPDIR/cap-hit-cursor-review.txt"
@@ -1615,6 +1598,7 @@ CH_PID_FILE="$TMPDIR/cap-hit-cursor-pid.txt"
 
 PATH="$STUB_BIN:$PATH" \
     CURSOR_STUB_PID_FILE="$CH_PID_FILE" \
+    LARCH_TOKEN_LEDGER="$CH_LEDGER" \
     LARCH_TOKEN_SESSION_ID="$CH_SESSION" \
     LARCH_TOKEN_BUDGET_CAP_REVIEW=1 \
     "$LAUNCHER" --output "$CH_OUTPUT" --timeout 5 --prompt "cap hit review" >/dev/null 2>&1
