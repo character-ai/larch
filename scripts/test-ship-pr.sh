@@ -158,6 +158,12 @@ case "$(basename "$0")" in
     ;;
   resolve-repo.sh)
     echo "REPO=owner/repo" ;;
+  launch-cursor-ci.sh|launch-codex-ci.sh)
+    if [[ -n "${SHIP_PR_LAUNCH_SENTINEL_DIR:-}" ]]; then
+      mkdir -p "$SHIP_PR_LAUNCH_SENTINEL_DIR"
+      printf '%s %s\n' "$(basename "$0")" "$*" >> "$SHIP_PR_LAUNCH_SENTINEL_DIR/launcher-calls.txt"
+    fi
+    ;;
 esac
 SH
     done
@@ -508,6 +514,102 @@ else
     fail "larch-log.sh stub was not called during ci-merge flush"
 fi
 rm -rf "$sentinel_dir"
+
+# Regression: CI-fix vendors receive the design plan path from session-env.
+root=$(make_repo ci_fix_plan_file)
+tmp=$(make_tmpdir)
+call_dir=$(mktemp -d /tmp/ship-pr-plan-ci-fix.XXXXXX)
+plan_file="$tmp/design-plan.txt"
+printf 'preserve this implementation plan\n' > "$plan_file"
+printf 'PLAN_FILE=%s\n' "$plan_file" > "$tmp/session-env.sh"
+cat > "$root/scripts/cursor" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
+cat > "$root/scripts/ci-wait.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+count_file="$call_dir/ci-wait-count"
+count=\$(cat "\$count_file" 2>/dev/null || echo 0)
+printf '%s\n' "\$((count + 1))" > "\$count_file"
+if [ "\$count" -eq 0 ]; then
+    printf 'ACTION=evaluate_failure\nCI_STATUS=fail\nBEHIND_COUNT=0\nFAILED_RUN_ID=run123\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n'
+else
+    printf 'ACTION=merge\nCI_STATUS=pass\nBEHIND_COUNT=0\nFAILED_RUN_ID=\nBAIL_REASON=\nITERATION=1\nELAPSED=1\n'
+fi
+STUB
+chmod +x "$root/scripts/cursor" "$root/scripts/ci-wait.sh"
+write_state "$tmp/ship-pr-state.sh" ci-initial
+awk '/^TRANSIENT_RETRIES=/ {print "TRANSIENT_RETRIES=1"; next}
+     /^FAILED_RUN_ID=/ {print "FAILED_RUN_ID=run123"; next}
+     {print}' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" \
+    && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
+PATH="$root/scripts:$PATH" SHIP_PR_LAUNCH_SENTINEL_DIR="$call_dir" run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 0 "CI fix plan-file forwarding exits 0"
+if [ -f "$call_dir/launcher-calls.txt" ] && \
+   grep -q -- "launch-cursor-ci.sh .*--role fix .*--plan-file $plan_file" "$call_dir/launcher-calls.txt"; then
+    ok "CI fix forwards --plan-file to cursor launcher"
+else
+    fail "CI fix should forward --plan-file to cursor launcher"
+    sed 's/^/    launcher: /' "$call_dir/launcher-calls.txt" 2>/dev/null || true
+fi
+rm -rf "$call_dir"
+
+# Regression: rebase conflict resolver vendors receive the design plan path.
+root=$(make_repo conflict_plan_file)
+tmp=$(make_tmpdir)
+call_dir=$(mktemp -d /tmp/ship-pr-plan-conflict.XXXXXX)
+plan_file="$tmp/design-plan.txt"
+printf 'preserve this implementation plan through conflict resolution\n' > "$plan_file"
+printf 'PLAN_FILE=%s\n' "$plan_file" > "$tmp/session-env.sh"
+cat > "$root/scripts/cursor" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
+cat > "$root/scripts/ci-wait.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+count_file="$call_dir/ci-wait-count"
+count=\$(cat "\$count_file" 2>/dev/null || echo 0)
+printf '%s\n' "\$((count + 1))" > "\$count_file"
+if [ "\$count" -eq 0 ]; then
+    printf 'ACTION=rebase\nCI_STATUS=fail\nBEHIND_COUNT=1\nFAILED_RUN_ID=\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n'
+else
+    printf 'ACTION=merge\nCI_STATUS=pass\nBEHIND_COUNT=0\nFAILED_RUN_ID=\nBAIL_REASON=\nITERATION=1\nELAPSED=1\n'
+fi
+STUB
+cat > "$root/scripts/rebase-push.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+count_file="$call_dir/rebase-push-count"
+count=\$(cat "\$count_file" 2>/dev/null || echo 0)
+printf '%s\n' "\$((count + 1))" > "\$count_file"
+if [ "\$count" -eq 0 ]; then
+    echo "CONFLICT=true"
+    exit 1
+fi
+exit 0
+STUB
+for extra in drop-bump-commit.sh git-sync-local-main.sh git-force-push.sh; do
+    printf '#!/usr/bin/env bash\nexit 0\n' > "$root/scripts/$extra"
+done
+chmod +x "$root/scripts/cursor" \
+         "$root/scripts/ci-wait.sh" \
+         "$root/scripts/rebase-push.sh" \
+         "$root/scripts/drop-bump-commit.sh" \
+         "$root/scripts/git-sync-local-main.sh" \
+         "$root/scripts/git-force-push.sh"
+write_state "$tmp/ship-pr-state.sh" ci-initial
+PATH="$root/scripts:$PATH" SHIP_PR_LAUNCH_SENTINEL_DIR="$call_dir" run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 0 "conflict resolver plan-file forwarding exits 0"
+if [ -f "$call_dir/launcher-calls.txt" ] && \
+   grep -q -- "launch-cursor-ci.sh .*--role resolve-conflict .*--plan-file $plan_file" "$call_dir/launcher-calls.txt"; then
+    ok "conflict resolver forwards --plan-file to cursor launcher"
+else
+    fail "conflict resolver should forward --plan-file to cursor launcher"
+    sed 's/^/    launcher: /' "$call_dir/launcher-calls.txt" 2>/dev/null || true
+fi
+rm -rf "$call_dir"
 
 # Regression: second evaluate_failure (TRANSIENT_RETRIES=1) escalates to fix agent,
 # not another rerun. Guards the threshold change in run_evaluate_failure (issue #1987).

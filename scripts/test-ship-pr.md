@@ -17,6 +17,7 @@ It copies the state-machine script into disposable git repositories with stubbed
   `run_rebase_rebump` when the PR is not merged
 - exit `0` for `postmerge` phase with `PHASE=done` written and `tracking-issue-summary.sh` skipped
 - postmerge manifest recovery when the run-log directory exists but `manifest.json` is missing
+- design-plan forwarding from `session-env.sh` to CI-fix and rebase-conflict vendor launchers
 - `--no-logs-commit true` suppresses `larch-log.sh commit` in `run_rebase_rebump`, `run_ci_phase` (ci-merge pre-merge flush), and `run_postmerge_phase`; `--no-logs-commit false` (default) calls it in all three sites
 - inner local fix loop: exit `0` when first 2 of 3 attempts fail but 3rd succeeds; exit `4` (stall) when all 3 fail
 - transient-network routing through `scripts/lib-net.sh`: matching create-PR, merge, CI-bail, and rebase signatures exit `6`, while non-network errors stall normally

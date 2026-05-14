@@ -5,10 +5,11 @@ Launches Codex for `/implement` CI-related subwork from `scripts/ship-pr.sh`.
 ## Interface
 
 ```text
-launch-codex-ci.sh --role fix|resolve-conflict|bump-classify|changelog-draft --output PATH --run-id ID --repo OWNER/REPO [--timeout SECONDS]
+launch-codex-ci.sh --role fix|resolve-conflict|bump-classify|changelog-draft --output PATH --run-id ID --repo OWNER/REPO [--plan-file PATH] [--timeout SECONDS]
 ```
 
 `--output` must be an absolute path using the same narrowed safe alphabet as `run-external-agent.sh`.
+`--plan-file`, when present, must be an absolute path; if the file exists, its content is inserted into the vendor prompt as design-plan context.
 
 ## Behavior
 

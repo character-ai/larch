@@ -13,11 +13,12 @@ ROLE=""
 OUTPUT=""
 RUN_ID=""
 REPO=""
+PLAN_FILE=""
 TIMEOUT="1800"
 TIMING_TASK_KIND="codex-ci-fix"
 
 usage() {
-    echo "Usage: launch-codex-ci.sh --role fix|resolve-conflict|bump-classify|changelog-draft --output PATH --run-id ID --repo OWNER/REPO [--timeout SECONDS]" >&2
+    echo "Usage: launch-codex-ci.sh --role fix|resolve-conflict|bump-classify|changelog-draft --output PATH --run-id ID --repo OWNER/REPO [--plan-file PATH] [--timeout SECONDS]" >&2
 }
 
 die() {
@@ -46,6 +47,7 @@ while [ $# -gt 0 ]; do
         --output) [ $# -ge 2 ] || die "--output requires a value"; OUTPUT=$2; shift 2 ;;
         --run-id) [ $# -ge 2 ] || die "--run-id requires a value"; RUN_ID=$2; shift 2 ;;
         --repo) [ $# -ge 2 ] || die "--repo requires a value"; REPO=$2; shift 2 ;;
+        --plan-file) [ $# -ge 2 ] || die "--plan-file requires a value"; PLAN_FILE=$2; shift 2 ;;
         --timeout) [ $# -ge 2 ] || die "--timeout requires a value"; TIMEOUT=$2; shift 2 ;;
         --timing-task-kind) [ $# -ge 2 ] || die "--timing-task-kind requires a value"; TIMING_TASK_KIND=$2; shift 2 ;;
         --help) usage; exit 0 ;;
@@ -59,7 +61,15 @@ case "$ROLE" in fix|resolve-conflict|bump-classify|changelog-draft) ;; *) die "-
 [ -n "$REPO" ] || die "--repo is required"
 case "$TIMEOUT" in ''|*[!0-9]*|0) die "--timeout must be a positive integer" ;; esac
 case "$OUTPUT" in /*) ;; *) die "--output must be an absolute path" ;; esac
+case "$PLAN_FILE" in /*) ;; "") ;; *) die "--plan-file must be an absolute path" ;; esac
 case "$OUTPUT" in *[!A-Za-z0-9._/-]*) die "--output contains unsupported characters" ;; esac
+
+PLAN_CONTEXT=""
+if [ -n "$PLAN_FILE" ] && [ -f "$PLAN_FILE" ]; then
+    PLAN_CONTEXT="
+Design plan (do not revert or undo the work it describes):
+$(cat "$PLAN_FILE")"
+fi
 
 PROMPT="You are fixing larch /implement CI subwork.
 
@@ -67,6 +77,7 @@ Role: $ROLE
 Repository: $REPO
 Failed run id: $RUN_ID
 Working directory: $PWD
+$PLAN_CONTEXT
 
 Inspect the repository and CI logs as needed. Make only the minimal changes required for this role. Do not rewrite history. Do not edit submodules. Leave a concise summary in the final answer."
 PROMPT_FILE="${OUTPUT}.prompt"

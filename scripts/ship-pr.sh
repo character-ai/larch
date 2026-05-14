@@ -117,6 +117,12 @@ read_state() {
     ' "$STATE_FILE"
 }
 
+read_session_plan_file() {
+    local session_env="$IMPLEMENT_TMPDIR/session-env.sh"
+    [ -f "$session_env" ] || return 0
+    awk 'BEGIN{k="PLAN_FILE"; kl=length(k)} substr($0,1,kl)==k && substr($0,kl+1,1)=="=" {print substr($0,kl+2); exit}' "$session_env"
+}
+
 write_initial_state() {
     local tmp branch repo issue run_id session_id clone_tag clone_tag_full
     mkdir -p "$IMPLEMENT_TMPDIR" || die_usage "cannot create --implement-tmpdir"
@@ -651,16 +657,21 @@ rename_done_best_effort() {
 }
 
 run_ci_fix_vendor() {
-    local phase=$1 run_id=$2 output rc checks_out fail_file tool_label
+    local phase=$1 run_id=$2 output rc checks_out fail_file tool_label plan_file
+    local plan_args=()
     output="$IMPLEMENT_TMPDIR/ci-fix-${phase}-$(date +%s).out"
+    plan_file=$(read_session_plan_file)
+    if [ -n "$plan_file" ] && [ -f "$plan_file" ]; then
+        plan_args=(--plan-file "$plan_file")
+    fi
     fail_file=$(failure_capture_path "$phase")
     if command -v cursor >/dev/null 2>&1; then
         tool_label="launch-cursor-ci.sh fix"
-        "$SCRIPT_DIR/launch-cursor-ci.sh" --role fix --output "$output" --run-id "$run_id" --repo "$(read_state REPO)" --timeout 1800 > "$fail_file" 2>&1
+        "$SCRIPT_DIR/launch-cursor-ci.sh" --role fix --output "$output" --run-id "$run_id" --repo "$(read_state REPO)" ${plan_args[@]+"${plan_args[@]}"} --timeout 1800 > "$fail_file" 2>&1
         rc=$?
     else
         tool_label="launch-codex-ci.sh fix"
-        "$SCRIPT_DIR/launch-codex-ci.sh" --role fix --output "$output" --run-id "$run_id" --repo "$(read_state REPO)" --timeout 1800 > "$fail_file" 2>&1
+        "$SCRIPT_DIR/launch-codex-ci.sh" --role fix --output "$output" --run-id "$run_id" --repo "$(read_state REPO)" ${plan_args[@]+"${plan_args[@]}"} --timeout 1800 > "$fail_file" 2>&1
         rc=$?
     fi
     [ "$rc" -eq 0 ] || record_failure "$phase" "$tool_label" "$rc" "$fail_file" "CI Issues"
@@ -742,7 +753,12 @@ run_evaluate_failure() {
 run_rebase_rebump() {
     local phase=$1 drop_out rebase_out rebase_rc conflict_out run_id classify_out classify_rc
     local apply_out new_version bump_type reasoning_file
-    local fail_file rc tool_label
+    local fail_file rc tool_label plan_file
+    local plan_args=()
+    plan_file=$(read_session_plan_file)
+    if [ -n "$plan_file" ] && [ -f "$plan_file" ]; then
+        plan_args=(--plan-file "$plan_file")
+    fi
 
     # 1. Drop existing bump commit (non-fatal; CI-fix commits may sit on top)
     fail_file=$(failure_capture_path rebase)
@@ -773,12 +789,12 @@ run_rebase_rebump() {
         if command -v cursor >/dev/null 2>&1; then
             tool_label="launch-cursor-ci.sh resolve-conflict"
             "$SCRIPT_DIR/launch-cursor-ci.sh" --role resolve-conflict --output "$conflict_out" \
-                --run-id "$run_id" --repo "$(read_state REPO)" --timeout 1800 > "$fail_file" 2>&1
+                --run-id "$run_id" --repo "$(read_state REPO)" ${plan_args[@]+"${plan_args[@]}"} --timeout 1800 > "$fail_file" 2>&1
             rc=$?
         else
             tool_label="launch-codex-ci.sh resolve-conflict"
             "$SCRIPT_DIR/launch-codex-ci.sh" --role resolve-conflict --output "$conflict_out" \
-                --run-id "$run_id" --repo "$(read_state REPO)" --timeout 1800 > "$fail_file" 2>&1
+                --run-id "$run_id" --repo "$(read_state REPO)" ${plan_args[@]+"${plan_args[@]}"} --timeout 1800 > "$fail_file" 2>&1
             rc=$?
         fi
         [ "$rc" -eq 0 ] || record_failure conflict-resolution "$tool_label" "$rc" "$fail_file" "External Reviewer Issues"
