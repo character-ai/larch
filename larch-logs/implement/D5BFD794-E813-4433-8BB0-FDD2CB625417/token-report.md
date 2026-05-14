@@ -29,9 +29,9 @@
 | Step 8b — rebase | **step total** | 23 | 5506456 | 17598 | 13996 |
 |  | inferred:Step 8b — rebase | 23 | 5506456 | 17598 | 13996 |
 | Step 8a — changelog | **step total** | 0 | 0 | 0 | 0 |
-| Step 8b — rebase | **step total** | 12 | 2989785 | 19562 | 17117 |
-|  | inferred:Step 8b — rebase | 12 | 2989785 | 19562 | 17117 |
-| **Grand total** |  | 221 | 42507157 | 681992 | 120599 |
+| Step 8b — rebase | **step total** | 16 | 4012603 | 22384 | 21701 |
+|  | inferred:Step 8b — rebase | 16 | 4012603 | 22384 | 21701 |
+| **Grand total** |  | 225 | 43529975 | 684814 | 125183 |
 
 ### Codex
 

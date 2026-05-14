@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [27.5.56] - 2026-05-14
+
+### Changed
+
+- Redirect review helper subprocess output to files instead of buffering large command substitutions in gather-context, collect-findings, and tally-votes.
+- Expose the collector results file in the collect-findings stdout envelope and document the file-backed contracts in sibling markdown.
+- Add stdout-size cap assertions to every review script regression harness touched by the review pipeline.
+
 ## [27.5.55] - 2026-05-14
 
 ### Changed

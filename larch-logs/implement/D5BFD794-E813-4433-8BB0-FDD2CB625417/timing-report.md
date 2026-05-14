@@ -17,7 +17,7 @@
 | implement | Step 8 — version bump | 09:03:26 [OUTLIER] |
 | implement | Step 8b — rebase | 00:02:00 |
 | implement | Step 8a — changelog | 00:00:01 |
-| implement | Step 8b — rebase | 00:02:31 |
+| implement | Step 8b — rebase | 00:02:49 |
 | **Total** | | 09:25:03 |
 
 (*Outlier steps: Step 8 — version bump — duration exceeds 04:00:00 threshold; may reflect hung sessions.)
