@@ -13,7 +13,7 @@
 | implement | Step 5 — code review | 00:06:03 |
 | implement | Step 6 — checks second pass | 00:00:19 |
 | implement | Step 7 — commit review fixes | 00:00:53 |
-| implement | Step 7a — code flow diagram | 00:00:32 |
+| implement | Step 7a — code flow diagram | 00:01:04 |
 | **Total** | | 00:11:54 |
 
 ## Vendor Task Averages
