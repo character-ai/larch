@@ -553,10 +553,10 @@ printf '%s' "$?" > "$tmp/rc-ci-merge-enabled"
 set -e
 assert_rc "$tmp/rc-ci-merge-enabled" 0 "ci-merge pre-merge flush (--no-logs-commit false): ship-pr exits 0"
 if [ -f "$sentinel_dir/larch-log-calls.txt" ] && \
-   grep -q "^LARCH_LOG_ARGS=commit" "$sentinel_dir/larch-log-calls.txt"; then
-    ok "ci-merge pre-merge flush: larch-log commit called when --no-logs-commit false"
+   grep -q "^LARCH_LOG_ARGS=commit .* --no-push" "$sentinel_dir/larch-log-calls.txt"; then
+    ok "ci-merge pre-merge flush: larch-log commit called with --no-push when --no-logs-commit false"
 else
-    fail "ci-merge pre-merge flush: larch-log commit not called when --no-logs-commit false"
+    fail "ci-merge pre-merge flush: larch-log commit with --no-push not called when --no-logs-commit false"
 fi
 rm -rf "$sentinel_dir"
 
@@ -600,10 +600,10 @@ printf '%s' "$?" > "$tmp/rc-pm-enabled"
 set -e
 assert_rc "$tmp/rc-pm-enabled" 0 "run_postmerge_phase (--no-logs-commit false): ship-pr exits 0"
 if [ -f "$sentinel_dir/larch-log-calls.txt" ] && \
-   grep -q "^LARCH_LOG_ARGS=commit" "$sentinel_dir/larch-log-calls.txt"; then
-    ok "run_postmerge_phase: larch-log commit called when --no-logs-commit false (PR_CLOSED=true)"
+   grep -q "^LARCH_LOG_ARGS=commit .* --no-push" "$sentinel_dir/larch-log-calls.txt"; then
+    ok "run_postmerge_phase: larch-log commit called with --no-push when --no-logs-commit false (PR_CLOSED=true)"
 else
-    fail "run_postmerge_phase: larch-log commit not called when --no-logs-commit false (PR_CLOSED=true)"
+    fail "run_postmerge_phase: larch-log commit with --no-push not called when --no-logs-commit false (PR_CLOSED=true)"
 fi
 rm -rf "$sentinel_dir"
 
