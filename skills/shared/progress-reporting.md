@@ -7,14 +7,15 @@ Shared formatting rules for step progress output across all larch skills. Each *
 By default, progress lines use prose payloads:
 
 ```
-{icon} {skill_path} {step_number}: {breadcrumb_path}[ — {payload}]
+{icon} {step_number}: {breadcrumb_path}[ — {payload}]
 ```
 
 - **`{icon}`**: One of the icons below, indicating the line type.
-- **`{skill_path}`**: The slash-prefixed skill path. Standalone runs use the local skill name (for example, `/design`). Nested runs append the child skill to the parent skill path from the third `--step-prefix` field (for example, `/implement:/design`).
 - **`{step_number}`**: The full numeric step designation including any parent prefix (e.g., `1.2a.5` when `/design` step `2a.5` is called from `/implement` step `1`).
 - **`{breadcrumb_path}`**: Human-readable path from root to current step, segments joined by ` | `. Built from `STEP_PATH_PREFIX | step_short_name` when nested, or just `step_short_name` when standalone.
 - **`{payload}`**: Optional description, outcome, or reason — appended after ` — `.
+
+`🔶` **step start lines** include an additional `/{skill_path}` token between the icon and step number — see `## Step Start Formatting` below.
 
 Exception: `/implement` step-boundary completion and skip lines (`✅`, `⏩`, `⏭️`) use the compact completion format below. `/implement` start lines (`🔶`), warnings (`⚠`), intermediate lines (`⏳`), rebase lines (`🔃`), reviewer status tables (`📊`), and child-skill breadcrumbs keep their normal formats.
 
@@ -39,13 +40,14 @@ Step start lines (`🔶`) get special visual treatment to make them easy to spot
 1. **Separator line**: Print a line of 80 `━` characters immediately before every step start line.
 2. **Bold text**: Render the entire step start line in bold using `**...**` markdown.
 3. **Blockquote**: Wrap the bold line in a markdown blockquote (`>`) for color differentiation.
+4. **Skill path**: Insert `/{skill_path}` between the icon and step number. For standalone runs use the local skill name (e.g., `/design`); for nested runs append the child skill to the parent path from the third `--step-prefix` field (e.g., `/implement:/design`).
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 > **🔶 /implement 2: implementation**
 ```
 
-Only `🔶` step start lines get the separator, blockquote, and bold treatment. Completion (`✅`), skip (`⏩`/`⏭️`), warning (`⚠`), and other lines do NOT get separators, blockquotes, or bold.
+Only `🔶` step start lines get the separator, blockquote, bold, and `/{skill_path}` treatment. Completion (`✅`), skip (`⏩`/`⏭️`), warning (`⚠`), and other lines do NOT get separators, blockquotes, bold, or the skill-path prefix.
 
 ## Elapsed Time
 
@@ -58,9 +60,9 @@ Every line that marks the **end** of a step or work item must include elapsed ti
 For prose-format lines, append the elapsed time in parentheses at the end of the line, using short form. The timer starts when the step logically began (its `🔶` start line, or entry into the step if no `🔶` line exists).
 
 ```
-✅ /design 2a.5: dialectic — 2 voted, 1 fallback (1m42s)
-⏩ /implement 6: checks (2) — skipped, no review changes (1s)
-⚠ /implement 7a: code flow — generation failed, proceeding without diagram (12s)
+✅ 2a.5: dialectic — 2 voted, 1 fallback (1m42s)
+⏩ 6: checks (2) — skipped, no review changes (1s)
+⚠ 7a: code flow — generation failed, proceeding without diagram (12s)
 ```
 
 ### Compact Completion Format
@@ -68,7 +70,7 @@ For prose-format lines, append the elapsed time in parentheses at the end of the
 `/implement` step-boundary completion and skip lines use compact key/value payloads:
 
 ```
-<icon> <skill_path> <step_number>: <step_short_name> [key=value ...]
+<icon> <step_number>: <step_short_name> [key=value ...]
 ```
 
 - The icon, step number, and short name prefix are unchanged.
@@ -85,10 +87,10 @@ For prose-format lines, append the elapsed time in parentheses at the end of the
 Examples:
 
 ```
-✅ /implement 8: version bump status=complete bump=PATCH from=20.0.0 to=20.0.1 elapsed=5s
-⏩ /implement 8: version bump status=skip reason=bump-type-none elapsed=1s
-⏭️ /implement 12: CI+merge loop status=bypass reason=merge-not-set elapsed=0s
-✅ /implement 18: cleanup status=complete elapsed=45m
+✅ 8: version bump status=complete bump=PATCH from=20.0.0 to=20.0.1 elapsed=5s
+⏩ 8: version bump status=skip reason=bump-type-none elapsed=1s
+⏭️ 12: CI+merge loop status=bypass reason=merge-not-set elapsed=0s
+✅ 18: cleanup status=complete elapsed=45m
 ```
 
 ### Compact status tables (`📊` lines)
@@ -164,7 +166,7 @@ Standalone `/design` (no `--step-prefix`):
 > **🔶 /design 2a: sketches**
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 > **🔶 /design 2a.5: dialectic**
-✅ /design 2a.5: dialectic — 2 voted, 1 fallback (1m42s)
+✅ 2a.5: dialectic — 2 voted, 1 fallback (1m42s)
 ```
 
 `/design` called from `/implement` with `--step-prefix "1.::design plan::/implement"`:
@@ -173,7 +175,7 @@ Standalone `/design` (no `--step-prefix`):
 > **🔶 /implement:/design 1.2a: design plan | sketches**
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 > **🔶 /implement:/design 1.2a.5: design plan | dialectic**
-✅ /implement:/design 1.2a.5: design plan | dialectic — 2 voted, 1 fallback (1m42s)
+✅ 1.2a.5: design plan | dialectic — 2 voted, 1 fallback (1m42s)
 ```
 
 `/review` called from `/implement` with `--step-prefix "5.::code review::/implement"`:
