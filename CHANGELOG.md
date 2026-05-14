@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Log Step 0 token-claude-source.sh snapshot failures under Warnings instead of silently swallowing them
 - Recover missing session transcript source snapshots by discovering recent Claude project JSONL transcripts
 - Add regression coverage and script contracts for fallback discovery and recovery warnings
+- Persist LARCH_CLAUDE_PLUGIN_ROOT in session-env when CLAUDE_PLUGIN_ROOT is available.
+- Add same-fence CLAUDE_PLUGIN_ROOT rehydration guards across implement, design, review, and fix-issue Bash blocks.
+- Extend structural, roundtrip, linting, and security docs for plugin-root recovery.
 
 ## [27.5.31] - 2026-05-13
 

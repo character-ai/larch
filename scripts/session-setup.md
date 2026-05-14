@@ -35,6 +35,11 @@ Recognized caller-env keys are `REPO`, `REPO_UNAVAILABLE`, `CODEX_HEALTHY`, `CUR
 
 `LARCH_TOKEN_SESSION_ID`, `LARCH_CLAUDE_SOURCE_FILE`, and `LARCH_TIMING_LEDGER` are pass-through telemetry context for nested skills. `/implement` establishes them from its own session tmpdir, `/review` inherits them when invoked with `--session-env`, and standalone `/review` leaves them absent so token-ledger fallback behavior remains unchanged. `LARCH_TIMING_LEDGER` is validated against the timing-ledger containment roots before `session-setup.sh` forwards it to `write-session-env.sh`.
 
+`LARCH_CLAUDE_PLUGIN_ROOT` is persisted by `write-session-env.sh` from the
+writer's `CLAUDE_PLUGIN_ROOT` environment. It is consumed directly by
+orchestrator Bash-block rehydration guards, not as a `session-setup.sh`
+caller-env passthrough.
+
 `PREV_IMPLEMENT_TMPDIR` is a cross-session handoff pointer. When it is present
 and `<prev>/larch-logs` exists, setup best-effort copies that subtree into the
 fresh `$SESSION_TMPDIR/larch-logs` before later skill steps write additional
