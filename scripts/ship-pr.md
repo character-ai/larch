@@ -16,6 +16,8 @@ ship-pr.sh --state-file PATH --implement-tmpdir PATH --merge true|false --draft 
 
 `ship-pr-state.sh` is plain `KEY=value` text and is never sourced. Required keys include `PHASE`, branch/repo/issue identity, PR fields, bump fields, CI counters, checkpoint fields, and finalizer fields. Every non-comment line must match `^[A-Z_][A-Z0-9_]*=.*$`.
 
+`MERGE_RESULT` is written to state by `run_ci_phase` the moment a merge succeeds (`merged` or `admin_merged`) or when CI reports the branch was already merged (`already_merged`). `scripts/refresh-run-logs.sh` reads this key as its fail-closed post-merge guard; when the key is absent the PR has not merged yet and the helper proceeds.
+
 Checkpoint phases:
 
 - `checks`
@@ -73,6 +75,16 @@ Transient network classification uses `is_transient_net_signature` from `scripts
 ## Postmerge Phase
 
 `run_postmerge_phase` calls `implement-finalize.sh postmerge` (Steps 14+15: local cleanup and verify-main), then finalizes the larch-log manifest (`status=done`, `pr_number=N`) and commits+pushes the update to main (best-effort, errors swallowed). This post-postmerge manifest flush runs inside the ship-pr.sh subprocess so the manifest is finalized even when the LLM session ends before prompt-side Step 18 teardown. Token-report refresh, `larch:final-summary` upsert, session-transcript commit, and tmpdir teardown still run in the prompt-side Step 18 orchestrator; the teardown manifest update there is an idempotent no-op when ship-pr.sh already pushed the done manifest. `$IMPLEMENT_TMPDIR` remains intact for Step 18 to use.
+
+## Log Refresh
+
+`scripts/refresh-run-logs.sh` re-renders `token-report` and `timing-report` larch-log batches and commits the updated files before each push, so the PR's committed logs always reflect the most recent run state. It is called at three trigger points:
+
+- **Trigger A** (`run_rebase_rebump`): after re-bump, before `git-force-push.sh`.
+- **Trigger B** (`run_ci_fix_vendor`): after fix commit, before `git-push.sh`.
+- **Trigger C** (`run_bump_phase`): after bump block, before `write_postbump_state`.
+
+All three calls use `|| true` so refresh failure is non-fatal. The helper exits 0 with no commit when `MERGE_RESULT=merged|admin_merged` is in state, and also when the state file is missing (fail-closed).
 
 ## Harness
 

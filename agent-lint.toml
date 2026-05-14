@@ -1203,6 +1203,12 @@ exclude = [
   # scripts/test-ci-status.md.
   "scripts/test-ci-status.sh",
   "scripts/test-ci-status.md",
+  # scripts/test-refresh-run-logs.sh is the Makefile-only behavioral regression
+  # harness for scripts/refresh-run-logs.sh. Referenced from Makefile
+  # (test-refresh-run-logs target) and scripts/test-refresh-run-logs.md
+  # (sibling contract); not invoked from runtime skill prose.
+  "scripts/test-refresh-run-logs.sh",
+  "scripts/test-refresh-run-logs.md",
   # scripts/test-ship-pr.sh and the two CI launcher argv harnesses are
   # Makefile-only regression entrypoints for the ship-pr state machine. They
   # are referenced from Makefile, docs/linting.md, and sibling contracts, not
