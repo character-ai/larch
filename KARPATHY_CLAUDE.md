@@ -60,6 +60,18 @@ For multi-step tasks, state a brief plan:
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
 
+## 5. Exit-Code Safety for Bash Probes
+
+**Probe commands should not create false error rows.**
+
+For orchestrator-generated grep-family or find probes where "no match" is informational, guard the command so Bash transcripts stay clean:
+- Use `|| true` when the absence of output is enough.
+- Use `|| echo 0` when the probe is producing a count.
+
+Do not add these guards to conditionals like `if grep -q PATTERN file; then`, where exit 1 is the branch signal.
+
+User-facing logs should not show error messages for expected no-match probes.
+
 ---
 
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
