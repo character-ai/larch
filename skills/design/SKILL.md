@@ -18,7 +18,7 @@ Design an implementation plan for a feature and review it with a 10-reviewer pan
 | `--full` | `false` | Force full sketch fan-out | Sets `full_mode=true`; forces `sketch_budget=4` even with `--quick`; plan review still follows `quick_mode` |
 | `--subagent` | `false` | Run Step 2a heavy phase in an isolated Agent-tool subagent (`heavy-worker.md`); writes artifacts only to `$DESIGN_TMPDIR/` and returns terse status; standalone (`--session-env` empty) parents replay artifacts before cleanup | No-op when `--quick` is set; orthogonal to `--session-env` |
 | `--session-env <path>` | empty | Forward discovered session values to `session-setup.sh` | Empty = standalone invocation, full discovery |
-| `--step-prefix <prefix>` | empty | Nested-numbering prefix from `/implement` | `::` delimiter splits numeric prefix from breadcrumb path; `"1."` (bare numeric) is backward-compat |
+| `--step-prefix <prefix>` | empty | Nested-numbering prefix from `/implement` | `::` delimiter splits numeric prefix, breadcrumb path, and optional parent skill path; `"1."` (bare numeric) is backward-compat |
 | `--branch-info <values>` | — | Skip redundant branch-state check when called from `/implement` | 4 keys required: `IS_MAIN`/`IS_USER_BRANCH`/`USER_PREFIX`/`CURRENT_BRANCH`; fallback on validation failure to `create-branch.sh --check`; power-user / nested-call flag with no standalone value validation |
 | `--design-classification <value>` | empty | Accept caller-forwarded `TRIVIAL_DOC_ONLY`/`SIMPLE`/`HARD` classification | Trusted only when `branch_info_supplied=true`; standalone `/design` ignores it and classifies locally |
 | `--run-id <ID>` | empty | Optional run identifier | When set, used as the run ID for this invocation instead of the auto-generated one |
@@ -33,9 +33,9 @@ The feature to design is described by the remainder of `$ARGUMENTS` after flags 
 
 **Every step MUST print clearly visible breadcrumb status lines** so the user can instantly see where execution is and which parent steps they are inside. Follow shared/progress-reporting.md rules.
 
-- Print a **start line** when entering a step: e.g., `> **🔶 1: branch**` (standalone) or `> **🔶 1.1: design plan | branch**` (nested from `/implement`)
+- Print a **start line** when entering a step: e.g., `> **🔶 /design 1: branch**` (standalone) or `> **🔶 /implement:/design 1.1: design plan | branch**` (nested from `/implement`)
 - Print a **completion line** only when it carries informational payload. Only the final step (Step 5) prints an unconditional completion announcement.
-- When `STEP_NUM_PREFIX` is non-empty, prepend it to step numbers: `{STEP_NUM_PREFIX}{local_step}`. When `STEP_PATH_PREFIX` is non-empty, prepend it to breadcrumb paths: `{STEP_PATH_PREFIX} | {step_short_name}`. **This rule overrides the literal step numbers and names in `Print:` directives and examples throughout this file.** Examples shown below assume standalone mode; when nested, prepend the parent context.
+- When `STEP_NUM_PREFIX` is non-empty, prepend it to step numbers: `{STEP_NUM_PREFIX}{local_step}`. When `STEP_PATH_PREFIX` is non-empty, prepend it to breadcrumb paths: `{STEP_PATH_PREFIX} | {step_short_name}`. When `PARENT_SKILL_PATH` is non-empty, print the skill path as `{PARENT_SKILL_PATH}:/design`; otherwise print `/design`. **This rule overrides the literal skill paths, step numbers, and names in `Print:` directives and examples throughout this file.** Examples shown below assume standalone mode; when nested, prepend the parent context and parent skill path.
 
 **MANDATORY at session start**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/step-name-registry.tsv` to get the Step Name Registry (step number → short name mapping for progress breadcrumbs).
 
@@ -211,7 +211,7 @@ Parse the output for `CURRENT_BRANCH`, `IS_MAIN`, `IS_USER_BRANCH`, and `USER_PR
   ${CLAUDE_PLUGIN_ROOT}/scripts/create-branch.sh --branch <USER_PREFIX>/<branch-name>
   ```
 
-- If `IS_USER_BRANCH=true`: Verify the branch name (`CURRENT_BRANCH`) aligns with the requested feature. If it appears unrelated (different feature name, unrelated commits), print a warning: `**⚠ Current branch '<branch-name>' may not match the requested feature. Creating a new branch from main.**` and create a new branch as above. Otherwise, skip branch creation. Print: `> **🔶 1: branch — using existing: <branch-name>**`
+- If `IS_USER_BRANCH=true`: Verify the branch name (`CURRENT_BRANCH`) aligns with the requested feature. If it appears unrelated (different feature name, unrelated commits), print a warning: `**⚠ Current branch '<branch-name>' may not match the requested feature. Creating a new branch from main.**` and create a new branch as above. Otherwise, skip branch creation. Print: `> **🔶 /design 1: branch — using existing: <branch-name>**`
 
 - Otherwise (non-main, non-user branch): Print a warning: `**⚠ Currently on branch '<branch-name>' which doesn't match the expected '<USER_PREFIX>/*' pattern. Creating a new branch from main.**` Then derive a name and create as above.
 
@@ -221,7 +221,7 @@ Parse the output for `CURRENT_BRANCH`, `IS_MAIN`, `IS_USER_BRANCH`, and `USER_PR
 SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 1c — questions" || true
 ```
 
-Print: `> **🔶 1c: questions**`
+Print: `> **🔶 /design 1c: questions**`
 
 **If `auto_mode=true`**: Print `⏩ 1c: questions — skipped (auto mode) (<elapsed>)` and proceed to Step 1d.
 
@@ -233,7 +233,7 @@ Print: `> **🔶 1c: questions**`
 SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 1d — discussion r1" || true
 ```
 
-Print: `> **🔶 1d: discussion r1**`
+Print: `> **🔶 /design 1d: discussion r1**`
 
 **If `auto_mode=true`**: Print `⏩ 1d: discussion r1 — skipped (auto mode) (<elapsed>)` and proceed to Step 2a.
 
@@ -281,7 +281,7 @@ When the assigned external is unavailable, the slot's Claude fallback uses the s
 
 ### Heavy phase dispatch (regular and quick mode)
 
-Print `> **🔶 2a: sketches**`.
+Print `> **🔶 /design 2a: sketches**`.
 
 **Subagent heavy phase**: If `subagent_mode=true` (i.e., `--subagent` was passed) AND `quick_mode=false`, invoke a single Agent-tool subagent (subagent_type: `general-purpose`) for the heavy non-interactive phase before entering 2a.2. The subagent MUST read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/heavy-worker.md`, receive `DESIGN_TMPDIR`, `IMPLEMENT_TMPDIR`, `SESSION_ENV_PATH`, `FEATURE_DESCRIPTION`, `quick_mode`, `auto_mode`, `$DESIGN_TMPDIR/run-params.json`, branch info, and reviewer health flags as explicit data, and write raw artifacts to `$DESIGN_TMPDIR/`. The subagent returns a terse KV block whose first line is `DESIGN_HEAVY=complete` (optionally followed by `DESIGN_SUMMARY_FILE=<path>`) or a single failure line `DESIGN_HEAVY=failed REASON=<short-token>`; it does not write the manifest and does not return plan/reviewer/tally prose.
 
@@ -406,7 +406,7 @@ Write the synthesis to `$DESIGN_TMPDIR/approach-synthesis.txt` so it can be refe
 SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 2a.5 — dialectic" || true
 ```
 
-Print: `> **🔶 2a.5: dialectic**`
+Print: `> **🔶 /design 2a.5: dialectic**`
 
 If `sketch_budget=0`, print `⏩ 2a.5: dialectic — skipped (trivial doc-only) (<elapsed>)` and proceed directly to Step 2b. Do NOT load `dialectic-execution.md`.
 
@@ -700,7 +700,7 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 1 — design Step 3.5 discussion r2" || true
 ```
 
-Print: `> **🔶 3.5: discussion r2**`
+Print: `> **🔶 /design 3.5: discussion r2**`
 
 **If `auto_mode=true`**: Print `⏩ 3.5: discussion r2 — skipped (auto mode) (<elapsed>)` and proceed to Step 3b. **Do NOT load `discussion-rounds.md` when `auto_mode=true`.**
 
@@ -716,7 +716,7 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 1 — design Step 3b arch diagram" || true
 ```
 
-Print: `> **🔶 3b: arch diagram**`
+Print: `> **🔶 /design 3b: arch diagram**`
 
 **This step runs on most paths through Step 3** — whether voting produced revisions, rejected all findings, or was skipped entirely because all reviewers reported no issues. It executes before Step 4, with one exception: non-architectural plans emit a placeholder and skip generation (see below).
 

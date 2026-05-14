@@ -103,7 +103,7 @@ Defense in depth: stdout parsing of `ISSUES_*` is the primary post-`/issue` mech
 
 **Every step MUST print clearly visible breadcrumb status lines** so the user can instantly see where execution is. Follow shared/progress-reporting.md rules.
 
-- Print a **start line** when entering a step: e.g., `> **🔶 1: research**`
+- Print a **start line** when entering a step: e.g., `> **🔶 /research 1: research**`
 - Print a **completion line** when done: e.g., `✅ 1: research — synthesis complete, 4 lanes (3m12s)`
 
 **MANDATORY at session start**: Read `${CLAUDE_PLUGIN_ROOT}/skills/research/scripts/step-name-registry.tsv` to get the Step Name Registry (step number → short name mapping for progress breadcrumbs).
@@ -164,7 +164,7 @@ Print: `✅ 0: setup — researching on branch <CURRENT_BRANCH> at <HEAD_SHA> (<
 
 ## Step 1 — Collaborative Research Perspectives
 
-Print: `> **🔶 1: research**`
+Print: `> **🔶 /research 1: research**`
 
 **MANDATORY — READ ENTIRE FILE** before executing Step 1: `${CLAUDE_PLUGIN_ROOT}/skills/research/references/research-phase.md`. It carries the planner pre-pass (Step 1.1, always on), the TTY-only interactive review checkpoint (Step 1.1.c, no hard-fail when stdin is not a TTY — passthrough proceeds with the planner output), the fixed 4-lane mapping (architecture / edge cases / external comparisons / security), the four named angle-prompt literals (`RESEARCH_PROMPT_ARCH`, `RESEARCH_PROMPT_EDGE`, `RESEARCH_PROMPT_EXT`, `RESEARCH_PROMPT_SEC`), the single collection block at Step 1.4, and the single synthesis branch at Step 1.5 using `compute-research-banner.sh`. Each external lane is Codex-first with a per-lane Claude `Agent` fallback. Cursor is NOT used for research lanes (still in validation panel). **Do NOT load `${CLAUDE_PLUGIN_ROOT}/skills/research/references/validation-phase.md` at Step 1** — that reference is Step 2's body. **Do NOT load `${CLAUDE_PLUGIN_ROOT}/skills/research/references/citation-validation-phase.md` at Step 1** — that reference is Step 2.5's body. **Do NOT load `${CLAUDE_PLUGIN_ROOT}/skills/research/references/critique-loop-phase.md` at Step 1** — that reference is Step 2.6's body.
 
@@ -172,7 +172,7 @@ Execute Step 1 per the reference file above. SKILL.md is the sole owner of Step 
 
 ## Step 2 — Findings Validation
 
-Print: `> **🔶 2: validation**`
+Print: `> **🔶 /research 2: validation**`
 
 **MANDATORY — READ ENTIRE FILE** before executing Step 2: `${CLAUDE_PLUGIN_ROOT}/skills/research/references/validation-phase.md`. It carries the 3-reviewer panel (1 Claude Code Reviewer subagent + 1 Codex + 1 Cursor), the always-on Claude Code Reviewer subagent lane with the research-validation variable bindings (`{REVIEW_TARGET}` / `{CONTEXT_BLOCK}` / `{OUTPUT_INSTRUCTION}`) and research-specific acceptance criteria, the Cursor and Codex validation-reviewer launch bash blocks with their per-slot Claude Code Reviewer subagent fallbacks, the process-Claude-findings-immediately rule, Step 2.4 `COLLECT_ARGS` + zero-externals branch + runtime-timeout replacement, the Codex/Cursor negotiation delegation to `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md`, and the Finalize Validation procedure (where synthesis revision is routed to a separate Claude Agent subagent when accepted findings exist, with the same per-profile structural validator and atomic rewrite of `$RESEARCH_TMPDIR/research-report.txt`). **Do NOT load `${CLAUDE_PLUGIN_ROOT}/skills/research/references/research-phase.md` at Step 2** — that reference is Step 1's body. **Do NOT load `${CLAUDE_PLUGIN_ROOT}/skills/research/references/citation-validation-phase.md` at Step 2** — that reference is Step 2.5's body. **Do NOT load `${CLAUDE_PLUGIN_ROOT}/skills/research/references/critique-loop-phase.md` at Step 2** — that reference is Step 2.6's body.
 
@@ -182,7 +182,7 @@ Execute Step 2 per the reference file above. SKILL.md is the sole owner of Step 
 
 ## Step 2.5 — Citation Validation
 
-Print: `> **🔶 2.5: citation-validation**`
+Print: `> **🔶 /research 2.5: citation-validation**`
 
 **Skip preconditions** (emitted FIRST, before any reference load): if `$RESEARCH_TMPDIR/research-report.txt` does not exist OR is zero bytes, print `⏩ 2.5: citation-validation — skipped (no synthesis to validate) (<elapsed>)` and proceed to Step 3 without loading `citation-validation-phase.md`.
 
@@ -212,7 +212,7 @@ The sidecar at `$RESEARCH_TMPDIR/citation-validation.md` is consumed by Step 3 (
 
 ## Step 2.6 — Critique Loop
 
-Print: `> **🔶 2.6: critique loop**`
+Print: `> **🔶 /research 2.6: critique loop**`
 
 **Skip preconditions**: if `$RESEARCH_TMPDIR/research-report.txt` is missing or zero-bytes, print `⏩ 2.6: critique loop — skipped (no synthesis to critique) (<elapsed>)` and proceed to Step 3. If `$RESEARCH_TMPDIR/citation-validation.md` is missing (Step 2.5 skipped on its own input gate), print `⏩ 2.6: critique loop — skipped (no citation sidecar) (<elapsed>)` and proceed to Step 3.
 
@@ -225,7 +225,7 @@ Execute Step 2.6 per the reference file above. SKILL.md is the sole owner of Ste
 
 ## Step 3 — Final Research Report
 
-Print: `> **🔶 3: report**`
+Print: `> **🔶 /research 3: report**`
 
 Render the per-lane attribution headers from `$RESEARCH_TMPDIR/lane-status.txt`:
 
@@ -315,7 +315,7 @@ Print: `✅ 3: report — complete (<elapsed>)`
 
 ## Step 3.5 — Auto-file Research Issue
 
-Print: `> **🔶 3.5: auto-issue**`
+Print: `> **🔶 /research 3.5: auto-issue**`
 
 Automatically create a GitHub issue containing the research question, full report, and token spend metadata. This is a convenience/archival feature — the research report (already visible in the terminal) is the core deliverable; the issue is a persistent copy.
 

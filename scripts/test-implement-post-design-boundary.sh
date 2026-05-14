@@ -49,7 +49,7 @@ done
 # (C) Both breadcrumb forms present in SKILL.md.
 grep -q '🔃 1.r: design plan | rebase' "$SKILL_MD" \
     || fail "(C) missing 1.r rebase breadcrumb literal"
-grep -q '🔶 2: implementation' "$SKILL_MD" \
+grep -q '🔶 /implement 2: implementation' "$SKILL_MD" \
     || fail "(C) missing Step 2 breadcrumb literal"
 
 # (D) NEVER #7 reference present.

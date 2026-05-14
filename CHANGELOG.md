@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [27.5.29] - 2026-05-13
+
+### Changed
+
+- Added skill-path prefixes to visible step-start headers across the planned orchestrator skill docs.
+- Extended the shared progress-reporting contract and /design step-prefix parsing docs with an optional parent skill path field.
+- Updated /implement child /design and /review invocations to pass /implement as the parent skill path, plus the structural breadcrumb test pin.
+
 ## [27.5.22] - 2026-05-13
 
 ### Fixed

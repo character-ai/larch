@@ -89,7 +89,7 @@ Handle exit codes:
 - **Exit 1**: Print `✅ 0: find & lock — no eligible issues found (<elapsed>)`. Skip to Step 8. **Note**: `FIX_ISSUE_TMPDIR` is unset on this path; Step 8's cleanup guard handles the no-tmpdir case.
 - **Exit 2**: Parse `ERROR` from stdout. Print `**⚠ 0: find & lock — error: $ERROR (<elapsed>)**`. Skip to Step 8. Dirty-tree pre-lock abort is one exit-2 sub-case: operator action is commit or stash local changes, then re-run; no manual unlock is needed because no GitHub state was touched. This differs from a narrow post-lock TOCTOU dirty tree that Step 1 preflight catches after lock acquisition; that path still follows the Stale-IN-PROGRESS recovery guidance below. **Note**: `FIX_ISSUE_TMPDIR` is unset on this path; Step 8's cleanup guard handles the no-tmpdir case.
 - **Exit 3**: Eligibility passed but lock acquisition failed (concurrent runner won the race, or `gh` API failed mid-sequence; for umbrella-dispatched paths, the failure is on the chosen child and the `ERROR` carries umbrella context — `Failed to lock chosen child #C of umbrella #U: <reason>`). Parse `ISSUE_NUMBER` and `ERROR`. Print `**⚠ 0: find & lock — lock failed for #$ISSUE_NUMBER: $ERROR. Another run may have claimed this issue, or the IN PROGRESS comment stream may have been partially mutated — see Known Limitations "Stale IN PROGRESS lock" for recovery before re-running. (<elapsed>)**`. Skip to Step 8. The candidate may NOT be cleanly recoverable: when GO was present, `issue-lifecycle.sh comment --lock` deletes GO BEFORE posting `IN PROGRESS`, so a `gh issue comment` failure between those two writes leaves the issue with no comment sentinel; a duplicate-`IN PROGRESS` post-check failure leaves both `IN PROGRESS` comments present. Both states require manual recovery per Known Limitations "Stale IN PROGRESS lock".
-- **Exit 4** (umbrella complete — all parsed children CLOSED): parse `UMBRELLA_NUMBER` and `UMBRELLA_TITLE`. Print `> **🔶 0: find & lock — umbrella #$UMBRELLA_NUMBER all-closed; finalizing**`. Invoke:
+- **Exit 4** (umbrella complete — all parsed children CLOSED): parse `UMBRELLA_NUMBER` and `UMBRELLA_TITLE`. Print `> **🔶 /fix-issue 0: find & lock — umbrella #$UMBRELLA_NUMBER all-closed; finalizing**`. Invoke:
   ```bash
   ${CLAUDE_PLUGIN_ROOT}/skills/fix-issue/scripts/finalize-umbrella.sh finalize --issue $UMBRELLA_NUMBER
   ```
@@ -128,7 +128,7 @@ Read `$FIX_ISSUE_TMPDIR/issue-details.txt` to get the full issue content.
 
 ## Step 3 — Triage
 
-Print `> **🔶 3: triage**`
+Print `> **🔶 /fix-issue 3: triage**`
 
 **MANDATORY — load digest first**: `${CLAUDE_PLUGIN_ROOT}/skills/fix-issue/references/triage-classification.digest.md` covers the common triage and classification path. Load full `${CLAUDE_PLUGIN_ROOT}/skills/fix-issue/references/triage-classification.md` only when composing the not-material closure explanation (need detailed rationale) or when genuinely uncertain about a classification edge case. Contains the triage check list, the not-material closure flow detail (rationale composition with research summary), and the Step 4 classification detail that shares the same file. **Do NOT load** outside Steps 3 and 4 — this file is not consumed anywhere else. **Do NOT load** on any path that has already branched to Step 8 (Steps 3 and 4 do not run there). Concrete examples: Step 0 returned exit 1 (no candidate), exit 2 (error / ineligible / pre-lock dirty-tree abort), or exit 3 (eligible but lock failed after eligibility); Step 1 setup aborted with `REPO_UNAVAILABLE=true`.
 
@@ -175,7 +175,7 @@ Decide whether the issue is still material against the codebase (see the referen
 
 ## Step 4 — Classify Intent and Complexity
 
-Print `> **🔶 4: classify**`
+Print `> **🔶 /fix-issue 4: classify**`
 
 The triage-classification reference loaded at Step 3 (digest or full `triage-classification.md`) owns the decision rules for both dimensions — do not re-load it here. If only the digest was loaded and a classification edge case is genuinely uncertain, load full `triage-classification.md` at this step.
 
@@ -188,7 +188,7 @@ When `INTENT=PR` and `hard_mode=false`: print `✅ 4: classify — INTENT=**$INT
 
 ## Step 5 — Execute
 
-Print `> **🔶 5: execute**`
+Print `> **🔶 /fix-issue 5: execute**`
 
 Branch on `INTENT` from Step 4.
 
@@ -206,7 +206,7 @@ Invoke `/implement` via the Skill tool. Forwarding `--issue $ISSUE_NUMBER` makes
 
 After `/implement` completes, capture the PR URL and PR number from its output. Save as `PR_URL` and `PR_NUMBER`.
 
-> **Continue after child returns (success path only).** If `/implement` succeeded and `PR_URL` / `PR_NUMBER` are captured, your next user-facing output MUST be the Step 6 breadcrumb (`> **🔶 6: finalize**`) — do NOT end the turn (neither silently nor after text output), and do NOT write a summary, status recap, or "returning to caller" message first. If `/implement` failed or bailed, ignore this directive and follow the failure-path branch below. → shared/subskill-invocation.md#anti-halt
+> **Continue after child returns (success path only).** If `/implement` succeeded and `PR_URL` / `PR_NUMBER` are captured, your next user-facing output MUST be the Step 6 breadcrumb (`> **🔶 /fix-issue 6: finalize**`) — do NOT end the turn (neither silently nor after text output), and do NOT write a summary, status recap, or "returning to caller" message first. If `/implement` failed or bailed, ignore this directive and follow the failure-path branch below. → shared/subskill-invocation.md#anti-halt
 
 If `/implement` exits non-zero, branch on whether the captured output (stdout + transcript surface) contains the literal token `IMPLEMENT_BAIL_REASON=adopted-issue-closed` (emitted by `/implement` Step 0.5 Branch 2 when the adopted tracking issue is closed):
 
@@ -231,7 +231,7 @@ If the work cannot be completed (e.g., `/issue` fails repeatedly, the issue's in
 
 ## Step 6 — Finalize
 
-Print `> **🔶 6: finalize**`
+Print `> **🔶 /fix-issue 6: finalize**`
 
 Branch on `INTENT`.
 
