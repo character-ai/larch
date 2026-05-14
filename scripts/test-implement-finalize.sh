@@ -680,6 +680,117 @@ assert_contains "ok" "$_itp_result" "is_tmp_path: /var/folders/* accepted"
 _itp_result2=$(eval "$_itp_func"; is_tmp_path "/private/var/folders/kf/abc123/T/larch-test.tmp" && echo "ok" || echo "fail")
 assert_contains "ok" "$_itp_result2" "is_tmp_path: /private/var/folders/* accepted"
 
+# Safety-net: per-section record splitting
+write_state "$STATE" ISSUE_NUMBER=
+printf 'RUN_ID=testrun123\n' >> "$STATE"
+cat > "$SANDBOX/tmp/execution-issues.md" << 'EXEC_ISSUES'
+### Q/A
+
+- Q: Did you confirm this?
+  A: Yes.
+
+### Warnings
+
+- Step 1: something warned
+EXEC_ISSUES
+rm -f "$SANDBOX/tmp/.execution-issues-flushed.sha"
+rm -f "$SANDBOX/tmp/execution-issues-safety-net.ndjson"
+mkdir -p "$SANDBOX/tmp/larch-logs/implement/testrun123"
+: > "$SANDBOX/larch-log-argv.txt"
+OUT=$(run_subject teardown --state-file "$STATE" --implement-tmpdir "$SANDBOX/tmp")
+RECORD_FILE="$SANDBOX/tmp/execution-issues-safety-net.ndjson"
+if [ -f "$RECORD_FILE" ]; then
+    RECORD_CONTENT=$(cat "$RECORD_FILE")
+    assert_contains '"category":"Q/A"' "$RECORD_CONTENT" "safety-net: Q/A section gets correct category"
+    assert_contains '"category":"Warnings"' "$RECORD_CONTENT" "safety-net: Warnings section gets correct category"
+    assert_not_contains '"category":"Tool Failures"' "$RECORD_CONTENT" "safety-net: no hardcoded Tool Failures when sections present"
+    LINE_COUNT=$(wc -l < "$RECORD_FILE" | tr -d ' ')
+    if [ "$LINE_COUNT" -ge 2 ]; then
+        PASS=$((PASS + 1))
+        echo "PASS: safety-net: multi-section file produces multiple records"
+    else
+        FAIL=$((FAIL + 1))
+        echo "FAIL: safety-net: expected multiple records, got $LINE_COUNT lines"
+    fi
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: safety-net: record file not created for multi-section execution-issues.md"
+fi
+
+# Safety-net: no-header file falls back to Tool Failures
+write_state "$STATE" ISSUE_NUMBER=
+printf 'RUN_ID=testrun123\n' >> "$STATE"
+printf '- something went wrong\n' > "$SANDBOX/tmp/execution-issues.md"
+rm -f "$SANDBOX/tmp/.execution-issues-flushed.sha"
+rm -f "$SANDBOX/tmp/execution-issues-safety-net.ndjson"
+OUT=$(run_subject teardown --state-file "$STATE" --implement-tmpdir "$SANDBOX/tmp")
+RECORD_FILE="$SANDBOX/tmp/execution-issues-safety-net.ndjson"
+if [ -f "$RECORD_FILE" ]; then
+    RECORD_CONTENT=$(cat "$RECORD_FILE")
+    assert_contains '"category":"Tool Failures"' "$RECORD_CONTENT" "safety-net: no-header file uses Tool Failures fallback"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: safety-net: record file not created for no-header execution-issues.md"
+fi
+
+# Safety-net dedup: sentinel match -> skip flush
+write_state "$STATE" ISSUE_NUMBER=
+printf 'RUN_ID=testrun123\n' >> "$STATE"
+DEDUP_CONTENT="- sentinel dedup test"
+printf '%s\n' "$DEDUP_CONTENT" > "$SANDBOX/tmp/execution-issues.md"
+DEDUP_SHA=$(sha256sum "$SANDBOX/tmp/execution-issues.md" 2>/dev/null | awk '{print $1}' || \
+            shasum -a 256 "$SANDBOX/tmp/execution-issues.md" 2>/dev/null | awk '{print $1}' || true)
+printf '%s\n' "$DEDUP_SHA" > "$SANDBOX/tmp/.execution-issues-flushed.sha"
+rm -f "$SANDBOX/tmp/execution-issues-safety-net.ndjson"
+: > "$SANDBOX/larch-log-argv.txt"
+run_subject teardown --state-file "$STATE" --implement-tmpdir "$SANDBOX/tmp" > /dev/null
+if [ ! -f "$SANDBOX/tmp/execution-issues-safety-net.ndjson" ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: safety-net dedup: sentinel match skips flush"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: safety-net dedup: sentinel match should have skipped flush"
+fi
+rm -f "$SANDBOX/tmp/.execution-issues-flushed.sha"
+
+# Safety-net dedup: source_sha256 field in batch -> skip flush
+write_state "$STATE" ISSUE_NUMBER=
+printf 'RUN_ID=testrun123\n' >> "$STATE"
+printf '%s\n' "$DEDUP_CONTENT" > "$SANDBOX/tmp/execution-issues.md"
+rm -f "$SANDBOX/tmp/.execution-issues-flushed.sha"
+rm -f "$SANDBOX/tmp/execution-issues-safety-net.ndjson"
+printf '{"phase":"implement","step":"11","category":"Warnings","source_sha256":"%s","body":"- sentinel dedup test\n"}\n' "$DEDUP_SHA" \
+    > "$SANDBOX/tmp/larch-logs/implement/testrun123/execution-issues.ndjson"
+: > "$SANDBOX/larch-log-argv.txt"
+run_subject teardown --state-file "$STATE" --implement-tmpdir "$SANDBOX/tmp" > /dev/null
+if [ ! -f "$SANDBOX/tmp/execution-issues-safety-net.ndjson" ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: safety-net dedup: source_sha256 field match skips flush"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: safety-net dedup: source_sha256 field match should have skipped flush"
+fi
+
+# Safety-net dedup: bare sha in body (no source_sha256 field) -> does NOT skip flush
+write_state "$STATE" ISSUE_NUMBER=
+printf 'RUN_ID=testrun123\n' >> "$STATE"
+printf '%s\n' "$DEDUP_CONTENT" > "$SANDBOX/tmp/execution-issues.md"
+rm -f "$SANDBOX/tmp/.execution-issues-flushed.sha"
+rm -f "$SANDBOX/tmp/execution-issues-safety-net.ndjson"
+# Record has the sha in the body text but NOT as source_sha256 field (like a Step 2 Q/A record)
+printf '{"phase":"implement","step":"2","category":"Q/A","body":"%s"}\n' "$DEDUP_SHA" \
+    > "$SANDBOX/tmp/larch-logs/implement/testrun123/execution-issues.ndjson"
+: > "$SANDBOX/larch-log-argv.txt"
+run_subject teardown --state-file "$STATE" --implement-tmpdir "$SANDBOX/tmp" > /dev/null
+if [ -f "$SANDBOX/tmp/execution-issues-safety-net.ndjson" ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: safety-net dedup: bare sha in body (no source_sha256) does not skip flush"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: safety-net dedup: bare sha in body should not have skipped flush (old grep was wrong)"
+fi
+rm -f "$SANDBOX/tmp/larch-logs/implement/testrun123/execution-issues.ndjson"
+
 printf 'BRANCH_NAME: bad\n' > "$STATE"
 run_subject_raw_rc postmerge --state-file "$STATE" --final-bail-reason-file "$BAIL"
 assert_rc "$RC" 2 "state parsing: malformed line exits 2"
