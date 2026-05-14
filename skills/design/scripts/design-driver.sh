@@ -112,17 +112,23 @@ process_line() {
     step_name=$(normalize_step "$action")
     sentinel="$DESIGN_TMPDIR/.completed/$step_name"
 
+    # EMIT_PLAN is a re-runnable validation action (plan.txt may be revised
+    # by accepted plan-review findings and must re-emit diff-lines.txt).
+    # Do not skip it on replay, even when the sentinel exists.
+    local no_sentinel=false
+    [[ "$action" == "EMIT_PLAN" ]] && no_sentinel=true
+
     if [[ "$resume_seen" != "true" ]]; then
         if [[ "$action" == "$RESUME_FROM" || "$step_name" == "$(normalize_step "$RESUME_FROM")" ]]; then
             resume_seen=true
-        elif [[ -f "$sentinel" ]]; then
+        elif [[ -f "$sentinel" && "$no_sentinel" != "true" ]]; then
             printf 'STEP_SKIPPED=%s REASON=completed-before-resume\n' "$action"
             return 0
         else
             printf 'STEP_SKIPPED=%s REASON=before-resume\n' "$action"
             return 0
         fi
-    elif [[ -f "$sentinel" ]]; then
+    elif [[ -f "$sentinel" && "$no_sentinel" != "true" ]]; then
         printf 'STEP_SKIPPED=%s REASON=already-completed\n' "$action"
         return 0
     fi

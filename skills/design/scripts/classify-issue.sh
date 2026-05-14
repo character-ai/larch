@@ -53,8 +53,25 @@ if [[ -n "$DIFF_CONTEXT" && ! -r "$DIFF_CONTEXT" ]]; then
 fi
 
 is_doc_path() {
-    case "$1" in
-        docs/*|*.md|*.txt|CHANGELOG|CHANGELOG.*|README|README.*)
+    local p="$1"
+    # Runtime markdown files are not documentation-only.
+    # Files under skills/, agents/, and hooks/ are part of the runtime plugin
+    # surface and must not be classified as TRIVIAL_DOC_ONLY.
+    # Use prefix checks via case to avoid overlapping glob patterns.
+    case "$p" in
+        skills/*)
+            # All .md files under skills/ are runtime artifacts.
+            case "$p" in *.md) return 1 ;; esac
+            ;;
+        agents/*.md|hooks/*.md) return 1 ;;
+    esac
+    case "$p" in
+        docs/*|*.txt|CHANGELOG|CHANGELOG.*|README|README.*)
+            return 0
+            ;;
+        *.md)
+            # Plain .md files at repo root are documentation.
+            # Anything under skills/, agents/, hooks/ was already excluded above.
             return 0
             ;;
         *)
@@ -126,6 +143,12 @@ try_cursor_validation() {
     local tmpdir prompt_file output_file redacted_feature redacted_diff cursor_rc
 
     [[ "${CLASSIFY_ISSUE_SKIP_CURSOR:-false}" != "true" ]] || return 2
+    # Respect the session-level Cursor health probe forwarded by the caller.
+    # CURSOR_HEALTHY=false means Cursor was probed and found unhealthy; do not
+    # invoke it even if the binary exists on PATH.
+    [[ "${CURSOR_HEALTHY:-true}" != "false" ]] || return 2
+    # Similarly, CURSOR_AVAILABLE=false means the binary was not found at probe time.
+    [[ "${CURSOR_AVAILABLE:-true}" != "false" ]] || return 2
     [[ -x "$RUN_EXTERNAL_AGENT" ]] || return 2
     command -v cursor >/dev/null 2>&1 || return 2
 

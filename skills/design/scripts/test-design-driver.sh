@@ -28,10 +28,15 @@ EOF
 out=$("$SUBJECT" --design-tmpdir "$DESIGN" --action-file "$actions")
 printf '%s\n' "$out" | grep -q '^STEP_STARTED=EMIT_PLAN$' || fail "EMIT_PLAN did not start"
 printf '%s\n' "$out" | grep -q '^STEP_COMPLETED=FINALIZE$' || fail "FINALIZE did not complete"
-[[ -f "$DESIGN/.completed/emit_plan" || -f "$DESIGN/.completed/emit-plan" ]] || fail "completion sentinel not written"
 
-out=$("$SUBJECT" --design-tmpdir "$DESIGN" --action-file "$actions")
-printf '%s\n' "$out" | grep -q '^STEP_SKIPPED=EMIT_PLAN REASON=already-completed$' || fail "completed EMIT_PLAN not skipped"
+# EMIT_PLAN must be re-runnable: running the same action file a second time
+# should re-execute EMIT_PLAN (not skip it) because plan.txt may have changed.
+printf '# Revised Plan\n\ndiff_lines: 8\n' > "$DESIGN/plan.txt"
+out2=$("$SUBJECT" --design-tmpdir "$DESIGN" --action-file "$actions")
+printf '%s\n' "$out2" | grep -q '^STEP_STARTED=EMIT_PLAN$' || fail "EMIT_PLAN re-run was skipped (should be re-runnable)"
+[[ "$(cat "$DESIGN/diff-lines.txt")" == "8" ]] || fail "diff-lines.txt not updated on EMIT_PLAN re-run"
+# FINALIZE: non-EMIT_PLAN actions are still sentinel-guarded on replay.
+printf '%s\n' "$out2" | grep -q '^STEP_SKIPPED=FINALIZE REASON=already-completed$' || fail "completed FINALIZE was not skipped on replay"
 
 DESIGN2="$TMPROOT/design2"
 mkdir -p "$DESIGN2/.completed"
@@ -40,7 +45,9 @@ printf '6\n' > "$DESIGN2/diff-lines.txt"
 printf '# Tally\n' > "$DESIGN2/voting-tally.md"
 : > "$DESIGN2/.completed/emit_plan"
 out=$("$SUBJECT" --design-tmpdir "$DESIGN2" --action-file "$actions" --resume-from FINALIZE)
-printf '%s\n' "$out" | grep -q '^STEP_SKIPPED=EMIT_PLAN REASON=completed-before-resume$' || fail "resume did not skip prior completed step"
+# EMIT_PLAN before resume point: skip (before-resume, not completed-before-resume when no sentinel guards it).
+# Since EMIT_PLAN skips sentinels, the before-resume path applies when it appears before the resume step.
+printf '%s\n' "$out" | grep -q '^STEP_SKIPPED=EMIT_PLAN REASON=before-resume$' || fail "resume did not skip EMIT_PLAN before resume point"
 printf '%s\n' "$out" | grep -q '^STEP_COMPLETED=FINALIZE$' || fail "resume did not run target step"
 
 bad="$TMPROOT/bad-actions.txt"

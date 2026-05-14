@@ -805,14 +805,16 @@ Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
 
 Follow `plan-review.md` (loaded via the MANDATORY at the top of Step 3) for: Collecting External Reviewer Results (`collect-agent-results.sh` for all launched external reviewers (up to 10 archetype slots), dedup in-scope and OOS separately), Voting Panel launch-order through `dispatch-plan-voters.sh` + threshold + Competition scoring, writing the ballot file and explicit voter output files, Finalize Plan Review (accepted findings revise plan, write accepted OOS to `$(dirname "$SESSION_ENV_PATH")/oos-accepted-design.md` when `SESSION_ENV_PATH` is non-empty, print non-accepted OOS under `## Out-of-Scope Observations` only when `SESSION_ENV_PATH` is empty), and Track Rejected Plan Review Findings (in-scope only). Accepted OOS Descriptions should include affected repo-relative file paths and line ranges when applicable; `/implement` Step 9a.1 serializes same-file OOS issues unless the exposed ranges are parseable and non-overlapping.
 
-After `dispatch-plan-voters.sh` returns Voter 2/3 output paths and the local Voter 1 ballot path is available, emit the tally ACTION with explicit files. This script writes `$DESIGN_TMPDIR/voting-tally.md`, `$DESIGN_TMPDIR/accepted-plan-findings.md`, `$DESIGN_TMPDIR/rejected-findings.md`, `$DESIGN_TMPDIR/oos.md`, and `$DESIGN_TMPDIR/oos-accepted-design.md` using the design-local parser for `### FINDING_N:` and `### OOS_N:` blocks:
+After `dispatch-plan-voters.sh` returns Voter 2/3 output paths and the local Voter 1 ballot path is available, emit the tally ACTION with explicit files. Use the canonical ballot path `$DESIGN_TMPDIR/ballot.txt` and the voter output paths emitted by `dispatch-plan-voters.sh` (`VOTER_1_PATH` for the Claude Voter 1 output, `VOTER_2_PATH`, `VOTER_3_PATH`). This script writes `$DESIGN_TMPDIR/voting-tally.md`, `$DESIGN_TMPDIR/accepted-plan-findings.md`, `$DESIGN_TMPDIR/rejected-findings.md`, `$DESIGN_TMPDIR/oos.md`, and `$DESIGN_TMPDIR/oos-accepted-design.md` using the design-local parser for `### FINDING_N:` and `### OOS_N:` blocks. When `SESSION_ENV_PATH` is non-empty, accepted non-security OOS is also written to `$(dirname "$SESSION_ENV_PATH")/oos-accepted-design.md`:
 
 ```bash
-printf 'ACTION=TALLY ARGS=--ballot-file %s --voter-files %s %s %s\n' \
-  "$DESIGN_TMPDIR/plan-review-ballot.md" \
-  "$DESIGN_TMPDIR/plan-review-voter-1.md" \
-  "$DESIGN_TMPDIR/plan-review-voter-2.md" \
-  "$DESIGN_TMPDIR/plan-review-voter-3.md" \
+SESSION_ENV_PATH="$SESSION_ENV_PATH" \
+printf 'ACTION=TALLY ARGS=--ballot-file %s --voter-files %s %s %s --session-env-path %s\n' \
+  "$DESIGN_TMPDIR/ballot.txt" \
+  "$VOTER_1_PATH" \
+  "$VOTER_2_PATH" \
+  "$VOTER_3_PATH" \
+  "$SESSION_ENV_PATH" \
   | "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-driver.sh" --design-tmpdir "$DESIGN_TMPDIR"
 ```
 

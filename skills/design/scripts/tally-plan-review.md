@@ -13,12 +13,15 @@
 ## Invariants
 
 - Required arguments are `--ballot-file FILE`, `--voter-files FILE...`, and `--design-tmpdir DIR`.
-- The parser supports design-local `### FINDING_N:` and `### OOS_N:` blocks.
+- Optional `--session-env-path FILE` enables nested-run OOS handoff.
+- The parser supports design-local `### FINDING_N:` and `### OOS_N:` blocks. Voter files use anchored `ID: VOTE` lines (e.g. `FINDING_1: YES`); substring matching is rejected to prevent `FINDING_10` matching inside `FINDING_100`.
+- Acceptance threshold: 2+ YES for 3+ eligible voters; unanimous YES (2/2) for exactly 2 eligible voters; all findings rejected when fewer than 2 eligible voters.
 - Accepted in-scope findings are written to `accepted-plan-findings.md`.
 - Rejected or neutral in-scope findings are written to `rejected-findings.md`.
 - OOS visibility output is written to `oos.md`.
-- Accepted OOS output is also written to `oos-accepted-design.md` for callers that need the accepted-only handoff.
-- Accepted OOS blocks tagged with `focus-area = security` are excluded from both public OOS outputs.
+- Accepted OOS output is also written to `oos-accepted-design.md` locally and, when `--session-env-path` is provided, to `$(dirname "$SESSION_ENV_PATH")/oos-accepted-design.md` so `ship-pr.sh` and `/implement` Step 9a.1 find it.
+- Accepted OOS blocks with an unfenced `focus-area = security` token are excluded from all public OOS outputs. Fenced occurrences (inside backtick or triple-backtick regions) are not load-bearing (Match discrimination false-positive guard).
+- Scoreboard score formula: `accepted + oos_accepted - rejected` (+1 per accepted in-scope, +1 per accepted OOS, -1 per rejected).
 - The rendered scoreboard columns are `Reviewer`, `Proposed`, `Accepted`, `Neutral/Exon`, `Rejected`, `OOS-Proposed`, `OOS-Accepted`, and `Score`.
 
 ## Makefile Wiring
