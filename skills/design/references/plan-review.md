@@ -1,8 +1,8 @@
 # Plan Review Reference
 
-**Consumer**: `/design` Step 3 — Claude Code Reviewer subagent archetype (fallback + Voter 1), external prompt renderer contract, Collecting External Reviewer Results, Voting Panel launch + Finalize Plan Review + Track Rejected Plan Review Findings. The external reviewer launch Bash blocks (5 Cursor archetypes + 5 Codex archetypes = 10 total) remain inline in SKILL.md and call `skills/design/scripts/render-plan-review-prompt.sh`; SKILL.md keeps focus-area enum anchor comments because `.github/workflows/ci.yaml` greps SKILL.md for that enum.
+**Consumer**: `/design` Step 3 — Claude Code Reviewer subagent archetype (fallback + Voter 1), external prompt renderer contract, Collecting External Reviewer Results, Voting Panel launch + Finalize Plan Review + Track Rejected Plan Review Findings. The external reviewer launch Bash blocks (5 Cursor archetypes + 5 Codex archetypes = 10 total) remain inline in SKILL.md and call `skills/design/scripts/render-plan-review-prompt.sh`; SKILL.md keeps focus-area enum anchor comments because `.github/workflows/ci.yaml` greps SKILL.md for that enum. External Voter 2/3 dispatch is script-owned by `scripts/dispatch-plan-voters.sh`.
 
-**Contract**: the plan-review panel described inline below (5 Cursor + 5 Codex: Cursor-Arch, Cursor-Edge, Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements, Codex-Arch, Codex-Edge, Codex-Innovation, Codex-Pragmatic, Codex-Requirements; Cursor fallback per slot: Cursor → Codex → Claude subagent; Codex fallback per slot: Codex → Cursor → Claude subagent), single-list output from all externals (with `[OUT_OF_SCOPE]` tag-based OOS extraction), then a 3-voter panel using YES/NO/EXONERATE with 2+ YES threshold and the proportionality rule. Primary and fallback external launch blocks render explicit temp prompt files through `render-plan-review-prompt.sh --archetype <arch|edge|innovation|pragmatic|requirements> --vendor <codex|cursor> --plan-file "$DESIGN_TMPDIR/plan.txt"` before passing `--prompt-file` to `launch-review.sh`; Claude subagent fallbacks do not use the renderer and continue through `skills/shared/reviewer-templates.md`. Claude subagent voter replacement when external tool unavailable so the panel always remains at 3.
+**Contract**: the plan-review panel described inline below (5 Cursor + 5 Codex: Cursor-Arch, Cursor-Edge, Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements, Codex-Arch, Codex-Edge, Codex-Innovation, Codex-Pragmatic, Codex-Requirements; Cursor fallback per slot: Cursor → Codex → Claude subagent; Codex fallback per slot: Codex → Cursor → Claude subagent), single-list output from all externals (with `[OUT_OF_SCOPE]` tag-based OOS extraction), then a 3-voter panel using YES/NO/EXONERATE with 2+ YES threshold and the proportionality rule. Primary and fallback external launch blocks render explicit temp prompt files through `render-plan-review-prompt.sh --archetype <arch|edge|innovation|pragmatic|requirements> --vendor <codex|cursor> --plan-file "$DESIGN_TMPDIR/plan.txt"` before passing `--prompt-file` to `launch-review.sh`; Claude subagent fallbacks do not use the renderer and continue through `skills/shared/reviewer-templates.md`. `dispatch-plan-voters.sh` owns external Voter 2/3 launch and wait, with Claude subagent voter replacement when an external tool is unavailable so the panel always remains at 3.
 
 **When to load**: once Step 3 begins, via the MANDATORY directive at the top of Step 3 in SKILL.md. Do NOT load during Steps 0, 1, 2a, 2a.5, 2b, 3.5, 3b, 4, or 5 — the reviewer archetype, ballot handling, voting panel launch, finalize procedure, and rejected-findings template defined here are all Step-3-internal concerns.
 
@@ -44,8 +44,8 @@ For fallback reviewer slots: invoke via Agent tool with subagent_type: `larch:co
 ## Voter prompts
 
 - **Voter 1**: **Claude Code Reviewer subagent** — fresh Agent tool invocation (subagent_type: `larch:code-reviewer`, model: `"opus"`) with the voting prompt. Instruct: `"You are a senior code reviewer on a voting panel. You will vote YES, NO, or EXONERATE on proposed modifications to an implementation plan. Be scrupulous — only vote YES for findings that are correct, important, and worth revising the plan for. Vote EXONERATE if the concern is legitimate but not worth implementing in this PR. When voting, also consider proportionality: vote EXONERATE (not YES) if the finding's concern is legitimate but the proposed change would introduce more complexity than the issue warrants."`
-- **Voter 2**: Codex — via `run-external-agent.sh` with the ballot (use `--with-effort`; do not append reasoning-effort prose to the voter prompt). If `codex_available` is false, launch a Claude subagent voter instead per the Voting Protocol.
-- **Voter 3**: Cursor — via `run-external-agent.sh` with the ballot (use `cursor-wrap-prompt.sh`; do not append reasoning-effort prose to the voter prompt). If `cursor_available` is false, launch a Claude subagent voter instead per the Voting Protocol.
+- **Voter 2**: Codex — launch through `${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-plan-voters.sh` using the ballot file. If `VOTER_2_STATUS=fallback`, launch a Claude subagent voter instead per the Voting Protocol.
+- **Voter 3**: Cursor — launch through `${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-plan-voters.sh` using the ballot file. If `VOTER_3_STATUS=fallback`, launch a Claude subagent voter instead per the Voting Protocol.
 
 For Codex, Cursor, and their Claude replacement voters, instruct each: `"You are a senior engineer on a voting panel deciding which proposed plan modifications should be accepted. When voting, also consider proportionality: vote EXONERATE (not YES) if the finding's concern is legitimate but the proposed change would introduce more complexity than the issue warrants."`
 
@@ -89,7 +89,19 @@ Submit both in-scope findings and out-of-scope observations to a 3-agent voting 
 
 **Panel**: 3 voters — Claude Code Reviewer subagent (Voter 1) + Codex (Voter 2) + Cursor (Voter 3). Each votes YES/NO/EXONERATE with proportionality (vote EXONERATE if the concern is legitimate but the proposed change introduces more complexity than the issue warrants). 2+ YES threshold accepts a finding. When an external tool is unavailable, launch a Claude subagent voter replacement per the Voting Protocol so the panel always remains at 3 voters.
 
-Launch all available voters **in parallel** (Cursor first, then Codex, then Claude subagent). Wait for external voter sentinels using `wait-for-reviewers.sh` per the Voting Protocol, then parse voter outputs.
+Launch Voter 2 (Codex) and Voter 3 (Cursor) through the dispatcher, then launch any Claude replacement voters reported by dispatcher fallback statuses and Voter 1 (Claude Code Reviewer subagent). The dispatcher launches available external voters in parallel, waits for their sentinels using `wait-for-reviewers.sh`, and emits the external output paths for downstream validation:
+
+```bash
+_plan_voter_dispatch=$("${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-plan-voters.sh" \
+  --ballot-file "$DESIGN_TMPDIR/ballot.txt" \
+  --design-tmpdir "$DESIGN_TMPDIR" \
+  --codex-available "$codex_available" \
+  --cursor-available "$cursor_available" \
+  --session-env-path "$SESSION_ENV_PATH")
+eval "$_plan_voter_dispatch"
+```
+
+If `VOTER_2_STATUS=fallback`, launch the Codex replacement Claude subagent voter. If `VOTER_3_STATUS=fallback`, launch the Cursor replacement Claude subagent voter. Include only launched external voter paths (`VOTER_2_PATH` / `VOTER_3_PATH` with `STATUS=launched`) when validating external voter outputs.
 
 **Tally votes**: Apply the threshold rules from the Voting Protocol based on eligible voters per finding (2+ YES with 3 voters, unanimous 2/2 with 2 voters, skip if <2 eligible). Write the vote breakdown per finding to `$DESIGN_TMPDIR/voting-tally.md`. If `SESSION_ENV_PATH` is empty, also print the same tally inline; if `SESSION_ENV_PATH` is non-empty, print only `✅ 3: plan review — voting tally saved (<elapsed>)`. **Voter column labels in the per-finding vote breakdown table**: use `Claude` for the Claude Code Reviewer subagent (Voter 1), `Codex` for Codex (Voter 2), and `Cursor` for Cursor (Voter 3). Do NOT use a model name (e.g., `Claude-Opus`, `Claude-Sonnet`) as a column header — the model backing the voter may change between deployments.
 

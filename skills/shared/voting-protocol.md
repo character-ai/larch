@@ -103,11 +103,11 @@ You must vote on every item. Do NOT skip any. Do NOT modify files.
 
 ## Launching Voters
 
-**For plan review**: launch all 3 voters **in parallel** (in a single message). When external tools are unavailable, launch Claude replacement voters instead so the total voter count always remains 3. Spawn order: Cursor first (slowest), then Codex, then Claude subagent (fastest).
+**For `/design` plan review**: call `${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-plan-voters.sh` for Voter 2 (Codex) and Voter 3 (Cursor), then launch Voter 1 and any Claude replacement voters indicated by `VOTER_2_STATUS=fallback` / `VOTER_3_STATUS=fallback`. The dispatcher launches available external voters in parallel, waits for sentinels, and emits the external output paths. When external tools are unavailable, launch Claude replacement voters instead so the total voter count always remains 3.
 
 **For code review**: launch 2 primary voters (Cursor + Codex) in parallel. Claude is a conditional tie-breaker only — do NOT launch Claude unconditionally. See `skills/review/references/voting.md` for the full code review voter launch procedure.
 
-**Cursor voter** (if `cursor_available`):
+**Generic Cursor voter argv contract** (mirrored by `dispatch-plan-voters.sh` for `/design`; use the skill-specific launch instructions before copying this block):
 
 ```bash
 # Build the conditional --api-key argv segment via the shared helper. Empty
@@ -127,15 +127,15 @@ CURSOR_MODEL_ARGS=()
 while IFS= read -r arg; do CURSOR_MODEL_ARGS+=("$arg"); done < "$CURSOR_MODEL_ARGS_TMP"
 
 ${CLAUDE_PLUGIN_ROOT}/scripts/run-external-agent.sh --tool cursor --output "<tmpdir>/cursor-vote-output.txt" --timeout 1200 --capture-stdout -- \
-  cursor agent -p --force --trust ${CURSOR_MODEL_ARGS[@]+"${CURSOR_MODEL_ARGS[@]}"} ${CURSOR_AUTH_FLAGS[@]+"${CURSOR_AUTH_FLAGS[@]}"} --workspace "$PWD" \
+  cursor agent -p --trust --mode plan ${CURSOR_MODEL_ARGS[@]+"${CURSOR_MODEL_ARGS[@]}"} ${CURSOR_AUTH_FLAGS[@]+"${CURSOR_AUTH_FLAGS[@]}"} --workspace "$PWD" \
     "$("${CLAUDE_PLUGIN_ROOT}/scripts/cursor-wrap-prompt.sh" "<voter prompt with ballot>.")"
 ```
 
-Use `run_in_background: true` and `timeout: 1260000`.
+Use `run_in_background: true` and `timeout: 1260000` only for skill-specific direct-launch paths. `/design` plan review gets this behavior from `dispatch-plan-voters.sh`.
 
 **Cursor voter replacement (plan review only)** (if `cursor_available` is false): Launch a Claude subagent voter via the Agent tool with the voter prompt. This replacement ensures the total voter count always remains 3. For code review, when a primary voter is unavailable, do NOT launch a Claude replacement — voting is skipped when fewer than 2 eligible primaries remain (see `skills/review/references/voting.md` rows 15-16).
 
-**Codex voter** (if `codex_available`):
+**Generic Codex voter argv contract** (mirrored by `dispatch-plan-voters.sh` for `/design`; use the skill-specific launch instructions before copying this block):
 
 ```bash
 # Same temp-file pattern as the Cursor block above — propagate
@@ -147,12 +147,12 @@ CODEX_MODEL_ARGS=()
 while IFS= read -r arg; do CODEX_MODEL_ARGS+=("$arg"); done < "$CODEX_MODEL_ARGS_TMP"
 
 ${CLAUDE_PLUGIN_ROOT}/scripts/run-external-agent.sh --tool codex --output "<tmpdir>/codex-vote-output.txt" --timeout 1200 -- \
-  codex exec --full-auto -C "$PWD" ${CODEX_MODEL_ARGS[@]+"${CODEX_MODEL_ARGS[@]}"} \
+  codex exec --sandbox read-only -C "$PWD" ${CODEX_MODEL_ARGS[@]+"${CODEX_MODEL_ARGS[@]}"} \
     --output-last-message "<tmpdir>/codex-vote-output.txt" \
     "<voter prompt with ballot>."
 ```
 
-Use `run_in_background: true` and `timeout: 1260000`.
+Use `run_in_background: true` and `timeout: 1260000` only for skill-specific direct-launch paths. `/design` plan review gets this behavior from `dispatch-plan-voters.sh`.
 
 **Codex voter replacement (plan review only)** (if `codex_available` is false): Launch a Claude subagent voter via the Agent tool with the voter prompt. This replacement ensures the total voter count always remains 3. For code review, when a primary voter is unavailable, do NOT launch a Claude replacement — voting is skipped when fewer than 2 eligible primaries remain (see `skills/review/references/voting.md` rows 15-16).
 
