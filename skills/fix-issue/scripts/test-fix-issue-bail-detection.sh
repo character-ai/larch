@@ -36,7 +36,7 @@
 #        (anti-pattern #5 guard against inline implementation at Step 5a).
 #
 # Block extraction boundary: "### 5a " (start) through "## Step 6" prefix match
-# (end — the real heading is "## Step 6 — Close Issue"; prefix pattern handles it).
+# (end — the real heading is "## Step 6 — Finalize"; prefix pattern handles it).
 #
 # Wired into `make lint` via the `test-fix-issue-bail-detection` target.
 # Referenced in agent-lint.toml's exclude list (Makefile-only harness pattern).

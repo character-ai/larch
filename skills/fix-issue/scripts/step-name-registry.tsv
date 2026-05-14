@@ -5,5 +5,5 @@ step	name
 3	triage
 4	classify
 5	execute
-6	close issue
+6	finalize
 8	cleanup

@@ -43,8 +43,9 @@
 #                closing comment and best-effort add [FALSE-POSITIVE] to the
 #                issue title on keyword match.
 #                Called by /fix-issue Step 3 (not-material close — passes
-#                --close-class) and Step 6 (DONE close — Step 6a no marker
-#                flag; Step 6b passes --close-class done).
+#                --close-class) and Step 6b (NON_PR DONE close — passes
+#                --close-class done; Step 6a PR path omits this call since
+#                GitHub auto-closes the issue on PR merge).
 #   update-body — Append a PR link to the issue body (idempotent).
 #
 # Exit codes:
@@ -356,7 +357,7 @@ cmd_close() {
     # Idempotency guard: probe current state before attempting close. If the
     # issue is already CLOSED (e.g., GitHub auto-closed it via `Closes #<N>`
     # on PR merge), skip the `gh issue close` call but still emit CLOSED=true
-    # on stdout so /fix-issue Step 6's stdout parser cannot distinguish the
+    # on stdout so /fix-issue Step 6b's stdout parser cannot distinguish the
     # paths (stderr carries an INFO note; stdout contract is byte-stable).
     # On probe failure, log a WARNING to stderr and fall through to the
     # existing close path rather than hard-failing — this preserves the

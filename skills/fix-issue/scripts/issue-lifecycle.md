@@ -4,7 +4,7 @@
 
 - **`comment --lock`** — invoked by `skills/fix-issue/scripts/find-lock-issue.sh` at `/fix-issue` Step 0 (combined Find + Lock + Rename) for ordinary leaf-issue locks.
 - **`comment --lock-no-go`** — invoked by `skills/fix-issue/scripts/find-lock-issue.sh` for the umbrella child-dispatch path at `/fix-issue` Step 0. Children selected by `umbrella-handler.sh pick-child` inherit approval from the umbrella's existence and do not need their own `GO` comment.
-- **`close`** — invoked by `/fix-issue` Step 3 (close for not-material issues) and Step 6 (close for DONE).
+- **`close`** — invoked by `/fix-issue` Step 3 (close for not-material issues) and Step 6b (NON_PR close for DONE).
 - **`update-body`** — called internally by `cmd_close` when `--pr-url` is provided.
 
 ## Subcommands
@@ -34,7 +34,7 @@
 
   This buffer-then-cat invariant prevents partial redactor output from leaking. Tests may set `LARCH_TEST_REDACTOR_PATH` to exercise redactor failure and missing-redactor branches, and `LARCH_TEST_TRACKING_WRITE_PATH` to replace the marker helper; production callers leave both unset. Umbrella finalization and existing callers that omit both flags keep the byte-stable `CLOSED=true` behavior with no marker invocation.
 
-  **Wiring**: `/fix-issue` Step 3 (not-material close) passes `--close-class <inferred>` derived from the triage decision (already-fixed → `done`, duplicate-of → `duplicate`, superseded-by → `superseded`, invalid/false-positive → `false-positive`). `/fix-issue` Step 6b NON_PR closes pass `--close-class done` so the marker is never applied to legitimate completion summaries. `/fix-issue` Step 6a (PR DONE close) passes neither flag — the merged-PR path is never a false-positive close. Legacy `--mark-false-positive-if-keyword` callers are not removed; the flag continues to work for any external caller that has not migrated to the enum.
+  **Wiring**: `/fix-issue` Step 3 (not-material close) passes `--close-class <inferred>` derived from the triage decision (already-fixed → `done`, duplicate-of → `duplicate`, superseded-by → `superseded`, invalid/false-positive → `false-positive`). `/fix-issue` Step 6b NON_PR closes pass `--close-class done` so the marker is never applied to legitimate completion summaries. The PR path (Step 6a) does not call `close` — the issue is auto-closed by GitHub via `Closes #N` on PR merge. Legacy `--mark-false-positive-if-keyword` callers are not removed; the flag continues to work for any external caller that has not migrated to the enum.
 
   **Probe-failure fallback**: if the state probe (`gh issue view --json state`) fails transiently, `close` logs a `WARNING: failed to probe state for issue #N; attempting close anyway` to stderr and falls through to `gh issue close`. This preserves the pre-idempotency OPEN-path reliability — a read-side blip must not abort a close that the write-side would otherwise succeed on. A fatal error is reported only if the subsequent `gh issue close` ALSO fails (`CLOSED=false` + `ERROR=Failed to close issue #N`, exit 1).
 
@@ -52,7 +52,7 @@ After posting the lock comment, `cmd_comment` pauses for `ISSUE_LIFECYCLE_LOCK_S
 - `comment` success: `COMMENTED=true` (plus `LOCK_ACQUIRED=true` with `--lock`).
 - `update-body` success: `UPDATED=true` (plus `SKIPPED=already_present` when the PR URL is already in the body).
 
-`/fix-issue` Step 6 (and Step 3 on the not-material path) reads stdout loosely (substring match), so additional `INFO:` lines on stderr do not affect callers. The stdout contract is byte-stable across the OPEN and CLOSED idempotency branches.
+`/fix-issue` Step 6b (and Step 3 on the not-material path) reads stdout loosely (substring match), so additional `INFO:` lines on stderr do not affect callers. The stdout contract is byte-stable across the OPEN and CLOSED idempotency branches.
 
 ## Exit codes
 
