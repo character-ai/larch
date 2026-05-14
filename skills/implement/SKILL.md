@@ -210,9 +210,23 @@ Then:
   # transcript instead of "newest .jsonl by mtime", which would otherwise
   # attribute tokens to the wrong run when concurrent sessions write
   # transcripts under the same project dir. Best-effort: a snapshot
-  # failure leaves the env unset and the resolver falls back to mtime.
-  "${CLAUDE_PLUGIN_ROOT}/scripts/token-claude-source.sh" > "$IMPLEMENT_TMPDIR/claude-source.env" 2>/dev/null && \
-      export LARCH_CLAUDE_SOURCE_FILE="$IMPLEMENT_TMPDIR/claude-source.env" || true
+  # failure leaves the env unset, records a Warnings entry, and later
+  # transcript capture falls back to discovery.
+  if "${CLAUDE_PLUGIN_ROOT}/scripts/token-claude-source.sh" \
+          > "$IMPLEMENT_TMPDIR/claude-source.env" \
+          2>"$IMPLEMENT_TMPDIR/claude-source-error.log"; then
+      export LARCH_CLAUDE_SOURCE_FILE="$IMPLEMENT_TMPDIR/claude-source.env"
+  else
+      _source_exit=$?
+      "${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" \
+          --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
+          --site "Step 0" \
+          --tool "token-claude-source.sh" \
+          --exit-code "$_source_exit" \
+          --category Warnings \
+          --output-file "$IMPLEMENT_TMPDIR/claude-source-error.log" \
+          --redact || true
+  fi
   session_env_args=(
     --output "$IMPLEMENT_TMPDIR/session-env.sh"
     --repo <value>

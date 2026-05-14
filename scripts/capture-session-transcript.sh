@@ -74,13 +74,53 @@ emit_status() {
     exit 0
 }
 
-if [ -z "$SOURCE_FILE" ] || [ ! -f "$SOURCE_FILE" ]; then
-    emit_status "source-file-missing" "Claude source file was empty or not a regular file; transcript capture skipped."
-fi
-
-TRANSCRIPT_PATH="$(awk 'BEGIN{prefix="TRANSCRIPT_PATH="} index($0, prefix) == 1 {print substr($0, length(prefix) + 1); exit}' "$SOURCE_FILE" 2>/dev/null || true)"
-if [ -z "$TRANSCRIPT_PATH" ]; then
-    emit_status "transcript-path-missing" "Claude source file did not contain a TRANSCRIPT_PATH entry; transcript capture skipped."
+TRANSCRIPT_PATH=""
+if [ -z "$SOURCE_FILE" ] || [ ! -f "$SOURCE_FILE" ] || [ ! -s "$SOURCE_FILE" ]; then
+    recovered=""
+    if [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -d "$IMPLEMENT_TMPDIR" ] && [ -n "${HOME:-}" ]; then
+        # Narrow search to the encoded project dir for the current git repo, mirroring
+        # token-claude-source.sh. Falls back to the broader projects root if git is
+        # unavailable or the project dir doesn't exist yet.
+        repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || repo_root=""
+        if [ -n "$repo_root" ]; then
+            repo_root=$(cd "$repo_root" && pwd -P 2>/dev/null) || repo_root=""
+        fi
+        if [ -n "$repo_root" ]; then
+            encoded=$(printf '%s' "$repo_root" | sed 's#/#-#g')
+            project_search_dir="$HOME/.claude/projects/$encoded"
+        else
+            project_search_dir="$HOME/.claude/projects"
+        fi
+        # Use session-id file as a stable time reference (written once at Step 0, never
+        # modified). The IMPLEMENT_TMPDIR directory itself is unsuitable because its mtime
+        # advances with every log/artifact write during the run, and can end up newer than
+        # an idle transcript file.
+        ref_file="$IMPLEMENT_TMPDIR/session-id"
+        [ -f "$ref_file" ] || ref_file="$IMPLEMENT_TMPDIR"
+        if [ -d "$project_search_dir" ]; then
+            recovered=$(
+                find "$project_search_dir" -name '*.jsonl' ! -type l -newer "$ref_file" 2>/dev/null \
+                    | while IFS= read -r f; do
+                        stat_mtime=$(stat -f %m "$f" 2>/dev/null || stat -c %Y "$f" 2>/dev/null || printf '0')
+                        printf '%s\t%s\n' "$stat_mtime" "$f"
+                    done \
+                    | sort -rn \
+                    | awk -F'\t' 'NR==1 { print $2 }'
+            ) || true
+        fi
+    fi
+    if [ -n "$recovered" ] && [ -f "$recovered" ]; then
+        TRANSCRIPT_PATH="$recovered"
+        append_warning "source-file-recovered-via-discovery" \
+            "Original snapshot was missing; recovered transcript via project-dir probe: $recovered"
+    else
+        emit_status "source-file-missing" "Claude source file was empty or not a regular file; transcript capture skipped."
+    fi
+else
+    TRANSCRIPT_PATH="$(awk 'BEGIN{prefix="TRANSCRIPT_PATH="} index($0, prefix) == 1 {print substr($0, length(prefix) + 1); exit}' "$SOURCE_FILE" 2>/dev/null || true)"
+    if [ -z "$TRANSCRIPT_PATH" ]; then
+        emit_status "transcript-path-missing" "Claude source file did not contain a TRANSCRIPT_PATH entry; transcript capture skipped."
+    fi
 fi
 
 if [ ! -f "$TRANSCRIPT_PATH" ]; then
