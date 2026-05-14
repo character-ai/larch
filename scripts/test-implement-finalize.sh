@@ -823,9 +823,11 @@ rm -f "$SANDBOX/tmp/.execution-issues-flushed.sha"
 rm -f "$SANDBOX/tmp/execution-issues-safety-net.ndjson"
 : > "$SANDBOX/larch-log-argv.txt"
 run_subject teardown --state-file "$STATE" --implement-tmpdir "$SANDBOX/tmp" > /dev/null
-if [ -f "$SANDBOX/tmp/execution-issues-safety-net.ndjson" ]; then
-    # The safety-net ran; check that Tool Failures was NOT re-emitted (only Warnings should appear)
-    SAFETYNET_CONTENT=$(cat "$SANDBOX/tmp/execution-issues-safety-net.ndjson")
+RECORD_FILE_WD="$SANDBOX/tmp/execution-issues-safety-net.ndjson"
+# write_execution_issues_records always creates the file; use -s (non-empty) to detect emitted records
+if [ -s "$RECORD_FILE_WD" ]; then
+    # The safety-net emitted some records; check that Tool Failures was NOT re-emitted
+    SAFETYNET_CONTENT=$(cat "$RECORD_FILE_WD")
     if echo "$SAFETYNET_CONTENT" | grep -qF '"category":"Tool Failures"'; then
         FAIL=$((FAIL + 1))
         echo "FAIL: safety-net dedup whitespace-divergent: Tool Failures section re-emitted despite matching normalized sha"
@@ -841,9 +843,8 @@ if [ -f "$SANDBOX/tmp/execution-issues-safety-net.ndjson" ]; then
         echo "FAIL: safety-net dedup whitespace-divergent: Warnings section should have been emitted"
     fi
 else
-    # Record file not created means ALL sections were deduped (acceptable if both sections matched)
-    PASS=$((PASS + 1))
-    echo "PASS: safety-net dedup whitespace-divergent: no duplicate emitted (record file absent)"
+    FAIL=$((FAIL + 1))
+    echo "FAIL: safety-net dedup whitespace-divergent: record file empty or absent (expected Warnings to be emitted)"
 fi
 rm -f "$SANDBOX/tmp/larch-logs/implement/testrun123/execution-issues.ndjson"
 
