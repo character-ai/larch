@@ -385,6 +385,8 @@ if [[ "$(sed -n '1p' "$ARGV_FILE")" == "exec" ]] \
    && [[ "$(sed -n '4p' "$ARGV_FILE")" == "$REPO_ROOT" ]] \
    && [[ "$(sed -n '5p' "$ARGV_FILE")" == "--add-dir" ]] \
    && [[ "$(sed -n '6p' "$ARGV_FILE")" == "$(cd "$(dirname "$MANIFEST")" && pwd -P)" ]] \
+   && [[ "$(sed -n '7p' "$ARGV_FILE")" == "--add-dir" ]] \
+   && [[ "$(sed -n '8p' "$ARGV_FILE")" == "$REPO_ROOT" ]] \
    && grep -Fxq -- '-m' "$ARGV_FILE" \
    && grep -Fxq -- 'stub-codex-model' "$ARGV_FILE" \
    && grep -Fxq -- '-c' "$ARGV_FILE" \
@@ -393,7 +395,7 @@ if [[ "$(sed -n '1p' "$ARGV_FILE")" == "exec" ]] \
    && grep -Fxq -- '--output-last-message' "$ARGV_FILE"; then
     pass
 else
-    fail 6 "Codex argv missing required exec/full-auto/add-dir/model/output flags: $(tr '\n' ' ' < "$ARGV_FILE")"
+    fail 6 "Codex argv missing required exec/full-auto/add-dir(session)/add-dir(repo)/model/output flags: $(tr '\n' ' ' < "$ARGV_FILE")"
 fi
 
 SEPARATOR_INDEX=$(sed -n '1p' "$SEPARATOR_INDEX_FILE")
