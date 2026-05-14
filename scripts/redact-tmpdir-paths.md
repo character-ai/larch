@@ -10,15 +10,17 @@ Outbound publishers compose this helper before `scripts/redact-secrets.sh`, so t
 
 ## Test Harness
 
-`scripts/test-redact-tmpdir-paths.sh` covers legacy `/tmp`, macOS `/private/tmp`, clone-tagged names, cache-root paths, prose embedding, non-matching preservation, and idempotence. It is wired through `make test-redact-tmpdir-paths`.
+`scripts/test-redact-tmpdir-paths.sh` covers legacy `/tmp`, macOS `/private/tmp`, clone-tagged names, cache-root paths, prose embedding, non-matching preservation, idempotence, and JSONL `\n`-prefixed paths for all three session roots (expressions 4-6). It is wired through `make test-redact-tmpdir-paths`.
 
 ## Boundary handling
 
-All three expressions use `(^|[^[:alnum:]_./-])` as the left boundary anchor. This prevents the preceding non-whitespace prefix from consuming non-path content before a session path:
+Expressions 1-3 use `(^|[^[:alnum:]_./-])` as the left boundary anchor. This prevents the preceding non-whitespace prefix from consuming non-path content before a session path:
 
 - Valid boundary characters include `=`, `"`, `'`, space, `:`, `(`, `)` — any character not in `[:alnum:]_./-`.
 - The boundary character is captured in `\1` and re-inserted in the replacement so surrounding context (variable assignments like `VARNAME=<TMPDIR>`, JSON delimiters) is preserved.
-- JSONL-encoded newlines (`\n` as two chars) do not serve as boundaries because `\` alone is a valid boundary but the following `n` is `[:alnum:]`, preventing a false match at that position.
+- JSONL-encoded newlines (`\n` as two chars) do not serve as boundaries for expressions 1-3 because `\` alone is a valid boundary but the following `n` is `[:alnum:]`, preventing a match when `\n` immediately precedes the path.
+
+Expressions 4-6 handle the `\n`-prefix carve-out for all three session roots: each matches the literal two-char sequence backslash+n immediately before a session path (`larch/sessions/` cache root, `/tmp`, or `/var/folders`), captures `\n` as `\1`, and re-emits it in the replacement. For example, `\n/Users/…/.cache/larch/sessions/claude-implement-XYZ` is rewritten to `\n<TMPDIR>` rather than passing through unchanged.
 
 ## Edit-in-sync
 

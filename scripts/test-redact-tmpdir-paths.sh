@@ -65,6 +65,28 @@ assert_eq \
     'plain text no larch path here' \
     "non-larch/sessions input passes through unchanged"
 
+# Expression 4: \n (two chars: backslash + n) immediately before larch/sessions path
+assert_eq \
+    "$(run_redactor 'foo\n/Users/example/.cache/larch/sessions/claude-implement-XYZ')" \
+    'foo\n<TMPDIR>' \
+    "E4: \\n immediately before larch/sessions path redacted, \\n preserved"
+
+assert_eq \
+    "$(run_redactor '\n/Users/example/.cache/larch/sessions/larch-design-ABC123/bar.log')" \
+    '\n<TMPDIR>/bar.log' \
+    "E4: \\n-prefixed larch/sessions path with suffix redacted, \\n preserved"
+
+# Expressions 5-6: \n immediately before /tmp and /var/folders paths
+assert_eq \
+    "$(run_redactor '\n/tmp/claude-implement-XYZ123')" \
+    '\n<TMPDIR>' \
+    "E5: \\n immediately before /tmp session path redacted, \\n preserved"
+
+assert_eq \
+    "$(run_redactor '\n/private/var/folders/kf/abc/T/larch-fix-issue-XyZ')" \
+    '\n<TMPDIR>' \
+    "E6: \\n immediately before /var/folders session path redacted, \\n preserved"
+
 echo
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
