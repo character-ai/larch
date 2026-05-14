@@ -791,6 +791,63 @@ else
 fi
 rm -f "$SANDBOX/tmp/larch-logs/implement/testrun123/execution-issues.ndjson"
 
+# Safety-net dedup: whitespace-divergent — same content, different whitespace shape -> skip flush
+# This tests the core bug fix: Step 11 writes a record with normalized sha; Step 18 safety-net
+# gets an execution-issues.md that has the same section with extra leading/trailing whitespace
+# (e.g. due to a Warnings section appended after Step 11). The per-section normalized sha should
+# match and the safety-net should skip re-emitting the already-written Tool Failures section.
+write_state "$STATE" ISSUE_NUMBER=
+printf 'RUN_ID=testrun123\n' >> "$STATE"
+# The canonical content of the section (what Step 11 would write after normalization)
+NORM_CONTENT="- **Step bump — apply-bump.sh failed (exit 1)**:
+  \`\`\`
+APPLIED=false
+ERROR=origin/main has already bumped; re-classify needed
+  \`\`\`"
+# Compute the normalized sha of the canonical content (no header, no leading/trailing blank lines)
+if command -v shasum >/dev/null 2>&1; then
+    NORM_SHA=$(printf '%s\n' "$NORM_CONTENT" | shasum -a 256 | awk '{print $1}')
+else
+    NORM_SHA=$(printf '%s\n' "$NORM_CONTENT" | sha256sum | awk '{print $1}')
+fi
+# Pre-populate the batch with a Step 11 record using the normalized sha
+mkdir -p "$SANDBOX/tmp/larch-logs/implement/testrun123"
+printf '{"phase":"implement","step":"11","category":"execution-issues","source_sha256":"%s","body":"### Tool Failures\n\n%s\n"}\n' \
+    "$NORM_SHA" "$NORM_CONTENT" \
+    > "$SANDBOX/tmp/larch-logs/implement/testrun123/execution-issues.ndjson"
+# Write execution-issues.md with a whitespace-divergent version of the same content
+# (leading blank line and trailing blank line — same as Step 18 safety-net section splitting produces)
+printf '### Tool Failures\n\n%s\n\n### Warnings\n\n- Step 18 session-transcript captured.\n' \
+    "$NORM_CONTENT" > "$SANDBOX/tmp/execution-issues.md"
+rm -f "$SANDBOX/tmp/.execution-issues-flushed.sha"
+rm -f "$SANDBOX/tmp/execution-issues-safety-net.ndjson"
+: > "$SANDBOX/larch-log-argv.txt"
+run_subject teardown --state-file "$STATE" --implement-tmpdir "$SANDBOX/tmp" > /dev/null
+RECORD_FILE_WD="$SANDBOX/tmp/execution-issues-safety-net.ndjson"
+# write_execution_issues_records always creates the file; use -s (non-empty) to detect emitted records
+if [ -s "$RECORD_FILE_WD" ]; then
+    # The safety-net emitted some records; check that Tool Failures was NOT re-emitted
+    SAFETYNET_CONTENT=$(cat "$RECORD_FILE_WD")
+    if echo "$SAFETYNET_CONTENT" | grep -qF '"category":"Tool Failures"'; then
+        FAIL=$((FAIL + 1))
+        echo "FAIL: safety-net dedup whitespace-divergent: Tool Failures section re-emitted despite matching normalized sha"
+    else
+        PASS=$((PASS + 1))
+        echo "PASS: safety-net dedup whitespace-divergent: Tool Failures not re-emitted (normalized sha matched)"
+    fi
+    if echo "$SAFETYNET_CONTENT" | grep -qF '"category":"Warnings"'; then
+        PASS=$((PASS + 1))
+        echo "PASS: safety-net dedup whitespace-divergent: Warnings section (new content) was emitted"
+    else
+        FAIL=$((FAIL + 1))
+        echo "FAIL: safety-net dedup whitespace-divergent: Warnings section should have been emitted"
+    fi
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: safety-net dedup whitespace-divergent: record file empty or absent (expected Warnings to be emitted)"
+fi
+rm -f "$SANDBOX/tmp/larch-logs/implement/testrun123/execution-issues.ndjson"
+
 printf 'BRANCH_NAME: bad\n' > "$STATE"
 run_subject_raw_rc postmerge --state-file "$STATE" --final-bail-reason-file "$BAIL"
 assert_rc "$RC" 2 "state parsing: malformed line exits 2"
