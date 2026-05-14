@@ -4,8 +4,8 @@
 
 Force-push the current branch with `--force-with-lease` protection and single-retry recovery. Wraps the full recovery logic from `/implement`'s Rebase + Re-bump Sub-procedure step 5 (`skills/implement/references/rebase-rebump-subprocedure.md`):
 
-1. Try `git push --force-with-lease` once.
-2. On failure: refresh the local tracking ref (`git fetch origin <branch>`), compare local HEAD vs `origin/<branch>`. If equal, the push actually landed (rare race) — return success with `STATUS=noop_same_ref`.
+1. Refresh the local tracking ref (`git fetch origin <branch>`) best-effort, then try `git push --force-with-lease` once.
+2. On failure: refresh the local tracking ref again, compare local HEAD vs `origin/<branch>`. If equal, the push actually landed (rare race) — return success with `STATUS=noop_same_ref`.
 3. If they differ, sleep 5s (via `sleep-seconds.sh`) and retry the push once.
 4. If the retry fails, return `STATUS=diverged_retry_failed` so the caller can bail.
 

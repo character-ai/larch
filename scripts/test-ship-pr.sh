@@ -111,6 +111,15 @@ set -euo pipefail
 echo "MERGE_RESULT=${STUB_MERGE_RESULT:-merged}"
 echo "ERROR=${STUB_MERGE_ERROR:-}"
 SH
+    cat > "$root/scripts/gh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${STUB_GH_PR_VIEW_STATE:-}" != "" && "${1:-}" == pr && "${2:-}" == view ]]; then
+  echo "$STUB_GH_PR_VIEW_STATE"
+  exit 0
+fi
+exit "${STUB_GH_EXIT:-1}"
+SH
     cat > "$root/scripts/tracking-issue-write.sh" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -168,7 +177,7 @@ SH
 #!/usr/bin/env bash
 touch "${IMPLEMENT_TMPDIR:-/tmp}/summary-upsert-called"
 SH
-    chmod +x "$root"/scripts/*.sh "$root"/.claude/skills/bump-version/scripts/*.sh
+    chmod +x "$root"/scripts/*.sh "$root"/scripts/gh "$root"/.claude/skills/bump-version/scripts/*.sh
 }
 
 make_repo() {
@@ -340,6 +349,47 @@ write_state "$tmp/ship-pr-state.sh" ci-merge
 STUB_CI_ACTION=bail STUB_BAIL_REASON=fix-attempts-exhausted run_subject "$root" "$tmp" "$tmp/rc"
 assert_rc "$tmp/rc" 3 "user-input bail exits 3"
 assert_state_line "$tmp/ship-pr-state.sh" "BAIL_NEEDS_USER_INPUT=true" "user-input bail marks state"
+
+root=$(make_repo version_published_pr_merged)
+tmp=$(make_tmpdir)
+write_state "$tmp/ship-pr-state.sh" ci-merge
+PATH="$root/scripts:$PATH" STUB_MERGE_RESULT=version_already_published STUB_GH_PR_VIEW_STATE=MERGED run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 0 "version_already_published + merged PR exits 0"
+assert_state_line "$tmp/ship-pr-state.sh" "MERGE_RESULT=already_merged" "version_already_published + merged PR records already_merged"
+assert_state_line "$tmp/ship-pr-state.sh" "PHASE=done" "version_already_published + merged PR completes postmerge"
+
+root=$(make_repo version_published_pr_open)
+tmp=$(make_tmpdir)
+sentinel_dir=$(mktemp -d /tmp/ship-pr-version-published-open.XXXXXX)
+write_state "$tmp/ship-pr-state.sh" ci-merge
+cat > "$root/scripts/ci-wait.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+count_file="$sentinel_dir/ci-wait-count"
+count=\$(cat "\$count_file" 2>/dev/null || echo 0)
+printf '%s\n' "\$((count + 1))" > "\$count_file"
+if [ "\$count" -eq 0 ]; then
+    printf 'ACTION=merge\nCI_STATUS=pass\nBEHIND_COUNT=0\nFAILED_RUN_ID=\nBAIL_REASON=\nITERATION=1\nELAPSED=1\n'
+else
+    printf 'ACTION=already_merged\nCI_STATUS=pass\nBEHIND_COUNT=0\nFAILED_RUN_ID=\nBAIL_REASON=\nITERATION=2\nELAPSED=1\n'
+fi
+STUB
+for extra in drop-bump-commit.sh git-sync-local-main.sh git-force-push.sh; do
+    printf '#!/usr/bin/env bash\nexit 0\n' > "$root/scripts/$extra"
+done
+chmod +x "$root/scripts/ci-wait.sh" \
+         "$root/scripts/drop-bump-commit.sh" \
+         "$root/scripts/git-sync-local-main.sh" \
+         "$root/scripts/git-force-push.sh"
+PATH="$root/scripts:$PATH" LARCH_LOG_STUB_SENTINEL_DIR="$sentinel_dir" STUB_MERGE_RESULT=version_already_published STUB_GH_PR_VIEW_STATE=OPEN run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 0 "version_already_published + open PR exits 0 after re-bump"
+if [ -f "$sentinel_dir/larch-log-calls.txt" ] && \
+   grep -q "^LARCH_LOG_ARGS=commit" "$sentinel_dir/larch-log-calls.txt"; then
+    ok "version_already_published + open PR falls through to run_rebase_rebump"
+else
+    fail "version_already_published + open PR should fall through to run_rebase_rebump"
+fi
+rm -rf "$sentinel_dir"
 
 root=$(make_repo malformed)
 tmp=$(make_tmpdir)
