@@ -27,7 +27,7 @@ Path resolution:
 4. `dirname("$SESSION_ENV_PATH")/timing-ledger.tsv` when set and existing.
 5. `$DESIGN_TMPDIR/timing-ledger.tsv` when set.
 6. `$REVIEW_TMPDIR/timing-ledger.tsv` when set.
-7. `${TMPDIR:-/tmp}/larch-timing-<sha256(cwd)>.tsv`.
+7. Fails closed with a stderr warning when none of the above are set. Callers MUST set at least one root or pass `--ledger`.
 
 Appends use `flock -w 5` when available. If `flock` is missing or lock acquisition fails, the script warns once per process and falls back to a plain append. The ledger is `chmod 600` after each successful append. All failures warn to stderr and exit 0 so observability never interrupts the workflow.
 

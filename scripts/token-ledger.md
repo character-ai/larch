@@ -8,15 +8,23 @@
 
 ## Session-id resolution
 
-Resolution order is:
+Resolution order (used to derive the hash suffix in the ledger filename):
 
 1. `LARCH_TOKEN_SESSION_ID` env var if set and non-empty.
 2. `$IMPLEMENT_TMPDIR/session-id` file if present and non-empty.
 3. `sha256(cwd)` deterministic fallback.
 
-The cwd-hash fallback is a last resort and can collide across multiple concurrent `/implement` windows in the same checkout. Step 0 exports `LARCH_TOKEN_SESSION_ID` after `write-session-id.sh` so normal runs avoid that collision. Step 0's setup preamble before the first mark is intentionally out-of-band.
+The resolved id is never used directly in the filename. It is hashed and used as the `<sha256>` suffix in `larch-tokens-<sha256>.jsonl`, preventing path traversal, whitespace, and control bytes from escaping.
 
-The resolved id is never used directly in the filename. It is hashed again and stored as `${TMPDIR:-/tmp}/larch-tokens-<sha256>.jsonl`, preventing path traversal, whitespace, and control bytes in a raw id from escaping the temp namespace.
+## Ledger path resolution
+
+Resolution order for the ledger file location:
+
+1. `--ledger PATH` override, validated under `${TMPDIR:-/tmp}`.
+2. `$LARCH_TOKEN_LEDGER`, validated under `${TMPDIR:-/tmp}`.
+3. `$IMPLEMENT_TMPDIR/larch-tokens-<sha256(session-id)>.jsonl` when `IMPLEMENT_TMPDIR` is set and is an existing directory.
+4. `dirname("$SESSION_ENV_PATH")/larch-tokens-<sha256(session-id)>.jsonl` when `SESSION_ENV_PATH` is set and its parent directory exists.
+5. Fails closed with a stderr warning when none of the above are set. Callers MUST set at least one root or pass `--ledger`.
 
 ## Subcommands
 

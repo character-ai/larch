@@ -70,21 +70,35 @@ validate_under_tmp() {
     printf '%s/%s' "$resolved" "$base"
 }
 
-default_ledger_path() {
-    local id slug root
-    id=$(resolve_session_id)
-    slug=$(printf '%s' "$id" | sha256_hex)
-    root=$(tmp_root) || return 1
-    printf '%s/larch-tokens-%s.jsonl' "$root" "$slug"
-}
-
 resolve_ledger_path() {
     local override="$1"
+    local id slug canon_root
     if [[ -n "$override" ]]; then
         validate_under_tmp "$override"
-    else
-        default_ledger_path
+        return
     fi
+    if [[ -n "${LARCH_TOKEN_LEDGER:-}" ]]; then
+        validate_under_tmp "${LARCH_TOKEN_LEDGER}"
+        return
+    fi
+    id=$(resolve_session_id)
+    slug=$(printf '%s' "$id" | sha256_hex)
+    if [[ -n "${IMPLEMENT_TMPDIR:-}" && -d "$IMPLEMENT_TMPDIR" ]]; then
+        canon_root=$(cd "$IMPLEMENT_TMPDIR" 2>/dev/null && pwd -P) || true
+        if [[ -n "$canon_root" ]]; then
+            printf '%s/larch-tokens-%s.jsonl' "$canon_root" "$slug"
+            return
+        fi
+    fi
+    if [[ -n "${SESSION_ENV_PATH:-}" && -d "$(dirname "$SESSION_ENV_PATH")" ]]; then
+        canon_root=$(cd "$(dirname "$SESSION_ENV_PATH")" 2>/dev/null && pwd -P) || true
+        if [[ -n "$canon_root" ]]; then
+            printf '%s/larch-tokens-%s.jsonl' "$canon_root" "$slug"
+            return
+        fi
+    fi
+    warn "token-ledger.sh: no per-run ledger root set; expected one of --ledger, LARCH_TOKEN_LEDGER, IMPLEMENT_TMPDIR, or SESSION_ENV_PATH"
+    return 1
 }
 
 ensure_ledger() {

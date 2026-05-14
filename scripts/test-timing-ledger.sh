@@ -117,4 +117,15 @@ if command -v flock >/dev/null 2>&1; then
   fi
 fi
 
+# Fail-closed: all env vars unset (already unset at top), no --ledger → warn, no file created
+FAIL_CLOSED_WARN="$TMP_BASE/fail-closed.txt"
+"$REPO_ROOT/scripts/timing-ledger.sh" mark "fail-closed-probe" 2>"$FAIL_CLOSED_WARN" || true
+grep -Fq 'no per-run ledger root set' "$FAIL_CLOSED_WARN"
+
+# Positive: IMPLEMENT_TMPDIR resolution
+IMPL_TMP="$TMP_BASE/impl-positive"
+mkdir -p "$IMPL_TMP"
+IMPLEMENT_TMPDIR="$IMPL_TMP" "$REPO_ROOT/scripts/timing-ledger.sh" mark "impl-positive"
+grep -Fq 'impl-positive' "$IMPL_TMP/timing-ledger.tsv"
+
 echo "PASS: test-timing-ledger.sh"

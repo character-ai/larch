@@ -72,8 +72,8 @@ printf 'LARCH_TOKEN_SESSION_ID=fresh-id-A\n' > "$SESSION_ENV_A"
 printf 'LARCH_TOKEN_SESSION_ID=fresh-id-B\n' > "$SESSION_ENV_B"
 rehydrated_a=$("$READ_SESSION_ENV_KEY" --file "$SESSION_ENV_A" --key LARCH_TOKEN_SESSION_ID --default "")
 rehydrated_b=$("$READ_SESSION_ENV_KEY" --file "$SESSION_ENV_B" --key LARCH_TOKEN_SESSION_ID --default "")
-rehydrated_path_a=$(env -u IMPLEMENT_TMPDIR LARCH_TOKEN_SESSION_ID="$rehydrated_a" "$SCRIPT" dump | sed -n '1p')
-rehydrated_path_b=$(env -u IMPLEMENT_TMPDIR LARCH_TOKEN_SESSION_ID="$rehydrated_b" "$SCRIPT" dump | sed -n '1p')
+rehydrated_path_a=$(env -u IMPLEMENT_TMPDIR SESSION_ENV_PATH="$SESSION_ENV_A" LARCH_TOKEN_SESSION_ID="$rehydrated_a" "$SCRIPT" dump | sed -n '1p')
+rehydrated_path_b=$(env -u IMPLEMENT_TMPDIR SESSION_ENV_PATH="$SESSION_ENV_B" LARCH_TOKEN_SESSION_ID="$rehydrated_b" "$SCRIPT" dump | sed -n '1p')
 assert_contains "rehydrated fixture A" "$(sha256 "fresh-id-A")" "$rehydrated_path_a"
 assert_contains "rehydrated fixture B" "$(sha256 "fresh-id-B")" "$rehydrated_path_b"
 if [[ "$rehydrated_path_a" != "$rehydrated_path_b" ]]; then pass; else fail "rehydrated fixtures should resolve distinct ledger paths"; fi
@@ -90,7 +90,9 @@ overwrite_file_id=$(LARCH_TOKEN_SESSION_ID=stale IMPLEMENT_TMPDIR="$OVERWRITE_TM
 ')
 assert_eq "canonical tmpdir overwrite" "fresh-overwrite" "$overwrite_file_id"
 
-unsafe_path=$(LARCH_TOKEN_SESSION_ID=$'../bad/id\nx' "$SCRIPT" dump | sed -n '1p')
+IMPL_UNSAFE_TMP="$TMP/unsafe-test"
+mkdir -p "$IMPL_UNSAFE_TMP"
+unsafe_path=$(LARCH_TOKEN_SESSION_ID=$'../bad/id\nx' IMPLEMENT_TMPDIR="$IMPL_UNSAFE_TMP" "$SCRIPT" dump | sed -n '1p')
 case "$unsafe_path" in
     *".."*|*"/bad/"*) fail "unsafe raw id leaked into path: $unsafe_path" ;;
     *) pass ;;
@@ -127,6 +129,23 @@ LEDGER_LAST="$TMP/last.jsonl"
 "$SCRIPT" --ledger "$LEDGER_FIRST" mark "Step last-wins" --ledger "$LEDGER_LAST"
 if [[ -f "$LEDGER_LAST" ]] && jq -e 'select(.type=="mark" and .step=="Step last-wins")' "$LEDGER_LAST" >/dev/null; then pass; else fail "last --ledger should be the one written to: last=$(cat "$LEDGER_LAST" 2>/dev/null)"; fi
 if [[ ! -e "$LEDGER_FIRST" ]] || [[ ! -s "$LEDGER_FIRST" ]]; then pass; else fail "first --ledger should not have been written to: $(cat "$LEDGER_FIRST" 2>/dev/null)"; fi
+
+# Fail-closed: no root set → warn, no file created
+FAIL_CLOSED_WARN="$TMP/fail-closed-warn.txt"
+env -u IMPLEMENT_TMPDIR -u LARCH_TOKEN_LEDGER -u SESSION_ENV_PATH -u LARCH_TOKEN_SESSION_ID \
+    "$SCRIPT" mark "fail-closed-probe" 2>"$FAIL_CLOSED_WARN" || true
+if grep -Fq 'no per-run ledger root set' "$FAIL_CLOSED_WARN"; then pass; else fail "fail-closed: expected warn when no root set: $(cat "$FAIL_CLOSED_WARN")"; fi
+
+# Positive: IMPLEMENT_TMPDIR as ledger root
+IMPL_TMP="$TMP/impl-test"
+mkdir -p "$IMPL_TMP"
+EXPECTED_ID="impl-test-session"
+EXPECTED_SLUG=$(sha256 "$EXPECTED_ID")
+LARCH_TOKEN_SESSION_ID="$EXPECTED_ID" IMPLEMENT_TMPDIR="$IMPL_TMP" "$SCRIPT" mark "impl-root-test"
+impl_path=$(LARCH_TOKEN_SESSION_ID="$EXPECTED_ID" IMPLEMENT_TMPDIR="$IMPL_TMP" "$SCRIPT" dump | sed -n '1p')
+assert_contains "IMPLEMENT_TMPDIR root" "$EXPECTED_SLUG" "$impl_path"
+IMPL_TMP_REAL=$(cd "$IMPL_TMP" && pwd -P)
+if [[ "$impl_path" == "$IMPL_TMP_REAL"/* ]]; then pass; else fail "IMPLEMENT_TMPDIR ledger should be under IMPL_TMP: $impl_path"; fi
 
 total=$((PASS + FAIL))
 if (( FAIL == 0 )); then

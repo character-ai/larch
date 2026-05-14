@@ -17,14 +17,6 @@ warn() {
 # shellcheck source=scripts/lib-timing-paths.sh
 source "$SCRIPT_DIR/lib-timing-paths.sh"
 
-sha256_hex() {
-    if command -v shasum >/dev/null 2>&1; then
-        LC_ALL=C shasum -a 256 | awk '{print $1}'
-    else
-        sha256sum | awk '{print $1}'
-    fi
-}
-
 is_uint() {
     [[ "$1" =~ ^[0-9]+$ ]]
 }
@@ -57,13 +49,6 @@ validate_env_ledger() {
     validate_under_roots "$raw" "${roots[@]+"${roots[@]}"}"
 }
 
-default_ledger_path() {
-    local root slug
-    root=$(tmp_root) || return 1
-    slug=$(pwd -P | sha256_hex)
-    printf '%s/larch-timing-%s.tsv' "$root" "$slug"
-}
-
 resolve_ledger_path() {
     local override="$1"
     local env_candidate
@@ -94,7 +79,8 @@ resolve_ledger_path() {
         printf '%s/timing-ledger.tsv' "$(canonical_dir "$REVIEW_TMPDIR")"
         return
     fi
-    default_ledger_path
+    warn "timing-ledger.sh: no per-run ledger root set; expected one of --ledger, LARCH_TIMING_LEDGER, IMPLEMENT_TMPDIR, SESSION_ENV_PATH, DESIGN_TMPDIR, REVIEW_TMPDIR"
+    return 1
 }
 
 ensure_ledger() {
