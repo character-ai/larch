@@ -693,17 +693,13 @@ fi
 # ---------------------------------------------------------------------------
 TMP14="$SCRATCH/test14"; mkdir -p "$TMP14"
 CH14_SESSION="cap-hit-step2-$$-$RANDOM"
-if command -v shasum >/dev/null 2>&1; then
-    CH14_SLUG=$(printf '%s' "$CH14_SESSION" | shasum -a 256 | awk '{print $1}')
-else
-    CH14_SLUG=$(printf '%s' "$CH14_SESSION" | sha256sum | awk '{print $1}')
-fi
-CH14_LEDGER="${TMPDIR:-/tmp}/larch-tokens-${CH14_SLUG}.jsonl"
+CH14_LEDGER="$TMP14/cap-hit-step2-ledger.jsonl"
 printf '{"type":"vendor","vendor":"codex","total":9999}\n' > "$CH14_LEDGER"
 
 OUT_14=$(cd "$REPO_ROOT" && \
     RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
     LARCH_TOKEN_SESSION_ID="$CH14_SESSION" \
+    LARCH_TOKEN_LEDGER="$CH14_LEDGER" \
     LARCH_TOKEN_BUDGET_CAP_IMPLEMENT=1 \
     LARCH_CODEX_MODEL=stub-codex-model \
     "$DISPATCHER" --tmpdir "$TMP14" --plan-file "$PLAN" --feature-file "$FEATURE" \

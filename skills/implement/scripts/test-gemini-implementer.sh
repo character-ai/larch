@@ -538,7 +538,8 @@ fi
 # exits immediately with LAUNCHER_EXIT=0 MANIFEST_WRITTEN=false STATUS=cap_hit
 # without invoking the underlying Gemini binary.
 CH_SESSION="cap-hit-gemini-$$-$RANDOM"
-LARCH_TOKEN_SESSION_ID="$CH_SESSION" "$REPO_ROOT/scripts/token-ledger.sh" record-vendor gemini total=9999 raw=cap_hit_test >/dev/null
+CH_LEDGER="$SCRATCH/cap-hit-gemini-ledger.jsonl"
+"$REPO_ROOT/scripts/token-ledger.sh" --ledger "$CH_LEDGER" record-vendor gemini total=9999 raw=cap_hit_test >/dev/null
 
 CH_ARGV="$SCRATCH/cap-hit-gemini-argv.txt"
 CH_OUT=$(cd "$REPO_ROOT" && \
@@ -547,6 +548,7 @@ CH_OUT=$(cd "$REPO_ROOT" && \
     STUB_PROMPT_FILE="$SCRATCH/cap-hit-gemini-prompt.txt" \
     STUB_MANIFEST_PATH="$SCRATCH/cap-hit-gemini-manifest.json" \
     LARCH_TOKEN_SESSION_ID="$CH_SESSION" \
+    LARCH_TOKEN_LEDGER="$CH_LEDGER" \
     IMPLEMENT_TMPDIR='' \
     LARCH_TOKEN_BUDGET_CAP_IMPLEMENT=1 \
     LARCH_GEMINI_MODEL="stub-gemini-model" \

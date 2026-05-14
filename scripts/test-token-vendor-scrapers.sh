@@ -150,8 +150,10 @@ STUB_EOF
         SC="$LCI_SCRATCH/$variant-sidecar.log"
         MF="$LCI_SCRATCH/$variant-manifest.json"
         QA="$LCI_SCRATCH/$variant-qa.json"
+        LCI_LEDGER="$TMP/${variant}-token-ledger.jsonl"
 
         LARCH_TOKEN_SESSION_ID="$LCI_SESSION" \
+        LARCH_TOKEN_LEDGER="$LCI_LEDGER" \
         IMPLEMENT_TMPDIR='' \
         PATH="$LCI_BIN:$PATH" \
         CURSOR_API_KEY="test-cursor-api-key" \
@@ -169,8 +171,6 @@ STUB_EOF
                 --feature-file "$LCI_SCRATCH/feature.txt" \
                 --agent-prompt "$AGENT_PROMPT" \
                 --timeout 30 >/dev/null 2>&1
-
-        LCI_LEDGER=$(LARCH_TOKEN_SESSION_ID="$LCI_SESSION" "$REPO_ROOT/scripts/token-ledger.sh" dump | sed -n '1p')
         if [[ ! -s "$LCI_LEDGER" ]]; then
             case "$variant" in
                 cursor)

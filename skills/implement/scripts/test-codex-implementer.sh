@@ -635,11 +635,13 @@ STUB_EOF
     RV_MANIFEST="$SCRATCH/rv-manifest.json"
     RV_QA="$SCRATCH/rv-qa.json"
 
+    RV_LEDGER="$SCRATCH/rv-codex-token-ledger.jsonl"
     cd "$REPO_ROOT" && \
         PATH="$RV_STUB_BIN:$PATH" \
         STUB_MANIFEST_PATH="$RV_MANIFEST" \
         LARCH_CODEX_MODEL="stub-codex-model" \
         LARCH_TOKEN_SESSION_ID="$RV_SESSION_ID" \
+        LARCH_TOKEN_LEDGER="$RV_LEDGER" \
         IMPLEMENT_TMPDIR='' \
         CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
         "$LAUNCHER" \
@@ -652,7 +654,6 @@ STUB_EOF
             --agent-prompt "$AGENT_PROMPT" \
             --timeout 30 >/dev/null
 
-    RV_LEDGER=$(LARCH_TOKEN_SESSION_ID="$RV_SESSION_ID" "$REPO_ROOT/scripts/token-ledger.sh" dump | sed -n '1p')
     if [[ -f "$RV_LEDGER" ]] && jq -e \
         'select(.type=="vendor" and .vendor=="codex" and .raw=="codex_implement" and .total==7777)' \
         "$RV_LEDGER" >/dev/null 2>&1; then
@@ -728,12 +729,7 @@ fi
 # exits immediately with LAUNCHER_EXIT=0 MANIFEST_WRITTEN=false STATUS=cap_hit
 # without invoking the underlying Codex binary.
 CH_SESSION="cap-hit-codex-$$-$RANDOM"
-if command -v shasum >/dev/null 2>&1; then
-    CH_SLUG=$(printf '%s' "$CH_SESSION" | shasum -a 256 | awk '{print $1}')
-else
-    CH_SLUG=$(printf '%s' "$CH_SESSION" | sha256sum | awk '{print $1}')
-fi
-CH_LEDGER="${TMPDIR:-/tmp}/larch-tokens-${CH_SLUG}.jsonl"
+CH_LEDGER="$SCRATCH/cap-hit-codex-ledger.jsonl"
 printf '{"type":"vendor","vendor":"codex","total":9999}\n' > "$CH_LEDGER"
 
 CH_ARGV="$SCRATCH/cap-hit-codex-argv.txt"
@@ -745,6 +741,7 @@ CH_OUT=$(cd "$REPO_ROOT" && \
     STUB_SEPARATOR_INDEX_FILE="$SCRATCH/cap-hit-codex-sep.txt" \
     STUB_MANIFEST_PATH="$SCRATCH/cap-hit-codex-manifest.json" \
     IMPLEMENT_TMPDIR='' \
+    LARCH_TOKEN_LEDGER="$CH_LEDGER" \
     LARCH_TOKEN_SESSION_ID="$CH_SESSION" \
     LARCH_TOKEN_BUDGET_CAP_IMPLEMENT=1 \
     LARCH_CODEX_MODEL="stub-codex-model" \
