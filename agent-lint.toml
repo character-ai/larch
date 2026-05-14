@@ -670,6 +670,10 @@ exclude = [
   # from Makefile (test-agent-model-args target) and
   # scripts/test-agent-model-args.md (sibling contract).
   "scripts/test-agent-model-args.sh",
+  # scripts/test-lib-quiet.sh is the regression harness for scripts/lib-quiet.sh
+  # (issue #2109). Referenced only from Makefile (test-lib-quiet target) and
+  # scripts/test-lib-quiet.md (sibling contract).
+  "scripts/test-lib-quiet.sh",
   # scripts/test-lib-cursor-auth.sh is the hermetic regression harness for
   # scripts/lib-cursor-auth.sh and scripts/cursor-auth-flags.sh (issue #1358).
   # Referenced only from Makefile (test-lib-cursor-auth target) and
@@ -1069,6 +1073,8 @@ exclude = [
   "scripts/test-relevant-checks-helper-failure.md",
   "scripts/test-hook-block-skill-relevant-checks.md",
   "scripts/test-review-relevant-checks-helper.md",
+  "scripts/test-lib-quiet.md",
+  "scripts/lib-quiet.md",
   "scripts/test-lib-cursor-auth.md",
   "scripts/lib-cursor-auth.md",
   "scripts/lib-cursor-launcher-common.md",

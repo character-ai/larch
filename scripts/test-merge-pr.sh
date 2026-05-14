@@ -10,6 +10,8 @@
 
 set -euo pipefail
 
+export LARCH_QUIET_DISABLE=1
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMPDIR_BASE="$(mktemp -d -t merge-pr-test.XXXXXX)"
 

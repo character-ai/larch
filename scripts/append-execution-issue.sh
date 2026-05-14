@@ -3,9 +3,14 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
+
 fail_usage() {
-    echo "FAILED=true"
-    echo "ERROR=usage: $1"
+    emit_kv FAILED "true"
+    emit_kv ERROR "usage: $1"
     exit 1
 }
 
@@ -51,15 +56,15 @@ case "$CATEGORY" in
 esac
 
 mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null || {
-    echo "FAILED=true"
-    echo "ERROR=cannot create log parent: $(dirname "$LOG_FILE")"
+    emit_kv FAILED "true"
+    emit_kv ERROR "cannot create log parent: $(dirname "$LOG_FILE")"
     exit 2
 }
 
 if [ ! -f "$LOG_FILE" ]; then
     : > "$LOG_FILE" || {
-        echo "FAILED=true"
-        echo "ERROR=cannot create log: $LOG_FILE"
+        emit_kv FAILED "true"
+        emit_kv ERROR "cannot create log: $LOG_FILE"
         exit 2
     }
 fi
@@ -69,8 +74,8 @@ _lock_retries=0
 until mkdir "$LOCK_DIR" 2>/dev/null; do
     _lock_retries=$(( _lock_retries + 1 ))
     if [ "$_lock_retries" -ge 100 ]; then
-        echo "FAILED=true"
-        echo "ERROR=could not acquire lock: $LOCK_DIR"
+        emit_kv FAILED "true"
+        emit_kv ERROR "could not acquire lock: $LOCK_DIR"
         exit 2
     fi
     sleep 0.05
@@ -78,8 +83,8 @@ done
 trap 'rmdir "$LOCK_DIR" 2>/dev/null || true' EXIT
 
 entry_tmp="$(mktemp "${LOG_FILE}.entry.XXXXXX")" || {
-    echo "FAILED=true"
-    echo "ERROR=cannot create temp entry file next to log"
+    emit_kv FAILED "true"
+    emit_kv ERROR "cannot create temp entry file next to log"
     exit 2
 }
 
@@ -88,23 +93,23 @@ entry_tmp="$(mktemp "${LOG_FILE}.entry.XXXXXX")" || {
 # line-oriented reads).
 if [ -n "$ENTRY_FILE" ]; then
     if ! cat -- "$ENTRY_FILE" > "$entry_tmp"; then
-        echo "FAILED=true"
-        echo "ERROR=cannot stage entry from --entry-file"
+        emit_kv FAILED "true"
+        emit_kv ERROR "cannot stage entry from --entry-file"
         rm -f "$entry_tmp"
         exit 2
     fi
 else
     if ! printf '%s\n' "$ENTRY" > "$entry_tmp"; then
-        echo "FAILED=true"
-        echo "ERROR=cannot stage entry"
+        emit_kv FAILED "true"
+        emit_kv ERROR "cannot stage entry"
         rm -f "$entry_tmp"
         exit 2
     fi
 fi
 
 tmp="$(mktemp "${LOG_FILE}.XXXXXX")" || {
-    echo "FAILED=true"
-    echo "ERROR=cannot create temp file next to log"
+    emit_kv FAILED "true"
+    emit_kv ERROR "cannot create temp file next to log"
     rm -f "$entry_tmp"
     exit 2
 }
@@ -149,20 +154,20 @@ awk -v category="$CATEGORY" -v entry_file="$entry_tmp" '
         }
     }
 ' "$LOG_FILE" > "$tmp" || {
-    echo "FAILED=true"
-    echo "ERROR=failed to update log: $LOG_FILE"
+    emit_kv FAILED "true"
+    emit_kv ERROR "failed to update log: $LOG_FILE"
     exit 2
 }
 
 mv -f "$tmp" "$LOG_FILE" || {
-    echo "FAILED=true"
-    echo "ERROR=failed to move log into place: $LOG_FILE"
+    emit_kv FAILED "true"
+    emit_kv ERROR "failed to move log into place: $LOG_FILE"
     exit 2
 }
 rmdir "$LOCK_DIR" 2>/dev/null || true
 trap - EXIT
 rm -f "$entry_tmp"
 
-echo "APPENDED=true"
-echo "LOG=$LOG_FILE"
+emit_kv APPENDED "true"
+emit_kv LOG "$LOG_FILE"
 exit 0

@@ -23,6 +23,11 @@
 
 set -uo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
+
 usage() { echo "Usage: gh-pr-body-update.sh --pr <number> --body-file <path> [--repo OWNER/REPO]" >&2; }
 
 PR=""
@@ -59,8 +64,8 @@ ERROR="gh-pr-body-update.sh exited unexpectedly"
 
 # shellcheck disable=SC2329,SC2317
 emit_output() {
-    echo "UPDATED=$UPDATED"
-    echo "ERROR=$ERROR"
+    emit_kv UPDATED "$UPDATED"
+    emit_kv ERROR "$ERROR"
 }
 trap 'emit_output' EXIT
 

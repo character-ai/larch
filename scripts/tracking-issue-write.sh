@@ -76,6 +76,9 @@
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
 REPO_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
 REDACT_HELPER="$REPO_ROOT/scripts/redact-secrets.sh"
 REDACT_TMPDIR_HELPER="$REPO_ROOT/scripts/redact-tmpdir-paths.sh"
@@ -180,11 +183,11 @@ truncate_title_to_256() {
 # defense-in-depth design.
 emit_redaction_failure() {
     local rc=$?
-    echo "FAILED=true"
+    emit_kv FAILED "true"
     if [ "$rc" -eq 10 ]; then
-        echo "ERROR=redaction: helper redact-tmpdir-paths.sh failed or missing"
+        emit_kv ERROR "redaction: helper redact-tmpdir-paths.sh failed or missing"
     else
-        echo "ERROR=redaction: helper $REDACT_HELPER failed or missing"
+        emit_kv ERROR "redaction: helper $REDACT_HELPER failed or missing"
     fi
     exit 3
 }
@@ -233,8 +236,8 @@ validate_lifecycle_marker() {
 emit_gh_failure() {
     local flat
     flat=$(redact_gh_error "$1")
-    echo "FAILED=true"
-    echo "ERROR=$flat"
+    emit_kv FAILED "true"
+    emit_kv ERROR "$flat"
     exit 2
 }
 
@@ -268,23 +271,23 @@ case "$cmd" in
             exit 1
         fi
         if [[ ! -f "$BODY_FILE" ]]; then
-            echo "FAILED=true"
-            echo "ERROR=body file not found: $BODY_FILE"
+            emit_kv FAILED "true"
+            emit_kv ERROR "body file not found: $BODY_FILE"
             exit 1
         fi
         if [[ -z "$REPO" ]]; then
             REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null) || REPO=""
             if [[ -z "$REPO" ]]; then
-                echo "FAILED=true"
-                echo "ERROR=could not determine repo"
+                emit_kv FAILED "true"
+                emit_kv ERROR "could not determine repo"
                 exit 2
             fi
         fi
         TITLE=$(redact "$TITLE") || emit_redaction_failure
         BODY_CONTENT=$(cat "$BODY_FILE")
         if [[ -z "$BODY_CONTENT" ]]; then
-            echo "FAILED=true"
-            echo "ERROR=empty body"
+            emit_kv FAILED "true"
+            emit_kv ERROR "empty body"
             exit 1
         fi
         # Single structural choke point: compose (already composed above as
@@ -303,8 +306,8 @@ case "$cmd" in
                 emit_gh_failure "gh issue create did not emit a URL (stderr: $ERR_CONTENT)"
             fi
             ISSUE_NUM=$(echo "$URL_LINE" | grep -oE '[0-9]+$')
-            echo "ISSUE_NUMBER=$ISSUE_NUM"
-            echo "ISSUE_URL=$URL_LINE"
+            emit_kv ISSUE_NUMBER "$ISSUE_NUM"
+            emit_kv ISSUE_URL "$URL_LINE"
             exit 0
         else
             ERR_CONTENT=$(cat "$ERR_TMP")
@@ -339,22 +342,22 @@ case "$cmd" in
             exit 1
         fi
         if [[ ! -f "$BODY_FILE" ]]; then
-            echo "FAILED=true"
-            echo "ERROR=body file not found: $BODY_FILE"
+            emit_kv FAILED "true"
+            emit_kv ERROR "body file not found: $BODY_FILE"
             exit 1
         fi
         if [[ -z "$REPO" ]]; then
             REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null) || REPO=""
             if [[ -z "$REPO" ]]; then
-                echo "FAILED=true"
-                echo "ERROR=could not determine repo"
+                emit_kv FAILED "true"
+                emit_kv ERROR "could not determine repo"
                 exit 2
             fi
         fi
         BODY_CONTENT=$(cat "$BODY_FILE")
         if [[ -z "$BODY_CONTENT" ]]; then
-            echo "FAILED=true"
-            echo "ERROR=empty body"
+            emit_kv FAILED "true"
+            emit_kv ERROR "empty body"
             exit 1
         fi
         if [[ -n "$LIFECYCLE_MARKER" ]]; then
@@ -365,13 +368,13 @@ case "$cmd" in
             validate_lifecycle_marker "$LIFECYCLE_MARKER" || lifecycle_rc=$?
             case "$lifecycle_rc" in
                 1)
-                    echo "FAILED=true"
-                    echo "ERROR=lifecycle-marker contains bytes outside [A-Za-z0-9._:-]; the synthesized HTML comment requires a positive charset to prevent comment-terminator injection. Use a marker containing only ASCII letters, digits, '.', ':', '_', or '-'."
+                    emit_kv FAILED "true"
+                    emit_kv ERROR "lifecycle-marker contains bytes outside [A-Za-z0-9._:-]; the synthesized HTML comment requires a positive charset to prevent comment-terminator injection. Use a marker containing only ASCII letters, digits, '.', ':', '_', or '-'."
                     exit 1
                     ;;
                 2)
-                    echo "FAILED=true"
-                    echo "ERROR=lifecycle-marker contains the substring '--'; HTML comment data may not contain consecutive hyphens (parsers may terminate the comment early). Use a single-hyphen-delimited slug like 'pr-opened' or 'in-progress'."
+                    emit_kv FAILED "true"
+                    emit_kv ERROR "lifecycle-marker contains the substring '--'; HTML comment data may not contain consecutive hyphens (parsers may terminate the comment early). Use a single-hyphen-delimited slug like 'pr-opened' or 'in-progress'."
                     exit 1
                     ;;
             esac
@@ -390,8 +393,8 @@ case "$cmd" in
                 emit_gh_failure "gh issue comment did not emit a URL (stderr: $ERR_CONTENT)"
             fi
             CID=$(echo "$URL_LINE" | grep -oE '[0-9]+$')
-            echo "COMMENT_ID=$CID"
-            echo "COMMENT_URL=$URL_LINE"
+            emit_kv COMMENT_ID "$CID"
+            emit_kv COMMENT_URL "$URL_LINE"
             exit 0
         else
             ERR_CONTENT=$(cat "$ERR_TMP")
@@ -425,21 +428,21 @@ case "$cmd" in
         case "$ROUND_TRIP" in
             true|false) ;;
             *)
-                echo "FAILED=true"
-                echo "ERROR=invalid --round-trip: $ROUND_TRIP (expected true|false)"
+                emit_kv FAILED "true"
+                emit_kv ERROR "invalid --round-trip: $ROUND_TRIP (expected true|false)"
                 exit 1
                 ;;
         esac
         TARGET_PREFIX=$(state_to_prefix "$STATE") || {
-            echo "FAILED=true"
-            echo "ERROR=invalid --state: $STATE (expected in-progress|done|stalled)"
+            emit_kv FAILED "true"
+            emit_kv ERROR "invalid --state: $STATE (expected in-progress|done|stalled)"
             exit 1
         }
         if [[ -z "$REPO" ]]; then
             REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null) || REPO=""
             if [[ -z "$REPO" ]]; then
-                echo "FAILED=true"
-                echo "ERROR=could not determine repo"
+                emit_kv FAILED "true"
+                emit_kv ERROR "could not determine repo"
                 exit 2
             fi
         fi
@@ -505,10 +508,10 @@ case "$cmd" in
             ROUND_TRIP_APPLIED=true
         fi
         if [[ "$NEW_TITLE" == "$CUR_TITLE_CANONICAL" ]]; then
-            echo "RENAMED=false"
-            echo "NEW_TITLE=$NEW_TITLE"
+            emit_kv RENAMED "false"
+            emit_kv NEW_TITLE "$NEW_TITLE"
             if [[ "$ROUND_TRIP_FLAG_PASSED" == "true" ]]; then
-                echo "ROUND_TRIP_APPLIED=$ROUND_TRIP_APPLIED"
+                emit_kv ROUND_TRIP_APPLIED "$ROUND_TRIP_APPLIED"
             fi
             exit 0
         fi
@@ -516,10 +519,10 @@ case "$cmd" in
             ERR_CONTENT=$(cat "$ERR_TMP")
             emit_gh_failure "gh issue edit failed: $ERR_CONTENT"
         fi
-        echo "RENAMED=true"
-        echo "NEW_TITLE=$NEW_TITLE"
+        emit_kv RENAMED "true"
+        emit_kv NEW_TITLE "$NEW_TITLE"
         if [[ "$ROUND_TRIP_FLAG_PASSED" == "true" ]]; then
-            echo "ROUND_TRIP_APPLIED=$ROUND_TRIP_APPLIED"
+            emit_kv ROUND_TRIP_APPLIED "$ROUND_TRIP_APPLIED"
         fi
         exit 0
         ;;
@@ -539,8 +542,8 @@ case "$cmd" in
             exit 1
         fi
         if [[ ! -f "$TITLE_MARKERS_HELPER" ]]; then
-            echo "FAILED=true"
-            echo "ERROR=missing helper: $TITLE_MARKERS_HELPER"
+            emit_kv FAILED "true"
+            emit_kv ERROR "missing helper: $TITLE_MARKERS_HELPER"
             exit 1
         fi
         # shellcheck source=scripts/lib-title-markers.sh
@@ -549,8 +552,8 @@ case "$cmd" in
         if [[ -z "$REPO" ]]; then
             REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null) || REPO=""
             if [[ -z "$REPO" ]]; then
-                echo "FAILED=true"
-                echo "ERROR=could not determine repo"
+                emit_kv FAILED "true"
+                emit_kv ERROR "could not determine repo"
                 exit 2
             fi
         fi
@@ -563,8 +566,8 @@ case "$cmd" in
         CUR_TITLE_REDACTED=$(redact "$CUR_TITLE") || emit_redaction_failure
         NEW_TITLE=$(insert_signal_marker "$CUR_TITLE_REDACTED" "FALSE-POSITIVE")
         if [[ "$NEW_TITLE" == "$CUR_TITLE_REDACTED" ]]; then
-            echo "MARKED=false"
-            echo "NEW_TITLE=$CUR_TITLE_REDACTED"
+            emit_kv MARKED "false"
+            emit_kv NEW_TITLE "$CUR_TITLE_REDACTED"
             exit 0
         fi
         NEW_TITLE=$(truncate_title_to_256 "$NEW_TITLE")
@@ -572,8 +575,8 @@ case "$cmd" in
             ERR_CONTENT=$(cat "$ERR_TMP")
             emit_gh_failure "gh issue edit failed: $ERR_CONTENT"
         fi
-        echo "MARKED=true"
-        echo "NEW_TITLE=$NEW_TITLE"
+        emit_kv MARKED "true"
+        emit_kv NEW_TITLE "$NEW_TITLE"
         exit 0
         ;;
 

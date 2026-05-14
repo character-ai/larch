@@ -3,6 +3,8 @@
 
 set -euo pipefail
 
+export LARCH_QUIET_DISABLE=1
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 SCRIPT="$REPO_ROOT/scripts/append-tool-failure.sh"
 TMPDIR_BASE="$(mktemp -d "${TMPDIR:-/tmp}/test-append-tool-failure.XXXXXX")"

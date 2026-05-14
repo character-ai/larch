@@ -44,6 +44,13 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LARCH_QUIET_DISABLE=1
+export LARCH_QUIET_DISABLE
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
+
 # Single sed -E invocation collapsing all line-local families into one pass.
 # Patterns are byte-for-byte ports of the vetted regexes from the deleted
 # scripts/create-oos-issues.sh (see commit 9cb59f5). The character classes

@@ -57,6 +57,7 @@ echo "Sub-test A: --output-file SIGTERM-mid-poll convergence"
 A_DIR="$TMPDIR_BASE/A"
 mkdir -p "$A_DIR"
 cp "$REPO_ROOT/scripts/ci-wait.sh" "$A_DIR/ci-wait.sh"
+cp "$REPO_ROOT/scripts/lib-quiet.sh" "$A_DIR/lib-quiet.sh"
 chmod +x "$A_DIR/ci-wait.sh"
 
 # Stub ci-status.sh: touches loop-entered marker on each call (the test
@@ -165,6 +166,7 @@ echo "Sub-test B: default-mode (stdout) backward-compat — no --output-file fla
 B_DIR="$TMPDIR_BASE/B"
 mkdir -p "$B_DIR"
 cp "$REPO_ROOT/scripts/ci-wait.sh" "$B_DIR/ci-wait.sh"
+cp "$REPO_ROOT/scripts/lib-quiet.sh" "$B_DIR/lib-quiet.sh"
 chmod +x "$B_DIR/ci-wait.sh"
 
 # Stub ci-status.sh — returns pass status so ci-decide.sh can return ACTION=merge.
@@ -240,6 +242,7 @@ echo "Sub-test C: fail-closed — publish failure must NOT create .done"
 C_DIR="$TMPDIR_BASE/C"
 mkdir -p "$C_DIR"
 cp "$REPO_ROOT/scripts/ci-wait.sh" "$C_DIR/ci-wait.sh"
+cp "$REPO_ROOT/scripts/lib-quiet.sh" "$C_DIR/lib-quiet.sh"
 chmod +x "$C_DIR/ci-wait.sh"
 
 # Stub helpers — same shape as Sub-test B (ACTION=merge, exit cleanly).
@@ -306,6 +309,7 @@ echo "Sub-test D: fork-mode argv forwarding + NO_CHECKS early-exit"
 D_DIR="$TMPDIR_BASE/D"
 mkdir -p "$D_DIR"
 cp "$REPO_ROOT/scripts/ci-wait.sh" "$D_DIR/ci-wait.sh"
+cp "$REPO_ROOT/scripts/lib-quiet.sh" "$D_DIR/lib-quiet.sh"
 chmod +x "$D_DIR/ci-wait.sh"
 
 # Stub ci-status.sh that LOGS its argv on every invocation AND emits

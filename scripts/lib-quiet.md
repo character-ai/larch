@@ -1,0 +1,46 @@
+# lib-quiet.sh
+
+Shared shell library for quiet-by-default larch helpers.
+
+## Purpose
+
+`scripts/lib-quiet.sh` lets executable scripts keep machine-readable stdout
+stable while moving incidental stdout/stderr chatter into a log file. Callers
+source the library and run `larch_quiet_init` after strict-mode setup and
+`SCRIPT_DIR` initialization, before argument parsing.
+
+## API
+
+- `larch_quiet_init` duplicates the original stdout to file descriptor 3,
+  sets `LARCH_QUIET_ACTIVE=1`, records `LARCH_QUIET_LOG_FILE`, and redirects
+  ordinary stdout/stderr to the quiet log.
+- `emit TEXT` writes one line of contract output to the caller-visible stream.
+- `emit_kv KEY VALUE` writes `KEY=VALUE` to the caller-visible stream.
+- `emit_breadcrumb TEXT` writes progress text to the quiet log by default.
+  Set `LARCH_QUIET_BREADCRUMBS=1` to surface breadcrumbs on caller stdout.
+
+`LARCH_QUIET_DISABLE=1` leaves stdout/stderr unchanged. Test harnesses that
+assert legacy stdout may use that override during migration.
+
+## Log Selection
+
+Callers may set `LARCH_QUIET_LOG_FILE` or `LARCH_QUIET_LOG` to choose the log
+path. Otherwise the library writes `larch-quiet-<script>-<pid>.log` under the
+first available session tmpdir (`IMPLEMENT_TMPDIR`, `REVIEW_TMPDIR`,
+`DESIGN_TMPDIR`) or `${TMPDIR:-/tmp}`.
+
+## Invariants
+
+- Nested sourcing is idempotent via `LARCH_LIB_QUIET_LOADED`.
+- Nested initialization is idempotent via `LARCH_QUIET_ACTIVE`.
+- Pure stdin-to-stdout filters must either avoid `larch_quiet_init` or set
+  `LARCH_QUIET_DISABLE=1` before calling it, because their data stream is
+  ordinary stdout rather than contract output.
+
+## Harness
+
+`scripts/test-lib-quiet.sh` exercises default redirect behavior, explicit log
+paths, disable mode, nested init, contract emission, breadcrumb suppression and
+opt-in surfacing, empty values, fallback behavior when the log directory cannot
+be created, and pure-filter disable semantics. It is wired as `make
+test-lib-quiet`.

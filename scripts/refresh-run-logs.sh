@@ -4,6 +4,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
 
 STATE_FILE=""
 IMPL_TMPDIR=""
@@ -20,24 +23,24 @@ done
 [ -n "$IMPL_TMPDIR" ] || { printf 'refresh-run-logs.sh: --implement-tmpdir is required\n' >&2; exit 1; }
 
 # Fail-closed merge probe: missing state file → treat as merged.
-[ -f "$STATE_FILE" ] || { printf 'REFRESH_SKIPPED=true REASON=state-file-missing-fail-closed\n'; exit 0; }
+[ -f "$STATE_FILE" ] || { emit "REFRESH_SKIPPED=true REASON=state-file-missing-fail-closed"; exit 0; }
 
 kv() { awk -F= -v k="$1" '$1==k{print $2;exit}' "$STATE_FILE" 2>/dev/null || true; }
 
 # All terminal merge outcomes short-circuit (post-merge safety property).
 case "$(kv MERGE_RESULT)" in
-    merged|admin_merged|already_merged) printf 'REFRESH_SKIPPED=true REASON=post-merge\n'; exit 0 ;;
+    merged|admin_merged|already_merged) emit "REFRESH_SKIPPED=true REASON=post-merge"; exit 0 ;;
 esac
 
 run_id=$(kv RUN_ID)
-[ -n "$run_id" ] || { printf 'REFRESH_SKIPPED=true REASON=no-run-id\n'; exit 0; }
+[ -n "$run_id" ] || { emit "REFRESH_SKIPPED=true REASON=no-run-id"; exit 0; }
 
 # Reject path-traversal characters in RUN_ID before it reaches git pathspecs.
 case "$run_id" in
-    */*|*'..'*) { printf 'REFRESH_SKIPPED=true REASON=invalid-run-id\n'; exit 0; } ;;
+    */*|*'..'*) { emit "REFRESH_SKIPPED=true REASON=invalid-run-id"; exit 0; } ;;
 esac
 
-[ "$(kv NO_LOGS_COMMIT)" = "true" ] && { printf 'REFRESH_SKIPPED=true REASON=no-logs-commit\n'; exit 0; }
+[ "$(kv NO_LOGS_COMMIT)" = "true" ] && { emit "REFRESH_SKIPPED=true REASON=no-logs-commit"; exit 0; }
 
 # Load session env so token/timing report renderers can find their ledgers.
 session_env="$IMPL_TMPDIR/session-env.sh"
@@ -64,7 +67,7 @@ log_root="$IMPL_TMPDIR/larch-logs"
 commit_out=$("$SCRIPT_DIR/larch-log.sh" commit \
     --log-root "$log_root" --skill implement --run-id "$run_id" 2>/dev/null || true)
 if printf '%s\n' "$commit_out" | grep -q '^UNCHANGED=true'; then
-    printf 'REFRESH_COMMITTED=false REASON=no-changes\n'
+    emit "REFRESH_COMMITTED=false REASON=no-changes"
 else
-    printf 'REFRESH_COMMITTED=true\n'
+    emit_kv REFRESH_COMMITTED true
 fi

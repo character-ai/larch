@@ -27,6 +27,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 REDACT_TMPDIR_HELPER="$REPO_ROOT/scripts/redact-tmpdir-paths.sh"
 
@@ -132,10 +135,10 @@ if [[ -n "$EXISTING_PR" ]]; then
             if [[ -z "$PR_TITLE" ]]; then
                 PR_TITLE=$(gh pr view "$PR_NUMBER" ${GH_REPO_ARGS[@]+"${GH_REPO_ARGS[@]}"} --json title -q '.title' 2>/dev/null || echo "")
             fi
-            echo "PR_NUMBER=$PR_NUMBER"
-            echo "PR_URL=$PR_URL"
-            echo "PR_TITLE=$PR_TITLE"
-            echo "PR_STATUS=existing"
+            emit_kv PR_NUMBER "$PR_NUMBER"
+            emit_kv PR_URL "$PR_URL"
+            emit_kv PR_TITLE "$PR_TITLE"
+            emit_kv PR_STATUS "existing"
             exit 0
         fi
     fi
@@ -196,7 +199,7 @@ if [[ -z "$PR_NUMBER" ]] || [[ -z "$PR_URL" ]]; then
     exit 2
 fi
 
-echo "PR_NUMBER=$PR_NUMBER"
-echo "PR_URL=$PR_URL"
-echo "PR_TITLE=$TITLE"
-echo "PR_STATUS=created"
+emit_kv PR_NUMBER "$PR_NUMBER"
+emit_kv PR_URL "$PR_URL"
+emit_kv PR_TITLE "$TITLE"
+emit_kv PR_STATUS "created"

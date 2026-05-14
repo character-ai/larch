@@ -4,6 +4,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"
 # shellcheck source=scripts/lib-cursor-launcher-common.sh
 # shellcheck disable=SC1091
@@ -153,5 +156,7 @@ if command -v jq >/dev/null 2>&1 && [ -f "$OUTPUT" ]; then
     fi
 fi
 
-printf 'LAUNCHER_EXIT=%s\nOUTPUT=%s\nTOKEN_RECORD=%s\n' "$LAUNCHER_EXIT" "$OUTPUT" "${OUTPUT}.token-record"
+emit_kv LAUNCHER_EXIT "$LAUNCHER_EXIT"
+emit_kv OUTPUT "$OUTPUT"
+emit_kv TOKEN_RECORD "${OUTPUT}.token-record"
 exit 0

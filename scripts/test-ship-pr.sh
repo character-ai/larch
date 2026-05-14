@@ -3,6 +3,8 @@
 
 set -euo pipefail
 
+export LARCH_QUIET_DISABLE=1
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP_BASE="$(mktemp -d -t ship-pr-test.XXXXXX)"
 PASS_COUNT=0
@@ -20,6 +22,7 @@ write_subject() {
     local root=$1
     mkdir -p "$root/scripts" "$root/.claude/skills/bump-version/scripts"
     cp "$REPO_ROOT/scripts/ship-pr.sh" "$root/scripts/ship-pr.sh"
+    cp "$REPO_ROOT/scripts/lib-quiet.sh" "$root/scripts/lib-quiet.sh"
     cp "$REPO_ROOT/scripts/lib-net.sh" "$root/scripts/lib-net.sh"
     chmod +x "$root/scripts/ship-pr.sh"
 }

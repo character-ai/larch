@@ -5,6 +5,9 @@ set -euo pipefail
 LC_ALL=C
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
 
 SITE=""
 TMPDIR_ARG="${IMPLEMENT_TMPDIR:-${REVIEW_TMPDIR:-}}"
@@ -12,7 +15,7 @@ TMPDIR_ARG="${IMPLEMENT_TMPDIR:-${REVIEW_TMPDIR:-}}"
 fail() {
     local reason="$1"
     local code="${2:-1}"
-    printf 'STATUS=fail FAILURE_REASON=%s\n' "$reason"
+    emit "STATUS=fail FAILURE_REASON=$reason"
     exit "$code"
 }
 
@@ -118,7 +121,7 @@ fi
 
 CHECK_SCRIPT="$REPO_ROOT/.claude/skills/relevant-checks/scripts/run-checks.sh"
 if [[ ! -x "$CHECK_SCRIPT" ]]; then
-    printf 'STATUS=fail EXIT_CODE=127 FAILURE_REASON=missing-check-script\n'
+    emit "STATUS=fail EXIT_CODE=127 FAILURE_REASON=missing-check-script"
     exit 127
 fi
 
@@ -180,9 +183,9 @@ if [[ "$rc" -eq 0 ]]; then
         coverage="post-check-only"
     fi
     if [[ "$has_agent_lint_warning" == "true" ]]; then
-        printf 'RELEVANT_CHECKS_OK=true SITE=%s COVERAGE=%s WARN=agent-lint-missing\n' "$SITE" "$coverage"
+        emit "RELEVANT_CHECKS_OK=true SITE=$SITE COVERAGE=$coverage WARN=agent-lint-missing"
     else
-        printf 'RELEVANT_CHECKS_OK=true SITE=%s COVERAGE=%s\n' "$SITE" "$coverage"
+        emit "RELEVANT_CHECKS_OK=true SITE=$SITE COVERAGE=$coverage"
     fi
     exit 0
 fi
@@ -197,20 +200,20 @@ fi
 LOG_BYTES=$(wc -c < "$LOG_FILE" | tr -d '[:space:]')
 REDACTED_LOG_FILE="$LOG_DIR/$SITE-$attempt.redacted.log"
 if [[ ! -x "$SCRIPT_DIR/redact-tmpdir-paths.sh" || ! -x "$SCRIPT_DIR/redact-secrets.sh" ]]; then
-    printf 'STATUS=fail FAILURE_REASON=redaction-failed\n'
+    emit "STATUS=fail FAILURE_REASON=redaction-failed"
     exit 1
 fi
 if ! "$SCRIPT_DIR/redact-tmpdir-paths.sh" < "$LOG_FILE" | "$SCRIPT_DIR/redact-secrets.sh" > "$REDACTED_LOG_FILE"; then
     rm -f "$REDACTED_LOG_FILE"
-    printf 'STATUS=fail FAILURE_REASON=redaction-failed\n'
+    emit "STATUS=fail FAILURE_REASON=redaction-failed"
     exit 1
 fi
 chmod 600 "$REDACTED_LOG_FILE"
 
-printf 'STATUS=fail\n'
-printf 'EXIT_CODE=%s\n' "$rc"
-printf 'LOG_FILE=%s\n' "$LOG_FILE"
-printf 'LOG_BYTES=%s\n' "$LOG_BYTES"
-printf 'PHASE=%s\n' "$phase"
-printf 'REDACTED_LOG_FILE=%s\n' "$REDACTED_LOG_FILE"
+emit_kv STATUS fail
+emit_kv EXIT_CODE "$rc"
+emit_kv LOG_FILE "$LOG_FILE"
+emit_kv LOG_BYTES "$LOG_BYTES"
+emit_kv PHASE "$phase"
+emit_kv REDACTED_LOG_FILE "$REDACTED_LOG_FILE"
 exit "$rc"

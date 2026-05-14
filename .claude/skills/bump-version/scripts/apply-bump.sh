@@ -23,12 +23,18 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LARCH_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../../.." && pwd -P)}"
+# shellcheck source=scripts/lib-quiet.sh
+source "$LARCH_PLUGIN_ROOT/scripts/lib-quiet.sh"
+larch_quiet_init
+
 # fail MESSAGE — emit APPLIED=false / ERROR=MESSAGE on stdout and exit 1.
 # Used for all non-rollback failure paths so callers see a consistent
 # machine-parseable contract on stdout.
 fail() {
-  echo "APPLIED=false"
-  echo "ERROR=$1"
+  emit_kv APPLIED false
+  emit_kv ERROR "$1"
   exit 1
 }
 
@@ -112,8 +118,8 @@ if git commit -m "$COMMIT_MSG" --quiet; then
   # (drop-bump-commit.sh) relies on the bump commit remaining at HEAD.
   rm -f "$BACKUP"
   COMMIT_SHA=$(git rev-parse HEAD)
-  echo "APPLIED=true"
-  echo "COMMIT_SHA=$COMMIT_SHA"
+  emit_kv APPLIED true
+  emit_kv COMMIT_SHA "$COMMIT_SHA"
   exit 0
 fi
 
@@ -121,6 +127,6 @@ fi
 # Restore from backup, unstage the file.
 mv "$BACKUP" "$PLUGIN_JSON"
 git reset HEAD "$PLUGIN_JSON" >/dev/null 2>&1 || true
-echo "APPLIED=false"
-echo "ERROR=git commit failed; rolled back $PLUGIN_JSON from backup"
+emit_kv APPLIED false
+emit_kv ERROR "git commit failed; rolled back $PLUGIN_JSON from backup"
 exit 1
