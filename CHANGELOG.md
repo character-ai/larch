@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [27.5.10] - 2026-05-13
+
+### Changed
+
+- Add compose-plan-goals-test.sh to build sectioned plan-goals-test payloads from file-backed plans and reject missing, short, or pointer-only plan files.
+- Wire plan-goals-test to a plan-goals larch-log sanitizer that rejects empty or pointer-only Implementation Plan bodies before writes publish.
+- Update /implement instructions, Makefile wiring, sibling docs, agent-lint exclusions, and larch-log harness fixtures for the new contract.
+
 ## [27.5.7] - 2026-05-13
 
 ### Changed

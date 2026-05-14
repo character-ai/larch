@@ -12,5 +12,9 @@ The table intentionally covers the legacy tracking sections as durable files:
 (the redacted Claude Code session transcript captured at Step 18 for full
 post-hoc auditability).
 
+`plan-goals-test` uses the `plan-goals` sanitizer. The sanitizer requires a
+sectioned payload with a non-empty `## Implementation Plan` body and rejects
+pointer-only placeholders such as `See plan.txt`.
+
 Edit in sync with `scripts/larch-log.sh`, `scripts/larch-log.md`, and
 `scripts/test-larch-logs-batches.sh`.
