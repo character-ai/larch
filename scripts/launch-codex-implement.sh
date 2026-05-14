@@ -317,6 +317,7 @@ while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
         -- \
         codex exec --full-auto -C "$PWD" \
         --add-dir "$SESSION_TMPDIR" \
+        --add-dir "$PWD" \
         ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
         -c "$TRUST_CONFIG_ARG" \
         --output-last-message "$TRANSCRIPT_PATH" \
