@@ -224,24 +224,48 @@ sys.stdout.write(json.dumps(sys.stdin.read()))
 ' || return 1
 }
 
-write_execution_issues_record() {
-    local input_file=$1 record_file=$2 sha=$3 body_json escape_rc
+write_execution_issues_records() {
+    local input_file=$1 record_file=$2 sha=$3
+    local current_cat body_file line rc=0
+    : > "$record_file"
     if command -v jq >/dev/null 2>&1; then
-        jq -Rs --arg sha "$sha" '{
-            phase: "implement",
-            step: "18",
-            category: "Tool Failures",
-            source: "execution-issues.md safety-net",
-            source_sha256: $sha,
-            body: .
-        }' "$input_file" > "$record_file"
-        return $?
+        body_file=$(mktemp "${TMPDIR:-/tmp}/exec-issue-section.XXXXXX") || return 1
+        current_cat="Tool Failures"
+        : > "$body_file"
+        while IFS= read -r line || [ -n "$line" ]; do
+            case "$line" in
+                '### '*)
+                    if [ -s "$body_file" ]; then
+                        jq -c -Rs --arg sha "$sha" --arg cat "$current_cat" '{
+                            phase: "implement", step: "18", category: $cat,
+                            source: "execution-issues.md safety-net",
+                            source_sha256: $sha, body: .
+                        }' "$body_file" >> "$record_file" || rc=1
+                    fi
+                    current_cat="${line#'### '}"
+                    : > "$body_file"
+                    ;;
+                *)
+                    printf '%s\n' "$line" >> "$body_file"
+                    ;;
+            esac
+        done < "$input_file"
+        if [ -s "$body_file" ]; then
+            jq -c -Rs --arg sha "$sha" --arg cat "$current_cat" '{
+                phase: "implement", step: "18", category: $cat,
+                source: "execution-issues.md safety-net",
+                source_sha256: $sha, body: .
+            }' "$body_file" >> "$record_file" || rc=1
+        fi
+        rm -f "$body_file"
+        return $rc
     fi
     # No jq: fall back to python3. The awk-only escape was incomplete (no
     # \r/\b/\f/control-char handling), which produced invalid NDJSON for
     # binary-ish stderr captures and silently broke larch-log append on
     # hosts without jq. Refuse to write a record at all rather than emit
-    # malformed NDJSON.
+    # malformed NDJSON. python3 fallback emits one record for the whole file.
+    local body_json escape_rc
     set +e
     body_json=$(json_escape_stream_python < "$input_file")
     escape_rc=$?
@@ -269,12 +293,12 @@ flush_execution_issues_safety_net() {
         return 0
     fi
     batch_path="$IMPLEMENT_TMPDIR/larch-logs/implement/$run_id/execution-issues.ndjson"
-    if [ -f "$batch_path" ] && grep -Fq "$sha" "$batch_path" 2>/dev/null; then
+    if [ -f "$batch_path" ] && grep -Fq '"source_sha256":"'"$sha"'"' "$batch_path" 2>/dev/null; then
         printf '%s\n' "$sha" > "$sentinel" 2>/dev/null || true
         return 0
     fi
     record_file="$IMPLEMENT_TMPDIR/execution-issues-safety-net.ndjson"
-    write_execution_issues_record "$issue_log" "$record_file" "$sha" || {
+    write_execution_issues_records "$issue_log" "$record_file" "$sha" || {
         warn_line '**⚠ 18: execution-issues safety-net record compose failed. Continuing.**'
         return 0
     }
