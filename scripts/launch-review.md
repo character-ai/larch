@@ -43,6 +43,13 @@ Gemini remains generic-only and rejects specialist flags.
   `LARCH_EXTERNAL_SERIAL_LOCK_DELAY`, `LARCH_EXTERNAL_SERIAL_LOCK_TTL`,
   `LARCH_EXTERNAL_SERIAL_LOCK_TRIES`, and
   `LARCH_EXTERNAL_SERIAL_LOCK_FORCE_UNAME`.
+- When Codex or Cursor review launches finish their auth-retry loops with a
+  non-zero exit and `IMPLEMENT_TMPDIR` is set, the launcher best-effort appends
+  captured sidecar diagnostics to `$IMPLEMENT_TMPDIR/execution-issues.md`
+  through `scripts/append-tool-failure.sh --redact` under
+  `External Reviewer Issues`, including an auth verdict and the final auth-loop
+  attempt count. Cursor verdicts inspect both `${OUTPUT}.sidecar` and
+  `${OUTPUT}.diag` because stderr can land in either place.
 - The Cursor path calls `cursor_launcher_setup_private_config_dir` (from
   `lib-cursor-launcher-common.sh`) immediately before the auth-retry loop to
   give each invocation a fresh private `CURSOR_CONFIG_DIR` directory (seeded

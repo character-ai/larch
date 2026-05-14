@@ -9,7 +9,7 @@ verbatim.
 ## Interface
 
 ```text
-append-tool-failure.sh --log <path> --site <step-id> --tool <label> --exit-code <N> --category <category> --output-file <path> [--redact]
+append-tool-failure.sh --log <path> --site <step-id> --tool <label> --exit-code <N> --category <category> --output-file <path> [--verdict <label>] [--retry-count <N>] [--redact]
 ```
 
 Supported categories are `Tool Failures`, `External Reviewer Issues`,
@@ -19,11 +19,21 @@ The helper reads `--output-file` without truncation and wraps the exact
 content in a markdown code fence under a bullet:
 
 ````markdown
-- **Step <site> — <tool> failed (exit <N>)**:
+- **Step <site> — <tool> failed (exit <N>[ — <verdict>][ — retries=<N>])**:
   ```
   <captured content>
   ```
 ````
+
+`--verdict` is an optional single-line classifier supplied by external
+launcher callers. Current launchers use `auth-retries-exhausted`,
+`non-auth`, or `unclassified` after their auth-retry loops finish. When
+omitted, no verdict suffix is written.
+
+`--retry-count` is an optional non-negative integer. External launchers
+pass the final auth-loop attempt count so terminal failure entries can
+distinguish first-attempt failures from exhausted retry loops. When
+omitted, no retry suffix is written.
 
 When `--redact` is present, the captured content is first passed through
 `scripts/redact-secrets.sh`. The redaction pass preserves non-secret
@@ -56,9 +66,9 @@ output.
 ## Harness
 
 `scripts/test-append-tool-failure.sh` covers single-line, multi-line,
-large-content, category routing, redaction, missing-input failure, and
-delegate failure atomicity. It is intended to run directly and through
-the relevant-checks script harness.
+large-content, category routing, verdict / retry-count suffixes,
+redaction, missing-input failure, and delegate failure atomicity. It is
+intended to run directly and through the relevant-checks script harness.
 
 ## Edit In Sync
 

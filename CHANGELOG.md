@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [27.5.14] - 2026-05-13
+
+### Changed
+
+- Log terminal external launcher failures into execution-issues with auth verdict context
+- Extend append-tool-failure headers with optional verdict and retry-count suffixes
+- Document the new launcher failure logging contracts and cover header suffixes in the harness
+
 ## [27.5.10] - 2026-05-13
 
 ### Changed

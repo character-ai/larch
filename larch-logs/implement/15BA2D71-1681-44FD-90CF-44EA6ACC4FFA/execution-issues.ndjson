@@ -1,0 +1,89 @@
+### External Reviewer Issues
+
+- **Step review Step 2 — codex-review failed (exit 124 — non-auth — retries=1)**:
+  ```
+Reading additional input from stdin...
+2026-05-14T01:14:22.348637Z ERROR codex_models_manager::manager: failed to refresh available models: stream disconnected before completion: error sending request for url (https://chatgpt.com/backend-api/codex/models?client_version=0.125.0)
+2026-05-14T01:14:22.367017Z ERROR rmcp::transport::worker: worker quit with fatal: Transport channel closed, when Client(HttpRequest(HttpRequest("http/request failed: error sending request for url (https://chatgpt.com/backend-api/wham/apps)")))
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /Users/zhupanov/larch6
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019e240c-8b0d-75b3-b128-e702d861bfeb
+--------
+user
+x
+2026-05-14T01:14:22.368344Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: IO error: failed to lookup address information: nodename nor servname provided, or not known, url: wss://chatgpt.com/backend-api/codex/responses
+2026-05-14T01:14:22.471881Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: IO error: failed to lookup address information: nodename nor servname provided, or not known, url: wss://chatgpt.com/backend-api/codex/responses
+2026-05-14T01:14:22.680746Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: IO error: failed to lookup address information: nodename nor servname provided, or not known, url: wss://chatgpt.com/backend-api/codex/responses
+ERROR: Reconnecting... 2/5
+2026-05-14T01:14:23.100314Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: IO error: failed to lookup address information: nodename nor servname provided, or not known, url: wss://chatgpt.com/backend-api/codex/responses
+ERROR: Reconnecting... 3/5
+2026-05-14T01:14:23.898717Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: IO error: failed to lookup address information: nodename nor servname provided, or not known, url: wss://chatgpt.com/backend-api/codex/responses
+ERROR: Reconnecting... 4/5
+⚠ codex agent: TIMED OUT after 0 minutes, killing
+❌ codex agent: TIMED OUT (exit code 124, 10s elapsed, output 0 bytes)
+  ```
+
+- **Step review Step 2 — codex-review failed (exit 124 — non-auth — retries=1)**:
+  ```
+Reading additional input from stdin...
+2026-05-14T01:14:32.532885Z ERROR codex_models_manager::manager: failed to refresh available models: stream disconnected before completion: error sending request for url (https://chatgpt.com/backend-api/codex/models?client_version=0.125.0)
+2026-05-14T01:14:32.552957Z ERROR rmcp::transport::worker: worker quit with fatal: Transport channel closed, when Client(HttpRequest(HttpRequest("http/request failed: error sending request for url (https://chatgpt.com/backend-api/wham/apps)")))
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /Users/zhupanov/larch6
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019e240c-b2d5-7a91-a8f7-5c9192bca4c2
+--------
+user
+x
+2026-05-14T01:14:32.554358Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: IO error: failed to lookup address information: nodename nor servname provided, or not known, url: wss://chatgpt.com/backend-api/codex/responses
+2026-05-14T01:14:32.639288Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: IO error: failed to lookup address information: nodename nor servname provided, or not known, url: wss://chatgpt.com/backend-api/codex/responses
+2026-05-14T01:14:32.838226Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: IO error: failed to lookup address information: nodename nor servname provided, or not known, url: wss://chatgpt.com/backend-api/codex/responses
+ERROR: Reconnecting... 2/5
+2026-05-14T01:14:33.226956Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: IO error: failed to lookup address information: nodename nor servname provided, or not known, url: wss://chatgpt.com/backend-api/codex/responses
+ERROR: Reconnecting... 3/5
+2026-05-14T01:14:34.024610Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: IO error: failed to lookup address information: nodename nor servname provided, or not known, url: wss://chatgpt.com/backend-api/codex/responses
+ERROR: Reconnecting... 4/5
+⚠ codex agent: TIMED OUT after 0 minutes, killing
+❌ codex agent: TIMED OUT (exit code 124, 10s elapsed, output 0 bytes)
+  ```
+
+- **Step review Step 2 — cursor-review failed (exit 1 — non-auth — retries=1)**:
+  ```
+/tmp/larch-test-launch-cursor-Aew50c/bin/cursor: line 3: CURSOR_STUB_ARGV_LOG: parameter null or not set
+Failed with exit code 1 after 1s. Output size: 0 bytes.
+  ```
+
+- **Step review Step 2 — cursor-review failed (exit 1 — non-auth — retries=1)**:
+  ```
+/tmp/larch-test-launch-cursor-Aew50c/bin/cursor: line 3: CURSOR_STUB_ARGV_LOG: parameter null or not set
+Failed with exit code 1 after 0s. Output size: 0 bytes.
+  ```
+
+- **Step review Step 2 — cursor-review failed (exit 139 — non-auth — retries=1)**:
+  ```
+/Users/zhupanov/larch6/scripts/run-external-agent.sh: line 239: 43006 Segmentation fault: 11  "$@" > "$OUTPUT_FILE" 2> "${OUTPUT_FILE}.diag"
+  ```
+
+- **Step review Step 2 — cursor-review failed (exit 139 — non-auth — retries=1)**:
+  ```
+/Users/zhupanov/larch6/scripts/run-external-agent.sh: line 239: 43200 Segmentation fault: 11  "$@" > "$OUTPUT_FILE" 2> "${OUTPUT_FILE}.diag"
+  ```
+
+- **Step review Step 2 — cursor-review failed (exit 1 — non-auth — retries=1)**:
+  ```
+Error: workspace initialization failed (exit code 1)
+Failed with exit code 1 after 0s. Output size: 0 bytes.
+  ```

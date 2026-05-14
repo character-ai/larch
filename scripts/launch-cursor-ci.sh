@@ -26,6 +26,20 @@ die() {
     exit 2
 }
 
+append_launch_failure() {
+    local site="$1" tool_label="$2" rc="$3" diag_file="$4" verdict="${5:-}" retry_count="${6:-}"
+    [[ -x "$PLUGIN_ROOT/scripts/append-tool-failure.sh" ]] || return 0
+    [[ -n "${IMPLEMENT_TMPDIR:-}" ]] || return 0
+    local _args=()
+    [[ -n "$verdict" ]] && _args+=(--verdict "$verdict")
+    [[ -n "$retry_count" ]] && _args+=(--retry-count "$retry_count")
+    "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+        --log "${IMPLEMENT_TMPDIR}/execution-issues.md" \
+        --site "$site" --tool "$tool_label" --exit-code "$rc" \
+        --category "Tool Failures" --output-file "$diag_file" \
+        "${_args[@]}" --redact >/dev/null 2>&1 || true
+}
+
 while [ $# -gt 0 ]; do
     case "$1" in
         --role) [ $# -ge 2 ] || die "--role requires a value"; ROLE=$2; shift 2 ;;
@@ -99,6 +113,12 @@ while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
     break
 done
 cursor_launcher_cleanup_private_config_dir
+
+if (( LAUNCHER_EXIT != 0 )); then
+    _AUTH_VERDICT=$(external_auth_verdict "cursor" "${OUTPUT}.diag")
+    [[ "$_AUTH_VERDICT" == "auth" ]] && _VERDICT="auth-retries-exhausted" || _VERDICT="$_AUTH_VERDICT"
+    append_launch_failure "CI $ROLE" "cursor-ci" "$LAUNCHER_EXIT" "${OUTPUT}.diag" "$_VERDICT" "$AUTH_ATTEMPT"
+fi
 
 cursor_launcher_append_outer_meta "${OUTPUT}.meta" "$SCRIPT_DIR/launch-cursor-ci.sh" "$PROMPT_FILE" "$PWD"
 cursor_launcher_promote_inner_done "$OUTPUT"

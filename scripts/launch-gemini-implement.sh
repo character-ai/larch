@@ -158,6 +158,20 @@ emit_timing_record() {
         >/dev/null 2>&1 || true
 }
 
+append_launch_failure() {
+    local site="$1" tool_label="$2" rc="$3" diag_file="$4" verdict="${5:-}" retry_count="${6:-}"
+    [[ -x "$PLUGIN_ROOT/scripts/append-tool-failure.sh" ]] || return 0
+    [[ -n "${IMPLEMENT_TMPDIR:-}" ]] || return 0
+    local _args=()
+    [[ -n "$verdict" ]] && _args+=(--verdict "$verdict")
+    [[ -n "$retry_count" ]] && _args+=(--retry-count "$retry_count")
+    "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+        --log "${IMPLEMENT_TMPDIR}/execution-issues.md" \
+        --site "$site" --tool "$tool_label" --exit-code "$rc" \
+        --category "Tool Failures" --output-file "$diag_file" \
+        "${_args[@]}" --redact >/dev/null 2>&1 || true
+}
+
 RESUME_BLOCK=""
 if [[ -n "$ANSWERS_FILE" ]]; then
     RESUME_BLOCK="$(cat <<EOF
@@ -236,6 +250,16 @@ while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
     fi
     break
 done
+
+if (( LAUNCHER_EXIT != 0 )); then
+    _AUTH_VERDICT=$(external_auth_verdict "gemini" "$SIDECAR_LOG" "$TRANSCRIPT_PATH")
+    [[ "$_AUTH_VERDICT" == "auth" ]] && _VERDICT="auth-retries-exhausted" || _VERDICT="$_AUTH_VERDICT"
+    _FAILURE_OUTPUT="$SIDECAR_LOG"
+    if [[ ! -s "$_FAILURE_OUTPUT" && -s "$TRANSCRIPT_PATH" ]]; then
+        _FAILURE_OUTPUT="$TRANSCRIPT_PATH"
+    fi
+    append_launch_failure "2" "gemini-implement" "$LAUNCHER_EXIT" "$_FAILURE_OUTPUT" "$_VERDICT" "$AUTH_ATTEMPT"
+fi
 
 MANIFEST_WRITTEN=false
 QA_PENDING_WRITTEN=false
