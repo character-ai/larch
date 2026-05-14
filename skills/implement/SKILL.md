@@ -217,11 +217,12 @@ Then:
           2>"$IMPLEMENT_TMPDIR/claude-source-error.log"; then
       export LARCH_CLAUDE_SOURCE_FILE="$IMPLEMENT_TMPDIR/claude-source.env"
   else
+      _source_exit=$?
       "${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" \
           --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
           --site "Step 0" \
           --tool "token-claude-source.sh" \
-          --exit-code "1" \
+          --exit-code "$_source_exit" \
           --category Warnings \
           --output-file "$IMPLEMENT_TMPDIR/claude-source-error.log" \
           --redact || true

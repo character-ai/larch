@@ -16,7 +16,7 @@ capture-session-transcript.sh \
   --execution-issues-log <path>
 ```
 
-`--source-file` is the output from `token-claude-source.sh` or the snapshotted source file path from session env. The wrapper reads the first `TRANSCRIPT_PATH=` line without sourcing the file. If the source file is empty or missing and `IMPLEMENT_TMPDIR` points at the active run tmpdir, the wrapper probes `$HOME/.claude/projects` for the newest `*.jsonl` newer than that tmpdir and uses the discovered file as the transcript. `--log-root`, `--skill`, and `--run-id` are forwarded to `larch-log.sh write` and `larch-log.sh commit`. `--no-logs-commit true` suppresses only the commit; the write still runs.
+`--source-file` is the output from `token-claude-source.sh` or the snapshotted source file path from session env. The wrapper reads the first `TRANSCRIPT_PATH=` line without sourcing the file. If the source file is empty, missing, or zero-byte and `IMPLEMENT_TMPDIR` points at the active run tmpdir, the wrapper probes the encoded project directory for the current git repo under `$HOME/.claude/projects` for the newest non-symlink `*.jsonl` newer than `$IMPLEMENT_TMPDIR/session-id` (stable reference written once at Step 0; falls back to the tmpdir itself when session-id is absent). When git is unavailable, the probe widens to all of `$HOME/.claude/projects`. `--log-root`, `--skill`, and `--run-id` are forwarded to `larch-log.sh write` and `larch-log.sh commit`. `--no-logs-commit true` suppresses only the commit; the write still runs.
 
 ## Statuses
 
