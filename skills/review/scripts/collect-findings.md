@@ -8,7 +8,7 @@ External outputs are collected with:
 collect-agent-results.sh --timeout 1860 --substantive-validation --validation-mode
 ```
 
-Collector stderr/stdout is captured to `$REVIEW_TMPDIR/collect-agent-results.log`. A non-zero collector exit is appended verbatim to the parent `execution-issues.md` with `append-tool-failure.sh` before the helper exits. For each structured collector result whose `STATUS` is not `OK`, the helper composes a failure capture containing the collector status, reviewer output file, and `${REVIEWER_FILE}.diag` sidecar content when present, then appends it under `External Reviewer Issues`.
+Collector stderr/stdout is captured to `$REVIEW_TMPDIR/collect-agent-results.log`. A non-zero collector exit is appended verbatim to `execution-issues.md` with `append-tool-failure.sh` before the helper exits. The log path resolver uses `LARCH_EXECUTION_ISSUES_LOG` when set; otherwise it falls back through `$(dirname "$SESSION_ENV_PATH")/execution-issues.md`, `$IMPLEMENT_TMPDIR/execution-issues.md`, then `$REVIEW_TMPDIR/execution-issues.md`. For each structured collector result whose `STATUS` is not `OK`, the helper composes a failure capture containing the collector status, reviewer output file, and `${REVIEWER_FILE}.diag` sidecar content when present, then appends it under `External Reviewer Issues`.
 
 Claude fallback waits are captured to `$REVIEW_TMPDIR/wait-for-claude-reviewers.log`; a non-zero wait exit is logged the same way before exiting.
 

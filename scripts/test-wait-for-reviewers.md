@@ -11,3 +11,7 @@
 - **C1, C2** (collector passthrough): `scripts/collect-agent-results.sh --timeout 0` and `--timeout abc` exit 1 with wait's stderr copied to the collector's stderr followed by a `collect-agent-results.sh: wait-for-reviewers.sh exited <N>` trailer line, and no reviewer records on stdout. The trailer is part of the contract — the harness pins both the wait stderr message and the trailer prefix.
 
 The full primary contract for the wait script lives at `scripts/wait-for-reviewers.md`. Wired into `make test-harnesses` via `the test-harnesses-N shard partition`. R5 takes about 1 wall-clock second by design at the harness poll interval because the wait loop computes `MAX_POLLS` from `--timeout` and `WAIT_FOR_REVIEWERS_POLL_INTERVAL`. `WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.05` tightens the dot-tick cadence while preserving the timeout grammar assertion. Edits to the harness must keep its rejection-message greps aligned with the validator's literal stderr text at `scripts/wait-for-reviewers.sh`'s timeout and poll-interval validators and Bash's parameter-expansion error format from the `--timeout` option parser.
+
+The harness unsets inherited session tempdir variables and points
+`LARCH_EXECUTION_ISSUES_LOG` at its tempdir so failures cannot append to a
+parent `/implement` run's log.

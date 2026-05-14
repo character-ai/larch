@@ -22,6 +22,8 @@ if [[ "${1-}" == "--real-smoke" ]]; then
     fi
     SCRATCH=$(mktemp -d -t cursor-implementer-smoke.XXXXXX)
     trap 'rm -rf "$SCRATCH"' EXIT
+    unset LARCH_EXECUTION_ISSUES_LOG SESSION_ENV_PATH IMPLEMENT_TMPDIR REVIEW_TMPDIR || true
+    export LARCH_EXECUTION_ISSUES_LOG="$SCRATCH/execution-issues.md"
     export LARCH_TIMING_LEDGER="$SCRATCH/timing-ledger.tsv"
     PLAN="$SCRATCH/plan.md"
     FEATURE="$SCRATCH/feature.txt"
@@ -46,6 +48,8 @@ pass() { PASS_COUNT=$((PASS_COUNT + 1)); }
 
 SCRATCH=$(mktemp -d -t cursor-implementer-test.XXXXXX)
 trap 'rm -rf "$SCRATCH"' EXIT
+unset LARCH_EXECUTION_ISSUES_LOG SESSION_ENV_PATH IMPLEMENT_TMPDIR REVIEW_TMPDIR || true
+export LARCH_EXECUTION_ISSUES_LOG="$SCRATCH/execution-issues.md"
 export LARCH_TIMING_LEDGER="$SCRATCH/timing-ledger.tsv"
 
 # Tighten run-external-agent.sh's poll cadence so the wrapper does not pay a

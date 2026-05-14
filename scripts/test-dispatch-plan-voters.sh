@@ -6,6 +6,8 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 SCRIPT="$REPO_ROOT/scripts/dispatch-plan-voters.sh"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/test-dispatch-plan-voters.XXXXXX")"
+unset LARCH_EXECUTION_ISSUES_LOG SESSION_ENV_PATH IMPLEMENT_TMPDIR REVIEW_TMPDIR || true
+export LARCH_EXECUTION_ISSUES_LOG="$TMP/execution-issues.md"
 trap 'rm -rf "$TMP"' EXIT
 
 PLUGIN="$TMP/plugin"
@@ -58,7 +60,7 @@ if [[ "${1:-}" == "--timeout" ]]; then shift 2; fi
 idx=0
 for sentinel in "$@"; do
     idx=$((idx + 1))
-    for _ in 1 2 3 4 5; do
+    for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
         [[ -f "$sentinel" ]] && break
         sleep 0.05
     done

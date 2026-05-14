@@ -7,6 +7,8 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP_BASE="$(mktemp -d -t ci-wait-test.XXXXXX)"
+unset LARCH_EXECUTION_ISSUES_LOG SESSION_ENV_PATH IMPLEMENT_TMPDIR REVIEW_TMPDIR || true
+export LARCH_EXECUTION_ISSUES_LOG="$TMP_BASE/execution-issues.md"
 PASS_COUNT=0
 FAIL_COUNT=0
 

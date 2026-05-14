@@ -8,6 +8,8 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WRAPPER="$REPO_ROOT/scripts/run-external-agent.sh"
 HELPER="$REPO_ROOT/scripts/lib-validate-meta-path.sh"
 TMPDIR="$(mktemp -d /tmp/larch-test-run-external-agent-XXXXXX)"
+unset LARCH_EXECUTION_ISSUES_LOG SESSION_ENV_PATH IMPLEMENT_TMPDIR REVIEW_TMPDIR || true
+export LARCH_EXECUTION_ISSUES_LOG="$TMPDIR/execution-issues.md"
 trap 'rm -rf "$TMPDIR"' EXIT
 
 export RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05

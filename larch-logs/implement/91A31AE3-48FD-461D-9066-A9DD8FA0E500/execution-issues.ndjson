@@ -1,0 +1,1 @@
+{"schema_version": 1, "phase": "implement", "step": "11", "category": "execution-issues", "body": "### CI Issues\n\n- **Step rebase \u2014 rebase-push.sh --keep-on-conflict failed (exit 1)**:\n  ```\nCONFLICT_FILES=.claude-plugin/plugin.json\n  ```\n", "source_sha256": "93e07fd8e7ee1c4d0cee70f376ead8ba8ed42c3397d10cd831ce215d346eaf35"}

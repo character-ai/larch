@@ -7,6 +7,8 @@ set -euo pipefail
 
 REPO_ROOT=$(cd "$(dirname "$0")/.." && pwd -P)
 TMPDIR=$(mktemp -d "${TMPDIR:-/tmp}/larch-test-wait-XXXXXX")
+unset LARCH_EXECUTION_ISSUES_LOG SESSION_ENV_PATH IMPLEMENT_TMPDIR REVIEW_TMPDIR || true
+export LARCH_EXECUTION_ISSUES_LOG="$TMPDIR/execution-issues.md"
 trap 'rm -rf "$TMPDIR"' EXIT
 
 # Fast poll so the DONE case finishes quickly. The TIMEOUT case still spends

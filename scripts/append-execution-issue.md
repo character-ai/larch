@@ -17,6 +17,11 @@ Supported categories are the exact headers from `skills/implement/SKILL.md`: `Pr
 
 The script creates the log and parent directory when missing. If the category header exists, the entry is appended under it before the next `###` header; otherwise the category section is appended at the end. Existing sections are preserved.
 
+This helper does not read `LARCH_EXECUTION_ISSUES_LOG` directly. Callers
+compute the `--log` path before invoking it; several review and design
+dispatchers use `LARCH_EXECUTION_ISSUES_LOG` as the first-precedence override
+for test-harness isolation.
+
 ## Output
 
 On success, stdout is:

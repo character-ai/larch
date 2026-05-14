@@ -24,6 +24,7 @@
 - The always-on path must stay offline and must not call the real `cursor` binary.
 - The stub records argv one argument per line so ordering assertions preserve argument boundaries.
 - The test sets `LARCH_CURSOR_MODEL=stub-model` to avoid environment-specific model drift.
+- The harness unsets inherited session tempdir variables and points `LARCH_EXECUTION_ISSUES_LOG` at its scratch dir so failures cannot append to a parent `/implement` run's log.
 
 **Call sites**:
 - `make test-cursor-implementer`.

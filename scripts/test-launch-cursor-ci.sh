@@ -5,6 +5,8 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMPDIR_BASE="$(mktemp -d -t launch-cursor-ci-test.XXXXXX)"
+unset LARCH_EXECUTION_ISSUES_LOG SESSION_ENV_PATH IMPLEMENT_TMPDIR REVIEW_TMPDIR || true
+export LARCH_EXECUTION_ISSUES_LOG="$TMPDIR_BASE/execution-issues.md"
 trap 'rm -rf "$TMPDIR_BASE"' EXIT
 
 PASS=0

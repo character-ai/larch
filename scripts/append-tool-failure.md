@@ -40,6 +40,11 @@ When `--redact` is present, the captured content is first passed through
 content and replaces known token families before public surfaces consume
 the log.
 
+This helper does not read `LARCH_EXECUTION_ISSUES_LOG` directly. Callers
+compute the `--log` path before invoking it; several review and design
+dispatchers use `LARCH_EXECUTION_ISSUES_LOG` as the first-precedence override
+for test-harness isolation.
+
 ## Output
 
 On success, stdout is the delegated `append-execution-issue.sh` envelope:

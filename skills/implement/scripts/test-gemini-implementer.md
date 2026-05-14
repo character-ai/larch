@@ -22,6 +22,7 @@
 - The stub records argv one argument per line so ordering and token assertions preserve argument boundaries.
 - The test sets `LARCH_GEMINI_MODEL=stub-gemini-model` to avoid environment-specific model drift and to pin model forwarding.
 - The stub writes the manifest atomically (`.tmp` then `mv`) so launcher detection mirrors production.
+- The harness unsets inherited session tempdir variables and points `LARCH_EXECUTION_ISSUES_LOG` at its scratch dir so failures cannot append to a parent `/implement` run's log.
 
 **Call sites**:
 - `make test-gemini-implementer`.
