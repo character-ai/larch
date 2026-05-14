@@ -239,12 +239,15 @@ Then:
 
 The session-env file is passed to `/design` (Step 1) and `/review` (Step 5) via `--session-env`.
 
-Every Bash block after Step 0 that touches `token-ledger.sh` or `token-report.sh` MUST rehydrate `LARCH_TOKEN_SESSION_ID` and `LARCH_CLAUDE_SOURCE_FILE` from `$IMPLEMENT_TMPDIR/session-env.sh` via `read-session-env-key.sh` before invoking the script:
+Every Bash block after Step 0 that touches `token-ledger.sh` / `token-report.sh` / `timing-ledger.sh` / `timing-report.sh` MUST rehydrate `LARCH_TOKEN_SESSION_ID`, `LARCH_CLAUDE_SOURCE_FILE`, and `LARCH_TIMING_LEDGER` from `$IMPLEMENT_TMPDIR/session-env.sh` via `read-session-env-key.sh` before invoking the script. It MUST also assign and export `IMPLEMENT_TMPDIR` so `timing-ledger.sh` accepts the per-run ledger path as an allowed session root:
 
 ```bash
+IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
+export IMPLEMENT_TMPDIR
 LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
 LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
-export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
+LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 ```
 
 ### Cross-Skill Health Propagation
@@ -376,9 +379,12 @@ If `oos-accepted-main-agent.md` does not exist, create it with the new entry. If
 ## Step 0.5 — Resolve Tracking Issue
 
 ```bash
+IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
+export IMPLEMENT_TMPDIR
 LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
 LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
-export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
+LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 0.5 — tracking issue" || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 0.5 — tracking issue" || true
 # token-mark Step 0.5 — tracking issue
@@ -666,9 +672,12 @@ would misclassify pre-existing untracked files as phantoms on later probes.
 ## Step 1 — Ensure Design Plan Exists
 
 ```bash
+IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
+export IMPLEMENT_TMPDIR
 LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
 LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
-export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
+LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 1 — design plan" || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 1 — design plan" || true
 # token-mark Step 1 — design plan
@@ -705,6 +714,12 @@ Skip `/design`. Handle branch creation here, then produce an inline plan.
 For the explicit `--quick` branch, first record the workflow path (the auto-simple branch records its own SIMPLE row immediately before re-entering this procedure):
 
 ```bash
+IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
+export IMPLEMENT_TMPDIR
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" workflow-path "SIMPLE" || true
 ```
 
@@ -742,6 +757,12 @@ Before jumping to Step 2 on the manifest-reuse path, run `${CLAUDE_PLUGIN_ROOT}/
 At the start of this reuse branch, record:
 
 ```bash
+IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
+export IMPLEMENT_TMPDIR
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" workflow-path "HARD" || true
 ```
 
@@ -777,6 +798,12 @@ The `design_only=false` gate is load-bearing: `--design-only`'s contract is to p
 On the design-only normal path (external-backed `/design` proceeds), record the HARD path before the Skill invocation:
 
 ```bash
+IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
+export IMPLEMENT_TMPDIR
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" workflow-path "HARD" || true
 ```
 
@@ -914,9 +941,12 @@ Apply the Rebase Checkpoint Macro with `<step-prefix>=1.r` and `<short-name>=des
 ## Step 2 — Implement the Feature
 
 ```bash
+IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
+export IMPLEMENT_TMPDIR
 LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
 LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
-export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
+LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 2 — implementation" || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 2 — implementation" || true
 # token-mark Step 2 — implementation
@@ -1058,9 +1088,12 @@ Material answers that change scope or approach also log here (same `Q/A` categor
 ## Step 3 — Relevant Checks (first pass)
 
 ```bash
+IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
+export IMPLEMENT_TMPDIR
 LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
 LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
-export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
+LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 3 — checks first pass" || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 3 — checks first pass" || true
 # token-mark Step 3 — checks first pass
@@ -1078,9 +1111,12 @@ After the helper returns clean (or after failure triage has made it clean), clos
 ## Step 4 — First Commit (implementation)
 
 ```bash
+IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
+export IMPLEMENT_TMPDIR
 LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
 LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
-export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
+LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 4 — commit implementation" || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 4 — commit implementation" || true
 # token-mark Step 4 — commit implementation
@@ -1109,9 +1145,12 @@ Untracked Probe with `--step 4.r-post-rebase`.
 ## Step 5 — Code Review
 
 ```bash
+IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
+export IMPLEMENT_TMPDIR
 LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
 LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
-export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
+LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 5 — code review" || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 5 — code review" || true
 # token-mark Step 5 — code review
@@ -1273,9 +1312,12 @@ Known limitation: accepted code-review findings are not currently captured in th
 ## Step 6 — Relevant Checks (second pass)
 
 ```bash
+IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
+export IMPLEMENT_TMPDIR
 LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
 LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
-export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
+LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 6 — checks second pass" || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 6 — checks second pass" || true
 # token-mark Step 6 — checks second pass
@@ -1311,9 +1353,12 @@ After the helper returns clean (or after failure triage has made it clean), clos
 ## Step 7 — Second Commit (review fixes)
 
 ```bash
+IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
+export IMPLEMENT_TMPDIR
 LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
 LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
-export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
+LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 7 — commit review fixes" || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 7 — commit review fixes" || true
 # token-mark Step 7 — commit review fixes
@@ -1342,9 +1387,12 @@ do not run it.
 ## Step 7a — Code Flow Diagram
 
 ```bash
+IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
+export IMPLEMENT_TMPDIR
 LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
 LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
-export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
+LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 7a — code flow diagram" || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 7a — code flow diagram" || true
 # token-mark Step 7a — code flow diagram
@@ -1427,9 +1475,12 @@ Untracked Probe with `--step 7a.r-post-rebase`.
 Before the version bump, write the current token/timing reports to the committed log so the flush commit rides inside the PR when the branch is pushed at Step 9b. The `--no-push` is correct here because the branch has not been pushed yet.
 
 ```bash
+IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
+export IMPLEMENT_TMPDIR
 LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
 LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
-export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
+LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --full --output "$IMPLEMENT_TMPDIR/token-report-rendered.md" || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --full --output "$IMPLEMENT_TMPDIR/timing-report-rendered.md" || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch token-report --input-file "$IMPLEMENT_TMPDIR/token-report-rendered.md" || true
@@ -1496,9 +1547,12 @@ The state machine writes `postbump-state.sh` for `implement-finalize.sh postbump
 ## Step 16 — Rejected Code Review Findings Report
 
 ```bash
+IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
+export IMPLEMENT_TMPDIR
 LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
 LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
-export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
+LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 16 — rejected findings" || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 16 — rejected findings" || true
 # token-mark Step 16 — rejected findings
@@ -1512,9 +1566,12 @@ Report unimplemented code review suggestions without reprinting the full finding
 ## Step 17 — Final Report
 
 ```bash
+IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
+export IMPLEMENT_TMPDIR
 LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
 LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
-export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
+LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 17 — final report" || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 17 — final report" || true
 # token-mark Step 17 — final report
@@ -1538,9 +1595,12 @@ If `quick_mode=false` and `DESIGN_ONLY_DONE` is not true: print a summary noting
 Print a token summary to chat. When `LARCH_VERBOSE_TOKENS=true`, print the full per-step table; otherwise print a single grand-total line. The full breakdown is appended to the `token-report` and `timing-report` log batches at the pre-bump log flush (Step 7a tail); on each retry the sub-procedure step 1b refreshes those batches so the merged PR carries the most recent data (unless `--no-logs-commit` is set, in which case log files stay in the session tmpdir only).
 
 ```bash
+IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
+export IMPLEMENT_TMPDIR
 LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
 LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
-export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
+LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 if [ "${LARCH_VERBOSE_TOKENS:-false}" = "true" ]; then
   "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --full --markdown || true
   "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --full --markdown || true
@@ -1555,9 +1615,12 @@ fi
 ## Step 18 — Cleanup and Final Warnings
 
 ```bash
+IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
+export IMPLEMENT_TMPDIR
 LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
 LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
-export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
+LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 18 — cleanup" || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 18 — cleanup" || true
 # token-mark Step 18 — cleanup
@@ -1571,9 +1634,12 @@ If `DESIGN_ONLY_DONE=true` AND `no_issues=true`, remind: `**Note: --design-only 
 Before teardown, refresh the token report artifact (the log batches and flush commit were already written at the pre-bump log flush step):
 
 ```bash
+IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
+export IMPLEMENT_TMPDIR
 LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
 LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
-export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
+LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --full --output "$IMPLEMENT_TMPDIR/token-report-rendered.md" || true
 if [ "${forked_target:-false}" != "true" ] && [ -n "${ISSUE_NUMBER:-}" ] && [ "${repo_unavailable:-false}" != "true" ]; then
   printf 'Status: %s | PR: %s\nLogs: larch-logs/implement/%s/\n' \
@@ -1622,9 +1688,12 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.sh teardown \
 Relay the script's tracking issue URL line and Step 18 breadcrumb verbatim. Tail records document the mechanical outcome: `RENAME_BRANCH=...`, `RENAME_STATUS=...`, `ISSUE_URL=...`, `STASH_REF=...`, `SENTINEL_WRITTEN=...`, `FINALIZE_SUBCOMMAND=teardown`, `FINALIZE_WARNINGS=...`.
 
 ```bash
+IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
+export IMPLEMENT_TMPDIR
 LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
 LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
-export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
+LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse > /dev/null || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse > /dev/null || true
 # token-step-end Step 18

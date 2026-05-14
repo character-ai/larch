@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [27.5.6] - 2026-05-13
+
+### Changed
+
+- Rehydrate LARCH_TIMING_LEDGER and IMPLEMENT_TMPDIR in every /implement post-Step-0 timing/token context block.
+- Add a structural regression harness and wire it into Makefile, docs, and agent-lint exclusions.
+- Document the timing-ledger containment behavior in SECURITY.md and remove stale fallback ledgers from the temp root.
+
 ## [27.5.5] - 2026-05-13
 
 ### Changed
