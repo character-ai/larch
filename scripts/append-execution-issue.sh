@@ -64,6 +64,19 @@ if [ ! -f "$LOG_FILE" ]; then
     }
 fi
 
+LOCK_DIR="${LOG_FILE}.lock.d"
+_lock_retries=0
+until mkdir "$LOCK_DIR" 2>/dev/null; do
+    _lock_retries=$(( _lock_retries + 1 ))
+    if [ "$_lock_retries" -ge 100 ]; then
+        echo "FAILED=true"
+        echo "ERROR=could not acquire lock: $LOCK_DIR"
+        exit 2
+    fi
+    sleep 0.05
+done
+trap 'rmdir "$LOCK_DIR" 2>/dev/null || true' EXIT
+
 entry_tmp="$(mktemp "${LOG_FILE}.entry.XXXXXX")" || {
     echo "FAILED=true"
     echo "ERROR=cannot create temp entry file next to log"
@@ -95,7 +108,7 @@ tmp="$(mktemp "${LOG_FILE}.XXXXXX")" || {
     rm -f "$entry_tmp"
     exit 2
 }
-trap 'rm -f "$tmp" "$entry_tmp"' EXIT
+trap 'rm -f "$tmp" "$entry_tmp"; rmdir "$LOCK_DIR" 2>/dev/null || true' EXIT
 
 awk -v category="$CATEGORY" -v entry_file="$entry_tmp" '
     function print_entry(    line) {
@@ -146,6 +159,7 @@ mv -f "$tmp" "$LOG_FILE" || {
     echo "ERROR=failed to move log into place: $LOG_FILE"
     exit 2
 }
+rmdir "$LOCK_DIR" 2>/dev/null || true
 trap - EXIT
 rm -f "$entry_tmp"
 
