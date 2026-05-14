@@ -22,6 +22,8 @@
 |  | larch:implement | 6 | 970381 | 3031 | 1790 |
 | Step 7a — code flow diagram | **step total** | 13 | 2137487 | 8496 | 6531 |
 |  | larch:implement | 13 | 2137487 | 8496 | 6531 |
+| Step 8a — changelog | **step total** | 0 | 0 | 0 | 0 |
+| Step 8b — rebase | **step total** | 0 | 0 | 0 | 0 |
 | **Grand total** |  | 94 | 13661224 | 82127 | 54706 |
 
 ### Codex
@@ -38,4 +40,6 @@
 | Step 6 — checks second pass | **step total** | 0 | 0 | 0 |
 | Step 7 — commit review fixes | **step total** | 0 | 0 | 0 |
 | Step 7a — code flow diagram | **step total** | 0 | 0 | 0 |
+| Step 8a — changelog | **step total** | 0 | 0 | 0 |
+| Step 8b — rebase | **step total** | 0 | 0 | 0 |
 | **Grand total** |  | 0 | 0 | 103836 |

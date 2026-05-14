@@ -13,11 +13,14 @@
 | implement | Step 5 — code review | 00:05:29 |
 | implement | Step 6 — checks second pass | 00:00:10 |
 | implement | Step 7 — commit review fixes | 00:00:19 |
-| implement | Step 7a — code flow diagram | 00:01:17 |
-| **Total** | | 00:12:59 |
+| implement | Step 7a — code flow diagram | 00:01:18 |
+| implement | Step 8a — changelog | 00:00:01 |
+| implement | Step 8b — rebase | 00:02:11 |
+| **Total** | | 00:14:18 |
 
 ## Vendor Task Averages
 
 | Vendor | Task kind | Samples | Average | Range |
 | --- | --- | ---: | ---: | --- |
 | codex | codex-implement | 1 | 2.7 min | (1 sample) |
+| cursor | cursor-ci-fix | 1 | 1.3 min | (1 sample) |
