@@ -1,12 +1,12 @@
 # Version Bump Reasoning
 
-- **Base commit**: `34ad5bc` (chore(larch-logs): flush implement run 6DE8329B-FD2C-4058-A148-61CD80E5FAC8)
-- **Current version**: `27.5.31`
+- **Base commit**: `94daa0c` (chore(larch-logs): flush implement run 6DE8329B-FD2C-4058-A148-61CD80E5FAC8)
+- **Current version**: `27.5.32`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: PATCH
 
-- **New version**: `27.5.32`
+- **New version**: `27.5.33`
 
 ### PATCH rationale
 
