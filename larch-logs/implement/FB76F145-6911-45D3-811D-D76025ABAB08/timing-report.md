@@ -15,10 +15,11 @@
 | implement | Step 7a — code flow diagram | 00:00:57 |
 | implement | Step 8 — version bump | 00:00:35 |
 | implement | Step 8a — changelog | 00:00:00 |
-| implement | Step 8b — rebase | 00:04:12 |
+| implement | Step 8b — rebase | 00:06:52 |
 | **Total** | | 00:11:51 |
 
 ## Vendor Task Averages
 
 | Vendor | Task kind | Samples | Average | Range |
 | --- | --- | ---: | ---: | --- |
+| cursor | cursor-ci-fix | 1 | 1.0 min | (1 sample) |
