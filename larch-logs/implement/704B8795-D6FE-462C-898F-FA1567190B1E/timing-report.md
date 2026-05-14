@@ -14,7 +14,7 @@
 | implement | Step 6 — checks second pass | 00:00:10 |
 | implement | Step 7a — code flow diagram | 00:01:05 |
 | implement | Step 8a — changelog | 00:00:00 |
-| implement | Step 8b — rebase | 00:00:59 |
+| implement | Step 8b — rebase | 00:02:05 |
 | **Total** | | 00:10:39 |
 
 ## Vendor Task Averages
