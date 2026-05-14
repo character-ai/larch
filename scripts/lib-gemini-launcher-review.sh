@@ -304,17 +304,6 @@ backup_snapshot_path() {
     cp -pP "$SNAPSHOT_REPO_ROOT/$path" "$dest"
 }
 
-snapshot_status_file_mentions_path() {
-    local status_file="$1"
-    local path="$2"
-    grep -q -F " $path" "$status_file" 2>/dev/null
-}
-
-snapshot_pre_status_mentions_path() {
-    local path="$1"
-    snapshot_status_file_mentions_path "${SNAPSHOT_PRE}.status" "$path"
-}
-
 snapshot_pre_index_mentions_path() {
     # True iff the pre-launch snapshot records carried an `I\t-\t<path>`
     # entry for this path — i.e. operator already had something staged
@@ -330,21 +319,6 @@ snapshot_pre_index_mentions_path() {
         "${SNAPSHOT_PRE}.records" 2>/dev/null
 }
 
-tracked_snapshot_hash() {
-    local path="$1"
-    local status_file="$2"
-    local clean_oid="$3"
-    if snapshot_status_file_mentions_path "$status_file" "$path"; then
-        if [[ -e "$SNAPSHOT_REPO_ROOT/$path" || -L "$SNAPSHOT_REPO_ROOT/$path" ]]; then
-            sha256_file "$SNAPSHOT_REPO_ROOT/$path"
-        else
-            printf 'MISSING\n'
-        fi
-        return 0
-    fi
-    printf '%s\n' "$clean_oid"
-}
-
 capture_snapshot() {
     local out="$1"
     local mode="${2:-post}"
@@ -358,6 +332,16 @@ capture_snapshot() {
     git -C "$SNAPSHOT_REPO_ROOT" status --porcelain > "$status_file"
     : > "$body"
 
+    # Pre-build dirty-path set for O(1) membership checks in the tracked-files loop
+    # below. Building it once (via a single awk call) avoids spawning one grep
+    # subprocess per tracked file, which dominates cost in repos with many files
+    # (e.g. ~1673 files × grep ≈ 6s per snapshot call). For a clean tree the set
+    # is empty and every per-file check short-circuits immediately.
+    local _dirty_set=""
+    if [[ -s "$status_file" ]]; then
+        _dirty_set=$'\n'"$(awk '{ print substr($0, 4) }' "$status_file")"$'\n'
+    fi
+
     while IFS= read -r -d '' entry; do
         meta="${entry%%$'\t'*}"
         path="${entry#*$'\t'}"
@@ -368,10 +352,20 @@ capture_snapshot() {
             rm -f "$body"
             return 124
         fi
-        hash=$(tracked_snapshot_hash "$path" "$status_file" "$clean_oid") || return 1
+        # Use the pre-built dirty set for O(1) membership check instead of
+        # spawning grep for each of potentially thousands of tracked files.
+        if [[ -n "$_dirty_set" && "$_dirty_set" == *$'\n'"$path"$'\n'* ]]; then
+            if [[ -e "$SNAPSHOT_REPO_ROOT/$path" || -L "$SNAPSHOT_REPO_ROOT/$path" ]]; then
+                hash=$(sha256_file "$SNAPSHOT_REPO_ROOT/$path") || return 1
+            else
+                hash="MISSING"
+            fi
+        else
+            hash="$clean_oid"
+        fi
         printf 'T\t%s\t%s\n' "$hash" "$path" >> "$body"
         [[ "$mode" == "pre" && "$hash" != "MISSING" && -n "$SNAPSHOT_BACKUP" && ! -e "$SNAPSHOT_BACKUP/$path" && ! -L "$SNAPSHOT_BACKUP/$path" ]] \
-            && snapshot_pre_status_mentions_path "$path" \
+            && [[ -n "$_dirty_set" && "$_dirty_set" == *$'\n'"$path"$'\n'* ]] \
             && backup_snapshot_path "$path"
     done < <(git -C "$SNAPSHOT_REPO_ROOT" ls-files -s -z)
 

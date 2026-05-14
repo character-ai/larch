@@ -117,6 +117,14 @@ assert_stdout_contains "$root" "ACTION=merge" "happy path: ACTION=merge"
 root=$(make_env pending_then_pass)
 write_ci_status_stub "$root"
 write_ci_decide_stub "$root"
+# Override sleep to be instantaneous so the 3 pending polls don't take 30s real time
+cat > "$root/scripts/fake-sleep.sh" <<'SH'
+#!/usr/bin/env bash
+# no-op sleep stub
+exit 0
+SH
+chmod +x "$root/scripts/fake-sleep.sh"
+ln -sf "$root/scripts/fake-sleep.sh" "$root/scripts/sleep"
 STUB_STATUSES=pending:pending:pending:pass run_subject "$root" "$root/.rc" --timeout 120
 assert_rc "$root/.rc" 0 "pending-then-pass: exits 0"
 assert_stdout_contains "$root" "ACTION=merge" "pending-then-pass: ACTION=merge"
@@ -164,6 +172,16 @@ else
 fi
 SH
 chmod +x "$root/scripts/date"
+
+# Override sleep to be instantaneous; the fake date stub already simulates 70s
+# elapsed on the 2nd date call, so suspend detection fires without a real 10s wait.
+cat > "$root/scripts/fake-sleep.sh" <<'SH'
+#!/usr/bin/env bash
+# no-op sleep stub
+exit 0
+SH
+chmod +x "$root/scripts/fake-sleep.sh"
+ln -sf "$root/scripts/fake-sleep.sh" "$root/scripts/sleep"
 
 # Run with a short timeout and two status calls: pending (slow), then pass.
 STUB_STATUSES=pending:pass run_subject "$root" "$root/.rc" --timeout 30
