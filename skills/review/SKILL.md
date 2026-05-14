@@ -48,7 +48,7 @@ SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=review "${CLAUDE_PLUGIN_
 ${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix claude-review --skip-preflight --skip-branch-check --skip-repo-check --check-reviewers [--caller-env "$SESSION_ENV_PATH"] [--skip-codex-probe] [--skip-cursor-probe] [--write-health "${SESSION_ENV_PATH}.health"]
 ```
 
-Parse `SESSION_TMPDIR`, reviewer health, token session fields, and set `REVIEW_TMPDIR=$SESSION_TMPDIR`. If `SESSION_ENV_PATH` is non-empty, rehydrate `LARCH_TOKEN_SESSION_ID` and `LARCH_CLAUDE_SOURCE_FILE` with `read-session-env-key.sh`.
+Parse `SESSION_TMPDIR`, reviewer health, token session fields, and set `REVIEW_TMPDIR=$SESSION_TMPDIR`. If `SESSION_ENV_PATH` is non-empty, rehydrate `LARCH_TOKEN_SESSION_ID`, `LARCH_CLAUDE_SOURCE_FILE`, and `LARCH_TIMING_LEDGER` with `read-session-env-key.sh`, then `export LARCH_TIMING_LEDGER` so subprocesses (`dispatch-panel.sh` → `launch-review.sh` → `timing-ledger.sh record-vendor-task`) can find the per-run timing ledger.
 
 If `subagent_mode=true` AND `diff_mode=true`, **MANDATORY — READ ENTIRE FILE** before dispatching: `${CLAUDE_PLUGIN_ROOT}/skills/review/references/heavy-worker.md`. If the worker returns `REVIEW_HEAVY=complete`, validate `$REVIEW_TMPDIR/review-summary.json` and proceed to Step 4. If it fails or omits the sentinel, fall back inline at Step 1.
 

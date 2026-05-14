@@ -44,6 +44,10 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Export so launch-review.sh subprocesses inherit it and timing-ledger.sh
+# can resolve the per-run ledger via the SESSION_ENV_PATH fallback.
+export SESSION_ENV_PATH
+
 [[ "$MODE" == "diff" || "$MODE" == "description" ]] || { echo "dispatch-panel.sh: --mode must be diff or description" >&2; exit 2; }
 [[ -n "$REVIEW_TMPDIR" ]] || { echo "dispatch-panel.sh: --review-tmpdir is required" >&2; exit 2; }
 [[ "$CODEX_AVAILABLE" == "true" || "$CODEX_AVAILABLE" == "false" ]] || { echo "dispatch-panel.sh: --codex-available must be true or false" >&2; exit 2; }

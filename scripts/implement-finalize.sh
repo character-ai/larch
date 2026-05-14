@@ -749,7 +749,6 @@ write_changelog_entry() {
 maybe_update_changelog() {
     local start out rc present forked_target has_bump bump_type new_version manifest_path tmpdir categories_md tmp_changelog status_out
     start=$(date +%s)
-    postbump_mark "Step 8a — changelog"
     CHANGELOG_STATUS="skipped-no-bump"
     set +e
     out=$("$SCRIPT_DIR/check-changelog-present.sh")
@@ -759,14 +758,12 @@ maybe_update_changelog() {
     if [ "$rc" -ne 0 ] || [ "$present" != "true" ]; then
         CHANGELOG_STATUS="skipped-absent"
         printf '⏩ 8a: changelog status=skip reason=changelog-absent elapsed=%s\n' "$(elapsed "$start")"
-        postbump_report_since_mark
         return 0
     fi
     forked_target=$(read_state FORKED_TARGET)
     if [ "$forked_target" = "true" ]; then
         CHANGELOG_STATUS="skipped-fork"
         printf '⏩ 8a: changelog status=skip reason=forked-dry-run elapsed=%s\n' "$(elapsed "$start")"
-        postbump_report_since_mark
         return 0
     fi
     has_bump=$(read_state HAS_BUMP)
@@ -774,7 +771,6 @@ maybe_update_changelog() {
     if [ "$has_bump" != "true" ] || [ "$bump_type" = "NONE" ]; then
         CHANGELOG_STATUS="skipped-no-bump"
         printf '⏩ 8a: changelog status=skip reason=no-bump-commit elapsed=%s\n' "$(elapsed "$start")"
-        postbump_report_since_mark
         return 0
     fi
 
@@ -787,7 +783,6 @@ maybe_update_changelog() {
         append_execution_issue "Step 8a changelog failed while reading changelog bullets."
         warn_line '**⚠ Step 8a: changelog update failed while reading bullets. Bailing to cleanup.**'
         rm -rf "$tmpdir"
-        postbump_report_since_mark
         return 1
     fi
     categories_md="$tmpdir/categories.md"
@@ -796,10 +791,11 @@ maybe_update_changelog() {
         append_execution_issue "Step 8a changelog skipped because no summary bullets were available."
         warn_line '**⚠ 8a: changelog — no summary bullets available; amend skipped. Continuing.**'
         rm -rf "$tmpdir"
-        postbump_report_since_mark
         return 0
     fi
 
+    # Only mark now that we have confirmed there are bullets to write
+    postbump_mark "Step 8a — changelog"
     tmp_changelog="$tmpdir/CHANGELOG.md"
     set +e
     write_changelog_entry "$new_version" "$categories_md" "$tmp_changelog"
