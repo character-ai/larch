@@ -16,7 +16,7 @@
 | implement | Step 7a — code flow diagram | 00:00:35 |
 | implement | Step 8 — version bump | 00:00:26 |
 | implement | Step 8a — changelog | 00:00:01 |
-| implement | Step 8b — rebase | 00:32:37 |
+| implement | Step 8b — rebase | 00:33:50 |
 | **Total** | | 00:26:45 |
 
 ## Vendor Task Averages
