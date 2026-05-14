@@ -74,13 +74,32 @@ emit_status() {
     exit 0
 }
 
+TRANSCRIPT_PATH=""
 if [ -z "$SOURCE_FILE" ] || [ ! -f "$SOURCE_FILE" ]; then
-    emit_status "source-file-missing" "Claude source file was empty or not a regular file; transcript capture skipped."
-fi
-
-TRANSCRIPT_PATH="$(awk 'BEGIN{prefix="TRANSCRIPT_PATH="} index($0, prefix) == 1 {print substr($0, length(prefix) + 1); exit}' "$SOURCE_FILE" 2>/dev/null || true)"
-if [ -z "$TRANSCRIPT_PATH" ]; then
-    emit_status "transcript-path-missing" "Claude source file did not contain a TRANSCRIPT_PATH entry; transcript capture skipped."
+    recovered=""
+    if [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -d "$IMPLEMENT_TMPDIR" ] && [ -d "${HOME:-}/.claude/projects" ]; then
+        recovered=$(
+            find "$HOME/.claude/projects" -name '*.jsonl' -newer "$IMPLEMENT_TMPDIR" 2>/dev/null \
+                | while IFS= read -r f; do
+                    stat_mtime=$(stat -f %m "$f" 2>/dev/null || stat -c %Y "$f" 2>/dev/null || printf '0')
+                    printf '%s\t%s\n' "$stat_mtime" "$f"
+                done \
+                | sort -rn \
+                | awk -F'\t' 'NR==1 { print $2 }'
+        ) || true
+    fi
+    if [ -n "$recovered" ] && [ -f "$recovered" ]; then
+        TRANSCRIPT_PATH="$recovered"
+        append_warning "source-file-recovered-via-discovery" \
+            "Original snapshot was missing; recovered transcript via \$HOME/.claude/projects probe: $recovered"
+    else
+        emit_status "source-file-missing" "Claude source file was empty or not a regular file; transcript capture skipped."
+    fi
+else
+    TRANSCRIPT_PATH="$(awk 'BEGIN{prefix="TRANSCRIPT_PATH="} index($0, prefix) == 1 {print substr($0, length(prefix) + 1); exit}' "$SOURCE_FILE" 2>/dev/null || true)"
+    if [ -z "$TRANSCRIPT_PATH" ]; then
+        emit_status "transcript-path-missing" "Claude source file did not contain a TRANSCRIPT_PATH entry; transcript capture skipped."
+    fi
 fi
 
 if [ ! -f "$TRANSCRIPT_PATH" ]; then
