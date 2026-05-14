@@ -4,7 +4,6 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-REPO_ROOT="$(git -C "$PWD" rev-parse --show-toplevel 2>/dev/null)" || REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 
 STATE_FILE=""
 IMPL_TMPDIR=""
@@ -20,17 +19,24 @@ done
 [ -n "$STATE_FILE"  ] || { printf 'refresh-run-logs.sh: --state-file is required\n'      >&2; exit 1; }
 [ -n "$IMPL_TMPDIR" ] || { printf 'refresh-run-logs.sh: --implement-tmpdir is required\n' >&2; exit 1; }
 
-# Fail-closed merge probe: missing or unreadable state file → treat as merged.
+# Fail-closed merge probe: missing state file → treat as merged.
 [ -f "$STATE_FILE" ] || { printf 'REFRESH_SKIPPED=true REASON=state-file-missing-fail-closed\n'; exit 0; }
 
 kv() { awk -F= -v k="$1" '$1==k{print $2;exit}' "$STATE_FILE" 2>/dev/null || true; }
 
+# All terminal merge outcomes short-circuit (post-merge safety property).
 case "$(kv MERGE_RESULT)" in
-    merged|admin_merged) printf 'REFRESH_SKIPPED=true REASON=post-merge\n'; exit 0 ;;
+    merged|admin_merged|already_merged) printf 'REFRESH_SKIPPED=true REASON=post-merge\n'; exit 0 ;;
 esac
 
 run_id=$(kv RUN_ID)
 [ -n "$run_id" ] || { printf 'REFRESH_SKIPPED=true REASON=no-run-id\n'; exit 0; }
+
+# Reject path-traversal characters in RUN_ID before it reaches git pathspecs.
+case "$run_id" in
+    */*|*'..'*) { printf 'REFRESH_SKIPPED=true REASON=invalid-run-id\n'; exit 0; } ;;
+esac
+
 [ "$(kv NO_LOGS_COMMIT)" = "true" ] && { printf 'REFRESH_SKIPPED=true REASON=no-logs-commit\n'; exit 0; }
 
 # Load session env so token/timing report renderers can find their ledgers.
@@ -45,22 +51,20 @@ export IMPLEMENT_TMPDIR="$IMPL_TMPDIR"
 
 log_root="$IMPL_TMPDIR/larch-logs"
 
-# Re-render and write token report.
+# Re-render and write token and timing reports.
 "$SCRIPT_DIR/token-report.sh"  --full --output "$IMPL_TMPDIR/token-report-refresh.md"  2>/dev/null || true
 "$SCRIPT_DIR/larch-log.sh" write --log-root "$log_root" --skill implement --run-id "$run_id" \
     --batch token-report --input-file "$IMPL_TMPDIR/token-report-refresh.md" 2>/dev/null || true
-
-# Re-render and write timing report.
 "$SCRIPT_DIR/timing-report.sh" --full --output "$IMPL_TMPDIR/timing-report-refresh.md" 2>/dev/null || true
 "$SCRIPT_DIR/larch-log.sh" write --log-root "$log_root" --skill implement --run-id "$run_id" \
     --batch timing-report --input-file "$IMPL_TMPDIR/timing-report-refresh.md" 2>/dev/null || true
 
-# Stage and commit the updated files (no push — caller owns the push).
-log_dir="larch-logs/implement/$run_id"
-git -C "$REPO_ROOT" add -- "$log_dir" 2>/dev/null || true
-if ! git -C "$REPO_ROOT" diff --quiet --cached -- "$log_dir" 2>/dev/null; then
-    git -C "$REPO_ROOT" commit -m "chore(larch-logs): refresh implement run $run_id" -- "$log_dir" >/dev/null
-    printf 'REFRESH_COMMITTED=true\n'
-else
+# Commit via larch-log.sh, which handles the tmpdir→repo copy and git operations.
+# No push — caller owns the push.
+commit_out=$("$SCRIPT_DIR/larch-log.sh" commit \
+    --log-root "$log_root" --skill implement --run-id "$run_id" --no-push 2>/dev/null || true)
+if printf '%s\n' "$commit_out" | grep -q '^UNCHANGED=true'; then
     printf 'REFRESH_COMMITTED=false REASON=no-changes\n'
+else
+    printf 'REFRESH_COMMITTED=true\n'
 fi

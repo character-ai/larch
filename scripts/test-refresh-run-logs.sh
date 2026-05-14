@@ -101,6 +101,17 @@ STUB
     else
         fail "post-merge (admin_merged): wrong output — $out"
     fi
+
+    # Repeat with already_merged (external merge action).
+    printf 'RUN_ID=TEST-RUN\nMERGE_RESULT=already_merged\nNO_LOGS_COMMIT=false\n' > "$state_file"
+    out=$(cd "$tmp" && "$HELPER" \
+        --state-file "$state_file" \
+        --implement-tmpdir "$impl_tmpdir" 2>/dev/null || true)
+    if printf '%s\n' "$out" | grep -q 'REASON=post-merge'; then
+        pass "post-merge (already_merged): skipped with REASON=post-merge"
+    else
+        fail "post-merge (already_merged): wrong output — $out"
+    fi
 ) || fail "post-merge: exception"
 
 # ---------------------------------------------------------------------------

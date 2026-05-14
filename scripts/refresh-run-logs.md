@@ -21,7 +21,8 @@ One `KEY=value` line:
 |-----|--------|---------|
 | `REFRESH_COMMITTED` | `true` | Committed updated log files. |
 | `REFRESH_COMMITTED` | `false REASON=no-changes` | No staged diff after write; no commit made. |
-| `REFRESH_SKIPPED` | `true REASON=post-merge` | State file shows `MERGE_RESULT=merged\|admin_merged`; skipped (safety). |
+| `REFRESH_SKIPPED` | `true REASON=post-merge` | State file shows `MERGE_RESULT=merged\|admin_merged\|already_merged`; skipped (safety). |
+| `REFRESH_SKIPPED` | `true REASON=invalid-run-id` | `RUN_ID` contains path-traversal characters; skipped. |
 | `REFRESH_SKIPPED` | `true REASON=state-file-missing-fail-closed` | State file absent; skipped (fail-closed). |
 | `REFRESH_SKIPPED` | `true REASON=no-run-id` | `RUN_ID` absent in state file. |
 | `REFRESH_SKIPPED` | `true REASON=no-logs-commit` | `NO_LOGS_COMMIT=true` in state; skipped. |
