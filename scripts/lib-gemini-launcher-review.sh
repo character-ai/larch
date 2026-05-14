@@ -354,7 +354,10 @@ capture_snapshot() {
         fi
         # Use the pre-built dirty set for O(1) membership check instead of
         # spawning grep for each of potentially thousands of tracked files.
-        if [[ -n "$_dirty_set" && "$_dirty_set" == *$'\n'"$path"$'\n'* ]]; then
+        # Escape glob metacharacters so [[ == ]] treats $path as a literal
+        # string even when it contains *, ?, or [ (legal on Linux/macOS).
+        local _escaped="${path//\*/\\*}"; _escaped="${_escaped//\?/\\?}"; _escaped="${_escaped//\[/\\[}"
+        if [[ -n "$_dirty_set" && "$_dirty_set" == *$'\n'"$_escaped"$'\n'* ]]; then
             if [[ -e "$SNAPSHOT_REPO_ROOT/$path" || -L "$SNAPSHOT_REPO_ROOT/$path" ]]; then
                 hash=$(sha256_file "$SNAPSHOT_REPO_ROOT/$path") || return 1
             else
@@ -365,7 +368,7 @@ capture_snapshot() {
         fi
         printf 'T\t%s\t%s\n' "$hash" "$path" >> "$body"
         [[ "$mode" == "pre" && "$hash" != "MISSING" && -n "$SNAPSHOT_BACKUP" && ! -e "$SNAPSHOT_BACKUP/$path" && ! -L "$SNAPSHOT_BACKUP/$path" ]] \
-            && [[ -n "$_dirty_set" && "$_dirty_set" == *$'\n'"$path"$'\n'* ]] \
+            && [[ -n "$_dirty_set" && "$_dirty_set" == *$'\n'"$_escaped"$'\n'* ]] \
             && backup_snapshot_path "$path"
     done < <(git -C "$SNAPSHOT_REPO_ROOT" ls-files -s -z)
 
