@@ -139,21 +139,21 @@
       {
         "step": "Step 5 — code review",
         "totals": {
-          "input": 114,
-          "cache_read": 22704360,
-          "cache_create": 78374,
-          "output": 72470,
-          "total": 22855318
+          "input": 115,
+          "cache_read": 22984885,
+          "cache_create": 78850,
+          "output": 73426,
+          "total": 23137276
         },
         "skills": [
           {
             "skill": "inferred:Step 5 — code review",
             "totals": {
-              "input": 103,
-              "cache_read": 20087246,
-              "cache_create": 72561,
-              "output": 68197,
-              "total": 20228107
+              "input": 104,
+              "cache_read": 20367771,
+              "cache_create": 73037,
+              "output": 69153,
+              "total": 20510065
             }
           },
           {
@@ -171,21 +171,32 @@
       {
         "step": "Step 8 — version bump",
         "totals": {
-          "input": 0,
-          "cache_read": 0,
-          "cache_create": 0,
-          "output": 0,
-          "total": 0
+          "input": 6,
+          "cache_read": 1689810,
+          "cache_create": 4470,
+          "output": 3130,
+          "total": 1697416
         },
-        "skills": []
+        "skills": [
+          {
+            "skill": "inferred:Step 8 — version bump",
+            "totals": {
+              "input": 6,
+              "cache_read": 1689810,
+              "cache_create": 4470,
+              "output": 3130,
+              "total": 1697416
+            }
+          }
+        ]
       }
     ],
     "totals": {
-      "input": 283,
-      "cache_read": 52335671,
-      "cache_create": 617414,
-      "output": 164011,
-      "total": 53117379
+      "input": 290,
+      "cache_read": 54306006,
+      "cache_create": 622360,
+      "output": 168097,
+      "total": 55096753
     }
   },
   "codex": {
