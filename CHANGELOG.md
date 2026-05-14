@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [27.5.55] - 2026-05-14
+
+### Changed
+
+- Short-circuit ship-pr version_already_published to already_merged when GitHub reports the PR is already merged
+- Refresh origin/<branch> before the first git-force-push force-with-lease attempt while preserving existing retry statuses
+- Add offline ship-pr regression coverage for merged and unmerged version_already_published PR states
+
 ## [27.5.50] - 2026-05-14
 
 ### Changed

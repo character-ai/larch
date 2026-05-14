@@ -12,6 +12,9 @@ It copies the state-machine script into disposable git repositories with stubbed
 - exit `5` on same-version bump race with `CALLER_KIND=step8b_same_version`
 - exit `0` checkpoint for `ci-initial` `ACTION=merge`
 - exit `3` user-input bail routing
+- `version_already_published` from `merge-pr.sh` short-circuits to
+  postmerge when `gh pr view` reports `MERGED`, and still falls through to
+  `run_rebase_rebump` when the PR is not merged
 - exit `0` for `postmerge` phase with `PHASE=done` written and `tracking-issue-summary.sh` skipped
 - postmerge manifest recovery when the run-log directory exists but `manifest.json` is missing
 - `--no-logs-commit true` suppresses `larch-log.sh commit` in `run_rebase_rebump`, `run_ci_phase` (ci-merge pre-merge flush), and `run_postmerge_phase`; `--no-logs-commit false` (default) calls it in all three sites

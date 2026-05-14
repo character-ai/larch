@@ -4,8 +4,9 @@
 # Wraps `git push --force-with-lease` with the full recovery logic from
 # /implement's Rebase + Re-bump Sub-procedure step 5
 # (skills/implement/references/rebase-rebump-subprocedure.md):
-#   - Try `git push --force-with-lease` once.
-#   - On failure: refresh the local tracking ref (`git fetch origin <branch>`),
+#   - Refresh the local tracking ref (`git fetch origin <branch>`) best-effort,
+#     then try `git push --force-with-lease` once.
+#   - On failure: refresh the local tracking ref again,
 #     compare local HEAD vs origin/<branch>. If equal, the push actually landed
 #     (rare race) — return success.
 #   - If they differ, sleep 5s and retry the push ONCE.
@@ -35,7 +36,8 @@ if ! BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null); then
 fi
 echo "BRANCH=$BRANCH"
 
-# First attempt.
+# Refresh the tracking ref before the lease check, then make the first attempt.
+git fetch origin "$BRANCH" 2>/dev/null || true
 if git push --force-with-lease; then
     echo "PUSHED=true"
     echo "STATUS=pushed"

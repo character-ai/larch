@@ -885,7 +885,7 @@ run_rebase_rebump() {
 }
 
 run_ci_phase() {
-    local phase=$1 out action bail_reason merge_out merge_result error_text rc ci_args merge_args fail_file
+    local phase=$1 out action bail_reason merge_out merge_result error_text rc ci_args merge_args fail_file pr_number pr_repo pr_state
     if [ "$(read_state REPO_UNAVAILABLE)" = "true" ] || [ -z "$(read_state PR_NUMBER)" ]; then
         if [ "$phase" = "ci-initial" ]; then
             advance_phase ci-merge
@@ -956,7 +956,19 @@ EOF
                     return 0
                     ;;
                 version_already_published)
-                    run_rebase_rebump "$phase"
+                    pr_number=$(read_state PR_NUMBER)
+                    pr_repo=$(read_state REPO)
+                    pr_state=""
+                    if [ -n "$pr_number" ] && [ -n "$pr_repo" ]; then
+                        pr_state=$(gh pr view "$pr_number" --repo "$pr_repo" --json state --jq '.state' 2>/dev/null || true)
+                    fi
+                    if [ "$pr_state" = "MERGED" ]; then
+                        state_set_many PR_CLOSED true MERGE_RESULT already_merged
+                        rename_done_best_effort
+                        advance_phase postmerge
+                    else
+                        run_rebase_rebump "$phase"
+                    fi
                     return 0
                     ;;
                 policy_denied|admin_failed|error)

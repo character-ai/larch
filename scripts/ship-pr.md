@@ -16,7 +16,7 @@ ship-pr.sh --state-file PATH --implement-tmpdir PATH --merge true|false --draft 
 
 `ship-pr-state.sh` is plain `KEY=value` text and is never sourced. Required keys include `PHASE`, branch/repo/issue identity, PR fields, bump fields, CI counters, checkpoint fields, and finalizer fields. Every non-comment line must match `^[A-Z_][A-Z0-9_]*=.*$`.
 
-`MERGE_RESULT` is written to state by `run_ci_phase` the moment a merge succeeds (`merged` or `admin_merged`) or when CI reports the branch was already merged (`already_merged`). `scripts/refresh-run-logs.sh` reads this key as its fail-closed post-merge guard; when the key is absent the PR has not merged yet and the helper proceeds.
+`MERGE_RESULT` is written to state by `run_ci_phase` the moment a merge succeeds (`merged` or `admin_merged`), when CI reports the branch was already merged (`already_merged`), or when `merge-pr.sh` returns `version_already_published` and `gh pr view` confirms the PR is `MERGED` (also set to `already_merged`). `scripts/refresh-run-logs.sh` reads this key as its fail-closed post-merge guard; when the key is absent the PR has not merged yet and the helper proceeds.
 
 Checkpoint phases:
 
@@ -63,7 +63,7 @@ Transient network classification uses `is_transient_net_signature` from `scripts
 - After `implement-finalize.sh postbump` completes with `STATUS=ok` or `STATUS=skipped`, `run_bump_phase` emits a human-readable breadcrumb line: `✅ 8: version bump — CURRENT → NEW (TYPE)` on a real bump, or `⏩ 8: version bump status=skip reason=<NONE|forked>` when the bump was skipped. The orchestrator MUST NOT re-emit these lines as text output (issue #1944). See NEVER #11 in `skills/implement/SKILL.md`.
 - Postbump conflict preserves `CALLER_KIND=step8b_rebase`.
 - `ci-initial` treats `ACTION=merge` as CI passed and exits `0`; `ci-merge` treats it as permission to call `merge-pr.sh`.
-- `version_already_published` from `merge-pr.sh` is a recoverable version-race condition. `run_ci_merge_loop` calls `run_rebase_rebump "$phase"` and returns 0 so the outer loop re-enters `ci-wait.sh`; the existing `REBASE_COUNT >= 20` guard in `ci-decide.sh` bounds the retry budget.
+- `version_already_published` from `merge-pr.sh` is a recoverable version-race condition. `run_ci_phase` first checks `gh pr view <PR_NUMBER> --json state`; when GitHub reports `MERGED`, the script treats the result as `already_merged`, marks `PR_CLOSED=true`, and advances to `postmerge` without re-bumping. If the PR is not merged or the probe fails, it calls `run_rebase_rebump "$phase"` and returns 0 so the outer loop re-enters `ci-wait.sh`; the existing `REBASE_COUNT >= 20` guard in `ci-decide.sh` bounds the retry budget.
 - After `apply-bump.sh` succeeds inside `run_rebase_rebump`, the PR title is updated via `gh pr edit --title "Bump version to <new-version>"` (best-effort, skipped when no PR yet) and the `version-bump-reasoning` larch-log batch is overwritten with the new reasoning file so the audit trail reflects the actually-landed version rather than the original race target.
 - After argument validation, ship-pr.sh runs `export IMPLEMENT_TMPDIR` so child processes inherit the session tmpdir path for non-log behavior even when ship-pr.sh is invoked from a fresh shell where the orchestrator environment was not inherited. `larch-log.sh` receives its staging root explicitly via `--log-root "$IMPLEMENT_TMPDIR/larch-logs"`.
 - At the start of `ci-merge` phase (after the `REPO_UNAVAILABLE` early-return block), ship-pr.sh calls `larch-log.sh commit --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id <RUN_ID>` (best-effort) to flush pending larch-log writes before merge. This covers `version-bump-reasoning`, `oos-issues`, `run-statistics`, `token-report`, `timing-report`, and `execution-issues` batches written after the pre-bump log flush. The rebase-rebump sub-procedure step 1b performs the same flush on any rebase path; this covers the happy path where no rebase was needed. The commit is pushed so it lands in the PR before `merge-pr.sh` is called; push failure is non-fatal. This flush retains a direct push (rather than `--no-push`) because `merge-pr.sh` requires `local HEAD == remote PR headRefOid` and an unpushed local commit would fail that check. Flush errors surface to stderr (stderr is no longer suppressed) so diagnostic information is preserved.
@@ -87,7 +87,7 @@ Transient network classification uses `is_transient_net_signature` from `scripts
 - **Trigger B** (`run_ci_fix_vendor`): after fix commit, before `git-push.sh`.
 - **Trigger C** (`run_bump_phase`): after bump block, before `write_postbump_state`.
 
-All three calls use `|| true` so refresh failure is non-fatal. The helper exits 0 with no commit when `MERGE_RESULT=merged|admin_merged` is in state, and also when the state file is missing (fail-closed).
+All three calls use `|| true` so refresh failure is non-fatal. The helper exits 0 with no commit when `MERGE_RESULT=merged|admin_merged|already_merged` is in state, and also when the state file is missing (fail-closed).
 
 ## Harness
 
