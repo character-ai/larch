@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [27.5.58] - 2026-05-14
+
+### Changed
+
+- Added --plan-file support to Cursor and Codex CI launchers, including absolute-path validation and prompt insertion when the plan exists.
+- Taught ship-pr.sh to safely read PLAN_FILE from session-env.sh and forward it to CI-fix and rebase-conflict vendor launchers.
+- Updated launcher, state-machine, and harness docs plus argv/offline coverage for plan-file validation and forwarding.
+
 ## [27.5.56] - 2026-05-14
 
 ### Changed

@@ -6,6 +6,7 @@ Coverage:
 
 - invalid role rejection
 - relative output rejection
+- relative `--plan-file` rejection and launcher support check
 - unsupported output character rejection
 - literal `cursor-ci-fix` timing allow-list coverage
 - `append-token-record.sh` normalization of Cursor token sidecars

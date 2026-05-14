@@ -27,8 +27,10 @@ assert_fails() {
 assert_fails "rejects bad role" --role nope --output "$TMPDIR_BASE/out" --run-id 1 --repo owner/repo
 assert_fails "rejects relative output" --role fix --output relative --run-id 1 --repo owner/repo
 assert_fails "rejects unsafe output characters" --role fix --output "$TMPDIR_BASE/out with space" --run-id 1 --repo owner/repo
+assert_fails "rejects relative --plan-file" --role fix --output "$TMPDIR_BASE/out" --run-id 1 --repo owner/repo --plan-file relative/plan.txt
 
 if grep -q -- "--task-kind \"\$TIMING_TASK_KIND\"" "$REPO_ROOT/scripts/launch-cursor-ci.sh"; then ok "uses timing task kind"; else fail "uses timing task kind"; fi
+if grep -q 'plan-file' "$REPO_ROOT/scripts/launch-cursor-ci.sh"; then ok "script supports --plan-file"; else fail "script supports --plan-file"; fi
 if grep -q 'cursor-ci-fix' "$REPO_ROOT/scripts/lib-timing-kinds.sh"; then ok "timing allow-list includes cursor-ci-fix"; else fail "timing allow-list includes cursor-ci-fix"; fi
 
 cat > "$TMPDIR_BASE/token-record" <<'EOF'
