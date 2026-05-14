@@ -380,6 +380,8 @@ exclude = [
   # positive for these test entrypoints.
   "scripts/test-larch-log.sh",
   "scripts/test-larch-log.md",
+  "scripts/test-capture-session-transcript.sh",
+  "scripts/test-capture-session-transcript.md",
   "scripts/test-larch-logs-manifest.sh",
   "scripts/test-larch-logs-manifest.md",
   "scripts/test-larch-logs-batches.sh",

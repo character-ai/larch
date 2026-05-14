@@ -32,13 +32,13 @@ larch-logs/
       review-round-summary.md
 ```
 
-`<RUN_ID>` is the UUID assigned at the start of each `/implement` session. Files under a run directory are redacted for secrets and tmpdir paths before commit.
+`<RUN_ID>` is the UUID assigned at the start of each `/implement` session. Batch payload files under a run directory are redacted for secrets and tmpdir paths before commit. `manifest.json` schema version 2 records `operator_cwd` and `operator_repo_root` as local absolute paths for provenance; those fields are JSON-escaped but not path-redacted.
 
 `/review` uses the same `larch-logs/<skill>/<RUN_ID>/` layout when a run ID is provided. Review phase names are encoded in flat batch slugs, not subdirectories: `review-context` for gathered context, `review-panel-manifest` for launched slots, `review-findings` for collected finding records, `review-tally` for vote results, and `review-round-summary` for the human-readable round summary.
 
 ## manifest.json
 
-Created by `scripts/larch-log.sh init` at Step 0.5 when the tracking issue is first resolved. Updated by `larch-log.sh manifest` calls throughout the run. Contains: skill name, run ID, tracking-issue number, PR number (once created), final run status, and optional routing flags such as `coder_fallback=true` when omitted-`--coder` routing fell past Codex. Authoritative contract: `scripts/larch-log.md`.
+Created by `scripts/larch-log.sh init` at Step 0.5 when the tracking issue is first resolved. Updated by `larch-log.sh manifest` calls throughout the run. Contains: skill name, run ID, operator CWD, operator repo root, tracking-issue number, PR number (once created), final run status, and optional routing flags such as `coder_fallback=true` when omitted-`--coder` routing fell past Codex. Authoritative contract: `scripts/larch-log.md`.
 
 ## Batch files
 
@@ -106,7 +106,7 @@ Log of noteworthy events during the run, grouped by category: `Pre-existing Code
 
 **Mode**: replace. **Written**: Step 18, terminal cleanup.
 
-The redacted Claude Code session transcript (`.jsonl` format) captured for post-hoc auditability. Redacted for tmpdir paths and secrets. Allows replaying the full session reasoning, tool calls, and assistant turns after the run completes.
+The redacted Claude Code session transcript (`.jsonl` format) captured for post-hoc auditability. Redacted for tmpdir paths and secrets. Allows replaying the full session reasoning, tool calls, and assistant turns after the run completes. Step 18 records `SESSION_TRANSCRIPT_STATUS` in the execution-issues `Warnings` section for every capture outcome.
 
 ## Tracking issue comments
 
