@@ -14,6 +14,8 @@ Resolution order (used to derive the hash suffix in the ledger filename):
 2. `$IMPLEMENT_TMPDIR/session-id` file if present and non-empty.
 3. `sha256(cwd)` deterministic fallback.
 
+The cwd-hash fallback is a last resort and can collide across multiple concurrent `/implement` windows in the same checkout. Step 0 exports `LARCH_TOKEN_SESSION_ID` after `write-session-id.sh` so normal runs avoid that collision.
+
 The resolved id is never used directly in the filename. It is hashed and used as the `<sha256>` suffix in `larch-tokens-<sha256>.jsonl`, preventing path traversal, whitespace, and control bytes from escaping.
 
 ## Ledger path resolution
@@ -38,7 +40,7 @@ Resolution order for the ledger file location:
 
 ## Failure Mode
 
-All subcommands are best-effort. On malformed input, missing `jq`, or path failures, the script writes a warning to stderr and exits 0. It should not mutate stdout except for `dump`.
+All subcommands are best-effort. On malformed input, missing `jq`, or path failures, the script writes a warning to stderr and exits 0. It should not mutate stdout except for `dump`. When ledger path resolution fails (no per-run root configured), `dump` writes the warning to stderr and produces no stdout output; callers that assume the first line is always a valid path must handle the empty case.
 
 ## Test Harness
 

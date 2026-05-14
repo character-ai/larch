@@ -79,7 +79,7 @@ resolve_ledger_path() {
         printf '%s/timing-ledger.tsv' "$(canonical_dir "$REVIEW_TMPDIR")"
         return
     fi
-    warn "timing-ledger.sh: no per-run ledger root set; expected one of --ledger, LARCH_TIMING_LEDGER, IMPLEMENT_TMPDIR, SESSION_ENV_PATH, DESIGN_TMPDIR, REVIEW_TMPDIR"
+    warn "no per-run ledger root set; expected one of --ledger, LARCH_TIMING_LEDGER, IMPLEMENT_TMPDIR, SESSION_ENV_PATH, DESIGN_TMPDIR, REVIEW_TMPDIR"
     return 1
 }
 

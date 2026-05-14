@@ -31,6 +31,9 @@ sha256() {
     fi
 }
 
+# Hermetic: clear session/ledger env so resolver exercises only explicit inputs.
+unset LARCH_TOKEN_LEDGER LARCH_TOKEN_SESSION_ID IMPLEMENT_TMPDIR SESSION_ENV_PATH || true
+
 ROOT="${TMPDIR:-/tmp}"
 TMP=$(mktemp -d "$ROOT/test-token-ledger.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT
@@ -129,6 +132,19 @@ LEDGER_LAST="$TMP/last.jsonl"
 "$SCRIPT" --ledger "$LEDGER_FIRST" mark "Step last-wins" --ledger "$LEDGER_LAST"
 if [[ -f "$LEDGER_LAST" ]] && jq -e 'select(.type=="mark" and .step=="Step last-wins")' "$LEDGER_LAST" >/dev/null; then pass; else fail "last --ledger should be the one written to: last=$(cat "$LEDGER_LAST" 2>/dev/null)"; fi
 if [[ ! -e "$LEDGER_FIRST" ]] || [[ ! -s "$LEDGER_FIRST" ]]; then pass; else fail "first --ledger should not have been written to: $(cat "$LEDGER_FIRST" 2>/dev/null)"; fi
+
+# Invalid LARCH_TOKEN_LEDGER warns and falls through to IMPLEMENT_TMPDIR
+LARCH_FALLTHROUGH_WARN="$TMP/larch-token-fallthrough-warn.txt"
+IMPL_FB="$TMP/larch-token-fallback"
+mkdir -p "$IMPL_FB"
+FB_ID="fallback-session"
+FB_SLUG=$(sha256 "$FB_ID")
+LARCH_TOKEN_LEDGER="/not/under/tmp.jsonl" LARCH_TOKEN_SESSION_ID="$FB_ID" \
+    IMPLEMENT_TMPDIR="$IMPL_FB" "$SCRIPT" mark "ledger-fallthrough-test" \
+    2>"$LARCH_FALLTHROUGH_WARN" || true
+if grep -Fq 'LARCH_TOKEN_LEDGER not under' "$LARCH_FALLTHROUGH_WARN"; then pass; else fail "invalid LARCH_TOKEN_LEDGER should warn: $(cat "$LARCH_FALLTHROUGH_WARN")"; fi
+FB_PATH=$(LARCH_TOKEN_SESSION_ID="$FB_ID" IMPLEMENT_TMPDIR="$IMPL_FB" "$SCRIPT" dump | sed -n '1p')
+assert_contains "LARCH_TOKEN_LEDGER fallthrough to IMPLEMENT_TMPDIR" "$FB_SLUG" "$FB_PATH"
 
 # Fail-closed: no root set → warn, no file created
 FAIL_CLOSED_WARN="$TMP/fail-closed-warn.txt"

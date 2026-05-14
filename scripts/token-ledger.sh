@@ -78,8 +78,12 @@ resolve_ledger_path() {
         return
     fi
     if [[ -n "${LARCH_TOKEN_LEDGER:-}" ]]; then
-        validate_under_tmp "${LARCH_TOKEN_LEDGER}"
-        return
+        local validated_token_ledger
+        if validated_token_ledger=$(validate_under_tmp "${LARCH_TOKEN_LEDGER}" 2>/dev/null); then
+            printf '%s' "$validated_token_ledger"
+            return
+        fi
+        warn "LARCH_TOKEN_LEDGER not under ${TMPDIR:-/tmp}: ${LARCH_TOKEN_LEDGER}"
     fi
     id=$(resolve_session_id)
     slug=$(printf '%s' "$id" | sha256_hex)
@@ -97,7 +101,7 @@ resolve_ledger_path() {
             return
         fi
     fi
-    warn "token-ledger.sh: no per-run ledger root set; expected one of --ledger, LARCH_TOKEN_LEDGER, IMPLEMENT_TMPDIR, or SESSION_ENV_PATH"
+    warn "no per-run ledger root set; expected one of --ledger, LARCH_TOKEN_LEDGER, IMPLEMENT_TMPDIR, or SESSION_ENV_PATH"
     return 1
 }
 
