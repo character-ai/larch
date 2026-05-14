@@ -22,4 +22,7 @@
 |  | larch:implement | 9 | 1735086 | 5094 | 5723 |
 | Step 8 — version bump | **step total** | 6 | 1174986 | 5516 | 2751 |
 |  | larch:implement | 6 | 1174986 | 5516 | 2751 |
-| **Grand total** |  | 106 | 18586108 | 75032 | 48731 |
+| Step 8a — changelog | **step total** | 0 | 0 | 0 | 0 |
+| Step 8b — rebase | **step total** | 6 | 1189267 | 3928 | 2853 |
+|  | larch:implement | 6 | 1189267 | 3928 | 2853 |
+| **Grand total** |  | 112 | 19775375 | 78960 | 51584 |
