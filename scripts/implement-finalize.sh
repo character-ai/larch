@@ -213,6 +213,28 @@ sha256_file() {
     fi
 }
 
+sha256_stream() {
+    if command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 | awk '{print $1}'
+    else
+        sha256sum | awk '{print $1}'
+    fi
+}
+
+normalize_body_for_hash() {
+    # Strip leading '### Category' header line, strip leading/trailing blank lines.
+    # Internal content (including code fences) is preserved verbatim.
+    awk '
+        NR == 1 && /^### / { next }
+        { lines[++n] = $0 }
+        END {
+            s = 1; while (s <= n && lines[s] ~ /^[[:space:]]*$/) s++
+            e = n; while (e >= s && lines[e] ~ /^[[:space:]]*$/) e--
+            for (i = s; i <= e; i++) print lines[i]
+        }
+    '
+}
+
 json_escape_stream_python() {
     # python3 JSON-escape fallback when jq is absent. Handles full string
     # contract (control chars, \r, \b, \f, NUL, surrogate-safe). Returns
@@ -225,8 +247,8 @@ sys.stdout.write(json.dumps(sys.stdin.read()))
 }
 
 write_execution_issues_records() {
-    local input_file=$1 record_file=$2 sha=$3
-    local current_cat body_file line rc=0
+    local input_file=$1 record_file=$2 sha=$3 batch_path=${4:-}
+    local current_cat body_file line rc=0 norm_sha rec_sha skip_section
     : > "$record_file"
     if command -v jq >/dev/null 2>&1; then
         body_file=$(mktemp "${TMPDIR:-/tmp}/exec-issue-section.XXXXXX") || return 1
@@ -236,11 +258,20 @@ write_execution_issues_records() {
             case "$line" in
                 '### '*)
                     if [ -s "$body_file" ]; then
-                        jq -c -Rs --arg sha "$sha" --arg cat "$current_cat" '{
-                            phase: "implement", step: "18", category: $cat,
-                            source: "execution-issues.md safety-net",
-                            source_sha256: $sha, body: .
-                        }' "$body_file" >> "$record_file" || rc=1
+                        norm_sha=$(normalize_body_for_hash < "$body_file" | sha256_stream 2>/dev/null || true)
+                        skip_section=false
+                        if [ -n "$norm_sha" ] && [ -n "$batch_path" ] && [ -f "$batch_path" ] && \
+                           grep -Fq '"source_sha256":"'"$norm_sha"'"' "$batch_path" 2>/dev/null; then
+                            skip_section=true
+                        fi
+                        if [ "$skip_section" = "false" ]; then
+                            rec_sha="${norm_sha:-$sha}"
+                            jq -c -Rs --arg sha "$rec_sha" --arg cat "$current_cat" '{
+                                phase: "implement", step: "18", category: $cat,
+                                source: "execution-issues.md safety-net",
+                                source_sha256: $sha, body: .
+                            }' "$body_file" >> "$record_file" || rc=1
+                        fi
                     fi
                     current_cat="${line#'### '}"
                     : > "$body_file"
@@ -251,11 +282,20 @@ write_execution_issues_records() {
             esac
         done < "$input_file"
         if [ -s "$body_file" ]; then
-            jq -c -Rs --arg sha "$sha" --arg cat "$current_cat" '{
-                phase: "implement", step: "18", category: $cat,
-                source: "execution-issues.md safety-net",
-                source_sha256: $sha, body: .
-            }' "$body_file" >> "$record_file" || rc=1
+            norm_sha=$(normalize_body_for_hash < "$body_file" | sha256_stream 2>/dev/null || true)
+            skip_section=false
+            if [ -n "$norm_sha" ] && [ -n "$batch_path" ] && [ -f "$batch_path" ] && \
+               grep -Fq '"source_sha256":"'"$norm_sha"'"' "$batch_path" 2>/dev/null; then
+                skip_section=true
+            fi
+            if [ "$skip_section" = "false" ]; then
+                rec_sha="${norm_sha:-$sha}"
+                jq -c -Rs --arg sha "$rec_sha" --arg cat "$current_cat" '{
+                    phase: "implement", step: "18", category: $cat,
+                    source: "execution-issues.md safety-net",
+                    source_sha256: $sha, body: .
+                }' "$body_file" >> "$record_file" || rc=1
+            fi
         fi
         rm -f "$body_file"
         return $rc
@@ -298,10 +338,14 @@ flush_execution_issues_safety_net() {
         return 0
     fi
     record_file="$IMPLEMENT_TMPDIR/execution-issues-safety-net.ndjson"
-    write_execution_issues_records "$issue_log" "$record_file" "$sha" || {
+    write_execution_issues_records "$issue_log" "$record_file" "$sha" "$batch_path" || {
         warn_line '**⚠ 18: execution-issues safety-net record compose failed. Continuing.**'
         return 0
     }
+    if [ ! -s "$record_file" ]; then
+        printf '%s\n' "$sha" > "$sentinel" 2>/dev/null || true
+        return 0
+    fi
     set +e
     out=$("$SCRIPT_DIR/larch-log.sh" append \
         --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
