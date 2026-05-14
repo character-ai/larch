@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Regression test for /implement timing-ledger rehydration.
 #
-# Asserts three invariants on skills/implement/SKILL.md:
+# Asserts four invariants on skills/implement/SKILL.md:
 #
 #   A) The legacy two-key rehydration export has been retired everywhere
 #      (no `export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE` lines remain).
@@ -95,7 +95,7 @@ awk '
     if (index($0, "${CLAUDE_PLUGIN_ROOT}") > 0) {
       has_plugin_root=1
     }
-    if (index($0, "LARCH_CLAUDE_PLUGIN_ROOT=") > 0) {
+    if (index($0, "LARCH_CLAUDE_PLUGIN_ROOT=") > 0 && index($0, "awk") > 0) {
       has_root_rehydration=1
     }
   }
