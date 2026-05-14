@@ -523,12 +523,22 @@ sanitize_diagram_or_placeholder() {
 }
 
 run_pr_prep_phase() {
-    local summary tests closes architecture_file code_flow_file
+    local summary tests closes architecture_file code_flow_file composed_summary plan_goals_file run_id
     summary=$(manifest_summary)
+    if [ -z "$summary" ]; then
+        run_id=$(read_state RUN_ID)
+        plan_goals_file="$IMPLEMENT_TMPDIR/larch-logs/implement/$run_id/plan-goals-test.md"
+        composed_summary=$("$SCRIPT_DIR/compose-pr-summary.sh" --plan-goals-file "$plan_goals_file" 2>/dev/null) || composed_summary=""
+        [ -n "$composed_summary" ] && summary="$composed_summary"
+    fi
     [ -n "$summary" ] || summary="- Implemented the requested changes."
     tests=$(manifest_tests)
     [ -n "$tests" ] || tests="- [x] Ran relevant checks."
     architecture_file="${ARCHITECTURE_DIAGRAM_FILE:-}"
+    if [ -z "$architecture_file" ] || [ ! -f "$architecture_file" ]; then
+        "$SCRIPT_DIR/compose-architecture-sketch.sh" --output "$IMPLEMENT_TMPDIR/architecture-sketch.md" 2>/dev/null || true
+        [ -s "$IMPLEMENT_TMPDIR/architecture-sketch.md" ] && architecture_file="$IMPLEMENT_TMPDIR/architecture-sketch.md"
+    fi
     code_flow_file="$IMPLEMENT_TMPDIR/code-flow-diagram.md"
     if [ "$(read_state FORKED_TARGET)" = "true" ]; then
         closes="_Fork CI dry-run — upstream auto-close intentionally omitted._"

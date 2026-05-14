@@ -1229,4 +1229,16 @@ exclude = [
   # skills/cleanup/scripts/cleanup.sh. Not cited from SKILL.md by design
   # (contributors discover it by editing the sibling .sh).
   "skills/cleanup/scripts/cleanup.md",
+  # scripts/test-compose-pr-summary.sh and scripts/test-compose-architecture-sketch.sh
+  # are regression harnesses for the new PR-body composer scripts introduced in
+  # issue #2042 (scripts/compose-pr-summary.sh and scripts/compose-architecture-sketch.sh).
+  # Both are referenced from Makefile (test-compose-pr-summary and
+  # test-compose-architecture-sketch targets; test-harnesses-4 shard) and from
+  # the primary scripts' sibling contracts (compose-pr-summary.md,
+  # compose-architecture-sketch.md), but NOT from SKILL.md runtime prose —
+  # same Makefile-only pattern as the other test-* harnesses above.
+  "scripts/test-compose-pr-summary.sh",
+  "scripts/test-compose-pr-summary.md",
+  "scripts/test-compose-architecture-sketch.sh",
+  "scripts/test-compose-architecture-sketch.md",
 ]
