@@ -8,8 +8,10 @@
 | implement | Step 0.5 — tracking issue | 00:00:48 |
 | implement | Step 1 — design plan | 00:01:16 |
 | implement | Step 2 — implementation | 00:05:51 |
-| implement | Step 5 — code review | 00:09:19 |
-| **Total** | | 00:08:15 |
+| implement | Step 5 — code review | 00:09:20 |
+| implement | Step 8a — changelog | 00:00:00 |
+| implement | Step 8b — rebase | 00:00:48 |
+| **Total** | | 00:17:35 |
 
 ## Vendor Task Averages
 
