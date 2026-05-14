@@ -44,6 +44,10 @@ Script contracts and harnesses: `${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/gat
 Run:
 
 ```bash
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
+  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
+fi
+export CLAUDE_PLUGIN_ROOT
 SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=review "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "review Step 0 — session setup" || true
 ${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix claude-review --skip-preflight --skip-branch-check --skip-repo-check --check-reviewers [--caller-env "$SESSION_ENV_PATH"] [--skip-codex-probe] [--skip-cursor-probe] [--write-health "${SESSION_ENV_PATH}.health"]
 ```
@@ -57,6 +61,10 @@ If `subagent_mode=true` AND `diff_mode=true`, **MANDATORY — READ ENTIRE FILE**
 Run:
 
 ```bash
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
+  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
+fi
+export CLAUDE_PLUGIN_ROOT
 SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=review "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "review Step 1 — gather context" || true
 ${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/gather-context.sh --mode <diff|description> --output-dir "$REVIEW_TMPDIR" [--description-text "$DESCRIPTION_TEXT" --scope-files "$REVIEW_TMPDIR/scope-files.txt"]
 ```
@@ -70,6 +78,10 @@ When nested under `/implement`, read `PLAN_FILE` and `FEATURE_FILE` from `SESSIO
 Run:
 
 ```bash
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
+  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
+fi
+export CLAUDE_PLUGIN_ROOT
 SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=review "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "review Step 2 — reviewer panel" || true
 ${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/dispatch-panel.sh --mode "$MODE" --diff-file "$DIFF_FILE" --commit-count "$COMMIT_COUNT" --scope-files "$FILE_LIST_FILE" --review-tmpdir "$REVIEW_TMPDIR" --codex-available "$codex_available" --cursor-available "$cursor_available" --competition-notice-file "$REVIEW_TMPDIR/competition-notice.md" --plan-file "$PLAN_FILE" --feature-file "$FEATURE_FILE" --description-text "$DESCRIPTION_TEXT" --timing-task-prefix "review-round${round_num}" --launch-claude-subprocess "${CLAUDE_PLUGIN_ROOT}/scripts/launch-claude-subprocess.sh" --session-env-path "$SESSION_ENV_PATH"
 ```
@@ -87,6 +99,10 @@ Diff mode repeats Step 3 until no findings, wholesale rejection, non-substantial
 Run:
 
 ```bash
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
+  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
+fi
+export CLAUDE_PLUGIN_ROOT
 ${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/collect-findings.sh --external-output-files <paths...> --claude-output-files <paths...> --mode "$MODE" --timeout 1860 --session-env-path "$SESSION_ENV_PATH" --findings-file "$REVIEW_TMPDIR/findings.md" --oos-file "$REVIEW_TMPDIR/oos.md"
 ```
 
@@ -99,6 +115,10 @@ If `FINDINGS_COUNT=0`, skip to Step 4. If dirty sidecars were detected, aggregat
 For rounds 1-3, **MANDATORY — READ ENTIRE FILE** before normal voting: `${CLAUDE_PLUGIN_ROOT}/skills/review/references/voting.md`. If `PANEL_MODE=both-down`, Do NOT load `${CLAUDE_PLUGIN_ROOT}/skills/review/references/voting.md` for voting mechanics; auto-accept Claude findings in `tally-votes.sh`.
 
 ```bash
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
+  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
+fi
+export CLAUDE_PLUGIN_ROOT
 ${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/tally-votes.sh --findings-file "$REVIEW_TMPDIR/findings.md" --cursor-available "$cursor_available" --codex-available "$codex_available" --review-tmpdir "$REVIEW_TMPDIR" --session-env-path "$SESSION_ENV_PATH" --both-down <true|false>
 ${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/detect-wholesale-rejection.sh --accepted-count "$ACCEPTED_COUNT"
 ```
@@ -110,6 +130,10 @@ Rounds 4+ do NOT load `${CLAUDE_PLUGIN_ROOT}/skills/review/references/voting.md`
 ### 3c — Emit Tally
 
 ```bash
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
+  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
+fi
+export CLAUDE_PLUGIN_ROOT
 ${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/emit-tally.sh --tally-file "$TALLY_FILE" --accepted-findings-file "$ACCEPTED_FINDINGS_FILE" --oos-file "$REVIEW_TMPDIR/oos.md" --review-tmpdir "$REVIEW_TMPDIR" --session-env-path "$SESSION_ENV_PATH" --round "$round_num" --mode "$MODE" --implement-tmpdir "$IMPLEMENT_TMPDIR"
 ```
 
@@ -124,6 +148,10 @@ Diff mode only: implement accepted findings with the main agent using Edit/Write
 > **Continue after child returns.** On `RELEVANT_CHECKS_OK=true`, execute Step 3e classification next (paragraph below), using Step 3f when exiting the Step 3 loop after a non-substantial round — do NOT end the turn on helper output alone. On `STATUS=fail`, first check for `FAILURE_REASON` (structural — e.g. `tmpdir-validation`, `site-validation`, `repo-root-unresolved`, `missing-check-script`, `redaction-failed`; act on the reason, no log file is produced); otherwise read `REDACTED_LOG_FILE` (checks failure — NOT raw `LOG_FILE`), diagnose, fix, and re-invoke the helper until clean BEFORE Step 3e classification — the re-invoke loop stays in Step 3e, not a halt. In either case, do NOT end the turn, summarize, or write a handoff message.
 
 ```bash
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
+  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
+fi
+export CLAUDE_PLUGIN_ROOT
 "${CLAUDE_PLUGIN_ROOT}/scripts/run-relevant-checks-captured.sh" --site review-step3e --tmpdir "$REVIEW_TMPDIR"
 ```
 
@@ -152,6 +180,10 @@ The nested-mode `### review-result` machine footer marks artifact handoff only; 
 Run cleanup unless a parent owns the tmpdir:
 
 ```bash
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
+  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
+fi
+export CLAUDE_PLUGIN_ROOT
 ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-tmpdir.sh "$REVIEW_TMPDIR"
 ```
 

@@ -68,6 +68,10 @@ Each rule states **Why** (the specific consequence of breaking the rule) and **H
 ## Step 0 — Find and Lock
 
 ```bash
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${FIX_ISSUE_TMPDIR:-}" ] && [ -f "$FIX_ISSUE_TMPDIR/session-env.sh" ]; then
+  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$FIX_ISSUE_TMPDIR/session-env.sh" 2>/dev/null || true)
+fi
+export CLAUDE_PLUGIN_ROOT
 ${CLAUDE_PLUGIN_ROOT}/skills/fix-issue/scripts/find-lock-issue.sh ["$ISSUE_ARG"]
 ```
 
@@ -101,6 +105,10 @@ Handle exit codes:
 Runs only after Step 0 successfully locked the issue. A failure here leaves the issue locked with `IN PROGRESS` (and the title prefixed `[IN PROGRESS]`) — same recovery semantics as any mid-run crash (manual `IN PROGRESS` comment clearance + title-prefix strip).
 
 ```bash
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${FIX_ISSUE_TMPDIR:-}" ] && [ -f "$FIX_ISSUE_TMPDIR/session-env.sh" ]; then
+  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$FIX_ISSUE_TMPDIR/session-env.sh" 2>/dev/null || true)
+fi
+export CLAUDE_PLUGIN_ROOT
 ${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix claude-fix-issue --skip-branch-check
 ```
 
@@ -109,6 +117,10 @@ If `REPO_UNAVAILABLE=true`, print `**⚠ Could not determine repository. GitHub 
 Write session-env for forwarding to `/implement`:
 
 ```bash
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${FIX_ISSUE_TMPDIR:-}" ] && [ -f "$FIX_ISSUE_TMPDIR/session-env.sh" ]; then
+  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$FIX_ISSUE_TMPDIR/session-env.sh" 2>/dev/null || true)
+fi
+export CLAUDE_PLUGIN_ROOT
 ${CLAUDE_PLUGIN_ROOT}/scripts/write-session-env.sh --output "$FIX_ISSUE_TMPDIR/session-env.sh" \
   --repo "$REPO" \
   --repo-unavailable "$REPO_UNAVAILABLE" \
@@ -118,6 +130,10 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/write-session-env.sh --output "$FIX_ISSUE_TMPDIR/s
 ## Step 2 — Read Issue Details
 
 ```bash
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${FIX_ISSUE_TMPDIR:-}" ] && [ -f "$FIX_ISSUE_TMPDIR/session-env.sh" ]; then
+  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$FIX_ISSUE_TMPDIR/session-env.sh" 2>/dev/null || true)
+fi
+export CLAUDE_PLUGIN_ROOT
 ${CLAUDE_PLUGIN_ROOT}/skills/fix-issue/scripts/get-issue-details.sh \
   --issue $ISSUE_NUMBER --output "$FIX_ISSUE_TMPDIR/issue-details.txt"
 ```
@@ -244,6 +260,10 @@ When `/implement --merge` merges the PR, GitHub automatically closes the issue v
 Close the issue with `WORK_SUMMARY` as the closing comment, passing `--close-class done` so the enum deterministically suppresses the `[FALSE-POSITIVE]` marker (no `--pr-url`, no body update):
 
 ```bash
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${FIX_ISSUE_TMPDIR:-}" ] && [ -f "$FIX_ISSUE_TMPDIR/session-env.sh" ]; then
+  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$FIX_ISSUE_TMPDIR/session-env.sh" 2>/dev/null || true)
+fi
+export CLAUDE_PLUGIN_ROOT
 ${CLAUDE_PLUGIN_ROOT}/skills/fix-issue/scripts/issue-lifecycle.sh close \
   --issue $ISSUE_NUMBER --comment "$WORK_SUMMARY" \
   --close-class done
@@ -254,6 +274,10 @@ ${CLAUDE_PLUGIN_ROOT}/skills/fix-issue/scripts/issue-lifecycle.sh close \
 **Best-effort terminal title rename** to clear the `[IN PROGRESS]` prefix Step 0 applied at lock time, replacing it with `[DONE]` so the closed issue's title accurately reflects that automated processing concluded:
 
 ```bash
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${FIX_ISSUE_TMPDIR:-}" ] && [ -f "$FIX_ISSUE_TMPDIR/session-env.sh" ]; then
+  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$FIX_ISSUE_TMPDIR/session-env.sh" 2>/dev/null || true)
+fi
+export CLAUDE_PLUGIN_ROOT
 ROUND_TRIP_OUT=$(${CLAUDE_PLUGIN_ROOT}/scripts/round-trip-detect.sh \
   --text-string "$ISSUE_TITLE" \
   --text-file "$FIX_ISSUE_TMPDIR/issue-details.txt" 2>&1) || ROUND_TRIP_OUT="ROUND_TRIP=false"
@@ -270,6 +294,10 @@ Idempotent and best-effort: on `FAILED=true` or non-zero exit, log to `Tool Fail
 After Step 6a / 6b completes (the just-processed child has been closed), if `$UMBRELLA_NUMBER` is set (Step 0 dispatched this child from an umbrella), check whether the umbrella is now empty and finalize if so:
 
 ```bash
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${FIX_ISSUE_TMPDIR:-}" ] && [ -f "$FIX_ISSUE_TMPDIR/session-env.sh" ]; then
+  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$FIX_ISSUE_TMPDIR/session-env.sh" 2>/dev/null || true)
+fi
+export CLAUDE_PLUGIN_ROOT
 PICK_OUT=$(${CLAUDE_PLUGIN_ROOT}/skills/fix-issue/scripts/umbrella-handler.sh pick-child --issue $UMBRELLA_NUMBER 2>&1)
 ALL_CLOSED=$(echo "$PICK_OUT" | awk -F= '/^ALL_CLOSED=/ { v=$2 } END { print v }')
 if [ "$ALL_CLOSED" = "true" ]; then
@@ -290,6 +318,10 @@ Print `✅ 6: finalize — #$ISSUE_NUMBER done (<elapsed>)` (mention umbrella-fi
 If `FIX_ISSUE_TMPDIR` is set and non-empty:
 
 ```bash
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${FIX_ISSUE_TMPDIR:-}" ] && [ -f "$FIX_ISSUE_TMPDIR/session-env.sh" ]; then
+  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$FIX_ISSUE_TMPDIR/session-env.sh" 2>/dev/null || true)
+fi
+export CLAUDE_PLUGIN_ROOT
 ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-tmpdir.sh --dir "$FIX_ISSUE_TMPDIR"
 ```
 

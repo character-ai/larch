@@ -15,6 +15,7 @@
 #   --token-session-id is optional (token ledger session id for nested skills).
 #   --claude-source-file is optional (Claude transcript snapshot for token reports).
 #   --prev-implement-tmpdir is optional (previous /implement tmpdir for larch-log handoff).
+#   LARCH_CLAUDE_PLUGIN_ROOT is written automatically when CLAUDE_PLUGIN_ROOT is set.
 #
 # Output: Writes a KEY=VALUE file to --output path (atomic via temp+mv).
 #         This file is not safe to source; parse with read-session-env-key.sh.
@@ -34,6 +35,7 @@ TIMING_LEDGER=""
 TOKEN_SESSION_ID=""
 CLAUDE_SOURCE_FILE=""
 PREV_IMPLEMENT_TMPDIR_ARG=""
+CLAUDE_PLUGIN_ROOT_VALUE="${CLAUDE_PLUGIN_ROOT:-}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -82,6 +84,17 @@ if [[ -n "$PREV_IMPLEMENT_TMPDIR_ARG" ]]; then
   fi
 fi
 
+if [[ -n "$CLAUDE_PLUGIN_ROOT_VALUE" ]]; then
+  if [[ ${#CLAUDE_PLUGIN_ROOT_VALUE} -gt 512 || ! "$CLAUDE_PLUGIN_ROOT_VALUE" =~ ^[A-Za-z0-9_./~+-]+$ ]]; then
+    echo "ERROR=Invalid CLAUDE_PLUGIN_ROOT: must match ^[A-Za-z0-9_./~+-]{1,512}$" >&2
+    exit 1
+  fi
+  if [[ "$CLAUDE_PLUGIN_ROOT_VALUE" != /* ]]; then
+    echo "ERROR=Invalid CLAUDE_PLUGIN_ROOT: must be an absolute path" >&2
+    exit 1
+  fi
+fi
+
 # Build the content
 CONTENT="REPO=$REPO
 REPO_UNAVAILABLE=$REPO_UNAVAILABLE"
@@ -99,6 +112,8 @@ LARCH_TOKEN_SESSION_ID=$TOKEN_SESSION_ID"
 LARCH_CLAUDE_SOURCE_FILE=$CLAUDE_SOURCE_FILE"
 [[ -n "$PREV_IMPLEMENT_TMPDIR_ARG" ]] && CONTENT="$CONTENT
 PREV_IMPLEMENT_TMPDIR=$PREV_IMPLEMENT_TMPDIR_ARG"
+[[ -n "$CLAUDE_PLUGIN_ROOT_VALUE" ]] && CONTENT="$CONTENT
+LARCH_CLAUDE_PLUGIN_ROOT=$CLAUDE_PLUGIN_ROOT_VALUE"
 
 # Write atomically via temp+mv for regular paths.
 # Skip /dev/null — mktemp and mv both fail on device nodes.

@@ -8,6 +8,7 @@
 #      regex/length guard ^[A-Za-z0-9_./~+-]{1,512}$ shared with
 #      --claude-source-file.
 #   C. write-session-env.sh validates and persists PREV_IMPLEMENT_TMPDIR.
+#   D. write-session-env.sh validates and persists CLAUDE_PLUGIN_ROOT.
 
 set -euo pipefail
 
@@ -188,6 +189,33 @@ if err=$("$WRITE_SCRIPT" \
     fail "C.2 relative prev-implement-tmpdir accepted"
 else
     assert_contains "C.2 error message" "Invalid --prev-implement-tmpdir" "$err"
+fi
+
+# ------------------------------------------------------------
+# D. write-session-env.sh — CLAUDE_PLUGIN_ROOT validation
+# ------------------------------------------------------------
+
+if CLAUDE_PLUGIN_ROOT="$TMPDIR_TEST/plugin-root" "$WRITE_SCRIPT" \
+    --output "$OUT" --repo a/b --repo-unavailable false 2>/dev/null; then
+    pass
+else
+    fail "D.1 valid CLAUDE_PLUGIN_ROOT rejected"
+fi
+got=$("$READ_SCRIPT" --file "$OUT" --key LARCH_CLAUDE_PLUGIN_ROOT)
+assert_eq "D.1 value persisted" "$TMPDIR_TEST/plugin-root" "$got"
+
+if err=$(CLAUDE_PLUGIN_ROOT="/tmp/bad plugin-root" "$WRITE_SCRIPT" \
+    --output "$OUT" --repo a/b --repo-unavailable false 2>&1); then
+    fail "D.2 CLAUDE_PLUGIN_ROOT with space accepted"
+else
+    assert_contains "D.2 error message" "Invalid CLAUDE_PLUGIN_ROOT" "$err"
+fi
+
+if err=$(CLAUDE_PLUGIN_ROOT="relative/plugin-root" "$WRITE_SCRIPT" \
+    --output "$OUT" --repo a/b --repo-unavailable false 2>&1); then
+    fail "D.3 relative CLAUDE_PLUGIN_ROOT accepted"
+else
+    assert_contains "D.3 error message" "Invalid CLAUDE_PLUGIN_ROOT" "$err"
 fi
 
 # ------------------------------------------------------------

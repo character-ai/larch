@@ -19,7 +19,12 @@ It may also write `PREV_IMPLEMENT_TMPDIR` when the caller passes
 session setup copy the previous session's `larch-logs` subtree into the fresh
 tmpdir before additional batches are written.
 
-Values must stay narrow and caller-controlled (`true|false` for health booleans; validated repo strings for repo identity; caller-owned tmp paths for timing ledgers). `--token-session-id` must match `^[A-Za-z0-9_.-]{1,128}$`; `--claude-source-file` and `--timing-ledger` must match `^[A-Za-z0-9_./~+-]{1,512}$`; `--prev-implement-tmpdir` must be an absolute path of 512 characters or fewer. Empty optional values are omitted from the file.
+It may also write `LARCH_CLAUDE_PLUGIN_ROOT` when `CLAUDE_PLUGIN_ROOT` is set in
+the writer's environment. `/implement` uses this durable key so later Bash
+blocks can recover `${CLAUDE_PLUGIN_ROOT}` from `$IMPLEMENT_TMPDIR/session-env.sh`
+without sourcing the file.
+
+Values must stay narrow and caller-controlled (`true|false` for health booleans; validated repo strings for repo identity; caller-owned tmp paths for timing ledgers). `--token-session-id` must match `^[A-Za-z0-9_.-]{1,128}$`; `--claude-source-file` and `--timing-ledger` must match `^[A-Za-z0-9_./~+-]{1,512}$`; `--prev-implement-tmpdir` and `CLAUDE_PLUGIN_ROOT` must be absolute paths of 512 characters or fewer using the same path character set. Empty optional values are omitted from the file.
 
 ## Invariants
 

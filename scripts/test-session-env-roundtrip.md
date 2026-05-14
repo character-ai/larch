@@ -17,6 +17,9 @@ session-env script pair:
   and future skills).
 - **C. `write-session-env.sh`** — `--prev-implement-tmpdir` accepts absolute
   handoff paths, persists `PREV_IMPLEMENT_TMPDIR`, and rejects relative paths.
+- **D. `write-session-env.sh`** — `CLAUDE_PLUGIN_ROOT` from the environment
+  accepts absolute plugin-root paths, persists `LARCH_CLAUDE_PLUGIN_ROOT`, and
+  rejects unsafe or relative paths.
 
 ## Inputs / outputs
 
@@ -38,5 +41,5 @@ asserts every `test-*` recipe is covered by exactly one shard.
 
 - Reading grammar changes (quoted values, multi-line values, comments) — extend
   fixtures in section A.
-- New validated flags on `write-session-env.sh` — extend section B with the
-  same accept / reject pattern.
+- New validated flags or environment-derived keys on `write-session-env.sh` —
+  extend the writer sections with the same accept / reject pattern.
