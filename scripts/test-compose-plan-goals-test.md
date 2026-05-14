@@ -9,6 +9,8 @@ It covers:
 
 - normal plan composition with a test-plan section,
 - fallback output when the plan lacks a test-plan section,
+- source plans that already start with an implementation-plan heading,
+- alternate test-plan headings such as `Verification` and `Testing`,
 - fail-closed behavior for too-short, pointer-only, empty, and missing plan
   files.
 

@@ -16,10 +16,16 @@ Output is written to stdout with this structure:
 - `## Implementation Plan`
 - `## Test plan`
 
-The implementation plan section contains the full plan-file body. The test plan
-section contains the content after a `# Test plan` or `## Test plan` heading in
-the plan file, or `(no test plan section in plan-file)` when the heading is
-absent.
+The implementation plan section contains the plan-file body up to the first
+recognized test/verification heading. If the source body starts with a
+`# Implementation Plan`, `## Implementation Plan`, or `### Implementation Plan`
+heading, the wrapper omits that first heading so the payload does not duplicate
+`## Implementation Plan`.
+
+The test plan section contains the content after the first level-1/2/3 heading
+named `Test plan`, `Tests`, `Testing`, `Verification`, `Test strategy`, or
+`Verification strategy`, stopping at the next level-1/2/3 heading. It emits
+`(no test plan section in plan-file)` when no recognized heading is present.
 
 The script fails closed for missing, empty, too-short, or pointer-only plan
 files. It is called by `skills/implement/SKILL.md` before writing the

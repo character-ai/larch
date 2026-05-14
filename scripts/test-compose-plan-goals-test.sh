@@ -33,6 +33,17 @@ assert_contains() {
     fi
 }
 
+assert_occurrences() {
+    local haystack="$1" needle="$2" expected="$3" label="$4"
+    local count
+    count="$(printf '%s' "$haystack" | grep -F -c "$needle" || true)"
+    if [ "$count" -eq "$expected" ]; then
+        pass "$label"
+    else
+        fail "$label (expected $expected occurrences of $needle; got $count)"
+    fi
+}
+
 assert_fails() {
     local label="$1"
     shift
@@ -73,6 +84,63 @@ section structure for downstream larch-log validation.
 EOF
 out="$("$COMPOSER" --plan-file "$plan")"
 assert_contains "$out" "(no test plan section in plan-file)" "fallback test plan emitted"
+
+echo "=== plan with implementation-plan header does not duplicate heading ==="
+plan="$TMP/plan-with-implementation-heading.md"
+cat > "$plan" <<'EOF'
+## Implementation Plan
+Update the composer so it normalizes the file-backed design export under the
+single wrapper heading emitted by the larch-log batch payload.
+
+## Test plan
+Run scripts/test-compose-plan-goals-test.sh.
+EOF
+out="$("$COMPOSER" --plan-file "$plan")"
+assert_occurrences "$out" "## Implementation Plan" 1 "implementation heading emitted once"
+
+echo "=== verification heading extracts test plan and stops at next heading ==="
+plan="$TMP/plan-with-verification.md"
+cat > "$plan" <<'EOF'
+Update the composer so plans that use verification terminology still populate
+the larch-log test-plan section with concrete operator checks.
+
+### Verification
+Run scripts/test-compose-plan-goals-test.sh.
+
+### Follow-up
+This section belongs to the implementation body, not the test-plan extraction.
+EOF
+out="$("$COMPOSER" --plan-file "$plan")"
+assert_contains "$out" "Run scripts/test-compose-plan-goals-test.sh." "verification section extracted"
+if [[ "$out" == *"## Test plan"* && "${out##*## Test plan}" != *"This section belongs"* ]]; then
+    pass "verification extraction stops at next heading"
+else
+    fail "verification extraction stops at next heading"
+fi
+
+echo "=== testing heading extracts test plan ==="
+plan="$TMP/plan-with-testing.md"
+cat > "$plan" <<'EOF'
+Update the composer so plans that use alternate test section headings still
+produce a normalized larch-log payload for downstream validation.
+
+## Testing
+Run make test-compose-plan-goals-test.
+EOF
+out="$("$COMPOSER" --plan-file "$plan")"
+assert_contains "$out" "Run make test-compose-plan-goals-test." "testing section extracted"
+
+echo "=== verification without implementation heading emits one wrapper heading ==="
+plan="$TMP/plan-verification-no-implementation-heading.md"
+cat > "$plan" <<'EOF'
+Update the composer while leaving source plans free to omit an explicit
+implementation-plan heading, because the batch payload supplies that wrapper.
+
+### Verification
+Run scripts/test-compose-plan-goals-test.sh.
+EOF
+out="$("$COMPOSER" --plan-file "$plan")"
+assert_occurrences "$out" "## Implementation Plan" 1 "wrapper heading emitted once without source heading"
 
 echo "=== short plan fails ==="
 plan="$TMP/short.md"
