@@ -52,8 +52,9 @@ The script also writes `$IMPLEMENT_TMPDIR/postbump-state.sh` before `implement-f
 - Failing helper/tool invocations capture stdout/stderr into
   `$IMPLEMENT_TMPDIR/ship-pr-fail-<phase>-<n>.log` and call
   `append-tool-failure.sh --redact` before the existing retry/stall/continue
-  decision. Logging failures are best-effort and do not change phase
-  outcomes.
+  decision. `ship-pr.sh` emits `FAILURE_DETAIL_LOG=<path>` for those
+  invocations so callers can inspect the captured details without stdout
+  replay. Logging failures are best-effort and do not change phase outcomes.
 
 Transient network classification uses `is_transient_net_signature` from `scripts/lib-net.sh`, sourced fail-closed through the `LARCH_LIB_NET_LOADED` sentinel before any phase logic runs. Matching create-PR, rebase, merge, or CI-bail text exits `6` through `exit_transient_net`; non-matching failures continue through the normal stall or user-input paths.
 

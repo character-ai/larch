@@ -264,12 +264,54 @@ assert_rc() {
     fi
 }
 
+assert_stdout_max_bytes() {
+    local file=$1 max_bytes=$2 label=$3 actual
+    actual=$(wc -c < "$file" | tr -d ' ')
+    if [ "$actual" -le "$max_bytes" ]; then
+        ok "$label"
+    else
+        fail "$label (expected <= $max_bytes bytes, got $actual)"
+        sed 's/^/    stdout: /' "$file"
+    fi
+}
+
 root=$(make_repo checks_fail)
 tmp=$(make_tmpdir)
 write_state "$tmp/ship-pr-state.sh" checks
 STUB_CHECKS_OK=false run_subject "$root" "$tmp" "$tmp/rc"
 assert_rc "$tmp/rc" 4 "checks failure exits 4"
 assert_state_line "$tmp/ship-pr-state.sh" "STALL_TRACKING=true" "checks failure marks stall"
+
+root=$(make_repo checks_verbose_failure)
+tmp=$(make_tmpdir)
+cat > "$root/scripts/run-relevant-checks-captured.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "STATUS=fail FAILURE_REASON=stubbed"
+i=0
+while [ "$i" -lt 200 ]; do
+    printf 'VERBOSE_LEAK_MARKER_%03d=%080d\n' "$i" "$i"
+    i=$((i + 1))
+done
+exit 1
+STUB
+chmod +x "$root/scripts/run-relevant-checks-captured.sh"
+write_state "$tmp/ship-pr-state.sh" checks
+run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 4 "verbose checks failure exits 4"
+assert_stdout_max_bytes "$tmp/stdout" 2048 "verbose checks failure keeps stdout under 2048 bytes"
+if grep -q '^FAILURE_DETAIL_LOG=' "$tmp/stdout"; then
+    ok "verbose checks failure emits diagnostic log envelope"
+else
+    fail "verbose checks failure emits diagnostic log envelope"
+    sed 's/^/    stdout: /' "$tmp/stdout"
+fi
+if grep -q 'VERBOSE_LEAK_MARKER' "$tmp/stdout"; then
+    fail "verbose checks failure does not replay helper output to stdout"
+    sed 's/^/    stdout: /' "$tmp/stdout"
+else
+    ok "verbose checks failure does not replay helper output to stdout"
+fi
 
 root=$(make_repo postbump_conflict)
 tmp=$(make_tmpdir)
