@@ -1,1 +1,9 @@
 {"phase":"implement","step":"11","category":"execution-issues","source_sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","body":""}
+{
+  "phase": "implement",
+  "step": "18",
+  "category": "Tool Failures",
+  "source": "execution-issues.md safety-net",
+  "source_sha256": "cbb3f2f916aba275be604604b619badb9d9eac778ae9f708b803d36b7605ddb8",
+  "body": "### Warnings\n\n- **Step 18 — session-transcript status=captured:** session transcript was written and committed.\n"
+}
