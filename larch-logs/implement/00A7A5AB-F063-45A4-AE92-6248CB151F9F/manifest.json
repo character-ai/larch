@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "skill": "implement",
+  "run_id": "00A7A5AB-F063-45A4-AE92-6248CB151F9F",
+  "parent_skill": null,
+  "issue_number": 2021,
+  "pr_number": null,
+  "status": "in-progress",
+  "larch_version": "27.5.5",
+  "model_roster": {},
+  "effort": "max",
+  "started_at": "2026-05-13T20:24:01Z",
+  "updated_at": "2026-05-13T20:24:01Z",
+  "attempt": 1,
+  "superseded_by": null,
+  "stalled_at_step": null,
+  "flags": {}
+}
