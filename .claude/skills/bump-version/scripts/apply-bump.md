@@ -36,6 +36,7 @@ The script exits 0 only when the bump commit was created. It exits 1 for invalid
 - The rewrite is atomic: `jq` writes to a temp file, then `mv` replaces `plugin.json`.
 - The pre-commit same-version probe runs after `git add` and before `git commit`: fetch `origin main`, read `origin/main:.claude-plugin/plugin.json`, require strict `^[0-9]+\.[0-9]+\.[0-9]+$`, and fail closed if the origin version equals `NEW_VERSION`.
 - Every pre-commit probe failure rolls back by restoring from `$BACKUP` and unstaging `plugin.json` with `git reset HEAD "$PLUGIN_JSON"`.
+- No `larch-log-flush.sh` tail-call after the bump commit: the rebase+re-bump machinery (`drop-bump-commit.sh`) requires the bump commit to remain at HEAD.
 - Commit failure uses the existing post-commit rollback path: restore from `$BACKUP`, unstage `plugin.json`, and emit `ERROR=git commit failed; rolled back ...`.
 - The backup file is consumed on success or rollback; it must not remain after a normal script exit.
 

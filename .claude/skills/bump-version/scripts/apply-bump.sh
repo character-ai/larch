@@ -108,6 +108,8 @@ fi
 COMMIT_MSG="Bump version to $NEW_VERSION"
 if git commit -m "$COMMIT_MSG" --quiet; then
   # Success — remove backup, emit result.
+  # No larch-log-flush.sh tail-call here: the rebase+re-bump machinery
+  # (drop-bump-commit.sh) relies on the bump commit remaining at HEAD.
   rm -f "$BACKUP"
   COMMIT_SHA=$(git rev-parse HEAD)
   echo "APPLIED=true"

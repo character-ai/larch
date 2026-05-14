@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [27.5.60] - 2026-05-14
+
+### Changed
+
+- Added scripts/larch-log-flush.sh and tail-called it from git-commit.sh, git-amend-add.sh, apply-bump.sh, and step2-implement.sh.
+- Changed larch-log.sh commit to never push and removed its --no-push option from callers, docs, and harnesses.
+- Removed dedicated larch-log flush commit sites from ship-pr.sh and implement-finalize.sh, with --no-logs-commit now exported as LARCH_NO_LOGS_COMMIT for subprocess tail calls.
+- Removed larch-logs paths-ignore filters from CI and release-tag workflows and updated tests/docs for the new flush ownership model.
+
 ## [27.5.59] - 2026-05-14
 
 ### Changed

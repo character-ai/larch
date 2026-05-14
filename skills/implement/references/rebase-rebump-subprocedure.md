@@ -34,7 +34,7 @@ After the initial version bump in Step 8, every subsequent rebase of the feature
 
    **step8 family — SKIP this step entirely** (same exemption as step 5 — push and log flush ownership belong to `implement-finalize.sh postbump`).
 
-   **step10 / step12 family**: after dropping the bump commit, re-write the token/timing batches with updated data, then commit the flush (unless `no_logs_commit=true`). Running this BEFORE the rebase (step 2) serves two purposes: (1) it cleans up any uncommitted larch-log writes from Steps 9a.1/11 that would otherwise cause `rebase-push.sh --no-push` to fail on a dirty working tree; (2) it keeps the log-flush commit below the fresh bump commit so `drop-bump-commit.sh` can correctly drop the bump on subsequent retries. The `--no-push` is correct because step 5 performs the push. When `no_logs_commit=true`, the writes still run (to preserve the tmpdir artifacts) but the commit step is skipped; no dirty-tree issue arises because prior commit calls were also skipped.
+   **step10 / step12 family**: after dropping the bump commit, re-write the token/timing batches with updated data, then commit the flush (unless `no_logs_commit=true`). Running this BEFORE the rebase (step 2) serves two purposes: (1) it cleans up any uncommitted larch-log writes from Steps 9a.1/11 that would otherwise cause `rebase-push.sh --no-push` to fail on a dirty working tree; (2) it keeps the log-flush commit below the fresh bump commit so `drop-bump-commit.sh` can correctly drop the bump on subsequent retries. `larch-log.sh commit` does not push; step 5 performs the push. When `no_logs_commit=true`, the writes still run (to preserve the tmpdir artifacts) but the commit step is skipped; no dirty-tree issue arises because prior commit calls were also skipped.
 
    ```bash
    LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
@@ -45,7 +45,7 @@ After the initial version bump in Step 8, every subsequent rebase of the feature
    "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch token-report --input-file "$IMPLEMENT_TMPDIR/token-report-rendered.json" || true
    "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch timing-report --input-file "$IMPLEMENT_TMPDIR/timing-report-rendered.json" || true
    if [ "${no_logs_commit:-false}" != "true" ]; then
-     "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" commit --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --no-push || true
+     "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" commit --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" || true
    fi
    ```
 

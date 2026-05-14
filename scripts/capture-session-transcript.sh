@@ -145,7 +145,6 @@ if ! "$SCRIPT_DIR/larch-log.sh" commit \
     --log-root "$LOG_ROOT" \
     --skill "$SKILL" \
     --run-id "$RUN_ID" \
-    --no-push \
     >/dev/null 2>&1; then
     emit_status "commit-failed" "write succeeded but git commit failed; transcript remains under the staging log root."
 fi

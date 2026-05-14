@@ -83,9 +83,10 @@ is_bool "$NO_LOGS_COMMIT" || die_usage "--no-logs-commit must be true or false"
 [ -z "$FORKED_TARGET" ] || is_bool "$FORKED_TARGET" || die_usage "--forked must be true or false"
 # Export so child processes inherit the session tmpdir path regardless of
 # whether the caller shell already had it exported (e.g. after a session
-# restart where the orchestrator env was fresh). larch-log.sh receives its root
-# explicitly via --log-root.
+# restart where the orchestrator env was fresh). The log-flush tail-call helper
+# resolves its run context from this tmpdir.
 export IMPLEMENT_TMPDIR
+export LARCH_NO_LOGS_COMMIT="$NO_LOGS_COMMIT"
 
 validate_state_syntax() {
     local line line_no
@@ -795,16 +796,9 @@ run_rebase_rebump() {
     printf '%s\n' "$drop_out" >> "$fail_file"
     [ "$rc" -eq 0 ] || record_failure rebase "drop-bump-commit.sh" "$rc" "$fail_file" Warnings
 
-    # 2. Flush pending larch-log writes before rebase to avoid dirty-tree failures
     run_id=$(read_state RUN_ID)
-    if [ -n "$run_id" ] && [ "$NO_LOGS_COMMIT" != "true" ]; then
-        fail_file=$(failure_capture_path rebase)
-        "$SCRIPT_DIR/larch-log.sh" commit --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$run_id" --no-push > "$fail_file" 2>&1
-        rc=$?
-        [ "$rc" -eq 0 ] || record_failure rebase "larch-log.sh commit --no-push" "$rc" "$fail_file" Warnings
-    fi
 
-    # 3. Rebase without pushing; keep in-progress on conflict for vendor resolution
+    # 2. Rebase without pushing; keep in-progress on conflict for vendor resolution
     fail_file=$(failure_capture_path rebase)
     rebase_out=$("$SCRIPT_DIR/rebase-push.sh" --no-push --keep-on-conflict 2>"$fail_file")
     rebase_rc=$?
@@ -852,13 +846,13 @@ run_rebase_rebump() {
         exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
     fi
 
-    # 4. Fast-forward local main so classify-bump.sh uses the correct merge-base
+    # 3. Fast-forward local main so classify-bump.sh uses the correct merge-base
     fail_file=$(failure_capture_path rebase)
     "$SCRIPT_DIR/git-sync-local-main.sh" > "$fail_file" 2>&1
     rc=$?
     [ "$rc" -eq 0 ] || record_failure rebase "git-sync-local-main.sh" "$rc" "$fail_file" Warnings
 
-    # 5. Re-bump using classify-bump.sh + apply-bump.sh directly
+    # 4. Re-bump using classify-bump.sh + apply-bump.sh directly
     if [ "$(read_state HAS_BUMP)" != "false" ]; then
         fail_file=$(failure_capture_path rebase)
         classify_out=$("$PLUGIN_ROOT/.claude/skills/bump-version/scripts/classify-bump.sh" 2>"$fail_file")
@@ -912,7 +906,7 @@ run_rebase_rebump() {
         --state-file "$STATE_FILE" \
         --implement-tmpdir "$IMPLEMENT_TMPDIR" > "$fail_file" 2>&1 || true
 
-    # 6. Force-push the rebased + re-bumped branch
+    # 5. Force-push the rebased + re-bumped branch
     fail_file=$(failure_capture_path rebase)
     "$SCRIPT_DIR/git-force-push.sh" > "$fail_file" 2>&1
     rc=$?
@@ -921,7 +915,7 @@ run_rebase_rebump() {
         exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
     fi
 
-    # 7. Increment counters, reset transient retries
+    # 6. Increment counters, reset transient retries
     state_set_many \
         REBASE_COUNT "$(( $(read_state REBASE_COUNT) + 1 ))" \
         ITERATION "$(( $(read_state ITERATION) + 1 ))" \
@@ -938,21 +932,6 @@ run_ci_phase() {
         fi
         return 0
     fi
-    # Flush pending larch-log writes (version-bump-reasoning, oos-issues,
-    # execution-issues, etc.) before merge so they land in the PR. The
-    # rebase-rebump sub-procedure (step 1b) already does this on any rebase
-    # path; this covers the happy path where no rebase was needed.
-    if [ "$phase" = "ci-merge" ]; then
-        local flush_run_id
-        flush_run_id=$(read_state RUN_ID)
-        if [ -n "$flush_run_id" ] && [ "$NO_LOGS_COMMIT" != "true" ]; then
-            fail_file=$(failure_capture_path ci-merge)
-            "$SCRIPT_DIR/larch-log.sh" commit --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$flush_run_id" > "$fail_file" 2>&1
-            rc=$?
-            [ "$rc" -eq 0 ] || record_failure ci-merge "larch-log.sh commit" "$rc" "$fail_file" Warnings
-        fi
-    fi
-
     if [ "$phase" = "ci-merge" ] && { [ "$(read_state MERGE)" != "true" ] || [ "$(read_state DRAFT)" = "true" ] || [ "$(read_state FORKED_TARGET)" = "true" ]; }; then
         advance_phase postmerge
         return 0
@@ -1077,8 +1056,8 @@ run_postmerge_phase() {
     rc=$?
     [ "$rc" -eq 0 ] || record_failure postmerge "implement-finalize.sh postmerge" "$rc" "$fail_file"
     # Finalize manifest to status=done here so the update survives if the
-    # LLM session ends before prompt-side Step 18 teardown runs. The teardown
-    # manifest update remains as an idempotent no-op fallback.
+    # LLM session ends before prompt-side Step 18 teardown runs. The manifest
+    # fields are committed by the session-transcript capture in Step 18.
     local flush_run_id pr_num manifest_path_pm flush_issue_num recovery_ok
     flush_run_id=$(read_state RUN_ID)
     pr_num=$(read_state PR_NUMBER)
@@ -1129,15 +1108,6 @@ run_postmerge_phase() {
                 > "$fail_file" 2>&1
             rc=$?
             [ "$rc" -eq 0 ] || record_failure postmerge "larch-log.sh manifest" "$rc" "$fail_file" Warnings
-            if [ "$NO_LOGS_COMMIT" != "true" ]; then
-                fail_file=$(failure_capture_path postmerge)
-                "$SCRIPT_DIR/larch-log.sh" commit \
-                    --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
-                    --skill implement --run-id "$flush_run_id" \
-                    > "$fail_file" 2>&1
-                rc=$?
-                [ "$rc" -eq 0 ] || record_failure postmerge "larch-log.sh commit" "$rc" "$fail_file" Warnings
-            fi
         fi
     fi
     advance_phase "done"

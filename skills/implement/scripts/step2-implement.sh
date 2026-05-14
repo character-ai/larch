@@ -692,6 +692,7 @@ if [[ "$STATUS" == "complete" ]]; then
         emit_bailed "commit-failed"
     fi
     rm -f "$COMMIT_STDERR_FILE"
+    "$PLUGIN_ROOT/scripts/larch-log-flush.sh" || true
 fi
 
 # Step 8: sanitization. Apply scripts/redact-secrets.sh to text fields, then
