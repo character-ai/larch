@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add larch-logs/** paths-ignore filters to CI and release-tag workflow push/PR triggers.
 - Make ship-pr ci-merge and postmerge larch-log flush commits local-only with --no-push.
 - Document the shared larch-log --no-push discipline and cover the updated ship-pr flush arguments in the harness.
+- Stop ship-pr.sh from replaying captured helper output and fail-file diagnostics to stdout.
+- Emit FAILURE_DETAIL_LOG for failed helper invocations so callers can find captured diagnostics without stdout replay.
+- Add an offline verbose-checks regression that caps ship-pr stdout and documents the new envelope key.
 
 ## [27.5.49] - 2026-05-14
 

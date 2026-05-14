@@ -18,10 +18,11 @@
 |  | larch:implement | 22 | 4191928 | 23420 | 10703 |
 | Step 6 — checks second pass | **step total** | 2 | 394771 | 1912 | 985 |
 |  | larch:implement | 2 | 394771 | 1912 | 985 |
-| Step 7a — code flow diagram | **step total** | 1 | 198106 | 471 | 553 |
-|  | larch:implement | 1 | 198106 | 471 | 553 |
-| Step 8 — version bump | **step total** | 0 | 0 | 0 | 0 |
-| **Grand total** |  | 89 | 14612711 | 612855 | 63700 |
+| Step 7a — code flow diagram | **step total** | 3 | 595260 | 1699 | 2125 |
+|  | larch:implement | 3 | 595260 | 1699 | 2125 |
+| Step 8 — version bump | **step total** | 7 | 1405392 | 5723 | 4445 |
+|  | larch:implement | 7 | 1405392 | 5723 | 4445 |
+| **Grand total** |  | 98 | 16415257 | 619806 | 69717 |
 
 ### Codex
 
