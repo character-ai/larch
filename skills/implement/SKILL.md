@@ -1280,6 +1280,11 @@ if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
 fi
 export CLAUDE_PLUGIN_ROOT
+```
+
+> **Continue after child returns.** On `STATUS=fail` with checks output, read `REDACTED_LOG_FILE` (checks failure — NOT raw `LOG_FILE`); full triage prose is in the Step 3 block above.
+
+```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/run-relevant-checks-captured.sh" --site step3 --tmpdir "$IMPLEMENT_TMPDIR"
 ```
 
@@ -1403,11 +1408,11 @@ When **Cursor unavailable**: skip all 5 specialist slots. Do NOT fall back to Co
 
 For the **generic Codex slot**, when **Codex** is available:
 ```bash
-# intentionally non-stable: $DIFF_FILE path is per-session, merge-base SHA varies per PR; Codex (not Claude API)
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
 fi
 export CLAUDE_PLUGIN_ROOT
+# intentionally non-stable: $DIFF_FILE path is per-session, merge-base SHA varies per PR; Codex (not Claude API)
 ${CLAUDE_PLUGIN_ROOT}/scripts/launch-review.sh --tool codex --output "$IMPLEMENT_TMPDIR/codex-quick-review-rounds1to3-generic-round${round_num}.txt" --timeout 1800 --timing-task-kind codex-review-generic --prompt "Review all code changes on the current branch vs main. The diff has been pre-computed at $DIFF_FILE — read that file to see the changes (context is capped at 20 lines per hunk; use the Read tool to read a full file when you need more context). Run git log $(git merge-base HEAD main)..HEAD --oneline for commits. Walk five focus areas - tag each finding with its focus area (one of code-quality / risk-integration / correctness / architecture / security): (1) Code Quality: bugs, logic, reuse, tests, backward compat, style. (2) Risk/Integration: breaking changes, side effects, thread safety, deployment risks, regressions, CI. (3) Correctness: logic errors, off-by-one, nil handling, type mismatches, races, error paths. (4) Architecture: separation of concerns, contract boundaries, invariants, semantic boundaries. (5) Security: injection, authn/authz, secret handling, crypto, deserialization, SSRF, path traversal, dependency CVEs. Return numbered findings with focus-area tag, file:line, issue, and suggested fix. If NO issues, output exactly NO_ISSUES_FOUND. Do NOT modify files. Findings may be reviewed for quality."
 ```
 
@@ -1449,6 +1454,11 @@ if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
 fi
 export CLAUDE_PLUGIN_ROOT
+```
+
+> **Continue after child returns.** On `STATUS=fail` with checks output, read `REDACTED_LOG_FILE` (checks failure — NOT raw `LOG_FILE`); full triage prose is in the Step 5.7 block above.
+
+```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/run-relevant-checks-captured.sh" --site step5-7 --tmpdir "$IMPLEMENT_TMPDIR"
 ```
 
@@ -1574,6 +1584,11 @@ if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
 fi
 export CLAUDE_PLUGIN_ROOT
+```
+
+> **Continue after child returns.** On `STATUS=fail` with checks output, read `REDACTED_LOG_FILE` (checks failure — NOT raw `LOG_FILE`); full triage prose is in the Step 6 block above.
+
+```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/run-relevant-checks-captured.sh" --site step6 --tmpdir "$IMPLEMENT_TMPDIR"
 ```
 
