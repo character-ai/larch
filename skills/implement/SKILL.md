@@ -1769,7 +1769,7 @@ fi
 
 Best-effort: failures are non-fatal, but each non-zero `token-report.sh`, `timing-report.sh`, `larch-log.sh write`, or `larch-log.sh commit` result must first be captured to `$IMPLEMENT_TMPDIR/pre-bump-log-flush-<tool>.log` and appended with `append-tool-failure.sh` under `Tool Failures` (use `Warnings` only for report rendering that is known to be documentation-only). Do not leave a bare `|| true` on these calls without the adjacent capture and append.
 
-On each retry (CI failure, merge conflict, rebase in Steps 10/12), `scripts/refresh-run-logs.sh` (Triggers A-C in `ship-pr.sh`) re-renders and commits the `token-report` and `timing-report` batches before each push, so the merged PR carries up-to-date token/timing data. The Rebase + Re-bump Sub-procedure step 1b also flushes pending larch-log writes before the rebase (the existing behavior).
+On each retry (CI failure, merge conflict, rebase in Steps 10/12), `scripts/refresh-run-logs.sh` (Triggers A-C in `ship-pr.sh`) re-renders and commits the `token-report` and `timing-report` batches before each push, so the merged PR carries up-to-date token/timing data.
 
 <!-- step:8+ — Ship PR State Machine -->
 ## Step 8+ — Ship PR State Machine

@@ -23,10 +23,12 @@ if [ -z "$run_id" ]; then
     exit 0
 fi
 
-"$SCRIPT_DIR/larch-log.sh" commit \
+if ! "$SCRIPT_DIR/larch-log.sh" commit \
     --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
     --skill implement \
     --run-id "$run_id" \
-    >/dev/null 2>&1 || true
+    >/dev/null 2>&1; then
+    printf 'larch-log-flush.sh: warn — larch-log commit failed for run %s (continuing)\n' "$run_id" >&2
+fi
 
 exit 0
