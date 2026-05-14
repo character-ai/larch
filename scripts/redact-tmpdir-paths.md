@@ -14,11 +14,13 @@ Outbound publishers compose this helper before `scripts/redact-secrets.sh`, so t
 
 ## Boundary handling
 
-All three expressions use `(^|[^[:alnum:]_./-])` as the left boundary anchor. This prevents the preceding non-whitespace prefix from consuming non-path content before a session path:
+Expressions 1-3 use `(^|[^[:alnum:]_./-])` as the left boundary anchor. This prevents the preceding non-whitespace prefix from consuming non-path content before a session path:
 
 - Valid boundary characters include `=`, `"`, `'`, space, `:`, `(`, `)` — any character not in `[:alnum:]_./-`.
 - The boundary character is captured in `\1` and re-inserted in the replacement so surrounding context (variable assignments like `VARNAME=<TMPDIR>`, JSON delimiters) is preserved.
-- JSONL-encoded newlines (`\n` as two chars) do not serve as boundaries because `\` alone is a valid boundary but the following `n` is `[:alnum:]`, preventing a false match at that position.
+- JSONL-encoded newlines (`\n` as two chars) do not serve as boundaries for expressions 1-3 because `\` alone is a valid boundary but the following `n` is `[:alnum:]`, preventing a match when `\n` immediately precedes the path.
+
+Expression 4 handles the `\n`-prefix carve-out: it matches the literal two-char sequence backslash+n immediately before a `larch/sessions/` cache path, captures `\n` as `\1`, and re-emits it in the replacement. This ensures `\n/Users/…/.cache/larch/sessions/claude-implement-XYZ` is rewritten to `\n<TMPDIR>` rather than passing through unchanged.
 
 ## Edit-in-sync
 
