@@ -25,7 +25,10 @@
 |  | inferred:Step 7a — code flow diagram | 4 | 988963 | 2142 | 1222 |
 | Step 8 — version bump | **step total** | 4 | 994539 | 3567 | 2887 |
 |  | inferred:Step 8 — version bump | 4 | 994539 | 3567 | 2887 |
-| **Grand total** |  | 174 | 33948273 | 715797 | 94360 |
+| Step 8a — changelog | **step total** | 0 | 0 | 0 | 0 |
+| Step 8b — rebase | **step total** | 39 | 8893309 | 282479 | 17732 |
+|  | inferred:Step 8b — rebase | 39 | 8893309 | 282479 | 17732 |
+| **Grand total** |  | 213 | 42841582 | 998276 | 112092 |
 
 ### Codex
 
@@ -42,4 +45,25 @@
 | Step 7 — commit review fixes | **step total** | 0 | 0 | 0 |
 | Step 7a — code flow diagram | **step total** | 0 | 0 | 0 |
 | Step 8 — version bump | **step total** | 0 | 0 | 0 |
+| Step 8a — changelog | **step total** | 0 | 0 | 0 |
+| Step 8b — rebase | **step total** | 0 | 0 | 0 |
 | **Grand total** |  | 0 | 0 | 298105 |
+
+### Cursor
+
+| Step | Skill | Input | Output | Total |
+| --- | --- | ---: | ---: | ---: |
+| Step 0 — preflight | **step total** | 0 | 0 | 0 |
+| Step 0.5 — tracking issue | **step total** | 0 | 0 | 0 |
+| Step 1 — design plan | **step total** | 0 | 0 | 0 |
+| Step 2 — implementation | **step total** | 0 | 0 | 0 |
+| Step 3 — checks first pass | **step total** | 0 | 0 | 0 |
+| Step 4 — commit implementation | **step total** | 0 | 0 | 0 |
+| Step 5 — code review | **step total** | 0 | 0 | 0 |
+| Step 6 — checks second pass | **step total** | 0 | 0 | 0 |
+| Step 7 — commit review fixes | **step total** | 0 | 0 | 0 |
+| Step 7a — code flow diagram | **step total** | 0 | 0 | 0 |
+| Step 8 — version bump | **step total** | 0 | 0 | 0 |
+| Step 8a — changelog | **step total** | 0 | 0 | 0 |
+| Step 8b — rebase | **step total** | 15 | 18 | 78 |
+| **Grand total** |  | 15 | 18 | 78 |
