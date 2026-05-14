@@ -17,10 +17,9 @@ Output is written to stdout with this structure:
 - `## Test plan`
 
 The implementation plan section contains the plan-file body up to the first
-recognized test/verification heading. If the source body starts with a
-`# Implementation Plan`, `## Implementation Plan`, or `### Implementation Plan`
-heading, the wrapper omits that first heading so the payload does not duplicate
-`## Implementation Plan`.
+recognized test/verification heading. If the source body starts with a level-1/2/3 heading whose text is
+`Implementation Plan` (case-insensitive), the wrapper omits that first heading
+so the payload does not duplicate `## Implementation Plan`.
 
 The test plan section contains the content after the first level-1/2/3 heading
 named `Test plan`, `Tests`, `Testing`, `Verification`, `Test strategy`, or

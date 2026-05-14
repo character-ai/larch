@@ -142,6 +142,30 @@ EOF
 out="$("$COMPOSER" --plan-file "$plan")"
 assert_occurrences "$out" "## Implementation Plan" 1 "wrapper heading emitted once without source heading"
 
+echo "=== test-strategy heading extracts test plan ==="
+plan="$TMP/plan-with-test-strategy.md"
+cat > "$plan" <<'EOF'
+Update the composer so plans that use test-strategy terminology still populate
+the larch-log test-plan section with concrete operator checks.
+
+## Test strategy
+Run make test-compose-plan-goals-test and verify output structure.
+EOF
+out="$("$COMPOSER" --plan-file "$plan")"
+assert_contains "$out" "Run make test-compose-plan-goals-test and verify output structure." "test strategy section extracted"
+
+echo "=== verification-strategy heading extracts test plan ==="
+plan="$TMP/plan-with-verification-strategy.md"
+cat > "$plan" <<'EOF'
+Update the composer so plans that use verification-strategy terminology still
+populate the larch-log test-plan section with concrete operator checks.
+
+### Verification strategy
+Run bash scripts/test-compose-plan-goals-test.sh and confirm all assertions pass.
+EOF
+out="$("$COMPOSER" --plan-file "$plan")"
+assert_contains "$out" "Run bash scripts/test-compose-plan-goals-test.sh and confirm all assertions pass." "verification strategy section extracted"
+
 echo "=== short plan fails ==="
 plan="$TMP/short.md"
 printf 'short plan body\n' > "$plan"

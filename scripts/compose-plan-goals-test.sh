@@ -75,7 +75,7 @@ printf '## Goal\n'
 printf '%s\n\n' "$GOAL_TEXT"
 printf '## Implementation Plan\n'
 # Stop before any test plan section to avoid duplicating content under ## Test plan below.
-awk '/^#{1,3}[[:space:]]+Implementation[[:space:]]Plan[[:space:]]*$/ && !seen++ { next }
+awk '/^#{1,3}[[:space:]]+[Ii]mplementation[[:space:]][Pp]lan[[:space:]]*$/ && !seen++ { next }
      /^#{1,3}[[:space:]]+([Tt]est[[:space:]][Pp]lan|[Tt]ests|[Tt]esting|[Vv]erification|[Tt]est[[:space:]][Ss]trategy|[Vv]erification[[:space:]][Ss]trategy)[[:space:]]*$/ { exit }
      { print }' "$PLAN_FILE"
 printf '\n## Test plan\n'
