@@ -12,6 +12,14 @@ Outbound publishers compose this helper before `scripts/redact-secrets.sh`, so t
 
 `scripts/test-redact-tmpdir-paths.sh` covers legacy `/tmp`, macOS `/private/tmp`, clone-tagged names, cache-root paths, prose embedding, non-matching preservation, and idempotence. It is wired through `make test-redact-tmpdir-paths`.
 
+## Boundary handling
+
+All three expressions use `(^|[^[:alnum:]_./-])` as the left boundary anchor. This prevents the preceding non-whitespace prefix from consuming non-path content before a session path:
+
+- Valid boundary characters include `=`, `"`, `'`, space, `:`, `(`, `)` — any character not in `[:alnum:]_./-`.
+- The boundary character is captured in `\1` and re-inserted in the replacement so surrounding context (variable assignments like `VARNAME=<TMPDIR>`, JSON delimiters) is preserved.
+- JSONL-encoded newlines (`\n` as two chars) do not serve as boundaries because `\` alone is a valid boundary but the following `n` is `[:alnum:]`, preventing a false match at that position.
+
 ## Edit-in-sync
 
 When changing the accepted tempdir roots or session prefix list, update `scripts/session-setup.sh`, `scripts/cleanup-tmpdir.sh`, `scripts/implement-finalize.sh`, `scripts/token-tally.sh`, this contract, and `scripts/test-redact-tmpdir-paths.sh`.
