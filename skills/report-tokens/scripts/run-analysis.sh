@@ -151,7 +151,9 @@ if [[ -z "$PLOT_FROM" ]]; then
         if [[ -f "$token_report_json" ]]; then
             combined_body="**Workflow path**: ${workflow_path}"
             echo "Processing run for issue #${issue_number}..."
-            jq -cn \
+            # Isolate jq failure per-run: an invalid token-report.json falls back to .md rather
+            # than aborting the whole scan under set -euo pipefail.
+            if ! jq -cn \
                 --argjson number "$issue_number" \
                 --arg title "Issue #${issue_number}" \
                 --arg url "https://github.com/${REPO}/issues/${issue_number}" \
@@ -159,7 +161,23 @@ if [[ -z "$PLOT_FROM" ]]; then
                 --arg workflow_path "$workflow_path" \
                 --arg body "$combined_body" \
                 --slurpfile token_report "$token_report_json" \
-                '{number: $number, title: $title, url: $url, closedAt: $closedAt, workflow_path: $workflow_path, body: $body, token_report: $token_report[0], comments: []}' >> "$ISSUES_JSONL"
+                'if ($token_report[0] | type) == "object" then {number: $number, title: $title, url: $url, closedAt: $closedAt, workflow_path: $workflow_path, body: $body, token_report: $token_report[0], comments: []} else error("not-an-object") end' \
+                >> "$ISSUES_JSONL" 2>/dev/null; then
+                echo "Warning: invalid token-report.json for issue #${issue_number} — falling back to .md" >&2
+                if [[ -f "$token_report_md" ]]; then
+                    token_content=$(cat "$token_report_md")
+                    combined_body_fb="${token_content}
+
+**Workflow path**: ${workflow_path}"
+                    jq -cn \
+                        --argjson number "$issue_number" \
+                        --arg title "Issue #${issue_number}" \
+                        --arg url "https://github.com/${REPO}/issues/${issue_number}" \
+                        --arg closedAt "$closed_at" \
+                        --arg body "$combined_body_fb" \
+                        '{number: $number, title: $title, url: $url, closedAt: $closedAt, body: $body, comments: []}' >> "$ISSUES_JSONL" || true
+                fi
+            fi
         else
             token_content=$(cat "$token_report_md")
             combined_body="${token_content}

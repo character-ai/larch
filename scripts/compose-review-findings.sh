@@ -44,30 +44,11 @@ done
 [ -n "$ISSUE" ] || { usage; fail "--issue is required"; }
 [ -n "$OUTPUT" ] || { usage; fail "--output is required"; }
 case "$ISSUE" in *[!0-9]*|"") fail "invalid value for --issue: '$ISSUE' (expected non-negative integer)" ;; esac
-command -v jq >/dev/null 2>&1 || fail "jq is required"
 [ -x "$REDACT_TMP" ] || fail "redaction helper not executable: $REDACT_TMP"
 [ -x "$REDACT_SECRETS" ] || fail "redaction helper not executable: $REDACT_SECRETS"
 
 redact_field() {
     printf '%s' "$1" | "$REDACT_TMP" | "$REDACT_SECRETS"
-}
-
-derive_category() {
-    local name_lower
-    name_lower="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
-    case "$name_lower" in
-        *architecture*|*standards*) echo "architecture" ;;
-        *correctness*)              echo "correctness" ;;
-        *structure*)                echo "structure" ;;
-        *edge*|*failure*mode*)      echo "edge-cases" ;;
-        *innovation*|*exploration*) echo "innovation" ;;
-        *pragmati*|*safety*)        echo "pragmatism" ;;
-        *security*)                 echo "security" ;;
-        *testing*|*tests*)          echo "testing" ;;
-        *docs*|*documentation*)     echo "docs" ;;
-        *generic*|*claude*|*cursor*|*codex*|*gemini*) echo "generic" ;;
-        *)                          echo "other" ;;
-    esac
 }
 
 TMP_OUT="$(mktemp "${TMPDIR:-/tmp}/review-findings-full.XXXXXX")" || fail "cannot create temp output"

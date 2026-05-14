@@ -212,15 +212,22 @@ valid_object="$tmpdir/valid-object.json"
 invalid_object_text="$tmpdir/invalid-object-text.json"
 array_object="$tmpdir/array.json"
 primitive_object="$tmpdir/primitive.json"
+multi_object="$tmpdir/multi-object.json"
 
 printf '{"schema_version":1,"body":"ok"}\n' > "$valid_object"
 printf 'plain text\n' > "$invalid_object_text"
 printf '[{"schema_version":1}]\n' > "$array_object"
 printf '"text"\n' > "$primitive_object"
+{
+    printf '{"schema_version":1,"body":"one"}\n'
+    printf '{"schema_version":1,"body":"two"}\n'
+} > "$multi_object"
 
+_json_obj_err="ERROR=json-object sanitizer rejected plan-review-tally: expected exactly one top-level JSON object"
 assert_json_object_accepts "single JSON object" "$valid_object"
-assert_json_object_rejects "plain text" "$invalid_object_text" "ERROR=json-object sanitizer rejected plan-review-tally: invalid JSON"
-assert_json_object_rejects "array" "$array_object" "ERROR=json-object sanitizer rejected plan-review-tally: expected JSON object"
-assert_json_object_rejects "primitive" "$primitive_object" "ERROR=json-object sanitizer rejected plan-review-tally: expected JSON object"
+assert_json_object_rejects "plain text" "$invalid_object_text" "$_json_obj_err"
+assert_json_object_rejects "array" "$array_object" "$_json_obj_err"
+assert_json_object_rejects "primitive" "$primitive_object" "$_json_obj_err"
+assert_json_object_rejects "multi-object stream" "$multi_object" "$_json_obj_err"
 
 echo "All assertions passed."

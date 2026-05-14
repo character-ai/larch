@@ -81,7 +81,10 @@ render_report() {
     local outlier_threshold="${LARCH_TIMING_OUTLIER_THRESHOLD_S:-14400}"
     [[ -f "$ledger" ]] || unavailable "ledger not found"
     awk -F '\t' -v mode="$mode" -v format="$format" -v now="$now" -v terse_skill="$skill" -v outlier_threshold="$outlier_threshold" '
-      BEGIN { outlier_threshold += 0; if (outlier_threshold <= 0) outlier_threshold = 14400 }
+      BEGIN {
+        outlier_threshold += 0; if (outlier_threshold <= 0) outlier_threshold = 14400
+        for (_i = 0; _i <= 127; _i++) _ord[sprintf("%c", _i)] = _i
+      }
       function hms(sec, h, m, s) {
         if (sec < 0) sec = 0
         h = int(sec / 3600)
@@ -98,13 +101,21 @@ render_report() {
         gsub(/\n/, " ", s)
         return s
       }
-      function js(s, t) {
-        t = s
-        gsub(/\\/, "\\\\", t)
-        gsub(/"/, "\\\"", t)
-        gsub(/\r/, "\\r", t)
-        gsub(/\n/, "\\n", t)
-        gsub(/\t/, "\\t", t)
+      function js(s,    t, i, c, code) {
+        t = ""
+        for (i = 1; i <= length(s); i++) {
+          c = substr(s, i, 1)
+          code = (_ord[c] == "" ? 128 : _ord[c])
+          if (code == 8)  { t = t "\\b"; continue }
+          if (code == 9)  { t = t "\\t"; continue }
+          if (code == 10) { t = t "\\n"; continue }
+          if (code == 12) { t = t "\\f"; continue }
+          if (code == 13) { t = t "\\r"; continue }
+          if (code == 34) { t = t "\\\""; continue }
+          if (code == 92) { t = t "\\\\"; continue }
+          if (code <= 31) { t = t sprintf("\\u%04x", code); continue }
+          t = t c
+        }
         return "\"" t "\""
       }
       function vendor_index(v) {
@@ -188,7 +199,11 @@ render_report() {
           exit 0
         }
         if (mark_count == 0) {
-          print "Timing report unavailable: no step marks in ledger"
+          if (format == "json") {
+            print "{}"
+          } else {
+            print "Timing report unavailable: no step marks in ledger"
+          }
           exit 0
         }
         if (workflow == "") workflow = "unknown"
