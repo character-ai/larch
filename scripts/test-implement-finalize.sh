@@ -720,7 +720,7 @@ fi
 # Safety-net: no-header file falls back to Tool Failures
 write_state "$STATE" ISSUE_NUMBER=
 printf 'RUN_ID=testrun123\n' >> "$STATE"
-printf '- something went wrong\n' > "$SANDBOX/tmp/execution-issues.md"
+printf '%s\n' '- something went wrong' > "$SANDBOX/tmp/execution-issues.md"
 rm -f "$SANDBOX/tmp/.execution-issues-flushed.sha"
 rm -f "$SANDBOX/tmp/execution-issues-safety-net.ndjson"
 OUT=$(run_subject teardown --state-file "$STATE" --implement-tmpdir "$SANDBOX/tmp")

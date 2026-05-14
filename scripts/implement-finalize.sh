@@ -236,7 +236,7 @@ write_execution_issues_records() {
             case "$line" in
                 '### '*)
                     if [ -s "$body_file" ]; then
-                        jq -Rs --arg sha "$sha" --arg cat "$current_cat" '{
+                        jq -c -Rs --arg sha "$sha" --arg cat "$current_cat" '{
                             phase: "implement", step: "18", category: $cat,
                             source: "execution-issues.md safety-net",
                             source_sha256: $sha, body: .
@@ -251,7 +251,7 @@ write_execution_issues_records() {
             esac
         done < "$input_file"
         if [ -s "$body_file" ]; then
-            jq -Rs --arg sha "$sha" --arg cat "$current_cat" '{
+            jq -c -Rs --arg sha "$sha" --arg cat "$current_cat" '{
                 phase: "implement", step: "18", category: $cat,
                 source: "execution-issues.md safety-net",
                 source_sha256: $sha, body: .
