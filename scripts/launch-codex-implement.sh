@@ -334,7 +334,7 @@ done
 if (( LAUNCHER_EXIT != 0 )); then
     _AUTH_VERDICT=$(external_auth_verdict "codex" "$SIDECAR_LOG")
     [[ "$_AUTH_VERDICT" == "auth" ]] && _VERDICT="auth-retries-exhausted" || _VERDICT="$_AUTH_VERDICT"
-    append_launch_failure "Step 2" "codex-implement" "$LAUNCHER_EXIT" "$SIDECAR_LOG" "$_VERDICT" "$AUTH_ATTEMPT"
+    append_launch_failure "2" "codex-implement" "$LAUNCHER_EXIT" "$SIDECAR_LOG" "$_VERDICT" "$AUTH_ATTEMPT"
 fi
 
 MANIFEST_WRITTEN=false

@@ -54,7 +54,8 @@ done
 [ "$(larch_log_batch_sanitizer plan-goals-test)" = "plan-goals" ]
 
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/test-larch-log-batches.XXXXXX")"
-trap 'rm -rf "$tmp"' EXIT
+tmpdir=""
+trap 'rm -rf "$tmp" "${tmpdir:-}"' EXIT
 
 pointer_payload="$tmp/pointer-plan-goals.md"
 cat > "$pointer_payload" <<'EOF'
@@ -92,7 +93,6 @@ set -e
 LARCH_LOG_ROOT="$tmp/logs" "$SCRIPT_DIR/larch-log.sh" write --skill implement --run-id valid --batch plan-goals-test --input-file "$valid_payload" >/dev/null
 
 tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/larch-log-batches-test.XXXXXX")"
-trap 'rm -rf "$tmpdir"' EXIT
 
 assert_json_lines_accepts() {
     local label="$1"

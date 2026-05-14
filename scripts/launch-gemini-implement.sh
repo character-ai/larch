@@ -254,7 +254,11 @@ done
 if (( LAUNCHER_EXIT != 0 )); then
     _AUTH_VERDICT=$(external_auth_verdict "gemini" "$SIDECAR_LOG" "$TRANSCRIPT_PATH")
     [[ "$_AUTH_VERDICT" == "auth" ]] && _VERDICT="auth-retries-exhausted" || _VERDICT="$_AUTH_VERDICT"
-    append_launch_failure "Step 2" "gemini-implement" "$LAUNCHER_EXIT" "$SIDECAR_LOG" "$_VERDICT" "$AUTH_ATTEMPT"
+    _FAILURE_OUTPUT="$SIDECAR_LOG"
+    if [[ ! -s "$_FAILURE_OUTPUT" && -s "$TRANSCRIPT_PATH" ]]; then
+        _FAILURE_OUTPUT="$TRANSCRIPT_PATH"
+    fi
+    append_launch_failure "2" "gemini-implement" "$LAUNCHER_EXIT" "$_FAILURE_OUTPUT" "$_VERDICT" "$AUTH_ATTEMPT"
 fi
 
 MANIFEST_WRITTEN=false

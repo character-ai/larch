@@ -310,7 +310,11 @@ cursor_launcher_cleanup_private_config_dir
 if (( LAUNCHER_EXIT != 0 )); then
     _AUTH_VERDICT=$(external_auth_verdict "cursor" "$SIDECAR_LOG" "${TRANSCRIPT_PATH}.diag")
     [[ "$_AUTH_VERDICT" == "auth" ]] && _VERDICT="auth-retries-exhausted" || _VERDICT="$_AUTH_VERDICT"
-    append_launch_failure "Step 2" "cursor-implement" "$LAUNCHER_EXIT" "$SIDECAR_LOG" "$_VERDICT" "$AUTH_ATTEMPT"
+    _FAILURE_OUTPUT="$SIDECAR_LOG"
+    if [[ ! -s "$_FAILURE_OUTPUT" && -s "${TRANSCRIPT_PATH}.diag" ]]; then
+        _FAILURE_OUTPUT="${TRANSCRIPT_PATH}.diag"
+    fi
+    append_launch_failure "2" "cursor-implement" "$LAUNCHER_EXIT" "$_FAILURE_OUTPUT" "$_VERDICT" "$AUTH_ATTEMPT"
 fi
 
 cursor_launcher_append_outer_meta "${TRANSCRIPT_PATH}.meta" "$SCRIPT_DIR/launch-cursor-implement.sh" "$PROMPT_FILE_SIDECAR" "$PWD"
