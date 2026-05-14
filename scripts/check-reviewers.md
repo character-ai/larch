@@ -14,9 +14,9 @@ Output keys (`CODEX_AVAILABLE`, `CURSOR_AVAILABLE`, `CODEX_HEALTHY`, etc.) remai
 
 With `--probe`, sends `"Respond with OK"` to each available tool with a 60-second timeout. The probe reply is normalized: all whitespace is stripped (`tr -d '[:space:]'`), then lowercased (`tr '[:upper:]' '[:lower:]'`). The result must equal exactly `"ok"` (case-insensitive exact match, NOT substring). This accepts `OK`, `ok`, `Ok`, `oK` (with any surrounding whitespace) and rejects empty output, error messages, verbose responses, and words containing "ok" as a substring (e.g., `token`, `broken`, `NotOK`). The Cursor probe uses `--output-format json`; the reply text lives at `.result`; `.error` fails the probe.
 
-Failed probes are retried up to 2 additional times (3 total attempts) with a 10-second sleep between attempts. Each attempt only re-probes tools that are still unhealthy. Skipped tools (`--skip-codex-probe` / `--skip-cursor-probe`) are settled as `*_HEALTHY=false` immediately. Probe classification has three outcomes: healthy, unhealthy probe, and wait infrastructure error. The infrastructure-error path covers invalid wait config and non-zero `wait-for-reviewers.sh` exits.
+Failed probes are retried up to 2 additional times (3 total attempts) with a 3-second sleep between attempts. Each attempt only re-probes tools that are still unhealthy. Skipped tools (`--skip-codex-probe` / `--skip-cursor-probe`) are settled as `*_HEALTHY=false` immediately. Probe classification has three outcomes: healthy, unhealthy probe, and wait infrastructure error. The infrastructure-error path covers invalid wait config and non-zero `wait-for-reviewers.sh` exits.
 
-**Worst-case duration**: when both tools stay unresponsive across all 3 attempts, the upper bound is roughly 3 × 120s waits (per-attempt grace) + 2 × 10s inter-attempt sleeps ≈ 380s (~6m20s).
+**Worst-case duration**: when both tools stay unresponsive across all 3 attempts, the upper bound is roughly 3 × 120s waits (per-attempt grace) + 2 × 3s inter-attempt sleeps ≈ 366s (~6m6s).
 
 ## Output keys
 
