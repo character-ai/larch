@@ -19,7 +19,7 @@ Forks of `agent-sh/agnix` cannot access org-level secrets. The `add` check (run 
 
 For issues touching only `knowledge-base/`, `crates/agnix-rules/`, or `website/docs/rules/generated/` (rule-metadata or generated-docs corrections), prefix the PR title with `[skip changelog]`. For issues materially changing behavior or user-facing surfaces, do NOT add the prefix and author a `CHANGELOG.md` entry as part of the implementation.
 
-## Step 1 — Parse Arguments
+<!-- step:1 — Parse Arguments -->
 
 Parse `$ARGUMENTS` as: first whitespace-separated token is the upstream issue number; any remaining tokens are passed through verbatim as extra flags to `/implement`.
 
@@ -31,7 +31,7 @@ if ! [[ "$ISSUE_NUMBER" =~ ^[0-9]+$ ]]; then
 fi
 ```
 
-## Step 2 — Verify Upstream Remote and Fetch Issue
+<!-- step:2 — Verify Upstream Remote and Fetch Issue -->
 
 Before touching the fork, confirm the current clone is wired to upstream `agent-sh/agnix` (matches `larch:set-up-forked-open-source-repo`'s output: `origin` is the fork, `upstream` is the canonical repo). Without this guard the skill would happily apply an agnix issue body to a wrong repository.
 
@@ -84,7 +84,7 @@ if [[ "$STATE" != "OPEN" ]]; then
 fi
 ```
 
-## Step 3 — Provision skip-changelog Label on the Fork (Best-Effort)
+<!-- step:3 — Provision skip-changelog Label on the Fork (Best-Effort) -->
 
 Detection uses `gh api` (machine-readable HTTP status) instead of grepping the `gh label list` table, which is not a stable contract.
 
@@ -101,7 +101,7 @@ fi
 
 Failure is non-fatal — the operator can add `[skip changelog]` to the PR title without the label.
 
-## Step 4 — Compose Feature Description
+<!-- step:4 — Compose Feature Description -->
 
 Assemble a feature description that gives `/implement` everything it needs deterministically: the upstream URL + title (provenance), an explicit fix instruction, the verbatim issue body, and the operator-facing CI-monitoring contract.
 
@@ -144,7 +144,7 @@ GUIDANCE
 } > "$FEATURE_FILE"
 ```
 
-## Step 5 — Delegate to /implement
+<!-- step:5 — Delegate to /implement -->
 
 Invoke the Skill tool:
 
