@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [27.5.7] - 2026-05-13
+
+### Changed
+
+- Added a Step 18 capture-session-transcript wrapper that records every transcript capture outcome to execution issues and keeps cleanup best-effort.
+- Bumped larch-log manifests to schema version 2 with operator_cwd and operator_repo_root provenance fields plus updated docs and security notes.
+- Added and wired regression coverage for transcript capture statuses and refreshed existing manifest/log harness assertions.
+
 ## [27.5.6] - 2026-05-13
 
 ### Changed
