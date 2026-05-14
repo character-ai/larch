@@ -15,7 +15,7 @@
 | implement | Step 7 — commit review fixes | 00:00:40 |
 | implement | Step 7a — code flow diagram | 00:00:25 |
 | implement | Step 8 — version bump | 00:00:46 |
-| implement | Step 8b — rebase | 00:05:11 |
+| implement | Step 8b — rebase | 00:05:26 |
 | **Total** | | 00:11:53 |
 
 ## Vendor Task Averages
