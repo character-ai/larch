@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [27.5.64] - 2026-05-14
+
+### Changed
+
+- Add a guarded Step 18 push for post-merge local main run-log commits
+- Improve local-cleanup pull failures with an ahead-of-origin diagnostic
+- Document the new local-cleanup divergence warning behavior
+
 ## [27.5.60] - 2026-05-14
 
 ### Changed
