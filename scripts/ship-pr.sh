@@ -722,6 +722,15 @@ run_ci_fix_vendor() {
     # Only commit when the vendor left uncommitted changes; vendor may have
     # committed its own fix (working tree clean in that case).
     if ! git diff --quiet HEAD 2>/dev/null; then
+        # git diff --quiet HEAD detects uncommitted changes (staged or unstaged);
+        # git-commit.sh with no file args only commits staged ones — stage first.
+        fail_file=$(failure_capture_path "$phase")
+        git add -u > "$fail_file" 2>&1
+        rc=$?
+        if [ "$rc" -ne 0 ]; then
+            record_failure "$phase" "git add -u" "$rc" "$fail_file" "CI Issues"
+            return 1
+        fi
         fail_file=$(failure_capture_path "$phase")
         "$SCRIPT_DIR/git-commit.sh" -m "Fix CI failure" > "$fail_file" 2>&1
         rc=$?
