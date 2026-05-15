@@ -30,6 +30,10 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RESOLVE_REPO="${SCRIPT_DIR}/../../../scripts/resolve-repo.sh"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
+# shellcheck source=scripts/lib-quiet.sh
+source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
+larch_quiet_init
 
 NUMBERS=""
 OUTPUT=""
@@ -88,7 +92,7 @@ for N_RAW in "${NUM_ARRAY[@]}"; do
         continue
     fi
     if ! [[ "$N" =~ ^[0-9]+$ ]]; then
-        echo "FETCH_STATUS_${N}=failed"
+        emit_kv "FETCH_STATUS_${N}" "failed"
         echo "WARN: skipping non-numeric issue id: $N_RAW" >&2
         continue
     fi
@@ -103,7 +107,7 @@ for N_RAW in "${NUM_ARRAY[@]}"; do
     fi
 
     if [[ -z "$JSON" ]]; then
-        echo "FETCH_STATUS_${N}=failed"
+        emit_kv "FETCH_STATUS_${N}" "failed"
         echo "WARN: gh issue view failed for #${N}" >&2
         continue
     fi
@@ -163,7 +167,7 @@ for N_RAW in "${NUM_ARRAY[@]}"; do
         echo ""
     } >> "$OUTPUT"
 
-    echo "FETCH_STATUS_${N}=ok"
+    emit_kv "FETCH_STATUS_${N}" "ok"
 done
 
 # Close the outer envelope.

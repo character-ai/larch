@@ -10,12 +10,18 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
+# shellcheck source=scripts/lib-quiet.sh
+source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
+larch_quiet_init
+
 # --- Singleton guard -----------------------------------------------------------
 # Count running 'claude' processes. pgrep -x matches the exact binary name.
 SESSION_COUNT=0
 SESSION_COUNT=$(pgrep -x claude 2>/dev/null | wc -l | tr -d ' ') || SESSION_COUNT=0
 
-echo "SESSION_COUNT=$SESSION_COUNT"
+emit_kv SESSION_COUNT "$SESSION_COUNT"
 
 if [[ "$SESSION_COUNT" -gt 1 ]]; then
     echo "**⚠ cleanup: $SESSION_COUNT Claude sessions detected. Aborting to protect active session state.**" >&2
@@ -41,7 +47,7 @@ if [[ -d "$CACHE_DIR" ]]; then
     done < <(find "$CACHE_DIR" -mindepth 1 -maxdepth 1 -print0 2>/dev/null) || true
 fi
 
-echo "CACHE_REMOVED=$CACHE_REMOVED"
+emit_kv CACHE_REMOVED "$CACHE_REMOVED"
 
 # --- Clean /tmp larch patterns -------------------------------------------------
 TMP_REMOVED=0
@@ -80,10 +86,10 @@ for pattern in "${TMP_PATTERNS[@]}"; do
     done
 done
 
-echo "TMP_REMOVED=$TMP_REMOVED"
+emit_kv TMP_REMOVED "$TMP_REMOVED"
 
 # --- Summary ------------------------------------------------------------------
-echo ""
-echo "Cleanup complete:"
-echo "  ~/.cache/larch/sessions/: $CACHE_REMOVED entries removed"
-echo "  /tmp (larch patterns):    $TMP_REMOVED entries removed"
+emit_breadcrumb ""
+emit_breadcrumb "Cleanup complete:"
+emit_breadcrumb "  ~/.cache/larch/sessions/: $CACHE_REMOVED entries removed"
+emit_breadcrumb "  /tmp (larch patterns):    $TMP_REMOVED entries removed"

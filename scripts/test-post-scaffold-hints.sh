@@ -20,6 +20,8 @@
 
 set -euo pipefail
 
+export LARCH_QUIET_DISABLE=1
+
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 HINTS="$REPO_ROOT/skills/create-skill/scripts/post-scaffold-hints.sh"
 

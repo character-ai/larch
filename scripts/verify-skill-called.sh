@@ -69,6 +69,11 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
+
 usage() {
     cat >&2 <<'EOF'
 Usage: verify-skill-called.sh MODE
@@ -141,9 +146,9 @@ if [[ "$mode_count" -gt 1 ]]; then
     usage; exit 1
 fi
 
-emit() {
-    printf 'VERIFIED=%s\n' "$1"
-    printf 'REASON=%s\n' "$2"
+emit_result() {
+    emit_kv VERIFIED "$1"
+    emit_kv REASON "$2"
 }
 
 # --- Mode dispatch -----------------------------------------------------------
@@ -158,18 +163,18 @@ case "$MODE" in
         # ensures symlinks to non-regular targets (e.g., /dev/null) report
         # REASON=not_regular_file rather than misleading REASON=empty_file.
         if [[ ! -e "$SENTINEL_PATH" ]]; then
-            emit "false" "missing_path"
+            emit_result "false" "missing_path"
             exit 0
         fi
         if [[ ! -f "$SENTINEL_PATH" ]]; then
-            emit "false" "not_regular_file"
+            emit_result "false" "not_regular_file"
             exit 0
         fi
         if [[ ! -s "$SENTINEL_PATH" ]]; then
-            emit "false" "empty_file"
+            emit_result "false" "empty_file"
             exit 0
         fi
-        emit "true" "ok"
+        emit_result "true" "ok"
         exit 0
         ;;
 
@@ -183,7 +188,7 @@ case "$MODE" in
             exit 1
         fi
         if [[ ! -f "$STDOUT_FILE_PATH" ]]; then
-            emit "false" "missing_stdout_file"
+            emit_result "false" "missing_stdout_file"
             exit 0
         fi
         # `--` stops option parsing so a regex beginning with `-` is not
@@ -199,8 +204,8 @@ case "$MODE" in
         grep_rc=$?
         set -e
         case "$grep_rc" in
-            0) emit "true" "ok" ;;
-            1) emit "false" "no_match" ;;
+            0) emit_result "true" "ok" ;;
+            1) emit_result "false" "no_match" ;;
             *)
                 echo "ERROR: grep failed (exit $grep_rc) — regex may be malformed or file unreadable" >&2
                 exit 1
@@ -245,26 +250,26 @@ case "$MODE" in
             ok)
                 ;;
             missing_main_ref)
-                emit "false" "missing_main_ref"
+                emit_result "false" "missing_main_ref"
                 exit 0
                 ;;
             git_error)
-                emit "false" "git_error"
+                emit_result "false" "git_error"
                 exit 0
                 ;;
             *)
                 # Defensive: unknown status means the lib changed contract
                 # without our knowledge. Fail-closed.
-                emit "false" "git_error"
+                emit_result "false" "git_error"
                 exit 0
                 ;;
         esac
 
         actual_delta=$((actual_total - COMMIT_BEFORE_COUNT))
         if [[ "$actual_delta" -eq "$COMMIT_DELTA_EXPECTED" ]]; then
-            emit "true" "ok"
+            emit_result "true" "ok"
         else
-            emit "false" "commit_delta_mismatch"
+            emit_result "false" "commit_delta_mismatch"
         fi
         exit 0
         ;;

@@ -9,6 +9,12 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
+# shellcheck source=scripts/lib-quiet.sh
+source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
+larch_quiet_init
+
 TMPDIR=""
 SUMMARY_FILE=""
 CHILDREN_FILE=""
@@ -95,5 +101,5 @@ mv "$OUT_TMP" "$OUT" || {
   echo "ERROR=failed to write umbrella body: $OUT" >&2; exit 1
 }
 
-printf 'UMBRELLA_BODY_FILE=%s\n' "$OUT"
-printf 'UMBRELLA_TITLE_HINT=[UMBRELLA] %s\n' "$TITLE_HINT"
+emit_kv UMBRELLA_BODY_FILE "$OUT"
+emit_kv UMBRELLA_TITLE_HINT "[UMBRELLA] $TITLE_HINT"

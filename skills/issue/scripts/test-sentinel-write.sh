@@ -36,6 +36,11 @@ fi
 TMPDIR_TEST="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR_TEST"' EXIT
 
+# Run write-sentinel.sh in quiet mode so larch_err routes to FD4 (= caller's 2>file).
+# LARCH_QUIET_LOG_FILE overrides the default log path so larch_quiet_init writes to a
+# deterministic temp file rather than a per-PID path that outlives the test.
+export LARCH_QUIET_LOG_FILE="$TMPDIR_TEST/quiet.log"
+
 PASS_COUNT=0
 FAIL_COUNT=0
 

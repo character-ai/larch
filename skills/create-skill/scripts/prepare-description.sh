@@ -39,6 +39,12 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
+# shellcheck source=scripts/lib-quiet.sh
+source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
+larch_quiet_init
+
 NAME=""
 DESCRIPTION_FILE=""
 DESCRIPTION=""
@@ -58,23 +64,23 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "$NAME" ]]; then
-  echo "ERROR=Missing required --name argument."
+  emit_kv ERROR "Missing required --name argument."
   exit 1
 fi
 
 if [[ -n "$DESCRIPTION_FILE" && -n "$DESCRIPTION" ]]; then
-  echo "ERROR=--description-file and --description are mutually exclusive; pass exactly one."
+  emit_kv ERROR "--description-file and --description are mutually exclusive; pass exactly one."
   exit 1
 fi
 
 if [[ -z "$DESCRIPTION_FILE" && -z "$DESCRIPTION" ]]; then
-  echo "ERROR=Missing description input; pass either --description-file <path> or --description <text>."
+  emit_kv ERROR "Missing description input; pass either --description-file <path> or --description <text>."
   exit 1
 fi
 
 if [[ -n "$DESCRIPTION_FILE" ]]; then
   if [[ ! -f "$DESCRIPTION_FILE" ]]; then
-    echo "ERROR=--description-file '$DESCRIPTION_FILE' does not exist."
+    emit_kv ERROR "--description-file '$DESCRIPTION_FILE' does not exist."
     exit 1
   fi
   # Read the file's content into DESC_VAR, preserving trailing content. Use
@@ -89,7 +95,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VALIDATE_ARGS="$SCRIPT_DIR/validate-args.sh"
 
 if [[ ! -x "$VALIDATE_ARGS" ]]; then
-  echo "ERROR=validate-args.sh not found or not executable at $VALIDATE_ARGS."
+  emit_kv ERROR "validate-args.sh not found or not executable at $VALIDATE_ARGS."
   exit 1
 fi
 
@@ -141,7 +147,7 @@ ERROR_LINE="$(echo "$VOUT" | grep -E '^ERROR=' || true)"
 ERROR_TEXT="${ERROR_LINE#ERROR=}"
 
 if [[ "$VALID_LINE" == "VALID=true" ]]; then
-  echo "MODE=verbatim"
+  emit_kv MODE "verbatim"
   exit 0
 fi
 
@@ -155,20 +161,20 @@ fi
 if [[ "$ERROR_TEXT" == *"Description contains newlines or control characters"* ]] \
    || [[ "$ERROR_TEXT" == "Description length ("* ]]; then
   if banned_class="$(contains_banned_token "$DESC_VAR")"; then
-    echo "MODE=abort"
-    echo "ERROR=Description contains synthesis-trigger class plus additional anti-patterns ($banned_class). Synthesis disabled for mixed-input cases. Original validator error: $ERROR_TEXT"
+    emit_kv MODE "abort"
+    emit_kv ERROR "Description contains synthesis-trigger class plus additional anti-patterns ($banned_class). Synthesis disabled for mixed-input cases. Original validator error: $ERROR_TEXT"
     exit 0
   fi
-  echo "MODE=needs-synthesis"
+  emit_kv MODE "needs-synthesis"
   if [[ "$ERROR_TEXT" == "Description length ("* ]]; then
-    echo "REASON=length-exceeds-cap"
+    emit_kv REASON "length-exceeds-cap"
   else
-    echo "REASON=newlines-or-control-chars"
+    emit_kv REASON "newlines-or-control-chars"
   fi
   exit 0
 fi
 
 # Any other validator failure: abort with the original ERROR text.
-echo "MODE=abort"
-echo "ERROR=$ERROR_TEXT"
+emit_kv MODE "abort"
+emit_kv ERROR "$ERROR_TEXT"
 exit 0

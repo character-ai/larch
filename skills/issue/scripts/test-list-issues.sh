@@ -136,7 +136,7 @@ run_helper() {
     EXPECTED_DAYS="$1"
     export EXPECTED_DAYS
     set +e
-    PATH="$FAKE_BIN:$PATH" "$HELPER" --repo owner/repo --closed-window-days "$1" >"$stdout_file" 2>"$stderr_file"
+    PATH="$FAKE_BIN:$PATH" LARCH_QUIET_DISABLE=1 "$HELPER" --repo owner/repo --closed-window-days "$1" >"$stdout_file" 2>"$stderr_file"
     rc=$?
     set -e
     unset EXPECTED_DAYS

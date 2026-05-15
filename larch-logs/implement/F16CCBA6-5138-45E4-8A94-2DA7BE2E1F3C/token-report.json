@@ -1,0 +1,284 @@
+{
+  "vendors": [
+    "claude",
+    "codex",
+    "cursor"
+  ],
+  "claude": {
+    "per_step": [
+      {
+        "step": "Step 0 — preflight",
+        "totals": {
+          "input": 2,
+          "cache_read": 303312,
+          "cache_create": 1261,
+          "output": 1295,
+          "total": 305870
+        },
+        "skills": [
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 2,
+              "cache_read": 303312,
+              "cache_create": 1261,
+              "output": 1295,
+              "total": 305870
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 0.5 — tracking issue",
+        "totals": {
+          "input": 9,
+          "cache_read": 1381113,
+          "cache_create": 4396,
+          "output": 3272,
+          "total": 1388790
+        },
+        "skills": [
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 9,
+              "cache_read": 1381113,
+              "cache_create": 4396,
+              "output": 3272,
+              "total": 1388790
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 1 — design plan",
+        "totals": {
+          "input": 68,
+          "cache_read": 11884843,
+          "cache_create": 77760,
+          "output": 40451,
+          "total": 12003122
+        },
+        "skills": [
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 68,
+              "cache_read": 11884843,
+              "cache_create": 77760,
+              "output": 40451,
+              "total": 12003122
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 2 — implementation",
+        "totals": {
+          "input": 358,
+          "cache_read": 103605209,
+          "cache_create": 269497,
+          "output": 151927,
+          "total": 104026991
+        },
+        "skills": [
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 358,
+              "cache_read": 103605209,
+              "cache_create": 269497,
+              "output": 151927,
+              "total": 104026991
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 8 — version bump",
+        "totals": {
+          "input": 26,
+          "cache_read": 9024561,
+          "cache_create": 43137,
+          "output": 6873,
+          "total": 9074597
+        },
+        "skills": [
+          {
+            "skill": "bump-version",
+            "totals": {
+              "input": 8,
+              "cache_read": 2297746,
+              "cache_create": 5524,
+              "output": 1290,
+              "total": 2304568
+            }
+          },
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 18,
+              "cache_read": 6726815,
+              "cache_create": 37613,
+              "output": 5583,
+              "total": 6770029
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 130,
+          "cache_read": 51668198,
+          "cache_create": 1347819,
+          "output": 49843,
+          "total": 53065990
+        },
+        "skills": [
+          {
+            "skill": "bump-version",
+            "totals": {
+              "input": 102,
+              "cache_read": 41800962,
+              "cache_create": 473662,
+              "output": 42668,
+              "total": 42317394
+            }
+          },
+          {
+            "skill": "inferred:Step 8b — rebase",
+            "totals": {
+              "input": 28,
+              "cache_read": 9867236,
+              "cache_create": 874157,
+              "output": 7175,
+              "total": 10748596
+            }
+          }
+        ]
+      }
+    ],
+    "totals": {
+      "input": 593,
+      "cache_read": 177867236,
+      "cache_create": 1743870,
+      "output": 253661,
+      "total": 179865360
+    }
+  },
+  "codex": {
+    "per_step": [
+      {
+        "step": "Step 0 — preflight",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 0.5 — tracking issue",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 1 — design plan",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 2 — implementation",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 107698
+        }
+      },
+      {
+        "step": "Step 8 — version bump",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      }
+    ],
+    "totals": {
+      "input": 0,
+      "output": 0,
+      "total": 107698
+    }
+  },
+  "cursor": {
+    "per_step": [
+      {
+        "step": "Step 0 — preflight",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 0.5 — tracking issue",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 1 — design plan",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 2 — implementation",
+        "totals": {
+          "input": 359141,
+          "output": 51449,
+          "total": 4266718
+        }
+      },
+      {
+        "step": "Step 8 — version bump",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 10,
+          "output": 12,
+          "total": 52
+        }
+      }
+    ],
+    "totals": {
+      "input": 359151,
+      "output": 51461,
+      "total": 4266770
+    }
+  }
+}

@@ -58,6 +58,15 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-}"
+if [[ -z "$PLUGIN_ROOT" || ! -f "$PLUGIN_ROOT/scripts/lib-quiet.sh" ]]; then
+  PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd -P)"
+fi
+# shellcheck source=scripts/lib-quiet.sh
+source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
+larch_quiet_init
+
 NAME=""
 DESCRIPTION=""
 TARGET_DIR=""
@@ -68,15 +77,43 @@ FEATURE_SPEC_FILE=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --name)               NAME="$2";              shift 2 ;;
-    --description)        DESCRIPTION="$2";       shift 2 ;;
-    --target-dir)         TARGET_DIR="$2";        shift 2 ;;
-    --local-token)        LOCAL_TOKEN="$2";       shift 2 ;;
-    --plugin-token)       PLUGIN_TOKEN="$2";      shift 2 ;;
-    --multi-step)         MULTI_STEP="$2";        shift 2 ;;
-    --feature-spec-file)  FEATURE_SPEC_FILE="$2"; shift 2 ;;
+    --name)
+      [[ $# -ge 2 ]] || { larch_err "ERROR=--name requires a value"; exit 1; }
+      NAME="$2"
+      shift 2
+      ;;
+    --description)
+      [[ $# -ge 2 ]] || { larch_err "ERROR=--description requires a value"; exit 1; }
+      DESCRIPTION="$2"
+      shift 2
+      ;;
+    --target-dir)
+      [[ $# -ge 2 ]] || { larch_err "ERROR=--target-dir requires a value"; exit 1; }
+      TARGET_DIR="$2"
+      shift 2
+      ;;
+    --local-token)
+      [[ $# -ge 2 ]] || { larch_err "ERROR=--local-token requires a value"; exit 1; }
+      LOCAL_TOKEN="$2"
+      shift 2
+      ;;
+    --plugin-token)
+      [[ $# -ge 2 ]] || { larch_err "ERROR=--plugin-token requires a value"; exit 1; }
+      PLUGIN_TOKEN="$2"
+      shift 2
+      ;;
+    --multi-step)
+      [[ $# -ge 2 ]] || { larch_err "ERROR=--multi-step requires a value"; exit 1; }
+      MULTI_STEP="$2"
+      shift 2
+      ;;
+    --feature-spec-file)
+      [[ $# -ge 2 ]] || { larch_err "ERROR=--feature-spec-file requires a value"; exit 1; }
+      FEATURE_SPEC_FILE="$2"
+      shift 2
+      ;;
     *)
-      echo "ERROR=Unknown argument: $1" >&2
+      larch_err "ERROR=Unknown argument: $1"
       exit 1
       ;;
   esac
@@ -86,7 +123,7 @@ for arg in NAME DESCRIPTION TARGET_DIR LOCAL_TOKEN PLUGIN_TOKEN; do
   if [[ -z "${!arg}" ]]; then
     # Lowercase via tr — portable to bash 3.2 (macOS default).
     arg_flag="$(printf '%s' "$arg" | tr '[:upper:]' '[:lower:]' | tr '_' '-')"
-    echo "ERROR=Missing required argument --${arg_flag}" >&2
+    larch_err "ERROR=Missing required argument --${arg_flag}"
     exit 1
   fi
 done
@@ -96,7 +133,7 @@ done
 # prose and YAML escaping would surface as visible \" / \\ artifacts.
 if [[ -n "$FEATURE_SPEC_FILE" ]]; then
   if [[ ! -f "$FEATURE_SPEC_FILE" || ! -r "$FEATURE_SPEC_FILE" ]]; then
-    echo "ERROR=Cannot read --feature-spec-file: $FEATURE_SPEC_FILE" >&2
+    larch_err "ERROR=Cannot read --feature-spec-file: $FEATURE_SPEC_FILE"
     exit 1
   fi
   FEATURE_SPEC="$(cat "$FEATURE_SPEC_FILE")"
@@ -111,7 +148,7 @@ mkdir -p "$PARENT_DIR"
 
 # Final leaf: mkdir (no -p) so collision and concurrent-invocation races fail loudly.
 if ! mkdir "$TARGET_DIR" 2>/dev/null; then
-  echo "ERROR=Target directory already exists: $TARGET_DIR" >&2
+  larch_err "ERROR=Target directory already exists: $TARGET_DIR"
   exit 1
 fi
 
@@ -141,7 +178,7 @@ case "$TARGET_DIR" in
   */.claude/skills/*) SKILL_REL=".claude/skills/${NAME_LEAF}" ;;
   */skills/*)         SKILL_REL="skills/${NAME_LEAF}" ;;
   *)
-    echo "ERROR=Unable to derive skill-relative path from --target-dir=$TARGET_DIR (expected it to contain /.claude/skills/ or /skills/)." >&2
+    larch_err "ERROR=Unable to derive skill-relative path from --target-dir=$TARGET_DIR (expected it to contain /.claude/skills/ or /skills/)."
     exit 1
     ;;
 esac
@@ -236,4 +273,4 @@ fi
 # Atomic move into place.
 mv "$TMP_FILE" "$TARGET_DIR/SKILL.md"
 
-echo "RENDERED=$TARGET_DIR/SKILL.md"
+emit_kv RENDERED "$TARGET_DIR/SKILL.md"

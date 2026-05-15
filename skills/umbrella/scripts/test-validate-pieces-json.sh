@@ -5,6 +5,8 @@
 
 set -euo pipefail
 
+export LARCH_QUIET_DISABLE=1
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 VALIDATOR="$SCRIPT_DIR/validate-pieces-json.sh"
 TMPDIR_TEST=$(mktemp -d -t test-validate-pieces-json-XXXXXX)

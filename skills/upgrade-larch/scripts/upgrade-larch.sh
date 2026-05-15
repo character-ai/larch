@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
+# shellcheck source=scripts/lib-quiet.sh
+source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
+larch_quiet_init
+# Restore original stdout so progress and the installed version line reach the operator.
+[ "${LARCH_QUIET_PID:-}" = "$$" ] && exec 1>&3
+
 recover() {
     echo "" >&2
     echo "Recovery: run these commands manually to reinstall:" >&2
@@ -9,21 +17,21 @@ recover() {
 }
 trap recover ERR
 
-echo "Uninstalling larch plugin..."
+emit_breadcrumb "Uninstalling larch plugin..."
 claude plugin uninstall larch@larch-local 2>&1 || true
 
-echo "Removing larch-local marketplace..."
+emit_breadcrumb "Removing larch-local marketplace..."
 claude plugin marketplace remove larch-local 2>&1 || true
 
-echo "Re-adding larch marketplace from GitHub..."
+emit_breadcrumb "Re-adding larch marketplace from GitHub..."
 claude plugin marketplace add character-ai/larch 2>&1
 
-echo "Installing larch plugin..."
+emit_breadcrumb "Installing larch plugin..."
 claude plugin install larch@larch-local 2>&1
 
-echo ""
-echo "Installed larch plugin version:"
+emit_breadcrumb ""
+emit_breadcrumb "Installed larch plugin version:"
 claude plugin list 2>&1 | grep -A2 'larch@larch-local' || true
 
-echo ""
-echo "Upgrade complete. Restart Claude Code to apply the new version."
+emit_breadcrumb ""
+emit_breadcrumb "Upgrade complete. Restart Claude Code to apply the new version."

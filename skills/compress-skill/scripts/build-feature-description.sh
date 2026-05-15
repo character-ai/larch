@@ -39,6 +39,10 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
+# shellcheck source=scripts/lib-quiet.sh
+source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
+larch_quiet_init
 
 ARG=""
 while [[ $# -gt 0 ]]; do
@@ -82,15 +86,15 @@ resolve_dir() {
 TARGET_DIR=""
 if [[ "$ARG" = /* ]]; then
   if ! TARGET_DIR="$(resolve_dir "$ARG")"; then
-    printf 'STATUS=not_found\n'
-    printf 'ERROR=No SKILL.md at absolute path: %s\n' "$ARG"
+    emit_kv STATUS "not_found"
+    emit_kv ERROR "No SKILL.md at absolute path: $ARG"
     exit 0
   fi
 else
   # Same name regex as /create-skill scaffolding.
   if ! [[ "$ARG" =~ ^[a-z][a-z0-9-]*$ ]]; then
-    printf 'STATUS=bad_name\n'
-    printf 'ERROR=Invalid skill name %s — must match ^[a-z][a-z0-9-]*$ or be an absolute path.\n' "$ARG"
+    emit_kv STATUS "bad_name"
+    emit_kv ERROR "Invalid skill name $ARG — must match ^[a-z][a-z0-9-]*$ or be an absolute path."
     exit 0
   fi
   TRIED=()
@@ -115,8 +119,8 @@ else
     if TARGET_DIR="$(resolve_dir "$CANDIDATE")"; then :; fi
   fi
   if [[ -z "$TARGET_DIR" ]]; then
-    printf 'STATUS=not_found\n'
-    printf 'ERROR=Could not resolve skill %s. Tried: %s\n' "$ARG" "${TRIED[*]}"
+    emit_kv STATUS "not_found"
+    emit_kv ERROR "Could not resolve skill $ARG. Tried: ${TRIED[*]}"
     exit 0
   fi
 fi
@@ -258,8 +262,8 @@ FEATURE_EOF
 
 # --- Emit machine output ---
 
-printf 'STATUS=ok\n'
-printf 'TARGET_DIR=%s\n' "$TARGET_DIR"
-printf 'SKILL_NAME=%s\n' "$SKILL_NAME"
-printf 'FILE_COUNT=%s\n' "$FILE_COUNT"
-printf 'FEATURE_FILE=%s\n' "$FEATURE_FILE"
+emit_kv STATUS "ok"
+emit_kv TARGET_DIR "$TARGET_DIR"
+emit_kv SKILL_NAME "$SKILL_NAME"
+emit_kv FILE_COUNT "$FILE_COUNT"
+emit_kv FEATURE_FILE "$FEATURE_FILE"

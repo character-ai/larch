@@ -1,6 +1,15 @@
 # shellcheck shell=bash
 # Sourced by setup-forked-open-source-repo.sh.
 
+_remotes_user_err() {
+  local msg=$1
+  if command -v larch_err >/dev/null 2>&1; then
+    larch_err "$msg"
+  else
+    printf '%s\n' "$msg" >&2
+  fi
+}
+
 normalize_github_url() {
   local url host owner repo rest tuple
   url="${1:-}"
@@ -271,7 +280,7 @@ _assert_worktree_clean() {
   local path
   path="$1"
   if [[ -n "$(git -C "$path" status --porcelain)" ]]; then
-    printf "ERROR: working tree '%s' is dirty; commit or stash before running\n" "$path" >&2
+    _remotes_user_err "$(printf "ERROR: working tree '%s' is dirty; commit or stash before running\n" "$path")"
     return 1
   fi
 }
@@ -286,7 +295,7 @@ _assert_worktree_no_op_in_progress() {
   git_dir="$(git -C "$path" rev-parse --absolute-git-dir 2>/dev/null)" || return 1
   for sentinel in MERGE_HEAD REBASE_HEAD rebase-apply rebase-merge CHERRY_PICK_HEAD REVERT_HEAD; do
     if [[ -e "$git_dir/$sentinel" ]]; then
-      printf "ERROR: git operation in progress in '%s' (%s); resolve it before running\n" "$path" "$sentinel" >&2
+      _remotes_user_err "$(printf "ERROR: git operation in progress in '%s' (%s); resolve it before running\n" "$path" "$sentinel")"
       return 1
     fi
   done

@@ -5,7 +5,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=skills/set-up-forked-open-source-repo/scripts/lib-remotes.sh
 source "$SCRIPT_DIR/lib-remotes.sh"
 
-PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd)}"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-}"
+if [[ -z "$PLUGIN_ROOT" || ! -f "$PLUGIN_ROOT/scripts/lib-quiet.sh" ]]; then
+  PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd -P)"
+fi
+# shellcheck source=scripts/lib-quiet.sh
+source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
+larch_quiet_init
 REDACTOR="$PLUGIN_ROOT/scripts/redact-secrets.sh"
 
 UPSTREAM=""
@@ -20,23 +26,27 @@ GH_HOST="github.com"
 PREFLIGHT_REMOTE_CLASSIFICATION=""
 
 usage() {
-  cat >&2 <<'EOF'
+  local fd=2
+  [[ "${LARCH_QUIET_PID:-}" == "$$" ]] && fd=4
+  cat >&"$fd" <<'EOF'
 Usage: setup-forked-open-source-repo.sh --upstream owner/repo --fork owner/repo [--mirror-confirmed] [--init-submodules]
 EOF
 }
 
 redact_file() {
-  local file
+  local file outfd
   file="$1"
+  outfd=2
+  [[ "${LARCH_QUIET_PID:-}" == "$$" ]] && outfd=4
   if [[ -x "$REDACTOR" ]]; then
-    "$REDACTOR" <"$file"
+    "$REDACTOR" <"$file" >&"$outfd"
   else
-    cat "$file"
+    cat "$file" >&"$outfd"
   fi
 }
 
 die() {
-  printf 'ERROR: %s\n' "$*" >&2
+  larch_err "ERROR: $*"
   exit 1
 }
 
@@ -52,7 +62,7 @@ die() {
 # `phase_verify`). Pre-rewrite die calls (`phase_preflight`, `phase_github`)
 # may use plain `die` because no remote mutation has happened yet.
 phase_die() {
-  printf 'ERROR: %s\n' "$*" >&2
+  larch_err "ERROR: $*"
   false
 }
 
@@ -124,8 +134,8 @@ snapshot_remote_state() {
 restore_remote_state() {
   local keys key line value
   if [[ "${LARCH_FORKED_REPO_INJECT_FAILURE:-}" == "rollback" ]]; then
-    printf 'RECOVERY_REPORT rollback_failed=true reason=injected-rollback-failure\n' >&2
-    printf 'RECOVERY_REPORT snapshot=%s journal=%s\n' "$SNAPSHOT_FILE" "$JOURNAL_FILE" >&2
+    larch_err "RECOVERY_REPORT rollback_failed=true reason=injected-rollback-failure"
+    larch_err "RECOVERY_REPORT snapshot=$SNAPSHOT_FILE journal=$JOURNAL_FILE"
     return 1
   fi
 
@@ -149,9 +159,9 @@ remote_phase_error() {
   local rc
   rc="${1:-$?}"
   if [[ "$REMOTE_PHASE_ACTIVE" == "true" ]]; then
-    printf 'ERROR: remote rewrite failed; attempting rollback\n' >&2
+    larch_err "ERROR: remote rewrite failed; attempting rollback"
     if ! restore_remote_state; then
-      printf 'RECOVERY_REPORT rollback_failed=true forward_exit=%s\n' "$rc" >&2
+      larch_err "RECOVERY_REPORT rollback_failed=true forward_exit=$rc"
     fi
   fi
   exit "$rc"
@@ -258,8 +268,8 @@ phase_preflight() {
 
   gh_err="$(mktemp "${TMPDIR:-/tmp}/larch-forked-gh-auth.XXXXXX")"
   if ! gh auth status --hostname "$GH_HOST" >/dev/null 2>"$gh_err"; then
-    printf 'ERROR: gh auth status failed:\n' >&2
-    redact_file "$gh_err" >&2
+    larch_err "ERROR: gh auth status failed:"
+    redact_file "$gh_err"
     rm -f "$gh_err"
     exit 1
   fi
@@ -296,13 +306,13 @@ phase_github() {
 
   if ! gh repo view "$FORK" --json nameWithOwner,parent,defaultBranchRef >"$gh_out" 2>"$gh_err"; then
     if grep -Eiq '404|not[_ -]?found|Could not resolve to a Repository' "$gh_err" "$gh_out"; then
-      printf 'Fork %s was not found. Create it at https://%s/%s/fork, then rerun this skill.\n' "$FORK" "${GH_HOST:-github.com}" "$UPSTREAM"
-      printf 'SETUP_FORKED_REPO_RESULT=fork_missing\n'
+      emit_breadcrumb "Fork $FORK was not found. Create it at https://${GH_HOST:-github.com}/$UPSTREAM/fork, then rerun this skill."
+      emit_kv SETUP_FORKED_REPO_RESULT "fork_missing"
       rm -f "$gh_out" "$gh_err"
       exit 0
     fi
-    printf 'ERROR: gh repo view failed:\n' >&2
-    redact_file "$gh_err" >&2
+    larch_err "ERROR: gh repo view failed:"
+    redact_file "$gh_err"
     rm -f "$gh_out" "$gh_err"
     exit 1
   fi
@@ -316,8 +326,8 @@ phase_github() {
   # accepts only an object root, which is the only shape `gh repo view --json`
   # ever returns.
   if ! jq -e 'type == "object"' "$gh_out" >/dev/null 2>"$gh_err"; then
-    printf 'ERROR: gh repo view returned invalid JSON:\n' >&2
-    redact_file "$gh_err" >&2
+    larch_err "ERROR: gh repo view returned invalid JSON:"
+    redact_file "$gh_err"
     rm -f "$gh_out" "$gh_err"
     exit 1
   fi
@@ -362,16 +372,16 @@ phase_github() {
   [[ -n "$fork_sha" ]] || die "fork has no refs/heads/main"
 
   if [[ "$upstream_sha" == "$fork_sha" ]]; then
-    printf 'SETUP_FORKED_REPO_RESULT=mirror_skipped_in_sync\n'
+    emit_kv SETUP_FORKED_REPO_RESULT "mirror_skipped_in_sync"
     return 0
   fi
 
-  printf 'Fork main differs from upstream main: upstream=%s fork=%s. Confirming will overwrite fork branches/tags to match upstream.\n' "$upstream_sha" "$fork_sha"
+  emit_breadcrumb "Fork main differs from upstream main: upstream=$upstream_sha fork=$fork_sha. Confirming will overwrite fork branches/tags to match upstream."
   if [[ "$MIRROR_CONFIRMED" != "true" ]]; then
     if [[ ! -t 0 ]]; then
       die "mirror divergence detected; rerun with --mirror-confirmed"
     fi
-    printf 'Mirror-sync fork now? [y/N] '
+    emit_breadcrumb "Mirror-sync fork now? [y/N] "
     read -r reply
     case "$reply" in
       y|Y|yes|YES) ;;
@@ -402,7 +412,7 @@ phase_github() {
   post_sha="$(remote_main_sha "$fork_https" 2>/dev/null || true)"
   rm -rf "$tmp"
   [[ "$post_sha" == "$pushed_sha" ]] || die "fork refs/heads/main did not match what was pushed (expected $pushed_sha, got ${post_sha:-<none>})"
-  printf 'SETUP_FORKED_REPO_RESULT=mirror_synced\n'
+  emit_kv SETUP_FORKED_REPO_RESULT "mirror_synced"
 }
 
 phase_remotes() {
@@ -443,9 +453,11 @@ phase_remotes() {
       git remote rename "$named_fork" origin
       ;;
     *)
-      printf 'ERROR: ambiguous remote state; refusing to mutate.\n' >&2
-      git remote -v >&2 || true
-      git config --get-regexp '^remote\.' >&2 || true
+      local ufd=2
+      [[ "${LARCH_QUIET_PID:-}" == "$$" ]] && ufd=4
+      printf 'ERROR: ambiguous remote state; refusing to mutate.\n' >&"$ufd"
+      git remote -v >&"$ufd" || true
+      git config --get-regexp '^remote\.' >&"$ufd" || true
       exit 1
       ;;
   esac
@@ -494,14 +506,17 @@ phase_verify() {
   case "${LARCH_FORKED_REPO_INJECT_FAILURE:-}" in
     in-verify) trigger_remote_failure ;;
   esac
-  printf '\nFinal remotes:\n'
+  emit_breadcrumb ""
+  emit_breadcrumb "Final remotes:"
   git remote -v
-  printf '\nDisabled upstream push sentinel:\n'
+  emit_breadcrumb ""
+  emit_breadcrumb "Disabled upstream push sentinel:"
   git config --get-regexp '^remote\.upstream\.pushurl$'
   [[ "$(git config --get branch.main.remote)" == "origin" ]] || phase_die "branch.main.remote is not origin"
   [[ "$(git config --get branch.main.merge)" == "refs/heads/main" ]] || phase_die "branch.main.merge is not refs/heads/main"
-  printf '\nFork workflow: branch off origin/main, push topic branches to origin, and open PRs from %s:<branch> to %s:main.\n' "$FORK" "$UPSTREAM"
-  printf 'SETUP_FORKED_REPO_RESULT=ok\n'
+  emit_breadcrumb ""
+  emit_breadcrumb "Fork workflow: branch off origin/main, push topic branches to origin, and open PRs from $FORK:<branch> to $UPSTREAM:main."
+  emit_kv SETUP_FORKED_REPO_RESULT "ok"
   # Now that all assertions and the success marker have been emitted, drop the
   # rollback flag so subsequent (non-existent) phases or post-main shutdown do
   # not accidentally re-trigger a restore on benign exit signals.

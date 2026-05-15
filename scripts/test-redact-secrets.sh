@@ -24,6 +24,8 @@
 
 set -euo pipefail
 
+export LARCH_QUIET_DISABLE=1
+
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 HELPER="$REPO_ROOT/scripts/redact-secrets.sh"
 CREATE_ONE="$REPO_ROOT/skills/issue/scripts/create-one.sh"
@@ -312,6 +314,8 @@ FAKE_TREE="$TMPROOT/fake-tree"
 mkdir -p "$FAKE_TREE/skills/issue/scripts" "$FAKE_TREE/scripts"
 cp "$CREATE_ONE" "$FAKE_TREE/skills/issue/scripts/create-one.sh"
 # Intentionally do NOT create $FAKE_TREE/scripts/redact-secrets.sh.
+# lib-quiet.sh must be present so create-one.sh can source it.
+cp "$REPO_ROOT/scripts/lib-quiet.sh" "$FAKE_TREE/scripts/lib-quiet.sh"
 chmod +x "$FAKE_TREE/skills/issue/scripts/create-one.sh"
 missing_out=$(bash "$FAKE_TREE/skills/issue/scripts/create-one.sh" --title 'a-title' --body-file "$BODY_FILE" --repo owner/repo --dry-run 2>&1 || true)
 assert_contains "$missing_out" 'ISSUE_FAILED=true' '[edge] missing helper → ISSUE_FAILED=true on stdout'

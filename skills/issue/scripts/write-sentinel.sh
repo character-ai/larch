@@ -55,6 +55,12 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
+# shellcheck source=scripts/lib-quiet.sh
+source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
+larch_quiet_init
+
 PATH_ARG=""
 ISSUES_CREATED=""
 ISSUES_DEDUPLICATED=""
@@ -68,7 +74,7 @@ DRY_RUN="false"
 require_value() {
   local flag="$1" value="${2-}"
   if [[ -z "$value" ]]; then
-    echo "ERROR=Missing value for $flag" >&2
+    larch_err "ERROR=Missing value for $flag"
     exit 1
   fi
 }
@@ -80,16 +86,16 @@ while [[ $# -gt 0 ]]; do
     --issues-deduplicated) require_value "$1" "${2-}"; ISSUES_DEDUPLICATED="$2"; shift 2 ;;
     --issues-failed)       require_value "$1" "${2-}"; ISSUES_FAILED="$2"; shift 2 ;;
     --dry-run)             DRY_RUN="true"; shift ;;
-    *) echo "ERROR=Unknown argument: $1" >&2; exit 1 ;;
+    *) larch_err "ERROR=Unknown argument: $1"; exit 1 ;;
   esac
 done
 
 if [[ -z "$PATH_ARG" ]]; then
-  echo "ERROR=Missing required argument: --path" >&2
+  larch_err "ERROR=Missing required argument: --path"
   exit 1
 fi
 if [[ -z "$ISSUES_CREATED" || -z "$ISSUES_DEDUPLICATED" || -z "$ISSUES_FAILED" ]]; then
-  echo "ERROR=Missing required arguments: --issues-created, --issues-deduplicated, --issues-failed" >&2
+  larch_err "ERROR=Missing required arguments: --issues-created, --issues-deduplicated, --issues-failed"
   exit 1
 fi
 
@@ -97,31 +103,31 @@ fi
 case "$PATH_ARG" in
   /*) ;;
   *)
-    echo "ERROR=--path must be absolute: $PATH_ARG" >&2
+    larch_err "ERROR=--path must be absolute: $PATH_ARG"
     exit 1
     ;;
 esac
 case "$PATH_ARG" in
   *..*)
-    echo "ERROR=--path must not contain '..': $PATH_ARG" >&2
+    larch_err "ERROR=--path must not contain '..': $PATH_ARG"
     exit 1
     ;;
 esac
 
 # Numeric validation.
 if ! [[ "$ISSUES_CREATED" =~ ^[0-9]+$ && "$ISSUES_DEDUPLICATED" =~ ^[0-9]+$ && "$ISSUES_FAILED" =~ ^[0-9]+$ ]]; then
-  echo "ERROR=Counter values must be non-negative integers" >&2
+  larch_err "ERROR=Counter values must be non-negative integers"
   exit 1
 fi
 
 # Gate.
 if [[ "$DRY_RUN" == "true" ]]; then
-  echo "WROTE=false REASON=dry_run" >&2
+  larch_err "WROTE=false REASON=dry_run"
   exit 0
 fi
 
 if [[ "$ISSUES_FAILED" -gt 0 ]]; then
-  echo "WROTE=false REASON=failures" >&2
+  larch_err "WROTE=false REASON=failures"
   exit 0
 fi
 
@@ -141,4 +147,4 @@ TIMESTAMP=$TIMESTAMP
 EOF
 
 mv "$TMPFILE" "$PATH_ARG"
-echo "WROTE=true" >&2
+larch_err "WROTE=true"

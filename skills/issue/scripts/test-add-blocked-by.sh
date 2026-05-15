@@ -108,7 +108,7 @@ run_helper() {
     stdout_file="$TMPDIR_TEST/stdout.$$"
     stderr_file="$TMPDIR_TEST/stderr.$$"
     set +e
-    PATH="$FAKE_GH_DIR:$PATH" "$HELPER" "$@" >"$stdout_file" 2>"$stderr_file"
+    PATH="$FAKE_GH_DIR:$PATH" LARCH_QUIET_DISABLE=1 "$HELPER" "$@" >"$stdout_file" 2>"$stderr_file"
     rc=$?
     set -e
     LAST_STDOUT=$(cat "$stdout_file")

@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+export LARCH_QUIET_DISABLE=1
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT="$SCRIPT_DIR/setup-forked-open-source-repo.sh"
 ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
@@ -203,10 +205,16 @@ new_fixture() {
     git remote add fork "$fork"
     git push fork main >/dev/null
   )
-  git clone "$upstream" "$work" >/dev/null
+  # Newer git warns when cloning a bare repo whose HEAD is not yet set
+  # ("remote HEAD refers to nonexistent ref, unable to checkout"), which can
+  # leave the worktree in a confusing state and break remote classification.
+  git -C "$upstream" symbolic-ref HEAD refs/heads/main 2>/dev/null || true
+  git -C "$fork" symbolic-ref HEAD refs/heads/main 2>/dev/null || true
+  git clone -b main "$upstream" "$work" >/dev/null 2>&1 \
+    || git clone "$upstream" "$work" >/dev/null
   (
     cd "$work"
-    git checkout main >/dev/null
+    git checkout main >/dev/null 2>&1 || true
     git_identity
     git config url."$upstream".insteadOf "https://github.com/acme/project.git"
     git config --add url."$upstream".insteadOf "git@github.com:acme/project.git"
@@ -333,8 +341,12 @@ assert_configured "$WORK"
 
 read_fixture ambiguous_duplicate
 OUT="$BASE/out.txt"
-git -C "$WORK" remote add mine "https://github.com/me/project.git"
-git -C "$WORK" remote add also-mine "git@github.com:me/project.git"
+git -C "$WORK" remote add mine "https://github.com/me/project.git" || fail "git remote add mine failed"
+git -C "$WORK" remote add also-mine "git@github.com:me/project.git" || fail "git remote add also-mine failed"
+# Both transports must register — if one add fails, the classifier can
+# mis-route as state-origin-upstream-named-fork and incorrectly "fix" remotes.
+[[ "$(git -C "$WORK" remote | wc -l | tr -d '[:space:]')" -eq 3 ]] \
+  || fail "ambiguous_duplicate fixture: expected 3 remotes (origin + 2 fork URLs)"
 if run_setup_rc "$WORK" "$OUT"; then fail "ambiguous duplicate fork remotes refuse"; fi
 assert_contains "$OUT" "ambiguous remote state" "ambiguous duplicate fork remotes refuse"
 assert_eq "also-mine mine origin" "$(git -C "$WORK" remote | sort | tr '\n' ' ' | sed 's/ $//')" "ambiguous state is not mutated"

@@ -66,6 +66,12 @@ set -euo pipefail
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 REPO_ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd)
 REDACT_HELPER="$REPO_ROOT/scripts/redact-secrets.sh"
+# Keep lib-quiet on the same resolved tree as redact-secrets.sh (REPO_ROOT),
+# not ${CLAUDE_PLUGIN_ROOT:-…}, so harnesses that copy this script into an
+# isolated fake repo layout still source the adjacent scripts/lib-quiet.sh.
+# shellcheck source=scripts/lib-quiet.sh
+source "$REPO_ROOT/scripts/lib-quiet.sh"
+larch_quiet_init
 
 # redact <text> — prints redacted text on stdout, returns the helper's
 # exit code. Callers MUST invoke this via command substitution combined
@@ -87,8 +93,8 @@ redact() {
 # required: there is no fallback to un-redacted content per the fail-closed
 # defense-in-depth design.
 emit_redaction_failure() {
-    echo "ISSUE_FAILED=true"
-    echo "ISSUE_ERROR=redaction: helper $REDACT_HELPER failed or missing"
+    emit_kv ISSUE_FAILED "true"
+    emit_kv ISSUE_ERROR "redaction: helper $REDACT_HELPER failed or missing"
     exit 3
 }
 
@@ -100,7 +106,9 @@ DRY_RUN=false
 LABELS=()
 
 usage() {
-    cat <<USAGE >&2
+    local fd=2
+    [[ "${LARCH_QUIET_PID:-}" == "$$" ]] && fd=4
+    cat <<USAGE >&"$fd"
 Usage: create-one.sh --title TITLE [--title-prefix PREFIX] [--label L]... \\
                      [--body FILE | --body-file FILE] \\
                      [--repo OWNER/REPO] [--dry-run]
@@ -115,7 +123,7 @@ while [[ $# -gt 0 ]]; do
         --body|--body-file) BODY_FILE="${2:?--body-file requires a value}"; shift 2 ;;
         --repo) REPO="${2:?--repo requires a value}"; shift 2 ;;
         --dry-run) DRY_RUN=true; shift ;;
-        *) echo "Unknown option: $1" >&2; usage; exit 1 ;;
+        *) larch_err "Unknown option: $1"; usage; exit 1 ;;
     esac
 done
 
@@ -133,8 +141,8 @@ TITLE=$(redact "$TITLE") || emit_redaction_failure
 if [[ -z "$REPO" ]]; then
     REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null) || REPO=""
     if [[ -z "$REPO" ]] && [[ "$DRY_RUN" == false ]]; then
-        echo "ISSUE_FAILED=true"
-        echo "ISSUE_ERROR=could not determine repo"
+        emit_kv ISSUE_FAILED "true"
+        emit_kv ISSUE_ERROR "could not determine repo"
         exit 2
     fi
 fi
@@ -182,7 +190,7 @@ for L in "${LABELS[@]+"${LABELS[@]}"}"; do
     if gh label list --repo "$REPO" --search "$L" --json name --jq '.[].name' 2>/dev/null | grep -Fqx -- "$L"; then
         VALID_LABELS+=("$L")
     else
-        echo "WARN: label '$L' does not exist in $REPO, skipping" >&2
+        larch_err "WARN: label '$L' does not exist in $REPO, skipping"
     fi
 done
 
@@ -205,8 +213,8 @@ trap cleanup EXIT
 
 if [[ -n "$BODY_FILE" ]]; then
     if [[ ! -f "$BODY_FILE" ]]; then
-        echo "ISSUE_FAILED=true"
-        echo "ISSUE_ERROR=body file not found: $BODY_FILE"
+        emit_kv ISSUE_FAILED "true"
+        emit_kv ISSUE_ERROR "body file not found: $BODY_FILE"
         exit 1
     fi
     BODY_CONTENT=$(cat "$BODY_FILE")
@@ -224,19 +232,19 @@ fi
 # Dry-run path.
 # ---------------------------------------------------------------------------
 if [[ "$DRY_RUN" == true ]]; then
-    echo "DRY_RUN=true"
-    echo "DRY_RUN_TITLE=$FINAL_TITLE"
-    echo "ISSUE_TITLE=$FINAL_TITLE"
+    emit_kv DRY_RUN "true"
+    emit_kv DRY_RUN_TITLE "$FINAL_TITLE"
+    emit_kv ISSUE_TITLE "$FINAL_TITLE"
     if [[ ${#VALID_LABELS[@]} -gt 0 ]]; then
         DRY_LABELS_JOINED=$(IFS=,; echo "${VALID_LABELS[*]}")
-        echo "DRY_RUN_LABELS=$DRY_LABELS_JOINED"
+        emit_kv DRY_RUN_LABELS "$DRY_LABELS_JOINED"
     fi
     # Body preview: first 300 chars.
     if [[ -n "$BODY_CONTENT" ]]; then
         PREVIEW="${BODY_CONTENT:0:300}"
         # Flatten to single line for key=value.
         PREVIEW_FLAT=$(printf '%s' "$PREVIEW" | tr '\n' ' ' | tr -s ' ')
-        echo "DRY_RUN_BODY_PREVIEW=$PREVIEW_FLAT"
+        emit_kv DRY_RUN_BODY_PREVIEW "$PREVIEW_FLAT"
     fi
     exit 0
 fi
@@ -277,14 +285,14 @@ if ISSUE_JSON=$(gh "${GH_ARGS[@]}" --json id,number,url 2>"$ERR_TMP"); then
         if [[ -z "$ISSUE_NUM" || -z "$ISSUE_URL" || -z "$ISSUE_ID" ]]; then
             REDACTED_OUTPUT=$(redact "$ISSUE_JSON") || emit_redaction_failure
             REDACTED_OUTPUT_FLAT=$(echo "$REDACTED_OUTPUT" | tr '\n' ' ' | head -c 500)
-            echo "ISSUE_FAILED=true"
-            echo "ISSUE_ERROR=gh issue create returned JSON with empty field(s) (output: $REDACTED_OUTPUT_FLAT)"
+            emit_kv ISSUE_FAILED "true"
+            emit_kv ISSUE_ERROR "gh issue create returned JSON with empty field(s) (output: $REDACTED_OUTPUT_FLAT)"
             exit 2
         fi
-        echo "ISSUE_NUMBER=$ISSUE_NUM"
-        echo "ISSUE_URL=$ISSUE_URL"
-        echo "ISSUE_ID=$ISSUE_ID"
-        echo "ISSUE_TITLE=$FINAL_TITLE"
+        emit_kv ISSUE_NUMBER "$ISSUE_NUM"
+        emit_kv ISSUE_URL "$ISSUE_URL"
+        emit_kv ISSUE_ID "$ISSUE_ID"
+        emit_kv ISSUE_TITLE "$FINAL_TITLE"
         exit 0
     fi
     # JSON-parse-failure path: the success-coded output isn't valid JSON.
@@ -308,8 +316,8 @@ if [[ "$USE_FALLBACK" == "true" ]] || (echo "$ERR_CONTENT" | grep -qiE 'unknown 
         if [[ -z "$URL_LINE" ]]; then
             REDACTED_OUTPUT=$(redact "$ISSUE_URL") || emit_redaction_failure
             REDACTED_OUTPUT_FLAT=$(echo "$REDACTED_OUTPUT" | tr '\n' ' ' | head -c 500)
-            echo "ISSUE_FAILED=true"
-            echo "ISSUE_ERROR=gh issue create did not emit a URL (output: $REDACTED_OUTPUT_FLAT)"
+            emit_kv ISSUE_FAILED "true"
+            emit_kv ISSUE_ERROR "gh issue create did not emit a URL (output: $REDACTED_OUTPUT_FLAT)"
             exit 2
         fi
         ISSUE_NUM=$(echo "$URL_LINE" | grep -oE '[0-9]+$')
@@ -324,12 +332,12 @@ if [[ "$USE_FALLBACK" == "true" ]] || (echo "$ERR_CONTENT" | grep -qiE 'unknown 
             local rollback_err
             rollback_err=$(mktemp)
             if gh issue close --repo "$REPO" "$ISSUE_NUM" --reason "not planned" >/dev/null 2>"$rollback_err"; then
-                echo "ROLLBACK: closed orphan issue #$ISSUE_NUM after id-lookup failure" >&2
+                larch_err "ROLLBACK: closed orphan issue #$ISSUE_NUM after id-lookup failure"
             else
                 local rb_redacted rb_flat
                 rb_redacted=$(redact "$(cat "$rollback_err")") || rb_redacted="(redaction-helper failed)"
                 rb_flat=$(echo "$rb_redacted" | tr '\n' ' ' | head -c 300)
-                echo "ROLLBACK_FAILED: could not close orphan issue #$ISSUE_NUM ($URL_LINE): $rb_flat. Manually close." >&2
+                larch_err "ROLLBACK_FAILED: could not close orphan issue #$ISSUE_NUM ($URL_LINE): $rb_flat. Manually close."
             fi
             rm -f "$rollback_err"
         }
@@ -341,36 +349,36 @@ if [[ "$USE_FALLBACK" == "true" ]] || (echo "$ERR_CONTENT" | grep -qiE 'unknown 
                 REDACTED_ERR=$(redact "$ID_ERR") || emit_redaction_failure
                 ERR_FLAT=$(echo "$REDACTED_ERR" | tr '\n' ' ' | head -c 500)
                 rollback_orphan
-                echo "ISSUE_FAILED=true"
-                echo "ISSUE_ERROR=id-lookup returned non-numeric id for #$ISSUE_NUM (output: $ERR_FLAT)"
+                emit_kv ISSUE_FAILED "true"
+                emit_kv ISSUE_ERROR "id-lookup returned non-numeric id for #$ISSUE_NUM (output: $ERR_FLAT)"
                 exit 2
             fi
-            echo "ISSUE_NUMBER=$ISSUE_NUM"
-            echo "ISSUE_URL=$URL_LINE"
-            echo "ISSUE_ID=$ISSUE_ID"
-            echo "ISSUE_TITLE=$FINAL_TITLE"
+            emit_kv ISSUE_NUMBER "$ISSUE_NUM"
+            emit_kv ISSUE_URL "$URL_LINE"
+            emit_kv ISSUE_ID "$ISSUE_ID"
+            emit_kv ISSUE_TITLE "$FINAL_TITLE"
             exit 0
         else
             ID_ERR=$(cat "$ERR_TMP")
             REDACTED_ERR=$(redact "$ID_ERR") || emit_redaction_failure
             ERR_FLAT=$(echo "$REDACTED_ERR" | tr '\n' ' ' | head -c 500)
             rollback_orphan
-            echo "ISSUE_FAILED=true"
-            echo "ISSUE_ERROR=id-lookup failed for #$ISSUE_NUM after create: $ERR_FLAT"
+            emit_kv ISSUE_FAILED "true"
+            emit_kv ISSUE_ERROR "id-lookup failed for #$ISSUE_NUM after create: $ERR_FLAT"
             exit 2
         fi
     else
         ERR_CONTENT=$(cat "$ERR_TMP")
         REDACTED_ERR=$(redact "$ERR_CONTENT") || emit_redaction_failure
         ERR_FLAT=$(echo "$REDACTED_ERR" | tr '\n' ' ' | head -c 500)
-        echo "ISSUE_FAILED=true"
-        echo "ISSUE_ERROR=$ERR_FLAT"
+        emit_kv ISSUE_FAILED "true"
+        emit_kv ISSUE_ERROR "$ERR_FLAT"
         exit 2
     fi
 fi
 # Genuine API failure (not a flag-incompatibility). Redact and surface.
 REDACTED_ERR=$(redact "$ERR_CONTENT") || emit_redaction_failure
 ERR_FLAT=$(echo "$REDACTED_ERR" | tr '\n' ' ' | head -c 500)
-echo "ISSUE_FAILED=true"
-echo "ISSUE_ERROR=$ERR_FLAT"
+emit_kv ISSUE_FAILED "true"
+emit_kv ISSUE_ERROR "$ERR_FLAT"
 exit 2
