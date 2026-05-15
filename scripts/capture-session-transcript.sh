@@ -149,4 +149,12 @@ if ! "$SCRIPT_DIR/larch-log.sh" commit \
     emit_status "commit-failed" "write succeeded but git commit failed; transcript remains under the staging log root."
 fi
 
+current_branch=$(git symbolic-ref --short HEAD 2>/dev/null || true)
+if [ "$current_branch" = "main" ]; then
+    ahead=$(git rev-list --count "origin/main..HEAD" 2>/dev/null || echo 0)
+    if [ "${ahead:-0}" -gt 0 ]; then
+        git push origin main >/dev/null 2>&1 || true
+    fi
+fi
+
 emit_status "captured" "session transcript was written and committed."
