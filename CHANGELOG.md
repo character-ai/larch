@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [27.6.1] - 2026-05-15
+
+### Changed
+
+- Harden Step 18 transcript flush handling to fetch origin/main, push only the single current-run log commit, and reset failed or orphaned flush-only commits back to origin/main.
+- Add pre-pull local-cleanup orphan removal for prior larch-log flush commits while preserving non-flush local work.
+- Document the new push and cleanup outcomes, wire a local-cleanup harness, and extend transcript tests for push success, push rejection, prior orphans, and non-flush ahead work.
+
 ## [27.6.0] - 2026-05-15
 
 ### Changed

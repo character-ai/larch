@@ -35,6 +35,28 @@ assert_contains() {
     fi
 }
 
+assert_equals() {
+    local label="$1"
+    local got="$2"
+    local expected="$3"
+    if [ "$got" = "$expected" ]; then
+        pass "$label"
+    else
+        fail "$label (expected $expected; got $got)"
+    fi
+}
+
+assert_not_equals() {
+    local label="$1"
+    local got="$2"
+    local unexpected="$3"
+    if [ "$got" != "$unexpected" ]; then
+        pass "$label"
+    else
+        fail "$label (unexpectedly got $unexpected)"
+    fi
+}
+
 run_capture() {
     local label="$1"
     local expected="$2"
@@ -76,6 +98,74 @@ run_capture() {
     else
         fail "$label execution issue log missing"
     fi
+}
+
+# --- Git topology helpers for Step 18 push outcome tests ---
+
+config_git_identity() {
+    local repo="$1"
+    git -C "$repo" config user.email "ci@test"
+    git -C "$repo" config user.name "Test CI"
+}
+
+init_git_repo_main() {
+    local repo="$1"
+    mkdir -p "$repo"
+    git -C "$repo" init -q
+    git -C "$repo" symbolic-ref HEAD refs/heads/main
+    config_git_identity "$repo"
+}
+
+commit_path() {
+    local repo="$1"
+    local path="$2"
+    local content="$3"
+    local subject="$4"
+    mkdir -p "$(dirname "$repo/$path")"
+    printf '%s\n' "$content" > "$repo/$path"
+    git -C "$repo" add -- "$path"
+    git -C "$repo" commit -q -m "$subject"
+}
+
+setup_remote_repo() {
+    local label="$1"
+    local remote="$TMP/$label-origin.git"
+    local seed="$TMP/$label-seed"
+    local repo="$TMP/$label-push-repo"
+
+    git init -q --bare "$remote"
+    init_git_repo_main "$seed"
+    commit_path "$seed" "README.md" "initial" "init"
+    git -C "$seed" remote add origin "$remote"
+    git -C "$seed" push -q -u origin main
+    git --git-dir="$remote" symbolic-ref HEAD refs/heads/main
+
+    git clone -q "$remote" "$repo"
+    git -C "$repo" checkout -q main
+    config_git_identity "$repo"
+    printf '%s\t%s\n' "$repo" "$remote"
+}
+
+run_capture_in_repo() {
+    local label="$1"
+    local repo="$2"
+    local transcript="$TMP/$label-transcript.jsonl"
+    local source_file="$TMP/$label-source.env"
+    local log_root="$TMP/$label-staging/larch-logs"
+    local issues="$TMP/$label-execution-issues.md"
+
+    printf '{"type":"message","text":"%s"}\n' "$label" > "$transcript"
+    printf 'TRANSCRIPT_PATH=%s\n' "$transcript" > "$source_file"
+
+    LAST_CAPTURE_OUT="$(cd "$repo" && env "PATH=${PATH:-}" "HOME=$TMP/default-home" "$CAPTURE" \
+        --source-file "$source_file" \
+        --log-root "$log_root" \
+        --skill implement \
+        --run-id "$label" \
+        --no-logs-commit false \
+        --execution-issues-log "$issues")"
+    LAST_CAPTURE_ISSUES="$issues"
+    assert_contains "$label stdout status" "$LAST_CAPTURE_OUT" "SESSION_TRANSCRIPT_STATUS=captured"
 }
 
 # Returns the Claude project dir path for a given repo dir and home dir,
@@ -174,6 +264,76 @@ printf '{"type":"message","text":"stale"}\n' > "$fallback_stale_transcript"
 touch -t 200001010000 "$fallback_stale_transcript"
 printf 'test-session\n' > "$fallback_stale_impl/session-id"
 run_capture "$fallback_stale_label" "source-file-missing" "" "false" "$fallback_stale_impl" "$fallback_stale_home"
+
+# Step 18 push outcome tests.
+
+IFS=$'\t' read -r push_success_repo push_success_remote < <(setup_remote_repo "push-success")
+run_capture_in_repo "push-success" "$push_success_repo"
+assert_contains \
+    "push-success warning" \
+    "$(cat "$LAST_CAPTURE_ISSUES")" \
+    "session-transcript status=pushed"
+push_success_head=$(git -C "$push_success_repo" rev-parse HEAD)
+push_success_remote_head=$(git --git-dir="$push_success_remote" rev-parse refs/heads/main)
+assert_equals "push-success remote received commit" "$push_success_remote_head" "$push_success_head"
+
+IFS=$'\t' read -r push_fail_repo push_fail_remote < <(setup_remote_repo "push-fail-abandoned")
+cat > "$push_fail_remote/hooks/pre-receive" <<'HOOK'
+#!/usr/bin/env bash
+exit 1
+HOOK
+chmod +x "$push_fail_remote/hooks/pre-receive"
+push_fail_origin_before=$(git -C "$push_fail_repo" rev-parse origin/main)
+run_capture_in_repo "push-fail-abandoned" "$push_fail_repo"
+assert_contains \
+    "push-fail-abandoned warning" \
+    "$(cat "$LAST_CAPTURE_ISSUES")" \
+    "session-transcript status=push-failed-abandoned"
+push_fail_head=$(git -C "$push_fail_repo" rev-parse HEAD)
+assert_equals "push-fail-abandoned reset to origin/main" "$push_fail_head" "$push_fail_origin_before"
+
+IFS=$'\t' read -r push_orphan_repo _push_orphan_remote < <(setup_remote_repo "push-orphan-multi")
+commit_path \
+    "$push_orphan_repo" \
+    "larch-logs/implement/prior-run/session-transcript.jsonl" \
+    '{"type":"message","text":"prior"}' \
+    "chore(larch-logs): flush implement run prior-run"
+push_orphan_origin_before=$(git -C "$push_orphan_repo" rev-parse origin/main)
+run_capture_in_repo "push-orphan-multi" "$push_orphan_repo"
+assert_contains \
+    "push-orphan-multi warning" \
+    "$(cat "$LAST_CAPTURE_ISSUES")" \
+    "session-transcript status=prior-orphans-abandoned"
+push_orphan_head=$(git -C "$push_orphan_repo" rev-parse HEAD)
+assert_equals "push-orphan-multi reset to origin/main" "$push_orphan_head" "$push_orphan_origin_before"
+
+IFS=$'\t' read -r push_non_flush_repo _push_non_flush_remote < <(setup_remote_repo "push-non-flush-diff")
+commit_path "$push_non_flush_repo" "operator-note.txt" "keep me" "operator local note"
+push_non_flush_origin_before=$(git -C "$push_non_flush_repo" rev-parse origin/main)
+run_capture_in_repo "push-non-flush-diff" "$push_non_flush_repo"
+assert_contains \
+    "push-non-flush-diff warning" \
+    "$(cat "$LAST_CAPTURE_ISSUES")" \
+    "session-transcript status=push-skipped-non-flush-diff"
+push_non_flush_head=$(git -C "$push_non_flush_repo" rev-parse HEAD)
+assert_not_equals "push-non-flush-diff keeps local ahead commit" "$push_non_flush_head" "$push_non_flush_origin_before"
+if [ -f "$push_non_flush_repo/operator-note.txt" ]; then
+    pass "push-non-flush-diff preserves non-flush file"
+else
+    fail "push-non-flush-diff preserves non-flush file"
+fi
+
+IFS=$'\t' read -r fetch_fail_repo _fetch_fail_remote < <(setup_remote_repo "fetch-failed")
+# Point origin to a bad URL so git fetch fails, keeping origin/main at its prior value.
+git -C "$fetch_fail_repo" remote set-url origin "file:///nonexistent-repo-XXXXXX"
+fetch_fail_before=$(git -C "$fetch_fail_repo" rev-parse origin/main)
+run_capture_in_repo "fetch-failed" "$fetch_fail_repo"
+assert_contains \
+    "fetch-failed warning" \
+    "$(cat "$LAST_CAPTURE_ISSUES")" \
+    "session-transcript status=push-skipped-fetch-failed"
+fetch_fail_head=$(git -C "$fetch_fail_repo" rev-parse HEAD)
+assert_not_equals "fetch-failed keeps local commit (no reset)" "$fetch_fail_head" "$fetch_fail_before"
 
 echo
 echo "Passed: $PASS"

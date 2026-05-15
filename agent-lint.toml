@@ -382,6 +382,8 @@ exclude = [
   "scripts/test-larch-log.md",
   "scripts/test-capture-session-transcript.sh",
   "scripts/test-capture-session-transcript.md",
+  "scripts/test-local-cleanup.sh",
+  "scripts/test-local-cleanup.md",
   "scripts/test-larch-logs-manifest.sh",
   "scripts/test-larch-logs-manifest.md",
   "scripts/test-larch-logs-batches.sh",
