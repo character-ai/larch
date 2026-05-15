@@ -207,21 +207,21 @@
       {
         "step": "Step 7a — code flow diagram",
         "totals": {
-          "input": 9,
-          "cache_read": 1829463,
-          "cache_create": 5640,
-          "output": 4905,
-          "total": 1840017
+          "input": 11,
+          "cache_read": 2240353,
+          "cache_create": 6190,
+          "output": 6823,
+          "total": 2253377
         },
         "skills": [
           {
             "skill": "larch:implement",
             "totals": {
-              "input": 9,
-              "cache_read": 1829463,
-              "cache_create": 5640,
-              "output": 4905,
-              "total": 1840017
+              "input": 11,
+              "cache_read": 2240353,
+              "cache_create": 6190,
+              "output": 6823,
+              "total": 2253377
             }
           }
         ]
@@ -229,21 +229,42 @@
       {
         "step": "Step 8 — version bump",
         "totals": {
-          "input": 0,
-          "cache_read": 0,
-          "cache_create": 0,
-          "output": 0,
-          "total": 0
+          "input": 24,
+          "cache_read": 4733456,
+          "cache_create": 43760,
+          "output": 7745,
+          "total": 4784985
         },
-        "skills": []
+        "skills": [
+          {
+            "skill": "bump-version",
+            "totals": {
+              "input": 10,
+              "cache_read": 1778406,
+              "cache_create": 6209,
+              "output": 1759,
+              "total": 1786384
+            }
+          },
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 14,
+              "cache_read": 2955050,
+              "cache_create": 37551,
+              "output": 5986,
+              "total": 2998601
+            }
+          }
+        ]
       }
     ],
     "totals": {
-      "input": 147,
-      "cache_read": 24925848,
-      "cache_create": 579592,
-      "output": 65459,
-      "total": 25571046
+      "input": 173,
+      "cache_read": 30070194,
+      "cache_create": 623902,
+      "output": 75122,
+      "total": 30769391
     }
   },
   "codex": {
