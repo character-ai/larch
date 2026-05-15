@@ -65,7 +65,7 @@ awk '
     in_step = 0
     in_bash = 0
   }
-  in_step && /^```bash[[:space:]]*$/ {
+  in_step && /^```(bash|sh|shell)[[:space:]]*$/ {
     in_bash = 1
     next
   }
@@ -99,9 +99,9 @@ esac
 
 [[ -f "$LIB_FINALIZE_KEYS_SH" ]] || fail "scripts/lib-finalize-state-keys.sh missing"
 [[ -f "$REPO_ROOT/scripts/lib-finalize-state-keys.md" ]] || fail "scripts/lib-finalize-state-keys.sh must have sibling lib-finalize-state-keys.md"
-grep -qF 'lib-finalize-state-keys.sh' "$RESTORE_FINALIZE_SH" \
+grep -qE '^[[:space:]]*(source|\.)[[:space:]].*lib-finalize-state-keys\.sh' "$RESTORE_FINALIZE_SH" \
   || fail "restore-finalize-state.sh must source lib-finalize-state-keys.sh"
-grep -qF 'lib-finalize-state-keys.sh' "$SHIP_PR_SH" \
+grep -qE '^[[:space:]]*(source|\.)[[:space:]].*lib-finalize-state-keys\.sh' "$SHIP_PR_SH" \
   || fail "ship-pr.sh must source lib-finalize-state-keys.sh"
 
 echo "All assertions passed."
