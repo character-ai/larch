@@ -26,3 +26,5 @@ Shell helpers under `scripts/` and `skills/*/scripts/` use this wrapper before r
 ## Test Harness
 
 `scripts/test-resolve-repo.sh` covers `gh repo view` success, git remote fallback, and complete resolution failure.
+
+On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.

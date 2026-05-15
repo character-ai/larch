@@ -35,3 +35,5 @@ The regression harness is `make test-tally-plan-review`, wired into `test-harnes
 ## Edit In Sync
 
 Update this contract, `test-tally-plan-review.sh`, `skills/design/SKILL.md`, `skills/design/references/plan-review.md`, and `skills/design/references/heavy-worker.md` together when ballot or artifact formats change.
+
+On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.

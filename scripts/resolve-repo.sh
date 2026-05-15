@@ -3,10 +3,14 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
+
 RESOLVED=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null) || RESOLVED=""
 
 if [[ -z "$RESOLVED" ]]; then
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     RESOLVED=$("$SCRIPT_DIR/github-remote-repo.sh" origin 2>/dev/null) || RESOLVED=""
 fi
 
@@ -15,4 +19,4 @@ if [[ -z "$RESOLVED" || ! "$RESOLVED" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; t
     exit 1
 fi
 
-printf '%s\n' "$RESOLVED"
+emit "$RESOLVED"

@@ -3,6 +3,8 @@
 
 set -euo pipefail
 
+export LARCH_QUIET_DISABLE=1
+
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 SCRIPT="$REPO_ROOT/scripts/resolve-repo.sh"
 TMPROOT="$(mktemp -d "${TMPDIR:-/tmp}/larch-resolve-repo.XXXXXX")"

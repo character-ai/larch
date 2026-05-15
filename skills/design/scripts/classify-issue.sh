@@ -5,6 +5,10 @@ set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd -P)
 REPO_ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd -P)
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/../../../scripts/lib-quiet.sh"
+larch_quiet_init
+
 RUN_EXTERNAL_AGENT="${RUN_EXTERNAL_AGENT:-$REPO_ROOT/scripts/run-external-agent.sh}"
 
 FEATURE_DESCRIPTION=""
@@ -214,6 +218,6 @@ else
     esac
 fi
 
-printf 'CLASSIFICATION=%s\n' "$classification"
-printf 'CLASSIFICATION_REASON=%s\n' "$reason"
-printf 'CLASSIFICATION_SOURCE=%s\n' "$source"
+emit_kv CLASSIFICATION "$classification"
+emit_kv CLASSIFICATION_REASON "$reason"
+emit_kv CLASSIFICATION_SOURCE "$source"

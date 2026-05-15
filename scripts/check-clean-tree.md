@@ -58,3 +58,5 @@ bash scripts/test-check-clean-tree.sh
 ## Edit-in-sync
 
 When changing this helper's stdout contract, update both callers, `scripts/preflight.md`, `skills/fix-issue/scripts/find-lock-issue.md`, and `scripts/test-check-clean-tree.sh` in the same PR.
+
+On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.

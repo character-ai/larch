@@ -85,13 +85,17 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/../../../scripts/lib-quiet.sh"
+larch_quiet_init
+
 RESOLVE_REPO="${SCRIPT_DIR}/../../../scripts/resolve-repo.sh"
 
 # ---------------------------------------------------------------------------
 # Resolve repo identity (shared across subcommands)
 # ---------------------------------------------------------------------------
 REPO=$("$RESOLVE_REPO" 2>/dev/null) || {
-    echo "ERROR=Failed to resolve repository name"
+    emit_kv ERROR "Failed to resolve repository name"
     exit 1
 }
 
@@ -113,7 +117,7 @@ REPO=$("$RESOLVE_REPO" 2>/dev/null) || {
 BLOCKER_HELPERS="${SCRIPT_DIR}/blocker-helpers.sh"
 # shellcheck source=skills/fix-issue/scripts/blocker-helpers.sh
 source "$BLOCKER_HELPERS" || {
-    echo "ERROR=Failed to source blocker-helpers.sh: $BLOCKER_HELPERS"
+    emit_kv ERROR "Failed to source blocker-helpers.sh: $BLOCKER_HELPERS"
     exit 1
 }
 
@@ -346,24 +350,24 @@ cmd_detect() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --issue) issue="${2:?--issue requires a value}"; shift 2 ;;
-            *) echo "ERROR=Unknown option for detect: $1"; exit 2 ;;
+            *) emit_kv ERROR "Unknown option for detect: $1"; exit 2 ;;
         esac
     done
     if [[ -z "$issue" ]]; then
-        echo "ERROR=Usage: umbrella-handler.sh detect --issue N"
+        emit_kv ERROR "Usage: umbrella-handler.sh detect --issue N"
         exit 2
     fi
     fetch_issue_basics "$issue" || {
-        echo "ERROR=Failed to fetch issue #$issue"
+        emit_kv ERROR "Failed to fetch issue #$issue"
         exit 1
     }
     # Title-only detection (post-#846 — body is no longer consulted).
     if is_umbrella_title "$ISSUE_TITLE"; then
-        echo "IS_UMBRELLA=true"
-        echo "UMBRELLA_TITLE=$ISSUE_TITLE"
+        emit_kv IS_UMBRELLA true
+        emit_kv UMBRELLA_TITLE "$ISSUE_TITLE"
         return 0
     fi
-    echo "IS_UMBRELLA=false"
+    emit_kv IS_UMBRELLA false
 }
 
 # ---------------------------------------------------------------------------
@@ -374,27 +378,27 @@ cmd_list_children() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --issue) issue="${2:?--issue requires a value}"; shift 2 ;;
-            *) echo "ERROR=Unknown option for list-children: $1"; exit 2 ;;
+            *) emit_kv ERROR "Unknown option for list-children: $1"; exit 2 ;;
         esac
     done
     if [[ -z "$issue" ]]; then
-        echo "ERROR=Usage: umbrella-handler.sh list-children --issue N"
+        emit_kv ERROR "Usage: umbrella-handler.sh list-children --issue N"
         exit 2
     fi
     fetch_issue_basics "$issue" || {
-        echo "ERROR=Failed to fetch issue #$issue"
+        emit_kv ERROR "Failed to fetch issue #$issue"
         exit 1
     }
     local children
     children=$(printf '%s' "$ISSUE_BODY" | parse_children_from_body "$issue")
     if [[ -z "$children" ]]; then
-        echo "CHILDREN="
+        emit_kv CHILDREN ""
         return 0
     fi
     # Single-line space-separated representation for downstream parsing.
     local joined
     joined=$(printf '%s\n' "$children" | tr '\n' ' ' | sed 's/[[:space:]]*$//')
-    echo "CHILDREN=$joined"
+    emit_kv CHILDREN "$joined"
 }
 
 # ---------------------------------------------------------------------------
@@ -405,15 +409,15 @@ cmd_pick_child() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --issue) issue="${2:?--issue requires a value}"; shift 2 ;;
-            *) echo "ERROR=Unknown option for pick-child: $1"; exit 2 ;;
+            *) emit_kv ERROR "Unknown option for pick-child: $1"; exit 2 ;;
         esac
     done
     if [[ -z "$issue" ]]; then
-        echo "ERROR=Usage: umbrella-handler.sh pick-child --issue N"
+        emit_kv ERROR "Usage: umbrella-handler.sh pick-child --issue N"
         exit 2
     fi
     fetch_issue_basics "$issue" || {
-        echo "ERROR=Failed to fetch issue #$issue"
+        emit_kv ERROR "Failed to fetch issue #$issue"
         exit 1
     }
     local children
@@ -421,8 +425,8 @@ cmd_pick_child() {
     # FINDING_3: zero parsed children is NOT vacuous ALL_CLOSED — emit
     # NO_ELIGIBLE_CHILD with a specific reason.
     if [[ -z "$children" ]]; then
-        echo "NO_ELIGIBLE_CHILD=true"
-        echo "BLOCKING_REASON=no parseable children found in umbrella body"
+        emit_kv NO_ELIGIBLE_CHILD true
+        emit_kv BLOCKING_REASON "no parseable children found in umbrella body"
         return 0
     fi
     # Walk children in body order. Track per-child state for the aggregate
@@ -450,8 +454,8 @@ cmd_pick_child() {
         # Open child — try eligibility.
         all_closed=false
         if child_eligible "$child_num"; then
-            echo "CHILD_NUMBER=$child_num"
-            echo "CHILD_TITLE=$CHILD_TITLE"
+            emit_kv CHILD_NUMBER "$child_num"
+            emit_kv CHILD_TITLE "$CHILD_TITLE"
             return 0
         fi
         if ! $first_blocking_set; then
@@ -462,19 +466,19 @@ cmd_pick_child() {
     # Walked all children without finding an eligible one.
     if $all_closed; then
         # FINDING_3: at least one child was parsed AND all were CLOSED.
-        echo "ALL_CLOSED=true"
+        emit_kv ALL_CLOSED true
         return 0
     fi
     # Some children open but none eligible.
-    echo "NO_ELIGIBLE_CHILD=true"
-    echo "BLOCKING_REASON=${first_blocking_reason:-no eligible child found}"
+    emit_kv NO_ELIGIBLE_CHILD true
+    emit_kv BLOCKING_REASON "${first_blocking_reason:-no eligible child found}"
 }
 
 # ---------------------------------------------------------------------------
 # Dispatch
 # ---------------------------------------------------------------------------
 if [[ $# -lt 1 ]]; then
-    echo "ERROR=Usage: umbrella-handler.sh <detect|list-children|pick-child> --issue N"
+    emit_kv ERROR "Usage: umbrella-handler.sh <detect|list-children|pick-child> --issue N"
     exit 2
 fi
 
@@ -485,5 +489,5 @@ case "$SUBCOMMAND" in
     detect)        cmd_detect "$@" ;;
     list-children) cmd_list_children "$@" ;;
     pick-child)    cmd_pick_child "$@" ;;
-    *)             echo "ERROR=Unknown subcommand: $SUBCOMMAND"; exit 2 ;;
+    *)             emit_kv ERROR "Unknown subcommand: $SUBCOMMAND"; exit 2 ;;
 esac

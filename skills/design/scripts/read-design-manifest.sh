@@ -3,6 +3,11 @@
 
 set -euo pipefail
 
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd -P)
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/../../../scripts/lib-quiet.sh"
+larch_quiet_init
+
 # Round 3 FINDING_R3_G: the sibling .md contract promises this script never
 # exits non-zero for manifest rejection — every reject path emits
 # MANIFEST_FAILED=true / ERROR=<token> and exits 0. Without an ERR trap,
@@ -12,8 +17,8 @@ set -euo pipefail
 # failure and emit the documented internal-error envelope.
 # shellcheck disable=SC2317
 on_err() {
-    echo "MANIFEST_FAILED=true"
-    echo "ERROR=internal-error"
+    emit_kv MANIFEST_FAILED true
+    emit_kv ERROR internal-error
     exit 0
 }
 trap on_err ERR
@@ -37,16 +42,16 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         *)
-            echo "MANIFEST_FAILED=true"
-            echo "ERROR=unknown-flag"
+            emit_kv MANIFEST_FAILED true
+            emit_kv ERROR unknown-flag
             exit 0
             ;;
     esac
 done
 
 if [[ -z "$IMPLEMENT_TMPDIR" ]]; then
-    echo "MANIFEST_FAILED=true"
-    echo "ERROR=missing-implement-tmpdir"
+    emit_kv MANIFEST_FAILED true
+    emit_kv ERROR missing-implement-tmpdir
     exit 0
 fi
 
@@ -56,8 +61,8 @@ if [[ -z "$MANIFEST" ]]; then
 fi
 
 fail() {
-    echo "MANIFEST_FAILED=true"
-    echo "ERROR=$1"
+    emit_kv MANIFEST_FAILED true
+    emit_kv ERROR "$1"
     exit 0
 }
 
@@ -196,10 +201,13 @@ fi
 # All path validations passed. Emit success envelope: MANIFEST_OK=true must
 # precede the buffered KEY=value lines so a fail-closed consumer sees a clean
 # envelope (FINDING_1 of /review Round 1).
-echo "MANIFEST_OK=true"
-printf '%s' "$PATH_OUTPUT"
-printf 'TIMESTAMP=%s\n' "$TIMESTAMP"
-printf 'SESSION_ID=%s\n' "$SESSION_ID"
+emit_kv MANIFEST_OK true
+while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ -n "$line" ]] || continue
+    emit "$line"
+done <<< "$PATH_OUTPUT"
+emit_kv TIMESTAMP "$TIMESTAMP"
+emit_kv SESSION_ID "$SESSION_ID"
 
 if [[ "$EMIT_LOAD_BREADCRUMB" = true ]]; then
     # Human-readable breadcrumb. Deliberately uses "plan=<basename>" rather than
@@ -207,5 +215,5 @@ if [[ "$EMIT_LOAD_BREADCRUMB" = true ]]; then
     # non-anchored `grep 'PLAN_FILE='` extraction over the reader's stdout —
     # the load-bearing envelope key stays unique to the canonical-path line
     # emitted earlier by check_path.
-    printf '📥 1: design plan — manifest loaded (plan=%s)\n' "$(basename "$PLAN_FILE")"
+    emit_breadcrumb "📥 1: design plan — manifest loaded (plan=$(basename "$PLAN_FILE"))"
 fi

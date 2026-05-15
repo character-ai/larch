@@ -29,3 +29,5 @@ The regression harness is `make test-emit-plan`, wired into `test-harnesses-1`.
 ## Edit In Sync
 
 Update this contract, `test-emit-plan.sh`, `skills/design/SKILL.md`, and `skills/design/references/heavy-worker.md` together when the plan diff-line grammar changes.
+
+On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.

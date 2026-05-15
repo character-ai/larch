@@ -57,3 +57,5 @@ If the comment-stream probe itself fails (transient `gh` API blip), the helper t
 ## Test harness
 
 `skills/fix-issue/scripts/test-finalize-umbrella.sh` is the offline regression harness. PATH-prepended `gh` stub. Fixtures cover: finalize-success, finalize-idempotent-when-marker-comment-exists (FINDING_2), finalize-idempotent-when-already-DONE-prefix, finalize-idempotent-when-already-CLOSED, rename-failed-but-close-success (best-effort rename invariant), round-trip marker pass-through, `[DONE]` missing-marker fall-through, and `[DONE]` skip preservation when detection is false or the marker already exists. Run manually via `bash skills/fix-issue/scripts/test-finalize-umbrella.sh`. Wired into `make lint` via the `test-finalize-umbrella` target under `test-harnesses`. Both `.sh` and `.md` are in `agent-lint.toml`'s exclude list per the Makefile-only-reference pattern.
+
+On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.

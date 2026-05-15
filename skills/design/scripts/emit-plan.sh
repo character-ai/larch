@@ -3,6 +3,11 @@
 
 set -euo pipefail
 
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd -P)
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/../../../scripts/lib-quiet.sh"
+larch_quiet_init
+
 DESIGN_TMPDIR=""
 
 usage() {
@@ -39,7 +44,7 @@ PLAN_FILE="$DESIGN_TMPDIR/plan.txt"
 DIFF_LINES_FILE="$DESIGN_TMPDIR/diff-lines.txt"
 
 if [[ ! -s "$PLAN_FILE" ]]; then
-    printf '%s\n' 'EMIT_PLAN_STATUS=missing-diff-lines'
+    emit_kv EMIT_PLAN_STATUS missing-diff-lines
     exit 1
 fi
 
@@ -49,14 +54,14 @@ case "$last_line" in
         diff_lines="${last_line#diff_lines: }"
         ;;
     *)
-        printf '%s\n' 'EMIT_PLAN_STATUS=missing-diff-lines'
+        emit_kv EMIT_PLAN_STATUS missing-diff-lines
         exit 1
         ;;
 esac
 
 case "$diff_lines" in
     ''|*[!0-9]*)
-        printf '%s\n' 'EMIT_PLAN_STATUS=missing-diff-lines'
+        emit_kv EMIT_PLAN_STATUS missing-diff-lines
         exit 1
         ;;
 esac
@@ -70,5 +75,5 @@ printf '%s\n' "$diff_lines" > "$tmp"
 mv "$tmp" "$DIFF_LINES_FILE"
 trap - EXIT
 
-printf 'EMIT_PLAN_STATUS=ok\n'
-printf 'DIFF_LINES=%s\n' "$diff_lines"
+emit_kv EMIT_PLAN_STATUS ok
+emit_kv DIFF_LINES "$diff_lines"

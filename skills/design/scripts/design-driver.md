@@ -32,3 +32,5 @@ The regression harness is `make test-design-driver`, wired into `test-harnesses-
 ## Edit In Sync
 
 Update this contract, `test-design-driver.sh`, and `skills/design/SKILL.md` together when adding or renaming ACTION records.
+
+On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.

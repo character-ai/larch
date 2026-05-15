@@ -23,3 +23,5 @@ The output file includes title, labels, created-at timestamp, issue body, and ea
 ## Edit-in-sync
 
 When changing the output format, update `/fix-issue` Step 2 consumers in `skills/fix-issue/SKILL.md`.
+
+On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.

@@ -71,3 +71,5 @@ Raw source excerpts are never written to stdout or the warnings log.
 ## Test Harness
 
 `scripts/test-mermaid-fragments.sh` covers the pinned reject/accept cases, mixed-fence Markdown mode, output token shape, warnings-log append behavior, and `lint-mermaid-fences.sh` nested-fence handling.
+
+On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.

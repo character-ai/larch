@@ -27,3 +27,5 @@ Primary callers are `/design` Step 0 and prompt-side tests. `/implement` forward
 ## Edit In Sync
 
 Update this file, `scripts/test-write-run-params.sh`, `skills/design/SKILL.md`, and `skills/design/references/heavy-worker.md` whenever the `run-params.json` schema or enum set changes.
+
+On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.

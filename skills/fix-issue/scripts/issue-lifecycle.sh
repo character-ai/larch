@@ -56,6 +56,10 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/../../../scripts/lib-quiet.sh"
+larch_quiet_init
+
 TRACKING_WRITE="${LARCH_TEST_TRACKING_WRITE_PATH:-${SCRIPT_DIR}/../../../scripts/tracking-issue-write.sh}"
 FALSE_POSITIVE_KEYWORDS_LIB="${SCRIPT_DIR}/../../../scripts/false-positive-keywords.sh"
 RESOLVE_REPO="${SCRIPT_DIR}/../../../scripts/resolve-repo.sh"
@@ -104,8 +108,8 @@ cmd_comment() {
     fi
 
     if [ "$lock" = true ] && [ "$lock_no_go" = true ]; then
-        echo "LOCK_ACQUIRED=false"
-        echo "ERROR=--lock and --lock-no-go are mutually exclusive"
+        emit_kv LOCK_ACQUIRED false
+        emit_kv ERROR "--lock and --lock-no-go are mutually exclusive"
         exit 1
     fi
 
@@ -118,8 +122,8 @@ cmd_comment() {
     if [ "$lock" = true ]; then
         local comments_json
         comments_json=$(gh api --paginate --slurp "repos/${REPO}/issues/${issue}/comments" 2>/dev/null | jq 'add // []') || {
-            echo "LOCK_ACQUIRED=false"
-            echo "ERROR=Failed to read comments for lock verification"
+            emit_kv LOCK_ACQUIRED false
+            emit_kv ERROR "Failed to read comments for lock verification"
             exit 1
         }
 
@@ -132,14 +136,14 @@ cmd_comment() {
         trimmed=$(echo "$last_body" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 
         if [ "$trimmed" != "GO" ]; then
-            echo "LOCK_ACQUIRED=false"
-            echo "ERROR=Last comment is no longer GO (found: ${trimmed:-empty})"
+            emit_kv LOCK_ACQUIRED false
+            emit_kv ERROR "Last comment is no longer GO (found: ${trimmed:-empty})"
             exit 1
         fi
 
         if [[ -z "$last_id" ]] || [[ -z "$go_ts" ]]; then
-            echo "LOCK_ACQUIRED=false"
-            echo "ERROR=Failed to extract GO comment id/timestamp for deletion"
+            emit_kv LOCK_ACQUIRED false
+            emit_kv ERROR "Failed to extract GO comment id/timestamp for deletion"
             exit 1
         fi
 
@@ -147,8 +151,8 @@ cmd_comment() {
         # above) as the duplicate-detection sentinel in place of a surviving
         # GO anchor.
         gh api -X DELETE "repos/${REPO}/issues/comments/${last_id}" >/dev/null 2>&1 || {
-            echo "LOCK_ACQUIRED=false"
-            echo "ERROR=Failed to delete GO comment on issue #$issue"
+            emit_kv LOCK_ACQUIRED false
+            emit_kv ERROR "Failed to delete GO comment on issue #$issue"
             exit 1
         }
     fi
@@ -164,8 +168,8 @@ cmd_comment() {
     if [ "$lock_no_go" = true ]; then
         local comments_json
         comments_json=$(gh api --paginate --slurp "repos/${REPO}/issues/${issue}/comments" 2>/dev/null | jq 'add // []') || {
-            echo "LOCK_ACQUIRED=false"
-            echo "ERROR=Failed to read comments for lock-no-go pre-check"
+            emit_kv LOCK_ACQUIRED false
+            emit_kv ERROR "Failed to read comments for lock-no-go pre-check"
             exit 1
         }
 
@@ -178,8 +182,8 @@ cmd_comment() {
             local trimmed
             trimmed=$(echo "$last_body" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
             if [ "$trimmed" = "IN PROGRESS" ]; then
-                echo "LOCK_ACQUIRED=false"
-                echo "ERROR=Issue #$issue is already locked (last comment: IN PROGRESS)"
+                emit_kv LOCK_ACQUIRED false
+                emit_kv ERROR "Issue #$issue is already locked (last comment: IN PROGRESS)"
                 exit 1
             fi
             snapshot_ts=$(echo "$comments_json" | jq -r '.[-1].created_at // empty')
@@ -188,13 +192,13 @@ cmd_comment() {
         if [[ -z "$snapshot_ts" ]]; then
             # No-comment-safe fallback (FINDING_4): use the issue's own createdAt.
             snapshot_ts=$(gh issue view "$issue" "${GH_ISSUE_REPO_ARGS[@]}" --json createdAt --jq '.createdAt // empty' 2>/dev/null) || {
-                echo "LOCK_ACQUIRED=false"
-                echo "ERROR=Failed to read issue #$issue createdAt for snapshot anchor"
+                emit_kv LOCK_ACQUIRED false
+                emit_kv ERROR "Failed to read issue #$issue createdAt for snapshot anchor"
                 exit 1
             }
             if [[ -z "$snapshot_ts" ]]; then
-                echo "LOCK_ACQUIRED=false"
-                echo "ERROR=Failed to determine snapshot anchor timestamp for issue #$issue"
+                emit_kv LOCK_ACQUIRED false
+                emit_kv ERROR "Failed to determine snapshot anchor timestamp for issue #$issue"
                 exit 1
             fi
         fi
@@ -202,8 +206,8 @@ cmd_comment() {
 
     # Post the comment
     gh issue comment "$issue" "${GH_ISSUE_REPO_ARGS[@]}" --body "$body" >/dev/null 2>&1 || {
-        echo "LOCK_ACQUIRED=false"
-        echo "ERROR=Failed to post comment on issue #$issue"
+        emit_kv LOCK_ACQUIRED false
+        emit_kv ERROR "Failed to post comment on issue #$issue"
         exit 1
     }
 
@@ -221,8 +225,8 @@ cmd_comment() {
         sleep "$ISSUE_LIFECYCLE_LOCK_SETTLE_SECONDS"
         local refresh_json
         refresh_json=$(gh api --paginate --slurp "repos/${REPO}/issues/${issue}/comments" 2>/dev/null | jq 'add // []') || {
-            echo "LOCK_ACQUIRED=false"
-            echo "ERROR=Failed to refresh comments for lock-no-go id capture"
+            emit_kv LOCK_ACQUIRED false
+            emit_kv ERROR "Failed to refresh comments for lock-no-go id capture"
             exit 1
         }
         just_posted_id=$(echo "$refresh_json" | jq --arg b "$body" --arg ts "$snapshot_ts" '
@@ -237,8 +241,8 @@ cmd_comment() {
         # condition explicitly rather than letting the lock surface a mis-
         # diagnosed "Duplicate IN PROGRESS" error a few lines down.
         if [[ -z "$just_posted_id" ]]; then
-            echo "LOCK_ACQUIRED=false"
-            echo "ERROR=Failed to identify just-posted IN PROGRESS comment id for lock-no-go duplicate check"
+            emit_kv LOCK_ACQUIRED false
+            emit_kv ERROR "Failed to identify just-posted IN PROGRESS comment id for lock-no-go duplicate check"
             exit 1
         fi
     fi
@@ -250,8 +254,8 @@ cmd_comment() {
 
         local comments_json
         comments_json=$(gh api --paginate --slurp "repos/${REPO}/issues/${issue}/comments" 2>/dev/null | jq 'add // []') || {
-            echo "LOCK_ACQUIRED=false"
-            echo "ERROR=Failed to re-read comments for duplicate check"
+            emit_kv LOCK_ACQUIRED false
+            emit_kv ERROR "Failed to re-read comments for duplicate check"
             exit 1
         }
 
@@ -263,12 +267,12 @@ cmd_comment() {
             [.[] | select(.body == "IN PROGRESS" and .created_at > $ts)] | length')
 
         if [ "$lock_count" -gt 1 ]; then
-            echo "LOCK_ACQUIRED=false"
-            echo "ERROR=Duplicate IN PROGRESS detected ($lock_count found) — concurrent lock race"
+            emit_kv LOCK_ACQUIRED false
+            emit_kv ERROR "Duplicate IN PROGRESS detected ($lock_count found) — concurrent lock race"
             exit 1
         fi
 
-        echo "LOCK_ACQUIRED=true"
+        emit_kv LOCK_ACQUIRED true
     fi
 
     # --lock-no-go post-check: count OTHER IN PROGRESS comments with
@@ -281,8 +285,8 @@ cmd_comment() {
     if [ "$lock_no_go" = true ]; then
         local refresh_json
         refresh_json=$(gh api --paginate --slurp "repos/${REPO}/issues/${issue}/comments" 2>/dev/null | jq 'add // []') || {
-            echo "LOCK_ACQUIRED=false"
-            echo "ERROR=Failed to re-read comments for lock-no-go duplicate check"
+            emit_kv LOCK_ACQUIRED false
+            emit_kv ERROR "Failed to re-read comments for lock-no-go duplicate check"
             exit 1
         }
 
@@ -291,15 +295,15 @@ cmd_comment() {
             [.[] | select(.body == "IN PROGRESS" and .created_at >= $ts and ((.id | tostring) != $self))] | length')
 
         if [ "$race_count" -gt 0 ]; then
-            echo "LOCK_ACQUIRED=false"
-            echo "ERROR=Duplicate IN PROGRESS detected ($race_count concurrent) — lock-no-go race"
+            emit_kv LOCK_ACQUIRED false
+            emit_kv ERROR "Duplicate IN PROGRESS detected ($race_count concurrent) — lock-no-go race"
             exit 1
         fi
 
-        echo "LOCK_ACQUIRED=true"
+        emit_kv LOCK_ACQUIRED true
     fi
 
-    echo "COMMENTED=true"
+    emit_kv COMMENTED true
 }
 
 # ---------------------------------------------------------------------------
@@ -338,9 +342,9 @@ cmd_close() {
     # cmd_update_body's UPDATED=/SKIPPED= keys never leak into cmd_close's
     # stdout — the caller-visible contract is CLOSED=true (or CLOSED=false + ERROR=).
     if [[ -n "$pr_url" ]]; then
-        cmd_update_body --issue "$issue" --pr-url "$pr_url" >/dev/null || {
-            echo "CLOSED=false"
-            echo "ERROR=Failed to update issue #$issue body with PR link"
+        cmd_update_body --issue "$issue" --pr-url "$pr_url" >/dev/null 3>/dev/null || {
+            emit_kv CLOSED false
+            emit_kv ERROR "Failed to update issue #$issue body with PR link"
             exit 1
         }
     fi
@@ -348,8 +352,8 @@ cmd_close() {
     # Post comment first if provided
     if [[ -n "$comment" ]]; then
         gh issue comment "$issue" "${GH_ISSUE_REPO_ARGS[@]}" --body "$comment" >/dev/null 2>&1 || {
-            echo "CLOSED=false"
-            echo "ERROR=Failed to post closing comment on issue #$issue"
+            emit_kv CLOSED false
+            emit_kv ERROR "Failed to post closing comment on issue #$issue"
             exit 1
         }
     fi
@@ -375,13 +379,13 @@ cmd_close() {
             echo "WARNING: failed to probe state for issue #$issue; attempting close anyway" >&2
         fi
         gh issue close "$issue" "${GH_ISSUE_REPO_ARGS[@]}" >/dev/null 2>&1 || {
-            echo "CLOSED=false"
-            echo "ERROR=Failed to close issue #$issue"
+            emit_kv CLOSED false
+            emit_kv ERROR "Failed to close issue #$issue"
             exit 1
         }
     fi
 
-    echo "CLOSED=true"
+    emit_kv CLOSED true
 
     # Marker decision. Precedence: --close-class wins over the legacy
     # --mark-false-positive-if-keyword keyword scan. The enum drives the
@@ -480,15 +484,15 @@ cmd_update_body() {
     # Read current body
     local current_body
     current_body=$(gh issue view "$issue" "${GH_ISSUE_REPO_ARGS[@]}" --json body --jq '.body // ""' 2>/dev/null) || {
-        echo "UPDATED=false"
-        echo "ERROR=Failed to read issue #$issue body"
+        emit_kv UPDATED false
+        emit_kv ERROR "Failed to read issue #$issue body"
         return 1
     }
 
     # Idempotency check: skip if PR URL already present
     if echo "$current_body" | grep -qF "$pr_url"; then
-        echo "UPDATED=true"
-        echo "SKIPPED=already_present"
+        emit_kv UPDATED true
+        emit_kv SKIPPED already_present
         return 0
     fi
 
@@ -498,12 +502,12 @@ cmd_update_body() {
 **PR**: ${pr_url}"
 
     gh issue edit "$issue" "${GH_ISSUE_REPO_ARGS[@]}" --body "$new_body" >/dev/null 2>&1 || {
-        echo "UPDATED=false"
-        echo "ERROR=Failed to update issue #$issue body"
+        emit_kv UPDATED false
+        emit_kv ERROR "Failed to update issue #$issue body"
         return 1
     }
 
-    echo "UPDATED=true"
+    emit_kv UPDATED true
 }
 
 # ---------------------------------------------------------------------------

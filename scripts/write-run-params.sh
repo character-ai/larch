@@ -3,6 +3,11 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
+
 CLASSIFICATION=""
 REASON=""
 SOURCE=""
@@ -134,4 +139,4 @@ jq -n \
 
 mv "$TMP" "$OUTPUT"
 trap - EXIT
-printf 'RUN_PARAMS_WRITTEN=%s\n' "$OUTPUT"
+emit_kv RUN_PARAMS_WRITTEN "$OUTPUT"

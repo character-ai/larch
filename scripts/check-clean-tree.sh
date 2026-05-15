@@ -22,6 +22,11 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
+
 FAIL_CLOSED=false
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -49,19 +54,19 @@ if [ "$porcelain_exit" -ne 0 ]; then
     summary=$(printf '%s' "$porcelain_out" | one_line_summary)
     printf 'check-clean-tree.sh: git status --porcelain failed (exit %s): %s\n' "$porcelain_exit" "$porcelain_out" >&2
     if [ "$FAIL_CLOSED" = "true" ]; then
-        printf 'CLEAN=unknown\n'
-        printf 'PROBE_ERROR=git exited %s (%s)\n' "$porcelain_exit" "$summary"
+        emit_kv CLEAN unknown
+        emit_kv PROBE_ERROR "git exited $porcelain_exit ($summary)"
         exit 1
     fi
-    printf 'CLEAN=true\n'
+    emit_kv CLEAN true
     exit 0
 fi
 
 if [ -n "$porcelain_out" ]; then
     summary=$(printf '%s' "$porcelain_out" | one_line_summary)
-    printf 'CLEAN=false\n'
-    printf 'DIRTY_OUT=%s\n' "$summary"
+    emit_kv CLEAN false
+    emit_kv DIRTY_OUT "$summary"
     exit 0
 fi
 
-printf 'CLEAN=true\n'
+emit_kv CLEAN true

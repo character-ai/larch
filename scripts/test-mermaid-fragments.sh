@@ -3,6 +3,8 @@
 
 set -euo pipefail
 
+export LARCH_QUIET_DISABLE=1
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SANITIZE="$SCRIPT_DIR/sanitize-mermaid-fragment.sh"
 LINT="$SCRIPT_DIR/lint-mermaid-fences.sh"

@@ -7,6 +7,7 @@
 # Exit 0 on pass, exit 1 on any assertion failure.
 
 set -euo pipefail
+export LARCH_QUIET_DISABLE=1
 
 # Symlink-safe: use BASH_SOURCE[0] for repo-root resolution to match sibling
 # harnesses (e.g., test-implement-anti-polling-rule.sh).
