@@ -161,80 +161,22 @@ fi
 if [[ "$CLAUDE_COUNT" -gt 0 ]]; then
     sentinels=()
     for f in "${CLAUDE_OUTPUT_FILES[@]}"; do sentinels+=("${f}.done"); done
-    wait_stdout_log="$REVIEW_TMPDIR/wait-for-claude-reviewers-stdout.log"
-    wait_stderr_log="$REVIEW_TMPDIR/wait-for-claude-reviewers-stderr.log"
+    wait_log="$REVIEW_TMPDIR/wait-for-claude-reviewers.log"
     set +e
-    WAIT_FOR_REVIEWERS_POLL_INTERVAL="${WAIT_FOR_REVIEWERS_POLL_INTERVAL:-1}" "$PLUGIN_ROOT/scripts/wait-for-reviewers.sh" --timeout "$TIMEOUT" "${sentinels[@]}" > "$wait_stdout_log" 2>"$wait_stderr_log"
+    WAIT_FOR_REVIEWERS_POLL_INTERVAL="${WAIT_FOR_REVIEWERS_POLL_INTERVAL:-1}" "$PLUGIN_ROOT/scripts/wait-for-reviewers.sh" --timeout "$TIMEOUT" "${sentinels[@]}" > "$wait_log" 2>&1
     wait_rc=$?
     set -e
     if [[ "$wait_rc" -ne 0 ]]; then
-        # Combine for the failure log entry, then replay stderr to our stderr.
-        cat "$wait_stdout_log" "$wait_stderr_log" > "$REVIEW_TMPDIR/wait-for-claude-reviewers.log" 2>/dev/null || true
-        append_review_failure "review Step 3a" "wait-for-reviewers.sh" "$wait_rc" "$REVIEW_TMPDIR/wait-for-claude-reviewers.log"
+        append_review_failure "review Step 3a" "wait-for-reviewers.sh" "$wait_rc" "$wait_log"
         # Redact stderr replay; the unredacted file is already captured in
         # the verbatim execution-issues entry via --redact above.
         if [[ -x "$PLUGIN_ROOT/scripts/redact-secrets.sh" ]]; then
-            "$PLUGIN_ROOT/scripts/redact-secrets.sh" < "$wait_stderr_log" | while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$line"; done || \
-                while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$line"; done < "$wait_stderr_log"
+            "$PLUGIN_ROOT/scripts/redact-secrets.sh" < "$wait_log" | while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$line"; done || \
+                while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$line"; done < "$wait_log"
         else
-            while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$line"; done < "$wait_stderr_log"
+            while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$line"; done < "$wait_log"
         fi
-        # Do NOT abort: fall through to parse whatever stdout was produced.
-    fi
-    # Parse stdout for TIMEOUT records; log each timed-out slot as a failure and continue.
-    # Also track which indices were explicitly handled so we can infer any remaining on non-zero exit.
-    _handled_indices=()
-    if [[ -s "$wait_stdout_log" ]]; then
-        while IFS= read -r _wline || [[ -n "$_wline" ]]; do
-            case "$_wline" in
-                TIMEOUT\ *)
-                    _tidx=$(printf '%s\n' "$_wline" | awk '{print $2}')
-                    _tname=$(printf '%s\n' "$_wline" | awk '{print $3}')
-                    if [[ "$_tidx" -ge 1 && "$_tidx" -le "$CLAUDE_COUNT" ]] 2>/dev/null; then
-                        _tfile="${CLAUDE_OUTPUT_FILES[$((_tidx - 1))]}"
-                    else
-                        _tfile="(unknown: idx=$_tidx)"
-                    fi
-                    _tmsg=$(mktemp "${TMPDIR:-/tmp}/wait-timeout-msg.XXXXXX")
-                    printf 'Claude reviewer slot %s (%s) timed out; output file: %s\n' \
-                        "$_tidx" "$_tname" "$_tfile" > "$_tmsg"
-                    append_review_failure "review Step 3a" "wait-for-reviewers.sh slot-timeout" "0" "$_tmsg"
-                    rm -f "$_tmsg"
-                    # Write a neutral dirty-tree sidecar so the downstream scan treats this as clean
-                    # rather than inferring a dirty tree from a missing sidecar.
-                    if [[ -n "$_tfile" && "$_tfile" != "(unknown"* ]]; then
-                        printf 'STATUS=clean\nMODE=timeout\nREASON=claude-subprocess-timeout\n' > "${_tfile}.dirty-tree"
-                    fi
-                    _handled_indices+=("$_tidx")
-                    larch_errf "⚠ Claude reviewer slot %s (%s) timed out — logged as failure, continuing\n" \
-                        "$_tidx" "$_tname"
-                    ;;
-            esac
-        done < "$wait_stdout_log"
-    fi
-    # On non-zero wait_rc, also log any pending slots that had no TIMEOUT record in stdout
-    # (e.g. waiter was killed mid-run and stdout was truncated).
-    if [[ "$wait_rc" -ne 0 ]]; then
-        _tidx=0
-        for _cf in "${CLAUDE_OUTPUT_FILES[@]+"${CLAUDE_OUTPUT_FILES[@]}"}"; do
-            _tidx=$((_tidx + 1))
-            # Skip if already handled via a TIMEOUT record
-            _already=false
-            for _h in "${_handled_indices[@]+"${_handled_indices[@]}"}"; do
-                [[ "$_h" = "$_tidx" ]] && _already=true && break
-            done
-            [[ "$_already" = "true" ]] && continue
-            # Only log if the .done sentinel is absent (truly pending)
-            [[ -f "${_cf}.done" ]] && continue
-            _tmsg=$(mktemp "${TMPDIR:-/tmp}/wait-timeout-msg.XXXXXX")
-            printf 'Claude reviewer slot %s did not complete (waiter exited %s); output file: %s\n' \
-                "$_tidx" "$wait_rc" "$_cf" > "$_tmsg"
-            append_review_failure "review Step 3a" "wait-for-reviewers.sh slot-timeout" "0" "$_tmsg"
-            rm -f "$_tmsg"
-            printf 'STATUS=clean\nMODE=timeout\nREASON=claude-subprocess-timeout\n' > "${_cf}.dirty-tree"
-            larch_errf "⚠ Claude reviewer slot %s (%s) not completed (inferred from non-zero wait exit) — logged as failure, continuing\n" \
-                "$_tidx" "$(basename "${_cf}")"
-        done
+        exit "$wait_rc"
     fi
 fi
 

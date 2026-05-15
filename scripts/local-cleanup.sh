@@ -70,7 +70,7 @@ CURRENT_BRANCH="main"
 
 # --- Step 2: Fetch origin main ---
 echo "🔄 Fetching origin main..." >&2
-if ! git fetch origin refs/heads/main:refs/remotes/origin/main >/dev/null 2>&1; then
+if ! git fetch origin main >/dev/null 2>&1; then
     echo "⚠ Failed to fetch origin main (continuing)" >&2
 fi
 

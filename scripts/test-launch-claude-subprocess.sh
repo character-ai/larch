@@ -46,25 +46,4 @@ grep -Fq 'invalid --prompt-file' "$TMP/err" || fail "symlink rejection message m
 [[ -f "$TMP/quiet.log" ]] || fail "quiet log not created despite LARCH_QUIET_LOG_FILE being set"
 grep -Fq 'invalid --prompt-file' "$TMP/quiet.log" && fail "symlink rejection leaked to quiet log"
 
-# PID sidecar: verify .pid file is written during subprocess execution and removed on exit.
-cat > "$BIN/claude" <<'STUB'
-#!/usr/bin/env bash
-grep -q 'You are a read-only reviewer' || exit 7
-sleep 0.3
-printf 'pid sidecar test output\n'
-STUB
-chmod +x "$BIN/claude"
-pid_out="$TMP/pid-test.txt"
-PATH="$BIN:$PATH" "$SCRIPT" --prompt-file "$prompt" --output-file "$pid_out" --timeout 5 > "$TMP/pid-stdout" 2>/dev/null &
-script_pid=$!
-for _i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
-    sleep 0.05
-    [ -f "${pid_out}.pid" ] && break
-done
-[ -f "${pid_out}.pid" ] || fail ".pid sidecar not written during subprocess execution"
-_recorded_pid=$(tr -d '[:space:]' < "${pid_out}.pid" 2>/dev/null)
-[ "$_recorded_pid" = "$script_pid" ] || fail ".pid sidecar has wrong PID: expected $script_pid got $_recorded_pid"
-wait "$script_pid"
-[ ! -f "${pid_out}.pid" ] || fail ".pid sidecar not cleaned up after exit"
-
 echo "All assertions passed."

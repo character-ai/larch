@@ -2,8 +2,6 @@
 
 `scripts/wait-for-reviewers.sh` polls the `.done` sentinel files emitted by `scripts/run-external-agent.sh` and reports per-reviewer completion / timeout on stdout in a machine-parseable shape. Stderr carries human-readable progress (dot ticks, per-minute status lines, final summary). The script always exits `0` for normal operation — including the all-timed-out case — so callers must inspect stdout (`DONE <idx> <basename>: exit=<code>` vs `TIMEOUT <idx> <basename>`) to drive their own fallback logic. Exit `1` is reserved for usage errors (missing sentinel arguments, bad `--timeout`, bad `WAIT_FOR_REVIEWERS_POLL_INTERVAL`).
 
-On timeout for any sentinel, the script attempts to terminate the associated subprocess: it reads the `.pid` sidecar at `${sentinel%.done}.pid` (written by `scripts/launch-claude-subprocess.sh`), validates the PID, and sends SIGTERM. This is best-effort — the sidecar may be absent or the process already gone; errors are silently ignored.
-
 ## Callers
 
 - `/review` Step 3a (collect-agent-results.sh's caller-side wait). Default `--timeout 1860` matches `run-external-agent.sh`'s 30-minute review timeout plus a 1-minute grace.
@@ -45,6 +43,6 @@ Dedicated harness: `scripts/test-wait-for-reviewers.sh` pins `--timeout 0` / `00
 
 ## Edit-in-sync rules
 
-Changes to the stdout grammar (`DONE <idx> <basename>: exit=<code>`, `TIMEOUT <idx> <basename>`) MUST update this file in the same PR and verify all callers (grep for `wait-for-reviewers.sh` across `scripts/`, `skills/`, `.claude/`). Changes to `WAIT_FOR_REVIEWERS_POLL_INTERVAL`'s validator must update the test harnesses listed above so they continue to set a value the validator accepts. The `.pid` sidecar convention is paired with `scripts/launch-claude-subprocess.sh`; changes to the sidecar filename must be mirrored there.
+Changes to the stdout grammar (`DONE <idx> <basename>: exit=<code>`, `TIMEOUT <idx> <basename>`) MUST update this file in the same PR and verify all callers (grep for `wait-for-reviewers.sh` across `scripts/`, `skills/`, `.claude/`). Changes to `WAIT_FOR_REVIEWERS_POLL_INTERVAL`'s validator must update the test harnesses listed above so they continue to set a value the validator accepts.
 
 On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.

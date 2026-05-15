@@ -1280,11 +1280,4 @@ exclude = [
   "scripts/test-compose-pr-summary.md",
   "scripts/test-compose-architecture-sketch.sh",
   "scripts/test-compose-architecture-sketch.md",
-  # scripts/test-write-tally.sh is the Makefile-only regression harness for
-  # scripts/write-tally.sh. The runtime helper is referenced from
-  # skills/implement/SKILL.md Step 1/Step 5; the harness is referenced from
-  # Makefile (test-write-tally target, test-harnesses-4 shard) and the sibling
-  # contract scripts/test-write-tally.md.
-  "scripts/test-write-tally.sh",
-  "scripts/test-write-tally.md",
 ]

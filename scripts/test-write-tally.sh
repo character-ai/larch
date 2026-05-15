@@ -178,6 +178,7 @@ set -e
 if [ "$writer_rc" -ne 0 ]; then pass "writer failure exits non-zero"; else fail "writer failure should exit non-zero"; fi
 assert_contains "$writer_out" "LOG_WRITTEN=false" "writer failure envelope LOG_WRITTEN"
 assert_contains "$writer_out" "ERROR=cannot create log directory" "writer failure envelope ERROR"
+assert_file_missing "$bad_root/implement/run-writer-fail/plan-review-tally.json" "writer failure leaves no batch"
 
 echo "=== atomicity on failure ==="
 atomic_root="$TMP/logs-atomic"

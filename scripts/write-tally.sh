@@ -117,14 +117,12 @@ WRITER_OUT="$("$LARCH_LOG" write \
 WRITER_RC=$?
 set -e
 
-while IFS= read -r line || [ -n "$line" ]; do
+printf '%s\n' "$WRITER_OUT" | while IFS= read -r line || [ -n "$line" ]; do
     [ -n "$line" ] || continue
     case "$line" in
         [A-Za-z_][A-Za-z0-9_]*=*) emit_kv "${line%%=*}" "${line#*=}" ;;
         *) emit "$line" ;;
     esac
-done <<EOF
-$WRITER_OUT
-EOF
+done
 
 exit "$WRITER_RC"
