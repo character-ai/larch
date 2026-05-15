@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [27.6.0] - 2026-05-15
+
+### Changed
+
+- Extracted /review round orchestration into review-core.sh with FD3 KV output, dirty-tree recovery summaries, parent artifact copies, and harness coverage.
+- Replaced /review with a thin wrapper prompt and added the internal /review-and-fix skill plus structured call-fixer path-safety scripts.
+- Added simple/hard panel topology support to dispatch-panel.sh without overloading PANEL_MODE, plus stubbed topology tests.
+- Added hand-maintained orchestrator aggregator/judge agents outside the reviewer-* glob and updated structure tests, Makefile shard wiring, and SECURITY.md.
+
 ## [27.5.71] - 2026-05-14
 
 ### Changed
