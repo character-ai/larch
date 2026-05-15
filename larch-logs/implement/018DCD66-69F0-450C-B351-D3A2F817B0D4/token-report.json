@@ -207,21 +207,21 @@
       {
         "step": "Step 7a — code flow diagram",
         "totals": {
-          "input": 3,
-          "cache_read": 652521,
-          "cache_create": 1719,
-          "output": 1506,
-          "total": 655749
+          "input": 4,
+          "cache_read": 871260,
+          "cache_create": 1990,
+          "output": 2473,
+          "total": 875727
         },
         "skills": [
           {
             "skill": "larch:implement",
             "totals": {
-              "input": 3,
-              "cache_read": 652521,
-              "cache_create": 1719,
-              "output": 1506,
-              "total": 655749
+              "input": 4,
+              "cache_read": 871260,
+              "cache_create": 1990,
+              "output": 2473,
+              "total": 875727
             }
           }
         ]
@@ -229,21 +229,32 @@
       {
         "step": "Step 8 — version bump",
         "totals": {
-          "input": 0,
-          "cache_read": 0,
-          "cache_create": 0,
-          "output": 0,
-          "total": 0
+          "input": 4,
+          "cache_read": 877127,
+          "cache_create": 3644,
+          "output": 2568,
+          "total": 883343
         },
-        "skills": []
+        "skills": [
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 4,
+              "cache_read": 877127,
+              "cache_create": 3644,
+              "output": 2568,
+              "total": 883343
+            }
+          }
+        ]
       }
     ],
     "totals": {
-      "input": 153,
-      "cache_read": 26019049,
-      "cache_create": 202369,
-      "output": 91405,
-      "total": 26312976
+      "input": 158,
+      "cache_read": 27114915,
+      "cache_create": 206284,
+      "output": 94940,
+      "total": 27416297
     }
   },
   "codex": {
