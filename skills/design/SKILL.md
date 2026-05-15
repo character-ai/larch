@@ -1009,3 +1009,9 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-tmpdir.sh --dir "$DESIGN_TMPDIR"
 - `**⚠ 3b: arch diagram — generation failed, proceeding without diagram (<elapsed>)**`
 
 Do NOT write any farewell message such as "Design complete", "Returning to the /implement orchestrator", "Handing back control", or any other prose that signals the skill is done — those are halts in disguise that make the Skill tool appear to return a completed response and prompt the parent session to end its turn without invoking the mandatory `post-design-boundary.sh` Bash wrapper.
+
+When `SESSION_ENV_PATH` is non-empty (nested `/implement` mode) and `MANIFEST_EXPORT_OK=true`, print the following as the **final output line** of this skill — after repeating warnings (or immediately after cleanup when there are none):
+
+`➡️ 5: cleanup — manifest written; NEXT REQUIRED: parent /implement must invoke post-design-boundary.sh immediately as a Bash tool call — do NOT end the orchestrator turn`
+
+This directive replaces the bare `MANIFEST_WRITTEN=<path>` as the terminal visible signal from `/design`. It is unambiguously an input to the next step, not a completion signal.
