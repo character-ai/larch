@@ -603,6 +603,10 @@ exclude = [
   # scripts/collect-agent-results.sh and scripts/ship-pr.sh via source directives only,
   # which agent-lint does not follow.
   "scripts/lib-net.sh",
+  # scripts/lib-finalize-state-keys.sh is a sourced-only shell library
+  # (no shebang, not invokable directly). scripts/ship-pr.sh and
+  # scripts/restore-finalize-state.sh source it for shared finalizer keys.
+  "scripts/lib-finalize-state-keys.sh",
   # scripts/cursor-auth-flags.sh is a small executable that prints the
   # conditional --api-key argv elements for runtime skill markdown blocks.
   # Referenced from skills/shared/voting-protocol.md, skills/shared/dialectic-protocol.md,
@@ -925,6 +929,11 @@ exclude = [
   # target only (no SKILL.md invocation). Same Makefile-only shape as the
   # other test-* harnesses above.
   "scripts/test-implement-finalize.sh",
+  # scripts/test-restore-finalize-state.sh is the regression harness for
+  # scripts/restore-finalize-state.sh, wired into Makefile
+  # test-restore-finalize-state target only. Same Makefile-only shape as
+  # the other test-* harnesses above.
+  "scripts/test-restore-finalize-state.sh",
   # scripts/test-render-lane-status.sh is the regression harness for
   # scripts/render-lane-status.sh (the /research lane-attribution formatter
   # added by #421). Wired only via Makefile test-render-lane-status target;
@@ -1109,6 +1118,8 @@ exclude = [
   "scripts/test-collect-agent-retry.md",
   "scripts/test-collect-agent-results.md",
   "scripts/lib-net.md",
+  "scripts/lib-finalize-state-keys.md",
+  "scripts/test-restore-finalize-state.md",
   "skills/simplify-skill/scripts/build-feature-description.md",
   # scripts/test-alias-target-resolution.md and scripts/test-alias-structure.md
   # are the sibling contracts for the two alias-rework regression harnesses

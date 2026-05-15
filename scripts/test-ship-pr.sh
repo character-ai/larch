@@ -24,6 +24,7 @@ write_subject() {
     cp "$REPO_ROOT/scripts/ship-pr.sh" "$root/scripts/ship-pr.sh"
     cp "$REPO_ROOT/scripts/lib-quiet.sh" "$root/scripts/lib-quiet.sh"
     cp "$REPO_ROOT/scripts/lib-net.sh" "$root/scripts/lib-net.sh"
+    cp "$REPO_ROOT/scripts/lib-finalize-state-keys.sh" "$root/scripts/lib-finalize-state-keys.sh"
     chmod +x "$root/scripts/ship-pr.sh"
 }
 
