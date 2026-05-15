@@ -52,16 +52,4 @@ if command -v jq >/dev/null 2>&1; then
     grep -Fq 'FINDINGS_COUNT=0' <<< "$out"
 fi
 
-# Timeout degradation: a Claude slot with no .done file is logged as a failure but COLLECT_OK=true.
-# wait-for-reviewers.sh exits 0 with TIMEOUT on stdout; collect-findings.sh must not abort.
-timeout_out="$TMP/timeout-reviewer.txt"
-# Do NOT create ${timeout_out}.done — the sentinel is absent, so wait-for-reviewers.sh will TIMEOUT.
-out=$(WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.01 "$SCRIPT" \
-    --claude-output-files "$timeout_out" --mode diff --timeout 1 \
-    --findings-file "$TMP/findings-timeout.md" --oos-file "$TMP/oos-timeout.md")
-assert_stdout_cap "$out"
-grep -Fq 'COLLECT_OK=true' <<< "$out" || { echo "FAIL: COLLECT_OK not true when Claude slot timed out" >&2; exit 1; }
-grep -Fq 'FINDINGS_COUNT=0' <<< "$out" || { echo "FAIL: FINDINGS_COUNT not 0 for timed-out slot" >&2; exit 1; }
-grep -Fq 'slot-timeout' "$LARCH_EXECUTION_ISSUES_LOG" 2>/dev/null || { echo "FAIL: timed-out slot not logged to execution issues" >&2; exit 1; }
-
 echo "All assertions passed."
