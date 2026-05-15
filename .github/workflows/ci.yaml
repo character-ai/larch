@@ -306,8 +306,8 @@ jobs:
           # so a regression here silently weakens the review panel.
           UNQUOTED_FILES=(
             skills/review/SKILL.md
+            skills/review/scripts/dispatch-panel.sh
             skills/design/SKILL.md
-            skills/implement/SKILL.md
           )
           # Note: README.md and docs/agents.md use natural prose
           # ("code quality, risk/integration, correctness, architecture,

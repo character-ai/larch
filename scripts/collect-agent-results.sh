@@ -36,7 +36,7 @@
 #                                  monotonicity. Default OFF — opt-in per caller.
 #                                  Currently opted in by: /research research phase
 #                                  (Standard / Deep), /research validation phase,
-#                                  /review Step 3a, /implement Step 5 quick-mode
+#                                  /review Step 3a
 #                                  review, /design Step 3 plan-review.
 #                                  Closes #416 (Phase 3 of umbrella #413), #661.
 #   --validation-mode              Modifier for --substantive-validation: forwards
@@ -46,7 +46,7 @@
 #                                  CURSOR_EMPTY_RESPONSE mapping, and 30-word floor)
 #                                  applies. Use for short reviewer-style outputs:
 #                                  /research validation phase, /review, /implement
-#                                  Step 5 quick-mode, /design plan-review. The
+#                                  /design plan-review. The
 #                                  /research research phase deliberately omits this
 #                                  modifier because its outputs are 2-3-paragraph
 #                                  prose, not short findings. No effect when

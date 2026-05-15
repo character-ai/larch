@@ -1,7 +1,10 @@
 # compose-review-findings.sh contract
 
 `scripts/compose-review-findings.sh` converts plan-review and code-review
-finding artifacts into `review-findings-full.md`.
+finding artifacts into `review-findings-full.md`. Code-review artifacts are
+read from `$IMPLEMENT_TMPDIR/round-*/accepted-findings.md` and
+`$IMPLEMENT_TMPDIR/round-*/rejected-findings.md`; the parent
+`$IMPLEMENT_TMPDIR/rejected-findings.md` remains a fallback for older runs.
 
 Inputs:
 

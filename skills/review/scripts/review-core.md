@@ -1,6 +1,6 @@
 # review-core.sh Contract
 
-`skills/review/scripts/review-core.sh` runs one `/review` round. It is not a long-running loop and does not apply fixes. The `/review` `SKILL.md` wrapper owns the outer round loop, invokes `/review-and-fix` when `REVIEW_CORE_STATUS=fix-required`, runs relevant checks, classifies substantiality, and decides whether to call `review-core.sh` again.
+`skills/review/scripts/review-core.sh` runs one review round. It is not a long-running loop and does not apply fixes. The `/review` `SKILL.md` wrapper and `/implement` Step 5's `review-and-fix.sh --implement-tmpdir` mode own their respective outer round loops, fix application, relevant checks, substantiality classification, and decisions about whether to call `review-core.sh` again.
 
 Accepted flags:
 

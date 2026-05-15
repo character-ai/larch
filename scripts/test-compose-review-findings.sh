@@ -25,7 +25,7 @@ stdout="$("$COMPOSE" --design-artifacts-dir "$TMP/a-design" --implement-tmpdir "
 [ ! -s "$out" ] || fail "empty output should be zero bytes"
 
 echo "=== accepted and rejected findings ==="
-mkdir -p "$TMP/b-design" "$TMP/b-impl"
+mkdir -p "$TMP/b-design" "$TMP/b-impl/round-1"
 cat > "$TMP/b-design/accepted-plan-findings.md" <<'EOF'
 ### FINDING_1: Architecture boundary
 - **Concern**: scripts/foo.sh:42 does too much.
@@ -41,13 +41,22 @@ cat > "$TMP/b-impl/rejected-findings.md" <<'EOF'
 **Finding**: token sk-ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD appears.
 **Reason not implemented**: fixture.
 EOF
+cat > "$TMP/b-impl/round-1/accepted-findings.md" <<'EOF'
+### FINDING_2: Runtime bug
+- **Reviewer**: Codex-Structure
+- **Concern**: scripts/bar.sh exits incorrectly.
+- **Suggested revision**: Return the captured status.
+EOF
+cp "$TMP/b-impl/rejected-findings.md" "$TMP/b-impl/round-1/rejected-findings.md"
 out="$TMP/b.md"
 stdout="$("$COMPOSE" --design-artifacts-dir "$TMP/b-design" --implement-tmpdir "$TMP/b-impl" --issue 7 --output "$out")"
-[[ "$stdout" == *"FINDINGS_TOTAL=3"* ]] || fail "total missing: $stdout"
+[[ "$stdout" == *"FINDINGS_TOTAL=4"* ]] || fail "total missing: $stdout"
 section_count="$(grep -c '^###' "$out" || true)"
-[ "$section_count" = "3" ] || fail "expected 3 sections, got $section_count"
+[ "$section_count" = "4" ] || fail "expected 4 sections, got $section_count"
 grep -Fq '### FINDING_1: panel [plan-review/accepted]' "$out" \
     || fail "accepted finding section missing"
+grep -Fq '### FINDING_2: panel [code-review/accepted]' "$out" \
+    || fail "code accepted section missing"
 grep -Fq '### REJ_P1: Cursor-Architecture [plan-review/rejected]' "$out" \
     || fail "plan rejected section missing"
 grep -Fq '### REJ_C1: Cursor-Security [code-review/rejected]' "$out" \

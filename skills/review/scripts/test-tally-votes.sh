@@ -28,6 +28,13 @@ assert_stdout_cap "$out"
 grep -Fq 'ACCEPTED_COUNT=2' <<< "$out"
 grep -Fq 'FINDING_1_ACCEPTED=true' "$TMP/review-tally.env"
 
+rm -f "$TMP/review-tally.env" "$TMP/accepted-findings.md"
+out=$("$SCRIPT" --findings-file "$TMP/findings.md" --review-tmpdir "$TMP" --cursor-available true --codex-available true --both-down false)
+assert_stdout_cap "$out"
+grep -Fq 'ACCEPTED_COUNT=2' <<< "$out"
+grep -Fq 'REJECTED_COUNT=0' <<< "$out"
+grep -Fq 'FINDING_2_ACCEPTED=true' "$TMP/review-tally.env"
+
 printf 'FINDING_1 YES\nFINDING_2 NO\n' > "$TMP/cursor-votes.txt"
 printf 'FINDING_1 YES\nFINDING_2 NO\n' > "$TMP/codex-votes.txt"
 out=$("$SCRIPT" --findings-file "$TMP/findings.md" --review-tmpdir "$TMP" --cursor-available true --codex-available true --both-down false)

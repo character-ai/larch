@@ -21,19 +21,14 @@
 #   1. POSITIVE ANCHORS (required markers) — each target file MUST contain
 #      all of the following strings:
 #        - "3 rounds"                    (case-sensitive, grep -F)
-#        - "no voting panel"             (case-INSENSITIVE, grep -iF — tolerates
-#                                         legitimate sentence-case rewrites)
-#        - "rounds 1-3"                  (case-INSENSITIVE, grep -iF — tolerates
-#                                         "Rounds 1-3" capitalization in
-#                                         docs/review-agents.md; encodes the
-#                                         multi-lane rounds-1-3 contract)
-#        - "6 Cursor specialists"        (case-sensitive, grep -F — pins the
-#                                         specialist count in rounds 1-3)
-#        - "generic Codex"               (case-sensitive, grep -F — pins the
-#                                         generic Codex slot in rounds 1-3)
-#      The last three encode the rounds-1-3 topology so future
+#        - "no voting panel"             (case-INSENSITIVE, grep -iF)
+#        - "simple review panel"         (case-INSENSITIVE, grep -iF)
+#        - "Cursor edge-cases"           (case-sensitive, grep -F)
+#        - "Codex structure"             (case-sensitive, grep -F)
+#        - "Claude generic"              (case-sensitive, grep -F)
+#      The last four encode the delegated `--panel simple` topology so future
 #      Step 5 quick-mode reviewer-composition changes that don't propagate to
-#      every public surface fail CI (closes #1002).
+#      every public surface fail CI.
 #
 #   2. NEGATIVE CHECKS (forbidden stale phrases) — the four public-doc
 #      targets (README.md, docs/review-agents.md, docs/workflow-lifecycle.md,
@@ -91,9 +86,10 @@ REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly POS_MARKERS=(
   "3 rounds|sensitive"
   "no voting panel|insensitive"
-  "rounds 1-3|insensitive"
-  "6 Cursor specialists|sensitive"
-  "generic Codex|sensitive"
+  "simple review panel|insensitive"
+  "Cursor edge-cases|sensitive"
+  "Codex structure|sensitive"
+  "Claude generic|sensitive"
 )
 
 # Stale phrases (forbidden in public docs; SKILL.md exempt).
@@ -294,7 +290,7 @@ run_self_test() {
 This is a fixture describing quick-mode behavior.
 The review loop runs up to 3 rounds.
 The loop has no voting panel — main agent accepts or rejects each finding.
-Rounds 1-3 launch up to 6 Cursor specialists in parallel plus a generic Codex reviewer.
+It uses the simple review panel: Cursor edge-cases, Codex structure, and Claude generic.
 EOF
 
   # Stale-phrase fixture: contains ALL positive markers PLUS exactly one stale
@@ -307,7 +303,7 @@ EOF
 Stale-phrase fixture: contains every positive marker so only the stale phrase can drive failure.
 The review loop runs up to 3 rounds.
 The loop has no voting panel — main agent accepts or rejects each finding.
-Rounds 1-3 launch up to 6 Cursor specialists in parallel plus a generic Codex reviewer.
+It uses the simple review panel: Cursor edge-cases, Codex structure, and Claude generic.
 Stale phrase intentionally embedded: simplified code review (1 Claude Code Reviewer subagent, 1 round).
 EOF
 

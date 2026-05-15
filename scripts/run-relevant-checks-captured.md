@@ -2,7 +2,7 @@
 
 Purpose: run the project-local `.claude/skills/relevant-checks/scripts/run-checks.sh` while capturing its verbose output to a private session log. The green path emits one bounded machine line so `/implement` and `/review` can validate without invoking the `/relevant-checks` Skill or reading the log.
 
-Primary callers: `/implement` Step 3, Step 5.7, Step 6, Step 10, Step 12c, and `/review` Step 3e.
+Primary callers: `/implement` Step 3, Step 5 accepted-fix loop, Step 6, Step 10, Step 12c, and `/review` Step 3e.
 
 Inputs: `--site <label>` is a slash-free label matching `[A-Za-z0-9._-]+` with no leading dot and no `..`. `--tmpdir <path>` defaults to `${IMPLEMENT_TMPDIR:-${REVIEW_TMPDIR:-}}` and must be an absolute, existing, non-symlink session directory whose basename starts with `claude-implement-` or `claude-review-`. Accepted parent locations: (a) any descendant of `${XDG_CACHE_HOME:-$HOME/.cache}/larch/sessions/` (canonical larch session root), or (b) a DIRECT child of `/tmp` or `/private/tmp` (the fallback root `session-setup.sh` uses when the cache root is unwritable; macOS resolves `/tmp` to `/private/tmp`). Nested paths under `/tmp` like `/tmp/foo/claude-implement-bar` are rejected — only direct `/tmp` children matching the basename grammar are accepted, because `session-setup.sh` only ever creates fallback session dirs as direct `/tmp` children.
 
