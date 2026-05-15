@@ -156,7 +156,6 @@ if command -v timeout >/dev/null 2>&1; then
         exit_code=$?
         [[ "$exit_code" -eq 124 ]] && status="TIMEOUT" || status="ERROR"
     fi
-    _subprocess_pid=""
 else
     claude --model "$MODEL" --print --no-markdown < "$PROMPT_RENDERED" > "$OUTPUT_TMP" &
     _subprocess_pid=$!
@@ -166,12 +165,13 @@ else
         exit_code=$?
         status="ERROR"
     fi
-    _subprocess_pid=""
 fi
-
+# Clear PID AFTER finalization to prevent a SIGTERM arriving between here
+# and the .done write from causing _on_term to exit without writing the sentinel.
 mv "$OUTPUT_TMP" "$OUTPUT_CANON"
 printf '%s\n' "$exit_code" > "${OUTPUT_CANON}.done"
 printf 'STATUS=clean\nMODE=baseline\nREASON=claude-subprocess-prompt-read-only\n' > "${OUTPUT_CANON}.dirty-tree"
+_subprocess_pid=""
 
 END_S=$(date +%s)
 "$SCRIPT_DIR/timing-ledger.sh" record-vendor-task \
