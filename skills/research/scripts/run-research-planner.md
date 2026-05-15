@@ -40,6 +40,8 @@ Both flags are required. `--raw` is the captured Agent subagent output. `--outpu
 
 No other output appears on stdout.
 
+Quiet logging: this helper sources `scripts/lib-quiet.sh`; contract stdout is emitted through `emit_kv`. Incidental stdout/stderr is redirected to `$LARCH_QUIET_LOG_FILE` unless `LARCH_QUIET_DISABLE=1` is set. On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.
+
 ### Stderr (human diagnostics)
 
 One short diagnostic line per anomaly observed during sanitization or validation. Stderr is intended for the orchestrator's runtime log; the orchestrator does NOT parse stderr. Human-readable text is acceptable; do not promise a stable schema.

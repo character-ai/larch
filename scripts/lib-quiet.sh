@@ -60,7 +60,10 @@ larch_quiet_init() {
     if [ -z "$log_file" ]; then
         log_file=$(larch_quiet_default_log)
     fi
-    log_dir=$(dirname "$log_file")
+    case "$log_file" in
+        */*) log_dir="${log_file%/*}"; [ -n "$log_dir" ] || log_dir="/" ;;
+        *) log_dir="." ;;
+    esac
     mkdir -p "$log_dir" 2>/dev/null || return 0
     : > "$log_file" 2>/dev/null || return 0
 

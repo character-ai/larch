@@ -24,6 +24,11 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/../../../scripts/lib-quiet.sh"
+larch_quiet_init
+
 REPORT_PATH=""
 OUTPUT_PATH=""
 RESEARCH_QUESTION_FILE=""
@@ -170,7 +175,7 @@ FINDINGS_TRIMMED=$(printf '%s' "$FINDINGS" | awk 'BEGIN{started=0} {
 
 emit_empty() {
   : > "$OUTPUT_PATH"
-  echo "COUNT=0"
+  emit_kv COUNT 0
   if [[ "$SECTION_ABSENT" -eq 1 ]]; then
     echo "WARNING: Findings Summary section not found in input (input may be malformed). The sidecar is empty; '/issue --input-file <path>' on it would create no issues." >&2
   else
@@ -508,5 +513,5 @@ while IFS= read -r -d '' item; do
   } >> "$OUTPUT_PATH"
 done < "$ITEMS_FILE"
 
-echo "COUNT=$i"
+emit_kv COUNT "$i"
 exit 0

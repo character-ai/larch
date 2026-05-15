@@ -12,6 +12,7 @@
 # Exit 0 on all assertions passing; exit 1 on any failure (with diagnostic on stderr).
 
 set -euo pipefail
+export LARCH_QUIET_DISABLE=1
 
 REPO_ROOT="$(cd "$(dirname "$0")/../../.." && pwd -P)"
 SCRIPT="$REPO_ROOT/skills/research/scripts/render-findings-batch.sh"

@@ -39,6 +39,9 @@ first available session tmpdir (`IMPLEMENT_TMPDIR`, `REVIEW_TMPDIR`,
 
 - Nested sourcing is idempotent via `LARCH_LIB_QUIET_LOADED`.
 - Nested initialization is idempotent via `LARCH_QUIET_ACTIVE`.
+- Log-directory derivation uses shell parameter expansion rather than external
+  `dirname`, so hook helpers still initialize in deliberately stripped `PATH`
+  harnesses.
 - Pure stdin-to-stdout filters must either avoid `larch_quiet_init` or set
   `LARCH_QUIET_DISABLE=1` before calling it, because their data stream is
   ordinary stdout rather than contract output.

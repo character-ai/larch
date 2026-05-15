@@ -28,6 +28,8 @@ All flags are required.
 - **On usage error** (exit 1): no machine output.
 - **On exit 2**: no machine output. Exit 2 fires when `--report` is missing OR when the path exists but is not a regular file (e.g., a directory) — `[[ ! -f "$REPORT_PATH" ]]` rejects both. Stderr carries an `ERROR:` diagnostic line (#510 review FINDING_7 — single canonical wording).
 
+Quiet logging: this helper sources `scripts/lib-quiet.sh`; contract stdout is emitted through `emit_kv`. Incidental stdout/stderr is redirected to `$LARCH_QUIET_LOG_FILE` unless `LARCH_QUIET_DISABLE=1` is set. On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.
+
 ### Stderr (human diagnostics)
 
 - **On exit 3**, one of two warning texts on stderr:

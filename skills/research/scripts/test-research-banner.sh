@@ -20,6 +20,7 @@
 #   - canonical pin: BANNER_TEMPLATE in helper byte-equals harness's
 
 set -euo pipefail
+export LARCH_QUIET_DISABLE=1
 
 REPO_ROOT="$(cd "$(dirname "$0")/../../.." && pwd -P)"
 RESEARCH_PHASE_MD="$REPO_ROOT/skills/research/references/research-phase.md"

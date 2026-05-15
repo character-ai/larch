@@ -33,6 +33,7 @@
 #   1 — at least one assertion failed
 
 set -euo pipefail
+export LARCH_QUIET_DISABLE=1
 
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 HOOK="$REPO_ROOT/scripts/deny-edit-write.sh"

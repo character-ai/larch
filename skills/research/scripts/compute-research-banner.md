@@ -23,6 +23,8 @@
 - On insufficient args (`< 1`): prints nothing on stdout; logs a diagnostic on stderr.
 - Always exits 0 (failure-to-emit is signaled by empty stdout, never by a non-zero exit code, so callers using `$(...)` command substitution under `set -e` do not abort).
 
+Quiet logging: this helper sources `scripts/lib-quiet.sh`; contract stdout is emitted through `emit`. Incidental stdout/stderr is redirected to `$LARCH_QUIET_LOG_FILE` unless `LARCH_QUIET_DISABLE=1` is set. On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.
+
 **Usage**:
 
 ```bash

@@ -33,27 +33,37 @@
 # Regression harness: ${CLAUDE_PLUGIN_ROOT}/scripts/test-deny-edit-write.sh
 # (wired into `make lint` via the `test-deny-edit-write` target).
 
+# set -e is intentionally omitted: every ambiguity must route through block()
+# and emit a deny envelope rather than aborting with no hook decision.
 set -uo pipefail
+
+SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" && pwd -P)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
 
 # Fixed deny JSON — single reason string, no runtime interpolation.
 # The jq -cn expression below and the static printf fallback must emit
 # byte-identical output for this literal. When editing the reason,
 # keep both branches in sync.
 block() {
-  jq -cn '{
+  local json
+  json=$(jq -cn '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
       permissionDecisionReason: "/research is a read-only-repo skill -- Edit/Write/NotebookEdit outside /tmp is not permitted."
     }
-  }' || printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"/research is a read-only-repo skill -- Edit/Write/NotebookEdit outside /tmp is not permitted."}}'
+  }' 2>/dev/null) \
+    || json='{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"/research is a read-only-repo skill -- Edit/Write/NotebookEdit outside /tmp is not permitted."}}'
+  emit "$json"
   exit 0
 }
 
 # jq-absent static fallback. Byte-identical to the `jq -cn` output
 # above (same single reason literal).
 if ! command -v jq >/dev/null 2>&1; then
-  printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"/research is a read-only-repo skill -- Edit/Write/NotebookEdit outside /tmp is not permitted."}}'
+  emit '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"/research is a read-only-repo skill -- Edit/Write/NotebookEdit outside /tmp is not permitted."}}'
   exit 0
 fi
 
