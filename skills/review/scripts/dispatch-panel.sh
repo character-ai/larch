@@ -9,7 +9,7 @@ PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
 
-usage() { echo "Usage: dispatch-panel.sh --mode diff|description --review-tmpdir DIR --codex-available true|false --cursor-available true|false [context flags]" >&2; }
+usage() { echo "Usage: dispatch-panel.sh --mode diff|description --review-tmpdir DIR --codex-available true|false --cursor-available true|false [--panel simple|hard] [context flags]" >&2; }
 
 MODE=""
 DIFF_FILE=""
@@ -24,7 +24,9 @@ FEATURE_FILE=""
 DESCRIPTION_TEXT=""
 TIMING_TASK_PREFIX="review"
 LAUNCH_CLAUDE="$PLUGIN_ROOT/scripts/launch-claude-subprocess.sh"
+LAUNCH_REVIEW="$PLUGIN_ROOT/scripts/launch-review.sh"
 SESSION_ENV_PATH="${SESSION_ENV_PATH:-}"
+PANEL="hard"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -41,7 +43,9 @@ while [[ $# -gt 0 ]]; do
         --description-text) DESCRIPTION_TEXT="${2:?--description-text requires a value}"; shift 2 ;;
         --timing-task-prefix) TIMING_TASK_PREFIX="${2:?--timing-task-prefix requires a value}"; shift 2 ;;
         --launch-claude-subprocess) LAUNCH_CLAUDE="${2:?--launch-claude-subprocess requires a value}"; shift 2 ;;
+        --launch-review) LAUNCH_REVIEW="${2:?--launch-review requires a value}"; shift 2 ;;
         --session-env-path) SESSION_ENV_PATH="${2:?--session-env-path requires a value}"; shift 2 ;;
+        --panel) PANEL="${2:?--panel requires a value}"; shift 2 ;;
         --help) usage; exit 0 ;;
         *) echo "dispatch-panel.sh: unknown option: $1" >&2; usage; exit 2 ;;
     esac
@@ -55,6 +59,7 @@ export SESSION_ENV_PATH
 [[ -n "$REVIEW_TMPDIR" ]] || { echo "dispatch-panel.sh: --review-tmpdir is required" >&2; exit 2; }
 [[ "$CODEX_AVAILABLE" == "true" || "$CODEX_AVAILABLE" == "false" ]] || { echo "dispatch-panel.sh: --codex-available must be true or false" >&2; exit 2; }
 [[ "$CURSOR_AVAILABLE" == "true" || "$CURSOR_AVAILABLE" == "false" ]] || { echo "dispatch-panel.sh: --cursor-available must be true or false" >&2; exit 2; }
+[[ "$PANEL" == "simple" || "$PANEL" == "hard" ]] || { echo "dispatch-panel.sh: --panel must be simple or hard" >&2; exit 2; }
 mkdir -p "$REVIEW_TMPDIR"
 
 manifest="$REVIEW_TMPDIR/panel-manifest.ndjson"
@@ -141,7 +146,7 @@ launch_external_slot() {
         # parent) aborts the subshell before rc capture and the failure
         # logging path is bypassed.
         set +e
-        "$PLUGIN_ROOT/scripts/launch-review.sh" "${args[@]}" > "$launch_log" 2>&1
+        "$LAUNCH_REVIEW" "${args[@]}" > "$launch_log" 2>&1
         rc=$?
         set -e
         [[ "$rc" -eq 0 ]] || append_launch_failure "review Step 2" "launch-review.sh $tool $name" "$rc" "$launch_log"
@@ -151,7 +156,18 @@ launch_external_slot() {
     slot_count=$((slot_count + 1))
 }
 
-specialists=(structure correctness testing security edge-cases plan-fidelity)
+if [[ "$PANEL" == "simple" ]]; then
+    cursor_specialists=(edge-cases)
+    codex_specialists=(structure)
+    if [[ -n "$PLAN_FILE" && -f "$PLAN_FILE" ]]; then
+        cursor_specialists+=(plan-fidelity)
+        codex_specialists+=(plan-fidelity)
+    fi
+else
+    cursor_specialists=(structure correctness testing security edge-cases plan-fidelity)
+    codex_specialists=(structure correctness testing security edge-cases plan-fidelity)
+fi
+
 # Fallback matrix (from SKILL.md): when a tool is unavailable, skip its specialist
 # slots entirely — do NOT substitute Claude fallback slots for partial outages.
 # Only the both-down path (no external tools) uses a single Claude generic reviewer.
@@ -160,22 +176,25 @@ if [[ "$CODEX_AVAILABLE" == "false" && "$CURSOR_AVAILABLE" == "false" ]]; then
     panel_mode="both-down"
 else
     panel_mode="normal"
-    for name in "${specialists[@]}"; do
-        if [[ "$CURSOR_AVAILABLE" == "true" ]]; then
+    if [[ "$CURSOR_AVAILABLE" == "true" ]]; then
+        for name in "${cursor_specialists[@]}"; do
             launch_external_slot cursor "$name" "$REVIEW_TMPDIR/cursor-specialist-${name}-output.txt"
-        fi
-        # Cursor unavailable: skip Cursor specialist slots (no Claude substitution).
-        if [[ "$CODEX_AVAILABLE" == "true" ]]; then
+        done
+    fi
+    # Cursor unavailable: skip Cursor specialist slots (no Claude substitution).
+    if [[ "$CODEX_AVAILABLE" == "true" ]]; then
+        for name in "${codex_specialists[@]}"; do
             launch_external_slot codex "$name" "$REVIEW_TMPDIR/codex-specialist-${name}-output.txt"
-        fi
-        # Codex unavailable: skip Codex specialist slots (no Claude substitution).
-    done
+        done
+    fi
+    # Codex unavailable: skip Codex specialist slots (no Claude substitution).
     launch_claude_slot "generic" "$REVIEW_TMPDIR/claude-generic-output.txt"
 fi
 
 emit_kv EXTERNAL_OUTPUT_FILES "${external_outputs[*]-}"
 emit_kv CLAUDE_OUTPUT_FILES "${claude_outputs[*]-}"
 emit_kv PANEL_MODE "$panel_mode"
+emit_kv PANEL_SHAPE "$PANEL"
 emit_kv SLOT_COUNT "$slot_count"
 emit_kv PANEL_MANIFEST "$manifest"
 emit_kv DISPATCH_OK true

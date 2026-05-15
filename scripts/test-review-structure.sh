@@ -64,6 +64,7 @@ skill_lines=$(wc -l < "$SKILL_MD" | tr -d ' ')
 
 review_scripts=(
   gather-context
+  review-core
   dispatch-panel
   collect-findings
   tally-votes
@@ -71,8 +72,8 @@ review_scripts=(
   emit-tally
   log-phase
 )
-[[ "${#review_scripts[@]}" -eq 7 ]] \
-  || fail "(1) internal harness error: expected review script list must contain 7 entries"
+[[ "${#review_scripts[@]}" -eq 8 ]] \
+  || fail "(1) internal harness error: expected review script list must contain 8 entries"
 for script in "${review_scripts[@]}"; do
   [[ -f "$REVIEW_SCRIPTS_DIR/${script}.sh" ]] \
     || fail "(1) missing review script: skills/review/scripts/${script}.sh"
@@ -81,6 +82,29 @@ for script in "${review_scripts[@]}"; do
   [[ -f "$REVIEW_SCRIPTS_DIR/test-${script}.sh" ]] \
     || fail "(1) missing review script harness: skills/review/scripts/test-${script}.sh"
 done
+
+REVIEW_AND_FIX_DIR="$REPO_ROOT/skills/review-and-fix"
+[[ -f "$REVIEW_AND_FIX_DIR/SKILL.md" ]] \
+  || fail "(1b) missing skills/review-and-fix/SKILL.md"
+[[ -f "$REVIEW_AND_FIX_DIR/scripts/review-and-fix.sh" ]] \
+  || fail "(1b) missing skills/review-and-fix/scripts/review-and-fix.sh"
+[[ -f "$REVIEW_AND_FIX_DIR/scripts/call-fixer.sh" ]] \
+  || fail "(1b) missing skills/review-and-fix/scripts/call-fixer.sh"
+
+for agent in orchestrator-aggregator orchestrator-judge; do
+  agent_file="$REPO_ROOT/agents/${agent}.md"
+  [[ -f "$agent_file" ]] \
+    || fail "(1c) missing agents/${agent}.md"
+  grep -Fq 'HAND-MAINTAINED' "$agent_file" \
+    || fail "(1c) agents/${agent}.md lacks HAND-MAINTAINED annotation"
+  case "$(basename "$agent_file")" in
+    reviewer-*) fail "(1c) agents/${agent}.md unexpectedly matches reviewer-* glob" ;;
+  esac
+done
+[[ ! -e "$REPO_ROOT/agents/reviewer-aggregator.md" ]] \
+  || fail "(1d) agents/reviewer-aggregator.md must not exist; use orchestrator-aggregator.md"
+[[ ! -e "$REPO_ROOT/agents/reviewer-judge.md" ]] \
+  || fail "(1d) agents/reviewer-judge.md must not exist; use orchestrator-judge.md"
 
 # ---------------------------------------------------------------------------
 # (2) Each expected baseline reference file exists.
