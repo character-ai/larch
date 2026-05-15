@@ -119,6 +119,17 @@ assert_contains "5: reviewer content present" "$output5" "some review content"
 assert_contains "5: diag missing placeholder" "$output5" "(file missing:"
 assert_nonempty_file "5: output guaranteed non-empty" "$output5"
 
+# ── Case 5b: empty --reviewer-file → (no path provided) + no .diag section ───
+echo "Case 5b: empty --reviewer-file path"
+dir5b="$TMPDIR_BASE/case5b"
+mkdir -p "$dir5b"
+output5b="$dir5b/out.log"
+"$SCRIPT" --reviewer-file "" --structured-record "$RECORD" --output "$output5b"
+assert_contains "5b: structured record present" "$output5b" "## Structured collector record"
+assert_contains "5b: no-path placeholder" "$output5b" "(no path provided)"
+assert_not_contains "5b: no diag section" "$output5b" "## Reviewer stderr"
+assert_nonempty_file "5b: output guaranteed non-empty" "$output5b"
+
 # ── Case 6: empty --structured-record → exit 2 ───────────────────────────────
 echo "Case 6: empty --structured-record"
 dir6="$TMPDIR_BASE/case6"
@@ -128,7 +139,11 @@ err6="$dir6/err.log"
 rc6=0
 "$SCRIPT" --reviewer-file "/dev/null" --structured-record "" --output "$output6" 2>"$err6" || rc6=$?
 assert_rc "6: exit 2 on empty record" "$rc6" "2"
-assert_not_contains "6: output not created" "$dir6" "Structured collector record" 2>/dev/null || true
+if [ ! -e "$output6" ]; then
+    ok "6: output file not created on failure"
+else
+    fail "6: output file must not exist when script exits non-zero"
+fi
 
 # ── Case 7: missing --output → exit 2 ────────────────────────────────────────
 echo "Case 7: missing --output"
@@ -166,7 +181,7 @@ fi
 # ── Case 10: output guaranteed non-empty for cases 1-5 (aggregated) ───────────
 # Covered individually above; add one explicit check for the key invariant.
 echo "Case 10: non-empty output invariant for all valid cases"
-for f in "$output1" "$output2" "$output3" "$output4" "$output5"; do
+for f in "$output1" "$output2" "$output3" "$output4" "$output5" "$output5b"; do
     assert_nonempty_file "10: non-empty: $f" "$f"
 done
 

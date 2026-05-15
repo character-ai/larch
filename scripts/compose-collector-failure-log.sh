@@ -48,7 +48,7 @@ dump_section() {
     fi
 }
 
-TMP=$(mktemp "${TMPDIR:-/tmp}/compose-collector-failure-log.XXXXXX")
+TMP=$(mktemp "$(dirname "$OUTPUT")/.compose-collector-failure-log.XXXXXX")
 {
     printf '## Structured collector record\n\n'
     printf '%s\n\n' "$STRUCTURED_RECORD"
