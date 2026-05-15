@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [27.6.18] - 2026-05-15
+
+### Changed
+
+- Added scripts/write-tally.sh to compose tally JSON and write the matching larch-log batch in one helper call.
+- Added write-tally contract docs and an 11-case regression harness covering happy paths, defaults, validation, passthrough failures, atomicity, and channel discipline.
+- Wired make test-write-tally into shard 4 and updated /implement Step 1 and Step 5 tally instructions to use the wrapper.
+
 ## [27.6.14] - 2026-05-15
 
 ### Changed
