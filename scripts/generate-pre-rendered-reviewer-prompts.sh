@@ -12,6 +12,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 AGENTS_DIR="$REPO_ROOT/agents"
 OUTPUT_DIR="$AGENTS_DIR/pre-rendered"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
 
 MODE="write"
 if [[ "${1:-}" == "--check" ]]; then
@@ -94,4 +97,4 @@ while IFS= read -r expected_file; do
   mv "$tmp" "$target"
 done < <(find "$EXPECTED_DIR" -maxdepth 1 -type f \( -name 'reviewer-*-body.txt' -o -name '.manifest' \) | sort)
 
-echo "Wrote $OUTPUT_DIR"
+emit_breadcrumb "Wrote $OUTPUT_DIR"

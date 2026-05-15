@@ -49,3 +49,5 @@ Failed probes are retried up to 2 additional times (3 total attempts) with a 3-s
 | `skills/shared/external-reviewers.md` | Documents the two-key rule (`*_AVAILABLE` + `*_HEALTHY`) |
 | `scripts/test-check-reviewers.sh` | Regression harness for acceptance logic |
 | `scripts/lib-cursor-auth.sh` | Cursor auth-argv builder + Darwin-gated keychain preflight; sourced for the Cursor probe argv (`cursor_auth_argv` only — preflight not invoked) |
+
+On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.

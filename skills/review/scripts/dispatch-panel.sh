@@ -5,6 +5,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
+# shellcheck source=scripts/lib-quiet.sh
+source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
+larch_quiet_init
 
 usage() { echo "Usage: dispatch-panel.sh --mode diff|description --review-tmpdir DIR --codex-available true|false --cursor-available true|false [context flags]" >&2; }
 
@@ -170,11 +173,9 @@ else
     launch_claude_slot "generic" "$REVIEW_TMPDIR/claude-generic-output.txt"
 fi
 
-printf 'EXTERNAL_OUTPUT_FILES='
-printf '%q ' "${external_outputs[@]+"${external_outputs[@]}"}"
-printf '\nCLAUDE_OUTPUT_FILES='
-printf '%q ' "${claude_outputs[@]+"${claude_outputs[@]}"}"
-printf '\nPANEL_MODE=%s\n' "$panel_mode"
-printf 'SLOT_COUNT=%s\n' "$slot_count"
-printf 'PANEL_MANIFEST=%q\n' "$manifest"
-printf 'DISPATCH_OK=true\n'
+emit_kv EXTERNAL_OUTPUT_FILES "${external_outputs[*]-}"
+emit_kv CLAUDE_OUTPUT_FILES "${claude_outputs[*]-}"
+emit_kv PANEL_MODE "$panel_mode"
+emit_kv SLOT_COUNT "$slot_count"
+emit_kv PANEL_MANIFEST "$manifest"
+emit_kv DISPATCH_OK true

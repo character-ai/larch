@@ -17,6 +17,10 @@ source "$SCRIPT_DIR/lib-validate-meta-path.sh"
 # shellcheck source=scripts/lib-dirty-tree-sidecar.sh
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib-dirty-tree-sidecar.sh"
+# shellcheck source=scripts/lib-quiet.sh
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
 
 usage() {
     echo "Usage: launch-review.sh --tool codex|cursor|gemini --output FILE --timeout SECS [review flags]" >&2

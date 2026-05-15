@@ -69,13 +69,15 @@ trap 'rm -rf "$TMPDIR_LOCAL"' EXIT
 
 run_render() {
     local input="$1"
-    local out_file err_file rc
+    local out_file err_file log_file rc
     out_file="$TMPDIR_LOCAL/out"
     err_file="$TMPDIR_LOCAL/err"
+    log_file="$TMPDIR_LOCAL/render-quiet.log"
+    rm -f "$log_file"
     rc=0
-    "$SCRIPT" --input "$input" >"$out_file" 2>"$err_file" || rc=$?
+    LARCH_QUIET_LOG_FILE="$log_file" "$SCRIPT" --input "$input" >"$out_file" 2>"$err_file" || rc=$?
     STDOUT="$(cat "$out_file")"
-    STDERR="$(cat "$err_file")"
+    STDERR="$(cat "$err_file" "$log_file" 2>/dev/null || true)"
     EXIT="$rc"
 }
 
@@ -283,15 +285,17 @@ assert_stderr_contains "F8.stderr" "render-lane-status: input file missing" "$ST
 
 # ---------- Fixture 9 — usage error: --input flag omitted ----------
 EXIT=0
-"$SCRIPT" >"$TMPDIR_LOCAL/out" 2>"$TMPDIR_LOCAL/err" || EXIT=$?
-STDERR="$(cat "$TMPDIR_LOCAL/err")"
+rm -f "$TMPDIR_LOCAL/render-quiet.log"
+LARCH_QUIET_LOG_FILE="$TMPDIR_LOCAL/render-quiet.log" "$SCRIPT" >"$TMPDIR_LOCAL/out" 2>"$TMPDIR_LOCAL/err" || EXIT=$?
+STDERR="$(cat "$TMPDIR_LOCAL/err" "$TMPDIR_LOCAL/render-quiet.log" 2>/dev/null || true)"
 assert_exit_equals "F9.exit" "1" "$EXIT"
 assert_stderr_contains "F9.stderr" "--input is required" "$STDERR"
 
 # ---------- Fixture 10 — usage error: unknown flag ----------
 EXIT=0
-"$SCRIPT" --bogus >"$TMPDIR_LOCAL/out" 2>"$TMPDIR_LOCAL/err" || EXIT=$?
-STDERR="$(cat "$TMPDIR_LOCAL/err")"
+rm -f "$TMPDIR_LOCAL/render-quiet.log"
+LARCH_QUIET_LOG_FILE="$TMPDIR_LOCAL/render-quiet.log" "$SCRIPT" --bogus >"$TMPDIR_LOCAL/out" 2>"$TMPDIR_LOCAL/err" || EXIT=$?
+STDERR="$(cat "$TMPDIR_LOCAL/err" "$TMPDIR_LOCAL/render-quiet.log" 2>/dev/null || true)"
 assert_exit_equals "F10.exit" "1" "$EXIT"
 assert_stderr_contains "F10.stderr" "unknown flag: --bogus" "$STDERR"
 

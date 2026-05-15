@@ -3,6 +3,12 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
+# shellcheck source=scripts/lib-quiet.sh
+source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
+larch_quiet_init
+
 usage() { echo "Usage: detect-wholesale-rejection.sh --accepted-count N" >&2; }
 
 ACCEPTED_COUNT=""
@@ -16,7 +22,7 @@ done
 
 case "$ACCEPTED_COUNT" in ''|*[!0-9]*) echo "detect-wholesale-rejection.sh: --accepted-count must be a non-negative integer" >&2; exit 2 ;; esac
 if [[ "$ACCEPTED_COUNT" -eq 0 ]]; then
-    printf 'TERMINATE_EARLY=true\n'
+    emit_kv TERMINATE_EARLY true
 else
-    printf 'TERMINATE_EARLY=false\n'
+    emit_kv TERMINATE_EARLY false
 fi

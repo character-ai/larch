@@ -44,3 +44,5 @@
 **Makefile wiring**: Invoked only from SKILL.md orchestration. No dedicated Makefile target; tested via `scripts/test-render-specialist-prompt.sh` wired into `make test-harnesses`.
 
 **CI**: The specialist agent files (`agents/reviewer-*.md`) are added to `.github/workflows/ci.yaml`'s focus-area enum check so specialist prompts cannot silently drop the `security` focus area.
+
+On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.

@@ -8,4 +8,6 @@ Description mode resolves the description with deterministic filesystem tools on
 
 Stdout is `KEY=value` only: `DIFF_FILE`, `FILE_LIST_FILE`, `COMMIT_LOG_FILE`, `COMMIT_COUNT`, `SCOPE_FILES_COUNT`, and `MODE`.
 
+On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.
+
 Harness: `skills/review/scripts/test-gather-context.sh`, wired through `make test-gather-context`.

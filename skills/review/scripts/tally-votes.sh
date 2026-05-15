@@ -4,7 +4,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
 SHARED_DIR="$SCRIPT_DIR/../../shared/scripts"
+# shellcheck source=scripts/lib-quiet.sh
+source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
+larch_quiet_init
 
 usage() { echo "Usage: tally-votes.sh --findings-file FILE --review-tmpdir DIR --cursor-available true|false --codex-available true|false --both-down true|false [--output-tally FILE --output-accepted FILE]" >&2; }
 
@@ -91,8 +95,8 @@ print_block { print }
 ' "$FINDINGS_FILE" > "$OUTPUT_ACCEPTED"
 
 : "$CURSOR_AVAILABLE" "$CODEX_AVAILABLE" "$SESSION_ENV_PATH"
-printf 'ACCEPTED_COUNT=%s\n' "$accepted"
-printf 'REJECTED_COUNT=%s\n' "$rejected"
-printf 'TALLY_FILE=%q\n' "$OUTPUT_TALLY"
-printf 'ACCEPTED_FINDINGS_FILE=%q\n' "$OUTPUT_ACCEPTED"
-printf 'TALLY_OK=true\n'
+emit_kv ACCEPTED_COUNT "$accepted"
+emit_kv REJECTED_COUNT "$rejected"
+emit_kv TALLY_FILE "$OUTPUT_TALLY"
+emit_kv ACCEPTED_FINDINGS_FILE "$OUTPUT_ACCEPTED"
+emit_kv TALLY_OK true

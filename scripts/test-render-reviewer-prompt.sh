@@ -22,6 +22,19 @@ fail() {
 pass_count=0
 note_pass() { pass_count=$((pass_count + 1)); }
 
+run_helper_expect_fail() {
+  local label="$1"
+  local out_file="$2"
+  local err_file="$3"
+  local log_file="$4"
+  shift 4
+  rm -f "$log_file"
+  if LARCH_QUIET_LOG_FILE="$log_file" "$@" >"$out_file" 2>"$err_file"; then
+    fail "$label: expected non-zero exit"
+  fi
+  cat "$err_file" "$log_file" > "${err_file}.diagnostics" 2>/dev/null || true
+}
+
 # ------------------------------------------------------------------------
 # Fixtures (used by the happy path + several negative cases).
 # ------------------------------------------------------------------------
@@ -121,30 +134,26 @@ note_pass
 # ------------------------------------------------------------------------
 # Negative: missing required flag
 # ------------------------------------------------------------------------
-if "$HELPER" \
+run_helper_expect_fail "negative (missing --target)" /dev/null "$TMPDIR_TEST/missing-flag.err" "$TMPDIR_TEST/missing-flag.quiet.log" \
+  "$HELPER" \
     --research-question-file "$QUESTION_FILE" \
     --context-file "$CONTEXT_FILE" \
-    --in-scope-instruction-file "$INSCOPE_FILE" \
-    >/dev/null 2>"$TMPDIR_TEST/missing-flag.err"; then
-  fail "negative (missing --target): expected non-zero exit"
-fi
-grep -Fq -- '--target is required' "$TMPDIR_TEST/missing-flag.err" \
-  || fail "negative (missing --target): expected stderr to mention --target; got: $(cat "$TMPDIR_TEST/missing-flag.err")"
+    --in-scope-instruction-file "$INSCOPE_FILE"
+grep -Fq -- '--target is required' "$TMPDIR_TEST/missing-flag.err.diagnostics" \
+  || fail "negative (missing --target): expected diagnostics to mention --target; got: $(cat "$TMPDIR_TEST/missing-flag.err.diagnostics")"
 note_pass
 
 # ------------------------------------------------------------------------
 # Negative: unreadable file
 # ------------------------------------------------------------------------
-if "$HELPER" \
+run_helper_expect_fail "negative (unreadable file)" /dev/null "$TMPDIR_TEST/unreadable.err" "$TMPDIR_TEST/unreadable.quiet.log" \
+  "$HELPER" \
     --target 'research findings' \
     --research-question-file "$TMPDIR_TEST/does-not-exist.txt" \
     --context-file "$CONTEXT_FILE" \
-    --in-scope-instruction-file "$INSCOPE_FILE" \
-    >/dev/null 2>"$TMPDIR_TEST/unreadable.err"; then
-  fail "negative (unreadable file): expected non-zero exit"
-fi
-grep -Fq 'missing or unreadable' "$TMPDIR_TEST/unreadable.err" \
-  || fail "negative (unreadable file): expected stderr 'missing or unreadable'; got: $(cat "$TMPDIR_TEST/unreadable.err")"
+    --in-scope-instruction-file "$INSCOPE_FILE"
+grep -Fq 'missing or unreadable' "$TMPDIR_TEST/unreadable.err.diagnostics" \
+  || fail "negative (unreadable file): expected diagnostics 'missing or unreadable'; got: $(cat "$TMPDIR_TEST/unreadable.err.diagnostics")"
 note_pass
 
 # ------------------------------------------------------------------------
@@ -153,21 +162,20 @@ note_pass
 MOCK_REPO="$TMPDIR_TEST/mock-no-markers"
 mkdir -p "$MOCK_REPO/scripts" "$MOCK_REPO/skills/shared"
 cp "$HELPER" "$MOCK_REPO/scripts/render-reviewer-prompt.sh"
+cp "$REPO_ROOT/scripts/lib-quiet.sh" "$MOCK_REPO/scripts/lib-quiet.sh"
 cat >"$MOCK_REPO/skills/shared/reviewer-templates.md" <<'EOF_MOCK'
 # Reviewer Templates
 
 (no markers here at all)
 EOF_MOCK
-if "$MOCK_REPO/scripts/render-reviewer-prompt.sh" \
+run_helper_expect_fail "negative (no markers)" /dev/null "$TMPDIR_TEST/no-markers.err" "$TMPDIR_TEST/no-markers.quiet.log" \
+  "$MOCK_REPO/scripts/render-reviewer-prompt.sh" \
     --target 'research findings' \
     --research-question-file "$QUESTION_FILE" \
     --context-file "$CONTEXT_FILE" \
-    --in-scope-instruction-file "$INSCOPE_FILE" \
-    >/dev/null 2>"$TMPDIR_TEST/no-markers.err"; then
-  fail "negative (no markers): expected non-zero exit"
-fi
-grep -Fq 'no content found between BEGIN/END GENERATED_BODY markers' "$TMPDIR_TEST/no-markers.err" \
-  || fail "negative (no markers): expected stderr to mention BEGIN/END markers; got: $(cat "$TMPDIR_TEST/no-markers.err")"
+    --in-scope-instruction-file "$INSCOPE_FILE"
+grep -Fq 'no content found between BEGIN/END GENERATED_BODY markers' "$TMPDIR_TEST/no-markers.err.diagnostics" \
+  || fail "negative (no markers): expected diagnostics to mention BEGIN/END markers; got: $(cat "$TMPDIR_TEST/no-markers.err.diagnostics")"
 note_pass
 
 # ------------------------------------------------------------------------
@@ -176,6 +184,7 @@ note_pass
 MOCK_REPO_NS="$TMPDIR_TEST/mock-no-sentinel"
 mkdir -p "$MOCK_REPO_NS/scripts" "$MOCK_REPO_NS/skills/shared"
 cp "$HELPER" "$MOCK_REPO_NS/scripts/render-reviewer-prompt.sh"
+cp "$REPO_ROOT/scripts/lib-quiet.sh" "$MOCK_REPO_NS/scripts/lib-quiet.sh"
 cat >"$MOCK_REPO_NS/skills/shared/reviewer-templates.md" <<'EOF_MOCK'
 # Reviewer Templates
 
@@ -210,16 +219,14 @@ You are a senior code reviewer for this project. Review {REVIEW_TARGET} across f
 ```
 <!-- END GENERATED_BODY -->
 EOF_MOCK
-if "$MOCK_REPO_NS/scripts/render-reviewer-prompt.sh" \
+run_helper_expect_fail "negative (no sentinel target)" /dev/null "$TMPDIR_TEST/no-sentinel.err" "$TMPDIR_TEST/no-sentinel.quiet.log" \
+  "$MOCK_REPO_NS/scripts/render-reviewer-prompt.sh" \
     --target 'research findings' \
     --research-question-file "$QUESTION_FILE" \
     --context-file "$CONTEXT_FILE" \
-    --in-scope-instruction-file "$INSCOPE_FILE" \
-    >/dev/null 2>"$TMPDIR_TEST/no-sentinel.err"; then
-  fail "negative (no sentinel target): expected non-zero exit"
-fi
-grep -Fq 'sentinel-override target string not found' "$TMPDIR_TEST/no-sentinel.err" \
-  || fail "negative (no sentinel target): expected stderr to mention sentinel-override target; got: $(cat "$TMPDIR_TEST/no-sentinel.err")"
+    --in-scope-instruction-file "$INSCOPE_FILE"
+grep -Fq 'sentinel-override target string not found' "$TMPDIR_TEST/no-sentinel.err.diagnostics" \
+  || fail "negative (no sentinel target): expected diagnostics to mention sentinel-override target; got: $(cat "$TMPDIR_TEST/no-sentinel.err.diagnostics")"
 note_pass
 
 # ------------------------------------------------------------------------
@@ -228,6 +235,7 @@ note_pass
 MOCK_REPO_UP="$TMPDIR_TEST/mock-unresolved"
 mkdir -p "$MOCK_REPO_UP/scripts" "$MOCK_REPO_UP/skills/shared"
 cp "$HELPER" "$MOCK_REPO_UP/scripts/render-reviewer-prompt.sh"
+cp "$REPO_ROOT/scripts/lib-quiet.sh" "$MOCK_REPO_UP/scripts/lib-quiet.sh"
 # Trigger the unresolved-placeholder gate by leaving a stray {OUTPUT_INSTRUCTION}
 # OUTSIDE either the In-Scope or OOS section, where the section-keyed awk pass
 # (anchored on `^- ` line) cannot match it. The validation gate catches the leftover.
@@ -252,16 +260,14 @@ If no in-scope issues found, say "No in-scope issues found."
 ```
 <!-- END GENERATED_BODY -->
 EOF_MOCK
-if "$MOCK_REPO_UP/scripts/render-reviewer-prompt.sh" \
+run_helper_expect_fail "negative (unresolved placeholder)" /dev/null "$TMPDIR_TEST/unresolved.err" "$TMPDIR_TEST/unresolved.quiet.log" \
+  "$MOCK_REPO_UP/scripts/render-reviewer-prompt.sh" \
     --target 'research findings' \
     --research-question-file "$QUESTION_FILE" \
     --context-file "$CONTEXT_FILE" \
-    --in-scope-instruction-file "$INSCOPE_FILE" \
-    >/dev/null 2>"$TMPDIR_TEST/unresolved.err"; then
-  fail "negative (unresolved placeholder): expected non-zero exit"
-fi
-grep -Fq 'unresolved placeholder' "$TMPDIR_TEST/unresolved.err" \
-  || fail "negative (unresolved placeholder): expected stderr to mention unresolved placeholder; got: $(cat "$TMPDIR_TEST/unresolved.err")"
+    --in-scope-instruction-file "$INSCOPE_FILE"
+grep -Fq 'unresolved placeholder' "$TMPDIR_TEST/unresolved.err.diagnostics" \
+  || fail "negative (unresolved placeholder): expected diagnostics to mention unresolved placeholder; got: $(cat "$TMPDIR_TEST/unresolved.err.diagnostics")"
 note_pass
 
 # ------------------------------------------------------------------------
@@ -314,15 +320,13 @@ note_pass
 # ------------------------------------------------------------------------
 # Negative: flag value validation — `--target --context-file ...` must reject.
 # ------------------------------------------------------------------------
-if "$HELPER" \
+run_helper_expect_fail "negative (--flag --next-flag)" /dev/null "$TMPDIR_TEST/value-as-flag.err" "$TMPDIR_TEST/value-as-flag.quiet.log" \
+  "$HELPER" \
     --target --context-file "$CONTEXT_FILE" \
     --research-question-file "$QUESTION_FILE" \
-    --in-scope-instruction-file "$INSCOPE_FILE" \
-    >/dev/null 2>"$TMPDIR_TEST/value-as-flag.err"; then
-  fail "negative (--flag --next-flag): expected non-zero exit"
-fi
-grep -Fq -- 'requires a non-flag value' "$TMPDIR_TEST/value-as-flag.err" \
-  || fail "negative (--flag --next-flag): expected stderr 'requires a non-flag value'; got: $(cat "$TMPDIR_TEST/value-as-flag.err")"
+    --in-scope-instruction-file "$INSCOPE_FILE"
+grep -Fq -- 'requires a non-flag value' "$TMPDIR_TEST/value-as-flag.err.diagnostics" \
+  || fail "negative (--flag --next-flag): expected diagnostics 'requires a non-flag value'; got: $(cat "$TMPDIR_TEST/value-as-flag.err.diagnostics")"
 note_pass
 
 # ------------------------------------------------------------------------

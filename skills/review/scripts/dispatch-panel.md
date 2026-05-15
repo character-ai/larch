@@ -10,4 +10,6 @@ Pass `--session-env-path` in nested `/implement` runs. `SESSION_ENV_PATH` is exp
 
 Stdout is `KEY=value` only: `EXTERNAL_OUTPUT_FILES`, `CLAUDE_OUTPUT_FILES`, `PANEL_MODE`, `SLOT_COUNT`, `PANEL_MANIFEST`, and `DISPATCH_OK`.
 
+On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.
+
 Harness: `skills/review/scripts/test-dispatch-panel.sh`, wired through `make test-dispatch-panel`.

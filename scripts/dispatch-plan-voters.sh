@@ -5,6 +5,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
 
 usage() {
     echo "Usage: dispatch-plan-voters.sh --ballot-file FILE --design-tmpdir DIR --codex-available true|false --cursor-available true|false [--session-env-path FILE]" >&2
@@ -46,11 +49,11 @@ CURSOR_WRAP_PROMPT="$PLUGIN_ROOT/scripts/cursor-wrap-prompt.sh"
 
 if [[ ! -x "$RUN_EXTERNAL_AGENT" ]]; then
     echo "dispatch-plan-voters.sh: required wrapper missing or not executable: $RUN_EXTERNAL_AGENT" >&2
-    echo "VOTER_2_PATH=''"
-    echo "VOTER_3_PATH=''"
-    echo "VOTER_2_STATUS=fallback"
-    echo "VOTER_3_STATUS=fallback"
-    echo "DISPATCH_OK=false"
+    emit_kv VOTER_2_PATH ""
+    emit_kv VOTER_3_PATH ""
+    emit_kv VOTER_2_STATUS fallback
+    emit_kv VOTER_3_STATUS fallback
+    emit_kv DISPATCH_OK false
     exit 2
 fi
 [[ -x "$WAIT_FOR_REVIEWERS" ]] || { echo "dispatch-plan-voters.sh: required wait helper missing or not executable: $WAIT_FOR_REVIEWERS" >&2; exit 2; }
@@ -302,8 +305,8 @@ if [[ -f "$WAIT_STDOUT" ]]; then
     done < "$WAIT_STDOUT"
 fi
 
-printf 'VOTER_2_PATH=%q\n' "$VOTER_2_PATH"
-printf 'VOTER_3_PATH=%q\n' "$VOTER_3_PATH"
-printf 'VOTER_2_STATUS=%s\n' "$VOTER_2_STATUS"
-printf 'VOTER_3_STATUS=%s\n' "$VOTER_3_STATUS"
-printf 'DISPATCH_OK=%s\n' "$DISPATCH_OK"
+emit_kv VOTER_2_PATH "$VOTER_2_PATH"
+emit_kv VOTER_3_PATH "$VOTER_3_PATH"
+emit_kv VOTER_2_STATUS "$VOTER_2_STATUS"
+emit_kv VOTER_3_STATUS "$VOTER_3_STATUS"
+emit_kv DISPATCH_OK "$DISPATCH_OK"

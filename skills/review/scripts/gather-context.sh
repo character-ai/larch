@@ -5,6 +5,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
+# shellcheck source=scripts/lib-quiet.sh
+source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
+larch_quiet_init
 
 usage() {
     echo "Usage: gather-context.sh --mode diff|description --output-dir DIR [--description-text TEXT --scope-files FILE]" >&2
@@ -36,9 +39,13 @@ validate_rel_file() {
 }
 
 if [[ "$MODE" == "diff" ]]; then
-    "$PLUGIN_ROOT/scripts/gather-branch-context.sh" --output-dir "$OUTPUT_DIR"
-    printf 'SCOPE_FILES_COUNT=0\n'
-    printf 'MODE=diff\n'
+    branch_context_env="$OUTPUT_DIR/gather-branch-context.env"
+    "$PLUGIN_ROOT/scripts/gather-branch-context.sh" --output-dir "$OUTPUT_DIR" > "$branch_context_env"
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        emit "$line"
+    done < "$branch_context_env"
+    emit_kv SCOPE_FILES_COUNT 0
+    emit_kv MODE diff
     exit 0
 fi
 
@@ -69,9 +76,9 @@ if [[ ! -s "$FILE_LIST_FILE" && -n "$DESCRIPTION_TEXT" ]]; then
 fi
 
 count=$(wc -l < "$FILE_LIST_FILE" | tr -d ' ')
-printf 'DIFF_FILE=\n'
-printf 'FILE_LIST_FILE=%q\n' "$FILE_LIST_FILE"
-printf 'COMMIT_LOG_FILE=\n'
-printf 'COMMIT_COUNT=0\n'
-printf 'SCOPE_FILES_COUNT=%s\n' "$count"
-printf 'MODE=description\n'
+emit_kv DIFF_FILE ""
+emit_kv FILE_LIST_FILE "$FILE_LIST_FILE"
+emit_kv COMMIT_LOG_FILE ""
+emit_kv COMMIT_COUNT 0
+emit_kv SCOPE_FILES_COUNT "$count"
+emit_kv MODE description

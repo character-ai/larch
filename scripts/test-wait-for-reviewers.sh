@@ -28,17 +28,20 @@ assert_reject() {
   shift
   local stdout="$TMPDIR/${label}.stdout"
   local stderr="$TMPDIR/${label}.stderr"
+  local quiet_log="$TMPDIR/${label}.quiet.log"
   local code
 
+  rm -f "$quiet_log"
   set +e
-  "$REPO_ROOT/scripts/wait-for-reviewers.sh" "$@" >"$stdout" 2>"$stderr"
+  LARCH_QUIET_LOG_FILE="$quiet_log" "$REPO_ROOT/scripts/wait-for-reviewers.sh" "$@" >"$stdout" 2>"$stderr"
   code=$?
   set -e
 
   [[ "$code" -eq 1 ]] \
     || fail "$label: expected exit 1, got $code"
-  grep -q "$stderr_pattern" "$stderr" \
-    || fail "$label: expected stderr to match '$stderr_pattern'"
+  cat "$stderr" "$quiet_log" > "$TMPDIR/${label}.diagnostics" 2>/dev/null || true
+  grep -q "$stderr_pattern" "$TMPDIR/${label}.diagnostics" \
+    || fail "$label: expected diagnostics to match '$stderr_pattern'"
 }
 
 # R1/R2: case-statement rejections (literal 0, non-numeric).
@@ -92,22 +95,24 @@ grep -q '^DONE 2 same: exit=7$' "$TMPDIR/r6.stdout" \
 # R7/R8: poll interval integer zero forms are rejected, not treated as a busy loop.
 set +e
 WAIT_FOR_REVIEWERS_POLL_INTERVAL=00 \
-  "$REPO_ROOT/scripts/wait-for-reviewers.sh" --timeout 1 "$TMPDIR/never.done" >"$TMPDIR/r7.stdout" 2>"$TMPDIR/r7.stderr"
+  LARCH_QUIET_LOG_FILE="$TMPDIR/r7.quiet.log" "$REPO_ROOT/scripts/wait-for-reviewers.sh" --timeout 1 "$TMPDIR/never.done" >"$TMPDIR/r7.stdout" 2>"$TMPDIR/r7.stderr"
 R7_CODE=$?
 set -e
 [[ "$R7_CODE" -eq 1 ]] \
   || fail "R7: expected exit 1 on WAIT_FOR_REVIEWERS_POLL_INTERVAL=00, got $R7_CODE"
-grep -q "^Error: WAIT_FOR_REVIEWERS_POLL_INTERVAL must be a positive number, got '00'" "$TMPDIR/r7.stderr" \
+cat "$TMPDIR/r7.stderr" "$TMPDIR/r7.quiet.log" > "$TMPDIR/r7.diagnostics" 2>/dev/null || true
+grep -q "^Error: WAIT_FOR_REVIEWERS_POLL_INTERVAL must be a positive number, got '00'" "$TMPDIR/r7.diagnostics" \
   || fail "R7: expected poll-interval 00 rejection message"
 
 set +e
 WAIT_FOR_REVIEWERS_POLL_INTERVAL=000 \
-  "$REPO_ROOT/scripts/wait-for-reviewers.sh" --timeout 1 "$TMPDIR/never.done" >"$TMPDIR/r8.stdout" 2>"$TMPDIR/r8.stderr"
+  LARCH_QUIET_LOG_FILE="$TMPDIR/r8.quiet.log" "$REPO_ROOT/scripts/wait-for-reviewers.sh" --timeout 1 "$TMPDIR/never.done" >"$TMPDIR/r8.stdout" 2>"$TMPDIR/r8.stderr"
 R8_CODE=$?
 set -e
 [[ "$R8_CODE" -eq 1 ]] \
   || fail "R8: expected exit 1 on WAIT_FOR_REVIEWERS_POLL_INTERVAL=000, got $R8_CODE"
-grep -q "^Error: WAIT_FOR_REVIEWERS_POLL_INTERVAL must be a positive number, got '000'" "$TMPDIR/r8.stderr" \
+cat "$TMPDIR/r8.stderr" "$TMPDIR/r8.quiet.log" > "$TMPDIR/r8.diagnostics" 2>/dev/null || true
+grep -q "^Error: WAIT_FOR_REVIEWERS_POLL_INTERVAL must be a positive number, got '000'" "$TMPDIR/r8.diagnostics" \
   || fail "R8: expected poll-interval 000 rejection message"
 
 # S1: suspend detection discounts a long poll iteration from the poll budget.
@@ -146,42 +151,45 @@ S1_SLEEP_EOF
 chmod +x "$S1_MOCK_BIN/sleep"
 set +e
 PATH="$S1_MOCK_BIN:$PATH" \
-  "$REPO_ROOT/scripts/wait-for-reviewers.sh" --timeout 5 "$S1_SENTINEL" >"$TMPDIR/s1.stdout" 2>"$TMPDIR/s1.stderr"
+  LARCH_QUIET_LOG_FILE="$TMPDIR/s1.quiet.log" "$REPO_ROOT/scripts/wait-for-reviewers.sh" --timeout 5 "$S1_SENTINEL" >"$TMPDIR/s1.stdout" 2>"$TMPDIR/s1.stderr"
 S1_CODE=$?
 set -e
 [[ "$S1_CODE" -eq 0 ]] \
   || fail "S1: expected exit 0 after suspend-discounted completion, got $S1_CODE"
 grep -q '^DONE 1 suspended: exit=0$' "$TMPDIR/s1.stdout" \
   || fail "S1: expected DONE stdout grammar after suspend-discounted iteration"
-grep -q 'suspend detected' "$TMPDIR/s1.stderr" \
-  || fail "S1: expected suspend detection warning on stderr"
+cat "$TMPDIR/s1.stderr" "$TMPDIR/s1.quiet.log" > "$TMPDIR/s1.diagnostics" 2>/dev/null || true
+grep -q 'suspend detected' "$TMPDIR/s1.diagnostics" \
+  || fail "S1: expected suspend detection warning in diagnostics"
 
 # C1: collector swallows nothing on --timeout 0.
 set +e
-"$REPO_ROOT/scripts/collect-agent-results.sh" --timeout 0 "$TMPDIR/never.txt" >"$TMPDIR/c1.stdout" 2>"$TMPDIR/c1.stderr"
+LARCH_QUIET_LOG_FILE="$TMPDIR/c1.quiet.log" "$REPO_ROOT/scripts/collect-agent-results.sh" --timeout 0 "$TMPDIR/never.txt" >"$TMPDIR/c1.stdout" 2>"$TMPDIR/c1.stderr"
 C1_CODE=$?
 set -e
 [[ "$C1_CODE" -eq 1 ]] \
   || fail "C1: expected collector exit 1 on --timeout 0, got $C1_CODE"
-grep -q 'must be a positive integer' "$TMPDIR/c1.stderr" \
-  || fail "C1: expected wait positive-integer message on collector stderr"
-grep -q 'collect-agent-results.sh: wait-for-reviewers.sh exited' "$TMPDIR/c1.stderr" \
-  || fail "C1: expected collector trailer line 'collect-agent-results.sh: wait-for-reviewers.sh exited <N>' on stderr"
+cat "$TMPDIR/c1.stderr" "$TMPDIR/c1.quiet.log" > "$TMPDIR/c1.diagnostics" 2>/dev/null || true
+grep -q 'must be a positive integer' "$TMPDIR/c1.diagnostics" \
+  || fail "C1: expected wait positive-integer message in collector diagnostics"
+grep -q 'collect-agent-results.sh: wait-for-reviewers.sh exited' "$TMPDIR/c1.diagnostics" \
+  || fail "C1: expected collector trailer line 'collect-agent-results.sh: wait-for-reviewers.sh exited <N>' in diagnostics"
 if grep -qE '^(REVIEWER_FILE|STATUS)=' "$TMPDIR/c1.stdout"; then
   fail "C1: collector emitted reviewer records on stdout despite usage error"
 fi
 
 # C2: collector swallows nothing on --timeout abc.
 set +e
-"$REPO_ROOT/scripts/collect-agent-results.sh" --timeout abc "$TMPDIR/never.txt" >"$TMPDIR/c2.stdout" 2>"$TMPDIR/c2.stderr"
+LARCH_QUIET_LOG_FILE="$TMPDIR/c2.quiet.log" "$REPO_ROOT/scripts/collect-agent-results.sh" --timeout abc "$TMPDIR/never.txt" >"$TMPDIR/c2.stdout" 2>"$TMPDIR/c2.stderr"
 C2_CODE=$?
 set -e
 [[ "$C2_CODE" -eq 1 ]] \
   || fail "C2: expected collector exit 1 on --timeout abc, got $C2_CODE"
-grep -q 'must be a positive integer' "$TMPDIR/c2.stderr" \
-  || fail "C2: expected wait positive-integer message on collector stderr"
-grep -q 'collect-agent-results.sh: wait-for-reviewers.sh exited' "$TMPDIR/c2.stderr" \
-  || fail "C2: expected collector trailer line 'collect-agent-results.sh: wait-for-reviewers.sh exited <N>' on stderr"
+cat "$TMPDIR/c2.stderr" "$TMPDIR/c2.quiet.log" > "$TMPDIR/c2.diagnostics" 2>/dev/null || true
+grep -q 'must be a positive integer' "$TMPDIR/c2.diagnostics" \
+  || fail "C2: expected wait positive-integer message in collector diagnostics"
+grep -q 'collect-agent-results.sh: wait-for-reviewers.sh exited' "$TMPDIR/c2.diagnostics" \
+  || fail "C2: expected collector trailer line 'collect-agent-results.sh: wait-for-reviewers.sh exited <N>' in diagnostics"
 if grep -qE '^(REVIEWER_FILE|STATUS)=' "$TMPDIR/c2.stdout"; then
   fail "C2: collector emitted reviewer records on stdout despite usage error"
 fi

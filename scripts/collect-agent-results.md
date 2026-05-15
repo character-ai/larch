@@ -23,3 +23,5 @@ When `--structured-reviewer-validation` is passed, the collector adds a Section 
 4. On exit 5 or non-zero: rewrite the entry to `STATUS=NOT_SUBSTANTIVE` with a diagnostic in `FAILURE_REASON`; call `set_tool_unhealthy`.
 
 **Callers wired**: `skills/design/references/plan-review.md` Step 3 collect call for all archetype slots (Cursor and Codex: `cursor-plan-arch-output.txt`, `cursor-plan-edge-output.txt`, `codex-primary-plan-innovation-output.txt`, `codex-primary-plan-pragmatic-output.txt`, and their cross-tool fallback variants). Generic reviewer slots in `skills/review/SKILL.md`, `skills/implement/SKILL.md`, and `skills/research/references/validation-phase.md` are NOT wired and continue with `--substantive-validation --validation-mode` only.
+
+On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.

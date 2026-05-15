@@ -7,7 +7,7 @@ Offline regression harness for `scripts/render-reviewer-prompt.sh`. Runs in CI t
 ## Invariants
 
 - **Happy-path coverage**: rendered prompt contains all five focus-area headings, the XML-wrapped untrusted-context with question + findings fixture content, the literal-delimiter sentence, the `NO_ISSUES_FOUND` sentinel (and **not** the archetype default `No in-scope issues found.`), each in-scope instruction line as its own `- <line>` bullet, the OOS section's research-validation default stub, "Do NOT modify files", and no remaining `{REVIEW_TARGET}` / `{CONTEXT_BLOCK}` / `{OUTPUT_INSTRUCTION}` placeholders.
-- **Negative coverage**: missing required flag → non-zero with diagnostic; unreadable file → non-zero with diagnostic; mocked template missing BEGIN/END markers → non-zero; mocked template missing the sentinel-override target sentence → non-zero; mocked template with an extra unsubstituted placeholder → non-zero.
+- **Negative coverage**: missing required flag → non-zero with quiet-log diagnostic; unreadable file → non-zero with quiet-log diagnostic; mocked template missing BEGIN/END markers → non-zero; mocked template missing the sentinel-override target sentence → non-zero; mocked template with an extra unsubstituted placeholder → non-zero.
 - **Static integration check**: `skills/research/references/validation-phase.md` references `render-reviewer-prompt.sh` at least twice (one per Cursor / Codex lane). Pinned by `grep -Fc`, so renaming the helper would also fail this assertion.
 
 ## Test harness

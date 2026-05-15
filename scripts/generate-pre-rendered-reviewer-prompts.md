@@ -27,3 +27,5 @@ profiles during review fan-out.
 Update `scripts/render-specialist-prompt.sh`,
 `scripts/test-render-specialist-prompt.sh`, `scripts/generators.tsv`, and
 `scripts/test-check-generators.sh` when changing the pre-rendered body contract.
+
+On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.

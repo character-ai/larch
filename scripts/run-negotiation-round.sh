@@ -26,6 +26,11 @@
 
 set -uo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
+
 usage() { echo "Usage: run-negotiation-round.sh --tool codex|cursor --prompt-file <path> --output <path> --workspace <path>" >&2; }
 
 TOOL=""
@@ -55,8 +60,6 @@ fi
 
 # Remove previous output to ensure fresh results
 rm -f "$OUTPUT_FILE"
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 case "$TOOL" in
     codex)
@@ -100,7 +103,7 @@ case "$TOOL" in
         # shellcheck disable=SC1091
         . "$SCRIPT_DIR/lib-cursor-auth.sh"
         if ! cursor_auth_preflight; then
-            echo "RESPONSE_FILE=$OUTPUT_FILE"
+            emit_kv RESPONSE_FILE "$OUTPUT_FILE"
             exit 3
         fi
         CURSOR_AUTH_ARGS=()
@@ -117,8 +120,8 @@ esac
 
 EXIT_CODE=$?
 if [[ $EXIT_CODE -ne 0 ]]; then
-    echo "RESPONSE_FILE=$OUTPUT_FILE"
+    emit_kv RESPONSE_FILE "$OUTPUT_FILE"
     exit 2
 fi
 
-echo "RESPONSE_FILE=$OUTPUT_FILE"
+emit_kv RESPONSE_FILE "$OUTPUT_FILE"

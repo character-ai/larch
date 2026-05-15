@@ -68,3 +68,5 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/render-reviewer-prompt.sh \
 # native success; (2) set cursor_available=false, omit the path from COLLECT_ARGS,
 # launch a Claude Code Reviewer subagent fallback to preserve the 3-lane invariant.
 ```
+
+On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.

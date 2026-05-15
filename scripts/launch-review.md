@@ -102,3 +102,5 @@ Update `scripts/test-launch-review.sh`, `scripts/collect-agent-results.sh`,
 `scripts/test-collect-agent-retry.sh`, `docs/linting.md`, external-reviewer
 docs, and the skill call sites whenever argv grammar, sidecar shape, retry
 metadata, timing, budget-cap, or read-only hardening behavior changes.
+
+On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.

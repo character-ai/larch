@@ -22,6 +22,9 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 TEMPLATE="$REPO_ROOT/skills/shared/reviewer-templates.md"
 AGENT_FILE="$REPO_ROOT/agents/code-reviewer.md"
 SECTION_HEADING="## Reviewer: Code Reviewer"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
 
 MODE="write"
 if [[ "${1:-}" == "--check" ]]; then
@@ -137,4 +140,4 @@ if [[ "$MODE" == "check" ]]; then
 fi
 
 cp "$TMP" "$AGENT_FILE"
-echo "Wrote $AGENT_FILE"
+emit_breadcrumb "Wrote $AGENT_FILE"
