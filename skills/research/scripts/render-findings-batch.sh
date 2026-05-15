@@ -36,7 +36,7 @@ BRANCH=""
 COMMIT=""
 
 usage() {
-  cat >&2 <<'USAGE'
+  while IFS= read -r line; do larch_err "$line"; done <<'USAGE'
 Usage: render-findings-batch.sh \
   --report <path> --output <path> \
   --research-question-file <path> --branch <value> --commit <value>
@@ -62,19 +62,19 @@ while [[ $# -gt 0 ]]; do
     --branch) BRANCH="${2:-}"; shift 2 || { usage; exit 1; } ;;
     --commit) COMMIT="${2:-}"; shift 2 || { usage; exit 1; } ;;
     -h|--help) usage; exit 0 ;;
-    *) echo "Unknown argument: $1" >&2; usage; exit 1 ;;
+    *) larch_err "Unknown argument: $1"; usage; exit 1 ;;
   esac
 done
 
 if [[ -z "$REPORT_PATH" || -z "$OUTPUT_PATH" || -z "$RESEARCH_QUESTION_FILE" \
       || -z "$BRANCH" || -z "$COMMIT" ]]; then
-  echo "ERROR: --report, --output, --research-question-file, --branch, --commit are required" >&2
+  larch_err "ERROR: --report, --output, --research-question-file, --branch, --commit are required"
   usage
   exit 1
 fi
 
 if [[ ! -f "$REPORT_PATH" ]]; then
-  echo "ERROR: report file not found: $REPORT_PATH" >&2
+  larch_err "ERROR: report file not found: $REPORT_PATH"
   exit 2
 fi
 
@@ -177,9 +177,9 @@ emit_empty() {
   : > "$OUTPUT_PATH"
   emit_kv COUNT 0
   if [[ "$SECTION_ABSENT" -eq 1 ]]; then
-    echo "WARNING: Findings Summary section not found in input (input may be malformed). The sidecar is empty; '/issue --input-file <path>' on it would create no issues." >&2
+    larch_err "WARNING: Findings Summary section not found in input (input may be malformed). The sidecar is empty; '/issue --input-file <path>' on it would create no issues."
   else
-    echo "WARNING: Findings Summary section is empty (zero findings). The sidecar is empty; '/issue --input-file <path>' on it would create no issues." >&2
+    larch_err "WARNING: Findings Summary section is empty (zero findings). The sidecar is empty; '/issue --input-file <path>' on it would create no issues."
   fi
   exit 3
 }

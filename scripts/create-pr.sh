@@ -41,7 +41,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-usage() { echo "Usage: create-pr.sh --title TEXT --body-file FILE [--draft] [--repo OWNER/REPO] [--base BASE_REF]" >&2; }
+usage() { larch_err "Usage: create-pr.sh --title TEXT --body-file FILE [--draft] [--repo OWNER/REPO] [--base BASE_REF]"; }
 
 TITLE=""
 BODY_FILE=""
@@ -56,17 +56,17 @@ while [[ $# -gt 0 ]]; do
         --repo) TARGET_REPO="${2:?--repo requires a value}"; shift 2 ;;
         --base) BASE_REF="${2:?--base requires a value}"; shift 2 ;;
         --help) usage; exit 0 ;;
-        *) echo "Unknown option: $1" >&2; usage; exit 2 ;;
+        *) larch_err "Unknown option: $1"; usage; exit 2 ;;
     esac
 done
 
 if [[ -z "$TITLE" ]] || [[ -z "$BODY_FILE" ]]; then
-    echo "ERROR: --title and --body-file are required" >&2
+    larch_err "ERROR: --title and --body-file are required"
     usage; exit 2
 fi
 
 if [[ ! -f "$BODY_FILE" ]]; then
-    echo "ERROR: Body file not found: $BODY_FILE" >&2
+    larch_err "ERROR: Body file not found: $BODY_FILE"
     exit 2
 fi
 
@@ -76,26 +76,26 @@ if [[ -z "$TARGET_REPO" ]]; then
 fi
 if [[ -n "$TARGET_REPO" ]]; then
     if [[ ! "$TARGET_REPO" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; then
-        echo "ERROR: --repo must be OWNER/REPO using GitHub owner/repo characters" >&2
+        larch_err "ERROR: --repo must be OWNER/REPO using GitHub owner/repo characters"
         exit 2
     fi
     GH_REPO_ARGS=(--repo "$TARGET_REPO")
 fi
 
 if [[ ! -x "$REDACT_TMPDIR_HELPER" ]]; then
-    echo "ERROR: Redaction helper missing or not executable: redact-tmpdir-paths.sh" >&2
+    larch_err "ERROR: Redaction helper missing or not executable: redact-tmpdir-paths.sh"
     exit 2
 fi
 REDACTED_BODY_FILE=$(mktemp)
 if ! "$REDACT_TMPDIR_HELPER" < "$BODY_FILE" > "$REDACTED_BODY_FILE"; then
-    echo "ERROR: Failed to redact PR body tmpdir paths" >&2
+    larch_err "ERROR: Failed to redact PR body tmpdir paths"
     exit 2
 fi
 
 # --- Get current branch ---
 BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null || echo "")
 if [[ -z "$BRANCH" ]]; then
-    echo "ERROR: Not on a branch (detached HEAD)" >&2
+    larch_err "ERROR: Not on a branch (detached HEAD)"
     exit 2
 fi
 
@@ -126,7 +126,7 @@ if [[ -n "$EXISTING_PR" ]]; then
                 # PR_* stdout contract this script publishes stays intact;
                 # capture helper stderr to surface on real failure.
                 if ! "$SCRIPT_DIR/git-force-push.sh" >/dev/null 2>>"$PUSH_STDERR"; then
-                    echo "ERROR: Failed to push branch on existing-PR fast-path: $(cat "$PUSH_STDERR")" >&2
+                    larch_err "ERROR: Failed to push branch on existing-PR fast-path: $(cat "$PUSH_STDERR")"
                     exit 1
                 fi
             fi
@@ -147,7 +147,7 @@ fi
 # --- Push branch ---
 PUSH_STDERR=$(mktemp)
 if ! git push -u origin HEAD >"$PUSH_STDERR" 2>&1; then
-    echo "ERROR: Failed to push branch: $(cat "$PUSH_STDERR")" >&2
+    larch_err "ERROR: Failed to push branch: $(cat "$PUSH_STDERR")"
     exit 1
 fi
 
@@ -177,7 +177,7 @@ PR_EXIT=$?
 
 if [[ $PR_EXIT -ne 0 ]]; then
     PR_STDERR=$(cat "$PR_STDERR_FILE" 2>/dev/null)
-    echo "ERROR: Failed to create PR: $PR_STDERR $PR_OUTPUT" >&2
+    larch_err "ERROR: Failed to create PR: $PR_STDERR $PR_OUTPUT"
     exit 2
 fi
 
@@ -195,7 +195,7 @@ if [[ -z "$PR_NUMBER" ]]; then
 fi
 
 if [[ -z "$PR_NUMBER" ]] || [[ -z "$PR_URL" ]]; then
-    echo "ERROR: Could not extract PR number/URL from output: $PR_OUTPUT" >&2
+    larch_err "ERROR: Could not extract PR number/URL from output: $PR_OUTPUT"
     exit 2
 fi
 

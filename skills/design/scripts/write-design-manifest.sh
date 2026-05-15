@@ -23,23 +23,23 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         *)
-            echo "write-design-manifest.sh: unknown flag: $1" >&2
+            larch_err "write-design-manifest.sh: unknown flag: $1"
             exit 2
             ;;
     esac
 done
 
 if [[ -z "$DESIGN_TMPDIR" || -z "$IMPLEMENT_TMPDIR" ]]; then
-    echo "write-design-manifest.sh: --design-tmpdir and --implement-tmpdir are required" >&2
+    larch_err "write-design-manifest.sh: --design-tmpdir and --implement-tmpdir are required"
     exit 2
 fi
 
 if [[ ! -d "$DESIGN_TMPDIR" ]]; then
-    echo "write-design-manifest.sh: design tmpdir not found: $DESIGN_TMPDIR" >&2
+    larch_err "write-design-manifest.sh: design tmpdir not found: $DESIGN_TMPDIR"
     exit 1
 fi
 if [[ ! -d "$IMPLEMENT_TMPDIR" ]]; then
-    echo "write-design-manifest.sh: implement tmpdir not found: $IMPLEMENT_TMPDIR" >&2
+    larch_err "write-design-manifest.sh: implement tmpdir not found: $IMPLEMENT_TMPDIR"
     exit 1
 fi
 
@@ -72,7 +72,7 @@ trap stage_cleanup EXIT
 reject_symlink_source() {
     local src="$1"
     if [[ -L "$src" ]]; then
-        echo "write-design-manifest.sh: source artifact is a symlink (rejected): $src" >&2
+        larch_err "write-design-manifest.sh: source artifact is a symlink (rejected): $src"
         exit 1
     fi
 }
@@ -84,14 +84,14 @@ require_inside_design_tmpdir() {
     local src="$1"
     local canon
     if ! canon=$(cd -P "$(dirname "$src")" 2>/dev/null && pwd -P); then
-        echo "write-design-manifest.sh: cannot resolve source path: $src" >&2
+        larch_err "write-design-manifest.sh: cannot resolve source path: $src"
         exit 1
     fi
     canon="$canon/$(basename "$src")"
     case "$canon" in
         "$DESIGN_TMPDIR"/*) ;;
         *)
-            echo "write-design-manifest.sh: source artifact escapes design tmpdir: $src -> $canon" >&2
+            larch_err "write-design-manifest.sh: source artifact escapes design tmpdir: $src -> $canon"
             exit 1
             ;;
     esac
@@ -102,13 +102,13 @@ copy_required_nonempty() {
     local dest="$2"
     reject_symlink_source "$src"
     if [[ ! -f "$src" || ! -s "$src" ]]; then
-        echo "write-design-manifest.sh: required non-empty artifact missing: $src" >&2
+        larch_err "write-design-manifest.sh: required non-empty artifact missing: $src"
         exit 1
     fi
     require_inside_design_tmpdir "$src"
     cp "$src" "$dest"
     if [[ ! -s "$dest" ]]; then
-        echo "write-design-manifest.sh: copied artifact is empty: $dest" >&2
+        larch_err "write-design-manifest.sh: copied artifact is empty: $dest"
         exit 1
     fi
 }
@@ -118,7 +118,7 @@ copy_required_may_be_empty() {
     local dest="$2"
     reject_symlink_source "$src"
     if [[ ! -f "$src" ]]; then
-        echo "write-design-manifest.sh: required artifact missing: $src" >&2
+        larch_err "write-design-manifest.sh: required artifact missing: $src"
         exit 1
     fi
     require_inside_design_tmpdir "$src"
@@ -138,7 +138,7 @@ copy_required_may_be_empty "$DESIGN_TMPDIR/accepted-plan-findings.md" "$STAGE_DI
 ARCHITECTURE_DIAGRAM_FILE=""
 if [[ -f "$DESIGN_TMPDIR/architecture-diagram.md" ]]; then
     if [[ -L "$DESIGN_TMPDIR/architecture-diagram.md" ]]; then
-        echo "write-design-manifest.sh: optional source artifact is a symlink (rejected): $DESIGN_TMPDIR/architecture-diagram.md" >&2
+        larch_err "write-design-manifest.sh: optional source artifact is a symlink (rejected): $DESIGN_TMPDIR/architecture-diagram.md"
         exit 1
     fi
     require_inside_design_tmpdir "$DESIGN_TMPDIR/architecture-diagram.md"
@@ -159,7 +159,7 @@ fi
 # emit a manifest the reader must reject.
 SESSION_ID=$(printf '%s' "$SESSION_ID" | tr -d '\000-\037\177')
 if [[ -z "$SESSION_ID" ]]; then
-    echo "write-design-manifest.sh: SESSION_ID empty after control-char strip" >&2
+    larch_err "write-design-manifest.sh: SESSION_ID empty after control-char strip"
     exit 1
 fi
 

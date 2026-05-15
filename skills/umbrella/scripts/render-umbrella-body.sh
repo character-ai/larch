@@ -24,27 +24,27 @@ while [ "$#" -gt 0 ]; do
     --tmpdir) TMPDIR="$2"; shift 2 ;;
     --summary-file) SUMMARY_FILE="$2"; shift 2 ;;
     --children-file) CHILDREN_FILE="$2"; shift 2 ;;
-    *) echo "ERROR=Unknown flag: $1" >&2; exit 1 ;;
+    *) larch_err "ERROR=Unknown flag: $1"; exit 1 ;;
   esac
 done
 
 if [ -z "$TMPDIR" ] || [ ! -d "$TMPDIR" ]; then
-  echo "ERROR=--tmpdir is required and must exist" >&2; exit 1
+  larch_err "ERROR=--tmpdir is required and must exist"; exit 1
 fi
 if [ ! -w "$TMPDIR" ]; then
-  echo "ERROR=tmpdir not writable: $TMPDIR" >&2; exit 1
+  larch_err "ERROR=tmpdir not writable: $TMPDIR"; exit 1
 fi
 if [ -z "$SUMMARY_FILE" ] || [ ! -s "$SUMMARY_FILE" ]; then
-  echo "ERROR=--summary-file is required and must be non-empty" >&2; exit 1
+  larch_err "ERROR=--summary-file is required and must be non-empty"; exit 1
 fi
 if [ -z "$CHILDREN_FILE" ] || [ ! -s "$CHILDREN_FILE" ]; then
-  echo "ERROR=--children-file is required and must be non-empty" >&2; exit 1
+  larch_err "ERROR=--children-file is required and must be non-empty"; exit 1
 fi
 
 # Validate children.tsv: each row has exactly 3 tab-separated fields, first numeric.
 bad_row=$(awk -F'\t' 'NF != 3 || $1 !~ /^[0-9]+$/ { print NR ": " $0; exit }' "$CHILDREN_FILE")
 if [ -n "$bad_row" ]; then
-  printf 'ERROR=children.tsv malformed at line %s (expected "<number><TAB><title><TAB><url>")\n' "$bad_row" >&2; exit 1
+  larch_errf 'ERROR=children.tsv malformed at line %s (expected "<number><TAB><title><TAB><url>")\n' "$bad_row"; exit 1
 fi
 
 OUT="$TMPDIR/umbrella-body.md"
@@ -76,7 +76,7 @@ TITLE_HINT=$(awk '
 # redirect below stays standalone (no trailing `||`) — bash suppresses errexit
 # inside a compound on the left of `||`, which would re-mask inner failures.
 OUT_TMP=$(mktemp "$TMPDIR/umbrella-body.md.XXXXXX") || {
-  echo "ERROR=failed to write umbrella body: $OUT" >&2; exit 1
+  larch_err "ERROR=failed to write umbrella body: $OUT"; exit 1
 }
 trap 'rm -f "$OUT_TMP" 2>/dev/null || true' EXIT
 {
@@ -88,17 +88,17 @@ trap 'rm -f "$OUT_TMP" 2>/dev/null || true' EXIT
   printf '\n'
 } > "$OUT_TMP"
 if [ ! -s "$OUT_TMP" ]; then
-  echo "ERROR=failed to write umbrella body: $OUT" >&2; exit 1
+  larch_err "ERROR=failed to write umbrella body: $OUT"; exit 1
 fi
 # Reject pre-existing non-regular $OUT (e.g., a directory). On BSD/macOS,
 # `mv source dir/` succeeds by moving the source INTO the directory and
 # returns 0, which would otherwise re-introduce failure-as-success masking
 # (the same #645 bug class on a different surface).
 if [ -e "$OUT" ] && [ ! -f "$OUT" ]; then
-  echo "ERROR=failed to write umbrella body: $OUT" >&2; exit 1
+  larch_err "ERROR=failed to write umbrella body: $OUT"; exit 1
 fi
 mv "$OUT_TMP" "$OUT" || {
-  echo "ERROR=failed to write umbrella body: $OUT" >&2; exit 1
+  larch_err "ERROR=failed to write umbrella body: $OUT"; exit 1
 }
 
 emit_kv UMBRELLA_BODY_FILE "$OUT"

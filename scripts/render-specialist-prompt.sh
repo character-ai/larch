@@ -60,7 +60,7 @@ take_value() {
   local flag="$1"
   local value="${2:-}"
   if [[ -z "$value" || "$value" == --* ]]; then
-    echo "render-specialist-prompt.sh: $flag requires a non-flag value (got: '${value:-<empty>}')" >&2
+    larch_err "render-specialist-prompt.sh: $flag requires a non-flag value (got: '${value:-<empty>}')"
     exit 2
   fi
   printf '%s' "$value"
@@ -78,50 +78,50 @@ while [[ $# -gt 0 ]]; do
     --commit-count) COMMIT_COUNT="$(take_value --commit-count "${2:-}")"; shift 2 ;;
     --plan-file) PLAN_FILE="$(take_value --plan-file "${2:-}")"; shift 2 ;;
     --feature-file) FEATURE_FILE="$(take_value --feature-file "${2:-}")"; shift 2 ;;
-    *) echo "render-specialist-prompt.sh: unknown flag: $1" >&2; exit 2 ;;
+    *) larch_err "render-specialist-prompt.sh: unknown flag: $1"; exit 2 ;;
   esac
 done
 
 if [[ -z "$AGENT_FILE" ]]; then
-  echo "render-specialist-prompt.sh: --agent-file is required" >&2
+  larch_err "render-specialist-prompt.sh: --agent-file is required"
   exit 2
 fi
 if [[ ! -f "$AGENT_FILE" ]]; then
-  echo "render-specialist-prompt.sh: agent file not found: $AGENT_FILE" >&2
+  larch_err "render-specialist-prompt.sh: agent file not found: $AGENT_FILE"
   exit 2
 fi
 if [[ -z "$MODE" ]]; then
-  echo "render-specialist-prompt.sh: --mode is required (diff or description)" >&2
+  larch_err "render-specialist-prompt.sh: --mode is required (diff or description)"
   exit 2
 fi
 if [[ "$MODE" != "diff" && "$MODE" != "description" ]]; then
-  echo "render-specialist-prompt.sh: --mode must be 'diff' or 'description' (got: '$MODE')" >&2
+  larch_err "render-specialist-prompt.sh: --mode must be 'diff' or 'description' (got: '$MODE')"
   exit 2
 fi
 if [[ "$MODE" == "description" && -z "$DESCRIPTION_TEXT" ]]; then
-  echo "render-specialist-prompt.sh: --description-text is required when --mode=description" >&2
+  larch_err "render-specialist-prompt.sh: --description-text is required when --mode=description"
   exit 2
 fi
 if [[ "$MODE" == "description" && -z "$SCOPE_FILES" ]]; then
-  echo "render-specialist-prompt.sh: --scope-files is required when --mode=description" >&2
+  larch_err "render-specialist-prompt.sh: --scope-files is required when --mode=description"
   exit 2
 fi
 if [[ -n "$DIFF_FILE" && ! -f "$DIFF_FILE" ]]; then
-  echo "render-specialist-prompt.sh: --diff-file not found: $DIFF_FILE" >&2
+  larch_err "render-specialist-prompt.sh: --diff-file not found: $DIFF_FILE"
   exit 2
 fi
 if [[ -n "$PLAN_FILE" && ! -f "$PLAN_FILE" ]]; then
-  echo "render-specialist-prompt.sh: --plan-file not found: $PLAN_FILE" >&2
+  larch_err "render-specialist-prompt.sh: --plan-file not found: $PLAN_FILE"
   exit 2
 fi
 if [[ -n "$FEATURE_FILE" && ! -f "$FEATURE_FILE" ]]; then
-  echo "render-specialist-prompt.sh: --feature-file not found: $FEATURE_FILE" >&2
+  larch_err "render-specialist-prompt.sh: --feature-file not found: $FEATURE_FILE"
   exit 2
 fi
 case "$DIFF_MODE" in
   ""|generic|docs-only|test-only|generated-only) ;;
   *)
-    echo "render-specialist-prompt.sh: --diff-mode must be one of generic, docs-only, test-only, generated-only (got: '$DIFF_MODE')" >&2
+    larch_err "render-specialist-prompt.sh: --diff-mode must be one of generic, docs-only, test-only, generated-only (got: '$DIFF_MODE')"
     exit 2
     ;;
 esac
@@ -199,7 +199,7 @@ load_agent_body() {
 BODY=$(load_agent_body "$AGENT_FILE")
 
 if [[ -z "$BODY" ]]; then
-  echo "render-specialist-prompt.sh: no body found in $AGENT_FILE (expected YAML frontmatter between --- fences)" >&2
+  larch_err "render-specialist-prompt.sh: no body found in $AGENT_FILE (expected YAML frontmatter between --- fences)"
   exit 2
 fi
 

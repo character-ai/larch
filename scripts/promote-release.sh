@@ -20,7 +20,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
 
-usage() { echo "Usage: promote-release.sh X.Y.Z" >&2; }
+usage() { larch_err "Usage: promote-release.sh X.Y.Z"; }
 
 if [[ $# -ne 1 ]]; then
     usage
@@ -30,7 +30,7 @@ fi
 VERSION="$1"
 
 if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    echo "ERROR: invalid semver format: $VERSION (expected X.Y.Z)" >&2
+    larch_err "ERROR: invalid semver format: $VERSION (expected X.Y.Z)"
     usage
     exit 2
 fi
@@ -38,7 +38,7 @@ fi
 TAG="v${VERSION}"
 
 if ! gh release view "$TAG" >/dev/null; then
-    echo "ERROR: release $TAG not found." >&2
+    larch_err "ERROR: release $TAG not found."
     exit 1
 fi
 

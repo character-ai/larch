@@ -12,6 +12,7 @@ Larch uses [pre-commit](https://pre-commit.com/) as the source of truth for lint
 | [actionlint](https://github.com/rhysd/actionlint) | `.yml`, `.yaml` | GitHub Actions workflow validation |
 | [agnix](https://github.com/agent-sh/agnix) | `SKILL.md`, `CLAUDE.md`, agent configs | AI agent configuration linting (config: `.agnix.toml`). Runs in strict mode (warnings fail) in both the local pre-commit hook and the dedicated CI job. |
 | Mermaid CLI (`mmdc`) | `.md` Mermaid fences | Parses top-level Mermaid fences in changed Markdown files via `scripts/lint-mermaid-fences.sh`; local hook requires `@mermaid-js/mermaid-cli` installed or can be skipped with `SKIP=lint-mermaid-fences`. `larch-logs/` paths are excluded from the `--changed-only` file set — those are runtime artifact archives. |
+| S041/no-raw-stderr-after-quiet-init | runtime `.sh` | Local hook `scripts/lint-no-raw-stderr-after-quiet-init.py` rejects post-`larch_quiet_init` `echo`/`printf`/`cat >&2`; use `larch_err`/`larch_errf` for caller-visible diagnostics. |
 | [gitleaks](https://github.com/gitleaks/gitleaks) | all tracked files | Secret detection (pre-commit + dedicated CI job, full-history). Path allowlist in `.gitleaks.toml`. See `SECURITY.md` → "Layered secret scanning". |
 
 ## Usage

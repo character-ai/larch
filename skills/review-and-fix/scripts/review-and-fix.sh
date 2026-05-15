@@ -10,7 +10,7 @@ source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
 
 usage() {
-    echo "Usage: review-and-fix.sh --findings-file FILE --review-tmpdir DIR [--session-env-path FILE]" >&2
+    larch_err "Usage: review-and-fix.sh --findings-file FILE --review-tmpdir DIR [--session-env-path FILE]"
 }
 
 FINDINGS_FILE=""
@@ -24,12 +24,12 @@ while [[ $# -gt 0 ]]; do
         --review-tmpdir) REVIEW_TMPDIR="${2:?--review-tmpdir requires a value}"; shift 2 ;;
         --session-env-path) SESSION_ENV_PATH="${2:?--session-env-path requires a value}"; shift 2 ;;
         --help) usage; exit 0 ;;
-        *) echo "review-and-fix.sh: unknown option: $1" >&2; usage; exit 2 ;;
+        *) larch_err "review-and-fix.sh: unknown option: $1"; usage; exit 2 ;;
     esac
 done
 
-[[ -f "$FINDINGS_FILE" ]] || { echo "review-and-fix.sh: --findings-file must name a file" >&2; exit 2; }
-[[ -n "$REVIEW_TMPDIR" ]] || { echo "review-and-fix.sh: --review-tmpdir is required" >&2; exit 2; }
+[[ -f "$FINDINGS_FILE" ]] || { larch_err "review-and-fix.sh: --findings-file must name a file"; exit 2; }
+[[ -n "$REVIEW_TMPDIR" ]] || { larch_err "review-and-fix.sh: --review-tmpdir is required"; exit 2; }
 mkdir -p "$REVIEW_TMPDIR"
 : "$SESSION_ENV_PATH"
 

@@ -15,7 +15,7 @@ FEATURE_DESCRIPTION=""
 DIFF_CONTEXT=""
 
 usage() {
-    cat >&2 <<'USAGE'
+    while IFS= read -r line; do larch_err "$line"; done <<'USAGE'
 usage: classify-issue.sh --feature-description FILE [--diff-context FILE]
 USAGE
 }
@@ -35,7 +35,7 @@ while [[ $# -gt 0 ]]; do
             exit 0
             ;;
         *)
-            echo "classify-issue.sh: unknown argument: $1" >&2
+            larch_err "classify-issue.sh: unknown argument: $1"
             usage
             exit 2
             ;;
@@ -43,16 +43,16 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "$FEATURE_DESCRIPTION" ]]; then
-    echo "classify-issue.sh: --feature-description is required" >&2
+    larch_err "classify-issue.sh: --feature-description is required"
     usage
     exit 2
 fi
 if [[ ! -r "$FEATURE_DESCRIPTION" ]]; then
-    echo "classify-issue.sh: feature description is missing or unreadable: $FEATURE_DESCRIPTION" >&2
+    larch_err "classify-issue.sh: feature description is missing or unreadable: $FEATURE_DESCRIPTION"
     exit 2
 fi
 if [[ -n "$DIFF_CONTEXT" && ! -r "$DIFF_CONTEXT" ]]; then
-    echo "classify-issue.sh: diff context is missing or unreadable: $DIFF_CONTEXT" >&2
+    larch_err "classify-issue.sh: diff context is missing or unreadable: $DIFF_CONTEXT"
     exit 2
 fi
 

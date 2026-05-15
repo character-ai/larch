@@ -13,7 +13,7 @@ ACTION_FILE=""
 RESUME_FROM=""
 
 usage() {
-    cat >&2 <<'USAGE'
+    while IFS= read -r line; do larch_err "$line"; done <<'USAGE'
 usage: design-driver.sh --design-tmpdir DIR [--action-file FILE] [--resume-from STEP]
 USAGE
 }
@@ -37,7 +37,7 @@ while [[ $# -gt 0 ]]; do
             exit 0
             ;;
         *)
-            echo "design-driver.sh: unknown argument: $1" >&2
+            larch_err "design-driver.sh: unknown argument: $1"
             usage
             exit 2
             ;;
@@ -45,12 +45,12 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "$DESIGN_TMPDIR" ]]; then
-    echo "design-driver.sh: --design-tmpdir is required" >&2
+    larch_err "design-driver.sh: --design-tmpdir is required"
     usage
     exit 2
 fi
 if [[ -n "$ACTION_FILE" && ! -r "$ACTION_FILE" ]]; then
-    echo "design-driver.sh: --action-file is missing or unreadable: $ACTION_FILE" >&2
+    larch_err "design-driver.sh: --action-file is missing or unreadable: $ACTION_FILE"
     exit 2
 fi
 mkdir -p "$DESIGN_TMPDIR/.completed"

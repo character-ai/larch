@@ -20,7 +20,7 @@ fail() {
 }
 
 usage() {
-    echo "usage: run-relevant-checks-captured.sh --site <label> [--tmpdir <path>]" >&2
+    larch_err "usage: run-relevant-checks-captured.sh --site <label> [--tmpdir <path>]"
     exit 2
 }
 

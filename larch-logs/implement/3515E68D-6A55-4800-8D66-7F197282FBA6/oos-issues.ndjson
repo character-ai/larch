@@ -1,0 +1,7 @@
+## Accepted Out-of-Scope Items (filed via /issue)
+
+- **OOS_1**: tally-votes.sh warning swallowed by review-core.sh → DEDUPLICATED of #2151 (already fixed in PR #2158)
+
+## Rejected / Out-of-Scope Observations (not filed)
+
+None.

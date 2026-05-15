@@ -129,6 +129,14 @@ suppress = [
 # (sibling contract), matching the same Makefile-only pattern as the other
 # test-* harnesses above.
 #
+# scripts/test-lint-no-raw-stderr-after-quiet-init.sh is the regression harness
+# for scripts/lint-no-raw-stderr-after-quiet-init.py (S041/no-raw-stderr-after-
+# quiet-init). The lint script itself is structurally referenced from
+# .pre-commit-config.yaml (local hook
+# `lint-no-raw-stderr-after-quiet-init`) and is therefore not excluded; the test
+# harness is referenced only from Makefile
+# (test-lint-no-raw-stderr-after-quiet-init target) and its sibling contract.
+#
 # skills/fix-issue/scripts/test-parse-prose-blockers.sh is the regression
 # harness for skills/fix-issue/scripts/parse-prose-blockers.sh (the prose-
 # dependency parser invoked by skills/fix-issue/scripts/blocker-helpers.sh's
@@ -740,6 +748,9 @@ exclude = [
   "scripts/test-harness-shards-coverage.md",
   "scripts/test-lint-skill-invocations.sh",
   "scripts/test-lint-literal-counts.sh",
+  "scripts/lint-no-raw-stderr-after-quiet-init.md",
+  "scripts/test-lint-no-raw-stderr-after-quiet-init.sh",
+  "scripts/test-lint-no-raw-stderr-after-quiet-init.md",
   "skills/fix-issue/scripts/test-parse-prose-blockers.sh",
   "skills/fix-issue/scripts/blocker-helpers.sh",
   "skills/fix-issue/scripts/test-issue-lifecycle.sh",

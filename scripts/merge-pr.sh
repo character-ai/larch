@@ -44,7 +44,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
 
-usage() { echo "Usage: merge-pr.sh --pr NUMBER --repo OWNER/REPO [--no-admin-fallback]" >&2; }
+usage() { larch_err "Usage: merge-pr.sh --pr NUMBER --repo OWNER/REPO [--no-admin-fallback]"; }
 
 # --- Parse arguments (before installing EXIT trap) ---
 PR_NUMBER=""
@@ -56,12 +56,12 @@ while [[ $# -gt 0 ]]; do
         --repo) REPO="${2:?--repo requires a value}"; shift 2 ;;
         --no-admin-fallback) NO_ADMIN_FALLBACK=true; shift ;;
         --help) usage; exit 0 ;;
-        *) echo "Unknown option: $1" >&2; usage; exit 1 ;;
+        *) larch_err "Unknown option: $1"; usage; exit 1 ;;
     esac
 done
 
 if [[ -z "$PR_NUMBER" ]] || [[ -z "$REPO" ]]; then
-    echo "ERROR: --pr and --repo are required" >&2
+    larch_err "ERROR: --pr and --repo are required"
     usage; exit 1
 fi
 
@@ -228,7 +228,7 @@ if [[ "$NO_ADMIN_FALLBACK" == "true" ]]; then
     exit 0
 fi
 
-echo "ℹ CI is green and branch is fresh. Trying merge with --admin..." >&2
+larch_err "ℹ CI is green and branch is fresh. Trying merge with --admin..."
 ADMIN_OUTPUT=$(gh pr merge "$PR_NUMBER" --repo "$REPO" --squash --admin 2>&1)
 ADMIN_EXIT=$?
 
@@ -238,8 +238,8 @@ if [[ $ADMIN_EXIT -eq 0 ]]; then
     exit 0
 fi
 
-echo "ℹ Admin merge attempt failed: $ADMIN_OUTPUT" >&2
-echo "ℹ Retrying merge without --admin..." >&2
+larch_err "ℹ Admin merge attempt failed: $ADMIN_OUTPUT"
+larch_err "ℹ Retrying merge without --admin..."
 MERGE_OUTPUT=$(gh pr merge "$PR_NUMBER" --repo "$REPO" --squash 2>&1)
 MERGE_EXIT=$?
 

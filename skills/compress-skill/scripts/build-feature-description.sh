@@ -48,10 +48,10 @@ ARG=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --) shift; break ;;
-    -*) echo "ERROR=Unknown flag: $1" >&2; exit 1 ;;
+    -*) larch_err "ERROR=Unknown flag: $1"; exit 1 ;;
     *)
       if [[ -n "$ARG" ]]; then
-        echo "ERROR=Unexpected extra argument: $1 (skill name/path already set to '$ARG')" >&2
+        larch_err "ERROR=Unexpected extra argument: $1 (skill name/path already set to '$ARG')"
         exit 1
       fi
       ARG="$1"
@@ -61,7 +61,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "$ARG" ]]; then
-  echo "ERROR=Missing required positional argument: skill name or absolute path" >&2
+  larch_err "ERROR=Missing required positional argument: skill name or absolute path"
   exit 1
 fi
 
@@ -134,14 +134,14 @@ TMP_LIST="$(mktemp -t compress-skill-mdset.XXXXXX)"
 # and cannot contaminate the FILE_COUNT= line parse.
 DISCOVER_OUT="$("$SCRIPT_DIR/discover-md-set.sh" --skill-dir "$TARGET_DIR" --output "$TMP_LIST")" || {
   rm -f "$TMP_LIST"
-  echo "ERROR=discover-md-set.sh failed" >&2
+  larch_err "ERROR=discover-md-set.sh failed"
   exit 1
 }
 
 FILE_COUNT="$(printf '%s\n' "$DISCOVER_OUT" | awk -F= '/^FILE_COUNT=/{print $2}')"
 if [[ -z "$FILE_COUNT" ]]; then
   rm -f "$TMP_LIST"
-  echo "ERROR=discover-md-set.sh did not emit FILE_COUNT. Output: $DISCOVER_OUT" >&2
+  larch_err "ERROR=discover-md-set.sh did not emit FILE_COUNT. Output: $DISCOVER_OUT"
   exit 1
 fi
 
@@ -150,7 +150,7 @@ fi
 
 FEATURE_FILE="$(mktemp -t compress-skill-feature.XXXXXX)" || {
   rm -f "$TMP_LIST"
-  echo "ERROR=Failed to create feature-description temp file" >&2
+  larch_err "ERROR=Failed to create feature-description temp file"
   exit 1
 }
 

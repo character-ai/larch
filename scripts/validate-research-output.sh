@@ -164,11 +164,11 @@ while [[ $# -gt 0 ]]; do
             sed -n '/^# /,/^[^#]/p' "$0" | head -n 120
             exit 0 ;;
         -*)
-            echo "validate-research-output.sh: unknown option: $1" >&2
+            larch_err "validate-research-output.sh: unknown option: $1"
             exit 1 ;;
         *)
             if [[ -n "$INPUT" ]]; then
-                echo "validate-research-output.sh: only one file argument allowed" >&2
+                larch_err "validate-research-output.sh: only one file argument allowed"
                 exit 1
             fi
             INPUT="$1"; shift ;;
@@ -188,7 +188,7 @@ if [[ -z "$MIN_WORDS" ]]; then
 fi
 
 if [[ -z "$INPUT" ]]; then
-    echo "validate-research-output.sh: file argument is required" >&2
+    larch_err "validate-research-output.sh: file argument is required"
     exit 1
 fi
 

@@ -117,12 +117,12 @@ read_unquoted_token() {
       \\)
         pos=$((pos + 1))
         if [ "$pos" -ge "$ARGS_LEN" ]; then
-          echo "ERROR=stray backslash at end of input" >&2
+          larch_err "ERROR=stray backslash at end of input"
           exit 1
         fi
         local nc="${ARGS_STR:$pos:1}"
         if [ "$nc" = $'\n' ]; then
-          echo "ERROR=embedded newline in unquoted value at offset $pos" >&2
+          larch_err "ERROR=embedded newline in unquoted value at offset $pos"
           exit 1
         fi
         TOKEN_VALUE="${TOKEN_VALUE}${nc}"
@@ -153,7 +153,7 @@ read_quoted_token() {
       local c="${ARGS_STR:$pos:1}"
       case "$c" in
         $'\n')
-          echo "ERROR=embedded newline in quoted value at offset $pos" >&2
+          larch_err "ERROR=embedded newline in quoted value at offset $pos"
           exit 1
           ;;
         \')
@@ -166,7 +166,7 @@ read_quoted_token() {
           ;;
       esac
     done
-    echo "ERROR=unclosed single quote at offset $start" >&2
+    larch_err "ERROR=unclosed single quote at offset $start"
     exit 1
   else
     # Double-quoted: \" \\ \$ are escapes; other \X stays literal as \X.
@@ -174,7 +174,7 @@ read_quoted_token() {
       local c="${ARGS_STR:$pos:1}"
       case "$c" in
         $'\n')
-          echo "ERROR=embedded newline in quoted value at offset $pos" >&2
+          larch_err "ERROR=embedded newline in quoted value at offset $pos"
           exit 1
           ;;
         \")
@@ -184,12 +184,12 @@ read_quoted_token() {
         \\)
           pos=$((pos + 1))
           if [ "$pos" -ge "$ARGS_LEN" ]; then
-            echo "ERROR=stray backslash at end of input" >&2
+            larch_err "ERROR=stray backslash at end of input"
             exit 1
           fi
           local next="${ARGS_STR:$pos:1}"
           if [ "$next" = $'\n' ]; then
-            echo "ERROR=embedded newline in quoted value at offset $pos" >&2
+            larch_err "ERROR=embedded newline in quoted value at offset $pos"
             exit 1
           fi
           case "$next" in
@@ -208,7 +208,7 @@ read_quoted_token() {
           ;;
       esac
     done
-    echo "ERROR=unclosed double quote at offset $start" >&2
+    larch_err "ERROR=unclosed double quote at offset $start"
     exit 1
   fi
 }
@@ -242,7 +242,7 @@ read_flag_value() {
   local pos="$2"
   pos=$(skip_ws "$pos")
   if [ "$pos" -ge "$ARGS_LEN" ]; then
-    echo "ERROR=$flag_name requires a value" >&2
+    larch_err "ERROR=$flag_name requires a value"
     exit 1
   fi
   read_next_token "$pos"
@@ -301,7 +301,7 @@ while :; do
           CLOSED_WINDOW_DAYS="$TOKEN_VALUE"
           case "$CLOSED_WINDOW_DAYS" in
             ''|*[!0-9]*)
-              echo "ERROR=--closed-window-days must be a non-negative integer; got '$CLOSED_WINDOW_DAYS'" >&2
+              larch_err "ERROR=--closed-window-days must be a non-negative integer; got '$CLOSED_WINDOW_DAYS'"
               exit 1
               ;;
           esac
@@ -324,7 +324,7 @@ while :; do
           BLOCKED_BY_ISSUE="$TOKEN_VALUE"
           case "$BLOCKED_BY_ISSUE" in
             ''|*[!0-9]*|0|0[0-9]*)
-              echo "ERROR=--blocked-by-issue must be a positive integer; got '$BLOCKED_BY_ISSUE'" >&2
+              larch_err "ERROR=--blocked-by-issue must be a positive integer; got '$BLOCKED_BY_ISSUE'"
               exit 1
               ;;
           esac
@@ -335,7 +335,7 @@ while :; do
           PIECES_JSON="$TOKEN_VALUE"
           ;;
         *)
-          echo "ERROR=Unknown flag: $tok" >&2
+          larch_err "ERROR=Unknown flag: $tok"
           exit 1
           ;;
       esac
@@ -368,7 +368,7 @@ case "$TASK" in
       fi
       nl_pos=$((nl_pos + 1))
     done
-    echo "ERROR=embedded newline in TASK at offset $nl_pos" >&2
+    larch_err "ERROR=embedded newline in TASK at offset $nl_pos"
     exit 1
     ;;
 esac
@@ -377,23 +377,23 @@ esac
 
 # --input-file and --umbrella-summary-file must be passed together (both or neither).
 if [ -n "$INPUT_FILE" ] && [ -z "$UMBRELLA_SUMMARY_FILE" ]; then
-  echo "ERROR=--input-file and --umbrella-summary-file must be passed together" >&2
+  larch_err "ERROR=--input-file and --umbrella-summary-file must be passed together"
   exit 1
 fi
 if [ -z "$INPUT_FILE" ] && [ -n "$UMBRELLA_SUMMARY_FILE" ]; then
-  echo "ERROR=--input-file and --umbrella-summary-file must be passed together" >&2
+  larch_err "ERROR=--input-file and --umbrella-summary-file must be passed together"
   exit 1
 fi
 
 # --input-file is mutually exclusive with positional TASK.
 if [ -n "$INPUT_FILE" ] && [ -n "$TASK" ]; then
-  echo "ERROR=--input-file is mutually exclusive with positional TASK" >&2
+  larch_err "ERROR=--input-file is mutually exclusive with positional TASK"
   exit 1
 fi
 
 # --pieces-json requires --input-file.
 if [ -n "$PIECES_JSON" ] && [ -z "$INPUT_FILE" ]; then
-  echo "ERROR=--pieces-json requires --input-file" >&2
+  larch_err "ERROR=--pieces-json requires --input-file"
   exit 1
 fi
 

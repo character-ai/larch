@@ -57,7 +57,7 @@ while [[ $# -gt 0 ]]; do
     --description)       DESCRIPTION="$2";       shift 2 ;;
     --plugin)            PLUGIN_FLAG="--plugin"; shift ;;
     *)
-      echo "ERROR=Unknown argument: $1" >&2
+      larch_err "ERROR=Unknown argument: $1"
       exit 1
       ;;
   esac

@@ -9,14 +9,14 @@ source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
 
 usage() {
-    cat <<'USAGE' >&2
+    while IFS= read -r line; do larch_err "$line"; done <<'USAGE'
 Usage:
   compose-architecture-sketch.sh [--output PATH]
 USAGE
 }
 
 fail() {
-    echo "ERROR=$1" >&2
+    larch_err "ERROR=$1"
     exit 2
 }
 

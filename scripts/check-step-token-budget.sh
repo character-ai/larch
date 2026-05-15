@@ -30,19 +30,19 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --cap)  CAP="${2:?--cap requires a value}"; shift 2 ;;
         --step) STEP="${2:?--step requires a value}"; shift 2 ;;
-        *)  echo "check-step-token-budget.sh: unknown flag: $1" >&2; exit 1 ;;
+        *)  larch_err "check-step-token-budget.sh: unknown flag: $1"; exit 1 ;;
     esac
 done
 
 if [[ -z "$CAP" ]]; then
-    echo "check-step-token-budget.sh: --cap is required" >&2
+    larch_err "check-step-token-budget.sh: --cap is required"
     exit 1
 fi
 case "$CAP" in
-    ''|*[!0-9]*) echo "check-step-token-budget.sh: --cap must be a positive integer" >&2; exit 1 ;;
+    ''|*[!0-9]*) larch_err "check-step-token-budget.sh: --cap must be a positive integer"; exit 1 ;;
 esac
 if (( 10#$CAP < 1 )); then
-    echo "check-step-token-budget.sh: --cap must be >= 1" >&2
+    larch_err "check-step-token-budget.sh: --cap must be >= 1"
     exit 1
 fi
 

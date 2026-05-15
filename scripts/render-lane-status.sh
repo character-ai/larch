@@ -58,7 +58,7 @@ source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
 
 fail_usage() {
-    echo "**⚠ render-lane-status: $1**" >&2
+    larch_err "**⚠ render-lane-status: $1**"
     exit 1
 }
 
@@ -80,11 +80,11 @@ done
 [ -n "$INPUT" ] || fail_usage "--input is required"
 
 if [ ! -f "$INPUT" ]; then
-    echo "**⚠ render-lane-status: input file missing**" >&2
+    larch_err "**⚠ render-lane-status: input file missing**"
     exit 2
 fi
 if [ ! -r "$INPUT" ]; then
-    echo "**⚠ render-lane-status: input file unreadable**" >&2
+    larch_err "**⚠ render-lane-status: input file unreadable**"
     exit 2
 fi
 

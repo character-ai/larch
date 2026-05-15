@@ -198,6 +198,31 @@ else
     fail "case 4: collector mis-correlated duplicate-basename OUTPUT_B"
 fi
 
+# --- Case 5: empty .diag falls back to status-derived failure reason --------
+#
+# Empty .diag files are possible when a launcher creates the sidecar but the
+# failing subprocess writes no diagnostic bytes. The collector should ignore
+# the empty file and emit the default reason instead of an empty
+# FAILURE_REASON.
+OUTPUT_C="$TMPROOT/cursor-empty-diag.txt"
+printf 'non-empty failed reviewer output\n' > "$OUTPUT_C"
+printf '7\n' > "$OUTPUT_C.done"
+: > "$OUTPUT_C.diag"
+
+"$COLLECTOR" --timeout 1 "$OUTPUT_C" >"$TMPROOT/case5.stdout" 2>"$TMPROOT/case5.stderr"
+
+if grep -A 5 -F "REVIEWER_FILE=$OUTPUT_C" "$TMPROOT/case5.stdout" | grep -q '^STATUS=FAILED$'; then
+    ok "case 5: empty diag fixture remains STATUS=FAILED"
+else
+    fail "case 5: empty diag fixture did not report STATUS=FAILED"
+fi
+
+if grep -A 6 -F "REVIEWER_FILE=$OUTPUT_C" "$TMPROOT/case5.stdout" | grep -q '^FAILURE_REASON=Process failed with exit code 7$'; then
+    ok "case 5: empty diag falls back to default failure reason"
+else
+    fail "case 5: empty diag did not fall back to default failure reason"
+fi
+
 echo ""
 echo "Summary: $PASS passed, $FAIL failed, $SKIP skipped"
 if (( FAIL > 0 )); then

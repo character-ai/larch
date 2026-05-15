@@ -42,7 +42,8 @@ ln -s "$prompt" "$TMP/link.md"
 if PATH="$BIN:$PATH" LARCH_QUIET_LOG_FILE="$TMP/quiet.log" "$SCRIPT" --prompt-file "$TMP/link.md" --output-file "$TMP/bad.txt" --timeout 5 >/dev/null 2>"$TMP/err"; then
     fail "symlink prompt accepted"
 fi
-cat "$TMP/err" "$TMP/quiet.log" > "$TMP/diagnostics" 2>/dev/null || true
-grep -Fq 'invalid --prompt-file' "$TMP/diagnostics" || fail "symlink rejection message drifted"
+grep -Fq 'invalid --prompt-file' "$TMP/err" || fail "symlink rejection message missing from stderr"
+[[ -f "$TMP/quiet.log" ]] || fail "quiet log not created despite LARCH_QUIET_LOG_FILE being set"
+grep -Fq 'invalid --prompt-file' "$TMP/quiet.log" && fail "symlink rejection leaked to quiet log"
 
 echo "All assertions passed."

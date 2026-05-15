@@ -110,7 +110,7 @@ normalize_exit_code_or_99() {
         printf '%s' "$raw"
         return 0
     fi
-    printf 'collect-agent-results.sh: invalid exit code from %s; forcing EXIT_CODE=99\n' "$context" >&2
+    larch_errf 'collect-agent-results.sh: invalid exit code from %s; forcing EXIT_CODE=99\n' "$context"
     printf '99'
 }
 
@@ -164,22 +164,22 @@ while [[ $# -gt 0 ]]; do
         --summary-only)
             SUMMARY_ONLY="true"; shift ;;
         --help)
-            echo "Usage: collect-agent-results.sh --timeout <seconds> [--write-health <path>] [--substantive-validation [--validation-mode]] [--structured-reviewer-validation] [--summary-only] <output-file>..." >&2
+            larch_err "Usage: collect-agent-results.sh --timeout <seconds> [--write-health <path>] [--substantive-validation [--validation-mode]] [--structured-reviewer-validation] [--summary-only] <output-file>..."
             exit 0 ;;
         -*)
-            echo "collect-agent-results.sh: unknown option: $1" >&2; exit 1 ;;
+            larch_err "collect-agent-results.sh: unknown option: $1"; exit 1 ;;
         *)
             OUTPUT_FILES+=("$1"); shift ;;
     esac
 done
 
 if [[ -z "$TIMEOUT" ]]; then
-    echo "collect-agent-results.sh: --timeout is required" >&2
+    larch_err "collect-agent-results.sh: --timeout is required"
     exit 1
 fi
 
 if [[ ${#OUTPUT_FILES[@]} -eq 0 ]]; then
-    echo "collect-agent-results.sh: at least one output file is required" >&2
+    larch_err "collect-agent-results.sh: at least one output file is required"
     exit 1
 fi
 
@@ -263,15 +263,15 @@ done
 # tempfile is not leaked under ${TMPDIR:-/tmp}; it also subsumes the success
 # and failure-branch cleanup.
 WAIT_STDERR=$(mktemp "${TMPDIR:-/tmp}/collect-wait-stderr.XXXXXX") || {
-    echo "collect-agent-results.sh: mktemp failed" >&2
+    larch_err "collect-agent-results.sh: mktemp failed"
     exit 1
 }
 trap 'rm -f -- "$WAIT_STDERR"' EXIT
 WAIT_OUTPUT=$("$SCRIPT_DIR/wait-for-reviewers.sh" --timeout "$TIMEOUT" "${SENTINELS[@]}" 2>"$WAIT_STDERR")
 WAIT_RC=$?
 if [[ "$WAIT_RC" -ne 0 ]]; then
-    cat "$WAIT_STDERR" >&2
-    printf 'collect-agent-results.sh: wait-for-reviewers.sh exited %s\n' "$WAIT_RC" >&2
+    while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$line"; done < "$WAIT_STDERR"
+    larch_errf 'collect-agent-results.sh: wait-for-reviewers.sh exited %s\n' "$WAIT_RC"
     exit 1
 fi
 
@@ -338,7 +338,7 @@ build_failure_reason() {
     local diag_file="${output_file}.diag"
     local raw
 
-    if [[ -f "$diag_file" ]]; then
+    if [[ -s "$diag_file" ]]; then
         raw=$(cat "$diag_file")
     else
         # Fallback: construct reason from status and exit code

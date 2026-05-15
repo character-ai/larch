@@ -84,31 +84,31 @@ INPUT_FILE=""
 OUTPUT_DIR=""
 
 usage() {
-    echo "Usage: parse-input.sh --input-file FILE --output-dir DIR" >&2
+    larch_err "Usage: parse-input.sh --input-file FILE --output-dir DIR"
 }
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --input-file) INPUT_FILE="${2:?--input-file requires a value}"; shift 2 ;;
         --output-dir) OUTPUT_DIR="${2:?--output-dir requires a value}"; shift 2 ;;
-        *) echo "Unknown option: $1" >&2; usage; exit 1 ;;
+        *) larch_err "Unknown option: $1"; usage; exit 1 ;;
     esac
 done
 
 if [[ -z "$INPUT_FILE" ]]; then
-    echo "ERROR: --input-file is required" >&2
+    larch_err "ERROR: --input-file is required"
     usage
     exit 1
 fi
 
 if [[ -z "$OUTPUT_DIR" ]]; then
-    echo "ERROR: --output-dir is required" >&2
+    larch_err "ERROR: --output-dir is required"
     usage
     exit 1
 fi
 
 if [[ ! -f "$INPUT_FILE" ]]; then
-    echo "ERROR: input file not found: $INPUT_FILE" >&2
+    larch_err "ERROR: input file not found: $INPUT_FILE"
     exit 1
 fi
 

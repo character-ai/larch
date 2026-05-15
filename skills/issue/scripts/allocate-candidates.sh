@@ -62,8 +62,8 @@ larch_quiet_init
 N_TOTAL=""
 
 usage() {
-    echo "Usage: allocate-candidates.sh --total-items N" >&2
-    echo "       (reads CAND rows from stdin, writes CANDIDATES= to stdout)" >&2
+    larch_err "Usage: allocate-candidates.sh --total-items N"
+    larch_err "       (reads CAND rows from stdin, writes CANDIDATES= to stdout)"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -77,7 +77,7 @@ while [[ $# -gt 0 ]]; do
             exit 0
             ;;
         *)
-            echo "Unknown option: $1" >&2
+            larch_err "Unknown option: $1"
             usage
             exit 1
             ;;
@@ -90,7 +90,7 @@ if [[ -z "$N_TOTAL" ]]; then
 fi
 
 if ! [[ "$N_TOTAL" =~ ^[0-9]+$ ]]; then
-    echo "ERROR: --total-items must be a non-negative integer (got: $N_TOTAL)" >&2
+    larch_err "ERROR: --total-items must be a non-negative integer (got: $N_TOTAL)"
     exit 1
 fi
 
@@ -99,7 +99,7 @@ CAP=30
 # Compute per-item floor F.
 if (( N_TOTAL > CAP )); then
     F=0
-    echo "**⚠ /issue: dedup batch exceeds 30 non-malformed items (N=$N_TOTAL); per-item floor disabled, 30 slots filled by confidence ranking only.**" >&2
+    larch_err "**⚠ /issue: dedup batch exceeds 30 non-malformed items (N=$N_TOTAL); per-item floor disabled, 30 slots filled by confidence ranking only.**"
 elif (( N_TOTAL == 0 )); then
     # Nothing to allocate. Drain stdin defensively (don't error on broken pipe).
     cat >/dev/null || true
@@ -146,7 +146,7 @@ while IFS= read -r line || [[ -n "$line" ]]; do
 
     if (( ${#TOK[@]} < 4 )); then
         # Need at least item + issue + kind. Confidence is optional (defaults to low).
-        echo "**⚠ /issue: dropped malformed CAND row (too few fields): $line**" >&2
+        larch_err "**⚠ /issue: dropped malformed CAND row (too few fields): $line**"
         continue
     fi
 
@@ -157,17 +157,17 @@ while IFS= read -r line || [[ -n "$line" ]]; do
 
     # Validate item index: numeric, 1..N_TOTAL inclusive.
     if ! [[ "$ITEM" =~ ^[0-9]+$ ]]; then
-        echo "**⚠ /issue: dropped malformed CAND row (non-numeric item index): $line**" >&2
+        larch_err "**⚠ /issue: dropped malformed CAND row (non-numeric item index): $line**"
         continue
     fi
     if (( ITEM < 1 || ITEM > N_TOTAL )); then
-        echo "**⚠ /issue: dropped malformed CAND row (item index $ITEM out of range 1..$N_TOTAL): $line**" >&2
+        larch_err "**⚠ /issue: dropped malformed CAND row (item index $ITEM out of range 1..$N_TOTAL): $line**"
         continue
     fi
 
     # Validate issue number: positive integer.
     if ! [[ "$ISSUE" =~ ^[1-9][0-9]*$ ]]; then
-        echo "**⚠ /issue: dropped malformed CAND row (non-numeric or non-positive issue number): $line**" >&2
+        larch_err "**⚠ /issue: dropped malformed CAND row (non-numeric or non-positive issue number): $line**"
         continue
     fi
 

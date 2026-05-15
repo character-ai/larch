@@ -25,7 +25,7 @@ source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
 
 usage() {
-    cat <<'EOF' >&2
+    while IFS= read -r line; do larch_err "$line"; done <<'EOF'
 Usage:
   token-tally.sh write --phase <p> --lane <l> --tool <t> --total-tokens <N|unknown> --dir <d>
   token-tally.sh report --dir <d>
@@ -40,7 +40,7 @@ EOF
 validate_dir() {
     local d="$1"
     if [[ -z "$d" ]]; then
-        echo "ERROR: --dir is required and must be non-empty" >&2
+        larch_err "ERROR: --dir is required and must be non-empty"
         return 1
     fi
     # Reject `..` segments outright — they can let a /tmp-prefixed path
@@ -50,12 +50,12 @@ validate_dir() {
     # error message and prevents the resolved-path branch from doing
     # filesystem work on a hostile input.
     case "/$d/" in
-        */../*|*/..*|*../*) echo "ERROR: --dir must not contain '..' segments (got: $d)" >&2; return 1 ;;
+        */../*|*/..*|*../*) larch_err "ERROR: --dir must not contain '..' segments (got: $d)"; return 1 ;;
     esac
     local cache_root="${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}/larch/sessions"
     # String-prefix guard (cheap, catches the obvious cases).
     if [[ "$d" != /tmp/* && "$d" != /private/tmp/* && "$d" != "$cache_root"/* ]]; then
-        echo "ERROR: --dir must be under /tmp/, /private/tmp/, or $cache_root/ (got: $d)" >&2
+        larch_err "ERROR: --dir must be under /tmp/, /private/tmp/, or $cache_root/ (got: $d)"
         return 1
     fi
     # Canonical-path guard (defense in depth — resolves symlinks, ., ..).
@@ -73,7 +73,7 @@ validate_dir() {
     # paths that resolve under either canonical root.
     local allowed_root_a allowed_root_b="" allowed_root_c=""
     allowed_root_a=$(cd /tmp 2>/dev/null && pwd -P) || {
-        echo "ERROR: cannot canonicalize /tmp" >&2
+        larch_err "ERROR: cannot canonicalize /tmp"
         return 1
     }
     if [[ -d /private/tmp ]]; then
@@ -94,13 +94,13 @@ validate_dir() {
         probe=$(dirname "$probe")
     done
     if [[ "$probe" == "/" ]]; then
-        echo "ERROR: --dir has no existing ancestor: $d" >&2
+        larch_err "ERROR: --dir has no existing ancestor: $d"
         return 1
     fi
     # A regular file (or symlink-to-file) is not a directory; reject
     # with a clear error rather than silently taking dirname.
     if [[ -f "$probe" ]]; then
-        echo "ERROR: --dir nearest existing ancestor is not a directory: $probe" >&2
+        larch_err "ERROR: --dir nearest existing ancestor is not a directory: $probe"
         return 1
     fi
 
@@ -109,7 +109,7 @@ validate_dir() {
     # dangling-symlink probe makes `cd` fail; treat that as a hard error.
     local resolved
     resolved=$(cd "$probe" 2>/dev/null && pwd -P) || {
-        echo "ERROR: cannot resolve --dir: $d" >&2
+        larch_err "ERROR: cannot resolve --dir: $d"
         return 1
     }
 
@@ -123,7 +123,7 @@ validate_dir() {
     if [[ -n "$allowed_root_c" ]] && { [[ "$resolved" == "$allowed_root_c" ]] || [[ "$resolved" == "$allowed_root_c"/* ]]; }; then
         return 0
     fi
-    echo "ERROR: --dir resolves outside /tmp/, /private/tmp/, or $cache_root/ (resolved: $resolved)" >&2
+    larch_err "ERROR: --dir resolves outside /tmp/, /private/tmp/, or $cache_root/ (resolved: $resolved)"
     return 1
 }
 
@@ -141,23 +141,23 @@ cmd_write() {
             --tool)         tool="${2:?--tool requires a value}"; shift 2 ;;
             --total-tokens) total="${2:?--total-tokens requires a value}"; shift 2 ;;
             --dir)          dir="${2:?--dir requires a value}"; shift 2 ;;
-            *) echo "ERROR: unknown flag for write: $1" >&2; return 1 ;;
+            *) larch_err "ERROR: unknown flag for write: $1"; return 1 ;;
         esac
     done
 
     [[ -n "$phase" && -n "$lane" && -n "$tool" && -n "$total" && -n "$dir" ]] || {
-        echo "ERROR: write requires --phase --lane --tool --total-tokens --dir" >&2
+        larch_err "ERROR: write requires --phase --lane --tool --total-tokens --dir"
         return 1
     }
 
     case "$phase" in
         research|validation) ;;
-        *) echo "ERROR: --phase must be one of research|validation (got: $phase)" >&2; return 1 ;;
+        *) larch_err "ERROR: --phase must be one of research|validation (got: $phase)"; return 1 ;;
     esac
 
     # TOTAL_TOKENS must be a non-negative integer OR the literal "unknown".
     if [[ "$total" != "unknown" && ! "$total" =~ ^[0-9]+$ ]]; then
-        echo "ERROR: --total-tokens must be a non-negative integer or 'unknown' (got: $total)" >&2
+        larch_err "ERROR: --total-tokens must be a non-negative integer or 'unknown' (got: $total)"
         return 1
     fi
 
@@ -181,12 +181,12 @@ cmd_report() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --dir) dir="${2:?--dir requires a value}"; shift 2 ;;
-            *) echo "ERROR: unknown flag for report: $1" >&2; return 1 ;;
+            *) larch_err "ERROR: unknown flag for report: $1"; return 1 ;;
         esac
     done
 
     [[ -n "$dir" ]] || {
-        echo "ERROR: report requires --dir" >&2
+        larch_err "ERROR: report requires --dir"
         return 1
     }
 
@@ -334,5 +334,5 @@ case "$1" in
     write)        shift; cmd_write "$@" ;;
     report)       shift; report=$(cmd_report "$@") || exit $?; emit "$report" ;;
     --help|-h)    usage; exit 0 ;;
-    *)            echo "ERROR: unknown subcommand: $1" >&2; usage; exit 1 ;;
+    *)            larch_err "ERROR: unknown subcommand: $1"; usage; exit 1 ;;
 esac

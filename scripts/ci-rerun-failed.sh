@@ -28,7 +28,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
 
-usage() { echo "Usage: ci-rerun-failed.sh --run-id ID --repo OWNER/REPO" >&2; }
+usage() { larch_err "Usage: ci-rerun-failed.sh --run-id ID --repo OWNER/REPO"; }
 
 # --- Parse arguments (before installing EXIT trap) ---
 RUN_ID=""
@@ -38,12 +38,12 @@ while [[ $# -gt 0 ]]; do
         --run-id) RUN_ID="${2:?--run-id requires a value}"; shift 2 ;;
         --repo) REPO="${2:?--repo requires a value}"; shift 2 ;;
         --help) usage; exit 0 ;;
-        *) echo "Unknown option: $1" >&2; usage; exit 1 ;;
+        *) larch_err "Unknown option: $1"; usage; exit 1 ;;
     esac
 done
 
 if [[ -z "$RUN_ID" ]] || [[ -z "$REPO" ]]; then
-    echo "ERROR: --run-id and --repo are required" >&2
+    larch_err "ERROR: --run-id and --repo are required"
     usage; exit 1
 fi
 

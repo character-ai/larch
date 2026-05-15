@@ -42,7 +42,7 @@ MAX_COMMENTS="${ISSUE_FETCH_MAX_COMMENTS:-20}"
 MAX_BODY_CHARS="${ISSUE_FETCH_MAX_BODY_CHARS:-4000}"
 
 usage() {
-    echo "Usage: fetch-issue-details.sh --numbers \"N1,N2,N3\" --output FILE [--repo OWNER/REPO] [--max-comments N] [--max-body-chars N]" >&2
+    larch_err "Usage: fetch-issue-details.sh --numbers \"N1,N2,N3\" --output FILE [--repo OWNER/REPO] [--max-comments N] [--max-body-chars N]"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -52,7 +52,7 @@ while [[ $# -gt 0 ]]; do
         --repo) REPO="${2:?--repo requires a value}"; shift 2 ;;
         --max-comments) MAX_COMMENTS="${2:?--max-comments requires a value}"; shift 2 ;;
         --max-body-chars) MAX_BODY_CHARS="${2:?--max-body-chars requires a value}"; shift 2 ;;
-        *) echo "Unknown option: $1" >&2; usage; exit 1 ;;
+        *) larch_err "Unknown option: $1"; usage; exit 1 ;;
     esac
 done
 
@@ -62,7 +62,7 @@ if [[ -z "$NUMBERS" ]] || [[ -z "$OUTPUT" ]]; then
 fi
 
 if ! [[ "$MAX_COMMENTS" =~ ^[0-9]+$ ]] || ! [[ "$MAX_BODY_CHARS" =~ ^[0-9]+$ ]]; then
-    echo "ERROR: --max-comments and --max-body-chars must be non-negative integers" >&2
+    larch_err "ERROR: --max-comments and --max-body-chars must be non-negative integers"
     exit 1
 fi
 
@@ -93,7 +93,7 @@ for N_RAW in "${NUM_ARRAY[@]}"; do
     fi
     if ! [[ "$N" =~ ^[0-9]+$ ]]; then
         emit_kv "FETCH_STATUS_${N}" "failed"
-        echo "WARN: skipping non-numeric issue id: $N_RAW" >&2
+        larch_err "WARN: skipping non-numeric issue id: $N_RAW"
         continue
     fi
 
@@ -108,7 +108,7 @@ for N_RAW in "${NUM_ARRAY[@]}"; do
 
     if [[ -z "$JSON" ]]; then
         emit_kv "FETCH_STATUS_${N}" "failed"
-        echo "WARN: gh issue view failed for #${N}" >&2
+        larch_err "WARN: gh issue view failed for #${N}"
         continue
     fi
 

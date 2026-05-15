@@ -21,7 +21,7 @@ source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
 
 if [[ $# -lt 1 ]]; then
-    echo "Usage: sleep-seconds.sh <seconds>" >&2
+    larch_err "Usage: sleep-seconds.sh <seconds>"
     exit 1
 fi
 

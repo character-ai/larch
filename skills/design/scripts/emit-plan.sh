@@ -11,7 +11,7 @@ larch_quiet_init
 DESIGN_TMPDIR=""
 
 usage() {
-    cat >&2 <<'USAGE'
+    while IFS= read -r line; do larch_err "$line"; done <<'USAGE'
 usage: emit-plan.sh --design-tmpdir DIR
 USAGE
 }
@@ -27,7 +27,7 @@ while [[ $# -gt 0 ]]; do
             exit 0
             ;;
         *)
-            echo "emit-plan.sh: unknown argument: $1" >&2
+            larch_err "emit-plan.sh: unknown argument: $1"
             usage
             exit 2
             ;;
@@ -35,7 +35,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "$DESIGN_TMPDIR" ]]; then
-    echo "emit-plan.sh: --design-tmpdir is required" >&2
+    larch_err "emit-plan.sh: --design-tmpdir is required"
     usage
     exit 2
 fi

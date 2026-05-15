@@ -37,7 +37,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     -m)
       if [[ $# -lt 2 ]]; then
-        echo "git-commit.sh: -m requires a message argument" >&2
+        larch_err "git-commit.sh: -m requires a message argument"
         exit 1
       fi
       MESSAGE="$2"
@@ -63,7 +63,7 @@ done
 TRIMMED="${MESSAGE#"${MESSAGE%%[![:space:]]*}"}"
 TRIMMED="${TRIMMED%"${TRIMMED##*[![:space:]]}"}"
 if [[ -z "$TRIMMED" ]]; then
-  echo "git-commit.sh: commit message must be non-empty" >&2
+  larch_err "git-commit.sh: commit message must be non-empty"
   exit 1
 fi
 

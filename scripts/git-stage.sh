@@ -19,8 +19,8 @@ source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
 
 if [[ $# -eq 0 ]]; then
-    echo "git-stage.sh: at least one file argument is required" >&2
-    echo "usage: git-stage.sh <file> [<file> ...]" >&2
+    larch_err "git-stage.sh: at least one file argument is required"
+    larch_err "usage: git-stage.sh <file> [<file> ...]"
     exit 1
 fi
 

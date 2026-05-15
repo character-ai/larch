@@ -24,7 +24,7 @@ CHANGELOG_BULLETS_FILE=""
 POSTBUMP_CHECKPOINT_PHASE=""
 
 usage() {
-    cat >&2 <<'USAGE'
+    while IFS= read -r line; do larch_err "$line"; done <<'USAGE'
 Usage:
   implement-finalize.sh postbump  --state-file PATH --implement-tmpdir PATH [--changelog-bullets-file PATH]
   implement-finalize.sh postmerge --state-file PATH --final-bail-reason-file PATH
@@ -33,7 +33,7 @@ USAGE
 }
 
 die_usage() {
-    echo "implement-finalize.sh: $1" >&2
+    larch_err "implement-finalize.sh: $1"
     usage
     exit 2
 }
@@ -362,7 +362,7 @@ flush_execution_issues_safety_net() {
         printf '%s\n' "$sha" > "$sentinel" 2>/dev/null || true
     else
         warn_line '**⚠ 18: execution-issues safety-net flush failed. Continuing.**'
-        printf '%s\n' "$out" >&2
+        larch_errf '%s\n' "$out"
     fi
 }
 

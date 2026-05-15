@@ -29,19 +29,19 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --output)
             if [[ $# -lt 2 || -z "${2:-}" ]]; then
-                echo "snapshot-untracked.sh: --output requires a value" >&2
+                larch_err "snapshot-untracked.sh: --output requires a value"
                 exit 0
             fi
             OUTPUT="$2"
             shift 2
             ;;
         --nul) NUL_MODE=true; shift ;;
-        *) echo "snapshot-untracked.sh: unknown flag: $1" >&2; exit 0 ;;
+        *) larch_err "snapshot-untracked.sh: unknown flag: $1"; exit 0 ;;
     esac
 done
 
 if [[ -z "$OUTPUT" ]]; then
-    echo "snapshot-untracked.sh: --output is required" >&2
+    larch_err "snapshot-untracked.sh: --output is required"
     exit 0
 fi
 

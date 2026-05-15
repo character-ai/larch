@@ -24,9 +24,9 @@ SESSION_COUNT=$(pgrep -x claude 2>/dev/null | wc -l | tr -d ' ') || SESSION_COUN
 emit_kv SESSION_COUNT "$SESSION_COUNT"
 
 if [[ "$SESSION_COUNT" -gt 1 ]]; then
-    echo "**⚠ cleanup: $SESSION_COUNT Claude sessions detected. Aborting to protect active session state.**" >&2
+    larch_err "**⚠ cleanup: $SESSION_COUNT Claude sessions detected. Aborting to protect active session state.**"
     PIDS=$(pgrep -x claude 2>/dev/null | tr '\n' ' ' || true)
-    echo "  Active PIDs: $PIDS" >&2
+    larch_err "  Active PIDs: $PIDS"
     exit 1
 fi
 

@@ -20,7 +20,7 @@ MODE="write"
 if [[ "${1:-}" == "--check" ]]; then
   MODE="check"
 elif [[ -n "${1:-}" ]]; then
-  echo "Usage: $0 [--check]" >&2
+  larch_err "Usage: $0 [--check]"
   exit 2
 fi
 
@@ -31,7 +31,7 @@ sha256_file() {
   elif command -v sha256sum >/dev/null 2>&1; then
     sha256sum "$path" | awk '{print $1}'
   else
-    echo "generate-pre-rendered-reviewer-prompts.sh: no SHA-256 tool found (shasum or sha256sum)" >&2
+    larch_err "generate-pre-rendered-reviewer-prompts.sh: no SHA-256 tool found (shasum or sha256sum)"
     exit 2
   fi
 }
@@ -52,17 +52,17 @@ while IFS= read -r agent_file; do
   base=$(basename "$agent_file" .md)
   body_file="$EXPECTED_DIR/${base}-body.txt"
   if ! extract_body "$agent_file" > "$body_file"; then
-    echo "generate-pre-rendered-reviewer-prompts.sh: failed to extract body from ${agent_file#"$REPO_ROOT"/}" >&2
+    larch_err "generate-pre-rendered-reviewer-prompts.sh: failed to extract body from ${agent_file#"$REPO_ROOT"/}"
     exit 1
   fi
   if [[ ! -s "$body_file" ]]; then
-    echo "generate-pre-rendered-reviewer-prompts.sh: empty body in ${agent_file#"$REPO_ROOT"/}" >&2
+    larch_err "generate-pre-rendered-reviewer-prompts.sh: empty body in ${agent_file#"$REPO_ROOT"/}"
     exit 1
   fi
 done < <(find "$AGENTS_DIR" -maxdepth 1 -type f -name 'reviewer-*.md' | sort)
 
 if [[ "$found" != "true" ]]; then
-  echo "generate-pre-rendered-reviewer-prompts.sh: no agents/reviewer-*.md files found" >&2
+  larch_err "generate-pre-rendered-reviewer-prompts.sh: no agents/reviewer-*.md files found"
   exit 1
 fi
 
@@ -76,13 +76,13 @@ fi
 
 if [[ "$MODE" == "check" ]]; then
   if [[ ! -d "$OUTPUT_DIR" ]]; then
-    echo "agents/pre-rendered is missing. Run: bash scripts/generate-pre-rendered-reviewer-prompts.sh" >&2
+    larch_err "agents/pre-rendered is missing. Run: bash scripts/generate-pre-rendered-reviewer-prompts.sh"
     exit 1
   fi
   if ! diff -ru "$OUTPUT_DIR" "$EXPECTED_DIR"; then
-    echo "" >&2
-    echo "agents/pre-rendered is out of sync with agents/reviewer-*.md." >&2
-    echo "Run: bash scripts/generate-pre-rendered-reviewer-prompts.sh" >&2
+    larch_err ""
+    larch_err "agents/pre-rendered is out of sync with agents/reviewer-*.md."
+    larch_err "Run: bash scripts/generate-pre-rendered-reviewer-prompts.sh"
     exit 1
   fi
   exit 0

@@ -26,7 +26,7 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --skip-branch-check) SKIP_BRANCH_CHECK=true; shift ;;
         --skip-clean-check) SKIP_CLEAN_CHECK=true; shift ;;
-        *) echo "Unknown option: $1" >&2; exit 3 ;;
+        *) larch_err "Unknown option: $1"; exit 3 ;;
     esac
 done
 

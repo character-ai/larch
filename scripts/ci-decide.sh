@@ -46,7 +46,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
 
-usage() { echo "Usage: ci-decide.sh --status STATUS --behind N --iteration N --rebase-count N --fix-attempts N" >&2; }
+usage() { larch_err "Usage: ci-decide.sh --status STATUS --behind N --iteration N --rebase-count N --fix-attempts N"; }
 
 CI_STATUS=""
 BEHIND_COUNT=""
@@ -61,18 +61,18 @@ while [[ $# -gt 0 ]]; do
         --rebase-count) REBASE_COUNT="${2:?--rebase-count requires a value}"; shift 2 ;;
         --fix-attempts) FIX_ATTEMPTS="${2:?--fix-attempts requires a value}"; shift 2 ;;
         --help) usage; exit 0 ;;
-        *) echo "Unknown option: $1" >&2; usage; exit 1 ;;
+        *) larch_err "Unknown option: $1"; usage; exit 1 ;;
     esac
 done
 
 if [[ -z "$CI_STATUS" ]] || [[ -z "$BEHIND_COUNT" ]] || [[ -z "$ITERATION" ]] || [[ -z "$REBASE_COUNT" ]] || [[ -z "$FIX_ATTEMPTS" ]]; then
-    echo "ERROR: all arguments are required" >&2
+    larch_err "ERROR: all arguments are required"
     usage; exit 1
 fi
 
 # --- Input validation ---
 if [[ "$CI_STATUS" != "pass" ]] && [[ "$CI_STATUS" != "fail" ]] && [[ "$CI_STATUS" != "pending" ]] && [[ "$CI_STATUS" != "merged" ]] && [[ "$CI_STATUS" != "error" ]]; then
-    echo "ERROR: --status must be pass|fail|pending|merged|error, got: $CI_STATUS" >&2
+    larch_err "ERROR: --status must be pass|fail|pending|merged|error, got: $CI_STATUS"
     exit 1
 fi
 
@@ -86,7 +86,7 @@ fi
 for var_name in BEHIND_COUNT ITERATION REBASE_COUNT FIX_ATTEMPTS; do
     val="${!var_name}"
     if ! [[ "$val" =~ ^[0-9]+$ ]]; then
-        echo "ERROR: $var_name must be a non-negative integer, got: $val" >&2
+        larch_err "ERROR: $var_name must be a non-negative integer, got: $val"
         exit 1
     fi
 done

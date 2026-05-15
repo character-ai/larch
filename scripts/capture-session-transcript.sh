@@ -9,7 +9,7 @@ source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
 
 usage() {
-    cat <<'USAGE' >&2
+    while IFS= read -r line; do larch_err "$line"; done <<'USAGE'
 Usage:
   capture-session-transcript.sh --source-file PATH --log-root DIR --skill S --run-id R --no-logs-commit true|false --execution-issues-log PATH
 USAGE

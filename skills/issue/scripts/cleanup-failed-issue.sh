@@ -35,7 +35,7 @@ ISSUE=""
 REPO=""
 
 usage() {
-    cat <<USAGE >&2
+    while IFS= read -r line; do larch_err "$line"; done <<USAGE
 Usage: cleanup-failed-issue.sh --issue-number N [--repo OWNER/REPO]
 USAGE
 }
@@ -49,7 +49,7 @@ while [[ $# -gt 0 ]]; do
         # callers parsing `CLOSED=` can distinguish "close not attempted due to
         # bad invocation" from absent output. Without this, SKILL.md Step 6's
         # orphan-recovery branch would silently fall through on a typo'd flag.
-        *) echo "Unknown option: $1" >&2; usage
+        *) larch_err "Unknown option: $1"; usage
            emit_kv CLOSED "false"
            emit_kv ISSUE "${ISSUE:-unknown}"
            emit_kv ERROR "unknown option: $1"

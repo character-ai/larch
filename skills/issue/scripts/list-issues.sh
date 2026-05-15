@@ -56,7 +56,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         *)
             emit_kv LIST_STATUS "failed"
-            echo "WARN: unknown option: $1" >&2
+            larch_err "WARN: unknown option: $1"
             exit 0
             ;;
     esac
@@ -65,7 +65,7 @@ done
 # Validate closed-window-days is a non-negative integer.
 if ! [[ "$CLOSED_WINDOW_DAYS" =~ ^[0-9]+$ ]]; then
     emit_kv LIST_STATUS "failed"
-    echo "WARN: --closed-window-days must be a non-negative integer, got: $CLOSED_WINDOW_DAYS" >&2
+    larch_err "WARN: --closed-window-days must be a non-negative integer, got: $CLOSED_WINDOW_DAYS"
     exit 0
 fi
 
@@ -73,14 +73,14 @@ fi
 if [[ -z "$REPO" ]]; then
     REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null) || {
         emit_kv LIST_STATUS "failed"
-        echo "WARN: failed to resolve repository name via 'gh repo view'" >&2
+        larch_err "WARN: failed to resolve repository name via 'gh repo view'"
         exit 0
     }
 fi
 
 if [[ -z "$REPO" ]]; then
     emit_kv LIST_STATUS "failed"
-    echo "WARN: empty repo name after gh repo view" >&2
+    larch_err "WARN: empty repo name after gh repo view"
     exit 0
 fi
 
@@ -105,7 +105,7 @@ if [[ "$CLOSED_WINDOW_DAYS" -gt 0 ]]; then
     fi
     if [[ -z "$CUTOFF_DATE" ]]; then
         emit_kv LIST_STATUS "failed"
-        echo "WARN: failed to compute cutoff date (no python3, BSD, or GNU date available)" >&2
+        larch_err "WARN: failed to compute cutoff date (no python3, BSD, or GNU date available)"
         exit 0
     fi
 fi
@@ -122,7 +122,7 @@ fi
 # ---------------------------------------------------------------------------
 RAW=$(gh api --paginate "repos/${REPO}/issues?state=all&per_page=100" 2>/dev/null) || {
     emit_kv LIST_STATUS "failed"
-    echo "WARN: gh api --paginate failed for repo $REPO (network, auth, or rate limit)" >&2
+    larch_err "WARN: gh api --paginate failed for repo $REPO (network, auth, or rate limit)"
     exit 0
 }
 
@@ -150,7 +150,7 @@ if [[ "$CLOSED_WINDOW_DAYS" -eq 0 ]]; then
     JQ_FILTER='.[] | select(.pull_request == null) | select(.state == "open") | '"$DEDUP_SKIP_PREFIX_FILTER"' | [(.number|tostring), (.title | gsub("\t"; " ") | gsub("\n"; " ") | gsub("\r"; " ")), .state, .html_url] | @tsv'
     TSV=$(echo "$RAW" | jq -r "$JQ_FILTER" 2>/dev/null) || {
         emit_kv LIST_STATUS "failed"
-        echo "WARN: jq failed to parse gh api output" >&2
+        larch_err "WARN: jq failed to parse gh api output"
         exit 0
     }
 else
@@ -158,7 +158,7 @@ else
     JQ_FILTER='.[] | select(.pull_request == null) | select(.state == "open" or (.state == "closed" and .closed_at != null and (.closed_at[:10] >= $cutoff))) | '"$DEDUP_SKIP_PREFIX_FILTER"' | [(.number|tostring), (.title | gsub("\t"; " ") | gsub("\n"; " ") | gsub("\r"; " ")), .state, .html_url] | @tsv'
     TSV=$(echo "$RAW" | jq -r --arg cutoff "$CUTOFF_DATE" "$JQ_FILTER" 2>/dev/null) || {
         emit_kv LIST_STATUS "failed"
-        echo "WARN: jq failed to parse gh api output" >&2
+        larch_err "WARN: jq failed to parse gh api output"
         exit 0
     }
 fi

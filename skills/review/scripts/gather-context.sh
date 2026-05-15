@@ -10,7 +10,7 @@ source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
 
 usage() {
-    echo "Usage: gather-context.sh --mode diff|description --output-dir DIR [--description-text TEXT --scope-files FILE]" >&2
+    larch_err "Usage: gather-context.sh --mode diff|description --output-dir DIR [--description-text TEXT --scope-files FILE]"
 }
 
 MODE=""
@@ -24,12 +24,12 @@ while [[ $# -gt 0 ]]; do
         --description-text) DESCRIPTION_TEXT="${2:?--description-text requires a value}"; shift 2 ;;
         --scope-files) SCOPE_FILES="${2:?--scope-files requires a value}"; shift 2 ;;
         --help) usage; exit 0 ;;
-        *) echo "gather-context.sh: unknown option: $1" >&2; usage; exit 2 ;;
+        *) larch_err "gather-context.sh: unknown option: $1"; usage; exit 2 ;;
     esac
 done
 
-[[ "$MODE" == "diff" || "$MODE" == "description" ]] || { echo "gather-context.sh: --mode must be diff or description" >&2; exit 2; }
-[[ -n "$OUTPUT_DIR" ]] || { echo "gather-context.sh: --output-dir is required" >&2; exit 2; }
+[[ "$MODE" == "diff" || "$MODE" == "description" ]] || { larch_err "gather-context.sh: --mode must be diff or description"; exit 2; }
+[[ -n "$OUTPUT_DIR" ]] || { larch_err "gather-context.sh: --output-dir is required"; exit 2; }
 mkdir -p "$OUTPUT_DIR"
 
 validate_rel_file() {

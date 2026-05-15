@@ -10,7 +10,7 @@ source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
 
 usage() {
-    cat <<'EOF' >&2
+    while IFS= read -r line; do larch_err "$line"; done <<'EOF'
 Usage: run-analysis.sh [--no-issue] [--no-plot] [--plot-from <issue-number>]
 
 Flags:
@@ -57,15 +57,15 @@ while [[ $# -gt 0 ]]; do
         --no-issue) NO_ISSUE=1; shift ;;
         --no-plot)  NO_PLOT=1;  shift ;;
         --plot-from)
-            [[ -n "${2:-}" ]] || { echo "ERROR: --plot-from requires an issue number" >&2; exit 1; }
+            [[ -n "${2:-}" ]] || { larch_err "ERROR: --plot-from requires an issue number"; exit 1; }
             PLOT_FROM="$2"; shift 2 ;;
-        *) echo "ERROR: unknown argument: $1" >&2; usage; exit 1 ;;
+        *) larch_err "ERROR: unknown argument: $1"; usage; exit 1 ;;
     esac
 done
 
 need_cmd() {
     command -v "$1" >/dev/null 2>&1 || {
-        echo "ERROR: required command not found: $1" >&2
+        larch_err "ERROR: required command not found: $1"
         exit 1
     }
 }
@@ -84,7 +84,7 @@ resolve_repo() {
 
 REPO="$(resolve_repo)"
 if [[ -z "$REPO" || "$REPO" != */* ]]; then
-    echo "ERROR: could not resolve GitHub repo owner/name" >&2
+    larch_err "ERROR: could not resolve GitHub repo owner/name"
     exit 1
 fi
 
@@ -94,7 +94,7 @@ export LARCH_REPORT_TOKENS_NO_PLOT="${NO_PLOT:-}"
 
 LIMIT="${LARCH_REPORT_TOKENS_LIMIT:-}"
 if [[ -n "$LIMIT" && ! "$LIMIT" =~ ^[0-9]+$ ]]; then
-    echo "ERROR: LARCH_REPORT_TOKENS_LIMIT must be a non-negative integer" >&2
+    larch_err "ERROR: LARCH_REPORT_TOKENS_LIMIT must be a non-negative integer"
     exit 1
 fi
 
@@ -169,7 +169,7 @@ if [[ -z "$PLOT_FROM" ]]; then
                 --slurpfile token_report "$token_report_json" \
                 'if ($token_report[0] | type) == "object" then {number: $number, title: $title, url: $url, closedAt: $closedAt, workflow_path: $workflow_path, body: $body, token_report: $token_report[0], comments: []} else error("not-an-object") end' \
                 >> "$ISSUES_JSONL" 2>/dev/null; then
-                echo "Warning: invalid token-report.json for issue #${issue_number} — falling back to .md" >&2
+                larch_err "Warning: invalid token-report.json for issue #${issue_number} — falling back to .md"
                 if [[ -f "$token_report_md" ]]; then
                     token_content=$(cat "$token_report_md")
                     combined_body_fb="${token_content}

@@ -29,12 +29,12 @@ while [[ $# -gt 0 ]]; do
     --target) TARGET="$2";  shift 2 ;;
     --flags)  FLAGS="$2";   shift 2 ;;
     --version) VERSION="$2"; shift 2 ;;
-    *) echo "ERROR: Unknown argument: $1" >&2; exit 1 ;;
+    *) larch_err "ERROR: Unknown argument: $1"; exit 1 ;;
   esac
 done
 
 if [[ -z "$NAME" || -z "$TARGET" ]]; then
-  echo "ERROR: --name and --target are required" >&2
+  larch_err "ERROR: --name and --target are required"
   exit 1
 fi
 

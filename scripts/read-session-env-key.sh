@@ -42,20 +42,20 @@ DEFAULT_SET=false
 while [ $# -gt 0 ]; do
     case "$1" in
         --file)
-            [ $# -ge 2 ] || { echo "read-session-env-key.sh: --file requires a value" >&2; exit 1; }
+            [ $# -ge 2 ] || { larch_err "read-session-env-key.sh: --file requires a value"; exit 1; }
             FILE="$2"; FILE_SET=true; shift 2 ;;
         --key)
-            [ $# -ge 2 ] || { echo "read-session-env-key.sh: --key requires a value" >&2; exit 1; }
+            [ $# -ge 2 ] || { larch_err "read-session-env-key.sh: --key requires a value"; exit 1; }
             KEY="$2"; shift 2 ;;
         --default)
-            [ $# -ge 2 ] || { echo "read-session-env-key.sh: --default requires a value" >&2; exit 1; }
+            [ $# -ge 2 ] || { larch_err "read-session-env-key.sh: --default requires a value"; exit 1; }
             DEFAULT="$2"; DEFAULT_SET=true; shift 2 ;;
         *)
-            echo "read-session-env-key.sh: unknown flag: $1" >&2; exit 1 ;;
+            larch_err "read-session-env-key.sh: unknown flag: $1"; exit 1 ;;
     esac
 done
 
-[ -n "$KEY" ]  || { echo "read-session-env-key.sh: --key is required"  >&2; exit 1; }
+[ -n "$KEY" ]  || { larch_err "read-session-env-key.sh: --key is required"; exit 1; }
 if [ -z "$FILE" ]; then
     # An EXPLICITLY empty --file is treated identically to an unreadable
     # file below: when --default is set, emit the default and exit 0.
@@ -71,7 +71,7 @@ if [ -z "$FILE" ]; then
         emit "$DEFAULT"
         exit 0
     fi
-    echo "read-session-env-key.sh: --file is required" >&2
+    larch_err "read-session-env-key.sh: --file is required"
     exit 1
 fi
 
@@ -86,9 +86,9 @@ if [ -z "$FILE" ] || [ ! -r "$FILE" ]; then
         exit 0
     fi
     if [ -z "$FILE" ]; then
-        echo "read-session-env-key.sh: --file is required (or pass --default to receive a fallback when empty)" >&2
+        larch_err "read-session-env-key.sh: --file is required (or pass --default to receive a fallback when empty)"
     else
-        echo "read-session-env-key.sh: cannot read $FILE" >&2
+        larch_err "read-session-env-key.sh: cannot read $FILE"
     fi
     exit 1
 fi

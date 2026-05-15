@@ -33,7 +33,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
 
-usage() { echo "Usage: gather-branch-context.sh --output-dir <path>" >&2; }
+usage() { larch_err "Usage: gather-branch-context.sh --output-dir <path>"; }
 
 # --- Parse arguments ---
 OUTPUT_DIR=""
@@ -41,17 +41,17 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --output-dir) OUTPUT_DIR="${2:?--output-dir requires a value}"; shift 2 ;;
         --help) usage; exit 0 ;;
-        *) echo "Unknown option: $1" >&2; usage; exit 1 ;;
+        *) larch_err "Unknown option: $1"; usage; exit 1 ;;
     esac
 done
 
 if [[ -z "$OUTPUT_DIR" ]]; then
-    echo "ERROR: --output-dir is required" >&2
+    larch_err "ERROR: --output-dir is required"
     usage; exit 1
 fi
 
 if [[ ! -d "$OUTPUT_DIR" ]]; then
-    echo "ERROR: output directory does not exist: $OUTPUT_DIR" >&2
+    larch_err "ERROR: output directory does not exist: $OUTPUT_DIR"
     exit 1
 fi
 

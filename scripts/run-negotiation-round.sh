@@ -31,7 +31,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
 
-usage() { echo "Usage: run-negotiation-round.sh --tool codex|cursor --prompt-file <path> --output <path> --workspace <path>" >&2; }
+usage() { larch_err "Usage: run-negotiation-round.sh --tool codex|cursor --prompt-file <path> --output <path> --workspace <path>"; }
 
 TOOL=""
 PROMPT_FILE=""
@@ -44,17 +44,17 @@ while [[ $# -gt 0 ]]; do
         --output) OUTPUT_FILE="${2:?--output requires a value}"; shift 2 ;;
         --workspace) WORKSPACE="${2:?--workspace requires a value}"; shift 2 ;;
         --help) usage; exit 0 ;;
-        *) echo "Unknown option: $1" >&2; usage; exit 1 ;;
+        *) larch_err "Unknown option: $1"; usage; exit 1 ;;
     esac
 done
 
 if [[ -z "$TOOL" ]] || [[ -z "$PROMPT_FILE" ]] || [[ -z "$OUTPUT_FILE" ]] || [[ -z "$WORKSPACE" ]]; then
-    echo "ERROR: --tool, --prompt-file, --output, and --workspace are all required" >&2
+    larch_err "ERROR: --tool, --prompt-file, --output, and --workspace are all required"
     usage; exit 1
 fi
 
 if [[ ! -f "$PROMPT_FILE" ]]; then
-    echo "ERROR: prompt file not found: $PROMPT_FILE" >&2
+    larch_err "ERROR: prompt file not found: $PROMPT_FILE"
     exit 1
 fi
 
@@ -113,7 +113,7 @@ case "$TOOL" in
             > "$OUTPUT_FILE" 2>&1
         ;;
     *)
-        echo "ERROR: --tool must be 'codex' or 'cursor' (got: $TOOL)" >&2
+        larch_err "ERROR: --tool must be 'codex' or 'cursor' (got: $TOOL)"
         exit 1
         ;;
 esac

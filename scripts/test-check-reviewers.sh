@@ -116,8 +116,8 @@ grep -q '^CODEX_HEALTHY=false$' <<< "$infra_stdout" \
   || fail "Expected CODEX_HEALTHY=false fail-closed value on wait preflight failure"
 grep -q '^CURSOR_HEALTHY=false$' <<< "$infra_stdout" \
   || fail "Expected CURSOR_HEALTHY=false fail-closed value on wait preflight failure"
-grep -q 'Probe infrastructure error:' "$TMPDIR/infra-quiet.log" \
-  || fail "Expected probe infrastructure diagnostic in quiet log"
+grep -q 'Probe infrastructure error:' "$TMPDIR/infra.stderr" \
+  || fail "Expected probe infrastructure diagnostic on original stderr"
 if grep -q 'Retrying failed health probes (attempt 2 of 3' "$TMPDIR/infra-quiet.log"; then
   fail "Expected wait preflight failure to skip retry attempts"
 fi

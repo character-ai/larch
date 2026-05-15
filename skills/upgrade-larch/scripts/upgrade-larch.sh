@@ -10,10 +10,10 @@ larch_quiet_init
 [ "${LARCH_QUIET_PID:-}" = "$$" ] && exec 1>&3
 
 recover() {
-    echo "" >&2
-    echo "Recovery: run these commands manually to reinstall:" >&2
-    echo "  claude plugin marketplace add character-ai/larch" >&2
-    echo "  claude plugin install larch@larch-local" >&2
+    larch_err ""
+    larch_err "Recovery: run these commands manually to reinstall:"
+    larch_err "  claude plugin marketplace add character-ai/larch"
+    larch_err "  claude plugin install larch@larch-local"
 }
 trap recover ERR
 

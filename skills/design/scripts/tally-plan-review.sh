@@ -14,7 +14,7 @@ VOTER_FILES=()
 SESSION_ENV_PATH="${SESSION_ENV_PATH:-}"
 
 usage() {
-    cat >&2 <<'USAGE'
+    while IFS= read -r line; do larch_err "$line"; done <<'USAGE'
 usage: tally-plan-review.sh --ballot-file FILE --voter-files FILE... --design-tmpdir DIR [--session-env-path FILE]
 USAGE
 }
@@ -45,7 +45,7 @@ while [[ $# -gt 0 ]]; do
             exit 0
             ;;
         *)
-            echo "tally-plan-review.sh: unknown argument: $1" >&2
+            larch_err "tally-plan-review.sh: unknown argument: $1"
             usage
             exit 2
             ;;
@@ -53,17 +53,17 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "$DESIGN_TMPDIR" || -z "$BALLOT_FILE" || "${#VOTER_FILES[@]}" -eq 0 ]]; then
-    echo "tally-plan-review.sh: --design-tmpdir, --ballot-file, and --voter-files are required" >&2
+    larch_err "tally-plan-review.sh: --design-tmpdir, --ballot-file, and --voter-files are required"
     usage
     exit 2
 fi
 if [[ ! -r "$BALLOT_FILE" ]]; then
-    echo "tally-plan-review.sh: ballot file is missing or unreadable: $BALLOT_FILE" >&2
+    larch_err "tally-plan-review.sh: ballot file is missing or unreadable: $BALLOT_FILE"
     exit 2
 fi
 for voter_file in "${VOTER_FILES[@]}"; do
     if [[ ! -r "$voter_file" ]]; then
-        echo "tally-plan-review.sh: voter file is missing or unreadable: $voter_file" >&2
+        larch_err "tally-plan-review.sh: voter file is missing or unreadable: $voter_file"
         exit 2
     fi
 done

@@ -17,7 +17,7 @@ WORKFLOW_PATH=""
 OUTPUT=""
 
 usage() {
-    cat >&2 <<'USAGE'
+    while IFS= read -r line; do larch_err "$line"; done <<'USAGE'
 usage: write-run-params.sh --classification <TRIVIAL_DOC_ONLY|SIMPLE|HARD> --reason <text> --source <router-pre-design|caller-forwarded> --sketch-budget <0|2|4> --review-budget <quick|full> --workflow-path <SIMPLE|HARD> --output <path>
 USAGE
 }
@@ -57,7 +57,7 @@ while [[ $# -gt 0 ]]; do
             exit 0
             ;;
         *)
-            echo "write-run-params.sh: unknown flag: $1" >&2
+            larch_err "write-run-params.sh: unknown flag: $1"
             usage
             exit 2
             ;;
@@ -68,7 +68,7 @@ require_present() {
     local name="$1"
     local value="$2"
     if [[ -z "$value" ]]; then
-        echo "write-run-params.sh: missing required flag: $name" >&2
+        larch_err "write-run-params.sh: missing required flag: $name"
         usage
         exit 2
     fi
@@ -82,7 +82,7 @@ require_enum() {
     for allowed in "$@"; do
         [[ "$value" == "$allowed" ]] && return 0
     done
-    echo "write-run-params.sh: invalid $name: $value" >&2
+    larch_err "write-run-params.sh: invalid $name: $value"
     exit 2
 }
 
@@ -103,14 +103,14 @@ require_enum "--workflow-path" "$WORKFLOW_PATH" SIMPLE HARD
 case "$OUTPUT" in
     /*) ;;
     *)
-        echo "write-run-params.sh: --output must be absolute: $OUTPUT" >&2
+        larch_err "write-run-params.sh: --output must be absolute: $OUTPUT"
         exit 2
         ;;
 esac
 
 OUT_DIR=$(dirname "$OUTPUT")
 if [[ ! -d "$OUT_DIR" ]]; then
-    echo "write-run-params.sh: output directory not found: $OUT_DIR" >&2
+    larch_err "write-run-params.sh: output directory not found: $OUT_DIR"
     exit 1
 fi
 

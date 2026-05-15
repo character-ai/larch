@@ -9,7 +9,7 @@ PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
 
-usage() { echo "Usage: collect-findings.sh --mode diff|description --findings-file FILE --oos-file FILE [--external-output-files FILE...] [--claude-output-files FILE...] [--timeout SECONDS]" >&2; }
+usage() { larch_err "Usage: collect-findings.sh --mode diff|description --findings-file FILE --oos-file FILE [--external-output-files FILE...] [--claude-output-files FILE...] [--timeout SECONDS]"; }
 
 MODE=""
 TIMEOUT="1860"
@@ -31,13 +31,13 @@ while [[ $# -gt 0 ]]; do
         --findings-file) FINDINGS_FILE="${2:?--findings-file requires a value}"; shift 2 ;;
         --oos-file) OOS_FILE="${2:?--oos-file requires a value}"; shift 2 ;;
         --help) usage; exit 0 ;;
-        *) echo "collect-findings.sh: unknown option: $1" >&2; usage; exit 2 ;;
+        *) larch_err "collect-findings.sh: unknown option: $1"; usage; exit 2 ;;
     esac
 done
 
-[[ "$MODE" == "diff" || "$MODE" == "description" ]] || { echo "collect-findings.sh: --mode must be diff or description" >&2; exit 2; }
-[[ -n "$FINDINGS_FILE" ]] || { echo "collect-findings.sh: --findings-file is required" >&2; exit 2; }
-[[ -n "$OOS_FILE" ]] || { echo "collect-findings.sh: --oos-file is required" >&2; exit 2; }
+[[ "$MODE" == "diff" || "$MODE" == "description" ]] || { larch_err "collect-findings.sh: --mode must be diff or description"; exit 2; }
+[[ -n "$FINDINGS_FILE" ]] || { larch_err "collect-findings.sh: --findings-file is required"; exit 2; }
+[[ -n "$OOS_FILE" ]] || { larch_err "collect-findings.sh: --oos-file is required"; exit 2; }
 mkdir -p "$(dirname "$FINDINGS_FILE")" "$(dirname "$OOS_FILE")"
 REVIEW_TMPDIR="$(dirname "$FINDINGS_FILE")"
 
@@ -148,9 +148,10 @@ if [[ "$EXTERNAL_COUNT" -gt 0 ]]; then
         # Redact stderr replay; the unredacted file is already captured in
         # the verbatim execution-issues entry via --redact above.
         if [[ -x "$PLUGIN_ROOT/scripts/redact-secrets.sh" ]]; then
-            "$PLUGIN_ROOT/scripts/redact-secrets.sh" < "$collector_log" >&2 || cat "$collector_log" >&2
+            "$PLUGIN_ROOT/scripts/redact-secrets.sh" < "$collector_log" | while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$line"; done || \
+                while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$line"; done < "$collector_log"
         else
-            cat "$collector_log" >&2
+            while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$line"; done < "$collector_log"
         fi
         exit "$collector_rc"
     fi
@@ -170,9 +171,10 @@ if [[ "$CLAUDE_COUNT" -gt 0 ]]; then
         # Redact stderr replay; the unredacted file is already captured in
         # the verbatim execution-issues entry via --redact above.
         if [[ -x "$PLUGIN_ROOT/scripts/redact-secrets.sh" ]]; then
-            "$PLUGIN_ROOT/scripts/redact-secrets.sh" < "$wait_log" >&2 || cat "$wait_log" >&2
+            "$PLUGIN_ROOT/scripts/redact-secrets.sh" < "$wait_log" | while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$line"; done || \
+                while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$line"; done < "$wait_log"
         else
-            cat "$wait_log" >&2
+            while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$line"; done < "$wait_log"
         fi
         exit "$wait_rc"
     fi
