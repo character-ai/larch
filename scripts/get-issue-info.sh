@@ -14,6 +14,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
 
 ISSUE=""
 FIELD=""
@@ -24,19 +27,19 @@ while [[ $# -gt 0 ]]; do
         --issue) ISSUE="${2:?--issue requires a value}"; shift 2 ;;
         --field) FIELD="${2:?--field requires a value}"; shift 2 ;;
         --repo) REPO="${2:?--repo requires a value}"; shift 2 ;;
-        *) echo "get-issue-info.sh: unknown flag: $1" >&2; echo "VALUE="; exit 0 ;;
+        *) echo "get-issue-info.sh: unknown flag: $1" >&2; emit_kv VALUE ""; exit 0 ;;
     esac
 done
 
 if [[ -z "$ISSUE" || -z "$FIELD" ]]; then
     echo "get-issue-info.sh: --issue and --field are required" >&2
-    echo "VALUE="
+    emit_kv VALUE ""
     exit 0
 fi
 
 case "$FIELD" in
     state|url) ;;
-    *) echo "get-issue-info.sh: --field must be 'state' or 'url'" >&2; echo "VALUE="; exit 0 ;;
+    *) echo "get-issue-info.sh: --field must be 'state' or 'url'" >&2; emit_kv VALUE ""; exit 0 ;;
 esac
 
 if [[ -z "$REPO" ]]; then
@@ -48,5 +51,5 @@ if [[ -n "$REPO" ]]; then
 fi
 
 RESULT=$(gh issue view "$ISSUE" "${GH_REPO_ARGS[@]}" --json "$FIELD" --jq ".$FIELD" 2>/dev/null) || RESULT=""
-echo "VALUE=$RESULT"
+emit_kv VALUE "$RESULT"
 exit 0

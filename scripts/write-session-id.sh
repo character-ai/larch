@@ -19,21 +19,26 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
+
 OUTPUT=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --output)
-            [ $# -ge 2 ] || { echo "FAILED=true"; echo "ERROR=--output requires a value"; exit 1; }
+            [ $# -ge 2 ] || { emit_kv FAILED true; emit_kv ERROR "--output requires a value"; exit 1; }
             OUTPUT="$2"; shift 2 ;;
         *)
-            echo "FAILED=true"
-            echo "ERROR=unknown flag: $1"
+            emit_kv FAILED true
+            emit_kv ERROR "unknown flag: $1"
             exit 1 ;;
     esac
 done
 
-[ -n "$OUTPUT" ] || { echo "FAILED=true"; echo "ERROR=--output is required"; exit 1; }
+[ -n "$OUTPUT" ] || { emit_kv FAILED true; emit_kv ERROR "--output is required"; exit 1; }
 
 OUTDIR=$(dirname "$OUTPUT")
 mkdir -p "$OUTDIR" 2>/dev/null || { echo "FAILED=true"; echo "ERROR=cannot create dir: $OUTDIR"; exit 1; }

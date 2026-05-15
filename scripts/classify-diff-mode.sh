@@ -19,6 +19,9 @@ if [[ ! -f "$DIFF_FILE" ]]; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 GENERATORS_TSV="$REPO_ROOT/scripts/generators.tsv"
 
@@ -90,27 +93,27 @@ while IFS= read -r line || [[ -n "$line" ]]; do
     old_path="${BASH_REMATCH[1]}"
     new_path="${BASH_REMATCH[2]}"
   else
-    echo "DIFF_MODE=generic"
+    emit_kv DIFF_MODE generic
     exit 0
   fi
 
   old_mode="$(classify_path "$old_path")"
   new_mode="$(classify_path "$new_path")"
   if [[ "$old_mode" != "$new_mode" || "$old_mode" == "generic" ]]; then
-    echo "DIFF_MODE=generic"
+    emit_kv DIFF_MODE generic
     exit 0
   fi
 
   if [[ -z "$mode" ]]; then
     mode="$old_mode"
   elif [[ "$mode" != "$old_mode" ]]; then
-    echo "DIFF_MODE=generic"
+    emit_kv DIFF_MODE generic
     exit 0
   fi
 done < "$DIFF_FILE"
 
 if [[ "$seen_diff" != "true" || -z "$mode" ]]; then
-  echo "DIFF_MODE=generic"
+  emit_kv DIFF_MODE generic
 else
-  echo "DIFF_MODE=$mode"
+  emit_kv DIFF_MODE "$mode"
 fi

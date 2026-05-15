@@ -23,6 +23,11 @@
 
 set -uo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
+
 usage() { echo "Usage: ci-rerun-failed.sh --run-id ID --repo OWNER/REPO" >&2; }
 
 # --- Parse arguments (before installing EXIT trap) ---
@@ -49,9 +54,9 @@ ERROR="ci-rerun-failed.sh exited unexpectedly"
 
 # shellcheck disable=SC2329,SC2317  # invoked via EXIT trap
 emit_output() {
-    echo "RERUN_SUBMITTED=$RERUN_SUBMITTED"
-    echo "ALREADY_RUNNING=$ALREADY_RUNNING"
-    echo "ERROR=$ERROR"
+    emit_kv RERUN_SUBMITTED "$RERUN_SUBMITTED"
+    emit_kv ALREADY_RUNNING "$ALREADY_RUNNING"
+    emit_kv ERROR "$ERROR"
 }
 trap 'emit_output' EXIT
 

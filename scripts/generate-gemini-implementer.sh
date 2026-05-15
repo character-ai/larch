@@ -12,6 +12,9 @@ set -euo pipefail
 export LC_ALL=C
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 BASE="$REPO_ROOT/agents/_implementer-base.md"
 AGENT_FILE="$REPO_ROOT/agents/gemini-implementer.md"
@@ -82,4 +85,4 @@ if [[ "$MODE" == "check" ]]; then
 fi
 
 cp "$TMP" "$AGENT_FILE"
-echo "Wrote $AGENT_FILE"
+emit "Wrote $AGENT_FILE"

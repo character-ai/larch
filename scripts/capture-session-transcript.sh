@@ -4,6 +4,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
 
 usage() {
     cat <<'USAGE' >&2
@@ -22,35 +25,35 @@ EXECUTION_ISSUES_LOG=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --source-file)
-            [ $# -ge 2 ] || { usage; echo "SESSION_TRANSCRIPT_STATUS=usage-error"; exit 0; }
+            [ $# -ge 2 ] || { usage; emit_kv SESSION_TRANSCRIPT_STATUS usage-error; exit 0; }
             SOURCE_FILE="$2"; shift 2 ;;
         --log-root)
-            [ $# -ge 2 ] || { usage; echo "SESSION_TRANSCRIPT_STATUS=usage-error"; exit 0; }
+            [ $# -ge 2 ] || { usage; emit_kv SESSION_TRANSCRIPT_STATUS usage-error; exit 0; }
             LOG_ROOT="$2"; shift 2 ;;
         --skill)
-            [ $# -ge 2 ] || { usage; echo "SESSION_TRANSCRIPT_STATUS=usage-error"; exit 0; }
+            [ $# -ge 2 ] || { usage; emit_kv SESSION_TRANSCRIPT_STATUS usage-error; exit 0; }
             SKILL="$2"; shift 2 ;;
         --run-id)
-            [ $# -ge 2 ] || { usage; echo "SESSION_TRANSCRIPT_STATUS=usage-error"; exit 0; }
+            [ $# -ge 2 ] || { usage; emit_kv SESSION_TRANSCRIPT_STATUS usage-error; exit 0; }
             RUN_ID="$2"; shift 2 ;;
         --no-logs-commit)
-            [ $# -ge 2 ] || { usage; echo "SESSION_TRANSCRIPT_STATUS=usage-error"; exit 0; }
+            [ $# -ge 2 ] || { usage; emit_kv SESSION_TRANSCRIPT_STATUS usage-error; exit 0; }
             NO_LOGS_COMMIT="$2"; shift 2 ;;
         --execution-issues-log)
-            [ $# -ge 2 ] || { usage; echo "SESSION_TRANSCRIPT_STATUS=usage-error"; exit 0; }
+            [ $# -ge 2 ] || { usage; emit_kv SESSION_TRANSCRIPT_STATUS usage-error; exit 0; }
             EXECUTION_ISSUES_LOG="$2"; shift 2 ;;
-        *) usage; echo "SESSION_TRANSCRIPT_STATUS=usage-error"; exit 0 ;;
+        *) usage; emit_kv SESSION_TRANSCRIPT_STATUS usage-error; exit 0 ;;
     esac
 done
 
 if [ -z "$LOG_ROOT" ] || [ -z "$SKILL" ] || [ -z "$RUN_ID" ]; then
-    echo "SESSION_TRANSCRIPT_STATUS=usage-error" >&1
+    emit_kv SESSION_TRANSCRIPT_STATUS usage-error
     usage
     exit 0
 fi
 case "${NO_LOGS_COMMIT:-}" in
     true|false) ;;
-    *) echo "SESSION_TRANSCRIPT_STATUS=usage-error" >&1; usage; exit 0 ;;
+    *) emit_kv SESSION_TRANSCRIPT_STATUS usage-error; usage; exit 0 ;;
 esac
 
 append_warning() {
@@ -70,7 +73,7 @@ emit_status() {
     local message="$2"
 
     append_warning "$status" "$message"
-    echo "SESSION_TRANSCRIPT_STATUS=$status"
+    emit_kv SESSION_TRANSCRIPT_STATUS "$status"
     exit 0
 }
 

@@ -18,6 +18,13 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+# No larch_quiet_init: this script is a raw-content passthrough — the caller
+# reads file content from stdout. Quieting would redirect that content to the
+# log file, breaking conflict resolution.
+
 STAGE=""
 FILE=""
 while [[ $# -gt 0 ]]; do

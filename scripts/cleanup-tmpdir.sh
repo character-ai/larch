@@ -17,6 +17,11 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
+
 usage() { echo "Usage: cleanup-tmpdir.sh --dir <path>" >&2; }
 
 cache_sessions_root() {

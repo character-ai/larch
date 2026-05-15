@@ -27,6 +27,11 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
+
 usage() { echo "Usage: create-branch.sh --check | create-branch.sh --branch NAME" >&2; }
 
 # Derive user prefix from git config user.name:
@@ -78,10 +83,10 @@ if [[ "$MODE" == "check" ]]; then
         IS_USER_BRANCH="true"
     fi
 
-    echo "CURRENT_BRANCH=$CURRENT_BRANCH"
-    echo "IS_MAIN=$IS_MAIN"
-    echo "IS_USER_BRANCH=$IS_USER_BRANCH"
-    echo "USER_PREFIX=$USER_PREFIX"
+    emit_kv CURRENT_BRANCH "$CURRENT_BRANCH"
+    emit_kv IS_MAIN "$IS_MAIN"
+    emit_kv IS_USER_BRANCH "$IS_USER_BRANCH"
+    emit_kv USER_PREFIX "$USER_PREFIX"
     exit 0
 fi
 
@@ -111,5 +116,5 @@ if ! git checkout -b "$BRANCH_NAME" origin/main >/dev/null 2>&1; then
     exit 2
 fi
 
-echo "BRANCH_NAME=$BRANCH_NAME"
-echo "ACTION=created"
+emit_kv BRANCH_NAME "$BRANCH_NAME"
+emit_kv ACTION created

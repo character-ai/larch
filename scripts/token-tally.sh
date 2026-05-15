@@ -19,6 +19,11 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
+
 usage() {
     cat <<'EOF' >&2
 Usage:
@@ -327,7 +332,7 @@ fi
 
 case "$1" in
     write)        shift; cmd_write "$@" ;;
-    report)       shift; cmd_report "$@" ;;
+    report)       shift; report=$(cmd_report "$@") || exit $?; emit "$report" ;;
     --help|-h)    usage; exit 0 ;;
     *)            echo "ERROR: unknown subcommand: $1" >&2; usage; exit 1 ;;
 esac

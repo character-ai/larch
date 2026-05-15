@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [27.5.71] - 2026-05-14
+
+### Changed
+
+- Convert remaining scripts in scripts/ and skills/implement/scripts/ to source lib-quiet.sh and initialize quiet mode.
+- Route machine-readable stdout contracts through emit, emit_kv, or equivalent FD3-preserving output where newline-free output is required.
+- Preserve internal file writes and command-substitution helper output while keeping validation harnesses green.
+
 ## [27.5.68] - 2026-05-14
 
 ### Changed

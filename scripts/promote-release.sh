@@ -15,6 +15,11 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
+
 usage() { echo "Usage: promote-release.sh X.Y.Z" >&2; }
 
 if [[ $# -ne 1 ]]; then
@@ -43,12 +48,12 @@ if [[ "$CURRENT_LATEST" == "$TAG" ]]; then
     IS_PRERELEASE=$(gh release view "$TAG" --json isPrerelease --jq '.isPrerelease')
     if [[ "$IS_PRERELEASE" == "true" ]]; then
         gh release edit "$TAG" --prerelease=false || exit 1
-        echo "$TAG is already the latest release; cleared pre-release flag."
+        emit "$TAG is already the latest release; cleared pre-release flag."
     else
-        echo "$TAG is already the latest release."
+        emit "$TAG is already the latest release."
     fi
     exit 0
 fi
 
 gh release edit "$TAG" --latest --prerelease=false || exit 1
-echo "Promoted $TAG to latest release."
+emit "Promoted $TAG to latest release."

@@ -44,6 +44,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"
 # shellcheck source=scripts/lib-cursor-launcher-common.sh
 # shellcheck disable=SC1091
@@ -72,33 +75,33 @@ while [[ $# -gt 0 ]]; do
         --agent-prompt)     AGENT_PROMPT="${2:?--agent-prompt requires a value}"; shift 2 ;;
         --timeout)          TIMEOUT="${2:?--timeout requires a value}"; shift 2 ;;
         --answers-file)     ANSWERS_FILE="${2:?--answers-file requires a value}"; shift 2 ;;
-        --timing-task-kind) [[ -n "${2:-}" && "${2}" != --* ]] || { echo "launch-cursor-implement.sh: --timing-task-kind requires a non-empty, non-flag-like value" >&2; exit 2; }; TIMING_TASK_KIND="$2"; shift 2 ;;
-        --token-budget-cap) case "${2:-}" in ''|*[!0-9]*) echo "launch-cursor-implement.sh: --token-budget-cap requires a positive integer" >&2; exit 2 ;; esac; (( 10#${2:-0} >= 1 )) || { echo "launch-cursor-implement.sh: --token-budget-cap requires a positive integer" >&2; exit 2; }; TOKEN_BUDGET_CAP="$2"; shift 2 ;;
-        *) echo "launch-cursor-implement.sh: unknown flag: $1" >&2; exit 2 ;;
+        --timing-task-kind) [[ -n "${2:-}" && "${2}" != --* ]] || { larch_err "launch-cursor-implement.sh: --timing-task-kind requires a non-empty, non-flag-like value"; exit 2; }; TIMING_TASK_KIND="$2"; shift 2 ;;
+        --token-budget-cap) case "${2:-}" in ''|*[!0-9]*) larch_err "launch-cursor-implement.sh: --token-budget-cap requires a positive integer"; exit 2 ;; esac; (( 10#${2:-0} >= 1 )) || { larch_err "launch-cursor-implement.sh: --token-budget-cap requires a positive integer"; exit 2; }; TOKEN_BUDGET_CAP="$2"; shift 2 ;;
+        *) larch_err "launch-cursor-implement.sh: unknown flag: $1"; exit 2 ;;
     esac
 done
 
 for var in TRANSCRIPT_PATH SIDECAR_LOG MANIFEST_PATH QA_PENDING_PATH PLAN_FILE FEATURE_FILE AGENT_PROMPT TIMEOUT; do
     if [[ -z "${!var}" ]]; then
         flag_lc=$(printf '%s' "$var" | tr '[:upper:]' '[:lower:]' | tr '_' '-')
-        echo "launch-cursor-implement.sh: --$flag_lc is required" >&2
+        larch_err "launch-cursor-implement.sh: --$flag_lc is required"
         exit 2
     fi
 done
 # shellcheck disable=SC2154
-[[ -f "$PLAN_FILE" ]]    || { echo "launch-cursor-implement.sh: plan file not found: $PLAN_FILE" >&2; exit 2; }
-[[ -f "$FEATURE_FILE" ]] || { echo "launch-cursor-implement.sh: feature file not found: $FEATURE_FILE" >&2; exit 2; }
-[[ -f "$AGENT_PROMPT" ]] || { echo "launch-cursor-implement.sh: agent prompt not found: $AGENT_PROMPT" >&2; exit 2; }
+[[ -f "$PLAN_FILE" ]]    || { larch_err "launch-cursor-implement.sh: plan file not found: $PLAN_FILE"; exit 2; }
+[[ -f "$FEATURE_FILE" ]] || { larch_err "launch-cursor-implement.sh: feature file not found: $FEATURE_FILE"; exit 2; }
+[[ -f "$AGENT_PROMPT" ]] || { larch_err "launch-cursor-implement.sh: agent prompt not found: $AGENT_PROMPT"; exit 2; }
 if [[ -n "$ANSWERS_FILE" && ! -f "$ANSWERS_FILE" ]]; then
-    echo "launch-cursor-implement.sh: --answers-file given but path does not exist: $ANSWERS_FILE" >&2
+    larch_err "launch-cursor-implement.sh: --answers-file given but path does not exist: $ANSWERS_FILE"
     exit 2
 fi
 
 case "$TIMEOUT" in
-    ''|*[!0-9]*|0) echo "launch-cursor-implement.sh: --timeout must be a positive integer (seconds), got '$TIMEOUT'" >&2; exit 2 ;;
+    ''|*[!0-9]*|0) larch_err "launch-cursor-implement.sh: --timeout must be a positive integer (seconds), got '$TIMEOUT'"; exit 2 ;;
 esac
 if (( 10#$TIMEOUT < 1 )); then
-    echo "launch-cursor-implement.sh: --timeout must be a positive integer (seconds), got '$TIMEOUT'" >&2
+    larch_err "launch-cursor-implement.sh: --timeout must be a positive integer (seconds), got '$TIMEOUT'"
     exit 2
 fi
 
@@ -125,16 +128,15 @@ if [[ -n "$TOKEN_BUDGET_CAP" ]]; then
     _budget_out=$("$SCRIPT_DIR/check-step-token-budget.sh" --cap "$TOKEN_BUDGET_CAP" --step "${TIMING_TASK_KIND:-cursor-implement}" 2>/dev/null || true)
     _budget_status=$(printf '%s' "$_budget_out" | awk '{for(i=1;i<=NF;i++){if($i~/^STATUS=/){print substr($i,8);exit}}}')
     if [[ "$_budget_status" == "cap_hit" ]]; then
-        printf '⚠ launch-cursor-implement.sh: step token budget cap of %s tokens exceeded (%s combined vendor tokens); external implementer fan-out skipped\n' \
-            "$TOKEN_BUDGET_CAP" "$(printf '%s' "$_budget_out" | awk '{for(i=1;i<=NF;i++){if($i~/^TOTAL=/){print substr($i,7);exit}}}')" >&2
+        larch_err "⚠ launch-cursor-implement.sh: step token budget cap of $TOKEN_BUDGET_CAP tokens exceeded ($(printf '%s' "$_budget_out" | awk '{for(i=1;i<=NF;i++){if($i~/^TOTAL=/){print substr($i,7);exit}}}') combined vendor tokens); external implementer fan-out skipped"
         printf 'STATUS=cap_hit\n' > "$TRANSCRIPT_PATH"
         printf 'STATUS=cap_hit\n%s\n' "$_budget_out" > "${TRANSCRIPT_PATH}.cap-hit"
         if [[ -n "${IMPLEMENT_TMPDIR:-}" ]]; then
             printf 'STATUS=cap_hit\n%s\n' "$_budget_out" > "${IMPLEMENT_TMPDIR}/step-budget-cap-hit.env"
         fi
-        printf 'LAUNCHER_EXIT=0\n'
-        printf 'MANIFEST_WRITTEN=false\n'
-        printf 'STATUS=cap_hit\n'
+        emit_kv LAUNCHER_EXIT 0
+        emit_kv MANIFEST_WRITTEN false
+        emit_kv STATUS cap_hit
         exit 0
     fi
     unset _budget_out _budget_status
@@ -231,11 +233,11 @@ if [[ "$MODEL_ARGS_RC" -ne 0 ]]; then
     cat "$MODEL_ARGS_ERR" >> "$SIDECAR_LOG" 2>/dev/null || true
     rm -f "$MODEL_ARGS_ERR"
     emit_timing_record "$MODEL_ARGS_RC"
-    printf 'LAUNCHER_EXIT=%s\n'      "$MODEL_ARGS_RC"
-    printf 'MANIFEST_WRITTEN=false\n'
-    printf 'QA_PENDING_WRITTEN=false\n'
-    printf 'TRANSCRIPT=%s\n'         "$TRANSCRIPT_PATH"
-    printf 'SIDECAR_LOG=%s\n'        "$SIDECAR_LOG"
+    emit_kv LAUNCHER_EXIT "$MODEL_ARGS_RC"
+    emit_kv MANIFEST_WRITTEN false
+    emit_kv QA_PENDING_WRITTEN false
+    emit_kv TRANSCRIPT "$TRANSCRIPT_PATH"
+    emit_kv SIDECAR_LOG "$SIDECAR_LOG"
     exit 0
 fi
 rm -f "$MODEL_ARGS_ERR"
@@ -253,11 +255,11 @@ cat "$PREFLIGHT_ERR" >> "$SIDECAR_LOG" 2>/dev/null || true
 rm -f "$PREFLIGHT_ERR"
 if [[ "$PREFLIGHT_RC" != "0" ]]; then
     emit_timing_record "$PREFLIGHT_RC"
-    printf 'LAUNCHER_EXIT=%s\n'           "$PREFLIGHT_RC"
-    printf 'MANIFEST_WRITTEN=false\n'
-    printf 'QA_PENDING_WRITTEN=false\n'
-    printf 'TRANSCRIPT=%s\n'              "$TRANSCRIPT_PATH"
-    printf 'SIDECAR_LOG=%s\n'             "$SIDECAR_LOG"
+    emit_kv LAUNCHER_EXIT "$PREFLIGHT_RC"
+    emit_kv MANIFEST_WRITTEN false
+    emit_kv QA_PENDING_WRITTEN false
+    emit_kv TRANSCRIPT "$TRANSCRIPT_PATH"
+    emit_kv SIDECAR_LOG "$SIDECAR_LOG"
     # Exit 0 keeps the launcher contract (LAUNCHER_EXIT is the failure
     # signal, not the wrapper's process exit). The dispatcher reads
     # LAUNCHER_EXIT=2 and surfaces the SIDECAR_LOG content.
@@ -335,9 +337,9 @@ QA_PENDING_WRITTEN=false
 [[ -s "$MANIFEST_PATH" ]]   && MANIFEST_WRITTEN=true
 [[ -s "$QA_PENDING_PATH" ]] && QA_PENDING_WRITTEN=true
 
-printf 'LAUNCHER_EXIT=%s\n'           "$LAUNCHER_EXIT"
-printf 'MANIFEST_WRITTEN=%s\n'        "$MANIFEST_WRITTEN"
-printf 'QA_PENDING_WRITTEN=%s\n'      "$QA_PENDING_WRITTEN"
-printf 'TRANSCRIPT=%s\n'              "$TRANSCRIPT_PATH"
-printf 'SIDECAR_LOG=%s\n'             "$SIDECAR_LOG"
+emit_kv LAUNCHER_EXIT "$LAUNCHER_EXIT"
+emit_kv MANIFEST_WRITTEN "$MANIFEST_WRITTEN"
+emit_kv QA_PENDING_WRITTEN "$QA_PENDING_WRITTEN"
+emit_kv TRANSCRIPT "$TRANSCRIPT_PATH"
+emit_kv SIDECAR_LOG "$SIDECAR_LOG"
 exit 0

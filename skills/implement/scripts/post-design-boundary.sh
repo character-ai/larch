@@ -5,8 +5,8 @@ set -euo pipefail
 
 # shellcheck disable=SC2317
 on_err() {
-    echo "MANIFEST_FAILED=true"
-    echo "ERROR=internal-error"
+    emit_kv MANIFEST_FAILED true
+    emit_kv ERROR internal-error
     exit 0
 }
 trap on_err ERR
@@ -14,6 +14,11 @@ trap on_err ERR
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
 REPO_ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd -P)
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$REPO_ROOT}"
+QUIET_LIB="$PLUGIN_ROOT/scripts/lib-quiet.sh"
+[[ -f "$QUIET_LIB" ]] || QUIET_LIB="$REPO_ROOT/scripts/lib-quiet.sh"
+# shellcheck source=scripts/lib-quiet.sh
+source "$QUIET_LIB"
+larch_quiet_init
 
 IMPLEMENT_TMPDIR=""
 SESSION_ENV_PATH=""
@@ -21,8 +26,8 @@ DESIGN_ONLY=false
 HOOK_MODE=false
 
 fail_closed() {
-    echo "MANIFEST_FAILED=true"
-    echo "ERROR=$1"
+    emit_kv MANIFEST_FAILED true
+    emit_kv ERROR "$1"
     exit 0
 }
 
@@ -84,7 +89,7 @@ fi
 
 READER_OUT=$("$PLUGIN_ROOT/skills/design/scripts/read-design-manifest.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" --emit-load-breadcrumb)
 if printf '%s\n' "$READER_OUT" | grep -q '^MANIFEST_FAILED=true$'; then
-    printf '%s\n' "$READER_OUT"
+    emit "$READER_OUT"
     exit 0
 fi
 if ! printf '%s\n' "$READER_OUT" | grep -q '^MANIFEST_OK=true$'; then
@@ -237,19 +242,19 @@ if [[ "$HOOK_MODE" = true ]]; then
     # and blocks the session. The orchestrator's mandatory Bash call (non-hook-mode)
     # is the load-bearing gate that creates the sentinel.
     # All hard gates passed — emit success envelope immediately (no late-failure path).
-    printf '%s\n' "$READER_OUT"
-    printf 'BRANCH=%s\n' "$BRANCH"
+    emit "$READER_OUT"
+    emit_kv BRANCH "$BRANCH"
     if [[ "$DESIGN_ONLY" = true ]]; then
-        echo "NEXT_ACTION=plan-goals-test-and-plan-review-tally-then-diagrams-summary-then-step-9a1"
+        emit_kv NEXT_ACTION plan-goals-test-and-plan-review-tally-then-diagrams-summary-then-step-9a1
     else
-        echo "NEXT_ACTION=larch-log-batches-then-1r-then-step2"
+        emit_kv NEXT_ACTION larch-log-batches-then-1r-then-step2
     fi
-    echo "POST_DESIGN_BOUNDARY_HOOK_INJECTED=true"
-    printf '%s' "$WARNINGS"
+    emit_kv POST_DESIGN_BOUNDARY_HOOK_INJECTED true
+    [[ -z "$WARNINGS" ]] || emit "$WARNINGS"
     if [[ "$DESIGN_ONLY" = true ]]; then
-        echo "➡️ 1: design plan — hook injected boundary context (design-only); NEXT REQUIRED: invoke $PLUGIN_ROOT/skills/implement/scripts/post-design-boundary.sh --implement-tmpdir \"$IMPLEMENT_TMPDIR\" --session-env \"${SESSION_ENV_PATH:-$IMPLEMENT_TMPDIR/session-env.sh}\" --design-only $DESIGN_ONLY as a Bash tool call — do NOT skip the wrapper call"
+        emit "➡️ 1: design plan — hook injected boundary context (design-only); NEXT REQUIRED: invoke $PLUGIN_ROOT/skills/implement/scripts/post-design-boundary.sh --implement-tmpdir \"$IMPLEMENT_TMPDIR\" --session-env \"${SESSION_ENV_PATH:-$IMPLEMENT_TMPDIR/session-env.sh}\" --design-only $DESIGN_ONLY as a Bash tool call — do NOT skip the wrapper call"
     else
-        echo "➡️ 1: design plan — hook injected boundary context; NEXT REQUIRED: invoke $PLUGIN_ROOT/skills/implement/scripts/post-design-boundary.sh --implement-tmpdir \"$IMPLEMENT_TMPDIR\" --session-env \"${SESSION_ENV_PATH:-$IMPLEMENT_TMPDIR/session-env.sh}\" --design-only $DESIGN_ONLY as a Bash tool call — do NOT skip the wrapper call"
+        emit "➡️ 1: design plan — hook injected boundary context; NEXT REQUIRED: invoke $PLUGIN_ROOT/skills/implement/scripts/post-design-boundary.sh --implement-tmpdir \"$IMPLEMENT_TMPDIR\" --session-env \"${SESSION_ENV_PATH:-$IMPLEMENT_TMPDIR/session-env.sh}\" --design-only $DESIGN_ONLY as a Bash tool call — do NOT skip the wrapper call"
     fi
 else
     # Normal (orchestrator-driven) mode: write the sentinel BEFORE emitting buffered
@@ -262,18 +267,18 @@ else
     fi
     # All hard gates have passed. Emit the unified success envelope:
     # (1) reader stdout (MANIFEST_OK + KV + 📥 breadcrumb), then (2) wrapper extensions.
-    printf '%s\n' "$READER_OUT"
-    printf 'BRANCH=%s\n' "$BRANCH"
+    emit "$READER_OUT"
+    emit_kv BRANCH "$BRANCH"
     if [[ "$DESIGN_ONLY" = true ]]; then
-        echo "NEXT_ACTION=plan-goals-test-and-plan-review-tally-then-diagrams-summary-then-step-9a1"
+        emit_kv NEXT_ACTION plan-goals-test-and-plan-review-tally-then-diagrams-summary-then-step-9a1
     else
-        echo "NEXT_ACTION=larch-log-batches-then-1r-then-step2"
+        emit_kv NEXT_ACTION larch-log-batches-then-1r-then-step2
     fi
-    echo "POST_DESIGN_BOUNDARY_OK=true"
-    printf '%s' "$WARNINGS"
+    emit_kv POST_DESIGN_BOUNDARY_OK true
+    [[ -z "$WARNINGS" ]] || emit "$WARNINGS"
     if [[ "$DESIGN_ONLY" = true ]]; then
-        echo "➡️ 1: design plan — boundary gate passed (design-only); NEXT REQUIRED: write plan-goals-test + plan-review-tally log batches → post larch:diagrams summary comment → Step 9a.1 OOS pipeline"
+        emit "➡️ 1: design plan — boundary gate passed (design-only); NEXT REQUIRED: write plan-goals-test + plan-review-tally log batches → post larch:diagrams summary comment → Step 9a.1 OOS pipeline"
     else
-        echo "➡️ 1: design plan — boundary gate passed; NEXT REQUIRED: write larch-log batches → Step 1.r rebase → Step 2 entry"
+        emit "➡️ 1: design plan — boundary gate passed; NEXT REQUIRED: write larch-log batches → Step 1.r rebase → Step 2 entry"
     fi
 fi

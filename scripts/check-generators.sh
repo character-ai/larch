@@ -5,15 +5,22 @@ set -euo pipefail
 export LC_ALL=C
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "$SCRIPT_DIR/lib-quiet.sh" ]]; then
+  # shellcheck source=scripts/lib-quiet.sh
+  source "$SCRIPT_DIR/lib-quiet.sh"
+  larch_quiet_init
+else
+  larch_err() { printf '%s\n' "$*" >&2; }
+fi
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 REGISTRY="scripts/generators.tsv"
 
 usage() {
-  echo "Usage: $0" >&2
+  larch_err "Usage: $0"
 }
 
 fail() {
-  echo "$*" >&2
+  larch_err "$*"
   exit 1
 }
 

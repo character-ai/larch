@@ -78,10 +78,13 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
 
 # shellcheck source=scripts/external-tool-registry.sh
-source "$SCRIPT_DIR/external-tool-registry.sh" || { echo "agent-model-args.sh: failed to source external-tool-registry.sh" >&2; exit 1; }
-[[ "${LARCH_EXTERNAL_TOOL_REGISTRY_LOADED:-}" == "1" ]] || { echo "agent-model-args.sh: external-tool-registry.sh sourced but sentinel missing" >&2; exit 1; }
+source "$SCRIPT_DIR/external-tool-registry.sh" || { larch_err "agent-model-args.sh: failed to source external-tool-registry.sh"; exit 1; }
+[[ "${LARCH_EXTERNAL_TOOL_REGISTRY_LOADED:-}" == "1" ]] || { larch_err "agent-model-args.sh: external-tool-registry.sh sourced but sentinel missing"; exit 1; }
 
 TOOL=""
 WITH_EFFORT="false"
@@ -91,17 +94,17 @@ while [[ $# -gt 0 ]]; do
         --tool) TOOL="${2:?--tool requires a value}"; shift 2 ;;
         --with-effort) WITH_EFFORT="true"; shift ;;
         --default-model) DEFAULT_MODEL="${2:?--default-model requires a value}"; shift 2 ;;
-        *) echo "agent-model-args.sh: unknown argument: $1" >&2; exit 1 ;;
+        *) larch_err "agent-model-args.sh: unknown argument: $1"; exit 1 ;;
     esac
 done
 
 if [[ -z "$TOOL" ]]; then
-    echo "agent-model-args.sh: --tool is required" >&2
+    larch_err "agent-model-args.sh: --tool is required"
     exit 1
 fi
 
 if ! larch_is_external_tool "$TOOL"; then
-    echo "agent-model-args.sh: --tool must be 'cursor', 'codex', or 'gemini' (got: $TOOL)" >&2
+    larch_err "agent-model-args.sh: --tool must be 'cursor', 'codex', or 'gemini' (got: $TOOL)"
     exit 1
 fi
 
@@ -109,7 +112,7 @@ reject_bad_arg() {
     local value="$1"
     local context="$2"
     if [[ "$value" == *[[:cntrl:]]* ]]; then
-        echo "agent-model-args.sh: $context must not contain POSIX [[:cntrl:]] characters" >&2
+        larch_err "agent-model-args.sh: $context must not contain POSIX [[:cntrl:]] characters"
         exit 1
     fi
 }
@@ -121,7 +124,7 @@ reject_blank_model() {
     case "$value" in
         *[![:space:]]*) ;;
         *)
-            echo "agent-model-args.sh: $context must not be blank or whitespace-only" >&2
+            larch_err "agent-model-args.sh: $context must not be blank or whitespace-only"
             exit 1
             ;;
     esac
@@ -131,7 +134,7 @@ emit_arg() {
     local value="$1"
     reject_bad_arg "$value" "emitted argv token"
     [[ -n "$value" ]] || return 0
-    printf '%s\n' "$value"
+    emit "$value"
 }
 
 resolve_model() {
@@ -169,7 +172,7 @@ case "$TOOL" in
             case "$EFFORT" in
                 minimal|low|medium|high) ;;
                 *)
-                    echo "agent-model-args.sh: WARN invalid codex effort '$EFFORT' (must be minimal|low|medium|high); falling back to 'high'" >&2
+                    larch_err "agent-model-args.sh: WARN invalid codex effort '$EFFORT' (must be minimal|low|medium|high); falling back to 'high'"
                     EFFORT="high"
                     ;;
             esac
@@ -190,7 +193,7 @@ case "$TOOL" in
         # leave callers like check-reviewers.sh launching probes with no
         # --model). Symmetric to the *) defensive arms in
         # scripts/check-reviewers.sh's switch helpers.
-        echo "agent-model-args.sh: internal error: unsupported reviewer tool: $TOOL" >&2
+        larch_err "agent-model-args.sh: internal error: unsupported reviewer tool: $TOOL"
         exit 1
         ;;
 esac

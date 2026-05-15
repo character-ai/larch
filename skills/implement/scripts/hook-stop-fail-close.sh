@@ -7,6 +7,10 @@
 set -uo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
+# shellcheck source=scripts/lib-quiet.sh
+source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
+larch_quiet_init
 
 INPUT=$(cat 2>/dev/null) || exit 0
 
@@ -49,11 +53,13 @@ TMPDIR_BASENAME=$(basename "$IMPLEMENT_TMPDIR" 2>/dev/null) \
 if [[ -f "$IMPLEMENT_TMPDIR/design-export/manifest.env" ]] && \
    [[ ! -f "$IMPLEMENT_TMPDIR/.boundary-gate-passed" ]]; then
     REASON=$'You halted mid-Step-1 (post-/design boundary).\n\nNEXT REQUIRED: run skills/implement/scripts/post-design-boundary.sh against the active /implement tmpdir ('"$TMPDIR_BASENAME"$'). If it emits POST_DESIGN_BOUNDARY_OK=true, continue per its terminal directive. If it emits MANIFEST_FAILED=true, bail to /implement Step 18 cleanup.\n\nOperator escape: hard-quit the session, OR remove the stale tmpdir manifest manually, OR touch .run-cleaned-up inside the active /implement tmpdir to intentionally abandon the run.'
+    HOOK_OUT=""
     if command -v jq >/dev/null 2>&1; then
-        jq -cn --arg r "$REASON" '{decision:"block",reason:$r}' \
-            || printf '%s\n' '{"decision":"block","reason":"You halted mid-Step-1 (post-/design boundary). Run post-design-boundary.sh against the active /implement tmpdir; continue per its terminal directive."}'
+        HOOK_OUT=$(jq -cn --arg r "$REASON" '{decision:"block",reason:$r}' 2>/dev/null) \
+            || HOOK_OUT='{"decision":"block","reason":"You halted mid-Step-1 (post-/design boundary). Run post-design-boundary.sh against the active /implement tmpdir; continue per its terminal directive."}'
+        emit "$HOOK_OUT"
     else
-        printf '%s\n' '{"decision":"block","reason":"You halted mid-Step-1 (post-/design boundary). Run post-design-boundary.sh against the active /implement tmpdir; continue per its terminal directive."}'
+        emit '{"decision":"block","reason":"You halted mid-Step-1 (post-/design boundary). Run post-design-boundary.sh against the active /implement tmpdir; continue per its terminal directive."}'
     fi
     exit 0
 fi
@@ -64,11 +70,13 @@ fi
 if [[ -f "$IMPLEMENT_TMPDIR/review-round-summary.md" ]] && \
    [[ ! -f "$IMPLEMENT_TMPDIR/.review-boundary-passed" ]]; then
     REASON=$'You halted mid-Step-5 (post-/review boundary).\n\nNEXT REQUIRED: execute the Cross-Skill Health Propagation + Track Rejected Code Review Findings + Step 6 breadcrumb in order per skills/implement/SKILL.md Step 5 post-/review directives, then touch .review-boundary-passed inside the active /implement tmpdir ('"$TMPDIR_BASENAME"$') to release this guard.\n\nOperator escape: hard-quit the session, OR touch .run-cleaned-up inside the active /implement tmpdir to intentionally abandon the run.'
+    HOOK_OUT=""
     if command -v jq >/dev/null 2>&1; then
-        jq -cn --arg r "$REASON" '{decision:"block",reason:$r}' \
-            || printf '%s\n' '{"decision":"block","reason":"You halted mid-Step-5 (post-/review boundary). Execute Cross-Skill Health Propagation + Step 6 breadcrumb, then touch .review-boundary-passed inside the active /implement tmpdir."}'
+        HOOK_OUT=$(jq -cn --arg r "$REASON" '{decision:"block",reason:$r}' 2>/dev/null) \
+            || HOOK_OUT='{"decision":"block","reason":"You halted mid-Step-5 (post-/review boundary). Execute Cross-Skill Health Propagation + Step 6 breadcrumb, then touch .review-boundary-passed inside the active /implement tmpdir."}'
+        emit "$HOOK_OUT"
     else
-        printf '%s\n' '{"decision":"block","reason":"You halted mid-Step-5 (post-/review boundary). Execute Cross-Skill Health Propagation + Step 6 breadcrumb, then touch .review-boundary-passed inside the active /implement tmpdir."}'
+        emit '{"decision":"block","reason":"You halted mid-Step-5 (post-/review boundary). Execute Cross-Skill Health Propagation + Step 6 breadcrumb, then touch .review-boundary-passed inside the active /implement tmpdir."}'
     fi
     exit 0
 fi
@@ -79,11 +87,13 @@ fi
 if [[ -f "$IMPLEMENT_TMPDIR/.bump-version-armed" ]] && \
    [[ ! -f "$IMPLEMENT_TMPDIR/postbump-state.sh" ]]; then
     REASON=$'You halted mid-Step-8 (post-/bump-version boundary).\n\nNEXT REQUIRED: complete sub-step 2 (silent parse of REASONING_FILE, CURRENT_VERSION, NEW_VERSION, BUMP_TYPE — no text output), call check-bump-version.sh --mode post --before-count $COMMITS_BEFORE, sanitize the reasoning file, write postbump-state.sh, then invoke implement-finalize.sh postbump — per skills/implement/SKILL.md Step 8 continuation directives. Do NOT write any analysis prose (e.g. "No escalation needed", bump type summary, or echoed values) before that chain.\n\nOperator escape: hard-quit the session, OR touch .run-cleaned-up inside the active /implement tmpdir ('"$TMPDIR_BASENAME"$') to intentionally abandon the run.'
+    HOOK_OUT=""
     if command -v jq >/dev/null 2>&1; then
-        jq -cn --arg r "$REASON" '{decision:"block",reason:$r}' \
-            || printf '%s\n' '{"decision":"block","reason":"You halted mid-Step-8 (post-/bump-version boundary). Complete sub-step 2 silent parse, call check-bump-version.sh --mode post, write postbump-state.sh, then invoke implement-finalize.sh postbump."}'
+        HOOK_OUT=$(jq -cn --arg r "$REASON" '{decision:"block",reason:$r}' 2>/dev/null) \
+            || HOOK_OUT='{"decision":"block","reason":"You halted mid-Step-8 (post-/bump-version boundary). Complete sub-step 2 silent parse, call check-bump-version.sh --mode post, write postbump-state.sh, then invoke implement-finalize.sh postbump."}'
+        emit "$HOOK_OUT"
     else
-        printf '%s\n' '{"decision":"block","reason":"You halted mid-Step-8 (post-/bump-version boundary). Complete sub-step 2 silent parse, call check-bump-version.sh --mode post, write postbump-state.sh, then invoke implement-finalize.sh postbump."}'
+        emit '{"decision":"block","reason":"You halted mid-Step-8 (post-/bump-version boundary). Complete sub-step 2 silent parse, call check-bump-version.sh --mode post, write postbump-state.sh, then invoke implement-finalize.sh postbump."}'
     fi
     exit 0
 fi

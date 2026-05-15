@@ -18,6 +18,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"
 
 CAP=""
@@ -70,7 +73,7 @@ TOTAL=$("$PLUGIN_ROOT/scripts/token-ledger.sh" dump 2>/dev/null | \
 [[ "$TOTAL" =~ ^[0-9]+$ ]] || TOTAL=0
 
 if (( TOTAL >= 10#$CAP )); then
-    printf 'STATUS=cap_hit TOTAL=%s CAP=%s STEP=%s\n' "$TOTAL" "$CAP" "$STEP"
+    emit "STATUS=cap_hit TOTAL=$TOTAL CAP=$CAP STEP=$STEP"
 else
-    printf 'STATUS=under_cap TOTAL=%s CAP=%s STEP=%s\n' "$TOTAL" "$CAP" "$STEP"
+    emit "STATUS=under_cap TOTAL=$TOTAL CAP=$CAP STEP=$STEP"
 fi

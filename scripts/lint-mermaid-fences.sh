@@ -4,6 +4,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
 if git_root="$(git rev-parse --show-toplevel 2>/dev/null)"; then
     REPO_ROOT="$git_root"
 else
@@ -112,7 +115,7 @@ if [ "$changed_only" = true ]; then
 fi
 
 [ "${#files[@]}" -gt 0 ] || {
-    echo "INFO: no Markdown files to lint"
+    emit "INFO: no Markdown files to lint"
     exit 0
 }
 

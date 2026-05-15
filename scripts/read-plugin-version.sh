@@ -6,6 +6,9 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || printf '.')"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
 DEFAULT_PLUGIN_ROOT="$(cd "$SCRIPT_DIR/.." 2>/dev/null && pwd || printf '.')"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$DEFAULT_PLUGIN_ROOT}"
 PLUGIN_JSON="$PLUGIN_ROOT/.claude-plugin/plugin.json"
@@ -21,5 +24,5 @@ if command -v jq >/dev/null 2>&1 && [ -f "$PLUGIN_JSON" ] && [ -r "$PLUGIN_JSON"
     fi
 fi
 
-printf 'LARCH_PLUGIN_VERSION=%s\n' "$VERSION"
+emit_kv LARCH_PLUGIN_VERSION "$VERSION"
 exit 0

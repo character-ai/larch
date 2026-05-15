@@ -8,6 +8,9 @@ set -uo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
+# shellcheck source=scripts/lib-quiet.sh
+source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
+larch_quiet_init
 
 INPUT=$(cat 2>/dev/null) || exit 0
 command -v jq >/dev/null 2>&1 || exit 0
@@ -61,8 +64,9 @@ if ! "$PLUGIN_ROOT/skills/implement/scripts/post-design-boundary.sh" \
     exit 0
 fi
 
-jq -cn --rawfile ctx "$TMPOUT" \
+HOOK_OUTPUT=$(jq -cn --rawfile ctx "$TMPOUT" \
     '{hookSpecificOutput:{hookEventName:"PostToolUse",additionalContext:$ctx}}' \
-    || exit 0
+    2>/dev/null) || exit 0
+emit "$HOOK_OUTPUT"
 
 exit 0

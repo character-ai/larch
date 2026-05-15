@@ -3,9 +3,14 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
+
 unavailable() {
-    printf 'STATUS=unavailable\n'
-    printf 'REASON=%s\n' "$1"
+    emit_kv STATUS unavailable
+    emit_kv REASON "$1"
     exit 1
 }
 
@@ -29,9 +34,9 @@ if [[ -n "${LARCH_CLAUDE_SOURCE_FILE:-}" && -r "$LARCH_CLAUDE_SOURCE_FILE" ]]; t
         esac
     done < "$LARCH_CLAUDE_SOURCE_FILE"
     if [[ -n "$snap_transcript" && -f "$snap_transcript" ]]; then
-        printf 'TRANSCRIPT_PATH=%s\n' "$snap_transcript"
-        printf 'SESSION_DIR=%s\n'     "$snap_session_dir"
-        printf 'SESSION_UUID=%s\n'    "$snap_session_uuid"
+        emit_kv TRANSCRIPT_PATH "$snap_transcript"
+        emit_kv SESSION_DIR "$snap_session_dir"
+        emit_kv SESSION_UUID "$snap_session_uuid"
         exit 0
     fi
 fi
@@ -102,6 +107,6 @@ base=${latest##*/}
 uuid=${base%.jsonl}
 session_dir="$project_dir/$uuid"
 
-printf 'TRANSCRIPT_PATH=%s\n' "$latest"
-printf 'SESSION_DIR=%s\n' "$session_dir"
-printf 'SESSION_UUID=%s\n' "$uuid"
+emit_kv TRANSCRIPT_PATH "$latest"
+emit_kv SESSION_DIR "$session_dir"
+emit_kv SESSION_UUID "$uuid"

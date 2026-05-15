@@ -17,10 +17,20 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "$SCRIPT_DIR/lib-quiet.sh" ]]; then
+    # shellcheck source=scripts/lib-quiet.sh
+    source "$SCRIPT_DIR/lib-quiet.sh"
+    larch_quiet_init
+else
+    emit_kv() { printf '%s=%s\n' "$1" "${2-}"; }
+    larch_err() { printf '%s\n' "$*" >&2; }
+fi
+
 if BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null); then
-    echo "BRANCH=$BRANCH"
+    emit_kv BRANCH "$BRANCH"
     exit 0
 fi
 
-echo "git-current-branch.sh: not on a named branch (detached HEAD or not a git repo)" >&2
+larch_err "git-current-branch.sh: not on a named branch (detached HEAD or not a git repo)"
 exit 1

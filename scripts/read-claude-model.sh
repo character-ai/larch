@@ -6,6 +6,9 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || printf '.')"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
 MODEL="unknown"
 
 if command -v jq >/dev/null 2>&1; then
@@ -28,5 +31,5 @@ if command -v jq >/dev/null 2>&1; then
     fi
 fi
 
-printf 'CLAUDE_MODEL=%s\n' "$MODEL"
+emit_kv CLAUDE_MODEL "$MODEL"
 exit 0

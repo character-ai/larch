@@ -90,6 +90,9 @@
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
 WRITE_HELPER="$SCRIPT_DIR/tracking-issue-write.sh"
 
 LIFECYCLE_MARKER_PREFIX='<!-- larch:lifecycle-marker:'
@@ -99,8 +102,8 @@ DEFAULT_MAX_COMMENTS=50
 DEFAULT_MAX_TOTAL_CHARS=100000
 
 fail_usage() {
-    echo "FAILED=true"
-    echo "ERROR=usage: $1"
+    emit_kv FAILED true
+    emit_kv ERROR "usage: $1"
     exit 1
 }
 
@@ -234,13 +237,13 @@ fi
 #     fresh-creation path — NEVER treat empty as equivalent to "false".
 if $HAVE_SENTINEL; then
     if [[ ! -f "$SENTINEL" ]]; then
-        echo "FAILED=true"
-        echo "ERROR=sentinel file not found: $SENTINEL"
+        emit_kv FAILED true
+        emit_kv ERROR "sentinel file not found: $SENTINEL"
         exit 1
     fi
     if [[ ! -r "$SENTINEL" ]]; then
-        echo "FAILED=true"
-        echo "ERROR=sentinel file not readable: $SENTINEL"
+        emit_kv FAILED true
+        emit_kv ERROR "sentinel file not readable: $SENTINEL"
         exit 1
     fi
     SENTINEL_CONTENT=$(cat "$SENTINEL")
@@ -261,20 +264,20 @@ if $HAVE_SENTINEL; then
     RUN_ID_VAL=$(extract_sentinel_key RUN_ID)
     ADOPTED_VAL=$(extract_sentinel_key ADOPTED)
     if [[ -n "$ADOPTED_VAL" && "$ADOPTED_VAL" != "true" && "$ADOPTED_VAL" != "false" ]]; then
-        echo "FAILED=true"
-        echo "ERROR=invalid ADOPTED value in sentinel: '$ADOPTED_VAL' (expected 'true' or 'false' or absent)"
+        emit_kv FAILED true
+        emit_kv ERROR "invalid ADOPTED value in sentinel: '$ADOPTED_VAL' (expected 'true' or 'false' or absent)"
         exit 1
     fi
-    printf 'ISSUE_NUMBER=%s\n' "$ISSUE_NUMBER_VAL"
-    printf 'RUN_ID=%s\n' "$RUN_ID_VAL"
-    printf 'ADOPTED=%s\n' "$ADOPTED_VAL"
+    emit_kv ISSUE_NUMBER "$ISSUE_NUMBER_VAL"
+    emit_kv RUN_ID "$RUN_ID_VAL"
+    emit_kv ADOPTED "$ADOPTED_VAL"
     exit 0
 fi
 
 # Validate OUT_DIR (needed for issue-*/prompt branches).
 if [[ ! -d "$OUT_DIR" ]]; then
-    echo "FAILED=true"
-    echo "ERROR=out-dir not found: $OUT_DIR"
+    emit_kv FAILED true
+    emit_kv ERROR "out-dir not found: $OUT_DIR"
     exit 1
 fi
 TASK_FILE="$OUT_DIR/task.md"
@@ -283,8 +286,8 @@ TASK_FILE="$OUT_DIR/task.md"
 if $HAVE_ISSUE && [[ -z "$REPO" ]]; then
     REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null) || REPO=""
     if [[ -z "$REPO" ]]; then
-        echo "FAILED=true"
-        echo "ERROR=could not determine repo"
+        emit_kv FAILED true
+        emit_kv ERROR "could not determine repo"
         exit 2
     fi
 fi
@@ -302,9 +305,9 @@ if ! $HAVE_ISSUE; then
     fi
     PROMPT_CONTENT=$(snap_truncate "$PROMPT_CONTENT" "$MAX_TOTAL_CHARS" "task-file-total")
     printf '%s' "$PROMPT_CONTENT" > "$TASK_FILE"
-    echo "ISSUE_NUMBER="
-    echo "TASK_SOURCE=prompt"
-    echo "TASK_FILE=$TASK_FILE"
+    emit_kv ISSUE_NUMBER ""
+    emit_kv TASK_SOURCE prompt
+    emit_kv TASK_FILE "$TASK_FILE"
     exit 0
 fi
 
@@ -323,8 +326,8 @@ if $HAVE_PROMPT; then
     WRITE_EXIT="${WRITE_EXIT:-0}"
     if (( WRITE_EXIT != 0 )); then
         NESTED=$(redact_gh_error "$WRITE_OUT")
-        echo "FAILED=true"
-        echo "ERROR=append-comment failed: $NESTED"
+        emit_kv FAILED true
+        emit_kv ERROR "append-comment failed: $NESTED"
         exit 2
     fi
 fi
@@ -339,8 +342,8 @@ trap 'rm -f "${ERR_TMP:-}" "${PROMPT_TMP:-}"' EXIT
 ISSUE_BODY=$(gh api "/repos/${REPO}/issues/${ISSUE}" --jq '.body // ""' 2>"$ERR_TMP") || {
     ERR_CONTENT=$(cat "$ERR_TMP")
     ERR_FLAT=$(redact_gh_error "$ERR_CONTENT")
-    echo "FAILED=true"
-    echo "ERROR=gh api issue fetch failed: $ERR_FLAT"
+    emit_kv FAILED true
+    emit_kv ERROR "gh api issue fetch failed: $ERR_FLAT"
     exit 2
 }
 
@@ -354,8 +357,8 @@ ISSUE_BODY=$(gh api "/repos/${REPO}/issues/${ISSUE}" --jq '.body // ""' 2>"$ERR_
 COMMENTS_RAW=$(gh api "/repos/${REPO}/issues/${ISSUE}/comments" --paginate --jq '.[] | {id: .id, body: (.body // "")} | tojson' 2>"$ERR_TMP") || {
     ERR_CONTENT=$(cat "$ERR_TMP")
     ERR_FLAT=$(redact_gh_error "$ERR_CONTENT")
-    echo "FAILED=true"
-    echo "ERROR=gh api comments fetch failed: $ERR_FLAT"
+    emit_kv FAILED true
+    emit_kv ERROR "gh api comments fetch failed: $ERR_FLAT"
     exit 2
 }
 
@@ -431,11 +434,11 @@ if (( ${#TOTAL_CONTENT} > MAX_TOTAL_CHARS )); then
     printf '%s' "$TOTAL_CONTENT" > "$TASK_FILE"
 fi
 
-echo "ISSUE_NUMBER=$ISSUE"
+emit_kv ISSUE_NUMBER "$ISSUE"
 if $HAVE_PROMPT; then
-    echo "TASK_SOURCE=issue-plus-prompt"
+    emit_kv TASK_SOURCE issue-plus-prompt
 else
-    echo "TASK_SOURCE=issue-only"
+    emit_kv TASK_SOURCE issue-only
 fi
-echo "TASK_FILE=$TASK_FILE"
+emit_kv TASK_FILE "$TASK_FILE"
 exit 0

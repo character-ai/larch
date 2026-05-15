@@ -4,6 +4,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
 REDACT="$SCRIPT_DIR/redact-secrets.sh"
 REDACT_PATHS="$SCRIPT_DIR/redact-tmpdir-paths.sh"
 
@@ -17,8 +20,8 @@ USAGE
 fail() {
     local code="$1"
     local msg="$2"
-    echo "FAILED=true" >&2
-    echo "ERROR=$msg" >&2
+    larch_err "FAILED=true"
+    larch_err "ERROR=$msg"
     exit "$code"
 }
 
@@ -77,9 +80,9 @@ case "$cmd" in
             out="$(gh issue comment "$ISSUE" --repo "$REPO" --body-file "$tmp" 2>"$err_tmp")" \
                 || fail 2 "gh issue comment failed: $(redact_text "$(cat "$err_tmp")" | tr '\n' ' ' | head -c 500)"
             url="$(printf '%s\n' "$out" | grep -oE 'https?://[^[:space:]]+' | tail -1 || true)"
-            echo "COMMENT_ID="
-            echo "COMMENT_URL=$url"
-            echo "UPDATED=false"
+            emit_kv COMMENT_ID ""
+            emit_kv COMMENT_URL "$url"
+            emit_kv UPDATED false
         elif [ "$count" -eq 1 ]; then
             id="$(printf '%s\n' "$ids" | awk 'NF { print; exit }')"
             json_tmp="$(mktemp)"
@@ -88,9 +91,9 @@ case "$cmd" in
             jq -n --arg body "$body" '{body:$body}' > "$json_tmp"
             out="$(gh api "/repos/${REPO}/issues/comments/${id}" -X PATCH --input "$json_tmp" --jq '.html_url // ""' 2>"$err_tmp")" \
                 || fail 2 "gh api comment patch failed: $(redact_text "$(cat "$err_tmp")" | tr '\n' ' ' | head -c 500)"
-            echo "COMMENT_ID=$id"
-            echo "COMMENT_URL=$out"
-            echo "UPDATED=true"
+            emit_kv COMMENT_ID "$id"
+            emit_kv COMMENT_URL "$out"
+            emit_kv UPDATED true
         else
             flat="$(printf '%s' "$ids" | paste -sd, -)"
             fail 2 "multiple summary comments found for marker (ids: $flat)"

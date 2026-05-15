@@ -25,6 +25,11 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
+
 OUTPUT=""
 REPO=""
 REPO_UNAVAILABLE=""
@@ -49,48 +54,48 @@ while [[ $# -gt 0 ]]; do
     --token-session-id) TOKEN_SESSION_ID="$2"; shift 2 ;;
     --claude-source-file) CLAUDE_SOURCE_FILE="$2"; shift 2 ;;
     --prev-implement-tmpdir) PREV_IMPLEMENT_TMPDIR_ARG="$2"; shift 2 ;;
-    *) echo "ERROR=Unknown argument: $1" >&2; exit 1 ;;
+    *) larch_err "ERROR=Unknown argument: $1"; exit 1 ;;
   esac
 done
 
 if [[ -z "$OUTPUT" || -z "$REPO_UNAVAILABLE" ]]; then
-  echo "ERROR=Missing required arguments: --output, --repo-unavailable" >&2
+  larch_err "ERROR=Missing required arguments: --output, --repo-unavailable"
   exit 1
 fi
 
 if [[ -n "$TOKEN_SESSION_ID" && ( ${#TOKEN_SESSION_ID} -gt 128 || ! "$TOKEN_SESSION_ID" =~ ^[A-Za-z0-9_.-]+$ ) ]]; then
-  echo "ERROR=Invalid --token-session-id: must match ^[A-Za-z0-9_.-]{1,128}$" >&2
+  larch_err "ERROR=Invalid --token-session-id: must match ^[A-Za-z0-9_.-]{1,128}$"
   exit 1
 fi
 
 if [[ -n "$CLAUDE_SOURCE_FILE" && ( ${#CLAUDE_SOURCE_FILE} -gt 512 || ! "$CLAUDE_SOURCE_FILE" =~ ^[A-Za-z0-9_./~+-]+$ ) ]]; then
-  echo "ERROR=Invalid --claude-source-file: must match ^[A-Za-z0-9_./~+-]{1,512}$" >&2
+  larch_err "ERROR=Invalid --claude-source-file: must match ^[A-Za-z0-9_./~+-]{1,512}$"
   exit 1
 fi
 
 if [[ -n "$TIMING_LEDGER" && ( ${#TIMING_LEDGER} -gt 512 || ! "$TIMING_LEDGER" =~ ^[A-Za-z0-9_./~+-]+$ ) ]]; then
-  echo "ERROR=Invalid --timing-ledger: must match ^[A-Za-z0-9_./~+-]{1,512}$" >&2
+  larch_err "ERROR=Invalid --timing-ledger: must match ^[A-Za-z0-9_./~+-]{1,512}$"
   exit 1
 fi
 
 if [[ -n "$PREV_IMPLEMENT_TMPDIR_ARG" ]]; then
   if [[ ${#PREV_IMPLEMENT_TMPDIR_ARG} -gt 512 || ! "$PREV_IMPLEMENT_TMPDIR_ARG" =~ ^[A-Za-z0-9_./~+-]+$ ]]; then
-    echo "ERROR=Invalid --prev-implement-tmpdir: must match ^[A-Za-z0-9_./~+-]{1,512}$" >&2
+    larch_err "ERROR=Invalid --prev-implement-tmpdir: must match ^[A-Za-z0-9_./~+-]{1,512}$"
     exit 1
   fi
   if [[ "$PREV_IMPLEMENT_TMPDIR_ARG" != /* ]]; then
-    echo "ERROR=Invalid --prev-implement-tmpdir: must be an absolute path" >&2
+    larch_err "ERROR=Invalid --prev-implement-tmpdir: must be an absolute path"
     exit 1
   fi
 fi
 
 if [[ -n "$CLAUDE_PLUGIN_ROOT_VALUE" ]]; then
   if [[ ${#CLAUDE_PLUGIN_ROOT_VALUE} -gt 512 || ! "$CLAUDE_PLUGIN_ROOT_VALUE" =~ ^[A-Za-z0-9_./~+-]+$ ]]; then
-    echo "ERROR=Invalid CLAUDE_PLUGIN_ROOT: must match ^[A-Za-z0-9_./~+-]{1,512}$" >&2
+    larch_err "ERROR=Invalid CLAUDE_PLUGIN_ROOT: must match ^[A-Za-z0-9_./~+-]{1,512}$"
     exit 1
   fi
   if [[ "$CLAUDE_PLUGIN_ROOT_VALUE" != /* ]]; then
-    echo "ERROR=Invalid CLAUDE_PLUGIN_ROOT: must be an absolute path" >&2
+    larch_err "ERROR=Invalid CLAUDE_PLUGIN_ROOT: must be an absolute path"
     exit 1
   fi
 fi

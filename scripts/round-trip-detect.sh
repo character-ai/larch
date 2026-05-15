@@ -3,11 +3,16 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
+
 PATTERNS='(^|[^[:alnum:]_])was reverted in [0-9a-f]{7,40}([^[:alnum:]_]|$)|(^|[^[:alnum:]_])re-?introduce([^[:alnum:]_]|$)|(^|[^[:alnum:]_])re-?add([^[:alnum:]_]|$)|(^|[^[:alnum:]_])revert of #[0-9]+([^[:alnum:]_]|$)|(^|[^[:alnum:]_])revert of [0-9a-f]{7,40}([^[:alnum:]_]|$)|(^|[^[:alnum:]_])closed in favor of #[0-9]+([^[:alnum:]_]|$)|(^|[^[:alnum:]_])replace standalone with alias([^[:alnum:]_]|$)'
 
 warn_false() {
-    printf 'round-trip-detect.sh: warning: %s\n' "$1" >&2
-    echo "ROUND_TRIP=false"
+    larch_err "round-trip-detect.sh: warning: $1"
+    emit_kv ROUND_TRIP false
     exit 0
 }
 
@@ -51,9 +56,9 @@ fi
 HAYSTACK=$(printf '%s' "$HAYSTACK" | tr '[:upper:]' '[:lower:]') || warn_false "failed to normalize input"
 
 if printf '%s' "$HAYSTACK" | grep -qiE "$PATTERNS"; then
-    echo "ROUND_TRIP=true"
+    emit_kv ROUND_TRIP true
 else
-    echo "ROUND_TRIP=false"
+    emit_kv ROUND_TRIP false
 fi
 
 exit 0

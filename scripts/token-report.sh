@@ -4,9 +4,12 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
 
 unavailable() {
-    printf 'Token report unavailable: %s\n' "$1" >&2
+    larch_errf 'Token report unavailable: %s\n' "$1"
     exit 0
 }
 
@@ -398,7 +401,7 @@ render_jq() {
             # unavailable (stderr) and surface the actual path on stderr only
             # (closes #1511 finding B).
             RENDER_FAIL_REASON="failed to parse token sources (jq stderr captured; debug)"
-            printf 'token-report.sh: jq stderr captured at %s\n' "$jq_stderr_path" >&2
+            larch_errf 'token-report.sh: jq stderr captured at %s\n' "$jq_stderr_path"
         else
             RENDER_FAIL_REASON="failed to parse token sources"
             # Empty stderr file on a debug-mode failure carries no signal —
@@ -465,10 +468,10 @@ replace_token_block() {
         # Marker regex is whole-line anchored for the same reason as the
         # matched-pair branch above.
         if (( has_begin == 1 )); then
-            printf 'token-report.sh: warning: %s has lone <!-- token-report-begin --> marker; truncating from marker and rewriting block\n' "$target" >&2
+            larch_errf 'token-report.sh: warning: %s has lone <!-- token-report-begin --> marker; truncating from marker and rewriting block\n' "$target"
             awk '/^[[:space:]]*<!-- token-report-begin -->[[:space:]]*$/ {found=1; next} !found {print}' "$target" > "$tmp"
         else
-            printf 'token-report.sh: warning: %s has lone <!-- token-report-end --> marker; dropping head through marker and rewriting block\n' "$target" >&2
+            larch_errf 'token-report.sh: warning: %s has lone <!-- token-report-end --> marker; dropping head through marker and rewriting block\n' "$target"
             awk '/^[[:space:]]*<!-- token-report-end -->[[:space:]]*$/ {found=1; next} found {print}' "$target" > "$tmp"
         fi
         # Ensure trailing newline before appending the fresh block.
@@ -556,7 +559,12 @@ elif [[ "$MODE" == "full" && -n "$OUTPUT" ]]; then
     fi
     mv "$tmp" "$OUTPUT"
 else
-    if ! render_jq "$MODE" "$LEDGER" "$FORMAT"; then
+    rendered_file=$(mktemp "${TMPDIR:-/tmp}/token-report-rendered.XXXXXX")
+    if ! render_jq "$MODE" "$LEDGER" "$FORMAT" > "$rendered_file"; then
+        rm -f "$rendered_file"
         unavailable "${RENDER_FAIL_REASON:-failed to render token report}"
     fi
+    report=$(<"$rendered_file")
+    rm -f "$rendered_file"
+    emit "$report"
 fi
