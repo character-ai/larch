@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [27.6.9] - 2026-05-15
+
+### Changed
+
+- Migrate post-init runtime shell diagnostics from raw stderr redirection to larch_err/larch_errf.
+- Add S041/no-raw-stderr-after-quiet-init as a local pre-commit lint with regression coverage.
+- Fix empty .diag failure reasons and split launch-claude-subprocess quiet-routing assertions.
+- Update quiet-library, collector, linting, and agent-lint documentation for the new contract.
+
 ## [27.6.5] - 2026-05-15
 
 ### Fixed
