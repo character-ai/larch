@@ -1994,7 +1994,9 @@ if [ "$current_branch" = "main" ]; then
   case "$main_ahead_count" in
     ''|*[!0-9]*) main_ahead_count=0 ;;
   esac
-  if [ "$main_ahead_count" -gt 0 ]; then
+  _expected_subject="chore(larch-logs): flush implement run $RUN_ID"
+  _actual_subject=$(git log -1 --format='%s' HEAD 2>/dev/null || true)
+  if [ "$main_ahead_count" -eq 1 ] && [ "$_actual_subject" = "$_expected_subject" ]; then
     push_log="$IMPLEMENT_TMPDIR/step18-main-push.failure.log"
     if git push origin main >"$push_log" 2>&1; then
       rm -f "$push_log"
