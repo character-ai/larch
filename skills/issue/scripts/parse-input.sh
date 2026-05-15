@@ -59,6 +59,14 @@
 # content is preserved verbatim and no large opaque payload enters the
 # caller's post-tool-use context (issue #402).
 #
+# After stdout contract emission completes, a short parse summary breadcrumb is
+# emitted on visible stderr via larch_err:
+#
+#   ▶ parse-input: N items parsed (mode=<oos|generic>): 1=<title>, ...
+#
+# This is intentionally out-of-band from stdout so it does not change the
+# caller's machine-readable KV contract.
+#
 # Exit code: 0 on success (even if some items are malformed — check
 # ITEM_<i>_MALFORMED). 1 on usage error, missing input file, missing
 # output-dir, or any file-write failure (via set -euo pipefail). Callers
@@ -148,8 +156,10 @@ CURRENT_VOTE=""
 CURRENT_PHASE=""
 IN_BODY=false
 CURRENT_MODE=""
+PARSE_MODE="generic"
 PENDING_HEADING=""
 PENDING_BODY=""
+ITEM_TITLES=()
 
 emit_item() {
     local title="$1"
@@ -168,6 +178,7 @@ emit_item() {
         # No title at all — shouldn't happen, but guard.
         return
     fi
+    ITEM_TITLES[ITEM_INDEX]="$title"
 
     if [[ -z "$body" ]]; then
         # Malformed: title without body. Emit as MALFORMED so the SKILL can
@@ -395,6 +406,7 @@ while IFS= read -r line || [[ -n "$line" ]]; do
             CURRENT_TITLE="$new_oos_title"
             IN_BODY=false
             CURRENT_MODE="oos"
+            PARSE_MODE="oos"
         fi
     elif [[ "$line" =~ ^\#\#\#[[:space:]]+(.+)$ ]]; then
         # Plain `### <title>` heading. Three paths depending on mode and
@@ -493,4 +505,21 @@ resolve_pending_split
 flush_item
 
 emit_kv ITEMS_TOTAL "$ITEM_INDEX"
+
+breadcrumb="▶ parse-input: ${ITEM_INDEX} items parsed (mode=${PARSE_MODE})"
+if (( ITEM_INDEX > 0 )); then
+    breadcrumb+=":"
+    for (( i = 1; i <= ITEM_INDEX; i++ )); do
+        title="${ITEM_TITLES[$i]:-}"
+        if (( ${#title} > 60 )); then
+            title="${title:0:60}…"
+        fi
+        sep=" "
+        if (( i > 1 )); then
+            sep=", "
+        fi
+        breadcrumb+="${sep}${i}=${title}"
+    done
+fi
+larch_err "$breadcrumb"
 exit 0

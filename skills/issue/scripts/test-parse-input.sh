@@ -46,6 +46,20 @@ assert_eq() {
     fi
 }
 
+assert_contains() {
+    local label="$1" haystack="$2" needle="$3"
+    if [[ "$haystack" == *"$needle"* ]]; then
+        PASS_COUNT=$((PASS_COUNT + 1))
+        echo "  PASS: $label"
+    else
+        FAIL_COUNT=$((FAIL_COUNT + 1))
+        echo "  FAIL: $label"
+        echo "    expected to contain: $(printf '%q' "$needle")"
+        echo "    actual:              $(printf '%q' "$haystack")"
+        exit 1
+    fi
+}
+
 assert_absent() {
     local label="$1" key="$2" output="$3"
     if grep -q "^${key}=" <<< "$output"; then
@@ -58,6 +72,44 @@ assert_absent() {
         PASS_COUNT=$((PASS_COUNT + 1))
         echo "  PASS: $label"
     fi
+}
+
+# Run parser, capture stdout/stderr separately, and assign them to caller-named
+# variables. The parser emits a human breadcrumb on stderr, so normal cases
+# should capture stderr instead of letting it pollute the assertion log.
+run_parser_capture() {
+    local input_file="$1"
+    local stdout_var="$2"
+    local stderr_var="$3"
+    local case_name
+    case_name=$(basename "$input_file" .md)
+    local output_dir="$TMPDIR_TEST/${case_name}-bodies"
+    local out_f err_f captured_stdout captured_stderr rc
+    out_f="$(mktemp)"
+    err_f="$(mktemp)"
+    set +e
+    bash "$PARSER" --input-file "$input_file" --output-dir "$output_dir" >"$out_f" 2>"$err_f"
+    rc=$?
+    set -e
+    captured_stdout="$(cat "$out_f")"
+    captured_stderr="$(cat "$err_f")"
+    rm -f "$out_f" "$err_f"
+    if [[ "$rc" -ne 0 ]]; then
+        echo "FAIL: parser exited non-zero for $input_file (exit=$rc)" >&2
+        echo "$captured_stderr" >&2
+        exit 1
+    fi
+    # Regression guard for issue #402: the legacy `ITEM_<i>_BODY=<base64>`
+    # contract must never return. Use -E (ERE) for portability — BRE `+` is
+    # a literal on BSD/macOS grep. If a legacy BODY= key reappears, abort
+    # the entire test suite immediately.
+    if grep -E '^ITEM_[0-9]+_BODY=' <<< "$captured_stdout" >/dev/null; then
+        echo "FAIL: legacy ITEM_<i>_BODY= key on stdout (issue #402 regression):" >&2
+        grep -E '^ITEM_[0-9]+_BODY=' <<< "$captured_stdout" >&2
+        exit 1
+    fi
+    printf -v "$stdout_var" '%s' "$captured_stdout"
+    printf -v "$stderr_var" '%s' "$captured_stderr"
 }
 
 # Extract a key's value from the parser output. Returns the value string.
@@ -89,20 +141,8 @@ get_body_file_contents() {
 # stomp each other's body files.
 run_parser() {
     local input_file="$1"
-    local case_name
-    case_name=$(basename "$input_file" .md)
-    local output_dir="$TMPDIR_TEST/${case_name}-bodies"
-    local output
-    output=$(bash "$PARSER" --input-file "$input_file" --output-dir "$output_dir")
-    # Regression guard for issue #402: the legacy `ITEM_<i>_BODY=<base64>`
-    # contract must never return. Use -E (ERE) for portability — BRE `+` is
-    # a literal on BSD/macOS grep. If a legacy BODY= key reappears, abort
-    # the entire test suite immediately.
-    if grep -E '^ITEM_[0-9]+_BODY=' <<< "$output" >/dev/null; then
-        echo "FAIL: legacy ITEM_<i>_BODY= key on stdout (issue #402 regression):" >&2
-        grep -E '^ITEM_[0-9]+_BODY=' <<< "$output" >&2
-        exit 1
-    fi
+    local output _stderr
+    run_parser_capture "$input_file" output _stderr
     echo "$output"
 }
 
@@ -593,6 +633,57 @@ if [[ "$neg2_rc" -eq 0 ]]; then
 fi
 PASS_COUNT=$((PASS_COUNT + 1))
 echo "  PASS: negative 2 — unwritable --output-dir fails (exit=$neg2_rc)"
+
+# ---------------------------------------------------------------------------
+# Breadcrumb test 1 — single generic item. Stderr should carry the
+# user-visible parse summary while stdout remains machine-readable KV lines.
+# ---------------------------------------------------------------------------
+echo "Breadcrumb 1: single generic item emits stderr parse summary"
+cat > "$TMPDIR_TEST/breadcrumb1.md" <<'EOF'
+### My title
+body text
+EOF
+bc1_out=""
+bc1_err=""
+run_parser_capture "$TMPDIR_TEST/breadcrumb1.md" bc1_out bc1_err
+assert_eq "breadcrumb 1 stdout items total" "ITEMS_TOTAL=1" "$(grep '^ITEMS_TOTAL=' <<< "$bc1_out")"
+assert_contains "breadcrumb 1 stderr prefix/title" "$bc1_err" "▶ parse-input: 1 items parsed (mode=generic): 1=My title"
+
+# ---------------------------------------------------------------------------
+# Breadcrumb test 2 — multi-item generic batch. Pin the prefix and item count
+# for ordinary generic batches.
+# ---------------------------------------------------------------------------
+echo "Breadcrumb 2: two generic items emit stderr parse summary"
+cat > "$TMPDIR_TEST/breadcrumb2.md" <<'EOF'
+### First breadcrumb item
+first body
+### Second breadcrumb item
+second body
+EOF
+bc2_out=""
+bc2_err=""
+run_parser_capture "$TMPDIR_TEST/breadcrumb2.md" bc2_out bc2_err
+assert_eq "breadcrumb 2 stdout items total" "ITEMS_TOTAL=2" "$(grep '^ITEMS_TOTAL=' <<< "$bc2_out")"
+assert_contains "breadcrumb 2 stderr prefix/count" "$bc2_err" "▶ parse-input: 2 items parsed (mode=generic):"
+assert_contains "breadcrumb 2 stderr titles" "$bc2_err" "1=First breadcrumb item, 2=Second breadcrumb item"
+
+# ---------------------------------------------------------------------------
+# Breadcrumb test 3 — OOS mode detection. A well-formed OOS item should report
+# mode=oos in the stderr breadcrumb.
+# ---------------------------------------------------------------------------
+echo "Breadcrumb 3: OOS item emits mode=oos parse summary"
+cat > "$TMPDIR_TEST/breadcrumb3.md" <<'EOF'
+### OOS_1: OOS breadcrumb item
+- **Description**: body text
+- **Reviewer**: Codex
+- **Vote tally**: YES=1
+- **Phase**: review
+EOF
+bc3_out=""
+bc3_err=""
+run_parser_capture "$TMPDIR_TEST/breadcrumb3.md" bc3_out bc3_err
+assert_eq "breadcrumb 3 stdout items total" "ITEMS_TOTAL=1" "$(grep '^ITEMS_TOTAL=' <<< "$bc3_out")"
+assert_contains "breadcrumb 3 stderr mode" "$bc3_err" "▶ parse-input: 1 items parsed (mode=oos): 1=OOS breadcrumb item"
 
 # ---------------------------------------------------------------------------
 echo ""
