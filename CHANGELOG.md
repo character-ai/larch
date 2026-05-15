@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added /review-and-fix to README.md and docs/skills.md as an internal review helper
 - Added the hard review-and-fix panel topology row and regenerated docs/topology.md
 - Replaced stale SKILL.md line references in docs/external-reviewers.md with stable script references
+- Added finalize-state write-prohibition assertions to the /implement structure harness
+- Pinned Step 18 restore-before-teardown command ordering and helper/library contracts
+- Updated the harness sibling doc to describe the finalize-state teardown coverage
 
 ## [27.6.25] - 2026-05-15
 
