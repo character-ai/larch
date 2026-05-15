@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+export LARCH_QUIET_DISABLE=1
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT="$SCRIPT_DIR/setup-forked-open-source-repo.sh"
 ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
