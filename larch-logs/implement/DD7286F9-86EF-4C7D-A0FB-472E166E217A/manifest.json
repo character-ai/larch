@@ -1,0 +1,20 @@
+{
+  "schema_version": 2,
+  "skill": "implement",
+  "run_id": "DD7286F9-86EF-4C7D-A0FB-472E166E217A",
+  "operator_cwd": "/Users/zhupanov/larch5",
+  "operator_repo_root": "/Users/zhupanov/larch5",
+  "parent_skill": null,
+  "issue_number": 2183,
+  "pr_number": null,
+  "status": "in-progress",
+  "larch_version": "27.6.20",
+  "model_roster": {"main": "unknown"},
+  "effort": "max",
+  "started_at": "2026-05-15T22:25:27Z",
+  "updated_at": "2026-05-15T22:25:27Z",
+  "attempt": 1,
+  "superseded_by": null,
+  "stalled_at_step": null,
+  "flags": {}
+}

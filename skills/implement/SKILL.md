@@ -1372,7 +1372,9 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 
 Nested review token-context propagation through `review-and-fix.sh` is pinned by `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-implement-review-token-propagation.sh` and `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-implement-review-token-propagation.md`.
 
-Quick mode prints: `> **🔶 /implement 5: code review — quick mode (review-and-fix.sh, up to 3 rounds, no voting panel; simple review panel: Cursor edge-cases, Codex structure, Claude generic)**`
+Determine `round_cap` and `review_panel` from `quick_mode`: when `quick_mode=true`, `review_panel=simple` and `round_cap=5`; when `quick_mode=false`, `review_panel=hard` and `round_cap=7`.
+
+Quick mode prints: `> **🔶 /implement 5: code review — quick mode (review-and-fix.sh, up to 5 rounds, no voting panel; simple review panel: 6 Cursor specialists including Cursor edge-cases, Codex generalist)**`
 
 Normal mode prints: `> **🔶 /implement 5: code review**`
 
@@ -1384,14 +1386,17 @@ if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$
 fi
 export CLAUDE_PLUGIN_ROOT
 review_panel=hard
+round_cap=7  # HARD panel: 6 Cursor specialists + 6 Codex specialists, more rounds needed for convergence
 if [ "$quick_mode" = true ]; then
   review_panel=simple
+  round_cap=5  # SIMPLE panel: 6 Cursor specialists + 1 Codex generalist
 fi
 "${CLAUDE_PLUGIN_ROOT}/skills/review-and-fix/scripts/review-and-fix.sh" \
   --implement-tmpdir "$IMPLEMENT_TMPDIR" \
   --mode diff \
   --panel "$review_panel" \
   --round-num "$round_num" \
+  --round-cap "$round_cap" \
   --session-env-path "$IMPLEMENT_TMPDIR/session-env.sh" \
   --codex-available "$codex_available" \
   --cursor-available "$cursor_available" \
@@ -1417,7 +1422,7 @@ export CLAUDE_PLUGIN_ROOT
 "${CLAUDE_PLUGIN_ROOT}/scripts/run-relevant-checks-captured.sh" --site step5-review-fixes --tmpdir "$IMPLEMENT_TMPDIR"
 ```
 
-**Re-review gate**: if no edits were applied, continue to `code-review-tally`. Otherwise classify the just-fixed round as substantial or non-substantial using the same main-agent judgment convention as `/review`: substantial means at least two high-severity accepted findings, OR a non-trivial structural fix (about >=100 LOC of non-comment code), OR accepted-fix count `>= 8`. If non-substantial, log `Step 5 — review loop stopped after round $round_num because accepted findings were not substantial (accepted=<count>; reasoning=<short classification>).` to `Warnings` and continue to `code-review-tally`. If substantial and `round_num < 3`, increment `round_num` and invoke `review-and-fix.sh` again. If `round_num == 3`, print `**⚠ 5: code review hit 3-round cap without converging. Proceeding.**`, log the cap to `Warnings`, and continue.
+**Re-review gate**: if no edits were applied, continue to `code-review-tally`. Otherwise classify the just-fixed round as substantial or non-substantial using the same main-agent judgment convention as `/review`: substantial means at least two high-severity accepted findings, OR a non-trivial structural fix (about >=100 LOC of non-comment code), OR accepted-fix count `>= 8`. If non-substantial, log `Step 5 — review loop stopped after round $round_num because accepted findings were not substantial (accepted=<count>; reasoning=<short classification>).` to `Warnings` and continue to `code-review-tally`. If substantial and `round_num < round_cap`, increment `round_num` and invoke `review-and-fix.sh` again. If `round_num == round_cap`, print `**⚠ 5: code review hit $round_cap-round cap without converging. Proceeding.**`, log the cap to `Warnings`, and continue.
 
 > **Continue after review.** After the review-and-fix loop exits, execute Cross-Skill Health Propagation + Track Rejected Code Review Findings + Step 6 breadcrumb in order — do NOT end the turn (neither silently nor after text output), and do NOT write a summary, handoff, or "returning to parent" message first. → shared/subskill-invocation.md#anti-halt
 

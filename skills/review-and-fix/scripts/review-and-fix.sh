@@ -29,6 +29,7 @@ PLAN_FILE=""
 FEATURE_FILE=""
 RUN_ID=""
 ROUND_NUM="1"
+ROUND_CAP=""
 CODEX_AVAILABLE="${CODEX_AVAILABLE:-}"
 CURSOR_AVAILABLE="${CURSOR_AVAILABLE:-}"
 
@@ -46,6 +47,7 @@ while [[ $# -gt 0 ]]; do
         --feature-file) FEATURE_FILE="${2:?--feature-file requires a value}"; shift 2 ;;
         --run-id) RUN_ID="${2:?--run-id requires a value}"; shift 2 ;;
         --round-num) ROUND_NUM="${2:?--round-num requires a value}"; shift 2 ;;
+        --round-cap) ROUND_CAP="${2:?--round-cap requires a value}"; shift 2 ;;
         --codex-available) CODEX_AVAILABLE="${2:?--codex-available requires a value}"; shift 2 ;;
         --cursor-available) CURSOR_AVAILABLE="${2:?--cursor-available requires a value}"; shift 2 ;;
         --help) usage; exit 0 ;;
@@ -97,7 +99,7 @@ enumerate_findings() {
 
 write_summary_json() {
     local output="$1" tmp="$1.tmp.$$"
-    local status="$2" core_status="$3" round="$4" accepted="$5" rejected="$6" rounds_completed="$7" approved="$8" round_dir="$9" oos_jsonl="${10}" oos_markdown="${11}"
+    local status="$2" core_status="$3" round="$4" accepted="$5" rejected="$6" rounds_completed="$7" approved="$8" round_dir="$9" oos_jsonl="${10}" oos_markdown="${11}" cap="${12:-0}"
     jq -n \
         --arg status "$status" \
         --arg core_status "$core_status" \
@@ -105,6 +107,7 @@ write_summary_json() {
         --argjson rounds_completed "$rounds_completed" \
         --argjson accepted_count "$accepted" \
         --argjson rejected_count "$rejected" \
+        --argjson round_cap "$cap" \
         --arg approved_fixes_file "$approved" \
         --arg review_round_dir "$round_dir" \
         --arg accumulated_oos_file "$oos_jsonl" \
@@ -115,6 +118,7 @@ write_summary_json() {
             review_core_status: $core_status,
             round_num: $round_num,
             rounds_completed: $rounds_completed,
+            round_cap: $round_cap,
             accepted_count: $accepted_count,
             rejected_count: $rejected_count,
             approved_fixes_file: $approved_fixes_file,
@@ -245,7 +249,8 @@ run_implement_round() {
             ;;
     esac
 
-    write_summary_json "$prior_summary" "$status" "$core_status" "$round_num_dec" "$total_accepted" "$total_rejected" "$round_num_dec" "$accepted_file" "$round_dir" "$oos_jsonl" "$oos_markdown"
+    local round_cap_val="${ROUND_CAP:-0}"
+    write_summary_json "$prior_summary" "$status" "$core_status" "$round_num_dec" "$total_accepted" "$total_rejected" "$round_num_dec" "$accepted_file" "$round_dir" "$oos_jsonl" "$oos_markdown" "$round_cap_val"
 
     emit_kv REVIEW_AND_FIX_STATUS "$status"
     emit_kv REVIEW_CORE_STATUS "$core_status"
