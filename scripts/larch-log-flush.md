@@ -9,7 +9,8 @@ the run context is available.
 
 - Exits 0 in every case.
 - No-ops when `IMPLEMENT_TMPDIR` is unset, `IMPLEMENT_TMPDIR/session-id` is
-  missing or empty, or `LARCH_NO_LOGS_COMMIT=true`.
+  missing or empty, `LARCH_NO_LOGS_COMMIT=true`, or
+  `$IMPLEMENT_TMPDIR/post-merge-sentinel` exists.
 - Reads the run id from `$IMPLEMENT_TMPDIR/session-id`.
 - Invokes `scripts/larch-log.sh commit --log-root "$IMPLEMENT_TMPDIR/larch-logs"
   --skill implement --run-id "$run_id"` and swallows failures so the preceding

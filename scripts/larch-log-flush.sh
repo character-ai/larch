@@ -13,6 +13,10 @@ if [ "${LARCH_NO_LOGS_COMMIT:-false}" = "true" ]; then
     exit 0
 fi
 
+if [ -e "$IMPLEMENT_TMPDIR/post-merge-sentinel" ]; then
+    exit 0
+fi
+
 session_id_file="$IMPLEMENT_TMPDIR/session-id"
 if [ ! -s "$session_id_file" ]; then
     exit 0

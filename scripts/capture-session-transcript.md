@@ -27,18 +27,13 @@ The script always exits 0 and prints exactly one `SESSION_TRANSCRIPT_STATUS=<sta
 - `transcript-file-missing` — `TRANSCRIPT_PATH` did not point to a regular file.
 - `write-failed` — `larch-log.sh write` failed.
 - `suppressed-no-logs-commit` — write succeeded and `--no-logs-commit true` skipped commit.
+- `suppressed-post-merge-sentinel` — write succeeded but `$IMPLEMENT_TMPDIR/post-merge-sentinel` exists; commit intentionally skipped because the PR has already merged.
 - `commit-failed` — write succeeded and `larch-log.sh commit` failed.
-- `captured` — write and commit both succeeded. After a successful commit whose subject matches the expected larch-log flush subject while on `main`, the script fetches `origin/main`, verifies the ahead diff is limited to larch-log flush content, and either pushes the single current-run flush commit or abandons flush-only ahead commits with `git reset --hard origin/main`. Push failures and abandoned prior orphans do not change the terminal status.
+- `captured` — write and commit both succeeded.
 
 The wrapper may also append non-terminal `Warnings` entries before the final status:
 
 - `source-file-recovered-via-discovery` — the Step 0 source snapshot was missing but fallback discovery found a recent transcript under `$HOME/.claude/projects`.
-- `pushed` — the current-run flush commit was pushed to `origin/main`.
-- `push-failed-abandoned` — pushing the single current-run flush commit failed, so the local commit was reset back to `origin/main`.
-- `prior-orphans-abandoned` — local `main` had multiple ahead commits, all larch-log flushes, so they were reset back to `origin/main`.
-- `push-skipped-non-flush-diff` — local `main` contained a non-flush ahead commit or diff, so the script left it untouched for operator investigation.
-- `already-present` — after fetching, there was no pushable current-run flush commit left to publish.
-- `push-skipped-fetch-failed` — `git fetch origin main` failed; all push/reset actions were skipped to avoid acting on a stale `origin/main` ref.
 
 For every status, including `captured`, the wrapper appends a `Warnings` entry to the execution-issues log via `append-execution-issue.sh`. Append failure is swallowed so transcript capture never becomes fatal to cleanup.
 
@@ -50,4 +45,4 @@ Primary caller: `skills/implement/SKILL.md` Step 18. The wrapper must run before
 
 ## Edit-in-sync
 
-Update `skills/implement/SKILL.md` Step 18 and `scripts/test-capture-session-transcript.sh` when changing flags, status names, the write/commit ordering, or the push behavior. The harness is wired through `make test-capture-session-transcript` and `test-harnesses-4`. Keep this file synchronized with `scripts/larch-log.md` when the `session-transcript` batch contract changes.
+Update `skills/implement/SKILL.md` Step 18 and `scripts/test-capture-session-transcript.sh` when changing flags, status names, or the write/commit ordering. The harness is wired through `make test-capture-session-transcript` and `test-harnesses-4`. Keep this file synchronized with `scripts/larch-log.md` when the `session-transcript` batch contract changes.

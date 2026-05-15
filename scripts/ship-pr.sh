@@ -124,6 +124,17 @@ read_state() {
     ' "$STATE_FILE"
 }
 
+write_post_merge_sentinel() {
+    local tmp sentinel
+    sentinel="$IMPLEMENT_TMPDIR/post-merge-sentinel"
+    tmp="$IMPLEMENT_TMPDIR/.post-merge-sentinel.$$"
+    if ! printf 'MERGE_RESULT=%s\n' "$(read_state MERGE_RESULT)" > "$tmp" || ! mv -f "$tmp" "$sentinel"; then
+        rm -f "$tmp" 2>/dev/null || true
+        larch_err "ship-pr.sh: failed to write post-merge sentinel: $sentinel"
+        exit_stall 12b
+    fi
+}
+
 read_session_plan_file() {
     local session_env="$IMPLEMENT_TMPDIR/session-env.sh"
     [ -f "$session_env" ] || return 0
@@ -984,6 +995,7 @@ EOF
                 merged|admin_merged)
                     state_set_many PR_CLOSED true MERGE_RESULT "$merge_result"
                     rename_done_best_effort
+                    write_post_merge_sentinel
                     advance_phase postmerge
                     ;;
                 main_advanced|ci_not_ready)
@@ -999,6 +1011,7 @@ EOF
                     if [ "$pr_state" = "MERGED" ]; then
                         state_set_many PR_CLOSED true MERGE_RESULT already_merged
                         rename_done_best_effort
+                        write_post_merge_sentinel
                         advance_phase postmerge
                     else
                         run_rebase_rebump "$phase"
@@ -1038,6 +1051,7 @@ EOF
         already_merged)
             state_set_many PR_CLOSED true MERGE_RESULT already_merged
             rename_done_best_effort
+            write_post_merge_sentinel
             advance_phase postmerge
             ;;
         evaluate_failure)

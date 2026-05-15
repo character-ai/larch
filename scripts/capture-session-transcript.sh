@@ -144,67 +144,16 @@ if [ "$NO_LOGS_COMMIT" = "true" ]; then
     emit_status "suppressed-no-logs-commit" "--no-logs-commit was set; transcript was written under the staging log root but not committed."
 fi
 
+if [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -e "$IMPLEMENT_TMPDIR/post-merge-sentinel" ]; then
+    emit_status "suppressed-post-merge-sentinel" "post-merge sentinel exists; transcript was written but not committed (intentional — no commits after merge)."
+fi
+
 if ! "$SCRIPT_DIR/larch-log.sh" commit \
     --log-root "$LOG_ROOT" \
     --skill "$SKILL" \
     --run-id "$RUN_ID" \
     >/dev/null 2>&1; then
     emit_status "commit-failed" "write succeeded but git commit failed; transcript remains under the staging log root."
-fi
-
-current_branch=$(git symbolic-ref --short HEAD 2>/dev/null || true)
-if [ "$current_branch" = "main" ]; then
-    _expected_subject="chore(larch-logs): flush implement run $RUN_ID"
-    _actual_subject=$(git log -1 --format='%s' HEAD 2>/dev/null || true)
-    if [ "$_actual_subject" = "$_expected_subject" ]; then
-        if ! git fetch origin main --quiet 2>/dev/null; then
-            append_warning "push-skipped-fetch-failed" "Step 18 push outcome: push-skipped-fetch-failed"
-        else
-        _current_run_diff_only=true
-        _larch_log_diff_only=true
-        while IFS= read -r _f; do
-            case "$_f" in
-                "larch-logs/implement/$RUN_ID/"*) ;;
-                *) _current_run_diff_only=false ;;
-            esac
-            case "$_f" in
-                "larch-logs/"*) ;;
-                *) _larch_log_diff_only=false ;;
-            esac
-            if [ "$_current_run_diff_only" = "false" ] && [ "$_larch_log_diff_only" = "false" ]; then
-                break
-            fi
-        done < <(git diff --name-only origin/main HEAD 2>/dev/null || true)
-
-        _flush_subjects_only=true
-        while IFS= read -r _subj; do
-            case "$_subj" in
-                "chore(larch-logs): flush "*) ;;
-                *) _flush_subjects_only=false; break ;;
-            esac
-        done < <(git log origin/main..HEAD --format=%s 2>/dev/null || true)
-
-        ahead_fresh=$(git rev-list --count "origin/main..HEAD" 2>/dev/null || echo 0)
-        case "${ahead_fresh:-}" in ''|*[!0-9]*) ahead_fresh=0 ;; esac
-
-        if [ "$_current_run_diff_only" = "true" ] && [ "$ahead_fresh" -eq 1 ]; then
-            if git push origin main >/dev/null 2>&1; then
-                _push_status=pushed
-            else
-                git reset --hard origin/main >/dev/null 2>&1 || true
-                _push_status=push-failed-abandoned
-            fi
-        elif [ "$_larch_log_diff_only" = "true" ] && [ "$_flush_subjects_only" = "true" ] && [ "$ahead_fresh" -gt 1 ]; then
-            git reset --hard origin/main >/dev/null 2>&1 || true
-            _push_status=prior-orphans-abandoned
-        elif [ "$_current_run_diff_only" = "false" ] || [ "$_larch_log_diff_only" = "false" ] || [ "$_flush_subjects_only" = "false" ]; then
-            _push_status=push-skipped-non-flush-diff
-        else
-            _push_status=already-present
-        fi
-        append_warning "$_push_status" "Step 18 push outcome: $_push_status"
-        fi
-    fi
 fi
 
 emit_status "captured" "session transcript was written and committed."
