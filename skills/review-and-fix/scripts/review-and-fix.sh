@@ -10,11 +10,9 @@ source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
 
 usage() {
-    cat >&2 <<'USAGE'
-Usage:
-  review-and-fix.sh --findings-file FILE --review-tmpdir DIR [--session-env-path FILE]
-  review-and-fix.sh --implement-tmpdir DIR --mode diff --panel simple|hard --round-num N [context flags]
-USAGE
+    larch_err "Usage:"
+    larch_err "  review-and-fix.sh --findings-file FILE --review-tmpdir DIR [--session-env-path FILE]"
+    larch_err "  review-and-fix.sh --implement-tmpdir DIR --mode diff --panel simple|hard --round-num N [context flags]"
 }
 
 FINDINGS_FILE=""
@@ -70,8 +68,8 @@ session_get() {
 }
 
 enumerate_findings() {
-    [[ -f "$FINDINGS_FILE" ]] || { echo "review-and-fix.sh: --findings-file must name a file" >&2; exit 2; }
-    [[ -n "$REVIEW_TMPDIR" ]] || { echo "review-and-fix.sh: --review-tmpdir is required" >&2; exit 2; }
+    [[ -f "$FINDINGS_FILE" ]] || { larch_err "review-and-fix.sh: --findings-file must name a file"; exit 2; }
+    [[ -n "$REVIEW_TMPDIR" ]] || { larch_err "review-and-fix.sh: --review-tmpdir is required"; exit 2; }
     mkdir -p "$REVIEW_TMPDIR"
     : "$SESSION_ENV_PATH"
 
@@ -128,16 +126,16 @@ write_summary_json() {
 }
 
 run_implement_round() {
-    [[ "$MODE" == "diff" ]] || { echo "review-and-fix.sh: orchestrator mode currently requires --mode diff" >&2; exit 2; }
-    [[ "$PANEL" == "simple" || "$PANEL" == "hard" ]] || { echo "review-and-fix.sh: --panel must be simple or hard" >&2; exit 2; }
-    case "$ROUND_NUM" in ''|*[!0-9]*) echo "review-and-fix.sh: --round-num must be a positive integer" >&2; exit 2 ;; esac
-    (( 10#$ROUND_NUM > 0 )) || { echo "review-and-fix.sh: --round-num must be a positive integer" >&2; exit 2; }
+    [[ "$MODE" == "diff" ]] || { larch_err "review-and-fix.sh: orchestrator mode currently requires --mode diff"; exit 2; }
+    [[ "$PANEL" == "simple" || "$PANEL" == "hard" ]] || { larch_err "review-and-fix.sh: --panel must be simple or hard"; exit 2; }
+    case "$ROUND_NUM" in ''|*[!0-9]*) larch_err "review-and-fix.sh: --round-num must be a positive integer"; exit 2 ;; esac
+    (( 10#$ROUND_NUM > 0 )) || { larch_err "review-and-fix.sh: --round-num must be a positive integer"; exit 2; }
     round_num_dec=$((10#$ROUND_NUM))
-    [[ -n "$IMPLEMENT_TMPDIR" && -d "$IMPLEMENT_TMPDIR" && ! -L "$IMPLEMENT_TMPDIR" ]] || { echo "review-and-fix.sh: --implement-tmpdir must name a directory" >&2; exit 2; }
+    [[ -n "$IMPLEMENT_TMPDIR" && -d "$IMPLEMENT_TMPDIR" && ! -L "$IMPLEMENT_TMPDIR" ]] || { larch_err "review-and-fix.sh: --implement-tmpdir must name a directory"; exit 2; }
     [[ -n "$SESSION_ENV_PATH" ]] || SESSION_ENV_PATH="$IMPLEMENT_TMPDIR/session-env.sh"
-    [[ -x "$REVIEW_CORE_SH" ]] || { echo "review-and-fix.sh: review-core.sh not executable: $REVIEW_CORE_SH" >&2; exit 2; }
-    [[ -x "$CALL_FIXER_SH" ]] || { echo "review-and-fix.sh: call-fixer.sh not executable: $CALL_FIXER_SH" >&2; exit 2; }
-    command -v jq >/dev/null 2>&1 || { echo "review-and-fix.sh: jq is required" >&2; exit 2; }
+    [[ -x "$REVIEW_CORE_SH" ]] || { larch_err "review-and-fix.sh: review-core.sh not executable: $REVIEW_CORE_SH"; exit 2; }
+    [[ -x "$CALL_FIXER_SH" ]] || { larch_err "review-and-fix.sh: call-fixer.sh not executable: $CALL_FIXER_SH"; exit 2; }
+    command -v jq >/dev/null 2>&1 || { larch_err "review-and-fix.sh: jq is required"; exit 2; }
 
     if [[ "$CODEX_AVAILABLE" != "true" && "$CODEX_AVAILABLE" != "false" ]]; then
         codex_healthy=$(session_get CODEX_HEALTHY false)
@@ -267,5 +265,5 @@ if [[ -n "$IMPLEMENT_TMPDIR" ]]; then
     run_implement_round
 fi
 
-[[ -f "$FINDINGS_FILE" ]] || { echo "review-and-fix.sh: --findings-file must name a file" >&2; exit 2; }
+[[ -f "$FINDINGS_FILE" ]] || { larch_err "review-and-fix.sh: --findings-file must name a file"; exit 2; }
 enumerate_findings
