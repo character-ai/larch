@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Thread manifest started_at into the report-token cache and parsed records.
 - Add per-day markdown cost trend tables for Total, Claude, Codex, and Cursor across SIMPLE and HARD workflows.
 - Document the new trend-table output in the run-analysis script contract.
+- Add a pre-teardown restore-finalize-state helper that rebuilds finalize-state.sh from ship-pr-state.sh and restores final-bail-reason.txt
+- Share finalize-state key ordering between ship-pr.sh and the restore helper through a sourced Bash 3.2-compatible library
+- Wire the helper into /implement Step 18 and add Makefile, docs, agent-lint, and offline harness coverage
 
 ## [27.6.19] - 2026-05-15
 

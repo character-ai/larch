@@ -205,21 +205,21 @@
       {
         "step": "Step 7 — commit review fixes",
         "totals": {
-          "input": 7,
-          "cache_read": 1633473,
-          "cache_create": 2206,
-          "output": 2378,
-          "total": 1638064
+          "input": 8,
+          "cache_read": 1867641,
+          "cache_create": 2892,
+          "output": 3201,
+          "total": 1873742
         },
         "skills": [
           {
             "skill": "larch:issue",
             "totals": {
-              "input": 7,
-              "cache_read": 1633473,
-              "cache_create": 2206,
-              "output": 2378,
-              "total": 1638064
+              "input": 8,
+              "cache_read": 1867641,
+              "cache_create": 2892,
+              "output": 3201,
+              "total": 1873742
             }
           }
         ]
@@ -227,21 +227,32 @@
       {
         "step": "Step 8 — version bump",
         "totals": {
-          "input": 0,
-          "cache_read": 0,
-          "cache_create": 0,
-          "output": 0,
-          "total": 0
+          "input": 9,
+          "cache_read": 2123974,
+          "cache_create": 5365,
+          "output": 3465,
+          "total": 2132813
         },
-        "skills": []
+        "skills": [
+          {
+            "skill": "larch:issue",
+            "totals": {
+              "input": 9,
+              "cache_read": 2123974,
+              "cache_create": 5365,
+              "output": 3465,
+              "total": 2132813
+            }
+          }
+        ]
       }
     ],
     "totals": {
-      "input": 187,
-      "cache_read": 29750869,
-      "cache_create": 720318,
-      "output": 76779,
-      "total": 30548153
+      "input": 197,
+      "cache_read": 32109011,
+      "cache_create": 726369,
+      "output": 81067,
+      "total": 32916644
     }
   },
   "codex": {

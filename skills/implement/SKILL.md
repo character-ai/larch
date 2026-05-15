@@ -1904,12 +1904,15 @@ if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
 fi
 export CLAUDE_PLUGIN_ROOT
-# Best-effort: only run when ship-pr-state.sh exists (design-only and bail paths never
-# enter Step 8+ so the state file is absent). Failure is non-fatal — teardown must
-# always run regardless so the tmpdir and Stop-hook sentinel are cleaned up.
+# Only when ship-pr-state.sh exists (design-only and bail paths that never enter
+# Step 8+ leave it absent). Rebuild finalize-state.sh from ship-pr-state.sh before
+# teardown. If restore fails, print a warning but still run teardown so the tmpdir
+# and Stop-hook sentinel are cleaned up; restore already emits diagnostics on stderr.
 if [ -f "$IMPLEMENT_TMPDIR/ship-pr-state.sh" ]; then
-  "${CLAUDE_PLUGIN_ROOT}/scripts/restore-finalize-state.sh" \
-    --implement-tmpdir "$IMPLEMENT_TMPDIR" || true
+  if ! "${CLAUDE_PLUGIN_ROOT}/scripts/restore-finalize-state.sh" \
+      --implement-tmpdir "$IMPLEMENT_TMPDIR"; then
+    printf '%s\n' "**⚠ Step 18: restore-finalize-state.sh failed; proceeding to teardown.**" >&2
+  fi
 fi
 "${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.sh" teardown \
   --state-file "$IMPLEMENT_TMPDIR/finalize-state.sh" \
