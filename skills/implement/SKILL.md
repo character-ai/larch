@@ -1981,6 +1981,39 @@ export CLAUDE_PLUGIN_ROOT
 
 The transcript path was snapshotted at Step 0 via `token-claude-source.sh` and stored in `$IMPLEMENT_TMPDIR/claude-source.env`. `capture-session-transcript.sh` reads that source safely, writes the `session-transcript` batch through `larch-log.sh` (which applies `redact-tmpdir-paths.sh` and `redact-secrets.sh`), and commits unless `--no-logs-commit` is set. `larch-log.sh commit` does not push. For every outcome, including successful capture, the wrapper records `SESSION_TRANSCRIPT_STATUS=<status>` in `Warnings` so source/write/commit skips remain visible.
 
+Push any post-merge run-log commit left on local `main` by transcript capture (best-effort — never fatal):
+
+```bash
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
+  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
+fi
+export CLAUDE_PLUGIN_ROOT
+current_branch=$(git symbolic-ref --short HEAD 2>/dev/null || true)
+if [ "$current_branch" = "main" ]; then
+  main_ahead_count=$(git rev-list --count "origin/main..HEAD" 2>/dev/null || printf '0\n')
+  case "$main_ahead_count" in
+    ''|*[!0-9]*) main_ahead_count=0 ;;
+  esac
+  if [ "$main_ahead_count" -gt 0 ]; then
+    push_log="$IMPLEMENT_TMPDIR/step18-main-push.failure.log"
+    if git push origin main >"$push_log" 2>&1; then
+      rm -f "$push_log"
+    else
+      push_rc=$?
+      "${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" \
+        --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
+        --site "Step 18" \
+        --tool "git push origin main" \
+        --exit-code "$push_rc" \
+        --category "Tool Failures" \
+        --output-file "$push_log" \
+        --redact || true
+      echo "**⚠ 18: post-merge main push failed; local main remains ahead of origin/main.**"
+    fi
+  fi
+fi
+```
+
 Run the consolidated teardown subcommand after the prompt-side warnings/notes and token artifact refresh above. Under `forked_target=true`, skip only the tracking-issue rename / summary-refresh portions by leaving `ISSUE_NUMBER` unset; still run `implement-finalize.sh teardown` so `$IMPLEMENT_TMPDIR` is cleaned up and final warnings are repeated. It performs the title-prefix terminal transition first: Branch A renames to `[STALLED]` only when `STALL_TRACKING=true` and the issue state is exactly `OPEN`; Branch B renames to `[DONE]` when `STALL_TRACKING=false`, `DONE_RENAME_APPLIED!=true`, and `$PR_NUMBER` is set OR `DESIGN_ONLY_DONE=true`; Branch C is a no-op. Finalize-time round-trip detection runs inside `scripts/implement-finalize.sh` immediately before Branch A/B renames. On stalled paths, it then best-effort stashes leftover working-tree edits with a `larch-stalled-...` label and writes `.git/larch-stalled-run.txt` so the next SessionStart/preflight can surface or clear the leftover state. Before `cleanup-tmpdir.sh` runs (and before `verify_cleanup_target`, so even a refused cleanup releases the Stop hook), teardown writes `$IMPLEMENT_TMPDIR/.run-cleaned-up`. Teardown then best-effort kills stale background processes from this session whose argv references `$IMPLEMENT_TMPDIR` (fixed-string match via `awk index()` against lexical and physical tmpdir paths; current process and its direct parent are excluded; SIGTERM + 1s wait + SIGKILL backstop; emits a warning breadcrumb if any were killed). Before tmpdir removal, it verifies the tmpdir basename prefix and `session-id` against the Step 14 state file. When both match, cleanup proceeds. When only the session-id matches (prefix mismatch), it emits a warning and still invokes cleanup — this handles prefix bugs fixed in #1563/#1572. When the session-id doesn't match (or is absent), it logs a Tool Failures entry, emits the documented refusal warning, skips `rm -rf`, and continues. It then prints the tracking-issue URL when resolvable and prints the final Step 18 breadcrumb. Mechanical SSOT: `${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.md` § `teardown`.
 
 ```bash

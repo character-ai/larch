@@ -21,6 +21,7 @@
 #   0 — always (result communicated via output keys)
 #   1 — usage/argument error (no output emitted)
 
+# Intentionally omit -e: cleanup records partial failures in stdout keys.
 set -uo pipefail
 
 usage() { echo "Usage: local-cleanup.sh --branch BRANCH_NAME" >&2; }
@@ -76,7 +77,15 @@ fi
 # --- Step 3: Pull origin main ---
 echo "🔄 Pulling latest main..." >&2
 if ! git pull origin main >/dev/null 2>&1; then
-    echo "❌ Failed to pull origin main" >&2
+    ahead_count=$(git rev-list --count "origin/main..HEAD" 2>/dev/null || printf '0\n')
+    case "$ahead_count" in
+        ''|*[!0-9]*) ahead_count=0 ;;
+    esac
+    if [[ "$ahead_count" -gt 0 ]]; then
+        echo "❌ Failed to pull origin main; local main is ahead of origin/main by $ahead_count commit(s). Push or reconcile local main before retrying." >&2
+    else
+        echo "❌ Failed to pull origin main" >&2
+    fi
     exit 0
 fi
 
