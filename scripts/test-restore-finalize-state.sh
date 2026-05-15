@@ -181,7 +181,7 @@ assert_file_exists "$tmp/finalize-state.sh" "partial restore writes finalize-sta
 assert_key_count "$tmp/finalize-state.sh" 20 "partial restore writes all finalize keys"
 assert_file_line "$tmp/finalize-state.sh" "BRANCH_NAME=feature/finalize" "partial restore preserves branch"
 assert_file_line "$tmp/finalize-state.sh" "DESIGN_ONLY_DONE=false" "partial restore defaults DESIGN_ONLY_DONE"
-assert_file_line "$tmp/finalize-state.sh" "NO_LOGS_COMMIT=" "partial restore leaves absent NO_LOGS_COMMIT empty"
+assert_file_line "$tmp/finalize-state.sh" "NO_LOGS_COMMIT=false" "partial restore defaults absent NO_LOGS_COMMIT to false"
 if [ "$(cat "$tmp/final-bail-reason.txt")" = "needs manual verification" ]; then
     ok "partial restore writes final-bail-reason"
 else
@@ -210,6 +210,19 @@ if [ "$(cat "$tmp/final-bail-reason.txt")" = "complete reason" ]; then
 else
     fail "complete restore writes final-bail-reason"
 fi
+
+# Empty (zero-byte) ship-pr-state.sh: restore must succeed and write 20 lines,
+# each with an empty or default value.
+tmp=$(make_tmpdir)
+: > "$tmp/ship-pr-state.sh"
+rc=$(run_subject "$tmp" "$tmp/stdout_empty" "$tmp/stderr_empty")
+assert_rc "$rc" 0 "empty ship-pr-state.sh restores successfully"
+assert_file_exists "$tmp/finalize-state.sh" "empty restore writes finalize-state"
+assert_key_count "$tmp/finalize-state.sh" 20 "empty restore writes all 20 keys"
+assert_file_line "$tmp/finalize-state.sh" "DESIGN_ONLY_DONE=false" "empty restore defaults DESIGN_ONLY_DONE"
+assert_file_line "$tmp/finalize-state.sh" "STALL_TRACKING=false" "empty restore defaults STALL_TRACKING"
+assert_file_line "$tmp/finalize-state.sh" "BAIL_NEEDS_USER_INPUT=false" "empty restore defaults BAIL_NEEDS_USER_INPUT"
+assert_file_line "$tmp/finalize-state.sh" "DONE_RENAME_APPLIED=false" "empty restore defaults DONE_RENAME_APPLIED"
 
 if [ "$FAIL" -ne 0 ]; then
     echo "FAIL: $FAIL failed, $PASS passed"

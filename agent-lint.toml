@@ -1119,6 +1119,7 @@ exclude = [
   "scripts/test-collect-agent-results.md",
   "scripts/lib-net.md",
   "scripts/lib-finalize-state-keys.md",
+  "scripts/restore-finalize-state.md",
   "scripts/test-restore-finalize-state.md",
   "skills/simplify-skill/scripts/build-feature-description.md",
   # scripts/test-alias-target-resolution.md and scripts/test-alias-structure.md

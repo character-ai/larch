@@ -30,10 +30,35 @@ LARCH_FINALIZE_STATE_KEYS=(
     NO_LOGS_COMMIT
 )
 
+# Boolean keys that implement-finalize.sh teardown validates via require_bool_state.
+# Defaults are the safest values: false for all booleans so a truncated or
+# partially-clobbered ship-pr-state.sh still produces a teardown-valid file.
 # shellcheck disable=SC2034
-LARCH_FINALIZE_STATE_DEFAULT_KEYS=(DESIGN_ONLY_DONE)
+LARCH_FINALIZE_STATE_DEFAULT_KEYS=(
+    DESIGN_ONLY_DONE
+    DRAFT
+    MERGE
+    DEFERRED
+    REPO_UNAVAILABLE
+    PR_CLOSED
+    BAIL_NEEDS_USER_INPUT
+    STALL_TRACKING
+    DONE_RENAME_APPLIED
+    NO_LOGS_COMMIT
+)
 # shellcheck disable=SC2034
-LARCH_FINALIZE_STATE_DEFAULT_VALUES=(false)
+LARCH_FINALIZE_STATE_DEFAULT_VALUES=(
+    false
+    false
+    false
+    false
+    false
+    false
+    false
+    false
+    false
+    false
+)
 
 larch_finalize_state_default() {
     local key=$1 index
