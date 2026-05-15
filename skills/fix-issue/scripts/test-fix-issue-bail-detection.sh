@@ -9,7 +9,7 @@
 # conformance test. Runtime enforcement is the LLM-level orchestration of
 # Step 5a per the prose contract.
 #
-# Twelve assertions against the extracted Step 5a block:
+# Fourteen assertions against the extracted Step 5a block:
 #   (a1) Invocation forwards "--issue $ISSUE_NUMBER".
 #   (a2) Invocation forwards "--no-admin-fallback" (branch-protection bypass
 #        safety flag; issue #559).
@@ -34,6 +34,12 @@
 #   (e)  Literal "Skip to Step 8" present (cleanup redirect guard).
 #   (f)  Delegation mandate "Invoke `/implement` via the Skill tool" present
 #        (anti-pattern #5 guard against inline implementation at Step 5a).
+#   (g)  Skill name "larch:implement" present — confirms the correct Skill name
+#        appears in the Step 5a block (anti-pattern #9 guard against accidentally
+#        using larch:fix-issue or any other name as the skill: field).
+#   (h)  Skill name "larch:fix-issue" absent — guards against the Step 5a block
+#        ever containing the recursive self-invocation skill name that caused
+#        issue #2136 to be permanently stuck in [IN PROGRESS].
 #
 # Block extraction boundary: "### 5a " (start) through the Step 6 anchor.
 #
@@ -84,6 +90,20 @@ assert_contains() {
     else
         echo "  FAIL: $label" >&2
         echo "    missing literal: $literal" >&2
+        exit 1
+    fi
+}
+
+# Assertion helper — literal-substring absence check.
+# Usage: assert_not_contains <label> <literal>
+assert_not_contains() {
+    local label="$1" literal="$2"
+    if ! grep -qF -- "$literal" <<<"$STEP5A_BLOCK"; then
+        PASS_COUNT=$((PASS_COUNT + 1))
+        echo "  PASS: $label"
+    else
+        echo "  FAIL: $label" >&2
+        echo "    unexpected literal found: $literal" >&2
         exit 1
     fi
 }
@@ -156,6 +176,19 @@ assert_contains "e: 'Skip to Step 8' cleanup redirect" 'Skip to Step 8'
 # to /implement via the Skill tool). Without this literal the orchestrator has no
 # prose anchor stating that the Skill tool is the required dispatch mechanism.
 assert_contains "f: delegation mandate 'Invoke \`/implement\` via the Skill tool'" 'Invoke `/implement` via the Skill tool'
+
+# (g) Correct skill name "larch:implement" present — guards anti-pattern #9
+# (NEVER use larch:fix-issue or any other name as the skill: field at Step 5a).
+# The prose anchor "larch:implement as the skill: field" ensures the canonical
+# name appears in the block so the LLM has an unambiguous reference.
+assert_contains "g: correct skill name 'larch:implement' present in Step 5a block" 'larch:implement'
+
+# (h) Wrong skill name "larch:fix-issue" absent from Step 5a block — guards
+# against the recursive self-invocation failure (issue #2136) where the
+# orchestrator used skill: "larch:fix-issue" instead of "larch:implement".
+# The explanatory NEVER #9 prose lives in the Anti-patterns section, outside
+# the awk extraction window, so this check is not confused by that prose.
+assert_not_contains "h: wrong skill name 'larch:fix-issue' absent from Step 5a block" 'larch:fix-issue'
 
 echo
 echo "All $PASS_COUNT assertions passed."
