@@ -157,7 +157,7 @@ if [ "$current_branch" = "main" ]; then
     _expected_subject="chore(larch-logs): flush implement run $RUN_ID"
     _actual_subject=$(git log -1 --format='%s' HEAD 2>/dev/null || true)
     if [ "$_actual_subject" = "$_expected_subject" ]; then
-        if ! git fetch origin main --quiet 2>/dev/null; then
+        if ! git fetch origin refs/heads/main:refs/remotes/origin/main --quiet 2>/dev/null; then
             append_warning "push-skipped-fetch-failed" "Step 18 push outcome: push-skipped-fetch-failed"
         else
         _current_run_diff_only=true
