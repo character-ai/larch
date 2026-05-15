@@ -152,7 +152,10 @@ fi
 current_branch=$(git symbolic-ref --short HEAD 2>/dev/null || true)
 if [ "$current_branch" = "main" ]; then
     ahead=$(git rev-list --count "origin/main..HEAD" 2>/dev/null || echo 0)
-    if [ "${ahead:-0}" -gt 0 ]; then
+    case "${ahead:-}" in ''|*[!0-9]*) ahead=0 ;; esac
+    _expected_subject="chore(larch-logs): flush implement run $RUN_ID"
+    _actual_subject=$(git log -1 --format='%s' HEAD 2>/dev/null || true)
+    if [ "$ahead" -eq 1 ] && [ "$_actual_subject" = "$_expected_subject" ]; then
         git push origin main >/dev/null 2>&1 || true
     fi
 fi

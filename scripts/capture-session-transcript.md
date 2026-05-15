@@ -28,7 +28,7 @@ The script always exits 0 and prints exactly one `SESSION_TRANSCRIPT_STATUS=<sta
 - `write-failed` — `larch-log.sh write` failed.
 - `suppressed-no-logs-commit` — write succeeded and `--no-logs-commit true` skipped commit.
 - `commit-failed` — write succeeded and `larch-log.sh commit` failed.
-- `captured` — write and commit both succeeded. After a successful commit, when on `main` and HEAD is ahead of `origin/main`, the script additionally performs a best-effort `git push origin main` (all output suppressed; push failure is silently ignored and does not change the status).
+- `captured` — write and commit both succeeded. After a successful commit, when on `main` with exactly one ahead commit whose subject matches the expected larch-log flush subject, the script additionally performs a best-effort `git push origin main` (all output suppressed; push failure is silently ignored and does not change the status).
 
 The wrapper may also append a non-terminal `source-file-recovered-via-discovery` Warnings entry before the final status when the Step 0 source snapshot was missing but fallback discovery found a recent transcript under `$HOME/.claude/projects`.
 
