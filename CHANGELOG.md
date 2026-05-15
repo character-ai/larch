@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [27.6.14] - 2026-05-15
+
+### Changed
+
+- Scaffolded the private .claude /release skill with model invocation disabled for the dangerous release name.
+- Added a release promotion wrapper that selects the newest non-draft character-ai/larch release, clears pre-release, marks it latest, and verifies the state.
+- Documented the wrapper contract and wired the skill to run /upgrade-larch after successful promotion.
+
 ## [27.6.12] - 2026-05-15
 
 ### Changed
