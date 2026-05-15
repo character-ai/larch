@@ -4,7 +4,7 @@
 
 ## Behavior
 
-The script queries GitHub releases with `gh release list --exclude-drafts`, selects the newest returned release, then runs `gh release edit <tag> --prerelease=false --latest`. After editing, it re-queries releases and verifies the selected tag reports `isPrerelease=false` and `isLatest=true`.
+The script queries GitHub releases with `gh release list --exclude-drafts --limit 100`, sorts by `publishedAt` descending in jq, and selects the newest non-draft release. It then runs `gh release edit <tag> --prerelease=false --latest`. After editing, it verifies the result via `gh release view <tag>` and confirms `isPrerelease=false` and `isLatest=true`.
 
 It prints machine-readable key-value lines on stdout:
 

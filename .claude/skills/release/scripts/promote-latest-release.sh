@@ -55,11 +55,12 @@ fi
 
 releases_json="$(gh release list \
   --repo "$REPO" \
-  --limit 20 \
+  --limit 100 \
   --exclude-drafts \
   --json tagName,isPrerelease,isLatest,publishedAt,createdAt)"
 
-latest_json="$(printf '%s\n' "$releases_json" | jq -cer '.[0] // empty')" || {
+# Sort by publishedAt descending to ensure we pick the truly newest release
+latest_json="$(printf '%s\n' "$releases_json" | jq -cer 'sort_by(.publishedAt) | reverse | .[0] // empty')" || {
   echo "ERROR=No non-draft releases found for $REPO" >&2
   exit 1
 }
@@ -85,12 +86,9 @@ gh release edit "$tag" \
   --prerelease=false \
   --latest
 
-verify_json="$(gh release list \
+verified_json="$(gh release view "$tag" \
   --repo "$REPO" \
-  --limit 50 \
-  --json tagName,isPrerelease,isLatest)"
-
-verified_json="$(printf '%s\n' "$verify_json" | jq -cer --arg tag "$tag" '.[] | select(.tagName == $tag)')" || {
+  --json tagName,isPrerelease,isLatest)" || {
   echo "ERROR=Promoted release $tag was not found during verification" >&2
   exit 1
 }
