@@ -1,12 +1,12 @@
 # Version Bump Reasoning
 
-- **Base commit**: `226b5b2` (fix(fix-issue): guard Step 5a against wrong-skill invocation (#2147))
-- **Current version**: `27.6.8`
+- **Base commit**: `2d04629` (chore(larch-logs): flush implement run 1BD4C923-B60C-43E7-81C8-80A03A1305DD)
+- **Current version**: `27.6.9`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: PATCH
 
-- **New version**: `27.6.9`
+- **New version**: `27.6.10`
 
 ### PATCH rationale
 
