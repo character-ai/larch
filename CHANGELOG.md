@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [27.5.65] - 2026-05-14
+
+### Changed
+
+- Applied lib-quiet initialization and emit/emit_kv contract output to review machinery scripts.
+- Preserved prompt and JSON content streams by restoring stdout for renderer-style helpers.
+- Updated sibling contracts and quiet-aware harness assertions for diagnostics now captured in logs.
+
 ## [27.5.64] - 2026-05-14
 
 ### Changed
