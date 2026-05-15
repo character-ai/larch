@@ -604,7 +604,8 @@ run_pr_prep_phase() {
 
 run_pr_create_phase() {
     local title out rc pr_number pr_url pr_status repo_args draft_args fail_file
-    title=$(git log -1 --format=%s 2>/dev/null || echo "Implement requested changes")
+    title=$(git log --format=%s HEAD 2>/dev/null | grep -v '^chore(larch-logs): flush ' | head -1)
+    title=${title:-"Implement requested changes"}
     repo_args=()
     if [ -n "$(read_state REPO)" ]; then
         repo_args=(--repo "$(read_state REPO)")
