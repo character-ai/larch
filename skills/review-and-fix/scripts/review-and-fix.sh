@@ -199,11 +199,18 @@ run_implement_round() {
 
     fix_count=0
     if [[ "$accepted_count" -gt 0 && -s "$accepted_file" ]]; then
-        FINDINGS_FILE="$accepted_file"
-        REVIEW_TMPDIR="$round_dir"
-        enumerate_findings >> "$round_dir/review-and-fix-enumeration.env"
-        fix_count=$(kv_get "$round_dir/review-and-fix-enumeration.env" FIX_COUNT)
-        fix_count="${fix_count:-0}"
+        # Filter OOS findings — they go to Step 9a.1, not to the fixer.
+        in_scope_file="$round_dir/accepted-in-scope-findings.md"
+        awk '/^### FINDING_[0-9]+: \[OUT_OF_SCOPE\]/{skip=1} /^### FINDING_[0-9]+:/ && !/\[OUT_OF_SCOPE\]/{skip=0} !skip{print}' \
+            "$accepted_file" > "$in_scope_file" || true
+        if [[ -s "$in_scope_file" ]] && grep -Eq '^### FINDING_[0-9]+:' "$in_scope_file"; then
+            FINDINGS_FILE="$in_scope_file"
+            REVIEW_TMPDIR="$round_dir"
+            # emit_kv uses FD3 (lib-quiet.sh); capture it, not stdout.
+            enumerate_findings 3>>"$round_dir/review-and-fix-enumeration.env"
+            fix_count=$(kv_get "$round_dir/review-and-fix-enumeration.env" FIX_COUNT)
+            fix_count="${fix_count:-0}"
+        fi
     fi
 
     prior_summary="$IMPLEMENT_TMPDIR/review-and-fix-summary.json"
