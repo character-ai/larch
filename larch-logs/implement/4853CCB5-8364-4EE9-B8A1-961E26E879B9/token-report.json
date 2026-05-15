@@ -207,21 +207,21 @@
       {
         "step": "Step 7a — code flow diagram",
         "totals": {
-          "input": 6,
-          "cache_read": 1311132,
-          "cache_create": 3046,
-          "output": 2554,
-          "total": 1316738
+          "input": 7,
+          "cache_read": 1531123,
+          "cache_create": 3304,
+          "output": 3894,
+          "total": 1538328
         },
         "skills": [
           {
             "skill": "larch:implement",
             "totals": {
-              "input": 6,
-              "cache_read": 1311132,
-              "cache_create": 3046,
-              "output": 2554,
-              "total": 1316738
+              "input": 7,
+              "cache_read": 1531123,
+              "cache_create": 3304,
+              "output": 3894,
+              "total": 1538328
             }
           }
         ]
@@ -229,21 +229,42 @@
       {
         "step": "Step 8 — version bump",
         "totals": {
-          "input": 0,
-          "cache_read": 0,
-          "cache_create": 0,
-          "output": 0,
-          "total": 0
+          "input": 20,
+          "cache_read": 4106596,
+          "cache_create": 32907,
+          "output": 5629,
+          "total": 4145152
         },
-        "skills": []
+        "skills": [
+          {
+            "skill": "bump-version",
+            "totals": {
+              "input": 6,
+              "cache_read": 945723,
+              "cache_create": 5160,
+              "output": 711,
+              "total": 951600
+            }
+          },
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 14,
+              "cache_read": 3160873,
+              "cache_create": 27747,
+              "output": 4918,
+              "total": 3193552
+            }
+          }
+        ]
       }
     ],
     "totals": {
-      "input": 178,
-      "cache_read": 31567085,
-      "cache_create": 149255,
-      "output": 70183,
-      "total": 31786701
+      "input": 199,
+      "cache_read": 35893672,
+      "cache_create": 182420,
+      "output": 77152,
+      "total": 36153443
     }
   },
   "codex": {
