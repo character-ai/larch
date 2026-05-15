@@ -53,21 +53,21 @@
       {
         "step": "Step 1 — design plan",
         "totals": {
-          "input": 83,
-          "cache_read": 13499481,
-          "cache_create": 91571,
-          "output": 51774,
-          "total": 13642909
+          "input": 84,
+          "cache_read": 13681433,
+          "cache_create": 91840,
+          "output": 52791,
+          "total": 13826148
         },
         "skills": [
           {
             "skill": "larch:implement",
             "totals": {
-              "input": 83,
-              "cache_read": 13499481,
-              "cache_create": 91571,
-              "output": 51774,
-              "total": 13642909
+              "input": 84,
+              "cache_read": 13681433,
+              "cache_create": 91840,
+              "output": 52791,
+              "total": 13826148
             }
           }
         ]
@@ -75,21 +75,32 @@
       {
         "step": "Step 8 — version bump",
         "totals": {
-          "input": 0,
-          "cache_read": 0,
-          "cache_create": 0,
-          "output": 0,
-          "total": 0
+          "input": 4,
+          "cache_read": 730132,
+          "cache_create": 3960,
+          "output": 2672,
+          "total": 736768
         },
-        "skills": []
+        "skills": [
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 4,
+              "cache_read": 730132,
+              "cache_create": 3960,
+              "output": 2672,
+              "total": 736768
+            }
+          }
+        ]
       }
     ],
     "totals": {
-      "input": 94,
-      "cache_read": 14966107,
-      "cache_create": 97945,
-      "output": 56936,
-      "total": 15121082
+      "input": 99,
+      "cache_read": 15878191,
+      "cache_create": 102174,
+      "output": 60625,
+      "total": 16041089
     }
   },
   "codex": {
