@@ -39,6 +39,8 @@
 #   - --workflow HARD passed to a stub-Codex run results in --timeout 7200.
 #   - --workflow omitted (default) passed to a stub-Codex run results in --timeout 3600
 #     (default workflow resolves to SIMPLE).
+#   - Stub-Codex complete run with an undeclared working-tree file appends an
+#     OOS warning to execution-issues.md before the dispatcher commits.
 #
 # External-implementer spawning paths (manifest validation, dispatcher-side commit,
 # sanitization, launcher-retry) are covered by separate launcher / end-to-end tests;
@@ -911,6 +913,72 @@ if [[ "$TIMEOUT17C" == "3600" ]]; then
     pass
 else
     fail 17c "default --workflow (SIMPLE) should set launcher --timeout 3600, got TIMEOUT=$TIMEOUT17C (out=$OUT_17C meta=$(cat "$META17C" 2>/dev/null))"
+fi
+
+# ---------------------------------------------------------------------------
+# Test 18: complete manifest that omits a working-tree change logs an OOS
+# warning to execution-issues.md before dispatcher-side git add/commit.
+# ---------------------------------------------------------------------------
+TMP18="$SCRATCH/test18"; mkdir -p "$TMP18"
+printf 'fresh-step2-18\n' > "$TMP18/session-id"
+
+SCRATCH_REPO18="$SCRATCH/scratch-repo-18"
+mkdir -p "$SCRATCH_REPO18"
+git -C "$SCRATCH_REPO18" init -q -b main
+git -C "$SCRATCH_REPO18" config user.email "test@example.com"
+git -C "$SCRATCH_REPO18" config user.name "Test"
+echo "initial" > "$SCRATCH_REPO18/README.md"
+git -C "$SCRATCH_REPO18" add README.md
+git -C "$SCRATCH_REPO18" commit -q -m "init"
+
+STUB18="$SCRATCH/stub-bin-18"; mkdir -p "$STUB18"
+cat > "$STUB18/codex" <<'STUB18_CODEX'
+#!/usr/bin/env bash
+set -euo pipefail
+: "${STEP2_MANIFEST_PATH:?}"
+output_path=""
+last=""
+for arg in "$@"; do
+    if [[ "$last" == "--output-last-message" ]]; then
+        output_path="$arg"
+    fi
+    last="$arg"
+done
+[[ -n "$output_path" ]] && printf 'stub transcript\n' > "$output_path"
+echo "declared edit" >> "$PWD/README.md"
+echo "undeclared edit" > "$PWD/undeclared.txt"
+cat > "$STEP2_MANIFEST_PATH.tmp" <<'JSON'
+{
+  "schema_version": "1",
+  "status": "complete",
+  "files_touched": [{"path": "README.md"}],
+  "commit_message": "stub: edit README with undeclared side file",
+  "summary_bullets": ["edited README"],
+  "tests_added_or_modified": [],
+  "todos_left": [],
+  "oos_observations": []
+}
+JSON
+mv "$STEP2_MANIFEST_PATH.tmp" "$STEP2_MANIFEST_PATH"
+printf 'stub codex stdout\n'
+STUB18_CODEX
+chmod +x "$STUB18/codex"
+
+OUT_18=$(cd "$SCRATCH_REPO18" && \
+    PATH="$STUB18:$PATH" \
+    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    STEP2_MANIFEST_PATH="$TMP18/manifest.json" \
+    LARCH_CODEX_MODEL=stub-codex-model \
+    "$DISPATCHER" --tmpdir "$TMP18" --plan-file "$PLAN" --feature-file "$FEATURE" \
+        --auto-mode false --coder codex 2>&1)
+
+if [[ "$OUT_18" == *"STATUS=complete"* ]] \
+   && [[ -s "$TMP18/execution-issues.md" ]] \
+   && grep -Fq "not declared in manifest files_touched/tests_added_or_modified" "$TMP18/execution-issues.md" \
+   && grep -Fq -- "- undeclared.txt" "$TMP18/execution-issues.md"; then
+    pass
+else
+    fail 18 "undeclared working-tree path should log OOS warning before commit; out=$OUT_18 issues=$(cat "$TMP18/execution-issues.md" 2>/dev/null)"
 fi
 
 # ---------------------------------------------------------------------------

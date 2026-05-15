@@ -650,6 +650,37 @@ if [[ "$STATUS" == "complete" ]]; then
         emit_bailed "protected-path-modified"
     fi
 
+    # 7a.1: warn when the implementer left working-tree changes not declared
+    # in the manifest. This is diagnostic only; the dispatcher still commits
+    # the working tree below and leaves review/pre-commit as downstream gates.
+    APPEND_TOOL="$PLUGIN_ROOT/scripts/append-execution-issue.sh"
+    if [[ -x "$APPEND_TOOL" && -d "$TMPDIR_ARG" ]]; then
+        {
+            WT_PATHS_FILE=$(mktemp "$TMPDIR_ARG/oos-working-tree.XXXXXX")
+            MANIFEST_PATHS_FILE=$(mktemp "$TMPDIR_ARG/oos-manifest.XXXXXX")
+            OOS_PATHS_FILE=$(mktemp "$TMPDIR_ARG/oos-paths.XXXXXX")
+            trap 'rm -f "$WT_PATHS_FILE" "$MANIFEST_PATHS_FILE" "$OOS_PATHS_FILE" "$LAUNCHER_TMP"' EXIT
+
+            git -C "$REPO_ROOT" status --porcelain \
+                | awk 'NF {print $NF}' \
+                | sort -u > "$WT_PATHS_FILE"
+            jq -r '[.files_touched[].path, .tests_added_or_modified[]] | .[]' \
+                "$MANIFEST_RAW_PATH" 2>/dev/null \
+                | sort -u > "$MANIFEST_PATHS_FILE"
+            comm -23 "$WT_PATHS_FILE" "$MANIFEST_PATHS_FILE" > "$OOS_PATHS_FILE"
+
+            OOS_COUNT=$(wc -l < "$OOS_PATHS_FILE" | tr -d '[:space:]')
+            if [[ "${OOS_COUNT:-0}" != "0" ]]; then
+                OOS_LIST=$(sed -n '1,5s/^/- /p' "$OOS_PATHS_FILE")
+                OOS_ENTRY=$(printf 'Step 7a.1 — external implementer left %s working-tree path(s) not declared in manifest files_touched/tests_added_or_modified. First 5:\n%s' "$OOS_COUNT" "$OOS_LIST")
+                "$APPEND_TOOL" \
+                    --log "$TMPDIR_ARG/execution-issues.md" \
+                    --category Warnings \
+                    --entry "$OOS_ENTRY" >/dev/null 2>&1 || true
+            fi
+        } || true
+    fi
+
     # 7b: dispatcher commits on the external implementer's behalf, using manifest.commit_message.
     # Codex stays inside `workspace-write` sandbox semantics (which forbids
     # .git/ writes); Cursor and Gemini run unsandboxed re .git/ but their
