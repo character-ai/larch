@@ -75,21 +75,21 @@
       {
         "step": "Step 2 — implementation",
         "totals": {
-          "input": 357,
-          "cache_read": 103238575,
-          "cache_create": 269162,
-          "output": 151137,
-          "total": 103659231
+          "input": 358,
+          "cache_read": 103605209,
+          "cache_create": 269497,
+          "output": 151927,
+          "total": 104026991
         },
         "skills": [
           {
             "skill": "larch:implement",
             "totals": {
-              "input": 357,
-              "cache_read": 103238575,
-              "cache_create": 269162,
-              "output": 151137,
-              "total": 103659231
+              "input": 358,
+              "cache_read": 103605209,
+              "cache_create": 269497,
+              "output": 151927,
+              "total": 104026991
             }
           }
         ]
@@ -97,21 +97,42 @@
       {
         "step": "Step 8 — version bump",
         "totals": {
-          "input": 0,
-          "cache_read": 0,
-          "cache_create": 0,
-          "output": 0,
-          "total": 0
+          "input": 24,
+          "cache_read": 8256645,
+          "cache_create": 42697,
+          "output": 6189,
+          "total": 8305555
         },
-        "skills": []
+        "skills": [
+          {
+            "skill": "bump-version",
+            "totals": {
+              "input": 6,
+              "cache_read": 1529830,
+              "cache_create": 5084,
+              "output": 606,
+              "total": 1535526
+            }
+          },
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 18,
+              "cache_read": 6726815,
+              "cache_create": 37613,
+              "output": 5583,
+              "total": 6770029
+            }
+          }
+        ]
       }
     ],
     "totals": {
-      "input": 436,
-      "cache_read": 116807843,
-      "cache_create": 352579,
-      "output": 196155,
-      "total": 117357013
+      "input": 461,
+      "cache_read": 125431122,
+      "cache_create": 395611,
+      "output": 203134,
+      "total": 126030328
     }
   },
   "codex": {
