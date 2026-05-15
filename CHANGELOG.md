@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [27.6.26] - 2026-05-15
+
+### Changed
+
+- Added /review-and-fix to README.md and docs/skills.md as an internal review helper
+- Added the hard review-and-fix panel topology row and regenerated docs/topology.md
+- Replaced stale SKILL.md line references in docs/external-reviewers.md with stable script references
+
 ## [27.6.25] - 2026-05-15
 
 ### Changed
