@@ -1280,4 +1280,25 @@ exclude = [
   "scripts/test-compose-pr-summary.md",
   "scripts/test-compose-architecture-sketch.sh",
   "scripts/test-compose-architecture-sketch.md",
+  # scripts/compose-tally-record.sh is the JSON-envelope composer for tally
+  # batches. It is invoked internally by scripts/write-tally.sh (the public
+  # entry point) rather than directly from SKILL.md orchestrator prose.
+  # Remains callable independently for test contexts and future callers.
+  "scripts/compose-tally-record.sh",
+  "scripts/compose-tally-record.md",
+  # scripts/write-tally.sh is the atomic tally-write helper for /implement
+  # larch-log batches (plan-review-tally, code-review-tally). It wraps
+  # compose-tally-record.sh + larch-log.sh write in a single call, eliminating
+  # the fragile two-step prose contract in skills/implement/SKILL.md Steps 1 and 5.
+  # Invoked from SKILL.md Step 1 (plan-review-tally batch) and Step 5
+  # (code-review-tally batch).
+  "scripts/write-tally.sh",
+  "scripts/write-tally.md",
+  # scripts/test-write-tally.sh is the offline regression harness for
+  # scripts/write-tally.sh. Referenced only from Makefile (test-write-tally
+  # target; test-harnesses-4 shard) and the sibling contract
+  # scripts/test-write-tally.md, matching the same Makefile-only pattern as
+  # the other test-* harnesses above.
+  "scripts/test-write-tally.sh",
+  "scripts/test-write-tally.md",
 ]
