@@ -188,7 +188,11 @@ else
         done
     fi
     # Codex unavailable: skip Codex specialist slots (no Claude substitution).
-    launch_claude_slot "generic" "$REVIEW_TMPDIR/claude-generic-output.txt"
+    # Claude generic slot only runs for simple panels; hard panels rely solely
+    # on external specialists (up to 12 when both externals are healthy).
+    if [[ "$PANEL" != "hard" ]]; then
+        launch_claude_slot "generic" "$REVIEW_TMPDIR/claude-generic-output.txt"
+    fi
 fi
 
 emit_kv EXTERNAL_OUTPUT_FILES "${external_outputs[*]-}"

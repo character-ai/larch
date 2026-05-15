@@ -2,9 +2,9 @@
 
 `skills/review/scripts/dispatch-panel.sh` plans and launches `/review` reviewer slots.
 
-It launches Cursor and Codex specialists through `scripts/launch-review.sh` when those tools are available. When a tool is unavailable, its specialist slots are skipped entirely (no Claude substitution for partial outages). The Claude generic slot always runs through `scripts/launch-claude-subprocess.sh`. When both external tools are down, only one Claude generic slot is launched and `PANEL_MODE=both-down` is emitted.
+It launches Cursor and Codex specialists through `scripts/launch-review.sh` when those tools are available. When a tool is unavailable, its specialist slots are skipped entirely (no Claude substitution for partial outages). The Claude generic slot runs through `scripts/launch-claude-subprocess.sh` only in the both-down fallback and in simple panels. Hard panels use only the external specialists (6 Cursor + 6 Codex). When both external tools are down, only one Claude generic slot is launched and `PANEL_MODE=both-down` is emitted.
 
-Pass `--panel hard` for the full specialist topology: structure, correctness, testing, security, edge-cases, and plan-fidelity for each available external tool. Pass `--panel simple` for a reduced topology: Cursor `edge-cases`, Codex `structure`, and the Claude generic slot. In simple mode `plan-fidelity` is added for each available external tool only when `--plan-file` names an existing file.
+Pass `--panel hard` for the full specialist topology: structure, correctness, testing, security, edge-cases, and plan-fidelity for each available external tool (no Claude generic slot). Pass `--panel simple` for a reduced topology: Cursor `edge-cases`, Codex `structure`, and the Claude generic slot. In simple mode `plan-fidelity` is added for each available external tool only when `--plan-file` names an existing file.
 
 `PANEL_MODE` remains availability-only (`normal|both-down`) because voting uses `both-down` to choose the no-external-reviewer shortcut. `PANEL_SHAPE=simple|hard` reports the selected topology shape.
 
