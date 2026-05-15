@@ -101,7 +101,7 @@ external_is_auth_failure() {
 
     case "$tool" in
         cursor)
-            grep -Eiq 'Password not found|cursor-user|cursor-access-token|keychain.*(not found|failed)|([^-]|^)auth[-_ ]?error|authentication (failed|required)' "$sidecar"
+            grep -Eiq 'Password not found|cursor-user|cursor-access-token|keychain.*(not found|failed)|([^-]|^)auth[-_ ]?error|authentication (failed|required)|Security (process exited with code|command failed)' "$sidecar"
             ;;
         codex)
             # Defensive net; unlike the Cursor keychain signature, these Codex
