@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [27.6.4] - 2026-05-15
+
+### Fixed
+
+- Fix `tally-votes.sh` to accept all findings with a warning when fewer than 2 voter files are present (`BOTH_DOWN=false`), instead of manufacturing a fake `FINDING_1 NO` vote. Aligns with the threshold rules in `voting-protocol.md` rows 15-16.
+
 ## [27.6.2] - 2026-05-15
 
 ### Changed
