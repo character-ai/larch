@@ -24,11 +24,11 @@ Each target file MUST contain all five markers:
 
 | Marker | Casing | Rationale |
 |--------|--------|-----------|
-| `3 rounds` | case-sensitive `grep -F` | Pins the 3-round cap. SKILL.md uses lowercase "3 rounds" consistently. |
+| `5 rounds` | case-sensitive `grep -F` | Pins the 5-round cap for simple (quick) mode. |
 | `no voting panel` | **case-insensitive** `grep -iF` | Semantic marker; tolerates legitimate sentence-case rewrites (e.g. "No voting panel"). |
 | `simple review panel` | **case-insensitive** `grep -iF` | Pins that quick mode uses the delegated `--panel simple` topology. |
-| `Cursor edge-cases` | case-sensitive `grep -F` | Pins the Cursor slot in the simple panel. |
-| `Codex structure` | case-sensitive `grep -F` | Pins the Codex slot in the simple panel. |
+| `Cursor edge-cases` | case-sensitive `grep -F` | Pins one of the 6 Cursor specialist slots in the simple panel. |
+| `Codex generalist` | case-sensitive `grep -F` | Pins the single Codex generalist slot in the simple panel. |
 
 The last four markers encode the delegated simple-panel topology described in the canonical Step 5 contract. Without them, a SKILL.md edit that re-shuffled the quick-mode reviewer composition could ship without the public docs being updated.
 

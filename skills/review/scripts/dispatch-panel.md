@@ -2,9 +2,13 @@
 
 `skills/review/scripts/dispatch-panel.sh` plans and launches `/review` reviewer slots.
 
-It launches Cursor and Codex specialists through `scripts/launch-review.sh` when those tools are available. When a tool is unavailable, its specialist slots are skipped entirely (no Claude substitution for partial outages). Claude is never used as a code reviewer. When both external tools are down, no reviewer slots are launched, `SLOT_COUNT=0` is emitted, and `PANEL_MODE=both-down` is set so voting uses the no-external-reviewer shortcut.
+It launches Cursor and Codex slots through `scripts/launch-review.sh` when those tools are available. When a tool is unavailable, its slots are skipped entirely (no Claude substitution). Claude is never used as a code reviewer. When both external tools are down, no reviewer slots are launched, `SLOT_COUNT=0` is emitted, and `PANEL_MODE=both-down` is set so voting uses the no-external-reviewer shortcut.
 
-Pass `--panel hard` for the full specialist topology: structure, correctness, testing, security, edge-cases, and plan-fidelity for each available external tool. Pass `--panel simple` for a reduced topology: Cursor `edge-cases` and Codex `structure`. In simple mode `plan-fidelity` is added for each available external tool only when `--plan-file` names an existing file.
+**Simple panel** (`--panel simple`): 6 Cursor specialist slots (structure, correctness, testing, security, edge-cases, plan-fidelity) + 1 Codex generalist slot using `agents/code-reviewer.md`. Total 7 slots when both tools are healthy. Plan file is required and always passed to all slots; absence is a hard fail (exit 2).
+
+**Hard panel** (`--panel hard`): 6 Cursor specialist slots + 6 Codex specialist slots (structure, correctness, testing, security, edge-cases, plan-fidelity each). Total 12 slots when both tools are healthy. Plan file is required; absence is a hard fail (exit 2).
+
+Both panels always include plan-fidelity; there is no longer a conditional based on plan file presence.
 
 `PANEL_MODE` remains availability-only (`normal|both-down`) because voting uses `both-down` to choose the no-external-reviewer shortcut. `PANEL_SHAPE=simple|hard` reports the selected topology shape.
 

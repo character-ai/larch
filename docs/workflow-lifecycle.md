@@ -150,7 +150,7 @@ Flags modify behavior across the skill hierarchy:
 
 | Flag | Available on | Effect |
 |---|---|---|
-| `--quick` | `/implement` | Skips `/design` (produces inline plan instead). Code review runs up to 3 rounds (no voting panel) using the simple review panel: Cursor edge-cases, Codex structure. |
+| `--quick` | `/implement` | Skips `/design` (produces inline plan instead). Code review runs up to 5 rounds (no voting panel) using the simple review panel: 6 Cursor specialists (structure, correctness, testing, security, Cursor edge-cases, plan-fidelity) plus Codex generalist. |
 | `--quick` | `/design` | Caps sketch fan-out at the quick topology and uses quick plan review. This is separate from `/implement --quick`, which skips `/design` entirely. |
 | `--full` | `/design` | Forces full sketch fan-out. When combined with `/design --quick`, sketches use the full topology while plan review remains quick. |
 | `--auto` | `/implement`, `/design`, `/fix-issue` (forwarded to `/implement` on PR paths) | Suppresses all interactive question checkpoints. Skills run fully autonomously without user interaction. |

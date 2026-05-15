@@ -4,10 +4,10 @@ Regression harness for `skills/review/scripts/dispatch-panel.sh`.
 
 It uses stub Claude and external-review launchers to verify:
 
-- both-down branch emits `PANEL_MODE=both-down`, preserves `PANEL_SHAPE=hard`, launches zero slots, and does not write a Claude generic sentinel.
-- `--panel simple` launches Cursor `edge-cases` and Codex `structure` (no Claude generic slot).
-- `--panel simple` adds `plan-fidelity` for each external tool only when `--plan-file` exists.
-- `--panel hard` launches all six specialists for each available external tool (no Claude generic slot).
+- both-down branch emits `PANEL_MODE=both-down`, preserves `PANEL_SHAPE=hard`, launches zero slots.
+- `--panel simple` with plan file launches 6 Cursor specialists + 1 Codex generalist = 7 slots. Plan file is required (absent → exit 2).
+- `--panel hard` with plan file launches 6 Cursor specialists + 6 Codex specialists = 12 slots. Plan file is required (absent → exit 2).
+- Both panels always include plan-fidelity; no conditional based on plan file presence.
 
 Includes a stdout size cap assertion (≤2 KB).
 

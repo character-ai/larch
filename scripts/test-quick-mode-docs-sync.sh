@@ -84,11 +84,11 @@ REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # Format: "marker|casing" where casing is "sensitive" or "insensitive".
 # To add a marker, append a new entry — `check_file` iterates this array.
 readonly POS_MARKERS=(
-  "3 rounds|sensitive"
+  "5 rounds|sensitive"
   "no voting panel|insensitive"
   "simple review panel|insensitive"
   "Cursor edge-cases|sensitive"
-  "Codex structure|sensitive"
+  "Codex generalist|sensitive"
 )
 
 # Stale phrases (forbidden in public docs; SKILL.md exempt).
@@ -287,9 +287,9 @@ run_self_test() {
   # Canonical-correct fixture: contains all positive markers, no stale phrases.
   cat > "$good" <<'EOF'
 This is a fixture describing quick-mode behavior.
-The review loop runs up to 3 rounds.
+The review loop runs up to 5 rounds.
 The loop has no voting panel — main agent accepts or rejects each finding.
-It uses the simple review panel: Cursor edge-cases, Codex structure.
+It uses the simple review panel: 6 Cursor specialists (including Cursor edge-cases) plus Codex generalist.
 EOF
 
   # Stale-phrase fixture: contains ALL positive markers PLUS exactly one stale
@@ -300,9 +300,9 @@ EOF
   # designed to catch.
   cat > "$bad" <<'EOF'
 Stale-phrase fixture: contains every positive marker so only the stale phrase can drive failure.
-The review loop runs up to 3 rounds.
+The review loop runs up to 5 rounds.
 The loop has no voting panel — main agent accepts or rejects each finding.
-It uses the simple review panel: Cursor edge-cases, Codex structure.
+It uses the simple review panel: 6 Cursor specialists (including Cursor edge-cases) plus Codex generalist.
 Stale phrase intentionally embedded: simplified code review (1 Claude Code Reviewer subagent, 1 round).
 EOF
 

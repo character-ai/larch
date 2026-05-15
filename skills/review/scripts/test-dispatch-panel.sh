@@ -53,6 +53,10 @@ printf 'OUTER_LAUNCHER=review\nTOOL=%s\nAGENT_FILE=%s\n' "$tool" "$agent" > "$ou
 STUB
 chmod +x "$review_stub"
 
+plan_file="$TMP/plan.md"
+printf '# plan\n' > "$plan_file"
+
+# both-down: no reviewers, plan file not required (no slots launched)
 out=$("$SCRIPT" --mode diff --review-tmpdir "$TMP/both" --codex-available false --cursor-available false --launch-claude-subprocess "$stub")
 assert_stdout_cap "$out"
 sleep 0.2
@@ -60,31 +64,27 @@ grep -Fq 'PANEL_MODE=both-down' <<< "$out"
 grep -Fq 'PANEL_SHAPE=hard' <<< "$out"
 grep -Fq 'SLOT_COUNT=0' <<< "$out"
 [[ ! -e "$TMP/both/claude-generic-output.txt.done" ]]
+[[ ! -e "$TMP/both/codex-generalist-output.txt.done" ]]
 
-out=$("$SCRIPT" --mode diff --review-tmpdir "$TMP/simple" --codex-available true --cursor-available true --panel simple --launch-claude-subprocess "$stub" --launch-review "$review_stub")
+# simple panel: 6 Cursor specialists + 1 Codex generalist = 7 slots (plan required)
+out=$("$SCRIPT" --mode diff --review-tmpdir "$TMP/simple" --codex-available true --cursor-available true --panel simple --plan-file "$plan_file" --launch-claude-subprocess "$stub" --launch-review "$review_stub")
 assert_stdout_cap "$out"
 sleep 0.2
 grep -Fq 'DISPATCH_OK=true' <<< "$out"
 grep -Fq 'PANEL_MODE=normal' <<< "$out"
 grep -Fq 'PANEL_SHAPE=simple' <<< "$out"
-grep -Fq 'SLOT_COUNT=2' <<< "$out"
+grep -Fq 'SLOT_COUNT=7' <<< "$out"
+[[ -f "$TMP/simple/cursor-specialist-structure-output.txt.done" ]]
+[[ -f "$TMP/simple/cursor-specialist-correctness-output.txt.done" ]]
+[[ -f "$TMP/simple/cursor-specialist-testing-output.txt.done" ]]
+[[ -f "$TMP/simple/cursor-specialist-security-output.txt.done" ]]
 [[ -f "$TMP/simple/cursor-specialist-edge-cases-output.txt.done" ]]
-[[ -f "$TMP/simple/codex-specialist-structure-output.txt.done" ]]
+[[ -f "$TMP/simple/cursor-specialist-plan-fidelity-output.txt.done" ]]
+[[ -f "$TMP/simple/codex-generalist-output.txt.done" ]]
 [[ ! -e "$TMP/simple/claude-generic-output.txt.done" ]]
-[[ ! -e "$TMP/simple/cursor-specialist-plan-fidelity-output.txt.done" ]]
 
-plan_file="$TMP/plan.md"
-printf '# plan\n' > "$plan_file"
-out=$("$SCRIPT" --mode diff --review-tmpdir "$TMP/simple-plan" --codex-available true --cursor-available true --panel simple --plan-file "$plan_file" --launch-claude-subprocess "$stub" --launch-review "$review_stub")
-assert_stdout_cap "$out"
-sleep 0.2
-grep -Fq 'PANEL_SHAPE=simple' <<< "$out"
-grep -Fq 'SLOT_COUNT=4' <<< "$out"
-[[ -f "$TMP/simple-plan/cursor-specialist-plan-fidelity-output.txt.done" ]]
-[[ -f "$TMP/simple-plan/codex-specialist-plan-fidelity-output.txt.done" ]]
-[[ ! -e "$TMP/simple-plan/claude-generic-output.txt.done" ]]
-
-out=$("$SCRIPT" --mode diff --review-tmpdir "$TMP/hard" --codex-available true --cursor-available true --panel hard --launch-claude-subprocess "$stub" --launch-review "$review_stub")
+# hard panel: 6 Cursor specialists + 6 Codex specialists = 12 slots (plan required)
+out=$("$SCRIPT" --mode diff --review-tmpdir "$TMP/hard" --codex-available true --cursor-available true --panel hard --plan-file "$plan_file" --launch-claude-subprocess "$stub" --launch-review "$review_stub")
 assert_stdout_cap "$out"
 sleep 0.2
 grep -Fq 'PANEL_SHAPE=hard' <<< "$out"
@@ -92,5 +92,6 @@ grep -Fq 'SLOT_COUNT=12' <<< "$out"
 [[ -f "$TMP/hard/cursor-specialist-security-output.txt.done" ]]
 [[ -f "$TMP/hard/codex-specialist-plan-fidelity-output.txt.done" ]]
 [[ ! -e "$TMP/hard/claude-generic-output.txt.done" ]]
+[[ ! -e "$TMP/hard/codex-generalist-output.txt.done" ]]
 
 echo "All assertions passed."

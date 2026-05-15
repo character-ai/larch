@@ -137,8 +137,8 @@ launch_external_slot() {
     args=(--tool "$tool" --output "$out" --timeout 1800 --agent-file "$agent" --mode "$MODE" --competition-notice --timing-task-kind "${tool}-specialist-${name}")
     [[ "$MODE" == "diff" && -n "$DIFF_FILE" ]] && args+=(--diff-file "$DIFF_FILE" --commit-count "$COMMIT_COUNT")
     [[ "$MODE" == "description" && -n "$SCOPE_FILES" ]] && args+=(--description-text "${DESCRIPTION_TEXT:-description review}" --scope-files "$SCOPE_FILES")
-    [[ ( "$name" == "correctness" || "$name" == "testing" || "$name" == "structure" || "$name" == "plan-fidelity" ) && -n "$PLAN_FILE" && -f "$PLAN_FILE" ]] && args+=(--plan-file "$PLAN_FILE")
-    [[ ( "$name" == "correctness" || "$name" == "testing" || "$name" == "structure" || "$name" == "plan-fidelity" ) && -n "$FEATURE_FILE" && -f "$FEATURE_FILE" ]] && args+=(--feature-file "$FEATURE_FILE")
+    [[ -n "$PLAN_FILE" && -f "$PLAN_FILE" ]] && args+=(--plan-file "$PLAN_FILE")
+    [[ -n "$FEATURE_FILE" && -f "$FEATURE_FILE" ]] && args+=(--feature-file "$FEATURE_FILE")
     {
         launch_log="$REVIEW_TMPDIR/dispatch-${tool}-${name}.log"
         # set +e: capture launcher non-zero exits and surface them via
@@ -156,20 +156,42 @@ launch_external_slot() {
     slot_count=$((slot_count + 1))
 }
 
-if [[ "$PANEL" == "simple" ]]; then
-    cursor_specialists=(edge-cases)
-    codex_specialists=(structure)
-    if [[ -n "$PLAN_FILE" && -f "$PLAN_FILE" ]]; then
-        cursor_specialists+=(plan-fidelity)
-        codex_specialists+=(plan-fidelity)
-    fi
-else
-    cursor_specialists=(structure correctness testing security edge-cases plan-fidelity)
+launch_external_generalist_slot() {
+    local tool="$1" out="$2"
+    local agent="$PLUGIN_ROOT/agents/code-reviewer.md"
+    args=(--tool "$tool" --output "$out" --timeout 1800 --agent-file "$agent" --mode "$MODE" --competition-notice --timing-task-kind "${tool}-review-generic")
+    [[ "$MODE" == "diff" && -n "$DIFF_FILE" ]] && args+=(--diff-file "$DIFF_FILE" --commit-count "$COMMIT_COUNT")
+    [[ "$MODE" == "description" && -n "$SCOPE_FILES" ]] && args+=(--description-text "${DESCRIPTION_TEXT:-description review}" --scope-files "$SCOPE_FILES")
+    [[ -n "$PLAN_FILE" && -f "$PLAN_FILE" ]] && args+=(--plan-file "$PLAN_FILE")
+    [[ -n "$FEATURE_FILE" && -f "$FEATURE_FILE" ]] && args+=(--feature-file "$FEATURE_FILE")
+    {
+        launch_log="$REVIEW_TMPDIR/dispatch-${tool}-generic.log"
+        set +e
+        "$LAUNCH_REVIEW" "${args[@]}" > "$launch_log" 2>&1
+        rc=$?
+        set -e
+        [[ "$rc" -eq 0 ]] || append_launch_failure "review Step 2" "launch-review.sh $tool generic" "$rc" "$launch_log"
+    } &
+    printf '{"slot":"generic","tool":"%s","output":"%s"}\n' "$tool" "$out" >> "$manifest"
+    external_outputs+=("$out")
+    slot_count=$((slot_count + 1))
+}
+
+# Plan file is required when reviewers run; plan-fidelity is always dispatched.
+if [[ "$CODEX_AVAILABLE" == "true" || "$CURSOR_AVAILABLE" == "true" ]]; then
+    [[ -n "$PLAN_FILE" ]] || { larch_err "dispatch-panel.sh: --plan-file is required (plan-fidelity specialist is always dispatched)"; exit 2; }
+    [[ -f "$PLAN_FILE" ]] || { larch_err "dispatch-panel.sh: plan file not found: $PLAN_FILE"; exit 2; }
+fi
+
+# Simple panel: 6 Cursor specialists + 1 Codex generalist.
+# Hard panel: 6 Cursor specialists + 6 Codex specialists.
+# Both panels always include plan-fidelity (plan file required above).
+cursor_specialists=(structure correctness testing security edge-cases plan-fidelity)
+if [[ "$PANEL" == "hard" ]]; then
     codex_specialists=(structure correctness testing security edge-cases plan-fidelity)
 fi
 
-# Fallback matrix (from SKILL.md): when a tool is unavailable, skip its specialist
-# slots entirely — do NOT substitute Claude fallback slots for partial outages.
+# Fallback matrix: when a tool is unavailable, skip its slots entirely — no Claude substitution.
 # When both external tools are down, no reviewer slots are launched (empty panel).
 if [[ "$CODEX_AVAILABLE" == "false" && "$CURSOR_AVAILABLE" == "false" ]]; then
     panel_mode="both-down"
@@ -180,13 +202,18 @@ else
             launch_external_slot cursor "$name" "$REVIEW_TMPDIR/cursor-specialist-${name}-output.txt"
         done
     fi
-    # Cursor unavailable: skip Cursor specialist slots (no Claude substitution).
+    # Cursor unavailable: skip Cursor specialist slots (no substitution).
     if [[ "$CODEX_AVAILABLE" == "true" ]]; then
-        for name in "${codex_specialists[@]}"; do
-            launch_external_slot codex "$name" "$REVIEW_TMPDIR/codex-specialist-${name}-output.txt"
-        done
+        if [[ "$PANEL" == "hard" ]]; then
+            for name in "${codex_specialists[@]}"; do
+                launch_external_slot codex "$name" "$REVIEW_TMPDIR/codex-specialist-${name}-output.txt"
+            done
+        else
+            # Simple panel: one Codex generalist using the unified code-reviewer archetype.
+            launch_external_generalist_slot codex "$REVIEW_TMPDIR/codex-generalist-output.txt"
+        fi
     fi
-    # Codex unavailable: skip Codex specialist slots (no Claude substitution).
+    # Codex unavailable: skip Codex slot(s) (no substitution).
 fi
 
 emit_kv EXTERNAL_OUTPUT_FILES "${external_outputs[*]-}"
