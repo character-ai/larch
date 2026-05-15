@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [27.6.21] - 2026-05-15
+
+### Changed
+
+- Thread manifest started_at into the report-token cache and parsed records.
+- Add per-day markdown cost trend tables for Total, Claude, Codex, and Cursor across SIMPLE and HARD workflows.
+- Document the new trend-table output in the run-analysis script contract.
+
 ## [27.6.19] - 2026-05-15
 
 ### Changed
