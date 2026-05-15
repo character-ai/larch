@@ -27,6 +27,11 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/../../../scripts/lib-quiet.sh"
+larch_quiet_init
+
 # Banner literal — MUST match the literal in research-phase.md §1.5 preamble
 # and the substituted example in skills/research/SKILL.md Step 3.
 BANNER_TEMPLATE='**⚠ Reduced lane diversity: <N_FALLBACK> of 4 external research lanes ran as Claude-fallback. The model-family heterogeneity claim does not hold for this run.**'
@@ -55,7 +60,7 @@ emit_banner() {
 
   if (( n_fallback >= 1 )); then
     local banner="${BANNER_TEMPLATE/<N_FALLBACK>/$n_fallback}"
-    printf '%s\n' "$banner"
+    emit "$banner"
   fi
 }
 

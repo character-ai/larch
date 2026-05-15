@@ -41,6 +41,8 @@ print extracted URLs / DOIs / file-line citations to **stderr** (one per
 line per bucket) so harnesses can pin the regex extractor without making
 network calls.
 
+Quiet logging: this validator sources `scripts/lib-quiet.sh`; the summary line is emitted through `emit`. Incidental stdout/stderr is redirected to `$LARCH_QUIET_LOG_FILE` unless `LARCH_QUIET_DISABLE=1` is set. On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.
+
 ## Sidecar schema
 
 ```markdown

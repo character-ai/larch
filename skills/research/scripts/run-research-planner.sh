@@ -43,6 +43,11 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/../../../scripts/lib-quiet.sh"
+larch_quiet_init
+
 usage() {
   cat >&2 <<'USAGE'
 Usage: run-research-planner.sh --raw <path> --output <path>
@@ -63,18 +68,18 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --raw)
       RAW_PATH="${2:-}"
-      shift 2 || { echo "REASON=missing_arg"; exit 2; }
+      shift 2 || { emit_kv REASON missing_arg; exit 2; }
       ;;
     --output)
       OUTPUT_PATH="${2:-}"
-      shift 2 || { echo "REASON=missing_arg"; exit 2; }
+      shift 2 || { emit_kv REASON missing_arg; exit 2; }
       ;;
     -h|--help)
       usage
       exit 0
       ;;
     *)
-      echo "REASON=missing_arg"
+      emit_kv REASON missing_arg
       echo "Unknown argument: $1" >&2
       exit 2
       ;;
@@ -82,20 +87,20 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "$RAW_PATH" || -z "$OUTPUT_PATH" ]]; then
-  echo "REASON=missing_arg"
+  emit_kv REASON missing_arg
   echo "Both --raw and --output are required." >&2
   exit 2
 fi
 
 # --raw must exist and be readable; non-existence is treated as empty input.
 if [[ ! -f "$RAW_PATH" ]]; then
-  echo "REASON=empty_input"
+  emit_kv REASON empty_input
   echo "Raw input file does not exist: $RAW_PATH" >&2
   exit 1
 fi
 
 if [[ ! -s "$RAW_PATH" ]]; then
-  echo "REASON=empty_input"
+  emit_kv REASON empty_input
   echo "Raw input file is empty: $RAW_PATH" >&2
   exit 1
 fi
@@ -103,7 +108,7 @@ fi
 # --output's parent directory must exist (orchestrator owns $RESEARCH_TMPDIR creation).
 OUTPUT_DIR="$(dirname -- "$OUTPUT_PATH")"
 if [[ ! -d "$OUTPUT_DIR" ]]; then
-  echo "REASON=bad_path"
+  emit_kv REASON bad_path
   echo "Output directory does not exist: $OUTPUT_DIR" >&2
   exit 2
 fi
@@ -137,7 +142,7 @@ SUBQUESTIONS=$(awk '
 
 if [[ -z "$SUBQUESTIONS" ]]; then
   # All lines dropped — could be empty input post-sanitize OR no question-shaped lines.
-  echo "REASON=count_below_minimum"
+  emit_kv REASON count_below_minimum
   echo "No question-shaped lines remained after sanitization (all lines dropped)." >&2
   exit 1
 fi
@@ -149,7 +154,7 @@ fi
 # `delimiter_collision` token surfaces when both `||` and an out-of-range count apply.
 # Stdout invariant per the contract above: only `REASON=<token>` on failure; diagnostics → stderr.
 if printf '%s\n' "$SUBQUESTIONS" | grep -qF '||'; then
-  echo "REASON=delimiter_collision"
+  emit_kv REASON delimiter_collision
   echo "Subquestion line(s) contain the lane-delimiter literal '||', which would corrupt deep-mode lane assignments." >&2
   exit 1
 fi
@@ -158,13 +163,13 @@ fi
 COUNT=$(printf '%s\n' "$SUBQUESTIONS" | wc -l | tr -d '[:space:]')
 
 if (( COUNT < 2 )); then
-  echo "REASON=count_below_minimum"
+  emit_kv REASON count_below_minimum
   echo "Only $COUNT question-shaped line(s) remained after sanitization (need 2-4)." >&2
   exit 1
 fi
 
 if (( COUNT > 4 )); then
-  echo "REASON=count_above_maximum"
+  emit_kv REASON count_above_maximum
   echo "$COUNT question-shaped lines remained after sanitization (need 2-4)." >&2
   exit 1
 fi
@@ -172,6 +177,6 @@ fi
 # Persist canonical output. Use printf to ensure trailing newline.
 printf '%s\n' "$SUBQUESTIONS" > "$OUTPUT_PATH"
 
-echo "COUNT=$COUNT"
-echo "OUTPUT=$OUTPUT_PATH"
+emit_kv COUNT "$COUNT"
+emit_kv OUTPUT "$OUTPUT_PATH"
 exit 0

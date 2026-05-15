@@ -79,6 +79,8 @@ A run where `URL_LOW > URL_HIGH` for an external-comparison entry signals SEO co
 
 ## Output schema
 
+Quiet logging: this harness sources `scripts/lib-quiet.sh`; contract/operator stdout is emitted through `emit`. Incidental stdout/stderr is redirected to `$LARCH_QUIET_LOG_FILE` unless `LARCH_QUIET_DISABLE=1` is set. On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.
+
 When `--write-baseline <file>` is set, the harness writes JSON of this shape:
 
 ```json

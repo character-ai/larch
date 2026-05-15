@@ -77,6 +77,7 @@
 #   1 — first failure (message to stderr)
 
 set -uo pipefail
+export LARCH_QUIET_DISABLE=1
 
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 HELPER="$REPO_ROOT/scripts/validate-research-output.sh"

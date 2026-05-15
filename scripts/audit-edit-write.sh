@@ -11,6 +11,11 @@
 
 set -uo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
+
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$PWD}"
 LOG="$PROJECT_DIR/.claude/hook-audit.log"
 INPUT=$(cat)

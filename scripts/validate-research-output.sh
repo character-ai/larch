@@ -127,6 +127,17 @@ SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck source=scripts/file-line-regex-lib.sh
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/file-line-regex-lib.sh"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+# Print help before quiet init so --help output reaches the terminal.
+for _arg in "$@"; do
+  if [[ "$_arg" == "--help" ]]; then
+    sed -n '/^# /,/^[^#]/p' "$0" | head -n 120
+    exit 0
+  fi
+done
+unset _arg
+larch_quiet_init
 
 MIN_WORDS=""
 REQUIRE_CITATIONS=true
@@ -182,7 +193,7 @@ if [[ -z "$INPUT" ]]; then
 fi
 
 if [[ ! -r "$INPUT" ]]; then
-    echo "file missing or not readable: $INPUT"
+    emit "file missing or not readable: $INPUT"
     exit 4
 fi
 
@@ -328,7 +339,7 @@ if [[ "$STRUCTURED_REVIEWER_MODE" == "true" ]]; then
     fi
 
     write_structured_output "$WRITE_STRUCTURED" ""
-    echo "structured records not found after repair"
+    emit "structured records not found after repair"
     exit 5
 fi
 
@@ -362,7 +373,7 @@ WORD_COUNT=$(awk '
 ' "$INPUT")
 
 if [[ "$WORD_COUNT" -lt "$MIN_WORDS" ]]; then
-    echo "body too thin: $WORD_COUNT/$MIN_WORDS words after stripping fenced code"
+    emit "body too thin: $WORD_COUNT/$MIN_WORDS words after stripping fenced code"
     exit 2
 fi
 
@@ -418,7 +429,7 @@ if [[ "$REQUIRE_CITATIONS" == "true" ]]; then
         exit 0
     fi
 
-    echo "no provenance marker found"
+    emit "no provenance marker found"
     exit 3
 fi
 

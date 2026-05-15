@@ -104,6 +104,16 @@ REPO_ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd)
 # shellcheck source=scripts/file-line-regex-lib.sh
 # shellcheck disable=SC1091
 . "$REPO_ROOT/scripts/file-line-regex-lib.sh"
+# shellcheck source=scripts/lib-quiet.sh
+source "$REPO_ROOT/scripts/lib-quiet.sh"
+# When re-execed under setsid (Linux budget-exhaustion path), FD 3 already
+# points to the original caller stdout inherited from the parent quiet session.
+# Prevent larch_quiet_init from overwriting it via "exec 3>&1" (which would
+# save the log-redirected FD 1 instead of the real caller stdout).
+if [[ "${__VC_SETSID_DONE:-}" == "1" ]]; then
+    LARCH_QUIET_PID=$$
+fi
+larch_quiet_init
 
 REPORT=""
 OUTPUT=""
@@ -209,8 +219,8 @@ write_sidecar() {
 # Emit machine summary line (always last). pass/fail/unknown/total integers.
 emit_summary() {
     local pass="$1" fail="$2" unknown="$3" total="$4"
-    printf 'SUMMARY=PASS=%d FAIL=%d UNKNOWN=%d TOTAL=%d\n' \
-        "$pass" "$fail" "$unknown" "$total"
+    emit "$(printf 'SUMMARY=PASS=%d FAIL=%d UNKNOWN=%d TOTAL=%d' \
+        "$pass" "$fail" "$unknown" "$total")"
 }
 
 # Sanitize an excerpt for the ledger row (single-line, no pipe).

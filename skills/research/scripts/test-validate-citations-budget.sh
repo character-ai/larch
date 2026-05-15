@@ -16,6 +16,7 @@
 # Exit 0 on pass, 1 on any failure.
 
 set -euo pipefail
+export LARCH_QUIET_DISABLE=1
 
 REPO_ROOT=$(cd "$(dirname "$0")/../../.." && pwd -P)
 VALIDATOR="$REPO_ROOT/skills/research/scripts/validate-citations.sh"

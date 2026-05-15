@@ -68,6 +68,8 @@ if [[ -z "${CLAUDE_PLUGIN_ROOT:-}" ]]; then
   CLAUDE_PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
   export CLAUDE_PLUGIN_ROOT
 fi
+# shellcheck source=scripts/lib-quiet.sh
+source "$CLAUDE_PLUGIN_ROOT/scripts/lib-quiet.sh"
 
 EVAL_SET_FILE="${CLAUDE_PLUGIN_ROOT}/skills/research/references/eval-set.md"
 EVAL_BASELINE_FILE="${CLAUDE_PLUGIN_ROOT}/skills/research/references/eval-baseline.json"
@@ -88,6 +90,13 @@ SMOKE_TEST="false"
 print_usage() {
   awk '/^# Usage:/,/^# Security:/' "${BASH_SOURCE[0]}" | sed 's/^# \?//'
 }
+
+# Print help before quiet init so --help output reaches the terminal.
+for _arg in "$@"; do
+  [[ "$_arg" == "--help" || "$_arg" == "-h" ]] && { print_usage; exit 0; }
+done
+unset _arg
+larch_quiet_init
 
 # Guard for value-taking flags. Without this, a trailing flag with no
 # following value (e.g. `eval-research.sh --baseline`) reaches `shift 2`
@@ -294,7 +303,7 @@ validate_baseline_json() {
 if [[ "$SMOKE_TEST" == "true" ]]; then
   validate_eval_set "$EVAL_SET_FILE" || exit 1
   validate_baseline_json "$EVAL_BASELINE_FILE" || exit 1
-  printf 'eval-research: smoke test PASS — eval-set.md + eval-baseline.json schema OK\n'
+  emit 'eval-research: smoke test PASS — eval-set.md + eval-baseline.json schema OK'
   exit 0
 fi
 
@@ -303,7 +312,7 @@ if [[ -z "$WORK_DIR" ]]; then
   WORK_DIR="$(mktemp -d -t eval-research-XXXXXX)"
 fi
 mkdir -p "$WORK_DIR"
-printf 'eval-research: work dir = %s\n' "$WORK_DIR"
+emit "eval-research: work dir = $WORK_DIR"
 
 # ---- Per-question subprocess invocation ----------------------------------
 # Uses the stdin-file + stderr-sidecar + poll-loop subprocess pattern, with
@@ -575,8 +584,10 @@ if [[ -n "$BASELINE_REF" ]]; then
       rm -f "$BASELINE_ROWS_FILE" "$baseline_git_err"
       exit 2
     fi
-    printf 'eval-research: baseline ref %s cached at %s\n' "$BASELINE_REF" "$BASELINE_ROWS_FILE"
-    printf '\neval-research: --baseline: PREVIEW MODE — baseline JSON pre-fetched to %s; inline delta columns are not yet wired in this PR (a future amendment will add them).\n\n' "$BASELINE_ROWS_FILE"
+    emit "eval-research: baseline ref $BASELINE_REF cached at $BASELINE_ROWS_FILE"
+    emit ""
+    emit "eval-research: --baseline: PREVIEW MODE — baseline JSON pre-fetched to $BASELINE_ROWS_FILE; inline delta columns are not yet wired in this PR (a future amendment will add them)."
+    emit ""
     printf 'eval-research: WARNING — --baseline delta columns are not yet wired in this PR; the baseline JSON is cached at the path printed above for manual diffing or future amendment, but no inline comparison column appears in the summary table.\n' >&2
     rm -f "$baseline_git_err"
   else
@@ -606,7 +617,8 @@ while IFS=$'\t' read -r id cat prov kw question notes; do
     continue
   fi
   ENTRIES_RUN=$((ENTRIES_RUN + 1))
-  printf '\n--- eval-research: running entry %s (category=%s) ---\n' "$id" "$cat"
+  emit ""
+  emit "--- eval-research: running entry $id (category=$cat) ---"
 
   # Run /research.
   if run_one_research "$id" "$question"; then
@@ -679,11 +691,13 @@ JUDGE_TOTAL=null'
 
   # Print row to stdout.
   if (( ENTRIES_RUN == 1 )); then
-    printf '\n%s\n%s\n' "$SUMMARY_HEADER" "$SUMMARY_DIVIDER"
+    emit ""
+    emit "$SUMMARY_HEADER"
+    emit "$SUMMARY_DIVIDER"
   fi
-  printf '| %s | %s | %s | %s | %s | %s%% | %s | %s | %s | %s |\n' \
+  emit "$(printf '| %s | %s | %s | %s | %s | %s%% | %s | %s | %s | %s |' \
     "$id" "$cat" "${prov_fl:-?}" "${prov_path:-?}" "${prov_url:-?}" "${kw_pct:-?}" \
-    "${length:-?}" "${judge_total:-?}" "${wall:-?}" "$research_status/$judge_status"
+    "${length:-?}" "${judge_total:-?}" "${wall:-?}" "$research_status/$judge_status")"
 
 done < <(parse_eval_set "$EVAL_SET_FILE")
 
@@ -709,7 +723,7 @@ if [[ -n "$WRITE_BASELINE_FILE" ]]; then
     --argjson ent "$ENTRIES_JSON" \
     '{version:$v, harness_commit:(if $hc=="null" then null else $hc end), model_id:null, generated_at:$ga, entries:$ent}' \
     > "$WRITE_BASELINE_FILE"
-  printf 'eval-research: baseline written to %s\n' "$WRITE_BASELINE_FILE"
+  emit "eval-research: baseline written to $WRITE_BASELINE_FILE"
 fi
 
 if (( ENTRIES_RUN == 0 )); then
@@ -717,5 +731,6 @@ if (( ENTRIES_RUN == 0 )); then
   exit 0
 fi
 
-printf '\neval-research: complete — %d entries run\n' "$ENTRIES_RUN"
+emit ""
+emit "eval-research: complete — $ENTRIES_RUN entries run"
 exit 0
