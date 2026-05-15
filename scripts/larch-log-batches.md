@@ -21,8 +21,9 @@ single replace-mode JSON objects.
 `review-findings`, `oos-issues`, and `execution-issues` use the `json-lines`
 sanitizer because they are append-mode NDJSON batches. Every non-empty line in
 the appended record file must parse as JSON before `larch-log.sh` publishes the
-write; raw markdown belongs in the composer input, not directly in these
-batches.
+write; raw markdown belongs in a caller-supplied structured payload (for example
+composed with `jq`) before it is passed as `--record-file`, not directly in
+these batches.
 
 Edit in sync with `scripts/larch-log.sh`, `scripts/larch-log.md`, and
 `scripts/test-larch-logs-batches.sh`.
