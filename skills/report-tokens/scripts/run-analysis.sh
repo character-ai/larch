@@ -596,17 +596,20 @@ def per_day_trend_tables(records):
         ("cursor", "Cursor cost", lambda record: cost_vendor("cursor", record["totals"].get("cursor", {}))),
     )
 
+    excluded = 0
     for record in records:
-        if record["workflow"] not in {"SIMPLE", "HARD"} or record["started_at_date"] is None:
+        if record["workflow"] not in {"SIMPLE", "HARD"}:
+            continue
+        if record["started_at_date"] is None:
+            excluded += 1
             continue
         day = record["started_at_date"].date()
         for vendor_key, _vendor_title, cost_fn in vendor_buckets:
             groups.setdefault((vendor_key, record["workflow"], day), []).append(cost_fn(record))
 
-    if not groups:
-        return ""
-
     lines = ["", "### Per-day cost trend"]
+    if excluded:
+        lines.append(f"_Note: {excluded} run(s) excluded from day buckets (missing or unparseable started_at in manifest)._")
     used_single_run_marker = False
     for vendor_key, vendor_title, _cost_fn in vendor_buckets:
         for workflow in ("SIMPLE", "HARD"):
@@ -614,18 +617,20 @@ def per_day_trend_tables(records):
             for key_vendor, key_workflow, day in groups:
                 if key_vendor == vendor_key and key_workflow == workflow:
                     day_rows.append((day, sorted(groups[(key_vendor, key_workflow, day)])))
-            if not day_rows:
-                continue
             lines.extend([
                 "",
-                f"#### {vendor_title} - {workflow}",
+                f"#### {vendor_title} — {workflow}",
                 "",
                 "| Date | N | Median | Mean | P75 | Max | Total |",
                 "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
             ])
+            if not day_rows:
+                lines.append("| — | — | — | — | — | — | — |")
+                continue
             for day, values in sorted(day_rows):
                 count = len(values)
-                p75_index = min(int(0.75 * count), count - 1)
+                # floor((n-1)*0.75) gives index 2 for n=4, avoiding P75==Max on small buckets
+                p75_index = int((count - 1) * 0.75)
                 n_cell = f"{count}*" if count == 1 else str(count)
                 if count == 1:
                     used_single_run_marker = True
@@ -641,7 +646,7 @@ def per_day_trend_tables(records):
                     )
                 )
     if used_single_run_marker:
-        lines.extend(["", "_* single-run day - statistically limited_"])
+        lines.extend(["", "_* single-run day — statistically limited_"])
     return "\n".join(lines)
 
 
@@ -876,9 +881,7 @@ def print_analysis(cache_path, records, skipped, plot_paths):
     print("- For expensive HARD phases, inspect the top phase rows above before optimizing; repeated review or design phases usually dominate more than implementation.")
     print("- When cache-read volume dominates, prioritize trimming repeated static context and large unchanged markdown blocks before reducing output verbosity.")
 
-    trend_tables = per_day_trend_tables(records)
-    if trend_tables:
-        print(trend_tables)
+    print(per_day_trend_tables(records))
 
     if ACTUAL_SPEND > 0:
         tracked = sum(r["cost"] for r in records)
@@ -911,7 +914,7 @@ def load_raw_records(body_file):
         records.append({
             "number": item.get("number"),
             "workflow": item.get("workflow", "unknown"),
-            "started_at_date": None,
+            "started_at_date": parse_date(item.get("started_at")),
             "closed_at": parse_date(item.get("closed_at")),
             "cost": float(item.get("cost") or 0),
             "title": "",
@@ -927,6 +930,7 @@ def create_report_issue(records, analysis_text):
         {
             "number": r["number"],
             "workflow": r["workflow"],
+            "started_at": r["started_at_date"].isoformat() if r["started_at_date"] else None,
             "closed_at": r["closed_at"].isoformat() if r["closed_at"] else None,
             "cost": r["cost"],
         }

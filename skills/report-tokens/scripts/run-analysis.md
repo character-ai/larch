@@ -16,7 +16,7 @@ The script accepts optional flags:
 
 - `--no-issue`: skip posting the `[Analysis Report]` GitHub issue after analysis.
 - `--no-plot`: skip plot generation; textual analysis is still printed.
-- `--plot-from <N>`: re-plot from a prior `[Analysis Report]` issue (skips the GitHub scan and analysis; fetches the issue body, extracts the raw per-issue JSON block, and generates plots).
+- `--plot-from <N>`: re-plot from a prior `[Analysis Report]` issue (skips the GitHub scan and analysis; fetches the issue body, extracts the raw per-issue JSON block, and generates plots). **Plot-only**: this mode regenerates SIMPLE/HARD cost-over-time PNGs only; it does not rebuild the markdown analysis text or per-day cost trend tables.
 
 Optional environment variables:
 
@@ -62,7 +62,7 @@ Stdout contains progress lines while fetching and then a markdown analysis with:
 - cost-reduction suggestions
 - per-day cost trend tables, bucketed by `manifest.json` `started_at` date, for Total/Claude/Codex/Cursor cost across SIMPLE and HARD workflows
 
-After the textual analysis, the script posts a GitHub issue titled `[Analysis Report] Token costs as of <YYYY-MM-DD HH:MM UTC>` unless `--no-issue` is passed. The issue body contains the full analysis text plus a fenced JSON block with raw per-issue data (`number`, `workflow`, `closed_at`, `cost`) for re-plotting via `--plot-from`.
+After the textual analysis, the script posts a GitHub issue titled `[Analysis Report] Token costs as of <YYYY-MM-DD HH:MM UTC>` unless `--no-issue` is passed. The issue body contains the full analysis text plus a fenced JSON block with raw per-issue data (`number`, `workflow`, `started_at`, `closed_at`, `cost`) for re-plotting via `--plot-from`.
 
 Generated plots are written to a temporary directory as `larch-report-tokens-simple.png` and `larch-report-tokens-hard.png`. On macOS, the script attempts to open them with `open` unless `LARCH_REPORT_TOKENS_NO_OPEN=1` is set. Plotting runs in a child Python process so missing or crashing `matplotlib` skips plot generation without losing the textual analysis. Pass `--no-plot` to skip plot generation entirely.
 
