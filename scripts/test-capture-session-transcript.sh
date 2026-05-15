@@ -323,6 +323,18 @@ else
     fail "push-non-flush-diff preserves non-flush file"
 fi
 
+IFS=$'\t' read -r fetch_fail_repo _fetch_fail_remote < <(setup_remote_repo "fetch-failed")
+# Point origin to a bad URL so git fetch fails, keeping origin/main at its prior value.
+git -C "$fetch_fail_repo" remote set-url origin "file:///nonexistent-repo-XXXXXX"
+fetch_fail_before=$(git -C "$fetch_fail_repo" rev-parse origin/main)
+run_capture_in_repo "fetch-failed" "$fetch_fail_repo"
+assert_contains \
+    "fetch-failed warning" \
+    "$(cat "$LAST_CAPTURE_ISSUES")" \
+    "session-transcript status=push-skipped-fetch-failed"
+fetch_fail_head=$(git -C "$fetch_fail_repo" rev-parse HEAD)
+assert_not_equals "fetch-failed keeps local commit (no reset)" "$fetch_fail_head" "$fetch_fail_before"
+
 echo
 echo "Passed: $PASS"
 echo "Failed: $FAIL"

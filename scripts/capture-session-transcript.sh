@@ -157,8 +157,9 @@ if [ "$current_branch" = "main" ]; then
     _expected_subject="chore(larch-logs): flush implement run $RUN_ID"
     _actual_subject=$(git log -1 --format='%s' HEAD 2>/dev/null || true)
     if [ "$_actual_subject" = "$_expected_subject" ]; then
-        git fetch origin main --quiet 2>/dev/null || true
-
+        if ! git fetch origin main --quiet 2>/dev/null; then
+            append_warning "push-skipped-fetch-failed" "Step 18 push outcome: push-skipped-fetch-failed"
+        else
         _current_run_diff_only=true
         _larch_log_diff_only=true
         while IFS= read -r _f; do
@@ -202,6 +203,7 @@ if [ "$current_branch" = "main" ]; then
             _push_status=already-present
         fi
         append_warning "$_push_status" "Step 18 push outcome: $_push_status"
+        fi
     fi
 fi
 
