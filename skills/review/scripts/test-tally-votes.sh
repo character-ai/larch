@@ -41,6 +41,8 @@ assert_stdout_cap "$out"
 grep -Fq 'Voting skipped (0 voter(s) available' <<< "$out"
 grep -Fq 'ACCEPTED_COUNT=2' <<< "$out"
 grep -Fq 'REJECTED_COUNT=0' <<< "$out"
+grep -Fq 'FINDING_1_ACCEPTED=true' "$TMP/review-tally.env"
+grep -Fq 'FINDING_2_ACCEPTED=true' "$TMP/review-tally.env"
 
 printf 'FINDING_1 YES\nFINDING_2 NO\n' > "$TMP/cursor-votes.txt"
 out=$("$SCRIPT" --findings-file "$TMP/findings.md" --review-tmpdir "$TMP" --cursor-available true --codex-available false --both-down false)
@@ -48,5 +50,7 @@ assert_stdout_cap "$out"
 grep -Fq 'Voting skipped (1 voter(s) available' <<< "$out"
 grep -Fq 'ACCEPTED_COUNT=2' <<< "$out"
 grep -Fq 'REJECTED_COUNT=0' <<< "$out"
+grep -Fq 'FINDING_1_ACCEPTED=true' "$TMP/review-tally.env"
+grep -Fq 'FINDING_2_ACCEPTED=true' "$TMP/review-tally.env"
 
 echo "All assertions passed."
