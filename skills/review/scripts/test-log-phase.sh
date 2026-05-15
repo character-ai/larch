@@ -24,6 +24,6 @@ if LARCH_QUIET_LOG_FILE="$TMP/log-phase-quiet.log" "$SCRIPT" --log-root "$TMP/lo
     echo "FAIL: invalid batch accepted" >&2
     exit 1
 fi
-grep -Fq 'unregistered review batch' "$TMP/log-phase-quiet.log"
+grep -Fq 'unregistered review batch' "$TMP/err"
 
 echo "All assertions passed."
