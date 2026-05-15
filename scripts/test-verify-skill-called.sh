@@ -30,6 +30,8 @@
 
 set -euo pipefail
 
+export LARCH_QUIET_DISABLE=1
+
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 HELPER="$REPO_ROOT/scripts/verify-skill-called.sh"
 LIB="$REPO_ROOT/scripts/lib-count-commits.sh"

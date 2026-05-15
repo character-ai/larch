@@ -66,9 +66,11 @@ set -euo pipefail
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 REPO_ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd)
 REDACT_HELPER="$REPO_ROOT/scripts/redact-secrets.sh"
-PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$REPO_ROOT}"
+# Keep lib-quiet on the same resolved tree as redact-secrets.sh (REPO_ROOT),
+# not ${CLAUDE_PLUGIN_ROOT:-…}, so harnesses that copy this script into an
+# isolated fake repo layout still source the adjacent scripts/lib-quiet.sh.
 # shellcheck source=scripts/lib-quiet.sh
-source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
+source "$REPO_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
 
 # redact <text> — prints redacted text on stdout, returns the helper's
@@ -104,7 +106,9 @@ DRY_RUN=false
 LABELS=()
 
 usage() {
-    cat <<USAGE >&2
+    local fd=2
+    [[ "${LARCH_QUIET_PID:-}" == "$$" ]] && fd=4
+    cat <<USAGE >&"$fd"
 Usage: create-one.sh --title TITLE [--title-prefix PREFIX] [--label L]... \\
                      [--body FILE | --body-file FILE] \\
                      [--repo OWNER/REPO] [--dry-run]
@@ -119,7 +123,7 @@ while [[ $# -gt 0 ]]; do
         --body|--body-file) BODY_FILE="${2:?--body-file requires a value}"; shift 2 ;;
         --repo) REPO="${2:?--repo requires a value}"; shift 2 ;;
         --dry-run) DRY_RUN=true; shift ;;
-        *) echo "Unknown option: $1" >&2; usage; exit 1 ;;
+        *) larch_err "Unknown option: $1"; usage; exit 1 ;;
     esac
 done
 
@@ -186,7 +190,7 @@ for L in "${LABELS[@]+"${LABELS[@]}"}"; do
     if gh label list --repo "$REPO" --search "$L" --json name --jq '.[].name' 2>/dev/null | grep -Fqx -- "$L"; then
         VALID_LABELS+=("$L")
     else
-        echo "WARN: label '$L' does not exist in $REPO, skipping" >&2
+        larch_err "WARN: label '$L' does not exist in $REPO, skipping"
     fi
 done
 
@@ -328,12 +332,12 @@ if [[ "$USE_FALLBACK" == "true" ]] || (echo "$ERR_CONTENT" | grep -qiE 'unknown 
             local rollback_err
             rollback_err=$(mktemp)
             if gh issue close --repo "$REPO" "$ISSUE_NUM" --reason "not planned" >/dev/null 2>"$rollback_err"; then
-                echo "ROLLBACK: closed orphan issue #$ISSUE_NUM after id-lookup failure" >&2
+                larch_err "ROLLBACK: closed orphan issue #$ISSUE_NUM after id-lookup failure"
             else
                 local rb_redacted rb_flat
                 rb_redacted=$(redact "$(cat "$rollback_err")") || rb_redacted="(redaction-helper failed)"
                 rb_flat=$(echo "$rb_redacted" | tr '\n' ' ' | head -c 300)
-                echo "ROLLBACK_FAILED: could not close orphan issue #$ISSUE_NUM ($URL_LINE): $rb_flat. Manually close." >&2
+                larch_err "ROLLBACK_FAILED: could not close orphan issue #$ISSUE_NUM ($URL_LINE): $rb_flat. Manually close."
             fi
             rm -f "$rollback_err"
         }

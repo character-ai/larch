@@ -5,7 +5,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=skills/set-up-forked-open-source-repo/scripts/lib-remotes.sh
 source "$SCRIPT_DIR/lib-remotes.sh"
 
-PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd)}"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-}"
+if [[ -z "$PLUGIN_ROOT" || ! -f "$PLUGIN_ROOT/scripts/lib-quiet.sh" ]]; then
+  PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd -P)"
+fi
 # shellcheck source=scripts/lib-quiet.sh
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
@@ -23,23 +26,27 @@ GH_HOST="github.com"
 PREFLIGHT_REMOTE_CLASSIFICATION=""
 
 usage() {
-  cat >&2 <<'EOF'
+  local fd=2
+  [[ "${LARCH_QUIET_PID:-}" == "$$" ]] && fd=4
+  cat >&"$fd" <<'EOF'
 Usage: setup-forked-open-source-repo.sh --upstream owner/repo --fork owner/repo [--mirror-confirmed] [--init-submodules]
 EOF
 }
 
 redact_file() {
-  local file
+  local file outfd
   file="$1"
+  outfd=2
+  [[ "${LARCH_QUIET_PID:-}" == "$$" ]] && outfd=4
   if [[ -x "$REDACTOR" ]]; then
-    "$REDACTOR" <"$file"
+    "$REDACTOR" <"$file" >&"$outfd"
   else
-    cat "$file"
+    cat "$file" >&"$outfd"
   fi
 }
 
 die() {
-  printf 'ERROR: %s\n' "$*" >&2
+  larch_err "ERROR: $*"
   exit 1
 }
 
@@ -55,7 +62,7 @@ die() {
 # `phase_verify`). Pre-rewrite die calls (`phase_preflight`, `phase_github`)
 # may use plain `die` because no remote mutation has happened yet.
 phase_die() {
-  printf 'ERROR: %s\n' "$*" >&2
+  larch_err "ERROR: $*"
   false
 }
 
@@ -127,8 +134,8 @@ snapshot_remote_state() {
 restore_remote_state() {
   local keys key line value
   if [[ "${LARCH_FORKED_REPO_INJECT_FAILURE:-}" == "rollback" ]]; then
-    printf 'RECOVERY_REPORT rollback_failed=true reason=injected-rollback-failure\n' >&2
-    printf 'RECOVERY_REPORT snapshot=%s journal=%s\n' "$SNAPSHOT_FILE" "$JOURNAL_FILE" >&2
+    larch_err "RECOVERY_REPORT rollback_failed=true reason=injected-rollback-failure"
+    larch_err "RECOVERY_REPORT snapshot=$SNAPSHOT_FILE journal=$JOURNAL_FILE"
     return 1
   fi
 
@@ -152,9 +159,9 @@ remote_phase_error() {
   local rc
   rc="${1:-$?}"
   if [[ "$REMOTE_PHASE_ACTIVE" == "true" ]]; then
-    printf 'ERROR: remote rewrite failed; attempting rollback\n' >&2
+    larch_err "ERROR: remote rewrite failed; attempting rollback"
     if ! restore_remote_state; then
-      printf 'RECOVERY_REPORT rollback_failed=true forward_exit=%s\n' "$rc" >&2
+      larch_err "RECOVERY_REPORT rollback_failed=true forward_exit=$rc"
     fi
   fi
   exit "$rc"
@@ -261,8 +268,8 @@ phase_preflight() {
 
   gh_err="$(mktemp "${TMPDIR:-/tmp}/larch-forked-gh-auth.XXXXXX")"
   if ! gh auth status --hostname "$GH_HOST" >/dev/null 2>"$gh_err"; then
-    printf 'ERROR: gh auth status failed:\n' >&2
-    redact_file "$gh_err" >&2
+    larch_err "ERROR: gh auth status failed:"
+    redact_file "$gh_err"
     rm -f "$gh_err"
     exit 1
   fi
@@ -304,8 +311,8 @@ phase_github() {
       rm -f "$gh_out" "$gh_err"
       exit 0
     fi
-    printf 'ERROR: gh repo view failed:\n' >&2
-    redact_file "$gh_err" >&2
+    larch_err "ERROR: gh repo view failed:"
+    redact_file "$gh_err"
     rm -f "$gh_out" "$gh_err"
     exit 1
   fi
@@ -319,8 +326,8 @@ phase_github() {
   # accepts only an object root, which is the only shape `gh repo view --json`
   # ever returns.
   if ! jq -e 'type == "object"' "$gh_out" >/dev/null 2>"$gh_err"; then
-    printf 'ERROR: gh repo view returned invalid JSON:\n' >&2
-    redact_file "$gh_err" >&2
+    larch_err "ERROR: gh repo view returned invalid JSON:"
+    redact_file "$gh_err"
     rm -f "$gh_out" "$gh_err"
     exit 1
   fi
@@ -446,9 +453,11 @@ phase_remotes() {
       git remote rename "$named_fork" origin
       ;;
     *)
-      printf 'ERROR: ambiguous remote state; refusing to mutate.\n' >&2
-      git remote -v >&2 || true
-      git config --get-regexp '^remote\.' >&2 || true
+      local ufd=2
+      [[ "${LARCH_QUIET_PID:-}" == "$$" ]] && ufd=4
+      printf 'ERROR: ambiguous remote state; refusing to mutate.\n' >&"$ufd"
+      git remote -v >&"$ufd" || true
+      git config --get-regexp '^remote\.' >&"$ufd" || true
       exit 1
       ;;
   esac

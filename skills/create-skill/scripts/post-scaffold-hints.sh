@@ -8,7 +8,10 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-}"
+if [[ -z "$PLUGIN_ROOT" || ! -f "$PLUGIN_ROOT/scripts/lib-quiet.sh" ]]; then
+  PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd -P)"
+fi
 # shellcheck source=scripts/lib-quiet.sh
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
@@ -21,17 +24,25 @@ PLUGIN=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --target-dir) TARGET_DIR="$2"; shift 2 ;;
-    --plugin)     PLUGIN="$2";     shift 2 ;;
+    --target-dir)
+      [[ $# -ge 2 ]] || { larch_err "ERROR=--target-dir requires a value"; exit 1; }
+      TARGET_DIR="$2"
+      shift 2
+      ;;
+    --plugin)
+      [[ $# -ge 2 ]] || { larch_err "ERROR=--plugin requires a value"; exit 1; }
+      PLUGIN="$2"
+      shift 2
+      ;;
     *)
-      echo "ERROR=Unknown argument: $1" >&2
+      larch_err "ERROR=Unknown argument: $1"
       exit 1
       ;;
   esac
 done
 
 if [[ -z "$TARGET_DIR" ]]; then
-  echo "ERROR=Missing --target-dir" >&2
+  larch_err "ERROR=Missing --target-dir"
   exit 1
 fi
 

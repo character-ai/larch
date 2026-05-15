@@ -22,7 +22,10 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-}"
+if [[ -z "$PLUGIN_ROOT" || ! -f "$PLUGIN_ROOT/scripts/lib-quiet.sh" ]]; then
+  PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd -P)"
+fi
 # shellcheck source=scripts/lib-quiet.sh
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
@@ -36,29 +39,29 @@ while [[ $# -gt 0 ]]; do
       # Arity guard: under `set -u`, dereferencing $2 without a value would
       # trip the unbound-variable error before our friendly --alias-name-required
       # message at the bottom can fire. Emit the documented ERROR contract instead.
-      [[ $# -ge 2 ]] || { echo "ERROR: --alias-name requires a value" >&2; exit 1; }
+      [[ $# -ge 2 ]] || { larch_err "ERROR: --alias-name requires a value"; exit 1; }
       NAME="$2"
       shift 2
       ;;
     --private)    PRIVATE=true; shift ;;
-    *) echo "ERROR: Unknown argument: $1" >&2; exit 1 ;;
+    *) larch_err "ERROR: Unknown argument: $1"; exit 1 ;;
   esac
 done
 
 if [[ -z "$NAME" ]]; then
-  echo "ERROR: --alias-name is required" >&2
+  larch_err "ERROR: --alias-name is required"
   exit 1
 fi
 
 if [[ ! "$NAME" =~ ^[a-z][a-z0-9-]*$ ]]; then
-  echo "ERROR: alias-name '$NAME' is invalid (must match ^[a-z][a-z0-9-]*\$)" >&2
+  larch_err "ERROR: alias-name '$NAME' is invalid (must match ^[a-z][a-z0-9-]*\$)"
   exit 1
 fi
 
 # Fail-closed: do NOT fall back to $PWD if git rev-parse fails.
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 if [[ -z "$REPO_ROOT" ]]; then
-  echo "ERROR: not in a git repository" >&2
+  larch_err "ERROR: not in a git repository"
   exit 1
 fi
 
