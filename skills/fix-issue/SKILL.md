@@ -337,6 +337,8 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-tmpdir.sh --dir "$FIX_ISSUE_TMPDIR"
 
 Otherwise (Step 0 exited 1 / 2 / 3 — i.e., no eligible issue, error, or lock-failed-after-eligibility-pass — or Step 1 setup failed before mktemp), print `⏭️ 8: cleanup — skipped (no temp dir created) (<elapsed>)`. (`cleanup-tmpdir.sh` rejects empty `--dir` with exit 1 as a backstop, so the guard is defense in depth, not the only line.)
 
+After cleanup (or after the skip-note on the no-tmpdir path), print: `**💡 Run /clear before starting your next task to reduce context bloat and save costs.**`
+
 ## Known Limitations
 
 - **Stale IN PROGRESS lock**: Step 0 posts `IN PROGRESS` (deleting the `GO` comment first if present) and prepends `[IN PROGRESS]` to the title. If the skill crashes after Step 0 completes, the issue's last comment is `IN PROGRESS` AND the title carries the `[IN PROGRESS]` prefix — recovery: manually delete the `IN PROGRESS` comment and strip the title prefix (`gh issue edit <N> --title "<user-title>"`). If it crashes mid-Step-0 when GO was present (between deleting GO and posting `IN PROGRESS`), the issue has no comment sentinel — recovery: re-add `GO` (or leave it clean for the next auto-pick cycle since GO is no longer required). If it crashes between the `IN PROGRESS` post and the title rename (or if the rename failed best-effort, signaled by `RENAMED=false` on `find-lock-issue.sh`'s stdout), the comment lock is in place but the title is unchanged — `/implement` Step 0.5 Branch 2's idempotent rename will recover this on the next run-segment, but a crashed run leaves the issue with the `IN PROGRESS` comment and original title; recovery: manually delete the `IN PROGRESS` comment.
