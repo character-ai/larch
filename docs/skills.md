@@ -14,6 +14,7 @@ Reference for every slash command shipped by the larch plugin. Each section belo
 - [`/relevant-checks`](#relevant-checks)
 - [`/research`](#research)
 - [`/review`](#review)
+- [`/review-and-fix`](#review-and-fix)
 - [`/set-up-forked-open-source-repo`](#set-up-forked-open-source-repo)
 - [`/show-skill`](#show-skill)
 - [`/simplify-skill`](#simplify-skill)
@@ -140,6 +141,14 @@ The run produces a structured report with findings, risk assessment, difficulty 
 **Source**: [`skills/review/SKILL.md`](../skills/review/SKILL.md) · [Diagram](../skills/review/diagram.svg)
 
 Code review with the specialist panel described in [Review Agents](review-agents.md). Supports `--diff`, which reviews branch changes vs main and implements accepted suggestions in a recursive loop, and positional `<description>`, which reviews existing code and files accepted findings as GitHub issues by default (`--no-issues` to suppress).
+
+## `/review-and-fix`
+
+**Arguments**: `--findings-file <path> --review-tmpdir <path> [--session-env <path>]`
+
+**Source**: [`skills/review-and-fix/SKILL.md`](../skills/review-and-fix/SKILL.md)
+
+Apply accepted review findings as code fixes. Internal sub-skill invoked by `/review` in diff mode and by `/implement` Step 5 to apply accepted findings from a review round; not a standalone user entry point. In `/implement` orchestrator mode (via `--implement-tmpdir`), runs one `review-core.sh` round and emits a bounded machine contract for the parent to apply fixes.
 
 ## `/set-up-forked-open-source-repo`
 
