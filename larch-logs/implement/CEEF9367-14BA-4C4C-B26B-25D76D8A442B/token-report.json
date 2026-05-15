@@ -217,21 +217,21 @@
       {
         "step": "Step 7a — code flow diagram",
         "totals": {
-          "input": 4,
-          "cache_read": 804706,
-          "cache_create": 1815,
-          "output": 1346,
-          "total": 807871
+          "input": 5,
+          "cache_read": 1006697,
+          "cache_create": 2087,
+          "output": 2297,
+          "total": 1011086
         },
         "skills": [
           {
             "skill": "inferred:Step 7a — code flow diagram",
             "totals": {
-              "input": 4,
-              "cache_read": 804706,
-              "cache_create": 1815,
-              "output": 1346,
-              "total": 807871
+              "input": 5,
+              "cache_read": 1006697,
+              "cache_create": 2087,
+              "output": 2297,
+              "total": 1011086
             }
           }
         ]
@@ -239,21 +239,32 @@
       {
         "step": "Step 8 — version bump",
         "totals": {
-          "input": 0,
-          "cache_read": 0,
-          "cache_create": 0,
-          "output": 0,
-          "total": 0
+          "input": 5,
+          "cache_read": 1014550,
+          "cache_create": 4052,
+          "output": 2762,
+          "total": 1021369
         },
-        "skills": []
+        "skills": [
+          {
+            "skill": "inferred:Step 8 — version bump",
+            "totals": {
+              "input": 5,
+              "cache_read": 1014550,
+              "cache_create": 4052,
+              "output": 2762,
+              "total": 1021369
+            }
+          }
+        ]
       }
     ],
     "totals": {
-      "input": 146,
-      "cache_read": 22743206,
-      "cache_create": 446645,
-      "output": 82685,
-      "total": 23272682
+      "input": 152,
+      "cache_read": 23959747,
+      "cache_create": 450969,
+      "output": 86398,
+      "total": 24497266
     }
   },
   "codex": {
