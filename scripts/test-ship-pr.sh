@@ -371,6 +371,11 @@ PATH="$root/scripts:$PATH" STUB_MERGE_RESULT=version_already_published STUB_GH_P
 assert_rc "$tmp/rc" 0 "version_already_published + merged PR exits 0"
 assert_state_line "$tmp/ship-pr-state.sh" "MERGE_RESULT=already_merged" "version_already_published + merged PR records already_merged"
 assert_state_line "$tmp/ship-pr-state.sh" "PHASE=done" "version_already_published + merged PR completes postmerge"
+if [ -f "$tmp/post-merge-sentinel" ]; then
+    ok "version_already_published + merged PR writes post-merge-sentinel"
+else
+    fail "version_already_published + merged PR should write post-merge-sentinel"
+fi
 
 root=$(make_repo version_published_pr_open)
 tmp=$(make_tmpdir)

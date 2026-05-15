@@ -144,6 +144,10 @@ if [ "$NO_LOGS_COMMIT" = "true" ]; then
     emit_status "suppressed-no-logs-commit" "--no-logs-commit was set; transcript was written under the staging log root but not committed."
 fi
 
+if [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -e "$IMPLEMENT_TMPDIR/post-merge-sentinel" ]; then
+    emit_status "suppressed-post-merge-sentinel" "post-merge sentinel exists; transcript was written but not committed (intentional — no commits after merge)."
+fi
+
 if ! "$SCRIPT_DIR/larch-log.sh" commit \
     --log-root "$LOG_ROOT" \
     --skill "$SKILL" \

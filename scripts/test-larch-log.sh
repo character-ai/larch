@@ -184,6 +184,43 @@ if [ ! -e "$_sentinel_repo/larch-logs/implement/$_sentinel_run" ]; then
 else
     fail "flush should not copy logs into repo after sentinel"
 fi
+echo "=== larch-log.sh commit rejects when post-merge sentinel exists ==="
+_commit_sentinel_repo="$TMP/commit-sentinel-repo"
+_commit_sentinel_impl="$TMP/commit-sentinel-impl"
+_commit_sentinel_run="commitsentinel123"
+mkdir -p "$_commit_sentinel_impl"
+git init "$_commit_sentinel_repo" >/dev/null 2>&1
+git -C "$_commit_sentinel_repo" config user.email "ci@test"
+git -C "$_commit_sentinel_repo" config user.name "Test CI"
+touch "$_commit_sentinel_repo/.gitkeep"
+git -C "$_commit_sentinel_repo" add .
+git -C "$_commit_sentinel_repo" commit -q -m "init"
+printf 'MERGE_RESULT=merged\n' > "$_commit_sentinel_impl/post-merge-sentinel"
+(cd "$_commit_sentinel_repo" && "$LARCH_LOG" init --log-root "$_commit_sentinel_impl/larch-logs" --skill implement --run-id "$_commit_sentinel_run" --issue 43) >/dev/null
+(cd "$_commit_sentinel_repo" && "$LARCH_LOG" write --log-root "$_commit_sentinel_impl/larch-logs" --skill implement --run-id "$_commit_sentinel_run" --batch plan-goals-test --input-file "$_spayload") >/dev/null
+_commit_sentinel_head_before=$(git -C "$_commit_sentinel_repo" rev-parse HEAD)
+_commit_sentinel_stderr="$TMP/commit-sentinel-stderr.txt"
+_commit_sentinel_rc=0
+(cd "$_commit_sentinel_repo" && env "PATH=${PATH:-}" "IMPLEMENT_TMPDIR=$_commit_sentinel_impl" "$LARCH_LOG" commit \
+    --log-root "$_commit_sentinel_impl/larch-logs" --skill implement --run-id "$_commit_sentinel_run") \
+    2>"$_commit_sentinel_stderr" || _commit_sentinel_rc=$?
+if [ "$_commit_sentinel_rc" -ne 0 ]; then
+    pass "larch-log.sh commit exits non-zero with post-merge sentinel"
+else
+    fail "larch-log.sh commit should exit non-zero with post-merge sentinel"
+fi
+if grep -q "refusing commit after post-merge sentinel" "$_commit_sentinel_stderr" 2>/dev/null; then
+    pass "larch-log.sh commit emits sentinel refusal on stderr"
+else
+    fail "larch-log.sh commit: expected refusal message on stderr (got: $(head -1 "$_commit_sentinel_stderr" 2>/dev/null))"
+fi
+_commit_sentinel_head_after=$(git -C "$_commit_sentinel_repo" rev-parse HEAD)
+if [ "$_commit_sentinel_head_after" = "$_commit_sentinel_head_before" ]; then
+    pass "larch-log.sh commit does not create a commit when sentinel exists"
+else
+    fail "larch-log.sh commit must not create a commit when sentinel exists"
+fi
+
 export LARCH_LOG_ROOT="$_saved_log_root"
 
 echo
