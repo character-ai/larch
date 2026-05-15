@@ -36,6 +36,19 @@ assert_contains() {
     fi
 }
 
+assert_append_rejects_markdown() {
+    local batch="$1" label="$2"
+    local raw_markdown="$TMP/raw-$batch.md"
+    local out rc
+    printf '## Raw Markdown\n\n- this is not a JSON record\n' > "$raw_markdown"
+    set +e
+    out="$("$LARCH_LOG" append --skill implement --run-id abc123 --batch "$batch" --record-file "$raw_markdown" 2>&1)"
+    rc=$?
+    set -e
+    if [ "$rc" -ne 0 ]; then pass "$label exits non-zero"; else fail "$label should exit non-zero"; fi
+    assert_contains "$out" "json-lines sanitizer rejected $batch" "$label error mentions json-lines sanitizer"
+}
+
 echo "=== init creates manifest ==="
 out="$("$LARCH_LOG" init --skill implement --run-id abc123 --issue 1438)"
 assert_contains "$out" "LOG_WRITTEN=true" "init writes"
@@ -78,6 +91,23 @@ printf '{"event":"two"}\n' > "$record"
 "$LARCH_LOG" append --skill implement --run-id abc123 --batch execution-issues --record-file "$record" >/dev/null
 line_count="$(wc -l < "$LARCH_LOG_ROOT/implement/abc123/execution-issues.ndjson" | tr -d ' ')"
 if [ "$line_count" = "2" ]; then pass "append line count"; else fail "append line count got $line_count"; fi
+
+echo "=== json-lines append rejects raw markdown ==="
+# Seed one valid record to review-findings and oos-issues so we can assert
+# their line counts stay at 1 after the rejected append (mirrors the
+# execution-issues line-count guard that runs after its rejected appends).
+printf '{"event":"seed"}\n' > "$record"
+"$LARCH_LOG" append --skill implement --run-id abc123 --batch review-findings --record-file "$record" >/dev/null
+"$LARCH_LOG" append --skill implement --run-id abc123 --batch oos-issues --record-file "$record" >/dev/null
+assert_append_rejects_markdown "execution-issues" "execution-issues markdown append"
+assert_append_rejects_markdown "review-findings" "review-findings markdown append"
+assert_append_rejects_markdown "oos-issues" "oos-issues markdown append"
+line_count="$(wc -l < "$LARCH_LOG_ROOT/implement/abc123/execution-issues.ndjson" | tr -d ' ')"
+if [ "$line_count" = "2" ]; then pass "rejected execution-issues append leaves existing records unchanged"; else fail "rejected execution-issues append changed line count to $line_count"; fi
+line_count="$(wc -l < "$LARCH_LOG_ROOT/implement/abc123/review-findings.ndjson" | tr -d ' ')"
+if [ "$line_count" = "1" ]; then pass "rejected review-findings append leaves existing records unchanged"; else fail "rejected review-findings append changed line count to $line_count"; fi
+line_count="$(wc -l < "$LARCH_LOG_ROOT/implement/abc123/oos-issues.ndjson" | tr -d ' ')"
+if [ "$line_count" = "1" ]; then pass "rejected oos-issues append leaves existing records unchanged"; else fail "rejected oos-issues append changed line count to $line_count"; fi
 
 echo "=== exists reports path without writing ==="
 out="$("$LARCH_LOG" exists --skill implement --run-id abc123 --batch execution-issues)"

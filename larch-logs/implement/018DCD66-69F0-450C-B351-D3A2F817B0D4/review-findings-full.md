@@ -1,0 +1,544 @@
+### FINDING_1: panel [code-review/accepted]
+
+## **BLOCKING**, `risk-integration`, `larch-logs/implement/018DCD66-69F0-450C-B351-D3A2F817B0D4/manifest.json:1-20` plus sibling `plan-goals-test.md` and `plan-review-tally.json` (commit `c4a3b5d7`): The branch adds a committed implement run directory (manifest with `operator_cwd` / `operator_repo_root`, `status: in-progress`, issue `2187`, and plan artifacts). That is unrelated product noise for the sanitizer change, bloats the plugin repo, and ships another machine’s paths into every consumer checkout. **Concrete scenario:** Anyone cloning the repo gets this run snapshot in `larch-logs/` and the PR diff is dominated by operational data instead of the NDJSON guard. **Suggested fix:** Remove that directory from the branch (drop or rewrite the `chore(larch-logs): flush implement run …` commit) so only the intentional script/doc/test changes remain.
+
+- **Reviewer**: cursor-specialist-edge-cases-output.txt
+- **Concern**: 1. **BLOCKING**, `risk-integration`, `larch-logs/implement/018DCD66-69F0-450C-B351-D3A2F817B0D4/manifest.json:1-20` plus sibling `plan-goals-test.md` and `plan-review-tally.json` (commit `c4a3b5d7`): The branch adds a committed implement run directory (manifest with `operator_cwd` / `operator_repo_root`, `status: in-progress`, issue `2187`, and plan artifacts). That is unrelated product noise for the sanitizer change, bloats the plugin repo, and ships another machine’s paths into every consumer checkout. **Concrete scenario:** Anyone cloning the repo gets this run snapshot in `larch-logs/` and the PR diff is dominated by operational data instead of the NDJSON guard. **Suggested fix:** Remove that directory from the branch (drop or rewrite the `chore(larch-logs): flush implement run …` commit) so only the intentional script/doc/test changes remain.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_2: panel [code-review/accepted]
+
+## **Commits reviewed** (`git merge-base HEAD main..HEAD`): `9e392b54 Harden NDJSON batch sanitizers`, `c4a3b5d7 chore(larch-logs): flush implement run 018DCD66-69F0-450C-B351-D3A2F817B0D4`.
+
+- **Reviewer**: 
+- **Concern**: 
+- **Suggested revision**: Address the concern above.
+
+### FINDING_3: panel [code-review/accepted]
+
+## **Important** (`risk-integration`) [larch-logs/implement/018DCD66-69F0-450C-B351-D3A2F817B0D4/manifest.json](larch-logs/implement/018DCD66-69F0-450C-B351-D3A2F817B0D4/manifest.json):1-20, [larch-logs/implement/018DCD66-69F0-450C-B351-D3A2F817B0D4/plan-goals-test.md](larch-logs/implement/018DCD66-69F0-450C-B351-D3A2F817B0D4/plan-goals-test.md):1-37, [larch-logs/implement/018DCD66-69F0-450C-B351-D3A2F817B0D4/plan-review-tally.json](larch-logs/implement/018DCD66-69F0-450C-B351-D3A2F817B0D4/plan-review-tally.json):1 (commit `c4a3b5d7 chore(larch-logs): flush implement run 018DCD66-...`): The branch diff includes committed `/implement` run artifacts under `larch-logs/implement/018DCD66-...`, which are **not** listed in the implementation plan’s “Files to modify” or in the feature description’s deliverables (those only name `scripts/larch-log-batches.sh`, `scripts/larch-log-batches.md`, `scripts/test-larch-log.sh`, `scripts/test-larch-log.md`, plus call-site audit). A reviewer bisecting `main..HEAD` therefore sees an unrelated second commit and extra tree churn beside the sanitizer/doc/test work, which obscures the intended functional change set and can create needless merge/rebase conflicts. **Suggested fix:** Remove that commit (or otherwise exclude these paths from the PR) so the branch contains only the planned `scripts/*` edits.
+
+- **Reviewer**: cursor-specialist-plan-fidelity-output.txt
+- **Concern**: 1. **Important** (`risk-integration`) [larch-logs/implement/018DCD66-69F0-450C-B351-D3A2F817B0D4/manifest.json](larch-logs/implement/018DCD66-69F0-450C-B351-D3A2F817B0D4/manifest.json):1-20, [larch-logs/implement/018DCD66-69F0-450C-B351-D3A2F817B0D4/plan-goals-test.md](larch-logs/implement/018DCD66-69F0-450C-B351-D3A2F817B0D4/plan-goals-test.md):1-37, [larch-logs/implement/018DCD66-69F0-450C-B351-D3A2F817B0D4/plan-review-tally.json](larch-logs/implement/018DCD66-69F0-450C-B351-D3A2F817B0D4/plan-review-tally.json):1 (commit `c4a3b5d7 chore(larch-logs): flush implement run 018DCD66-...`): The branch diff includes committed `/implement` run artifacts under `larch-logs/implement/018DCD66-...`, which are **not** listed in the implementation plan’s “Files to modify” or in the feature description’s deliverables (those only name `scripts/larch-log-batches.sh`, `scripts/larch-log-batches.md`, `scripts/test-larch-log.sh`, `scripts/test-larch-log.md`, plus call-site audit). A reviewer bisecting `main..HEAD` therefore sees an unrelated second commit and extra tree churn beside the sanitizer/doc/test work, which obscures the intended functional change set and can create needless merge/rebase conflicts. **Suggested fix:** Remove that commit (or otherwise exclude these paths from the PR) so the branch contains only the planned `scripts/*` edits.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_4: panel [code-review/accepted]
+
+## **Important** `code-quality` (requirements: scope) — [`larch-logs/implement/018DCD66-69F0-450C-B351-D3A2F817B0D4/manifest.json:1-20`](larch-logs/implement/018DCD66-69F0-450C-B351-D3A2F817B0D4/manifest.json), [`plan-goals-test.md:1-37`](larch-logs/implement/018DCD66-69F0-450C-B351-D3A2F817B0D4/plan-goals-test.md), [`plan-review-tally.json:1`](larch-logs/implement/018DCD66-69F0-450C-B351-D3A2F817B0D4/plan-review-tally.json): The branch bundles a second commit that adds a fresh implement run snapshot (manifest still `in-progress`, local `operator_*` paths, and plan/tally copies) together with the sanitizer and test changes. That is unrelated surface area for a “harden NDJSON sanitizers” change, forces reviewers to treat run-log policy and PII-ish paths as part of the same merge, and is not called for in the feature description. **Suggested fix:** Drop these paths from the feature PR (or split a dedicated “flush run log” PR) so the merge stays limited to [`scripts/larch-log-batches.sh`](scripts/larch-log-batches.sh), [`scripts/larch-log-batches.md`](scripts/larch-log-batches.md), [`scripts/test-larch-log.sh`](scripts/test-larch-log.sh), and [`scripts/test-larch-log.md`](scripts/test-larch-log.md).
+
+- **Reviewer**: cursor-specialist-structure-output.txt
+- **Concern**: 1. **Important** `code-quality` (requirements: scope) — [`larch-logs/implement/018DCD66-69F0-450C-B351-D3A2F817B0D4/manifest.json:1-20`](larch-logs/implement/018DCD66-69F0-450C-B351-D3A2F817B0D4/manifest.json), [`plan-goals-test.md:1-37`](larch-logs/implement/018DCD66-69F0-450C-B351-D3A2F817B0D4/plan-goals-test.md), [`plan-review-tally.json:1`](larch-logs/implement/018DCD66-69F0-450C-B351-D3A2F817B0D4/plan-review-tally.json): The branch bundles a second commit that adds a fresh implement run snapshot (manifest still `in-progress`, local `operator_*` paths, and plan/tally copies) together with the sanitizer and test changes. That is unrelated surface area for a “harden NDJSON sanitizers” change, forces reviewers to treat run-log policy and PII-ish paths as part of the same merge, and is not called for in the feature description. **Suggested fix:** Drop these paths from the feature PR (or split a dedicated “flush run log” PR) so the merge stays limited to [`scripts/larch-log-batches.sh`](scripts/larch-log-batches.sh), [`scripts/larch-log-batches.md`](scripts/larch-log-batches.md), [`scripts/test-larch-log.sh`](scripts/test-larch-log.sh), and [`scripts/test-larch-log.md`](scripts/test-larch-log.md).
+- **Suggested revision**: Address the concern above.
+
+### FINDING_5: panel [code-review/accepted]
+
+## **Important** `risk-integration` `scripts/larch-log-batches.sh:12`, `scripts/larch-log-batches.sh:17`: the branch makes `review-findings` and `oos-issues` reject non-JSON append payloads, but the prompt call sites still do not define a concrete NDJSON record composer. `skills/review/SKILL.md:55` only tells the orchestrator to write `review-findings`, and `skills/implement/SKILL.md:44` / `skills/implement/SKILL.md:1740` still describe the OOS append flow without showing how to wrap the markdown blocks into one JSON line. Concrete failure path: a `/review` or `/implement` run reaches those append steps with the existing markdown findings/OOS artifact, `log-phase.sh` or `larch-log.sh append` passes it through, and the new sanitizer fails with `json-lines sanitizer rejected <batch>`, so the run log batch is lost or the skill stalls. Add explicit `jq -c -Rs` composition instructions or a small shared composer for both batches, then test the happy path through `log-phase.sh` / the Step 9a.1 OOS append path.
+
+- **Reviewer**: codex-generalist-output.txt
+- **Concern**: 1. **Important** `risk-integration` `scripts/larch-log-batches.sh:12`, `scripts/larch-log-batches.sh:17`: the branch makes `review-findings` and `oos-issues` reject non-JSON append payloads, but the prompt call sites still do not define a concrete NDJSON record composer. `skills/review/SKILL.md:55` only tells the orchestrator to write `review-findings`, and `skills/implement/SKILL.md:44` / `skills/implement/SKILL.md:1740` still describe the OOS append flow without showing how to wrap the markdown blocks into one JSON line. Concrete failure path: a `/review` or `/implement` run reaches those append steps with the existing markdown findings/OOS artifact, `log-phase.sh` or `larch-log.sh append` passes it through, and the new sanitizer fails with `json-lines sanitizer rejected <batch>`, so the run log batch is lost or the skill stalls. Add explicit `jq -c -Rs` composition instructions or a small shared composer for both batches, then test the happy path through `log-phase.sh` / the Step 9a.1 OOS append path.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_6: panel [code-review/accepted]
+
+## **Important** `risk-integration` — [`larch-logs/implement/018DCD66-69F0-450C-B351-D3A2F817B0D4/manifest.json`](larch-logs/implement/018DCD66-69F0-450C-B351-D3A2F817B0D4/manifest.json):1-20 (and sibling [`plan-goals-test.md`](larch-logs/implement/018DCD66-69F0-450C-B351-D3A2F817B0D4/plan-goals-test.md), [`plan-review-tally.json`](larch-logs/implement/018DCD66-69F0-450C-B351-D3A2F817B0D4/plan-review-tally.json)): The branch adds a full implement run directory that is not part of the feature description (sanitizer + scripts + tests + docs only). **Completeness w.r.t. plan** / **requirements**: neither the plan nor the feature asked to commit new `larch-logs/...` artifacts. **Concrete scenario**: Merging ships unrelated churn; `manifest.json` records `operator_cwd` / `operator_repo_root` as absolute paths and `status: "in-progress"`, which is noise for consumers and slightly widens accidental disclosure of machine layout. **Suggested fix**: Remove these paths from the PR (or split into a separate, explicitly justified run-log commit per repo policy); keep the functional diff limited to `scripts/` as scoped.
+
+- **Reviewer**: cursor-specialist-correctness-output.txt
+- **Concern**: 1. **Important** `risk-integration` — [`larch-logs/implement/018DCD66-69F0-450C-B351-D3A2F817B0D4/manifest.json`](larch-logs/implement/018DCD66-69F0-450C-B351-D3A2F817B0D4/manifest.json):1-20 (and sibling [`plan-goals-test.md`](larch-logs/implement/018DCD66-69F0-450C-B351-D3A2F817B0D4/plan-goals-test.md), [`plan-review-tally.json`](larch-logs/implement/018DCD66-69F0-450C-B351-D3A2F817B0D4/plan-review-tally.json)): The branch adds a full implement run directory that is not part of the feature description (sanitizer + scripts + tests + docs only). **Completeness w.r.t. plan** / **requirements**: neither the plan nor the feature asked to commit new `larch-logs/...` artifacts. **Concrete scenario**: Merging ships unrelated churn; `manifest.json` records `operator_cwd` / `operator_repo_root` as absolute paths and `status: "in-progress"`, which is noise for consumers and slightly widens accidental disclosure of machine layout. **Suggested fix**: Remove these paths from the PR (or split into a separate, explicitly justified run-log commit per repo policy); keep the functional diff limited to `scripts/` as scoped.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_7: panel [code-review/accepted]
+
+## **Latent** `risk-integration` — Feature text asks to audit [`scripts/append-execution-issue.sh`](scripts/append-execution-issue.sh) and [`scripts/append-tool-failure.sh`](scripts/append-tool-failure.sh) for “valid JSON”; the diff does not add comments or tests tying them to NDJSON. **Plan-correctness / requirements**: Those scripts append **markdown** into a caller-chosen `LOG_FILE` via awk ([`append-execution-issue.sh`](scripts/append-execution-issue.sh):118-156); [`append-tool-failure.sh`](scripts/append-tool-failure.sh):131-148 builds markdown and calls `append-execution-issue.sh`. They do **not** call `larch-log.sh append` on `execution-issues.ndjson`. **Concrete scenario**: A follow-up “fix” mistakenly rewrites them to emit raw NDJSON into the markdown log. **Suggested fix**: In the PR description, one line stating NDJSON append is only via `larch-log.sh` / orchestrator / [`scripts/implement-finalize.sh`](scripts/implement-finalize.sh) (jq/python path ~256-357) so the audit is closed without code churn.
+
+- **Reviewer**: cursor-specialist-correctness-output.txt
+- **Concern**: 2. **Latent** `risk-integration` — Feature text asks to audit [`scripts/append-execution-issue.sh`](scripts/append-execution-issue.sh) and [`scripts/append-tool-failure.sh`](scripts/append-tool-failure.sh) for “valid JSON”; the diff does not add comments or tests tying them to NDJSON. **Plan-correctness / requirements**: Those scripts append **markdown** into a caller-chosen `LOG_FILE` via awk ([`append-execution-issue.sh`](scripts/append-execution-issue.sh):118-156); [`append-tool-failure.sh`](scripts/append-tool-failure.sh):131-148 builds markdown and calls `append-execution-issue.sh`. They do **not** call `larch-log.sh append` on `execution-issues.ndjson`. **Concrete scenario**: A follow-up “fix” mistakenly rewrites them to emit raw NDJSON into the markdown log. **Suggested fix**: In the PR description, one line stating NDJSON append is only via `larch-log.sh` / orchestrator / [`scripts/implement-finalize.sh`](scripts/implement-finalize.sh) (jq/python path ~256-357) so the audit is closed without code churn.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_8: panel [code-review/accepted]
+
+## **Nit** `code-quality` (plan) — [`scripts/test-larch-log.sh:95-100`](scripts/test-larch-log.sh): After three rejection attempts, only `execution-issues.ndjson` line count is checked because earlier tests only append valid JSON there; `review-findings` and `oos-issues` never receive a successful append first, so the harness does not prove those files stayed absent or unchanged if a buggy path wrote partial data. **Suggested fix:** Optionally seed one valid NDJSON line per batch before the markdown rejects, then assert all three files’ line counts stay at 1 (or add a lower-level unit test on the sanitizer path only).
+
+- **Reviewer**: cursor-specialist-structure-output.txt
+- **Concern**: 2. **Nit** `code-quality` (plan) — [`scripts/test-larch-log.sh:95-100`](scripts/test-larch-log.sh): After three rejection attempts, only `execution-issues.ndjson` line count is checked because earlier tests only append valid JSON there; `review-findings` and `oos-issues` never receive a successful append first, so the harness does not prove those files stayed absent or unchanged if a buggy path wrote partial data. **Suggested fix:** Optionally seed one valid NDJSON line per batch before the markdown rejects, then assert all three files’ line counts stay at 1 (or add a lower-level unit test on the sanitizer path only).
+- **Suggested revision**: Address the concern above.
+
+### FINDING_9: panel [code-review/accepted]
+
+## **Nit** `code-quality` — [`scripts/larch-log-batches.md:21-25`](scripts/larch-log-batches.md): The phrase “composer input” is a bit narrow for `execution-issues` / `review-findings`, which are often produced by `jq` or other orchestrator steps, not only a dedicated composer script. **Suggested fix:** Rephrase to “caller-supplied structured payload (for example composed with `jq`)” or similar.
+
+- **Reviewer**: cursor-specialist-structure-output.txt
+- **Concern**: 3. **Nit** `code-quality` — [`scripts/larch-log-batches.md:21-25`](scripts/larch-log-batches.md): The phrase “composer input” is a bit narrow for `execution-issues` / `review-findings`, which are often produced by `jq` or other orchestrator steps, not only a dedicated composer script. **Suggested fix:** Rephrase to “caller-supplied structured payload (for example composed with `jq`)” or similar.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_10: panel [code-review/accepted]
+
+## **Nit**, `risk-integration`, `scripts/test-larch-log.sh:95-100`: After three `assert_append_rejects_markdown` calls, the harness only re-checks `execution-issues.ndjson` line count stays `2`. **Concrete scenario:** A hypothetical regression that only broke append rejection for `review-findings` or `oos-issues` while still rejecting `execution-issues` would not be caught by this assertion alone (shared code path makes it unlikely). **Suggested fix:** Optionally assert `review-findings.ndjson` / `oos-issues.ndjson` are still absent or unchanged when expected.
+
+- **Reviewer**: cursor-specialist-edge-cases-output.txt
+- **Concern**: 2. **Nit**, `risk-integration`, `scripts/test-larch-log.sh:95-100`: After three `assert_append_rejects_markdown` calls, the harness only re-checks `execution-issues.ndjson` line count stays `2`. **Concrete scenario:** A hypothetical regression that only broke append rejection for `review-findings` or `oos-issues` while still rejecting `execution-issues` would not be caught by this assertion alone (shared code path makes it unlikely). **Suggested fix:** Optionally assert `review-findings.ndjson` / `oos-issues.ndjson` are still absent or unchanged when expected.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_11: panel [code-review/accepted]
+
+## **Plan / requirements check:** The diff matches the plan for [`scripts/larch-log-batches.sh`](scripts/larch-log-batches.sh), [`scripts/larch-log-batches.md`](scripts/larch-log-batches.md), [`scripts/test-larch-log.sh`](scripts/test-larch-log.sh), and [`scripts/test-larch-log.md`](scripts/test-larch-log.md). Call-site script edits were not required by the written plan (audit-only). CI runs `make test-harnesses-4`, which includes `test-larch-log` ([`Makefile:32`](Makefile) and [`Makefile:465-466`](Makefile)), so the new cases are on the critical path once the blocking committed `larch-logs/` noise is removed.
+
+- **Reviewer**: 
+- **Concern**: 
+- **Suggested revision**: Address the concern above.
+
+### FINDING_12: panel [code-review/accepted]
+
+## **Plan alignment (structure):** Table updates in [`scripts/larch-log-batches.sh`](scripts/larch-log-batches.sh), documentation in [`scripts/larch-log-batches.md`](scripts/larch-log-batches.md), harness and contract doc in [`scripts/test-larch-log.sh`](scripts/test-larch-log.sh) / [`scripts/test-larch-log.md`](scripts/test-larch-log.md) match the plan; the substring asserted in tests matches the prefix of [`scripts/lib-larch-log.sh:150-151`](scripts/lib-larch-log.sh) (`json-lines sanitizer rejected $batch: invalid JSON line`). No `CreatePlan` artifact was produced because this turn is a review-only deliverable, not an implementation plan.
+
+- **Reviewer**: 
+- **Concern**: 
+- **Suggested revision**: Address the concern above.
+
+### FINDING_13: panel [code-review/accepted]
+
+## **Plan fidelity walk (summary):**
+
+- **Reviewer**: 
+- **Concern**: 
+- **Suggested revision**: Address the concern above.
+
+### FINDING_14: panel [code-review/accepted]
+
+## **Read-only note:** Hard constraints forbid writing files, so the TSV sidecar was not created on disk. Records below match the requested schema (tabs between fields).
+
+- **Reviewer**: 
+- **Concern**: 
+- **Suggested revision**: Address the concern above.
+
+### FINDING_15: panel [code-review/accepted]
+
+## **Read-only note:** The instructions asked for a `.tsv` sidecar file; that was not created so the working tree stays clean. Below is the same TSV content (tab-separated) you can save manually if needed.
+
+- **Reviewer**: 
+- **Concern**: 
+- **Suggested revision**: Address the concern above.
+
+### FINDING_16: panel [code-review/accepted]
+
+## **TSV (read-only — save as sidecar manually if required):**
+
+- **Reviewer**: 
+- **Concern**: 
+- **Suggested revision**: Address the concern above.
+
+### FINDING_17: panel [code-review/accepted]
+
+## **TSV (sidecar not written — read-only constraint):**
+
+- **Reviewer**: 
+- **Concern**: 
+- **Suggested revision**: Address the concern above.
+
+### FINDING_18: panel [code-review/accepted]
+
+## **Verification notes (not findings):** [`scripts/lib-larch-log.sh`](scripts/lib-larch-log.sh):151 emits `json-lines sanitizer rejected $batch: invalid JSON line`; [`scripts/test-larch-log.sh`](scripts/test-larch-log.sh):49 asserts a prefix that is a substring of that message, so the test should pass. [`scripts/larch-log.sh`](scripts/larch-log.sh):209-215 validates before appending, matching the post-rejection line-count check on `execution-issues.ndjson`. Table edits in [`scripts/larch-log-batches.sh`](scripts/larch-log-batches.sh) match the plan. Docs in [`scripts/larch-log-batches.md`](scripts/larch-log-batches.md) match the new contract.
+
+- **Reviewer**: 
+- **Concern**: 
+- **Suggested revision**: Address the concern above.
+
+### FINDING_19: panel [code-review/accepted]
+
+## **`**BLOCKING**` `risk-integration`** [`larch-logs/implement/018DCD66-69F0-450C-B351-D3A2F817B0D4/manifest.json`](larch-logs/implement/018DCD66-69F0-450C-B351-D3A2F817B0D4/manifest.json) (new), [`larch-logs/implement/018DCD66-69F0-450C-B351-D3A2F817B0D4/plan-goals-test.md`](larch-logs/implement/018DCD66-69F0-450C-B351-D3A2F817B0D4/plan-goals-test.md) (new), [`larch-logs/implement/018DCD66-69F0-450C-B351-D3A2F817B0D4/plan-review-tally.json`](larch-logs/implement/018DCD66-69F0-450C-B351-D3A2F817B0D4/plan-review-tally.json) (new) — The branch adds committed implement run artifacts (`chore(larch-logs): flush implement run …` in `git log`), not part of the NDJSON sanitizer contract work. **Scenario:** Merges unrelated runtime state into the plugin repo, bloats history/reviews, and embeds machine-specific paths (`operator_cwd`, `operator_repo_root`) in `manifest.json`. **Fix:** Remove these paths from the PR (or revert the flush commit); keep only the intentional script/doc/test edits.
+
+- **Reviewer**: cursor-specialist-testing-output.txt
+- **Concern**: 1. **`**BLOCKING**` `risk-integration`** [`larch-logs/implement/018DCD66-69F0-450C-B351-D3A2F817B0D4/manifest.json`](larch-logs/implement/018DCD66-69F0-450C-B351-D3A2F817B0D4/manifest.json) (new), [`larch-logs/implement/018DCD66-69F0-450C-B351-D3A2F817B0D4/plan-goals-test.md`](larch-logs/implement/018DCD66-69F0-450C-B351-D3A2F817B0D4/plan-goals-test.md) (new), [`larch-logs/implement/018DCD66-69F0-450C-B351-D3A2F817B0D4/plan-review-tally.json`](larch-logs/implement/018DCD66-69F0-450C-B351-D3A2F817B0D4/plan-review-tally.json) (new) — The branch adds committed implement run artifacts (`chore(larch-logs): flush implement run …` in `git log`), not part of the NDJSON sanitizer contract work. **Scenario:** Merges unrelated runtime state into the plugin repo, bloats history/reviews, and embeds machine-specific paths (`operator_cwd`, `operator_repo_root`) in `manifest.json`. **Fix:** Remove these paths from the PR (or revert the flush commit); keep only the intentional script/doc/test edits.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_20: panel [code-review/accepted]
+
+## **`**Latent**` `risk-integration` (plan)** [`scripts/test-larch-log.sh:95-100`](scripts/test-larch-log.sh) — After three failed markdown appends, the harness only asserts `execution-issues.ndjson` still has two lines; it does not assert that `review-findings.ndjson` / `oos-issues.ndjson` are still absent or unchanged. **Scenario:** A future regression that published a partial file for those batches before validation (today prevented at [`scripts/larch-log.sh:209-215`](scripts/larch-log.sh) because validation runs before `mv`) would only be caught indirectly. **Fix:** Add `! -f` or `wc -l` checks for the other two batch paths after the reject sequence.
+
+- **Reviewer**: cursor-specialist-testing-output.txt
+- **Concern**: 2. **`**Latent**` `risk-integration` (plan)** [`scripts/test-larch-log.sh:95-100`](scripts/test-larch-log.sh) — After three failed markdown appends, the harness only asserts `execution-issues.ndjson` still has two lines; it does not assert that `review-findings.ndjson` / `oos-issues.ndjson` are still absent or unchanged. **Scenario:** A future regression that published a partial file for those batches before validation (today prevented at [`scripts/larch-log.sh:209-215`](scripts/larch-log.sh) because validation runs before `mv`) would only be caught indirectly. **Fix:** Add `! -f` or `wc -l` checks for the other two batch paths after the reject sequence.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_21: panel [code-review/accepted]
+
+## **`**Nit**` `risk-integration` (plan)** Branch diff — The plan’s “TDD” note is not evidenced as red-then-green; tests and batch-table changes land together, which is normal but does not demonstrate the planned TDD ordering. **Fix:** None required for merge quality; accept as process documentation drift.
+
+- **Reviewer**: cursor-specialist-testing-output.txt
+- **Concern**: 3. **`**Nit**` `risk-integration` (plan)** Branch diff — The plan’s “TDD” note is not evidenced as red-then-green; tests and batch-table changes land together, which is normal but does not demonstrate the planned TDD ordering. **Fix:** None required for merge quality; accept as process documentation drift.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_22: panel [code-review/accepted]
+
+## ---
+
+- **Reviewer**: 
+- **Concern**: 
+- **Suggested revision**: Address the concern above.
+
+### FINDING_23: panel [code-review/accepted]
+
+## 1
+
+- **Reviewer**: in_scope
+- **Concern**: blocking	risk-integration	larch-logs/implement/018DCD66-69F0-450C-B351-D3A2F817B0D4/	Committed implement run log tree (manifest plan-goals-test plan-review-tally) ships with the feature branch.	Merges unrelated session artifacts and absolute operator paths into the repo; noisy PRs and policy conflict with keeping larch-logs out of business commits.	Remove revert the flush commit and exclude larch-logs from the PR leaving only scripts and docs.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_24: panel [code-review/accepted]
+
+## 1
+
+- **Reviewer**: in_scope
+- **Concern**: blocking	risk-integration	larch-logs/implement/018DCD66-69F0-450C-B351-D3A2F817B0D4/manifest.json:1-20	larch-logs commit adds implement run snapshot with operator paths and in-progress manifest unrelated to sanitizer behavior.	Consumers inherit stray run metadata and large unrelated diffs on clone/PR review.	Remove larch-logs/implement/018DCD66-* from the branch before merge.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_25: panel [code-review/accepted]
+
+## 1
+
+- **Reviewer**: in_scope
+- **Concern**: important	code-quality	larch-logs/implement/018DCD66-69F0-450C-B351-D3A2F817B0D4/manifest.json:1-20 larch-logs/implement/018DCD66-69F0-450C-B351-D3A2F817B0D4/plan-goals-test.md:1-37 larch-logs/implement/018DCD66-69F0-450C-B351-D3A2F817B0D4/plan-review-tally.json:1	Committed new implement run directory with in-progress manifest and plan copies alongside functional script changes.	Reviewers must treat run-log artifacts and local operator paths as part of the same merge as sanitizer hardening; increases noise and scope beyond the stated feature.	Remove or split the larch-logs commit so the PR only changes scripts under scripts/ per the feature description.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_26: panel [code-review/accepted]
+
+## 1
+
+- **Reviewer**: in_scope
+- **Concern**: important	risk-integration	larch-logs/implement/018DCD66-69F0-450C-B351-D3A2F817B0D4/	New tracked implement run (manifest + plan artifacts) is outside feature scope and adds unrelated repo churn.	Merge bundles in-progress run metadata and absolute operator paths not required for sanitizer change.	Remove or relocate per run-log policy; keep PR to scripts/docs/tests only unless deliberately publishing this run.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_27: panel [code-review/accepted]
+
+## 1
+
+- **Reviewer**: in_scope
+- **Concern**: important	risk-integration	larch-logs/implement/018DCD66-69F0-450C-B351-D3A2F817B0D4/manifest.json:1-20	Committed implement run directory (manifest, plan-goals-test, plan-review-tally) appears in the branch diff but is outside the stated plan and feature deliverables.	PR history and diff noise include an extra chore commit and runtime log payloads unrelated to json-lines batch hardening, making plan-to-diff traceability and review harder.	Limit the branch to the four planned script/doc/test files (drop or revert the larch-logs flush commit).
+- **Suggested revision**: Address the concern above.
+
+### FINDING_28: panel [code-review/accepted]
+
+## 1
+
+- **Reviewer**: in_scope
+- **Concern**: latent	risk-integration	scripts/append-execution-issue.sh scripts/append-tool-failure.sh	Feature wording implies JSON validation for helpers that only write markdown to a caller log file, not NDJSON batches.	Maintainer could mis-edit these scripts thinking they must emit NDJSON for execution-issues.ndjson.	Document in PR that NDJSON append is only through larch-log.sh / finalize / orchestrator; append-* scripts are markdown-only.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_29: panel [code-review/accepted]
+
+## 1
+
+- **Reviewer**: in_scope
+- **Concern**: latent	risk-integration	scripts/test-larch-log.sh:95-100	Regression only checks execution-issues.ndjson line count after markdown rejects not review-findings or oos-issues files.	Unlikely given shared append validates before mv but a batch-specific ordering bug could slip without asserting the other two paths.	Add file absence or line-count assertions for review-findings.ndjson and oos-issues.ndjson after the reject calls.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_30: panel [code-review/accepted]
+
+## 1
+
+- **Reviewer**: in_scope
+- **Concern**: nit	code-quality	scripts/larch-log-batches.md:21-25	Doc says raw markdown belongs in composer input.	Wording may mislead readers about jq-orchestrator or ad-hoc composition paths.	Soften wording to mention structured caller payloads or jq composition.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_31: panel [code-review/accepted]
+
+## 1
+
+- **Reviewer**: in_scope
+- **Concern**: nit	code-quality	scripts/test-larch-log.sh:95-100	Post-rejection assertion only checks execution-issues line count.	Other two batches were never pre-seeded with valid lines so the test cannot detect partial writes to those files if a regression appeared only there.	Seed one valid JSON line per batch before markdown rejects then assert line counts or add a focused sanitizer-level test.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_32: panel [code-review/accepted]
+
+## 1
+
+- **Reviewer**: in_scope
+- **Concern**: nit	risk-integration	branch diff vs implementation_plan	TDD ordering from the plan is not visible in the diff.	Documentation only no functional gap.	None or amend the plan to reflect test alongside implementation.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_33: panel [code-review/accepted]
+
+## 1
+
+- **Reviewer**: in_scope
+- **Concern**: nit	risk-integration	scripts/test-larch-log.sh:95-100	Post-rejection assertion only inspects execution-issues.ndjson line count.	Low-probability miss if batch-specific append paths diverged later.	Add optional checks for review-findings/oos-issues files or document reliance on shared append implementation.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_34: panel [code-review/accepted]
+
+## 1
+
+- **Reviewer**: out_of_scope
+- **Concern**: nit	architecture	scripts/append-execution-issue.sh scripts/append-tool-failure.sh	These write markdown execution-issues logs not NDJSON append paths.	Not introduced or changed by this diff.	N/A
+- **Suggested revision**: Address the concern above.
+
+### FINDING_35: panel [code-review/accepted]
+
+## 1
+
+- **Reviewer**: out_of_scope
+- **Concern**: nit	code-quality	scripts/append-execution-issue.sh scripts/append-tool-failure.sh	Requirements listed these as NDJSON call sites; they write markdown execution logs not larch-log NDJSON batches.	No incorrect code change; checklist wording was broader than actual integration.	None required for this PR; adjust future checklists if desired.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_36: panel [code-review/accepted]
+
+## Confirming append validates before merging (`larch-log.sh` lines 209–215). Checking whether committed `larch-logs` entries are intentional for this repo:
+
+- **Reviewer**: 
+- **Concern**: 
+- **Suggested revision**: Address the concern above.
+
+### FINDING_37: panel [code-review/accepted]
+
+## CreatePlan: Security review summary — sanitizer change strengthens integrity (validate-before-append is already correct). Primary concern: the branch adds committed run-log artifacts containing absolute operator paths.
+
+- **Reviewer**: 
+- **Concern**: 
+- **Suggested revision**: Address the concern above.
+
+### FINDING_38: panel [code-review/accepted]
+
+## Plan mode reminder: delivering the review as requested (read-only). Per HARD CONSTRAINTS, no TSV file was written; structured rows appear after the prose under a TSV header for downstream capture.
+
+- **Reviewer**: 
+- **Concern**: 
+- **Suggested revision**: Address the concern above.
+
+### FINDING_39: panel [code-review/accepted]
+
+## Read-only review is complete: reviewed the cached diff, verified the real `json-lines` error string in [`scripts/lib-larch-log.sh`](scripts/lib-larch-log.sh), and confirmed append validates before `mv` in [`scripts/larch-log.sh`](scripts/larch-log.sh) (lines 209–215). Per your hard constraint, no sidecar file was written; TSV lines appear at the end for copy/paste.
+
+- **Reviewer**: 
+- **Concern**: 
+- **Suggested revision**: Address the concern above.
+
+### FINDING_40: panel [code-review/accepted]
+
+## Review used the precomputed diff, current [`scripts/test-larch-log.sh`](scripts/test-larch-log.sh), [`scripts/larch-log.sh`](scripts/larch-log.sh) append ordering, [`scripts/lib-larch-log.sh`](scripts/lib-larch-log.sh) json-lines messaging, [`Makefile`](Makefile) harness wiring, and [`.github/workflows/ci.yaml`](.github/workflows/ci.yaml) shard coverage. Per your read-only rule, no files were written (including the `.tsv` sidecar); equivalent TSV lines appear at the end for manual export.
+
+- **Reviewer**: 
+- **Concern**: 
+- **Suggested revision**: Address the concern above.
+
+### FINDING_41: panel [code-review/accepted]
+
+## Reviewed the precomputed diff, `git log` vs `main`, and cross-checked sanitizer/error strings and append flow in `scripts/larch-log.sh` / `scripts/lib-larch-log.sh`. Read-only mode prevents writing a `.tsv` sidecar file; the same TSV rows appear in a code block at the end for you to save if your pipeline needs them.
+
+- **Reviewer**: 
+- **Concern**: 
+- **Suggested revision**: Address the concern above.
+
+### FINDING_42: panel [code-review/accepted]
+
+## Reviewer finding
+
+- **Reviewer**: cursor-specialist-correctness-output.txt
+- **Concern**: Gathering the branch diff and commit list for a read-only correctness review. Reading the precomputed diff and running read-only git commands.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_43: panel [code-review/accepted]
+
+## Reviewer finding
+
+- **Reviewer**: cursor-specialist-edge-cases-output.txt
+- **Concern**: Gathering the branch diff and commit list for a read-only review. We won't write the TSV sidecar file (hard constraint: no file mutations); structured TSV will appear in the response.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_44: panel [code-review/accepted]
+
+## Reviewer finding
+
+- **Reviewer**: cursor-specialist-plan-fidelity-output.txt
+- **Concern**: Gathering the diff and commit list for a plan-fidelity review (read-only: no file writes).
+- **Suggested revision**: Address the concern above.
+
+### FINDING_45: panel [code-review/accepted]
+
+## Reviewer finding
+
+- **Reviewer**: cursor-specialist-security-output.txt
+- **Concern**: Gathering the diff and commit list for a read-only security-focused review. We won't write the TSV sidecar file (hard constraint: no file mutations); we'll include TSV rows in the response for copy-paste if needed.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_46: panel [code-review/accepted]
+
+## Reviewer finding
+
+- **Reviewer**: cursor-specialist-structure-output.txt
+- **Concern**: Gathering the pre-computed diff and commit history for a read-only review. We won't write any files (including the TSV sidecar) due to the HARD CONSTRAINTS; structured TSV will appear in the response.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_47: panel [code-review/accepted]
+
+## Reviewer finding
+
+- **Reviewer**: cursor-specialist-testing-output.txt
+- **Concern**: Gathering the pre-computed diff and commit list for a read-only review. We won't write the TSV sidecar file (conflicts with your no-file-mutation constraint); we'll include structured TSV records in the response instead.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_48: panel [code-review/accepted]
+
+## Structured TSV (tabs between fields; copy to a `.tsv` file if your pipeline needs a sidecar):
+
+- **Reviewer**: 
+- **Concern**: 
+- **Suggested revision**: Address the concern above.
+
+### FINDING_49: panel [code-review/accepted]
+
+## Tests not run: `scripts/test-larch-log.sh` and `scripts/test-larch-logs-batches.sh` both failed immediately because this sandbox denies their `mktemp -d` calls.
+
+- **Reviewer**: 
+- **Concern**: 
+- **Suggested revision**: Address the concern above.
+
+### FINDING_50: panel [code-review/accepted]
+
+## Verifying sanitizer error messages, partial-write behavior on rejection, and whether committed `larch-logs/` artifacts belong in the diff.
+
+- **Reviewer**: 
+- **Concern**: 
+- **Suggested revision**: Address the concern above.
+
+### FINDING_51: panel [code-review/accepted]
+
+## Verifying the sanitizer error string and implementation for correctness and security implications.
+
+- **Reviewer**: 
+- **Concern**: 
+- **Suggested revision**: Address the concern above.
+
+### FINDING_52: panel [code-review/accepted]
+
+## Verifying the sanitizer error string and whether the committed `larch-logs` files belong in the branch. Searching the codebase (read-only).
+
+- **Reviewer**: 
+- **Concern**: 
+- **Suggested revision**: Address the concern above.
+
+### FINDING_53: panel [code-review/accepted]
+
+## Verifying the sanitizer error string matches the new tests and whether the feature-required call-site audit is reflected in the repo.
+
+- **Reviewer**: 
+- **Concern**: 
+- **Suggested revision**: Address the concern above.
+
+### FINDING_54: panel [code-review/accepted]
+
+## Verifying the sanitizer error string matches the test assertion and checking whether committed `larch-logs` artifacts are intentional.
+
+- **Reviewer**: 
+- **Concern**: 
+- **Suggested revision**: Address the concern above.
+
+### FINDING_55: panel [code-review/accepted]
+
+## Verifying the sanitizer error string matches the tests and checking whether committed `larch-logs/` artifacts and CI coverage are issues.
+
+- **Reviewer**: 
+- **Concern**: 
+- **Suggested revision**: Address the concern above.
+
+### FINDING_56: panel [code-review/accepted]
+
+## [OUT_OF_SCOPE] **Nit** `code-quality` — [`scripts/append-execution-issue.sh`](scripts/append-execution-issue.sh), [`scripts/append-tool-failure.sh`](scripts/append-tool-failure.sh): The written requirements asked to audit these for JSON; they append to a caller-chosen markdown `--log` file and do not call `larch-log.sh` append on NDJSON batches, so there was nothing to change for `json-lines`. Out of scope because the diff correctly did not touch them; only the written audit checklist was slightly misaligned with how those scripts work.
+
+- **Reviewer**: cursor-specialist-structure-output.txt
+- **Concern**: 1. **Nit** `code-quality` — [`scripts/append-execution-issue.sh`](scripts/append-execution-issue.sh), [`scripts/append-tool-failure.sh`](scripts/append-tool-failure.sh): The written requirements asked to audit these for JSON; they append to a caller-chosen markdown `--log` file and do not call `larch-log.sh` append on NDJSON batches, so there was nothing to change for `json-lines`. Out of scope because the diff correctly did not touch them; only the written audit checklist was slightly misaligned with how those scripts work.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_57: panel [code-review/accepted]
+
+## [OUT_OF_SCOPE] **Nit**, `architecture`, `scripts/append-execution-issue.sh` / `scripts/append-tool-failure.sh` (not in diff): Both append to `execution-issues.md`, not to the NDJSON batches; the stricter `json-lines` table entries do not change those scripts. Out of scope because the branch does not claim to modify them and the contract change is at `larch-log.sh append` only.
+
+- **Reviewer**: cursor-specialist-edge-cases-output.txt
+- **Concern**: 1. **Nit**, `architecture`, `scripts/append-execution-issue.sh` / `scripts/append-tool-failure.sh` (not in diff): Both append to `execution-issues.md`, not to the NDJSON batches; the stricter `json-lines` table entries do not change those scripts. Out of scope because the branch does not claim to modify them and the contract change is at `larch-log.sh append` only.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_58: panel [code-review/accepted]
+
+## [OUT_OF_SCOPE] Call-site audit (`append-execution-issue.sh`, `append-tool-failure.sh`, `implement-finalize.sh`): **no code changes in diff**; read-only spot-check shows `append-execution-issue.sh` only mutates markdown `LOG_FILE`, and `implement-finalize.sh` composes NDJSON for `larch-log.sh append` — consistent with the plan’s intent that NDJSON validity is enforced at `larch-log` append, not in the markdown scratch log.
+
+- **Reviewer**: cursor-specialist-plan-fidelity-output.txt
+- **Concern**: - Call-site audit (`append-execution-issue.sh`, `append-tool-failure.sh`, `implement-finalize.sh`): **no code changes in diff**; read-only spot-check shows `append-execution-issue.sh` only mutates markdown `LOG_FILE`, and `implement-finalize.sh` composes NDJSON for `larch-log.sh append` — consistent with the plan’s intent that NDJSON validity is enforced at `larch-log` append, not in the markdown scratch log.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_59: panel [code-review/accepted]
+
+## [OUT_OF_SCOPE] Reviewer finding
+
+- **Reviewer**: codex-generalist-output.txt
+- **Concern**: None.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_60: panel [code-review/accepted]
+
+## [OUT_OF_SCOPE] Reviewer finding
+
+- **Reviewer**: cursor-specialist-correctness-output.txt
+- **Concern**: None worth filing; secondary security scan shows no new injection beyond existing `jq`/redaction paths.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_61: panel [code-review/accepted]
+
+## [OUT_OF_SCOPE] Reviewer finding
+
+- **Reviewer**: cursor-specialist-plan-fidelity-output.txt
+- **Concern**: None.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_62: panel [code-review/accepted]
+
+## [OUT_OF_SCOPE] `scripts/larch-log-batches.md`: new paragraph for the three batches — **matches plan.**  
+
+- **Reviewer**: cursor-specialist-plan-fidelity-output.txt
+- **Concern**: - `scripts/larch-log-batches.md`: new paragraph for the three batches — **matches plan.**
+- **Suggested revision**: Address the concern above.
+
+### FINDING_63: panel [code-review/accepted]
+
+## [OUT_OF_SCOPE] `scripts/larch-log-batches.sh`: all three slugs switched `none` → `json-lines` — **matches plan.**  
+
+- **Reviewer**: cursor-specialist-plan-fidelity-output.txt
+- **Concern**: - `scripts/larch-log-batches.sh`: all three slugs switched `none` → `json-lines` — **matches plan.**
+- **Suggested revision**: Address the concern above.
+
+### FINDING_64: panel [code-review/accepted]
+
+## [OUT_OF_SCOPE] `scripts/test-larch-log.md`: coverage bullet updated — **matches plan.**  
+
+- **Reviewer**: cursor-specialist-plan-fidelity-output.txt
+- **Concern**: - `scripts/test-larch-log.md`: coverage bullet updated — **matches plan.**
+- **Suggested revision**: Address the concern above.
+
+### FINDING_65: panel [code-review/accepted]
+
+## [OUT_OF_SCOPE] `scripts/test-larch-log.sh`: helper + three batch assertions + line-count guard for `execution-issues` — **matches plan** (stderr substring aligns with `lib-larch-log.sh` message prefix `json-lines sanitizer rejected $batch`).  
+
+- **Reviewer**: cursor-specialist-plan-fidelity-output.txt
+- **Concern**: - `scripts/test-larch-log.sh`: helper + three batch assertions + line-count guard for `execution-issues` — **matches plan** (stderr substring aligns with `lib-larch-log.sh` message prefix `json-lines sanitizer rejected $batch`).
+- **Suggested revision**: Address the concern above.
+
+### FINDING_66: panel [code-review/accepted]
+
+## ```
+
+- **Reviewer**: 
+- **Concern**: 
+- **Suggested revision**: Address the concern above.
+
+### FINDING_67: panel [code-review/accepted]
+
+## ```text
+
+- **Reviewer**: 
+- **Concern**: 
+- **Suggested revision**: Address the concern above.
+
+### FINDING_68: panel [code-review/accepted]
+
+## schema_version
+
+- **Reviewer**: scope
+- **Concern**: severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+- **Suggested revision**: Address the concern above.
+

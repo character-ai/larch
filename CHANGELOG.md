@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [27.6.25] - 2026-05-15
+
+### Changed
+
+- Switch execution-issues, review-findings, and oos-issues append batches to the json-lines sanitizer.
+- Add larch-log append-path regression coverage proving raw markdown records are rejected for all three batches.
+- Document the append-mode NDJSON contract in the batch table and test harness sibling docs.
+
 ## [27.6.21] - 2026-05-15
 
 ### Changed
