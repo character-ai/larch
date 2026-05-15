@@ -11,7 +11,7 @@ REDACT="$SCRIPT_DIR/redact-secrets.sh"
 REDACT_PATHS="$SCRIPT_DIR/redact-tmpdir-paths.sh"
 
 usage() {
-    cat <<'USAGE' >&2
+    while IFS= read -r line; do larch_err "$line"; done <<'USAGE'
 Usage:
   tracking-issue-summary.sh upsert-summary --issue N --marker M --content-file F [--repo OWNER/REPO]
 USAGE

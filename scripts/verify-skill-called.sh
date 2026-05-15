@@ -75,7 +75,7 @@ source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
 
 usage() {
-    cat >&2 <<'EOF'
+    while IFS= read -r line; do larch_err "$line"; done <<'EOF'
 Usage: verify-skill-called.sh MODE
 Modes (mutually exclusive):
   --sentinel-file <path>
@@ -130,19 +130,19 @@ while [[ $# -gt 0 ]]; do
             usage; exit 0
             ;;
         *)
-            echo "ERROR: Unknown argument: $1" >&2
+            larch_err "ERROR: Unknown argument: $1"
             usage; exit 1
             ;;
     esac
 done
 
 if [[ -z "$MODE" ]]; then
-    echo "ERROR: No mode flag provided (need --sentinel-file, --stdout-line, or --commit-delta)" >&2
+    larch_err "ERROR: No mode flag provided (need --sentinel-file, --stdout-line, or --commit-delta)"
     usage; exit 1
 fi
 
 if [[ "$mode_count" -gt 1 ]]; then
-    echo "ERROR: Modes are mutually exclusive; pass exactly one of --sentinel-file, --stdout-line, or --commit-delta" >&2
+    larch_err "ERROR: Modes are mutually exclusive; pass exactly one of --sentinel-file, --stdout-line, or --commit-delta"
     usage; exit 1
 fi
 
@@ -156,7 +156,7 @@ emit_result() {
 case "$MODE" in
     sentinel)
         if [[ -z "$SENTINEL_PATH" ]]; then
-            echo "ERROR: --sentinel-file requires a non-empty path" >&2
+            larch_err "ERROR: --sentinel-file requires a non-empty path"
             exit 1
         fi
         # Check order matters: existence → regular-file → non-empty. This
@@ -180,11 +180,11 @@ case "$MODE" in
 
     stdout)
         if [[ -z "$STDOUT_LINE_REGEX" ]]; then
-            echo "ERROR: --stdout-line requires a non-empty regex (empty would match any non-empty line)" >&2
+            larch_err "ERROR: --stdout-line requires a non-empty regex (empty would match any non-empty line)"
             exit 1
         fi
         if [[ -z "$STDOUT_FILE_PATH" ]]; then
-            echo "ERROR: --stdout-line requires --stdout-file" >&2
+            larch_err "ERROR: --stdout-line requires --stdout-file"
             exit 1
         fi
         if [[ ! -f "$STDOUT_FILE_PATH" ]]; then
@@ -207,7 +207,7 @@ case "$MODE" in
             0) emit_result "true" "ok" ;;
             1) emit_result "false" "no_match" ;;
             *)
-                echo "ERROR: grep failed (exit $grep_rc) — regex may be malformed or file unreadable" >&2
+                larch_err "ERROR: grep failed (exit $grep_rc) — regex may be malformed or file unreadable"
                 exit 1
                 ;;
         esac
@@ -216,19 +216,19 @@ case "$MODE" in
 
     commit)
         if [[ -z "$COMMIT_DELTA_EXPECTED" ]]; then
-            echo "ERROR: --commit-delta requires an expected value" >&2
+            larch_err "ERROR: --commit-delta requires an expected value"
             exit 1
         fi
         if [[ -z "$COMMIT_BEFORE_COUNT" ]]; then
-            echo "ERROR: --commit-delta requires --before-count" >&2
+            larch_err "ERROR: --commit-delta requires --before-count"
             exit 1
         fi
         if ! [[ "$COMMIT_DELTA_EXPECTED" =~ ^[0-9]+$ ]]; then
-            echo "ERROR: --commit-delta value must be a non-negative integer: $COMMIT_DELTA_EXPECTED" >&2
+            larch_err "ERROR: --commit-delta value must be a non-negative integer: $COMMIT_DELTA_EXPECTED"
             exit 1
         fi
         if ! [[ "$COMMIT_BEFORE_COUNT" =~ ^[0-9]+$ ]]; then
-            echo "ERROR: --before-count value must be a non-negative integer: $COMMIT_BEFORE_COUNT" >&2
+            larch_err "ERROR: --before-count value must be a non-negative integer: $COMMIT_BEFORE_COUNT"
             exit 1
         fi
 
@@ -276,7 +276,7 @@ case "$MODE" in
 
     *)
         # Unreachable — MODE is constrained by set_mode above.
-        echo "ERROR: internal: unknown mode $MODE" >&2
+        larch_err "ERROR: internal: unknown mode $MODE"
         exit 1
         ;;
 esac

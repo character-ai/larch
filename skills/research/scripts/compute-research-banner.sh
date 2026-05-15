@@ -65,7 +65,7 @@ emit_banner() {
 }
 
 if (( $# < 1 )); then
-  echo "WARNING: compute-research-banner.sh requires <lane-status.txt-path> (got $# arg(s)); emitting empty banner" >&2
+  larch_err "WARNING: compute-research-banner.sh requires <lane-status.txt-path> (got $# arg(s)); emitting empty banner"
   exit 0
 fi
 

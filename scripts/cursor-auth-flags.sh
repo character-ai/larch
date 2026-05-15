@@ -29,7 +29,7 @@ larch_quiet_init
 # was added to fix.
 # shellcheck source=scripts/lib-cursor-auth.sh
 if ! . "$SCRIPT_DIR/lib-cursor-auth.sh" 2>/dev/null; then
-    echo "cursor-auth-flags.sh: failed to source lib-cursor-auth.sh" >&2
+    larch_err "cursor-auth-flags.sh: failed to source lib-cursor-auth.sh"
     exit 1
 fi
 

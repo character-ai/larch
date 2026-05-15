@@ -15,12 +15,12 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --state-file)      STATE_FILE="${2:?--state-file requires a value}";      shift 2 ;;
         --implement-tmpdir) IMPL_TMPDIR="${2:?--implement-tmpdir requires a value}"; shift 2 ;;
-        *) printf 'refresh-run-logs.sh: unknown option: %s\n' "$1" >&2; exit 1 ;;
+        *) larch_errf 'refresh-run-logs.sh: unknown option: %s\n' "$1"; exit 1 ;;
     esac
 done
 
-[ -n "$STATE_FILE"  ] || { printf 'refresh-run-logs.sh: --state-file is required\n'      >&2; exit 1; }
-[ -n "$IMPL_TMPDIR" ] || { printf 'refresh-run-logs.sh: --implement-tmpdir is required\n' >&2; exit 1; }
+[ -n "$STATE_FILE"  ] || { larch_errf 'refresh-run-logs.sh: --state-file is required\n'; exit 1; }
+[ -n "$IMPL_TMPDIR" ] || { larch_errf 'refresh-run-logs.sh: --implement-tmpdir is required\n'; exit 1; }
 
 # Fail-closed merge probe: missing state file → treat as merged.
 [ -f "$STATE_FILE" ] || { emit "REFRESH_SKIPPED=true REASON=state-file-missing-fail-closed"; exit 0; }

@@ -19,22 +19,22 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     --tmpdir) TMPDIR="$2"; shift 2 ;;
     --pieces-file) PIECES_FILE="$2"; shift 2 ;;
-    *) echo "ERROR=Unknown flag: $1" >&2; exit 1 ;;
+    *) larch_err "ERROR=Unknown flag: $1"; exit 1 ;;
   esac
 done
 
 if [ -z "$TMPDIR" ] || [ ! -d "$TMPDIR" ]; then
-  echo "ERROR=--tmpdir is required and must exist" >&2; exit 1
+  larch_err "ERROR=--tmpdir is required and must exist"; exit 1
 fi
 if [ ! -w "$TMPDIR" ]; then
-  echo "ERROR=tmpdir not writable: $TMPDIR" >&2; exit 1
+  larch_err "ERROR=tmpdir not writable: $TMPDIR"; exit 1
 fi
 if [ -z "$PIECES_FILE" ] || [ ! -s "$PIECES_FILE" ]; then
-  echo "ERROR=--pieces-file is required and must be non-empty" >&2; exit 1
+  larch_err "ERROR=--pieces-file is required and must be non-empty"; exit 1
 fi
 
 if ! command -v jq >/dev/null 2>&1; then
-  echo "ERROR=jq is required for /umbrella batch-input rendering but was not found in PATH" >&2; exit 1
+  larch_err "ERROR=jq is required for /umbrella batch-input rendering but was not found in PATH"; exit 1
 fi
 
 # Validate JSON shape and count.
@@ -46,7 +46,7 @@ JQ_PARSE_ERR="$TMPDIR/.render-batch-input-jq-stderr"
 PIECES_TOTAL=$(jq 'length' "$PIECES_FILE" 2>"$JQ_PARSE_ERR") || {
   reason=$(head -n 1 "$JQ_PARSE_ERR" 2>/dev/null | sed -e 's/^jq: //' -e 's/[[:cntrl:]]//g')
   rm -f "$JQ_PARSE_ERR"
-  echo "ERROR=invalid pieces.json: ${reason:-jq parse failed}" >&2; exit 1
+  larch_err "ERROR=invalid pieces.json: ${reason:-jq parse failed}"; exit 1
 }
 rm -f "$JQ_PARSE_ERR"
 # Type assertion: pieces.json must be a JSON array. Without this, a top-level
@@ -54,10 +54,10 @@ rm -f "$JQ_PARSE_ERR"
 # loop below with a raw `jq:` error and jq's exit code, breaking the contract.
 PIECES_TYPE=$(jq -r 'type' "$PIECES_FILE" 2>/dev/null || true)
 if [ "$PIECES_TYPE" != "array" ]; then
-  echo "ERROR=invalid pieces.json: top-level value must be a JSON array, got ${PIECES_TYPE:-unknown}" >&2; exit 1
+  larch_err "ERROR=invalid pieces.json: top-level value must be a JSON array, got ${PIECES_TYPE:-unknown}"; exit 1
 fi
 if [ "$PIECES_TOTAL" -lt 2 ]; then
-  echo "ERROR=pieces.json must contain at least 2 entries; got $PIECES_TOTAL" >&2; exit 1
+  larch_err "ERROR=pieces.json must contain at least 2 entries; got $PIECES_TOTAL"; exit 1
 fi
 
 # Per-entry validation: title non-empty, body non-empty, depends_on is array of ints with values < entry-index.
@@ -65,18 +65,18 @@ for i in $(seq 0 $((PIECES_TOTAL - 1))); do
   title=$(jq -r ".[$i].title // empty" "$PIECES_FILE")
   body=$(jq -r ".[$i].body // empty" "$PIECES_FILE")
   if [ -z "$title" ]; then
-    echo "ERROR=pieces.json entry $((i + 1)) is missing 'title'" >&2; exit 1
+    larch_err "ERROR=pieces.json entry $((i + 1)) is missing 'title'"; exit 1
   fi
   # Reject titles with embedded LF: `title` is later emitted as the single-line
   # `PIECE_<i>_TITLE=$title` KV stdout line that umbrella SKILL.md Step 3B.1
   # parses one-KV-per-line. A multi-line title would split that record and
   # silently break the grammar. Scope is LF only — see render-batch-input.md.
   case "$title" in *$'\n'*)
-    echo "ERROR=pieces.json entry $((i + 1)) title contains embedded newline" >&2; exit 1
+    larch_err "ERROR=pieces.json entry $((i + 1)) title contains embedded newline"; exit 1
     ;;
   esac
   if [ -z "$body" ]; then
-    echo "ERROR=pieces.json entry $((i + 1)) is missing 'body'" >&2; exit 1
+    larch_err "ERROR=pieces.json entry $((i + 1)) is missing 'body'"; exit 1
   fi
   # Reject bodies with line-start `### ` patterns: each piece body flows
   # verbatim into batch-input.md after a `### <title>` heading and is consumed
@@ -88,13 +88,13 @@ for i in $(seq 0 $((PIECES_TOTAL - 1))); do
   # case-(d) embedded-LF-in-title guard above; producer-side prompt directive
   # in /umbrella SKILL.md Step 3B.1 is the first-line rule.
   case "$body" in '### '*|*$'\n### '*)
-    echo "ERROR=pieces.json entry $((i + 1)) body contains line starting with '### '" >&2; exit 1
+    larch_err "ERROR=pieces.json entry $((i + 1)) body contains line starting with '### '"; exit 1
     ;;
   esac
   # depends_on must be an array of numbers, each in [1, i].
   deps_type=$(jq -r ".[$i].depends_on // [] | type" "$PIECES_FILE")
   if [ "$deps_type" != "array" ]; then
-    echo "ERROR=pieces.json entry $((i + 1)) field 'depends_on' must be an array" >&2; exit 1
+    larch_err "ERROR=pieces.json entry $((i + 1)) field 'depends_on' must be an array"; exit 1
   fi
   bad_deps=$(jq -r --argjson idx "$i" '
     .[$idx].depends_on // [] |
@@ -102,7 +102,7 @@ for i in $(seq 0 $((PIECES_TOTAL - 1))); do
     @csv
   ' "$PIECES_FILE")
   if [ -n "$bad_deps" ] && [ "$bad_deps" != '""' ]; then
-    echo "ERROR=pieces.json entry $((i + 1)) has out-of-range depends_on values: $bad_deps (must be 1-based ints < entry index)" >&2; exit 1
+    larch_err "ERROR=pieces.json entry $((i + 1)) has out-of-range depends_on values: $bad_deps (must be 1-based ints < entry index)"; exit 1
   fi
 done
 

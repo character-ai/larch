@@ -86,7 +86,7 @@ REDACT_TMPDIR_HELPER="$REPO_ROOT/scripts/redact-tmpdir-paths.sh"
 TITLE_MARKERS_HELPER="$SCRIPT_DIR/lib-title-markers.sh"
 
 usage() {
-    cat <<'USAGE' >&2
+    while IFS= read -r line; do larch_err "$line"; done <<'USAGE'
 Usage:
   tracking-issue-write.sh create-issue   --title T --body-file F [--repo OWNER/REPO]
   tracking-issue-write.sh append-comment --issue N --body-file F [--lifecycle-marker ID] [--repo OWNER/REPO]
@@ -263,7 +263,7 @@ case "$cmd" in
                 --title) TITLE="${2:?--title requires a value}"; shift 2 ;;
                 --body-file) BODY_FILE="${2:?--body-file requires a value}"; shift 2 ;;
                 --repo) REPO="${2:?--repo requires a value}"; shift 2 ;;
-                *) echo "Unknown option for create-issue: $1" >&2; usage; exit 1 ;;
+                *) larch_err "Unknown option for create-issue: $1"; usage; exit 1 ;;
             esac
         done
         if [[ -z "$TITLE" ]] || [[ -z "$BODY_FILE" ]]; then
@@ -326,7 +326,7 @@ case "$cmd" in
                 --body-file) BODY_FILE="${2:?--body-file requires a value}"; shift 2 ;;
                 --lifecycle-marker)
                     if [[ $# -lt 2 ]]; then
-                        echo "Unknown option for append-comment: --lifecycle-marker requires a value" >&2
+                        larch_err "Unknown option for append-comment: --lifecycle-marker requires a value"
                         usage
                         exit 1
                     fi
@@ -334,7 +334,7 @@ case "$cmd" in
                     shift 2
                     ;;
                 --repo) REPO="${2:?--repo requires a value}"; shift 2 ;;
-                *) echo "Unknown option for append-comment: $1" >&2; usage; exit 1 ;;
+                *) larch_err "Unknown option for append-comment: $1"; usage; exit 1 ;;
             esac
         done
         if [[ -z "$ISSUE" ]] || [[ -z "$BODY_FILE" ]]; then
@@ -418,7 +418,7 @@ case "$cmd" in
                     shift 2
                     ;;
                 --repo)  REPO="${2:?--repo requires a value}"; shift 2 ;;
-                *) echo "Unknown option for rename: $1" >&2; usage; exit 1 ;;
+                *) larch_err "Unknown option for rename: $1"; usage; exit 1 ;;
             esac
         done
         if [[ -z "$ISSUE" ]] || [[ -z "$STATE" ]]; then
@@ -534,7 +534,7 @@ case "$cmd" in
             case "$1" in
                 --issue) ISSUE="${2:?--issue requires a value}"; shift 2 ;;
                 --repo)  REPO="${2:?--repo requires a value}"; shift 2 ;;
-                *) echo "Unknown option for mark-false-positive: $1" >&2; usage; exit 1 ;;
+                *) larch_err "Unknown option for mark-false-positive: $1"; usage; exit 1 ;;
             esac
         done
         if [[ -z "$ISSUE" ]]; then
@@ -581,7 +581,7 @@ case "$cmd" in
         ;;
 
     *)
-        echo "Unknown subcommand: $cmd" >&2
+        larch_err "Unknown subcommand: $cmd"
         usage
         exit 1
         ;;

@@ -14,8 +14,8 @@ source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"
 # shellcheck source=scripts/lib-net.sh
-source "$SCRIPT_DIR/lib-net.sh" || { echo "ship-pr.sh: failed to source lib-net.sh" >&2; exit 1; }
-[[ "${LARCH_LIB_NET_LOADED:-}" == "1" ]] || { echo "ship-pr.sh: lib-net.sh sourced but sentinel missing" >&2; exit 1; }
+source "$SCRIPT_DIR/lib-net.sh" || { larch_err "ship-pr.sh: failed to source lib-net.sh"; exit 1; }
+[[ "${LARCH_LIB_NET_LOADED:-}" == "1" ]] || { larch_err "ship-pr.sh: lib-net.sh sourced but sentinel missing"; exit 1; }
 
 STATE_FILE=""
 IMPLEMENT_TMPDIR=""
@@ -29,14 +29,14 @@ REPO_ARG=""
 RESUME_PHASE=""
 
 usage() {
-    cat >&2 <<'USAGE'
+    while IFS= read -r line; do larch_err "$line"; done <<'USAGE'
 Usage:
   ship-pr.sh --state-file PATH --implement-tmpdir PATH --merge true|false --draft true|false --forked true|false --repo OWNER/REPO [--auto-mode true|false] [--no-admin-fallback true|false] [--no-logs-commit true|false] [--resume-phase PHASE]
 USAGE
 }
 
 die_usage() {
-    echo "ship-pr.sh: $1" >&2
+    larch_err "ship-pr.sh: $1"
     usage
     exit 2
 }
@@ -263,7 +263,7 @@ append_tool_failure_local() {
             --exit-code) exit_code=$2; shift 2 ;;
             --category) category=$2; shift 2 ;;
             --output-file) output_file=$2; shift 2 ;;
-            *) echo "ship-pr.sh: append_tool_failure_local: unknown option: $1" >&2; return 2 ;;
+            *) larch_err "ship-pr.sh: append_tool_failure_local: unknown option: $1"; return 2 ;;
         esac
     done
     log_tmpdir=$(read_state IMPLEMENT_TMPDIR "$IMPLEMENT_TMPDIR")
@@ -271,19 +271,20 @@ append_tool_failure_local() {
     # set as the argv-supplied one. A tampered ship-pr-state.sh value must
     # NOT redirect failure logging outside the validated session tree.
     if [ -n "$log_tmpdir" ] && ! is_tmp_path "$log_tmpdir"; then
-        echo "ship-pr.sh: refusing state-supplied IMPLEMENT_TMPDIR outside allowed roots: $log_tmpdir" >&2
+        larch_err "ship-pr.sh: refusing state-supplied IMPLEMENT_TMPDIR outside allowed roots: $log_tmpdir"
         log_tmpdir="$IMPLEMENT_TMPDIR"
     fi
     if [ -z "$log_tmpdir" ] || [ ! -x "$SCRIPT_DIR/append-tool-failure.sh" ]; then
-        echo "ship-pr.sh: cannot append tool failure for $tool (site=$site); helper or tmpdir unavailable" >&2
+        larch_err "ship-pr.sh: cannot append tool failure for $tool (site=$site); helper or tmpdir unavailable"
         # Pipe the capture through redact-secrets.sh before stderr replay so
         # the fallback path mirrors the success-path --redact behavior and
         # never leaks tokens to operator transcripts.
         if [ -n "$output_file" ] && [ -f "$output_file" ]; then
             if [ -x "$SCRIPT_DIR/redact-secrets.sh" ]; then
-                "$SCRIPT_DIR/redact-secrets.sh" < "$output_file" >&2 || cat "$output_file" >&2
+                "$SCRIPT_DIR/redact-secrets.sh" < "$output_file" | while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$line"; done || \
+                    while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$line"; done < "$output_file"
             else
-                cat "$output_file" >&2
+                while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$line"; done < "$output_file"
             fi
         fi
         return 0
@@ -300,7 +301,7 @@ append_tool_failure_local() {
         --category "$category" \
         --output-file "$output_file" \
         --redact >>"$append_diag" 2>&1; then
-        echo "ship-pr.sh: append-tool-failure.sh failed for $tool (site=$site); see $append_diag" >&2
+        larch_err "ship-pr.sh: append-tool-failure.sh failed for $tool (site=$site); see $append_diag"
     fi
     return 0
 }

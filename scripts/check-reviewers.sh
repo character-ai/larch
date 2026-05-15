@@ -26,8 +26,8 @@ while [[ $# -gt 0 ]]; do
         --probe)              PROBE=true; shift ;;
         --skip-codex-probe)   SKIP_CODEX_PROBE=true; shift ;;
         --skip-cursor-probe)  SKIP_CURSOR_PROBE=true; shift ;;
-        --artifact-dir)        [[ $# -ge 2 ]] || { echo "check-reviewers.sh: --artifact-dir requires a value" >&2; exit 1; }; shift 2 ;; # accepted for backward compat; no-op (Gemini drift removed)
-        *) echo "check-reviewers.sh: unknown argument: $1" >&2; exit 1 ;;
+        --artifact-dir)        [[ $# -ge 2 ]] || { larch_err "check-reviewers.sh: --artifact-dir requires a value"; exit 1; }; shift 2 ;; # accepted for backward compat; no-op (Gemini drift removed)
+        *) larch_err "check-reviewers.sh: unknown argument: $1"; exit 1 ;;
     esac
 done
 
@@ -48,7 +48,7 @@ get_available() {
     case "$1" in
         codex) echo "$CODEX_AVAILABLE" ;;
         cursor) echo "$CURSOR_AVAILABLE" ;;
-        *) echo "check-reviewers.sh: internal error: unsupported reviewer tool: $1" >&2; exit 1 ;;
+        *) larch_err "check-reviewers.sh: internal error: unsupported reviewer tool: $1"; exit 1 ;;
     esac
 }
 
@@ -56,7 +56,7 @@ get_healthy() {
     case "$1" in
         codex) echo "$CODEX_HEALTHY" ;;
         cursor) echo "$CURSOR_HEALTHY" ;;
-        *) echo "check-reviewers.sh: internal error: unsupported reviewer tool: $1" >&2; exit 1 ;;
+        *) larch_err "check-reviewers.sh: internal error: unsupported reviewer tool: $1"; exit 1 ;;
     esac
 }
 
@@ -64,7 +64,7 @@ set_healthy() {
     case "$1" in
         codex) CODEX_HEALTHY="$2" ;;
         cursor) CURSOR_HEALTHY="$2" ;;
-        *) echo "check-reviewers.sh: internal error: unsupported reviewer tool: $1" >&2; exit 1 ;;
+        *) larch_err "check-reviewers.sh: internal error: unsupported reviewer tool: $1"; exit 1 ;;
     esac
 }
 
@@ -72,7 +72,7 @@ get_skip() {
     case "$1" in
         codex) echo "$SKIP_CODEX_PROBE" ;;
         cursor) echo "$SKIP_CURSOR_PROBE" ;;
-        *) echo "check-reviewers.sh: internal error: unsupported reviewer tool: $1" >&2; exit 1 ;;
+        *) larch_err "check-reviewers.sh: internal error: unsupported reviewer tool: $1"; exit 1 ;;
     esac
 }
 
@@ -80,7 +80,7 @@ set_probe_error() {
     case "$1" in
         codex) CODEX_PROBE_ERROR="$2" ;;
         cursor) CURSOR_PROBE_ERROR="$2" ;;
-        *) echo "check-reviewers.sh: internal error: unsupported reviewer tool: $1" >&2; exit 1 ;;
+        *) larch_err "check-reviewers.sh: internal error: unsupported reviewer tool: $1"; exit 1 ;;
     esac
 }
 
@@ -88,7 +88,7 @@ get_probe_error() {
     case "$1" in
         codex) echo "$CODEX_PROBE_ERROR" ;;
         cursor) echo "$CURSOR_PROBE_ERROR" ;;
-        *) echo "check-reviewers.sh: internal error: unsupported reviewer tool: $1" >&2; exit 1 ;;
+        *) larch_err "check-reviewers.sh: internal error: unsupported reviewer tool: $1"; exit 1 ;;
     esac
 }
 
@@ -201,7 +201,7 @@ start_probe() {
             return
             ;;
         *)
-            echo "check-reviewers.sh: internal error: unsupported reviewer tool: $tool" >&2
+            larch_err "check-reviewers.sh: internal error: unsupported reviewer tool: $tool"
             exit 1
             ;;
     esac
@@ -294,7 +294,7 @@ if [[ "$PROBE" == "true" ]]; then
         fi
     fi
     if [[ "$WAIT_PREFLIGHT_FAILED" == "true" ]]; then
-        echo "Probe infrastructure error: $WAIT_PREFLIGHT_ERROR" >&2
+        larch_err "Probe infrastructure error: $WAIT_PREFLIGHT_ERROR"
     fi
 
     if [[ "$WAIT_PREFLIGHT_FAILED" == "false" ]]; then
@@ -309,7 +309,7 @@ if [[ "$PROBE" == "true" ]]; then
         [[ ${#TRY_TOOLS[@]} -eq 0 ]] && break
 
         if [[ $attempt -gt 1 ]]; then
-            echo "Retrying failed health probes (attempt $attempt of $MAX_ATTEMPTS, after ${SLEEP_BETWEEN}s sleep)..." >&2
+            larch_err "Retrying failed health probes (attempt $attempt of $MAX_ATTEMPTS, after ${SLEEP_BETWEEN}s sleep)..."
             sleep "$SLEEP_BETWEEN"
         fi
 
@@ -335,7 +335,7 @@ if [[ "$PROBE" == "true" ]]; then
 
             if [[ $WAIT_RC -ne 0 ]]; then
                 WAIT_INFRA_ERROR_MSG="wait-for-reviewers.sh exited $WAIT_RC (see stderr for cause): $(head -c 200 "$PROBE_DIR/wait-attempt${attempt}.stderr" | tr '\n\r' '  ')"
-                echo "Probe infrastructure error: $WAIT_INFRA_ERROR_MSG" >&2
+                larch_err "Probe infrastructure error: $WAIT_INFRA_ERROR_MSG"
                 WAIT_USAGE_ERROR=true
             fi
         fi

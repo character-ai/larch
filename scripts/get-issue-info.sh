@@ -27,19 +27,19 @@ while [[ $# -gt 0 ]]; do
         --issue) ISSUE="${2:?--issue requires a value}"; shift 2 ;;
         --field) FIELD="${2:?--field requires a value}"; shift 2 ;;
         --repo) REPO="${2:?--repo requires a value}"; shift 2 ;;
-        *) echo "get-issue-info.sh: unknown flag: $1" >&2; emit_kv VALUE ""; exit 0 ;;
+        *) larch_err "get-issue-info.sh: unknown flag: $1"; emit_kv VALUE ""; exit 0 ;;
     esac
 done
 
 if [[ -z "$ISSUE" || -z "$FIELD" ]]; then
-    echo "get-issue-info.sh: --issue and --field are required" >&2
+    larch_err "get-issue-info.sh: --issue and --field are required"
     emit_kv VALUE ""
     exit 0
 fi
 
 case "$FIELD" in
     state|url) ;;
-    *) echo "get-issue-info.sh: --field must be 'state' or 'url'" >&2; emit_kv VALUE ""; exit 0 ;;
+    *) larch_err "get-issue-info.sh: --field must be 'state' or 'url'"; emit_kv VALUE ""; exit 0 ;;
 esac
 
 if [[ -z "$REPO" ]]; then

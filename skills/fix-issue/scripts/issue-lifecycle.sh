@@ -373,10 +373,10 @@ cmd_close() {
     current_state=$(gh issue view "$issue" "${GH_ISSUE_REPO_ARGS[@]}" --json state --jq '.state' 2>/dev/null) || probe_ok=0
 
     if (( probe_ok )) && [ "$current_state" = "CLOSED" ]; then
-        echo "INFO: issue #$issue already closed; backfilling DONE metadata only" >&2
+        larch_err "INFO: issue #$issue already closed; backfilling DONE metadata only"
     else
         if (( ! probe_ok )); then
-            echo "WARNING: failed to probe state for issue #$issue; attempting close anyway" >&2
+            larch_err "WARNING: failed to probe state for issue #$issue; attempting close anyway"
         fi
         gh issue close "$issue" "${GH_ISSUE_REPO_ARGS[@]}" >/dev/null 2>&1 || {
             emit_kv CLOSED false
@@ -409,7 +409,7 @@ cmd_close() {
         if [ "$keyword_rc" -eq 0 ]; then
             _run_false_positive_marker "$issue"
         elif [ "$keyword_rc" -ge 2 ]; then
-            echo "WARNING: false-positive keyword scan failed for issue #$issue" >&2
+            larch_err "WARNING: false-positive keyword scan failed for issue #$issue"
         fi
     fi
 }
@@ -426,7 +426,7 @@ _run_false_positive_marker() {
     mark_out=$("$TRACKING_WRITE" mark-false-positive --issue "$issue" --repo "$REPO" 2>"$mark_stderr") || mark_exit=$?
     if [ "$mark_exit" -ne 0 ] || printf '%s\n' "$mark_out" | grep -q '^FAILED=true'; then
         err_value=$(printf '%s\n' "$mark_out" | grep -oE '^ERROR=.*' | head -1 | sed 's/^ERROR=//')
-        echo "WARNING: mark-false-positive failed for issue #$issue: ${err_value:-unknown}" >&2
+        larch_err "WARNING: mark-false-positive failed for issue #$issue: ${err_value:-unknown}"
     fi
     # SECURITY.md (Phase 1 helper paragraph) declares that raw marker stderr
     # is discarded unless a complete redactor pass succeeds. Buffer first so a
@@ -447,15 +447,15 @@ _run_false_positive_marker() {
         _stderr_size=$(wc -c < "$mark_stderr" 2>/dev/null | tr -d ' ')
         _stderr_size="${_stderr_size:-0}"
         if [ "$_redactor_exit" -eq 0 ] && [ -s "$mark_redacted_tmp" ]; then
-            cat "$mark_redacted_tmp" >&2
+            while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$line"; done < "$mark_redacted_tmp"
         elif [ "$_redactor_exit" -eq 0 ]; then
             # Redactor ran successfully but produced no output — the input
             # was entirely sensitive content the scrubber consumed. Emit a
             # neutral INFO line so operators don't interpret a clean redaction
             # as a failure (round-5 review FINDING_1).
-            echo "INFO: mark-false-positive stderr fully redacted (${_stderr_size} bytes consumed, no surviving output)" >&2
+            larch_err "INFO: mark-false-positive stderr fully redacted (${_stderr_size} bytes consumed, no surviving output)"
         else
-            echo "WARNING: mark-false-positive stderr suppressed: redactor exit=${_redactor_exit} (${_stderr_size} bytes discarded)" >&2
+            larch_err "WARNING: mark-false-positive stderr suppressed: redactor exit=${_redactor_exit} (${_stderr_size} bytes discarded)"
         fi
         [ -n "$mark_redacted_tmp" ] && rm -f "$mark_redacted_tmp"
     fi

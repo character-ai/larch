@@ -17,14 +17,14 @@ REJECTED="0"
 BODY_FILE=""
 
 usage() {
-    cat <<'USAGE' >&2
+    while IFS= read -r line; do larch_err "$line"; done <<'USAGE'
 Usage: compose-tally-record.sh --phase plan-review|code-review --mode simple|hard \
     [--rounds N] [--accepted N] [--rejected N] --body-file PATH
 USAGE
 }
 
 fail() {
-    echo "ERROR=$1" >&2
+    larch_err "ERROR=$1"
     exit 2
 }
 

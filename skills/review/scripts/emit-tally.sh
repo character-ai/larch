@@ -10,7 +10,7 @@ SHARED_DIR="$SCRIPT_DIR/../../shared/scripts"
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
 
-usage() { echo "Usage: emit-tally.sh --tally-file FILE --accepted-findings-file FILE --oos-file FILE --review-tmpdir DIR --round N --mode diff|description [--session-env-path FILE] [--implement-tmpdir DIR]" >&2; }
+usage() { larch_err "Usage: emit-tally.sh --tally-file FILE --accepted-findings-file FILE --oos-file FILE --review-tmpdir DIR --round N --mode diff|description [--session-env-path FILE] [--implement-tmpdir DIR]"; }
 
 TALLY_FILE=""
 ACCEPTED_FINDINGS_FILE=""
@@ -32,13 +32,13 @@ while [[ $# -gt 0 ]]; do
         --mode) MODE="${2:?--mode requires a value}"; shift 2 ;;
         --implement-tmpdir) IMPLEMENT_TMPDIR="${2:?--implement-tmpdir requires a value}"; shift 2 ;;
         --help) usage; exit 0 ;;
-        *) echo "emit-tally.sh: unknown option: $1" >&2; usage; exit 2 ;;
+        *) larch_err "emit-tally.sh: unknown option: $1"; usage; exit 2 ;;
     esac
 done
 
-[[ -n "$REVIEW_TMPDIR" ]] || { echo "emit-tally.sh: --review-tmpdir is required" >&2; exit 2; }
-[[ -n "$TALLY_FILE" && -f "$TALLY_FILE" ]] || { echo "emit-tally.sh: --tally-file must name a file" >&2; exit 2; }
-[[ -n "$ACCEPTED_FINDINGS_FILE" && -f "$ACCEPTED_FINDINGS_FILE" ]] || { echo "emit-tally.sh: --accepted-findings-file must name a file" >&2; exit 2; }
+[[ -n "$REVIEW_TMPDIR" ]] || { larch_err "emit-tally.sh: --review-tmpdir is required"; exit 2; }
+[[ -n "$TALLY_FILE" && -f "$TALLY_FILE" ]] || { larch_err "emit-tally.sh: --tally-file must name a file"; exit 2; }
+[[ -n "$ACCEPTED_FINDINGS_FILE" && -f "$ACCEPTED_FINDINGS_FILE" ]] || { larch_err "emit-tally.sh: --accepted-findings-file must name a file"; exit 2; }
 mkdir -p "$REVIEW_TMPDIR"
 
 ROUND_SUMMARY_FILE="$REVIEW_TMPDIR/review-round-summary.md"

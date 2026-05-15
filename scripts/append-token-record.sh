@@ -12,11 +12,11 @@ INPUT=""
 TMPDIR_ARG=""
 
 usage() {
-    echo "Usage: append-token-record.sh --input PATH --tmpdir PATH" >&2
+    larch_err "Usage: append-token-record.sh --input PATH --tmpdir PATH"
 }
 
 die() {
-    echo "append-token-record.sh: $1" >&2
+    larch_err "append-token-record.sh: $1"
     usage
     exit 2
 }
@@ -36,7 +36,7 @@ done
 
 if [ ! -s "$INPUT" ]; then
     if [ ! -e "$TMPDIR_ARG/execution-issues.md" ]; then
-        echo "append-token-record.sh: token sidecar absent: $INPUT" >&2
+        larch_err "append-token-record.sh: token sidecar absent: $INPUT"
     fi
     exit 0
 fi

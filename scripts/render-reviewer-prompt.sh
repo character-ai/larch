@@ -32,7 +32,7 @@ INSCOPE_FILE=""
 OOS_FILE=""
 
 usage() {
-  cat >&2 <<'EOF'
+  while IFS= read -r line; do larch_err "$line"; done <<'EOF'
 Usage: render-reviewer-prompt.sh \
     --target <text> \
     --research-question-file <path> \
@@ -52,7 +52,7 @@ take_value() {
   local flag="$1"
   local value="${2:-}"
   if [[ -z "$value" || "$value" == --* ]]; then
-    echo "render-reviewer-prompt.sh: $flag requires a non-flag value (got: '${value:-<empty>}')" >&2
+    larch_err "render-reviewer-prompt.sh: $flag requires a non-flag value (got: '${value:-<empty>}')"
     exit 2
   fi
   printf '%s' "$value"
@@ -66,13 +66,13 @@ while [[ $# -gt 0 ]]; do
     --in-scope-instruction-file) INSCOPE_FILE="$(take_value --in-scope-instruction-file "${2:-}")"; shift 2 ;;
     --oos-instruction-file) OOS_FILE="$(take_value --oos-instruction-file "${2:-}")"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
-    *) echo "render-reviewer-prompt.sh: unknown argument: $1" >&2; usage; exit 2 ;;
+    *) larch_err "render-reviewer-prompt.sh: unknown argument: $1"; usage; exit 2 ;;
   esac
 done
 
 # Validate required flags.
 if [[ -z "$TARGET" ]]; then
-  echo "render-reviewer-prompt.sh: --target is required" >&2
+  larch_err "render-reviewer-prompt.sh: --target is required"
   exit 2
 fi
 for var_pair in \
@@ -83,17 +83,17 @@ for var_pair in \
   flag_name="${var_pair##*:}"
   value="${!var_name}"
   if [[ -z "$value" ]]; then
-    echo "render-reviewer-prompt.sh: $flag_name is required" >&2
+    larch_err "render-reviewer-prompt.sh: $flag_name is required"
     exit 2
   fi
   if [[ ! -r "$value" ]]; then
-    echo "render-reviewer-prompt.sh: $flag_name path is missing or unreadable: $value" >&2
+    larch_err "render-reviewer-prompt.sh: $flag_name path is missing or unreadable: $value"
     exit 2
   fi
 done
 
 if [[ ! -f "$TEMPLATE" ]]; then
-  echo "render-reviewer-prompt.sh: template not found: $TEMPLATE" >&2
+  larch_err "render-reviewer-prompt.sh: template not found: $TEMPLATE"
   exit 2
 fi
 
@@ -116,7 +116,7 @@ trap 'rm -f "$BODY_FILE" "${OOS_DEFAULT_FILE:-}"' EXIT
 
 if [[ -n "$OOS_FILE" ]]; then
   if [[ ! -r "$OOS_FILE" ]]; then
-    echo "render-reviewer-prompt.sh: --oos-instruction-file path is missing or unreadable: $OOS_FILE" >&2
+    larch_err "render-reviewer-prompt.sh: --oos-instruction-file path is missing or unreadable: $OOS_FILE"
     exit 2
   fi
   OOS_INPUT_FILE="$OOS_FILE"
@@ -251,9 +251,9 @@ awk -v inscope_file="$INSCOPE_FILE" -v oos_file="$OOS_INPUT_FILE" '
 SENTINEL_TARGET='If no in-scope issues found, say "No in-scope issues found."'
 SENTINEL_REPLACEMENT='If no findings at all, output exactly the literal NO_ISSUES_FOUND on a line by itself.'
 if ! grep -Fq "$SENTINEL_TARGET" "$STAGE4_FILE"; then
-  echo "render-reviewer-prompt.sh: sentinel-override target string not found in archetype:" >&2
-  echo "  '$SENTINEL_TARGET'" >&2
-  echo "  Archetype may have drifted. Review skills/shared/reviewer-templates.md and update either the archetype or this script in lockstep." >&2
+  larch_err "render-reviewer-prompt.sh: sentinel-override target string not found in archetype:"
+  larch_err "  '$SENTINEL_TARGET'"
+  larch_err "  Archetype may have drifted. Review skills/shared/reviewer-templates.md and update either the archetype or this script in lockstep."
   exit 1
 fi
 
@@ -284,15 +284,15 @@ for placeholder in '{REVIEW_TARGET}' '{OUTPUT_INSTRUCTION}'; do
   fi
 done
 if [[ ${#unresolved[@]} -gt 0 ]]; then
-  echo "render-reviewer-prompt.sh: unresolved placeholder(s) in rendered output:" >&2
+  larch_err "render-reviewer-prompt.sh: unresolved placeholder(s) in rendered output:"
   for p in "${unresolved[@]}"; do
-    echo "  $p" >&2
+    larch_err "  $p"
   done
   exit 1
 fi
 ctx_marker_count="$(grep -Fxc '{CONTEXT_BLOCK}' "$STAGE5_FILE" || true)"
 if [[ "$ctx_marker_count" -ne 1 ]]; then
-  echo "render-reviewer-prompt.sh: expected exactly one '{CONTEXT_BLOCK}' marker line at validation time, found $ctx_marker_count" >&2
+  larch_err "render-reviewer-prompt.sh: expected exactly one '{CONTEXT_BLOCK}' marker line at validation time, found $ctx_marker_count"
   exit 1
 fi
 

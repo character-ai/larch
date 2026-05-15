@@ -28,6 +28,14 @@ source the library and run `larch_quiet_init` after strict-mode setup and
 `LARCH_QUIET_DISABLE=1` leaves stdout/stderr unchanged. Test harnesses that
 assert legacy stdout may use that override during migration.
 
+## Authoring Rule
+
+After `larch_quiet_init`, do not write user-visible diagnostics with raw
+`>&2` on `echo`, `printf`, or `cat`. Use `larch_err` for line diagnostics and
+`larch_errf` for formatted diagnostics. S041/no-raw-stderr-after-quiet-init
+enforces this for runtime shell scripts so diagnostics reach the caller's
+original stderr instead of the quiet log.
+
 ## Log Selection
 
 Callers may set `LARCH_QUIET_LOG_FILE` or `LARCH_QUIET_LOG` to choose the log

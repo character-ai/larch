@@ -49,7 +49,7 @@ source "$SCRIPT_DIR/../../../scripts/lib-quiet.sh"
 larch_quiet_init
 
 usage() {
-  cat >&2 <<'USAGE'
+  while IFS= read -r line; do larch_err "$line"; done <<'USAGE'
 Usage: run-research-planner.sh --raw <path> --output <path>
 
   --raw <path>     Required. Path to the captured raw planner output (the orchestrator
@@ -80,7 +80,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     *)
       emit_kv REASON missing_arg
-      echo "Unknown argument: $1" >&2
+      larch_err "Unknown argument: $1"
       exit 2
       ;;
   esac
@@ -88,20 +88,20 @@ done
 
 if [[ -z "$RAW_PATH" || -z "$OUTPUT_PATH" ]]; then
   emit_kv REASON missing_arg
-  echo "Both --raw and --output are required." >&2
+  larch_err "Both --raw and --output are required."
   exit 2
 fi
 
 # --raw must exist and be readable; non-existence is treated as empty input.
 if [[ ! -f "$RAW_PATH" ]]; then
   emit_kv REASON empty_input
-  echo "Raw input file does not exist: $RAW_PATH" >&2
+  larch_err "Raw input file does not exist: $RAW_PATH"
   exit 1
 fi
 
 if [[ ! -s "$RAW_PATH" ]]; then
   emit_kv REASON empty_input
-  echo "Raw input file is empty: $RAW_PATH" >&2
+  larch_err "Raw input file is empty: $RAW_PATH"
   exit 1
 fi
 
@@ -109,7 +109,7 @@ fi
 OUTPUT_DIR="$(dirname -- "$OUTPUT_PATH")"
 if [[ ! -d "$OUTPUT_DIR" ]]; then
   emit_kv REASON bad_path
-  echo "Output directory does not exist: $OUTPUT_DIR" >&2
+  larch_err "Output directory does not exist: $OUTPUT_DIR"
   exit 2
 fi
 
@@ -143,7 +143,7 @@ SUBQUESTIONS=$(awk '
 if [[ -z "$SUBQUESTIONS" ]]; then
   # All lines dropped — could be empty input post-sanitize OR no question-shaped lines.
   emit_kv REASON count_below_minimum
-  echo "No question-shaped lines remained after sanitization (all lines dropped)." >&2
+  larch_err "No question-shaped lines remained after sanitization (all lines dropped)."
   exit 1
 fi
 
@@ -155,7 +155,7 @@ fi
 # Stdout invariant per the contract above: only `REASON=<token>` on failure; diagnostics → stderr.
 if printf '%s\n' "$SUBQUESTIONS" | grep -qF '||'; then
   emit_kv REASON delimiter_collision
-  echo "Subquestion line(s) contain the lane-delimiter literal '||', which would corrupt deep-mode lane assignments." >&2
+  larch_err "Subquestion line(s) contain the lane-delimiter literal '||', which would corrupt deep-mode lane assignments."
   exit 1
 fi
 
@@ -164,13 +164,13 @@ COUNT=$(printf '%s\n' "$SUBQUESTIONS" | wc -l | tr -d '[:space:]')
 
 if (( COUNT < 2 )); then
   emit_kv REASON count_below_minimum
-  echo "Only $COUNT question-shaped line(s) remained after sanitization (need 2-4)." >&2
+  larch_err "Only $COUNT question-shaped line(s) remained after sanitization (need 2-4)."
   exit 1
 fi
 
 if (( COUNT > 4 )); then
   emit_kv REASON count_above_maximum
-  echo "$COUNT question-shaped lines remained after sanitization (need 2-4)." >&2
+  larch_err "$COUNT question-shaped lines remained after sanitization (need 2-4)."
   exit 1
 fi
 

@@ -10,7 +10,7 @@ SHARED_DIR="$SCRIPT_DIR/../../shared/scripts"
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
 
-usage() { echo "Usage: tally-votes.sh --findings-file FILE --review-tmpdir DIR --cursor-available true|false --codex-available true|false --both-down true|false [--output-tally FILE --output-accepted FILE]" >&2; }
+usage() { larch_err "Usage: tally-votes.sh --findings-file FILE --review-tmpdir DIR --cursor-available true|false --codex-available true|false --both-down true|false [--output-tally FILE --output-accepted FILE]"; }
 
 FINDINGS_FILE=""
 REVIEW_TMPDIR=""
@@ -32,12 +32,12 @@ while [[ $# -gt 0 ]]; do
         --output-tally) OUTPUT_TALLY="${2:?--output-tally requires a value}"; shift 2 ;;
         --output-accepted) OUTPUT_ACCEPTED="${2:?--output-accepted requires a value}"; shift 2 ;;
         --help) usage; exit 0 ;;
-        *) echo "tally-votes.sh: unknown option: $1" >&2; usage; exit 2 ;;
+        *) larch_err "tally-votes.sh: unknown option: $1"; usage; exit 2 ;;
     esac
 done
 
-[[ -n "$FINDINGS_FILE" && -f "$FINDINGS_FILE" ]] || { echo "tally-votes.sh: --findings-file must name a file" >&2; exit 2; }
-[[ -n "$REVIEW_TMPDIR" ]] || { echo "tally-votes.sh: --review-tmpdir is required" >&2; exit 2; }
+[[ -n "$FINDINGS_FILE" && -f "$FINDINGS_FILE" ]] || { larch_err "tally-votes.sh: --findings-file must name a file"; exit 2; }
+[[ -n "$REVIEW_TMPDIR" ]] || { larch_err "tally-votes.sh: --review-tmpdir is required"; exit 2; }
 mkdir -p "$REVIEW_TMPDIR"
 OUTPUT_TALLY="${OUTPUT_TALLY:-$REVIEW_TMPDIR/review-tally.env}"
 OUTPUT_ACCEPTED="${OUTPUT_ACCEPTED:-$REVIEW_TMPDIR/accepted-findings.md}"

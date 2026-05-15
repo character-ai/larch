@@ -28,7 +28,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
 
-usage() { echo "Usage: gh-pr-body-update.sh --pr <number> --body-file <path> [--repo OWNER/REPO]" >&2; }
+usage() { larch_err "Usage: gh-pr-body-update.sh --pr <number> --body-file <path> [--repo OWNER/REPO]"; }
 
 PR=""
 BODY_FILE=""
@@ -39,19 +39,19 @@ while [[ $# -gt 0 ]]; do
         --body-file) BODY_FILE="${2:?--body-file requires a value}"; shift 2 ;;
         --repo) TARGET_REPO="${2:?--repo requires a value}"; shift 2 ;;
         --help) usage; exit 0 ;;
-        *) echo "Unknown option: $1" >&2; usage; exit 1 ;;
+        *) larch_err "Unknown option: $1"; usage; exit 1 ;;
     esac
 done
 
 if [[ -z "$PR" ]] || [[ -z "$BODY_FILE" ]]; then
-    echo "ERROR: --pr and --body-file are required" >&2
+    larch_err "ERROR: --pr and --body-file are required"
     usage; exit 1
 fi
 
 GH_REPO_ARGS=()
 if [[ -n "$TARGET_REPO" ]]; then
     if [[ ! "$TARGET_REPO" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; then
-        echo "ERROR: --repo must be OWNER/REPO using GitHub owner/repo characters" >&2
+        larch_err "ERROR: --repo must be OWNER/REPO using GitHub owner/repo characters"
         usage
         exit 1
     fi

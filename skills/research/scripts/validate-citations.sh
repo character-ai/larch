@@ -154,13 +154,13 @@ while [[ $# -gt 0 ]]; do
             sed -n '1,40p' "$0"
             exit 0 ;;
         *)
-            echo "validate-citations.sh: unknown argument: $1" >&2
+            larch_err "validate-citations.sh: unknown argument: $1"
             exit 2 ;;
     esac
 done
 
-[[ -n "$REPORT" ]] || { echo "validate-citations.sh: --report is required" >&2; exit 2; }
-[[ -n "$OUTPUT" ]] || { echo "validate-citations.sh: --output is required" >&2; exit 2; }
+[[ -n "$REPORT" ]] || { larch_err "validate-citations.sh: --report is required"; exit 2; }
+[[ -n "$OUTPUT" ]] || { larch_err "validate-citations.sh: --output is required"; exit 2; }
 
 # FINDING_5: validate optional numeric flags as positive integers. Without
 # this, `--max-claims foo` would abort the script under `set -u` mid-run with
@@ -171,7 +171,7 @@ done
 __vc_check_positive_int() {
     local name="$1" value="$2"
     if [[ ! "$value" =~ ^[0-9]+$ ]] || [[ "$value" -le 0 ]]; then
-        echo "validate-citations.sh: $name must be a positive integer (got: $value)" >&2
+        larch_err "validate-citations.sh: $name must be a positive integer (got: $value)"
         # Write a degraded sidecar pre-emptively so Step 3 splice still has a
         # consumer file, then exit 2 (programmer/operator error). The EXIT
         # trap will not run for exit 2 with no sidecar (sidecar exists by then).
@@ -191,19 +191,19 @@ __vc_check_positive_int "--max-claims" "$MAX_CLAIMS"
 # `sleep` accepts both int and fractional seconds on coreutils and macOS.
 case "$__VC_BUDGET_POLL_INTERVAL" in
     ''|*[!0-9.]*|.)
-        echo "validate-citations.sh: __VC_BUDGET_POLL_INTERVAL must be a positive number (got: $__VC_BUDGET_POLL_INTERVAL)" >&2
+        larch_err "validate-citations.sh: __VC_BUDGET_POLL_INTERVAL must be a positive number (got: $__VC_BUDGET_POLL_INTERVAL)"
         exit 2 ;;
     *.*.*)
-        echo "validate-citations.sh: __VC_BUDGET_POLL_INTERVAL must be a positive number (got: $__VC_BUDGET_POLL_INTERVAL)" >&2
+        larch_err "validate-citations.sh: __VC_BUDGET_POLL_INTERVAL must be a positive number (got: $__VC_BUDGET_POLL_INTERVAL)"
         exit 2 ;;
 esac
 case "$__VC_BUDGET_POLL_INTERVAL" in
     *[1-9]*) : ;;
     *)
-        echo "validate-citations.sh: __VC_BUDGET_POLL_INTERVAL must be a positive number (got: $__VC_BUDGET_POLL_INTERVAL)" >&2
+        larch_err "validate-citations.sh: __VC_BUDGET_POLL_INTERVAL must be a positive number (got: $__VC_BUDGET_POLL_INTERVAL)"
         exit 2 ;;
 esac
-[[ -n "$TMPDIR" ]] || { echo "validate-citations.sh: --tmpdir is required" >&2; exit 2; }
+[[ -n "$TMPDIR" ]] || { larch_err "validate-citations.sh: --tmpdir is required"; exit 2; }
 
 # ---------- helpers ----------
 
@@ -689,7 +689,7 @@ if [[ -n "$__VC_DRY_RUN" ]]; then
         printf 'EXTRACTED_DOIS=\n%s\n' "$DOIS"
         printf 'EXTRACTED_FILELINES=\n%s\n' "$FILELINES"
         printf 'CLAIMS_TRUNCATED=%s\n' "$CLAIMS_TRUNCATED"
-    } >&2
+    } | while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$line"; done
     emit_summary 0 0 0 0
     exit 0
 fi
@@ -728,7 +728,7 @@ case "$(uname -s 2>/dev/null)" in
         set -m 2>/dev/null || true
         case "$-" in
             *m*) : ;;  # job control active — normal path
-            *)   printf 'WARNING: validate-citations.sh: set -m failed; budget-exhaustion kill cannot guarantee orphan-curl cleanup\n' >&2 ;;
+            *)   larch_errf 'WARNING: validate-citations.sh: set -m failed; budget-exhaustion kill cannot guarantee orphan-curl cleanup\n' ;;
         esac
         ;;
 esac

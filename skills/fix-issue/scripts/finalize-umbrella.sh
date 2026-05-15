@@ -241,7 +241,7 @@ cmd_finalize() {
         rename_failed=$(echo "$rename_out" | awk -F= '/^FAILED=/ { v=$2 } END { print v }')
         if [[ "$rename_exit" -ne 0 ]] || [[ "$rename_failed" == "true" ]]; then
             # Best-effort: log on stderr but proceed to close.
-            echo "WARNING: title rename to [DONE] failed for umbrella #$issue (exit $rename_exit)" >&2
+            larch_err "WARNING: title rename to [DONE] failed for umbrella #$issue (exit $rename_exit)"
             renamed=false
         fi
         if [[ -z "$renamed" ]]; then

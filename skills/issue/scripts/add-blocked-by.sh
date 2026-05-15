@@ -85,7 +85,7 @@ BLOCKER_ID=""
 REPO=""
 
 usage() {
-    cat <<USAGE >&2
+    while IFS= read -r line; do larch_err "$line"; done <<USAGE
 Usage: add-blocked-by.sh --client-issue N --blocker-issue M [--blocker-id ID] [--repo OWNER/REPO]
 USAGE
 }
@@ -96,7 +96,7 @@ while [[ $# -gt 0 ]]; do
         --blocker-issue) BLOCKER="${2:?--blocker-issue requires a value}"; shift 2 ;;
         --blocker-id) BLOCKER_ID="${2:?--blocker-id requires a value}"; shift 2 ;;
         --repo) REPO="${2:?--repo requires a value}"; shift 2 ;;
-        *) echo "Unknown option: $1" >&2; usage; exit 1 ;;
+        *) larch_err "Unknown option: $1"; usage; exit 1 ;;
     esac
 done
 

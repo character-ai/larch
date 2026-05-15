@@ -30,12 +30,12 @@ MODE="write"
 if [[ "${1:-}" == "--check" ]]; then
   MODE="check"
 elif [[ -n "${1:-}" ]]; then
-  echo "Usage: $0 [--check]" >&2
+  larch_err "Usage: $0 [--check]"
   exit 2
 fi
 
 if [[ ! -f "$TEMPLATE" ]]; then
-  echo "Template not found: $TEMPLATE" >&2
+  larch_err "Template not found: $TEMPLATE"
   exit 2
 fi
 
@@ -131,9 +131,9 @@ awk -v heading="$SECTION_HEADING" '
 
 if [[ "$MODE" == "check" ]]; then
   if ! diff -u "$AGENT_FILE" "$TMP"; then
-    echo "" >&2
-    echo "agents/code-reviewer.md is out of sync with skills/shared/reviewer-templates.md." >&2
-    echo "Run: bash scripts/generate-code-reviewer-agent.sh" >&2
+    larch_err ""
+    larch_err "agents/code-reviewer.md is out of sync with skills/shared/reviewer-templates.md."
+    larch_err "Run: bash scripts/generate-code-reviewer-agent.sh"
     exit 1
   fi
   exit 0

@@ -29,7 +29,7 @@ larch_quiet_init
 
 CURRENT=$(git symbolic-ref --short HEAD 2>/dev/null || echo "")
 if [[ "$CURRENT" == "main" ]]; then
-    echo "git-sync-local-main.sh: refusing to update local 'main' while checked out on main" >&2
+    larch_err "git-sync-local-main.sh: refusing to update local 'main' while checked out on main"
     exit 1
 fi
 

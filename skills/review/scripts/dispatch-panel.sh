@@ -9,7 +9,7 @@ PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
 
-usage() { echo "Usage: dispatch-panel.sh --mode diff|description --review-tmpdir DIR --codex-available true|false --cursor-available true|false [--panel simple|hard] [context flags]" >&2; }
+usage() { larch_err "Usage: dispatch-panel.sh --mode diff|description --review-tmpdir DIR --codex-available true|false --cursor-available true|false [--panel simple|hard] [context flags]"; }
 
 MODE=""
 DIFF_FILE=""
@@ -47,7 +47,7 @@ while [[ $# -gt 0 ]]; do
         --session-env-path) SESSION_ENV_PATH="${2:?--session-env-path requires a value}"; shift 2 ;;
         --panel) PANEL="${2:?--panel requires a value}"; shift 2 ;;
         --help) usage; exit 0 ;;
-        *) echo "dispatch-panel.sh: unknown option: $1" >&2; usage; exit 2 ;;
+        *) larch_err "dispatch-panel.sh: unknown option: $1"; usage; exit 2 ;;
     esac
 done
 
@@ -55,11 +55,11 @@ done
 # can resolve the per-run ledger via the SESSION_ENV_PATH fallback.
 export SESSION_ENV_PATH
 
-[[ "$MODE" == "diff" || "$MODE" == "description" ]] || { echo "dispatch-panel.sh: --mode must be diff or description" >&2; exit 2; }
-[[ -n "$REVIEW_TMPDIR" ]] || { echo "dispatch-panel.sh: --review-tmpdir is required" >&2; exit 2; }
-[[ "$CODEX_AVAILABLE" == "true" || "$CODEX_AVAILABLE" == "false" ]] || { echo "dispatch-panel.sh: --codex-available must be true or false" >&2; exit 2; }
-[[ "$CURSOR_AVAILABLE" == "true" || "$CURSOR_AVAILABLE" == "false" ]] || { echo "dispatch-panel.sh: --cursor-available must be true or false" >&2; exit 2; }
-[[ "$PANEL" == "simple" || "$PANEL" == "hard" ]] || { echo "dispatch-panel.sh: --panel must be simple or hard" >&2; exit 2; }
+[[ "$MODE" == "diff" || "$MODE" == "description" ]] || { larch_err "dispatch-panel.sh: --mode must be diff or description"; exit 2; }
+[[ -n "$REVIEW_TMPDIR" ]] || { larch_err "dispatch-panel.sh: --review-tmpdir is required"; exit 2; }
+[[ "$CODEX_AVAILABLE" == "true" || "$CODEX_AVAILABLE" == "false" ]] || { larch_err "dispatch-panel.sh: --codex-available must be true or false"; exit 2; }
+[[ "$CURSOR_AVAILABLE" == "true" || "$CURSOR_AVAILABLE" == "false" ]] || { larch_err "dispatch-panel.sh: --cursor-available must be true or false"; exit 2; }
+[[ "$PANEL" == "simple" || "$PANEL" == "hard" ]] || { larch_err "dispatch-panel.sh: --panel must be simple or hard"; exit 2; }
 mkdir -p "$REVIEW_TMPDIR"
 
 manifest="$REVIEW_TMPDIR/panel-manifest.ndjson"

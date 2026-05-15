@@ -17,7 +17,7 @@ changed_only=false
 files=()
 
 fail_usage() {
-    echo "ERROR: $1" >&2
+    larch_err "ERROR: $1"
     exit 1
 }
 
@@ -59,7 +59,7 @@ changed_files() {
             git fetch --no-tags --prune origin "$GITHUB_BASE_REF" >/dev/null 2>&1 || true
         fi
         if ! git rev-parse --verify "origin/${GITHUB_BASE_REF}" >/dev/null 2>&1; then
-            echo "ERROR: cannot resolve origin/${GITHUB_BASE_REF} for --changed-only diff range" >&2
+            larch_err "ERROR: cannot resolve origin/${GITHUB_BASE_REF} for --changed-only diff range"
             return 2
         fi
         range="origin/${GITHUB_BASE_REF}...HEAD"
@@ -76,19 +76,19 @@ changed_files() {
             # In CI: fail closed instead of silently skipping. Outside
             # CI we keep the friendly no-op (developers may run
             # --changed-only locally without origin/main reachable).
-            echo "ERROR: origin/main unavailable in CI; refusing to silently skip Mermaid lint" >&2
+            larch_err "ERROR: origin/main unavailable in CI; refusing to silently skip Mermaid lint"
             return 2
         else
-            echo "INFO: origin/main unavailable; no changed Mermaid files linted" >&2
+            larch_err "INFO: origin/main unavailable; no changed Mermaid files linted"
             return 0
         fi
     fi
     if ! git diff --name-only --diff-filter=ACMR "$range" -- '*.md' 2>/dev/null; then
         if [ "$in_ci" = "true" ]; then
-            echo "ERROR: git diff $range failed in CI" >&2
+            larch_err "ERROR: git diff $range failed in CI"
             return 2
         fi
-        echo "INFO: git diff $range failed; no changed Mermaid files linted" >&2
+        larch_err "INFO: git diff $range failed; no changed Mermaid files linted"
         return 0
     fi
 }
@@ -120,7 +120,7 @@ fi
 }
 
 MMDC="$(resolve_mmdc)" || {
-    echo "ERROR: missing Mermaid CLI (install @mermaid-js/mermaid-cli or run npm install)" >&2
+    larch_err "ERROR: missing Mermaid CLI (install @mermaid-js/mermaid-cli or run npm install)"
     exit 2
 }
 
@@ -209,13 +209,13 @@ for path in "${files[@]}"; do
         input="$file_tmp/fence-$i.mmd"
         if [ "$supports_parse_only" = true ]; then
             if ! "$MMDC" --parseOnly -i "$input" >/dev/null; then
-                echo "ERROR: Mermaid parse failed: $path fence $i" >&2
+                larch_err "ERROR: Mermaid parse failed: $path fence $i"
                 failures=$((failures + 1))
             fi
         else
             output="$file_tmp/fence-$i.svg"
             if ! "$MMDC" "${MMDC_RENDER_ARGS[@]}" -i "$input" -o "$output" >/dev/null; then
-                echo "ERROR: Mermaid render failed: $path fence $i" >&2
+                larch_err "ERROR: Mermaid render failed: $path fence $i"
                 failures=$((failures + 1))
             fi
         fi

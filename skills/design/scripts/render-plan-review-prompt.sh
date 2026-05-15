@@ -15,7 +15,7 @@ VENDOR=""
 PLAN_FILE=""
 
 usage() {
-    cat >&2 <<'EOF'
+    while IFS= read -r line; do larch_err "$line"; done <<'EOF'
 Usage: render-plan-review-prompt.sh --archetype <arch|edge|innovation|pragmatic|requirements> --vendor <codex|cursor> --plan-file <path>
 EOF
 }
@@ -24,7 +24,7 @@ take_value() {
     local flag="$1"
     local value="${2:-}"
     if [[ -z "$value" || "$value" == --* ]]; then
-        echo "render-plan-review-prompt.sh: $flag requires a non-flag value" >&2
+        larch_err "render-plan-review-prompt.sh: $flag requires a non-flag value"
         exit 2
     fi
     printf '%s' "$value"
@@ -36,7 +36,7 @@ while [[ $# -gt 0 ]]; do
         --vendor) VENDOR="$(take_value --vendor "${2:-}")"; shift 2 ;;
         --plan-file) PLAN_FILE="$(take_value --plan-file "${2:-}")"; shift 2 ;;
         -h|--help) usage; exit 0 ;;
-        *) echo "render-plan-review-prompt.sh: unknown argument: $1" >&2; usage; exit 2 ;;
+        *) larch_err "render-plan-review-prompt.sh: unknown argument: $1"; usage; exit 2 ;;
     esac
 done
 
@@ -57,11 +57,11 @@ case "$ARCHETYPE" in
         full_role="You are a Requirements/Completeness reviewer. Verify that every stated goal, acceptance criterion, and constraint from the feature description is addressed in the plan — flag gaps where the plan is silent, drifts from the stated requirements, or fails to mention required testing or validation for new acceptance criteria."
         ;;
     "")
-        echo "render-plan-review-prompt.sh: --archetype is required" >&2
+        larch_err "render-plan-review-prompt.sh: --archetype is required"
         exit 2
         ;;
     *)
-        echo "render-plan-review-prompt.sh: invalid --archetype '$ARCHETYPE'" >&2
+        larch_err "render-plan-review-prompt.sh: invalid --archetype '$ARCHETYPE'"
         exit 2
         ;;
 esac
@@ -69,21 +69,21 @@ esac
 case "$VENDOR" in
     codex|cursor) ;;
     "")
-        echo "render-plan-review-prompt.sh: --vendor is required" >&2
+        larch_err "render-plan-review-prompt.sh: --vendor is required"
         exit 2
         ;;
     *)
-        echo "render-plan-review-prompt.sh: invalid --vendor '$VENDOR'" >&2
+        larch_err "render-plan-review-prompt.sh: invalid --vendor '$VENDOR'"
         exit 2
         ;;
 esac
 
 if [[ -z "$PLAN_FILE" ]]; then
-    echo "render-plan-review-prompt.sh: --plan-file is required" >&2
+    larch_err "render-plan-review-prompt.sh: --plan-file is required"
     exit 2
 fi
 if [[ ! -r "$PLAN_FILE" ]]; then
-    echo "render-plan-review-prompt.sh: --plan-file path is missing or unreadable: $PLAN_FILE" >&2
+    larch_err "render-plan-review-prompt.sh: --plan-file path is missing or unreadable: $PLAN_FILE"
     exit 2
 fi
 

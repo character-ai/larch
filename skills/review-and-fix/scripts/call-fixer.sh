@@ -10,7 +10,7 @@ source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
 
 usage() {
-    echo "Usage: call-fixer.sh --finding-file FILE --finding-id FINDING_N --review-tmpdir DIR [--mark-applied|--mark-skipped REASON]" >&2
+    larch_err "Usage: call-fixer.sh --finding-file FILE --finding-id FINDING_N --review-tmpdir DIR [--mark-applied|--mark-skipped REASON]"
 }
 
 FINDING_FILE=""
@@ -27,13 +27,13 @@ while [[ $# -gt 0 ]]; do
         --mark-applied) MARK_APPLIED=true; shift ;;
         --mark-skipped) MARK_SKIPPED_REASON="${2:?--mark-skipped requires a value}"; shift 2 ;;
         --help) usage; exit 0 ;;
-        *) echo "call-fixer.sh: unknown option: $1" >&2; usage; exit 2 ;;
+        *) larch_err "call-fixer.sh: unknown option: $1"; usage; exit 2 ;;
     esac
 done
 
-[[ -f "$FINDING_FILE" ]] || { echo "call-fixer.sh: --finding-file must name a file" >&2; exit 2; }
-[[ "$FINDING_ID" =~ ^FINDING_[0-9]+$ ]] || { echo "call-fixer.sh: --finding-id must look like FINDING_N" >&2; exit 2; }
-[[ -n "$REVIEW_TMPDIR" ]] || { echo "call-fixer.sh: --review-tmpdir is required" >&2; exit 2; }
+[[ -f "$FINDING_FILE" ]] || { larch_err "call-fixer.sh: --finding-file must name a file"; exit 2; }
+[[ "$FINDING_ID" =~ ^FINDING_[0-9]+$ ]] || { larch_err "call-fixer.sh: --finding-id must look like FINDING_N"; exit 2; }
+[[ -n "$REVIEW_TMPDIR" ]] || { larch_err "call-fixer.sh: --review-tmpdir is required"; exit 2; }
 mkdir -p "$REVIEW_TMPDIR"
 
 status_file="$REVIEW_TMPDIR/review-and-fix-status.env"
@@ -56,7 +56,7 @@ block=$(awk -v id="$FINDING_ID" '
     /^### FINDING_[0-9]+:/ && in_block { exit }
     in_block { print }
 ' "$FINDING_FILE")
-[[ -n "$block" ]] || { echo "call-fixer.sh: finding id not found: $FINDING_ID" >&2; exit 2; }
+[[ -n "$block" ]] || { larch_err "call-fixer.sh: finding id not found: $FINDING_ID"; exit 2; }
 
 field_value() {
     local label="$1"

@@ -39,24 +39,24 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --issue) ISSUE_NUMBER="${2:?--issue requires a value}"; shift 2 ;;
         --output) OUTPUT_PATH="${2:?--output requires a value}"; shift 2 ;;
-        *) echo "Unknown option: $1" >&2; exit 1 ;;
+        *) larch_err "Unknown option: $1"; exit 1 ;;
     esac
 done
 
 if [[ -z "$ISSUE_NUMBER" ]] || [[ -z "$OUTPUT_PATH" ]]; then
-    echo "Usage: get-issue-details.sh --issue NUMBER --output PATH" >&2
+    larch_err "Usage: get-issue-details.sh --issue NUMBER --output PATH"
     exit 1
 fi
 
 # Resolve repo identity
 REPO=$("$RESOLVE_REPO" 2>/dev/null) || {
-    echo "ERROR=Failed to resolve repository name" >&2
+    larch_err "ERROR=Failed to resolve repository name"
     exit 1
 }
 
 # Fetch issue metadata
 ISSUE_JSON=$(gh issue view "$ISSUE_NUMBER" --repo "$REPO" --json title,body,labels,createdAt 2>/dev/null) || {
-    echo "ERROR=Failed to fetch issue #$ISSUE_NUMBER" >&2
+    larch_err "ERROR=Failed to fetch issue #$ISSUE_NUMBER"
     exit 1
 }
 
@@ -67,7 +67,7 @@ CREATED=$(echo "$ISSUE_JSON" | jq -r '.createdAt // "unknown"')
 
 # Fetch all comments (paginated)
 COMMENTS=$(gh api --paginate --slurp "repos/${REPO}/issues/${ISSUE_NUMBER}/comments" 2>/dev/null | jq 'add // []') || {
-    echo "ERROR=Failed to fetch comments for issue #$ISSUE_NUMBER" >&2
+    larch_err "ERROR=Failed to fetch comments for issue #$ISSUE_NUMBER"
     exit 1
 }
 

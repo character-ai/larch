@@ -15,7 +15,7 @@ if [[ -z "$RESOLVED" ]]; then
 fi
 
 if [[ -z "$RESOLVED" || ! "$RESOLVED" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; then
-    echo "ERROR=could not resolve repo (gh repo view + git remote both failed)" >&2
+    larch_err "ERROR=could not resolve repo (gh repo view + git remote both failed)"
     exit 1
 fi
 

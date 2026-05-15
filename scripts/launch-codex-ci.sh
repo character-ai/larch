@@ -21,11 +21,11 @@ TIMEOUT="1800"
 TIMING_TASK_KIND="codex-ci-fix"
 
 usage() {
-    echo "Usage: launch-codex-ci.sh --role fix|resolve-conflict|bump-classify|changelog-draft --output PATH --run-id ID --repo OWNER/REPO [--plan-file PATH] [--timeout SECONDS]" >&2
+    larch_err "Usage: launch-codex-ci.sh --role fix|resolve-conflict|bump-classify|changelog-draft --output PATH --run-id ID --repo OWNER/REPO [--plan-file PATH] [--timeout SECONDS]"
 }
 
 die() {
-    echo "launch-codex-ci.sh: $1" >&2
+    larch_err "launch-codex-ci.sh: $1"
     usage
     exit 2
 }

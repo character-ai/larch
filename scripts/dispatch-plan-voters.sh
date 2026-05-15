@@ -10,7 +10,7 @@ source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
 
 usage() {
-    echo "Usage: dispatch-plan-voters.sh --ballot-file FILE --design-tmpdir DIR --codex-available true|false --cursor-available true|false [--session-env-path FILE]" >&2
+    larch_err "Usage: dispatch-plan-voters.sh --ballot-file FILE --design-tmpdir DIR --codex-available true|false --cursor-available true|false [--session-env-path FILE]"
 }
 
 BALLOT_FILE=""
@@ -26,18 +26,18 @@ while [[ $# -gt 0 ]]; do
         --codex-available) CODEX_AVAILABLE="${2:?--codex-available requires a value}"; shift 2 ;;
         --cursor-available) CURSOR_AVAILABLE="${2:?--cursor-available requires a value}"; shift 2 ;;
         --session-env-path)
-            [[ $# -ge 2 ]] || { echo "dispatch-plan-voters.sh: --session-env-path requires a value" >&2; exit 2; }
+            [[ $# -ge 2 ]] || { larch_err "dispatch-plan-voters.sh: --session-env-path requires a value"; exit 2; }
             SESSION_ENV_PATH="$2"; shift 2 ;;
         --help) usage; exit 0 ;;
-        *) echo "dispatch-plan-voters.sh: unknown option: $1" >&2; usage; exit 2 ;;
+        *) larch_err "dispatch-plan-voters.sh: unknown option: $1"; usage; exit 2 ;;
     esac
 done
 
-[[ -n "$BALLOT_FILE" ]] || { echo "dispatch-plan-voters.sh: --ballot-file is required" >&2; exit 2; }
-[[ -f "$BALLOT_FILE" ]] || { echo "dispatch-plan-voters.sh: ballot file not found: $BALLOT_FILE" >&2; exit 2; }
-[[ -n "$DESIGN_TMPDIR" ]] || { echo "dispatch-plan-voters.sh: --design-tmpdir is required" >&2; exit 2; }
-[[ "$CODEX_AVAILABLE" == "true" || "$CODEX_AVAILABLE" == "false" ]] || { echo "dispatch-plan-voters.sh: --codex-available must be true or false" >&2; exit 2; }
-[[ "$CURSOR_AVAILABLE" == "true" || "$CURSOR_AVAILABLE" == "false" ]] || { echo "dispatch-plan-voters.sh: --cursor-available must be true or false" >&2; exit 2; }
+[[ -n "$BALLOT_FILE" ]] || { larch_err "dispatch-plan-voters.sh: --ballot-file is required"; exit 2; }
+[[ -f "$BALLOT_FILE" ]] || { larch_err "dispatch-plan-voters.sh: ballot file not found: $BALLOT_FILE"; exit 2; }
+[[ -n "$DESIGN_TMPDIR" ]] || { larch_err "dispatch-plan-voters.sh: --design-tmpdir is required"; exit 2; }
+[[ "$CODEX_AVAILABLE" == "true" || "$CODEX_AVAILABLE" == "false" ]] || { larch_err "dispatch-plan-voters.sh: --codex-available must be true or false"; exit 2; }
+[[ "$CURSOR_AVAILABLE" == "true" || "$CURSOR_AVAILABLE" == "false" ]] || { larch_err "dispatch-plan-voters.sh: --cursor-available must be true or false"; exit 2; }
 mkdir -p "$DESIGN_TMPDIR"
 
 RUN_EXTERNAL_AGENT="$PLUGIN_ROOT/scripts/run-external-agent.sh"
@@ -48,7 +48,7 @@ CURSOR_AUTH_FLAGS="$PLUGIN_ROOT/scripts/cursor-auth-flags.sh"
 CURSOR_WRAP_PROMPT="$PLUGIN_ROOT/scripts/cursor-wrap-prompt.sh"
 
 if [[ ! -x "$RUN_EXTERNAL_AGENT" ]]; then
-    echo "dispatch-plan-voters.sh: required wrapper missing or not executable: $RUN_EXTERNAL_AGENT" >&2
+    larch_err "dispatch-plan-voters.sh: required wrapper missing or not executable: $RUN_EXTERNAL_AGENT"
     emit_kv VOTER_2_PATH ""
     emit_kv VOTER_3_PATH ""
     emit_kv VOTER_2_STATUS fallback
@@ -56,10 +56,10 @@ if [[ ! -x "$RUN_EXTERNAL_AGENT" ]]; then
     emit_kv DISPATCH_OK false
     exit 2
 fi
-[[ -x "$WAIT_FOR_REVIEWERS" ]] || { echo "dispatch-plan-voters.sh: required wait helper missing or not executable: $WAIT_FOR_REVIEWERS" >&2; exit 2; }
-[[ -x "$AGENT_MODEL_ARGS" ]] || { echo "dispatch-plan-voters.sh: required model helper missing or not executable: $AGENT_MODEL_ARGS" >&2; exit 2; }
-[[ -x "$CURSOR_AUTH_FLAGS" ]] || { echo "dispatch-plan-voters.sh: required cursor auth helper missing or not executable: $CURSOR_AUTH_FLAGS" >&2; exit 2; }
-[[ -x "$CURSOR_WRAP_PROMPT" ]] || { echo "dispatch-plan-voters.sh: required cursor prompt helper missing or not executable: $CURSOR_WRAP_PROMPT" >&2; exit 2; }
+[[ -x "$WAIT_FOR_REVIEWERS" ]] || { larch_err "dispatch-plan-voters.sh: required wait helper missing or not executable: $WAIT_FOR_REVIEWERS"; exit 2; }
+[[ -x "$AGENT_MODEL_ARGS" ]] || { larch_err "dispatch-plan-voters.sh: required model helper missing or not executable: $AGENT_MODEL_ARGS"; exit 2; }
+[[ -x "$CURSOR_AUTH_FLAGS" ]] || { larch_err "dispatch-plan-voters.sh: required cursor auth helper missing or not executable: $CURSOR_AUTH_FLAGS"; exit 2; }
+[[ -x "$CURSOR_WRAP_PROMPT" ]] || { larch_err "dispatch-plan-voters.sh: required cursor prompt helper missing or not executable: $CURSOR_WRAP_PROMPT"; exit 2; }
 
 TEMP_PROMPTS=()
 PIDS=()
@@ -107,7 +107,7 @@ append_launch_failure() {
 make_prompt_file() {
     local tool="$1" prompt_file
     prompt_file=$(mktemp "$DESIGN_TMPDIR/${tool}-plan-voter-prompt.XXXXXX") || {
-        echo "dispatch-plan-voters.sh: failed to create prompt file" >&2
+        larch_err "dispatch-plan-voters.sh: failed to create prompt file"
         exit 2
     }
     TEMP_PROMPTS+=("$prompt_file")

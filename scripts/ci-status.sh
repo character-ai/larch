@@ -31,7 +31,7 @@ FAILED_RUN_ID=""
 # Ensure output is always emitted, even on unexpected errors
 trap 'emit_kv CI_STATUS "$CI_STATUS"; emit_kv BEHIND_COUNT "$BEHIND_COUNT"; emit_kv FAILED_RUN_ID "$FAILED_RUN_ID"' EXIT
 
-usage() { echo "Usage: ci-status.sh --pr NUMBER --repo OWNER/REPO" >&2; }
+usage() { larch_err "Usage: ci-status.sh --pr NUMBER --repo OWNER/REPO"; }
 
 PR_NUMBER=""
 REPO=""
@@ -46,23 +46,23 @@ while [[ $# -gt 0 ]]; do
         --base-ref) BASE_REF="${2:?--base-ref requires a value}"; shift 2 ;;
         --empty-checks-grace) EMPTY_CHECKS_GRACE="${2:?--empty-checks-grace requires a value}"; shift 2 ;;
         --help) usage; exit 0 ;;
-        *) echo "Unknown option: $1" >&2; usage; CI_STATUS="error"; exit 0 ;;
+        *) larch_err "Unknown option: $1"; usage; CI_STATUS="error"; exit 0 ;;
     esac
 done
 
 if [[ -z "$PR_NUMBER" ]] || [[ -z "$REPO" ]]; then
-    echo "ERROR: --pr and --repo are required" >&2
+    larch_err "ERROR: --pr and --repo are required"
     usage; CI_STATUS="error"; exit 0
 fi
 
 if ! [[ "$EMPTY_CHECKS_GRACE" =~ ^[0-9]+$ ]]; then
-    echo "ERROR: --empty-checks-grace must be a non-negative integer" >&2
+    larch_err "ERROR: --empty-checks-grace must be a non-negative integer"
     CI_STATUS="error"
     exit 0
 fi
 
 if [[ ! "$BASE_REMOTE" =~ ^[A-Za-z0-9._/-]+$ ]] || [[ ! "$BASE_REF" =~ ^[A-Za-z0-9._/-]+$ ]]; then
-    echo "ERROR: --base-remote/--base-ref contain unsupported characters" >&2
+    larch_err "ERROR: --base-remote/--base-ref contain unsupported characters"
     CI_STATUS="error"
     exit 0
 fi
@@ -80,7 +80,7 @@ fi
 if ! git fetch "$BASE_REMOTE" "$BASE_REF" --quiet 2>/dev/null; then
     # Fetch failed — cannot reliably compute BEHIND_COUNT.
     # Force pending status so the caller retries instead of trusting stale refs.
-    echo "⚠ git fetch $BASE_REMOTE $BASE_REF failed — reporting pending to force retry" >&2
+    larch_err "⚠ git fetch $BASE_REMOTE $BASE_REF failed — reporting pending to force retry"
     CI_STATUS="pending"
     BEHIND_COUNT="0"
     exit 0

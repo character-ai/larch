@@ -22,7 +22,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
 
-usage() { echo "Usage: cleanup-tmpdir.sh --dir <path>" >&2; }
+usage() { larch_err "Usage: cleanup-tmpdir.sh --dir <path>"; }
 
 cache_sessions_root() {
     printf '%s/larch/sessions' "${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}"
@@ -44,19 +44,19 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --dir) DIR="${2:?--dir requires a value}"; shift 2 ;;
         --help) usage; exit 0 ;;
-        -*) echo "Unknown option: $1" >&2; usage; exit 1 ;;
+        -*) larch_err "Unknown option: $1"; usage; exit 1 ;;
         *) DIR="$1"; shift ;;
     esac
 done
 
 if [[ -z "$DIR" ]]; then
-    echo "ERROR: --dir is required and must be non-empty" >&2
+    larch_err "ERROR: --dir is required and must be non-empty"
     exit 1
 fi
 
 # Validate path is under an accepted larch temp root.
 if ! is_allowed_tmpdir "$DIR"; then
-    echo "ERROR: --dir must be under /tmp/, /private/tmp/, /var/folders/, or $(cache_sessions_root)/ (got: $DIR)" >&2
+    larch_err "ERROR: --dir must be under /tmp/, /private/tmp/, /var/folders/, or $(cache_sessions_root)/ (got: $DIR)"
     exit 1
 fi
 

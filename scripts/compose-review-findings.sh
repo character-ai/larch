@@ -16,7 +16,7 @@ ISSUE=""
 OUTPUT=""
 
 usage() {
-    cat <<'USAGE' >&2
+    while IFS= read -r line; do larch_err "$line"; done <<'USAGE'
 Usage: compose-review-findings.sh \
   --design-artifacts-dir DIR \
   --implement-tmpdir DIR \

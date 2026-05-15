@@ -9,7 +9,7 @@ PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
 
-usage() { echo "Usage: log-phase.sh --run-id ID --batch SLUG --action write|append --payload-file FILE [--log-root DIR]" >&2; }
+usage() { larch_err "Usage: log-phase.sh --run-id ID --batch SLUG --action write|append --payload-file FILE [--log-root DIR]"; }
 
 RUN_ID=""
 BATCH=""
@@ -25,17 +25,17 @@ while [[ $# -gt 0 ]]; do
         --payload-file) PAYLOAD_FILE="${2:?--payload-file requires a value}"; shift 2 ;;
         --log-root) LOG_ROOT="${2:?--log-root requires a value}"; shift 2 ;;
         --help) usage; exit 0 ;;
-        *) echo "log-phase.sh: unknown option: $1" >&2; usage; exit 2 ;;
+        *) larch_err "log-phase.sh: unknown option: $1"; usage; exit 2 ;;
     esac
 done
 
 [[ -n "$RUN_ID" && -n "$BATCH" && -n "$ACTION" && -n "$PAYLOAD_FILE" ]] || { usage; exit 2; }
-[[ "$ACTION" == "write" || "$ACTION" == "append" ]] || { echo "log-phase.sh: --action must be write or append" >&2; exit 2; }
-[[ -f "$PAYLOAD_FILE" ]] || { echo "log-phase.sh: --payload-file must name a file" >&2; exit 2; }
+[[ "$ACTION" == "write" || "$ACTION" == "append" ]] || { larch_err "log-phase.sh: --action must be write or append"; exit 2; }
+[[ -f "$PAYLOAD_FILE" ]] || { larch_err "log-phase.sh: --payload-file must name a file"; exit 2; }
 
 case "$BATCH" in
     review-context|review-panel-manifest|review-findings|review-tally|review-round-summary) ;;
-    *) echo "log-phase.sh: unregistered review batch: $BATCH" >&2; exit 2 ;;
+    *) larch_err "log-phase.sh: unregistered review batch: $BATCH"; exit 2 ;;
 esac
 
 args=(--skill review --run-id "$RUN_ID" --batch "$BATCH")

@@ -10,7 +10,7 @@ source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
 
 usage() {
-    echo "Usage: review-core.sh --mode diff|description --output-dir DIR --codex-available true|false --cursor-available true|false [context flags]" >&2
+    larch_err "Usage: review-core.sh --mode diff|description --output-dir DIR --codex-available true|false --cursor-available true|false [context flags]"
 }
 
 MODE=""
@@ -45,16 +45,16 @@ while [[ $# -gt 0 ]]; do
         --run-id) RUN_ID="${2:?--run-id requires a value}"; shift 2 ;;
         --round-num) ROUND_NUM="${2:?--round-num requires a value}"; shift 2 ;;
         --help) usage; exit 0 ;;
-        *) echo "review-core.sh: unknown option: $1" >&2; usage; exit 2 ;;
+        *) larch_err "review-core.sh: unknown option: $1"; usage; exit 2 ;;
     esac
 done
 
-[[ "$MODE" == "diff" || "$MODE" == "description" ]] || { echo "review-core.sh: --mode must be diff or description" >&2; exit 2; }
-[[ -n "$REVIEW_TMPDIR" ]] || { echo "review-core.sh: --output-dir is required" >&2; exit 2; }
-[[ "$CODEX_AVAILABLE" == "true" || "$CODEX_AVAILABLE" == "false" ]] || { echo "review-core.sh: --codex-available must be true or false" >&2; exit 2; }
-[[ "$CURSOR_AVAILABLE" == "true" || "$CURSOR_AVAILABLE" == "false" ]] || { echo "review-core.sh: --cursor-available must be true or false" >&2; exit 2; }
-[[ "$PANEL" == "simple" || "$PANEL" == "hard" ]] || { echo "review-core.sh: --panel must be simple or hard" >&2; exit 2; }
-case "$ROUND_NUM" in ''|*[!0-9]*) echo "review-core.sh: --round-num must be a positive integer" >&2; exit 2 ;; esac
+[[ "$MODE" == "diff" || "$MODE" == "description" ]] || { larch_err "review-core.sh: --mode must be diff or description"; exit 2; }
+[[ -n "$REVIEW_TMPDIR" ]] || { larch_err "review-core.sh: --output-dir is required"; exit 2; }
+[[ "$CODEX_AVAILABLE" == "true" || "$CODEX_AVAILABLE" == "false" ]] || { larch_err "review-core.sh: --codex-available must be true or false"; exit 2; }
+[[ "$CURSOR_AVAILABLE" == "true" || "$CURSOR_AVAILABLE" == "false" ]] || { larch_err "review-core.sh: --cursor-available must be true or false"; exit 2; }
+[[ "$PANEL" == "simple" || "$PANEL" == "hard" ]] || { larch_err "review-core.sh: --panel must be simple or hard"; exit 2; }
+case "$ROUND_NUM" in ''|*[!0-9]*) larch_err "review-core.sh: --round-num must be a positive integer"; exit 2 ;; esac
 mkdir -p "$REVIEW_TMPDIR"
 
 : "$RUN_ID"

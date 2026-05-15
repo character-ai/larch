@@ -95,7 +95,7 @@ while [[ $# -gt 0 ]]; do
         --keep-on-conflict) KEEP_ON_CONFLICT=true; shift ;;
         --base-remote) BASE_REMOTE="${2:?--base-remote requires a value}"; shift 2 ;;
         --base-ref) BASE_REF="${2:?--base-ref requires a value}"; shift 2 ;;
-        *) echo "Unknown option: $1" >&2; exit 1 ;;
+        *) larch_err "Unknown option: $1"; exit 1 ;;
     esac
 done
 

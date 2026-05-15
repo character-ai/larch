@@ -66,7 +66,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
 
-usage() { echo "Usage: ci-wait.sh --pr NUMBER --repo OWNER/REPO [--rebase-count N] [--fix-attempts N] [--iteration N] [--timeout SECONDS] [--output-file PATH] [--base-remote NAME] [--base-ref BRANCH] [--empty-checks-grace SECONDS]" >&2; }
+usage() { larch_err "Usage: ci-wait.sh --pr NUMBER --repo OWNER/REPO [--rebase-count N] [--fix-attempts N] [--iteration N] [--timeout SECONDS] [--output-file PATH] [--base-remote NAME] [--base-ref BRANCH] [--empty-checks-grace SECONDS]"; }
 
 # --- Defaults ---
 PR_NUMBER=""
@@ -94,12 +94,12 @@ while [[ $# -gt 0 ]]; do
         --base-ref) BASE_REF="${2:?--base-ref requires a value}"; shift 2 ;;
         --empty-checks-grace) EMPTY_CHECKS_GRACE="${2:?--empty-checks-grace requires a value}"; shift 2 ;;
         --help) usage; exit 0 ;;
-        *) echo "Unknown option: $1" >&2; usage; exit 1 ;;
+        *) larch_err "Unknown option: $1"; usage; exit 1 ;;
     esac
 done
 
 if [[ -z "$PR_NUMBER" ]] || [[ -z "$REPO" ]]; then
-    echo "ERROR: --pr and --repo are required" >&2
+    larch_err "ERROR: --pr and --repo are required"
     usage; exit 1
 fi
 
@@ -107,13 +107,13 @@ fi
 for var_name in REBASE_COUNT FIX_ATTEMPTS ITERATION TIMEOUT EMPTY_CHECKS_GRACE; do
     val="${!var_name}"
     if ! [[ "$val" =~ ^[0-9]+$ ]]; then
-        echo "ERROR: --$(echo "$var_name" | tr '_' '-' | tr '[:upper:]' '[:lower:]') must be a non-negative integer, got: $val" >&2
+        larch_err "ERROR: --$(echo "$var_name" | tr '_' '-' | tr '[:upper:]' '[:lower:]') must be a non-negative integer, got: $val"
         exit 1
     fi
 done
 
 if [[ ! "$BASE_REMOTE" =~ ^[A-Za-z0-9._/-]+$ ]] || [[ ! "$BASE_REF" =~ ^[A-Za-z0-9._/-]+$ ]]; then
-    echo "ERROR: --base-remote/--base-ref contain unsupported characters" >&2
+    larch_err "ERROR: --base-remote/--base-ref contain unsupported characters"
     exit 1
 fi
 
@@ -180,14 +180,14 @@ MAX_POLLS=$(( (TIMEOUT + 9) / 10 ))
 # Ensure at least one poll even for very small timeouts.
 [ "$MAX_POLLS" -ge 1 ] || MAX_POLLS=1
 
-printf "⏳ CI: waiting" >&2
+larch_errf "⏳ CI: waiting"
 
 while true; do
     # Poll-count timeout (suspend-resilient)
     if [[ $checks -ge $MAX_POLLS ]]; then
         ACTION="bail"
         BAIL_REASON="Poll budget (${MAX_POLLS} polls / ${TIMEOUT}s) exhausted"
-        printf "\n⚠ CI wait timed out after %d polls (%ds budget, %ds elapsed)\n" "$checks" "$TIMEOUT" "$SECONDS" >&2
+        larch_errf "\n⚠ CI wait timed out after %d polls (%ds budget, %ds elapsed)\n" "$checks" "$TIMEOUT" "$SECONDS"
         exit 0
     fi
 
@@ -203,7 +203,7 @@ while true; do
         if [[ "$ci_failures" -ge 3 ]]; then
             ACTION="bail"
             BAIL_REASON="ci-status.sh returned no valid output 3 times consecutively"
-            printf "\n❌ ci-status.sh failed repeatedly\n" >&2
+            larch_errf "\n❌ ci-status.sh failed repeatedly\n"
             exit 0
         fi
         CI_STATUS="pending"
@@ -218,7 +218,7 @@ while true; do
     if [[ "$CI_STATUS" == "NO_CHECKS" ]]; then
         ACTION="bail"
         BAIL_REASON="No CI checks observed after ${EMPTY_CHECKS_GRACE}s grace"
-        printf "\n⚠ CI produced no checks after %ds grace\n" "$EMPTY_CHECKS_GRACE" >&2
+        larch_errf "\n⚠ CI produced no checks after %ds grace\n" "$EMPTY_CHECKS_GRACE"
         exit 0
     fi
 
@@ -234,7 +234,7 @@ while true; do
     if [[ "$DECIDE_EXIT" -ne 0 ]]; then
         ACTION="bail"
         BAIL_REASON="ci-decide.sh exited with error (code $DECIDE_EXIT)"
-        printf "\n❌ ci-decide.sh failed (exit %d)\n" "$DECIDE_EXIT" >&2
+        larch_errf "\n❌ ci-decide.sh failed (exit %d)\n" "$DECIDE_EXIT"
         exit 0
     fi
 
@@ -245,15 +245,15 @@ while true; do
 
     # 3. If not wait, stop and return
     if [[ "$ACTION" != "wait" ]]; then
-        printf "\n" >&2
+        larch_errf "\n"
         if [[ "$ACTION" == "merge" ]]; then
-            printf "✓ CI passed (%ds, %d polls)\n" "$SECONDS" "$checks" >&2
+            larch_errf "✓ CI passed (%ds, %d polls)\n" "$SECONDS" "$checks"
         elif [[ "$ACTION" == "already_merged" ]]; then
-            printf "✓ PR already merged (%ds)\n" "$SECONDS" >&2
+            larch_errf "✓ PR already merged (%ds)\n" "$SECONDS"
         elif [[ "$ACTION" == "bail" ]]; then
-            printf "⚠ Bailing: %s (%ds, %d polls)\n" "$BAIL_REASON" "$SECONDS" "$checks" >&2
+            larch_errf "⚠ Bailing: %s (%ds, %d polls)\n" "$BAIL_REASON" "$SECONDS" "$checks"
         else
-            printf "→ Action: %s (%ds, %d polls)\n" "$ACTION" "$SECONDS" "$checks" >&2
+            larch_errf "→ Action: %s (%ds, %d polls)\n" "$ACTION" "$SECONDS" "$checks"
         fi
         exit 0
     fi
@@ -264,11 +264,11 @@ while true; do
     # ci-decide.sh's iteration limit (50) guards against infinite rebase/fix loops.
     checks=$((checks + 1))
 
-    printf "." >&2
+    larch_errf "."
     # Print status line every 6 polls (~1 minute)
     if [[ $((checks % 6)) -eq 0 ]]; then
-        printf "\n⏳ CI: %dm elapsed, %d polls, status=%s\n" \
-            "$((SECONDS / 60))" "$checks" "$CI_STATUS" >&2
+        larch_errf "\n⏳ CI: %dm elapsed, %d polls, status=%s\n" \
+            "$((SECONDS / 60))" "$checks" "$CI_STATUS"
     fi
 
     # Detect laptop suspend: measure only the sleep window. If sleep ran far
@@ -278,7 +278,7 @@ while true; do
     sleep 10
     iter_delta=$(( $(date +%s) - iter_start ))
     if [[ $iter_delta -gt 60 ]]; then
-        printf "\n⚠ suspend detected — iteration took %ds, not counting toward poll budget\n" "$iter_delta" >&2
+        larch_errf "\n⚠ suspend detected — iteration took %ds, not counting toward poll budget\n" "$iter_delta"
         checks=$((checks - 1))
     fi
 done

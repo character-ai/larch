@@ -28,23 +28,23 @@ source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
 
 # --- Parse arguments ---
-usage() { echo "Usage: wait-for-reviewers.sh [--timeout SECONDS] <sentinel.done> [sentinel2.done ...]" >&2; }
+usage() { larch_err "Usage: wait-for-reviewers.sh [--timeout SECONDS] <sentinel.done> [sentinel2.done ...]"; }
 
 TIMEOUT=1860
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --timeout) TIMEOUT="${2:?--timeout requires a value}"; shift 2 ;;
         --help) usage; exit 0 ;;
-        -*) echo "Unknown option: $1" >&2; usage; exit 1 ;;
+        -*) larch_err "Unknown option: $1"; usage; exit 1 ;;
         *) break ;;
     esac
 done
 
 case "$TIMEOUT" in
-    ''|*[!0-9]*) echo "Error: --timeout value must be a positive integer, got '$TIMEOUT'" >&2; exit 1 ;;
+    ''|*[!0-9]*) larch_err "Error: --timeout value must be a positive integer, got '$TIMEOUT'"; exit 1 ;;
 esac
 if (( 10#$TIMEOUT < 1 )); then
-    echo "Error: --timeout value must be a positive integer, got '$TIMEOUT'" >&2
+    larch_err "Error: --timeout value must be a positive integer, got '$TIMEOUT'"
     exit 1
 fi
 TIMEOUT=$((10#$TIMEOUT))
@@ -55,14 +55,14 @@ TIMEOUT=$((10#$TIMEOUT))
 # delay per probe. Accepts integer or decimal seconds.
 WAIT_POLL_INTERVAL="${WAIT_FOR_REVIEWERS_POLL_INTERVAL:-5}"
 case "$WAIT_POLL_INTERVAL" in
-    ''|*[!0-9.]*|.|0|0.|0.0|0.00|0.000) echo "Error: WAIT_FOR_REVIEWERS_POLL_INTERVAL must be a positive number, got '$WAIT_POLL_INTERVAL'" >&2; exit 1 ;;
+    ''|*[!0-9.]*|.|0|0.|0.0|0.00|0.000) larch_err "Error: WAIT_FOR_REVIEWERS_POLL_INTERVAL must be a positive number, got '$WAIT_POLL_INTERVAL'"; exit 1 ;;
 esac
 case "$WAIT_POLL_INTERVAL" in
-    *.*.*) echo "Error: WAIT_FOR_REVIEWERS_POLL_INTERVAL must be a positive number, got '$WAIT_POLL_INTERVAL'" >&2; exit 1 ;;
+    *.*.*) larch_err "Error: WAIT_FOR_REVIEWERS_POLL_INTERVAL must be a positive number, got '$WAIT_POLL_INTERVAL'"; exit 1 ;;
 esac
 if [[ "$WAIT_POLL_INTERVAL" != *.* ]]; then
     if (( 10#$WAIT_POLL_INTERVAL < 1 )); then
-        echo "Error: WAIT_FOR_REVIEWERS_POLL_INTERVAL must be a positive number, got '$WAIT_POLL_INTERVAL'" >&2
+        larch_err "Error: WAIT_FOR_REVIEWERS_POLL_INTERVAL must be a positive number, got '$WAIT_POLL_INTERVAL'"
         exit 1
     fi
 fi
@@ -70,12 +70,12 @@ MAX_POLLS=$(awk -v t="$TIMEOUT" -v p="$WAIT_POLL_INTERVAL" 'BEGIN{print int((t +
 [ "${MAX_POLLS:-0}" -ge 1 ] 2>/dev/null || MAX_POLLS=1
 
 if [[ $# -eq 0 ]]; then
-    echo "ERROR: at least one sentinel file path is required" >&2
+    larch_err "ERROR: at least one sentinel file path is required"
     usage; exit 1
 fi
 
 TOTAL=$#
-MARKER_DIR=$(mktemp -d /tmp/wait-reviewers-XXXXXX) || { echo "fatal: mktemp failed" >&2; exit 1; }
+MARKER_DIR=$(mktemp -d /tmp/wait-reviewers-XXXXXX) || { larch_err "fatal: mktemp failed"; exit 1; }
 trap 'rm -rf "$MARKER_DIR"' EXIT
 
 # read_exit_code <sentinel-file> — read and validate the exit code from a sentinel file.
@@ -101,7 +101,7 @@ check_sentinels() {
             exit_code=$(read_exit_code "$sentinel")
             echo "$exit_code" > "$MARKER_DIR/$idx"
             found_count=$((found_count + 1))
-            printf "\n✓ %s: exit=%s\n" "$(basename "$sentinel" .done)" "$exit_code" >&2
+            larch_errf "\n✓ %s: exit=%s\n" "$(basename "$sentinel" .done)" "$exit_code"
         fi
     done
 }
@@ -119,7 +119,7 @@ check_sentinels "$@"
 while [ "$found_count" -lt "$TOTAL" ] && [ "$checks" -lt "$MAX_POLLS" ]; do
     iter_start=$(date +%s)
     # Print dot progress
-    printf "." >&2
+    larch_errf "."
     checks=$((checks + 1))
     # Print status line on every elapsed-minute boundary. Driven by $SECONDS so
     # the cadence is minute-based regardless of $WAIT_POLL_INTERVAL — at the
@@ -128,8 +128,8 @@ while [ "$found_count" -lt "$TOTAL" ] && [ "$checks" -lt "$MAX_POLLS" ]; do
     # long enough to cross a minute.
     elapsed_minute=$(( SECONDS / 60 ))
     if [ "$elapsed_minute" -ge 1 ] && [ "$elapsed_minute" != "$last_progress_minute" ]; then
-        printf "\n⏳ Waiting: %dm elapsed, %d checks, %d/%d done\n" \
-            "$elapsed_minute" "$checks" "$found_count" "$TOTAL" >&2
+        larch_errf "\n⏳ Waiting: %dm elapsed, %d checks, %d/%d done\n" \
+            "$elapsed_minute" "$checks" "$found_count" "$TOTAL"
         last_progress_minute="$elapsed_minute"
     fi
 
@@ -138,7 +138,7 @@ while [ "$found_count" -lt "$TOTAL" ] && [ "$checks" -lt "$MAX_POLLS" ]; do
     check_sentinels "$@"
     iter_delta=$(( $(date +%s) - iter_start ))
     if [ "$iter_delta" -gt 60 ]; then
-        printf "\n⚠ suspend detected — iteration took %ds, not counting toward poll budget\n" "$iter_delta" >&2
+        larch_errf "\n⚠ suspend detected — iteration took %ds, not counting toward poll budget\n" "$iter_delta"
         # Cap refunds at MAX_POLLS to prevent an infinite wait when the host is
         # so slow that *every* iteration exceeds 60s (e.g. heavy load, debugger).
         if [ "$suspend_refunds" -lt "$MAX_POLLS" ]; then
@@ -152,7 +152,7 @@ done
 ELAPSED=$SECONDS
 
 # --- Summary output (stdout, machine-parseable) ---
-printf "\n" >&2
+larch_errf "\n"
 idx=0
 timed_out=0
 for sentinel in "$@"; do
@@ -168,9 +168,9 @@ for sentinel in "$@"; do
 done
 
 if [ "$timed_out" -gt 0 ]; then
-    printf "⚠ %d/%d reviewer(s) timed out after %d seconds\n" "$timed_out" "$TOTAL" "$TIMEOUT" >&2
+    larch_errf "⚠ %d/%d reviewer(s) timed out after %d seconds\n" "$timed_out" "$TOTAL" "$TIMEOUT"
 else
-    printf "✓ All %d reviewer(s) completed in %ds\n" "$TOTAL" "$ELAPSED" >&2
+    larch_errf "✓ All %d reviewer(s) completed in %ds\n" "$TOTAL" "$ELAPSED"
 fi
 
 exit 0

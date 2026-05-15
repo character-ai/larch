@@ -23,12 +23,12 @@ MODE="write"
 if [[ "${1:-}" == "--check" ]]; then
   MODE="check"
 elif [[ -n "${1:-}" ]]; then
-  echo "Usage: $0 [--check]" >&2
+  larch_err "Usage: $0 [--check]"
   exit 2
 fi
 
 if [[ ! -f "$BASE" ]]; then
-  echo "Base prompt not found: $BASE" >&2
+  larch_err "Base prompt not found: $BASE"
   exit 2
 fi
 
@@ -70,15 +70,15 @@ sed \
   "$BASE" >>"$TMP"
 
 if grep -q 'TOOL_MODIFIED_HISTORY\|TOOL_COMMIT_STDERR' "$TMP"; then
-  echo "ERROR: unresolved placeholder in generated Cursor prompt" >&2
+  larch_err "ERROR: unresolved placeholder in generated Cursor prompt"
   exit 1
 fi
 
 if [[ "$MODE" == "check" ]]; then
   if ! diff -u "$AGENT_FILE" "$TMP"; then
-    echo "" >&2
-    echo "agents/cursor-implementer.md is out of sync with agents/_implementer-base.md." >&2
-    echo "Run: bash scripts/generate-cursor-implementer.sh" >&2
+    larch_err ""
+    larch_err "agents/cursor-implementer.md is out of sync with agents/_implementer-base.md."
+    larch_err "Run: bash scripts/generate-cursor-implementer.sh"
     exit 1
   fi
   exit 0

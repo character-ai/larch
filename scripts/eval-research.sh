@@ -111,7 +111,7 @@ larch_quiet_init
 require_value() {
   local flag="$1" argc="$2" next_val="${3:-}"
   if (( argc < 2 )) || [[ "$next_val" == --* ]]; then
-    printf 'eval-research: %s requires a value\n' "$flag" >&2
+    larch_errf 'eval-research: %s requires a value\n' "$flag"
     exit 2
   fi
 }
@@ -127,8 +127,8 @@ while [[ $# -gt 0 ]]; do
     --smoke-test) SMOKE_TEST="true"; shift ;;
     --help|-h) print_usage; exit 0 ;;
     *)
-      printf 'eval-research: unknown argument: %s\n' "$1" >&2
-      print_usage >&2
+      larch_errf 'eval-research: unknown argument: %s\n' "$1"
+      print_usage | while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$line"; done
       exit 2
       ;;
   esac
@@ -138,11 +138,11 @@ done
 # would otherwise abort the run mid-poll-loop under set -e with an opaque
 # "integer expression expected" error).
 if ! [[ "$TIMEOUT_SECONDS" =~ ^[0-9]+$ ]] || (( TIMEOUT_SECONDS < 1 )); then
-  printf 'eval-research: --timeout must be a positive integer (got: %s)\n' "$TIMEOUT_SECONDS" >&2
+  larch_errf 'eval-research: --timeout must be a positive integer (got: %s)\n' "$TIMEOUT_SECONDS"
   exit 2
 fi
 if ! [[ "$JUDGE_TIMEOUT_SECONDS" =~ ^[0-9]+$ ]] || (( JUDGE_TIMEOUT_SECONDS < 1 )); then
-  printf 'eval-research: --judge-timeout must be a positive integer (got: %s)\n' "$JUDGE_TIMEOUT_SECONDS" >&2
+  larch_errf 'eval-research: --judge-timeout must be a positive integer (got: %s)\n' "$JUDGE_TIMEOUT_SECONDS"
   exit 2
 fi
 
@@ -152,7 +152,7 @@ fi
 # using --smoke-test.
 require_tool() {
   command -v "$1" >/dev/null 2>&1 || {
-    printf 'eval-research: required tool missing: %s\n' "$1" >&2
+    larch_errf 'eval-research: required tool missing: %s\n' "$1"
     exit 3
   }
 }
@@ -166,7 +166,7 @@ fi
 # (OOS_1 from the plan-review panel — guards git show interpolation.)
 if [[ -n "$BASELINE_REF" ]]; then
   if ! [[ "$BASELINE_REF" =~ ^[0-9A-Za-z._/-]+$ ]]; then
-    printf 'eval-research: --baseline ref must match ^[0-9A-Za-z._/-]+$ (got: %s)\n' "$BASELINE_REF" >&2
+    larch_errf 'eval-research: --baseline ref must match ^[0-9A-Za-z._/-]+$ (got: %s)\n' "$BASELINE_REF"
     exit 2
   fi
 fi
@@ -225,7 +225,7 @@ parse_eval_set() {
 validate_eval_set() {
   local file="$1"
   if [[ ! -f "$file" ]]; then
-    printf 'eval-research: eval-set.md not found at %s\n' "$file" >&2
+    larch_errf 'eval-research: eval-set.md not found at %s\n' "$file"
     return 1
   fi
   local count=0
@@ -234,19 +234,19 @@ validate_eval_set() {
   local seen_ids=""
   while IFS=$'\t' read -r id cat prov kw q notes; do
     if [[ -z "$id" || -z "$cat" || -z "$prov" || -z "$kw" || -z "$q" || -z "$notes" ]]; then
-      printf 'eval-research: entry has missing field(s): id=%s cat=%s prov=%s\n' "$id" "$cat" "$prov" >&2
+      larch_errf 'eval-research: entry has missing field(s): id=%s cat=%s prov=%s\n' "$id" "$cat" "$prov"
       rc=1
       continue
     fi
     if ! [[ "$id" =~ ^[a-z0-9-]+$ ]]; then
-      printf 'eval-research: entry has invalid id (must match ^[a-z0-9-]+$ — lowercase letters, digits, and hyphens only): %s\n' "$id" >&2
+      larch_errf 'eval-research: entry has invalid id (must match ^[a-z0-9-]+$ — lowercase letters, digits, and hyphens only): %s\n' "$id"
       rc=1
     else
       # Duplicate check is gated on format validity so glob metacharacters
       # in $id (e.g. `*`, `?`, `[`) cannot leak into the case-pattern below.
       case "$seen_ids" in
         *"|$id|"*)
-          printf 'eval-research: duplicate eval id: %s\n' "$id" >&2
+          larch_errf 'eval-research: duplicate eval id: %s\n' "$id"
           rc=1
           ;;
         *) seen_ids="${seen_ids}|$id|" ;;
@@ -255,12 +255,12 @@ validate_eval_set() {
     case "$cat" in
       lookup|architecture|external-comparison|risk-assessment|feasibility) ;;
       *)
-        printf 'eval-research: entry %s has unknown category: %s\n' "$id" "$cat" >&2
+        larch_errf 'eval-research: entry %s has unknown category: %s\n' "$id" "$cat"
         rc=1
         ;;
     esac
     if ! [[ "$prov" =~ ^[0-9]+$ ]]; then
-      printf 'eval-research: entry %s expected_provenance_count not integer: %s\n' "$id" "$prov" >&2
+      larch_errf 'eval-research: entry %s expected_provenance_count not integer: %s\n' "$id" "$prov"
       rc=1
     fi
     case "$seen_categories" in
@@ -271,14 +271,14 @@ validate_eval_set() {
   done < <(parse_eval_set "$file")
 
   if (( count < 20 )); then
-    printf 'eval-research: eval-set.md has %d entries; need at least 20\n' "$count" >&2
+    larch_errf 'eval-research: eval-set.md has %d entries; need at least 20\n' "$count"
     rc=1
   fi
   for required_cat in lookup architecture external-comparison risk-assessment feasibility; do
     case "$seen_categories" in
       *"|$required_cat|"*) ;;
       *)
-        printf 'eval-research: eval-set.md missing entries from category: %s\n' "$required_cat" >&2
+        larch_errf 'eval-research: eval-set.md missing entries from category: %s\n' "$required_cat"
         rc=1
         ;;
     esac
@@ -289,11 +289,11 @@ validate_eval_set() {
 validate_baseline_json() {
   local file="$1"
   if [[ ! -f "$file" ]]; then
-    printf 'eval-research: eval-baseline.json not found at %s\n' "$file" >&2
+    larch_errf 'eval-research: eval-baseline.json not found at %s\n' "$file"
     return 1
   fi
   if ! jq -e '.version and (.entries | type == "array")' "$file" >/dev/null 2>&1; then
-    printf 'eval-research: eval-baseline.json missing required keys (version, entries) or not valid JSON\n' >&2
+    larch_errf 'eval-research: eval-baseline.json missing required keys (version, entries) or not valid JSON\n'
     return 1
   fi
   return 0
@@ -580,7 +580,7 @@ if [[ -n "$BASELINE_REF" ]]; then
     # failure mode #441 fixed for unresolvable refs. Reuse the same validator
     # that the local EVAL_BASELINE_FILE is checked against on line 532.
     if ! validate_baseline_json "$BASELINE_ROWS_FILE"; then
-      printf 'eval-research: ERROR — baseline ref %s resolved but the cached JSON failed schema validation (see preceding diagnostic); aborting.\n' "$BASELINE_REF" >&2
+      larch_errf 'eval-research: ERROR — baseline ref %s resolved but the cached JSON failed schema validation (see preceding diagnostic); aborting.\n' "$BASELINE_REF"
       rm -f "$BASELINE_ROWS_FILE" "$baseline_git_err"
       exit 2
     fi
@@ -588,13 +588,13 @@ if [[ -n "$BASELINE_REF" ]]; then
     emit ""
     emit "eval-research: --baseline: PREVIEW MODE — baseline JSON pre-fetched to $BASELINE_ROWS_FILE; inline delta columns are not yet wired in this PR (a future amendment will add them)."
     emit ""
-    printf 'eval-research: WARNING — --baseline delta columns are not yet wired in this PR; the baseline JSON is cached at the path printed above for manual diffing or future amendment, but no inline comparison column appears in the summary table.\n' >&2
+    larch_errf 'eval-research: WARNING — --baseline delta columns are not yet wired in this PR; the baseline JSON is cached at the path printed above for manual diffing or future amendment, but no inline comparison column appears in the summary table.\n'
     rm -f "$baseline_git_err"
   else
-    printf 'eval-research: ERROR — --baseline ref %s could not be resolved via git show; aborting (would otherwise produce a misleading run with no baseline behind it).\n' "$BASELINE_REF" >&2
+    larch_errf 'eval-research: ERROR — --baseline ref %s could not be resolved via git show; aborting (would otherwise produce a misleading run with no baseline behind it).\n' "$BASELINE_REF"
     if [[ -s "$baseline_git_err" ]]; then
-      printf 'eval-research: git show stderr (last 5 lines):\n' >&2
-      tail -n 5 "$baseline_git_err" | sed 's/^/  /' >&2
+      larch_errf 'eval-research: git show stderr (last 5 lines):\n'
+      tail -n 5 "$baseline_git_err" | sed 's/^/  /' | while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$line"; done
     fi
     rm -f "$BASELINE_ROWS_FILE" "$baseline_git_err"
     exit 2
@@ -727,7 +727,7 @@ if [[ -n "$WRITE_BASELINE_FILE" ]]; then
 fi
 
 if (( ENTRIES_RUN == 0 )); then
-  printf '\neval-research: no entries matched (--id %s); nothing to do.\n' "$ID_FILTER" >&2
+  larch_errf '\neval-research: no entries matched (--id %s); nothing to do.\n' "$ID_FILTER"
   exit 0
 fi
 

@@ -10,7 +10,7 @@ source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
 
 usage() {
-    echo "Usage: launch-claude-subprocess.sh [--model MODEL] --prompt-file FILE --output-file FILE --timeout SECONDS [--context-files FILE ...] [--timing-task-kind KIND]" >&2
+    larch_err "Usage: launch-claude-subprocess.sh [--model MODEL] --prompt-file FILE --output-file FILE --timeout SECONDS [--context-files FILE ...] [--timing-task-kind KIND]"
 }
 
 MODEL="claude-sonnet-4-6"
@@ -37,12 +37,12 @@ while [[ $# -gt 0 ]]; do
             done
             ;;
         --help) usage; exit 0 ;;
-        *) echo "launch-claude-subprocess.sh: unknown option: $1" >&2; usage; exit 2 ;;
+        *) larch_err "launch-claude-subprocess.sh: unknown option: $1"; usage; exit 2 ;;
     esac
 done
 
 fail() {
-    echo "launch-claude-subprocess.sh: $1" >&2
+    larch_err "launch-claude-subprocess.sh: $1"
     exit 2
 }
 

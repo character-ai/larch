@@ -35,7 +35,7 @@ source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
 
 if ! BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null); then
-    echo "git-force-push.sh: not on a named branch" >&2
+    larch_err "git-force-push.sh: not on a named branch"
     exit 2
 fi
 emit_kv BRANCH "$BRANCH"
