@@ -10,7 +10,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
-larch_quiet_init
+# No larch_quiet_init: shellcheck diagnostics must remain visible to the
+# developer in the pre-commit hook environment.
 
 # Zero-args fast path: pre-commit may invoke us with no matching files
 # after type/file filtering. BSD xargs lacks --no-run-if-empty, so

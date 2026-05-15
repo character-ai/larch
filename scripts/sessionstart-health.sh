@@ -111,7 +111,8 @@ fi
 
 if [[ -n "$MSG" ]]; then
     if [[ "$JQ_AVAILABLE" == "true" ]]; then
-        jq -n --arg ctx "$MSG" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$ctx}}' || true
+        ADVISORY=$(jq -n --arg ctx "$MSG" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$ctx}}' 2>/dev/null) || ADVISORY=''
+        [ -n "$ADVISORY" ] && emit "$ADVISORY"
     else
         if [[ "$GIT_AVAILABLE" == "true" ]]; then
             emit '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"larch hook preflight: jq not on PATH (install jq for advisory hook output)."}}'
