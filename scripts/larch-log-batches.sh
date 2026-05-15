@@ -9,16 +9,16 @@ plan-review-tally .json replace json-object
 code-review-tally .json replace json-object
 review-findings-full .md replace none
 review-context .md replace none
-review-findings .ndjson append none
+review-findings .ndjson append json-lines
 review-panel-manifest .ndjson replace none
 review-round-summary .md replace none
 review-tally .md replace none
 version-bump-reasoning .md replace none
-oos-issues .ndjson append none
+oos-issues .ndjson append json-lines
 run-statistics .md replace none
 token-report .json replace none
 timing-report .json replace none
-execution-issues .ndjson append none
+execution-issues .ndjson append json-lines
 session-transcript .jsonl replace none
 "
 

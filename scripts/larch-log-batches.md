@@ -18,6 +18,12 @@ pointer-only placeholders such as `See plan.txt`. `plan-review-tally` and
 `code-review-tally` use the `json-object` sanitizer because their files are
 single replace-mode JSON objects.
 
+`review-findings`, `oos-issues`, and `execution-issues` use the `json-lines`
+sanitizer because they are append-mode NDJSON batches. Every non-empty line in
+the appended record file must parse as JSON before `larch-log.sh` publishes the
+write; raw markdown belongs in the composer input, not directly in these
+batches.
+
 Edit in sync with `scripts/larch-log.sh`, `scripts/larch-log.md`, and
 `scripts/test-larch-logs-batches.sh`.
 
