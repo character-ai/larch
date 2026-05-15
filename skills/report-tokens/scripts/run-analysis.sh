@@ -3,6 +3,12 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
+# shellcheck source=scripts/lib-quiet.sh
+source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
+larch_quiet_init
+
 usage() {
     cat <<'EOF' >&2
 Usage: run-analysis.sh [--no-issue] [--no-plot] [--plot-from <issue-number>]
@@ -102,7 +108,7 @@ ANALYZER="$TMPROOT/analyze-token-reports.py"
 if [[ -z "$PLOT_FROM" ]]; then
     REPO_ROOT=$(git -C "$(pwd)" rev-parse --show-toplevel 2>/dev/null || pwd)
     LOG_BASE="$REPO_ROOT/larch-logs/implement"
-    echo "Scanning $LOG_BASE for larch run logs..."
+    emit_breadcrumb "Scanning $LOG_BASE for larch run logs..."
 
     : > "$ISSUES_JSONL"
     run_count=0
@@ -150,7 +156,7 @@ if [[ -z "$PLOT_FROM" ]]; then
 
         if [[ -f "$token_report_json" ]]; then
             combined_body="**Workflow path**: ${workflow_path}"
-            echo "Processing run for issue #${issue_number}..."
+            emit_breadcrumb "Processing run for issue #${issue_number}..."
             # Isolate jq failure per-run: an invalid token-report.json falls back to .md rather
             # than aborting the whole scan under set -euo pipefail.
             if ! jq -cn \
@@ -184,7 +190,7 @@ if [[ -z "$PLOT_FROM" ]]; then
 
 **Workflow path**: ${workflow_path}"
 
-            echo "Processing run for issue #${issue_number}..."
+            emit_breadcrumb "Processing run for issue #${issue_number}..."
             jq -cn \
                 --argjson number "$issue_number" \
                 --arg title "Issue #${issue_number}" \
@@ -915,7 +921,7 @@ PY
 chmod +x "$ANALYZER"
 
 if [[ -n "$PLOT_FROM" ]]; then
-    echo "Fetching analysis report issue #$PLOT_FROM..."
+    emit_breadcrumb "Fetching analysis report issue #$PLOT_FROM..."
     ISSUE_BODY_FILE="$TMPROOT/plot-from-body.txt"
     gh issue view "$PLOT_FROM" --repo "$REPO" --json body --jq '.body' > "$ISSUE_BODY_FILE"
     python3 "$ANALYZER" --plot-from "$ISSUE_BODY_FILE"

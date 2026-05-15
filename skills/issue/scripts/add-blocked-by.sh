@@ -74,6 +74,10 @@ set -euo pipefail
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 REPO_ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd)
 REDACT_HELPER="$REPO_ROOT/scripts/redact-secrets.sh"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$REPO_ROOT}"
+# shellcheck source=scripts/lib-quiet.sh
+source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
+larch_quiet_init
 
 CLIENT=""
 BLOCKER=""
@@ -102,28 +106,28 @@ if [[ -z "$CLIENT" || -z "$BLOCKER" ]]; then
 fi
 
 if ! [[ "$CLIENT" =~ ^[0-9]+$ && "$BLOCKER" =~ ^[0-9]+$ ]]; then
-    echo "BLOCKED_BY_FAILED=true"
-    echo "CLIENT=$CLIENT"
-    echo "BLOCKER=$BLOCKER"
-    echo "ERROR=client-issue and blocker-issue must be positive integers"
+    emit_kv BLOCKED_BY_FAILED "true"
+    emit_kv CLIENT "$CLIENT"
+    emit_kv BLOCKER "$BLOCKER"
+    emit_kv ERROR "client-issue and blocker-issue must be positive integers"
     exit 1
 fi
 
 if [[ -n "$BLOCKER_ID" ]] && ! [[ "$BLOCKER_ID" =~ ^[0-9]+$ ]]; then
-    echo "BLOCKED_BY_FAILED=true"
-    echo "CLIENT=$CLIENT"
-    echo "BLOCKER=$BLOCKER"
-    echo "ERROR=blocker-id must be a positive integer when provided"
+    emit_kv BLOCKED_BY_FAILED "true"
+    emit_kv CLIENT "$CLIENT"
+    emit_kv BLOCKER "$BLOCKER"
+    emit_kv ERROR "blocker-id must be a positive integer when provided"
     exit 1
 fi
 
 if [[ -z "$REPO" ]]; then
     REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null) || REPO=""
     if [[ -z "$REPO" ]]; then
-        echo "BLOCKED_BY_FAILED=true"
-        echo "CLIENT=$CLIENT"
-        echo "BLOCKER=$BLOCKER"
-        echo "ERROR=could not determine repo"
+        emit_kv BLOCKED_BY_FAILED "true"
+        emit_kv CLIENT "$CLIENT"
+        emit_kv BLOCKER "$BLOCKER"
+        emit_kv ERROR "could not determine repo"
         exit 2
     fi
 fi
@@ -137,18 +141,18 @@ emit_failure() {
     local exit_code="${2:-2}"
     local redacted
     redacted=$(redact "$err") || {
-        echo "BLOCKED_BY_FAILED=true"
-        echo "CLIENT=$CLIENT"
-        echo "BLOCKER=$BLOCKER"
-        echo "ERROR=redaction: helper $REDACT_HELPER failed or missing"
+        emit_kv BLOCKED_BY_FAILED "true"
+        emit_kv CLIENT "$CLIENT"
+        emit_kv BLOCKER "$BLOCKER"
+        emit_kv ERROR "redaction: helper $REDACT_HELPER failed or missing"
         exit 3
     }
     local flat
     flat=$(echo "$redacted" | tr '\n' ' ' | head -c 500)
-    echo "BLOCKED_BY_FAILED=true"
-    echo "CLIENT=$CLIENT"
-    echo "BLOCKER=$BLOCKER"
-    echo "ERROR=$flat"
+    emit_kv BLOCKED_BY_FAILED "true"
+    emit_kv CLIENT "$CLIENT"
+    emit_kv BLOCKER "$BLOCKER"
+    emit_kv ERROR "$flat"
     exit "$exit_code"
 }
 
@@ -211,9 +215,9 @@ for i in 0 1 2; do
     set -e
     case $RC in
         0|3)
-            echo "BLOCKED_BY_ADDED=true"
-            echo "CLIENT=$CLIENT"
-            echo "BLOCKER=$BLOCKER"
+            emit_kv BLOCKED_BY_ADDED "true"
+            emit_kv CLIENT "$CLIENT"
+            emit_kv BLOCKER "$BLOCKER"
             exit 0
             ;;
         2)

@@ -18,6 +18,8 @@
 
 set -euo pipefail
 
+export LARCH_QUIET_DISABLE=1
+
 HERE=$(cd "$(dirname "$0")" && pwd)
 SCRIPT="$HERE/render-batch-input.sh"
 TMP=$(mktemp -d -t test-umbrella-render-batch-input-XXXXXX)

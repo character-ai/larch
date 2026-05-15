@@ -31,6 +31,12 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
+# shellcheck source=scripts/lib-quiet.sh
+source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
+larch_quiet_init
+
 NAME=""
 DESCRIPTION=""
 PLUGIN_MODE=false
@@ -41,15 +47,15 @@ while [[ $# -gt 0 ]]; do
     --description) DESCRIPTION="$2"; shift 2 ;;
     --plugin)      PLUGIN_MODE=true; shift ;;
     *)
-      echo "ERROR=Unknown argument: $1"
+      emit_kv ERROR "Unknown argument: $1"
       exit 1
       ;;
   esac
 done
 
 fail() {
-  echo "VALID=false"
-  echo "ERROR=$1"
+  emit_kv VALID "false"
+  emit_kv ERROR "$1"
   exit 1
 }
 
@@ -170,4 +176,4 @@ for bad in 'EOF' 'HEREDOC' '---'; do
   fi
 done
 
-echo "VALID=true"
+emit_kv VALID "true"

@@ -35,6 +35,12 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
+# shellcheck source=scripts/lib-quiet.sh
+source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
+larch_quiet_init
+
 CLOSED_WINDOW_DAYS=90
 REPO=""
 
@@ -49,7 +55,7 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         *)
-            echo "LIST_STATUS=failed"
+            emit_kv LIST_STATUS "failed"
             echo "WARN: unknown option: $1" >&2
             exit 0
             ;;
@@ -58,7 +64,7 @@ done
 
 # Validate closed-window-days is a non-negative integer.
 if ! [[ "$CLOSED_WINDOW_DAYS" =~ ^[0-9]+$ ]]; then
-    echo "LIST_STATUS=failed"
+    emit_kv LIST_STATUS "failed"
     echo "WARN: --closed-window-days must be a non-negative integer, got: $CLOSED_WINDOW_DAYS" >&2
     exit 0
 fi
@@ -66,14 +72,14 @@ fi
 # Resolve repo identity.
 if [[ -z "$REPO" ]]; then
     REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null) || {
-        echo "LIST_STATUS=failed"
+        emit_kv LIST_STATUS "failed"
         echo "WARN: failed to resolve repository name via 'gh repo view'" >&2
         exit 0
     }
 fi
 
 if [[ -z "$REPO" ]]; then
-    echo "LIST_STATUS=failed"
+    emit_kv LIST_STATUS "failed"
     echo "WARN: empty repo name after gh repo view" >&2
     exit 0
 fi
@@ -98,7 +104,7 @@ if [[ "$CLOSED_WINDOW_DAYS" -gt 0 ]]; then
         CUTOFF_DATE=$(date -d "-${CLOSED_WINDOW_DAYS} days" +%Y-%m-%d 2>/dev/null) || CUTOFF_DATE=""
     fi
     if [[ -z "$CUTOFF_DATE" ]]; then
-        echo "LIST_STATUS=failed"
+        emit_kv LIST_STATUS "failed"
         echo "WARN: failed to compute cutoff date (no python3, BSD, or GNU date available)" >&2
         exit 0
     fi
@@ -115,7 +121,7 @@ fi
 # (no search-result limits).
 # ---------------------------------------------------------------------------
 RAW=$(gh api --paginate "repos/${REPO}/issues?state=all&per_page=100" 2>/dev/null) || {
-    echo "LIST_STATUS=failed"
+    emit_kv LIST_STATUS "failed"
     echo "WARN: gh api --paginate failed for repo $REPO (network, auth, or rate limit)" >&2
     exit 0
 }
@@ -143,7 +149,7 @@ DEDUP_SKIP_PREFIX_FILTER='select((.title // "" | ascii_downcase | sub("^[[:space
 if [[ "$CLOSED_WINDOW_DAYS" -eq 0 ]]; then
     JQ_FILTER='.[] | select(.pull_request == null) | select(.state == "open") | '"$DEDUP_SKIP_PREFIX_FILTER"' | [(.number|tostring), (.title | gsub("\t"; " ") | gsub("\n"; " ") | gsub("\r"; " ")), .state, .html_url] | @tsv'
     TSV=$(echo "$RAW" | jq -r "$JQ_FILTER" 2>/dev/null) || {
-        echo "LIST_STATUS=failed"
+        emit_kv LIST_STATUS "failed"
         echo "WARN: jq failed to parse gh api output" >&2
         exit 0
     }
@@ -151,14 +157,14 @@ else
     # shellcheck disable=SC2016  # $cutoff is a jq variable passed via --arg, not a shell variable
     JQ_FILTER='.[] | select(.pull_request == null) | select(.state == "open" or (.state == "closed" and .closed_at != null and (.closed_at[:10] >= $cutoff))) | '"$DEDUP_SKIP_PREFIX_FILTER"' | [(.number|tostring), (.title | gsub("\t"; " ") | gsub("\n"; " ") | gsub("\r"; " ")), .state, .html_url] | @tsv'
     TSV=$(echo "$RAW" | jq -r --arg cutoff "$CUTOFF_DATE" "$JQ_FILTER" 2>/dev/null) || {
-        echo "LIST_STATUS=failed"
+        emit_kv LIST_STATUS "failed"
         echo "WARN: jq failed to parse gh api output" >&2
         exit 0
     }
 fi
 
-echo "LIST_STATUS=ok"
+emit_kv LIST_STATUS "ok"
 if [[ -n "$TSV" ]]; then
-    printf '%s\n' "$TSV"
+    emit "$TSV"
 fi
 exit 0

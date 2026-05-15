@@ -53,6 +53,12 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
+# shellcheck source=scripts/lib-quiet.sh
+source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
+larch_quiet_init
+
 N_TOTAL=""
 
 usage() {
@@ -97,7 +103,7 @@ if (( N_TOTAL > CAP )); then
 elif (( N_TOTAL == 0 )); then
     # Nothing to allocate. Drain stdin defensively (don't error on broken pipe).
     cat >/dev/null || true
-    echo "CANDIDATES="
+    emit_kv CANDIDATES ""
     exit 0
 else
     # min(3, floor(30/N))
@@ -184,7 +190,7 @@ done
 
 # If no valid rows: empty CANDIDATES, exit 0.
 if [[ ! -s "$ROWS_FILE" ]]; then
-    echo "CANDIDATES="
+    emit_kv CANDIDATES ""
     exit 0
 fi
 
@@ -299,10 +305,10 @@ fi
 
 # Emit final CANDIDATES sorted ascending (numeric).
 if [[ -z "$UNION_LIST" ]]; then
-    echo "CANDIDATES="
+    emit_kv CANDIDATES ""
 else
     SORTED=$(echo "$UNION_LIST" | tr ' ' '\n' | sort -un | paste -sd, -)
-    echo "CANDIDATES=$SORTED"
+    emit_kv CANDIDATES "$SORTED"
 fi
 
 exit 0

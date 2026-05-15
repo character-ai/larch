@@ -58,6 +58,12 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
+# shellcheck source=scripts/lib-quiet.sh
+source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
+larch_quiet_init
+
 NAME=""
 DESCRIPTION=""
 TARGET_DIR=""
@@ -236,4 +242,4 @@ fi
 # Atomic move into place.
 mv "$TMP_FILE" "$TARGET_DIR/SKILL.md"
 
-echo "RENDERED=$TARGET_DIR/SKILL.md"
+emit_kv RENDERED "$TARGET_DIR/SKILL.md"

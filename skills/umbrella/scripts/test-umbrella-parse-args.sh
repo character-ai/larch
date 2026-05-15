@@ -15,6 +15,8 @@
 
 set -euo pipefail
 
+export LARCH_QUIET_DISABLE=1
+
 HERE=$(cd "$(dirname "$0")" && pwd)
 PARSER="$HERE/parse-args.sh"
 TMP=$(mktemp -d -t test-umbrella-parse-args-XXXXXX)

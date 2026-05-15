@@ -10,6 +10,14 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
+# shellcheck source=scripts/lib-quiet.sh
+source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
+larch_quiet_init
+# This script emits only SKILL.md content; route all output to original stdout.
+[ "${LARCH_QUIET_PID:-}" = "$$" ] && exec 1>&3
+
 NAME=""
 TARGET=""
 FLAGS=""

@@ -26,6 +26,10 @@ set -euo pipefail
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 REPO_ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd)
 REDACT_HELPER="$REPO_ROOT/scripts/redact-secrets.sh"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$REPO_ROOT}"
+# shellcheck source=scripts/lib-quiet.sh
+source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
+larch_quiet_init
 
 ISSUE=""
 REPO=""
@@ -46,26 +50,26 @@ while [[ $# -gt 0 ]]; do
         # bad invocation" from absent output. Without this, SKILL.md Step 6's
         # orphan-recovery branch would silently fall through on a typo'd flag.
         *) echo "Unknown option: $1" >&2; usage
-           echo "CLOSED=false"
-           echo "ISSUE=${ISSUE:-unknown}"
-           echo "ERROR=unknown option: $1"
+           emit_kv CLOSED "false"
+           emit_kv ISSUE "${ISSUE:-unknown}"
+           emit_kv ERROR "unknown option: $1"
            exit 0 ;;
     esac
 done
 
 if [[ -z "$ISSUE" || ! "$ISSUE" =~ ^[0-9]+$ ]]; then
-    echo "CLOSED=false"
-    echo "ISSUE=$ISSUE"
-    echo "ERROR=invalid or missing --issue-number"
+    emit_kv CLOSED "false"
+    emit_kv ISSUE "$ISSUE"
+    emit_kv ERROR "invalid or missing --issue-number"
     exit 0
 fi
 
 if [[ -z "$REPO" ]]; then
     REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null) || REPO=""
     if [[ -z "$REPO" ]]; then
-        echo "CLOSED=false"
-        echo "ISSUE=$ISSUE"
-        echo "ERROR=could not determine repo"
+        emit_kv CLOSED "false"
+        emit_kv ISSUE "$ISSUE"
+        emit_kv ERROR "could not determine repo"
         exit 0
     fi
 fi
@@ -74,15 +78,15 @@ ERR_TMP=$(mktemp)
 trap 'rm -f "$ERR_TMP"' EXIT
 
 if gh issue close --repo "$REPO" "$ISSUE" --reason "not planned" >/dev/null 2>"$ERR_TMP"; then
-    echo "CLOSED=true"
-    echo "ISSUE=$ISSUE"
+    emit_kv CLOSED "true"
+    emit_kv ISSUE "$ISSUE"
     exit 0
 fi
 
 ERR_CONTENT=$(cat "$ERR_TMP")
 REDACTED_ERR=$(printf '%s' "$ERR_CONTENT" | "$REDACT_HELPER" 2>/dev/null) || REDACTED_ERR="(redaction-helper failed; original suppressed)"
 ERR_FLAT=$(echo "$REDACTED_ERR" | tr '\n' ' ' | head -c 500)
-echo "CLOSED=false"
-echo "ISSUE=$ISSUE"
-echo "ERROR=$ERR_FLAT"
+emit_kv CLOSED "false"
+emit_kv ISSUE "$ISSUE"
+emit_kv ERROR "$ERR_FLAT"
 exit 0

@@ -21,6 +21,12 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
+# shellcheck source=scripts/lib-quiet.sh
+source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
+larch_quiet_init
+
 NAME=""
 PRIVATE=false
 
@@ -69,6 +75,6 @@ else
   TARGET_DIR="$REPO_ROOT/.claude/skills/$NAME"
 fi
 
-echo "REPO_ROOT=$REPO_ROOT"
-echo "PLUGIN_REPO=$PLUGIN_REPO"
-echo "TARGET_DIR=$TARGET_DIR"
+emit_kv REPO_ROOT "$REPO_ROOT"
+emit_kv PLUGIN_REPO "$PLUGIN_REPO"
+emit_kv TARGET_DIR "$TARGET_DIR"

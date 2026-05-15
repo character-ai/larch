@@ -66,6 +66,12 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
+# shellcheck source=scripts/lib-quiet.sh
+source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
+larch_quiet_init
+
 INPUT_FILE=""
 OUTPUT_DIR=""
 
@@ -169,8 +175,8 @@ emit_item() {
         # behavior: "SKIPPED: '$CURRENT_TITLE' — missing description"). No body
         # file is written and no BODY_FILE line is emitted — consistent with
         # the pre-existing "no body key" invariant for the empty-body case.
-        echo "ITEM_${ITEM_INDEX}_TITLE=$title"
-        echo "ITEM_${ITEM_INDEX}_MALFORMED=true"
+        emit_kv "ITEM_${ITEM_INDEX}_TITLE" "$title"
+        emit_kv "ITEM_${ITEM_INDEX}_MALFORMED" "true"
         return
     fi
 
@@ -181,8 +187,8 @@ emit_item() {
     # pipefail` above aborts on any write failure.
     printf '%s' "$body" > "$body_file"
 
-    echo "ITEM_${ITEM_INDEX}_TITLE=$title"
-    echo "ITEM_${ITEM_INDEX}_BODY_FILE=$body_file"
+    emit_kv "ITEM_${ITEM_INDEX}_TITLE" "$title"
+    emit_kv "ITEM_${ITEM_INDEX}_BODY_FILE" "$body_file"
     if [[ "$force_malformed" == "true" ]]; then
         # Issue #138: incomplete OOS flushed mid-stream. Body is non-empty
         # (has the Description text), but the item is structurally malformed
@@ -192,16 +198,16 @@ emit_item() {
         # description is written to the body file at
         # $OUTPUT_DIR/item-<i>-body.txt and survives as a diagnostic surface
         # until the caller removes $OUTPUT_DIR.
-        echo "ITEM_${ITEM_INDEX}_MALFORMED=true"
+        emit_kv "ITEM_${ITEM_INDEX}_MALFORMED" "true"
     fi
     if [[ -n "$reviewer" ]]; then
-        echo "ITEM_${ITEM_INDEX}_REVIEWER=$reviewer"
+        emit_kv "ITEM_${ITEM_INDEX}_REVIEWER" "$reviewer"
     fi
     if [[ -n "$vote" ]]; then
-        echo "ITEM_${ITEM_INDEX}_VOTE_TALLY=$vote"
+        emit_kv "ITEM_${ITEM_INDEX}_VOTE_TALLY" "$vote"
     fi
     if [[ -n "$phase" ]]; then
-        echo "ITEM_${ITEM_INDEX}_PHASE=$phase"
+        emit_kv "ITEM_${ITEM_INDEX}_PHASE" "$phase"
     fi
 }
 
@@ -486,5 +492,5 @@ done < "$INPUT_FILE"
 resolve_pending_split
 flush_item
 
-echo "ITEMS_TOTAL=$ITEM_INDEX"
+emit_kv ITEMS_TOTAL "$ITEM_INDEX"
 exit 0

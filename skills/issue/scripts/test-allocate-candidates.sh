@@ -76,7 +76,7 @@ run_allocator() {
     out_f="$(mktemp)"
     err_f="$(mktemp)"
     set +e
-    printf '%s' "$stdin" | "$ALLOCATOR" --total-items "$n" >"$out_f" 2>"$err_f"
+    printf '%s' "$stdin" | LARCH_QUIET_DISABLE=1 "$ALLOCATOR" --total-items "$n" >"$out_f" 2>"$err_f"
     RUN_RC=$?
     set -e
     RUN_STDOUT="$(cat "$out_f")"

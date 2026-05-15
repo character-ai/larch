@@ -6,6 +6,12 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
+# shellcheck source=scripts/lib-quiet.sh
+source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
+larch_quiet_init
+
 TMPDIR=""
 PIECES_FILE=""
 
@@ -112,11 +118,11 @@ for i in $(seq 0 $((PIECES_TOTAL - 1))); do
   } >> "$OUT"
 done
 
-printf 'BATCH_INPUT_FILE=%s\n' "$OUT"
-printf 'PIECES_TOTAL=%s\n' "$PIECES_TOTAL"
+emit_kv BATCH_INPUT_FILE "$OUT"
+emit_kv PIECES_TOTAL "$PIECES_TOTAL"
 for i in $(seq 0 $((PIECES_TOTAL - 1))); do
   title=$(jq -r ".[$i].title" "$PIECES_FILE")
   deps=$(jq -r ".[$i].depends_on // [] | map(tostring) | join(\",\")" "$PIECES_FILE")
-  printf 'PIECE_%d_TITLE=%s\n' "$((i + 1))" "$title"
-  printf 'PIECE_%d_DEPENDS_ON=%s\n' "$((i + 1))" "$deps"
+  emit_kv "PIECE_$((i + 1))_TITLE" "$title"
+  emit_kv "PIECE_$((i + 1))_DEPENDS_ON" "$deps"
 done

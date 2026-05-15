@@ -48,6 +48,12 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
+# shellcheck source=scripts/lib-quiet.sh
+source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
+larch_quiet_init
+
 # Pin C locale so ${var:offset:1} and ${#var} use byte semantics regardless
 # of caller LC_ALL / LANG. Without this, multi-byte UTF-8 in flag values
 # would be character-indexed, drifting offsets vs byte positions.
@@ -398,20 +404,20 @@ UMBRELLA_TMPDIR=$(mktemp -d -t claude-umbrella-XXXXXX)
 # --- Emit stdout ---
 
 LABELS_COUNT="${#LABEL_VALUES[@]}"
-printf 'LABELS_COUNT=%s\n' "$LABELS_COUNT"
+emit_kv LABELS_COUNT "$LABELS_COUNT"
 idx=0
 while [ "$idx" -lt "$LABELS_COUNT" ]; do
-  printf 'LABEL_%s=%s\n' "$((idx + 1))" "${LABEL_VALUES[$idx]}"
+  emit_kv "LABEL_$((idx + 1))" "${LABEL_VALUES[$idx]}"
   idx=$((idx + 1))
 done
-printf 'TITLE_PREFIX=%s\n' "$TITLE_PREFIX"
-printf 'REPO=%s\n' "$REPO"
-printf 'CLOSED_WINDOW_DAYS=%s\n' "$CLOSED_WINDOW_DAYS"
-printf 'DRY_RUN=%s\n' "$DRY_RUN"
-printf 'GO=%s\n' "$GO"
-printf 'INPUT_FILE=%s\n' "$INPUT_FILE"
-printf 'UMBRELLA_SUMMARY_FILE=%s\n' "$UMBRELLA_SUMMARY_FILE"
-printf 'PIECES_JSON=%s\n' "$PIECES_JSON"
-printf 'BLOCKED_BY_ISSUE=%s\n' "$BLOCKED_BY_ISSUE"
-printf 'TASK=%s\n' "$TASK"
-printf 'UMBRELLA_TMPDIR=%s\n' "$UMBRELLA_TMPDIR"
+emit_kv TITLE_PREFIX "$TITLE_PREFIX"
+emit_kv REPO "$REPO"
+emit_kv CLOSED_WINDOW_DAYS "$CLOSED_WINDOW_DAYS"
+emit_kv DRY_RUN "$DRY_RUN"
+emit_kv GO "$GO"
+emit_kv INPUT_FILE "$INPUT_FILE"
+emit_kv UMBRELLA_SUMMARY_FILE "$UMBRELLA_SUMMARY_FILE"
+emit_kv PIECES_JSON "$PIECES_JSON"
+emit_kv BLOCKED_BY_ISSUE "$BLOCKED_BY_ISSUE"
+emit_kv TASK "$TASK"
+emit_kv UMBRELLA_TMPDIR "$UMBRELLA_TMPDIR"
