@@ -686,6 +686,21 @@ assert_eq "breadcrumb 3 stdout items total" "ITEMS_TOTAL=1" "$(grep '^ITEMS_TOTA
 assert_contains "breadcrumb 3 stderr mode" "$bc3_err" "▶ parse-input: 1 items parsed (mode=oos): 1=OOS breadcrumb item"
 
 # ---------------------------------------------------------------------------
+# Breadcrumb case 4 — title longer than 60 characters is truncated with '…'
+# ---------------------------------------------------------------------------
+echo "Breadcrumb 4: title >60 chars is truncated with ellipsis in stderr breadcrumb"
+cat > "$TMPDIR_TEST/breadcrumb4.md" <<'EOF'
+### This title is deliberately longer than sixty characters to trigger the truncation path
+
+Body content for the long-title item.
+EOF
+bc4_out="" bc4_err=""
+run_parser_capture "$TMPDIR_TEST/breadcrumb4.md" bc4_out bc4_err
+assert_eq "breadcrumb 4 stdout items total" "ITEMS_TOTAL=1" "$(grep '^ITEMS_TOTAL=' <<< "$bc4_out")"
+# The title is 86 chars; expect 60-char prefix followed by the ellipsis character '…'
+assert_contains "breadcrumb 4 stderr truncation" "$bc4_err" "1=This title is deliberately longer than sixty characters to t…"
+
+# ---------------------------------------------------------------------------
 echo ""
 echo "Summary: $PASS_COUNT passed, $FAIL_COUNT failed"
 if [[ "$FAIL_COUNT" -gt 0 ]]; then
