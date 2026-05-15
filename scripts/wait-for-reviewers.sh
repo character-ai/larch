@@ -164,6 +164,14 @@ for sentinel in "$@"; do
     else
         emit "TIMEOUT $idx $name"
         timed_out=$((timed_out + 1))
+        pid_file="${sentinel%.done}.pid"
+        if [ -f "$pid_file" ]; then
+            _stuck_pid=$(tr -d '[:space:]' < "$pid_file" 2>/dev/null)
+            if [ -n "$_stuck_pid" ] && [ "$_stuck_pid" -gt 0 ] 2>/dev/null; then
+                larch_errf "⚠ Sending SIGTERM to stuck subprocess PID %s for %s\n" "$_stuck_pid" "$name"
+                kill -TERM "$_stuck_pid" 2>/dev/null || true
+            fi
+        fi
     fi
 done
 

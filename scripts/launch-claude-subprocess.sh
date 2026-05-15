@@ -108,9 +108,21 @@ PROMPT_RENDERED=$(mktemp "${TMPDIR:-/tmp}/claude-subprocess-prompt.XXXXXX") || e
 OUTPUT_TMP="${OUTPUT_CANON}.tmp.$$"
 # shellcheck disable=SC2329,SC2317 # invoked by the EXIT trap.
 cleanup() {
-    rm -f "$PROMPT_RENDERED" "$OUTPUT_TMP"
+    rm -f "$PROMPT_RENDERED" "$OUTPUT_TMP" "${OUTPUT_CANON}.pid"
 }
 trap cleanup EXIT
+# Record this script's PID so wait-for-reviewers.sh can send SIGTERM on timeout.
+printf '%d\n' "$$" > "${OUTPUT_CANON}.pid"
+# Trap SIGTERM: kill the subprocess and exit so the PID sidecar is cleaned up.
+_subprocess_pid=""
+# shellcheck disable=SC2317 # invoked by the TERM trap.
+_on_term() {
+    if [ -n "$_subprocess_pid" ]; then
+        kill "$_subprocess_pid" 2>/dev/null || true
+    fi
+    exit 143
+}
+trap _on_term TERM
 
 {
     printf '%s\n\n' "You are a read-only reviewer. Do NOT use Edit, Write, or Bash tools. Do NOT modify files."
@@ -136,24 +148,30 @@ CMD_JSON=$(jq -cn --arg model "$MODEL" --arg prompt "$PROMPT_RENDERED" '["claude
 status="OK"
 exit_code=0
 if command -v timeout >/dev/null 2>&1; then
-    if timeout "$TIMEOUT" claude --model "$MODEL" --print --no-markdown < "$PROMPT_RENDERED" > "$OUTPUT_TMP"; then
+    timeout "$TIMEOUT" claude --model "$MODEL" --print --no-markdown < "$PROMPT_RENDERED" > "$OUTPUT_TMP" &
+    _subprocess_pid=$!
+    if wait "$_subprocess_pid"; then
         exit_code=0
     else
         exit_code=$?
         [[ "$exit_code" -eq 124 ]] && status="TIMEOUT" || status="ERROR"
     fi
 else
-    if claude --model "$MODEL" --print --no-markdown < "$PROMPT_RENDERED" > "$OUTPUT_TMP"; then
+    claude --model "$MODEL" --print --no-markdown < "$PROMPT_RENDERED" > "$OUTPUT_TMP" &
+    _subprocess_pid=$!
+    if wait "$_subprocess_pid"; then
         exit_code=0
     else
         exit_code=$?
         status="ERROR"
     fi
 fi
-
+# Clear PID AFTER finalization to prevent a SIGTERM arriving between here
+# and the .done write from causing _on_term to exit without writing the sentinel.
 mv "$OUTPUT_TMP" "$OUTPUT_CANON"
 printf '%s\n' "$exit_code" > "${OUTPUT_CANON}.done"
 printf 'STATUS=clean\nMODE=baseline\nREASON=claude-subprocess-prompt-read-only\n' > "${OUTPUT_CANON}.dirty-tree"
+_subprocess_pid=""
 
 END_S=$(date +%s)
 "$SCRIPT_DIR/timing-ledger.sh" record-vendor-task \
