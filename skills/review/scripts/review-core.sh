@@ -254,6 +254,8 @@ accepted_count=$(kv_get "$tally_out" ACCEPTED_COUNT)
 rejected_count=$(kv_get "$tally_out" REJECTED_COUNT)
 tally_file=$(kv_get "$tally_out" TALLY_FILE)
 accepted_file=$(kv_get "$tally_out" ACCEPTED_FINDINGS_FILE)
+voting_skipped_warning=$(kv_get "$tally_out" VOTING_SKIPPED_WARNING)
+[[ -n "$voting_skipped_warning" ]] && emit "$voting_skipped_warning"
 accepted_count="${accepted_count:-0}"
 rejected_count="${rejected_count:-0}"
 tally_file="${tally_file:-$REVIEW_TMPDIR/review-tally.env}"
