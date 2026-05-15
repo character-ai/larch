@@ -28,7 +28,7 @@ Before sending to voters, assign each deduplicated finding a stable sequential I
 - **Suggested revision**: <what to change>
 ```
 
-Prepend the voter instructions as free prose before the first `### FINDING_N:` block (they are ignored by the parsers). Include the reviewer attribution so voters have context, but instruct voters to evaluate each finding on its merits regardless of who proposed it. Attribution labels are skill-specific: `/design` uses `Code` / `Codex` / `Cursor` (3-reviewer panel); `/review` uses specialist labels (`Structure`, `Correctness`, `Testing`, `Security`, `Edge-cases`, `Plan-fidelity`, `Codex-Structure`, `Codex-Correctness`, `Codex-Testing`, `Codex-Security`, `Codex-Edge-cases`, `Codex-Plan-fidelity`, `Claude-Generic`) for its 13-reviewer panel. `/research` does not participate in voting — it uses the Negotiation Protocol instead.
+Prepend the voter instructions as free prose before the first `### FINDING_N:` block (they are ignored by the parsers). Include the reviewer attribution so voters have context, but instruct voters to evaluate each finding on its merits regardless of who proposed it. Attribution labels are skill-specific: `/design` uses `Code` / `Codex` / `Cursor` (3-reviewer panel); `/review` uses specialist labels (`Structure`, `Correctness`, `Testing`, `Security`, `Edge-cases`, `Plan-fidelity`, `Codex-Structure`, `Codex-Correctness`, `Codex-Testing`, `Codex-Security`, `Codex-Edge-cases`, `Codex-Plan-fidelity`) for its 12-reviewer hard panel. `/research` does not participate in voting — it uses the Negotiation Protocol instead.
 
 ## Voter Output Format
 
@@ -210,7 +210,7 @@ Full scoreboard format (used in standalone mode):
 | _label2_ | 2        | 1        | 0               | 1                             | 0                         | 0            | 0            | +1    |
 | _label3_ | 2        | 1        | 1               | 0                             | 0                         | 0            | 0            | +1    |
 
-Attribution labels are skill-specific (e.g., `/design` uses `Code`/`Codex`/`Cursor`; `/review` uses `Structure`/`Correctness`/`Testing`/`Security`/`Edge-cases`/`Codex-Structure`/`Codex-Correctness`/`Codex-Testing`/`Codex-Security`/`Codex-Edge-cases`/`Claude-Generic`). One row per independent reviewer. In future iterations, token allocation will be weighted proportionally to reviewer scores.
+Attribution labels are skill-specific (e.g., `/design` uses `Code`/`Codex`/`Cursor`; `/review` hard panel uses `Structure`/`Correctness`/`Testing`/`Security`/`Edge-cases`/`Plan-fidelity`/`Codex-Structure`/`Codex-Correctness`/`Codex-Testing`/`Codex-Security`/`Codex-Edge-cases`/`Codex-Plan-fidelity`). One row per independent reviewer. In future iterations, token allocation will be weighted proportionally to reviewer scores.
 ```
 
 ## Out-of-Scope Observations

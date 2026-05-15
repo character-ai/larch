@@ -86,8 +86,9 @@ out=$("$SCRIPT" --mode diff --review-tmpdir "$TMP/hard" --codex-available true -
 assert_stdout_cap "$out"
 sleep 0.2
 grep -Fq 'PANEL_SHAPE=hard' <<< "$out"
-grep -Fq 'SLOT_COUNT=13' <<< "$out"
+grep -Fq 'SLOT_COUNT=12' <<< "$out"
 [[ -f "$TMP/hard/cursor-specialist-security-output.txt.done" ]]
 [[ -f "$TMP/hard/codex-specialist-plan-fidelity-output.txt.done" ]]
+[[ ! -e "$TMP/hard/claude-generic-output.txt.done" ]]
 
 echo "All assertions passed."
