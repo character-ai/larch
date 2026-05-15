@@ -5,8 +5,10 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 LARCH_LOG="$SCRIPT_DIR/larch-log.sh"
+LARCH_LOG_FLUSH="$SCRIPT_DIR/larch-log-flush.sh"
 
 [ -x "$LARCH_LOG" ] || { echo "FAIL: $LARCH_LOG not executable" >&2; exit 1; }
+[ -x "$LARCH_LOG_FLUSH" ] || { echo "FAIL: $LARCH_LOG_FLUSH not executable" >&2; exit 1; }
 
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/test-larch-log.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT
@@ -134,6 +136,54 @@ if [ -f "$_batch" ]; then pass "commit copies batch to repo under larch-logs/<sk
 _mf="$_repo/larch-logs/implement/$_rid/manifest.json"
 if [ -f "$_mf" ]; then pass "commit copies manifest to repo"; else fail "commit copies manifest to repo (missing $_mf)"; fi
 if git -C "$_repo" log -1 --format=%s | grep -qF "larch-logs"; then pass "commit creates git commit in repo"; else fail "commit creates git commit in repo"; fi
+export LARCH_LOG_ROOT="$_saved_log_root"
+
+echo "=== flush no-ops after post-merge sentinel ==="
+_saved_log_root="$LARCH_LOG_ROOT"
+unset LARCH_LOG_ROOT
+_sentinel_repo="$TMP/sentinel-repo"
+_sentinel_impl="$TMP/sentinel-impl"
+_sentinel_run="sentinelrun123"
+mkdir -p "$_sentinel_impl"
+git init "$_sentinel_repo" >/dev/null 2>&1
+git -C "$_sentinel_repo" config user.email "ci@test"
+git -C "$_sentinel_repo" config user.name "Test CI"
+touch "$_sentinel_repo/.gitkeep"
+git -C "$_sentinel_repo" add .
+git -C "$_sentinel_repo" commit -q -m "init"
+printf '%s\n' "$_sentinel_run" > "$_sentinel_impl/session-id"
+printf 'MERGE_RESULT=merged\n' > "$_sentinel_impl/post-merge-sentinel"
+_spayload="$TMP/sentinel-payload.md"
+cat > "$_spayload" <<'EOF'
+## Goal
+Verify post-merge flush suppression.
+
+## Implementation Plan
+Stage a valid plan-goals-test payload, create the post-merge sentinel, and run
+the flush helper. The helper must exit successfully without creating a commit.
+
+## Test plan
+Run scripts/test-larch-log.sh.
+EOF
+(cd "$_sentinel_repo" && "$LARCH_LOG" init --log-root "$_sentinel_impl/larch-logs" --skill implement --run-id "$_sentinel_run" --issue 42) >/dev/null
+(cd "$_sentinel_repo" && "$LARCH_LOG" write --log-root "$_sentinel_impl/larch-logs" --skill implement --run-id "$_sentinel_run" --batch plan-goals-test --input-file "$_spayload") >/dev/null
+_sentinel_head_before=$(git -C "$_sentinel_repo" rev-parse HEAD)
+if (cd "$_sentinel_repo" && env "PATH=${PATH:-}" "IMPLEMENT_TMPDIR=$_sentinel_impl" "LARCH_NO_LOGS_COMMIT=false" "$LARCH_LOG_FLUSH"); then
+    pass "flush exits 0 with post-merge sentinel"
+else
+    fail "flush exits 0 with post-merge sentinel"
+fi
+_sentinel_head_after=$(git -C "$_sentinel_repo" rev-parse HEAD)
+if [ "$_sentinel_head_after" = "$_sentinel_head_before" ]; then
+    pass "flush does not create commit after sentinel"
+else
+    fail "flush does not create commit after sentinel"
+fi
+if [ ! -e "$_sentinel_repo/larch-logs/implement/$_sentinel_run" ]; then
+    pass "flush does not copy logs into repo after sentinel"
+else
+    fail "flush should not copy logs into repo after sentinel"
+fi
 export LARCH_LOG_ROOT="$_saved_log_root"
 
 echo

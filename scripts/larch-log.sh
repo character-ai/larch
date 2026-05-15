@@ -299,6 +299,10 @@ case "$cmd" in
                 *) usage; larch_log_fail 1 "unknown option for commit: $1" ;;
             esac
         done
+        if [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -e "$IMPLEMENT_TMPDIR/post-merge-sentinel" ]; then
+            printf 'larch-log.sh: refusing commit after post-merge sentinel exists: %s\n' "$IMPLEMENT_TMPDIR/post-merge-sentinel" >&2
+            exit 1
+        fi
         require_log_root
         require_common
         src_path="$(larch_log_run_dir "$SKILL" "$RUN_ID")"
