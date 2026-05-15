@@ -181,14 +181,47 @@
             }
           }
         ]
+      },
+      {
+        "step": "Step 8a — changelog",
+        "totals": {
+          "input": 0,
+          "cache_read": 0,
+          "cache_create": 0,
+          "output": 0,
+          "total": 0
+        },
+        "skills": []
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 10,
+          "cache_read": 2557172,
+          "cache_create": 5431,
+          "output": 4420,
+          "total": 2567033
+        },
+        "skills": [
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 10,
+              "cache_read": 2557172,
+              "cache_create": 5431,
+              "output": 4420,
+              "total": 2567033
+            }
+          }
+        ]
       }
     ],
     "totals": {
-      "input": 114,
-      "cache_read": 25855656,
-      "cache_create": 102100,
-      "output": 63028,
-      "total": 26020898
+      "input": 124,
+      "cache_read": 28412828,
+      "cache_create": 107531,
+      "output": 67448,
+      "total": 28587931
     }
   },
   "codex": {
@@ -251,6 +284,22 @@
       },
       {
         "step": "Step 8 — version bump",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8a — changelog",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8b — rebase",
         "totals": {
           "input": 0,
           "output": 0,
@@ -329,12 +378,28 @@
           "output": 0,
           "total": 0
         }
+      },
+      {
+        "step": "Step 8a — changelog",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 5,
+          "output": 6,
+          "total": 26
+        }
       }
     ],
     "totals": {
-      "input": 247495,
-      "output": 36515,
-      "total": 2191466
+      "input": 247500,
+      "output": 36521,
+      "total": 2191492
     }
   }
 }
