@@ -6,6 +6,9 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 SKILL_MD="$REPO_ROOT/skills/implement/SKILL.md"
 REFS_DIR="$REPO_ROOT/skills/implement/references"
+RESTORE_FINALIZE_SH="$REPO_ROOT/scripts/restore-finalize-state.sh"
+LIB_FINALIZE_KEYS_SH="$REPO_ROOT/scripts/lib-finalize-state-keys.sh"
+SHIP_PR_SH="$REPO_ROOT/scripts/ship-pr.sh"
 
 fail() {
   echo "FAIL: $1" >&2
@@ -47,5 +50,58 @@ grep -Fq '### Larch-log batches' "$SKILL_MD" \
   || fail "SKILL.md must contain the Larch-log batches section heading"
 grep -q 'Skip.*Normal mode.*post.*design.*sections' "$SKILL_MD" \
   || fail "quick mode must explicitly skip Normal mode before the Larch-log batches tail"
+
+# shellcheck disable=SC2016
+grep -qE 'NEVER write, recreate, or modify .\$IMPLEMENT_TMPDIR/finalize-state\.sh' "$SKILL_MD" \
+  || fail "SKILL.md must contain NEVER bullet for finalize-state.sh write prohibition"
+
+step18_order_status=0
+awk '
+  /<!-- step:18/ {
+    in_step = 1
+    next
+  }
+  in_step && /<!-- step:/ {
+    in_step = 0
+    in_bash = 0
+  }
+  in_step && /^```bash[[:space:]]*$/ {
+    in_bash = 1
+    next
+  }
+  in_step && in_bash && /^```[[:space:]]*$/ {
+    in_bash = 0
+    next
+  }
+  in_step && in_bash && restore_line == 0 && /\/scripts\/restore-finalize-state\.sh/ {
+    restore_line = NR
+  }
+  in_step && in_bash && teardown_line == 0 && /\/scripts\/implement-finalize\.sh.*teardown/ {
+    teardown_line = NR
+  }
+  END {
+    if (restore_line == 0) exit 10
+    if (teardown_line == 0) exit 11
+    if (restore_line >= teardown_line) exit 12
+  }
+' "$SKILL_MD" || step18_order_status=$?
+case "$step18_order_status" in
+  0) ;;
+  10) fail "restore-finalize-state.sh not found in Step 18 region" ;;
+  11) fail "implement-finalize.sh teardown not found in Step 18 region" ;;
+  12) fail "restore-finalize-state.sh must appear before implement-finalize.sh teardown in Step 18" ;;
+  *) fail "unexpected Step 18 finalize-state order check failure: $step18_order_status" ;;
+esac
+
+[[ -f "$RESTORE_FINALIZE_SH" ]] || fail "scripts/restore-finalize-state.sh missing"
+[[ -x "$RESTORE_FINALIZE_SH" ]] || fail "scripts/restore-finalize-state.sh must be executable"
+[[ -f "$REPO_ROOT/scripts/restore-finalize-state.md" ]] || fail "scripts/restore-finalize-state.sh must have sibling restore-finalize-state.md"
+
+[[ -f "$LIB_FINALIZE_KEYS_SH" ]] || fail "scripts/lib-finalize-state-keys.sh missing"
+[[ -f "$REPO_ROOT/scripts/lib-finalize-state-keys.md" ]] || fail "scripts/lib-finalize-state-keys.sh must have sibling lib-finalize-state-keys.md"
+grep -qF 'lib-finalize-state-keys.sh' "$RESTORE_FINALIZE_SH" \
+  || fail "restore-finalize-state.sh must source lib-finalize-state-keys.sh"
+grep -qF 'lib-finalize-state-keys.sh' "$SHIP_PR_SH" \
+  || fail "ship-pr.sh must source lib-finalize-state-keys.sh"
 
 echo "All assertions passed."
