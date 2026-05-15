@@ -89,7 +89,6 @@ readonly POS_MARKERS=(
   "simple review panel|insensitive"
   "Cursor edge-cases|sensitive"
   "Codex structure|sensitive"
-  "Claude generic|sensitive"
 )
 
 # Stale phrases (forbidden in public docs; SKILL.md exempt).
@@ -290,7 +289,7 @@ run_self_test() {
 This is a fixture describing quick-mode behavior.
 The review loop runs up to 3 rounds.
 The loop has no voting panel — main agent accepts or rejects each finding.
-It uses the simple review panel: Cursor edge-cases, Codex structure, and Claude generic.
+It uses the simple review panel: Cursor edge-cases, Codex structure.
 EOF
 
   # Stale-phrase fixture: contains ALL positive markers PLUS exactly one stale
@@ -303,7 +302,7 @@ EOF
 Stale-phrase fixture: contains every positive marker so only the stale phrase can drive failure.
 The review loop runs up to 3 rounds.
 The loop has no voting panel — main agent accepts or rejects each finding.
-It uses the simple review panel: Cursor edge-cases, Codex structure, and Claude generic.
+It uses the simple review panel: Cursor edge-cases, Codex structure.
 Stale phrase intentionally embedded: simplified code review (1 Claude Code Reviewer subagent, 1 round).
 EOF
 

@@ -170,9 +170,8 @@ fi
 
 # Fallback matrix (from SKILL.md): when a tool is unavailable, skip its specialist
 # slots entirely — do NOT substitute Claude fallback slots for partial outages.
-# Only the both-down path (no external tools) uses a single Claude generic reviewer.
+# When both external tools are down, no reviewer slots are launched (empty panel).
 if [[ "$CODEX_AVAILABLE" == "false" && "$CURSOR_AVAILABLE" == "false" ]]; then
-    launch_claude_slot "generic" "$REVIEW_TMPDIR/claude-generic-output.txt"
     panel_mode="both-down"
 else
     panel_mode="normal"
@@ -188,11 +187,6 @@ else
         done
     fi
     # Codex unavailable: skip Codex specialist slots (no Claude substitution).
-    # Claude generic slot only runs for simple panels; hard panels rely solely
-    # on external specialists (up to 12 when both externals are healthy).
-    if [[ "$PANEL" != "hard" ]]; then
-        launch_claude_slot "generic" "$REVIEW_TMPDIR/claude-generic-output.txt"
-    fi
 fi
 
 emit_kv EXTERNAL_OUTPUT_FILES "${external_outputs[*]-}"

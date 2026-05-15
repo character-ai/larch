@@ -20,7 +20,7 @@ Without this harness, drift between the canonical quick-mode contract and its pu
 
 ### Positive anchors (required in every target)
 
-Each target file MUST contain all six markers:
+Each target file MUST contain all five markers:
 
 | Marker | Casing | Rationale |
 |--------|--------|-----------|
@@ -29,7 +29,6 @@ Each target file MUST contain all six markers:
 | `simple review panel` | **case-insensitive** `grep -iF` | Pins that quick mode uses the delegated `--panel simple` topology. |
 | `Cursor edge-cases` | case-sensitive `grep -F` | Pins the Cursor slot in the simple panel. |
 | `Codex structure` | case-sensitive `grep -F` | Pins the Codex slot in the simple panel. |
-| `Claude generic` | case-sensitive `grep -F` | Pins the always-present Claude generic slot in the simple panel. |
 
 The last four markers encode the delegated simple-panel topology described in the canonical Step 5 contract. Without them, a SKILL.md edit that re-shuffled the quick-mode reviewer composition could ship without the public docs being updated.
 

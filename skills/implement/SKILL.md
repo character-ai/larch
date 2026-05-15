@@ -1372,7 +1372,7 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 
 Nested review token-context propagation through `review-and-fix.sh` is pinned by `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-implement-review-token-propagation.sh` and `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-implement-review-token-propagation.md`.
 
-Quick mode prints: `> **🔶 /implement 5: code review — quick mode (review-and-fix.sh, up to 3 rounds, no voting panel; simple review panel: Cursor edge-cases, Codex structure, Claude generic)**`
+Quick mode prints: `> **🔶 /implement 5: code review — quick mode (review-and-fix.sh, up to 3 rounds, no voting panel; simple review panel: Cursor edge-cases, Codex structure)**`
 
 Normal mode prints: `> **🔶 /implement 5: code review**`
 

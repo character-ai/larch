@@ -58,8 +58,8 @@ assert_stdout_cap "$out"
 sleep 0.2
 grep -Fq 'PANEL_MODE=both-down' <<< "$out"
 grep -Fq 'PANEL_SHAPE=hard' <<< "$out"
-grep -Fq 'SLOT_COUNT=1' <<< "$out"
-[[ -f "$TMP/both/claude-generic-output.txt.done" ]]
+grep -Fq 'SLOT_COUNT=0' <<< "$out"
+[[ ! -e "$TMP/both/claude-generic-output.txt.done" ]]
 
 out=$("$SCRIPT" --mode diff --review-tmpdir "$TMP/simple" --codex-available true --cursor-available true --panel simple --launch-claude-subprocess "$stub" --launch-review "$review_stub")
 assert_stdout_cap "$out"
@@ -67,9 +67,10 @@ sleep 0.2
 grep -Fq 'DISPATCH_OK=true' <<< "$out"
 grep -Fq 'PANEL_MODE=normal' <<< "$out"
 grep -Fq 'PANEL_SHAPE=simple' <<< "$out"
-grep -Fq 'SLOT_COUNT=3' <<< "$out"
+grep -Fq 'SLOT_COUNT=2' <<< "$out"
 [[ -f "$TMP/simple/cursor-specialist-edge-cases-output.txt.done" ]]
 [[ -f "$TMP/simple/codex-specialist-structure-output.txt.done" ]]
+[[ ! -e "$TMP/simple/claude-generic-output.txt.done" ]]
 [[ ! -e "$TMP/simple/cursor-specialist-plan-fidelity-output.txt.done" ]]
 
 plan_file="$TMP/plan.md"
@@ -78,9 +79,10 @@ out=$("$SCRIPT" --mode diff --review-tmpdir "$TMP/simple-plan" --codex-available
 assert_stdout_cap "$out"
 sleep 0.2
 grep -Fq 'PANEL_SHAPE=simple' <<< "$out"
-grep -Fq 'SLOT_COUNT=5' <<< "$out"
+grep -Fq 'SLOT_COUNT=4' <<< "$out"
 [[ -f "$TMP/simple-plan/cursor-specialist-plan-fidelity-output.txt.done" ]]
 [[ -f "$TMP/simple-plan/codex-specialist-plan-fidelity-output.txt.done" ]]
+[[ ! -e "$TMP/simple-plan/claude-generic-output.txt.done" ]]
 
 out=$("$SCRIPT" --mode diff --review-tmpdir "$TMP/hard" --codex-available true --cursor-available true --panel hard --launch-claude-subprocess "$stub" --launch-review "$review_stub")
 assert_stdout_cap "$out"
