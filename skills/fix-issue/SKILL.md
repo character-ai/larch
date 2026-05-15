@@ -65,6 +65,8 @@ Each rule states **Why** (the specific consequence of breaking the rule) and **H
 
 8. **NEVER improvise ScheduleWakeup outside skill-script direction.** See `${CLAUDE_PLUGIN_ROOT}/skills/shared/orchestrator-never.md` (loaded via MANDATORY above). **CI-backed**: yes — `scripts/test-anti-improvised-wakeup.sh` pins the literal in the shared file.
 
+9. **NEVER use `larch:fix-issue` (or any name other than `larch:implement`) as the `skill:` field in the Step 5a Skill tool call, and NEVER put `--inline` in `args:` when `hard_mode=false`.** **Why**: in one observed failure the orchestrator used `skill: "larch:fix-issue"` with `args: "--inline /implement --merge ..."`, invoking itself recursively. The recursive child immediately exited (the issue was already locked) and returned failure, leaving the issue permanently stuck in `[IN PROGRESS]` with no code written, no PR, and no cleanup. The `--inline` token also appeared as a prefix inside `args:` when `hard_mode=false`, violating the existing `--inline` forwarding guard. Both bugs stem from the same confusion: the `skill:` field carries the Skill name (`larch:implement`); the feature description belongs in `args:`. **How to apply**: at Step 5a the Skill tool invocation MUST set `skill:` to `larch:implement`. `--inline` MUST NOT appear in `args:` when `hard_mode=false`. **CI-backed**: yes — assertions (g) and (h) in `test-fix-issue-bail-detection.sh`.
+
 <!-- step:0 — Find and Lock -->
 
 Print `> **🔶 /fix-issue 0: find & lock**`
@@ -224,7 +226,7 @@ Compose the feature description from the issue content: use the issue title as t
 
 > ⚠ **Do NOT implement the change directly, regardless of how simple the `COMPLEXITY` label appears. The Step 4 `COMPLEXITY` label is a triage result for the transcript — it is not a pass-through flag and does not authorize direct editing. A SIMPLE classification still requires delegating to `/implement` via the Skill tool.**
 
-Invoke `/implement` via the Skill tool. Forwarding `--issue $ISSUE_NUMBER` makes `/implement` adopt the queue issue as its tracking issue (Phase 3 Branch 2 adoption), so the two skills converge on the same tracking issue and `/fix-issue` avoids a duplicate tracking-issue on its path:
+Invoke `/implement` via the Skill tool using `larch:implement` as the `skill:` field. The `skill:` field MUST be `larch:implement`; any other name is an error. `--inline` MUST NOT appear in `args:` when `hard_mode=false` (it is only forwarded alongside `--hard`). Forwarding `--issue $ISSUE_NUMBER` makes `/implement` adopt the queue issue as its tracking issue (Phase 3 Branch 2 adoption), so the two skills converge on the same tracking issue and `/fix-issue` avoids a duplicate tracking-issue on its path:
 
 `/implement --merge [--hard if hard_mode] --session-env $FIX_ISSUE_TMPDIR/session-env.sh --issue $ISSUE_NUMBER [--auto if auto_mode] [--no-admin-fallback if no_admin_fallback] [--no-logs-commit if no_logs_commit] [--coder=$coder if coder set] [--inline if inline_mode and hard_mode] <feature description>`
 
