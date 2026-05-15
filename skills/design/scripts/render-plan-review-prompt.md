@@ -6,7 +6,7 @@
 
 - `--vendor claude` is intentionally unsupported; Claude fallback reviewers use `skills/shared/reviewer-templates.md` through `skills/design/references/plan-review.md`.
 - Every prompt includes the slash-separated focus-area enum `code-quality / risk-integration / correctness / architecture / security`.
-- Every prompt includes `NO_ISSUES_FOUND` as the no-findings sentinel instruction.
+- Every prompt includes `{"no_issues_found": true}` as the canonical no-findings sentinel instruction. `NO_ISSUES_FOUND` remains validator-supported only for backward compatibility.
 - Both Cursor and Codex prompts include the full `full_role` personality prose and a TSV structured-record block contract so all archetype outputs can pass through `collect-agent-results.sh --structured-reviewer-validation`.
 - Invalid arguments exit 2 with diagnostics on stderr.
 

@@ -859,7 +859,12 @@ fi
 if [[ -n "${CURSOR_STUB_DELAY:-}" ]]; then
     sleep "$CURSOR_STUB_DELAY"
 fi
-printf '{"result":"%s","usage":{"inputTokens":1,"outputTokens":2,"cacheReadTokens":3,"cacheWriteTokens":4}}\n' "${CURSOR_STUB_RESULT:-POST-PROCESSED OK}"
+if [[ "${CURSOR_STUB_RESULT+x}" == "x" ]]; then
+    result="$CURSOR_STUB_RESULT"
+else
+    result="POST-PROCESSED OK"
+fi
+printf '{"result":"%s","usage":{"inputTokens":1,"outputTokens":2,"cacheReadTokens":3,"cacheWriteTokens":4}}\n' "$result"
 STUB_CURSOR
 chmod +x "$STUB_BIN/cursor"
 
@@ -905,6 +910,13 @@ else
 fi
 assert_grep "case B dirty-tree sidecar status" "^STATUS=" "${OUT_B}.dirty-tree"
 assert_grep "case B dirty-tree sidecar mode" "^MODE=baseline$" "${OUT_B}.dirty-tree"
+
+# Case B2: Cursor JSON envelopes with explicit empty .result are promoted to a
+# distinct marker instead of a generic blank reviewer output.
+OUT_B2="$TMPDIR/cursor-b2.txt"
+PATH="$STUB_BIN:$PATH" CURSOR_STUB_RESULT="" \
+    "$LAUNCHER" --output "$OUT_B2" --timeout 5 --prompt "empty result" >/dev/null 2>"$TMPDIR/case-b2.stderr"
+assert_equals "case B2 empty Cursor result marker" "CURSOR_EMPTY_RESPONSE" "$(cat "$OUT_B2")"
 
 # Case C: --prompt-file preserves trailing newlines through the wrapper prompt.
 # Issue #1529: the wrapper output (last argv to cursor) has the form

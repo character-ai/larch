@@ -10,8 +10,9 @@
   validation, prompt replay, dirty-tree sidecars, model argv handling,
   `--add-dir`, token-budget cap, and specialist `--diff-file`.
 - Cursor review launcher assertions from the former per-tool harness: JSON
-  post-processing, outer retry metadata, prompt byte preservation, signal-trap
-  sentinel publication, auth-preflight short-circuit, and dirty-tree sidecars.
+  post-processing, explicit empty `.result` marker promotion, outer retry
+  metadata, prompt byte preservation, signal-trap sentinel publication,
+  auth-preflight short-circuit, and dirty-tree sidecars.
 - Gemini review launcher assertions from the former per-tool harness:
   `GEMINI_REVIEW=1` gating, JSON normalization, `jq` fail-closed behavior,
   model rejection, prompt hardening, token-session rehydration, timeout

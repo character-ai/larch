@@ -75,14 +75,14 @@ Treat `STATUS=OK` with empty `FAILURE_REASON` as the success signal; do not use 
 
 When the collector is invoked with `--substantive-validation`, it additionally calls `scripts/validate-research-output.sh` on each `STATUS=OK` output. Validator failure is rewritten to `STATUS=NOT_SUBSTANTIVE` with `HEALTHY=false`, and the caller treats it identically to a timeout (Claude-subagent fallback). This catches outputs that pass sentinel + non-empty + retry but contain only banner text (e.g., `Authentication required`) or other non-substantive content.
 
-The optional `--validation-mode` modifier forwards `--validation-mode` to the validator, which (a) lowers the body-word floor from 200 to 30, (b) accepts the literal `NO_ISSUES_FOUND` token as substantive without further checks, and (c) keeps the citation requirement unchanged. This preset is for short reviewer-style outputs whose contract is *"numbered findings ... If NO issues, output exactly NO_ISSUES_FOUND"*.
+The optional `--validation-mode` modifier forwards `--validation-mode` to the validator, which (a) lowers the body-word floor from 200 to 30, (b) accepts the canonical JSON no-findings sentinel `{"no_issues_found": true}` and legacy `NO_ISSUES_FOUND` token as substantive without further checks, (c) maps `CURSOR_EMPTY_RESPONSE` to its own status, and (d) keeps the citation requirement unchanged. This preset is for short reviewer-style outputs whose no-findings contract is the JSON sentinel; the plain-text token is deprecated but still accepted for compatibility.
 
 **Currently opted in by:**
 
 | Caller | Flags |
 |--------|-------|
 | `/research` research phase (Standard / Deep) | `--substantive-validation` (no `--validation-mode`; 200-word floor + citation requirement; outputs are 2-3-paragraph research prose) |
-| `/research` validation phase (Step 2.4) | `--substantive-validation --validation-mode` (30-word floor + `NO_ISSUES_FOUND` short-circuit + citation requirement; outputs are short numbered findings) |
+| `/research` validation phase (Step 2.4) | `--substantive-validation --validation-mode` (30-word floor + no-findings sentinel short-circuit + `CURSOR_EMPTY_RESPONSE` mapping + citation requirement; outputs are short numbered findings) |
 | `/review` Step 3a code review | `--substantive-validation --validation-mode` |
 | `/implement` Step 5 quick-mode review | `--substantive-validation --validation-mode` |
 | `/design` Step 3 plan review | `--substantive-validation --validation-mode` |

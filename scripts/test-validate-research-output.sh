@@ -25,6 +25,11 @@
 #   17. Unknown flag → exit 1 (usage error)
 #   18. --validation-mode literal NO_ISSUES_FOUND passes → exit 0
 #   19. --validation-mode NO_ISSUES_FOUND padded with blank lines passes → exit 0
+#   19b. --validation-mode JSON no-findings sentinel passes → exit 0
+#   19c. --validation-mode JSON no-findings sentinel with extra keys passes → exit 0
+#   19d. --validation-mode JSON sentinel with false value does not short-circuit → exit 2
+#   19e. --validation-mode JSON sentinel with string value does not short-circuit → exit 2
+#   19f. --validation-mode CURSOR_EMPTY_RESPONSE marker exits 5
 #   20. --validation-mode short cited finding (40 words + file:line) passes (30-word floor) → exit 0
 #   21. --validation-mode 10-word too-short → exit 2
 #   22. --validation-mode 40-word uncited → exit 3
@@ -63,6 +68,7 @@
 #   52. JSONL valid record → exit 0
 #   53. TSV valid record → exit 0
 #   54. NO_ISSUES_FOUND short-circuit → exit 0
+#   54b. JSON no-findings sentinel short-circuit → exit 0
 #   55. JSONL inside code fence → exit 0
 #   56. JSONL after prose preamble → exit 0
 #   57. Severity alias normalization → exit 0
@@ -235,6 +241,31 @@ F19="$TMPROOT/case19-noissues-padded.txt"
     echo ''
 } > "$F19"
 run_case "case 19: --validation-mode NO_ISSUES_FOUND padded with blank lines" 0 --validation-mode "$F19"
+
+# --- Case 19b: --validation-mode + JSON sentinel literal passes ---
+F19B="$TMPROOT/case19b-json-sentinel.txt"
+printf '{"no_issues_found": true}\n' > "$F19B"
+run_case "case 19b: --validation-mode JSON no-findings sentinel" 0 --validation-mode "$F19B"
+
+# --- Case 19c: --validation-mode + JSON sentinel literal with extra keys passes ---
+F19C="$TMPROOT/case19c-json-sentinel-extra-keys.txt"
+printf '{"no_issues_found": true, "ignored": "diagnostic"}\n' > "$F19C"
+run_case "case 19c: --validation-mode JSON no-findings sentinel with extra keys" 0 --validation-mode "$F19C"
+
+# --- Case 19d: --validation-mode + false JSON sentinel does not short-circuit ---
+F19D="$TMPROOT/case19d-json-sentinel-false.txt"
+printf '{"no_issues_found": false}\n' > "$F19D"
+run_case "case 19d: --validation-mode JSON no-findings false value rejects as thin" 2 --validation-mode "$F19D"
+
+# --- Case 19e: --validation-mode + string JSON sentinel does not short-circuit ---
+F19E="$TMPROOT/case19e-json-sentinel-string.txt"
+printf '{"no_issues_found": "true"}\n' > "$F19E"
+run_case "case 19e: --validation-mode JSON no-findings string value rejects as thin" 2 --validation-mode "$F19E"
+
+# --- Case 19f: --validation-mode + CURSOR_EMPTY_RESPONSE marker exits 5 ---
+F19F="$TMPROOT/case19f-cursor-empty-response.txt"
+printf 'CURSOR_EMPTY_RESPONSE\n' > "$F19F"
+run_case "case 19f: --validation-mode CURSOR_EMPTY_RESPONSE marker" 5 --validation-mode "$F19F"
 
 # --- Case 20: --validation-mode short cited finding (50 words + file:line) passes (30-word floor) ---
 F20="$TMPROOT/case20-validation-finding.txt"
@@ -448,6 +479,11 @@ run_case "case 53: TSV valid record → exit 0 (structured-reviewer-mode)" 0 --s
 F54="$TMPROOT/case54-no-issues.txt"
 printf 'NO_ISSUES_FOUND\n' > "$F54"
 run_case "case 54: NO_ISSUES_FOUND → exit 0 (structured-reviewer-mode)" 0 --structured-reviewer-mode "$F54"
+
+# Case 54b: JSON no-findings sentinel short-circuit → exit 0
+F54B="$TMPROOT/case54b-json-no-issues.txt"
+printf '{"no_issues_found": true}\n' > "$F54B"
+run_case "case 54b: JSON no-findings sentinel → exit 0 (structured-reviewer-mode)" 0 --structured-reviewer-mode "$F54B"
 
 # Case 55: JSONL record inside code fence → exit 0 (repair removes fence)
 F55="$TMPROOT/case55-fenced-jsonl.txt"

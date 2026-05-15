@@ -5,8 +5,9 @@
 # or structured reviewer record checks, and exits 0 if valid or non-zero with a
 # one-line diagnostic on stdout. The intended consumer is
 # `scripts/collect-agent-results.sh --substantive-validation` and/or
-# `--structured-reviewer-validation`, which translates a non-zero exit into a
-# `STATUS=NOT_SUBSTANTIVE` entry with `HEALTHY=false`.
+# `--structured-reviewer-validation`, which translates most non-zero exits into
+# a `STATUS=NOT_SUBSTANTIVE` entry with `HEALTHY=false`; validation-mode exit 5
+# maps to `STATUS=CURSOR_EMPTY_RESPONSE`.
 # Phase 3 of umbrella issue #413 (closes #416, #447, #473).
 #
 # Substantive = ALL of:
@@ -57,13 +58,16 @@
 #          content line,
 #        - a URL (https?://...).
 #
-# Validation-mode preset (--validation-mode): for use with /research's Step
-# 2.4 validation phase, where reviewer outputs are structurally different
-# from research-phase prose (they contain the literal `NO_ISSUES_FOUND`
-# token on the happy path, or short numbered findings with file:line
-# citations). The preset:
-#   - accepts a file whose entire trimmed content equals `NO_ISSUES_FOUND`
+# Validation-mode preset (--validation-mode): for short reviewer-style outputs
+# that are structurally different from research-phase prose (they contain a
+# no-findings sentinel on the happy path, or short numbered findings with
+# file:line citations). The preset:
+#   - accepts a file whose entire trimmed content equals the canonical JSON
+#     sentinel `{"no_issues_found": true}` or legacy `NO_ISSUES_FOUND`
 #     (case-sensitive) as substantive — exit 0 with no further checks,
+#   - maps a file whose entire trimmed content equals `CURSOR_EMPTY_RESPONSE`
+#     to exit 5 with a diagnostic so the collector can surface
+#     STATUS=CURSOR_EMPTY_RESPONSE,
 #   - lowers the default --min-words floor to 30 (a single concise finding
 #     comfortably exceeds this, but a junk one-liner does not),
 #   - keeps the citation requirement unchanged (validation findings must
@@ -75,7 +79,8 @@
 # records emitted as JSONL or TSV. This mode is independent of --validation-mode
 # and bypasses the prose word-count/citation gates when at least one valid
 # structured record is found. `--write-structured <path>` writes normalized valid
-# records to the given path; NO_ISSUES_FOUND writes an empty file and exits 0.
+# records to the given path; the canonical JSON no-findings sentinel and legacy
+# NO_ISSUES_FOUND write an empty file and exit 0.
 # JSONL detection prefers `jq`: each candidate line must parse as a JSON object
 # with schema_version=1 and the required schema fields. Severity aliases
 # Important/Nit/Latent are normalized case-insensitively. If `jq` is unavailable,
@@ -107,13 +112,16 @@
 #   2 — body too thin (word count below --min-words after stripping fenced code)
 #   3 — no provenance marker found (only when --require-citations is on)
 #   4 — file missing or not readable
-#   5 — structured records not found after repair
+#   5 — validation mode: CURSOR_EMPTY_RESPONSE marker; structured mode:
+#       structured records not found after repair
 #
 # Diagnostic format:
 #   Exit 2: `body too thin: <count>/<min> words after stripping fenced code`
 #   Exit 3: `no provenance marker found`
 #   Exit 4: `file missing or not readable: <path>`
-#   Exit 5: `structured records not found after repair`
+#   Exit 5: validation mode emits `STATUS=CURSOR_EMPTY_RESPONSE` plus
+#           `FAILURE_REASON=...`; structured mode emits
+#           `structured records not found after repair`
 #
 # Portability: uses `awk` (POSIX) and `grep -E` (BSD + GNU). No `\d`, no
 # lookarounds, no `\w` — all character classes are explicit `[...]`.
@@ -319,6 +327,11 @@ if [[ "$STRUCTURED_REVIEWER_MODE" == "true" ]]; then
         write_structured_output "$WRITE_STRUCTURED" ""
         exit 0
     fi
+    if command -v jq >/dev/null 2>&1 \
+       && jq -e 'type == "object" and .no_issues_found == true' <<<"$TRIMMED" >/dev/null 2>&1; then
+        write_structured_output "$WRITE_STRUCTURED" ""
+        exit 0
+    fi
 
     STRUCTURED_TMP=$(mktemp "${TMPDIR:-/tmp}/structured-reviewer.XXXXXX") || exit 1
     trap 'rm -f "$STRUCTURED_TMP"' EXIT
@@ -343,20 +356,23 @@ if [[ "$STRUCTURED_REVIEWER_MODE" == "true" ]]; then
     exit 5
 fi
 
-# --- 0. Validation-mode short-circuit: accept the literal NO_ISSUES_FOUND
-# token (the explicit "no findings" signal emitted by /research's Step 2.4
-# validators per scripts/render-reviewer-prompt.sh) as substantive without
-# applying word-count or citation checks. The token must be the entire
-# trimmed file content (whitespace-only lines removed top + bottom; tabs and
-# trailing whitespace stripped) — partial matches inside larger prose do NOT
-# trigger the short-circuit, since a finding that mentions "NO_ISSUES_FOUND"
-# in commentary should still be subject to word-count + citation checks.
+# --- 0. Validation-mode short-circuits: accept no-findings sentinels as
+# substantive without applying word-count or citation checks, and distinguish
+# Cursor's empty .result response marker from generic thin content. Sentinels
+# must be the entire trimmed file content (whitespace-only lines removed top +
+# bottom; tabs and trailing whitespace stripped) — partial matches inside
+# larger prose do NOT trigger the short-circuit.
 if [[ "$VALIDATION_MODE" == "true" ]]; then
-    # Concatenate non-blank lines after stripping per-line leading and trailing
-    # whitespace. If the result equals exactly `NO_ISSUES_FOUND`, the file is
-    # the literal token (possibly surrounded by blank lines) and is accepted.
     TRIMMED=$(trimmed_nonblank_content "$INPUT")
+    if [[ "$TRIMMED" == "CURSOR_EMPTY_RESPONSE" ]]; then
+        printf 'STATUS=CURSOR_EMPTY_RESPONSE\nFAILURE_REASON=Cursor returned a JSON envelope with empty .result field — likely transient backend issue. Fallback engaged.\n' >&2
+        exit 5
+    fi
     if [[ "$TRIMMED" == "NO_ISSUES_FOUND" ]]; then
+        exit 0
+    fi
+    if command -v jq >/dev/null 2>&1 \
+       && jq -e 'type == "object" and .no_issues_found == true' <<<"$TRIMMED" >/dev/null 2>&1; then
         exit 0
     fi
 fi
