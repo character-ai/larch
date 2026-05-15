@@ -129,6 +129,14 @@ SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 . "$SCRIPT_DIR/file-line-regex-lib.sh"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
+# Print help before quiet init so --help output reaches the terminal.
+for _arg in "$@"; do
+  if [[ "$_arg" == "--help" ]]; then
+    sed -n '/^# /,/^[^#]/p' "$0" | head -n 120
+    exit 0
+  fi
+done
+unset _arg
 larch_quiet_init
 
 MIN_WORDS=""

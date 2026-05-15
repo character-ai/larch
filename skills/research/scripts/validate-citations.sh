@@ -106,6 +106,13 @@ REPO_ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd)
 . "$REPO_ROOT/scripts/file-line-regex-lib.sh"
 # shellcheck source=scripts/lib-quiet.sh
 source "$REPO_ROOT/scripts/lib-quiet.sh"
+# When re-execed under setsid (Linux budget-exhaustion path), FD 3 already
+# points to the original caller stdout inherited from the parent quiet session.
+# Prevent larch_quiet_init from overwriting it via "exec 3>&1" (which would
+# save the log-redirected FD 1 instead of the real caller stdout).
+if [[ "${__VC_SETSID_DONE:-}" == "1" ]]; then
+    LARCH_QUIET_PID=$$
+fi
 larch_quiet_init
 
 REPORT=""

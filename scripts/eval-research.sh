@@ -70,7 +70,6 @@ if [[ -z "${CLAUDE_PLUGIN_ROOT:-}" ]]; then
 fi
 # shellcheck source=scripts/lib-quiet.sh
 source "$CLAUDE_PLUGIN_ROOT/scripts/lib-quiet.sh"
-larch_quiet_init
 
 EVAL_SET_FILE="${CLAUDE_PLUGIN_ROOT}/skills/research/references/eval-set.md"
 EVAL_BASELINE_FILE="${CLAUDE_PLUGIN_ROOT}/skills/research/references/eval-baseline.json"
@@ -91,6 +90,13 @@ SMOKE_TEST="false"
 print_usage() {
   awk '/^# Usage:/,/^# Security:/' "${BASH_SOURCE[0]}" | sed 's/^# \?//'
 }
+
+# Print help before quiet init so --help output reaches the terminal.
+for _arg in "$@"; do
+  [[ "$_arg" == "--help" || "$_arg" == "-h" ]] && { print_usage; exit 0; }
+done
+unset _arg
+larch_quiet_init
 
 # Guard for value-taking flags. Without this, a trailing flag with no
 # following value (e.g. `eval-research.sh --baseline`) reaches `shift 2`

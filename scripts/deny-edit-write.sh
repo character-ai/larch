@@ -43,9 +43,9 @@ source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
 
 # Fixed deny JSON — single reason string, no runtime interpolation.
-# The jq -cn expression below and the static printf fallback must emit
-# byte-identical output for this literal. When editing the reason,
-# keep both branches in sync.
+# The jq -cn expression below and the static-literal fallback must produce
+# byte-identical output for this literal; both paths emit via `emit` (FD 3).
+# When editing the reason, keep both branches in sync.
 block() {
   local json
   json=$(jq -cn '{
