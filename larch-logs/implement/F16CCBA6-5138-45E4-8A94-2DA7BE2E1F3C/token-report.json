@@ -97,21 +97,21 @@
       {
         "step": "Step 8 — version bump",
         "totals": {
-          "input": 24,
-          "cache_read": 8256645,
-          "cache_create": 42697,
-          "output": 6189,
-          "total": 8305555
+          "input": 26,
+          "cache_read": 9024561,
+          "cache_create": 43137,
+          "output": 6873,
+          "total": 9074597
         },
         "skills": [
           {
             "skill": "bump-version",
             "totals": {
-              "input": 6,
-              "cache_read": 1529830,
-              "cache_create": 5084,
-              "output": 606,
-              "total": 1535526
+              "input": 8,
+              "cache_read": 2297746,
+              "cache_create": 5524,
+              "output": 1290,
+              "total": 2304568
             }
           },
           {
@@ -125,14 +125,46 @@
             }
           }
         ]
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 130,
+          "cache_read": 51668198,
+          "cache_create": 1347819,
+          "output": 49843,
+          "total": 53065990
+        },
+        "skills": [
+          {
+            "skill": "bump-version",
+            "totals": {
+              "input": 102,
+              "cache_read": 41800962,
+              "cache_create": 473662,
+              "output": 42668,
+              "total": 42317394
+            }
+          },
+          {
+            "skill": "inferred:Step 8b — rebase",
+            "totals": {
+              "input": 28,
+              "cache_read": 9867236,
+              "cache_create": 874157,
+              "output": 7175,
+              "total": 10748596
+            }
+          }
+        ]
       }
     ],
     "totals": {
-      "input": 461,
-      "cache_read": 125431122,
-      "cache_create": 395611,
-      "output": 203134,
-      "total": 126030328
+      "input": 593,
+      "cache_read": 177867236,
+      "cache_create": 1743870,
+      "output": 253661,
+      "total": 179865360
     }
   },
   "codex": {
@@ -171,6 +203,14 @@
       },
       {
         "step": "Step 8 — version bump",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8b — rebase",
         "totals": {
           "input": 0,
           "output": 0,
@@ -225,12 +265,20 @@
           "output": 0,
           "total": 0
         }
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 10,
+          "output": 12,
+          "total": 52
+        }
       }
     ],
     "totals": {
-      "input": 359141,
-      "output": 51449,
-      "total": 4266718
+      "input": 359151,
+      "output": 51461,
+      "total": 4266770
     }
   }
 }
