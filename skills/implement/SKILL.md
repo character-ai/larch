@@ -1380,7 +1380,7 @@ Track `round_num` from 1. For each round, run one foreground Bash call:
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
 fi
-export CLAUDE_PLUGIN_ROOT IMPLEMENT_TMPDIR
+export CLAUDE_PLUGIN_ROOT
 review_panel=hard
 if [ "$quick_mode" = true ]; then
   review_panel=simple
