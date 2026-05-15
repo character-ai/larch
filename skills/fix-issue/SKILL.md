@@ -226,7 +226,7 @@ Compose the feature description from the issue content: use the issue title as t
 
 > ⚠ **Do NOT implement the change directly, regardless of how simple the `COMPLEXITY` label appears. The Step 4 `COMPLEXITY` label is a triage result for the transcript — it is not a pass-through flag and does not authorize direct editing. A SIMPLE classification still requires delegating to `/implement` via the Skill tool.**
 
-Invoke `/implement` via the Skill tool using `larch:implement` as the `skill:` field. The `skill:` field MUST be `larch:implement` — never another name such as `larch:fix-issue`. `--inline` MUST NOT appear in `args:` when `hard_mode=false` (it is only forwarded alongside `--hard`). Forwarding `--issue $ISSUE_NUMBER` makes `/implement` adopt the queue issue as its tracking issue (Phase 3 Branch 2 adoption), so the two skills converge on the same tracking issue and `/fix-issue` avoids a duplicate tracking-issue on its path:
+Invoke `/implement` via the Skill tool using `larch:implement` as the `skill:` field. The `skill:` field MUST be `larch:implement`; any other name is an error. `--inline` MUST NOT appear in `args:` when `hard_mode=false` (it is only forwarded alongside `--hard`). Forwarding `--issue $ISSUE_NUMBER` makes `/implement` adopt the queue issue as its tracking issue (Phase 3 Branch 2 adoption), so the two skills converge on the same tracking issue and `/fix-issue` avoids a duplicate tracking-issue on its path:
 
 `/implement --merge [--hard if hard_mode] --session-env $FIX_ISSUE_TMPDIR/session-env.sh --issue $ISSUE_NUMBER [--auto if auto_mode] [--no-admin-fallback if no_admin_fallback] [--no-logs-commit if no_logs_commit] [--coder=$coder if coder set] [--inline if inline_mode and hard_mode] <feature description>`
 
