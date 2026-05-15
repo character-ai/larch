@@ -116,6 +116,12 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
     <tr><td colspan="2">Code review with the specialist panel described in <code>docs/review-agents.md</code>. <code>--diff</code>: review branch changes and implement fixes. <code>&lt;description&gt;</code>: review existing code and file accepted findings as GitHub issues (default; <code>--no-issues</code> to suppress).</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
+      <td><a href="docs/skills.md#review-and-fix"><code>/review-and-fix</code></a></td>
+      <td><code>--findings-file &lt;path&gt; [--session-env &lt;path&gt;] [--review-tmpdir &lt;path&gt;]</code></td>
+    </tr>
+    <tr><td colspan="2">Internal helper invoked by <code>/review --diff</code> to apply accepted review findings through the structured review-and-fix scripts.</td></tr>
+    <tr><td colspan="2"><hr></td></tr>
+    <tr>
       <td><a href="docs/skills.md#set-up-forked-open-source-repo"><code>/set-up-forked-open-source-repo</code></a></td>
       <td><code>--upstream &lt;owner/repo&gt; --fork &lt;owner/repo&gt; [--mirror-confirmed] [--init-submodules]</code></td>
     </tr>

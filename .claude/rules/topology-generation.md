@@ -12,6 +12,7 @@ paths:
   - "skills/implement/references/conflict-resolution.md"
   - "skills/research/references/research-phase.md"
   - "skills/research/references/validation-phase.md"
+  - "skills/review/scripts/dispatch-panel.sh"
 ---
 
 # Topology Generation
