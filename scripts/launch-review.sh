@@ -23,7 +23,7 @@ source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
 
 usage() {
-    echo "Usage: launch-review.sh --tool codex|cursor|gemini --output FILE --timeout SECS [review flags]" >&2
+    larch_err "Usage: launch-review.sh --tool codex|cursor|gemini --output FILE --timeout SECS [review flags]"
 }
 
 TOOL=""
@@ -34,7 +34,7 @@ while [[ $# -gt 0 ]]; do
             TOOL="${2:?--tool requires a value}"
             case "$TOOL" in
                 codex|cursor|gemini) ;;
-                *) echo "launch-review.sh: unknown tool: '$TOOL'; expected codex, cursor, or gemini" >&2; exit 2 ;;
+                *) larch_err "launch-review.sh: unknown tool: '$TOOL'; expected codex, cursor, or gemini"; exit 2 ;;
             esac
             shift 2
             ;;
@@ -53,7 +53,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "$TOOL" ]]; then
-    echo "launch-review.sh: --tool is required (codex|cursor|gemini)" >&2
+    larch_err "launch-review.sh: --tool is required (codex|cursor|gemini)"
     exit 2
 fi
 
@@ -75,7 +75,7 @@ if [[ "$TOOL" == "gemini" ]]; then
     for _arg in "${ARGS[@]+"${ARGS[@]}"}"; do
         case "$_arg" in
             --agent-file|--mode|--description-text|--scope-files|--competition-notice|--diff-file|--prompt-file|--plan-file|--feature-file)
-                echo "launch-review.sh: $_arg is not supported for --tool gemini" >&2
+                larch_err "launch-review.sh: $_arg is not supported for --tool gemini"
                 exit 2
                 ;;
         esac
@@ -133,18 +133,18 @@ while [[ $# -gt 0 ]]; do
         --commit-count) COMMIT_COUNT="${2:?--commit-count requires a value}"; shift 2 ;;
         --plan-file) PLAN_FILE="${2:?--plan-file requires a value}"; shift 2 ;;
         --feature-file) FEATURE_FILE="${2:?--feature-file requires a value}"; shift 2 ;;
-        --timing-task-kind) [[ -n "${2:-}" && "${2}" != --* ]] || { echo "launch-review.sh: --timing-task-kind requires a non-empty, non-flag-like value" >&2; exit 2; }; TIMING_TASK_KIND="$2"; shift 2 ;;
-        --token-budget-cap) case "${2:-}" in ''|*[!0-9]*) echo "launch-review.sh: --token-budget-cap requires a positive integer" >&2; exit 2 ;; esac; (( 10#${2:-0} >= 1 )) || { echo "launch-review.sh: --token-budget-cap requires a positive integer" >&2; exit 2; }; TOKEN_BUDGET_CAP="$2"; shift 2 ;;
-        --risk) [[ -n "${2:-}" ]] || { echo "launch-review.sh: --risk requires a value" >&2; exit 2; }; shift 2 ;;
-        *) echo "launch-review.sh: unknown flag: $1" >&2; exit 2 ;;
+        --timing-task-kind) [[ -n "${2:-}" && "${2}" != --* ]] || { larch_err "launch-review.sh: --timing-task-kind requires a non-empty, non-flag-like value"; exit 2; }; TIMING_TASK_KIND="$2"; shift 2 ;;
+        --token-budget-cap) case "${2:-}" in ''|*[!0-9]*) larch_err "launch-review.sh: --token-budget-cap requires a positive integer"; exit 2 ;; esac; (( 10#${2:-0} >= 1 )) || { larch_err "launch-review.sh: --token-budget-cap requires a positive integer"; exit 2; }; TOKEN_BUDGET_CAP="$2"; shift 2 ;;
+        --risk) [[ -n "${2:-}" ]] || { larch_err "launch-review.sh: --risk requires a value"; exit 2; }; shift 2 ;;
+        *) larch_err "launch-review.sh: unknown flag: $1"; exit 2 ;;
     esac
 done
 
 if [[ -z "$OUTPUT" ]]; then
-    echo "launch-review.sh: --output is required" >&2; exit 2
+    larch_err "launch-review.sh: --output is required"; exit 2
 fi
 if [[ -z "$TIMEOUT" ]]; then
-    echo "launch-review.sh: --timeout is required" >&2; exit 2
+    larch_err "launch-review.sh: --timeout is required"; exit 2
 fi
 
 # Validate --output BEFORE installing traps/sidecars so the same byte-exact
@@ -156,10 +156,10 @@ source "$SCRIPT_DIR/lib-validate-meta-path.sh"
 validate_meta_scalar_path --output "$OUTPUT" || exit 1
 
 case "$TIMEOUT" in
-    ''|*[!0-9]*|0) echo "launch-review.sh: --timeout must be a positive integer (seconds), got '$TIMEOUT'" >&2; exit 2 ;;
+    ''|*[!0-9]*|0) larch_err "launch-review.sh: --timeout must be a positive integer (seconds), got '$TIMEOUT'"; exit 2 ;;
 esac
 if (( 10#$TIMEOUT < 1 )); then
-    echo "launch-review.sh: --timeout must be a positive integer (seconds), got '$TIMEOUT'" >&2
+    larch_err "launch-review.sh: --timeout must be a positive integer (seconds), got '$TIMEOUT'"
     exit 2
 fi
 
@@ -186,8 +186,8 @@ if [[ -n "$TOKEN_BUDGET_CAP" ]]; then
     _budget_out=$("$SCRIPT_DIR/check-step-token-budget.sh" --cap "$TOKEN_BUDGET_CAP" --step "${TIMING_TASK_KIND:-codex-review}" 2>/dev/null || true)
     _budget_status=$(printf '%s' "$_budget_out" | awk '{for(i=1;i<=NF;i++){if($i~/^STATUS=/){print substr($i,8);exit}}}')
     if [[ "$_budget_status" == "cap_hit" ]]; then
-        printf '⚠ launch-review.sh: step token budget cap of %s tokens exceeded (%s combined vendor tokens); external reviewer fan-out skipped\n' \
-            "$TOKEN_BUDGET_CAP" "$(printf '%s' "$_budget_out" | awk '{for(i=1;i<=NF;i++){if($i~/^TOTAL=/){print substr($i,7);exit}}}')" >&2
+        larch_errf '⚠ launch-review.sh: step token budget cap of %s tokens exceeded (%s combined vendor tokens); external reviewer fan-out skipped\n' \
+            "$TOKEN_BUDGET_CAP" "$(printf '%s' "$_budget_out" | awk '{for(i=1;i<=NF;i++){if($i~/^TOTAL=/){print substr($i,7);exit}}}')"
         printf 'STATUS=cap_hit\n' > "$OUTPUT"
         printf 'STATUS=cap_hit\n%s\n' "$_budget_out" > "${OUTPUT}.cap-hit"
         if [[ -n "${IMPLEMENT_TMPDIR:-}" ]]; then
@@ -204,11 +204,11 @@ _src_count=0
 [[ -n "$AGENT_FILE" ]] && _src_count=$((_src_count + 1))
 [[ -n "$PROMPT_FILE" ]] && _src_count=$((_src_count + 1))
 if [[ "$_src_count" -gt 1 ]]; then
-    echo "launch-review.sh: --prompt, --agent-file, and --prompt-file are mutually exclusive" >&2
+    larch_err "launch-review.sh: --prompt, --agent-file, and --prompt-file are mutually exclusive"
     exit 2
 fi
 if [[ "$_src_count" -eq 0 ]]; then
-    echo "launch-review.sh: one of --prompt, --agent-file, --prompt-file is required" >&2
+    larch_err "launch-review.sh: one of --prompt, --agent-file, --prompt-file is required"
     exit 2
 fi
 
@@ -289,7 +289,7 @@ if [[ -n "$PROMPT_FILE" ]]; then
             esac
         done < "$PROMPT_FILE"
         if [[ "$_s_kind" != "specialist" || -z "$_s_agent_file" || -z "$_s_mode" || -z "$_s_hash" ]]; then
-            echo "launch-review.sh: malformed prompt sentinel in $PROMPT_FILE (missing or empty KIND/AGENT_FILE/MODE/HASH)" >&2
+            larch_err "launch-review.sh: malformed prompt sentinel in $PROMPT_FILE (missing or empty KIND/AGENT_FILE/MODE/HASH)"
             exit 1
         fi
         _s_render_args=(--agent-file "$_s_agent_file" --mode "$_s_mode")
@@ -309,18 +309,18 @@ if [[ -n "$PROMPT_FILE" ]]; then
         if [[ -z "$_s_reconstructed_hash" ]]; then
             # No SHA-256 tool on this host; cannot verify reconstruction against stored HASH.
             # Fail closed — sentinel replay requires integrity verification.
-            echo "launch-review.sh: no SHA-256 tool (shasum/sha256sum) available; cannot verify sentinel reconstruction" >&2
+            larch_err "launch-review.sh: no SHA-256 tool (shasum/sha256sum) available; cannot verify sentinel reconstruction"
             exit 1
         fi
         if [[ "$_s_reconstructed_hash" != "$_s_hash" ]]; then
-            echo "launch-review.sh: prompt reconstruction hash mismatch (sentinel=$_s_hash reconstructed=$_s_reconstructed_hash)" >&2
+            larch_err "launch-review.sh: prompt reconstruction hash mismatch (sentinel=$_s_hash reconstructed=$_s_reconstructed_hash)"
             exit 1
         fi
         unset _s_kind _s_hash _s_agent_file _s_mode _s_scope _s_comp _s_diff _s_commit_count _s_plan_file _s_feature_file _s_render_args \
               _s_reconstructed_hash _s_line _s_k _s_v
     else
         if ! PROMPT=$({ cat -- "$PROMPT_FILE"; _cat_status=$?; printf X; exit "$_cat_status"; }); then
-            echo "launch-review.sh: failed to read --prompt-file $PROMPT_FILE" >&2
+            larch_err "launch-review.sh: failed to read --prompt-file $PROMPT_FILE"
             exit 1
         fi
         PROMPT=${PROMPT%X}
@@ -362,7 +362,7 @@ HARD CONSTRAINTS — your role is read-only review. Do not create, edit, delete,
 EOF
 )
 if grep -Fq "'''" <<< "$CODEX_REVIEW_HARDENING_PREAMBLE"; then
-    echo "launch-review.sh: hardening preamble contains TOML triple-single-quote delimiter" >&2
+    larch_err "launch-review.sh: hardening preamble contains TOML triple-single-quote delimiter"
     exit 2
 fi
 
@@ -600,18 +600,18 @@ while [[ $# -gt 0 ]]; do
         --commit-count) COMMIT_COUNT="${2:?--commit-count requires a value}"; shift 2 ;;
         --plan-file) PLAN_FILE="${2:?--plan-file requires a value}"; shift 2 ;;
         --feature-file) FEATURE_FILE="${2:?--feature-file requires a value}"; shift 2 ;;
-        --timing-task-kind) [[ -n "${2:-}" && "${2}" != --* ]] || { echo "launch-review.sh: --timing-task-kind requires a non-empty, non-flag-like value" >&2; exit 2; }; TIMING_TASK_KIND="$2"; shift 2 ;;
-        --token-budget-cap) case "${2:-}" in ''|*[!0-9]*) echo "launch-review.sh: --token-budget-cap requires a positive integer" >&2; exit 2 ;; esac; (( 10#${2:-0} >= 1 )) || { echo "launch-review.sh: --token-budget-cap requires a positive integer" >&2; exit 2; }; TOKEN_BUDGET_CAP="$2"; shift 2 ;;
-        --risk) [[ -n "${2:-}" ]] || { echo "launch-review.sh: --risk requires a value" >&2; exit 2; }; shift 2 ;;
-        *) echo "launch-review.sh: unknown flag: $1" >&2; exit 2 ;;
+        --timing-task-kind) [[ -n "${2:-}" && "${2}" != --* ]] || { larch_err "launch-review.sh: --timing-task-kind requires a non-empty, non-flag-like value"; exit 2; }; TIMING_TASK_KIND="$2"; shift 2 ;;
+        --token-budget-cap) case "${2:-}" in ''|*[!0-9]*) larch_err "launch-review.sh: --token-budget-cap requires a positive integer"; exit 2 ;; esac; (( 10#${2:-0} >= 1 )) || { larch_err "launch-review.sh: --token-budget-cap requires a positive integer"; exit 2; }; TOKEN_BUDGET_CAP="$2"; shift 2 ;;
+        --risk) [[ -n "${2:-}" ]] || { larch_err "launch-review.sh: --risk requires a value"; exit 2; }; shift 2 ;;
+        *) larch_err "launch-review.sh: unknown flag: $1"; exit 2 ;;
     esac
 done
 
 if [[ -z "$OUTPUT" ]]; then
-    echo "launch-review.sh: --output is required" >&2; exit 2
+    larch_err "launch-review.sh: --output is required"; exit 2
 fi
 if [[ -z "$TIMEOUT" ]]; then
-    echo "launch-review.sh: --timeout is required" >&2; exit 2
+    larch_err "launch-review.sh: --timeout is required"; exit 2
 fi
 
 # shellcheck source=scripts/lib-validate-meta-path.sh
@@ -619,7 +619,7 @@ fi
 source "$SCRIPT_DIR/lib-validate-meta-path.sh"
 validate_meta_scalar_path --output "$OUTPUT" || exit 1
 case "$TIMEOUT" in
-    ''|*[!0-9]*) echo "launch-review.sh: --timeout must be a positive integer" >&2; exit 2 ;;
+    ''|*[!0-9]*) larch_err "launch-review.sh: --timeout must be a positive integer"; exit 2 ;;
 esac
 # Reject zero-padded zero values (e.g., 00, 000) that would pass the digit-only
 # case above but fail the wrapper's arithmetic floor check at run-external-agent.sh
@@ -627,7 +627,7 @@ esac
 # validate-before-side-effects intact (per FINDING_5 of the design plan review)
 # and matches the floor used by launch-cursor-implement.sh / launch-review.sh.
 if (( 10#$TIMEOUT < 1 )); then
-    echo "launch-review.sh: --timeout must be >= 1" >&2
+    larch_err "launch-review.sh: --timeout must be >= 1"
     exit 2
 fi
 
@@ -654,8 +654,8 @@ if [[ -n "$TOKEN_BUDGET_CAP" ]]; then
     _budget_out=$("$SCRIPT_DIR/check-step-token-budget.sh" --cap "$TOKEN_BUDGET_CAP" --step "${TIMING_TASK_KIND:-cursor-review}" 2>/dev/null || true)
     _budget_status=$(printf '%s' "$_budget_out" | awk '{for(i=1;i<=NF;i++){if($i~/^STATUS=/){print substr($i,8);exit}}}')
     if [[ "$_budget_status" == "cap_hit" ]]; then
-        printf '⚠ launch-review.sh: step token budget cap of %s tokens exceeded (%s combined vendor tokens); external reviewer fan-out skipped\n' \
-            "$TOKEN_BUDGET_CAP" "$(printf '%s' "$_budget_out" | awk '{for(i=1;i<=NF;i++){if($i~/^TOTAL=/){print substr($i,7);exit}}}')" >&2
+        larch_errf '⚠ launch-review.sh: step token budget cap of %s tokens exceeded (%s combined vendor tokens); external reviewer fan-out skipped\n' \
+            "$TOKEN_BUDGET_CAP" "$(printf '%s' "$_budget_out" | awk '{for(i=1;i<=NF;i++){if($i~/^TOTAL=/){print substr($i,7);exit}}}')"
         printf 'STATUS=cap_hit\n' > "$OUTPUT"
         printf 'STATUS=cap_hit\n%s\n' "$_budget_out" > "${OUTPUT}.cap-hit"
         if [[ -n "${IMPLEMENT_TMPDIR:-}" ]]; then
@@ -683,11 +683,11 @@ _src_count=0
 [[ -n "$AGENT_FILE" ]] && _src_count=$((_src_count + 1))
 [[ -n "$PROMPT_FILE" ]] && _src_count=$((_src_count + 1))
 if [[ "$_src_count" -gt 1 ]]; then
-    echo "launch-review.sh: --prompt, --agent-file, and --prompt-file are mutually exclusive" >&2
+    larch_err "launch-review.sh: --prompt, --agent-file, and --prompt-file are mutually exclusive"
     exit 2
 fi
 if [[ "$_src_count" -eq 0 ]]; then
-    echo "launch-review.sh: one of --prompt, --agent-file, --prompt-file is required" >&2
+    larch_err "launch-review.sh: one of --prompt, --agent-file, --prompt-file is required"
     exit 2
 fi
 
@@ -783,7 +783,7 @@ trap '_rc=$?; _emit_timing_record "$_rc"; _publish_done_on_exit; exit "$_rc"' EX
 
 if [[ -n "$PROMPT_FILE" ]]; then
     if ! PROMPT=$({ cat -- "$PROMPT_FILE"; _cat_status=$?; printf X; exit "$_cat_status"; }); then
-        echo "launch-review.sh: failed to read --prompt-file $PROMPT_FILE" >&2
+        larch_err "launch-review.sh: failed to read --prompt-file $PROMPT_FILE"
         exit 1
     fi
     PROMPT=${PROMPT%X}

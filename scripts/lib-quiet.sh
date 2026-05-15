@@ -65,10 +65,30 @@ larch_quiet_init() {
     : > "$log_file" 2>/dev/null || return 0
 
     exec 3>&1
+    exec 4>&2
     export LARCH_QUIET_ACTIVE=1
     export LARCH_QUIET_PID=$$
     export LARCH_QUIET_LOG_FILE="$log_file"
     exec >>"$log_file" 2>&1
+}
+
+# User-visible diagnostics (argv validation, fatals): still go to the process's
+# original stderr after larch_quiet_init redirects FD 1/2 to the quiet log.
+larch_err() {
+    if [ "${LARCH_QUIET_PID:-}" = "$$" ]; then
+        printf '%s\n' "$*" >&4
+    else
+        printf '%s\n' "$*" >&2
+    fi
+}
+
+# shellcheck disable=SC2059 # callers pass fixed format strings (like printf)
+larch_errf() {
+    if [ "${LARCH_QUIET_PID:-}" = "$$" ]; then
+        printf "$@" >&4
+    else
+        printf "$@" >&2
+    fi
 }
 
 emit() {

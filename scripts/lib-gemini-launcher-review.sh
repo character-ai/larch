@@ -67,7 +67,7 @@ done
 unset _arg _skip_next _hash
 
 usage() {
-    echo "Usage: launch-review.sh --output FILE --timeout SECS --prompt TEXT" >&2
+    larch_err "Usage: launch-review.sh --output FILE --timeout SECS --prompt TEXT"
 }
 
 # shellcheck disable=SC2317,SC2329 # invoked indirectly by EXIT traps.
@@ -628,18 +628,18 @@ while [[ $# -gt 0 ]]; do
         --output) OUTPUT="${2:?--output requires a value}"; shift 2 ;;
         --timeout) TIMEOUT="${2:?--timeout requires a value}"; shift 2 ;;
         --prompt) PROMPT="${2:?--prompt requires a value}"; shift 2 ;;
-        --timing-task-kind) [[ -n "${2:-}" && "${2}" != --* ]] || { echo "launch-review.sh: --timing-task-kind requires a non-empty, non-flag-like value" >&2; exit 2; }; TIMING_TASK_KIND="$2"; shift 2 ;;
-        --token-budget-cap) case "${2:-}" in ''|*[!0-9]*) echo "launch-review.sh: --token-budget-cap requires a positive integer" >&2; exit 2 ;; esac; (( 10#${2:-0} >= 1 )) || { echo "launch-review.sh: --token-budget-cap requires a positive integer" >&2; exit 2; }; TOKEN_BUDGET_CAP="$2"; shift 2 ;;
+        --timing-task-kind) [[ -n "${2:-}" && "${2}" != --* ]] || { larch_err "launch-review.sh: --timing-task-kind requires a non-empty, non-flag-like value"; exit 2; }; TIMING_TASK_KIND="$2"; shift 2 ;;
+        --token-budget-cap) case "${2:-}" in ''|*[!0-9]*) larch_err "launch-review.sh: --token-budget-cap requires a positive integer"; exit 2 ;; esac; (( 10#${2:-0} >= 1 )) || { larch_err "launch-review.sh: --token-budget-cap requires a positive integer"; exit 2; }; TOKEN_BUDGET_CAP="$2"; shift 2 ;;
         --agent-file|--mode|--description-text|--scope-files|--competition-notice)
-            echo "launch-review.sh: specialist mode is not supported in v1" >&2
+            larch_err "launch-review.sh: specialist mode is not supported in v1"
             exit 2 ;;
         --help) usage; exit 0 ;;
-        *) echo "launch-review.sh: unknown flag: $1" >&2; usage; exit 2 ;;
+        *) larch_err "launch-review.sh: unknown flag: $1"; usage; exit 2 ;;
     esac
 done
 
 if [[ -z "$OUTPUT" || -z "$TIMEOUT" || -z "$PROMPT" ]]; then
-    echo "launch-review.sh: --output, --timeout, and --prompt are required" >&2
+    larch_err "launch-review.sh: --output, --timeout, and --prompt are required"
     usage
     exit 2
 fi
@@ -647,10 +647,10 @@ fi
 validate_meta_scalar_path --output "$OUTPUT" || exit 2
 
 case "$TIMEOUT" in
-    ''|*[!0-9]*|0) echo "launch-review.sh: --timeout must be a positive integer, got '$TIMEOUT'" >&2; exit 2 ;;
+    ''|*[!0-9]*|0) larch_err "launch-review.sh: --timeout must be a positive integer, got '$TIMEOUT'"; exit 2 ;;
 esac
 if (( 10#$TIMEOUT < 1 )); then
-    echo "launch-review.sh: --timeout must be a positive integer, got '$TIMEOUT'" >&2
+    larch_err "launch-review.sh: --timeout must be a positive integer, got '$TIMEOUT'"
     exit 2
 fi
 # Normalize to canonical decimal so downstream arithmetic (the > 600 clamp
@@ -661,7 +661,7 @@ TIMEOUT=$((10#$TIMEOUT))
 
 if [[ "${GEMINI_REVIEW:-0}" != "1" ]]; then
     write_empty_output
-    printf 'launch-review.sh --tool gemini: disabled (set GEMINI_REVIEW=1 to enable)\n' >&2
+    larch_errf 'launch-review.sh --tool gemini: disabled (set GEMINI_REVIEW=1 to enable)\n'
     exit 0
 fi
 
@@ -688,8 +688,8 @@ if [[ -n "$TOKEN_BUDGET_CAP" ]]; then
     _budget_out=$("$SCRIPT_DIR/check-step-token-budget.sh" --cap "$TOKEN_BUDGET_CAP" --step "${TIMING_TASK_KIND:-gemini-review}" 2>/dev/null || true)
     _budget_status=$(printf '%s' "$_budget_out" | awk '{for(i=1;i<=NF;i++){if($i~/^STATUS=/){print substr($i,8);exit}}}')
     if [[ "$_budget_status" == "cap_hit" ]]; then
-        printf '⚠ launch-review.sh: step token budget cap of %s tokens exceeded (%s combined vendor tokens); external reviewer fan-out skipped\n' \
-            "$TOKEN_BUDGET_CAP" "$(printf '%s' "$_budget_out" | awk '{for(i=1;i<=NF;i++){if($i~/^TOTAL=/){print substr($i,7);exit}}}')" >&2
+        larch_errf '⚠ launch-review.sh: step token budget cap of %s tokens exceeded (%s combined vendor tokens); external reviewer fan-out skipped\n' \
+            "$TOKEN_BUDGET_CAP" "$(printf '%s' "$_budget_out" | awk '{for(i=1;i<=NF;i++){if($i~/^TOTAL=/){print substr($i,7);exit}}}')"
         printf 'STATUS=cap_hit\n' > "$OUTPUT"
         printf 'STATUS=cap_hit\n%s\n' "$_budget_out" > "${OUTPUT}.cap-hit"
         if [[ -n "${IMPLEMENT_TMPDIR:-}" ]]; then

@@ -12,12 +12,18 @@ source the library and run `larch_quiet_init` after strict-mode setup and
 ## API
 
 - `larch_quiet_init` duplicates the original stdout to file descriptor 3,
-  sets `LARCH_QUIET_ACTIVE=1`, records `LARCH_QUIET_LOG_FILE`, and redirects
-  ordinary stdout/stderr to the quiet log.
+  duplicates the original stderr to file descriptor 4, sets
+  `LARCH_QUIET_ACTIVE=1`, records `LARCH_QUIET_LOG_FILE`, and redirects ordinary
+  stdout/stderr to the quiet log.
 - `emit TEXT` writes one line of contract output to the caller-visible stream.
 - `emit_kv KEY VALUE` writes `KEY=VALUE` to the caller-visible stream.
 - `emit_breadcrumb TEXT` writes progress text to the quiet log by default.
   Set `LARCH_QUIET_BREADCRUMBS=1` to surface breadcrumbs on caller stdout.
+- `larch_err TEXT…` writes user-visible errors (argv validation, fatals) to the
+  original stderr (FD 4 after init) so harnesses and operators still see them
+  while incidental `echo`/`printf` chatter stays in the quiet log.
+- `larch_errf` is the `printf`-style variant for formatted user-visible errors
+  (same FD routing as `larch_err`).
 
 `LARCH_QUIET_DISABLE=1` leaves stdout/stderr unchanged. Test harnesses that
 assert legacy stdout may use that override during migration.
@@ -42,5 +48,6 @@ first available session tmpdir (`IMPLEMENT_TMPDIR`, `REVIEW_TMPDIR`,
 `scripts/test-lib-quiet.sh` exercises default redirect behavior, explicit log
 paths, disable mode, nested init, contract emission, breadcrumb suppression and
 opt-in surfacing, empty values, fallback behavior when the log directory cannot
-be created, and pure-filter disable semantics. It is wired as `make
+be created, pure-filter disable semantics, and `larch_err` routing to real
+stderr. It is wired as `make
 test-lib-quiet`.
