@@ -6,6 +6,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 REDACT_TMP="$SCRIPT_DIR/redact-tmpdir-paths.sh"
 REDACT_SECRETS="$SCRIPT_DIR/redact-secrets.sh"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
 
 DESIGN_DIR=""
 IMPLEMENT_TMPDIR=""
@@ -23,8 +26,8 @@ USAGE
 }
 
 fail() {
-    echo "FAILED=true"
-    echo "ERROR=$1"
+    emit_kv FAILED true
+    emit_kv ERROR "$1"
     exit 2
 }
 
@@ -135,7 +138,7 @@ mkdir -p "$(dirname "$OUTPUT")" || fail "cannot create output directory"
 mv -f "$TMP_OUT" "$OUTPUT" || fail "failed to write output: $OUTPUT"
 trap - EXIT
 
-echo "COMPOSED=true"
-echo "OUTPUT=$OUTPUT"
-echo "FINDINGS_TOTAL=$FINDINGS_TOTAL"
-echo "MODE=markdown"
+emit_kv COMPOSED true
+emit_kv OUTPUT "$OUTPUT"
+emit_kv FINDINGS_TOTAL "$FINDINGS_TOTAL"
+emit_kv MODE markdown

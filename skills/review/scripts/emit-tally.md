@@ -6,4 +6,6 @@ It writes `review-round-summary.md`, `review-summary.json` with `schema_version=
 
 Stdout is `KEY=value` only: `EMIT_OK`, `ROUND_SUMMARY_FILE`, and `REVIEW_SUMMARY_FILE`.
 
+On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.
+
 Harness: `skills/review/scripts/test-emit-tally.sh`, wired through `make test-emit-tally`.

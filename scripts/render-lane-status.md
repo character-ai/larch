@@ -108,3 +108,5 @@ The orchestrator parses these lines via prefix-strip (e.g., `RESEARCH_ARCH_HEADE
 - **Adding/removing/renaming a status token** → update the case statement in the shared library (`scripts/render-lane-status-lib.sh`), the canonical token table in `scripts/render-lane-status-lib.md`, this contract, the orchestrator-side mapping in `research-phase.md` and `validation-phase.md`, and add fixtures in `scripts/test-render-lane-status.sh`.
 - **Changing the rendered string for an existing token** → update the library's `render_lane()` case statement and the byte-exact stdout assertion in the harness.
 - **Changing the lane count or per-angle key names** → update the case statement in `scripts/render-lane-status.sh`, the printf block at the bottom, the "Invariants" section, the orchestrator-side writers in `research-phase.md` Step 1 and `validation-phase.md` Step 2, and the harness fixtures.
+
+On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.

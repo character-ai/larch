@@ -6,4 +6,6 @@ It redirects `skills/shared/scripts/ballot-parse.sh` output to `$REVIEW_TMPDIR/b
 
 Stdout is `KEY=value` only: `ACCEPTED_COUNT`, `REJECTED_COUNT`, `TALLY_FILE`, `ACCEPTED_FINDINGS_FILE`, and `TALLY_OK`.
 
+On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.
+
 Harness: `skills/review/scripts/test-tally-votes.sh`, wired through `make test-tally-votes`.

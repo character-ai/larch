@@ -12,4 +12,6 @@ The script waits for launched external voters via `scripts/wait-for-reviewers.sh
 
 Stdout is `KEY=value` only: `VOTER_2_PATH`, `VOTER_3_PATH`, `VOTER_2_STATUS`, `VOTER_3_STATUS`, and `DISPATCH_OK`.
 
+On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.
+
 Harness: `scripts/test-dispatch-plan-voters.sh`, wired through `make test-dispatch-plan-voters`.

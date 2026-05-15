@@ -5,6 +5,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
 
 usage() {
     echo "Usage: launch-claude-subprocess.sh [--model MODEL] --prompt-file FILE --output-file FILE --timeout SECONDS [--context-files FILE ...] [--timing-task-kind KIND]" >&2
@@ -162,7 +165,7 @@ END_S=$(date +%s)
     --exit-code "$exit_code" \
     --status "$status" >/dev/null 2>&1 || true
 
-printf 'STATUS=%s\n' "$status"
-printf 'OUTPUT_FILE=%q\n' "$OUTPUT_CANON"
-printf 'ELAPSED=%s\n' "$((END_S - START_S))"
+emit_kv STATUS "$status"
+emit_kv OUTPUT_FILE "$OUTPUT_CANON"
+emit_kv ELAPSED "$((END_S - START_S))"
 exit 0

@@ -100,6 +100,8 @@ source "$SCRIPT_DIR/external-tool-registry.sh" || { echo "collect-agent-results.
 # shellcheck source=scripts/lib-net.sh
 source "$SCRIPT_DIR/lib-net.sh" || { echo "collect-agent-results.sh: failed to source lib-net.sh" >&2; exit 1; }
 [[ "${LARCH_LIB_NET_LOADED:-}" == "1" ]] || { echo "collect-agent-results.sh: lib-net.sh sourced but sentinel missing" >&2; exit 1; }
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh" || { echo "collect-agent-results.sh: failed to source lib-quiet.sh" >&2; exit 1; }
 
 normalize_exit_code_or_99() {
     local raw="$1"
@@ -136,6 +138,8 @@ build_missing_retry_sentinel_result() {
 if [[ "${BASH_SOURCE[0]}" != "$0" && "${1:-}" == "--source-only" ]]; then
     return 0
 fi
+
+larch_quiet_init
 
 TIMEOUT=""
 WRITE_HEALTH=""
@@ -989,7 +993,7 @@ emit_summary_result() {
         fi
         case "$field" in
             REVIEWER_FILE=*|TOOL=*|STATUS=*|EXIT_CODE=*|HEALTHY=*)
-                echo "$field"
+                emit "$field"
                 emitted=$((emitted + 1))
                 ;;
         esac
@@ -1001,7 +1005,7 @@ for result in "${RESULTS[@]}"; do
     if [[ "$FIRST" == "true" ]]; then
         FIRST=false
     else
-        echo ""
+        emit ""
     fi
     if [[ "$SUMMARY_ONLY" == "true" ]]; then
         emit_summary_result "$result"
@@ -1009,7 +1013,9 @@ for result in "${RESULTS[@]}"; do
     fi
     # Convert pipe-delimited to newlines
     result=$(with_structured_sidecar_field "$result" "")
-    echo "$result" | tr '|' '\n'
+    while IFS= read -r field || [[ -n "$field" ]]; do
+        emit "$field"
+    done < <(printf '%s' "$result" | tr '|' '\n')
 done
 
 # --- 5. Write health file (if requested, monotonic per tool) ---

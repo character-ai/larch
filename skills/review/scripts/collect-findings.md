@@ -16,4 +16,6 @@ Description mode parses dual-list output using `### In-Scope Findings` and `### 
 
 Stdout is `KEY=value` only: `FINDINGS_COUNT`, `OOS_COUNT`, `DIRTY_DETECTED`, `COLLECT_OK`, and `COLLECTOR_OUTPUT_FILE`.
 
+On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.
+
 Harness: `skills/review/scripts/test-collect-findings.sh`, wired through `make test-collect-findings`.

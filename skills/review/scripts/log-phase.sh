@@ -5,6 +5,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
+# shellcheck source=scripts/lib-quiet.sh
+source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
+larch_quiet_init
 
 usage() { echo "Usage: log-phase.sh --run-id ID --batch SLUG --action write|append --payload-file FILE [--log-root DIR]" >&2; }
 
@@ -37,8 +40,13 @@ esac
 
 args=(--skill review --run-id "$RUN_ID" --batch "$BATCH")
 [[ -n "$LOG_ROOT" ]] && args=(--log-root "$LOG_ROOT" "${args[@]}")
+log_phase_stdout=$(mktemp "${TMPDIR:-/tmp}/review-log-phase.XXXXXX") || exit 1
+trap 'rm -f "$log_phase_stdout"' EXIT
 if [[ "$ACTION" == "write" ]]; then
-    "$PLUGIN_ROOT/scripts/larch-log.sh" write "${args[@]}" --input-file "$PAYLOAD_FILE"
+    "$PLUGIN_ROOT/scripts/larch-log.sh" write "${args[@]}" --input-file "$PAYLOAD_FILE" > "$log_phase_stdout"
 else
-    "$PLUGIN_ROOT/scripts/larch-log.sh" append "${args[@]}" --record-file "$PAYLOAD_FILE"
+    "$PLUGIN_ROOT/scripts/larch-log.sh" append "${args[@]}" --record-file "$PAYLOAD_FILE" > "$log_phase_stdout"
 fi
+while IFS= read -r line || [[ -n "$line" ]]; do
+    emit "$line"
+done < "$log_phase_stdout"

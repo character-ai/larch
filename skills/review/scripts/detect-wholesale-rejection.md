@@ -4,4 +4,6 @@
 
 Stdout is `TERMINATE_EARLY=true|false`.
 
+On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.
+
 Harness: `skills/review/scripts/test-detect-wholesale-rejection.sh`, wired through `make test-detect-wholesale-rejection`.

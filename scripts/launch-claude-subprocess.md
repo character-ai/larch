@@ -15,4 +15,6 @@ Invariants:
 
 Harness: `scripts/test-launch-claude-subprocess.sh`, wired into `make lint` through `test-launch-claude-subprocess`.
 
+On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.
+
 Edit in sync: update this file, the harness, `SECURITY.md`, and `skills/review/scripts/dispatch-panel.sh` when argv grammar, sidecar grammar, path validation, or read-only wording changes.

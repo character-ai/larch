@@ -22,6 +22,11 @@
 # No -e: script always exits 0 for normal operation; subshell failures must not abort.
 set -uo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
+
 # --- Parse arguments ---
 usage() { echo "Usage: wait-for-reviewers.sh [--timeout SECONDS] <sentinel.done> [sentinel2.done ...]" >&2; }
 
@@ -155,9 +160,9 @@ for sentinel in "$@"; do
     name=$(basename "$sentinel" .done)
     if [ -f "$MARKER_DIR/$idx" ]; then
         exit_code=$(cat "$MARKER_DIR/$idx" 2>/dev/null)
-        echo "DONE $idx $name: exit=$exit_code"
+        emit "DONE $idx $name: exit=$exit_code"
     else
-        echo "TIMEOUT $idx $name"
+        emit "TIMEOUT $idx $name"
         timed_out=$((timed_out + 1))
     fi
 done

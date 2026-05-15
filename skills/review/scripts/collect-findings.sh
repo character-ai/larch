@@ -5,6 +5,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
+# shellcheck source=scripts/lib-quiet.sh
+source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
+larch_quiet_init
 
 usage() { echo "Usage: collect-findings.sh --mode diff|description --findings-file FILE --oos-file FILE [--external-output-files FILE...] [--claude-output-files FILE...] [--timeout SECONDS]" >&2; }
 
@@ -242,8 +245,8 @@ while IFS=$'\t' read -r title label body || [[ -n "${title:-}" ]]; do
     fi
 done < "$tmp.sorted"
 
-printf 'FINDINGS_COUNT=%s\n' "$count"
-printf 'OOS_COUNT=%s\n' "$oos_count"
-printf 'DIRTY_DETECTED=%s\n' "$DIRTY_DETECTED"
-printf 'COLLECT_OK=true\n'
-printf 'COLLECTOR_OUTPUT_FILE=%q\n' "$collector_results_file"
+emit_kv FINDINGS_COUNT "$count"
+emit_kv OOS_COUNT "$oos_count"
+emit_kv DIRTY_DETECTED "$DIRTY_DETECTED"
+emit_kv COLLECT_OK true
+emit_kv COLLECTOR_OUTPUT_FILE "$collector_results_file"

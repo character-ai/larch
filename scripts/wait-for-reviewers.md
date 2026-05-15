@@ -44,3 +44,5 @@ Dedicated harness: `scripts/test-wait-for-reviewers.sh` pins `--timeout 0` / `00
 ## Edit-in-sync rules
 
 Changes to the stdout grammar (`DONE <idx> <basename>: exit=<code>`, `TIMEOUT <idx> <basename>`) MUST update this file in the same PR and verify all callers (grep for `wait-for-reviewers.sh` across `scripts/`, `skills/`, `.claude/`). Changes to `WAIT_FOR_REVIEWERS_POLL_INTERVAL`'s validator must update the test harnesses listed above so they continue to set a value the validator accepts.
+
+On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.

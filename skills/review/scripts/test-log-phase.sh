@@ -20,10 +20,10 @@ assert_stdout_cap "$out"
 grep -Fq 'LOG_WRITTEN=true' <<< "$out"
 [[ -f "$TMP/logs/review/run1/review-context.md" ]]
 
-if "$SCRIPT" --log-root "$TMP/logs" --run-id run1 --batch bad/batch --action write --payload-file "$TMP/payload.md" >/dev/null 2>"$TMP/err"; then
+if LARCH_QUIET_LOG_FILE="$TMP/log-phase-quiet.log" "$SCRIPT" --log-root "$TMP/logs" --run-id run1 --batch bad/batch --action write --payload-file "$TMP/payload.md" >/dev/null 2>"$TMP/err"; then
     echo "FAIL: invalid batch accepted" >&2
     exit 1
 fi
-grep -Fq 'unregistered review batch' "$TMP/err"
+grep -Fq 'unregistered review batch' "$TMP/log-phase-quiet.log"
 
 echo "All assertions passed."

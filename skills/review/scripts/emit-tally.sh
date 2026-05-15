@@ -4,7 +4,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
 SHARED_DIR="$SCRIPT_DIR/../../shared/scripts"
+# shellcheck source=scripts/lib-quiet.sh
+source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
+larch_quiet_init
 
 usage() { echo "Usage: emit-tally.sh --tally-file FILE --accepted-findings-file FILE --oos-file FILE --review-tmpdir DIR --round N --mode diff|description [--session-env-path FILE] [--implement-tmpdir DIR]" >&2; }
 
@@ -103,6 +107,6 @@ if [[ -n "$IMPLEMENT_TMPDIR" && -d "$IMPLEMENT_TMPDIR" ]]; then
     cp "$REVIEW_SUMMARY_FILE" "$IMPLEMENT_TMPDIR/review-summary.json" 2>/dev/null || true
 fi
 
-printf 'EMIT_OK=true\n'
-printf 'ROUND_SUMMARY_FILE=%q\n' "$ROUND_SUMMARY_FILE"
-printf 'REVIEW_SUMMARY_FILE=%q\n' "$REVIEW_SUMMARY_FILE"
+emit_kv EMIT_OK true
+emit_kv ROUND_SUMMARY_FILE "$ROUND_SUMMARY_FILE"
+emit_kv REVIEW_SUMMARY_FILE "$REVIEW_SUMMARY_FILE"

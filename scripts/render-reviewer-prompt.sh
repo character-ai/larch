@@ -20,6 +20,10 @@ export LC_ALL=C
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 TEMPLATE="$REPO_ROOT/skills/shared/reviewer-templates.md"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
+[ "${LARCH_QUIET_PID:-}" = "$$" ] && exec 1>&3
 
 TARGET=""
 QUESTION_FILE=""

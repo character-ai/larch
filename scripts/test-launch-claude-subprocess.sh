@@ -39,9 +39,10 @@ grep -Fq 'TOOL=claude' "$out.meta" || fail ".meta missing tool"
 grep -Fq 'STATUS=clean' "$out.dirty-tree" || fail ".dirty-tree missing clean status"
 
 ln -s "$prompt" "$TMP/link.md"
-if PATH="$BIN:$PATH" "$SCRIPT" --prompt-file "$TMP/link.md" --output-file "$TMP/bad.txt" --timeout 5 >/dev/null 2>"$TMP/err"; then
+if PATH="$BIN:$PATH" LARCH_QUIET_LOG_FILE="$TMP/quiet.log" "$SCRIPT" --prompt-file "$TMP/link.md" --output-file "$TMP/bad.txt" --timeout 5 >/dev/null 2>"$TMP/err"; then
     fail "symlink prompt accepted"
 fi
-grep -Fq 'invalid --prompt-file' "$TMP/err" || fail "symlink rejection message drifted"
+cat "$TMP/err" "$TMP/quiet.log" > "$TMP/diagnostics" 2>/dev/null || true
+grep -Fq 'invalid --prompt-file' "$TMP/diagnostics" || fail "symlink rejection message drifted"
 
 echo "All assertions passed."

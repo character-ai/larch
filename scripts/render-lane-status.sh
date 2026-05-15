@@ -52,6 +52,11 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
+
 fail_usage() {
     echo "**⚠ render-lane-status: $1**" >&2
     exit 1
@@ -121,7 +126,7 @@ while IFS= read -r line || [ -n "$line" ]; do
 done < "$INPUT"
 
 # shellcheck source=scripts/render-lane-status-lib.sh
-source "$(dirname "$0")/render-lane-status-lib.sh"
+source "$SCRIPT_DIR/render-lane-status-lib.sh"
 
 R_ARCH="$(render_lane "$RESEARCH_ARCH_STATUS" "$RESEARCH_ARCH_REASON")"
 R_EDGE="$(render_lane "$RESEARCH_EDGE_STATUS" "$RESEARCH_EDGE_REASON")"
@@ -132,12 +137,12 @@ V_CURSOR="$(render_lane "$VALIDATION_CURSOR_STATUS" "$VALIDATION_CURSOR_REASON")
 V_CODEX="$(render_lane "$VALIDATION_CODEX_STATUS" "$VALIDATION_CODEX_REASON")"
 
 # Fixed shape: 4 research lines + 3 validation lines.
-printf 'RESEARCH_ARCH_HEADER=Architecture: %s\n' "$R_ARCH"
-printf 'RESEARCH_EDGE_HEADER=Edge cases: %s\n' "$R_EDGE"
-printf 'RESEARCH_EXT_HEADER=External comparisons: %s\n' "$R_EXT"
-printf 'RESEARCH_SEC_HEADER=Security: %s\n' "$R_SEC"
-printf 'VALIDATION_CODE_HEADER=Code: %s\n' "$V_CODE"
-printf 'VALIDATION_CURSOR_HEADER=Cursor: %s\n' "$V_CURSOR"
-printf 'VALIDATION_CODEX_HEADER=Codex: %s\n' "$V_CODEX"
+emit_kv RESEARCH_ARCH_HEADER "Architecture: $R_ARCH"
+emit_kv RESEARCH_EDGE_HEADER "Edge cases: $R_EDGE"
+emit_kv RESEARCH_EXT_HEADER "External comparisons: $R_EXT"
+emit_kv RESEARCH_SEC_HEADER "Security: $R_SEC"
+emit_kv VALIDATION_CODE_HEADER "Code: $V_CODE"
+emit_kv VALIDATION_CURSOR_HEADER "Cursor: $V_CURSOR"
+emit_kv VALIDATION_CODEX_HEADER "Codex: $V_CODEX"
 
 exit 0

@@ -13,6 +13,9 @@ source "$SCRIPT_DIR/external-tool-registry.sh" || { echo "check-reviewers.sh: fa
 source "$SCRIPT_DIR/lib-cursor-auth.sh" || { echo "check-reviewers.sh: failed to source lib-cursor-auth.sh" >&2; exit 1; }
 # shellcheck source=scripts/lib-external-launcher-common.sh
 source "$SCRIPT_DIR/lib-external-launcher-common.sh" || { echo "check-reviewers.sh: failed to source lib-external-launcher-common.sh" >&2; exit 1; }
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh" || { echo "check-reviewers.sh: failed to source lib-quiet.sh" >&2; exit 1; }
+larch_quiet_init
 
 PROBE=false
 SKIP_CODEX_PROBE=false
@@ -34,8 +37,8 @@ CURSOR_AVAILABLE="false"
 command -v codex >/dev/null 2>&1 && CODEX_AVAILABLE="true"
 command -v cursor >/dev/null 2>&1 && CURSOR_AVAILABLE="true"
 
-echo "CODEX_AVAILABLE=$CODEX_AVAILABLE"
-echo "CURSOR_AVAILABLE=$CURSOR_AVAILABLE"
+emit_kv CODEX_AVAILABLE "$CODEX_AVAILABLE"
+emit_kv CURSOR_AVAILABLE "$CURSOR_AVAILABLE"
 
 normalize_probe_reply() {
     tr -d '[:space:]' | tr '[:upper:]' '[:lower:]'
@@ -363,20 +366,20 @@ if [[ "$PROBE" == "true" ]]; then
     if [[ "${WAIT_PREFLIGHT_FAILED:-false}" == "true" || "${WAIT_USAGE_ERROR:-false}" == "true" ]]; then
         _wait_msg="${WAIT_PREFLIGHT_ERROR:-${WAIT_INFRA_ERROR_MSG:-unknown}}"
         _wait_msg=$(printf '%s' "$_wait_msg" | tr '\n\r' '  ')
-        echo "WAIT_INFRA_ERROR=$_wait_msg"
+        emit_kv WAIT_INFRA_ERROR "$_wait_msg"
         for tool in "${TOOLS[@]}"; do
             upper=$(printf '%s' "$tool" | tr '[:lower:]' '[:upper:]')
             if [[ "$(get_available "$tool")" == "true" ]]; then
-                echo "${upper}_HEALTHY=false"
+                emit_kv "${upper}_HEALTHY" false
             fi
         done
     else
         for tool in "${TOOLS[@]}"; do
             upper=$(printf '%s' "$tool" | tr '[:lower:]' '[:upper:]')
             if [[ "$(get_available "$tool")" == "true" ]]; then
-                echo "${upper}_HEALTHY=$(get_healthy "$tool")"
+                emit_kv "${upper}_HEALTHY" "$(get_healthy "$tool")"
                 err=$(get_probe_error "$tool")
-                [[ -n "$err" ]] && echo "${upper}_PROBE_ERROR=$err"
+                [[ -n "$err" ]] && emit_kv "${upper}_PROBE_ERROR" "$err"
             fi
         done
     fi

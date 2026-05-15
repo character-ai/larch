@@ -10,7 +10,7 @@ Simulates the normalization pipeline (`tr -d '[:space:]' | tr '[:upper:]' '[:low
 
 - **Positive** (should be healthy): `OK`, `ok`, `Ok`, `oK`, whitespace-padded, newline-terminated
 - **Negative** (should be unhealthy): empty, `token`, `broken`, `NotOK`, `Sure OK`, `wok`, `okay`, `OK.`, auth errors, thinking-prefix responses
-- **Wait infrastructure**: invalid `WAIT_FOR_REVIEWERS_POLL_INTERVAL=00` emits `WAIT_INFRA_ERROR`, marks available tools as `*_HEALTHY=false`, skips retry attempt 2, and launches no sleeping probe wrapper.
+- **Wait infrastructure**: invalid `WAIT_FOR_REVIEWERS_POLL_INTERVAL=00` emits `WAIT_INFRA_ERROR`, marks available tools as `*_HEALTHY=false`, records the infrastructure diagnostic in the quiet log, skips retry attempt 2, and launches no sleeping probe wrapper.
 - **Cursor probe argv**: pins `--output-format json` and conditional `--api-key <value>` adjacency in the Cursor probe argv.
 
 ## Wiring

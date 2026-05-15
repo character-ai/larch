@@ -28,4 +28,6 @@ The helper redacts tmpdir paths and token-shaped secrets before writing
 sections. The old inline/archive split was removed when review findings moved
 from issue anchors to committed `larch-logs/` files.
 
+On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.
+
 Harness: `scripts/test-compose-review-findings.sh`.

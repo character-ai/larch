@@ -103,7 +103,7 @@ STUB
 chmod +x "$STUB_BIN/cursor"
 
 set +e
-PATH="$STUB_BIN:$PATH" LARCH_TEST_PROBE_SLEEP_SECONDS=0 WAIT_FOR_REVIEWERS_POLL_INTERVAL=00 \
+PATH="$STUB_BIN:$PATH" LARCH_TEST_PROBE_SLEEP_SECONDS=0 WAIT_FOR_REVIEWERS_POLL_INTERVAL=00 LARCH_QUIET_LOG_FILE="$TMPDIR/infra-quiet.log" \
   "$REPO_ROOT/scripts/check-reviewers.sh" --probe >"$TMPDIR/infra.stdout" 2>"$TMPDIR/infra.stderr"
 infra_code=$?
 set -e
@@ -116,9 +116,9 @@ grep -q '^CODEX_HEALTHY=false$' <<< "$infra_stdout" \
   || fail "Expected CODEX_HEALTHY=false fail-closed value on wait preflight failure"
 grep -q '^CURSOR_HEALTHY=false$' <<< "$infra_stdout" \
   || fail "Expected CURSOR_HEALTHY=false fail-closed value on wait preflight failure"
-grep -q 'Probe infrastructure error:' "$TMPDIR/infra.stderr" \
-  || fail "Expected probe infrastructure diagnostic on stderr"
-if grep -q 'Retrying failed health probes (attempt 2 of 3' "$TMPDIR/infra.stderr"; then
+grep -q 'Probe infrastructure error:' "$TMPDIR/infra-quiet.log" \
+  || fail "Expected probe infrastructure diagnostic in quiet log"
+if grep -q 'Retrying failed health probes (attempt 2 of 3' "$TMPDIR/infra-quiet.log"; then
   fail "Expected wait preflight failure to skip retry attempts"
 fi
 if [[ -s "$STUB_PROBE_PID_LOG" ]]; then

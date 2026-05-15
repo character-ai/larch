@@ -24,3 +24,5 @@ embedded verbatim as a JSON string by `jq --rawfile`.
 The helper rejects missing body files, symlinks, invalid phase or mode values,
 and non-numeric tally counts. It does not redact content; `larch-log.sh` still
 applies the standard tmpdir and secret redaction pass before writing.
+
+On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.

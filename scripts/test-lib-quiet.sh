@@ -8,6 +8,11 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LIB="$ROOT/scripts/lib-quiet.sh"
 SCRATCH=$(mktemp -d "${TMPDIR:-/tmp}/test-lib-quiet.XXXXXX")
 trap 'rm -rf "$SCRATCH"' EXIT
+# Isolate from a parent larch session (implement exports IMPLEMENT_TMPDIR / quiet
+# state); leaked LARCH_QUIET_LOG_FILE breaks default-log path assertions.
+unset IMPLEMENT_TMPDIR REVIEW_TMPDIR DESIGN_TMPDIR \
+    LARCH_QUIET_ACTIVE LARCH_QUIET_PID LARCH_QUIET_LOG_FILE LARCH_QUIET_LOG \
+    LARCH_QUIET_BREADCRUMBS LARCH_QUIET_DISABLE || true
 
 fail() {
     printf 'FAIL: %s\n' "$1" >&2
@@ -109,5 +114,14 @@ helper="$SCRATCH/emit-text.sh"
 write_helper "$helper" 'larch_quiet_init; emit "two words"'
 out=$("$helper")
 assert_eq "$out" "two words" "emit text"
+
+# 12. larch_err reaches the process stderr while ordinary stderr is logged.
+helper="$SCRATCH/larch_err.sh"
+log="$SCRATCH/larch_err.log"
+write_helper "$helper" 'LARCH_QUIET_LOG_FILE=$1; export LARCH_QUIET_LOG_FILE; larch_quiet_init; echo noisy; larch_err "user-visible"; emit_kv STATUS ok'
+"$helper" "$log" >"$SCRATCH/larch_err.out" 2>"$SCRATCH/larch_err.err"
+assert_eq "$(cat "$SCRATCH/larch_err.out")" "STATUS=ok" "larch_err contract stdout"
+grep -q '^user-visible$' "$SCRATCH/larch_err.err" || fail "larch_err not on stderr"
+grep -q '^noisy$' "$log" || fail "larch_err noisy not logged"
 
 printf 'PASS: test-lib-quiet.sh\n'
