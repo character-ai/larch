@@ -144,11 +144,11 @@ Code review with the specialist panel described in [Review Agents](review-agents
 
 ## `/review-and-fix`
 
-**Arguments**: `--findings-file <path> [--session-env <path>] [--review-tmpdir <path>]`
+**Arguments**: `--findings-file <path> --review-tmpdir <path> [--session-env <path>]`
 
 **Source**: [`skills/review-and-fix/SKILL.md`](../skills/review-and-fix/SKILL.md)
 
-Apply accepted review findings produced by `/review --diff` through the structured review-and-fix scripts. This is an internal helper skill invoked by the review workflow, not a standalone user entry point.
+Apply accepted review findings as code fixes. Internal sub-skill invoked by `/review` in diff mode and by `/implement` Step 5 to apply accepted findings from a review round; not a standalone user entry point. In `/implement` orchestrator mode (via `--implement-tmpdir`), runs one `review-core.sh` round and emits a bounded machine contract for the parent to apply fixes.
 
 ## `/set-up-forked-open-source-repo`
 
