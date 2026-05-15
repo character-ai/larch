@@ -43,8 +43,7 @@ if PATH="$BIN:$PATH" LARCH_QUIET_LOG_FILE="$TMP/quiet.log" "$SCRIPT" --prompt-fi
     fail "symlink prompt accepted"
 fi
 grep -Fq 'invalid --prompt-file' "$TMP/err" || fail "symlink rejection message missing from stderr"
-if [[ -f "$TMP/quiet.log" ]] && grep -Fq 'invalid --prompt-file' "$TMP/quiet.log"; then
-    fail "symlink rejection leaked to quiet log"
-fi
+[[ -f "$TMP/quiet.log" ]] || fail "quiet log not created despite LARCH_QUIET_LOG_FILE being set"
+grep -Fq 'invalid --prompt-file' "$TMP/quiet.log" && fail "symlink rejection leaked to quiet log"
 
 echo "All assertions passed."

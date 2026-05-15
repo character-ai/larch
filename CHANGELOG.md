@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [27.6.5] - 2026-05-15
+
+### Fixed
+
+- Complete `larch_quiet_init` stderr migration: migrate all post-init `echo/printf/cat >&2` diagnostics to `larch_err`/`larch_errf` across 98 scripts so callers capture real diagnostic output instead of empty buffers.
+- Fix `collect-agent-results.sh` `build_failure_reason` to use `-s` (non-empty file) instead of `-f` so empty `.diag` files correctly fall through to status-based fallback messages.
+- Add `S041/no-raw-stderr-after-quiet-init` pre-commit lint rule to enforce the `larch_err`/`larch_errf` contract statically.
+
 ## [27.6.4] - 2026-05-15
 
 ### Fixed

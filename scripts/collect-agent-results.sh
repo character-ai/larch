@@ -110,7 +110,7 @@ normalize_exit_code_or_99() {
         printf '%s' "$raw"
         return 0
     fi
-    printf 'collect-agent-results.sh: invalid exit code from %s; forcing EXIT_CODE=99\n' "$context" >&2
+    larch_errf 'collect-agent-results.sh: invalid exit code from %s; forcing EXIT_CODE=99\n' "$context"
     printf '99'
 }
 

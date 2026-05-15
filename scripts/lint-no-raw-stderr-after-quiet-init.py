@@ -184,7 +184,6 @@ def lint_file(path: Path, root: Path) -> list[str]:
             RAW_STDERR_RE.search(code)
             and DIAGNOSTIC_CMD_RE.search(code)
             and "larch_err" not in code
-            and "larch_errf" not in code
         ):
             violations.append(
                 f"lint-no-raw-stderr-after-quiet-init: {rel}:{line_number}: "
