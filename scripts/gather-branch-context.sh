@@ -28,6 +28,11 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
+
 usage() { echo "Usage: gather-branch-context.sh --output-dir <path>" >&2; }
 
 # --- Parse arguments ---
@@ -62,7 +67,7 @@ git log "${MERGE_BASE}"..HEAD --oneline > "$COMMIT_LOG_FILE"
 COMMIT_COUNT=$(wc -l < "$COMMIT_LOG_FILE" | tr -d ' ')
 
 # --- Emit output ---
-echo "DIFF_FILE=$DIFF_FILE"
-echo "FILE_LIST_FILE=$FILE_LIST_FILE"
-echo "COMMIT_LOG_FILE=$COMMIT_LOG_FILE"
-echo "COMMIT_COUNT=$COMMIT_COUNT"
+emit_kv DIFF_FILE "$DIFF_FILE"
+emit_kv FILE_LIST_FILE "$FILE_LIST_FILE"
+emit_kv COMMIT_LOG_FILE "$COMMIT_LOG_FILE"
+emit_kv COMMIT_COUNT "$COMMIT_COUNT"

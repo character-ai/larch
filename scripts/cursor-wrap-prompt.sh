@@ -23,9 +23,18 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
+
 if [[ $# -lt 1 ]]; then
-    echo "cursor-wrap-prompt.sh: a single prompt argument is required" >&2
+    larch_err "cursor-wrap-prompt.sh: a single prompt argument is required"
     exit 1
 fi
 
-printf ' /max-mode on. Prompt: %s' "$1"
+if [[ "${LARCH_QUIET_PID:-}" = "$$" ]]; then
+    printf ' /max-mode on. Prompt: %s' "$1" >&3
+else
+    printf ' /max-mode on. Prompt: %s' "$1"
+fi

@@ -74,6 +74,10 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
+# shellcheck source=scripts/lib-quiet.sh
+source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
+larch_quiet_init
 
 TMPDIR_ARG=""
 PLAN_FILE=""
@@ -98,7 +102,7 @@ while [[ $# -gt 0 ]]; do
         --gemini-healthy)    GEMINI_HEALTHY_ARG="${2-}"; shift 2 ;;
         --answers)           ANSWERS_FILE="${2:?--answers requires a value}"; shift 2 ;;
         --workflow)          WORKFLOW_PATH="${2:?--workflow requires a value}"; shift 2 ;;
-        *) echo "step2-implement.sh: unknown flag: $1" >&2; exit 2 ;;
+        *) larch_err "step2-implement.sh: unknown flag: $1"; exit 2 ;;
     esac
 done
 
@@ -107,22 +111,22 @@ done
 # the legacy flag sets the same internal state and silent precedence would
 # mask operator misconfiguration.
 if [[ -n "$CODER" && -n "$CODEX_AVAILABLE" ]]; then
-    echo "step2-implement.sh: --coder and --codex-available are mutually exclusive" >&2
+    larch_err "step2-implement.sh: --coder and --codex-available are mutually exclusive"
     exit 2
 fi
 
 if [[ -n "$CODEX_AVAILABLE" ]]; then
     case "$CODEX_AVAILABLE" in
         true)
-            echo "step2-implement.sh: WARNING: --codex-available is deprecated; pass --coder codex instead" >&2
+            larch_err "step2-implement.sh: WARNING: --codex-available is deprecated; pass --coder codex instead"
             CODER="codex"
             ;;
         false)
-            echo "step2-implement.sh: WARNING: --codex-available is deprecated; pass --coder claude instead" >&2
+            larch_err "step2-implement.sh: WARNING: --codex-available is deprecated; pass --coder claude instead"
             CODER="claude"
             ;;
         *)
-            echo "step2-implement.sh: --codex-available must be 'true' or 'false', got: $CODEX_AVAILABLE" >&2
+            larch_err "step2-implement.sh: --codex-available must be 'true' or 'false', got: $CODEX_AVAILABLE"
             exit 2
             ;;
     esac
@@ -134,23 +138,23 @@ if [[ -z "$CODER" ]]; then
 fi
 
 # shellcheck source=scripts/external-tool-registry.sh
-source "$SCRIPT_DIR/../../../scripts/external-tool-registry.sh" || { echo "step2-implement.sh: failed to source external-tool-registry.sh" >&2; exit 2; }
-[[ "${LARCH_EXTERNAL_TOOL_REGISTRY_LOADED:-}" == "1" ]] || { echo "step2-implement.sh: external-tool-registry.sh sourced but sentinel missing" >&2; exit 2; }
+source "$SCRIPT_DIR/../../../scripts/external-tool-registry.sh" || { larch_err "step2-implement.sh: failed to source external-tool-registry.sh"; exit 2; }
+[[ "${LARCH_EXTERNAL_TOOL_REGISTRY_LOADED:-}" == "1" ]] || { larch_err "step2-implement.sh: external-tool-registry.sh sourced but sentinel missing"; exit 2; }
 
 if ! larch_is_implementer_coder "$CODER"; then
-    echo "step2-implement.sh: --coder must be one of $(larch_implementer_coders_braced), got: $CODER" >&2
+    larch_err "step2-implement.sh: --coder must be one of $(larch_implementer_coders_braced), got: $CODER"
     exit 2
 fi
 
 for var in TMPDIR_ARG PLAN_FILE FEATURE_FILE AUTO_MODE; do
     if [[ -z "${!var}" ]]; then
         flag_lc=$(printf '%s' "$var" | tr '[:upper:]' '[:lower:]' | tr '_' '-')
-        echo "step2-implement.sh: --$flag_lc is required" >&2
+        larch_err "step2-implement.sh: --$flag_lc is required"
         exit 2
     fi
 done
 
-[[ -d "$TMPDIR_ARG" ]] || { echo "step2-implement.sh: --tmpdir not a directory: $TMPDIR_ARG" >&2; exit 2; }
+[[ -d "$TMPDIR_ARG" ]] || { larch_err "step2-implement.sh: --tmpdir not a directory: $TMPDIR_ARG"; exit 2; }
 TMPDIR_ARG=$(cd "$TMPDIR_ARG" && pwd -P)
 export IMPLEMENT_TMPDIR="$TMPDIR_ARG"
 if [[ -s "$TMPDIR_ARG/session-id" ]]; then
@@ -162,24 +166,24 @@ fi
 if [[ -s "$TMPDIR_ARG/claude-source.env" ]]; then
     export LARCH_CLAUDE_SOURCE_FILE="$TMPDIR_ARG/claude-source.env"
 fi
-[[ -f "$PLAN_FILE" ]]  || { echo "step2-implement.sh: --plan-file not found: $PLAN_FILE" >&2; exit 2; }
-[[ -f "$FEATURE_FILE" ]] || { echo "step2-implement.sh: --feature-file not found: $FEATURE_FILE" >&2; exit 2; }
+[[ -f "$PLAN_FILE" ]]  || { larch_err "step2-implement.sh: --plan-file not found: $PLAN_FILE"; exit 2; }
+[[ -f "$FEATURE_FILE" ]] || { larch_err "step2-implement.sh: --feature-file not found: $FEATURE_FILE"; exit 2; }
 case "$AUTO_MODE" in
     true|false) ;;
-    *) echo "step2-implement.sh: --auto-mode must be 'true' or 'false', got: $AUTO_MODE" >&2; exit 2 ;;
+    *) larch_err "step2-implement.sh: --auto-mode must be 'true' or 'false', got: $AUTO_MODE"; exit 2 ;;
 esac
 
 if [[ -n "$GEMINI_HEALTHY_ARG" ]]; then
     case "$GEMINI_HEALTHY_ARG" in
         true|false) ;;
-        *) echo "step2-implement.sh: --gemini-healthy must be 'true', 'false', or empty, got: $GEMINI_HEALTHY_ARG" >&2; exit 2 ;;
+        *) larch_err "step2-implement.sh: --gemini-healthy must be 'true', 'false', or empty, got: $GEMINI_HEALTHY_ARG"; exit 2 ;;
     esac
 fi
 
 WORKFLOW_PATH="${WORKFLOW_PATH:-SIMPLE}"
 case "$WORKFLOW_PATH" in
     SIMPLE|HARD) ;;
-    *) echo "step2-implement.sh: --workflow must be 'SIMPLE' or 'HARD', got: '$WORKFLOW_PATH'" >&2; exit 2 ;;
+    *) larch_err "step2-implement.sh: --workflow must be 'SIMPLE' or 'HARD', got: '$WORKFLOW_PATH'"; exit 2 ;;
 esac
 
 # Branch 1: coder=claude → emit claude_fallback and return.
@@ -187,8 +191,8 @@ esac
 # git-free (claude_fallback may be invoked outside a git working tree, and it
 # needs no plugin assets).
 if [[ "$CODER" == "claude" ]]; then
-    printf 'STATUS=claude_fallback\n'
-    printf 'ORCHESTRATOR_EDIT_AUTHORITY=allowed\n'
+    emit_kv STATUS claude_fallback
+    emit_kv ORCHESTRATOR_EDIT_AUTHORITY allowed
     exit 0
 fi
 
@@ -197,7 +201,7 @@ fi
 if [[ -n "$CURSOR_HEALTHY_ARG" ]]; then
     case "$CURSOR_HEALTHY_ARG" in
         true|false) ;;
-        *) echo "step2-implement.sh: --cursor-healthy must be 'true', 'false', or empty, got: $CURSOR_HEALTHY_ARG" >&2; exit 2 ;;
+        *) larch_err "step2-implement.sh: --cursor-healthy must be 'true', 'false', or empty, got: $CURSOR_HEALTHY_ARG"; exit 2 ;;
     esac
 fi
 [[ -z "$CURSOR_HEALTHY_ARG" ]] && CURSOR_HEALTHY_ARG="false"
@@ -208,8 +212,8 @@ fi
 # above. The gate runs only on the cursor path; codex/claude are unaffected
 # by the value of --cursor-healthy.
 if [[ "$CODER" == "cursor" && "$CURSOR_HEALTHY_ARG" != "true" ]]; then
-    printf 'STATUS=claude_fallback\n'
-    printf 'ORCHESTRATOR_EDIT_AUTHORITY=allowed\n'
+    emit_kv STATUS claude_fallback
+    emit_kv ORCHESTRATOR_EDIT_AUTHORITY allowed
     exit 0
 fi
 
@@ -218,8 +222,8 @@ fi
 # Gemini health gate (fall back to claude). Same ordering as Cursor: the
 # fallback path returns before REPO_ROOT lookup and writes no baseline files.
 if [[ "$CODER" == "gemini" && "$GEMINI_HEALTHY_ARG" != "true" ]]; then
-    printf 'STATUS=claude_fallback\n'
-    printf 'ORCHESTRATOR_EDIT_AUTHORITY=allowed\n'
+    emit_kv STATUS claude_fallback
+    emit_kv ORCHESTRATOR_EDIT_AUTHORITY allowed
     exit 0
 fi
 
@@ -232,14 +236,13 @@ REQUIRES_HEAD_UNCHANGED=false
 # PLUGIN_ROOT: the plugin tree this script ships in (cache dir when the plugin
 # is installed, source repo root when developing on larch itself). Used for
 # resolving sibling plugin assets — agent prompt, launcher, redactor.
-PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 # REPO_ROOT: the consumer git repo this run is operating on. Derived from cwd's
 # git toplevel because PLUGIN_ROOT (cache snapshot) has no .git when running
 # from an installed plugin. All `git -C "$REPO_ROOT"` calls and the
 # `.claude-plugin/plugin.json` reference target this root.
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 if [[ -z "$REPO_ROOT" ]]; then
-    echo "step2-implement.sh: must be invoked from within a git working tree (git rev-parse --show-toplevel failed)" >&2
+    larch_err "step2-implement.sh: must be invoked from within a git working tree (git rev-parse --show-toplevel failed)"
     exit 2
 fi
 
@@ -268,7 +271,7 @@ case "$CODER" in
         REQUIRES_HEAD_UNCHANGED=true
         ;;
     *)
-        echo "step2-implement.sh: internal error — CODER=$CODER not handled in tool-case" >&2
+        larch_err "step2-implement.sh: internal error — CODER=$CODER not handled in tool-case"
         exit 2
         ;;
 esac
@@ -284,20 +287,20 @@ QA_PENDING_PATH="$TMPDIR_ARG/qa-pending.json"
 TRANSCRIPT_PATH="$TMPDIR_ARG/${TOOL_TAG}-impl-transcript.txt"
 SIDECAR_LOG="$TMPDIR_ARG/${TOOL_TAG}-impl.log"
 
-[[ -f "$AGENT_PROMPT" ]] || { echo "step2-implement.sh: agent prompt missing: $AGENT_PROMPT" >&2; exit 2; }
-[[ -x "$LAUNCHER" ]]     || { echo "step2-implement.sh: launcher not executable: $LAUNCHER" >&2; exit 2; }
+[[ -f "$AGENT_PROMPT" ]] || { larch_err "step2-implement.sh: agent prompt missing: $AGENT_PROMPT"; exit 2; }
+[[ -x "$LAUNCHER" ]]     || { larch_err "step2-implement.sh: launcher not executable: $LAUNCHER"; exit 2; }
 
 # Helper: emit a STATUS=bailed envelope and exit 0.
 emit_bailed() {
     local reason="$1"
-    printf 'STATUS=bailed\n'
-    printf 'REASON=%s\n' "$reason"
-    printf 'TOOL=%s\n' "$TOOL_TAG"
-    if [[ -s "$TRANSCRIPT_PATH" ]]; then printf 'TRANSCRIPT=%s\n' "$TRANSCRIPT_PATH"; fi
-    if [[ -s "$SIDECAR_LOG" ]];     then printf 'SIDECAR_LOG=%s\n' "$SIDECAR_LOG"; fi
+    emit_kv STATUS bailed
+    emit_kv REASON "$reason"
+    emit_kv TOOL "$TOOL_TAG"
+    if [[ -s "$TRANSCRIPT_PATH" ]]; then emit_kv TRANSCRIPT "$TRANSCRIPT_PATH"; fi
+    if [[ -s "$SIDECAR_LOG" ]];     then emit_kv SIDECAR_LOG "$SIDECAR_LOG"; fi
     # External-implementer bail: orchestrator MUST NOT run main-agent Edit/Write.
     # See SKILL.md NEVER #10 and Step 2 entry preconditions matrix.
-    printf 'ORCHESTRATOR_EDIT_AUTHORITY=forbidden\n'
+    emit_kv ORCHESTRATOR_EDIT_AUTHORITY forbidden
     exit 0
 }
 
@@ -358,7 +361,7 @@ if [[ -f "$RESUME_COUNT_FILE" ]]; then
     fi
 fi
 if [[ -n "$ANSWERS_FILE" ]]; then
-    [[ -f "$ANSWERS_FILE" ]] || { echo "step2-implement.sh: --answers given but path does not exist: $ANSWERS_FILE" >&2; exit 2; }
+    [[ -f "$ANSWERS_FILE" ]] || { larch_err "step2-implement.sh: --answers given but path does not exist: $ANSWERS_FILE"; exit 2; }
     RESUME_COUNT=$((RESUME_COUNT + 1))
     printf '%s\n' "$RESUME_COUNT" > "$RESUME_COUNT_FILE.tmp"
     mv "$RESUME_COUNT_FILE.tmp" "$RESUME_COUNT_FILE"
@@ -791,21 +794,21 @@ fi
 # #10 and the Step 2 entry preconditions matrix.
 case "$STATUS" in
     complete)
-        printf 'STATUS=complete\n'
-        printf 'TOOL=%s\n' "$TOOL_TAG"
-        printf 'MANIFEST=%s\n' "$MANIFEST_PATH"
-        printf 'TRANSCRIPT=%s\n' "$TRANSCRIPT_PATH"
-        printf 'SIDECAR_LOG=%s\n' "$SIDECAR_LOG"
-        printf 'ORCHESTRATOR_EDIT_AUTHORITY=forbidden\n'
+        emit_kv STATUS complete
+        emit_kv TOOL "$TOOL_TAG"
+        emit_kv MANIFEST "$MANIFEST_PATH"
+        emit_kv TRANSCRIPT "$TRANSCRIPT_PATH"
+        emit_kv SIDECAR_LOG "$SIDECAR_LOG"
+        emit_kv ORCHESTRATOR_EDIT_AUTHORITY forbidden
         ;;
     needs_qa)
-        printf 'STATUS=needs_qa\n'
-        printf 'TOOL=%s\n' "$TOOL_TAG"
-        printf 'MANIFEST=%s\n' "$MANIFEST_PATH"
-        printf 'QA_PENDING=%s\n' "$QA_PENDING_PATH"
-        printf 'TRANSCRIPT=%s\n' "$TRANSCRIPT_PATH"
-        printf 'SIDECAR_LOG=%s\n' "$SIDECAR_LOG"
-        printf 'ORCHESTRATOR_EDIT_AUTHORITY=forbidden\n'
+        emit_kv STATUS needs_qa
+        emit_kv TOOL "$TOOL_TAG"
+        emit_kv MANIFEST "$MANIFEST_PATH"
+        emit_kv QA_PENDING "$QA_PENDING_PATH"
+        emit_kv TRANSCRIPT "$TRANSCRIPT_PATH"
+        emit_kv SIDECAR_LOG "$SIDECAR_LOG"
+        emit_kv ORCHESTRATOR_EDIT_AUTHORITY forbidden
         ;;
     bailed)
         BR=$(jq -r --arg fallback "$BAILED_NO_REASON_TOKEN" '.bail_reason // $fallback' "$MANIFEST_RAW_PATH")
@@ -816,13 +819,13 @@ case "$STATUS" in
         # `KEY=value` lines or control sequences.
         BR=$(printf '%s' "$BR" | tr -d '\000-\010\013\014\016-\037' | tr '\t\n\r' '   ' | sed -e 's/  */ /g' -e 's/^ //' -e 's/ $//' | cut -c1-200)
         [[ -z "$BR" ]] && BR="$BAILED_NO_REASON_TOKEN"
-        printf 'STATUS=bailed\n'
-        printf 'REASON=%s\n' "$BR"
-        printf 'TOOL=%s\n' "$TOOL_TAG"
-        printf 'MANIFEST=%s\n' "$MANIFEST_PATH"
-        printf 'TRANSCRIPT=%s\n' "$TRANSCRIPT_PATH"
-        printf 'SIDECAR_LOG=%s\n' "$SIDECAR_LOG"
-        printf 'ORCHESTRATOR_EDIT_AUTHORITY=forbidden\n'
+        emit_kv STATUS bailed
+        emit_kv REASON "$BR"
+        emit_kv TOOL "$TOOL_TAG"
+        emit_kv MANIFEST "$MANIFEST_PATH"
+        emit_kv TRANSCRIPT "$TRANSCRIPT_PATH"
+        emit_kv SIDECAR_LOG "$SIDECAR_LOG"
+        emit_kv ORCHESTRATOR_EDIT_AUTHORITY forbidden
         ;;
 esac
 exit 0

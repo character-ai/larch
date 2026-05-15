@@ -64,6 +64,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
 
 PREFIX=""
 SKIP_PREFLIGHT=false
@@ -79,7 +82,7 @@ CALLER_ENV=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --prefix)
-            [[ $# -ge 2 ]] || { echo "session-setup.sh: --prefix requires a value" >&2; exit 4; }
+            [[ $# -ge 2 ]] || { larch_err "session-setup.sh: --prefix requires a value"; exit 4; }
             PREFIX="$2"; shift 2 ;;
         --skip-preflight)
             SKIP_PREFLIGHT=true; shift ;;
@@ -94,22 +97,22 @@ while [[ $# -gt 0 ]]; do
         --skip-cursor-probe)
             SKIP_CURSOR_PROBE=true; shift ;;
         --write-health)
-            [[ $# -ge 2 ]] || { echo "session-setup.sh: --write-health requires a path" >&2; exit 4; }
+            [[ $# -ge 2 ]] || { larch_err "session-setup.sh: --write-health requires a path"; exit 4; }
             WRITE_HEALTH="$2"; shift 2 ;;
         --write-session-env)
-            [[ $# -ge 2 ]] || { echo "session-setup.sh: --write-session-env requires a path" >&2; exit 4; }
+            [[ $# -ge 2 ]] || { larch_err "session-setup.sh: --write-session-env requires a path"; exit 4; }
             WRITE_SESSION_ENV="$2"; shift 2 ;;
         --caller-env)
-            [[ $# -ge 2 ]] || { echo "session-setup.sh: --caller-env requires a path" >&2; exit 4; }
+            [[ $# -ge 2 ]] || { larch_err "session-setup.sh: --caller-env requires a path"; exit 4; }
             CALLER_ENV="$2"; shift 2 ;;
         *)
-            echo "session-setup.sh: unknown option: $1" >&2
+            larch_err "session-setup.sh: unknown option: $1"
             exit 4 ;;
     esac
 done
 
 if [[ -z "$PREFIX" ]]; then
-    echo "session-setup.sh: --prefix is required" >&2
+    larch_err "session-setup.sh: --prefix is required"
     exit 4
 fi
 
@@ -199,7 +202,7 @@ if [[ "$SKIP_PREFLIGHT" == "false" ]]; then
 
     if [[ $PREFLIGHT_EXIT -ne 0 ]]; then
         # Re-emit preflight output (contains PREFLIGHT_ERROR=...)
-        echo "$PREFLIGHT_OUTPUT"
+        emit "$PREFLIGHT_OUTPUT"
         exit "$PREFLIGHT_EXIT"
     fi
 fi
@@ -237,7 +240,7 @@ write_keepalive_sentinel() {
         printf 'CREATED=%s\n' "$created"
         printf 'NOTE=ext-cleaners-please-skip\n'
     } > "$sentinel"; then
-        printf 'session-setup.sh: warning: failed to write keepalive sentinel: %s\n' "$sentinel" >&2
+        larch_errf 'session-setup.sh: warning: failed to write keepalive sentinel: %s\n' "$sentinel"
     fi
 }
 
@@ -246,20 +249,20 @@ SESSION_TEMPLATE="$CACHE_ROOT/${PREFIX}-${CLONE_TAG}-XXXXXX"
 if mkdir -p "$CACHE_ROOT" 2>/dev/null && touch "$CACHE_ROOT/.larch-write-probe.$$" 2>/dev/null; then
     rm -f "$CACHE_ROOT/.larch-write-probe.$$" 2>/dev/null || true
     SESSION_TMPDIR=$(mktemp -d "$SESSION_TEMPLATE" 2>/dev/null) || {
-        printf 'session-setup.sh: warning: cache session root unavailable, falling back to /tmp\n' >&2
+        larch_err "session-setup.sh: warning: cache session root unavailable, falling back to /tmp"
         SESSION_TMPDIR=$(mktemp -d "/tmp/${PREFIX}-${CLONE_TAG}-XXXXXX")
     }
 else
     rm -f "$CACHE_ROOT/.larch-write-probe.$$" 2>/dev/null || true
-    printf 'session-setup.sh: warning: cache session root unavailable, falling back to /tmp\n' >&2
+    larch_err "session-setup.sh: warning: cache session root unavailable, falling back to /tmp"
     SESSION_TMPDIR=$(mktemp -d "/tmp/${PREFIX}-${CLONE_TAG}-XXXXXX")
 fi
 SESSION_ID=$(make_session_id)
 printf '%s\n' "$SESSION_ID" > "$SESSION_TMPDIR/session-id"
 write_keepalive_sentinel
-echo "SESSION_TMPDIR=$SESSION_TMPDIR"
-echo "SESSION_ID=$SESSION_ID"
-echo "LARCH_RENDER_CACHE_DIR=$SESSION_TMPDIR/render-cache"
+emit_kv SESSION_TMPDIR "$SESSION_TMPDIR"
+emit_kv SESSION_ID "$SESSION_ID"
+emit_kv LARCH_RENDER_CACHE_DIR "$SESSION_TMPDIR/render-cache"
 
 if [[ -n "${CALLER_PREV_IMPLEMENT_TMPDIR:-}" && \
       -d "${CALLER_PREV_IMPLEMENT_TMPDIR}/larch-logs" ]]; then
@@ -286,8 +289,8 @@ if [[ "$SKIP_REPO_CHECK" == "false" ]]; then
         # Reuse caller's values (treat REPO + REPO_UNAVAILABLE as one result shape)
         REPO_VALUE="${CALLER_REPO}"
         REPO_UNAVAILABLE_VALUE="${CALLER_REPO_UNAVAILABLE:-false}"
-        echo "REPO=${CALLER_REPO}"
-        echo "REPO_UNAVAILABLE=${CALLER_REPO_UNAVAILABLE:-false}"
+        emit_kv REPO "$CALLER_REPO"
+        emit_kv REPO_UNAVAILABLE "${CALLER_REPO_UNAVAILABLE:-false}"
     else
         # Derive fresh: try gh first, then git remote fallback
         REPO=""
@@ -312,8 +315,8 @@ if [[ "$SKIP_REPO_CHECK" == "false" ]]; then
 
         REPO_VALUE="$REPO"
         REPO_UNAVAILABLE_VALUE="$REPO_UNAVAILABLE"
-        echo "REPO=$REPO"
-        echo "REPO_UNAVAILABLE=$REPO_UNAVAILABLE"
+        emit_kv REPO "$REPO"
+        emit_kv REPO_UNAVAILABLE "$REPO_UNAVAILABLE"
     fi
 fi
 
@@ -376,49 +379,49 @@ if [[ "$CHECK_REVIEWERS" == "true" ]]; then
         PROBED_CURSOR_HEALTHY="$CALLER_CURSOR_HEALTHY"
     fi
 
-    [[ -n "$PROBED_CODEX_AVAILABLE" ]] && echo "CODEX_AVAILABLE=$PROBED_CODEX_AVAILABLE"
-    [[ -n "$PROBED_CURSOR_AVAILABLE" ]] && echo "CURSOR_AVAILABLE=$PROBED_CURSOR_AVAILABLE"
-    [[ -n "$PROBED_CODEX_HEALTHY" ]] && echo "CODEX_HEALTHY=$PROBED_CODEX_HEALTHY"
-    [[ -n "$PROBED_CURSOR_HEALTHY" ]] && echo "CURSOR_HEALTHY=$PROBED_CURSOR_HEALTHY"
-    [[ -n "$PROBED_CODEX_PROBE_ERROR" ]] && echo "CODEX_PROBE_ERROR=$PROBED_CODEX_PROBE_ERROR"
-    [[ -n "$PROBED_CURSOR_PROBE_ERROR" ]] && echo "CURSOR_PROBE_ERROR=$PROBED_CURSOR_PROBE_ERROR"
-    [[ -n "$PROBED_WAIT_INFRA_ERROR" ]] && echo "WAIT_INFRA_ERROR=$PROBED_WAIT_INFRA_ERROR"
-    echo "GEMINI_HEALTHY=false"
-    echo "GEMINI_AVAILABLE=false"
+    [[ -n "$PROBED_CODEX_AVAILABLE" ]] && emit_kv CODEX_AVAILABLE "$PROBED_CODEX_AVAILABLE"
+    [[ -n "$PROBED_CURSOR_AVAILABLE" ]] && emit_kv CURSOR_AVAILABLE "$PROBED_CURSOR_AVAILABLE"
+    [[ -n "$PROBED_CODEX_HEALTHY" ]] && emit_kv CODEX_HEALTHY "$PROBED_CODEX_HEALTHY"
+    [[ -n "$PROBED_CURSOR_HEALTHY" ]] && emit_kv CURSOR_HEALTHY "$PROBED_CURSOR_HEALTHY"
+    [[ -n "$PROBED_CODEX_PROBE_ERROR" ]] && emit_kv CODEX_PROBE_ERROR "$PROBED_CODEX_PROBE_ERROR"
+    [[ -n "$PROBED_CURSOR_PROBE_ERROR" ]] && emit_kv CURSOR_PROBE_ERROR "$PROBED_CURSOR_PROBE_ERROR"
+    [[ -n "$PROBED_WAIT_INFRA_ERROR" ]] && emit_kv WAIT_INFRA_ERROR "$PROBED_WAIT_INFRA_ERROR"
+    emit_kv GEMINI_HEALTHY false
+    emit_kv GEMINI_AVAILABLE false
 
     # Emit prominent banners to stderr for failed health checks (must be here,
     # not in check-reviewers.sh, because session-setup captures its stdout+stderr
     # via 2>&1 — banners emitted there would be swallowed).
     if [[ -n "$PROBED_WAIT_INFRA_ERROR" ]]; then
-        echo "═══════════════════════════════════════════════════════════" >&2
-        echo "  ⚠  PROBE INFRASTRUCTURE ERROR — wait-for-reviewers.sh failed" >&2
-        echo "     Cause: $PROBED_WAIT_INFRA_ERROR" >&2
-        echo "     Probe could not classify tool health; available tools marked unhealthy for fail-closed gating." >&2
-        echo "═══════════════════════════════════════════════════════════" >&2
+        larch_err "═══════════════════════════════════════════════════════════"
+        larch_err "  ⚠  PROBE INFRASTRUCTURE ERROR — wait-for-reviewers.sh failed"
+        larch_err "     Cause: $PROBED_WAIT_INFRA_ERROR"
+        larch_err "     Probe could not classify tool health; available tools marked unhealthy for fail-closed gating."
+        larch_err "═══════════════════════════════════════════════════════════"
     else
         if [[ "$PROBED_CODEX_AVAILABLE" == "true" && "$PROBED_CODEX_HEALTHY" == "false" \
           && "$SKIP_CODEX_PROBE" == "false" ]]; then
-        echo "═══════════════════════════════════════════════════════════" >&2
-        echo "  ⚠  CODEX HEALTH CHECK FAILED — not responding" >&2
+        larch_err "═══════════════════════════════════════════════════════════"
+        larch_err "  ⚠  CODEX HEALTH CHECK FAILED — not responding"
         if [[ -n "$PROBED_CODEX_PROBE_ERROR" ]]; then
-            echo "     Cause: $PROBED_CODEX_PROBE_ERROR" >&2
+            larch_err "     Cause: $PROBED_CODEX_PROBE_ERROR"
         else
-            echo "     Codex binary found but health probe timed out or errored." >&2
+            larch_err "     Codex binary found but health probe timed out or errored."
         fi
-        echo "     Will use Claude replacement for this session." >&2
-        echo "═══════════════════════════════════════════════════════════" >&2
+        larch_err "     Will use Claude replacement for this session."
+        larch_err "═══════════════════════════════════════════════════════════"
         fi
         if [[ "$PROBED_CURSOR_AVAILABLE" == "true" && "$PROBED_CURSOR_HEALTHY" == "false" \
           && "$SKIP_CURSOR_PROBE" == "false" ]]; then
-        echo "═══════════════════════════════════════════════════════════" >&2
-        echo "  ⚠  CURSOR HEALTH CHECK FAILED — not responding" >&2
+        larch_err "═══════════════════════════════════════════════════════════"
+        larch_err "  ⚠  CURSOR HEALTH CHECK FAILED — not responding"
         if [[ -n "$PROBED_CURSOR_PROBE_ERROR" ]]; then
-            echo "     Cause: $PROBED_CURSOR_PROBE_ERROR" >&2
+            larch_err "     Cause: $PROBED_CURSOR_PROBE_ERROR"
         else
-            echo "     Cursor binary found but health probe timed out or errored." >&2
+            larch_err "     Cursor binary found but health probe timed out or errored."
         fi
-        echo "     Will use Claude replacement for this session." >&2
-        echo "═══════════════════════════════════════════════════════════" >&2
+        larch_err "     Will use Claude replacement for this session."
+        larch_err "═══════════════════════════════════════════════════════════"
         fi
     fi
 
@@ -428,18 +431,18 @@ if [[ "$CHECK_REVIEWERS" == "true" ]]; then
 else
     # Passthrough from caller-env (no probe)
     if [[ -n "$CALLER_CODEX_HEALTHY" ]]; then
-        echo "CODEX_HEALTHY=$CALLER_CODEX_HEALTHY"
+        emit_kv CODEX_HEALTHY "$CALLER_CODEX_HEALTHY"
     fi
     if [[ -n "$CALLER_CURSOR_HEALTHY" ]]; then
-        echo "CURSOR_HEALTHY=$CALLER_CURSOR_HEALTHY"
+        emit_kv CURSOR_HEALTHY "$CALLER_CURSOR_HEALTHY"
     fi
-    echo "GEMINI_HEALTHY=false"
-    echo "GEMINI_AVAILABLE=false"
+    emit_kv GEMINI_HEALTHY false
+    emit_kv GEMINI_AVAILABLE false
     if [[ -n "$CALLER_TOKEN_SESSION_ID" ]]; then
-        echo "LARCH_TOKEN_SESSION_ID=$CALLER_TOKEN_SESSION_ID"
+        emit_kv LARCH_TOKEN_SESSION_ID "$CALLER_TOKEN_SESSION_ID"
     fi
     if [[ -n "$CALLER_CLAUDE_SOURCE_FILE" ]]; then
-        echo "LARCH_CLAUDE_SOURCE_FILE=$CALLER_CLAUDE_SOURCE_FILE"
+        emit_kv LARCH_CLAUDE_SOURCE_FILE "$CALLER_CLAUDE_SOURCE_FILE"
     fi
     FINAL_CODEX_HEALTHY="${CALLER_CODEX_HEALTHY:-}"
     FINAL_CURSOR_HEALTHY="${CALLER_CURSOR_HEALTHY:-}"
@@ -447,10 +450,10 @@ fi
 
 if [[ "$CHECK_REVIEWERS" == "true" ]]; then
     if [[ -n "$CALLER_TOKEN_SESSION_ID" ]]; then
-        echo "LARCH_TOKEN_SESSION_ID=$CALLER_TOKEN_SESSION_ID"
+        emit_kv LARCH_TOKEN_SESSION_ID "$CALLER_TOKEN_SESSION_ID"
     fi
     if [[ -n "$CALLER_CLAUDE_SOURCE_FILE" ]]; then
-        echo "LARCH_CLAUDE_SOURCE_FILE=$CALLER_CLAUDE_SOURCE_FILE"
+        emit_kv LARCH_CLAUDE_SOURCE_FILE "$CALLER_CLAUDE_SOURCE_FILE"
     fi
 fi
 
@@ -495,7 +498,7 @@ if [[ -n "$WRITE_SESSION_ENV" ]]; then
         if is_safe_timing_ledger_path "$CALLER_TIMING_LEDGER" "$CALLER_ENV_DIR"; then
             WSE_ARGS+=(--timing-ledger "$CALLER_TIMING_LEDGER")
         else
-            printf 'session-setup.sh: warning: ignoring unsafe LARCH_TIMING_LEDGER from caller-env (not under accepted root)\n' >&2
+            larch_err "session-setup.sh: warning: ignoring unsafe LARCH_TIMING_LEDGER from caller-env (not under accepted root)"
         fi
     fi
 

@@ -28,6 +28,11 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
+
 FILE=""
 FILE_SET=false
 KEY=""
@@ -63,7 +68,7 @@ if [ -z "$FILE" ]; then
     # --file does NOT silently get the default — that masks caller bugs
     # (#1563 round-4 review).
     if [ "$FILE_SET" = "true" ] && [ "$DEFAULT_SET" = "true" ]; then
-        printf '%s\n' "$DEFAULT"
+        emit "$DEFAULT"
         exit 0
     fi
     echo "read-session-env-key.sh: --file is required" >&2
@@ -77,7 +82,7 @@ fi
 # site.
 if [ -z "$FILE" ] || [ ! -r "$FILE" ]; then
     if [ "$DEFAULT_SET" = "true" ]; then
-        printf '%s\n' "$DEFAULT"
+        emit "$DEFAULT"
         exit 0
     fi
     if [ -z "$FILE" ]; then
@@ -94,7 +99,7 @@ fi
 VALUE=$(awk -v k="$KEY" 'BEGIN{kl=length(k)} substr($0,1,kl)==k && substr($0,kl+1,1)=="=" {print substr($0,kl+2); exit}' "$FILE")
 
 if [ -z "$VALUE" ] && [ "$DEFAULT_SET" = "true" ]; then
-    printf '%s\n' "$DEFAULT"
+    emit "$DEFAULT"
 else
-    printf '%s\n' "$VALUE"
+    emit "$VALUE"
 fi

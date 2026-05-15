@@ -17,6 +17,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
 SKIP_BRANCH_CHECK=false
 SKIP_CLEAN_CHECK=false
 while [[ $# -gt 0 ]]; do
@@ -31,8 +34,8 @@ if [[ "$SKIP_BRANCH_CHECK" == "false" ]]; then
     # Check on main
     CURRENT_BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null || echo "")
     if [[ "$CURRENT_BRANCH" != "main" ]]; then
-        echo "PREFLIGHT=fail"
-        echo "PREFLIGHT_ERROR=Not on main branch (on '$CURRENT_BRANCH'). Switch to main first, or pass --skip-branch-check."
+        emit_kv PREFLIGHT fail
+        emit_kv PREFLIGHT_ERROR "Not on main branch (on '$CURRENT_BRANCH'). Switch to main first, or pass --skip-branch-check."
         exit 1
     fi
 fi
@@ -53,13 +56,13 @@ if [[ "$SKIP_CLEAN_CHECK" == "false" ]]; then
             : # clean — fall through
             ;;
         false)
-            echo "PREFLIGHT=fail"
-            echo "PREFLIGHT_ERROR=Working tree is not clean. Commit or stash changes first."
+            emit_kv PREFLIGHT fail
+            emit_kv PREFLIGHT_ERROR "Working tree is not clean. Commit or stash changes first."
             exit 2
             ;;
         *)
-            echo "PREFLIGHT=fail"
-            echo "PREFLIGHT_ERROR=Could not determine working-tree cleanliness (helper produced no CLEAN= line)."
+            emit_kv PREFLIGHT fail
+            emit_kv PREFLIGHT_ERROR "Could not determine working-tree cleanliness (helper produced no CLEAN= line)."
             exit 2
             ;;
     esac
@@ -67,16 +70,16 @@ fi
 
 # Always fetch to ensure origin/main is current. Rebase requires being on main.
 if ! git fetch origin main --quiet 2>/dev/null; then
-    echo "PREFLIGHT=fail"
-    echo "PREFLIGHT_ERROR=git fetch origin main failed."
+    emit_kv PREFLIGHT fail
+    emit_kv PREFLIGHT_ERROR "git fetch origin main failed."
     exit 3
 fi
 
 if [[ "$SKIP_BRANCH_CHECK" == "false" && "$SKIP_CLEAN_CHECK" == "false" ]]; then
     if ! git rebase origin/main --quiet 2>/dev/null; then
         git rebase --abort 2>/dev/null || true
-        echo "PREFLIGHT=fail"
-        echo "PREFLIGHT_ERROR=git rebase origin/main failed."
+        emit_kv PREFLIGHT fail
+        emit_kv PREFLIGHT_ERROR "git rebase origin/main failed."
         exit 3
     fi
 fi
@@ -92,4 +95,4 @@ if [[ "$SKIP_CLEAN_CHECK" == "false" || -z "$(git status --porcelain 2>/dev/null
     fi
 fi
 
-echo "PREFLIGHT=ok"
+emit_kv PREFLIGHT ok

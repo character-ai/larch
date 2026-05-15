@@ -5,10 +5,13 @@ set -euo pipefail
 
 SCRIPT_NAME=${0##*/}
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
 FLOCK_WARNED=false
 
 warn() {
-    echo "$SCRIPT_NAME: WARNING: $*" >&2
+    larch_err "$SCRIPT_NAME: WARNING: $*"
 }
 
 # Path-validation primitives are shared with timing-report.sh via the
@@ -229,8 +232,8 @@ cmd_record_vendor_task() {
 
 cmd_dump() {
     local ledger="$1"
-    printf '%s\n' "$ledger"
-    [[ -f "$ledger" ]] && cat "$ledger"
+    emit "$ledger"
+    [[ -s "$ledger" ]] && emit "$(cat "$ledger")"
 }
 
 main() {

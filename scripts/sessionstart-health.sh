@@ -14,6 +14,17 @@
 # nothing. The hook does not read stdin.
 
 set -euo pipefail
+
+SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" && pwd -P)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+# SessionStart health deliberately runs under stripped PATHs in both tests and
+# real hook environments. lib-quiet's default log setup needs dirname/mkdir, so
+# only enable redirection when those basics are available; emit() remains safe
+# without init and writes to stdout directly.
+if command -v dirname >/dev/null 2>&1 && command -v mkdir >/dev/null 2>&1; then
+    larch_quiet_init
+fi
 LC_ALL=C
 
 MSG=""
@@ -103,9 +114,9 @@ if [[ -n "$MSG" ]]; then
         jq -n --arg ctx "$MSG" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$ctx}}' || true
     else
         if [[ "$GIT_AVAILABLE" == "true" ]]; then
-            printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"larch hook preflight: jq not on PATH (install jq for advisory hook output)."}}'
+            emit '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"larch hook preflight: jq not on PATH (install jq for advisory hook output)."}}'
         else
-            printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"larch hook preflight: jq not on PATH and git not on PATH; install jq and git for advisory hook output."}}'
+            emit '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"larch hook preflight: jq not on PATH and git not on PATH; install jq and git for advisory hook output."}}'
         fi
     fi
 fi

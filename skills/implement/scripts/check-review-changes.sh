@@ -50,6 +50,12 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
+# shellcheck source=scripts/lib-quiet.sh
+source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
+larch_quiet_init
+
 BASELINE=""
 STRICT="false"
 PARSE_ERROR=""
@@ -82,10 +88,10 @@ done
 # parse errors must NOT interact with --strict to silently force
 # FILES_CHANGED=true on a CLI with a typo (e.g. "--strict --bogus").
 if [[ -n "$PARSE_ERROR" ]]; then
-    echo "ERROR=$PARSE_ERROR" >&2
-    echo "FILES_CHANGED=false"
-    echo "UNTRACKED_BASELINE=missing"
-    echo "GIT_PROBE_FAILED=false"
+    larch_err "ERROR=$PARSE_ERROR"
+    emit_kv FILES_CHANGED false
+    emit_kv UNTRACKED_BASELINE missing
+    emit_kv GIT_PROBE_FAILED false
     exit 0
 fi
 
@@ -131,6 +137,6 @@ if [[ "$STRICT" == "true" ]] && [[ "$GIT_PROBE_FAILED" == "true" ]]; then
     FILES_CHANGED="true"
 fi
 
-echo "FILES_CHANGED=$FILES_CHANGED"
-echo "UNTRACKED_BASELINE=$UNTRACKED_BASELINE"
-echo "GIT_PROBE_FAILED=$GIT_PROBE_FAILED"
+emit_kv FILES_CHANGED "$FILES_CHANGED"
+emit_kv UNTRACKED_BASELINE "$UNTRACKED_BASELINE"
+emit_kv GIT_PROBE_FAILED "$GIT_PROBE_FAILED"

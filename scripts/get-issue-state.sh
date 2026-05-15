@@ -25,6 +25,9 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
 
 ISSUE=""
 REPO=""
@@ -34,15 +37,15 @@ while [ $# -gt 0 ]; do
         --issue) ISSUE="${2:-}"; shift 2 ;;
         --repo)  REPO="${2:-}"; shift 2 ;;
         *)
-            echo "FAILED=true"
-            echo "ERROR=unknown flag: $1"
+            emit_kv FAILED true
+            emit_kv ERROR "unknown flag: $1"
             exit 1 ;;
     esac
 done
 
 if [ -z "$ISSUE" ]; then
-    echo "FAILED=true"
-    echo "ERROR=--issue is required"
+    emit_kv FAILED true
+    emit_kv ERROR "--issue is required"
     exit 1
 fi
 
@@ -55,10 +58,10 @@ GH_ARGS=(issue view "$ISSUE" --json "state,url")
 [ -n "$REPO" ] && GH_ARGS+=(--repo "$REPO")
 
 if ! OUT=$(gh "${GH_ARGS[@]}" --jq '.state + "\t" + .url' 2>&1); then
-    echo "FAILED=true"
+    emit_kv FAILED true
     # Compress whitespace and trim for a single-line ERROR.
     SAFE=$(printf '%s' "$OUT" | tr '\n' ' ' | sed 's/  */ /g')
-    echo "ERROR=gh issue view failed: $SAFE"
+    emit_kv ERROR "gh issue view failed: $SAFE"
     exit 1
 fi
 
@@ -71,7 +74,7 @@ else
     IS_PR=false
 fi
 
-echo "STATE=$STATE"
-echo "URL=$URL"
-echo "IS_PR=$IS_PR"
+emit_kv STATE "$STATE"
+emit_kv URL "$URL"
+emit_kv IS_PR "$IS_PR"
 exit 0

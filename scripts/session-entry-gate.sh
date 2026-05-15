@@ -3,8 +3,13 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
+
 fail() {
-    printf 'GATE_ERROR=%s\n' "$1" >&2
+    larch_err "GATE_ERROR=$1"
     exit 4
 }
 
@@ -118,5 +123,5 @@ elif [[ "$IS_USER_BRANCH" == "true" ]]; then
     SKIP_BRANCH_CHECK="true"
 fi
 
-printf 'ENTRY_GATE=%s\n' "$ENTRY_GATE"
-printf 'SKIP_BRANCH_CHECK=%s\n' "$SKIP_BRANCH_CHECK"
+emit_kv ENTRY_GATE "$ENTRY_GATE"
+emit_kv SKIP_BRANCH_CHECK "$SKIP_BRANCH_CHECK"

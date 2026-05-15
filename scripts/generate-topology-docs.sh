@@ -5,6 +5,9 @@ set -euo pipefail
 export LC_ALL=C
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # LARCH_TOPOLOGY_TSV and LARCH_TOPOLOGY_DOC are dev/CI overrides used by
 # scripts/test-generate-topology-docs.sh. They are trusted-only — operators must not pass
@@ -19,12 +22,12 @@ MODE="write"
 if [[ "${1:-}" == "--check" ]]; then
   MODE="check"
 elif [[ -n "${1:-}" ]]; then
-  echo "Usage: $0 [--check]" >&2
+  larch_err "Usage: $0 [--check]"
   exit 2
 fi
 
 fail() {
-  echo "generate-topology-docs: $*" >&2
+  larch_err "generate-topology-docs: $*"
   exit 1
 }
 
@@ -102,7 +105,9 @@ anchor_for_key() {
 
 TMP="$(mktemp)"
 ROWS_TMP="$(mktemp)"
-trap 'rm -f "$TMP" "$ROWS_TMP"' EXIT
+ENCODED_TMP="$(mktemp)"
+ENCODED_ERR="$(mktemp)"
+trap 'rm -f "$TMP" "$ROWS_TMP" "$ENCODED_TMP" "$ENCODED_ERR"' EXIT
 
 cd "$REPO_ROOT"
 
@@ -111,6 +116,26 @@ cd "$REPO_ROOT"
 # diagnostics can name both rows.
 SEEN_KEYS=""
 SEEN_ANCHORS=""
+
+if ! awk -F '\t' '
+    {
+      if ($0 ~ /\r$/) {
+        printf("generate-topology-docs: row %d: CRLF line endings not allowed\n", NR) > "/dev/stderr"
+        exit 1
+      }
+      if ($0 == "" || substr($0, 1, 1) == "#") next
+      if (NF != 4 || $1 == "" || $2 == "" || $4 == "") {
+        printf("generate-topology-docs: row %d: malformed row; expected exactly four tab-separated columns with key, value, and runtime_authority non-empty\n", NR) > "/dev/stderr"
+        exit 1
+      }
+      printf("%d\034%s\034%s\034%s\034%s\n", NR, $1, $2, $3, $4)
+    }
+  ' "$TOPOLOGY_TSV" > "$ENCODED_TMP" 2> "$ENCODED_ERR"; then
+  while IFS= read -r line; do
+    [[ -n "$line" ]] && larch_err "$line"
+  done < "$ENCODED_ERR"
+  exit 1
+fi
 
 while IFS= read -r encoded; do
   row="${encoded%%$'\034'*}"
@@ -158,22 +183,7 @@ while IFS= read -r encoded; do
   # `composition` columns survive the read-back step. IFS=$'\t' would collapse adjacent
   # tabs as IFS-whitespace, shifting `runtime_authority` into `composition`.
   printf '%s\035%s\035%s\035%s\035%s\n' "$anchor" "$key" "$value" "$composition" "$runtime_authority" >>"$ROWS_TMP"
-done < <(
-  awk -F '\t' '
-    {
-      if ($0 ~ /\r$/) {
-        printf("generate-topology-docs: row %d: CRLF line endings not allowed\n", NR) > "/dev/stderr"
-        exit 1
-      }
-      if ($0 == "" || substr($0, 1, 1) == "#") next
-      if (NF != 4 || $1 == "" || $2 == "" || $4 == "") {
-        printf("generate-topology-docs: row %d: malformed row; expected exactly four tab-separated columns with key, value, and runtime_authority non-empty\n", NR) > "/dev/stderr"
-        exit 1
-      }
-      printf("%d\034%s\034%s\034%s\034%s\n", NR, $1, $2, $3, $4)
-    }
-  ' "$TOPOLOGY_TSV"
-)
+done < "$ENCODED_TMP"
 
 cat >"$TMP" <<'HEADER'
 # Topology Projection
@@ -196,9 +206,9 @@ done <"$ROWS_TMP"
 
 if [[ "$MODE" == "check" ]]; then
   if ! diff -u "$TOPOLOGY_DOC" "$TMP"; then
-    echo "" >&2
-    echo "docs/topology.md is out of sync with skills/shared/topology.tsv." >&2
-    echo "Run: bash scripts/generate-topology-docs.sh" >&2
+    larch_err ""
+    larch_err "docs/topology.md is out of sync with skills/shared/topology.tsv."
+    larch_err "Run: bash scripts/generate-topology-docs.sh"
     exit 1
   fi
   exit 0
@@ -206,4 +216,4 @@ fi
 
 mkdir -p "$(dirname "$TOPOLOGY_DOC")"
 cp "$TMP" "$TOPOLOGY_DOC"
-echo "Wrote $TOPOLOGY_DOC"
+emit "Wrote $TOPOLOGY_DOC"

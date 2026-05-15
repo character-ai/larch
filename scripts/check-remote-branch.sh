@@ -22,6 +22,11 @@
 
 set -uo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
+
 BRANCH=""
 REMOTE="origin"
 
@@ -30,17 +35,17 @@ while [ $# -gt 0 ]; do
         --branch) BRANCH="${2:-}"; shift 2 ;;
         --remote) REMOTE="${2:-}"; shift 2 ;;
         *)
-            echo "STATE=error"
-            echo "RC=1"
-            echo "ERROR=unknown flag: $1"
+            emit_kv STATE error
+            emit_kv RC 1
+            emit_kv ERROR "unknown flag: $1"
             exit 0 ;;
     esac
 done
 
 if [ -z "$BRANCH" ]; then
-    echo "STATE=error"
-    echo "RC=1"
-    echo "ERROR=--branch is required"
+    emit_kv STATE error
+    emit_kv RC 1
+    emit_kv ERROR "--branch is required"
     exit 0
 fi
 
@@ -52,16 +57,16 @@ git ls-remote --exit-code --heads "$REMOTE" "$BRANCH" >/dev/null 2>"$STDERR_TMP"
 RC=$?
 
 case "$RC" in
-    0)  echo "STATE=present"; echo "RC=0" ;;
-    2)  echo "STATE=absent";  echo "RC=2" ;;
+    0)  emit_kv STATE present; emit_kv RC 0 ;;
+    2)  emit_kv STATE absent;  emit_kv RC 2 ;;
     *)
         STDERR_FLAT=$(tr '\n' ' ' < "$STDERR_TMP" | sed 's/  */ /g; s/^ //; s/ $//')
-        echo "STATE=error"
-        echo "RC=$RC"
+        emit_kv STATE error
+        emit_kv RC "$RC"
         if [ -n "$STDERR_FLAT" ]; then
-            echo "ERROR=$STDERR_FLAT"
+            emit_kv ERROR "$STDERR_FLAT"
         else
-            echo "ERROR=git ls-remote failed (exit $RC)"
+            emit_kv ERROR "git ls-remote failed (exit $RC)"
         fi
         ;;
 esac

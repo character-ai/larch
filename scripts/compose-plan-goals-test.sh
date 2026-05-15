@@ -3,6 +3,11 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
+
 usage() {
     cat <<'USAGE' >&2
 Usage:
@@ -71,12 +76,15 @@ if [ -z "$test_plan" ]; then
     test_plan="(no test plan section in plan-file)"
 fi
 
-printf '## Goal\n'
-printf '%s\n\n' "$GOAL_TEXT"
-printf '## Implementation Plan\n'
-# Stop before any test plan section to avoid duplicating content under ## Test plan below.
-awk '/^#{1,3}[[:space:]]+[Ii]mplementation[[:space:]][Pp]lan[[:space:]]*$/ && !seen++ { next }
-     /^#{1,3}[[:space:]]+([Tt]est[[:space:]][Pp]lan|[Tt]ests|[Tt]esting|[Vv]erification|[Tt]est[[:space:]][Ss]trategy|[Vv]erification[[:space:]][Ss]trategy)[[:space:]]*$/ { exit }
-     { print }' "$PLAN_FILE"
-printf '\n## Test plan\n'
-printf '%s\n' "$test_plan"
+output=$(
+    printf '## Goal\n'
+    printf '%s\n\n' "$GOAL_TEXT"
+    printf '## Implementation Plan\n'
+    # Stop before any test plan section to avoid duplicating content under ## Test plan below.
+    awk '/^#{1,3}[[:space:]]+[Ii]mplementation[[:space:]][Pp]lan[[:space:]]*$/ && !seen++ { next }
+         /^#{1,3}[[:space:]]+([Tt]est[[:space:]][Pp]lan|[Tt]ests|[Tt]esting|[Vv]erification|[Tt]est[[:space:]][Ss]trategy|[Vv]erification[[:space:]][Ss]trategy)[[:space:]]*$/ { exit }
+         { print }' "$PLAN_FILE"
+    printf '\n## Test plan\n'
+    printf '%s\n' "$test_plan"
+)
+emit "$output"

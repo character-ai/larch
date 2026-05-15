@@ -3,6 +3,11 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
+
 usage() {
     cat <<'USAGE' >&2
 Usage:
@@ -43,7 +48,7 @@ fi
 goal_line=$(awk '/^## Goal/{found=1; next} found && /^#/{exit} found && NF{print; exit}' "$PLAN_GOALS_FILE")
 [ -n "$goal_line" ] || fail "no Goal line found in $PLAN_GOALS_FILE"
 
-printf -- '- %s\n' "$goal_line"
+summary=$(printf -- '- %s\n' "$goal_line")
 
 # Derive changed-file list against merge-base.
 merge_base=$(git merge-base HEAD origin/main 2>/dev/null) || merge_base=""
@@ -56,7 +61,7 @@ fi
 if [ -n "$changed_files" ]; then
     test_count=$(printf '%s\n' "$changed_files" | grep -cE '(^|/)test-[^/]+\.sh$' || true)
     if [ "${test_count:-0}" -gt 0 ]; then
-        printf -- '- Added or updated %s test file(s).\n' "$test_count"
+        summary="$summary"$'\n'"$(printf -- '- Added or updated %s test file(s).' "$test_count")"
     fi
 fi
 
@@ -65,6 +70,8 @@ if [ -n "$changed_files" ]; then
     dir_count=$(printf '%s\n' "$changed_files" | awk -F/ 'NF>1{print $1} NF==1{print "."}' | sort -u | grep -c '.' || true)
     if [ "${dir_count:-0}" -gt 2 ]; then
         cross_dirs=$(printf '%s\n' "$changed_files" | awk -F/ 'NF>1{print $1} NF==1{print "."}' | sort -u | tr '\n' ',' | sed 's/,$//')
-        printf -- '- Cross-cutting changes across: %s.\n' "$cross_dirs"
+        summary="$summary"$'\n'"$(printf -- '- Cross-cutting changes across: %s.' "$cross_dirs")"
     fi
 fi
+
+emit "$summary"

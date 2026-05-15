@@ -37,6 +37,11 @@
 #   1 — git error during the reset itself (rare)
 
 set -uo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
 # Note: not using set -e — we handle errors explicitly so all no-op paths
 # exit 0 with DROPPED=false, matching the contract used by callers.
 
@@ -48,21 +53,21 @@ set -uo pipefail
 # (untracked until the next larch-log.sh commit call).
 if [[ -n "$(git status --porcelain --untracked-files=no 2>/dev/null)" ]]; then
     echo "WARN: worktree has uncommitted tracked changes; refusing to drop bump commit" >&2
-    echo "DROPPED=false"
+    emit_kv DROPPED false
     exit 0
 fi
 
 # --- Guard 2: HEAD subject must be a bump commit ---
 HEAD_SUBJECT=$(git log -1 --format=%s HEAD 2>/dev/null || true)
 if ! [[ "$HEAD_SUBJECT" =~ ^Bump\ version\ to\ [0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    echo "DROPPED=false"
+    emit_kv DROPPED false
     exit 0
 fi
 
 # --- Guard 3: HEAD~1 must exist ---
 if ! git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
     echo "WARN: HEAD~1 does not exist; cannot drop the only commit on the branch" >&2
-    echo "DROPPED=false"
+    emit_kv DROPPED false
     exit 0
 fi
 
@@ -81,7 +86,7 @@ if [[ -n "${LARCH_BUMP_FILES+x}" ]]; then
     done
     if [[ ${#ALLOWED_SET[@]} -eq 0 ]]; then
         echo "WARN: LARCH_BUMP_FILES is set but empty after parsing; refusing to drop (fail-closed)" >&2
-        echo "DROPPED=false"
+        emit_kv DROPPED false
         exit 0
     fi
     # CHANGELOG.md is always allowed (never required).
@@ -109,13 +114,13 @@ if [[ -n "${LARCH_BUMP_FILES+x}" ]]; then
 
     if [[ "$ALLOWED_FAILED" == "true" ]]; then
         echo "WARN: HEAD subject matches bump pattern but commit touches unexpected files (changed: $CHANGED_FILES); refusing to drop" >&2
-        echo "DROPPED=false"
+        emit_kv DROPPED false
         exit 0
     fi
 
     if [[ "$BUMP_FILE_FOUND" != "true" ]]; then
         echo "WARN: HEAD subject matches bump pattern but commit touches no configured bump files; refusing to drop (fail-closed)" >&2
-        echo "DROPPED=false"
+        emit_kv DROPPED false
         exit 0
     fi
 else
@@ -126,7 +131,7 @@ else
     ALLOWED_TWO=$'.claude-plugin/plugin.json\nCHANGELOG.md'
     if [[ "$CHANGED_FILES" != "$ALLOWED_ONE" && "$CHANGED_FILES" != "$ALLOWED_TWO" ]]; then
         echo "WARN: HEAD subject matches bump pattern but commit touches unexpected files (changed: $CHANGED_FILES); refusing to drop" >&2
-        echo "DROPPED=false"
+        emit_kv DROPPED false
         exit 0
     fi
 fi
@@ -139,6 +144,6 @@ if ! git reset --hard HEAD~1 >/dev/null 2>&1; then
     exit 1
 fi
 
-echo "DROPPED=true"
-echo "OLD_BUMP_SHA=$OLD_BUMP_SHA"
+emit_kv DROPPED true
+emit_kv OLD_BUMP_SHA "$OLD_BUMP_SHA"
 exit 0

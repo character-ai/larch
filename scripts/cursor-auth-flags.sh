@@ -19,6 +19,9 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
 
 # Source the lib. Hard fail (exit 1) on missing/unsourceable library — the
 # runtime markdown blocks rely on this argv being correct; degrading silently
@@ -55,5 +58,5 @@ cursor_auth_argv
 for arg in "${CURSOR_AUTH_ARGS[@]:-}"; do
     # The :- guard keeps `set -u` happy when the array is empty.
     [ -n "$arg" ] || continue
-    printf '%s\n' "$arg"
+    emit "$arg"
 done

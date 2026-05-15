@@ -2,8 +2,13 @@
 # get-issue-context.sh — Fetch issue title/body into implement tmpdir files.
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" && pwd -P)"
+larch_err() {
+    printf '%s\n' "$*" >&2
+}
+
 usage() {
-    echo "Usage: get-issue-context.sh --issue N --repo OWNER/REPO --tmpdir PATH" >&2
+    larch_err "Usage: get-issue-context.sh --issue N --repo OWNER/REPO --tmpdir PATH"
 }
 
 ISSUE=""
@@ -15,7 +20,7 @@ while [[ $# -gt 0 ]]; do
         --repo) REPO="${2:?--repo requires a value}"; shift 2 ;;
         --tmpdir) TMPDIR_ARG="${2:?--tmpdir requires a value}"; shift 2 ;;
         --help) usage; exit 0 ;;
-        *) echo "Unknown option: $1" >&2; usage; exit 2 ;;
+        *) larch_err "Unknown option: $1"; usage; exit 2 ;;
     esac
 done
 
@@ -25,26 +30,30 @@ if [[ -z "$ISSUE" || -z "$REPO" || -z "$TMPDIR_ARG" ]]; then
 fi
 
 if [[ ! "$ISSUE" =~ ^[1-9][0-9]*$ ]]; then
-    echo "ERROR: --issue must be a positive integer (>= 1; #0 is not a valid GitHub issue number)" >&2
+    larch_err "ERROR: --issue must be a positive integer (>= 1; #0 is not a valid GitHub issue number)"
     exit 2
 fi
 
 if [[ ! "$REPO" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; then
-    echo "ERROR: --repo must be OWNER/REPO using GitHub owner/repo characters" >&2
+    larch_err "ERROR: --repo must be OWNER/REPO using GitHub owner/repo characters"
     exit 2
 fi
 
 if ! command -v jq >/dev/null 2>&1; then
-    echo "ERROR: jq is required to parse the issue JSON; install it (e.g. \`brew install jq\` / \`apt install jq\`) and retry." >&2
+    larch_err "ERROR: jq is required to parse the issue JSON; install it (e.g. \`brew install jq\` / \`apt install jq\`) and retry."
     exit 2
 fi
+
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
 
 mkdir -p "$TMPDIR_ARG"
 title_tmp="$TMPDIR_ARG/upstream-issue-title.txt.tmp"
 body_tmp="$TMPDIR_ARG/upstream-issue-body.txt.tmp"
 
 json=$(gh issue view "$ISSUE" --repo "$REPO" --json title,body 2>/dev/null) || {
-    echo "ERROR: gh issue view failed for #$ISSUE in $REPO" >&2
+    larch_err "ERROR: gh issue view failed for #$ISSUE in $REPO"
     exit 1
 }
 
@@ -53,5 +62,5 @@ printf '%s\n' "$json" | jq -r '.body // ""' > "$body_tmp"
 mv -f "$title_tmp" "$TMPDIR_ARG/upstream-issue-title.txt"
 mv -f "$body_tmp" "$TMPDIR_ARG/upstream-issue-body.txt"
 
-printf 'TITLE_FILE=%s\n' "$TMPDIR_ARG/upstream-issue-title.txt"
-printf 'BODY_FILE=%s\n' "$TMPDIR_ARG/upstream-issue-body.txt"
+emit_kv TITLE_FILE "$TMPDIR_ARG/upstream-issue-title.txt"
+emit_kv BODY_FILE "$TMPDIR_ARG/upstream-issue-body.txt"

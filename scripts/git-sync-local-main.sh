@@ -22,6 +22,11 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
+
 CURRENT=$(git symbolic-ref --short HEAD 2>/dev/null || echo "")
 if [[ "$CURRENT" == "main" ]]; then
     echo "git-sync-local-main.sh: refusing to update local 'main' while checked out on main" >&2
@@ -29,7 +34,7 @@ if [[ "$CURRENT" == "main" ]]; then
 fi
 
 if ! git rev-parse --verify main >/dev/null 2>&1; then
-    echo "RESULT=absent"
+    emit_kv RESULT absent
     exit 0
 fi
 
@@ -37,9 +42,9 @@ fi
 LOCAL_MAIN=$(git rev-parse main 2>/dev/null || echo "")
 REMOTE_MAIN=$(git rev-parse origin/main 2>/dev/null || echo "")
 if [[ -n "$LOCAL_MAIN" && "$LOCAL_MAIN" == "$REMOTE_MAIN" ]]; then
-    echo "RESULT=already_current"
+    emit_kv RESULT already_current
     exit 0
 fi
 
 git branch -f main origin/main
-echo "RESULT=updated"
+emit_kv RESULT updated

@@ -10,6 +10,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
 REPO=$("$SCRIPT_DIR/resolve-repo.sh" 2>/dev/null) || REPO=""
 
 # Fail-closed on resolver failure: the contract here is "empty stdout means

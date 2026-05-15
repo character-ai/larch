@@ -23,12 +23,15 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
 HELPER_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 
 usage() {
-    echo "Usage: implement-fork-env.sh [--tmpdir PATH]" >&2
-    echo "  --tmpdir PATH (optional): use this directory for caller-env.sh." >&2
-    echo "                            When omitted, allocates via mktemp." >&2
+    larch_err "Usage: implement-fork-env.sh [--tmpdir PATH]"
+    larch_err "  --tmpdir PATH (optional): use this directory for caller-env.sh."
+    larch_err "                            When omitted, allocates via mktemp."
 }
 
 TMPDIR_ARG=""
@@ -36,16 +39,16 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --tmpdir) TMPDIR_ARG="${2:?--tmpdir requires a value}"; shift 2 ;;
         --help) usage; exit 0 ;;
-        *) echo "Unknown option: $1" >&2; usage; exit 2 ;;
+        *) larch_err "Unknown option: $1"; usage; exit 2 ;;
     esac
 done
 
 if ! git remote get-url upstream >/dev/null 2>&1; then
-    echo "--forked requires the clone to be configured for the fork-PR workflow:" >&2
-    echo "  origin -> your fork; upstream -> the upstream repo." >&2
-    echo "See docs/installation-and-setup.md (Fork CI dry-runs) for the full" >&2
-    echo "remote-add walkthrough; the minimum is:" >&2
-    echo "  git remote add upstream <https-or-ssh-url-of-upstream-repo>" >&2
+    larch_err "--forked requires the clone to be configured for the fork-PR workflow:"
+    larch_err "  origin -> your fork; upstream -> the upstream repo."
+    larch_err "See docs/installation-and-setup.md (Fork CI dry-runs) for the full"
+    larch_err "remote-add walkthrough; the minimum is:"
+    larch_err "  git remote add upstream <https-or-ssh-url-of-upstream-repo>"
     exit 1
 fi
 
@@ -66,9 +69,9 @@ caller_env_tmp="$BOOTSTRAP_TMPDIR/caller-env.sh.tmp"
 } > "$caller_env_tmp"
 mv -f "$caller_env_tmp" "$BOOTSTRAP_TMPDIR/caller-env.sh"
 
-printf 'BOOTSTRAP_TMPDIR=%s\n' "$BOOTSTRAP_TMPDIR"
-printf 'CALLER_ENV_PATH=%s/caller-env.sh\n' "$BOOTSTRAP_TMPDIR"
-printf 'FORK_REPO=%s\n' "$FORK_REPO"
-printf 'UPSTREAM_REPO=%s\n' "$UPSTREAM_REPO"
-printf 'FORK_OWNER=%s\n' "$FORK_OWNER"
-printf 'FORKED_TARGET=true\n'
+emit_kv BOOTSTRAP_TMPDIR "$BOOTSTRAP_TMPDIR"
+emit_kv CALLER_ENV_PATH "$BOOTSTRAP_TMPDIR/caller-env.sh"
+emit_kv FORK_REPO "$FORK_REPO"
+emit_kv UPSTREAM_REPO "$UPSTREAM_REPO"
+emit_kv FORK_OWNER "$FORK_OWNER"
+emit_kv FORKED_TARGET true

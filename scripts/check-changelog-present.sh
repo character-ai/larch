@@ -14,6 +14,11 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
+
 if root=$(git rev-parse --show-toplevel 2>/dev/null); then
     :
 else
@@ -21,7 +26,7 @@ else
 fi
 
 if [[ -f "$root/CHANGELOG.md" ]]; then
-    echo "CHANGELOG_PRESENT=true"
+    emit_kv CHANGELOG_PRESENT true
 else
-    echo "CHANGELOG_PRESENT=false"
+    emit_kv CHANGELOG_PRESENT false
 fi

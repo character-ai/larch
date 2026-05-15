@@ -4,6 +4,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
 
 # Path-validation primitives are shared with timing-ledger.sh so the two
 # scripts agree on the allowed-roots set (closes review FINDING_1 +
@@ -16,7 +19,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib-timing-paths.sh"
 
 unavailable() {
-    printf 'Timing report unavailable: %s\n' "$1" >&2
+    larch_errf 'Timing report unavailable: %s\n' "$1"
     exit 0
 }
 
@@ -80,6 +83,10 @@ render_report() {
     local skill="${LARCH_TIMING_SKILL:-implement}"
     local outlier_threshold="${LARCH_TIMING_OUTLIER_THRESHOLD_S:-14400}"
     [[ -f "$ledger" ]] || unavailable "ledger not found"
+    if [[ "$mode" == "terse" || "$mode" == "summary" ]]; then
+        awk -F '\t' '$1 == "v1" && $2 == "mark" { found = 1; exit } END { exit found ? 0 : 1 }' "$ledger" \
+            || unavailable "no step marks in ledger"
+    fi
     awk -F '\t' -v mode="$mode" -v format="$format" -v now="$now" -v terse_skill="$skill" -v outlier_threshold="$outlier_threshold" '
       BEGIN {
         outlier_threshold += 0; if (outlier_threshold <= 0) outlier_threshold = 14400
@@ -472,5 +479,6 @@ elif [[ "$MODE" == "full" && -n "$OUTPUT" ]]; then
     render_report full "$LEDGER" "$FORMAT" > "$tmp"
     mv "$tmp" "$OUTPUT"
 else
-    render_report "$MODE" "$LEDGER" "$FORMAT"
+    report=$(render_report "$MODE" "$LEDGER" "$FORMAT")
+    emit "$report"
 fi

@@ -3,6 +3,10 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
+# shellcheck source=scripts/lib-quiet.sh
+source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
+larch_quiet_init
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 PARSER="$REPO_ROOT/skills/issue/scripts/parse-input.sh"
 REGEX_LIB="$REPO_ROOT/scripts/file-line-regex-lib.sh"
@@ -13,25 +17,25 @@ CLUSTER_CAP="${OOS_FILE_CONFLICT_CLUSTER_CAP:-200}"
 GLOBAL_CAP="${OOS_FILE_CONFLICT_GLOBAL_CAP:-500}"
 
 if ! [[ "$CLUSTER_CAP" =~ ^[0-9]+$ ]] || (( CLUSTER_CAP <= 0 )); then
-    echo "ERROR: OOS_FILE_CONFLICT_CLUSTER_CAP must be a positive integer (got: '$CLUSTER_CAP')" >&2
+    larch_err "ERROR: OOS_FILE_CONFLICT_CLUSTER_CAP must be a positive integer (got: '$CLUSTER_CAP')"
     exit 2
 fi
 if ! [[ "$GLOBAL_CAP" =~ ^[0-9]+$ ]] || (( GLOBAL_CAP <= 0 )); then
-    echo "ERROR: OOS_FILE_CONFLICT_GLOBAL_CAP must be a positive integer (got: '$GLOBAL_CAP')" >&2
+    larch_err "ERROR: OOS_FILE_CONFLICT_GLOBAL_CAP must be a positive integer (got: '$GLOBAL_CAP')"
     exit 2
 fi
 
 usage() {
-    echo "Usage: oos-file-conflict-deps.sh --input-file FILE [--output FILE]" >&2
-    echo "  When --output is omitted and IMPLEMENT_TMPDIR is set, the output" >&2
-    echo "  defaults to \$IMPLEMENT_TMPDIR/oos-intra-batch-deps.tsv." >&2
+    larch_err "Usage: oos-file-conflict-deps.sh --input-file FILE [--output FILE]"
+    larch_err "  When --output is omitted and IMPLEMENT_TMPDIR is set, the output"
+    larch_err "  defaults to \$IMPLEMENT_TMPDIR/oos-intra-batch-deps.tsv."
 }
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --input-file) INPUT_FILE="${2:?--input-file requires a value}"; shift 2 ;;
         --output) OUTPUT_FILE="${2:?--output requires a value}"; shift 2 ;;
-        *) echo "Unknown option: $1" >&2; usage; exit 1 ;;
+        *) larch_err "Unknown option: $1"; usage; exit 1 ;;
     esac
 done
 
@@ -65,15 +69,15 @@ cleanup_on_exit() {
 trap cleanup_on_exit EXIT
 
 if [[ ! -f "$INPUT_FILE" ]]; then
-    echo "ERROR: input file not found: $INPUT_FILE" >&2
+    larch_err "ERROR: input file not found: $INPUT_FILE"
     exit 1
 fi
 if [[ ! -x "$PARSER" && ! -f "$PARSER" ]]; then
-    echo "ERROR: parse-input.sh not found: $PARSER" >&2
+    larch_err "ERROR: parse-input.sh not found: $PARSER"
     exit 1
 fi
 if [[ ! -f "$REGEX_LIB" ]]; then
-    echo "ERROR: file-line-regex-lib.sh not found: $REGEX_LIB" >&2
+    larch_err "ERROR: file-line-regex-lib.sh not found: $REGEX_LIB"
     exit 1
 fi
 
@@ -86,13 +90,13 @@ WORK_DIR="$(mktemp -d "$TMPDIR_ROOT/oos-file-conflict-deps.XXXXXX")"
 parse_out="$WORK_DIR/parse.out"
 parse_dir="$WORK_DIR/parsed"
 if ! bash "$PARSER" --input-file "$INPUT_FILE" --output-dir "$parse_dir" > "$parse_out"; then
-    echo "ERROR: parse-input.sh failed for OOS batch" >&2
+    larch_err "ERROR: parse-input.sh failed for OOS batch"
     exit 1
 fi
 
 items_total="$(awk -F= '$1 == "ITEMS_TOTAL" { print $2 }' "$parse_out" | tail -1)"
 if ! [[ "$items_total" =~ ^[0-9]+$ ]]; then
-    echo "ERROR: parse-input.sh did not emit a numeric ITEMS_TOTAL" >&2
+    larch_err "ERROR: parse-input.sh did not emit a numeric ITEMS_TOTAL"
     exit 1
 fi
 
@@ -153,7 +157,7 @@ extract_records() {
     # grep exit 0=match, 1=no-match (expected for path-free bodies),
     # 2+=real error (binary missing, I/O, regex). Surface real errors.
     if (( grep_status > 1 )); then
-        echo "ERROR: grep failed scanning $body_file (exit $grep_status)" >&2
+        larch_err "ERROR: grep failed scanning $body_file (exit $grep_status)"
         return "$grep_status"
     fi
     while IFS= read -r raw; do
@@ -302,7 +306,7 @@ cut -f1 "$component_nodes" | sort -n -u | while IFS= read -r root; do
             NR == FNR { root_by_node[$2]=$1; next }
             root_by_node[$1] == r && root_by_node[$2] == r { print $3; exit }
         ' "$component_nodes" "$candidate_edges")"
-        echo "**⚠ /implement: oos-file-conflict-deps cluster on ${basename_hint:-unknown} would emit $cluster_edges dependency rows (cap $CLUSTER_CAP, N=$node_count); emitting chain instead of all-pairs (lower robustness under SCC pruning).**" >&2
+        larch_err "**⚠ /implement: oos-file-conflict-deps cluster on ${basename_hint:-unknown} would emit $cluster_edges dependency rows (cap $CLUSTER_CAP, N=$node_count); emitting chain instead of all-pairs (lower robustness under SCC pruning).**"
         previous=""
         while IFS= read -r node; do
             if [[ -n "$previous" ]]; then
@@ -321,7 +325,7 @@ done
 sort -n -k1,1 -k2,2 "$planned_edges" -o "$planned_edges"
 row_count="$(wc -l < "$planned_edges" | tr -d ' ')"
 if (( row_count > GLOBAL_CAP )); then
-    echo "ERROR: oos-file-conflict-deps would emit $row_count rows, exceeding the $GLOBAL_CAP-row --intra-batch-deps-file cap; split the OOS batch" >&2
+    larch_err "ERROR: oos-file-conflict-deps would emit $row_count rows, exceeding the $GLOBAL_CAP-row --intra-batch-deps-file cap; split the OOS batch"
     exit 1
 fi
 

@@ -4,18 +4,21 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
 
 BASELINE=""
 STEP=""
 PHANTOM_PATHS_DIR=""
 PARSE_ERROR=""
 
-emit() {
+emit_status() {
     local status="$1"
     local reason="${2:-}"
-    printf 'STATUS=%s\n' "$status"
+    emit_kv STATUS "$status"
     if [[ -n "$reason" ]]; then
-        printf 'REASON=%s\n' "$reason"
+        emit_kv REASON "$reason"
     fi
     exit 0
 }
@@ -43,16 +46,16 @@ if [[ -z "$PARSE_ERROR" ]]; then
 fi
 
 if [[ -n "$PARSE_ERROR" ]]; then
-    emit unknown "$PARSE_ERROR"
+    emit_status unknown "$PARSE_ERROR"
 fi
 
 if ! [[ "$STEP" =~ ^[A-Za-z0-9_.-]+$ ]]; then
-    emit unknown "bad-step"
+    emit_status unknown "bad-step"
 fi
 
 CHECK_OUT=""
 if ! CHECK_OUT=$("$SCRIPT_DIR/check-mid-run-dirty-tree.sh" --mode baseline --baseline "$BASELINE" 2>/dev/null); then
-    emit unknown "check-mid-run-dirty-tree-failed"
+    emit_status unknown "check-mid-run-dirty-tree-failed"
 fi
 
 STATUS=""
@@ -69,27 +72,27 @@ done <<< "$CHECK_OUT"
 
 case "$STATUS" in
     clean)
-        emit clean
+        emit_status clean
         ;;
     dirty)
         if [[ -n "$NEW_UNTRACKED_PATHS_FILE" && -s "$NEW_UNTRACKED_PATHS_FILE" ]]; then
-            mkdir -p "$PHANTOM_PATHS_DIR" 2>/dev/null || emit unknown "phantom-paths-dir-create-failed"
+            mkdir -p "$PHANTOM_PATHS_DIR" 2>/dev/null || emit_status unknown "phantom-paths-dir-create-failed"
             PHANTOM_PATHS_FILE="$PHANTOM_PATHS_DIR/phantom-paths-$STEP.z"
-            cp "$NEW_UNTRACKED_PATHS_FILE" "$PHANTOM_PATHS_FILE" 2>/dev/null || emit unknown "phantom-paths-write-failed"
+            cp "$NEW_UNTRACKED_PATHS_FILE" "$PHANTOM_PATHS_FILE" 2>/dev/null || emit_status unknown "phantom-paths-write-failed"
             if ! PHANTOM_COUNT=$(LC_ALL=C tr -cd '\0' < "$PHANTOM_PATHS_FILE" | wc -c | tr -d '[:space:]'); then
-                emit unknown "phantom-count-failed"
+                emit_status unknown "phantom-count-failed"
             fi
-            printf 'STATUS=phantom\n'
-            printf 'PHANTOM_COUNT=%s\n' "$PHANTOM_COUNT"
-            printf 'PHANTOM_PATHS_FILE=%s\n' "$PHANTOM_PATHS_FILE"
+            emit_kv STATUS phantom
+            emit_kv PHANTOM_COUNT "$PHANTOM_COUNT"
+            emit_kv PHANTOM_PATHS_FILE "$PHANTOM_PATHS_FILE"
             exit 0
         fi
-        emit tracked-only
+        emit_status tracked-only
         ;;
     unknown)
-        emit unknown "${REASON:-unknown}"
+        emit_status unknown "${REASON:-unknown}"
         ;;
     *)
-        emit unknown "unparseable-check-output"
+        emit_status unknown "unparseable-check-output"
         ;;
 esac

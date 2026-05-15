@@ -15,6 +15,11 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
+
 if [[ $# -lt 1 ]]; then
     echo "Usage: sleep-seconds.sh <seconds>" >&2
     exit 1

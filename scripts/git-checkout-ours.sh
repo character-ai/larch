@@ -13,6 +13,11 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
+
 if [[ $# -eq 0 ]]; then
     echo "git-checkout-ours.sh: at least one file argument is required" >&2
     echo "usage: git-checkout-ours.sh <file> [<file> ...]" >&2

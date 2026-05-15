@@ -4,6 +4,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
 
 # shellcheck source=scripts/lib-validate-meta-path.sh
 # shellcheck disable=SC1091
@@ -96,7 +99,7 @@ write_result_file() {
 }
 
 publish_result() {
-    cat "$RESULT_FILE"
+    emit "$(cat "$RESULT_FILE")"
     if [[ -n "$SIDECAR" ]]; then
         local tmp="${SIDECAR}.tmp.$$"
         cp "$RESULT_FILE" "$tmp" 2>/dev/null && mv -f "$tmp" "$SIDECAR" 2>/dev/null || rm -f "$tmp" 2>/dev/null || true
