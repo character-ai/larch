@@ -1,0 +1,6 @@
+### External Reviewer Issues
+
+- **Step review Step 2 — launch-claude-subprocess.sh generic failed (exit 2)**:
+  ```
+launch-claude-subprocess.sh: context file exceeds 256 KB: <TMPDIR>/round-1/diff.txt
+  ```
