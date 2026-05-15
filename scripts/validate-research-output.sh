@@ -365,7 +365,8 @@ fi
 if [[ "$VALIDATION_MODE" == "true" ]]; then
     TRIMMED=$(trimmed_nonblank_content "$INPUT")
     if [[ "$TRIMMED" == "CURSOR_EMPTY_RESPONSE" ]]; then
-        printf 'STATUS=CURSOR_EMPTY_RESPONSE\nFAILURE_REASON=Cursor returned a JSON envelope with empty .result field — likely transient backend issue. Fallback engaged.\n' >&2
+        emit "STATUS=CURSOR_EMPTY_RESPONSE"
+        emit "FAILURE_REASON=Cursor returned a JSON envelope with empty .result field — likely transient backend issue. Fallback engaged."
         exit 5
     fi
     if [[ "$TRIMMED" == "NO_ISSUES_FOUND" ]]; then
