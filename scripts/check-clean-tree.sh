@@ -35,7 +35,7 @@ while [ $# -gt 0 ]; do
             shift
             ;;
         *)
-            printf 'check-clean-tree.sh: unknown flag: %s\n' "$1" >&2
+            larch_errf 'check-clean-tree.sh: unknown flag: %s\n' "$1"
             exit 2
             ;;
     esac
@@ -52,7 +52,7 @@ porcelain_out=$(git status --porcelain 2>&1) || porcelain_exit=$?
 
 if [ "$porcelain_exit" -ne 0 ]; then
     summary=$(printf '%s' "$porcelain_out" | one_line_summary)
-    printf 'check-clean-tree.sh: git status --porcelain failed (exit %s): %s\n' "$porcelain_exit" "$porcelain_out" >&2
+    larch_errf 'check-clean-tree.sh: git status --porcelain failed (exit %s): %s\n' "$porcelain_exit" "$porcelain_out"
     if [ "$FAIL_CLOSED" = "true" ]; then
         emit_kv CLEAN unknown
         emit_kv PROBE_ERROR "git exited $porcelain_exit ($summary)"

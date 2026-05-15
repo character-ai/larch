@@ -71,17 +71,17 @@ RESOLVE_REPO="${SCRIPT_DIR}/../../../scripts/resolve-repo.sh"
 # instantly. Accepts integer or decimal seconds.
 ISSUE_LIFECYCLE_LOCK_SETTLE_SECONDS="${ISSUE_LIFECYCLE_LOCK_SETTLE_SECONDS:-1}"
 case "$ISSUE_LIFECYCLE_LOCK_SETTLE_SECONDS" in
-    ''|*[!0-9.]*|.) echo "ERROR=ISSUE_LIFECYCLE_LOCK_SETTLE_SECONDS must be a non-negative number, got '$ISSUE_LIFECYCLE_LOCK_SETTLE_SECONDS'" >&2; exit 2 ;;
+    ''|*[!0-9.]*|.) larch_err "ERROR=ISSUE_LIFECYCLE_LOCK_SETTLE_SECONDS must be a non-negative number, got '$ISSUE_LIFECYCLE_LOCK_SETTLE_SECONDS'"; exit 2 ;;
 esac
 case "$ISSUE_LIFECYCLE_LOCK_SETTLE_SECONDS" in
-    *.*.*) echo "ERROR=ISSUE_LIFECYCLE_LOCK_SETTLE_SECONDS must be a non-negative number, got '$ISSUE_LIFECYCLE_LOCK_SETTLE_SECONDS'" >&2; exit 2 ;;
+    *.*.*) larch_err "ERROR=ISSUE_LIFECYCLE_LOCK_SETTLE_SECONDS must be a non-negative number, got '$ISSUE_LIFECYCLE_LOCK_SETTLE_SECONDS'"; exit 2 ;;
 esac
 
 # ---------------------------------------------------------------------------
 # Resolve repo identity (shared across subcommands)
 # ---------------------------------------------------------------------------
 REPO=$("$RESOLVE_REPO" 2>/dev/null) || {
-    echo "ERROR=Failed to resolve repository name" >&2
+    larch_err "ERROR=Failed to resolve repository name"
     exit 1
 }
 GH_ISSUE_REPO_ARGS=(--repo "$REPO")
@@ -98,12 +98,12 @@ cmd_comment() {
             --body) body="${2:?--body requires a value}"; shift 2 ;;
             --lock) lock=true; shift ;;
             --lock-no-go) lock_no_go=true; shift ;;
-            *) echo "Unknown option for comment: $1" >&2; exit 2 ;;
+            *) larch_err "Unknown option for comment: $1"; exit 2 ;;
         esac
     done
 
     if [[ -z "$issue" ]] || [[ -z "$body" ]]; then
-        echo "Usage: issue-lifecycle.sh comment --issue N --body TEXT [--lock | --lock-no-go]" >&2
+        larch_err "Usage: issue-lifecycle.sh comment --issue N --body TEXT [--lock | --lock-no-go]"
         exit 2
     fi
 
@@ -319,12 +319,12 @@ cmd_close() {
             --pr-url) pr_url="${2:?--pr-url requires a value}"; shift 2 ;;
             --close-class) close_class="${2:?--close-class requires a value}"; shift 2 ;;
             --mark-false-positive-if-keyword) mark_false_positive=true; shift ;;
-            *) echo "Unknown option for close: $1" >&2; exit 2 ;;
+            *) larch_err "Unknown option for close: $1"; exit 2 ;;
         esac
     done
 
     if [[ -z "$issue" ]]; then
-        echo "Usage: issue-lifecycle.sh close --issue N [--comment TEXT] [--pr-url URL] [--close-class false-positive|duplicate|superseded|done] [--mark-false-positive-if-keyword]" >&2
+        larch_err "Usage: issue-lifecycle.sh close --issue N [--comment TEXT] [--pr-url URL] [--close-class false-positive|duplicate|superseded|done] [--mark-false-positive-if-keyword]"
         exit 2
     fi
 
@@ -332,7 +332,7 @@ cmd_close() {
         case "$close_class" in
             false-positive|duplicate|superseded|done) ;;
             *)
-                echo "Usage: issue-lifecycle.sh close --close-class must be one of: false-positive, duplicate, superseded, done (got '$close_class')" >&2
+                larch_err "Usage: issue-lifecycle.sh close --close-class must be one of: false-positive, duplicate, superseded, done (got '$close_class')"
                 exit 2
                 ;;
         esac
@@ -472,12 +472,12 @@ cmd_update_body() {
         case "$1" in
             --issue) issue="${2:?--issue requires a value}"; shift 2 ;;
             --pr-url) pr_url="${2:?--pr-url requires a value}"; shift 2 ;;
-            *) echo "Unknown option for update-body: $1" >&2; return 2 ;;
+            *) larch_err "Unknown option for update-body: $1"; return 2 ;;
         esac
     done
 
     if [[ -z "$issue" ]] || [[ -z "$pr_url" ]]; then
-        echo "Usage: issue-lifecycle.sh update-body --issue N --pr-url URL" >&2
+        larch_err "Usage: issue-lifecycle.sh update-body --issue N --pr-url URL"
         return 2
     fi
 
@@ -514,7 +514,7 @@ cmd_update_body() {
 # Dispatch
 # ---------------------------------------------------------------------------
 if [[ $# -lt 1 ]]; then
-    echo "Usage: issue-lifecycle.sh <comment|close|update-body> [options]" >&2
+    larch_err "Usage: issue-lifecycle.sh <comment|close|update-body> [options]"
     exit 2
 fi
 
@@ -525,5 +525,5 @@ case "$SUBCOMMAND" in
     comment) cmd_comment "$@" ;;
     close) cmd_close "$@" ;;
     update-body) cmd_update_body "$@" ;;
-    *) echo "Unknown subcommand: $SUBCOMMAND" >&2; exit 2 ;;
+    *) larch_err "Unknown subcommand: $SUBCOMMAND"; exit 2 ;;
 esac

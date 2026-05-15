@@ -215,5 +215,5 @@ if [[ "$EMIT_LOAD_BREADCRUMB" = true ]]; then
     # non-anchored `grep 'PLAN_FILE='` extraction over the reader's stdout —
     # the load-bearing envelope key stays unique to the canonical-path line
     # emitted earlier by check_path.
-    emit_breadcrumb "📥 1: design plan — manifest loaded (plan=$(basename "$PLAN_FILE"))"
+    emit "📥 1: design plan — manifest loaded (plan=$(basename "$PLAN_FILE"))"
 fi

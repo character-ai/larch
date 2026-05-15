@@ -200,7 +200,7 @@ ISSUE_ARG=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --issue)
-            echo "WARNING: --issue is deprecated; pass the issue number or URL as a positional argument instead." >&2
+            larch_err "WARNING: --issue is deprecated; pass the issue number or URL as a positional argument instead."
             if [[ $# -lt 2 ]]; then
                 emit_kv ELIGIBLE false
                 emit_kv ERROR "--issue requires a value"
@@ -382,9 +382,9 @@ lock_and_rename_then_emit() {
         # stdout. /implement Step 0.5 Branch 2's idempotent rename is the
         # safety net.
         if [ -n "$rename_error" ]; then
-            echo "WARNING: title rename failed for issue #$issue_num: $rename_error" >&2
+            larch_err "WARNING: title rename failed for issue #$issue_num: $rename_error"
         else
-            echo "WARNING: title rename failed for issue #$issue_num (tracking-issue-write.sh exit $rename_exit)" >&2
+            larch_err "WARNING: title rename failed for issue #$issue_num (tracking-issue-write.sh exit $rename_exit)"
         fi
         renamed="false"
     fi
@@ -449,9 +449,9 @@ lock_no_go_and_rename_then_emit() {
 
     if [ "$rename_exit" -ne 0 ] || [ "$rename_failed" = "true" ]; then
         if [ -n "$rename_error" ]; then
-            echo "WARNING: title rename failed for issue #$issue_num: $rename_error" >&2
+            larch_err "WARNING: title rename failed for issue #$issue_num: $rename_error"
         else
-            echo "WARNING: title rename failed for issue #$issue_num (tracking-issue-write.sh exit $rename_exit)" >&2
+            larch_err "WARNING: title rename failed for issue #$issue_num (tracking-issue-write.sh exit $rename_exit)"
         fi
         renamed="false"
     fi
@@ -526,9 +526,9 @@ lock_no_go_and_rename_then_emit_for_child() {
     rename_error=$(echo "$rename_out" | awk -F= '/^ERROR=/ { sub(/^ERROR=/, "", $0); v=$0 } END { print v }')
     if [ "$rename_exit" -ne 0 ] || [ "$rename_failed" = "true" ]; then
         if [ -n "$rename_error" ]; then
-            echo "WARNING: title rename failed for child #$child_num (umbrella #$umbrella_num): $rename_error" >&2
+            larch_err "WARNING: title rename failed for child #$child_num (umbrella #$umbrella_num): $rename_error"
         else
-            echo "WARNING: title rename failed for child #$child_num (umbrella #$umbrella_num) (tracking-issue-write.sh exit $rename_exit)" >&2
+            larch_err "WARNING: title rename failed for child #$child_num (umbrella #$umbrella_num) (tracking-issue-write.sh exit $rename_exit)"
         fi
         renamed="false"
     fi
@@ -742,7 +742,7 @@ if [[ -n "$ISSUE_ARG" ]]; then
                     LIST_CHILDREN_EXIT=$?
                     set -e
                     if [ "$LIST_CHILDREN_EXIT" -ne 0 ]; then
-                        echo "WARNING: list-children failed for umbrella #$ISSUE_NUM (exit $LIST_CHILDREN_EXIT) — children-filter degraded; native blockers not filtered" >&2
+                        larch_err "WARNING: list-children failed for umbrella #$ISSUE_NUM (exit $LIST_CHILDREN_EXIT) — children-filter degraded; native blockers not filtered"
                     fi
                     UMBRELLA_CHILDREN=$(echo "$LIST_CHILDREN_OUT" | awk -F= '/^CHILDREN=/ { v=$2 } END { print v }')
                     FILTERED_NATIVE=""
@@ -913,17 +913,17 @@ while IFS= read -r issue_row; do
     # issues, not fix-issue candidates. Placed BEFORE the comment
     # pagination to save one API round-trip per excluded issue.
     if has_managed_prefix "$ISSUE_TITLE"; then
-        echo "Skipping issue #$ISSUE_NUM: managed lifecycle title prefix" >&2
+        larch_err "Skipping issue #$ISSUE_NUM: managed lifecycle title prefix"
         continue
     fi
 
     if has_archival_prefix "$ISSUE_TITLE"; then
-        echo "Skipping issue #$ISSUE_NUM: archival title prefix" >&2
+        larch_err "Skipping issue #$ISSUE_NUM: archival title prefix"
         continue
     fi
 
     if has_report_prefix "$ISSUE_TITLE"; then
-        echo "Skipping issue #$ISSUE_NUM: report title prefix" >&2
+        larch_err "Skipping issue #$ISSUE_NUM: report title prefix"
         continue
     fi
 
@@ -953,7 +953,7 @@ while IFS= read -r issue_row; do
         if UMBRELLA_DETECT_OUT=$("$UMBRELLA_HANDLER" detect --issue "$ISSUE_NUM" 2>/dev/null); then
             IS_UMBRELLA_DETECT=$(echo "$UMBRELLA_DETECT_OUT" | awk -F= '/^IS_UMBRELLA=/ { v=$2 } END { print v }')
             if [ "$IS_UMBRELLA_DETECT" = "true" ]; then
-                echo "Skipping issue #$ISSUE_NUM: umbrella issue (auto-pick excludes umbrellas; use \`/fix-issue $ISSUE_NUM\` to dispatch a child)" >&2
+                larch_err "Skipping issue #$ISSUE_NUM: umbrella issue (auto-pick excludes umbrellas; use \`/fix-issue $ISSUE_NUM\` to dispatch a child)"
                 continue
             fi
         fi
@@ -967,7 +967,7 @@ while IFS= read -r issue_row; do
     if [ -n "$BLOCKERS" ]; then
         # Blocked by at least one open dependency — log on stderr and keep scanning.
         FORMATTED=$(echo "$BLOCKERS" | tr ' ' '\n' | sed 's/^/#/' | paste -sd ',' -)
-        echo "Skipping issue #$ISSUE_NUM: blocked by open dependencies ($FORMATTED)" >&2
+        larch_err "Skipping issue #$ISSUE_NUM: blocked by open dependencies ($FORMATTED)"
         continue
     fi
     # Eligibility confirmed — acquire lock + best-effort title rename, emit
