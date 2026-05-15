@@ -246,14 +246,69 @@
             }
           }
         ]
+      },
+      {
+        "step": "Step 8a — changelog",
+        "totals": {
+          "input": 0,
+          "cache_read": 0,
+          "cache_create": 0,
+          "output": 0,
+          "total": 0
+        },
+        "skills": []
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 5,
+          "cache_read": 933174,
+          "cache_create": 2324,
+          "output": 3420,
+          "total": 938923
+        },
+        "skills": [
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 5,
+              "cache_read": 933174,
+              "cache_create": 2324,
+              "output": 3420,
+              "total": 938923
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 11 — execution-issues",
+        "totals": {
+          "input": 1,
+          "cache_read": 187258,
+          "cache_create": 945,
+          "output": 543,
+          "total": 188747
+        },
+        "skills": [
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 1,
+              "cache_read": 187258,
+              "cache_create": 945,
+              "output": 543,
+              "total": 188747
+            }
+          }
+        ]
       }
     ],
     "totals": {
-      "input": 121,
-      "cache_read": 18599195,
-      "cache_create": 122575,
-      "output": 66186,
-      "total": 18788077
+      "input": 127,
+      "cache_read": 19719627,
+      "cache_create": 125844,
+      "output": 70149,
+      "total": 19915747
     }
   },
   "codex": {
@@ -340,6 +395,30 @@
       },
       {
         "step": "Step 8 — version bump",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8a — changelog",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 11 — execution-issues",
         "totals": {
           "input": 0,
           "output": 0,
