@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [27.6.19] - 2026-05-15
+
+### Changed
+
+- Restored the private .claude /release skill from the pre-revert version.
+- Changed release-state jq reads to avoid aborting when GitHub boolean fields are false.
+- Verified latest-state promotion with gh release list because gh release view does not expose isLatest.
+
 ## [27.6.18] - 2026-05-15
 
 ### Changed
