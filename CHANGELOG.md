@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [27.5.67] - 2026-05-14
+
+### Changed
+
+- Convert /research helper scripts and hook utilities to source lib-quiet.sh and route contract stdout through emit or emit_kv.
+- Keep migrated harness assertions stable with LARCH_QUIET_DISABLE=1 while documenting quiet logging and possible FAILURE_LOG output in sibling contracts.
+- Remove lib-quiet.sh external dirname dependency so quiet initialization works in stripped-PATH hook fallback tests.
+
 ## [27.5.65] - 2026-05-14
 
 ### Changed
