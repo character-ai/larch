@@ -30,7 +30,7 @@ Checkpoint phases:
 - `postmerge`
 - `done`
 
-The script also writes `$IMPLEMENT_TMPDIR/postbump-state.sh` before `implement-finalize.sh postbump` and `$IMPLEMENT_TMPDIR/finalize-state.sh` before `postmerge`.
+The script also writes `$IMPLEMENT_TMPDIR/postbump-state.sh` before `implement-finalize.sh postbump` and `$IMPLEMENT_TMPDIR/finalize-state.sh` before `postmerge`. The finalize-state key order is shared with `scripts/restore-finalize-state.sh` through `scripts/lib-finalize-state-keys.sh`.
 
 ## Exit Codes
 
@@ -93,8 +93,8 @@ All three calls use `|| true` so refresh failure is non-fatal. The helper exits 
 
 ## Harness
 
-`scripts/test-ship-pr.sh` runs offline state/transition coverage with stubbed helpers. Its disposable repositories copy both `ship-pr.sh` and `lib-net.sh` so the sourced-library contract is exercised. It is wired through `make test-ship-pr`.
+`scripts/test-ship-pr.sh` runs offline state/transition coverage with stubbed helpers. Its disposable repositories copy `ship-pr.sh`, `lib-net.sh`, and `lib-finalize-state-keys.sh` so sourced-library contracts are exercised. It is wired through `make test-ship-pr`.
 
 ## Edit In Sync
 
-When changing phase names, exit-code meaning, helper stdout parsing, or state keys, update `skills/implement/SKILL.md`, `scripts/test-ship-pr.sh`, `scripts/test-implement-structure.sh`, and this file together.
+When changing phase names, exit-code meaning, helper stdout parsing, or state keys, update `skills/implement/SKILL.md`, `scripts/test-ship-pr.sh`, `scripts/test-restore-finalize-state.sh`, `scripts/test-implement-structure.sh`, and this file together.

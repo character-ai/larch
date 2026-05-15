@@ -12,7 +12,7 @@ Exit code `0` is not a complete outcome signal. Consumers must parse `STATUS=` f
 
 ## State File
 
-The state file is plain `KEY=value` text written once by `skills/implement/SKILL.md` at Step 14 entry. It must live under `/tmp/`, `/private/tmp/`, `/var/folders/` (macOS), or `${XDG_CACHE_HOME:-$HOME/.cache}/larch/sessions/`. It is never sourced. `implement-finalize.sh` validates each non-comment, non-blank line against `^[A-Z_][A-Z0-9_]*=.*$` and reads values with `awk`, preserving shell metacharacters literally.
+The state file is plain `KEY=value` text written by `scripts/ship-pr.sh` before postmerge and restored by `scripts/restore-finalize-state.sh` immediately before teardown. It must live under `/tmp/`, `/private/tmp/`, `/var/folders/` (macOS), or `${XDG_CACHE_HOME:-$HOME/.cache}/larch/sessions/`. It is never sourced. `implement-finalize.sh` validates each non-comment, non-blank line against `^[A-Z_][A-Z0-9_]*=.*$` and reads values with `awk`, preserving shell metacharacters literally.
 
 Required keys:
 
@@ -130,8 +130,8 @@ FINALIZE_WARNINGS=<N>
 
 ## Test Harness
 
-`scripts/test-implement-finalize.sh` is the offline regression harness. It copies this script into a `/tmp` sandbox with stub sibling helpers and git/gh shims, exercises the subcommands, postbump changelog/category/checkpoint/error paths, round-trip detection pass-through/default-false behavior, stalled-run stash/sentinel handling, `.run-cleaned-up` Stop-hook release behavior before cleanup validation, and state-file parsing, normalizes elapsed-time parentheticals, and is wired through `make test-implement-finalize`. `scripts/test-finalize-sanity-check.sh` covers the Step 18 cleanup target sanity check specifically.
+`scripts/test-implement-finalize.sh` is the offline regression harness. It copies this script into a `/tmp` sandbox with stub sibling helpers and git/gh shims, exercises the subcommands, postbump changelog/category/checkpoint/error paths, round-trip detection pass-through/default-false behavior, stalled-run stash/sentinel handling, `.run-cleaned-up` Stop-hook release behavior before cleanup validation, and state-file parsing, normalizes elapsed-time parentheticals, and is wired through `make test-implement-finalize`. `scripts/test-restore-finalize-state.sh` covers the pre-teardown state restoration helper. `scripts/test-finalize-sanity-check.sh` covers the Step 18 cleanup target sanity check specifically.
 
 ## Edit In Sync
 
-When changing this script, update this contract, `skills/implement/SKILL.md` Steps 8, 8a, 8b, and 14-18, `scripts/test-implement-finalize.sh`, `scripts/test-implement-finalize.md`, `.claude/skills/bump-version/SKILL.md`, `skills/implement/references/rebase-rebump-subprocedure.md`, `SECURITY.md`, `Makefile`, and the harness table in `docs/linting.md` if the public target or coverage changes.
+When changing this script or its state-file inputs, update this contract, `skills/implement/SKILL.md` Steps 8, 8a, 8b, and 14-18, `scripts/test-implement-finalize.sh`, `scripts/test-implement-finalize.md`, `scripts/restore-finalize-state.md`, `.claude/skills/bump-version/SKILL.md`, `skills/implement/references/rebase-rebump-subprocedure.md`, `SECURITY.md`, `Makefile`, and the harness table in `docs/linting.md` if the public target or coverage changes.

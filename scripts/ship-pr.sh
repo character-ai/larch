@@ -16,6 +16,9 @@ PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"
 # shellcheck source=scripts/lib-net.sh
 source "$SCRIPT_DIR/lib-net.sh" || { larch_err "ship-pr.sh: failed to source lib-net.sh"; exit 1; }
 [[ "${LARCH_LIB_NET_LOADED:-}" == "1" ]] || { larch_err "ship-pr.sh: lib-net.sh sourced but sentinel missing"; exit 1; }
+# shellcheck source=scripts/lib-finalize-state-keys.sh
+source "$SCRIPT_DIR/lib-finalize-state-keys.sh" || { larch_err "ship-pr.sh: failed to source lib-finalize-state-keys.sh"; exit 1; }
+[[ "${LARCH_LIB_FINALIZE_STATE_KEYS_LOADED:-}" == "1" ]] || { larch_err "ship-pr.sh: lib-finalize-state-keys.sh sourced but sentinel missing"; exit 1; }
 
 STATE_FILE=""
 IMPLEMENT_TMPDIR=""
@@ -382,29 +385,18 @@ write_postbump_state() {
 }
 
 write_finalize_state() {
-    local tmp
+    local tmp key default value
     tmp="$IMPLEMENT_TMPDIR/finalize-state.sh.tmp.$$"
     {
-        printf 'BRANCH_NAME=%s\n' "$(read_state BRANCH_NAME)"
-        printf 'PR_NUMBER=%s\n' "$(read_state PR_NUMBER)"
-        printf 'PR_TITLE=%s\n' "$(read_state PR_TITLE)"
-        printf 'PR_URL=%s\n' "$(read_state PR_URL)"
-        printf 'ISSUE_NUMBER=%s\n' "$(read_state ISSUE_NUMBER)"
-        printf 'REPO=%s\n' "$(read_state REPO)"
-        printf 'DRAFT=%s\n' "$(read_state DRAFT)"
-        printf 'MERGE=%s\n' "$(read_state MERGE)"
-        printf 'DEFERRED=%s\n' "$(read_state DEFERRED)"
-        printf 'REPO_UNAVAILABLE=%s\n' "$(read_state REPO_UNAVAILABLE)"
-        printf 'PR_CLOSED=%s\n' "$(read_state PR_CLOSED)"
-        printf 'DESIGN_ONLY_DONE=%s\n' "$(read_state DESIGN_ONLY_DONE false)"
-        printf 'BAIL_NEEDS_USER_INPUT=%s\n' "$(read_state BAIL_NEEDS_USER_INPUT)"
-        printf 'STALL_TRACKING=%s\n' "$(read_state STALL_TRACKING)"
-        printf 'STALL_STEP=%s\n' "$(read_state STALL_STEP)"
-        printf 'DONE_RENAME_APPLIED=%s\n' "$(read_state DONE_RENAME_APPLIED)"
-        printf 'RUN_ID=%s\n' "$(read_state RUN_ID)"
-        printf 'EXPECTED_SESSION_ID=%s\n' "$(read_state EXPECTED_SESSION_ID)"
-        printf 'EXPECTED_TMPDIR_BASENAME_PREFIX=%s\n' "$(read_state EXPECTED_TMPDIR_BASENAME_PREFIX)"
-        printf 'NO_LOGS_COMMIT=%s\n' "$NO_LOGS_COMMIT"
+        for key in "${LARCH_FINALIZE_STATE_KEYS[@]}"; do
+            default=$(larch_finalize_state_default "$key")
+            if [ "$key" = "NO_LOGS_COMMIT" ]; then
+                value=$NO_LOGS_COMMIT
+            else
+                value=$(read_state "$key" "$default")
+            fi
+            printf '%s=%s\n' "$key" "$value"
+        done
     } > "$tmp" && mv "$tmp" "$IMPLEMENT_TMPDIR/finalize-state.sh"
     printf '%s' "$(read_state BAIL_REASON)" > "$IMPLEMENT_TMPDIR/final-bail-reason.txt"
 }
