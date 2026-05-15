@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [27.5.68] - 2026-05-14
+
+### Changed
+
+- Convert /design, /fix-issue, and selected root helper scripts to source lib-quiet.sh and emit machine-readable stdout through emit or emit_kv.
+- Keep pure renderers/filters and migration harnesses byte-stable with LARCH_QUIET_DISABLE=1, including implement boundary harnesses that assert legacy reader output.
+- Update sibling script contracts to document quiet-mode FAILURE_LOG stdout behavior.
+
 ## [27.5.67] - 2026-05-14
 
 ### Changed
