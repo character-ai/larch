@@ -14,6 +14,8 @@ Claude fallback waits are captured to `$REVIEW_TMPDIR/wait-for-claude-reviewers.
 
 Description mode parses dual-list output using `### In-Scope Findings` and `### Out-of-Scope Observations`; missing one section is fail-open. Diff mode preserves single-list output by treating the entire output as in-scope findings.
 
+**No-findings sentinels**: `parse_output` short-circuits and emits zero findings when a reviewer file contains exactly the legacy literal `NO_ISSUES_FOUND` (checked via `grep -Fxq`) or, when `jq` is present, the JSON sentinel `{"no_issues_found": true}` (checked via `jq -e 'type == "object" and .no_issues_found == true'` on the first non-blank trimmed line). The JSON sentinel is the canonical form per #2156; the legacy literal remains accepted as a backward-compatible fallback.
+
 Stdout is `KEY=value` only: `FINDINGS_COUNT`, `OOS_COUNT`, `DIRTY_DETECTED`, `COLLECT_OK`, and `COLLECTOR_OUTPUT_FILE`.
 
 On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.

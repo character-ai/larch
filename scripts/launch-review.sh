@@ -993,8 +993,9 @@ if [[ -s "$OUTPUT" ]]; then
         fi
         # Distinguish Cursor's empty .result envelope from malformed JSON or
         # generic empty output so the collector can report the backend failure
-        # mode directly.
-        if jq -e '.result == ""' "${OUTPUT}.json" >/dev/null 2>&1; then
+        # mode directly. Use (.result // "") == "" so that null and absent
+        # .result are treated identically to an explicit empty string.
+        if jq -e '(.result // "") == ""' "${OUTPUT}.json" >/dev/null 2>&1; then
             printf 'CURSOR_EMPTY_RESPONSE\n' > "$OUTPUT"
         fi
     fi

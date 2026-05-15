@@ -190,7 +190,7 @@ Use `timeout: 1860000` on the Bash tool call. Do NOT set `run_in_background: tru
 3. Merge external reviewer findings (and any runtime-fallback Claude findings) into the always-on Claude lane findings and any pre-launch Claude fallback findings.
 4. **Update lane-status.txt (VALIDATION_* slice only)**: surgically update only the `VALIDATION_*` slice — `RESEARCH_*` keys must be preserved verbatim. Map `STATUS != OK` to the lane-status token:
    - `STATUS=TIMED_OUT` or `SENTINEL_TIMEOUT` → token `fallback_runtime_timeout`, reason empty
-   - `STATUS=FAILED` or `EMPTY_OUTPUT` or `NOT_SUBSTANTIVE` → token `fallback_runtime_failed`, reason = sanitized `FAILURE_REASON`
+   - `STATUS=FAILED` or `EMPTY_OUTPUT` or `NOT_SUBSTANTIVE` or `CURSOR_EMPTY_RESPONSE` → token `fallback_runtime_failed`, reason = sanitized `FAILURE_REASON`
 
    Read-filter-rewrite via temp + atomic `mv`; emit all three `VALIDATION_*` keys (`Code` always `ok`):
 
