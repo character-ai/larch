@@ -35,4 +35,18 @@ assert_stdout_cap "$out"
 grep -Fq 'ACCEPTED_COUNT=1' <<< "$out"
 grep -Fq 'REJECTED_COUNT=1' <<< "$out"
 
+rm -f "$TMP/cursor-votes.txt" "$TMP/codex-votes.txt"
+out=$("$SCRIPT" --findings-file "$TMP/findings.md" --review-tmpdir "$TMP" --cursor-available true --codex-available true --both-down false)
+assert_stdout_cap "$out"
+grep -Fq 'Voting skipped (0 voter(s) available' <<< "$out"
+grep -Fq 'ACCEPTED_COUNT=2' <<< "$out"
+grep -Fq 'REJECTED_COUNT=0' <<< "$out"
+
+printf 'FINDING_1 YES\nFINDING_2 NO\n' > "$TMP/cursor-votes.txt"
+out=$("$SCRIPT" --findings-file "$TMP/findings.md" --review-tmpdir "$TMP" --cursor-available true --codex-available false --both-down false)
+assert_stdout_cap "$out"
+grep -Fq 'Voting skipped (1 voter(s) available' <<< "$out"
+grep -Fq 'ACCEPTED_COUNT=2' <<< "$out"
+grep -Fq 'REJECTED_COUNT=0' <<< "$out"
+
 echo "All assertions passed."
