@@ -32,12 +32,13 @@ Emitted keys:
 - `REJECTED_FINDINGS_FILE`
 - `PANEL_MODE=normal|both-down`
 - `PANEL_SHAPE=simple|hard`
+- `VOTING_SKIPPED_WARNING=<text>` — emitted only when `voter_count < 2`; callers should parse and display it as a user-visible warning
 
 Round stages:
 
 1. Gather context with `gather-context.sh --mode <mode> --output-dir "$REVIEW_TMPDIR"`.
 2. Dispatch the reviewer panel with `dispatch-panel.sh --mode "$MODE" --review-tmpdir "$REVIEW_TMPDIR" --panel "$PANEL"`.
-3. Collect findings, run dirty-tree recovery, tally votes, detect wholesale rejection, and emit tally artifacts.
+3. Collect findings, run dirty-tree recovery, tally votes (forwarding `VOTING_SKIPPED_WARNING` from the tally output when voter count is insufficient), detect wholesale rejection, and emit tally artifacts.
 4. Copy parent tmpdir artifacts when `SESSION_ENV_PATH` is set.
 
 Artifact paths under `$REVIEW_TMPDIR`:

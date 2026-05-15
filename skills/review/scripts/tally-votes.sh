@@ -65,7 +65,7 @@ else
     [[ -f "$REVIEW_TMPDIR/codex-votes.txt" ]] && voter_files+=("$REVIEW_TMPDIR/codex-votes.txt")
     voter_count="${#voter_files[@]}"
     if [[ "$voter_count" -lt 2 ]]; then
-        emit "**⚠ Voting skipped (${voter_count} voter(s) available, minimum 2 required). All findings accepted.**"
+        emit_kv VOTING_SKIPPED_WARNING "**⚠ Voting skipped (${voter_count} voter(s) available, minimum 2 required). All findings accepted.**"
         idx=1
         while [[ "$idx" -le "$count" ]]; do
             printf 'FINDING_%s_ACCEPTED=true\n' "$idx" >> "$OUTPUT_TALLY"
