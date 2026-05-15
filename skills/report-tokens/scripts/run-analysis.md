@@ -60,6 +60,7 @@ Stdout contains progress lines while fetching and then a markdown analysis with:
 - HARD phase breakdown
 - cache-read dominance
 - cost-reduction suggestions
+- per-day cost trend tables, bucketed by `manifest.json` `started_at` date, for Total/Claude/Codex/Cursor cost across SIMPLE and HARD workflows
 
 After the textual analysis, the script posts a GitHub issue titled `[Analysis Report] Token costs as of <YYYY-MM-DD HH:MM UTC>` unless `--no-issue` is passed. The issue body contains the full analysis text plus a fenced JSON block with raw per-issue data (`number`, `workflow`, `closed_at`, `cost`) for re-plotting via `--plot-from`.
 

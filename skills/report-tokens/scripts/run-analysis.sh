@@ -127,6 +127,7 @@ if [[ -z "$PLOT_FROM" ]]; then
         [[ -n "$issue_number" && "$issue_number" != "null" ]] || continue
         [[ "$issue_number" =~ ^[0-9]+$ ]] || continue
 
+        started_at=$(jq -r '(.started_at // "")' "$manifest" 2>/dev/null)
         closed_at=$(jq -r '(.updated_at // .started_at) // ""' "$manifest" 2>/dev/null)
 
         workflow_path="unknown"
@@ -163,11 +164,12 @@ if [[ -z "$PLOT_FROM" ]]; then
                 --argjson number "$issue_number" \
                 --arg title "Issue #${issue_number}" \
                 --arg url "https://github.com/${REPO}/issues/${issue_number}" \
+                --arg startedAt "$started_at" \
                 --arg closedAt "$closed_at" \
                 --arg workflow_path "$workflow_path" \
                 --arg body "$combined_body" \
                 --slurpfile token_report "$token_report_json" \
-                'if ($token_report[0] | type) == "object" then {number: $number, title: $title, url: $url, closedAt: $closedAt, workflow_path: $workflow_path, body: $body, token_report: $token_report[0], comments: []} else error("not-an-object") end' \
+                'if ($token_report[0] | type) == "object" then {number: $number, title: $title, url: $url, startedAt: $startedAt, closedAt: $closedAt, workflow_path: $workflow_path, body: $body, token_report: $token_report[0], comments: []} else error("not-an-object") end' \
                 >> "$ISSUES_JSONL" 2>/dev/null; then
                 larch_err "Warning: invalid token-report.json for issue #${issue_number} — falling back to .md"
                 if [[ -f "$token_report_md" ]]; then
@@ -179,9 +181,10 @@ if [[ -z "$PLOT_FROM" ]]; then
                         --argjson number "$issue_number" \
                         --arg title "Issue #${issue_number}" \
                         --arg url "https://github.com/${REPO}/issues/${issue_number}" \
+                        --arg startedAt "$started_at" \
                         --arg closedAt "$closed_at" \
                         --arg body "$combined_body_fb" \
-                        '{number: $number, title: $title, url: $url, closedAt: $closedAt, body: $body, comments: []}' >> "$ISSUES_JSONL" || true
+                        '{number: $number, title: $title, url: $url, startedAt: $startedAt, closedAt: $closedAt, body: $body, comments: []}' >> "$ISSUES_JSONL" || true
                 fi
             fi
         else
@@ -195,9 +198,10 @@ if [[ -z "$PLOT_FROM" ]]; then
                 --argjson number "$issue_number" \
                 --arg title "Issue #${issue_number}" \
                 --arg url "https://github.com/${REPO}/issues/${issue_number}" \
+                --arg startedAt "$started_at" \
                 --arg closedAt "$closed_at" \
                 --arg body "$combined_body" \
-                '{number: $number, title: $title, url: $url, closedAt: $closedAt, body: $body, comments: []}' >> "$ISSUES_JSONL"
+                '{number: $number, title: $title, url: $url, startedAt: $startedAt, closedAt: $closedAt, body: $body, comments: []}' >> "$ISSUES_JSONL"
         fi
 
         run_count=$((run_count + 1))
@@ -528,6 +532,10 @@ def dollars(value):
     return f"${value:,.2f}"
 
 
+def table_dollars(value):
+    return f"${value:,.4f}" if 0 < value < 0.01 else dollars(value)
+
+
 def pct(part, whole):
     if not whole:
         return "0.0%"
@@ -559,12 +567,14 @@ def analyze(cache_path):
         workflow = issue.get("workflow_path") or parse_workflow_path(combined)
         if workflow not in ("SIMPLE", "HARD", "unknown"):
             workflow = "unknown"
+        started_at_date = parse_date(issue.get("startedAt"))
         closed_at = parse_date(issue.get("closedAt"))
         records.append(
             {
                 "number": issue.get("number"),
                 "title": issue.get("title") or "",
                 "url": issue.get("url") or "",
+                "started_at_date": started_at_date,
                 "closed_at": closed_at,
                 "workflow": workflow,
                 "totals": totals,
@@ -575,6 +585,64 @@ def analyze(cache_path):
 
     records.sort(key=lambda r: (r["closed_at"] or dt.datetime.min.replace(tzinfo=dt.timezone.utc), r["number"] or 0))
     return records, skipped
+
+
+def per_day_trend_tables(records):
+    groups = {}
+    vendor_buckets = (
+        ("total", "Total cost", lambda record: record["cost"]),
+        ("claude", "Claude cost", lambda record: cost_vendor("claude", record["totals"].get("claude", {}))),
+        ("codex", "Codex cost", lambda record: cost_vendor("codex", record["totals"].get("codex", {}))),
+        ("cursor", "Cursor cost", lambda record: cost_vendor("cursor", record["totals"].get("cursor", {}))),
+    )
+
+    for record in records:
+        if record["workflow"] not in {"SIMPLE", "HARD"} or record["started_at_date"] is None:
+            continue
+        day = record["started_at_date"].date()
+        for vendor_key, _vendor_title, cost_fn in vendor_buckets:
+            groups.setdefault((vendor_key, record["workflow"], day), []).append(cost_fn(record))
+
+    if not groups:
+        return ""
+
+    lines = ["", "### Per-day cost trend"]
+    used_single_run_marker = False
+    for vendor_key, vendor_title, _cost_fn in vendor_buckets:
+        for workflow in ("SIMPLE", "HARD"):
+            day_rows = []
+            for key_vendor, key_workflow, day in groups:
+                if key_vendor == vendor_key and key_workflow == workflow:
+                    day_rows.append((day, sorted(groups[(key_vendor, key_workflow, day)])))
+            if not day_rows:
+                continue
+            lines.extend([
+                "",
+                f"#### {vendor_title} - {workflow}",
+                "",
+                "| Date | N | Median | Mean | P75 | Max | Total |",
+                "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+            ])
+            for day, values in sorted(day_rows):
+                count = len(values)
+                p75_index = min(int(0.75 * count), count - 1)
+                n_cell = f"{count}*" if count == 1 else str(count)
+                if count == 1:
+                    used_single_run_marker = True
+                lines.append(
+                    "| {date} | {n} | {median} | {mean} | {p75} | {max_value} | {total} |".format(
+                        date=day.isoformat(),
+                        n=n_cell,
+                        median=table_dollars(statistics.median(values)),
+                        mean=table_dollars(sum(values) / count),
+                        p75=table_dollars(values[p75_index]),
+                        max_value=table_dollars(max(values)),
+                        total=table_dollars(sum(values)),
+                    )
+                )
+    if used_single_run_marker:
+        lines.extend(["", "_* single-run day - statistically limited_"])
+    return "\n".join(lines)
 
 
 def plot(records):
@@ -808,6 +876,10 @@ def print_analysis(cache_path, records, skipped, plot_paths):
     print("- For expensive HARD phases, inspect the top phase rows above before optimizing; repeated review or design phases usually dominate more than implementation.")
     print("- When cache-read volume dominates, prioritize trimming repeated static context and large unchanged markdown blocks before reducing output verbosity.")
 
+    trend_tables = per_day_trend_tables(records)
+    if trend_tables:
+        print(trend_tables)
+
     if ACTUAL_SPEND > 0:
         tracked = sum(r["cost"] for r in records)
         delta_pct = (tracked - ACTUAL_SPEND) / ACTUAL_SPEND * 100 if ACTUAL_SPEND else 0
@@ -839,6 +911,7 @@ def load_raw_records(body_file):
         records.append({
             "number": item.get("number"),
             "workflow": item.get("workflow", "unknown"),
+            "started_at_date": None,
             "closed_at": parse_date(item.get("closed_at")),
             "cost": float(item.get("cost") or 0),
             "title": "",
