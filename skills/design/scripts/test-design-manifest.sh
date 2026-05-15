@@ -3,6 +3,8 @@
 
 set -euo pipefail
 
+export LARCH_QUIET_DISABLE=1
+
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd -P)
 WRITER="$SCRIPT_DIR/write-design-manifest.sh"
 READER="$SCRIPT_DIR/read-design-manifest.sh"

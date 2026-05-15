@@ -26,6 +26,10 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/../../../scripts/lib-quiet.sh"
+larch_quiet_init
+
 RESOLVE_REPO="${SCRIPT_DIR}/../../../scripts/resolve-repo.sh"
 
 ISSUE_NUMBER=""
@@ -88,4 +92,4 @@ COMMENTS=$(gh api --paginate --slurp "repos/${REPO}/issues/${ISSUE_NUMBER}/comme
     fi
 } > "$OUTPUT_PATH"
 
-echo "OUTPUT_FILE=$OUTPUT_PATH"
+emit_kv OUTPUT_FILE "$OUTPUT_PATH"

@@ -94,6 +94,10 @@ CLOSING_COMMENT_BODY='All tracked issues are closed. Marking umbrella as DONE an
 # Resolve helper script paths.
 # ---------------------------------------------------------------------------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/../../../scripts/lib-quiet.sh"
+larch_quiet_init
+
 LIFECYCLE_SCRIPT="${SCRIPT_DIR}/issue-lifecycle.sh"
 RENAME_SCRIPT="${SCRIPT_DIR}/../../../scripts/tracking-issue-write.sh"
 ROUND_TRIP_DETECT_SCRIPT="${SCRIPT_DIR}/../../../scripts/round-trip-detect.sh"
@@ -103,8 +107,8 @@ RESOLVE_REPO="${SCRIPT_DIR}/../../../scripts/resolve-repo.sh"
 # Resolve repo identity (used for gh issue scope and comment-marker probe).
 # ---------------------------------------------------------------------------
 REPO=$("$RESOLVE_REPO" 2>/dev/null) || {
-    echo "FINALIZED=false"
-    echo "ERROR=Failed to resolve repository name"
+    emit_kv FINALIZED false
+    emit_kv ERROR "Failed to resolve repository name"
     exit 1
 }
 
@@ -116,12 +120,12 @@ cmd_finalize() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --issue) issue="${2:?--issue requires a value}"; shift 2 ;;
-            *) echo "FINALIZED=false"; echo "ERROR=Unknown option for finalize: $1"; exit 2 ;;
+            *) emit_kv FINALIZED false; emit_kv ERROR "Unknown option for finalize: $1"; exit 2 ;;
         esac
     done
     if [[ -z "$issue" ]]; then
-        echo "FINALIZED=false"
-        echo "ERROR=Usage: finalize-umbrella.sh finalize --issue N"
+        emit_kv FINALIZED false
+        emit_kv ERROR "Usage: finalize-umbrella.sh finalize --issue N"
         exit 2
     fi
 
@@ -129,8 +133,8 @@ cmd_finalize() {
     local cur_state cur_title
     local view_json
     view_json=$(gh issue view "$issue" --repo "$REPO" --json state,title,body --jq '{state,title,body}' 2>/dev/null) || {
-        echo "FINALIZED=false"
-        echo "ERROR=Failed to fetch umbrella #$issue state"
+        emit_kv FINALIZED false
+        emit_kv ERROR "Failed to fetch umbrella #$issue state"
         exit 1
     }
     cur_state=$(printf '%s' "$view_json" | jq -r '.state // ""')
@@ -171,9 +175,9 @@ cmd_finalize() {
     # state below: state=CLOSED → idempotent short-circuit; state=OPEN with
     # title/marker present → close-only retry; else → full sequence.
     if [[ "$cur_state" == "CLOSED" ]]; then
-        echo "FINALIZED=false"
-        echo "ALREADY_FINALIZED=true"
-        echo "REASON=already CLOSED"
+        emit_kv FINALIZED false
+        emit_kv ALREADY_FINALIZED true
+        emit_kv REASON "already CLOSED"
         return 0
     fi
     # Probe state and detect partial-success marker(s) — these are the
@@ -265,29 +269,29 @@ cmd_finalize() {
     closed=$(echo "$close_out" | awk -F= '/^CLOSED=/ { v=$2 } END { print v }')
     close_error=$(echo "$close_out" | awk -F= '/^ERROR=/ { sub(/^ERROR=/, "", $0); v=$0 } END { print v }')
     if [[ "$closed" != "true" ]] || [[ "$close_exit" -ne 0 ]]; then
-        echo "FINALIZED=false"
-        echo "RENAMED=$renamed"
-        echo "CLOSED=false"
+        emit_kv FINALIZED false
+        emit_kv RENAMED "$renamed"
+        emit_kv CLOSED false
         if [[ -n "$close_error" ]]; then
-            echo "ERROR=$close_error"
+            emit_kv ERROR "$close_error"
         else
-            echo "ERROR=Failed to close umbrella #$issue (issue-lifecycle.sh exit $close_exit)"
+            emit_kv ERROR "Failed to close umbrella #$issue (issue-lifecycle.sh exit $close_exit)"
         fi
         exit 1
     fi
 
     # ---- Emit success ----
-    echo "FINALIZED=true"
-    echo "RENAMED=$renamed"
-    echo "CLOSED=true"
+    emit_kv FINALIZED true
+    emit_kv RENAMED "$renamed"
+    emit_kv CLOSED true
 }
 
 # ---------------------------------------------------------------------------
 # Dispatch
 # ---------------------------------------------------------------------------
 if [[ $# -lt 1 ]]; then
-    echo "FINALIZED=false"
-    echo "ERROR=Usage: finalize-umbrella.sh finalize --issue N"
+    emit_kv FINALIZED false
+    emit_kv ERROR "Usage: finalize-umbrella.sh finalize --issue N"
     exit 2
 fi
 
@@ -295,5 +299,5 @@ SUBCOMMAND="$1"
 shift
 case "$SUBCOMMAND" in
     finalize) cmd_finalize "$@" ;;
-    *) echo "FINALIZED=false"; echo "ERROR=Unknown subcommand: $SUBCOMMAND"; exit 2 ;;
+    *) emit_kv FINALIZED false; emit_kv ERROR "Unknown subcommand: $SUBCOMMAND"; exit 2 ;;
 esac

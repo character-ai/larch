@@ -67,3 +67,5 @@ After posting the lock comment, `cmd_comment` pauses for `ISSUE_LIFECYCLE_LOCK_S
 ## Edit-in-sync rules
 
 Changes to `cmd_close`'s stdout contract (including the `CLOSED=true` key, the `CLOSED=false` + `ERROR=` pattern, the `INFO:` stderr note, or the false-positive marker `WARNING:` stderr note) MUST update this file in the same PR and MUST add / update a corresponding fixture in `test-issue-lifecycle.sh`. Changes to the `--close-class` enum (accepted values, marker-action mapping, precedence over `--mark-false-positive-if-keyword`) MUST update both this file and the harness in the same PR. Changes to `cmd_update_body`'s stdout keys (`UPDATED=`, `SKIPPED=`) are caller-visible only when the subcommand is invoked directly (not via `cmd_close`, which suppresses this output). Changes to false-positive keyword semantics (legacy keyword path) must update `scripts/false-positive-keywords.md` and `scripts/test-false-positive-keywords.sh`.
+
+On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.

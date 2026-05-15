@@ -149,6 +149,11 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/../../../scripts/lib-quiet.sh"
+larch_quiet_init
+
 # Returns 0 if the title starts with a managed lifecycle prefix
 # ("[IN PROGRESS] ", "[DONE] ", "[STALLED] "), 1 otherwise. Anchored at
 # the start; trailing-space-sensitive (matches the helper exactly — no
@@ -195,24 +200,24 @@ ISSUE_ARG=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --issue)
-            echo "WARNING: --issue is deprecated; pass the issue number or URL as a positional argument instead." >&2
+            larch_err "WARNING: --issue is deprecated; pass the issue number or URL as a positional argument instead."
             if [[ $# -lt 2 ]]; then
-                echo "ELIGIBLE=false"
-                echo "ERROR=--issue requires a value"
+                emit_kv ELIGIBLE false
+                emit_kv ERROR "--issue requires a value"
                 exit 2
             fi
             ISSUE_ARG="$2"; shift 2
             ;;
         -*)
-            echo "ELIGIBLE=false"
-            echo "ERROR=Unknown option: $1"
+            emit_kv ELIGIBLE false
+            emit_kv ERROR "Unknown option: $1"
             exit 2
             ;;
         *)
             # Positional argument: issue number or URL
             if [[ -n "$ISSUE_ARG" ]]; then
-                echo "ELIGIBLE=false"
-                echo "ERROR=Unexpected extra argument: $1 (issue already set to $ISSUE_ARG)"
+                emit_kv ELIGIBLE false
+                emit_kv ERROR "Unexpected extra argument: $1 (issue already set to $ISSUE_ARG)"
                 exit 2
             fi
             ISSUE_ARG="$1"; shift
@@ -223,11 +228,10 @@ done
 # ---------------------------------------------------------------------------
 # Resolve repo identity
 # ---------------------------------------------------------------------------
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RESOLVE_REPO="${SCRIPT_DIR}/../../../scripts/resolve-repo.sh"
 REPO=$("$RESOLVE_REPO" 2>/dev/null) || {
-    echo "ELIGIBLE=false"
-    echo "ERROR=Failed to resolve repository name"
+    emit_kv ELIGIBLE false
+    emit_kv ERROR "Failed to resolve repository name"
     exit 2
 }
 
@@ -248,8 +252,8 @@ REPO=$("$RESOLVE_REPO" 2>/dev/null) || {
 BLOCKER_HELPERS="$(dirname "${BASH_SOURCE[0]}")/blocker-helpers.sh"
 # shellcheck source=skills/fix-issue/scripts/blocker-helpers.sh
 source "$BLOCKER_HELPERS" || {
-    echo "ELIGIBLE=false"
-    echo "ERROR=Failed to source blocker-helpers.sh: $BLOCKER_HELPERS"
+    emit_kv ELIGIBLE false
+    emit_kv ERROR "Failed to source blocker-helpers.sh: $BLOCKER_HELPERS"
     exit 2
 }
 
@@ -282,23 +286,23 @@ _emit_dirty_tree_pre_lock_abort() {
         return 0
     fi
 
-    echo "ELIGIBLE=false"
+    emit_kv ELIGIBLE false
     if [ -n "$umbrella_num" ]; then
-        echo "IS_UMBRELLA=true"
-        echo "UMBRELLA_NUMBER=$umbrella_num"
-        echo "UMBRELLA_TITLE=$umbrella_title"
-        echo "ISSUE_NUMBER=$issue_num"
-        echo "ISSUE_TITLE=$issue_title"
-        echo "LOCK_ACQUIRED=false"
+        emit_kv IS_UMBRELLA true
+        emit_kv UMBRELLA_NUMBER "$umbrella_num"
+        emit_kv UMBRELLA_TITLE "$umbrella_title"
+        emit_kv ISSUE_NUMBER "$issue_num"
+        emit_kv ISSUE_TITLE "$issue_title"
+        emit_kv LOCK_ACQUIRED false
     fi
 
     if [ "$probe_exit" -eq 0 ] && [ "$clean_line" = "false" ]; then
-        echo "ERROR=Working tree is not clean. Commit or stash changes, then re-run /fix-issue. No issue was locked."
+        emit_kv ERROR "Working tree is not clean. Commit or stash changes, then re-run /fix-issue. No issue was locked."
     else
         local summary
         summary=$(printf '%s\n' "$probe_out" | awk '/^PROBE_ERROR=/ { sub(/^PROBE_ERROR=/, "", $0); v=$0 } END { print v }')
         [ -n "$summary" ] || summary="probe exited $probe_exit"
-        echo "ERROR=Cannot determine working-tree cleanliness: $summary"
+        emit_kv ERROR "Cannot determine working-tree cleanliness: $summary"
     fi
     exit 2
 }
@@ -349,14 +353,14 @@ lock_and_rename_then_emit() {
         # Lock failed. Surface the unified contract; preserve eligibility
         # signal so callers can distinguish "no candidate" from "candidate
         # found but lost the race".
-        echo "ELIGIBLE=true"
-        echo "ISSUE_NUMBER=$issue_num"
-        echo "ISSUE_TITLE=$issue_title"
-        echo "LOCK_ACQUIRED=false"
+        emit_kv ELIGIBLE true
+        emit_kv ISSUE_NUMBER "$issue_num"
+        emit_kv ISSUE_TITLE "$issue_title"
+        emit_kv LOCK_ACQUIRED false
         if [ -n "$lock_error" ]; then
-            echo "ERROR=$lock_error"
+            emit_kv ERROR "$lock_error"
         else
-            echo "ERROR=Lock acquisition failed (issue-lifecycle.sh exit $lock_exit)"
+            emit_kv ERROR "Lock acquisition failed (issue-lifecycle.sh exit $lock_exit)"
         fi
         exit 3
     fi
@@ -378,9 +382,9 @@ lock_and_rename_then_emit() {
         # stdout. /implement Step 0.5 Branch 2's idempotent rename is the
         # safety net.
         if [ -n "$rename_error" ]; then
-            echo "WARNING: title rename failed for issue #$issue_num: $rename_error" >&2
+            larch_err "WARNING: title rename failed for issue #$issue_num: $rename_error"
         else
-            echo "WARNING: title rename failed for issue #$issue_num (tracking-issue-write.sh exit $rename_exit)" >&2
+            larch_err "WARNING: title rename failed for issue #$issue_num (tracking-issue-write.sh exit $rename_exit)"
         fi
         renamed="false"
     fi
@@ -391,11 +395,11 @@ lock_and_rename_then_emit() {
     fi
 
     # ---- Emit unified contract ----
-    echo "ELIGIBLE=true"
-    echo "ISSUE_NUMBER=$issue_num"
-    echo "ISSUE_TITLE=$issue_title"
-    echo "LOCK_ACQUIRED=true"
-    echo "RENAMED=$renamed"
+    emit_kv ELIGIBLE true
+    emit_kv ISSUE_NUMBER "$issue_num"
+    emit_kv ISSUE_TITLE "$issue_title"
+    emit_kv LOCK_ACQUIRED true
+    emit_kv RENAMED "$renamed"
     exit 0
 }
 
@@ -423,14 +427,14 @@ lock_no_go_and_rename_then_emit() {
     lock_error=$(echo "$lock_out" | awk -F= '/^ERROR=/ { sub(/^ERROR=/, "", $0); v=$0 } END { print v }')
 
     if [ "$lock_acquired" != "true" ] || [ "$lock_exit" -ne 0 ]; then
-        echo "ELIGIBLE=true"
-        echo "ISSUE_NUMBER=$issue_num"
-        echo "ISSUE_TITLE=$issue_title"
-        echo "LOCK_ACQUIRED=false"
+        emit_kv ELIGIBLE true
+        emit_kv ISSUE_NUMBER "$issue_num"
+        emit_kv ISSUE_TITLE "$issue_title"
+        emit_kv LOCK_ACQUIRED false
         if [ -n "$lock_error" ]; then
-            echo "ERROR=$lock_error"
+            emit_kv ERROR "$lock_error"
         else
-            echo "ERROR=Lock acquisition failed (issue-lifecycle.sh exit $lock_exit)"
+            emit_kv ERROR "Lock acquisition failed (issue-lifecycle.sh exit $lock_exit)"
         fi
         exit 3
     fi
@@ -445,9 +449,9 @@ lock_no_go_and_rename_then_emit() {
 
     if [ "$rename_exit" -ne 0 ] || [ "$rename_failed" = "true" ]; then
         if [ -n "$rename_error" ]; then
-            echo "WARNING: title rename failed for issue #$issue_num: $rename_error" >&2
+            larch_err "WARNING: title rename failed for issue #$issue_num: $rename_error"
         else
-            echo "WARNING: title rename failed for issue #$issue_num (tracking-issue-write.sh exit $rename_exit)" >&2
+            larch_err "WARNING: title rename failed for issue #$issue_num (tracking-issue-write.sh exit $rename_exit)"
         fi
         renamed="false"
     fi
@@ -456,11 +460,11 @@ lock_no_go_and_rename_then_emit() {
         renamed="false"
     fi
 
-    echo "ELIGIBLE=true"
-    echo "ISSUE_NUMBER=$issue_num"
-    echo "ISSUE_TITLE=$issue_title"
-    echo "LOCK_ACQUIRED=true"
-    echo "RENAMED=$renamed"
+    emit_kv ELIGIBLE true
+    emit_kv ISSUE_NUMBER "$issue_num"
+    emit_kv ISSUE_TITLE "$issue_title"
+    emit_kv LOCK_ACQUIRED true
+    emit_kv RENAMED "$renamed"
     exit 0
 }
 
@@ -498,17 +502,17 @@ lock_no_go_and_rename_then_emit_for_child() {
     lock_error=$(echo "$lock_out" | awk -F= '/^ERROR=/ { sub(/^ERROR=/, "", $0); v=$0 } END { print v }')
 
     if [ "$lock_acquired" != "true" ] || [ "$lock_exit" -ne 0 ]; then
-        echo "ELIGIBLE=true"
-        echo "IS_UMBRELLA=true"
-        echo "UMBRELLA_NUMBER=$umbrella_num"
-        echo "UMBRELLA_TITLE=$umbrella_title"
-        echo "ISSUE_NUMBER=$child_num"
-        echo "ISSUE_TITLE=$child_title"
-        echo "LOCK_ACQUIRED=false"
+        emit_kv ELIGIBLE true
+        emit_kv IS_UMBRELLA true
+        emit_kv UMBRELLA_NUMBER "$umbrella_num"
+        emit_kv UMBRELLA_TITLE "$umbrella_title"
+        emit_kv ISSUE_NUMBER "$child_num"
+        emit_kv ISSUE_TITLE "$child_title"
+        emit_kv LOCK_ACQUIRED false
         if [ -n "$lock_error" ]; then
-            echo "ERROR=Failed to lock chosen child #$child_num of umbrella #$umbrella_num: $lock_error"
+            emit_kv ERROR "Failed to lock chosen child #$child_num of umbrella #$umbrella_num: $lock_error"
         else
-            echo "ERROR=Failed to lock chosen child #$child_num of umbrella #$umbrella_num (issue-lifecycle.sh exit $lock_exit)"
+            emit_kv ERROR "Failed to lock chosen child #$child_num of umbrella #$umbrella_num (issue-lifecycle.sh exit $lock_exit)"
         fi
         exit 3
     fi
@@ -522,9 +526,9 @@ lock_no_go_and_rename_then_emit_for_child() {
     rename_error=$(echo "$rename_out" | awk -F= '/^ERROR=/ { sub(/^ERROR=/, "", $0); v=$0 } END { print v }')
     if [ "$rename_exit" -ne 0 ] || [ "$rename_failed" = "true" ]; then
         if [ -n "$rename_error" ]; then
-            echo "WARNING: title rename failed for child #$child_num (umbrella #$umbrella_num): $rename_error" >&2
+            larch_err "WARNING: title rename failed for child #$child_num (umbrella #$umbrella_num): $rename_error"
         else
-            echo "WARNING: title rename failed for child #$child_num (umbrella #$umbrella_num) (tracking-issue-write.sh exit $rename_exit)" >&2
+            larch_err "WARNING: title rename failed for child #$child_num (umbrella #$umbrella_num) (tracking-issue-write.sh exit $rename_exit)"
         fi
         renamed="false"
     fi
@@ -533,15 +537,15 @@ lock_no_go_and_rename_then_emit_for_child() {
     fi
 
     # ---- Emit unified contract ----
-    echo "ELIGIBLE=true"
-    echo "IS_UMBRELLA=true"
-    echo "UMBRELLA_NUMBER=$umbrella_num"
-    echo "UMBRELLA_TITLE=$umbrella_title"
-    echo "UMBRELLA_ACTION=dispatched"
-    echo "ISSUE_NUMBER=$child_num"
-    echo "ISSUE_TITLE=$child_title"
-    echo "LOCK_ACQUIRED=true"
-    echo "RENAMED=$renamed"
+    emit_kv ELIGIBLE true
+    emit_kv IS_UMBRELLA true
+    emit_kv UMBRELLA_NUMBER "$umbrella_num"
+    emit_kv UMBRELLA_TITLE "$umbrella_title"
+    emit_kv UMBRELLA_ACTION dispatched
+    emit_kv ISSUE_NUMBER "$child_num"
+    emit_kv ISSUE_TITLE "$child_title"
+    emit_kv LOCK_ACQUIRED true
+    emit_kv RENAMED "$renamed"
     exit 0
 }
 
@@ -566,10 +570,10 @@ handle_umbrella() {
     if [ "$pick_exit" -ne 0 ]; then
         local err
         err=$(echo "$pick_out" | awk -F= '/^ERROR=/ { sub(/^ERROR=/, "", $0); v=$0 } END { print v }')
-        echo "ELIGIBLE=false"
-        echo "IS_UMBRELLA=true"
-        echo "UMBRELLA_NUMBER=$umbrella_num"
-        echo "ERROR=Failed to pick child for umbrella #$umbrella_num: ${err:-pick-child failed}"
+        emit_kv ELIGIBLE false
+        emit_kv IS_UMBRELLA true
+        emit_kv UMBRELLA_NUMBER "$umbrella_num"
+        emit_kv ERROR "Failed to pick child for umbrella #$umbrella_num: ${err:-pick-child failed}"
         exit 2
     fi
     local child_number child_title all_closed no_eligible blocking_reason
@@ -590,38 +594,38 @@ handle_umbrella() {
         if [ -n "$child_blockers" ]; then
             local formatted
             formatted=$(echo "$child_blockers" | tr ' ' '\n' | sed 's/^/#/' | paste -sd ',' -)
-            echo "ELIGIBLE=false"
-            echo "IS_UMBRELLA=true"
-            echo "UMBRELLA_NUMBER=$umbrella_num"
-            echo "UMBRELLA_ACTION=no-eligible-child"
-            echo "ERROR=Umbrella #$umbrella_num child #$child_number is blocked by open dependencies: $formatted"
+            emit_kv ELIGIBLE false
+            emit_kv IS_UMBRELLA true
+            emit_kv UMBRELLA_NUMBER "$umbrella_num"
+            emit_kv UMBRELLA_ACTION no-eligible-child
+            emit_kv ERROR "Umbrella #$umbrella_num child #$child_number is blocked by open dependencies: $formatted"
             exit 5
         fi
         lock_no_go_and_rename_then_emit_for_child "$child_number" "$child_title" "$umbrella_num" "$umbrella_title"
         # terminal — exits 0 or 3
     fi
     if [ "$all_closed" = "true" ]; then
-        echo "ELIGIBLE=true"
-        echo "IS_UMBRELLA=true"
-        echo "UMBRELLA_NUMBER=$umbrella_num"
-        echo "UMBRELLA_TITLE=$umbrella_title"
-        echo "UMBRELLA_ACTION=complete"
-        echo "LOCK_ACQUIRED=false"
+        emit_kv ELIGIBLE true
+        emit_kv IS_UMBRELLA true
+        emit_kv UMBRELLA_NUMBER "$umbrella_num"
+        emit_kv UMBRELLA_TITLE "$umbrella_title"
+        emit_kv UMBRELLA_ACTION complete
+        emit_kv LOCK_ACQUIRED false
         exit 4
     fi
     if [ "$no_eligible" = "true" ]; then
-        echo "ELIGIBLE=false"
-        echo "IS_UMBRELLA=true"
-        echo "UMBRELLA_NUMBER=$umbrella_num"
-        echo "UMBRELLA_ACTION=no-eligible-child"
-        echo "ERROR=Umbrella #$umbrella_num has no eligible child: ${blocking_reason:-no blocking reason given}"
+        emit_kv ELIGIBLE false
+        emit_kv IS_UMBRELLA true
+        emit_kv UMBRELLA_NUMBER "$umbrella_num"
+        emit_kv UMBRELLA_ACTION no-eligible-child
+        emit_kv ERROR "Umbrella #$umbrella_num has no eligible child: ${blocking_reason:-no blocking reason given}"
         exit 5
     fi
     # Defensive: pick-child should always emit one of the three outcomes.
-    echo "ELIGIBLE=false"
-    echo "IS_UMBRELLA=true"
-    echo "UMBRELLA_NUMBER=$umbrella_num"
-    echo "ERROR=umbrella-handler.sh pick-child returned no recognized outcome"
+    emit_kv ELIGIBLE false
+    emit_kv IS_UMBRELLA true
+    emit_kv UMBRELLA_NUMBER "$umbrella_num"
+    emit_kv ERROR "umbrella-handler.sh pick-child returned no recognized outcome"
     exit 2
 }
 
@@ -638,21 +642,21 @@ if [[ -n "$ISSUE_ARG" ]]; then
             ISSUE_REPO_FROM_ARG=$(printf '%s\n' "$ISSUE_ARG" | sed -n 's|https://[^/]*/\([^/]*/[^/]*\)/issues/[0-9][0-9]*.*|\1|p')
             ISSUE_NUM_FROM_ARG=$(printf '%s\n' "$ISSUE_ARG" | sed -n 's|https://[^/]*/[^/]*/[^/]*/issues/\([0-9][0-9]*\).*|\1|p')
             if [[ -z "$ISSUE_REPO_FROM_ARG" || -z "$ISSUE_NUM_FROM_ARG" ]]; then
-                echo "ELIGIBLE=false"
-                echo "ERROR=Cannot parse issue URL: $ISSUE_ARG"
+                emit_kv ELIGIBLE false
+                emit_kv ERROR "Cannot parse issue URL: $ISSUE_ARG"
                 exit 2
             fi
             if [[ "$ISSUE_REPO_FROM_ARG" != "$REPO" ]]; then
-                echo "ELIGIBLE=false"
-                echo "ERROR=Issue belongs to $ISSUE_REPO_FROM_ARG, not the current repo ($REPO)"
+                emit_kv ELIGIBLE false
+                emit_kv ERROR "Issue belongs to $ISSUE_REPO_FROM_ARG, not the current repo ($REPO)"
                 exit 2
             fi
             ISSUE_QUERY="$ISSUE_NUM_FROM_ARG"
             ;;
     esac
     ISSUE_JSON=$(gh issue view "$ISSUE_QUERY" --repo "$REPO" --json number,state,title,url 2>/dev/null) || {
-        echo "ELIGIBLE=false"
-        echo "ERROR=Failed to fetch issue (invalid number, URL, or inaccessible): $ISSUE_ARG"
+        emit_kv ELIGIBLE false
+        emit_kv ERROR "Failed to fetch issue (invalid number, URL, or inaccessible): $ISSUE_ARG"
         exit 2
     }
 
@@ -669,26 +673,26 @@ if [[ -n "$ISSUE_ARG" ]]; then
     # `gh` CLI always emits `https://` URLs (no plain `http://`), so a literal
     # `https://` keeps the regex BRE-compatible across BSD sed / GNU sed.
     if [[ -z "$ISSUE_URL" ]]; then
-        echo "ELIGIBLE=false"
-        echo "ERROR=Cannot verify repository ownership for issue: $ISSUE_ARG"
+        emit_kv ELIGIBLE false
+        emit_kv ERROR "Cannot verify repository ownership for issue: $ISSUE_ARG"
         exit 2
     fi
     ISSUE_REPO=$(echo "$ISSUE_URL" | sed -n 's|https://[^/]*/\([^/]*/[^/]*\)/issues/.*|\1|p')
     if [[ -z "$ISSUE_REPO" ]]; then
-        echo "ELIGIBLE=false"
-        echo "ERROR=Cannot parse repository from issue URL: $ISSUE_URL"
+        emit_kv ELIGIBLE false
+        emit_kv ERROR "Cannot parse repository from issue URL: $ISSUE_URL"
         exit 2
     fi
     if [[ "$ISSUE_REPO" != "$REPO" ]]; then
-        echo "ELIGIBLE=false"
-        echo "ERROR=Issue belongs to $ISSUE_REPO, not the current repo ($REPO)"
+        emit_kv ELIGIBLE false
+        emit_kv ERROR "Issue belongs to $ISSUE_REPO, not the current repo ($REPO)"
         exit 2
     fi
 
     # Verify issue is open
     if [ "$ISSUE_STATE" != "OPEN" ]; then
-        echo "ELIGIBLE=false"
-        echo "ERROR=Issue #$ISSUE_NUM is not open (state: $ISSUE_STATE)"
+        emit_kv ELIGIBLE false
+        emit_kv ERROR "Issue #$ISSUE_NUM is not open (state: $ISSUE_STATE)"
         exit 2
     fi
 
@@ -738,7 +742,7 @@ if [[ -n "$ISSUE_ARG" ]]; then
                     LIST_CHILDREN_EXIT=$?
                     set -e
                     if [ "$LIST_CHILDREN_EXIT" -ne 0 ]; then
-                        echo "WARNING: list-children failed for umbrella #$ISSUE_NUM (exit $LIST_CHILDREN_EXIT) — children-filter degraded; native blockers not filtered" >&2
+                        larch_err "WARNING: list-children failed for umbrella #$ISSUE_NUM (exit $LIST_CHILDREN_EXIT) — children-filter degraded; native blockers not filtered"
                     fi
                     UMBRELLA_CHILDREN=$(echo "$LIST_CHILDREN_OUT" | awk -F= '/^CHILDREN=/ { v=$2 } END { print v }')
                     FILTERED_NATIVE=""
@@ -769,10 +773,10 @@ if [[ -n "$ISSUE_ARG" ]]; then
                     | tr '\n' ' ' | sed 's/[[:space:]]*$//')
                 if [ -n "$BLOCKERS" ]; then
                     FORMATTED=$(echo "$BLOCKERS" | tr ' ' '\n' | sed 's/^/#/' | paste -sd ',' -)
-                    echo "ELIGIBLE=false"
-                    echo "IS_UMBRELLA=true"
-                    echo "UMBRELLA_NUMBER=$ISSUE_NUM"
-                    echo "ERROR=Umbrella #$ISSUE_NUM is blocked by open dependencies: $FORMATTED"
+                    emit_kv ELIGIBLE false
+                    emit_kv IS_UMBRELLA true
+                    emit_kv UMBRELLA_NUMBER "$ISSUE_NUM"
+                    emit_kv ERROR "Umbrella #$ISSUE_NUM is blocked by open dependencies: $FORMATTED"
                     exit 2
                 fi
                 handle_umbrella "$ISSUE_NUM" "$ISSUE_TITLE"
@@ -780,8 +784,8 @@ if [[ -n "$ISSUE_ARG" ]]; then
             fi
         else
             DETECT_ERROR=$(echo "$UMBRELLA_DETECT_OUT" | awk -F= '/^ERROR=/ { v=substr($0,index($0,"=")+1) } END { print v }')
-            echo "ELIGIBLE=false"
-            echo "ERROR=umbrella-handler.sh detect failed for issue #$ISSUE_NUM: ${DETECT_ERROR:-unknown error}"
+            emit_kv ELIGIBLE false
+            emit_kv ERROR "umbrella-handler.sh detect failed for issue #$ISSUE_NUM: ${DETECT_ERROR:-unknown error}"
             exit 2
         fi
     fi
@@ -794,16 +798,16 @@ if [[ -n "$ISSUE_ARG" ]]; then
     # a managed-prefix (e.g. `[IN PROGRESS] Umbrella: foo`) reaches
     # `handle_umbrella` above and never falls through here.
     if has_managed_prefix "$ISSUE_TITLE"; then
-        echo "ELIGIBLE=false"
-        echo "ERROR=Issue #$ISSUE_NUM has a managed lifecycle title prefix ([IN PROGRESS] / [DONE] / [STALLED]); not a fix-issue candidate"
+        emit_kv ELIGIBLE false
+        emit_kv ERROR "Issue #$ISSUE_NUM has a managed lifecycle title prefix ([IN PROGRESS] / [DONE] / [STALLED]); not a fix-issue candidate"
         exit 2
     fi
 
     # Exclude report issues (titles matching "[... Report]"). These are
     # analytics/reporting issues not meant for automated fixing.
     if has_report_prefix "$ISSUE_TITLE"; then
-        echo "ELIGIBLE=false"
-        echo "ERROR=Issue #$ISSUE_NUM has a report title prefix ([... Report]); not a fix-issue candidate"
+        emit_kv ELIGIBLE false
+        emit_kv ERROR "Issue #$ISSUE_NUM has a report title prefix ([... Report]); not a fix-issue candidate"
         exit 2
     fi
 
@@ -817,8 +821,8 @@ if [[ -n "$ISSUE_ARG" ]]; then
     # slurp pattern.
     LAST_COMMENT=$(gh api --paginate --slurp "repos/${REPO}/issues/${ISSUE_NUM}/comments" 2>/dev/null \
         | jq -r 'add // [] | .[-1].body // empty') || {
-        echo "ELIGIBLE=false"
-        echo "ERROR=Failed to fetch comments for issue #$ISSUE_NUM"
+        emit_kv ELIGIBLE false
+        emit_kv ERROR "Failed to fetch comments for issue #$ISSUE_NUM"
         exit 2
     }
 
@@ -826,8 +830,8 @@ if [[ -n "$ISSUE_ARG" ]]; then
 
     # Reject when the issue is locked by a concurrent /fix-issue run.
     if [ "$TRIMMED" = "IN PROGRESS" ]; then
-        echo "ELIGIBLE=false"
-        echo "ERROR=Issue #$ISSUE_NUM is locked by another /fix-issue run (last comment: IN PROGRESS)"
+        emit_kv ELIGIBLE false
+        emit_kv ERROR "Issue #$ISSUE_NUM is locked by another /fix-issue run (last comment: IN PROGRESS)"
         exit 2
     fi
 
@@ -839,8 +843,8 @@ if [[ -n "$ISSUE_ARG" ]]; then
     if [ -n "$BLOCKERS" ]; then
         # Format as comma-separated #N list for the error message
         FORMATTED=$(echo "$BLOCKERS" | tr ' ' '\n' | sed 's/^/#/' | paste -sd ',' -)
-        echo "ELIGIBLE=false"
-        echo "ERROR=Issue #$ISSUE_NUM is blocked by open dependencies: $FORMATTED"
+        emit_kv ELIGIBLE false
+        emit_kv ERROR "Issue #$ISSUE_NUM is blocked by open dependencies: $FORMATTED"
         exit 2
     fi
 
@@ -866,8 +870,8 @@ fi
 # ---------------------------------------------------------------------------
 ISSUES_JSONL=$(gh api --paginate "repos/${REPO}/issues?state=open&per_page=100" \
     --jq '.[] | select(.pull_request == null) | {number, title}' 2>/dev/null) || {
-    echo "ELIGIBLE=false"
-    echo "ERROR=Failed to list issues"
+    emit_kv ELIGIBLE false
+    emit_kv ERROR "Failed to list issues"
     exit 2
 }
 
@@ -896,7 +900,7 @@ ISSUES_JSONL=$(gh api --paginate "repos/${REPO}/issues?state=open&per_page=100" 
 SORTED=$(echo "$ISSUES_JSONL" | jq -s -c 'sort_by([((.title // "") | test("(?<![-A-Za-z0-9_])urgent(?![-A-Za-z0-9_])"; "i") | not), .number]) | .[]')
 
 if [ -z "$SORTED" ]; then
-    echo "ELIGIBLE=false"
+    emit_kv ELIGIBLE false
     exit 1
 fi
 
@@ -909,17 +913,17 @@ while IFS= read -r issue_row; do
     # issues, not fix-issue candidates. Placed BEFORE the comment
     # pagination to save one API round-trip per excluded issue.
     if has_managed_prefix "$ISSUE_TITLE"; then
-        echo "Skipping issue #$ISSUE_NUM: managed lifecycle title prefix" >&2
+        larch_err "Skipping issue #$ISSUE_NUM: managed lifecycle title prefix"
         continue
     fi
 
     if has_archival_prefix "$ISSUE_TITLE"; then
-        echo "Skipping issue #$ISSUE_NUM: archival title prefix" >&2
+        larch_err "Skipping issue #$ISSUE_NUM: archival title prefix"
         continue
     fi
 
     if has_report_prefix "$ISSUE_TITLE"; then
-        echo "Skipping issue #$ISSUE_NUM: report title prefix" >&2
+        larch_err "Skipping issue #$ISSUE_NUM: report title prefix"
         continue
     fi
 
@@ -927,8 +931,8 @@ while IFS= read -r issue_row; do
     # the rationale on `--slurp` + `add // [] | .[-1]`.
     LAST_COMMENT=$(gh api --paginate --slurp "repos/${REPO}/issues/${ISSUE_NUM}/comments" 2>/dev/null \
         | jq -r 'add // [] | .[-1].body // empty') || {
-        echo "ELIGIBLE=false"
-        echo "ERROR=Failed to fetch comments for issue #$ISSUE_NUM"
+        emit_kv ELIGIBLE false
+        emit_kv ERROR "Failed to fetch comments for issue #$ISSUE_NUM"
         exit 2
     }
 
@@ -949,7 +953,7 @@ while IFS= read -r issue_row; do
         if UMBRELLA_DETECT_OUT=$("$UMBRELLA_HANDLER" detect --issue "$ISSUE_NUM" 2>/dev/null); then
             IS_UMBRELLA_DETECT=$(echo "$UMBRELLA_DETECT_OUT" | awk -F= '/^IS_UMBRELLA=/ { v=$2 } END { print v }')
             if [ "$IS_UMBRELLA_DETECT" = "true" ]; then
-                echo "Skipping issue #$ISSUE_NUM: umbrella issue (auto-pick excludes umbrellas; use \`/fix-issue $ISSUE_NUM\` to dispatch a child)" >&2
+                larch_err "Skipping issue #$ISSUE_NUM: umbrella issue (auto-pick excludes umbrellas; use \`/fix-issue $ISSUE_NUM\` to dispatch a child)"
                 continue
             fi
         fi
@@ -963,7 +967,7 @@ while IFS= read -r issue_row; do
     if [ -n "$BLOCKERS" ]; then
         # Blocked by at least one open dependency — log on stderr and keep scanning.
         FORMATTED=$(echo "$BLOCKERS" | tr ' ' '\n' | sed 's/^/#/' | paste -sd ',' -)
-        echo "Skipping issue #$ISSUE_NUM: blocked by open dependencies ($FORMATTED)" >&2
+        larch_err "Skipping issue #$ISSUE_NUM: blocked by open dependencies ($FORMATTED)"
         continue
     fi
     # Eligibility confirmed — acquire lock + best-effort title rename, emit
@@ -977,5 +981,5 @@ while IFS= read -r issue_row; do
 done <<< "$SORTED"
 
 # No eligible issues found
-echo "ELIGIBLE=false"
+emit_kv ELIGIBLE false
 exit 1

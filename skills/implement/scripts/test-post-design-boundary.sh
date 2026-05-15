@@ -2,6 +2,7 @@
 # Integration tests for skills/implement/scripts/post-design-boundary.sh.
 
 set -euo pipefail
+export LARCH_QUIET_DISABLE=1
 
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)
 WRAPPER="$REPO_ROOT/skills/implement/scripts/post-design-boundary.sh"
@@ -248,6 +249,7 @@ make_git_repo "$GIT7"
 mkdir -p "$FAKE_ROOT/skills/design/scripts" "$FAKE_ROOT/scripts"
 ln -s "$READER" "$FAKE_ROOT/skills/design/scripts/read-design-manifest.sh"
 ln -s "$BRANCH_HELPER" "$FAKE_ROOT/scripts/git-current-branch.sh"
+ln -s "$REPO_ROOT/scripts/lib-quiet.sh" "$FAKE_ROOT/scripts/lib-quiet.sh"
 cat > "$FAKE_ROOT/scripts/write-session-env.sh" <<'EOF_FAIL'
 #!/usr/bin/env bash
 exit 1

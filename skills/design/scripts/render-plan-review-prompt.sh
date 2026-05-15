@@ -3,6 +3,13 @@
 
 set -euo pipefail
 
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd -P)
+LARCH_QUIET_DISABLE=1
+export LARCH_QUIET_DISABLE
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/../../../scripts/lib-quiet.sh"
+larch_quiet_init
+
 ARCHETYPE=""
 VENDOR=""
 PLAN_FILE=""

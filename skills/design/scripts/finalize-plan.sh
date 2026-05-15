@@ -3,6 +3,11 @@
 
 set -euo pipefail
 
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd -P)
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/../../../scripts/lib-quiet.sh"
+larch_quiet_init
+
 DESIGN_TMPDIR=""
 
 usage() {
@@ -36,7 +41,7 @@ if [[ -z "$DESIGN_TMPDIR" ]]; then
 fi
 
 if [[ ! -d "$DESIGN_TMPDIR" ]]; then
-    echo "FINALIZE_PLAN_STATUS=missing-design-tmpdir"
+    emit_kv FINALIZE_PLAN_STATUS missing-design-tmpdir
     exit 1
 fi
 
@@ -45,18 +50,18 @@ for may_be_empty in rejected-findings.md accepted-plan-findings.md oos.md; do
     if [[ ! -e "$path" ]]; then
         : > "$path"
     elif [[ ! -f "$path" || -L "$path" ]]; then
-        printf 'FINALIZE_PLAN_STATUS=invalid-artifact\n'
-        printf 'FINALIZE_PLAN_ARTIFACT=%s\n' "$may_be_empty"
+        emit_kv FINALIZE_PLAN_STATUS invalid-artifact
+        emit_kv FINALIZE_PLAN_ARTIFACT "$may_be_empty"
         exit 1
     fi
 done
 
 for required in plan.txt diff-lines.txt voting-tally.md; do
     if [[ ! -s "$DESIGN_TMPDIR/$required" ]]; then
-        printf 'FINALIZE_PLAN_STATUS=missing-artifact\n'
-        printf 'FINALIZE_PLAN_ARTIFACT=%s\n' "$required"
+        emit_kv FINALIZE_PLAN_STATUS missing-artifact
+        emit_kv FINALIZE_PLAN_ARTIFACT "$required"
         exit 1
     fi
 done
 
-printf '%s\n' 'FINALIZE_PLAN_STATUS=ok'
+emit_kv FINALIZE_PLAN_STATUS ok

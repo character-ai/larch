@@ -11,3 +11,5 @@ Contract:
 - `SESSION_ID` is stripped of all C0 control characters and DEL (`\000-\037`, `\177`) before being written, mirroring the reader's `check_value` policy. If stripping leaves it empty, the writer aborts with exit 1. Defense-in-depth: avoids generating a manifest the reader would reject.
 
 Edit in sync with `read-design-manifest.sh`, `test-design-manifest.sh`, `/design` Step 5, and `/implement` Step 1 whenever the KV schema or per-key policy changes.
+
+On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.

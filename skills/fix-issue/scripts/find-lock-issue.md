@@ -103,3 +103,5 @@ The rename failure mode is non-fatal because:
 ## Test harness
 
 `skills/fix-issue/scripts/test-find-lock-issue.sh` is the offline regression harness. It uses a PATH-prepended `gh` stub and a per-fixture sterile git repository so the pre-lock cleanliness probe is independent of the developer or CI checkout. It covers the prior find-lock-rename matrix plus dirty explicit-target, dirty auto-pick, dirty umbrella-dispatch, and git-shim probe-failure pre-lock aborts. Wired into `make lint` via the `test-find-lock-issue` target. Both `.sh` and `.md` are in `agent-lint.toml`'s `exclude` list per the Makefile-only-reference pattern.
+
+On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.

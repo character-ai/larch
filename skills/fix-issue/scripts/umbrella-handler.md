@@ -75,3 +75,5 @@ KEY=value lines on stdout. Each subcommand emits its own keyset; auxiliary deleg
 ## Test harness
 
 `skills/fix-issue/scripts/test-umbrella-handler.sh` is the offline regression harness. PATH-prepended `gh` stub (same pattern as `test-find-lock-issue.sh`). Fixtures cover title-only detection (marker positive, plain non-marker, the #753 body-literal-but-plain-title regression that motivated #846), task-list grammar boundaries (cross-repo rejection, self-reference filter, mixed-text-only-no-task-list), pick-child eligibility branches (eligible / locked / managed-prefix / closed), the all-closed terminal state, and FINDING_3's zero-children-is-not-ALL_CLOSED invariant. Run manually via `bash skills/fix-issue/scripts/test-umbrella-handler.sh`. Wired into `make lint` via the `test-umbrella-handler` target under `test-harnesses`. Both `.sh` and `.md` are in `agent-lint.toml`'s exclude list per the Makefile-only-reference pattern.
+
+On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.

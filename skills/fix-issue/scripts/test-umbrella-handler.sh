@@ -35,6 +35,8 @@
 
 set -euo pipefail
 
+export LARCH_QUIET_DISABLE=1
+
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
 SCRIPT="$REPO_ROOT/skills/fix-issue/scripts/umbrella-handler.sh"
 

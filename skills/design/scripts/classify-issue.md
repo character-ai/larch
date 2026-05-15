@@ -30,3 +30,5 @@ The regression harness is `make test-classify-issue`, wired into `test-harnesses
 ## Edit In Sync
 
 Update this contract, `test-classify-issue.sh`, `skills/design/SKILL.md`, and `skills/design/references/heavy-worker.md` together when classification enums or routing semantics change.
+
+On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.

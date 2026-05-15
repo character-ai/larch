@@ -4,6 +4,9 @@
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd -P)
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/../../../scripts/lib-quiet.sh"
+larch_quiet_init
 
 DESIGN_TMPDIR=""
 ACTION_FILE=""
@@ -95,7 +98,7 @@ process_line() {
     case "$line" in
         ACTION=*) ;;
         *)
-            printf 'ACTION_PASSTHROUGH=%s\n' "$line"
+            emit_kv ACTION_PASSTHROUGH "$line"
             return 0
             ;;
     esac
@@ -105,7 +108,7 @@ process_line() {
     case "$action" in
         CLASSIFY|EMIT_PLAN|TALLY|FINALIZE) ;;
         *)
-            printf 'ACTION_PASSTHROUGH=%s\n' "$line"
+            emit_kv ACTION_PASSTHROUGH "$line"
             return 0
             ;;
     esac
@@ -122,14 +125,14 @@ process_line() {
         if [[ "$action" == "$RESUME_FROM" || "$step_name" == "$(normalize_step "$RESUME_FROM")" ]]; then
             resume_seen=true
         elif [[ -f "$sentinel" && "$no_sentinel" != "true" ]]; then
-            printf 'STEP_SKIPPED=%s REASON=completed-before-resume\n' "$action"
+            emit "STEP_SKIPPED=$action REASON=completed-before-resume"
             return 0
         else
-            printf 'STEP_SKIPPED=%s REASON=before-resume\n' "$action"
+            emit "STEP_SKIPPED=$action REASON=before-resume"
             return 0
         fi
     elif [[ -f "$sentinel" && "$no_sentinel" != "true" ]]; then
-        printf 'STEP_SKIPPED=%s REASON=already-completed\n' "$action"
+        emit "STEP_SKIPPED=$action REASON=already-completed"
         return 0
     fi
 
@@ -138,23 +141,29 @@ process_line() {
     # Paths in this workflow are absolute temp paths without spaces.
     read -r -a action_args <<< "$args_text"
 
-    printf 'STEP_STARTED=%s\n' "$action"
+    emit_kv STEP_STARTED "$action"
+    local action_out
     set +e
-    run_action "$action" "${action_args[@]+"${action_args[@]}"}"
+    action_out=$(run_action "$action" "${action_args[@]+"${action_args[@]}"}")
     rc=$?
     set -e
+    if [[ -n "$action_out" ]]; then
+        while IFS= read -r out_line || [[ -n "$out_line" ]]; do
+            emit "$out_line"
+        done <<< "$action_out"
+    fi
 
     if [[ "$rc" -eq 64 ]]; then
-        printf 'ACTION_PASSTHROUGH=%s\n' "$line"
+        emit_kv ACTION_PASSTHROUGH "$line"
         return 0
     fi
     if [[ "$rc" -ne 0 ]]; then
-        printf 'STEP_FAILED=%s REASON=exit-%s\n' "$action" "$rc"
+        emit "STEP_FAILED=$action REASON=exit-$rc"
         return "$rc"
     fi
 
     : > "$sentinel"
-    printf 'STEP_COMPLETED=%s\n' "$action"
+    emit_kv STEP_COMPLETED "$action"
 }
 
 if [[ -n "$ACTION_FILE" ]]; then

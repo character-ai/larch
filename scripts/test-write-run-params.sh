@@ -3,6 +3,8 @@
 
 set -euo pipefail
 
+export LARCH_QUIET_DISABLE=1
+
 REPO_ROOT=$(cd "$(dirname "$0")/.." && pwd -P)
 WRITER="$REPO_ROOT/scripts/write-run-params.sh"
 

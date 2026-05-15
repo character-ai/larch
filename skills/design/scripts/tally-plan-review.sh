@@ -3,6 +3,11 @@
 
 set -euo pipefail
 
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd -P)
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/../../../scripts/lib-quiet.sh"
+larch_quiet_init
+
 DESIGN_TMPDIR=""
 BALLOT_FILE=""
 VOTER_FILES=()
@@ -294,5 +299,5 @@ accept_finding() {
     ' "$score_rows" | sort
 } > "$tally_file"
 
-printf 'TALLY_PLAN_REVIEW_STATUS=ok\n'
-printf 'VOTING_TALLY_FILE=%s\n' "$tally_file"
+emit_kv TALLY_PLAN_REVIEW_STATUS ok
+emit_kv VOTING_TALLY_FILE "$tally_file"

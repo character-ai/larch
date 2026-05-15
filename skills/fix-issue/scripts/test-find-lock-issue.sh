@@ -87,6 +87,8 @@
 
 set -euo pipefail
 
+export LARCH_QUIET_DISABLE=1
+
 # Stub-gh fixtures return synthetic comment state instantly; skip the
 # 1-second GitHub-propagation pause inside issue-lifecycle.sh's lock + lock-no-go
 # post-checks. Production callers (real gh) inherit the default 1s.

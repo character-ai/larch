@@ -27,3 +27,5 @@ The regression harness is `make test-finalize-plan`, wired into `test-harnesses-
 ## Edit In Sync
 
 Update this contract, `test-finalize-plan.sh`, `write-design-manifest.sh`, `skills/design/SKILL.md`, and `skills/design/references/heavy-worker.md` together when manifest-required design artifacts change.
+
+On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.

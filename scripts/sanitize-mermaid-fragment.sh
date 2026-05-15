@@ -4,6 +4,10 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
+
 APPEND_ISSUE="$SCRIPT_DIR/append-execution-issue.sh"
 
 INPUT=""
@@ -12,8 +16,8 @@ WARNINGS_LOG=""
 WARNINGS_STEP="unknown"
 
 fail_usage() {
-    echo "STATUS=internal-error"
-    echo "ERROR=usage: $1"
+    emit_kv STATUS internal-error
+    emit_kv ERROR "usage: $1"
     exit 2
 }
 
@@ -36,8 +40,8 @@ while [ $# -gt 0 ]; do
 done
 
 tmpdir="$(mktemp -d -t mermaid-sanitize-XXXXXX)" || {
-    echo "STATUS=internal-error"
-    echo "ERROR=cannot create temp directory"
+    emit_kv STATUS internal-error
+    emit_kv ERROR "cannot create temp directory"
     exit 2
 }
 trap 'rm -rf "$tmpdir"' EXIT
@@ -45,8 +49,8 @@ trap 'rm -rf "$tmpdir"' EXIT
 SOURCE="$tmpdir/input.md"
 if [ -n "$INPUT" ]; then
     if [ ! -r "$INPUT" ]; then
-        echo "STATUS=internal-error"
-        echo "ERROR=unreadable input"
+        emit_kv STATUS internal-error
+        emit_kv ERROR "unreadable input"
         if [ -n "$WARNINGS_LOG" ] && [ -x "$APPEND_ISSUE" ]; then
             "$APPEND_ISSUE" --log "$WARNINGS_LOG" --category "Warnings" \
                 --entry "- **Step $WARNINGS_STEP — mermaid sanitizer rejected:** internal-error" >/dev/null 2>&1 || true
@@ -263,13 +267,15 @@ while [ "$i" -le "$fence_count" ]; do
 done
 
 if [ -s "$reasons" ]; then
-    echo "STATUS=rejected"
-    cat "$reasons"
-    echo "FENCE_COUNT=$fence_count"
+    emit_kv STATUS rejected
+    while IFS= read -r line || [ -n "$line" ]; do
+        emit "$line"
+    done < "$reasons"
+    emit_kv FENCE_COUNT "$fence_count"
     if [ "$FROM_MD" = true ]; then
         i=1
         while [ "$i" -le "$fence_count" ]; do
-            echo "FENCE_${i}_HEADING=$(cat "$tmpdir/fence-$i.heading")"
+            emit_kv "FENCE_${i}_HEADING" "$(cat "$tmpdir/fence-$i.heading")"
             i=$((i + 1))
         done
     fi
@@ -281,12 +287,12 @@ if [ -s "$reasons" ]; then
     exit 1
 fi
 
-echo "STATUS=ok"
-echo "FENCE_COUNT=$fence_count"
+emit_kv STATUS ok
+emit_kv FENCE_COUNT "$fence_count"
 if [ "$FROM_MD" = true ]; then
     i=1
     while [ "$i" -le "$fence_count" ]; do
-        echo "FENCE_${i}_HEADING=$(cat "$tmpdir/fence-$i.heading")"
+        emit_kv "FENCE_${i}_HEADING" "$(cat "$tmpdir/fence-$i.heading")"
         i=$((i + 1))
     done
 fi

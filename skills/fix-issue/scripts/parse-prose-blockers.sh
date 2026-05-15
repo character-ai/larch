@@ -30,6 +30,13 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LARCH_QUIET_DISABLE=1
+export LARCH_QUIET_DISABLE
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/../../../scripts/lib-quiet.sh"
+larch_quiet_init
+
 # Read stdin into a variable. `cat` on closed/empty stdin returns empty string
 # without failure.
 text=$(cat)

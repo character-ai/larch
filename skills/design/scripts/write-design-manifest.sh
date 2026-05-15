@@ -4,6 +4,11 @@
 
 set -euo pipefail
 
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd -P)
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/../../../scripts/lib-quiet.sh"
+larch_quiet_init
+
 DESIGN_TMPDIR="${DESIGN_TMPDIR:-}"
 IMPLEMENT_TMPDIR="${IMPLEMENT_TMPDIR:-}"
 
@@ -198,4 +203,4 @@ done
 mv "$TMP" "$MANIFEST"
 trap - EXIT
 rm -rf "$STAGE_DIR"
-printf 'MANIFEST_WRITTEN=%s\n' "$MANIFEST"
+emit_kv MANIFEST_WRITTEN "$MANIFEST"
