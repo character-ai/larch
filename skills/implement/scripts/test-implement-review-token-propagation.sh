@@ -6,7 +6,7 @@ set -euo pipefail
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)
 SESSION_SETUP="$REPO_ROOT/scripts/session-setup.sh"
 READ_KEY="$REPO_ROOT/scripts/read-session-env-key.sh"
-LAUNCH_CURSOR_REVIEW="$REPO_ROOT/scripts/launch-review.sh"
+REVIEW_AND_FIX="$REPO_ROOT/skills/review-and-fix/scripts/review-and-fix.sh"
 
 fail() { echo "FAIL: $1" >&2; exit 1; }
 
@@ -72,31 +72,60 @@ unsafe_timing_ledger=$("$READ_KEY" --file "$UNSAFE_REVIEW_ENV" --key LARCH_TIMIN
 grep -Fq "session-setup.sh: warning: ignoring unsafe LARCH_TIMING_LEDGER from caller-env (not under accepted root)" "$UNSAFE_ERR" \
     || fail "unsafe LARCH_TIMING_LEDGER warning missing"
 
-STUB_BIN="$TMP/bin"
-mkdir -p "$STUB_BIN"
-cat > "$STUB_BIN/cursor" <<'EOF_CURSOR'
+CORE_STUB="$TMP/review-core-stub.sh"
+cat > "$CORE_STUB" <<'EOF_CORE'
 #!/usr/bin/env bash
 set -euo pipefail
-: "${CURSOR_TOKEN_SESSION_FILE:?}"
-printf '%s\n' "${LARCH_TOKEN_SESSION_ID:-}" > "$CURSOR_TOKEN_SESSION_FILE"
-printf '{"result":"review ok","usage":{"inputTokens":1,"outputTokens":1,"cacheReadTokens":0,"cacheWriteTokens":0}}\n'
-EOF_CURSOR
-chmod +x "$STUB_BIN/cursor"
+out=""
+session_env=""
+round="1"
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --output-dir) out="$2"; shift 2 ;;
+        --session-env-path) session_env="$2"; shift 2 ;;
+        --round-num) round="$2"; shift 2 ;;
+        *) shift; [[ $# -gt 0 && "$1" != --* ]] && shift || true ;;
+    esac
+done
+mkdir -p "$out"
+printf 'SESSION_ENV_PATH=%s\n' "$session_env" > "${CORE_CAPTURE_FILE:?}"
+printf 'LARCH_TOKEN_SESSION_ID=%s\n' "${LARCH_TOKEN_SESSION_ID:-}" >> "$CORE_CAPTURE_FILE"
+printf 'LARCH_CLAUDE_SOURCE_FILE=%s\n' "${LARCH_CLAUDE_SOURCE_FILE:-}" >> "$CORE_CAPTURE_FILE"
+printf 'LARCH_TIMING_LEDGER=%s\n' "${LARCH_TIMING_LEDGER:-}" >> "$CORE_CAPTURE_FILE"
+: > "$out/accepted-findings.md"
+: > "$out/rejected-findings.md"
+: > "$out/oos-accepted-review.md"
+printf '# Review Round %s\n' "$round" > "$out/review-round-summary.md"
+printf '{"schema_version":1,"rounds_completed":%s,"accepted_count":0,"rejected_count":0}\n' "$round" > "$out/review-summary.json"
+printf 'REVIEW_CORE_STATUS=zero-findings\nROUND_NUM=%s\nACCEPTED_COUNT=0\nREJECTED_COUNT=0\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nPANEL_MODE=normal\nPANEL_SHAPE=simple\n' "$round" "$out" "$out"
+EOF_CORE
+chmod +x "$CORE_STUB"
 
-OUTPUT="$TMP/cursor-review.txt"
-TOKEN_CAPTURE="$TMP/cursor-token-session.txt"
-PATH="$STUB_BIN:$PATH" \
-    CURSOR_TOKEN_SESSION_FILE="$TOKEN_CAPTURE" \
+IMPLEMENT_TMPDIR="$TMP/claude-implement-token-test"
+mkdir -p "$IMPLEMENT_TMPDIR"
+cp "$REVIEW_ENV" "$IMPLEMENT_TMPDIR/session-env.sh"
+CORE_CAPTURE="$TMP/review-core-capture.env"
+CORE_CAPTURE_FILE="$CORE_CAPTURE" \
     LARCH_TOKEN_SESSION_ID="$token_session_id" \
     LARCH_CLAUDE_SOURCE_FILE="$claude_source_file" \
-    LARCH_CURSOR_MODEL=stub-cursor-model \
-    CURSOR_API_KEY="" \
-    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 \
-    LIB_CURSOR_AUTH_TEST_UNAME=Linux \
-    env -u IMPLEMENT_TMPDIR \
-    "$LAUNCH_CURSOR_REVIEW" --tool cursor --output "$OUTPUT" --timeout 5 --prompt "review prompt" >/dev/null
+    LARCH_TIMING_LEDGER="$timing_ledger" \
+    REVIEW_AND_FIX_REVIEW_CORE_SH="$CORE_STUB" \
+    "$REVIEW_AND_FIX" \
+        --implement-tmpdir "$IMPLEMENT_TMPDIR" \
+        --mode diff \
+        --panel simple \
+        --round-num 1 \
+        --session-env-path "$IMPLEMENT_TMPDIR/session-env.sh" \
+        --codex-available true \
+        --cursor-available true >/dev/null
 
-[[ "$(cat "$TOKEN_CAPTURE")" == "parent-implement-session" ]] \
-    || fail "cursor review launcher did not inherit parent token session id"
+grep -Fq "SESSION_ENV_PATH=$IMPLEMENT_TMPDIR/session-env.sh" "$CORE_CAPTURE" \
+    || fail "review-and-fix did not pass implement session-env path to review-core"
+grep -Fq "LARCH_TOKEN_SESSION_ID=parent-implement-session" "$CORE_CAPTURE" \
+    || fail "review-core subprocess did not inherit parent token session id"
+grep -Fq "LARCH_CLAUDE_SOURCE_FILE=$TMP/claude-source.env" "$CORE_CAPTURE" \
+    || fail "review-core subprocess did not inherit parent Claude source file"
+grep -Fq "LARCH_TIMING_LEDGER=$TIMING_LEDGER" "$CORE_CAPTURE" \
+    || fail "review-core subprocess did not inherit parent timing ledger"
 
 echo "PASS: test-implement-review-token-propagation.sh"

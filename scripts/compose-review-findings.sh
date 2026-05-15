@@ -76,6 +76,7 @@ parse_artifact() {
     case "$kind" in
         plan-review-accepted) phase="plan-review"; outcome="accepted"; id_prefix="" ;;
         plan-review-rejected) phase="plan-review"; outcome="rejected"; id_prefix="REJ_P" ;;
+        code-review-accepted) phase="code-review"; outcome="accepted"; id_prefix="" ;;
         code-review-rejected) phase="code-review"; outcome="rejected"; id_prefix="REJ_C" ;;
         *) fail "internal: unknown kind: $kind" ;;
     esac
@@ -93,6 +94,14 @@ parse_artifact() {
     while IFS= read -r line || [ -n "$line" ]; do
         case "$kind" in
             plan-review-accepted)
+                if [[ "$line" =~ ^###[[:space:]]+(FINDING_[0-9A-Za-z_]+):[[:space:]]*(.*)$ ]]; then
+                    flush_pending
+                    pending_id="${BASH_REMATCH[1]}"
+                    pending_title="${BASH_REMATCH[2]}"
+                    continue
+                fi
+                ;;
+            code-review-accepted)
                 if [[ "$line" =~ ^###[[:space:]]+(FINDING_[0-9A-Za-z_]+):[[:space:]]*(.*)$ ]]; then
                     flush_pending
                     pending_id="${BASH_REMATCH[1]}"
@@ -132,7 +141,23 @@ parse_artifact() {
 
 [ -n "$DESIGN_DIR" ] && parse_artifact "$DESIGN_DIR/accepted-plan-findings.md" plan-review-accepted
 [ -n "$DESIGN_DIR" ] && parse_artifact "$DESIGN_DIR/rejected-findings.md" plan-review-rejected
-[ -n "$IMPLEMENT_TMPDIR" ] && parse_artifact "$IMPLEMENT_TMPDIR/rejected-findings.md" code-review-rejected
+if [ -n "$IMPLEMENT_TMPDIR" ]; then
+    shopt -s nullglob
+    round_dirs=( "$IMPLEMENT_TMPDIR"/round-* )
+    shopt -u nullglob
+    round_rejected_found=false
+    for round_dir in "${round_dirs[@]+"${round_dirs[@]}"}"; do
+        [ -d "$round_dir" ] || continue
+        parse_artifact "$round_dir/accepted-findings.md" code-review-accepted
+        if [ -s "$round_dir/rejected-findings.md" ]; then
+            round_rejected_found=true
+            parse_artifact "$round_dir/rejected-findings.md" code-review-rejected
+        fi
+    done
+    if [ "$round_rejected_found" = false ]; then
+        parse_artifact "$IMPLEMENT_TMPDIR/rejected-findings.md" code-review-rejected
+    fi
+fi
 
 mkdir -p "$(dirname "$OUTPUT")" || fail "cannot create output directory"
 mv -f "$TMP_OUT" "$OUTPUT" || fail "failed to write output: $OUTPUT"

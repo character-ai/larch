@@ -1,6 +1,6 @@
 # Review Heavy Worker Reference
 
-**Consumer**: `/review` heavy-phase Agent-tool subagent dispatched when `/review` is invoked with `--subagent` AND `diff_mode=true` (typically by `/implement` Step 5 forwarding `--subagent` by default when `inline_mode=false`; also reachable from standalone `/review --diff --subagent`).
+**Consumer**: `/review` heavy-phase Agent-tool subagent dispatched when `/review` is invoked with `--subagent` AND `diff_mode=true` (reachable from standalone `/review --diff --subagent`; `/implement` Step 5 now calls `review-and-fix.sh` directly instead of invoking `/review`).
 
 **Contract**: The subagent runs the token-heavy diff-mode review machinery (Steps 1-3: gather context, launch reviewers, recursive collect/vote/fix loop) in isolated context so reviewer transcripts, panel rounds, and fix reasoning do not enter the parent conversation. Code edits (Step 3e) write directly to the git working tree and are visible to the parent when the subagent returns. The subagent writes file-backed artifacts under `$REVIEW_TMPDIR/` that the parent consumes for Steps 4-5.
 
@@ -52,7 +52,7 @@ Additionally write to the caller-env parent directory when `SESSION_ENV_PATH` is
 
 NEVER return to the parent while any reviewer you launched with `run_in_background: true` is still running. The only allowed wait mechanism is the matching foreground `collect-agent-results.sh` invocation. Do not enter a "wait for notifications" state and surrender control; the parent treats an Agent-tool return as the heavy phase result.
 
-**SendMessage dependency.** This worker subagent is dispatched via the Agent tool. If the parent Claude Code session does not have `SendMessage` available, any worker yield becomes a fatal stall. Operators running in environments without `SendMessage` should pass `--inline` to `/implement` so `/review` runs in the parent's own context. See `AGENTS.md` for the project-wide reference.
+**SendMessage dependency.** This worker subagent is dispatched via the Agent tool. If the parent Claude Code session does not have `SendMessage` available, any worker yield becomes a fatal stall. Standalone `/review --diff --subagent` users in environments without `SendMessage` should omit `--subagent`. See `AGENTS.md` for the project-wide reference.
 
 ## Mid-Run Dirty-Tree Probe Contract
 

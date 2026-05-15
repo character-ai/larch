@@ -84,7 +84,6 @@ The optional `--validation-mode` modifier forwards `--validation-mode` to the va
 | `/research` research phase (Standard / Deep) | `--substantive-validation` (no `--validation-mode`; 200-word floor + citation requirement; outputs are 2-3-paragraph research prose) |
 | `/research` validation phase (Step 2.4) | `--substantive-validation --validation-mode` (30-word floor + no-findings sentinel short-circuit + `CURSOR_EMPTY_RESPONSE` mapping + citation requirement; outputs are short numbered findings) |
 | `/review` Step 3a code review | `--substantive-validation --validation-mode` |
-| `/implement` Step 5 quick-mode review | `--substantive-validation --validation-mode` |
 | `/design` Step 3 plan review | `--substantive-validation --validation-mode` |
 
 The dialectic-phase (`/design` Step 2a.5 debaters and judges) collectors deliberately do NOT pass these flags — their output contracts (debate prose with structured tags / vote line) differ from the reviewer-style numbered-findings shape.

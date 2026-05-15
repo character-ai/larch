@@ -4,11 +4,9 @@
 # Pins the anti-polling-loop literals in two files:
 #   (1) AGENTS.md: the Monitor / Bash-polling-loop bullet must mention BOTH
 #       Monitor and Bash run_in_background polling loops.
-#   (2) skills/implement/SKILL.md: the Step 5.3-rounds1to3 launch site carries
-#       an inline reminder that collect-agent-results.sh is the wait point —
-#       contributors must NOT add a Bash polling loop to wait on the launched
-#       reviewers. (The Step 5.3-generic section was removed when rounds 4-7
-#       were eliminated; the harness no longer checks for it.)
+#   (2) skills/implement/SKILL.md: Step 5 uses one foreground
+#       review-and-fix.sh call per round. Contributors must not reintroduce
+#       background reviewer launch + polling prose in the orchestrator prompt.
 #
 # Wired into `make lint` via the `test-implement-anti-polling-rule` target.
 # Runtime enforcement is the model-level reading of the prose; this harness
@@ -49,35 +47,21 @@ check "$AGENTS_MD" \
     "AGENTS.md cites the for/while/until + sleep pattern" \
     '`for`/`while`/`until` + `sleep`'
 
-# (2) skills/implement/SKILL.md: inline reminder at Step 5.3-rounds1to3 site.
-# Extract the heading-bounded block and grep within.
-SITE_LITERAL='Do NOT add a Bash polling loop to wait'
-
-# Block extraction: from "**5.3-<id>" up to (but not including) the next
-# "**5.3" or "**5.4" boundary. The closing boundaries match the literal
-# section markers in SKILL.md ("**5.3.a", "**5.4 —").
-extract_block() {
-    local start_re="$1" file="$2"
-    awk -v start="$start_re" '
-        $0 ~ start { in_block=1; print; next }
-        in_block && /^\*\*5\.(3|4)/ { in_block=0 }
-        in_block { print }
-    ' "$file"
-}
-
-ROUNDS_BLOCK=$(extract_block '^\*\*5\.3-rounds1to3' "$IMPL_MD")
-
-if [[ -z "$ROUNDS_BLOCK" ]]; then fail "SKILL.md Step 5.3-rounds1to3 block extraction" "**5.3-rounds1to3 heading"; fi
-
-if grep -qF -- "$SITE_LITERAL" <<<"$ROUNDS_BLOCK"; then
-    PASS=$((PASS + 1)); echo "  PASS: SKILL.md Step 5.3-rounds1to3 carries inline reminder"
-else
-    fail "SKILL.md Step 5.3-rounds1to3 missing inline reminder" "$SITE_LITERAL"
-fi
-
 check "$IMPL_MD" \
-    "SKILL.md cites collect-agent-results.sh as the wait point" \
-    'collect-agent-results.sh` foreground call'
+    "SKILL.md Step 5 uses foreground review-and-fix call" \
+    'For each round, run one foreground Bash call'
+check "$IMPL_MD" \
+    "SKILL.md Step 5 delegates reviewer waiting to scripts" \
+    'review-and-fix.sh` directly for both quick and normal modes'
+
+STEP5_BLOCK=$(awk '
+    /^<!-- step:5 / { in_block=1 }
+    /^<!-- step:6 / { in_block=0 }
+    in_block { print }
+' "$IMPL_MD")
+if grep -Fq 'run_in_background: true' <<<"$STEP5_BLOCK"; then
+    fail "SKILL.md must not reintroduce background Step 5 reviewer launches" 'run_in_background: true'
+fi
 
 echo ""
 echo "All $PASS assertions passed."

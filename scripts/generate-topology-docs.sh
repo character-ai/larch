@@ -192,7 +192,7 @@ cat >"$TMP" <<'HEADER'
 
 This document is a consumer-doc projection of runtime authorities. The runtime authority listed for each row remains the source of truth; the projection exists so consumer docs can link to stable row anchors instead of repeating drift-prone counts.
 
-Quick-mode `/implement` reviewer-loop phrases such as `3 rounds`, `rounds 1-3`, `6 Cursor specialists`, and `generic Codex` are intentionally excluded. They are byte-pinned by `scripts/test-quick-mode-docs-sync.sh` and remain owned by that harness's edit-in-sync rule.
+Quick-mode `/implement` reviewer-loop phrases such as `3 rounds`, `simple review panel`, `Cursor edge-cases`, `Codex structure`, and `Claude generic` are intentionally excluded. They are byte-pinned by `scripts/test-quick-mode-docs-sync.sh` and remain owned by that harness's edit-in-sync rule.
 
 | Key | Value | Composition | Runtime Authority |
 |---|---:|---|---|

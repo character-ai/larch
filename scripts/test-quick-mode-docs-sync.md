@@ -20,17 +20,18 @@ Without this harness, drift between the canonical quick-mode contract and its pu
 
 ### Positive anchors (required in every target)
 
-Each target file MUST contain all five markers:
+Each target file MUST contain all six markers:
 
 | Marker | Casing | Rationale |
 |--------|--------|-----------|
 | `3 rounds` | case-sensitive `grep -F` | Pins the 3-round cap. SKILL.md uses lowercase "3 rounds" consistently. |
 | `no voting panel` | **case-insensitive** `grep -iF` | Semantic marker; tolerates legitimate sentence-case rewrites (e.g. "No voting panel"). |
-| `rounds 1-3` | **case-insensitive** `grep -iF` | Pins the only quick-mode review round band. Insensitive because `docs/review-agents.md` uses both `Rounds 1-3` (table cell) and `rounds 1-3` (Note A prose). Added per #1002. |
-| `6 Cursor specialists` | case-sensitive `grep -F` | Pins the specialist count in rounds 1-3. Together with the markers below, encodes the multi-lane topology so a future change that drops the specialist panel from rounds 1-3 fails CI. Added per #1002. |
-| `generic Codex` | case-sensitive `grep -F` | Pins the generic Codex slot in rounds 1-3. Added per #1002. |
+| `simple review panel` | **case-insensitive** `grep -iF` | Pins that quick mode uses the delegated `--panel simple` topology. |
+| `Cursor edge-cases` | case-sensitive `grep -F` | Pins the Cursor slot in the simple panel. |
+| `Codex structure` | case-sensitive `grep -F` | Pins the Codex slot in the simple panel. |
+| `Claude generic` | case-sensitive `grep -F` | Pins the always-present Claude generic slot in the simple panel. |
 
-The last three markers encode the rounds-1-3 topology described in the canonical Step 5 contract. Without them, a SKILL.md edit that re-shuffled the multi-lane structure (e.g. removing the generic Codex from rounds 1-3) could ship without the public docs being updated.
+The last four markers encode the delegated simple-panel topology described in the canonical Step 5 contract. Without them, a SKILL.md edit that re-shuffled the quick-mode reviewer composition could ship without the public docs being updated.
 
 ### Negative checks (forbidden in public docs only)
 

@@ -21,6 +21,8 @@ Flags:
 
 Run `${CLAUDE_PLUGIN_ROOT}/skills/review-and-fix/scripts/review-and-fix.sh --findings-file "$FINDINGS_FILE" --review-tmpdir "$REVIEW_TMPDIR" [--session-env-path "$SESSION_ENV_PATH"]`. For each emitted `FINDING_ID`, run `${CLAUDE_PLUGIN_ROOT}/skills/review-and-fix/scripts/call-fixer.sh --finding-file "$FINDINGS_FILE" --finding-id "$FINDING_ID" --review-tmpdir "$REVIEW_TMPDIR"`.
 
+The same script also exposes a `--implement-tmpdir` orchestrator mode for `/implement` Step 5. That mode is not invoked through this skill wrapper.
+
 Script contracts and harnesses: `${CLAUDE_PLUGIN_ROOT}/skills/review-and-fix/scripts/review-and-fix.sh` / `${CLAUDE_PLUGIN_ROOT}/skills/review-and-fix/scripts/review-and-fix.md` / `${CLAUDE_PLUGIN_ROOT}/skills/review-and-fix/scripts/test-review-and-fix.sh` / `${CLAUDE_PLUGIN_ROOT}/skills/review-and-fix/scripts/test-review-and-fix.md`, and `${CLAUDE_PLUGIN_ROOT}/skills/review-and-fix/scripts/call-fixer.sh` / `${CLAUDE_PLUGIN_ROOT}/skills/review-and-fix/scripts/call-fixer.md` / `${CLAUDE_PLUGIN_ROOT}/skills/review-and-fix/scripts/test-call-fixer.sh` / `${CLAUDE_PLUGIN_ROOT}/skills/review-and-fix/scripts/test-call-fixer.md`.
 
 If `PATH_VALID=false`, skip the finding and call `call-fixer.sh --finding-file "$FINDINGS_FILE" --finding-id "$FINDING_ID" --review-tmpdir "$REVIEW_TMPDIR" --mark-skipped "unsafe-or-missing-path"`. If `PATH_VALID=true`, use Edit/Write tools only on the emitted repo-relative non-symlink non-submodule path, apply the minimum code change needed for the structured concern and suggested fix, then call `call-fixer.sh --finding-file "$FINDINGS_FILE" --finding-id "$FINDING_ID" --review-tmpdir "$REVIEW_TMPDIR" --mark-applied`.
