@@ -1797,6 +1797,71 @@ SL_NORETRY_ATTEMPTS=$(cat "$SL_NORETRY_COUNT" 2>/dev/null || echo "0")
 assert_equals "SL-no-retry stub invoked exactly 1 time (non-auth failures must not retry)" "1" "$SL_NORETRY_ATTEMPTS"
 rm -f "$SL_NORETRY_COUNT"
 
+# Case SL-exit45-auth: Cursor can emit the macOS security CLI failure in a
+# two-line stderr packet. Assert the launcher treats it as auth and retries.
+SL_EXIT45_AUTH_COUNT="$TMPDIR/sl-exit45-auth-count.txt"
+printf '0' > "$SL_EXIT45_AUTH_COUNT"
+cat > "$STUB_BIN/cursor-exit45-auth" <<STUB_EXIT45_AUTH
+#!/usr/bin/env bash
+count=\$(cat "${SL_EXIT45_AUTH_COUNT}" 2>/dev/null || echo 0)
+count=\$((count + 1))
+printf '%s' "\$count" > "${SL_EXIT45_AUTH_COUNT}"
+if (( count == 1 )); then
+    printf "Error: Security command failed: Security process exited with code: 45\n" >&2
+    printf "Security process exited with code: 45\n" >&2
+    exit 1
+fi
+printf '{"result":"exit45-auth OK","usage":{"inputTokens":1,"outputTokens":2,"cacheReadTokens":0,"cacheWriteTokens":0}}\n'
+STUB_EXIT45_AUTH
+chmod +x "$STUB_BIN/cursor-exit45-auth"
+ln -sf "$STUB_BIN/cursor-exit45-auth" "$STUB_BIN/cursor"
+OUT_SL_EXIT45_AUTH="$TMPDIR/cursor-sl-exit45-auth.txt"
+set +e
+USER="${SERIAL_LOCK_USER}-exit45-auth" \
+    LARCH_EXTERNAL_SERIAL_LOCK_FORCE_UNAME=Darwin \
+    LARCH_EXTERNAL_SERIAL_LOCK_DELAY=0 \
+    LARCH_EXTERNAL_AUTH_RETRIES=2 \
+    PATH="$STUB_BIN:$PATH" \
+    "$LAUNCHER" --output "$OUT_SL_EXIT45_AUTH" --timeout 10 --prompt "sl-exit45-auth" >/dev/null 2>&1
+RC_SL_EXIT45_AUTH=$?
+set -e
+assert_equals "SL-exit45-auth launcher exits 0 after one retry" "0" "$RC_SL_EXIT45_AUTH"
+SL_EXIT45_AUTH_ATTEMPTS=$(cat "$SL_EXIT45_AUTH_COUNT" 2>/dev/null || echo "0")
+assert_equals "SL-exit45-auth stub invoked exactly 2 times" "2" "$SL_EXIT45_AUTH_ATTEMPTS"
+rm -f "$SL_EXIT45_AUTH_COUNT"
+
+# Case SL-security-cmd-failed-auth: the outer wrapper line alone is enough to
+# classify the failure as retryable auth.
+SL_SECURITY_CMD_FAILED_AUTH_COUNT="$TMPDIR/sl-security-cmd-failed-auth-count.txt"
+printf '0' > "$SL_SECURITY_CMD_FAILED_AUTH_COUNT"
+cat > "$STUB_BIN/cursor-security-cmd-failed-auth" <<STUB_SECURITY_CMD_FAILED_AUTH
+#!/usr/bin/env bash
+count=\$(cat "${SL_SECURITY_CMD_FAILED_AUTH_COUNT}" 2>/dev/null || echo 0)
+count=\$((count + 1))
+printf '%s' "\$count" > "${SL_SECURITY_CMD_FAILED_AUTH_COUNT}"
+if (( count == 1 )); then
+    printf "Error: Security command failed: Security process exited with code: 45\n" >&2
+    exit 1
+fi
+printf '{"result":"security-cmd-failed-auth OK","usage":{"inputTokens":1,"outputTokens":2,"cacheReadTokens":0,"cacheWriteTokens":0}}\n'
+STUB_SECURITY_CMD_FAILED_AUTH
+chmod +x "$STUB_BIN/cursor-security-cmd-failed-auth"
+ln -sf "$STUB_BIN/cursor-security-cmd-failed-auth" "$STUB_BIN/cursor"
+OUT_SL_SECURITY_CMD_FAILED_AUTH="$TMPDIR/cursor-sl-security-cmd-failed-auth.txt"
+set +e
+USER="${SERIAL_LOCK_USER}-security-cmd-failed-auth" \
+    LARCH_EXTERNAL_SERIAL_LOCK_FORCE_UNAME=Darwin \
+    LARCH_EXTERNAL_SERIAL_LOCK_DELAY=0 \
+    LARCH_EXTERNAL_AUTH_RETRIES=2 \
+    PATH="$STUB_BIN:$PATH" \
+    "$LAUNCHER" --output "$OUT_SL_SECURITY_CMD_FAILED_AUTH" --timeout 10 --prompt "sl-security-cmd-failed-auth" >/dev/null 2>&1
+RC_SL_SECURITY_CMD_FAILED_AUTH=$?
+set -e
+assert_equals "SL-security-cmd-failed-auth launcher exits 0 after one retry" "0" "$RC_SL_SECURITY_CMD_FAILED_AUTH"
+SL_SECURITY_CMD_FAILED_AUTH_ATTEMPTS=$(cat "$SL_SECURITY_CMD_FAILED_AUTH_COUNT" 2>/dev/null || echo "0")
+assert_equals "SL-security-cmd-failed-auth stub invoked exactly 2 times" "2" "$SL_SECURITY_CMD_FAILED_AUTH_ATTEMPTS"
+rm -f "$SL_SECURITY_CMD_FAILED_AUTH_COUNT"
+
 # Restore normal cursor stub for remaining tests.
 ln -sf "$STUB_BIN/cursor-sl" "$STUB_BIN/cursor"
 

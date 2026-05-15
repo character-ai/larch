@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [27.6.2] - 2026-05-15
+
+### Changed
+
+- Extend Cursor auth failure detection to match macOS security CLI exit signatures
+- Add Cursor launcher regression coverage for two-line exit-45 and wrapper-only security failures
+- Update the shared launcher library docs for the new Cursor auth signature
+
 ## [27.6.1] - 2026-05-15
 
 ### Changed
