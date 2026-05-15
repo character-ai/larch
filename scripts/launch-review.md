@@ -61,6 +61,11 @@ Gemini remains generic-only and rejects specialist flags.
   lives in macOS Keychain, not in `cli-config.json`, so the private dir does
   not affect keychain-based auth; the existing `external_serial_lock_acquire`
   keychain-bootstrap lock is retained unchanged.
+- Cursor JSON envelopes with an explicit empty `.result` are promoted to the
+  literal `CURSOR_EMPTY_RESPONSE` in the reviewer output file after JSON
+  post-processing. Missing `.result`, malformed JSON, or non-JSON prose keep the
+  existing fallback behavior; only the explicit empty-result backend response
+  gets the distinct marker.
 - Codex sets `CODEX_SANDBOX_MODE=read-only` and emits a static
   `STATUS=clean MODE=baseline REASON=codex-sandbox-read-only` sidecar without
   running the scan — `--sandbox read-only` blocks writes at the syscall level,

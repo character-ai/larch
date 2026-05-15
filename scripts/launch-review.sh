@@ -991,6 +991,13 @@ if [[ -s "$OUTPUT" ]]; then
             TOT=$((INP + OUT + CR + CW))
             "$PLUGIN_ROOT/scripts/token-ledger.sh" record-vendor cursor input="$INP" output="$OUT" cache_read="$CR" cache_create="$CW" total="$TOT" raw="cursor_review" >/dev/null 2>&1 || true
         fi
+        # Distinguish Cursor's empty .result envelope from malformed JSON or
+        # generic empty output so the collector can report the backend failure
+        # mode directly. Use (.result // "") == "" so that null and absent
+        # .result are treated identically to an explicit empty string.
+        if jq -e '(.result // "") == ""' "${OUTPUT}.json" >/dev/null 2>&1; then
+            printf 'CURSOR_EMPTY_RESPONSE\n' > "$OUTPUT"
+        fi
     fi
 fi
 

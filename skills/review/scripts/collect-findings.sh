@@ -197,6 +197,15 @@ parse_output() {
     if grep -Fxq 'NO_ISSUES_FOUND' "$file"; then
         return 0
     fi
+    # JSON no-findings sentinel (canonical form per #2156): a file whose entire
+    # trimmed content is the single-line JSON object {"no_issues_found": true}.
+    if command -v jq >/dev/null 2>&1; then
+        local _trimmed
+        _trimmed=$(awk 'NF{gsub(/^[[:space:]]+|[[:space:]]+$/,"",$0); print; exit}' "$file" 2>/dev/null)
+        if jq -e 'type == "object" and .no_issues_found == true' <<<"$_trimmed" >/dev/null 2>&1; then
+            return 0
+        fi
+    fi
     # In description mode dual-list output: split on ### In-Scope Findings vs ### Out-of-Scope Observations (#659). In diff mode single-list output: preserve entire output when headers absent. Both modes: awk handles dual-section with fail-open. Specialist dual-section format matches description headers. Claude generic produces single-list output; [OUT_OF_SCOPE] prefix routes OOS.
     awk -v label="$label" -v mode="$MODE" '
     BEGIN { oos=0; body=""; title="" }

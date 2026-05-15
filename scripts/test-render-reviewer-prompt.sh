@@ -94,8 +94,8 @@ grep -Fq 'Review research findings across five focus areas' "$HAPPY_OUT" \
   || fail "happy: {REVIEW_TARGET} substitution missing or unexpected"
 note_pass
 
-# Assertion: contains NO_ISSUES_FOUND and does NOT contain "No in-scope issues found".
-grep -Fq 'NO_ISSUES_FOUND' "$HAPPY_OUT" || fail "happy: missing NO_ISSUES_FOUND sentinel"
+# Assertion: contains the JSON no-findings sentinel and does NOT contain "No in-scope issues found".
+grep -Fq '{"no_issues_found": true}' "$HAPPY_OUT" || fail "happy: missing JSON no-findings sentinel"
 if grep -Fq 'No in-scope issues found.' "$HAPPY_OUT"; then
   fail "happy: archetype default 'No in-scope issues found.' should have been replaced by sentinel override"
 fi

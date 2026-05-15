@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [27.6.12] - 2026-05-15
+
+### Changed
+
+- Adopted the JSON no-findings sentinel in plan-review and external reviewer prompts while keeping NO_ISSUES_FOUND accepted by validators.
+- Added CURSOR_EMPTY_RESPONSE detection for Cursor envelopes with empty .result and mapped validator exit 5 to a distinct collector status.
+- Updated script contracts, docs, and regression harnesses for sentinel parsing, empty-result handling, and prompt assertions.
+
 ## [27.6.9] - 2026-05-15
 
 ### Changed

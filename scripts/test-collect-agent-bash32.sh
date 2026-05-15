@@ -34,6 +34,9 @@
 #     (positive); run again WITHOUT --validation-mode → STATUS=NOT_SUBSTANTIVE
 #     (negative control — confirms the flag actually changes behavior).
 #     Skip-with-loud-message on bash 4+.
+#   Case 5 — CURSOR_EMPTY_RESPONSE mapping: validator exit 5 under
+#     --validation-mode becomes STATUS=CURSOR_EMPTY_RESPONSE rather than the
+#     generic STATUS=NOT_SUBSTANTIVE.
 #
 # Wired into Makefile via the test-collect-agent-bash32 target and the
 # test-harnesses aggregator; runs on every `make lint`.
@@ -198,7 +201,19 @@ else
     fail "case 4: collector mis-correlated duplicate-basename OUTPUT_B"
 fi
 
-# --- Case 5: empty .diag falls back to status-derived failure reason --------
+# --- Case 5: validator exit 5 maps to CURSOR_EMPTY_RESPONSE ----------------
+F5="$TMPROOT/cursor-empty-response-output.txt"
+printf 'CURSOR_EMPTY_RESPONSE\n' > "$F5"
+printf '0\n' > "$F5.done"
+
+"$COLLECTOR" --timeout 30 --substantive-validation --validation-mode "$F5" >"$TMPROOT/case5.stdout" 2>"$TMPROOT/case5.stderr"
+if grep -A 4 -F "REVIEWER_FILE=$F5" "$TMPROOT/case5.stdout" | grep -q '^STATUS=CURSOR_EMPTY_RESPONSE$'; then
+    ok "case 5: validator exit 5 maps to STATUS=CURSOR_EMPTY_RESPONSE"
+else
+    fail "case 5: validator exit 5 did not map to STATUS=CURSOR_EMPTY_RESPONSE"
+fi
+
+# --- Case 6: empty .diag falls back to status-derived failure reason --------
 #
 # Empty .diag files are possible when a launcher creates the sidecar but the
 # failing subprocess writes no diagnostic bytes. The collector should ignore
@@ -209,19 +224,20 @@ printf 'non-empty failed reviewer output\n' > "$OUTPUT_C"
 printf '7\n' > "$OUTPUT_C.done"
 : > "$OUTPUT_C.diag"
 
-"$COLLECTOR" --timeout 1 "$OUTPUT_C" >"$TMPROOT/case5.stdout" 2>"$TMPROOT/case5.stderr"
+"$COLLECTOR" --timeout 1 "$OUTPUT_C" >"$TMPROOT/case6.stdout" 2>"$TMPROOT/case6.stderr"
 
-if grep -A 5 -F "REVIEWER_FILE=$OUTPUT_C" "$TMPROOT/case5.stdout" | grep -q '^STATUS=FAILED$'; then
-    ok "case 5: empty diag fixture remains STATUS=FAILED"
+if grep -A 5 -F "REVIEWER_FILE=$OUTPUT_C" "$TMPROOT/case6.stdout" | grep -q '^STATUS=FAILED$'; then
+    ok "case 6: empty diag fixture remains STATUS=FAILED"
 else
-    fail "case 5: empty diag fixture did not report STATUS=FAILED"
+    fail "case 6: empty diag fixture did not report STATUS=FAILED"
 fi
 
-if grep -A 6 -F "REVIEWER_FILE=$OUTPUT_C" "$TMPROOT/case5.stdout" | grep -q '^FAILURE_REASON=Process failed with exit code 7$'; then
-    ok "case 5: empty diag falls back to default failure reason"
+if grep -A 6 -F "REVIEWER_FILE=$OUTPUT_C" "$TMPROOT/case6.stdout" | grep -q '^FAILURE_REASON=Process failed with exit code 7$'; then
+    ok "case 6: empty diag falls back to default failure reason"
 else
-    fail "case 5: empty diag did not fall back to default failure reason"
+    fail "case 6: empty diag did not fall back to default failure reason"
 fi
+
 
 echo ""
 echo "Summary: $PASS passed, $FAIL failed, $SKIP skipped"

@@ -51,18 +51,18 @@ for archetype in "${archetypes[@]}"; do
             || fail "$vendor/$archetype: renderer exited non-zero: $(cat "$err")"
 
         assert_contains "$vendor/$archetype focus enum" "code-quality / risk-integration / correctness / architecture / security" "$out"
-        assert_contains "$vendor/$archetype sentinel instruction" "NO_ISSUES_FOUND" "$out"
+        assert_contains "$vendor/$archetype sentinel instruction" '{"no_issues_found": true}' "$out"
         assert_contains "$vendor/$archetype plan path" "$PLAN_FILE" "$out"
         assert_contains "$vendor/$archetype read-only" "Do NOT modify files" "$out"
 
         last_line="$(tail -n 1 "$out")"
-        [[ "$last_line" != "NO_ISSUES_FOUND" ]] \
-            || fail "$vendor/$archetype: output ends with only NO_ISSUES_FOUND"
+        [[ "$last_line" != '{"no_issues_found": true}' ]] \
+            || fail "$vendor/$archetype: output ends with only JSON no-findings sentinel"
 
         assert_contains "$vendor/$archetype TSV header" "schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix" "$out"
         assert_contains "$vendor/$archetype TSV record shape" "1	<scope>	<severity>	<focus_area>	<location>	<what>	<scenario_or_breakage>	<suggested_fix>" "$out"
         assert_contains "$vendor/$archetype file paths wording" "file paths named in the plan" "$out"
-        assert_contains "$vendor/$archetype no-findings mutual exclusion" "do NOT include a TSV block" "$out"
+        assert_contains "$vendor/$archetype no-findings mutual exclusion" "no TSV records" "$out"
     done
 done
 

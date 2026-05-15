@@ -42,4 +42,14 @@ out=$(WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.01 "$SCRIPT" --claude-output-files "$TM
 assert_stdout_cap "$out"
 grep -Fq 'FINDINGS_COUNT=0' <<< "$out"
 
+# JSON no-findings sentinel (canonical form per #2156) — when jq is present.
+if command -v jq >/dev/null 2>&1; then
+    printf '{"no_issues_found": true}\n' > "$TMP/json-sentinel.txt"
+    printf '0\n' > "$TMP/json-sentinel.txt.done"
+    printf 'STATUS=clean\n' > "$TMP/json-sentinel.txt.dirty-tree"
+    out=$(WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.01 "$SCRIPT" --claude-output-files "$TMP/json-sentinel.txt" --mode diff --timeout 1 --findings-file "$TMP/findings-json.md" --oos-file "$TMP/oos-json.md")
+    assert_stdout_cap "$out"
+    grep -Fq 'FINDINGS_COUNT=0' <<< "$out"
+fi
+
 echo "All assertions passed."

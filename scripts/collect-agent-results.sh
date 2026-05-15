@@ -41,10 +41,10 @@
 #                                  Closes #416 (Phase 3 of umbrella #413), #661.
 #   --validation-mode              Modifier for --substantive-validation: forwards
 #                                  --validation-mode to validate-research-output.sh
-#                                  so its preset (NO_ISSUES_FOUND short-circuit + 30-
-#                                  word floor) applies. Use for short reviewer-style
-#                                  outputs whose contract is "numbered findings ...
-#                                  If NO issues, output exactly NO_ISSUES_FOUND" —
+#                                  so its preset (JSON no-findings sentinel and
+#                                  legacy NO_ISSUES_FOUND short-circuit, explicit
+#                                  CURSOR_EMPTY_RESPONSE mapping, and 30-word floor)
+#                                  applies. Use for short reviewer-style outputs:
 #                                  /research validation phase, /review, /implement
 #                                  Step 5 quick-mode, /design plan-review. The
 #                                  /research research phase deliberately omits this
@@ -935,8 +935,13 @@ if [[ "$SUBSTANTIVE_VALIDATION" == "true" ]]; then
             # Sanitize: strip '|' (would corrupt pipe-delimited RESULTS), replace
             # newlines with spaces, collapse whitespace, truncate to 200 chars.
             DIAG_SAN=$(printf '%s' "$DIAG" | tr '|\n' '/ ' | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//' | cut -c1-200)
-            RESULTS[j]="REVIEWER_FILE=$REVIEWER_FILE|TOOL=$ENTRY_TOOL|STATUS=NOT_SUBSTANTIVE|EXIT_CODE=0|HEALTHY=false|FAILURE_REASON=$DIAG_SAN"
-            set_tool_unhealthy "$ENTRY_TOOL"
+            if [[ "$VAL_EXIT" -eq 5 ]]; then
+                RESULTS[j]="REVIEWER_FILE=$REVIEWER_FILE|TOOL=$ENTRY_TOOL|STATUS=CURSOR_EMPTY_RESPONSE|EXIT_CODE=0|HEALTHY=false|FAILURE_REASON=$DIAG_SAN"
+                set_tool_unhealthy "$ENTRY_TOOL"
+            else
+                RESULTS[j]="REVIEWER_FILE=$REVIEWER_FILE|TOOL=$ENTRY_TOOL|STATUS=NOT_SUBSTANTIVE|EXIT_CODE=0|HEALTHY=false|FAILURE_REASON=$DIAG_SAN"
+                set_tool_unhealthy "$ENTRY_TOOL"
+            fi
         fi
     done
 fi

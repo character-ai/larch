@@ -246,10 +246,10 @@ awk -v inscope_file="$INSCOPE_FILE" -v oos_file="$OOS_INPUT_FILE" '
 ' "$STAGE3_FILE" >"$STAGE4_FILE"
 
 # Stage 5: sentinel override (research-validation parity).
-# Replace the literal closing-rule sentence so externals emit NO_ISSUES_FOUND
-# instead of the archetype's default "No in-scope issues found." wording.
+# Replace the literal closing-rule sentence so externals emit the canonical
+# JSON no-findings sentinel instead of the archetype's default wording.
 SENTINEL_TARGET='If no in-scope issues found, say "No in-scope issues found."'
-SENTINEL_REPLACEMENT='If no findings at all, output exactly the literal NO_ISSUES_FOUND on a line by itself.'
+SENTINEL_REPLACEMENT='If no findings at all, your entire response content MUST be exactly the single-line JSON literal {"no_issues_found": true} (no surrounding prose, no records). Cursor wraps this as .result = "{\"no_issues_found\": true}"; the larch tooling JSON-parses the extracted .result and detects the sentinel. Codex consumers see the raw literal.'
 if ! grep -Fq "$SENTINEL_TARGET" "$STAGE4_FILE"; then
   larch_err "render-reviewer-prompt.sh: sentinel-override target string not found in archetype:"
   larch_err "  '$SENTINEL_TARGET'"
