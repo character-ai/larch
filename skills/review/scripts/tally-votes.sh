@@ -63,18 +63,25 @@ else
     voter_files=()
     [[ -f "$REVIEW_TMPDIR/cursor-votes.txt" ]] && voter_files+=("$REVIEW_TMPDIR/cursor-votes.txt")
     [[ -f "$REVIEW_TMPDIR/codex-votes.txt" ]] && voter_files+=("$REVIEW_TMPDIR/codex-votes.txt")
-    if [[ "${#voter_files[@]}" -eq 0 ]]; then
-        printf 'FINDING_1 NO\n' > "$REVIEW_TMPDIR/no-votes.txt"
-        voter_files+=("$REVIEW_TMPDIR/no-votes.txt")
+    voter_count="${#voter_files[@]}"
+    if [[ "$voter_count" -lt 2 ]]; then
+        emit "**⚠ Voting skipped (${voter_count} voter(s) available, minimum 2 required). All findings accepted.**"
+        idx=1
+        while [[ "$idx" -le "$count" ]]; do
+            printf 'FINDING_%s_ACCEPTED=true\n' "$idx" >> "$OUTPUT_TALLY"
+            accepted=$((accepted + 1))
+            idx=$((idx + 1))
+        done
+    else
+        "$SHARED_DIR/tally-vote.sh" --ballot-file "$FINDINGS_FILE" --voter-files "${voter_files[@]}" > "$OUTPUT_TALLY"
+        while IFS='=' read -r key value || [[ -n "$key" ]]; do
+            case "$key" in
+                FINDING_*_ACCEPTED)
+                    [[ "$value" == "true" ]] && accepted=$((accepted + 1)) || rejected=$((rejected + 1))
+                    ;;
+            esac
+        done < "$OUTPUT_TALLY"
     fi
-    "$SHARED_DIR/tally-vote.sh" --ballot-file "$FINDINGS_FILE" --voter-files "${voter_files[@]}" > "$OUTPUT_TALLY"
-    while IFS='=' read -r key value || [[ -n "$key" ]]; do
-        case "$key" in
-            FINDING_*_ACCEPTED)
-                [[ "$value" == "true" ]] && accepted=$((accepted + 1)) || rejected=$((rejected + 1))
-                ;;
-        esac
-    done < "$OUTPUT_TALLY"
 fi
 
 awk -v tally="$OUTPUT_TALLY" '
