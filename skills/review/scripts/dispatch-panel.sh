@@ -189,7 +189,7 @@ else
     fi
     # Codex unavailable: skip Codex specialist slots (no Claude substitution).
     # Claude generic slot only runs for simple panels; hard panels rely solely
-    # on the external specialists (6 Cursor + 6 Codex = 12 reviewers).
+    # on external specialists (up to 12 when both externals are healthy).
     if [[ "$PANEL" != "hard" ]]; then
         launch_claude_slot "generic" "$REVIEW_TMPDIR/claude-generic-output.txt"
     fi
