@@ -147,7 +147,7 @@ case "$TARGET_DIR" in
   */.claude/skills/*) SKILL_REL=".claude/skills/${NAME_LEAF}" ;;
   */skills/*)         SKILL_REL="skills/${NAME_LEAF}" ;;
   *)
-    echo "ERROR=Unable to derive skill-relative path from --target-dir=$TARGET_DIR (expected it to contain /.claude/skills/ or /skills/)." >&2
+    larch_err "ERROR=Unable to derive skill-relative path from --target-dir=$TARGET_DIR (expected it to contain /.claude/skills/ or /skills/)."
     exit 1
     ;;
 esac

@@ -6,6 +6,8 @@ PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
 # shellcheck source=scripts/lib-quiet.sh
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
+# Restore original stdout so progress and the installed version line reach the operator.
+[ "${LARCH_QUIET_PID:-}" = "$$" ] && exec 1>&3
 
 recover() {
     echo "" >&2

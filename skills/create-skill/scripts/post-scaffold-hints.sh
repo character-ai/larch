@@ -13,6 +13,9 @@ PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
 
+# Restore original stdout so human-readable hints reach the operator.
+[ "${LARCH_QUIET_PID:-}" = "$$" ] && exec 1>&3
+
 TARGET_DIR=""
 PLUGIN=false
 

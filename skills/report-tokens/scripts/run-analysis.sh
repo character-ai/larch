@@ -920,6 +920,9 @@ PY
 
 chmod +x "$ANALYZER"
 
+# Restore original stdout so the Python analyzer's report reaches the caller.
+[ "${LARCH_QUIET_PID:-}" = "$$" ] && exec 1>&3
+
 if [[ -n "$PLOT_FROM" ]]; then
     emit_breadcrumb "Fetching analysis report issue #$PLOT_FROM..."
     ISSUE_BODY_FILE="$TMPROOT/plot-from-body.txt"
