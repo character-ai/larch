@@ -74,7 +74,35 @@ if ! git fetch origin main >/dev/null 2>&1; then
     echo "⚠ Failed to fetch origin main (continuing)" >&2
 fi
 
-# --- Step 3: Pull origin main ---
+# --- Step 3: Drop prior larch-log flush orphans before pulling ---
+ahead_before=$(git rev-list --count "origin/main..HEAD" 2>/dev/null || printf '0\n')
+case "$ahead_before" in
+    ''|*[!0-9]*) ahead_before=0 ;;
+esac
+if [[ "$ahead_before" -gt 0 ]]; then
+    _all_flushes=true
+    while IFS= read -r _subj; do
+        case "$_subj" in
+            "chore(larch-logs): flush "*) ;;
+            *) _all_flushes=false; break ;;
+        esac
+    done < <(git log origin/main..HEAD --format=%s 2>/dev/null || true)
+
+    _larch_log_diff_only=true
+    while IFS= read -r _f; do
+        case "$_f" in
+            "larch-logs/"*) ;;
+            *) _larch_log_diff_only=false; break ;;
+        esac
+    done < <(git diff --name-only origin/main HEAD 2>/dev/null || true)
+
+    if [[ "$_all_flushes" == "true" && "$_larch_log_diff_only" == "true" ]]; then
+        echo "⚠ Dropping $ahead_before prior-run larch-log flush commit(s) before pull..." >&2
+        git reset --hard origin/main >/dev/null 2>&1 || true
+    fi
+fi
+
+# --- Step 4: Pull origin main ---
 echo "🔄 Pulling latest main..." >&2
 if ! git pull origin main >/dev/null 2>&1; then
     ahead_count=$(git rev-list --count "origin/main..HEAD" 2>/dev/null || printf '0\n')
@@ -89,7 +117,7 @@ if ! git pull origin main >/dev/null 2>&1; then
     exit 0
 fi
 
-# --- Step 4: Delete feature branch ---
+# --- Step 5: Delete feature branch ---
 echo "🔄 Deleting local branch $BRANCH_NAME..." >&2
 if git branch -D "$BRANCH_NAME" >/dev/null 2>&1; then
     BRANCH_DELETED="true"

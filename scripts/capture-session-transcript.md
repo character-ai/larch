@@ -28,9 +28,16 @@ The script always exits 0 and prints exactly one `SESSION_TRANSCRIPT_STATUS=<sta
 - `write-failed` — `larch-log.sh write` failed.
 - `suppressed-no-logs-commit` — write succeeded and `--no-logs-commit true` skipped commit.
 - `commit-failed` — write succeeded and `larch-log.sh commit` failed.
-- `captured` — write and commit both succeeded. After a successful commit, when on `main` with exactly one ahead commit whose subject matches the expected larch-log flush subject, the script additionally performs a best-effort `git push origin main` (all output suppressed; push failure is silently ignored and does not change the status).
+- `captured` — write and commit both succeeded. After a successful commit whose subject matches the expected larch-log flush subject while on `main`, the script fetches `origin/main`, verifies the ahead diff is limited to larch-log flush content, and either pushes the single current-run flush commit or abandons flush-only ahead commits with `git reset --hard origin/main`. Push failures and abandoned prior orphans do not change the terminal status.
 
-The wrapper may also append a non-terminal `source-file-recovered-via-discovery` Warnings entry before the final status when the Step 0 source snapshot was missing but fallback discovery found a recent transcript under `$HOME/.claude/projects`.
+The wrapper may also append non-terminal `Warnings` entries before the final status:
+
+- `source-file-recovered-via-discovery` — the Step 0 source snapshot was missing but fallback discovery found a recent transcript under `$HOME/.claude/projects`.
+- `pushed` — the current-run flush commit was pushed to `origin/main`.
+- `push-failed-abandoned` — pushing the single current-run flush commit failed, so the local commit was reset back to `origin/main`.
+- `prior-orphans-abandoned` — local `main` had multiple ahead commits, all larch-log flushes, so they were reset back to `origin/main`.
+- `push-skipped-non-flush-diff` — local `main` contained a non-flush ahead commit or diff, so the script left it untouched for operator investigation.
+- `already-present` — after fetching, there was no pushable current-run flush commit left to publish.
 
 For every status, including `captured`, the wrapper appends a `Warnings` entry to the execution-issues log via `append-execution-issue.sh`. Append failure is swallowed so transcript capture never becomes fatal to cleanup.
 
