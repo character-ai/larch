@@ -60,6 +60,7 @@ Transient network classification uses `is_transient_net_signature` from `scripts
 
 ## Invariants
 
+- `run_pr_create_phase` derives the PR title from the branch range (`merge-base..HEAD`, falling back to all of `HEAD` when `git merge-base` fails), skipping subjects whose prefix matches `^chore(larch-logs): flush` followed by a space (larch-log flush commits produced by `larch-log-flush.sh`). The first non-matching subject becomes the title; fallback is `"Implement requested changes"` when no non-flush commit exists in the range.
 - After `implement-finalize.sh postbump` completes with `STATUS=ok` or `STATUS=skipped`, `run_bump_phase` emits a human-readable breadcrumb line: `✅ 8: version bump — CURRENT → NEW (TYPE)` on a real bump, or `⏩ 8: version bump status=skip reason=<NONE|forked>` when the bump was skipped. The orchestrator MUST NOT re-emit these lines as text output (issue #1944). See NEVER #11 in `skills/implement/SKILL.md`.
 - Postbump conflict preserves `CALLER_KIND=step8b_rebase`.
 - `ci-initial` treats `ACTION=merge` as CI passed and exits `0`; `ci-merge` treats it as permission to call `merge-pr.sh`.
