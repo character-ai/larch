@@ -91,7 +91,7 @@ Consolidated NEVER rules collected from the procedural steps below. Each rule st
 
 6. **NEVER conflate the two timeout families.** **Why:** sketch-phase timeouts (sketches are shorter) differ from plan-review + dialectic timeouts (longer, deeper reasoning). **How to apply:** use `timeout: 1260000` (Bash tool) / `--timeout 1260` (collector) / `--timeout 1200` (reviewer script) for sketch-phase launches and sketch collection; use `timeout: 1860000` / `--timeout 1860` / `--timeout 1800` for plan-review launches, dialectic debaters, and dialectic judges.
 
-7. **NEVER emit step breadcrumbs when `SESSION_ENV_PATH` is non-empty.** **Why:** nested `/design` runs under `/implement`, whose parent-visible transcript must obey the artifact-only return contract. **How to apply:** write human-readable content to `$DESIGN_TMPDIR` artifacts, export the Step 5 design manifest, and emit only file-backed artifact paths plus the manifest machine footer.
+7. **NEVER emit step breadcrumbs when `SESSION_ENV_PATH` is non-empty.** **Why:** nested `/design` runs under `/implement`, whose parent-visible transcript must obey the artifact-only return contract. **How to apply:** write human-readable content to `$DESIGN_TMPDIR` artifacts, export the Step 5 design manifest, and emit only file-backed artifact paths plus the manifest machine footer. **Exception:** the single terminal continuation directive from Step 5b (`➡️ 5: cleanup — manifest written; NEXT REQUIRED: …`) is explicitly permitted as a machine continuation signal — it is not a decorative breadcrumb but a load-bearing instruction to the parent `/implement` orchestrator. It must be the last output line and nothing may follow it.
 
 <!-- step:0 — Session Setup -->
 ## Step 0 — Session Setup
@@ -1010,8 +1010,6 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-tmpdir.sh --dir "$DESIGN_TMPDIR"
 
 Do NOT write any farewell message such as "Design complete", "Returning to the /implement orchestrator", "Handing back control", or any other prose that signals the skill is done — those are halts in disguise that make the Skill tool appear to return a completed response and prompt the parent session to end its turn without invoking the mandatory `post-design-boundary.sh` Bash wrapper.
 
-When `SESSION_ENV_PATH` is non-empty (nested `/implement` mode) and `MANIFEST_EXPORT_OK=true`, print the following as the **final output line** of this skill — after repeating warnings (or immediately after cleanup when there are none):
+When `SESSION_ENV_PATH` is non-empty (nested `/implement` mode) and `MANIFEST_EXPORT_OK=true`, this directive is the **final output line** of this skill — after repeating warnings (or immediately after cleanup when there are none). It replaces the bare `MANIFEST_WRITTEN=<path>` as the terminal visible signal from `/design`; it is unambiguously an input to the next step, not a completion signal. Do not emit anything after it:
 
 `➡️ 5: cleanup — manifest written; NEXT REQUIRED: parent /implement must invoke post-design-boundary.sh immediately as a Bash tool call — do NOT end the orchestrator turn`
-
-This directive replaces the bare `MANIFEST_WRITTEN=<path>` as the terminal visible signal from `/design`. It is unambiguously an input to the next step, not a completion signal.
