@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [29.0.4] - 2026-05-15
+
+### Changed
+
+- Add shellcheck to the lint job SKIP environment list
+- Update lint job comments to describe agnix and shellcheck as parallel dedicated jobs
+- Update the shellcheck job header to remove Phase 1 and Phase 2 rollout language
+
 ## [29.0.3] - 2026-05-15
 
 ### Changed
