@@ -128,10 +128,10 @@ jobs:
       - name: Pipe SIGPIPE safety lint
         run: bash scripts/test-pipe-sigpipe-safety.sh
 
-  # Dedicated shellcheck job - runs in parallel with `lint`; `lint` SKIPs
+  # Dedicated shellcheck job — runs in parallel with `lint`; `lint` SKIPs
   # shellcheck to avoid paying the pre-commit env-install cost twice. The
   # shared `pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}` cache key
-  # means the shellcheck hook env is restored from cache when both jobs run.
+  # allows both jobs to reuse the same cached hook env on cache hits.
   shellcheck:
     runs-on: ubuntu-latest
     timeout-minutes: 5
