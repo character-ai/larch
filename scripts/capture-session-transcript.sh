@@ -86,10 +86,11 @@ current_branch_is_default() {
     [ -n "$current_branch" ] || return 1
     [ "$current_branch" != "HEAD" ] || return 1
     [ "$current_branch" != "main" ] || return 0
+    [ "$current_branch" != "master" ] || return 0
 
     default_branch="$(
         git -C "$repo_root" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null \
-            | sed 's|.*/||'
+            | sed 's|^refs/remotes/origin/||'
     )" || default_branch=""
     [ -n "$default_branch" ] || return 1
     [ "$current_branch" = "$default_branch" ]
