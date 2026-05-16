@@ -79,7 +79,7 @@ aligned with the findings file the coder actually saw.
 
 The script writes `$IMPLEMENT_TMPDIR/review-and-fix-summary.json` atomically with `schema_version=2`, aggregate accepted/rejected counts, `rounds_completed`, latest approved-fixes path, latest round directory, accumulated OOS artifact paths, and coder/submodule status fields. Accepted OOS markdown is accumulated at `$IMPLEMENT_TMPDIR/accumulated-oos.md` and mirrored to `$IMPLEMENT_TMPDIR/oos-accepted-review.md` for existing Step 9a.1 consumers; a JSONL audit copy is appended at `$IMPLEMENT_TMPDIR/accumulated-oos.jsonl`. That mirror copy is load-bearing: if the copy fails, the round fails instead of silently leaving the legacy mirror stale.
 
-When an orchestrator round exits `0` and `--run-id` is non-empty, the script best-effort flushes the Step 5 implement run-log batches:
+When an orchestrator round exits `0` (cap-reached or clean) or `3` (fix-required) and `--run-id` is non-empty, the script best-effort flushes the Step 5 implement run-log batches:
 
 - `code-review-tally` via `scripts/write-tally.sh`, with a body containing aggregate counts, the latest parent `review-round-summary.md` or per-round summaries, rejected code-review findings, and the latest round voting tally when present.
 - `review-findings-full` via `scripts/compose-review-findings.sh` followed by `scripts/larch-log.sh write`.
