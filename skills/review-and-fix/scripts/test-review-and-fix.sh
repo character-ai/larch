@@ -173,7 +173,7 @@ run_orchestrator_case() {
     printf 'CODEX_HEALTHY=true\nCURSOR_HEALTHY=true\n' > "$implement_tmp/session-env.sh"
     set +e
     out=$(TEST_AGENT_BEHAVIOR="$behavior" run_review_and_fix "$work" \
-        --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh")
+        --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id "$label-run")
     rc=$?
     set -e
     [[ "$rc" -eq 3 ]] || { echo "$out" >&2; fail "$label expected exit 3 got $rc"; }
@@ -183,6 +183,10 @@ run_orchestrator_case() {
     [[ -f "$implement_tmp/round-1/coder-output.log" ]] || fail "$label coder output"
     jq -e '.schema_version == 2 and .status == "fix-required" and .accepted_count == 1 and .coder_tool == "'"$expected_tool"'" and .coder_status == "applied" and .submodule_scrub_count == 0 and .submodule_revert_count == 0' "$implement_tmp/review-and-fix-summary.json" >/dev/null \
         || fail "$label summary schema"
+    jq -e '.batch == "code-review-tally" and .rounds == 1 and .accepted_count == 1 and .rejected_count == 0 and (.body | contains("# Review Round 1"))' \
+        "$implement_tmp/larch-logs/implement/$label-run/code-review-tally.json" >/dev/null \
+        || fail "$label code-review-tally batch"
+    [[ -f "$implement_tmp/larch-logs/implement/$label-run/review-findings-full.md" ]] || fail "$label review-findings-full batch"
     [[ -s "$implement_tmp/accumulated-oos.jsonl" ]] || fail "$label oos jsonl"
     [[ -s "$implement_tmp/oos-accepted-review.md" ]] || fail "$label oos markdown"
 }
@@ -330,6 +334,53 @@ jq -e '.batch == "code-review-tally" and .rounds == 1 and .accepted_count == 0 a
     || fail "zero code-review-tally batch"
 [[ -f "$implement_tmp/larch-logs/implement/zero-run/review-findings-full.md" ]] || fail "zero review-findings-full batch"
 [[ "$out" != *"LOG_WRITTEN="* ]] || fail "zero flush leaked larch-log writer stdout"
+
+work_sorted="$TMP/sorted-summaries"
+make_work_repo "$work_sorted"
+implement_tmp="$work_sorted/implement"
+mkdir -p "$implement_tmp/round-2" "$implement_tmp/round-10"
+printf 'CODEX_HEALTHY=true\nCURSOR_HEALTHY=true\n' > "$implement_tmp/session-env.sh"
+printf '# Review Round 10\nlate round\n' > "$implement_tmp/round-10/review-round-summary.md"
+printf '# Review Round 2\nearly round\n' > "$implement_tmp/round-2/review-round-summary.md"
+printf '{"schema_version":1,"rounds_completed":10,"accepted_count":0,"rejected_count":0}\n' > "$implement_tmp/round-10/review-summary.json"
+set +e
+out=$(TEST_CORE_STATUS=zero run_review_and_fix "$work_sorted" \
+    --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 10 --session-env-path "$implement_tmp/session-env.sh" --run-id sorted-run)
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "sorted summaries expected exit 0 got $rc"; }
+python3 - "$implement_tmp/larch-logs/implement/sorted-run/code-review-tally.json" <<'PYEOF' || fail "sorted summaries order"
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as fh:
+    body = json.load(fh)["body"]
+
+pos2 = body.find("# Review Round 2")
+pos10 = body.find("# Review Round 10")
+if pos2 == -1 or pos10 == -1 or pos2 >= pos10:
+    raise SystemExit(1)
+PYEOF
+
+cat > "$TMP/write-tally-fails-stub.sh" <<'EOF_WRITE_TALLY'
+#!/usr/bin/env bash
+printf 'stub write-tally failure\n' >&2
+exit 2
+EOF_WRITE_TALLY
+chmod +x "$TMP/write-tally-fails-stub.sh"
+work_flush_warn="$TMP/flush-warning"
+make_work_repo "$work_flush_warn"
+implement_tmp="$work_flush_warn/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_HEALTHY=true\nCURSOR_HEALTHY=true\n' > "$implement_tmp/session-env.sh"
+set +e
+out=$(TEST_CORE_STATUS=zero LARCH_QUIET_BREADCRUMBS=1 REVIEW_AND_FIX_WRITE_TALLY_SH="$TMP/write-tally-fails-stub.sh" run_review_and_fix "$work_flush_warn" \
+    --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id flush-warning-run 2>&1)
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "flush warning expected exit 0 got $rc"; }
+grep -Fq 'failed to flush code-review-tally batch' <<< "$out" || fail "flush warning breadcrumb"
+grep -Fq 'stub write-tally failure' <<< "$out" || fail "flush warning stderr"
 
 work_skipped="$TMP/skipped-routing"
 make_work_repo "$work_skipped"

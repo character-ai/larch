@@ -27,6 +27,9 @@ SESSION_ENV_PATH=""
 REVIEW_CORE_SH="${REVIEW_AND_FIX_REVIEW_CORE_SH:-$PLUGIN_ROOT/skills/review/scripts/review-core.sh}"
 RUN_EXTERNAL_AGENT_SH="${REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH:-$PLUGIN_ROOT/scripts/run-external-agent.sh}"
 SCRUB_SUBMODULE_PATHS_SH="${REVIEW_AND_FIX_SCRUB_SUBMODULE_PATHS_SH:-$PLUGIN_ROOT/scripts/scrub-submodule-paths.sh}"
+WRITE_TALLY_SH="${REVIEW_AND_FIX_WRITE_TALLY_SH:-$PLUGIN_ROOT/scripts/write-tally.sh}"
+COMPOSE_REVIEW_FINDINGS_SH="${REVIEW_AND_FIX_COMPOSE_REVIEW_FINDINGS_SH:-$PLUGIN_ROOT/scripts/compose-review-findings.sh}"
+LARCH_LOG_SH="${REVIEW_AND_FIX_LARCH_LOG_SH:-$PLUGIN_ROOT/scripts/larch-log.sh}"
 IMPLEMENT_TMPDIR=""
 PANEL=""
 MODE=""
@@ -349,7 +352,8 @@ write_summary_json() {
 flush_review_batches() {
     local impl_tmpdir="$1" run_id="$2" panel="$3" rounds="$4" accepted="$5" rejected="$6"
     local batch_input_dir body_file findings_file design_dir="" voting_tally="" summary_file
-    local -a round_summary_files=() compose_args=()
+    local tally_out="" tally_rc=0
+    local -a round_summary_files=() round_summary_glob=() compose_args=()
 
     [[ -n "$impl_tmpdir" && -d "$impl_tmpdir" ]] || return 0
     [[ -n "$run_id" ]] || return 0
@@ -357,9 +361,9 @@ flush_review_batches() {
     [[ "$rounds" =~ ^[0-9]+$ ]] || rounds=0
     [[ "$accepted" =~ ^[0-9]+$ ]] || accepted=0
     [[ "$rejected" =~ ^[0-9]+$ ]] || rejected=0
-    [[ -x "$PLUGIN_ROOT/scripts/write-tally.sh" ]] || return 0
-    [[ -x "$PLUGIN_ROOT/scripts/compose-review-findings.sh" ]] || return 0
-    [[ -x "$PLUGIN_ROOT/scripts/larch-log.sh" ]] || return 0
+    [[ -x "$WRITE_TALLY_SH" ]] || return 0
+    [[ -x "$COMPOSE_REVIEW_FINDINGS_SH" ]] || return 0
+    [[ -x "$LARCH_LOG_SH" ]] || return 0
 
     batch_input_dir="$impl_tmpdir/larch-log-batches-input"
     mkdir -p "$batch_input_dir" || return 0
@@ -375,8 +379,30 @@ flush_review_batches() {
             printf '\n'
         else
             shopt -s nullglob
-            round_summary_files=( "$impl_tmpdir"/round-*/review-round-summary.md )
+            round_summary_glob=( "$impl_tmpdir"/round-*/review-round-summary.md )
             shopt -u nullglob
+            if [[ "${#round_summary_glob[@]}" -gt 0 ]]; then
+                while IFS= read -r summary_file; do
+                    [[ -n "$summary_file" ]] || continue
+                    round_summary_files+=( "$summary_file" )
+                done < <(
+                    printf '%s\n' "${round_summary_glob[@]}" \
+                        | awk -F/ '
+                            {
+                                for (i = 1; i <= NF; i++) {
+                                    if ($i ~ /^round-[0-9]+$/) {
+                                        round = $i
+                                        sub(/^round-/, "", round)
+                                        printf "%d\t%s\n", round, $0
+                                        break
+                                    }
+                                }
+                            }
+                        ' \
+                        | sort -t "$(printf '\t')" -k1,1n \
+                        | cut -f2-
+                )
+            fi
             for summary_file in "${round_summary_files[@]+"${round_summary_files[@]}"}"; do
                 [[ -s "$summary_file" ]] || continue
                 printf '\n'
@@ -399,7 +425,8 @@ flush_review_batches() {
         fi
     } > "$body_file" || return 0
 
-    "$PLUGIN_ROOT/scripts/write-tally.sh" \
+    set +e
+    tally_out="$("$WRITE_TALLY_SH" \
         --log-root "$impl_tmpdir/larch-logs" \
         --skill implement \
         --run-id "$run_id" \
@@ -408,7 +435,13 @@ flush_review_batches() {
         --rounds "$rounds" \
         --accepted "$accepted" \
         --rejected "$rejected" \
-        --body-file "$body_file" >/dev/null 2>&1 || true
+        --body-file "$body_file" 2>&1)"
+    tally_rc=$?
+    set -e
+    if [[ "$tally_rc" -ne 0 ]]; then
+        emit_breadcrumb "⚠ review-and-fix: failed to flush code-review-tally batch"
+        [[ -n "$tally_out" ]] && larch_err "$tally_out"
+    fi
 
     [[ -d "$impl_tmpdir/design-export" ]] && design_dir="$impl_tmpdir/design-export"
     compose_args=(
@@ -417,9 +450,9 @@ flush_review_batches() {
         --output "$findings_file"
     )
     [[ -n "$design_dir" ]] && compose_args=(--design-artifacts-dir "$design_dir" "${compose_args[@]}")
-    "$PLUGIN_ROOT/scripts/compose-review-findings.sh" "${compose_args[@]}" >/dev/null 2>&1 || return 0
+    "$COMPOSE_REVIEW_FINDINGS_SH" "${compose_args[@]}" >/dev/null 2>&1 || return 0
 
-    "$PLUGIN_ROOT/scripts/larch-log.sh" write \
+    "$LARCH_LOG_SH" write \
         --log-root "$impl_tmpdir/larch-logs" \
         --skill implement \
         --run-id "$run_id" \
@@ -690,7 +723,7 @@ run_implement_round() {
     emit_kv SUBMODULE_SCRUB_COUNT "$scrub_count"
     emit_kv SUBMODULE_REVERT_COUNT "$revert_count"
     emit_kv SKIPPED_FINDING_COUNT "${skipped_finding_count:-0}"
-    if [[ "$exit_code" -eq 0 ]]; then
+    if [[ "$exit_code" -eq 0 || "$exit_code" -eq 3 ]]; then
         flush_review_batches "$IMPLEMENT_TMPDIR" "$RUN_ID" "$PANEL" "$round_num_dec" "$total_accepted" "$total_rejected"
     fi
     exit "$exit_code"
