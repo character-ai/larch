@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [29.1.4] - 2026-05-16
+
+### Changed
+
+- Removed the detect-wholesale-rejection review helper, contract, harness, Make target, and review-core integration.
+- Changed zero-accepted review rounds to converge normally instead of returning wholesale-rejected exit status.
+- Scrubbed wholesale-rejection protocol references from review docs, implement handling, voting protocol, reviewer prompts, and pre-rendered reviewer bodies.
+
 ## [29.1.3] - 2026-05-16
 
 ### Changed
