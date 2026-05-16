@@ -17,8 +17,6 @@ The launcher builds a fixed prompt containing only trusted path and identifier v
 
 When the auth-retry loop finishes with a non-zero `LAUNCHER_EXIT` and `IMPLEMENT_TMPDIR` is set, the launcher best-effort appends `${OUTPUT}.sidecar` to `$IMPLEMENT_TMPDIR/execution-issues.md` through `scripts/append-tool-failure.sh --redact` under `Tool Failures`, including an auth verdict and the final auth-loop attempt count.
 
-Gemini is intentionally not added in v1. This is a scoped CI-fix launcher pair for the two active state-machine vendor slots.
-
 ## Harness
 
 `scripts/test-launch-codex-ci.sh` covers argv validation, output path validation, role validation, and token-record normalization shape.

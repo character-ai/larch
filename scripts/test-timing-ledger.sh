@@ -47,12 +47,6 @@ WARN="$TMP_BASE/warn.txt"
 grep -Fq 'unknown task-kind: cursor-custom-kind' "$WARN"
 grep -Fq '<NUL>' "$LEDGER"
 
-"$REPO_ROOT/scripts/timing-ledger.sh" --ledger "$LEDGER" record-vendor-task \
-    --vendor gemini --task-kind gemini-review --start-s 40 --end-s 35 \
-    --output "z.txt" 2>"$WARN"
-grep -Fq 'clamping duration_s to 0' "$WARN"
-grep -Fq $'\tgemini\tgemini-review\t40\t35\t0\tz.txt\t0\tunknown' "$LEDGER"
-
 BAD="$TMP_BASE/bad.txt"
 "$REPO_ROOT/scripts/timing-ledger.sh" --ledger "$LEDGER" record-vendor-task \
     --vendor codex --task-kind BadKind --start-s 1 --end-s 2 --output x 2>"$BAD"

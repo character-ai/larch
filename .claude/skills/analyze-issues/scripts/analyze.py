@@ -528,7 +528,7 @@ def normalize_tool(raw: str) -> str:
 
 def reviewer_effectiveness(issues: Sequence[Mapping[str, Any]]) -> Tuple[str, Dict[str, Any]]:
     # WHY: keep codex/code alternatives longest-first so "codex" is not counted as "code".
-    tool_re = re.compile(r"\b(codex|cursor|claude|gemini|main\s+agent|code,\s*claude\s+code\s+reviewer|code)\b", re.I)
+    tool_re = re.compile(r"\b(codex|cursor|claude|main\s+agent|code,\s*claude\s+code\s+reviewer|code)\b", re.I)
     persona_re = re.compile(
         r"\b(architect|arch|correctness|edge-cases|edge|structure|testing|innovation|pragmatic|security|generic)\b",
         re.I,

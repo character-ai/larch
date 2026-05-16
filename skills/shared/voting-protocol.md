@@ -10,8 +10,6 @@ After reviewers submit findings and findings are deduplicated, a voting panel vo
 
 `/review` diff mode also computes `WHOLESALE_REJECTED=true|false` for each round after specialist outputs are collected and before accepted fixes are applied. Set `WHOLESALE_REJECTED=true` when any specialist reviewer returns a `WRONG_DIRECTION` tag, or when at least 50% of specialist reviewers that produced substantive output return `BLOCKING` in the same round. This is a direction-of-work signal, not an ordinary finding vote.
 
-When `WHOLESALE_REJECTED=true`, the round summary must include the flag and `/review` must escalate to the Claude main agent for a redo regardless of external-tool availability, passing the prior implementer output and the round's rejected-direction evidence as context. Do not route the redo through Cursor/Codex/Gemini, and do not treat ordinary voter acceptance as sufficient to proceed with incremental fixes.
-
 ## Ballot Format
 
 Before sending to voters, assign each deduplicated finding a stable sequential ID. The ballot file uses `### FINDING_N:` markdown heading blocks — one block per finding. For `/design` plan review, `tally-plan-review.sh` also splits `### OOS_N:` blocks; for `/review` code review, `ballot-parse.sh` exports per-finding fields from `### FINDING_N:` blocks only:

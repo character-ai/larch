@@ -37,11 +37,7 @@ Update this list whenever a new consumer sources the registry.
 
 ## Failure symptoms
 
-If a consumer registers a tool in `LARCH_EXTERNAL_TOOLS` but a `case` in `agent-model-args.sh` or a switch helper in `check-reviewers.sh` does not handle it, the consumer exits via the defensive `*)` arm with `internal error: unsupported reviewer tool: <id>`. Test #14 in `test-external-tool-registry.sh` walks every registry entry through `check-reviewers.sh` to catch this at lint time. `scripts/collect-agent-results.sh` derives `TOOL=` labels from `LARCH_EXTERNAL_TOOLS`, but its health helper state and `--write-health` output remain explicit `CODEX_HEALTHY`, `CURSOR_HEALTHY`, and `GEMINI_HEALTHY` fields; adding health fields for a future tool is a separate collector contract change.
-
 ## Non-goals
-
-Per-tool model defaults stay in `agent-model-args.sh` for Codex and Cursor; for Gemini, `agent-model-args.sh`'s gemini arm defines the canonical env-precedence chain mirrored by `scripts/lib-gemini-model-resolver.sh` so the Gemini launch/probe sites (`launch-gemini-implement.sh`, `launch-review.sh --tool gemini`, `check-reviewers.sh`) can pass the model as a single quoted argv token — the helper and `agent-model-args.sh` gemini arm must stay in lockstep when env names, plugin fallbacks, or the hardcoded default change. Probe argv templates stay in `check-reviewers.sh`; launcher paths, agent-prompt paths, runtime-failure tokens, and `REQUIRES_HEAD_UNCHANGED` policy stay in `step2-implement.sh`; capture-mode policy and metadata writes stay in `run-external-agent.sh`.
 
 ## Adding a new external tool
 

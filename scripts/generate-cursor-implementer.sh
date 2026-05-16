@@ -60,7 +60,7 @@ Cursor runs without Codex's `workspace-write` sandbox. The dispatcher mechanical
 
 ## Shared guardrails
 
-The section below — Inputs, Resume protocol, Manifest checklist, "What you do NOT do", and Style — is byte-identical between `agents/cursor-implementer.md` and `agents/gemini-implementer.md`. Both unsandboxed implementers ship the same hard guards; `scripts/test-implement-structure.sh` assertion (24) enforces parity.
+The section below — Inputs, Resume protocol, Manifest checklist, "What you do NOT do", and Style — is generated from the Cursor implementer template; `scripts/test-implement-structure.sh` assertion (24) enforces the expected structure.
 
 HEADER
 

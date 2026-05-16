@@ -58,7 +58,6 @@ TMP_PATTERNS=(
     "claudin-review-*"   # historical typo prefix from early larch sessions
     "claude-issue-test"
     "wait-reviewers-*"
-    "test-health-check-gemini-empty-*"
     "test-health-empty-caller-env-*"
     "test-health-explicit-false-*"
     "test-health-explicit-true-*"

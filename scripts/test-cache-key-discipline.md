@@ -14,8 +14,6 @@
 
 **Scope**: External-tool prompt construction surfaces only. Runtime timing, logging, temp-file, and process-management shell code is intentionally out of scope unless it is inside a launcher `PROMPT` block or an audited prompt-bearing Markdown file.
 
-**Annotation rule**: Legitimate dynamic content must have `# intentionally non-stable:` within the three preceding lines. Use this only when the content is per-session by design and is passed to Codex, Cursor, or Gemini rather than the Claude API system prompt.
-
 **Primary callers**: `make test-cache-key-discipline`, plus `make test-harnesses-7`.
 
 **Invariants**:

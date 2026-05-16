@@ -21,9 +21,8 @@
 # Non-goals: per-tool model defaults, probe argv templates, launcher paths,
 # capture-mode policy, runtime-failure tokens. Those stay with their owners.
 #
-# Canonical ordering rule: external-tool error strings use codex, cursor,
-# gemini order; implementer-coder error strings use claude, codex, cursor,
-# gemini order.
+# Canonical ordering rule: external-tool error strings use codex, cursor
+# order; implementer-coder error strings use claude, codex, cursor order.
 #
 # Bash 3.2 constraint: indexed arrays only. No associative arrays, namerefs,
 # mapfile/readarray, or eval.
@@ -34,10 +33,10 @@
 
 [[ -n "${LARCH_EXTERNAL_TOOL_REGISTRY_LOADED:-}" ]] && return 0
 
-LARCH_EXTERNAL_TOOLS=(codex cursor gemini)
+LARCH_EXTERNAL_TOOLS=(codex cursor)
 readonly LARCH_EXTERNAL_TOOLS
 
-LARCH_IMPLEMENTER_CODERS=(claude codex cursor gemini)
+LARCH_IMPLEMENTER_CODERS=(claude codex cursor)
 readonly LARCH_IMPLEMENTER_CODERS
 
 larch_is_external_tool() {

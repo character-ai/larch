@@ -79,8 +79,6 @@ check_unhealthy "OK."                    "OK."
 check_unhealthy "auth error"             "Error: Password not found for account"
 check_unhealthy "thinking prefix"        "Thinking about this... OK"
 
-# Gemini probe integration: stub gemini JSON stdout and let check-reviewers.sh
-# exercise run-external-agent.sh + jq .response extraction.
 REPO_ROOT=$(cd "$(dirname "$0")/.." && pwd -P)
 TMPDIR=$(mktemp -d /tmp/larch-test-check-reviewers-XXXXXX)
 trap 'rm -rf "$TMPDIR"' EXIT

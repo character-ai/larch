@@ -22,15 +22,13 @@
 #   --check-reviewers     Run check-reviewers.sh --probe and emit availability/health keys
 #   --skip-codex-probe    Forwarded to check-reviewers.sh (skip Codex health probe)
 #   --skip-cursor-probe   Forwarded to check-reviewers.sh (skip Cursor health probe)
-#   --write-health <path> Write CODEX_HEALTHY/CURSOR_HEALTHY/GEMINI_HEALTHY=false to file (cross-skill propagation)
+#   --write-health <path> Write CODEX_HEALTHY/CURSOR_HEALTHY to file (cross-skill propagation)
 #   --write-session-env <path>  Write full session-env file via write-session-env.sh
 #   --caller-env <path>   Path to KEY=value file with already-discovered values.
 #                          Recognized keys: REPO, REPO_UNAVAILABLE,
 #                          CODEX_HEALTHY, CURSOR_HEALTHY,
 #                          LARCH_TOKEN_SESSION_ID, LARCH_CLAUDE_SOURCE_FILE,
 #                          LARCH_TIMING_LEDGER, PREV_IMPLEMENT_TMPDIR.
-#                          GEMINI_HEALTHY is always hard-coded to false; any value
-#                          in the caller-env for that key is silently ignored.
 #                          If a key is present and non-empty, the script skips re-deriving it.
 #                          SESSION_TMPDIR is never inherited — a fresh tmpdir is always created.
 #                          If the file does not exist or is empty, full discovery happens.
@@ -43,10 +41,8 @@
 #   REPO_UNAVAILABLE=true|false Output unless --skip-repo-check
 #   CODEX_AVAILABLE=true|false  Output when --check-reviewers
 #   CURSOR_AVAILABLE=true|false Output when --check-reviewers
-#   GEMINI_AVAILABLE=false      Always output (hard-coded; Gemini probe removed in #1720)
 #   CODEX_HEALTHY=true|false    Output when --check-reviewers, or passthrough from --caller-env
 #   CURSOR_HEALTHY=true|false   Output when --check-reviewers, or passthrough from --caller-env
-#   GEMINI_HEALTHY=false        Always output (hard-coded; Gemini probe removed in #1720)
 #   LARCH_TOKEN_SESSION_ID=<id> Output when passthrough from --caller-env, in both probe and passthrough branches
 #   LARCH_CLAUDE_SOURCE_FILE=<path> Output when passthrough from --caller-env, in both probe and passthrough branches
 #   LARCH_TIMING_LEDGER is forwarded to write-session-env.sh only when supplied via --caller-env; it is intentionally NOT echoed on stdout.
@@ -386,9 +382,6 @@ if [[ "$CHECK_REVIEWERS" == "true" ]]; then
     [[ -n "$PROBED_CODEX_PROBE_ERROR" ]] && emit_kv CODEX_PROBE_ERROR "$PROBED_CODEX_PROBE_ERROR"
     [[ -n "$PROBED_CURSOR_PROBE_ERROR" ]] && emit_kv CURSOR_PROBE_ERROR "$PROBED_CURSOR_PROBE_ERROR"
     [[ -n "$PROBED_WAIT_INFRA_ERROR" ]] && emit_kv WAIT_INFRA_ERROR "$PROBED_WAIT_INFRA_ERROR"
-    emit_kv GEMINI_HEALTHY false
-    emit_kv GEMINI_AVAILABLE false
-
     # Emit prominent banners to stderr for failed health checks (must be here,
     # not in check-reviewers.sh, because session-setup captures its stdout+stderr
     # via 2>&1 — banners emitted there would be swallowed).
@@ -436,8 +429,6 @@ else
     if [[ -n "$CALLER_CURSOR_HEALTHY" ]]; then
         emit_kv CURSOR_HEALTHY "$CALLER_CURSOR_HEALTHY"
     fi
-    emit_kv GEMINI_HEALTHY false
-    emit_kv GEMINI_AVAILABLE false
     if [[ -n "$CALLER_TOKEN_SESSION_ID" ]]; then
         emit_kv LARCH_TOKEN_SESSION_ID "$CALLER_TOKEN_SESSION_ID"
     fi
@@ -467,7 +458,6 @@ if [[ -n "$WRITE_HEALTH" && "$WRITE_HEALTH" != "/dev/null" ]]; then
         # unhealthy state as `true`. Backstops the #1317 infra-error contract.
         echo "CODEX_HEALTHY=${FINAL_CODEX_HEALTHY:-false}"
         echo "CURSOR_HEALTHY=${FINAL_CURSOR_HEALTHY:-false}"
-        echo "GEMINI_HEALTHY=false"
     } > "$HEALTH_TMPFILE"
     mv "$HEALTH_TMPFILE" "$WRITE_HEALTH"
 fi
@@ -483,7 +473,6 @@ if [[ -n "$WRITE_SESSION_ENV" ]]; then
     [[ -n "$WSE_REPO" ]] && WSE_ARGS+=(--repo "$WSE_REPO")
     [[ -n "$FINAL_CODEX_HEALTHY" ]] && WSE_ARGS+=(--codex-healthy "$FINAL_CODEX_HEALTHY")
     [[ -n "$FINAL_CURSOR_HEALTHY" ]] && WSE_ARGS+=(--cursor-healthy "$FINAL_CURSOR_HEALTHY")
-    WSE_ARGS+=(--gemini-healthy false)
     [[ -n "$CALLER_TOKEN_SESSION_ID" ]] && WSE_ARGS+=(--token-session-id "$CALLER_TOKEN_SESSION_ID")
     [[ -n "$CALLER_CLAUDE_SOURCE_FILE" ]] && WSE_ARGS+=(--claude-source-file "$CALLER_CLAUDE_SOURCE_FILE")
     if [[ -n "$CALLER_TIMING_LEDGER" ]]; then

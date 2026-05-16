@@ -20,5 +20,3 @@ The harness unsets inherited session tempdir variables and points
 parent `/implement` run's log.
 
 ## Edit-in-sync
-
-Update with `scripts/run-external-agent.sh`, `scripts/run-external-agent.md`, `scripts/lib-validate-meta-path.sh`, `scripts/lib-validate-meta-path.md`, `scripts/launch-review.sh --tool cursor`, and `scripts/launch-review.sh --tool gemini` when the `.meta` output-path validation or sentinel contract changes.

@@ -10,6 +10,5 @@ scripts/generate-reviewer-code-robustness-agent.sh	agents/reviewer-code-robustne
 scripts/generate-reviewer-security-structure-tests-agent.sh	agents/reviewer-security-structure-tests.md
 scripts/generate-pre-rendered-reviewer-prompts.sh	agents/pre-rendered/.manifest
 scripts/generate-cursor-implementer.sh	agents/cursor-implementer.md
-scripts/generate-gemini-implementer.sh	agents/gemini-implementer.md
 scripts/generate-codex-implementer.sh	agents/codex-implementer.md
 scripts/generate-topology-docs.sh	docs/topology.md

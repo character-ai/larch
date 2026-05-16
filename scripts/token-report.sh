@@ -238,7 +238,6 @@ render_jq() {
       def vendor_label($vname):
         if   $vname == "codex"  then "Codex"
         elif $vname == "cursor" then "Cursor"
-        elif $vname == "gemini" then "Gemini"
         else md_cell($vname)
         end;
 

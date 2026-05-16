@@ -79,9 +79,6 @@ on the commit (or on `make lint-only` / `pre-commit run`). CI installs
 the toolchain itself, so the hook still runs there even when locally
 skipped.
 
-## Setting Up Claude, Codex, Cursor, Gemini
-- **Only `claude` is mandatory.** `codex`, `cursor`, and `gemini` are optional — when `codex` or `cursor` is missing or fails to authenticate, larch skills substitute Claude subagents automatically; `gemini` is additive (skipped silently when unavailable for reviewer use, falls back to Claude when selected as `--coder=gemini`). See [Optional integrations](#optional-integrations) for the full fallback semantics.
-- **Larch is agent-agnostic about authentication.** Each agent can be set up either with an **API key** in your shell environment, or with a **subscription plan** via web-based login from the binary itself. Larch does not care which — it only needs the corresponding binary (`claude`, `codex`, `cursor`, `gemini`) to be on your `PATH` and to land in an authenticated session when invoked.
 - The subsections below document one concrete setup recipe per agent (API-key path). If you prefer the subscription-plan path, install the binary and follow its own web-login flow instead — the rest of larch's configuration (settings, model overrides) still applies.
 
 ### Claude
@@ -152,29 +149,21 @@ On Darwin only, larch's launchers run a read-only pre-launch check: if `CURSOR_A
 
 For the at-rest secret-persistence tradeoff (the API key appears in `.meta` `CMD_JSON` sidecars under the session tmpdir, because the collector's empty-output retry path relies on faithful argv reconstruction), see `SECURITY.md`.
 
-### Gemini
-- Install Gemini CLI with Homebrew or npm:
 ```bash
-brew install gemini-cli
 # or
-npm install -g @google/gemini-cli
 ```
 - Authenticate with OAuth:
 ```bash
-gemini auth login
 ```
-- Add/edit `~/.gemini/settings.json` with your authentication mode and preferred model. For Gemini 3 preview work, use a model name such as:
 ```JSON
 {
   "auth": {
     "type": "oauth"
   },
   "model": {
-    "name": "gemini-3-pro-preview"
   }
 }
 ```
-- Add every repo you want Gemini to access to `~/.gemini/trustedFolders.json` using case-correct absolute paths:
 ```JSON
 {
   "trustedFolders": [
@@ -182,15 +171,8 @@ gemini auth login
   ]
 }
 ```
-- `trustedFolders.json` path matching is case-sensitive even on case-insensitive macOS filesystems. If the path case differs from the real checkout path, headless `gemini -p` runs can hang silently behind a trust prompt.
-- Gemini CLI 0.40.x does not look up `rg` on `PATH`; it only checks for a bundled binary at `<gemini-pkg>/bundle/vendor/ripgrep/rg-<platform>-<arch>`, which Homebrew/npm installs may omit. Install ripgrep first (`brew install ripgrep`) so `which rg` resolves, then on Apple Silicon macOS create the missing bundled path as a symlink:
 ```bash
-mkdir -p <gemini-pkg>/bundle/vendor/ripgrep
-ln -sf "$(which rg)" <gemini-pkg>/bundle/vendor/ripgrep/rg-darwin-arm64
 ```
-  Re-run the symlink command after each `brew upgrade gemini-cli`.
-- Free-tier accounts can hit hard `MODEL_CAPACITY_EXHAUSTED` 429s on `gemini-3-*-preview` models when used from the Gemini CLI. Google AI Pro may raise available capacity; Google AI Ultra unblocks these preview-model capacity failures.
-- `/implement --coder=gemini` uses the same Gemini CLI install/auth/trusted-folder setup as the Gemini reviewer path, but runs with `--approval-mode yolo --skip-trust` so Gemini can execute shell tools during implementation.
 
 ## What the plugin provides
 
@@ -262,7 +244,6 @@ These tools enhance the workflow but are not required. Fallback behavior varies 
 
 - **Codex** — [OpenAI Codex CLI](https://github.com/openai/codex). Participates as an external reviewer and voter alongside Claude subagents. When unavailable, Codex-specific reviewer slots are skipped and voting may collapse per threshold rules.
 - **Cursor** — [Cursor AI editor](https://cursor.com/). Participates as an external reviewer and voter. When unavailable, Cursor-specific reviewer slots are skipped and voting may collapse per threshold rules.
-- **Gemini** — [Gemini CLI](https://github.com/google-gemini/gemini-cli). The reviewer call sites are dormant; `/implement --coder=gemini` still falls back to Claude when unavailable. See [Gemini](#gemini) for setup details.
 
 ### Contributor development
 

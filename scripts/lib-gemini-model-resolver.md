@@ -1,3 +1,0 @@
-# lib-gemini-model-resolver.sh
-
-Sourced-only helper for Gemini model resolution in `scripts/launch-gemini-implement.sh`, `scripts/launch-review.sh --tool gemini`, and `scripts/check-reviewers.sh`. It mirrors the `scripts/agent-model-args.sh` Gemini precedence chain with set-aware semantics (`LARCH_GEMINI_MODEL` → `CLAUDE_PLUGIN_OPTION_GEMINI_MODEL` → `gemini-2.5-pro`) and scopes parity to blank/whitespace-only plus POSIX `[[:cntrl:]]` rejection; internal spaces remain allowed, matching `scripts/agent-model-args.sh`. Update this helper and `scripts/agent-model-args.md` together when the Gemini precedence chain or rejection rules change.

@@ -26,7 +26,6 @@ while [[ $# -gt 0 ]]; do
         --probe)              PROBE=true; shift ;;
         --skip-codex-probe)   SKIP_CODEX_PROBE=true; shift ;;
         --skip-cursor-probe)  SKIP_CURSOR_PROBE=true; shift ;;
-        --artifact-dir)        [[ $# -ge 2 ]] || { larch_err "check-reviewers.sh: --artifact-dir requires a value"; exit 1; }; shift 2 ;; # accepted for backward compat; no-op (Gemini drift removed)
         *) larch_err "check-reviewers.sh: unknown argument: $1"; exit 1 ;;
     esac
 done
@@ -259,11 +258,7 @@ if [[ "$PROBE" == "true" ]]; then
     CODEX_PROBE_ERROR=""
     CURSOR_PROBE_ERROR=""
 
-    TOOLS=()
-    for tool in "${LARCH_EXTERNAL_TOOLS[@]}"; do
-        [[ "$tool" == "gemini" ]] && continue
-        TOOLS+=("$tool")
-    done
+    TOOLS=("${LARCH_EXTERNAL_TOOLS[@]}")
 
     PROBE_DIR=$(mktemp -d /tmp/larch-probe-XXXXXX)
     trap 'rm -rf "$PROBE_DIR"' EXIT

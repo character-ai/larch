@@ -23,7 +23,7 @@ source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
 
 usage() {
-    larch_err "Usage: launch-review.sh --tool codex|cursor|gemini --output FILE --timeout SECS [review flags]"
+    larch_err "Usage: launch-review.sh --tool codex|cursor --output FILE --timeout SECS [review flags]"
 }
 
 TOOL=""
@@ -33,8 +33,8 @@ while [[ $# -gt 0 ]]; do
         --tool)
             TOOL="${2:?--tool requires a value}"
             case "$TOOL" in
-                codex|cursor|gemini) ;;
-                *) larch_err "launch-review.sh: unknown tool: '$TOOL'; expected codex, cursor, or gemini"; exit 2 ;;
+                codex|cursor) ;;
+                *) larch_err "launch-review.sh: unknown tool: '$TOOL'; expected codex or cursor"; exit 2 ;;
             esac
             shift 2
             ;;
@@ -53,7 +53,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "$TOOL" ]]; then
-    larch_err "launch-review.sh: --tool is required (codex|cursor|gemini)"
+    larch_err "launch-review.sh: --tool is required (codex|cursor)"
     exit 2
 fi
 
@@ -70,18 +70,6 @@ append_launch_failure() {
         --category "External Reviewer Issues" --output-file "$diag_file" \
         "${_args[@]}" --redact >/dev/null 2>&1 || true
 }
-
-if [[ "$TOOL" == "gemini" ]]; then
-    for _arg in "${ARGS[@]+"${ARGS[@]}"}"; do
-        case "$_arg" in
-            --agent-file|--mode|--description-text|--scope-files|--competition-notice|--diff-file|--prompt-file|--plan-file|--feature-file)
-                larch_err "launch-review.sh: $_arg is not supported for --tool gemini"
-                exit 2
-                ;;
-        esac
-    done
-    unset _arg
-fi
 
 _launch_codex() {
 # shellcheck disable=SC2317,SC2329 # invoked indirectly by the EXIT trap.
@@ -343,8 +331,7 @@ fi
 # Issue #1529: deliver the HARD-CONSTRAINTS read-only preamble through
 # CODEX_HOME/config.toml as the Codex `instructions` field for every
 # review prompt (specialist or generic, --prompt or --prompt-file or
-# --agent-file). Mirrors the GEMINI_REVIEW_HARDENING_PREAMBLE in
-# scripts/launch-review.sh. The codex argv below also passes
+# --agent-file). The codex argv below also passes
 # `--sandbox read-only` (replacing the prior `--full-auto`'s workspace-write)
 # so the CLI itself rejects model-issued shell writes; the instructions
 # field is the prompt-level reinforcement so the model also reasons about
@@ -803,8 +790,7 @@ fi
 
 # Issue #1529: prepend a HARD-CONSTRAINTS read-only preamble to every Cursor
 # review prompt (specialist or generic, --prompt or --prompt-file or
-# --agent-file). Mirrors the GEMINI_REVIEW_HARDENING_PREAMBLE in
-# scripts/launch-review.sh. The cursor argv below passes `--mode plan`
+# --agent-file). The cursor argv below passes `--mode plan`
 # so the CLI itself disables the agent's write tools; the preamble is the
 # prompt-level reinforcement so the model also reasons about its read-only
 # role. The launcher's existing dirty-tree-sidecar machinery
@@ -1010,10 +996,4 @@ exit "$EXIT_CODE"
 case "$TOOL" in
     codex) _launch_codex "${ARGS[@]+"${ARGS[@]}"}" ;;
     cursor) _launch_cursor "${ARGS[@]+"${ARGS[@]}"}" ;;
-    gemini)
-        # shellcheck source=scripts/lib-gemini-launcher-review.sh
-        # shellcheck disable=SC1091
-        source "$SCRIPT_DIR/lib-gemini-launcher-review.sh"
-        _launch_gemini "${ARGS[@]+"${ARGS[@]}"}"
-        ;;
 esac

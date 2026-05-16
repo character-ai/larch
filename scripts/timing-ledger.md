@@ -15,7 +15,6 @@ v	type	ts_epoch	skill	step	vendor	task_kind	start_s	end_s	duration_s	output	exit
 Subcommands:
 
 - `mark <step-name>` writes a per-step mark for `${LARCH_TIMING_SKILL:-implement}`.
-- `record-vendor-task --vendor codex|cursor|gemini --task-kind <kind> --start-s <epoch> --end-s <epoch> --output <path> [--exit-code <n>] [--status complete|signal|unknown]` writes one wrapper timing row. Negative durations are clamped to `0` and force `status=unknown`.
 - `workflow-path HARD|SIMPLE` records the selected `/implement` workflow path. Reporters use the latest workflow row.
 - `dump` prints the resolved ledger path on line 1, followed by the ledger contents when present.
 

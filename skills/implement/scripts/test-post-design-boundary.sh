@@ -181,7 +181,6 @@ REPO=owner/repo
 REPO_UNAVAILABLE=false
 CODEX_HEALTHY=true
 CURSOR_HEALTHY=true
-GEMINI_HEALTHY=true
 LARCH_TIMING_LEDGER=/tmp/larch-post-design-boundary-test/timing-ledger.tsv
 LARCH_TOKEN_SESSION_ID=token-session-4
 LARCH_CLAUDE_SOURCE_FILE=/tmp/larch-post-design-boundary-test/claude-source.env
@@ -189,7 +188,6 @@ EOF_SESSION
 cat > "$SESSION4.health" <<'EOF_HEALTH'
 CODEX_HEALTHY=false
 CURSOR_HEALTHY=true
-GEMINI_HEALTHY=true
 EOF_HEALTH
 OUT=$(cd "$GIT4" && CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash "$WRAPPER" --implement-tmpdir "$TMP4" --session-env "$SESSION4")
 assert_contains "$OUT" '^POST_DESIGN_BOUNDARY_OK=true$' "health flip path did not continue"
@@ -197,7 +195,6 @@ grep -q '^REPO=owner/repo$' "$SESSION4" || fail "health rewrite did not preserve
 grep -q '^REPO_UNAVAILABLE=false$' "$SESSION4" || fail "health rewrite did not preserve REPO_UNAVAILABLE"
 grep -q '^CODEX_HEALTHY=false$' "$SESSION4" || fail "health rewrite did not degrade CODEX_HEALTHY"
 grep -q '^CURSOR_HEALTHY=true$' "$SESSION4" || fail "health rewrite did not preserve CURSOR_HEALTHY"
-grep -q '^GEMINI_HEALTHY=true$' "$SESSION4" || fail "health rewrite did not preserve GEMINI_HEALTHY"
 grep -q '^LARCH_TIMING_LEDGER=/tmp/larch-post-design-boundary-test/timing-ledger.tsv$' "$SESSION4" || fail "health rewrite did not preserve LARCH_TIMING_LEDGER"
 grep -q '^LARCH_TOKEN_SESSION_ID=token-session-4$' "$SESSION4" || fail "health rewrite did not preserve LARCH_TOKEN_SESSION_ID"
 grep -q '^LARCH_CLAUDE_SOURCE_FILE=/tmp/larch-post-design-boundary-test/claude-source.env$' "$SESSION4" || fail "health rewrite did not preserve LARCH_CLAUDE_SOURCE_FILE"
@@ -226,12 +223,10 @@ REPO=owner/repo
 REPO_UNAVAILABLE=false
 CODEX_HEALTHY=true
 CURSOR_HEALTHY=true
-GEMINI_HEALTHY=true
 EOF_SESSION
 cat > "$SESSION6.health" <<'EOF_HEALTH'
 CODEX_HEALTHY=maybe
 CURSOR_HEALTHY=true
-GEMINI_HEALTHY=true
 EOF_HEALTH
 BEFORE6=$(cat "$SESSION6")
 OUT=$(cd "$GIT6" && CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash "$WRAPPER" --implement-tmpdir "$TMP6" --session-env "$SESSION6")
@@ -261,12 +256,10 @@ REPO=owner/repo
 REPO_UNAVAILABLE=false
 CODEX_HEALTHY=true
 CURSOR_HEALTHY=true
-GEMINI_HEALTHY=true
 EOF_SESSION
 cat > "$SESSION7.health" <<'EOF_HEALTH'
 CODEX_HEALTHY=true
 CURSOR_HEALTHY=false
-GEMINI_HEALTHY=true
 EOF_HEALTH
 OUT=$(cd "$GIT7" && CLAUDE_PLUGIN_ROOT="$FAKE_ROOT" bash "$WRAPPER" --implement-tmpdir "$TMP7" --session-env "$SESSION7")
 assert_contains "$OUT" '^WARN=health-merge-failed$' "write-session-env failure did not warn"

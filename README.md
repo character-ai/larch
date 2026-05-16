@@ -18,7 +18,6 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
   - [Workflow Lifecycle](docs/workflow-lifecycle.md) — how skills compose end-to-end
   - [Agent System](docs/agents.md) — parallel subagent orchestration
   - [Collaborative Sketches](docs/collaborative-sketches.md) — the diverge-then-converge design phase
-  - [External Reviewers](docs/external-reviewers.md) — Codex and Cursor integration (Gemini machinery retained but not actively invoked)
   - [Voting Process](docs/voting-process.md) — the voting panel protocol
   - [Point Competition](docs/point-competition.md) — reviewer scoring system
 
@@ -27,7 +26,6 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
 - **[Multi-agent design planning, reviews, and adjudication](docs/collaborative-sketches.md)** — the [configured sketch topology](docs/topology.md#design.sketch.regular_slots) diverges, the [dialectic judge panel](docs/topology.md#design.dialectic.judge_panel) resolves contested decisions, and the [validation panel](docs/topology.md#design.plan_review.cursor_archetypes) reviews the final plan.
 - **[Voting-based review resolution](docs/voting-process.md)** — The YES/NO/EXONERATE panel protocol adjudicates plan and code review findings.
 - **[Reviewer competition scoring](docs/point-competition.md)** — Reviewers earn points based on finding quality; a scoreboard tracks accepted, neutral, exonerated, and rejected findings.
-- **[External reviewer integration](docs/external-reviewers.md)** — Codex and Cursor participate alongside Claude subagents as sketch agents, debaters, judges, reviewers, and voters. Gemini reviewer call sites have been removed from `/review` and `/implement --quick` review rounds; the reviewer launcher (`scripts/launch-review.sh --tool gemini`), its admin-policy file, and the regression harness remain as machinery, and Gemini can still be selected explicitly for implementation with `/implement --coder=gemini`.
 - **[Tracked runs](docs/run-logs.md)** — `/implement` writes full run artifacts to committed `larch-logs/` files and keeps the tracking issue slim with marker-keyed summary comments.
 
 ## Skills
@@ -81,9 +79,9 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#implement"><code>/implement</code></a></td>
-      <td><code>[--quick] [--auto] [--forked] [--design-only] [--no-issues] [--inline] [--merge | --draft] [--no-admin-fallback] [--coder=claude|codex|cursor|gemini] [--session-env &lt;path&gt;] [--issue &lt;N&gt;] &lt;feature description&gt;</code></td>
+      <td><code>[--quick] [--auto] [--forked] [--design-only] [--no-issues] [--inline] [--merge | --draft] [--no-admin-fallback] [--coder=claude|codex|cursor] [--session-env &lt;path&gt;] [--issue &lt;N&gt;] &lt;feature description&gt;</code></td>
     </tr>
-    <tr><td colspan="2">Full end-to-end feature workflow — design, implement, PR. <code>--design-only</code> publishes plan/review/diagram artifacts to larch-log batches, updates OOS status on the tracking issue, and stops before implementation. Add <code>--no-issues</code> to skip tracking-issue creation entirely (ephemeral design mode — no GitHub issue opened, no tracking-issue summary maintained). <code>--forked</code> targets a fork PR against <code>origin</code>, compares freshness against <code>upstream/main</code>, skips tracking issue / version bump / merge, and prints the manual upstream PR command after fork CI. <code>--quick</code> skips <code>/design</code> and runs a code-review loop of up to 5 rounds (no voting panel) using the simple review panel: 6 Cursor specialists (structure, correctness, testing, security, Cursor edge-cases, plan-fidelity) plus Codex generalist. <code>--coder</code> selects the Step 2 implementer. Default behavior when the flag is omitted: use Claude inline only when <code>/design</code> estimates <code>diff_lines &lt; 30</code>, otherwise route Codex → Cursor → Claude by availability; pass <code>--coder=codex</code> explicitly to suppress both the carve-out and waterfall. Pass <code>claude</code> to run in the main agent / Claude context, <code>cursor</code> for the Cursor implementer, or <code>gemini</code> for the Gemini implementer; <code>cursor</code> and <code>gemini</code> fall back to the main-agent path when explicitly selected but unhealthy or unavailable. <code>LARCH_CURSOR_MODEL</code> drives the Cursor implementer when <code>--coder=cursor</code>; <code>LARCH_GEMINI_MODEL</code> drives Gemini when <code>--coder=gemini</code>.</td></tr>
+    <tr><td colspan="2">End-to-end implementation workflow. In <code>--quick</code> (and SIMPLE auto-switch) paths, Step 5 runs <code>review-and-fix.sh</code> with <code>--panel simple</code>: up to <strong>5 rounds</strong>, <strong>no voting panel</strong>, and the <strong>simple review panel</strong> (6 Cursor specialists including <strong>Cursor edge-cases</strong> plus one <strong>Codex generalist</strong>). Use <code>--design-only</code> to publish design artifacts and stop before implementation.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#issue"><code>/issue</code></a></td>

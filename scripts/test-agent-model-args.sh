@@ -63,12 +63,6 @@ printf '%s\n%s\n' '--model' 'composer-2' > "$EXPECTED"
 assert_file_equals "cursor default" "$EXPECTED" "$OUT"
 assert_success_no_empty_lines "cursor default" "$OUT"
 
-env -u LARCH_GEMINI_MODEL -u CLAUDE_PLUGIN_OPTION_GEMINI_MODEL \
-    "$SUBJECT" --tool gemini > "$OUT" 2> "$ERR"
-printf '%s\n%s\n' '--model' 'gemini-2.5-pro' > "$EXPECTED"
-assert_file_equals "gemini default" "$EXPECTED" "$OUT"
-assert_success_no_empty_lines "gemini default" "$OUT"
-
 LARCH_CODEX_MODEL="model-with-dashes" "$SUBJECT" --tool codex > "$OUT" 2> "$ERR"
 printf '%s\n%s\n' '-m' 'model-with-dashes' > "$EXPECTED"
 assert_file_equals "ordinary punctuation preserved" "$EXPECTED" "$OUT"
@@ -85,11 +79,6 @@ RC=$?
 set -e
 if [[ "$RC" -ne 0 ]] && grep -Fq '[[:cntrl:]]' "$ERR"; then pass; else fail "cursor tab should reject with control-class diagnostic"; fi
 
-set +e
-LARCH_GEMINI_MODEL=$'evil\textra' "$SUBJECT" --tool gemini > "$OUT" 2> "$ERR"
-RC=$?
-set -e
-if [[ "$RC" -ne 0 ]] && grep -Fq '[[:cntrl:]]' "$ERR"; then pass; else fail "gemini tab should reject with control-class diagnostic"; fi
 
 set +e
 LARCH_CODEX_MODEL="" "$SUBJECT" --tool codex > "$OUT" 2> "$ERR"

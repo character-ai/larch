@@ -111,7 +111,6 @@ prompt_block_bounds() {
   awk '
     /^PROMPT=/ && start == 0 { start = NR }
     /^PROMPT_FILE_SIDECAR=/ && start != 0 { print start, NR - 1; exit }
-    /^GEMINI_MODEL_ERR=/ && start != 0 { print start, NR - 1; exit }
   ' "$REPO_ROOT/$file"
 }
 
@@ -168,7 +167,6 @@ check_agent_prompt_literals() {
 check_render_specialist_prompt_paths
 check_launcher_prompt_block "scripts/launch-codex-implement.sh" "Codex"
 check_launcher_prompt_block "scripts/launch-cursor-implement.sh" "Cursor"
-check_launcher_prompt_block "scripts/launch-gemini-implement.sh" "Gemini"
 check_skill_prompt_literals
 check_agent_prompt_literals
 

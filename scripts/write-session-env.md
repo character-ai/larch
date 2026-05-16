@@ -8,7 +8,6 @@ Always writes `REPO` and `REPO_UNAVAILABLE`. Optionally writes reviewer health b
 
 - `CODEX_HEALTHY`
 - `CURSOR_HEALTHY`
-- `GEMINI_HEALTHY`
 
 It may also write `LARCH_TIMING_LEDGER` when the caller passes `--timing-ledger <path>`. `/implement` uses this durable key so nested `/design` and `/review` invocations continue appending to the parent timing ledger after session-env rewrites.
 

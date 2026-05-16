@@ -204,7 +204,7 @@ cmd_record_vendor_task() {
             *) warn "unknown record-vendor-task flag: $1"; return 1 ;;
         esac
     done
-    case "$vendor" in codex|cursor|gemini) ;; *) warn "vendor must be codex, cursor, or gemini"; return 1 ;; esac
+    case "$vendor" in codex|cursor) ;; *) warn "vendor must be codex or cursor"; return 1 ;; esac
     [[ "$task_kind" =~ ^[a-z][a-z0-9-]{0,63}$ ]] || { warn "malformed task-kind: $task_kind"; return 1; }
     task_kind_allowed "$task_kind" || warn "unknown task-kind: $task_kind"
     is_uint "$start_s" || { warn "--start-s must be a non-negative integer"; return 1; }

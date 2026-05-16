@@ -1,10 +1,6 @@
 # scripts/check-reviewers.sh — contract
 
-Checks external reviewer (Codex/Cursor) binary availability and optional health probe. Gemini probe removed in #1720 (Part 1) — it ran with workspace-write access and modified the working tree. `session-setup.sh` hard-codes `GEMINI_HEALTHY=false` / `GEMINI_AVAILABLE=false` unconditionally.
-
 ## Tool registry
-
-The script sources `scripts/external-tool-registry.sh` for the canonical external-tool iteration list, using a fail-closed source guard and sentinel check. It also sources `scripts/lib-external-launcher-common.sh` for the shared `external_serial_lock_acquire` / `external_serial_lock_release_after` helpers — each probe spawn acquires the per-tool Darwin serial lock (same `/tmp/larch-<tool>-serial-${USER}.lock` path the production launchers use) so concurrent health probes do not race each other on the macOS keychain. The probe set covers Codex and Cursor; Gemini is skipped in the TOOLS loop regardless of registry contents. The Codex probe argv mirrors the implementer launcher (`scripts/launch-codex-implement.sh`) by passing `--add-dir "$PROBE_DIR"`; this exercises the writable-roots flag production uses so a Codex build that rejects `--add-dir` fails the probe rather than failing later at `/implement` Step 2 spawn with worse diagnostics. The Codex probe also reads `agent-model-args.sh --tool codex` line-token stdout into `CODEX_MODEL_ARGS` (without `--with-effort`, matching `scripts/run-negotiation-round.sh`'s lightweight choice) so invalid `LARCH_CODEX_MODEL` / `CLAUDE_PLUGIN_OPTION_CODEX_MODEL` (blank, whitespace-only, or `[[:cntrl:]]`-bearing) is rejected at probe time with the same rules production launchers apply. The Cursor probe argv mirrors `scripts/launch-review.sh --tool cursor`'s production argv shape: it reads `agent-model-args.sh` line-token stdout into `CURSOR_MODEL_ARGS`, sources `scripts/lib-cursor-auth.sh`, and inserts `"${CURSOR_AUTH_ARGS[@]}"` between the model-args array and `--workspace`. `cursor_auth_preflight` is INTENTIONALLY NOT invoked from the probe. If model-args validation fails, the probe writes a failure sentinel without invoking Cursor.
 
 Per-tool getters/setters and `start_probe` arms remain explicit for Bash 3.2 portability, harness stability, and to avoid silent corruption under indirect expansion. Each switch helper has a defensive `*)` `internal error: unsupported reviewer tool: <id>` arm. Adding a new external tool requires both a registry update and a per-tool branch in every switch helper plus `start_probe`; `scripts/test-external-tool-registry.sh` walks every registry entry to catch missed branches.
 
@@ -43,7 +39,6 @@ Failed probes are retried up to 2 additional times (3 total attempts) with a 3-s
 
 | File | Relationship |
 |------|-------------|
-| `scripts/session-setup.sh` | Orchestrates probe invocation via `--check-reviewers`; hard-codes GEMINI_HEALTHY=false; parses health keys |
 | `scripts/run-external-agent.sh` | Wrapper with timeout for probe subprocess |
 | `scripts/wait-for-reviewers.sh` | Sentinel polling for probe completion |
 | `skills/shared/external-reviewers.md` | Documents the two-key rule (`*_AVAILABLE` + `*_HEALTHY`) |

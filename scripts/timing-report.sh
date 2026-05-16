@@ -126,7 +126,7 @@ render_report() {
         return "\"" t "\""
       }
       function vendor_index(v) {
-        return v == "codex" ? 1 : (v == "cursor" ? 2 : (v == "gemini" ? 3 : 4))
+        return v == "codex" ? 1 : (v == "cursor" ? 2 : 3)
       }
       function row_ok() {
         if ($1 != "v1") return 0
@@ -173,19 +173,17 @@ render_report() {
             print "Timing report unavailable: no step marks in ledger" > "/dev/stderr"
             exit 0
           }
-          codex = cursor = gemini = total = 0
+          codex = cursor = total = 0
           for (i = 1; i <= vendor_count; i++) {
             # Compare vendor_end (col $9) with the latest mark timestamp;
             # using the row write-time ($3) inflated counts when a task
             # finished before the mark but its trap fired after. (FINDING_5.)
             if (vendor_end[i] >= last_terse_ts) {
-              total++
-              if (vendor_name[i] == "codex") codex++
-              else if (vendor_name[i] == "cursor") cursor++
-              else if (vendor_name[i] == "gemini") gemini++
+              if (vendor_name[i] == "codex") { codex++; total++ }
+              else if (vendor_name[i] == "cursor") { cursor++; total++ }
             }
           }
-          printf "%s: elapsed=%s vendor-tasks=%d (codex=%d, cursor=%d, gemini=%d)\n", last_terse_step, hms(now - last_terse_ts), total, codex, cursor, gemini
+          printf "%s: elapsed=%s vendor-tasks=%d (codex=%d, cursor=%d)\n", last_terse_step, hms(now - last_terse_ts), total, codex, cursor
           exit 0
         }
         if (mode == "summary") {
@@ -193,16 +191,14 @@ render_report() {
             print "Timing report unavailable: no step marks in ledger" > "/dev/stderr"
             exit 0
           }
-          total = codex = cursor = gemini = 0
+          total = codex = cursor = 0
           for (i = 1; i <= vendor_count; i++) {
             if (vendor_end[i] >= mark_ts[1]) {
-              total++
-              if (vendor_name[i] == "codex") codex++
-              else if (vendor_name[i] == "cursor") cursor++
-              else if (vendor_name[i] == "gemini") gemini++
+              if (vendor_name[i] == "codex") { codex++; total++ }
+              else if (vendor_name[i] == "cursor") { cursor++; total++ }
             }
           }
-          printf "Total: elapsed=%s vendor-tasks=%d (codex=%d, cursor=%d, gemini=%d)\n", hms(now - mark_ts[1]), total, codex, cursor, gemini
+          printf "Total: elapsed=%s vendor-tasks=%d (codex=%d, cursor=%d)\n", hms(now - mark_ts[1]), total, codex, cursor
           exit 0
         }
         if (mark_count == 0) {

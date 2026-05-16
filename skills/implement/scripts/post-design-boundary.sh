@@ -149,9 +149,9 @@ read_health_sidecar_value() {
 health_merge() {
     local sidecar="${SESSION_ENV_PATH}.health"
     local repo repo_unavailable
-    local cur_codex cur_cursor cur_gemini cur_timing_ledger cur_token_session_id cur_claude_source_file
-    local side_codex side_cursor side_gemini
-    local merged_codex merged_cursor merged_gemini
+    local cur_codex cur_cursor cur_timing_ledger cur_token_session_id cur_claude_source_file
+    local side_codex side_cursor
+    local merged_codex merged_cursor
     local flipped=false
 
     [[ -n "$SESSION_ENV_PATH" && -f "$sidecar" ]] || return 0
@@ -161,7 +161,6 @@ health_merge() {
 
     cur_codex=$(parse_session_env_key "$SESSION_ENV_PATH" "CODEX_HEALTHY")
     cur_cursor=$(parse_session_env_key "$SESSION_ENV_PATH" "CURSOR_HEALTHY")
-    cur_gemini=$(parse_session_env_key "$SESSION_ENV_PATH" "GEMINI_HEALTHY")
     cur_timing_ledger=$(parse_session_env_key "$SESSION_ENV_PATH" "LARCH_TIMING_LEDGER")
     cur_token_session_id=$(parse_session_env_key "$SESSION_ENV_PATH" "LARCH_TOKEN_SESSION_ID")
     cur_claude_source_file=$(parse_session_env_key "$SESSION_ENV_PATH" "LARCH_CLAUDE_SOURCE_FILE")
@@ -170,7 +169,6 @@ health_merge() {
 
     side_codex=$(read_health_sidecar_value "$sidecar" "CODEX_HEALTHY")
     side_cursor=$(read_health_sidecar_value "$sidecar" "CURSOR_HEALTHY")
-    side_gemini=$(read_health_sidecar_value "$sidecar" "GEMINI_HEALTHY")
     if [[ "$side_codex" = "__INVALID__" ]]; then
         append_warning "health-value-invalid:CODEX_HEALTHY"
         side_codex="$cur_codex"
@@ -179,23 +177,15 @@ health_merge() {
         append_warning "health-value-invalid:CURSOR_HEALTHY"
         side_cursor="$cur_cursor"
     fi
-    if [[ "$side_gemini" = "__INVALID__" ]]; then
-        append_warning "health-value-invalid:GEMINI_HEALTHY"
-        side_gemini="$cur_gemini"
-    fi
-
     merged_codex="$cur_codex"
     merged_cursor="$cur_cursor"
-    merged_gemini="$cur_gemini"
     [[ -z "$merged_codex" ]] && merged_codex=true
     [[ -z "$merged_cursor" ]] && merged_cursor=true
-    [[ -z "$merged_gemini" ]] && merged_gemini=true
 
     if [[ "$cur_codex" = false || "$side_codex" = false ]]; then merged_codex=false; fi
     if [[ "$cur_cursor" = false || "$side_cursor" = false ]]; then merged_cursor=false; fi
-    if [[ "$cur_gemini" = false || "$side_gemini" = false ]]; then merged_gemini=false; fi
 
-    if [[ "$cur_codex" != "$merged_codex" || "$cur_cursor" != "$merged_cursor" || "$cur_gemini" != "$merged_gemini" ]]; then
+    if [[ "$cur_codex" != "$merged_codex" || "$cur_cursor" != "$merged_cursor" ]]; then
         flipped=true
     fi
 
@@ -206,7 +196,6 @@ health_merge() {
             --repo-unavailable "$repo_unavailable"
             --codex-healthy "$merged_codex"
             --cursor-healthy "$merged_cursor"
-            --gemini-healthy "$merged_gemini"
             --timing-ledger "$cur_timing_ledger"
         )
         [[ -n "$cur_token_session_id" ]] && write_args+=(--token-session-id "$cur_token_session_id")

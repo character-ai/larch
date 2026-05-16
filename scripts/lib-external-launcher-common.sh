@@ -40,7 +40,7 @@ external_serial_lock_acquire() {
     [[ "$platform" == "Darwin" ]] || return 0
 
     case "$tool" in
-        cursor|codex|gemini) ;;
+        cursor|codex) ;;
         *) return 0 ;;
     esac
 
@@ -109,11 +109,6 @@ external_is_auth_failure() {
             # OPENAI_API_KEY is intentionally excluded: it appears in benign
             # diagnostic output and would cause non-auth failures to retry.
             grep -Eiq 'auth[-_ ]?error|not logged in|login required|authentication (failed|required)|unauthorized|invalid api key' "$sidecar"
-            ;;
-        gemini)
-            # Defensive net; Gemini auth failures vary by install and account
-            # source, so keep this narrow enough to avoid generic failures.
-            grep -Eiq 'auth[-_ ]?error|authentication (failed|required)|unauthorized|invalid api key|API key not valid|credentials? (missing|not found|unavailable)' "$sidecar"
             ;;
         *)
             return 1

@@ -111,6 +111,7 @@ flowchart TD
     IMPL_PHASE --> MERGE_FLAG{--merge<br/>flag set?}
     MERGE_FLAG -->|No| POST_ISSUE
     MERGE_FLAG -->|Yes| MERGE_PHASE
+    POST_ISSUE[Update tracking issue]
 
     subgraph MERGE_PHASE["Merge Phase (/implement --merge)"]
         CI_WAIT[Wait for CI to pass] --> REBASE{Main advanced?}
@@ -157,7 +158,6 @@ Flags modify behavior across the skill hierarchy:
 | `--design-only` | `/implement` | Runs through design plus larch-log/OOS publication, then stops before implementation, review, version bump, PR, CI, and merge. Mutually exclusive with `--merge`; the tracking issue URL is the deliverable. |
 | `--no-issues` | `/implement` | Requires `--design-only`. Skips tracking-issue creation (Steps 0.5, 9a.1, 11 bypass). Design output is ephemeral — no GitHub issue opened, no tracking-issue summary maintained. |
 | `--no-issue` | `/research` | Skips the Step 3.5 auto-archive that files the full report as a GitHub issue. Default off (issue is filed). |
-| `--coder=<value>` | `/implement`, `/fix-issue` (and aliases `/im`, `/imaq`, `/imq`) | Selects the Step 2 implementer. When `--coder` is omitted, `/design` writes a `diff_lines` estimate; `diff_lines < 30` routes to the main-agent Claude path, while absent or larger estimates route through the default Codex → Cursor → Claude waterfall by availability. Pass `--coder=codex` explicitly to suppress the carve-out and waterfall. `claude` runs the implementation in the main agent / Claude context — pre-Codex behavior. `cursor` spawns the Cursor implementer via the same dispatcher; `gemini` spawns the Gemini implementer. When Cursor or Gemini is explicitly selected but unhealthy or unavailable, the dispatcher falls back to `STATUS=claude_fallback` and the orchestrator runs the main-agent code-edit path (symmetric to passing `--coder=claude`). `/fix-issue` forwards the value verbatim to `/implement` on PR paths and does not validate it itself. The legacy `--codex-available` knob (boolean) is still accepted by the dispatcher for one release with a stderr deprecation warning (true maps to `coder=codex`; false maps to `coder=claude`). |
 
 ## Conditional Steps
 

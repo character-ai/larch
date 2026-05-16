@@ -5,9 +5,7 @@
 Subcommands:
 
 - `--since-last-mark --terse` prints one line for the latest mark whose skill matches `${LARCH_TIMING_SKILL:-implement}`:
-  `Step name: elapsed=<HH:MM:SS> vendor-tasks=<N> (codex=<n>, cursor=<m>, gemini=<k>)`.
 - `--summary` prints one grand-total line spanning all marks from the first to the present:
-  `Total: elapsed=<HH:MM:SS> vendor-tasks=<N> (codex=<n>, cursor=<m>, gemini=<k>)`.
   Used as the default brief output in Step 17 when `LARCH_VERBOSE_TOKENS` is unset.
 - `--full --markdown [--output FILE]` renders the full markdown report.
 - `--full --format json [--output FILE]` renders a JSON object with `workflow_path`, `per_step`, `total_seconds`, `total_hms`, and `vendor_task_averages`.

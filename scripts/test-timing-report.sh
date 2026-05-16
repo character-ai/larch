@@ -63,7 +63,7 @@ TERSE=$(LARCH_TEST_TIMING_NOW=310 "$REPO_ROOT/scripts/timing-report.sh" --ledger
 # >= the latest mark timestamp, instead of the row's wall-clock log timestamp.
 # Fixture has end_s values 220, 300, 160 with last_terse_ts=250, so exactly the
 # end_s=300 codex-implement row qualifies (vendor-tasks=1, codex=1).
-EXPECTED_TERSE='Step 3 — checks first pass: elapsed=00:01:00 vendor-tasks=1 (codex=1, cursor=0, gemini=0)'
+EXPECTED_TERSE='Step 3 — checks first pass: elapsed=00:01:00 vendor-tasks=1 (codex=1, cursor=0)'
 if [[ "$TERSE" != "$EXPECTED_TERSE" ]]; then
   echo "expected terse output:" >&2
   echo "  $EXPECTED_TERSE" >&2
@@ -117,7 +117,7 @@ grep -Fq '**Workflow path**: HARD' "$TMP_BASE/nontmp.out"
 # Fixture: LEDGER (2 codex + 1 cursor tasks, all end_s >= mark_ts[1]=0), now=310.
 # elapsed = 310 - 0 = 310 s = 00:05:10; codex=2, cursor=1 → vendor-tasks=3.
 SUMMARY_OUT=$(LARCH_TEST_TIMING_NOW=310 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$LEDGER" --summary)
-expected_summary="Total: elapsed=00:05:10 vendor-tasks=3 (codex=2, cursor=1, gemini=0)"
+expected_summary="Total: elapsed=00:05:10 vendor-tasks=3 (codex=2, cursor=1)"
 if [[ "$SUMMARY_OUT" == "$expected_summary" ]]; then
     echo "PASS: summary normal"
 else
@@ -133,7 +133,7 @@ v1	mark	0	implement	Step 1 — design plan	-	-	-	-	-	-	-	-
 v1	mark	100	implement	Step 2 — implementation	-	-	-	-	-	-	-	-
 EOF
 SUMMARY_NO_VENDOR_OUT=$(LARCH_TEST_TIMING_NOW=150 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$SUMMARY_NO_VENDOR_LEDGER" --summary)
-expected_summary_no_vendor="Total: elapsed=00:02:30 vendor-tasks=0 (codex=0, cursor=0, gemini=0)"
+expected_summary_no_vendor="Total: elapsed=00:02:30 vendor-tasks=0 (codex=0, cursor=0)"
 if [[ "$SUMMARY_NO_VENDOR_OUT" == "$expected_summary_no_vendor" ]]; then
     echo "PASS: summary zero-vendor"
 else
