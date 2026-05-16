@@ -41,7 +41,7 @@ Print `> **🔶 /review 3: review cycle**`. **MANDATORY — READ ENTIRE FILE** b
 
 Wrapper loop: set `round_cap=3`; for each round call `review-core.sh --mode <diff|description> --output-dir "$REVIEW_TMPDIR" --session-env-path "$SESSION_ENV_PATH" --codex-available "$codex_available" --cursor-available "$cursor_available" --description-text "$DESCRIPTION_TEXT" --panel hard --run-id "$RUN_ID" --round-num "$round_num"` and parse `REVIEW_CORE_STATUS`, `ACCEPTED_FINDINGS_FILE`, counts, `PANEL_MODE`, `PANEL_SHAPE`, and `VOTING_SKIPPED_WARNING`; if `VOTING_SKIPPED_WARNING` is non-empty, print it as a user-visible warning before proceeding; including wholesale rejection signals `WHOLESALE_REJECTED=true|false` when emitted (see `skills/shared/voting-protocol.md`).
 
-If `REVIEW_CORE_STATUS=fix-required`, invoke `/review-and-fix` via the Skill tool with `--findings-file "$ACCEPTED_FINDINGS_FILE" --review-tmpdir "$REVIEW_TMPDIR" [--session-env "$SESSION_ENV_PATH"]`.
+If `REVIEW_CORE_STATUS=fix-required`, invoke `/review-and-fix` via the Skill tool with `--findings-file "$ACCEPTED_FINDINGS_FILE" --review-tmpdir "$REVIEW_TMPDIR" [--session-env "$SESSION_ENV_PATH"]`; fix application is performed by Codex via `review-and-fix.sh`, with Cursor and Claude-subagent fallbacks when needed.
 
 > **Continue after child returns.** On `RELEVANT_CHECKS_OK=true`, execute the Step 3f classification next; do NOT end the turn on helper output alone. On `STATUS=fail` from the Step 3e helper, read `REDACTED_LOG_FILE` for diagnosis — NOT raw `LOG_FILE`. The non-substantial re-review convergence line is not terminal — continue into Step 4.
 

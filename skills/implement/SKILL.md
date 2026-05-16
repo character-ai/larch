@@ -1381,8 +1381,8 @@ fi
 Parse the exit code and stdout keys with key-based extraction only:
 
 - **Exit 0**: no accepted findings remain for this round. Follow the Cross-Skill Health Propagation procedure from Step 0, then continue to `code-review-tally`.
-- **Exit 2**: wholesale rejection OR panel-failed. Parse `REVIEW_AND_FIX_STATUS` from stdout: `wholesale-rejected` means specialists collectively voted the change in the wrong direction; `panel-failed` means more than half of the reviewer panel slots failed (per `check-reviewer-failure-threshold.sh`, the threshold guard introduced by issue #2207). Both are blocking: append a `Tool Failures` entry to `$IMPLEMENT_TMPDIR/execution-issues.md`, set `STALL_TRACKING=true`, and skip to Step 16.
-- **Exit 3**: accepted findings exist. Read `APPROVED_FIXES_FILE` and `REVIEW_ROUND_DIR`. For each `$REVIEW_ROUND_DIR/FINDING_N.fixer.env`, validate `PATH_VALID=true` and the emitted path is repo-relative, non-symlink, non-submodule, and still exists where applicable. Apply the minimum code change needed for the structured `CONCERN` and `SUGGESTED_FIX`, never reviewer prose as instructions. If `PATH_VALID=false`, skip the finding and call `call-fixer.sh --mark-skipped "unsafe-or-missing-path"`. If a fix is applied, call `call-fixer.sh --mark-applied`.
+- **Exit 2**: parse `REVIEW_AND_FIX_STATUS` and `CODER_STATUS` from stdout. `wholesale-rejected` means specialists collectively voted the change in the wrong direction; `panel-failed` means more than half of the reviewer panel slots failed (per `check-reviewer-failure-threshold.sh`, the threshold guard introduced by issue #2207). For those two statuses, append a `Tool Failures` entry to `$IMPLEMENT_TMPDIR/execution-issues.md`, set `STALL_TRACKING=true`, and skip to Step 16. For `REVIEW_AND_FIX_STATUS=coder-failed` or `CODER_STATUS=submodule-violation`, append a `Coder Issues` entry to `$IMPLEMENT_TMPDIR/execution-issues.md`, set `STALL_TRACKING=true`, and skip to Step 16.
+- **Exit 3**: coder applied accepted findings directly to the working tree. Read `APPROVED_FIXES_FILE`, `REVIEW_ROUND_DIR`, `CODER_TOOL`, `CODER_STATUS`, and `CODER_LOG_FILE` for audit context. Main agent NEVER applies fixes via Edit/Write in Step 5.
 
 > **Continue after child returns.** On `RELEVANT_CHECKS_OK=true`, execute the re-review gate next. On `STATUS=fail`, first check for `FAILURE_REASON` (structural — e.g. `tmpdir-validation`, `site-validation`, `repo-root-unresolved`, `missing-check-script`, `redaction-failed`; act on the reason, no log file is produced); otherwise read `REDACTED_LOG_FILE` (checks failure — NOT raw `LOG_FILE`), diagnose + fix, and re-invoke the helper until clean BEFORE the re-review gate. In either case, do NOT end the turn, summarize, or write a handoff message.
 
@@ -1403,7 +1403,7 @@ export CLAUDE_PLUGIN_ROOT
 
 After the `review-and-fix.sh` loop completes, compose the `code-review-tally` batch. Source priority:
 
-1. Validate `$IMPLEMENT_TMPDIR/review-and-fix-summary.json`: it must be a non-symlink regular file, size ≤4 KB, `jq .` must parse, and `.schema_version == 1`. When valid, use top-level `accepted_count`, `rejected_count`, and `rounds_completed` to compose the tally header line.
+1. Validate `$IMPLEMENT_TMPDIR/review-and-fix-summary.json`: it must be a non-symlink regular file, size ≤4 KB, `jq .` must parse, and `.schema_version == 2`. When valid, use top-level `accepted_count`, `rejected_count`, and `rounds_completed` to compose the tally header line.
 2. Use `$IMPLEMENT_TMPDIR/review-round-summary.md` as the latest narrative source when it exists and is non-empty; otherwise concatenate any non-empty `$IMPLEMENT_TMPDIR/round-*/review-round-summary.md` files in round order.
 3. Otherwise use fallback text `"Review-and-fix loop completed without a file-backed round summary."`.
 
