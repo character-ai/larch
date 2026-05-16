@@ -501,7 +501,7 @@ run_implement_round() {
             fi
             skipped_finding_count=$((skipped_finding_count + 1))
             rm -f "$block_file"
-        done < <(grep -E '^SKIPPED: FINDING_[0-9]+' "$coder_log" | grep -oE 'FINDING_[0-9]+' | sort -u 2>/dev/null || true)
+        done < <(grep -E '^SKIPPED: FINDING_[0-9]+( |-|$)' "$coder_log" | grep -oE 'FINDING_[0-9]+' | sort -u 2>/dev/null || true)
 
         if [[ -s "$skipped_file" ]]; then
             jq -Rn --argjson round "$round_num_dec" --rawfile body "$skipped_file" \

@@ -45,6 +45,7 @@ import re
 
 allowed = {
     "# Rejected Findings",
+    "## Accepted Findings",
     "## Rejected Code Review Findings",
     "## Voting Tally",
     "# Code Review Voting Tally",
@@ -63,9 +64,11 @@ try:
                 continue
             if in_fence:
                 continue
+            if re.match(r"^# Review Round [0-9]+$", line):
+                continue
             if line.startswith("### [Code Review] "):
                 continue
-            if re.match(r"^### \[rejected\] FINDING_[0-9]+$", line):
+            if re.match(r"^### \[(rejected|neutral|exonerated)\] FINDING_[0-9]+$", line):
                 continue
             if re.match(r"^### FINDING_[0-9]+: ", line):
                 continue

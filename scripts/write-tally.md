@@ -31,14 +31,18 @@ file is additionally validated: real ATX Markdown headings (`#` through `######`
 followed by a space) must be one of these allowed forms:
 
 - `# Rejected Findings`
+- `## Accepted Findings`
 - `## Rejected Code Review Findings`
 - `## Voting Tally`
 - `# Code Review Voting Tally`
 - `## Per-finding vote breakdown`
 - `## Reviewer Competition Scoreboard`
 - `### [rejected] FINDING_N`
+- `### [neutral] FINDING_N`
+- `### [exonerated] FINDING_N`
 - `### FINDING_N: ...`
 - `### [Code Review] ...` reviewer sub-headings
+- `# Review Round N` (where N is an integer, from the round summary header)
 
 Headings inside triple-backtick fenced code blocks are ignored, and non-heading lines
 that merely start with `#` (for example `#2211` or `#!/usr/bin/env bash`) are not
