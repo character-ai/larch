@@ -62,10 +62,12 @@ mkdir -p "$REVIEW_TMPDIR"
 GATHER_CONTEXT_SH="${REVIEW_CORE_GATHER_CONTEXT_SH:-$SCRIPT_DIR/gather-context.sh}"
 DISPATCH_PANEL_SH="${REVIEW_CORE_DISPATCH_PANEL_SH:-$SCRIPT_DIR/dispatch-panel.sh}"
 COLLECT_FINDINGS_SH="${REVIEW_CORE_COLLECT_FINDINGS_SH:-$SCRIPT_DIR/collect-findings.sh}"
-TALLY_VOTES_SH="${REVIEW_CORE_TALLY_VOTES_SH:-$SCRIPT_DIR/tally-votes.sh}"
+TALLY_VOTES_SH="${REVIEW_CORE_TALLY_VOTES_SH:-$SCRIPT_DIR/tally-code-votes.sh}"
 DETECT_WHOLESALE_SH="${REVIEW_CORE_DETECT_WHOLESALE_SH:-$SCRIPT_DIR/detect-wholesale-rejection.sh}"
 EMIT_TALLY_SH="${REVIEW_CORE_EMIT_TALLY_SH:-$SCRIPT_DIR/emit-tally.sh}"
 CHECK_DIRTY_TREE_SH="${REVIEW_CORE_CHECK_DIRTY_TREE_SH:-$PLUGIN_ROOT/scripts/check-mid-run-dirty-tree.sh}"
+CHECK_THRESHOLD_SH="${REVIEW_CORE_CHECK_THRESHOLD_SH:-$SCRIPT_DIR/check-reviewer-failure-threshold.sh}"
+DISPATCH_VOTERS_SH="${REVIEW_CORE_DISPATCH_VOTERS_SH:-$PLUGIN_ROOT/scripts/dispatch-code-voters.sh}"
 
 kv_get() {
     local file="$1" key="$2"
@@ -217,6 +219,35 @@ fi
 "$COLLECT_FINDINGS_SH" "${collect_args[@]}" > "$collect_out"
 recover_dirty_tree "${external_array[@]+"${external_array[@]}"}" "${claude_array[@]+"${claude_array[@]}"}"
 
+# Reviewer failure threshold: hard-stop the round when >50% of the intended
+# panel slots failed. THRESHOLD_OK=false → REVIEW_CORE_STATUS=panel-failed and
+# exit 2 so review-and-fix.sh propagates the stall to /implement Step 5.
+collector_results_file="$REVIEW_TMPDIR/collector-results.env"
+threshold_out="$REVIEW_TMPDIR/review-core-threshold.env"
+launched_slots=$(( ${#external_array[@]} + ${#claude_array[@]} ))
+threshold_args=(--collector-results-file "$collector_results_file" --panel "$panel_shape" --launched-slots "$launched_slots")
+"$CHECK_THRESHOLD_SH" "${threshold_args[@]}" > "$threshold_out"
+threshold_ok=$(kv_get "$threshold_out" THRESHOLD_OK)
+threshold_reason=$(kv_get "$threshold_out" THRESHOLD_REASON)
+if [[ "$threshold_ok" == "false" ]]; then
+    : > "$REVIEW_TMPDIR/accepted-findings.md"
+    : > "$REVIEW_TMPDIR/rejected-findings.md"
+    : > "$REVIEW_TMPDIR/oos-accepted-review.md"
+    copy_to_parent "$REVIEW_TMPDIR/rejected-findings.md" rejected-findings.md
+    copy_to_parent "$REVIEW_TMPDIR/oos-accepted-review.md" oos-accepted-review.md
+    emit_kv REVIEW_CORE_STATUS panel-failed
+    emit_kv ROUND_NUM "$ROUND_NUM"
+    emit_kv ACCEPTED_COUNT 0
+    emit_kv REJECTED_COUNT 0
+    emit_kv FINDINGS_FILE "$REVIEW_TMPDIR/findings.md"
+    emit_kv ACCEPTED_FINDINGS_FILE "$REVIEW_TMPDIR/accepted-findings.md"
+    emit_kv REJECTED_FINDINGS_FILE "$REVIEW_TMPDIR/rejected-findings.md"
+    emit_kv PANEL_MODE "$panel_mode"
+    emit_kv PANEL_SHAPE "$panel_shape"
+    emit_kv THRESHOLD_REASON "$threshold_reason"
+    exit 2
+fi
+
 findings_count=$(kv_get "$collect_out" FINDINGS_COUNT)
 findings_count="${findings_count:-0}"
 if [[ "$findings_count" == "0" ]]; then
@@ -240,14 +271,56 @@ fi
 tally_out="$REVIEW_TMPDIR/review-core-tally.env"
 both_down=false
 [[ "$panel_mode" == "both-down" ]] && both_down=true
+
+# Dispatch the 3-judge code-review panel and collect vote-output files. When
+# both externals are down we skip the dispatch entirely and let tally-code-votes
+# auto-accept via --both-down=true.
+voter_files=()
+voter_1_tool=""
+voter_2_tool=""
+voter_3_tool=""
+voter_1_status=""
+voter_2_status=""
+voter_3_status=""
+if [[ "$both_down" == "false" ]]; then
+    voters_out="$REVIEW_TMPDIR/review-core-voters.env"
+    voter_args=(
+        --ballot-file "$REVIEW_TMPDIR/findings.md"
+        --review-tmpdir "$REVIEW_TMPDIR"
+        --codex-available "$CODEX_AVAILABLE"
+        --cursor-available "$CURSOR_AVAILABLE"
+    )
+    [[ -n "$SESSION_ENV_PATH" ]] && voter_args+=(--session-env-path "$SESSION_ENV_PATH")
+    [[ -n "$DIFF_FILE" ]] && voter_args+=(--diff-file "$DIFF_FILE")
+    [[ -n "$PLAN_FILE" ]] && voter_args+=(--plan-file "$PLAN_FILE")
+    "$DISPATCH_VOTERS_SH" "${voter_args[@]}" > "$voters_out"
+    voter_1_path=$(kv_get "$voters_out" VOTER_1_PATH)
+    voter_2_path=$(kv_get "$voters_out" VOTER_2_PATH)
+    voter_3_path=$(kv_get "$voters_out" VOTER_3_PATH)
+    voter_1_status=$(kv_get "$voters_out" VOTER_1_STATUS)
+    voter_2_status=$(kv_get "$voters_out" VOTER_2_STATUS)
+    voter_3_status=$(kv_get "$voters_out" VOTER_3_STATUS)
+    voter_1_tool=$(kv_get "$voters_out" VOTER_1_TOOL)
+    voter_2_tool=$(kv_get "$voters_out" VOTER_2_TOOL)
+    voter_3_tool=$(kv_get "$voters_out" VOTER_3_TOOL)
+    # Only include voter files whose dispatch succeeded; failed voters are
+    # treated as abstentions by reducing the eligible voter count.
+    [[ "$voter_1_status" != "failed" && -s "$voter_1_path" ]] && voter_files+=("$voter_1_path")
+    [[ "$voter_2_status" != "failed" && -s "$voter_2_path" ]] && voter_files+=("$voter_2_path")
+    [[ "$voter_3_status" != "failed" && -s "$voter_3_path" ]] && voter_files+=("$voter_3_path")
+fi
+
 tally_args=(
-    --findings-file "$REVIEW_TMPDIR/findings.md"
+    --ballot-file "$REVIEW_TMPDIR/findings.md"
+    --review-tmpdir "$REVIEW_TMPDIR"
     --cursor-available "$CURSOR_AVAILABLE"
     --codex-available "$CODEX_AVAILABLE"
-    --review-tmpdir "$REVIEW_TMPDIR"
     --both-down "$both_down"
 )
 [[ -n "$SESSION_ENV_PATH" ]] && tally_args+=(--session-env-path "$SESSION_ENV_PATH")
+if [[ "${#voter_files[@]}" -gt 0 ]]; then
+    tally_args+=(--voter-files "${voter_files[@]}")
+fi
 "$TALLY_VOTES_SH" "${tally_args[@]}" > "$tally_out"
 
 accepted_count=$(kv_get "$tally_out" ACCEPTED_COUNT)
@@ -260,6 +333,17 @@ accepted_count="${accepted_count:-0}"
 rejected_count="${rejected_count:-0}"
 tally_file="${tally_file:-$REVIEW_TMPDIR/review-tally.env}"
 accepted_file="${accepted_file:-$REVIEW_TMPDIR/accepted-findings.md}"
+
+# Surface per-voter status so /implement can include it in the code-review-tally
+# larch-log batch.
+[[ -n "$voter_1_tool"   ]] && emit_kv VOTER_1_TOOL   "$voter_1_tool"
+[[ -n "$voter_2_tool"   ]] && emit_kv VOTER_2_TOOL   "$voter_2_tool"
+[[ -n "$voter_3_tool"   ]] && emit_kv VOTER_3_TOOL   "$voter_3_tool"
+[[ -n "$voter_1_status" ]] && emit_kv VOTER_1_STATUS "$voter_1_status"
+[[ -n "$voter_2_status" ]] && emit_kv VOTER_2_STATUS "$voter_2_status"
+[[ -n "$voter_3_status" ]] && emit_kv VOTER_3_STATUS "$voter_3_status"
+voting_tally_file=$(kv_get "$tally_out" VOTING_TALLY_FILE)
+[[ -n "$voting_tally_file" ]] && emit_kv VOTING_TALLY_FILE "$voting_tally_file"
 
 wholesale_out="$REVIEW_TMPDIR/review-core-wholesale.env"
 "$DETECT_WHOLESALE_SH" --accepted-count "$accepted_count" > "$wholesale_out"

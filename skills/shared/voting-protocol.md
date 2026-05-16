@@ -4,7 +4,7 @@ Shared voting protocol for adjudicating review findings. Used by `/design` (plan
 
 ## Overview
 
-After reviewers submit findings and findings are deduplicated, a voting panel votes YES/NO/EXONERATE on each finding. `/design` (plan review) uses a 3-voter panel (Claude + Codex + Cursor) unconditionally; findings with 2+ YES votes are accepted. `/review` (code review) uses a 2-voter primary panel (Codex + Cursor) and invokes Claude as a conditional tie-breaker only on a 1Y/1N split — see `skills/review/references/voting.md` for the full code review panel procedure. Original reviewers earn competition points based on how their findings perform in voting. EXONERATE is a third option meaning "legitimate concern, but not worth implementing in this PR" — it spares the proposing reviewer from losing a point on in-scope findings. (OOS observations use asymmetric reward-only scoring — see [OOS Scoring](#oos-scoring) below — so OOS rejection carries no penalty regardless.)
+After reviewers submit findings and findings are deduplicated, a voting panel votes YES/NO/EXONERATE on each finding. Both `/design` (plan review) and `/review` (code review) use a 3-voter panel (Claude + Codex + Cursor) unconditionally; findings with 2+ YES votes are accepted. When an external voter is unhealthy, a Claude voter is launched in its place so the panel always has 3 voters. `/review` voter dispatch is owned by `${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-code-voters.sh`; vote tally is owned by `${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/tally-code-votes.sh`. Original reviewers earn competition points based on how their findings perform in voting. EXONERATE is a third option meaning "legitimate concern, but not worth implementing in this PR" — it spares the proposing reviewer from losing a point on in-scope findings. (OOS observations use asymmetric reward-only scoring — see [OOS Scoring](#oos-scoring) below — so OOS rejection carries no penalty regardless.)
 
 ## Wholesale Rejection Flag
 
@@ -67,10 +67,10 @@ When voting is skipped due to insufficient voters, print: `**⚠ Voting skipped 
 - **Voter 2**: Codex — via `run-external-agent.sh`
 - **Voter 3**: Cursor — via `run-external-agent.sh`
 
-**For code review** (`/review` Step 3):
-- **Voter 1**: Codex — via `run-external-agent.sh` (primary; always launched)
-- **Voter 2**: Cursor — via `run-external-agent.sh` (primary; always launched)
-- **Conditional Voter 3 (tie-breaker)**: Claude Code Reviewer subagent — launched as a fresh Agent tool invocation (subagent_type: `larch:code-reviewer`) **only when Voters 1 and 2 split 1Y/1N** on a finding; not launched unconditionally. See `skills/review/references/voting.md` for the full tie-breaker procedure.
+**For code review** (`/review` Step 3) — `${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-code-voters.sh` launches all three voters every round:
+- **Voter 1**: Claude opus — via `launch-claude-subprocess.sh --model claude-opus-4-7` (always launched)
+- **Voter 2**: Codex — via `run-external-agent.sh`. When `codex-available=false`, a Claude voter is launched in its place (`VOTER_2_STATUS=fallback`, `VOTER_2_TOOL=claude`).
+- **Voter 3**: Cursor — via `run-external-agent.sh`. When `cursor-available=false`, a Claude voter is launched in its place (`VOTER_3_STATUS=fallback`, `VOTER_3_TOOL=claude`).
 
 All voters vote on **all** findings — no self-voting exclusion. Voters are instructed to evaluate each finding objectively regardless of who proposed it.
 
@@ -112,7 +112,7 @@ You must vote on every item. Do NOT skip any. Do NOT modify files.
 
 **For `/design` plan review**: call `${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-plan-voters.sh` for Voter 2 (Codex) and Voter 3 (Cursor), then launch Voter 1 and any Claude replacement voters indicated by `VOTER_2_STATUS=fallback` / `VOTER_3_STATUS=fallback`. The dispatcher launches available external voters in parallel, waits for sentinels, and emits the external output paths. When external tools are unavailable, launch Claude replacement voters instead so the total voter count always remains 3.
 
-**For code review**: launch 2 primary voters (Cursor + Codex) in parallel. Claude is a conditional tie-breaker only — do NOT launch Claude unconditionally. See `skills/review/references/voting.md` for the full code review voter launch procedure.
+**For code review**: `${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-code-voters.sh` launches Claude (always), Codex (when available), and Cursor (when available) in parallel; when an external is unhealthy a Claude replacement fills the slot. The orchestrator does not invoke voters directly — `review-core.sh` calls the dispatch script.
 
 **Generic Cursor voter argv contract** (mirrored by `dispatch-plan-voters.sh` for `/design`; use the skill-specific launch instructions before copying this block):
 
@@ -140,7 +140,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/run-external-agent.sh --tool cursor --output "<tmp
 
 Use `run_in_background: true` and `timeout: 1260000` only for skill-specific direct-launch paths. `/design` plan review gets this behavior from `dispatch-plan-voters.sh`.
 
-**Cursor voter replacement (plan review only)** (if `cursor_available` is false): Launch a Claude subagent voter via the Agent tool with the voter prompt. This replacement ensures the total voter count always remains 3. For code review, when a primary voter is unavailable, do NOT launch a Claude replacement — voting is skipped when fewer than 2 eligible primaries remain (see `skills/review/references/voting.md` rows 15-16).
+**Cursor voter replacement** (plan review and code review; if `cursor_available` is false): Launch a Claude voter in its place. For plan review this happens via the Agent tool; for code review `dispatch-code-voters.sh` launches a Claude subprocess automatically. The total voter count always remains 3.
 
 **Generic Codex voter argv contract** (mirrored by `dispatch-plan-voters.sh` for `/design`; use the skill-specific launch instructions before copying this block):
 
@@ -161,7 +161,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/run-external-agent.sh --tool codex --output "<tmpd
 
 Use `run_in_background: true` and `timeout: 1260000` only for skill-specific direct-launch paths. `/design` plan review gets this behavior from `dispatch-plan-voters.sh`.
 
-**Codex voter replacement (plan review only)** (if `codex_available` is false): Launch a Claude subagent voter via the Agent tool with the voter prompt. This replacement ensures the total voter count always remains 3. For code review, when a primary voter is unavailable, do NOT launch a Claude replacement — voting is skipped when fewer than 2 eligible primaries remain (see `skills/review/references/voting.md` rows 15-16).
+**Codex voter replacement** (plan review and code review; if `codex_available` is false): Launch a Claude voter in its place. For plan review this happens via the Agent tool; for code review `dispatch-code-voters.sh` launches a Claude subprocess automatically. The total voter count always remains 3.
 
 **Claude voter**: Launch via Agent tool with the voter prompt.
 
@@ -258,6 +258,15 @@ The scoreboard includes additional columns for OOS items:
 ```
 | Reviewer | ... | OOS Proposed | OOS Accepted | ...
 ```
+
+### OOS Security Tag
+
+Accepted OOS items can be tagged as **security findings** that are held locally and never filed as public GitHub issues. The detection contract is shared between `/design` plan review (`tally-plan-review.sh`) and `/review` code review (`tally-code-votes.sh`) via `scripts/lib-vote-tally.sh::is_security_block`:
+
+- **Canonical token**: a block is security-tagged when its body contains at least one **unfenced** occurrence of `focus-area\s*=\s*security` (case-insensitive, optional whitespace around `=`).
+- **Match discrimination (false-positive guard)**: occurrences inside backtick or triple-backtick regions are fenced and do not count — only unfenced occurrences mark a finding as security-tagged.
+- **Security counter-invariant**: a real security finding MUST include at least one unfenced occurrence of the canonical token; otherwise it will not be held locally.
+- Accepted OOS items where the block matches are written ONLY to the local `oos-accepted-*.md` artifact and to the local-only artifact path; security-tagged findings (focus-area=security) are held locally and NEVER filed publicly — the canonical filing pipeline (`/implement` Step 9a.1 → `/issue` batch mode) is skipped for them.
 
 ### OOS Reporting
 
