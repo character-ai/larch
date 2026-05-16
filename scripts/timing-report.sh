@@ -179,9 +179,8 @@ render_report() {
             # using the row write-time ($3) inflated counts when a task
             # finished before the mark but its trap fired after. (FINDING_5.)
             if (vendor_end[i] >= last_terse_ts) {
-              total++
-              if (vendor_name[i] == "codex") codex++
-              else if (vendor_name[i] == "cursor") cursor++
+              if (vendor_name[i] == "codex") { codex++; total++ }
+              else if (vendor_name[i] == "cursor") { cursor++; total++ }
             }
           }
           printf "%s: elapsed=%s vendor-tasks=%d (codex=%d, cursor=%d)\n", last_terse_step, hms(now - last_terse_ts), total, codex, cursor
@@ -195,9 +194,8 @@ render_report() {
           total = codex = cursor = 0
           for (i = 1; i <= vendor_count; i++) {
             if (vendor_end[i] >= mark_ts[1]) {
-              total++
-              if (vendor_name[i] == "codex") codex++
-              else if (vendor_name[i] == "cursor") cursor++
+              if (vendor_name[i] == "codex") { codex++; total++ }
+              else if (vendor_name[i] == "cursor") { cursor++; total++ }
             }
           }
           printf "Total: elapsed=%s vendor-tasks=%d (codex=%d, cursor=%d)\n", hms(now - mark_ts[1]), total, codex, cursor
