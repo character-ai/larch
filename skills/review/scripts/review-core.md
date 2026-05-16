@@ -34,6 +34,8 @@ Emitted keys:
 - `PANEL_SHAPE=simple|hard`
 - `VOTING_SKIPPED_WARNING=<text>` — emitted only when `voter_count < 2`; callers should parse and display it as a user-visible warning
 
+Diff-mode convergence note: `REVIEW_CORE_STATUS=ok` is also the expected outcome when voting leaves `ACCEPTED_COUNT=0` and one or more findings were rejected. Callers that need to distinguish "nothing left to fix after voting" from a benign no-follow-up outcome should monitor `ACCEPTED_COUNT` together with `REJECTED_COUNT`, not the status string alone.
+
 Round stages:
 
 1. Gather context with `gather-context.sh --mode <mode> --output-dir "$REVIEW_TMPDIR"`.
