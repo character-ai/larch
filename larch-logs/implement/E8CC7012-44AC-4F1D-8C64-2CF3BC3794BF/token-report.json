@@ -71,14 +71,47 @@
             }
           }
         ]
+      },
+      {
+        "step": "Step 8a — changelog",
+        "totals": {
+          "input": 0,
+          "cache_read": 0,
+          "cache_create": 0,
+          "output": 0,
+          "total": 0
+        },
+        "skills": []
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 7,
+          "cache_read": 529994,
+          "cache_create": 89674,
+          "output": 1472,
+          "total": 621147
+        },
+        "skills": [
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 7,
+              "cache_read": 529994,
+              "cache_create": 89674,
+              "output": 1472,
+              "total": 621147
+            }
+          }
+        ]
       }
     ],
     "totals": {
-      "input": 367,
-      "cache_read": 33540628,
-      "cache_create": 1801974,
-      "output": 203922,
-      "total": 35546891
+      "input": 374,
+      "cache_read": 34070622,
+      "cache_create": 1891648,
+      "output": 205394,
+      "total": 36168038
     }
   },
   "codex": {
@@ -105,6 +138,22 @@
           "input": 0,
           "output": 0,
           "total": 531231
+        }
+      },
+      {
+        "step": "Step 8a — changelog",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
         }
       }
     ],
@@ -138,6 +187,22 @@
           "input": 995322,
           "output": 132628,
           "total": 8701966
+        }
+      },
+      {
+        "step": "Step 8a — changelog",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
         }
       }
     ],
