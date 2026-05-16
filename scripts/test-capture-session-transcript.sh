@@ -61,6 +61,7 @@ run_capture() {
     touch "$repo/.gitkeep"
     git -C "$repo" add .
     git -C "$repo" commit -q -m "init"
+    git -C "$repo" checkout -q -b "feature-$label"
 
     out="$(cd "$repo" && env "${env_args[@]}" "$CAPTURE" \
         --source-file "$source_file" \
@@ -200,6 +201,35 @@ if [ -f "$TMP/$sentinel_label-issues.md" ]; then
     assert_contains "$sentinel_label execution issue status" "$(cat "$TMP/$sentinel_label-issues.md")" "session-transcript status=suppressed-post-merge-sentinel"
 else
     fail "$sentinel_label execution issue log missing"
+fi
+
+default_branch_label="default-branch"
+default_branch_repo="$TMP/$default_branch_label-repo"
+mkdir -p "$default_branch_repo"
+git -C "$default_branch_repo" init >/dev/null 2>&1
+git -C "$default_branch_repo" config user.email "ci@test"
+git -C "$default_branch_repo" config user.name "Test CI"
+touch "$default_branch_repo/.gitkeep"
+git -C "$default_branch_repo" add .
+git -C "$default_branch_repo" commit -q -m "init"
+git -C "$default_branch_repo" branch -M main
+out="$(cd "$default_branch_repo" && env "PATH=${PATH:-}" "IMPLEMENT_TMPDIR=" "HOME=$TMP/default-home" "$CAPTURE" \
+    --source-file "$source_ok" \
+    --log-root "$TMP/$default_branch_label-staging/larch-logs" \
+    --skill implement \
+    --run-id "$default_branch_label" \
+    --no-logs-commit false \
+    --execution-issues-log "$TMP/$default_branch_label-issues.md")"
+assert_contains "$default_branch_label stdout status" "$out" "SESSION_TRANSCRIPT_STATUS=suppressed-default-branch"
+if [ -f "$TMP/$default_branch_label-issues.md" ]; then
+    assert_contains "$default_branch_label execution issue status" "$(cat "$TMP/$default_branch_label-issues.md")" "session-transcript status=suppressed-default-branch"
+else
+    fail "$default_branch_label execution issue log missing"
+fi
+if [ ! -e "$default_branch_repo/larch-logs/implement/$default_branch_label" ]; then
+    pass "$default_branch_label does not copy logs into repo"
+else
+    fail "$default_branch_label should not copy logs into repo"
 fi
 
 echo

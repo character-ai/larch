@@ -28,6 +28,7 @@ The script always exits 0 and prints exactly one `SESSION_TRANSCRIPT_STATUS=<sta
 - `write-failed` — `larch-log.sh write` failed.
 - `suppressed-no-logs-commit` — write succeeded and `--no-logs-commit true` skipped commit.
 - `suppressed-post-merge-sentinel` — write succeeded but `$IMPLEMENT_TMPDIR/post-merge-sentinel` exists; commit intentionally skipped because the PR has already merged.
+- `suppressed-default-branch` — write succeeded but the current branch is `main` or the `origin/HEAD` default branch; commit intentionally skipped because Step 18 may be running after merge without an exported sentinel.
 - `commit-failed` — write succeeded and `larch-log.sh commit` failed.
 - `captured` — write and commit both succeeded.
 

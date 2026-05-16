@@ -77,6 +77,25 @@ emit_status() {
     exit 0
 }
 
+current_branch_is_default() {
+    local repo_root current_branch default_branch
+
+    repo_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+    [ -n "$repo_root" ] || return 1
+    current_branch="$(git -C "$repo_root" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+    [ -n "$current_branch" ] || return 1
+    [ "$current_branch" != "HEAD" ] || return 1
+    [ "$current_branch" != "main" ] || return 0
+    [ "$current_branch" != "master" ] || return 0
+
+    default_branch="$(
+        git -C "$repo_root" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null \
+            | sed 's|^refs/remotes/origin/||'
+    )" || default_branch=""
+    [ -n "$default_branch" ] || return 1
+    [ "$current_branch" = "$default_branch" ]
+}
+
 TRANSCRIPT_PATH=""
 if [ -z "$SOURCE_FILE" ] || [ ! -f "$SOURCE_FILE" ] || [ ! -s "$SOURCE_FILE" ]; then
     recovered=""
@@ -146,6 +165,10 @@ fi
 
 if [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -e "$IMPLEMENT_TMPDIR/post-merge-sentinel" ]; then
     emit_status "suppressed-post-merge-sentinel" "post-merge sentinel exists; transcript was written but not committed (intentional — no commits after merge)."
+fi
+
+if current_branch_is_default; then
+    emit_status "suppressed-default-branch" "current branch is main/default; transcript was written but not committed (intentional — no commits after merge)."
 fi
 
 if ! "$SCRIPT_DIR/larch-log.sh" commit \

@@ -17,7 +17,8 @@ Primary verbs:
 - `exists` probes a batch path.
 - `manifest` updates mutable manifest fields. Values that look like JSON-native scalars (`null`, `true`, `false`, integers) are passed via `--argjson` so they are stored with the correct JSON type; all other values are passed via `--arg` (stored as strings). This matters for numeric fields like `pr_number`.
 - `commit` stages and commits one run directory without pushing. It refuses
-  with a stderr diagnostic when `$IMPLEMENT_TMPDIR/post-merge-sentinel` exists,
+  with a stderr diagnostic when `$IMPLEMENT_TMPDIR/post-merge-sentinel` exists
+  or when the current branch is `main`/the `origin/HEAD` default branch,
   preventing post-merge log-only commits.
 
 Every verb emits a quiet KEY=value envelope:

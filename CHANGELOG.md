@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [29.0.0] - 2026-05-15
+
+### Changed
+
+- Export IMPLEMENT_TMPDIR before Step 18 transcript capture so post-merge sentinel checks see the run tmpdir.
+- Add default-branch/main commit refusal to larch-log commit and a traceable suppressed-default-branch transcript status.
+- Extend larch-log and transcript capture harnesses plus sibling docs for the new guards.
+
 ## [27.6.28] - 2026-05-15
 
 ### Changed

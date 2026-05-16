@@ -1,6 +1,6 @@
 # test-capture-session-transcript.sh contract
 
-Regression harness for `scripts/capture-session-transcript.sh`. The primary contract lives in `scripts/capture-session-transcript.md`; this harness covers the wrapper's status enum, the `$HOME/.claude/projects` fallback discovery path, and verifies that each outcome is both printed to stdout and appended to the execution-issues log.
+Regression harness for `scripts/capture-session-transcript.sh`. The primary contract lives in `scripts/capture-session-transcript.md`; this harness covers the wrapper's status enum, the `$HOME/.claude/projects` fallback discovery path, default-branch commit suppression, and verifies that each outcome is both printed to stdout and appended to the execution-issues log.
 
 Run with:
 
