@@ -134,6 +134,7 @@ done
 printf '# summary\n' > "$tmp/review-round-summary.md"
 printf '{"schema_version":1}\n' > "$tmp/review-summary.json"
 printf '# rejected\n' > "$tmp/rejected-findings.md"
+printf '### [Code Review] Stub Reviewer\n\n**Finding**: full rejected body\n' > "$tmp/rejected-findings-full.md"
 printf '# oos\n' > "$tmp/oos-accepted-review.md"
 printf 'EMIT_OK=true\nROUND_SUMMARY_FILE=%s/review-round-summary.md\nREVIEW_SUMMARY_FILE=%s/review-summary.json\n' "$tmp" "$tmp"
 STUB
@@ -212,6 +213,7 @@ mkdir -p "$parent"
 out=$(TEST_FINDINGS=1 TEST_ACCEPTED=1 run_core "$TMP/parent-run" diff "$parent/session.env")
 assert_contains "$out" 'REVIEW_CORE_STATUS=fix-required'
 [[ -f "$parent/rejected-findings.md" ]]
+[[ -f "$parent/rejected-findings-full.md" ]]
 [[ -f "$parent/oos-accepted-review.md" ]]
 [[ -f "$parent/review-dirty-tree-summary.env" ]]
 

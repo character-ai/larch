@@ -149,13 +149,20 @@ if [ -n "$IMPLEMENT_TMPDIR" ]; then
     for round_dir in "${round_dirs[@]+"${round_dirs[@]}"}"; do
         [ -d "$round_dir" ] || continue
         parse_artifact "$round_dir/accepted-findings.md" code-review-accepted
-        if [ -s "$round_dir/rejected-findings.md" ]; then
+        if [ -s "$round_dir/rejected-findings-full.md" ]; then
+            round_rejected_found=true
+            parse_artifact "$round_dir/rejected-findings-full.md" code-review-rejected
+        elif [ -s "$round_dir/rejected-findings.md" ]; then
             round_rejected_found=true
             parse_artifact "$round_dir/rejected-findings.md" code-review-rejected
         fi
     done
     if [ "$round_rejected_found" = false ]; then
-        parse_artifact "$IMPLEMENT_TMPDIR/rejected-findings.md" code-review-rejected
+        if [ -s "$IMPLEMENT_TMPDIR/rejected-findings-full.md" ]; then
+            parse_artifact "$IMPLEMENT_TMPDIR/rejected-findings-full.md" code-review-rejected
+        else
+            parse_artifact "$IMPLEMENT_TMPDIR/rejected-findings.md" code-review-rejected
+        fi
     fi
 fi
 

@@ -57,6 +57,8 @@ if [ -f "$manifest" ]; then pass "manifest exists"; else fail "manifest missing"
 if grep -q '"schema_version": 2' "$manifest"; then pass "manifest schema version"; else fail "manifest schema version"; fi
 if grep -q '"operator_cwd":' "$manifest"; then pass "manifest operator cwd"; else fail "manifest operator cwd"; fi
 if grep -q '"operator_repo_root":' "$manifest"; then pass "manifest operator repo root"; else fail "manifest operator repo root"; fi
+if grep -q '"operator_cwd": "<OPERATOR_CWD>"' "$manifest"; then pass "manifest operator cwd redacted"; else fail "manifest operator cwd redacted"; fi
+if grep -q '"operator_repo_root": "<REPO_ROOT>"' "$manifest"; then pass "manifest operator repo root redacted"; else fail "manifest operator repo root redacted"; fi
 if grep -q '"status": "in-progress"' "$manifest"; then pass "manifest status"; else fail "manifest status"; fi
 
 echo "=== replace write is redacted and idempotent ==="

@@ -194,6 +194,54 @@ run_orchestrator_case() {
 run_orchestrator_case codex-case codex-success codex
 run_orchestrator_case cursor-case cursor-success cursor
 
+work_rejected="$TMP/rejected-full"
+make_work_repo "$work_rejected"
+implement_tmp="$work_rejected/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_HEALTHY=true\nCURSOR_HEALTHY=true\n' > "$implement_tmp/session-env.sh"
+cat > "$TMP/review-core-rejected-stub.sh" <<'EOF_CORE_REJECTED'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+round="1"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --output-dir) out="$2"; shift 2 ;;
+    --round-num) round="$2"; shift 2 ;;
+    *) shift; [[ $# -gt 0 && "$1" != --* ]] && shift || true ;;
+  esac
+done
+mkdir -p "$out"
+: > "$out/accepted-findings.md"
+cat > "$out/rejected-findings.md" <<'EOF_REJECTED_SUMMARY'
+# Rejected Findings
+
+1:FINDING_9_ACCEPTED=false
+EOF_REJECTED_SUMMARY
+cat > "$out/rejected-findings-full.md" <<'EOF_REJECTED_FULL'
+### [Code Review] Cursor-Security
+
+**Finding**: full rejected review prose
+**Reason not implemented**: test fixture
+EOF_REJECTED_FULL
+printf '{"schema_version":1,"rounds_completed":%s,"accepted_count":0,"rejected_count":1}\n' "$round" > "$out/review-summary.json"
+printf '# Review Round %s\n' "$round" > "$out/review-round-summary.md"
+printf 'REVIEW_CORE_STATUS=ok\nROUND_NUM=%s\nACCEPTED_COUNT=0\nREJECTED_COUNT=1\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nPANEL_MODE=normal\nPANEL_SHAPE=simple\n' "$round" "$out" "$out"
+EOF_CORE_REJECTED
+chmod +x "$TMP/review-core-rejected-stub.sh"
+out=$(
+    cd "$work_rejected" && \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-rejected-stub.sh" \
+    REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id rejected-full-run
+)
+grep -Fq 'REVIEW_AND_FIX_STATUS=complete' <<< "$out" || fail "rejected-full status"
+grep -Fq 'full rejected review prose' "$implement_tmp/larch-logs/implement/rejected-full-run/code-review-tally.json" \
+    || fail "rejected-full tally missing preserved rejected prose"
+grep -Fq 'full rejected review prose' "$implement_tmp/larch-logs/implement/rejected-full-run/review-findings-full.md" \
+    || fail "rejected-full findings batch missing preserved rejected prose"
+
 work_claude="$TMP/claude-removed"
 make_work_repo "$work_claude"
 implement_tmp="$work_claude/implement"

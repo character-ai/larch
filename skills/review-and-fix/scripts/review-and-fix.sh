@@ -411,7 +411,11 @@ flush_review_batches() {
             done
         fi
 
-        if [[ -s "$impl_tmpdir/rejected-findings.md" ]]; then
+        if [[ -s "$impl_tmpdir/rejected-findings-full.md" ]]; then
+            printf '\n## Rejected Code Review Findings\n\n'
+            cat "$impl_tmpdir/rejected-findings-full.md"
+            printf '\n'
+        elif [[ -s "$impl_tmpdir/rejected-findings.md" ]]; then
             printf '\n## Rejected Code Review Findings\n\n'
             cat "$impl_tmpdir/rejected-findings.md"
             printf '\n'
@@ -575,7 +579,11 @@ run_implement_round() {
         mirror_oos_markdown "$oos_markdown" "$IMPLEMENT_TMPDIR/oos-accepted-review.md"
     fi
 
-    if [[ -f "$rejected_file" ]]; then
+    rejected_full_file="$round_dir/rejected-findings-full.md"
+    if [[ -f "$rejected_full_file" ]]; then
+        cp "$rejected_full_file" "$IMPLEMENT_TMPDIR/rejected-findings-full.md" 2>/dev/null || true
+        cp "$rejected_file" "$IMPLEMENT_TMPDIR/rejected-findings.md" 2>/dev/null || true
+    elif [[ -f "$rejected_file" ]]; then
         cp "$rejected_file" "$IMPLEMENT_TMPDIR/rejected-findings.md" 2>/dev/null || true
     fi
 
