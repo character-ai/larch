@@ -1411,7 +1411,7 @@ After the `review-and-fix.sh` loop completes, compose the `code-review-tally` ba
 
 ### Track Rejected Code Review Findings
 
-`review-and-fix.sh` copies rejected in-scope findings from the latest round to `$IMPLEMENT_TMPDIR/rejected-findings.md`. If the main agent skips any accepted fixer item during Step 5, append that skipped item to the same file using this format. **Do not include OOS items** — those follow a separate pipeline (accepted OOS → Step 9a.1 GitHub issues; non-accepted OOS → `oos-issues` log batch Rejected sub-block):
+`review-and-fix.sh` copies rejected in-scope findings from the latest round to `$IMPLEMENT_TMPDIR/rejected-findings.md`. When the coder reports a finding as `SKIPPED:` in its output log (or the round otherwise fails to apply a voted-in finding for documented reasons such as panel-level rejection), the same file should record the unapplied finding using this format. **Do not include OOS items** — those follow a separate pipeline (accepted OOS → Step 9a.1 GitHub issues; non-accepted OOS → `oos-issues` log batch Rejected sub-block):
 
 ```markdown
 ### [Code Review] <Reviewer Name>
