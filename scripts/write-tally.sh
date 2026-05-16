@@ -92,6 +92,16 @@ require_non_negative_integer "--rejected" "$REJECTED"
 [ -f "$BODY_FILE" ] || fail "body file not found: $BODY_FILE"
 [ ! -L "$BODY_FILE" ] || fail "body file must not be a symlink: $BODY_FILE"
 
+if [ "$PHASE" = "code-review" ]; then
+    while IFS= read -r hdr_line || [ -n "$hdr_line" ]; do
+        [ -n "$hdr_line" ] || continue
+        case "$hdr_line" in
+            "# Rejected Findings"|"## Rejected Code Review Findings"|"## Voting Tally"|"## Reviewer Competition Scoreboard") ;;
+            *) fail "unrecognized section header in code-review body: $hdr_line" ;;
+        esac
+    done < <(grep -E '^#+ ' "$BODY_FILE" 2>/dev/null || true)
+fi
+
 RECORD_FILE="$(mktemp "${TMPDIR:-/tmp}/write-tally-record.XXXXXX")" || fail "cannot create tally temp file"
 trap 'rm -f "${RECORD_FILE:-}"' EXIT
 

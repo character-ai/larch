@@ -26,8 +26,12 @@ Inputs:
 
 The phase determines the target batch: `plan-review` maps to
 `plan-review-tally`, and `code-review` maps to `code-review-tally`. Count flags
-default to `0`. The body file must be a regular non-symlink file. The helper
-uses a temporary record file under `${TMPDIR:-/tmp}` and removes it on exit.
+default to `0`. The body file must be a regular non-symlink file. For `--phase code-review`, the body
+file is additionally validated: any `#`-level Markdown headings must be one of the
+four allowed headers (`# Rejected Findings`, `## Rejected Code Review Findings`,
+`## Voting Tally`, `## Reviewer Competition Scoreboard`); unrecognized headers cause
+a non-zero exit. The helper uses a temporary record file under `${TMPDIR:-/tmp}` and
+removes it on exit.
 
 On composer failure, stdout receives:
 

@@ -212,6 +212,7 @@ parse_output() {
     function flush() {
         if (body != "") {
             gsub(/^[[:space:]]+|[[:space:]]+$/, "", body)
+            gsub(/\n/, " ", body)
             prefix=oos ? "[OUT_OF_SCOPE] " : ""
             printf("%s%s\t%s\t%s\n", prefix, title == "" ? "Reviewer finding" : title, label, body)
         }

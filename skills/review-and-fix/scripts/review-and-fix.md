@@ -65,6 +65,9 @@ Additional output keys:
 - `CODER_LOG_FILE`
 - `SUBMODULE_SCRUB_COUNT`
 - `SUBMODULE_REVERT_COUNT`
+- `SKIPPED_FINDING_COUNT` — count of `SKIPPED: FINDING_N` lines in the coder log; 0 when
+  the coder did not run or reported no skips. Consumed by the `/implement` Step 5
+  bulk-skip-ratio gate.
 
 The script writes `$IMPLEMENT_TMPDIR/review-and-fix-summary.json` atomically with `schema_version=2`, aggregate accepted/rejected counts, `rounds_completed`, latest approved-fixes path, latest round directory, accumulated OOS artifact paths, and coder/submodule status fields. Accepted OOS markdown is accumulated at `$IMPLEMENT_TMPDIR/accumulated-oos.md` and mirrored to `$IMPLEMENT_TMPDIR/oos-accepted-review.md` for existing Step 9a.1 consumers; a JSONL audit copy is appended at `$IMPLEMENT_TMPDIR/accumulated-oos.jsonl`.
 

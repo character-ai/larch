@@ -426,6 +426,28 @@ run_implement_round() {
         fi
     fi
 
+    skipped_finding_count=0
+    if [[ -n "$coder_log" && -s "$coder_log" && -s "${in_scope_file:-}" ]]; then
+        skipped_file="$round_dir/skipped-findings.md"
+        : > "$skipped_file"
+        while IFS= read -r skip_id || [[ -n "$skip_id" ]]; do
+            [[ -n "$skip_id" ]] || continue
+            awk -v id="$skip_id" '
+              /^### FINDING_[0-9]+:/ { in_block=($0 ~ ("^### " id ":")) }
+              in_block { print }
+            ' "$in_scope_file" >> "$skipped_file" || true
+            skipped_finding_count=$((skipped_finding_count + 1))
+        done < <(grep -E '^SKIPPED: FINDING_[0-9]+' "$coder_log" | grep -oE 'FINDING_[0-9]+' | sort -u 2>/dev/null || true)
+
+        if [[ -s "$skipped_file" ]]; then
+            jq -Rn --argjson round "$round_num_dec" --rawfile body "$skipped_file" \
+                '{round: $round, source: "code-review-skipped", body: $body}' >> "$oos_jsonl"
+            [[ -s "$oos_markdown" ]] && printf '\n' >> "$oos_markdown"
+            cat "$skipped_file" >> "$oos_markdown"
+            cp "$oos_markdown" "$IMPLEMENT_TMPDIR/oos-accepted-review.md" 2>/dev/null || true
+        fi
+    fi
+
     prior_summary="$IMPLEMENT_TMPDIR/review-and-fix-summary.json"
     prior_accepted=0
     prior_rejected=0
@@ -487,6 +509,7 @@ run_implement_round() {
     [[ -n "$coder_log" ]] && emit_kv CODER_LOG_FILE "$coder_log"
     emit_kv SUBMODULE_SCRUB_COUNT "$scrub_count"
     emit_kv SUBMODULE_REVERT_COUNT "$revert_count"
+    emit_kv SKIPPED_FINDING_COUNT "${skipped_finding_count:-0}"
     exit "$exit_code"
 }
 
