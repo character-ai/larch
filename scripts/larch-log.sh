@@ -5,9 +5,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 # Resolve repo root from caller's CWD so git operations target the consumer
-# repo, not the plugin install cache. Falls back to script parent on non-git.
+# repo, not the plugin install cache. Remains empty outside a git worktree.
 REPO_ROOT="$(git -C "$PWD" rev-parse --show-toplevel 2>/dev/null)" || true
-[ -n "$REPO_ROOT" ] || REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 
 # shellcheck source=scripts/lib-larch-log.sh
 # shellcheck disable=SC1091
@@ -319,6 +318,7 @@ case "$cmd" in
             printf 'larch-log.sh: refusing commit after post-merge sentinel exists: %s\n' "$IMPLEMENT_TMPDIR/post-merge-sentinel" >&2
             exit 1
         fi
+        [ -n "$REPO_ROOT" ] || larch_log_fail 1 "commit requires a git worktree (PWD is not inside a git repo)"
         if current_branch_is_default; then
             printf 'larch-log.sh: refusing commit on default branch/main after post-merge cleanup guard\n' >&2
             exit 1

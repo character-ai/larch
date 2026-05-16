@@ -131,6 +131,19 @@ if [ "$rc" -ne 0 ]; then pass "init without log root fails"; else fail "init wit
 assert_contains "$out" "--log-root is required" "missing root error mentions --log-root"
 export LARCH_LOG_ROOT="$_saved_log_root"
 
+echo "=== commit outside git worktree fails closed ==="
+_saved_log_root="$LARCH_LOG_ROOT"
+unset LARCH_LOG_ROOT
+_outside_git="$TMP/outside-git"
+mkdir -p "$_outside_git"
+set +e
+out="$(cd "$_outside_git" && "$LARCH_LOG" commit --log-root "$TMP/outside-staging/larch-logs" --skill implement --run-id outsidegit 2>&1)"
+rc=$?
+set -e
+if [ "$rc" -ne 0 ]; then pass "commit outside git exits non-zero"; else fail "commit outside git should fail"; fi
+assert_contains "$out" "commit requires a git worktree" "commit outside git error mentions worktree requirement"
+export LARCH_LOG_ROOT="$_saved_log_root"
+
 echo "=== commit copies staged files from explicit log root to repo ==="
 _saved_log_root="$LARCH_LOG_ROOT"
 unset LARCH_LOG_ROOT
