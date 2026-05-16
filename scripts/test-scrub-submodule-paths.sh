@@ -106,6 +106,33 @@ grep -Fq 'SCRUB_COUNT=1' <<< "$out" || fail "fenced scrub count"
 ! grep -Fq 'FINDING_1' "$repo_fenced/out.md" || fail "code-span submodule finding should be dropped"
 grep -Fq 'FINDING_2' "$repo_fenced/out.md" || fail "fenced non-submodule finding should remain"
 
+repo_rust_toml="$TMP/rust-toml-paths"
+make_repo "$repo_rust_toml"
+cat > "$repo_rust_toml/.gitmodules" <<'EOF'
+[submodule "vendor/rust"]
+	path = vendor/rust
+EOF
+cat > "$repo_rust_toml/findings.md" <<'EOF'
+### FINDING_1: Drop Rust path
+- **Concern**: The issue appears in `vendor/rust/src/lib.rs`.
+- **Suggested revision**: Update the call.
+
+### FINDING_2: Drop TOML path
+- **Concern**: The issue appears in `vendor/rust/Cargo.toml`.
+- **Suggested revision**: Update the dependency.
+
+### FINDING_3: Keep local Rust path
+- **Concern**: The issue appears in `src/lib.rs`.
+- **Suggested revision**: Update the call.
+EOF
+out=$(run_case "$repo_rust_toml" "$repo_rust_toml/findings.md" "$repo_rust_toml/out.md" "$repo_rust_toml/scrub.log")
+grep -Fq 'SCRUB_COUNT=2' <<< "$out" || fail "rust-toml scrub count"
+grep -Fq 'FINDING_1 | vendor/rust/src/lib.rs | reason=under-submodule' "$repo_rust_toml/scrub.log" || fail "rust path log"
+grep -Fq 'FINDING_2 | vendor/rust/Cargo.toml | reason=under-submodule' "$repo_rust_toml/scrub.log" || fail "toml path log"
+! grep -Fq 'FINDING_1' "$repo_rust_toml/out.md" || fail "rust submodule finding should be dropped"
+! grep -Fq 'FINDING_2' "$repo_rust_toml/out.md" || fail "toml submodule finding should be dropped"
+grep -Fq 'FINDING_3' "$repo_rust_toml/out.md" || fail "local rust finding should remain"
+
 repo_empty="$TMP/empty"
 make_repo "$repo_empty"
 : > "$repo_empty/findings.md"

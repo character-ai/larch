@@ -15,13 +15,13 @@ Output is `KEY=value` only through `scripts/lib-quiet.sh`:
 
 - `REVIEW_AND_FIX_STATUS=complete|no-findings|coder-failed`
 - `FIX_COUNT=N`
-- `CODER_TOOL=none|codex|cursor|claude-subagent`
+- `CODER_TOOL=none|codex|cursor`
 - `CODER_STATUS=skipped|applied|failed|submodule-violation`
 - `CODER_LOG_FILE=<path>` when a coder ran
 - `SUBMODULE_SCRUB_COUNT=N`
 - `SUBMODULE_REVERT_COUNT=N`
 
-The script applies edits by dispatching Codex, Cursor, then a Claude subagent fallback. The main agent does not apply review fixes with Edit/Write.
+The script applies edits by dispatching Codex, then Cursor. The main agent does not apply review fixes with Edit/Write.
 
 ## `/implement` orchestrator mode
 
@@ -81,6 +81,6 @@ Submodule guard layers:
 
 1. `scripts/scrub-submodule-paths.sh` removes findings whose paths are under submodule roots.
 2. The coder prompt includes a submodule prohibition block.
-3. After coder dispatch, changed paths under submodule roots are reverted with `git checkout -- <path>` and reported as `CODER_STATUS=submodule-violation`.
+3. After coder dispatch, tracked changes under submodule roots are reverted with `git checkout -- <path>`, untracked files under submodule roots are removed, and the round is reported as `CODER_STATUS=submodule-violation`.
 
 Harness: `skills/review-and-fix/scripts/test-review-and-fix.sh`, wired through `make test-review-and-fix`.

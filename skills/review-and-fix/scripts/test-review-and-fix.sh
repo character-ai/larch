@@ -29,6 +29,17 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 mkdir -p "$(dirname "$output")"
+if [[ "$tool" == "cursor" ]]; then
+  joined=" $* "
+  [[ "${1:-}" == "cursor" ]] || { printf 'bad cursor argv: %s\n' "$*" > "$output"; exit 1; }
+  [[ "${2:-}" == "agent" ]] || { printf 'bad cursor argv: %s\n' "$*" > "$output"; exit 1; }
+  [[ "${3:-}" == "-p" ]] || { printf 'bad cursor argv: %s\n' "$*" > "$output"; exit 1; }
+  [[ "$joined" == *" --trust "* ]] || { printf 'missing --trust: %s\n' "$*" > "$output"; exit 1; }
+  [[ "$joined" == *" --workspace "* ]] || { printf 'missing --workspace: %s\n' "$*" > "$output"; exit 1; }
+  [[ "$joined" != *" cursor-agent "* ]] || { printf 'old cursor binary used: %s\n' "$*" > "$output"; exit 1; }
+  [[ "$joined" != *" --print "* ]] || { printf 'old cursor flag used: %s\n' "$*" > "$output"; exit 1; }
+  [[ "$joined" != *" --prompt "* ]] || { printf 'old cursor flag used: %s\n' "$*" > "$output"; exit 1; }
+fi
 case "${TEST_AGENT_BEHAVIOR:-codex-success}:$tool" in
   codex-success:codex)
     printf 'APPLIED: FINDING_1\n' > "$output"
@@ -51,6 +62,11 @@ case "${TEST_AGENT_BEHAVIOR:-codex-success}:$tool" in
     printf 'APPLIED: FINDING_1\n' > "$output"
     exit 0
     ;;
+  submodule-untracked-violation:codex)
+    printf 'created by coder\n' > vendor/lib/new.txt
+    printf 'APPLIED: FINDING_1\n' > "$output"
+    exit 0
+    ;;
   *)
     printf 'failed\n' > "$output"
     exit 1
@@ -58,28 +74,6 @@ case "${TEST_AGENT_BEHAVIOR:-codex-success}:$tool" in
 esac
 EOF_AGENT
 chmod +x "$TMP/run-external-agent-stub.sh"
-
-cat > "$TMP/launch-claude-subprocess-stub.sh" <<'EOF_CLAUDE'
-#!/usr/bin/env bash
-set -euo pipefail
-output=""
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --output-file) output="$2"; shift 2 ;;
-    --prompt-file|--timeout|--model|--timing-task-kind) shift 2 ;;
-    *) shift ;;
-  esac
-done
-mkdir -p "$(dirname "$output")"
-if [[ "${TEST_AGENT_BEHAVIOR:-}" == "claude-success" ]]; then
-  printf 'APPLIED: FINDING_1\n' > "$output"
-  printf 'STATUS=OK\nOUTPUT_FILE=%s\n' "$output"
-  exit 0
-fi
-printf 'STATUS=ERROR\nOUTPUT_FILE=%s\n' "$output"
-exit 1
-EOF_CLAUDE
-chmod +x "$TMP/launch-claude-subprocess-stub.sh"
 
 cat > "$TMP/review-core-stub.sh" <<'EOF_CORE'
 #!/usr/bin/env bash
@@ -113,6 +107,15 @@ Description: deferred work
 EOF_OOS
     printf 'REVIEW_CORE_STATUS=fix-required\nROUND_NUM=%s\nACCEPTED_COUNT=1\nREJECTED_COUNT=0\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nPANEL_MODE=normal\nPANEL_SHAPE=simple\n' "$round" "$out" "$out"
     ;;
+  submodule-finding)
+    cat > "$out/accepted-findings.md" <<'EOF_FINDING'
+### FINDING_1: Stub submodule finding
+- **Location**: vendor/lib/Cargo.toml
+- **Concern**: Stub concern.
+- **Suggested revision**: Stub fix.
+EOF_FINDING
+    printf 'REVIEW_CORE_STATUS=fix-required\nROUND_NUM=%s\nACCEPTED_COUNT=1\nREJECTED_COUNT=0\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nPANEL_MODE=normal\nPANEL_SHAPE=simple\n' "$round" "$out" "$out"
+    ;;
   wholesale-rejected)
     printf 'REVIEW_CORE_STATUS=wholesale-rejected\nROUND_NUM=%s\nACCEPTED_COUNT=0\nREJECTED_COUNT=1\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nPANEL_MODE=normal\nPANEL_SHAPE=hard\n' "$round" "$out" "$out"
     ;;
@@ -137,9 +140,10 @@ run_review_and_fix() {
     (
         cd "$work"
         CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+        CURSOR_API_KEY=test-cursor-key \
         REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-stub.sh" \
         REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
-        REVIEW_AND_FIX_LAUNCH_CLAUDE_SUBPROCESS_SH="$TMP/launch-claude-subprocess-stub.sh" \
+        REVIEW_AND_FIX_SCRUB_SUBMODULE_PATHS_SH="${REVIEW_AND_FIX_SCRUB_SUBMODULE_PATHS_SH:-$REPO_ROOT/scripts/scrub-submodule-paths.sh}" \
         "$SCRIPT" "$@"
     )
 }
@@ -188,7 +192,21 @@ run_orchestrator_case() {
 
 run_orchestrator_case codex-case codex-success codex
 run_orchestrator_case cursor-case cursor-success cursor
-run_orchestrator_case claude-case claude-success claude-subagent
+
+work_claude="$TMP/claude-removed"
+make_work_repo "$work_claude"
+implement_tmp="$work_claude/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_HEALTHY=true\nCURSOR_HEALTHY=true\n' > "$implement_tmp/session-env.sh"
+set +e
+out=$(TEST_AGENT_BEHAVIOR=claude-success run_review_and_fix "$work_claude" \
+    --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh")
+rc=$?
+set -e
+[[ "$rc" -eq 2 ]] || { echo "$out" >&2; fail "claude removed expected exit 2 got $rc"; }
+grep -Fq 'REVIEW_AND_FIX_STATUS=coder-failed' <<< "$out" || fail "claude removed status"
+grep -Fq 'CODER_TOOL=none' <<< "$out" || fail "claude removed tool"
+grep -Fq 'claude-subagent' "$implement_tmp/review-and-fix-summary.json" && fail "claude removed summary must not report claude-subagent"
 
 work_fail="$TMP/all-fail"
 make_work_repo "$work_fail"
@@ -228,6 +246,73 @@ grep -Fq 'REVIEW_AND_FIX_STATUS=coder-failed' <<< "$out" || fail "submodule viol
 grep -Fq 'CODER_STATUS=submodule-violation' <<< "$out" || fail "submodule violation coder status"
 grep -Fq 'SUBMODULE_REVERT_COUNT=1' <<< "$out" || fail "submodule violation revert count"
 grep -Fq 'original submodule content' "$work_sub/vendor/lib/file.txt" || fail "submodule path was not reverted"
+
+work_sub_untracked="$TMP/submodule-untracked-violation"
+make_work_repo "$work_sub_untracked"
+mkdir -p "$work_sub_untracked/vendor/lib"
+cat > "$work_sub_untracked/.gitmodules" <<'EOF'
+[submodule "vendor/lib"]
+	path = vendor/lib
+EOF
+printf 'original submodule content\n' > "$work_sub_untracked/vendor/lib/file.txt"
+git -C "$work_sub_untracked" add .gitmodules vendor/lib/file.txt
+git -C "$work_sub_untracked" -c user.email=test@example.com -c user.name='Test User' commit -qm submodule-fixture
+implement_tmp="$work_sub_untracked/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_HEALTHY=true\nCURSOR_HEALTHY=true\n' > "$implement_tmp/session-env.sh"
+set +e
+out=$(TEST_AGENT_BEHAVIOR=submodule-untracked-violation run_review_and_fix "$work_sub_untracked" \
+    --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh")
+rc=$?
+set -e
+[[ "$rc" -eq 2 ]] || { echo "$out" >&2; fail "submodule untracked violation expected exit 2 got $rc"; }
+grep -Fq 'CODER_STATUS=submodule-violation' <<< "$out" || fail "submodule untracked coder status"
+grep -Fq 'SUBMODULE_REVERT_COUNT=1' <<< "$out" || fail "submodule untracked revert count"
+[[ ! -e "$work_sub_untracked/vendor/lib/new.txt" ]] || fail "untracked submodule path was not removed"
+
+work_scrubbed="$TMP/scrubbed-out"
+make_work_repo "$work_scrubbed"
+mkdir -p "$work_scrubbed/vendor/lib"
+cat > "$work_scrubbed/.gitmodules" <<'EOF'
+[submodule "vendor/lib"]
+	path = vendor/lib
+EOF
+git -C "$work_scrubbed" add .gitmodules
+git -C "$work_scrubbed" -c user.email=test@example.com -c user.name='Test User' commit -qm submodule-config
+implement_tmp="$work_scrubbed/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_HEALTHY=true\nCURSOR_HEALTHY=true\n' > "$implement_tmp/session-env.sh"
+set +e
+out=$(TEST_CORE_STATUS=submodule-finding TEST_AGENT_BEHAVIOR=all-fail run_review_and_fix "$work_scrubbed" \
+    --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh")
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "scrubbed-out expected exit 0 got $rc"; }
+grep -Fq 'REVIEW_AND_FIX_STATUS=in-scope-filtered-out' <<< "$out" || fail "scrubbed-out status"
+grep -Fq 'CODER_TOOL=none' <<< "$out" || fail "scrubbed-out tool"
+grep -Fq 'CODER_STATUS=skipped' <<< "$out" || fail "scrubbed-out coder skipped"
+grep -Fq 'SUBMODULE_SCRUB_COUNT=1' <<< "$out" || fail "scrubbed-out scrub count"
+
+cat > "$TMP/scrub-fails-stub.sh" <<'EOF_SCRUB'
+#!/usr/bin/env bash
+printf 'SCRUB_OK=false\n'
+exit 2
+EOF_SCRUB
+chmod +x "$TMP/scrub-fails-stub.sh"
+work_scrub_fail="$TMP/scrub-fail"
+make_work_repo "$work_scrub_fail"
+implement_tmp="$work_scrub_fail/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_HEALTHY=true\nCURSOR_HEALTHY=true\n' > "$implement_tmp/session-env.sh"
+set +e
+out=$(REVIEW_AND_FIX_SCRUB_SUBMODULE_PATHS_SH="$TMP/scrub-fails-stub.sh" TEST_AGENT_BEHAVIOR=codex-success run_review_and_fix "$work_scrub_fail" \
+    --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh")
+rc=$?
+set -e
+[[ "$rc" -eq 2 ]] || { echo "$out" >&2; fail "scrub fail expected exit 2 got $rc"; }
+grep -Fq 'REVIEW_AND_FIX_STATUS=coder-failed' <<< "$out" || fail "scrub fail status"
+grep -Fq 'CODER_TOOL=none' <<< "$out" || fail "scrub fail tool"
+grep -Fq 'CODER_STATUS=failed' <<< "$out" || fail "scrub fail coder status"
 
 work_zero="$TMP/zero"
 make_work_repo "$work_zero"

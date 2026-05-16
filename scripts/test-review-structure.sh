@@ -94,8 +94,8 @@ grep -Fq -- '--tool codex' "$REVIEW_AND_FIX_DIR/scripts/review-and-fix.sh" \
   || fail "(1b) review-and-fix.sh must dispatch Codex coder"
 grep -Fq -- '--tool cursor' "$REVIEW_AND_FIX_DIR/scripts/review-and-fix.sh" \
   || fail "(1b) review-and-fix.sh must dispatch Cursor coder"
-grep -Fq -- 'launch-claude-subprocess.sh' "$REVIEW_AND_FIX_DIR/scripts/review-and-fix.sh" \
-  || fail "(1b) review-and-fix.sh must dispatch Claude subagent fallback"
+! grep -Fq -- 'launch-claude-subprocess.sh' "$REVIEW_AND_FIX_DIR/scripts/review-and-fix.sh" \
+  || fail "(1b) review-and-fix.sh must not dispatch a Claude subagent fallback"
 
 agent_file="$REPO_ROOT/agents/orchestrator-aggregator.md"
 [[ -f "$agent_file" ]] \
