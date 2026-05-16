@@ -27,6 +27,9 @@ SESSION_ENV_PATH=""
 REVIEW_CORE_SH="${REVIEW_AND_FIX_REVIEW_CORE_SH:-$PLUGIN_ROOT/skills/review/scripts/review-core.sh}"
 RUN_EXTERNAL_AGENT_SH="${REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH:-$PLUGIN_ROOT/scripts/run-external-agent.sh}"
 SCRUB_SUBMODULE_PATHS_SH="${REVIEW_AND_FIX_SCRUB_SUBMODULE_PATHS_SH:-$PLUGIN_ROOT/scripts/scrub-submodule-paths.sh}"
+WRITE_TALLY_SH="${REVIEW_AND_FIX_WRITE_TALLY_SH:-$PLUGIN_ROOT/scripts/write-tally.sh}"
+COMPOSE_REVIEW_FINDINGS_SH="${REVIEW_AND_FIX_COMPOSE_REVIEW_FINDINGS_SH:-$PLUGIN_ROOT/scripts/compose-review-findings.sh}"
+LARCH_LOG_SH="${REVIEW_AND_FIX_LARCH_LOG_SH:-$PLUGIN_ROOT/scripts/larch-log.sh}"
 IMPLEMENT_TMPDIR=""
 PANEL=""
 MODE=""
@@ -346,6 +349,121 @@ write_summary_json() {
     mv -f "$tmp" "$output"
 }
 
+flush_review_batches() {
+    local impl_tmpdir="$1" run_id="$2" panel="$3" rounds="$4" accepted="$5" rejected="$6"
+    local batch_input_dir body_file findings_file design_dir="" voting_tally="" summary_file
+    local tally_out="" tally_rc=0
+    local -a round_summary_files=() round_summary_glob=() compose_args=()
+
+    [[ -n "$impl_tmpdir" && -d "$impl_tmpdir" ]] || return 0
+    [[ -n "$run_id" ]] || return 0
+    [[ "$panel" == "simple" || "$panel" == "hard" ]] || return 0
+    [[ "$rounds" =~ ^[0-9]+$ ]] || rounds=0
+    [[ "$accepted" =~ ^[0-9]+$ ]] || accepted=0
+    [[ "$rejected" =~ ^[0-9]+$ ]] || rejected=0
+    [[ -x "$WRITE_TALLY_SH" ]] || return 0
+    [[ -x "$COMPOSE_REVIEW_FINDINGS_SH" ]] || return 0
+    [[ -x "$LARCH_LOG_SH" ]] || return 0
+
+    batch_input_dir="$impl_tmpdir/larch-log-batches-input"
+    mkdir -p "$batch_input_dir" || return 0
+    body_file="$batch_input_dir/code-review-tally-body.md"
+    findings_file="$batch_input_dir/review-findings-full.md"
+
+    {
+        printf 'Rounds: %s | Accepted: %s | Rejected: %s\n' "$rounds" "$accepted" "$rejected"
+
+        if [[ -s "$impl_tmpdir/review-round-summary.md" ]]; then
+            printf '\n'
+            cat "$impl_tmpdir/review-round-summary.md"
+            printf '\n'
+        else
+            shopt -s nullglob
+            round_summary_glob=( "$impl_tmpdir"/round-*/review-round-summary.md )
+            shopt -u nullglob
+            if [[ "${#round_summary_glob[@]}" -gt 0 ]]; then
+                while IFS= read -r summary_file; do
+                    [[ -n "$summary_file" ]] || continue
+                    round_summary_files+=( "$summary_file" )
+                done < <(
+                    printf '%s\n' "${round_summary_glob[@]}" \
+                        | awk -F/ '
+                            {
+                                for (i = 1; i <= NF; i++) {
+                                    if ($i ~ /^round-[0-9]+$/) {
+                                        round = $i
+                                        sub(/^round-/, "", round)
+                                        printf "%d\t%s\n", round, $0
+                                        break
+                                    }
+                                }
+                            }
+                        ' \
+                        | sort -t "$(printf '\t')" -k1,1n \
+                        | cut -f2-
+                )
+            fi
+            for summary_file in "${round_summary_files[@]+"${round_summary_files[@]}"}"; do
+                [[ -s "$summary_file" ]] || continue
+                printf '\n'
+                cat "$summary_file"
+                printf '\n'
+            done
+        fi
+
+        if [[ -s "$impl_tmpdir/rejected-findings-full.md" ]]; then
+            printf '\n## Rejected Code Review Findings\n\n'
+            cat "$impl_tmpdir/rejected-findings-full.md"
+            printf '\n'
+        elif [[ -s "$impl_tmpdir/rejected-findings.md" ]]; then
+            printf '\n## Rejected Code Review Findings\n\n'
+            cat "$impl_tmpdir/rejected-findings.md"
+            printf '\n'
+        fi
+
+        voting_tally="$impl_tmpdir/round-$rounds/voting-tally.md"
+        if [[ "$rounds" -gt 0 && -s "$voting_tally" ]]; then
+            printf '\n## Voting Tally\n\n'
+            cat "$voting_tally"
+            printf '\n'
+        fi
+    } > "$body_file" || return 0
+
+    set +e
+    tally_out="$("$WRITE_TALLY_SH" \
+        --log-root "$impl_tmpdir/larch-logs" \
+        --skill implement \
+        --run-id "$run_id" \
+        --phase code-review \
+        --mode "$panel" \
+        --rounds "$rounds" \
+        --accepted "$accepted" \
+        --rejected "$rejected" \
+        --body-file "$body_file" 2>&1)"
+    tally_rc=$?
+    set -e
+    if [[ "$tally_rc" -ne 0 ]]; then
+        emit_breadcrumb "⚠ review-and-fix: failed to flush code-review-tally batch"
+        [[ -n "$tally_out" ]] && larch_err "$tally_out"
+    fi
+
+    [[ -d "$impl_tmpdir/design-export" ]] && design_dir="$impl_tmpdir/design-export"
+    compose_args=(
+        --implement-tmpdir "$impl_tmpdir"
+        --issue 0
+        --output "$findings_file"
+    )
+    [[ -n "$design_dir" ]] && compose_args=(--design-artifacts-dir "$design_dir" "${compose_args[@]}")
+    "$COMPOSE_REVIEW_FINDINGS_SH" "${compose_args[@]}" >/dev/null 2>&1 || return 0
+
+    "$LARCH_LOG_SH" write \
+        --log-root "$impl_tmpdir/larch-logs" \
+        --skill implement \
+        --run-id "$run_id" \
+        --batch review-findings-full \
+        --input-file "$findings_file" >/dev/null 2>&1 || true
+}
+
 run_findings_mode() {
     [[ -f "$FINDINGS_FILE" ]] || { larch_err "review-and-fix.sh: --findings-file must name a file"; exit 2; }
     [[ -n "$REVIEW_TMPDIR" ]] || { larch_err "review-and-fix.sh: --review-tmpdir is required"; exit 2; }
@@ -403,6 +521,10 @@ run_implement_round() {
     [[ -x "$RUN_EXTERNAL_AGENT_SH" ]] || { larch_err "review-and-fix.sh: run-external-agent.sh not executable: $RUN_EXTERNAL_AGENT_SH"; exit 2; }
     command -v jq >/dev/null 2>&1 || { larch_err "review-and-fix.sh: jq is required"; exit 2; }
 
+    if (( round_num_dec == 1 )); then
+        IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR" "$PLUGIN_ROOT/scripts/timing-ledger.sh" mark "Step 5 — code review" || true
+    fi
+
     if [[ "$CODEX_AVAILABLE" != "true" && "$CODEX_AVAILABLE" != "false" ]]; then
         codex_healthy=$(session_get CODEX_HEALTHY false)
         CODEX_AVAILABLE="$codex_healthy"
@@ -457,7 +579,11 @@ run_implement_round() {
         mirror_oos_markdown "$oos_markdown" "$IMPLEMENT_TMPDIR/oos-accepted-review.md"
     fi
 
-    if [[ -f "$rejected_file" ]]; then
+    rejected_full_file="$round_dir/rejected-findings-full.md"
+    if [[ -f "$rejected_full_file" ]]; then
+        cp "$rejected_full_file" "$IMPLEMENT_TMPDIR/rejected-findings-full.md" 2>/dev/null || true
+        cp "$rejected_file" "$IMPLEMENT_TMPDIR/rejected-findings.md" 2>/dev/null || true
+    elif [[ -f "$rejected_file" ]]; then
         cp "$rejected_file" "$IMPLEMENT_TMPDIR/rejected-findings.md" 2>/dev/null || true
     fi
 
@@ -605,6 +731,9 @@ run_implement_round() {
     emit_kv SUBMODULE_SCRUB_COUNT "$scrub_count"
     emit_kv SUBMODULE_REVERT_COUNT "$revert_count"
     emit_kv SKIPPED_FINDING_COUNT "${skipped_finding_count:-0}"
+    if [[ "$exit_code" -eq 0 || "$exit_code" -eq 3 ]]; then
+        flush_review_batches "$IMPLEMENT_TMPDIR" "$RUN_ID" "$PANEL" "$round_num_dec" "$total_accepted" "$total_rejected"
+    fi
     exit "$exit_code"
 }
 

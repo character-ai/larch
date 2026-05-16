@@ -19,6 +19,12 @@ cat > "$TMP/accepted.md" <<'EOF'
 ### FINDING_1: A
 - **Concern**: A
 EOF
+cat > "$TMP/rejected-findings.md" <<'EOF'
+### [rejected] FINDING_2
+
+### FINDING_2: B
+- **Concern**: B
+EOF
 : > "$TMP/oos.md"
 
 out=$("$SCRIPT" --tally-file "$TMP/tally.env" --accepted-findings-file "$TMP/accepted.md" --oos-file "$TMP/oos.md" --review-tmpdir "$TMP" --round 1 --mode diff)
@@ -26,5 +32,7 @@ assert_stdout_cap "$out"
 grep -Fq 'EMIT_OK=true' <<< "$out"
 jq -e '.schema_version == 1 and .accepted_count == 1 and .rejected_count == 1' "$TMP/review-summary.json" >/dev/null
 grep -Fq 'Review Round 1' "$TMP/review-round-summary.md"
+grep -Fq 'FINDING_2' "$TMP/rejected-findings-full.md"
+grep -Fq 'ACCEPTED=false' "$TMP/rejected-findings.md"
 
 echo "All assertions passed."

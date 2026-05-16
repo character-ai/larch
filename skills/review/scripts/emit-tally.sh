@@ -44,6 +44,7 @@ mkdir -p "$REVIEW_TMPDIR"
 ROUND_SUMMARY_FILE="$REVIEW_TMPDIR/review-round-summary.md"
 REVIEW_SUMMARY_FILE="$REVIEW_TMPDIR/review-summary.json"
 REJECTED_FINDINGS_FILE="$REVIEW_TMPDIR/rejected-findings.md"
+FULL_REJECTED_FINDINGS_FILE="$REVIEW_TMPDIR/rejected-findings-full.md"
 OOS_ACCEPTED_FILE="$REVIEW_TMPDIR/oos-accepted-review.md"
 
 accepted=$(grep -c 'ACCEPTED=true' "$TALLY_FILE" || true)
@@ -59,6 +60,14 @@ rejected=$(grep -c 'ACCEPTED=false' "$TALLY_FILE" || true)
         cat "$ACCEPTED_FINDINGS_FILE"
     fi
 } > "$ROUND_SUMMARY_FILE"
+
+# Preserve the full rejected finding prose before the summary view rewrites
+# rejected-findings.md to its compact ACCEPTED=false form.
+if [[ -f "$REJECTED_FINDINGS_FILE" ]]; then
+    cp "$REJECTED_FINDINGS_FILE" "$FULL_REJECTED_FINDINGS_FILE" 2>/dev/null || true
+else
+    : > "$FULL_REJECTED_FINDINGS_FILE"
+fi
 
 {
     printf '# Rejected Findings\n\n'
@@ -101,10 +110,12 @@ if [[ -n "$SESSION_ENV_PATH" ]]; then
     parent_dir=$(dirname "$SESSION_ENV_PATH")
     cp "$ROUND_SUMMARY_FILE" "$parent_dir/review-round-summary.md" 2>/dev/null || true
     cp "$REVIEW_SUMMARY_FILE" "$parent_dir/review-summary.json" 2>/dev/null || true
+    cp "$FULL_REJECTED_FINDINGS_FILE" "$parent_dir/rejected-findings-full.md" 2>/dev/null || true
 fi
 if [[ -n "$IMPLEMENT_TMPDIR" && -d "$IMPLEMENT_TMPDIR" ]]; then
     cp "$ROUND_SUMMARY_FILE" "$IMPLEMENT_TMPDIR/review-round-summary.md" 2>/dev/null || true
     cp "$REVIEW_SUMMARY_FILE" "$IMPLEMENT_TMPDIR/review-summary.json" 2>/dev/null || true
+    cp "$FULL_REJECTED_FINDINGS_FILE" "$IMPLEMENT_TMPDIR/rejected-findings-full.md" 2>/dev/null || true
 fi
 
 emit_kv EMIT_OK true

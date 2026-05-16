@@ -128,13 +128,26 @@ STUB
 #!/usr/bin/env bash
 set -euo pipefail
 tmp=""
+session=""
 while [[ $# -gt 0 ]]; do
-  case "$1" in --review-tmpdir) tmp="$2"; shift 2 ;; *) shift 2 ;; esac
+  case "$1" in
+    --review-tmpdir) tmp="$2"; shift 2 ;;
+    --session-env-path) session="$2"; shift 2 ;;
+    *) shift 2 ;;
+  esac
 done
 printf '# summary\n' > "$tmp/review-round-summary.md"
 printf '{"schema_version":1}\n' > "$tmp/review-summary.json"
 printf '# rejected\n' > "$tmp/rejected-findings.md"
+printf '### [Code Review] Stub Reviewer\n\n**Finding**: full rejected body\n' > "$tmp/rejected-findings-full.md"
 printf '# oos\n' > "$tmp/oos-accepted-review.md"
+if [[ -n "$session" ]]; then
+  parent_dir=$(dirname "$session")
+  mkdir -p "$parent_dir"
+  cp "$tmp/review-round-summary.md" "$parent_dir/review-round-summary.md" 2>/dev/null || true
+  cp "$tmp/review-summary.json" "$parent_dir/review-summary.json" 2>/dev/null || true
+  cp "$tmp/rejected-findings-full.md" "$parent_dir/rejected-findings-full.md" 2>/dev/null || true
+fi
 printf 'EMIT_OK=true\nROUND_SUMMARY_FILE=%s/review-round-summary.md\nREVIEW_SUMMARY_FILE=%s/review-summary.json\n' "$tmp" "$tmp"
 STUB
     cat > "$TMP/check-dirty.sh" <<'STUB'
@@ -192,7 +205,7 @@ write_stubs
 out=$(TEST_FINDINGS=0 run_core "$TMP/zero")
 assert_contains "$out" 'REVIEW_CORE_STATUS=zero-findings'
 assert_contains "$out" 'PANEL_SHAPE=simple'
-[[ -f "$TMP/zero/review-dirty-tree-summary.env" ]]
+[[ -f "$TMP/zero/review-dirty-tree-summary.env" ]] || { echo "FAIL: missing review-dirty-tree-summary.env" >&2; exit 1; }
 
 out=$(TEST_FINDINGS=1 TEST_ACCEPTED=1 TEST_REJECTED=0 run_core "$TMP/fix")
 assert_contains "$out" 'REVIEW_CORE_STATUS=fix-required'
@@ -211,9 +224,10 @@ parent="$TMP/parent"
 mkdir -p "$parent"
 out=$(TEST_FINDINGS=1 TEST_ACCEPTED=1 run_core "$TMP/parent-run" diff "$parent/session.env")
 assert_contains "$out" 'REVIEW_CORE_STATUS=fix-required'
-[[ -f "$parent/rejected-findings.md" ]]
-[[ -f "$parent/oos-accepted-review.md" ]]
-[[ -f "$parent/review-dirty-tree-summary.env" ]]
+[[ -f "$parent/rejected-findings.md" ]] || { echo "FAIL: missing parent rejected-findings.md" >&2; exit 1; }
+[[ -f "$parent/rejected-findings-full.md" ]] || { echo "FAIL: missing parent rejected-findings-full.md" >&2; exit 1; }
+[[ -f "$parent/oos-accepted-review.md" ]] || { echo "FAIL: missing parent oos-accepted-review.md" >&2; exit 1; }
+[[ -f "$parent/review-dirty-tree-summary.env" ]] || { echo "FAIL: missing parent review-dirty-tree-summary.env" >&2; exit 1; }
 
 out=$(TEST_FINDINGS=0 TEST_DIRTY_STATUS=dirty TEST_CHECKPOINT_STATUS=dirty run_core "$TMP/dirty")
 assert_contains "$out" 'REVIEW_CORE_STATUS=zero-findings'

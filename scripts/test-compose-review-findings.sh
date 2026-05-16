@@ -38,6 +38,10 @@ cat > "$TMP/b-design/rejected-findings.md" <<'EOF'
 EOF
 cat > "$TMP/b-impl/rejected-findings.md" <<'EOF'
 ### [Code Review] Cursor-Security
+This summary should not be selected when the full artifact exists.
+EOF
+cat > "$TMP/b-impl/rejected-findings-full.md" <<'EOF'
+### [Code Review] Cursor-Security
 **Finding**: token sk-ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD appears.
 **Reason not implemented**: fixture.
 EOF
@@ -48,6 +52,7 @@ cat > "$TMP/b-impl/round-1/accepted-findings.md" <<'EOF'
 - **Suggested revision**: Return the captured status.
 EOF
 cp "$TMP/b-impl/rejected-findings.md" "$TMP/b-impl/round-1/rejected-findings.md"
+cp "$TMP/b-impl/rejected-findings-full.md" "$TMP/b-impl/round-1/rejected-findings-full.md"
 out="$TMP/b.md"
 stdout="$("$COMPOSE" --design-artifacts-dir "$TMP/b-design" --implement-tmpdir "$TMP/b-impl" --issue 7 --output "$out")"
 [[ "$stdout" == *"FINDINGS_TOTAL=4"* ]] || fail "total missing: $stdout"
@@ -62,6 +67,7 @@ grep -Fq '### REJ_P1: Cursor-Architecture [plan-review/rejected]' "$out" \
 grep -Fq '### REJ_C1: Cursor-Security [code-review/rejected]' "$out" \
     || fail "code rejected section missing"
 grep -q '<REDACTED-TOKEN>' "$out" || fail "token was not redacted"
+grep -Fq 'Reason not implemented' "$out" || fail "full rejected artifact was not used"
 
 echo "=== invalid issue fails ==="
 set +e

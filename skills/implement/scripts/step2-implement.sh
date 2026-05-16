@@ -199,6 +199,8 @@ if [[ "$CODER" == "cursor" && "$CURSOR_HEALTHY_ARG" != "true" ]]; then
     exit 0
 fi
 
+"$PLUGIN_ROOT/scripts/timing-ledger.sh" mark "Step 2 — implementation" || true
+
 REQUIRES_HEAD_UNCHANGED=false
 
 # ---------------------------------------------------------------------------

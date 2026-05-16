@@ -5,13 +5,13 @@
 
 Primary verbs:
 
-- `init` creates `manifest.json`. Schema version 2 auto-captures
-  `operator_cwd` from the caller's `$PWD`, `operator_repo_root` from
-  `git -C "$PWD" rev-parse --show-toplevel`; outside a git repo,
-  `operator_repo_root` is `null`, and `model_roster.main` from
-  `${CLAUDE_CODE_MODEL:-${CLAUDE_MODEL:-unknown}}`. These provenance fields are written to
-  the manifest directly and are not passed through the batch payload
-  redaction pipeline.
+- `init` creates `manifest.json`. Schema version 2 records redacted provenance
+  placeholders: `operator_cwd` is the stable string `"<OPERATOR_CWD>"`,
+  `operator_repo_root` is `"<REPO_ROOT>"` when the caller is inside a git repo
+  and `null` otherwise, and `model_roster.main` comes from
+  `${CLAUDE_CODE_MODEL:-${CLAUDE_MODEL:-unknown}}`. The manifest keeps these
+  fields for schema compatibility without committing operator-local absolute
+  paths.
 - `write` atomically replaces replace-mode batches.
 - `append` atomically appends append-mode NDJSON batches.
 - `exists` probes a batch path.

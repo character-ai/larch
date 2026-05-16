@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [29.1.5] - 2026-05-16
+
+### Changed
+
+- Moved Step 2, Step 3, Step 5, and Step 6 timing marks into the worker scripts that receive the real session tmpdir.
+- Added best-effort Step 5 run-log flushing for code-review-tally and review-findings-full from review-and-fix.sh.
+- Updated sibling contracts and extended review-and-fix coverage for successful batch flushing without stdout leakage.
+
 ## [29.1.4] - 2026-05-16
 
 ### Changed

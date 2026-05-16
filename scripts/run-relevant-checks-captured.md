@@ -10,6 +10,7 @@ Invariants:
 
 - The helper uses `set -euo pipefail` and captures the underlying check exit code with an `if command; then rc=0; else rc=$?; fi` block.
 - It resolves the repo root from `CLAUDE_PROJECT_DIR`, falling back to `git -C "$PWD" rev-parse --show-toplevel`.
+- After tmpdir validation, `--site step3` and `--site step6` mark `Step 3 — checks first pass` and `Step 6 — checks second pass` respectively through `scripts/timing-ledger.sh`, using the canonical session tmpdir as `IMPLEMENT_TMPDIR`. These audit marks are best-effort and do not change the checks result. The `step5-review-fixes` site is intentionally not marked here because Step 5 is marked by `skills/review-and-fix/scripts/review-and-fix.sh`.
 - It creates `$tmpdir/relevant-checks/` with mode `700` under `umask 077`; log and redacted-log files are mode `600`. After `mkdir -p`, the helper rejects a pre-existing symlink at the log dir with `STATUS=fail FAILURE_REASON=log-dir-symlink-rejected`.
 - It allocates `<site>-<attempt>.log` with noclobber. The allocation loop distinguishes two failure modes: a noclobber collision (file exists at this attempt index) bumps the counter and retries, while any other create failure (read-only mount, quota, ENOSPC) emits `STATUS=fail FAILURE_REASON=log-allocation` and exits 1. Attempts cap at 100 to prevent unbounded retry loops.
 - On success, stdout is exactly one `RELEVANT_CHECKS_OK=true SITE=<site> COVERAGE=<value>` line, plus `WARN=agent-lint-missing` only when `run-checks.sh` reported the warning. Success never emits `LOG=`, `LOG_FILE=`, or a log path.

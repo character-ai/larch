@@ -173,7 +173,7 @@ run_orchestrator_case() {
     printf 'CODEX_HEALTHY=true\nCURSOR_HEALTHY=true\n' > "$implement_tmp/session-env.sh"
     set +e
     out=$(TEST_AGENT_BEHAVIOR="$behavior" run_review_and_fix "$work" \
-        --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh")
+        --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id "$label-run")
     rc=$?
     set -e
     [[ "$rc" -eq 3 ]] || { echo "$out" >&2; fail "$label expected exit 3 got $rc"; }
@@ -183,12 +183,64 @@ run_orchestrator_case() {
     [[ -f "$implement_tmp/round-1/coder-output.log" ]] || fail "$label coder output"
     jq -e '.schema_version == 2 and .status == "fix-required" and .accepted_count == 1 and .coder_tool == "'"$expected_tool"'" and .coder_status == "applied" and .submodule_scrub_count == 0 and .submodule_revert_count == 0' "$implement_tmp/review-and-fix-summary.json" >/dev/null \
         || fail "$label summary schema"
+    jq -e '.batch == "code-review-tally" and .rounds == 1 and .accepted_count == 1 and .rejected_count == 0 and (.body | contains("# Review Round 1"))' \
+        "$implement_tmp/larch-logs/implement/$label-run/code-review-tally.json" >/dev/null \
+        || fail "$label code-review-tally batch"
+    [[ -f "$implement_tmp/larch-logs/implement/$label-run/review-findings-full.md" ]] || fail "$label review-findings-full batch"
     [[ -s "$implement_tmp/accumulated-oos.jsonl" ]] || fail "$label oos jsonl"
     [[ -s "$implement_tmp/oos-accepted-review.md" ]] || fail "$label oos markdown"
 }
 
 run_orchestrator_case codex-case codex-success codex
 run_orchestrator_case cursor-case cursor-success cursor
+
+work_rejected="$TMP/rejected-full"
+make_work_repo "$work_rejected"
+implement_tmp="$work_rejected/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_HEALTHY=true\nCURSOR_HEALTHY=true\n' > "$implement_tmp/session-env.sh"
+cat > "$TMP/review-core-rejected-stub.sh" <<'EOF_CORE_REJECTED'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+round="1"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --output-dir) out="$2"; shift 2 ;;
+    --round-num) round="$2"; shift 2 ;;
+    *) shift; [[ $# -gt 0 && "$1" != --* ]] && shift || true ;;
+  esac
+done
+mkdir -p "$out"
+: > "$out/accepted-findings.md"
+cat > "$out/rejected-findings.md" <<'EOF_REJECTED_SUMMARY'
+# Rejected Findings
+
+1:FINDING_9_ACCEPTED=false
+EOF_REJECTED_SUMMARY
+cat > "$out/rejected-findings-full.md" <<'EOF_REJECTED_FULL'
+### [Code Review] Cursor-Security
+
+**Finding**: full rejected review prose
+**Reason not implemented**: test fixture
+EOF_REJECTED_FULL
+printf '{"schema_version":1,"rounds_completed":%s,"accepted_count":0,"rejected_count":1}\n' "$round" > "$out/review-summary.json"
+printf '# Review Round %s\n' "$round" > "$out/review-round-summary.md"
+printf 'REVIEW_CORE_STATUS=ok\nROUND_NUM=%s\nACCEPTED_COUNT=0\nREJECTED_COUNT=1\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nPANEL_MODE=normal\nPANEL_SHAPE=simple\n' "$round" "$out" "$out"
+EOF_CORE_REJECTED
+chmod +x "$TMP/review-core-rejected-stub.sh"
+out=$(
+    cd "$work_rejected" && \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-rejected-stub.sh" \
+    REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id rejected-full-run
+)
+grep -Fq 'REVIEW_AND_FIX_STATUS=complete' <<< "$out" || fail "rejected-full status"
+grep -Fq 'full rejected review prose' "$implement_tmp/larch-logs/implement/rejected-full-run/code-review-tally.json" \
+    || fail "rejected-full tally missing preserved rejected prose"
+grep -Fq 'full rejected review prose' "$implement_tmp/larch-logs/implement/rejected-full-run/review-findings-full.md" \
+    || fail "rejected-full findings batch missing preserved rejected prose"
 
 work_claude="$TMP/claude-removed"
 make_work_repo "$work_claude"
@@ -318,13 +370,65 @@ mkdir -p "$implement_tmp"
 printf 'CODEX_HEALTHY=true\nCURSOR_HEALTHY=true\n' > "$implement_tmp/session-env.sh"
 set +e
 out=$(TEST_CORE_STATUS=zero run_review_and_fix "$work_zero" \
-    --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh")
+    --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id zero-run)
 rc=$?
 set -e
 [[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "zero expected exit 0 got $rc"; }
 grep -Fq 'REVIEW_AND_FIX_STATUS=complete' <<< "$out" || fail "zero status"
 jq -e '.schema_version == 2 and .status == "complete" and .coder_status == "skipped"' "$implement_tmp/review-and-fix-summary.json" >/dev/null \
     || fail "zero summary"
+jq -e '.batch == "code-review-tally" and .rounds == 1 and .accepted_count == 0 and .rejected_count == 0 and (.body | contains("# Review Round 1"))' \
+    "$implement_tmp/larch-logs/implement/zero-run/code-review-tally.json" >/dev/null \
+    || fail "zero code-review-tally batch"
+[[ -f "$implement_tmp/larch-logs/implement/zero-run/review-findings-full.md" ]] || fail "zero review-findings-full batch"
+[[ "$out" != *"LOG_WRITTEN="* ]] || fail "zero flush leaked larch-log writer stdout"
+
+work_sorted="$TMP/sorted-summaries"
+make_work_repo "$work_sorted"
+implement_tmp="$work_sorted/implement"
+mkdir -p "$implement_tmp/round-2" "$implement_tmp/round-10"
+printf 'CODEX_HEALTHY=true\nCURSOR_HEALTHY=true\n' > "$implement_tmp/session-env.sh"
+printf '# Review Round 10\nlate round\n' > "$implement_tmp/round-10/review-round-summary.md"
+printf '# Review Round 2\nearly round\n' > "$implement_tmp/round-2/review-round-summary.md"
+printf '{"schema_version":1,"rounds_completed":10,"accepted_count":0,"rejected_count":0}\n' > "$implement_tmp/round-10/review-summary.json"
+set +e
+out=$(TEST_CORE_STATUS=zero run_review_and_fix "$work_sorted" \
+    --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 10 --session-env-path "$implement_tmp/session-env.sh" --run-id sorted-run)
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "sorted summaries expected exit 0 got $rc"; }
+python3 - "$implement_tmp/larch-logs/implement/sorted-run/code-review-tally.json" <<'PYEOF' || fail "sorted summaries order"
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as fh:
+    body = json.load(fh)["body"]
+
+pos2 = body.find("# Review Round 2")
+pos10 = body.find("# Review Round 10")
+if pos2 == -1 or pos10 == -1 or pos2 >= pos10:
+    raise SystemExit(1)
+PYEOF
+
+cat > "$TMP/write-tally-fails-stub.sh" <<'EOF_WRITE_TALLY'
+#!/usr/bin/env bash
+printf 'stub write-tally failure\n' >&2
+exit 2
+EOF_WRITE_TALLY
+chmod +x "$TMP/write-tally-fails-stub.sh"
+work_flush_warn="$TMP/flush-warning"
+make_work_repo "$work_flush_warn"
+implement_tmp="$work_flush_warn/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_HEALTHY=true\nCURSOR_HEALTHY=true\n' > "$implement_tmp/session-env.sh"
+set +e
+out=$(TEST_CORE_STATUS=zero LARCH_QUIET_BREADCRUMBS=1 REVIEW_AND_FIX_WRITE_TALLY_SH="$TMP/write-tally-fails-stub.sh" run_review_and_fix "$work_flush_warn" \
+    --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id flush-warning-run 2>&1)
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "flush warning expected exit 0 got $rc"; }
+grep -Fq 'failed to flush code-review-tally batch' <<< "$out" || fail "flush warning breadcrumb"
+grep -Fq 'stub write-tally failure' <<< "$out" || fail "flush warning stderr"
 
 work_skipped="$TMP/skipped-routing"
 make_work_repo "$work_skipped"
