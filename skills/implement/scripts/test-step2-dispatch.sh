@@ -975,10 +975,11 @@ OUT_18=$(cd "$SCRATCH_REPO18" && \
 if [[ "$OUT_18" == *"STATUS=complete"* ]] \
    && [[ -s "$TMP18/execution-issues.md" ]] \
    && grep -Fq "not declared in manifest files_touched/tests_added_or_modified" "$TMP18/execution-issues.md" \
-   && grep -Fq -- "- undeclared.txt" "$TMP18/execution-issues.md"; then
+   && grep -Fq -- "- undeclared.txt" "$TMP18/execution-issues.md" \
+   && ! grep -Fq -- "- README.md" "$TMP18/execution-issues.md"; then
     pass
 else
-    fail 18 "undeclared working-tree path should log OOS warning before commit; out=$OUT_18 issues=$(cat "$TMP18/execution-issues.md" 2>/dev/null)"
+    fail 18 "undeclared working-tree path should log OOS warning (undeclared.txt present, README.md absent); out=$OUT_18 issues=$(cat "$TMP18/execution-issues.md" 2>/dev/null)"
 fi
 
 # ---------------------------------------------------------------------------

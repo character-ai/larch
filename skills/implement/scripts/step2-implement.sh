@@ -653,31 +653,42 @@ if [[ "$STATUS" == "complete" ]]; then
     # 7a.1: warn when the implementer left working-tree changes not declared
     # in the manifest. This is diagnostic only; the dispatcher still commits
     # the working tree below and leaves review/pre-commit as downstream gates.
+    # Note: this check compares declared manifest paths against working-tree
+    # paths; it does NOT cross-reference the plan's "Files to modify" section.
+    # May include pre-existing dirty paths if the tree was not clean at launch.
     APPEND_TOOL="$PLUGIN_ROOT/scripts/append-execution-issue.sh"
     if [[ -x "$APPEND_TOOL" && -d "$TMPDIR_ARG" ]]; then
         {
             WT_PATHS_FILE=$(mktemp "$TMPDIR_ARG/oos-working-tree.XXXXXX")
             MANIFEST_PATHS_FILE=$(mktemp "$TMPDIR_ARG/oos-manifest.XXXXXX")
             OOS_PATHS_FILE=$(mktemp "$TMPDIR_ARG/oos-paths.XXXXXX")
-            trap 'rm -f "$WT_PATHS_FILE" "$MANIFEST_PATHS_FILE" "$OOS_PATHS_FILE" "$LAUNCHER_TMP"' EXIT
 
-            git -C "$REPO_ROOT" status --porcelain \
-                | awk 'NF {print $NF}' \
-                | sort -u > "$WT_PATHS_FILE"
-            jq -r '[.files_touched[].path, .tests_added_or_modified[]] | .[]' \
-                "$MANIFEST_RAW_PATH" 2>/dev/null \
-                | sort -u > "$MANIFEST_PATHS_FILE"
+            # Use --name-only and ls-files to avoid porcelain format parsing;
+            # both handle paths with spaces correctly.
+            {
+                git -C "$REPO_ROOT" diff --name-only HEAD 2>/dev/null
+                git -C "$REPO_ROOT" ls-files --others --exclude-standard 2>/dev/null
+            } | sort -u > "$WT_PATHS_FILE"
+
+            MANIFEST_PATHS=$(jq -r '[.files_touched[].path, .tests_added_or_modified[]] | .[]' \
+                "$MANIFEST_RAW_PATH" 2>/dev/null) || MANIFEST_PATHS=""
+            if [[ -n "$MANIFEST_PATHS" ]]; then
+                printf '%s\n' "$MANIFEST_PATHS" | sort -u > "$MANIFEST_PATHS_FILE"
+            else
+                : > "$MANIFEST_PATHS_FILE"
+            fi
             comm -23 "$WT_PATHS_FILE" "$MANIFEST_PATHS_FILE" > "$OOS_PATHS_FILE"
 
             OOS_COUNT=$(wc -l < "$OOS_PATHS_FILE" | tr -d '[:space:]')
             if [[ "${OOS_COUNT:-0}" != "0" ]]; then
                 OOS_LIST=$(sed -n '1,5s/^/- /p' "$OOS_PATHS_FILE")
-                OOS_ENTRY=$(printf 'Step 7a.1 — external implementer left %s working-tree path(s) not declared in manifest files_touched/tests_added_or_modified. First 5:\n%s' "$OOS_COUNT" "$OOS_LIST")
+                OOS_ENTRY=$(printf 'Step 7a.1 — %s working-tree path(s) not declared in manifest files_touched/tests_added_or_modified (may include pre-existing dirty files). First 5:\n%s' "$OOS_COUNT" "$OOS_LIST")
                 "$APPEND_TOOL" \
                     --log "$TMPDIR_ARG/execution-issues.md" \
                     --category Warnings \
                     --entry "$OOS_ENTRY" >/dev/null 2>&1 || true
             fi
+            rm -f "$WT_PATHS_FILE" "$MANIFEST_PATHS_FILE" "$OOS_PATHS_FILE"
         } || true
     fi
 
