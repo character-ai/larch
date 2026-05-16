@@ -89,6 +89,9 @@ code_body_valid="$TMP/code-body-valid.md"
 cat > "$code_body_valid" <<'EOF'
 Round summary.
 
+#2211 should stay plain text.
+#!/usr/bin/env bash
+
 ## Rejected Code Review Findings
 
 ### [Code Review] Reviewer

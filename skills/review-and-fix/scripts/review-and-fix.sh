@@ -84,12 +84,24 @@ is_security_block() {
     local block="$1"
     python3 - "$block" <<'PYEOF'
 import re, sys
-text = open(sys.argv[1]).read()
+try:
+    text = open(sys.argv[1], encoding="utf-8").read()
+except OSError as exc:
+    print(f"is_security_block: {exc}", file=sys.stderr)
+    sys.exit(2)
 text_no_fence = re.sub(r'```.*?```', '', text, flags=re.DOTALL)
 text_no_backtick = re.sub(r'`[^`\n]*`', '', text_no_fence)
 pattern = re.compile(r'focus-area\s*=\s*security', re.IGNORECASE)
 sys.exit(0 if pattern.search(text_no_backtick) else 1)
 PYEOF
+}
+
+mirror_oos_markdown() {
+    local source_file="$1" mirror_file="$2"
+    cp "$source_file" "$mirror_file" || {
+        larch_err "review-and-fix.sh: failed to mirror accepted OOS markdown to $mirror_file"
+        exit 2
+    }
 }
 
 submodule_paths() {
@@ -401,7 +413,7 @@ run_implement_round() {
             '{round: $round, source: "code-review", body: $body}' >> "$oos_jsonl"
         [[ -s "$oos_markdown" ]] && printf '\n' >> "$oos_markdown"
         cat "$round_oos" >> "$oos_markdown"
-        cp "$oos_markdown" "$IMPLEMENT_TMPDIR/oos-accepted-review.md" 2>/dev/null || true
+        mirror_oos_markdown "$oos_markdown" "$IMPLEMENT_TMPDIR/oos-accepted-review.md"
     fi
 
     if [[ -f "$rejected_file" ]]; then
@@ -455,12 +467,18 @@ run_implement_round() {
                 rm -f "$block_file"
                 continue
             fi
-            if is_security_block "$block_file" 2>/dev/null; then
+            if is_security_block "$block_file"; then
                 cat "$block_file" >> "$skipped_security_file"
                 printf '\n' >> "$skipped_security_file"
             else
-                cat "$block_file" >> "$skipped_file"
-                printf '\n' >> "$skipped_file"
+                probe_rc=$?
+                if [[ "$probe_rc" -eq 1 ]]; then
+                    cat "$block_file" >> "$skipped_file"
+                    printf '\n' >> "$skipped_file"
+                else
+                    larch_err "review-and-fix.sh: security classifier failed for $skip_id"
+                    exit 2
+                fi
             fi
             skipped_finding_count=$((skipped_finding_count + 1))
             rm -f "$block_file"
@@ -471,7 +489,7 @@ run_implement_round() {
                 '{round: $round, source: "code-review-skipped", body: $body}' >> "$oos_jsonl"
             [[ -s "$oos_markdown" ]] && printf '\n' >> "$oos_markdown"
             cat "$skipped_file" >> "$oos_markdown"
-            cp "$oos_markdown" "$IMPLEMENT_TMPDIR/oos-accepted-review.md" 2>/dev/null || true
+            mirror_oos_markdown "$oos_markdown" "$IMPLEMENT_TMPDIR/oos-accepted-review.md"
         fi
         if [[ -s "$skipped_security_file" ]]; then
             security_audit_file="$IMPLEMENT_TMPDIR/skipped-security-findings.md"

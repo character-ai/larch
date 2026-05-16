@@ -27,11 +27,21 @@ Inputs:
 The phase determines the target batch: `plan-review` maps to
 `plan-review-tally`, and `code-review` maps to `code-review-tally`. Count flags
 default to `0`. The body file must be a regular non-symlink file. For `--phase code-review`, the body
-file is additionally validated: any `#`-level Markdown headings must be one of the
-four allowed headers (`# Rejected Findings`, `## Rejected Code Review Findings`,
-`## Voting Tally`, `## Reviewer Competition Scoreboard`); unrecognized headers cause
-a non-zero exit. The helper uses a temporary record file under `${TMPDIR:-/tmp}` and
-removes it on exit.
+file is additionally validated: real ATX Markdown headings (`#` through `######`
+followed by a space) must be one of these allowed forms:
+
+- `# Rejected Findings`
+- `## Rejected Code Review Findings`
+- `## Voting Tally`
+- `# Code Review Voting Tally`
+- `## Per-finding vote breakdown`
+- `## Reviewer Competition Scoreboard`
+- `### [Code Review] ...` reviewer sub-headings
+
+Headings inside triple-backtick fenced code blocks are ignored, and non-heading lines
+that merely start with `#` (for example `#2211` or `#!/usr/bin/env bash`) are not
+validated as section headers. Any other unfenced ATX heading causes a non-zero exit.
+The helper uses a temporary record file under `${TMPDIR:-/tmp}` and removes it on exit.
 
 On composer failure, stdout receives:
 

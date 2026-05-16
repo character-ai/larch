@@ -39,6 +39,7 @@ validate_code_review_headers() {
     local body_file="$1"
     python3 - "$body_file" <<'PYEOF'
 import sys
+import re
 
 allowed = {
     "# Rejected Findings",
@@ -59,11 +60,11 @@ with open(sys.argv[1], encoding="utf-8") as fh:
             continue
         if in_fence:
             continue
-        if line.startswith("#") and line in allowed:
-            continue
         if line.startswith("### [Code Review] "):
             continue
-        if line.startswith("#"):
+        if re.match(r"^#{1,6}\s", line) and line in allowed:
+            continue
+        if re.match(r"^#{1,6}\s", line):
             print(line)
             sys.exit(1)
 sys.exit(0)

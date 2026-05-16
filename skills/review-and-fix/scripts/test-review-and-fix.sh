@@ -334,4 +334,33 @@ if grep -Fq 'Security skipped finding' "$implement_tmp/oos-accepted-review.md"; 
 fi
 grep -Fq 'Security skipped finding' "$implement_tmp/skipped-security-findings.md" || fail "skipped-routing security finding missing from local audit"
 
+mkdir -p "$TMP/fail-python-bin"
+cat > "$TMP/fail-python-bin/python3" <<'EOF_PYFAIL'
+#!/usr/bin/env bash
+exit 7
+EOF_PYFAIL
+chmod +x "$TMP/fail-python-bin/python3"
+work_classifier_fail="$TMP/skipped-classifier-fail"
+make_work_repo "$work_classifier_fail"
+implement_tmp="$work_classifier_fail/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_HEALTHY=true\nCURSOR_HEALTHY=true\n' > "$implement_tmp/session-env.sh"
+cp "$work_skipped/implement/round-1-coder.log.seed" "$implement_tmp/round-1-coder.log.seed"
+set +e
+out=$(
+    cd "$work_classifier_fail" && \
+    PATH="$TMP/fail-python-bin:$PATH" \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-skipped-stub.sh" \
+    REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-skipped-stub.sh" \
+    REVIEW_AND_FIX_LAUNCH_CLAUDE_SUBPROCESS_SH="$TMP/launch-claude-subprocess-stub.sh" \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh"
+)
+rc=$?
+set -e
+[[ "$rc" -eq 2 ]] || { echo "$out" >&2; fail "skipped-classifier-fail expected exit 2 got $rc"; }
+if [[ -e "$implement_tmp/skipped-security-findings.md" ]]; then
+    fail "skipped-classifier-fail should not emit security audit file on classifier failure"
+fi
+
 echo "test-review-and-fix: ok"
