@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [27.6.28] - 2026-05-15
+
+### Changed
+
+- Warn when external implementers leave working-tree paths outside their manifest declaration.
+- Strengthen implementer scope discipline prompts and keep generated agent prompts in sync.
+- Document the warning-only scope-drift detector in the dispatcher and security trust model.
+
 ## [27.6.26] - 2026-05-15
 
 ### Changed

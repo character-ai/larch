@@ -40,6 +40,7 @@
 15c. `--workflow bogus` exits with code 2 and stderr contains `--workflow must be 'SIMPLE' or 'HARD'`.
 16. `needs_qa` repair path (issue #1883): stub Codex writes a manifest with `status=needs_qa` but no `needs_qa.questions`, and a `qa-pending.json` with non-standard `items[]` format. The dispatcher must normalize `items[]` to canonical `questions[]` and emit `STATUS=needs_qa` (not `STATUS=bailed REASON=manifest-schema-invalid`). Two assertions: (a) dispatcher stdout contains `STATUS=needs_qa` and `QA_PENDING=` with `ORCHESTRATOR_EDIT_AUTHORITY=forbidden`; (b) the repaired `qa-pending.json` contains `questions[]` and no `items[]`.
 17. Timeout-selection wiring (`--workflow` → launcher `--timeout`): stub Codex that writes a `status=bailed` manifest; the `.meta` sidecar written by `run-external-agent.sh` before subprocess launch records `TIMEOUT=$TIMEOUT_SECONDS`. Test 17a asserts `--workflow SIMPLE` results in `TIMEOUT=3600`; Test 17b asserts `--workflow HARD` results in `TIMEOUT=7200`; Test 17c asserts that omitting `--workflow` (default SIMPLE) results in `TIMEOUT=3600`. Regression coverage for the `LAUNCHER_TIMEOUT=7200 / 3600` branch in `step2-implement.sh` that tests 15a–15c did not exercise (those use `--coder claude`, which early-returns before the launcher is spawned).
+18. OOS-bundled path warning: stub Codex writes a valid `status=complete` manifest declaring `README.md` while also creating `undeclared.txt`. The dispatcher must still reach `STATUS=complete`, but before `git add -A && git commit` it appends a Warning to `execution-issues.md` naming the undeclared path. This pins the diagnostic-only cross-check between working-tree paths and manifest-declared paths.
 
 All `--coder codex` invocations that proceed past argument parsing are run with cwd pinned to `$REPO_ROOT` so the dispatcher's git resolution targets the harness's own git tree. Cursor and Gemini health-gate tests also use `cd "$REPO_ROOT"` unless the assertion specifically covers outside-git ordering.
 
@@ -49,7 +50,7 @@ All `--coder codex` invocations that proceed past argument parsing are run with 
 - Sanitization via `scripts/redact-secrets.sh`.
 - Single-retry on transient launcher failure with clean-state guard.
 - `branch-changed` / `submodule-dirty` / `cursor-modified-history` post-implementer checks. (Test 13 covers only the Step 6b absent-`plugin.json` sentinel case from issue #1475; Step 7a path-validation `protected-path-modified` paths and the other Step 6 post-implementer rejections remain out of scope here.)
-- `commit-failed` recovery on the dispatcher-side commit. (Test 13 exercises the happy path of `git add -A && git commit -F …` end-to-end via stub Codex; failure-recovery branches remain out of scope.)
+- `commit-failed` recovery on the dispatcher-side commit. (Tests 13 and 18 exercise the happy path of `git add -A && git commit -F …` end-to-end via stub Codex; failure-recovery branches remain out of scope.)
 
 **Invariants**:
 - Tests run against the live dispatcher in the repo, not a copy.

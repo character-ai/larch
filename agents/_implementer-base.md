@@ -31,6 +31,7 @@ These rules are non-negotiable. Violating any of them MUST cause you to abort wi
 5. **NEVER `git checkout` a different branch.** The orchestrator pinned this branch at spawn time; switching branches will trip the `branch-changed` post-validation.
 6. **NEVER write outside the repo root for repo edits.** All paths in `manifest.files_touched[].path` and `manifest.tests_added_or_modified` MUST resolve under `git rev-parse --show-toplevel`. Reject any path that contains `..`, starts with `/`, contains a NUL byte, or escapes the repo via a symlink.
 7. **Control artifacts ARE outside the repo root, by design.** `<MANIFEST_PATH>` and `<QA_PENDING_PATH>` live under `$IMPLEMENT_TMPDIR` (typically `/tmp/...`). Write them at exactly the paths the dispatcher passed in. Do not "helpfully" relocate them under the repo.
+8. **NEVER modify files outside the plan's stated scope, especially its "Files to modify" section.** If you notice an issue in an out-of-plan file, record it in `oos_observations[]` instead of editing it. The dispatcher detects undeclared working-tree changes and logs a Warning; the reviewer pipeline is the backstop. Editing unrelated files contaminates the PR diff and makes OOS contamination harder to review.
 
 ## How to declare completion
 
