@@ -249,10 +249,12 @@ def chain_to_root(
     parent_uuid = entry.parent_uuid
     while parent_uuid:
         if parent_uuid in seen:
+            chain.reverse()
             return chain, parent_uuid
         seen.add(parent_uuid)
         parent = by_uuid.get(parent_uuid)
         if parent is None:
+            chain.reverse()
             return chain, parent_uuid
         chain.append(parent)
         parent_uuid = parent.parent_uuid
@@ -271,10 +273,13 @@ def is_initial_user_message(entry: TranscriptEntry, before_first_assistant: bool
 
 def prefix_records(chain: list[TranscriptEntry]) -> list[PrefixRecord]:
     records: list[PrefixRecord] = []
-    before_first_assistant = True
+    # chain comes from chain_to_root which walks parent->grandparent and never
+    # contains assistant entries (the walk starts at assistant.parent_uuid).
+    # Track whether we already included the one allowed user:initial record so
+    # subsequent non-tool user bubbles are not treated as part of the stable prefix.
+    included_initial = False
     for entry in chain:
         if entry.entry_type == "assistant":
-            before_first_assistant = False
             continue
         include = False
         kind = entry.entry_type
@@ -285,9 +290,10 @@ def prefix_records(chain: list[TranscriptEntry]) -> list[PrefixRecord]:
         elif entry.entry_type == "user" and entry.raw.get("isMeta") is True:
             include = True
             reason = "user:isMeta"
-        elif is_initial_user_message(entry, before_first_assistant):
+        elif not included_initial and is_initial_user_message(entry, True):
             include = True
             reason = "user:initial"
+            included_initial = True
         if not include:
             continue
         records.append(
@@ -407,6 +413,12 @@ def audit_run(path: Path, max_diff_chars: int) -> RunAudit:
             classification = "BASELINE"
             reason = "first assistant request"
             diff = ""
+        elif broken_parent:
+            # Incomplete chain: prefix may be shorter than reality, so a
+            # content change could be a chain artefact rather than real drift.
+            classification = "INCONCLUSIVE"
+            reason = f"incomplete parent chain (stopped at {broken_parent})"
+            diff = ""
         elif stable_hash == previous_hash:
             classification = "EXPECTED-GROWTH"
             reason = "stable prefix hash unchanged"
@@ -481,6 +493,9 @@ def render_report(audits: list[RunAudit]) -> str:
         expected_change = [
             turn for turn in audit.turns if turn.classification == "EXPECTED-CHANGE"
         ]
+        inconclusive = [
+            turn for turn in audit.turns if turn.classification == "INCONCLUSIVE"
+        ]
         comparisons = max(0, audit.assistant_requests - 1)
         run_efficiency = (
             100.0
@@ -497,6 +512,7 @@ def render_report(audits: list[RunAudit]) -> str:
                 f"- Assistant API requests: {audit.assistant_requests}",
                 f"- CACHE-INVALIDATING findings: {len(invalidating)}",
                 f"- EXPECTED-CHANGE comparisons: {len(expected_change)}",
+                f"- INCONCLUSIVE turns (broken parent chain): {len(inconclusive)}",
                 f"- Cache-efficient comparisons: {run_efficiency:.1f}%",
                 "",
             ]
