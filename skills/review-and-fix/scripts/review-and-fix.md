@@ -2,8 +2,8 @@
 
 `skills/review-and-fix/scripts/review-and-fix.sh` has two modes:
 
-1. Fixer-enumeration mode for the internal `/review-and-fix` skill.
-2. `/implement` orchestrator mode, selected by `--implement-tmpdir`, which runs one `review-core.sh` round and emits a bounded machine contract for the parent prompt to apply accepted fixes.
+1. Accepted-findings mode for the internal `/review-and-fix` skill, selected by `--findings-file`.
+2. `/implement` orchestrator mode, selected by `--implement-tmpdir`, which runs one `review-core.sh` round and applies in-scope accepted fixes through coder dispatch.
 
 Flags:
 
@@ -13,12 +13,15 @@ Flags:
 
 Output is `KEY=value` only through `scripts/lib-quiet.sh`:
 
-- `FINDING_ID=<id>` once per accepted finding
-- `REVIEW_AND_FIX_STATUS=complete|no-findings`
+- `REVIEW_AND_FIX_STATUS=complete|no-findings|coder-failed`
 - `FIX_COUNT=N`
-- `FINDING_IDS_FILE=<path>` when findings exist
+- `CODER_TOOL=none|codex|cursor|claude-subagent`
+- `CODER_STATUS=skipped|applied|failed|submodule-violation`
+- `CODER_LOG_FILE=<path>` when a coder ran
+- `SUBMODULE_SCRUB_COUNT=N`
+- `SUBMODULE_REVERT_COUNT=N`
 
-The script does not apply edits. The `/review-and-fix` prompt wrapper reads each `$REVIEW_TMPDIR/FINDING_N.fixer.env`, validates `PATH_VALID=true`, applies code edits with Edit/Write tools, then records the outcome through `call-fixer.sh --mark-applied` or `--mark-skipped`.
+The script applies edits by dispatching Codex, Cursor, then a Claude subagent fallback. The main agent does not apply review fixes with Edit/Write.
 
 ## `/implement` orchestrator mode
 
@@ -42,8 +45,8 @@ Orchestrator mode invokes `skills/review/scripts/review-core.sh` once with `--ou
 Exit codes:
 
 - `0`: no accepted findings remain for this round.
-- `2`: wholesale rejection; parent `/implement` treats this as blocking.
-- `3`: accepted findings exist. The parent applies fixes from `APPROVED_FIXES_FILE`, then runs relevant checks and decides whether to call the script for the next round.
+- `2`: wholesale rejection, panel failure, coder failure, or submodule violation; parent `/implement` treats this as blocking.
+- `3`: a coder applied accepted findings. The parent runs relevant checks and decides whether to call the script for the next round.
 
 Additional output keys:
 
@@ -57,7 +60,18 @@ Additional output keys:
 - `REVIEW_ROUND_DIR`
 - `REVIEW_AND_FIX_SUMMARY_FILE`
 - `ACCUMULATED_OOS_FILE`
+- `CODER_TOOL`
+- `CODER_STATUS`
+- `CODER_LOG_FILE`
+- `SUBMODULE_SCRUB_COUNT`
+- `SUBMODULE_REVERT_COUNT`
 
-The script writes `$IMPLEMENT_TMPDIR/review-and-fix-summary.json` atomically with `schema_version=1`, aggregate accepted/rejected counts, `rounds_completed`, latest approved-fixes path, latest round directory, and accumulated OOS artifact paths. Accepted OOS markdown is accumulated at `$IMPLEMENT_TMPDIR/accumulated-oos.md` and mirrored to `$IMPLEMENT_TMPDIR/oos-accepted-review.md` for existing Step 9a.1 consumers; a JSONL audit copy is appended at `$IMPLEMENT_TMPDIR/accumulated-oos.jsonl`.
+The script writes `$IMPLEMENT_TMPDIR/review-and-fix-summary.json` atomically with `schema_version=2`, aggregate accepted/rejected counts, `rounds_completed`, latest approved-fixes path, latest round directory, accumulated OOS artifact paths, and coder/submodule status fields. Accepted OOS markdown is accumulated at `$IMPLEMENT_TMPDIR/accumulated-oos.md` and mirrored to `$IMPLEMENT_TMPDIR/oos-accepted-review.md` for existing Step 9a.1 consumers; a JSONL audit copy is appended at `$IMPLEMENT_TMPDIR/accumulated-oos.jsonl`.
+
+Submodule guard layers:
+
+1. `scripts/scrub-submodule-paths.sh` removes findings whose paths are under submodule roots.
+2. The coder prompt includes a submodule prohibition block.
+3. After coder dispatch, changed paths under submodule roots are reverted with `git checkout -- <path>` and reported as `CODER_STATUS=submodule-violation`.
 
 Harness: `skills/review-and-fix/scripts/test-review-and-fix.sh`, wired through `make test-review-and-fix`.

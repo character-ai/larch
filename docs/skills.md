@@ -148,7 +148,7 @@ Code review with the specialist panel described in [Review Agents](review-agents
 
 **Source**: [`skills/review-and-fix/SKILL.md`](../skills/review-and-fix/SKILL.md)
 
-Apply accepted review findings as code fixes. Internal sub-skill invoked by `/review` in diff mode and by `/implement` Step 5 to apply accepted findings from a review round; not a standalone user entry point. In `/implement` orchestrator mode (via `--implement-tmpdir`), runs one `review-core.sh` round and emits a bounded machine contract for the parent to apply fixes.
+Apply accepted review findings as code fixes. Internal sub-skill invoked by `/review` in diff mode and by `/implement` Step 5; not a standalone user entry point. It dispatches Codex, Cursor, then a Claude subagent fallback to apply voted-in suggestions directly, with pre-dispatch submodule finding scrubbing and post-dispatch submodule revert checks.
 
 ## `/set-up-forked-open-source-repo`
 

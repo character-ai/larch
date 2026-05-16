@@ -88,8 +88,14 @@ REVIEW_AND_FIX_DIR="$REPO_ROOT/skills/review-and-fix"
   || fail "(1b) missing skills/review-and-fix/SKILL.md"
 [[ -f "$REVIEW_AND_FIX_DIR/scripts/review-and-fix.sh" ]] \
   || fail "(1b) missing skills/review-and-fix/scripts/review-and-fix.sh"
-[[ -f "$REVIEW_AND_FIX_DIR/scripts/call-fixer.sh" ]] \
-  || fail "(1b) missing skills/review-and-fix/scripts/call-fixer.sh"
+[[ -x "$REPO_ROOT/scripts/scrub-submodule-paths.sh" ]] \
+  || fail "(1b) missing executable scripts/scrub-submodule-paths.sh"
+grep -Fq -- '--tool codex' "$REVIEW_AND_FIX_DIR/scripts/review-and-fix.sh" \
+  || fail "(1b) review-and-fix.sh must dispatch Codex coder"
+grep -Fq -- '--tool cursor' "$REVIEW_AND_FIX_DIR/scripts/review-and-fix.sh" \
+  || fail "(1b) review-and-fix.sh must dispatch Cursor coder"
+grep -Fq -- 'launch-claude-subprocess.sh' "$REVIEW_AND_FIX_DIR/scripts/review-and-fix.sh" \
+  || fail "(1b) review-and-fix.sh must dispatch Claude subagent fallback"
 
 agent_file="$REPO_ROOT/agents/orchestrator-aggregator.md"
 [[ -f "$agent_file" ]] \
