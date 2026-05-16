@@ -318,13 +318,18 @@ mkdir -p "$implement_tmp"
 printf 'CODEX_HEALTHY=true\nCURSOR_HEALTHY=true\n' > "$implement_tmp/session-env.sh"
 set +e
 out=$(TEST_CORE_STATUS=zero run_review_and_fix "$work_zero" \
-    --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh")
+    --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id zero-run)
 rc=$?
 set -e
 [[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "zero expected exit 0 got $rc"; }
 grep -Fq 'REVIEW_AND_FIX_STATUS=complete' <<< "$out" || fail "zero status"
 jq -e '.schema_version == 2 and .status == "complete" and .coder_status == "skipped"' "$implement_tmp/review-and-fix-summary.json" >/dev/null \
     || fail "zero summary"
+jq -e '.batch == "code-review-tally" and .rounds == 1 and .accepted_count == 0 and .rejected_count == 0 and (.body | contains("# Review Round 1"))' \
+    "$implement_tmp/larch-logs/implement/zero-run/code-review-tally.json" >/dev/null \
+    || fail "zero code-review-tally batch"
+[[ -f "$implement_tmp/larch-logs/implement/zero-run/review-findings-full.md" ]] || fail "zero review-findings-full batch"
+[[ "$out" != *"LOG_WRITTEN="* ]] || fail "zero flush leaked larch-log writer stdout"
 
 work_skipped="$TMP/skipped-routing"
 make_work_repo "$work_skipped"
