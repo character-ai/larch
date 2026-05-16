@@ -318,13 +318,13 @@ case "$cmd" in
             printf 'larch-log.sh: refusing commit after post-merge sentinel exists: %s\n' "$IMPLEMENT_TMPDIR/post-merge-sentinel" >&2
             exit 1
         fi
+        [ -n "$REPO_ROOT" ] || larch_log_fail 1 "commit requires a git worktree (PWD is not inside a git repo)"
         if current_branch_is_default; then
             printf 'larch-log.sh: refusing commit on default branch/main after post-merge cleanup guard\n' >&2
             exit 1
         fi
         require_log_root
         require_common
-        [ -n "$REPO_ROOT" ] || larch_log_fail 1 "commit requires a git worktree (PWD is not inside a git repo)"
         src_path="$(larch_log_run_dir "$SKILL" "$RUN_ID")"
         repo_path="$(larch_log_repo_run_dir "$SKILL" "$RUN_ID")"
         [ -d "$src_path" ] || larch_log_fail 1 "log directory not found: $src_path"

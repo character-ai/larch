@@ -12,8 +12,8 @@ Key exports:
   fails closed when the variable is absent; there is no `$IMPLEMENT_TMPDIR` or
   repo-root fallback.
   `LARCH_LOG_REPO_ROOT` is resolved via `git -C "$PWD" rev-parse --show-toplevel`
-  (consumer repo) using a two-assignment pattern to avoid `(A || B) && C`
-  shell-precedence issues. It remains empty outside a git worktree.
+  (consumer repo) at library load time. It remains empty outside a git worktree;
+  `commit` fails with a descriptive error in that case.
 - `larch_log_repo_run_dir(skill, run_id)` — always returns the canonical repo path
   (`$LARCH_LOG_REPO_ROOT/larch-logs/<skill>/<run_id>`), bypassing the tmpdir tier.
   Used by `larch-log.sh commit` to locate the copy destination.

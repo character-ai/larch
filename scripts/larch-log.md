@@ -52,12 +52,11 @@ an absolute `--log-root <dir>` unless `$LARCH_LOG_ROOT` is already exported.
 `/implement` passes `$IMPLEMENT_TMPDIR/larch-logs` explicitly so in-progress
 runtime payloads stay out of the git working tree until `commit` is called.
 
-`REPO_ROOT` (used by `commit`) and `LARCH_LOG_REPO_ROOT` (used by `write`/`append`/`init`
-via `lib-larch-log.sh`) both resolve via `git -C "$PWD" rev-parse --show-toplevel` so
-logs land in the consumer repo rather than the plugin install cache. Both use the
-two-assignment pattern to avoid `(A || B) && C` shell-precedence issues. Outside
-a git worktree, `commit` fails with a descriptive error instead of falling back
-to the plugin directory.
+`REPO_ROOT` (used by `commit`) and `LARCH_LOG_REPO_ROOT` (used by `commit` via
+`larch_log_repo_run_dir`) both resolve via `git -C "$PWD" rev-parse --show-toplevel`
+at script load time so logs land in the consumer repo rather than the plugin install
+cache. Both remain empty when invoked outside a git worktree; `commit` fails with
+a descriptive error in that case.
 
 **`commit` copy semantics**: `commit` computes `src_path` via `larch_log_run_dir`
 (which resolves under the explicit log root) and `repo_path` via
