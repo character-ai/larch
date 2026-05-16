@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [29.1.3] - 2026-05-16
+
+### Changed
+
+- Remove the Claude coder fallback from `review-and-fix.sh`; the dispatch chain is Codex → Cursor only.
+- Replace the broken `cursor-agent --print --prompt` invocation with the repo-standard `cursor agent -p --trust --workspace "$PWD"` shape, sourced through `lib-cursor-launcher-common.sh` for model/auth args.
+- Fail closed on `SCRUB_OK=false` from `scrub-submodule-paths.sh` instead of collapsing to `CODER_STATUS=skipped`.
+- Extend `post_dispatch_submodule_revert` to scan untracked paths via `git status --porcelain` and `rm -f` files under submodule roots.
+- Add `.rs` and `.toml` to the `scrub-submodule-paths.sh` extension allowlist.
+- Align `scripts/test-review-structure.md` contract markdown with the harness's `orchestrator-judge.md` / `voting.md` non-existence assertions.
+
 ## [29.1.1] - 2026-05-16
 
 ### Changed

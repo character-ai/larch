@@ -17,6 +17,6 @@ Output is `KEY=value` only through `scripts/lib-quiet.sh`:
 
 On missing or invalid input it emits `SCRUB_OK=false` and exits 2. Output and log parent directories are created when needed.
 
-Primary caller: `skills/review-and-fix/scripts/review-and-fix.sh`, before Codex/Cursor/Claude-subagent fix application.
+Primary caller: `skills/review-and-fix/scripts/review-and-fix.sh`, before Codex/Cursor fix application.
 
 Harness: `scripts/test-scrub-submodule-paths.sh`.

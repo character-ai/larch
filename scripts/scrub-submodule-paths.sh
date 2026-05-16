@@ -75,7 +75,7 @@ extract_paths() {
                 print
             }
         ' "$block_file"
-        grep -Eo '([A-Za-z0-9._/-]+\.(sh|py|md|json|ts|tsx|js|jsx|yml|yaml|txt))(:[0-9]+)?' "$block_file" || true
+        grep -Eo '([A-Za-z0-9._/-]+\.(sh|py|md|json|ts|tsx|js|jsx|yml|yaml|txt|rs|toml))(:[0-9]+)?' "$block_file" || true
     } | sed \
         -e 's/^[`"'"'"'(<[]*//' \
         -e 's/[`"'"'"'),>\].;:]*$//' \

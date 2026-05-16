@@ -8,6 +8,12 @@ PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
 # shellcheck source=scripts/lib-quiet.sh
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
+# lib-cursor-launcher-common.sh expects SCRIPT_DIR to point at the root scripts
+# directory for sibling helpers such as agent-model-args.sh and lib-cursor-auth.sh.
+SCRIPT_DIR="$PLUGIN_ROOT/scripts"
+# shellcheck source=scripts/lib-cursor-launcher-common.sh
+# shellcheck disable=SC1091
+source "$PLUGIN_ROOT/scripts/lib-cursor-launcher-common.sh"
 
 usage() {
     larch_err "Usage:"
@@ -20,7 +26,6 @@ REVIEW_TMPDIR=""
 SESSION_ENV_PATH=""
 REVIEW_CORE_SH="${REVIEW_AND_FIX_REVIEW_CORE_SH:-$PLUGIN_ROOT/skills/review/scripts/review-core.sh}"
 RUN_EXTERNAL_AGENT_SH="${REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH:-$PLUGIN_ROOT/scripts/run-external-agent.sh}"
-LAUNCH_CLAUDE_SUBPROCESS_SH="${REVIEW_AND_FIX_LAUNCH_CLAUDE_SUBPROCESS_SH:-$PLUGIN_ROOT/scripts/launch-claude-subprocess.sh}"
 SCRUB_SUBMODULE_PATHS_SH="${REVIEW_AND_FIX_SCRUB_SUBMODULE_PATHS_SH:-$PLUGIN_ROOT/scripts/scrub-submodule-paths.sh}"
 IMPLEMENT_TMPDIR=""
 PANEL=""
@@ -143,7 +148,7 @@ compose_coder_prompt() {
 }
 
 run_coder_dispatch() {
-    local round_dir="$1" prompt_file="$2" prompt_body="$3" tool_log="$4" tool_stdout="$5" status_line
+    local round_dir="$1" prompt_body="$2" tool_log="$3" tool_stdout="$4"
 
     if "$RUN_EXTERNAL_AGENT_SH" --tool codex --output "$round_dir/coder-codex.log" --timeout 1800 --capture-stdout -- \
         codex exec --full-auto -C "$PWD" --add-dir "$round_dir" "$prompt_body" > "$round_dir/coder-codex.wrapper.log" 2>&1; then
@@ -152,20 +157,17 @@ run_coder_dispatch() {
         return 0
     fi
 
+    cursor_launcher_load_model_args || return 1
+    cursor_launcher_setup_auth_argv || return 1
     if "$RUN_EXTERNAL_AGENT_SH" --tool cursor --output "$round_dir/coder-cursor.log" --timeout 1800 --capture-stdout -- \
-        cursor-agent --print --prompt "$prompt_body" > "$round_dir/coder-cursor.wrapper.log" 2>&1; then
+        cursor agent -p --trust \
+        ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
+        ${CURSOR_AUTH_ARGS[@]+"${CURSOR_AUTH_ARGS[@]}"} \
+        --workspace "$PWD" \
+        "$prompt_body" > "$round_dir/coder-cursor.wrapper.log" 2>&1; then
         cp "$round_dir/coder-cursor.log" "$tool_log" 2>/dev/null || : > "$tool_log"
         printf 'cursor\n' > "$tool_stdout"
         return 0
-    fi
-
-    if "$LAUNCH_CLAUDE_SUBPROCESS_SH" --prompt-file "$prompt_file" --output-file "$round_dir/coder-claude.log" --timeout 1800 > "$round_dir/coder-claude.env" 2>&1; then
-        status_line=$(kv_get "$round_dir/coder-claude.env" STATUS)
-        if [[ "$status_line" == "OK" || -z "$status_line" ]]; then
-            cp "$round_dir/coder-claude.log" "$tool_log" 2>/dev/null || : > "$tool_log"
-            printf 'claude-subagent\n' > "$tool_stdout"
-            return 0
-        fi
     fi
 
     return 1
@@ -174,11 +176,17 @@ run_coder_dispatch() {
 post_dispatch_submodule_revert() {
     local round_dir="$1" submodules_list="$2"
     local revert_log="$round_dir/submodule-revert.log"
-    local diff_file="$round_dir/modified-paths.txt" path submodule_path revert_count=0
+    local diff_file="$round_dir/modified-paths.txt" tracked_file="$round_dir/tracked-modified-paths.txt" untracked_set_file="$round_dir/untracked-paths.txt" path submodule_path revert_count=0
     : > "$revert_log"
     {
         git diff --name-only 2>/dev/null || true
         git diff --name-only --cached 2>/dev/null || true
+    } | awk 'NF && !seen[$0]++ { print }' > "$tracked_file"
+    git status --porcelain 2>/dev/null \
+        | awk '$1 == "??" { sub(/^\?\?[[:space:]]*/, ""); print }' > "$untracked_set_file"
+    {
+        cat "$tracked_file"
+        cat "$untracked_set_file"
     } | awk 'NF && !seen[$0]++ { print }' > "$diff_file"
 
     while IFS= read -r path || [[ -n "$path" ]]; do
@@ -187,7 +195,11 @@ post_dispatch_submodule_revert() {
             [[ -n "$submodule_path" ]] || continue
             case "$path" in
                 "$submodule_path"|"$submodule_path"/*)
-                    git checkout -- "$path" 2>>"$revert_log" || true
+                    if grep -Fxq "$path" "$untracked_set_file" 2>/dev/null; then
+                        rm -f -- "$path" 2>>"$revert_log" || true
+                    else
+                        git checkout -- "$path" 2>>"$revert_log" || true
+                    fi
                     printf '%s\n' "$path" >> "$revert_log"
                     revert_count=$((revert_count + 1))
                     break
@@ -200,7 +212,7 @@ post_dispatch_submodule_revert() {
 
 apply_findings_with_coder() {
     local input_file="$1" round_dir="$2" result_file="$3"
-    local in_scope_count scrub_out scrub_count scrubbed_file scrubbed_count submodules_list prompt_file prompt_body tool_file tool_log revert_count
+    local in_scope_count scrub_out scrub_rc scrub_ok scrub_count scrubbed_file scrubbed_count submodules_list prompt_file prompt_body tool_file tool_log revert_count
 
     mkdir -p "$round_dir"
     : > "$result_file"
@@ -219,9 +231,23 @@ apply_findings_with_coder() {
 
     [[ -x "$SCRUB_SUBMODULE_PATHS_SH" ]] || { larch_err "review-and-fix.sh: scrub-submodule-paths.sh not executable: $SCRUB_SUBMODULE_PATHS_SH"; exit 2; }
     scrubbed_file="$round_dir/accepted-findings.scrubbed.md"
-    scrub_out=$("$SCRUB_SUBMODULE_PATHS_SH" --input "$input_file" --output "$scrubbed_file" --log "$round_dir/submodule-scrub.log")
+    scrub_rc=0
+    scrub_out=$("$SCRUB_SUBMODULE_PATHS_SH" --input "$input_file" --output "$scrubbed_file" --log "$round_dir/submodule-scrub.log" 2>/dev/null) || scrub_rc=$?
+    scrub_ok=$(awk -F= '$1 == "SCRUB_OK" { print $2; exit }' <<< "$scrub_out")
     scrub_count=$(awk -F= '$1 == "SCRUB_COUNT" { print $2; exit }' <<< "$scrub_out")
     scrub_count="${scrub_count:-0}"
+    if [[ "$scrub_ok" == "false" || ( "$scrub_rc" -ne 0 && -z "$scrub_ok" ) ]]; then
+        emit_breadcrumb "⚠ review-and-fix: submodule scrub failed; refusing to dispatch coder"
+        {
+            printf 'CODER_TOOL=none\n'
+            printf 'CODER_STATUS=failed\n'
+            printf 'CODER_LOG_FILE=\n'
+            printf 'CODER_INPUT_COUNT=0\n'
+            printf 'SUBMODULE_SCRUB_COUNT=%s\n' "$scrub_count"
+            printf 'SUBMODULE_REVERT_COUNT=0\n'
+        } > "$result_file"
+        return 2
+    fi
     scrubbed_count=$(count_findings "$scrubbed_file")
 
     if [[ ! -s "$scrubbed_file" ]] || ! grep -Eq '^### FINDING_[0-9]+:' "$scrubbed_file"; then
@@ -244,7 +270,7 @@ apply_findings_with_coder() {
     tool_file="$round_dir/coder-tool.txt"
     tool_log="$round_dir/coder-output.log"
 
-    if ! run_coder_dispatch "$round_dir" "$prompt_file" "$prompt_body" "$tool_log" "$tool_file"; then
+    if ! run_coder_dispatch "$round_dir" "$prompt_body" "$tool_log" "$tool_file"; then
         {
             printf 'CODER_TOOL=none\n'
             printf 'CODER_STATUS=failed\n'
@@ -375,7 +401,6 @@ run_implement_round() {
     [[ -n "$SESSION_ENV_PATH" ]] || SESSION_ENV_PATH="$IMPLEMENT_TMPDIR/session-env.sh"
     [[ -x "$REVIEW_CORE_SH" ]] || { larch_err "review-and-fix.sh: review-core.sh not executable: $REVIEW_CORE_SH"; exit 2; }
     [[ -x "$RUN_EXTERNAL_AGENT_SH" ]] || { larch_err "review-and-fix.sh: run-external-agent.sh not executable: $RUN_EXTERNAL_AGENT_SH"; exit 2; }
-    [[ -x "$LAUNCH_CLAUDE_SUBPROCESS_SH" ]] || { larch_err "review-and-fix.sh: launch-claude-subprocess.sh not executable: $LAUNCH_CLAUDE_SUBPROCESS_SH"; exit 2; }
     command -v jq >/dev/null 2>&1 || { larch_err "review-and-fix.sh: jq is required"; exit 2; }
 
     if [[ "$CODEX_AVAILABLE" != "true" && "$CODEX_AVAILABLE" != "false" ]]; then
@@ -548,7 +573,8 @@ run_implement_round() {
                 status="fix-required"
                 exit_code=3
             else
-                status="complete"
+                status="in-scope-filtered-out"
+                emit_breadcrumb "⚠ review-and-fix: round $round_num_dec — all accepted findings scrubbed; nothing to apply"
             fi
             ;;
         zero-findings|ok)
