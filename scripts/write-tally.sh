@@ -37,6 +37,8 @@ fail() {
 
 validate_code_review_headers() {
     local body_file="$1"
+    command -v python3 >/dev/null 2>&1 || return 5
+    python3 -c 'import re, sys' >/dev/null 2>&1 || return 5
     python3 - "$body_file" <<'PYEOF'
 import sys
 import re
@@ -51,22 +53,30 @@ allowed = {
 }
 
 in_fence = False
-with open(sys.argv[1], encoding="utf-8") as fh:
-    for raw_line in fh:
-        line = raw_line.rstrip("\n")
-        stripped = line.strip()
-        if stripped.startswith("```"):
-            in_fence = not in_fence
-            continue
-        if in_fence:
-            continue
-        if line.startswith("### [Code Review] "):
-            continue
-        if re.match(r"^#{1,6}\s", line) and line in allowed:
-            continue
-        if re.match(r"^#{1,6}\s", line):
-            print(line)
-            sys.exit(1)
+try:
+    with open(sys.argv[1], encoding="utf-8") as fh:
+        for raw_line in fh:
+            line = raw_line.rstrip("\n")
+            stripped = line.strip()
+            if stripped.startswith("```"):
+                in_fence = not in_fence
+                continue
+            if in_fence:
+                continue
+            if line.startswith("### [Code Review] "):
+                continue
+            if re.match(r"^### \[rejected\] FINDING_[0-9]+$", line):
+                continue
+            if re.match(r"^### FINDING_[0-9]+: ", line):
+                continue
+            if re.match(r"^#{1,6}\s", line) and line in allowed:
+                continue
+            if re.match(r"^#{1,6}\s", line):
+                print(line)
+                sys.exit(4)
+except Exception as exc:
+    print(str(exc), file=sys.stderr)
+    sys.exit(3)
 sys.exit(0)
 PYEOF
 }
@@ -129,9 +139,17 @@ require_non_negative_integer "--rejected" "$REJECTED"
 [ ! -L "$BODY_FILE" ] || fail "body file must not be a symlink: $BODY_FILE"
 
 if [ "$PHASE" = "code-review" ]; then
-    if ! bad_header="$(validate_code_review_headers "$BODY_FILE")"; then
-        fail "unrecognized section header in code-review body: $bad_header"
-    fi
+    set +e
+    validation_out="$(validate_code_review_headers "$BODY_FILE" 2>&1)"
+    validation_rc=$?
+    set -e
+    case "$validation_rc" in
+        0) ;;
+        3) fail "code-review body header validation failed: ${validation_out:-python3 validation error}" ;;
+        4) fail "unrecognized section header in code-review body: $validation_out" ;;
+        5) fail "python3 is required for --phase code-review header validation" ;;
+        *) fail "code-review body header validation failed" ;;
+    esac
 fi
 
 RECORD_FILE="$(mktemp "${TMPDIR:-/tmp}/write-tally-record.XXXXXX")" || fail "cannot create tally temp file"

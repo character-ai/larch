@@ -82,6 +82,8 @@ count_findings() {
 
 is_security_block() {
     local block="$1"
+    command -v python3 >/dev/null 2>&1 || return 2
+    python3 -c 'import re, sys' >/dev/null 2>&1 || return 2
     python3 - "$block" <<'PYEOF'
 import re, sys
 try:
@@ -89,10 +91,17 @@ try:
 except OSError as exc:
     print(f"is_security_block: {exc}", file=sys.stderr)
     sys.exit(2)
-text_no_fence = re.sub(r'```.*?```', '', text, flags=re.DOTALL)
-text_no_backtick = re.sub(r'`[^`\n]*`', '', text_no_fence)
-pattern = re.compile(r'focus-area\s*=\s*security', re.IGNORECASE)
-sys.exit(0 if pattern.search(text_no_backtick) else 1)
+except Exception as exc:
+    print(f"is_security_block: {exc}", file=sys.stderr)
+    sys.exit(2)
+try:
+    text_no_fence = re.sub(r'```.*?```', '', text, flags=re.DOTALL)
+    text_no_backtick = re.sub(r'`[^`\n]*`', '', text_no_fence)
+    pattern = re.compile(r'focus-area\s*=\s*security', re.IGNORECASE)
+    sys.exit(0 if pattern.search(text_no_backtick) else 1)
+except Exception as exc:
+    print(f"is_security_block: {exc}", file=sys.stderr)
+    sys.exit(2)
 PYEOF
 }
 
@@ -191,7 +200,7 @@ post_dispatch_submodule_revert() {
 
 apply_findings_with_coder() {
     local input_file="$1" round_dir="$2" result_file="$3"
-    local in_scope_count scrub_out scrub_count scrubbed_file submodules_list prompt_file prompt_body tool_file tool_log revert_count
+    local in_scope_count scrub_out scrub_count scrubbed_file scrubbed_count submodules_list prompt_file prompt_body tool_file tool_log revert_count
 
     mkdir -p "$round_dir"
     : > "$result_file"
@@ -201,6 +210,7 @@ apply_findings_with_coder() {
             printf 'CODER_TOOL=none\n'
             printf 'CODER_STATUS=skipped\n'
             printf 'CODER_LOG_FILE=\n'
+            printf 'CODER_INPUT_COUNT=0\n'
             printf 'SUBMODULE_SCRUB_COUNT=0\n'
             printf 'SUBMODULE_REVERT_COUNT=0\n'
         } > "$result_file"
@@ -212,12 +222,14 @@ apply_findings_with_coder() {
     scrub_out=$("$SCRUB_SUBMODULE_PATHS_SH" --input "$input_file" --output "$scrubbed_file" --log "$round_dir/submodule-scrub.log")
     scrub_count=$(awk -F= '$1 == "SCRUB_COUNT" { print $2; exit }' <<< "$scrub_out")
     scrub_count="${scrub_count:-0}"
+    scrubbed_count=$(count_findings "$scrubbed_file")
 
     if [[ ! -s "$scrubbed_file" ]] || ! grep -Eq '^### FINDING_[0-9]+:' "$scrubbed_file"; then
         {
             printf 'CODER_TOOL=none\n'
             printf 'CODER_STATUS=skipped\n'
             printf 'CODER_LOG_FILE=\n'
+            printf 'CODER_INPUT_COUNT=0\n'
             printf 'SUBMODULE_SCRUB_COUNT=%s\n' "$scrub_count"
             printf 'SUBMODULE_REVERT_COUNT=0\n'
         } > "$result_file"
@@ -237,6 +249,7 @@ apply_findings_with_coder() {
             printf 'CODER_TOOL=none\n'
             printf 'CODER_STATUS=failed\n'
             printf 'CODER_LOG_FILE=\n'
+            printf 'CODER_INPUT_COUNT=%s\n' "$scrubbed_count"
             printf 'SUBMODULE_SCRUB_COUNT=%s\n' "$scrub_count"
             printf 'SUBMODULE_REVERT_COUNT=0\n'
         } > "$result_file"
@@ -249,6 +262,7 @@ apply_findings_with_coder() {
             printf 'CODER_TOOL=%s\n' "$(cat "$tool_file")"
             printf 'CODER_STATUS=submodule-violation\n'
             printf 'CODER_LOG_FILE=%s\n' "$tool_log"
+            printf 'CODER_INPUT_COUNT=%s\n' "$scrubbed_count"
             printf 'SUBMODULE_SCRUB_COUNT=%s\n' "$scrub_count"
             printf 'SUBMODULE_REVERT_COUNT=%s\n' "$revert_count"
         } > "$result_file"
@@ -259,6 +273,7 @@ apply_findings_with_coder() {
         printf 'CODER_TOOL=%s\n' "$(cat "$tool_file")"
         printf 'CODER_STATUS=applied\n'
         printf 'CODER_LOG_FILE=%s\n' "$tool_log"
+        printf 'CODER_INPUT_COUNT=%s\n' "$scrubbed_count"
         printf 'SUBMODULE_SCRUB_COUNT=%s\n' "$scrub_count"
         printf 'SUBMODULE_REVERT_COUNT=0\n'
     } > "$result_file"
@@ -329,6 +344,7 @@ run_findings_mode() {
     coder_tool=$(kv_get "$coder_env" CODER_TOOL)
     coder_status=$(kv_get "$coder_env" CODER_STATUS)
     coder_log=$(kv_get "$coder_env" CODER_LOG_FILE)
+    coder_input_count=$(kv_get "$coder_env" CODER_INPUT_COUNT)
     scrub_count=$(kv_get "$coder_env" SUBMODULE_SCRUB_COUNT)
     revert_count=$(kv_get "$coder_env" SUBMODULE_REVERT_COUNT)
 
@@ -340,7 +356,7 @@ run_findings_mode() {
     esac
 
     emit_kv REVIEW_AND_FIX_STATUS "$review_status"
-    emit_kv FIX_COUNT "$(count_findings "$FINDINGS_FILE")"
+    emit_kv FIX_COUNT "${coder_input_count:-$(count_findings "$FINDINGS_FILE")}"
     emit_kv CODER_TOOL "${coder_tool:-none}"
     emit_kv CODER_STATUS "${coder_status:-unknown}"
     [[ -n "${coder_log:-}" ]] && emit_kv CODER_LOG_FILE "$coder_log"
@@ -426,6 +442,7 @@ run_implement_round() {
     scrub_count=0
     revert_count=0
     in_scope_count=0
+    coder_input_count=0
     coder_rc=0
     if [[ "$accepted_count" -gt 0 && -s "$accepted_file" ]]; then
         in_scope_file="$round_dir/accepted-in-scope-findings.md"
@@ -441,10 +458,12 @@ run_implement_round() {
             coder_tool=$(kv_get "$coder_env" CODER_TOOL)
             coder_status=$(kv_get "$coder_env" CODER_STATUS)
             coder_log=$(kv_get "$coder_env" CODER_LOG_FILE)
+            coder_input_count=$(kv_get "$coder_env" CODER_INPUT_COUNT)
             scrub_count=$(kv_get "$coder_env" SUBMODULE_SCRUB_COUNT)
             revert_count=$(kv_get "$coder_env" SUBMODULE_REVERT_COUNT)
             coder_tool="${coder_tool:-none}"
             coder_status="${coder_status:-unknown}"
+            coder_input_count="${coder_input_count:-0}"
             scrub_count="${scrub_count:-0}"
             revert_count="${revert_count:-0}"
         fi
@@ -548,7 +567,7 @@ run_implement_round() {
     emit_kv ROUND_NUM "$round_num_dec"
     emit_kv ACCEPTED_COUNT "$accepted_count"
     emit_kv REJECTED_COUNT "$rejected_count"
-    emit_kv FIX_COUNT "$in_scope_count"
+    emit_kv FIX_COUNT "$coder_input_count"
     emit_kv APPROVED_FIXES_FILE "$accepted_file"
     emit_kv REJECTED_FINDINGS_FILE "$rejected_file"
     emit_kv REVIEW_ROUND_DIR "$round_dir"

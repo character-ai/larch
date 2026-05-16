@@ -328,6 +328,7 @@ rc=$?
 set -e
 [[ "$rc" -eq 3 ]] || { echo "$out" >&2; fail "skipped-routing expected exit 3 got $rc"; }
 grep -Fq 'SKIPPED_FINDING_COUNT=2' <<< "$out" || fail "skipped-routing count"
+grep -Fq 'FIX_COUNT=2' <<< "$out" || fail "skipped-routing fix count"
 grep -Fq 'Non-security skipped finding' "$implement_tmp/oos-accepted-review.md" || fail "skipped-routing public skipped finding missing"
 if grep -Fq 'Security skipped finding' "$implement_tmp/oos-accepted-review.md"; then
     fail "skipped-routing security finding leaked to public OOS"
@@ -337,7 +338,7 @@ grep -Fq 'Security skipped finding' "$implement_tmp/skipped-security-findings.md
 mkdir -p "$TMP/fail-python-bin"
 cat > "$TMP/fail-python-bin/python3" <<'EOF_PYFAIL'
 #!/usr/bin/env bash
-exit 7
+exit 1
 EOF_PYFAIL
 chmod +x "$TMP/fail-python-bin/python3"
 work_classifier_fail="$TMP/skipped-classifier-fail"
@@ -362,5 +363,53 @@ set -e
 if [[ -e "$implement_tmp/skipped-security-findings.md" ]]; then
     fail "skipped-classifier-fail should not emit security audit file on classifier failure"
 fi
+
+cat > "$TMP/scrub-submodule-paths-drop-one.sh" <<'EOF_SCRUB'
+#!/usr/bin/env bash
+set -euo pipefail
+input=""
+output=""
+log_file=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --input) input="$2"; shift 2 ;;
+    --output) output="$2"; shift 2 ;;
+    --log) log_file="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+awk '
+  /^### FINDING_2:/ { skip=1 }
+  /^### FINDING_[0-9]+:/ && !/^### FINDING_2:/ { skip=0 }
+  !skip { print }
+' "$input" > "$output"
+: > "$log_file"
+printf 'SCRUB_COUNT=1\n'
+EOF_SCRUB
+chmod +x "$TMP/scrub-submodule-paths-drop-one.sh"
+work_scrub="$TMP/scrub-fix-count"
+make_work_repo "$work_scrub"
+cat > "$work_scrub/findings.md" <<'EOF_SCRUB_FINDINGS'
+### FINDING_1: Keep
+- **Location**: src/main.py
+- **Concern**: First concern.
+- **Suggested revision**: First fix.
+
+### FINDING_2: Drop
+- **Location**: vendor/lib/file.txt
+- **Concern**: Submodule concern.
+- **Suggested revision**: Skip by scrubber.
+EOF_SCRUB_FINDINGS
+out=$(
+    cd "$work_scrub" && \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
+    REVIEW_AND_FIX_LAUNCH_CLAUDE_SUBPROCESS_SH="$TMP/launch-claude-subprocess-stub.sh" \
+    REVIEW_AND_FIX_SCRUB_SUBMODULE_PATHS_SH="$TMP/scrub-submodule-paths-drop-one.sh" \
+    TEST_AGENT_BEHAVIOR=codex-success \
+    "$SCRIPT" --findings-file "$work_scrub/findings.md" --review-tmpdir "$work_scrub/review"
+)
+grep -Fq 'FIX_COUNT=1' <<< "$out" || fail "findings-mode fix count uses post-scrub count"
+grep -Fq 'SUBMODULE_SCRUB_COUNT=1' <<< "$out" || fail "findings-mode scrub count"
 
 echo "test-review-and-fix: ok"

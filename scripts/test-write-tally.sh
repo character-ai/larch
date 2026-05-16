@@ -94,6 +94,9 @@ Round summary.
 
 ## Rejected Code Review Findings
 
+### [rejected] FINDING_1
+### FINDING_1: Rejected finding title
+
 ### [Code Review] Reviewer
 Detail paragraph.
 
@@ -131,6 +134,28 @@ if [ -z "$invalid_heading_out" ]; then
     pass "code-review invalid heading stdout empty"
 else
     fail "code-review invalid heading stdout not empty: $invalid_heading_out"
+fi
+
+echo "=== code-review python3 preflight ==="
+no_python_path="$TMP/no-python-bin"
+mkdir -p "$no_python_path"
+ln -s /usr/bin/dirname "$no_python_path/dirname"
+cat > "$no_python_path/python3" <<'EOF'
+#!/usr/bin/env bash
+exit 127
+EOF
+chmod +x "$no_python_path/python3"
+set +e
+no_python_out="$(PATH="$no_python_path" /bin/bash "$WRITE_TALLY" --log-root "$TMP/logs-code-no-python" --skill implement --run-id run-code-no-python \
+    --phase code-review --mode simple --body-file "$code_body_valid" 2>"$TMP/code-no-python.err")"
+no_python_rc=$?
+set -e
+if [ "$no_python_rc" -eq 2 ]; then pass "code-review missing python exits 2"; else fail "code-review missing python exit $no_python_rc"; fi
+assert_contains "$(cat "$TMP/code-no-python.err")" "python3 is required for --phase code-review header validation" "code-review missing python diagnostic"
+if [ -z "$no_python_out" ]; then
+    pass "code-review missing python stdout empty"
+else
+    fail "code-review missing python stdout not empty: $no_python_out"
 fi
 
 echo "=== defaults ==="
