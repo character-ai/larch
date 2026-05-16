@@ -35,7 +35,7 @@ Emits to FD 3 (`emit_kv`):
 
 ## Callers
 
-- `skills/review/scripts/review-core.sh` — invoked after `collect-findings.sh` and before `detect-wholesale-rejection.sh`. When `THRESHOLD_OK=false`, review-core emits `REVIEW_CORE_STATUS=panel-failed` and exits 2.
+- `skills/review/scripts/review-core.sh` — invoked after `collect-findings.sh` and before tally emission. When `THRESHOLD_OK=false`, review-core emits `REVIEW_CORE_STATUS=panel-failed` and exits 2.
 
 ## Harness
 

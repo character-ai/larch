@@ -45,7 +45,7 @@ Orchestrator mode invokes `skills/review/scripts/review-core.sh` once with `--ou
 Exit codes:
 
 - `0`: no accepted findings remain for this round.
-- `2`: wholesale rejection, panel failure, coder failure, or submodule violation; parent `/implement` treats this as blocking.
+- `2`: panel failure, coder failure, or submodule violation; parent `/implement` treats this as blocking.
 - `3`: a coder applied accepted findings. The parent runs relevant checks and decides whether to call the script for the next round.
 
 Additional output keys:

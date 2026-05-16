@@ -63,7 +63,6 @@ GATHER_CONTEXT_SH="${REVIEW_CORE_GATHER_CONTEXT_SH:-$SCRIPT_DIR/gather-context.s
 DISPATCH_PANEL_SH="${REVIEW_CORE_DISPATCH_PANEL_SH:-$SCRIPT_DIR/dispatch-panel.sh}"
 COLLECT_FINDINGS_SH="${REVIEW_CORE_COLLECT_FINDINGS_SH:-$SCRIPT_DIR/collect-findings.sh}"
 TALLY_VOTES_SH="${REVIEW_CORE_TALLY_VOTES_SH:-$SCRIPT_DIR/tally-code-votes.sh}"
-DETECT_WHOLESALE_SH="${REVIEW_CORE_DETECT_WHOLESALE_SH:-$SCRIPT_DIR/detect-wholesale-rejection.sh}"
 EMIT_TALLY_SH="${REVIEW_CORE_EMIT_TALLY_SH:-$SCRIPT_DIR/emit-tally.sh}"
 CHECK_DIRTY_TREE_SH="${REVIEW_CORE_CHECK_DIRTY_TREE_SH:-$PLUGIN_ROOT/scripts/check-mid-run-dirty-tree.sh}"
 CHECK_THRESHOLD_SH="${REVIEW_CORE_CHECK_THRESHOLD_SH:-$SCRIPT_DIR/check-reviewer-failure-threshold.sh}"
@@ -345,10 +344,6 @@ accepted_file="${accepted_file:-$REVIEW_TMPDIR/accepted-findings.md}"
 voting_tally_file=$(kv_get "$tally_out" VOTING_TALLY_FILE)
 [[ -n "$voting_tally_file" ]] && emit_kv VOTING_TALLY_FILE "$voting_tally_file"
 
-wholesale_out="$REVIEW_TMPDIR/review-core-wholesale.env"
-"$DETECT_WHOLESALE_SH" --accepted-count "$accepted_count" > "$wholesale_out"
-terminate_early=$(kv_get "$wholesale_out" TERMINATE_EARLY)
-
 emit_out="$REVIEW_TMPDIR/review-core-emit.env"
 emit_args=(
     --tally-file "$tally_file"
@@ -367,9 +362,7 @@ copy_to_parent "$rejected_file" rejected-findings.md
 copy_to_parent "$REVIEW_TMPDIR/oos-accepted-review.md" oos-accepted-review.md
 
 status="ok"
-if [[ "$terminate_early" == "true" ]]; then
-    status="wholesale-rejected"
-elif [[ "$MODE" == "diff" && "$accepted_count" -gt 0 ]]; then
+if [[ "$MODE" == "diff" && "$accepted_count" -gt 0 ]]; then
     if [[ "$ROUND_NUM" -ge 3 ]]; then
         status="cap-reached"
     else

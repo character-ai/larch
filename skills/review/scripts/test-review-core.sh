@@ -124,15 +124,6 @@ else
 fi
 printf 'ACCEPTED_COUNT=%s\nREJECTED_COUNT=%s\nTALLY_FILE=%s/review-tally.env\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nTALLY_OK=true\n' "$accepted" "$rejected" "$tmp" "$tmp"
 STUB
-    cat > "$TMP/detect.sh" <<'STUB'
-#!/usr/bin/env bash
-set -euo pipefail
-accepted=0
-while [[ $# -gt 0 ]]; do
-  case "$1" in --accepted-count) accepted="$2"; shift 2 ;; *) shift ;; esac
-done
-if [[ "$accepted" -eq 0 ]]; then printf 'TERMINATE_EARLY=true\n'; else printf 'TERMINATE_EARLY=false\n'; fi
-STUB
     cat > "$TMP/emit.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -189,7 +180,6 @@ run_core() {
     REVIEW_CORE_DISPATCH_PANEL_SH="$TMP/dispatch.sh" \
     REVIEW_CORE_COLLECT_FINDINGS_SH="$TMP/collect.sh" \
     REVIEW_CORE_TALLY_VOTES_SH="$TMP/tally.sh" \
-    REVIEW_CORE_DETECT_WHOLESALE_SH="$TMP/detect.sh" \
     REVIEW_CORE_EMIT_TALLY_SH="$TMP/emit.sh" \
     REVIEW_CORE_CHECK_DIRTY_TREE_SH="$TMP/check-dirty.sh" \
     REVIEW_CORE_CHECK_THRESHOLD_SH="$TMP/check-threshold.sh" \
@@ -208,8 +198,8 @@ out=$(TEST_FINDINGS=1 TEST_ACCEPTED=1 TEST_REJECTED=0 run_core "$TMP/fix")
 assert_contains "$out" 'REVIEW_CORE_STATUS=fix-required'
 assert_contains "$out" "ACCEPTED_FINDINGS_FILE=$TMP/fix/accepted-findings.md"
 
-out=$(TEST_FINDINGS=1 TEST_ACCEPTED=0 TEST_REJECTED=1 run_core "$TMP/wholesale")
-assert_contains "$out" 'REVIEW_CORE_STATUS=wholesale-rejected'
+out=$(TEST_FINDINGS=1 TEST_ACCEPTED=0 TEST_REJECTED=1 run_core "$TMP/rejected")
+assert_contains "$out" 'REVIEW_CORE_STATUS=ok'
 
 out=$(TEST_FINDINGS=1 TEST_ACCEPTED=1 TEST_PANEL_MODE=both-down run_core "$TMP/both")
 assert_contains "$out" 'PANEL_MODE=both-down'

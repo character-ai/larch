@@ -6,8 +6,6 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 IMPLEMENT_SKILL="$REPO_ROOT/skills/implement/SKILL.md"
 DESIGN_SKILL="$REPO_ROOT/skills/design/SKILL.md"
-REVIEW_SKILL="$REPO_ROOT/skills/review/SKILL.md"
-VOTING_PROTOCOL="$REPO_ROOT/skills/shared/voting-protocol.md"
 
 fail() {
     echo "FAIL: $1" >&2
@@ -33,9 +31,5 @@ assert_contains "$IMPLEMENT_SKILL" 'Codex and Cursor both unavailable' "both-dow
 assert_contains "$DESIGN_SKILL" 'diff_lines: <N>' "design plan diff_lines"
 # shellcheck disable=SC2016 # literal runtime path text, not shell.
 assert_contains "$DESIGN_SKILL" '$DESIGN_TMPDIR/diff-lines.txt' "design diff-lines export"
-
-assert_contains "$REVIEW_SKILL" 'WHOLESALE_REJECTED=true' "review wholesale flag"
-assert_contains "$VOTING_PROTOCOL" 'WRONG_DIRECTION' "wrong-direction criterion"
-assert_contains "$VOTING_PROTOCOL" 'at least 50% of specialist reviewers' "blocking majority criterion"
 
 echo "PASS: test-implement-step2-routing.sh"
