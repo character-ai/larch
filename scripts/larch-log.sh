@@ -61,6 +61,21 @@ require_log_root() {
     larch_log_fail 1 "--log-root is required (or export LARCH_LOG_ROOT for test isolation)"
 }
 
+current_branch_is_default() {
+    local current_branch default_branch
+    current_branch="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+    [ -n "$current_branch" ] || return 1
+    [ "$current_branch" != "HEAD" ] || return 1
+    [ "$current_branch" != "main" ] || return 0
+
+    default_branch="$(
+        git -C "$REPO_ROOT" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null \
+            | sed 's|.*/||'
+    )" || default_branch=""
+    [ -n "$default_branch" ] || return 1
+    [ "$current_branch" = "$default_branch" ]
+}
+
 write_manifest_file() {
     local path="$1"
     local parent_skill="$2"
@@ -301,6 +316,10 @@ case "$cmd" in
         done
         if [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -e "$IMPLEMENT_TMPDIR/post-merge-sentinel" ]; then
             printf 'larch-log.sh: refusing commit after post-merge sentinel exists: %s\n' "$IMPLEMENT_TMPDIR/post-merge-sentinel" >&2
+            exit 1
+        fi
+        if current_branch_is_default; then
+            printf 'larch-log.sh: refusing commit on default branch/main after post-merge cleanup guard\n' >&2
             exit 1
         fi
         require_log_root

@@ -143,6 +143,7 @@ git -C "$_repo" config user.name "Test CI"
 touch "$_repo/.gitkeep"
 git -C "$_repo" add .
 git -C "$_repo" commit -q -m "init"
+git -C "$_repo" checkout -q -b feature-log-commit
 _rid="testcommit123"
 _cpayload="$TMP/commit-payload.md"
 cat > "$_cpayload" <<'EOF'
@@ -249,6 +250,50 @@ if [ "$_commit_sentinel_head_after" = "$_commit_sentinel_head_before" ]; then
     pass "larch-log.sh commit does not create a commit when sentinel exists"
 else
     fail "larch-log.sh commit must not create a commit when sentinel exists"
+fi
+
+echo "=== larch-log.sh commit rejects on origin default branch ==="
+_default_repo="$TMP/default-branch-repo"
+_default_staging="$TMP/default-branch-staging"
+_default_run="defaultbranch123"
+mkdir -p "$_default_staging"
+git init "$_default_repo" >/dev/null 2>&1
+git -C "$_default_repo" config user.email "ci@test"
+git -C "$_default_repo" config user.name "Test CI"
+touch "$_default_repo/.gitkeep"
+git -C "$_default_repo" add .
+git -C "$_default_repo" commit -q -m "init"
+git -C "$_default_repo" branch -M trunk
+git -C "$_default_repo" update-ref refs/remotes/origin/trunk HEAD
+git -C "$_default_repo" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/trunk
+(cd "$_default_repo" && "$LARCH_LOG" init --log-root "$_default_staging/larch-logs" --skill implement --run-id "$_default_run" --issue 44) >/dev/null
+(cd "$_default_repo" && "$LARCH_LOG" write --log-root "$_default_staging/larch-logs" --skill implement --run-id "$_default_run" --batch plan-goals-test --input-file "$_spayload") >/dev/null
+_default_head_before=$(git -C "$_default_repo" rev-parse HEAD)
+_default_stderr="$TMP/default-branch-stderr.txt"
+_default_rc=0
+(cd "$_default_repo" && env "PATH=${PATH:-}" "IMPLEMENT_TMPDIR=" "$LARCH_LOG" commit \
+    --log-root "$_default_staging/larch-logs" --skill implement --run-id "$_default_run") \
+    2>"$_default_stderr" || _default_rc=$?
+if [ "$_default_rc" -ne 0 ]; then
+    pass "larch-log.sh commit exits non-zero on default branch"
+else
+    fail "larch-log.sh commit should exit non-zero on default branch"
+fi
+if grep -q "refusing commit on default branch/main" "$_default_stderr" 2>/dev/null; then
+    pass "larch-log.sh commit emits default-branch refusal on stderr"
+else
+    fail "larch-log.sh commit: expected default-branch refusal on stderr (got: $(head -1 "$_default_stderr" 2>/dev/null))"
+fi
+_default_head_after=$(git -C "$_default_repo" rev-parse HEAD)
+if [ "$_default_head_after" = "$_default_head_before" ]; then
+    pass "larch-log.sh commit does not create a commit on default branch"
+else
+    fail "larch-log.sh commit must not create a commit on default branch"
+fi
+if [ ! -e "$_default_repo/larch-logs/implement/$_default_run" ]; then
+    pass "larch-log.sh commit does not copy logs into repo on default branch"
+else
+    fail "larch-log.sh commit should not copy logs into repo on default branch"
 fi
 
 export LARCH_LOG_ROOT="$_saved_log_root"

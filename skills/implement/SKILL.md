@@ -1858,6 +1858,8 @@ For Step 18's `token-report.sh` and `tracking-issue-summary.sh upsert-summary`, 
 Capture and commit the session transcript (best-effort — never fatal):
 
 ```bash
+IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
+export IMPLEMENT_TMPDIR
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
 fi

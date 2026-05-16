@@ -9,4 +9,4 @@ append-mode newline handling, json-lines rejection for raw markdown records,
 `exists`, mutable manifest updates, the `commit` staging path (`LARCH_LOG_ROOT`
 unset, `--log-root` set) that copies logs from an explicit temp staging dir into
 the repo before committing, and the `larch-log-flush.sh` post-merge sentinel
-no-op path.
+no-op path. It also covers commit refusal on the default branch/main.
