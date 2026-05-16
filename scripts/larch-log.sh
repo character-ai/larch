@@ -5,9 +5,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 # Resolve repo root from caller's CWD so git operations target the consumer
-# repo, not the plugin install cache. Falls back to script parent on non-git.
+# repo, not the plugin install cache. Remains empty outside a git worktree.
 REPO_ROOT="$(git -C "$PWD" rev-parse --show-toplevel 2>/dev/null)" || true
-[ -n "$REPO_ROOT" ] || REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 
 # shellcheck source=scripts/lib-larch-log.sh
 # shellcheck disable=SC1091
@@ -325,6 +324,7 @@ case "$cmd" in
         fi
         require_log_root
         require_common
+        [ -n "$REPO_ROOT" ] || larch_log_fail 1 "commit requires a git worktree (PWD is not inside a git repo)"
         src_path="$(larch_log_run_dir "$SKILL" "$RUN_ID")"
         repo_path="$(larch_log_repo_run_dir "$SKILL" "$RUN_ID")"
         [ -d "$src_path" ] || larch_log_fail 1 "log directory not found: $src_path"

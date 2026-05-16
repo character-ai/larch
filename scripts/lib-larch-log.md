@@ -13,7 +13,7 @@ Key exports:
   repo-root fallback.
   `LARCH_LOG_REPO_ROOT` is resolved via `git -C "$PWD" rev-parse --show-toplevel`
   (consumer repo) using a two-assignment pattern to avoid `(A || B) && C`
-  shell-precedence issues; falls back to `SCRIPT_DIR/..`.
+  shell-precedence issues. It remains empty outside a git worktree.
 - `larch_log_repo_run_dir(skill, run_id)` — always returns the canonical repo path
   (`$LARCH_LOG_REPO_ROOT/larch-logs/<skill>/<run_id>`), bypassing the tmpdir tier.
   Used by `larch-log.sh commit` to locate the copy destination.

@@ -55,8 +55,9 @@ runtime payloads stay out of the git working tree until `commit` is called.
 `REPO_ROOT` (used by `commit`) and `LARCH_LOG_REPO_ROOT` (used by `write`/`append`/`init`
 via `lib-larch-log.sh`) both resolve via `git -C "$PWD" rev-parse --show-toplevel` so
 logs land in the consumer repo rather than the plugin install cache. Both use the
-two-assignment pattern to avoid `(A || B) && C` shell-precedence issues; both fall
-back to `SCRIPT_DIR/..` outside a git repo.
+two-assignment pattern to avoid `(A || B) && C` shell-precedence issues. Outside
+a git worktree, `commit` fails with a descriptive error instead of falling back
+to the plugin directory.
 
 **`commit` copy semantics**: `commit` computes `src_path` via `larch_log_run_dir`
 (which resolves under the explicit log root) and `repo_path` via
