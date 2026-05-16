@@ -262,11 +262,11 @@
       {
         "step": "Step 8b — rebase",
         "totals": {
-          "input": 28,
-          "cache_read": 6878858,
-          "cache_create": 71731,
-          "output": 10204,
-          "total": 6960821
+          "input": 34,
+          "cache_read": 8327063,
+          "cache_create": 362357,
+          "output": 10981,
+          "total": 8700435
         },
         "skills": [
           {
@@ -282,22 +282,22 @@
           {
             "skill": "larch:issue",
             "totals": {
-              "input": 20,
-              "cache_read": 4785503,
-              "cache_create": 68026,
-              "output": 7630,
-              "total": 4861179
+              "input": 26,
+              "cache_read": 6233708,
+              "cache_create": 358652,
+              "output": 8407,
+              "total": 6600793
             }
           }
         ]
       }
     ],
     "totals": {
-      "input": 194,
-      "cache_read": 38740885,
-      "cache_create": 779098,
-      "output": 121885,
-      "total": 39642062
+      "input": 200,
+      "cache_read": 40189090,
+      "cache_create": 1069724,
+      "output": 122662,
+      "total": 41381676
     }
   },
   "codex": {
