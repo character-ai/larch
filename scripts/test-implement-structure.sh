@@ -104,4 +104,11 @@ grep -qE '^[[:space:]]*(source|\.)[[:space:]].*lib-finalize-state-keys\.sh' "$RE
 grep -qE '^[[:space:]]*(source|\.)[[:space:]].*lib-finalize-state-keys\.sh' "$SHIP_PR_SH" \
   || fail "ship-pr.sh must source lib-finalize-state-keys.sh"
 
+# shellcheck disable=SC2016
+grep -Fq 'When `hard_mode=true`, skip the plan-size evaluation and always persist `POST_PLAN_WORKFLOW_PATH=HARD`' "$SKILL_MD" \
+  || fail "Post-plan router must guard hard_mode=true: always persist POST_PLAN_WORKFLOW_PATH=HARD"
+# shellcheck disable=SC2016
+grep -Fq 'When `hard_mode=false`, use plan size' "$SKILL_MD" \
+  || fail "Post-plan router must gate plan-size heuristic under hard_mode=false"
+
 echo "All assertions passed."
