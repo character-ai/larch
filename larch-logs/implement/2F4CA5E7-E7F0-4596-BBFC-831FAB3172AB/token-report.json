@@ -229,32 +229,32 @@
       {
         "step": "Step 8 — version bump",
         "totals": {
-          "input": 1,
-          "cache_read": 211453,
-          "cache_create": 241,
-          "output": 712,
-          "total": 212407
+          "input": 8,
+          "cache_read": 1701652,
+          "cache_create": 5908,
+          "output": 4667,
+          "total": 1712235
         },
         "skills": [
           {
             "skill": "larch:implement",
             "totals": {
-              "input": 1,
-              "cache_read": 211453,
-              "cache_create": 241,
-              "output": 712,
-              "total": 212407
+              "input": 8,
+              "cache_read": 1701652,
+              "cache_create": 5908,
+              "output": 4667,
+              "total": 1712235
             }
           }
         ]
       }
     ],
     "totals": {
-      "input": 151,
-      "cache_read": 26210559,
-      "cache_create": 147169,
-      "output": 75637,
-      "total": 26433516
+      "input": 158,
+      "cache_read": 27700758,
+      "cache_create": 152836,
+      "output": 79592,
+      "total": 27933344
     }
   },
   "codex": {
