@@ -20,15 +20,13 @@ permissions:
   contents: read
 
 jobs:
-  # Linters only: pre-commit over all files (shellcheck, markdownlint,
-  # jsonlint, actionlint, agent-lint, lint-skill-invocations, gitleaks).
-  # The `agnix` pre-commit hook is SKIPped here because the dedicated
-  # `agnix` job below covers it; gitleaks remains because pre-commit's
-  # `--no-git` working-tree scan is documented in SECURITY.md as
-  # complementary to the dedicated `gitleaks` job's history scan, not
-  # redundant. Phase 1 of the shellcheck split keeps shellcheck in this
-  # job while adding the dedicated `shellcheck` job below; Phase 2 will
-  # skip shellcheck here after branch protection requires the new job.
+  # Linters only: pre-commit over all files (markdownlint, jsonlint,
+  # actionlint, agent-lint, lint-skill-invocations, gitleaks). The `agnix`
+  # and `shellcheck` pre-commit hooks are SKIPped here because the dedicated
+  # `agnix` and `shellcheck` jobs below cover them in parallel; gitleaks
+  # remains because pre-commit's `--no-git` working-tree scan is documented
+  # in SECURITY.md as complementary to the dedicated `gitleaks` job's history
+  # scan, not redundant.
   # Test harnesses run in the separate `test-harnesses` job below so
   # harness failures and linter failures can be re-run independently.
   # Mermaid fence lint and SIGPIPE safety lint run in the parallel
@@ -52,16 +50,16 @@ jobs:
       - name: Install lint dependencies
         run: pip install -r .github/workflows/requirements-lint.txt
       - name: Run pre-commit linters
-        # SKIP the `agnix` hook because the dedicated `agnix` CI job
-        # below runs the same lint. The pre-commit hook remains active
-        # for local `pre-commit run` and the dev git-hook — only CI
-        # skips it. If the dedicated `agnix` job is removed, drop
-        # `agnix` from SKIP to restore CI coverage. `gitleaks` is NOT
-        # skipped: its `--no-git` working-tree scan is documented in
-        # SECURITY.md as complementary to the dedicated `gitleaks`
-        # job's history scan. Issue #1034.
+        # SKIP the `agnix` and `shellcheck` hooks because the dedicated
+        # `agnix` and `shellcheck` CI jobs below run the same lints. The
+        # pre-commit hooks remain active for local `pre-commit run` and the
+        # dev git-hook — only CI skips them. If a dedicated job is removed,
+        # drop its hook name from SKIP to restore CI coverage. `gitleaks` is
+        # NOT skipped: its `--no-git` working-tree scan is documented in
+        # SECURITY.md as complementary to the dedicated `gitleaks` job's
+        # history scan. Issue #1034.
         env:
-          SKIP: agnix,lint-mermaid-fences
+          SKIP: agnix,lint-mermaid-fences,shellcheck
         run: make lint-only
 
   # Mermaid fence lint and SIGPIPE safety lint — split from the `lint` job
@@ -130,13 +128,10 @@ jobs:
       - name: Pipe SIGPIPE safety lint
         run: bash scripts/test-pipe-sigpipe-safety.sh
 
-  # Dedicated shellcheck job — runs in parallel with `lint`. During Phase 1
-  # of the rollout, `shellcheck` ALSO runs inside `lint` so coverage is
-  # never lost while branch protection migrates to require this job. After
-  # branch protection lists `shellcheck` as required, a follow-up PR (Phase
-  # 2) drops `shellcheck` from `lint`'s hook list via SKIP=agnix,shellcheck.
-  # Shares the same pre-commit cache key as `lint` so hook environments are
-  # reused across both jobs.
+  # Dedicated shellcheck job - runs in parallel with `lint`; `lint` SKIPs
+  # shellcheck to avoid paying the pre-commit env-install cost twice. The
+  # shared `pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}` cache key
+  # means the shellcheck hook env is restored from cache when both jobs run.
   shellcheck:
     runs-on: ubuntu-latest
     timeout-minutes: 5
