@@ -4,8 +4,7 @@
 #
 # Returns the appropriate --model / -m flag for the given tool based on
 # environment variables. Cursor defaults to composer-2 when no model is
-# configured. Codex defaults to gpt-5.5 when unconfigured. Gemini defaults
-# to gemini-2.5-pro when unconfigured (matching the reviewer-side default).
+# configured. Codex defaults to gpt-5.5 when unconfigured.
 #
 # When --with-effort is passed, also emits tool-specific reasoning-effort flags.
 # The --with-effort flag is an opt-in gate: real reviewer launch call sites
@@ -18,13 +17,11 @@
 #   LARCH_CODEX_MODEL   — Model name for Codex (e.g., o3)
 #   LARCH_CODEX_EFFORT  — Codex reasoning effort: minimal|low|medium|high
 #                         (only consulted when --with-effort is passed)
-#   LARCH_GEMINI_MODEL  — Model name for Gemini (e.g., gemini-2.5-pro, gemini-2.5-flash)
 #
 # Plugin userConfig fallbacks (lower priority):
 #   CLAUDE_PLUGIN_OPTION_CURSOR_MODEL  → LARCH_CURSOR_MODEL
 #   CLAUDE_PLUGIN_OPTION_CODEX_MODEL   → LARCH_CODEX_MODEL
 #   CLAUDE_PLUGIN_OPTION_CODEX_EFFORT  → LARCH_CODEX_EFFORT  (default "high")
-#   CLAUDE_PLUGIN_OPTION_GEMINI_MODEL  → LARCH_GEMINI_MODEL
 #
 # Cursor effort: Cursor CLI has no dedicated reasoning-effort flag. No effort
 # tokens are emitted for Cursor. Substantive high-risk Cursor review launches
@@ -38,11 +35,8 @@
 # scripts/cursor-wrap-prompt.md for the callers registry. The only exception
 # is scripts/check-reviewers.sh's health probe.
 #
-# Gemini effort: Gemini CLI has no separate reasoning-effort flag. Reasoning
-# depth is selected through the model value itself; --with-effort is a no-op.
-#
 # Usage:
-#   agent-model-args.sh --tool cursor|codex|gemini [--with-effort] [--default-model MODEL]
+#   agent-model-args.sh --tool cursor|codex [--with-effort] [--default-model MODEL]
 #
 # Output (stdout):
 #   One argv token per physical line. Model flag tokens are optionally followed
@@ -67,10 +61,6 @@
 #     -m
 #     gpt-5.5
 #         (codex with default model, no --with-effort)
-#     --model
-#     gemini-2.5-pro
-#         (gemini default, --with-effort is a no-op for Gemini)
-#
 # Exit codes:
 #   0 — success
 #   1 — invalid arguments, invalid effort value, or rejected model value
@@ -104,7 +94,7 @@ if [[ -z "$TOOL" ]]; then
 fi
 
 if ! larch_is_external_tool "$TOOL"; then
-    larch_err "agent-model-args.sh: --tool must be 'cursor', 'codex', or 'gemini' (got: $TOOL)"
+    larch_err "agent-model-args.sh: --tool must be 'cursor' or 'codex' (got: $TOOL)"
     exit 1
 fi
 
@@ -179,12 +169,6 @@ case "$TOOL" in
             emit_arg "-c"
             emit_arg "model_reasoning_effort=\"$EFFORT\""
         fi
-        ;;
-    gemini)
-        MODEL=$(resolve_model LARCH_GEMINI_MODEL CLAUDE_PLUGIN_OPTION_GEMINI_MODEL "${DEFAULT_MODEL:-gemini-2.5-pro}")
-        emit_arg "--model"
-        emit_arg "$MODEL"
-        # Gemini has no effort flag; --with-effort is intentionally a no-op here.
         ;;
     *)
         # Defensive: larch_is_external_tool gated entry above, so the registry

@@ -14,15 +14,11 @@ This script is listed under `Related` in `scripts/external-tool-registry.md`, no
 
 `--output` is rejected during argv validation if it is empty or contains any byte outside `[A-Za-z0-9._/-]`; the wrapper exits 1 with an `ERROR:` line on stderr before `rm -f`, trap installation, `.meta` writes, or child launch. The accepted alphabet is deliberately narrower than "not a control byte and not `=`": `OUTPUT_FILE=` stores the path raw, and `CMD_JSON=` stores argv as JSON strings, but the retry reader retargets output paths by element-wise equality. Production callers that need retry retargeting MUST pass output paths as standalone argv elements (`--output X`), not embedded in one token (`--output=X`) or inside prompt text.
 
-The path is rejected rather than transformed because the same byte string is used for the real output file, `<output>.done`, `<output>.diag`, `<output>.meta`, and any standalone child argv path that the retry collector swaps. A `.meta`-only transform would split the recorded path from the on-disk path and from the bytes embedded in `CMD_JSON`. The shared validator lives in `scripts/lib-validate-meta-path.sh`; `scripts/launch-review.sh --tool gemini` applies the same rule before its own side effects.
-
 The current line parser in `scripts/collect-agent-results.sh` uses `${meta_line%%=*}` / `${meta_line#*=}`, so embedded `=` in the value is not lost by that parser. `=` is still rejected as defense-in-depth for ad-hoc consumers and future metadata readers, and because it falls outside the narrowed shell-quote-passthrough alphabet.
 
 ## Output capture modes
 
 - Default: the child manages its own output path; wrapper stdout/stderr are not captured into `--output`.
-- `--capture-stdout`: redirects child stdout and stderr to `--output`. Gemini implementation uses this mode because the dispatcher consumes the on-disk manifest rather than stdout JSON.
-- `--capture-stdout-only`: redirects child stdout to `--output` and child stderr to `<output>.diag`. Cursor implement/review and Gemini review use this mode so JSON stdout is not corrupted by diagnostic noise.
 
 The capture flags are mutually exclusive. Metadata includes both `CAPTURE_STDOUT` and `CAPTURE_STDOUT_ONLY`; retry callers must preserve the original mode.
 
@@ -47,8 +43,6 @@ sentinel. Non-wrapping callers keep the default `<output>.done` behavior.
 
 The `<output>.meta` sidecar is a line-oriented file: one `KEY=VALUE` record per physical line, parsed by `scripts/collect-agent-results.sh` with the first `=` separating the key from the value. Values therefore must not embed physical newlines or Unicode line-break code points such as U+2028/U+2029.
 
-This grammar is shared by every script that writes a sidecar consumed by `scripts/collect-agent-results.sh`. Today that means this wrapper plus `scripts/launch-review.sh --tool gemini::write_meta()`, which emits the same key set with `TOOL=gemini`. Maintainers editing either writer (or adding a new one) must keep all writers consistent with this contract.
-
 - `TOOL` follows the allowlist contract in "Tool labels" above.
 - `TIMEOUT` is accepted only after `--timeout` validates as a positive integer. Empty, non-numeric, and zero-valued digit strings (`0`, `00`, `000`, ...) are rejected; valid leading-zero positive values such as `010` remain accepted.
 - `CAPTURE_STDOUT` and `CAPTURE_STDOUT_ONLY` are wrapper-owned booleans, not caller-controlled byte strings.
@@ -69,17 +63,8 @@ There is no backward compatibility with the old `CMD=` metadata line. A collecto
 
 ## Poll interval (`RUN_EXTERNAL_AGENT_POLL_INTERVAL`)
 
-The wrapper polls the child PID with `kill -0` in a loop and `sleep`s `$RUN_EXTERNAL_AGENT_POLL_INTERVAL` seconds (default `10`) between checks. Production callers wrapping real agents leave the default — 10s polling keeps progress chatter human-readable and bounds time-to-notice-timeout. Test harnesses that wrap stub binaries which exit in microseconds (e.g. `skills/implement/scripts/test-cursor-implementer.sh`, `skills/implement/scripts/test-gemini-implementer.sh`, `scripts/test-launch-review.sh`, `scripts/test-check-reviewers.sh`) export `RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05` so each stub invocation does not pay a full 10s sleep cycle. The variable accepts integer or decimal seconds; values that are not strictly positive are rejected with exit 1. Progress messages still fire once per elapsed minute regardless of poll cadence (driven by bash's `$SECONDS` builtin).
-
 ## Call sites
-
-- `scripts/launch-review.sh --tool gemini` — Gemini reviewer JSON stdout capture.
-- `scripts/launch-gemini-implement.sh` — Gemini implementer transcript capture.
 
 ## Test harness
 
-`scripts/test-run-external-agent.sh` owns direct wrapper coverage for accepted `--output` paths, unsafe path rejection before side effects, and the sourced-helper invariants. `scripts/test-run-external-agent-args.sh` owns wrapper-side argument validation (notably the `--timeout 0` rejection contract — closes the gap left by #1115/#1171). `scripts/test-launch-review.sh` owns the Gemini launcher-specific validation path and JSON normalization lifecycle. `scripts/test-check-reviewers.sh` and collector harnesses continue to cover downstream wrapper consumers.
-
 ## Edit-in-sync
-
-Update `scripts/lib-validate-meta-path.sh`, `scripts/launch-review.sh --tool cursor`, `scripts/launch-review.sh --tool gemini`, `scripts/collect-agent-results.sh` retry metadata parsing, launch wrappers, and this contract when adding capture modes, metadata keys, sentinel modes, or changing the `OUTPUT_FILE=` / `CMD_JSON=` retry-substitution invariant.

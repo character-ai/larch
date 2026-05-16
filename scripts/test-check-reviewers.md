@@ -4,8 +4,6 @@ Regression test for `check-reviewers.sh` probe acceptance logic. Tests the case-
 
 ## What it tests
 
-Simulates the normalization pipeline (`tr -d '[:space:]' | tr '[:upper:]' '[:lower:]'`) and verifies healthy/unhealthy classification for representative fixture replies. It also stubs `codex` / `cursor` with sleeping binaries for the wait-preflight infrastructure-error case and stubs `cursor` with a JSON-reply binary for Cursor probe argv coverage. Gemini probe tests removed in #1720 (Part 1). It does NOT launch real Codex/Cursor probes.
-
 ## Fixture coverage
 
 - **Positive** (should be healthy): `OK`, `ok`, `Ok`, `oK`, whitespace-padded, newline-terminated

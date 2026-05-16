@@ -4,7 +4,6 @@ Sourced library exposing Cursor auth helpers used by every live `cursor agent` c
 
 - `cursor_auth_argv` — populates the global `CURSOR_AUTH_ARGS` array with `(--api-key "$CURSOR_API_KEY")` when the env var is non-empty after whitespace trim, else leaves the array empty (preserves today's `cursor login` keychain fallback).
 - `cursor_auth_preflight` — Darwin-gated read-only sanity check. Returns 0 when the launcher should proceed (env or keychain looks viable), returns 2 when both auth sources are demonstrably absent on Darwin. Writes an actionable multi-line message to stderr on the failure path.
-- `cursor_preread_service_token` — Darwin-gated, best-effort pre-read of the exact `cursor-user` / `cursor-access-token` keychain service. When `CURSOR_API_KEY` is already non-empty it is a no-op; otherwise a successful non-empty read is exported as `CURSOR_API_KEY` so `cursor_auth_argv` emits `--api-key`. Note: cursor reads the keychain internally at startup even when `--api-key` is provided; the old Cursor-specific startup lock has moved into the shared external launcher helpers so Cursor, Codex, and Gemini spawn sites use the same serialization/retry path (see `scripts/lib-external-launcher-common.md` and `scripts/launch-review.md`).
 
 ## Callers (parity contract)
 

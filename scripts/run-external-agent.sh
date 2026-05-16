@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run-external-agent.sh — Monitored wrapper for external agents (Codex, Cursor, Gemini).
+# run-external-agent.sh — Monitored wrapper for external agents (Codex, Cursor).
 # Launches the agent in the background, polls the child PID at the cadence
 # configured by RUN_EXTERNAL_AGENT_POLL_INTERVAL (default 10s; tests override
 # to a fraction of a second), prints a one-line progress message per elapsed
@@ -57,9 +57,6 @@
 #   run-external-agent.sh --tool cursor --output /tmp/review-abc/cursor-output.txt --timeout 900 --capture-stdout -- \
 #     cursor agent -p --force --trust --workspace /path/to/repo "Review prompt..."
 #
-#   # Gemini implementer (stdout captured to file via --capture-stdout)
-#   run-external-agent.sh --tool gemini --output /tmp/impl-abc/gemini-output.txt --timeout 1800 --capture-stdout -- \
-#     gemini --prompt "..." --approval-mode yolo --skip-trust --model gemini-2.5-pro
 
 set -euo pipefail
 

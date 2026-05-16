@@ -22,8 +22,6 @@ Source-level pattern assertions (grep) for every vendor rate field, and runtime
 
 - `cost_vendor("codex", {total: 1M})` → `$5.00` (aggregate path)
 - `cost_vendor("cursor", {input: 1M, total: 1M})` → `$0.50` (input path)
-- `cost_vendor("gemini", {input: 1M, total: 1M})` → `$1.25` (input path)
-- `cost_vendor("gemini", {output: 1M, total: 1M})` → `$10.00` (output path)
 
 ## Edit-in-sync
 

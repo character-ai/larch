@@ -4,8 +4,6 @@
 
 ## Purpose
 
-Scan committed larch run logs under `larch-logs/implement/*/` in the current git repository root, parse the token report for each run (reading `manifest.json` for metadata, `token-report.json` for token data with `token-report.md` fallback, and `timing-report.json` or the plan-review tally for workflow-path inference), estimate per-run dollar costs for Claude/Codex/Cursor/Gemini, generate SIMPLE and HARD cost-over-time PNG plots, print a written analysis, and optionally post a GitHub `[Analysis Report]` issue with the results and raw per-run data.
-
 ## Primary caller
 
 - `skills/report-tokens/SKILL.md` Step 1.
@@ -44,7 +42,6 @@ The scan uses:
 - Token data is read directly from `token-report.json` files when present and converted to the existing cost totals without markdown parsing.
 - Legacy token data is read directly from `token-report.md` files, which contain `### Claude` / `**Grand total**` headings without sentinel wrappers. The `latest_token_block` function's fallback (`if "### Claude" in text or "**Grand total**" in text: return text`) handles this format.
 - Claude `**Grand total**` rows support both the current six-cell table shape (`Step`, `Skill`, input, cache read, cache create, output) and the legacy four-cell shape (`Step`, `Skill`, input, output).
-- Codex/Cursor/Gemini `**Grand total**` rows use the five-cell vendor table shape (`Step`, `Skill`, input, output, total).
 - `workflow_path` is stored directly in the cache for structured logs. Legacy markdown runs still inject `**Workflow path**: SIMPLE|HARD|unknown` into the body text so the Python `parse_workflow_path` function finds it without changes.
 - Run-level JSON is cached under a fresh `${TMPDIR:-/tmp}/larch-report-tokens.*` directory. The cache file is written via a temporary file and `mv`.
 
@@ -67,8 +64,6 @@ After the textual analysis, the script posts a GitHub issue titled `[Analysis Re
 Generated plots are written to a temporary directory as `larch-report-tokens-simple.png` and `larch-report-tokens-hard.png`. On macOS, the script attempts to open them with `open` unless `LARCH_REPORT_TOKENS_NO_OPEN=1` is set. Plotting runs in a child Python process so missing or crashing `matplotlib` skips plot generation without losing the textual analysis. Pass `--no-plot` to skip plot generation entirely.
 
 ## Cost model
-
-The default rates are transparent estimates, not billing truth. Claude uses separate input/cache-read/cache-create/output rates; Codex, Cursor, and Gemini use input/output plus an optional aggregate rate for total-only or hidden cache-like vendor tokens. Codex (GPT-5.5) reports only an aggregate `tokens used` value on stderr, so the `aggregate=$5/M` is a working approximation of the true input-heavy mix. Override rates with environment variables whenever model routing or vendor pricing changes. Source URLs for default values are cited in the RATES dict comment block in the Python section.
 
 ## Known limitations
 

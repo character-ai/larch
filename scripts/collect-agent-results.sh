@@ -21,7 +21,7 @@
 #
 # Options:
 #   --timeout <seconds>            Timeout for wait-for-reviewers.sh (e.g., 1860)
-#   --write-health <path>          Write updated CODEX_HEALTHY/CURSOR_HEALTHY/GEMINI_HEALTHY to file.
+#   --write-health <path>          Write updated CODEX_HEALTHY/CURSOR_HEALTHY to file.
 #                                  Health is monotonic per tool: any failure sets the tool
 #                                  permanently unhealthy. A later successful instance does
 #                                  NOT flip it back to healthy.
@@ -219,7 +219,6 @@ derive_tool() {
 # Monotonic: once false, stays false for the session.
 CODEX_TOOL_HEALTHY="true"
 CURSOR_TOOL_HEALTHY="true"
-GEMINI_TOOL_HEALTHY="true"
 
 # Read prior health state from existing --write-health file (if it exists).
 # This preserves monotonicity across separate collect-agent-results.sh calls.
@@ -228,7 +227,6 @@ if [[ -n "$WRITE_HEALTH" && -f "$WRITE_HEALTH" ]]; then
         case "$key" in
             CODEX_HEALTHY)  [[ "$value" == "false" ]] && CODEX_TOOL_HEALTHY="false" ;;
             CURSOR_HEALTHY) [[ "$value" == "false" ]] && CURSOR_TOOL_HEALTHY="false" ;;
-            GEMINI_HEALTHY) [[ "$value" == "false" ]] && GEMINI_TOOL_HEALTHY="false" ;;
         esac
     done < "$WRITE_HEALTH"
 fi
@@ -237,7 +235,6 @@ get_tool_healthy() {
     case "$1" in
         codex)  echo "$CODEX_TOOL_HEALTHY" ;;
         cursor) echo "$CURSOR_TOOL_HEALTHY" ;;
-        gemini) echo "$GEMINI_TOOL_HEALTHY" ;;
         *)      echo "true" ;;
     esac
 }
@@ -246,7 +243,6 @@ set_tool_unhealthy() {
     case "$1" in
         codex)  CODEX_TOOL_HEALTHY="false" ;;
         cursor) CURSOR_TOOL_HEALTHY="false" ;;
-        gemini) GEMINI_TOOL_HEALTHY="false" ;;
     esac
 }
 
@@ -298,7 +294,7 @@ is_index_timed_out() {
 # --- Helper: sanitize a failure-reason string for embedding in pipe-delimited
 # RESULTS records. RESULTS entries use `|` as field delimiter and are later
 # emitted as KEY=value lines via `tr '|' '\n'`. Multi-line .diag content
-# (notably from Gemini's stderr-on-failure path) would inject phantom lines
+# from stderr-on-failure paths would inject phantom lines
 # after `FAILURE_REASON=...` and corrupt downstream parsers. Replace pipes,
 # newlines, and CRs with single spaces; collapse whitespace runs; truncate
 # at 500 chars to bound size. ---
@@ -403,20 +399,6 @@ cmd_json_shape_valid_for_tool() {
             cmd_has_token "-C" "$@" || return 1
             cmd_has_token "--add-dir" "$@" || return 1
             cmd_has_token "--output-last-message" "$@" || return 1
-            ;;
-        gemini)
-            case "$argv0_base" in
-                launch-review.sh)
-                    cmd_has_token "--tool" "$@" || return 1
-                    cmd_has_token "gemini" "$@" || return 1
-                    ;;
-                launch-gemini-implement.sh|gemini) ;;
-                *) return 1 ;;
-            esac
-            cmd_lacks_forbidden_token "--add-dir" "$@" || return 1
-            cmd_lacks_forbidden_token "-C" "$@" || return 1
-            cmd_lacks_forbidden_token "--output-last-message" "$@" || return 1
-            cmd_lacks_forbidden_token "--workspace" "$@" || return 1
             ;;
         *)
             return 2
@@ -654,8 +636,8 @@ if [[ ${#RETRY_FILES[@]} -gt 0 ]]; then
             esac
             _launcher_base=$(basename "$META_OUTER_LAUNCHER")
             case "$META_TOOL:$_launcher_base" in
-                cursor:launch-review.sh|codex:launch-review.sh|gemini:launch-review.sh) _expected_launcher="$SCRIPT_DIR/launch-review.sh" ;;
-                cursor:*|codex:*|gemini:*) _expected_launcher="$SCRIPT_DIR/launch-review.sh" ;;
+                cursor:launch-review.sh|codex:launch-review.sh) _expected_launcher="$SCRIPT_DIR/launch-review.sh" ;;
+                cursor:*|codex:*) _expected_launcher="$SCRIPT_DIR/launch-review.sh" ;;
                 *) mark_retry_metadata_invalid "$IDX" "$ORIG_OUTPUT" "Retry metadata invalid: OUTER_LAUNCHER not canonical launch-review.sh"; continue ;;
             esac
             if ! _expected_launcher_dir=$(cd "$(dirname "$_expected_launcher")" 2>/dev/null && pwd -P 2>/dev/null); then
@@ -966,7 +948,7 @@ if [[ "$STRUCTURED_REVIEWER_VALIDATION" == "true" ]]; then
         fi
 
         case "$ENTRY_TOOL" in
-            cursor|codex|gemini) STRUCTURED_SIDECAR="${REVIEWER_FILE}.tsv" ;;
+            cursor|codex) STRUCTURED_SIDECAR="${REVIEWER_FILE}.tsv" ;;
             *) STRUCTURED_SIDECAR="${REVIEWER_FILE}.jsonl" ;;
         esac
 
@@ -1024,14 +1006,13 @@ for result in "${RESULTS[@]}"; do
 done
 
 # --- 5. Write health file (if requested, monotonic per tool) ---
-# F2 fix: uses CODEX_TOOL_HEALTHY/CURSOR_TOOL_HEALTHY/GEMINI_TOOL_HEALTHY which were seeded from
+# F2 fix: uses CODEX_TOOL_HEALTHY/CURSOR_TOOL_HEALTHY which were seeded from
 # the existing health file (if any) and only downgraded during this run.
 if [[ -n "$WRITE_HEALTH" && "$WRITE_HEALTH" != "/dev/null" ]]; then
     HEALTH_TMPFILE=$(mktemp "${WRITE_HEALTH}.tmp.XXXXXX")
     {
         echo "CODEX_HEALTHY=$CODEX_TOOL_HEALTHY"
         echo "CURSOR_HEALTHY=$CURSOR_TOOL_HEALTHY"
-        echo "GEMINI_HEALTHY=$GEMINI_TOOL_HEALTHY"
     } > "$HEALTH_TMPFILE"
     mv "$HEALTH_TMPFILE" "$WRITE_HEALTH"
 fi

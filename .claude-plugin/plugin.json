@@ -34,12 +34,6 @@
       "description": "Model for Codex launches — review, implementation, sketches, voting (e.g., o3). Also accepted via LARCH_CODEX_MODEL env var. When unset, defaults to gpt-5.5.",
       "sensitive": false
     },
-    "gemini_model": {
-      "title": "Gemini Model",
-      "type": "string",
-      "description": "Model for Gemini reviewer and `/implement --coder=gemini` implementer launches (e.g., gemini-2.5-pro). Also accepted via LARCH_GEMINI_MODEL env var. When unset, defaults to gemini-2.5-pro.",
-      "sensitive": false
-    },
     "codex_effort": {
       "title": "Codex Effort",
       "type": "string",

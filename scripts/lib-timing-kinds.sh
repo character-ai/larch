@@ -5,13 +5,10 @@
 TIMING_TASK_KINDS_ALLOWED=(
     codex-review
     cursor-review
-    gemini-review
     codex-review-generic
     cursor-review-generic
-    gemini-review-generic
     codex-implement
     cursor-implement
-    gemini-implement
     codex-ci-fix
     cursor-ci-fix
     codex-sketch-arch

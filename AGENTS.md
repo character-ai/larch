@@ -11,7 +11,6 @@ Plugin ships the entire repo. **Runtime surface**: `skills/`, `agents/`, `hooks/
 - Always respect `scripts/block-submodule-edit.sh`. If a hook blocks a write, investigate and resolve the underlying issue. The guard ships via `hooks/hooks.json` only — `.claude/settings.json` no longer mirrors it, so contributors developing in this repo must load larch as a plugin (`claude --plugin-dir .` or the local marketplace) to pick up the guard.
 - After any change, run `/relevant-checks`.
 - Update `SECURITY.md` when security-relevant behavior changes.
-- Path-scoped editing rules for Claude Code live under `.claude/rules/`. Tools that consume only `AGENTS.md` (Codex, Cursor, Gemini) must consult any `.claude/rules/*.md` whose `paths:` frontmatter glob matches the file(s) being edited.
 
 ## Common editing tasks
 

@@ -36,9 +36,6 @@ Rate env names:
   LARCH_RATE_CURSOR_INPUT
   LARCH_RATE_CURSOR_OUTPUT
   LARCH_RATE_CURSOR_AGGREGATE
-  LARCH_RATE_GEMINI_INPUT
-  LARCH_RATE_GEMINI_OUTPUT
-  LARCH_RATE_GEMINI_AGGREGATE
 
 Reconciliation:
   LARCH_REPORT_TOKENS_ACTUAL_SPEND=<USD>  When set, prints tracked vs actual spend delta at report end.
@@ -244,7 +241,6 @@ def env_rate(name, default):
 #   Claude Sonnet/Opus: https://anthropic.com/pricing
 #   Codex (GPT-5.5 via OpenAI): https://developers.openai.com/api/docs/models/gpt-5.5
 #   Cursor Composer 2: https://cursor.com/docs/models-and-pricing
-#   Gemini 2.5 Pro: https://ai.google.dev/pricing
 RATES = {
     "claude": {
         "input": env_rate("LARCH_RATE_CLAUDE_INPUT", 3.00),
@@ -271,13 +267,6 @@ RATES = {
         "input": env_rate("LARCH_RATE_CURSOR_INPUT", 0.50),
         "output": env_rate("LARCH_RATE_CURSOR_OUTPUT", 2.50),
         "aggregate": env_rate("LARCH_RATE_CURSOR_AGGREGATE", 0.20),
-    },
-    # Gemini 2.5 Pro. aggregate approximates hidden-token cost (e.g. cache-inclusive
-    # totals where total > input + output); defaults to input rate.
-    "gemini": {
-        "input": env_rate("LARCH_RATE_GEMINI_INPUT", 1.25),
-        "output": env_rate("LARCH_RATE_GEMINI_OUTPUT", 10.00),
-        "aggregate": env_rate("LARCH_RATE_GEMINI_AGGREGATE", 1.25),
     },
 }
 
@@ -342,8 +331,6 @@ def section_name(line):
         return "codex"
     if name.startswith("cursor"):
         return "cursor"
-    if name.startswith("gemini"):
-        return "gemini"
     return re.sub(r"[^a-z0-9_-]+", "-", name).strip("-") or "unknown"
 
 
@@ -786,11 +773,6 @@ def print_analysis(cache_path, records, skipped, plot_paths):
     print(
         "- Cursor (Composer 2) input={input:g}, output={output:g}, aggregate/cache={aggregate:g}".format(
             **RATES["cursor"]
-        )
-    )
-    print(
-        "- Gemini (2.5 Pro) input={input:g}, output={output:g}".format(
-            **RATES["gemini"]
         )
     )
     print("")

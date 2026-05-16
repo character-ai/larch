@@ -56,7 +56,6 @@ run_session_setup() {
 # ---------------------------------------------------------------------------
 # Test 1 — Empty caller-env.
 # Regression for #1336: empty FINAL_CODEX_HEALTHY / FINAL_CURSOR_HEALTHY MUST
-# default to `false`, not `true`. GEMINI_HEALTHY is always hard-coded `false`
 # by session-setup.sh regardless of caller-env (#1720 Part 1).
 # ---------------------------------------------------------------------------
 ENV1="$SANDBOX/env1.txt"
@@ -67,13 +66,10 @@ if run_session_setup "empty-caller-env" "$ENV1" "$HEALTH1"; then
         "empty caller-env: CODEX defaults fail-closed"
     assert_health_value "$HEALTH1" "CURSOR_HEALTHY" "false" \
         "empty caller-env: CURSOR defaults fail-closed"
-    assert_health_value "$HEALTH1" "GEMINI_HEALTHY" "false" \
-        "empty caller-env: GEMINI always false"
 fi
 
 # ---------------------------------------------------------------------------
 # Test 3 — Sanity: explicit caller-env true values pass through for CODEX/CURSOR.
-# GEMINI_HEALTHY is always false regardless of caller-env (#1720 Part 1).
 # ---------------------------------------------------------------------------
 ENV3="$SANDBOX/env3.txt"
 HEALTH3="$SANDBOX/health3.txt"
@@ -86,8 +82,6 @@ if run_session_setup "explicit-true" "$ENV3" "$HEALTH3"; then
         "explicit caller-env true: CODEX passes through"
     assert_health_value "$HEALTH3" "CURSOR_HEALTHY" "true" \
         "explicit caller-env true: CURSOR passes through"
-    assert_health_value "$HEALTH3" "GEMINI_HEALTHY" "false" \
-        "explicit caller-env: GEMINI always false regardless"
 fi
 
 # ---------------------------------------------------------------------------
@@ -104,8 +98,6 @@ if run_session_setup "explicit-false" "$ENV4" "$HEALTH4"; then
         "explicit caller-env false: CODEX passes through"
     assert_health_value "$HEALTH4" "CURSOR_HEALTHY" "false" \
         "explicit caller-env false: CURSOR passes through"
-    assert_health_value "$HEALTH4" "GEMINI_HEALTHY" "false" \
-        "explicit caller-env false: GEMINI always false"
 fi
 
 # ---------------------------------------------------------------------------

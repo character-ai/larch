@@ -1,14 +1,10 @@
 # launch-review.sh
 
-**Purpose**: Unified external reviewer launcher. `--tool codex|cursor|gemini`
 selects the vendor path while preserving the former review-launcher contracts:
 Codex and Cursor support generic prompts plus specialist `--agent-file` modes;
-Gemini remains generic-only and rejects specialist flags.
 
 ## Invariants
 
-- `--tool` is required and must be one of `codex`, `cursor`, or `gemini`.
-- `--tool gemini` exits 0 with an empty output file unless `GEMINI_REVIEW=1`
   is set in the environment (default off). No lifecycle sidecars are written
   on the disabled path.
 - When `IMPLEMENT_TMPDIR` is set and `LARCH_RENDER_CACHE_DIR` is unset,
@@ -20,8 +16,6 @@ Gemini remains generic-only and rejects specialist flags.
 - Codex and Cursor append `OUTER_LAUNCHER=<repo>/scripts/launch-review.sh`
   metadata and store `${OUTPUT}.prompt` so `collect-agent-results.sh` can replay
   retries through the same launcher with `--tool <tool>`.
-- Gemini writes launcher-shaped `CMD_JSON` containing
-  `launch-review.sh --tool gemini ...` so retries re-run JSON normalization,
   prompt hardening, model resolution, and snapshot-guard logic.
 - Timing rows default to `<tool>-review`; CLI `--timing-task-kind` values must
   be non-empty and non-flag-like.
@@ -36,7 +30,6 @@ Gemini remains generic-only and rejects specialist flags.
   argument.
 - Every external spawn site is wrapped by the shared helpers in
   `scripts/lib-external-launcher-common.sh`: Darwin-only per-tool startup locks
-  (`/tmp/larch-<tool>-serial-$USER.lock`) serialize Cursor, Codex, and Gemini
   CLI initialization, delayed release starts at process spawn, stale locks are
   recovered, and auth/startup failures are retried up to
   `LARCH_EXTERNAL_AUTH_RETRIES` attempts. Tunables:
@@ -81,11 +74,9 @@ Gemini remains generic-only and rejects specialist flags.
 - `--plan-file <path>` (optional): forwarded to `render-specialist-prompt.sh` on `--agent-file`
   diff-mode paths. Embeds the plan file's content inline in the prompt between `<implementation_plan>`
   tags so the reviewer can verify code against the plan. Stored in the Codex specialist prompt
-  sentinel so retry replay reconstructs the identical prompt. Rejected for `--tool gemini`.
   Ignored on `--prompt` / `--prompt-file` paths.
 - `--feature-file <path>` (optional): forwarded to `render-specialist-prompt.sh` on `--agent-file`
   diff-mode paths. Embeds the feature description file's content inline between `<feature_description>`
-  tags. Stored in the Codex specialist prompt sentinel. Rejected for `--tool gemini`.
   Ignored on `--prompt` / `--prompt-file` paths.
 
 ## Primary Callers
@@ -98,8 +89,6 @@ Gemini remains generic-only and rejects specialist flags.
 ## Harness
 
 Run `make test-launch-review`. The harness ports the previous Codex, Cursor,
-and Gemini launcher assertion sets and adds direct coverage for missing,
-invalid, and Gemini-incompatible `--tool` forms.
 
 ## Edit In Sync
 

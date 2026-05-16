@@ -111,12 +111,6 @@ done
 printf 'OK\n' > "$out"
 CODEX_SHAPE_STUB
 chmod +x "$STUB_BIN/codex"
-cat > "$STUB_BIN/gemini" <<'GEMINI_SHAPE_STUB'
-#!/usr/bin/env bash
-set -euo pipefail
-printf '{"response":"Gemini retry OK"}\n'
-GEMINI_SHAPE_STUB
-chmod +x "$STUB_BIN/gemini"
 PATH="$STUB_BIN:$PATH"
 export PATH
 
@@ -615,24 +609,6 @@ write_meta_for_tool "$OUT_P3" codex "$(jq -cn --args '$ARGS.positional' -- codex
 RESULT_P3=$(run_collector bash "$OUT_P3" "$HEALTH_P3")
 assert_line "case P3 codex shape accepted" "STATUS=OK" "$RESULT_P3"
 assert_line "case P3 codex retry file" "REVIEWER_FILE=${OUT_P3%.txt}-retry.txt" "$RESULT_P3"
-
-# Case P3b: Gemini retry metadata may replay the unified launcher, provided
-# the command carries --tool gemini. This covers the redacted launcher-shaped
-# CMD_JSON emitted by launch-review.sh for Gemini reviews.
-OUT_P3B="$TMPROOT/gemini-p3b.txt"
-HEALTH_P3B="$TMPROOT/case-p3b.health"
-write_empty_candidate "$OUT_P3B"
-{
-    printf 'TOOL=gemini\n'
-    printf 'TIMEOUT=20\n'
-    printf 'CAPTURE_STDOUT=false\n'
-    printf 'CAPTURE_STDOUT_ONLY=false\n'
-    printf 'OUTPUT_FILE=%s\n' "$OUT_P3B"
-    printf 'CMD_JSON=%s\n' "$(jq -cn --args '$ARGS.positional' -- "$REPO_ROOT/scripts/launch-review.sh" --tool gemini --output "$OUT_P3B" --timeout 20 --prompt 'retry prompt')"
-} > "${OUT_P3B}.meta"
-RESULT_P3B=$(LARCH_GEMINI_MODEL=test-gemini-model GEMINI_REVIEW=1 run_collector bash "$OUT_P3B" "$HEALTH_P3B")
-assert_line "case P3b gemini launcher shape accepted" "STATUS=OK" "$RESULT_P3B"
-assert_line "case P3b gemini retry file" "REVIEWER_FILE=${OUT_P3B%.txt}-retry.txt" "$RESULT_P3B"
 
 # Case P4: unknown TOOL values fail closed instead of falling back to a less
 # constrained CMD_JSON path.

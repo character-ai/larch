@@ -193,8 +193,6 @@ When your skill consumes a session-env file, always route through `session-setup
 
 ### Health sidecar
 
-Cross-skill reviewer health state uses a `.health` sidecar next to `session-env.sh`. Child skills that run external reviewers (`/design`, `/review`) update the sidecar via `collect-agent-results.sh --write-health "${SESSION_ENV_PATH}.health"`; the parent reads it after each `Skill` return and re-writes `session-env.sh` to persist any newly-unhealthy flags (`CODEX_HEALTHY`, `CURSOR_HEALTHY`, and `GEMINI_HEALTHY` when present). See `skills/implement/SKILL.md § Cross-Skill Health Propagation`.
-
 ## Subagent execution topology
 
 `--session-env` and `--subagent` address orthogonal concerns. Forward both when a parent orchestrator delegates heavy work to `/design`.

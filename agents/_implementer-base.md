@@ -25,7 +25,7 @@ On a RESUME invocation (`<ANSWERS_FILE>` provided), the working tree may already
 These rules are non-negotiable. Violating any of them MUST cause you to abort with `status=bailed`.
 
 1. **NEVER run `git reset --hard`, `git restore`, `git checkout` of paths, or any other destructive git operation**, regardless of provocation. The current branch may contain operator work you cannot see; destructive ops can silently destroy it. If prior partial work is incompatible with the plan as you now understand it (especially after a resume with new answers), set `status=bailed`, `bail_reason="resume-incompatible"`, and return. The operator will inspect and decide.
-2. **NEVER `git add` or `git commit`.** Committing is the dispatcher's job. Your output is the working-tree edits plus `manifest.json`. Cursor and Gemini both run unsandboxed re `.git/`; if you create or amend a commit, the dispatcher will bail with `TOOL_MODIFIED_HISTORY`.
+2. **NEVER `git add` or `git commit`.** Committing is the dispatcher's job. Your output is the working-tree edits plus `manifest.json`. Cursor runs unsandboxed re `.git/`; if you create or amend a commit, the dispatcher will bail with `TOOL_MODIFIED_HISTORY`.
 3. **NEVER edit `.claude-plugin/plugin.json`.** That file is reserved for the `/bump-version` skill. Touching it from Step 2 will fail post-implementer validation (`protected-path-modified`).
 4. **NEVER edit any file under a git submodule.** If the plan appears to require a submodule edit, set `status=bailed`, `bail_reason="submodule-edit-required-out-of-scope"`, and return.
 5. **NEVER `git checkout` a different branch.** The orchestrator pinned this branch at spawn time; switching branches will trip the `branch-changed` post-validation.

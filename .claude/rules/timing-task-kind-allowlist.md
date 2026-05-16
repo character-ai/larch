@@ -1,5 +1,5 @@
 ---
-paths: ["scripts/launch-codex-*.sh", "scripts/launch-cursor-*.sh", "scripts/launch-gemini-*.sh", "scripts/lib-timing-kinds.sh", "scripts/lib-timing-kinds.md", "skills/design/SKILL.md", "skills/review/SKILL.md", "skills/implement/SKILL.md", "skills/research/SKILL.md", "skills/design/references/*.md", "scripts/test-implement-structure.sh", "scripts/test-implement-structure.md"]
+paths: ["scripts/launch-codex-*.sh", "scripts/launch-cursor-*.sh", "scripts/lib-timing-kinds.sh", "scripts/lib-timing-kinds.md", "skills/design/SKILL.md", "skills/review/SKILL.md", "skills/implement/SKILL.md", "skills/research/SKILL.md", "skills/design/references/*.md", "scripts/test-implement-structure.sh", "scripts/test-implement-structure.md"]
 ---
 
 # Timing Task Kind Allow-List

@@ -38,7 +38,7 @@ suppress = [
   # 'Derived from skills/shared/reviewer-templates.md' marker. That marker
   # is meaningful for the Code Reviewer archetype family (code-reviewer.md
   # and the reviewer-*.md specialists), but agents/codex-implementer.md,
-  # agents/cursor-implementer.md, and agents/gemini-implementer.md are
+  # and agents/cursor-implementer.md are
   # NON-reviewer agents — system-prompt bodies loaded by the Step 2
   # implementer launchers, not review/synthesis agents.
   # Suppression is global because agent-lint does not support per-file
@@ -107,10 +107,6 @@ suppress = [
 # (test-check-bump-version target) and scripts/check-bump-version.md
 # (sibling contract), matching the same Makefile-only pattern as the other
 # test-* harnesses above.
-#
-# scripts/lib-gemini-tool-drift.sh is a sourced-only shell library (no shebang,
-# not invokable directly). It is referenced from scripts/check-reviewers.sh via
-# a `source` directive only, which agent-lint does not follow.
 #
 # scripts/test-lint-skill-invocations.sh is the regression harness for
 # scripts/lint-skill-invocations.py (the skill-invocation documentation lint).
@@ -565,15 +561,6 @@ exclude = [
   "scripts/test-post-scaffold-hints.sh",
   "skills/create-skill/scripts/test-render-skill-md.sh",
   "scripts/lib-count-commits.sh",
-  "scripts/lib-gemini-tool-drift.sh",
-  # scripts/lib-gemini-model-resolver.sh is a sourced-only shell library (no
-  # shebang, not invokable directly). It is referenced from shell consumers via
-  # source directives only, which agent-lint does not follow.
-  "scripts/lib-gemini-model-resolver.sh",
-  # scripts/lib-gemini-launcher-review.sh is a sourced-only shell library (no
-  # shebang, not invokable directly). scripts/launch-review.sh sources it only
-  # for --tool gemini.
-  "scripts/lib-gemini-launcher-review.sh",
   # scripts/lib-cursor-auth.sh is a sourced-only shell library (no shebang,
   # not invokable directly). It is referenced from shell consumers via source
   # directives only, which agent-lint does not follow.
@@ -631,7 +618,6 @@ exclude = [
   "scripts/generate-reviewer-security-structure-tests-agent.sh",
   "scripts/generate-pre-rendered-reviewer-prompts.sh",
   "scripts/generate-cursor-implementer.sh",
-  "scripts/generate-gemini-implementer.sh",
   "scripts/generate-codex-implementer.sh",
   # scripts/generate-topology-docs.sh is invoked through the same generator
   # registry walker; agent-lint does not resolve scripts/generators.tsv rows.
@@ -673,7 +659,7 @@ exclude = [
   # (sibling contract).
   "scripts/test-generate-topology-docs.sh",
   # scripts/test-launch-review.sh is the unified regression harness for the
-  # Codex, Cursor, and Gemini review launcher paths. Referenced only from
+  # Codex and Cursor review launcher paths. Referenced only from
   # Makefile (test-launch-review target) and scripts/test-launch-review.md
   # (sibling contract).
   "scripts/test-launch-review.sh",
@@ -1107,12 +1093,9 @@ exclude = [
   "scripts/lib-cursor-auth.md",
   "scripts/lib-cursor-launcher-common.md",
   "scripts/lib-codex-launcher-common.md",
-  "scripts/lib-gemini-model-resolver.md",
   "scripts/cursor-auth-flags.md",
   "scripts/test-wait-for-reviewers.md",
   "scripts/lib-validate-meta-path.md",
-  "scripts/lib-gemini-tool-drift.md",
-  "scripts/gemini-known-tools.md",
   "scripts/test-run-external-agent.md",
   "scripts/test-run-external-agent-args.md",
   "scripts/test-collect-agent-retry.md",

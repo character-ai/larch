@@ -53,7 +53,7 @@ OUTPUT_TOKENS=$(kv OUTPUT)
 CACHE_READ=$(kv CACHE_READ)
 CACHE_CREATE=$(kv CACHE_CREATE)
 
-case "$TOOL" in codex|cursor|gemini) ;; *) TOOL=unknown ;; esac
+case "$TOOL" in codex|cursor) ;; *) TOOL=unknown ;; esac
 case "$TOTAL" in ''|*[!0-9]*) TOTAL=0 ;; esac
 case "$INPUT_TOKENS" in ''|*[!0-9]*) INPUT_TOKENS=0 ;; esac
 case "$OUTPUT_TOKENS" in ''|*[!0-9]*) OUTPUT_TOKENS=0 ;; esac

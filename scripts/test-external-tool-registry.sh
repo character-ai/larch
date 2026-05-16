@@ -67,11 +67,11 @@ source "$REGISTRY"
 pass
 
 # 2-3. Ordered arrays.
-assert_equals "external tool order" "codex cursor gemini" "${LARCH_EXTERNAL_TOOLS[*]}"
-assert_equals "implementer coder order" "claude codex cursor gemini" "${LARCH_IMPLEMENTER_CODERS[*]}"
+assert_equals "external tool order" "codex cursor" "${LARCH_EXTERNAL_TOOLS[*]}"
+assert_equals "implementer coder order" "claude codex cursor" "${LARCH_IMPLEMENTER_CODERS[*]}"
 
 # 4. External tool positives.
-for tool in codex cursor gemini; do
+for tool in codex cursor; do
     assert_success "larch_is_external_tool $tool" larch_is_external_tool "$tool"
 done
 
@@ -81,14 +81,14 @@ assert_failure "larch_is_external_tool empty" larch_is_external_tool ""
 assert_failure "larch_is_external_tool unknown" larch_is_external_tool unknown
 
 # 7-8. Implementer coder predicates.
-for coder in claude codex cursor gemini; do
+for coder in claude codex cursor; do
     assert_success "larch_is_implementer_coder $coder" larch_is_implementer_coder "$coder"
 done
 assert_failure "larch_is_implementer_coder unknown" larch_is_implementer_coder unknown
 
 # 9-10. Brace formatters.
-assert_equals "external tools braced" "{codex,cursor,gemini}" "$(larch_external_tools_braced)"
-assert_equals "implementer coders braced" "{claude,codex,cursor,gemini}" "$(larch_implementer_coders_braced)"
+assert_equals "external tools braced" "{codex,cursor}" "$(larch_external_tools_braced)"
+assert_equals "implementer coders braced" "{claude,codex,cursor}" "$(larch_implementer_coders_braced)"
 
 # 11. Double source is idempotent and keeps sentinel set.
 if bash -c 'source "$1"; source "$1"; [[ "${LARCH_EXTERNAL_TOOL_REGISTRY_LOADED:-}" == "1" ]]' bash "$REGISTRY"; then
@@ -112,8 +112,6 @@ else
 fi
 
 # 14. Registry-driven consumers handle every registered external tool and step2 resolves paths from a nested cwd.
-# Note: Gemini probe removed in #1720 (Part 1); check-reviewers.sh only emits CODEX/CURSOR_AVAILABLE.
-# GEMINI_AVAILABLE is hard-coded false by session-setup.sh, not by check-reviewers.sh.
 reviewer_err="$(mktemp /tmp/larch-registry-reviewers-err-XXXXXX)"
 reviewer_output=""
 if reviewer_output=$("$REPO_ROOT/scripts/check-reviewers.sh" 2>"$reviewer_err"); then

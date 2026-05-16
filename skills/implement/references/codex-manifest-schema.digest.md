@@ -30,8 +30,4 @@
 
 All tokens route to Step 12d.
 
-**Partial-work group** (branch may be dirty — operator must inspect): `resume-incompatible` · `branch-changed` · `protected-path-modified` · `submodule-dirty` · `commit-failed` · `cursor-modified-history` · `gemini-modified-history`
-
-**Clean-exit group**: `qa-loop-exceeded` · `manifest-schema-invalid` · `manifest-missing` · `qa-pending-missing` · `redactor-not-executable` · `dirty-state-after-timeout` · `wrapper-validation-failure` · `coder-mismatch-tmpdir-reuse` · `codex-runtime-failure` · `cursor-runtime-failure` · `cursor-bailed-no-reason` · `gemini-runtime-failure` · `gemini-bailed-no-reason`
-
 Free-form: any other implementer-authored string; preserved verbatim (KV-sanitized, capped ~200 chars).

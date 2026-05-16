@@ -72,8 +72,6 @@ What I want from this research:
 
 1. **Repo-local survey.** Read every other SKILL.md under `skills/` and `.claude/skills/`. Identify capabilities, prompt patterns, mechanical-rule applications (Section III A/B/C), anti-pattern formulations, progressive-disclosure techniques (Section II), or freedom-calibration choices (Section VII) present in sibling skills that `/<SKILL_NAME>` could adopt to improve quality, robustness, or token efficiency. Each comparison must cite the specific sibling skill and a `file:line` reference.
 
-2. **External literature survey.** Search reputable sources for skill-design patterns, agent orchestration techniques, or prompt-engineering refinements relevant to `/<SKILL_NAME>`'s role. Bias toward Anthropic documentation (claude.com, docs.anthropic.com, engineering.anthropic.com), OpenAI cookbook + agents documentation, DeepMind / Gemini agent literature, and open-source GitHub repositories with ≥500 stars on agent skills, SKILL.md authoring, or prompt engineering. Each external comparison must cite a specific URL.
-
 3. **Concrete, actionable improvements for `/<SKILL_NAME>`.** Each finding must specify: (a) the exact file path inside the target skill that should change; (b) what to modify; (c) the cited evidence (sibling skill `file:line` or external URL); (d) a one-paragraph proposed implementation that a `/fix-issue` agent can execute without re-doing this research. Vague suggestions ("improve clarity", "add more examples", "consider refactoring") are explicitly out of scope.
 
 Out of scope:

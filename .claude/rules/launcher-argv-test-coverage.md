@@ -1,5 +1,5 @@
 ---
-paths: ["scripts/launch-*.sh", "scripts/test-launch-*.sh", "skills/implement/scripts/step2-implement.sh", "skills/implement/scripts/test-step2-*.sh", "skills/implement/scripts/test-codex-implementer.sh", "skills/implement/scripts/test-cursor-implementer.sh", "skills/implement/scripts/test-gemini-implementer.sh"]
+paths: ["scripts/launch-*.sh", "scripts/test-launch-*.sh", "skills/implement/scripts/step2-implement.sh", "skills/implement/scripts/test-step2-*.sh", "skills/implement/scripts/test-codex-implementer.sh", "skills/implement/scripts/test-cursor-implementer.sh"]
 ---
 
 # Launcher Argv Test Coverage
@@ -11,8 +11,8 @@ harness gap → fix later" is the bug.
 
 Harness paths are **not** uniform:
 
-- `scripts/launch-review.sh --tool cursor|codex|gemini` → `scripts/test-launch-review.sh`
-- `scripts/launch-codex-implement.sh` / `launch-cursor-implement.sh` / `launch-gemini-implement.sh` → `skills/implement/scripts/test-codex-implementer.sh` / `test-cursor-implementer.sh` / `test-gemini-implementer.sh` (and `test-step2-dispatch.sh` for cross-coder dispatcher coverage)
+- `scripts/launch-review.sh --tool cursor|codex` → `scripts/test-launch-review.sh`
+- `scripts/launch-codex-implement.sh` / `launch-cursor-implement.sh` → `skills/implement/scripts/test-codex-implementer.sh` / `test-cursor-implementer.sh` (and `test-step2-dispatch.sh` for cross-coder dispatcher coverage)
 
 The sibling `<basename>.md` (per `.claude/rules/script-md-siblings.md`)
 names the current harness; read it before assuming a path. `docs/linting.md`

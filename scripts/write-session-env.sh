@@ -4,13 +4,13 @@
 # Usage:
 #   write-session-env.sh --output <path> --repo <owner/repo> \
 #                        --repo-unavailable <true|false> \
-#                        [--codex-healthy <true|false>] [--cursor-healthy <true|false>] [--gemini-healthy <true|false>] \
+#                        [--codex-healthy <true|false>] [--cursor-healthy <true|false>] \
 #                        [--timing-ledger <path>] [--token-session-id <id>] \
 #                        [--claude-source-file <path>] [--prev-implement-tmpdir <path>]
 #
 # Options:
 #   --repo may be empty when --repo-unavailable is true (repo discovery failed).
-#   --codex-healthy/--cursor-healthy/--gemini-healthy are optional (reviewer health state from probe).
+#   --codex-healthy/--cursor-healthy are optional (reviewer health state from probe).
 #   --timing-ledger is optional (shared timing ledger path for nested skills).
 #   --token-session-id is optional (token ledger session id for nested skills).
 #   --claude-source-file is optional (Claude transcript snapshot for token reports).
@@ -35,7 +35,6 @@ REPO=""
 REPO_UNAVAILABLE=""
 CODEX_HEALTHY=""
 CURSOR_HEALTHY=""
-GEMINI_HEALTHY=""
 TIMING_LEDGER=""
 TOKEN_SESSION_ID=""
 CLAUDE_SOURCE_FILE=""
@@ -49,7 +48,6 @@ while [[ $# -gt 0 ]]; do
     --repo-unavailable) REPO_UNAVAILABLE="$2"; shift 2 ;;
     --codex-healthy)    CODEX_HEALTHY="$2"; shift 2 ;;
     --cursor-healthy)   CURSOR_HEALTHY="$2"; shift 2 ;;
-    --gemini-healthy)   GEMINI_HEALTHY="$2"; shift 2 ;;
     --timing-ledger)    TIMING_LEDGER="$2"; shift 2 ;;
     --token-session-id) TOKEN_SESSION_ID="$2"; shift 2 ;;
     --claude-source-file) CLAUDE_SOURCE_FILE="$2"; shift 2 ;;
@@ -107,8 +105,6 @@ REPO_UNAVAILABLE=$REPO_UNAVAILABLE"
 CODEX_HEALTHY=$CODEX_HEALTHY"
 [[ -n "$CURSOR_HEALTHY" ]] && CONTENT="$CONTENT
 CURSOR_HEALTHY=$CURSOR_HEALTHY"
-[[ -n "$GEMINI_HEALTHY" ]] && CONTENT="$CONTENT
-GEMINI_HEALTHY=$GEMINI_HEALTHY"
 [[ -n "$TIMING_LEDGER" ]] && CONTENT="$CONTENT
 LARCH_TIMING_LEDGER=$TIMING_LEDGER"
 [[ -n "$TOKEN_SESSION_ID" ]] && CONTENT="$CONTENT

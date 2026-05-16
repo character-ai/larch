@@ -375,20 +375,6 @@ grep -Fq -- '--pieces-json' "$SKILL_MD" \
   || fail "(18) SKILL.md lacks '--pieces-json' — Step 4b pieces.json composition contract (#778) is broken"
 
 # ---------------------------------------------------------------------------
-# (19) Gemini probe removed (#1720, Part 1). /review no longer launches Gemini
-# reviewers and Step 0 no longer passes --check-gemini-reviewer; session-setup.sh
-# hard-codes GEMINI_HEALTHY=false. Negative pins remain to catch re-introduction.
-# ---------------------------------------------------------------------------
-# Negative pins: the launch-review.sh --tool gemini call sites were removed; ensure
-# they don't quietly re-appear without an intentional reversal of this change.
-if grep -Fq 'launch-review.sh --tool gemini' "$SKILL_MD"; then
-  fail "(19b) /review unexpectedly re-introduced launch-review.sh --tool gemini call sites"
-fi
-if grep 'collect-agent-results.sh' "$SKILL_MD" | grep -Fq 'gemini-output.txt'; then
-  fail "(19c) /review collector argv unexpectedly re-introduced gemini-output.txt path"
-fi
-
-# ---------------------------------------------------------------------------
 # (20) Diff-mode accepted-OOS security exclusion. voting.md already documents
 # the description-mode guard; diff mode must mirror it at the
 # oos-accepted-review.md public artifact boundary.
