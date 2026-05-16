@@ -35,6 +35,41 @@ fail() {
     exit 2
 }
 
+validate_code_review_headers() {
+    local body_file="$1"
+    python3 - "$body_file" <<'PYEOF'
+import sys
+
+allowed = {
+    "# Rejected Findings",
+    "## Rejected Code Review Findings",
+    "## Voting Tally",
+    "# Code Review Voting Tally",
+    "## Per-finding vote breakdown",
+    "## Reviewer Competition Scoreboard",
+}
+
+in_fence = False
+with open(sys.argv[1], encoding="utf-8") as fh:
+    for raw_line in fh:
+        line = raw_line.rstrip("\n")
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        if line.startswith("#") and line in allowed:
+            continue
+        if line.startswith("### [Code Review] "):
+            continue
+        if line.startswith("#"):
+            print(line)
+            sys.exit(1)
+sys.exit(0)
+PYEOF
+}
+
 require_value() {
     local flag="$1"
     local value="${2-}"
@@ -93,13 +128,9 @@ require_non_negative_integer "--rejected" "$REJECTED"
 [ ! -L "$BODY_FILE" ] || fail "body file must not be a symlink: $BODY_FILE"
 
 if [ "$PHASE" = "code-review" ]; then
-    while IFS= read -r hdr_line || [ -n "$hdr_line" ]; do
-        [ -n "$hdr_line" ] || continue
-        case "$hdr_line" in
-            "# Rejected Findings"|"## Rejected Code Review Findings"|"## Voting Tally"|"## Reviewer Competition Scoreboard") ;;
-            *) fail "unrecognized section header in code-review body: $hdr_line" ;;
-        esac
-    done < <(grep -E '^#+ ' "$BODY_FILE" 2>/dev/null || true)
+    if ! bad_header="$(validate_code_review_headers "$BODY_FILE")"; then
+        fail "unrecognized section header in code-review body: $bad_header"
+    fi
 fi
 
 RECORD_FILE="$(mktemp "${TMPDIR:-/tmp}/write-tally-record.XXXXXX")" || fail "cannot create tally temp file"

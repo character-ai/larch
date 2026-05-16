@@ -84,6 +84,52 @@ code_json="$log_root/implement/run-code/code-review-tally.json"
 assert_json_field "$code_json" '.batch' "code-review-tally" "code batch slug"
 assert_json_field "$code_json" '.mode' "simple" "code mode"
 
+echo "=== code-review heading allowlist ==="
+code_body_valid="$TMP/code-body-valid.md"
+cat > "$code_body_valid" <<'EOF'
+Round summary.
+
+## Rejected Code Review Findings
+
+### [Code Review] Reviewer
+Detail paragraph.
+
+## Voting Tally
+
+# Code Review Voting Tally
+
+## Per-finding vote breakdown
+
+```sh
+# shell comment inside fence
+```
+
+## Reviewer Competition Scoreboard
+EOF
+log_root="$TMP/logs-code-headings-valid"
+out="$("$WRITE_TALLY" --log-root "$log_root" --skill implement --run-id run-code-headings-valid \
+    --phase code-review --mode simple --body-file "$code_body_valid")"
+assert_contains "$out" "LOG_WRITTEN=true" "code-review valid headings accepted"
+
+echo "=== code-review heading rejection ==="
+code_body_invalid="$TMP/code-body-invalid.md"
+cat > "$code_body_invalid" <<'EOF'
+## Voting Tally
+## Foo
+EOF
+set +e
+invalid_heading_out="$("$WRITE_TALLY" --log-root "$TMP/logs-code-headings-invalid" --skill implement --run-id run-code-headings-invalid \
+    --phase code-review --mode simple --body-file "$code_body_invalid" 2>"$TMP/code-headings-invalid.err")"
+invalid_heading_rc=$?
+set -e
+if [ "$invalid_heading_rc" -eq 2 ]; then pass "code-review invalid heading exits 2"; else fail "code-review invalid heading exit $invalid_heading_rc"; fi
+assert_contains "$(cat "$TMP/code-headings-invalid.err")" "unrecognized section header in code-review body: ## Foo" "code-review invalid heading diagnostic"
+if [ -z "$invalid_heading_out" ]; then
+    pass "code-review invalid heading stdout empty"
+else
+    fail "code-review invalid heading stdout not empty: $invalid_heading_out"
+fi
+
 echo "=== defaults ==="
 log_root="$TMP/logs-defaults"
 "$WRITE_TALLY" --log-root "$log_root" --skill implement --run-id run-defaults \

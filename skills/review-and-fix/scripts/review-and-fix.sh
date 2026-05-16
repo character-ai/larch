@@ -80,6 +80,18 @@ count_findings() {
     fi
 }
 
+is_security_block() {
+    local block="$1"
+    python3 - "$block" <<'PYEOF'
+import re, sys
+text = open(sys.argv[1]).read()
+text_no_fence = re.sub(r'```.*?```', '', text, flags=re.DOTALL)
+text_no_backtick = re.sub(r'`[^`\n]*`', '', text_no_fence)
+pattern = re.compile(r'focus-area\s*=\s*security', re.IGNORECASE)
+sys.exit(0 if pattern.search(text_no_backtick) else 1)
+PYEOF
+}
+
 submodule_paths() {
     if [[ -f .gitmodules ]]; then
         git config -f .gitmodules --get-regexp '^[^.]+\.path$' 2>/dev/null | awk '{print $2}' || true
@@ -427,16 +439,31 @@ run_implement_round() {
     fi
 
     skipped_finding_count=0
-    if [[ -n "$coder_log" && -s "$coder_log" && -s "${in_scope_file:-}" ]]; then
+    if [[ "$coder_status" == "applied" && -n "$coder_log" && -s "$coder_log" && -s "${in_scope_file:-}" ]]; then
         skipped_file="$round_dir/skipped-findings.md"
+        skipped_security_file="$round_dir/skipped-findings.security.md"
         : > "$skipped_file"
+        : > "$skipped_security_file"
         while IFS= read -r skip_id || [[ -n "$skip_id" ]]; do
             [[ -n "$skip_id" ]] || continue
+            block_file="$round_dir/${skip_id}.skipped.md"
             awk -v id="$skip_id" '
               /^### FINDING_[0-9]+:/ { in_block=($0 ~ ("^### " id ":")) }
               in_block { print }
-            ' "$in_scope_file" >> "$skipped_file" || true
+            ' "$in_scope_file" > "$block_file" || true
+            if [[ ! -s "$block_file" ]]; then
+                rm -f "$block_file"
+                continue
+            fi
+            if is_security_block "$block_file" 2>/dev/null; then
+                cat "$block_file" >> "$skipped_security_file"
+                printf '\n' >> "$skipped_security_file"
+            else
+                cat "$block_file" >> "$skipped_file"
+                printf '\n' >> "$skipped_file"
+            fi
             skipped_finding_count=$((skipped_finding_count + 1))
+            rm -f "$block_file"
         done < <(grep -E '^SKIPPED: FINDING_[0-9]+' "$coder_log" | grep -oE 'FINDING_[0-9]+' | sort -u 2>/dev/null || true)
 
         if [[ -s "$skipped_file" ]]; then
@@ -445,6 +472,11 @@ run_implement_round() {
             [[ -s "$oos_markdown" ]] && printf '\n' >> "$oos_markdown"
             cat "$skipped_file" >> "$oos_markdown"
             cp "$oos_markdown" "$IMPLEMENT_TMPDIR/oos-accepted-review.md" 2>/dev/null || true
+        fi
+        if [[ -s "$skipped_security_file" ]]; then
+            security_audit_file="$IMPLEMENT_TMPDIR/skipped-security-findings.md"
+            [[ -s "$security_audit_file" ]] && printf '\n' >> "$security_audit_file"
+            cat "$skipped_security_file" >> "$security_audit_file"
         fi
     fi
 

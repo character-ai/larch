@@ -257,4 +257,81 @@ set -e
 [[ "$rc" -eq 2 ]] || { echo "$out" >&2; fail "wholesale expected exit 2 got $rc"; }
 grep -Fq 'REVIEW_AND_FIX_STATUS=wholesale-rejected' <<< "$out" || fail "wholesale status"
 
+work_skipped="$TMP/skipped-routing"
+make_work_repo "$work_skipped"
+implement_tmp="$work_skipped/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_HEALTHY=true\nCURSOR_HEALTHY=true\n' > "$implement_tmp/session-env.sh"
+cat > "$TMP/review-core-skipped-stub.sh" <<'EOF_CORE_SKIPPED'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+round="1"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --output-dir) out="$2"; shift 2 ;;
+    --round-num) round="$2"; shift 2 ;;
+    *) shift; [[ $# -gt 0 && "$1" != --* ]] && shift || true ;;
+  esac
+done
+mkdir -p "$out"
+cat > "$out/accepted-findings.md" <<'EOF_FINDINGS'
+### FINDING_1: Non-security skipped finding
+- **Concern**: Keep it public.
+- **Suggested revision**: Skip for test.
+
+### FINDING_2: Security skipped finding
+- **Concern**: Contains focus-area = security and must stay local.
+- **Suggested revision**: Skip for test.
+EOF_FINDINGS
+: > "$out/rejected-findings.md"
+printf '{"schema_version":1,"rounds_completed":%s,"accepted_count":2,"rejected_count":0}\n' "$round" > "$out/review-summary.json"
+printf '# Review Round %s\n' "$round" > "$out/review-round-summary.md"
+printf 'REVIEW_CORE_STATUS=fix-required\nROUND_NUM=%s\nACCEPTED_COUNT=2\nREJECTED_COUNT=0\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nPANEL_MODE=normal\nPANEL_SHAPE=simple\n' "$round" "$out" "$out"
+EOF_CORE_SKIPPED
+chmod +x "$TMP/review-core-skipped-stub.sh"
+cat > "$work_skipped/implement/round-1-coder.log.seed" <<'EOF_LOG'
+SKIPPED: FINDING_1
+SKIPPED: FINDING_2
+SKIPPED: FINDING_2
+SKIPPED: FINDING_999
+EOF_LOG
+cat > "$TMP/run-external-agent-skipped-stub.sh" <<'EOF_AGENT_SKIPPED'
+#!/usr/bin/env bash
+set -euo pipefail
+output=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --tool) shift 2 ;;
+    --output) output="$2"; shift 2 ;;
+    --timeout) shift 2 ;;
+    --capture-stdout) shift ;;
+    --) shift; break ;;
+    *) shift ;;
+  esac
+done
+mkdir -p "$(dirname "$output")"
+cat "$PWD/implement/round-1-coder.log.seed" > "$output"
+exit 0
+EOF_AGENT_SKIPPED
+chmod +x "$TMP/run-external-agent-skipped-stub.sh"
+set +e
+out=$(
+    cd "$work_skipped" && \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-skipped-stub.sh" \
+    REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-skipped-stub.sh" \
+    REVIEW_AND_FIX_LAUNCH_CLAUDE_SUBPROCESS_SH="$TMP/launch-claude-subprocess-stub.sh" \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh"
+)
+rc=$?
+set -e
+[[ "$rc" -eq 3 ]] || { echo "$out" >&2; fail "skipped-routing expected exit 3 got $rc"; }
+grep -Fq 'SKIPPED_FINDING_COUNT=2' <<< "$out" || fail "skipped-routing count"
+grep -Fq 'Non-security skipped finding' "$implement_tmp/oos-accepted-review.md" || fail "skipped-routing public skipped finding missing"
+if grep -Fq 'Security skipped finding' "$implement_tmp/oos-accepted-review.md"; then
+    fail "skipped-routing security finding leaked to public OOS"
+fi
+grep -Fq 'Security skipped finding' "$implement_tmp/skipped-security-findings.md" || fail "skipped-routing security finding missing from local audit"
+
 echo "test-review-and-fix: ok"
