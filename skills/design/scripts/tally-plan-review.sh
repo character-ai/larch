@@ -4,9 +4,12 @@
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd -P)
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
 # shellcheck source=scripts/lib-quiet.sh
-source "$SCRIPT_DIR/../../../scripts/lib-quiet.sh"
+source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
+# shellcheck source=scripts/lib-vote-tally.sh
+source "$PLUGIN_ROOT/scripts/lib-vote-tally.sh"
 
 DESIGN_TMPDIR=""
 BALLOT_FILE=""
@@ -76,18 +79,7 @@ cleanup() {
 trap cleanup EXIT
 
 BLOCK_DIR="$WORKDIR/blocks"
-mkdir -p "$BLOCK_DIR"
-
-awk -v dir="$BLOCK_DIR" '
-  /^### (FINDING_[0-9]+|OOS_[0-9]+):/ {
-    id=$2
-    sub(/:$/, "", id)
-    out=dir "/" id ".md"
-    print > out
-    next
-  }
-  out != "" { print >> out }
-' "$BALLOT_FILE"
+split_ballot_to_blocks "$BALLOT_FILE" "$BLOCK_DIR"
 
 shopt -s nullglob
 block_files=("$BLOCK_DIR"/*.md)
@@ -118,77 +110,8 @@ score_rows="$WORKDIR/score-rows.tsv"
 # Eligible voter count — used for threshold enforcement.
 eligible_count="${#VOTER_FILES[@]}"
 
-# vote_for_id: returns YES, NO, EXONERATE, or NEUTRAL.
-# Matches the anchored pattern "FINDING_N: YES" or "OOS_N: YES" at line start.
-vote_for_id() {
-    local id="$1" file="$2"
-    awk -v id="$id" '
-      BEGIN { result="NEUTRAL" }
-      {
-        line=$0
-        upper=toupper(line)
-        # Require anchored "ID:" prefix to avoid substring collisions
-        # e.g. FINDING_10 matching inside FINDING_100.
-        if (upper ~ ("^" toupper(id) ":")) {
-          if (upper ~ /YES/) result="YES"
-          else if (upper ~ /EXONERATE/) result="EXONERATE"
-          else if (upper ~ /NO/) result="NO"
-        }
-      }
-      END { print result }
-    ' "$file"
-}
-
-reviewer_for_block() {
-    local block="$1" reviewer
-    reviewer=$(awk -F: '
-      /Reviewer/ {
-        sub(/^[[:space:]-]*/, "", $1)
-        $1=""
-        sub(/^:[[:space:]]*/, "", $0)
-        gsub(/\*/, "", $0)
-        gsub(/^[[:space:]]+|[[:space:]]+$/, "", $0)
-        print $0
-        exit
-      }
-    ' "$block")
-    [[ -n "$reviewer" ]] || reviewer="unknown"
-    printf '%s' "$reviewer"
-}
-
-# is_security_block: returns 0 (true) when the block has at least one
-# unfenced occurrence of the canonical "focus-area = security" token.
-# Fenced occurrences (inside backtick or triple-backtick regions) are
-# excluded per the Match discrimination (false-positive guard) contract.
-is_security_block() {
-    local block="$1"
-    python3 - "$block" <<'PYEOF'
-import re, sys
-text = open(sys.argv[1]).read()
-# Strip triple-backtick fenced code regions.
-text_no_fence = re.sub(r'```.*?```', '', text, flags=re.DOTALL)
-# Strip inline backtick code spans.
-text_no_backtick = re.sub(r'`[^`\n]*`', '', text_no_fence)
-pattern = re.compile(r'focus-area\s*=\s*security', re.IGNORECASE)
-sys.exit(0 if pattern.search(text_no_backtick) else 1)
-PYEOF
-}
-
-# accept_finding: returns 0 (accept) or 1 (do not accept).
-# Threshold: 2+ YES for 3+ eligible voters; unanimous YES (2/2) for exactly
-# 2 eligible voters; skip (do not accept) if fewer than 2 eligible voters.
-accept_finding() {
-    local yes="$1" no="$2" exonerate="$3" eligible="$4"
-    if (( eligible < 2 )); then
-        return 1
-    elif (( eligible == 2 )); then
-        # Unanimous: both must be YES.
-        (( yes == 2 )) && return 0 || return 1
-    else
-        # 3+ voters: require 2+ YES.
-        (( yes >= 2 )) && return 0 || return 1
-    fi
-}
+# vote_for_id, reviewer_for_block, is_security_block, accept_finding are
+# sourced from $PLUGIN_ROOT/scripts/lib-vote-tally.sh above.
 
 {
     printf '# Plan Review Voting Tally\n\n'

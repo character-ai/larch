@@ -43,7 +43,6 @@ REVIEW_SCRIPTS_DIR="$REPO_ROOT/skills/review/scripts"
 
 expected_refs=(
   "domain-rules.md"
-  "voting.md"
 )
 
 fail() {
@@ -67,13 +66,14 @@ review_scripts=(
   review-core
   dispatch-panel
   collect-findings
-  tally-votes
+  tally-code-votes
   detect-wholesale-rejection
   emit-tally
   log-phase
+  check-reviewer-failure-threshold
 )
-[[ "${#review_scripts[@]}" -eq 8 ]] \
-  || fail "(1) internal harness error: expected review script list must contain 8 entries"
+[[ "${#review_scripts[@]}" -eq 9 ]] \
+  || fail "(1) internal harness error: expected review script list must contain 9 entries"
 for script in "${review_scripts[@]}"; do
   [[ -f "$REVIEW_SCRIPTS_DIR/${script}.sh" ]] \
     || fail "(1) missing review script: skills/review/scripts/${script}.sh"
@@ -91,20 +91,20 @@ REVIEW_AND_FIX_DIR="$REPO_ROOT/skills/review-and-fix"
 [[ -f "$REVIEW_AND_FIX_DIR/scripts/call-fixer.sh" ]] \
   || fail "(1b) missing skills/review-and-fix/scripts/call-fixer.sh"
 
-for agent in orchestrator-aggregator orchestrator-judge; do
-  agent_file="$REPO_ROOT/agents/${agent}.md"
-  [[ -f "$agent_file" ]] \
-    || fail "(1c) missing agents/${agent}.md"
-  grep -Fq 'HAND-MAINTAINED' "$agent_file" \
-    || fail "(1c) agents/${agent}.md lacks HAND-MAINTAINED annotation"
-  case "$(basename "$agent_file")" in
-    reviewer-*) fail "(1c) agents/${agent}.md unexpectedly matches reviewer-* glob" ;;
-  esac
-done
+agent_file="$REPO_ROOT/agents/orchestrator-aggregator.md"
+[[ -f "$agent_file" ]] \
+  || fail "(1c) missing agents/orchestrator-aggregator.md"
+grep -Fq 'HAND-MAINTAINED' "$agent_file" \
+  || fail "(1c) agents/orchestrator-aggregator.md lacks HAND-MAINTAINED annotation"
+case "$(basename "$agent_file")" in
+  reviewer-*) fail "(1c) agents/orchestrator-aggregator.md unexpectedly matches reviewer-* glob" ;;
+esac
 [[ ! -e "$REPO_ROOT/agents/reviewer-aggregator.md" ]] \
   || fail "(1d) agents/reviewer-aggregator.md must not exist; use orchestrator-aggregator.md"
-[[ ! -e "$REPO_ROOT/agents/reviewer-judge.md" ]] \
-  || fail "(1d) agents/reviewer-judge.md must not exist; use orchestrator-judge.md"
+[[ ! -e "$REPO_ROOT/agents/orchestrator-judge.md" ]] \
+  || fail "(1d) agents/orchestrator-judge.md must not exist; the 3-judge code-review panel is launched by scripts/dispatch-code-voters.sh"
+[[ ! -e "$REPO_ROOT/skills/review/references/voting.md" ]] \
+  || fail "(1d) skills/review/references/voting.md must not exist; code-review voting is now owned by scripts/dispatch-code-voters.sh + skills/review/scripts/tally-code-votes.sh"
 
 # ---------------------------------------------------------------------------
 # (2) Each expected baseline reference file exists.
@@ -195,14 +195,16 @@ grep 'MANDATORY — READ ENTIRE FILE' "$SKILL_MD" \
   | grep -Eq 'references/domain-rules\.md([^A-Za-z0-9._-]|$)' \
   || fail "(5a) no single SKILL.md line carries 'MANDATORY — READ ENTIRE FILE', 'Step 3' (boundary-anchored), and 'references/domain-rules.md' together — Step 3 entry callsite pin for domain-rules.md is broken"
 
-grep 'MANDATORY — READ ENTIRE FILE' "$SKILL_MD" \
-  | grep -iE 'rounds 1-3' \
-  | grep -Eq 'references/voting\.md([^A-Za-z0-9._-]|$)' \
-  || fail "(5b) no single SKILL.md line carries 'MANDATORY — READ ENTIRE FILE', 'rounds 1-3' (case-insensitive), and 'references/voting.md' together — rounds-1-3 branch callsite pin for voting.md is broken"
+# (5b/5c) voting.md callsite pins removed in #2207. Code-review voting is now
+# script-owned (scripts/dispatch-code-voters.sh + skills/review/scripts/tally-code-votes.sh)
+# rather than prompt-orchestrated — no MANDATORY-line pin is required.
 
-grep 'Do NOT load' "$SKILL_MD" \
-  | grep -Eq 'references/voting\.md([^A-Za-z0-9._-]|$)' \
-  || fail "(5c) no single SKILL.md line carries 'Do NOT load' and 'references/voting.md' together — reciprocal rounds-4+ guard for voting.md is missing"
+# (5d) dispatch-code-voters and tally-code-votes are reachable from SKILL.md so
+# the script-owned voting pipeline cannot be silently un-wired.
+grep -Fq 'dispatch-code-voters.sh' "$SKILL_MD" \
+  || fail "(5d) SKILL.md must reference scripts/dispatch-code-voters.sh — code-review judge panel dispatch contract is broken"
+grep -Fq 'tally-code-votes.sh' "$SKILL_MD" \
+  || fail "(5d) SKILL.md must reference skills/review/scripts/tally-code-votes.sh — code-review vote tally contract is broken"
 
 # ---------------------------------------------------------------------------
 # (6) CI-parity focus-area enum check. Mirrors the agent-sync UNQUOTED_FILES
@@ -375,21 +377,25 @@ grep -Fq -- '--pieces-json' "$SKILL_MD" \
   || fail "(18) SKILL.md lacks '--pieces-json' — Step 4b pieces.json composition contract (#778) is broken"
 
 # ---------------------------------------------------------------------------
-# (20) Diff-mode accepted-OOS security exclusion. voting.md already documents
-# the description-mode guard; diff mode must mirror it at the
-# oos-accepted-review.md public artifact boundary.
+# (20) Security-tag exclusion contract for accepted OOS items. After #2207
+# voting.md is gone; the canonical security regex + invariant prose live in
+# skills/shared/voting-protocol.md, and the mechanical enforcement lives in
+# scripts/lib-vote-tally.sh::is_security_block (shared by both tally scripts).
 # ---------------------------------------------------------------------------
-VOTING_MD="$REFS_DIR/voting.md"
-grep -F 'oos-accepted-review.md' "$VOTING_MD" \
-  | grep -F 'excluding security-tagged findings' \
-  | grep -Fq 'focus-area\s*=\s*security' \
-  || fail "(20a) voting.md diff-mode oos-accepted-review.md write must exclude security-tagged OOS via canonical focus-area token"
-grep -Fq 'security-tagged findings (focus-area=security) are held locally and NEVER filed publicly' "$VOTING_MD" \
-  || fail "(20b) voting.md description-mode security guard drifted"
-grep -Fq 'Match discrimination (false-positive guard)' "$VOTING_MD" \
-  || fail "(20c) voting.md missing Match discrimination (false-positive guard) procedure"
-grep -Fq 'Security counter-invariant' "$VOTING_MD" \
-  || fail "(20c) voting.md missing Security counter-invariant clause"
+PROTOCOL_MD="$REPO_ROOT/skills/shared/voting-protocol.md"
+[[ -f "$PROTOCOL_MD" ]] \
+  || fail "(20) skills/shared/voting-protocol.md missing"
+grep -Fq 'security-tagged findings (focus-area=security) are held locally and NEVER filed publicly' "$PROTOCOL_MD" \
+  || fail "(20a) voting-protocol.md security guard prose drifted"
+grep -Fq 'Match discrimination (false-positive guard)' "$PROTOCOL_MD" \
+  || fail "(20b) voting-protocol.md missing Match discrimination procedure"
+grep -Fq 'Security counter-invariant' "$PROTOCOL_MD" \
+  || fail "(20c) voting-protocol.md missing Security counter-invariant clause"
+LIB_MD="$REPO_ROOT/scripts/lib-vote-tally.md"
+[[ -f "$LIB_MD" ]] \
+  || fail "(20) scripts/lib-vote-tally.md missing"
+grep -Fq 'focus-area\s*=\s*security' "$LIB_MD" \
+  || fail "(20d) lib-vote-tally.md must document canonical focus-area\\s*=\\s*security token for is_security_block"
 
 echo "PASS: test-review-structure.sh — structural invariants hold (including security OOS exclusions)"
 exit 0

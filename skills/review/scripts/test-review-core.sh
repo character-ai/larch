@@ -151,6 +151,33 @@ STUB
 set -euo pipefail
 printf 'STATUS=%s\nMODE=checkpoint\n' "${TEST_CHECKPOINT_STATUS:-clean}"
 STUB
+    cat > "$TMP/check-threshold.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+# Test stub: emit the threshold result from TEST_THRESHOLD_OK (default true).
+ok="${TEST_THRESHOLD_OK:-true}"
+printf 'INTENDED_SLOTS=12\nSUCCEEDED_SLOTS=12\nFAILED_SLOTS=0\nCOUNTED_SLOTS=12\nTHRESHOLD_OK=%s\nTHRESHOLD_REASON=\n' "$ok"
+STUB
+    cat > "$TMP/dispatch-voters.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+review_tmpdir=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --review-tmpdir) review_tmpdir="$2"; shift 2 ;;
+    --voter-files) shift; while [[ $# -gt 0 && "$1" != --* ]]; do shift; done ;;
+    *) shift 2 ;;
+  esac
+done
+mkdir -p "$review_tmpdir"
+printf 'FINDING_1: YES\n' > "$review_tmpdir/claude-vote-output.txt"
+printf 'FINDING_1: YES\n' > "$review_tmpdir/codex-vote-output.txt"
+printf 'FINDING_1: YES\n' > "$review_tmpdir/cursor-vote-output.txt"
+printf 'VOTER_1_PATH=%s/claude-vote-output.txt\nVOTER_1_TOOL=claude\nVOTER_1_STATUS=launched\n' "$review_tmpdir"
+printf 'VOTER_2_PATH=%s/codex-vote-output.txt\nVOTER_2_TOOL=codex\nVOTER_2_STATUS=launched\n' "$review_tmpdir"
+printf 'VOTER_3_PATH=%s/cursor-vote-output.txt\nVOTER_3_TOOL=cursor\nVOTER_3_STATUS=launched\n' "$review_tmpdir"
+printf 'DISPATCH_OK=true\n'
+STUB
     chmod +x "$TMP"/*.sh
 }
 
@@ -165,6 +192,8 @@ run_core() {
     REVIEW_CORE_DETECT_WHOLESALE_SH="$TMP/detect.sh" \
     REVIEW_CORE_EMIT_TALLY_SH="$TMP/emit.sh" \
     REVIEW_CORE_CHECK_DIRTY_TREE_SH="$TMP/check-dirty.sh" \
+    REVIEW_CORE_CHECK_THRESHOLD_SH="$TMP/check-threshold.sh" \
+    REVIEW_CORE_DISPATCH_VOTERS_SH="$TMP/dispatch-voters.sh" \
     "$SCRIPT" "${args[@]}"
 }
 
