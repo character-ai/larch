@@ -34,6 +34,25 @@ grep -Fq 'OOS_COUNT=1' <<< "$out"
 grep -Fq 'DIRTY_DETECTED=false' <<< "$out"
 grep -Fq 'COLLECTOR_OUTPUT_FILE=' <<< "$out"
 grep -Fq '### FINDING_1:' "$TMP/findings.md"
+grep -Fq -- '- **Concern**: - Missing validation in parser.' "$TMP/findings.md"
+
+multiline="$TMP/multiline.txt"
+cat > "$multiline" <<'EOF'
+### In-Scope Findings
+1. Parser misses a guard.
+Continuation line keeps the same finding together.
+EOF
+printf '0\n' > "$multiline.done"
+printf 'STATUS=clean\n' > "$multiline.dirty-tree"
+out=$(WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.01 "$SCRIPT" --claude-output-files "$multiline" --mode description --timeout 1 --findings-file "$TMP/findings-multiline.md" --oos-file "$TMP/oos-multiline.md")
+assert_stdout_cap "$out"
+grep -Fq 'FINDINGS_COUNT=1' <<< "$out"
+grep -Fq '### FINDING_1: Parser misses a guard.' "$TMP/findings-multiline.md"
+grep -Fq -- '- **Concern**: 1. Parser misses a guard. Continuation line keeps the same finding together.' "$TMP/findings-multiline.md"
+if grep -Fq '### FINDING_2:' "$TMP/findings-multiline.md"; then
+    echo "FAIL: multiline finding was split" >&2
+    exit 1
+fi
 
 printf 'NO_ISSUES_FOUND\n' > "$TMP/no.txt"
 printf '0\n' > "$TMP/no.txt.done"

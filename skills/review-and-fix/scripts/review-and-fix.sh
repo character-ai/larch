@@ -80,6 +80,39 @@ count_findings() {
     fi
 }
 
+is_security_block() {
+    local block="$1"
+    command -v python3 >/dev/null 2>&1 || return 2
+    python3 -c 'import re, sys' >/dev/null 2>&1 || return 2
+    python3 - "$block" <<'PYEOF'
+import re, sys
+try:
+    text = open(sys.argv[1], encoding="utf-8").read()
+except OSError as exc:
+    print(f"is_security_block: {exc}", file=sys.stderr)
+    sys.exit(2)
+except Exception as exc:
+    print(f"is_security_block: {exc}", file=sys.stderr)
+    sys.exit(2)
+try:
+    text_no_fence = re.sub(r'```.*?```', '', text, flags=re.DOTALL)
+    text_no_backtick = re.sub(r'`[^`\n]*`', '', text_no_fence)
+    pattern = re.compile(r'focus-area\s*=\s*security', re.IGNORECASE)
+    sys.exit(0 if pattern.search(text_no_backtick) else 1)
+except Exception as exc:
+    print(f"is_security_block: {exc}", file=sys.stderr)
+    sys.exit(2)
+PYEOF
+}
+
+mirror_oos_markdown() {
+    local source_file="$1" mirror_file="$2"
+    cp "$source_file" "$mirror_file" || {
+        larch_err "review-and-fix.sh: failed to mirror accepted OOS markdown to $mirror_file"
+        exit 2
+    }
+}
+
 submodule_paths() {
     if [[ -f .gitmodules ]]; then
         git config -f .gitmodules --get-regexp '^[^.]+\.path$' 2>/dev/null | awk '{print $2}' || true
@@ -167,7 +200,7 @@ post_dispatch_submodule_revert() {
 
 apply_findings_with_coder() {
     local input_file="$1" round_dir="$2" result_file="$3"
-    local in_scope_count scrub_out scrub_count scrubbed_file submodules_list prompt_file prompt_body tool_file tool_log revert_count
+    local in_scope_count scrub_out scrub_count scrubbed_file scrubbed_count submodules_list prompt_file prompt_body tool_file tool_log revert_count
 
     mkdir -p "$round_dir"
     : > "$result_file"
@@ -177,6 +210,7 @@ apply_findings_with_coder() {
             printf 'CODER_TOOL=none\n'
             printf 'CODER_STATUS=skipped\n'
             printf 'CODER_LOG_FILE=\n'
+            printf 'CODER_INPUT_COUNT=0\n'
             printf 'SUBMODULE_SCRUB_COUNT=0\n'
             printf 'SUBMODULE_REVERT_COUNT=0\n'
         } > "$result_file"
@@ -188,12 +222,14 @@ apply_findings_with_coder() {
     scrub_out=$("$SCRUB_SUBMODULE_PATHS_SH" --input "$input_file" --output "$scrubbed_file" --log "$round_dir/submodule-scrub.log")
     scrub_count=$(awk -F= '$1 == "SCRUB_COUNT" { print $2; exit }' <<< "$scrub_out")
     scrub_count="${scrub_count:-0}"
+    scrubbed_count=$(count_findings "$scrubbed_file")
 
     if [[ ! -s "$scrubbed_file" ]] || ! grep -Eq '^### FINDING_[0-9]+:' "$scrubbed_file"; then
         {
             printf 'CODER_TOOL=none\n'
             printf 'CODER_STATUS=skipped\n'
             printf 'CODER_LOG_FILE=\n'
+            printf 'CODER_INPUT_COUNT=0\n'
             printf 'SUBMODULE_SCRUB_COUNT=%s\n' "$scrub_count"
             printf 'SUBMODULE_REVERT_COUNT=0\n'
         } > "$result_file"
@@ -213,6 +249,7 @@ apply_findings_with_coder() {
             printf 'CODER_TOOL=none\n'
             printf 'CODER_STATUS=failed\n'
             printf 'CODER_LOG_FILE=\n'
+            printf 'CODER_INPUT_COUNT=%s\n' "$scrubbed_count"
             printf 'SUBMODULE_SCRUB_COUNT=%s\n' "$scrub_count"
             printf 'SUBMODULE_REVERT_COUNT=0\n'
         } > "$result_file"
@@ -225,6 +262,7 @@ apply_findings_with_coder() {
             printf 'CODER_TOOL=%s\n' "$(cat "$tool_file")"
             printf 'CODER_STATUS=submodule-violation\n'
             printf 'CODER_LOG_FILE=%s\n' "$tool_log"
+            printf 'CODER_INPUT_COUNT=%s\n' "$scrubbed_count"
             printf 'SUBMODULE_SCRUB_COUNT=%s\n' "$scrub_count"
             printf 'SUBMODULE_REVERT_COUNT=%s\n' "$revert_count"
         } > "$result_file"
@@ -235,6 +273,7 @@ apply_findings_with_coder() {
         printf 'CODER_TOOL=%s\n' "$(cat "$tool_file")"
         printf 'CODER_STATUS=applied\n'
         printf 'CODER_LOG_FILE=%s\n' "$tool_log"
+        printf 'CODER_INPUT_COUNT=%s\n' "$scrubbed_count"
         printf 'SUBMODULE_SCRUB_COUNT=%s\n' "$scrub_count"
         printf 'SUBMODULE_REVERT_COUNT=0\n'
     } > "$result_file"
@@ -305,6 +344,7 @@ run_findings_mode() {
     coder_tool=$(kv_get "$coder_env" CODER_TOOL)
     coder_status=$(kv_get "$coder_env" CODER_STATUS)
     coder_log=$(kv_get "$coder_env" CODER_LOG_FILE)
+    coder_input_count=$(kv_get "$coder_env" CODER_INPUT_COUNT)
     scrub_count=$(kv_get "$coder_env" SUBMODULE_SCRUB_COUNT)
     revert_count=$(kv_get "$coder_env" SUBMODULE_REVERT_COUNT)
 
@@ -316,7 +356,7 @@ run_findings_mode() {
     esac
 
     emit_kv REVIEW_AND_FIX_STATUS "$review_status"
-    emit_kv FIX_COUNT "$(count_findings "$FINDINGS_FILE")"
+    emit_kv FIX_COUNT "${coder_input_count:-$(count_findings "$FINDINGS_FILE")}"
     emit_kv CODER_TOOL "${coder_tool:-none}"
     emit_kv CODER_STATUS "${coder_status:-unknown}"
     [[ -n "${coder_log:-}" ]] && emit_kv CODER_LOG_FILE "$coder_log"
@@ -389,7 +429,7 @@ run_implement_round() {
             '{round: $round, source: "code-review", body: $body}' >> "$oos_jsonl"
         [[ -s "$oos_markdown" ]] && printf '\n' >> "$oos_markdown"
         cat "$round_oos" >> "$oos_markdown"
-        cp "$oos_markdown" "$IMPLEMENT_TMPDIR/oos-accepted-review.md" 2>/dev/null || true
+        mirror_oos_markdown "$oos_markdown" "$IMPLEMENT_TMPDIR/oos-accepted-review.md"
     fi
 
     if [[ -f "$rejected_file" ]]; then
@@ -402,6 +442,7 @@ run_implement_round() {
     scrub_count=0
     revert_count=0
     in_scope_count=0
+    coder_input_count=0
     coder_rc=0
     if [[ "$accepted_count" -gt 0 && -s "$accepted_file" ]]; then
         in_scope_file="$round_dir/accepted-in-scope-findings.md"
@@ -417,12 +458,62 @@ run_implement_round() {
             coder_tool=$(kv_get "$coder_env" CODER_TOOL)
             coder_status=$(kv_get "$coder_env" CODER_STATUS)
             coder_log=$(kv_get "$coder_env" CODER_LOG_FILE)
+            coder_input_count=$(kv_get "$coder_env" CODER_INPUT_COUNT)
             scrub_count=$(kv_get "$coder_env" SUBMODULE_SCRUB_COUNT)
             revert_count=$(kv_get "$coder_env" SUBMODULE_REVERT_COUNT)
             coder_tool="${coder_tool:-none}"
             coder_status="${coder_status:-unknown}"
+            coder_input_count="${coder_input_count:-0}"
             scrub_count="${scrub_count:-0}"
             revert_count="${revert_count:-0}"
+        fi
+    fi
+
+    skipped_finding_count=0
+    if [[ "$coder_status" == "applied" && -n "$coder_log" && -s "$coder_log" && -s "${in_scope_file:-}" ]]; then
+        skipped_file="$round_dir/skipped-findings.md"
+        skipped_security_file="$round_dir/skipped-findings.security.md"
+        : > "$skipped_file"
+        : > "$skipped_security_file"
+        while IFS= read -r skip_id || [[ -n "$skip_id" ]]; do
+            [[ -n "$skip_id" ]] || continue
+            block_file="$round_dir/${skip_id}.skipped.md"
+            awk -v id="$skip_id" '
+              /^### FINDING_[0-9]+:/ { in_block=($0 ~ ("^### " id ":")) }
+              in_block { print }
+            ' "$in_scope_file" > "$block_file" || true
+            if [[ ! -s "$block_file" ]]; then
+                rm -f "$block_file"
+                continue
+            fi
+            if is_security_block "$block_file"; then
+                cat "$block_file" >> "$skipped_security_file"
+                printf '\n' >> "$skipped_security_file"
+            else
+                probe_rc=$?
+                if [[ "$probe_rc" -eq 1 ]]; then
+                    cat "$block_file" >> "$skipped_file"
+                    printf '\n' >> "$skipped_file"
+                else
+                    larch_err "review-and-fix.sh: security classifier failed for $skip_id"
+                    exit 2
+                fi
+            fi
+            skipped_finding_count=$((skipped_finding_count + 1))
+            rm -f "$block_file"
+        done < <(grep -E '^SKIPPED: FINDING_[0-9]+( |-|$)' "$coder_log" | grep -oE 'FINDING_[0-9]+' | sort -u 2>/dev/null || true)
+
+        if [[ -s "$skipped_file" ]]; then
+            jq -Rn --argjson round "$round_num_dec" --rawfile body "$skipped_file" \
+                '{round: $round, source: "code-review-skipped", body: $body}' >> "$oos_jsonl"
+            [[ -s "$oos_markdown" ]] && printf '\n' >> "$oos_markdown"
+            cat "$skipped_file" >> "$oos_markdown"
+            mirror_oos_markdown "$oos_markdown" "$IMPLEMENT_TMPDIR/oos-accepted-review.md"
+        fi
+        if [[ -s "$skipped_security_file" ]]; then
+            security_audit_file="$IMPLEMENT_TMPDIR/skipped-security-findings.md"
+            [[ -s "$security_audit_file" ]] && printf '\n' >> "$security_audit_file"
+            cat "$skipped_security_file" >> "$security_audit_file"
         fi
     fi
 
@@ -476,7 +567,7 @@ run_implement_round() {
     emit_kv ROUND_NUM "$round_num_dec"
     emit_kv ACCEPTED_COUNT "$accepted_count"
     emit_kv REJECTED_COUNT "$rejected_count"
-    emit_kv FIX_COUNT "$in_scope_count"
+    emit_kv FIX_COUNT "$coder_input_count"
     emit_kv APPROVED_FIXES_FILE "$accepted_file"
     emit_kv REJECTED_FINDINGS_FILE "$rejected_file"
     emit_kv REVIEW_ROUND_DIR "$round_dir"
@@ -487,6 +578,7 @@ run_implement_round() {
     [[ -n "$coder_log" ]] && emit_kv CODER_LOG_FILE "$coder_log"
     emit_kv SUBMODULE_SCRUB_COUNT "$scrub_count"
     emit_kv SUBMODULE_REVERT_COUNT "$revert_count"
+    emit_kv SKIPPED_FINDING_COUNT "${skipped_finding_count:-0}"
     exit "$exit_code"
 }
 

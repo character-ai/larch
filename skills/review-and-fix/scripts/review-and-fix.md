@@ -65,8 +65,17 @@ Additional output keys:
 - `CODER_LOG_FILE`
 - `SUBMODULE_SCRUB_COUNT`
 - `SUBMODULE_REVERT_COUNT`
+- `SKIPPED_FINDING_COUNT` — count of unique `FINDING_N` ids that the coder logged as
+  `SKIPPED:` and that still produced a non-empty extracted in-scope finding block; duplicate
+  `SKIPPED:` lines and orphan ids with no matching `### FINDING_N:` block do not increase the
+  count. Defaults to 0 when the coder did not run or reported no qualifying skips. Consumed by
+  the `/implement` Step 5 bulk-skip-ratio gate.
 
-The script writes `$IMPLEMENT_TMPDIR/review-and-fix-summary.json` atomically with `schema_version=2`, aggregate accepted/rejected counts, `rounds_completed`, latest approved-fixes path, latest round directory, accumulated OOS artifact paths, and coder/submodule status fields. Accepted OOS markdown is accumulated at `$IMPLEMENT_TMPDIR/accumulated-oos.md` and mirrored to `$IMPLEMENT_TMPDIR/oos-accepted-review.md` for existing Step 9a.1 consumers; a JSONL audit copy is appended at `$IMPLEMENT_TMPDIR/accumulated-oos.jsonl`.
+`FIX_COUNT` is the post-submodule-scrub count actually dispatched to the coder, not the
+pre-scrub accepted in-scope count. This keeps the `/implement` bulk-skip-ratio denominator
+aligned with the findings file the coder actually saw.
+
+The script writes `$IMPLEMENT_TMPDIR/review-and-fix-summary.json` atomically with `schema_version=2`, aggregate accepted/rejected counts, `rounds_completed`, latest approved-fixes path, latest round directory, accumulated OOS artifact paths, and coder/submodule status fields. Accepted OOS markdown is accumulated at `$IMPLEMENT_TMPDIR/accumulated-oos.md` and mirrored to `$IMPLEMENT_TMPDIR/oos-accepted-review.md` for existing Step 9a.1 consumers; a JSONL audit copy is appended at `$IMPLEMENT_TMPDIR/accumulated-oos.jsonl`. That mirror copy is load-bearing: if the copy fails, the round fails instead of silently leaving the legacy mirror stale.
 
 Submodule guard layers:
 

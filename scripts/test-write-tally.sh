@@ -84,6 +84,80 @@ code_json="$log_root/implement/run-code/code-review-tally.json"
 assert_json_field "$code_json" '.batch' "code-review-tally" "code batch slug"
 assert_json_field "$code_json" '.mode' "simple" "code mode"
 
+echo "=== code-review heading allowlist ==="
+code_body_valid="$TMP/code-body-valid.md"
+cat > "$code_body_valid" <<'EOF'
+Round summary.
+
+#2211 should stay plain text.
+#!/usr/bin/env bash
+
+## Rejected Code Review Findings
+
+### [rejected] FINDING_1
+### FINDING_1: Rejected finding title
+
+### [Code Review] Reviewer
+Detail paragraph.
+
+## Voting Tally
+
+# Code Review Voting Tally
+
+## Per-finding vote breakdown
+
+```sh
+# shell comment inside fence
+```
+
+## Reviewer Competition Scoreboard
+EOF
+log_root="$TMP/logs-code-headings-valid"
+out="$("$WRITE_TALLY" --log-root "$log_root" --skill implement --run-id run-code-headings-valid \
+    --phase code-review --mode simple --body-file "$code_body_valid")"
+assert_contains "$out" "LOG_WRITTEN=true" "code-review valid headings accepted"
+
+echo "=== code-review heading rejection ==="
+code_body_invalid="$TMP/code-body-invalid.md"
+cat > "$code_body_invalid" <<'EOF'
+## Voting Tally
+## Foo
+EOF
+set +e
+invalid_heading_out="$("$WRITE_TALLY" --log-root "$TMP/logs-code-headings-invalid" --skill implement --run-id run-code-headings-invalid \
+    --phase code-review --mode simple --body-file "$code_body_invalid" 2>"$TMP/code-headings-invalid.err")"
+invalid_heading_rc=$?
+set -e
+if [ "$invalid_heading_rc" -eq 2 ]; then pass "code-review invalid heading exits 2"; else fail "code-review invalid heading exit $invalid_heading_rc"; fi
+assert_contains "$(cat "$TMP/code-headings-invalid.err")" "unrecognized section header in code-review body: ## Foo" "code-review invalid heading diagnostic"
+if [ -z "$invalid_heading_out" ]; then
+    pass "code-review invalid heading stdout empty"
+else
+    fail "code-review invalid heading stdout not empty: $invalid_heading_out"
+fi
+
+echo "=== code-review python3 preflight ==="
+no_python_path="$TMP/no-python-bin"
+mkdir -p "$no_python_path"
+ln -s /usr/bin/dirname "$no_python_path/dirname"
+cat > "$no_python_path/python3" <<'EOF'
+#!/usr/bin/env bash
+exit 127
+EOF
+chmod +x "$no_python_path/python3"
+set +e
+no_python_out="$(PATH="$no_python_path" /bin/bash "$WRITE_TALLY" --log-root "$TMP/logs-code-no-python" --skill implement --run-id run-code-no-python \
+    --phase code-review --mode simple --body-file "$code_body_valid" 2>"$TMP/code-no-python.err")"
+no_python_rc=$?
+set -e
+if [ "$no_python_rc" -eq 2 ]; then pass "code-review missing python exits 2"; else fail "code-review missing python exit $no_python_rc"; fi
+assert_contains "$(cat "$TMP/code-no-python.err")" "python3 is required for --phase code-review header validation" "code-review missing python diagnostic"
+if [ -z "$no_python_out" ]; then
+    pass "code-review missing python stdout empty"
+else
+    fail "code-review missing python stdout not empty: $no_python_out"
+fi
+
 echo "=== defaults ==="
 log_root="$TMP/logs-defaults"
 "$WRITE_TALLY" --log-root "$log_root" --skill implement --run-id run-defaults \

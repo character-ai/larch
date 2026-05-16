@@ -35,6 +35,55 @@ fail() {
     exit 2
 }
 
+validate_code_review_headers() {
+    local body_file="$1"
+    command -v python3 >/dev/null 2>&1 || return 5
+    python3 -c 'import re, sys' >/dev/null 2>&1 || return 5
+    python3 - "$body_file" <<'PYEOF'
+import sys
+import re
+
+allowed = {
+    "# Rejected Findings",
+    "## Accepted Findings",
+    "## Rejected Code Review Findings",
+    "## Voting Tally",
+    "# Code Review Voting Tally",
+    "## Per-finding vote breakdown",
+    "## Reviewer Competition Scoreboard",
+}
+
+in_fence = False
+try:
+    with open(sys.argv[1], encoding="utf-8") as fh:
+        for raw_line in fh:
+            line = raw_line.rstrip("\n")
+            stripped = line.strip()
+            if stripped.startswith("```"):
+                in_fence = not in_fence
+                continue
+            if in_fence:
+                continue
+            if re.match(r"^# Review Round [0-9]+$", line):
+                continue
+            if line.startswith("### [Code Review] "):
+                continue
+            if re.match(r"^### \[(rejected|neutral|exonerated)\] FINDING_[0-9]+$", line):
+                continue
+            if re.match(r"^### FINDING_[0-9]+: ", line):
+                continue
+            if re.match(r"^#{1,6}\s", line) and line in allowed:
+                continue
+            if re.match(r"^#{1,6}\s", line):
+                print(line)
+                sys.exit(4)
+except Exception as exc:
+    print(str(exc), file=sys.stderr)
+    sys.exit(3)
+sys.exit(0)
+PYEOF
+}
+
 require_value() {
     local flag="$1"
     local value="${2-}"
@@ -91,6 +140,20 @@ require_non_negative_integer "--rejected" "$REJECTED"
 [ -x "$LARCH_LOG" ] || fail "larch-log.sh not executable: $LARCH_LOG"
 [ -f "$BODY_FILE" ] || fail "body file not found: $BODY_FILE"
 [ ! -L "$BODY_FILE" ] || fail "body file must not be a symlink: $BODY_FILE"
+
+if [ "$PHASE" = "code-review" ]; then
+    set +e
+    validation_out="$(validate_code_review_headers "$BODY_FILE" 2>&1)"
+    validation_rc=$?
+    set -e
+    case "$validation_rc" in
+        0) ;;
+        3) fail "code-review body header validation failed: ${validation_out:-python3 validation error}" ;;
+        4) fail "unrecognized section header in code-review body: $validation_out" ;;
+        5) fail "python3 is required for --phase code-review header validation" ;;
+        *) fail "code-review body header validation failed" ;;
+    esac
+fi
 
 RECORD_FILE="$(mktemp "${TMPDIR:-/tmp}/write-tally-record.XXXXXX")" || fail "cannot create tally temp file"
 trap 'rm -f "${RECORD_FILE:-}"' EXIT
