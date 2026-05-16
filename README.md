@@ -79,7 +79,9 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#implement"><code>/implement</code></a></td>
+      <td><code>[--quick] [--auto] [--forked] [--design-only] [--no-issues] [--inline] [--merge | --draft] [--no-admin-fallback] [--coder=claude|codex|cursor] [--session-env &lt;path&gt;] [--issue &lt;N&gt;] &lt;feature description&gt;</code></td>
     </tr>
+    <tr><td colspan="2">End-to-end implementation workflow. In <code>--quick</code> (and SIMPLE auto-switch) paths, Step 5 runs <code>review-and-fix.sh</code> with <code>--panel simple</code>: up to <strong>5 rounds</strong>, <strong>no voting panel</strong>, and the <strong>simple review panel</strong> (6 Cursor specialists including <strong>Cursor edge-cases</strong> plus one <strong>Codex generalist</strong>). Use <code>--design-only</code> to publish design artifacts and stop before implementation.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#issue"><code>/issue</code></a></td>

@@ -99,6 +99,8 @@ Under `/implement`, committed `larch-logs/implement/<RUN_ID>/` files are the dur
 
 **Claude fallback for externals**: In `/design`, each Cursor archetype slot falls back to Codex (same archetype), then Claude; each Codex archetype slot falls back to Cursor (same archetype), then Claude, so the reviewer panel shape remains intact. In `/research`, when Cursor or Codex is unavailable, a Claude Code Reviewer subagent replaces the slot so the [validation panel shape](topology.md#research.validation_panel) remains intact. In `/review`, the fallback behavior is: Cursor down → skip all 6 Cursor specialist slots; Codex down → skip all 6 Codex specialist slots; both down → no reviewer slots launched (voting skipped per threshold rules).
 
+**Note A — `/implement` Step 5 quick mode (public mirror)**: when `/implement` runs with `quick_mode=true` (`--quick` or SIMPLE auto-switch), Step 5 delegates to `review-and-fix.sh --panel simple`: up to **5 rounds**, **no voting panel**, and the **simple review panel** (6 Cursor specialists including **Cursor edge-cases** plus one **Codex generalist**). Full voting-panel collapse thresholds for other skills remain authoritative in `skills/shared/voting-protocol.md`.
+
 ## Migration from legacy agent slugs
 
 The previous two archetypes `general-reviewer` and `deep-analysis-reviewer` have been replaced by the single unified `code-reviewer`. Consumers that invoked those older agent slugs directly (via `--agents` or subagent_type references in downstream docs/scripts) must switch to `larch:code-reviewer`.

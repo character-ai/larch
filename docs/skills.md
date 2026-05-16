@@ -88,7 +88,11 @@ Process one approved GitHub issue per invocation, classifying intent and delegat
 
 ## `/implement`
 
+**Arguments**: `[--quick] [--auto] [--forked] [--design-only] [--no-issues] [--inline] [--merge | --draft] [--no-admin-fallback] [--coder=claude|codex|cursor] [--session-env <path>] [--issue <N>] <feature description>`
+
 **Source**: [`skills/implement/SKILL.md`](../skills/implement/SKILL.md) · [Diagram](../skills/implement/diagram.svg)
+
+Full implementation workflow spanning design through PR merge. In `--quick` (and SIMPLE auto-switch) paths, Step 5 runs `review-and-fix.sh --panel simple`: up to **5 rounds**, **no voting panel**, and the **simple review panel** (6 Cursor specialists including **Cursor edge-cases** plus one **Codex generalist**). The `--design-only` flag publishes design artifacts then exits without implementation (mutually exclusive with `--quick`).
 
 ## `/issue`
 
