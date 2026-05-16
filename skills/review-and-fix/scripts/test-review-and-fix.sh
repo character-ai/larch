@@ -116,9 +116,6 @@ EOF_OOS
 EOF_FINDING
     printf 'REVIEW_CORE_STATUS=fix-required\nROUND_NUM=%s\nACCEPTED_COUNT=1\nREJECTED_COUNT=0\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nPANEL_MODE=normal\nPANEL_SHAPE=simple\n' "$round" "$out" "$out"
     ;;
-  wholesale-rejected)
-    printf 'REVIEW_CORE_STATUS=wholesale-rejected\nROUND_NUM=%s\nACCEPTED_COUNT=0\nREJECTED_COUNT=1\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nPANEL_MODE=normal\nPANEL_SHAPE=hard\n' "$round" "$out" "$out"
-    ;;
   *)
     printf 'REVIEW_CORE_STATUS=zero-findings\nROUND_NUM=%s\nACCEPTED_COUNT=0\nREJECTED_COUNT=0\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nPANEL_MODE=normal\nPANEL_SHAPE=simple\n' "$round" "$out" "$out"
     ;;
@@ -328,19 +325,6 @@ set -e
 grep -Fq 'REVIEW_AND_FIX_STATUS=complete' <<< "$out" || fail "zero status"
 jq -e '.schema_version == 2 and .status == "complete" and .coder_status == "skipped"' "$implement_tmp/review-and-fix-summary.json" >/dev/null \
     || fail "zero summary"
-
-work_wholesale="$TMP/wholesale"
-make_work_repo "$work_wholesale"
-implement_tmp="$work_wholesale/implement"
-mkdir -p "$implement_tmp"
-printf 'CODEX_HEALTHY=true\nCURSOR_HEALTHY=true\n' > "$implement_tmp/session-env.sh"
-set +e
-out=$(TEST_CORE_STATUS=wholesale-rejected run_review_and_fix "$work_wholesale" \
-    --implement-tmpdir "$implement_tmp" --mode diff --panel hard --round-num 1 --session-env-path "$implement_tmp/session-env.sh")
-rc=$?
-set -e
-[[ "$rc" -eq 2 ]] || { echo "$out" >&2; fail "wholesale expected exit 2 got $rc"; }
-grep -Fq 'REVIEW_AND_FIX_STATUS=wholesale-rejected' <<< "$out" || fail "wholesale status"
 
 work_skipped="$TMP/skipped-routing"
 make_work_repo "$work_skipped"

@@ -67,13 +67,12 @@ review_scripts=(
   dispatch-panel
   collect-findings
   tally-code-votes
-  detect-wholesale-rejection
   emit-tally
   log-phase
   check-reviewer-failure-threshold
 )
-[[ "${#review_scripts[@]}" -eq 9 ]] \
-  || fail "(1) internal harness error: expected review script list must contain 9 entries"
+[[ "${#review_scripts[@]}" -eq 8 ]] \
+  || fail "(1) internal harness error: expected review script list must contain 8 entries"
 for script in "${review_scripts[@]}"; do
   [[ -f "$REVIEW_SCRIPTS_DIR/${script}.sh" ]] \
     || fail "(1) missing review script: skills/review/scripts/${script}.sh"

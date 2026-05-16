@@ -1,0 +1,122 @@
+{
+  "vendors": [
+    "claude",
+    "codex",
+    "cursor"
+  ],
+  "claude": {
+    "per_step": [
+      {
+        "step": "Step 0 — preflight",
+        "totals": {
+          "input": 2,
+          "cache_read": 248046,
+          "cache_create": 1852,
+          "output": 246,
+          "total": 250146
+        },
+        "skills": [
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 2,
+              "cache_read": 248046,
+              "cache_create": 1852,
+              "output": 246,
+              "total": 250146
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 0.5 — tracking issue",
+        "totals": {
+          "input": 177,
+          "cache_read": 13322494,
+          "cache_create": 880397,
+          "output": 68284,
+          "total": 14271352
+        },
+        "skills": [
+          {
+            "skill": "inferred:Step 0.5 — tracking issue",
+            "totals": {
+              "input": 84,
+              "cache_read": 5259652,
+              "cache_create": 659572,
+              "output": 29603,
+              "total": 5948911
+            }
+          },
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 93,
+              "cache_read": 8062842,
+              "cache_create": 220825,
+              "output": 38681,
+              "total": 8322441
+            }
+          }
+        ]
+      }
+    ],
+    "totals": {
+      "input": 179,
+      "cache_read": 13570540,
+      "cache_create": 882249,
+      "output": 68530,
+      "total": 14521498
+    }
+  },
+  "codex": {
+    "per_step": [
+      {
+        "step": "Step 0 — preflight",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 0.5 — tracking issue",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 692157
+        }
+      }
+    ],
+    "totals": {
+      "input": 0,
+      "output": 0,
+      "total": 692157
+    }
+  },
+  "cursor": {
+    "per_step": [
+      {
+        "step": "Step 0 — preflight",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 0.5 — tracking issue",
+        "totals": {
+          "input": 1270972,
+          "output": 134518,
+          "total": 14214465
+        }
+      }
+    ],
+    "totals": {
+      "input": 1270972,
+      "output": 134518,
+      "total": 14214465
+    }
+  }
+}

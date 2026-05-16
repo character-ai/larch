@@ -558,7 +558,7 @@ run_implement_round() {
     status="complete"
     exit_code=0
     case "$core_status" in
-        wholesale-rejected|panel-failed)
+        panel-failed)
             status="$core_status"
             exit_code=2
             ;;

@@ -23,7 +23,7 @@ The script emits only `KEY=value` records on the lib-quiet FD3 contract stream. 
 
 Emitted keys:
 
-- `REVIEW_CORE_STATUS=ok|fix-required|zero-findings|cap-reached|wholesale-rejected`
+- `REVIEW_CORE_STATUS=ok|fix-required|zero-findings|cap-reached|panel-failed`
 - `ROUND_NUM`
 - `ACCEPTED_COUNT`
 - `REJECTED_COUNT`
@@ -34,11 +34,13 @@ Emitted keys:
 - `PANEL_SHAPE=simple|hard`
 - `VOTING_SKIPPED_WARNING=<text>` — emitted only when `voter_count < 2`; callers should parse and display it as a user-visible warning
 
+Diff-mode convergence note: `REVIEW_CORE_STATUS=ok` is also the expected outcome when voting leaves `ACCEPTED_COUNT=0` and one or more findings were rejected. Callers that need to distinguish "nothing left to fix after voting" from a benign no-follow-up outcome should monitor `ACCEPTED_COUNT` together with `REJECTED_COUNT`, not the status string alone.
+
 Round stages:
 
 1. Gather context with `gather-context.sh --mode <mode> --output-dir "$REVIEW_TMPDIR"`.
 2. Dispatch the reviewer panel with `dispatch-panel.sh --mode "$MODE" --review-tmpdir "$REVIEW_TMPDIR" --panel "$PANEL"`.
-3. Collect findings, run dirty-tree recovery, tally votes (forwarding `VOTING_SKIPPED_WARNING` from the tally output when voter count is insufficient), detect wholesale rejection, and emit tally artifacts.
+3. Collect findings, run dirty-tree recovery, tally votes (forwarding `VOTING_SKIPPED_WARNING` from the tally output when voter count is insufficient), and emit tally artifacts.
 4. Copy parent tmpdir artifacts when `SESSION_ENV_PATH` is set.
 
 Artifact paths under `$REVIEW_TMPDIR`:

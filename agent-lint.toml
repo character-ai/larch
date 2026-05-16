@@ -319,8 +319,8 @@ suppress = [
 # Makefile-only pattern as the other harnesses above.
 #
 # scripts/test-implement-step2-routing.sh is the structural regression harness
-# for /implement Step 2 omitted-coder routing, /design diff-lines export, and
-# /review wholesale-rejection protocol. Referenced only from Makefile
+# for /implement Step 2 omitted-coder routing and /design diff-lines export.
+# Referenced only from Makefile
 # (test-implement-step2-routing target) and
 # scripts/test-implement-step2-routing.md (sibling contract); matches the
 # Makefile-only pattern as the other test-* harnesses above.

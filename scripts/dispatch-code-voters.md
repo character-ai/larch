@@ -63,7 +63,7 @@ External agents (Codex, Cursor) emit `<output>.done` sentinels naturally; the Cl
 
 ## Callers
 
-- `skills/review/scripts/review-core.sh` — invoked after `collect-findings.sh` and `detect-wholesale-rejection.sh`. The output files become `--voter-files` arguments to `tally-code-votes.sh`.
+- `skills/review/scripts/review-core.sh` — invoked after `collect-findings.sh`. The output files become `--voter-files` arguments to `tally-code-votes.sh`.
 
 ## Harness
 

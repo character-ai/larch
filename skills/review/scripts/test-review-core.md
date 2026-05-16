@@ -5,7 +5,7 @@ Regression harness skeleton for `skills/review/scripts/review-core.sh`.
 The harness stubs the one-round helper scripts through `REVIEW_CORE_*_SH` environment-variable seams, so it does not launch real reviewers. It covers:
 
 - zero-findings exit
-- wholesale-rejection exit
+- all-findings-rejected convergence exit
 - diff-mode `fix-required` signal
 - both-down `PANEL_MODE` preservation
 - description mode producing `ok` rather than a fix loop

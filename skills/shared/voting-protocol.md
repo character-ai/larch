@@ -6,10 +6,6 @@ Shared voting protocol for adjudicating review findings. Used by `/design` (plan
 
 After reviewers submit findings and findings are deduplicated, a voting panel votes YES/NO/EXONERATE on each finding. Both `/design` (plan review) and `/review` (code review) use a 3-voter panel (Claude + Codex + Cursor) unconditionally; findings with 2+ YES votes are accepted. When an external voter is unhealthy, a Claude voter is launched in its place so the panel always has 3 voters. `/review` voter dispatch is owned by `${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-code-voters.sh`; vote tally is owned by `${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/tally-code-votes.sh`. Original reviewers earn competition points based on how their findings perform in voting. EXONERATE is a third option meaning "legitimate concern, but not worth implementing in this PR" — it spares the proposing reviewer from losing a point on in-scope findings. (OOS observations use asymmetric reward-only scoring — see [OOS Scoring](#oos-scoring) below — so OOS rejection carries no penalty regardless.)
 
-## Wholesale Rejection Flag
-
-`/review` diff mode also computes `WHOLESALE_REJECTED=true|false` for each round after specialist outputs are collected and before accepted fixes are applied. Set `WHOLESALE_REJECTED=true` when any specialist reviewer returns a `WRONG_DIRECTION` tag, or when at least 50% of specialist reviewers that produced substantive output return `BLOCKING` in the same round. This is a direction-of-work signal, not an ordinary finding vote.
-
 ## Ballot Format
 
 Before sending to voters, assign each deduplicated finding a stable sequential ID. The ballot file uses `### FINDING_N:` markdown heading blocks — one block per finding. For `/design` plan review, `tally-plan-review.sh` also splits `### OOS_N:` blocks; for `/review` code review, `ballot-parse.sh` exports per-finding fields from `### FINDING_N:` blocks only:
