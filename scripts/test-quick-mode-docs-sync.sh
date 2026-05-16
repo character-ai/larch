@@ -21,7 +21,7 @@
 #   1. POSITIVE ANCHORS (required markers) — each target file MUST contain
 #      all of the following strings:
 #        - "3 rounds"                    (case-sensitive, grep -F)
-#        - "no voting panel"             (case-INSENSITIVE, grep -iF)
+#        - "3-judge panel votes every round" (case-INSENSITIVE, grep -iF)
 #        - "simple review panel"         (case-INSENSITIVE, grep -iF)
 #        - "Cursor edge-cases"           (case-sensitive, grep -F)
 #        - "Codex structure"             (case-sensitive, grep -F)
@@ -85,7 +85,7 @@ REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # To add a marker, append a new entry — `check_file` iterates this array.
 readonly POS_MARKERS=(
   "5 rounds|sensitive"
-  "no voting panel|insensitive"
+  "3-judge panel votes every round|insensitive"
   "simple review panel|insensitive"
   "Cursor edge-cases|sensitive"
   "Codex generalist|sensitive"
@@ -288,7 +288,7 @@ run_self_test() {
   cat > "$good" <<'EOF'
 This is a fixture describing quick-mode behavior.
 The review loop runs up to 5 rounds.
-The loop has no voting panel — main agent accepts or rejects each finding.
+The loop runs the 3-judge panel votes every round (Claude opus + Codex + Cursor).
 It uses the simple review panel: 6 Cursor specialists (including Cursor edge-cases) plus Codex generalist.
 EOF
 
@@ -301,7 +301,7 @@ EOF
   cat > "$bad" <<'EOF'
 Stale-phrase fixture: contains every positive marker so only the stale phrase can drive failure.
 The review loop runs up to 5 rounds.
-The loop has no voting panel — main agent accepts or rejects each finding.
+The loop runs the 3-judge panel votes every round (Claude opus + Codex + Cursor).
 It uses the simple review panel: 6 Cursor specialists (including Cursor edge-cases) plus Codex generalist.
 Stale phrase intentionally embedded: simplified code review (1 Claude Code Reviewer subagent, 1 round).
 EOF
