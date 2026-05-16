@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Export IMPLEMENT_TMPDIR before Step 18 transcript capture so post-merge sentinel checks see the run tmpdir.
 - Add default-branch/main commit refusal to larch-log commit and a traceable suppressed-default-branch transcript status.
 - Extend larch-log and transcript capture harnesses plus sibling docs for the new guards.
+- Add a dependency-free runtime cache-key audit script for implement session transcripts.
+- Document the analyzer contract and stable-prefix classification rules in a sibling script doc.
+- Wire make audit-cache-keys-runtime RUNS=N and verify it over 10 recent implement runs with zero cache-invalidating findings.
 
 ## [27.6.28] - 2026-05-15
 
