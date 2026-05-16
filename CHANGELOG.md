@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [29.1.1] - 2026-05-16
+
+### Changed
+
+- Replace review-and-fix call-fixer enumeration with Codex, Cursor, and Claude-subagent coder dispatch plus schema version 2 summary fields.
+- Add scrub-submodule-paths.sh and post-dispatch submodule revert handling to enforce the triple-layer submodule guard.
+- Delete call-fixer artifacts and update review, implement, security, docs, Makefile, and harness contracts for the new review-fix flow.
+
 ## [29.0.4] - 2026-05-15
 
 ### Changed

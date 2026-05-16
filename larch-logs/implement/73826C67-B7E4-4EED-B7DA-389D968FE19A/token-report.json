@@ -239,21 +239,32 @@
       {
         "step": "Step 8 — version bump",
         "totals": {
-          "input": 0,
-          "cache_read": 0,
-          "cache_create": 0,
-          "output": 0,
-          "total": 0
+          "input": 4,
+          "cache_read": 1314914,
+          "cache_create": 7967,
+          "output": 4294,
+          "total": 1327179
         },
-        "skills": []
+        "skills": [
+          {
+            "skill": "inferred:Step 8 — version bump",
+            "totals": {
+              "input": 4,
+              "cache_read": 1314914,
+              "cache_create": 7967,
+              "output": 4294,
+              "total": 1327179
+            }
+          }
+        ]
       }
     ],
     "totals": {
-      "input": 134,
-      "cache_read": 28044841,
-      "cache_create": 2064595,
-      "output": 152462,
-      "total": 30262032
+      "input": 138,
+      "cache_read": 29359755,
+      "cache_create": 2072562,
+      "output": 156756,
+      "total": 31589211
     }
   },
   "codex": {
