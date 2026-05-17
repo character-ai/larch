@@ -27,9 +27,9 @@ audit-cache-keys-runtime:
 # (dominant wall-clock harness) and its budget tests.
 test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 test-harnesses-6 test-harnesses-7 test-harnesses-8 test-harnesses-9 test-harnesses-10
 
-test-harnesses-1: test-oos-file-conflict-deps test-preflight-args test-ci-wait-exit-trap test-parse-prose-blockers test-step2-dispatch test-design-manifest test-design-driver test-classify-issue test-emit-plan test-tally-plan-review test-finalize-plan test-write-run-params test-plan-review-prompt test-render-umbrella-body test-render-lane-status test-design-structure test-run-external-agent-args test-post-scaffold-hints test-implement-anti-polling-rule test-implement-anti-halt test-generate-topology-docs test-anti-improvised-wakeup test-session-env-roundtrip
+test-harnesses-1: test-oos-file-conflict-deps test-preflight-args test-ci-wait-exit-trap test-parse-prose-blockers test-step2-dispatch test-design-manifest test-design-driver test-classify-issue test-emit-plan test-tally-plan-review test-finalize-plan test-write-run-params test-plan-review-prompt test-render-umbrella-body test-render-lane-status test-design-structure test-run-external-agent-args test-post-scaffold-hints test-implement-anti-polling-rule test-implement-anti-halt test-generate-topology-docs test-anti-improvised-wakeup test-session-env-roundtrip test-review-and-fix
 
-test-harnesses-2: test-check-reviewers test-oos-issue-cap test-finalize-umbrella test-block-submodule test-collect-agent-retry test-agent-model-args test-effort-prose test-lib-cursor-auth test-lib-quiet test-list-issues test-run-research-planner test-false-positive-keywords test-quick-mode-docs-sync test-external-tool-registry test-research-banner test-anti-halt test-intra-batch-deps test-apply-bump test-timing-ledger
+test-harnesses-2: test-check-reviewers test-oos-issue-cap test-finalize-umbrella test-block-submodule test-collect-agent-retry test-agent-model-args test-effort-prose test-lib-cursor-auth test-lib-quiet test-list-issues test-run-research-planner test-false-positive-keywords test-quick-mode-docs-sync test-external-tool-registry test-research-banner test-anti-halt test-intra-batch-deps test-apply-bump test-timing-ledger test-dispatch-panel
 
 test-harnesses-3: test-implement-finalize test-flush-execution-issues test-restore-finalize-state test-drop-bump-commit test-sessionstart test-check-clean-tree test-check-review-changes test-check-mid-run-dirty-tree test-check-phantom-dirty test-add-blocked-by test-codex-implementer test-umbrella-render-batch-input test-validate-pieces-json test-deny-edit-write test-umbrella-emit-output-contract test-render-skill test-show-skill test-audit-edit-write test-parse-args test-fix-issue-step-order test-body-file-title test-round-trip-detect test-compose-review-findings
 
@@ -40,15 +40,15 @@ test-harnesses-6: test-umbrella-handler test-run-checks test-relevant-checks-byt
 
 test-harnesses-7: test-session-entry-gate test-research-structure test-research-angle-prompts test-alias-structure test-umbrella-blocked-by-issue test-cleanup-tmpdir test-session-setup-presence-defaults test-session-setup-repo-fallback test-redact-tmpdir-paths test-keepalive-sentinel test-cache-root-validation test-cache-key-discipline test-cache-key-runtime-audit test-finalize-sanity-check test-github-remote-repo test-implement-fork-env test-get-issue-context test-create-pr test-resolve-repo test-gh-pr-body-update test-set-up-forked-open-source-repo test-pipe-sigpipe-safety
 
-test-harnesses-8: test-launch-claude-subprocess test-launch-claude-review test-dispatch-with-waterfall test-gather-context test-review-core test-dispatch-panel test-dispatch-plan-voters test-dispatch-code-voters test-collect-findings test-tally-code-votes test-check-reviewer-failure-threshold test-lib-vote-tally test-emit-tally test-log-phase test-review-and-fix test-scrub-submodule-paths test-ballot-parse test-tally-vote test-scoreboard test-oos-serialize test-ci-rerun-failed test-ci-status test-ci-wait test-ship-pr test-refresh-run-logs test-launch-cursor-ci test-launch-codex-ci
+test-harnesses-8: test-launch-claude-subprocess test-launch-claude-review test-dispatch-with-waterfall test-gather-context test-review-core test-dispatch-plan-voters test-dispatch-code-voters test-collect-findings test-tally-code-votes test-check-reviewer-failure-threshold test-lib-vote-tally test-emit-tally test-log-phase test-scrub-submodule-paths test-ballot-parse test-tally-vote test-scoreboard test-oos-serialize test-ci-rerun-failed test-ci-status test-ci-wait test-refresh-run-logs test-launch-cursor-ci test-launch-codex-ci
 
 # Shard-9 isolates test-launch-review (~66s dominant) for CI parallelism efficiency.
 test-harnesses-9: test-launch-review
 
 # Shard-10 leads with the partition-invariant guard so partition bugs surface.
-# test-validate-citations is the dominant wall-clock harness; isolated here with its
-# real-time budget-exhaustion tests.
-test-harnesses-10: test-harness-shards-coverage test-validate-citations test-validate-citations-budget
+# test-validate-citations (with its real-time budget tests) and test-ship-pr
+# are isolated here to keep other shards balanced.
+test-harnesses-10: test-harness-shards-coverage test-validate-citations test-validate-citations-budget test-ship-pr
 
 test-pipe-sigpipe-safety:
 	bash scripts/test-pipe-sigpipe-safety.sh
