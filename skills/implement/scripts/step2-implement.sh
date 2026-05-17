@@ -199,6 +199,7 @@ if [[ "$CODER" == "cursor" && "$CURSOR_PRESENT_ARG" != "true" ]]; then
     exit 0
 fi
 
+"$PLUGIN_ROOT/scripts/token-ledger.sh" mark "Step 2 — implementation" || true
 "$PLUGIN_ROOT/scripts/timing-ledger.sh" mark "Step 2 — implementation" || true
 
 REQUIRES_HEAD_UNCHANGED=false

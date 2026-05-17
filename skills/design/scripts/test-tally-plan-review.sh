@@ -218,6 +218,20 @@ EOF
 "$SUBJECT" --ballot-file "$BALLOT" --voter-files "$V7" "$V7" --design-tmpdir "$DESIGN3" --session-env-path "$SESSION_ENV" >/dev/null
 [[ -f "$PARENT/oos-accepted-design.md" ]] || fail "nested run did not write oos-accepted-design.md to parent tmpdir"
 
+# SESSION_ENV_PATH HARD handoff: write plan-review-tally to parent /implement run logs.
+IMPLEMENT_PARENT="$TMPROOT/implement-parent"
+mkdir -p "$IMPLEMENT_PARENT"
+printf 'plan-review-run\n' > "$IMPLEMENT_PARENT/session-id"
+SESSION_ENV_TALLY="$TMPROOT/design-session-env.sh"
+printf 'PREV_IMPLEMENT_TMPDIR=%s\n' "$IMPLEMENT_PARENT" > "$SESSION_ENV_TALLY"
+DESIGN_TALLY="$TMPROOT/design-tally"
+mkdir -p "$DESIGN_TALLY"
+"$SUBJECT" --ballot-file "$BALLOT" --voter-files "$V1" "$V2" "$V3" --design-tmpdir "$DESIGN_TALLY" --session-env-path "$SESSION_ENV_TALLY" >/dev/null
+TALLY_BATCH="$IMPLEMENT_PARENT/larch-logs/implement/plan-review-run/plan-review-tally.json"
+[[ -f "$TALLY_BATCH" ]] || fail "nested HARD run did not write plan-review-tally batch"
+jq -e '.batch == "plan-review-tally" and .mode == "hard" and .rounds == 1 and .accepted_count == 1 and .rejected_count == 1 and (.body | contains("## Rejected Plan Review Findings"))' \
+    "$TALLY_BATCH" >/dev/null || fail "plan-review-tally batch content/counts wrong"
+
 if "$SUBJECT" --ballot-file "$BALLOT" --voter-files "$TMPROOT/missing.txt" --design-tmpdir "$TMPROOT/nope" >/tmp/larch-tally-plan-review-fail.out 2>&1; then
     fail "missing voter file accepted"
 fi
