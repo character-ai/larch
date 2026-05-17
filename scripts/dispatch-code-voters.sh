@@ -88,7 +88,7 @@ manifest="$REVIEW_TMPDIR/code-voter-slots.ndjson"
     printf '{"slot":"voter-3","tool":"cursor","output":"%s","prompt_file":"%s"}\n' "$VOTER_3_BASE" "$cursor_prompt"
 } > "$manifest"
 
-waterfall_output=$("$SCRIPT_DIR/dispatch-with-waterfall.sh" \
+waterfall_output=$("$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh" \
     --slots-file "$manifest" \
     --codex-present "$CODEX_AVAILABLE" \
     --cursor-present "$CURSOR_AVAILABLE" \
@@ -110,8 +110,10 @@ while IFS= read -r line || [[ -n "$line" ]]; do
     esac
 done <<< "$waterfall_output"
 
+# shellcheck disable=SC2086
 set -- $all_outputs
 outputs_arr=("$@")
+# shellcheck disable=SC2086
 set -- $all_tools
 tools_arr=("$@")
 

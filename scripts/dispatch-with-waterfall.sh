@@ -192,7 +192,9 @@ collect_phase() {
             [[ "$key" == "REVIEWER_FILE" ]] && rf="$value"
         done <<< "$block"
         if [[ "$status" == "OK" || "$status" == "cap_hit" ]]; then
+            # shellcheck disable=SC2004
             final_outputs[$idx]="${rf:-$output}"
+            # shellcheck disable=SC2004
             final_tools[$idx]="$tool"
         else
             failed+=("$idx")
@@ -248,6 +250,7 @@ for idx in "${phase3_queue[@]+"${phase3_queue[@]}"}"; do
     fallback_count=$((fallback_count + 1))
     launch_slot "$idx" phase3 claude "$out"
 done
+phase3_failed=()
 collect_phase phase3_failed
 
 if [[ -n "$FALLBACK_COUNTER_FILE" ]]; then
@@ -261,7 +264,9 @@ fi
 
 dispatch_ok=true
 for idx in "${phase3_failed[@]+"${phase3_failed[@]}"}"; do
+    # shellcheck disable=SC2004
     final_outputs[$idx]="$(output_for_phase "${slot_outputs[$idx]}" phase3)"
+    # shellcheck disable=SC2004
     final_tools[$idx]="claude"
     dispatch_ok=false
 done

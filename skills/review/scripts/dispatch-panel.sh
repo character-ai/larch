@@ -23,7 +23,6 @@ PLAN_FILE=""
 FEATURE_FILE=""
 DESCRIPTION_TEXT=""
 TIMING_TASK_PREFIX="review"
-LAUNCH_REVIEW="$PLUGIN_ROOT/scripts/launch-review.sh"
 DISPATCH_WATERFALL="$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh"
 SESSION_ENV_PATH="${SESSION_ENV_PATH:-}"
 PANEL="hard"
@@ -43,7 +42,7 @@ while [[ $# -gt 0 ]]; do
         --description-text) DESCRIPTION_TEXT="${2:?--description-text requires a value}"; shift 2 ;;
         --timing-task-prefix) TIMING_TASK_PREFIX="${2:?--timing-task-prefix requires a value}"; shift 2 ;;
         --launch-claude-subprocess) shift 2 ;; # accepted for old harnesses; waterfall owns Claude launch
-        --launch-review) LAUNCH_REVIEW="${2:?--launch-review requires a value}"; shift 2 ;;
+        --launch-review) shift 2 ;; # accepted for backward compat; waterfall owns launch routing
         --session-env-path) SESSION_ENV_PATH="${2:?--session-env-path requires a value}"; shift 2 ;;
         --panel) PANEL="${2:?--panel requires a value}"; shift 2 ;;
         --help) usage; exit 0 ;;
@@ -191,8 +190,10 @@ done <<< "$waterfall_output"
 
 external_outputs=()
 claude_outputs=()
+# shellcheck disable=SC2086
 set -- $all_outputs
 outputs_arr=("$@")
+# shellcheck disable=SC2086
 set -- $all_tools
 tools_arr=("$@")
 for idx in "${!outputs_arr[@]}"; do

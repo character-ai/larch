@@ -145,7 +145,8 @@ write_meta() {
 run_collector() {
     local timeout="$1"
     local output="$2"
-    local stderr="$TMPROOT/$(basename "$output").stderr"
+    local stderr
+    stderr="$TMPROOT/$(basename "$output").stderr"
     RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 bash "$COLLECTOR" --timeout "$timeout" "$output" 2>"$stderr"
 }
 

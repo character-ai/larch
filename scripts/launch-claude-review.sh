@@ -4,7 +4,6 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
@@ -58,6 +57,7 @@ src_count=0
 
 mkdir -p "$(dirname "$OUTPUT")"
 TEMP_PROMPT=""
+# shellcheck disable=SC2317
 cleanup() {
     [[ -n "$TEMP_PROMPT" ]] && rm -f "$TEMP_PROMPT"
     return 0

@@ -967,8 +967,6 @@ SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_
 
 ### 5a — Update Reviewer Presence Status
 
-
-
 ### 5b — Remove Temp Directory
 
 If `SESSION_ENV_PATH` is non-empty, export design artifacts before cleanup:

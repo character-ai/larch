@@ -8,8 +8,6 @@ REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)
 WRAPPER="$REPO_ROOT/skills/implement/scripts/post-design-boundary.sh"
 POST_HOOK="$REPO_ROOT/skills/implement/scripts/hook-post-design.sh"
 STOP_HOOK="$REPO_ROOT/skills/implement/scripts/hook-stop-fail-close.sh"
-READER="$REPO_ROOT/skills/design/scripts/read-design-manifest.sh"
-BRANCH_HELPER="$REPO_ROOT/scripts/git-current-branch.sh"
 WRITE_SESSION_ENV="$REPO_ROOT/scripts/write-session-env.sh"
 
 fail() { echo "FAIL: $1" >&2; exit 1; }

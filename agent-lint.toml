@@ -533,14 +533,14 @@ exclude = [
   # excluded.
   "scripts/test-session-entry-gate.sh",
   "scripts/test-session-entry-gate.md",
-  # scripts/test-session-setup-health-defaults.sh is the regression harness for
-  # the fail-closed `:-false` defaults in scripts/session-setup.sh's `.health`
-  # sidecar write block. Referenced only from Makefile
-  # (test-session-setup-health-defaults target) and
-  # scripts/test-session-setup-health-defaults.md (sibling contract), matching
-  # the same Makefile-only pattern as scripts/test-session-entry-gate.sh above.
-  "scripts/test-session-setup-health-defaults.sh",
-  "scripts/test-session-setup-health-defaults.md",
+  # scripts/test-session-setup-presence-defaults.sh is the regression harness
+  # for the presence-detection (CODEX_PRESENT/CURSOR_PRESENT) defaults in
+  # scripts/session-setup.sh. Referenced only from Makefile
+  # (test-session-setup-presence-defaults target) and
+  # scripts/test-session-setup-presence-defaults.md (sibling contract),
+  # matching the same Makefile-only pattern as test-session-entry-gate.sh above.
+  "scripts/test-session-setup-presence-defaults.sh",
+  "scripts/test-session-setup-presence-defaults.md",
   # scripts/test-mermaid-fragments.sh is the regression harness for
   # sanitize-mermaid-fragment.sh and lint-mermaid-fences.sh. Referenced only
   # from Makefile (test-mermaid-fragments target) and its sibling contract,
