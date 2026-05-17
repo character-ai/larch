@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [29.1.11] - 2026-05-17
+
+### Changed
+
+- Added HARD-path plan-review-tally flushing from tally-plan-review.sh into the parent implement run logs.
+- Mirrored token-ledger marks beside the Step 2, Step 3, Step 5, and Step 6 timing-ledger marks.
+- Updated sibling contracts and extended the tally regression harness for the new batch write.
+
 ## [29.1.9] - 2026-05-17
 
 ### Changed

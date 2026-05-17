@@ -97,6 +97,8 @@ else
     oos_accepted_out="$oos_accepted_local"
 fi
 tally_file="$DESIGN_TMPDIR/voting-tally.md"
+accepted_count=0
+rejected_count=0
 : > "$accepted_plan"
 : > "$rejected_plan"
 : > "$oos_file"
@@ -114,9 +116,66 @@ eligible_count="${#VOTER_FILES[@]}"
 # vote_for_id, reviewer_for_block, is_security_block, classify_result are
 # sourced from $PLUGIN_ROOT/scripts/lib-vote-tally.sh above.
 
+flush_plan_review_batch() {
+    [[ -n "$SESSION_ENV_PATH" ]] || return 0
+    [[ -r "$SESSION_ENV_PATH" ]] || return 0
+
+    local write_tally="$PLUGIN_ROOT/scripts/write-tally.sh"
+    local read_session_env="$PLUGIN_ROOT/scripts/read-session-env-key.sh"
+    local append_issue="$PLUGIN_ROOT/scripts/append-execution-issue.sh"
+    [[ -x "$write_tally" ]] || return 0
+    [[ -x "$read_session_env" ]] || return 0
+
+    local impl_tmpdir=""
+    impl_tmpdir=$("$read_session_env" --file "$SESSION_ENV_PATH" --key PREV_IMPLEMENT_TMPDIR --default "" 2>/dev/null) || impl_tmpdir=""
+    [[ -n "$impl_tmpdir" && -d "$impl_tmpdir" && ! -L "$impl_tmpdir" ]] || return 0
+
+    local run_id=""
+    if [[ -r "$impl_tmpdir/session-id" && ! -L "$impl_tmpdir/session-id" ]]; then
+        run_id=$(tr -d '\r\n' < "$impl_tmpdir/session-id")
+    fi
+    [[ -n "$run_id" ]] || return 0
+
+    local body_file="$DESIGN_TMPDIR/plan-review-tally-body.md"
+    {
+        cat "$tally_file"
+        if [[ -s "$rejected_plan" ]]; then
+            printf '\n## Rejected Plan Review Findings\n\n'
+            cat "$rejected_plan"
+            printf '\n'
+        fi
+    } > "$body_file" || return 0
+
+    local tally_out="" tally_rc=0
+    set +e
+    tally_out=$("$write_tally" \
+        --log-root "$impl_tmpdir/larch-logs" \
+        --skill implement \
+        --run-id "$run_id" \
+        --phase plan-review \
+        --mode hard \
+        --rounds 1 \
+        --accepted "$accepted_count" \
+        --rejected "$rejected_count" \
+        --body-file "$body_file" 2>&1)
+    tally_rc=$?
+    set -e
+    if [[ "$tally_rc" -ne 0 ]]; then
+        emit_breadcrumb "⚠ tally-plan-review: failed to flush plan-review-tally batch"
+        [[ -n "$tally_out" ]] && larch_err "$tally_out"
+        if [[ -x "$append_issue" ]]; then
+            "$append_issue" \
+                --log "$impl_tmpdir/execution-issues.md" \
+                --category Warnings \
+                --entry "Step 1 — plan-review-tally batch flush failed (exit $tally_rc). ${tally_out:-No diagnostic output.}" >/dev/null 2>&1 || true
+        fi
+    fi
+}
+
 if (( eligible_count == 0 )); then
     printf '# Plan Review Voting Tally\n\n' > "$tally_file"
     printf '**⚠ Degraded plan-review panel: 0 judges available. Panel tier: main-agent-required.**\n\n' >> "$tally_file"
+    flush_plan_review_batch
     emit_kv TALLY_PLAN_REVIEW_STATUS main-agent-vote-required
     emit_kv VOTING_TALLY_FILE "$tally_file"
     exit 0
@@ -163,9 +222,11 @@ fi
 
         if [[ "$kind" == "finding" ]]; then
             if [[ "$result" == "accepted" ]]; then
+                accepted_count=$((accepted_count + 1))
                 cat "$block" >> "$accepted_plan"
                 printf '\n' >> "$accepted_plan"
             else
+                rejected_count=$((rejected_count + 1))
                 {
                     printf '### [Plan Review] %s\n\n' "$id"
                     cat "$block"
@@ -224,6 +285,8 @@ fi
       }
     ' "$score_rows" | sort
 } > "$tally_file"
+
+flush_plan_review_batch
 
 emit_kv TALLY_PLAN_REVIEW_STATUS ok
 emit_kv VOTING_TALLY_FILE "$tally_file"

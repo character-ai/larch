@@ -21,6 +21,7 @@
 - Rejected or neutral in-scope findings are written to `rejected-findings.md`.
 - OOS visibility output is written to `oos.md`.
 - Accepted OOS output is also written to `oos-accepted-design.md` locally and, when `--session-env-path` is provided, to `$(dirname "$SESSION_ENV_PATH")/oos-accepted-design.md` so `ship-pr.sh` and `/implement` Step 9a.1 find it.
+- When `--session-env-path` is provided and its `PREV_IMPLEMENT_TMPDIR` plus `session-id` resolve, the script best-effort writes a parent `/implement` `plan-review-tally` larch-log batch through `scripts/write-tally.sh` in HARD mode. The body contains `voting-tally.md` plus rejected plan findings, and the accepted/rejected counters count in-scope findings only. Flush failures append a `Warnings` entry to the parent `execution-issues.md` without changing the tally result.
 - Accepted OOS blocks with an unfenced `focus-area = security` token are excluded from all public OOS outputs. Fenced occurrences (inside backtick or triple-backtick regions) are not load-bearing (Match discrimination false-positive guard).
 - Scoreboard score formula: `accepted + oos_accepted - rejected - oos_rejected` (+1 per accepted item, -1 per rejected item).
 - The rendered scoreboard columns are `Reviewer`, `Proposed`, `Accepted`, `Neutral/Exon`, `Rejected`, `OOS-Proposed`, `OOS-Accepted`, `OOS-Neutral/Exon`, `OOS-Rejected`, and `Score`.
@@ -31,7 +32,7 @@ The regression harness is `make test-tally-plan-review`, wired into `test-harnes
 
 ## Harness
 
-`test-tally-plan-review.sh` covers all-yes, mixed votes, tie/neutral, single-judge YES/NO/EXONERATE, 0-judge main-agent-required, no quorum reduction for NEUTRAL votes, OOS accepted/rejected, security-tagged OOS exclusion, and scoreboard rendering.
+`test-tally-plan-review.sh` covers all-yes, mixed votes, tie/neutral, single-judge YES/NO/EXONERATE, 0-judge main-agent-required, no quorum reduction for NEUTRAL votes, OOS accepted/rejected, security-tagged OOS exclusion, HARD-path plan-review-tally batch flushing, and scoreboard rendering.
 
 ## Edit In Sync
 
