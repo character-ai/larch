@@ -35,6 +35,8 @@ To upgrade larch to the latest version, run the `/upgrade-larch` skill in any Cl
 
 After `/upgrade-larch` finishes, restart Claude Code to apply the new version. The upgrade script prints an installed-version block when `claude plugin list` succeeds; treat it as best-effort confirmation.
 
+`/upgrade-larch` is idempotent: if the currently installed version already matches the latest stable release, it exits immediately with no changes. It also prunes old installed versions after a successful upgrade, keeping only the latest and its immediate predecessor.
+
 ## Install for local development (contributors)
 
 If you are hacking on larch itself and want Claude Code to load the plugin directly from your working checkout (so `${CLAUDE_PLUGIN_ROOT}` resolves to the repo you are editing), launch Claude Code with `--plugin-dir`:
