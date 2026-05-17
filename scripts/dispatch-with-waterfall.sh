@@ -24,7 +24,8 @@ SCOPE_FILES=""
 DESCRIPTION_TEXT=""
 TIMEOUT="1800"
 FALLBACK_COUNTER_FILE=""
-COMPETITION_NOTICE=""
+COMPETITION_NOTICE=false
+COMPETITION_NOTICE_FILE=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -40,7 +41,8 @@ while [[ $# -gt 0 ]]; do
         --description-text) DESCRIPTION_TEXT="${2:?--description-text requires a value}"; shift 2 ;;
         --timeout) TIMEOUT="${2:?--timeout requires a value}"; shift 2 ;;
         --fallback-counter-file) FALLBACK_COUNTER_FILE="${2:?--fallback-counter-file requires a value}"; shift 2 ;;
-        --competition-notice) COMPETITION_NOTICE="${2:?--competition-notice requires a value}"; shift 2 ;;
+        --competition-notice) COMPETITION_NOTICE=true; shift ;;
+        --competition-notice-file) COMPETITION_NOTICE_FILE="${2:?--competition-notice-file requires a value}"; shift 2 ;;
         --help) usage; exit 0 ;;
         *) larch_err "dispatch-with-waterfall.sh: unknown option: $1"; usage; exit 2 ;;
     esac
@@ -60,11 +62,40 @@ slot_agents=()
 slot_prompts=()
 while IFS= read -r row || [[ -n "$row" ]]; do
     [[ -n "$row" ]] || continue
-    slot_names+=("$(printf '%s' "$row" | jq -r '.slot')")
-    slot_tools+=("$(printf '%s' "$row" | jq -r '.tool')")
-    slot_outputs+=("$(printf '%s' "$row" | jq -r '.output')")
-    slot_agents+=("$(printf '%s' "$row" | jq -r '.agent // empty')")
-    slot_prompts+=("$(printf '%s' "$row" | jq -r '.prompt_file // empty')")
+    printf '%s' "$row" \
+        | jq -er '
+            if (type != "object") then error("slot row must be a JSON object")
+            elif ((.slot | type) != "string" or (.slot | length) == 0) then error("slot must be a non-empty string")
+            elif (.tool != "codex" and .tool != "cursor") then error("tool must be codex or cursor")
+            elif ((.output | type) != "string" or (.output | length) == 0) then error("output must be a non-empty string")
+            elif ((has("agent") and (.agent != null) and ((.agent | type) != "string")) or
+                  (has("prompt_file") and (.prompt_file != null) and ((.prompt_file | type) != "string"))) then
+                error("agent and prompt_file must be strings when present")
+            else
+                true
+            end
+        ' >/dev/null 2>&1 || {
+        larch_err "dispatch-with-waterfall.sh: invalid slot row: $row"
+        exit 2
+    }
+    slot_name=$(printf '%s' "$row" | jq -r '.slot')
+    slot_tool=$(printf '%s' "$row" | jq -r '.tool')
+    slot_output=$(printf '%s' "$row" | jq -r '.output')
+    slot_agent=$(printf '%s' "$row" | jq -r '.agent // empty')
+    slot_prompt=$(printf '%s' "$row" | jq -r '.prompt_file // empty')
+    if [[ -n "$slot_agent" && -n "$slot_prompt" ]]; then
+        larch_err "dispatch-with-waterfall.sh: slot '$slot_name' must not set both agent and prompt_file"
+        exit 2
+    fi
+    if [[ -z "$slot_agent" && -z "$slot_prompt" ]]; then
+        larch_err "dispatch-with-waterfall.sh: slot '$slot_name' must set either agent or prompt_file"
+        exit 2
+    fi
+    slot_names+=("$slot_name")
+    slot_tools+=("$slot_tool")
+    slot_outputs+=("$slot_output")
+    slot_agents+=("$slot_agent")
+    slot_prompts+=("$slot_prompt")
 done < "$SLOTS_FILE"
 
 slot_count=${#slot_names[@]}
@@ -145,7 +176,8 @@ launch_slot() {
         (
             set +e
             competition_args=()
-            [[ -n "$COMPETITION_NOTICE" ]] && competition_args+=(--competition-notice "$COMPETITION_NOTICE")
+            [[ "$COMPETITION_NOTICE" == "true" ]] && competition_args+=(--competition-notice)
+            [[ -n "$COMPETITION_NOTICE_FILE" ]] && competition_args+=(--competition-notice-file "$COMPETITION_NOTICE_FILE")
             if [[ -n "$prompt_file" ]]; then
                 "$SCRIPT_DIR/launch-review.sh" --tool "$tool" --output "$output" --prompt-file "$prompt_file" --mode "$MODE" --timeout "$TIMEOUT" --timing-task-kind "$timing" "${common_args[@]+"${common_args[@]}"}" "${competition_args[@]+"${competition_args[@]}"}"
             else

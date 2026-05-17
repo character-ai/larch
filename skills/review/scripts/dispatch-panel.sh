@@ -108,7 +108,7 @@ waterfall_args=(--slots-file "$manifest" --codex-present "$CODEX_AVAILABLE" --cu
 [[ "$MODE" == "description" && -n "$SCOPE_FILES" ]] && waterfall_args+=(--description-text "${DESCRIPTION_TEXT:-description review}" --scope-files "$SCOPE_FILES")
 [[ -n "$PLAN_FILE" && -f "$PLAN_FILE" ]] && waterfall_args+=(--plan-file "$PLAN_FILE")
 [[ -n "$FEATURE_FILE" && -f "$FEATURE_FILE" ]] && waterfall_args+=(--feature-file "$FEATURE_FILE")
-[[ -n "$COMPETITION_NOTICE_FILE" && -f "$COMPETITION_NOTICE_FILE" ]] && waterfall_args+=(--competition-notice "$COMPETITION_NOTICE_FILE")
+[[ -n "$COMPETITION_NOTICE_FILE" && -f "$COMPETITION_NOTICE_FILE" ]] && waterfall_args+=(--competition-notice --competition-notice-file "$COMPETITION_NOTICE_FILE")
 
 waterfall_output=$("$DISPATCH_WATERFALL" "${waterfall_args[@]}")
 all_outputs=""

@@ -14,12 +14,16 @@ mkdir -p "$STUB_BIN"
 cat > "$STUB_BIN/codex" <<'STUB'
 #!/usr/bin/env bash
 out=""; last=""
+log="${CODEX_STUB_LOG:-}"
 for arg in "$@"; do [[ "$last" == "--output-last-message" ]] && out="$arg"; last="$arg"; done
 [[ -n "$out" ]] || exit 9
+[[ -n "$log" ]] && printf '%s\n' "$*" >> "$log"
 printf 'FINDING_1: YES\n' > "$out"
 STUB
 cat > "$STUB_BIN/cursor" <<'STUB'
 #!/usr/bin/env bash
+log="${CURSOR_STUB_LOG:-}"
+[[ -n "$log" ]] && printf '%s\n' "$*" >> "$log"
 printf '{"result":"FINDING_1: NO -- cursor","usage":{"inputTokens":1,"outputTokens":1,"cacheReadTokens":0,"cacheWriteTokens":0}}\n'
 STUB
 cat > "$STUB_BIN/claude" <<'STUB'
@@ -32,12 +36,16 @@ chmod +x "$STUB_BIN/codex" "$STUB_BIN/cursor" "$STUB_BIN/claude"
 BALLOT="$TMP/ballot.txt"
 printf 'FINDING_1: example\n' > "$BALLOT"
 
-out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" --ballot-file "$BALLOT" --design-tmpdir "$TMP/happy" --codex-available true --cursor-available true)
+CODEX_LOG="$TMP/codex.log"
+CURSOR_LOG="$TMP/cursor.log"
+out=$(PATH="$STUB_BIN:$PATH" CODEX_STUB_LOG="$CODEX_LOG" CURSOR_STUB_LOG="$CURSOR_LOG" "$SCRIPT" --ballot-file "$BALLOT" --design-tmpdir "$TMP/happy" --codex-available true --cursor-available true)
 grep -Fq 'VOTER_2_STATUS=launched' <<< "$out"
 grep -Fq 'VOTER_3_STATUS=launched' <<< "$out"
 grep -Fq 'VOTER_2_TOOL=codex' <<< "$out"
 grep -Fq 'VOTER_3_TOOL=cursor' <<< "$out"
 grep -Fq 'DISPATCH_OK=true' <<< "$out"
+grep -Fq -- '--output-last-message' "$CODEX_LOG" || { echo "FAIL: codex launch missing output-last-message" >&2; exit 1; }
+grep -Fq -- '--output-format json' "$CURSOR_LOG" || { echo "FAIL: cursor launch missing json mode" >&2; exit 1; }
 
 out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" --ballot-file "$BALLOT" --design-tmpdir "$TMP/absent" --codex-available false --cursor-available false)
 grep -Fq 'VOTER_2_STATUS=fallback' <<< "$out"

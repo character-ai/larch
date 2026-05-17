@@ -644,7 +644,17 @@ _plan_review_dispatch=$("${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-with-waterfall.s
   --plan-file "$DESIGN_TMPDIR/plan.txt" \
   --feature-file "${IMPLEMENT_TMPDIR:-$DESIGN_TMPDIR}/feature-description.txt" \
   --timeout 1800)
-eval "$_plan_review_dispatch"
+ALL_OUTPUT_FILES=""
+ALL_OUTPUT_TOOLS=""
+DISPATCH_OK="true"
+while IFS= read -r _line || [[ -n "$_line" ]]; do
+  _key="${_line%%=*}"
+  _value="${_line#*=}"
+  case "$_key" in
+    ALL_OUTPUT_FILES|ALL_OUTPUT_TOOLS|DISPATCH_OK) printf -v "$_key" '%s' "$_value" ;;
+    WARN) printf '%s\n' "WARN=$_value" ;;
+  esac
+done <<< "$_plan_review_dispatch"
 ```
 
 Parse `ALL_OUTPUT_FILES` and `ALL_OUTPUT_TOOLS` from the waterfall output. Use `ALL_OUTPUT_FILES` as the list of reviewer output paths for the collection step; the order matches the slot order in the manifest. If `DISPATCH_OK=false`, at least one Phase 3 Claude slot failed — proceed but note degradation. If `WARN=cost-fallback-exceeded-threshold`, emit a warning breadcrumb.

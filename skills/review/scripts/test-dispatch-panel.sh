@@ -46,4 +46,27 @@ grep -Fq 'DISPATCH_OK=true' <<< "$out"
 [[ -s "$TMP/simple/cursor-specialist-structure-output.txt" ]]
 [[ -s "$TMP/simple/codex-generalist-output.txt" ]]
 
+out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
+    --mode diff \
+    --review-tmpdir "$TMP/hard" \
+    --codex-available true \
+    --cursor-available true \
+    --panel hard \
+    --plan-file "$plan_file")
+grep -Fq 'PANEL_SHAPE=hard' <<< "$out"
+grep -Fq 'SLOT_COUNT=12' <<< "$out"
+[[ -s "$TMP/hard/cursor-specialist-structure-output.txt" ]]
+[[ -s "$TMP/hard/codex-specialist-structure-output.txt" ]]
+
+out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
+    --mode diff \
+    --review-tmpdir "$TMP/both-down" \
+    --codex-available false \
+    --cursor-available false \
+    --panel simple \
+    --plan-file "$plan_file")
+grep -Fq 'DISPATCH_OK=true' <<< "$out"
+claude_count=$(find "$TMP/both-down" -name '*phase3.txt' | wc -l | tr -d ' ')
+[[ "$claude_count" -ge 7 ]] || { echo "FAIL: expected Claude phase3 outputs for both-down panel" >&2; exit 1; }
+
 echo "All assertions passed."

@@ -1,19 +1,31 @@
 # dispatch-plan-voters.sh Contract
 
-`scripts/dispatch-plan-voters.sh` launches the external `/design` Step 3 plan-review voters: Voter 2 (Codex) and Voter 3 (Cursor).
+`scripts/dispatch-plan-voters.sh` launches `/design` Step 3 external voter slots through `scripts/dispatch-with-waterfall.sh`.
 
-The script is the single plan-review voter path for external tools. It fails closed when `scripts/run-external-agent.sh` is missing, so plan-review voting cannot bypass the monitored wrapper. Available tools are launched through `run-external-agent.sh`; unavailable tools emit `VOTER_N_STATUS=fallback` so the `/design` orchestrator launches the Claude replacement voter through the Agent tool.
+The script owns only Voter 2 and Voter 3. Each slot is dispatched through the same three-phase waterfall used elsewhere:
 
-Inputs are `--ballot-file`, `--design-tmpdir`, `--codex-available`, `--cursor-available`, and optional `--session-env-path`. The ballot is referenced by path in the voter prompt rather than inlined.
+- Phase 1: primary external tool (`codex` for Voter 2, `cursor` for Voter 3) when present
+- Phase 2: alternate external tool when Phase 1 is absent or fails
+- Phase 3: Claude replacement when both external phases are absent or fail
 
-Codex runs as `codex exec --sandbox read-only -C "$PWD"` with model and effort argv from `scripts/agent-model-args.sh --tool codex --with-effort`. Cursor runs as `cursor agent -p --trust --mode plan --workspace "$PWD"` with model argv from `agent-model-args.sh`, auth argv from `scripts/cursor-auth-flags.sh`, and prompt wrapping through `scripts/cursor-wrap-prompt.sh`.
+## Behavior
 
-The script waits for launched external voters via `scripts/wait-for-reviewers.sh --timeout 1260`. Launch and wait failures append captured logs to `execution-issues.md` through `scripts/append-tool-failure.sh` under `External Reviewer Issues` when that helper is available. The log path resolver uses `LARCH_EXECUTION_ISSUES_LOG` when set; otherwise it falls back through `$(dirname "$SESSION_ENV_PATH")/execution-issues.md`, `$IMPLEMENT_TMPDIR/execution-issues.md`, then `$DESIGN_TMPDIR/execution-issues.md`.
+The script writes per-slot prompt files, builds a two-slot NDJSON manifest, and calls `dispatch-with-waterfall.sh` with `--mode description`. It reads `ALL_OUTPUT_FILES`, `ALL_OUTPUT_TOOLS`, and `DISPATCH_OK` from the waterfall's KV output to determine the final path and tool for each voter slot.
 
-Stdout is `KEY=value` only: `VOTER_2_PATH`, `VOTER_3_PATH`, `VOTER_2_STATUS`, `VOTER_3_STATUS`, optional `DEGRADED_PANEL_WARNING`, and `DISPATCH_OK`.
+Inputs are `--ballot-file`, `--design-tmpdir`, `--codex-available`, `--cursor-available`, and optional `--session-env-path`. The ballot is referenced by path in the generated voter prompts.
 
-After collection, the script computes available external voters with the same rule the design orchestrator uses for tally eligibility: status not `failed` and output file non-empty. When fewer than 2 external voters are available, it prints and emits a degraded-panel warning noting the missing external slots and that Voter 1 (Claude) must compensate.
+## Stdout KV
 
-On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.
+Stdout is `KEY=value` only:
+
+- `VOTER_2_PATH`, `VOTER_3_PATH`
+- `VOTER_2_TOOL`, `VOTER_3_TOOL`
+- `VOTER_2_STATUS`, `VOTER_3_STATUS`
+- optional `DEGRADED_PANEL_WARNING`
+- `DISPATCH_OK`
+
+`fallback` means the slot completed on Claude after waterfall fallback. `failed` means the final output file is missing or empty. When fewer than 2 effective external-voter slots produce output, the script emits a degraded-panel warning so `/design` can compensate with Claude Voter 1.
+
+## Harness
 
 Harness: `scripts/test-dispatch-plan-voters.sh`, wired through `make test-dispatch-plan-voters`.

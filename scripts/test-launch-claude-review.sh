@@ -36,4 +36,19 @@ rc=$?
 set -e
 [[ "$rc" -eq 2 ]] || { echo "FAIL: bad timeout exit=$rc" >&2; exit 1; }
 
+# Test --agent-file path: render-specialist-prompt.sh is invoked; output still reaches caller.
+# Use a real agent file from the repo (code-reviewer.md is always present).
+agent_file="$REPO_ROOT/agents/code-reviewer.md"
+agent_output="$TMPROOT/agent-out.txt"
+diff_file="$TMPROOT/agent-diff.txt"
+printf 'test diff content\n' > "$diff_file"
+PATH="$STUB_BIN:$PATH" "$REPO_ROOT/scripts/launch-claude-review.sh" \
+    --output "$agent_output" \
+    --agent-file "$agent_file" \
+    --mode diff \
+    --diff-file "$diff_file" \
+    --timeout 5 >/dev/null
+[[ "$(cat "$agent_output")" == "claude review ok" ]] || { echo "FAIL: agent-file output passthrough" >&2; exit 1; }
+[[ -f "$agent_output.done" ]] || { echo "FAIL: agent-file done sentinel" >&2; exit 1; }
+
 echo "PASS: test-launch-claude-review.sh"

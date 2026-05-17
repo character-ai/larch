@@ -99,6 +99,7 @@ MODE=""
 DESCRIPTION_TEXT=""
 SCOPE_FILES=""
 COMPETITION_NOTICE=false
+COMPETITION_NOTICE_FILE=""
 DIFF_FILE=""
 COMMIT_COUNT=""
 PLAN_FILE=""
@@ -117,6 +118,7 @@ while [[ $# -gt 0 ]]; do
         --description-text) DESCRIPTION_TEXT="${2:?--description-text requires a value}"; shift 2 ;;
         --scope-files) SCOPE_FILES="${2:?--scope-files requires a value}"; shift 2 ;;
         --competition-notice) COMPETITION_NOTICE=true; shift ;;
+        --competition-notice-file) COMPETITION_NOTICE_FILE="${2:?--competition-notice-file requires a value}"; shift 2 ;;
         --diff-file) DIFF_FILE="${2:?--diff-file requires a value}"; shift 2 ;;
         --commit-count) COMMIT_COUNT="${2:?--commit-count requires a value}"; shift 2 ;;
         --plan-file) PLAN_FILE="${2:?--plan-file requires a value}"; shift 2 ;;
@@ -259,7 +261,7 @@ if [[ -n "$PROMPT_FILE" ]]; then
         # Hash+kind sentinel written by the non-retry (happy) path for --agent-file
         # launches. Reconstruct the full prompt via render-specialist-prompt.sh and
         # verify the SHA-256 hash to catch renderer changes between launch and retry.
-        _s_kind="" _s_hash="" _s_agent_file="" _s_mode="" _s_scope="" _s_comp=false _s_diff="" _s_commit_count="" _s_plan_file="" _s_feature_file=""
+        _s_kind="" _s_hash="" _s_agent_file="" _s_mode="" _s_scope="" _s_comp=false _s_comp_file="" _s_diff="" _s_commit_count="" _s_plan_file="" _s_feature_file=""
         while read -r _s_line; do
             _s_k="${_s_line%%=*}"
             _s_v="${_s_line#*=}"
@@ -270,6 +272,7 @@ if [[ -n "$PROMPT_FILE" ]]; then
                 MODE)              _s_mode="$_s_v" ;;
                 SCOPE_FILES)       _s_scope="$_s_v" ;;
                 COMPETITION_NOTICE) [[ "$_s_v" == "true" ]] && _s_comp=true ;;
+                COMPETITION_NOTICE_FILE) _s_comp_file="$_s_v" ;;
                 DIFF_FILE)         _s_diff="$_s_v" ;;
                 COMMIT_COUNT)      _s_commit_count="$_s_v" ;;
                 PLAN_FILE)         _s_plan_file="$_s_v" ;;
@@ -283,6 +286,7 @@ if [[ -n "$PROMPT_FILE" ]]; then
         _s_render_args=(--agent-file "$_s_agent_file" --mode "$_s_mode")
         [[ -n "$_s_scope" ]] && _s_render_args+=(--scope-files "$_s_scope")
         [[ "$_s_comp" == "true" ]] && _s_render_args+=(--competition-notice)
+        [[ -n "$_s_comp_file" ]] && _s_render_args+=(--competition-notice-file "$_s_comp_file")
         [[ -n "$_s_diff" ]] && _s_render_args+=(--diff-file "$_s_diff")
         [[ -n "$_s_commit_count" ]] && _s_render_args+=(--commit-count "$_s_commit_count")
         [[ -n "$_s_plan_file" ]] && _s_render_args+=(--plan-file "$_s_plan_file")
@@ -304,7 +308,7 @@ if [[ -n "$PROMPT_FILE" ]]; then
             larch_err "launch-review.sh: prompt reconstruction hash mismatch (sentinel=$_s_hash reconstructed=$_s_reconstructed_hash)"
             exit 1
         fi
-        unset _s_kind _s_hash _s_agent_file _s_mode _s_scope _s_comp _s_diff _s_commit_count _s_plan_file _s_feature_file _s_render_args \
+        unset _s_kind _s_hash _s_agent_file _s_mode _s_scope _s_comp _s_comp_file _s_diff _s_commit_count _s_plan_file _s_feature_file _s_render_args \
               _s_reconstructed_hash _s_line _s_k _s_v
     else
         if ! PROMPT=$({ cat -- "$PROMPT_FILE"; _cat_status=$?; printf X; exit "$_cat_status"; }); then
@@ -321,6 +325,7 @@ if [[ -n "$AGENT_FILE" ]]; then
     [[ -n "$DESCRIPTION_TEXT" ]] && RENDER_ARGS+=(--description-text "$DESCRIPTION_TEXT")
     [[ -n "$SCOPE_FILES" ]] && RENDER_ARGS+=(--scope-files "$SCOPE_FILES")
     [[ "$COMPETITION_NOTICE" == "true" ]] && RENDER_ARGS+=(--competition-notice)
+    [[ -n "$COMPETITION_NOTICE_FILE" ]] && RENDER_ARGS+=(--competition-notice-file "$COMPETITION_NOTICE_FILE")
     [[ -n "$DIFF_FILE" ]] && RENDER_ARGS+=(--diff-file "$DIFF_FILE")
     [[ -n "$COMMIT_COUNT" ]] && RENDER_ARGS+=(--commit-count "$COMMIT_COUNT")
     [[ -n "$PLAN_FILE" ]] && RENDER_ARGS+=(--plan-file "$PLAN_FILE")
@@ -405,6 +410,7 @@ if [[ -n "$AGENT_FILE" && -z "$DESCRIPTION_TEXT" ]]; then
             printf 'MODE=%s\n' "$MODE"
             [[ -n "$SCOPE_FILES" ]] && printf 'SCOPE_FILES=%s\n' "$SCOPE_FILES"
             [[ "$COMPETITION_NOTICE" == "true" ]] && printf 'COMPETITION_NOTICE=true\n'
+            [[ -n "$COMPETITION_NOTICE_FILE" && "$COMPETITION_NOTICE_FILE" == "${COMPETITION_NOTICE_FILE//$'\n'/}" ]] && printf 'COMPETITION_NOTICE_FILE=%s\n' "$COMPETITION_NOTICE_FILE"
             [[ -n "$DIFF_FILE" ]] && printf 'DIFF_FILE=%s\n' "$DIFF_FILE"
             # Only write COMMIT_COUNT when it is a non-negative integer; reject
             # multi-line or non-numeric values to keep the sentinel line-oriented.
@@ -565,6 +571,7 @@ MODE=""
 DESCRIPTION_TEXT=""
 SCOPE_FILES=""
 COMPETITION_NOTICE=false
+COMPETITION_NOTICE_FILE=""
 DIFF_FILE=""
 COMMIT_COUNT=""
 PLAN_FILE=""
@@ -583,6 +590,7 @@ while [[ $# -gt 0 ]]; do
         --description-text) DESCRIPTION_TEXT="${2:?--description-text requires a value}"; shift 2 ;;
         --scope-files) SCOPE_FILES="${2:?--scope-files requires a value}"; shift 2 ;;
         --competition-notice) COMPETITION_NOTICE=true; shift ;;
+        --competition-notice-file) COMPETITION_NOTICE_FILE="${2:?--competition-notice-file requires a value}"; shift 2 ;;
         --diff-file) DIFF_FILE="${2:?--diff-file requires a value}"; shift 2 ;;
         --commit-count) COMMIT_COUNT="${2:?--commit-count requires a value}"; shift 2 ;;
         --plan-file) PLAN_FILE="${2:?--plan-file requires a value}"; shift 2 ;;
@@ -781,6 +789,7 @@ if [[ -n "$AGENT_FILE" ]]; then
     [[ -n "$DESCRIPTION_TEXT" ]] && RENDER_ARGS+=(--description-text "$DESCRIPTION_TEXT")
     [[ -n "$SCOPE_FILES" ]] && RENDER_ARGS+=(--scope-files "$SCOPE_FILES")
     [[ "$COMPETITION_NOTICE" == "true" ]] && RENDER_ARGS+=(--competition-notice)
+    [[ -n "$COMPETITION_NOTICE_FILE" ]] && RENDER_ARGS+=(--competition-notice-file "$COMPETITION_NOTICE_FILE")
     [[ -n "$DIFF_FILE" ]] && RENDER_ARGS+=(--diff-file "$DIFF_FILE")
     [[ -n "$COMMIT_COUNT" ]] && RENDER_ARGS+=(--commit-count "$COMMIT_COUNT")
     [[ -n "$PLAN_FILE" ]] && RENDER_ARGS+=(--plan-file "$PLAN_FILE")

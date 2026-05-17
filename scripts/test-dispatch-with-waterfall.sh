@@ -15,11 +15,13 @@ cat > "$STUB_BIN/codex" <<'STUB'
 #!/usr/bin/env bash
 out=""
 last=""
+log="${CODEX_STUB_LOG:-}"
 for arg in "$@"; do
     if [[ "$last" == "--output-last-message" ]]; then out="$arg"; fi
     last="$arg"
 done
 [[ -n "$out" ]] || exit 9
+[[ -n "$log" ]] && printf '%s\n' "$*" >> "$log"
 if [[ "${CODEX_STUB_FAIL:-false}" == "true" ]]; then
     exit 7
 fi
@@ -27,6 +29,8 @@ printf 'codex ok\n' > "$out"
 STUB
 cat > "$STUB_BIN/cursor" <<'STUB'
 #!/usr/bin/env bash
+log="${CURSOR_STUB_LOG:-}"
+[[ -n "$log" ]] && printf '%s\n' "$*" >> "$log"
 if [[ "${CURSOR_STUB_FAIL:-false}" == "true" ]]; then
     exit 8
 fi
@@ -61,6 +65,21 @@ out=$(PATH="$STUB_BIN:$PATH" CODEX_STUB_FAIL=true "$REPO_ROOT/scripts/dispatch-w
 assert_line "FALLBACK_COUNT=0" "$out"
 assert_line "ALL_OUTPUT_TOOLS=cursor" "$out"
 grep -Fq "cursor ok" "$TMPROOT/codex-slot-phase2.txt" || { echo "FAIL: phase2 cursor output" >&2; exit 1; }
+
+manifest="$TMPROOT/slots-phase1-ok.ndjson"
+{
+    printf '{"slot":"s1","tool":"codex","output":"%s","prompt_file":"%s"}\n' "$TMPROOT/phase1-codex.txt" "$prompt"
+    printf '{"slot":"s2","tool":"cursor","output":"%s","prompt_file":"%s"}\n' "$TMPROOT/phase1-cursor.txt" "$prompt"
+} > "$manifest"
+out=$(PATH="$STUB_BIN:$PATH" "$REPO_ROOT/scripts/dispatch-with-waterfall.sh" \
+    --slots-file "$manifest" \
+    --codex-present true \
+    --cursor-present true \
+    --mode description \
+    --timeout 5)
+assert_line "FALLBACK_COUNT=0" "$out"
+assert_line "DISPATCH_OK=true" "$out"
+assert_line "ALL_OUTPUT_TOOLS=codex cursor" "$out"
 
 manifest="$TMPROOT/slots-claude.ndjson"
 printf '{"slot":"s1","tool":"codex","output":"%s","prompt_file":"%s"}\n' "$TMPROOT/claude-slot.txt" "$prompt" > "$manifest"
@@ -114,5 +133,38 @@ out=$(PATH="$STUB_BIN:$PATH" LARCH_FALLBACK_CLAUDE_WARN_THRESHOLD=1 "$REPO_ROOT/
 assert_line "FALLBACK_COUNT=2" "$out"
 grep -Fq "WARN=cost-fallback-exceeded-threshold" <<< "$out" || { echo "FAIL: missing WARN=cost-fallback-exceeded-threshold" >&2; printf '%s\n' "$out" >&2; exit 1; }
 assert_line "DISPATCH_OK=true" "$out"
+
+manifest="$TMPROOT/slots-invalid.ndjson"
+printf '{"slot":"bad","tool":"codex","output":"%s","agent":1}\n' "$TMPROOT/invalid.txt" > "$manifest"
+set +e
+PATH="$STUB_BIN:$PATH" "$REPO_ROOT/scripts/dispatch-with-waterfall.sh" \
+    --slots-file "$manifest" \
+    --codex-present true \
+    --cursor-present true \
+    --mode description \
+    --timeout 5 >/dev/null 2>"$TMPROOT/invalid.stderr"
+rc=$?
+set -e
+[[ "$rc" -eq 2 ]] || { echo "FAIL: invalid slot schema exit=$rc" >&2; exit 1; }
+grep -Fq 'invalid slot row' "$TMPROOT/invalid.stderr" || { echo "FAIL: invalid slot schema stderr" >&2; exit 1; }
+
+notice="$TMPROOT/competition-notice.md"
+printf 'Custom notice text\n' > "$notice"
+manifest="$TMPROOT/slots-competition.ndjson"
+printf '{"slot":"s1","tool":"codex","output":"%s","agent":"%s"}\n' \
+    "$TMPROOT/competition-slot.txt" "$REPO_ROOT/agents/reviewer-structure.md" > "$manifest"
+codex_log="$TMPROOT/codex-competition.log"
+out=$(PATH="$STUB_BIN:$PATH" CODEX_STUB_LOG="$codex_log" "$REPO_ROOT/scripts/dispatch-with-waterfall.sh" \
+    --slots-file "$manifest" \
+    --codex-present true \
+    --cursor-present true \
+    --mode diff \
+    --diff-file "$prompt" \
+    --competition-notice \
+    --competition-notice-file "$notice" \
+    --timeout 5)
+assert_line "DISPATCH_OK=true" "$out"
+grep -Fq 'Competition notice' "$codex_log" || { echo "FAIL: missing competition notice block" >&2; exit 1; }
+grep -Fq 'Custom notice text' "$codex_log" || { echo "FAIL: missing competition notice file contents" >&2; exit 1; }
 
 echo "PASS: test-dispatch-with-waterfall.sh"

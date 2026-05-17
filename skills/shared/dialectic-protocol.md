@@ -129,19 +129,19 @@ The user's "no Claude in dialectic" rule is **debater-specific**, not judge-spec
 
 ## Dialectic-Local Presence Check
 
-Before launching judges, run `${CLAUDE_PLUGIN_ROOT}/scripts/check-reviewers.sh` synchronously. This provides a **fresh** snapshot of tool presence immediately before the judge wave — a Cursor or Codex debate-time timeout must not lock that tool out of judging.
+Before launching judges, run `${CLAUDE_PLUGIN_ROOT}/scripts/check-reviewers.sh` synchronously. This provides a **fresh** snapshot of tool presence immediately before the judge wave — a tool absent from PATH at the start of the session may be available now, and vice versa.
 
 Parse the output and derive judge-local flags using the **same two-key rule** that `session-setup.sh` applies at session startup (see `skills/shared/external-reviewers.md:19-23`):
 
 - `judge_codex_available = (CODEX_AVAILABLE=true AND CODEX_PRESENT=true)`
 - `judge_cursor_available = (CURSOR_AVAILABLE=true AND CURSOR_PRESENT=true)`
 
-A tool that is installed but not present/responding (`*_PRESENT=false`) MUST be treated as unavailable for judge-panel purposes — otherwise the judge launch will time out and drop the eligible voter count. **Do NOT confuse `*_AVAILABLE` (binary on PATH) with `judge_*_available` (launch-eligible).** Naming reflects purpose: the `judge_` prefix signals these flags are scoped to the judge panel only.
+A tool that is installed but not present for this session (`*_PRESENT=false`) MUST be treated as unavailable for judge-panel purposes — otherwise the judge launch will time out and drop the eligible voter count. **Do NOT confuse `*_AVAILABLE` (binary on PATH) with `judge_*_available` (launch-eligible).** Naming reflects purpose: the `judge_` prefix signals these flags are scoped to the judge panel only.
 
 **Scoping**: the dialectic-local presence-check result is used only for the judge panel. It MUST NOT:
 
 - Mutate orchestrator-wide `codex_available` / `cursor_available` flags (those drive Step 3 plan review; Phase 3 must not poison later steps).
-- Write to `${SESSION_ENV_PATH}session-env`. Collection calls in the judge phase use ``.
+- Mutate `SESSION_ENV_PATH` or any session-env file. Judge-phase collection is read-only with respect to session-wide availability state.
 
 ## Judge Prompt Template
 
@@ -245,7 +245,7 @@ Timing note: v1 timing rows are emitted by the launch-wrapper scripts, not by di
      <each launched external-judge output path>
    ```
 
-   The collector does not update `${SESSION_ENV_PATH}session-env`; dialectic availability remains phase-local. Block on this call (do NOT use `run_in_background`).
+   The collector does not update `SESSION_ENV_PATH` or any session-env file; dialectic availability remains phase-local. Block on this call (do NOT use `run_in_background`).
 
    Parse each external judge's `STATUS` and `REVIEWER_FILE`. Read vote lines from the `REVIEWER_FILE` field (may point at a `*-retry.txt` if the collector recovered an empty output; do NOT read from the original launch path).
 
