@@ -64,7 +64,7 @@ check_contains "Post-/bump-version boundary — rebase-rebump path halt covered"
 check_contains "Post-/design boundary — silent halt covered" "skills/implement/SKILL.md" \
   "boundary wrapper + larch-log batch writes + Step 1.r rebase checkpoint + Step 2 breadcrumb in order — do NOT end the turn"
 check_contains "Post-/review boundary — silent halt covered" "skills/implement/SKILL.md" \
-  "Cross-Skill Health Propagation + Track Rejected Code Review Findings + Step 6 breadcrumb in order — do NOT end the turn"
+  "Cross-Skill Presence Propagation + Track Rejected Code Review Findings + Step 6 breadcrumb in order — do NOT end the turn"
 
 echo ""
 echo "--- /design step-boundary anti-halt coverage ---"

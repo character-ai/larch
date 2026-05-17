@@ -127,14 +127,14 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix claude-research --skip-p
 
 If the script exits non-zero, print the error and abort.
 
-Parse the output for `SESSION_TMPDIR`, `CODEX_AVAILABLE`, `CURSOR_AVAILABLE`, `CODEX_HEALTHY`, `CURSOR_HEALTHY`, `CODEX_PROBE_ERROR`, `CURSOR_PROBE_ERROR`. Set `RESEARCH_TMPDIR` = `SESSION_TMPDIR`.
+Parse the output for `SESSION_TMPDIR`, `CODEX_AVAILABLE`, `CURSOR_AVAILABLE`, `CODEX_PRESENT`, `CURSOR_PRESENT`. Set `RESEARCH_TMPDIR` = `SESSION_TMPDIR`.
 
 Set mental flags `codex_available` and `cursor_available` based on the output, and remember each lane's pre-launch attribution status (one of `ok` / `fallback_binary_missing` / `fallback_probe_failed`):
 
 - If `CODEX_AVAILABLE=false`: `codex_available=false`. Pre-launch status = `fallback_binary_missing` (no reason). Print: `**⚠ Codex not available (binary not found). Proceeding with Claude fallback for Codex lanes.**`
-- Else if `CODEX_HEALTHY=false`: `codex_available=false`. Pre-launch status = `fallback_probe_failed` with reason = `CODEX_PROBE_ERROR` (sanitized). Print: `**⚠ Codex installed but not responding (health check failed: <CODEX_PROBE_ERROR>). Using Claude replacement.**`
+- Else if `CODEX_PRESENT=false`: `codex_available=false`. Pre-launch status = `fallback_presence_failed`. Print: `**⚠ Codex not present for this session. Using Claude replacement.**`
 - Else: `codex_available=true`. Pre-launch status = `ok`.
-- Same logic for Cursor (using `CURSOR_PROBE_ERROR`).
+- Same logic for Cursor.
 
 ### 0b — Initialize lane-status record
 

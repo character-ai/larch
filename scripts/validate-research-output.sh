@@ -6,7 +6,7 @@
 # one-line diagnostic on stdout. The intended consumer is
 # `scripts/collect-agent-results.sh --substantive-validation` and/or
 # `--structured-reviewer-validation`, which translates most non-zero exits into
-# a `STATUS=NOT_SUBSTANTIVE` entry with `HEALTHY=false`; validation-mode exit 5
+# a `STATUS=NOT_SUBSTANTIVE` entry; validation-mode exit 5
 # maps to `STATUS=CURSOR_EMPTY_RESPONSE`.
 # Phase 3 of umbrella issue #413 (closes #416, #447, #473).
 #

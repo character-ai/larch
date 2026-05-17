@@ -1,17 +1,17 @@
 # skills/implement/scripts/post-design-boundary.sh — contract
 
-`post-design-boundary.sh` is the mandatory mechanical gate immediately after `/design` returns in `/implement` Step 1 normal mode. It delegates manifest validation to `skills/design/scripts/read-design-manifest.sh --emit-load-breadcrumb`, propagates child-skill health degradation, captures the current branch, and ends successful stdout with an imperative continuation directive.
+`post-design-boundary.sh` is the mandatory mechanical gate immediately after `/design` returns in `/implement` Step 1 normal mode. It delegates manifest validation to `skills/design/scripts/read-design-manifest.sh --emit-load-breadcrumb`, captures the current branch, and ends successful stdout with an imperative continuation directive.
 
 Inputs:
 - `--implement-tmpdir <path>` is required. It must be an absolute path to an existing directory and must not contain ASCII control characters.
-- `--session-env <path>` is optional. Empty means no health propagation. Non-empty values are trusted caller-controlled paths from `/implement`'s own session machinery; the script still rejects non-absolute paths and ASCII control characters.
+- `--session-env <path>` is optional. Non-empty values are trusted caller-controlled paths from `/implement`'s own session machinery; the script still rejects non-absolute paths and ASCII control characters.
 - `--design-only true|false` is optional and defaults to `false`.
 - `--hook-mode true|false` is optional and defaults to `false`. When `true`, the halt-protection sentinel (`.boundary-gate-passed`) is NOT written and `POST_DESIGN_BOUNDARY_HOOK_INJECTED=true` is emitted instead of `POST_DESIGN_BOUNDARY_OK=true`. Used exclusively by `hook-post-design.sh` so that the Stop hook remains armed (sentinel absent) until the orchestrator's mandatory Bash wrapper call runs. See "Halt-Protection Sentinel" below.
 
 Logical failures are fail-closed envelopes, not process failures: the script exits 0 with `MANIFEST_FAILED=true` and `ERROR=<token>`. `invalid-tmpdir`, `invalid-session-env`, manifest-reader failures, `manifest-reader-no-status`, persistent branch-capture failure, and `boundary-gate-sentinel-write-failed` all emit ONLY the failure envelope on stdout — no `MANIFEST_OK=true` line, no `📥` reader breadcrumb, no `POST_DESIGN_BOUNDARY_OK=true`, and no `➡️` continuation line. The reader's success block (if produced) is buffered until every hard gate passes, so a late branch-capture or sentinel-write failure cannot leave a contradictory dual envelope on stdout. Unexpected internal errors are caught by the `ERR` trap and reported as `ERROR=internal-error`, matching the reader's contract.
 
 Security invariants:
-- The wrapper never `source`s `manifest.env`, `session-env.sh`, or `.health` sidecars.
+- The wrapper never `source`s `manifest.env` or `session-env.sh`.
 - Reader output is classified only with anchored lines: `^MANIFEST_FAILED=true$` and `^MANIFEST_OK=true$`. A path containing the literal text `MANIFEST_FAILED=true` must not affect classification.
 - Branch capture parses only anchored `BRANCH=<name>` output from `scripts/git-current-branch.sh`.
 

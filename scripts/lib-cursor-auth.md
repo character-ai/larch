@@ -9,7 +9,7 @@ Sourced library exposing Cursor auth helpers used by every live `cursor agent` c
 
 - `scripts/launch-review.sh --tool cursor` — review reviewer panel launcher.
 - `scripts/launch-cursor-implement.sh` — Cursor implementer launcher (Step 2 of `/implement`).
-- `scripts/check-reviewers.sh` — reviewer health probe (sources the lib; calls `cursor_auth_argv` only — preflight is intentionally NOT invoked from the probe, whose job is to report binary health).
+- `scripts/check-reviewers.sh` — reviewer presence check (sources the lib; calls `cursor_auth_argv` only — preflight is intentionally NOT invoked from the check, whose job is to report launch presence).
 - `scripts/run-negotiation-round.sh` — negotiation runner.
 - `scripts/cursor-auth-flags.sh` — small helper that prints the conditional `--api-key` argv elements one per line, used by runtime skill markdown blocks (`skills/shared/voting-protocol.md`, `skills/shared/dialectic-protocol.md`, `skills/research/references/validation-phase.md`) where direct `source` of a library is awkward.
 

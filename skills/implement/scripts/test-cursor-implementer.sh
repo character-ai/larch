@@ -3,7 +3,7 @@
 #
 # Always-on slice: PATH-stubs `cursor` and verifies launcher flag validation,
 # KV-only stdout, argv shape, and cursor-wrap-prompt.sh wrapping.
-# Optional local smoke: pass --real-smoke with CURSOR_HEALTHY=true to run a
+# Optional local smoke: pass --real-smoke with CURSOR_PRESENT=true to run a
 # real cursor-agent prompt. Not wired into Makefile.
 
 set -euo pipefail
@@ -16,8 +16,8 @@ AGENT_PROMPT="$REPO_ROOT/agents/cursor-implementer.md"
 [[ -f "$AGENT_PROMPT" ]] || { echo "FAIL: agent prompt missing: $AGENT_PROMPT" >&2; exit 1; }
 
 if [[ "${1-}" == "--real-smoke" ]]; then
-    if [[ "${CURSOR_HEALTHY:-false}" != "true" ]]; then
-        echo "SKIP: real Cursor smoke requires CURSOR_HEALTHY=true"
+    if [[ "${CURSOR_PRESENT:-false}" != "true" ]]; then
+        echo "SKIP: real Cursor smoke requires CURSOR_PRESENT=true"
         exit 0
     fi
     SCRATCH=$(mktemp -d -t cursor-implementer-smoke.XXXXXX)
@@ -544,7 +544,7 @@ STEP2_OUT=$(cd "$STEP2_REPO" && \
     LARCH_TIMING_LEDGER="$STEP2_LEDGER" \
     LARCH_CURSOR_MODEL=$'bad\nmodel' \
     "$DISPATCHER" --tmpdir "$STEP2_TMP" --plan-file "$PLAN" --feature-file "$FEATURE" \
-        --auto-mode false --coder cursor --cursor-healthy true 2>&1)
+        --auto-mode false --coder cursor --cursor-present true 2>&1)
 STEP2_ROWS=$(awk -F'\t' '$2 == "vendor" && $6 == "cursor" && $7 == "cursor-implement" && $12 != "0" { c++ } END { print c + 0 }' "$STEP2_LEDGER" 2>/dev/null || echo 0)
 if [[ "$STEP2_OUT" == *"STATUS=bailed"* ]] \
    && [[ "$STEP2_OUT" == *"REASON=cursor-runtime-failure"* ]] \

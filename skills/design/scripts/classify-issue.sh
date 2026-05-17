@@ -147,12 +147,8 @@ try_cursor_validation() {
     local tmpdir prompt_file output_file redacted_feature redacted_diff cursor_rc
 
     [[ "${CLASSIFY_ISSUE_SKIP_CURSOR:-false}" != "true" ]] || return 2
-    # Respect the session-level Cursor health probe forwarded by the caller.
-    # CURSOR_HEALTHY=false means Cursor was probed and found unhealthy; do not
-    # invoke it even if the binary exists on PATH.
-    [[ "${CURSOR_HEALTHY:-true}" != "false" ]] || return 2
-    # Similarly, CURSOR_AVAILABLE=false means the binary was not found at probe time.
-    [[ "${CURSOR_AVAILABLE:-true}" != "false" ]] || return 2
+    # Respect the session-level Cursor presence check forwarded by the caller.
+    [[ "${CURSOR_PRESENT:-${CURSOR_AVAILABLE:-true}}" != "false" ]] || return 2
     [[ -x "$RUN_EXTERNAL_AGENT" ]] || return 2
     command -v cursor >/dev/null 2>&1 || return 2
 

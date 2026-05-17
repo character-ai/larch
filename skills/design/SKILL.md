@@ -85,7 +85,7 @@ Consolidated NEVER rules collected from the procedural steps below. Each rule st
 
 3. **NEVER mutate orchestrator-wide `codex_available` / `cursor_available` inside Step 2a.5.** **Why:** Step 3 plan-review panel integrity depends on the Option B snapshot pattern — a debate-phase timeout must not lock a tool out of later plan review. **How to apply:** use the `dialectic_*_available` shadow flags inside Step 2a.5 and the `judge_*_available` shadow flags inside the judge re-probe; never touch the top-level flags.
 
-4. **NEVER pass `--caller-env` or `--write-health` to `session-setup.sh` when `SESSION_ENV_PATH` is empty.** **Why:** standalone `/design` invocations have no parent `/implement` to consume the session-env or health artifacts. **How to apply:** branch on `SESSION_ENV_PATH` non-empty in Step 0; omit both flags when standalone.
+4. **NEVER pass `--caller-env` to `session-setup.sh` when `SESSION_ENV_PATH` is empty.** **Why:** standalone `/design` invocations have no parent `/implement` session-env to consume. **How to apply:** branch on `SESSION_ENV_PATH` non-empty in Step 0; omit the flag when standalone.
 
 5. **NEVER call `collect-agent-results.sh` with zero positional arguments.** **Why:** it exits 1 with "at least one output file is required". This is the zero-externals failure mode when every external slot has fallen back to a Claude subagent. **How to apply:** guard each collector call with an explicit check that at least one external slot was launched; the dialectic zero-externals guardrail (Step 2a.5 step 5) and the Step 3 collector both require this.
 
@@ -151,7 +151,7 @@ if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
 fi
 export CLAUDE_PLUGIN_ROOT
-${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix claude-design --skip-branch-check --skip-repo-check --check-reviewers [--caller-env "$SESSION_ENV_PATH"] [--skip-codex-probe] [--skip-cursor-probe] [--write-health "${SESSION_ENV_PATH}.health"]
+${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix claude-design --skip-branch-check --skip-repo-check --check-reviewers [--caller-env "$SESSION_ENV_PATH"] [--skip-codex-probe] [--skip-cursor-probe]
 ```
 
 If `SKIP_BRANCH_CHECK=false`, run setup without `--skip-branch-check`; `preflight.sh` runs in default mode and enforces clean `main` plus fetch/rebase before design work begins:
@@ -161,24 +161,24 @@ if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
 fi
 export CLAUDE_PLUGIN_ROOT
-${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix claude-design --skip-repo-check --check-reviewers [--caller-env "$SESSION_ENV_PATH"] [--skip-codex-probe] [--skip-cursor-probe] [--write-health "${SESSION_ENV_PATH}.health"]
+${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix claude-design --skip-repo-check --check-reviewers [--caller-env "$SESSION_ENV_PATH"] [--skip-codex-probe] [--skip-cursor-probe]
 ```
 
-Only include `--caller-env "$SESSION_ENV_PATH"` and `--write-health "${SESSION_ENV_PATH}.health"` if `SESSION_ENV_PATH` is non-empty. This Anti-pattern #4 predicate is orthogonal to `branch_info_supplied`: session-env controls parent health I/O; branch-info controls whether `/design` trusts `/implement`'s already-gated branch state. If `SESSION_ENV_PATH` provides `CODEX_HEALTHY=false` or `CURSOR_HEALTHY=false`, the script auto-sets the corresponding `--skip-codex-probe` / `--skip-cursor-probe` flag — you do not need to pass these explicitly when using `--caller-env`.
+Only include `--caller-env "$SESSION_ENV_PATH"` if `SESSION_ENV_PATH` is non-empty. This Anti-pattern #4 predicate is orthogonal to `branch_info_supplied`: session-env controls parent presence I/O; branch-info controls whether `/design` trusts `/implement`'s already-gated branch state. If `SESSION_ENV_PATH` provides `CODEX_PRESENT=false` or `CURSOR_PRESENT=false`, the script auto-sets the corresponding `--skip-codex-probe` / `--skip-cursor-probe` flag — you do not need to pass these explicitly when using `--caller-env`.
 
 If the script exits non-zero, always print the raw `PREFLIGHT_ERROR=...` line first. Then print the normalized skill-level message and abort:
 
 **⚠ /design requires clean main to start. To continue, choose one of: (a) `git checkout main && git status` clean → re-run; (b) check out or create a `<USER_PREFIX>/*` feature branch and re-run (the branch naming convention is the explicit opt-in to continue from current state); (c) commit or stash uncommitted changes on `main` first.**
 
-Parse the output for `SESSION_TMPDIR`, `CODEX_AVAILABLE`, `CURSOR_AVAILABLE`, `CODEX_HEALTHY`, `CURSOR_HEALTHY`. Set `DESIGN_TMPDIR` = `SESSION_TMPDIR`. Substitute the actual path in every command below.
+Parse the output for `SESSION_TMPDIR`, `CODEX_AVAILABLE`, `CURSOR_AVAILABLE`, `CODEX_PRESENT`, `CURSOR_PRESENT`. Set `DESIGN_TMPDIR` = `SESSION_TMPDIR`. Substitute the actual path in every command below.
 
 Set mental flags `codex_available` and `cursor_available` based on the output:
 - If `CODEX_AVAILABLE=false`: `codex_available=false`. Print: `**⚠ Codex not available (binary not found). Proceeding without Codex reviewer.**`
-- Else if `CODEX_HEALTHY=false`: `codex_available=false`. Print: `**⚠ Codex installed but not responding (health check failed). Using Claude replacement.**`
+- Else if `CODEX_PRESENT=false`: `codex_available=false`. Print: `**⚠ Codex not present for this session. Using Claude replacement.**`
 - Else: `codex_available=true`
 - Same logic for Cursor.
 
-The `--write-health` flag writes the health status file for cross-skill propagation. It will be updated by `collect-agent-results.sh --write-health` during runtime if any reviewer times out.
+Reviewer presence is static for the session. Runtime failures are handled by per-slot waterfall fallback instead of session-env mutation.
 
 **Execution-issues logging for nested runs**: When `SESSION_ENV_PATH` is non-empty, the parent log is `$(dirname "$SESSION_ENV_PATH")/execution-issues.md`. Any failing Bash tool, external reviewer launch, external reviewer collector status not equal to `OK`, or Agent-tool fallback failure must append the full captured stdout/stderr or returned text verbatim through `${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh` under `External Reviewer Issues` (or `Warnings` for diagram generation/sanitizer failures). Capture into a `$DESIGN_TMPDIR/*-failure.log` file first; include `${OUTPUT}.diag` sidecar content for reviewer collector failures. Do not summarize or truncate these captures.
 
@@ -341,7 +341,7 @@ When the assigned external is unavailable, the slot's Claude fallback uses the s
 
 Print `> **🔶 /design 2a: sketches**`.
 
-**Subagent heavy phase**: If `subagent_mode=true` (i.e., `--subagent` was passed) AND `quick_mode=false`, invoke a single Agent-tool subagent (subagent_type: `general-purpose`) for the heavy non-interactive phase before entering 2a.2. The subagent MUST read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/heavy-worker.md`, receive `DESIGN_TMPDIR`, `IMPLEMENT_TMPDIR`, `SESSION_ENV_PATH`, `FEATURE_DESCRIPTION`, `quick_mode`, `auto_mode`, `$DESIGN_TMPDIR/run-params.json`, branch info, and reviewer health flags as explicit data, and write raw artifacts to `$DESIGN_TMPDIR/`. The subagent returns a terse KV block whose first line is `DESIGN_HEAVY=complete` (optionally followed by `DESIGN_SUMMARY_FILE=<path>`) or a single failure line `DESIGN_HEAVY=failed REASON=<short-token>`; it does not write the manifest and does not return plan/reviewer/tally prose.
+**Subagent heavy phase**: If `subagent_mode=true` (i.e., `--subagent` was passed) AND `quick_mode=false`, invoke a single Agent-tool subagent (subagent_type: `general-purpose`) for the heavy non-interactive phase before entering 2a.2. The subagent MUST read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/heavy-worker.md`, receive `DESIGN_TMPDIR`, `IMPLEMENT_TMPDIR`, `SESSION_ENV_PATH`, `FEATURE_DESCRIPTION`, `quick_mode`, `auto_mode`, `$DESIGN_TMPDIR/run-params.json`, branch info, and reviewer presence flags as explicit data, and write raw artifacts to `$DESIGN_TMPDIR/`. The subagent returns a terse KV block whose first line is `DESIGN_HEAVY=complete` (optionally followed by `DESIGN_SUMMARY_FILE=<path>`) or a single failure line `DESIGN_HEAVY=failed REASON=<short-token>`; it does not write the manifest and does not return plan/reviewer/tally prose.
 
 Immediately after the Agent tool returns, parse the heavy-worker status line. Before following the success path, fail closed if the worker omitted a valid status line or returned success without the required artifacts. The gate has two tiers, drawn from two distinct normative sources: **Tier 1 (non-empty)** for substantive artifacts the `heavy-worker.md` "Artifact Contract" mandates as non-empty regardless of manifest export; **Tier 2 (must-exist)** for may-be-empty artifacts that `skills/design/scripts/write-design-manifest.sh` requires on disk for manifest export (`copy_required_may_be_empty` calls in that script). On the nested+`auto_mode=true` path, parent Step 4 (which creates missing empty files) is skipped, so Tier 2 is the load-bearing existence check before manifest export at Step 5; Tier 1 is the heavy-worker contract check independent of manifest export.
 
@@ -428,7 +428,7 @@ Use `timeout: 1260000` on the Bash tool call. **Do NOT** set `run_in_background:
 
 Note: This is a separate `collect-agent-results.sh` call from the one in Step 3. Both are permitted because they operate on completely distinct output file sets (`*-sketch-*-output.txt` vs `*-plan-output.txt`).
 
-Parse the structured output for each reviewer's `STATUS`, `REVIEWER_FILE`, and `HEALTHY`. For sketches, a valid output is non-empty and contains substantive architectural content (at least a paragraph). If a reviewer's `STATUS` is not `OK`, follow the **Runtime Timeout Fallback** procedure in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md` (set `*_available=false` for all subsequent steps).
+Parse the structured output for each reviewer's `STATUS` and `REVIEWER_FILE`. For sketches, a valid output is non-empty and contains substantive architectural content (at least a paragraph). If a reviewer's `STATUS` is not `OK`, follow the **Runtime Waterfall Fallback** procedure in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md` for that slot.
 
 For every non-`OK` sketch collector result, compose `$DESIGN_TMPDIR/sketch-collector-<reviewer>.failure.log` with the structured collector block, the full `REVIEWER_FILE` content if present, and the full `${REVIEWER_FILE}.diag` content if present. When `SESSION_ENV_PATH` is non-empty, append that file with `${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh --log "$(dirname "$SESSION_ENV_PATH")/execution-issues.md" --site "design Step 2a.3" --tool "collect-agent-results.sh <tool> <status>" --exit-code <EXIT_CODE-or-1> --category "External Reviewer Issues" --output-file "$failure_log" --redact || true`.
 
@@ -965,9 +965,9 @@ export CLAUDE_PLUGIN_ROOT
 SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 5 — cleanup" || true
 ```
 
-### 5a — Update Health Status File
+### 5a — Update Reviewer Presence Status
 
-Health status file updates are now handled automatically by `collect-agent-results.sh --write-health` during reviewer collection (Steps 2a.3 and 3). No additional cleanup-time write is needed unless a reviewer was marked unhealthy outside of a `collect-agent-results.sh` call (e.g., via a manual timeout detection). If `SESSION_ENV_PATH` is non-empty and any reviewer was marked unhealthy during this session that was NOT already written by `collect-agent-results.sh`, re-write the health status file at `${SESSION_ENV_PATH}.health` with the final health state before cleanup.
+
 
 ### 5b — Remove Temp Directory
 

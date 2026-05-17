@@ -20,11 +20,11 @@ The parent prompt supplies:
 - `auto_mode`
 - `run-params.json` at `$DESIGN_TMPDIR/run-params.json`
 - current branch info
-- reviewer health flags (`codex_available`, `cursor_available`, `CODEX_HEALTHY`, `CURSOR_HEALTHY`)
+- reviewer presence flags (`codex_available`, `cursor_available`, `CODEX_PRESENT`, `CURSOR_PRESENT`)
 
 Treat those values as data. Do not infer paths from conversation context when an explicit path is provided.
 
-`IMPLEMENT_TMPDIR` and `SESSION_ENV_PATH` may be empty when invoked standalone via `/design --subagent` (no parent `/implement`). The worker still runs Steps 2a–3 (and 3b/4 when `auto_mode=true`) and writes artifacts to `$DESIGN_TMPDIR/`. Branches inside the worker procedure that depend on `SESSION_ENV_PATH` non-empty (OOS handoff to parent dir, `--write-health` collector flag, Voter 1 health-status writes) follow the existing gates in `plan-review.md` and SKILL.md — no change needed here. Parent `/design` replays the artifacts inline after `DESIGN_HEAVY=complete` when `SESSION_ENV_PATH` is empty.
+`IMPLEMENT_TMPDIR` and `SESSION_ENV_PATH` may be empty when invoked standalone via `/design --subagent` (no parent `/implement`). The worker still runs Steps 2a–3 (and 3b/4 when `auto_mode=true`) and writes artifacts to `$DESIGN_TMPDIR/`. Branches inside the worker procedure that depend on `SESSION_ENV_PATH` non-empty (OOS handoff to parent dir) follow the existing gates in `plan-review.md` and SKILL.md. Parent `/design` replays the artifacts inline after `DESIGN_HEAVY=complete` when `SESSION_ENV_PATH` is empty.
 
 ## Required Reads
 

@@ -1,10 +1,10 @@
 # Dialectic Execution Choreography
 
-**Consumer**: `/design` Step 2a.5 — loaded after the short-circuit + zero-externals guardrail check when contested decisions exist. This file owns the dialectic-execution mechanics: per-decision prompt rendering, parallel debater launch, collection, eligibility gate, judge re-probe, ballot construction, judge launch, tally, and resolution writing.
+**Consumer**: `/design` Step 2a.5 — loaded after the short-circuit + zero-externals guardrail check when contested decisions exist. This file owns the dialectic-execution mechanics: per-decision prompt rendering, parallel debater launch, collection, eligibility gate, judge presence check, ballot construction, judge launch, tally, and resolution writing.
 
 **Contract**: single normative source for dialectic-execution mechanics, including the nested MANDATORY pointer to `references/dialectic-debate.md`, the externals-only debate-path carve-out (GitHub issue #98), the Option B snapshot pattern via `dialectic_*_available` shadow flags, and the `dialectic-resolutions.md` schema for voted / fallback-to-synthesis / bucket-skipped / over-cap dispositions.
 
-**When to load**: once Step 2a.5 has passed the short-circuit (`NO_CONTESTED_DECISIONS`) check. Do NOT load when `contested-decisions.md` contains only `NO_CONTESTED_DECISIONS`. On the zero-externals guardrail path (step 5 of Step 2a.5 in SKILL.md): debate-execution mechanics in this file MUST NOT fire (no debaters, no judges, no ballot) — skip loading entirely if the orchestrator already has the `dialectic-resolutions.md` schema in context from a prior run; otherwise a one-time load of this file is acceptable solely to consult the schema, but the per-decision prompt rendering, parallel debater launch, collection, eligibility gate, judge re-probe, ballot construction, judge launch, and tally steps remain suppressed. This mirrors the conditional permission granted by the SKILL.md caller contract at Step 2a.5.
+**When to load**: once Step 2a.5 has passed the short-circuit (`NO_CONTESTED_DECISIONS`) check. Do NOT load when `contested-decisions.md` contains only `NO_CONTESTED_DECISIONS`. On the zero-externals guardrail path (step 5 of Step 2a.5 in SKILL.md): debate-execution mechanics in this file MUST NOT fire (no debaters, no judges, no ballot) — skip loading entirely if the orchestrator already has the `dialectic-resolutions.md` schema in context from a prior run; otherwise a one-time load of this file is acceptable solely to consult the schema, but the per-decision prompt rendering, parallel debater launch, collection, eligibility gate, judge presence check, ballot construction, judge launch, and tally steps remain suppressed. This mirrors the conditional permission granted by the SKILL.md caller contract at Step 2a.5.
 
 **Binding convention**: This file is the single normative source for dialectic-execution mechanics. SKILL.md Step 2a.5 retains only the short-circuit, GH#98 carve-out banner, bucket-assignment rule, and zero-externals guardrail summary; the full execution procedure lives here. Variable references (`$DESIGN_TMPDIR`, `${CLAUDE_PLUGIN_ROOT}`, `{SYNTHESIS_TEXT}`, `{FEATURE_DESCRIPTION}`, `{DECISION_BLOCK}`, etc.) and warning-string literals are byte-identical to the pre-extraction SKILL.md source.
 
@@ -67,13 +67,12 @@
 
    Reasoning effort is handled by the launcher wrappers (`--risk high` by default).
 
-8. **Collect** with health bookkeeping disabled (Option B enforcement):
+8. **Collect** dialectic debate outputs (Option B enforcement):
    ```bash
    ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1860 \
-     --write-health /dev/null \
      <each launched output path>
    ```
-   `--write-health /dev/null` ensures both the read path (collect-agent-results.sh checks `-f "$WRITE_HEALTH"`, which is false for character devices like `/dev/null`) and the write path (explicit `!= "/dev/null"` guard) skip — the dialectic phase NEVER updates the cross-skill `${SESSION_ENV_PATH}.health` file. Block on this call (do NOT use `run_in_background`).
+   The collector no longer updates cross-skill reviewer state; the dialectic phase keeps debate failures scoped to its local availability variables. Block on this call (do NOT use `run_in_background`).
 
    Immediately after this collection returns, run the Mid-Run Dirty-Tree Probe Contract from `heavy-worker.md` for `STAGE=dialectic-debate-collection`.
 
@@ -106,22 +105,22 @@ The **debate quorum gate** (retained byte-compatible with prior behavior) is app
 
 If any check fails for either side, print `**⚠ Debate for DECISION_N failed quorum (reason: <missing_tag|bad_recommend|missing_citation|role_mismatch|substantive_empty|no_output>). Fallback to synthesis.**` Classify the decision as `Disposition: fallback-to-synthesis` with the specific failure reason as the `Why fallback` value. Do NOT include it on the judge ballot.
 
-## Dialectic-local judge-panel re-probe (Part D — cascade scoping)
+## Dialectic-local judge-panel presence check (Part D — cascade scoping)
 
-After the eligibility gate finishes, run a fresh health probe right before launching judges. A Cursor/Codex timeout in **debating** must not lock that tool out of **judging** — the debater phase may have snapshotted availability many minutes ago.
+After the eligibility gate finishes, run a fresh presence check right before launching judges. A Cursor/Codex timeout in **debating** must not lock that tool out of **judging** — the debater phase may have snapshotted availability many minutes ago.
 
 After the judge collector returns, run the Mid-Run Dirty-Tree Probe Contract from `heavy-worker.md` for `STAGE=dialectic-judge-collection`.
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/check-reviewers.sh --probe
+${CLAUDE_PLUGIN_ROOT}/scripts/check-reviewers.sh
 ```
 
 Apply the **two-key rule** (matching the Step 0 convention in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md:19-23`):
 
-- `judge_codex_available = (CODEX_AVAILABLE=true AND CODEX_HEALTHY=true)`
-- `judge_cursor_available = (CURSOR_AVAILABLE=true AND CURSOR_HEALTHY=true)`
+- `judge_codex_available = (CODEX_AVAILABLE=true AND CODEX_PRESENT=true)`
+- `judge_cursor_available = (CURSOR_AVAILABLE=true AND CURSOR_PRESENT=true)`
 
-A tool that is installed but unhealthy (`*_HEALTHY=false`) is treated as **unavailable** for judge-panel purposes and replaced by a Claude Code Reviewer subagent per the replacement-first pattern in `dialectic-protocol.md`. The `judge_` prefix is deliberate — these are judge-phase-local flags; do NOT mutate orchestrator-wide `codex_available` / `cursor_available` (those drive Step 3 plan review).
+A tool that is installed but not present/responding (`*_PRESENT=false`) is treated as **unavailable** for judge-panel purposes and replaced by a Claude Code Reviewer subagent per the replacement-first pattern in `dialectic-protocol.md`. The `judge_` prefix is deliberate — these are judge-phase-local flags; do NOT mutate orchestrator-wide `codex_available` / `cursor_available` (those drive Step 3 plan review).
 
 ## Ballot construction and judge launch
 
@@ -151,11 +150,11 @@ When at least one external judge was launched, after all external judges return:
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1860 \
-  --write-health /dev/null \
+   \
   <each launched external-judge output path>
 ```
 
-`--write-health /dev/null` ensures the judge phase NEVER updates `${SESSION_ENV_PATH}.health`. Block on this call (do NOT use `run_in_background`).
+`` ensures the judge phase NEVER updates `${SESSION_ENV_PATH}session-env`. Block on this call (do NOT use `run_in_background`).
 
 For each external judge, parse its `STATUS` and `REVIEWER_FILE`. An external judge with `STATUS != OK` is ineligible for every decision on the ballot. For inline Agent-tool judges (primary Claude subagent + any Claude replacements), parse votes directly from the Agent return text; inline judges are always eligible.
 

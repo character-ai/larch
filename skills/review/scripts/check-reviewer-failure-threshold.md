@@ -31,7 +31,7 @@ Emits to FD 3 (`emit_kv`):
 
 ## STATUS classification
 
-`STATUS=cap_hit` is a deliberate slot-skip (reviewer's budget cap reached; `HEALTHY=true` per `collect-agent-results.md`), NOT a failure. It counts as `SUCCEEDED_SLOTS` for threshold purposes.
+`STATUS=cap_hit` is a deliberate slot-skip, NOT a failure. It counts as `SUCCEEDED_SLOTS` for threshold purposes.
 
 ## Callers
 

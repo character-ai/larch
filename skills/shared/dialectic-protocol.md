@@ -2,7 +2,7 @@
 
 Shared protocol for **post-debate adjudication** of contested design decisions. Used by `/design` Step 2a.5 to resolve contested decisions with a 3-judge binary panel after the Phase 2 debater fanout returns. This protocol is **structurally parallel** to `voting-protocol.md` but **semantically independent** — it adjudicates pre-authored binary defenses, not reviewer findings with YES/NO/EXONERATE and competition scoring.
 
-`/design`'s caller maps `THESIS`/`ANTI_THESIS` to its synthesis `{CHOSEN}` / `{ALTERNATIVE}`. Token names, ballot machinery (Write-tool ballot, position rotation, attribution stripping, judge re-probe, replacement-first 3-judge panel, parser tolerance, threshold rules), and the `dialectic-resolutions.md` Consumer Contract field-name set are stable.
+`/design`'s caller maps `THESIS`/`ANTI_THESIS` to its synthesis `{CHOSEN}` / `{ALTERNATIVE}`. Token names, ballot machinery (Write-tool ballot, position rotation, attribution stripping, judge presence check, replacement-first 3-judge panel, parser tolerance, threshold rules), and the `dialectic-resolutions.md` Consumer Contract field-name set are stable.
 
 **Do not reuse `voting-protocol.md` parsers, threshold tables, or scoring rules for dialectic adjudication.** Dialectic ballots use `DECISION_N` IDs with `THESIS`/`ANTI_THESIS` tokens, not `FINDING_N` with `YES`/`NO`/`EXONERATE`. Dialectic does not compute a competition scoreboard.
 
@@ -127,21 +127,21 @@ Unlike the debater phase (which **skips** decisions whose assigned tool is unava
 
 The user's "no Claude in dialectic" rule is **debater-specific**, not judge-specific. The rationale is that debaters produce adversarial arguments (where model-specific writing style might encode tool identity), whereas judges merely adjudicate between pre-authored defenses — a role Claude performs well without attribution leak risk.
 
-## Dialectic-Local Health Re-probe
+## Dialectic-Local Presence Check
 
-Before launching judges, run `${CLAUDE_PLUGIN_ROOT}/scripts/check-reviewers.sh --probe` synchronously. This provides a **fresh** snapshot of tool availability immediately before the judge wave — a Cursor or Codex debate-time timeout must not lock that tool out of judging.
+Before launching judges, run `${CLAUDE_PLUGIN_ROOT}/scripts/check-reviewers.sh` synchronously. This provides a **fresh** snapshot of tool presence immediately before the judge wave — a Cursor or Codex debate-time timeout must not lock that tool out of judging.
 
 Parse the output and derive judge-local flags using the **same two-key rule** that `session-setup.sh` applies at session startup (see `skills/shared/external-reviewers.md:19-23`):
 
-- `judge_codex_available = (CODEX_AVAILABLE=true AND CODEX_HEALTHY=true)`
-- `judge_cursor_available = (CURSOR_AVAILABLE=true AND CURSOR_HEALTHY=true)`
+- `judge_codex_available = (CODEX_AVAILABLE=true AND CODEX_PRESENT=true)`
+- `judge_cursor_available = (CURSOR_AVAILABLE=true AND CURSOR_PRESENT=true)`
 
-A tool that is installed but unhealthy (`*_HEALTHY=false`) MUST be treated as unavailable for judge-panel purposes — otherwise the judge launch will time out and drop the eligible voter count. **Do NOT confuse `*_AVAILABLE` (binary on PATH) with `judge_*_available` (launch-eligible).** Naming reflects purpose: the `judge_` prefix signals these flags are scoped to the judge panel only.
+A tool that is installed but not present/responding (`*_PRESENT=false`) MUST be treated as unavailable for judge-panel purposes — otherwise the judge launch will time out and drop the eligible voter count. **Do NOT confuse `*_AVAILABLE` (binary on PATH) with `judge_*_available` (launch-eligible).** Naming reflects purpose: the `judge_` prefix signals these flags are scoped to the judge panel only.
 
-**Scoping**: the dialectic-local re-probe result is used only for the judge panel. It MUST NOT:
+**Scoping**: the dialectic-local presence-check result is used only for the judge panel. It MUST NOT:
 
 - Mutate orchestrator-wide `codex_available` / `cursor_available` flags (those drive Step 3 plan review; Phase 3 must not poison later steps).
-- Write to `${SESSION_ENV_PATH}.health`. Collection calls in the judge phase use `--write-health /dev/null`.
+- Write to `${SESSION_ENV_PATH}session-env`. Collection calls in the judge phase use ``.
 
 ## Judge Prompt Template
 
@@ -238,15 +238,14 @@ Timing note: v1 timing rows are emitted by the launch-wrapper scripts, not by di
 
 2. **External judges (Cursor, Codex)**: **Only perform this step if at least one external judge was actually launched** (i.e., at least one of `judge_cursor_available` / `judge_codex_available` was true at launch time). If zero external judges were launched — all three slots were filled by Claude subagent inline replacements — skip this step entirely and proceed to step 3 below. This guard is required because `collect-agent-results.sh` exits with `"at least one output file is required"` when called with no positional arguments, which would abort the all-fallback configuration that the replacement-first rule is designed to support.
 
-   When at least one external judge was launched, after all launches return, collect with health bookkeeping disabled:
+   When at least one external judge was launched, after all launches return, collect the external judge outputs:
 
    ```bash
    ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1860 \
-     --write-health /dev/null \
      <each launched external-judge output path>
    ```
 
-   `--write-health /dev/null` ensures the dialectic phase NEVER updates `${SESSION_ENV_PATH}.health`. Block on this call (do NOT use `run_in_background`).
+   The collector does not update `${SESSION_ENV_PATH}session-env`; dialectic availability remains phase-local. Block on this call (do NOT use `run_in_background`).
 
    Parse each external judge's `STATUS` and `REVIEWER_FILE`. Read vote lines from the `REVIEWER_FILE` field (may point at a `*-retry.txt` if the collector recovered an empty output; do NOT read from the original launch path).
 

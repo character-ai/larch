@@ -1,6 +1,6 @@
 # scripts/session-setup.sh — contract
 
-Shared setup wrapper for larch skills. It creates a fresh session tmpdir, optionally runs preflight and repo discovery, reviewer health probes, and can write a session-env file plus a `.health` sidecar.
+Shared setup wrapper for larch skills. It creates a fresh session tmpdir, optionally runs preflight and repo discovery, checks reviewer binary presence, and can write a session-env file.
 
 Session tmpdirs are named `${XDG_CACHE_HOME:-$HOME/.cache}/larch/sessions/<prefix>-<clone-tag>-XXXXXX`, where
 `<clone-tag>` is the current working directory basename with every character
@@ -22,9 +22,9 @@ Callers that evaluate the session-env output inherit a session-scoped cache for
 `scripts/render-specialist-prompt.sh`; the renderer creates the directory
 lazily and falls back to uncached rendering if the directory cannot be created.
 
-## Reviewer probe contract
+## Reviewer Presence Contract
 
-- On `WAIT_INFRA_ERROR=`, the stderr banner says: `Probe could not classify tool health; available tools marked unhealthy for fail-closed gating.` This matches `check-reviewers.sh` emitting `*_HEALTHY=false` for every available tool on the wait/preflight/infra-error path while preserving `WAIT_INFRA_ERROR` as the cause diagnostic.
+When `--check-reviewers` is passed, setup invokes `scripts/check-reviewers.sh` and emits `CODEX_PRESENT`, `CURSOR_PRESENT`, and backward-compatible `CODEX_AVAILABLE` / `CURSOR_AVAILABLE` aliases. Presence is static binary detection for the session; runtime launch failures are handled by per-slot waterfall fallback.
 
 ## Session-env contract
 
@@ -42,4 +42,4 @@ run-log batches. Missing paths and copy failures are ignored.
 
 ## Edit-in-sync
 
-Update `scripts/check-reviewers.sh`, `scripts/write-session-env.sh`, `skills/shared/subskill-invocation.md`, and `skills/shared/external-reviewers.md` when changing session-env keys or reviewer health semantics. Update `scripts/write-session-id.sh` when changing session-id ownership or idempotency.
+Update `scripts/check-reviewers.sh`, `scripts/write-session-env.sh`, `skills/shared/subskill-invocation.md`, and `skills/shared/external-reviewers.md` when changing session-env keys or reviewer presence semantics. Update `scripts/write-session-id.sh` when changing session-id ownership or idempotency.

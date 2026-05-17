@@ -12,7 +12,7 @@ compose-collector-failure-log.sh \
 ```
 
 - `--reviewer-file <path>`: the `REVIEWER_FILE=` path from the collector's structured output line. May not exist; may be 0 bytes; both are valid.
-- `--structured-record <record-line>`: the full `REVIEWER_FILE=…|TOOL=…|STATUS=…|EXIT_CODE=…|HEALTHY=…|FAILURE_REASON=…` line as emitted by `collect-agent-results.sh`. Required; must be non-empty.
+- `--structured-record <record-line>`: the full `REVIEWER_FILE=…|TOOL=…|STATUS=…|EXIT_CODE=…|FAILURE_REASON=…` line as emitted by `collect-agent-results.sh`. Required; must be non-empty.
 - `--output <path>`: destination file. Must be writable; parent directory must exist.
 
 Exit 0 on success. Exit 2 on invalid arguments (`--structured-record` empty, `--output` parent missing, unknown flag).

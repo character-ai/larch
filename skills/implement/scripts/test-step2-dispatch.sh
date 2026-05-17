@@ -10,8 +10,8 @@
 #   - Missing required flag (--auto-mode) → exit 2.
 #   - Bad --coder enum value → exit 2 and names {claude,codex,cursor}.
 #   - --coder cursor with false/missing/empty health → STATUS=claude_fallback (no baseline-file leak).
-#   - Bad --cursor-healthy enum value → exit 2.
-#   - --coder claude --cursor-healthy "" → STATUS=claude_fallback.
+#   - Bad --cursor-present enum value → exit 2.
+#   - --coder claude --cursor-present "" → STATUS=claude_fallback.
 #   - --coder cursor outside a git work-tree with false health → claude_fallback before REPO_ROOT lookup.
 #   - --coder + --codex-available together → exit 2 (mutex).
 #   - Bad --codex-available enum value → exit 2.
@@ -143,11 +143,11 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Test 3b: --coder cursor --cursor-healthy false → claude_fallback.
+# Test 3b: --coder cursor --cursor-present false → claude_fallback.
 # ---------------------------------------------------------------------------
 TMP3B="$SCRATCH/test3b"; mkdir -p "$TMP3B"
 OUT=$(cd "$REPO_ROOT" && "$DISPATCHER" --tmpdir "$TMP3B" --plan-file "$PLAN" --feature-file "$FEATURE" \
-    --auto-mode false --coder cursor --cursor-healthy false 2>&1)
+    --auto-mode false --coder cursor --cursor-present false 2>&1)
 if [[ "$OUT" == *"STATUS=claude_fallback"* ]] && [[ "$OUT" == *"ORCHESTRATOR_EDIT_AUTHORITY=allowed"* ]]; then
     pass
 else
@@ -160,7 +160,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Test 3b2: --coder cursor with no --cursor-healthy defaults to false.
+# Test 3b2: --coder cursor with no --cursor-present defaults to false.
 # ---------------------------------------------------------------------------
 TMP3B2="$SCRATCH/test3b2"; mkdir -p "$TMP3B2"
 OUT=$(cd "$REPO_ROOT" && "$DISPATCHER" --tmpdir "$TMP3B2" --plan-file "$PLAN" --feature-file "$FEATURE" \
@@ -172,11 +172,11 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Test 3b3: --coder cursor --cursor-healthy "" treats empty as false.
+# Test 3b3: --coder cursor --cursor-present "" treats empty as false.
 # ---------------------------------------------------------------------------
 TMP3B3="$SCRATCH/test3b3"; mkdir -p "$TMP3B3"
 OUT=$(cd "$REPO_ROOT" && "$DISPATCHER" --tmpdir "$TMP3B3" --plan-file "$PLAN" --feature-file "$FEATURE" \
-    --auto-mode false --coder cursor --cursor-healthy "" 2>&1)
+    --auto-mode false --coder cursor --cursor-present "" 2>&1)
 if [[ "$OUT" == *"STATUS=claude_fallback"* ]] && [[ "$OUT" == *"ORCHESTRATOR_EDIT_AUTHORITY=allowed"* ]]; then
     pass
 else
@@ -184,24 +184,24 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Test 3b4: bogus --cursor-healthy value exits 2.
+# Test 3b4: bogus --cursor-present value exits 2.
 # ---------------------------------------------------------------------------
 TMP3B4="$SCRATCH/test3b4"; mkdir -p "$TMP3B4"
 EXIT=0
 ERR=$(cd "$REPO_ROOT" && "$DISPATCHER" --tmpdir "$TMP3B4" --plan-file "$PLAN" --feature-file "$FEATURE" \
-    --auto-mode false --coder cursor --cursor-healthy bogus 2>&1 >/dev/null) || EXIT=$?
-if [[ "$EXIT" == "2" ]] && [[ "$ERR" == *"--cursor-healthy must be 'true', 'false', or empty"* ]]; then
+    --auto-mode false --coder cursor --cursor-present bogus 2>&1 >/dev/null) || EXIT=$?
+if [[ "$EXIT" == "2" ]] && [[ "$ERR" == *"--cursor-present must be 'true', 'false', or empty"* ]]; then
     pass
 else
-    fail 3b4 "bad --cursor-healthy should exit 2, got exit=$EXIT err=$ERR"
+    fail 3b4 "bad --cursor-present should exit 2, got exit=$EXIT err=$ERR"
 fi
 
 # ---------------------------------------------------------------------------
-# Test 3b5: --coder claude --cursor-healthy "" remains claude_fallback.
+# Test 3b5: --coder claude --cursor-present "" remains claude_fallback.
 # ---------------------------------------------------------------------------
 TMP3B5="$SCRATCH/test3b5"; mkdir -p "$TMP3B5"
 OUT=$("$DISPATCHER" --tmpdir "$TMP3B5" --plan-file "$PLAN" --feature-file "$FEATURE" \
-    --auto-mode false --coder claude --cursor-healthy "" 2>&1)
+    --auto-mode false --coder claude --cursor-present "" 2>&1)
 if [[ "$OUT" == *"STATUS=claude_fallback"* ]] && [[ "$OUT" == *"ORCHESTRATOR_EDIT_AUTHORITY=allowed"* ]]; then
     pass
 else
@@ -214,7 +214,7 @@ fi
 TMP3B6="$SCRATCH/test3b6"; mkdir -p "$TMP3B6"
 NON_GIT_CURSOR_DIR="$SCRATCH/not-a-repo-cursor"; mkdir -p "$NON_GIT_CURSOR_DIR"
 OUT=$(cd "$NON_GIT_CURSOR_DIR" && "$DISPATCHER" --tmpdir "$TMP3B6" --plan-file "$PLAN" --feature-file "$FEATURE" \
-    --auto-mode false --coder cursor --cursor-healthy false 2>&1)
+    --auto-mode false --coder cursor --cursor-present false 2>&1)
 if [[ "$OUT" == *"STATUS=claude_fallback"* ]] && [[ "$OUT" == *"ORCHESTRATOR_EDIT_AUTHORITY=allowed"* ]]; then
     pass
 else
@@ -364,7 +364,7 @@ fi
 # Test 10: second invocation against a tmpdir that recorded a different coder
 # bails with coder-mismatch-tmpdir-reuse before touching shared baselines or
 # resume counters. Pre-seed sentinel=codex + baselines, then invoke with
-# --coder=cursor --cursor-healthy true so the cursor health gate passes and
+# --coder=cursor --cursor-present true so the cursor health gate passes and
 # the cross-coder guard is the first state mutation reached.
 # ---------------------------------------------------------------------------
 TMP10="$SCRATCH/test10"; mkdir -p "$TMP10"
@@ -377,7 +377,7 @@ else
 fi
 echo "codex" > "$TMP10/step2-spawn-coder.txt"
 OUT=$(cd "$REPO_ROOT" && "$DISPATCHER" --tmpdir "$TMP10" --plan-file "$PLAN" --feature-file "$FEATURE" \
-    --auto-mode false --coder cursor --cursor-healthy true 2>&1)
+    --auto-mode false --coder cursor --cursor-present true 2>&1)
 if [[ "$OUT" == *"STATUS=bailed"* ]] \
    && [[ "$OUT" == *"REASON=coder-mismatch-tmpdir-reuse"* ]] \
    && [[ "$OUT" == *"TOOL=cursor"* ]] \

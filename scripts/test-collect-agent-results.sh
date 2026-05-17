@@ -145,9 +145,8 @@ write_meta() {
 run_collector() {
     local timeout="$1"
     local output="$2"
-    local health
-    health="$TMPROOT/$(basename "$output").health"
-    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 bash "$COLLECTOR" --timeout "$timeout" --write-health "$health" "$output" 2>"${health}.stderr"
+    local stderr="$TMPROOT/$(basename "$output").stderr"
+    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 bash "$COLLECTOR" --timeout "$timeout" "$output" 2>"$stderr"
 }
 
 # shellcheck source=scripts/lib-net.sh
@@ -193,7 +192,6 @@ write_meta "$OUT_T1" "$SUCCESS_HELPER"
 RESULT_T1=$(run_collector 5 "$OUT_T1")
 assert_line "C_T1 retry file" "REVIEWER_FILE=${OUT_T1%.txt}-retry.txt" "$RESULT_T1"
 assert_line "C_T1 status" "STATUS=OK" "$RESULT_T1"
-assert_line "C_T1 healthy" "HEALTHY=true" "$RESULT_T1"
 
 # C_T2: transient initial FAILED retries, but retry failure is reported as EMPTY_OUTPUT.
 OUT_T2="$TMPROOT/cursor-t2.txt"
@@ -203,7 +201,6 @@ printf 'Could not resolve host: example.invalid\n' > "${OUT_T2}.diag"
 write_meta "$OUT_T2" "$FAIL_HELPER"
 RESULT_T2=$(run_collector 5 "$OUT_T2")
 assert_line "C_T2 status" "STATUS=EMPTY_OUTPUT" "$RESULT_T2"
-assert_line "C_T2 healthy" "HEALTHY=false" "$RESULT_T2"
 assert_line_regex "C_T2 retry failure reason" '^FAILURE_REASON=Retry also failed:' "$RESULT_T2"
 
 # C_T3: non-transient FAILED does not retry even with valid metadata.
@@ -214,7 +211,6 @@ printf 'reviewer prompt malformed\n' > "${OUT_T3}.diag"
 write_meta "$OUT_T3" "$SUCCESS_HELPER"
 RESULT_T3=$(run_collector 5 "$OUT_T3")
 assert_line "C_T3 status" "STATUS=FAILED" "$RESULT_T3"
-assert_line "C_T3 healthy" "HEALTHY=false" "$RESULT_T3"
 assert_no_retry_file "C_T3 no retry" "$OUT_T3"
 
 # C_T4: SENTINEL_TIMEOUT with transient diagnostic enters retry and recovers.
@@ -225,7 +221,6 @@ write_meta "$OUT_T4" "$SUCCESS_HELPER"
 RESULT_T4=$(run_collector 1 "$OUT_T4")
 assert_line "C_T4 retry file" "REVIEWER_FILE=${OUT_T4%.txt}-retry.txt" "$RESULT_T4"
 assert_line "C_T4 status" "STATUS=OK" "$RESULT_T4"
-assert_line "C_T4 healthy" "HEALTHY=true" "$RESULT_T4"
 
 # C_T5: SENTINEL_TIMEOUT without a transient diagnostic remains a timeout.
 OUT_T5="$TMPROOT/cursor-t5.txt"
@@ -233,7 +228,6 @@ OUT_T5="$TMPROOT/cursor-t5.txt"
 write_meta "$OUT_T5" "$SUCCESS_HELPER"
 RESULT_T5=$(run_collector 1 "$OUT_T5")
 assert_line "C_T5 status" "STATUS=SENTINEL_TIMEOUT" "$RESULT_T5"
-assert_line "C_T5 healthy" "HEALTHY=false" "$RESULT_T5"
 assert_no_retry_file "C_T5 no retry" "$OUT_T5"
 
 # C_IT1: cursor output with inline TSV inside code fence passes
@@ -252,7 +246,6 @@ EOF
 printf '0\n' > "${OUT_IT1}.done"
 RESULT_IT1=$(RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 bash "$COLLECTOR" --timeout 5 --substantive-validation --validation-mode "$OUT_IT1" 2>/dev/null)
 assert_line "C_IT1 status not NOT_SUBSTANTIVE" "STATUS=OK" "$RESULT_IT1"
-assert_line "C_IT1 healthy" "HEALTHY=true" "$RESULT_IT1"
 
 # C_IT2: cursor output with only short narration (no TSV, < 30 words) is NOT_SUBSTANTIVE.
 OUT_IT2="$TMPROOT/cursor-it2.txt"
@@ -260,7 +253,6 @@ printf 'Read-only: we cannot write the sidecar file.\n' > "$OUT_IT2"
 printf '0\n' > "${OUT_IT2}.done"
 RESULT_IT2=$(RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 bash "$COLLECTOR" --timeout 5 --substantive-validation --validation-mode "$OUT_IT2" 2>/dev/null)
 assert_line "C_IT2 status is NOT_SUBSTANTIVE" "STATUS=NOT_SUBSTANTIVE" "$RESULT_IT2"
-assert_line "C_IT2 healthy" "HEALTHY=false" "$RESULT_IT2"
 
 if [[ "$FAIL" -ne 0 ]]; then
     printf '\nFAIL: test-collect-agent-results.sh (%d failure(s))\n' "$FAIL" >&2

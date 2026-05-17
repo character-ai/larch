@@ -14,26 +14,19 @@
 # "Empty-output retry deserializer" section in scripts/collect-agent-results.md.
 #
 # Usage:
-#   collect-agent-results.sh --timeout <seconds> [--write-health <path>] \
+#   collect-agent-results.sh --timeout <seconds> \
 #     [--substantive-validation] [--structured-reviewer-validation] \
 #     [--summary-only] \
 #     <output-file> [<output-file> ...]
 #
 # Options:
 #   --timeout <seconds>            Timeout for wait-for-reviewers.sh (e.g., 1860)
-#   --write-health <path>          Write updated CODEX_HEALTHY/CURSOR_HEALTHY to file.
-#                                  Health is monotonic per tool: any failure sets the tool
-#                                  permanently unhealthy. A later successful instance does
-#                                  NOT flip it back to healthy.
-#                                  If the file already exists, prior health state is read
-#                                  and merged monotonically (prior false is preserved).
 #   --substantive-validation       After the existing non-empty + retry path settles,
 #                                  invoke scripts/validate-research-output.sh on each
 #                                  STATUS=OK entry. On validator failure, rewrite the
-#                                  entry as STATUS=NOT_SUBSTANTIVE | HEALTHY=false |
+#                                  entry as STATUS=NOT_SUBSTANTIVE |
 #                                  FAILURE_REASON=<sanitized validator diagnostic>
-#                                  and call set_tool_unhealthy to preserve health
-#                                  monotonicity. Default OFF — opt-in per caller.
+#                                  Default OFF — opt-in per caller.
 #                                  Currently opted in by: /research research phase
 #                                  (Standard / Deep), /research validation phase,
 #                                  /review Step 3a
@@ -60,13 +53,11 @@
 #                                  entry. Valid records are written to a derived
 #                                  sidecar path and emitted as STRUCTURED_SIDECAR.
 #                                  On validator failure, rewrite the entry as
-#                                  STATUS=NOT_SUBSTANTIVE and mark the tool
-#                                  unhealthy. Default OFF — opt-in per caller.
+#                                  STATUS=NOT_SUBSTANTIVE. Default OFF — opt-in per caller.
 #   --summary-only                 Emit only REVIEWER_FILE, TOOL, STATUS,
-#                                  EXIT_CODE, and HEALTHY for each reviewer.
-#                                  Wait/retry/validation and --write-health
-#                                  behavior is unchanged; FAILURE_REASON and
-#                                  STRUCTURED_SIDECAR are suppressed.
+#                                  and EXIT_CODE for each reviewer.
+#                                  Wait/retry/validation behavior is unchanged;
+#                                  FAILURE_REASON and STRUCTURED_SIDECAR are suppressed.
 #
 # Arguments:
 #   One or more output file paths (from run-external-agent.sh invocations).
@@ -78,11 +69,9 @@
 #   TOOL=<registered external tool|unknown>
 #   STATUS=<OK|TIMED_OUT|FAILED|EMPTY_OUTPUT|SENTINEL_TIMEOUT|NOT_SUBSTANTIVE|cap_hit>
 #   EXIT_CODE=<N>
-#   HEALTHY=<true|false>
 #   STRUCTURED_SIDECAR=<path>  (non-empty only when structured validation succeeds)
 #   FAILURE_REASON=<explanation>  (non-empty when STATUS != OK; explains the cause of failure)
-#   With --summary-only, only REVIEWER_FILE, TOOL, STATUS, EXIT_CODE, and
-#   HEALTHY are emitted.
+#   With --summary-only, only REVIEWER_FILE, TOOL, STATUS, and EXIT_CODE are emitted.
 #
 # Exit codes:
 #   0 — normal completion (results are informational, not errors)
@@ -131,7 +120,7 @@ exit_code_was_coerced() {
 build_missing_retry_sentinel_result() {
     local orig_output="$1"
     local tool="$2"
-    printf 'REVIEWER_FILE=%s|TOOL=%s|STATUS=EMPTY_OUTPUT|EXIT_CODE=99|HEALTHY=false|STRUCTURED_SIDECAR=|FAILURE_REASON=Retry process did not complete (sentinel file missing)' \
+    printf 'REVIEWER_FILE=%s|TOOL=%s|STATUS=EMPTY_OUTPUT|EXIT_CODE=99|STRUCTURED_SIDECAR=|FAILURE_REASON=Retry process did not complete (sentinel file missing)' \
         "$orig_output" "$tool"
 }
 
@@ -142,7 +131,6 @@ fi
 larch_quiet_init
 
 TIMEOUT=""
-WRITE_HEALTH=""
 SUBSTANTIVE_VALIDATION="false"
 VALIDATION_MODE="false"
 STRUCTURED_REVIEWER_VALIDATION="false"
@@ -153,8 +141,6 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --timeout)
             TIMEOUT="${2:?--timeout requires a value}"; shift 2 ;;
-        --write-health)
-            WRITE_HEALTH="${2:?--write-health requires a path}"; shift 2 ;;
         --substantive-validation)
             SUBSTANTIVE_VALIDATION="true"; shift ;;
         --validation-mode)
@@ -164,7 +150,7 @@ while [[ $# -gt 0 ]]; do
         --summary-only)
             SUMMARY_ONLY="true"; shift ;;
         --help)
-            larch_err "Usage: collect-agent-results.sh --timeout <seconds> [--write-health <path>] [--substantive-validation [--validation-mode]] [--structured-reviewer-validation] [--summary-only] <output-file>..."
+            larch_err "Usage: collect-agent-results.sh --timeout <seconds> [--substantive-validation [--validation-mode]] [--structured-reviewer-validation] [--summary-only] <output-file>..."
             exit 0 ;;
         -*)
             larch_err "collect-agent-results.sh: unknown option: $1"; exit 1 ;;
@@ -213,37 +199,6 @@ derive_tool() {
     done
 
     echo "unknown"
-}
-
-# --- Health state tracking (portable, no associative arrays) ---
-# Monotonic: once false, stays false for the session.
-CODEX_TOOL_HEALTHY="true"
-CURSOR_TOOL_HEALTHY="true"
-
-# Read prior health state from existing --write-health file (if it exists).
-# This preserves monotonicity across separate collect-agent-results.sh calls.
-if [[ -n "$WRITE_HEALTH" && -f "$WRITE_HEALTH" ]]; then
-    while IFS='=' read -r key value || [[ -n "$key" ]]; do
-        case "$key" in
-            CODEX_HEALTHY)  [[ "$value" == "false" ]] && CODEX_TOOL_HEALTHY="false" ;;
-            CURSOR_HEALTHY) [[ "$value" == "false" ]] && CURSOR_TOOL_HEALTHY="false" ;;
-        esac
-    done < "$WRITE_HEALTH"
-fi
-
-get_tool_healthy() {
-    case "$1" in
-        codex)  echo "$CODEX_TOOL_HEALTHY" ;;
-        cursor) echo "$CURSOR_TOOL_HEALTHY" ;;
-        *)      echo "true" ;;
-    esac
-}
-
-set_tool_unhealthy() {
-    case "$1" in
-        codex)  CODEX_TOOL_HEALTHY="false" ;;
-        cursor) CURSOR_TOOL_HEALTHY="false" ;;
-    esac
 }
 
 # --- 1. Build sentinel paths and wait ---
@@ -355,8 +310,7 @@ mark_retry_metadata_invalid() {
     local reason="$3"
     local tool
     tool=$(derive_tool "$orig_output")
-    RESULTS[idx]="REVIEWER_FILE=$orig_output|TOOL=$tool|STATUS=EMPTY_OUTPUT|EXIT_CODE=99|HEALTHY=false|FAILURE_REASON=$reason"
-    set_tool_unhealthy "$tool"
+    RESULTS[idx]="REVIEWER_FILE=$orig_output|TOOL=$tool|STATUS=EMPTY_OUTPUT|EXIT_CODE=99|FAILURE_REASON=$reason"
 }
 
 cmd_has_token() {
@@ -420,7 +374,6 @@ for i in "${!OUTPUT_FILES[@]}"; do
     TOOL=$(derive_tool "$OUTPUT")
     STATUS="OK"
     EXIT_CODE="0"
-    HEALTHY="true"
     FAILURE_REASON=""
 
     # wait emits indexed records keyed by argv order. OUTPUT_FILES[$i]
@@ -429,7 +382,6 @@ for i in "${!OUTPUT_FILES[@]}"; do
         # wait-for-reviewers.sh reported TIMEOUT (sentinel never appeared)
         STATUS="SENTINEL_TIMEOUT"
         EXIT_CODE="124"
-        HEALTHY="false"
         FAILURE_REASON=$(build_failure_reason "$OUTPUT" "$STATUS" "$EXIT_CODE")
     elif [[ -f "$SENTINEL" ]]; then
         EXIT_CODE_RAW=$(cat "$SENTINEL" 2>/dev/null || echo "99")
@@ -445,23 +397,18 @@ for i in "${!OUTPUT_FILES[@]}"; do
         fi
         if [[ "$EXIT_CODE" == "124" ]]; then
             STATUS="TIMED_OUT"
-            HEALTHY="false"
             FAILURE_REASON=$(build_failure_reason "$OUTPUT" "$STATUS" "$EXIT_CODE")
         elif [[ "$EXIT_CODE" != "0" ]]; then
             STATUS="FAILED"
-            HEALTHY="false"
             FAILURE_REASON=$(build_failure_reason "$OUTPUT" "$STATUS" "$EXIT_CODE")
         elif [[ -s "$OUTPUT" ]] && [[ "$(head -1 "$OUTPUT" 2>/dev/null)" == "STATUS=cap_hit" ]]; then
             # Budget-cap sentinel written by review launchers: reviewer deliberately
-            # skipped; not a tool failure, so HEALTHY stays true and the output is
-            # not forwarded to substantive validation or reviewer synthesis.
+            # skipped; not forwarded to substantive validation or reviewer synthesis.
             STATUS="cap_hit"
             FAILURE_REASON="Token budget cap hit; reviewer skipped"
         elif [[ ! -s "$OUTPUT" ]]; then
-            # F4 fix: empty output is a retry candidate, NOT an immediate health failure.
-            # Health is only set to false after retry also fails (see section 3 below).
+            # F4 fix: empty output is a retry candidate, not an immediate hard failure.
             STATUS="EMPTY_OUTPUT"
-            HEALTHY="true"  # tentative — will be set false if retry fails
             FAILURE_REASON=$(build_failure_reason "$OUTPUT" "$STATUS" "$EXIT_CODE")
             # Queue for retry if .meta exists
             if [[ -f "$META" ]]; then
@@ -494,14 +441,13 @@ for i in "${!OUTPUT_FILES[@]}"; do
                 RETRY_INDICES+=("$i")
                 RETRY_TIMEOUTS+=("$ORIG_TIMEOUT")
             else
-                HEALTHY="false"  # no .meta → can't retry → mark unhealthy
+                : # no .meta; keep EMPTY_OUTPUT and let callers decide fallback.
             fi
         fi
     else
         # Sentinel doesn't exist (shouldn't happen after wait, but be defensive)
         STATUS="SENTINEL_TIMEOUT"
         EXIT_CODE="124"
-        HEALTHY="false"
         FAILURE_REASON=$(build_failure_reason "$OUTPUT" "$STATUS" "$EXIT_CODE")
     fi
 
@@ -525,7 +471,6 @@ for i in "${!OUTPUT_FILES[@]}"; do
                 if (( 10#$ORIG_TIMEOUT >= 1 )); then
                     ORIG_TIMEOUT=$((10#$ORIG_TIMEOUT))
                     STATUS="EMPTY_OUTPUT"
-                    HEALTHY="true"
                     RETRY_FILES+=("$OUTPUT")
                     RETRY_INDICES+=("$i")
                     RETRY_TIMEOUTS+=("$ORIG_TIMEOUT")
@@ -534,15 +479,7 @@ for i in "${!OUTPUT_FILES[@]}"; do
         esac
     fi
 
-    # Monotonic health: if this tool was already marked unhealthy, keep it
-    if [[ "$(get_tool_healthy "$TOOL")" == "false" ]]; then
-        HEALTHY="false"
-    fi
-    if [[ "$HEALTHY" == "false" ]]; then
-        set_tool_unhealthy "$TOOL"
-    fi
-
-    RESULTS+=("REVIEWER_FILE=$OUTPUT|TOOL=$TOOL|STATUS=$STATUS|EXIT_CODE=$EXIT_CODE|HEALTHY=$HEALTHY|FAILURE_REASON=$FAILURE_REASON")
+    RESULTS+=("REVIEWER_FILE=$OUTPUT|TOOL=$TOOL|STATUS=$STATUS|EXIT_CODE=$EXIT_CODE|FAILURE_REASON=$FAILURE_REASON")
 done
 
 # --- 3. Retry empty outputs using .meta files ---
@@ -718,9 +655,8 @@ if [[ ${#RETRY_FILES[@]} -gt 0 ]]; then
         fi
 
         # Fail closed on missing/malformed retry metadata: immediately mark the
-        # original result unhealthy and flip the tool to unhealthy so callers
-        # do not see a stale STATUS=EMPTY_OUTPUT|HEALTHY=true when no retry
-        # process is launched.
+        # original result so callers do not see a stale successful result when
+        # no retry process is launched.
         # Distinct messages so logs and harness assertions reflect which field
         # is actually missing — stale CMD=-only sidecars have TOOL but lack
         # CMD_JSON, and vice versa.
@@ -841,16 +777,10 @@ if [[ ${#RETRY_FILES[@]} -gt 0 ]]; then
                 RETRY_EXIT=$(cat "$RETRY_SENTINEL" 2>/dev/null || echo "99")
                 RETRY_EXIT=$(normalize_exit_code_or_99 "$RETRY_EXIT" "retry sentinel")
                 if [[ "$RETRY_EXIT" == "0" && -s "$RETRY_OUTPUT" ]]; then
-                    # F4 fix: retry succeeded — tool is healthy (retry recovered from transient failure)
-                    HEALTHY="true"
-                    # Still respect monotonic health from PRIOR calls (via get_tool_healthy)
-                    if [[ "$(get_tool_healthy "$TOOL")" == "false" ]]; then
-                        HEALTHY="false"
-                    fi
-                    RESULTS[IDX]="REVIEWER_FILE=$RETRY_OUTPUT|TOOL=$TOOL|STATUS=OK|EXIT_CODE=0|HEALTHY=$HEALTHY|FAILURE_REASON="
+                    # F4 fix: retry succeeded — recovered from transient failure.
+                    RESULTS[IDX]="REVIEWER_FILE=$RETRY_OUTPUT|TOOL=$TOOL|STATUS=OK|EXIT_CODE=0|FAILURE_REASON="
                 else
-                    # Retry also failed — NOW mark tool unhealthy
-                    set_tool_unhealthy "$TOOL"
+                    # Retry also failed.
                     if [[ "$RETRY_EXIT" == "124" ]]; then
                         RETRY_STATUS="TIMED_OUT"
                     elif [[ "$RETRY_EXIT" != "0" ]]; then
@@ -859,11 +789,10 @@ if [[ ${#RETRY_FILES[@]} -gt 0 ]]; then
                         RETRY_STATUS="EMPTY_OUTPUT"
                     fi
                     RETRY_REASON=$(build_failure_reason "$RETRY_OUTPUT" "$RETRY_STATUS" "$RETRY_EXIT")
-                    RESULTS[IDX]="REVIEWER_FILE=$ORIG_OUTPUT|TOOL=$TOOL|STATUS=EMPTY_OUTPUT|EXIT_CODE=$RETRY_EXIT|HEALTHY=false|FAILURE_REASON=Retry also failed: $RETRY_REASON"
+                    RESULTS[IDX]="REVIEWER_FILE=$ORIG_OUTPUT|TOOL=$TOOL|STATUS=EMPTY_OUTPUT|EXIT_CODE=$RETRY_EXIT|FAILURE_REASON=Retry also failed: $RETRY_REASON"
                 fi
             else
-                # Retry sentinel never appeared — mark unhealthy
-                set_tool_unhealthy "$TOOL"
+                # Retry sentinel never appeared.
                 RESULTS[IDX]=$(build_missing_retry_sentinel_result "$ORIG_OUTPUT" "$TOOL")
             fi
         done
@@ -875,8 +804,7 @@ fi
 # each entry whose STATUS=OK, invoke validate-research-output.sh on its file
 # (REVIEWER_FILE — the retry path may have set it to a *-retry.txt). On
 # validator failure, rewrite the entry to STATUS=NOT_SUBSTANTIVE with the
-# sanitized diagnostic in FAILURE_REASON and HEALTHY=false; call
-# set_tool_unhealthy to preserve per-tool health monotonicity. Closes #416.
+# sanitized diagnostic in FAILURE_REASON. Closes #416.
 if [[ "$SUBSTANTIVE_VALIDATION" == "true" ]]; then
     VALIDATOR="$SCRIPT_DIR/validate-research-output.sh"
     VAL_ARGS=()
@@ -886,10 +814,10 @@ if [[ "$SUBSTANTIVE_VALIDATION" == "true" ]]; then
     for j in "${!RESULTS[@]}"; do
         entry="${RESULTS[$j]}"
         # Precise field-by-field extraction. Fields 1-5 (REVIEWER_FILE, TOOL,
-        # STATUS, EXIT_CODE, HEALTHY) never contain '|' by construction (paths
-        # are tmpdir paths; tools are registered LARCH_EXTERNAL_TOOLS ids — kept
-        # label-safe per the registry contract — or "unknown"; STATUS/HEALTHY are
-        # fixed enums; EXIT_CODE is numeric). FAILURE_REASON (field 6) is the
+        # STATUS, EXIT_CODE) never contain '|' by construction (paths are tmpdir
+        # paths; tools are registered LARCH_EXTERNAL_TOOLS ids — kept label-safe
+        # per the registry contract — or "unknown"; STATUS is a fixed enum;
+        # EXIT_CODE is numeric). FAILURE_REASON (field 5) is the
         # only field that may carry user content, and it's the trailing field
         # — its content cannot collide with the field-1..5 prefixes.
         rf_field="${entry%%|*}"             # REVIEWER_FILE=<path>
@@ -918,11 +846,9 @@ if [[ "$SUBSTANTIVE_VALIDATION" == "true" ]]; then
             # newlines with spaces, collapse whitespace, truncate to 200 chars.
             DIAG_SAN=$(printf '%s' "$DIAG" | tr '|\n' '/ ' | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//' | cut -c1-200)
             if [[ "$VAL_EXIT" -eq 5 ]]; then
-                RESULTS[j]="REVIEWER_FILE=$REVIEWER_FILE|TOOL=$ENTRY_TOOL|STATUS=CURSOR_EMPTY_RESPONSE|EXIT_CODE=0|HEALTHY=false|FAILURE_REASON=$DIAG_SAN"
-                set_tool_unhealthy "$ENTRY_TOOL"
+                RESULTS[j]="REVIEWER_FILE=$REVIEWER_FILE|TOOL=$ENTRY_TOOL|STATUS=CURSOR_EMPTY_RESPONSE|EXIT_CODE=0|FAILURE_REASON=$DIAG_SAN"
             else
-                RESULTS[j]="REVIEWER_FILE=$REVIEWER_FILE|TOOL=$ENTRY_TOOL|STATUS=NOT_SUBSTANTIVE|EXIT_CODE=0|HEALTHY=false|FAILURE_REASON=$DIAG_SAN"
-                set_tool_unhealthy "$ENTRY_TOOL"
+                RESULTS[j]="REVIEWER_FILE=$REVIEWER_FILE|TOOL=$ENTRY_TOOL|STATUS=NOT_SUBSTANTIVE|EXIT_CODE=0|FAILURE_REASON=$DIAG_SAN"
             fi
         fi
     done
@@ -958,8 +884,7 @@ if [[ "$STRUCTURED_REVIEWER_VALIDATION" == "true" ]]; then
             RESULTS[j]=$(with_structured_sidecar_field "$entry" "$STRUCTURED_SIDECAR")
         else
             DIAG_SAN=$(printf '%s' "$DIAG" | tr '|\n' '/ ' | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//' | cut -c1-200)
-            RESULTS[j]="REVIEWER_FILE=$REVIEWER_FILE|TOOL=$ENTRY_TOOL|STATUS=NOT_SUBSTANTIVE|EXIT_CODE=0|HEALTHY=false|STRUCTURED_SIDECAR=|FAILURE_REASON=$DIAG_SAN"
-            set_tool_unhealthy "$ENTRY_TOOL"
+            RESULTS[j]="REVIEWER_FILE=$REVIEWER_FILE|TOOL=$ENTRY_TOOL|STATUS=NOT_SUBSTANTIVE|EXIT_CODE=0|STRUCTURED_SIDECAR=|FAILURE_REASON=$DIAG_SAN"
         fi
     done
 fi
@@ -979,7 +904,7 @@ emit_summary_result() {
             rest=""
         fi
         case "$field" in
-            REVIEWER_FILE=*|TOOL=*|STATUS=*|EXIT_CODE=*|HEALTHY=*)
+            REVIEWER_FILE=*|TOOL=*|STATUS=*|EXIT_CODE=*)
                 emit "$field"
                 emitted=$((emitted + 1))
                 ;;
@@ -1004,15 +929,3 @@ for result in "${RESULTS[@]}"; do
         emit "$field"
     done < <(printf '%s' "$result" | tr '|' '\n')
 done
-
-# --- 5. Write health file (if requested, monotonic per tool) ---
-# F2 fix: uses CODEX_TOOL_HEALTHY/CURSOR_TOOL_HEALTHY which were seeded from
-# the existing health file (if any) and only downgraded during this run.
-if [[ -n "$WRITE_HEALTH" && "$WRITE_HEALTH" != "/dev/null" ]]; then
-    HEALTH_TMPFILE=$(mktemp "${WRITE_HEALTH}.tmp.XXXXXX")
-    {
-        echo "CODEX_HEALTHY=$CODEX_TOOL_HEALTHY"
-        echo "CURSOR_HEALTHY=$CURSOR_TOOL_HEALTHY"
-    } > "$HEALTH_TMPFILE"
-    mv "$HEALTH_TMPFILE" "$WRITE_HEALTH"
-fi

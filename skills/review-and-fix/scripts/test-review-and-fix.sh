@@ -179,7 +179,7 @@ run_orchestrator_case() {
     make_work_repo "$work"
     implement_tmp="$work/implement"
     mkdir -p "$implement_tmp"
-    printf 'CODEX_HEALTHY=true\nCURSOR_HEALTHY=true\n' > "$implement_tmp/session-env.sh"
+    printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
     set +e
     out=$(TEST_AGENT_BEHAVIOR="$behavior" run_review_and_fix "$work" \
         --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id "$label-run")
@@ -207,7 +207,7 @@ work_main_agent="$TMP/main-agent-required"
 make_work_repo "$work_main_agent"
 implement_tmp="$work_main_agent/implement"
 mkdir -p "$implement_tmp"
-printf 'CODEX_HEALTHY=true\nCURSOR_HEALTHY=true\n' > "$implement_tmp/session-env.sh"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
 set +e
 out=$(TEST_CORE_STATUS=main-agent-vote-required run_review_and_fix "$work_main_agent" \
     --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id main-agent-run)
@@ -223,7 +223,7 @@ work_rejected="$TMP/rejected-full"
 make_work_repo "$work_rejected"
 implement_tmp="$work_rejected/implement"
 mkdir -p "$implement_tmp"
-printf 'CODEX_HEALTHY=true\nCURSOR_HEALTHY=true\n' > "$implement_tmp/session-env.sh"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
 cat > "$TMP/review-core-rejected-stub.sh" <<'EOF_CORE_REJECTED'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -271,7 +271,7 @@ work_claude="$TMP/claude-removed"
 make_work_repo "$work_claude"
 implement_tmp="$work_claude/implement"
 mkdir -p "$implement_tmp"
-printf 'CODEX_HEALTHY=true\nCURSOR_HEALTHY=true\n' > "$implement_tmp/session-env.sh"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
 set +e
 out=$(TEST_AGENT_BEHAVIOR=claude-success run_review_and_fix "$work_claude" \
     --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh")
@@ -286,7 +286,7 @@ work_fail="$TMP/all-fail"
 make_work_repo "$work_fail"
 implement_tmp="$work_fail/implement"
 mkdir -p "$implement_tmp"
-printf 'CODEX_HEALTHY=true\nCURSOR_HEALTHY=true\n' > "$implement_tmp/session-env.sh"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
 set +e
 out=$(TEST_AGENT_BEHAVIOR=all-fail run_review_and_fix "$work_fail" \
     --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh")
@@ -309,7 +309,7 @@ git -C "$work_sub" add .gitmodules vendor/lib/file.txt
 git -C "$work_sub" -c user.email=test@example.com -c user.name='Test User' commit -qm submodule-fixture
 implement_tmp="$work_sub/implement"
 mkdir -p "$implement_tmp"
-printf 'CODEX_HEALTHY=true\nCURSOR_HEALTHY=true\n' > "$implement_tmp/session-env.sh"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
 set +e
 out=$(TEST_AGENT_BEHAVIOR=submodule-violation run_review_and_fix "$work_sub" \
     --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh")
@@ -333,7 +333,7 @@ git -C "$work_sub_untracked" add .gitmodules vendor/lib/file.txt
 git -C "$work_sub_untracked" -c user.email=test@example.com -c user.name='Test User' commit -qm submodule-fixture
 implement_tmp="$work_sub_untracked/implement"
 mkdir -p "$implement_tmp"
-printf 'CODEX_HEALTHY=true\nCURSOR_HEALTHY=true\n' > "$implement_tmp/session-env.sh"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
 set +e
 out=$(TEST_AGENT_BEHAVIOR=submodule-untracked-violation run_review_and_fix "$work_sub_untracked" \
     --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh")
@@ -355,7 +355,7 @@ git -C "$work_scrubbed" add .gitmodules
 git -C "$work_scrubbed" -c user.email=test@example.com -c user.name='Test User' commit -qm submodule-config
 implement_tmp="$work_scrubbed/implement"
 mkdir -p "$implement_tmp"
-printf 'CODEX_HEALTHY=true\nCURSOR_HEALTHY=true\n' > "$implement_tmp/session-env.sh"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
 set +e
 out=$(TEST_CORE_STATUS=submodule-finding TEST_AGENT_BEHAVIOR=all-fail run_review_and_fix "$work_scrubbed" \
     --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh")
@@ -377,7 +377,7 @@ work_scrub_fail="$TMP/scrub-fail"
 make_work_repo "$work_scrub_fail"
 implement_tmp="$work_scrub_fail/implement"
 mkdir -p "$implement_tmp"
-printf 'CODEX_HEALTHY=true\nCURSOR_HEALTHY=true\n' > "$implement_tmp/session-env.sh"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
 set +e
 out=$(REVIEW_AND_FIX_SCRUB_SUBMODULE_PATHS_SH="$TMP/scrub-fails-stub.sh" TEST_AGENT_BEHAVIOR=codex-success run_review_and_fix "$work_scrub_fail" \
     --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh")
@@ -392,7 +392,7 @@ work_zero="$TMP/zero"
 make_work_repo "$work_zero"
 implement_tmp="$work_zero/implement"
 mkdir -p "$implement_tmp"
-printf 'CODEX_HEALTHY=true\nCURSOR_HEALTHY=true\n' > "$implement_tmp/session-env.sh"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
 set +e
 out=$(TEST_CORE_STATUS=zero run_review_and_fix "$work_zero" \
     --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id zero-run)
@@ -412,7 +412,7 @@ work_sorted="$TMP/sorted-summaries"
 make_work_repo "$work_sorted"
 implement_tmp="$work_sorted/implement"
 mkdir -p "$implement_tmp/round-2" "$implement_tmp/round-10"
-printf 'CODEX_HEALTHY=true\nCURSOR_HEALTHY=true\n' > "$implement_tmp/session-env.sh"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
 printf '# Review Round 10\nlate round\n' > "$implement_tmp/round-10/review-round-summary.md"
 printf '# Review Round 2\nearly round\n' > "$implement_tmp/round-2/review-round-summary.md"
 printf '{"schema_version":1,"rounds_completed":10,"accepted_count":0,"rejected_count":0}\n' > "$implement_tmp/round-10/review-summary.json"
@@ -445,7 +445,7 @@ work_flush_warn="$TMP/flush-warning"
 make_work_repo "$work_flush_warn"
 implement_tmp="$work_flush_warn/implement"
 mkdir -p "$implement_tmp"
-printf 'CODEX_HEALTHY=true\nCURSOR_HEALTHY=true\n' > "$implement_tmp/session-env.sh"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
 set +e
 out=$(TEST_CORE_STATUS=zero LARCH_QUIET_BREADCRUMBS=1 REVIEW_AND_FIX_WRITE_TALLY_SH="$TMP/write-tally-fails-stub.sh" run_review_and_fix "$work_flush_warn" \
     --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id flush-warning-run 2>&1)
@@ -459,7 +459,7 @@ work_skipped="$TMP/skipped-routing"
 make_work_repo "$work_skipped"
 implement_tmp="$work_skipped/implement"
 mkdir -p "$implement_tmp"
-printf 'CODEX_HEALTHY=true\nCURSOR_HEALTHY=true\n' > "$implement_tmp/session-env.sh"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
 cat > "$TMP/review-core-skipped-stub.sh" <<'EOF_CORE_SKIPPED'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -543,7 +543,7 @@ work_classifier_fail="$TMP/skipped-classifier-fail"
 make_work_repo "$work_classifier_fail"
 implement_tmp="$work_classifier_fail/implement"
 mkdir -p "$implement_tmp"
-printf 'CODEX_HEALTHY=true\nCURSOR_HEALTHY=true\n' > "$implement_tmp/session-env.sh"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
 cp "$work_skipped/implement/round-1-coder.log.seed" "$implement_tmp/round-1-coder.log.seed"
 set +e
 out=$(

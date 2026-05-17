@@ -23,8 +23,8 @@ PLAN_FILE=""
 FEATURE_FILE=""
 DESCRIPTION_TEXT=""
 TIMING_TASK_PREFIX="review"
-LAUNCH_CLAUDE="$PLUGIN_ROOT/scripts/launch-claude-subprocess.sh"
 LAUNCH_REVIEW="$PLUGIN_ROOT/scripts/launch-review.sh"
+DISPATCH_WATERFALL="$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh"
 SESSION_ENV_PATH="${SESSION_ENV_PATH:-}"
 PANEL="hard"
 
@@ -42,7 +42,7 @@ while [[ $# -gt 0 ]]; do
         --feature-file) FEATURE_FILE="${2:?--feature-file requires a value}"; shift 2 ;;
         --description-text) DESCRIPTION_TEXT="${2:?--description-text requires a value}"; shift 2 ;;
         --timing-task-prefix) TIMING_TASK_PREFIX="${2:?--timing-task-prefix requires a value}"; shift 2 ;;
-        --launch-claude-subprocess) LAUNCH_CLAUDE="${2:?--launch-claude-subprocess requires a value}"; shift 2 ;;
+        --launch-claude-subprocess) shift 2 ;; # accepted for old harnesses; waterfall owns Claude launch
         --launch-review) LAUNCH_REVIEW="${2:?--launch-review requires a value}"; shift 2 ;;
         --session-env-path) SESSION_ENV_PATH="${2:?--session-env-path requires a value}"; shift 2 ;;
         --panel) PANEL="${2:?--panel requires a value}"; shift 2 ;;
@@ -131,57 +131,23 @@ launch_claude_slot() {
     slot_count=$((slot_count + 1))
 }
 
-launch_external_slot() {
+queue_external_slot() {
     local tool="$1" name="$2" out="$3"
     local agent="$PLUGIN_ROOT/agents/reviewer-${name}.md"
-    args=(--tool "$tool" --output "$out" --timeout 1800 --agent-file "$agent" --mode "$MODE" --competition-notice --timing-task-kind "${tool}-specialist-${name}")
-    [[ "$MODE" == "diff" && -n "$DIFF_FILE" ]] && args+=(--diff-file "$DIFF_FILE" --commit-count "$COMMIT_COUNT")
-    [[ "$MODE" == "description" && -n "$SCOPE_FILES" ]] && args+=(--description-text "${DESCRIPTION_TEXT:-description review}" --scope-files "$SCOPE_FILES")
-    [[ -n "$PLAN_FILE" && -f "$PLAN_FILE" ]] && args+=(--plan-file "$PLAN_FILE")
-    [[ -n "$FEATURE_FILE" && -f "$FEATURE_FILE" ]] && args+=(--feature-file "$FEATURE_FILE")
-    {
-        launch_log="$REVIEW_TMPDIR/dispatch-${tool}-${name}.log"
-        # set +e: capture launcher non-zero exits and surface them via
-        # append_launch_failure. Without this, set -e (inherited from the
-        # parent) aborts the subshell before rc capture and the failure
-        # logging path is bypassed.
-        set +e
-        "$LAUNCH_REVIEW" "${args[@]}" > "$launch_log" 2>&1
-        rc=$?
-        set -e
-        [[ "$rc" -eq 0 ]] || append_launch_failure "review Step 2" "launch-review.sh $tool $name" "$rc" "$launch_log"
-    } &
-    printf '{"slot":"%s","tool":"%s","output":"%s"}\n' "$name" "$tool" "$out" >> "$manifest"
-    external_outputs+=("$out")
+    printf '{"slot":"%s","tool":"%s","output":"%s","agent":"%s"}\n' "$name" "$tool" "$out" "$agent" >> "$manifest"
     slot_count=$((slot_count + 1))
 }
 
-launch_external_generalist_slot() {
+queue_external_generalist_slot() {
     local tool="$1" out="$2"
     local agent="$PLUGIN_ROOT/agents/code-reviewer.md"
-    args=(--tool "$tool" --output "$out" --timeout 1800 --agent-file "$agent" --mode "$MODE" --competition-notice --timing-task-kind "${tool}-review-generic")
-    [[ "$MODE" == "diff" && -n "$DIFF_FILE" ]] && args+=(--diff-file "$DIFF_FILE" --commit-count "$COMMIT_COUNT")
-    [[ "$MODE" == "description" && -n "$SCOPE_FILES" ]] && args+=(--description-text "${DESCRIPTION_TEXT:-description review}" --scope-files "$SCOPE_FILES")
-    [[ -n "$PLAN_FILE" && -f "$PLAN_FILE" ]] && args+=(--plan-file "$PLAN_FILE")
-    [[ -n "$FEATURE_FILE" && -f "$FEATURE_FILE" ]] && args+=(--feature-file "$FEATURE_FILE")
-    {
-        launch_log="$REVIEW_TMPDIR/dispatch-${tool}-generic.log"
-        set +e
-        "$LAUNCH_REVIEW" "${args[@]}" > "$launch_log" 2>&1
-        rc=$?
-        set -e
-        [[ "$rc" -eq 0 ]] || append_launch_failure "review Step 2" "launch-review.sh $tool generic" "$rc" "$launch_log"
-    } &
-    printf '{"slot":"generic","tool":"%s","output":"%s"}\n' "$tool" "$out" >> "$manifest"
-    external_outputs+=("$out")
+    printf '{"slot":"generic","tool":"%s","output":"%s","agent":"%s"}\n' "$tool" "$out" "$agent" >> "$manifest"
     slot_count=$((slot_count + 1))
 }
 
 # Plan file is required when reviewers run; plan-fidelity is always dispatched.
-if [[ "$CODEX_AVAILABLE" == "true" || "$CURSOR_AVAILABLE" == "true" ]]; then
-    [[ -n "$PLAN_FILE" ]] || { larch_err "dispatch-panel.sh: --plan-file is required (plan-fidelity specialist is always dispatched)"; exit 2; }
-    [[ -f "$PLAN_FILE" ]] || { larch_err "dispatch-panel.sh: plan file not found: $PLAN_FILE"; exit 2; }
-fi
+[[ -n "$PLAN_FILE" ]] || { larch_err "dispatch-panel.sh: --plan-file is required (plan-fidelity specialist is always dispatched)"; exit 2; }
+[[ -f "$PLAN_FILE" ]] || { larch_err "dispatch-panel.sh: plan file not found: $PLAN_FILE"; exit 2; }
 
 # Simple panel: 6 Cursor specialists + 1 Codex generalist.
 # Hard panel: 6 Cursor specialists + 6 Codex specialists.
@@ -191,35 +157,56 @@ if [[ "$PANEL" == "hard" ]]; then
     codex_specialists=(structure correctness testing security edge-cases plan-fidelity)
 fi
 
-# Fallback matrix: when a tool is unavailable, skip its slots entirely — no Claude substitution.
-# When both external tools are down, no reviewer slots are launched (empty panel).
-if [[ "$CODEX_AVAILABLE" == "false" && "$CURSOR_AVAILABLE" == "false" ]]; then
-    panel_mode="both-down"
+for name in "${cursor_specialists[@]}"; do
+    queue_external_slot cursor "$name" "$REVIEW_TMPDIR/cursor-specialist-${name}-output.txt"
+done
+if [[ "$PANEL" == "hard" ]]; then
+    for name in "${codex_specialists[@]}"; do
+        queue_external_slot codex "$name" "$REVIEW_TMPDIR/codex-specialist-${name}-output.txt"
+    done
 else
-    panel_mode="normal"
-    if [[ "$CURSOR_AVAILABLE" == "true" ]]; then
-        for name in "${cursor_specialists[@]}"; do
-            launch_external_slot cursor "$name" "$REVIEW_TMPDIR/cursor-specialist-${name}-output.txt"
-        done
-    fi
-    # Cursor unavailable: skip Cursor specialist slots (no substitution).
-    if [[ "$CODEX_AVAILABLE" == "true" ]]; then
-        if [[ "$PANEL" == "hard" ]]; then
-            for name in "${codex_specialists[@]}"; do
-                launch_external_slot codex "$name" "$REVIEW_TMPDIR/codex-specialist-${name}-output.txt"
-            done
-        else
-            # Simple panel: one Codex generalist using the unified code-reviewer archetype.
-            launch_external_generalist_slot codex "$REVIEW_TMPDIR/codex-generalist-output.txt"
-        fi
-    fi
-    # Codex unavailable: skip Codex slot(s) (no substitution).
+    queue_external_generalist_slot codex "$REVIEW_TMPDIR/codex-generalist-output.txt"
 fi
+
+waterfall_args=(--slots-file "$manifest" --codex-present "$CODEX_AVAILABLE" --cursor-present "$CURSOR_AVAILABLE" --mode "$MODE" --timeout 1800)
+[[ "$MODE" == "diff" && -n "$DIFF_FILE" ]] && waterfall_args+=(--diff-file "$DIFF_FILE" --commit-count "$COMMIT_COUNT")
+[[ "$MODE" == "description" && -n "$SCOPE_FILES" ]] && waterfall_args+=(--description-text "${DESCRIPTION_TEXT:-description review}" --scope-files "$SCOPE_FILES")
+[[ -n "$PLAN_FILE" && -f "$PLAN_FILE" ]] && waterfall_args+=(--plan-file "$PLAN_FILE")
+[[ -n "$FEATURE_FILE" && -f "$FEATURE_FILE" ]] && waterfall_args+=(--feature-file "$FEATURE_FILE")
+
+waterfall_output=$("$DISPATCH_WATERFALL" "${waterfall_args[@]}")
+all_outputs=""
+all_tools=""
+dispatch_ok="true"
+while IFS= read -r line || [[ -n "$line" ]]; do
+    key="${line%%=*}"
+    value="${line#*=}"
+    case "$key" in
+        ALL_OUTPUT_FILES) all_outputs="$value" ;;
+        ALL_OUTPUT_TOOLS) all_tools="$value" ;;
+        DISPATCH_OK) dispatch_ok="$value" ;;
+        WARN) emit_kv WARN "$value" ;;
+    esac
+done <<< "$waterfall_output"
+
+external_outputs=()
+claude_outputs=()
+set -- $all_outputs
+outputs_arr=("$@")
+set -- $all_tools
+tools_arr=("$@")
+for idx in "${!outputs_arr[@]}"; do
+    if [[ "${tools_arr[$idx]:-}" == "claude" ]]; then
+        claude_outputs+=("${outputs_arr[$idx]}")
+    else
+        external_outputs+=("${outputs_arr[$idx]}")
+    fi
+done
 
 emit_kv EXTERNAL_OUTPUT_FILES "${external_outputs[*]-}"
 emit_kv CLAUDE_OUTPUT_FILES "${claude_outputs[*]-}"
-emit_kv PANEL_MODE "$panel_mode"
+emit_kv PANEL_MODE waterfall
 emit_kv PANEL_SHAPE "$PANEL"
 emit_kv SLOT_COUNT "$slot_count"
 emit_kv PANEL_MANIFEST "$manifest"
-emit_kv DISPATCH_OK true
+emit_kv DISPATCH_OK "$dispatch_ok"

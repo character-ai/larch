@@ -11,8 +11,7 @@ Cases:
 - **C_T1**: `STATUS=FAILED` plus a transient DNS diagnostic retries once and
   recovers to `STATUS=OK` with `REVIEWER_FILE=*-retry.txt`.
 - **C_T2**: the same transient initial failure retries, but a failing retry
-  returns `STATUS=EMPTY_OUTPUT|HEALTHY=false` with a `Retry also failed:`
-  reason.
+  returns `STATUS=EMPTY_OUTPUT  reason.
 - **C_T3**: non-transient `STATUS=FAILED` (`reviewer prompt malformed`) does
   not retry, even with valid `.meta`.
 - **C_T4**: `STATUS=SENTINEL_TIMEOUT` plus a transient TLS diagnostic retries

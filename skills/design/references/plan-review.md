@@ -13,7 +13,7 @@ For each non-`OK` collector status, compose the failure log via the dedicated he
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/compose-collector-failure-log.sh \
   --reviewer-file "<REVIEWER_FILE-path-from-collector-record>" \
-  --structured-record '<full collector record line: REVIEWER_FILE=…|TOOL=…|STATUS=…|EXIT_CODE=…|HEALTHY=…|FAILURE_REASON=…>' \
+  --structured-record '<full collector record line: REVIEWER_FILE=…|TOOL=…|STATUS=…|EXIT_CODE=…|FAILURE_REASON=…>' \
   --output "$DESIGN_TMPDIR/<slot>-collector.failure.log"
 ```
 
@@ -77,10 +77,10 @@ All 10 reviewers are external. Collect and validate outputs using the shared col
 All archetype slots (Cursor and Codex) and cross-tool fallback slots use structured reviewer validation:
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1860 --substantive-validation --validation-mode --structured-reviewer-validation [--write-health "${SESSION_ENV_PATH}.health"] <all-archetype-output-paths...>
+${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1860 --substantive-validation --validation-mode --structured-reviewer-validation <all-archetype-output-paths...>
 ```
 
-Only include `--write-health` if `SESSION_ENV_PATH` is non-empty. Output paths include up to 5 Cursor archetype paths (`cursor-plan-arch-output.txt`, `cursor-plan-edge-output.txt`, `cursor-plan-innovation-output.txt`, `cursor-plan-pragmatic-output.txt`, `cursor-plan-requirements-output.txt`) and up to 5 Codex archetype paths (`codex-primary-plan-arch-output.txt`, `codex-primary-plan-edge-output.txt`, `codex-primary-plan-innovation-output.txt`, `codex-primary-plan-pragmatic-output.txt`, `codex-primary-plan-requirements-output.txt`). When Cursor is unavailable and Codex was used as fallback, those paths are `codex-fallback-cursor-plan-{arch,edge,innovation,pragmatic,requirements}-output.txt`. When Codex is unavailable and Cursor was used as fallback, those are `cursor-fallback-codex-plan-{arch,edge,innovation,pragmatic,requirements}-output.txt`. Omit paths for slots where a Claude subagent fallback was launched instead.
+Output paths include up to 5 Cursor archetype paths (`cursor-plan-arch-output.txt`, `cursor-plan-edge-output.txt`, `cursor-plan-innovation-output.txt`, `cursor-plan-pragmatic-output.txt`, `cursor-plan-requirements-output.txt`) and up to 5 Codex archetype paths (`codex-primary-plan-arch-output.txt`, `codex-primary-plan-edge-output.txt`, `codex-primary-plan-innovation-output.txt`, `codex-primary-plan-pragmatic-output.txt`, `codex-primary-plan-requirements-output.txt`). Waterfall fallback may replace failed external slots with the other external tool or Claude.
 
 Immediately after this collection returns, run the Mid-Run Dirty-Tree Probe Contract from `heavy-worker.md` for `STAGE=plan-review-collection`.
 

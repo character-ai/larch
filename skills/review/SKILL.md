@@ -22,7 +22,7 @@ Script contracts and harnesses: `${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/gat
 <!-- step:0 — Session Setup -->
 ## Step 0 — Session Setup
 
-Print `> **🔶 /review 0: setup**`. Rehydrate `CLAUDE_PLUGIN_ROOT` from `SESSION_ENV_PATH` when needed, mark timing, then run `${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix claude-review --skip-preflight --skip-branch-check --skip-repo-check --check-reviewers [--caller-env "$SESSION_ENV_PATH"] [--skip-codex-probe] [--skip-cursor-probe] [--write-health "${SESSION_ENV_PATH}.health"]`. Parse `SESSION_TMPDIR`, reviewer health, token session fields, set `REVIEW_TMPDIR=$SESSION_TMPDIR`, and export the nested timing ledger. If `subagent_mode=true` AND `diff_mode=true`, **MANDATORY — READ ENTIRE FILE** before dispatching: `${CLAUDE_PLUGIN_ROOT}/skills/review/references/heavy-worker.md`; on `REVIEW_HEAVY=complete`, validate summary artifacts and proceed to Step 4, otherwise fall back inline.
+Print `> **🔶 /review 0: setup**`. Rehydrate `CLAUDE_PLUGIN_ROOT` from `SESSION_ENV_PATH` when needed, mark timing, then run `${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix claude-review --skip-preflight --skip-branch-check --skip-repo-check --check-reviewers [--caller-env "$SESSION_ENV_PATH"] [--skip-codex-probe] [--skip-cursor-probe]`. Parse `SESSION_TMPDIR`, reviewer presence, token session fields, set `REVIEW_TMPDIR=$SESSION_TMPDIR`, and export the nested timing ledger. If `subagent_mode=true` AND `diff_mode=true`, **MANDATORY — READ ENTIRE FILE** before dispatching: `${CLAUDE_PLUGIN_ROOT}/skills/review/references/heavy-worker.md`; on `REVIEW_HEAVY=complete`, validate summary artifacts and proceed to Step 4, otherwise fall back inline.
 
 <!-- step:1 — Gather Context -->
 ## Step 1 — Gather Context
