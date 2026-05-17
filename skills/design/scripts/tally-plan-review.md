@@ -21,8 +21,8 @@
 - OOS visibility output is written to `oos.md`.
 - Accepted OOS output is also written to `oos-accepted-design.md` locally and, when `--session-env-path` is provided, to `$(dirname "$SESSION_ENV_PATH")/oos-accepted-design.md` so `ship-pr.sh` and `/implement` Step 9a.1 find it.
 - Accepted OOS blocks with an unfenced `focus-area = security` token are excluded from all public OOS outputs. Fenced occurrences (inside backtick or triple-backtick regions) are not load-bearing (Match discrimination false-positive guard).
-- Scoreboard score formula: `accepted + oos_accepted - rejected` (+1 per accepted in-scope, +1 per accepted OOS, -1 per rejected).
-- The rendered scoreboard columns are `Reviewer`, `Proposed`, `Accepted`, `Neutral/Exon`, `Rejected`, `OOS-Proposed`, `OOS-Accepted`, and `Score`.
+- Scoreboard score formula: `accepted + oos_accepted - rejected - oos_rejected` (+1 per accepted item, -1 per rejected item).
+- The rendered scoreboard columns are `Reviewer`, `Proposed`, `Accepted`, `Neutral/Exon`, `Rejected`, `OOS-Proposed`, `OOS-Accepted`, `OOS-Neutral/Exon`, `OOS-Rejected`, and `Score`.
 
 ## Makefile Wiring
 

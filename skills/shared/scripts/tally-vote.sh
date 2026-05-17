@@ -57,8 +57,8 @@ while [[ "$idx" -le "$count" ]]; do
     elif [[ "$yes" -ge 2 ]]; then
         accepted=true
     fi
-    # 1Y/1N split (tie-breaker) is handled by the caller (tally-votes.sh);
-    # tally-vote.sh only reports raw YES/NO/EXONERATE counts.
+    # tally-vote.sh only reports raw YES/NO/EXONERATE counts; callers own
+    # panel composition and any higher-level threshold handling.
     printf 'FINDING_%s_ACCEPTED=%s\n' "$idx" "$accepted"
     printf 'FINDING_%s_VOTES_YES=%s\n' "$idx" "$yes"
     printf 'FINDING_%s_VOTES_NO=%s\n' "$idx" "$no"

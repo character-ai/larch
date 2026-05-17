@@ -192,8 +192,8 @@ eligible_count="${#VOTER_FILES[@]}"
     done
 
     printf '\n## Reviewer Competition Scoreboard\n\n'
-    printf '| Reviewer | Proposed | Accepted | Neutral/Exon | Rejected | OOS-Proposed | OOS-Accepted | Score |\n'
-    printf '|---|---:|---:|---:|---:|---:|---:|---:|\n'
+    printf '| Reviewer | Proposed | Accepted | Neutral/Exon | Rejected | OOS-Proposed | OOS-Accepted | OOS-Neutral/Exon | OOS-Rejected | Score |\n'
+    printf '|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n'
     awk -F '\t' '
       {
         reviewer=$1
@@ -208,15 +208,18 @@ eligible_count="${#VOTER_FILES[@]}"
         } else {
           oos_proposed[reviewer]++
           if (result == "accepted") oos_accepted[reviewer]++
+          else if (result == "neutral" || result == "exonerated") oos_neutral[reviewer]++
+          else oos_rejected[reviewer]++
         }
       }
       END {
         for (reviewer in seen) {
-          # Score: +1 per accepted in-scope, +1 per accepted OOS, -1 per rejected.
-          score=accepted[reviewer]+0 + oos_accepted[reviewer]+0 - rejected[reviewer]+0
-          printf "| %s | %d | %d | %d | %d | %d | %d | %d |\n",
+          # Score: +1 per accepted item and -1 per rejected item.
+          score=accepted[reviewer]+0 + oos_accepted[reviewer]+0 - rejected[reviewer]+0 - oos_rejected[reviewer]+0
+          printf "| %s | %d | %d | %d | %d | %d | %d | %d | %d | %d |\n",
             reviewer, proposed[reviewer]+0, accepted[reviewer]+0, neutral[reviewer]+0,
-            rejected[reviewer]+0, oos_proposed[reviewer]+0, oos_accepted[reviewer]+0, score
+            rejected[reviewer]+0, oos_proposed[reviewer]+0, oos_accepted[reviewer]+0,
+            oos_neutral[reviewer]+0, oos_rejected[reviewer]+0, score
         }
       }
     ' "$score_rows" | sort

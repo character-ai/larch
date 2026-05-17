@@ -25,7 +25,7 @@ Launch failures (non-zero `launch-review.sh` exit before the collector runs) con
 
 ## Competition notice
 
-> **Competition notice**: Your findings will be voted on by a 3-agent panel (Claude Code Reviewer subagent, Codex, Cursor) using YES/NO/EXONERATE. Each finding that receives 2+ YES votes earns you +1 point. Findings with exactly 1 YES earn 0 points. Findings with 0 YES but at least 1 EXONERATE earn 0 points (the panel recognized your concern as legitimate). Findings with 0 YES and 0 EXONERATE cost you -1 point. Focus on high-quality, actionable findings. Concerns that are valid but not actionable in this PR may still be exonerated rather than penalized. Out-of-scope observations use **asymmetric scoring** — accepted OOS items (2+ YES) earn +1 point and are filed as GitHub issues; all other OOS outcomes (including unanimous rejection) score 0.
+> **Competition notice**: Your findings will be voted on by a 3-agent panel (Claude Code Reviewer subagent, Codex, Cursor) using YES/NO/EXONERATE. Each finding that receives 2+ YES votes earns you +1 point. Findings with exactly 1 YES earn 0 points. Findings with 0 YES but at least 1 EXONERATE earn 0 points (the panel recognized your concern as legitimate). Findings with 0 YES and 0 EXONERATE cost you -1 point. Focus on high-quality, actionable findings. Concerns that are valid but not actionable in this PR may still be exonerated rather than penalized. Out-of-scope observations use the same scoring shape: accepted OOS items (2+ YES) earn +1 point and are filed as GitHub issues, neutral or exonerated OOS items score 0, and rejected OOS items cost -1 point.
 
 ---
 
@@ -118,7 +118,7 @@ If `VOTER_2_STATUS=fallback`, launch the Codex replacement Claude subagent voter
 
 **Tally votes**: Apply the threshold rules from the Voting Protocol based on eligible voters per finding (2+ YES with 3 voters, unanimous 2/2 with 2 voters, skip if <2 eligible). Write the vote breakdown per finding to `$DESIGN_TMPDIR/voting-tally.md`. If `SESSION_ENV_PATH` is empty, also print the same tally inline; if `SESSION_ENV_PATH` is non-empty, suppress inline print. **Voter column labels in the per-finding vote breakdown table**: use `Claude` for the Claude Code Reviewer subagent (Voter 1), `Codex` for Codex (Voter 2), and `Cursor` for Cursor (Voter 3). Do NOT use a model name (e.g., `Claude-Opus`, `Claude-Sonnet`) as a column header — the model backing the voter may change between deployments.
 
-**Competition scoring**: Compute the **Reviewer Competition Scoreboard** per the Voting Protocol's scoring rules (+1 for accepted, 0 for neutral/exonerated, -1 for rejected in-scope findings; OOS items use asymmetric reward-only scoring — +1 for accepted, 0 for all other OOS outcomes including rejection. See `voting-protocol.md` for the full outcome matrix). Append the scoreboard table to `$DESIGN_TMPDIR/voting-tally.md`. If `SESSION_ENV_PATH` is empty, also print the scoreboard inline.
+**Competition scoring**: Compute the **Reviewer Competition Scoreboard** per the Voting Protocol's scoring rules (+1 for accepted, 0 for neutral/exonerated, -1 for rejected, including rejected OOS items. See `voting-protocol.md` for the full outcome matrix). Append the scoreboard table to `$DESIGN_TMPDIR/voting-tally.md`. If `SESSION_ENV_PATH` is empty, also print the scoreboard inline.
 
 ---
 
