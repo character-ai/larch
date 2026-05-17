@@ -1137,8 +1137,8 @@ exclude = [
   # same Makefile-only pattern as the other test-* entries above:
   # referenced only from Makefile (test-redact-tmpdir-paths,
   # test-keepalive-sentinel, test-cache-root-validation,
-  # test-cache-key-discipline, test-finalize-sanity-check targets) and their
-  # sibling .md contracts.
+  # test-cache-key-discipline, test-cache-key-runtime-audit,
+  # test-finalize-sanity-check targets) and their sibling .md contracts.
   "scripts/redact-tmpdir-paths.sh",
   "scripts/redact-tmpdir-paths.md",
   "scripts/test-redact-tmpdir-paths.sh",
@@ -1149,6 +1149,8 @@ exclude = [
   "scripts/test-cache-root-validation.md",
   "scripts/test-cache-key-discipline.sh",
   "scripts/test-cache-key-discipline.md",
+  "scripts/test-cache-key-runtime-audit.sh",
+  "scripts/test-cache-key-runtime-audit.md",
   "scripts/test-finalize-sanity-check.sh",
   "scripts/test-finalize-sanity-check.md",
   # scripts/github-remote-repo.sh is the one-URL/one-remote-name parser used
