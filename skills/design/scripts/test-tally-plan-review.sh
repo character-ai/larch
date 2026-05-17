@@ -223,7 +223,10 @@ IMPLEMENT_PARENT="$TMPROOT/implement-parent"
 mkdir -p "$IMPLEMENT_PARENT"
 printf 'plan-review-run\n' > "$IMPLEMENT_PARENT/session-id"
 SESSION_ENV_TALLY="$TMPROOT/design-session-env.sh"
-printf 'PREV_IMPLEMENT_TMPDIR=%s\n' "$IMPLEMENT_PARENT" > "$SESSION_ENV_TALLY"
+{
+    printf 'PREV_IMPLEMENT_TMPDIR=%s\n' "$IMPLEMENT_PARENT"
+    printf 'POST_PLAN_WORKFLOW_PATH=HARD\n'
+} > "$SESSION_ENV_TALLY"
 DESIGN_TALLY="$TMPROOT/design-tally"
 mkdir -p "$DESIGN_TALLY"
 "$SUBJECT" --ballot-file "$BALLOT" --voter-files "$V1" "$V2" "$V3" --design-tmpdir "$DESIGN_TALLY" --session-env-path "$SESSION_ENV_TALLY" >/dev/null
@@ -231,6 +234,12 @@ TALLY_BATCH="$IMPLEMENT_PARENT/larch-logs/implement/plan-review-run/plan-review-
 [[ -f "$TALLY_BATCH" ]] || fail "nested HARD run did not write plan-review-tally batch"
 jq -e '.batch == "plan-review-tally" and .mode == "hard" and .rounds == 1 and .accepted_count == 1 and .rejected_count == 1 and (.body | contains("## Rejected Plan Review Findings"))' \
     "$TALLY_BATCH" >/dev/null || fail "plan-review-tally batch content/counts wrong"
+
+SESSION_ENV_NO_MODE="$TMPROOT/design-session-env-no-mode.sh"
+printf 'PREV_IMPLEMENT_TMPDIR=%s\n' "$IMPLEMENT_PARENT" > "$SESSION_ENV_NO_MODE"
+rm -f "$TALLY_BATCH"
+"$SUBJECT" --ballot-file "$BALLOT" --voter-files "$V1" "$V2" "$V3" --design-tmpdir "$DESIGN_TALLY" --session-env-path "$SESSION_ENV_NO_MODE" >/dev/null
+[[ ! -f "$TALLY_BATCH" ]] || fail "missing workflow path should skip plan-review-tally flush"
 
 if "$SUBJECT" --ballot-file "$BALLOT" --voter-files "$TMPROOT/missing.txt" --design-tmpdir "$TMPROOT/nope" >/tmp/larch-tally-plan-review-fail.out 2>&1; then
     fail "missing voter file accepted"

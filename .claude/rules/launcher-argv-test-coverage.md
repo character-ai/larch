@@ -1,18 +1,22 @@
 ---
-paths: ["scripts/launch-*.sh", "scripts/test-launch-*.sh", "skills/implement/scripts/step2-implement.sh", "skills/implement/scripts/test-step2-*.sh", "skills/implement/scripts/test-codex-implementer.sh", "skills/implement/scripts/test-cursor-implementer.sh"]
+paths: ["scripts/launch-*.sh", "scripts/test-launch-*.sh", "scripts/run-step1-plan-log.sh", "scripts/test-run-step1-plan-log.sh", "scripts/run-step5-review.sh", "scripts/test-run-step5-review.sh", "skills/implement/scripts/run-step2-dispatch.sh", "skills/implement/scripts/step2-implement.sh", "skills/implement/scripts/test-run-step2-dispatch.sh", "skills/implement/scripts/test-step2-*.sh", "skills/implement/scripts/test-codex-implementer.sh", "skills/implement/scripts/test-cursor-implementer.sh"]
 ---
 
 # Launcher Argv Test Coverage
 
 Changing argv validation, output grammar, or rejection messages in
-`scripts/launch-*.sh` (or dispatcher `step2-implement.sh`) requires a
+`scripts/launch-*.sh`, the Step 1/5 launchers, or the Step 2 dispatcher
+stack (`run-step2-dispatch.sh` / `step2-implement.sh`) requires a
 same-PR regression harness update. "Ship launcher change → file OOS for
 harness gap → fix later" is the bug.
 
 Harness paths are **not** uniform:
 
 - `scripts/launch-review.sh --tool cursor|codex` → `scripts/test-launch-review.sh`
+- `scripts/run-step1-plan-log.sh` → `scripts/test-run-step1-plan-log.sh`
+- `scripts/run-step5-review.sh` → `scripts/test-run-step5-review.sh`
 - `scripts/launch-codex-implement.sh` / `launch-cursor-implement.sh` → `skills/implement/scripts/test-codex-implementer.sh` / `test-cursor-implementer.sh` (and `test-step2-dispatch.sh` for cross-coder dispatcher coverage)
+- `skills/implement/scripts/run-step2-dispatch.sh` → `skills/implement/scripts/test-run-step2-dispatch.sh`
 
 The sibling `<basename>.md` (per `.claude/rules/script-md-siblings.md`)
 names the current harness; read it before assuming a path. `docs/linting.md`

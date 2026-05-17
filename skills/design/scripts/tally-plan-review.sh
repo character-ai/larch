@@ -127,14 +127,23 @@ flush_plan_review_batch() {
     [[ -x "$read_session_env" ]] || return 0
 
     local impl_tmpdir=""
+    local workflow_path=""
+    local tally_mode=""
     impl_tmpdir=$("$read_session_env" --file "$SESSION_ENV_PATH" --key PREV_IMPLEMENT_TMPDIR --default "" 2>/dev/null) || impl_tmpdir=""
     [[ -n "$impl_tmpdir" && -d "$impl_tmpdir" && ! -L "$impl_tmpdir" ]] || return 0
+    workflow_path=$("$read_session_env" --file "$SESSION_ENV_PATH" --key POST_PLAN_WORKFLOW_PATH --default "" 2>/dev/null) || workflow_path=""
 
     local run_id=""
     if [[ -r "$impl_tmpdir/session-id" && ! -L "$impl_tmpdir/session-id" ]]; then
         run_id=$(tr -d '\r\n' < "$impl_tmpdir/session-id")
     fi
     [[ -n "$run_id" ]] || return 0
+
+    case "$workflow_path" in
+        SIMPLE) tally_mode="simple" ;;
+        HARD) tally_mode="hard" ;;
+        *) return 0 ;;
+    esac
 
     local body_file="$DESIGN_TMPDIR/plan-review-tally-body.md"
     {
@@ -153,7 +162,7 @@ flush_plan_review_batch() {
         --skill implement \
         --run-id "$run_id" \
         --phase plan-review \
-        --mode hard \
+        --mode "$tally_mode" \
         --rounds 1 \
         --accepted "$accepted_count" \
         --rejected "$rejected_count" \
