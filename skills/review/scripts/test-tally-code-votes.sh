@@ -59,6 +59,26 @@ got=$(awk -F= '$1=="OOS_REJECTED_COUNT"{print $2}' "$out"); assert_eq "OOS_REJEC
 grep -Fq 'FINDING_1: First in-scope finding' "$TMP/accepted-findings.md" || { FAIL=1; printf '  FAIL accepted-findings missing FINDING_1\n'; }
 grep -Fq 'FINDING_2' "$TMP/rejected-findings.md" || { FAIL=1; printf '  FAIL rejected-findings missing FINDING_2\n'; }
 grep -Fq 'OOS observation' "$TMP/oos-accepted-review.md" || { FAIL=1; printf '  FAIL oos-accepted missing FINDING_3\n'; }
+grep -Fq '| Reviewer | Proposed | Accepted | Neutral/Exon | Rejected | OOS-Proposed | OOS-Accepted | OOS-Neutral/Exon | OOS-Rejected | Score |' "$TMP/voting-tally.md" || { FAIL=1; printf '  FAIL scoreboard header missing OOS outcome columns\n'; }
+
+echo "# Case: OOS rejected subtracts 1 from reviewer score"
+TMP="$WORKDIR/case1b"
+mkdir -p "$TMP"
+cat > "$TMP/ballot.md" <<'EOF'
+### FINDING_1: [OUT_OF_SCOPE] Rejected OOS observation
+- **Reviewer**: Codex-Security
+- **Concern**: Pre-existing concern that should not be tracked.
+- **Suggested revision**: No change.
+EOF
+printf 'FINDING_1: NO -- not worth filing\n' > "$TMP/cursor-vote-output.txt"
+printf 'FINDING_1: NO -- not actionable\n' > "$TMP/codex-vote-output.txt"
+printf 'FINDING_1: NO -- too speculative\n' > "$TMP/claude-vote-output.txt"
+out="$TMP/out.env"
+"$SCRIPT" --ballot-file "$TMP/ballot.md" \
+    --voter-files "$TMP/cursor-vote-output.txt" "$TMP/codex-vote-output.txt" "$TMP/claude-vote-output.txt" \
+    --review-tmpdir "$TMP" > "$out"
+got=$(awk -F= '$1=="OOS_REJECTED_COUNT"{print $2}' "$out"); assert_eq "OOS_REJECTED_COUNT=1" "$got" "1"
+grep -Fq '| Codex-Security | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 1 | -1 |' "$TMP/voting-tally.md" || { FAIL=1; printf '  FAIL rejected OOS did not subtract from score\n'; }
 
 echo "# Case: 2 voters, unanimous YES (3-voter threshold falls back to 2-voter unanimous)"
 TMP="$WORKDIR/case2"

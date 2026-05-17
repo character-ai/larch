@@ -324,7 +324,7 @@ TAGGING_DESCRIPTION
   if [[ "$COMPETITION_NOTICE" == "true" ]]; then
     printf '\n'
     cat <<'COMPETITION'
-**Competition notice**: Your findings will be voted on by a 2-voter primary panel (Codex + Cursor); Claude acts as a conditional tie-breaker only on a 1Y/1N split. A finding accepted by 2+ YES votes earns you +1 point. Findings with exactly 1 YES earn 0 points. Findings with 0 YES but at least 1 EXONERATE earn 0 points (the panel recognized your concern as legitimate). Findings with 0 YES and 0 EXONERATE cost you -1 point. Focus on high-quality, actionable findings. Out-of-scope observations use **asymmetric scoring** — accepted OOS items (2+ YES) earn +1 point and are filed as GitHub issues; all other OOS outcomes (including unanimous rejection) score 0.
+**Competition notice**: Your findings will be voted on by a 3-voter primary panel. A finding accepted by 2+ YES votes earns you +1 point. Findings with exactly 1 YES earn 0 points. Findings with 0 YES but at least 1 EXONERATE earn 0 points (the panel recognized your concern as legitimate). Findings with 0 YES and 0 EXONERATE cost you -1 point. Focus on high-quality, actionable findings. Out-of-scope observations use the same scoring shape: accepted OOS items (2+ YES) earn +1 point and are filed as GitHub issues, neutral or exonerated OOS items score 0, and rejected OOS items cost -1 point.
 COMPETITION
   fi
 }

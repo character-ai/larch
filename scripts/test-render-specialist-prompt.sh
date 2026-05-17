@@ -138,6 +138,8 @@ else
   PASS=$((PASS + 1))
 fi
 assert_contains "competition notice present with flag" "Competition notice" "$output_with_comp"
+assert_contains "competition notice uses 3-voter panel" "3-voter primary panel" "$output_with_comp"
+assert_not_contains "competition notice no stale 2-voter panel" "2-voter primary panel" "$output_with_comp"
 
 # 5b. Internal Claude calibration examples are stripped from external renders.
 output_code_reviewer=$(bash "$RENDERER" --agent-file "$REPO_ROOT/agents/code-reviewer.md" --mode diff 2>/dev/null)

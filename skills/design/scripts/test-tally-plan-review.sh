@@ -76,9 +76,26 @@ grep -q 'OOS_1' "$DESIGN/oos-accepted-design.md" || fail "accepted OOS missing f
 if grep -q 'OOS_2' "$DESIGN/oos.md" || grep -q 'OOS_2' "$DESIGN/oos-accepted-design.md"; then
     fail "security-tagged accepted OOS was not excluded"
 fi
-grep -q '| Reviewer | Proposed | Accepted | Neutral/Exon | Rejected | OOS-Proposed | OOS-Accepted | Score |' "$DESIGN/voting-tally.md" || fail "scoreboard header missing"
+grep -q '| Reviewer | Proposed | Accepted | Neutral/Exon | Rejected | OOS-Proposed | OOS-Accepted | OOS-Neutral/Exon | OOS-Rejected | Score |' "$DESIGN/voting-tally.md" || fail "scoreboard header missing"
 # Cursor-Arch: 1 accepted finding (+1), 1 accepted OOS (+1) = score 2.
-grep -q '| Cursor-Arch | 1 | 1 | 0 | 0 | 1 | 1 | 2 |' "$DESIGN/voting-tally.md" || fail "scoreboard counts wrong for Cursor-Arch"
+grep -q '| Cursor-Arch | 1 | 1 | 0 | 0 | 1 | 1 | 0 | 0 | 2 |' "$DESIGN/voting-tally.md" || fail "scoreboard counts wrong for Cursor-Arch"
+
+# Rejected OOS subtracts one point.
+BALLOT_OOS_REJECTED="$TMPROOT/ballot-oos-rejected.md"
+cat > "$BALLOT_OOS_REJECTED" <<'EOF'
+### OOS_1: Rejected follow-up
+- **Reviewer**: Codex-Security
+- focus-area = code-quality
+- Concern: speculative follow-up.
+EOF
+V_OOS_REJECTED="$TMPROOT/v-oos-rejected.txt"
+cat > "$V_OOS_REJECTED" <<'EOF'
+OOS_1: NO
+EOF
+DESIGN_OOS_REJECTED="$TMPROOT/design-oos-rejected"
+mkdir -p "$DESIGN_OOS_REJECTED"
+"$SUBJECT" --ballot-file "$BALLOT_OOS_REJECTED" --voter-files "$V_OOS_REJECTED" "$V_OOS_REJECTED" "$V_OOS_REJECTED" --design-tmpdir "$DESIGN_OOS_REJECTED" >/dev/null
+grep -q '| Codex-Security | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 1 | -1 |' "$DESIGN_OOS_REJECTED/voting-tally.md" || fail "rejected OOS did not subtract from score"
 
 # Tie test: 2 voters, 1 YES 1 NO -> below unanimous-2 threshold -> not accepted.
 V4="$TMPROOT/v4.txt"

@@ -26,6 +26,7 @@ Sources `${CLAUDE_PLUGIN_ROOT}/scripts/lib-vote-tally.sh` for `vote_for_id`, `re
 - `oos-accepted-review.md` — accepted OOS blocks with the security-tag filter applied (security-tagged OOS items are held locally only, never filed publicly).
 - `oos.md` — all OOS items (accepted and not), with vote tallies.
 - `review-tally.env` — `FINDING_N_ACCEPTED=true|false` keys for each block.
+- Reviewer competition scoreboard score formula: `accepted + oos_accepted - rejected - oos_rejected`; rendered OOS columns are `OOS-Proposed`, `OOS-Accepted`, `OOS-Neutral/Exon`, and `OOS-Rejected`.
 
 ## stdout (FD 3 via `emit_kv`)
 
@@ -58,4 +59,4 @@ Sources `${CLAUDE_PLUGIN_ROOT}/scripts/lib-vote-tally.sh` for `vote_for_id`, `re
 
 ## Harness
 
-`skills/review/scripts/test-tally-code-votes.sh` covers: 3-voter 2-YES accept, 3-voter 1-YES reject, 2-voter unanimous accept, 1-voter skip path, both-down, OOS handling with `[OUT_OF_SCOPE]` title prefix, security-tag filtering on accepted OOS.
+`skills/review/scripts/test-tally-code-votes.sh` covers: 3-voter 2-YES accept, 3-voter 1-YES reject, 2-voter unanimous accept, 1-voter skip path, both-down, OOS handling with `[OUT_OF_SCOPE]` title prefix, rejected-OOS scoring, security-tag filtering on accepted OOS.

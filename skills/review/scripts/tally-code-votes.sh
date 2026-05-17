@@ -262,8 +262,8 @@ score_rows="$WORKDIR/score-rows.tsv"
     done
 
     printf '\n## Reviewer Competition Scoreboard\n\n'
-    printf '| Reviewer | Proposed | Accepted | Neutral/Exon | Rejected | OOS-Proposed | OOS-Accepted | Score |\n'
-    printf '|---|---:|---:|---:|---:|---:|---:|---:|\n'
+    printf '| Reviewer | Proposed | Accepted | Neutral/Exon | Rejected | OOS-Proposed | OOS-Accepted | OOS-Neutral/Exon | OOS-Rejected | Score |\n'
+    printf '|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n'
     awk -F '\t' '
       {
         reviewer=$1; kind=$2; result=$3
@@ -276,14 +276,17 @@ score_rows="$WORKDIR/score-rows.tsv"
         } else {
           oos_proposed[reviewer]++
           if (result == "accepted") oos_accepted[reviewer]++
+          else if (result == "neutral" || result == "exonerated") oos_neutral[reviewer]++
+          else oos_rejected[reviewer]++
         }
       }
       END {
         for (reviewer in seen) {
-          score=accepted[reviewer]+0 + oos_accepted[reviewer]+0 - rejected[reviewer]+0
-          printf "| %s | %d | %d | %d | %d | %d | %d | %d |\n",
+          score=accepted[reviewer]+0 + oos_accepted[reviewer]+0 - rejected[reviewer]+0 - oos_rejected[reviewer]+0
+          printf "| %s | %d | %d | %d | %d | %d | %d | %d | %d | %d |\n",
             reviewer, proposed[reviewer]+0, accepted[reviewer]+0, neutral[reviewer]+0,
-            rejected[reviewer]+0, oos_proposed[reviewer]+0, oos_accepted[reviewer]+0, score
+            rejected[reviewer]+0, oos_proposed[reviewer]+0, oos_accepted[reviewer]+0,
+            oos_neutral[reviewer]+0, oos_rejected[reviewer]+0, score
         }
       }
     ' "$score_rows" | sort

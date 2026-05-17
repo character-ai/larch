@@ -52,7 +52,7 @@ The handling of unavailable external tools differs across workflow phases:
 | **Plan review** (`/design`) | Per-archetype Cursor → Codex → Claude fallback chain; Codex generic → Claude — the configured panel stays intact |
 | **Code review** (`/review`) | Cursor down → skip Cursor specialist slots; Codex down → skip Codex specialist slots; both down → no slots launched (voting skipped per threshold rules) |
 | **Voting (plan review)** | Claude replacement voters used — always 3 voters. 3 voters: 2+ YES to accept; 2 voters: unanimous YES; <2 voters: voting skipped, all findings accepted |
-| **Voting (code review)** | 2 primary voters (Cursor + Codex); Claude invoked as conditional tie-breaker only on 1Y/1N. If one primary fails: 1 eligible → voting skipped, all findings accepted |
+| **Voting (code review)** | Claude + Codex + Cursor launched every round; Claude replacement voters fill unhealthy external slots so the panel stays at 3 voters when possible |
 | **Dialectic debate** (`/design`) | **No Claude substitution for debaters** — when the assigned external tool (Cursor for odd-indexed decisions, Codex for even-indexed) is unavailable, that decision's debater bucket is skipped entirely and a `Disposition: bucket-skipped` resolution is written (synthesis decision stands). Intentional divergence from the rules above for debate execution only; see Step 2a.5 in `skills/design/SKILL.md` |
 | **Dialectic judge panel** (`/design`) | **Claude replacements keep the panel shape intact** — the post-debate judge panel described in `skills/shared/dialectic-protocol.md` follows the repo-wide replacement-first pattern. When an external judge tool is unhealthy, a Claude Code Reviewer subagent replaces that slot. Judges merely adjudicate between pre-authored defenses — the no-Claude rule applies to adversarial debate execution only, not to adjudication. |
 
@@ -67,14 +67,14 @@ flowchart TD
 
     subgraph LAUNCH_REG["Regular: Launch 4 external in parallel"]
         direction LR
-        CA[Cursor: Arch] ~~~ CE[Cursor: Edge]
-        CE ~~~ XI[Codex: Innovation]
-        XI ~~~ XP[Codex: Pragmatic]
+        CA["Cursor: Arch"] ~~~ CE["Cursor: Edge"]
+        CE ~~~ XI["Codex: Innovation"]
+        XI ~~~ XP["Codex: Pragmatic"]
     end
 
     subgraph LAUNCH_QUICK["Quick: Launch 2 external in parallel"]
         direction LR
-        CG[Cursor: Generic] ~~~ XG[Codex: Generic]
+        CG["Cursor: Generic"] ~~~ XG["Codex: Generic"]
     end
 
     LAUNCH_REG --> WAIT[Wait for all sketches]

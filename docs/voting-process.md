@@ -4,13 +4,13 @@ The voting protocol is used by `/design` (plan review) and `/review` (code revie
 
 ## Overview
 
-After reviewers submit findings and findings are deduplicated, a voting panel votes on each finding. `/design` (plan review) uses a 3-voter panel (Claude + Codex + Cursor) in normal mode; in `--quick` mode, plan review is Claude-only with no external reviewers or voting panel (see [`skills/design/references/plan-review-quick.md`](../skills/design/references/plan-review-quick.md)). `/review` (code review) uses a 2-voter primary panel (Cursor + Codex) and invokes Claude as a conditional tie-breaker only on a 1Y/1N split. Each voter casts one of three votes:
+After reviewers submit findings and findings are deduplicated, a voting panel votes on each finding. `/design` (plan review) uses a 3-voter panel (Claude + Codex + Cursor) in normal mode; in `--quick` mode, plan review is Claude-only with no external reviewers or voting panel (see [`skills/design/references/plan-review-quick.md`](../skills/design/references/plan-review-quick.md)). `/review` (code review) uses a 3-voter panel (Claude + Codex + Cursor) unconditionally, with Claude replacement voters when an external voter is unavailable. Each voter casts one of three votes:
 
 | Vote | Meaning |
 |---|---|
 | **YES** | The finding is correct, important, and worth implementing. |
 | **NO** | The finding is incorrect, trivial, or would cause more harm than good. |
-| **EXONERATE** | The finding raises a legitimate concern, but is not worth implementing in this PR. Spares the proposing reviewer from losing a point on in-scope findings (OOS rejection carries no penalty regardless — see [Out-of-Scope Observations](#out-of-scope-observations)). |
+| **EXONERATE** | The finding raises a legitimate concern, but is not worth implementing in this PR. Spares the proposing reviewer from losing a point. |
 
 ## Threshold Rules
 
@@ -29,15 +29,13 @@ The number of YES votes required depends on how many voters are available:
 
 ## Voter Panel Composition
 
-The two skills use different panel sizes. All voters vote on all findings — there is no self-voting exclusion.
+Both skills use 3-voter panels in their voting paths. All voters vote on all findings — there is no self-voting exclusion.
 
-| Skill | Primary voters | Conditional voter |
-|---|---|---|
-| `/design` (plan review, normal mode) | Claude Code Reviewer subagent + Codex + Cursor — all 3 always launched | N/A |
-| `/design` (plan review, `--quick` mode) | Claude only — no external reviewers, no voting panel | N/A |
-| `/review` (code review) | Codex + Cursor — always launched in parallel | Claude Code Reviewer subagent — invoked only on a 1Y/1N split between primary voters |
-
-For code review, when Cursor and Codex split 1Y/1N on a finding, Claude is launched immediately as a tie-breaker and the full 3-voter threshold rules apply to the combined result.
+| Skill | Voters |
+|---|---|
+| `/design` (plan review, normal mode) | Claude Code Reviewer subagent + Codex + Cursor — all 3 always launched |
+| `/design` (plan review, `--quick` mode) | Claude only — no external reviewers, no voting panel |
+| `/review` (code review) | Claude + Codex + Cursor — all 3 launched every round, with Claude replacements for unhealthy external voters |
 
 ## Ballot Format
 
@@ -70,7 +68,7 @@ FINDING_3: EXONERATE — <one-line reason>
 flowchart TD
     REVIEW[3 reviewers submit findings] --> DEDUP[Deduplicate findings]
     DEDUP --> BALLOT[Format ballot with IDs]
-    BALLOT --> LAUNCH[Launch voters — design: 3 in parallel; review: 2 primary + conditional Claude tie-breaker on 1Y/1N]
+    BALLOT --> LAUNCH["Launch voters - design 3 in parallel, review 3 in parallel"]
     LAUNCH --> COLLECT[Collect votes]
     COLLECT --> TALLY{Tally per finding}
 
@@ -107,7 +105,7 @@ Reviewers may surface **out-of-scope (OOS) observations** — pre-existing issue
 - If an OOS item receives 2+ YES votes, it is **accepted** and filed as a GitHub issue by `/implement`
 - Non-accepted OOS items are collected and reported in the PR body for future attention
 - **OOS items are never implemented in the current PR** — accepted items result in issue creation only
-- OOS scoring is asymmetric: accepted OOS earns +1 (like in-scope findings), but rejected or exonerated OOS scores 0 — no penalty (see [Point Competition](point-competition.md)). The mermaid chart above's `REJECT → SCORE` path applies -1 only to in-scope findings; rejected OOS routes through the same `SCORE` node but contributes 0 points.
+- OOS scoring mirrors in-scope scoring: accepted OOS earns +1, neutral or exonerated OOS scores 0, and rejected OOS costs -1 (see [Point Competition](point-competition.md)).
 
 Claude subagent reviewers always produce OOS observations (via their dual-list output format). External reviewers (Codex, Cursor) **in diff mode** use a slot-kind–dependent output shape: specialist slots (`cursor-specialist-*` and `codex-specialist-*`) produce dual-list output matching the Claude subagent contract (contributing OOS observations via voting). **In `/review` description mode**, all external reviewers produce dual-list output matching the Claude subagent contract and contribute OOS observations via voting (see [skills/review/SKILL.md](../skills/review/SKILL.md) Step 3a).
 
@@ -134,7 +132,7 @@ Maintainers extending Step 2a.5 MUST NOT reuse this document's ballot parser, th
 | Vote tokens | `YES` / `NO` / `EXONERATE` | `THESIS` / `ANTI_THESIS` (binary — no third option) |
 | Accept threshold (3 voters) | 2+ YES | 2+ same-side |
 | Scoring | Reviewer competition scoreboard (+1 / 0 / -1) | **No scoring** (dialectic is not a competition) |
-| OOS semantics | In-scope vs `[OUT_OF_SCOPE]` prefix; asymmetric reward-only for OOS | No OOS concept — every decision is binding or synthesis-falls-back |
+| OOS semantics | In-scope vs `[OUT_OF_SCOPE]` prefix; symmetric scoring for OOS | No OOS concept — every decision is binding or synthesis-falls-back |
 
 ### Mechanical "no Claude debaters" rule (debate execution only)
 

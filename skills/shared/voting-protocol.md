@@ -4,7 +4,7 @@ Shared voting protocol for adjudicating review findings. Used by `/design` (plan
 
 ## Overview
 
-After reviewers submit findings and findings are deduplicated, a voting panel votes YES/NO/EXONERATE on each finding. Both `/design` (plan review) and `/review` (code review) use a 3-voter panel (Claude + Codex + Cursor) unconditionally; findings with 2+ YES votes are accepted. When an external voter is unhealthy, a Claude voter is launched in its place so the panel always has 3 voters. `/review` voter dispatch is owned by `${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-code-voters.sh`; vote tally is owned by `${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/tally-code-votes.sh`. Original reviewers earn competition points based on how their findings perform in voting. EXONERATE is a third option meaning "legitimate concern, but not worth implementing in this PR" — it spares the proposing reviewer from losing a point on in-scope findings. (OOS observations use asymmetric reward-only scoring — see [OOS Scoring](#oos-scoring) below — so OOS rejection carries no penalty regardless.)
+After reviewers submit findings and findings are deduplicated, a voting panel votes YES/NO/EXONERATE on each finding. Both `/design` (plan review) and `/review` (code review) use a 3-voter panel (Claude + Codex + Cursor) unconditionally; findings with 2+ YES votes are accepted. When an external voter is unhealthy, a Claude voter is launched in its place so the panel always has 3 voters. `/review` voter dispatch is owned by `${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-code-voters.sh`; vote tally is owned by `${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/tally-code-votes.sh`. Original reviewers earn competition points based on how their findings perform in voting. EXONERATE is a third option meaning "legitimate concern, but not worth implementing in this PR" — it spares the proposing reviewer from losing a point.
 
 ## Ballot Format
 
@@ -198,11 +198,11 @@ Full scoreboard format (used in standalone mode):
 ```
 ## Reviewer Competition Scoreboard
 
-| Reviewer | Findings | Accepted | Neutral (1 YES) | Exonerated (0 YES, 1+ EXON.) | Rejected (0 YES, 0 EXON.) | OOS Proposed | OOS Accepted | Score |
-|----------|----------|----------|-----------------|-------------------------------|---------------------------|--------------|--------------|-------|
-| _label1_ | 3        | 2        | 1               | 0                             | 0                         | 1            | 0            | +2    |
-| _label2_ | 2        | 1        | 0               | 1                             | 0                         | 0            | 0            | +1    |
-| _label3_ | 2        | 1        | 1               | 0                             | 0                         | 0            | 0            | +1    |
+| Reviewer | Findings | Accepted | Neutral (1 YES) | Exonerated (0 YES, 1+ EXON.) | Rejected (0 YES, 0 EXON.) | OOS Proposed | OOS Accepted | OOS-Neutral/Exon | OOS-Rejected | Score |
+|----------|----------|----------|-----------------|-------------------------------|---------------------------|--------------|--------------|------------------|--------------|-------|
+| _label1_ | 3        | 2        | 1               | 0                             | 0                         | 1            | 0            | 1                | 0            | +2    |
+| _label2_ | 2        | 1        | 0               | 1                             | 0                         | 0            | 0            | 0                | 0            | +1    |
+| _label3_ | 2        | 1        | 1               | 0                             | 0                         | 1            | 0            | 0                | 1            | 0     |
 
 Attribution labels are skill-specific (e.g., `/design` uses `Code`/`Codex`/`Cursor`; `/review` hard panel uses `Structure`/`Correctness`/`Testing`/`Security`/`Edge-cases`/`Plan-fidelity`/`Codex-Structure`/`Codex-Correctness`/`Codex-Testing`/`Codex-Security`/`Codex-Edge-cases`/`Codex-Plan-fidelity`). One row per independent reviewer. In future iterations, token allocation will be weighted proportionally to reviewer scores.
 ```
@@ -238,21 +238,21 @@ If an OOS item receives 2+ YES votes, it is **accepted** and will be filed as a 
 
 ### OOS Scoring
 
-Out-of-scope items use **asymmetric reward-only scoring** — accepted OOS earns +1, and all other outcomes score 0 so reviewers are never penalized for surfacing observations in good faith:
+Out-of-scope items use the same score shape as in-scope findings: accepted OOS earns +1, neutral or exonerated OOS scores 0, and rejected OOS costs -1:
 
 | OOS Vote Result | Points | Description |
 |---|---|---|
 | OOS accepted (2+ YES) | +1 | Reviewer surfaced an issue worth tracking |
 | OOS neutral (exactly 1 YES) | 0 | Insufficient support, but not dismissed |
 | OOS exonerated (0 YES, 1+ EXONERATE) | 0 | Legitimate observation, but not worth an issue |
-| OOS rejected (0 YES, 0 EXONERATE) | 0 | No penalty — reviewers are encouraged to surface observations freely |
+| OOS rejected (0 YES, 0 EXONERATE) | -1 | Observation was unanimously dismissed by the panel |
 
 ### OOS Scoreboard
 
 The scoreboard includes additional columns for OOS items:
 
 ```
-| Reviewer | ... | OOS Proposed | OOS Accepted | ...
+| Reviewer | ... | OOS Proposed | OOS Accepted | OOS-Neutral/Exon | OOS-Rejected | ...
 ```
 
 ### OOS Security Tag

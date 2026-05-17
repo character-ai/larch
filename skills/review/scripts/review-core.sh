@@ -363,7 +363,7 @@ copy_to_parent "$REVIEW_TMPDIR/oos-accepted-review.md" oos-accepted-review.md
 
 status="ok"
 if [[ "$MODE" == "diff" && "$accepted_count" -gt 0 ]]; then
-    if [[ "$ROUND_NUM" -ge 3 ]]; then
+    if [[ "$ROUND_NUM" -ge 5 ]]; then
         status="cap-reached"
     else
         status="fix-required"
