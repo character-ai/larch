@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [29.1.6] - 2026-05-16
+
+### Changed
+
+- Updated review competition wording and voting docs from the stale 2-voter conditional tie-breaker model to the unconditional 3-voter panel model.
+- Made reviewer scoreboards symmetric for OOS findings by tracking neutral/exonerated and rejected OOS outcomes and subtracting rejected OOS from reviewer score.
+- Aligned /review diff-mode round cap reporting to 5 rounds and expanded focused harnesses for the new OOS-rejected scoring columns.
+
 ## [29.1.5] - 2026-05-16
 
 ### Changed
