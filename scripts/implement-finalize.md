@@ -134,4 +134,4 @@ FINALIZE_WARNINGS=<N>
 
 ## Edit In Sync
 
-When changing this script or its state-file inputs, update this contract, `skills/implement/SKILL.md` Steps 8, 8a, 8b, and 14-18, `scripts/test-implement-finalize.sh`, `scripts/test-implement-finalize.md`, `scripts/restore-finalize-state.md`, `.claude/skills/bump-version/SKILL.md`, `skills/implement/references/rebase-rebump-subprocedure.md`, `SECURITY.md`, `Makefile`, and the harness table in `docs/linting.md` if the public target or coverage changes.
+When changing this script or its state-file inputs, update this contract, `scripts/lib-execution-issues.sh`, `skills/implement/scripts/flush-execution-issues.sh`, `skills/implement/SKILL.md` Steps 8, 8a, 8b, and 14-18, `scripts/test-implement-finalize.sh`, `scripts/test-implement-finalize.md`, `scripts/restore-finalize-state.md`, `.claude/skills/bump-version/SKILL.md`, `skills/implement/references/rebase-rebump-subprocedure.md`, `SECURITY.md`, `Makefile`, and the harness table in `docs/linting.md` if the public target or coverage changes.

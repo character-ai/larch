@@ -15,6 +15,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
+# shellcheck source=scripts/lib-execution-issues.sh
+source "$SCRIPT_DIR/lib-execution-issues.sh"
 
 STATE_FILE=""
 FINAL_BAIL_REASON_FILE=""
@@ -208,121 +210,6 @@ kv_value() {
     printf '%s' "$line"
 }
 
-sha256_file() {
-    if command -v shasum >/dev/null 2>&1; then
-        shasum -a 256 "$1" | awk '{print $1}'
-    else
-        sha256sum "$1" | awk '{print $1}'
-    fi
-}
-
-sha256_stream() {
-    if command -v shasum >/dev/null 2>&1; then
-        shasum -a 256 | awk '{print $1}'
-    else
-        sha256sum | awk '{print $1}'
-    fi
-}
-
-normalize_body_for_hash() {
-    # Strip leading '### Category' header line, strip leading/trailing blank lines.
-    # Internal content (including code fences) is preserved verbatim.
-    awk '
-        NR == 1 && /^### / { next }
-        { lines[++n] = $0 }
-        END {
-            s = 1; while (s <= n && lines[s] ~ /^[[:space:]]*$/) s++
-            e = n; while (e >= s && lines[e] ~ /^[[:space:]]*$/) e--
-            for (i = s; i <= e; i++) print lines[i]
-        }
-    '
-}
-
-json_escape_stream_python() {
-    # python3 JSON-escape fallback when jq is absent. Handles full string
-    # contract (control chars, \r, \b, \f, NUL, surrogate-safe). Returns
-    # non-zero if python3 is unavailable; caller routes to a loud failure.
-    command -v python3 >/dev/null 2>&1 || return 2
-    python3 -c '
-import json, sys
-sys.stdout.write(json.dumps(sys.stdin.read()))
-' || return 1
-}
-
-write_execution_issues_records() {
-    local input_file=$1 record_file=$2 sha=$3 batch_path=${4:-}
-    local current_cat body_file line rc=0 norm_sha rec_sha skip_section
-    : > "$record_file"
-    if command -v jq >/dev/null 2>&1; then
-        body_file=$(mktemp "${TMPDIR:-/tmp}/exec-issue-section.XXXXXX") || return 1
-        current_cat="Tool Failures"
-        : > "$body_file"
-        while IFS= read -r line || [ -n "$line" ]; do
-            case "$line" in
-                '### '*)
-                    if [ -s "$body_file" ]; then
-                        norm_sha=$(normalize_body_for_hash < "$body_file" | sha256_stream 2>/dev/null || true)
-                        skip_section=false
-                        if [ -n "$norm_sha" ] && [ -n "$batch_path" ] && [ -f "$batch_path" ] && \
-                           grep -Fq '"source_sha256":"'"$norm_sha"'"' "$batch_path" 2>/dev/null; then
-                            skip_section=true
-                        fi
-                        if [ "$skip_section" = "false" ]; then
-                            rec_sha="${norm_sha:-$sha}"
-                            jq -c -Rs --arg sha "$rec_sha" --arg cat "$current_cat" '{
-                                phase: "implement", step: "18", category: $cat,
-                                source: "execution-issues.md safety-net",
-                                source_sha256: $sha, body: .
-                            }' "$body_file" >> "$record_file" || rc=1
-                        fi
-                    fi
-                    current_cat="${line#'### '}"
-                    : > "$body_file"
-                    ;;
-                *)
-                    printf '%s\n' "$line" >> "$body_file"
-                    ;;
-            esac
-        done < "$input_file"
-        if [ -s "$body_file" ]; then
-            norm_sha=$(normalize_body_for_hash < "$body_file" | sha256_stream 2>/dev/null || true)
-            skip_section=false
-            if [ -n "$norm_sha" ] && [ -n "$batch_path" ] && [ -f "$batch_path" ] && \
-               grep -Fq '"source_sha256":"'"$norm_sha"'"' "$batch_path" 2>/dev/null; then
-                skip_section=true
-            fi
-            if [ "$skip_section" = "false" ]; then
-                rec_sha="${norm_sha:-$sha}"
-                jq -c -Rs --arg sha "$rec_sha" --arg cat "$current_cat" '{
-                    phase: "implement", step: "18", category: $cat,
-                    source: "execution-issues.md safety-net",
-                    source_sha256: $sha, body: .
-                }' "$body_file" >> "$record_file" || rc=1
-            fi
-        fi
-        rm -f "$body_file"
-        return $rc
-    fi
-    # No jq: fall back to python3. The awk-only escape was incomplete (no
-    # \r/\b/\f/control-char handling), which produced invalid NDJSON for
-    # binary-ish stderr captures and silently broke larch-log append on
-    # hosts without jq. Refuse to write a record at all rather than emit
-    # malformed NDJSON. python3 fallback emits one record for the whole file.
-    local body_json escape_rc
-    set +e
-    body_json=$(json_escape_stream_python < "$input_file")
-    escape_rc=$?
-    set -e
-    if [ "$escape_rc" -ne 0 ]; then
-        warn_line '**⚠ 18: execution-issues safety-net needs jq or python3 to compose NDJSON. Neither found. Skipping safety-net flush.**'
-        return 1
-    fi
-    {
-        printf '{"phase":"implement","step":"18","category":"Tool Failures",'
-        printf '"source":"execution-issues.md safety-net","source_sha256":"%s","body":%s}\n' "$sha" "$body_json"
-    } > "$record_file"
-}
-
 flush_execution_issues_safety_net() {
     local run_id issue_log sha sentinel batch_path record_file out rc
     run_id=$(read_state RUN_ID)
@@ -341,7 +228,7 @@ flush_execution_issues_safety_net() {
         return 0
     fi
     record_file="$IMPLEMENT_TMPDIR/execution-issues-safety-net.ndjson"
-    write_execution_issues_records "$issue_log" "$record_file" "$sha" "$batch_path" || {
+    write_execution_issues_records "$issue_log" "$record_file" "$sha" "$batch_path" "18" "execution-issues.md safety-net" || {
         warn_line '**⚠ 18: execution-issues safety-net record compose failed. Continuing.**'
         return 0
     }
