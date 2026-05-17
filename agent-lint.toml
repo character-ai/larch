@@ -392,8 +392,20 @@ exclude = [
   "scripts/test-larch-logs-manifest.md",
   "scripts/test-larch-logs-batches.sh",
   "scripts/test-larch-logs-batches.md",
+  # Step 1 launcher split: compose-plan-goals-test.sh is now invoked by
+  # scripts/run-step1-plan-log.sh rather than directly from SKILL.md, and
+  # agent-lint does not follow Bash-to-Bash launcher edges. The launcher
+  # harness is Makefile-only.
+  "scripts/compose-plan-goals-test.sh",
+  "scripts/compose-plan-goals-test.md",
   "scripts/test-compose-plan-goals-test.sh",
   "scripts/test-compose-plan-goals-test.md",
+  "scripts/test-run-step1-plan-log.sh",
+  "scripts/test-run-step1-plan-log.md",
+  # Step 5 launcher harness is Makefile-only; runtime reachability is through
+  # the SKILL.md invocation of scripts/run-step5-review.sh.
+  "scripts/test-run-step5-review.sh",
+  "scripts/test-run-step5-review.md",
   # scripts/test-compose-collector-failure-log.sh is the Makefile-only
   # regression harness for scripts/compose-collector-failure-log.sh. The
   # helper is invoked by the /design heavy-worker from skill prose at runtime;

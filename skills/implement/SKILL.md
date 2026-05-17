@@ -263,6 +263,10 @@ Then:
   )
   [[ -n "${LARCH_CLAUDE_SOURCE_FILE:-}" ]] && session_env_args+=(--claude-source-file "$LARCH_CLAUDE_SOURCE_FILE")
   "${CLAUDE_PLUGIN_ROOT}/scripts/write-session-env.sh" "${session_env_args[@]}"
+  _session_env_tmp=$(mktemp "$IMPLEMENT_TMPDIR/session-env.sh.tmp.XXXXXX")
+  grep -v '^LARCH_AUTO_MODE=' "$IMPLEMENT_TMPDIR/session-env.sh" > "$_session_env_tmp"
+  printf 'LARCH_AUTO_MODE=%s\n' "$auto_mode" >> "$_session_env_tmp"
+  mv "$_session_env_tmp" "$IMPLEMENT_TMPDIR/session-env.sh"
   "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 0 — preflight" || true
   "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 0 — preflight" || true
   # token-mark Step 0 — preflight
@@ -1025,12 +1029,13 @@ Parse `BRANCH=<name>` and save as `BRANCH_NAME`. Referenced by Step 14 (`local-c
 
 Write two larch-log batches from file-backed design artifacts. See Step 0.5 "Larch-log Batches and Summary Comments" for the mechanism.
 
-1. **`plan-goals-test` batch** — compose by reading `PLAN_FILE` (manifest path in normal mode, `$IMPLEMENT_TMPDIR/design-export/plan.txt` in quick mode). Treat the file's full body as the implementation plan — do NOT assume it begins with or contains a literal `## Implementation Plan` heading; `/design` writes plain plan content to `plan.txt` and any normative wrapping is provided by this batch, not the source file. Run:
+1. **`plan-goals-test` batch** — compose by reading `PLAN_FILE` (manifest path in normal mode, `$IMPLEMENT_TMPDIR/design-export/plan.txt` in quick mode). Treat the file's full body as the implementation plan — do NOT assume it begins with or contains a literal `## Implementation Plan` heading; `/design` writes plain plan content to `plan.txt` and any normative wrapping is provided by this batch, not the source file. Run the launcher, which derives `PLAN_FILE`, `RUN_ID`, helper paths, and the conventional output path from `$IMPLEMENT_TMPDIR/session-env.sh` and `$IMPLEMENT_TMPDIR/session-id`:
    ```bash
-   ${CLAUDE_PLUGIN_ROOT}/scripts/compose-plan-goals-test.sh --plan-file "$PLAN_FILE" \
-     --goal-text "<one-sentence objective>" > "$IMPLEMENT_TMPDIR/plan-goals-test.md"
+   ${CLAUDE_PLUGIN_ROOT}/scripts/run-step1-plan-log.sh \
+     --implement-tmpdir "$IMPLEMENT_TMPDIR" \
+     --goal-text "<one-sentence objective>"
    ```
-   The script fails closed when the plan body is absent, short, or pointer-only. Write the output with `larch-log.sh write --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch plan-goals-test --input-file "$IMPLEMENT_TMPDIR/plan-goals-test.md"`.
+   The launcher fails closed when the plan body is absent, short, or pointer-only, then writes the output with `larch-log.sh write --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch plan-goals-test --input-file "$IMPLEMENT_TMPDIR/plan-goals-test.md"`.
 2. **`plan-review-tally` batch** — compose a JSON object from `PLAN_REVIEW_TALLY_FILE` (manifest path in normal mode, `$IMPLEMENT_TMPDIR/design-export/voting-tally.md` in quick mode). Use fallback text only if the file is missing on a degraded quick-mode path. First build a temporary body file under `$IMPLEMENT_TMPDIR/larch-log-batches-input/`: copy the tally source into it, then if `REJECTED_FINDINGS_FILE` exists and contains `[Plan Review]` entries, append those rejected findings under a `## Rejected Plan Review Findings` sub-header. Then run `${CLAUDE_PLUGIN_ROOT}/scripts/write-tally.sh --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --phase plan-review --mode <simple|hard> --body-file <body-file>`, using `--mode simple` for quick/SIMPLE paths and `--mode hard` for normal design-backed or both-externals-down paths. The wrapper composes the JSON record and writes the `plan-review-tally` batch atomically; never write the raw markdown tally body directly to the `.json` batch.
 3. If `$ISSUE_NUMBER` is set, compose `$IMPLEMENT_TMPDIR/summary-plan.md` as a slim pointer to `larch-logs/implement/$RUN_ID/plan-goals-test.md` plus the current plan-review tally status, then run `tracking-issue-summary.sh upsert-summary --issue "$ISSUE_NUMBER" --marker "<!-- larch:plan v1 runid=$RUN_ID -->" --content-file "$IMPLEMENT_TMPDIR/summary-plan.md" || true`. On non-zero exit, log `Step 1 — larch:plan upsert failed` to `Tool Failures` and continue — the plan is still committed in `larch-logs/`. If `deferred=true` or `repo_unavailable=true`, skip only the summary upsert.
 
@@ -1137,7 +1142,7 @@ This matrix is authoritative for Step 2. After parsing the dispatcher's stdout i
 
 <!-- step:2 dispatch — coder selection -->
 
-Regression harnesses for this dispatcher surface are `skills/implement/scripts/test-codex-implementer.sh`, `skills/implement/scripts/test-codex-implementer.md`, `skills/implement/scripts/test-cursor-implementer.sh`, and `skills/implement/scripts/test-cursor-implementer.md`.
+Regression harnesses for this dispatcher surface are `skills/implement/scripts/test-run-step2-dispatch.sh`, `skills/implement/scripts/test-run-step2-dispatch.md`, `skills/implement/scripts/test-codex-implementer.sh`, `skills/implement/scripts/test-codex-implementer.md`, `skills/implement/scripts/test-cursor-implementer.sh`, and `skills/implement/scripts/test-cursor-implementer.md`. The launcher contract is `skills/implement/scripts/run-step2-dispatch.md`.
 
 **2.1 — First dispatch invocation**:
 
@@ -1146,22 +1151,14 @@ if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
 fi
 export CLAUDE_PLUGIN_ROOT
-cursor_available=$(${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CURSOR_PRESENT --default false)
-implement_workflow=$( [[ "$quick_mode" == "true" ]] && echo SIMPLE || echo HARD )
-
-${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step2-implement.sh \
-    --tmpdir "$IMPLEMENT_TMPDIR" \
-    --plan-file "$PLAN_FILE" \
-    --feature-file "$FEATURE_FILE" \
-    --auto-mode "$auto_mode" \
-    --coder "$coder" \
-    --cursor-present "$cursor_available" \
-    --workflow "$implement_workflow"
+${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/run-step2-dispatch.sh \
+    --implement-tmpdir "$IMPLEMENT_TMPDIR" \
+    --coder "$coder"
 ```
 
 **Do NOT poll or print sidecar output while dispatching.** Invoke `step2-implement.sh` as a foreground-blocking Bash call (no `run_in_background: true`). While the external implementer runs, do NOT read the sidecar log and do NOT print intermediate output to the user — polling floods the terminal with non-actionable messages. The dispatcher blocks; parse its stdout as KV after it exits.
 
-`$PLAN_FILE` is the path written at Step 1 (`/design`'s plan, or the inline quick-mode plan). `$FEATURE_FILE` is `$IMPLEMENT_TMPDIR/feature-description.txt` (created at Step 0). Parse the dispatcher's stdout into local KV variables: `STATUS`, `TOOL`, `MANIFEST`, `QA_PENDING`, `REASON`, `TRANSCRIPT`, `SIDECAR_LOG`, `ORCHESTRATOR_EDIT_AUTHORITY`. Then run the envelope-validation block in 2.1.5 BEFORE branching on `STATUS` in 2.2. Derive:
+The launcher derives `$PLAN_FILE`, `$FEATURE_FILE`, `auto_mode`, cursor presence, and workflow from `$IMPLEMENT_TMPDIR/session-env.sh` and conventional tmpdir paths. Parse the dispatcher's stdout into local KV variables: `STATUS`, `TOOL`, `MANIFEST`, `QA_PENDING`, `REASON`, `TRANSCRIPT`, `SIDECAR_LOG`, `ORCHESTRATOR_EDIT_AUTHORITY`. Then run the envelope-validation block in 2.1.5 BEFORE branching on `STATUS` in 2.2. Derive:
 
 ```bash
 case "$TOOL" in
@@ -1196,7 +1193,7 @@ If any check fails, synthesize an orchestrator-local bail: set `STATUS=bailed`, 
 1. Read `$QA_PENDING` (a JSON file containing `{"questions": [{"id": "q1", "text": "..."}, ...]}`).
 2. **If `auto_mode=false`**: pose the questions to the operator via `AskUserQuestion` in a single batched call (one prompt per question, preserving the `id`). **If `auto_mode=true`**: derive best-effort answers from the plan + codebase + `CLAUDE.md`. Either way, log every Q/A pair to `$IMPLEMENT_TMPDIR/execution-issues.md` under `### Q/A` per the schema in 2.5 below.
 3. Compose an answers file `$IMPLEMENT_TMPDIR/codex-answers-$RESUME_N.json` with shape `{"answers": [{"id": "q1", "text": "<answer>"}, ...]}` (`$RESUME_N` is the 1-indexed resume cycle counter the orchestrator tracks locally). The filename retains `codex-` for historical compatibility; the dispatcher accepts it for Cursor resumes too.
-4. Re-invoke the dispatcher with the same flags as §2.1 (including `--workflow "$implement_workflow"`) plus the additional flag `--answers "$IMPLEMENT_TMPDIR/codex-answers-$RESUME_N.json"`. **On every dispatcher return — including each `--answers` redispatch cycle — re-parse the KV envelope and run the §2.1.5 envelope-validation block in full BEFORE re-branching on `STATUS` per §2.2.** Q/A redispatch is not exempt from envelope validation: a malformed or AUTH-illegal envelope on a resume invocation must still fail-closed via `orchestrator-envelope-invalid` exactly as on the first dispatch. The dispatcher itself enforces the 5-cycle cap; on the 6th `--answers` invocation it returns `STATUS=bailed REASON=qa-loop-exceeded` automatically.
+4. Re-invoke the dispatcher launcher with the same flags as §2.1 plus the additional flag `--answers "$IMPLEMENT_TMPDIR/codex-answers-$RESUME_N.json"`. The launcher still derives plan, feature, auto-mode, cursor presence, and workflow from session artifacts; `--answers` is the redispatch-only exception because the exact resume file is created in this loop. **On every dispatcher return — including each `--answers` redispatch cycle — re-parse the KV envelope and run the §2.1.5 envelope-validation block in full BEFORE re-branching on `STATUS` per §2.2.** Q/A redispatch is not exempt from envelope validation: a malformed or AUTH-illegal envelope on a resume invocation must still fail-closed via `orchestrator-envelope-invalid` exactly as on the first dispatch. The dispatcher itself enforces the 5-cycle cap; on the 6th `--answers` invocation it returns `STATUS=bailed REASON=qa-loop-exceeded` automatically.
 
 > **Continue to Step 3 IMMEDIATELY after re-dispatch returns.** The Q/A loop re-dispatch is not a halting point — proceed to Step 3 checks as soon as the dispatcher exits. → shared/subskill-invocation.md#step-boundary
 
@@ -1342,11 +1339,11 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 
 ### Scripted review loop
 
-**IMPORTANT: Code review must ALWAYS run.** Never skip regardless of the nature of changes — code, skills, documentation, data files, configuration — all changes require review. Step 5 now invokes `${CLAUDE_PLUGIN_ROOT}/skills/review-and-fix/scripts/review-and-fix.sh` directly for both quick and normal modes. Quick mode passes `--panel simple`; normal mode passes `--panel hard`.
+**IMPORTANT: Code review must ALWAYS run.** Never skip regardless of the nature of changes — code, skills, documentation, data files, configuration — all changes require review. Step 5 invokes `${CLAUDE_PLUGIN_ROOT}/scripts/run-step5-review.sh`, which derives the full `${CLAUDE_PLUGIN_ROOT}/skills/review-and-fix/scripts/review-and-fix.sh` argv from `$IMPLEMENT_TMPDIR/session-env.sh` and conventional tmpdir artifacts. SIMPLE workflow passes `--panel simple`; HARD workflow passes `--panel hard`.
 
 Nested review token-context propagation through `review-and-fix.sh` is pinned by `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-implement-review-token-propagation.sh` and `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-implement-review-token-propagation.md`.
 
-Determine `round_cap` and `review_panel` from `quick_mode`: when `quick_mode=true`, `review_panel=simple` and `round_cap=5`; when `quick_mode=false`, `review_panel=hard` and `round_cap=7`.
+`run-step5-review.sh` derives `round_cap` and `review_panel` from `POST_PLAN_WORKFLOW_PATH` in `$IMPLEMENT_TMPDIR/session-env.sh`: `SIMPLE` maps to `review_panel=simple` and `round_cap=5`; `HARD` maps to `review_panel=hard` and `round_cap=7`.
 
 Quick mode prints: `> **🔶 /implement 5: code review — quick mode (review-and-fix.sh, up to 5 rounds; 3-judge panel votes every round; simple review panel: 6 Cursor specialists including Cursor edge-cases, Codex generalist)**`
 
@@ -1359,24 +1356,9 @@ if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
 fi
 export CLAUDE_PLUGIN_ROOT
-review_panel=hard
-round_cap=7  # HARD panel: 6 Cursor specialists + 6 Codex specialists, more rounds needed for convergence
-if [ "$quick_mode" = true ]; then
-  review_panel=simple
-  round_cap=5  # SIMPLE panel: 6 Cursor specialists + 1 Codex generalist
-fi
-"${CLAUDE_PLUGIN_ROOT}/skills/review-and-fix/scripts/review-and-fix.sh" \
+"${CLAUDE_PLUGIN_ROOT}/scripts/run-step5-review.sh" \
   --implement-tmpdir "$IMPLEMENT_TMPDIR" \
-  --mode diff \
-  --panel "$review_panel" \
-  --round-num "$round_num" \
-  --round-cap "$round_cap" \
-  --session-env-path "$IMPLEMENT_TMPDIR/session-env.sh" \
-  --codex-available "$codex_available" \
-  --cursor-available "$cursor_available" \
-  --plan-file "$PLAN_FILE" \
-  --feature-file "$IMPLEMENT_TMPDIR/feature-description.txt" \
-  --run-id "$RUN_ID"
+  --round-num "$round_num"
 ```
 
 Parse the exit code and stdout keys with key-based extraction only:
