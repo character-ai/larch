@@ -154,7 +154,7 @@ run_coder_dispatch() {
     local round_dir="$1" prompt_body="$2" tool_log="$3" tool_stdout="$4"
 
     if "$RUN_EXTERNAL_AGENT_SH" --tool codex --output "$round_dir/coder-codex.log" --timeout 1800 --capture-stdout -- \
-        codex exec --full-auto -C "$PWD" --add-dir "$round_dir" "$prompt_body" > "$round_dir/coder-codex.wrapper.log" 2>&1; then
+        codex exec --full-auto -C "$PWD" --add-dir "$round_dir" --add-dir "$PWD" "$prompt_body" > "$round_dir/coder-codex.wrapper.log" 2>&1; then
         cp "$round_dir/coder-codex.log" "$tool_log" 2>/dev/null || : > "$tool_log"
         printf 'codex\n' > "$tool_stdout"
         return 0
@@ -214,8 +214,8 @@ post_dispatch_submodule_revert() {
 }
 
 apply_findings_with_coder() {
-    local input_file="$1" round_dir="$2" result_file="$3"
-    local in_scope_count scrub_out scrub_rc scrub_ok scrub_count scrubbed_file scrubbed_count submodules_list prompt_file prompt_body tool_file tool_log revert_count
+    local input_file="$1" round_dir="$2" result_file="$3" round_num="${4:-}"
+    local in_scope_count scrub_out scrub_rc scrub_ok scrub_count scrubbed_file scrubbed_count submodules_list prompt_file prompt_body tool_file tool_log revert_count commit_sha=""
 
     mkdir -p "$round_dir"
     : > "$result_file"
@@ -298,6 +298,51 @@ apply_findings_with_coder() {
         return 3
     fi
 
+    # Detect actual file changes after dispatch (post submodule revert). If the
+    # working tree is clean, the dispatcher exit code lies — the coder ran but
+    # did not actually modify any file. Emit CODER_STATUS=no-changes so callers
+    # can distinguish "dispatcher ok, no edits landed" from "edits applied".
+    if [[ -z "$(git status --porcelain 2>/dev/null)" ]]; then
+        {
+            printf 'CODER_TOOL=%s\n' "$(cat "$tool_file")"
+            printf 'CODER_STATUS=no-changes\n'
+            printf 'CODER_LOG_FILE=%s\n' "$tool_log"
+            printf 'CODER_INPUT_COUNT=%s\n' "$scrubbed_count"
+            printf 'SUBMODULE_SCRUB_COUNT=%s\n' "$scrub_count"
+            printf 'SUBMODULE_REVERT_COUNT=0\n'
+        } > "$result_file"
+        return 0
+    fi
+
+    # Working tree dirty — commit per round when round_num is provided so the
+    # next review round can evaluate the fixes as committed code. When called
+    # from findings mode (no round_num), the parent caller owns the commit.
+    if [[ "$round_num" =~ ^[0-9]+$ ]] && (( round_num > 0 )); then
+        if ! git add -A 2>>"$round_dir/coder-commit.log"; then
+            {
+                printf 'CODER_TOOL=%s\n' "$(cat "$tool_file")"
+                printf 'CODER_STATUS=failed\n'
+                printf 'CODER_LOG_FILE=%s\n' "$tool_log"
+                printf 'CODER_INPUT_COUNT=%s\n' "$scrubbed_count"
+                printf 'SUBMODULE_SCRUB_COUNT=%s\n' "$scrub_count"
+                printf 'SUBMODULE_REVERT_COUNT=0\n'
+            } > "$result_file"
+            return 2
+        fi
+        if ! "$PLUGIN_ROOT/scripts/git-commit.sh" -m "Address code review feedback (round $round_num)" >>"$round_dir/coder-commit.log" 2>&1; then
+            {
+                printf 'CODER_TOOL=%s\n' "$(cat "$tool_file")"
+                printf 'CODER_STATUS=failed\n'
+                printf 'CODER_LOG_FILE=%s\n' "$tool_log"
+                printf 'CODER_INPUT_COUNT=%s\n' "$scrubbed_count"
+                printf 'SUBMODULE_SCRUB_COUNT=%s\n' "$scrub_count"
+                printf 'SUBMODULE_REVERT_COUNT=0\n'
+            } > "$result_file"
+            return 2
+        fi
+        commit_sha=$(git rev-parse HEAD 2>/dev/null || true)
+    fi
+
     {
         printf 'CODER_TOOL=%s\n' "$(cat "$tool_file")"
         printf 'CODER_STATUS=applied\n'
@@ -305,13 +350,14 @@ apply_findings_with_coder() {
         printf 'CODER_INPUT_COUNT=%s\n' "$scrubbed_count"
         printf 'SUBMODULE_SCRUB_COUNT=%s\n' "$scrub_count"
         printf 'SUBMODULE_REVERT_COUNT=0\n'
+        [[ -n "$commit_sha" ]] && printf 'CODER_COMMIT_SHA=%s\n' "$commit_sha"
     } > "$result_file"
     return 0
 }
 
 write_summary_json() {
     local output="$1" tmp="$1.tmp.$$"
-    local status="$2" core_status="$3" round="$4" accepted="$5" rejected="$6" rounds_completed="$7" approved="$8" round_dir="$9" oos_jsonl="${10}" oos_markdown="${11}" cap="${12:-0}" coder_tool="${13:-none}" coder_status="${14:-skipped}" scrub_count="${15:-0}" revert_count="${16:-0}"
+    local status="$2" core_status="$3" round="$4" accepted="$5" rejected="$6" rounds_completed="$7" approved="$8" round_dir="$9" oos_jsonl="${10}" oos_markdown="${11}" cap="${12:-0}" coder_tool="${13:-none}" coder_status="${14:-skipped}" scrub_count="${15:-0}" revert_count="${16:-0}" commit_sha="${17:-}"
     jq -n \
         --arg status "$status" \
         --arg core_status "$core_status" \
@@ -328,6 +374,7 @@ write_summary_json() {
         --arg coder_status "$coder_status" \
         --argjson submodule_scrub_count "$scrub_count" \
         --argjson submodule_revert_count "$revert_count" \
+        --arg coder_commit_sha "$commit_sha" \
         '{
             schema_version: 2,
             status: $status,
@@ -344,7 +391,8 @@ write_summary_json() {
             coder_tool: $coder_tool,
             coder_status: $coder_status,
             submodule_scrub_count: $submodule_scrub_count,
-            submodule_revert_count: $submodule_revert_count
+            submodule_revert_count: $submodule_revert_count,
+            coder_commit_sha: $coder_commit_sha
         }' > "$tmp"
     mv -f "$tmp" "$output"
 }
@@ -491,6 +539,7 @@ run_findings_mode() {
     coder_input_count=$(kv_get "$coder_env" CODER_INPUT_COUNT)
     scrub_count=$(kv_get "$coder_env" SUBMODULE_SCRUB_COUNT)
     revert_count=$(kv_get "$coder_env" SUBMODULE_REVERT_COUNT)
+    coder_commit_sha=$(kv_get "$coder_env" CODER_COMMIT_SHA)
 
     case "$coder_rc" in
         0) review_status="complete"; exit_code=0 ;;
@@ -504,6 +553,7 @@ run_findings_mode() {
     emit_kv CODER_TOOL "${coder_tool:-none}"
     emit_kv CODER_STATUS "${coder_status:-unknown}"
     [[ -n "${coder_log:-}" ]] && emit_kv CODER_LOG_FILE "$coder_log"
+    [[ -n "${coder_commit_sha:-}" ]] && emit_kv CODER_COMMIT_SHA "$coder_commit_sha"
     emit_kv SUBMODULE_SCRUB_COUNT "${scrub_count:-0}"
     emit_kv SUBMODULE_REVERT_COUNT "${revert_count:-0}"
     exit "$exit_code"
@@ -538,6 +588,7 @@ run_implement_round() {
     mkdir -p "$round_dir"
     if (( round_num_dec == 1 )) && [[ -x "$PLUGIN_ROOT/scripts/snapshot-untracked.sh" ]]; then
         "$PLUGIN_ROOT/scripts/snapshot-untracked.sh" --output "$IMPLEMENT_TMPDIR/pre-review-untracked.txt"
+        git rev-parse HEAD > "$IMPLEMENT_TMPDIR/pre-review-head.txt" 2>/dev/null || rm -f "$IMPLEMENT_TMPDIR/pre-review-head.txt"
     fi
     core_out="$round_dir/review-core.env"
     core_args=(
@@ -590,6 +641,7 @@ run_implement_round() {
     coder_tool="none"
     coder_status="skipped"
     coder_log=""
+    coder_commit_sha=""
     scrub_count=0
     revert_count=0
     in_scope_count=0
@@ -603,7 +655,7 @@ run_implement_round() {
         if (( in_scope_count > 0 )); then
             coder_env="$round_dir/coder.env"
             set +e
-            apply_findings_with_coder "$in_scope_file" "$round_dir" "$coder_env"
+            apply_findings_with_coder "$in_scope_file" "$round_dir" "$coder_env" "$round_num_dec"
             coder_rc=$?
             set -e
             coder_tool=$(kv_get "$coder_env" CODER_TOOL)
@@ -612,6 +664,7 @@ run_implement_round() {
             coder_input_count=$(kv_get "$coder_env" CODER_INPUT_COUNT)
             scrub_count=$(kv_get "$coder_env" SUBMODULE_SCRUB_COUNT)
             revert_count=$(kv_get "$coder_env" SUBMODULE_REVERT_COUNT)
+            coder_commit_sha=$(kv_get "$coder_env" CODER_COMMIT_SHA)
             coder_tool="${coder_tool:-none}"
             coder_status="${coder_status:-unknown}"
             coder_input_count="${coder_input_count:-0}"
@@ -702,6 +755,9 @@ run_implement_round() {
             elif [[ "$coder_status" == "applied" ]]; then
                 status="fix-required"
                 exit_code=3
+            elif [[ "$coder_status" == "no-changes" ]]; then
+                status="no-changes"
+                emit_breadcrumb "⚠ review-and-fix: round $round_num_dec — coder dispatch exited 0 but did not modify the working tree; halting loop"
             else
                 status="in-scope-filtered-out"
                 emit_breadcrumb "⚠ review-and-fix: round $round_num_dec — all accepted findings scrubbed; nothing to apply"
@@ -716,7 +772,7 @@ run_implement_round() {
     esac
 
     local round_cap_val="${ROUND_CAP:-0}"
-    write_summary_json "$prior_summary" "$status" "$core_status" "$round_num_dec" "$total_accepted" "$total_rejected" "$round_num_dec" "$accepted_file" "$round_dir" "$oos_jsonl" "$oos_markdown" "$round_cap_val" "$coder_tool" "$coder_status" "$scrub_count" "$revert_count"
+    write_summary_json "$prior_summary" "$status" "$core_status" "$round_num_dec" "$total_accepted" "$total_rejected" "$round_num_dec" "$accepted_file" "$round_dir" "$oos_jsonl" "$oos_markdown" "$round_cap_val" "$coder_tool" "$coder_status" "$scrub_count" "$revert_count" "$coder_commit_sha"
 
     emit_kv REVIEW_AND_FIX_STATUS "$status"
     emit_kv REVIEW_CORE_STATUS "$core_status"
@@ -733,6 +789,7 @@ run_implement_round() {
     emit_kv CODER_TOOL "$coder_tool"
     emit_kv CODER_STATUS "$coder_status"
     [[ -n "$coder_log" ]] && emit_kv CODER_LOG_FILE "$coder_log"
+    [[ -n "$coder_commit_sha" ]] && emit_kv CODER_COMMIT_SHA "$coder_commit_sha"
     emit_kv SUBMODULE_SCRUB_COUNT "$scrub_count"
     emit_kv SUBMODULE_REVERT_COUNT "$revert_count"
     emit_kv SKIPPED_FINDING_COUNT "${skipped_finding_count:-0}"

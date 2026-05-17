@@ -33,14 +33,19 @@ In **default mode** (no `--strict`), `FILES_CHANGED=true` if and only if any of:
 - `git diff --name-only` (unstaged) is non-empty
 - `git diff --name-only --cached` (staged) is non-empty
 - `UNTRACKED_BASELINE=present` AND the untracked delta is non-empty
+- `--head-baseline <path>` is passed, the file is readable, and `git rev-parse HEAD` differs from the baseline SHA
 
 The untracked delta is `comm -23 <(current-sorted) <(baseline-sorted)` — paths in the current untracked set that were NOT in the pre-/review snapshot. The baseline sort uses `sort -- "$BASELINE"` so a dash-prefixed baseline path is treated as an operand, not as a `sort` flag.
+
+The HEAD-baseline source is the load-bearing signal for the per-round-commit flow added by `skills/review-and-fix/scripts/review-and-fix.sh`. When that script commits each round's accepted fixes, the working tree is clean at Step 6 entry, so the staged/unstaged/untracked sources all report empty. Comparing `git rev-parse HEAD` against the round-1 snapshot at `$IMPLEMENT_TMPDIR/pre-review-head.txt` lets Step 6 still detect that the repository moved forward and run the second lint pass. A missing or unreadable head-baseline file silently disables this dimension (consistent with the untracked baseline degradation policy). A failure to run `git rev-parse HEAD` sets `GIT_PROBE_FAILED=true` so `--strict` can fail closed.
 
 **`--strict` mode adds a fail-closed override**: when `--strict` is set AND `GIT_PROBE_FAILED=true`, `FILES_CHANGED` is forced to `true` regardless of whether any of the three signals above is non-empty. The fail-closed override lets the caller treat unknown working-tree state as may-have-changed instead of silently skipping the post-/review checks pass on a transient git outage.
 
 ## Required pre-snapshot
 
 The `--baseline <path>` flag points to a sorted list of untracked paths captured BEFORE `/review` ran. `/implement` Step 5 owns this snapshot. The snapshot is an artifact of the `/implement` orchestration contract, not of this script.
+
+The `--head-baseline <path>` flag points to a single-line file containing the HEAD SHA captured BEFORE `/review` ran. `skills/review-and-fix/scripts/review-and-fix.sh` writes this file at the start of round 1 (alongside the untracked baseline). Like the untracked baseline, missing/unreadable is a silent degradation.
 
 ## Baseline-state classification
 

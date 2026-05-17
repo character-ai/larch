@@ -44,6 +44,12 @@
 #       (issue #1485 round-1 review fix: parse error must short-circuit
 #       BEFORE probes run, so --strict cannot promote a typo to
 #       FILES_CHANGED=true via probe failure)
+#   (o) HEAD-baseline equals current HEAD → FILES_CHANGED=false
+#       (no movement; the head-baseline dimension is a no-op)
+#   (p) HEAD-baseline points at a prior commit, current HEAD has advanced →
+#       FILES_CHANGED=true (issue #2236: review-and-fix.sh per-round commits
+#       leave a clean working tree, so the head-baseline dimension is the
+#       only signal that Step 5 modified the repo)
 #
 # Usage:
 #   bash skills/implement/scripts/test-check-review-changes.sh
@@ -299,8 +305,50 @@ else
 fi
 rm -f "$STDERR_N"
 
+# Cases (o)-(p): HEAD-baseline dimension. Covers the issue #2236 per-round
+# commit flow — review-and-fix.sh commits each round's accepted-fixes, so by
+# Step 6 entry the working tree is clean but HEAD has advanced. Without the
+# HEAD-baseline source, FILES_CHANGED would be false and the second lint
+# pass would silently skip. With --head-baseline, the SUT detects HEAD
+# movement and reports FILES_CHANGED=true.
+
+# Case (o): HEAD-baseline matches current HEAD (no movement) → no signal.
+SBX_O=$(mkrepo)
+HEAD_BL_O="$SBX_O/pre-review-head.txt"
+( cd "$SBX_O" && git rev-parse HEAD > "$HEAD_BL_O" )
+out_o=$(cd "$SBX_O" && "$SUT" --head-baseline "$HEAD_BL_O")
+fc_o=$(echo "$out_o" | awk -F= '$1=="FILES_CHANGED"{print $2}')
+if [[ "$fc_o" == "false" ]]; then
+    echo "PASS: (o) head-baseline matches current HEAD → FILES_CHANGED=$fc_o"
+    PASS=$((PASS + 1))
+else
+    echo "FAIL: (o) head-baseline matches current HEAD" >&2
+    echo "  expected: FILES_CHANGED=false" >&2
+    echo "  actual:   FILES_CHANGED=$fc_o" >&2
+    FAIL=$((FAIL + 1))
+fi
+
+# Case (p): HEAD-baseline points at a prior commit; current HEAD has
+# advanced → FILES_CHANGED=true even though the working tree is clean.
+# This is the load-bearing case for issue #2236.
+SBX_P=$(mkrepo)
+HEAD_BL_P="$SBX_P/pre-review-head.txt"
+( cd "$SBX_P" && git rev-parse HEAD > "$HEAD_BL_P" )
+( cd "$SBX_P" && echo "review-fix" >> tracked.txt && git add tracked.txt && git commit --quiet -m "Address code review feedback (round 1)" )
+out_p=$(cd "$SBX_P" && "$SUT" --head-baseline "$HEAD_BL_P")
+fc_p=$(echo "$out_p" | awk -F= '$1=="FILES_CHANGED"{print $2}')
+if [[ "$fc_p" == "true" ]]; then
+    echo "PASS: (p) head-baseline differs from current HEAD (per-round commit) → FILES_CHANGED=$fc_p"
+    PASS=$((PASS + 1))
+else
+    echo "FAIL: (p) head-baseline differs from current HEAD (per-round commit)" >&2
+    echo "  expected: FILES_CHANGED=true" >&2
+    echo "  actual:   FILES_CHANGED=$fc_p" >&2
+    FAIL=$((FAIL + 1))
+fi
+
 # Cleanup sandboxes.
-rm -rf "$SBX_A" "$SBX_B" "$SBX_C" "$SBX_D" "$SBX_E" "$SBX_F" "$SBX_G" "$SBX_H" "$SBX_I" "$SBX_J" "$SBX_K" "$SBX_L" "$SBX_M" "$SBX_N"
+rm -rf "$SBX_A" "$SBX_B" "$SBX_C" "$SBX_D" "$SBX_E" "$SBX_F" "$SBX_G" "$SBX_H" "$SBX_I" "$SBX_J" "$SBX_K" "$SBX_L" "$SBX_M" "$SBX_N" "$SBX_O" "$SBX_P"
 
 echo ""
 echo "RESULTS: $PASS passed, $FAIL failed"
