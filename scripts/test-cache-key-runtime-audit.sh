@@ -138,7 +138,12 @@ missing_output="$(
   python3 "$REPO_ROOT/scripts/cache-key-runtime-audit.py" --log-root "$missing_root" --runs 1 2>&1
   printf 'exit:%d\n' "$?"
 )"
-assert_contains "missing log root exits 2" "$missing_output" "exit:2"
+if printf '%s\n' "$missing_output" | grep -qx 'exit:2'; then
+  pass "missing log root exits 2"
+else
+  fail "missing log root exits 2"
+  printf '  expected output line: %s\n' "exit:2" >&2
+fi
 assert_contains "missing log root reports error" "$missing_output" "cache-key-runtime-audit: log root not found:"
 
 if (( FAIL > 0 )); then
