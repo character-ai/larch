@@ -134,3 +134,67 @@
 - **Concern**: 3. **`**Latent**` `correctness`** — [`skills/upgrade-larch/scripts/upgrade-larch.sh`](skills/upgrade-larch/scripts/upgrade-larch.sh):91-139 — When `LATEST_STABLE` is set but the expected cache directory is missing, the script emits warnings via `larch_err` yet still prints `Upgrade complete. Restart Claude Code…` and exits **0**. **Scenario:** Automation or the skill treats exit 0 as a fully successful upgrade while the cache holds a pre-release or wrong semver. **Suggested fix:** Exit non-zero (and/or branch the final banner) when verification fails so orchestrators and operators do not misread success.
 - **Suggested revision**: Address the concern above.
 
+### FINDING_1: panel [code-review/accepted]
+
+## **Important** `correctness` `skills/upgrade-larch/scripts/upgrade-larch.sh:175`  
+
+- **Reviewer**: codex-generalist-output.txt
+- **Concern**: 1. **Important** `correctness` `skills/upgrade-larch/scripts/upgrade-larch.sh:175`      The prune logic only falls back to the newest cached predecessor when `PREVIOUS_STABLE` is empty, not when GitHub reports a previous stable that is absent from the local cache. Concrete scenario: `LATEST_STABLE=29.1.10`, `PREVIOUS_STABLE=29.1.8`, and cached dirs are `29.1.7`, `29.1.9`, `29.1.10`; the loop removes both `29.1.7` and `29.1.9`, leaving no rollback candidate. Fix by using `PREVIOUS_STABLE` only if it is present in `CACHED_VERSIONS`; otherwise choose the newest cached version other than `LATEST_STABLE`.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_12: panel [code-review/accepted]
+
+## code-quality: docs/installation-and-setup.md:30
+
+- **Reviewer**: cursor-specialist-correctness-output.txt
+- **Concern**: [nit] Upgrade blurb still says latest version vs stable-focused behavior. Minor doc inconsistency with SKILL and script. Reword to latest stable.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_19: panel [code-review/accepted]
+
+## correctness: skills/upgrade-larch/scripts/upgrade-larch.sh:175-197
+
+- **Reviewer**: cursor-specialist-correctness-output.txt
+- **Concern**: [important] API PREVIOUS_STABLE used as keep name without requiring matching cache dir; other numeric dirs pruned. LATEST_STABLE verified on disk; PREVIOUS_STABLE from GitHub names a tag never installed; only other cache is older stable (e.g. 27.5.8) — script deletes that rollback directory. If PREVIOUS_STABLE dir missing, fall back to second-newest cached basename; update docs/installation-and-setup.md:40 accordingly.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_2: panel [code-review/accepted]
+
+## **Nit** `risk-integration` `docs/installation-and-setup.md:30`  
+
+- **Reviewer**: codex-generalist-output.txt
+- **Concern**: 2. **Nit** `risk-integration` `docs/installation-and-setup.md:30`      The upgrade docs still say to restart after every `/upgrade-larch` run, but the new idempotent path makes no changes and `skills/upgrade-larch/SKILL.md` correctly says no restart is needed. Update this paragraph to say restart only when an upgrade actually installs a new version.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_20: panel [code-review/accepted]
+
+## correctness: skills/upgrade-larch/scripts/upgrade-larch.sh:196
+
+- **Reviewer**: cursor-specialist-correctness-output.txt
+- **Concern**: [important] rm -rf during prune can fail under set -e and trigger ERR recover after successful install. Permission or I/O error removing an old version fires recover() and reinstall instructions despite good install. Isolate prune from ERR trap or downgrade rm failures to warnings without ERR.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_23: panel [code-review/accepted]
+
+## risk-integration: docs/installation-and-setup.md:30
+
+- **Reviewer**: cursor-specialist-testing-output.txt
+- **Concern**: [nit] Intro still says latest version vs stable docs Mild doc inconsistency skimmers miss stable targeting Align wording to latest stable
+- **Suggested revision**: Address the concern above.
+
+### FINDING_26: panel [code-review/accepted]
+
+## risk-integration: skills/upgrade-larch/scripts/upgrade-larch.sh:18,190-196
+
+- **Reviewer**: cursor-specialist-security-output.txt
+- **Concern**: [latent] rm -rf prune failure can trigger global ERR recover after successful install Operator misled into recovery reinstall flow after a good upgrade Scope ERR trap around prune or downgrade rm failures to warnings
+- **Suggested revision**: Address the concern above.
+
+### FINDING_27: panel [code-review/accepted]
+
+## risk-integration: skills/upgrade-larch/scripts/upgrade-larch.sh:18,196-197
+
+- **Reviewer**: cursor-specialist-testing-output.txt
+- **Concern**: [latent] Global ERR recover after prune rm failure Prune I/O error triggers reinstall recovery misleading operator Scope trap or non-fatal prune errors separate from install recover
+- **Suggested revision**: Address the concern above.
+
