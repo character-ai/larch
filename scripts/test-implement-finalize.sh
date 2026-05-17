@@ -1007,6 +1007,21 @@ assert_file_contains "### Fixed" "$SANDBOX/repo/CHANGELOG.md" "postbump: fallbac
 assert_file_contains "### Added" "$SANDBOX/repo/CHANGELOG.md" "postbump: fallback categorized Added"
 assert_file_contains "### Changed" "$SANDBOX/repo/CHANGELOG.md" "postbump: fallback bare bullet defaults Changed"
 
+# Issue #2233: non-JSON MANIFEST_PATH (e.g. /design Step 5 manifest.env shell KV file
+# mistakenly routed here) must yield "no bullets" silently rather than fail the bump
+# phase. Combined with ship-pr.sh entry validation, the worst-case behavior stays safe
+# even if entry validation is bypassed.
+cp "$SANDBOX/original-CHANGELOG.md" "$SANDBOX/repo/CHANGELOG.md"
+cat > "$SANDBOX/tmp/manifest-non-json.env" <<'KV'
+PLAN_FILE=/tmp/x
+TIMESTAMP=2026-05-17
+SESSION_ID=abc
+KV
+write_postbump_state "$POSTBUMP_STATE" MANIFEST_PATH="$SANDBOX/tmp/manifest-non-json.env"
+OUT=$(run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
+assert_contains "STATUS=ok" "$OUT" "postbump: non-JSON manifest does not fail the phase"
+assert_not_contains "STATUS=changelog-failed" "$OUT" "postbump: non-JSON manifest does not route to changelog-failed"
+
 # Regression: when target version header already exists (replacement path), no double blank before next header.
 cat > "$SANDBOX/repo/CHANGELOG.md" <<'CHANGELOG_REPLACE'
 # Changelog

@@ -942,6 +942,57 @@ else
     sed 's/^/    /' "$tmp/execution-issues.md" 2>/dev/null || true
 fi
 
+# Issue #2233: MANIFEST_PATH entry validation contract tests.
+# Confirms ship-pr.sh fails fast when MANIFEST_PATH points at a non-JSON file
+# (e.g. the /design Step 5 manifest.env shell KV file mistakenly routed here),
+# and accepts a valid JSON manifest.
+root=$(make_repo manifest_path_non_json)
+tmp=$(make_tmpdir)
+write_state "$tmp/ship-pr-state.sh" checks
+# Simulate the failure mode: a shell KEY=VALUE file (design-side manifest.env)
+# written into MANIFEST_PATH instead of the implement-side JSON manifest.
+cat > "$tmp/fake-design-manifest.env" <<'KV'
+PLAN_FILE=/tmp/x
+TIMESTAMP=2026-05-17
+SESSION_ID=abc
+KV
+sed -i.bak "s|^MANIFEST_PATH=.*|MANIFEST_PATH=$tmp/fake-design-manifest.env|" "$tmp/ship-pr-state.sh"
+rm -f "$tmp/ship-pr-state.sh.bak"
+run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 2 "non-JSON MANIFEST_PATH: ship-pr.sh exits 2 (die_usage) at entry"
+if grep -q "MANIFEST_PATH must be empty or a readable JSON file" "$tmp/stderr"; then
+    ok "non-JSON MANIFEST_PATH: diagnostic names the offending key"
+else
+    fail "non-JSON MANIFEST_PATH: diagnostic names the offending key"
+    sed 's/^/    stderr: /' "$tmp/stderr"
+fi
+
+root=$(make_repo manifest_path_valid_json)
+tmp=$(make_tmpdir)
+write_state "$tmp/ship-pr-state.sh" checks
+printf '{"summary_bullets":["x"],"files_modified":[]}\n' > "$tmp/fake-implement-manifest.json"
+sed -i.bak "s|^MANIFEST_PATH=.*|MANIFEST_PATH=$tmp/fake-implement-manifest.json|" "$tmp/ship-pr-state.sh"
+rm -f "$tmp/ship-pr-state.sh.bak"
+run_subject "$root" "$tmp" "$tmp/rc"
+if grep -q "MANIFEST_PATH must be empty or a readable JSON file" "$tmp/stderr"; then
+    fail "valid JSON MANIFEST_PATH: entry validation must not fire"
+    sed 's/^/    stderr: /' "$tmp/stderr"
+else
+    ok "valid JSON MANIFEST_PATH: entry validation does not fire"
+fi
+
+root=$(make_repo manifest_path_empty)
+tmp=$(make_tmpdir)
+write_state "$tmp/ship-pr-state.sh" checks
+# write_state already sets MANIFEST_PATH= empty; just confirm the empty path passes.
+run_subject "$root" "$tmp" "$tmp/rc"
+if grep -q "MANIFEST_PATH must be empty or a readable JSON file" "$tmp/stderr"; then
+    fail "empty MANIFEST_PATH: entry validation must not fire"
+    sed 's/^/    stderr: /' "$tmp/stderr"
+else
+    ok "empty MANIFEST_PATH: entry validation does not fire"
+fi
+
 if [[ "$FAIL_COUNT" -ne 0 ]]; then
     echo "test-ship-pr: $FAIL_COUNT failure(s), $PASS_COUNT pass(es)" >&2
     exit 1

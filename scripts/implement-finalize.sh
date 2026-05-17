@@ -517,7 +517,10 @@ collect_changelog_bullets() {
                 jq -r --arg c "$category" '(.summary_bullets_categorized // {})[$c] // [] | if type == "array" then .[] else empty end' "$manifest_path" 2>/dev/null >> "$dir/$category" || return 1
             done
         else
-            jq -r '(.summary_bullets // []) | if type == "array" then .[] else empty end' "$manifest_path" 2>/dev/null >> "$dir/Changed" || return 1
+            # Mirror the categorized fallback above: a non-JSON manifest (e.g.
+            # design-side manifest.env mistakenly routed here) must yield "no
+            # bullets" silently rather than fail the whole phase. See issue #2233.
+            jq -r '(.summary_bullets // []) | if type == "array" then .[] else empty end' "$manifest_path" 2>/dev/null >> "$dir/Changed" || true
         fi
     else
         # No manifest and no bullets file → empty categories, not an error (skipped-no-bullets path)

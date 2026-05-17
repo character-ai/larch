@@ -255,6 +255,18 @@ for key in REPO_UNAVAILABLE FORKED_TARGET HAS_BUMP MERGE DRAFT DEFERRED PR_CLOSE
     is_bool "$(read_state "$key")" || die_usage "state-file key $key must be true or false"
 done
 
+# Fail fast at the entry boundary if MANIFEST_PATH points at a non-JSON file
+# (e.g. the /design Step 5 manifest.env shell KV file mistakenly routed here).
+# See issue #2233: without this guard, a bad MANIFEST_PATH surfaces four phases
+# downstream inside collect_changelog_bullets with no actionable diagnostic.
+manifest_path_check=$(read_state MANIFEST_PATH)
+if [ -n "$manifest_path_check" ]; then
+    if [ ! -r "$manifest_path_check" ] || ! jq empty "$manifest_path_check" >/dev/null 2>&1; then
+        die_usage "MANIFEST_PATH must be empty or a readable JSON file (got: $manifest_path_check)"
+    fi
+fi
+unset manifest_path_check
+
 kv_value() {
     local key=$1 input=$2
     printf '%s\n' "$input" | awk -F= -v k="$key" '$1 == k {print substr($0, index($0, "=") + 1); found=1} END {if (!found) print ""}' | tail -n 1

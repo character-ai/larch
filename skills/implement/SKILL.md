@@ -1697,6 +1697,8 @@ Before invoking the script, write `$IMPLEMENT_TMPDIR/ship-pr-state.sh` with uppe
 - `MANIFEST_PATH`, `TOOL_LABEL`, `DESIGN_ONLY_DONE=false`, `EXPECTED_SESSION_ID`, `EXPECTED_TMPDIR_BASENAME_PREFIX`
 - `NO_LOGS_COMMIT=$no_logs_commit`, `IMPLEMENT_TMPDIR=$IMPLEMENT_TMPDIR`
 
+> **`MANIFEST_PATH` MUST be empty unless `/implement` Step 2 returned `STATUS=complete` with a JSON manifest path.** On manifest-reuse fast paths (Step 1 resumed sessions where Step 2 does not dispatch), claude-fallback paths (Step 2.4), bailed-Step-2 paths, and any other path where Step 2 did not produce a JSON manifest at `$MANIFEST`, leave `MANIFEST_PATH` empty. **The `/design` Step 5 manifest (`design-export/manifest.env`, a shell KV file) is NEVER a valid value for `MANIFEST_PATH` — these are two different artifacts despite the shared noun.** `ship-pr.sh` hard-fails at entry if `MANIFEST_PATH` is non-empty and not readable JSON; see issue #2233.
+
 Invoke:
 
 ```bash
