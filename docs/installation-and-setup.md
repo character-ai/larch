@@ -27,17 +27,17 @@ Edit your `~/.claude/settings.json` and ensure that it has `permissions`/`allow`
 
 #### Upgrade
 
-To upgrade larch to the latest version, run the `/upgrade-larch` skill in any Claude Code session, then restart Claude Code:
+To upgrade larch to the latest stable version, run the `/upgrade-larch` skill in any Claude Code session:
 
 ```
 /upgrade-larch
 ```
 
-After `/upgrade-larch` finishes, restart Claude Code to apply the new version. The upgrade script prints an installed-version block when `claude plugin list` succeeds; treat it as best-effort confirmation.
+After `/upgrade-larch` finishes, restart Claude Code only if it actually installed a new version. If it reports that you are already on the latest stable release, no restart is needed. The upgrade script prints an installed-version block when `claude plugin list` succeeds; treat it as best-effort confirmation.
 
 `/upgrade-larch` is idempotent only when `gh` is installed and can resolve the latest stable release: if the currently installed version already matches that stable release, it exits immediately with no changes. If `gh` is unavailable or cannot resolve stable releases, the script warns and upgrades unconditionally, skips stable-version verification, and skips pruning.
 
-When `/upgrade-larch` does verify a stable install successfully, it prunes old installed versions and keeps the verified stable release plus one rollback candidate. That rollback candidate is the previous stable release when GitHub provides it; otherwise the script keeps the newest other cached version.
+When `/upgrade-larch` does verify a stable install successfully, it prunes old installed versions and keeps the verified stable release plus one rollback candidate. That rollback candidate is the previous stable release when GitHub provides it and that version is already cached locally; otherwise the script keeps the newest other cached version.
 
 ## Install for local development (contributors)
 

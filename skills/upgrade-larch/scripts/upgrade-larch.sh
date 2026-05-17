@@ -17,6 +17,11 @@ recover() {
 }
 trap recover ERR
 
+warn_prune_failure() {
+    local version="$1"
+    larch_err "Warning: failed to prune cached larch version '${version}'."
+}
+
 is_safe_version() {
     [[ "$1" =~ ^[0-9]+(\.[0-9]+)*$ ]]
 }
@@ -172,7 +177,16 @@ if [ "$VERIFIED_TARGET" = true ]; then
     done < <(list_cached_versions)
     VERSION_COUNT="${#CACHED_VERSIONS[@]}"
 
-    KEEP_PREDECESSOR="$PREVIOUS_STABLE"
+    KEEP_PREDECESSOR=""
+    if [ -n "$PREVIOUS_STABLE" ]; then
+        for version in "${CACHED_VERSIONS[@]}"; do
+            if [ "$version" = "$PREVIOUS_STABLE" ]; then
+                KEEP_PREDECESSOR="$PREVIOUS_STABLE"
+                break
+            fi
+        done
+    fi
+
     if [ -z "$KEEP_PREDECESSOR" ] && [ "$VERSION_COUNT" -gt 1 ]; then
         for ((i=VERSION_COUNT-1; i>=0; i--)); do
             if [ "${CACHED_VERSIONS[$i]}" != "$LATEST_STABLE" ]; then
@@ -193,7 +207,9 @@ if [ "$VERIFIED_TARGET" = true ]; then
                 continue
             fi
             emit_breadcrumb "  Removing old version: $version"
-            rm -rf -- "${LARCH_CACHE_DIR:?}/${version:?}"
+            if ! rm -rf -- "${LARCH_CACHE_DIR:?}/${version:?}"; then
+                warn_prune_failure "$version"
+            fi
         done
     else
         emit_breadcrumb "  No old versions to prune."
