@@ -24,7 +24,7 @@ audit-cache-keys-runtime:
 # lines literally. New harnesses get appended to one shard line.
 # Shard-9 isolates test-launch-review (~66s dominant) for CI parallelism efficiency.
 # Shard-10 (last shard, leads with partition guard) isolates test-validate-citations
-# (dominant wall-clock harness) and its budget tests.
+# (dominant wall-clock harness), its budget tests, and test-ship-pr.
 test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 test-harnesses-6 test-harnesses-7 test-harnesses-8 test-harnesses-9 test-harnesses-10
 
 test-harnesses-1: test-oos-file-conflict-deps test-preflight-args test-ci-wait-exit-trap test-parse-prose-blockers test-step2-dispatch test-design-manifest test-design-driver test-classify-issue test-emit-plan test-tally-plan-review test-finalize-plan test-write-run-params test-plan-review-prompt test-render-umbrella-body test-render-lane-status test-design-structure test-run-external-agent-args test-post-scaffold-hints test-implement-anti-polling-rule test-implement-anti-halt test-generate-topology-docs test-anti-improvised-wakeup test-session-env-roundtrip test-review-and-fix
