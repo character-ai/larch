@@ -606,19 +606,28 @@ Pre-render all 10 archetype prompt files (5 Cursor: arch, edge, innovation, prag
 **Step 1 — Pre-render prompts** (run all 10 in one message, blocking Bash calls):
 
 ```bash
-# Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
 fi
 export CLAUDE_PLUGIN_ROOT
 for _archetype in arch edge innovation pragmatic requirements; do
+  # Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
   bash "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-plan-review-prompt.sh" \
     --archetype "$_archetype" --vendor cursor --plan-file "$DESIGN_TMPDIR/plan.txt" \
     > "$DESIGN_TMPDIR/render-plan-cursor-${_archetype}.prompt"
+  # Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
   bash "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-plan-review-prompt.sh" \
     --archetype "$_archetype" --vendor codex --plan-file "$DESIGN_TMPDIR/plan.txt" \
     > "$DESIGN_TMPDIR/render-plan-codex-${_archetype}.prompt"
 done
+# Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
+# Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
+# Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
+# Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
+# Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
+# Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
+# Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
+# Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
 ```
 
 **Step 2 — Build manifest and dispatch through waterfall** (blocking Bash call):

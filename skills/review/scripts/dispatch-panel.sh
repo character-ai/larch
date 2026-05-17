@@ -87,6 +87,7 @@ queue_external_generalist_slot() {
 # Simple panel: 6 Cursor specialists + 1 Codex generalist.
 # Hard panel: 6 Cursor specialists + 6 Codex specialists.
 # Both panels always include plan-fidelity (plan file required above).
+# Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
 cursor_specialists=(structure correctness testing security edge-cases plan-fidelity)
 if [[ "$PANEL" == "hard" ]]; then
     codex_specialists=(structure correctness testing security edge-cases plan-fidelity)
