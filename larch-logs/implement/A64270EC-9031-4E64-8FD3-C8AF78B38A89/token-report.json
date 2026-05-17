@@ -225,14 +225,47 @@
             }
           }
         ]
+      },
+      {
+        "step": "Step 8a — changelog",
+        "totals": {
+          "input": 0,
+          "cache_read": 0,
+          "cache_create": 0,
+          "output": 0,
+          "total": 0
+        },
+        "skills": []
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 17,
+          "cache_read": 2997712,
+          "cache_create": 7881,
+          "output": 7213,
+          "total": 3012823
+        },
+        "skills": [
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 17,
+              "cache_read": 2997712,
+              "cache_create": 7881,
+              "output": 7213,
+              "total": 3012823
+            }
+          }
+        ]
       }
     ],
     "totals": {
-      "input": 99,
-      "cache_read": 14552093,
-      "cache_create": 578013,
-      "output": 48180,
-      "total": 15178385
+      "input": 116,
+      "cache_read": 17549805,
+      "cache_create": 585894,
+      "output": 55393,
+      "total": 18191208
     }
   },
   "codex": {
@@ -311,6 +344,22 @@
       },
       {
         "step": "Step 8 — version bump",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8a — changelog",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8b — rebase",
         "totals": {
           "input": 0,
           "output": 0,
@@ -400,6 +449,22 @@
       },
       {
         "step": "Step 8 — version bump",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8a — changelog",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8b — rebase",
         "totals": {
           "input": 0,
           "output": 0,
