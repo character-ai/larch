@@ -52,7 +52,7 @@ check "$IMPL_MD" \
     'For each round, run one foreground Bash call'
 check "$IMPL_MD" \
     "SKILL.md Step 5 delegates reviewer waiting to scripts" \
-    'review-and-fix.sh` directly for both quick and normal modes'
+    'Step 5 invokes `${CLAUDE_PLUGIN_ROOT}/scripts/run-step5-review.sh`'
 
 STEP5_BLOCK=$(awk '
     /^<!-- step:5 / { in_block=1 }

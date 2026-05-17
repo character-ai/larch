@@ -571,11 +571,6 @@ run_implement_round() {
     [[ -x "$RUN_EXTERNAL_AGENT_SH" ]] || { larch_err "review-and-fix.sh: run-external-agent.sh not executable: $RUN_EXTERNAL_AGENT_SH"; exit 2; }
     command -v jq >/dev/null 2>&1 || { larch_err "review-and-fix.sh: jq is required"; exit 2; }
 
-    if (( round_num_dec == 1 )); then
-        IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR" "$PLUGIN_ROOT/scripts/token-ledger.sh" mark "Step 5 — code review" || true
-        IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR" "$PLUGIN_ROOT/scripts/timing-ledger.sh" mark "Step 5 — code review" || true
-    fi
-
     if [[ "$CODEX_AVAILABLE" != "true" && "$CODEX_AVAILABLE" != "false" ]]; then
         codex_present=$(session_get CODEX_PRESENT false)
         CODEX_AVAILABLE="$codex_present"
