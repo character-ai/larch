@@ -235,14 +235,36 @@
             }
           }
         ]
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 12,
+          "cache_read": 3754902,
+          "cache_create": 10058,
+          "output": 8813,
+          "total": 3773785
+        },
+        "skills": [
+          {
+            "skill": "inferred:Step 8b — rebase",
+            "totals": {
+              "input": 12,
+              "cache_read": 3754902,
+              "cache_create": 10058,
+              "output": 8813,
+              "total": 3773785
+            }
+          }
+        ]
       }
     ],
     "totals": {
-      "input": 11792,
-      "cache_read": 90969596,
-      "cache_create": 6333470,
-      "output": 232590,
-      "total": 97547448
+      "input": 11804,
+      "cache_read": 94724498,
+      "cache_create": 6343528,
+      "output": 241403,
+      "total": 101321233
     }
   },
   "codex": {
@@ -326,12 +348,20 @@
           "output": 0,
           "total": 0
         }
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 191229
+        }
       }
     ],
     "totals": {
       "input": 0,
       "output": 0,
-      "total": 1369080
+      "total": 1560309
     }
   },
   "cursor": {
@@ -410,6 +440,14 @@
       },
       {
         "step": "Step 8 — version bump",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8b — rebase",
         "totals": {
           "input": 0,
           "output": 0,
