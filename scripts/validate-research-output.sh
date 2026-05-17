@@ -376,6 +376,16 @@ if [[ "$VALIDATION_MODE" == "true" ]]; then
        && jq -e 'type == "object" and .no_issues_found == true' <<<"$TRIMMED" >/dev/null 2>&1; then
         exit 0
     fi
+    # Inline-TSV short-circuit: when cursor runs in --mode plan it cannot write
+    # the TSV sidecar and inlines TSV records in its text response instead. Accept
+    # a response containing valid inline TSV (even inside a code fence) as
+    # substantive without applying the word-count or citation gates.
+    _tsv_tmp=$(mktemp "${TMPDIR:-/tmp}/validate-tsv-tmp.XXXXXX") || exit 1
+    if validate_structured_tsv "$INPUT" "$_tsv_tmp" 2>/dev/null; then
+        rm -f "$_tsv_tmp"
+        exit 0
+    fi
+    rm -f "$_tsv_tmp"
 fi
 
 # --- 1. Body word count, excluding fenced-code-block interiors ---

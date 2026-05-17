@@ -112,7 +112,7 @@ launch_claude_slot() {
     local name="$1" out="$2" prompt
     prompt=$(make_prompt "$name")
     args=(--prompt-file "$prompt" --output-file "$out" --timeout 1800 --timing-task-kind "${TIMING_TASK_PREFIX}-claude-${name}")
-    [[ -n "$DIFF_FILE" && -f "$DIFF_FILE" ]] && args+=(--context-files "$DIFF_FILE")
+    [[ -n "$DIFF_FILE" && -f "$DIFF_FILE" ]] && args+=(--allow-root "$(dirname "$DIFF_FILE")" --context-files "$DIFF_FILE")
     [[ -n "$SCOPE_FILES" && -f "$SCOPE_FILES" ]] && args+=(--context-files "$SCOPE_FILES")
     {
         launch_log="$REVIEW_TMPDIR/dispatch-claude-${name}.log"

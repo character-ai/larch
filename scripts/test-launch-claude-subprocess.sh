@@ -46,4 +46,35 @@ grep -Fq 'invalid --prompt-file' "$TMP/err" || fail "symlink rejection message m
 [[ -f "$TMP/quiet.log" ]] || fail "quiet log not created despite LARCH_QUIET_LOG_FILE being set"
 grep -Fq 'invalid --prompt-file' "$TMP/quiet.log" && fail "symlink rejection leaked to quiet log"
 
+# --allow-root: context file under extra root accepted
+extra_root=$(mktemp -d "${TMPDIR:-/tmp}/test-allow-root.XXXXXX")
+trap 'rm -rf "$TMP" "$extra_root"' EXIT
+extra_ctx="$extra_root/extra-context.txt"
+printf 'extra context body\n' > "$extra_ctx"
+extra_out="$TMP/out-extra.txt"
+if ! PATH="$BIN:$PATH" "$SCRIPT" \
+        --prompt-file "$prompt" \
+        --output-file "$extra_out" \
+        --timeout 5 \
+        --allow-root "$extra_root" \
+        --context-files "$extra_ctx" \
+        --timing-task-kind claude-review \
+        > "$TMP/extra-stdout" 2>"$TMP/extra-err"; then
+    fail "--allow-root: extra-root context file rejected (should be accepted)"
+fi
+grep -Fq 'STATUS=OK' "$TMP/extra-stdout" || fail "--allow-root: missing STATUS=OK"
+
+# --allow-root: context file under extra root rejected without the flag
+extra_out2="$TMP/out-extra2.txt"
+if PATH="$BIN:$PATH" "$SCRIPT" \
+        --prompt-file "$prompt" \
+        --output-file "$extra_out2" \
+        --timeout 5 \
+        --context-files "$extra_ctx" \
+        --timing-task-kind claude-review \
+        >/dev/null 2>"$TMP/extra2-err"; then
+    fail "--allow-root: extra-root context file accepted without --allow-root (should be rejected)"
+fi
+grep -Fq 'context file outside allowed roots' "$TMP/extra2-err" || fail "--allow-root: rejection message missing from stderr"
+
 echo "All assertions passed."

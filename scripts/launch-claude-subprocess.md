@@ -10,11 +10,12 @@ Invariants:
 - The launcher writes `${OUTPUT_FILE}.done` only after promoting the temporary output file into place.
 - It writes `${OUTPUT_FILE}.meta` with `OUTER_LAUNCHER=claude`, `TOOL=claude`, `TIMEOUT`, and `CMD_JSON` for collector compatibility.
 - It writes `${OUTPUT_FILE}.dirty-tree` so review dirty-tree aggregation can treat Claude subprocesses like external reviewers.
-- Prompt and context paths must be regular non-symlink files under the plugin root or the output session directory. Context is capped at 20 files and 256 KB each.
+- Prompt and context paths must be regular non-symlink files under an allowed root. Allowed roots: `PLUGIN_ROOT` (the installed plugin directory), `SESSION_ROOT` (the parent directory of `--output-file`), and any directories added via `--allow-root DIR` (repeatable; each must be an existing directory; canonical path is resolved via `cd`). Context is capped at 20 files and 256 KB each.
+- `--allow-root DIR` is used by `dispatch-code-voters.sh` and `dispatch-panel.sh` to allow context files such as `review-diff.patch` that live under `IMPLEMENT_TMPDIR` rather than the launch session tmpdir.
 - Read-only posture is prompt-level only; the Claude CLI has no mechanical read-only flag in this wrapper.
 
 Harness: `scripts/test-launch-claude-subprocess.sh`, wired into `make lint` through `test-launch-claude-subprocess`.
 
 On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.
 
-Edit in sync: update this file, the harness, `SECURITY.md`, and `skills/review/scripts/dispatch-panel.sh` when argv grammar, sidecar grammar, path validation, or read-only wording changes.
+Edit in sync: update this file, the harness, `SECURITY.md`, `scripts/dispatch-code-voters.sh`, and `skills/review/scripts/dispatch-panel.sh` when argv grammar, sidecar grammar, path validation, or read-only wording changes.

@@ -194,8 +194,8 @@ launch_claude_voter() {
     local rc
     : > "$launch_log"
     set +e
-    local ctx_args=()
-    [[ -n "$DIFF_FILE" && -f "$DIFF_FILE" ]] && ctx_args+=(--context-files "$DIFF_FILE")
+    local ctx_args=() allow_root_args=()
+    [[ -n "$DIFF_FILE" && -f "$DIFF_FILE" ]] && ctx_args+=(--context-files "$DIFF_FILE") && allow_root_args+=(--allow-root "$(dirname "$DIFF_FILE")")
     [[ -n "$PLAN_FILE" && -f "$PLAN_FILE" ]] && ctx_args+=(--context-files "$PLAN_FILE")
     "$LAUNCH_CLAUDE_SUBPROCESS" \
         --model claude-opus-4-7 \
@@ -203,6 +203,7 @@ launch_claude_voter() {
         --output-file "$out" \
         --timeout 1200 \
         --timing-task-kind claude-code-voter \
+        ${allow_root_args[@]+"${allow_root_args[@]}"} \
         ${ctx_args[@]+"${ctx_args[@]}"} >> "$launch_log" 2>&1
     rc=$?
     set -e
@@ -336,6 +337,10 @@ mark_failed_if_nonzero_exit() {
 mark_failed_if_nonzero_exit "$VOTER_1_PATH.done" VOTER_1_STATUS
 mark_failed_if_nonzero_exit "$VOTER_2_PATH.done" VOTER_2_STATUS
 mark_failed_if_nonzero_exit "$VOTER_3_PATH.done" VOTER_3_STATUS
+
+if [[ "$VOTER_1_STATUS" == "failed" ]]; then
+    larch_err "**⚠ Claude code voter unavailable — voting with at most 2 judges this round. Check execution-issues.ndjson for the root cause.**"
+fi
 
 emit_kv VOTER_1_PATH "$VOTER_1_PATH"
 emit_kv VOTER_1_TOOL "$VOTER_1_TOOL"
