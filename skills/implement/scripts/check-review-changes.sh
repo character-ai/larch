@@ -1,10 +1,17 @@
 #!/usr/bin/env bash
 # check-review-changes.sh — Check if the code review step modified the working tree.
 #
-# Detects review-induced changes via three sources:
+# Detects review-induced changes via four sources:
 #   - staged modifications (git diff --cached)
 #   - unstaged modifications (git diff)
 #   - new untracked files (current untracked set minus a pre-/review baseline)
+#   - HEAD movement (current HEAD differs from a pre-/review HEAD baseline)
+#
+# The HEAD-movement source covers the case where review-and-fix.sh commits
+# each round's fixes (per-round commits in skills/review-and-fix/scripts/
+# review-and-fix.sh). Without this dimension, a clean working tree after
+# per-round commits would report FILES_CHANGED=false even though the
+# repository moved forward — silently skipping Step 6's lint pass.
 #
 # The untracked dimension requires a pre-/review baseline file (sorted list of
 # untracked paths captured before /review ran). Without a readable baseline,
@@ -24,7 +31,7 @@
 #   GIT_PROBE_FAILED=true|false
 #
 # Usage:
-#   check-review-changes.sh [--baseline <path>] [--strict]
+#   check-review-changes.sh [--baseline <path>] [--head-baseline <path>] [--strict]
 #
 # Exit codes:
 #   0 — always (including bad CLI input — see Parse-error policy below).
@@ -57,6 +64,7 @@ source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
 
 BASELINE=""
+HEAD_BASELINE=""
 STRICT="false"
 PARSE_ERROR=""
 while [[ $# -gt 0 ]]; do
@@ -67,6 +75,14 @@ while [[ $# -gt 0 ]]; do
                 break
             fi
             BASELINE="$2"
+            shift 2
+            ;;
+        --head-baseline)
+            if [[ $# -lt 2 ]]; then
+                PARSE_ERROR="--head-baseline requires a path argument"
+                break
+            fi
+            HEAD_BASELINE="$2"
             shift 2
             ;;
         --strict)
@@ -125,8 +141,20 @@ if [[ -n "$BASELINE" ]] && [[ -r "$BASELINE" ]]; then
     UNTRACKED_DELTA=$(comm -23 <(printf '%s\n' "$CURRENT") <(LC_ALL=C sort -- "$BASELINE") | sed '/^$/d' || echo "")
 fi
 
+HEAD_MOVED="false"
+if [[ -n "$HEAD_BASELINE" ]] && [[ -r "$HEAD_BASELINE" ]]; then
+    baseline_head=$(tr -d '[:space:]' < "$HEAD_BASELINE" 2>/dev/null || true)
+    if current_head=$(git rev-parse HEAD 2>/dev/null); then
+        if [[ -n "$baseline_head" && "$baseline_head" != "$current_head" ]]; then
+            HEAD_MOVED="true"
+        fi
+    else
+        GIT_PROBE_FAILED="true"
+    fi
+fi
+
 FILES_CHANGED="false"
-if [[ -n "$UNSTAGED" ]] || [[ -n "$STAGED" ]] || [[ -n "$UNTRACKED_DELTA" ]]; then
+if [[ -n "$UNSTAGED" ]] || [[ -n "$STAGED" ]] || [[ -n "$UNTRACKED_DELTA" ]] || [[ "$HEAD_MOVED" == "true" ]]; then
     FILES_CHANGED="true"
 fi
 

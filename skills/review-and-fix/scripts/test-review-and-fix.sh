@@ -42,10 +42,16 @@ if [[ "$tool" == "cursor" ]]; then
 fi
 case "${TEST_AGENT_BEHAVIOR:-codex-success}:$tool" in
   codex-success:codex)
+    printf 'modified by codex stub\n' >> src/main.py
     printf 'APPLIED: FINDING_1\n' > "$output"
     exit 0
     ;;
   cursor-success:cursor)
+    printf 'modified by cursor stub\n' >> src/main.py
+    printf 'APPLIED: FINDING_1\n' > "$output"
+    exit 0
+    ;;
+  codex-no-changes:codex)
     printf 'APPLIED: FINDING_1\n' > "$output"
     exit 0
     ;;
@@ -136,9 +142,16 @@ make_work_repo() {
     local dir="$1"
     mkdir -p "$dir/src"
     git -C "$dir" init -q
+    git -C "$dir" config user.email "test@example.com"
+    git -C "$dir" config user.name "Test User"
+    git -C "$dir" config commit.gpgsign false
     printf 'original\n' > "$dir/src/main.py"
-    git -C "$dir" add src/main.py
-    git -C "$dir" -c user.email=test@example.com -c user.name='Test User' commit -qm init
+    # Production-equivalent: IMPLEMENT_TMPDIR lives outside the repo. In the
+    # harness we keep it under the work tree for convenience, so .gitignore
+    # prevents `git add -A` (from the per-round commit step) from staging it.
+    printf 'implement*/\nreview*/\n' > "$dir/.gitignore"
+    git -C "$dir" add src/main.py .gitignore
+    git -C "$dir" commit -qm init
 }
 
 run_review_and_fix() {
@@ -175,11 +188,12 @@ grep -Fq 'CODER_STATUS=applied' <<< "$out" || fail "findings coder applied"
 
 run_orchestrator_case() {
     local label="$1" behavior="$2" expected_tool="$3"
-    local work="$TMP/$label" implement_tmp out rc
+    local work="$TMP/$label" implement_tmp out rc initial_head current_head
     make_work_repo "$work"
     implement_tmp="$work/implement"
     mkdir -p "$implement_tmp"
     printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
+    initial_head=$(git -C "$work" rev-parse HEAD)
     set +e
     out=$(TEST_AGENT_BEHAVIOR="$behavior" run_review_and_fix "$work" \
         --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id "$label-run")
@@ -189,8 +203,14 @@ run_orchestrator_case() {
     grep -Fq 'REVIEW_AND_FIX_STATUS=fix-required' <<< "$out" || fail "$label status"
     grep -Fq "CODER_TOOL=$expected_tool" <<< "$out" || fail "$label tool"
     grep -Fq 'CODER_STATUS=applied' <<< "$out" || fail "$label applied"
+    grep -Eq '^CODER_COMMIT_SHA=[0-9a-f]+' <<< "$out" || fail "$label commit sha"
     [[ -f "$implement_tmp/round-1/coder-output.log" ]] || fail "$label coder output"
-    jq -e '.schema_version == 2 and .status == "fix-required" and .accepted_count == 1 and .coder_tool == "'"$expected_tool"'" and .coder_status == "applied" and .submodule_scrub_count == 0 and .submodule_revert_count == 0' "$implement_tmp/review-and-fix-summary.json" >/dev/null \
+    [[ -s "$implement_tmp/pre-review-head.txt" ]] || fail "$label pre-review-head snapshot"
+    [[ "$(cat "$implement_tmp/pre-review-head.txt")" == "$initial_head" ]] || fail "$label pre-review-head matches initial"
+    current_head=$(git -C "$work" rev-parse HEAD)
+    [[ "$current_head" != "$initial_head" ]] || fail "$label HEAD did not advance"
+    git -C "$work" log -1 --format='%s' | grep -Fq "Address code review feedback (round 1)" || fail "$label commit message"
+    jq -e '.schema_version == 2 and .status == "fix-required" and .accepted_count == 1 and .coder_tool == "'"$expected_tool"'" and .coder_status == "applied" and .submodule_scrub_count == 0 and .submodule_revert_count == 0 and (.coder_commit_sha | length > 0)' "$implement_tmp/review-and-fix-summary.json" >/dev/null \
         || fail "$label summary schema"
     jq -e '.batch == "code-review-tally" and .rounds == 1 and .accepted_count == 1 and .rejected_count == 0 and (.body | contains("# Review Round 1"))' \
         "$implement_tmp/larch-logs/implement/$label-run/code-review-tally.json" >/dev/null \
@@ -202,6 +222,27 @@ run_orchestrator_case() {
 
 run_orchestrator_case codex-case codex-success codex
 run_orchestrator_case cursor-case cursor-success cursor
+
+work_no_changes="$TMP/no-changes"
+make_work_repo "$work_no_changes"
+implement_tmp="$work_no_changes/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
+initial_head=$(git -C "$work_no_changes" rev-parse HEAD)
+set +e
+out=$(TEST_AGENT_BEHAVIOR=codex-no-changes run_review_and_fix "$work_no_changes" \
+    --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id no-changes-run)
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "no-changes expected exit 0 got $rc"; }
+grep -Fq 'REVIEW_AND_FIX_STATUS=no-changes' <<< "$out" || fail "no-changes status"
+grep -Fq 'CODER_STATUS=no-changes' <<< "$out" || fail "no-changes coder status"
+if grep -q '^CODER_COMMIT_SHA=' <<< "$out"; then
+    fail "no-changes must not emit CODER_COMMIT_SHA"
+fi
+[[ "$(git -C "$work_no_changes" rev-parse HEAD)" == "$initial_head" ]] || fail "no-changes must not advance HEAD"
+jq -e '.schema_version == 2 and .status == "no-changes" and .coder_status == "no-changes" and .coder_commit_sha == ""' "$implement_tmp/review-and-fix-summary.json" >/dev/null \
+    || fail "no-changes summary schema"
 
 work_main_agent="$TMP/main-agent-required"
 make_work_repo "$work_main_agent"
@@ -509,6 +550,10 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 mkdir -p "$(dirname "$output")"
+# Mimic a real coder run that applied at least one finding (so CODER_STATUS
+# becomes "applied" under the new dirty-tree contract) while also logging
+# SKIPPED lines that the SKIPPED-routing logic must classify.
+printf 'modified by skipped stub\n' >> src/main.py
 cat "$PWD/implement/round-1-coder.log.seed" > "$output"
 exit 0
 EOF_AGENT_SKIPPED

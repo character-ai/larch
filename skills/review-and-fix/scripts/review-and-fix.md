@@ -13,13 +13,16 @@ Flags:
 
 Output is `KEY=value` only through `scripts/lib-quiet.sh`:
 
-- `REVIEW_AND_FIX_STATUS=complete|no-findings|coder-failed|main-agent-vote-required`
+- `REVIEW_AND_FIX_STATUS=complete|no-findings|coder-failed|main-agent-vote-required|no-changes`
 - `FIX_COUNT=N`
 - `CODER_TOOL=none|codex|cursor`
-- `CODER_STATUS=skipped|applied|failed|submodule-violation`
+- `CODER_STATUS=skipped|applied|no-changes|failed|submodule-violation`
 - `CODER_LOG_FILE=<path>` when a coder ran
+- `CODER_COMMIT_SHA=<sha>` when the script committed the round's accepted-fixes
 - `SUBMODULE_SCRUB_COUNT=N`
 - `SUBMODULE_REVERT_COUNT=N`
+
+`CODER_STATUS=applied` means the coder dispatch exited 0 AND `git status --porcelain` reports a non-empty working tree after submodule revert — i.e., real edits landed in the repo. `CODER_STATUS=no-changes` covers the case where the dispatcher exited 0 but the working tree is clean (sandbox blocked writes, coder declined every finding, etc.). The orchestrator must treat `no-changes` as terminal: a re-run of the same review would produce the same fixed point.
 
 The script applies edits by dispatching Codex, then Cursor. The main agent does not apply review fixes with Edit/Write.
 
@@ -40,15 +43,17 @@ Flags:
 - `--codex-available true|false`
 - `--cursor-available true|false`
 
-Orchestrator mode invokes `skills/review/scripts/review-core.sh` once with `--output-dir "$IMPLEMENT_TMPDIR/round-N"`. On round 1 it captures `$IMPLEMENT_TMPDIR/pre-review-untracked.txt` via `scripts/snapshot-untracked.sh` so Step 6 can detect review-created untracked files.
+Orchestrator mode invokes `skills/review/scripts/review-core.sh` once with `--output-dir "$IMPLEMENT_TMPDIR/round-N"`. On round 1 it captures `$IMPLEMENT_TMPDIR/pre-review-untracked.txt` via `scripts/snapshot-untracked.sh` so Step 6 can detect review-created untracked files, and writes `$IMPLEMENT_TMPDIR/pre-review-head.txt` (current HEAD SHA) so `check-review-changes.sh --head-baseline` can detect the per-round commits this script makes during Step 5.
+
+After each round's `apply_findings_with_coder` dispatch finishes successfully and any submodule violations have been reverted, the script checks `git status --porcelain`. If the working tree is dirty, it stages all non-submodule changes via `git add -A` (submodule paths were already reverted, so `-A` cannot resurrect them) and calls `scripts/git-commit.sh -m "Address code review feedback (round N)"`. The commit SHA is emitted as `CODER_COMMIT_SHA`. If the working tree is clean, the script emits `CODER_STATUS=no-changes` with no commit. The coder prompt invariant ("Do NOT commit; the parent handles commits") is preserved: the bash script — not the coder — owns the commit.
 
 On round 1, orchestrator mode also marks `Step 5 — code review` through `scripts/timing-ledger.sh` with `IMPLEMENT_TMPDIR` in the subprocess environment. The mark is best-effort and runs after argument/tool validation, before review-core dispatch.
 
 Exit codes:
 
-- `0`: no accepted findings remain for this round, or `main-agent-vote-required` when no voting judges were available and the parent must adjudicate the ballot.
+- `0`: no accepted findings remain for this round, OR `main-agent-vote-required` when no voting judges were available and the parent must adjudicate the ballot, OR `no-changes` when the coder dispatch exited 0 but did not modify the working tree (the parent halts the loop — re-running the same review would produce the same fixed point).
 - `2`: panel failure, coder failure, or submodule violation; parent `/implement` treats this as blocking.
-- `3`: a coder applied accepted findings. The parent runs relevant checks and decides whether to call the script for the next round.
+- `3`: a coder applied accepted findings AND the script committed them as `Address code review feedback (round N)`. The parent runs relevant checks and decides whether to call the script for the next round.
 
 Additional output keys:
 
@@ -66,6 +71,7 @@ Additional output keys:
 - `CODER_TOOL`
 - `CODER_STATUS`
 - `CODER_LOG_FILE`
+- `CODER_COMMIT_SHA` (only when the round committed a per-round fix commit)
 - `SUBMODULE_SCRUB_COUNT`
 - `SUBMODULE_REVERT_COUNT`
 - `SKIPPED_FINDING_COUNT` — count of unique `FINDING_N` ids that the coder logged as
@@ -78,7 +84,7 @@ Additional output keys:
 pre-scrub accepted in-scope count. This keeps the `/implement` bulk-skip-ratio denominator
 aligned with the findings file the coder actually saw.
 
-The script writes `$IMPLEMENT_TMPDIR/review-and-fix-summary.json` atomically with `schema_version=2`, aggregate accepted/rejected counts, `rounds_completed`, latest approved-fixes path, latest round directory, accumulated OOS artifact paths, and coder/submodule status fields. Accepted OOS markdown is accumulated at `$IMPLEMENT_TMPDIR/accumulated-oos.md` and mirrored to `$IMPLEMENT_TMPDIR/oos-accepted-review.md` for existing Step 9a.1 consumers; a JSONL audit copy is appended at `$IMPLEMENT_TMPDIR/accumulated-oos.jsonl`. That mirror copy is load-bearing: if the copy fails, the round fails instead of silently leaving the legacy mirror stale.
+The script writes `$IMPLEMENT_TMPDIR/review-and-fix-summary.json` atomically with `schema_version=2`, aggregate accepted/rejected counts, `rounds_completed`, latest approved-fixes path, latest round directory, accumulated OOS artifact paths, coder/submodule status fields, and `coder_commit_sha` (latest round's per-round commit, empty string when the round produced no commit). Accepted OOS markdown is accumulated at `$IMPLEMENT_TMPDIR/accumulated-oos.md` and mirrored to `$IMPLEMENT_TMPDIR/oos-accepted-review.md` for existing Step 9a.1 consumers; a JSONL audit copy is appended at `$IMPLEMENT_TMPDIR/accumulated-oos.jsonl`. That mirror copy is load-bearing: if the copy fails, the round fails instead of silently leaving the legacy mirror stale.
 
 When an orchestrator round exits `0` (cap-reached or clean) or `3` (fix-required) and `--run-id` is non-empty, the script best-effort flushes the Step 5 implement run-log batches:
 

@@ -1476,7 +1476,7 @@ if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
 fi
 export CLAUDE_PLUGIN_ROOT
-${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/check-review-changes.sh --baseline "$IMPLEMENT_TMPDIR/pre-review-untracked.txt"
+${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/check-review-changes.sh --baseline "$IMPLEMENT_TMPDIR/pre-review-untracked.txt" --head-baseline "$IMPLEMENT_TMPDIR/pre-review-head.txt"
 ```
 
 Parse all three stdout keys with key-based extraction (e.g., `awk -F= '$1=="FILES_CHANGED"{print $2}'`) — all keys are always emitted on every invocation in stable order: `FILES_CHANGED` first, `UNTRACKED_BASELINE` second, `GIT_PROBE_FAILED` third. Do NOT `eval`/`source` the script's stdout. If `UNTRACKED_BASELINE=missing` (snapshot was never written or got cleaned up after a Step 5 failure), log to `Warnings` (`Step 6 — pre-/review untracked baseline missing; untracked delta not computed for this run`) and continue — `FILES_CHANGED` is still authoritative for staged + unstaged. If `GIT_PROBE_FAILED=true` (one or more git probes returned non-zero — transient git outage, missing `.git` directory, etc.), log to `Warnings` (`Step 6 — git probe failed during review-change detection; FILES_CHANGED may have missed review-induced edits`) and continue. Step 6 does NOT pass `--strict` by default: today's contract is to preserve the historical graceful-degradation behavior on the `/implement` Step 6 path. The `--strict` flag exists for callers that want to fail-closed (treat a probe failure as `FILES_CHANGED=true`); adopting it project-wide is a separate decision tracked outside this PR. Issue #1485 added the `GIT_PROBE_FAILED` key and `--strict` flag.
@@ -1529,7 +1529,7 @@ export CLAUDE_PLUGIN_ROOT
 ${CLAUDE_PLUGIN_ROOT}/scripts/git-commit.sh -m "Address code review feedback" <specific-files>
 ```
 
-If no files changed, skip.
+If no files changed, skip. Note: `review-and-fix.sh` commits each round's accepted-fixes inline (commit message `Address code review feedback (round N)`) for both `--panel simple` (quick mode) and `--panel hard` (normal mode), so on the common path the working tree is already clean here and Step 7's commit is a no-op. Step 7's commit still fires when the main agent landed manual edits — typically after the `main-agent-vote-required` adjudication branch of `review-and-fix.sh`, where the coder dispatch did not run.
 
 ### Rebase onto latest main (after review fixes commit)
 

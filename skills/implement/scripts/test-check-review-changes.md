@@ -24,6 +24,8 @@ Each case sets up an isolated `git init` sandbox via `mktemp -d` (or a non-git `
 | (l) | clean tree + `--strict` | `FILES_CHANGED=false UNTRACKED_BASELINE=missing GIT_PROBE_FAILED=false` | `--strict` is a no-op when all probes succeed; it does NOT artificially flip `FILES_CHANGED` outside the probe-failure path |
 | (m) | clean repo + `--bogus` | `FILES_CHANGED=false UNTRACKED_BASELINE=missing GIT_PROBE_FAILED=false` (stderr `ERROR=…`) | parse error short-circuits BEFORE any git probe runs; the three stdout keys still emit with their conservative degraded values |
 | (n) | non-git sandbox + `--strict --bogus` | `FILES_CHANGED=false UNTRACKED_BASELINE=missing GIT_PROBE_FAILED=false` (stderr `ERROR=…`) | **issue #1485 round-1 review fix** — parse error must short-circuit BEFORE probes run, so `--strict` cannot promote a CLI typo to `FILES_CHANGED=true` via a probe failure (pre-fix: `FILES_CHANGED=true GIT_PROBE_FAILED=true`) |
+| (o) | clean tree + `--head-baseline` matching current HEAD | `FILES_CHANGED=false` | HEAD-baseline dimension is a no-op when HEAD has not moved |
+| (p) | `--head-baseline` points at prior commit, current HEAD has advanced via per-round commit | `FILES_CHANGED=true` | **issue #2236 per-round commit flow** — review-and-fix.sh commits each round's accepted fixes, leaving a clean working tree but an advanced HEAD; without the HEAD-baseline dimension, Step 6's lint pass would silently skip |
 
 ## Case (f) is a deliberate behavior change — do NOT "fix" it
 
