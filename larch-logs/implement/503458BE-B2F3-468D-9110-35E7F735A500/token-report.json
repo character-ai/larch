@@ -257,14 +257,46 @@
             }
           }
         ]
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 34,
+          "cache_read": 6738490,
+          "cache_create": 84604,
+          "output": 14886,
+          "total": 6838014
+        },
+        "skills": [
+          {
+            "skill": "bump-version",
+            "totals": {
+              "input": 10,
+              "cache_read": 2014862,
+              "cache_create": 8699,
+              "output": 6127,
+              "total": 2029698
+            }
+          },
+          {
+            "skill": "larch:issue",
+            "totals": {
+              "input": 24,
+              "cache_read": 4723628,
+              "cache_create": 75905,
+              "output": 8759,
+              "total": 4808316
+            }
+          }
+        ]
       }
     ],
     "totals": {
-      "input": 98,
-      "cache_read": 16283174,
-      "cache_create": 715204,
-      "output": 35024,
-      "total": 17033500
+      "input": 132,
+      "cache_read": 23021664,
+      "cache_create": 799808,
+      "output": 49910,
+      "total": 23871514
     }
   },
   "codex": {
@@ -351,6 +383,14 @@
       },
       {
         "step": "Step 8 — version bump",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8b — rebase",
         "totals": {
           "input": 0,
           "output": 0,
@@ -448,6 +488,14 @@
       },
       {
         "step": "Step 8 — version bump",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8b — rebase",
         "totals": {
           "input": 0,
           "output": 0,
