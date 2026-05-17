@@ -159,6 +159,12 @@ if [[ -n "$TOKEN_BUDGET_CAP" ]]; then
     unset _budget_out _budget_status
 fi
 
+# Token-ledger step mark runs here (not in step2-implement.sh before launch):
+# check-step-token-budget.sh sums vendor totals since the last JSONL "mark"
+# row; an early mark would reset the window and hide spend that must trigger
+# cap_hit before Codex spawns.
+"$PLUGIN_ROOT/scripts/token-ledger.sh" mark "Step 2 — implementation" || true
+
 # Defensive: env-derived LARCH_TIMING_TASK_KIND may be empty or flag-shaped
 # (e.g. "--prompt") if a caller mis-parses argv. The CLI form was
 # already validated above (#1480); apply the same predicate to the env path

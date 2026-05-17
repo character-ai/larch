@@ -1112,9 +1112,10 @@ LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh"
 LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
 LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
 export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
-"${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 2 — implementation" || true
+# Token-ledger Step 2 mark runs inside launch-codex-implement.sh / launch-cursor-implement.sh
+# after the Step 2 token-budget preflight so a JSONL mark does not reset vendor totals
+# before cap_hit can short-circuit (see check-step-token-budget.sh).
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 2 — implementation" || true
-# token-mark Step 2 — implementation
 # timing-mark Step 2 — implementation
 ```
 
