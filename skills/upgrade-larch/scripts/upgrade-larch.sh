@@ -45,6 +45,13 @@ sort_versions() {
     ' | sort | cut -f2-
 }
 
+version_gt() {
+    local left="$1" right="$2"
+    local highest
+    highest=$(printf '%s\n%s\n' "$left" "$right" | sort_versions | tail -n1)
+    [ "$left" = "$highest" ] && [ "$left" != "$right" ]
+}
+
 get_installed_larch_version() {
     local plugin_record installed_version
     plugin_record=$(claude plugin list 2>/dev/null | awk '
@@ -99,12 +106,8 @@ PREVIOUS_STABLE=""
 if command -v gh >/dev/null 2>&1; then
     STABLE_RELEASES=()
     GH_RELEASES_OUTPUT=""
-    if ! GH_RELEASES_OUTPUT=$(get_stable_releases 2>&1); then
-        larch_err "Warning: failed to query GitHub stable releases via gh; upgrading without stable verification."
-        if [ -n "$GH_RELEASES_OUTPUT" ]; then
-            larch_err "gh output: $GH_RELEASES_OUTPUT"
-        fi
-    else
+    GH_STDERR_LOG=$(mktemp "${TMPDIR:-/tmp}/upgrade-larch-gh-stderr.XXXXXX")
+    if GH_RELEASES_OUTPUT=$(get_stable_releases 2>"$GH_STDERR_LOG"); then
         while IFS= read -r release; do
             [ -n "$release" ] || continue
             STABLE_RELEASES+=("$release")
@@ -112,22 +115,40 @@ if command -v gh >/dev/null 2>&1; then
 
         if [ "${#STABLE_RELEASES[@]}" -eq 0 ]; then
             larch_err "Warning: gh returned no stable larch releases; upgrading without stable verification."
-        elif is_safe_version "${STABLE_RELEASES[0]}"; then
-            LATEST_STABLE="${STABLE_RELEASES[0]}"
         else
-            larch_err "Warning: ignoring unexpected latest stable tag '${STABLE_RELEASES[0]}'."
+            for release in "${STABLE_RELEASES[@]}"; do
+                if ! is_safe_version "$release"; then
+                    larch_err "Warning: ignoring unexpected stable tag '${release}'."
+                    continue
+                fi
+                if [ -z "$LATEST_STABLE" ]; then
+                    LATEST_STABLE="$release"
+                    continue
+                fi
+                if [ -z "$PREVIOUS_STABLE" ] && [ "$release" != "$LATEST_STABLE" ]; then
+                    PREVIOUS_STABLE="$release"
+                    break
+                fi
+            done
+            if [ -z "$LATEST_STABLE" ]; then
+                larch_err "Warning: gh returned no valid stable larch release tags; upgrading without stable verification."
+            fi
         fi
-
-        if [ "${#STABLE_RELEASES[@]}" -gt 1 ] && is_safe_version "${STABLE_RELEASES[1]}"; then
-            PREVIOUS_STABLE="${STABLE_RELEASES[1]}"
-        fi
+    else
+        gh_status=$?
+        larch_err "Warning: failed to query GitHub stable releases via gh (exit ${gh_status}); upgrading without stable verification."
     fi
+    rm -f -- "$GH_STDERR_LOG"
 fi
 
 # Idempotency: skip the upgrade if the installed version already matches the latest stable.
-if [ -n "$LATEST_STABLE" ] && [ "$INSTALLED_VERSION" = "$LATEST_STABLE" ]; then
+CURRENT_INSTALLED_VERSION=$(get_installed_larch_version || true)
+if ! is_safe_version "${CURRENT_INSTALLED_VERSION:-}"; then
+    CURRENT_INSTALLED_VERSION="$INSTALLED_VERSION"
+fi
+if [ -n "$LATEST_STABLE" ] && [ "$CURRENT_INSTALLED_VERSION" = "$LATEST_STABLE" ]; then
     emit_breadcrumb ""
-    emit_breadcrumb "Already at latest stable larch release (${INSTALLED_VERSION}). No upgrade needed."
+    emit_breadcrumb "Already at latest stable larch release (${CURRENT_INSTALLED_VERSION}). No upgrade needed."
     exit 0
 fi
 
@@ -154,7 +175,7 @@ VERIFIED_TARGET=false
 ACTUAL_VERSION=""
 if [ -n "$LATEST_STABLE" ]; then
     ACTUAL_VERSION=$(get_installed_larch_version || true)
-    if [ "$ACTUAL_VERSION" = "$LATEST_STABLE" ] && [ -d "$LARCH_CACHE_DIR/$LATEST_STABLE" ]; then
+    if [ "$ACTUAL_VERSION" = "$LATEST_STABLE" ]; then
         VERIFIED_TARGET=true
         emit_breadcrumb "Verified: larch ${LATEST_STABLE} installed successfully."
     else
@@ -189,7 +210,7 @@ if [ "$VERIFIED_TARGET" = true ]; then
 
     if [ -z "$KEEP_PREDECESSOR" ] && [ "$VERSION_COUNT" -gt 1 ]; then
         for ((i=VERSION_COUNT-1; i>=0; i--)); do
-            if [ "${CACHED_VERSIONS[$i]}" != "$LATEST_STABLE" ]; then
+            if [ "${CACHED_VERSIONS[$i]}" != "$LATEST_STABLE" ] && ! version_gt "${CACHED_VERSIONS[$i]}" "$LATEST_STABLE"; then
                 KEEP_PREDECESSOR="${CACHED_VERSIONS[$i]}"
                 break
             fi
