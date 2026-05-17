@@ -198,3 +198,59 @@
 - **Concern**: [latent] Global ERR recover after prune rm failure Prune I/O error triggers reinstall recovery misleading operator Scope trap or non-fatal prune errors separate from install recover
 - **Suggested revision**: Address the concern above.
 
+### FINDING_1: panel [code-review/accepted]
+
+## **Important** `correctness` `skills/upgrade-larch/scripts/upgrade-larch.sh:127`  
+
+- **Reviewer**: codex-generalist-output.txt
+- **Concern**: 1. **Important** `correctness` `skills/upgrade-larch/scripts/upgrade-larch.sh:127`      The idempotency check compares `LATEST_STABLE` to `basename "$PLUGIN_ROOT"`, which is the version loaded in the current Claude session, not necessarily the version currently installed. Concrete scenario: `/upgrade-larch` installs `29.1.10`, the user has not restarted yet so `CLAUDE_PLUGIN_ROOT` still points at `29.1.9`, and a second `/upgrade-larch` run unnecessarily uninstalls/reinstalls instead of exiting as “already at latest stable”; if the network fails during that second run, it can break an already-correct install. Use `get_installed_larch_version` before teardown for the idempotency check, falling back to `basename "$PLUGIN_ROOT"` only if plugin metadata/listing is unavailable.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_13: panel [code-review/accepted]
+
+## correctness: skills/upgrade-larch/scripts/upgrade-larch.sh:102-111
+
+- **Reviewer**: cursor-specialist-edge-cases-output.txt
+- **Concern**: [important] gh stderr merged into release capture via 2>&1 First captured line can be a non-tag stderr line so LATEST_STABLE stays empty despite valid tags later, forcing unverified upgrade Capture stdout only or filter lines with is_safe_version before choosing latest/previous
+- **Suggested revision**: Address the concern above.
+
+### FINDING_14: panel [code-review/accepted]
+
+## correctness: skills/upgrade-larch/scripts/upgrade-larch.sh:115-123
+
+- **Reviewer**: cursor-specialist-correctness-output.txt
+- **Concern**: [latent] LATEST_STABLE only taken from STABLE_RELEASES[0] if valid; later valid entries ignored First line fails is_safe_version but a later line is a valid stable tag; script upgrades without stable idempotency/verification/prune Walk STABLE_RELEASES for first is_safe_version match; set PREVIOUS_STABLE from next valid stable
+- **Suggested revision**: Address the concern above.
+
+### FINDING_15: panel [code-review/accepted]
+
+## correctness: skills/upgrade-larch/scripts/upgrade-larch.sh:155-167
+
+- **Reviewer**: cursor-specialist-correctness-output.txt
+- **Concern**: [latent] Verification requires cache directory even when CLI version matches CLI reports correct stable but cache path missing or delayed; exit 1 after successful install Treat CLI/metadata match as sufficient or poll for cache dir
+- **Suggested revision**: Address the concern above.
+
+### FINDING_17: panel [code-review/accepted]
+
+## correctness: skills/upgrade-larch/scripts/upgrade-larch.sh:180-196
+
+- **Reviewer**: cursor-specialist-edge-cases-output.txt
+- **Concern**: [important] Fallback rollback pick is max cached semver != LATEST A stray higher numeric cache dir can be kept and real older rollback trees pruned Constrain fallback to versions not greater than LATEST_STABLE or require API predecessor on disk
+- **Suggested revision**: Address the concern above.
+
+### FINDING_24: panel [code-review/accepted]
+
+## risk-integration: skills/upgrade-larch/scripts/upgrade-larch.sh:95-231
+
+- **Reviewer**: cursor-specialist-testing-output.txt
+- **Concern**: [important] No automated tests for stable resolution idempotency verify exit prune New upgrade regressions pass CI until manual skill use Add shell harness with mocked cache and stubbed gh claude
+- **Suggested revision**: Address the concern above.
+
+### FINDING_25: panel [code-review/accepted]
+
+## security: skills/upgrade-larch/scripts/upgrade-larch.sh:102-106
+
+- **Reviewer**: cursor-specialist-security-output.txt
+- **Concern**: [latent] On gh query failure the script prints full combined stdout/stderr from get_stable_releases. gh or TLS/proxy diagnostics may include sensitive host/account/error detail in operator-visible logs or shared transcripts. Log exit status and a short message; truncate or redact; optional dump to mode-0600 temp path.
+- **Suggested revision**: Address the concern above.
+
