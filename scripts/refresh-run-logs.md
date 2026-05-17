@@ -1,8 +1,10 @@
 # refresh-run-logs.sh
 
 Re-renders the JSON `token-report` and `timing-report` larch-log batches from the
-current session state and commits the updated files to the branch, so every push
-(rebase, CI-fix, version-bump retry) carries up-to-date log artifacts.
+current session state, flushes any post-Step-7a `execution-issues.md` tail once
+the Step 7a checkpoint has been reached, and commits the updated files to the
+branch, so every push (rebase, CI-fix, version-bump retry) carries up-to-date log
+artifacts.
 
 ## Interface
 
@@ -40,6 +42,12 @@ Always exits 0.
   subsequent push.
 - **Best-effort renders**: `token-report.sh`, `timing-report.sh`, and `larch-log.sh write`
   calls use `|| true`; render failures are non-fatal.
+- **Best-effort execution-issues tail flush**: when `execution-issues.md` is
+  non-empty and Step 7a has already been reached (checkpoint file, sentinel, or
+  batch file present), the script calls
+  `skills/implement/scripts/flush-execution-issues.sh --step-label pre-push`
+  before refreshing the JSON batches. This keeps later postbump / CI warnings in
+  the committed audit trail without re-emitting already-flushed content.
 - **`NO_LOGS_COMMIT` honoured**: reads the flag from the state file; skips the commit
   when `true` (mirrors `ship-pr.sh`'s pre-rebase larch-log flush behaviour).
 

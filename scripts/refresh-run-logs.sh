@@ -53,6 +53,20 @@ fi
 export IMPLEMENT_TMPDIR="$IMPL_TMPDIR"
 
 log_root="$IMPL_TMPDIR/larch-logs"
+issue_log="$IMPL_TMPDIR/execution-issues.md"
+sentinel="$IMPL_TMPDIR/.execution-issues-flushed.sha"
+checkpoint="$IMPL_TMPDIR/.execution-issues-step7a-reached"
+batch_path="$log_root/implement/$run_id/execution-issues.ndjson"
+
+if [ -s "$issue_log" ] && { [ -f "$checkpoint" ] || [ -f "$sentinel" ] || [ -f "$batch_path" ]; }; then
+    "$SCRIPT_DIR/../skills/implement/scripts/flush-execution-issues.sh" \
+        --log-root "$log_root" \
+        --run-id "$run_id" \
+        --issue-log "$issue_log" \
+        --step-label pre-push \
+        --source-label "execution-issues.md pre-push refresh" \
+        2>/dev/null || true
+fi
 
 # Re-render and write token and timing reports.
 "$SCRIPT_DIR/token-report.sh"  --full --format json --output "$IMPL_TMPDIR/token-report-refresh.json"  2>/dev/null || true

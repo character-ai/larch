@@ -1,0 +1,166 @@
+{
+  "vendors": [
+    "claude",
+    "codex"
+  ],
+  "claude": {
+    "per_step": [
+      {
+        "step": "Step 0 — preflight",
+        "totals": {
+          "input": 1,
+          "cache_read": 126656,
+          "cache_create": 952,
+          "output": 732,
+          "total": 128341
+        },
+        "skills": [
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 1,
+              "cache_read": 126656,
+              "cache_create": 952,
+              "output": 732,
+              "total": 128341
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 0.5 — tracking issue",
+        "totals": {
+          "input": 8,
+          "cache_read": 1028095,
+          "cache_create": 5847,
+          "output": 4008,
+          "total": 1037958
+        },
+        "skills": [
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 8,
+              "cache_read": 1028095,
+              "cache_create": 5847,
+              "output": 4008,
+              "total": 1037958
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 1 — design plan",
+        "totals": {
+          "input": 294,
+          "cache_read": 25741312,
+          "cache_create": 1159627,
+          "output": 119476,
+          "total": 27020709
+        },
+        "skills": [
+          {
+            "skill": "larch:design",
+            "totals": {
+              "input": 288,
+              "cache_read": 24955083,
+              "cache_create": 1156470,
+              "output": 117208,
+              "total": 26229049
+            }
+          },
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 6,
+              "cache_read": 786229,
+              "cache_create": 3157,
+              "output": 2268,
+              "total": 791660
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 2 — implementation",
+        "totals": {
+          "input": 198,
+          "cache_read": 17191753,
+          "cache_create": 1211103,
+          "output": 76936,
+          "total": 18479990
+        },
+        "skills": [
+          {
+            "skill": "inferred:Step 2 — implementation",
+            "totals": {
+              "input": 93,
+              "cache_read": 7960937,
+              "cache_create": 437658,
+              "output": 32574,
+              "total": 8431262
+            }
+          },
+          {
+            "skill": "larch:design",
+            "totals": {
+              "input": 105,
+              "cache_read": 9230816,
+              "cache_create": 773445,
+              "output": 44362,
+              "total": 10048728
+            }
+          }
+        ]
+      }
+    ],
+    "totals": {
+      "input": 501,
+      "cache_read": 44087816,
+      "cache_create": 2377529,
+      "output": 201152,
+      "total": 46666998
+    }
+  },
+  "codex": {
+    "per_step": [
+      {
+        "step": "Step 0 — preflight",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 0.5 — tracking issue",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 1 — design plan",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 2 — implementation",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 2536788
+        }
+      }
+    ],
+    "totals": {
+      "input": 0,
+      "output": 0,
+      "total": 2536788
+    }
+  }
+}

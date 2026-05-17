@@ -4,6 +4,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 LARCH_LOG="$SCRIPT_DIR/larch-log.sh"
 LARCH_LOG_FLUSH="$SCRIPT_DIR/larch-log-flush.sh"
 
@@ -229,6 +230,50 @@ if [ ! -e "$_sentinel_repo/larch-logs/implement/$_sentinel_run" ]; then
     pass "flush does not copy logs into repo after sentinel"
 else
     fail "flush should not copy logs into repo after sentinel"
+fi
+echo "=== flush honors Step 7a checkpoint without prior batch ==="
+_checkpoint_repo="$TMP/checkpoint-repo"
+_checkpoint_impl="$TMP/checkpoint-impl"
+_checkpoint_run="checkpointrun123"
+mkdir -p "$_checkpoint_impl"
+git init "$_checkpoint_repo" >/dev/null 2>&1
+git -C "$_checkpoint_repo" config user.email "ci@test"
+git -C "$_checkpoint_repo" config user.name "Test CI"
+touch "$_checkpoint_repo/.gitkeep"
+git -C "$_checkpoint_repo" add .
+git -C "$_checkpoint_repo" commit -q -m "init"
+git -C "$_checkpoint_repo" checkout -q -b feature-checkpoint-flush
+printf '%s\n' "$_checkpoint_run" > "$_checkpoint_impl/session-id"
+: > "$_checkpoint_impl/.execution-issues-step7a-reached"
+cat > "$_checkpoint_impl/execution-issues.md" <<'EOF'
+### Warnings
+
+- logged after an empty Step 7a checkpoint
+EOF
+(cd "$_checkpoint_repo" && "$LARCH_LOG" init --log-root "$_checkpoint_impl/larch-logs" --skill implement --run-id "$_checkpoint_run" --issue 44) >/dev/null
+(cd "$_checkpoint_repo" && "$LARCH_LOG" write --log-root "$_checkpoint_impl/larch-logs" --skill implement --run-id "$_checkpoint_run" --batch plan-goals-test --input-file "$_spayload") >/dev/null
+_checkpoint_head_before=$(git -C "$_checkpoint_repo" rev-parse HEAD)
+if (cd "$_checkpoint_repo" && env "PATH=${PATH:-}" "CLAUDE_PLUGIN_ROOT=$REPO_ROOT" "IMPLEMENT_TMPDIR=$_checkpoint_impl" "LARCH_NO_LOGS_COMMIT=false" "$LARCH_LOG_FLUSH"); then
+    pass "checkpoint flush exits 0"
+else
+    fail "checkpoint flush exits 0"
+fi
+_checkpoint_head_after=$(git -C "$_checkpoint_repo" rev-parse HEAD)
+if [ "$_checkpoint_head_after" != "$_checkpoint_head_before" ]; then
+    pass "checkpoint flush creates commit"
+else
+    fail "checkpoint flush creates commit"
+fi
+_checkpoint_batch="$_checkpoint_repo/larch-logs/implement/$_checkpoint_run/execution-issues.ndjson"
+if [ -f "$_checkpoint_batch" ]; then
+    pass "checkpoint flush commits execution issues without prior batch"
+else
+    fail "checkpoint flush commits execution issues without prior batch"
+fi
+if [ ! -s "$_checkpoint_impl/execution-issues.md" ]; then
+    pass "checkpoint flush clears execution issue log"
+else
+    fail "checkpoint flush clears execution issue log"
 fi
 echo "=== larch-log.sh commit rejects when post-merge sentinel exists ==="
 _commit_sentinel_repo="$TMP/commit-sentinel-repo"
