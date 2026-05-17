@@ -1005,7 +1005,7 @@ This matrix is authoritative after the wrapper returns. It is informational pros
 
 ### Cross-Skill Presence Update (after /design)
 
-Health propagation is performed mechanically inside `post-design-boundary.sh`. Do not repeat the Step 0 procedure here.
+Presence and session-env propagation is performed mechanically inside `post-design-boundary.sh`. Do not repeat the Step 0 procedure here.
 
 ### Capture branch name (`BRANCH_NAME`)
 

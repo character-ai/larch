@@ -22,7 +22,6 @@ COMPETITION_NOTICE_FILE=""
 PLAN_FILE=""
 FEATURE_FILE=""
 DESCRIPTION_TEXT=""
-TIMING_TASK_PREFIX="review"
 DISPATCH_WATERFALL="$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh"
 SESSION_ENV_PATH="${SESSION_ENV_PATH:-}"
 PANEL="hard"
@@ -40,7 +39,7 @@ while [[ $# -gt 0 ]]; do
         --plan-file) PLAN_FILE="${2:?--plan-file requires a value}"; shift 2 ;;
         --feature-file) FEATURE_FILE="${2:?--feature-file requires a value}"; shift 2 ;;
         --description-text) DESCRIPTION_TEXT="${2:?--description-text requires a value}"; shift 2 ;;
-        --timing-task-prefix) TIMING_TASK_PREFIX="${2:?--timing-task-prefix requires a value}"; shift 2 ;;
+        --timing-task-prefix) shift 2 ;; # accepted for old harnesses; waterfall owns timing-task-kind naming
         --launch-claude-subprocess) shift 2 ;; # accepted for old harnesses; waterfall owns Claude launch
         --launch-review) shift 2 ;; # accepted for backward compat; waterfall owns launch routing
         --session-env-path) SESSION_ENV_PATH="${2:?--session-env-path requires a value}"; shift 2 ;;
@@ -66,69 +65,6 @@ manifest="$REVIEW_TMPDIR/panel-manifest.ndjson"
 external_outputs=()
 claude_outputs=()
 slot_count=0
-
-execution_issue_log() {
-    if [[ -n "${LARCH_EXECUTION_ISSUES_LOG:-}" ]]; then
-        printf '%s' "$LARCH_EXECUTION_ISSUES_LOG"
-        return
-    fi
-    if [[ -n "$SESSION_ENV_PATH" ]]; then
-        printf '%s/execution-issues.md' "$(dirname "$SESSION_ENV_PATH")"
-    elif [[ -n "${IMPLEMENT_TMPDIR:-}" ]]; then
-        printf '%s/execution-issues.md' "$IMPLEMENT_TMPDIR"
-    else
-        printf '%s/execution-issues.md' "$REVIEW_TMPDIR"
-    fi
-}
-
-append_launch_failure() {
-    local site="$1" tool="$2" rc="$3" output_file="$4"
-    [[ -x "$PLUGIN_ROOT/scripts/append-tool-failure.sh" ]] || return 0
-    "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
-        --log "$(execution_issue_log)" \
-        --site "$site" \
-        --tool "$tool" \
-        --exit-code "$rc" \
-        --category "External Reviewer Issues" \
-        --output-file "$output_file" \
-        --redact >/dev/null 2>&1 || true
-}
-
-make_prompt() {
-    local name="$1"
-    local prompt="$REVIEW_TMPDIR/claude-${name}-prompt.md"
-    {
-        printf 'Review mode: %s\n' "$MODE"
-        printf 'Reviewer: %s\n' "$name"
-        printf 'Focus areas: code-quality / risk-integration / correctness / architecture / security\n'
-        [[ -n "$DESCRIPTION_TEXT" ]] && printf 'Description: %s\n' "$DESCRIPTION_TEXT"
-        [[ -n "$COMPETITION_NOTICE_FILE" && -f "$COMPETITION_NOTICE_FILE" ]] && cat "$COMPETITION_NOTICE_FILE"
-    } > "$prompt"
-    printf '%s' "$prompt"
-}
-
-launch_claude_slot() {
-    local name="$1" out="$2" prompt
-    prompt=$(make_prompt "$name")
-    args=(--prompt-file "$prompt" --output-file "$out" --timeout 1800 --timing-task-kind "${TIMING_TASK_PREFIX}-claude-${name}")
-    [[ -n "$DIFF_FILE" && -f "$DIFF_FILE" ]] && args+=(--allow-root "$(dirname "$DIFF_FILE")" --context-files "$DIFF_FILE")
-    [[ -n "$SCOPE_FILES" && -f "$SCOPE_FILES" ]] && args+=(--context-files "$SCOPE_FILES")
-    {
-        launch_log="$REVIEW_TMPDIR/dispatch-claude-${name}.log"
-        # set +e: capture launcher non-zero exits and surface them via
-        # append_launch_failure. Without this, set -e (inherited from the
-        # parent) aborts the subshell before rc capture and the failure
-        # logging path is bypassed.
-        set +e
-        "$LAUNCH_CLAUDE" "${args[@]}" > "$launch_log" 2>&1
-        rc=$?
-        set -e
-        [[ "$rc" -eq 0 ]] || append_launch_failure "review Step 2" "launch-claude-subprocess.sh $name" "$rc" "$launch_log"
-    } &
-    printf '{"slot":"%s","tool":"claude","output":"%s"}\n' "$name" "$out" >> "$manifest"
-    claude_outputs+=("$out")
-    slot_count=$((slot_count + 1))
-}
 
 queue_external_slot() {
     local tool="$1" name="$2" out="$3"
@@ -172,6 +108,7 @@ waterfall_args=(--slots-file "$manifest" --codex-present "$CODEX_AVAILABLE" --cu
 [[ "$MODE" == "description" && -n "$SCOPE_FILES" ]] && waterfall_args+=(--description-text "${DESCRIPTION_TEXT:-description review}" --scope-files "$SCOPE_FILES")
 [[ -n "$PLAN_FILE" && -f "$PLAN_FILE" ]] && waterfall_args+=(--plan-file "$PLAN_FILE")
 [[ -n "$FEATURE_FILE" && -f "$FEATURE_FILE" ]] && waterfall_args+=(--feature-file "$FEATURE_FILE")
+[[ -n "$COMPETITION_NOTICE_FILE" && -f "$COMPETITION_NOTICE_FILE" ]] && waterfall_args+=(--competition-notice "$COMPETITION_NOTICE_FILE")
 
 waterfall_output=$("$DISPATCH_WATERFALL" "${waterfall_args[@]}")
 all_outputs=""
@@ -190,12 +127,8 @@ done <<< "$waterfall_output"
 
 external_outputs=()
 claude_outputs=()
-# shellcheck disable=SC2086
-set -- $all_outputs
-outputs_arr=("$@")
-# shellcheck disable=SC2086
-set -- $all_tools
-tools_arr=("$@")
+read -r -a outputs_arr <<< "$all_outputs"
+read -r -a tools_arr <<< "$all_tools"
 for idx in "${!outputs_arr[@]}"; do
     if [[ "${tools_arr[$idx]:-}" == "claude" ]]; then
         claude_outputs+=("${outputs_arr[$idx]}")

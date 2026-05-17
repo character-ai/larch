@@ -482,7 +482,7 @@ If `sketch_budget=0`, print `⏩ 2a.5: dialectic — skipped (trivial doc-only) 
 
 Read `$DESIGN_TMPDIR/contested-decisions.md`. If the file contains only `NO_CONTESTED_DECISIONS` (ignoring leading/trailing whitespace and newlines), print `⏩ 2a.5: dialectic — no contested decisions (<elapsed>)` and IMMEDIATELY proceed to Step 2b — do NOT halt after the skip breadcrumb.
 
-**Intentional divergence from the repo-wide replacement-first fallback architecture (debate phase only)**. The **debate** phase (steps 1-9 below) deliberately diverges from the "Voter Composition" rule in `${CLAUDE_PLUGIN_ROOT}/skills/shared/voting-protocol.md` and from the Cursor/Codex fallback rules in the "Step 3 — Plan Review" section below: when an assigned debater tool is unavailable, the bucket is **skipped entirely** — Claude subagents are NEVER substituted into the dialectic **debate** path. Likewise, the "Runtime Timeout Fallback" procedure in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md` flips orchestrator-wide `*_available` for all subsequent session steps; in this phase, runtime failures affect ONLY this phase's bookkeeping and never mutate the orchestrator-wide flags. Do NOT "fix" this carve-out back to global-flip + Claude-replacement behavior for debaters — see GitHub issue #98 for the rationale.
+**Intentional divergence from the repo-wide waterfall fallback architecture (debate phase only)**. The **debate** phase (steps 1-9 below) deliberately diverges from the "Voter Composition" rule in `${CLAUDE_PLUGIN_ROOT}/skills/shared/voting-protocol.md` and from the Cursor/Codex waterfall fallback rules in the "Step 3 — Plan Review" section below: when an assigned debater tool is unavailable, the bucket is **skipped entirely** — Claude subagents are NEVER substituted into the dialectic **debate** path. Likewise, the waterfall presence flags (`CODEX_PRESENT`, `CURSOR_PRESENT`) govern session-wide availability, but runtime failures in this phase affect ONLY this phase's bookkeeping via dialectic-scoped shadow flags and never mutate the session-wide presence values. Do NOT "fix" this carve-out back to global-flag mutation + Claude-replacement behavior for debaters — see GitHub issue #98 for the rationale.
 
 This divergence applies **only to debate execution**, not to **judge adjudication**. The post-debate judge panel (see `${CLAUDE_PLUGIN_ROOT}/skills/shared/dialectic-protocol.md`) uses the repo-wide **replacement-first** pattern: when Cursor or Codex is unavailable for judging, a Claude Code Reviewer subagent replaces that slot so the panel always remains at 3 judges. Judges merely adjudicate between pre-authored defenses; the "no Claude substitution" rule is specific to adversarial debate where model-specific writing style could encode tool identity.
 
@@ -599,217 +599,55 @@ Before launching external reviewers, verify the implementation plan exists at `$
 
 Each reviewer walks five focus areas: code-quality / risk-integration / correctness / architecture / security.
 
-### Cursor Archetype Reviewers (5 slots)
+### Plan Reviewer Dispatch via Waterfall (10 slots)
 
-Launch 5 Cursor archetype plan reviewers **first** in the parallel message (Arch, Edge, Innovation, Pragmatic, Requirements — they take the longest). Each archetype reviews the plan from its specialized perspective. Each Cursor reviewer has full repo access. **Fallback chain per slot**: Cursor → Codex → Claude subagent (subagent_type: `larch:code-reviewer`, model: `"sonnet"` with the archetype personality prepended).
+Pre-render all 10 archetype prompt files (5 Cursor: arch, edge, innovation, pragmatic, requirements; 5 Codex: arch, edge, innovation, pragmatic, requirements) using `render-plan-review-prompt.sh`. Then build a NDJSON slots manifest and dispatch through `dispatch-with-waterfall.sh`, which applies the three-phase waterfall per slot: Phase 1 uses the assigned tool (Cursor or Codex) when present; Phase 2 tries the alternate external tool; Phase 3 falls back to a Claude subprocess reviewer via `launch-claude-review.sh`.
 
-**Cursor — Architecture/Standards** (if `cursor_available`):
+**Step 1 — Pre-render prompts** (run all 10 in one message, blocking Bash calls):
 
 ```bash
 # Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
-_arch_prompt_file="$DESIGN_TMPDIR/render-plan-arch.prompt"
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
 fi
 export CLAUDE_PLUGIN_ROOT
-bash "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-plan-review-prompt.sh" \
-  --archetype arch --vendor cursor --plan-file "$DESIGN_TMPDIR/plan.txt" \
-  > "$_arch_prompt_file"
-${CLAUDE_PLUGIN_ROOT}/scripts/launch-review.sh --tool cursor \
-  --output "$DESIGN_TMPDIR/cursor-plan-arch-output.txt" \
-  --timeout 1800 --timing-task-kind cursor-plan-arch \
-  --prompt-file "$_arch_prompt_file"
+for _archetype in arch edge innovation pragmatic requirements; do
+  bash "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-plan-review-prompt.sh" \
+    --archetype "$_archetype" --vendor cursor --plan-file "$DESIGN_TMPDIR/plan.txt" \
+    > "$DESIGN_TMPDIR/render-plan-cursor-${_archetype}.prompt"
+  bash "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-plan-review-prompt.sh" \
+    --archetype "$_archetype" --vendor codex --plan-file "$DESIGN_TMPDIR/plan.txt" \
+    > "$DESIGN_TMPDIR/render-plan-codex-${_archetype}.prompt"
+done
 ```
 
-Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
-
-**Cursor — Edge-cases/Failure-modes** (if `cursor_available`):
+**Step 2 — Build manifest and dispatch through waterfall** (blocking Bash call):
 
 ```bash
-# Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
-_edge_prompt_file="$DESIGN_TMPDIR/render-plan-edge.prompt"
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
-  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
-fi
-export CLAUDE_PLUGIN_ROOT
-bash "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-plan-review-prompt.sh" \
-  --archetype edge --vendor cursor --plan-file "$DESIGN_TMPDIR/plan.txt" \
-  > "$_edge_prompt_file"
-${CLAUDE_PLUGIN_ROOT}/scripts/launch-review.sh --tool cursor \
-  --output "$DESIGN_TMPDIR/cursor-plan-edge-output.txt" \
-  --timeout 1800 --timing-task-kind cursor-plan-edge \
-  --prompt-file "$_edge_prompt_file"
+_manifest="$DESIGN_TMPDIR/plan-review-slots.ndjson"
+: > "$_manifest"
+for _archetype in arch edge innovation pragmatic requirements; do
+  printf '{"slot":"cursor-plan-%s","tool":"cursor","output":"%s","prompt_file":"%s"}\n' \
+    "$_archetype" \
+    "$DESIGN_TMPDIR/cursor-plan-${_archetype}-output.txt" \
+    "$DESIGN_TMPDIR/render-plan-cursor-${_archetype}.prompt" >> "$_manifest"
+  printf '{"slot":"codex-plan-%s","tool":"codex","output":"%s","prompt_file":"%s"}\n' \
+    "$_archetype" \
+    "$DESIGN_TMPDIR/codex-primary-plan-${_archetype}-output.txt" \
+    "$DESIGN_TMPDIR/render-plan-codex-${_archetype}.prompt" >> "$_manifest"
+done
+_plan_review_dispatch=$("${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-with-waterfall.sh" \
+  --slots-file "$_manifest" \
+  --codex-present "$codex_available" \
+  --cursor-present "$cursor_available" \
+  --mode description \
+  --plan-file "$DESIGN_TMPDIR/plan.txt" \
+  --feature-file "${IMPLEMENT_TMPDIR:-$DESIGN_TMPDIR}/feature-description.txt" \
+  --timeout 1800)
+eval "$_plan_review_dispatch"
 ```
 
-Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
-
-**Cursor — Innovation/Exploration** (if `cursor_available`):
-
-```bash
-# Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
-_cursor_innovation_prompt_file="$DESIGN_TMPDIR/render-plan-cursor-innovation.prompt"
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
-  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
-fi
-export CLAUDE_PLUGIN_ROOT
-bash "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-plan-review-prompt.sh" \
-  --archetype innovation --vendor cursor --plan-file "$DESIGN_TMPDIR/plan.txt" \
-  > "$_cursor_innovation_prompt_file"
-${CLAUDE_PLUGIN_ROOT}/scripts/launch-review.sh --tool cursor \
-  --output "$DESIGN_TMPDIR/cursor-plan-innovation-output.txt" \
-  --timeout 1800 --timing-task-kind cursor-plan-innovation \
-  --prompt-file "$_cursor_innovation_prompt_file"
-```
-
-Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
-
-**Cursor — Pragmatism/Safety** (if `cursor_available`):
-
-```bash
-# Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
-_cursor_pragmatic_prompt_file="$DESIGN_TMPDIR/render-plan-cursor-pragmatic.prompt"
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
-  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
-fi
-export CLAUDE_PLUGIN_ROOT
-bash "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-plan-review-prompt.sh" \
-  --archetype pragmatic --vendor cursor --plan-file "$DESIGN_TMPDIR/plan.txt" \
-  > "$_cursor_pragmatic_prompt_file"
-${CLAUDE_PLUGIN_ROOT}/scripts/launch-review.sh --tool cursor \
-  --output "$DESIGN_TMPDIR/cursor-plan-pragmatic-output.txt" \
-  --timeout 1800 --timing-task-kind cursor-plan-pragmatic \
-  --prompt-file "$_cursor_pragmatic_prompt_file"
-```
-
-Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
-
-**Cursor — Requirements/Completeness** (if `cursor_available`):
-
-```bash
-# Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
-_cursor_requirements_prompt_file="$DESIGN_TMPDIR/render-plan-cursor-requirements.prompt"
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
-  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
-fi
-export CLAUDE_PLUGIN_ROOT
-bash "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-plan-review-prompt.sh" \
-  --archetype requirements --vendor cursor --plan-file "$DESIGN_TMPDIR/plan.txt" \
-  > "$_cursor_requirements_prompt_file"
-${CLAUDE_PLUGIN_ROOT}/scripts/launch-review.sh --tool cursor \
-  --output "$DESIGN_TMPDIR/cursor-plan-requirements-output.txt" \
-  --timeout 1800 --timing-task-kind cursor-plan-requirements \
-  --prompt-file "$_cursor_requirements_prompt_file"
-```
-
-Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
-
-**Cursor archetype fallback** (per slot, if `cursor_available` is false): For each Cursor archetype slot where Cursor is unavailable, try Codex first (if `codex_available`). Render the same archetype with `render-plan-review-prompt.sh --archetype <arch|edge|innovation|pragmatic|requirements> --vendor codex`, write it to an explicit temp prompt file, then launch via `launch-review.sh --tool codex --prompt-file` with distinct per-archetype output paths: `$DESIGN_TMPDIR/codex-fallback-cursor-plan-arch-output.txt`, `$DESIGN_TMPDIR/codex-fallback-cursor-plan-edge-output.txt`, `$DESIGN_TMPDIR/codex-fallback-cursor-plan-innovation-output.txt`, `$DESIGN_TMPDIR/codex-fallback-cursor-plan-pragmatic-output.txt`, `$DESIGN_TMPDIR/codex-fallback-cursor-plan-requirements-output.txt`. If both Cursor and Codex are unavailable for a slot, launch a Claude subagent fallback (subagent_type: `larch:code-reviewer`, model: `"sonnet"`) using the reviewer-templates.md path in `plan-review.md`.
-
-### Codex Archetype Reviewers (5 slots)
-
-Launch 5 Codex archetype plan reviewers **second** in the parallel message (Arch, Edge, Innovation, Pragmatic, Requirements, after Cursor). Each archetype reviews the plan from its specialized perspective. Each Codex reviewer has full repo access. **Fallback chain per slot**: Codex → Cursor → Claude subagent (subagent_type: `larch:code-reviewer`, model: `"sonnet"` with the archetype personality prepended).
-
-**Codex — Architecture/Standards** (if `codex_available`):
-
-```bash
-# Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
-_codex_arch_prompt_file="$DESIGN_TMPDIR/render-plan-codex-arch.prompt"
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
-  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
-fi
-export CLAUDE_PLUGIN_ROOT
-bash "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-plan-review-prompt.sh" \
-  --archetype arch --vendor codex --plan-file "$DESIGN_TMPDIR/plan.txt" \
-  > "$_codex_arch_prompt_file"
-${CLAUDE_PLUGIN_ROOT}/scripts/launch-review.sh --tool codex \
-  --output "$DESIGN_TMPDIR/codex-primary-plan-arch-output.txt" \
-  --timeout 1800 --timing-task-kind codex-plan-arch \
-  --prompt-file "$_codex_arch_prompt_file"
-```
-
-Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
-
-**Codex — Edge-cases/Failure-modes** (if `codex_available`):
-
-```bash
-# Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
-_codex_edge_prompt_file="$DESIGN_TMPDIR/render-plan-codex-edge.prompt"
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
-  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
-fi
-export CLAUDE_PLUGIN_ROOT
-bash "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-plan-review-prompt.sh" \
-  --archetype edge --vendor codex --plan-file "$DESIGN_TMPDIR/plan.txt" \
-  > "$_codex_edge_prompt_file"
-${CLAUDE_PLUGIN_ROOT}/scripts/launch-review.sh --tool codex \
-  --output "$DESIGN_TMPDIR/codex-primary-plan-edge-output.txt" \
-  --timeout 1800 --timing-task-kind codex-plan-edge \
-  --prompt-file "$_codex_edge_prompt_file"
-```
-
-Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
-
-**Codex — Innovation/Exploration** (if `codex_available`):
-
-```bash
-# Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
-_innovation_prompt_file="$DESIGN_TMPDIR/render-plan-innovation.prompt"
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
-  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
-fi
-export CLAUDE_PLUGIN_ROOT
-bash "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-plan-review-prompt.sh" \
-  --archetype innovation --vendor codex --plan-file "$DESIGN_TMPDIR/plan.txt" \
-  > "$_innovation_prompt_file"
-${CLAUDE_PLUGIN_ROOT}/scripts/launch-review.sh --tool codex \
-  --output "$DESIGN_TMPDIR/codex-primary-plan-innovation-output.txt" \
-  --timeout 1800 --timing-task-kind codex-plan-innovation \
-  --prompt-file "$_innovation_prompt_file"
-```
-
-Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
-
-**Codex — Pragmatism/Safety** (if `codex_available`):
-
-```bash
-# Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
-_pragmatic_prompt_file="$DESIGN_TMPDIR/render-plan-pragmatic.prompt"
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
-  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
-fi
-export CLAUDE_PLUGIN_ROOT
-bash "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-plan-review-prompt.sh" \
-  --archetype pragmatic --vendor codex --plan-file "$DESIGN_TMPDIR/plan.txt" \
-  > "$_pragmatic_prompt_file"
-${CLAUDE_PLUGIN_ROOT}/scripts/launch-review.sh --tool codex \
-  --output "$DESIGN_TMPDIR/codex-primary-plan-pragmatic-output.txt" \
-  --timeout 1800 --timing-task-kind codex-plan-pragmatic \
-  --prompt-file "$_pragmatic_prompt_file"
-```
-
-Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
-
-**Codex — Requirements/Completeness** (if `codex_available`):
-
-```bash
-# Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
-_codex_requirements_prompt_file="$DESIGN_TMPDIR/render-plan-codex-requirements.prompt"
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
-  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
-fi
-export CLAUDE_PLUGIN_ROOT
-bash "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-plan-review-prompt.sh" \
-  --archetype requirements --vendor codex --plan-file "$DESIGN_TMPDIR/plan.txt" \
-  > "$_codex_requirements_prompt_file"
-${CLAUDE_PLUGIN_ROOT}/scripts/launch-review.sh --tool codex \
-  --output "$DESIGN_TMPDIR/codex-primary-plan-requirements-output.txt" \
-  --timeout 1800 --timing-task-kind codex-plan-requirements \
-  --prompt-file "$_codex_requirements_prompt_file"
-```
-
-Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
-
-**Codex archetype fallback** (per slot, if `codex_available` is false): For each Codex archetype slot where Codex is unavailable, try Cursor first (if `cursor_available`). Render the same archetype with `render-plan-review-prompt.sh --archetype <arch|edge|innovation|pragmatic|requirements> --vendor cursor`, write it to an explicit temp prompt file, then launch via `launch-review.sh --tool cursor --prompt-file` with distinct per-archetype output paths: `$DESIGN_TMPDIR/cursor-fallback-codex-plan-arch-output.txt`, `$DESIGN_TMPDIR/cursor-fallback-codex-plan-edge-output.txt`, `$DESIGN_TMPDIR/cursor-fallback-codex-plan-innovation-output.txt`, `$DESIGN_TMPDIR/cursor-fallback-codex-plan-pragmatic-output.txt`, `$DESIGN_TMPDIR/cursor-fallback-codex-plan-requirements-output.txt`. If both Codex and Cursor are unavailable for a slot, launch a Claude subagent fallback (subagent_type: `larch:code-reviewer`, model: `"sonnet"`) using the reviewer-templates.md path in `plan-review.md`.
+Parse `ALL_OUTPUT_FILES` and `ALL_OUTPUT_TOOLS` from the waterfall output. Use `ALL_OUTPUT_FILES` as the list of reviewer output paths for the collection step; the order matches the slot order in the manifest. If `DISPATCH_OK=false`, at least one Phase 3 Claude slot failed — proceed but note degradation. If `WARN=cost-fallback-exceeded-threshold`, emit a warning breadcrumb.
 
 ### Collecting, Voting, Finalize, Track Rejected
 

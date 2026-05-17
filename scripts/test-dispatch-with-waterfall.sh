@@ -85,4 +85,34 @@ out=$(PATH="$STUB_BIN:$PATH" "$REPO_ROOT/scripts/dispatch-with-waterfall.sh" \
 assert_line "FALLBACK_COUNT=1" "$out"
 assert_line "ALL_OUTPUT_TOOLS=claude" "$out"
 
+# Test: Phase-3 hard failure — both external tools absent and Claude stub fails.
+# DISPATCH_OK must be false when Phase 3 Claude slot fails.
+manifest="$TMPROOT/slots-hardfail.ndjson"
+printf '{"slot":"s1","tool":"codex","output":"%s","prompt_file":"%s"}\n' "$TMPROOT/hardfail-slot.txt" "$prompt" > "$manifest"
+out=$(PATH="$STUB_BIN:$PATH" CLAUDE_STUB_FAIL=true "$REPO_ROOT/scripts/dispatch-with-waterfall.sh" \
+    --slots-file "$manifest" \
+    --codex-present false \
+    --cursor-present false \
+    --mode description \
+    --timeout 5)
+assert_line "DISPATCH_OK=false" "$out"
+assert_line "FALLBACK_COUNT=1" "$out"
+
+# Test: WARN threshold — fallback count exceeds LARCH_FALLBACK_CLAUDE_WARN_THRESHOLD.
+# With threshold=1 and 2 slots both falling through to Claude, WARN must be emitted.
+manifest="$TMPROOT/slots-warn.ndjson"
+{
+    printf '{"slot":"s1","tool":"codex","output":"%s","prompt_file":"%s"}\n' "$TMPROOT/warn-slot1.txt" "$prompt"
+    printf '{"slot":"s2","tool":"cursor","output":"%s","prompt_file":"%s"}\n' "$TMPROOT/warn-slot2.txt" "$prompt"
+} > "$manifest"
+out=$(PATH="$STUB_BIN:$PATH" LARCH_FALLBACK_CLAUDE_WARN_THRESHOLD=1 "$REPO_ROOT/scripts/dispatch-with-waterfall.sh" \
+    --slots-file "$manifest" \
+    --codex-present false \
+    --cursor-present false \
+    --mode description \
+    --timeout 5)
+assert_line "FALLBACK_COUNT=2" "$out"
+grep -Fq "WARN=cost-fallback-exceeded-threshold" <<< "$out" || { echo "FAIL: missing WARN=cost-fallback-exceeded-threshold" >&2; printf '%s\n' "$out" >&2; exit 1; }
+assert_line "DISPATCH_OK=true" "$out"
+
 echo "PASS: test-dispatch-with-waterfall.sh"

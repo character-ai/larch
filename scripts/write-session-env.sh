@@ -61,6 +61,16 @@ if [[ -z "$OUTPUT" || -z "$REPO_UNAVAILABLE" ]]; then
   exit 1
 fi
 
+if [[ -n "$CODEX_PRESENT" && "$CODEX_PRESENT" != "true" && "$CODEX_PRESENT" != "false" ]]; then
+  larch_err "ERROR=Invalid --codex-present: must be true or false"
+  exit 1
+fi
+
+if [[ -n "$CURSOR_PRESENT" && "$CURSOR_PRESENT" != "true" && "$CURSOR_PRESENT" != "false" ]]; then
+  larch_err "ERROR=Invalid --cursor-present: must be true or false"
+  exit 1
+fi
+
 if [[ -n "$TOKEN_SESSION_ID" && ( ${#TOKEN_SESSION_ID} -gt 128 || ! "$TOKEN_SESSION_ID" =~ ^[A-Za-z0-9_.-]+$ ) ]]; then
   larch_err "ERROR=Invalid --token-session-id: must match ^[A-Za-z0-9_.-]{1,128}$"
   exit 1

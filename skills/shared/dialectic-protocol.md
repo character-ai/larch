@@ -18,7 +18,7 @@ This protocol is written in terms of a caller-bound path-prefix placeholder, **`
 
 ## Overview
 
-After `/design` Step 2a.5 runs the thesis/antithesis debater fanout, an eligibility gate classifies each decision's `Disposition` (`voted` | `fallback-to-synthesis` | `bucket-skipped` | `over-cap`). For `voted` decisions, a 3-judge panel (Claude Code Reviewer subagent + Codex + Cursor, with Claude replacements when externals are unhealthy) reads a single ballot containing attribution-stripped defense texts and casts one binary vote per decision. Votes are tallied per-decision with binary thresholds. Resolutions are written to `$DIALECTIC_TMPDIR/dialectic-resolutions.md` with a structured schema parseable by Step 2b and Step 3.5.
+After `/design` Step 2a.5 runs the thesis/antithesis debater fanout, an eligibility gate classifies each decision's `Disposition` (`voted` | `fallback-to-synthesis` | `bucket-skipped` | `over-cap`). For `voted` decisions, a 3-judge panel (Claude Code Reviewer subagent + Codex + Cursor, with Claude waterfall replacements when externals are absent or fail) reads a single ballot containing attribution-stripped defense texts and casts one binary vote per decision. Votes are tallied per-decision with binary thresholds. Resolutions are written to `$DIALECTIC_TMPDIR/dialectic-resolutions.md` with a structured schema parseable by Step 2b and Step 3.5.
 
 ## Disposition Enum
 

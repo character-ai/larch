@@ -30,7 +30,7 @@ Emitted keys:
 - `FINDINGS_FILE`
 - `ACCEPTED_FINDINGS_FILE`
 - `REJECTED_FINDINGS_FILE`
-- `PANEL_MODE=normal|both-down`
+- `PANEL_MODE=waterfall|normal` (`waterfall` is the current value; `normal` may appear on the zero-scope early-exit path)
 - `PANEL_SHAPE=simple|hard`
 - `VOTING_SKIPPED_WARNING=<text>` — emitted only on the 0-judge main-agent-required path; callers should parse and display it as a user-visible warning
 

@@ -85,12 +85,8 @@ while IFS= read -r line || [[ -n "$line" ]]; do
     esac
 done <<< "$waterfall_output"
 
-# shellcheck disable=SC2086
-set -- $all_outputs
-outputs_arr=("$@")
-# shellcheck disable=SC2086
-set -- $all_tools
-tools_arr=("$@")
+read -r -a outputs_arr <<< "$all_outputs"
+read -r -a tools_arr <<< "$all_tools"
 
 VOTER_2_PATH="${outputs_arr[0]:-}"
 VOTER_3_PATH="${outputs_arr[1]:-}"

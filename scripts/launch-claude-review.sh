@@ -84,10 +84,21 @@ fi
 
 ctx_args=()
 allow_root_args=()
-[[ -n "$DIFF_FILE" && -f "$DIFF_FILE" ]] && ctx_args+=(--context-files "$DIFF_FILE") && allow_root_args+=(--allow-root "$(dirname "$DIFF_FILE")")
-[[ -n "$SCOPE_FILES" && -f "$SCOPE_FILES" ]] && ctx_args+=(--context-files "$SCOPE_FILES")
-[[ -n "$PLAN_FILE" && -f "$PLAN_FILE" ]] && ctx_args+=(--context-files "$PLAN_FILE")
-[[ -n "$FEATURE_FILE" && -f "$FEATURE_FILE" ]] && ctx_args+=(--context-files "$FEATURE_FILE")
+seen_allow_roots=""
+append_context_file() {
+    local path="$1" dir
+    [[ -n "$path" && -f "$path" ]] || return 0
+    ctx_args+=(--context-files "$path")
+    dir="$(dirname "$path")"
+    case ":$seen_allow_roots:" in
+        *":$dir:"*) ;;
+        *) allow_root_args+=(--allow-root "$dir"); seen_allow_roots="${seen_allow_roots}:$dir" ;;
+    esac
+}
+append_context_file "$DIFF_FILE"
+append_context_file "$SCOPE_FILES"
+append_context_file "$PLAN_FILE"
+append_context_file "$FEATURE_FILE"
 
 set +e
 "$SCRIPT_DIR/launch-claude-subprocess.sh" \

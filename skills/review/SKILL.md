@@ -32,12 +32,12 @@ Print `> **🔶 /review 1: gather context**`. The inline path is delegated to `r
 <!-- step:2 — Launch Reviewer Panel -->
 ## Step 2 — Launch Reviewer Panel
 
-Print `> **🔶 /review 2: launch reviewers**`. `review-core.sh` calls `dispatch-panel.sh --mode "$MODE" --review-tmpdir "$REVIEW_TMPDIR" --panel hard --codex-available "$codex_available" --cursor-available "$cursor_available" ...`; `PANEL_MODE=both-down` maps to the 0-judge `main-agent-vote-required` handoff rather than an auto-accept shortcut, while `PANEL_SHAPE=simple|hard` names topology.
+Print `> **🔶 /review 2: launch reviewers**`. `review-core.sh` calls `dispatch-panel.sh --mode "$MODE" --review-tmpdir "$REVIEW_TMPDIR" --panel hard --codex-available "$codex_available" --cursor-available "$cursor_available" ...`; `dispatch-panel.sh` routes all slots through a three-phase waterfall (`PANEL_MODE=waterfall`): Phase 1 uses the primary tool, Phase 2 tries the alternate external, Phase 3 falls back to Claude. `DISPATCH_OK=false` means one or more Phase 3 Claude slots failed; `PANEL_SHAPE=simple|hard` names the topology.
 
 <!-- step:3 — Review Cycle -->
 ## Step 3 — Review Cycle
 
-Print `> **🔶 /review 3: review cycle**`. **MANDATORY — READ ENTIRE FILE** before executing Step 3: `${CLAUDE_PLUGIN_ROOT}/skills/review/references/domain-rules.md`. Voting is now run by `${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-code-voters.sh` + `${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/tally-code-votes.sh` inside `review-core.sh`. The 3-judge panel (Claude opus + Codex + Cursor; Claude replacement when an external is unhealthy) votes YES/NO/EXONERATE on every `### FINDING_N:` block every round.
+Print `> **🔶 /review 3: review cycle**`. **MANDATORY — READ ENTIRE FILE** before executing Step 3: `${CLAUDE_PLUGIN_ROOT}/skills/review/references/domain-rules.md`. Voting is now run by `${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-code-voters.sh` + `${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/tally-code-votes.sh` inside `review-core.sh`. The 3-judge panel (Claude + Codex + Cursor; Claude waterfall replacement when an external is absent or fails) votes YES/NO/EXONERATE on every `### FINDING_N:` block every round.
 
 Wrapper loop: set `round_cap=5`; for each round call `review-core.sh --mode <diff|description> --output-dir "$REVIEW_TMPDIR" --session-env-path "$SESSION_ENV_PATH" --codex-available "$codex_available" --cursor-available "$cursor_available" --description-text "$DESCRIPTION_TEXT" --panel hard --run-id "$RUN_ID" --round-num "$round_num"` and parse `REVIEW_CORE_STATUS`, `ACCEPTED_FINDINGS_FILE`, counts, `PANEL_MODE`, `PANEL_SHAPE`, and `VOTING_SKIPPED_WARNING`; if `VOTING_SKIPPED_WARNING` is non-empty, print it as a user-visible warning before proceeding.
 

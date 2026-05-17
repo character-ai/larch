@@ -204,17 +204,8 @@ The model name to pass to Codex's `-m` flag (e.g., `o3`, `o4-mini`).
 
 **When not set:**
 - Codex defaults to `gpt-5.5` (hardcoded in `scripts/agent-model-args.sh`) for all work invocations (reviews, sketches, voting)
-- Presence checks (`check-reviewers.sh`) route through the same `agent-model-args.sh --tool codex` resolver as production launchers (without `--with-effort`), so the check exercises the same model and the same blank/whitespace/`[[:cntrl:]]` rejection rules as production. Presence checks and reviewer launches share the same model resolution; mismatched availability verdicts vs. production launches no longer occur.
+- Presence checks (`check-reviewers.sh`) probe only whether the binary is on `$PATH` (`command -v codex`); model argv validation happens at actual launch time inside `scripts/launch-review.sh` and `scripts/run-external-agent.sh`.
 - If your Codex installation does not support `gpt-5.5`, set this variable to a supported model (e.g., `o3`, `o4-mini`)
-
-**When set:**
-
-**When not set:**
-
-**When set to `1`:**
-
-**When unset or set to any other value:**
-  applies only to the reviewer launcher.
 
 ### `LARCH_CODEX_EFFORT`
 

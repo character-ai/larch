@@ -24,6 +24,7 @@ SCOPE_FILES=""
 DESCRIPTION_TEXT=""
 TIMEOUT="1800"
 FALLBACK_COUNTER_FILE=""
+COMPETITION_NOTICE=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -39,6 +40,7 @@ while [[ $# -gt 0 ]]; do
         --description-text) DESCRIPTION_TEXT="${2:?--description-text requires a value}"; shift 2 ;;
         --timeout) TIMEOUT="${2:?--timeout requires a value}"; shift 2 ;;
         --fallback-counter-file) FALLBACK_COUNTER_FILE="${2:?--fallback-counter-file requires a value}"; shift 2 ;;
+        --competition-notice) COMPETITION_NOTICE="${2:?--competition-notice requires a value}"; shift 2 ;;
         --help) usage; exit 0 ;;
         *) larch_err "dispatch-with-waterfall.sh: unknown option: $1"; usage; exit 2 ;;
     esac
@@ -142,10 +144,12 @@ launch_slot() {
     else
         (
             set +e
+            competition_args=()
+            [[ -n "$COMPETITION_NOTICE" ]] && competition_args+=(--competition-notice "$COMPETITION_NOTICE")
             if [[ -n "$prompt_file" ]]; then
-                "$SCRIPT_DIR/launch-review.sh" --tool "$tool" --output "$output" --prompt-file "$prompt_file" --mode "$MODE" --timeout "$TIMEOUT" --timing-task-kind "$timing" "${common_args[@]+"${common_args[@]}"}"
+                "$SCRIPT_DIR/launch-review.sh" --tool "$tool" --output "$output" --prompt-file "$prompt_file" --mode "$MODE" --timeout "$TIMEOUT" --timing-task-kind "$timing" "${common_args[@]+"${common_args[@]}"}" "${competition_args[@]+"${competition_args[@]}"}"
             else
-                "$SCRIPT_DIR/launch-review.sh" --tool "$tool" --output "$output" --agent-file "$agent" --mode "$MODE" --timeout "$TIMEOUT" --timing-task-kind "$timing" "${common_args[@]+"${common_args[@]}"}"
+                "$SCRIPT_DIR/launch-review.sh" --tool "$tool" --output "$output" --agent-file "$agent" --mode "$MODE" --timeout "$TIMEOUT" --timing-task-kind "$timing" "${common_args[@]+"${common_args[@]}"}" "${competition_args[@]+"${competition_args[@]}"}"
             fi
             rc=$?
             [[ -f "${output}.done" ]] || printf '%s\n' "$rc" > "${output}.done"
@@ -171,20 +175,35 @@ collect_phase() {
         wait "$pid" || true
     done
 
-    summary=$("$SCRIPT_DIR/collect-agent-results.sh" --timeout "$TIMEOUT" --summary-only "${phase_outputs[@]}")
+    # Split summary into per-slot blocks by position (same order as argv to
+    # collect-agent-results.sh). This avoids the retry-path mismatch where
+    # collect-agent-results emits REVIEWER_FILE=<orig>-retry.txt but we
+    # search for REVIEWER_FILE=<orig>.
+    summary_blocks=()
+    current_block=""
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        if [[ -z "$line" ]]; then
+            if [[ -n "$current_block" ]]; then
+                summary_blocks+=("$current_block")
+                current_block=""
+            fi
+        else
+            if [[ -n "$current_block" ]]; then
+                current_block="${current_block}"$'\n'"${line}"
+            else
+                current_block="$line"
+            fi
+        fi
+    done <<< "$("$SCRIPT_DIR/collect-agent-results.sh" --timeout "$TIMEOUT" --summary-only "${phase_outputs[@]}")"
+    [[ -n "$current_block" ]] && summary_blocks+=("$current_block")
+
     for i in "${!phase_outputs[@]}"; do
         idx="${phase_indices[$i]}"
         output="${phase_outputs[$i]}"
         tool="${phase_tools[$i]}"
         status=""
         rf=""
-        block=$(printf '%s\n' "$summary" | awk -v target="$output" '
-            BEGIN { RS=""; FS="\n" }
-            {
-                found=0
-                for (i=1; i<=NF; i++) if ($i == "REVIEWER_FILE=" target) found=1
-                if (found) { print; exit }
-            }')
+        block="${summary_blocks[$i]:-}"
         while IFS= read -r line || [[ -n "$line" ]]; do
             key="${line%%=*}"
             value="${line#*=}"
