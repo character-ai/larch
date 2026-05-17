@@ -23,6 +23,7 @@ OUTPUT_FILE=""
 VERDICT=""
 RETRY_COUNT=""
 REDACT=false
+STATUS_LABEL="failed"
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -52,6 +53,9 @@ while [ $# -gt 0 ]; do
             RETRY_COUNT=$2; shift 2 ;;
         --redact)
             REDACT=true; shift ;;
+        --status-label)
+            [ $# -ge 2 ] || fail_usage "--status-label requires a value"
+            STATUS_LABEL=$2; shift 2 ;;
         *)
             fail_usage "unknown flag: $1" ;;
     esac
@@ -79,6 +83,10 @@ esac
 
 case "$VERDICT" in
     *$'\n'*|*$'\r'*) fail_usage "--verdict must be a single line" ;;
+esac
+
+case "$STATUS_LABEL" in
+    ""|*$'\n'*|*$'\r'*) fail_usage "--status-label must be a single line" ;;
 esac
 
 if [ ! -f "$OUTPUT_FILE" ]; then
@@ -129,7 +137,7 @@ if [ -n "$RETRY_COUNT" ]; then
 fi
 
 {
-    printf -- '- **Step %s — %s failed (exit %s%s)**:\n' "$SITE" "$TOOL_LABEL" "$EXIT_CODE" "$header_suffix"
+    printf -- '- **Step %s — %s %s (exit %s%s)**:\n' "$SITE" "$TOOL_LABEL" "$STATUS_LABEL" "$EXIT_CODE" "$header_suffix"
     printf '  ```\n'
     cat "$content_file"
     if [ -s "$content_file" ] && [ "$(tail -c 1 "$content_file" | tr -d '\n' | wc -c | tr -d ' ')" != "0" ]; then

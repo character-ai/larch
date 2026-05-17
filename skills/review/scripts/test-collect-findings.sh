@@ -71,4 +71,28 @@ if command -v jq >/dev/null 2>&1; then
     grep -Fq 'FINDINGS_COUNT=0' <<< "$out"
 fi
 
+external="$TMP/external-inline-tsv.txt"
+cat > "$external" <<'EOF'
+Read-only: we can't write the TSV sidecar here, so the findings follow inline.
+
+```
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/foo.sh:42	Null pointer not checked	Returns nil on error path	Add nil guard before use
+1	out_of_scope	nit	code-quality	scripts/bar.sh:10	Unused variable x	Dead code	Remove the variable
+```
+EOF
+out=$(WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.01 "$SCRIPT" --external-output-files "$external" --mode diff --timeout 1 --findings-file "$TMP/findings-inline-tsv.md" --oos-file "$TMP/oos-inline-tsv.md" 2>"$TMP/inline-tsv.stderr")
+assert_stdout_cap "$out"
+grep -Fq 'FINDINGS_COUNT=2' <<< "$out"
+grep -Fq 'OOS_COUNT=1' <<< "$out"
+grep -Fq 'correctness: scripts/foo.sh:42' "$TMP/findings-inline-tsv.md"
+grep -Fq 'code-quality: scripts/bar.sh:10' "$TMP/findings-inline-tsv.md"
+grep -Fq '[OUT_OF_SCOPE] code-quality: scripts/bar.sh:10' "$TMP/oos-inline-tsv.md"
+grep -Fq 'recovered inline TSV findings' "$TMP/inline-tsv.stderr"
+grep -Fq 'inline-TSV recovery' "$TMP/execution-issues.md"
+if grep -Fq 'failed (exit 0)' "$TMP/execution-issues.md"; then
+    echo "FAIL: inline TSV recovery logged as failed exit 0" >&2
+    exit 1
+fi
+
 echo "All assertions passed."

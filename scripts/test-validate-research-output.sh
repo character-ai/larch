@@ -267,6 +267,18 @@ F19F="$TMPROOT/case19f-cursor-empty-response.txt"
 printf 'CURSOR_EMPTY_RESPONSE\n' > "$F19F"
 run_case "case 19f: --validation-mode CURSOR_EMPTY_RESPONSE marker" 5 --validation-mode "$F19F"
 
+# --- Case 19g: --validation-mode inline TSV fence passes ---
+F19G="$TMPROOT/case19g-inline-tsv.txt"
+cat > "$F19G" <<'EOF'
+Read-only: cannot write the TSV sidecar, so findings are included inline.
+
+```
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/foo.sh:42	Null pointer not checked	Returns nil on error path	Add nil guard before use
+```
+EOF
+run_case "case 19g: --validation-mode inline TSV fence passes" 0 --validation-mode "$F19G"
+
 # --- Case 20: --validation-mode short cited finding (50 words + file:line) passes (30-word floor) ---
 F20="$TMPROOT/case20-validation-finding.txt"
 make_words 40 "$F20"

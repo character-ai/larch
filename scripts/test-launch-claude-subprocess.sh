@@ -63,6 +63,8 @@ if ! PATH="$BIN:$PATH" "$SCRIPT" \
     fail "--allow-root: extra-root context file rejected (should be accepted)"
 fi
 grep -Fq 'STATUS=OK' "$TMP/extra-stdout" || fail "--allow-root: missing STATUS=OK"
+grep -Fq 'stub reviewer output' "$extra_out" || fail "--allow-root: output not written"
+[[ "$(cat "$extra_out.done")" = "0" ]] || fail "--allow-root: .done exit code missing"
 
 # --allow-root: context file under extra root rejected without the flag
 extra_out2="$TMP/out-extra2.txt"

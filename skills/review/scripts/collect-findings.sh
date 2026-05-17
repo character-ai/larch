@@ -56,13 +56,14 @@ execution_issue_log() {
 }
 
 append_review_failure() {
-    local site="$1" tool="$2" rc="$3" output_file="$4"
+    local site="$1" tool="$2" rc="$3" output_file="$4" status_label="${5:-failed}"
     [[ -x "$PLUGIN_ROOT/scripts/append-tool-failure.sh" ]] || return 0
     "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
         --log "$(execution_issue_log)" \
         --site "$site" \
         --tool "$tool" \
         --exit-code "$rc" \
+        --status-label "$status_label" \
         --category "External Reviewer Issues" \
         --output-file "$output_file" \
         --redact >/dev/null 2>&1 || true
@@ -268,7 +269,21 @@ parse_output_tsv() {
 }
 
 per_tmp=$(mktemp "${TMPDIR:-/tmp}/review-per-file.XXXXXX") || exit 1
-for f in "${EXTERNAL_OUTPUT_FILES[@]+"${EXTERNAL_OUTPUT_FILES[@]}"}" "${CLAUDE_OUTPUT_FILES[@]+"${CLAUDE_OUTPUT_FILES[@]}"}"; do
+for f in "${EXTERNAL_OUTPUT_FILES[@]+"${EXTERNAL_OUTPUT_FILES[@]}"}"; do
+    : > "$per_tmp"
+    parse_output_tsv "$f" "$(basename "$f")" > "$per_tmp"
+    if [[ -s "$per_tmp" ]]; then
+        larch_err "**⚠ Reviewer $(basename "$f"): recovered inline TSV findings (plan-mode prevented sidecar write)**"
+        append_review_failure "review Step 3a tsv-fallback" \
+            "collect-findings.sh inline-TSV recovery $(basename "$f")" \
+            0 "$f" "warning" || true
+    else
+        parse_output "$f" "$(basename "$f")" > "$per_tmp"
+    fi
+    cat "$per_tmp" >> "$tmp"
+done
+
+for f in "${CLAUDE_OUTPUT_FILES[@]+"${CLAUDE_OUTPUT_FILES[@]}"}"; do
     : > "$per_tmp"
     parse_output "$f" "$(basename "$f")" > "$per_tmp"
     if [[ ! -s "$per_tmp" ]]; then
@@ -277,7 +292,7 @@ for f in "${EXTERNAL_OUTPUT_FILES[@]+"${EXTERNAL_OUTPUT_FILES[@]}"}" "${CLAUDE_O
             larch_err "**⚠ Reviewer $(basename "$f"): no prose findings; recovered inline TSV findings (plan-mode prevented sidecar write)**"
             append_review_failure "review Step 3a tsv-fallback" \
                 "collect-findings.sh inline-TSV recovery $(basename "$f")" \
-                0 "$f" || true
+                0 "$f" "warning" || true
         fi
     fi
     cat "$per_tmp" >> "$tmp"

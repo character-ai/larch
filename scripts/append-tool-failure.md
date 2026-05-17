@@ -9,7 +9,7 @@ verbatim.
 ## Interface
 
 ```text
-append-tool-failure.sh --log <path> --site <step-id> --tool <label> --exit-code <N> --category <category> --output-file <path> [--verdict <label>] [--retry-count <N>] [--redact]
+append-tool-failure.sh --log <path> --site <step-id> --tool <label> --exit-code <N> --category <category> --output-file <path> [--status-label <label>] [--verdict <label>] [--retry-count <N>] [--redact]
 ```
 
 Supported categories are `Tool Failures`, `External Reviewer Issues`,
@@ -19,11 +19,16 @@ The helper reads `--output-file` without truncation and wraps the exact
 content in a markdown code fence under a bullet:
 
 ````markdown
-- **Step <site> — <tool> failed (exit <N>[ — <verdict>][ — retries=<N>])**:
+- **Step <site> — <tool> <status-label> (exit <N>[ — <verdict>][ — retries=<N>])**:
   ```
   <captured content>
   ```
 ````
+
+`--status-label` is an optional single-line header verb phrase. It
+defaults to `failed`; callers that are surfacing a recovered-but-notable
+condition can supply labels such as `warning` to avoid contradictory
+`failed (exit 0)` entries.
 
 `--verdict` is an optional single-line classifier supplied by external
 launcher callers. Current launchers use `auth-retries-exhausted`,
@@ -71,9 +76,10 @@ output.
 ## Harness
 
 `scripts/test-append-tool-failure.sh` covers single-line, multi-line,
-large-content, category routing, verdict / retry-count suffixes,
-redaction, missing-input failure, and delegate failure atomicity. It is
-intended to run directly and through the relevant-checks script harness.
+large-content, category routing, custom status labels, verdict /
+retry-count suffixes, redaction, missing-input failure, and delegate
+failure atomicity. It is intended to run directly and through the
+relevant-checks script harness.
 
 ## Edit In Sync
 
