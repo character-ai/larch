@@ -35,7 +35,9 @@ To upgrade larch to the latest version, run the `/upgrade-larch` skill in any Cl
 
 After `/upgrade-larch` finishes, restart Claude Code to apply the new version. The upgrade script prints an installed-version block when `claude plugin list` succeeds; treat it as best-effort confirmation.
 
-`/upgrade-larch` is idempotent: if the currently installed version already matches the latest stable release, it exits immediately with no changes. It also prunes old installed versions after a successful upgrade, keeping only the latest and its immediate predecessor.
+`/upgrade-larch` is idempotent only when `gh` is installed and can resolve the latest stable release: if the currently installed version already matches that stable release, it exits immediately with no changes. If `gh` is unavailable or cannot resolve stable releases, the script warns and upgrades unconditionally, skips stable-version verification, and skips pruning.
+
+When `/upgrade-larch` does verify a stable install successfully, it prunes old installed versions and keeps the verified stable release plus one rollback candidate. That rollback candidate is the previous stable release when GitHub provides it; otherwise the script keeps the newest other cached version.
 
 ## Install for local development (contributors)
 

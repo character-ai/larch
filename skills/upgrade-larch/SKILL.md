@@ -1,10 +1,10 @@
 ---
 name: upgrade-larch
-description: "Use when upgrading the larch plugin to the latest version. Removes and re-adds the marketplace, then reinstalls the plugin to pick up the newest release."
+description: "Use when upgrading the larch plugin to the latest stable version. Removes and re-adds the marketplace, then reinstalls the plugin to pick up the newest stable release."
 allowed-tools: Bash
 ---
 
-Upgrade the larch plugin to the latest version. This skill is for the standard GitHub install (`claude plugin marketplace add character-ai/larch`). Contributors using a local checkout (`claude --plugin-dir .` or `claude plugin marketplace add .`) should `git pull` instead.
+Upgrade the larch plugin to the latest stable version. This skill is for the standard GitHub install (`claude plugin marketplace add character-ai/larch`). Contributors using a local checkout (`claude --plugin-dir .` or `claude plugin marketplace add .`) should `git pull` instead.
 
 ## Flags
 
