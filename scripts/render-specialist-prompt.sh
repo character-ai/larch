@@ -29,6 +29,7 @@ MODE=""
 DESCRIPTION_TEXT=""
 SCOPE_FILES=""
 COMPETITION_NOTICE=false
+COMPETITION_NOTICE_FILE=""
 DIFF_FILE=""
 DIFF_MODE=""
 COMMIT_COUNT=""
@@ -73,6 +74,7 @@ while [[ $# -gt 0 ]]; do
     --description-text) DESCRIPTION_TEXT="$(take_value --description-text "${2:-}")"; shift 2 ;;
     --scope-files) SCOPE_FILES="$(take_value --scope-files "${2:-}")"; shift 2 ;;
     --competition-notice) COMPETITION_NOTICE=true; shift ;;
+    --competition-notice-file) COMPETITION_NOTICE_FILE="${2:?--competition-notice-file requires a value}"; shift 2 ;;
     --diff-file) DIFF_FILE="$(take_value --diff-file "${2:-}")"; shift 2 ;;
     --diff-mode) DIFF_MODE="$(take_value --diff-mode "${2:-}")"; shift 2 ;;
     --commit-count) COMMIT_COUNT="$(take_value --commit-count "${2:-}")"; shift 2 ;;
@@ -118,6 +120,10 @@ if [[ -n "$FEATURE_FILE" && ! -f "$FEATURE_FILE" ]]; then
   larch_err "render-specialist-prompt.sh: --feature-file not found: $FEATURE_FILE"
   exit 2
 fi
+if [[ -n "$COMPETITION_NOTICE_FILE" && ! -f "$COMPETITION_NOTICE_FILE" ]]; then
+  larch_err "render-specialist-prompt.sh: --competition-notice-file not found: $COMPETITION_NOTICE_FILE"
+  exit 2
+fi
 case "$DIFF_MODE" in
   ""|generic|docs-only|test-only|generated-only) ;;
   *)
@@ -153,8 +159,10 @@ if [[ -n "${LARCH_RENDER_CACHE_DIR:-}" ]]; then
   if AGENT_SHA=$(sha256_file "$AGENT_FILE"); then
     _plan_sha=""
     _feature_sha=""
+    _competition_notice_sha=""
     [[ -n "$PLAN_FILE" ]] && _plan_sha=$(sha256_file "$PLAN_FILE" 2>/dev/null || true)
     [[ -n "$FEATURE_FILE" ]] && _feature_sha=$(sha256_file "$FEATURE_FILE" 2>/dev/null || true)
+    [[ -n "$COMPETITION_NOTICE_FILE" ]] && _competition_notice_sha=$(sha256_file "$COMPETITION_NOTICE_FILE" 2>/dev/null || true)
     CACHE_KEY_INPUT=$(
       printf 'agent_sha=%s\n' "$AGENT_SHA"
       printf 'mode=%s\n' "$MODE"
@@ -163,6 +171,7 @@ if [[ -n "${LARCH_RENDER_CACHE_DIR:-}" ]]; then
       printf 'diff_mode=%s\n' "$DIFF_MODE"
       printf 'diff_file=%s\n' "$DIFF_FILE"
       printf 'competition_notice=%s\n' "$COMPETITION_NOTICE"
+      printf 'competition_notice_file_sha=%s\n' "$_competition_notice_sha"
       printf 'commit_count=%s\n' "$COMMIT_COUNT"
       printf 'plan_file_sha=%s\n' "$_plan_sha"
       printf 'feature_file_sha=%s\n' "$_feature_sha"
@@ -326,6 +335,10 @@ TAGGING_DESCRIPTION
     cat <<'COMPETITION'
 **Competition notice**: Your findings will be voted on by a 3-voter primary panel. A finding accepted by 2+ YES votes earns you +1 point. Findings with exactly 1 YES earn 0 points. Findings with 0 YES but at least 1 EXONERATE earn 0 points (the panel recognized your concern as legitimate). Findings with 0 YES and 0 EXONERATE cost you -1 point. Focus on high-quality, actionable findings. Out-of-scope observations use the same scoring shape: accepted OOS items (2+ YES) earn +1 point and are filed as GitHub issues, neutral or exonerated OOS items score 0, and rejected OOS items cost -1 point.
 COMPETITION
+    if [[ -n "$COMPETITION_NOTICE_FILE" ]]; then
+      printf '\n'
+      cat -- "$COMPETITION_NOTICE_FILE"
+    fi
   fi
 }
 

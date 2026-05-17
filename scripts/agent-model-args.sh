@@ -8,7 +8,7 @@
 #
 # When --with-effort is passed, also emits tool-specific reasoning-effort flags.
 # The --with-effort flag is an opt-in gate: real reviewer launch call sites
-# pass it; lightweight probe callers (e.g., check-reviewers.sh health probes,
+# pass it; lightweight probe callers (e.g., check-reviewers.sh presence checks,
 # run-negotiation-round.sh) do NOT pass it, preserving the original probe
 # semantics regardless of env var settings.
 #
@@ -33,7 +33,7 @@
 # via scripts/cursor-wrap-prompt.sh, which prepends " /max-mode on. Prompt: ".
 # Every substantive Cursor call site MUST use that wrapper — see its sibling
 # scripts/cursor-wrap-prompt.md for the callers registry. The only exception
-# is scripts/check-reviewers.sh's health probe.
+# is scripts/check-reviewers.sh's presence check.
 #
 # Usage:
 #   agent-model-args.sh --tool cursor|codex [--with-effort] [--default-model MODEL]

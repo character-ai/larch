@@ -56,6 +56,6 @@ SIDECAR_LOG=<path>             # path to run-external-agent.sh chatter
 
 Coverage is split into two slices:
 - Always-on offline launcher contract harness: validates flag errors, missing input handling, env-derived timing fallback, model-args preflight envelopes and retry classification, stdout KV purity, Cursor argv shape, and prompt wrapping with a PATH-stubbed `cursor` binary. This slice must not depend on a real `cursor-agent`.
-- Optional local smoke gated on `CURSOR_HEALTHY=true`: launches a real `cursor agent` against a tiny canned prompt. This is for local development only and is not wired into the Makefile.
+- Optional local smoke gated on `CURSOR_PRESENT=true`: launches a real `cursor agent` against a tiny canned prompt. This is for local development only and is not wired into the Makefile.
 
 **Makefile wiring**: `make test-cursor-implementer` runs the always-on offline slice. `make test-harnesses` includes that target.

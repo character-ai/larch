@@ -12,7 +12,7 @@ Single line on stdout containing the resolved value (no `KEY=` prefix).
 
 ## When to update
 
-Update this file when the session-env grammar changes (e.g., supporting quoted values, multi-line values), when a new key conventionally needs a default, or when the safe-parsing rule evolves. The "no source / eval" rule is load-bearing: any change that introduces shell evaluation against the file MUST update SECURITY.md and the Cross-Skill Health Propagation procedure in SKILL.md Step 0 in the same PR.
+Update this file when the session-env grammar changes (e.g., supporting quoted values, multi-line values), when a new key conventionally needs a default, or when the safe-parsing rule evolves. The "no source / eval" rule is load-bearing: any change that introduces shell evaluation against the file MUST update SECURITY.md and the Cross-Skill Presence Propagation procedure in SKILL.md Step 0 in the same PR.
 
 ## Test harness
 

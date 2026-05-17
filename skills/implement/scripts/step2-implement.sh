@@ -6,7 +6,7 @@
 # to Claude main-agent Edit/Write when BOTH STATUS=claude_fallback AND
 # ORCHESTRATOR_EDIT_AUTHORITY=allowed are present in this script's stdout (the
 # pair invariant: AUTH=allowed iff STATUS=claude_fallback). claude_fallback is
-# emitted when --coder=claude or when --coder=cursor with --cursor-healthy
+# emitted when --coder=claude or when --coder=cursor with --cursor-present
 # unset/false (Cursor falls back to Claude instead of failing closed); every
 # external-implementer outcome (complete / needs_qa / bailed) emits AUTH=forbidden
 # instead. See SKILL.md NEVER #10 and the Step 2 entry preconditions matrix.
@@ -14,14 +14,14 @@
 # Coder flag (preferred):
 #   --coder claude   → STATUS=claude_fallback (main-agent path)
 #   --coder codex    → spawn Codex implementer (default when --coder is omitted)
-#   --coder cursor   → spawn Cursor implementer when --cursor-healthy true;
+#   --coder cursor   → spawn Cursor implementer when --cursor-present true;
 #                      otherwise emits STATUS=claude_fallback so the orchestrator
 #                      runs the main-agent code-edit path.
 #
-# Cursor health flag:
-#   --cursor-healthy true   → permit --coder cursor to launch Cursor
-#   --cursor-healthy false  → --coder cursor falls back to claude_fallback
-#   --cursor-healthy ""     → treated as false (falls back to claude_fallback)
+# Cursor presence flag:
+#   --cursor-present true   → permit --coder cursor to launch Cursor
+#   --cursor-present false  → --coder cursor falls back to claude_fallback
+#   --cursor-present ""     → treated as false (falls back to claude_fallback)
 #
 # Legacy flag (deprecated, accepted for one release):
 #   --codex-available true   → maps to --coder codex (stderr deprecation warning)
@@ -76,7 +76,7 @@ FEATURE_FILE=""
 AUTO_MODE=""
 CODER=""
 CODEX_AVAILABLE=""
-CURSOR_HEALTHY_ARG=""
+CURSOR_PRESENT_ARG=""
 ANSWERS_FILE=""
 WORKFLOW_PATH=""
 
@@ -88,7 +88,7 @@ while [[ $# -gt 0 ]]; do
         --auto-mode)         AUTO_MODE="${2:?--auto-mode requires a value}"; shift 2 ;;
         --coder)             CODER="${2:?--coder requires a value}"; shift 2 ;;
         --codex-available)   CODEX_AVAILABLE="${2:?--codex-available requires a value}"; shift 2 ;;
-        --cursor-healthy)    CURSOR_HEALTHY_ARG="${2-}"; shift 2 ;;
+        --cursor-present)    CURSOR_PRESENT_ARG="${2-}"; shift 2 ;;
         --answers)           ANSWERS_FILE="${2:?--answers requires a value}"; shift 2 ;;
         --workflow)          WORKFLOW_PATH="${2:?--workflow requires a value}"; shift 2 ;;
         *) larch_err "step2-implement.sh: unknown flag: $1"; exit 2 ;;
@@ -179,21 +179,21 @@ if [[ "$CODER" == "claude" ]]; then
 fi
 
 # Run after the `claude` early-return so claude path is not affected by
-# --cursor-healthy noise. Empty is normalized to false.
-if [[ -n "$CURSOR_HEALTHY_ARG" ]]; then
-    case "$CURSOR_HEALTHY_ARG" in
+# --cursor-present noise. Empty is normalized to false.
+if [[ -n "$CURSOR_PRESENT_ARG" ]]; then
+    case "$CURSOR_PRESENT_ARG" in
         true|false) ;;
-        *) larch_err "step2-implement.sh: --cursor-healthy must be 'true', 'false', or empty, got: $CURSOR_HEALTHY_ARG"; exit 2 ;;
+        *) larch_err "step2-implement.sh: --cursor-present must be 'true', 'false', or empty, got: $CURSOR_PRESENT_ARG"; exit 2 ;;
     esac
 fi
-[[ -z "$CURSOR_HEALTHY_ARG" ]] && CURSOR_HEALTHY_ARG="false"
+[[ -z "$CURSOR_PRESENT_ARG" ]] && CURSOR_PRESENT_ARG="false"
 
-# Cursor health gate (fall back to claude). Runs before REPO_ROOT resolution
-# so that --coder=cursor with --cursor-healthy=false falls back cleanly even
+# Cursor presence gate (fall back to claude). Runs before REPO_ROOT resolution
+# so that --coder=cursor with --cursor-present=false falls back cleanly even
 # from outside a git work-tree, mirroring the --coder=claude early-return
 # above. The gate runs only on the cursor path; codex/claude are unaffected
-# by the value of --cursor-healthy.
-if [[ "$CODER" == "cursor" && "$CURSOR_HEALTHY_ARG" != "true" ]]; then
+# by the value of --cursor-present.
+if [[ "$CODER" == "cursor" && "$CURSOR_PRESENT_ARG" != "true" ]]; then
     emit_kv STATUS claude_fallback
     emit_kv ORCHESTRATOR_EDIT_AUTHORITY allowed
     exit 0

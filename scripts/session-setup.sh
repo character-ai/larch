@@ -2,12 +2,12 @@
 # session-setup.sh — Shared session setup for all skills.
 #
 # Consolidates the common Step 0 operations: preflight, temp dir creation,
-# repo name derivation, and reviewer health probe.
+# repo name derivation, and reviewer binary presence detection.
 #
 # Usage:
 #   session-setup.sh --prefix <name> [--skip-preflight] [--skip-branch-check] \
 #     [--skip-repo-check] [--check-reviewers] \
-#     [--skip-codex-probe] [--skip-cursor-probe] [--write-health <path>] \
+#     [--skip-codex-probe] [--skip-cursor-probe] \
 #     [--write-session-env <path>] [--caller-env <path>]
 #
 # Flags:
@@ -19,14 +19,13 @@
 #                          do today). Continuation-from-feature-branch flows still
 #                          reject dirty trees by design; pre-stash any WIP first.
 #   --skip-repo-check     Skip repo name derivation entirely
-#   --check-reviewers     Run check-reviewers.sh --probe and emit availability/health keys
-#   --skip-codex-probe    Forwarded to check-reviewers.sh (skip Codex health probe)
-#   --skip-cursor-probe   Forwarded to check-reviewers.sh (skip Cursor health probe)
-#   --write-health <path> Write CODEX_HEALTHY/CURSOR_HEALTHY to file (cross-skill propagation)
+#   --check-reviewers     Run check-reviewers.sh and emit presence/availability keys
+#   --skip-codex-probe    Forwarded to check-reviewers.sh (skip Codex presence check)
+#   --skip-cursor-probe   Forwarded to check-reviewers.sh (skip Cursor presence check)
 #   --write-session-env <path>  Write full session-env file via write-session-env.sh
 #   --caller-env <path>   Path to KEY=value file with already-discovered values.
 #                          Recognized keys: REPO, REPO_UNAVAILABLE,
-#                          CODEX_HEALTHY, CURSOR_HEALTHY,
+#                          CODEX_PRESENT, CURSOR_PRESENT, CODEX_AVAILABLE, CURSOR_AVAILABLE,
 #                          LARCH_TOKEN_SESSION_ID, LARCH_CLAUDE_SOURCE_FILE,
 #                          LARCH_TIMING_LEDGER, PREV_IMPLEMENT_TMPDIR.
 #                          If a key is present and non-empty, the script skips re-deriving it.
@@ -39,16 +38,13 @@
 #   LARCH_RENDER_CACHE_DIR=<path> Always output (session-scoped renderer cache)
 #   REPO=<owner/repo>           Output unless --skip-repo-check
 #   REPO_UNAVAILABLE=true|false Output unless --skip-repo-check
-#   CODEX_AVAILABLE=true|false  Output when --check-reviewers
-#   CURSOR_AVAILABLE=true|false Output when --check-reviewers
-#   CODEX_HEALTHY=true|false    Output when --check-reviewers, or passthrough from --caller-env
-#   CURSOR_HEALTHY=true|false   Output when --check-reviewers, or passthrough from --caller-env
+#   CODEX_PRESENT=true|false    Output when --check-reviewers, or passthrough from --caller-env
+#   CURSOR_PRESENT=true|false   Output when --check-reviewers, or passthrough from --caller-env
+#   CODEX_AVAILABLE=true|false  Backward-compatible alias for CODEX_PRESENT
+#   CURSOR_AVAILABLE=true|false Backward-compatible alias for CURSOR_PRESENT
 #   LARCH_TOKEN_SESSION_ID=<id> Output when passthrough from --caller-env, in both probe and passthrough branches
 #   LARCH_CLAUDE_SOURCE_FILE=<path> Output when passthrough from --caller-env, in both probe and passthrough branches
 #   LARCH_TIMING_LEDGER is forwarded to write-session-env.sh only when supplied via --caller-env; it is intentionally NOT echoed on stdout.
-#   CODEX_PROBE_ERROR=<reason>  Output when --check-reviewers and CODEX_HEALTHY=false (explains why)
-#   CURSOR_PROBE_ERROR=<reason> Output when --check-reviewers and CURSOR_HEALTHY=false (explains why)
-#   WAIT_INFRA_ERROR=<reason>   Output when reviewer health probing could not classify tool health
 #
 # On preflight failure, outputs PREFLIGHT_ERROR=<message> and exits non-zero.
 #
@@ -71,7 +67,6 @@ SKIP_REPO_CHECK=false
 CHECK_REVIEWERS=false
 SKIP_CODEX_PROBE=false
 SKIP_CURSOR_PROBE=false
-WRITE_HEALTH=""
 WRITE_SESSION_ENV=""
 CALLER_ENV=""
 
@@ -92,9 +87,6 @@ while [[ $# -gt 0 ]]; do
             SKIP_CODEX_PROBE=true; shift ;;
         --skip-cursor-probe)
             SKIP_CURSOR_PROBE=true; shift ;;
-        --write-health)
-            [[ $# -ge 2 ]] || { larch_err "session-setup.sh: --write-health requires a path"; exit 4; }
-            WRITE_HEALTH="$2"; shift 2 ;;
         --write-session-env)
             [[ $# -ge 2 ]] || { larch_err "session-setup.sh: --write-session-env requires a path"; exit 4; }
             WRITE_SESSION_ENV="$2"; shift 2 ;;
@@ -116,8 +108,8 @@ fi
 # Parse line-by-line; do NOT source. Only recognized keys with non-empty values are used.
 CALLER_REPO=""
 CALLER_REPO_UNAVAILABLE=""
-CALLER_CODEX_HEALTHY=""
-CALLER_CURSOR_HEALTHY=""
+CALLER_CODEX_PRESENT=""
+CALLER_CURSOR_PRESENT=""
 CALLER_TOKEN_SESSION_ID=""
 CALLER_CLAUDE_SOURCE_FILE=""
 CALLER_TIMING_LEDGER=""
@@ -139,8 +131,8 @@ if [[ -n "$CALLER_ENV" && -f "$CALLER_ENV" ]]; then
         case "$key" in
             REPO)              CALLER_REPO="$value" ;;
             REPO_UNAVAILABLE)  CALLER_REPO_UNAVAILABLE="$value" ;;
-            CODEX_HEALTHY)     CALLER_CODEX_HEALTHY="$value" ;;
-            CURSOR_HEALTHY)    CALLER_CURSOR_HEALTHY="$value" ;;
+            CODEX_PRESENT|CODEX_AVAILABLE)     CALLER_CODEX_PRESENT="$value" ;;
+            CURSOR_PRESENT|CURSOR_AVAILABLE)    CALLER_CURSOR_PRESENT="$value" ;;
             LARCH_TOKEN_SESSION_ID) CALLER_TOKEN_SESSION_ID="$value" ;;
             LARCH_CLAUDE_SOURCE_FILE) CALLER_CLAUDE_SOURCE_FILE="$value" ;;
             LARCH_TIMING_LEDGER) CALLER_TIMING_LEDGER="$value" ;;
@@ -316,18 +308,18 @@ if [[ "$SKIP_REPO_CHECK" == "false" ]]; then
     fi
 fi
 
-# --- 4. Reviewer health: either probe (--check-reviewers) or passthrough from caller-env ---
+# --- 4. Reviewer presence: either check (--check-reviewers) or passthrough from caller-env ---
 if [[ "$CHECK_REVIEWERS" == "true" ]]; then
-    # Auto-set skip-probe flags from caller-env health values.
-    # Skip whenever caller already provided a value (true or false); probe only when empty.
-    if [[ -n "$CALLER_CODEX_HEALTHY" ]]; then
+    # Auto-set skip flags from caller-env presence values.
+    # Skip whenever caller already provided a value (true or false); check only when empty.
+    if [[ -n "$CALLER_CODEX_PRESENT" ]]; then
         SKIP_CODEX_PROBE=true
     fi
-    if [[ -n "$CALLER_CURSOR_HEALTHY" ]]; then
+    if [[ -n "$CALLER_CURSOR_PRESENT" ]]; then
         SKIP_CURSOR_PROBE=true
     fi
     # Build check-reviewers.sh arguments
-    CR_ARGS=(--probe)
+    CR_ARGS=()
     if [[ "$SKIP_CODEX_PROBE" == "true" ]]; then
         CR_ARGS+=(--skip-codex-probe)
     fi
@@ -336,16 +328,13 @@ if [[ "$CHECK_REVIEWERS" == "true" ]]; then
     fi
 
     # Run check-reviewers.sh; capture output, guard against non-zero exit
-    REVIEWER_OUTPUT=$("$SCRIPT_DIR/check-reviewers.sh" "${CR_ARGS[@]}" 2>&1) || true
+    REVIEWER_OUTPUT=$("$SCRIPT_DIR/check-reviewers.sh" ${CR_ARGS[@]+"${CR_ARGS[@]}"} 2>&1) || true
 
     # Parse and emit reviewer output
     PROBED_CODEX_AVAILABLE=""
     PROBED_CURSOR_AVAILABLE=""
-    PROBED_CODEX_HEALTHY=""
-    PROBED_CURSOR_HEALTHY=""
-    PROBED_CODEX_PROBE_ERROR=""
-    PROBED_CURSOR_PROBE_ERROR=""
-    PROBED_WAIT_INFRA_ERROR=""
+    PROBED_CODEX_PRESENT=""
+    PROBED_CURSOR_PRESENT=""
     # Explicit parameter-expansion split on first `=` for self-documenting
     # parsing (post-review parity with caller-env loop above).
     while IFS= read -r line || [[ -n "$line" ]]; do
@@ -355,79 +344,42 @@ if [[ "$CHECK_REVIEWERS" == "true" ]]; then
         value="${line#*=}"
         [[ -z "$key" ]] && continue
         case "$key" in
+            CODEX_PRESENT)     PROBED_CODEX_PRESENT="$value" ;;
+            CURSOR_PRESENT)    PROBED_CURSOR_PRESENT="$value" ;;
             CODEX_AVAILABLE)   PROBED_CODEX_AVAILABLE="$value" ;;
             CURSOR_AVAILABLE)  PROBED_CURSOR_AVAILABLE="$value" ;;
-            CODEX_HEALTHY)     PROBED_CODEX_HEALTHY="$value" ;;
-            CURSOR_HEALTHY)    PROBED_CURSOR_HEALTHY="$value" ;;
-            CODEX_PROBE_ERROR) PROBED_CODEX_PROBE_ERROR="$value" ;;
-            CURSOR_PROBE_ERROR) PROBED_CURSOR_PROBE_ERROR="$value" ;;
-            WAIT_INFRA_ERROR) PROBED_WAIT_INFRA_ERROR="$value" ;;
         esac
     done <<< "$REVIEWER_OUTPUT"
 
-    # When a probe was skipped because the caller provided a known health value,
+    # When a check was skipped because the caller provided a known presence value,
     # override check-reviewers.sh's initial 'false' with the caller's value so
     # the skip is transparent to downstream consumers.
-    if [[ "$SKIP_CODEX_PROBE" == "true" && -n "$CALLER_CODEX_HEALTHY" ]]; then
-        PROBED_CODEX_HEALTHY="$CALLER_CODEX_HEALTHY"
+    if [[ "$SKIP_CODEX_PROBE" == "true" && -n "$CALLER_CODEX_PRESENT" ]]; then
+        PROBED_CODEX_PRESENT="$CALLER_CODEX_PRESENT"
+        PROBED_CODEX_AVAILABLE="$CALLER_CODEX_PRESENT"
     fi
-    if [[ "$SKIP_CURSOR_PROBE" == "true" && -n "$CALLER_CURSOR_HEALTHY" ]]; then
-        PROBED_CURSOR_HEALTHY="$CALLER_CURSOR_HEALTHY"
+    if [[ "$SKIP_CURSOR_PROBE" == "true" && -n "$CALLER_CURSOR_PRESENT" ]]; then
+        PROBED_CURSOR_PRESENT="$CALLER_CURSOR_PRESENT"
+        PROBED_CURSOR_AVAILABLE="$CALLER_CURSOR_PRESENT"
     fi
 
+    [[ -n "$PROBED_CODEX_PRESENT" ]] && emit_kv CODEX_PRESENT "$PROBED_CODEX_PRESENT"
+    [[ -n "$PROBED_CURSOR_PRESENT" ]] && emit_kv CURSOR_PRESENT "$PROBED_CURSOR_PRESENT"
     [[ -n "$PROBED_CODEX_AVAILABLE" ]] && emit_kv CODEX_AVAILABLE "$PROBED_CODEX_AVAILABLE"
     [[ -n "$PROBED_CURSOR_AVAILABLE" ]] && emit_kv CURSOR_AVAILABLE "$PROBED_CURSOR_AVAILABLE"
-    [[ -n "$PROBED_CODEX_HEALTHY" ]] && emit_kv CODEX_HEALTHY "$PROBED_CODEX_HEALTHY"
-    [[ -n "$PROBED_CURSOR_HEALTHY" ]] && emit_kv CURSOR_HEALTHY "$PROBED_CURSOR_HEALTHY"
-    [[ -n "$PROBED_CODEX_PROBE_ERROR" ]] && emit_kv CODEX_PROBE_ERROR "$PROBED_CODEX_PROBE_ERROR"
-    [[ -n "$PROBED_CURSOR_PROBE_ERROR" ]] && emit_kv CURSOR_PROBE_ERROR "$PROBED_CURSOR_PROBE_ERROR"
-    [[ -n "$PROBED_WAIT_INFRA_ERROR" ]] && emit_kv WAIT_INFRA_ERROR "$PROBED_WAIT_INFRA_ERROR"
-    # Emit prominent banners to stderr for failed health checks (must be here,
-    # not in check-reviewers.sh, because session-setup captures its stdout+stderr
-    # via 2>&1 — banners emitted there would be swallowed).
-    if [[ -n "$PROBED_WAIT_INFRA_ERROR" ]]; then
-        larch_err "═══════════════════════════════════════════════════════════"
-        larch_err "  ⚠  PROBE INFRASTRUCTURE ERROR — wait-for-reviewers.sh failed"
-        larch_err "     Cause: $PROBED_WAIT_INFRA_ERROR"
-        larch_err "     Probe could not classify tool health; available tools marked unhealthy for fail-closed gating."
-        larch_err "═══════════════════════════════════════════════════════════"
-    else
-        if [[ "$PROBED_CODEX_AVAILABLE" == "true" && "$PROBED_CODEX_HEALTHY" == "false" \
-          && "$SKIP_CODEX_PROBE" == "false" ]]; then
-        larch_err "═══════════════════════════════════════════════════════════"
-        larch_err "  ⚠  CODEX HEALTH CHECK FAILED — not responding"
-        if [[ -n "$PROBED_CODEX_PROBE_ERROR" ]]; then
-            larch_err "     Cause: $PROBED_CODEX_PROBE_ERROR"
-        else
-            larch_err "     Codex binary found but health probe timed out or errored."
-        fi
-        larch_err "     Will use Claude replacement for this session."
-        larch_err "═══════════════════════════════════════════════════════════"
-        fi
-        if [[ "$PROBED_CURSOR_AVAILABLE" == "true" && "$PROBED_CURSOR_HEALTHY" == "false" \
-          && "$SKIP_CURSOR_PROBE" == "false" ]]; then
-        larch_err "═══════════════════════════════════════════════════════════"
-        larch_err "  ⚠  CURSOR HEALTH CHECK FAILED — not responding"
-        if [[ -n "$PROBED_CURSOR_PROBE_ERROR" ]]; then
-            larch_err "     Cause: $PROBED_CURSOR_PROBE_ERROR"
-        else
-            larch_err "     Cursor binary found but health probe timed out or errored."
-        fi
-        larch_err "     Will use Claude replacement for this session."
-        larch_err "═══════════════════════════════════════════════════════════"
-        fi
-    fi
 
     # Use probed values for downstream sections
-    FINAL_CODEX_HEALTHY="${PROBED_CODEX_HEALTHY:-}"
-    FINAL_CURSOR_HEALTHY="${PROBED_CURSOR_HEALTHY:-}"
+    FINAL_CODEX_PRESENT="${PROBED_CODEX_PRESENT:-${PROBED_CODEX_AVAILABLE:-}}"
+    FINAL_CURSOR_PRESENT="${PROBED_CURSOR_PRESENT:-${PROBED_CURSOR_AVAILABLE:-}}"
 else
     # Passthrough from caller-env (no probe)
-    if [[ -n "$CALLER_CODEX_HEALTHY" ]]; then
-        emit_kv CODEX_HEALTHY "$CALLER_CODEX_HEALTHY"
+    if [[ -n "$CALLER_CODEX_PRESENT" ]]; then
+        emit_kv CODEX_PRESENT "$CALLER_CODEX_PRESENT"
+        emit_kv CODEX_AVAILABLE "$CALLER_CODEX_PRESENT"
     fi
-    if [[ -n "$CALLER_CURSOR_HEALTHY" ]]; then
-        emit_kv CURSOR_HEALTHY "$CALLER_CURSOR_HEALTHY"
+    if [[ -n "$CALLER_CURSOR_PRESENT" ]]; then
+        emit_kv CURSOR_PRESENT "$CALLER_CURSOR_PRESENT"
+        emit_kv CURSOR_AVAILABLE "$CALLER_CURSOR_PRESENT"
     fi
     if [[ -n "$CALLER_TOKEN_SESSION_ID" ]]; then
         emit_kv LARCH_TOKEN_SESSION_ID "$CALLER_TOKEN_SESSION_ID"
@@ -435,8 +387,8 @@ else
     if [[ -n "$CALLER_CLAUDE_SOURCE_FILE" ]]; then
         emit_kv LARCH_CLAUDE_SOURCE_FILE "$CALLER_CLAUDE_SOURCE_FILE"
     fi
-    FINAL_CODEX_HEALTHY="${CALLER_CODEX_HEALTHY:-}"
-    FINAL_CURSOR_HEALTHY="${CALLER_CURSOR_HEALTHY:-}"
+    FINAL_CODEX_PRESENT="${CALLER_CODEX_PRESENT:-}"
+    FINAL_CURSOR_PRESENT="${CALLER_CURSOR_PRESENT:-}"
 fi
 
 if [[ "$CHECK_REVIEWERS" == "true" ]]; then
@@ -448,22 +400,8 @@ if [[ "$CHECK_REVIEWERS" == "true" ]]; then
     fi
 fi
 
-# --- 5. Write health file (if requested) ---
-if [[ -n "$WRITE_HEALTH" && "$WRITE_HEALTH" != "/dev/null" ]]; then
-    HEALTH_TMPFILE=$(mktemp "${WRITE_HEALTH}.tmp.XXXXXX")
-    {
-        # Fail-closed defaults: empty FINAL_*_HEALTHY (e.g., a future refactor
-        # drops the key from check-reviewers.sh probe output, or passthrough
-        # caller-env omits it) emits `false` rather than silently re-masking
-        # unhealthy state as `true`. Backstops the #1317 infra-error contract.
-        echo "CODEX_HEALTHY=${FINAL_CODEX_HEALTHY:-false}"
-        echo "CURSOR_HEALTHY=${FINAL_CURSOR_HEALTHY:-false}"
-    } > "$HEALTH_TMPFILE"
-    mv "$HEALTH_TMPFILE" "$WRITE_HEALTH"
-fi
-
-# --- 6. Write session-env file (if requested) ---
-# Runs after the probe so health keys are included.
+# --- 5. Write session-env file (if requested) ---
+# Runs after the check so presence keys are included.
 if [[ -n "$WRITE_SESSION_ENV" ]]; then
     WSE_REPO="${REPO_VALUE:-}"
     WSE_REPO_UNAVAILABLE="${REPO_UNAVAILABLE_VALUE:-false}"
@@ -471,8 +409,8 @@ if [[ -n "$WRITE_SESSION_ENV" ]]; then
     WSE_ARGS=(--output "$WRITE_SESSION_ENV"
               --repo-unavailable "$WSE_REPO_UNAVAILABLE")
     [[ -n "$WSE_REPO" ]] && WSE_ARGS+=(--repo "$WSE_REPO")
-    [[ -n "$FINAL_CODEX_HEALTHY" ]] && WSE_ARGS+=(--codex-healthy "$FINAL_CODEX_HEALTHY")
-    [[ -n "$FINAL_CURSOR_HEALTHY" ]] && WSE_ARGS+=(--cursor-healthy "$FINAL_CURSOR_HEALTHY")
+    [[ -n "$FINAL_CODEX_PRESENT" ]] && WSE_ARGS+=(--codex-present "$FINAL_CODEX_PRESENT")
+    [[ -n "$FINAL_CURSOR_PRESENT" ]] && WSE_ARGS+=(--cursor-present "$FINAL_CURSOR_PRESENT")
     [[ -n "$CALLER_TOKEN_SESSION_ID" ]] && WSE_ARGS+=(--token-session-id "$CALLER_TOKEN_SESSION_ID")
     [[ -n "$CALLER_CLAUDE_SOURCE_FILE" ]] && WSE_ARGS+=(--claude-source-file "$CALLER_CLAUDE_SOURCE_FILE")
     if [[ -n "$CALLER_TIMING_LEDGER" ]]; then

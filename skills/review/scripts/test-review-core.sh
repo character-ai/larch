@@ -192,9 +192,15 @@ mkdir -p "$review_tmpdir"
 printf 'FINDING_1: YES\n' > "$review_tmpdir/claude-vote-output.txt"
 printf 'FINDING_1: YES\n' > "$review_tmpdir/codex-vote-output.txt"
 printf 'FINDING_1: YES\n' > "$review_tmpdir/cursor-vote-output.txt"
-printf 'VOTER_1_PATH=%s/claude-vote-output.txt\nVOTER_1_TOOL=claude\nVOTER_1_STATUS=launched\n' "$review_tmpdir"
-printf 'VOTER_2_PATH=%s/codex-vote-output.txt\nVOTER_2_TOOL=codex\nVOTER_2_STATUS=launched\n' "$review_tmpdir"
-printf 'VOTER_3_PATH=%s/cursor-vote-output.txt\nVOTER_3_TOOL=cursor\nVOTER_3_STATUS=launched\n' "$review_tmpdir"
+if [[ "${TEST_PANEL_MODE:-}" == "both-down" ]]; then
+  printf 'VOTER_1_PATH=%s/claude-vote-output.txt\nVOTER_1_TOOL=claude\nVOTER_1_STATUS=failed\n' "$review_tmpdir"
+  printf 'VOTER_2_PATH=%s/codex-vote-output.txt\nVOTER_2_TOOL=codex\nVOTER_2_STATUS=failed\n' "$review_tmpdir"
+  printf 'VOTER_3_PATH=%s/cursor-vote-output.txt\nVOTER_3_TOOL=cursor\nVOTER_3_STATUS=failed\n' "$review_tmpdir"
+else
+  printf 'VOTER_1_PATH=%s/claude-vote-output.txt\nVOTER_1_TOOL=claude\nVOTER_1_STATUS=launched\n' "$review_tmpdir"
+  printf 'VOTER_2_PATH=%s/codex-vote-output.txt\nVOTER_2_TOOL=codex\nVOTER_2_STATUS=launched\n' "$review_tmpdir"
+  printf 'VOTER_3_PATH=%s/cursor-vote-output.txt\nVOTER_3_TOOL=cursor\nVOTER_3_STATUS=launched\n' "$review_tmpdir"
+fi
 printf 'DISPATCH_OK=true\n'
 STUB
     chmod +x "$TMP"/*.sh

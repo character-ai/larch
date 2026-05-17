@@ -4,13 +4,13 @@
 # Usage:
 #   write-session-env.sh --output <path> --repo <owner/repo> \
 #                        --repo-unavailable <true|false> \
-#                        [--codex-healthy <true|false>] [--cursor-healthy <true|false>] \
+#                        [--codex-present <true|false>] [--cursor-present <true|false>] \
 #                        [--timing-ledger <path>] [--token-session-id <id>] \
 #                        [--claude-source-file <path>] [--prev-implement-tmpdir <path>]
 #
 # Options:
 #   --repo may be empty when --repo-unavailable is true (repo discovery failed).
-#   --codex-healthy/--cursor-healthy are optional (reviewer health state from probe).
+#   --codex-present/--cursor-present are optional (reviewer binary presence from setup).
 #   --timing-ledger is optional (shared timing ledger path for nested skills).
 #   --token-session-id is optional (token ledger session id for nested skills).
 #   --claude-source-file is optional (Claude transcript snapshot for token reports).
@@ -33,8 +33,8 @@ larch_quiet_init
 OUTPUT=""
 REPO=""
 REPO_UNAVAILABLE=""
-CODEX_HEALTHY=""
-CURSOR_HEALTHY=""
+CODEX_PRESENT=""
+CURSOR_PRESENT=""
 TIMING_LEDGER=""
 TOKEN_SESSION_ID=""
 CLAUDE_SOURCE_FILE=""
@@ -46,8 +46,8 @@ while [[ $# -gt 0 ]]; do
     --output)           OUTPUT="$2"; shift 2 ;;
     --repo)             REPO="$2"; shift 2 ;;
     --repo-unavailable) REPO_UNAVAILABLE="$2"; shift 2 ;;
-    --codex-healthy)    CODEX_HEALTHY="$2"; shift 2 ;;
-    --cursor-healthy)   CURSOR_HEALTHY="$2"; shift 2 ;;
+    --codex-present)    CODEX_PRESENT="$2"; shift 2 ;;
+    --cursor-present)   CURSOR_PRESENT="$2"; shift 2 ;;
     --timing-ledger)    TIMING_LEDGER="$2"; shift 2 ;;
     --token-session-id) TOKEN_SESSION_ID="$2"; shift 2 ;;
     --claude-source-file) CLAUDE_SOURCE_FILE="$2"; shift 2 ;;
@@ -58,6 +58,16 @@ done
 
 if [[ -z "$OUTPUT" || -z "$REPO_UNAVAILABLE" ]]; then
   larch_err "ERROR=Missing required arguments: --output, --repo-unavailable"
+  exit 1
+fi
+
+if [[ -n "$CODEX_PRESENT" && "$CODEX_PRESENT" != "true" && "$CODEX_PRESENT" != "false" ]]; then
+  larch_err "ERROR=Invalid --codex-present: must be true or false"
+  exit 1
+fi
+
+if [[ -n "$CURSOR_PRESENT" && "$CURSOR_PRESENT" != "true" && "$CURSOR_PRESENT" != "false" ]]; then
+  larch_err "ERROR=Invalid --cursor-present: must be true or false"
   exit 1
 fi
 
@@ -101,10 +111,12 @@ fi
 # Build the content
 CONTENT="REPO=$REPO
 REPO_UNAVAILABLE=$REPO_UNAVAILABLE"
-[[ -n "$CODEX_HEALTHY" ]] && CONTENT="$CONTENT
-CODEX_HEALTHY=$CODEX_HEALTHY"
-[[ -n "$CURSOR_HEALTHY" ]] && CONTENT="$CONTENT
-CURSOR_HEALTHY=$CURSOR_HEALTHY"
+[[ -n "$CODEX_PRESENT" ]] && CONTENT="$CONTENT
+CODEX_PRESENT=$CODEX_PRESENT
+CODEX_AVAILABLE=$CODEX_PRESENT"
+[[ -n "$CURSOR_PRESENT" ]] && CONTENT="$CONTENT
+CURSOR_PRESENT=$CURSOR_PRESENT
+CURSOR_AVAILABLE=$CURSOR_PRESENT"
 [[ -n "$TIMING_LEDGER" ]] && CONTENT="$CONTENT
 LARCH_TIMING_LEDGER=$TIMING_LEDGER"
 [[ -n "$TOKEN_SESSION_ID" ]] && CONTENT="$CONTENT

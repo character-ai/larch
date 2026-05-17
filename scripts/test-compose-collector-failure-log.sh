@@ -54,7 +54,7 @@ assert_nonempty_file() {
     fi
 }
 
-RECORD="REVIEWER_FILE=/tmp/foo.txt|TOOL=cursor|STATUS=EMPTY_OUTPUT|EXIT_CODE=0|HEALTHY=false|FAILURE_REASON=exit-0-empty"
+RECORD="REVIEWER_FILE=/tmp/foo.txt|TOOL=cursor|STATUS=EMPTY_OUTPUT|EXIT_CODE=0|FAILURE_REASON=exit-0-empty"
 
 # ── Case 1: happy path — reviewer file + .diag both non-empty ────────────────
 echo "Case 1: happy path"

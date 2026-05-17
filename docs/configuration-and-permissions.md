@@ -186,7 +186,7 @@ Model configuration is also available via plugin `userConfig` — environment va
 The model name to pass to Cursor's `--model` flag (e.g., `gpt-5.4-medium`, `claude-sonnet-4-6`).
 
 **When set:**
-- All Cursor invocations (reviews, sketches, voting, health probes, negotiations, and implement when `--coder=cursor`) use this model
+- All Cursor invocations (reviews, sketches, voting, presence checks, negotiations, and implement when `--coder=cursor`) use this model
 - The model flag is injected by `scripts/agent-model-args.sh` as line-token argv, then consumed through Bash arrays
 
 **When not set:**
@@ -199,22 +199,13 @@ The model name to pass to Cursor's `--model` flag (e.g., `gpt-5.4-medium`, `clau
 The model name to pass to Codex's `-m` flag (e.g., `o3`, `o4-mini`).
 
 **When set:**
-- All Codex invocations (reviews, sketches, voting, health probes, negotiations) use this model
+- All Codex invocations (reviews, sketches, voting, presence checks, negotiations) use this model
 - The model flag is injected by `scripts/agent-model-args.sh` as line-token argv, then consumed through Bash arrays
 
 **When not set:**
 - Codex defaults to `gpt-5.5` (hardcoded in `scripts/agent-model-args.sh`) for all work invocations (reviews, sketches, voting)
-- Health probes (`check-reviewers.sh`) route through the same `agent-model-args.sh --tool codex` resolver as production launchers (without `--with-effort`), so a probe exercises the same model and the same blank/whitespace/`[[:cntrl:]]` rejection rules as production. Probe and reviewer share the same model resolution; mismatched health verdicts vs. production launches no longer occur.
+- Presence checks (`check-reviewers.sh`) probe only whether the binary is on `$PATH` (`command -v codex`); model argv validation happens at actual launch time inside `scripts/launch-review.sh` and `scripts/run-external-agent.sh`.
 - If your Codex installation does not support `gpt-5.5`, set this variable to a supported model (e.g., `o3`, `o4-mini`)
-
-**When set:**
-
-**When not set:**
-
-**When set to `1`:**
-
-**When unset or set to any other value:**
-  applies only to the reviewer launcher.
 
 ### `LARCH_CODEX_EFFORT`
 
@@ -225,7 +216,7 @@ Codex reasoning effort for all Codex launches (reviews, sketches, voting). Accep
 
 **When not set (or set to empty string):**
 - `--with-effort` falls back to the plugin userConfig value (`codex_effort`, default `high`).
-- Setting `LARCH_CODEX_EFFORT=""` explicitly does NOT disable emission; to suppress effort flags entirely, the callers already omit the `--with-effort` flag (e.g., `check-reviewers.sh` health probes do not use max effort regardless of env var setting).
+- Setting `LARCH_CODEX_EFFORT=""` explicitly does NOT disable emission; to suppress effort flags entirely, the callers already omit the `--with-effort` flag (e.g., `check-reviewers.sh` presence checks do not use max effort regardless of env var setting).
 
 **Scope**: Claude and Cursor agents run at their defaults. Only Codex is bumped to `high` by default. This is deliberate — Claude's sonnet default is already well-suited to review work, and Cursor has no dedicated reasoning-effort CLI flag today.
 

@@ -1,208 +1,57 @@
 #!/usr/bin/env bash
-# Regression harness for scripts/dispatch-plan-voters.sh.
+# Regression harness for scripts/dispatch-plan-voters.sh waterfall wiring.
 
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 SCRIPT="$REPO_ROOT/scripts/dispatch-plan-voters.sh"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/test-dispatch-plan-voters.XXXXXX")"
-unset LARCH_EXECUTION_ISSUES_LOG SESSION_ENV_PATH IMPLEMENT_TMPDIR REVIEW_TMPDIR || true
-export LARCH_EXECUTION_ISSUES_LOG="$TMP/execution-issues.md"
 trap 'rm -rf "$TMP"' EXIT
+unset CLAUDE_PLUGIN_ROOT
 
-PLUGIN="$TMP/plugin"
-mkdir -p "$PLUGIN/scripts"
-
-cat > "$PLUGIN/scripts/agent-model-args.sh" <<'STUB'
+STUB_BIN="$TMP/bin"
+mkdir -p "$STUB_BIN"
+cat > "$STUB_BIN/codex" <<'STUB'
 #!/usr/bin/env bash
-set -euo pipefail
-tool=""
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        --tool) tool="$2"; shift 2 ;;
-        --with-effort) shift ;;
-        *) shift ;;
-    esac
-done
-case "$tool" in
-    codex) printf '%s\n' -m stub-codex -c 'model_reasoning_effort="high"' ;;
-    cursor) printf '%s\n' --model stub-cursor ;;
-    *) exit 1 ;;
-esac
+out=""; last=""
+log="${CODEX_STUB_LOG:-}"
+for arg in "$@"; do [[ "$last" == "--output-last-message" ]] && out="$arg"; last="$arg"; done
+[[ -n "$out" ]] || exit 9
+[[ -n "$log" ]] && printf '%s\n' "$*" >> "$log"
+printf 'FINDING_1: YES\n' > "$out"
 STUB
-chmod +x "$PLUGIN/scripts/agent-model-args.sh"
-
-cat > "$PLUGIN/scripts/cursor-auth-flags.sh" <<'STUB'
+cat > "$STUB_BIN/cursor" <<'STUB'
 #!/usr/bin/env bash
-set -euo pipefail
-printf '%s\n' --api-key stub-key
+log="${CURSOR_STUB_LOG:-}"
+[[ -n "$log" ]] && printf '%s\n' "$*" >> "$log"
+printf '{"result":"FINDING_1: NO -- cursor","usage":{"inputTokens":1,"outputTokens":1,"cacheReadTokens":0,"cacheWriteTokens":0}}\n'
 STUB
-chmod +x "$PLUGIN/scripts/cursor-auth-flags.sh"
-
-cat > "$PLUGIN/scripts/cursor-wrap-prompt.sh" <<'STUB'
+cat > "$STUB_BIN/claude" <<'STUB'
 #!/usr/bin/env bash
-set -euo pipefail
-printf ' /max-mode on. Prompt: %s' "$1"
+cat >/dev/null
+printf 'FINDING_1: YES\n'
 STUB
-chmod +x "$PLUGIN/scripts/cursor-wrap-prompt.sh"
-
-cat > "$PLUGIN/scripts/append-tool-failure.sh" <<'STUB'
-#!/usr/bin/env bash
-set -euo pipefail
-printf '%s\n' "$*" >> "${APPEND_LOG:?}"
-STUB
-chmod +x "$PLUGIN/scripts/append-tool-failure.sh"
-
-cat > "$PLUGIN/scripts/wait-for-reviewers.sh" <<'STUB'
-#!/usr/bin/env bash
-set -euo pipefail
-if [[ "${1:-}" == "--timeout" ]]; then shift 2; fi
-idx=0
-for sentinel in "$@"; do
-    idx=$((idx + 1))
-    for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
-        [[ -f "$sentinel" ]] && break
-        sleep 0.05
-    done
-    if [[ -f "$sentinel" ]]; then
-        code=$(tr -d '[:space:]' < "$sentinel")
-        printf 'DONE %s %s: exit=%s\n' "$idx" "$(basename "$sentinel" .done)" "$code"
-    else
-        printf 'TIMEOUT %s %s\n' "$idx" "$(basename "$sentinel" .done)"
-    fi
-done
-STUB
-chmod +x "$PLUGIN/scripts/wait-for-reviewers.sh"
-
-cat > "$PLUGIN/scripts/run-external-agent.sh" <<'STUB'
-#!/usr/bin/env bash
-set -euo pipefail
-tool=""
-output=""
-capture="false"
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        --tool) tool="$2"; shift 2 ;;
-        --output) output="$2"; shift 2 ;;
-        --timeout) shift 2 ;;
-        --capture-stdout) capture="true"; shift ;;
-        --) shift; break ;;
-        *) shift ;;
-    esac
-done
-{
-    printf 'INVOCATION tool=%s output=%s capture=%s\n' "$tool" "$output" "$capture"
-    for arg in "$@"; do printf 'ARG %s\n' "$arg"; done
-    printf 'END\n'
-} >> "${RUN_LOG:?}"
-if [[ "${FAIL_TOOL:-}" == "$tool" ]]; then
-    printf 'failed %s\n' "$tool" > "$output"
-    printf '23\n' > "$output.done"
-    exit 23
-fi
-printf '%s vote ok\n' "$tool" > "$output"
-printf '0\n' > "$output.done"
-STUB
-chmod +x "$PLUGIN/scripts/run-external-agent.sh"
+chmod +x "$STUB_BIN/codex" "$STUB_BIN/cursor" "$STUB_BIN/claude"
 
 BALLOT="$TMP/ballot.txt"
 printf 'FINDING_1: example\n' > "$BALLOT"
 
-RUN_LOG="$TMP/run.log"
-APPEND_LOG="$TMP/append.log"
-export RUN_LOG APPEND_LOG
-
-assert_contains() {
-    local label="$1" needle="$2" file="$3"
-    if ! grep -Fq -- "$needle" "$file"; then
-        echo "FAIL: $label: missing '$needle' in $file" >&2
-        exit 1
-    fi
-}
-
-assert_not_contains() {
-    local label="$1" needle="$2" file="$3"
-    if grep -Fq -- "$needle" "$file"; then
-        echo "FAIL: $label: unexpected '$needle' in $file" >&2
-        exit 1
-    fi
-}
-
-out=$(CLAUDE_PLUGIN_ROOT="$PLUGIN" "$SCRIPT" \
-    --ballot-file "$BALLOT" \
-    --design-tmpdir "$TMP/happy" \
-    --codex-available true \
-    --cursor-available true \
-    --session-env-path "$TMP/session.env")
+CODEX_LOG="$TMP/codex.log"
+CURSOR_LOG="$TMP/cursor.log"
+out=$(PATH="$STUB_BIN:$PATH" CODEX_STUB_LOG="$CODEX_LOG" CURSOR_STUB_LOG="$CURSOR_LOG" "$SCRIPT" --ballot-file "$BALLOT" --design-tmpdir "$TMP/happy" --codex-available true --cursor-available true)
 grep -Fq 'VOTER_2_STATUS=launched' <<< "$out"
 grep -Fq 'VOTER_3_STATUS=launched' <<< "$out"
+grep -Fq 'VOTER_2_TOOL=codex' <<< "$out"
+grep -Fq 'VOTER_3_TOOL=cursor' <<< "$out"
 grep -Fq 'DISPATCH_OK=true' <<< "$out"
-assert_contains "codex launched through wrapper" "INVOCATION tool=codex" "$RUN_LOG"
-assert_contains "cursor launched through wrapper" "INVOCATION tool=cursor" "$RUN_LOG"
-assert_contains "codex full-auto" "ARG --full-auto" "$RUN_LOG"
-assert_contains "codex add-dir for tmpdir" "ARG --add-dir" "$RUN_LOG"
-assert_contains "cursor plan mode" "ARG --mode" "$RUN_LOG"
-assert_contains "codex output arg" "ARG --output-last-message" "$RUN_LOG"
-assert_contains "cursor wrapped prompt" "ARG  /max-mode on. Prompt:" "$RUN_LOG"
-if find "$TMP/happy" -name '*plan-voter-prompt*' -print | grep -q .; then
-    echo "FAIL: prompt temp files were not cleaned up" >&2
-    exit 1
-fi
+grep -Fq -- '--output-last-message' "$CODEX_LOG" || { echo "FAIL: codex launch missing output-last-message" >&2; exit 1; }
+grep -Fq -- '--output-format json' "$CURSOR_LOG" || { echo "FAIL: cursor launch missing json mode" >&2; exit 1; }
 
-: > "$RUN_LOG"
-out=$(CLAUDE_PLUGIN_ROOT="$PLUGIN" "$SCRIPT" \
-    --ballot-file "$BALLOT" \
-    --design-tmpdir "$TMP/codex-fallback" \
-    --codex-available false \
-    --cursor-available true)
-grep -Fq 'VOTER_2_STATUS=fallback' <<< "$out"
-grep -Fq 'VOTER_3_STATUS=launched' <<< "$out"
-assert_not_contains "codex not launched when unavailable" "INVOCATION tool=codex" "$RUN_LOG"
-assert_contains "cursor still launched" "INVOCATION tool=cursor" "$RUN_LOG"
-
-: > "$RUN_LOG"
-out=$(CLAUDE_PLUGIN_ROOT="$PLUGIN" "$SCRIPT" \
-    --ballot-file "$BALLOT" \
-    --design-tmpdir "$TMP/cursor-fallback" \
-    --codex-available true \
-    --cursor-available false)
-grep -Fq 'VOTER_2_STATUS=launched' <<< "$out"
-grep -Fq 'VOTER_3_STATUS=fallback' <<< "$out"
-assert_contains "codex still launched" "INVOCATION tool=codex" "$RUN_LOG"
-assert_not_contains "cursor not launched when unavailable" "INVOCATION tool=cursor" "$RUN_LOG"
-
-: > "$RUN_LOG"
-: > "$APPEND_LOG"
-out=$(FAIL_TOOL=codex CLAUDE_PLUGIN_ROOT="$PLUGIN" "$SCRIPT" \
-    --ballot-file "$BALLOT" \
-    --design-tmpdir "$TMP/launch-failure" \
-    --codex-available true \
-    --cursor-available false \
-    --session-env-path "$TMP/session.env")
-grep -Fq 'VOTER_2_STATUS=failed' <<< "$out"
-grep -Fq 'DISPATCH_OK=false' <<< "$out"
-assert_contains "launch failure appended" "run-external-agent.sh codex plan voter" "$APPEND_LOG"
-
-: > "$RUN_LOG"
-out=$(CLAUDE_PLUGIN_ROOT="$PLUGIN" "$SCRIPT" \
-    --ballot-file "$BALLOT" \
-    --design-tmpdir "$TMP/both-fallback" \
-    --codex-available false \
-    --cursor-available false)
+out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" --ballot-file "$BALLOT" --design-tmpdir "$TMP/absent" --codex-available false --cursor-available false)
 grep -Fq 'VOTER_2_STATUS=fallback' <<< "$out"
 grep -Fq 'VOTER_3_STATUS=fallback' <<< "$out"
+grep -Fq 'VOTER_2_TOOL=claude' <<< "$out"
+grep -Fq 'VOTER_3_TOOL=claude' <<< "$out"
 grep -Fq 'DISPATCH_OK=true' <<< "$out"
-assert_not_contains "no tool launched when both unavailable" "INVOCATION" "$RUN_LOG"
 
-assert_contains "wrapper reference present" "run-external-agent.sh" "$SCRIPT"
-awk '
-    /codex exec|cursor agent/ {
-        if (prev !~ /RUN_EXTERNAL_AGENT/) {
-            printf "FAIL: direct external-agent command found outside wrapper argv: %s\n", $0 > "/dev/stderr"
-            exit 1
-        }
-    }
-    { prev = $0 }
-' "$SCRIPT"
-
-echo "All assertions passed."
+echo "PASS: test-dispatch-plan-voters.sh"

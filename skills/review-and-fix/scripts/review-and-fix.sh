@@ -526,12 +526,12 @@ run_implement_round() {
     fi
 
     if [[ "$CODEX_AVAILABLE" != "true" && "$CODEX_AVAILABLE" != "false" ]]; then
-        codex_healthy=$(session_get CODEX_HEALTHY false)
-        CODEX_AVAILABLE="$codex_healthy"
+        codex_present=$(session_get CODEX_PRESENT false)
+        CODEX_AVAILABLE="$codex_present"
     fi
     if [[ "$CURSOR_AVAILABLE" != "true" && "$CURSOR_AVAILABLE" != "false" ]]; then
-        cursor_healthy=$(session_get CURSOR_HEALTHY false)
-        CURSOR_AVAILABLE="$cursor_healthy"
+        cursor_present=$(session_get CURSOR_PRESENT false)
+        CURSOR_AVAILABLE="$cursor_present"
     fi
 
     round_dir="$IMPLEMENT_TMPDIR/round-${round_num_dec}"

@@ -1,72 +1,40 @@
 # dispatch-code-voters.sh
 
-**Type**: executable script.
+Launches the `/review` 3-judge voting panel through the current waterfall stack.
 
-**Purpose**: Launch the `/review` code-review 3-judge panel (Claude opus + Codex + Cursor). When an external vendor is unhealthy, launch a Claude voter in its place so the panel always has 3 voters. Writes one vote-output file per voter; the orchestrator (`review-core.sh`) then passes the three files to `tally-code-votes.sh`.
+Voter 1 is always Claude and is launched directly through `scripts/launch-claude-review.sh`. Voter 2 and Voter 3 are dispatched as Codex-first and Cursor-first slots through `scripts/dispatch-with-waterfall.sh`, so each external slot can fall through to the alternate external tool and then to Claude when necessary.
 
-This is the script that closes the auto-accept bug — before this change, `tally-votes.sh` read `cursor-votes.txt` and `codex-votes.txt` that nothing wrote, so voting always fell back to accept-all.
+## Inputs
 
-## Args
+- `--ballot-file FILE`: required markdown ballot path.
+- `--review-tmpdir DIR`: required output directory.
+- `--codex-available true|false`: whether Codex is present for Phase 1.
+- `--cursor-available true|false`: whether Cursor is present for Phase 1.
+- `--session-env-path FILE`: optional nested-session context.
+- `--diff-file FILE`: optional diff context for the Claude voter.
+- `--plan-file FILE`: optional plan context for the Claude voter.
 
-| Flag | Type | Required | Description |
-|---|---|---|---|
-| `--ballot-file FILE` | path | yes | Markdown file with `### FINDING_N:` blocks (one per finding). Voters read this from disk; the prompt only carries the path, not the content. |
-| `--review-tmpdir DIR` | path | yes | Output directory for vote-output files, prompt-files, and launch logs. |
-| `--codex-available true\|false` | enum | yes | If `false`, Voter 2 slot is filled by a Claude replacement (Status=`fallback`). |
-| `--cursor-available true\|false` | enum | yes | If `false`, Voter 3 slot is filled by a Claude replacement (Status=`fallback`). |
-| `--session-env-path FILE` | path | no | Forwarded for execution-issue logging. |
-| `--diff-file FILE` | path | no | When supplied, passed to the Claude voter as `--context-files` so the judge has the patch in context. |
-| `--plan-file FILE` | path | no | When supplied, passed to the Claude voter as additional context. |
+## Behavior
 
-## Voter slots
+Voter 1 runs synchronously via `launch-claude-review.sh`. Voter 2 (Codex-first) and Voter 3 (Cursor-first) are dispatched together through `dispatch-with-waterfall.sh`:
 
-| Slot | Tool | Output filename | Notes |
-|---|---|---|---|
-| Voter 1 | Claude opus | `claude-vote-output.txt` | Always launched; primary judge. Sentinel: `claude-vote-output.txt.done`. |
-| Voter 2 | Codex | `codex-vote-output.txt` | When `codex-available=false`, replaced by Claude → `claude-replacement-codex-vote-output.txt`. |
-| Voter 3 | Cursor | `cursor-vote-output.txt` | When `cursor-available=false`, replaced by Claude → `claude-replacement-cursor-vote-output.txt`. |
+- Phase 1: primary external tool (Codex for Voter 2, Cursor for Voter 3) when present.
+- Phase 2: alternate external tool when Phase 1 is absent or fails.
+- Phase 3: Claude replacement when both external phases are absent or fail.
 
-## Output (FD 3 via `emit_kv`)
+The script writes per-slot prompt files, builds a two-slot NDJSON manifest, and reads `ALL_OUTPUT_FILES`, `ALL_OUTPUT_TOOLS`, and `DISPATCH_OK` from the waterfall's KV output. `DISPATCH_OK` is set to `false` when Voter 1 fails or any waterfall slot hard-fails in Phase 3.
 
-| Key | Description |
-|---|---|
-| `VOTER_N_PATH` | Absolute path to vote-output file for slot N (1, 2, 3). |
-| `VOTER_N_TOOL` | `claude`, `codex`, or `cursor`. |
-| `VOTER_N_STATUS` | `launched` (external dispatched successfully), `fallback` (vendor unhealthy → Claude replacement launched), or `failed` (sentinel reported non-zero exit, or output file missing/empty after wait). |
-| `DEGRADED_PANEL_WARNING` | Present when fewer than 3 effective voter outputs are available. Includes effective count, judge list, missing slots, and tier label. |
-| `DISPATCH_OK` | `true` when all three sentinels reported exit=0; `false` on any failure. |
+## Output
 
-## Launch sequence
+- `VOTER_1_PATH`, `VOTER_2_PATH`, `VOTER_3_PATH`: final output path per slot.
+- `VOTER_1_TOOL`, `VOTER_2_TOOL`, `VOTER_3_TOOL`: final tool that produced each slot (`claude`, `codex`, or `cursor`).
+- `VOTER_1_STATUS`, `VOTER_2_STATUS`, `VOTER_3_STATUS`: `launched`, `fallback`, or `failed`.
+- `DEGRADED_PANEL_WARNING`: emitted when fewer than 3 effective judges produced non-empty output.
+- `DISPATCH_OK`: `false` when the direct Claude voter fails or any waterfall slot hard-fails in Phase 3.
 
-1. Build a voter prompt per slot (paths to the ballot file, vote-line schema, EXONERATE proportionality guidance).
-2. Launch all three voters in parallel:
-   - Claude via `launch-claude-subprocess.sh --model claude-opus-4-7`, with `--context-files` set to diff/plan when supplied.
-   - Codex via `run-external-agent.sh --tool codex` with `agent-model-args.sh --with-effort` and `--output-last-message`.
-   - Cursor via `run-external-agent.sh --tool cursor --capture-stdout` with `agent-model-args.sh --with-effort` and `cursor-auth-flags.sh`.
-3. Wait for sentinels via `wait-for-reviewers.sh --timeout 1260`.
-4. For each voter, set `VOTER_N_STATUS=failed` if the sentinel reports non-zero exit OR the vote-output file is missing/empty.
-5. Compute effective judges with the same rule `review-core.sh` uses for tally eligibility: status not `failed` and output file non-empty. Emit a loud degraded-panel warning when the count is below 3.
+`fallback` means the slot finished on Claude after a waterfall fallback. `failed` means the final output path is missing or empty.
 
-## Voter prompt
+## Callers and Harness
 
-Each prompt instructs the judge to read the ballot file from disk and emit one line per finding using the same `FINDING_N:` id from the ballot:
-
-```
-FINDING_N: YES
-FINDING_N: NO -- one-line reason
-FINDING_N: EXONERATE -- one-line reason
-```
-
-`[OUT_OF_SCOPE]` items use the same `FINDING_N:` line shape — voters interpret YES as "worth filing an issue", per voting-protocol.md OOS Vote Semantics.
-
-## Sentinel parity
-
-External agents (Codex, Cursor) emit `<output>.done` sentinels naturally; the Claude launch path writes a `0\n` sentinel explicitly on success (or the rc on failure) so `wait-for-reviewers.sh` polls all three slots uniformly.
-
-## Callers
-
-- `skills/review/scripts/review-core.sh` — invoked after `collect-findings.sh`. The output files become `--voter-files` arguments to `tally-code-votes.sh`.
-
-## Harness
-
-`scripts/test-dispatch-code-voters.sh` — exercises the dispatch logic with the actual external binaries stubbed out via `LAUNCH_CLAUDE_SUBPROCESS` / `RUN_EXTERNAL_AGENT` env-overrides. (Stubbing pattern mirrors `scripts/test-dispatch-plan-voters.sh`.)
+- Caller: `skills/review/scripts/review-core.sh`
+- Harness: `scripts/test-dispatch-code-voters.sh`

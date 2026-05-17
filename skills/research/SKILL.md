@@ -127,20 +127,18 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix claude-research --skip-p
 
 If the script exits non-zero, print the error and abort.
 
-Parse the output for `SESSION_TMPDIR`, `CODEX_AVAILABLE`, `CURSOR_AVAILABLE`, `CODEX_HEALTHY`, `CURSOR_HEALTHY`, `CODEX_PROBE_ERROR`, `CURSOR_PROBE_ERROR`. Set `RESEARCH_TMPDIR` = `SESSION_TMPDIR`.
+Parse the output for `SESSION_TMPDIR`, `CODEX_AVAILABLE`, `CURSOR_AVAILABLE`, `CODEX_PRESENT`, `CURSOR_PRESENT`. Set `RESEARCH_TMPDIR` = `SESSION_TMPDIR`.
 
-Set mental flags `codex_available` and `cursor_available` based on the output, and remember each lane's pre-launch attribution status (one of `ok` / `fallback_binary_missing` / `fallback_probe_failed`):
+Set mental flags `codex_available` and `cursor_available` based on the output, and remember each lane's pre-launch attribution status (one of `ok` / `fallback_binary_missing` / `fallback_presence_failed`):
 
 - If `CODEX_AVAILABLE=false`: `codex_available=false`. Pre-launch status = `fallback_binary_missing` (no reason). Print: `**⚠ Codex not available (binary not found). Proceeding with Claude fallback for Codex lanes.**`
-- Else if `CODEX_HEALTHY=false`: `codex_available=false`. Pre-launch status = `fallback_probe_failed` with reason = `CODEX_PROBE_ERROR` (sanitized). Print: `**⚠ Codex installed but not responding (health check failed: <CODEX_PROBE_ERROR>). Using Claude replacement.**`
+- Else if `CODEX_PRESENT=false`: `codex_available=false`. Pre-launch status = `fallback_presence_failed`. Print: `**⚠ Codex not present for this session. Using Claude replacement.**`
 - Else: `codex_available=true`. Pre-launch status = `ok`.
-- Same logic for Cursor (using `CURSOR_PROBE_ERROR`).
+- Same logic for Cursor.
 
 ### 0b — Initialize lane-status record
 
 Write `$RESEARCH_TMPDIR/lane-status.txt` with the per-angle pre-launch attribution (4 research angles, all Codex-first) plus the 3 validation reviewer slots (Code / Cursor / Codex). The 14-key schema is consumed by `${CLAUDE_PLUGIN_ROOT}/scripts/render-lane-status.sh` at Step 3 to render the final-report header.
-
-Sanitize each `*_PROBE_ERROR` value before writing: strip embedded `=` and `|` characters, collapse whitespace runs to single space, trim, truncate to 80 chars.
 
 The four research lanes use the **Codex pre-launch status** (each lane is Codex-first; the per-lane fallback is Claude `Agent`). The `VALIDATION_CODE_*` slot uses pre-launch status `ok` (Claude code-reviewer subagent has no fallback path); `VALIDATION_CURSOR_*` and `VALIDATION_CODEX_*` use the Cursor/Codex pre-launch statuses respectively.
 
@@ -149,7 +147,7 @@ Write `$RESEARCH_TMPDIR/lane-status.txt` using a quoted-delimiter heredoc (`<<'E
 - `RESEARCH_ARCH_STATUS`, `RESEARCH_EDGE_STATUS`, `RESEARCH_EXT_STATUS`, `RESEARCH_SEC_STATUS` — codex pre-launch status for each lane
 - `RESEARCH_ARCH_REASON`, `RESEARCH_EDGE_REASON`, `RESEARCH_EXT_REASON`, `RESEARCH_SEC_REASON` — sanitized reason or empty
 - `VALIDATION_CODE_STATUS=ok`, `VALIDATION_CODE_REASON=` (always constant)
-- `VALIDATION_CURSOR_STATUS`, `VALIDATION_CURSOR_REASON`, `VALIDATION_CODEX_STATUS`, `VALIDATION_CODEX_REASON` — per pre-launch probe result
+- `VALIDATION_CURSOR_STATUS`, `VALIDATION_CURSOR_REASON`, `VALIDATION_CODEX_STATUS`, `VALIDATION_CODEX_REASON` — per pre-launch presence result
 
 ### 0c — Record Research Context
 

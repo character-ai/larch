@@ -193,8 +193,10 @@ external_outputs=$(kv_get "$dispatch_out" EXTERNAL_OUTPUT_FILES)
 claude_outputs=$(kv_get "$dispatch_out" CLAUDE_OUTPUT_FILES)
 panel_mode=$(kv_get "$dispatch_out" PANEL_MODE)
 panel_shape=$(kv_get "$dispatch_out" PANEL_SHAPE)
-panel_mode="${panel_mode:-normal}"
+dispatch_ok=$(kv_get "$dispatch_out" DISPATCH_OK)
+panel_mode="${panel_mode:-waterfall}"
 panel_shape="${panel_shape:-$PANEL}"
+dispatch_ok="${dispatch_ok:-true}"
 
 collect_out="$REVIEW_TMPDIR/review-core-collect.env"
 collect_args=(--mode "$MODE" --timeout 1860 --findings-file "$REVIEW_TMPDIR/findings.md" --oos-file "$REVIEW_TMPDIR/oos.md")
@@ -225,7 +227,11 @@ collector_results_file="$REVIEW_TMPDIR/collector-results.env"
 threshold_out="$REVIEW_TMPDIR/review-core-threshold.env"
 launched_slots=$(( ${#external_array[@]} + ${#claude_array[@]} ))
 threshold_args=(--collector-results-file "$collector_results_file" --panel "$panel_shape" --launched-slots "$launched_slots")
-"$CHECK_THRESHOLD_SH" "${threshold_args[@]}" > "$threshold_out"
+if [[ "$dispatch_ok" == "false" ]]; then
+    printf 'THRESHOLD_OK=false\nTHRESHOLD_REASON=dispatch-failed\n' > "$threshold_out"
+else
+    "$CHECK_THRESHOLD_SH" "${threshold_args[@]}" > "$threshold_out"
+fi
 threshold_ok=$(kv_get "$threshold_out" THRESHOLD_OK)
 threshold_reason=$(kv_get "$threshold_out" THRESHOLD_REASON)
 if [[ "$threshold_ok" == "false" ]]; then
@@ -268,12 +274,10 @@ if [[ "$findings_count" == "0" ]]; then
 fi
 
 tally_out="$REVIEW_TMPDIR/review-core-tally.env"
-both_down=false
-[[ "$panel_mode" == "both-down" ]] && both_down=true
 
-# Dispatch the 3-judge code-review panel and collect vote-output files. When
-# both externals are down we skip the dispatch entirely and let the empty
-# voter-file set produce the main-agent-required path.
+# Dispatch the 3-judge code-review panel and collect vote-output files.
+# The waterfall ensures all slots have output (Phase 3 Claude fallback);
+# voters always run. Failed voters are treated as abstentions.
 voter_files=()
 voter_1_tool=""
 voter_2_tool=""
@@ -281,33 +285,31 @@ voter_3_tool=""
 voter_1_status=""
 voter_2_status=""
 voter_3_status=""
-if [[ "$both_down" == "false" ]]; then
-    voters_out="$REVIEW_TMPDIR/review-core-voters.env"
-    voter_args=(
-        --ballot-file "$REVIEW_TMPDIR/findings.md"
-        --review-tmpdir "$REVIEW_TMPDIR"
-        --codex-available "$CODEX_AVAILABLE"
-        --cursor-available "$CURSOR_AVAILABLE"
-    )
-    [[ -n "$SESSION_ENV_PATH" ]] && voter_args+=(--session-env-path "$SESSION_ENV_PATH")
-    [[ -n "$DIFF_FILE" ]] && voter_args+=(--diff-file "$DIFF_FILE")
-    [[ -n "$PLAN_FILE" ]] && voter_args+=(--plan-file "$PLAN_FILE")
-    "$DISPATCH_VOTERS_SH" "${voter_args[@]}" > "$voters_out"
-    voter_1_path=$(kv_get "$voters_out" VOTER_1_PATH)
-    voter_2_path=$(kv_get "$voters_out" VOTER_2_PATH)
-    voter_3_path=$(kv_get "$voters_out" VOTER_3_PATH)
-    voter_1_status=$(kv_get "$voters_out" VOTER_1_STATUS)
-    voter_2_status=$(kv_get "$voters_out" VOTER_2_STATUS)
-    voter_3_status=$(kv_get "$voters_out" VOTER_3_STATUS)
-    voter_1_tool=$(kv_get "$voters_out" VOTER_1_TOOL)
-    voter_2_tool=$(kv_get "$voters_out" VOTER_2_TOOL)
-    voter_3_tool=$(kv_get "$voters_out" VOTER_3_TOOL)
-    # Only include voter files whose dispatch succeeded; failed voters are
-    # treated as abstentions by reducing the eligible voter count.
-    [[ "$voter_1_status" != "failed" && -s "$voter_1_path" ]] && voter_files+=("$voter_1_path")
-    [[ "$voter_2_status" != "failed" && -s "$voter_2_path" ]] && voter_files+=("$voter_2_path")
-    [[ "$voter_3_status" != "failed" && -s "$voter_3_path" ]] && voter_files+=("$voter_3_path")
-fi
+voters_out="$REVIEW_TMPDIR/review-core-voters.env"
+voter_args=(
+    --ballot-file "$REVIEW_TMPDIR/findings.md"
+    --review-tmpdir "$REVIEW_TMPDIR"
+    --codex-available "$CODEX_AVAILABLE"
+    --cursor-available "$CURSOR_AVAILABLE"
+)
+[[ -n "$SESSION_ENV_PATH" ]] && voter_args+=(--session-env-path "$SESSION_ENV_PATH")
+[[ -n "$DIFF_FILE" ]] && voter_args+=(--diff-file "$DIFF_FILE")
+[[ -n "$PLAN_FILE" ]] && voter_args+=(--plan-file "$PLAN_FILE")
+"$DISPATCH_VOTERS_SH" "${voter_args[@]}" > "$voters_out"
+voter_1_path=$(kv_get "$voters_out" VOTER_1_PATH)
+voter_2_path=$(kv_get "$voters_out" VOTER_2_PATH)
+voter_3_path=$(kv_get "$voters_out" VOTER_3_PATH)
+voter_1_status=$(kv_get "$voters_out" VOTER_1_STATUS)
+voter_2_status=$(kv_get "$voters_out" VOTER_2_STATUS)
+voter_3_status=$(kv_get "$voters_out" VOTER_3_STATUS)
+voter_1_tool=$(kv_get "$voters_out" VOTER_1_TOOL)
+voter_2_tool=$(kv_get "$voters_out" VOTER_2_TOOL)
+voter_3_tool=$(kv_get "$voters_out" VOTER_3_TOOL)
+# Only include voter files whose dispatch succeeded; failed voters are
+# treated as abstentions by reducing the eligible voter count.
+[[ "$voter_1_status" != "failed" && -s "$voter_1_path" ]] && voter_files+=("$voter_1_path")
+[[ "$voter_2_status" != "failed" && -s "$voter_2_path" ]] && voter_files+=("$voter_2_path")
+[[ "$voter_3_status" != "failed" && -s "$voter_3_path" ]] && voter_files+=("$voter_3_path")
 
 tally_args=(
     --ballot-file "$REVIEW_TMPDIR/findings.md"

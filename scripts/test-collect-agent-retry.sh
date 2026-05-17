@@ -206,36 +206,33 @@ write_meta_with_timeout() {
 run_collector() {
     local shell_path="$1"
     local output="$2"
-    local health="$3"
-    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 "$shell_path" "$COLLECTOR" --timeout 5 --write-health "$health" "$output" 2>"${health}.stderr"
+    local stderr="${3:-$TMPROOT/collector.stderr}"
+    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 "$shell_path" "$COLLECTOR" --timeout 5 "$output" 2>"$stderr"
 }
 
 run_collector_structured() {
     local shell_path="$1"
     local output="$2"
-    local health="$3"
-    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 "$shell_path" "$COLLECTOR" --timeout 5 --write-health "$health" --structured-reviewer-validation "$output" 2>"${health}.stderr"
+    local stderr="${3:-$TMPROOT/collector-structured.stderr}"
+    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 "$shell_path" "$COLLECTOR" --timeout 5 --structured-reviewer-validation "$output" 2>"$stderr"
 }
 
 run_collector_summary_structured() {
     local shell_path="$1"
     local output="$2"
-    local health="$3"
-    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 "$shell_path" "$COLLECTOR" --timeout 5 --write-health "$health" --structured-reviewer-validation --summary-only "$output" 2>"${health}.stderr"
+    local stderr="${3:-$TMPROOT/collector-summary.stderr}"
+    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 "$shell_path" "$COLLECTOR" --timeout 5 --structured-reviewer-validation --summary-only "$output" 2>"$stderr"
 }
 
 assert_fail_closed() {
     local label="$1"
     local output="$2"
     local expected_reason="$3"
-    local health="$TMPROOT/${label}.health"
     local out
-    out=$(run_collector bash "$output" "$health")
+    out=$(run_collector bash "$output" "$TMPROOT/${label}.stderr")
     assert_line "$label status" "STATUS=EMPTY_OUTPUT" "$out"
-    assert_line "$label healthy" "HEALTHY=false" "$out"
     assert_line "$label reason" "FAILURE_REASON=$expected_reason" "$out"
     assert_line "$label exit-code" "EXIT_CODE=99" "$out"
-    assert_line "$label health-file" "CURSOR_HEALTHY=false" "$(cat "$health")"
 }
 
 HELPER="$TMPROOT/retry-helper.sh"
@@ -290,59 +287,55 @@ require_tool base64
 
 # Case A: valid CMD_JSON retries empty output and returns the retry file.
 OUT_A="$TMPROOT/cursor-a.txt"
-HEALTH_A="$TMPROOT/case-a.health"
+STDERR_A="$TMPROOT/case-a.stderr"
 write_empty_candidate "$OUT_A"
 write_meta "$OUT_A" "$(json_array bash "$HELPER" --output "$OUT_A")"
-RESULT_A=$(run_collector bash "$OUT_A" "$HEALTH_A")
+RESULT_A=$(run_collector bash "$OUT_A" "$STDERR_A")
 assert_line "case A reviewer file" "REVIEWER_FILE=${OUT_A%.txt}-retry.txt" "$RESULT_A"
 assert_line "case A status" "STATUS=OK" "$RESULT_A"
-assert_line "case A healthy" "HEALTHY=true" "$RESULT_A"
 
 # Case A2: structured reviewer validation writes a normalized TSV sidecar and
 # emits the STRUCTURED_SIDECAR field before FAILURE_REASON.
 OUT_A2="$TMPROOT/cursor-a2.txt"
-HEALTH_A2="$TMPROOT/case-a2.health"
+STDERR_A2="$TMPROOT/case-a2.stderr"
 {
     printf 'schema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix\n'
     printf '1\tin_scope\tImportant\tcorrectness\tfoo.sh:7\tbad branch\tinput fails\tadd guard\n'
 } > "$OUT_A2"
 printf '0\n' > "${OUT_A2}.done"
-RESULT_A2=$(run_collector_structured bash "$OUT_A2" "$HEALTH_A2")
+RESULT_A2=$(run_collector_structured bash "$OUT_A2" "$STDERR_A2")
 assert_line "case A2 status" "STATUS=OK" "$RESULT_A2"
 assert_line "case A2 structured sidecar field" "STRUCTURED_SIDECAR=${OUT_A2}.tsv" "$RESULT_A2"
-assert_line "case A2 healthy" "HEALTHY=true" "$RESULT_A2"
 assert_line "case A2 sidecar normalized" $'1\tin_scope\timportant\tcorrectness\tfoo.sh:7\tbad branch\tinput fails\tadd guard' "$(cat "${OUT_A2}.tsv")"
 
 # Case A3: structured reviewer validation fails closed when STATUS=OK output
 # has no valid records.
 OUT_A3="$TMPROOT/cursor-a3.txt"
-HEALTH_A3="$TMPROOT/case-a3.health"
+STDERR_A3="$TMPROOT/case-a3.stderr"
 printf 'ordinary prose only\n' > "$OUT_A3"
 printf '0\n' > "${OUT_A3}.done"
-RESULT_A3=$(run_collector_structured bash "$OUT_A3" "$HEALTH_A3")
+RESULT_A3=$(run_collector_structured bash "$OUT_A3" "$STDERR_A3")
 assert_line "case A3 status" "STATUS=NOT_SUBSTANTIVE" "$RESULT_A3"
 assert_line "case A3 structured sidecar empty field" "STRUCTURED_SIDECAR=" "$RESULT_A3"
 assert_line "case A3 reason" "FAILURE_REASON=structured records not found after repair" "$RESULT_A3"
-assert_line "case A3 health-file" "CURSOR_HEALTHY=false" "$(cat "$HEALTH_A3")"
 
-# Case A4: --summary-only preserves status/health fields while suppressing
+# Case A4: --summary-only preserves core status fields while suppressing
 # diagnostic-heavy fields, even when structured validation would normally emit
 # STRUCTURED_SIDECAR and FAILURE_REASON.
 OUT_A4="$TMPROOT/cursor-a4.txt"
-HEALTH_A4="$TMPROOT/case-a4.health"
+STDERR_A4="$TMPROOT/case-a4.stderr"
 {
     printf 'schema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix\n'
     printf '1\tin_scope\tImportant\tcorrectness\tfoo.sh:7\tbad branch\tinput fails\tadd guard\n'
 } > "$OUT_A4"
 printf '0\n' > "${OUT_A4}.done"
-RESULT_A4=$(run_collector_summary_structured bash "$OUT_A4" "$HEALTH_A4")
+RESULT_A4=$(run_collector_summary_structured bash "$OUT_A4" "$STDERR_A4")
 assert_line "case A4 reviewer file" "REVIEWER_FILE=$OUT_A4" "$RESULT_A4"
 assert_line "case A4 status" "STATUS=OK" "$RESULT_A4"
-assert_line "case A4 healthy" "HEALTHY=true" "$RESULT_A4"
 assert_no_line_prefix "case A4 suppresses structured sidecar" "STRUCTURED_SIDECAR=" "$RESULT_A4"
 assert_no_line_prefix "case A4 suppresses failure reason" "FAILURE_REASON=" "$RESULT_A4"
 
-# Case B: malformed JSON fails closed and flips tool health.
+# Case B: malformed JSON fails closed for the reviewer result.
 OUT_B="$TMPROOT/cursor-b.txt"
 write_empty_candidate "$OUT_B"
 write_meta "$OUT_B" "not-valid-json"
@@ -381,8 +374,8 @@ write_empty_candidate "$OUT_C2"
     printf 'CAPTURE_STDOUT_ONLY=false\n'
     printf 'OUTPUT_FILE=%s\n' "$OUT_C2"
 } > "${OUT_C2}.meta"
-HEALTH_C2="$TMPROOT/case-c2.health"
-RESULT_C2=$(run_collector bash "$OUT_C2" "$HEALTH_C2")
+STDERR_C2="$TMPROOT/case-c2.stderr"
+RESULT_C2=$(run_collector bash "$OUT_C2" "$STDERR_C2")
 assert_line "case C2 status" "STATUS=EMPTY_OUTPUT" "$RESULT_C2"
 assert_line "case C2 reason" "FAILURE_REASON=Retry metadata invalid: missing CMD_JSON and TOOL" "$RESULT_C2"
 assert_line "case C2 exit-code" "EXIT_CODE=99" "$RESULT_C2"
@@ -395,20 +388,20 @@ assert_fail_closed "case-d" "$OUT_D" "Retry metadata invalid: malformed CMD_JSON
 
 # Case E: argv elements ending in a newline survive the base64+sentinel path.
 OUT_E="$TMPROOT/cursor-e.txt"
-HEALTH_E="$TMPROOT/case-e.health"
+STDERR_E="$TMPROOT/case-e.stderr"
 write_empty_candidate "$OUT_E"
 TRAILING_NEWLINE_ARG=$'line\n'
 write_meta "$OUT_E" "$(json_array bash "$HELPER" --output "$OUT_E" "$TRAILING_NEWLINE_ARG")"
-RESULT_E=$(EXPECT_TRAILING_NEWLINE=true run_collector bash "$OUT_E" "$HEALTH_E")
+RESULT_E=$(EXPECT_TRAILING_NEWLINE=true run_collector bash "$OUT_E" "$STDERR_E")
 assert_line "case E status" "STATUS=OK" "$RESULT_E"
 
 # Case F: only standalone output argv elements are swapped, not prompt substrings.
 OUT_F="$TMPROOT/cursor-f.txt"
-HEALTH_F="$TMPROOT/case-f.health"
+STDERR_F="$TMPROOT/case-f.stderr"
 RETRY_F="${OUT_F%.txt}-retry.txt"
 write_empty_candidate "$OUT_F"
 write_meta "$OUT_F" "$(json_array bash "$HELPER" --output "$OUT_F" "prompt mentions $OUT_F")"
-RESULT_F=$(EXPECT_PROMPT_UNMUTATED=true ORIGINAL_OUTPUT="$OUT_F" RETRY_OUTPUT_EXPECTED="$RETRY_F" run_collector bash "$OUT_F" "$HEALTH_F")
+RESULT_F=$(EXPECT_PROMPT_UNMUTATED=true ORIGINAL_OUTPUT="$OUT_F" RETRY_OUTPUT_EXPECTED="$RETRY_F" run_collector bash "$OUT_F" "$STDERR_F")
 assert_line "case F status" "STATUS=OK" "$RESULT_F"
 
 # Case G: when the system /bin/bash is vulnerable (<4.4), exercise the retry
@@ -432,10 +425,10 @@ fi
 
 if [[ "$DYNAMIC_VULNERABLE" == "true" ]]; then
     OUT_G="$TMPROOT/cursor-g.txt"
-    HEALTH_G="$TMPROOT/case-g.health"
+    STDERR_G="$TMPROOT/case-g.stderr"
     write_empty_candidate "$OUT_G"
     write_meta "$OUT_G" "$(json_array bash "$HELPER" --output "$OUT_G")"
-    RESULT_G=$(run_collector "$SYSTEM_BASH" "$OUT_G" "$HEALTH_G")
+    RESULT_G=$(run_collector "$SYSTEM_BASH" "$OUT_G" "$STDERR_G")
     assert_line "case G status under $SYSTEM_BASH" "STATUS=OK" "$RESULT_G"
 else
     skipm "case G: bash ${BASH_MAJOR:-unknown}.${BASH_MINOR:-?} at $SYSTEM_BASH (need < 4.4 for dynamic retry portability check)"
@@ -448,12 +441,12 @@ fi
 # overwrite it with "Retry process did not complete (sentinel file missing)".
 OUT_H_BAD="$TMPROOT/cursor-h-bad.txt"
 OUT_H_OK="$TMPROOT/cursor-h-ok.txt"
-HEALTH_H="$TMPROOT/case-h.health"
+STDERR_H="$TMPROOT/case-h.stderr"
 write_empty_candidate "$OUT_H_BAD"
 write_meta "$OUT_H_BAD" "not-valid-json"
 write_empty_candidate "$OUT_H_OK"
 write_meta "$OUT_H_OK" "$(json_array bash "$HELPER" --output "$OUT_H_OK")"
-RESULT_H=$(RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 bash "$COLLECTOR" --timeout 5 --write-health "$HEALTH_H" "$OUT_H_BAD" "$OUT_H_OK" 2>"${HEALTH_H}.stderr")
+RESULT_H=$(RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 bash "$COLLECTOR" --timeout 5 "$OUT_H_BAD" "$OUT_H_OK" 2>"${STDERR_H}.stderr")
 # Bad entry retains its specific reason despite the valid sibling launching a retry.
 assert_line "case H bad reviewer file" "REVIEWER_FILE=$OUT_H_BAD" "$RESULT_H"
 assert_line "case H bad reason" "FAILURE_REASON=Retry metadata invalid: malformed CMD_JSON" "$RESULT_H"
@@ -475,13 +468,12 @@ NZ_HELPER
 chmod +x "$NONZERO_HELPER"
 
 OUT_I="$TMPROOT/cursor-i.txt"
-HEALTH_I="$TMPROOT/case-i.health"
+STDERR_I="$TMPROOT/case-i.stderr"
 write_empty_candidate "$OUT_I"
 write_meta "$OUT_I" "$(json_array bash "$NONZERO_HELPER" --output "$OUT_I")"
-RESULT_I=$(run_collector bash "$OUT_I" "$HEALTH_I")
+RESULT_I=$(run_collector bash "$OUT_I" "$STDERR_I")
 assert_line "case I status" "STATUS=EMPTY_OUTPUT" "$RESULT_I"
 assert_line "case I exit-code propagated" "EXIT_CODE=7" "$RESULT_I"
-assert_line "case I healthy" "HEALTHY=false" "$RESULT_I"
 # Pin the wrapper's exit-7 narrative end-to-end so a regression in
 # build_failure_reason or its caller would surface here too, not only via
 # the bare EXIT_CODE check above.
@@ -491,7 +483,6 @@ else
     fail "case I missing 'Retry also failed: Failed with exit code 7' FAILURE_REASON"
     printf '%s\n' "$RESULT_I" >&2
 fi
-assert_line "case I health-file" "CURSOR_HEALTHY=false" "$(cat "$HEALTH_I")"
 
 # Case J: retry exit is 0 but retry output stays empty → STATUS=EMPTY_OUTPUT
 # with EXIT_CODE=0 (confirms scripts/collect-agent-results.md sub-case: an
@@ -514,13 +505,12 @@ EMPTY_HELPER_EOF
 chmod +x "$EMPTY_HELPER"
 
 OUT_J="$TMPROOT/cursor-j.txt"
-HEALTH_J="$TMPROOT/case-j.health"
+STDERR_J="$TMPROOT/case-j.stderr"
 write_empty_candidate "$OUT_J"
 write_meta "$OUT_J" "$(json_array bash "$EMPTY_HELPER" --output "$OUT_J")"
-RESULT_J=$(run_collector bash "$OUT_J" "$HEALTH_J")
+RESULT_J=$(run_collector bash "$OUT_J" "$STDERR_J")
 assert_line "case J status" "STATUS=EMPTY_OUTPUT" "$RESULT_J"
 assert_line "case J exit-code zero" "EXIT_CODE=0" "$RESULT_J"
-assert_line "case J healthy" "HEALTHY=false" "$RESULT_J"
 
 # Case K: missing retry sentinel branch via direct helper invocation. Launching a
 # real retry that never publishes its sentinel would pay the production retry-wait
@@ -532,18 +522,18 @@ RESULT_K=$(
         build_missing_retry_sentinel_result "/tmp/cursor-k.txt" "cursor"
     ' _ "$COLLECTOR" 2>/dev/null
 )
-assert_line "case K reviewer file" "REVIEWER_FILE=/tmp/cursor-k.txt|TOOL=cursor|STATUS=EMPTY_OUTPUT|EXIT_CODE=99|HEALTHY=false|STRUCTURED_SIDECAR=|FAILURE_REASON=Retry process did not complete (sentinel file missing)" "$RESULT_K"
+assert_line "case K reviewer file" "REVIEWER_FILE=/tmp/cursor-k.txt|TOOL=cursor|STATUS=EMPTY_OUTPUT|EXIT_CODE=99|STRUCTURED_SIDECAR=|FAILURE_REASON=Retry process did not complete (sentinel file missing)" "$RESULT_K"
 
 # Case L: malformed initial sentinel content containing the pipe field delimiter
 # is coerced before result construction, so no injected field appears in stdout.
 OUT_L="$TMPROOT/cursor-l.txt"
-HEALTH_L="$TMPROOT/case-l.health"
+STDERR_L="$TMPROOT/case-l.stderr"
 write_nonempty_candidate "$OUT_L"
 printf '0|EXTRA\n' > "${OUT_L}.done"
-RESULT_L=$(run_collector bash "$OUT_L" "$HEALTH_L")
+RESULT_L=$(run_collector bash "$OUT_L" "$STDERR_L")
 assert_line "case L exit-code coerced" "EXIT_CODE=99" "$RESULT_L"
 LINE_COUNT_L=$(printf '%s\n' "$RESULT_L" | wc -l | tr -d '[:space:]')
-if [[ "$LINE_COUNT_L" == "7" ]]; then
+if [[ "$LINE_COUNT_L" == "6" ]]; then
     ok "case L field-count"
 else
     fail "case L field injection: $LINE_COUNT_L lines"
@@ -557,26 +547,26 @@ fi
 # Case M: oversized digit-only sentinel content is rejected before Bash arithmetic
 # can overflow and misclassify it as <=255.
 OUT_M="$TMPROOT/cursor-m.txt"
-HEALTH_M="$TMPROOT/case-m.health"
+STDERR_M="$TMPROOT/case-m.stderr"
 write_nonempty_candidate "$OUT_M"
 printf '18446744073709551616\n' > "${OUT_M}.done"
-RESULT_M=$(run_collector bash "$OUT_M" "$HEALTH_M")
+RESULT_M=$(run_collector bash "$OUT_M" "$STDERR_M")
 assert_line "case M exit-code overflow-guarded" "EXIT_CODE=99" "$RESULT_M"
 
 # Case N: empty initial sentinel file is readable but invalid, so it is coerced.
 OUT_N="$TMPROOT/cursor-n.txt"
-HEALTH_N="$TMPROOT/case-n.health"
+STDERR_N="$TMPROOT/case-n.stderr"
 write_nonempty_candidate "$OUT_N"
 : > "${OUT_N}.done"
-RESULT_N=$(run_collector bash "$OUT_N" "$HEALTH_N")
+RESULT_N=$(run_collector bash "$OUT_N" "$STDERR_N")
 assert_line "case N exit-code empty-sentinel" "EXIT_CODE=99" "$RESULT_N"
 
 # Case O: 256 is numeric but outside Unix exit-code range.
 OUT_O="$TMPROOT/cursor-o.txt"
-HEALTH_O="$TMPROOT/case-o.health"
+STDERR_O="$TMPROOT/case-o.stderr"
 write_nonempty_candidate "$OUT_O"
 printf '256\n' > "${OUT_O}.done"
-RESULT_O=$(run_collector bash "$OUT_O" "$HEALTH_O")
+RESULT_O=$(run_collector bash "$OUT_O" "$STDERR_O")
 assert_line "case O exit-code over-255" "EXIT_CODE=99" "$RESULT_O"
 
 # Case P: coerced-99 with empty output + valid .meta must route to retry, NOT to
@@ -585,14 +575,13 @@ assert_line "case O exit-code over-255" "EXIT_CODE=99" "$RESULT_O"
 # coerced-99 + empty output is treated as a retry-eligible empty-output case,
 # so the helper runs and the retry succeeds.
 OUT_P="$TMPROOT/cursor-p.txt"
-HEALTH_P="$TMPROOT/case-p.health"
+STDERR_P="$TMPROOT/case-p.stderr"
 write_empty_candidate "$OUT_P"
 write_meta "$OUT_P" "$(json_array bash "$HELPER" --output "$OUT_P")"
 printf '0|EXTRA\n' > "${OUT_P}.done"  # malformed → coerced to 99
-RESULT_P=$(run_collector bash "$OUT_P" "$HEALTH_P")
+RESULT_P=$(run_collector bash "$OUT_P" "$STDERR_P")
 assert_line "case P retry succeeded" "REVIEWER_FILE=${OUT_P%.txt}-retry.txt" "$RESULT_P"
 assert_line "case P status" "STATUS=OK" "$RESULT_P"
-assert_line "case P healthy" "HEALTHY=true" "$RESULT_P"
 
 # Case P2: per-tool CMD_JSON shape allowlists fail closed on known-dangerous
 # cursor extensions.
@@ -603,10 +592,10 @@ assert_fail_closed "case-p2" "$OUT_P2" "Retry metadata invalid: CMD_JSON argv sh
 
 # Case P3: codex's registered shape is accepted by the legacy CMD_JSON path.
 OUT_P3="$TMPROOT/codex-p3.txt"
-HEALTH_P3="$TMPROOT/case-p3.health"
+STDERR_P3="$TMPROOT/case-p3.stderr"
 write_empty_candidate "$OUT_P3"
 write_meta_for_tool "$OUT_P3" codex "$(jq -cn --args '$ARGS.positional' -- codex exec --full-auto -C "$TMPROOT" --add-dir "$TMPROOT" --output-last-message "$OUT_P3")"
-RESULT_P3=$(run_collector bash "$OUT_P3" "$HEALTH_P3")
+RESULT_P3=$(run_collector bash "$OUT_P3" "$STDERR_P3")
 assert_line "case P3 codex shape accepted" "STATUS=OK" "$RESULT_P3"
 assert_line "case P3 codex retry file" "REVIEWER_FILE=${OUT_P3%.txt}-retry.txt" "$RESULT_P3"
 
@@ -659,20 +648,19 @@ prepare_outer_candidate() {
 }
 
 OUT_Q="$TMPROOT/cursor-q.txt"
-HEALTH_Q="$TMPROOT/case-q.health"
+STDERR_Q="$TMPROOT/case-q.stderr"
 WORKDIR_Q="$TMPROOT/workdir-q"
 mkdir -p "$WORKDIR_Q"
 prepare_outer_candidate "$OUT_Q"
 write_outer_meta "$OUT_Q" "$REPO_ROOT/scripts/launch-review.sh" "${OUT_Q}.prompt" "$WORKDIR_Q"
 export CURSOR_STUB_RESULT="POST-PROCESSED OK"
-RESULT_Q=$(PATH="$CURSOR_STUB_BIN:$PATH" run_collector bash "$OUT_Q" "$HEALTH_Q")
+RESULT_Q=$(PATH="$CURSOR_STUB_BIN:$PATH" run_collector bash "$OUT_Q" "$STDERR_Q")
 assert_line "case Q reviewer file" "REVIEWER_FILE=${OUT_Q%.txt}-retry.txt" "$RESULT_Q"
 assert_line "case Q status" "STATUS=OK" "$RESULT_Q"
-assert_line "case Q healthy" "HEALTHY=true" "$RESULT_Q"
 assert_equals "case Q retry post-processed" "POST-PROCESSED OK" "$(cat "${OUT_Q%.txt}-retry.txt")"
 
 OUT_Q2="$TMPROOT/codex-q2.txt"
-HEALTH_Q2="$TMPROOT/case-q2.health"
+STDERR_Q2="$TMPROOT/case-q2.stderr"
 WORKDIR_Q2="$TMPROOT/workdir-q2"
 mkdir -p "$WORKDIR_Q2"
 prepare_outer_candidate "$OUT_Q2"
@@ -686,7 +674,7 @@ prepare_outer_candidate "$OUT_Q2"
     printf 'OUTER_LAUNCHER_PROMPT_FILE=%s\n' "${OUT_Q2}.prompt"
     printf 'OUTER_LAUNCHER_WORKDIR=%s\n' "$WORKDIR_Q2"
 } > "${OUT_Q2}.meta"
-RESULT_Q2=$(LARCH_CODEX_MODEL=test-codex-model run_collector bash "$OUT_Q2" "$HEALTH_Q2")
+RESULT_Q2=$(LARCH_CODEX_MODEL=test-codex-model run_collector bash "$OUT_Q2" "$STDERR_Q2")
 assert_line "case Q2 codex outer reviewer file" "REVIEWER_FILE=${OUT_Q2%.txt}-retry.txt" "$RESULT_Q2"
 assert_line "case Q2 codex outer status" "STATUS=OK" "$RESULT_Q2"
 assert_equals "case Q2 codex outer output" "OK" "$(cat "${OUT_Q2%.txt}-retry.txt")"
@@ -735,16 +723,16 @@ write_outer_meta "$OUT_U2" "$REPO_ROOT/scripts/launch-review.sh" "${OUT_U2}.prom
 assert_fail_closed "case-u2" "$OUT_U2" "Retry metadata invalid: OUTER_LAUNCHER_PROMPT_FILE not a readable regular non-symlink file"
 
 OUT_V="$TMPROOT/cursor-v.txt"
-HEALTH_V="$TMPROOT/case-v.health"
+STDERR_V="$TMPROOT/case-v.stderr"
 prepare_outer_candidate "$OUT_V"
 write_outer_meta "$OUT_V" "$REPO_ROOT/scripts/launch-review.sh" "${OUT_V}.prompt" "$WORKDIR_Q" 'CMD_JSON=not-json'
 export CURSOR_STUB_RESULT="BROKEN CMDJSON IGNORED"
-RESULT_V=$(PATH="$CURSOR_STUB_BIN:$PATH" run_collector bash "$OUT_V" "$HEALTH_V")
+RESULT_V=$(PATH="$CURSOR_STUB_BIN:$PATH" run_collector bash "$OUT_V" "$STDERR_V")
 assert_line "case V status" "STATUS=OK" "$RESULT_V"
 assert_equals "case V output" "BROKEN CMDJSON IGNORED" "$(cat "${OUT_V%.txt}-retry.txt")"
 
 OUT_W="$TMPROOT/cursor-w.txt"
-HEALTH_W="$TMPROOT/case-w.health"
+STDERR_W="$TMPROOT/case-w.stderr"
 PWD_LOG_W="$TMPROOT/case-w-pwd.log"
 WORKDIR_W="$TMPROOT/workdir-w"
 mkdir -p "$WORKDIR_W"
@@ -752,7 +740,7 @@ prepare_outer_candidate "$OUT_W"
 write_outer_meta "$OUT_W" "$REPO_ROOT/scripts/launch-review.sh" "${OUT_W}.prompt" "$WORKDIR_W"
 export CURSOR_STUB_RESULT="POST-PROCESSED OK"
 export CURSOR_STUB_PWD_LOG="$PWD_LOG_W"
-RESULT_W=$(PATH="$CURSOR_STUB_BIN:$PATH" run_collector bash "$OUT_W" "$HEALTH_W")
+RESULT_W=$(PATH="$CURSOR_STUB_BIN:$PATH" run_collector bash "$OUT_W" "$STDERR_W")
 assert_line "case W status" "STATUS=OK" "$RESULT_W"
 assert_equals "case W retry workdir" "$(cd "$WORKDIR_W" && pwd -P)" "$(cat "$PWD_LOG_W")"
 unset CURSOR_STUB_PWD_LOG
@@ -784,7 +772,7 @@ fi
 # sourced, would create a sentinel file. Then run the retry; the absence of
 # the sentinel proves the env was sanitized.
 OUT_Z="$TMPROOT/cursor-z.txt"
-HEALTH_Z="$TMPROOT/case-z.health"
+STDERR_Z="$TMPROOT/case-z.stderr"
 WORKDIR_Z="$TMPROOT/workdir-z"
 HOOK_Z="$TMPROOT/case-z-hook.sh"
 HOOK_SENTINEL_Z="$TMPROOT/case-z-hook-fired"
@@ -800,7 +788,7 @@ export CURSOR_STUB_RESULT="POST-PROCESSED OK"
 # launching the inner stub.
 export LARCH_ALLOW_TEST_HOOKS=1
 export LARCH_TEST_TRAP_AFTER_INNER_DONE_FILE="$HOOK_Z"
-RESULT_Z=$(PATH="$CURSOR_STUB_BIN:$PATH" run_collector bash "$OUT_Z" "$HEALTH_Z")
+RESULT_Z=$(PATH="$CURSOR_STUB_BIN:$PATH" run_collector bash "$OUT_Z" "$STDERR_Z")
 unset LARCH_ALLOW_TEST_HOOKS LARCH_TEST_TRAP_AFTER_INNER_DONE_FILE
 assert_line "case Z status (retry succeeded)" "STATUS=OK" "$RESULT_Z"
 if [[ -e "$HOOK_SENTINEL_Z" ]]; then
@@ -813,28 +801,26 @@ fi
 # must be normalized to 'high' and the outer launcher must still be retried
 # successfully (fail-closed: unknown risk → high effort).
 OUT_CORRUPT_RISK="$TMPROOT/cursor-corrupt-risk.txt"
-HEALTH_CORRUPT_RISK="$TMPROOT/case-corrupt-risk.health"
+STDERR_CORRUPT_RISK="$TMPROOT/case-corrupt-risk.stderr"
 WORKDIR_CORRUPT_RISK="$TMPROOT/workdir-corrupt-risk"
 mkdir -p "$WORKDIR_CORRUPT_RISK"
 prepare_outer_candidate "$OUT_CORRUPT_RISK"
 write_outer_meta "$OUT_CORRUPT_RISK" "$REPO_ROOT/scripts/launch-review.sh" \
     "${OUT_CORRUPT_RISK}.prompt" "$WORKDIR_CORRUPT_RISK" 'OUTER_LAUNCHER_RISK=medium'
 export CURSOR_STUB_RESULT="POST-PROCESSED OK"
-RESULT_CORRUPT_RISK=$(PATH="$CURSOR_STUB_BIN:$PATH" run_collector bash "$OUT_CORRUPT_RISK" "$HEALTH_CORRUPT_RISK")
+RESULT_CORRUPT_RISK=$(PATH="$CURSOR_STUB_BIN:$PATH" run_collector bash "$OUT_CORRUPT_RISK" "$STDERR_CORRUPT_RISK")
 assert_line "case corrupt-risk status" "STATUS=OK" "$RESULT_CORRUPT_RISK"
-assert_line "case corrupt-risk healthy" "HEALTHY=true" "$RESULT_CORRUPT_RISK"
 assert_line "case corrupt-risk reviewer file" "REVIEWER_FILE=${OUT_CORRUPT_RISK%.txt}-retry.txt" "$RESULT_CORRUPT_RISK"
 
 # Case cap_hit: output file whose first line is STATUS=cap_hit is classified
-# as STATUS=cap_hit HEALTHY=true by collect-agent-results.sh and does NOT
+# as STATUS=cap_hit by collect-agent-results.sh and does NOT
 # trigger a retry (no .meta file required, no retry output created).
 OUT_CAP="$TMPROOT/cap-hit.txt"
-HEALTH_CAP="$TMPROOT/cap-hit.health"
+STDERR_CAP="$TMPROOT/cap-hit.stderr"
 printf 'STATUS=cap_hit\nSTATUS=cap_hit TOTAL=9999 CAP=1 STEP=cursor-review\n' > "$OUT_CAP"
 printf '0\n' > "${OUT_CAP}.done"
-RESULT_CAP=$(run_collector bash "$OUT_CAP" "$HEALTH_CAP")
+RESULT_CAP=$(run_collector bash "$OUT_CAP" "$STDERR_CAP")
 assert_line "cap_hit status" "STATUS=cap_hit" "$RESULT_CAP"
-assert_line "cap_hit healthy" "HEALTHY=true" "$RESULT_CAP"
 if [[ -e "${OUT_CAP%.txt}-retry.txt" ]]; then
     fail "cap_hit should not generate a retry output"
 else

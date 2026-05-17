@@ -55,7 +55,7 @@ For each file in `CONFLICT_FILES`:
 
 **3a. Create temp directory**: Create `$IMPLEMENT_TMPDIR/conflict-review/` for reviewer artifacts. If it already exists (from a prior conflict resolution in this rebase loop), remove it and recreate.
 
-**3b. Check external reviewer availability**: Follow the **Binary Check and Health Probe** procedure in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md`. Honor any `CODEX_HEALTHY=false` / `CURSOR_HEALTHY=false` state from the session-env (reviewers already known to be unhealthy should not be re-probed or used).
+**3b. Check external reviewer availability**: Follow the **Binary Check and Health Probe** procedure in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md`. Honor any `CODEX_PRESENT=false` / `CURSOR_PRESENT=false` state from the session-env (reviewers already known to be unhealthy should not be re-probed or used).
 
 **3c. Prepare review context**: For each non-trivial conflicted file, prepare a per-file conflict context block:
 ```

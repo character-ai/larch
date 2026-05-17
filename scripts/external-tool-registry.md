@@ -43,10 +43,10 @@ Update this list whenever a new consumer sources the registry.
 
 1. Append the new id to `LARCH_EXTERNAL_TOOLS` and to `LARCH_IMPLEMENTER_CODERS` if it is also an implementer.
 2. Add the per-tool branch in `agent-model-args.sh`.
-3. Add the per-tool branch in `check-reviewers.sh` `start_probe` and in every switch helper (`get_available`, `get_healthy`, `set_healthy`, `get_skip`, `set_probe_error`, `get_probe_error`); decide opt-in vs. default and update `--include-*` policy accordingly.
+3. Add the per-tool branch in `check-reviewers.sh` presence detection and in any dispatcher fallback helpers; decide opt-in vs. default and update `--include-*` policy accordingly.
 4. If the new tool is also an implementer, add the launcher branch in `step2-implement.sh`.
 5. No change is required in `run-external-agent.sh`: it sanitizes `.meta` `TOOL=` for any input. Prefer a label-safe id (alphanumerics, `.`, `_`, `-`) so `.meta` `TOOL=` matches the registry id verbatim; non-label-safe ids may still collide after sanitization (e.g. `tool/a` and `tool?a` both become `tool_a`), so `.meta` `TOOL=` is not a bijection from arbitrary labels. Only widen the wrapper's allowlist if you intentionally change that contract.
-6. If the new tool produces output collected by `scripts/collect-agent-results.sh`, extend the collector's health envelope (`get_tool_healthy`, `set_tool_unhealthy`, the `--write-health` output) to include the new id; without this step, failures on the new tool's outputs are silently dropped from the per-tool monotonic-health state. See the Collector integration section below.
+6. If the new tool produces output collected by `scripts/collect-agent-results.sh`, ensure `derive_tool` can classify the new id from metadata and filenames so dispatcher fallback can attribute results.
 7. Update the relevant sibling `.md` contracts.
 8. Run `make lint` and `/relevant-checks`.
 

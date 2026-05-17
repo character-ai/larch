@@ -292,8 +292,8 @@ printf '%s\n' "$step0_section" | grep -F 'session-setup.sh --prefix claude-desig
 printf '%s\n' "$step0_section" | grep -Fq '/design requires clean main to start' \
   || fail "(11) Step 0 must include the normalized /design clean-main failure message"
 # shellcheck disable=SC2016 # fixed-string grep literal contains shell variable syntax
-printf '%s\n' "$step0_section" | grep -Fq 'Only include `--caller-env "$SESSION_ENV_PATH"` and `--write-health "${SESSION_ENV_PATH}.health"` if `SESSION_ENV_PATH` is non-empty' \
-  || fail "(11) Step 0 must retain the Anti-pattern #4 caller-env/write-health predicate"
+printf '%s\n' "$step0_section" | grep -Fq 'Only include `--caller-env "$SESSION_ENV_PATH"` if `SESSION_ENV_PATH` is non-empty' \
+  || fail "(11) Step 0 must retain the Anti-pattern #4 caller-env predicate"
 
 # shellcheck disable=SC2016 # fixed-string grep literal contains shell variable syntax
 create_line=$(printf '%s\n' "$step0_section" | grep -nF '${CLAUDE_PLUGIN_ROOT}/scripts/create-branch.sh --check' | head -1 | cut -d: -f1 || true)
@@ -310,7 +310,7 @@ if (( gate_line >= setup_line )); then
   fail "(11) nested /design Step 0 ordering must be session-entry-gate.sh before session-setup.sh"
 fi
 
-old_design_prose='Run the shared session setup script. This handles preflight, temp directory creation, reviewer health probe, and health status file in a single call'
+old_design_prose='Run the shared session setup script. This handles preflight, temp directory creation, reviewer presence check, and presence status in a single call'
 if grep -Fq "$old_design_prose" "$SKILL_MD"; then
   fail "(11) SKILL.md still contains legacy unconditional Step 0 session-setup prose"
 fi

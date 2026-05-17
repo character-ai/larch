@@ -4,10 +4,12 @@ Writes a `KEY=value` session-env file atomically for child skills. The file is n
 
 ## Keys
 
-Always writes `REPO` and `REPO_UNAVAILABLE`. Optionally writes reviewer health booleans:
+Always writes `REPO` and `REPO_UNAVAILABLE`. Optionally writes reviewer presence booleans and their compatibility aliases:
 
-- `CODEX_HEALTHY`
-- `CURSOR_HEALTHY`
+- `CODEX_PRESENT`
+- `CURSOR_PRESENT`
+- `CODEX_AVAILABLE`
+- `CURSOR_AVAILABLE`
 
 It may also write `LARCH_TIMING_LEDGER` when the caller passes `--timing-ledger <path>`. `/implement` uses this durable key so nested `/design` and `/review` invocations continue appending to the parent timing ledger after session-env rewrites.
 
@@ -23,7 +25,7 @@ the writer's environment. `/implement` uses this durable key so later Bash
 blocks can recover `${CLAUDE_PLUGIN_ROOT}` from `$IMPLEMENT_TMPDIR/session-env.sh`
 without sourcing the file.
 
-Values must stay narrow and caller-controlled (`true|false` for health booleans; validated repo strings for repo identity; caller-owned tmp paths for timing ledgers). `--token-session-id` must match `^[A-Za-z0-9_.-]{1,128}$`; `--claude-source-file` and `--timing-ledger` must match `^[A-Za-z0-9_./~+-]{1,512}$`; `--prev-implement-tmpdir` and `CLAUDE_PLUGIN_ROOT` must be absolute paths of 512 characters or fewer using the same path character set. Empty optional values are omitted from the file.
+Values must stay narrow and caller-controlled (`true|false` for presence booleans; validated repo strings for repo identity; caller-owned tmp paths for timing ledgers). `--token-session-id` must match `^[A-Za-z0-9_.-]{1,128}$`; `--claude-source-file` and `--timing-ledger` must match `^[A-Za-z0-9_./~+-]{1,512}$`; `--prev-implement-tmpdir` and `CLAUDE_PLUGIN_ROOT` must be absolute paths of 512 characters or fewer using the same path character set. Empty optional values are omitted from the file.
 
 ## Invariants
 

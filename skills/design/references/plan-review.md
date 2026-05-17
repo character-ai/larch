@@ -13,7 +13,7 @@ For each non-`OK` collector status, compose the failure log via the dedicated he
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/compose-collector-failure-log.sh \
   --reviewer-file "<REVIEWER_FILE-path-from-collector-record>" \
-  --structured-record '<full collector record line: REVIEWER_FILE=…|TOOL=…|STATUS=…|EXIT_CODE=…|HEALTHY=…|FAILURE_REASON=…>' \
+  --structured-record '<full collector record line: REVIEWER_FILE=…|TOOL=…|STATUS=…|EXIT_CODE=…|FAILURE_REASON=…>' \
   --output "$DESIGN_TMPDIR/<slot>-collector.failure.log"
 ```
 
@@ -57,8 +57,8 @@ For fallback reviewer slots: invoke via Agent tool with subagent_type: `larch:co
 ## Voter prompts
 
 - **Voter 1**: **Claude Code Reviewer subagent** — fresh Agent tool invocation (subagent_type: `larch:code-reviewer`, model: `"opus"`) with the voting prompt. Instruct: `"You are a senior code reviewer on a voting panel. You will vote YES, NO, or EXONERATE on proposed modifications to an implementation plan. Be scrupulous — only vote YES for findings that are correct, important, and worth revising the plan for. Vote EXONERATE if the concern is legitimate but not worth implementing in this PR. When voting, also consider proportionality: vote EXONERATE (not YES) if the finding's concern is legitimate but the proposed change would introduce more complexity than the issue warrants."`
-- **Voter 2**: Codex — launch through `${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-plan-voters.sh` using the ballot file. If `VOTER_2_STATUS=fallback`, launch a Claude subagent voter instead per the Voting Protocol.
-- **Voter 3**: Cursor — launch through `${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-plan-voters.sh` using the ballot file. If `VOTER_3_STATUS=fallback`, launch a Claude subagent voter instead per the Voting Protocol.
+- **Voter 2**: Codex — launch through `${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-plan-voters.sh` using the ballot file. `VOTER_2_STATUS=fallback` means the waterfall already ran a Claude subprocess fallback for this slot; include `VOTER_2_PATH` in tallying. Do NOT launch a duplicate replacement.
+- **Voter 3**: Cursor — launch through `${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-plan-voters.sh` using the ballot file. `VOTER_3_STATUS=fallback` means the waterfall already ran a Claude subprocess fallback; include `VOTER_3_PATH` in tallying. Do NOT launch a duplicate replacement.
 
 For Codex, Cursor, and their Claude replacement voters, instruct each: `"You are a senior engineer on a voting panel deciding which proposed plan modifications should be accepted. When voting, also consider proportionality: vote EXONERATE (not YES) if the finding's concern is legitimate but the proposed change would introduce more complexity than the issue warrants."`
 
@@ -72,19 +72,17 @@ For Codex, Cursor, and their Claude replacement voters, instruct each: `"You are
 
 ## Collecting External Reviewer Results
 
-All 10 reviewers are external. Collect and validate outputs using the shared collection script. Only include output paths for reviewers that were actually launched as external tools (omit any slot where the tool was unavailable and a Claude subagent fallback is returning via Agent tool instead).
-
-All archetype slots (Cursor and Codex) and cross-tool fallback slots use structured reviewer validation:
+All 10 reviewer slots are dispatched via `dispatch-with-waterfall.sh` in SKILL.md. Use the `ALL_OUTPUT_FILES` value emitted by the waterfall as the full list of output paths to pass to `collect-agent-results.sh` — these already include waterfall-promoted Phase 2 and Phase 3 Claude subprocess outputs.
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1860 --substantive-validation --validation-mode --structured-reviewer-validation [--write-health "${SESSION_ENV_PATH}.health"] <all-archetype-output-paths...>
+# Split ALL_OUTPUT_FILES into array for collect-agent-results.sh
+read -r -a _all_output_files <<< "$ALL_OUTPUT_FILES"
+${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1860 --substantive-validation --validation-mode --structured-reviewer-validation "${_all_output_files[@]}"
 ```
-
-Only include `--write-health` if `SESSION_ENV_PATH` is non-empty. Output paths include up to 5 Cursor archetype paths (`cursor-plan-arch-output.txt`, `cursor-plan-edge-output.txt`, `cursor-plan-innovation-output.txt`, `cursor-plan-pragmatic-output.txt`, `cursor-plan-requirements-output.txt`) and up to 5 Codex archetype paths (`codex-primary-plan-arch-output.txt`, `codex-primary-plan-edge-output.txt`, `codex-primary-plan-innovation-output.txt`, `codex-primary-plan-pragmatic-output.txt`, `codex-primary-plan-requirements-output.txt`). When Cursor is unavailable and Codex was used as fallback, those paths are `codex-fallback-cursor-plan-{arch,edge,innovation,pragmatic,requirements}-output.txt`. When Codex is unavailable and Cursor was used as fallback, those are `cursor-fallback-codex-plan-{arch,edge,innovation,pragmatic,requirements}-output.txt`. Omit paths for slots where a Claude subagent fallback was launched instead.
 
 Immediately after this collection returns, run the Mid-Run Dirty-Tree Probe Contract from `heavy-worker.md` for `STAGE=plan-review-collection`.
 
-Parse the structured output for each reviewer's `STATUS` and `REVIEWER_FILE`. For any reviewer with `STATUS` not `OK`, follow the **Runtime Timeout Fallback** procedure in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md`. Read valid output files.
+Parse the structured output for each reviewer's `STATUS` and `REVIEWER_FILE`. Phase 3 Claude subprocess outputs will appear in `ALL_OUTPUT_FILES` with `TOOL=claude` in the corresponding `ALL_OUTPUT_TOOLS` position. For any reviewer with `STATUS` not `OK`, log the failure via the failure logging contract above but do not re-launch; the waterfall already exhausted all three phases for that slot. Read valid output files.
 
 For every non-`OK` result, append the collector failure capture described in the Failure logging contract before applying the runtime fallback. Use `--site "design Step 3" --tool "collect-agent-results.sh <tool> <status>" --exit-code <EXIT_CODE-or-1> --category "External Reviewer Issues" --redact`.
 
@@ -114,7 +112,7 @@ _plan_voter_dispatch=$("${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-plan-voters.sh" \
 eval "$_plan_voter_dispatch"
 ```
 
-If `VOTER_2_STATUS=fallback`, launch the Codex replacement Claude subagent voter. If `VOTER_3_STATUS=fallback`, launch the Cursor replacement Claude subagent voter. Include only launched external voter paths (`VOTER_2_PATH` / `VOTER_3_PATH` with `STATUS=launched`) when validating external voter outputs.
+`VOTER_2_STATUS=fallback` means the waterfall already ran a Claude fallback for that slot and `VOTER_2_PATH` contains the Claude output — do NOT launch a duplicate replacement. `VOTER_3_STATUS=fallback` is analogous for Voter 3. Include voter paths with `STATUS=launched` or `STATUS=fallback` in vote tallying; only exclude paths with `STATUS=failed`.
 
 **Tally votes**: Apply the threshold rules from the Voting Protocol based on the panel-level eligible voter count, not the per-finding non-neutral response count. Write the vote breakdown per finding to `$DESIGN_TMPDIR/voting-tally.md`. If `SESSION_ENV_PATH` is empty, also print the same tally inline; if `SESSION_ENV_PATH` is non-empty, suppress inline print. **Voter column labels in the per-finding vote breakdown table**: use `Claude` for the Claude Code Reviewer subagent (Voter 1), `Codex` for Codex (Voter 2), and `Cursor` for Cursor (Voter 3). Do NOT use a model name (e.g., `Claude-Opus`, `Claude-Sonnet`) as a column header — the model backing the voter may change between deployments.
 

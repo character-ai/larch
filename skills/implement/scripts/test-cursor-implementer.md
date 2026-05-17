@@ -18,7 +18,7 @@
 - The prompt is wrapped by `scripts/cursor-wrap-prompt.sh`.
 - Passing `--answers-file` adds the `## Resume invocation` block to the composed prompt.
 
-**Optional smoke**: `CURSOR_HEALTHY=true bash skills/implement/scripts/test-cursor-implementer.sh --real-smoke` launches a real `cursor agent` against a tiny prompt. This is a local development smoke only and is not wired into the Makefile.
+**Optional smoke**: `CURSOR_PRESENT=true bash skills/implement/scripts/test-cursor-implementer.sh --real-smoke` launches a real `cursor agent` against a tiny prompt. This is a local development smoke only and is not wired into the Makefile.
 
 **Invariants**:
 - The always-on path must stay offline and must not call the real `cursor` binary.

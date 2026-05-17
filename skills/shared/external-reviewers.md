@@ -1,50 +1,46 @@
-## Binary Check and Health Probe (Step 0)
+## Binary Presence Check (Step 0)
 
-The binary check, health probe, and health status file write are now handled by `session-setup.sh` with the `--check-reviewers` flag. Skills call a single script in Step 0:
+The binary check, presence check, and presence status write are now handled by `session-setup.sh` with the `--check-reviewers` flag. Skills call a single script in Step 0:
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix <name> [--skip-preflight] [--skip-branch-check] \
-  [--skip-codex-probe] [--skip-cursor-probe] [--write-health <path>]
+  [--skip-codex-probe] [--skip-cursor-probe]
 ```
 
-**Session-env override**: If `--caller-env` provides a non-empty `CODEX_HEALTHY` or `CURSOR_HEALTHY` value (either `true` or `false`), the script auto-sets the corresponding `--skip-codex-probe` / `--skip-cursor-probe` flag internally and propagates the caller value — you do not need to pass these explicitly when using `--caller-env`.
+**Session-env override**: If `--caller-env` provides a non-empty `CODEX_PRESENT` or `CURSOR_PRESENT` value (either `true` or `false`), the script auto-sets the corresponding `--skip-codex-probe` / `--skip-cursor-probe` flag internally and propagates the caller value — you do not need to pass these explicitly when using `--caller-env`.
 
 Set mental flags `codex_available` and `cursor_available` based on the output:
 - If `CODEX_AVAILABLE=false`: `codex_available=false`. Print: `**⚠ Codex not available (binary not found). Proceeding without Codex reviewer.**`
-- Else if `CODEX_HEALTHY=false`: `codex_available=false`. Print: `**⚠ Codex installed but not responding (health check failed: <CODEX_PROBE_ERROR>). Using Claude replacement.**` where `<CODEX_PROBE_ERROR>` is the `CODEX_PROBE_ERROR` value from `session-setup.sh` output (if available; omit the parenthetical detail if not present).
+- Else if `CODEX_PRESENT=false`: `codex_available=false`. Print: `**⚠ Codex not present for this session. Using Claude replacement.**`
 - Else: `codex_available=true`
-- Same logic for Cursor (using `CURSOR_PROBE_ERROR`).
+- Same logic for Cursor.
 
-**Note**: `*_AVAILABLE` is a pure install-state signal (binary exists on PATH). `*_HEALTHY` indicates whether the tool actually responded to a trivial prompt within the 60-second probe timeout. Callers must combine both to determine runtime usability.
+**Note**: `*_AVAILABLE` is a backward-compatible alias for `*_PRESENT`. Presence is static for the session and is based on whether the tool binary is available at session start.
 
-If `session-setup.sh` emits `WAIT_INFRA_ERROR=<reason>` alongside `*_AVAILABLE=true` and `*_HEALTHY=false`, the wait infrastructure failed before tool health could be classified, and the health key is fail-closed. Check `WAIT_INFRA_ERROR` first to attribute the cause as probe-infra abort rather than per-tool probe failure, then apply the appropriate warning template. Availability remains monotonic for session-state purposes, but launch eligibility still requires `*_AVAILABLE=true AND *_HEALTHY=true`.
+Launch eligibility requires `*_PRESENT=true`. Runtime failures do not mutate `session-env.sh`; multi-slot dispatchers handle them through per-slot waterfall fallback.
 
-## Runtime Timeout Fallback
+## Runtime Waterfall Fallback
 
-When processing reviewer results (after `wait-for-reviewers.sh` returns), check each reviewer's sentinel file exit code and output validity. If any of the following are true for a reviewer, set the corresponding `*_available` mental flag to `false` for **all subsequent steps in this session**:
+When processing reviewer results, failed external slots should fall through the waterfall dispatcher rather than flipping session-wide availability:
 
-- Sentinel exit code is `124` (timeout — the common case when `run-external-agent.sh` enforces its timeout)
-- Sentinel exit code is non-zero (any other failure)
-- Output is empty/invalid after the retry-once procedure (per "Validating External Reviewer Output" below)
-- `collect-agent-results.sh` reports `STATUS=SENTINEL_TIMEOUT` for the reviewer. Internally this is derived from `wait-for-reviewers.sh`'s indexed `TIMEOUT <idx> <basename>` grammar, correlated against the output-file argv order; the basename is informational only and is not a stable key.
-- `STATUS=NOT_SUBSTANTIVE` (output passed sentinel + non-empty + retry checks but failed substantive-content validation under `collect-agent-results.sh --substantive-validation` — same Claude-subagent-fallback behavior as a timeout, since the lane is unusable for synthesis; Phase 3 of umbrella #413, closes #416)
+- Phase 1 launches the slot's assigned external tool when present.
+- Phase 2 retries the slot with the other present external tool.
+- Phase 3 launches a Claude reviewer subprocess via `scripts/launch-claude-review.sh`.
 
-Use one of two warning templates:
+Use this warning template when a slot reaches Phase 3:
 
-- **Replacement-style reviewers** (Codex/Cursor lanes with Claude fallback): `**⚠ <Reviewer> failed — <FAILURE_REASON>. Using Claude replacement for remainder of session.**`
+- `**⚠ <Reviewer> failed — <FAILURE_REASON>. Using Claude replacement for this slot.**`
 
 Where `<FAILURE_REASON>` is the `FAILURE_REASON` value from `collect-agent-results.sh` output (or from the `.diag` file if collecting results manually). Always include the reason so the user can diagnose the root cause (e.g., timeout duration, exit code, last error output).
 
-This is a mental flag flip within the current skill invocation. For cross-skill propagation within `/implement`, child skills write a structured health status file — see the `/implement` SKILL.md for details.
-
-**Note**: Once a reviewer is marked unhealthy during a session, it stays unhealthy for the remainder of that session. This is intentional — it prevents oscillation and wasted time on flaky tools during extended outages.
+Do not write runtime failure status back to session env. `CODEX_PRESENT` and `CURSOR_PRESENT` describe static session-start presence only.
 
 ## Collecting External Reviewer Results
 
 After all other tasks are done, collect and validate external reviewer outputs using the shared collection script:
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout <seconds> [--write-health <path>] <output-file> [<output-file> ...]
+${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout <seconds> <output-file> [<output-file> ...]
 ```
 
 Only include output file paths for reviewers that were actually launched. For the Bash tool call, use `timeout: <seconds>000` (milliseconds) and **do NOT** set `run_in_background: true` — this call must block. The script internally calls `wait-for-reviewers.sh` to poll for `.done` sentinel files, validates each output, and retries once on empty output (using `.meta` files written by `run-external-agent.sh`). Wait records are correlated by 1-based argv index, so callers should pass output files in the same order they want result blocks interpreted.
@@ -54,7 +50,6 @@ Only include output file paths for reviewers that were actually launched. For th
 REVIEWER_FILE=<output-path>
 STATUS=<OK|TIMED_OUT|FAILED|EMPTY_OUTPUT|SENTINEL_TIMEOUT|NOT_SUBSTANTIVE>
 EXIT_CODE=<N>
-HEALTHY=<true|false>
 FAILURE_REASON=<explanation>
 ```
 

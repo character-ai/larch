@@ -74,7 +74,7 @@ append_non_ok_collector_results_from_file() {
     while IFS= read -r line || [[ -n "$line" ]]; do
         if [[ -z "$line" ]]; then
             # STATUS=cap_hit is a deliberate slot-skip (reviewer's budget cap;
-            # HEALTHY=true per collect-agent-results.md), NOT a failure — don't
+            # NOT a failure — don't
             # log it as External Reviewer Issues.
             if [[ -n "$reviewer_file" && "$status" != "" && "$status" != "OK" && "$status" != "cap_hit" ]]; then
                 combined=$(mktemp "${TMPDIR:-/tmp}/review-collector-failure.XXXXXX")
@@ -108,7 +108,7 @@ append_non_ok_collector_results_from_file() {
         esac
     done < "$collector_results_file"
     # STATUS=cap_hit is a deliberate slot-skip (reviewer's budget cap;
-    # HEALTHY=true per collect-agent-results.md), NOT a failure.
+    # NOT a failure.
     if [[ -n "$reviewer_file" && "$status" != "" && "$status" != "OK" && "$status" != "cap_hit" ]]; then
         combined=$(mktemp "${TMPDIR:-/tmp}/review-collector-failure.XXXXXX")
         {
@@ -137,7 +137,6 @@ collector_results_file="$REVIEW_TMPDIR/collector-results.env"
 if [[ "$EXTERNAL_COUNT" -gt 0 ]]; then
     # Pin: collect-agent-results.sh --timeout 1860 --substantive-validation --validation-mode
     args=(--timeout "$TIMEOUT" --substantive-validation --validation-mode)
-    [[ -n "$SESSION_ENV_PATH" ]] && args+=(--write-health "${SESSION_ENV_PATH}.health")
     collector_log="$REVIEW_TMPDIR/collect-agent-results.log"
     set +e
     "$PLUGIN_ROOT/scripts/collect-agent-results.sh" "${args[@]}" "${EXTERNAL_OUTPUT_FILES[@]}" > "$collector_results_file" 2>"$collector_log"

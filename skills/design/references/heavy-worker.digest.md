@@ -10,7 +10,7 @@
 
 ## Inputs
 
-Pass explicitly to the subagent: `DESIGN_TMPDIR`, `IMPLEMENT_TMPDIR`, `SESSION_ENV_PATH`, `FEATURE_DESCRIPTION`, `quick_mode`, `auto_mode`, current branch info, reviewer health flags (`codex_available`, `cursor_available`, `CODEX_HEALTHY`, `CURSOR_HEALTHY`).
+Pass explicitly to the subagent: `DESIGN_TMPDIR`, `IMPLEMENT_TMPDIR`, `SESSION_ENV_PATH`, `FEATURE_DESCRIPTION`, `quick_mode`, `auto_mode`, current branch info, reviewer presence flags (`codex_available`, `cursor_available`, `CODEX_PRESENT`, `CURSOR_PRESENT`).
 
 ## Artifact Contract
 
