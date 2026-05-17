@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [29.1.9] - 2026-05-17
+
+### Changed
+
+- Replace fail-open voting-quorum (accept-all when fewer than 2 judges) with a four-tier diversity-preserving policy in `scripts/lib-vote-tally.sh` and `skills/review/scripts/tally-code-votes.sh`: 3 judges → 2+ YES accept; 2 judges → 2/2 unanimous accept; 1 judge → single-judge binding; 0 judges → main-agent-vote-required
+- Mirror the same four-tier logic in `skills/design/scripts/tally-plan-review.sh`
+- Add loud degraded-panel warnings (judge list, missing reason, accept rule) to `scripts/dispatch-code-voters.sh` and `scripts/dispatch-plan-voters.sh` when eligible judges drop below 3
+- Wire the 0-judge `main-agent-vote-required` exit status through `skills/review-and-fix/scripts/review-and-fix.sh` and the `/implement` and `/design` orchestrators
+- Add test coverage for tiered quorum logic in `scripts/test-lib-vote-tally.sh`, `skills/review/scripts/test-tally-code-votes.sh`, and `skills/design/scripts/test-tally-plan-review.sh`
+- Update `docs/voting-process.md`, `skills/shared/voting-protocol.md`, and `docs/point-competition.md` to document the four-tier policy
+
 ## [29.1.8] - 2026-05-16
 
 ### Changed
