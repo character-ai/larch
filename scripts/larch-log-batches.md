@@ -44,3 +44,28 @@ batch slug; `mode` is `simple` or `hard`; counts are non-negative integers; and
 The `json-object` sanitizer validates these tally batches before replace writes.
 `review-findings-full.md` is raw markdown and uses no sanitizer beyond the
 standard tmpdir and secret redaction pipeline.
+
+## oos-issues record schema
+
+Each `larch-log.sh append --batch oos-issues --record-file F` call appends every
+non-empty line from the record file as a separate record. Each line MUST be a
+compact JSON object — the `json-lines` sanitizer rejects multi-line
+(pretty-printed) JSON and raw markdown. Use `jq -nc` for one record per file
+entry (the `-c` flag emits compact single-line output); `jq -n` without `-c`
+produces multi-line pretty-printed JSON that fails the sanitizer:
+
+```bash
+jq -nc --arg phase "code-review" --arg body "<sanitized markdown>" \
+    '{"phase":$phase,"step":"9a.1","category":"OOS","body":$body}' \
+    > "$OOS_RECORD_FILE"
+```
+
+Record fields: `phase` (pipeline phase, e.g. `"code-review"` or `"implement"`),
+`step` (`"9a.1"`), `category` (`"OOS"`), `body` (sanitized markdown string;
+apply secrets → `<REDACTED-TOKEN>`, internal URLs → `<INTERNAL-URL>`, PII →
+`<REDACTED-PII>` before passing to `--arg body`).
+
+Compose the body in a shell variable or temp file first, then pass via
+`--arg body "$BODY"` so `jq` handles JSON string escaping (newlines, quotes,
+etc.) without shell word-splitting or glob expansion. For file-backed content,
+`--rawfile` is also safe.
