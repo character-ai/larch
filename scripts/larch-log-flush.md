@@ -12,6 +12,10 @@ the run context is available.
   missing or empty, `LARCH_NO_LOGS_COMMIT=true`, or
   `$IMPLEMENT_TMPDIR/post-merge-sentinel` exists.
 - Reads the run id from `$IMPLEMENT_TMPDIR/session-id`.
+- When `$IMPLEMENT_TMPDIR/execution-issues.md` is non-empty and Step 7a has
+  already been reached (checkpoint file, sentinel, or existing batch present),
+  it first runs `skills/implement/scripts/flush-execution-issues.sh` in
+  commit-tail mode so post-7a entries are committed before the log flush.
 - Invokes `scripts/larch-log.sh commit --log-root "$IMPLEMENT_TMPDIR/larch-logs"
   --skill implement --run-id "$run_id"` and swallows failures so the preceding
   business commit remains successful.

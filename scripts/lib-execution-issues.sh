@@ -52,6 +52,46 @@ sys.stdout.write(json.dumps(sys.stdin.read()))
 ' || return 1
 }
 
+execution_issues_batch_contains_all_sections() {
+    local input_file=$1 batch_path=$2
+    local body_file line norm_sha saw_section=false
+
+    [ -f "$batch_path" ] || return 1
+    body_file=$(mktemp "${TMPDIR:-/tmp}/exec-issue-batch-probe.XXXXXX") || return 1
+    : > "$body_file"
+
+    while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in
+            '### '*)
+                if [ -s "$body_file" ]; then
+                    norm_sha=$(normalize_body_for_hash < "$body_file" | sha256_stream 2>/dev/null || true)
+                    if [ -z "$norm_sha" ] || ! grep -Fq '"source_sha256":"'"$norm_sha"'"' "$batch_path" 2>/dev/null; then
+                        rm -f "$body_file"
+                        return 1
+                    fi
+                    saw_section=true
+                fi
+                : > "$body_file"
+                ;;
+            *)
+                printf '%s\n' "$line" >> "$body_file"
+                ;;
+        esac
+    done < "$input_file"
+
+    if [ -s "$body_file" ]; then
+        norm_sha=$(normalize_body_for_hash < "$body_file" | sha256_stream 2>/dev/null || true)
+        if [ -z "$norm_sha" ] || ! grep -Fq '"source_sha256":"'"$norm_sha"'"' "$batch_path" 2>/dev/null; then
+            rm -f "$body_file"
+            return 1
+        fi
+        saw_section=true
+    fi
+
+    rm -f "$body_file"
+    [ "$saw_section" = true ]
+}
+
 write_execution_issues_records() {
     local input_file=$1 record_file=$2 sha=$3 batch_path=${4:-}
     local step_label=${5:-18} source_label=${6:-execution-issues.md safety-net}

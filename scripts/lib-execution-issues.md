@@ -10,6 +10,7 @@ Exported functions:
 - `sha256_stream`
 - `normalize_body_for_hash`
 - `json_escape_stream_python`
+- `execution_issues_batch_contains_all_sections`
 - `write_execution_issues_records`
 
 Private helper:
@@ -17,6 +18,7 @@ Private helper:
 - `_lib_warn_line`
 
 The library owns execution-issues markdown splitting, normalized body hashing,
+batch idempotency probes against stored per-section `source_sha256` values,
 JSON escaping fallback behavior, and NDJSON record composition. See
 `skills/implement/scripts/flush-execution-issues.md` for the full pre-bump flush
 contract.

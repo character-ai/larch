@@ -47,6 +47,11 @@ assert_equals() {
     fi
 }
 
+kv_value() {
+    local key=$1 body=$2
+    printf '%s\n' "$body" | awk -F= -v key="$key" '$1==key{print substr($0, index($0, "=") + 1); exit}'
+}
+
 setup_plugin() {
     local root=$1
     mkdir -p "$root/scripts"
@@ -130,6 +135,7 @@ rc=$?
 assert_equals 0 "$rc" "empty input exits 0"
 assert_contains "FLUSH_STATUS=skip" "$out" "empty input emits skip"
 assert_contains "RECORDS=0" "$out" "empty input emits zero records"
+if [ -f "$case_dir/.execution-issues-step7a-reached" ]; then pass "empty input writes Step 7a checkpoint"; else fail "empty input writes Step 7a checkpoint"; fi
 
 case_dir="$TMP_ROOT/single"
 mkdir -p "$case_dir"
@@ -144,9 +150,12 @@ batch="$case_dir/larch-logs/implement/run-single/execution-issues.ndjson"
 assert_equals 0 "$rc" "single-section exits 0"
 assert_contains "FLUSH_STATUS=ok" "$out" "single-section emits ok"
 assert_contains "RECORDS=1" "$out" "single-section emits one record"
+append_log=$(kv_value APPEND_LOG_FILE "$out")
+if [ -n "$append_log" ] && [ -r "$append_log" ]; then pass "single-section preserves append log file"; else fail "single-section preserves append log file"; fi
 assert_file_contains '"step":"7a"' "$batch" "single-section records step 7a"
 assert_file_contains '"source":"execution-issues.md pre-bump"' "$batch" "single-section records pre-bump source"
 if [ -s "$case_dir/.execution-issues-flushed.sha" ]; then pass "single-section writes sentinel"; else fail "single-section writes sentinel"; fi
+if [ ! -s "$case_dir/execution-issues.md" ]; then pass "single-section clears flushed issue log"; else fail "single-section clears flushed issue log"; fi
 
 case_dir="$TMP_ROOT/multi"
 mkdir -p "$case_dir"
@@ -180,6 +189,11 @@ out=$(run_helper "$PLUGIN" "$case_dir" "$case_dir/larch-logs" "run-idem" "$case_
 rc=$?
 batch="$case_dir/larch-logs/implement/run-idem/execution-issues.ndjson"
 before=$(line_count "$batch")
+cat > "$case_dir/execution-issues.md" <<'ISSUES'
+### Warnings
+
+- one warning
+ISSUES
 out=$(run_helper "$PLUGIN" "$case_dir" "$case_dir/larch-logs" "run-idem" "$case_dir/execution-issues.md")
 rc=$?
 after=$(line_count "$batch")
@@ -187,6 +201,34 @@ assert_equals 0 "$rc" "idempotent rerun exits 0"
 assert_contains "FLUSH_STATUS=already-flushed" "$out" "idempotent rerun emits already-flushed"
 assert_contains "RECORDS=0" "$out" "idempotent rerun emits zero records"
 assert_equals "$before" "$after" "idempotent rerun appends no duplicate"
+
+case_dir="$TMP_ROOT/per-section-probe"
+mkdir -p "$case_dir"
+cat > "$case_dir/execution-issues.md" <<'ISSUES'
+### Warnings
+
+- already flushed section
+ISSUES
+out=$(run_helper "$PLUGIN" "$case_dir" "$case_dir/larch-logs" "run-section-probe" "$case_dir/execution-issues.md")
+rc=$?
+batch="$case_dir/larch-logs/implement/run-section-probe/execution-issues.ndjson"
+assert_equals 0 "$rc" "per-section probe seed exits 0"
+assert_contains "FLUSH_STATUS=ok" "$out" "per-section probe seed emits ok"
+rm -f "$case_dir/.execution-issues-flushed.sha"
+cat > "$case_dir/execution-issues.md" <<'ISSUES'
+### Warnings
+
+- already flushed section
+ISSUES
+before=$(line_count "$batch")
+out=$(run_helper "$PLUGIN" "$case_dir" "$case_dir/larch-logs" "run-section-probe" "$case_dir/execution-issues.md")
+rc=$?
+after=$(line_count "$batch")
+assert_equals 0 "$rc" "per-section probe rerun exits 0"
+assert_contains "FLUSH_STATUS=already-flushed" "$out" "per-section probe rerun emits already-flushed"
+assert_contains "RECORDS=0" "$out" "per-section probe rerun emits zero records"
+assert_equals "$before" "$after" "per-section probe rerun appends no duplicate"
+if [ ! -s "$case_dir/execution-issues.md" ]; then pass "per-section probe rerun clears flushed issue log"; else fail "per-section probe rerun clears flushed issue log"; fi
 
 case_dir="$TMP_ROOT/failure"
 mkdir -p "$case_dir"
@@ -202,6 +244,8 @@ rc=$?
 set -e
 assert_equals 1 "$rc" "larch-log failure exits 1"
 assert_contains "FLUSH_STATUS=failed" "$out" "larch-log failure emits failed"
+append_log=$(kv_value APPEND_LOG_FILE "$out")
+if [ -n "$append_log" ] && [ -r "$append_log" ]; then pass "failure preserves append log file"; else fail "failure preserves append log file"; fi
 assert_file_contains "larch-log.sh failed" "$case_dir/execution-issues.md" "larch-log failure is appended to execution issues"
 assert_file_contains "simulated larch-log failure" "$case_dir/execution-issues.md" "larch-log failure output is captured"
 

@@ -27,6 +27,20 @@ if [ -z "$run_id" ]; then
     exit 0
 fi
 
+issue_log="$IMPLEMENT_TMPDIR/execution-issues.md"
+sentinel="$IMPLEMENT_TMPDIR/.execution-issues-flushed.sha"
+checkpoint="$IMPLEMENT_TMPDIR/.execution-issues-step7a-reached"
+batch_path="$IMPLEMENT_TMPDIR/larch-logs/implement/$run_id/execution-issues.ndjson"
+if [ -s "$issue_log" ] && { [ -f "$checkpoint" ] || [ -f "$sentinel" ] || [ -f "$batch_path" ]; }; then
+    "$SCRIPT_DIR/../skills/implement/scripts/flush-execution-issues.sh" \
+        --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
+        --run-id "$run_id" \
+        --issue-log "$issue_log" \
+        --step-label commit-tail \
+        --source-label "execution-issues.md commit-tail" \
+        >/dev/null 2>&1 || true
+fi
+
 if ! "$SCRIPT_DIR/larch-log.sh" commit \
     --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
     --skill implement \
