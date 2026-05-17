@@ -56,13 +56,14 @@ execution_issue_log() {
 }
 
 append_review_failure() {
-    local site="$1" tool="$2" rc="$3" output_file="$4"
+    local site="$1" tool="$2" rc="$3" output_file="$4" status_label="${5:-failed}"
     [[ -x "$PLUGIN_ROOT/scripts/append-tool-failure.sh" ]] || return 0
     "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
         --log "$(execution_issue_log)" \
         --site "$site" \
         --tool "$tool" \
         --exit-code "$rc" \
+        --status-label "$status_label" \
         --category "External Reviewer Issues" \
         --output-file "$output_file" \
         --redact >/dev/null 2>&1 || true
@@ -189,7 +190,8 @@ for f in "${EXTERNAL_OUTPUT_FILES[@]+"${EXTERNAL_OUTPUT_FILES[@]}"}" "${CLAUDE_O
 done
 
 tmp=$(mktemp "${TMPDIR:-/tmp}/review-findings.XXXXXX") || exit 1
-trap 'rm -f "$tmp"' EXIT
+per_tmp=""
+trap 'rm -f "$tmp" "${per_tmp:-}"' EXIT
 
 parse_output() {
     local file="$1" label="$2"
@@ -234,8 +236,66 @@ parse_output() {
     ' "$file"
 }
 
-for f in "${EXTERNAL_OUTPUT_FILES[@]+"${EXTERNAL_OUTPUT_FILES[@]}"}" "${CLAUDE_OUTPUT_FILES[@]+"${CLAUDE_OUTPUT_FILES[@]}"}"; do
-    parse_output "$f" "$(basename "$f")" >> "$tmp"
+# parse_output_tsv: fallback for cursor plan-mode responses where the TSV
+# sidecar could not be written and TSV rows were inlined in the text response.
+# Extracts structured records via validate-research-output.sh --structured-
+# reviewer-mode, then converts each TSV row to the title\tlabel\tbody format
+# expected by the main findings loop.
+parse_output_tsv() {
+    local file="$1" label="$2" tsv_tmp vrc
+    [[ -s "$file" ]] || return 0
+    tsv_tmp=$(mktemp "${TMPDIR:-/tmp}/collect-tsv.XXXXXX") || return 1
+    set +e
+    "$PLUGIN_ROOT/scripts/validate-research-output.sh" \
+        --structured-reviewer-mode --write-structured "$tsv_tmp" "$file" \
+        >/dev/null 2>&1
+    vrc=$?
+    set -e
+    if [[ "$vrc" -ne 0 || ! -s "$tsv_tmp" ]]; then
+        rm -f "$tsv_tmp"
+        return 0
+    fi
+    awk -F '\t' -v label="$label" '
+        NR == 1 && $1 == "schema_version" { next }
+        NF >= 8 {
+            scope=$2; sev=$3; focus=$4; loc=$5; what=$6; scenario=$7; fix=$8
+            prefix=(scope == "out_of_scope") ? "[OUT_OF_SCOPE] " : ""
+            title=prefix focus ": " loc
+            body="[" sev "] " what " " scenario " " fix
+            printf "%s\t%s\t%s\n", title, label, body
+        }
+    ' "$tsv_tmp"
+    rm -f "$tsv_tmp"
+}
+
+per_tmp=$(mktemp "${TMPDIR:-/tmp}/review-per-file.XXXXXX") || exit 1
+for f in "${EXTERNAL_OUTPUT_FILES[@]+"${EXTERNAL_OUTPUT_FILES[@]}"}"; do
+    : > "$per_tmp"
+    parse_output_tsv "$f" "$(basename "$f")" > "$per_tmp"
+    if [[ -s "$per_tmp" ]]; then
+        larch_err "**⚠ Reviewer $(basename "$f"): recovered inline TSV findings (plan-mode prevented sidecar write)**"
+        append_review_failure "review Step 3a tsv-fallback" \
+            "collect-findings.sh inline-TSV recovery $(basename "$f")" \
+            0 "$f" "warning" || true
+    else
+        parse_output "$f" "$(basename "$f")" > "$per_tmp"
+    fi
+    cat "$per_tmp" >> "$tmp"
+done
+
+for f in "${CLAUDE_OUTPUT_FILES[@]+"${CLAUDE_OUTPUT_FILES[@]}"}"; do
+    : > "$per_tmp"
+    parse_output "$f" "$(basename "$f")" > "$per_tmp"
+    if [[ ! -s "$per_tmp" ]]; then
+        parse_output_tsv "$f" "$(basename "$f")" > "$per_tmp"
+        if [[ -s "$per_tmp" ]]; then
+            larch_err "**⚠ Reviewer $(basename "$f"): no prose findings; recovered inline TSV findings (plan-mode prevented sidecar write)**"
+            append_review_failure "review Step 3a tsv-fallback" \
+                "collect-findings.sh inline-TSV recovery $(basename "$f")" \
+                0 "$f" "warning" || true
+        fi
+    fi
+    cat "$per_tmp" >> "$tmp"
 done
 
 sort -u "$tmp" > "$tmp.sorted"

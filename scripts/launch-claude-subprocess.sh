@@ -10,7 +10,7 @@ source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
 
 usage() {
-    larch_err "Usage: launch-claude-subprocess.sh [--model MODEL] --prompt-file FILE --output-file FILE --timeout SECONDS [--context-files FILE ...] [--timing-task-kind KIND]"
+    larch_err "Usage: launch-claude-subprocess.sh [--model MODEL] --prompt-file FILE --output-file FILE --timeout SECONDS [--context-files FILE ...] [--allow-root DIR ...] [--timing-task-kind KIND]"
 }
 
 MODEL="claude-sonnet-4-6"
@@ -20,6 +20,7 @@ TIMEOUT=""
 TIMING_TASK_KIND="claude-review"
 CONTEXT_FILES=()
 CONTEXT_COUNT=0
+EXTRA_ROOTS=()
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -28,6 +29,7 @@ while [[ $# -gt 0 ]]; do
         --output-file) OUTPUT_FILE="${2:?--output-file requires a value}"; shift 2 ;;
         --timeout) TIMEOUT="${2:?--timeout requires a value}"; shift 2 ;;
         --timing-task-kind) TIMING_TASK_KIND="${2:?--timing-task-kind requires a value}"; shift 2 ;;
+        --allow-root) EXTRA_ROOTS+=("${2:?--allow-root requires a value}"); shift 2 ;;
         --context-files)
             shift
             while [[ $# -gt 0 && "$1" != --* ]]; do
@@ -91,13 +93,30 @@ PROMPT_CANON=$(canonical_existing_file "$PROMPT_FILE") || fail "invalid --prompt
 OUTPUT_CANON=$(canonical_output_path "$OUTPUT_FILE") || fail "invalid --output-file"
 SESSION_ROOT=$(cd "$(dirname "$OUTPUT_CANON")" && pwd -P)
 
+EXTRA_ROOTS_CANON=()
+for extra_root in "${EXTRA_ROOTS[@]+"${EXTRA_ROOTS[@]}"}"; do
+    [[ -d "$extra_root" ]] || fail "--allow-root path is not a directory: $extra_root"
+    EXTRA_ROOTS_CANON+=("$(cd "$extra_root" && pwd -P)")
+done
+
+ctx_under_allowed_root() {
+    local p="$1"
+    under_root "$p" "$PLUGIN_ROOT" && return 0
+    under_root "$p" "$SESSION_ROOT" && return 0
+    local er
+    for er in "${EXTRA_ROOTS_CANON[@]+"${EXTRA_ROOTS_CANON[@]}"}"; do
+        under_root "$p" "$er" && return 0
+    done
+    return 1
+}
+
 under_root "$PROMPT_CANON" "$PLUGIN_ROOT" || under_root "$PROMPT_CANON" "$SESSION_ROOT" || fail "--prompt-file outside allowed roots"
 under_root "$OUTPUT_CANON" "$SESSION_ROOT" || fail "--output-file outside session root"
 
 CONTEXT_CANON=()
 for ctx in "${CONTEXT_FILES[@]}"; do
     ctx_canon=$(canonical_existing_file "$ctx") || fail "invalid context file: $ctx"
-    under_root "$ctx_canon" "$PLUGIN_ROOT" || under_root "$ctx_canon" "$SESSION_ROOT" || fail "context file outside allowed roots: $ctx"
+    ctx_under_allowed_root "$ctx_canon" || fail "context file outside allowed roots: $ctx"
     size=$(wc -c < "$ctx_canon" | tr -d ' ')
     (( size <= 262144 )) || fail "context file exceeds 256 KB: $ctx"
     CONTEXT_CANON+=("$ctx_canon")

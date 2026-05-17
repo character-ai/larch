@@ -16,6 +16,8 @@ Description mode parses dual-list output using `### In-Scope Findings` and `### 
 
 **No-findings sentinels**: `parse_output` short-circuits and emits zero findings when a reviewer file contains exactly the legacy literal `NO_ISSUES_FOUND` (checked via `grep -Fxq`) or, when `jq` is present, the JSON sentinel `{"no_issues_found": true}` (checked via `jq -e 'type == "object" and .no_issues_found == true'` on the first non-blank trimmed line). The JSON sentinel is the canonical form per #2156; the legacy literal remains accepted as a backward-compatible fallback.
 
+**Inline-TSV fallback**: external reviewer outputs are probed with `parse_output_tsv` before the fail-open prose parser so inline structured rows are not collapsed into one generic diff-mode finding. Claude fallback outputs still prefer prose parsing first. `parse_output_tsv` invokes `validate-research-output.sh --structured-reviewer-mode --write-structured` on the same file to extract inline TSV records, then converts each record to the `title\tlabel\tbody` format used by the main findings loop. When inline TSV recovery succeeds, a `**⚠ …**` warning is emitted to stderr and a warning-style execution-issues entry is appended so the operator sees that plan-mode prevented the sidecar write without recording the contradictory phrase `failed (exit 0)`. This fallback is a no-op when no valid TSV header is found.
+
 Stdout is `KEY=value` only: `FINDINGS_COUNT`, `OOS_COUNT`, `DIRTY_DETECTED`, `COLLECT_OK`, and `COLLECTOR_OUTPUT_FILE`.
 
 On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.

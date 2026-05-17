@@ -236,6 +236,32 @@ assert_line "C_T5 status" "STATUS=SENTINEL_TIMEOUT" "$RESULT_T5"
 assert_line "C_T5 healthy" "HEALTHY=false" "$RESULT_T5"
 assert_no_retry_file "C_T5 no retry" "$OUT_T5"
 
+# C_IT1: cursor output with inline TSV inside code fence passes
+# --substantive-validation --validation-mode (no NOT_SUBSTANTIVE).
+OUT_IT1="$TMPROOT/cursor-it1.txt"
+cat > "$OUT_IT1" <<'EOF'
+Read-only: we won't write the TSV sidecar file (plan-mode); including TSV inline.
+we can't write the TSV sidecar due to read-only constraints; we'll include TSV lines in the response.
+
+```
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/foo.sh:42	Null pointer not checked	Returns nil on error path	Add nil guard before use
+1	in_scope	nit	code-quality	scripts/bar.sh:10	Unused variable x	Dead code	Remove the variable
+```
+EOF
+printf '0\n' > "${OUT_IT1}.done"
+RESULT_IT1=$(RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 bash "$COLLECTOR" --timeout 5 --substantive-validation --validation-mode "$OUT_IT1" 2>/dev/null)
+assert_line "C_IT1 status not NOT_SUBSTANTIVE" "STATUS=OK" "$RESULT_IT1"
+assert_line "C_IT1 healthy" "HEALTHY=true" "$RESULT_IT1"
+
+# C_IT2: cursor output with only short narration (no TSV, < 30 words) is NOT_SUBSTANTIVE.
+OUT_IT2="$TMPROOT/cursor-it2.txt"
+printf 'Read-only: we cannot write the sidecar file.\n' > "$OUT_IT2"
+printf '0\n' > "${OUT_IT2}.done"
+RESULT_IT2=$(RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 bash "$COLLECTOR" --timeout 5 --substantive-validation --validation-mode "$OUT_IT2" 2>/dev/null)
+assert_line "C_IT2 status is NOT_SUBSTANTIVE" "STATUS=NOT_SUBSTANTIVE" "$RESULT_IT2"
+assert_line "C_IT2 healthy" "HEALTHY=false" "$RESULT_IT2"
+
 if [[ "$FAIL" -ne 0 ]]; then
     printf '\nFAIL: test-collect-agent-results.sh (%d failure(s))\n' "$FAIL" >&2
     printf ' - %s\n' "${FAILED[@]}" >&2
