@@ -6,8 +6,9 @@
 # Contract documented in scripts/lib-vote-tally.md.
 
 # vote_for_id: prints YES | NO | EXONERATE | NEUTRAL for a (id, voter_file) pair.
-# Matches an anchored `<id>:` prefix on each line to avoid substring collisions
-# (e.g. FINDING_10 matching inside FINDING_100). Returns NEUTRAL on missing match.
+# Matches an anchored `<id>:` prefix and the first vote token after the colon to
+# avoid substring collisions and prose tokens overriding the actual vote.
+# Returns NEUTRAL on missing match.
 vote_for_id() {
     local id="$1" file="$2"
     awk -v id="$id" '
@@ -15,10 +16,13 @@ vote_for_id() {
       {
         line=$0
         upper=toupper(line)
-        if (upper ~ ("^" toupper(id) ":")) {
-          if (upper ~ /YES/) result="YES"
-          else if (upper ~ /EXONERATE/) result="EXONERATE"
-          else if (upper ~ /NO/) result="NO"
+        prefix="^" toupper(id) ":[[:space:]]*"
+        if (upper ~ (prefix "(YES|NO|EXONERATE)([[:space:]-]|$)")) {
+          rest=upper
+          sub(prefix, "", rest)
+          if (rest ~ /^YES([[:space:]-]|$)/) result="YES"
+          else if (rest ~ /^NO([[:space:]-]|$)/) result="NO"
+          else if (rest ~ /^EXONERATE([[:space:]-]|$)/) result="EXONERATE"
         }
       }
       END { print result }
@@ -62,15 +66,20 @@ PYEOF
 }
 
 # accept_finding: returns 0 (accept) or 1 (reject) given counts of YES/NO/EXONERATE
-# votes and the eligible voter count. Threshold:
+# votes and the panel-level eligible voter count. The eligible count must be
+# the number of non-failed voter files, not the per-finding non-neutral count.
+# Threshold:
 #   eligible >= 3 → 2+ YES
 #   eligible == 2 → unanimous YES (2/2)
-#   eligible <  2 → reject
+#   eligible == 1 → single YES
+#   eligible == 0 → reject; caller escalates to main-agent adjudication
 accept_finding() {
     local yes="$1" no="$2" exonerate="$3" eligible="$4"
     : "$no" "$exonerate"
-    if (( eligible < 2 )); then
+    if (( eligible <= 0 )); then
         return 1
+    elif (( eligible == 1 )); then
+        (( yes == 1 )) && return 0 || return 1
     elif (( eligible == 2 )); then
         (( yes == 2 )) && return 0 || return 1
     else
@@ -102,7 +111,18 @@ split_ballot_to_blocks() {
 # rules so callers do not reimplement them. Prints the result to stdout.
 classify_result() {
     local yes="$1" no="$2" exonerate="$3" eligible="$4"
-    if accept_finding "$yes" "$no" "$exonerate" "$eligible"; then
+    if (( eligible <= 0 )); then
+        printf 'rejected'
+    elif (( eligible == 1 )); then
+        if (( yes > 0 )); then
+            printf 'accepted'
+        elif (( exonerate > 0 )); then
+            printf 'exonerated'
+        else
+            : "$no"
+            printf 'rejected'
+        fi
+    elif accept_finding "$yes" "$no" "$exonerate" "$eligible"; then
         printf 'accepted'
     elif (( yes > 0 && yes == no )); then
         printf 'neutral'
@@ -110,5 +130,20 @@ classify_result() {
         printf 'exonerated'
     else
         printf 'rejected'
+    fi
+}
+
+# panel_tier: prints the human-readable policy tier for a panel-level eligible
+# voter count.
+panel_tier() {
+    local eligible="$1"
+    if (( eligible >= 3 )); then
+        printf 'full-3'
+    elif (( eligible == 2 )); then
+        printf 'unanimous-2'
+    elif (( eligible == 1 )); then
+        printf 'single-judge'
+    else
+        printf 'main-agent-required'
     fi
 }

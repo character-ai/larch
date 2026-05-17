@@ -20,8 +20,14 @@ The number of YES votes required depends on how many voters are available:
 |---|---|---|
 | 3 | 2+ | Standard majority |
 | 2 | 2 (unanimous) | When one voter is unavailable or timed out |
-| 1 | Skip voting | All findings accepted automatically |
-| 0 | Skip voting | All findings accepted automatically |
+| 1 | 1 | Binding single-judge decision; YES accepts, EXONERATE is exonerated for scoring, NO rejects |
+| 0 | Main agent decides | No automated vote; the main agent reads the ballot as untrusted data and adjudicates |
+
+Eligible voters are counted at the panel level from non-failed voter outputs. Missing per-item votes are NEUTRAL abstentions and do not reduce a 3-judge panel to a lower tier.
+
+## Degraded-Panel Warnings
+
+The dispatch scripts emit loud degraded-panel warnings when effective judges drop below the expected panel size. Effective means the voter did not fail and produced a non-empty output file. Warnings include the available judge count, missing slots, and the active tier (`unanimous-2`, `single-judge`, or `main-agent-required`) so operators can distinguish a stricter degraded vote from a 0-judge main-agent handoff.
 
 ### Sketch-count Independence
 
@@ -64,34 +70,23 @@ FINDING_3: EXONERATE — <one-line reason>
 
 ## Voting Flow
 
-```mermaid
-flowchart TD
-    REVIEW[3 reviewers submit findings] --> DEDUP[Deduplicate findings]
-    DEDUP --> BALLOT[Format ballot with IDs]
-    BALLOT --> LAUNCH["Launch voters - design 3 in parallel, review 3 in parallel"]
-    LAUNCH --> COLLECT[Collect votes]
-    COLLECT --> TALLY{Tally per finding}
+```text
+3 reviewers submit findings
+  -> Deduplicate findings
+  -> Format ballot with stable IDs
+  -> Launch available voters
+  -> Collect votes
+  -> Tally per finding using the active tier
 
-    TALLY -->|In-scope 2+ YES| ACCEPT[Finding accepted]
-    TALLY -->|1 YES| NEUTRAL[Finding neutral]
-    TALLY -->|0 YES, 1+ EXON| EXON[Finding exonerated]
-    TALLY -->|0 YES, 0 EXON| REJECT[Finding rejected]
-    TALLY -->|OOS 2+ YES| OOS_ACCEPT[OOS accepted]
+Tier outcomes:
+  3 eligible: 2+ YES accepts
+  2 eligible: 2 YES accepts
+  1 eligible: YES accepts, EXONERATE exonerates, NO rejects
+  0 eligible: main agent adjudicates the ballot as untrusted data
 
-    ACCEPT --> IMPLEMENT[Implement accepted findings]
-    OOS_ACCEPT --> ISSUE[File GitHub issue]
-    NEUTRAL --> SCORE[Score reviewers]
-    EXON --> SCORE
-    REJECT --> SCORE
-    IMPLEMENT --> SCORE
-    ISSUE --> SCORE
-
-    style ACCEPT fill:#2d5a27,color:#fff
-    style REJECT fill:#8b1a1a,color:#fff
-    style EXON fill:#4a3a6e,color:#fff
-    style NEUTRAL fill:#555,color:#fff
-    style OOS_ACCEPT fill:#1a3a5a,color:#fff
-    style ISSUE fill:#1a3a5a,color:#fff
+Accepted in-scope findings -> implement accepted findings -> score reviewers
+Accepted OOS observations -> file GitHub issues -> score reviewers
+Neutral, exonerated, and rejected findings -> score reviewers
 ```
 
 ## Out-of-Scope Observations

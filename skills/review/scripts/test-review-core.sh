@@ -104,25 +104,40 @@ fi
 printf 'FINDINGS_COUNT=%s\n' "${TEST_FINDINGS:-0}"
 printf 'OOS_COUNT=0\nDIRTY_DETECTED=false\nCOLLECT_OK=true\nCOLLECTOR_OUTPUT_FILE=collector.env\n'
 STUB
-    cat > "$TMP/tally.sh" <<'STUB'
+cat > "$TMP/tally.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 tmp=""
+voter_count=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --review-tmpdir) tmp="$2"; shift 2 ;;
+    --voter-files)
+      shift
+      while [[ $# -gt 0 && "$1" != --* ]]; do
+        voter_count=$((voter_count + 1))
+        shift
+      done
+      ;;
     *) shift 2 ;;
   esac
 done
 accepted="${TEST_ACCEPTED:-0}"
 rejected="${TEST_REJECTED:-0}"
+status="${TEST_TALLY_STATUS:-ok}"
+if [[ "$voter_count" -eq 0 ]]; then
+  status="main-agent-vote-required"
+  accepted=0
+  rejected=0
+fi
 printf 'FINDING_1_ACCEPTED=%s\n' "$([[ "$accepted" -gt 0 ]] && printf true || printf false)" > "$tmp/review-tally.env"
 if [[ "$accepted" -gt 0 ]]; then
   printf '### FINDING_1: Example\n- **Concern**: concern\n' > "$tmp/accepted-findings.md"
 else
   : > "$tmp/accepted-findings.md"
 fi
-printf 'ACCEPTED_COUNT=%s\nREJECTED_COUNT=%s\nTALLY_FILE=%s/review-tally.env\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nTALLY_OK=true\n' "$accepted" "$rejected" "$tmp" "$tmp"
+: > "$tmp/rejected-findings.md"
+printf 'TALLY_STATUS=%s\nACCEPTED_COUNT=%s\nREJECTED_COUNT=%s\nTALLY_FILE=%s/review-tally.env\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nTALLY_OK=true\n' "$status" "$accepted" "$rejected" "$tmp" "$tmp" "$tmp"
 STUB
     cat > "$TMP/emit.sh" <<'STUB'
 #!/usr/bin/env bash
@@ -215,7 +230,12 @@ out=$(TEST_FINDINGS=1 TEST_ACCEPTED=0 TEST_REJECTED=1 run_core "$TMP/rejected")
 assert_contains "$out" 'REVIEW_CORE_STATUS=ok'
 
 out=$(TEST_FINDINGS=1 TEST_ACCEPTED=1 TEST_PANEL_MODE=both-down run_core "$TMP/both")
+assert_contains "$out" 'REVIEW_CORE_STATUS=main-agent-vote-required'
 assert_contains "$out" 'PANEL_MODE=both-down'
+
+out=$(TEST_FINDINGS=1 TEST_TALLY_STATUS=main-agent-vote-required run_core "$TMP/main-agent")
+assert_contains "$out" 'REVIEW_CORE_STATUS=main-agent-vote-required'
+assert_contains "$out" 'ACCEPTED_COUNT=0'
 
 out=$(TEST_FINDINGS=1 TEST_ACCEPTED=1 run_core "$TMP/desc" description)
 assert_contains "$out" 'REVIEW_CORE_STATUS=ok'

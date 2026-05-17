@@ -17,7 +17,7 @@ If a deduplicated finding was proposed by multiple reviewers (merged during dedu
 
 ## Out-of-Scope Scoring
 
-Out-of-scope (OOS) observations use the same score shape as in-scope findings: accepted OOS earns +1, neutral or exonerated OOS earns 0, and rejected OOS costs -1. Accepted OOS still requires 2+ YES votes, so the acceptance threshold filters out noise while rejected observations are scored consistently with rejected findings.
+Out-of-scope (OOS) observations use the same score shape as in-scope findings: accepted OOS earns +1, neutral or exonerated OOS earns 0, and rejected OOS costs -1. Accepted OOS follows the active voting tier (3 judges: 2+ YES; 2 judges: unanimous YES; 1 judge: single YES; 0 judges: main-agent adjudication), so degraded panels never auto-accept observations.
 
 | OOS Vote Result | Points | Description |
 |---|---|---|

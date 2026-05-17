@@ -13,7 +13,7 @@ Flags:
 
 Output is `KEY=value` only through `scripts/lib-quiet.sh`:
 
-- `REVIEW_AND_FIX_STATUS=complete|no-findings|coder-failed`
+- `REVIEW_AND_FIX_STATUS=complete|no-findings|coder-failed|main-agent-vote-required`
 - `FIX_COUNT=N`
 - `CODER_TOOL=none|codex|cursor`
 - `CODER_STATUS=skipped|applied|failed|submodule-violation`
@@ -46,7 +46,7 @@ On round 1, orchestrator mode also marks `Step 5 — code review` through `scrip
 
 Exit codes:
 
-- `0`: no accepted findings remain for this round.
+- `0`: no accepted findings remain for this round, or `main-agent-vote-required` when no voting judges were available and the parent must adjudicate the ballot.
 - `2`: panel failure, coder failure, or submodule violation; parent `/implement` treats this as blocking.
 - `3`: a coder applied accepted findings. The parent runs relevant checks and decides whether to call the script for the next round.
 
@@ -59,6 +59,7 @@ Additional output keys:
 - `FIX_COUNT`
 - `APPROVED_FIXES_FILE`
 - `REJECTED_FINDINGS_FILE`
+- `FINDINGS_FILE`
 - `REVIEW_ROUND_DIR`
 - `REVIEW_AND_FIX_SUMMARY_FILE`
 - `ACCUMULATED_OOS_FILE`

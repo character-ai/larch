@@ -4,6 +4,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+CLAUDE_PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd -P)"
+export CLAUDE_PLUGIN_ROOT
 SCRIPT="$SCRIPT_DIR/tally-code-votes.sh"
 
 FAIL=0
@@ -94,8 +96,33 @@ got=$(awk -F= '$1=="ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "FINDING_1 una
 got=$(awk -F= '$1=="REJECTED_COUNT"{print $2}' "$out"); assert_eq "FINDING_2 1Y/1N → rejected (not unanimous)" "$got" "1"
 got=$(awk -F= '$1=="OOS_ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "FINDING_3 unanimous YES → OOS accepted" "$got" "1"
 
-echo "# Case: 1 voter → skip with warning, all accepted"
+echo "# Case: 2 voters, 1 YES 1 NEUTRAL → rejected (not unanimous)"
 TMP="$WORKDIR/case3"
+mkdir -p "$TMP"
+mk_ballot "$TMP/ballot.md"
+printf 'FINDING_1: YES\n' > "$TMP/cursor-vote-output.txt"
+printf 'FINDING_2: NO\n' > "$TMP/codex-vote-output.txt"
+out="$TMP/out.env"
+"$SCRIPT" --ballot-file "$TMP/ballot.md" \
+    --voter-files "$TMP/cursor-vote-output.txt" "$TMP/codex-vote-output.txt" \
+    --review-tmpdir "$TMP" > "$out"
+got=$(awk -F= '$1=="ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "2 voters, only 1 YES → no in-scope accepted" "$got" "0"
+got=$(awk -F= '$1=="REJECTED_COUNT"{print $2}' "$out"); assert_eq "2 voters, partial votes → 2 in-scope rejected" "$got" "2"
+
+echo "# Case: 1 voter YES → accepted, including OOS"
+TMP="$WORKDIR/case4"
+mkdir -p "$TMP"
+mk_ballot "$TMP/ballot.md"
+printf 'FINDING_1: YES\nFINDING_2: YES\nFINDING_3: YES\n' > "$TMP/cursor-vote-output.txt"
+out="$TMP/out.env"
+"$SCRIPT" --ballot-file "$TMP/ballot.md" \
+    --voter-files "$TMP/cursor-vote-output.txt" \
+    --review-tmpdir "$TMP" > "$out"
+got=$(awk -F= '$1=="ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "1 voter YES → 2 in-scope accepted" "$got" "2"
+got=$(awk -F= '$1=="OOS_ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "1 voter YES → OOS accepted" "$got" "1"
+
+echo "# Case: 1 voter NO → rejected"
+TMP="$WORKDIR/case4b"
 mkdir -p "$TMP"
 mk_ballot "$TMP/ballot.md"
 printf 'FINDING_1: NO\nFINDING_2: NO\nFINDING_3: NO\n' > "$TMP/cursor-vote-output.txt"
@@ -103,20 +130,54 @@ out="$TMP/out.env"
 "$SCRIPT" --ballot-file "$TMP/ballot.md" \
     --voter-files "$TMP/cursor-vote-output.txt" \
     --review-tmpdir "$TMP" > "$out"
-got=$(awk -F= '$1=="ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "1 voter → 2 in-scope all accepted" "$got" "2"
-got=$(awk -F= '$1=="OOS_ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "1 voter → OOS all accepted" "$got" "1"
-got=$(awk -F= '$1=="VOTING_SKIPPED_WARNING"{print $2}' "$out")
-case "$got" in *"Voting skipped"*) printf '  ok   warning emitted\n' ;; *) FAIL=1; printf '  FAIL warning missing (got %q)\n' "$got" ;; esac
+got=$(awk -F= '$1=="ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "1 voter NO → no in-scope accepted" "$got" "0"
+got=$(awk -F= '$1=="REJECTED_COUNT"{print $2}' "$out"); assert_eq "1 voter NO → 2 in-scope rejected" "$got" "2"
+got=$(awk -F= '$1=="OOS_REJECTED_COUNT"{print $2}' "$out"); assert_eq "1 voter NO → OOS rejected" "$got" "1"
 
-echo "# Case: --both-down true → bypass voting"
-TMP="$WORKDIR/case4"
+echo "# Case: 1 voter EXONERATE → exonerated, not accepted"
+TMP="$WORKDIR/case4c"
+mkdir -p "$TMP"
+mk_ballot "$TMP/ballot.md"
+printf 'FINDING_1: EXONERATE\nFINDING_2: EXONERATE\nFINDING_3: EXONERATE\n' > "$TMP/cursor-vote-output.txt"
+out="$TMP/out.env"
+"$SCRIPT" --ballot-file "$TMP/ballot.md" \
+    --voter-files "$TMP/cursor-vote-output.txt" \
+    --review-tmpdir "$TMP" > "$out"
+got=$(awk -F= '$1=="ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "1 voter EXONERATE → no in-scope accepted" "$got" "0"
+grep -Fq '| FINDING_1 | 0 | 0 | 1 | 0 | exonerated |' "$TMP/voting-tally.md" || { FAIL=1; printf '  FAIL single EXONERATE not labeled exonerated\n'; }
+
+echo "# Case: 0 voters → main-agent-vote-required"
+TMP="$WORKDIR/case4d"
+mkdir -p "$TMP"
+mk_ballot "$TMP/ballot.md"
+out="$TMP/out.env"
+"$SCRIPT" --ballot-file "$TMP/ballot.md" --review-tmpdir "$TMP" > "$out"
+got=$(awk -F= '$1=="TALLY_STATUS"{print $2}' "$out"); assert_eq "0 voters status" "$got" "main-agent-vote-required"
+got=$(awk -F= '$1=="ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "0 voters accepted count" "$got" "0"
+
+echo "# Case: --both-down true → main-agent-vote-required"
+TMP="$WORKDIR/case4e"
 mkdir -p "$TMP"
 mk_ballot "$TMP/ballot.md"
 out="$TMP/out.env"
 "$SCRIPT" --ballot-file "$TMP/ballot.md" \
     --review-tmpdir "$TMP" --both-down true > "$out"
-got=$(awk -F= '$1=="ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "both-down → 2 in-scope accepted" "$got" "2"
-got=$(awk -F= '$1=="OOS_ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "both-down → OOS accepted" "$got" "1"
+got=$(awk -F= '$1=="TALLY_STATUS"{print $2}' "$out"); assert_eq "both-down status" "$got" "main-agent-vote-required"
+got=$(awk -F= '$1=="ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "both-down accepted count" "$got" "0"
+
+echo "# Case: 3 voters, 1 YES 2 NEUTRAL → rejected (no quorum reduction)"
+TMP="$WORKDIR/case4f"
+mkdir -p "$TMP"
+mk_ballot "$TMP/ballot.md"
+printf 'FINDING_1: YES\n' > "$TMP/cursor-vote-output.txt"
+: > "$TMP/codex-vote-output.txt"
+: > "$TMP/claude-vote-output.txt"
+out="$TMP/out.env"
+"$SCRIPT" --ballot-file "$TMP/ballot.md" \
+    --voter-files "$TMP/cursor-vote-output.txt" "$TMP/codex-vote-output.txt" "$TMP/claude-vote-output.txt" \
+    --review-tmpdir "$TMP" > "$out"
+got=$(awk -F= '$1=="ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "3 voters, 1 YES 2 NEUTRAL → no accepted" "$got" "0"
+grep -Fq '| FINDING_1 | 1 | 0 | 0 | 2 | rejected |' "$TMP/voting-tally.md" || { FAIL=1; printf '  FAIL neutral quorum row missing\n'; }
 
 echo "# Case: security-tagged accepted OOS is NOT written to public file"
 TMP="$WORKDIR/case5"

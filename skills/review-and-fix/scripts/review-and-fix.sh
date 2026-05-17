@@ -688,6 +688,10 @@ run_implement_round() {
             status="$core_status"
             exit_code=2
             ;;
+        main-agent-vote-required)
+            status="main-agent-vote-required"
+            exit_code=0
+            ;;
         fix-required|cap-reached)
             if [[ "$coder_rc" -eq 2 ]]; then
                 status="coder-failed"
@@ -722,6 +726,7 @@ run_implement_round() {
     emit_kv FIX_COUNT "$coder_input_count"
     emit_kv APPROVED_FIXES_FILE "$accepted_file"
     emit_kv REJECTED_FINDINGS_FILE "$rejected_file"
+    emit_kv FINDINGS_FILE "$round_dir/findings.md"
     emit_kv REVIEW_ROUND_DIR "$round_dir"
     emit_kv REVIEW_AND_FIX_SUMMARY_FILE "$prior_summary"
     emit_kv ACCUMULATED_OOS_FILE "$oos_jsonl"

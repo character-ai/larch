@@ -116,6 +116,15 @@ EOF_OOS
 EOF_FINDING
     printf 'REVIEW_CORE_STATUS=fix-required\nROUND_NUM=%s\nACCEPTED_COUNT=1\nREJECTED_COUNT=0\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nPANEL_MODE=normal\nPANEL_SHAPE=simple\n' "$round" "$out" "$out"
     ;;
+  main-agent-vote-required)
+    cat > "$out/findings.md" <<'EOF_FINDING'
+### FINDING_1: Stub finding needing adjudication
+- **Location**: src/main.py
+- **Concern**: Stub concern.
+- **Suggested revision**: Stub fix.
+EOF_FINDING
+    printf 'REVIEW_CORE_STATUS=main-agent-vote-required\nROUND_NUM=%s\nACCEPTED_COUNT=0\nREJECTED_COUNT=0\nFINDINGS_FILE=%s/findings.md\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nPANEL_MODE=normal\nPANEL_SHAPE=simple\n' "$round" "$out" "$out" "$out"
+    ;;
   *)
     printf 'REVIEW_CORE_STATUS=zero-findings\nROUND_NUM=%s\nACCEPTED_COUNT=0\nREJECTED_COUNT=0\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nPANEL_MODE=normal\nPANEL_SHAPE=simple\n' "$round" "$out" "$out"
     ;;
@@ -193,6 +202,22 @@ run_orchestrator_case() {
 
 run_orchestrator_case codex-case codex-success codex
 run_orchestrator_case cursor-case cursor-success cursor
+
+work_main_agent="$TMP/main-agent-required"
+make_work_repo "$work_main_agent"
+implement_tmp="$work_main_agent/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_HEALTHY=true\nCURSOR_HEALTHY=true\n' > "$implement_tmp/session-env.sh"
+set +e
+out=$(TEST_CORE_STATUS=main-agent-vote-required run_review_and_fix "$work_main_agent" \
+    --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id main-agent-run)
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "main-agent required expected exit 0 got $rc"; }
+grep -Fq 'REVIEW_AND_FIX_STATUS=main-agent-vote-required' <<< "$out" || fail "main-agent required status"
+grep -Fq "FINDINGS_FILE=$implement_tmp/round-1/findings.md" <<< "$out" || fail "main-agent required findings file"
+jq -e '.schema_version == 2 and .status == "main-agent-vote-required" and .accepted_count == 0 and .rejected_count == 0' "$implement_tmp/review-and-fix-summary.json" >/dev/null \
+    || fail "main-agent required summary"
 
 work_rejected="$TMP/rejected-full"
 make_work_repo "$work_rejected"

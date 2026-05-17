@@ -338,8 +338,45 @@ mark_failed_if_nonzero_exit "$VOTER_1_PATH.done" VOTER_1_STATUS
 mark_failed_if_nonzero_exit "$VOTER_2_PATH.done" VOTER_2_STATUS
 mark_failed_if_nonzero_exit "$VOTER_3_PATH.done" VOTER_3_STATUS
 
-if [[ "$VOTER_1_STATUS" == "failed" ]]; then
-    larch_err "**⚠ Claude code voter unavailable — voting with at most 2 judges this round. Check execution-issues.ndjson for the root cause.**"
+effective_judges=0
+judge_list=()
+missing_reasons=()
+for _slot_info in "VOTER_1:$VOTER_1_STATUS:$VOTER_1_PATH:$VOTER_1_TOOL" \
+                  "VOTER_2:$VOTER_2_STATUS:$VOTER_2_PATH:$VOTER_2_TOOL" \
+                  "VOTER_3:$VOTER_3_STATUS:$VOTER_3_PATH:$VOTER_3_TOOL"; do
+    _slot="${_slot_info%%:*}"
+    _rest="${_slot_info#*:}"
+    _vstatus="${_rest%%:*}"
+    _vrest="${_rest#*:}"
+    _vpath="${_vrest%%:*}"
+    _vtool="${_vrest##*:}"
+    if [[ "$_vstatus" != "failed" && -n "$_vpath" && -s "$_vpath" ]]; then
+        effective_judges=$((effective_judges + 1))
+        judge_list+=("$_vtool")
+    else
+        missing_reasons+=("$_slot(${_vstatus:-unknown})")
+    fi
+done
+
+if (( effective_judges < 3 )); then
+    case "$effective_judges" in
+        2) _tier_label="unanimous-2" ;;
+        1) _tier_label="single-judge" ;;
+        *) _tier_label="main-agent-required" ;;
+    esac
+    if [[ "${#judge_list[@]}" -gt 0 ]]; then
+        _judge_list_str="${judge_list[*]}"
+    else
+        _judge_list_str="none"
+    fi
+    if [[ "${#missing_reasons[@]}" -gt 0 ]]; then
+        _missing_str="${missing_reasons[*]}"
+    else
+        _missing_str="none"
+    fi
+    _warn_msg="**⚠ Degraded code-review panel: ${effective_judges}/3 effective judges. Judges: ${_judge_list_str// /,}. Missing: ${_missing_str// /,}. Accept rule: ${_tier_label}.**"
+    larch_err "$_warn_msg"
+    emit_kv DEGRADED_PANEL_WARNING "$_warn_msg"
 fi
 
 emit_kv VOTER_1_PATH "$VOTER_1_PATH"

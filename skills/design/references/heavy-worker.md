@@ -52,7 +52,7 @@ Run the same mechanics documented in `/design`:
 1. Step 2a collaborative sketches according to `sketch_budget`.
 2. Step 2a.5 dialectic resolution when contested decisions exist and `sketch_budget` is not `0`.
 3. Step 2b implementation plan synthesis, then call `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-plan.sh --design-tmpdir "$DESIGN_TMPDIR"`. Treat `EMIT_PLAN_STATUS=missing-diff-lines` as a hard failure and repair `plan.txt` before Step 3.
-4. Step 3 plan review, voting, plan revision, OOS extraction, and rejected-finding tracking. Tally voting through `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/tally-plan-review.sh` with explicit `--ballot-file`, `--voter-files`, and `--design-tmpdir` arguments using the voter file paths returned by `dispatch-plan-voters.sh`.
+4. Step 3 plan review, voting, plan revision, OOS extraction, and rejected-finding tracking. Tally voting through `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/tally-plan-review.sh` with explicit `--ballot-file`, optional `--voter-files`, and `--design-tmpdir` arguments using the voter file paths returned by `dispatch-plan-voters.sh`. The tally may emit `TALLY_PLAN_REVIEW_STATUS=main-agent-vote-required` when zero voter files are available; follow the main-agent synthetic-voter path from `skills/design/SKILL.md` rather than hand-writing artifacts.
 5. After accepted findings revise `plan.txt`, call `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-plan.sh --design-tmpdir "$DESIGN_TMPDIR"` again so `diff-lines.txt` matches the finalized plan.
 6. Before returning success, call `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/finalize-plan.sh --design-tmpdir "$DESIGN_TMPDIR"` to create may-be-empty artifacts and validate `plan.txt`, `diff-lines.txt`, and `voting-tally.md`.
 

@@ -305,6 +305,29 @@ if [[ -f "$WAIT_STDOUT" ]]; then
     done < "$WAIT_STDOUT"
 fi
 
+external_judges=0
+external_missing=()
+if [[ "$VOTER_2_STATUS" != "failed" && -n "$VOTER_2_PATH" && -s "$VOTER_2_PATH" ]]; then
+    external_judges=$((external_judges + 1))
+else
+    external_missing+=("voter-2(${VOTER_2_STATUS:-unknown})")
+fi
+if [[ "$VOTER_3_STATUS" != "failed" && -n "$VOTER_3_PATH" && -s "$VOTER_3_PATH" ]]; then
+    external_judges=$((external_judges + 1))
+else
+    external_missing+=("voter-3(${VOTER_3_STATUS:-unknown})")
+fi
+if (( external_judges < 2 )); then
+    if [[ "${#external_missing[@]}" -gt 0 ]]; then
+        _missing_str="${external_missing[*]}"
+    else
+        _missing_str="none"
+    fi
+    _warn_msg="**⚠ Plan-review external voter degradation: ${external_judges}/2 external voters available. Missing: ${_missing_str// /,}. Voter 1 (Claude) must compensate.**"
+    larch_err "$_warn_msg"
+    emit_kv DEGRADED_PANEL_WARNING "$_warn_msg"
+fi
+
 emit_kv VOTER_2_PATH "$VOTER_2_PATH"
 emit_kv VOTER_3_PATH "$VOTER_3_PATH"
 emit_kv VOTER_2_STATUS "$VOTER_2_STATUS"

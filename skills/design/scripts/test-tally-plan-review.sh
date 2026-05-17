@@ -6,6 +6,8 @@ set -euo pipefail
 export LARCH_QUIET_DISABLE=1
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd -P)
+CLAUDE_PLUGIN_ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd -P)
+export CLAUDE_PLUGIN_ROOT
 SUBJECT="$SCRIPT_DIR/tally-plan-review.sh"
 
 fail() {
@@ -113,6 +115,65 @@ mkdir -p "$DESIGN_TIE"
 if grep -q 'FINDING_1' "$DESIGN_TIE/accepted-plan-findings.md"; then
     fail "tie (1Y/1N) with 2 voters should not be accepted"
 fi
+
+# Single-judge decisions are binding for YES, rejected for NO, and exonerated
+# for EXONERATE.
+DESIGN_ONE_YES="$TMPROOT/design-one-yes"
+mkdir -p "$DESIGN_ONE_YES"
+"$SUBJECT" --ballot-file "$BALLOT" --voter-files "$V4" --design-tmpdir "$DESIGN_ONE_YES" >/dev/null
+grep -q 'FINDING_1' "$DESIGN_ONE_YES/accepted-plan-findings.md" || fail "single YES should accept FINDING_1"
+
+DESIGN_ONE_NO="$TMPROOT/design-one-no"
+mkdir -p "$DESIGN_ONE_NO"
+"$SUBJECT" --ballot-file "$BALLOT" --voter-files "$V5" --design-tmpdir "$DESIGN_ONE_NO" >/dev/null
+if grep -q 'FINDING_1' "$DESIGN_ONE_NO/accepted-plan-findings.md"; then
+    fail "single NO should not accept FINDING_1"
+fi
+grep -q 'FINDING_1' "$DESIGN_ONE_NO/rejected-findings.md" || fail "single NO rejected finding missing"
+
+V_EXON="$TMPROOT/v-exon.txt"
+cat > "$V_EXON" <<'EOF'
+FINDING_1: EXONERATE
+EOF
+DESIGN_ONE_EXON="$TMPROOT/design-one-exon"
+mkdir -p "$DESIGN_ONE_EXON"
+"$SUBJECT" --ballot-file "$BALLOT" --voter-files "$V_EXON" --design-tmpdir "$DESIGN_ONE_EXON" >/dev/null
+grep -q '| FINDING_1 | 0 | 0 | 1 | 0 | exonerated |' "$DESIGN_ONE_EXON/voting-tally.md" || fail "single EXONERATE should be exonerated"
+if grep -q 'FINDING_1' "$DESIGN_ONE_EXON/accepted-plan-findings.md"; then
+    fail "single EXONERATE should not accept FINDING_1"
+fi
+
+DESIGN_ZERO="$TMPROOT/design-zero"
+mkdir -p "$DESIGN_ZERO"
+out_zero=$("$SUBJECT" --ballot-file "$BALLOT" --design-tmpdir "$DESIGN_ZERO")
+printf '%s\n' "$out_zero" | grep -q '^TALLY_PLAN_REVIEW_STATUS=main-agent-vote-required$' || fail "zero voter status missing"
+[[ ! -s "$DESIGN_ZERO/accepted-plan-findings.md" ]] || fail "zero voter accepted file should be empty"
+
+V_NEUTRAL="$TMPROOT/v-neutral.txt"
+: > "$V_NEUTRAL"
+DESIGN_NEUTRAL="$TMPROOT/design-neutral"
+mkdir -p "$DESIGN_NEUTRAL"
+"$SUBJECT" --ballot-file "$BALLOT" --voter-files "$V4" "$V_NEUTRAL" "$V_NEUTRAL" --design-tmpdir "$DESIGN_NEUTRAL" >/dev/null
+if grep -q 'FINDING_1' "$DESIGN_NEUTRAL/accepted-plan-findings.md"; then
+    fail "3-voter panel with 1 YES and 2 NEUTRAL should not accept"
+fi
+grep -q '| FINDING_1 | 1 | 0 | 0 | 2 | rejected |' "$DESIGN_NEUTRAL/voting-tally.md" || fail "neutral quorum result row missing"
+
+BALLOT_OOS_ONE="$TMPROOT/ballot-oos-one.md"
+cat > "$BALLOT_OOS_ONE" <<'EOF'
+### OOS_1: Single judge follow-up
+- **Reviewer**: Cursor-Arch
+- focus-area = documentation
+- Concern: docs follow-up.
+EOF
+V_OOS_ONE="$TMPROOT/v-oos-one.txt"
+cat > "$V_OOS_ONE" <<'EOF'
+OOS_1: YES
+EOF
+DESIGN_OOS_ONE="$TMPROOT/design-oos-one"
+mkdir -p "$DESIGN_OOS_ONE"
+"$SUBJECT" --ballot-file "$BALLOT_OOS_ONE" --voter-files "$V_OOS_ONE" --design-tmpdir "$DESIGN_OOS_ONE" >/dev/null
+grep -q 'OOS_1' "$DESIGN_OOS_ONE/oos-accepted-design.md" || fail "single YES OOS should be accepted"
 
 # Security OOS in fenced code: should NOT be suppressed (only unfenced triggers exclusion).
 BALLOT2="$TMPROOT/ballot2.md"
