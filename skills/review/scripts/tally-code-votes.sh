@@ -81,42 +81,19 @@ REJECTED_COUNT=0
 OOS_ACCEPTED_COUNT=0
 OOS_REJECTED_COUNT=0
 
-# Voter eligibility: BOTH_DOWN=true skips voting entirely and accepts all.
-# Otherwise count provided voter files.
+# Voter eligibility is the panel-level count of available voter files. The
+# deprecated --both-down flag maps to the 0-judge main-agent path.
 ELIGIBLE_VOTERS="${#VOTER_FILES[@]}"
 VOTING_SKIPPED_WARNING=""
-
 if [[ "$BOTH_DOWN" == "true" ]]; then
-    # Inherits the legacy fallback: when no review machinery is available,
-    # accept all findings without voting.
-    : > "$VOTING_TALLY_FILE"
-    printf '# Code Review Voting Tally\n\n' >> "$VOTING_TALLY_FILE"
-    printf '**Both external reviewers unavailable; voting skipped — all findings accepted.**\n\n' >> "$VOTING_TALLY_FILE"
-    for block in "${block_files[@]+"${block_files[@]}"}"; do
-        id=$(basename "$block" .md)
-        # In /review code review all blocks live in the FINDING_N namespace;
-        # OOS items are tagged via [OUT_OF_SCOPE] in the title line.
-        is_oos=false
-        if head -n1 "$block" | grep -Fq '[OUT_OF_SCOPE]'; then
-            is_oos=true
-        fi
-        if [[ "$is_oos" == "true" ]]; then
-            cat "$block" >> "$OOS_ACCEPTED_FILE"
-            printf '\n' >> "$OOS_ACCEPTED_FILE"
-            if [[ "$OOS_ACCEPTED_OUT" != "$OOS_ACCEPTED_FILE" ]]; then
-                cat "$block" >> "$OOS_ACCEPTED_OUT"
-                printf '\n' >> "$OOS_ACCEPTED_OUT"
-            fi
-            cat "$block" >> "$OOS_FILE"
-            printf '\nVote tally: skipped (both-down)\n\n' >> "$OOS_FILE"
-            OOS_ACCEPTED_COUNT=$((OOS_ACCEPTED_COUNT + 1))
-        else
-            cat "$block" >> "$ACCEPTED_FINDINGS_FILE"
-            printf '\n' >> "$ACCEPTED_FINDINGS_FILE"
-            ACCEPTED_COUNT=$((ACCEPTED_COUNT + 1))
-        fi
-        printf 'FINDING_%s_ACCEPTED=true\n' "${id#FINDING_}" >> "$TALLY_ENV_FILE"
-    done
+    ELIGIBLE_VOTERS=0
+fi
+
+if (( ELIGIBLE_VOTERS == 0 )); then
+    VOTING_SKIPPED_WARNING="**⚠ Degraded code-review panel: 0 judges available. Panel tier: main-agent-required. Manual adjudication needed.**"
+    printf '# Code Review Voting Tally\n\n' > "$VOTING_TALLY_FILE"
+    printf '%s\n\n' "$VOTING_SKIPPED_WARNING" >> "$VOTING_TALLY_FILE"
+    emit_kv TALLY_STATUS main-agent-vote-required
     emit_kv ACCEPTED_COUNT "$ACCEPTED_COUNT"
     emit_kv REJECTED_COUNT "$REJECTED_COUNT"
     emit_kv OOS_ACCEPTED_COUNT "$OOS_ACCEPTED_COUNT"
@@ -129,57 +106,20 @@ if [[ "$BOTH_DOWN" == "true" ]]; then
     emit_kv OOS_FILE "$OOS_FILE"
     emit_kv TALLY_OK true
     emit_kv VOTER_COUNT 0
-    emit_kv VOTING_SKIPPED_WARNING "**⚠ Voting skipped (both external reviewers down). All findings accepted.**"
-    exit 0
-fi
-
-if (( ELIGIBLE_VOTERS < 2 )); then
-    VOTING_SKIPPED_WARNING="**⚠ Voting skipped (${ELIGIBLE_VOTERS} judge(s) available, minimum 2 required). All findings accepted.**"
-    : > "$VOTING_TALLY_FILE"
-    printf '# Code Review Voting Tally\n\n' >> "$VOTING_TALLY_FILE"
-    printf '**%s**\n\n' "$VOTING_SKIPPED_WARNING" >> "$VOTING_TALLY_FILE"
-    for block in "${block_files[@]+"${block_files[@]}"}"; do
-        id=$(basename "$block" .md)
-        is_oos=false
-        if head -n1 "$block" | grep -Fq '[OUT_OF_SCOPE]'; then
-            is_oos=true
-        fi
-        if [[ "$is_oos" == "true" ]]; then
-            cat "$block" >> "$OOS_ACCEPTED_FILE"; printf '\n' >> "$OOS_ACCEPTED_FILE"
-            if [[ "$OOS_ACCEPTED_OUT" != "$OOS_ACCEPTED_FILE" ]]; then
-                cat "$block" >> "$OOS_ACCEPTED_OUT"; printf '\n' >> "$OOS_ACCEPTED_OUT"
-            fi
-            cat "$block" >> "$OOS_FILE"
-            printf '\nVote tally: skipped (insufficient voters)\n\n' >> "$OOS_FILE"
-            OOS_ACCEPTED_COUNT=$((OOS_ACCEPTED_COUNT + 1))
-        else
-            cat "$block" >> "$ACCEPTED_FINDINGS_FILE"; printf '\n' >> "$ACCEPTED_FINDINGS_FILE"
-            ACCEPTED_COUNT=$((ACCEPTED_COUNT + 1))
-        fi
-        printf 'FINDING_%s_ACCEPTED=true\n' "${id#FINDING_}" >> "$TALLY_ENV_FILE"
-    done
-    emit_kv ACCEPTED_COUNT "$ACCEPTED_COUNT"
-    emit_kv REJECTED_COUNT "$REJECTED_COUNT"
-    emit_kv OOS_ACCEPTED_COUNT "$OOS_ACCEPTED_COUNT"
-    emit_kv OOS_REJECTED_COUNT "$OOS_REJECTED_COUNT"
-    emit_kv VOTING_TALLY_FILE "$VOTING_TALLY_FILE"
-    emit_kv TALLY_FILE "$TALLY_ENV_FILE"
-    emit_kv ACCEPTED_FINDINGS_FILE "$ACCEPTED_FINDINGS_FILE"
-    emit_kv REJECTED_FINDINGS_FILE "$REJECTED_FINDINGS_FILE"
-    emit_kv OOS_ACCEPTED_FILE "$OOS_ACCEPTED_OUT"
-    emit_kv OOS_FILE "$OOS_FILE"
-    emit_kv TALLY_OK true
-    emit_kv VOTER_COUNT "$ELIGIBLE_VOTERS"
     emit_kv VOTING_SKIPPED_WARNING "$VOTING_SKIPPED_WARNING"
     exit 0
 fi
 
-# Voting path: at least 2 judges available. Tally each block.
+# Voting path: at least 1 judge available. Tally each block.
 score_rows="$WORKDIR/score-rows.tsv"
 : > "$score_rows"
 
 {
     printf '# Code Review Voting Tally\n\n'
+    if (( ELIGIBLE_VOTERS < 3 )); then
+        tier_label="$(panel_tier "$ELIGIBLE_VOTERS")"
+        printf '**⚠ Degraded code-review panel: %s judge(s) available. Panel tier: %s.**\n\n' "$ELIGIBLE_VOTERS" "$tier_label"
+    fi
     printf '## Per-finding vote breakdown\n\n'
     printf '| Item | YES | NO | EXON | NEUT | Result |\n'
     printf '|---|---:|---:|---:|---:|---|\n'
@@ -197,11 +137,7 @@ score_rows="$WORKDIR/score-rows.tsv"
             esac
         done
 
-        effective_eligible=$(( yes + no + exonerate ))
-        use_eligible="$ELIGIBLE_VOTERS"
-        (( effective_eligible < use_eligible )) && use_eligible="$effective_eligible"
-
-        result=$(classify_result "$yes" "$no" "$exonerate" "$use_eligible")
+        result=$(classify_result "$yes" "$no" "$exonerate" "$ELIGIBLE_VOTERS")
         printf '| %s | %s | %s | %s | %s | %s |\n' "$id" "$yes" "$no" "$exonerate" "$neutral" "$result"
 
         reviewer=$(reviewer_for_block "$block")
@@ -294,6 +230,7 @@ score_rows="$WORKDIR/score-rows.tsv"
 
 : "$CURSOR_AVAILABLE" "$CODEX_AVAILABLE"
 
+emit_kv TALLY_STATUS ok
 emit_kv ACCEPTED_COUNT "$ACCEPTED_COUNT"
 emit_kv REJECTED_COUNT "$REJECTED_COUNT"
 emit_kv OOS_ACCEPTED_COUNT "$OOS_ACCEPTED_COUNT"

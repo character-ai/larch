@@ -43,9 +43,17 @@ assert_eq "2 voters, 2 YES (unanimous) → accept" "$got" "accept"
 accept_finding 1 0 1 2 && got=accept || got=reject
 assert_eq "2 voters, 1 YES 1 EXO → reject" "$got" "reject"
 accept_finding 1 0 0 1 && got=accept || got=reject
-assert_eq "1 voter, 1 YES → reject (under threshold)" "$got" "reject"
+assert_eq "1 voter, 1 YES → accept (single-judge binding)" "$got" "accept"
+accept_finding 0 1 0 1 && got=accept || got=reject
+assert_eq "1 voter, 1 NO → reject" "$got" "reject"
+accept_finding 0 0 1 1 && got=accept || got=reject
+assert_eq "1 voter, 1 EXONERATE → reject for implementation" "$got" "reject"
 accept_finding 0 0 0 0 && got=accept || got=reject
 assert_eq "0 voters → reject" "$got" "reject"
+accept_finding 1 0 0 3 && got=accept || got=reject
+assert_eq "3 available, 1 YES 2 NEUTRAL → reject" "$got" "reject"
+accept_finding 1 0 0 2 && got=accept || got=reject
+assert_eq "2 available, 1 YES 1 NEUTRAL → reject" "$got" "reject"
 
 echo "# vote_for_id"
 voter_file="$WORKDIR/voter.txt"
@@ -65,6 +73,12 @@ cat > "$voter_file" <<'EOF'
 FINDING_10: NO — only the long id
 EOF
 got=$(vote_for_id FINDING_1 "$voter_file"); assert_eq "FINDING_1 vs only-FINDING_10 → NEUTRAL" "$got" "NEUTRAL"
+cat > "$voter_file" <<'EOF'
+FINDING_1: NO -- yes this matters
+FINDING_2: EXONERATE -- yes but minor
+EOF
+got=$(vote_for_id FINDING_1 "$voter_file"); assert_eq "FINDING_1 NO with yes prose → NO" "$got" "NO"
+got=$(vote_for_id FINDING_2 "$voter_file"); assert_eq "FINDING_2 EXONERATE with yes prose → EXONERATE" "$got" "EXONERATE"
 
 echo "# reviewer_for_block"
 block="$WORKDIR/block.md"
@@ -148,6 +162,16 @@ got=$(classify_result 2 0 0 3); assert_eq "2Y/3 → accepted" "$got" "accepted"
 got=$(classify_result 1 1 0 3); assert_eq "1Y/1N (3 elig) → neutral" "$got" "neutral"
 got=$(classify_result 1 0 1 3); assert_eq "1Y/1E (3 elig) → exonerated" "$got" "exonerated"
 got=$(classify_result 0 1 0 3); assert_eq "0Y/1N → rejected" "$got" "rejected"
+got=$(classify_result 1 0 0 1); assert_eq "1Y/1 → accepted" "$got" "accepted"
+got=$(classify_result 0 1 0 1); assert_eq "1N/1 → rejected" "$got" "rejected"
+got=$(classify_result 0 0 1 1); assert_eq "1E/1 → exonerated" "$got" "exonerated"
+got=$(classify_result 0 0 0 1); assert_eq "1 neutral abstain → rejected" "$got" "rejected"
+
+echo "# panel_tier"
+got=$(panel_tier 3); assert_eq "3 → full-3" "$got" "full-3"
+got=$(panel_tier 2); assert_eq "2 → unanimous-2" "$got" "unanimous-2"
+got=$(panel_tier 1); assert_eq "1 → single-judge" "$got" "single-judge"
+got=$(panel_tier 0); assert_eq "0 → main-agent-required" "$got" "main-agent-required"
 
 if [[ "$FAIL" -eq 0 ]]; then
     printf 'PASS: test-lib-vote-tally.sh\n'

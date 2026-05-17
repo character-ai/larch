@@ -33,6 +33,7 @@ This is the script that closes the auto-accept bug — before this change, `tall
 | `VOTER_N_PATH` | Absolute path to vote-output file for slot N (1, 2, 3). |
 | `VOTER_N_TOOL` | `claude`, `codex`, or `cursor`. |
 | `VOTER_N_STATUS` | `launched` (external dispatched successfully), `fallback` (vendor unhealthy → Claude replacement launched), or `failed` (sentinel reported non-zero exit, or output file missing/empty after wait). |
+| `DEGRADED_PANEL_WARNING` | Present when fewer than 3 effective voter outputs are available. Includes effective count, judge list, missing slots, and tier label. |
 | `DISPATCH_OK` | `true` when all three sentinels reported exit=0; `false` on any failure. |
 
 ## Launch sequence
@@ -44,6 +45,7 @@ This is the script that closes the auto-accept bug — before this change, `tall
    - Cursor via `run-external-agent.sh --tool cursor --capture-stdout` with `agent-model-args.sh --with-effort` and `cursor-auth-flags.sh`.
 3. Wait for sentinels via `wait-for-reviewers.sh --timeout 1260`.
 4. For each voter, set `VOTER_N_STATUS=failed` if the sentinel reports non-zero exit OR the vote-output file is missing/empty.
+5. Compute effective judges with the same rule `review-core.sh` uses for tally eligibility: status not `failed` and output file non-empty. Emit a loud degraded-panel warning when the count is below 3.
 
 ## Voter prompt
 

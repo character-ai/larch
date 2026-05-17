@@ -18,7 +18,7 @@ SESSION_ENV_PATH="${SESSION_ENV_PATH:-}"
 
 usage() {
     while IFS= read -r line; do larch_err "$line"; done <<'USAGE'
-usage: tally-plan-review.sh --ballot-file FILE --voter-files FILE... --design-tmpdir DIR [--session-env-path FILE]
+usage: tally-plan-review.sh --ballot-file FILE [--voter-files FILE...] --design-tmpdir DIR [--session-env-path FILE]
 USAGE
 }
 
@@ -55,8 +55,8 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [[ -z "$DESIGN_TMPDIR" || -z "$BALLOT_FILE" || "${#VOTER_FILES[@]}" -eq 0 ]]; then
-    larch_err "tally-plan-review.sh: --design-tmpdir, --ballot-file, and --voter-files are required"
+if [[ -z "$DESIGN_TMPDIR" || -z "$BALLOT_FILE" ]]; then
+    larch_err "tally-plan-review.sh: --design-tmpdir and --ballot-file are required"
     usage
     exit 2
 fi
@@ -64,7 +64,7 @@ if [[ ! -r "$BALLOT_FILE" ]]; then
     larch_err "tally-plan-review.sh: ballot file is missing or unreadable: $BALLOT_FILE"
     exit 2
 fi
-for voter_file in "${VOTER_FILES[@]}"; do
+for voter_file in "${VOTER_FILES[@]+"${VOTER_FILES[@]}"}"; do
     if [[ ! -r "$voter_file" ]]; then
         larch_err "tally-plan-review.sh: voter file is missing or unreadable: $voter_file"
         exit 2
@@ -107,14 +107,27 @@ tally_file="$DESIGN_TMPDIR/voting-tally.md"
 score_rows="$WORKDIR/score-rows.tsv"
 : > "$score_rows"
 
-# Eligible voter count — used for threshold enforcement.
+# Eligible voter count is the panel-level available voter count, not the
+# per-finding non-neutral response count.
 eligible_count="${#VOTER_FILES[@]}"
 
-# vote_for_id, reviewer_for_block, is_security_block, accept_finding are
+# vote_for_id, reviewer_for_block, is_security_block, classify_result are
 # sourced from $PLUGIN_ROOT/scripts/lib-vote-tally.sh above.
+
+if (( eligible_count == 0 )); then
+    printf '# Plan Review Voting Tally\n\n' > "$tally_file"
+    printf '**⚠ Degraded plan-review panel: 0 judges available. Panel tier: main-agent-required.**\n\n' >> "$tally_file"
+    emit_kv TALLY_PLAN_REVIEW_STATUS main-agent-vote-required
+    emit_kv VOTING_TALLY_FILE "$tally_file"
+    exit 0
+fi
 
 {
     printf '# Plan Review Voting Tally\n\n'
+    if (( eligible_count < 3 )); then
+        tier_label="$(panel_tier "$eligible_count")"
+        printf '**⚠ Degraded plan-review panel: %s judge(s) available. Panel tier: %s.**\n\n' "$eligible_count" "$tier_label"
+    fi
     printf '## Findings\n\n'
     printf '| Item | YES | NO | Exon | Neutral | Result |\n'
     printf '|---|---:|---:|---:|---:|---|\n'
@@ -135,20 +148,7 @@ eligible_count="${#VOTER_FILES[@]}"
             esac
         done
 
-        # Eligible voters are those that cast YES, NO, or EXONERATE (not absent/NEUTRAL).
-        effective_eligible=$(( yes + no + exonerate ))
-        # Use the smaller of eligible_count and the actually-responding count.
-        use_eligible="$eligible_count"
-        (( effective_eligible < use_eligible )) && use_eligible="$effective_eligible"
-
-        result="rejected"
-        if accept_finding "$yes" "$no" "$exonerate" "$use_eligible"; then
-            result="accepted"
-        elif (( yes > 0 && yes == no )); then
-            result="neutral"
-        elif (( yes > 0 && exonerate > 0 && no == 0 )); then
-            result="exonerated"
-        fi
+        result=$(classify_result "$yes" "$no" "$exonerate" "$eligible_count")
         printf '| %s | %s | %s | %s | %s | %s |\n' "$id" "$yes" "$no" "$exonerate" "$neutral" "$result"
 
         reviewer=$(reviewer_for_block "$block")
@@ -178,7 +178,7 @@ eligible_count="${#VOTER_FILES[@]}"
                 :
             else
                 cat "$block" >> "$oos_file"
-                printf '\nVote tally: YES=%s NO=%s NEUTRAL=%s\n\n' "$yes" "$no" "$neutral" >> "$oos_file"
+                printf '\nVote tally: YES=%s NO=%s EXON=%s NEUTRAL=%s Result=%s\n\n' "$yes" "$no" "$exonerate" "$neutral" "$result" >> "$oos_file"
                 if [[ "$result" == "accepted" ]]; then
                     cat "$block" >> "$oos_accepted_local"
                     printf '\n' >> "$oos_accepted_local"

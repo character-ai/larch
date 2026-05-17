@@ -272,8 +272,8 @@ both_down=false
 [[ "$panel_mode" == "both-down" ]] && both_down=true
 
 # Dispatch the 3-judge code-review panel and collect vote-output files. When
-# both externals are down we skip the dispatch entirely and let tally-code-votes
-# auto-accept via --both-down=true.
+# both externals are down we skip the dispatch entirely and let the empty
+# voter-file set produce the main-agent-required path.
 voter_files=()
 voter_1_tool=""
 voter_2_tool=""
@@ -314,7 +314,6 @@ tally_args=(
     --review-tmpdir "$REVIEW_TMPDIR"
     --cursor-available "$CURSOR_AVAILABLE"
     --codex-available "$CODEX_AVAILABLE"
-    --both-down "$both_down"
 )
 [[ -n "$SESSION_ENV_PATH" ]] && tally_args+=(--session-env-path "$SESSION_ENV_PATH")
 if [[ "${#voter_files[@]}" -gt 0 ]]; then
@@ -322,6 +321,7 @@ if [[ "${#voter_files[@]}" -gt 0 ]]; then
 fi
 "$TALLY_VOTES_SH" "${tally_args[@]}" > "$tally_out"
 
+tally_status=$(kv_get "$tally_out" TALLY_STATUS)
 accepted_count=$(kv_get "$tally_out" ACCEPTED_COUNT)
 rejected_count=$(kv_get "$tally_out" REJECTED_COUNT)
 tally_file=$(kv_get "$tally_out" TALLY_FILE)
@@ -343,6 +343,22 @@ accepted_file="${accepted_file:-$REVIEW_TMPDIR/accepted-findings.md}"
 [[ -n "$voter_3_status" ]] && emit_kv VOTER_3_STATUS "$voter_3_status"
 voting_tally_file=$(kv_get "$tally_out" VOTING_TALLY_FILE)
 [[ -n "$voting_tally_file" ]] && emit_kv VOTING_TALLY_FILE "$voting_tally_file"
+
+if [[ "$tally_status" == "main-agent-vote-required" ]]; then
+    : > "$REVIEW_TMPDIR/rejected-findings.md"
+    copy_to_parent "$REVIEW_TMPDIR/rejected-findings.md" rejected-findings.md
+    copy_to_parent "$REVIEW_TMPDIR/oos-accepted-review.md" oos-accepted-review.md
+    emit_kv REVIEW_CORE_STATUS main-agent-vote-required
+    emit_kv ROUND_NUM "$ROUND_NUM"
+    emit_kv ACCEPTED_COUNT 0
+    emit_kv REJECTED_COUNT 0
+    emit_kv FINDINGS_FILE "$REVIEW_TMPDIR/findings.md"
+    emit_kv ACCEPTED_FINDINGS_FILE "$REVIEW_TMPDIR/accepted-findings.md"
+    emit_kv REJECTED_FINDINGS_FILE "$REVIEW_TMPDIR/rejected-findings.md"
+    emit_kv PANEL_MODE "$panel_mode"
+    emit_kv PANEL_SHAPE "$panel_shape"
+    exit 0
+fi
 
 emit_out="$REVIEW_TMPDIR/review-core-emit.env"
 emit_args=(

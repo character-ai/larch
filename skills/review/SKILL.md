@@ -32,7 +32,7 @@ Print `> **🔶 /review 1: gather context**`. The inline path is delegated to `r
 <!-- step:2 — Launch Reviewer Panel -->
 ## Step 2 — Launch Reviewer Panel
 
-Print `> **🔶 /review 2: launch reviewers**`. `review-core.sh` calls `dispatch-panel.sh --mode "$MODE" --review-tmpdir "$REVIEW_TMPDIR" --panel hard --codex-available "$codex_available" --cursor-available "$cursor_available" ...`; `PANEL_MODE=both-down` still means voting shortcut, while `PANEL_SHAPE=simple|hard` names topology.
+Print `> **🔶 /review 2: launch reviewers**`. `review-core.sh` calls `dispatch-panel.sh --mode "$MODE" --review-tmpdir "$REVIEW_TMPDIR" --panel hard --codex-available "$codex_available" --cursor-available "$cursor_available" ...`; `PANEL_MODE=both-down` maps to the 0-judge `main-agent-vote-required` handoff rather than an auto-accept shortcut, while `PANEL_SHAPE=simple|hard` names topology.
 
 <!-- step:3 — Review Cycle -->
 ## Step 3 — Review Cycle

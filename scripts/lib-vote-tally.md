@@ -14,6 +14,7 @@
 | `accept_finding <yes> <no> <exonerate> <eligible>` | vote counts and eligible voter count | — | 0 (accept) \| 1 (reject) |
 | `split_ballot_to_blocks <ballot_file> <out_dir>` | ballot file, output dir | per-ID `<id>.md` files in `out_dir` | 0 |
 | `classify_result <yes> <no> <exonerate> <eligible>` | vote counts and eligible voter count | stdout: `accepted` \| `rejected` \| `neutral` \| `exonerated` | 0 |
+| `panel_tier <eligible>` | eligible voter count | stdout: `full-3` \| `unanimous-2` \| `single-judge` \| `main-agent-required` | 0 |
 
 ## Threshold
 
@@ -21,11 +22,16 @@
 
 - `eligible >= 3` → `yes >= 2` accepts.
 - `eligible == 2` → `yes == 2` (unanimous) accepts.
-- `eligible <  2` → never accepts (caller falls back to accept-all per skill-specific policy).
+- `eligible == 1` → `yes == 1` accepts; `NO`, `EXONERATE`, or `NEUTRAL` do not accept.
+- `eligible == 0` → never accepts; caller escalates to main-agent adjudication.
+
+The `eligible` argument is the panel-level count of available voter files (non-failed voter outputs), not the per-finding count of YES/NO/EXONERATE responses. Missing votes from available judges are NEUTRAL abstentions and do not reduce the panel tier.
+
+`classify_result` uses the same tiers. In a single-judge panel, `YES` is `accepted`, `NO` is `rejected`, and `EXONERATE` is `exonerated` for scoreboard purposes even though the finding is not accepted for implementation.
 
 ## ID matching
 
-`vote_for_id` matches an anchored `<id>:` prefix on each voter-file line. Pattern is case-insensitive in the canonical `YES`/`NO`/`EXONERATE` token. Substring collisions are prevented: `FINDING_10:` does not match `FINDING_100:`.
+`vote_for_id` matches an anchored `<id>:` prefix and the first vote token immediately after the colon. Pattern is case-insensitive in the canonical `YES`/`NO`/`EXONERATE` token. Substring collisions are prevented (`FINDING_10:` does not match `FINDING_100:`), and prose such as `FINDING_1: NO -- yes, minor concern` cannot override the leading `NO`.
 
 ## Security tag
 
@@ -33,8 +39,8 @@
 
 ## Callers (must be kept in sync)
 
-- `skills/design/scripts/tally-plan-review.sh` — sources this library; uses all six functions.
-- `skills/review/scripts/tally-code-votes.sh` — sources this library; uses all six functions.
+- `skills/design/scripts/tally-plan-review.sh` — sources this library.
+- `skills/review/scripts/tally-code-votes.sh` — sources this library.
 
 ## Harness
 

@@ -11,12 +11,12 @@ Sources `${CLAUDE_PLUGIN_ROOT}/scripts/lib-vote-tally.sh` for `vote_for_id`, `re
 | Flag | Type | Required | Description |
 |---|---|---|---|
 | `--ballot-file FILE` | path | yes | Markdown file containing one `### FINDING_N:` block per finding. OOS items are indicated by `[OUT_OF_SCOPE]` in the title heading line — same convention `collect-findings.sh` already emits. |
-| `--voter-files FILE...` | path list | yes | Vote-output files (typically `cursor-vote-output.txt`, `codex-vote-output.txt`, `claude-vote-output.txt`). Each voter file contains lines like `FINDING_N: YES`, `FINDING_N: NO — reason`, `FINDING_N: EXONERATE — reason`. |
+| `--voter-files FILE...` | path list | no | Vote-output files (typically `cursor-vote-output.txt`, `codex-vote-output.txt`, `claude-vote-output.txt`). Each voter file contains lines like `FINDING_N: YES`, `FINDING_N: NO — reason`, `FINDING_N: EXONERATE — reason`. Zero files triggers `TALLY_STATUS=main-agent-vote-required`. |
 | `--review-tmpdir DIR` | path | yes | Output directory for all artifacts. |
 | `--session-env-path FILE` | path | no | When non-empty, OOS-accepted is also written to `$(dirname "$SESSION_ENV_PATH")/oos-accepted-review.md` so `/implement` Step 9a.1 can find it. |
 | `--cursor-available true\|false` | enum | no | Forwarded from review-core for context (currently informational only). |
 | `--codex-available true\|false` | enum | no | Same as above. |
-| `--both-down true\|false` | enum | no | When `true`, voting is bypassed and all findings auto-accepted. Used when both external reviewers were unavailable in the same round. Default: `false`. |
+| `--both-down true\|false` | enum | no | Deprecated compatibility flag. When `true`, maps to the same 0-judge `main-agent-vote-required` path as an empty voter-file set. Default: `false`. |
 
 ## Output artifacts
 
@@ -32,6 +32,7 @@ Sources `${CLAUDE_PLUGIN_ROOT}/scripts/lib-vote-tally.sh` for `vote_for_id`, `re
 
 | Key | Description |
 |---|---|
+| `TALLY_STATUS` | `ok` on normal tally; `main-agent-vote-required` when 0 judges are available. |
 | `ACCEPTED_COUNT` | In-scope findings accepted. |
 | `REJECTED_COUNT` | In-scope findings not accepted. |
 | `OOS_ACCEPTED_COUNT` | OOS items accepted (excluding security-tagged). |
@@ -44,14 +45,16 @@ Sources `${CLAUDE_PLUGIN_ROOT}/scripts/lib-vote-tally.sh` for `vote_for_id`, `re
 | `OOS_FILE` | Absolute path to `oos.md`. |
 | `TALLY_OK` | Always `true` on success. |
 | `VOTER_COUNT` | Voter file count. |
-| `VOTING_SKIPPED_WARNING` | Present iff fewer than 2 judges available OR both-down. |
+| `VOTING_SKIPPED_WARNING` | Present on the 0-judge main-agent path. |
 
 ## Threshold (delegated to lib-vote-tally.sh)
 
 - `eligible >= 3` → `yes >= 2` accepts.
 - `eligible == 2` → unanimous `yes == 2` accepts.
-- `eligible <  2` → all findings auto-accepted with `VOTING_SKIPPED_WARNING`.
-- `--both-down true` → all findings auto-accepted with `VOTING_SKIPPED_WARNING` (no judges launched).
+- `eligible == 1` → single-judge binding decision (`YES` accepts; `NO` rejects; `EXONERATE` is exonerated but not accepted).
+- `eligible == 0` → no automated vote; emit `TALLY_STATUS=main-agent-vote-required`, leave accepted/rejected counts at 0, and require main-agent adjudication.
+
+The quorum basis is the panel-level eligible voter count (number of non-failed voter files), not the per-finding non-neutral vote count. NEUTRAL or missing per-item votes do not reduce a 3-judge panel to a lower tier.
 
 ## Callers
 
@@ -59,4 +62,4 @@ Sources `${CLAUDE_PLUGIN_ROOT}/scripts/lib-vote-tally.sh` for `vote_for_id`, `re
 
 ## Harness
 
-`skills/review/scripts/test-tally-code-votes.sh` covers: 3-voter 2-YES accept, 3-voter 1-YES reject, 2-voter unanimous accept, 1-voter skip path, both-down, OOS handling with `[OUT_OF_SCOPE]` title prefix, rejected-OOS scoring, security-tag filtering on accepted OOS.
+`skills/review/scripts/test-tally-code-votes.sh` covers: 3-voter 2-YES accept, 3-voter 1-YES reject with NEUTRAL abstentions, 2-voter unanimous and non-unanimous paths, single-judge YES/NO/EXONERATE, 0-judge main-agent-required, deprecated `--both-down`, OOS handling with `[OUT_OF_SCOPE]` title prefix, rejected-OOS scoring, and security-tag filtering on accepted OOS.

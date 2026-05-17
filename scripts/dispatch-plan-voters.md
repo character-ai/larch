@@ -10,7 +10,9 @@ Codex runs as `codex exec --sandbox read-only -C "$PWD"` with model and effort a
 
 The script waits for launched external voters via `scripts/wait-for-reviewers.sh --timeout 1260`. Launch and wait failures append captured logs to `execution-issues.md` through `scripts/append-tool-failure.sh` under `External Reviewer Issues` when that helper is available. The log path resolver uses `LARCH_EXECUTION_ISSUES_LOG` when set; otherwise it falls back through `$(dirname "$SESSION_ENV_PATH")/execution-issues.md`, `$IMPLEMENT_TMPDIR/execution-issues.md`, then `$DESIGN_TMPDIR/execution-issues.md`.
 
-Stdout is `KEY=value` only: `VOTER_2_PATH`, `VOTER_3_PATH`, `VOTER_2_STATUS`, `VOTER_3_STATUS`, and `DISPATCH_OK`.
+Stdout is `KEY=value` only: `VOTER_2_PATH`, `VOTER_3_PATH`, `VOTER_2_STATUS`, `VOTER_3_STATUS`, optional `DEGRADED_PANEL_WARNING`, and `DISPATCH_OK`.
+
+After collection, the script computes available external voters with the same rule the design orchestrator uses for tally eligibility: status not `failed` and output file non-empty. When fewer than 2 external voters are available, it prints and emits a degraded-panel warning noting the missing external slots and that Voter 1 (Claude) must compensate.
 
 On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.
 
