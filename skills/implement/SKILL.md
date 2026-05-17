@@ -1266,10 +1266,6 @@ LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh"
 LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
 LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
 export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
-"${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 3 — checks first pass" || true
-"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 3 — checks first pass" || true
-# token-mark Step 3 — checks first pass
-# timing-mark Step 3 — checks first pass
 ```
 
 > **Continue after child returns.** On `RELEVANT_CHECKS_OK=true`, execute Step 4's commit (impl) breadcrumb next — the next user-facing output is either `⏩ 4: commit (impl) status=skip reason=dispatcher-committed sha=<short-sha> elapsed=<elapsed>` on the external implementer path or the Step 4 implementation-commit flow on Claude fallback. On `STATUS=fail`, first check for `FAILURE_REASON` (structural — e.g. `tmpdir-validation`, `site-validation`, `repo-root-unresolved`, `missing-check-script`, `redaction-failed`; act on the reason, no log file is produced); otherwise read `REDACTED_LOG_FILE` (checks failure — NOT raw `LOG_FILE`), diagnose, fix, and re-invoke the helper until clean BEFORE Step 4 — the failure path is in-Step-3, not a halt. In either case, do NOT end the turn, summarize, or write a handoff message.
@@ -1357,7 +1353,7 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 
 Nested review token-context propagation through `review-and-fix.sh` is pinned by `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-implement-review-token-propagation.sh` and `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-implement-review-token-propagation.md`.
 
-`run-step5-review.sh` derives `round_cap` and `review_panel` from `POST_PLAN_WORKFLOW_PATH` in `$IMPLEMENT_TMPDIR/session-env.sh`: `SIMPLE` maps to `review_panel=simple` and `round_cap=5`; `HARD` maps to `review_panel=hard` and `round_cap=7`.
+`run-step5-review.sh` derives `round_cap` and `review_panel` from `POST_PLAN_WORKFLOW_PATH` in `$IMPLEMENT_TMPDIR/session-env.sh`: `SIMPLE` maps to `review_panel=simple` and `round_cap=5`; `HARD` maps to `review_panel=hard` and `round_cap=7`. Before any prompt-side Step 5 gate compares `round_num` against `round_cap`, mirror that already-validated launcher mapping into a local `round_cap` shell variable so the gate snippets never read an empty value.
 
 Quick mode prints: `> **🔶 /implement 5: code review — quick mode (review-and-fix.sh, up to 5 rounds; 3-judge panel votes every round; simple review panel: 6 Cursor specialists including Cursor edge-cases, Codex generalist)**`
 
@@ -1454,10 +1450,6 @@ LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh"
 LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
 LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
 export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
-"${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 6 — checks second pass" || true
-"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 6 — checks second pass" || true
-# token-mark Step 6 — checks second pass
-# timing-mark Step 6 — checks second pass
 ```
 
 **Post-/review boundary sentinel**: the three required post-/review actions (Cross-Skill Presence Propagation + Track Rejected Code Review Findings + Step 6 breadcrumb) are all complete once this step is reached. Write `.review-boundary-passed` immediately at Step 6 entry to release `hook-stop-fail-close.sh`'s post-/review Stop hook guard (which blocks session stop while `review-round-summary.md` exists without this sentinel — issue #1862):

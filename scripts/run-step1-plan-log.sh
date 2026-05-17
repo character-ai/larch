@@ -22,6 +22,31 @@ session_get() {
     fi
 }
 
+resolve_run_id() {
+    local session_env_path="$1" implement_tmpdir="$2" session_id_file="$3"
+    local run_id="" candidate="" manifest_count=0
+
+    run_id="$(session_get "$session_env_path" RUN_ID "")"
+    if [[ -z "$run_id" ]]; then
+        run_id="$(session_get "$implement_tmpdir/parent-issue.md" RUN_ID "")"
+    fi
+    if [[ -z "$run_id" && -d "$implement_tmpdir/larch-logs/implement" ]]; then
+        for candidate in "$implement_tmpdir"/larch-logs/implement/*/manifest.json; do
+            [[ -f "$candidate" ]] || continue
+            manifest_count=$((manifest_count + 1))
+            run_id="$(basename "$(dirname "$candidate")")"
+            if (( manifest_count > 1 )); then
+                run_id=""
+                break
+            fi
+        done
+    fi
+    if [[ -z "$run_id" && -s "$session_id_file" ]]; then
+        run_id="$(tr -d '\r\n' < "$session_id_file" 2>/dev/null || true)"
+    fi
+    printf '%s\n' "$run_id"
+}
+
 IMPLEMENT_TMPDIR_ARG=""
 GOAL_TEXT=""
 GOAL_TEXT_SET=false
@@ -58,10 +83,9 @@ IMPLEMENT_TMPDIR="$(cd "$IMPLEMENT_TMPDIR_ARG" && pwd -P)"
 SESSION_ENV_PATH="$IMPLEMENT_TMPDIR/session-env.sh"
 SESSION_ID_FILE="$IMPLEMENT_TMPDIR/session-id"
 [[ -r "$SESSION_ENV_PATH" ]] || fail "session-env not readable: $SESSION_ENV_PATH"
-[[ -s "$SESSION_ID_FILE" ]] || fail "session-id not found or empty: $SESSION_ID_FILE"
 
-RUN_ID="$(tr -d '\r\n' < "$SESSION_ID_FILE" 2>/dev/null || true)"
-[[ -n "$RUN_ID" ]] || fail "session-id is empty: $SESSION_ID_FILE"
+RUN_ID="$(resolve_run_id "$SESSION_ENV_PATH" "$IMPLEMENT_TMPDIR" "$SESSION_ID_FILE")"
+[[ -n "$RUN_ID" ]] || fail "RUN_ID unresolved from session-env, parent-issue, manifest, or session-id"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(session_get "$SESSION_ENV_PATH" LARCH_CLAUDE_PLUGIN_ROOT "")}"

@@ -75,6 +75,36 @@ set -e
 if [[ "$rc" -eq 2 ]]; then pass "missing implement tmpdir exits 2"; else fail "missing implement tmpdir rc=$rc"; fi
 assert_contains "$out" "--implement-tmpdir is required" "missing implement tmpdir error"
 
+echo "=== reject invalid workflow enum ==="
+case_dir="$TMP/bad-workflow"
+make_tmpdir "$case_dir" BROKEN true false
+set +e
+out="$("$LAUNCHER" --implement-tmpdir "$case_dir" --coder codex 2>&1)"
+rc=$?
+set -e
+if [[ "$rc" -eq 2 ]]; then pass "bad workflow exits 2"; else fail "bad workflow rc=$rc"; fi
+assert_contains "$out" "POST_PLAN_WORKFLOW_PATH must be SIMPLE or HARD" "bad workflow error"
+
+echo "=== reject invalid auto-mode boolean ==="
+case_dir="$TMP/bad-auto"
+make_tmpdir "$case_dir" HARD maybe false
+set +e
+out="$("$LAUNCHER" --implement-tmpdir "$case_dir" --coder codex 2>&1)"
+rc=$?
+set -e
+if [[ "$rc" -eq 2 ]]; then pass "bad auto-mode exits 2"; else fail "bad auto-mode rc=$rc"; fi
+assert_contains "$out" "LARCH_AUTO_MODE must be true or false" "bad auto-mode error"
+
+echo "=== reject missing answers path ==="
+case_dir="$TMP/missing-answers"
+make_tmpdir "$case_dir" HARD true false
+set +e
+out="$("$LAUNCHER" --implement-tmpdir "$case_dir" --coder codex --answers "$case_dir/nope.json" 2>&1)"
+rc=$?
+set -e
+if [[ "$rc" -eq 2 ]]; then pass "missing answers exits 2"; else fail "missing answers rc=$rc"; fi
+assert_contains "$out" "--answers path does not exist" "missing answers error"
+
 echo "=== first dispatch argv derivation ==="
 case_dir="$TMP/case"
 make_tmpdir "$case_dir" HARD true false

@@ -47,7 +47,7 @@ Orchestrator mode invokes `skills/review/scripts/review-core.sh` once with `--ou
 
 After each round's `apply_findings_with_coder` dispatch finishes successfully and any submodule violations have been reverted, the script checks `git status --porcelain`. If the working tree is dirty, it stages all non-submodule changes via `git add -A` (submodule paths were already reverted, so `-A` cannot resurrect them) and calls `scripts/git-commit.sh -m "Address code review feedback (round N)"`. The commit SHA is emitted as `CODER_COMMIT_SHA`. If the working tree is clean, the script emits `CODER_STATUS=no-changes` with no commit. The coder prompt invariant ("Do NOT commit; the parent handles commits") is preserved: the bash script — not the coder — owns the commit.
 
-On round 1, orchestrator mode also marks `Step 5 — code review` through `scripts/token-ledger.sh` and `scripts/timing-ledger.sh` with `IMPLEMENT_TMPDIR` in the subprocess environment. The marks are best-effort and run after argument/tool validation, before review-core dispatch.
+Step 5 ledger marks are owned by the parent `/implement` Step 5 preamble, not by `review-and-fix.sh`. Orchestrator mode assumes the parent already emitted the best-effort `Step 5 — code review` token/timing marks before calling `scripts/run-step5-review.sh`.
 
 Exit codes:
 
