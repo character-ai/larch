@@ -146,7 +146,7 @@ assert_contains "FLUSH_STATUS=ok" "$out" "single-section emits ok"
 assert_contains "RECORDS=1" "$out" "single-section emits one record"
 assert_file_contains '"step":"7a"' "$batch" "single-section records step 7a"
 assert_file_contains '"source":"execution-issues.md pre-bump"' "$batch" "single-section records pre-bump source"
-[ -s "$case_dir/.execution-issues-flushed.sha" ] && pass "single-section writes sentinel" || fail "single-section writes sentinel"
+if [ -s "$case_dir/.execution-issues-flushed.sha" ]; then pass "single-section writes sentinel"; else fail "single-section writes sentinel"; fi
 
 case_dir="$TMP_ROOT/multi"
 mkdir -p "$case_dir"

@@ -102,6 +102,13 @@ fi
 
 tmp_base="$sentinel_dir"
 [ -d "$tmp_base" ] || tmp_base="${TMPDIR:-/tmp}"
+record_file=""
+append_log_tmp=""
+# shellcheck disable=SC2317  # trap-only function; called indirectly on EXIT
+cleanup() {
+    rm -f "$record_file" "$append_log_tmp"
+}
+trap cleanup EXIT
 record_file=$(mktemp "$tmp_base/flush-execution-issues-record.XXXXXX") || {
     emit_kv FLUSH_STATUS failed
     emit_kv RECORDS 0
@@ -109,16 +116,11 @@ record_file=$(mktemp "$tmp_base/flush-execution-issues-record.XXXXXX") || {
     exit 1
 }
 append_log_tmp=$(mktemp "$tmp_base/flush-execution-issues-append.XXXXXX") || {
-    rm -f "$record_file"
     emit_kv FLUSH_STATUS failed
     emit_kv RECORDS 0
     emit_kv ERROR "cannot create append log temp"
     exit 1
 }
-cleanup() {
-    rm -f "$record_file"
-}
-trap cleanup EXIT
 
 if ! write_execution_issues_records "$ISSUE_LOG" "$record_file" "$sha" "$batch_path" "7a" "execution-issues.md pre-bump"; then
     emit_kv FLUSH_STATUS failed
