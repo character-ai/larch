@@ -86,3 +86,11 @@
 - **Concern**: 2. **Nit** `code-quality` `scripts/test-cache-key-runtime-audit.sh:75-196` — The feature explicitly names `tool_use`, but the new fixtures cover `tool_result`, image mutation, and stable `tool_result` only. Add a `tool_use` fixture so future regressions in that named block type cannot pass unnoticed.
 - **Suggested revision**: Address the concern above.
 
+### FINDING_1: panel [code-review/accepted]
+
+## **Important** `correctness` `scripts/cache-key-runtime-audit.py:326` — `prefix_records()` still ignores top-level transcript entries with `type:"attachment"`, even though committed transcripts use those for prompt-bearing material like `deferred_tools_delta`, `skill_listing`, and `command_permissions` (`larch-logs/implement/14EA567C-39FB-439D-9962-BC343E074002/session-transcript.jsonl:5-7`). Concrete failing scenario: two assistant requests branching from the same parent with `command_permissions` changing from `["Read"]` to `["Read","Edit"]` produce records containing only `system:init`, so the second turn classifies as `EXPECTED-GROWTH` instead of `CACHE-INVALIDATING`. Include `entry.entry_type == "attachment"` records in the stable prefix, serialize/redact `raw["attachment"]` through the same summary path, and add a branched top-level attachment mutation fixture.
+
+- **Reviewer**: codex-generalist-output.txt
+- **Concern**: 1. **Important** `correctness` `scripts/cache-key-runtime-audit.py:326` — `prefix_records()` still ignores top-level transcript entries with `type:"attachment"`, even though committed transcripts use those for prompt-bearing material like `deferred_tools_delta`, `skill_listing`, and `command_permissions` (`larch-logs/implement/14EA567C-39FB-439D-9962-BC343E074002/session-transcript.jsonl:5-7`). Concrete failing scenario: two assistant requests branching from the same parent with `command_permissions` changing from `["Read"]` to `["Read","Edit"]` produce records containing only `system:init`, so the second turn classifies as `EXPECTED-GROWTH` instead of `CACHE-INVALIDATING`. Include `entry.entry_type == "attachment"` records in the stable prefix, serialize/redact `raw["attachment"]` through the same summary path, and add a branched top-level attachment mutation fixture.
+- **Suggested revision**: Address the concern above.
+
