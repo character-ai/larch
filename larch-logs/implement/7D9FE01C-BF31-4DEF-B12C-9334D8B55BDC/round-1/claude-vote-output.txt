@@ -1,0 +1,1 @@
+FINDING_1: EXONERATE -- nit-level concern on a one-liner stdlib call (`statistics.mean`) that mirrors the already-present `statistics.median` pattern; risk of silent regression is negligible and the test harness likely doesn't cover the median line either, making this asymmetric.

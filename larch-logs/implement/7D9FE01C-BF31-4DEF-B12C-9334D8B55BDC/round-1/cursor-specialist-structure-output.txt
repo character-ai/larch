@@ -1,0 +1,13 @@
+Gathering the pre-computed diff and commit history for a read-only review.
+
+Verifying Python imports in the embedded script for `statistics.mean` availability.
+
+Read the precomputed diff and verified [`skills/report-tokens/scripts/run-analysis.sh`](skills/report-tokens/scripts/run-analysis.sh): the embedded analyzer uses `import statistics` (line 222), so `statistics.mean` is valid. The per-workflow branch still skips empty `rows`, so `values` is never empty and `statistics.mean` will not raise.
+
+### In-Scope Findings
+
+No in-scope issues found.
+
+### Out-of-Scope Observations
+
+None.
