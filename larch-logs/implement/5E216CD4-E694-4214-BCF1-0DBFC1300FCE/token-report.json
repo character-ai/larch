@@ -1,0 +1,60 @@
+{
+  "vendors": [
+    "claude"
+  ],
+  "claude": {
+    "per_step": [
+      {
+        "step": "Step 0 — preflight",
+        "totals": {
+          "input": 2,
+          "cache_read": 565110,
+          "cache_create": 1534,
+          "output": 1046,
+          "total": 567692
+        },
+        "skills": [
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 2,
+              "cache_read": 565110,
+              "cache_create": 1534,
+              "output": 1046,
+              "total": 567692
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 0.5 — tracking issue",
+        "totals": {
+          "input": 11,
+          "cache_read": 3136117,
+          "cache_create": 8190,
+          "output": 8298,
+          "total": 3152616
+        },
+        "skills": [
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 11,
+              "cache_read": 3136117,
+              "cache_create": 8190,
+              "output": 8298,
+              "total": 3152616
+            }
+          }
+        ]
+      }
+    ],
+    "totals": {
+      "input": 13,
+      "cache_read": 3701227,
+      "cache_create": 9724,
+      "output": 9344,
+      "total": 3720308
+    }
+  }
+}

@@ -199,4 +199,32 @@ grep -qF 'timing-ledger.sh" mark "Step 7 — commit review fixes"' "$COMMIT_REVI
 grep -qF 'timing-ledger.sh" mark "Step 7a — code flow diagram"' "$GEN_DIAGRAM_SH" \
   || fail "generate-code-flow-diagram.sh must contain Step 7a timing-ledger mark"
 
+# Pin Exit 4 handling in SKILL.md: must direct orchestrator to "Continue to Step 16"
+exit4_step16_status=0
+awk '
+  /\*\*Exit 4\*\*/ { window = 15 }
+  window > 0 && /Continue to Step 16/ { found = 1 }
+  window > 0 { window-- }
+  END { if (!found) exit 1 }
+' "$SKILL_MD" || exit4_step16_status=$?
+[[ "$exit4_step16_status" == "0" ]] || fail "SKILL.md Exit 4 prose must direct orchestrator to 'Continue to Step 16'"
+
+# Pin that ship-pr.sh STALL_STEP=12d branch emits the branch-local diagnostic.
+stall12d_directive_status=0
+awk '
+  /policy_denied\|admin_failed\|error\)/ { in_branch = 1 }
+  in_branch && /ORCHESTRATOR DIRECTIVE \(STALL_STEP=12d\)/ { found_banner = 1 }
+  in_branch && /DO NOT improvise recovery\./ { found_directive = 1 }
+  in_branch && /exit 4/ {
+    if (found_banner && found_directive) {
+      success = 1
+      exit 0
+    }
+    exit 1
+  }
+  END { if (!success) exit 1 }
+' "$SHIP_PR_SH" || stall12d_directive_status=$?
+[[ "$stall12d_directive_status" == "0" ]] \
+  || fail "ship-pr.sh must emit the ORCHESTRATOR DIRECTIVE (STALL_STEP=12d) DO NOT improvise diagnostic on the STALL_STEP=12d exit 4 path"
+
 echo "All assertions passed."

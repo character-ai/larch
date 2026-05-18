@@ -1,0 +1,29 @@
+Gathering the pre-computed diff and commit history for a read-only review (git log is non-mutating).
+
+Verifying assertions against the repo: SKILL.md Exit 4 prose and `fail_file` handling on the modified branch.
+
+## Review summary
+
+Single commit on branch vs `main`: `40836b1` — adds a `printf` append to `$fail_file` before `exit 4` on the `policy_denied|admin_failed|error` branch after `STALL_STEP=12d`, documents it in [scripts/ship-pr.md](scripts/ship-pr.md), and pins SKILL Exit‑4 / ship‑pr diagnostic strings in [scripts/test-implement-structure.sh](scripts/test-implement-structure.sh) plus [scripts/test-implement-structure.md](scripts/test-implement-structure.md). `fail_file` is set for `ci-merge` merge output (`failure_capture_path ci-merge`) immediately before `merge-pr.sh`, so appending the directive targets the same capture path as the merge envelope — consistent with the stated intent.
+
+**Plan vs tests (risk-integration, plan):** The plan’s two pins are present: (a) SKILL.md Exit 4 → “Continue to Step 16” via `awk` window after `**Exit 4**`; (b) `DO NOT improvise` substring in `ship-pr.sh`. `make test-harnesses-12` includes `test-implement-structure` per [Makefile](Makefile), so CI should exercise the new assertions.
+
+### In-Scope Findings
+
+1. **`risk-integration` / `**Nit**` — [scripts/test-implement-structure.sh](scripts/test-implement-structure.sh):212-214**  
+   The failure string claims the test proves the diagnostic is “on STALL_STEP=12d exit 4 path,” but `grep -q 'DO NOT improvise' "$SHIP_PR_SH"` only proves the literal exists somewhere in the file. **Impact:** Operators may over-read a failing/passing result as path-specific coverage. **Fix:** Narrow the failure message to “must contain DO NOT improvise diagnostic” (matching what grep proves), or strengthen the assertion (e.g. multi-line `awk`/`grep` that requires `STALL_STEP 12d` and `exit 4` proximity to the directive), consistent with other harness pins in this file.
+
+2. **`risk-integration` / `**Latent**` — [scripts/test-implement-structure.sh](scripts/test-implement-structure.sh):212-214**  
+   Because the pin is substring-only, a refactor could leave `DO NOT improvise` only in a shared helper or an unrelated branch while the `12d` path loses the append, and the harness could still pass. **Scenario:** Extract `printf` into `scripts/lib-foo.sh` called from a different stall branch; `12d` no longer emits the directive but `ship-pr.sh` still `source`s a line containing the phrase. **Fix:** Anchor with a short multi-line pattern (e.g. require `STALL_STEP 12d` on the line before `exit 4` with the directive between them) or a dedicated marker string unique to this path.
+
+No other test/CI/regression problems stood out at the **Important** / **blocking** level; secondary correctness scan did not surface critical bugs (the `printf` body is constant; no injection surface).
+
+### Out-of-Scope Observations
+
+None surfaced that are both pre-existing and worth reporting here.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	nit	risk-integration	scripts/test-implement-structure.sh:212-214	Failure message over-claims path-specific coverage while grep only checks substring presence anywhere in ship-pr.sh.	A passing test can be misread as proving the STALL_STEP=12d exit-4 append specifically.	Reword the fail message to match the grep semantics or tighten the assertion to require proximity to STALL_STEP 12d / exit 4.
+1	in_scope	latent	risk-integration	scripts/test-implement-structure.sh:212-214	Substring-only pin on DO NOT improvise can survive refactors that move text off the 12d exit-4 path.	Diagnostic removed from policy_denied|admin_failed|error branch but phrase remains elsewhere (e.g. helper); harness still passes and regression slips.	Use a multi-line or contextual awk/grep pin (e.g. STALL_STEP 12d adjacent to the printf or a unique sentinel string only emitted on that branch).
+```
