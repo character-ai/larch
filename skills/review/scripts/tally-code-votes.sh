@@ -78,6 +78,8 @@ shopt -u nullglob
 
 ACCEPTED_COUNT=0
 REJECTED_COUNT=0
+EXONERATED_COUNT=0
+NEUTRAL_COUNT=0
 OOS_ACCEPTED_COUNT=0
 OOS_REJECTED_COUNT=0
 
@@ -96,6 +98,8 @@ if (( ELIGIBLE_VOTERS == 0 )); then
     emit_kv TALLY_STATUS main-agent-vote-required
     emit_kv ACCEPTED_COUNT "$ACCEPTED_COUNT"
     emit_kv REJECTED_COUNT "$REJECTED_COUNT"
+    emit_kv EXONERATED_COUNT "$EXONERATED_COUNT"
+    emit_kv NEUTRAL_COUNT "$NEUTRAL_COUNT"
     emit_kv OOS_ACCEPTED_COUNT "$OOS_ACCEPTED_COUNT"
     emit_kv OOS_REJECTED_COUNT "$OOS_REJECTED_COUNT"
     emit_kv VOTING_TALLY_FILE "$VOTING_TALLY_FILE"
@@ -164,12 +168,22 @@ score_rows="$WORKDIR/score-rows.tsv"
                 ACCEPTED_COUNT=$((ACCEPTED_COUNT + 1))
                 printf 'FINDING_%s_ACCEPTED=true\n' "${id#FINDING_}" >> "$TALLY_ENV_FILE"
             else
-                {
-                    printf '### [%s] %s\n\n' "$result" "$id"
-                    cat "$block"
-                    printf '\nVote tally: YES=%s NO=%s EXON=%s NEUTRAL=%s\n\n' "$yes" "$no" "$exonerate" "$neutral"
-                } >> "$REJECTED_FINDINGS_FILE"
-                REJECTED_COUNT=$((REJECTED_COUNT + 1))
+                case "$result" in
+                    rejected)
+                        {
+                            printf '### [%s] %s\n\n' "$result" "$id"
+                            cat "$block"
+                            printf '\nVote tally: YES=%s NO=%s EXON=%s NEUTRAL=%s\n\n' "$yes" "$no" "$exonerate" "$neutral"
+                        } >> "$REJECTED_FINDINGS_FILE"
+                        REJECTED_COUNT=$((REJECTED_COUNT + 1))
+                        ;;
+                    exonerated)
+                        EXONERATED_COUNT=$((EXONERATED_COUNT + 1))
+                        ;;
+                    neutral)
+                        NEUTRAL_COUNT=$((NEUTRAL_COUNT + 1))
+                        ;;
+                esac
                 printf 'FINDING_%s_ACCEPTED=false\n' "${id#FINDING_}" >> "$TALLY_ENV_FILE"
             fi
         else
@@ -233,6 +247,8 @@ score_rows="$WORKDIR/score-rows.tsv"
 emit_kv TALLY_STATUS ok
 emit_kv ACCEPTED_COUNT "$ACCEPTED_COUNT"
 emit_kv REJECTED_COUNT "$REJECTED_COUNT"
+emit_kv EXONERATED_COUNT "$EXONERATED_COUNT"
+emit_kv NEUTRAL_COUNT "$NEUTRAL_COUNT"
 emit_kv OOS_ACCEPTED_COUNT "$OOS_ACCEPTED_COUNT"
 emit_kv OOS_REJECTED_COUNT "$OOS_REJECTED_COUNT"
 emit_kv VOTING_TALLY_FILE "$VOTING_TALLY_FILE"

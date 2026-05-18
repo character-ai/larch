@@ -61,7 +61,9 @@ Additional output keys:
 - `REVIEW_CORE_STATUS`
 - `ROUND_NUM`
 - `ACCEPTED_COUNT`
-- `REJECTED_COUNT`
+- `REJECTED_COUNT` — strictly `rejected` outcomes only; does not include exonerated or neutral.
+- `EXONERATED_COUNT` — findings with outcome `exonerated` (this round only).
+- `NEUTRAL_COUNT` — findings with outcome `neutral` (this round only).
 - `FIX_COUNT`
 - `APPROVED_FIXES_FILE`
 - `REJECTED_FINDINGS_FILE`

@@ -26,7 +26,9 @@ Emitted keys:
 - `REVIEW_CORE_STATUS=ok|fix-required|zero-findings|cap-reached|panel-failed|main-agent-vote-required`
 - `ROUND_NUM`
 - `ACCEPTED_COUNT`
-- `REJECTED_COUNT`
+- `REJECTED_COUNT` — strictly `rejected` outcomes only; does not include exonerated or neutral.
+- `EXONERATED_COUNT` — findings with outcome `exonerated`.
+- `NEUTRAL_COUNT` — findings with outcome `neutral`.
 - `FINDINGS_FILE`
 - `ACCEPTED_FINDINGS_FILE`
 - `REJECTED_FINDINGS_FILE`

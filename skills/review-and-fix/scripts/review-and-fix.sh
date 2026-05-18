@@ -398,7 +398,7 @@ write_summary_json() {
 }
 
 flush_review_batches() {
-    local impl_tmpdir="$1" run_id="$2" panel="$3" rounds="$4" accepted="$5" rejected="$6"
+    local impl_tmpdir="$1" run_id="$2" panel="$3" rounds="$4" accepted="$5" rejected="$6" exonerated="${7:-0}" neutral="${8:-0}"
     local batch_input_dir body_file findings_file design_dir="" voting_tally="" summary_file
     local tally_out="" tally_rc=0
     local -a round_summary_files=() round_summary_glob=() compose_args=()
@@ -409,6 +409,8 @@ flush_review_batches() {
     [[ "$rounds" =~ ^[0-9]+$ ]] || rounds=0
     [[ "$accepted" =~ ^[0-9]+$ ]] || accepted=0
     [[ "$rejected" =~ ^[0-9]+$ ]] || rejected=0
+    [[ "$exonerated" =~ ^[0-9]+$ ]] || exonerated=0
+    [[ "$neutral" =~ ^[0-9]+$ ]] || neutral=0
     [[ -x "$WRITE_TALLY_SH" ]] || return 0
     [[ -x "$COMPOSE_REVIEW_FINDINGS_SH" ]] || return 0
     [[ -x "$LARCH_LOG_SH" ]] || return 0
@@ -487,6 +489,8 @@ flush_review_batches() {
         --rounds "$rounds" \
         --accepted "$accepted" \
         --rejected "$rejected" \
+        --exonerated "$exonerated" \
+        --neutral "$neutral" \
         --body-file "$body_file" 2>&1)"
     tally_rc=$?
     set -e
@@ -607,10 +611,14 @@ run_implement_round() {
     core_status=$(kv_get "$core_out" REVIEW_CORE_STATUS)
     accepted_count=$(kv_get "$core_out" ACCEPTED_COUNT)
     rejected_count=$(kv_get "$core_out" REJECTED_COUNT)
+    exonerated_count=$(kv_get "$core_out" EXONERATED_COUNT)
+    neutral_count=$(kv_get "$core_out" NEUTRAL_COUNT)
     accepted_file=$(kv_get "$core_out" ACCEPTED_FINDINGS_FILE)
     rejected_file=$(kv_get "$core_out" REJECTED_FINDINGS_FILE)
     accepted_count="${accepted_count:-0}"
     rejected_count="${rejected_count:-0}"
+    exonerated_count="${exonerated_count:-0}"
+    neutral_count="${neutral_count:-0}"
     core_status="${core_status:-unknown}"
     accepted_file="${accepted_file:-$round_dir/accepted-findings.md}"
     rejected_file="${rejected_file:-$round_dir/rejected-findings.md}"
@@ -790,7 +798,7 @@ run_implement_round() {
     emit_kv SUBMODULE_REVERT_COUNT "$revert_count"
     emit_kv SKIPPED_FINDING_COUNT "${skipped_finding_count:-0}"
     if [[ "$exit_code" -eq 0 ]]; then
-        flush_review_batches "$IMPLEMENT_TMPDIR" "$RUN_ID" "$PANEL" "$round_num_dec" "$total_accepted" "$total_rejected"
+        flush_review_batches "$IMPLEMENT_TMPDIR" "$RUN_ID" "$PANEL" "$round_num_dec" "$total_accepted" "$total_rejected" "$exonerated_count" "$neutral_count"
     fi
     exit "$exit_code"
 }

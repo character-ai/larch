@@ -659,6 +659,29 @@ run_pr_create_phase() {
         rc=$?
         [ "$rc" -eq 0 ] || record_failure pr-create "gh-pr-body-update.sh" "$rc" "$fail_file"
     fi
+    local flush_run_id
+    flush_run_id=$(read_state RUN_ID)
+    if [ -n "$flush_run_id" ]; then
+        fail_file=$(failure_capture_path pr-create)
+        "$SCRIPT_DIR/larch-log.sh" manifest \
+            --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
+            --skill implement \
+            --run-id "$flush_run_id" \
+            --field "pr_number=$pr_number" \
+            > "$fail_file" 2>&1
+        rc=$?
+        [ "$rc" -eq 0 ] || record_failure pr-create "larch-log.sh manifest (pr_number)" "$rc" "$fail_file" Warnings
+        if [ "${LARCH_NO_LOGS_COMMIT:-false}" != "true" ]; then
+            fail_file=$(failure_capture_path pr-create)
+            "$SCRIPT_DIR/larch-log.sh" commit \
+                --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
+                --skill implement \
+                --run-id "$flush_run_id" \
+                > "$fail_file" 2>&1
+            rc=$?
+            [ "$rc" -eq 0 ] || record_failure pr-create "larch-log.sh commit (post-pr-create)" "$rc" "$fail_file" Warnings
+        fi
+    fi
     advance_phase ci-initial
 }
 

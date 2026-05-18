@@ -64,17 +64,20 @@ the body contains `"Quick mode — no plan review voting."`.
 **Mode**: replace (JSON object). **Written**: Step 5, after `/review` returns (normal mode) or the quick-mode review loop completes.
 
 One JSON object per `/implement` session with the same tally envelope fields as
-`plan-review-tally.json`. The body contains the code-review voting outcome and
-a round-by-round summary. It also includes rejected code-review findings under a
-`## Rejected Code Review Findings` sub-header — making this the load-bearing
-source for rejected findings (the terminal session transcript only prints a
-breadcrumb, not the full content).
+`plan-review-tally.json`, plus `exonerated_count` (findings voted `exonerated` —
+valid but not worth implementing in this PR) and `neutral_count` (tie votes with no
+clear consensus). `rejected_count` counts only findings where the panel voted
+strictly `rejected` (voted down); it does not include exonerated or neutral outcomes.
+The body contains the code-review voting outcome and a round-by-round summary. It
+also includes rejected code-review findings under a `## Rejected Code Review
+Findings` sub-header — only findings with outcome `rejected` appear here. Exonerated
+and neutral findings are counted in the envelope but not listed separately.
 
 ### review-findings-full.md
 
 **Mode**: replace (markdown sections). **Written**: Step 5, immediately after the `code-review-tally` batch.
 
-Per-finding payloads for plan-review accepted, plan-review rejected, and code-review rejected entries. Each section heading carries finding id, reviewer, phase, and outcome, followed by the redacted prose body. Accepted code-review findings are not yet captured here; `scripts/compose-review-findings.sh` only reads plan-review and code-review rejection artifacts, not the accepted-code-review path.
+Per-finding payloads for plan-review accepted, plan-review rejected, and code-review entries. Each section heading carries finding id, reviewer, phase, and outcome, followed by the redacted prose body. Accepted code-review findings appear in `### FINDING_X: panel [code-review/accepted]` blocks; rejected findings appear in `### FINDING_X: panel [code-review/rejected]` blocks.
 
 ### version-bump-reasoning.md
 

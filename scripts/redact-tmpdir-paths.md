@@ -1,6 +1,6 @@
 # scripts/redact-tmpdir-paths.sh — contract
 
-`scripts/redact-tmpdir-paths.sh` is the deterministic stdin-to-stdout scrubber for larch session temp directory literals before text crosses a remote publishing boundary. It rewrites `/tmp/`, `/private/tmp/`, and `/var/folders/` (macOS) session roots plus the cache-backed `${XDG_CACHE_HOME:-$HOME/.cache}/larch/sessions/` root to the literal `<TMPDIR>`.
+`scripts/redact-tmpdir-paths.sh` is the deterministic stdin-to-stdout scrubber for larch session temp directory literals and operator repo paths before text crosses a remote publishing boundary. It rewrites `/tmp/`, `/private/tmp/`, and `/var/folders/` (macOS) session roots plus the cache-backed `${XDG_CACHE_HOME:-$HOME/.cache}/larch/sessions/` root to `<TMPDIR>`. It also rewrites `/Users/<name>/<repo>/` paths (operator sibling working-tree roots such as reviewer-local absolute paths leaked into committed log content) to `<OPERATOR_REPO_PATH>/`.
 
 The helper is intentionally markdown-unaware and idempotent. Non-matching input is passed through unchanged; running the helper twice produces the same output as running it once.
 

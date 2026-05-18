@@ -22,7 +22,7 @@ Sources `${CLAUDE_PLUGIN_ROOT}/scripts/lib-vote-tally.sh` for `vote_for_id`, `re
 
 - `voting-tally.md` — per-item table (`Item | YES | NO | EXON | NEUT | Result`) plus reviewer competition scoreboard.
 - `accepted-findings.md` — accepted FINDING_N blocks (in-scope only; OOS items go to a separate file).
-- `rejected-findings.md` — rejected/neutral/exonerated blocks with `Vote tally: YES=… NO=… EXON=… NEUTRAL=…` appended.
+- `rejected-findings.md` — only findings with outcome `rejected` (strictly voted down), with `Vote tally: YES=… NO=… EXON=… NEUTRAL=…` appended. Exonerated and neutral findings are counted but not written here.
 - `oos-accepted-review.md` — accepted OOS blocks with the security-tag filter applied (security-tagged OOS items are held locally only, never filed publicly).
 - `oos.md` — all OOS items (accepted and not), with vote tallies.
 - `review-tally.env` — `FINDING_N_ACCEPTED=true|false` keys for each block.
@@ -33,8 +33,10 @@ Sources `${CLAUDE_PLUGIN_ROOT}/scripts/lib-vote-tally.sh` for `vote_for_id`, `re
 | Key | Description |
 |---|---|
 | `TALLY_STATUS` | `ok` on normal tally; `main-agent-vote-required` when 0 judges are available. |
-| `ACCEPTED_COUNT` | In-scope findings accepted. |
-| `REJECTED_COUNT` | In-scope findings not accepted. |
+| `ACCEPTED_COUNT` | In-scope findings with outcome `accepted`. |
+| `REJECTED_COUNT` | In-scope findings with outcome `rejected` (voted down) only; does not include exonerated or neutral. |
+| `EXONERATED_COUNT` | In-scope findings with outcome `exonerated` (valid but not worth implementing in this PR). |
+| `NEUTRAL_COUNT` | In-scope findings with outcome `neutral` (tied vote, no clear consensus). |
 | `OOS_ACCEPTED_COUNT` | OOS items accepted (excluding security-tagged). |
 | `OOS_REJECTED_COUNT` | OOS items not accepted. |
 | `VOTING_TALLY_FILE` | Absolute path to `voting-tally.md`. |

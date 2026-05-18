@@ -54,7 +54,7 @@ Step-boundary completion and skip breadcrumbs emitted by this script use `/imple
 
 Warnings remain prose-format `**⚠ ...**` lines. Tail records remain `KEY=value` lines and are not breadcrumbs.
 
-`postbump` prints phase breadcrumbs, then:
+`postbump` prints phase breadcrumbs, then calls `larch-log.sh commit` (best-effort, gated on `LARCH_NO_LOGS_COMMIT != true`) to commit the `version-bump-reasoning` batch and any other updated log files onto the PR branch, so the batch is captured even when the Step 7a pre-bump flush was the last commit before bump:
 
 ```
 LOG_WRITE_STATUS=ok|skipped|failed
