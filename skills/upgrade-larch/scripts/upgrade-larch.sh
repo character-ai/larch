@@ -26,6 +26,15 @@ is_safe_version() {
     [[ "$1" =~ ^[0-9]+(\.[0-9]+)*$ ]]
 }
 
+version_gt() {
+    local left="$1"
+    local right="$2"
+    local highest
+
+    highest=$(printf '%s\n%s\n' "$left" "$right" | sort_versions | tail -n1)
+    [[ "$left" != "$right" && "$highest" = "$left" ]]
+}
+
 get_stable_releases() {
     gh api --paginate repos/character-ai/larch/releases \
       --jq '.[] | select(.prerelease == false and .draft == false) | .tag_name' \
@@ -176,21 +185,38 @@ if [ -n "$LATEST_STABLE" ]; then
     fi
 fi
 
-# Prune old versions only after a verified stable install. Keep up to 8 most recent cached versions.
+# Prune old versions only after a verified stable install.
+# Always drop cached versions newer than the verified stable release, then keep
+# at most 8 cached versions total while preserving the verified stable dir.
 if [ "$VERIFIED_TARGET" = true ]; then
-    emit_breadcrumb "Pruning old larch versions (keeping up to 8 most recent)..."
+    emit_breadcrumb "Pruning old larch versions (keeping up to 8, excluding versions newer than verified stable)..."
     CACHED_VERSIONS=()
     while IFS= read -r version; do
         [ -n "$version" ] || continue
         CACHED_VERSIONS+=("$version")
     done < <(list_cached_versions)
-    VERSION_COUNT="${#CACHED_VERSIONS[@]}"
+    SANITIZED_VERSIONS=()
     KEEP_LIMIT=8
 
+    for version in "${CACHED_VERSIONS[@]}"; do
+        if version_gt "$version" "$LATEST_STABLE"; then
+            emit_breadcrumb "  Removing version newer than verified stable: $version"
+            if ! rm -rf -- "${LARCH_CACHE_DIR:?}/${version:?}"; then
+                warn_prune_failure "$version"
+            fi
+            continue
+        fi
+        SANITIZED_VERSIONS+=("$version")
+    done
+
+    VERSION_COUNT="${#SANITIZED_VERSIONS[@]}"
     if [ "$VERSION_COUNT" -gt "$KEEP_LIMIT" ]; then
         PRUNE_COUNT=$((VERSION_COUNT - KEEP_LIMIT))
         for ((i=0; i<PRUNE_COUNT; i++)); do
-            version="${CACHED_VERSIONS[$i]}"
+            version="${SANITIZED_VERSIONS[$i]}"
+            if [ "$version" = "$LATEST_STABLE" ]; then
+                continue
+            fi
             emit_breadcrumb "  Removing old version: $version"
             if ! rm -rf -- "${LARCH_CACHE_DIR:?}/${version:?}"; then
                 warn_prune_failure "$version"

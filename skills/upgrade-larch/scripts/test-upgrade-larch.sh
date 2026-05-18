@@ -222,20 +222,52 @@ run_case verify-without-cache-dir
 assert_contains "$CASE_OUTPUT" "Verified: larch 31.0.0 installed successfully." "verify-without-cache-dir verify"
 assert_not_contains "$CASE_OUTPUT" "Upgrade incomplete" "verify-without-cache-dir no failure"
 
-# Pruning removes the oldest cached versions above the 8-version limit.
+# Pruning removes cached versions newer than the verified stable release even
+# when the cache is already under the 8-version limit.
+GH_OUTPUT=$'31.0.0\n30.9.0\n'
+INITIAL_INSTALLED_VERSION="30.8.0"
+PLUGIN_ROOT_VERSION="30.8.0"
+INSTALL_RESULT_VERSION="31.0.0"
+INSTALL_CACHE_VERSION="31.0.0"
+CACHED_VERSIONS="29.0.0 30.0.0 31.0.0 99.0.0"
+run_case prune-stray-newer-under-cap
+[[ "$CASE_RC" -eq 0 ]] || fail "prune-stray-newer-under-cap exit $CASE_RC"
+[[ ! -d "$CASE_CACHE_ROOT/99.0.0" ]] || fail "prune-stray-newer-under-cap should prune 99.0.0"
+for version in 29.0.0 30.0.0 31.0.0; do
+    [[ -d "$CASE_CACHE_ROOT/$version" ]] || fail "prune-stray-newer-under-cap should keep $version"
+done
+
+# Pruning keeps the verified stable cache dir even when more than 8 cached
+# versions are present.
 GH_OUTPUT=$'31.0.0\n30.9.0\n'
 INITIAL_INSTALLED_VERSION="30.8.0"
 PLUGIN_ROOT_VERSION="30.9.0"
 INSTALL_RESULT_VERSION="31.0.0"
 INSTALL_CACHE_VERSION="31.0.0"
-CACHED_VERSIONS="20.0.0 21.0.0 22.0.0 23.0.0 24.0.0 25.0.0 26.0.0 27.0.0 28.0.0 29.0.0 30.9.0"
-run_case prune-oldest
-[[ "$CASE_RC" -eq 0 ]] || fail "prune-oldest exit $CASE_RC"
+CACHED_VERSIONS="31.0.0 32.0.0 33.0.0 34.0.0 35.0.0 36.0.0 37.0.0 38.0.0 39.0.0"
+run_case preserve-verified-stable
+[[ "$CASE_RC" -eq 0 ]] || fail "preserve-verified-stable exit $CASE_RC"
+[[ -d "$CASE_CACHE_ROOT/31.0.0" ]] || fail "preserve-verified-stable should keep 31.0.0"
+for version in 32.0.0 33.0.0 34.0.0 35.0.0 36.0.0 37.0.0 38.0.0 39.0.0; do
+    [[ ! -d "$CASE_CACHE_ROOT/$version" ]] || fail "preserve-verified-stable should prune $version"
+done
+
+# Pruning removes cached versions newer than the verified stable release before
+# enforcing the 8-version retention limit.
+GH_OUTPUT=$'31.0.0\n30.9.0\n'
+INITIAL_INSTALLED_VERSION="30.8.0"
+PLUGIN_ROOT_VERSION="30.9.0"
+INSTALL_RESULT_VERSION="31.0.0"
+INSTALL_CACHE_VERSION="31.0.0"
+CACHED_VERSIONS="20.0.0 21.0.0 22.0.0 23.0.0 24.0.0 25.0.0 26.0.0 27.0.0 28.0.0 29.0.0 30.9.0 31.0.0 99.0.0"
+run_case prune-oldest-after-sanitize
+[[ "$CASE_RC" -eq 0 ]] || fail "prune-oldest-after-sanitize exit $CASE_RC"
+[[ ! -d "$CASE_CACHE_ROOT/99.0.0" ]] || fail "prune-oldest-after-sanitize should prune 99.0.0"
 for version in 20.0.0 21.0.0 22.0.0 23.0.0; do
-    [[ ! -d "$CASE_CACHE_ROOT/$version" ]] || fail "prune-oldest should prune $version"
+    [[ ! -d "$CASE_CACHE_ROOT/$version" ]] || fail "prune-oldest-after-sanitize should prune $version"
 done
 for version in 24.0.0 25.0.0 26.0.0 27.0.0 28.0.0 29.0.0 30.9.0 31.0.0; do
-    [[ -d "$CASE_CACHE_ROOT/$version" ]] || fail "prune-oldest should keep $version"
+    [[ -d "$CASE_CACHE_ROOT/$version" ]] || fail "prune-oldest-after-sanitize should keep $version"
 done
 
 # gh failure output should not be echoed back verbatim.

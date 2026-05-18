@@ -37,7 +37,7 @@ After `/upgrade-larch` finishes, restart Claude Code only if it actually install
 
 `/upgrade-larch` is idempotent only when `gh` is installed and can resolve the latest stable release: if the currently installed version already matches that stable release, it exits immediately with no changes. If `gh` is unavailable or cannot resolve stable releases, the script warns and upgrades unconditionally, skips stable-version verification, and skips pruning.
 
-When `/upgrade-larch` does verify a stable install successfully, it prunes old installed versions and keeps the verified stable release plus one rollback candidate. That rollback candidate is the previous stable release when GitHub provides it and that version is already cached locally; otherwise the script keeps the newest other cached version that is not newer than the verified stable release.
+When `/upgrade-larch` does verify a stable install successfully, it removes any cached larch versions newer than the verified stable release and then prunes older cached versions so that at most 8 cached versions remain in total, always preserving the verified stable release directory when it exists.
 
 ## Install for local development (contributors)
 
