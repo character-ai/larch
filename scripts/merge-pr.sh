@@ -157,9 +157,41 @@ fi
 
 LOCAL_HEAD=$(git rev-parse HEAD 2>/dev/null || echo "")
 if [[ -z "$LOCAL_HEAD" ]] || [[ "$LOCAL_HEAD" != "$PR_HEAD_OID" ]]; then
-    MERGE_RESULT="error"
-    ERROR="local HEAD ($LOCAL_HEAD) does not match PR head OID ($PR_HEAD_OID); refusing to evaluate same-version gate"
-    exit 0
+    # Check whether local HEAD is ahead of the PR head exclusively by
+    # larch-log flush commits. That pattern arises when larch-log-flush.sh
+    # tail calls fire after gh pr create, advancing local HEAD beyond the
+    # OID GitHub recorded for the PR.
+    _flush_recoverable=false
+    if [[ -n "$LOCAL_HEAD" ]]; then
+        FLUSH_AHEAD=$(git log --format='%s' "${PR_HEAD_OID}..HEAD" 2>/dev/null || echo "")
+        FLUSH_COUNT=$(printf '%s\n' "$FLUSH_AHEAD" | grep -c . 2>/dev/null || echo "0")
+        if [[ "$FLUSH_COUNT" -gt 0 ]] && [[ "$FLUSH_COUNT" -le 5 ]] \
+            && ! printf '%s\n' "$FLUSH_AHEAD" | grep -qv '^chore(larch-logs): flush '; then
+            _flush_recoverable=true
+        fi
+    fi
+    if [[ "$_flush_recoverable" == "true" ]]; then
+        FORCE_OUT=$("$SCRIPT_DIR/git-force-push.sh" 2>/dev/null || true)
+        PUSHED=$(printf '%s\n' "$FORCE_OUT" | awk -F= '/^PUSHED=/ { print $2 }')
+        if [[ "$PUSHED" != "true" ]]; then
+            MERGE_RESULT="error"
+            ERROR="local HEAD ($LOCAL_HEAD) is ahead of PR head OID ($PR_HEAD_OID) by flush commits only; force-push failed"
+            exit 0
+        fi
+        # Re-read PR metadata after the force-push advanced the remote HEAD.
+        PR_INFO=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json mergeStateStatus,headRefOid 2>/dev/null || echo "")
+        PR_HEAD_OID=$(echo "$PR_INFO" | jq -r '.headRefOid // ""' 2>/dev/null || echo "")
+        LOCAL_HEAD=$(git rev-parse HEAD 2>/dev/null || echo "")
+        if [[ -z "$LOCAL_HEAD" ]] || [[ "$LOCAL_HEAD" != "$PR_HEAD_OID" ]]; then
+            MERGE_RESULT="error"
+            ERROR="local HEAD ($LOCAL_HEAD) does not match PR head OID ($PR_HEAD_OID) after force-push recovery"
+            exit 0
+        fi
+    else
+        MERGE_RESULT="error"
+        ERROR="local HEAD ($LOCAL_HEAD) does not match PR head OID ($PR_HEAD_OID); refusing to evaluate same-version gate"
+        exit 0
+    fi
 fi
 
 if ! git fetch origin main --quiet 2>/dev/null; then

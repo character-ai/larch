@@ -49,6 +49,14 @@ After CI and merge-state checks pass, the script also runs a same-version bump r
 5. If origin publishes the same version as the branch bump, the script emits `MERGE_RESULT=version_already_published` and `ERROR=origin/main HEAD already bumped to X.Y.Z; rebase and re-bump`. If origin publishes a different version and `origin/main` is no longer an ancestor of `HEAD`, the script emits `MERGE_RESULT=main_advanced`.
 6. Immediately before the `gh pr merge` call (after all the checks above pass), the script performs a second `git fetch origin main` and re-runs the same-version check. This pre-merge re-fetch shrinks the TOCTOU window between the initial version check and the actual merge API call, preventing concurrent runners that both passed the initial check from both publishing the same version.
 
+### Flush-commit OID recovery
+
+Before the OID precondition in step 1, the script checks whether local HEAD is ahead of the PR head OID exclusively by `chore(larch-logs): flush` commits (up to 5 ahead commits). This condition arises when `larch-log-flush.sh` tail calls fire after `gh pr create`, advancing local HEAD beyond the OID GitHub recorded for the PR.
+
+When the condition holds, the script calls `git-force-push.sh` to advance the remote branch, then re-reads the PR head OID via `gh pr view`. If the OID now matches local HEAD, the gate evaluation continues normally. If the force-push fails or the OID still doesn't match after the push, `MERGE_RESULT=error` is emitted with a "force-push failed" or "after force-push recovery" suffix respectively.
+
+Non-recoverable divergence (any non-flush commit in the ahead range, more than 5 ahead commits, or local HEAD behind the PR head OID) preserves the original `MERGE_RESULT=error` with "refusing to evaluate same-version gate".
+
 ## Batched discovery
 
 At startup the script issues one compound `gh pr view --json mergeStateStatus,headRefOid` call that populates both `MERGE_STATE` and `PR_HEAD_OID`. This avoids a second API round-trip later for the same-version bump race gate's OID precondition. Both fields are parsed from the JSON result via `jq -r '.<field> // ""'`. Failure handling is unchanged: an empty result (gh error or network failure) still routes through the existing empty/UNKNOWN short-circuit paths.
