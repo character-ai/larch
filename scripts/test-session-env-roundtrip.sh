@@ -9,6 +9,7 @@
 #      --claude-source-file.
 #   C. write-session-env.sh validates and persists PREV_IMPLEMENT_TMPDIR.
 #   D. write-session-env.sh validates and persists CLAUDE_PLUGIN_ROOT.
+#   E. write-session-env.sh validates and persists LARCH_DYNAMIC_ARCHETYPES_MAX.
 
 set -euo pipefail
 
@@ -216,6 +217,28 @@ if err=$(CLAUDE_PLUGIN_ROOT="relative/plugin-root" "$WRITE_SCRIPT" \
     fail "D.3 relative CLAUDE_PLUGIN_ROOT accepted"
 else
     assert_contains "D.3 error message" "Invalid CLAUDE_PLUGIN_ROOT" "$err"
+fi
+
+# ------------------------------------------------------------
+# E. write-session-env.sh — --dynamic-archetypes validation
+# ------------------------------------------------------------
+
+if "$WRITE_SCRIPT" \
+    --output "$OUT" --repo a/b --repo-unavailable false \
+    --dynamic-archetypes 4 2>/dev/null; then
+    pass
+else
+    fail "E.1 valid dynamic-archetypes rejected"
+fi
+got=$("$READ_SCRIPT" --file "$OUT" --key LARCH_DYNAMIC_ARCHETYPES_MAX)
+assert_eq "E.1 value persisted" "4" "$got"
+
+if err=$("$WRITE_SCRIPT" \
+    --output "$OUT" --repo a/b --repo-unavailable false \
+    --dynamic-archetypes 9 2>&1); then
+    fail "E.2 invalid dynamic-archetypes accepted"
+else
+    assert_contains "E.2 error message" "Invalid --dynamic-archetypes" "$err"
 fi
 
 # ------------------------------------------------------------

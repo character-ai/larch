@@ -363,13 +363,13 @@ if grep -Fq 'sk-ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD' "$issues_parent/ex
     exit 1
 fi
 
+# Empty export is ignored (same semantics as review-and-fix.sh / test-review-and-fix.sh).
 set +e
-LARCH_DYNAMIC_ARCHETYPES_MAX='' run_core "$TMP/empty-env" >/dev/null 2>/dev/null
+out=$(LARCH_DYNAMIC_ARCHETYPES_MAX='' run_core "$TMP/empty-env")
 rc=$?
 set -e
-if [[ "$rc" -ne 2 ]]; then
-    echo "FAIL: accepted empty LARCH_DYNAMIC_ARCHETYPES_MAX in review-core" >&2
-    exit 1
-fi
+[[ "$rc" -eq 0 ]] || { echo "FAIL: empty LARCH_DYNAMIC_ARCHETYPES_MAX expected exit 0 got $rc" >&2; echo "$out" >&2; exit 1; }
+assert_contains "$out" 'REVIEW_CORE_STATUS=zero-findings'
+assert_contains "$out" 'DYNAMIC_SLOTS=0'
 
 echo "All assertions passed."

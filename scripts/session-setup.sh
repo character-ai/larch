@@ -27,7 +27,8 @@
 #                          Recognized keys: REPO, REPO_UNAVAILABLE,
 #                          CODEX_PRESENT, CURSOR_PRESENT, CODEX_AVAILABLE, CURSOR_AVAILABLE,
 #                          LARCH_TOKEN_SESSION_ID, LARCH_CLAUDE_SOURCE_FILE,
-#                          LARCH_TIMING_LEDGER, PREV_IMPLEMENT_TMPDIR.
+#                          LARCH_TIMING_LEDGER, PREV_IMPLEMENT_TMPDIR,
+#                          LARCH_DYNAMIC_ARCHETYPES_MAX.
 #                          If a key is present and non-empty, the script skips re-deriving it.
 #                          SESSION_TMPDIR is never inherited — a fresh tmpdir is always created.
 #                          If the file does not exist or is empty, full discovery happens.
@@ -45,6 +46,7 @@
 #   LARCH_TOKEN_SESSION_ID=<id> Output when passthrough from --caller-env, in both probe and passthrough branches
 #   LARCH_CLAUDE_SOURCE_FILE=<path> Output when passthrough from --caller-env, in both probe and passthrough branches
 #   LARCH_TIMING_LEDGER is forwarded to write-session-env.sh only when supplied via --caller-env; it is intentionally NOT echoed on stdout.
+#   LARCH_DYNAMIC_ARCHETYPES_MAX is forwarded to write-session-env.sh only when supplied via --caller-env and validated as 0..4; it is intentionally NOT echoed on stdout.
 #
 # On preflight failure, outputs PREFLIGHT_ERROR=<message> and exits non-zero.
 #
@@ -114,6 +116,7 @@ CALLER_TOKEN_SESSION_ID=""
 CALLER_CLAUDE_SOURCE_FILE=""
 CALLER_TIMING_LEDGER=""
 CALLER_PREV_IMPLEMENT_TMPDIR=""
+CALLER_DYNAMIC_ARCHETYPES_MAX=""
 
 if [[ -n "$CALLER_ENV" && -f "$CALLER_ENV" ]]; then
     # Use explicit `${line%%=*}` / `${line#*=}` parameter expansion instead
@@ -137,6 +140,7 @@ if [[ -n "$CALLER_ENV" && -f "$CALLER_ENV" ]]; then
             LARCH_CLAUDE_SOURCE_FILE) CALLER_CLAUDE_SOURCE_FILE="$value" ;;
             LARCH_TIMING_LEDGER) CALLER_TIMING_LEDGER="$value" ;;
             PREV_IMPLEMENT_TMPDIR) CALLER_PREV_IMPLEMENT_TMPDIR="$value" ;;
+            LARCH_DYNAMIC_ARCHETYPES_MAX) CALLER_DYNAMIC_ARCHETYPES_MAX="$value" ;;
             *)                 ;; # Ignore unknown keys
         esac
     done < "$CALLER_ENV"
@@ -413,6 +417,12 @@ if [[ -n "$WRITE_SESSION_ENV" ]]; then
     [[ -n "$FINAL_CURSOR_PRESENT" ]] && WSE_ARGS+=(--cursor-present "$FINAL_CURSOR_PRESENT")
     [[ -n "$CALLER_TOKEN_SESSION_ID" ]] && WSE_ARGS+=(--token-session-id "$CALLER_TOKEN_SESSION_ID")
     [[ -n "$CALLER_CLAUDE_SOURCE_FILE" ]] && WSE_ARGS+=(--claude-source-file "$CALLER_CLAUDE_SOURCE_FILE")
+    if [[ -n "$CALLER_DYNAMIC_ARCHETYPES_MAX" ]]; then
+        case "$CALLER_DYNAMIC_ARCHETYPES_MAX" in
+            [0-4]) WSE_ARGS+=(--dynamic-archetypes "$CALLER_DYNAMIC_ARCHETYPES_MAX") ;;
+            *) larch_err "session-setup.sh: warning: ignoring invalid LARCH_DYNAMIC_ARCHETYPES_MAX from caller-env (must be 0..4)" ;;
+        esac
+    fi
     if [[ -n "$CALLER_TIMING_LEDGER" ]]; then
         CALLER_ENV_DIR=""
         if [[ -n "$CALLER_ENV" ]]; then

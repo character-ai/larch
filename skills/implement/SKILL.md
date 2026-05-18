@@ -1,7 +1,7 @@
 ---
 name: implement
 description: "Use when shipping a feature end-to-end: design, implement, review, version bump, PR, CI-green merge. Triggers: 'ship X', 'land PR', 'merge this'. See /research, /design, /im (merge), /imaq (auto-merge)."
-argument-hint: "[--quick] [--auto] [--forked] [--design-only] [--no-issues] [--inline] [--merge | --draft] [--no-admin-fallback] [--coder=claude|codex|cursor] [--session-env <path>] [--issue <N>] <feature description>"
+argument-hint: "[--quick] [--auto] [--forked] [--design-only] [--no-issues] [--inline] [--merge | --draft] [--no-admin-fallback] [--no-dynamic-archetypes | --dynamic-archetypes <N>] [--coder=claude|codex|cursor] [--session-env <path>] [--issue <N>] <feature description>"
 allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task, WebFetch, WebSearch, Skill
 ---
 
@@ -149,6 +149,8 @@ The feature to implement is described by `$ARGUMENTS` after flag stripping.
 - `--draft`: `draft=true`. Step 9b creates the PR in draft state (`create-pr.sh --draft`); Step 14 is skipped so the local branch stays. `draft=true` implies `merge=false`. **Mutually exclusive with `--merge`.** If both are present, print `**⚠ --draft and --merge are mutually exclusive. Aborting.**` and exit without Step 0.
 - `--no-admin-fallback`: `no_admin_fallback=true`. Default: `no_admin_fallback=false`. When `true`, forwarded into Step 12b's `merge-pr.sh` invocation; the script then tries only a plain squash merge once the admin-eligible gate (CI good + branch fresh) is reached, emits `MERGE_RESULT=policy_denied` if that plain merge fails, and Step 12b bails to Step 12d. Default behavior tries `--admin` first after the same gate, then retries without `--admin` if the privileged attempt is rejected. Applies to ALL admin-eligible `mergeStateStatus` values (`CLEAN`, `UNSTABLE`, `HAS_HOOKS`, `BLOCKED`) — not just review-required denials. Independent of all other flags (in particular: no special coupling with `--auto`).
 - `--no-logs-commit`: `no_logs_commit=true`. Default: `no_logs_commit=false`. When `true`, suppresses larch-log flush commits. In the `ship-pr.sh` subprocess tree this is exported as `LARCH_NO_LOGS_COMMIT=true`, which makes explicit lifecycle log helpers skip their commit calls. Prompt-side direct wrappers such as the pre-bump flush, `scripts/refresh-run-logs.sh`, and session-transcript capture also skip their explicit commit calls when this flag is true. Log files are still written to `$IMPLEMENT_TMPDIR/larch-logs/` for local inspection; they are simply not committed to the branch. Useful when operators want to suppress larch-log commits from the PR. Independent of all other flags.
+- `--no-dynamic-archetypes`: `no_dynamic_archetypes=true`. Sets `dynamic_archetypes_value=0`. Scout off; every review round uses only the static panel (6 Cursor specialists + 1 Codex generalist, 7 slots total). Equivalent to `--dynamic-archetypes 0`. Default: `no_dynamic_archetypes=false`.
+- `--dynamic-archetypes <N>`: sets `dynamic_archetypes_value=<N>` (must be 0–4). Overrides the default cap of 4 used in orchestrator mode. `0` disables the scout; higher values allow up to `N` dynamic archetype slots in addition to the 7 static slots. When neither `--dynamic-archetypes` nor `--no-dynamic-archetypes` is set, the default is `4` (orchestrator mode). Operators may also set `LARCH_DYNAMIC_ARCHETYPES_MAX` in their shell; when `/implement` persists an explicit flag choice into session-env, `run-step5-review.sh` forwards that value as `review-and-fix.sh --dynamic-archetypes <N>`, so the explicit `/implement` flag still takes precedence over the ambient shell env. Independent of all other flags.
 - `--run-id <ID>`: Optional run identifier; when set, used as the run ID for this invocation instead of the auto-generated one. Default: empty (auto-generate).
 - `--no-merge`: **Deprecated** no-op. On encounter, print `**ℹ '--no-merge' is now the default and no longer needed; the flag is recognized as a no-op for backward compatibility.**`
 - `--session-env <path>`: sets `SESSION_ENV_PATH`. Forwarded to `session-setup.sh` via `--caller-env` and to `/design` via `--session-env`. Empty = standalone invocation (full discovery).
@@ -261,6 +263,16 @@ Then:
           --output-file "$IMPLEMENT_TMPDIR/claude-source-error.log" \
           --redact || true
   fi
+  if [[ -z "${dynamic_archetypes_value:-}" && -n "${SESSION_ENV_PATH:-}" && -r "$SESSION_ENV_PATH" ]]; then
+    caller_dynamic_archetypes=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$SESSION_ENV_PATH" --key LARCH_DYNAMIC_ARCHETYPES_MAX --default "")
+    case "$caller_dynamic_archetypes" in
+      "") ;;
+      [0-4]) dynamic_archetypes_value="$caller_dynamic_archetypes" ;;
+      *)
+        printf '**⚠ /implement: ignoring invalid LARCH_DYNAMIC_ARCHETYPES_MAX from --session-env (must be 0..4).**\n'
+        ;;
+    esac
+  fi
   session_env_args=(
     --output "$IMPLEMENT_TMPDIR/session-env.sh"
     --repo <value>
@@ -273,6 +285,7 @@ Then:
     --prev-implement-tmpdir "$IMPLEMENT_TMPDIR"
   )
   [[ -n "${LARCH_CLAUDE_SOURCE_FILE:-}" ]] && session_env_args+=(--claude-source-file "$LARCH_CLAUDE_SOURCE_FILE")
+  [[ -n "${dynamic_archetypes_value:-}" ]] && session_env_args+=(--dynamic-archetypes "$dynamic_archetypes_value")
   "${CLAUDE_PLUGIN_ROOT}/scripts/write-session-env.sh" "${session_env_args[@]}"
   "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 0 — preflight" || true
   "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 0 — preflight" || true
@@ -1314,7 +1327,7 @@ Untracked Probe with `--step 4.r-post-rebase`.
 
 > **Continue to Step 5 IMMEDIATELY.** The implementation commit is not the end of the run — code review, checks (2), commit, code flow diagram, bump, and PR still must run.
 
-<!-- step:5 — Code Review -->
+<!-- step:5 — Code Review: run-step5-review.sh → review-and-fix.sh (dynamic-archetypes cap=4 by default in implement tmpdir mode) -->
 ## Step 5 — Code Review
 
 If `quick_mode=false`, print: `> **🔶 /implement 5: code review**`
@@ -1342,11 +1355,11 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 
 Nested review token-context propagation through `review-and-fix.sh` is pinned by `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-implement-review-token-propagation.sh` and `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-implement-review-token-propagation.md`.
 
-`run-step5-review.sh` derives `round_cap` and `review_panel` from `POST_PLAN_WORKFLOW_PATH` in `$IMPLEMENT_TMPDIR/session-env.sh`: `SIMPLE` maps to `review_panel=simple` and `round_cap=5`; `HARD` maps to `review_panel=hard` and `round_cap=7`. Before any prompt-side Step 5 gate compares `round_num` against `round_cap`, mirror that already-validated launcher mapping into a local `round_cap` shell variable so the gate snippets never read an empty value.
+`run-step5-review.sh` derives `round_cap` and `review_panel` from `POST_PLAN_WORKFLOW_PATH` in `$IMPLEMENT_TMPDIR/session-env.sh`: `SIMPLE` maps to `review_panel=simple` and `round_cap=5`; `HARD` maps to `review_panel=hard` and `round_cap=7`. Derive a local `dynamic_archetypes_cap` with the same precedence `review-and-fix.sh` uses at runtime: `dynamic_archetypes_value` when Step 0 parsed or inherited a validated explicit/session-env cap; otherwise non-empty process `LARCH_DYNAMIC_ARCHETYPES_MAX`; otherwise `LARCH_DYNAMIC_ARCHETYPES_MAX` from `$IMPLEMENT_TMPDIR/session-env.sh`; otherwise `4` (implement mode). Before any prompt-side Step 5 gate compares `round_num` against `round_cap`, mirror that already-validated launcher mapping into local `round_cap` and `dynamic_archetypes_cap` shell variables so the gate snippets and banner never drift from the runtime review cap.
 
-Quick mode prints: `> **🔶 /implement 5: code review — quick mode (review-and-fix.sh, up to 5 rounds; 3-judge panel votes every round; simple review panel: 6 Cursor specialists including Cursor edge-cases, Codex generalist)**`
+Quick mode prints: `> **🔶 /implement 5: code review — quick mode (review-and-fix.sh, up to 5 rounds; 3-judge panel votes every round; simple review panel: 6 Cursor specialists including Cursor edge-cases, Codex generalist; dynamic-archetypes cap=$dynamic_archetypes_cap)**`
 
-Normal mode prints: `> **🔶 /implement 5: code review — hard mode (review-and-fix.sh, up to 7 rounds; 3-judge panel votes every round; hard review panel: 6 Cursor + 6 Codex specialists)**`
+Normal mode prints: `> **🔶 /implement 5: code review — hard mode (review-and-fix.sh, up to 7 rounds; 3-judge panel votes every round; hard review panel: 6 Cursor + 6 Codex specialists; dynamic-archetypes cap=$dynamic_archetypes_cap)**`
 
 Track `round_num` from 1. For each round, run one foreground Bash call:
 

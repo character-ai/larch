@@ -1,0 +1,10 @@
+voter_tool=cursor
+neutral_count=17
+total_findings=17
+voter_file=<TMPDIR>/round-2/cursor-vote-output.txt
+--- first 200 bytes of voter output ---
+Reading the ballot file to vote on each finding.
+
+Verifying a few high-impact claims in the codebase (read-only) so votes reflect actual behavior.
+
+Verified Step 0 only appends `--dynamic-archetypes` 

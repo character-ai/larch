@@ -342,20 +342,22 @@ for bad in 5 -1 abc; do
     fi
 done
 
+mkdir -p "$TMP/empty-env"
+# Empty export is ignored (same semantics as review-and-fix.sh / test-review-and-fix.sh).
 set +e
-PATH="$STUB_BIN:$PATH" LARCH_DYNAMIC_ARCHETYPES_MAX='' "$SCRIPT" \
+out=$(PATH="$STUB_BIN:$PATH" LARCH_DYNAMIC_ARCHETYPES_MAX='' "$SCRIPT" \
     --mode diff \
     --review-tmpdir "$TMP/empty-env" \
     --codex-available true \
     --cursor-available true \
     --panel hard \
-    --plan-file "$plan_file" >/dev/null 2>/dev/null
+    --plan-file "$plan_file")
 rc=$?
 set -e
-if [[ "$rc" -ne 2 ]]; then
-    echo "FAIL: accepted empty LARCH_DYNAMIC_ARCHETYPES_MAX" >&2
-    exit 1
-fi
+[[ "$rc" -eq 0 ]] || { echo "FAIL: empty LARCH_DYNAMIC_ARCHETYPES_MAX expected exit 0 got $rc" >&2; echo "$out" >&2; exit 1; }
+grep -Fq 'DISPATCH_OK=true' <<< "$out"
+grep -Fq 'SCOUT_STATUS=na' <<< "$out"
+grep -Fq 'DYNAMIC_SLOTS=0' <<< "$out"
 
 out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
     --mode diff \

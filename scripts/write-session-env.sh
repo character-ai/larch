@@ -42,6 +42,7 @@ TIMING_LEDGER=""
 TOKEN_SESSION_ID=""
 CLAUDE_SOURCE_FILE=""
 PREV_IMPLEMENT_TMPDIR_ARG=""
+DYNAMIC_ARCHETYPES_MAX_ARG=""
 CLAUDE_PLUGIN_ROOT_VALUE="${CLAUDE_PLUGIN_ROOT:-}"
 
 while [[ $# -gt 0 ]]; do
@@ -56,6 +57,7 @@ while [[ $# -gt 0 ]]; do
     --token-session-id) TOKEN_SESSION_ID="$2"; shift 2 ;;
     --claude-source-file) CLAUDE_SOURCE_FILE="$2"; shift 2 ;;
     --prev-implement-tmpdir) PREV_IMPLEMENT_TMPDIR_ARG="$2"; shift 2 ;;
+    --dynamic-archetypes) DYNAMIC_ARCHETYPES_MAX_ARG="$2"; shift 2 ;;
     *) larch_err "ERROR=Unknown argument: $1"; exit 1 ;;
   esac
 done
@@ -117,6 +119,13 @@ if [[ -n "$CLAUDE_PLUGIN_ROOT_VALUE" ]]; then
   fi
 fi
 
+if [[ -n "$DYNAMIC_ARCHETYPES_MAX_ARG" ]]; then
+  case "$DYNAMIC_ARCHETYPES_MAX_ARG" in
+    [0-4]) ;;
+    *) larch_err "ERROR=Invalid --dynamic-archetypes: must be an integer from 0 to 4"; exit 1 ;;
+  esac
+fi
+
 # Build the content
 CONTENT="REPO=$REPO
 REPO_UNAVAILABLE=$REPO_UNAVAILABLE"
@@ -136,6 +145,8 @@ LARCH_TOKEN_SESSION_ID=$TOKEN_SESSION_ID"
 LARCH_CLAUDE_SOURCE_FILE=$CLAUDE_SOURCE_FILE"
 [[ -n "$PREV_IMPLEMENT_TMPDIR_ARG" ]] && CONTENT="$CONTENT
 PREV_IMPLEMENT_TMPDIR=$PREV_IMPLEMENT_TMPDIR_ARG"
+[[ -n "$DYNAMIC_ARCHETYPES_MAX_ARG" ]] && CONTENT="$CONTENT
+LARCH_DYNAMIC_ARCHETYPES_MAX=$DYNAMIC_ARCHETYPES_MAX_ARG"
 [[ -n "$CLAUDE_PLUGIN_ROOT_VALUE" ]] && CONTENT="$CONTENT
 LARCH_CLAUDE_PLUGIN_ROOT=$CLAUDE_PLUGIN_ROOT_VALUE"
 

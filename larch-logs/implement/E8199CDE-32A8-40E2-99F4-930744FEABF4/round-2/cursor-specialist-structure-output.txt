@@ -1,0 +1,27 @@
+Gathering the branch diff and commit list for a read-only review against the plan.
+
+Checking the diff for `/fix-issue` coverage and reading `skills/implement/SKILL.md` flag-parsing for `dynamic_archetypes_value`.
+
+Reviewed the precomputed diff and commit list (`4ecb5326`, `1c88f793`). Below is the structure/KISS review against the feature description and implementation plan.
+
+### In-Scope Findings
+
+1. **Important** (`correctness`) [skills/implement/SKILL.md](skills/implement/SKILL.md):1348-1352 — Step 5 tells the orchestrator to derive `dynamic_archetypes_cap` from `dynamic_archetypes_value` when flags were parsed, else from `session-env.sh` with fallback `4`, but it never considers `LARCH_DYNAMIC_ARCHETYPES_MAX` in the **process environment**. [skills/review-and-fix/scripts/review-and-fix.sh](skills/review-and-fix/scripts/review-and-fix.sh) resolves priority as CLI > **process env** > session-env > default `4`, so an operator who only exports `LARCH_DYNAMIC_ARCHETYPES_MAX=2` (no `/implement` flags, no key in session-env) gets a Step 5 breadcrumb showing cap `4` while `review-and-fix.sh` actually runs with cap `2`. **Suggested fix:** Align the Step 5 derivation with the same priority (e.g. read `LARCH_DYNAMIC_ARCHETYPES_MAX` from the environment before the session-env fallback) or drop the numeric cap from the printed line and point at machine-readable env only.
+
+2. **Important** (`risk-integration`, source: `requirements`) [skills/fix-issue/SKILL.md](skills/fix-issue/SKILL.md):18-22 — The product ask was “`/implement` **and** `/fix-issue`’”; this branch updates `/implement` and shell wiring but **does not** add `/fix-issue` flag parsing or Step 5a pass-through for `--dynamic-archetypes` / `--no-dynamic-archetypes` (unlike `--no-logs-commit`, `--no-admin-fallback`, etc.). Operators using `/fix-issue` therefore have no documented, first-class way to toggle the scout cap on the delegated run except ad-hoc env/session hacks. **Suggested fix:** Mirror the existing pass-through pattern: new flags in the Flags section, conditional inclusion in the Step 5a `larch:implement` `args:` (and extend `test-fix-issue-bail-detection.sh` if you rely on mechanical guards).
+
+3. **Nit** (`code-quality`, source: `plan`) [skills/implement/SKILL.md](skills/implement/SKILL.md):139-153 — The file still states that flags are “independent” and that presence of one must not alter another’s default, while `--no-dynamic-archetypes` is defined as equivalent to `--dynamic-archetypes 0` (coupled semantics). There is also no tie-break if both tokens appear. **Suggested fix:** Add one sentence for the dynamic pair (equivalence + last-token-wins or abort-on-both).
+
+4. **Nit** (`code-quality`) [skills/implement/SKILL.md](skills/implement/SKILL.md):144 — The `--forked` compatibility bullet lists several forwarded flags but omits the new dynamic-archetypes flags even though `argument-hint` now advertises them. **Suggested fix:** Add them to the compatibility list for parity with other optional toggles.
+
+### Out-of-Scope Observations
+
+None.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/implement/SKILL.md:1348-1352	Step 5 breadcrumb derivation for dynamic_archetypes_cap ignores process LARCH_DYNAMIC_ARCHETYPES_MAX.	review-and-fix.sh uses env before session default; operator with only shell env sees printed cap 4 while scout runs at env N.	Mirror review-and-fix priority (env before session fallback) or remove misleading cap from prose.
+1	in_scope	important	risk-integration	skills/fix-issue/SKILL.md:18-22	No /fix-issue flag docs or Step 5a pass-through for dynamic archetypes vs /implement.	/requirements: fix-issue path cannot officially set scout cap; behavior is implicit only.	Add flags and Step 5a forwarding consistent with --no-logs-commit; extend bail harness if needed.
+1	in_scope	nit	code-quality	skills/implement/SKILL.md:139-153	Independent-flags wording conflicts with coupled --no-dynamic-archetypes / --dynamic-archetypes; no both-present rule.	Orchestrator ambiguity if both tokens appear in ARGUMENTS.	Document equivalence and tie-break or mutual exclusion.
+1	in_scope	nit	code-quality	skills/implement/SKILL.md:144	--forked compatibility list omits new dynamic archetype flags.	Doc drift vs argument-hint and actual supported combinations.	Append flags to the compatibility bullet.
+```

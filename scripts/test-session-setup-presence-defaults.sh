@@ -87,5 +87,41 @@ assert_output_value "$output" CURSOR_PRESENT true "caller cursor true on stdout"
 assert_file_value "$OUT_ENV2" CODEX_PRESENT false "caller codex false in session-env"
 assert_file_value "$OUT_ENV2" CURSOR_PRESENT true "caller cursor true in session-env"
 
+ENV3="$SANDBOX/env3.txt"
+OUT_ENV3="$SANDBOX/session-env3.txt"
+cat > "$ENV3" <<'EOF'
+CODEX_PRESENT=true
+CURSOR_PRESENT=false
+LARCH_DYNAMIC_ARCHETYPES_MAX=3
+EOF
+output=$(PATH="$STUB_BIN:/usr/bin:/bin" "$SCRIPT" \
+    --prefix test-presence-3 \
+    --skip-preflight \
+    --skip-repo-check \
+    --caller-env "$ENV3" \
+    --check-reviewers \
+    --write-session-env "$OUT_ENV3")
+assert_file_value "$OUT_ENV3" LARCH_DYNAMIC_ARCHETYPES_MAX 3 "caller dynamic archetypes forwarded to session-env"
+
+ENV4="$SANDBOX/env4.txt"
+OUT_ENV4="$SANDBOX/session-env4.txt"
+ERR4="$SANDBOX/session-env4.err"
+cat > "$ENV4" <<'EOF'
+CODEX_PRESENT=true
+CURSOR_PRESENT=false
+LARCH_DYNAMIC_ARCHETYPES_MAX=9
+EOF
+output=$(PATH="$STUB_BIN:/usr/bin:/bin" "$SCRIPT" \
+    --prefix test-presence-4 \
+    --skip-preflight \
+    --skip-repo-check \
+    --caller-env "$ENV4" \
+    --check-reviewers \
+    --write-session-env "$OUT_ENV4" \
+    2>"$ERR4")
+assert_file_value "$OUT_ENV4" LARCH_DYNAMIC_ARCHETYPES_MAX "" "invalid caller dynamic archetypes omitted from session-env"
+grep -Fq "session-setup.sh: warning: ignoring invalid LARCH_DYNAMIC_ARCHETYPES_MAX from caller-env (must be 0..4)" "$ERR4" \
+    || { FAIL=$((FAIL + 1)); echo "FAIL: invalid caller dynamic archetypes warning missing"; }
+
 echo "Results: $PASS passed, $FAIL failed"
 [[ $FAIL -eq 0 ]] || exit 1

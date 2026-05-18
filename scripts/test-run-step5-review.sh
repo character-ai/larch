@@ -45,7 +45,7 @@ assert_file_equals() {
 }
 
 make_tmpdir() {
-    local dir="$1" workflow="$2" codex="$3" cursor="$4" session_id="${5:-run-xyz}"
+    local dir="$1" workflow="$2" codex="$3" cursor="$4" session_id="${5:-run-xyz}" dynamic_archetypes="${6:-}"
     mkdir -p "$dir"
     printf '%s\n' "$session_id" > "$dir/session-id"
     printf '%s\n' "Feature description" > "$dir/feature-description.txt"
@@ -58,6 +58,9 @@ make_tmpdir() {
         printf 'CURSOR_PRESENT=%s\n' "$cursor"
         printf 'LARCH_TOKEN_SESSION_ID=%s\n' "run-xyz"
         printf 'LARCH_TIMING_LEDGER=%s\n' "$dir/timing-ledger.tsv"
+        if [[ -n "$dynamic_archetypes" ]]; then
+            printf 'LARCH_DYNAMIC_ARCHETYPES_MAX=%s\n' "$dynamic_archetypes"
+        fi
     } > "$dir/session-env.sh"
 }
 
@@ -138,7 +141,7 @@ run-xyz" "SIMPLE workflow resolved argv"
 
 echo "=== HARD workflow argv derivation ==="
 case_dir="$TMP/hard"
-make_tmpdir "$case_dir" HARD false true
+make_tmpdir "$case_dir" HARD false true "run-xyz" 2
 argv_file="$TMP/hard.argv"
 RUN_STEP5_REVIEW_SH="$SPY" RUN_STEP5_ARGV_FILE="$argv_file" "$LAUNCHER" --implement-tmpdir "$case_dir" --round-num 1 >/dev/null
 assert_file_equals "$argv_file" "--implement-tmpdir
@@ -161,6 +164,8 @@ true
 $case_dir/plan.txt
 --feature-file
 $case_dir/feature-description.txt
+--dynamic-archetypes
+2
 --run-id
 run-xyz" "HARD workflow resolved argv"
 

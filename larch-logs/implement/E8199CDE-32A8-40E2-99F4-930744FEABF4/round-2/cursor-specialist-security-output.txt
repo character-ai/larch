@@ -1,0 +1,34 @@
+Gathering the branch diff and commit list for a read-only security review.
+
+Checking how `review-core.sh` consumes `--dynamic-archetypes` to assess trust-boundary impact (read-only).
+
+## Commits (`merge-base..HEAD`)
+
+- `1c88f793` Wire dynamic reviewer scout (cap=4) through review-and-fix.sh and /implement  
+- `4ecb5326` Address code review feedback (round 1)
+
+---
+
+### In-Scope Findings
+
+1. **Latent** (`risk-integration`) — [`skills/fix-issue/SKILL.md`](skills/fix-issue/SKILL.md) (unchanged vs this branch; contrast with [`skills/implement/SKILL.md`](skills/implement/SKILL.md) ~lines 152–153, 278, 229): The stated product scope includes “`/implement` and `/fix-issue`”, but `/fix-issue` still documents only a minimal `write-session-env.sh` call (repo keys only, ~130–133) and the Step 5 `/implement` invocation line (~229) does not mention `--no-dynamic-archetypes` / `--dynamic-archetypes <N>`. **Scenario:** An operator uses `/fix-issue` and expects the same explicit scout controls as `/implement`; they have no documented, first-class way to pin `LARCH_DYNAMIC_ARCHETYPES_MAX` before the handoff except by manually editing the Skill-invocation args. **Fix:** Extend `/fix-issue` flag parsing and Step 1 `write-session-env.sh` / Step 5 `/implement` forwarding to mirror `/implement`, or narrow the release/feature wording so `/fix-issue` is explicitly “inherits `/implement` defaults only unless flags are added manually.”
+
+2. **Nit** (`security`) — [`skills/review-and-fix/scripts/test-review-and-fix.sh`](skills/review-and-fix/scripts/test-review-and-fix.sh) (new harness block, ~`CURSOR_API_KEY=test-cursor-key`): A literal `CURSOR_API_KEY=...` assignment was added in-repo. **Scenario:** Secret scanners or policy hooks may flag the token-shaped string even though it is dummy data. **Fix:** Prefer an obviously non-credential placeholder accepted by stubs (e.g. `dummy-not-a-secret`), inject via test-local env file, or document an allowlist exception for this path.
+
+---
+
+### Out-of-Scope Observations
+
+None. Trust handling for scout-generated content and `review-core.sh` validation of `--dynamic-archetypes` pre-existed; this branch mainly wires a bounded integer through argv arrays and `KEY=value` session-env with `case '[0-4]'` gates, which is appropriate for shell injection avoidance.
+
+---
+
+### Security assessment (summary)
+
+The diff consistently treats `LARCH_DYNAMIC_ARCHETYPES_MAX` / `--dynamic-archetypes` as a **single-digit bounded integer**: [`scripts/write-session-env.sh`](scripts/write-session-env.sh), [`scripts/session-setup.sh`](scripts/session-setup.sh), and [`skills/review-and-fix/scripts/review-and-fix.sh`](skills/review-and-fix/scripts/review-and-fix.sh) validate before use; [`scripts/run-step5-review.sh`](scripts/run-step5-review.sh) passes values as separate array elements to `review-and-fix.sh`, avoiding shell metacharacter interpolation. No in-scope **Important** injection, secret persistence, or authz defects were identified in the changed paths.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	risk-integration	skills/fix-issue/SKILL.md:123-133,229	/fix-issue skill not updated for dynamic-archetypes flags or session-env propagation despite feature scope naming /fix-issue.	Operator expects the same scout cap controls as /implement; only /implement SKILL documents flags and write-session-env wiring, so /fix-issue-driven runs lack documented parity unless args are hand-edited.	Mirror implement flag + write-session-env / Step 5 forwarding in fix-issue SKILL, or document that fix-issue only inherits implement defaults unless operator adds flags manually.
+1	in_scope	nit	security	skills/review-and-fix/scripts/test-review-and-fix.sh:new harness (~CURSOR_API_KEY line)	Literal CURSOR_API_KEY=test-cursor-key in committed test.	False positives from gitleaks/trufflehog-style scanners or org secret policies on CI.	Use a clearly non-credential dummy value, external fixture, or scanner allowlist comment per repo policy.
+```

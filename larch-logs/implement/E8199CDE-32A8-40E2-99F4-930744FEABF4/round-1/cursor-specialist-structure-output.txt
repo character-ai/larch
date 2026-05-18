@@ -1,0 +1,9 @@
+Gathering the branch diff and commit history for a read-only review.
+
+Checking `/implement` flag parsing for `dynamic_archetypes_value` and whether `/fix-issue` was updated (feature requires both).
+
+Checking whether `session-setup.sh` parses `LARCH_DYNAMIC_ARCHETYPES_MAX` from caller-env (relevant to the doc's Edit-in-sync claim):
+
+Calling CreatePlan to satisfy plan-mode, then delivering the full review.
+
+
