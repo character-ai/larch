@@ -103,14 +103,15 @@ EOF
 }
 
 run_case() {
-    local fixture_scripts="$1" repo="$2" session="$3" checks_log="$4" wrapper="$5"
+    local fixture_scripts="$1" repo="$2" session="$3" checks_log="$4" wrapper="$5" site="${6:-step3}"
     local rc=0 out
     out=$(
         cd "$repo" && \
         unset LARCH_QUIET_ACTIVE LARCH_QUIET_PID LARCH_QUIET_LOG_FILE LARCH_QUIET_LOG || true
+        # shellcheck disable=SC2030,SC2031
         export IMPLEMENT_TMPDIR="$session"
         LINT_FIX_LOOP_RUN_EXTERNAL_AGENT_SH="$wrapper" \
-        bash "$fixture_scripts/lint-fix-loop.sh" --tmpdir "$session" --site step3 --checks-log "$checks_log"
+        bash "$fixture_scripts/lint-fix-loop.sh" --tmpdir "$session" --site "$site" --checks-log "$checks_log"
     ) || rc=$?
     printf '%s\n%s\n' "$rc" "$out"
 }
@@ -164,5 +165,53 @@ cached_after_case2=$(cd "$REPO2" && git diff --cached --name-only)
 [[ -z "$cached_after_case2" ]] || fail "case2 expected empty index, got: $cached_after_case2"
 worktree_after_case2=$(cd "$REPO2" && git diff --name-only)
 [[ "$worktree_after_case2" == "tracked.txt" ]] || fail "case2 expected unstaged tracked.txt delta, got: $worktree_after_case2"
+
+# Case 3: ship-pr-ci-initial site — success path (coder modifies file).
+CASE3="$TMPROOT/case3"
+REPO3="$CASE3/repo"
+SCRIPTS3="$CASE3/scripts"
+SESSION3="$CASE3/session"
+CHECKS3="$CASE3/checks.log"
+WRAPPER3="$CASE3/wrapper.sh"
+make_repo "$REPO3"
+make_fixture_scripts "$SCRIPTS3"
+make_session "$SESSION3"
+printf 'synthetic checks failure\n' > "$CHECKS3"
+write_wrapper_modify_only "$WRAPPER3"
+
+case3_result=$(run_case "$SCRIPTS3" "$REPO3" "$SESSION3" "$CHECKS3" "$WRAPPER3" ship-pr-ci-initial)
+assert_contains "$case3_result" 'LINT_FIX_STATUS=applied' "case3 status"
+assert_contains "$case3_result" 'LINT_FIX_SITE=ship-pr-ci-initial' "case3 site"
+
+# Case 4: ship-pr-ci-initial site — no-changes path (coder makes no changes).
+CASE4="$TMPROOT/case4"
+REPO4="$CASE4/repo"
+SCRIPTS4="$CASE4/scripts"
+SESSION4="$CASE4/session"
+CHECKS4="$CASE4/checks.log"
+WRAPPER4="$CASE4/wrapper.sh"
+make_repo "$REPO4"
+make_fixture_scripts "$SCRIPTS4"
+make_session "$SESSION4"
+printf 'synthetic checks failure\n' > "$CHECKS4"
+# Wrapper that writes nothing to disk.
+cat > "$WRAPPER4" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+output=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --output) output="$2"; shift 2 ;;
+        --) shift; break ;;
+        *) shift ;;
+    esac
+done
+printf 'stub no-op\n' > "$output"
+EOF
+chmod +x "$WRAPPER4"
+
+case4_result=$(run_case "$SCRIPTS4" "$REPO4" "$SESSION4" "$CHECKS4" "$WRAPPER4" ship-pr-ci-initial)
+assert_contains "$case4_result" 'LINT_FIX_STATUS=no-changes' "case4 status"
+assert_contains "$case4_result" 'LINT_FIX_SITE=ship-pr-ci-initial' "case4 site"
 
 echo "test-lint-fix-loop: ok"

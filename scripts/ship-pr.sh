@@ -425,15 +425,56 @@ write_finalize_state() {
 }
 
 run_checks_phase() {
-    local out rc fail_file
-    fail_file=$(failure_capture_path checks)
-    out=$("$SCRIPT_DIR/run-relevant-checks-captured.sh" --site step6 --tmpdir "$IMPLEMENT_TMPDIR" 2>"$fail_file")
-    rc=$?
-    printf '%s\n' "$out" >> "$fail_file"
-    if [ "$rc" -eq 0 ] && printf '%s\n' "$out" | grep -q '^RELEVANT_CHECKS_OK=true '; then
-        advance_phase bump
-        return 0
-    fi
+    local out rc fail_file redacted_log fix_out fix_status
+    local lint_attempt
+    for lint_attempt in 1 2 3; do
+        fail_file=$(failure_capture_path checks)
+        out=$("$SCRIPT_DIR/run-relevant-checks-captured.sh" --site ship-pr-ci-initial --tmpdir "$IMPLEMENT_TMPDIR" 2>"$fail_file")
+        rc=$?
+        printf '%s\n' "$out" >> "$fail_file"
+        if [ "$rc" -eq 0 ] && printf '%s\n' "$out" | grep -q '^RELEVANT_CHECKS_OK=true '; then
+            advance_phase bump
+            return 0
+        fi
+        # Parse the redacted log path for lint-fix-loop dispatch.
+        redacted_log=$(printf '%s\n' "$out" | awk -F= '/^REDACTED_LOG_FILE=/ { print substr($0, index($0,"=")+1); exit }')
+        if [ -z "$redacted_log" ] || [ ! -f "$redacted_log" ]; then
+            # Structural failure or no log — skip lint-fix dispatch.
+            break
+        fi
+        fail_file=$(failure_capture_path checks)
+        fix_out=$("$SCRIPT_DIR/lint-fix-loop.sh" \
+            --tmpdir "$IMPLEMENT_TMPDIR" \
+            --site ship-pr-ci-initial \
+            --checks-log "$redacted_log" 2>"$fail_file")
+        printf '%s\n' "$fix_out" >> "$fail_file"
+        fix_status=$(printf '%s\n' "$fix_out" | awk -F= '/^LINT_FIX_STATUS=/ { print $2; exit }')
+        case "$fix_status" in
+            applied)
+                # Re-run checks in the next loop iteration.
+                [ "$lint_attempt" -lt 3 ] && \
+                    printf 'ship-pr checks: lint fix applied (attempt %d/3), re-running checks...\n' "$lint_attempt"
+                continue
+                ;;
+            no-changes)
+                # Re-run checks once to confirm failure.
+                fail_file=$(failure_capture_path checks)
+                out=$("$SCRIPT_DIR/run-relevant-checks-captured.sh" --site ship-pr-ci-initial --tmpdir "$IMPLEMENT_TMPDIR" 2>"$fail_file")
+                rc=$?
+                printf '%s\n' "$out" >> "$fail_file"
+                if [ "$rc" -eq 0 ] && printf '%s\n' "$out" | grep -q '^RELEVANT_CHECKS_OK=true '; then
+                    advance_phase bump
+                    return 0
+                fi
+                break
+                ;;
+            *)
+                # failed, main-agent-required, or empty — fall through to stall.
+                printf 'ship-pr checks: lint fix %s (attempt %d/3), stalling.\n' "${fix_status:-unknown}" "$lint_attempt"
+                break
+                ;;
+        esac
+    done
     record_failure checks "run-relevant-checks-captured.sh" "$rc" "$fail_file"
     exit_stall 6
 }

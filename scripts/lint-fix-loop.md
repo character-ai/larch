@@ -6,7 +6,7 @@ Step 3, Step 5 post-review fixes, and Step 6.
 Flags:
 
 - `--tmpdir IMPLEMENT_TMPDIR`
-- `--site step3|step5|step6`
+- `--site step3|step5|step6|ship-pr-ci-initial`
 - `--checks-log REDACTED_LOG_FILE`
 
 The checks log must be the redacted log emitted by
@@ -15,7 +15,7 @@ The checks log must be the redacted log emitted by
 Output is `KEY=value` through `scripts/lib-quiet.sh`:
 
 - `LINT_FIX_STATUS=applied|main-agent-required|failed|no-changes`
-- `LINT_FIX_SITE=step3|step5|step6`
+- `LINT_FIX_SITE=step3|step5|step6|ship-pr-ci-initial`
 - `CODER_TOOL=codex|cursor` when an external coder ran
 - `CODER_LOG_FILE=<path>` when an external coder ran
 - `LINT_FIX_COMMIT_SHA=<sha>` when the helper committed fixes from a clean pre-dispatch baseline
