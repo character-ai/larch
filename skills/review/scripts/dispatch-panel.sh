@@ -26,7 +26,9 @@ DISPATCH_WATERFALL="$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh"
 CLASSIFY_DIFF_MODE_SH="${CLASSIFY_DIFF_MODE_SH:-$PLUGIN_ROOT/scripts/classify-diff-mode.sh}"
 SESSION_ENV_PATH="${SESSION_ENV_PATH:-}"
 PANEL="hard"
-if [[ ${LARCH_DYNAMIC_ARCHETYPES_MAX+x} ]]; then
+# Non-empty process env only: set-but-empty must fall through to default 0
+# (matches review-and-fix.sh / test-review-and-fix.sh empty-export semantics).
+if [[ -n "${LARCH_DYNAMIC_ARCHETYPES_MAX:-}" ]]; then
     DYNAMIC_ARCHETYPES="$LARCH_DYNAMIC_ARCHETYPES_MAX"
 else
     DYNAMIC_ARCHETYPES="0"

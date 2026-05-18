@@ -27,7 +27,9 @@ DESCRIPTION_TEXT=""
 PANEL="hard"
 RUN_ID=""
 ROUND_NUM="1"
-if [[ ${LARCH_DYNAMIC_ARCHETYPES_MAX+x} ]]; then
+# Non-empty process env only: set-but-empty must fall through to default 0
+# (matches review-and-fix.sh / test-review-and-fix.sh empty-export semantics).
+if [[ -n "${LARCH_DYNAMIC_ARCHETYPES_MAX:-}" ]]; then
     DYNAMIC_ARCHETYPES="$LARCH_DYNAMIC_ARCHETYPES_MAX"
 else
     DYNAMIC_ARCHETYPES="0"
