@@ -394,6 +394,33 @@ semver_lt() {
     return 1
 }
 
+rewrite_reasoning_new_version() {
+    local file=$1 classified_version=$2 origin_version=$3 corrected_version=$4 tmp_file
+    [ -n "$file" ] && [ -f "$file" ] || return 1
+    tmp_file="${file}.tmp.$$"
+    awk -v new_version="$corrected_version" \
+        -v classified="$classified_version" \
+        -v origin="$origin_version" '
+        BEGIN { replaced=0 }
+        /^- \*\*New version\*\*: / {
+            print "- **New version**: `" new_version "`"
+            replaced=1
+            next
+        }
+        { print }
+        END {
+            if (replaced) {
+                print ""
+                print "### Rebase + Re-bump Correction"
+                print ""
+                print "- **Classified version**: `" classified "`"
+                print "- **origin/main version at correction time**: `" origin "`"
+                print "- **Corrected version applied by `ship-pr.sh`**: `" new_version "`"
+            }
+        }
+    ' "$file" > "$tmp_file" && mv "$tmp_file" "$file"
+}
+
 FAILURE_LOG_SEQ=0
 
 failure_capture_path() {
@@ -1115,6 +1142,7 @@ run_rebase_rebump() {
     local apply_out new_version bump_type reasoning_file
     local fail_file rc tool_label plan_file
     local plan_args=()
+    local _origin_ver="" _classified_version="" _corrected=""
     plan_file=$(resolve_plan_file)
     if [ -n "$plan_file" ]; then
         plan_args=(--plan-file "$plan_file")
@@ -1196,6 +1224,7 @@ run_rebase_rebump() {
         new_version=$(kv_value NEW_VERSION "$classify_out")
         bump_type=$(kv_value BUMP_TYPE "$classify_out")
         reasoning_file=$(kv_value REASONING_FILE "$classify_out")
+        _classified_version="$new_version"
         # Version-regression guard: when rebase conflict was resolved to the branch's
         # stale version instead of origin/main's, classify-bump produces NEW_VERSION <
         # ORIGIN_VERSION. Correct by applying bump_type to origin/main's version.
@@ -1213,6 +1242,12 @@ run_rebase_rebump() {
                 printf 'WARN: run_rebase_rebump: version regression detected: classify-bump produced %s < origin/main %s; corrected to %s\n' \
                     "$new_version" "$_origin_ver" "$_corrected" >> "$fail_file"
                 new_version="$_corrected"
+                if [ -n "$reasoning_file" ] && [ -f "$reasoning_file" ]; then
+                    if ! rewrite_reasoning_new_version "$reasoning_file" "$_classified_version" "$_origin_ver" "$_corrected"; then
+                        printf 'WARN: run_rebase_rebump: failed to rewrite reasoning file after version correction: %s\n' \
+                            "$reasoning_file" >> "$fail_file"
+                    fi
+                fi
             fi
         fi
         state_set_many BUMP_TYPE "$bump_type" NEW_VERSION "$new_version" BUMP_REASONING_FILE "$reasoning_file"
