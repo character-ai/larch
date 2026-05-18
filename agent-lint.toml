@@ -490,6 +490,8 @@ exclude = [
   # through plugin hook registration.
   "skills/implement/scripts/hook-post-design.sh",
   "skills/implement/scripts/hook-post-design.md",
+  "skills/implement/scripts/hook-post-bump-version.sh",
+  "skills/implement/scripts/hook-post-bump-version.md",
   "skills/implement/scripts/hook-stop-fail-close.sh",
   "skills/implement/scripts/hook-stop-fail-close.md",
   "skills/implement/scripts/lib-resolve-implement-tmpdir.sh",

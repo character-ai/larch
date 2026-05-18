@@ -58,6 +58,21 @@ check_contains "Post-/bump-version boundary — Step 8 direct halt covered" "ski
   "before that Bash call is a halt in disguise that skips sub-steps 3/3b"
 check_contains "Post-/bump-version boundary — rebase-rebump path halt covered" "skills/implement/references/rebase-rebump-subprocedure.md" \
   "in the tool result is NOT a run-completion signal"
+# Post-/bump-version boundary mechanical backstops (issue #2338): PostToolUse hook
+# parallel to hook-post-design.sh that injects a continuation directive when
+# .bump-version-armed is present without postbump-state.sh.
+check_contains "Post-/bump-version boundary — PostToolUse hook script exists" \
+  "skills/implement/scripts/hook-post-bump-version.sh" \
+  ".bump-version-armed"
+check_contains "Post-/bump-version boundary — PostToolUse hook registered in hooks.json" \
+  "hooks/hooks.json" \
+  "hook-post-bump-version.sh"
+check_contains "Post-/bump-version boundary — NEVER #15 in SKILL.md" \
+  "skills/implement/SKILL.md" \
+  "NEVER end the turn after \`/bump-version\`'s Skill tool return inside the Rebase + Re-bump Sub-procedure"
+check_contains "Post-/bump-version boundary — rebase-rebump path references PostToolUse hook" \
+  "skills/implement/references/rebase-rebump-subprocedure.md" \
+  "hook-post-bump-version.sh"
 # Post-/design and post-/review boundary silent-halt directives (issue #1814):
 # pins that these two boundaries explicitly say "do NOT end the turn" and not
 # just "do NOT write a summary" (the same gap 9d639da fixed at Step 8).
