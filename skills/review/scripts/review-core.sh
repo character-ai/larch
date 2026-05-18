@@ -162,6 +162,8 @@ if [[ "$MODE" == "description" && "${scope_count:-0}" == "0" ]]; then
     emit_kv ROUND_NUM "$ROUND_NUM"
     emit_kv ACCEPTED_COUNT 0
     emit_kv REJECTED_COUNT 0
+    emit_kv EXONERATED_COUNT 0
+    emit_kv NEUTRAL_COUNT 0
     emit_kv FINDINGS_FILE "$REVIEW_TMPDIR/findings.md"
     emit_kv ACCEPTED_FINDINGS_FILE "$REVIEW_TMPDIR/accepted-findings.md"
     emit_kv REJECTED_FINDINGS_FILE "$REVIEW_TMPDIR/rejected-findings.md"
@@ -244,6 +246,8 @@ if [[ "$threshold_ok" == "false" ]]; then
     emit_kv ROUND_NUM "$ROUND_NUM"
     emit_kv ACCEPTED_COUNT 0
     emit_kv REJECTED_COUNT 0
+    emit_kv EXONERATED_COUNT 0
+    emit_kv NEUTRAL_COUNT 0
     emit_kv FINDINGS_FILE "$REVIEW_TMPDIR/findings.md"
     emit_kv ACCEPTED_FINDINGS_FILE "$REVIEW_TMPDIR/accepted-findings.md"
     emit_kv REJECTED_FINDINGS_FILE "$REVIEW_TMPDIR/rejected-findings.md"
@@ -265,6 +269,8 @@ if [[ "$findings_count" == "0" ]]; then
     emit_kv ROUND_NUM "$ROUND_NUM"
     emit_kv ACCEPTED_COUNT 0
     emit_kv REJECTED_COUNT 0
+    emit_kv EXONERATED_COUNT 0
+    emit_kv NEUTRAL_COUNT 0
     emit_kv FINDINGS_FILE "$REVIEW_TMPDIR/findings.md"
     emit_kv ACCEPTED_FINDINGS_FILE "$REVIEW_TMPDIR/accepted-findings.md"
     emit_kv REJECTED_FINDINGS_FILE "$REVIEW_TMPDIR/rejected-findings.md"
@@ -358,6 +364,8 @@ if [[ "$tally_status" == "main-agent-vote-required" ]]; then
     emit_kv ROUND_NUM "$ROUND_NUM"
     emit_kv ACCEPTED_COUNT 0
     emit_kv REJECTED_COUNT 0
+    emit_kv EXONERATED_COUNT 0
+    emit_kv NEUTRAL_COUNT 0
     emit_kv FINDINGS_FILE "$REVIEW_TMPDIR/findings.md"
     emit_kv ACCEPTED_FINDINGS_FILE "$REVIEW_TMPDIR/accepted-findings.md"
     emit_kv REJECTED_FINDINGS_FILE "$REVIEW_TMPDIR/rejected-findings.md"

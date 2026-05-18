@@ -32,6 +32,8 @@ assert_eq "$(run_redactor '/private/tmp/larch-review-xyz_789')" '<TMPDIR>' "/pri
 assert_eq "$(run_redactor '/tmp/claude-implement-larch1-G2GITf')" '<TMPDIR>' "clone-tagged session path redacted"
 assert_eq "$(run_redactor '/Users/example/.cache/larch/sessions/claude-design-cache123')" '<TMPDIR>' "cache session path redacted"
 assert_eq "$(run_redactor '/Users/example/larch3/scripts/foo.sh')" '<OPERATOR_REPO_PATH>/scripts/foo.sh' "operator repo path redacted"
+assert_eq "$(run_redactor '/Users/example/my.repo/scripts/foo.sh')" '<OPERATOR_REPO_PATH>/scripts/foo.sh' "operator repo path with dotted repo name redacted"
+assert_eq "$(run_redactor '/home/example/my.repo/scripts/foo.sh')" '<OPERATOR_REPO_PATH>/scripts/foo.sh' "linux operator repo path redacted"
 assert_eq "$(run_redactor 'see /tmp/claude-research-a_b-C/log.txt now')" 'see <TMPDIR>/log.txt now' "embedded path redacted in prose"
 assert_eq "$(run_redactor '/tmp/not-larch-session and /var/tmp/claude-implement-abc')" '/tmp/not-larch-session and /var/tmp/claude-implement-abc' "non-matching paths preserved"
 assert_eq "$(run_redactor '/var/folders/kf/abc123/T/claude-implement-larch5-XyZ')" '<TMPDIR>' "/var/folders macOS session path redacted"
@@ -90,6 +92,11 @@ assert_eq \
     "$(run_redactor 'foo\n/Users/example/larch3/scripts/foo.sh')" \
     'foo\n<OPERATOR_REPO_PATH>/scripts/foo.sh' \
     "E4: \\n immediately before operator repo path redacted, \\n preserved"
+
+assert_eq \
+    "$(run_redactor 'foo\n/home/example/my.repo/scripts/foo.sh')" \
+    'foo\n<OPERATOR_REPO_PATH>/scripts/foo.sh' \
+    "E4: \\n immediately before linux operator repo path redacted, \\n preserved"
 
 # Expression 5: \n (two chars: backslash + n) immediately before larch/sessions path
 assert_eq \

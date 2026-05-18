@@ -69,14 +69,18 @@ Before returning success, write `$REVIEW_TMPDIR/review-summary.json` with the Wr
   "reviewer_output_paths": ["<abs-path>", "..."],
   "finding_counts": {
     "total_accepted": 0,
-    "total_rejected": 0
+    "total_rejected": 0,
+    "total_exonerated": 0,
+    "total_neutral": 0
   },
   "accepted_count": 0,
-  "rejected_count": 0
+  "rejected_count": 0,
+  "exonerated_count": 0,
+  "neutral_count": 0
 }
 ```
 
-`accepted_count` and `rejected_count` are the canonical top-level counts. Mirror them under `finding_counts.total_accepted` and `finding_counts.total_rejected` for forward compatibility.
+`accepted_count`, `rejected_count`, `exonerated_count`, and `neutral_count` are the canonical top-level counts. Mirror them under `finding_counts.total_accepted`, `finding_counts.total_rejected`, `finding_counts.total_exonerated`, and `finding_counts.total_neutral` for forward compatibility. `rejected_count` is strict: it excludes exonerated and neutral outcomes.
 
 On success, return a terse KV block. The **first line** MUST be exactly `REVIEW_HEAVY=complete`. Optional additional `KEY=value` lines may follow, for example:
 

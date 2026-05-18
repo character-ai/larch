@@ -485,7 +485,7 @@ write_version_reasoning_fragment() {
             set +e
             out=$("$SCRIPT_DIR/larch-log.sh" commit --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$run_id")
             rc=$?
-            set -e
+            set +e
             if [ "$rc" -ne 0 ]; then
                 append_execution_issue "Step 8 postbump larch-log commit failed."
                 warn_line '**⚠ 8: larch-log — postbump commit failed. Continuing.**'

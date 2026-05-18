@@ -55,6 +55,8 @@ count_from_tally() {
 
 accepted=$(count_from_tally ACCEPTED_COUNT)
 rejected=$(count_from_tally REJECTED_COUNT)
+exonerated=$(count_from_tally EXONERATED_COUNT)
+neutral=$(count_from_tally NEUTRAL_COUNT)
 [[ -n "$accepted" ]] || accepted=$(grep -c 'ACCEPTED=true' "$TALLY_FILE" || true)
 if [[ -z "$rejected" ]]; then
     if grep -q '_OUTCOME=' "$TALLY_FILE"; then
@@ -63,12 +65,16 @@ if [[ -z "$rejected" ]]; then
         rejected=$(grep -c 'ACCEPTED=false' "$TALLY_FILE" || true)
     fi
 fi
+[[ -n "$exonerated" ]] || exonerated=$(grep -c '_OUTCOME=exonerated$' "$TALLY_FILE" || true)
+[[ -n "$neutral" ]] || neutral=$(grep -c '_OUTCOME=neutral$' "$TALLY_FILE" || true)
 
 {
     printf '# Review Round %s\n\n' "$ROUND"
     printf '%s\n' "- Mode: \`$MODE\`"
     printf '%s\n' "- Accepted findings: $accepted"
-    printf '%s\n\n' "- Rejected findings: $rejected"
+    printf '%s\n' "- Rejected findings: $rejected"
+    printf '%s\n' "- Exonerated findings: $exonerated"
+    printf '%s\n\n' "- Neutral findings: $neutral"
     if [[ -s "$ACCEPTED_FINDINGS_FILE" ]]; then
         printf '## Accepted Findings\n\n'
         cat "$ACCEPTED_FINDINGS_FILE"
@@ -99,20 +105,30 @@ while IFS= read -r f; do
 done < <(find "$REVIEW_TMPDIR" -maxdepth 1 -name '*-output.txt' 2>/dev/null | sort)
 reviewer_paths_json=$(printf '%s\n' "${reviewer_paths[@]+"${reviewer_paths[@]}"}" | jq -R . | jq -s .)
 
-# Emit schema matching heavy-worker.md contract: schema_version, rounds_completed,
-# reviewer_output_paths, finding_counts.{total_accepted,total_rejected}, accepted_count, rejected_count.
+# Emit schema matching heavy-worker.md contract: schema_version,
+# rounds_completed, reviewer_output_paths, finding_counts totals, and canonical
+# top-level accepted/rejected/exonerated/neutral counts.
 jq -n \
     --argjson round "$ROUND" \
     --argjson accepted "$accepted" \
     --argjson rejected "$rejected" \
+    --argjson exonerated "$exonerated" \
+    --argjson neutral "$neutral" \
     --argjson paths "$reviewer_paths_json" \
     '{
         schema_version: 1,
         rounds_completed: $round,
         reviewer_output_paths: $paths,
-        finding_counts: { total_accepted: $accepted, total_rejected: $rejected },
+        finding_counts: {
+            total_accepted: $accepted,
+            total_rejected: $rejected,
+            total_exonerated: $exonerated,
+            total_neutral: $neutral
+        },
         accepted_count: $accepted,
-        rejected_count: $rejected
+        rejected_count: $rejected,
+        exonerated_count: $exonerated,
+        neutral_count: $neutral
     }' \
     > "$REVIEW_SUMMARY_FILE"
 
