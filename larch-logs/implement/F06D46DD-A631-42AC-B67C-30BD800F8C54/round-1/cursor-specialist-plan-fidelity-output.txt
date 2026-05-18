@@ -1,0 +1,16 @@
+Gathering the pre-computed diff and commit history for plan-fidelity review (read-only).
+
+Verifying the new test fixture matches the parser's expectations and comparing `escape_finding_body` to `escape_prompt_data` in the referenced script.
+
+`escape_finding_body` matches `escape_prompt_data` in [`scripts/scout-dynamic-archetypes.sh`](scripts/scout-dynamic-archetypes.sh) (same three `sed` substitutions). Parser treats `round-1/accepted-findings.md` as `code-review-accepted` and defaults reviewer to `panel` when unset, so the new fixture is structurally valid.
+
+### In-Scope Findings
+
+1. **Nit** (**correctness**): [`scripts/compose-review-findings.md`](scripts/compose-review-findings.md) — The implementation plan explicitly asked to “add **one sentence**” documenting HTML escaping; the change folds a multi-sentence explanation into the existing paragraph. Behavior is documented fully and matches intent; the only gap is literal brevity against that plan bullet. If strict plan adherence matters, collapse to a single sentence or add one sentence elsewhere and keep the rest unchanged.
+
+No other plan items are missing: [`scripts/compose-review-findings.sh`](scripts/compose-review-findings.sh) adds `escape_finding_body` after `redact_field`, applies it after redaction in `emit_record`, and uses `body_escaped` in `printf`; [`scripts/test-compose-review-findings.sh`](scripts/test-compose-review-findings.sh) adds the named regression block with tag-shaped input, asserts escaped forms, rejects raw `</reviewer_diff>` / `<scout_notes>`, and updates the redacted-token expectation so the existing secret-redaction case stays valid under `&lt;…&gt;` output.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	nit	correctness	scripts/compose-review-findings.md	Documentation bullet in implementation plan asked for a single sentence noting HTML escaping; the edit expands the paragraph to several sentences.	None; readers still learn the behavior; only traceability to the plan’s “one sentence” wording is loose.	Tighten to one sentence as specified, or adjust the plan if the longer explanation is preferred.
+```

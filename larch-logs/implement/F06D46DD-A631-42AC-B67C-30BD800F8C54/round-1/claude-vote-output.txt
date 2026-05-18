@@ -1,0 +1,10 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- SECURITY.md covers the redaction pipeline as a security concern; HTML escaping is a lint artifact, not a security property; adding it to SECURITY.md would misframe the purpose
+FINDING_4: YES
+FINDING_5: EXONERATE -- reviewer labels are structured controlled strings (e.g., "Codex-Structure") that never carry angle brackets; escaping them adds complexity without proportional benefit given the controlled input space
+FINDING_6: YES
+FINDING_7: NO -- "one sentence" in the plan was aspirational guidance, not a correctness requirement; the expanded wording is accurate and more informative
+FINDING_8: EXONERATE -- the plan explicitly acknowledged the code-span trade-off ("entities render correctly") and accepted it; the output targets lint-tool ingestion not raw human diff review
+FINDING_9: EXONERATE -- same reasoning as FINDING_5; reviewer labels are controlled structured strings
+FINDING_10: YES
