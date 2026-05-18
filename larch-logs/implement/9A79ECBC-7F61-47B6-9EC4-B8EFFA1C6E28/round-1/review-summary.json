@@ -14,13 +14,13 @@
     "<TMPDIR>/round-1/cursor-vote-output.txt"
   ],
   "finding_counts": {
-    "total_accepted": 1,
-    "total_rejected": 8,
-    "total_exonerated": 6,
-    "total_neutral": 0
+    "total_accepted": 10,
+    "total_rejected": 13,
+    "total_exonerated": 5,
+    "total_neutral": 1
   },
-  "accepted_count": 1,
-  "rejected_count": 8,
-  "exonerated_count": 6,
-  "neutral_count": 0
+  "accepted_count": 10,
+  "rejected_count": 13,
+  "exonerated_count": 5,
+  "neutral_count": 1
 }
