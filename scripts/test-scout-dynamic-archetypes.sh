@@ -236,15 +236,17 @@ grep -Fq 'WARN=validated archetypes exceed max cap: 3 > 2; truncating' "$out_dir
 
 mkdir -p "$TMP/description-too-large"
 seed_case_inputs "$TMP/description-too-large"
-huge_description=$(python3 - <<'PY'
-print("x" * 270000)
+# Oversized payloads cannot be passed on argv on Linux (MAX_ARG_STRLEN); use --description-file.
+huge_file="$TMP/description-too-large/huge-description.bin"
+python3 - <<'PY' > "$huge_file"
+import sys
+sys.stdout.write("x" * 270000)
 PY
-)
 set +e
 PATH="$BIN:$PATH" "$SCRIPT" \
     --mode description \
     --scope-files "$TMP/description-too-large/scope-files.txt" \
-    --description-text "$huge_description" \
+    --description-file "$huge_file" \
     --plan-file "$TMP/description-too-large/plan.md" \
     --max-archetypes 4 \
     --output "$TMP/description-too-large/scout-manifest.json" \
@@ -253,6 +255,6 @@ PATH="$BIN:$PATH" "$SCRIPT" \
 rc=$?
 set -e
 [[ "$rc" -eq 2 ]] || fail "description too large should fail validation"
-grep -Fq 'description-text exceeds 256 KB' "$TMP/description-too-large/stderr.env" || fail "description too large stderr"
+grep -Fq 'exceeds 256 KB' "$TMP/description-too-large/stderr.env" || fail "description too large stderr"
 
 echo "All assertions passed."
