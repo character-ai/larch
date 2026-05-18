@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+# lint-bash32.sh - static guard for Bash 3.2-incompatible shell constructs.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+ROOT="$REPO_ROOT"
+VIOLATIONS=0
+
+usage() {
+    printf 'Usage: %s [--root PATH]\n' "$(basename "$0")" >&2
+}
+
+while [[ "$#" -gt 0 ]]; do
+    case "$1" in
+        --root)
+            if [[ "$#" -lt 2 || -z "${2:-}" ]]; then
+                usage
+                exit 2
+            fi
+            ROOT="$2"
+            shift 2
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            usage
+            exit 2
+            ;;
+    esac
+done
+
+if [[ ! -d "$ROOT" ]]; then
+    printf 'lint-bash32: --root is not a directory: %s\n' "$ROOT" >&2
+    exit 2
+fi
+
+ROOT="$(cd "$ROOT" && pwd)"
+TMP_FILES="$(mktemp "${TMPDIR:-/tmp}/lint-bash32-files.XXXXXX")"
+trap 'rm -f "$TMP_FILES"' EXIT
+
+list_shell_files() {
+    if git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        git -C "$ROOT" ls-files --cached --others --exclude-standard -z -- '*.sh'
+    else
+        (
+            cd "$ROOT"
+            find . -type f -name '*.sh' ! -path './.git/*' ! -path './node_modules/*' ! -path './.venv/*' ! -path './.agents/*' -print \
+                | sed 's#^\./##' \
+                | LC_ALL=C sort \
+                | while IFS= read -r path; do
+                    printf '%s\0' "$path"
+                done
+        )
+    fi
+}
+
+scan_file() {
+    local rel="$1"
+    local path="$ROOT/$rel"
+    local rc
+
+    [[ -f "$path" && ! -L "$path" ]] || return 0
+    set +e
+    awk -v rel="$rel" '
+        function report(rule) {
+            printf("lint-bash32: %s:%s: Bash 3.2 incompatible: %s\n", rel, FNR, rule) > "/dev/stderr"
+            violations = 1
+        }
+        {
+            line = $0
+            if (line ~ /lint-bash32: ok/) next
+            if (line ~ /^[[:space:]]*#/) next
+
+            if (line ~ /(^|[[:space:];|&({])declare[[:space:]]+(-[A-Za-z]+[[:space:]]+)*-[A-Za-z]*A[A-Za-z]*([[:space:];|&)]|$)/) report("declare -A associative arrays") # lint-bash32: ok linter pattern
+            if (line ~ /(^|[[:space:];|&({])typeset[[:space:]]+(-[A-Za-z]+[[:space:]]+)*-[A-Za-z]*A[A-Za-z]*([[:space:];|&)]|$)/) report("typeset -A associative arrays") # lint-bash32: ok linter pattern
+            if (line ~ "(^|[[:space:];|&({])(map" "file|read" "array)([[:space:];|&)]|$)") report("map" "file/read" "array")
+            if (line ~ /\$\{[^}]*\^\^|\$\{[^}]*,,/) report("parameter case conversion") # lint-bash32: ok linter pattern
+            if (line ~ /(^|[[:space:];|&({])declare[[:space:]]+(-[A-Za-z]+[[:space:]]+)*-[A-Za-z]*n[A-Za-z]*([[:space:];|&)]|$)/) report("declare -n nameref") # lint-bash32: ok linter pattern
+            if (line ~ /(^|[[:space:];|&({])local[[:space:]]+(-[A-Za-z]+[[:space:]]+)*-[A-Za-z]*n[A-Za-z]*([[:space:];|&)]|$)/) report("local -n nameref") # lint-bash32: ok linter pattern
+            if (line ~ /&>>/) report("&>> append-all redirection") # lint-bash32: ok linter pattern
+            if (line ~ /(^|[[:space:];|&({])coproc[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\{/) report("named coproc") # lint-bash32: ok linter pattern
+        }
+        END { exit violations ? 1 : 0 }
+    ' "$path"
+    rc=$?
+    set -e
+    if [[ "$rc" -ne 0 ]]; then
+        VIOLATIONS=$((VIOLATIONS + 1))
+    fi
+}
+
+list_shell_files > "$TMP_FILES"
+while IFS= read -r -d '' rel; do
+    scan_file "$rel"
+done < "$TMP_FILES"
+
+if [[ "$VIOLATIONS" -gt 0 ]]; then
+    exit 1
+fi
+exit 0

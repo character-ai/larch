@@ -133,6 +133,11 @@ suppress = [
 # harness is referenced only from Makefile
 # (test-lint-no-raw-stderr-after-quiet-init target) and its sibling contract.
 #
+# scripts/lint-bash32.sh is the Bash 3.2 portability linter wired directly into
+# Makefile (`lint-bash32` and local `lint`). scripts/test-lint-bash32.sh is its
+# black-box regression harness. Both are Makefile-only from agent-lint's
+# reachability perspective, so both are excluded with their sibling contracts.
+#
 # skills/fix-issue/scripts/test-parse-prose-blockers.sh is the regression
 # harness for skills/fix-issue/scripts/parse-prose-blockers.sh (the prose-
 # dependency parser invoked by skills/fix-issue/scripts/blocker-helpers.sh's
@@ -787,6 +792,10 @@ exclude = [
   "scripts/lint-no-raw-stderr-after-quiet-init.md",
   "scripts/test-lint-no-raw-stderr-after-quiet-init.sh",
   "scripts/test-lint-no-raw-stderr-after-quiet-init.md",
+  "scripts/lint-bash32.sh",
+  "scripts/lint-bash32.md",
+  "scripts/test-lint-bash32.sh",
+  "scripts/test-lint-bash32.md",
   "skills/fix-issue/scripts/test-parse-prose-blockers.sh",
   "skills/fix-issue/scripts/blocker-helpers.sh",
   "skills/fix-issue/scripts/test-issue-lifecycle.sh",

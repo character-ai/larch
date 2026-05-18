@@ -415,10 +415,11 @@ assert_eq "T20 union size capped at 30" "30" "$T20_COUNT"
 # ----------------------------------------------------------------------
 # Test 21 — Bash 3.2 portability guard.
 # ----------------------------------------------------------------------
-echo "Test 21: Bash 3.2 portability — no declare -A, mapfile, or \${var,,}"
+echo "Test 21: Bash 3.2 portability — no declare -A, mapfile, or \${var,,}" # lint-bash32: ok intentional static portability label
 # Strip leading-whitespace comments before checking, so the doc comment listing
 # forbidden constructs doesn't trigger a false positive.
-T21_OFFENDERS=$(grep -nE 'declare -A|mapfile|\$\{[A-Z_]+,,\}' "$ALLOCATOR" \
+T21_PATTERN='declare -A|mapfile|\$\{[A-Z_]+,,\}' # lint-bash32: ok intentional static portability pattern
+T21_OFFENDERS=$(grep -nE "$T21_PATTERN" "$ALLOCATOR" \
     | grep -vE '^[0-9]+:[[:space:]]*#' || true)
 if [[ -n "$T21_OFFENDERS" ]]; then
     FAIL_COUNT=$((FAIL_COUNT + 1))

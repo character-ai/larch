@@ -1269,7 +1269,8 @@ echo "test-helpers.sh: Bash 3.2 portability guard (issue #744)"
 # including the comment-line filter so explanatory comments mentioning the
 # banned constructs do not false-positive CI.
 {
-  HITS=$(grep -nE 'declare -A|mapfile|\$\{[A-Z_]+,,\}' "$HELPERS" | grep -vE '^[0-9]+:[[:space:]]*#' || true)
+  BASH32_PATTERN='declare -A|mapfile|\$\{[A-Z_]+,,\}' # lint-bash32: ok intentional static portability pattern
+  HITS=$(grep -nE "$BASH32_PATTERN" "$HELPERS" | grep -vE '^[0-9]+:[[:space:]]*#' || true)
   if [ -z "$HITS" ]; then
     printf '  ✅ helpers.sh has no Bash 4+ constructs (comment lines excluded)\n'
     PASS=$((PASS + 1))
