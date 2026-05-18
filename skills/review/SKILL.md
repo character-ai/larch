@@ -77,6 +77,8 @@ if [[ -n "${RUN_ID:-}" && "${SCOUT_STATUS:-na}" != "na" ]]; then
        yield_tsv_basename: $yield_tsv_basename
      }' > "$scout_payload_file"
   "${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/log-phase.sh" \
+    --run-id "$RUN_ID" \
+    --log-root "$REVIEW_TMPDIR/larch-logs" \
     --batch review-scout-manifest \
     --action write \
     --payload-file "$scout_payload_file"

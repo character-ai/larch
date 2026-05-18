@@ -39,6 +39,11 @@ case "$PANEL" in
 esac
 INTENDED_SLOTS=$STATIC_INTENDED_SLOTS
 
+is_dynamic_reviewer_basename() {
+    local base="$1"
+    [[ "$base" =~ ^dyn-.*-output(-phase[23]|-retry)*\.txt$ ]]
+}
+
 # Count slots whose STATUS != OK and STATUS != cap_hit. Slots that never launched
 # because the vendor was unhealthy are counted via INTENDED_SLOTS - LAUNCHED_SLOTS
 # (the orchestrator passes --launched-slots when known; otherwise we use the
@@ -54,7 +59,7 @@ if [[ -n "$COLLECTOR_RESULTS_FILE" && -f "$COLLECTOR_RESULTS_FILE" ]]; then
         if [[ -z "$line" ]]; then
             if [[ -n "${current_status:-}" ]]; then
                 current_base=$(basename "${current_reviewer_file:-}")
-                if [[ "$current_base" == dyn-*-output.txt ]]; then
+                if is_dynamic_reviewer_basename "$current_base"; then
                     current_status=""
                     current_reviewer_file=""
                     continue
@@ -77,7 +82,7 @@ if [[ -n "$COLLECTOR_RESULTS_FILE" && -f "$COLLECTOR_RESULTS_FILE" ]]; then
     # Handle trailing record without final blank line.
     if [[ -n "${current_status:-}" ]]; then
         current_base=$(basename "${current_reviewer_file:-}")
-        if [[ "$current_base" != dyn-*-output.txt ]]; then
+        if ! is_dynamic_reviewer_basename "$current_base"; then
             COUNTED_SLOTS=$((COUNTED_SLOTS + 1))
             case "$current_status" in
                 OK|cap_hit) SUCCEEDED_SLOTS=$((SUCCEEDED_SLOTS + 1)) ;;

@@ -11,6 +11,7 @@ Invariants:
 - Dynamic archetypes are opt-in and capped at 4.
 - The scout is non-fatal. Claude failures, malformed JSON, timeout, and validation failures all write `{"archetypes":[]}` and emit a non-`ok` `SCOUT_STATUS`.
 - The script invokes `scripts/launch-claude-subprocess.sh`, not raw `claude`, so subprocess path validation, read-only preamble, context hardening, timing-ledger integration, and dirty-tree sidecars stay centralized.
+- Diff, scope-file, and optional plan-file inputs are validated before prompt assembly with the same regular-file, non-symlink, allowed-root, and 256 KB-per-file constraints enforced by `launch-claude-subprocess.sh`.
 - The output JSON is validated before publication. Valid archetypes require a safe slug name, allowed focus area (`code-quality`, `risk-integration`, `correctness`, `architecture`, `security`), integer weight `1..8`, non-empty rationale, and non-empty prompt body.
 - Prompt bodies containing a standalone `---` line, literal `</reviewer_` closing tags, or literal `</scout_notes>` wrapper terminators are rejected so synthesized agent frontmatter and untrusted wrapper tags cannot be corrupted. Rationale text is likewise rejected when it contains `</scout_notes>`.
 - Duplicate names keep the first archetype and emit `WARN`; reserved static slugs are rejected.

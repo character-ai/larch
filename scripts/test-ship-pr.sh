@@ -892,7 +892,6 @@ tmp=$(make_tmpdir)
 call_dir=$(mktemp -d /tmp/ship-pr-vendor-untracked.XXXXXX)
 delta_file="$call_dir/delta-paths.txt"
 cat > "$delta_file" <<'EOF'
-README.md
 fixture.txt
 EOF
 cat > "$root/scripts/ci-wait.sh" <<STUB
@@ -962,6 +961,11 @@ set +e
 printf '%s' "$?" > "$tmp/rc"
 set -e
 assert_rc "$tmp/rc" 0 "vendor CI fix: exits 0 after committing full lint-fix delta"
+if grep -Fxq 'README.md' "$call_dir/staged-before-commit.txt" 2>/dev/null; then
+    ok "vendor CI fix: follow-up commit preserves tracked vendor change outside lint-fix delta"
+else
+    fail "vendor CI fix: expected staged follow-up commit to include README.md vendor change"
+fi
 if grep -Fxq 'fixture.txt' "$call_dir/staged-before-commit.txt" 2>/dev/null; then
     ok "vendor CI fix: follow-up commit includes untracked fixture from lint-fix delta"
 else

@@ -208,12 +208,21 @@ derive_scout_status_from_manifest() {
     esac
 }
 
+write_scout_status_file() {
+    local scout_status_file="$REVIEW_TMPDIR/scout-round${ROUND_NUM}-status.env"
+    {
+        printf 'SCOUT_STATUS=%s\n' "$SCOUT_STATUS"
+        printf 'SCOUT_MANIFEST=%s\n' "$SCOUT_MANIFEST"
+    } > "$scout_status_file"
+}
+
 if [[ "$DYNAMIC_ARCHETYPES" != "0" && "$SCOUT_STATUS" == "na" ]]; then
     SCOUT_MANIFEST="$REVIEW_TMPDIR/scout-round${ROUND_NUM}-manifest.json"
     if [[ ! -s "$SCOUT_MANIFEST" ]]; then
         if [[ "$MODE" == "diff" && ! -f "$DIFF_FILE" ]]; then
             write_empty_scout_manifest "$SCOUT_MANIFEST"
             SCOUT_STATUS="missing-diff-file"
+            write_scout_status_file
         else
             scout_args=(--mode "$MODE" --max-archetypes "$DYNAMIC_ARCHETYPES" --output "$SCOUT_MANIFEST")
             [[ -n "$SESSION_ENV_PATH" ]] && scout_args+=(--session-env-path "$SESSION_ENV_PATH")
@@ -233,6 +242,7 @@ if [[ "$DYNAMIC_ARCHETYPES" != "0" && "$SCOUT_STATUS" == "na" ]]; then
                     WARN) emit_kv WARN "$value" ;;
                 esac
             done <<< "$scout_output"
+            write_scout_status_file
         fi
     else
         scout_status_file="$REVIEW_TMPDIR/scout-round${ROUND_NUM}-status.env"

@@ -20,6 +20,15 @@ emit_records() {
         if [[ "$raw_status" == dyn:* ]]; then
             status="${raw_status#dyn:}"
             reviewer_file="$WORKDIR/dyn-extra-output.txt"
+        elif [[ "$raw_status" == dyn-phase2:* ]]; then
+            status="${raw_status#dyn-phase2:}"
+            reviewer_file="$WORKDIR/dyn-extra-output-phase2.txt"
+        elif [[ "$raw_status" == dyn-phase3:* ]]; then
+            status="${raw_status#dyn-phase3:}"
+            reviewer_file="$WORKDIR/dyn-extra-output-phase3.txt"
+        elif [[ "$raw_status" == dyn-retry:* ]]; then
+            status="${raw_status#dyn-retry:}"
+            reviewer_file="$WORKDIR/dyn-extra-output-retry.txt"
         fi
         {
             printf 'REVIEWER_FILE=%s\n' "$reviewer_file"
@@ -121,6 +130,15 @@ got=$(printf '%s\n' "$out" | awk -F= '$1=="THRESHOLD_OK"{print $2}')
 assert_eq "3/12 static fail dynamic HARD reviewers ignored → still OK" "$got" "true"
 got=$(printf '%s\n' "$out" | awk -F= '$1=="COUNTED_SLOTS"{print $2}')
 assert_eq "only static slots are counted when dynamic reviewer files are present" "$got" "12"
+
+echo "# dynamic fallback basenames are still excluded from static failure accounting"
+out=$(run_case dynamic_fallback_names hard --launched-slots 12 \
+    OK OK OK OK OK OK OK OK OK timeout timeout timeout \
+    dyn-phase2:timeout dyn-phase3:timeout dyn-retry:timeout 2>&1)
+got=$(printf '%s\n' "$out" | awk -F= '$1=="COUNTED_SLOTS"{print $2}')
+assert_eq "dynamic phase2/phase3/retry outputs do not enter counted slots" "$got" "12"
+got=$(printf '%s\n' "$out" | awk -F= '$1=="FAILED_SLOTS"{print $2}')
+assert_eq "only static failures contribute when dynamic fallback outputs fail" "$got" "3"
 
 if [[ "$FAIL" -eq 0 ]]; then
     printf 'PASS: test-check-reviewer-failure-threshold.sh\n'

@@ -266,11 +266,13 @@ panel_manifest=$(kv_get "$dispatch_out" PANEL_MANIFEST)
 scout_status=$(kv_get "$dispatch_out" SCOUT_STATUS)
 dynamic_slots=$(kv_get "$dispatch_out" DYNAMIC_SLOTS)
 scout_manifest=$(kv_get "$dispatch_out" SCOUT_MANIFEST)
+static_slot_count=$(kv_get "$dispatch_out" STATIC_SLOT_COUNT)
 panel_mode="${panel_mode:-waterfall}"
 panel_shape="${panel_shape:-$PANEL}"
 dispatch_ok="${dispatch_ok:-true}"
 scout_status="${scout_status:-na}"
 dynamic_slots="${dynamic_slots:-0}"
+static_slot_count="${static_slot_count:-0}"
 {
     printf 'SCOUT_STATUS=%s\n' "$scout_status"
     printf 'DYNAMIC_SLOTS=%s\n' "$dynamic_slots"
@@ -307,7 +309,7 @@ recover_dirty_tree "${external_array[@]+"${external_array[@]}"}" "${claude_array
 # exit 2 so review-and-fix.sh propagates the stall to /implement Step 5.
 collector_results_file="$REVIEW_TMPDIR/collector-results.env"
 threshold_out="$REVIEW_TMPDIR/review-core-threshold.env"
-launched_slots=$(( ${#external_array[@]} + ${#claude_array[@]} ))
+launched_slots="$static_slot_count"
 threshold_args=(--collector-results-file "$collector_results_file" --panel "$panel_shape" --launched-slots "$launched_slots")
 if [[ "$dispatch_ok" == "false" ]]; then
     printf 'THRESHOLD_OK=false\nTHRESHOLD_REASON=dispatch-failed\n' > "$threshold_out"
