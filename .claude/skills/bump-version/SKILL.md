@@ -58,7 +58,7 @@ If you escalate, append at most 5 sentences (≤100 words) to the reasoning log 
    - Reads `origin/main:.claude-plugin/plugin.json`'s version with strict semver validation. Parse failure is fatal with the same rollback.
    - If the parsed origin version equals `NEW_VERSION`, rolls back the staged `plugin.json` mutation and calls `fail()` with `ERROR="origin/main has already bumped to <NEW_VERSION>; re-classify needed"`. `/implement` Step 8 routes this to the Rebase + Re-bump Sub-procedure with `caller_kind=step8_apply_bump_same_version` for one re-classification attempt; subsequent failure stalls.
    - `git commit -m "Bump version to <NEW_VERSION>"`
-   - Best-effort tail-call flush via `$PWD/scripts/larch-log-flush.sh` when an active `/implement` tmpdir is present and `LARCH_NO_LOGS_COMMIT` is not `true`
+   - No `larch-log-flush.sh` tail-call after the bump commit: the rebase+re-bump machinery requires the bump commit to remain at HEAD.
    - Rolls back from backup on commit failure
    - Maintains its sibling contract at `$PWD/.claude/skills/bump-version/scripts/apply-bump.md`; update that file with any behavioral change.
 5. If `BUMP_TYPE=NONE`, skip the apply step and report "already bumped".

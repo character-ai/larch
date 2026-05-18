@@ -379,6 +379,11 @@ suppress = [
 # mirroring the runtime harness's opt-in shape) and
 # scripts/test-eval-set-structure.md (sibling contract).
 exclude = [
+  # larch-log-flush.sh is invoked by the Step 2 dispatcher through
+  # "$PLUGIN_ROOT/scripts/larch-log-flush.sh"; agent-lint's dead-script rule
+  # does not follow Bash-to-Bash variable-expanded caller edges.
+  "scripts/larch-log-flush.sh",
+  "scripts/larch-log-flush.md",
   # larch-log migration harnesses are Makefile/pre-commit only. They are not
   # invoked from skill prose at runtime, so dead-script reachability is a false
   # positive for these test entrypoints.

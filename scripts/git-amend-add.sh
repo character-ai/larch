@@ -29,4 +29,3 @@ fi
 
 git add -- "$@"
 git commit --amend --no-edit
-"$(dirname "${BASH_SOURCE[0]}")/larch-log-flush.sh" || true

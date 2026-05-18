@@ -689,7 +689,7 @@ fi
 rm -rf "$call_dir"
 
 # ──────────────────────────────────────────────────────────────────────────────
-# --no-logs-commit: exported to commit primitive subprocess tree
+# --no-logs-commit: exported to lifecycle helper subprocess tree
 # ──────────────────────────────────────────────────────────────────────────────
 
 # Helper: override ci-wait.sh (rebase first call, merge second) and add stubs
@@ -765,6 +765,63 @@ rm -rf "$sentinel_dir"
 # ──────────────────────────────────────────────────────────────────────────────
 # run_evaluate_failure: inner local fix loop
 # ──────────────────────────────────────────────────────────────────────────────
+
+# Vendor retry loop: two no-change fix attempts still re-dispatch vendor, third succeeds.
+root=$(make_repo ci_fix_vendor_retry)
+tmp=$(make_tmpdir)
+# call_dir must live under IMPLEMENT_TMPDIR ($tmp) so ship-pr resolve_checks_log_path
+# accepts REDACTED_LOG_FILE paths from the checks stub (see #2288).
+call_dir=$(mktemp -d "$tmp/ship-pr-vendor-retry.XXXXXX")
+cat > "$root/scripts/ci-wait.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+count_file="$call_dir/ci-wait-count"
+count=\$(cat "\$count_file" 2>/dev/null || echo 0)
+printf '%s\n' "\$((count + 1))" > "\$count_file"
+if [ "\$count" -eq 0 ]; then
+    printf 'ACTION=evaluate_failure\nCI_STATUS=fail\nBEHIND_COUNT=0\nFAILED_RUN_ID=run123\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n'
+else
+    printf 'ACTION=merge\nCI_STATUS=pass\nBEHIND_COUNT=0\nFAILED_RUN_ID=\nBAIL_REASON=\nITERATION=1\nELAPSED=1\n'
+fi
+STUB
+chmod +x "$root/scripts/ci-wait.sh"
+cat > "$root/scripts/run-relevant-checks-captured.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+count_file="$call_dir/checks-count"
+count=\$(cat "\$count_file" 2>/dev/null || echo 0)
+printf '%s\n' "\$((count + 1))" > "\$count_file"
+if [ "\$count" -lt 4 ]; then
+    log_file="$call_dir/redacted-\$count.log"
+    : > "\$log_file"
+    echo "STATUS=fail FAILURE_REASON=stubbed"
+    echo "REDACTED_LOG_FILE=\$log_file"
+    exit 1
+fi
+echo "RELEVANT_CHECKS_OK=true SITE=step10 COVERAGE=full"
+exit 0
+STUB
+chmod +x "$root/scripts/run-relevant-checks-captured.sh"
+write_state "$tmp/ship-pr-state.sh" ci-initial
+awk '/^TRANSIENT_RETRIES=/ {print "TRANSIENT_RETRIES=1"; next}
+     /^FAILED_RUN_ID=/ {print "FAILED_RUN_ID=run123"; next}
+     {print}' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" \
+    && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
+set +e
+(cd "$root" && PATH="$root/scripts:$PATH" STUB_LINT_FIX_STATUS=no-changes \
+    SHIP_PR_LAUNCH_SENTINEL_DIR="$call_dir" CLAUDE_PLUGIN_ROOT="$root" \
+    "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
+    --merge true --draft false --forked false --repo owner/repo > "$tmp/stdout" 2>&1)
+printf '%s' "$?" > "$tmp/rc"
+set -e
+assert_rc "$tmp/rc" 0 "vendor retry loop: third vendor attempt can recover after two no-change passes"
+launch_count=$(wc -l < "$call_dir/launcher-calls.txt" 2>/dev/null || echo 0)
+if [ "$launch_count" -eq 3 ]; then
+    ok "vendor retry loop: dispatched vendor fix agent 3 times"
+else
+    fail "vendor retry loop: expected 3 vendor dispatches, got $launch_count"
+fi
+rm -rf "$call_dir"
 
 # Inner loop retries: first 2 local check attempts fail, 3rd succeeds -> exits 0.
 root=$(make_repo ci_fix_local_retry)
@@ -863,10 +920,10 @@ set -e
 assert_rc "$tmp/rc" 4 "local fix loop: all 3 attempts exhausted stalls (exits 4)"
 assert_state_line "$tmp/ship-pr-state.sh" "STALL_TRACKING=true" "local fix loop exhausted marks stall"
 check_count=$(cat "$call_dir/checks-count" 2>/dev/null || echo 0)
-if [ "$check_count" -eq 4 ]; then
-    ok "local fix loop exhausted: ran a final verification after the third applied fix"
+if [ "$check_count" -eq 12 ]; then
+    ok "local fix loop exhausted: repeated the 4-check inner loop across 3 vendor attempts"
 else
-    fail "local fix loop exhausted: expected 4 check attempts, got $check_count"
+    fail "local fix loop exhausted: expected 12 check attempts across 3 vendor attempts, got $check_count"
 fi
 rm -rf "$call_dir"
 

@@ -1,9 +1,9 @@
 # larch-log-flush.sh contract
 
-`scripts/larch-log-flush.sh` is the best-effort tail-call helper used by commit
-primitives after they create a business commit. It flushes the active
-`/implement` run's staged larch-log directory into a follow-up log commit when
-the run context is available.
+`scripts/larch-log-flush.sh` is the best-effort helper used at explicit
+`/implement` lifecycle flush points. It flushes the active run's staged
+larch-log directory into a follow-up log commit when the run context is
+available.
 
 ## Invariants
 
@@ -17,15 +17,20 @@ the run context is available.
   it first runs `skills/implement/scripts/flush-execution-issues.sh` in
   commit-tail mode so post-7a entries are committed before the log flush.
 - Invokes `scripts/larch-log.sh commit --log-root "$IMPLEMENT_TMPDIR/larch-logs"
-  --skill implement --run-id "$run_id"` and swallows failures so the preceding
-  business commit remains successful.
+  --skill implement --run-id "$run_id"` and swallows failures so the explicit
+  lifecycle flush remains best-effort.
 
-## Primary Callers
+## Call sites (invoke `larch-log-flush.sh` only here)
 
-- `scripts/git-commit.sh`
-- `scripts/git-amend-add.sh`
-- `.claude/skills/bump-version/scripts/apply-bump.sh`
-- `skills/implement/scripts/step2-implement.sh`
+Business commits must **not** tail-call this helper (for example `scripts/git-commit.sh` and
+`scripts/git-amend-add.sh` intentionally omit it so every code commit does not spawn a
+`chore(larch-logs): flush` follow-up). Authorized flush paths instead are:
+
+- **External implementer** — `skills/implement/scripts/step2-implement.sh` (post-dispatcher
+  commit).
+- **Step 7a pre-bump** — the implement orchestrator runs `scripts/larch-log.sh commit` directly
+  at the pre-bump checkpoint (not via this wrapper).
+- **Pre-push refresh** — `scripts/refresh-run-logs.sh` before each push.
 
 ## Edit In Sync
 

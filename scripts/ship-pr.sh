@@ -89,8 +89,8 @@ is_bool "$NO_LOGS_COMMIT" || die_usage "--no-logs-commit must be true or false"
 [ -z "$FORKED_TARGET" ] || is_bool "$FORKED_TARGET" || die_usage "--forked must be true or false"
 # Export so child processes inherit the session tmpdir path regardless of
 # whether the caller shell already had it exported (e.g. after a session
-# restart where the orchestrator env was fresh). The log-flush tail-call helper
-# resolves its run context from this tmpdir.
+# restart where the orchestrator env was fresh). Log helpers resolve their run
+# context from this tmpdir.
 export IMPLEMENT_TMPDIR
 export LARCH_NO_LOGS_COMMIT="$NO_LOGS_COMMIT"
 
@@ -463,7 +463,7 @@ run_checks_phase() {
     local out rc fail_file redacted_log fix_out fix_status
     local lint_attempt
     fail_file=$(failure_capture_path checks)
-    capture_command_output out "$fail_file" "$SCRIPT_DIR/run-relevant-checks-captured.sh" --site ship-pr-ci-initial --tmpdir "$IMPLEMENT_TMPDIR"
+    capture_command_output out "$fail_file" "$SCRIPT_DIR/run-relevant-checks-captured.sh" --site step6 --tmpdir "$IMPLEMENT_TMPDIR"
     rc=$?
     printf '%s\n' "$out" >> "$fail_file"
     if [ "$rc" -eq 0 ] && printf '%s\n' "$out" | grep -q '^RELEVANT_CHECKS_OK=true '; then
@@ -489,7 +489,7 @@ run_checks_phase() {
                 # no-changes means no changes were made — either way re-verify once.
                 printf 'ship-pr checks: lint fix %s (attempt %d/3), re-running checks...\n' "$fix_status" "$lint_attempt"
                 fail_file=$(failure_capture_path checks)
-                capture_command_output out "$fail_file" "$SCRIPT_DIR/run-relevant-checks-captured.sh" --site ship-pr-ci-initial --tmpdir "$IMPLEMENT_TMPDIR"
+                capture_command_output out "$fail_file" "$SCRIPT_DIR/run-relevant-checks-captured.sh" --site step6 --tmpdir "$IMPLEMENT_TMPDIR"
                 rc=$?
                 printf '%s\n' "$out" >> "$fail_file"
                 if [ "$rc" -eq 0 ] && printf '%s\n' "$out" | grep -q '^RELEVANT_CHECKS_OK=true '; then
@@ -984,10 +984,12 @@ run_evaluate_failure() {
     "$SCRIPT_DIR/gh-run-logs.sh" --run-id "$failed_run" --repo "$(read_state REPO)" > "$fail_file" 2>&1
     rc=$?
     [ "$rc" -eq 0 ] || record_failure "$phase" "gh-run-logs.sh" "$rc" "$fail_file" "CI Issues"
-    run_ci_fix_vendor "$phase" "$failed_run" && {
-        state_set_many TRANSIENT_RETRIES 0 FIX_ATTEMPTS "$(( $(read_state FIX_ATTEMPTS) + 1 ))"
-        return 0
-    }
+    for _ in 1 2 3; do
+        run_ci_fix_vendor "$phase" "$failed_run" && {
+            state_set_many TRANSIENT_RETRIES 0 FIX_ATTEMPTS "$(( $(read_state FIX_ATTEMPTS) + 1 ))"
+            return 0
+        }
+    done
     exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12c)"
 }
 

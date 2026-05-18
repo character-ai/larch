@@ -131,6 +131,45 @@ EOF_FINDING
 EOF_FINDING
     printf 'REVIEW_CORE_STATUS=main-agent-vote-required\nROUND_NUM=%s\nACCEPTED_COUNT=0\nREJECTED_COUNT=0\nFINDINGS_FILE=%s/findings.md\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nPANEL_MODE=normal\nPANEL_SHAPE=simple\n' "$round" "$out" "$out" "$out"
     ;;
+  tally-fidelity)
+    cat > "$out/review-round-summary.md" <<'EOF_SUMMARY'
+# Review Round 1
+
+- Mode: `diff`
+- Accepted findings: 1
+- Rejected findings: 4
+- Exonerated findings: 0
+- Neutral findings: 0
+EOF_SUMMARY
+    cat > "$out/accepted-findings.md" <<'EOF_ACCEPTED'
+### FINDING_1: First accepted
+- **Location**: src/main.py
+- **Concern**: First concern quoting [code-review/accepted] should not inflate the derived tally.
+- **Suggested revision**: First fix.
+
+### FINDING_2: Second accepted
+- **Location**: src/main.py
+- **Concern**: Second concern.
+- **Suggested revision**: Second fix.
+
+### FINDING_3: Third accepted
+- **Location**: src/main.py
+- **Concern**: Third concern.
+- **Suggested revision**: Third fix.
+EOF_ACCEPTED
+    cat > "$out/rejected-findings.md" <<'EOF_REJECTED'
+### [Code Review] Cursor-Quality
+
+**Finding**: First rejected finding mentioning [code-review/rejected] in prose only.
+**Reason not implemented**: Fixture.
+
+### [Code Review] Codex-Quality
+
+**Finding**: Second rejected finding.
+**Reason not implemented**: Fixture.
+EOF_REJECTED
+    printf 'REVIEW_CORE_STATUS=fix-required\nROUND_NUM=%s\nACCEPTED_COUNT=1\nREJECTED_COUNT=4\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nPANEL_MODE=normal\nPANEL_SHAPE=simple\n' "$round" "$out" "$out"
+    ;;
   *)
     printf 'REVIEW_CORE_STATUS=zero-findings\nROUND_NUM=%s\nACCEPTED_COUNT=0\nREJECTED_COUNT=0\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nPANEL_MODE=normal\nPANEL_SHAPE=simple\n' "$round" "$out" "$out"
     ;;
@@ -307,6 +346,54 @@ grep -Fq 'full rejected review prose' "$implement_tmp/larch-logs/implement/rejec
     || fail "rejected-full tally missing preserved rejected prose"
 grep -Fq 'full rejected review prose' "$implement_tmp/larch-logs/implement/rejected-full-run/review-findings-full.md" \
     || fail "rejected-full findings batch missing preserved rejected prose"
+
+work_tally="$TMP/tally-fidelity"
+make_work_repo "$work_tally"
+implement_tmp="$work_tally/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
+set +e
+out=$(TEST_CORE_STATUS=tally-fidelity TEST_AGENT_BEHAVIOR=codex-success run_review_and_fix "$work_tally" \
+    --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id tally-fidelity-run)
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "tally-fidelity expected exit 0 got $rc"; }
+jq -e '.accepted_count == 3 and .rejected_count == 2' \
+    "$implement_tmp/larch-logs/implement/tally-fidelity-run/code-review-tally.json" >/dev/null \
+    || fail "tally-fidelity derived tally counts"
+jq -e '.accepted_count == 3 and .rejected_count == 2' \
+    "$implement_tmp/review-and-fix-summary.json" >/dev/null \
+    || fail "tally-fidelity summary matches composed tally"
+grep -Fq 'ACCEPTED_COUNT=1' <<< "$out" || fail "tally-fidelity stdout accepted kv remains per-round"
+grep -Fq 'REJECTED_COUNT=4' <<< "$out" || fail "tally-fidelity stdout rejected kv remains per-round"
+grep -Fq 'TOTAL_ACCEPTED_COUNT=3' <<< "$out" || fail "tally-fidelity stdout total accepted kv matches composed tally"
+grep -Fq 'TOTAL_REJECTED_COUNT=2' <<< "$out" || fail "tally-fidelity stdout total rejected kv matches composed tally"
+[[ "$(grep -cE '^### .+ \[code-review/accepted\]$' "$implement_tmp/larch-logs/implement/tally-fidelity-run/review-findings-full.md")" == "3" ]] \
+    || fail "tally-fidelity accepted header count"
+grep -Fq -- '- Accepted findings:' "$implement_tmp/round-1/review-round-summary.md" || fail "tally-fidelity fixture summary keeps per-round count lines"
+if grep -Fq -- '- Accepted findings:' "$implement_tmp/larch-logs/implement/tally-fidelity-run/code-review-tally.json"; then
+    fail "tally-fidelity tally body must omit stale per-round count lines"
+fi
+
+cat > "$TMP/compose-review-findings-fail-stub.sh" <<'EOF_COMPOSE_FAIL'
+#!/usr/bin/env bash
+exit 2
+EOF_COMPOSE_FAIL
+chmod +x "$TMP/compose-review-findings-fail-stub.sh"
+work_compose_fail="$TMP/compose-fail"
+make_work_repo "$work_compose_fail"
+implement_tmp="$work_compose_fail/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
+set +e
+out=$(LARCH_QUIET_BREADCRUMBS=1 REVIEW_AND_FIX_COMPOSE_REVIEW_FINDINGS_SH="$TMP/compose-review-findings-fail-stub.sh" TEST_CORE_STATUS=zero run_review_and_fix "$work_compose_fail" \
+    --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id compose-fail-run)
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "compose-fail expected exit 0 got $rc"; }
+grep -Fq 'failed to compose review findings for summary derivation' <<< "$out" || fail "compose-fail summary warning breadcrumb"
+[[ ! -f "$implement_tmp/larch-logs/implement/compose-fail-run/code-review-tally.json" ]] || fail "compose-fail must skip tally batch write"
+[[ ! -f "$implement_tmp/larch-logs/implement/compose-fail-run/review-findings-full.md" ]] || fail "compose-fail must skip findings batch write"
 
 work_claude="$TMP/claude-removed"
 make_work_repo "$work_claude"

@@ -1023,6 +1023,25 @@ OUT=$(run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$S
 assert_contains "STATUS=ok" "$OUT" "postbump: non-JSON manifest does not fail the phase"
 assert_not_contains "STATUS=changelog-failed" "$OUT" "postbump: non-JSON manifest does not route to changelog-failed"
 
+cp "$SANDBOX/original-CHANGELOG.md" "$SANDBOX/repo/CHANGELOG.md"
+: > "$SANDBOX/tmp/execution-issues.md"
+write_postbump_state "$POSTBUMP_STATE" MANIFEST_PATH= TOOL_LABEL=codex
+OUT=$(run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
+assert_contains "CHANGELOG_STATUS=skipped-no-bullets" "$OUT" "postbump: missing bullets skips changelog amend"
+assert_file_contains "manifest_path=''" "$SANDBOX/tmp/execution-issues.md" "postbump: skipped-no-bullets execution issue resolves manifest path"
+assert_file_contains "manifest_exists=false" "$SANDBOX/tmp/execution-issues.md" "postbump: skipped-no-bullets execution issue resolves manifest presence"
+assert_file_contains "coder='codex'" "$SANDBOX/tmp/execution-issues.md" "postbump: skipped-no-bullets execution issue resolves coder"
+
+cp "$SANDBOX/original-CHANGELOG.md" "$SANDBOX/repo/CHANGELOG.md"
+: > "$SANDBOX/tmp/execution-issues.md"
+printf '{}' > "$SANDBOX/tmp/manifest-empty.json"
+write_postbump_state "$POSTBUMP_STATE" MANIFEST_PATH="$SANDBOX/tmp/manifest-empty.json" TOOL_LABEL=codex
+OUT=$(run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
+assert_contains "CHANGELOG_STATUS=skipped-no-bullets" "$OUT" "postbump: existing manifest without bullets skips changelog amend"
+assert_file_contains "manifest_path='$SANDBOX/tmp/manifest-empty.json'" "$SANDBOX/tmp/execution-issues.md" "postbump: existing-manifest skipped-no-bullets logs manifest path"
+assert_file_contains "manifest_exists=true" "$SANDBOX/tmp/execution-issues.md" "postbump: existing-manifest skipped-no-bullets logs manifest presence"
+assert_file_contains "coder='codex'" "$SANDBOX/tmp/execution-issues.md" "postbump: existing-manifest skipped-no-bullets resolves coder"
+
 # Regression: when target version header already exists (replacement path), no double blank before next header.
 cat > "$SANDBOX/repo/CHANGELOG.md" <<'CHANGELOG_REPLACE'
 # Changelog

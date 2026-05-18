@@ -401,11 +401,46 @@ write_summary_json() {
     mv -f "$tmp" "$output"
 }
 
+compose_review_findings_output() {
+    local impl_tmpdir="$1" output="$2"
+    local design_dir=""
+    local -a compose_args=()
+
+    [[ -n "$impl_tmpdir" && -d "$impl_tmpdir" ]] || return 1
+    [[ -n "$output" ]] || return 1
+    [[ -x "$COMPOSE_REVIEW_FINDINGS_SH" ]] || return 1
+
+    [[ -d "$impl_tmpdir/design-export" ]] && design_dir="$impl_tmpdir/design-export"
+    compose_args=(
+        --implement-tmpdir "$impl_tmpdir"
+        --issue 0
+        --output "$output"
+    )
+    [[ -n "$design_dir" ]] && compose_args=(--design-artifacts-dir "$design_dir" "${compose_args[@]}")
+    "$COMPOSE_REVIEW_FINDINGS_SH" "${compose_args[@]}" >/dev/null 2>&1
+}
+
+derive_code_review_tally_from_composed_findings() {
+    local findings_file="$1"
+    local accepted rejected
+
+    [[ -f "$findings_file" ]] || return 1
+
+    accepted=$(grep -cE '^### .+ \[code-review/accepted\]$' "$findings_file" 2>/dev/null || true)
+    rejected=$(grep -cE '^### .+ \[code-review/rejected\]$' "$findings_file" 2>/dev/null || true)
+    accepted="${accepted:-0}"
+    rejected="${rejected:-0}"
+    [[ "$accepted" =~ ^[0-9]+$ ]] || accepted=0
+    [[ "$rejected" =~ ^[0-9]+$ ]] || rejected=0
+    printf '%s %s\n' "$accepted" "$rejected"
+}
+
 flush_review_batches() {
-    local impl_tmpdir="$1" run_id="$2" panel="$3" rounds="$4" accepted="$5" rejected="$6" exonerated="${7:-0}" neutral="${8:-0}"
-    local batch_input_dir body_file findings_file design_dir="" voting_tally="" summary_file
-    local tally_out="" tally_rc=0
-    local -a round_summary_files=() round_summary_glob=() compose_args=()
+    local impl_tmpdir="$1" run_id="$2" panel="$3" rounds="$4" accepted="$5" rejected="$6" exonerated="${7:-0}" neutral="${8:-0}" composed_findings_source="${9:-}"
+    local batch_input_dir body_file findings_file voting_tally="" summary_file
+    local tally_out="" tally_rc=0 derived_accepted=0 derived_rejected=0
+    local derived_counts=""
+    local -a round_summary_files=() round_summary_glob=()
 
     [[ -n "$impl_tmpdir" && -d "$impl_tmpdir" ]] || return 0
     [[ -n "$run_id" ]] || return 0
@@ -420,17 +455,38 @@ flush_review_batches() {
     [[ -x "$LARCH_LOG_SH" ]] || return 0
 
     batch_input_dir="$impl_tmpdir/larch-log-batches-input"
-    mkdir -p "$batch_input_dir" || return 0
+    mkdir -p "$batch_input_dir" || {
+        emit_breadcrumb "⚠ review-and-fix: failed to create tally batch input directory; skipping tally flush"
+        return 1
+    }
     body_file="$batch_input_dir/code-review-tally-body.md"
     findings_file="$batch_input_dir/review-findings-full.md"
 
-    {
+    if [[ -n "$composed_findings_source" && -s "$composed_findings_source" ]]; then
+        cp "$composed_findings_source" "$findings_file" 2>/dev/null || {
+            emit_breadcrumb "⚠ review-and-fix: failed to stage review-findings-full batch input; skipping tally flush"
+            return 1
+        }
+    elif ! compose_review_findings_output "$impl_tmpdir" "$findings_file"; then
+        emit_breadcrumb "⚠ review-and-fix: failed to compose review-findings-full batch; skipping tally flush"
+        return 0
+    fi
+    derived_counts=$(derive_code_review_tally_from_composed_findings "$findings_file") || derived_counts="0 0"
+    read -r derived_accepted derived_rejected <<< "$derived_counts"
+
+    if ! {
         printf 'Rounds: %s | Accepted: %s | Rejected: %s | Exonerated: %s | Neutral: %s\n' \
-            "$rounds" "$accepted" "$rejected" "$exonerated" "$neutral"
+            "$rounds" "$derived_accepted" "$derived_rejected" "$exonerated" "$neutral"
 
         if [[ -s "$impl_tmpdir/review-round-summary.md" ]]; then
             printf '\n'
-            cat "$impl_tmpdir/review-round-summary.md"
+            awk '
+                /^- Accepted findings: / { next }
+                /^- Rejected findings: / { next }
+                /^- Exonerated findings: / { next }
+                /^- Neutral findings: / { next }
+                { print }
+            ' "$impl_tmpdir/review-round-summary.md"
             printf '\n'
         else
             shopt -s nullglob
@@ -461,7 +517,13 @@ flush_review_batches() {
             for summary_file in "${round_summary_files[@]+"${round_summary_files[@]}"}"; do
                 [[ -s "$summary_file" ]] || continue
                 printf '\n'
-                cat "$summary_file"
+                awk '
+                    /^- Accepted findings: / { next }
+                    /^- Rejected findings: / { next }
+                    /^- Exonerated findings: / { next }
+                    /^- Neutral findings: / { next }
+                    { print }
+                ' "$summary_file"
                 printf '\n'
             done
         fi
@@ -482,7 +544,10 @@ flush_review_batches() {
             cat "$voting_tally"
             printf '\n'
         fi
-    } > "$body_file" || return 0
+    } > "$body_file"; then
+        emit_breadcrumb "⚠ review-and-fix: failed to write code-review-tally batch body; skipping tally flush"
+        return 1
+    fi
 
     set +e
     tally_out="$("$WRITE_TALLY_SH" \
@@ -492,8 +557,8 @@ flush_review_batches() {
         --phase code-review \
         --mode "$panel" \
         --rounds "$rounds" \
-        --accepted "$accepted" \
-        --rejected "$rejected" \
+        --accepted "$derived_accepted" \
+        --rejected "$derived_rejected" \
         --exonerated "$exonerated" \
         --neutral "$neutral" \
         --body-file "$body_file" 2>&1)"
@@ -503,15 +568,6 @@ flush_review_batches() {
         emit_breadcrumb "⚠ review-and-fix: failed to flush code-review-tally batch"
         [[ -n "$tally_out" ]] && larch_err "$tally_out"
     fi
-
-    [[ -d "$impl_tmpdir/design-export" ]] && design_dir="$impl_tmpdir/design-export"
-    compose_args=(
-        --implement-tmpdir "$impl_tmpdir"
-        --issue 0
-        --output "$findings_file"
-    )
-    [[ -n "$design_dir" ]] && compose_args=(--design-artifacts-dir "$design_dir" "${compose_args[@]}")
-    "$COMPOSE_REVIEW_FINDINGS_SH" "${compose_args[@]}" >/dev/null 2>&1 || return 0
 
     "$LARCH_LOG_SH" write \
         --log-root "$impl_tmpdir/larch-logs" \
@@ -860,6 +916,21 @@ run_implement_round() {
     esac
 
     local round_cap_val="${ROUND_CAP:-0}"
+    local composed_findings_file="" derived_counts="" derived_accepted="" derived_rejected="" composed_findings_ok=false
+    if [[ "$exit_code" -eq 0 && -n "$IMPLEMENT_TMPDIR" && -d "$IMPLEMENT_TMPDIR" ]]; then
+        composed_findings_file="$round_dir/review-findings-full.composed.md"
+        if compose_review_findings_output "$IMPLEMENT_TMPDIR" "$composed_findings_file"; then
+            composed_findings_ok=true
+            derived_counts=$(derive_code_review_tally_from_composed_findings "$composed_findings_file") || derived_counts=""
+            if [[ -n "$derived_counts" ]]; then
+                read -r derived_accepted derived_rejected <<< "$derived_counts"
+                total_accepted="$derived_accepted"
+                total_rejected="$derived_rejected"
+            fi
+        else
+            emit_breadcrumb "⚠ review-and-fix: failed to compose review findings for summary derivation; preserving vote tally in summary"
+        fi
+    fi
     write_summary_json "$prior_summary" "$status" "$core_status" "$round_num_dec" "$total_accepted" "$total_rejected" "$total_exonerated" "$total_neutral" "$round_num_dec" "$accepted_file" "$round_dir" "$oos_jsonl" "$oos_markdown" "$round_cap_val" "$coder_tool" "$coder_status" "$scrub_count" "$revert_count" "$coder_commit_sha"
     flush_round_log_after_coder "$IMPLEMENT_TMPDIR" "$RUN_ID" "$round_num_dec" "$round_dir"
 
@@ -868,6 +939,8 @@ run_implement_round() {
     emit_kv ROUND_NUM "$round_num_dec"
     emit_kv ACCEPTED_COUNT "$accepted_count"
     emit_kv REJECTED_COUNT "$rejected_count"
+    emit_kv TOTAL_ACCEPTED_COUNT "$total_accepted"
+    emit_kv TOTAL_REJECTED_COUNT "$total_rejected"
     emit_kv EXONERATED_COUNT "$exonerated_count"
     emit_kv NEUTRAL_COUNT "$neutral_count"
     emit_kv FIX_COUNT "$coder_input_count"
@@ -887,7 +960,15 @@ run_implement_round() {
     emit_kv SUBMODULE_REVERT_COUNT "$revert_count"
     emit_kv SKIPPED_FINDING_COUNT "${skipped_finding_count:-0}"
     if [[ "$exit_code" -eq 0 ]]; then
-        flush_review_batches "$IMPLEMENT_TMPDIR" "$RUN_ID" "$PANEL" "$round_num_dec" "$total_accepted" "$total_rejected" "$total_exonerated" "$total_neutral"
+        if [[ "$composed_findings_ok" == true ]]; then
+            if ! flush_review_batches "$IMPLEMENT_TMPDIR" "$RUN_ID" "$PANEL" "$round_num_dec" "$total_accepted" "$total_rejected" "$total_exonerated" "$total_neutral" "$composed_findings_file"; then
+                emit_breadcrumb "⚠ review-and-fix: code-review tally flush skipped after local batch write failure"
+            fi
+        else
+            if ! flush_review_batches "$IMPLEMENT_TMPDIR" "$RUN_ID" "$PANEL" "$round_num_dec" "$total_accepted" "$total_rejected" "$total_exonerated" "$total_neutral"; then
+                emit_breadcrumb "⚠ review-and-fix: code-review tally flush skipped after local batch write failure"
+            fi
+        fi
     fi
     exit "$exit_code"
 }

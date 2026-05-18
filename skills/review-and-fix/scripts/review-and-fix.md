@@ -60,8 +60,10 @@ Additional output keys:
 
 - `REVIEW_CORE_STATUS`
 - `ROUND_NUM`
-- `ACCEPTED_COUNT`
-- `REJECTED_COUNT` — strictly `rejected` outcomes only; does not include exonerated or neutral.
+- `ACCEPTED_COUNT` — accepted findings for the current round only.
+- `REJECTED_COUNT` — rejected findings for the current round only; strictly `rejected` outcomes only and does not include exonerated or neutral.
+- `TOTAL_ACCEPTED_COUNT` — cumulative accepted findings across completed rounds after composing the aggregate review artifact.
+- `TOTAL_REJECTED_COUNT` — cumulative rejected findings across completed rounds after composing the aggregate review artifact.
 - `EXONERATED_COUNT` — findings with outcome `exonerated` (this round only).
 - `NEUTRAL_COUNT` — findings with outcome `neutral` (this round only).
 - `TOTAL_EXONERATED_COUNT` — cumulative exonerated findings across completed rounds.
@@ -93,8 +95,8 @@ The script writes `$IMPLEMENT_TMPDIR/review-and-fix-summary.json` atomically wit
 
 When an orchestrator round exits `0` (cap-reached, clean, or fix-applied) and `--run-id` is non-empty, the script best-effort flushes the Step 5 implement run-log batches:
 
-- `code-review-tally` via `scripts/write-tally.sh`, with a body containing aggregate counts, the latest parent `review-round-summary.md` or per-round summaries, rejected code-review findings, and the latest round voting tally when present.
 - `review-findings-full` via `scripts/compose-review-findings.sh` followed by `scripts/larch-log.sh write`.
+- `code-review-tally` via `scripts/write-tally.sh`, with a body containing aggregate counts derived from the composed `[code-review/accepted]` / `[code-review/rejected]` sections, sanitized review round summaries with stale per-round count bullets removed, rejected code-review findings, and the latest round voting tally when present.
 
 Batch flushing is intentionally non-blocking: failures are suppressed so review status remains governed by the review and fix results.
 
