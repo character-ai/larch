@@ -94,3 +94,35 @@
 - **Concern**: [nit] Step 5 checks-failure prose does not reference lint-fix-loop.sh or LINT_FIX_STATUS unlike Steps 3 and 6. Operators expect uniform external-coder repair for all check failures; Step 5 stays vague (“resolve”) and may under-use Codex/Cursor. Align Step 5 with the lint-fix-loop contract or state explicitly that Step 5 is main-agent-only by design.
 - **Suggested revision**: Address the concern above.
 
+### FINDING_1: panel [code-review/accepted]
+
+## **Important** `risk-integration` `scripts/lint-fix-loop.sh:233`  
+
+- **Reviewer**: codex-generalist-output.txt
+- **Concern**: 1. **Important** `risk-integration` `scripts/lint-fix-loop.sh:233`      `lint-fix-loop.sh` does not snapshot or verify `HEAD` around the external coder dispatch (`scripts/lint-fix-loop.sh:233-263`), even though the “Do NOT commit” rule is only prompt text. Concrete failing scenario: Cursor ignores the prompt, edits a file, runs `git add -A && git commit -m fix`, exits 0, and leaves the working tree clean; the helper then emits `LINT_FIX_STATUS=no-changes` with no `LINT_FIX_COMMIT_SHA`, bypassing the helper-owned commit path at `scripts/lint-fix-loop.sh:266-272` and any forbidden-path detection based on working-tree diffs. Add a `baseline_head=$(git rev-parse HEAD)` before dispatch and fail closed if `HEAD` changes afterward, plus a behavioral test with a stub external agent that commits.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_13: panel [code-review/accepted]
+
+## risk-integration: scripts/lint-fix-loop.md:58-66 vs skills/implement/SKILL.md:1368
+
+- **Reviewer**: cursor-specialist-edge-cases-output.txt
+- **Concern**: [important] Generic contract routes failed to Step 18 while Step 5 routes the same status to Step 16. Downstream automation reading only lint-fix-loop.md follows the wrong stall/cleanup rail for Step 5 failures. Qualify routing per --site in the contract or duplicate the Step 16 vs Step 18 language from SKILL.md.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_15: panel [code-review/accepted]
+
+## risk-integration: scripts/lint-fix-loop.sh:267-271
+
+- **Reviewer**: cursor-specialist-edge-cases-output.txt
+- **Concern**: [important] git add before git-commit.sh with no rollback on commit failure leaves the index partially staged. A hook rejects git-commit.sh after staging; STALL_TRACKING flow leaves operators with ambiguous staged state. Reset staged paths (or restore index) before fail_status, or use an atomic commit path that cannot leave half-staged state.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_16: panel [code-review/accepted]
+
+## risk-integration: scripts/test-implement-structure.sh:38-40
+
+- **Reviewer**: cursor-specialist-edge-cases-output.txt
+- **Concern**: [latent] Attribution regression test omits review-and-fix.sh. Reintroducing forbidden user-facing phrasing in shell breadcrumbs bypasses CI while docs stay clean. Include skills/review-and-fix/scripts/review-and-fix.sh (and any other narration hosts) in the grep set.
+- **Suggested revision**: Address the concern above.
+
