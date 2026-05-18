@@ -1,0 +1,22 @@
+{
+  "schema_version": 2,
+  "skill": "implement",
+  "run_id": "DFAB1700-FEBA-4296-B2C7-C1560118D4BC",
+  "operator_cwd": "<OPERATOR_CWD>",
+  "operator_repo_root": "<REPO_ROOT>",
+  "parent_skill": null,
+  "issue_number": 2267,
+  "pr_number": 2284,
+  "status": "in-progress",
+  "larch_version": "29.1.30",
+  "model_roster": {
+    "main": "unknown"
+  },
+  "effort": "max",
+  "started_at": "2026-05-18T04:38:35Z",
+  "updated_at": "2026-05-18T05:07:47Z",
+  "attempt": 1,
+  "superseded_by": null,
+  "stalled_at_step": null,
+  "flags": {}
+}

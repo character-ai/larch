@@ -425,17 +425,134 @@ write_finalize_state() {
 }
 
 run_checks_phase() {
-    local out rc fail_file
+    local out rc fail_file redacted_log fix_out fix_status
+    local lint_attempt
     fail_file=$(failure_capture_path checks)
-    out=$("$SCRIPT_DIR/run-relevant-checks-captured.sh" --site step6 --tmpdir "$IMPLEMENT_TMPDIR" 2>"$fail_file")
+    out=$("$SCRIPT_DIR/run-relevant-checks-captured.sh" --site ship-pr-ci-initial --tmpdir "$IMPLEMENT_TMPDIR" 2>"$fail_file")
     rc=$?
     printf '%s\n' "$out" >> "$fail_file"
     if [ "$rc" -eq 0 ] && printf '%s\n' "$out" | grep -q '^RELEVANT_CHECKS_OK=true '; then
         advance_phase bump
         return 0
     fi
+    redacted_log=$(printf '%s\n' "$out" | awk -F= '/^REDACTED_LOG_FILE=/ { print substr($0, index($0,"=")+1); exit }')
+    if [ -z "$redacted_log" ] || [ ! -f "$redacted_log" ]; then
+        record_failure checks "run-relevant-checks-captured.sh" "$rc" "$fail_file"
+        exit_stall 6
+    fi
+    for lint_attempt in 1 2 3; do
+        fail_file=$(failure_capture_path checks)
+        fix_out=$("$SCRIPT_DIR/lint-fix-loop.sh" \
+            --tmpdir "$IMPLEMENT_TMPDIR" \
+            --site ship-pr-ci-initial \
+            --checks-log "$redacted_log" 2>"$fail_file")
+        printf '%s\n' "$fix_out" >> "$fail_file"
+        fix_status=$(printf '%s\n' "$fix_out" | awk -F= '/^LINT_FIX_STATUS=/ { print $2; exit }')
+        case "$fix_status" in
+            applied|no-changes)
+                # Re-run checks after any fix attempt; applied means coder made changes,
+                # no-changes means no changes were made — either way re-verify once.
+                printf 'ship-pr checks: lint fix %s (attempt %d/3), re-running checks...\n' "$fix_status" "$lint_attempt"
+                fail_file=$(failure_capture_path checks)
+                out=$("$SCRIPT_DIR/run-relevant-checks-captured.sh" --site ship-pr-ci-initial --tmpdir "$IMPLEMENT_TMPDIR" 2>"$fail_file")
+                rc=$?
+                printf '%s\n' "$out" >> "$fail_file"
+                if [ "$rc" -eq 0 ] && printf '%s\n' "$out" | grep -q '^RELEVANT_CHECKS_OK=true '; then
+                    advance_phase bump
+                    return 0
+                fi
+                # no-changes means the coder made no fixes; further dispatch won't help.
+                if [ "$fix_status" = "no-changes" ]; then
+                    break
+                fi
+                redacted_log=$(printf '%s\n' "$out" | awk -F= '/^REDACTED_LOG_FILE=/ { print substr($0, index($0,"=")+1); exit }')
+                if [ -z "$redacted_log" ] || [ ! -f "$redacted_log" ]; then
+                    break
+                fi
+                ;;
+            *)
+                # failed, main-agent-required, or empty — fall through to stall.
+                printf 'ship-pr checks: lint fix %s (attempt %d/3), stalling.\n' "${fix_status:-unknown}" "$lint_attempt"
+                break
+                ;;
+        esac
+    done
     record_failure checks "run-relevant-checks-captured.sh" "$rc" "$fail_file"
     exit_stall 6
+}
+
+lint_fix_site_for_phase() {
+    case "$1" in
+        ci-initial|checks) printf '%s\n' ship-pr-ci-initial ;;
+        ci-merge|evaluate-failure) printf '%s\n' ship-pr-ci-merge ;;
+        *) return 1 ;;
+    esac
+}
+
+run_checks_with_lint_fix_loop() {
+    local phase=$1 checks_site=$2 fix_site redacted_log fix_out fix_status
+    local fail_category fail_file out rc attempt
+
+    fix_site=$(lint_fix_site_for_phase "$phase") || return 2
+    case "$phase" in
+        ci-initial|ci-merge|evaluate-failure)
+            fail_category="CI Issues"
+            ;;
+        *)
+            return 2
+            ;;
+    esac
+
+    fail_file=$(failure_capture_path "$phase")
+    out=$("$SCRIPT_DIR/run-relevant-checks-captured.sh" --site "$checks_site" --tmpdir "$IMPLEMENT_TMPDIR" 2>"$fail_file")
+    rc=$?
+    printf '%s\n' "$out" >> "$fail_file"
+    if [ "$rc" -eq 0 ] && printf '%s\n' "$out" | grep -q '^RELEVANT_CHECKS_OK=true '; then
+        return 0
+    fi
+    redacted_log=$(printf '%s\n' "$out" | awk -F= '/^REDACTED_LOG_FILE=/ { print substr($0, index($0,"=")+1); exit }')
+    if [ -z "$redacted_log" ] || [ ! -f "$redacted_log" ]; then
+        record_failure "$phase" "run-relevant-checks-captured.sh" "$rc" "$fail_file" "$fail_category"
+        return 1
+    fi
+    for attempt in 1 2 3; do
+        fail_file=$(failure_capture_path "$phase")
+        fix_out=$("$SCRIPT_DIR/lint-fix-loop.sh" \
+            --tmpdir "$IMPLEMENT_TMPDIR" \
+            --site "$fix_site" \
+            --checks-log "$redacted_log" 2>"$fail_file")
+        printf '%s\n' "$fix_out" >> "$fail_file"
+        fix_status=$(printf '%s\n' "$fix_out" | awk -F= '/^LINT_FIX_STATUS=/ { print $2; exit }')
+        case "$fix_status" in
+            applied|no-changes)
+                printf 'ship-pr %s: lint fix %s (attempt %d/3), re-running checks...\n' "$phase" "$fix_status" "$attempt"
+                fail_file=$(failure_capture_path "$phase")
+                out=$("$SCRIPT_DIR/run-relevant-checks-captured.sh" --site "$checks_site" --tmpdir "$IMPLEMENT_TMPDIR" 2>"$fail_file")
+                rc=$?
+                printf '%s\n' "$out" >> "$fail_file"
+                if [ "$rc" -eq 0 ] && printf '%s\n' "$out" | grep -q '^RELEVANT_CHECKS_OK=true '; then
+                    return 0
+                fi
+                if [ "$fix_status" = "no-changes" ]; then
+                    record_failure "$phase" "run-relevant-checks-captured.sh" "$rc" "$fail_file" "$fail_category"
+                    return 1
+                fi
+                redacted_log=$(printf '%s\n' "$out" | awk -F= '/^REDACTED_LOG_FILE=/ { print substr($0, index($0,"=")+1); exit }')
+                if [ -z "$redacted_log" ] || [ ! -f "$redacted_log" ]; then
+                    record_failure "$phase" "run-relevant-checks-captured.sh" "$rc" "$fail_file" "$fail_category"
+                    return 1
+                fi
+                ;;
+            *)
+                record_failure "$phase" "run-relevant-checks-captured.sh" "$rc" "$fail_file" "$fail_category"
+                printf 'ship-pr %s: lint fix %s (attempt %d/3), stalling.\n' "$phase" "${fix_status:-unknown}" "$attempt"
+                return 1
+                ;;
+        esac
+    done
+
+    record_failure "$phase" "run-relevant-checks-captured.sh" "$rc" "$fail_file" "$fail_category"
+    return 1
 }
 
 run_bump_phase() {
@@ -738,7 +855,7 @@ rename_done_best_effort() {
 }
 
 run_ci_fix_vendor() {
-    local phase=$1 run_id=$2 output rc checks_out fail_file tool_label plan_file
+    local phase=$1 run_id=$2 output rc fail_file tool_label plan_file checks_site
     local plan_args=()
     output="$IMPLEMENT_TMPDIR/ci-fix-${phase}-$(date +%s).out"
     plan_file=$(resolve_plan_file)
@@ -760,12 +877,8 @@ run_ci_fix_vendor() {
     "$SCRIPT_DIR/append-token-record.sh" --input "${output}.token-record" --tmpdir "$IMPLEMENT_TMPDIR" > "$fail_file" 2>&1
     rc=$?
     [ "$rc" -eq 0 ] || record_failure "$phase" "append-token-record.sh" "$rc" "$fail_file" Warnings
-    fail_file=$(failure_capture_path "$phase")
-    checks_out=$("$SCRIPT_DIR/run-relevant-checks-captured.sh" --site "$([ "$phase" = "ci-initial" ] && echo step10 || echo step12c)" --tmpdir "$IMPLEMENT_TMPDIR" 2>"$fail_file")
-    rc=$?
-    printf '%s\n' "$checks_out" >> "$fail_file"
-    if ! { [ "$rc" -eq 0 ] && printf '%s\n' "$checks_out" | grep -q '^RELEVANT_CHECKS_OK=true '; }; then
-        record_failure "$phase" "run-relevant-checks-captured.sh" "$rc" "$fail_file" "CI Issues"
+    checks_site="$([ "$phase" = "ci-initial" ] && echo step10 || echo step12c)"
+    if ! run_checks_with_lint_fix_loop "$phase" "$checks_site"; then
         return 1
     fi
     # Only commit when the vendor left uncommitted changes; vendor may have
@@ -804,7 +917,7 @@ run_ci_fix_vendor() {
 }
 
 run_evaluate_failure() {
-    local phase=$1 failed_run rerun_out retries local_attempt rc fail_file
+    local phase=$1 failed_run rerun_out retries rc fail_file
     failed_run=$(read_state FAILED_RUN_ID)
     [ -n "$failed_run" ] || exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12c)"
     retries=$(read_state TRANSIENT_RETRIES)
@@ -827,16 +940,10 @@ run_evaluate_failure() {
     "$SCRIPT_DIR/gh-run-logs.sh" --run-id "$failed_run" --repo "$(read_state REPO)" > "$fail_file" 2>&1
     rc=$?
     [ "$rc" -eq 0 ] || record_failure "$phase" "gh-run-logs.sh" "$rc" "$fail_file" "CI Issues"
-    # Local fix loop: fix → run local tests → repeat until passing, then push once.
-    # Only bail to the caller (exit_stall) when all attempts are exhausted.
-    for local_attempt in 1 2 3; do
-        run_ci_fix_vendor "$phase" "$failed_run" && {
-            state_set_many TRANSIENT_RETRIES 0 FIX_ATTEMPTS "$(( $(read_state FIX_ATTEMPTS) + 1 ))"
-            return 0
-        }
-        [ "$local_attempt" -lt 3 ] && \
-            printf 'ci-fix: local attempt %d/3 failed; retrying fix locally before pushing to CI...\n' "$local_attempt"
-    done
+    run_ci_fix_vendor "$phase" "$failed_run" && {
+        state_set_many TRANSIENT_RETRIES 0 FIX_ATTEMPTS "$(( $(read_state FIX_ATTEMPTS) + 1 ))"
+        return 0
+    }
     exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12c)"
 }
 

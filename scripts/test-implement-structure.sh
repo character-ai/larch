@@ -146,6 +146,29 @@ if grep -Eiq 'diagnose([[:space:]]*,[[:space:]]*|[[:space:]]*\+[[:space:]]*)fix'
   fail "SKILL.md must not contain bare diagnose/fix relevant-checks loops without lint-fix-loop.sh routing"
 fi
 
+# Pin that ship-pr.sh run_checks_phase calls lint-fix-loop.sh internally, so the
+# orchestrator never needs to fix PHASE=checks failures via main-agent Edit/Write.
+grep -q 'lint-fix-loop\.sh' "$SHIP_PR_SH" \
+  || fail "ship-pr.sh must reference lint-fix-loop.sh (run_checks_phase call site)"
+grep -q 'ship-pr-ci-initial' "$SHIP_PR_SH" \
+  || fail "ship-pr.sh run_checks_phase must pass --site ship-pr-ci-initial to lint-fix-loop.sh"
+grep -q 'ship-pr-ci-initial' "$LINT_FIX_LOOP_SH" \
+  || fail "lint-fix-loop.sh must accept --site ship-pr-ci-initial"
+grep -q 'ship-pr-ci-merge' "$SHIP_PR_SH" \
+  || fail "ship-pr.sh CI failure recovery must pass --site ship-pr-ci-merge to lint-fix-loop.sh"
+grep -q 'ship-pr-ci-merge' "$LINT_FIX_LOOP_SH" \
+  || fail "lint-fix-loop.sh must accept --site ship-pr-ci-merge"
+
+# Ensure SKILL.md Step 10/12 prose does not suggest main-agent Edit/Write for ship-pr CI fixes.
+stall6_prose_status=0
+awk '
+  /STALL_STEP=6/ { window = 5 }
+  window > 0 && /Edit.*Write|Write.*Edit|main.agent.*Edit|repair via main-agent/ { found = 1 }
+  window > 0 { window-- }
+  END { if (found) exit 1 }
+' "$SKILL_MD" || stall6_prose_status=$?
+[[ "$stall6_prose_status" == "0" ]] || fail "SKILL.md STALL_STEP=6 prose must not suggest main-agent Edit/Write for CI fixes"
+
 [[ -f "$LIB_FINALIZE_KEYS_SH" ]] || fail "scripts/lib-finalize-state-keys.sh missing"
 [[ -f "$REPO_ROOT/scripts/lib-finalize-state-keys.md" ]] || fail "scripts/lib-finalize-state-keys.sh must have sibling lib-finalize-state-keys.md"
 grep -qE '^[[:space:]]*(source|\.)[[:space:]].*lib-finalize-state-keys\.sh' "$RESTORE_FINALIZE_SH" \

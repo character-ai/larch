@@ -1,12 +1,13 @@
 # scripts/lint-fix-loop.sh Contract
 
-`scripts/lint-fix-loop.sh` is the `/implement` check-failure repair helper for
-Step 3, Step 5 post-review fixes, and Step 6.
+`scripts/lint-fix-loop.sh` is the `/implement` and `ship-pr.sh` check-failure
+repair helper for Step 3, Step 5 post-review fixes, Step 6, ship-pr
+`run_checks_phase`, and ship-pr CI failure recovery.
 
 Flags:
 
 - `--tmpdir IMPLEMENT_TMPDIR`
-- `--site step3|step5|step6`
+- `--site step3|step5|step6|ship-pr-ci-initial|ship-pr-ci-merge`
 - `--checks-log REDACTED_LOG_FILE`
 
 The checks log must be the redacted log emitted by
@@ -15,7 +16,7 @@ The checks log must be the redacted log emitted by
 Output is `KEY=value` through `scripts/lib-quiet.sh`:
 
 - `LINT_FIX_STATUS=applied|main-agent-required|failed|no-changes`
-- `LINT_FIX_SITE=step3|step5|step6`
+- `LINT_FIX_SITE=step3|step5|step6|ship-pr-ci-initial|ship-pr-ci-merge`
 - `CODER_TOOL=codex|cursor` when an external coder ran
 - `CODER_LOG_FILE=<path>` when an external coder ran
 - `LINT_FIX_COMMIT_SHA=<sha>` when the helper committed fixes from a clean pre-dispatch baseline
