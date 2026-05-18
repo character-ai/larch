@@ -135,7 +135,7 @@ EOF_FINDING
     cat > "$out/accepted-findings.md" <<'EOF_ACCEPTED'
 ### FINDING_1: First accepted
 - **Location**: src/main.py
-- **Concern**: First concern.
+- **Concern**: First concern quoting [code-review/accepted] should not inflate the derived tally.
 - **Suggested revision**: First fix.
 
 ### FINDING_2: Second accepted
@@ -151,7 +151,7 @@ EOF_ACCEPTED
     cat > "$out/rejected-findings.md" <<'EOF_REJECTED'
 ### [Code Review] Cursor-Quality
 
-**Finding**: First rejected finding.
+**Finding**: First rejected finding mentioning [code-review/rejected] in prose only.
 **Reason not implemented**: Fixture.
 
 ### [Code Review] Codex-Quality
@@ -352,8 +352,32 @@ set -e
 jq -e '.accepted_count == 3 and .rejected_count == 2' \
     "$implement_tmp/larch-logs/implement/tally-fidelity-run/code-review-tally.json" >/dev/null \
     || fail "tally-fidelity derived tally counts"
-[[ "$(grep -c '\[code-review/accepted\]' "$implement_tmp/larch-logs/implement/tally-fidelity-run/review-findings-full.md")" == "3" ]] \
-    || fail "tally-fidelity accepted findings count"
+jq -e '.accepted_count == 3 and .rejected_count == 2' \
+    "$implement_tmp/review-and-fix-summary.json" >/dev/null \
+    || fail "tally-fidelity summary matches composed tally"
+[[ "$(grep -cE '^### .+ \[code-review/accepted\]$' "$implement_tmp/larch-logs/implement/tally-fidelity-run/review-findings-full.md")" == "3" ]] \
+    || fail "tally-fidelity accepted header count"
+
+cat > "$TMP/compose-review-findings-fail-stub.sh" <<'EOF_COMPOSE_FAIL'
+#!/usr/bin/env bash
+exit 2
+EOF_COMPOSE_FAIL
+chmod +x "$TMP/compose-review-findings-fail-stub.sh"
+work_compose_fail="$TMP/compose-fail"
+make_work_repo "$work_compose_fail"
+implement_tmp="$work_compose_fail/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
+set +e
+out=$(REVIEW_AND_FIX_COMPOSE_REVIEW_FINDINGS_SH="$TMP/compose-review-findings-fail-stub.sh" TEST_CORE_STATUS=zero run_review_and_fix "$work_compose_fail" \
+    --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id compose-fail-run)
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "compose-fail expected exit 0 got $rc"; }
+grep -Fq 'failed to compose review findings for summary derivation' <<< "$out" || fail "compose-fail summary warning breadcrumb"
+grep -Fq 'failed to compose review-findings-full batch; skipping tally flush' <<< "$out" || fail "compose-fail flush warning breadcrumb"
+[[ ! -f "$implement_tmp/larch-logs/implement/compose-fail-run/code-review-tally.json" ]] || fail "compose-fail must skip tally batch write"
+[[ ! -f "$implement_tmp/larch-logs/implement/compose-fail-run/review-findings-full.md" ]] || fail "compose-fail must skip findings batch write"
 
 work_claude="$TMP/claude-removed"
 make_work_repo "$work_claude"

@@ -401,11 +401,46 @@ write_summary_json() {
     mv -f "$tmp" "$output"
 }
 
+compose_review_findings_output() {
+    local impl_tmpdir="$1" output="$2"
+    local design_dir=""
+    local -a compose_args=()
+
+    [[ -n "$impl_tmpdir" && -d "$impl_tmpdir" ]] || return 1
+    [[ -n "$output" ]] || return 1
+    [[ -x "$COMPOSE_REVIEW_FINDINGS_SH" ]] || return 1
+
+    [[ -d "$impl_tmpdir/design-export" ]] && design_dir="$impl_tmpdir/design-export"
+    compose_args=(
+        --implement-tmpdir "$impl_tmpdir"
+        --issue 0
+        --output "$output"
+    )
+    [[ -n "$design_dir" ]] && compose_args=(--design-artifacts-dir "$design_dir" "${compose_args[@]}")
+    "$COMPOSE_REVIEW_FINDINGS_SH" "${compose_args[@]}" >/dev/null 2>&1
+}
+
+derive_code_review_tally_from_composed_findings() {
+    local findings_file="$1"
+    local accepted rejected
+
+    [[ -f "$findings_file" ]] || return 1
+
+    accepted=$(grep -cE '^### .+ \[code-review/accepted\]$' "$findings_file" 2>/dev/null || true)
+    rejected=$(grep -cE '^### .+ \[code-review/rejected\]$' "$findings_file" 2>/dev/null || true)
+    accepted="${accepted:-0}"
+    rejected="${rejected:-0}"
+    [[ "$accepted" =~ ^[0-9]+$ ]] || accepted=0
+    [[ "$rejected" =~ ^[0-9]+$ ]] || rejected=0
+    printf '%s %s\n' "$accepted" "$rejected"
+}
+
 flush_review_batches() {
     local impl_tmpdir="$1" run_id="$2" panel="$3" rounds="$4" accepted="$5" rejected="$6" exonerated="${7:-0}" neutral="${8:-0}"
-    local batch_input_dir body_file findings_file design_dir="" voting_tally="" summary_file
+    local batch_input_dir body_file findings_file voting_tally="" summary_file
     local tally_out="" tally_rc=0 derived_accepted=0 derived_rejected=0
-    local -a round_summary_files=() round_summary_glob=() compose_args=()
+    local derived_counts=""
+    local -a round_summary_files=() round_summary_glob=()
 
     [[ -n "$impl_tmpdir" && -d "$impl_tmpdir" ]] || return 0
     [[ -n "$run_id" ]] || return 0
@@ -424,21 +459,12 @@ flush_review_batches() {
     body_file="$batch_input_dir/code-review-tally-body.md"
     findings_file="$batch_input_dir/review-findings-full.md"
 
-    [[ -d "$impl_tmpdir/design-export" ]] && design_dir="$impl_tmpdir/design-export"
-    compose_args=(
-        --implement-tmpdir "$impl_tmpdir"
-        --issue 0
-        --output "$findings_file"
-    )
-    [[ -n "$design_dir" ]] && compose_args=(--design-artifacts-dir "$design_dir" "${compose_args[@]}")
-    "$COMPOSE_REVIEW_FINDINGS_SH" "${compose_args[@]}" >/dev/null 2>&1 || return 0
-
-    derived_accepted=$(grep -c '\[code-review/accepted\]' "$findings_file" 2>/dev/null || true)
-    derived_accepted="${derived_accepted:-0}"
-    derived_rejected=$(grep -c '\[code-review/rejected\]' "$findings_file" 2>/dev/null || true)
-    derived_rejected="${derived_rejected:-0}"
-    [[ "$derived_accepted" =~ ^[0-9]+$ ]] || derived_accepted=0
-    [[ "$derived_rejected" =~ ^[0-9]+$ ]] || derived_rejected=0
+    if ! compose_review_findings_output "$impl_tmpdir" "$findings_file"; then
+        emit_breadcrumb "⚠ review-and-fix: failed to compose review-findings-full batch; skipping tally flush"
+        return 0
+    fi
+    derived_counts=$(derive_code_review_tally_from_composed_findings "$findings_file") || derived_counts="0 0"
+    read -r derived_accepted derived_rejected <<< "$derived_counts"
 
     {
         printf 'Rounds: %s | Accepted: %s | Rejected: %s | Exonerated: %s | Neutral: %s\n' \
@@ -867,6 +893,20 @@ run_implement_round() {
     esac
 
     local round_cap_val="${ROUND_CAP:-0}"
+    local composed_findings_file="" derived_counts="" derived_accepted="" derived_rejected=""
+    if [[ "$exit_code" -eq 0 && -n "$IMPLEMENT_TMPDIR" && -d "$IMPLEMENT_TMPDIR" ]]; then
+        composed_findings_file="$round_dir/review-findings-full.composed.md"
+        if compose_review_findings_output "$IMPLEMENT_TMPDIR" "$composed_findings_file"; then
+            derived_counts=$(derive_code_review_tally_from_composed_findings "$composed_findings_file") || derived_counts=""
+            if [[ -n "$derived_counts" ]]; then
+                read -r derived_accepted derived_rejected <<< "$derived_counts"
+                total_accepted="$derived_accepted"
+                total_rejected="$derived_rejected"
+            fi
+        else
+            emit_breadcrumb "⚠ review-and-fix: failed to compose review findings for summary derivation; preserving vote tally in summary"
+        fi
+    fi
     write_summary_json "$prior_summary" "$status" "$core_status" "$round_num_dec" "$total_accepted" "$total_rejected" "$total_exonerated" "$total_neutral" "$round_num_dec" "$accepted_file" "$round_dir" "$oos_jsonl" "$oos_markdown" "$round_cap_val" "$coder_tool" "$coder_status" "$scrub_count" "$revert_count" "$coder_commit_sha"
     flush_round_log_after_coder "$IMPLEMENT_TMPDIR" "$RUN_ID" "$round_num_dec" "$round_dir"
 
