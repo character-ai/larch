@@ -15,8 +15,9 @@ Primary verbs:
 - `write` atomically replaces replace-mode batches.
 - `write-round` copies registered per-round review artifacts from
   `--source-dir` into `round-<N>/` under the run directory. It strips `CMD_JSON`
-  lines from `.meta` sidecars and removes top-level `.result` from Cursor JSON
-  sidecars before applying the normal tmpdir and secrets redaction. It writes
+  lines from `.meta` sidecars and removes top-level `.result` from included
+  `*-output*.json` tool-envelope sidecars before applying the normal tmpdir and
+  secrets redaction. It writes
   only to the log root; `commit` later picks up the round directory.
 - `append` atomically appends append-mode NDJSON batches.
 - `exists` probes a batch path.
@@ -54,7 +55,7 @@ current batch uses the Mermaid sanitizer — it is reserved for future opt-in.
 1. `$LARCH_LOG_ROOT`, set by the required `--log-root <dir>` flag or explicitly
    exported for test isolation.
 
-The `init`, `write`, `append`, `exists`, `manifest`, and `commit` verbs require
+The `init`, `write`, `write-round`, `append`, `exists`, `manifest`, and `commit` verbs require
 an absolute `--log-root <dir>` unless `$LARCH_LOG_ROOT` is already exported.
 `/implement` passes `$IMPLEMENT_TMPDIR/larch-logs` explicitly so in-progress
 runtime payloads stay out of the git working tree until `commit` is called.

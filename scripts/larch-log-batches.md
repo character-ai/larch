@@ -6,6 +6,7 @@ slugs, file extensions, write modes, and sanitizer hooks.
 The table intentionally covers the legacy tracking sections as durable files:
 `plan-goals-test`, per-run setup/implementation artifacts (`parent-issue`,
 `pre-review-head`, `pre-review-untracked`, `codex-impl-transcript`,
+`codex-impl-transcript-meta`,
 `codex-impl-transcript-prompt`, `codex-commit-message`,
 `codex-impl-manifest-raw`), `plan-review-tally`, `code-review-tally`,
 `review-findings-full`, review runtime batches (`review-context`,

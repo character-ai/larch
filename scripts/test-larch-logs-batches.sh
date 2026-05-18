@@ -17,6 +17,7 @@ parent-issue
 pre-review-head
 pre-review-untracked
 codex-impl-transcript
+codex-impl-transcript-meta
 codex-impl-transcript-prompt
 codex-commit-message
 codex-impl-manifest-raw
@@ -47,7 +48,7 @@ for slug in $actual; do
     ext="$(larch_log_batch_extension "$slug")"
     mode="$(larch_log_batch_mode "$slug")"
     sanitizer="$(larch_log_batch_sanitizer "$slug")"
-    case "$ext" in .md|.txt|.ndjson|.json|.jsonl) ;; *) echo "FAIL: invalid extension for $slug: $ext" >&2; exit 1 ;; esac
+    case "$ext" in .md|.txt|.txt.meta|.ndjson|.json|.jsonl) ;; *) echo "FAIL: invalid extension for $slug: $ext" >&2; exit 1 ;; esac
     case "$mode" in replace|append) ;; *) echo "FAIL: invalid mode for $slug: $mode" >&2; exit 1 ;; esac
     case "$sanitizer" in none|mermaid|plan-goals|json-lines|json-object) ;; *) echo "FAIL: invalid sanitizer for $slug: $sanitizer" >&2; exit 1 ;; esac
 done
@@ -67,6 +68,8 @@ done
 [ "$(larch_log_batch_extension pre-review-untracked)" = ".txt" ]
 [ "$(larch_log_batch_mode codex-impl-transcript)" = "replace" ]
 [ "$(larch_log_batch_extension codex-impl-transcript)" = ".txt" ]
+[ "$(larch_log_batch_mode codex-impl-transcript-meta)" = "replace" ]
+[ "$(larch_log_batch_extension codex-impl-transcript-meta)" = ".txt.meta" ]
 [ "$(larch_log_batch_mode codex-impl-transcript-prompt)" = "replace" ]
 [ "$(larch_log_batch_extension codex-impl-transcript-prompt)" = ".txt" ]
 [ "$(larch_log_batch_mode codex-commit-message)" = "replace" ]

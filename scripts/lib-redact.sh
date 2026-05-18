@@ -9,7 +9,7 @@ larch_redact_strip_meta_cmd_json() {
     awk 'index($0, "CMD_JSON=") != 1 { print }' "$input" > "$output"
 }
 
-larch_redact_strip_cursor_json_result() {
+larch_redact_strip_json_result() {
     local input="$1"
     local output="$2"
     if command -v jq >/dev/null 2>&1; then
@@ -36,4 +36,8 @@ PYEOF
         fi
     fi
     cp "$input" "$output"
+}
+
+larch_redact_strip_cursor_json_result() {
+    larch_redact_strip_json_result "$1" "$2"
 }

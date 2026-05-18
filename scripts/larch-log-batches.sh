@@ -9,6 +9,7 @@ parent-issue .md replace none
 pre-review-head .txt replace none
 pre-review-untracked .txt replace none
 codex-impl-transcript .txt replace none
+codex-impl-transcript-meta .txt.meta replace none
 codex-impl-transcript-prompt .txt replace none
 codex-commit-message .txt replace none
 codex-impl-manifest-raw .json replace none

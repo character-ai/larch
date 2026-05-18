@@ -81,15 +81,25 @@ copy_to_parent() {
 }
 
 flush_round_log() {
+    local flush_err rc=0
     [[ -n "$RUN_ID" ]] || return 0
     [[ -n "${IMPLEMENT_TMPDIR:-}" && -d "${IMPLEMENT_TMPDIR:-}" ]] || return 0
     [[ -x "$LARCH_LOG_SH" ]] || return 0
+    flush_err="$REVIEW_TMPDIR/review-core-write-round.log"
+    set +e
     "$LARCH_LOG_SH" write-round \
         --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
         --skill implement \
         --run-id "$RUN_ID" \
         --round "$ROUND_NUM" \
-        --source-dir "$REVIEW_TMPDIR" >/dev/null 2>&1 || true
+        --source-dir "$REVIEW_TMPDIR" >/dev/null 2>"$flush_err"
+    rc=$?
+    set -e
+    if [[ "$rc" -ne 0 ]]; then
+        emit_breadcrumb "⚠ review-core: round log flush failed (round $ROUND_NUM, rc=$rc)"
+    else
+        rm -f "$flush_err"
+    fi
 }
 
 join_comma() {

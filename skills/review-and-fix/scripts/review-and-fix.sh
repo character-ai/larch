@@ -521,6 +521,32 @@ flush_review_batches() {
         --input-file "$findings_file" >/dev/null 2>&1 || true
 }
 
+flush_round_log_after_coder() {
+    local impl_tmpdir="$1" run_id="$2" round_num="$3" round_dir="$4"
+    local flush_err rc=0
+    [[ -n "$impl_tmpdir" && -d "$impl_tmpdir" ]] || return 0
+    [[ -n "$run_id" ]] || return 0
+    [[ "$round_num" =~ ^[0-9]+$ ]] || return 0
+    [[ -d "$round_dir" ]] || return 0
+    [[ -x "$LARCH_LOG_SH" ]] || return 0
+
+    flush_err="$round_dir/review-and-fix-write-round.log"
+    set +e
+    "$LARCH_LOG_SH" write-round \
+        --log-root "$impl_tmpdir/larch-logs" \
+        --skill implement \
+        --run-id "$run_id" \
+        --round "$round_num" \
+        --source-dir "$round_dir" >/dev/null 2>"$flush_err"
+    rc=$?
+    set -e
+    if [[ "$rc" -ne 0 ]]; then
+        emit_breadcrumb "⚠ review-and-fix: late round log flush failed (round $round_num, rc=$rc)"
+    else
+        rm -f "$flush_err"
+    fi
+}
+
 run_findings_mode() {
     [[ -f "$FINDINGS_FILE" ]] || { larch_err "review-and-fix.sh: --findings-file must name a file"; exit 2; }
     [[ -n "$REVIEW_TMPDIR" ]] || { larch_err "review-and-fix.sh: --review-tmpdir is required"; exit 2; }
@@ -806,6 +832,7 @@ run_implement_round() {
 
     local round_cap_val="${ROUND_CAP:-0}"
     write_summary_json "$prior_summary" "$status" "$core_status" "$round_num_dec" "$total_accepted" "$total_rejected" "$total_exonerated" "$total_neutral" "$round_num_dec" "$accepted_file" "$round_dir" "$oos_jsonl" "$oos_markdown" "$round_cap_val" "$coder_tool" "$coder_status" "$scrub_count" "$revert_count" "$coder_commit_sha"
+    flush_round_log_after_coder "$IMPLEMENT_TMPDIR" "$RUN_ID" "$round_num_dec" "$round_dir"
 
     emit_kv REVIEW_AND_FIX_STATUS "$status"
     emit_kv REVIEW_CORE_STATUS "$core_status"

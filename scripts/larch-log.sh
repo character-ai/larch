@@ -67,10 +67,13 @@ require_log_root() {
 round_artifact_included() {
     local name="$1"
     case "$name" in
-        findings.md|accepted-findings.md|accepted-in-scope-findings.md|accepted-findings.scrubbed.md|rejected-findings.md|rejected-findings-full.md|oos.md|oos-accepted-review.md|review-round-summary.md|review-summary.json|voting-tally.md|review-tally.env|review-dirty-tree-summary.env|collector-results.env|collect-agent-results.log|panel-manifest.ndjson|code-voter-slots.ndjson|submodule-paths.txt|submodule-scrub.log|submodule-revert.log|coder.env|coder-prompt.md|coder-tool.txt|coder-output.log|coder-commit.log|coder-codex.log|coder-codex.wrapper.log|coder-cursor.log|coder-cursor.wrapper.log|review-core-gather.env|review-core-dispatch.env|review-core-collect.env|review-core-threshold.env|review-core-tally.env|review-core-voters.env|review-core-emit.env)
+        *.dirty-tree|*.untracked-baseline|*.done|*.diag|*.sidecar|*-output.txt.prompt|*-output-*.txt.prompt|coder-output.log|coder-codex.log)
+            return 1
+            ;;
+        findings.md|accepted-findings.md|accepted-in-scope-findings.md|accepted-findings.scrubbed.md|rejected-findings.md|rejected-findings-full.md|oos.md|oos-accepted-review.md|review-round-summary.md|review-summary.json|voting-tally.md|review-tally.env|review-dirty-tree-summary.env|collector-results.env|collect-agent-results.log|panel-manifest.ndjson|code-voter-slots.ndjson|submodule-paths.txt|submodule-scrub.log|submodule-revert.log|coder.env|coder-prompt.md|coder-tool.txt|coder-commit.log|coder-codex.wrapper.log|coder-cursor.log|coder-cursor.wrapper.log|review-core-gather.env|review-core-dispatch.env|review-core-collect.env|review-core-threshold.env|review-core-tally.env|review-core-voters.env|review-core-emit.env)
             return 0
             ;;
-        dirty-checkpoint-*.env|voter*-diag.txt|*-parse-rate-diag.txt|skipped-findings*.md|*.dirty-tree|*.untracked-baseline|*-output.txt|*-output-*.txt|*-output.txt.done|*-output-*.txt.done|*-output.txt.inner.done|*-output-*.txt.inner.done|*-output.txt.meta|*-output-*.txt.meta|*-output.txt.diag|*-output-*.txt.diag|*-output.txt.json|*-output-*.txt.json|*-output.txt.prompt|*-output-*.txt.prompt|*-output.txt.sidecar|*-output-*.txt.sidecar|*-output.txt.cap-hit|*-output-*.txt.cap-hit|*-prompt.txt)
+        dirty-checkpoint-*.env|voter*-diag.txt|*-parse-rate-diag.txt|skipped-findings*.md|*-output.txt|*-output-*.txt|*-output.txt.meta|*-output-*.txt.meta|*-output.txt.json|*-output-*.txt.json|*-output.txt.cap-hit|*-output-*.txt.cap-hit|*-prompt.txt)
             return 0
             ;;
         *)
@@ -92,10 +95,10 @@ stage_round_artifact() {
                 larch_log_fail 2 "cannot trim meta sidecar: $input"
             }
             ;;
-        *cursor*.json)
-            larch_redact_strip_cursor_json_result "$input" "$trim_tmp" || {
+        *-output.txt.json|*-output-*.txt.json)
+            larch_redact_strip_json_result "$input" "$trim_tmp" || {
                 rm -f "$trim_tmp"
-                larch_log_fail 2 "cannot trim cursor json sidecar: $input"
+                larch_log_fail 2 "cannot trim json sidecar: $input"
             }
             ;;
         *)
@@ -269,7 +272,7 @@ case "$cmd" in
         written=false
         found=false
         round_tmp="$(mktemp "${TMPDIR:-/tmp}/larch-log-round.XXXXXX")" || larch_log_fail 2 "cannot create round artifact temp"
-        trap 'rm -f "${tmp:-}" "${round_tmp:-}"' EXIT
+        trap 'rm -f "${round_tmp:-}"' EXIT
         while IFS= read -r src || [ -n "$src" ]; do
             name="$(basename "$src")"
             round_artifact_included "$name" || continue
