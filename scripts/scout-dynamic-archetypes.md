@@ -4,7 +4,7 @@
 
 Primary caller: `skills/review/scripts/dispatch-panel.sh`. Other callers should treat it as an implementation detail of the review panel dispatcher.
 
-Accepted flags: `--mode diff|description`, `--diff-file` for diff mode, `--scope-files` and `--description-text` for description mode, optional `--plan-file`, required `--max-archetypes 0..4`, required `--output`, optional `--session-env-path`, and optional `--timeout` (default `180` seconds).
+Accepted flags: `--mode diff|description`, `--diff-file` for diff mode, `--scope-files` and `--description-text` for description mode, optional `--plan-file`, required `--max-archetypes 0..4`, required `--output`, optional `--session-env-path` (exported for nested timing/session consumers), and optional `--timeout` (default `180` seconds).
 
 Invariants:
 

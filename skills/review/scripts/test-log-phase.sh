@@ -21,7 +21,7 @@ assert_stdout_cap "$out"
 grep -Fq 'LOG_WRITTEN=true' <<< "$out"
 [[ -f "$TMP/logs/review/run1/review-context.md" ]]
 
-printf '{"status":"ok","dynamic_slots":1,"manifest_path":"/tmp/scout.json","yield_tsv_path":"/tmp/yield.tsv"}\n' > "$TMP/scout.json"
+printf '{"status":"ok","dynamic_slots":1,"manifest_basename":"scout-round1-manifest.json","yield_tsv_basename":"scout-archetype-yield.tsv"}\n' > "$TMP/scout.json"
 out=$(cd "$REPO_ROOT" && "$SCRIPT" --log-root "$TMP/logs" --run-id run1 --batch review-scout-manifest --action write --payload-file "$TMP/scout.json")
 assert_stdout_cap "$out"
 grep -Fq 'LOG_WRITTEN=true' <<< "$out"

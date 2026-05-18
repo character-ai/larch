@@ -106,6 +106,32 @@ JSON
 stdout=$(run_case empty "$TMP/empty.json")
 grep -Fq 'SCOUT_STATUS=empty' "$stdout" || fail "empty status"
 
+timeout_launch="$TMP/timeout-launch-stub.sh"
+cat > "$timeout_launch" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --output-file) out="$2"; shift 2 ;;
+        *) shift ;;
+    esac
+done
+[[ -n "$out" ]] || exit 2
+: > "$out"
+printf 'STATUS=TIMEOUT\nOUTPUT_FILE=%s\nELAPSED=0\n' "$out"
+exit 124
+STUB
+chmod +x "$timeout_launch"
+mkdir -p "$TMP/timeout"
+if ! SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$timeout_launch" PATH="$BIN:$PATH" "$SCRIPT" \
+    --mode diff --diff-file "$diff_file" --max-archetypes 4 --output "$TMP/timeout/scout-manifest.json" --timeout 5 \
+    > "$TMP/timeout/stdout.env"; then
+    fail "timeout should be non-fatal"
+fi
+grep -Fq 'SCOUT_STATUS=timeout' "$TMP/timeout/stdout.env" || fail "timeout status"
+[[ "$(jq '.archetypes | length' "$TMP/timeout/scout-manifest.json")" = "0" ]] || fail "timeout empty manifest"
+
 cat > "$TMP/reserved.json" <<'JSON'
 {"archetypes":[{"name":"security","focus_area":"security","weight":1,"rationale":"r","prompt_body":"p"}]}
 JSON

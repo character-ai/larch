@@ -65,6 +65,14 @@ cat > "$TMP/scout-valid4.json" <<'JSON'
 JSON
 printf '{"archetypes":[]}\n' > "$TMP/scout-empty.json"
 
+classifier_stub="$TMP/classify-diff-mode-stub.sh"
+cat > "$classifier_stub" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'DIFF_MODE=%s\n' "${TEST_DIFF_MODE:-generic}"
+STUB
+chmod +x "$classifier_stub"
+
 out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
     --mode diff \
     --review-tmpdir "$TMP/simple" \
@@ -133,6 +141,34 @@ out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" 
 grep -Fq 'SCOUT_STATUS=claude-failed' <<< "$out"
 grep -Fq 'DYNAMIC_SLOTS=0' <<< "$out"
 grep -Fq 'SLOT_COUNT=12' <<< "$out"
+
+for mode in docs-only test-only generated-only; do
+    out=$(PATH="$STUB_BIN:$PATH" TEST_DIFF_MODE="$mode" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" SCOUT_LAUNCH_JSON_FILE="$TMP/scout-valid4.json" \
+        SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" CLASSIFY_DIFF_MODE_SH="$classifier_stub" "$SCRIPT" \
+        --mode diff \
+        --diff-file "$diff_file" \
+        --review-tmpdir "$TMP/skip-$mode" \
+        --codex-available true \
+        --cursor-available true \
+        --panel hard \
+        --plan-file "$plan_file" \
+        --dynamic-archetypes 4)
+    grep -Fq "SCOUT_STATUS=skipped-$mode" <<< "$out"
+    grep -Fq 'DYNAMIC_SLOTS=0' <<< "$out"
+done
+
+out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" SCOUT_LAUNCH_JSON_FILE="$TMP/scout-valid4.json" "$SCRIPT" \
+    --mode diff \
+    --diff-file "$diff_file" \
+    --review-tmpdir "$TMP/round-reuse" \
+    --codex-available true \
+    --cursor-available true \
+    --panel hard \
+    --plan-file "$plan_file" \
+    --dynamic-archetypes 4 \
+    --round-num 2)
+grep -Fq "SCOUT_MANIFEST=$TMP/round-reuse/scout-round2-manifest.json" <<< "$out"
+[[ -f "$TMP/round-reuse/scout-round2-manifest.json" ]] || { echo "FAIL: expected round-scoped scout manifest" >&2; exit 1; }
 
 for bad in 5 -1 abc; do
     set +e

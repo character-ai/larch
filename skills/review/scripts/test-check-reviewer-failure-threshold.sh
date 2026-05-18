@@ -104,6 +104,13 @@ assert_eq "0 launched of 12 → FAILED_SLOTS=12" "$got" "12"
 got=$(printf '%s\n' "$out" | awk -F= '$1=="THRESHOLD_OK"{print $2}')
 assert_eq "0 launched → THRESHOLD_OK=false" "$got" "false"
 
+echo "# dynamic slots widen the denominator"
+out=$(run_case dynamic_hard hard --launched-slots 16 OK OK OK OK OK OK OK OK OK timeout timeout timeout timeout timeout timeout timeout 2>&1)
+got=$(printf '%s\n' "$out" | awk -F= '$1=="INTENDED_SLOTS"{print $2}')
+assert_eq "dynamic launched slots widen intended denominator" "$got" "16"
+got=$(printf '%s\n' "$out" | awk -F= '$1=="THRESHOLD_OK"{print $2}')
+assert_eq "7/16 fail dynamic HARD → still OK" "$got" "true"
+
 if [[ "$FAIL" -eq 0 ]]; then
     printf 'PASS: test-check-reviewer-failure-threshold.sh\n'
     exit 0

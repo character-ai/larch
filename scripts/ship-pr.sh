@@ -460,7 +460,7 @@ write_finalize_state() {
 }
 
 run_checks_phase() {
-    local out rc fail_file redacted_log fix_out fix_status
+    local out rc fail_file redacted_log fix_out fix_status fix_rc
     local lint_attempt
     fail_file=$(failure_capture_path checks)
     capture_command_output out "$fail_file" "$SCRIPT_DIR/run-relevant-checks-captured.sh" --site step6 --tmpdir "$IMPLEMENT_TMPDIR"
@@ -477,10 +477,13 @@ run_checks_phase() {
     }
     for lint_attempt in 1 2 3; do
         fail_file=$(failure_capture_path checks)
-        capture_command_output fix_out "$fail_file" "$SCRIPT_DIR/lint-fix-loop.sh" \
+        set +e
+        fix_out=$("$SCRIPT_DIR/lint-fix-loop.sh" \
             --tmpdir "$IMPLEMENT_TMPDIR" \
             --site ship-pr-ci-initial \
-            --checks-log "$redacted_log"
+            --checks-log "$redacted_log" 2>"$fail_file")
+        fix_rc=$?
+        set -e
         printf '%s\n' "$fix_out" >> "$fail_file"
         fix_status=$(printf '%s\n' "$fix_out" | awk -F= '/^LINT_FIX_STATUS=/ { print $2; exit }')
         case "$fix_status" in
@@ -507,7 +510,7 @@ run_checks_phase() {
                 ;;
             *)
                 # failed, main-agent-required, or empty — fall through to stall.
-                printf 'ship-pr checks: lint fix %s (attempt %d/3), stalling.\n' "${fix_status:-unknown}" "$lint_attempt"
+                printf 'ship-pr checks: lint fix %s (attempt %d/3, rc=%s), stalling.\n' "${fix_status:-unknown}" "$lint_attempt" "${fix_rc:-unknown}"
                 break
                 ;;
         esac
@@ -525,7 +528,7 @@ lint_fix_site_for_phase() {
 }
 
 run_checks_with_lint_fix_loop() {
-    local phase=$1 checks_site=$2 fix_site redacted_log fix_out fix_status
+    local phase=$1 checks_site=$2 fix_site redacted_log fix_out fix_status fix_rc
     local fail_category fail_file out rc attempt
 
     fix_site=$(lint_fix_site_for_phase "$phase") || return 2
@@ -552,10 +555,13 @@ run_checks_with_lint_fix_loop() {
     }
     for attempt in 1 2 3; do
         fail_file=$(failure_capture_path "$phase")
-        capture_command_output fix_out "$fail_file" "$SCRIPT_DIR/lint-fix-loop.sh" \
+        set +e
+        fix_out=$("$SCRIPT_DIR/lint-fix-loop.sh" \
             --tmpdir "$IMPLEMENT_TMPDIR" \
             --site "$fix_site" \
-            --checks-log "$redacted_log"
+            --checks-log "$redacted_log" 2>"$fail_file")
+        fix_rc=$?
+        set -e
         printf '%s\n' "$fix_out" >> "$fail_file"
         fix_status=$(printf '%s\n' "$fix_out" | awk -F= '/^LINT_FIX_STATUS=/ { print $2; exit }')
         case "$fix_status" in
@@ -579,8 +585,8 @@ run_checks_with_lint_fix_loop() {
                 }
                 ;;
             *)
-                record_failure "$phase" "run-relevant-checks-captured.sh" "$rc" "$fail_file" "$fail_category"
-                printf 'ship-pr %s: lint fix %s (attempt %d/3), stalling.\n' "$phase" "${fix_status:-unknown}" "$attempt"
+                record_failure "$phase" "lint-fix-loop.sh" "${fix_rc:-1}" "$fail_file" "$fail_category"
+                printf 'ship-pr %s: lint fix %s (attempt %d/3, rc=%s), stalling.\n' "$phase" "${fix_status:-unknown}" "$attempt" "${fix_rc:-unknown}"
                 return 1
                 ;;
         esac

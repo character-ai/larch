@@ -41,7 +41,7 @@ Print `> **🔶 /review 2: launch reviewers**`. `review-core.sh` calls `dispatch
 
 Print `> **🔶 /review 3: review cycle**`. **MANDATORY — READ ENTIRE FILE** before executing Step 3: `${CLAUDE_PLUGIN_ROOT}/skills/review/references/domain-rules.md`. Voting is now run by `${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-code-voters.sh` + `${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/tally-code-votes.sh` inside `review-core.sh`. The 3-judge panel (Claude + Codex + Cursor; Claude waterfall replacement when an external is absent or fails) votes YES/NO/EXONERATE on every `### FINDING_N:` block every round.
 
-Wrapper loop: set `round_cap=5`; for each round call `review-core.sh --mode <diff|description> --output-dir "$REVIEW_TMPDIR" --session-env-path "$SESSION_ENV_PATH" --codex-available "$codex_available" --cursor-available "$cursor_available" --description-text "$DESCRIPTION_TEXT" --panel hard --dynamic-archetypes "$DYNAMIC_ARCHETYPES" --run-id "$RUN_ID" --round-num "$round_num"` and parse `REVIEW_CORE_STATUS`, `ACCEPTED_FINDINGS_FILE`, counts, `PANEL_MODE`, `PANEL_SHAPE`, `SCOUT_STATUS`, `DYNAMIC_SLOTS`, `SCOUT_MANIFEST`, `YIELD_TSV_FILE`, and `VOTING_SKIPPED_WARNING`; if `VOTING_SKIPPED_WARNING` is non-empty, print it as a user-visible warning before proceeding.
+Wrapper loop: set `round_cap=5`; for each round call `review-core.sh --mode <diff|description> --output-dir "$REVIEW_TMPDIR" --session-env-path "$SESSION_ENV_PATH" --codex-available "$codex_available" --cursor-available "$cursor_available" --description-text "$DESCRIPTION_TEXT" --panel hard --dynamic-archetypes "$DYNAMIC_ARCHETYPES" --run-id "$RUN_ID" --round-num "$round_num"` and parse `REVIEW_CORE_STATUS`, `ACCEPTED_FINDINGS_FILE`, counts, `PANEL_MODE`, `PANEL_SHAPE`, `SCOUT_STATUS`, `DYNAMIC_SLOTS`, `SCOUT_MANIFEST`, `YIELD_TSV_FILE`, and `VOTING_SKIPPED_WARNING`; if `VOTING_SKIPPED_WARNING` is non-empty, print it as a user-visible warning before proceeding. Scout artifacts are round-scoped: `dispatch-panel.sh` writes `scout-round${round_num}-manifest.json` plus `scout-round${round_num}-status.env`, so standalone `/review` never reuses stale dynamic reviewer choices from a prior round.
 
 If `REVIEW_CORE_STATUS=fix-required`, invoke `/review-and-fix` via the Skill tool with `--findings-file "$ACCEPTED_FINDINGS_FILE" --review-tmpdir "$REVIEW_TMPDIR" [--session-env "$SESSION_ENV_PATH"]`; fix application is performed by Codex via `review-and-fix.sh`, with Cursor and Claude-subagent fallbacks when needed.
 
@@ -56,7 +56,32 @@ Print `> **🔶 /review 4: final summary**`. Standalone diff mode prints `review
 
 If `RUN_ID` is non-empty, write flat review larch-log batches with `${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/log-phase.sh`: `review-context`, `review-panel-manifest`, `review-findings`, `review-tally`, `review-scout-manifest`, and `review-round-summary`. This wrapper is the only place `log-phase.sh` is called.
 
-Write `review-scout-manifest` after the tally batch when `SCOUT_STATUS` is non-empty and not `na`: assemble a JSON object with `status`, `dynamic_slots`, `manifest_path`, and `yield_tsv_path`, then call `log-phase.sh --batch review-scout-manifest --action write --payload-file "$scout_payload_file"`. The wrapper owns this larch-log write; `review-core.sh` only emits the KVs.
+Write `review-scout-manifest` after the tally batch when `SCOUT_STATUS` is non-empty and not `na`: assemble the payload with a guarded jq block, redact path-bearing fields to basenames, then call `log-phase.sh --batch review-scout-manifest --action write --payload-file "$scout_payload_file"`. Use this exact pattern:
+
+```bash
+scout_payload_file="$REVIEW_TMPDIR/review-scout-manifest.json"
+scout_manifest_base=""
+yield_tsv_base=""
+[[ -n "$SCOUT_MANIFEST" ]] && scout_manifest_base="$(basename "$SCOUT_MANIFEST")"
+[[ -n "$YIELD_TSV_FILE" ]] && yield_tsv_base="$(basename "$YIELD_TSV_FILE")"
+jq -cn \
+  --arg status "$SCOUT_STATUS" \
+  --argjson dynamic_slots "${DYNAMIC_SLOTS:-0}" \
+  --arg manifest_basename "$scout_manifest_base" \
+  --arg yield_tsv_basename "$yield_tsv_base" \
+  '{
+     status: $status,
+     dynamic_slots: $dynamic_slots,
+     manifest_basename: $manifest_basename,
+     yield_tsv_basename: $yield_tsv_basename
+   }' > "$scout_payload_file"
+"${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/log-phase.sh" \
+  --batch review-scout-manifest \
+  --action write \
+  --payload-file "$scout_payload_file"
+```
+
+The wrapper owns this larch-log write; `review-core.sh` only emits the KVs.
 
 <!-- step:5 — Cleanup -->
 ## Step 5 — Cleanup

@@ -63,6 +63,10 @@ mkdir -p "$(dirname "$OUTPUT")"
 [[ "$MODE" != "description" || -n "$DESCRIPTION_TEXT" ]] || fail "--description-text is required for description mode"
 [[ -z "$PLAN_FILE" || -f "$PLAN_FILE" ]] || fail "--plan-file not found: $PLAN_FILE"
 
+# Export so nested timing-ledger fallback can resolve the caller-provided
+# session env file even when this script is invoked directly.
+export SESSION_ENV_PATH
+
 if (( 10#$MAX_ARCHETYPES == 0 )); then
     write_empty_manifest "$OUTPUT"
     emit_kv SCOUT_STATUS empty

@@ -29,11 +29,15 @@ done
 
 [[ "$PANEL" == "hard" || "$PANEL" == "simple" ]] || { larch_err "check-reviewer-failure-threshold.sh: --panel must be hard or simple"; exit 2; }
 
-# Intended panel size: HARD=12 (6 Cursor + 6 Codex specialists), SIMPLE=7 (6 Cursor + 1 Codex generalist).
+# Intended static panel size: HARD=12 (6 Cursor + 6 Codex specialists),
+# SIMPLE=7 (6 Cursor + 1 Codex generalist). Dynamic scout reviewers widen the
+# counted population; when --launched-slots is present we treat the larger of
+# the static shape and launched slot count as the intended denominator.
 case "$PANEL" in
-    hard)   INTENDED_SLOTS=12 ;;
-    simple) INTENDED_SLOTS=7  ;;
+    hard)   STATIC_INTENDED_SLOTS=12 ;;
+    simple) STATIC_INTENDED_SLOTS=7  ;;
 esac
+INTENDED_SLOTS=$STATIC_INTENDED_SLOTS
 
 # Count slots whose STATUS != OK and STATUS != cap_hit. Slots that never launched
 # because the vendor was unhealthy are counted via INTENDED_SLOTS - LAUNCHED_SLOTS
@@ -74,6 +78,9 @@ fi
 # Add never-launched slots as failures (vendor unhealthy → slot never dispatched).
 if [[ -n "$LAUNCHED_SLOTS" ]]; then
     case "$LAUNCHED_SLOTS" in ''|*[!0-9]*) larch_err "check-reviewer-failure-threshold.sh: --launched-slots must be a non-negative integer"; exit 2 ;; esac
+    if (( LAUNCHED_SLOTS > INTENDED_SLOTS )); then
+        INTENDED_SLOTS=$LAUNCHED_SLOTS
+    fi
     NEVER_LAUNCHED=$(( INTENDED_SLOTS - LAUNCHED_SLOTS ))
     (( NEVER_LAUNCHED < 0 )) && NEVER_LAUNCHED=0
     FAILED_SLOTS=$(( FAILED_SLOTS + NEVER_LAUNCHED ))

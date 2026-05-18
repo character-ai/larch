@@ -39,10 +39,12 @@ STUB
 set -euo pipefail
 tmp=""
 panel="hard"
+round_num="1"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --review-tmpdir) tmp="$2"; shift 2 ;;
     --panel) panel="$2"; shift 2 ;;
+    --round-num) round_num="$2"; shift 2 ;;
     *) shift 2 ;;
   esac
 done
@@ -72,6 +74,9 @@ printf 'EXTERNAL_OUTPUT_FILES=%s\n' "$external"
 printf 'CLAUDE_OUTPUT_FILES=%s\n' "$claude"
 printf 'PANEL_MODE=%s\n' "${TEST_PANEL_MODE:-normal}"
 printf 'PANEL_SHAPE=%s\n' "$panel"
+printf 'SCOUT_STATUS=%s\n' "${TEST_SCOUT_STATUS:-na}"
+printf 'DYNAMIC_SLOTS=%s\n' "${TEST_DYNAMIC_SLOTS:-0}"
+printf 'SCOUT_MANIFEST=%s/scout-round%s-manifest.json\n' "$tmp" "$round_num"
 printf 'SLOT_COUNT=2\n'
 printf 'PANEL_MANIFEST=%s/panel-manifest.ndjson\n' "$tmp"
 printf 'DISPATCH_OK=true\n'
@@ -208,7 +213,7 @@ STUB
 
 run_core() {
     local outdir="$1" mode="${2:-diff}" session_env="${3:-}"
-    local args=(--mode "$mode" --output-dir "$outdir" --codex-available true --cursor-available true --panel simple)
+    local args=(--mode "$mode" --output-dir "$outdir" --codex-available true --cursor-available true --panel simple --round-num "${TEST_ROUND_NUM:-1}")
     [[ -n "$session_env" ]] && args+=(--session-env-path "$session_env")
     REVIEW_CORE_GATHER_CONTEXT_SH="$TMP/gather.sh" \
     REVIEW_CORE_DISPATCH_PANEL_SH="$TMP/dispatch.sh" \
@@ -287,6 +292,11 @@ assert_contains "$out" 'REVIEW_CORE_STATUS=fix-required'
 out=$(TEST_FINDINGS=0 TEST_DIRTY_STATUS=dirty TEST_CHECKPOINT_STATUS=dirty run_core "$TMP/dirty")
 assert_contains "$out" 'REVIEW_CORE_STATUS=zero-findings'
 grep -Fq 'ANY_DIRTY=true' "$TMP/dirty/review-dirty-tree-summary.env"
+
+out=$(TEST_FINDINGS=1 TEST_ACCEPTED=1 TEST_SCOUT_STATUS=ok TEST_DYNAMIC_SLOTS=2 TEST_ROUND_NUM=3 run_core "$TMP/round3")
+assert_contains "$out" 'SCOUT_STATUS=ok'
+assert_contains "$out" 'DYNAMIC_SLOTS=2'
+grep -Fq 'SCOUT_STATUS=ok' "$TMP/round3/scout-round3-status.env"
 grep -Fq 'RECOVERY_TAKEN=true' "$TMP/dirty/review-dirty-tree-summary.env"
 
 out=$(TEST_FINDINGS=0 TEST_DIRTY_STATUS=unknown TEST_CHECKPOINT_STATUS=unknown run_core "$TMP/unknown")

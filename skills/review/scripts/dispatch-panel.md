@@ -10,7 +10,9 @@ It dispatches all reviewer slots through `scripts/dispatch-with-waterfall.sh`, w
 
 Both panels always include plan-fidelity; there is no longer a conditional based on plan file presence.
 
-Dynamic archetypes are opt-in with `--dynamic-archetypes N` or `LARCH_DYNAMIC_ARCHETYPES_MAX`, where `N` must be `0..4`; the flag overrides the env var and the default is `0`. When enabled, `dispatch-panel.sh` invokes `scripts/scout-dynamic-archetypes.sh` once per review tmpdir via `$REVIEW_TMPDIR/scout-manifest.json`, then appends valid scout archetypes as Cursor-primary `prompt_file` slots with normal waterfall fallback. Dynamic agent files are synthesized under `$REVIEW_TMPDIR/dynamic-archetypes/` and are ephemeral; they bypass `agent-sync`. In diff mode, docs-only, test-only, and generated-only diffs skip the scout and emit `SCOUT_STATUS=skipped-<mode>`.
+Dynamic archetypes are opt-in with `--dynamic-archetypes N` or `LARCH_DYNAMIC_ARCHETYPES_MAX`, where `N` must be `0..4`; the flag overrides the env var and the default is `0`. When enabled, `dispatch-panel.sh` invokes `scripts/scout-dynamic-archetypes.sh` once per review round via `$REVIEW_TMPDIR/scout-round<round>-manifest.json`, then appends valid scout archetypes as Cursor-primary `prompt_file` slots with normal waterfall fallback. Dynamic agent files are synthesized under `$REVIEW_TMPDIR/dynamic-archetypes/` and are ephemeral; they bypass `agent-sync`. In diff mode, docs-only, test-only, and generated-only diffs skip the scout and emit `SCOUT_STATUS=skipped-<mode>`.
+
+Scout output is treated as untrusted metadata. The dispatcher does not forward LLM-authored `prompt_body` as trusted reviewer instructions; instead it synthesizes a fixed reviewer template and quotes the scout rationale/prompt text inside an untrusted data block for context only.
 
 Once-per-round-dispatch is scoped to `$REVIEW_TMPDIR`. Standalone `/review` reuses the sentinel for the run; `/implement` creates a new round dir after fixes, so the scout can run again against the changed diff in the next round.
 

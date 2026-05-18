@@ -57,12 +57,13 @@ standard tmpdir and secret redaction pipeline.
 reviewer scout for a review run:
 
 ```json
-{"status":"ok","dynamic_slots":2,"manifest_path":"/tmp/.../scout-manifest.json","yield_tsv_path":"/tmp/.../scout-archetype-yield.tsv"}
+{"status":"ok","dynamic_slots":2,"manifest_basename":"scout-round2-manifest.json","yield_tsv_basename":"scout-archetype-yield.tsv"}
 ```
 
 `status` is the `SCOUT_STATUS` emitted by `review-core.sh`; `dynamic_slots` is
-a non-negative integer; `manifest_path` and `yield_tsv_path` are references to
-tmpdir artifacts and may be empty strings when no file was produced.
+a non-negative integer; `manifest_basename` and `yield_tsv_basename` are
+basename-only references to tmpdir artifacts and may be empty strings when no
+file was produced.
 
 ## oos-issues record schema
 

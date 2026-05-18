@@ -62,7 +62,7 @@ Artifact paths under `$REVIEW_TMPDIR`:
 - `review-round-summary.md`
 - `review-summary.json`
 - `review-dirty-tree-summary.env`
-- `scout-status.env`
+- `scout-round<N>-status.env`
 - `scout-archetype-yield.tsv` when a panel manifest was available for yield attribution
 
 When `SESSION_ENV_PATH` is set, `emit-tally.sh` copies `review-round-summary.md` and `review-summary.json` to `$(dirname "$SESSION_ENV_PATH")`. `review-core.sh` copies `rejected-findings.md`, `oos-accepted-review.md`, and `review-dirty-tree-summary.env` there.
@@ -76,7 +76,7 @@ later `larch-log.sh commit` flush owns committing those files.
 
 Dirty-tree recovery runs after collection. It scans every launched reviewer output sidecar `${output}.dirty-tree`; missing sidecars count as `unknown`. Any `STATUS=dirty` or `STATUS=unknown` marks `ANY_DIRTY=true`, records the output basename in `LAUNCHERS_DIRTY`, runs `scripts/check-mid-run-dirty-tree.sh --mode checkpoint`, and discards reviewer-introduced paths named by sidecar path streams (`TRACKED_PATHS_FILE`, `NEW_UNTRACKED_PATHS_FILE`) when a recovery checkpoint reports dirty or unknown. The summary file contains `ANY_DIRTY`, `LAUNCHERS_DIRTY`, `RECOVERY_TAKEN`, and any per-launcher path stream keys.
 
-Run-log batches are not written here. The `/review` wrapper owns `log-phase.sh` calls after summary artifacts are complete; `review-core.sh` only emits `SCOUT_MANIFEST`, `SCOUT_STATUS`, `DYNAMIC_SLOTS`, and `YIELD_TSV_FILE` for the wrapper to consume.
+Run-log batches are not written here. The `/review` wrapper owns `log-phase.sh` calls after summary artifacts are complete; `review-core.sh` only emits `SCOUT_MANIFEST`, `SCOUT_STATUS`, `DYNAMIC_SLOTS`, and `YIELD_TSV_FILE` for the wrapper to consume. Description-mode zero-scope exits still emit `SCOUT_STATUS=na`, `DYNAMIC_SLOTS=0`, and an empty `SCOUT_MANIFEST` so wrappers can parse a stable KV contract.
 
 Known gap deferred to Part 2: `skills/review/references/heavy-worker.md` still documents heavy-worker Step 1 as `gather-branch-context.sh`, while inline `review-core.sh` uses `gather-context.sh` to match the current inline path. This PR documents the divergence rather than changing heavy-worker behavior.
 

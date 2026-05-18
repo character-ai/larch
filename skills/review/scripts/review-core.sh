@@ -220,6 +220,9 @@ if [[ "$MODE" == "description" && "${scope_count:-0}" == "0" ]]; then
     flush_round_log
     emit_kv REVIEW_CORE_STATUS zero-findings
     emit_kv ROUND_NUM "$ROUND_NUM"
+    emit_kv SCOUT_STATUS na
+    emit_kv DYNAMIC_SLOTS 0
+    emit_kv SCOUT_MANIFEST ""
     emit_kv ACCEPTED_COUNT 0
     emit_kv REJECTED_COUNT 0
     emit_kv EXONERATED_COUNT 0
@@ -243,6 +246,7 @@ dispatch_args=(
     --commit-count "${COMMIT_COUNT:-0}"
     --timing-task-prefix "review-round${ROUND_NUM}"
     --dynamic-archetypes "$DYNAMIC_ARCHETYPES"
+    --round-num "$ROUND_NUM"
 )
 [[ -n "$DIFF_FILE" ]] && dispatch_args+=(--diff-file "$DIFF_FILE")
 [[ -n "$SCOPE_FILES" ]] && dispatch_args+=(--scope-files "$SCOPE_FILES")
@@ -271,7 +275,7 @@ dynamic_slots="${dynamic_slots:-0}"
     printf 'SCOUT_STATUS=%s\n' "$scout_status"
     printf 'DYNAMIC_SLOTS=%s\n' "$dynamic_slots"
     printf 'SCOUT_MANIFEST=%s\n' "$scout_manifest"
-} > "$REVIEW_TMPDIR/scout-status.env"
+} > "$REVIEW_TMPDIR/scout-round${ROUND_NUM}-status.env"
 emit_kv SCOUT_STATUS "$scout_status"
 emit_kv DYNAMIC_SLOTS "$dynamic_slots"
 [[ -n "$scout_manifest" ]] && emit_kv SCOUT_MANIFEST "$scout_manifest"
