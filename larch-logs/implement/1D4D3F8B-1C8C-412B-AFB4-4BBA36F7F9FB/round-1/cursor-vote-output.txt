@@ -1,0 +1,33 @@
+Reading the ballot file to vote on each finding.
+
+Votes below are based only on the ballot text (read-only; no repo verification).
+
+FINDING_1: EXONERATE -- Doc drift is plausible but a dedicated issue for a companion nit is heavier than a normal doc pass when that file is touched.
+
+FINDING_2: EXONERATE -- Table drift is real; fixing in the same PR or the next docs sweep is enough without opening a tracking issue.
+
+FINDING_3: EXONERATE -- Largely the same linting-doc gap as FINDING_2; duplicate tracking would add noise.
+
+FINDING_4: EXONERATE -- Hypothetical caller and unchanged waterfall path; an issue now would be speculative churn.
+
+FINDING_5: YES
+
+FINDING_6: EXONERATE -- Minor plan-vs-artifact list mismatch with no runtime impact; strict file-list parity is process overhead.
+
+FINDING_7: YES
+
+FINDING_8: YES
+
+FINDING_9: YES
+
+FINDING_10: EXONERATE -- Redundant `mode` variable is style-only; removing it is churn with no user-visible win.
+
+FINDING_11: YES
+
+FINDING_12: YES
+
+FINDING_13: YES
+
+FINDING_14: YES
+
+FINDING_15: EXONERATE -- Test is explicitly “once behavior is finalized”; adding a harness before the contract is locked risks churn and brittle assertions.

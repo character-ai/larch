@@ -1,0 +1,31 @@
+Gathering the branch diff and commit list for a read-only review.
+
+Checking `launch-claude-review.sh` for other context paths (e.g. `DESCRIPTION_TEXT`, `COMMIT_COUNT`) that could bypass `--role voter`.
+
+Checking the `--agent-file` path and the voter test's use of `$prompt`.
+
+Checking whether `render-specialist-prompt.sh` embeds diff when those args are passed (confirms the agent-file + voter gap).
+
+Commit reviewed: `b32b2712 Drop diff bundling from Claude voter; add --role reviewer|voter to launcher`.
+
+The diff matches the plan: voter dispatch no longer forwards diff/plan into `launch-claude-review.sh`, `--role voter` gates subprocess `--context-files`, tests were updated/added, and contract markdown was extended (including new [`scripts/test-launch-claude-review.md`](scripts/test-launch-claude-review.md)).
+
+### In-Scope Findings
+
+1. **Latent** (`architecture`, [`scripts/launch-claude-review.sh:73-81`](scripts/launch-claude-review.sh)) — `--role voter` only gates `append_context_file` (subprocess `--context-files`). The `--agent-file` branch still always passes `--diff-file`, `--plan-file`, `--scope-files`, `--feature-file`, `--description-text`, and `--commit-count` into `render-specialist-prompt.sh`, which embeds `DIFF_FILE` into the rendered prompt (see [`scripts/render-specialist-prompt.sh:239-251`](scripts/render-specialist-prompt.sh)). **Scenario:** A caller uses `--agent-file` with `--role voter` and `--diff-file`; the branch diff is still bundled into the prompt text, so the 1 MB / large-diff failure mode the change is meant to remove can still occur outside the context-file path. **Fix:** Gate those `render_args` lines on `[[ "$ROLE" == "reviewer" ]]` (mirror the context-file gate), or explicitly document that `--role voter` is unsupported or undefined with `--agent-file`.
+
+2. **Nit** (`code-quality`, [`scripts/dispatch-code-voters.sh:131-147`](scripts/dispatch-code-voters.sh)) — After removing diff-driven mode switching, `mode` is always `description`; passing `--mode "$mode"` is slightly redundant versus a literal `--mode description` (minor KISS / dead state).
+
+3. **Nit** (`code-quality` / `plan`, [`scripts/launch-claude-review.md:180-183`](scripts/launch-claude-review.md) per diff hunk) — The prose states that `voter` skips context-file appends, which is accurate, but combined with the ungated `--agent-file` render path it can over-read as “voter never sees diff/plan.” Tighten wording to “skips subprocess context files” and/or note the `--agent-file` exception until render args are gated.
+
+### Out-of-Scope Observations
+
+1. **Nit** (`code-quality`) — [`docs/linting.md`](docs/linting.md) (unchanged in this branch) still describes `test-launch-claude-review.sh` coverage without mentioning `--role voter` / invalid `--role`; harness contract is now in [`scripts/test-launch-claude-review.md`](scripts/test-launch-claude-review.md). Out of scope because that file is not part of the diff.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	architecture	scripts/launch-claude-review.sh:73-81	--role voter does not gate render_args for --agent-file; diff/plan/scope still passed to render-specialist-prompt.sh.	A caller combining --agent-file, --role voter, and --diff-file still embeds the branch diff in the rendered prompt (render-specialist-prompt.sh), so large-diff / cap risk remains despite voter skipping --context-files.	Gate render_args additions on ROLE=reviewer or document that voter is only valid with --prompt-file/--prompt.
+1	in_scope	nit	code-quality	scripts/dispatch-code-voters.sh:131-147	mode is always description after removing diff branch; variable is redundant.	No functional bug; slight unnecessary state.	Use --mode description literally or drop the variable.
+1	in_scope	nit	code-quality	scripts/launch-claude-review.md:180-183	Doc can be read as voter never receiving diff context; only subprocess context-files are skipped.	Misleading for readers who use --agent-file.	Clarify subprocess context-files only; note --agent-file render path until code gates it.
+1	out_of_scope	nit	code-quality	docs/linting.md	Makefile/linting doc table omits new --role harness coverage.	Pre-existing vs updated harness contract in scripts/test-launch-claude-review.md.	Update docs/linting.md in a follow-up if you want the table to match the harness.
+```

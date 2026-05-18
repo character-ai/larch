@@ -1,0 +1,15 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- linting doc row for new test scenarios is too minor to file an issue
+FINDING_3: EXONERATE -- duplicate of FINDING_2, same file and concern
+FINDING_4: EXONERATE -- ctx_args is already empty in current dispatch path; risk is purely hypothetical
+FINDING_5: NO -- typo lives in a session-plan artifact, not a shipped file
+FINDING_6: NO -- plan-vs-diff surface mismatch in a session artifact with no runtime gap
+FINDING_7: NO -- same plan artifact typo as FINDING_5
+FINDING_8: EXONERATE -- "sees the full diff inline" vs "context-files attachment" is a minor wording imprecision, not worth an issue
+FINDING_9: YES
+FINDING_10: EXONERATE -- redundant variable is harmless and the adjacent comment makes intent clear
+FINDING_11: EXONERATE -- doc imprecision is real but subsumed by FINDING_9/12; no separate tracking needed
+FINDING_12: YES
+FINDING_13: NO -- plan artifact, duplicate of FINDING_5/7
+FINDING_14: YES
+FINDING_15: EXONERATE -- test gap is contingent on first fixing the contract via FINDING_12/14; not independently actionable
