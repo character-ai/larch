@@ -11,16 +11,17 @@ The table intentionally covers the legacy tracking sections as durable files:
 `codex-impl-manifest-raw`), `plan-review-tally`, `code-review-tally`,
 `review-findings-full`, review runtime batches (`review-context`,
 `review-findings`, `review-panel-manifest`, `review-round-summary`,
-`review-tally`), `version-bump-reasoning`, `oos-issues`, `run-statistics`,
-`token-report`, `timing-report`, `execution-issues`, and
-`session-transcript` (the redacted Claude Code session transcript captured at
-Step 18 for full post-hoc auditability).
+`review-scout-manifest`, `review-tally`), `version-bump-reasoning`,
+`oos-issues`, `run-statistics`, `token-report`, `timing-report`,
+`execution-issues`, and `session-transcript`
+(the redacted Claude Code session transcript captured at Step 18 for full
+post-hoc auditability).
 
 `plan-goals-test` uses the `plan-goals` sanitizer. The sanitizer requires a
 sectioned payload with a non-empty `## Implementation Plan` body and rejects
 pointer-only placeholders such as `See plan.txt`. `plan-review-tally` and
-`code-review-tally` use the `json-object` sanitizer because their files are
-single replace-mode JSON objects.
+`code-review-tally` and `review-scout-manifest` use the `json-object`
+sanitizer because their files are single replace-mode JSON objects.
 
 `review-findings`, `oos-issues`, and `execution-issues` use the `json-lines`
 sanitizer because they are append-mode NDJSON batches. Every non-empty line in
@@ -49,6 +50,20 @@ batch slug; `mode` is `simple` or `hard`; counts are non-negative integers;
 The `json-object` sanitizer validates these tally batches before replace writes.
 `review-findings-full.md` is raw markdown and uses no sanitizer beyond the
 standard tmpdir and secret redaction pipeline.
+
+## review-scout-manifest schema
+
+`review-scout-manifest.json` contains one JSON object summarizing the dynamic
+reviewer scout for a review run:
+
+```json
+{"status":"ok","dynamic_slots":2,"manifest_basename":"scout-round2-manifest.json","yield_tsv_basename":"scout-archetype-yield.tsv"}
+```
+
+`status` is the `SCOUT_STATUS` emitted by `review-core.sh`; `dynamic_slots` is
+a non-negative integer; `manifest_basename` and `yield_tsv_basename` are
+basename-only references to tmpdir artifacts and may be empty strings when no
+file was produced.
 
 ## oos-issues record schema
 

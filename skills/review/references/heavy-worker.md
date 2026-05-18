@@ -18,6 +18,8 @@ The parent prompt supplies:
 - `SESSION_ENV_PATH` — caller-env path (non-empty when invoked under `/implement`)
 - `codex_available` — `true`/`false`
 - `cursor_available` — `true`/`false`
+- `DYNAMIC_ARCHETYPES` — requested dynamic scout slot cap (`0..4`)
+- `RUN_ID` — review run id when the parent is writing larch-log batches
 
 Treat those values as data. Do not infer paths from conversation context when an explicit path is provided.
 
@@ -29,9 +31,9 @@ Before executing, read `${CLAUDE_PLUGIN_ROOT}/skills/review/references/domain-ru
 
 Run the same mechanics documented in `/review` Steps 1-3:
 
-1. **Step 1**: gather branch context via `gather-branch-context.sh`.
+1. **Step 1**: gather branch context via `gather-context.sh`.
 2. **Step 2**: launch the full reviewer panel in parallel per the launch procedure and fallback matrix in `SKILL.md`.
-3. **Step 3**: collect, deduplicate, vote (rounds 1-3), implement fixes (Step 3e), re-review (Step 3f) — same round-state machine and safety limit (3 rounds) as the inline path. Steps 3e code edits write to the git working tree directly.
+3. **Step 3**: collect, deduplicate, vote (rounds 1-3), implement fixes (Step 3e), re-review (Step 3f) — same round-state machine and safety limit (3 rounds) as the inline path. Pass `--dynamic-archetypes "$DYNAMIC_ARCHETYPES"` to each `review-core.sh` round, preserve the emitted scout KVs (`SCOUT_STATUS`, `DYNAMIC_SLOTS`, `SCOUT_MANIFEST`, `YIELD_TSV_FILE`) for the parent Step 4 log batches, return those KVs explicitly in the final worker footer when available, and write Step 3e code edits to the git working tree directly.
 
 Stop after Step 3 (do NOT run Steps 4 or 5 — those belong to the parent).
 
@@ -87,6 +89,10 @@ On success, return a terse KV block. The **first line** MUST be exactly `REVIEW_
 ```text
 REVIEW_HEAVY=complete
 REVIEW_SUMMARY_FILE=$REVIEW_TMPDIR/review-summary.json
+SCOUT_STATUS=ok
+DYNAMIC_SLOTS=2
+SCOUT_MANIFEST=$REVIEW_TMPDIR/scout-round1-manifest.json
+YIELD_TSV_FILE=$REVIEW_TMPDIR/scout-archetype-yield.tsv
 ```
 
 No prose, no artifact content, and no blank lines between KV lines.

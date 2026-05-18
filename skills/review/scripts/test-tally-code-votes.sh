@@ -307,6 +307,98 @@ out="$TMP/out.env"
 got=$(awk -F= '$1=="OUT_OF_SCOPE_DRIFT_COUNT"{print $2}' "$out"); assert_eq "no scope-files → gate no-op, drift=0" "$got" "0"
 got=$(awk -F= '$1=="ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "no scope-files → finding accepted normally" "$got" "1"
 
+echo "# Case: manifest-file writes per-archetype yield TSV with fallback basename normalization"
+TMP="$WORKDIR/case7"
+mkdir -p "$TMP"
+cat > "$TMP/ballot.md" <<'EOF'
+### FINDING_1: Static structure finding
+- **Reviewer**: cursor-specialist-structure-output.txt
+- **Concern**: Static concern.
+- **Suggested revision**: Static revision.
+
+### FINDING_2: Dynamic fallback finding
+- **Reviewer**: dyn-foo-output-phase2.txt
+- **Concern**: Dynamic concern.
+- **Suggested revision**: Dynamic revision.
+
+### FINDING_3: Generalist finding
+- **Reviewer**: codex-generalist-output.txt
+- **Concern**: Generalist concern.
+- **Suggested revision**: Generalist revision.
+EOF
+cat > "$TMP/panel-manifest.ndjson" <<EOF
+{"slot":"structure","tool":"cursor","output":"$TMP/cursor-specialist-structure-output.txt","agent":"agents/reviewer-structure.md"}
+{"slot":"dyn-foo","tool":"cursor","output":"$TMP/dyn-foo-output.txt","prompt_file":"$TMP/dyn-foo-prompt.md","weight":6,"focus_area":"architecture"}
+{"slot":"generic","tool":"codex","output":"$TMP/codex-generalist-output.txt","agent":"agents/code-reviewer.md"}
+EOF
+printf 'FINDING_1: YES\nFINDING_2: NO\nFINDING_3: YES\n' > "$TMP/cursor-vote-output.txt"
+printf 'FINDING_1: YES\nFINDING_2: NO\nFINDING_3: YES\n' > "$TMP/codex-vote-output.txt"
+printf 'FINDING_1: NO\nFINDING_2: YES\nFINDING_3: YES\n' > "$TMP/claude-vote-output.txt"
+out="$TMP/out.env"
+"$SCRIPT" --ballot-file "$TMP/ballot.md" \
+    --voter-files "$TMP/cursor-vote-output.txt" "$TMP/codex-vote-output.txt" "$TMP/claude-vote-output.txt" \
+    --manifest-file "$TMP/panel-manifest.ndjson" \
+    --review-tmpdir "$TMP" > "$out"
+yield_file=$(awk -F= '$1=="YIELD_TSV_FILE"{print $2}' "$out")
+[[ -s "$yield_file" ]] || { FAIL=1; printf '  FAIL yield TSV not emitted\n'; }
+grep -Fq $'structure\tcode-quality\t1\t1\t1\t0\t1.000000' "$yield_file" || { FAIL=1; printf '  FAIL static structure yield row missing\n'; }
+grep -Fq $'dyn-foo\tarchitecture\t6\t1\t0\t1\t0.000000' "$yield_file" || { FAIL=1; printf '  FAIL dynamic fallback-normalized yield row missing\n'; }
+grep -Fq $'generic\tcode-quality\t1\t1\t1\t0\t1.000000' "$yield_file" || { FAIL=1; printf '  FAIL generalist yield row missing\n'; }
+
+echo "# Case: manifest-file yield TSV counts all in-scope outcomes and ignores OOS rows"
+TMP="$WORKDIR/case7a"
+mkdir -p "$TMP"
+cat > "$TMP/ballot.md" <<'EOF'
+### FINDING_1: Accepted in-scope finding
+- **Reviewer**: dyn-yield-output.txt
+- **Concern**: Accepted concern.
+- **Suggested revision**: Accepted revision.
+
+### FINDING_2: Neutral in-scope finding
+- **Reviewer**: dyn-yield-output.txt
+- **Concern**: Neutral concern.
+- **Suggested revision**: Neutral revision.
+
+### FINDING_3: [OUT_OF_SCOPE] OOS accepted finding
+- **Reviewer**: dyn-yield-output.txt
+- **Concern**: OOS concern.
+- **Suggested revision**: OOS revision.
+EOF
+cat > "$TMP/panel-manifest.ndjson" <<EOF
+{"slot":"dyn-yield","tool":"cursor","output":"$TMP/dyn-yield-output.txt","prompt_file":"$TMP/dyn-yield-prompt.md","weight":4,"focus_area":"correctness"}
+EOF
+printf 'FINDING_1: YES\nFINDING_2: YES\nFINDING_3: YES\n' > "$TMP/cursor-vote-output.txt"
+printf 'FINDING_1: YES\nFINDING_2: NO\nFINDING_3: YES\n' > "$TMP/codex-vote-output.txt"
+out="$TMP/out.env"
+"$SCRIPT" --ballot-file "$TMP/ballot.md" \
+    --voter-files "$TMP/cursor-vote-output.txt" "$TMP/codex-vote-output.txt" \
+    --manifest-file "$TMP/panel-manifest.ndjson" \
+    --review-tmpdir "$TMP" > "$out"
+yield_file=$(awk -F= '$1=="YIELD_TSV_FILE"{print $2}' "$out")
+grep -Fq $'dyn-yield\tcorrectness\t4\t2\t1\t0\t0.500000' "$yield_file" || { FAIL=1; printf '  FAIL yield TSV should count all in-scope findings in the denominator\n'; }
+
+echo "# Case: manifest-file warns when reviewer totals lack a manifest entry"
+TMP="$WORKDIR/case7b"
+mkdir -p "$TMP"
+cat > "$TMP/ballot.md" <<'EOF'
+### FINDING_1: Orphan reviewer finding
+- **Reviewer**: cursor-specialist-unknown-output.txt
+- **Concern**: Orphan concern.
+- **Suggested revision**: Orphan revision.
+EOF
+cat > "$TMP/panel-manifest.ndjson" <<EOF
+{"slot":"structure","tool":"cursor","output":"$TMP/cursor-specialist-structure-output.txt","agent":"agents/reviewer-structure.md"}
+EOF
+printf 'FINDING_1: YES\n' > "$TMP/cursor-vote-output.txt"
+printf 'FINDING_1: YES\n' > "$TMP/codex-vote-output.txt"
+printf 'FINDING_1: NO\n' > "$TMP/claude-vote-output.txt"
+out="$TMP/out.env"
+"$SCRIPT" --ballot-file "$TMP/ballot.md" \
+    --voter-files "$TMP/cursor-vote-output.txt" "$TMP/codex-vote-output.txt" "$TMP/claude-vote-output.txt" \
+    --manifest-file "$TMP/panel-manifest.ndjson" \
+    --review-tmpdir "$TMP" > "$out"
+grep -Fq 'WARN=yield TSV missing manifest entry for reviewer basename: cursor-specialist-unknown-output.txt' "$out" || { FAIL=1; printf '  FAIL orphan reviewer warning missing\n'; }
+
 if [[ "$FAIL" -eq 0 ]]; then
     printf 'PASS: test-tally-code-votes.sh\n'
     exit 0

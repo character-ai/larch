@@ -29,11 +29,20 @@ done
 
 [[ "$PANEL" == "hard" || "$PANEL" == "simple" ]] || { larch_err "check-reviewer-failure-threshold.sh: --panel must be hard or simple"; exit 2; }
 
-# Intended panel size: HARD=12 (6 Cursor + 6 Codex specialists), SIMPLE=7 (6 Cursor + 1 Codex generalist).
+# Intended static panel size: HARD=12 (6 Cursor + 6 Codex specialists),
+# SIMPLE=7 (6 Cursor + 1 Codex generalist). Dynamic scout reviewers are
+# excluded from the threshold denominator and should not affect the failure
+# rate that decides whether the static panel itself failed.
 case "$PANEL" in
-    hard)   INTENDED_SLOTS=12 ;;
-    simple) INTENDED_SLOTS=7  ;;
+    hard)   STATIC_INTENDED_SLOTS=12 ;;
+    simple) STATIC_INTENDED_SLOTS=7  ;;
 esac
+INTENDED_SLOTS=$STATIC_INTENDED_SLOTS
+
+is_dynamic_reviewer_basename() {
+    local base="$1"
+    [[ "$base" =~ ^dyn-.*-output(-phase[23]|-retry)*\.txt$ ]]
+}
 
 # Count slots whose STATUS != OK and STATUS != cap_hit. Slots that never launched
 # because the vendor was unhealthy are counted via INTENDED_SLOTS - LAUNCHED_SLOTS
@@ -45,9 +54,16 @@ COUNTED_SLOTS=0
 
 if [[ -n "$COLLECTOR_RESULTS_FILE" && -f "$COLLECTOR_RESULTS_FILE" ]]; then
     # Parse blank-line-separated records; each has STATUS=<value>.
+    current_reviewer_file=""
     while IFS= read -r line || [[ -n "$line" ]]; do
         if [[ -z "$line" ]]; then
             if [[ -n "${current_status:-}" ]]; then
+                current_base=$(basename "${current_reviewer_file:-}")
+                if is_dynamic_reviewer_basename "$current_base"; then
+                    current_status=""
+                    current_reviewer_file=""
+                    continue
+                fi
                 COUNTED_SLOTS=$((COUNTED_SLOTS + 1))
                 case "$current_status" in
                     OK|cap_hit) SUCCEEDED_SLOTS=$((SUCCEEDED_SLOTS + 1)) ;;
@@ -55,19 +71,24 @@ if [[ -n "$COLLECTOR_RESULTS_FILE" && -f "$COLLECTOR_RESULTS_FILE" ]]; then
                 esac
             fi
             current_status=""
+            current_reviewer_file=""
             continue
         fi
         case "$line" in
+            REVIEWER_FILE=*) current_reviewer_file="${line#REVIEWER_FILE=}" ;;
             STATUS=*) current_status="${line#STATUS=}" ;;
         esac
     done < "$COLLECTOR_RESULTS_FILE"
     # Handle trailing record without final blank line.
     if [[ -n "${current_status:-}" ]]; then
-        COUNTED_SLOTS=$((COUNTED_SLOTS + 1))
-        case "$current_status" in
-            OK|cap_hit) SUCCEEDED_SLOTS=$((SUCCEEDED_SLOTS + 1)) ;;
-            *)          FAILED_SLOTS=$((FAILED_SLOTS + 1)) ;;
-        esac
+        current_base=$(basename "${current_reviewer_file:-}")
+        if ! is_dynamic_reviewer_basename "$current_base"; then
+            COUNTED_SLOTS=$((COUNTED_SLOTS + 1))
+            case "$current_status" in
+                OK|cap_hit) SUCCEEDED_SLOTS=$((SUCCEEDED_SLOTS + 1)) ;;
+                *)          FAILED_SLOTS=$((FAILED_SLOTS + 1)) ;;
+            esac
+        fi
     fi
 fi
 

@@ -16,6 +16,7 @@ Sources `${CLAUDE_PLUGIN_ROOT}/scripts/lib-vote-tally.sh` for `vote_for_id`, `re
 | `--session-env-path FILE` | path | no | When non-empty, OOS-accepted is also written to `$(dirname "$SESSION_ENV_PATH")/oos-accepted-review.md` so `/implement` Step 9a.1 can find it. |
 | `--scope-files FILE` | path | no | File containing changed file names (one per line, from `git diff --name-only`). When non-empty, enables the scope-fit gate on the block heading line (first line of each `### FINDING_N:` block): tokens matching the extended-regex pattern `[a-zA-Z0-9_./-]+\.[a-zA-Z0-9]+:[0-9]+` yield file paths after stripping the trailing `:line` suffix. If the heading has no such token, the gate skips (keeps in-scope). If every extracted path is absent from both this file and (when provided) `--plan-file`, the finding is reclassified as OOS (`OUT_OF_SCOPE_DRIFT`). When absent or empty, the gate is a no-op (backward compatible). |
 | `--plan-file FILE` | path | no | Implementation plan file. When provided alongside `--scope-files`, the gate exempts any finding whose location file is mentioned anywhere in the plan. |
+| `--manifest-file FILE` | path | no | Panel manifest NDJSON. When provided, the tally writes `$REVIEW_TMPDIR/scout-archetype-yield.tsv` with per-archetype finding yield metrics. |
 | `--cursor-available true\|false` | enum | no | Forwarded from review-core for context (currently informational only). |
 | `--codex-available true\|false` | enum | no | Same as above. |
 | `--both-down true\|false` | enum | no | Deprecated compatibility flag. When `true`, maps to the same 0-judge `main-agent-vote-required` path as an empty voter-file set. Default: `false`. |
@@ -28,7 +29,10 @@ Sources `${CLAUDE_PLUGIN_ROOT}/scripts/lib-vote-tally.sh` for `vote_for_id`, `re
 - `oos-accepted-review.md` — accepted OOS blocks with the security-tag filter applied (security-tagged OOS items are held locally only, never filed publicly).
 - `oos.md` — all OOS items (accepted and not), with vote tallies.
 - `review-tally.env` — per-block `FINDING_N_ACCEPTED=true|false` and `FINDING_N_OUTCOME=<accepted|rejected|exonerated|neutral>` keys, plus summary counters (`ACCEPTED_COUNT`, `REJECTED_COUNT`, `EXONERATED_COUNT`, `NEUTRAL_COUNT`, `OOS_ACCEPTED_COUNT`, `OOS_REJECTED_COUNT`).
+- `scout-archetype-yield.tsv` — written when `--manifest-file` is provided. Schema: `archetype_name`, `focus_area`, `weight`, `findings_total`, `findings_accepted`, `findings_rejected`, `yield_ratio`.
 - Reviewer competition scoreboard score formula: `accepted + oos_accepted - rejected - oos_rejected`; rendered OOS columns are `OOS-Proposed`, `OOS-Accepted`, `OOS-Neutral/Exon`, and `OOS-Rejected`.
+
+Manifest attribution maps output basenames, not slot IDs. Fallback basenames normalize `-phase2`, `-phase3`, and `-retry` suffixes before lookup, so `dyn-foo-output-phase2.txt` joins to manifest output `dyn-foo-output.txt`. Static specialist rows map to slugs such as `structure` and focus areas from the canonical enum. Dynamic rows use the manifest `dyn-<name>` slot, `focus_area`, and scout `weight`; `codex-generalist-output.txt` maps to `generic`, `code-quality`, weight `1`.
 
 ## stdout (FD 3 via `emit_kv`)
 
@@ -51,6 +55,7 @@ Sources `${CLAUDE_PLUGIN_ROOT}/scripts/lib-vote-tally.sh` for `vote_for_id`, `re
 | `TALLY_OK` | Always `true` on success. |
 | `VOTER_COUNT` | Voter file count. |
 | `VOTING_SKIPPED_WARNING` | Present on the 0-judge main-agent path. |
+| `YIELD_TSV_FILE` | Present when `--manifest-file` produces `scout-archetype-yield.tsv`. |
 
 ## Threshold (delegated to lib-vote-tally.sh)
 
@@ -67,4 +72,4 @@ The quorum basis is the panel-level eligible voter count (number of non-failed v
 
 ## Harness
 
-`skills/review/scripts/test-tally-code-votes.sh` covers: 3-voter 2-YES accept, 3-voter 1-YES reject with NEUTRAL abstentions, 2-voter unanimous and non-unanimous paths, single-judge YES/NO/EXONERATE, 0-judge main-agent-required, deprecated `--both-down`, OOS handling with `[OUT_OF_SCOPE]` title prefix, rejected-OOS scoring, security-tag filtering on accepted OOS, and the scope-fit gate (diff-only list, plan exemption, no-op without `--scope-files`).
+`skills/review/scripts/test-tally-code-votes.sh` covers: 3-voter 2-YES accept, 3-voter 1-YES reject with NEUTRAL abstentions, 2-voter unanimous and non-unanimous paths, single-judge YES/NO/EXONERATE, 0-judge main-agent-required, deprecated `--both-down`, OOS handling with `[OUT_OF_SCOPE]` title prefix, rejected-OOS scoring, security-tag filtering on accepted OOS, the scope-fit gate (diff-only list, plan exemption, no-op without `--scope-files`), and `--manifest-file` yield TSV attribution including dynamic fallback basename normalization and generalist mapping.

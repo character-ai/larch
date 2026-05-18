@@ -4,7 +4,9 @@
 
 Review uses flat batch slugs under `larch-logs/review/<RUN_ID>/`; phase names are encoded in slugs such as `review-context` and `review-panel-manifest`, not in subdirectories.
 
-Allowed batches: `review-context`, `review-panel-manifest`, `review-findings`, `review-tally`, and `review-round-summary`.
+Allowed batches: `review-context`, `review-panel-manifest`, `review-findings`, `review-tally`, `review-scout-manifest`, and `review-round-summary`.
+
+`review-scout-manifest` is a replace-mode JSON object batch. The wrapper writes it only when dynamic-archetype scout status is available, with fields for `status`, `dynamic_slots`, `manifest_basename`, and `yield_tsv_basename`. Public batches must not carry absolute tmpdir paths here.
 
 On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.
 

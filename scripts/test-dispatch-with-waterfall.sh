@@ -81,6 +81,19 @@ assert_line "FALLBACK_COUNT=0" "$out"
 assert_line "DISPATCH_OK=true" "$out"
 assert_line "ALL_OUTPUT_TOOLS=codex cursor" "$out"
 
+manifest="$TMPROOT/slots-optional-metadata.ndjson"
+printf '{"slot":"dyn-extra","tool":"cursor","output":"%s","prompt_file":"%s","weight":4,"focus_area":"architecture"}\n' "$TMPROOT/optional-metadata.txt" "$prompt" > "$manifest"
+out=$(PATH="$STUB_BIN:$PATH" "$REPO_ROOT/scripts/dispatch-with-waterfall.sh" \
+    --slots-file "$manifest" \
+    --codex-present true \
+    --cursor-present true \
+    --mode description \
+    --timeout 5)
+assert_line "FALLBACK_COUNT=0" "$out"
+assert_line "DISPATCH_OK=true" "$out"
+assert_line "ALL_OUTPUT_TOOLS=cursor" "$out"
+grep -Fq "cursor ok" "$TMPROOT/optional-metadata.txt" || { echo "FAIL: optional metadata slot output" >&2; exit 1; }
+
 manifest="$TMPROOT/slots-claude.ndjson"
 printf '{"slot":"s1","tool":"codex","output":"%s","prompt_file":"%s"}\n' "$TMPROOT/claude-slot.txt" "$prompt" > "$manifest"
 out=$(PATH="$STUB_BIN:$PATH" CODEX_STUB_FAIL=true CURSOR_STUB_FAIL=true "$REPO_ROOT/scripts/dispatch-with-waterfall.sh" \

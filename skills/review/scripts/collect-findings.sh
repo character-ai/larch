@@ -327,6 +327,22 @@ parse_output_tsv() {
     rm -f "$tsv_tmp"
 }
 
+normalize_reviewer_label() {
+    local label="$1" stem ext
+    case "$label" in
+        *.txt) stem="${label%.txt}"; ext=".txt" ;;
+        *) stem="$label"; ext="" ;;
+    esac
+    while [[ "$stem" == *-phase2 || "$stem" == *-phase3 || "$stem" == *-retry ]]; do
+        case "$stem" in
+            *-phase2) stem="${stem%-phase2}" ;;
+            *-phase3) stem="${stem%-phase3}" ;;
+            *-retry) stem="${stem%-retry}" ;;
+        esac
+    done
+    printf '%s%s\n' "$stem" "$ext"
+}
+
 per_tmp=$(mktemp "${TMPDIR:-/tmp}/review-per-file.XXXXXX") || exit 1
 for f in "${EXTERNAL_OUTPUT_FILES[@]+"${EXTERNAL_OUTPUT_FILES[@]}"}"; do
     : > "$per_tmp"
@@ -356,6 +372,7 @@ count=0
 oos_count=0
 while IFS=$'\t' read -r title label body || [[ -n "${title:-}" ]]; do
     [[ -n "$title" ]] || continue
+    label=$(normalize_reviewer_label "$label")
     # Validate reviewer column: must end in -output.txt (any recognized reviewer filename).
     # A corrupted label (e.g., from tab characters in a finding title shifting TSV columns)
     # would be a prose fragment — skip the row and log a Warning.

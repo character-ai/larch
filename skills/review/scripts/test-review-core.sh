@@ -39,10 +39,12 @@ STUB
 set -euo pipefail
 tmp=""
 panel="hard"
+round_num="1"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --review-tmpdir) tmp="$2"; shift 2 ;;
     --panel) panel="$2"; shift 2 ;;
+    --round-num) round_num="$2"; shift 2 ;;
     *) shift 2 ;;
   esac
 done
@@ -72,6 +74,9 @@ printf 'EXTERNAL_OUTPUT_FILES=%s\n' "$external"
 printf 'CLAUDE_OUTPUT_FILES=%s\n' "$claude"
 printf 'PANEL_MODE=%s\n' "${TEST_PANEL_MODE:-normal}"
 printf 'PANEL_SHAPE=%s\n' "$panel"
+printf 'SCOUT_STATUS=%s\n' "${TEST_SCOUT_STATUS:-na}"
+printf 'DYNAMIC_SLOTS=%s\n' "${TEST_DYNAMIC_SLOTS:-0}"
+printf 'SCOUT_MANIFEST=%s/scout-round%s-manifest.json\n' "$tmp" "$round_num"
 printf 'SLOT_COUNT=2\n'
 printf 'PANEL_MANIFEST=%s/panel-manifest.ndjson\n' "$tmp"
 printf 'DISPATCH_OK=true\n'
@@ -208,7 +213,7 @@ STUB
 
 run_core() {
     local outdir="$1" mode="${2:-diff}" session_env="${3:-}"
-    local args=(--mode "$mode" --output-dir "$outdir" --codex-available true --cursor-available true --panel simple)
+    local args=(--mode "$mode" --output-dir "$outdir" --codex-available true --cursor-available true --panel simple --round-num "${TEST_ROUND_NUM:-1}")
     [[ -n "$session_env" ]] && args+=(--session-env-path "$session_env")
     REVIEW_CORE_GATHER_CONTEXT_SH="$TMP/gather.sh" \
     REVIEW_CORE_DISPATCH_PANEL_SH="$TMP/dispatch.sh" \
@@ -255,7 +260,14 @@ write_stubs
 out=$(TEST_FINDINGS=0 run_core "$TMP/zero")
 assert_contains "$out" 'REVIEW_CORE_STATUS=zero-findings'
 assert_contains "$out" 'PANEL_SHAPE=simple'
+assert_contains "$out" 'SCOUT_STATUS=na'
+assert_contains "$out" 'DYNAMIC_SLOTS=0'
 [[ -f "$TMP/zero/review-dirty-tree-summary.env" ]] || { echo "FAIL: missing review-dirty-tree-summary.env" >&2; exit 1; }
+
+out=$(TEST_FINDINGS=0 TEST_SCOUT_STATUS=ok TEST_DYNAMIC_SLOTS=3 run_core "$TMP/zero-scout")
+assert_contains "$out" 'REVIEW_CORE_STATUS=zero-findings'
+assert_contains "$out" 'SCOUT_STATUS=ok'
+assert_contains "$out" 'DYNAMIC_SLOTS=3'
 
 out=$(TEST_FINDINGS=1 TEST_ACCEPTED=1 TEST_REJECTED=0 run_core "$TMP/fix")
 assert_contains "$out" 'REVIEW_CORE_STATUS=fix-required'
@@ -268,9 +280,26 @@ out=$(TEST_FINDINGS=1 TEST_ACCEPTED=1 TEST_PANEL_MODE=both-down run_core "$TMP/b
 assert_contains "$out" 'REVIEW_CORE_STATUS=main-agent-vote-required'
 assert_contains "$out" 'PANEL_MODE=both-down'
 
+set +e
+out=$(TEST_FINDINGS=1 TEST_ACCEPTED=1 TEST_THRESHOLD_OK=false TEST_SCOUT_STATUS=ok TEST_DYNAMIC_SLOTS=2 run_core "$TMP/panel-failed")
+rc=$?
+set -e
+if [[ "$rc" -ne 2 ]]; then
+    echo "FAIL: panel-failed should exit 2" >&2
+    exit 1
+fi
+assert_contains "$out" 'REVIEW_CORE_STATUS=panel-failed'
+assert_contains "$out" 'SCOUT_STATUS=ok'
+assert_contains "$out" 'DYNAMIC_SLOTS=2'
+
 out=$(TEST_FINDINGS=1 TEST_TALLY_STATUS=main-agent-vote-required run_core "$TMP/main-agent")
 assert_contains "$out" 'REVIEW_CORE_STATUS=main-agent-vote-required'
 assert_contains "$out" 'ACCEPTED_COUNT=0'
+
+out=$(TEST_FINDINGS=1 TEST_TALLY_STATUS=main-agent-vote-required TEST_SCOUT_STATUS=ok TEST_DYNAMIC_SLOTS=4 run_core "$TMP/main-agent-scout")
+assert_contains "$out" 'REVIEW_CORE_STATUS=main-agent-vote-required'
+assert_contains "$out" 'SCOUT_STATUS=ok'
+assert_contains "$out" 'DYNAMIC_SLOTS=4'
 
 out=$(TEST_FINDINGS=1 TEST_ACCEPTED=1 run_core "$TMP/desc" description)
 assert_contains "$out" 'REVIEW_CORE_STATUS=ok'
@@ -287,6 +316,11 @@ assert_contains "$out" 'REVIEW_CORE_STATUS=fix-required'
 out=$(TEST_FINDINGS=0 TEST_DIRTY_STATUS=dirty TEST_CHECKPOINT_STATUS=dirty run_core "$TMP/dirty")
 assert_contains "$out" 'REVIEW_CORE_STATUS=zero-findings'
 grep -Fq 'ANY_DIRTY=true' "$TMP/dirty/review-dirty-tree-summary.env"
+
+out=$(TEST_FINDINGS=1 TEST_ACCEPTED=1 TEST_SCOUT_STATUS=ok TEST_DYNAMIC_SLOTS=2 TEST_ROUND_NUM=3 run_core "$TMP/round3")
+assert_contains "$out" 'SCOUT_STATUS=ok'
+assert_contains "$out" 'DYNAMIC_SLOTS=2'
+grep -Fq 'SCOUT_STATUS=ok' "$TMP/round3/scout-round3-status.env"
 grep -Fq 'RECOVERY_TAKEN=true' "$TMP/dirty/review-dirty-tree-summary.env"
 
 out=$(TEST_FINDINGS=0 TEST_DIRTY_STATUS=unknown TEST_CHECKPOINT_STATUS=unknown run_core "$TMP/unknown")
@@ -303,6 +337,15 @@ grep -Fq 'larch-log.sh write-round failed (exit 7' "$issues_parent/execution-iss
 }
 if grep -Fq 'sk-ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD' "$issues_parent/execution-issues.md"; then
     echo "FAIL: execution-issues should redact write-round stderr" >&2
+    exit 1
+fi
+
+set +e
+LARCH_DYNAMIC_ARCHETYPES_MAX='' run_core "$TMP/empty-env" >/dev/null 2>/dev/null
+rc=$?
+set -e
+if [[ "$rc" -ne 2 ]]; then
+    echo "FAIL: accepted empty LARCH_DYNAMIC_ARCHETYPES_MAX in review-core" >&2
     exit 1
 fi
 

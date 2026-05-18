@@ -46,6 +46,7 @@ larch-logs/
       review-panel-manifest.ndjson
       review-findings.ndjson
       review-tally.md
+      review-scout-manifest.json
       review-round-summary.md
 ```
 
@@ -63,7 +64,7 @@ artifacts; the session tmpdir may still hold raw sidecars for in-run retries.
 If JSON trimming fails, `write-round` fails closed instead of copying the raw
 sidecar into `larch-logs/`.
 
-`/review` uses the same `larch-logs/<skill>/<RUN_ID>/` layout when a run ID is provided. Review phase names are encoded in flat batch slugs, not subdirectories: `review-context` for gathered context, `review-panel-manifest` for launched slots, `review-findings` for collected finding records, `review-tally` for vote results, and `review-round-summary` for the human-readable round summary.
+`/review` uses the same `larch-logs/<skill>/<RUN_ID>/` layout when a run ID is provided. Review phase names are encoded in flat batch slugs, not subdirectories: `review-context` for gathered context, `review-panel-manifest` for launched slots, `review-findings` for collected finding records, `review-tally` for vote results, `review-scout-manifest` for dynamic-reviewer scout status, and `review-round-summary` for the human-readable round summary.
 
 ## manifest.json
 

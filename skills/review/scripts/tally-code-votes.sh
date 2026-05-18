@@ -14,7 +14,7 @@ larch_quiet_init
 source "$PLUGIN_ROOT/scripts/lib-vote-tally.sh"
 
 usage() {
-    larch_err "Usage: tally-code-votes.sh --ballot-file FILE --voter-files FILE... --review-tmpdir DIR [--session-env-path FILE] [--scope-files FILE] [--plan-file FILE] [--cursor-available true|false] [--codex-available true|false] [--both-down true|false]"
+    larch_err "Usage: tally-code-votes.sh --ballot-file FILE --voter-files FILE... --review-tmpdir DIR [--session-env-path FILE] [--scope-files FILE] [--plan-file FILE] [--manifest-file FILE] [--cursor-available true|false] [--codex-available true|false] [--both-down true|false]"
 }
 
 BALLOT_FILE=""
@@ -23,6 +23,7 @@ REVIEW_TMPDIR=""
 SESSION_ENV_PATH=""
 SCOPE_FILES=""
 PLAN_FILE=""
+MANIFEST_FILE=""
 CURSOR_AVAILABLE=""
 CODEX_AVAILABLE=""
 BOTH_DOWN="false"
@@ -35,6 +36,7 @@ while [[ $# -gt 0 ]]; do
         --session-env-path) SESSION_ENV_PATH="${2:?--session-env-path requires a value}"; shift 2 ;;
         --scope-files) SCOPE_FILES="${2:?--scope-files requires a value}"; shift 2 ;;
         --plan-file) PLAN_FILE="${2:?--plan-file requires a value}"; shift 2 ;;
+        --manifest-file) MANIFEST_FILE="${2:?--manifest-file requires a value}"; shift 2 ;;
         --cursor-available) CURSOR_AVAILABLE="${2:?--cursor-available requires a value}"; shift 2 ;;
         --codex-available) CODEX_AVAILABLE="${2:?--codex-available requires a value}"; shift 2 ;;
         --both-down) BOTH_DOWN="${2:?--both-down requires a value}"; shift 2 ;;
@@ -45,6 +47,7 @@ done
 
 [[ -n "$BALLOT_FILE" && -f "$BALLOT_FILE" ]] || { larch_err "tally-code-votes.sh: --ballot-file must name a file"; exit 2; }
 [[ -n "$REVIEW_TMPDIR" ]] || { larch_err "tally-code-votes.sh: --review-tmpdir is required"; exit 2; }
+[[ -z "$MANIFEST_FILE" || -f "$MANIFEST_FILE" ]] || { larch_err "tally-code-votes.sh: --manifest-file must name a file"; exit 2; }
 mkdir -p "$REVIEW_TMPDIR"
 
 ACCEPTED_FINDINGS_FILE="$REVIEW_TMPDIR/accepted-findings.md"
@@ -53,6 +56,7 @@ OOS_ACCEPTED_FILE="$REVIEW_TMPDIR/oos-accepted-review.md"
 OOS_FILE="$REVIEW_TMPDIR/oos.md"
 VOTING_TALLY_FILE="$REVIEW_TMPDIR/voting-tally.md"
 TALLY_ENV_FILE="$REVIEW_TMPDIR/review-tally.env"
+YIELD_TSV_FILE="$REVIEW_TMPDIR/scout-archetype-yield.tsv"
 
 : > "$ACCEPTED_FINDINGS_FILE"
 : > "$REJECTED_FINDINGS_FILE"
@@ -87,6 +91,78 @@ NEUTRAL_COUNT=0
 OOS_ACCEPTED_COUNT=0
 OOS_REJECTED_COUNT=0
 OUT_OF_SCOPE_DRIFT_COUNT=0
+
+normalize_reviewer_basename() {
+    local base="$1" stem ext=""
+    base="${base##*/}"
+    case "$base" in
+        *.txt) stem="${base%.txt}"; ext=".txt" ;;
+        *) stem="$base" ;;
+    esac
+    while :; do
+        case "$stem" in
+            *-phase2) stem="${stem%-phase2}" ;;
+            *-phase3) stem="${stem%-phase3}" ;;
+            *-retry) stem="${stem%-retry}" ;;
+            *) break ;;
+        esac
+    done
+    printf '%s%s' "$stem" "$ext"
+}
+
+static_focus_area() {
+    case "$1" in
+        structure) printf 'code-quality' ;;
+        correctness) printf 'correctness' ;;
+        testing) printf 'risk-integration' ;;
+        security) printf 'security' ;;
+        edge-cases) printf 'correctness' ;;
+        plan-fidelity) printf 'architecture' ;;
+        *) printf 'code-quality' ;;
+    esac
+}
+
+write_archetype_map() {
+    local manifest_file="$1" map_file="$2" row base slot focus weight archetype static_slug
+    : > "$map_file"
+    [[ -n "$manifest_file" && -f "$manifest_file" ]] || return 0
+    while IFS= read -r row || [[ -n "$row" ]]; do
+        [[ -n "$row" ]] || continue
+        base=$(printf '%s' "$row" | jq -r '.output | split("/")[-1]')
+        slot=$(printf '%s' "$row" | jq -r '.slot // ""')
+        focus=$(printf '%s' "$row" | jq -r '.focus_area // ""')
+        weight=$(printf '%s' "$row" | jq -r '.weight // 1')
+        base=$(normalize_reviewer_basename "$base")
+        case "$base" in
+            codex-generalist-output.txt)
+                archetype="generic"
+                focus="code-quality"
+                weight=1
+                ;;
+            dyn-*-output.txt)
+                archetype="$slot"
+                [[ "$archetype" == dyn-* ]] || archetype="${base%-output.txt}"
+                [[ -n "$focus" ]] || focus="code-quality"
+                ;;
+            cursor-specialist-*-output.txt|codex-specialist-*-output.txt)
+                static_slug="$base"
+                static_slug="${static_slug#cursor-specialist-}"
+                static_slug="${static_slug#codex-specialist-}"
+                static_slug="${static_slug%-output.txt}"
+                archetype="$static_slug"
+                focus=$(static_focus_area "$static_slug")
+                weight=1
+                ;;
+            *)
+                archetype="${slot:-${base%-output.txt}}"
+                [[ -n "$focus" ]] || focus="code-quality"
+                weight=1
+                ;;
+        esac
+        case "$weight" in ''|*[!0-9]*) weight=1 ;; esac
+        printf '%s\t%s\t%s\t%s\n' "$base" "$archetype" "$focus" "$weight" >> "$map_file"
+    done < "$manifest_file"
+}
 
 # scope_drift_check: returns 0 (drift detected, reclassify as OOS) or 1 (keep in-scope).
 # Fires only when SCOPE_FILES is a non-empty readable file. Logic:
@@ -155,7 +231,9 @@ fi
 
 # Voting path: at least 1 judge available. Tally each block.
 score_rows="$WORKDIR/score-rows.tsv"
+archetype_map="$WORKDIR/archetype-map.tsv"
 : > "$score_rows"
+write_archetype_map "$MANIFEST_FILE" "$archetype_map"
 
 {
     printf '# Code Review Voting Tally\n\n'
@@ -294,6 +372,83 @@ score_rows="$WORKDIR/score-rows.tsv"
     ' "$score_rows" | sort
 } > "$VOTING_TALLY_FILE"
 
+if [[ -n "$MANIFEST_FILE" && -f "$MANIFEST_FILE" ]]; then
+    awk -F '\t' '
+      function norm(base, stem) {
+        sub(/^.*\//, "", base)
+        if (base ~ /\.txt$/) {
+          stem = base
+          sub(/\.txt$/, "", stem)
+          while (stem ~ /-(phase2|phase3|retry)$/) sub(/-(phase2|phase3|retry)$/, "", stem)
+          return stem ".txt"
+        }
+        stem = base
+        while (stem ~ /-(phase2|phase3|retry)$/) sub(/-(phase2|phase3|retry)$/, "", stem)
+        return stem
+      }
+      FNR == NR {
+        base=$1
+        if (!(base in seen)) {
+          order[++n]=base
+          seen[base]=1
+        }
+        archetype[base]=$2
+        focus[base]=$3
+        weight[base]=$4
+        next
+      }
+      {
+        base=norm($1)
+        if ($2 != "finding") next
+        if ($3 == "accepted") {
+          total[base]++
+          accepted[base]++
+        } else if ($3 == "neutral" || $3 == "exonerated") {
+          total[base]++
+        } else if ($3 == "rejected") {
+          total[base]++
+          rejected[base]++
+        }
+      }
+      END {
+        printf "archetype_name\tfocus_area\tweight\tfindings_total\tfindings_accepted\tfindings_rejected\tyield_ratio\n"
+        for (i = 1; i <= n; i++) {
+          base=order[i]
+          t=total[base]+0
+          a=accepted[base]+0
+          r=rejected[base]+0
+          ratio = (t == 0 ? "n/a" : sprintf("%.6f", a / t))
+          printf "%s\t%s\t%s\t%d\t%d\t%d\t%s\n", archetype[base], focus[base], weight[base], t, a, r, ratio
+        }
+      }
+    ' "$archetype_map" "$score_rows" > "$YIELD_TSV_FILE"
+
+    while IFS= read -r orphan_base || [[ -n "$orphan_base" ]]; do
+        [[ -n "$orphan_base" ]] || continue
+        emit_kv WARN "yield TSV missing manifest entry for reviewer basename: $orphan_base"
+    done < <(
+        awk -F '\t' '
+          function norm(base, stem) {
+            sub(/^.*\//, "", base)
+            if (base ~ /\.txt$/) {
+              stem = base
+              sub(/\.txt$/, "", stem)
+              while (stem ~ /-(phase2|phase3|retry)$/) sub(/-(phase2|phase3|retry)$/, "", stem)
+              return stem ".txt"
+            }
+            stem = base
+            while (stem ~ /-(phase2|phase3|retry)$/) sub(/-(phase2|phase3|retry)$/, "", stem)
+            return stem
+          }
+          FNR == NR { seen[$1]=1; next }
+          {
+            base=norm($1)
+            if (!(base in seen) && !reported[base]++) print base
+          }
+        ' "$archetype_map" "$score_rows"
+    )
+fi
+
 {
     printf 'ACCEPTED_COUNT=%s\n' "$ACCEPTED_COUNT"
     printf 'REJECTED_COUNT=%s\n' "$REJECTED_COUNT"
@@ -321,3 +476,6 @@ emit_kv OOS_ACCEPTED_FILE "$OOS_ACCEPTED_OUT"
 emit_kv OOS_FILE "$OOS_FILE"
 emit_kv TALLY_OK true
 emit_kv VOTER_COUNT "$ELIGIBLE_VOTERS"
+if [[ -n "$MANIFEST_FILE" && -f "$YIELD_TSV_FILE" ]]; then
+    emit_kv YIELD_TSV_FILE "$YIELD_TSV_FILE"
+fi

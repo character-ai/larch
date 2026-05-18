@@ -10,7 +10,7 @@
 |---|---|---|---|
 | `--collector-results-file FILE` | path | yes | The per-slot status records written by `scripts/collect-agent-results.sh` (blank-line-separated; each record has `STATUS=<value>`). |
 | `--panel hard\|simple` | enum | yes | The intended panel size: HARD=12, SIMPLE=7. |
-| `--launched-slots N` | non-negative int | no | When set, slots in `[LAUNCHED_SLOTS, INTENDED_SLOTS)` are counted as `never-launched` failures (vendor was unhealthy → slot never dispatched). When omitted, only the records in the collector results file are counted. |
+| `--launched-slots N` | non-negative int | no | When set, static slots in `[LAUNCHED_SLOTS, INTENDED_SLOTS)` are counted as `never-launched` failures (vendor was unhealthy → slot never dispatched). Callers must pass the count of launched static slots only; dynamic scout slots are excluded from this math. When omitted, only the static-slot records in the collector results file are counted. |
 
 ## Output
 
@@ -19,9 +19,9 @@ Emits to FD 3 (`emit_kv`):
 | Key | Value |
 |---|---|
 | `INTENDED_SLOTS` | 12 (HARD) or 7 (SIMPLE) |
-| `SUCCEEDED_SLOTS` | count of records with `STATUS=OK` or `STATUS=cap_hit` |
-| `FAILED_SLOTS` | count of records with `STATUS != OK && STATUS != cap_hit` plus never-launched slots |
-| `COUNTED_SLOTS` | total record count from the collector file |
+| `SUCCEEDED_SLOTS` | count of static-slot records with `STATUS=OK` or `STATUS=cap_hit` |
+| `FAILED_SLOTS` | count of static-slot records with `STATUS != OK && STATUS != cap_hit` plus static never-launched slots |
+| `COUNTED_SLOTS` | total static-slot record count from the collector file |
 | `THRESHOLD_OK` | `true` when failures ≤ 50% of intended panel size, else `false` |
 | `THRESHOLD_REASON` | human-readable explanation when `THRESHOLD_OK=false`; empty otherwise |
 
@@ -31,7 +31,7 @@ Emits to FD 3 (`emit_kv`):
 
 ## STATUS classification
 
-`STATUS=cap_hit` is a deliberate slot-skip, NOT a failure. It counts as `SUCCEEDED_SLOTS` for threshold purposes.
+`STATUS=cap_hit` is a deliberate static slot-skip, NOT a failure. It counts as `SUCCEEDED_SLOTS` for threshold purposes. Dynamic scout slots are ignored entirely by this script, including fallback basenames such as `dyn-foo-output-phase2.txt`, `dyn-foo-output-phase3.txt`, and `dyn-foo-output-retry.txt`; the threshold answers whether the baseline 12-slot or 7-slot panel failed, not whether optional dynamic slots failed.
 
 ## Callers
 

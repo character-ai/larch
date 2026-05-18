@@ -10,6 +10,7 @@ Regression harness for `skills/review/scripts/tally-code-votes.sh`.
 - 1 voter: skip path with `VOTING_SKIPPED_WARNING`, all findings auto-accepted.
 - `--both-down true`: bypass voting, all findings auto-accepted.
 - Security-tag filter: accepted OOS with `focus-area = security` is counted but NOT written to `oos-accepted-review.md` (held locally).
+- `--manifest-file`: writes `scout-archetype-yield.tsv`, maps static/dynamic/generalist rows, and normalizes fallback suffixes such as `-phase2`.
 
 ## Invocation
 

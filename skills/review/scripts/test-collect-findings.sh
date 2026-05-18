@@ -149,4 +149,28 @@ if [[ -f "$TMP/execution-issues-tab.md" ]] && grep -Fq 'invalid reviewer column'
     exit 1
 fi
 
+phase2="$TMP/dyn-api-contract-output-phase2.txt"
+cat > "$phase2" <<'EOF'
+### In-Scope Findings
+- Dynamic fallback finding.
+EOF
+printf '0\n' > "$phase2.done"
+printf 'STATUS=clean\n' > "$phase2.dirty-tree"
+out=$(WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.01 "$SCRIPT" --claude-output-files "$phase2" --mode description --timeout 1 --findings-file "$TMP/findings-phase2.md" --oos-file "$TMP/oos-phase2.md")
+assert_stdout_cap "$out"
+grep -Fq 'FINDINGS_COUNT=1' <<< "$out"
+grep -Fq -- '- **Reviewer**: dyn-api-contract-output.txt' "$TMP/findings-phase2.md"
+
+phase2_retry="$TMP/dyn-api-contract-output-phase2-retry.txt"
+cat > "$phase2_retry" <<'EOF'
+### In-Scope Findings
+- Dynamic retry fallback finding.
+EOF
+printf '0\n' > "$phase2_retry.done"
+printf 'STATUS=clean\n' > "$phase2_retry.dirty-tree"
+out=$(WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.01 "$SCRIPT" --claude-output-files "$phase2_retry" --mode description --timeout 1 --findings-file "$TMP/findings-phase2-retry.md" --oos-file "$TMP/oos-phase2-retry.md")
+assert_stdout_cap "$out"
+grep -Fq 'FINDINGS_COUNT=1' <<< "$out"
+grep -Fq -- '- **Reviewer**: dyn-api-contract-output.txt' "$TMP/findings-phase2-retry.md"
+
 echo "All assertions passed."
