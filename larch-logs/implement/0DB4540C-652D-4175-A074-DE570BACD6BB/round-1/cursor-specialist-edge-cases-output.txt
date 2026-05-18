@@ -1,0 +1,7 @@
+Gathering the pre-computed diff and read-only git history for review.
+
+Reading `git-force-push.sh` and the surrounding `merge-pr.sh` logic to verify contracts and edge cases.
+
+Verifying grep BRE handling of parentheses on this platform (read-only):
+
+

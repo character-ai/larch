@@ -1,0 +1,25 @@
+Reading the ballot file and producing votes for each finding.
+
+Votes only (read the ballot at the given path). Format: `FINDING_N: YES` or `FINDING_N: NO -- reason` or `FINDING_N: EXONERATE -- reason`.
+
+FINDING_1: YES  
+FINDING_2: YES  
+FINDING_3: YES  
+FINDING_4: EXONERATE -- optional doc-table nit on untouched file; no GitHub issue needed  
+FINDING_5: YES  
+FINDING_6: EXONERATE -- same doc reword as FINDING_5; no separate edit  
+FINDING_7: EXONERATE -- same doc reword as FINDING_5; no separate edit  
+FINDING_8: EXONERATE -- same doc reword as FINDING_5; no separate edit  
+FINDING_9: YES  
+FINDING_10: EXONERATE -- covered by FINDING_5 wording fix  
+FINDING_11: YES  
+FINDING_12: EXONERATE -- tighter stub is marginal vs brittleness for this harness  
+FINDING_13: YES  
+FINDING_14: EXONERATE -- same ancestor guard as FINDING_13; one check suffices  
+FINDING_15: YES  
+FINDING_16: EXONERATE -- multi-commit flush path is low regression risk vs extra test surface  
+FINDING_17: YES  
+FINDING_18: EXONERATE -- same stderr surfacing as FINDING_17  
+FINDING_19: EXONERATE -- same stderr surfacing as FINDING_17  
+FINDING_20: EXONERATE -- same test-gap theme as FINDING_16  
+FINDING_21: EXONERATE -- boundary 5 is optional; overlaps FINDING_16/20 without extra payoff
