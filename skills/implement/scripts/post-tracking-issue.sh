@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # post-tracking-issue.sh — publish the Step 0.5 larch:metadata summary.
 # shellcheck disable=SC2016
+#
+# Reads all session state from $IMPLEMENT_TMPDIR files; callers pass only
+# --implement-tmpdir to avoid non-determinism from many CLI arguments.
 
 set -euo pipefail
 
@@ -12,7 +15,7 @@ source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
 
 usage() {
-    larch_err "Usage: post-tracking-issue.sh --issue N --run-id ID --session-env PATH [--agent claude] [--coder claude] [--repo OWNER/REPO]"
+    larch_err "Usage: post-tracking-issue.sh --implement-tmpdir PATH"
 }
 
 fail_usage() {
@@ -23,45 +26,39 @@ fail_usage() {
     exit 2
 }
 
-read_env_key() {
+read_kv() {
     local key=$1 file=$2
     [ -f "$file" ] || return 0
     awk -v k="$key" 'BEGIN{p=k"="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$file" 2>/dev/null
 }
 
-ISSUE=""
-RUN_ID=""
-SESSION_ENV=""
-AGENT="claude"
-CODER="claude"
-REPO=""
-
+IMPLEMENT_TMPDIR=""
 while [ $# -gt 0 ]; do
     case "$1" in
-        --issue) [ $# -ge 2 ] || fail_usage "--issue requires a value"; ISSUE=$2; shift 2 ;;
-        --run-id) [ $# -ge 2 ] || fail_usage "--run-id requires a value"; RUN_ID=$2; shift 2 ;;
-        --session-env) [ $# -ge 2 ] || fail_usage "--session-env requires a value"; SESSION_ENV=$2; shift 2 ;;
-        --agent) [ $# -ge 2 ] || fail_usage "--agent requires a value"; AGENT=$2; shift 2 ;;
-        --coder) [ $# -ge 2 ] || fail_usage "--coder requires a value"; CODER=$2; shift 2 ;;
-        --repo) [ $# -ge 2 ] || fail_usage "--repo requires a value"; REPO=$2; shift 2 ;;
+        --implement-tmpdir) [ $# -ge 2 ] || fail_usage "--implement-tmpdir requires a value"; IMPLEMENT_TMPDIR=$2; shift 2 ;;
         --help) usage; exit 0 ;;
         *) fail_usage "unknown option: $1" ;;
     esac
 done
 
-[ -n "$ISSUE" ] || fail_usage "--issue is required"
-[ -n "$RUN_ID" ] || fail_usage "--run-id is required"
-[ -n "$SESSION_ENV" ] || fail_usage "--session-env is required"
-case "$ISSUE" in *[!0-9]*|"") fail_usage "--issue must be numeric" ;; esac
-case "$RUN_ID" in ""|*[!A-Za-z0-9-]*) fail_usage "--run-id must contain only letters, numbers, and hyphens" ;; esac
-[ -f "$SESSION_ENV" ] || fail_usage "--session-env file not found"
+[ -n "$IMPLEMENT_TMPDIR" ] || fail_usage "--implement-tmpdir is required"
+[ -d "$IMPLEMENT_TMPDIR" ] || fail_usage "--implement-tmpdir not found"
 
-if [ -z "$REPO" ]; then
-    REPO="$(read_env_key REPO "$SESSION_ENV")"
-fi
+SESSION_ENV="$IMPLEMENT_TMPDIR/session-env.sh"
+PARENT_ISSUE="$IMPLEMENT_TMPDIR/parent-issue.md"
 
-tmpdir="$(dirname "$SESSION_ENV")"
-summary="$tmpdir/summary-metadata.md"
+ISSUE="$(read_kv ISSUE_NUMBER "$PARENT_ISSUE")"
+RUN_ID="$(read_kv RUN_ID "$PARENT_ISSUE")"
+[ -n "$RUN_ID" ] || RUN_ID="$(tr -d '\r\n' < "$IMPLEMENT_TMPDIR/session-id" 2>/dev/null || true)"
+REPO="$(read_kv REPO "$SESSION_ENV")"
+AGENT="$(read_kv AGENT "$SESSION_ENV")"; [ -n "$AGENT" ] || AGENT="claude"
+CODER="$(read_kv CODER "$SESSION_ENV")"; [ -n "$CODER" ] || CODER="claude"
+
+[ -n "$ISSUE" ] || { emit_kv POSTED false; emit_kv COMMENT_URL ""; emit_kv ERROR "ISSUE_NUMBER not found in parent-issue.md"; exit 1; }
+[ -n "$RUN_ID" ] || { emit_kv POSTED false; emit_kv COMMENT_URL ""; emit_kv ERROR "RUN_ID not found in parent-issue.md or session-id"; exit 1; }
+case "$ISSUE" in *[!0-9]*|"") emit_kv POSTED false; emit_kv COMMENT_URL ""; emit_kv ERROR "ISSUE_NUMBER must be numeric"; exit 1 ;; esac
+
+summary="$IMPLEMENT_TMPDIR/summary-metadata.md"
 version="$("$PLUGIN_ROOT/scripts/read-plugin-version.sh" 2>/dev/null | awk -F= '/^LARCH_PLUGIN_VERSION=/{print $2; exit}')"
 [ -n "$version" ] || version="unknown"
 
@@ -80,8 +77,8 @@ version="$("$PLUGIN_ROOT/scripts/read-plugin-version.sh" 2>/dev/null | awk -F= '
 }
 
 marker="<!-- larch:metadata v1 runid=$RUN_ID -->"
-out_file="$tmpdir/post-tracking-issue.out"
-err_file="$tmpdir/post-tracking-issue.err"
+out_file="$IMPLEMENT_TMPDIR/post-tracking-issue.out"
+err_file="$IMPLEMENT_TMPDIR/post-tracking-issue.err"
 args=(upsert-summary --issue "$ISSUE" --marker "$marker" --content-file "$summary")
 [ -z "$REPO" ] || args+=(--repo "$REPO")
 

@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # test-post-tracking-issue.sh — offline harness for post-tracking-issue.sh.
-# shellcheck disable=SC2016
 
 set -euo pipefail
 export LARCH_QUIET_DISABLE=1
@@ -15,7 +14,7 @@ FAIL=0
 
 pass(){ PASS=$((PASS+1)); printf 'PASS: %s\n' "$1"; }
 fail(){ FAIL=$((FAIL+1)); printf 'FAIL: %s\n' "$1" >&2; }
-assert_contains(){ case "$2" in *"$1"*) pass "$3" ;; *) fail "$3 (missing $1)" ;; esac; }
+assert_contains(){ case "$2" in *"$1"*) pass "$3" ;; *) fail "$3 (missing $1)"; printf 'ACTUAL: %s\n' "$2" >&2 ;; esac; }
 finish(){ if [ "$FAIL" -ne 0 ]; then printf 'FAILURES=%s\n' "$FAIL" >&2; exit 1; fi; printf 'PASS=%s\n' "$PASS"; }
 
 plugin="$TMP_ROOT/plugin"
@@ -39,20 +38,26 @@ printf 'COMMENT_URL=https://example.test/comment/1\n'
 STUB
 chmod +x "$plugin/scripts/read-plugin-version.sh" "$plugin/scripts/tracking-issue-summary.sh"
 
-session="$TMP_ROOT/session"
-mkdir -p "$session"
-printf 'REPO=owner/repo\n' > "$session/session-env.sh"
-out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_ARGS_LOG="$TMP_ROOT/args.log" TRACKING_CONTENT_LOG="$TMP_ROOT/content.md" "$HELPER" --issue 12 --run-id run-1 --session-env "$session/session-env.sh" --coder codex)
+# Happy path: IMPLEMENT_TMPDIR with parent-issue.md and session-env.sh
+impl_dir="$TMP_ROOT/impl"
+mkdir -p "$impl_dir"
+printf 'ISSUE_NUMBER=12\nRUN_ID=run-1\nADOPTED=true\n' > "$impl_dir/parent-issue.md"
+printf 'REPO=owner/repo\nCODER=codex\n' > "$impl_dir/session-env.sh"
+
+out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_ARGS_LOG="$TMP_ROOT/args.log" \
+      TRACKING_CONTENT_LOG="$TMP_ROOT/content.md" \
+      "$HELPER" --implement-tmpdir "$impl_dir")
 assert_contains 'POSTED=true' "$out" 'happy path posts'
 assert_contains 'COMMENT_URL=https://example.test/comment/1' "$out" 'happy path emits URL'
 assert_contains '<!-- larch:metadata v1 runid=run-1 -->' "$(cat "$TMP_ROOT/args.log")" 'marker passed'
-assert_contains 'Coder: `codex`' "$(cat "$TMP_ROOT/content.md")" 'content includes coder'
+assert_contains "Coder: \`codex\`" "$(cat "$TMP_ROOT/content.md")" 'content includes coder from session-env'
 
+# Missing --implement-tmpdir
 set +e
-bad=$(CLAUDE_PLUGIN_ROOT="$plugin" "$HELPER" --issue 12 2>/dev/null)
+bad=$(CLAUDE_PLUGIN_ROOT="$plugin" "$HELPER" 2>/dev/null)
 rc=$?
 set -e
-if [ "$rc" -ne 0 ]; then pass 'missing required args exits non-zero'; else fail 'missing required args exits non-zero'; fi
-assert_contains 'POSTED=false' "$bad" 'missing args emits envelope'
+if [ "$rc" -ne 0 ]; then pass 'missing --implement-tmpdir exits non-zero'; else fail 'missing --implement-tmpdir exits non-zero'; fi
+assert_contains 'POSTED=false' "$bad" 'missing arg emits envelope'
 
 finish

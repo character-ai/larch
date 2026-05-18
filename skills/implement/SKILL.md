@@ -558,12 +558,7 @@ if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$
 fi
 export CLAUDE_PLUGIN_ROOT
 ${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh init --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --issue "$ISSUE_ARG"
-${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/post-tracking-issue.sh \
-  --issue "$ISSUE_ARG" \
-  --run-id "$RUN_ID" \
-  --session-env "$IMPLEMENT_TMPDIR/session-env.sh" \
-  --coder "${coder:-claude}" \
-  --repo "${REPO:-}"
+${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/post-tracking-issue.sh --implement-tmpdir "$IMPLEMENT_TMPDIR"
 ```
 
 On `LOG_WRITTEN=false` with `ERROR=` from `larch-log.sh`, or `POSTED=false` / non-zero exit from `post-tracking-issue.sh`, print `**⚠ 0.5: tracking issue — metadata publication failed: $ERROR. Aborting.**` and skip to Step 18.
@@ -618,12 +613,7 @@ if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$
 fi
 export CLAUDE_PLUGIN_ROOT
 ${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh init --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --issue "$RECOVERED_N"
-${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/post-tracking-issue.sh \
-  --issue "$RECOVERED_N" \
-  --run-id "$RUN_ID" \
-  --session-env "$IMPLEMENT_TMPDIR/session-env.sh" \
-  --coder "${coder:-claude}" \
-  --repo "${REPO:-}"
+${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/post-tracking-issue.sh --implement-tmpdir "$IMPLEMENT_TMPDIR"
 ```
 
 On `LOG_WRITTEN=false` with `ERROR=` from `larch-log.sh`, or `POSTED=false` / non-zero exit from `post-tracking-issue.sh`, print `**⚠ 0.5: tracking issue — metadata publication failed: $ERROR. Aborting.**` and skip to Step 18.
@@ -698,12 +688,7 @@ Create the tracking issue **immediately** so subsequent summary comments and com
 5. **Initialize larch-log manifest and publish metadata summary** as a marker-keyed comment on the newly-created issue:
    ```bash
    ${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh init --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --issue "$ISSUE_NUMBER"
-   ${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/post-tracking-issue.sh \
-     --issue "$ISSUE_NUMBER" \
-     --run-id "$RUN_ID" \
-     --session-env "$IMPLEMENT_TMPDIR/session-env.sh" \
-     --coder "${coder:-claude}" \
-     --repo "${REPO:-}"
+   ${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/post-tracking-issue.sh --implement-tmpdir "$IMPLEMENT_TMPDIR"
    ```
    On `LOG_WRITTEN=false` with `ERROR=` from `larch-log.sh init`, print `**⚠ 0.5: tracking issue — Branch 4 manifest initialization failed: $ERROR. Stalling to Step 18.**`, log to `Tool Failures`, set `deferred=true`, set `STALL_TRACKING=true`, and skip to Step 18 (skipping the sentinel write in step 6). **Do NOT clear `$ISSUE_NUMBER`** — the tracking issue was already created on GitHub at step 4, and Step 18 teardown needs `$ISSUE_NUMBER` to rename it from `[IN PROGRESS]` to `[STALLED]`.
 
@@ -1722,14 +1707,7 @@ The OOS cap helper contract remains `${CLAUDE_PLUGIN_ROOT}/skills/implement/scri
 Refresh the tracking metadata projection after execution-issues changes when a tracking issue exists. If `ISSUE_NUMBER` is empty or `0`, skip this helper entirely; do not call GitHub for issue `#0`.
 
 ```bash
-if [ -n "${ISSUE_NUMBER:-}" ] && [ "${ISSUE_NUMBER:-0}" != "0" ]; then
-  ${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/refresh-execution-issues.sh \
-    --issue "$ISSUE_NUMBER" \
-    --run-id "$RUN_ID" \
-    --session-env "$IMPLEMENT_TMPDIR/session-env.sh" \
-    --implement-tmpdir "$IMPLEMENT_TMPDIR" \
-    --repo "${REPO:-}" || true
-fi
+${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/refresh-execution-issues.sh --implement-tmpdir "$IMPLEMENT_TMPDIR" || true
 ```
 
 The state machine writes `postbump-state.sh` for `implement-finalize.sh postbump`, writes `finalize-state.sh` for `postmerge`/`teardown`, parses postbump `STATUS=` from stdout, preserves `CALLER_KIND=step8b_rebase` for Step 8b conflicts, treats Step 10 `ACTION=merge` as a CI-passed checkpoint, and treats Step 12 `ACTION=merge` as permission to call `merge-pr.sh`. If CI failure metadata lacks a failed run id, use `${CLAUDE_PLUGIN_ROOT}/scripts/gh-pr-checks.sh` as the fallback diagnostic path before deciding whether to stall. Within `PHASE=ci-merge`, after merge succeeds ship-pr.sh delegates local cleanup (Step 14 equivalent) to `implement-finalize.sh postmerge`; after that returns, **Continue to Step 15.** (main verification, also inside postmerge). Do NOT end the turn between the merge output and the postmerge delegation.
@@ -1772,7 +1750,7 @@ If `STATUS=ok`, `write-rejected-findings.sh` found non-empty rejected findings, 
 Print: `> **🔶 /implement 16a: notify**`
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/slack-issue-announce.sh --pr-url "${PR_URL:-N/A}" --issue-number "${ISSUE_NUMBER:-0}" --run-id "$RUN_ID" --pr-title "${PR_TITLE:-}" || true
+${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/slack-issue-announce.sh --implement-tmpdir "$IMPLEMENT_TMPDIR" || true
 ```
 
 On `STATUS=skipped`, continue silently. On `STATUS=failed`, log the helper output to `Warnings` and continue.
@@ -1817,17 +1795,10 @@ If `quick_mode=false` and `DESIGN_ONLY_DONE` is not true: print a summary noting
 Write/post the terminal `larch:final-summary` projection before the token summary:
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/write-final-report.sh \
-  --issue "${ISSUE_NUMBER:-0}" \
-  --run-id "$RUN_ID" \
-  --pr-url "${PR_URL:-N/A}" \
-  --stall-tracking "${STALL_TRACKING:-false}" \
-  --session-env "$IMPLEMENT_TMPDIR/session-env.sh" \
-  --implement-tmpdir "$IMPLEMENT_TMPDIR" \
-  --repo "${REPO:-}"
+${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/write-final-report.sh --implement-tmpdir "$IMPLEMENT_TMPDIR"
 ```
 
-If `write-final-report.sh` exits non-zero or emits `STATUS=failed`, log the captured stdout/stderr to `Tool Failures` and continue to the token summary. `STATUS=skipped` is reserved for the no-tracking-issue path (`ISSUE=0`), not for GitHub upsert failures.
+If `write-final-report.sh` exits non-zero or emits `STATUS=failed`, log the captured stdout/stderr to `Tool Failures` and continue to the token summary. `STATUS=skipped` is reserved for the no-tracking-issue path (`ISSUE_NUMBER=0`), not for GitHub upsert failures.
 
 Print a token summary to chat. When `LARCH_VERBOSE_TOKENS=true`, print the full per-step table; otherwise print a single grand-total line. The full breakdown is appended to the `token-report` and `timing-report` log batches at the pre-bump log flush (Step 7a tail); on each retry `scripts/refresh-run-logs.sh` (Triggers A-C in `ship-pr.sh`) re-renders and commits the batches before each push so the merged PR carries the most recent data (unless `--no-logs-commit` is set, in which case log files stay in the session tmpdir only).
 
@@ -1895,8 +1866,8 @@ LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.s
 LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
 export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --full --format json --output "$IMPLEMENT_TMPDIR/token-report-rendered.json" || true
-if [ "${forked_target:-false}" != "true" ] && [ -n "${ISSUE_NUMBER:-}" ] && [ "${ISSUE_NUMBER:-0}" != "0" ] && [ "${repo_unavailable:-false}" != "true" ]; then
-  ${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/write-final-report.sh --issue "$ISSUE_NUMBER" --run-id "$RUN_ID" --pr-url "${PR_URL:-N/A}" --stall-tracking "${STALL_TRACKING:-false}" --session-env "$IMPLEMENT_TMPDIR/session-env.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" --repo "${REPO:-}" || true
+if [ "${forked_target:-false}" != "true" ] && [ "${repo_unavailable:-false}" != "true" ]; then
+  ${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/write-final-report.sh --implement-tmpdir "$IMPLEMENT_TMPDIR" || true
 fi
 ```
 
