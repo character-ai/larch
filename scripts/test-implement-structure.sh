@@ -209,8 +209,22 @@ awk '
 ' "$SKILL_MD" || exit4_step16_status=$?
 [[ "$exit4_step16_status" == "0" ]] || fail "SKILL.md Exit 4 prose must direct orchestrator to 'Continue to Step 16'"
 
-# Pin that ship-pr.sh STALL_STEP=12d branch emits DO NOT improvise diagnostic
-grep -q 'DO NOT improvise' "$SHIP_PR_SH" \
-  || fail "ship-pr.sh must emit DO NOT improvise diagnostic on STALL_STEP=12d exit 4 path"
+# Pin that ship-pr.sh STALL_STEP=12d branch emits the branch-local diagnostic.
+stall12d_directive_status=0
+awk '
+  /policy_denied\|admin_failed\|error\)/ { in_branch = 1 }
+  in_branch && /ORCHESTRATOR DIRECTIVE \(STALL_STEP=12d\)/ { found_banner = 1 }
+  in_branch && /DO NOT improvise recovery\./ { found_directive = 1 }
+  in_branch && /exit 4/ {
+    if (found_banner && found_directive) {
+      success = 1
+      exit 0
+    }
+    exit 1
+  }
+  END { if (!success) exit 1 }
+' "$SHIP_PR_SH" || stall12d_directive_status=$?
+[[ "$stall12d_directive_status" == "0" ]] \
+  || fail "ship-pr.sh must emit the ORCHESTRATOR DIRECTIVE (STALL_STEP=12d) DO NOT improvise diagnostic on the STALL_STEP=12d exit 4 path"
 
 echo "All assertions passed."
