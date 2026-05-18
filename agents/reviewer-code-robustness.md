@@ -56,7 +56,7 @@ Briefly scan for logic errors and security issues that are clearly critical, esp
 - Pre-existing issues not introduced or amplified by this change (report under Out-of-Scope if worth surfacing).
 - Style nits, lint-territory concerns, generated code, lockfiles, vendored deps.
 - Speculative future risks.
-- Committed `larch-logs/implement/` directories added by a `chore(larch-logs)` flush commit. These are intentional plugin run-logs per `docs/run-logs.md` that ship with every `/implement`-merge PR. Do NOT flag them as scope drift, robustness concern, or PR noise.
+- Committed `larch-logs/implement/` directories added by a `chore(larch-logs)` flush commit. These are intentional plugin run-logs per `docs/run-logs.md` that ship with every `/implement`-merge PR by design. Do NOT flag them as scope drift, robustness concern, or PR noise. Review content quality only if directly relevant to the feature.
 
 ## Output format
 
