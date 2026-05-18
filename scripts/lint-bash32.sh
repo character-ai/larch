@@ -78,7 +78,7 @@ scan_file() {
             if (line ~ /(^|[[:space:];|&({])declare[[:space:]]+(-[A-Za-z]+[[:space:]]+)*-[A-Za-z]*A[A-Za-z]*([[:space:];|&)]|$)/) report("declare -A associative arrays") # lint-bash32: ok linter pattern
             if (line ~ /(^|[[:space:];|&({])typeset[[:space:]]+(-[A-Za-z]+[[:space:]]+)*-[A-Za-z]*A[A-Za-z]*([[:space:];|&)]|$)/) report("typeset -A associative arrays") # lint-bash32: ok linter pattern
             if (line ~ "(^|[[:space:];|&({])(map" "file|read" "array)([[:space:];|&)]|$)") report("map" "file/read" "array")
-            if (line ~ /\$\{[^}]*\^|\$\{[^}]*,/) report("parameter case conversion") # lint-bash32: ok linter pattern
+            if (line ~ /\$\{[!A-Za-z_@*][A-Za-z0-9_]*\^\^?|\$\{[!A-Za-z_@*][A-Za-z0-9_]*,,?/) report("parameter case conversion") # lint-bash32: ok linter pattern
             if (line ~ /(^|[[:space:];|&({])declare[[:space:]]+(-[A-Za-z]+[[:space:]]+)*-[A-Za-z]*n[A-Za-z]*([[:space:];|&)]|$)/) report("declare -n nameref") # lint-bash32: ok linter pattern
             if (line ~ /(^|[[:space:];|&({])local[[:space:]]+(-[A-Za-z]+[[:space:]]+)*-[A-Za-z]*n[A-Za-z]*([[:space:];|&)]|$)/) report("local -n nameref") # lint-bash32: ok linter pattern
             if (line ~ /&>>/) report("&>> append-all redirection") # lint-bash32: ok linter pattern

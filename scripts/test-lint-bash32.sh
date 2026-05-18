@@ -119,6 +119,18 @@ EOF
 rc="$(run_lint "$stderr_file")"
 assert_case "comments and inline allow" 0 "$stderr_file" "$rc"
 
+reset_tree
+write_sh "$TMPROOT/scripts/char-class-negation.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+# ${var//[^A-Z]/x} is substitution with char-class negation, not case conversion.
+safe="${MYVAR//[^A-Za-z0-9_-]/_}"
+other="${bad_cap//[^a-zA-Z0-9]/x}"
+csv="${expected_csv:+,}more"
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case "char-class negation not flagged" 0 "$stderr_file" "$rc"
+
 if command -v git >/dev/null 2>&1; then
     reset_tree
     (
