@@ -17,6 +17,8 @@ Security invariants:
 
 Branch capture uses `scripts/git-current-branch.sh`, retries once on failure, and emits `BRANCH=<name>` using the same token as the helper. If both attempts fail, the wrapper emits `MANIFEST_FAILED=true ERROR=branch-capture-failed` and exits 0. `skills/implement/SKILL.md` parses this wrapper-emitted `BRANCH=` and binds `BRANCH_NAME`; it must not re-run the branch helper on the post-`/design` path.
 
+After a successful manifest read and before the hook-mode branch, the wrapper atomically writes `PLAN_FILE` and `FEATURE_FILE` to `$SESSION_ENV_PATH` so `run-step2-dispatch.sh` finds them regardless of whether the orchestrator runs the prose post-plan-router block. `PLAN_FILE` is extracted from the reader output; `FEATURE_FILE` is the fixed conventional path `$IMPLEMENT_TMPDIR/feature-description.txt`. This write is skipped when `SESSION_ENV_PATH` is empty, absent, or the extracted `PLAN_FILE` is empty.
+
 ## Halt-Protection Sentinel
 
 The Stop hook (`hook-stop-fail-close.sh`) blocks a session stop when `manifest.env` is present and `.boundary-gate-passed` is absent. This window covers the period between `/design` returning and the orchestrator successfully running its mandatory Bash wrapper call.

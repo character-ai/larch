@@ -10,6 +10,8 @@ Contract:
 - The manifest is written via `mktemp` plus `mv`; partial manifests must never be visible as `manifest.env`.
 - `SESSION_ID` is stripped of all C0 control characters and DEL (`\000-\037`, `\177`) before being written, mirroring the reader's `check_value` policy. If stripping leaves it empty, the writer aborts with exit 1. Defense-in-depth: avoids generating a manifest the reader would reject.
 
+After all manifest artifacts are copied and the manifest is written, the script also copies `$DESIGN_TMPDIR/feature-description.txt` to `$IMPLEMENT_TMPDIR/feature-description.txt` when the source exists. This ensures `run-step2-dispatch.sh` finds the feature description at its expected location even though `/design` writes it to its own tmpdir. The copy is best-effort (no failure on missing source) and happens after the atomic manifest swap so a copy failure does not invalidate the manifest.
+
 Edit in sync with `read-design-manifest.sh`, `test-design-manifest.sh`, `/design` Step 5, and `/implement` Step 1 whenever the KV schema or per-key policy changes.
 
 On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.

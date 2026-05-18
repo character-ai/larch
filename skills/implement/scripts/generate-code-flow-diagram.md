@@ -2,7 +2,10 @@
 
 Generates the Step 7a Mermaid code-flow diagram through a context-isolated
 Claude subprocess, then validates the candidate with
-`scripts/sanitize-mermaid-fragment.sh`.
+`scripts/sanitize-mermaid-fragment.sh`. Emits `token-ledger.sh` and
+`timing-ledger.sh` marks for "Step 7a — code flow diagram" on entry,
+inheriting `LARCH_TIMING_LEDGER` and `LARCH_TOKEN_SESSION_ID` from the
+caller environment.
 
 Usage:
 
