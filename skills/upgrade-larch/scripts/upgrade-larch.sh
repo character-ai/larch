@@ -99,6 +99,7 @@ list_cached_versions() {
 collect_active_session_versions() {
     local env_files=()
     local env_file plugin_root version session_root fallback_session_dir
+    local fallback_roots_spec fallback_roots=()
 
     if [ -d "$LARCH_SESSIONS_DIR" ]; then
         shopt -s nullglob
@@ -106,7 +107,11 @@ collect_active_session_versions() {
         shopt -u nullglob
     fi
 
-    for session_root in /tmp /private/tmp; do
+    fallback_roots_spec="${LARCH_UPGRADE_FALLBACK_SESSION_ROOTS:-/tmp:/private/tmp}"
+    IFS=: read -r -a fallback_roots <<< "$fallback_roots_spec"
+
+    for session_root in "${fallback_roots[@]}"; do
+        [ -n "$session_root" ] || continue
         [ -d "$session_root" ] || continue
 
         shopt -s nullglob
@@ -122,11 +127,7 @@ collect_active_session_versions() {
 
     for env_file in "${env_files[@]}"; do
         [ -f "$env_file" ] || continue
-        case "$env_file" in
-            /tmp/claude-*/session-env.sh|/private/tmp/claude-*/session-env.sh)
-                [ -O "$env_file" ] || continue
-                ;;
-        esac
+        [ -O "$env_file" ] || continue
         plugin_root=$(awk '
             BEGIN { p = "LARCH_CLAUDE_PLUGIN_ROOT=" }
             index($0, p) == 1 {
@@ -149,6 +150,8 @@ collect_active_session_versions() {
 LARCH_CACHE_DIR="$(dirname "$PLUGIN_ROOT")"
 # Parent directory that contains larch session temp dirs with session-env.sh.
 LARCH_SESSIONS_DIR="${LARCH_SESSIONS_DIR:-${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}/larch/sessions}"
+# Colon-separated override for fallback session roots used by the prune guard.
+LARCH_UPGRADE_FALLBACK_SESSION_ROOTS="${LARCH_UPGRADE_FALLBACK_SESSION_ROOTS:-/tmp:/private/tmp}"
 # Version string of the currently running larch installation (basename of PLUGIN_ROOT).
 INSTALLED_VERSION="$(basename "$PLUGIN_ROOT")"
 
@@ -287,14 +290,12 @@ if [ "$VERIFIED_TARGET" = true ]; then
             if [ "$version" = "$LATEST_STABLE" ]; then
                 continue
             fi
-            if [ "${#ACTIVE_SESSION_VERSIONS[@]}" -gt 0 ]; then
-                for active_version in "${ACTIVE_SESSION_VERSIONS[@]}"; do
-                    if [ "$version" = "$active_version" ]; then
-                        larch_err "Warning: preserving cached larch version '${version}' because an active session is using it."
-                        continue 2
-                    fi
-                done
-            fi
+            for active_version in "${ACTIVE_SESSION_VERSIONS[@]}"; do
+                if [ "$version" = "$active_version" ]; then
+                    larch_err "Warning: preserving cached larch version '${version}' because session-env pins or stale session metadata still reference it."
+                    continue 2
+                fi
+            done
             emit_breadcrumb "  Removing old version: $version"
             if ! rm -rf -- "${LARCH_CACHE_DIR:?}/${version:?}"; then
                 warn_prune_failure "$version"

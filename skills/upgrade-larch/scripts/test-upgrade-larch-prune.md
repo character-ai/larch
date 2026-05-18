@@ -2,11 +2,11 @@
 
 Standalone regression harness for `/upgrade-larch` cache pruning around active session pins.
 
-The harness runs `skills/upgrade-larch/scripts/upgrade-larch.sh` end-to-end in a temporary home with stubbed `claude` and `gh` binaries. It writes synthetic `session-env.sh` files containing `LARCH_CLAUDE_PLUGIN_ROOT` into explicit `LARCH_SESSIONS_DIR`, default XDG cache roots, and `/tmp` fallback session roots, then asserts that pruning preserves any cached version named by a parseable session plugin root while still removing unused old versions. It also verifies that the executing cached plugin version is preserved even when no session env exists.
+The harness runs `skills/upgrade-larch/scripts/upgrade-larch.sh` end-to-end in a temporary home with stubbed `claude` and `gh` binaries. It writes synthetic `session-env.sh` files containing `LARCH_CLAUDE_PLUGIN_ROOT` into explicit `LARCH_SESSIONS_DIR`, default XDG cache roots, and `/tmp` fallback session roots, sets `LARCH_UPGRADE_FALLBACK_SESSION_ROOTS` so non-fallback cases are isolated from unrelated host `/tmp` state, then asserts that pruning preserves any cached version named by a parseable current-user-owned session plugin root while still removing unused old versions. It also verifies that the executing cached plugin version is preserved even when no session env exists.
 
 Covered cases:
 
-- active session pinned to an otherwise pruneable old version: keep the active version, the verified latest stable, and its predecessor; prune an unused older version
+- active session pinned to an otherwise pruneable old version: keep the pinned version, the verified latest stable, and its predecessor; prune an unused older version
 - no sessions: prune old versions normally, but still preserve the executing cached plugin version alongside the latest stable and predecessor
 - unparseable session plugin root: ignore the malformed value and otherwise prune normally while preserving the executing cached plugin version
 - session plugin root with CRLF or trailing whitespace: trim the suffix noise, preserve the pinned numeric version, and prune only truly unused olds
