@@ -26,14 +26,19 @@ counts = collections.Counter()
 
 cache_re = re.compile(r"/larch/[^/]+/(.+)$")
 
-def normalize_path(raw):
+def normalize_path(raw, cwd=None):
     if not isinstance(raw, str) or not raw.endswith(".md"):
         return None
     path = raw
     if path.startswith("<"):
         return None
-    if path.startswith(str(repo) + "/"):
-        path = path[len(str(repo)) + 1:]
+    repo_prefixes = [str(repo) + "/"]
+    if isinstance(cwd, str) and cwd.startswith("/") and cwd != "/":
+        repo_prefixes.append(cwd.rstrip("/") + "/")
+    for prefix in repo_prefixes:
+        if path.startswith(prefix):
+            path = path[len(prefix):]
+            break
     else:
         match = cache_re.search(path)
         if match:
@@ -66,7 +71,7 @@ for transcript in sorted((repo / "larch-logs").glob("*/*/session-transcript.json
                 tool_input = tool.get("input")
                 if not isinstance(tool_input, dict):
                     continue
-                rel = normalize_path(tool_input.get("file_path"))
+                rel = normalize_path(tool_input.get("file_path"), obj.get("cwd"))
                 if rel:
                     counts[rel] += 1
 
