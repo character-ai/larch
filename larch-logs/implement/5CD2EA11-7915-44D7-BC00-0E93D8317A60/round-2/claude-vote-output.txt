@@ -1,0 +1,26 @@
+The core security regression in `redact-tmpdir-paths.sh` is confirmed: `[[:alnum:]_.-]+` stops at `+` which is punctuation, so `<OPERATOR_REPO_PATH>/repo/...` partially matches and becomes `<OPERATOR_REPO_PATH>+bar/repo/...` — the old `[^/"[:space:]]+` was broader and wouldn't have had this problem.
+
+FINDING_1: YES
+FINDING_2: NO -- large committed run logs are intentional per repo policy; trivial OOS
+FINDING_3: EXONERATE -- duplicate semver_lt was exonerated 3-0 in round 1; still not issue-worthy
+FINDING_4: NO -- pre-existing log-commit policy; not introduced by this PR
+FINDING_5: EXONERATE -- same rationale as FINDING_3
+FINDING_6: EXONERATE -- exonerated 3-0 in round 1; script self-containedness remains the correct tradeoff
+FINDING_7: EXONERATE -- comment is imprecise about root cause but still conveys the correct benefit; no behavior change
+FINDING_8: EXONERATE -- purpose-line nit; the regression coverage itself is present and correct
+FINDING_9: EXONERATE -- readers reasonably infer BUMP_REASONING_FILE refers to file contents at that path
+FINDING_10: NO -- "normally" is factually accurate given the documented exceptions; "always" would be incorrect
+FINDING_11: NO -- implementation is more accurate than the plan's oversimplified absolute claim; intent (steer to PR merge) is preserved
+FINDING_12: YES
+FINDING_13: EXONERATE -- classify-bump.sh validates its output; same rationale as round 1 FINDING_16/17 exoneration
+FINDING_14: EXONERATE -- same as FINDING_13
+FINDING_15: EXONERATE -- same as FINDING_13
+FINDING_16: EXONERATE -- distinct payload for stale-isolation test improves readability; no functional gap
+FINDING_17: NO -- same rationale as FINDING_10; implementation documents actual behavior correctly
+FINDING_18: EXONERATE -- legitimate concern but gating the entire larch-log write on reasoning-rewrite success adds disproportionate complexity for this edge-case recovery path
+FINDING_19: EXONERATE -- same as FINDING_16
+FINDING_20: EXONERATE -- commit message assertion already covers the key property; git object assertion is marginal for this test
+FINDING_21: EXONERATE -- same as FINDING_16
+FINDING_22: YES
+FINDING_23: YES
+FINDING_24: YES

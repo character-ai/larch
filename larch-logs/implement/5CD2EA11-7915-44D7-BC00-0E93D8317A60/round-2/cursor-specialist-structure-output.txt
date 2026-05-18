@@ -1,0 +1,47 @@
+Gathering the branch diff and commit history for a read-only review.
+
+Searching the diff for relevant files; the full diff is too large to read at once.
+
+Commits on the branch vs `main` (from your shell output):
+
+- `61d77259` — Address code review feedback (round 1)  
+- `696d6c52` — fix(larch-log): scope commit pathspec to current RUN_ID, add regression test, clarify manifest status docs  
+- `fb46b0bf` — Bump version to 29.3.4 (#2309)
+
+The cached diff is dominated by shipped `larch-logs/implement/...` artifacts and bump/review collateral; the functional work relevant to the stated plan centers on [`scripts/larch-log.sh`](scripts/larch-log.sh), [`scripts/test-larch-log.sh`](scripts/test-larch-log.sh), [`docs/run-logs.md`](docs/run-logs.md), [`scripts/larch-log.md`](scripts/larch-log.md), plus related ship-pr / apply-bump / redaction changes.
+
+### In-Scope Findings
+
+1. **Important** `risk-integration` [`scripts/ship-pr.sh:1252-1289`](scripts/ship-pr.sh) — `rewrite_reasoning_new_version` failures are WARN-only, but the subsequent `larch-log.sh write … --input-file "$reasoning_file"` still runs when the file exists. If the rewrite fails, `apply-bump.sh` and the PR title can reflect the corrected `new_version` while the `version-bump-reasoning` batch is still built from stale markdown (same failure mode the review round originally flagged). Tie the write to a successful rewrite, append a minimal machine-generated correction file, or stall the phase until the reasoning file’s “New version” matches `new_version`.
+
+2. **Important** `risk-integration` [`scripts/ship-pr.sh:1231-1291`](scripts/ship-pr.sh) — The new version-regression auto-correction path (semver probe, `case` bump arithmetic, reasoning rewrite, `larch-log` refresh) is not covered by a focused harness; [`scripts/test-apply-bump.sh`](scripts/test-apply-bump.sh) sub-test H only proves `apply-bump.sh` rejects `NEW_VERSION < ORIGIN_VERSION`. A regression in `_corrected` math or the rewrite/write wiring can ship without CI signal. Add a `test-ship-pr.sh` scenario around the existing `run_rebase_rebump` stubs or test extracted helpers in isolation.
+
+3. **Latent** `correctness` [`scripts/ship-pr.sh:1238-1248`](scripts/ship-pr.sh) — `_origin_ver` is regex-validated before `semver_lt`, but `new_version` is not; malformed `NEW_VERSION` from a damaged classifier envelope can make the bash integer comparisons unreliable or trip `set -e` in edge cases. Require the same `^[0-9]+\.[0-9]+\.[0-9]+$` pattern for both sides before calling `semver_lt`.
+
+4. **Latent** `correctness` [`scripts/ship-pr.sh:1243-1247`](scripts/ship-pr.sh) — The `case "$bump_type"` default arm sets `_corrected="$new_version"` after a regression was detected, so an unexpected `BUMP_TYPE` token (future classifier change, bad parse) silently skips the intended auto-correction while still emitting the WARN and depending on later `apply-bump.sh` failure. Treat unknown `bump_type` as fatal for this correction block or normalize (e.g., uppercase) before the `case`.
+
+5. **Latent** `security` [`scripts/redact-tmpdir-paths.sh:20-21`](scripts/redact-tmpdir-paths.sh) — Path segments are restricted to `[[:alnum:]_.-]+`, which no longer matches some legitimate directory names (e.g. `+` in a username or repo folder). Reviewer output containing such a path can leak unredacted operator roots at the publish boundary. Widen the class conservatively or add harness cases for edge-shaped paths.
+
+6. **Nit** `code-quality` [`scripts/ship-pr.sh:385-395`](scripts/ship-pr.sh) and [`.claude/skills/bump-version/scripts/apply-bump.sh:42-51`](.claude/skills/bump-version/scripts/apply-bump.sh) — `semver_lt` is duplicated verbatim; any future semver policy tweak must be edited twice and can diverge. Prefer a tiny shared sourced helper or at least a synchronized comment pointing to the canonical copy.
+
+7. **Nit** `code-quality` (source: `plan`) [`docs/run-logs.md:78-82`](docs/run-logs.md) — The implementation plan text asserted committed manifest `status` is *always* `"in-progress"`; the shipped paragraph correctly qualifies that with real counterexamples. If plan traceability matters, update the planning artifact to match this nuance rather than treating it as a miss.
+
+8. **Nit** `code-quality` (source: `plan`) [`scripts/test-larch-log.sh:195-218`](scripts/test-larch-log.sh) — The stale-run test adds a second full plan-goals heredoc (`_stale_payload`) though the immediately prior block already defines a valid [`$_cpayload`](scripts/test-larch-log.sh:164-176) in the same script scope; the plan called for reuse. Reuse or factor a one-liner helper so the required plan shape has a single source of truth.
+
+The core [`scripts/larch-log.sh:430-449`](scripts/larch-log.sh) change (explicit `rel="larch-logs/$SKILL/$RUN_ID"`, emit paths using `repo_path`) matches the plan’s structural intent and is straightforward; [`scripts/larch-log.md`](scripts/larch-log.md) contract text aligns with that behavior.
+
+### Out-of-Scope Observations
+
+None. Per your instructions, committed `larch-logs/implement/` bulk from the implement run is not treated as scope drift or noise here.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	scripts/ship-pr.sh:1252-1289	Rewrite failure is non-fatal but larch-log write still ingests uncorrected reasoning_file.	Awk or grep validation fails; version-bump-reasoning batch still shows pre-correction NEW_VERSION while plugin.json and PR title show corrected bump.	Gate larch-log write on successful rewrite, inject synthetic correction content, or stall until reconciled.
+2	in_scope	important	risk-integration	scripts/ship-pr.sh:1231-1291	run_rebase_rebump regression-correction path has no focused automated test.	Bug in correction math or write pipeline ships; only apply-bump H is covered.	Extend test-ship-pr.sh run_rebase_rebump stubs or unit-test extracted helpers.
+3	in_scope	latent	correctness	scripts/ship-pr.sh:1238-1248	new_version not semver-regex-guarded before semver_lt unlike _origin_ver.	Malformed NEW_VERSION can mis-compare or abort under set -e during CI rebase.	Validate both operands with the same strict X.Y.Z regex before compare.
+4	in_scope	latent	correctness	scripts/ship-pr.sh:1243-1247	case bump_type *) keeps regressed new_version when bump_type unexpected.	Unexpected BUMP_TYPE with semver_lt true skips auto-correction until later failure.	Fail closed or normalize bump_type before case.
+5	in_scope	latent	security	scripts/redact-tmpdir-paths.sh:20-21	Operator path regex uses only [[:alnum:]_.-] segments.	Legitimate paths with + or other chars in segments leak at publish boundary.	Widen pattern or document and test edge path shapes.
+6	in_scope	nit	code-quality	scripts/ship-pr.sh:385-395;.claude/skills/bump-version/scripts/apply-bump.sh:42-51	Duplicate semver_lt implementations.	Future semver rule change must be edited twice.	Shared sourced helper or explicit cross-reference.
+7	in_scope	nit	code-quality	docs/run-logs.md:78-82	Doc text diverges from plan absolute always in-progress wording.	Checklist vs nuanced truth mismatch.	Update plan or ticket to match shipped contract.
+8	in_scope	nit	code-quality	scripts/test-larch-log.sh:195-218	Duplicate plan-goals heredoc instead of reusing _cpayload per plan.	Schema edits need two copies updated.	Reuse _cpayload or a small payload helper.
+```

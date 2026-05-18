@@ -1,0 +1,45 @@
+Gathering the branch diff, commit list, and surrounding code for an edge-case-focused review.
+
+Searching the large diff for relevant files and reading key sections.
+
+## Review context
+
+**Commits since `merge-base(HEAD, main)`:** `696d6c52 fix(larch-log): scope commit pathspec to current RUN_ID, add regression test, clarify manifest status docs` (on top of `fb46b0bf Bump version to 29.3.4 (#2309)` from main).
+
+The precomputed diff is dominated by a shipped `larch-logs/implement/...` tree and version-bump / `ship-pr` work; per your scope rules, the large committed run-log payloads are **not** flagged as noise. Review below focuses on correctness, failure paths, and contracts.
+
+---
+
+### In-Scope Findings
+
+1. **`**Important**` `correctness` — [docs/run-logs.md](docs/run-logs.md):73**  
+   The new sentence claims `status` in **committed** manifests is **always** `"in-progress"`, and that `"done"` is never committed. That contradicts the repository’s own committed history: many shipped [larch-logs/implement/*/manifest.json](larch-logs/implement/) files already contain `"status": "done"`. It also sits awkwardly next to line 71, which already describes “final run status.” **Scenario:** an operator or automation trusts the doc, assumes every merged log directory stopped at `in-progress`, and mis-ranks run health or writes tooling keyed on that invariant. **Suggested fix:** Replace the absolute “always” with wording that matches reality (e.g. distinguish typical mid-PR flush snapshots vs manifests that were committed after a `manifest` update, and point to `scripts/larch-log.md` / `skills/implement/SKILL.md` for when `done` can appear), or narrow the claim to the specific lifecycle window you intend (with counterexamples explicitly called out).
+
+2. **`**Latent**` `risk-integration` — [scripts/ship-pr.sh](scripts/ship-pr.sh):397-421**  
+   `rewrite_reasoning_new_version` only rewrites when a line matches `^- \*\*New version\*\*: ` exactly. If the markdown template drifts (extra spaces, different bullet format, localized heading, or future template change), `replaced` stays 0, the file is copied verbatim, and the function still returns success. **Scenario:** regression correction updates `NEW_VERSION` and `apply-bump.sh`, but the reasoning file still shows the stale “New version” line; downstream `larch-log.sh write` for `version-bump-reasoning` republishes the wrong version string with no hard failure. **Suggested fix:** After `awk`, verify the file’s “New version” line contains `"$corrected_version"` (or compare checksum / grep), and return non-zero (surfaced as the existing WARN path) when the rewrite did not land.
+
+3. **`**Latent**` `correctness` — [scripts/ship-pr.sh](scripts/ship-pr.sh):1231-1235**  
+   `_origin_ver` is regex-validated before `semver_lt`, but `new_version` is not. `semver_lt` uses `[[ $a_maj -lt $b_maj ]]` on fields produced by `IFS='.' read`; empty or non-numeric `NEW_VERSION` fragments can yield surprising comparisons or, under `set -e`, brittle failures if arithmetic expansion ever errors. **Scenario:** corrupted `classify-bump.sh` stdout or a bad `kv_value` parse yields `new_version=` or `1.2`; the regression guard misfires or aborts mid-rebump. **Suggested fix:** Gate `semver_lt` with the same `^[0-9]+\.[0-9]+\.[0-9]+$` pattern used for `_origin_ver` (and treat non-matches as “skip correction” or hard-fail per policy).
+
+4. **`**Nit**` `architecture` — [scripts/larch-log.sh](scripts/larch-log.sh):425-428**  
+   `rel` is now a hand-built `larch-logs/$SKILL/$RUN_ID` string while `larch_log_repo_run_dir` in [scripts/lib-larch-log.sh](scripts/lib-larch-log.sh):45-47 embeds the same layout. **Scenario:** a future refactor renames the subtree or adds indirection in the helper only; `commit` keeps staging the old path and silently misses files or stages an empty tree. **Suggested fix:** Centralize the relative path in one helper (e.g. `larch_log_repo_rel_path`) or derive it once from `repo_path` with a symlink-safe normalizer shared with `lib-larch-log.sh`.
+
+5. **`**Nit**` `architecture` — [scripts/ship-pr.sh](scripts/ship-pr.sh):385-395 and [.claude/skills/bump-version/scripts/apply-bump.sh](.claude/skills/bump-version/scripts/apply-bump.sh):42-52**  
+   Two independent `semver_lt` copies ship in the same change set. **Scenario:** a later policy tweak (e.g. prerelease handling) updates one copy and not the other, producing divergent guard behavior between Step 8 and `run_rebase_rebump`. **Suggested fix:** Move comparison into a single sourced helper under `scripts/` (or reuse one implementation) and shellcheck both call sites.
+
+**Positive (no defect):** [scripts/larch-log.sh](scripts/larch-log.sh):425-428’s explicit `rel=…` plus the regression block in [scripts/test-larch-log.sh](scripts/test-larch-log.sh):188-229 correctly targets the stale-sibling-directory failure mode (same staging root, different `RUN_ID`), and `require_common` still validates `SKILL` / `RUN_ID` so `rel` is not path-injectable.
+
+---
+
+### Out-of-Scope Observations
+
+None.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	docs/run-logs.md:73	New paragraph claims committed manifest status is always in-progress and done is never committed.	Contradicts many existing committed larch-logs/implement/*/manifest.json files with status done; operators or tools may encode a false invariant.	Reword to match observed committed data and SKILL/larch-log contracts, or narrow the claim to the intended lifecycle window.
+1	in_scope	latent	risk-integration	scripts/ship-pr.sh:397-421	rewrite_reasoning_new_version treats awk success as rewrite success even when the New version line never matched.	Template drift leaves stale New version while bump and PR title use corrected semver; version-bump-reasoning batch can still lie.	Verify corrected line exists after awk (grep/cmp) and return failure to trigger existing WARN path when rewrite was a no-op.
+1	in_scope	latent	correctness	scripts/ship-pr.sh:1231-1235	semver_lt runs on new_version without the same strict semver regex used for origin.	Malformed or empty NEW_VERSION can confuse the regression guard or trip brittle numeric compares under error-sensitive settings.	Validate new_version with ^[0-9]+.[0-9]+.[0-9]+$ before semver_lt or skip correction when invalid.
+1	in_scope	nit	architecture	scripts/larch-log.sh:425-428	rel hardcodes larch-logs layout parallel to larch_log_repo_run_dir.	Future helper-only path layout change could desync commit pathspec from actual repo_path.	Share one helper for the relative path or derive from normalized repo_path + REPO_ROOT.
+1	in_scope	nit	architecture	scripts/ship-pr.sh:385-395 + .claude/skills/bump-version/scripts/apply-bump.sh:42-52	Duplicate semver_lt implementations in the same PR.	Divergent edits could yield inconsistent ordering semantics across apply-bump vs run_rebase_rebump.	Extract a single shared semver comparison helper and source it from both scripts.
+```

@@ -1,0 +1,29 @@
+Gathering the branch diff and commit history for a read-only review.
+
+Searching the diff for relevant hunks; the full diff is too large (likely includes run logs).
+
+Checking how `repo_path` relates to `REPO_ROOT` and whether `SKILL`/`RUN_ID` are validated — potential edge cases for the explicit `rel`.
+
+Here is the read-only review. I read the precomputed diff hunks for the functional files (including [`docs/run-logs.md`](docs/run-logs.md), [`scripts/larch-log.md`](scripts/larch-log.md), [`scripts/larch-log.sh`](scripts/larch-log.sh), [`scripts/test-larch-log.sh`](scripts/test-larch-log.sh), [`scripts/redact-tmpdir-paths.sh`](scripts/redact-tmpdir-paths.sh), [`scripts/ship-pr.sh`](scripts/ship-pr.sh), and related tests/docs) and used `git log "$(git merge-base HEAD main)"..HEAD --oneline` (three commits: version bump, main fix commit, round‑1 review follow‑up).
+
+### In-Scope Findings
+
+1. **`Important` · `security` · [`scripts/redact-tmpdir-paths.sh:20-21`](scripts/redact-tmpdir-paths.sh)** — Operator-repo path redaction was tightened from `[^/"[:space:]]+` segments to `[[:alnum:]_.-]+` per path component. **Problem:** Any username or repo directory segment that contains characters outside that class (for example `+` as in `my+repo`, or other punctuation the old pattern treated as part of a segment) no longer matches the full segment. **Scenario:** Input like `<OPERATOR_REPO_PATH>/repo/file.txt` can match only up to `foo`, treat `+` as the punctuation capture, and emit something like `…<OPERATOR_REPO_PATH>+bar/repo/file.txt`, which both **fails to redact the tail** and **corrupts the line** for downstream consumers. **Suggested fix:** Restore segment expressiveness for the operator-repo expressions (or add a second, stricter pass only where safe), and add regression cases for `+` and other common POSIX filename bytes that must not leak.
+
+2. **`Latent` · `correctness` · [`scripts/ship-pr.sh:1238-1241`](scripts/ship-pr.sh)** — The regression guard calls `semver_lt "$new_version" "$_origin_ver"` only after validating `_origin_ver` with a strict semver regex, but **`new_version` is not validated the same way** before numeric `[[ … -lt … ]]` comparisons inside `semver_lt`. **Scenario:** A malformed or surprising `NEW_VERSION` string from `classify-bump.sh` (empty field, non-numeric token, leading-zero octal edge cases) can yield **silent wrong ordering** or brittle failures under `set -e`. **Suggested fix:** Require the same `^[0-9]+\.[0-9]+\.[0-9]+$` guard on `new_version` before calling `semver_lt`, or fold validation into `semver_lt` and fail closed.
+
+3. **`Latent` · `architecture` · [`scripts/ship-pr.sh:385-395`](scripts/ship-pr.sh) vs [`.claude/skills/bump-version/scripts/apply-bump.sh:42-50`](.claude/skills/bump-version/scripts/apply-bump.sh)** — This branch introduces a second copy of `semver_lt` in `ship-pr.sh` while `apply-bump.sh` already defines an identical helper. **Scenario:** A future semver rule change updates one copy and not the other, so **rebase-rebump correction disagrees with apply-bump’s guard** in subtle edge cases. **Suggested fix:** Source a single shared implementation (for example a tiny `scripts/lib-semver.sh`) or call the bump-version helper in a controlled way so one definition owns the ordering contract.
+
+4. **`Nit` · `code-quality` · [`scripts/larch-log.sh:430-432`](scripts/larch-log.sh)** — The new comment attributes the hardening to **`LARCH_LOG_REPO_ROOT` and `REPO_ROOT` diverging through symlink resolution**, but in this script both roots are populated from the same `git -C "$PWD" rev-parse --show-toplevel` pattern at load, so they are ordinarily **identical strings**; the practical hazard is safer to describe as **path-prefix / pathspec construction** (and future refactors), not two independently resolved roots. **Suggested fix:** Rephrase the comment to match the actual invariant and the failure mode you are preventing.
+
+**Assessment of the core `larch-log.sh commit` change:** Building `rel` as `larch-logs/$SKILL/$RUN_ID` is consistent with `larch_log_validate_slug` (slashes and `..` are rejected), so the pathspec is well bounded. The new harness exercises the intended “stale sibling run directory in the same staging root” case; it does not prove absence from the git object database beyond the filesystem checks, which is still adequate for the regression described.
+
+---
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	security	scripts/redact-tmpdir-paths.sh:20-21	Operator path redaction now matches only [alnum._-] per path segment; some valid path characters no longer match the full segment.	Example <OPERATOR_REPO_PATH>/repo/... can partially match and rewrite to a corrupted line while leaving +bar/repo... unredacted.	Widen segment class safely or layer patterns; add regression tests for + and similar filename characters.
+1	in_scope	latent	correctness	scripts/ship-pr.sh:1238-1241	semver_lt runs on NEW_VERSION without the same strict semver validation used for origin version.	Malformed NEW_VERSION can mis-compare or interact badly with bash integer tests under set -e.	Validate both operands with the same semver regex or teach semver_lt to fail closed on bad input.
+1	in_scope	latent	architecture	scripts/ship-pr.sh:385-395,.claude/skills/bump-version/scripts/apply-bump.sh:42-50	Duplicate semver_lt implementations in ship-pr and apply-bump.	Future edit updates one helper only; rebase correction and apply-bump guard diverge.	Share one sourced semver helper or one canonical implementation.
+1	in_scope	nit	code-quality	scripts/larch-log.sh:430-432	Comment cites LARCH_LOG_REPO_ROOT vs REPO_ROOT symlink mismatch though both roots come from the same rev-parse at load.	Maintainers chase the wrong root-cause story when debugging pathspec issues.	Reword comment to describe prefix/pathspec hardening accurately.
+```

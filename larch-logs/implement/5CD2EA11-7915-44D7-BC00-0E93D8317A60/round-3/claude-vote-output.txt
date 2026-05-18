@@ -1,0 +1,27 @@
+Reading the ballot and the branch diff now to evaluate each finding.
+
+FINDING_1: YES
+FINDING_2: EXONERATE -- duplicate helper is intentional for self-contained scripts; prior rounds already exonerated the same concern three times
+FINDING_3: NO -- reviewer's own annotation says "Intentional per repo policy; N/A"
+FINDING_4: EXONERATE -- pre-existing limitation not introduced by this change
+FINDING_5: NO -- meta-observation about PR scope; not an actionable finding
+FINDING_6: EXONERATE -- pre-existing condition outside this diff's scope
+FINDING_7: EXONERATE -- symlink-resolution rationale is documented in larch-log.md:76-79; duplicating it in a one-liner shell comment adds noise without adding information
+FINDING_8: EXONERATE -- same duplicate-helper concern as FINDING_2; self-containedness is intentional
+FINDING_9: EXONERATE -- shipped doc is more accurate than the plan's absolutist wording; plan divergence is a correctness improvement, not a defect
+FINDING_10: EXONERATE -- comment is imprecise but not incorrect; the real regression risk is protected by the test, not the comment
+FINDING_11: EXONERATE -- same rationale as FINDING_10
+FINDING_12: EXONERATE -- same rationale as FINDING_10
+FINDING_13: EXONERATE -- an independent payload makes the test self-contained and readable; shared payload coupling across unrelated tests is worse maintainability
+FINDING_14: EXONERATE -- same rationale as FINDING_9; implementation is more accurate than the plan
+FINDING_15: EXONERATE -- plan-fidelity reviewer penalising an accuracy improvement over the plan's oversimplified invariant; the nuanced text is correct
+FINDING_16: EXONERATE -- correction fires at most once per rebase iteration; adding deduplication logic for a theoretically-doubled audit block adds complexity disproportionate to the risk
+FINDING_17: EXONERATE -- apply-bump.sh is the authoritative backstop; an unknown bump_type with regression causes apply-bump to stall fail-closed, which is safe
+FINDING_18: EXONERATE -- reasoning refresh is best-effort throughout the codebase; the applied version in git is still correct; double-failure of rewrite + fallback is an extreme edge case
+FINDING_19: EXONERATE -- same rationale as FINDING_13
+FINDING_20: EXONERATE -- same rationale as FINDING_13
+FINDING_21: EXONERATE -- same rationale as FINDING_9
+FINDING_22: EXONERATE -- fallback file lives in IMPLEMENT_TMPDIR which is cleaned at Step 18; PID-suffixed names prevent collision across calls
+FINDING_23: EXONERATE -- same rationale as FINDING_22
+FINDING_24: EXONERATE -- on the direct Step 8 path classify-bump.sh uses origin/main as baseline and cannot produce a regressed version under normal conditions; stall is the correct fail-closed response to an unexpected state
+FINDING_25: EXONERATE -- the test verifies the core invariant (fresh run present, stale run absent, commit message correct); LOG_WRITTEN assertion would be redundant

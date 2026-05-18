@@ -1,0 +1,25 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- real duplication, but a shared semver helper is more churn than this small out-of-scope risk warrants.
+FINDING_3: EXONERATE -- large run logs are real review noise but intentional repo policy and not issue-worthy.
+FINDING_4: NO -- current helpers target validated numeric X.Y.Z versions, so broader semver support is not a bug here.
+FINDING_5: EXONERATE -- mixed branch surface is legitimate review friction but not worth a tracking issue.
+FINDING_6: EXONERATE -- broken-PATH hardening is legitimate but too exotic to track as follow-up.
+FINDING_7: EXONERATE -- symlink rationale already lives in scripts/larch-log.md; duplicating it in the shell comment is optional.
+FINDING_8: EXONERATE -- duplicate helper is real but extracting/shared-sync machinery is not worth it for two small functions.
+FINDING_9: EXONERATE -- plan/doc mismatch is real, but the shipped doc appears more accurate than the plan wording.
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: EXONERATE -- duplicated test payload is minor and clearer than coupling this case to another fixture.
+FINDING_14: NO -- the doc’s nuanced status wording matches actual non-normal cases better than the plan’s absolute claim.
+FINDING_15: NO -- restoring the always-in-progress invariant would make the docs less accurate for tests/manual/older committed logs.
+FINDING_16: EXONERATE -- duplicate correction stanzas would be untidy but low impact and not worth idempotency logic.
+FINDING_17: EXONERATE -- unknown bump types already fail closed through apply-bump, so extra correction-path handling is not warranted.
+FINDING_18: EXONERATE -- missing corrected reasoning after rare rewrite/fallback failure is an audit gap, but failing the publish path is heavier than justified.
+FINDING_19: EXONERATE -- $_spayload reuse is minor plan-fidelity/DRY cleanup, not a correctness issue.
+FINDING_20: EXONERATE -- payload variable naming differs from the plan but the regression test remains coherent.
+FINDING_21: EXONERATE -- plan reconciliation is legitimate process cleanup, but the committed doc should keep the more accurate wording.
+FINDING_22: EXONERATE -- fallback files live in the run tmpdir and cleanup churn is not worth a separate fix.
+FINDING_23: EXONERATE -- temporary fallback litter is bounded to IMPLEMENT_TMPDIR and low risk.
+FINDING_24: YES
+FINDING_25: EXONERATE -- LOG_WRITTEN would improve diagnostics, but the test already verifies the core stale-run behavior.

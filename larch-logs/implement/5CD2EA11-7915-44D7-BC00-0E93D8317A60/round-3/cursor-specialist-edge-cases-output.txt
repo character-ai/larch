@@ -1,0 +1,42 @@
+Gathering the branch diff, commit list, and surrounding code for an edge-case-focused review.
+
+Searching the large diff for relevant hunks and reading the modified sections in the repo for full context.
+
+Verifying `larch_log_repo_run_dir` matches the explicit `rel` and checking for edge cases in `git commit` pathspec usage.
+
+Checking whether `run_bump_phase` should treat the regression error like the same-version case:
+
+Commits on this branch since merge-base with `main` (newest first):
+
+- `7e54a536` — Address code review feedback (round 2)  
+- `61d77259` — Address code review feedback (round 1)  
+- `696d6c52` — fix(larch-log): scope commit pathspec to current RUN_ID, add regression test, clarify manifest status docs  
+- `fb46b0bf` — Bump version to 29.3.4 (#2309)  
+
+The diff also touches bump/version guards (`apply-bump.sh`, `ship-pr.sh`, docs/tests), redaction (`redact-tmpdir-paths.sh`), `SECURITY.md`, plugin version, shipped `larch-logs/…` run artifacts, and related implement skill docs.
+
+### In-Scope Findings
+
+1. **Important** (`risk-integration`) — [`scripts/ship-pr.sh:773-781`](scripts/ship-pr.sh)  
+   `run_bump_phase` only maps `apply-bump.sh` failures whose `ERROR` matches `origin/main has already bumped to*` to `exit 5` with `RESUME_PHASE=bump` / `CALLER_KIND=step8b_same_version` (the Rebase + Re-bump handoff). The new `apply-bump.sh` failure `ERROR=version regression: …` falls through to `*) exit_stall 8`, so the **first** post-checks bump attempt stalls instead of taking the same automated recovery path that `run_rebase_rebump` implements (semver correction + rewrite reasoning + retry `apply-bump`). **Concrete scenario:** `classify-bump.sh` returns a `NEW_VERSION` still below `origin/main` on the initial bump (stale merge-base, bad conflict resolution on `plugin.json`) — `apply-bump` fails closed correctly, but the operator hits a hard stall at Step 8 rather than Exit 5–style rebase/re-bump. **Suggested fix:** treat `version regression:*` like the same-version branch (route to the same or a dedicated `CALLER_KIND` and sub-procedure), or run the same correction block **before** `apply-bump` in `run_bump_phase` so the first path matches `run_rebase_rebump`.
+
+2. **Nit** (`code-quality`) — [`scripts/larch-log.sh:422-426`](scripts/larch-log.sh)  
+   The new comment cites “untracked-file omissions” as a reason to harden `rel`. The regression being fixed is **over-broad / wrong pathspec** (and prefix math vs symlink roots), not “missing” untracked files. **Suggested fix:** rephrase the comment to match the actual failure mode (sibling run dirs or bad `rel` derivation), to avoid misleading future maintainers.
+
+3. **Latent** (`correctness`) — [`scripts/ship-pr.sh`](scripts/ship-pr.sh) (helpers `rewrite_reasoning_new_version` / `write_corrected_reasoning_fallback`, ~lines 2809–2865 in the diff)  
+   `rewrite_reasoning_new_version` always appends a new `### Rebase + Re-bump Correction` section in `END` whenever it replaces `New version`. If correction logic ran **twice** on the same file (e.g. repeated regression handling without changing the heading shape), each pass would match `^- **New version**:` again and append **another** correction block. **Concrete scenario:** rare double-invocation or manual re-run against an already-corrected reasoning file. **Suggested fix:** skip append when that section already exists, or replace the tail section idempotently.
+
+### Out-of-Scope Observations
+
+1. **Out-of-scope** (`nit`) — `grep … | grep -q .` in [`scripts/larch-log.sh`](scripts/larch-log.sh) `commit` path under `set -euo pipefail`  
+   If `grep` were absent in `PATH`, the pipeline could fail for reasons unrelated to git state. This pattern predates the `rel` change and was not introduced by the pathspec fix.
+
+Per your instructions, committed `larch-logs/implement/…` bulk from the implement run is **not** flagged as scope drift.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	scripts/ship-pr.sh:773-781	run_bump_phase maps only same-version apply-bump ERROR to exit 5; new version regression ERROR hits exit_stall 8	First bump after CI can stall at Step 8 when NEW_VERSION < origin/main even though run_rebase_rebump auto-corrects the same condition later; asymmetric recovery vs same-version race	Extend case arm for version regression ERROR to same Exit 5 / sub-procedure routing or apply semver correction before apply-bump in run_bump_phase
+1	in_scope	nit	code-quality	scripts/larch-log.sh:422-426	Comment blames untracked-file omissions; actual bug was wrong/over-broad rel pathspec	Maintainers may mis-diagnose future regressions	Reword comment to describe wrong pathspec / sibling run inclusion
+1	in_scope	latent	correctness	scripts/ship-pr.sh:2809-2865	rewrite_reasoning_new_version always appends Rebase + Re-bump Correction on each successful replace	Repeated correction could duplicate audit sections	Make rewrite idempotent or detect existing correction block
+1	out_of_scope	nit	risk-integration	scripts/larch-log.sh:428-429	Pipeline uses grep under set -e; missing grep fails the commit path	Exotic broken PATH environments fail before git logic	Pre-exists pathspec change; harden only if PATH-unavailable environments are a supported target
+```

@@ -1,0 +1,41 @@
+Gathering the branch diff and commit history for a read-only correctness review.
+
+Searching the diff for relevant hunks; the full diff is too large to read at once.
+
+Commits on this branch vs `main` (from `git log $(git merge-base HEAD main)..HEAD --oneline`):
+
+- `7e54a536` Address code review feedback (round 2)
+- `61d77259` Address code review feedback (round 1)
+- `696d6c52` fix(larch-log): scope commit pathspec to current RUN_ID, add regression test, clarify manifest status docs
+- `fb46b0bf` Bump version to 29.3.4 (#2309)
+
+The cached diff is dominated by committed `larch-logs/implement/...` artifacts and review chatter; the functional surface for your feature is in `scripts/larch-log.sh`, `scripts/test-larch-log.sh`, [`docs/run-logs.md`](docs/run-logs.md), [`scripts/larch-log.md`](scripts/larch-log.md), plus follow-on work (redaction, `ship-pr.sh` rebase rebump correction, `apply-bump.sh` regression guard, tests, version bump, `SECURITY.md`). Below is a correctness-focused review of what the diff actually changes, checked against the feature description and implementation plan.
+
+### In-Scope Findings
+
+1. **Nit** `correctness` (source: `plan`) — [`docs/run-logs.md`](docs/run-logs.md) (manifest section in diff): Implementation plan §3 called for a hard rule that committed manifest `status` is **always** `"in-progress"`, with `"done"` only post-merge in `$IMPLEMENT_TMPDIR`. The shipped text instead says current `/implement` runs are **normally** `"in-progress"` and explicitly allows older runs, tests, or manual flows to commit other statuses. **Concrete scenario:** A reviewer using the plan as a checklist reports a “doc regression” while the repo text is internally consistent with [`scripts/test-larch-log.sh`](scripts/test-larch-log.sh) (which updates `status` to `"done"` in a test). **Suggested fix:** Pick one contract (absolute vs qualified) and align the plan, consumer docs, and tests so they agree.
+
+2. **Nit** `correctness` (source: `plan`) — [`scripts/test-larch-log.sh`](scripts/test-larch-log.sh) (new “stale run” block in diff): The plan asked to reuse the existing `$_spayload` for the fresh run `write`; the test introduces a separate `_stale_payload` heredoc with equivalent structure. **Concrete scenario:** None for runtime; only plan traceability / future drift if `$_spayload` changes and this test stays on a forked copy. **Suggested fix:** Reuse `$_spayload` as planned, or add a one-line comment that the payload must stay structurally identical to `$_spayload`.
+
+3. **Nit** `code-quality` (source: `requirements`) — [`scripts/larch-log.sh`](scripts/larch-log.sh) (`commit` case in diff): The new comment mentions “untracked-file omissions,” which does not match the actual failure mode from the feature description (over-broad pathspec / stale sibling run dirs under `larch-logs/<skill>/`). **Concrete scenario:** None for execution; future readers may misdiagnose regressions. **Suggested fix:** Reword the comment to mention run-id scoping and avoiding sibling `RUN_ID` directories.
+
+4. **Latent** `risk-integration` (source: `requirements`) — [`scripts/ship-pr.sh`](scripts/ship-pr.sh) (`write_corrected_reasoning_fallback` in diff): Fallback writes `bump-version-reasoning-corrected-$$.md` next to the original reasoning file and may leave that file on disk after `larch-log.sh write` consumes it (no unlink shown in the diff hunk). **Concrete scenario:** Repeated rebase+re-bump correction paths that always hit the fallback could accumulate extra `bump-version-reasoning-corrected-*.md` files under the reasoning directory, cluttering the tmpdir and any later archival paths. **Suggested fix:** After a successful `larch-log.sh write`, `rm -f` the fallback file (or write into a deterministic tmp under `$IMPLEMENT_TMPDIR` with explicit cleanup).
+
+### Out-of-Scope Observations
+
+1. **Nit** `code-quality` — `.claude/skills/bump-version/scripts/apply-bump.sh` and [`scripts/ship-pr.sh`](scripts/ship-pr.sh) both embed an identical `semver_lt` helper (visible in the diff). This is pre-existing duplication pattern amplified by the branch, not introduced for the larch-log pathspec fix alone; refactoring is optional and orthogonal to the stale-run-dir bug.
+
+### Plan / requirements verification (summary)
+
+- **Feature description** (scope `larch-log.sh commit` to current `RUN_ID`, avoid orphan stale dirs): The [`scripts/larch-log.sh`](scripts/larch-log.sh) change to `rel="larch-logs/$SKILL/$RUN_ID"` plus `larch_log_emit_success` using `"$repo_path"` matches the intent; [`scripts/test-larch-log.sh`](scripts/test-larch-log.sh) adds the isolation scenario from the plan (fresh run only in repo, stale absent from repo, subject line references).
+- **`scripts/larch-log.md`**: The diff updates the `commit` pathspec narrative as planned.
+- **`docs/run-logs.md`**: **Completeness w.r.t. plan** — wording diverges from plan §3 (see finding 1); behaviorally the nuance is consistent with tests that manipulate `status=done`.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	nit	correctness	docs/run-logs.md (manifest.json section per branch diff)	Shipped manifest status prose contradicts implementation_plan §3 (qualified vs always in-progress).	A reviewer treating the plan as normative flags a doc defect even though the new text matches tests that commit status=done.	Align plan checklist and shipped doc to a single agreed contract.
+1	in_scope	nit	correctness	scripts/test-larch-log.sh (stale-run isolation test per branch diff)	New stale-run test uses a bespoke payload instead of reusing $_spayload as the plan specified.	Future edits to $_spayload could drift from the duplicated heredoc without failing until someone audits test fidelity.	Reuse $_spayload or document structural coupling to $_spayload.
+1	in_scope	nit	code-quality	scripts/larch-log.sh (commit case comment per branch diff)	Comment cites untracked-file omissions rather than stale sibling RUN_ID directories / broad pathspec risk.	Maintainers may look for the wrong regression when touching commit pathspec logic.	Reword comment to describe run-id scoped pathspec and stale-dir avoidance.
+1	in_scope	latent	risk-integration	scripts/ship-pr.sh (write_corrected_reasoning_fallback per branch diff)	Fallback reasoning snapshot path may persist after larch-log ingest.	Repeated fallback usage could accumulate bump-version-reasoning-corrected-*.md files beside the real reasoning file.	Delete fallback artifact after successful larch-log write or confine to IMPLEMENT_TMPDIR with cleanup.
+1	out_of_scope	nit	code-quality	.claude/skills/bump-version/scripts/apply-bump.sh and scripts/ship-pr.sh (semver_lt duplication in branch diff)	Duplicate semver_lt implementations across scripts.	Maintenance burden if comparison rules ever change; not part of the larch-log stale-dir feature.	Optional shared helper in a sourced lib (follow-up refactor).
+```

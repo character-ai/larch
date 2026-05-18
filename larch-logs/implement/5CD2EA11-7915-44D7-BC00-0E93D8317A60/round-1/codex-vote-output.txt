@@ -1,0 +1,18 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- Legitimate process observation, but not worth a tracking issue.
+FINDING_3: EXONERATE -- Policy concern is plausible, but this narrow follow-up is not issue-worthy by itself.
+FINDING_4: EXONERATE -- Historical manifest noise is real context, not a future issue to track.
+FINDING_5: EXONERATE -- The hardcoded path matches the documented layout; sharing a helper is more abstraction than this warrants.
+FINDING_6: EXONERATE -- Duplicate tiny semver helpers are a maintainability smell, but extracting a shared shell helper is not justified here.
+FINDING_7: YES
+FINDING_8: EXONERATE -- The duplication is real, but the proposed shared-helper refactor adds more coupling than the risk warrants.
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: NO -- NEW_VERSION is produced by classify-bump from an already validated semver, so malformed input is not a reachable current bug.
+FINDING_16: YES
+FINDING_17: EXONERATE -- A symlink variant would add coverage, but the existing regression already covers the fixed stale-run pathspec behavior.
+FINDING_18: NO -- This is not a security issue; the internal classifier guarantees a semver NEW_VERSION before this path.

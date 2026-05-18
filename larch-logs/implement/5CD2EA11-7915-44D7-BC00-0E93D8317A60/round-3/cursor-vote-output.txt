@@ -1,0 +1,61 @@
+Reading the ballot file to vote on each finding.
+
+Votes only (ballot read; no file or repo changes). Format: `FINDING_N: YES | NO -- reason | EXONERATE -- reason`.
+
+FINDING_1: YES  
+FINDING_2: EXONERATE -- duplicate helper is a small maintenance nit, not worth a tracking issue.  
+FINDING_3: NO -- correctly notes large run logs are intentional policy, not a defect.  
+FINDING_4: EXONERATE -- pre-existing semver helper limits; filing an issue adds noise unless semver hardening is a product goal.  
+FINDING_5: EXONERATE -- valid PR hygiene note; splitting workstreams is optional, not issue material.  
+FINDING_6: EXONERATE -- broken-PATH grep failure is an exotic pre-existing edge case.  
+FINDING_7: EXONERATE -- symlink rationale lives in larch-log.md; duplicating it in-shell is low value.  
+FINDING_8: EXONERATE -- same duplication nit as FINDING_2; optional refactor or a one-line sync comment suffices without a mandate.  
+FINDING_9: EXONERATE -- plan vs doc wording is process/checklist noise; reconcile in narrative or checklist, not a blocking code finding.  
+FINDING_10: EXONERATE -- clearer comments help, but wrong-comment risk is minor versus churn across commit-pathspec edits.  
+FINDING_11: EXONERATE -- same as FINDING_10: accurate comment is nice, not essential.  
+FINDING_12: EXONERATE -- same comment-accuracy class as FINDING_10–11.  
+FINDING_13: EXONERATE -- test heredoc drift is unlikely for stable fixtures; extracting shared generator is optional DRY.  
+FINDING_14: EXONERATE -- doc vs plan normativity is governance copy, not a functional defect.  
+FINDING_15: YES  
+FINDING_16: EXONERATE -- repeated correction appends are a rare path; idempotent rewrite adds non-trivial awk/state risk for marginal gain.  
+FINDING_17: EXONERATE -- unknown bump_type on correction path is exotic; normalize only if that input surface is real.  
+FINDING_18: EXONERATE -- fail-closed on missing reasoning risks blocking ship-pr for a secondary artifact; stub/fail-closed is heavier than the gap warrants here.  
+FINDING_19: EXONERATE -- same DRY/test-fidelity nit as FINDING_13; low priority.  
+FINDING_20: EXONERATE -- plan variable naming vs $_stale_payload is cosmetic plan fidelity.  
+FINDING_21: EXONERATE -- duplicate of manifest plan-vs-doc reconciliation; not a separate actionable risk.  
+FINDING_22: YES  
+FINDING_23: YES  
+FINDING_24: YES  
+FINDING_25: YES  
+
+---
+
+Copy-paste block in strict ballot format (only these lines count):
+
+FINDING_1: YES  
+FINDING_2: EXONERATE -- duplicate semver_lt is a small nit, not worth a GitHub issue.  
+FINDING_3: NO -- concern explicitly marks large run logs as intentional policy, not drift.  
+FINDING_4: EXONERATE -- pre-existing semver limitation; issue only if semver hardening is in scope.  
+FINDING_5: EXONERATE -- branch scope vs plan is a process note, not issue-worthy alone.  
+FINDING_6: EXONERATE -- exotic broken-PATH case and pre-existing grep/set -e behavior.  
+FINDING_7: EXONERATE -- rationale documented in larch-log.md; shell comment parity is optional.  
+FINDING_8: EXONERATE -- duplication nit; optional shared helper or sync comment, not a panel mandate.  
+FINDING_9: EXONERATE -- plan checklist vs nuanced doc is reconciliation noise, not a security/correctness bug.  
+FINDING_10: EXONERATE -- comment wording nit with low regression-diagnosis payoff.  
+FINDING_11: EXONERATE -- same comment-clarity class as FINDING_10.  
+FINDING_12: EXONERATE -- same comment-clarity class as FINDING_10–11.  
+FINDING_13: EXONERATE -- DRY test payload is optional; drift risk is low for stable fixtures.  
+FINDING_14: EXONERATE -- normative doc vs plan wording without behavioral contradiction in shipped tests.  
+FINDING_15: YES  
+FINDING_16: EXONERATE -- latent duplicate audit text is rare; idempotent rewrite adds complexity for thin benefit.  
+FINDING_17: EXONERATE -- unknown bump_type on correction path is unlikely; fix is optional hardening.  
+FINDING_18: EXONERATE -- fail-closed on reasoning risks blocking primary bump flow for secondary logging.  
+FINDING_19: EXONERATE -- $_spayload reuse is a minor test-fidelity nit.  
+FINDING_20: EXONERATE -- variable naming vs plan is cosmetic plan fidelity.  
+FINDING_21: EXONERATE -- duplicates manifest plan-vs-doc thread; not separately issue-worthy.  
+FINDING_22: YES  
+FINDING_23: YES  
+FINDING_24: YES  
+FINDING_25: YES  
+
+Note: FINDING_15 has no `-- reason` on the YES line per your allowed forms (`YES` alone is valid). If your parser requires a reason for every vote, use: `FINDING_15: YES -- align formal plan or shipped doc so status semantics have a single normative source.`
