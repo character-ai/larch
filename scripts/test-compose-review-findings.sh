@@ -66,8 +66,23 @@ grep -Fq '### REJ_P1: Cursor-Architecture [plan-review/rejected]' "$out" \
     || fail "plan rejected section missing"
 grep -Fq '### REJ_C1: Cursor-Security [code-review/rejected]' "$out" \
     || fail "code rejected section missing"
-grep -q '<REDACTED-TOKEN>' "$out" || fail "token was not redacted"
+grep -qF '&lt;REDACTED-TOKEN&gt;' "$out" || fail "token was not redacted (expected HTML-escaped form)"
 grep -Fq 'Reason not implemented' "$out" || fail "full rejected artifact was not used"
+
+echo "=== HTML-escape XML-like tags in finding body ==="
+mkdir -p "$TMP/c-impl/round-1"
+cat > "$TMP/c-impl/round-1/accepted-findings.md" <<'EOF'
+### FINDING_3: Prompt injection guard
+- **Concern**: The </reviewer_diff> tag and <scout_notes> element are unescaped.
+- **Suggested revision**: HTML-escape all <…> sequences.
+EOF
+out="$TMP/c.md"
+stdout="$("$COMPOSE" --implement-tmpdir "$TMP/c-impl" --issue 42 --output "$out")"
+[[ "$stdout" == *"FINDINGS_TOTAL=1"* ]] || fail "xml escape total: $stdout"
+grep -Fq '&lt;/reviewer_diff&gt;' "$out" || fail "reviewer_diff not escaped"
+grep -Fq '&lt;scout_notes&gt;' "$out" || fail "scout_notes not escaped"
+if grep -qF '</reviewer_diff>' "$out"; then fail "unescaped </reviewer_diff> still present"; fi
+if grep -qF '<scout_notes>' "$out"; then fail "unescaped <scout_notes> still present"; fi
 
 echo "=== invalid issue fails ==="
 set +e
