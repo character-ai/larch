@@ -463,7 +463,7 @@ run_checks_phase() {
     local out rc fail_file redacted_log fix_out fix_status
     local lint_attempt
     fail_file=$(failure_capture_path checks)
-    capture_command_output out "$fail_file" "$SCRIPT_DIR/run-relevant-checks-captured.sh" --site ship-pr-ci-initial --tmpdir "$IMPLEMENT_TMPDIR"
+    capture_command_output out "$fail_file" "$SCRIPT_DIR/run-relevant-checks-captured.sh" --site step6 --tmpdir "$IMPLEMENT_TMPDIR"
     rc=$?
     printf '%s\n' "$out" >> "$fail_file"
     if [ "$rc" -eq 0 ] && printf '%s\n' "$out" | grep -q '^RELEVANT_CHECKS_OK=true '; then
@@ -489,7 +489,7 @@ run_checks_phase() {
                 # no-changes means no changes were made — either way re-verify once.
                 printf 'ship-pr checks: lint fix %s (attempt %d/3), re-running checks...\n' "$fix_status" "$lint_attempt"
                 fail_file=$(failure_capture_path checks)
-                capture_command_output out "$fail_file" "$SCRIPT_DIR/run-relevant-checks-captured.sh" --site ship-pr-ci-initial --tmpdir "$IMPLEMENT_TMPDIR"
+                capture_command_output out "$fail_file" "$SCRIPT_DIR/run-relevant-checks-captured.sh" --site step6 --tmpdir "$IMPLEMENT_TMPDIR"
                 rc=$?
                 printf '%s\n' "$out" >> "$fail_file"
                 if [ "$rc" -eq 0 ] && printf '%s\n' "$out" | grep -q '^RELEVANT_CHECKS_OK=true '; then

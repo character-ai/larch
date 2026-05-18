@@ -953,7 +953,7 @@ run_implement_round() {
     if [[ "$exit_code" -eq 0 ]]; then
         if [[ "$composed_findings_ok" == true ]]; then
             flush_review_batches "$IMPLEMENT_TMPDIR" "$RUN_ID" "$PANEL" "$round_num_dec" "$total_accepted" "$total_rejected" "$total_exonerated" "$total_neutral" "$composed_findings_file"
-        elif [[ -z "$composed_findings_file" ]]; then
+        else
             flush_review_batches "$IMPLEMENT_TMPDIR" "$RUN_ID" "$PANEL" "$round_num_dec" "$total_accepted" "$total_rejected" "$total_exonerated" "$total_neutral"
         fi
     fi
