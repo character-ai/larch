@@ -10,7 +10,7 @@ It copies the state-machine script into disposable git repositories with stubbed
   `FAILURE_DETAIL_LOG` points at the captured diagnostics
 - exit `5` on postbump conflict with `CALLER_KIND=step8b_rebase`
 - exit `5` on same-version bump race with `CALLER_KIND=step8b_same_version`
-- exit `0` checkpoint for `ci-initial` `ACTION=merge`
+- same-invocation `ci-initial` `ACTION=merge` continuation into `ci-merge`, with `PHASE=done` after postmerge
 - exit `3` user-input bail routing
 - `version_already_published` from `merge-pr.sh` short-circuits to
   postmerge when `gh pr view` reports `MERGED`, and still falls through to

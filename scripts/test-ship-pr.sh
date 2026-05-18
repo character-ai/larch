@@ -354,8 +354,14 @@ root=$(make_repo ci_initial)
 tmp=$(make_tmpdir)
 write_state "$tmp/ship-pr-state.sh" ci-initial
 STUB_CI_ACTION=merge run_subject "$root" "$tmp" "$tmp/rc"
-assert_rc "$tmp/rc" 0 "ci-initial merge checkpoint exits 0"
+assert_rc "$tmp/rc" 0 "ci-initial merge path exits 0 after same-invocation continuation"
 assert_state_line "$tmp/ship-pr-state.sh" "CI_PASSED=true" "ci-initial merge sets CI_PASSED"
+assert_state_line "$tmp/ship-pr-state.sh" "PHASE=done" "ci-initial merge continues through ci-merge to PHASE=done"
+if [ -f "$tmp/post-merge-sentinel" ]; then
+    ok "ci-initial merge writes post-merge-sentinel during same-invocation continuation"
+else
+    fail "ci-initial merge should write post-merge-sentinel during same-invocation continuation"
+fi
 
 root=$(make_repo ci_bail)
 tmp=$(make_tmpdir)
