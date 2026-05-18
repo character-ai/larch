@@ -102,14 +102,10 @@ append_context_file() {
         *) allow_root_args+=(--allow-root "$dir"); seen_allow_roots="${seen_allow_roots}:$dir" ;;
     esac
 }
-# Reviewer role needs the full diff context inline; voter role reads the ballot
-# and verifies cited references on demand — no inline diff/plan needed.
-if [[ "$ROLE" == "reviewer" ]]; then
-    append_context_file "$DIFF_FILE"
-    append_context_file "$SCOPE_FILES"
-    append_context_file "$PLAN_FILE"
-    append_context_file "$FEATURE_FILE"
-fi
+append_context_file "$DIFF_FILE"
+append_context_file "$SCOPE_FILES"
+append_context_file "$PLAN_FILE"
+append_context_file "$FEATURE_FILE"
 
 SUBPROCESS_STDERR=$(mktemp "$(dirname "$OUTPUT")/claude-subprocess-stderr.XXXXXX")
 set +e

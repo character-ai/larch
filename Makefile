@@ -8,10 +8,11 @@
 .PHONY: test-larch-log-write-round
 .PHONY: test-upgrade-larch
 .PHONY: test-scout-dynamic-archetypes
+.PHONY: lint-bash32 test-lint-bash32
 # CI splits `lint` into `lint-only` (pre-commit) and `test-harnesses`
 # (regression harnesses). `lint` remains the local-dev convenience target
 # that runs both, defined in terms of the two split targets to prevent drift.
-lint: test-harnesses lint-only
+lint: test-harnesses lint-bash32 lint-only
 
 lint-only:
 	pre-commit run --all-files
@@ -51,7 +52,7 @@ test-harnesses-8: test-oos-file-conflict-deps test-post-design-boundary test-upg
 
 test-harnesses-9: test-validate-citations-budget test-umbrella-helpers test-oos-issue-cap test-upgrade-larch test-run-checks test-lint-skill-invocations test-create-pr test-add-blocked-by test-cache-root-validation test-compose-plan-goals-test test-generate-code-flow-diagram test-intra-batch-deps test-parse-args test-research-angle-prompts test-sentinel-write test-write-run-params
 
-test-harnesses-10: test-gather-context test-collect-agent-results test-issue-lifecycle test-umbrella-parse-args test-review-core test-lint-literal-counts test-ci-wait test-check-bump-version test-compose-pr-summary test-generate-topology-docs test-keepalive-sentinel test-plan-review-prompt test-research-banner test-session-entry-gate
+test-harnesses-10: test-gather-context test-collect-agent-results test-issue-lifecycle test-umbrella-parse-args test-review-core test-lint-literal-counts test-lint-bash32 test-ci-wait test-check-bump-version test-compose-pr-summary test-generate-topology-docs test-keepalive-sentinel test-plan-review-prompt test-research-banner test-session-entry-gate
 
 test-harnesses-11: test-collect-agent-retry test-codex-implementer test-collect-findings test-tracking-issue-write test-render-umbrella-body test-lint-fix-loop test-ci-rerun-failed test-check-clean-tree test-compose-review-findings test-get-issue-context test-larch-logs-manifest test-post-scaffold-hints test-research-structure test-session-env-roundtrip
 
@@ -291,6 +292,9 @@ test-lint-literal-counts:
 
 test-lint-no-raw-stderr-after-quiet-init:
 	bash scripts/harness-timer.sh $@ bash scripts/test-lint-no-raw-stderr-after-quiet-init.sh
+
+test-lint-bash32:
+	bash scripts/harness-timer.sh $@ bash scripts/test-lint-bash32.sh
 
 test-mermaid-fragments:
 	bash scripts/harness-timer.sh $@ bash scripts/test-mermaid-fragments.sh
@@ -752,6 +756,9 @@ test-eval-research-baseline-flag:
 
 shellcheck:
 	pre-commit run shellcheck --all-files
+
+lint-bash32:
+	bash scripts/lint-bash32.sh
 
 markdownlint:
 	pre-commit run markdownlint --all-files

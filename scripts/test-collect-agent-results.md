@@ -22,6 +22,9 @@ Cases:
   substantive validator) with a valid `.meta` triggers a section 3.7 retry
   attempt; the test verifies `STATUS=NOT_SUBSTANTIVE` is emitted and the retry
   sentinel is written (when the outer launcher executes in the test environment).
+- **C_NSS**: a section 3.6 structured-reviewer downgrade retries even when the
+  collector is running the structured validator path, and restores
+  `STATUS=OK` only after the retry re-emits a valid structured sidecar.
 
 The full collector contract lives in `scripts/collect-agent-results.md`. This
 harness is wired through the `test-collect-agent-results` Makefile target and a

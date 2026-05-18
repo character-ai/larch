@@ -30,3 +30,19 @@ Robust alternatives (pick whichever fits the task):
 3. **Pipe stdin.** `printf '<script>' | python3 -` accepts the script as stdin and avoids quoting the body as a shell argument.
 
 When you encounter a shell parse error (`unexpected EOF while looking for matching` …), do NOT iteratively patch escapes. Switch to one of the robust alternatives.
+
+## 3. Bash 3.2 Portability
+
+**Repository shell scripts must stay compatible with macOS system Bash 3.2 unless a script explicitly documents a narrower runtime.**
+
+Do not use Bash 4+ constructs in committed shell scripts:
+- associative arrays: `declare -A` / `typeset -A`
+- namerefs: `declare -n` / `local -n`
+- `mapfile` / `readarray`
+- parameter case conversion: `${var^^}` / `${var^}` / `${var,,}` / `${var,}`
+- append-all redirection: `&>>`
+- coprocs: `coproc { ... }` / `coproc NAME { ... }`
+
+Use Bash 3.2-compatible alternatives: newline-delimited temp files, `while IFS= read -r ...`, `case` or `tr` for case conversion, and `>>file 2>&1` instead of `&>>file`.
+
+Run `make lint-bash32` after shell-script edits. If a regression harness intentionally contains a forbidden token as fixture text or static grep pattern, suppress only that line with an inline `# lint-bash32: ok <reason>` comment.

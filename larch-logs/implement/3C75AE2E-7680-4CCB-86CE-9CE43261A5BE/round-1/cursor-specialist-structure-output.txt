@@ -1,0 +1,30 @@
+Gathering the branch diff and commit list for a read-only review.
+
+Searching the diff for key additions and reading critical new files in the repo for line-accurate review.
+
+Verifying the test needle string parses to the expected substring:
+
+### In-Scope Findings
+
+1. **Important** (`code-quality`, source `plan`) — `scripts/collect-agent-results.sh` (large insertions around `result_field_value`, `parse_retry_meta`, and related retry / substantive-validation paths per diff hunks), `scripts/dispatch-code-voters.sh:6196-6210`, `scripts/launch-claude-review.sh:6324-6361` plus matching harness/doc updates: the branch diff contains substantial review-collector and voter-launcher behavior changes that are **not** listed in `<implementation_plan>` and are not implied by `<feature_description>` (bash32 lint only). Concrete impact: reviewers validating “bash32 lint only” cannot treat the PR as scoped to that goal; bisect and rollback couple unrelated runtime behavior to the portability guard. Suggested fix: split into separate commits/PRs (bash32 + mechanical `# lint-bash32: ok` pass vs collector/retry vs voter context routing), or update the plan/issue text to explicitly own the extra surface.
+
+2. **Nit** (`code-quality`) — `scripts/lint-bash32.md:3`: prose says “tracked `*.sh` files” while `scripts/lint-bash32.sh:46-48` uses `git ls-files --cached --others --exclude-standard`, which also scans **untracked** (non-ignored) scripts. Scenario: a contributor reads the contract and assumes only the index is checked, then is surprised when a local scratch `.sh` fails CI before `git add`. Suggested fix: rephrase to “git-enumerated `*.sh` (tracked + untracked non-ignored) …”.
+
+3. **Latent** (`correctness`) — `scripts/lint-bash32.sh:85` only matches named coprocs `coproc NAME { … }`. Bash 3.2 does not implement `coproc` at all; an anonymous `coproc { … }` still requires Bash 4+ but would **not** be reported. Scenario: a script adds `coproc { … }` on macOS system Bash → runtime parse/runtime failure while `make lint-bash32` stays green. Suggested fix: add a second pattern for `coproc[[:space:]]*\{` or document the intentional gap in `BASH_AUTHORING.md` / `scripts/lint-bash32.md` if anonymous form is considered out of scope.
+
+4. **Nit** (`code-quality`) — `scripts/lint-bash32.sh:75-76`: any line containing `lint-bash32: ok` anywhere skips the **entire** line, so a stray token in prose could suppress real code on the same line. Rare but brittle. Suggested fix: anchor suppression to end-of-line comment (e.g. only after `#`) or document the “whole-line waiver” rule more loudly in `BASH_AUTHORING.md`.
+
+5. **Nit** (`code-quality`) — `scripts/test-lint-bash32.sh:105`: the `"&>""> …"` needle is easy to misread (even though Bash expands it to `&>> …`); future edits risk breaking the harness. Suggested fix: use a single-quoted needle `'&>> append-all redirection'` for clarity.
+
+### Out-of-Scope Observations
+
+None.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	code-quality	scripts/collect-agent-results.sh;scripts/dispatch-code-voters.sh:6196-6210;scripts/launch-claude-review.sh:6324-6361	Branch diff bundles large collector retry / voter context behavior changes not named in the bash32 implementation plan.	Reviewers cannot validate bash32 isolation; rollback or bisect ties unrelated runtime behavior to the portability lint.	Split unrelated work into separate PRs/commits or expand the authoritative plan/issue to list every touched subsystem.
+1	in_scope	nit	code-quality	scripts/lint-bash32.md:3	Contract says tracked-only shell files but git enumeration includes untracked non-ignored scripts.	A contributor expects only staged paths to matter and is surprised when an untracked local .sh fails lint.	Align wording with git ls-files --cached --others --exclude-standard semantics.
+1	in_scope	latent	correctness	scripts/lint-bash32.sh:85	Named-coproc-only regex misses anonymous coproc forms.	A Bash-4-only anonymous coproc slips past lint and breaks on macOS Bash 3.2 at runtime.	Extend detection or explicitly document the unsupported coproc subset.
+1	in_scope	nit	code-quality	scripts/lint-bash32.sh:75-76	Substring lint-bash32: ok skips the full physical line.	A malformed or accidental ok token could hide a real violation on the same line.	Tighten suppression anchoring or document whole-line waiver discipline.
+1	in_scope	nit	code-quality	scripts/test-lint-bash32.sh:105	Obscure double-quote escaping for the &>> needle.	Future edits may corrupt quoting and silently weaken the regression assertion.	Use a single-quoted literal needle for readability.
+```

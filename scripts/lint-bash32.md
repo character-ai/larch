@@ -1,0 +1,9 @@
+# scripts/lint-bash32.sh - contract
+
+`scripts/lint-bash32.sh` is a repo-wide static lint that rejects Bash 4+ constructs in tracked and untracked non-ignored `*.sh` files so the plugin remains usable on macOS system Bash 3.2. It detects associative-array declarations (`declare`/`typeset` options containing `A`), `mapfile`/`readarray`, parameter case conversion (`${var^^}` / `${var^}` / `${var,,}` / `${var,}`), namerefs (`declare`/`local` options containing `n`), `&>>`, and coprocs (`coproc {` and `coproc NAME {`). Full-line comments are ignored. Same-line `# lint-bash32: ok <reason>` suppresses intentional fixture or static-pattern lines only; use it narrowly.
+
+The default root is the repository root. `--root PATH` is the only option and exists for the regression harness. When `PATH` is a git worktree, file enumeration uses `git ls-files --cached --others --exclude-standard -z -- '*.sh'` so newly added, untracked, non-ignored shell scripts are scanned before staging. Non-git fixture roots fall back to a deterministic `find` walk over `*.sh`, excluding `.git/`, `node_modules/`, `.venv/`, and `.agents/`. Symlinks are not scanned. Exit codes are `0` clean, `1` violations, and `2` CLI/root errors. Violation output is written to stderr as `lint-bash32: <path>:<line>: Bash 3.2 incompatible: <rule>`.
+
+Primary callers are `make lint-bash32` and the local `make lint` dependency chain. `scripts/test-lint-bash32.sh` is the black-box regression harness, wired through Makefile target `test-lint-bash32` and one `test-harnesses-N` shard. Because agent-lint does not follow Makefile-only script references, `agent-lint.toml` excludes both this linter and its harness.
+
+Edit in sync with `BASH_AUTHORING.md` section "Bash 3.2 Portability", `docs/linting.md`, `Makefile`, `scripts/test-lint-bash32.sh`, and any intentional fixture suppressions in existing portability guards.

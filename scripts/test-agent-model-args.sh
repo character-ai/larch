@@ -113,7 +113,7 @@ else
     fail "MODEL_ARGS array expansion missing [@]+ guard: $PLAIN_ARRAY_EXPANSION"
 fi
 
-MAPFILE_HITS=$(rg -n '\b(mapfile|readarray)\b' scripts skills --glob '*.sh' --glob '!scripts/test-*' --glob '!skills/**/test-*.sh' | grep -v '^[^:]*:[0-9]\+:[[:space:]]*#' || true)
+MAPFILE_HITS=$(rg -n '\b(mapfile|readarray)\b' scripts skills --glob '*.sh' --glob '!scripts/test-*' --glob '!skills/**/test-*.sh' | grep -v '^[^:]*:[0-9]\+:[[:space:]]*#' || true) # lint-bash32: ok intentional static portability pattern
 if [[ -z "$MAPFILE_HITS" ]]; then
     pass
 else
