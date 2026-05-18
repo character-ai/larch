@@ -259,7 +259,7 @@
 ## security: scripts/scout-dynamic-archetypes.sh:162-200 and skills/review/scripts/dispatch-panel.sh:144-161
 
 - **Reviewer**: cursor-specialist-security-output.txt
-- **Concern**: [important] Scout rationale/prompt_body are embedded inside a literal <scout_notes> wrapper but validation only blocks </reviewer_ and standalone --- lines, not the real closing tag used in synthesis. A compromised scout can emit </scout_notes> (including via multiline rationale) so following attacker text appears outside the untrusted-labeled region, smuggling instructions to the Cursor reviewer. Extend jq validation (or post-jq checks) to reject or neutralize delimiter substrings that match the synthesis envelope (at minimum literal </scout_notes>, ideally case-insensitive / other mirror tags); alternatively base64-wrap or otherwise structurally encode scout free text so it cannot terminate the wrapper.
+- **Concern**: [important] Scout rationale/prompt_body are embedded inside a literal `scout_notes` wrapper but validation only blocks `reviewer_` closing tags and standalone `---` lines, not the real closing tag used in synthesis. A compromised scout can emit a `scout_notes` closing tag (including via multiline rationale) so following attacker text appears outside the untrusted-labeled region, smuggling instructions to the Cursor reviewer. Extend jq validation (or post-jq checks) to reject or neutralize delimiter substrings that match the synthesis envelope; alternatively base64-wrap or otherwise structurally encode scout free text so it cannot terminate the wrapper.
 - **Suggested revision**: Address the concern above.
 
 ### FINDING_8: panel [code-review/accepted]
@@ -595,7 +595,7 @@
 ## security: scripts/scout-dynamic-archetypes.sh:170-188
 
 - **Reviewer**: codex-specialist-security-output.txt
-- **Concern**: [latent] Raw diff and plan content can close scout prompt delimiters. A malicious diff includes </reviewer_diff> followed by scout instructions to return empty or biased archetypes, reducing the dynamic review panel's value. Encode or escape diff/plan content before prompt assembly so embedded closing tags remain data.
+- **Concern**: [latent] Raw diff and plan content can close scout prompt delimiters. A malicious diff includes a `reviewer_diff` closing tag followed by scout instructions to return empty or biased archetypes, reducing the dynamic review panel's value. Encode or escape diff/plan content before prompt assembly so embedded closing tags remain data.
 - **Suggested revision**: Address the concern above.
 
 ### FINDING_25: panel [code-review/accepted]
