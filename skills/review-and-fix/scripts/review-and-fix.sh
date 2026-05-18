@@ -749,8 +749,8 @@ run_implement_round() {
                 status="coder-failed"
                 exit_code=2
             elif [[ "$coder_status" == "applied" ]]; then
-                status="fix-required"
-                exit_code=3
+                status="fix-applied"
+                exit_code=0
             elif [[ "$coder_status" == "no-changes" ]]; then
                 status="no-changes"
                 emit_breadcrumb "⚠ review-and-fix: round $round_num_dec — coder dispatch exited 0 but did not modify the working tree; halting loop"
@@ -789,7 +789,7 @@ run_implement_round() {
     emit_kv SUBMODULE_SCRUB_COUNT "$scrub_count"
     emit_kv SUBMODULE_REVERT_COUNT "$revert_count"
     emit_kv SKIPPED_FINDING_COUNT "${skipped_finding_count:-0}"
-    if [[ "$exit_code" -eq 0 || "$exit_code" -eq 3 ]]; then
+    if [[ "$exit_code" -eq 0 ]]; then
         flush_review_batches "$IMPLEMENT_TMPDIR" "$RUN_ID" "$PANEL" "$round_num_dec" "$total_accepted" "$total_rejected"
     fi
     exit "$exit_code"
