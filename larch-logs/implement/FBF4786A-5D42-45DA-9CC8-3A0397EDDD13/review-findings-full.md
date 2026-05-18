@@ -259,7 +259,7 @@
 ## security: scripts/scout-dynamic-archetypes.sh:162-200 and skills/review/scripts/dispatch-panel.sh:144-161
 
 - **Reviewer**: cursor-specialist-security-output.txt
-- **Concern**: [important] Scout rationale/prompt_body are embedded inside a literal `<scout_notes>` wrapper but validation only blocks `</reviewer_` and standalone `---` lines, not the real closing tag used in synthesis. A compromised scout can emit `<\/scout_notes>` (including via multiline rationale) so following attacker text appears outside the untrusted-labeled region, smuggling instructions to the Cursor reviewer. Extend jq validation (or post-jq checks) to reject or neutralize delimiter substrings that match the synthesis envelope (at minimum the literal closing scout-notes tag, ideally case-insensitive / other mirror tags); alternatively base64-wrap or otherwise structurally encode scout free text so it cannot terminate the wrapper.
+- **Concern**: [important] Scout rationale/prompt_body are embedded inside a literal <scout_notes> wrapper but validation only blocks </reviewer_ and standalone --- lines, not the real closing tag used in synthesis. A compromised scout can emit </scout_notes> (including via multiline rationale) so following attacker text appears outside the untrusted-labeled region, smuggling instructions to the Cursor reviewer. Extend jq validation (or post-jq checks) to reject or neutralize delimiter substrings that match the synthesis envelope (at minimum literal </scout_notes>, ideally case-insensitive / other mirror tags); alternatively base64-wrap or otherwise structurally encode scout free text so it cannot terminate the wrapper.
 - **Suggested revision**: Address the concern above.
 
 ### FINDING_8: panel [code-review/accepted]
@@ -493,3 +493,84 @@
 - **Reviewer**: cursor-specialist-edge-cases-output.txt
 - **Concern**: [nit] Wrapper prose about scout reuse/sentinel is easy to misread vs per-round scout-round<N> filenames Operators may misunderstand whether multi-round standalone /review re-scouts when ROUND_NUM increments Align wording with dispatch-panel.md filenames and per-round semantics
 - **Suggested revision**: Address the concern above.
+
+### FINDING_10: panel [code-review/accepted]
+
+## correctness: scripts/scout-dynamic-archetypes.sh:70-73
+
+- **Reviewer**: codex-specialist-edge-cases-output.txt
+- **Concern**: [important] Scout context validation only allows files under PLUGIN_ROOT or the scout output directory, while /implement passes PLAN_FILE from the parent IMPLEMENT_TMPDIR via skills/review/scripts/dispatch-panel.sh:264-268 and skills/review-and-fix/scripts/review-and-fix.sh:592-610. Opting into dynamic archetypes during /implement causes the scout to fail validation and dispatch no dynamic reviewer slots. Allow the parent session directory derived from SESSION_ENV_PATH or IMPLEMENT_TMPDIR, or copy the plan file into REVIEW_TMPDIR before scout invocation.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_11: panel [code-review/accepted]
+
+## correctness: scripts/scout-dynamic-archetypes.sh:70-73, skills/review/scripts/dispatch-panel.sh:264-279
+
+- **Reviewer**: codex-specialist-security-output.txt
+- **Concern**: [important] Scout context validation rejects plan files outside the scout output directory. In an implement review round, PLAN_FILE is under $IMPLEMENT_TMPDIR/design-export/plan.txt while scout output is under $IMPLEMENT_TMPDIR/round-N, causing SCOUT_STATUS=validation-failed and zero dynamic reviewer slots. Allow the validated caller/session root from --session-env-path, or stage/copy plan context under the round directory before invoking the scout.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_12: panel [code-review/accepted]
+
+## correctness: scripts/ship-pr.sh:85-99; scripts/ship-pr.sh:950-971
+
+- **Reviewer**: codex-specialist-structure-output.txt
+- **Concern**: [important] Vendor dirty paths are captured but not used when staging the CI-fix commit, so untracked vendor-created files are omitted. A CI fixer adds a new fixture file, checks pass locally, but git add stages only tracked dirty files and lint-fix delta untracked files; the pushed commit lacks the fixture and CI fails again. Stage the union of tracked dirty paths, vendor dirty paths, and lint-fix delta paths after validating untracked paths are intended.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_13: panel [code-review/accepted]
+
+## correctness: skills/review/SKILL.md:27; skills/review/references/heavy-worker.md:87-96
+
+- **Reviewer**: codex-specialist-structure-output.txt
+- **Concern**: [important] Subagent review path does not explicitly parse and bind scout KVs returned by the heavy worker. /review --diff --subagent --dynamic-archetypes 4 --run-id X can run the scout in the worker, then Step 4 sees SCOUT_STATUS unset or na and skips the review-scout-manifest batch. Add explicit parent-side parsing and assignment for SCOUT_STATUS, DYNAMIC_SLOTS, SCOUT_MANIFEST, and YIELD_TSV_FILE before Step 4.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_14: panel [code-review/accepted]
+
+## correctness: skills/review/scripts/dispatch-panel.sh:145-161
+
+- **Reviewer**: cursor-specialist-structure-output.txt
+- **Concern**: [important] rationale is inlined as a single-line YAML-ish field while prompt_body uses a block scalar; scout validation does not constrain rationale shape. Scout can return multi-line or special rationale text that disrupts the synthesized agent markdown/YAML envelope or weakens delimiter clarity versus prompt_body. Format rationale as a block scalar (mirroring prompt_body) and/or extend scout + scout_manifest_is_valid to reject newlines and standalone --- lines in rationale.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_16: panel [code-review/accepted]
+
+## correctness: skills/review/scripts/dispatch-panel.sh:29-73; skills/review/scripts/review-core.sh:30-62
+
+- **Reviewer**: codex-specialist-plan-fidelity-output.txt
+- **Concern**: [important] Empty LARCH_DYNAMIC_ARCHETYPES_MAX is treated as unset instead of invalid. LARCH_DYNAMIC_ARCHETYPES_MAX= silently resolves to 0 and disables dynamic reviewers although the plan requires env values to match ^[0-4]$ and fail with exit 2 otherwise. Distinguish unset from set-empty, validate before applying the default, and add the empty-env regression test.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_17: panel [code-review/accepted]
+
+## correctness: skills/review/scripts/dispatch-panel.sh:305-316
+
+- **Reviewer**: cursor-specialist-structure-output.txt
+- **Concern**: [important] Reuse path derives SCOUT_STATUS from manifest when scout-roundN-status.env is missing; derive maps any valid {"archetypes":[]} to empty. Second dispatch or lost sidecar: prior parse-failed/timeout/claude-failed runs that wrote the same empty JSON as intentional empty scout can be mis-labeled SCOUT_STATUS=empty, corrupting telemetry and operator interpretation. Persist authoritative scout status alongside the manifest (or embed status in manifest JSON) and read that on reuse instead of inferring from empty archetypes alone.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_24: panel [code-review/accepted]
+
+## correctness: skills/review/scripts/tally-code-votes.sh:400-409
+
+- **Reviewer**: codex-specialist-correctness-output.txt
+- **Concern**: [latent] findings_total ignores neutral and exonerated in-scope findings despite the plan requiring yield grouping over score_rows A reviewer with 1 accepted and 9 exonerated findings is reported as total=1 yield=1.000000 instead of total=10 yield=0.100000 Count every in-scope score_rows result toward total while keeping accepted and rejected counters separate; update skills/review/scripts/test-tally-code-votes.sh:348-378
+- **Suggested revision**: Address the concern above.
+
+### FINDING_26: panel [code-review/accepted]
+
+## risk-integration: scripts/scout-dynamic-archetypes.sh:70-75; skills/review-and-fix/scripts/review-and-fix.sh:592-614; scripts/run-step5-review.sh:104-147
+
+- **Reviewer**: codex-specialist-testing-output.txt
+- **Concern**: [important] Dynamic scouting rejects the normal /implement plan-file layout because the scout only allows context files under the plugin root or the round output dir. With LARCH_DYNAMIC_ARCHETYPES_MAX=4 in /implement, PLAN_FILE points at $IMPLEMENT_TMPDIR/design-export/plan.txt while scout output lives under $IMPLEMENT_TMPDIR/round-N, so scout validation fails and dispatch-panel emits SCOUT_STATUS=validation-failed with zero dynamic slots. Allow the caller tmpdir from SESSION_ENV_PATH/IMPLEMENT_TMPDIR, or copy plan/feature context into the round dir before invoking the scout; add a nested /implement regression.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_6: panel [code-review/accepted]
+
+## architecture: scripts/scout-dynamic-archetypes.md:12-13 vs scripts/scout-dynamic-archetypes.sh:25-26
+
+- **Reviewer**: cursor-specialist-security-output.txt
+- **Concern**: [nit] Contract says the scout always uses launch-claude-subprocess.sh while the implementation allows an executable override. Security reviewers reading only the contract may omit auditing the substituted binary. Update scout-dynamic-archetypes.md to describe SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH and its trust implications.
+- **Suggested revision**: Address the concern above.
+
