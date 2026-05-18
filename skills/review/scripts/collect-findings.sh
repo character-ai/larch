@@ -69,6 +69,72 @@ append_review_failure() {
         --redact >/dev/null 2>&1 || true
 }
 
+file_has_no_findings_sentinel() {
+    local file="$1"
+    [[ -s "$file" ]] || return 1
+    if grep -Fxq 'NO_ISSUES_FOUND' "$file"; then
+        return 0
+    fi
+    if command -v jq >/dev/null 2>&1; then
+        local _trimmed
+        _trimmed=$(awk '
+            { lines[++count]=$0 }
+            END {
+                first=0
+                last=0
+                for (i = 1; i <= count; i++) {
+                    line=lines[i]
+                    sub(/^[[:space:]]+/, "", line)
+                    sub(/[[:space:]]+$/, "", line)
+                    if (line != "") { first=i; break }
+                }
+                for (i = count; i >= 1; i--) {
+                    line=lines[i]
+                    sub(/^[[:space:]]+/, "", line)
+                    sub(/[[:space:]]+$/, "", line)
+                    if (line != "") { last=i; break }
+                }
+                if (first == 0) { exit }
+                for (i = first; i <= last; i++) {
+                    line=lines[i]
+                    sub(/^[[:space:]]+/, "", line)
+                    sub(/[[:space:]]+$/, "", line)
+                    print line
+                }
+            }
+        ' "$file" 2>/dev/null)
+        jq -e 'type == "object" and .no_issues_found == true' <<<"$_trimmed" >/dev/null 2>&1 && return 0
+    fi
+    return 1
+}
+
+record_claude_non_substantive() {
+    local file="$1" label="$2" combined
+    {
+        printf 'REVIEWER_FILE=%s\n' "$file"
+        printf 'TOOL=claude\n'
+        printf 'STATUS=NOT_SUBSTANTIVE\n'
+        printf 'EXIT_CODE=0\n'
+        printf '\n'
+    } >> "$collector_results_file"
+
+    combined=$(mktemp "${TMPDIR:-/tmp}/review-claude-non-substantive.XXXXXX") || return 0
+    {
+        printf 'COLLECTOR_STATUS=NOT_SUBSTANTIVE\n'
+        printf 'REVIEWER_FILE=%s\n' "$file"
+        printf 'TOOL=claude\n'
+        printf 'EXIT_CODE=0\n\n'
+        printf -- '--- reviewer output ---\n'
+        cat "$file"
+        printf '\n'
+    } > "$combined"
+    larch_err "**⚠ Reviewer ${label}: non-substantive output produced no prose or TSV findings**"
+    append_review_failure "review Step 3a" \
+        "collect-findings.sh claude NOT_SUBSTANTIVE" \
+        0 "$combined" "warning"
+    rm -f "$combined"
+}
+
 append_non_ok_collector_results_from_file() {
     local collector_results_file="$1" reviewer_file="" tool="" status="" exit_code="" line combined
     while IFS= read -r line || [[ -n "$line" ]]; do
@@ -195,28 +261,19 @@ trap 'rm -f "$tmp" "${per_tmp:-}"' EXIT
 parse_output() {
     local file="$1" label="$2"
     [[ -s "$file" ]] || return 0
-    if grep -Fxq 'NO_ISSUES_FOUND' "$file"; then
+    if file_has_no_findings_sentinel "$file"; then
         return 0
-    fi
-    # JSON no-findings sentinel (canonical form per #2156): a file whose entire
-    # trimmed content is the single-line JSON object {"no_issues_found": true}.
-    if command -v jq >/dev/null 2>&1; then
-        local _trimmed
-        _trimmed=$(awk 'NF{gsub(/^[[:space:]]+|[[:space:]]+$/,"",$0); print; exit}' "$file" 2>/dev/null)
-        if jq -e 'type == "object" and .no_issues_found == true' <<<"$_trimmed" >/dev/null 2>&1; then
-            return 0
-        fi
     fi
     # In description mode dual-list output: split on ### In-Scope Findings vs ### Out-of-Scope Observations (#659). In diff mode single-list output: preserve entire output when headers absent. Both modes: awk handles dual-section with fail-open. Specialist dual-section format matches description headers. Claude generic produces single-list output; [OUT_OF_SCOPE] prefix routes OOS.
     awk -v label="$label" -v mode="$MODE" '
     BEGIN { oos=0; body=""; title="" }
     function flush() {
-        if (body != "") {
+        if (body != "" && title != "") {
             gsub(/^[[:space:]]+|[[:space:]]+$/, "", body)
             gsub(/\r/, "", body)
             gsub(/\n/, " ", body)
             prefix=oos ? "[OUT_OF_SCOPE] " : ""
-            printf("%s%s\t%s\t%s\n", prefix, title == "" ? "Reviewer finding" : title, label, body)
+            printf("%s%s\t%s\t%s\n", prefix, title, label, body)
         }
         body=""; title=""
     }
@@ -293,6 +350,9 @@ for f in "${CLAUDE_OUTPUT_FILES[@]+"${CLAUDE_OUTPUT_FILES[@]}"}"; do
                 "collect-findings.sh inline-TSV recovery $(basename "$f")" \
                 0 "$f" "warning" || true
         fi
+    fi
+    if [[ ! -s "$per_tmp" && -s "$f" ]] && ! file_has_no_findings_sentinel "$f"; then
+        record_claude_non_substantive "$f" "$(basename "$f")"
     fi
     cat "$per_tmp" >> "$tmp"
 done

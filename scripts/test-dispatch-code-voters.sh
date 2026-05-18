@@ -29,6 +29,12 @@ STUB
 cat > "$STUB_BIN/claude" <<'STUB'
 #!/usr/bin/env bash
 cat >/dev/null
+case "${CLAUDE_STUB_MODE:-ok}" in
+  empty) exit 0 ;;
+  fail)
+    printf 'stub claude failure\n' >&2
+    exit 7 ;;
+esac
 printf 'FINDING_1: YES\n'
 STUB
 chmod +x "$STUB_BIN/codex" "$STUB_BIN/cursor" "$STUB_BIN/claude"
@@ -64,5 +70,11 @@ grep -Fq 'VOTER_3_TOOL=claude' <<< "$out"
 grep -Fq 'VOTER_2_STATUS=fallback' <<< "$out"
 grep -Fq 'VOTER_3_STATUS=fallback' <<< "$out"
 grep -Fq 'DISPATCH_OK=true' <<< "$out"
+
+issues_log="$TMP/execution-issues.md"
+out=$(PATH="$STUB_BIN:$PATH" CLAUDE_STUB_MODE=empty LARCH_EXECUTION_ISSUES_LOG="$issues_log" "$SCRIPT" --ballot-file "$BALLOT" --review-tmpdir "$TMP/empty-voter1" --codex-available true --cursor-available true)
+grep -Fq 'VOTER_1_STATUS=failed' <<< "$out"
+grep -Fq 'dispatch-code-voters.sh voter1' "$issues_log"
+grep -Fq 'launch-claude-review.sh (claude voter) warning (exit 0)' "$issues_log"
 
 echo "PASS: test-dispatch-code-voters.sh"
