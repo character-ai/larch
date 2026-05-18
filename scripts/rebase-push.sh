@@ -250,9 +250,21 @@ if [[ -z "$CURRENT_BRANCH" ]]; then
     emit_kv PUSH_ERROR "Not on a branch (detached HEAD) before push"
     exit 2
 fi
+# Resolve PUSH_REMOTE: the remote that hosts the topic branch. In fork mode
+# BASE_REMOTE is the upstream we rebase against, but the topic branch lives on
+# the fork (origin), so leasing against $BASE_REMOTE/$CURRENT_BRANCH yields an
+# empty OID and the resulting --force-with-lease is rejected. Resolution order:
+# per-branch pushRemote override, per-branch tracking remote, else origin.
+PUSH_REMOTE=$(git config --get "branch.$CURRENT_BRANCH.pushRemote" 2>/dev/null || true)
+if [[ -z "$PUSH_REMOTE" ]]; then
+    PUSH_REMOTE=$(git config --get "branch.$CURRENT_BRANCH.remote" 2>/dev/null || true)
+fi
+if [[ -z "$PUSH_REMOTE" || ! "$PUSH_REMOTE" =~ ^[A-Za-z0-9._/-]+$ ]]; then
+    PUSH_REMOTE="origin"
+fi
 LEASE_REF="refs/heads/$CURRENT_BRANCH"
-git fetch "$BASE_REMOTE" "$CURRENT_BRANCH" --quiet 2>/dev/null || true
-EXPECTED_REMOTE_OID=$(git rev-parse "$BASE_REMOTE/$CURRENT_BRANCH" 2>/dev/null || printf '')
+git fetch "$PUSH_REMOTE" "$CURRENT_BRANCH" --quiet 2>/dev/null || true
+EXPECTED_REMOTE_OID=$(git rev-parse "$PUSH_REMOTE/$CURRENT_BRANCH" 2>/dev/null || printf '')
 LEASE_ARG="--force-with-lease=$LEASE_REF:$EXPECTED_REMOTE_OID"
 for _push_attempt in 1 2 3; do
     if ! git symbolic-ref --quiet HEAD >/dev/null 2>&1; then
@@ -264,9 +276,9 @@ for _push_attempt in 1 2 3; do
     if [[ $PUSH_EXIT -eq 0 ]]; then
         exit 0
     fi
-    git fetch "$BASE_REMOTE" "$CURRENT_BRANCH" --quiet 2>/dev/null || true
+    git fetch "$PUSH_REMOTE" "$CURRENT_BRANCH" --quiet 2>/dev/null || true
     LOCAL_HEAD=$(git rev-parse HEAD 2>/dev/null || printf '')
-    REMOTE_HEAD=$(git rev-parse "$BASE_REMOTE/$CURRENT_BRANCH" 2>/dev/null || printf '')
+    REMOTE_HEAD=$(git rev-parse "$PUSH_REMOTE/$CURRENT_BRANCH" 2>/dev/null || printf '')
     if [[ -n "$LOCAL_HEAD" && -n "$REMOTE_HEAD" && "$LOCAL_HEAD" == "$REMOTE_HEAD" ]]; then
         exit 0
     fi
