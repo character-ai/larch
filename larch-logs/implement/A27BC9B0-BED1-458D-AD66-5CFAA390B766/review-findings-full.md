@@ -46,3 +46,107 @@
 - **Concern**: [important] No new regression test for the expanded Step 8a skipped-no-bullets execution-issue string; contract requires updating test-implement-finalize.sh. Manifest/tool diagnostics can regress silently because nothing asserts the new append_execution_issue format. Add a test-implement-finalize postbump path that asserts manifest_path manifest_exists and coder fields in the execution issue.
 - **Suggested revision**: Address the concern above.
 
+### FINDING_1: panel [code-review/accepted]
+
+## **Important** `correctness` `skills/review-and-fix/scripts/review-and-fix.sh:862`, `skills/implement/SKILL.md:1375` — The main-agent adjudication path can still write a stale `code-review-tally.json` with `accepted_count=0`. In the concrete `main-agent-vote-required` flow, `review-and-fix.sh` composes and flushes batches before the main agent re-tallies and writes `round-*/accepted-findings.md`; later, the Step 5 prompt-side tally instructions still prefer the stale `review-and-fix-summary.json` counts instead of deriving from the same composed findings artifact. Result: `review-findings-full.md` can show accepted findings while `code-review-tally.json` says zero, which is the mismatch this PR is meant to fix. Update the post-adjudication path to re-derive and rewrite the summary/tally from `compose-review-findings.sh` output, or change the Step 5 tally instructions to count `[code-review/accepted]` / `[code-review/rejected]` from the composed findings after adjudication.
+
+- **Reviewer**: codex-generalist-output.txt
+- **Concern**: 1. **Important** `correctness` `skills/review-and-fix/scripts/review-and-fix.sh:862`, `skills/implement/SKILL.md:1375` — The main-agent adjudication path can still write a stale `code-review-tally.json` with `accepted_count=0`. In the concrete `main-agent-vote-required` flow, `review-and-fix.sh` composes and flushes batches before the main agent re-tallies and writes `round-*/accepted-findings.md`; later, the Step 5 prompt-side tally instructions still prefer the stale `review-and-fix-summary.json` counts instead of deriving from the same composed findings artifact. Result: `review-findings-full.md` can show accepted findings while `code-review-tally.json` says zero, which is the mismatch this PR is meant to fix. Update the post-adjudication path to re-derive and rewrite the summary/tally from `compose-review-findings.sh` output, or change the Step 5 tally instructions to count `[code-review/accepted]` / `[code-review/rejected]` from the composed findings after adjudication.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_10: panel [code-review/accepted]
+
+## code-quality: scripts/test-implement-finalize.sh:1026-1033
+
+- **Reviewer**: cursor-specialist-structure-output.txt
+- **Concern**: [important] Part C regression tests source literals instead of execution-issue output; feature text pointed at test-review-and-fix.sh. Regression passes even if append_execution_issue string is broken at runtime; wrong file vs requirements. Assert resolved diagnostic text in execution-issues artifact; add coverage in the file the requirement names if still required.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_11: panel [code-review/accepted]
+
+## code-quality: scripts/test-implement-finalize.sh:2802-2808
+
+- **Reviewer**: cursor-specialist-edge-cases-output.txt
+- **Concern**: [nit] New Step 8a diagnostic tests only grep implement-finalize.sh for template substrings rather than asserting runtime execution-issues.md content Interpolation or read_state regressions could ship while tests still pass Assert on sandbox execution-issues.md (or structured log output) for manifest_path, manifest_exists, and coder values
+- **Suggested revision**: Address the concern above.
+
+### FINDING_16: panel [code-review/accepted]
+
+## correctness: scripts/ship-pr.sh:919-947
+
+- **Reviewer**: cursor-specialist-correctness-output.txt
+- **Concern**: [important] run_evaluate_failure lost multi-attempt vendor CI fix retries First launch-cursor-ci/launch-codex-ci fix pass leaves checks failing while lint-fix-loop cannot change tree (no-changes); process stalls without second/third vendor dispatch that previously existed in the for-loop. Reintroduce outer retry loop around run_ci_fix_vendor (e.g. three attempts) while retaining run_checks_with_lint_fix_loop.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_18: panel [code-review/accepted]
+
+## correctness: skills/review-and-fix/scripts/review-and-fix.sh:822-843
+
+- **Reviewer**: cursor-specialist-security-output.txt
+- **Concern**: [important] emit_kv ACCEPTED_COUNT/REJECTED_COUNT still use review-core vote tallies after total_accepted/total_rejected are replaced from composed findings Orchestrator or harness reading stdout KV sees ACCEPTED_COUNT=0 while summary JSON and code-review-tally.json show 3 after adjudication Align emit_kv with the same derived totals used for write_summary_json and flush (or emit explicit totals)
+- **Suggested revision**: Address the concern above.
+
+### FINDING_19: panel [code-review/accepted]
+
+## correctness: skills/review-and-fix/scripts/review-and-fix.sh:822-843
+
+- **Reviewer**: cursor-specialist-testing-output.txt
+- **Concern**: [important] After deriving totals from composed findings for write_summary_json flush_review_batches still emit_kv ACCEPTED_COUNT/REJECTED_COUNT from vote tally only. tally-fidelity case stdout shows ACCEPTED_COUNT=1 while review-and-fix-summary.json and code-review-tally.json show 3 breaking KV vs JSON parity that previously matched in typical single-round paths. Emit KV counts from derived totals or split vote vs composed keys with explicit documentation.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_20: panel [code-review/accepted]
+
+## correctness: skills/review-and-fix/scripts/review-and-fix.sh:822-864
+
+- **Reviewer**: cursor-specialist-plan-fidelity-output.txt
+- **Concern**: [important] emit_kv ACCEPTED_COUNT/REJECTED_COUNT still use review-core vote counters after total_accepted/total_rejected are overwritten from composed findings Adjudication or vote-skew paths: summary JSON and tally batches follow composed markdown while emitted KVs still show stale per-round vote counts, re-splitting consumers of KVs vs persisted artifacts Drive those emit_kv values from the same derived totals as write_summary_json (or add explicit total vs round KV split if both semantics are required)
+- **Suggested revision**: Address the concern above.
+
+### FINDING_21: panel [code-review/accepted]
+
+## correctness: skills/review-and-fix/scripts/review-and-fix.sh:822-864
+
+- **Reviewer**: cursor-specialist-structure-output.txt
+- **Concern**: [important] After compose, summary JSON and tally use derived accepted/rejected totals but emit_kv ACCEPTED_COUNT/REJECTED_COUNT still emit vote-layer counts from review-core. tally-fidelity-style runs: stdout shows ACCEPTED_COUNT=1 while review-and-fix-summary.json and code-review-tally.json show accepted_count=3; orchestrators parsing KVs disagree with committed artifacts. Emit KVs from the same derived totals when compose succeeds, or add/document separate TOTAL_* KVs.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_23: panel [code-review/accepted]
+
+## risk-integration: scripts/ship-pr.sh:run_evaluate_failure
+
+- **Reviewer**: cursor-specialist-security-output.txt
+- **Concern**: [latent] run_ci_fix_vendor no longer wrapped in a 3-attempt loop CI fix paths that succeed on retry now stall immediately Reintroduce bounded retries if operational resilience is required
+- **Suggested revision**: Address the concern above.
+
+### FINDING_24: panel [code-review/accepted]
+
+## risk-integration: scripts/test-implement-finalize.sh (new skipped-no-bullets assertions vs REAL_SCRIPT)
+
+- **Reviewer**: cursor-specialist-plan-fidelity-output.txt
+- **Concern**: [latent] New tests grep the copied implement-finalize source for template substrings instead of post-run execution issue output Regression in append_execution_issue wiring or expansion could slip through while static source substrings remain Ensure assertions read execution-issues.md (or harness-visible output) with resolved manifest_path/manifest_exists/coder values
+- **Suggested revision**: Address the concern above.
+
+### FINDING_25: panel [code-review/accepted]
+
+## risk-integration: scripts/test-implement-finalize.sh:1026-1033
+
+- **Reviewer**: cursor-specialist-testing-output.txt
+- **Concern**: [important] Part C regression only greps implement-finalize.sh source for template substrings; never checks execution-issues output. Operator-visible Step 8a diagnostic can regress (empty manifest_path/coder) while tests still pass. Assert on execution-issues.md (or NDJSON) after postbump for resolved manifest_path manifest_exists and coder values.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_26: panel [code-review/accepted]
+
+## risk-integration: skills/review-and-fix/scripts/review-and-fix.sh:837-864
+
+- **Reviewer**: cursor-specialist-edge-cases-output.txt
+- **Concern**: [important] Quiet-stream ACCEPTED_COUNT/REJECTED_COUNT still emit review-core round counters after compose-derived totals update summary JSON and tally In tally-fidelity-style cases (e.g. core ACCEPTED_COUNT=1 while composed findings show 3 accepted headers), KV output disagrees with review-and-fix-summary.json and code-review-tally.json, confusing any consumer that parses emit_kv instead of JSON Emit separate composed-total keys and document the split, or align emit_kv with derived totals and update contract docs plus consumers that need per-round vote semantics
+- **Suggested revision**: Address the concern above.
+
+### FINDING_9: panel [code-review/accepted]
+
+## code-quality: scripts/test-implement-finalize.sh:1006-1010
+
+- **Reviewer**: cursor-specialist-correctness-output.txt
+- **Concern**: [nit] Part C test only greps template literals in REAL_SCRIPT, not emitted execution issues Regression can pass even if append_execution_issue stopped firing or message format drifted as long as source still contains placeholders. Assert on execution-issues output (or postbump captured stderr) with expected manifest_exists and coder values.
+- **Suggested revision**: Address the concern above.
+
