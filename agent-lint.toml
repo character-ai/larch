@@ -748,6 +748,13 @@ exclude = [
   # same Makefile-only pattern as the other test-* harnesses above.
   "scripts/test-harness-shards-coverage.sh",
   "scripts/test-harness-shards-coverage.md",
+  # scripts/harness-timer.sh is the per-test timing wrapper called from every
+  # test-* recipe in the Makefile to emit LARCH_HARNESS_TIMING lines to CI
+  # logs. It is referenced only from Makefile (test-* recipe lines) and
+  # scripts/harness-timer.md (sibling contract). Agent-lint's G004/dead-script
+  # rule does not follow Makefile invocation refs, so both files are excluded.
+  "scripts/harness-timer.sh",
+  "scripts/harness-timer.md",
   "scripts/test-lint-skill-invocations.sh",
   "scripts/test-lint-literal-counts.sh",
   "scripts/lint-no-raw-stderr-after-quiet-init.md",
