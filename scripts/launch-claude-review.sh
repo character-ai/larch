@@ -72,6 +72,7 @@ trap cleanup EXIT
 
 if [[ -n "$AGENT_FILE" ]]; then
     [[ -n "$MODE" ]] || { larch_err "launch-claude-review.sh: --mode is required with --agent-file"; exit 2; }
+    [[ "$ROLE" == "reviewer" ]] || { larch_err "launch-claude-review.sh: --agent-file is only supported with --role reviewer; use --prompt-file or --prompt for voter launches"; exit 2; }
     render_args=(--agent-file "$AGENT_FILE" --mode "$MODE")
     [[ -n "$DESCRIPTION_TEXT" ]] && render_args+=(--description-text "$DESCRIPTION_TEXT")
     [[ -n "$SCOPE_FILES" ]] && render_args+=(--scope-files "$SCOPE_FILES")

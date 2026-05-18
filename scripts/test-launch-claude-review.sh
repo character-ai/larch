@@ -85,7 +85,7 @@ shopt -u nullglob
 # to launch-claude-subprocess.sh. Verify by passing an invalid (symlink) diff file —
 # if it were forwarded, canonical_existing_file would reject it and exit 2;
 # with --role voter the symlink is accepted at parse time but never appended,
-# so the voter succeeds.
+# so the prompt-file voter succeeds.
 voter_output="$TMPROOT/voter-out.txt"
 voter_prompt="$TMPROOT/voter-prompt.txt"
 printf 'vote on this ballot\n' > "$voter_prompt"
@@ -100,6 +100,23 @@ PATH="$STUB_BIN:$PATH" "$REPO_ROOT/scripts/launch-claude-review.sh" \
     --timeout 5 >/dev/null
 [[ "$(cat "$voter_output")" == "claude review ok" ]] \
     || { echo "FAIL: --role voter output passthrough (got: $(cat "$voter_output"))" >&2; exit 1; }
+
+# --agent-file is reviewer-only. Reject voter launches before the specialist
+# prompt renderer can re-inline diff/plan/scope context into the voter prompt.
+set +e
+PATH="$STUB_BIN:$PATH" "$REPO_ROOT/scripts/launch-claude-review.sh" \
+    --output "$TMPROOT/voter-agent-out.txt" \
+    --agent-file "$agent_file" \
+    --mode diff \
+    --role voter \
+    --diff-file "$diff_file" \
+    --timeout 5 >/dev/null 2>"$TMPROOT/voter-agent.stderr"
+voter_agent_rc=$?
+set -e
+[[ "$voter_agent_rc" -eq 2 ]] \
+    || { echo "FAIL: --agent-file --role voter should yield exit 2 (got $voter_agent_rc)" >&2; exit 1; }
+grep -Fq -- '--agent-file is only supported with --role reviewer' "$TMPROOT/voter-agent.stderr" \
+    || { echo "FAIL: --agent-file voter rejection missing expected validation message" >&2; exit 1; }
 
 # --role reviewer (explicit): diff file IS forwarded; a symlink diff must still fail.
 reviewer_sym_out="$TMPROOT/reviewer-sym-out.txt"
