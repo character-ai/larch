@@ -38,3 +38,35 @@
 - **Concern**: [nit] Removal of bounded-prune-fallback drops regression coverage for newer-than-stable stray caches under the 8-version cap. A regression like bogus 99.0.0 surviving when only three cache dirs exist ships without failing tests. Add a focused test mirroring the old three-directory stray-newer scenario.
 - **Suggested revision**: Address the concern above.
 
+### FINDING_13: panel [code-review/accepted]
+
+## correctness: skills/upgrade-larch/scripts/test-upgrade-larch.sh:197
+
+- **Reviewer**: cursor-specialist-correctness-output.txt
+- **Concern**: [nit] stable-filter only asserts 29.0.0 exists A prune bug could remove 30.8.0/30.9.0/31.0.0 while keeping 29.0.0 and the test would still pass Assert all expected cache dirs for the case still exist
+- **Suggested revision**: Address the concern above.
+
+### FINDING_16: panel [code-review/accepted]
+
+## risk-integration: docs/installation-and-setup.md:26-27
+
+- **Reviewer**: cursor-specialist-edge-cases-output.txt
+- **Concern**: [nit] Doc states at most 8 cached versions remain as an absolute outcome. Partial rm failures can leave more than eight directories on disk despite verified metadata. Soften to best-effort wording or tie to successful rm.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_17: panel [code-review/accepted]
+
+## risk-integration: skills/upgrade-larch/scripts/test-upgrade-larch.sh:185-197
+
+- **Reviewer**: cursor-specialist-testing-output.txt
+- **Concern**: [latent] stable-filter only asserts one cache directory still exists A prune regression that drops 30.9.0 or 31.0.0 but keeps 29.0.0 can still pass while the message claims all versions are kept Assert every expected cached version directory still exists or assert directory count matches setup
+- **Suggested revision**: Address the concern above.
+
+### FINDING_19: panel [code-review/accepted]
+
+## risk-integration: skills/upgrade-larch/scripts/upgrade-larch.sh:201-210
+
+- **Reviewer**: cursor-specialist-edge-cases-output.txt
+- **Concern**: [latent] Failed sanitize rm excludes the version from SANITIZED_VERSIONS as if deleted. Stray newer-than-stable cache can remain while retention logic thinks the cache is within limits. On sanitize failure keep the entry or re-scan the cache before applying the cap.
+- **Suggested revision**: Address the concern above.
+

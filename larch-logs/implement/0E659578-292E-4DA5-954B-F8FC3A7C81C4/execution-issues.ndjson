@@ -1,0 +1,2 @@
+{"phase":"implement","step":"7a","category":"Tool Failures","source":"execution-issues.md pre-bump","source_sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","body":"\n"}
+{"phase":"implement","step":"7a","category":"Warnings","source":"execution-issues.md pre-bump","source_sha256":"33641922bbff04d8a25daea76032ed18d77bc773120b7c542f639558aca34e4e","body":"- **Step 5**: review loop stopped after round 2 because accepted findings were not substantial (accepted=4; reasoning=all nit/latent, none high-severity, fix_count=4 < 8 threshold).\n"}
