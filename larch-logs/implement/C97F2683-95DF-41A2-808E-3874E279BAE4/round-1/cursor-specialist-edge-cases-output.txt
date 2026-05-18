@@ -1,0 +1,31 @@
+Gathering the branch diff and commit list for a read-only edge-case review.
+
+Verifying the test harness invokes the merge path and scanning for other merge-success paths that might omit clearing stall state.
+
+Checking whether `ci-initial` can reach merge success with stale `ci-merge` stall keys and verifying the doc claim about `finalize-state.sh`.
+
+## Review summary
+
+Single commit `3e504356` aligns `state_set_many` on the three merge-success branches with `write_finalize_state()` / `implement-finalize.sh` expectations: empty `BAIL_REASON` yields an empty `final-bail-reason.txt`, and `STALL_TRACKING` / `STALL_STEP` in state match what gets copied into `finalize-state.sh` for keys defined in [`scripts/lib-finalize-state-keys.sh`](scripts/lib-finalize-state-keys.sh). The regression test exercises the `merged` path from `PHASE=ci-merge` (same `run_ci_phase ci-merge` entry as a real `--resume-phase ci-merge` after the resume block normalizes phase). No correctness problems found in the shell changes themselves.
+
+### In-Scope Findings
+
+1. **Nit** (`correctness`) [`scripts/ship-pr.md`](scripts/ship-pr.md) (new paragraph ~lines 26–27 per diff): The text says stale stall-state would propagate “into `finalize-state.sh` via `write_finalize_state()`” in a way that bundles `BAIL_REASON` with stall keys. **`BAIL_REASON` is not one of `LARCH_FINALIZE_STATE_KEYS`**; `write_finalize_state()` writes it only to `final-bail-reason.txt` (see [`scripts/ship-pr.sh` ~520–534](scripts/ship-pr.sh)). **`STALL_TRACKING` / `STALL_STEP` do** flow into `finalize-state.sh`. **Concrete impact:** A reader debugging postmerge may look at `finalize-state.sh` for bail text and find nothing. **Suggested fix:** Split the sentence: bail text → `final-bail-reason.txt`; stall keys → `finalize-state.sh`.
+
+2. **Nit** (`risk-integration`) [`scripts/test-ship-pr.sh`](scripts/test-ship-pr.sh) (~lines 439–442 per diff): Comments state the scenario as `ship-pr.sh --resume-phase ci-merge`, but **`run_subject` never passes `--resume-phase`**—the test relies on `PHASE=ci-merge` in the state file. Behavior matches the intended phase entry, but **comments diverge from the harness** and could mislead someone extending the test. **Suggested fix:** Say “equivalent to resuming at `ci-merge`” or invoke `ship-pr.sh` with `--resume-phase ci-merge` if you want the comment and code to match literally.
+
+3. **Latent** (`risk-integration`) [`scripts/test-ship-pr.sh`](scripts/test-ship-pr.sh) (new block ~lines 443–458 per diff): Only the **`merged|admin_merged`** merge path is covered. The diff also clears stall keys on **`version_already_published` + MERGED** and **`already_merged`**; those branches are structurally the same `state_set_many` pattern but **lack a dedicated assertion**—a future edit could regress one branch only. **Suggested fix:** Optional small cases mirroring existing `STUB_MERGE_RESULT=version_already_published STUB_GH_PR_VIEW_STATE=MERGED` / `STUB_CI_ACTION=already_merged` patterns with pre-seeded stall keys.
+
+### Out-of-Scope Observations
+
+1. **Latent** (`architecture`) [`scripts/ship-pr.sh` ~1246–1256](scripts/ship-pr.sh): **`REPO_UNAVAILABLE` / skip-merge** paths still call `advance_phase postmerge` without clearing `BAIL_REASON` / stall keys. Not introduced by this diff; only relevant if those keys can coexist with those skips in real runs.
+
+---
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	nit	correctness	scripts/ship-pr.md:26-27	New doc paragraph implies BAIL_REASON propagates into finalize-state.sh via write_finalize_state.	Maintainer may search finalize-state.sh for stale bail text after a stall; BAIL_REASON is only written to final-bail-reason.txt in that function, not into finalize-state.sh.	Split the explanation: BAIL_REASON to final-bail-reason.txt; STALL_* to finalize-state.sh.
+1	in_scope	nit	risk-integration	scripts/test-ship-pr.sh:439-442	Comments describe --resume-phase ci-merge but run_subject does not pass that flag.	Future edits may add a broken resume test or duplicate coverage while believing resume is already tested literally.	Align comment with harness or add --resume-phase ci-merge to the invocation.
+1	in_scope	latent	risk-integration	scripts/test-ship-pr.sh:443-458	Regression test covers only merge-pr merged success, not version_already_published+MERGED or already_merged actions.	A future typo or conditional could drop clearing on one of the other two branches without failing CI.	Add focused stubs for the other two success paths with pre-seeded stall state.
+1	out_of_scope	latent	architecture	scripts/ship-pr.sh:1246-1256	Other postmerge transitions (e.g. REPO_UNAVAILABLE, merge-skips) do not clear stall/bail keys.	Rare combination of prior stall keys with these paths could still leave stale state for postmerge; unchanged by this branch.	Consider a separate change if that scenario is realistic.
+```

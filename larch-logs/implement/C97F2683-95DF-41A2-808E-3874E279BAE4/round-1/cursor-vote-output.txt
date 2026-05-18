@@ -1,0 +1,29 @@
+Reading the ballot file to vote on each finding.
+
+Votes only (read-only review of the ballot; no file or git changes):
+
+FINDING_1: EXONERATE -- same broad postmerge-parity theme as Finding 2; not worth a separate tracking issue for speculative rare combos alone.
+
+FINDING_2: YES
+
+FINDING_3: YES
+
+FINDING_4: EXONERATE -- harness already matches resume side effects for this template; forcing `--resume-phase` is optional churn without a demonstrated split.
+
+FINDING_5: EXONERATE -- asserts the same invariant via `read_state`; extra file assertion adds coupling without evidence `write_finalize_state` diverges from keys.
+
+FINDING_6: YES
+
+FINDING_7: EXONERATE -- plan-to-test wording gap only; no functional miss shown for the current harness.
+
+FINDING_8: EXONERATE -- hypothetical future divergence of resume vs cold `PHASE=ci-merge`; not worth broad harness change on speculation alone.
+
+FINDING_9: EXONERATE -- same resume/comment cluster as 7–8; low risk of mistaken “resume is fully tested” if reviewers read the harness.
+
+FINDING_10: EXONERATE -- extra stubbed paths are legitimate hardening but add harness bulk for marginal gain versus the branch-specific fix already tested.
+
+FINDING_11: EXONERATE -- duplicate of Finding 10’s coverage recommendation; one extra test family is enough if ever prioritized.
+
+FINDING_12: EXONERATE -- same rationale as Finding 5; state keys remain the practical contract for this regression.
+
+Note: For **FINDING_2**, **YES** means accept filing a **GitHub issue** to track clearing stall/bail keys on all postmerge entry paths (skip-merge / non-`merged` transitions), per your `[OUT_OF_SCOPE]` rules.

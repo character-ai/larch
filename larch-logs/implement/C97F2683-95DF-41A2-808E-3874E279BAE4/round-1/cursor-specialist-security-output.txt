@@ -1,0 +1,20 @@
+Gathering the branch diff and commit list for a read-only security-focused review.
+
+Checking how `state_set_many` writes values (quoting, empty-string handling) to assess injection and state-integrity risks.
+
+Reviewed the cached diff, commit history (`3e504356`), and surrounding `state_set` / `run_ci_phase` logic in [`scripts/ship-pr.sh`](file:///Users/zhupanov/larch2/scripts/ship-pr.sh) for injection and state-integrity impact.
+
+### In-Scope Findings
+
+No in-scope issues found.
+
+The diff only appends constant state updates (`BAIL_REASON ""`, `STALL_TRACKING false`, `STALL_STEP ""`) to existing `state_set_many` calls on merge-success paths. Those values are not taken from merge output or the network; they do not widen command substitution or new sinks. `state_set` still passes values through `awk -v` as before (no new pattern). From a security perspective this tightens state integrity: stale failure markers are less likely to leak into `final-bail-reason.txt` and downstream finalize/teardown behavior.
+
+### Out-of-Scope Observations
+
+1. **Latent** · **correctness** · [`scripts/ship-pr.sh:1246-1256`](scripts/ship-pr.sh) — `run_ci_phase` still calls `advance_phase postmerge` without clearing `BAIL_REASON` / `STALL_TRACKING` / `STALL_STEP` when merge is skipped (`REPO_UNAVAILABLE` / empty `PR_NUMBER`, or `MERGE!=true` / `DRAFT` / `FORKED_TARGET` at `ci-merge`). If a resume ever reaches one of these branches with stall keys left from a previous `ci-merge` failure, the same class of finalize/postmerge skew the PR fixes for true merge success could still appear. **Out of scope:** those hunks are unchanged and the stated feature scoped merge-success paths only. **Suggested fix (if desired later):** clear the same keys (or centralize “entering postmerge” cleanup) on every transition to `postmerge`, not only on merge-success.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	out_of_scope	latent	correctness	scripts/ship-pr.sh:1246-1256	Skip-merge paths call advance_phase postmerge without clearing BAIL_REASON/STALL_TRACKING/STALL_STEP.	Operator resumes ci-merge after a prior ci-merge stall; configuration forces early postmerge (e.g. MERGE=false or FORKED_TARGET=true). Stale bail/stall keys remain and can still flow into finalize artifacts and downstream bail checks like the bug fixed on merge-success paths.	If parity is required, clear those keys on all transitions to postmerge or factor a single helper used by every postmerge entry.
+```
