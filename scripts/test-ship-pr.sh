@@ -1367,14 +1367,80 @@ chmod +x \
     "$root/scripts/git-sync-local-main.sh" \
     "$root/scripts/git-force-push.sh" \
     "$root/scripts/refresh-run-logs.sh"
+real_git=$(command -v git)
+cat > "$root/scripts/git" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "\${1:-}" == "rev-parse" && "\${2:-}" == "HEAD" ]]; then
+    printf '%s\n' 'abc123'
+    exit 0
+fi
+if [[ "\${1:-}" == "merge-base" && "\${2:-}" == "--is-ancestor" && "\${3:-}" == "def456" && "\${4:-}" == "abc123" ]]; then
+    exit 0
+fi
+exec "$real_git" "\$@"
+STUB
+chmod +x "$root/scripts/git"
 
-run_subject "$root" "$tmp" "$tmp/rc"
+set +e
+(cd "$root" && PATH="$root/scripts:$PATH" CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$tmp" "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" --merge true --draft false --forked false --repo owner/repo > "$tmp/stdout" 2> "$tmp/stderr")
+printf '%s' "$?" > "$tmp/rc"
+set -e
 assert_rc "$tmp/rc" 0 "oid-mismatch merge-pr error: exits 0 via run_rebase_rebump"
 assert_state_line "$tmp/ship-pr-state.sh" "PHASE=done" "oid-mismatch merge-pr error: PHASE=done after recovery"
 if [ "$(cat "$sentinel_dir/merge-pr-count" 2>/dev/null || echo 0)" -ge 2 ]; then
     ok "oid-mismatch merge-pr error: merge-pr.sh called at least twice (rebase then retry)"
 else
     fail "oid-mismatch merge-pr error: merge-pr.sh should be called at least twice"
+    cat "$sentinel_dir/merge-pr-count" 2>/dev/null || true
+fi
+if [ ! -e "$tmp/execution-issues.md" ] || ! grep -Fq "merge-pr.sh envelope" "$tmp/execution-issues.md"; then
+    ok "oid-mismatch recoverable error: skips merge-pr envelope failure log"
+else
+    fail "oid-mismatch recoverable error: should not log merge-pr envelope failure"
+    sed 's/^/    execution-issues: /' "$tmp/execution-issues.md" 2>/dev/null || true
+fi
+rm -rf "$sentinel_dir"
+
+# Negative case 1b: OID-mismatch where local HEAD is not ahead of the PR head
+# should stall instead of rebasing/retrying.
+root=$(make_repo oid_mismatch_non_ancestor)
+tmp=$(make_tmpdir)
+sentinel_dir=$(mktemp -d /tmp/ship-pr-oid-non-ancestor.XXXXXX)
+write_state "$tmp/ship-pr-state.sh" ci-merge
+cat > "$root/scripts/merge-pr.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+count_file="$sentinel_dir/merge-pr-count"
+count=\$(cat "\$count_file" 2>/dev/null || echo 0)
+printf '%s\n' "\$((count + 1))" > "\$count_file"
+echo "MERGE_RESULT=error"
+echo "ERROR=local HEAD (abc123) does not match PR head OID (def456); refusing to evaluate same-version gate"
+STUB
+chmod +x "$root/scripts/merge-pr.sh"
+cat > "$root/scripts/git" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "\${1:-}" == "rev-parse" && "\${2:-}" == "HEAD" ]]; then
+    printf '%s\n' 'abc123'
+    exit 0
+fi
+if [[ "\${1:-}" == "merge-base" && "\${2:-}" == "--is-ancestor" && "\${3:-}" == "def456" && "\${4:-}" == "abc123" ]]; then
+    exit 1
+fi
+exec "$real_git" "\$@"
+STUB
+chmod +x "$root/scripts/git"
+set +e
+(cd "$root" && PATH="$root/scripts:$PATH" CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$tmp" "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" --merge true --draft false --forked false --repo owner/repo > "$tmp/stdout" 2> "$tmp/stderr")
+printf '%s' "$?" > "$tmp/rc"
+set -e
+assert_rc "$tmp/rc" 4 "oid-mismatch non-ancestor error: exits 4"
+assert_state_line "$tmp/ship-pr-state.sh" "STALL_TRACKING=true" "oid-mismatch non-ancestor error: STALL_TRACKING=true"
+if [ "$(cat "$sentinel_dir/merge-pr-count" 2>/dev/null || echo 0)" = "1" ]; then
+    ok "oid-mismatch non-ancestor error: does not retry merge-pr"
+else
+    fail "oid-mismatch non-ancestor error: should not retry merge-pr"
     cat "$sentinel_dir/merge-pr-count" 2>/dev/null || true
 fi
 rm -rf "$sentinel_dir"

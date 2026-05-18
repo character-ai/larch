@@ -1201,10 +1201,17 @@ run_evaluate_failure() {
 
 is_head_divergence_recoverable() {
     local text="$1"
-    case "$text" in
-        *"local HEAD"*"does not match PR head OID"*) return 0 ;;
-        *) return 1 ;;
-    esac
+    local local_head="" pr_head_oid="" current_head=""
+    if [[ "$text" =~ local\ HEAD\ \(([[:alnum:]]+)\)\ does\ not\ match\ PR\ head\ OID\ \(([[:alnum:]]+)\) ]]; then
+        local_head="${BASH_REMATCH[1]}"
+        pr_head_oid="${BASH_REMATCH[2]}"
+    else
+        return 1
+    fi
+    current_head=$(git rev-parse HEAD 2>/dev/null || echo "")
+    [[ -n "$current_head" ]] || return 1
+    [[ "$current_head" == "$local_head" ]] || return 1
+    git merge-base --is-ancestor "$pr_head_oid" "$current_head" 2>/dev/null
 }
 
 run_rebase_rebump() {
@@ -1490,7 +1497,6 @@ EOF
                     return 0
                     ;;
                 policy_denied|admin_failed|error)
-                    [ "$rc" -ne 0 ] || record_failure ci-merge "merge-pr.sh envelope" 1 "$fail_file" "CI Issues"
                     if [[ "$merge_result" == "error" || "$merge_result" == "admin_failed" ]] && is_transient_net_signature "$error_text"; then
                         exit_transient_net "merge-pr: $error_text"
                     fi
@@ -1498,6 +1504,7 @@ EOF
                         run_rebase_rebump "$phase"
                         return 0
                     fi
+                    [ "$rc" -ne 0 ] || record_failure ci-merge "merge-pr.sh envelope" 1 "$fail_file" "CI Issues"
                     state_set_many BAIL_REASON "$error_text" STALL_TRACKING true STALL_STEP 12d
                     printf '\n--- ORCHESTRATOR DIRECTIVE (STALL_STEP=12d) ---\nDO NOT improvise recovery. Do NOT patch state files, do NOT force-push, do NOT re-invoke ship-pr.sh manually.\nCorrect action: read STALL_TRACKING and STALL_STEP from state, then continue to Step 16 per skills/implement/SKILL.md.\n' >> "$fail_file"
                     exit 4
