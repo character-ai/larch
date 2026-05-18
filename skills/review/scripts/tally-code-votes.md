@@ -14,7 +14,7 @@ Sources `${CLAUDE_PLUGIN_ROOT}/scripts/lib-vote-tally.sh` for `vote_for_id`, `re
 | `--voter-files FILE...` | path list | no | Vote-output files (typically `cursor-vote-output.txt`, `codex-vote-output.txt`, `claude-vote-output.txt`). Each voter file contains lines like `FINDING_N: YES`, `FINDING_N: NO — reason`, `FINDING_N: EXONERATE — reason`. Zero files triggers `TALLY_STATUS=main-agent-vote-required`. |
 | `--review-tmpdir DIR` | path | yes | Output directory for all artifacts. |
 | `--session-env-path FILE` | path | no | When non-empty, OOS-accepted is also written to `$(dirname "$SESSION_ENV_PATH")/oos-accepted-review.md` so `/implement` Step 9a.1 can find it. |
-| `--scope-files FILE` | path | no | File containing changed file names (one per line, from `git diff --name-only`). When provided, enables the scope-fit gate: in-scope findings whose location file is absent from both this list and the plan are reclassified as OOS with `OUT_OF_SCOPE_DRIFT`. When absent or empty, the gate is a no-op (backward compatible). |
+| `--scope-files FILE` | path | no | File containing changed file names (one per line, from `git diff --name-only`). When non-empty, enables the scope-fit gate on the block heading line (first line of each `### FINDING_N:` block): tokens matching the extended-regex pattern `[a-zA-Z0-9_./-]+\.[a-zA-Z0-9]+:[0-9]+` yield file paths after stripping the trailing `:line` suffix. If the heading has no such token, the gate skips (keeps in-scope). If every extracted path is absent from both this file and (when provided) `--plan-file`, the finding is reclassified as OOS (`OUT_OF_SCOPE_DRIFT`). When absent or empty, the gate is a no-op (backward compatible). |
 | `--plan-file FILE` | path | no | Implementation plan file. When provided alongside `--scope-files`, the gate exempts any finding whose location file is mentioned anywhere in the plan. |
 | `--cursor-available true\|false` | enum | no | Forwarded from review-core for context (currently informational only). |
 | `--codex-available true\|false` | enum | no | Same as above. |
@@ -41,7 +41,7 @@ Sources `${CLAUDE_PLUGIN_ROOT}/scripts/lib-vote-tally.sh` for `vote_for_id`, `re
 | `NEUTRAL_COUNT` | In-scope findings with outcome `neutral` (tied vote, no clear consensus). |
 | `OOS_ACCEPTED_COUNT` | OOS items accepted (excluding security-tagged). |
 | `OOS_REJECTED_COUNT` | OOS items not accepted. |
-| `OUT_OF_SCOPE_DRIFT_COUNT` | In-scope findings reclassified to OOS by the scope-fit gate. Zero when `--scope-files` is absent. |
+| `OUT_OF_SCOPE_DRIFT_COUNT` | In-scope findings reclassified to OOS by the scope-fit gate. Emitted as `0` when `--scope-files` is absent, empty, or unreadable, and on the `main-agent-vote-required` early-exit path. |
 | `VOTING_TALLY_FILE` | Absolute path to `voting-tally.md`. |
 | `TALLY_FILE` | Absolute path to `review-tally.env`. |
 | `ACCEPTED_FINDINGS_FILE` | Absolute path to `accepted-findings.md`. |
@@ -67,4 +67,4 @@ The quorum basis is the panel-level eligible voter count (number of non-failed v
 
 ## Harness
 
-`skills/review/scripts/test-tally-code-votes.sh` covers: 3-voter 2-YES accept, 3-voter 1-YES reject with NEUTRAL abstentions, 2-voter unanimous and non-unanimous paths, single-judge YES/NO/EXONERATE, 0-judge main-agent-required, deprecated `--both-down`, OOS handling with `[OUT_OF_SCOPE]` title prefix, rejected-OOS scoring, and security-tag filtering on accepted OOS.
+`skills/review/scripts/test-tally-code-votes.sh` covers: 3-voter 2-YES accept, 3-voter 1-YES reject with NEUTRAL abstentions, 2-voter unanimous and non-unanimous paths, single-judge YES/NO/EXONERATE, 0-judge main-agent-required, deprecated `--both-down`, OOS handling with `[OUT_OF_SCOPE]` title prefix, rejected-OOS scoring, security-tag filtering on accepted OOS, and the scope-fit gate (diff-only list, plan exemption, no-op without `--scope-files`).

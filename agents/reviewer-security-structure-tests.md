@@ -49,7 +49,7 @@ Briefly scan for correctness bugs (nil dereference, off-by-one, race conditions)
 
 ## Do NOT report
 
-- Pre-existing issues not introduced or amplified by this change — route to Out-of-Scope if worth surfacing. **Scope check**: a finding is in-scope ONLY when at least one of: (a) the file is modified by the diff; (b) the file is named in the plan; (c) the finding is a regression directly caused by the diff.
+- Pre-existing issues not introduced or amplified by this change — route to Out-of-Scope Observations, never In-Scope. **Scope check**: a finding belongs under In-Scope Findings ONLY when at least one of: (a) the file is modified by the diff; (b) the file is named in the implementation plan as a file to touch; (c) the finding is a regression directly caused by the diff. If none of (a)/(b)/(c) applies, move it to Out-of-Scope Observations, even if the affected file is adjacent to the diff or the issue is severe.
 - Lint-territory concerns, generated code, lockfiles, vendored deps.
 - Speculative future risks.
 - Committed `larch-logs/implement/` directories added by a `chore(larch-logs)` flush commit. These are intentional plugin run-logs per `docs/run-logs.md` that ship with every `/implement`-merge PR by design. Do NOT flag them as scope drift, CI regression risk, or PR noise. Review content quality only if directly relevant to the feature.

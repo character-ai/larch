@@ -264,6 +264,30 @@ out="$TMP/out.env"
 got=$(awk -F= '$1=="OUT_OF_SCOPE_DRIFT_COUNT"{print $2}' "$out"); assert_eq "scope gate: file in diff → no drift" "$got" "0"
 got=$(awk -F= '$1=="ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "scope gate: in-diff finding accepted normally" "$got" "1"
 
+echo "# Case: scope-fit gate — plan-file mentions path → no drift"
+TMP="$WORKDIR/case6d"
+mkdir -p "$TMP"
+cat > "$TMP/ballot.md" <<'EOF'
+### FINDING_1: **Important** — `code-quality` — `docs/linting.md:22`
+- **Reviewer**: Cursor-Correctness
+- **Concern**: Stale shard reference.
+- **Suggested revision**: Update.
+EOF
+printf 'scripts/dispatch-code-voters.sh\n' > "$TMP/scope-files.txt"
+printf 'Touch docs/linting.md per plan section 3.\n' > "$TMP/plan.txt"
+printf 'FINDING_1: YES\n' > "$TMP/cursor-vote-output.txt"
+printf 'FINDING_1: YES\n' > "$TMP/codex-vote-output.txt"
+printf 'FINDING_1: YES\n' > "$TMP/claude-vote-output.txt"
+out="$TMP/out.env"
+"$SCRIPT" --ballot-file "$TMP/ballot.md" \
+    --voter-files "$TMP/cursor-vote-output.txt" "$TMP/codex-vote-output.txt" "$TMP/claude-vote-output.txt" \
+    --scope-files "$TMP/scope-files.txt" \
+    --plan-file "$TMP/plan.txt" \
+    --review-tmpdir "$TMP" > "$out"
+got=$(awk -F= '$1=="OUT_OF_SCOPE_DRIFT_COUNT"{print $2}' "$out"); assert_eq "scope gate: plan names docs/linting.md → drift=0" "$got" "0"
+got=$(awk -F= '$1=="ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "scope gate: plan exemption keeps finding in accepted" "$got" "1"
+grep -Fq 'docs/linting.md' "$TMP/accepted-findings.md" || { FAIL=1; printf '  FAIL plan-exempt path should stay in accepted-findings.md\n'; }
+
 echo "# Case: scope-fit gate — no --scope-files → gate is no-op"
 TMP="$WORKDIR/case6c"
 mkdir -p "$TMP"

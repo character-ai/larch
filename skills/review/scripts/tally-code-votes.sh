@@ -91,7 +91,7 @@ OUT_OF_SCOPE_DRIFT_COUNT=0
 # scope_drift_check: returns 0 (drift detected, reclassify as OOS) or 1 (keep in-scope).
 # Fires only when SCOPE_FILES is a non-empty readable file. Logic:
 #   1. Extract path-looking tokens from the block's first (heading) line.
-#   2. If no parseable paths found → keep in-scope (conservative).
+#   2. If no tokens matching path.ext:line on the heading → keep in-scope.
 #   3. If any parseable path appears in SCOPE_FILES or PLAN_FILE → keep in-scope.
 #   4. Otherwise → scope drift, reclassify as OOS.
 scope_drift_check() {
@@ -102,11 +102,7 @@ scope_drift_check() {
     # Extract file paths: tokens matching path/file.ext[:digits] patterns.
     local paths
     paths=$(printf '%s' "$heading" | grep -oE '[a-zA-Z0-9_./-]+\.[a-zA-Z0-9]+:[0-9]+' | sed 's/:[0-9]*$//' || true)
-    if [[ -z "$paths" ]]; then
-        # Also try without line number
-        paths=$(printf '%s' "$heading" | grep -oE '[a-zA-Z][a-zA-Z0-9_./-]+\.[a-zA-Z][a-zA-Z0-9]*' || true)
-    fi
-    [[ -n "$paths" ]] || return 1  # no parseable path → keep in-scope
+    [[ -n "$paths" ]] || return 1  # no path:line token → keep in-scope (conservative)
     while IFS= read -r fpath; do
         [[ -n "$fpath" ]] || continue
         if grep -Fxq "$fpath" "$SCOPE_FILES" 2>/dev/null; then
@@ -144,6 +140,7 @@ if (( ELIGIBLE_VOTERS == 0 )); then
     emit_kv NEUTRAL_COUNT "$NEUTRAL_COUNT"
     emit_kv OOS_ACCEPTED_COUNT "$OOS_ACCEPTED_COUNT"
     emit_kv OOS_REJECTED_COUNT "$OOS_REJECTED_COUNT"
+    emit_kv OUT_OF_SCOPE_DRIFT_COUNT "$OUT_OF_SCOPE_DRIFT_COUNT"
     emit_kv VOTING_TALLY_FILE "$VOTING_TALLY_FILE"
     emit_kv TALLY_FILE "$TALLY_ENV_FILE"
     emit_kv ACCEPTED_FINDINGS_FILE "$ACCEPTED_FINDINGS_FILE"
