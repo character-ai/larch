@@ -1,0 +1,9 @@
+Gathering the branch diff and commit list for a read-only review.
+
+Searching the diff for measurement scripts and AGENTS.md changes; reading those hunks in full.
+
+Verifying AGENTS.md for unintended deletions and checking `measure-realized-cost` semantics against an example `timing-report.json`.
+
+Creating the structured review plan for plan-mode compliance.
+
+

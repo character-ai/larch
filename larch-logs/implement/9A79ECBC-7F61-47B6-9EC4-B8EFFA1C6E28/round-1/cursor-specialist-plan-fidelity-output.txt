@@ -1,0 +1,45 @@
+Gathering the pre-computed diff and commit history for a plan-fidelity review.
+
+Searching the diff for plan-relevant files and reading key sections.
+
+Reading implementation files for full logic (diff is truncated/capped). Checking `measure-realized-cost` against the feature vs plan wording.
+
+Commits on this branch since merge-base with `main`:
+
+- `21d048c` Address code review feedback (round 1)
+- `47c182e` chore(larch-logs): flush implement run 9A79ECBC-7F61-47B6-9EC4-B8EFFA1C6E28
+- `067c975` Add measurement tooling for markdown prompt costs
+
+### In-Scope Findings
+
+1. **Important** (`correctness`) — [scripts/measure-realized-cost.sh](scripts/measure-realized-cost.sh) `52-54` vs implementation plan “scan `larch-logs/implement/*/manifest.json` …”  
+   The script iterates `sorted((repo / "larch-logs").glob("*/*"))`, so any future two-level tree under `larch-logs/<category>/<run>/` that contains `manifest.json` / timing artifacts will be folded into the same counters, not only `implement/` (and not only the “similar subdirs” named in the ticket). That widens the population beyond the plan’s scoped root and can silently mix unrelated run types into `invocations` / `realized_tokens`. Restrict the glob to `larch-logs/implement/*` plus any explicitly enumerated sibling categories from the plan/ticket.
+
+2. **Latent** (`correctness`) — [scripts/measure-realized-cost.sh](scripts/measure-realized-cost.sh) `56-86` vs ambiguous “invocations” intent  
+   Skills are collected in a `set` per run directory, so `invocations[skill] += 1` counts at most **once per skill per run** even when `timing-report.json` lists many `per_step` rows for the same skill (e.g. long `implement` runs). If #2241 intended “one invocation per timing step” (each row a potential SKILL reload), `tokens_per_invocation` / `realized_tokens` are understated by a large factor. If the intended unit is “per completed run,” the set semantics are fine—confirm the metric definition and document or change counting accordingly.
+
+3. **Nit** (`correctness`) — [feature_description](feature_description) item (2) “shell/awk helper” vs [scripts/measure-ngram-duplication.sh](scripts/measure-ngram-duplication.sh) (embedded Python)  
+   The numbered ticket text still specifies a shell/awk helper, while the later “Implementation Plan” block and the shipped script use Python for shingling. Behavior matches the internal implementation plan, not the ticket’s “shell/awk” wording; update the ticket or add an explicit supersession note so acceptance checks do not reject the branch.
+
+4. **Nit** (`architecture`) — Implementation plan bullet “read `SKILL.md` **byte counts**” vs [scripts/measure-realized-cost.sh](scripts/measure-realized-cost.sh) `104-105` and [scripts/measure-realized-cost.md](scripts/measure-realized-cost.md)  
+   The plan text says bytes; the implementation and sibling doc use `tiktoken` token counts (which aligns with the TSV column names in the feature description). Refresh the implementation-plan wording to “token counts” to avoid contradictory sources of truth.
+
+5. **Nit** (`risk-integration`) — Added committed artifact `larch-logs/measure-md-cost/2026-05-18.tsv` (large generated TSV) not listed in the implementation plan’s “Files to create/modify”  
+   Shipping a dated measurement snapshot increases repo noise and is easy to misread as a required contract file. If the plan only required scripts to *write* under `larch-logs/...` at run time, prefer `.gitignore` or omit the committed snapshot unless the team explicitly wants a checked-in baseline.
+
+### Out-of-Scope Observations
+
+1. **Nit** (`architecture`) — [larch-logs/implement/9A79ECBC-7F61-47B6-9EC4-B8EFFA1C6E28/manifest.json](larch-logs/implement/9A79ECBC-7F61-47B6-9EC4-B8EFFA1C6E28/manifest.json) shows `"issue_number": 2283` while the surrounding review context references #2241  
+   This comes from the flush commit for that run log, not from the measurement feature’s logic. Out of scope for #2241 plan fidelity; only relevant if the run log is meant to document this specific issue.
+
+**Positive plan coverage (brief):** `set -euo pipefail`, atomic `tempfile` + `os.replace`, `LARCH_MEASURE_DATE`, `cl100k_base` for md-cost and realized-cost, TSV/txt columns and paths for md-cost / ngram / references-heatmap, sibling `.md` files, `100755` modes on all four scripts, Tier **1c** rules semantics and read/edit trigger language in [AGENTS.md](AGENTS.md) `9-13`, and `agent-lint.toml` exclusions for opt-in scripts.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/measure-realized-cost.sh:52-54	Run discovery uses larch-logs/*/* instead of the plan-scoped larch-logs/implement/*.	Any new larch-logs/<kind>/<run>/ trees with manifest/timing files will be aggregated into the same skill/issue metrics, blending unrelated run kinds and skewing rankings.	Limit traversal to larch-logs/implement/* (and any other categories explicitly named in the plan) rather than all two-level paths under larch-logs.
+1	in_scope	latent	correctness	scripts/measure-realized-cost.sh:56-86	Invocations increment once per skill per run because skills_in_run is a set.	If invocations are meant to follow timing-report rows (multiple per_step entries per skill), realized_tokens is far too low versus repeated steps in a single run.	Define whether an invocation is per run or per timing step; if per step, count rows (or another explicit rule) instead of set membership.
+1	in_scope	nit	correctness	feature_description (2) vs scripts/measure-ngram-duplication.sh	Ticket text still requires a shell/awk helper; implementation uses embedded Python.	Strict ticket acceptance that insists on awk could reject the PR despite working Python.	Update the ticket or document that the implementation plan superseded the shell/awk requirement.
+1	in_scope	nit	architecture	implementation_plan measure-realized-cost bullet vs scripts/measure-realized-cost.sh:104-105	Plan text says SKILL.md byte counts; code and docs use tiktoken token counts.	Readers following only the plan narrative may expect byte-based columns or validations.	Align the implementation plan wording with token-based measurement.
+1	in_scope	nit	risk-integration	larch-logs/measure-md-cost/2026-05-18.tsv (committed)	Large generated TSV committed though not listed as a deliverable in the implementation plan.	Extra churn/size and confusion about whether the file is authoritative or just a sample run.	Omit from git, gitignore pattern, or explicitly justify as a checked-in baseline in the plan.
+1	out_of_scope	nit	architecture	larch-logs/implement/9A79ECBC-7F61-47B6-9EC4-B8EFFA1C6E28/manifest.json	issue_number 2283 in a run log tied to a different issue id than the #2241 measurement context.	Misleading only if someone assumes manifest issue always matches the feature issue; pre-existing flush semantics.	Adjust only if run-log provenance for this PR should reference #2241.
+```

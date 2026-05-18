@@ -1,0 +1,10 @@
+voter_tool=cursor
+neutral_count=15
+total_findings=15
+voter_file=<TMPDIR>/round-1/cursor-vote-output.txt
+--- first 200 bytes of voter output ---
+Reading the ballot file to vote on each finding.
+
+Spot-checking the codebase to validate ballot claims before voting.
+
+Verified key claims in `measure-references-heatmap.sh` and `measure-realized-cost

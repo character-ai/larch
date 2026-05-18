@@ -1,0 +1,36 @@
+Gathering the diff, commit list, and full-file context for a correctness-focused review.
+
+Searching the diff for feature-related files and reading those sections.
+
+Reading AGENTS.md and agent-lint changes from the diff, and reading the full measurement scripts from the repo.
+
+Checking timing-report structure and verifying the realized-cost counting logic.
+
+## Review summary
+
+Compared the branch to `main` (commits: `067c975`, `47c182e`, `21d048c`). Core deliverables match the plan: four measurement scripts with sibling `.md` files, `AGENTS.md` Tier 1c semantics, `agent-lint.toml` excludes for dead-script lint, scripts are `755`. The main correctness concern is how **`measure-realized-cost.sh`** turns **`timing-report` step rows** into **`invocations`** and **`realized_tokens`**.
+
+### In-Scope Findings
+
+1. **Important** (`correctness`, `requirements` + `plan`) — [`scripts/measure-realized-cost.sh`](scripts/measure-realized-cost.sh):52-87 — `skills_in_run` is a **set**, so each skill is counted **at most once per run directory** even when `timing-report.json` `per_step` lists that skill many times (e.g. many `implement` steps). **`invocations`** and **`realized_tokens = invocations * tokens`** therefore follow a **per-run** presence model, not the **per timing-row / per-step** grain implied by aggregating `timing-report.*`. **Concrete scenario:** [`larch-logs/implement/A27BC9B0-BED1-458D-AD66-5CFAA390B766/timing-report.json`](larch-logs/implement/A27BC9B0-BED1-458D-AD66-5CFAA390B766/timing-report.json) has numerous consecutive `per_step` entries with `"skill":"implement"`; the script increments `implement` once for that run, not once per `per_step` row. If the intended metric is “how many times timing data associates a skill with a step,” **`realized_tokens` is understated** by roughly the step/repeat factor. **Suggested fix:** Count from `per_step` (and/or markdown step rows) with explicit semantics in the header (e.g. rename to `runs_with_skill` vs `timing_rows`), or sum rows per skill per run.
+
+2. **Latent** (`correctness`, `requirements`) — [`scripts/measure-ngram-duplication.sh`](scripts/measure-ngram-duplication.sh):52-61 — Shingles are built from **regex word tokens** (`word_re.findall`), i.e. **word-level** 6-grams, not character-level 6-grams. **Concrete scenario:** Character-level duplication (long repeated prose with punctuation splitting “words”) can rank differently or be missed vs a character shingle model. **Suggested fix:** If the issue text “≥6-gram” meant characters, switch tokenization; if words are intended, align the feature wording and keep as-is.
+
+3. **Nit** (`risk-integration`, `plan`) — [`scripts/measure-realized-cost.sh`](scripts/measure-realized-cost.sh):52 — Scanner uses `(repo / "larch-logs").glob("*/*")` (every two-level subtree), not only `larch-logs/implement/*` as in the written plan / feature “implement + similar.” **Impact:** Harmless today for most layouts; could ingest unexpected dirs if they gain `manifest.json`/`timing-report.*`. **Suggested fix:** Narrow the glob to `implement/*` plus an explicit allowlist of “similar” dirs.
+
+4. **Nit** (`completeness w.r.t. requirements`, `requirements`) — [`scripts/measure-realized-cost.sh`](scripts/measure-realized-cost.sh):111-114 — Output adds **`issues_observed`**, which is not listed in the feature description’s column list (skill, invocations, tokens_per_invocation, realized_tokens). **Suggested fix:** Drop the column or document it in the issue/spec; TSV consumers expecting four columns may mis-parse.
+
+5. **Latent** (`risk-integration`, `plan`) — [`scripts/measure-realized-cost.sh`](scripts/measure-realized-cost.sh):68-74 — Fallback parsing of `timing-report.md` relies on `re.match(r"^\|\s*([^|*][^|]*?)\s*\|\s*Step\b", line)`. **Concrete scenario:** If the markdown table layout changes (extra columns, different “Step” labeling), skill detection silently falls back to manifest-only or empty. **Suggested fix:** Prefer JSON when present (already done first) and add a small comment or test fixture for the expected MD table shape.
+
+### Out-of-Scope Observations
+
+None. The `chore(larch-logs): flush implement run …` content is explicitly out of scope per your instructions.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/measure-realized-cost.sh:52-87	Invocations dedupe skills per run directory via a set, ignoring repeated per_step rows in timing-report.json.	Example: larch-logs/implement/A27BC9B0-BED1-458D-AD66-5CFAA390B766/timing-report.json has many per_step rows with skill implement; the script counts implement once per run, so invocations and realized_tokens scale with runs not timing steps.	Count per_step (or clarify column semantics and rename); document which grain is authoritative.
+1	in_scope	latent	correctness	scripts/measure-ngram-duplication.sh:52-61	N-grams are word-token 6-grams, not character 6-grams.	Character-level duplication signals can rank differently or be absent from the top-50 list versus a character shingle definition.	Align spec with word n-grams or implement character n-grams if required.
+1	in_scope	nit	risk-integration	scripts/measure-realized-cost.sh:52	Scans all larch-logs/*/* run-shaped dirs, broader than implement/* in the plan text.	Future non-implement subtrees with manifest/timing files could be included unintentionally.	Restrict glob to implement/ and explicitly listed siblings.
+1	in_scope	nit	correctness	scripts/measure-realized-cost.sh:111-114	Extra TSV column issues_observed not in the feature description column list.	Downstream tooling expecting exactly four columns may mis-align fields.	Remove column or amend the published contract.
+1	in_scope	latent	risk-integration	scripts/measure-realized-cost.sh:68-74	timing-report.md skill extraction is regex-coupled to a specific pipe-table shape.	Table format drift yields empty skills_in_run for MD-only runs, skewing aggregates.	Keep JSON-first and document or validate MD format.
+```

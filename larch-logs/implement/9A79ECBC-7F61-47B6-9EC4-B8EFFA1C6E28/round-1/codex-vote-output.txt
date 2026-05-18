@@ -1,0 +1,31 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- legitimate provenance nit, but a one-off run-log mismatch is not issue-worthy.
+FINDING_4: EXONERATE -- valid future concern, but only matters if CI later starts running these scripts.
+FINDING_5: EXONERATE -- code and shipped docs already use tokens; fixing ephemeral plan wording is not worth scope.
+FINDING_6: EXONERATE -- stray temp files after hard crashes are harmless observability-script cleanup noise.
+FINDING_7: EXONERATE -- broader run-family support is allowed by the feature wording, and an allowlist adds premature maintenance.
+FINDING_8: EXONERATE -- stderr noise outside a git checkout is minor and not worth changing behavior.
+FINDING_9: EXONERATE -- the shell wrapper plus embedded Python satisfies the measurement need despite ticket wording drift.
+FINDING_10: NO -- Python `"path\ttier"` correctly emits `path<TAB>tier`; the claimed header bug is false.
+FINDING_11: YES
+FINDING_12: NO -- the script and sibling doc intentionally define 6-word shingles, not character shingles.
+FINDING_13: NO -- with word shingles, `shingle_length` is the configured n-gram word count, not character length.
+FINDING_14: YES
+FINDING_15: EXONERATE -- the feature permits similar log subdirs, so restricting to implement-only is not clearly warranted.
+FINDING_16: NO -- per-step timing rows are not separate skill loads; deduping per skill per run better matches skill invocation cost.
+FINDING_17: NO -- repeated steps within one skill invocation should not be counted as repeated SKILL.md loads.
+FINDING_18: NO -- the ambiguity is resolved by the metric’s skill-invocation framing, not per-step timing rows.
+FINDING_19: NO -- tool names in transcripts are canonical and case-sensitive; alternate casing is not an expected input.
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: EXONERATE -- smoke coverage would help, but adding CI dependencies for opt-in audit helpers is more than this warrants.
+FINDING_23: YES
+FINDING_24: EXONERATE -- crafted TSV injection in local audit outputs is real but too low-impact for schema/sanitization churn here.
+FINDING_25: EXONERATE -- same run-family concern as FINDING_15; the broad scan is defensible under the feature wording.
+FINDING_26: EXONERATE -- same as FINDING_15; documenting intent is enough if this remains a concern.
+FINDING_27: YES
+FINDING_28: EXONERATE -- Markdown fallback parsing is inherently format-coupled and JSON remains the authoritative path.
+FINDING_29: YES
+FINDING_30: YES
+FINDING_31: YES
