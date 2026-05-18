@@ -1294,6 +1294,10 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 **On the Claude-fallback path** (Step 2 returned `STATUS=claude_fallback` AND `ORCHESTRATOR_EDIT_AUTHORITY=allowed` — the same dual predicate enforced by NEVER #10, the Step 2 entry preconditions matrix, and §2.1.5; if the AUTH key is missing, mismatched, or `forbidden`, Step 2 has already bailed via `orchestrator-envelope-invalid` and Step 4 is unreachable on this branch): stage and commit:
 
 ```bash
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
+  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
+fi
+export CLAUDE_PLUGIN_ROOT
 ${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/commit-implementation.sh --message "<descriptive commit message>" <specific-files>
 ```
 
@@ -1494,6 +1498,10 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 If any files changed during review / checks (Steps 5–6):
 
 ```bash
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
+  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
+fi
+export CLAUDE_PLUGIN_ROOT
 ${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/commit-review-fixes.sh <specific-files>
 ```
 
@@ -1554,6 +1562,10 @@ If `MERGE_BASE` is empty, or `CHANGED_COUNT` is 0 (diff failed or branch has no 
 Otherwise, invoke the extracted generator and parse its KV envelope:
 
 ```bash
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
+  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
+fi
+export CLAUDE_PLUGIN_ROOT
 ${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/generate-code-flow-diagram.sh --implement-tmpdir "$IMPLEMENT_TMPDIR" || true
 ```
 
@@ -1707,6 +1719,10 @@ The OOS cap helper contract remains `${CLAUDE_PLUGIN_ROOT}/skills/implement/scri
 Refresh the tracking metadata projection after execution-issues changes when a tracking issue exists. If `ISSUE_NUMBER` is empty or `0`, skip this helper entirely; do not call GitHub for issue `#0`.
 
 ```bash
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
+  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
+fi
+export CLAUDE_PLUGIN_ROOT
 ${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/refresh-execution-issues.sh --implement-tmpdir "$IMPLEMENT_TMPDIR" || true
 ```
 
@@ -1738,6 +1754,10 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 Report unimplemented code review suggestions without reprinting the full findings inline:
 
 ```bash
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
+  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
+fi
+export CLAUDE_PLUGIN_ROOT
 ${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/write-rejected-findings.sh --implement-tmpdir "$IMPLEMENT_TMPDIR" --run-id "$RUN_ID" --log-root "$IMPLEMENT_TMPDIR/larch-logs" || true
 ```
 
@@ -1750,6 +1770,10 @@ If `STATUS=ok`, `write-rejected-findings.sh` found non-empty rejected findings, 
 Print: `> **🔶 /implement 16a: notify**`
 
 ```bash
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
+  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
+fi
+export CLAUDE_PLUGIN_ROOT
 ${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/slack-issue-announce.sh --implement-tmpdir "$IMPLEMENT_TMPDIR" || true
 ```
 
@@ -1795,6 +1819,10 @@ If `quick_mode=false` and `DESIGN_ONLY_DONE` is not true: print a summary noting
 Write/post the terminal `larch:final-summary` projection before the token summary:
 
 ```bash
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
+  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
+fi
+export CLAUDE_PLUGIN_ROOT
 ${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/write-final-report.sh --implement-tmpdir "$IMPLEMENT_TMPDIR"
 ```
 
