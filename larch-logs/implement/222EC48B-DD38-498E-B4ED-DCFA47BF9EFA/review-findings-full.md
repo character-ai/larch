@@ -166,3 +166,11 @@
 - **Concern**: [nit] Warning says active session though stale env pins and executing PLUGIN_ROOT also trigger the skip. Operator infers live process detection from wording; behavior is broader. Align warning string with upgrade-larch.md pin semantics.
 - **Suggested revision**: Address the concern above.
 
+### FINDING_10: panel [code-review/accepted]
+
+## correctness: skills/upgrade-larch/scripts/upgrade-larch.sh:293-296
+
+- **Reviewer**: cursor-specialist-correctness-output.txt
+- **Concern**: [nit] Preserve warning blames session-env or stale metadata even when the skip is only due to INSTALLED_VERSION being appended to ACTIVE_SESSION_VERSIONS. Operator with no session-env pins (e.g. no-sessions-prunes-old harness) still gets stderr implying session-env activity while the branch preserved 29.1.20 solely because basename(CLAUDE_PLUGIN_ROOT) was seeded. Widen wording to include the executing cached plugin root or split warnings for session-derived vs INSTALLED_VERSION-derived skips.
+- **Suggested revision**: Address the concern above.
+
