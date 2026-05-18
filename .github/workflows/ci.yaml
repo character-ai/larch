@@ -183,7 +183,7 @@ jobs:
         # `$(rg ... || true)` substitutions). Ubuntu 24.04 hosted runners
         # do not include ripgrep in the default image inventory.
         run: sudo apt-get update && sudo apt-get install -y ripgrep
-      - name: Run test harnesses (shard ${{ matrix.shard }} of 10)
+      - name: Run test harnesses (shard ${{ matrix.shard }} of 11)
         run: make test-harnesses-${{ matrix.shard }}
 
   agent-lint:
