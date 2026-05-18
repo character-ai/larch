@@ -26,7 +26,7 @@ The script exits 0 only when the bump commit was created. It exits 1 for invalid
 
 ## Invariants
 
-- The working tree must be clean before any mutation. `git status --porcelain` covers staged, unstaged, and untracked files.
+- Before any mutation, the working tree must be free of tracked changes and non-internal untracked files. `git status --porcelain` covers staged, unstaged, and untracked files; the only tolerated dirty entries are larch-internal untracked artifacts matching `*.launcher-stderr` (review-dispatch sidecars) or `*.redacted.log` (relevant-checks output), which are logged as WARN to stderr and preserved. All other dirty entries still fail immediately.
 - Dirty-worktree failures include `/implement` phantom-file guidance:
   `Mid-/implement run: check tracking issue Execution Issues section or \$IMPLEMENT_TMPDIR/execution-issues.md for phantom file warnings.` The
   `\$IMPLEMENT_TMPDIR` token is intentionally backslash-escaped in the script

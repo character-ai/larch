@@ -1,0 +1,9 @@
+Gathering the pre-computed diff and commit history for a read-only review.
+
+Searching the large diff for files from the implementation plan.
+
+Searching the diff for new test files and reading `rebase-push.sh` and `ship-pr.sh` around REBASE_COUNT for cap semantics and lease behavior.
+
+Creating a concise review plan and delivering the full structured review.
+
+

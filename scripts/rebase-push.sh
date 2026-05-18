@@ -241,14 +241,44 @@ if [[ "$NO_PUSH" == "true" ]]; then
     exit 0
 fi
 
-# --- Attempt force-push ---
-PUSH_OUTPUT=$(git push --force-with-lease 2>&1)
-PUSH_EXIT=$?
-
-if [[ $PUSH_EXIT -ne 0 ]]; then
-    PUSH_OUTPUT="${PUSH_OUTPUT//$'\n'/ }"
-    emit_kv PUSH_ERROR "$PUSH_OUTPUT"
+# --- Attempt force-push with retry and jittered backoff ---
+# Preserve the original expected remote OID across retries so a failed lease
+# cannot refresh to a newer remote tip and overwrite another runner's push.
+_PUSH_MAX=3
+CURRENT_BRANCH=$(git branch --show-current 2>/dev/null)
+if [[ -z "$CURRENT_BRANCH" ]]; then
+    emit_kv PUSH_ERROR "Not on a branch (detached HEAD) before push"
     exit 2
 fi
-
-exit 0
+LEASE_REF="refs/heads/$CURRENT_BRANCH"
+git fetch "$BASE_REMOTE" "$CURRENT_BRANCH" --quiet 2>/dev/null || true
+EXPECTED_REMOTE_OID=$(git rev-parse "$BASE_REMOTE/$CURRENT_BRANCH" 2>/dev/null || printf '')
+LEASE_ARG="--force-with-lease=$LEASE_REF:$EXPECTED_REMOTE_OID"
+for _push_attempt in 1 2 3; do
+    if ! git symbolic-ref --quiet HEAD >/dev/null 2>&1; then
+        emit_kv PUSH_ERROR "Not on a branch (detached HEAD) before push attempt $_push_attempt"
+        exit 2
+    fi
+    PUSH_OUTPUT=$(git push "$LEASE_ARG" 2>&1)
+    PUSH_EXIT=$?
+    if [[ $PUSH_EXIT -eq 0 ]]; then
+        exit 0
+    fi
+    git fetch "$BASE_REMOTE" "$CURRENT_BRANCH" --quiet 2>/dev/null || true
+    LOCAL_HEAD=$(git rev-parse HEAD 2>/dev/null || printf '')
+    REMOTE_HEAD=$(git rev-parse "$BASE_REMOTE/$CURRENT_BRANCH" 2>/dev/null || printf '')
+    if [[ -n "$LOCAL_HEAD" && -n "$REMOTE_HEAD" && "$LOCAL_HEAD" == "$REMOTE_HEAD" ]]; then
+        exit 0
+    fi
+    if [[ $_push_attempt -lt $_PUSH_MAX ]]; then
+        # Jittered backoff: base 1s/2s ±25 %
+        _base=$(( 1 * 2 ** (_push_attempt - 1) ))
+        _jitter=$(( RANDOM % (_base / 2 + 1) ))
+        _sleep=$(( _base + _jitter - _base / 4 ))
+        [[ $_sleep -lt 1 ]] && _sleep=1
+        sleep "$_sleep"
+    fi
+done
+PUSH_OUTPUT="${PUSH_OUTPUT//$'\n'/ }"
+emit_kv PUSH_ERROR "$PUSH_OUTPUT"
+exit 2

@@ -1,0 +1,42 @@
+Gathering the branch diff and commit list for a read-only review.
+
+Searching the large diff for the planned files and reading key sections.
+
+Checking grep pattern edge cases, stall-step references, and new test harnesses in the repo.
+
+Commits on this branch since `merge-base` with `main`:
+
+- `45bd1bc3` — Address code review feedback (round 1)
+- `5758aa96` — ship-pr.sh resilience: apply-bump.sh phantom-file tolerance + retry storm guards
+- `75c59ffb` — Bump version to 29.3.4 (#2310)
+
+Review used the cached diff plus the current tree for exact line numbers where the diff was truncated.
+
+### In-Scope Findings
+
+1. **Important** (`risk-integration`) [`scripts/ship-pr.sh:1110`](scripts/ship-pr.sh) vs [`scripts/ship-pr.sh:1143-1160`](scripts/ship-pr.sh): `run_evaluate_failure` still calls `exit_stall` with the legacy token `12c` when `FAILED_RUN_ID` is empty, while the same function now stalls with `10-max-retries` / `12-max-retries` and `10-detached-head` / `12-detached-head` for the new guard paths. A consumer that keys off `STALL_STEP` (or operators grepping logs) now sees two different naming schemes for the same phase family (`12c` vs `12-*`), which makes triage and automation brittle. Align the empty-`FAILED_RUN_ID` stall with the new `12-*` vocabulary (or document `12c` explicitly in [`scripts/ship-pr.md`](scripts/ship-pr.md) as the only legacy exception) so every exit from this function uses one coherent scheme.
+
+2. **Important** (`architecture`) [`scripts/compose-review-findings.sh:57-72`](scripts/compose-review-findings.sh), [`scripts/compose-review-findings.md`](scripts/compose-review-findings.md), [`scripts/test-compose-review-findings.sh`](scripts/test-compose-review-findings.sh): The branch also ships HTML-escape behavior for composed findings plus fixture/assertion updates. That is unrelated to the stated ship-pr / apply-bump / retry resilience work, so review risk, rollback scope, and bisect clarity all suffer if this PR is reverted or cherry-picked. Split the compose escape work into its own PR (or at least its own commit series) so the resilience change stays reviewable in isolation.
+
+3. **Latent** (`risk-integration`) [`scripts/git-push.sh:33-51`](scripts/git-push.sh): The retry loop treats any non-zero `git push` the same (auth/config errors, missing `origin`, branch deleted, etc.), sleeping 1s then up to ~3s more before surfacing the failure. Operators hit a hard misconfiguration and still wait through artificial backoff, which reads like a hung ship step. Narrow retries to signatures you classify as transient (e.g. non-fast-forward / lease text) and fail fast on obvious permanent errors, or gate retries behind an env flag.
+
+4. **Latent** (`correctness`) [`.claude/skills/bump-version/scripts/apply-bump.sh:96-107`](.claude/skills/bump-version/scripts/apply-bump.sh): Tolerance relies on `grep` line anchors and `awk '{print $2}'` for the WARN list. Porcelain v1 can quote or escape unusual paths; anything with spaces or odd quoting will not match the `^?? …$` suffix patterns and can still fail the bump, while the WARN path can mis-list the path if `$2` is only the first token. Rare in practice but opposite to “tolerate launcher sidecars” if a tool ever drops a sidecar under a weird path. Prefer `git status --porcelain -z` + a NUL-safe filter, or match on `git ls-files -o --exclude-standard` output.
+
+5. **Latent** (`risk-integration`) [`scripts/test-rebase-push-force-lease.sh`](scripts/test-rebase-push-force-lease.sh) (new harness): The stub forces `origin/feature` == `HEAD` after the first failed push, so the new multi-attempt push loop, real `sleep`, and “remote still diverges after fetch” behavior are never exercised. Regressions in the retry half of [`scripts/rebase-push.sh:2837-2875`](scripts/rebase-push.sh) could slip through. Add a second fixture that keeps remote ≠ local through at least two attempts, asserting push count and that `sleep` runs when expected.
+
+6. **Nit** (`code-quality`) [`scripts/git-push.md`](scripts/git-push.md) vs [`scripts/git-push.sh:44-48`](scripts/git-push.sh): The contract text claims “~1s/~2s ±25%” for both sleeps, but the first post-failure sleep is effectively pinned at 1s because `_base/2` truncates to 0 when `_base=1`. Tighten the doc (or the formula) so operators are not mis-calibrating worst-case delay.
+
+### Out-of-Scope Observations
+
+1. **Nit** (`architecture`) — Pre-existing pattern: [`scripts/ship-pr.sh`](scripts/ship-pr.sh) already mixes many bare numeric `exit_stall` codes (`8`, `10`, `12`, `12b`, `12d`, etc.). This review only flags the **new** inconsistency created beside the freshly introduced `*-max-retries` / `*-detached-head` strings; a full normalization of all stall tokens is a larger refactor and was not introduced wholesale by this diff.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	scripts/ship-pr.sh:1110-1160	run_evaluate_failure mixes legacy exit_stall token 12c with new 12-max-retries and 12-detached-head strings.	Automation or runbooks that parse STALL_STEP now need special cases for the same ci-merge evaluate_failure phase depending on which branch was taken.	Unify naming (e.g. rename the empty FAILED_RUN_ID stall to 12-missing-run-id) or document 12c as the sole legacy exception in ship-pr.md and any consumer docs.
+1	in_scope	important	architecture	scripts/compose-review-findings.sh:57-72 scripts/compose-review-findings.md scripts/test-compose-review-findings.sh	HTML-escape pipeline for composed findings is bundled with ship-pr resilience work.	Revert/cherry-pick/bisect conflates two unrelated behavioral changes; review surface and blast radius grow without a single coherent feature story.	Split compose escaping into its own PR or commit series.
+1	in_scope	latent	risk_integration	scripts/git-push.sh:33-51	Retry loop sleeps on any git push failure, not only transient races.	Permanent misconfiguration (bad credentials, missing remote) still burns up to three sleeps before failing, resembling a stuck ship step.	Restrict retries to known-transient exit codes/messages or add fail-fast classification before sleep.
+1	in_scope	latent	correctness	.claude/skills/bump-version/scripts/apply-bump.sh:96-107	Internal-artifact filter is line-regex plus awk $2 WARN list.	Unusual git status quoting or paths with spaces can bypass tolerance or mis-report WARN targets.	Use NUL-safe status parsing or a path-based allowlist without awk field splitting.
+1	in_scope	latent	risk_integration	scripts/test-rebase-push-force-lease.sh	Harness only covers lease recovery when remote already matches HEAD after fetch.	Multi-push retry and sleep paths in rebase-push.sh can regress untested.	Add a fixture where remote stays divergent across attempts and assert push attempt count and sleep behavior.
+1	in_scope	nit	code_quality	scripts/git-push.md vs scripts/git-push.sh:44-48	Doc claims ±25% jitter for both backoff steps.	First backoff is effectively fixed at 1s due to integer division in the jitter term.	Align documentation with the actual sleep distribution or adjust the formula.
+1	out_of_scope	nit	architecture	scripts/ship-pr.sh (misc exit_stall sites)	Many historical bare numeric stall codes predate this change.	Not introduced here; full stall vocabulary cleanup would be a separate project.	Defer unless standardizing all exit_stall tokens is explicitly in scope.
+```

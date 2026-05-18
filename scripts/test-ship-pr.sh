@@ -1091,7 +1091,7 @@ else
 fi
 rm -rf "$call_dir"
 
-# Inner loop exhausted: all 3 attempts fail -> stall (exits 4).
+# Inner loop exhausted: all 5 vendor attempts fail -> stall (exits 4).
 root=$(make_repo ci_fix_exhausted)
 tmp=$(make_tmpdir)
 call_dir=$(mktemp -d "$tmp/ship-pr-exhausted.XXXXXX")
@@ -1125,13 +1125,13 @@ set +e
     --merge true --draft false --forked false --repo owner/repo > "$tmp/stdout" 2>&1)
 printf '%s' "$?" > "$tmp/rc"
 set -e
-assert_rc "$tmp/rc" 4 "local fix loop: all 3 attempts exhausted stalls (exits 4)"
+assert_rc "$tmp/rc" 4 "local fix loop: all 5 vendor attempts exhausted stalls (exits 4)"
 assert_state_line "$tmp/ship-pr-state.sh" "STALL_TRACKING=true" "local fix loop exhausted marks stall"
 check_count=$(cat "$call_dir/checks-count" 2>/dev/null || echo 0)
-if [ "$check_count" -eq 12 ]; then
-    ok "local fix loop exhausted: repeated the 4-check inner loop across 3 vendor attempts"
+if [ "$check_count" -eq 20 ]; then
+    ok "local fix loop exhausted: repeated the 4-check inner loop across 5 vendor attempts"
 else
-    fail "local fix loop exhausted: expected 12 check attempts across 3 vendor attempts, got $check_count"
+    fail "local fix loop exhausted: expected 20 check attempts across 5 vendor attempts, got $check_count"
 fi
 rm -rf "$call_dir"
 

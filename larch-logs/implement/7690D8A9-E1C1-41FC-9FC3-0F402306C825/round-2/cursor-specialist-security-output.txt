@@ -1,0 +1,48 @@
+Gathering the branch diff and commit history for a read-only security review.
+
+Searching the large diff for relevant file hunks and reading key sections.
+
+Identifying the file for the `escape_finding_body` hunk and scanning the diff for other security-relevant changes.
+
+Fetching line numbers from the repo for accurate citations.
+
+## Commits vs `main`
+
+`git log $(git merge-base HEAD main)..HEAD --oneline`:
+
+- `45bd1bc3` Address code review feedback (round 1)
+- `5758aa96` ship-pr.sh resilience: apply-bump.sh phantom-file tolerance + retry storm guards
+- `75c59ffb` Bump version to 29.3.4 (#2310)
+
+(Plus large `larch-logs/` and ancillary harness/doc updates in the full diff; those are out of scope for security findings unless they change trust boundaries.)
+
+---
+
+### In-Scope Findings
+
+1. **Important** (`risk-integration`) — [`scripts/ship-pr.sh:1143-1187`](scripts/ship-pr.sh) and [`scripts/ship-pr.sh:1155-1161`](scripts/ship-pr.sh): `run_evaluate_failure` and `run_rebase_rebump` now call `exit_stall` with new `STALL_STEP` values (`10-max-retries`, `12-max-retries`, `10-detached-head`, `12-detached-head`) where vendor-fix exhaustion and similar cases used to surface as `10` / `12c` (see still-present `exit_stall ... 12c` at [`scripts/ship-pr.sh:1110`](scripts/ship-pr.sh)). Any automation, dashboards, or operator playbooks that match exact strings like `STALL_STEP=12c` for “CI fix loop exhausted” will mis-handle the new stalls until updated. **Scenario:** a resume script treats `12c` as “open the failure log and re-run vendor fix” but never handles `12-max-retries`, so operators get a silent classification gap. **Fix:** document the new tokens everywhere `STALL_STEP` is interpreted, or emit a backward-compatible primary step plus a new diagnostic field (e.g. `STALL_REASON=`) so existing consumers keep working.
+
+2. **Latent** (`security`) — [`scripts/compose-review-findings.sh:57-72`](scripts/compose-review-findings.sh): `escape_finding_body` only encodes `&`, `<`, and `>`. That matches the stated markdownlint/XML-token goal and is ordered correctly (`&` first). **Scenario:** if this markdown is later embedded in HTML/XML attributes or other contexts without further encoding, `"`, `'`, U+2028, or backtick-heavy payloads could still be problematic for that consumer. **Fix:** treat current escaping as sufficient for markdown-on-disk only; if a second consumer appears, centralize context-appropriate encoding (HTML entity set or a vetted library) rather than growing ad hoc `sed` rules.
+
+3. **Nit** (`correctness`) — [`.claude/skills/bump-version/scripts/apply-bump.sh:96-107`](.claude/skills/bump-version/scripts/apply-bump.sh): Tolerance is implemented with fixed-string `grep -v` on porcelain lines plus `awk '{print $2}'` for the WARN list. **Scenario:** `git status` quoted or multi-field paths for `*.redacted.log` / `*.launcher-stderr` may not match the patterns, so the bump still fails closed (no integrity loss), or WARN may list an incomplete path. **Fix:** optional hardening with `git status --porcelain -z` and NUL-safe parsing if you need bulletproof coverage for odd paths.
+
+---
+
+### Out-of-Scope Observations
+
+1. **Pre-existing state robustness** (`correctness`) — [`scripts/ship-pr.sh:188-199`](scripts/ship-pr.sh): `read_state` returns empty when a key is missing; arithmetic elsewhere already assumed numeric `REBASE_COUNT`. The new `[ "$(read_state REBASE_COUNT)" -ge 5 ]` check does not introduce that class of bug, but hand-edited state files could still trigger “integer expression expected” failures. Out of scope because the state contract and `require_key` bootstrap predate this hunk and the issue is not specific to the new guard.
+
+2. **Documentation drift** (`risk-integration`) — [`skills/implement/SKILL.md`](skills/implement/SKILL.md) (not modified in this feature diff) still emphasizes numeric-style `STALL_STEP` examples (e.g. `6`, `12d`) and does not mention the new hyphenated stall tokens. Out of scope because that file is outside the reviewed change set, but operators may need a follow-up doc pass elsewhere.
+
+---
+
+`compose-review-findings` HTML escaping is a **security-hardening** change (reduces confusion between reviewer prose and markup-like tokens); no separate “finding” beyond the latent partial-encoding note above.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	scripts/ship-pr.sh:1143-1187,scripts/ship-pr.sh:1155-1161	STALL_STEP values for vendor/rebase exhaustion and detached HEAD changed from numeric-style 10 / 12c to hyphenated strings (10-max-retries, 12-max-retries, 10-detached-head, 12-detached-head).	Downstream automation or docs that key off exact STALL_STEP=10 or STALL_STEP=12c for evaluate-failure exhaustion will no longer match; stalls may be mis-routed or ignored in custom tooling.	Update every consumer of STALL_STEP to accept the new tokens, or add a parallel machine-readable reason field while keeping legacy stall codes stable.
+1	in_scope	latent	security	scripts/compose-review-findings.sh:57-72	Escape pipeline only replaces & < > after redaction.	If output is ever embedded in HTML/XML or shell-interpreted contexts without a second encoding layer, other characters could still be unsafe for that consumer.	Document the threat model as markdown-on-disk only, or adopt full contextual encoding if a second consumer is introduced.
+1	in_scope	nit	correctness	.claude/skills/bump-version/scripts/apply-bump.sh:96-107	Porcelain line filtering and awk column 2 for WARN may mishandle quoted or multi-token paths from git status.	Internal artifacts with unusual path metadata might still fail the bump (safe) or emit an incomplete WARN path (cosmetic).	Optional: parse porcelain with -z or match paths after the status prefix without assuming a single-token path.
+1	out_of_scope	nit	correctness	scripts/ship-pr.sh:188-199	Missing or corrupted REBASE_COUNT in a hand-edited state file can make shell numeric tests error.	Not introduced solely by this diff; same empty-key hazard exists for other arithmetic on read_state.	Keep state file integrity guarantees; treat as operational hygiene.
+1	out_of_scope	nit	risk-integration	skills/implement/SKILL.md	Operator-facing SKILL examples for STALL_STEP do not list the new hyphenated stall tokens.	Confusion when comparing live STALL_STEP values to SKILL prose; file not part of this feature diff.	Follow-up documentation outside this PR if desired.
+```

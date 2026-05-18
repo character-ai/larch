@@ -164,6 +164,19 @@ assert_stdout_matches() {
     fi
 }
 
+assert_stderr_contains() {
+    local case_name="$1"
+    local needle="$2"
+    local label="$3"
+
+    if grep -Fq "$needle" "$TMPDIR_BASE/$case_name/stderr.log"; then
+        ok "$label"
+    else
+        fail "$label"
+        sed 's/^/    stderr: /' "$TMPDIR_BASE/$case_name/stderr.log"
+    fi
+}
+
 assert_plugin_version() {
     local case_name="$1"
     local expected="$2"
@@ -317,6 +330,26 @@ assert_plugin_version "regression_guard" "1.0.0" "H: plugin.json restored"
 assert_index_unstaged "regression_guard" "H: index unstaged"
 assert_backup_absent "regression_guard" "H: backup removed"
 assert_commit_count "regression_guard" "1" "H: no new commit"
+
+echo
+echo "Sub-test I: larch-internal untracked artifacts are tolerated"
+# shellcheck disable=SC2317  # invoked indirectly via run_case "$runner"
+invoke_internal_artifacts_apply() {
+    local repo_dir="$1"
+    # Place known-larch-internal untracked files in the repo working tree.
+    printf 'sidecar data\n' > "$repo_dir/voter-claude.launcher-stderr"
+    printf 'redacted log\n' > "$repo_dir/step-3-post-rebase.redacted.log"
+    invoke_apply "$repo_dir" STUB_ORIGIN_PLUGIN_JSON='{"version":"1.0.0"}'
+}
+run_case "internal_artifacts" invoke_internal_artifacts_apply
+assert_exit_code "internal_artifacts" "0" "I: larch-internal artifacts exit 0"
+assert_stdout_contains "internal_artifacts" "APPLIED=true" "I: larch-internal artifacts emits APPLIED=true"
+assert_stderr_contains "internal_artifacts" "WARN:" "I: larch-internal artifacts emits WARN on stderr"
+assert_stderr_contains "internal_artifacts" "voter-claude.launcher-stderr" "I: WARN names launcher stderr artifact"
+assert_stderr_contains "internal_artifacts" "step-3-post-rebase.redacted.log" "I: WARN names redacted log artifact"
+assert_plugin_version "internal_artifacts" "2.0.0" "I: plugin.json has new version"
+assert_commit_count "internal_artifacts" "2" "I: exactly one new commit"
+assert_backup_absent "internal_artifacts" "I: backup removed"
 
 echo
 if [[ "$FAIL_COUNT" -eq 0 ]]; then

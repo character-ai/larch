@@ -1,0 +1,14 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: EXONERATE -- bounded three-attempt retry is acceptable; stderr allowlisting adds brittleness, but the doc drift is covered by FINDING_3.
+FINDING_6: EXONERATE -- duplicate of FINDING_4; integer jitter drift is real but not a separate fix.
+FINDING_7: NO -- empty expect is documented missing-ref lease semantics; the actual fork failure is the wrong remote covered by FINDING_1/FINDING_11.
+FINDING_8: YES
+FINDING_9: EXONERATE -- the implementation is stronger than the stale plan text, so this is not worth churn.
+FINDING_10: EXONERATE -- preserving one OID snapshot across retries is defensible; the material empty-OID risk is the wrong-remote bug covered elsewhere.
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: EXONERATE -- duplicate of FINDING_13; one shared git-force-push alignment fix is enough.

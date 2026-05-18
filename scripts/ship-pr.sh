@@ -1128,13 +1128,36 @@ run_evaluate_failure() {
     "$SCRIPT_DIR/gh-run-logs.sh" --run-id "$failed_run" --repo "$(read_state REPO)" > "$fail_file" 2>&1
     rc=$?
     [ "$rc" -eq 0 ] || record_failure "$phase" "gh-run-logs.sh" "$rc" "$fail_file" "CI Issues"
-    for _ in 1 2 3; do
-        run_ci_fix_vendor "$phase" "$failed_run" && {
+    # Retry loop with cap, detached-HEAD check, and jittered backoff. This caps
+    # each run_evaluate_failure invocation at 5 vendor+push attempts; the
+    # persisted FIX_ATTEMPTS counter still tracks successful fix pushes across
+    # the wider phase for reporting/state purposes.
+    local _max_fix=5 _fix_attempt
+    _fix_attempt=0
+    while [ "$_fix_attempt" -lt "$_max_fix" ]; do
+        # Detached-HEAD guard before each vendor+push attempt.
+        if ! git symbolic-ref --quiet HEAD >/dev/null 2>&1; then
+            fail_file=$(failure_capture_path "$phase")
+            printf 'run_evaluate_failure: not on a named branch (detached HEAD)\n' > "$fail_file"
+            record_failure "$phase" "evaluate-failure detached-head" 1 "$fail_file" "CI Issues"
+            exit_stall "$([ "$phase" = "ci-initial" ] && echo 10-detached-head || echo 12-detached-head)"
+        fi
+        if run_ci_fix_vendor "$phase" "$failed_run"; then
             state_set_many TRANSIENT_RETRIES 0 FIX_ATTEMPTS "$(( $(read_state FIX_ATTEMPTS) + 1 ))"
             return 0
-        }
+        fi
+        _fix_attempt=$(( _fix_attempt + 1 ))
+        if [ "$_fix_attempt" -lt "$_max_fix" ]; then
+            # Jittered backoff: 2s/4s/8s/16s ±25 %
+            local _base _jitter _sleep
+            _base=$(( 2 * 2 ** (_fix_attempt - 1) ))
+            _jitter=$(( RANDOM % (_base / 2 + 1) ))
+            _sleep=$(( _base + _jitter - _base / 4 ))
+            [ "$_sleep" -lt 1 ] && _sleep=1
+            sleep "$_sleep"
+        fi
     done
-    exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12c)"
+    exit_stall "$([ "$phase" = "ci-initial" ] && echo 10-max-retries || echo 12-max-retries)"
 }
 
 run_rebase_rebump() {
@@ -1143,6 +1166,27 @@ run_rebase_rebump() {
     local fail_file rc tool_label plan_file
     local plan_args=()
     local _origin_ver="" _classified_version="" _corrected=""
+
+    # Cap rebase retries to prevent indefinite storms (e.g. concurrent merges
+    # to main that keep triggering ACTION=rebase from ci-wait.sh).
+    local _max_rebases=5
+    if [ "$(read_state REBASE_COUNT)" -ge "$_max_rebases" ]; then
+        fail_file=$(failure_capture_path rebase)
+        printf 'run_rebase_rebump: REBASE_COUNT >= %d; bailing to prevent infinite retry storm\n' "$_max_rebases" > "$fail_file"
+        record_failure rebase "run_rebase_rebump max-retries" 1 "$fail_file" "CI Issues"
+        exit_stall "$([ "$phase" = "ci-initial" ] && echo 10-max-retries || echo 12-max-retries)"
+    fi
+
+    # Detached-HEAD check: a prior rebase may have left HEAD detached.  Detect
+    # before attempting another rebase so we bail immediately rather than
+    # retrying into an unrecoverable state.
+    if ! git symbolic-ref --quiet HEAD >/dev/null 2>&1; then
+        fail_file=$(failure_capture_path rebase)
+        printf 'run_rebase_rebump: not on a named branch (detached HEAD)\n' > "$fail_file"
+        record_failure rebase "run_rebase_rebump detached-head" 1 "$fail_file" "CI Issues"
+        exit_stall "$([ "$phase" = "ci-initial" ] && echo 10-detached-head || echo 12-detached-head)"
+    fi
+
     plan_file=$(resolve_plan_file)
     if [ -n "$plan_file" ]; then
         plan_args=(--plan-file "$plan_file")
