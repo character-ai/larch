@@ -35,7 +35,7 @@ grep -Fq 'scripts/tracking-issue-summary.sh' "$SKILL_MD" \
 grep -Fq 'summary-comment-template.md' "$SKILL_MD" \
   || fail "SKILL.md must reference summary-comment-template.md"
 
-if grep -Eiq 'user has( made| fixed)?' "$SKILL_MD" "$REPO_ROOT/skills/review-and-fix/scripts/review-and-fix.md"; then
+if grep -Eiq '(^|[^[:alpha:]])user has( made| fixed)?([^[:alpha:]]|$)' "$SKILL_MD" "$REPO_ROOT/skills/review-and-fix/scripts/review-and-fix.md"; then
   fail "orchestrator/review-fix docs must not attribute coder work as 'user has...'"
 fi
 
@@ -129,6 +129,15 @@ awk '
   END { if (!found) exit 1 }
 ' "$SKILL_MD" || step6_lint_status=$?
 [[ "$step6_lint_status" == "0" ]] || fail "Step 6 region must reference lint-fix-loop.sh"
+
+step5_lint_status=0
+awk '
+  /<!-- step:5/ { in_step = 1; next }
+  in_step && /<!-- step:/ { in_step = 0 }
+  in_step && /lint-fix-loop\.sh/ { found = 1 }
+  END { if (!found) exit 1 }
+' "$SKILL_MD" || step5_lint_status=$?
+[[ "$step5_lint_status" == "0" ]] || fail "Step 5 region must reference lint-fix-loop.sh"
 
 if grep -Eiq 'diagnose([[:space:]]*,[[:space:]]*|[[:space:]]*\+[[:space:]]*)fix' "$SKILL_MD"; then
   fail "SKILL.md must not contain bare diagnose/fix relevant-checks loops without lint-fix-loop.sh routing"
