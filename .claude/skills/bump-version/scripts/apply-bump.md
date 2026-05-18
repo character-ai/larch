@@ -4,7 +4,7 @@ Applies a computed semver bump to `.claude-plugin/plugin.json` and creates the s
 
 ## Purpose
 
-`apply-bump.sh --new-version X.Y.Z` is the mutation half of the dev-only `/bump-version` skill. It assumes `classify-bump.sh` has already selected `NEW_VERSION`; this script validates the repo state, rewrites the plugin version, checks the current `origin/main` version to avoid same-version duplicate bump commits and version-regression bumps, and commits `Bump version to X.Y.Z`.
+`apply-bump.sh --new-version X.Y.Z` is the mutation half of the dev-only `/bump-version` skill. It assumes `classify-bump.sh` has already selected `NEW_VERSION`; this script validates the repo state, rewrites the plugin version, checks the current `origin/main` version to avoid same-version duplicate bump commits and version-regression bumps (`NEW_VERSION < ORIGIN_VERSION`), and commits `Bump version to X.Y.Z`.
 
 ## Output Contract
 
@@ -22,7 +22,7 @@ APPLIED=false
 ERROR=<message>
 ```
 
-The script exits 0 only when the bump commit was created. It exits 1 for invalid arguments, dirty worktree, JSON validation/rewrite failures, same-version race detection, version-regression guard failures (`NEW_VERSION < ORIGIN_VERSION`), and commit failure.
+The script exits 0 only when the bump commit was created. It exits 1 for invalid arguments, dirty worktree, JSON validation/rewrite failures, origin/main version-guard failures (same-version race detection and `NEW_VERSION < ORIGIN_VERSION` regression guard), and commit failure.
 
 ## Invariants
 

@@ -7,7 +7,7 @@
 #   - Back up plugin.json.
 #   - Rewrite .version field atomically via jq + mv.
 #   - git add, fetch origin/main, and fail closed with rollback if origin/main
-#     already publishes the requested version.
+#     already publishes the requested version or is ahead of it.
 #   - Commit with message "Bump version to <new-version>".
 #   - Roll back from backup if git commit fails.
 #
@@ -19,7 +19,8 @@
 #   COMMIT_SHA=<sha>             (if APPLIED=true)
 #   ERROR=<message>              (if APPLIED=false)
 #
-# Exit codes: 0 on success, 1 on invalid args / validation / dirty worktree / commit failure.
+# Exit codes: 0 on success, 1 on invalid args / validation / dirty worktree /
+#   origin/main same-version or regression guard failures / commit failure.
 
 set -euo pipefail
 
@@ -109,7 +110,7 @@ mv "$TMP_JSON" "$PLUGIN_JSON"
 git add "$PLUGIN_JSON"
 if ! git fetch origin main --quiet 2>/dev/null; then
   rollback_before_commit
-  fail "git fetch origin main failed; cannot verify same-version race"
+  fail "git fetch origin main failed; cannot verify origin/main version guards"
 fi
 
 ORIGIN_VERSION=$(git show origin/main:.claude-plugin/plugin.json 2>/dev/null | jq -r -e '.version // empty' 2>/dev/null || echo "")
