@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+# post-tracking-issue.sh — publish the Step 0.5 larch:metadata summary.
+# shellcheck disable=SC2016
+#
+# Reads all session state from $IMPLEMENT_TMPDIR files; callers pass only
+# --implement-tmpdir to avoid non-determinism from many CLI arguments.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
+# shellcheck source=scripts/lib-quiet.sh
+# shellcheck disable=SC1091
+source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
+larch_quiet_init
+
+usage() {
+    larch_err "Usage: post-tracking-issue.sh --implement-tmpdir PATH"
+}
+
+fail_usage() {
+    usage
+    emit_kv POSTED false
+    emit_kv COMMENT_URL ""
+    emit_kv ERROR "$1"
+    exit 2
+}
+
+read_kv() {
+    local key=$1 file=$2
+    [ -f "$file" ] || return 0
+    awk -v k="$key" 'BEGIN{p=k"="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$file" 2>/dev/null
+}
+
+IMPLEMENT_TMPDIR=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --implement-tmpdir) [ $# -ge 2 ] || fail_usage "--implement-tmpdir requires a value"; IMPLEMENT_TMPDIR=$2; shift 2 ;;
+        --help) usage; exit 0 ;;
+        *) fail_usage "unknown option: $1" ;;
+    esac
+done
+
+[ -n "$IMPLEMENT_TMPDIR" ] || fail_usage "--implement-tmpdir is required"
+[ -d "$IMPLEMENT_TMPDIR" ] || fail_usage "--implement-tmpdir not found"
+
+SESSION_ENV="$IMPLEMENT_TMPDIR/session-env.sh"
+PARENT_ISSUE="$IMPLEMENT_TMPDIR/parent-issue.md"
+
+ISSUE="$(read_kv ISSUE_NUMBER "$PARENT_ISSUE")"
+RUN_ID="$(read_kv RUN_ID "$PARENT_ISSUE")"
+[ -n "$RUN_ID" ] || RUN_ID="$(tr -d '\r\n' < "$IMPLEMENT_TMPDIR/session-id" 2>/dev/null || true)"
+REPO="$(read_kv REPO "$SESSION_ENV")"
+AGENT="$(read_kv AGENT "$SESSION_ENV")"; [ -n "$AGENT" ] || AGENT="claude"
+CODER="$(read_kv CODER "$SESSION_ENV")"; [ -n "$CODER" ] || CODER="claude"
+
+[ -n "$ISSUE" ] || { emit_kv POSTED false; emit_kv COMMENT_URL ""; emit_kv ERROR "ISSUE_NUMBER not found in parent-issue.md"; exit 1; }
+[ -n "$RUN_ID" ] || { emit_kv POSTED false; emit_kv COMMENT_URL ""; emit_kv ERROR "RUN_ID not found in parent-issue.md or session-id"; exit 1; }
+case "$ISSUE" in *[!0-9]*|"") emit_kv POSTED false; emit_kv COMMENT_URL ""; emit_kv ERROR "ISSUE_NUMBER must be numeric"; exit 1 ;; esac
+
+summary="$IMPLEMENT_TMPDIR/summary-metadata.md"
+version="$("$PLUGIN_ROOT/scripts/read-plugin-version.sh" 2>/dev/null | awk -F= '/^LARCH_PLUGIN_VERSION=/{print $2; exit}')"
+[ -n "$version" ] || version="unknown"
+
+{
+    printf 'Run ID: `%s`\n' "$RUN_ID"
+    printf 'Logs: `larch-logs/implement/%s/`\n' "$RUN_ID"
+    printf 'Tracking issue: #%s\n' "$ISSUE"
+    printf 'Agent: `%s`\n' "$AGENT"
+    printf 'Coder: `%s`\n' "$CODER"
+    printf 'Larch version: `%s`\n' "$version"
+} > "$summary" || {
+    emit_kv POSTED false
+    emit_kv COMMENT_URL ""
+    emit_kv ERROR "could not write summary"
+    exit 1
+}
+
+marker="<!-- larch:metadata v1 runid=$RUN_ID -->"
+out_file="$IMPLEMENT_TMPDIR/post-tracking-issue.out"
+err_file="$IMPLEMENT_TMPDIR/post-tracking-issue.err"
+args=(upsert-summary --issue "$ISSUE" --marker "$marker" --content-file "$summary")
+[ -z "$REPO" ] || args+=(--repo "$REPO")
+
+if "$PLUGIN_ROOT/scripts/tracking-issue-summary.sh" "${args[@]}" >"$out_file" 2>"$err_file"; then
+    emit_kv POSTED true
+    emit_kv COMMENT_URL "$(awk -F= '$1=="COMMENT_URL"{print substr($0,index($0,"=")+1); exit}' "$out_file")"
+    exit 0
+fi
+
+emit_kv POSTED false
+emit_kv COMMENT_URL ""
+emit_kv ERROR "$(tr '\n' ' ' < "$err_file" | head -c 500)"
+exit 1

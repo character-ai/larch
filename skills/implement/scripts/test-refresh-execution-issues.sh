@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+# test-refresh-execution-issues.sh — offline harness for refresh-execution-issues.sh.
+
+set -euo pipefail
+export LARCH_QUIET_DISABLE=1
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd -P)"
+HELPER="$SCRIPT_DIR/refresh-execution-issues.sh"
+TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/test-refresh-execution-issues.XXXXXX")"
+trap 'rm -rf "$TMP_ROOT"' EXIT
+PASS=0; FAIL=0
+pass(){ PASS=$((PASS+1)); printf 'PASS: %s\n' "$1"; }
+fail(){ FAIL=$((FAIL+1)); printf 'FAIL: %s\n' "$1" >&2; }
+assert_contains(){ case "$2" in *"$1"*) pass "$3" ;; *) fail "$3 (missing $1)"; printf 'ACTUAL: %s\n' "$2" >&2 ;; esac; }
+finish(){ [ "$FAIL" -eq 0 ] || exit 1; printf 'PASS=%s\n' "$PASS"; }
+
+plugin="$TMP_ROOT/plugin"; mkdir -p "$plugin/scripts"
+cp "$REPO_ROOT/scripts/lib-quiet.sh" "$plugin/scripts/lib-quiet.sh"
+cat > "$plugin/scripts/read-plugin-version.sh" <<'STUB'
+#!/usr/bin/env bash
+printf 'LARCH_PLUGIN_VERSION=1.2.3\n'
+STUB
+cat > "$plugin/scripts/tracking-issue-summary.sh" <<'STUB'
+#!/usr/bin/env bash
+while [ $# -gt 0 ]; do case "$1" in --content-file) cp "$2" "${TRACKING_CONTENT_LOG:?}"; shift 2 ;; *) shift ;; esac; done
+printf 'COMMENT_URL=https://example.test/comment/2\n'
+STUB
+chmod +x "$plugin/scripts/read-plugin-version.sh" "$plugin/scripts/tracking-issue-summary.sh"
+
+# Happy path: IMPLEMENT_TMPDIR with parent-issue.md and session-env.sh
+impl_dir="$TMP_ROOT/impl"; mkdir -p "$impl_dir"
+printf 'ISSUE_NUMBER=3\nRUN_ID=run-2\nADOPTED=true\n' > "$impl_dir/parent-issue.md"
+printf 'REPO=owner/repo\nCODER=codex\n' > "$impl_dir/session-env.sh"
+cat > "$impl_dir/summary-metadata.md" <<'EOF'
+Run ID: `run-2`
+Logs: `larch-logs/implement/run-2/`
+Tracking issue: #3
+Agent: `claude`
+Coder: `codex`
+Larch version: `1.2.3`
+EOF
+cat > "$impl_dir/execution-issues.md" <<'EOF'
+### Warnings
+
+- first
+- second
+EOF
+
+out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content.md" \
+      "$HELPER" --implement-tmpdir "$impl_dir")
+assert_contains 'REFRESHED=true' "$out" 'happy path refreshed'
+assert_contains "Execution issues pending flush: \`2\`" "$(cat "$TMP_ROOT/content.md")" 'summary includes count'
+assert_contains "Coder: \`codex\`" "$(cat "$TMP_ROOT/content.md")" 'existing metadata preserved'
+
+# issue-not-set when ISSUE_NUMBER=0
+impl_zero="$TMP_ROOT/impl-zero"; mkdir -p "$impl_zero"
+printf 'ISSUE_NUMBER=0\nRUN_ID=run-2\n' > "$impl_zero/parent-issue.md"
+printf 'REPO=owner/repo\n' > "$impl_zero/session-env.sh"
+skip=$(CLAUDE_PLUGIN_ROOT="$plugin" "$HELPER" --implement-tmpdir "$impl_zero")
+assert_contains 'REFRESHED=true' "$skip" 'issue zero skip emits refreshed true'
+assert_contains 'REASON=issue-not-set' "$skip" 'issue zero skip explains reason'
+
+# Missing --implement-tmpdir
+set +e
+bad=$(CLAUDE_PLUGIN_ROOT="$plugin" "$HELPER" 2>/dev/null)
+rc=$?
+set -e
+if [ "$rc" -ne 0 ]; then pass 'missing arg exits non-zero'; else fail 'missing arg exits non-zero'; fi
+assert_contains 'REFRESHED=false' "$bad" 'missing arg emits envelope'
+
+finish

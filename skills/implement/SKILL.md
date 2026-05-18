@@ -27,7 +27,7 @@ Four invariants enforced across multiple steps. Anchor cross-step questions here
 
 3. **Degraded-Git Fail-Closed** — `check-bump-version.sh STATUS != ok` MUST force `VERIFIED=false` at Step 12 regardless of `COMMITS_AFTER`. **Enforcement**: STATUS-first evaluation ordering in the Rebase + Re-bump Sub-procedure step 4 (see `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/bump-verification.md` Block β); Step 8 permissive, Step 12 strict (bail to 12d). **Why**: a coerced 0 baseline from a transient git error routes to a bogus "wrong commit count" mis-diagnosis — the fail-closed rule prevents silently wrong merged versions.
 
-4. **Tracking-Issue Sentinel Idempotency** (umbrella #348) — re-running `/implement` in the same session MUST NOT double-create a tracking issue or double-adopt the wrong issue. **Enforcement**: the `$IMPLEMENT_TMPDIR/parent-issue.md` sentinel detected at Step 0.5 entry; prior `ISSUE_NUMBER` and `RUN_ID` are recovered from it so no `tracking-issue-write.sh create-issue` call (Branch 4 path, which runs at Step 0.5 on first remote write) runs twice. Ordering invariant on Branch 4 first-creation: `create-issue` -> `larch-log.sh init` -> `tracking-issue-summary.sh upsert-summary` for the `larch:metadata` comment -> write sentinel last. The sentinel is written ONLY after `ISSUE_NUMBER`, `RUN_ID`, and the metadata summary comment have resolved successfully. If create-issue fails: `deferred=true`, skip sentinel. If `larch-log.sh init` (manifest write) fails: `deferred=true`, `STALL_TRACKING=true`, skip sentinel, skip to Step 18 — **preserve `$ISSUE_NUMBER`** so Step 18 can rename the created issue to `[STALLED]`. If metadata summary upsert fails: `deferred=true`, skip sentinel, proceed to Step 1. **Why**: `tracking-issue-summary.sh` searches by the marker literal for each of the four slim comments, but the local sentinel is still the byte-exact session-scope guard against double-creation on retry or resume. Parallel to Invariant #2 — sentinel-based byte-exact idempotency guards for distinct session artifacts.
+4. **Tracking-Issue Sentinel Idempotency** (umbrella #348) — re-running `/implement` in the same session MUST NOT double-create a tracking issue or double-adopt the wrong issue. **Enforcement**: the `$IMPLEMENT_TMPDIR/parent-issue.md` sentinel detected at Step 0.5 entry; prior `ISSUE_NUMBER` and `RUN_ID` are recovered from it so no `tracking-issue-write.sh create-issue` call (Branch 4 path, which runs at Step 0.5 on first remote write) runs twice. Ordering invariant on Branch 4 first-creation: `create-issue` -> `larch-log.sh init` -> `post-tracking-issue.sh` for the `larch:metadata` comment -> write sentinel last. The sentinel is written ONLY after `ISSUE_NUMBER`, `RUN_ID`, and the metadata summary comment have resolved successfully. If create-issue fails: `deferred=true`, skip sentinel. If `larch-log.sh init` (manifest write) fails: `deferred=true`, `STALL_TRACKING=true`, skip sentinel, skip to Step 18 — **preserve `$ISSUE_NUMBER`** so Step 18 can rename the created issue to `[STALLED]`. If metadata summary upsert fails: `deferred=true`, skip sentinel, proceed to Step 1. **Why**: `tracking-issue-summary.sh` searches by the marker literal for each of the four slim comments, but the local sentinel is still the byte-exact session-scope guard against double-creation on retry or resume. Parallel to Invariant #2 — sentinel-based byte-exact idempotency guards for distinct session artifacts.
 
 ## NEVER List
 
@@ -74,6 +74,14 @@ Each rule states WHY; per-site reminders reference by anchor name.
 Every step MUST print breadcrumb status lines per shared/progress-reporting.md. Print a start line (`> **🔶 /implement 2: implementation**`) on entry. Long-running steps print intermediate progress (`⏳ 12: CI+merge loop — CI running (2m elapsed), main unchanged`).
 
 **MANDATORY at session start**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-name-registry.tsv` to get the Step Name Registry (step number → short name mapping for progress breadcrumbs).
+
+## Extracted Script Registry
+
+Prompt-side orchestration steps delegate to these script contracts:
+`post-tracking-issue.md`; `commit-implementation.md`;
+`commit-review-fixes.md`; `generate-code-flow-diagram.md`;
+`refresh-execution-issues.md`; `write-rejected-findings.md`;
+`slack-issue-announce.md`; `write-final-report.md`; `cleanup.md`.
 
 ### Verbosity Control
 
@@ -550,17 +558,10 @@ if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$
 fi
 export CLAUDE_PLUGIN_ROOT
 ${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh init --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --issue "$ISSUE_ARG"
-LARCH_VER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-plugin-version.sh" 2>/dev/null | awk -F= '/^LARCH_PLUGIN_VERSION=/{print $2; exit}')
-[ -n "$LARCH_VER" ] || LARCH_VER="unknown"
-printf 'Run `%s` adopted issue #%s. Logs: `larch-logs/implement/%s/`.\nAgent: `%s` | Larch: `%s`\n' \
-  "$RUN_ID" "$ISSUE_ARG" "$RUN_ID" "${coder:-claude}" "$LARCH_VER" > "$IMPLEMENT_TMPDIR/summary-metadata.md"
-${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-summary.sh upsert-summary \
-  --issue "$ISSUE_ARG" \
-  --marker "<!-- larch:metadata v1 runid=$RUN_ID -->" \
-  --content-file "$IMPLEMENT_TMPDIR/summary-metadata.md"
+${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/post-tracking-issue.sh --implement-tmpdir "$IMPLEMENT_TMPDIR"
 ```
 
-On `LOG_WRITTEN=false` with `ERROR=` from `larch-log.sh`, or `FAILED=true` from `tracking-issue-summary.sh`, print `**⚠ 0.5: tracking issue — metadata publication failed: $ERROR. Aborting.**` and skip to Step 18.
+On `LOG_WRITTEN=false` with `ERROR=` from `larch-log.sh`, or `POSTED=false` / non-zero exit from `post-tracking-issue.sh`, print `**⚠ 0.5: tracking issue — metadata publication failed: $ERROR. Aborting.**` and skip to Step 18.
 
 On either sub-branch, **rename the adopted issue to `[IN PROGRESS]`** so the title reflects the active run (matches the title-prefix lifecycle applied to fresh-created issues in Branch 4 — see `scripts/tracking-issue-write.md` "Title-prefix lifecycle"):
 
@@ -612,17 +613,10 @@ if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$
 fi
 export CLAUDE_PLUGIN_ROOT
 ${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh init --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --issue "$RECOVERED_N"
-LARCH_VER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-plugin-version.sh" 2>/dev/null | awk -F= '/^LARCH_PLUGIN_VERSION=/{print $2; exit}')
-[ -n "$LARCH_VER" ] || LARCH_VER="unknown"
-printf 'Run `%s` recovered issue #%s from the current PR body. Logs: `larch-logs/implement/%s/`.\nAgent: `%s` | Larch: `%s`\n' \
-  "$RUN_ID" "$RECOVERED_N" "$RUN_ID" "${coder:-claude}" "$LARCH_VER" > "$IMPLEMENT_TMPDIR/summary-metadata.md"
-${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-summary.sh upsert-summary \
-  --issue "$RECOVERED_N" \
-  --marker "<!-- larch:metadata v1 runid=$RUN_ID -->" \
-  --content-file "$IMPLEMENT_TMPDIR/summary-metadata.md"
+${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/post-tracking-issue.sh --implement-tmpdir "$IMPLEMENT_TMPDIR"
 ```
 
-On `LOG_WRITTEN=false` with `ERROR=` from `larch-log.sh`, or `FAILED=true` from `tracking-issue-summary.sh`, print `**⚠ 0.5: tracking issue — metadata publication failed: $ERROR. Aborting.**` and skip to Step 18.
+On `LOG_WRITTEN=false` with `ERROR=` from `larch-log.sh`, or `POSTED=false` / non-zero exit from `post-tracking-issue.sh`, print `**⚠ 0.5: tracking issue — metadata publication failed: $ERROR. Aborting.**` and skip to Step 18.
 
 Then **rename the recovered issue to `[IN PROGRESS]`** so the title reflects the active run (matches Branch 2 / Branch 4):
 
@@ -694,18 +688,11 @@ Create the tracking issue **immediately** so subsequent summary comments and com
 5. **Initialize larch-log manifest and publish metadata summary** as a marker-keyed comment on the newly-created issue:
    ```bash
    ${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh init --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --issue "$ISSUE_NUMBER"
-   LARCH_VER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-plugin-version.sh" 2>/dev/null | awk -F= '/^LARCH_PLUGIN_VERSION=/{print $2; exit}')
-   [ -n "$LARCH_VER" ] || LARCH_VER="unknown"
-   printf 'Run `%s` created issue #%s. Logs: `larch-logs/implement/%s/`.\nAgent: `%s` | Larch: `%s`\n' \
-     "$RUN_ID" "$ISSUE_NUMBER" "$RUN_ID" "${coder:-claude}" "$LARCH_VER" > "$IMPLEMENT_TMPDIR/summary-metadata.md"
-   ${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-summary.sh upsert-summary \
-     --issue "$ISSUE_NUMBER" \
-     --marker "<!-- larch:metadata v1 runid=$RUN_ID -->" \
-     --content-file "$IMPLEMENT_TMPDIR/summary-metadata.md"
+   ${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/post-tracking-issue.sh --implement-tmpdir "$IMPLEMENT_TMPDIR"
    ```
    On `LOG_WRITTEN=false` with `ERROR=` from `larch-log.sh init`, print `**⚠ 0.5: tracking issue — Branch 4 manifest initialization failed: $ERROR. Stalling to Step 18.**`, log to `Tool Failures`, set `deferred=true`, set `STALL_TRACKING=true`, and skip to Step 18 (skipping the sentinel write in step 6). **Do NOT clear `$ISSUE_NUMBER`** — the tracking issue was already created on GitHub at step 4, and Step 18 teardown needs `$ISSUE_NUMBER` to rename it from `[IN PROGRESS]` to `[STALLED]`.
 
-   On `FAILED=true` from `tracking-issue-summary.sh`, print `**⚠ 0.5: tracking issue — Branch 4 metadata publication failed: $ERROR. Continuing with deferred/absent tracking issue.**`, log to `Tool Failures`, set `deferred=true`, clear `$ISSUE_NUMBER`, and proceed to Step 1 (skipping the sentinel write in step 6).
+   On `POSTED=false` or non-zero exit from `post-tracking-issue.sh`, print `**⚠ 0.5: tracking issue — Branch 4 metadata publication failed: $ERROR. Continuing with deferred/absent tracking issue.**`, log to `Tool Failures`, set `deferred=true`, clear `$ISSUE_NUMBER`, and proceed to Step 1 (skipping the sentinel write in step 6).
 
 6. **Write the sentinel LAST**, only after `$ISSUE_NUMBER` and `$RUN_ID` are non-empty and step 5 succeeded (Load-Bearing Invariant #4 ordering):
    ```
@@ -1311,7 +1298,7 @@ if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
 fi
 export CLAUDE_PLUGIN_ROOT
-${CLAUDE_PLUGIN_ROOT}/scripts/git-commit.sh -m "<descriptive commit message>" <specific-files>
+${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/commit-implementation.sh --message "<descriptive commit message>" <specific-files>
 ```
 
 Commit message describes WHAT was implemented and WHY, not HOW.
@@ -1515,7 +1502,7 @@ if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
 fi
 export CLAUDE_PLUGIN_ROOT
-${CLAUDE_PLUGIN_ROOT}/scripts/git-commit.sh -m "Address code review feedback" <specific-files>
+${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/commit-review-fixes.sh <specific-files>
 ```
 
 If no files changed, skip. Note: `review-and-fix.sh` commits each round's accepted-fixes inline (commit message `Address code review feedback (round N)`) for both `--panel simple` (quick mode) and `--panel hard` (normal mode), so on the common path the working tree is already clean here and Step 7's commit is a no-op. Step 7's commit still fires when the main agent landed manual edits — typically after the `main-agent-vote-required` adjudication branch of `review-and-fix.sh`, where the coder dispatch did not run.
@@ -1572,11 +1559,17 @@ CHANGED_COUNT=$(printf '%s\n' "$CHANGED_FILES" | grep -c . 2>/dev/null || echo 0
 
 If `MERGE_BASE` is empty, or `CHANGED_COUNT` is 0 (diff failed or branch has no commits vs main), treat this check as inconclusive and proceed with normal generation. Otherwise check whether `CHANGED_COUNT` is 1 or 2 AND every path in `CHANGED_FILES` is non-runtime: all files reside under `docs/`, are named `CHANGELOG` or `CHANGELOG.md`, or have extension `.txt` or `.tsv` (note: `.md` files outside `docs/` — including `skills/**`, `agents/**`, and `SKILL.md` — are not automatically non-runtime and do not qualify). If both conditions hold: print `⏩ 7a: code flow status=skip reason=small-non-runtime-change elapsed=<elapsed>`, still post the `larch:diagrams` summary comment (Architecture Diagram + placeholder `"(Code Flow Diagram skipped — small/non-runtime change)"` for Code Flow — see the `diagrams` sub-section below), and proceed to the Pre-bump log flush subsection below (which leads into the 7a.r rebase checkpoint and then Step 8).
 
-Otherwise, generate a mermaid Code Flow Diagram from the actual committed implementation. Focus on **runtime behavior** — function call sequences, data flow, control flow. Do NOT duplicate the Architecture Diagram's structural view. Choose the appropriate mermaid type (`sequenceDiagram`, `flowchart`, `stateDiagram`, `graph`, etc.). Diagram contents must obey `${CLAUDE_PLUGIN_ROOT}/skills/shared/mermaid-safe-content.md`. Write the diagram to `$IMPLEMENT_TMPDIR/code-flow-diagram.candidate.md` first, including the `## Code Flow Diagram` heading and mermaid fence; validate it with `${CLAUDE_PLUGIN_ROOT}/scripts/sanitize-mermaid-fragment.sh --input "$IMPLEMENT_TMPDIR/code-flow-diagram.candidate.md" --from-md --warnings-step "7a"`, then promote it to `$IMPLEMENT_TMPDIR/code-flow-diagram.md` only on `STATUS=ok`.
+Otherwise, invoke the extracted generator and parse its KV envelope:
 
-On success, continue.
+```bash
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
+  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
+fi
+export CLAUDE_PLUGIN_ROOT
+${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/generate-code-flow-diagram.sh --implement-tmpdir "$IMPLEMENT_TMPDIR" || true
+```
 
-On generation failure (too abstract to diagram): `**⚠ 7a: code flow — generation failed, proceeding without diagram (<elapsed>)**` and log to `Warnings` with the full captured generator output via `append-tool-failure.sh` when any output exists. On sanitizer rejection or exit 2, delete the candidate, do not promote it, print `**⚠ 7a: code flow — rejected by mermaid sanitizer (REASON_TOKEN=<token>), proceeding without diagram (<elapsed>)**`, capture the sanitizer's full stdout/stderr to `$IMPLEMENT_TMPDIR/code-flow-sanitizer.failure.log`, and append that file under `### Warnings` in `$IMPLEMENT_TMPDIR/execution-issues.md` via `${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh --site "Step 7a" --tool "sanitize-mermaid-fragment.sh code-flow" --exit-code <exit-code-or-2> --category Warnings --output-file "$IMPLEMENT_TMPDIR/code-flow-sanitizer.failure.log" --redact || true`. Do not log the raw diagram content unless it is already part of the sanitizer failure output; the capture is for tool diagnostics.
+On `STATUS=ok`, continue with `$DIAGRAM_FILE`. On `STATUS=skipped|failed`, set the Code Flow placeholder to `Code flow diagram not available.` and continue; log the helper's captured output as a Step 7a warning when `STATUS=failed`.
 
 ### Diagrams summary comment — `larch:diagrams`
 
@@ -1723,6 +1716,16 @@ The OOS cap helper contract remains `${CLAUDE_PLUGIN_ROOT}/skills/implement/scri
 
 **Execution-issues checkpoint**: `CI_PASSED=true` does not append execution-issues after green CI. The primary flush happens before the bump in Step 7a so the NDJSON record is part of the same PR tree that CI validates; appending after CI would either validate a different tree or create a post-CI audit-log delta. Later steps may still add new entries to `$IMPLEMENT_TMPDIR/execution-issues.md`; Step 7a writes a checkpoint marker even when the pre-bump flush is a skip, and the shared commit-tail / pre-push paths (`scripts/larch-log-flush.sh`, `scripts/refresh-run-logs.sh`) flush any later non-empty tail before the next log commit once that checkpoint exists. Step 18's teardown safety net remains the fallback if the normal path is missed. Invoke `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/flush-execution-issues.sh` per its contract (see `skills/implement/scripts/flush-execution-issues.md`; regression harness: `skills/implement/scripts/test-flush-execution-issues.sh` with sibling `skills/implement/scripts/test-flush-execution-issues.md`).
 
+Refresh the tracking metadata projection after execution-issues changes when a tracking issue exists. If `ISSUE_NUMBER` is empty or `0`, skip this helper entirely; do not call GitHub for issue `#0`.
+
+```bash
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
+  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
+fi
+export CLAUDE_PLUGIN_ROOT
+${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/refresh-execution-issues.sh --implement-tmpdir "$IMPLEMENT_TMPDIR" || true
+```
+
 The state machine writes `postbump-state.sh` for `implement-finalize.sh postbump`, writes `finalize-state.sh` for `postmerge`/`teardown`, parses postbump `STATUS=` from stdout, preserves `CALLER_KIND=step8b_rebase` for Step 8b conflicts, treats Step 10 `ACTION=merge` as a CI-passed checkpoint, and treats Step 12 `ACTION=merge` as permission to call `merge-pr.sh`. If CI failure metadata lacks a failed run id, use `${CLAUDE_PLUGIN_ROOT}/scripts/gh-pr-checks.sh` as the fallback diagnostic path before deciding whether to stall. Within `PHASE=ci-merge`, after merge succeeds ship-pr.sh delegates local cleanup (Step 14 equivalent) to `implement-finalize.sh postmerge`; after that returns, **Continue to Step 15.** (main verification, also inside postmerge). Do NOT end the turn between the merge output and the postmerge delegation.
 
 > **Continue to Step 16 after ship-pr reaches `PHASE=done`.** Do NOT stop after PR creation, merge, local cleanup, or teardown output; Steps 16 and 18 still own prompt-side rejected-findings replay and final token/timing caps.
@@ -1748,9 +1751,35 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 # timing-mark Step 16 — rejected findings
 ```
 
-Report unimplemented code review suggestions without reprinting the full findings inline. Check `$IMPLEMENT_TMPDIR/rejected-findings.md`. If non-empty, the full content was already written through the `code-review-tally` log batch.
+Report unimplemented code review suggestions without reprinting the full findings inline:
 
-> **Continue to Step 17.** Do NOT end the turn after printing rejected findings.
+```bash
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
+  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
+fi
+export CLAUDE_PLUGIN_ROOT
+${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/write-rejected-findings.sh --implement-tmpdir "$IMPLEMENT_TMPDIR" --run-id "$RUN_ID" --log-root "$IMPLEMENT_TMPDIR/larch-logs" || true
+```
+
+If `STATUS=ok`, `write-rejected-findings.sh` found non-empty rejected findings, copied `rejected-findings.md` into the run tmp log for operator inspection, and emitted the Step 16 breadcrumb. The canonical full review tally remains the `code-review-tally` log batch written earlier at Step 5.
+
+> **Continue to Step 16a.** Do NOT end the turn after printing rejected findings.
+
+<!-- step:16a — Slack Issue Announce -->
+
+Print: `> **🔶 /implement 16a: notify**`
+
+```bash
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
+  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
+fi
+export CLAUDE_PLUGIN_ROOT
+${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/slack-issue-announce.sh --implement-tmpdir "$IMPLEMENT_TMPDIR" || true
+```
+
+On `STATUS=skipped`, continue silently. On `STATUS=failed`, log the helper output to `Warnings` and continue.
+
+> **Continue to Step 17.** Do NOT end the turn after Slack notification.
 
 <!-- step:17 — Final Report -->
 
@@ -1787,6 +1816,18 @@ If `quick_mode=true` and `DESIGN_ONLY_DONE` is not true, continue to the token s
 
 If `quick_mode=false` and `DESIGN_ONLY_DONE` is not true: print a summary noting plan review findings were written by `/design` into larch-log batches and code review findings by `review-and-fix.sh` (visible above).
 
+Write/post the terminal `larch:final-summary` projection before the token summary:
+
+```bash
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
+  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
+fi
+export CLAUDE_PLUGIN_ROOT
+${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/write-final-report.sh --implement-tmpdir "$IMPLEMENT_TMPDIR"
+```
+
+If `write-final-report.sh` exits non-zero or emits `STATUS=failed`, log the captured stdout/stderr to `Tool Failures` and continue to the token summary. `STATUS=skipped` is reserved for the no-tracking-issue path (`ISSUE_NUMBER=0`), not for GitHub upsert failures.
+
 Print a token summary to chat. When `LARCH_VERBOSE_TOKENS=true`, print the full per-step table; otherwise print a single grand-total line. The full breakdown is appended to the `token-report` and `timing-report` log batches at the pre-bump log flush (Step 7a tail); on each retry `scripts/refresh-run-logs.sh` (Triggers A-C in `ship-pr.sh`) re-renders and commits the batches before each push so the merged PR carries the most recent data (unless `--no-logs-commit` is set, in which case log files stay in the session tmpdir only).
 
 ```bash
@@ -1815,7 +1856,10 @@ fi
 
 Print: `> **🔶 /implement 18: cleanup**`
 
+Normal teardown below owns the actual cleanup; the cleanup wrapper contract is smoke-checked non-destructively at Step 18 entry.
+
 ```bash
+${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/cleanup.sh --help || true
 IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
 export IMPLEMENT_TMPDIR
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
@@ -1850,15 +1894,12 @@ LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.s
 LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
 export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --full --format json --output "$IMPLEMENT_TMPDIR/token-report-rendered.json" || true
-if [ "${forked_target:-false}" != "true" ] && [ -n "${ISSUE_NUMBER:-}" ] && [ "${repo_unavailable:-false}" != "true" ]; then
-  printf 'Status: %s | PR: %s\nLogs: larch-logs/implement/%s/\n' \
-    "${STALL_TRACKING:-false}" "${PR_URL:-N/A}" "$RUN_ID" \
-    > "$IMPLEMENT_TMPDIR/summary-final.md"
-  ${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-summary.sh upsert-summary --issue "$ISSUE_NUMBER" --marker "<!-- larch:final-summary v1 runid=$RUN_ID -->" --content-file "$IMPLEMENT_TMPDIR/summary-final.md" --repo "${REPO:-}" || true
+if [ "${forked_target:-false}" != "true" ] && [ "${repo_unavailable:-false}" != "true" ]; then
+  ${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/write-final-report.sh --implement-tmpdir "$IMPLEMENT_TMPDIR" || true
 fi
 ```
 
-For Step 18's `token-report.sh` and `tracking-issue-summary.sh upsert-summary`, preserve the best-effort behavior but capture any non-zero stdout/stderr to `$IMPLEMENT_TMPDIR/step18-<tool>.failure.log` and append with `append-tool-failure.sh` before continuing.
+For Step 18's `token-report.sh` and `write-final-report.sh`, preserve the best-effort behavior but capture any non-zero stdout/stderr to `$IMPLEMENT_TMPDIR/step18-<tool>.failure.log` and append with `append-tool-failure.sh` before continuing.
 
 Capture and commit the session transcript (best-effort — never fatal):
 
