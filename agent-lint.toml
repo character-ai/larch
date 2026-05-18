@@ -641,6 +641,14 @@ exclude = [
   # scripts/generate-topology-docs.sh is invoked through the same generator
   # registry walker; agent-lint does not resolve scripts/generators.tsv rows.
   "scripts/generate-topology-docs.sh",
+  # scripts/measure-*.sh are opt-in human-run measurement helpers for prompt
+  # and run-log cost analysis. They have no Skill or hook caller by design, so
+  # agent-lint's G004/dead-script graph cannot discover a structured
+  # invocation reference.
+  "scripts/measure-md-cost.sh",
+  "scripts/measure-ngram-duplication.sh",
+  "scripts/measure-realized-cost.sh",
+  "scripts/measure-references-heatmap.sh",
   # scripts/lib-validate-meta-path.sh is a sourced-only shell library (no
   # shebang, not invokable directly). It is referenced from shell consumers via
   # source directives only, which agent-lint does not follow.
