@@ -68,6 +68,7 @@ CHECK_DIRTY_TREE_SH="${REVIEW_CORE_CHECK_DIRTY_TREE_SH:-$PLUGIN_ROOT/scripts/che
 CHECK_THRESHOLD_SH="${REVIEW_CORE_CHECK_THRESHOLD_SH:-$SCRIPT_DIR/check-reviewer-failure-threshold.sh}"
 DISPATCH_VOTERS_SH="${REVIEW_CORE_DISPATCH_VOTERS_SH:-$PLUGIN_ROOT/scripts/dispatch-code-voters.sh}"
 LARCH_LOG_SH="${REVIEW_CORE_LARCH_LOG_SH:-$PLUGIN_ROOT/scripts/larch-log.sh}"
+APPEND_TOOL_FAILURE_SH="${REVIEW_CORE_APPEND_TOOL_FAILURE_SH:-$PLUGIN_ROOT/scripts/append-tool-failure.sh}"
 
 kv_get() {
     local file="$1" key="$2"
@@ -78,6 +79,34 @@ copy_to_parent() {
     local file="$1" name="$2"
     [[ -n "$SESSION_ENV_PATH" && -f "$file" ]] || return 0
     cp "$file" "$(dirname "$SESSION_ENV_PATH")/$name" 2>/dev/null || true
+}
+
+execution_issues_log() {
+    if [[ -n "${LARCH_EXECUTION_ISSUES_LOG:-}" ]]; then
+        printf '%s\n' "$LARCH_EXECUTION_ISSUES_LOG"
+    elif [[ -n "$SESSION_ENV_PATH" ]]; then
+        printf '%s/execution-issues.md\n' "$(dirname "$SESSION_ENV_PATH")"
+    elif [[ -n "${IMPLEMENT_TMPDIR:-}" ]]; then
+        printf '%s/execution-issues.md\n' "$IMPLEMENT_TMPDIR"
+    else
+        printf '%s/execution-issues.md\n' "$REVIEW_TMPDIR"
+    fi
+}
+
+append_round_log_write_failure() {
+    local site="$1" round_num="$2" rc="$3" output_file="$4"
+    local issues_log
+    [[ -x "$APPEND_TOOL_FAILURE_SH" ]] || return 0
+    issues_log="$(execution_issues_log)"
+    "$APPEND_TOOL_FAILURE_SH" \
+        --log "$issues_log" \
+        --site "$site" \
+        --tool "larch-log.sh write-round" \
+        --exit-code "$rc" \
+        --category "Warnings" \
+        --output-file "$output_file" \
+        --verdict "review-core round $round_num" \
+        --redact >/dev/null 2>&1 || true
 }
 
 flush_round_log() {
@@ -97,6 +126,7 @@ flush_round_log() {
     set -e
     if [[ "$rc" -ne 0 ]]; then
         emit_breadcrumb "⚠ review-core: round log flush failed (round $ROUND_NUM, rc=$rc)"
+        append_round_log_write_failure "5" "$ROUND_NUM" "$rc" "$flush_err"
     else
         rm -f "$flush_err"
     fi

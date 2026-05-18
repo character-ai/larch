@@ -88,28 +88,21 @@ stage_round_artifact() {
     local name trim_tmp
     name="$(basename "$input")"
     trim_tmp="$(mktemp "${TMPDIR:-/tmp}/larch-log-round-trim.XXXXXX")" || larch_log_fail 2 "cannot create round trim temp"
-    case "$name" in
-        *.meta)
-            larch_redact_strip_meta_cmd_json "$input" "$trim_tmp" || {
-                rm -f "$trim_tmp"
-                larch_log_fail 2 "cannot trim meta sidecar: $input"
-            }
-            ;;
-        *-output.txt.json|*-output-*.txt.json)
-            larch_redact_strip_json_result "$input" "$trim_tmp" || {
-                rm -f "$trim_tmp"
-                larch_log_fail 2 "cannot trim json sidecar: $input"
-            }
-            ;;
-        *)
-            cp "$input" "$trim_tmp" || {
-                rm -f "$trim_tmp"
-                larch_log_fail 2 "cannot stage round artifact: $input"
-            }
-            ;;
-    esac
-    larch_log_redact_file "$trim_tmp" "$output"
-    rm -f "$trim_tmp"
+    (
+        trap 'rm -f "$trim_tmp"' EXIT
+        case "$name" in
+            *.meta)
+                larch_redact_strip_meta_cmd_json "$input" "$trim_tmp" || larch_log_fail 2 "cannot trim meta sidecar: $input"
+                ;;
+            *-output.txt.json|*-output-*.txt.json)
+                larch_redact_strip_json_result "$input" "$trim_tmp" || larch_log_fail 2 "cannot trim json sidecar: $input"
+                ;;
+            *)
+                cp "$input" "$trim_tmp" || larch_log_fail 2 "cannot stage round artifact: $input"
+                ;;
+        esac
+        larch_log_redact_file "$trim_tmp" "$output"
+    )
 }
 
 current_branch_is_default() {

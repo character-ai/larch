@@ -655,4 +655,32 @@ out=$(
 grep -Fq 'FIX_COUNT=1' <<< "$out" || fail "findings-mode fix count uses post-scrub count"
 grep -Fq 'SUBMODULE_SCRUB_COUNT=1' <<< "$out" || fail "findings-mode scrub count"
 
+cat > "$TMP/larch-log-write-round-fail-stub.sh" <<'EOF_LARCH_LOG_FAIL'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == "write-round" ]]; then
+  printf 'late write-round failed with sk-ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD\n' >&2
+  exit 9
+fi
+printf 'LOG_WRITTEN=true\nLOG_PATH=\nBYTES=0\nSHA256=\nCOMMIT_SHA=\nUNCHANGED=false\n'
+EOF_LARCH_LOG_FAIL
+chmod +x "$TMP/larch-log-write-round-fail-stub.sh"
+work_late_flush="$TMP/late-flush-warning"
+make_work_repo "$work_late_flush"
+implement_tmp="$work_late_flush/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
+set +e
+out=$(TEST_AGENT_BEHAVIOR=codex-success REVIEW_AND_FIX_LARCH_LOG_SH="$TMP/larch-log-write-round-fail-stub.sh" run_review_and_fix "$work_late_flush" \
+    --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id late-flush-run)
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "late flush warning expected exit 0 got $rc"; }
+grep -Fq 'REVIEW_AND_FIX_STATUS=fix-applied' <<< "$out" || fail "late flush warning status"
+grep -Fq 'larch-log.sh write-round failed (exit 9' "$implement_tmp/execution-issues.md" || fail "late flush warning execution issue missing"
+grep -Fq 'post-coder round 1' "$implement_tmp/execution-issues.md" || fail "late flush warning verdict missing"
+if grep -Fq 'sk-ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD' "$implement_tmp/execution-issues.md"; then
+    fail "late flush warning should redact stderr"
+fi
+
 echo "test-review-and-fix: ok"

@@ -158,9 +158,14 @@ mkdir -p "$invalid_source"
 cat > "$invalid_source/cursor-vote-output.txt.json" <<'EOF'
 {"result":
 EOF
-if "$LARCH_LOG" write-round --log-root "$log_root" --skill implement --run-id run123 --round 4 --source-dir "$invalid_source" >/dev/null 2>&1; then
+trim_tmpdir="$TMP/write-round-tmp"
+mkdir -p "$trim_tmpdir"
+if TMPDIR="$trim_tmpdir" "$LARCH_LOG" write-round --log-root "$log_root" --skill implement --run-id run123 --round 4 --source-dir "$invalid_source" >/dev/null 2>&1; then
     fail "write-round should fail closed on invalid json sidecar"
 fi
 assert_not_file "$log_root/implement/run123/round-4/cursor-vote-output.txt.json" "invalid json sidecar should not be copied"
+if find "$trim_tmpdir" -maxdepth 1 -name 'larch-log-round-trim.*' | grep -q .; then
+    fail "write-round should clean round trim temps after failure"
+fi
 
 echo "PASS: test-larch-log-write-round.sh"

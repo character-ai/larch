@@ -542,23 +542,29 @@ flush_round_log_after_coder() {
     set -e
     if [[ "$rc" -ne 0 ]]; then
         emit_breadcrumb "⚠ review-and-fix: late round log flush failed (round $round_num, rc=$rc)"
+        append_log_write_failure "5" "larch-log.sh write-round" "$flush_err" "Warnings" "$rc" "post-coder round $round_num"
     else
         rm -f "$flush_err"
     fi
 }
 
 append_log_write_failure() {
-    local site="$1" tool="$2" output_file="$3" category="${4:-Warnings}"
+    local site="$1" tool="$2" output_file="$3" category="${4:-Warnings}" exit_code="${5:-1}" verdict="${6:-}"
     local helper="$PLUGIN_ROOT/scripts/append-tool-failure.sh"
+    local -a helper_args
     if [[ -x "$helper" ]]; then
+        helper_args=(
+            --log "$IMPLEMENT_TMPDIR/execution-issues.md"
+            --site "$site"
+            --tool "$tool"
+            --exit-code "$exit_code"
+            --category "$category"
+            --output-file "$output_file"
+            --redact
+        )
+        [[ -n "$verdict" ]] && helper_args+=(--verdict "$verdict")
         "$helper" \
-            --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
-            --site "$site" \
-            --tool "$tool" \
-            --exit-code 1 \
-            --category "$category" \
-            --output-file "$output_file" \
-            --redact >/dev/null 2>&1 || true
+            "${helper_args[@]}" >/dev/null 2>&1 || true
     else
         larch_err "review-and-fix.sh: best-effort log write failed for $tool (see $output_file)"
     fi

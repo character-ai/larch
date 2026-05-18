@@ -180,15 +180,20 @@ The redacted Claude Code session transcript (`.jsonl` format) captured for post-
 
 ### round-<N>/
 
-**Mode**: directory replace-by-file. **Written**: at the end of each
-`review-core.sh` round during `/implement` Step 5.
+**Mode**: directory replace-by-file. **Written**: first at the end of each
+`review-core.sh` round during `/implement` Step 5, then optionally refreshed
+later in the same round after the coder finishes if `review-and-fix.sh`
+produces additional registered artifacts (for example coder-side files).
 
 Contains registered per-round artifacts such as reviewer outputs, voter outputs,
 prompt sidecars, diagnostics, collector/tally env files, accepted/rejected
-findings, OOS review markdown, voting tally, and round summary JSON/markdown.
-The directory is staged in `$IMPLEMENT_TMPDIR/larch-logs`; the existing later
-flush commit copies it into `larch-logs/implement/<RUN_ID>/round-<N>/` in the
-repo. There is no per-round commit.
+findings, OOS review markdown, voting tally, round summary JSON/markdown, and
+any later registered coder artifacts. The `review-core.sh` flush is the first
+snapshot for the round; `review-and-fix.sh` may run one more `write-round`
+after coder application so the committed round directory reflects the full
+round state before the later shared log-commit paths copy it into
+`larch-logs/implement/<RUN_ID>/round-<N>/` in the repo. There is no per-round
+commit.
 
 ## Tracking issue comments
 
