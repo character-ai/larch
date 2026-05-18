@@ -1,0 +1,28 @@
+Gathering the pre-computed diff, commit list, and targeted file reads for a plan-fidelity review (read-only).
+
+Verifying `git-force-push.sh` output format and `merge-pr.sh` context for plan fidelity.
+
+Here is the plan-fidelity review. `git log $(git merge-base HEAD main)..HEAD --oneline` shows a single commit: `f19fb818 fix(merge-pr): recover from flush-only HEAD divergence via force-push`.
+
+### In-Scope Findings
+
+1. **Latent**, `correctness`, [scripts/merge-pr.sh](scripts/merge-pr.sh):159-171 — Recovery uses `git log --format='%s' "${PR_HEAD_OID}..HEAD"` and subject checks but never asserts that `PR_HEAD_OID` is an ancestor of `HEAD`. The plan/feature describe a **local-ahead** flush tail; if OID mismatch ever occurs with a non-ancestor relation, `A..HEAD` is not “ahead only” and could still yield 1–5 lines that all match the flush prefix, misclassifying divergence as recoverable and running `git-force-push.sh`. **Scenario:** broken or manually rewired refs after `gh pr create`. **Fix:** gate recoverability with `git merge-base --is-ancestor "$PR_HEAD_OID" HEAD` (or equivalent) before treating the range as flush-only ahead.
+
+2. **Nit**, `correctness`, [scripts/test-merge-pr.sh](scripts/test-merge-pr.sh):334-347 vs feature_description — The feature asks for a mock PR with **N** flush commits ahead leading to a successful merge; the harness only proves the success path for **one** flush subject (`STUB_FLUSH_AHEAD_LOG` single line). The cap and mixed cases cover other bounds; the 2–5 flush-only success band is untested. **Fix:** Add a case (or extend K) with 2–5 `chore(larch-logs): flush …` lines and the same OID recovery stubs.
+
+3. **Nit**, `architecture`, [scripts/merge-pr.md](scripts/merge-pr.md):26-30 — The new subsection says recovery runs “**Before** the OID precondition in step 1,” but the script implements recovery **when** the OID check fails (`LOCAL_HEAD != PR_HEAD_OID`), then re-reads OID. Readers may think recovery is unconditional or ordered before the check. **Fix:** Rephrase to “when local HEAD does not match `headRefOid`” / “inside the OID precondition branch.”
+
+**Traceability (plan vs diff):**  
+- `merge-pr.sh`: OID mismatch → `git log '%s' "${PR_HEAD_OID}..HEAD"`; count 1–5; all subjects `^chore(larch-logs): flush `; then `git-force-push.sh`; re-`gh pr view` and OID match; else original refuse or force-push error — **aligned** with the implementation plan and feature, modulo finding (1).  
+- `merge-pr.md`: Documents recovery, non-recoverable cases (non-flush, >5, behind), and error outcomes — **aligned** with the plan; wording issue (3).  
+- `test-merge-pr.sh`: K success, L push fail, M mixed, N >5 cap — **matches** the implementation plan’s K–N; feature’s explicit “N flush → success” is only partially covered (finding (2)).  
+- Sub-test L was **in** the implementation plan though not in the short feature_description — still in scope for plan fidelity and **implemented**.
+
+No out-of-scope observations worth a separate list (no pre-existing defects called out that are unrelated to this diff).
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	correctness	scripts/merge-pr.sh:159-171	Flush recovery does not require PR_HEAD_OID to be an ancestor of HEAD.	Non-ancestor OID mismatch with 1-5 commits whose subjects all match the flush prefix could be treated as recoverable and force-push.	Add an explicit ancestor check (e.g. git merge-base --is-ancestor) before classifying as recoverable.
+1	in_scope	nit	correctness	scripts/test-merge-pr.sh:334-347	Success-path test only exercises one flush commit, not N in 2-5.	Regression gap for multi-commit flush-only ahead ranges that the feature text calls out.	Add or extend a test with 2-5 flush-only subjects and recovery stubs.
+1	in_scope	nit	architecture	scripts/merge-pr.md:26-30	Doc says recovery runs before the OID precondition; code runs it on OID mismatch.	Misleading reading order for operators maintaining the gate.	Reword to describe recovery as part of OID mismatch handling and post-push re-read.
+```

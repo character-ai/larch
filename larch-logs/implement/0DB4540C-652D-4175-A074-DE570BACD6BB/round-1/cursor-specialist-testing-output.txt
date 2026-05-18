@@ -1,0 +1,25 @@
+Gathering the pre-computed diff and commit history for a read-only review.
+
+Verifying integration with `git-force-push.sh` and scanning `merge-pr.sh` for edge cases the diff may have missed.
+
+Reviewed the precomputed diff, current [`scripts/merge-pr.sh`](scripts/merge-pr.sh) (lines 158–195), [`scripts/git-force-push.sh`](scripts/git-force-push.sh) contract (`PUSHED=true|false` on stdout), and verified `grep -c .` behavior with `|| echo "0"` in bash (reproduces multiline `FLUSH_COUNT` and `[[ ... -gt 0 ]]` syntax error on stderr). Commit on branch: `f19fb818 fix(merge-pr): recover from flush-only HEAD divergence via force-push`.
+
+### In-Scope Findings
+
+1. **Important** (`correctness`) [`scripts/merge-pr.sh:166-170`](scripts/merge-pr.sh) — `FLUSH_COUNT=$(printf '%s\n' "$FLUSH_AHEAD" | grep -c . 2>/dev/null || echo "0")` is unsafe: when `git log "${PR_HEAD_OID}..HEAD"` yields no subjects (empty range: local behind PR, unrelated divergence, or any OID mismatch with an empty stub log), `grep -c .` prints `0` but exits `1`, so `echo "0"` runs and `FLUSH_COUNT` becomes two lines (`0` twice). Then `[[ "$FLUSH_COUNT" -gt 0 ]]` triggers `bash: [[: 0\n0: syntax error in expression` on **stderr** while still falling through to the non-recoverable error branch. Scenario: normal `oid_mismatch` / refuse path now emits spurious bash errors; any caller that treats stderr as fatal noise is at risk. Suggested fix: drop the `|| echo "0"`, use `grep -c . || true` without appending, or replace with a line count that does not treat “zero matches” as failure (e.g. `wc -l` after `grep -v '^$'`).
+
+2. **Nit** (`risk-integration`, `plan`) [`scripts/test-merge-pr.sh:334-392`](scripts/test-merge-pr.sh) — Plan/feature called for merge success when **1–5** flush-only commits are ahead; K only covers **one** flush commit. The cap `>5` is covered (N); intermediate counts (e.g. exactly **5** flush-only lines) are not exercised on the success path. Suggested fix: add one sub-test with five valid `chore(larch-logs): flush …` subjects and the same recovery stubs, expecting `MERGE_RESULT=admin_merged` (or `merged` per harness).
+
+3. **Nit** (`code-quality`) [`scripts/merge-pr.md:26-31`](scripts/merge-pr.md) — The new section says recovery runs “Before the OID precondition in step 1,” but the script implements recovery **inside** the OID mismatch handling for the same-version gate. Suggested fix: rephrase to “When the OID precondition fails, …” so docs match control flow.
+
+### Out-of-Scope Observations
+
+1. **Nit** (`code-quality`) [`docs/linting.md`](docs/linting.md) — The `make test-merge-pr` narrative does not mention flush OID recovery; the implementation plan only required [`scripts/merge-pr.md`](scripts/merge-pr.md). Out of scope because that file is not in the branch diff.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/merge-pr.sh:166-170	FLUSH_COUNT uses grep -c . with || echo 0	When pr_head..HEAD log is empty grep -c exits 1 so FLUSH_COUNT becomes multiline; [[ -gt 0 ]] causes bash stderr syntax error on every empty-range OID mismatch while still refusing merge	Remove || echo 0 or count lines without treating zero matches as failure
+1	in_scope	nit	risk-integration	scripts/test-merge-pr.sh:334-392	Success path only tests one flush-ahead commit	Plan asked for 1-5 flush-only recovery; boundaries 2-5 (especially 5) success untested	Add sub-test with five valid flush subjects expecting merge success
+1	in_scope	nit	code-quality	scripts/merge-pr.md:26-31	Doc says recovery runs before step 1 OID check	Reader may expect a separate pre-check; code runs on OID mismatch	Rephrase to match branch inside OID failure handling
+1	out_of_scope	nit	code-quality	docs/linting.md	make test-merge-pr row omits flush recovery coverage	File not modified by this branch diff	Update linting doc in a follow-up if desired
+```

@@ -12,10 +12,10 @@ Force-push the current branch with `--force-with-lease` protection and single-re
 ## Interface
 
 ```
-git-force-push.sh
+git-force-push.sh [--expected-remote-oid OID]
 ```
 
-No flags, no arguments. Operates on the current branch (detected via `git symbolic-ref --short HEAD`).
+Operates on the current branch (detected via `git symbolic-ref --short HEAD`). When `--expected-remote-oid` is set, both push attempts use `--force-with-lease=refs/heads/<branch>:<oid>` so callers can pin the lease to a specific reviewed remote OID instead of the current tracking ref.
 
 ## Output contract (KEY=VALUE on stdout)
 
@@ -45,6 +45,7 @@ STATUS=pushed|noop_same_ref|diverged_retry_failed
 ## Callers
 
 - `scripts/create-pr.sh` — existing-PR fast-path escalation when a plain `git push` fails (non-fast-forward after rebase). Stdout is suppressed (`>/dev/null`) so the `PR_*` contract stays clean; exit code drives success/failure.
+- `scripts/merge-pr.sh` — flush-only PR-head recovery path. Passes `--expected-remote-oid "$PR_HEAD_OID"` so the recovery push fails closed if the remote head changed after the initial PR metadata read.
 - `/implement` Step 8b force-push gate — force-pushes after a rebase when the feature branch already exists on origin. `STATUS` is parsed to decide whether to proceed to Step 9 or bail to Step 18.
 - Rebase + Re-bump Sub-procedure step 5 (`skills/implement/references/rebase-rebump-subprocedure.md`) — force-pushes after rebase + re-bump during Steps 10/12 CI+merge iterations. Exit code and `STATUS` drive the caller-family failure semantics (step12 hard-bail vs step10 best-effort).
 

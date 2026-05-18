@@ -14,7 +14,7 @@
 #     the caller can bail.
 #
 # Usage:
-#   git-force-push.sh
+#   git-force-push.sh [--expected-remote-oid OID]
 #
 # Output (stdout, KEY=VALUE):
 #   BRANCH=<name>
@@ -34,15 +34,37 @@ SCRIPT_DIR="$SLEEP_SCRIPT_DIR"
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
 
+EXPECTED_REMOTE_OID=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --expected-remote-oid)
+            EXPECTED_REMOTE_OID="${2:?--expected-remote-oid requires a value}"
+            shift 2
+            ;;
+        *)
+            larch_err "git-force-push.sh: unknown option: $1"
+            exit 2
+            ;;
+    esac
+done
+
 if ! BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null); then
     larch_err "git-force-push.sh: not on a named branch"
     exit 2
 fi
 emit_kv BRANCH "$BRANCH"
 
+push_with_lease() {
+    if [[ -n "$EXPECTED_REMOTE_OID" ]]; then
+        git push --force-with-lease="refs/heads/$BRANCH:$EXPECTED_REMOTE_OID"
+    else
+        git push --force-with-lease
+    fi
+}
+
 # Refresh the tracking ref before the lease check, then make the first attempt.
 git fetch origin "$BRANCH" 2>/dev/null || true
-if git push --force-with-lease; then
+if push_with_lease; then
     emit_kv PUSHED "true"
     emit_kv STATUS "pushed"
     exit 0
@@ -65,7 +87,7 @@ fi
 # Local and remote diverge. Sleep 5s and retry once.
 "$SLEEP_SCRIPT_DIR/sleep-seconds.sh" 5 >/dev/null 2>&1 || sleep 5
 
-if git push --force-with-lease; then
+if push_with_lease; then
     emit_kv PUSHED "true"
     emit_kv STATUS "pushed"
     exit 0

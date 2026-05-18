@@ -1,0 +1,13 @@
+### In-Scope Findings
+
+1. **Important** `risk-integration` `scripts/merge-pr.sh:173-184`, `scripts/merge-pr.sh:247-265`: after force-pushing the flush commits, the script continues using the CI and merge-state result collected for the old PR head. Concrete failing scenario: PR head `aaaa1111` has passing checks, local `cccc3333` is force-pushed by the recovery path, GitHub checks for `cccc3333` are still pending, and line 264 can still run `gh pr merge --squash --admin` based on stale `CI_GOOD=true`. Fix by making recovery restart or re-run the PR metadata and `gh pr checks` gates for the updated `headRefOid` before any merge attempt.
+
+2. **Important** `risk-integration` `scripts/merge-pr.sh:173-175`, `scripts/git-force-push.sh:43-48`: the new caller classifies local commits against `PR_HEAD_OID`, but `git-force-push.sh` refreshes `origin/$BRANCH` immediately before `--force-with-lease`, so a remote commit pushed after the PR view can be overwritten. Concrete failing scenario: `gh pr view` returns `aaaa1111`, local HEAD is `aaaa1111 + flush`, another process pushes `dddd4444`, then the helper fetches `dddd4444` and the lease permits replacing it with the local flush-only head. Fix by using an explicit expected lease for this recovery path, e.g. a helper option that pushes with `--force-with-lease=refs/heads/$BRANCH:$PR_HEAD_OID`, and bail if the remote no longer equals the PR OID.
+
+3. **Nit** `code-quality` `scripts/merge-pr.sh:167`: when the ahead range is empty, `grep -c .` prints `0` and exits 1, then `|| echo "0"` appends a second zero, producing `FLUSH_COUNT=$'0\n0'` and a Bash arithmetic warning. Replace the count pipeline with `grep -c . || true` without the extra echo, or use `awk 'NF { c++ } END { print c + 0 }'`.
+
+### Out-of-Scope Observations
+
+No out-of-scope observations.
+
+I could not run `bash scripts/test-merge-pr.sh` in this read-only sandbox because `mktemp` cannot create the test temp directory, even with `TMPDIR=/tmp`.

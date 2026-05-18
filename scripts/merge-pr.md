@@ -42,16 +42,24 @@ Both gates are checked **before** any merge attempt: default-mode `--admin`, def
 
 After CI and merge-state checks pass, the script also runs a same-version bump race gate before any merge attempt:
 
-1. It verifies `git rev-parse HEAD` equals the `headRefOid` fetched via the same upfront `gh pr view --json mergeStateStatus,headRefOid` compound call (see "Batched discovery" below). This precondition ensures the local worktree state being inspected is the PR head GitHub would merge.
+1. It verifies `git rev-parse HEAD` equals the `headRefOid` fetched via the same upfront `gh pr view --json mergeStateStatus,headRefOid` compound call (see "Batched discovery" below). This precondition ensures the local worktree state being inspected is the PR head GitHub would merge. On an OID mismatch, the script may enter the flush-recovery path described below; if recovery succeeds, it re-reads PR metadata and re-runs the CI gate for the updated PR head before any merge attempt.
 2. It refreshes `origin/main` and scans commit subjects in `origin/main..HEAD` for the newest literal `Bump version to X.Y.Z` subject. This branch-range scan catches a bump commit even when a follow-up `Fix CI failure` commit is on top.
 3. If the branch contains a bump commit, the origin-side version check reads `origin/main:.claude-plugin/plugin.json` content, not origin-side commit subjects. Squash-merge titles therefore cannot hide the already-published version.
 4. Every parsed version must satisfy `^[0-9]+\.[0-9]+\.[0-9]+$`. Fetch failure, unreadable or malformed origin `plugin.json`, missing/null version, local/remote OID mismatch, and malformed versions fail closed via `MERGE_RESULT=error`.
 5. If origin publishes the same version as the branch bump, the script emits `MERGE_RESULT=version_already_published` and `ERROR=origin/main HEAD already bumped to X.Y.Z; rebase and re-bump`. If origin publishes a different version and `origin/main` is no longer an ancestor of `HEAD`, the script emits `MERGE_RESULT=main_advanced`.
 6. Immediately before the `gh pr merge` call (after all the checks above pass), the script performs a second `git fetch origin main` and re-runs the same-version check. This pre-merge re-fetch shrinks the TOCTOU window between the initial version check and the actual merge API call, preventing concurrent runners that both passed the initial check from both publishing the same version.
 
+### Flush-commit OID recovery
+
+As part of OID mismatch handling for step 1, the script checks whether local HEAD is ahead of the PR head OID exclusively by `chore(larch-logs): flush` commits (up to 5 ahead commits) and whether the PR head OID is still an ancestor of local HEAD. This condition arises when `larch-log-flush.sh` tail calls fire after `gh pr create`, advancing local HEAD beyond the OID GitHub recorded for the PR.
+
+When the condition holds, the script calls `git-force-push.sh --expected-remote-oid <old-pr-head-oid>` so the force-push is leased against the PR head OID that was actually reviewed. This prevents the recovery path from overwriting a newer remote commit that landed after the initial `gh pr view`. After a successful push, the script re-reads PR metadata via `gh pr view` and re-runs `gh pr checks` for the updated head before any merge attempt. If the force-push fails or the OID still doesn't match after the push, `MERGE_RESULT=error` is emitted with a "force-push failed" or "after force-push recovery" suffix respectively.
+
+Non-recoverable divergence (any non-flush commit in the ahead range, more than 5 ahead commits, or local HEAD behind the PR head OID) preserves the original `MERGE_RESULT=error` with "refusing to evaluate same-version gate".
+
 ## Batched discovery
 
-At startup the script issues one compound `gh pr view --json mergeStateStatus,headRefOid` call that populates both `MERGE_STATE` and `PR_HEAD_OID`. This avoids a second API round-trip later for the same-version bump race gate's OID precondition. Both fields are parsed from the JSON result via `jq -r '.<field> // ""'`. Failure handling is unchanged: an empty result (gh error or network failure) still routes through the existing empty/UNKNOWN short-circuit paths.
+At startup the script issues one compound `gh pr view --json mergeStateStatus,headRefOid` call that populates both `MERGE_STATE` and `PR_HEAD_OID`. This avoids a second API round-trip later for the same-version bump race gate's OID precondition. Both fields are parsed from the JSON result via `jq -r '.<field> // ""'`. Failure handling is unchanged: an empty result (gh error or network failure) still routes through the existing empty/UNKNOWN short-circuit paths. Flush recovery is the one exception: after a successful recovery push, the script performs an additional `gh pr view` to confirm the new head OID and merge state before proceeding.
 
 ## Non-responsibilities
 

@@ -1,0 +1,30 @@
+Gathering the pre-computed diff and commit history (read-only git commands).
+
+Reading `scripts/git-force-push.sh` and surrounding `merge-pr.sh` logic to verify integration and edge cases.
+
+Checking whether step 4’s “OID mismatch” wording conflicts with the new recovery path.
+
+Branch commit (read-only): `f19fb818 fix(merge-pr): recover from flush-only HEAD divergence via force-push`.
+
+Verified implementation against the feature description and plan: [`scripts/merge-pr.sh`](scripts/merge-pr.sh) uses `git log --format='%s' "${PR_HEAD_OID}..HEAD"`, enforces count 1–5 and subject prefix `^chore(larch-logs): flush `, invokes [`scripts/git-force-push.sh`](scripts/git-force-push.sh), re-reads `headRefOid` via `gh pr view`, and preserves the original refuse error otherwise. Tests K–L–M–N and fake `gh`/`git` extensions match the plan’s cases. `sleep-seconds.sh` calls `sleep` from `PATH`, so the test harness’s `bin/sleep` stub still short-circuits the 5s retry path.
+
+### In-Scope Findings
+
+1. **Nit** (`code-quality`, `plan`): [scripts/merge-pr.md:54](scripts/merge-pr.md) — The sentence “Before the OID precondition in step 1, the script checks…” contradicts the real control flow: recovery runs **after** the step‑1 equality check fails (`LOCAL_HEAD != PR_HEAD_OID`), not before it. **Scenario:** Someone maintaining the gate reads the doc and looks for logic *before* the OID check in `merge-pr.sh` and mis-traces the script. **Fix:** Reword to “When step 1 detects `HEAD` ≠ `headRefOid`, …” (or “On OID mismatch, …”).
+
+2. **Nit** (`code-quality`, `plan`): [scripts/merge-pr.md:48](scripts/merge-pr.md) — Numbered step 4 still says “local/remote OID mismatch” always “fail closed via `MERGE_RESULT=error`”, which is no longer universally true once flush-only recovery can clear the OID mismatch. **Scenario:** Operators use step 4 as the authoritative list of hard failures and overlook the flush exception. **Fix:** Qualify OID mismatch (e.g. “non-recoverable OID mismatch; see Flush-commit OID recovery”) or move OID wording out of step 4 into the flush subsection.
+
+3. **Nit** (`code-quality`, `plan`): [scripts/merge-pr.md:60-62](scripts/merge-pr.md) — “Batched discovery” still implies a single compound `gh pr view` covers the OID precondition without a later round-trip; flush recovery adds a **second** `gh pr view` on that path. **Scenario:** Someone optimizes or audits API usage assuming exactly one `pr view` before merge. **Fix:** Add one clause that flush recovery may issue an extra `gh pr view` to refresh `headRefOid`.
+
+4. **Nit** (`code-quality`): [scripts/test-merge-pr.sh:121-124](scripts/test-merge-pr.sh) — The fake `git fetch` handler now succeeds for **any** `git fetch origin …`, not only `origin main`. **Scenario:** A future regression introduces an unintended `git fetch origin <branch>` during the merge-pr path; the harness would still report success. **Fix:** Match `origin` plus the expected ref (e.g. `main` or `$STUB_BRANCH_NAME`) if you want the stub to stay strict.
+
+5. **Nit** (`risk-integration`): [scripts/merge-pr.sh:174](scripts/merge-pr.sh) — `git-force-push.sh` stderr is redirected to `/dev/null`, so real push/lease failures lose tool diagnostics in logs while the script only surfaces the synthesized `ERROR=…force-push failed` line. **Scenario:** Debugging a denied force-push requires re-running the helper manually. **Fix:** Consider teeing stderr to `larch_err` or dropping the suppression for that subprocess only (if acceptable for the quiet contract).
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	nit	code-quality	scripts/merge-pr.md:54	Doc says flush recovery runs before OID step 1; code runs on OID mismatch after the check.	Readers mis-locate the recovery branch when tracing merge-pr.sh.	Reword to when step 1 fails (HEAD ≠ headRefOid) / on OID mismatch.
+1	in_scope	nit	code-quality	scripts/merge-pr.md:48	Step 4 still states OID mismatch always fails closed; flush path can recover some OID mismatches.	Operators treat step 4 as exhaustive hard-fail list and miss flush exception.	Qualify OID mismatch or cross-reference flush subsection.
+1	in_scope	nit	code-quality	scripts/merge-pr.md:60-62	Batched discovery implies a single gh pr view for OID precondition; flush recovery adds another pr view.	API-count or audit assumptions omit the extra round-trip.	Note optional second gh pr view on flush recovery.
+1	in_scope	nit	code-quality	scripts/test-merge-pr.sh:121-124	Fake git fetch accepts any origin fetch not just origin main.	Future unintended fetch could pass tests unnoticed.	Narrow stub to expected ref arguments.
+1	in_scope	nit	risk-integration	scripts/merge-pr.sh:174	git-force-push stderr discarded while diagnosing push failures is harder.	Operators only see generic force-push failed without lease/denial details.	Preserve or surface stderr via larch_err or targeted logging.
+```
