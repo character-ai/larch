@@ -42,6 +42,7 @@ ROUND_NUM="1"
 ROUND_CAP=""
 CODEX_AVAILABLE="${CODEX_AVAILABLE:-}"
 CURSOR_AVAILABLE="${CURSOR_AVAILABLE:-}"
+DYNAMIC_ARCHETYPES_CLI=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -60,6 +61,8 @@ while [[ $# -gt 0 ]]; do
         --round-cap) ROUND_CAP="${2:?--round-cap requires a value}"; shift 2 ;;
         --codex-available) CODEX_AVAILABLE="${2:?--codex-available requires a value}"; shift 2 ;;
         --cursor-available) CURSOR_AVAILABLE="${2:?--cursor-available requires a value}"; shift 2 ;;
+        --dynamic-archetypes) DYNAMIC_ARCHETYPES_CLI="${2:?--dynamic-archetypes requires a value}"; shift 2 ;;
+        --no-dynamic-archetypes) DYNAMIC_ARCHETYPES_CLI="0"; shift ;;
         --help) usage; exit 0 ;;
         *) larch_err "review-and-fix.sh: unknown option: $1"; usage; exit 2 ;;
     esac
@@ -694,6 +697,28 @@ run_implement_round() {
         CURSOR_AVAILABLE="$cursor_present"
     fi
 
+    # Resolve dynamic-archetypes cap: CLI > process env > session-env > 4 (implement mode) > 0
+    local DYNAMIC_ARCHETYPES
+    if [[ -n "$DYNAMIC_ARCHETYPES_CLI" ]]; then
+        DYNAMIC_ARCHETYPES="$DYNAMIC_ARCHETYPES_CLI"
+    elif [[ ${LARCH_DYNAMIC_ARCHETYPES_MAX+x} ]]; then
+        DYNAMIC_ARCHETYPES="$LARCH_DYNAMIC_ARCHETYPES_MAX"
+    else
+        local _da_env
+        _da_env="$(session_get LARCH_DYNAMIC_ARCHETYPES_MAX "")"
+        if [[ -n "$_da_env" ]]; then
+            DYNAMIC_ARCHETYPES="$_da_env"
+        elif [[ -n "$IMPLEMENT_TMPDIR" ]]; then
+            DYNAMIC_ARCHETYPES="4"
+        else
+            DYNAMIC_ARCHETYPES="0"
+        fi
+    fi
+    case "$DYNAMIC_ARCHETYPES" in
+        [0-4]) ;;
+        *) larch_err "review-and-fix.sh: --dynamic-archetypes/LARCH_DYNAMIC_ARCHETYPES_MAX must be an integer from 0 to 4"; exit 2 ;;
+    esac
+
     round_dir="$IMPLEMENT_TMPDIR/round-${round_num_dec}"
     mkdir -p "$round_dir"
     if (( round_num_dec == 1 )) && [[ -x "$PLUGIN_ROOT/scripts/snapshot-untracked.sh" ]]; then
@@ -733,6 +758,7 @@ run_implement_round() {
         --cursor-available "$CURSOR_AVAILABLE"
         --panel "$PANEL"
         --round-num "$round_num_dec"
+        --dynamic-archetypes "$DYNAMIC_ARCHETYPES"
     )
     [[ -n "$DIFF_FILE" ]] && core_args+=(--diff-file "$DIFF_FILE")
     [[ -n "$COMMIT_COUNT" ]] && core_args+=(--commit-count "$COMMIT_COUNT")
