@@ -150,3 +150,43 @@
 - **Concern**: [nit] Part C test only greps template literals in REAL_SCRIPT, not emitted execution issues Regression can pass even if append_execution_issue stopped firing or message format drifted as long as source still contains placeholders. Assert on execution-issues output (or postbump captured stderr) with expected manifest_exists and coder values.
 - **Suggested revision**: Address the concern above.
 
+### FINDING_1: panel [code-review/accepted]
+
+## **Important** `risk-integration` `skills/review-and-fix/scripts/review-and-fix.sh:830`  
+
+- **Reviewer**: codex-generalist-output.txt
+- **Concern**: 1. **Important** `risk-integration` `skills/review-and-fix/scripts/review-and-fix.sh:830`      The patch now derives `total_accepted`/`total_rejected` from the composed all-round `review-findings-full` artifact, then emits those totals as `ACCEPTED_COUNT`/`REJECTED_COUNT` at `skills/review-and-fix/scripts/review-and-fix.sh:842-843`. That changes the stdout contract from latest-round counts to cumulative counts, while `/implement`’s Step 5 re-review gate classifies the “just-fixed round” using accepted-fix count `>= 8` at `skills/implement/SKILL.md:1365`. Concrete scenario: round 1 has 6 accepted fixes and loops, round 2 has only 3 accepted fixes; the script now emits `ACCEPTED_COUNT=9`, so the orchestrator can misclassify round 2 as substantial and run another review round when it should stop. Keep the composed-derived totals for `review-and-fix-summary.json`/run-log tally, but emit per-round `ACCEPTED_COUNT`/`REJECTED_COUNT` separately, or add explicit `TOTAL_ACCEPTED_COUNT`/`TOTAL_REJECTED_COUNT` keys for cumulative values.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_12: panel [code-review/accepted]
+
+## correctness: scripts/test-implement-finalize.sh:1026-1033
+
+- **Reviewer**: cursor-specialist-correctness-output.txt
+- **Concern**: [latent] Step 8a regression only covers empty MANIFEST_PATH / manifest_exists=false. Bug in manifest_exists or manifest_path when a real manifest file exists would not be caught. Add a fixture with existing manifest file and no bullets.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_14: panel [code-review/accepted]
+
+## correctness: skills/review-and-fix/scripts/review-and-fix.sh:469-527
+
+- **Reviewer**: cursor-specialist-edge-cases-output.txt
+- **Concern**: [important] Tally body mixes compose-derived aggregate line with vote-sourced round summary markdown. After adjudication, header line and JSON match composed findings but embedded review-round-summary bullets still show stale vote counts, confusing human audit of a single batch file. Regenerate or annotate round summaries when compose counts are authoritative, or omit stale count lines.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_15: panel [code-review/accepted]
+
+## risk-integration: Makefile:32-57 skills/upgrade-larch/scripts/upgrade-larch.sh skills/upgrade-larch/scripts/test-upgrade-larch.sh:104-420
+
+- **Reviewer**: cursor-specialist-testing-output.txt
+- **Concern**: [important] Upgrade script and its expanded offline harness are not wired into any test-harnesses-* Makefile prerequisite or ci.yaml shard. Prune/version_gt/rm-failure behavior can regress while make test-harnesses and PR CI stay green because nothing runs test-upgrade-larch.sh. Add a Makefile target for the harness and attach it to a harness shard exercised by .github/workflows/ci.yaml.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_20: panel [code-review/accepted]
+
+## risk-integration: skills/review-and-fix/scripts/review-and-fix.sh:822-864
+
+- **Reviewer**: cursor-specialist-edge-cases-output.txt
+- **Concern**: [latent] Two independent compose calls (summary vs flush) with swallow-on-failure semantics. First compose fails while second succeeds, leaving review-and-fix-summary.json on vote tallies but code-review-tally.json compose-derived. Reuse one composed output or hard-fail the round when compose fails on success paths.
+- **Suggested revision**: Address the concern above.
+
