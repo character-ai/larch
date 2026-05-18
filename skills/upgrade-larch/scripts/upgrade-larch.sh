@@ -26,6 +26,15 @@ is_safe_version() {
     [[ "$1" =~ ^[0-9]+(\.[0-9]+)*$ ]]
 }
 
+version_gt() {
+    local left="$1"
+    local right="$2"
+    local highest
+
+    highest=$(printf '%s\n%s\n' "$left" "$right" | sort_versions | tail -n1)
+    [[ "$left" != "$right" && "$highest" = "$left" ]]
+}
+
 get_stable_releases() {
     gh api --paginate repos/character-ai/larch/releases \
       --jq '.[] | select(.prerelease == false and .draft == false) | .tag_name' \
@@ -43,13 +52,6 @@ sort_versions() {
             print key "\t" $0
         }
     ' | sort | cut -f2-
-}
-
-version_gt() {
-    local left="$1" right="$2"
-    local highest
-    highest=$(printf '%s\n%s\n' "$left" "$right" | sort_versions | tail -n1)
-    [ "$left" = "$highest" ] && [ "$left" != "$right" ]
 }
 
 get_installed_larch_version() {
@@ -102,7 +104,6 @@ INSTALLED_VERSION="$(basename "$PLUGIN_ROOT")"
 # Resolve the latest stable (non-pre-release, non-draft) release from GitHub.
 emit_breadcrumb "Checking latest stable larch release..."
 LATEST_STABLE=""
-PREVIOUS_STABLE=""
 if command -v gh >/dev/null 2>&1; then
     STABLE_RELEASES=()
     GH_RELEASES_OUTPUT=""
@@ -123,10 +124,6 @@ if command -v gh >/dev/null 2>&1; then
                 fi
                 if [ -z "$LATEST_STABLE" ]; then
                     LATEST_STABLE="$release"
-                    continue
-                fi
-                if [ -z "$PREVIOUS_STABLE" ] && [ "$release" != "$LATEST_STABLE" ]; then
-                    PREVIOUS_STABLE="$release"
                     break
                 fi
             done
@@ -188,43 +185,37 @@ if [ -n "$LATEST_STABLE" ]; then
     fi
 fi
 
-# Prune old versions only after a verified stable install. Keep that stable version and its predecessor.
+# Prune old versions only after a verified stable install.
+# Always drop cached versions newer than the verified stable release, then keep
+# at most 8 cached versions total while preserving the verified stable dir.
 if [ "$VERIFIED_TARGET" = true ]; then
-    emit_breadcrumb "Pruning old larch versions (keeping verified stable release and predecessor)..."
+    emit_breadcrumb "Pruning old larch versions (keeping up to 8, excluding versions newer than verified stable)..."
     CACHED_VERSIONS=()
     while IFS= read -r version; do
         [ -n "$version" ] || continue
         CACHED_VERSIONS+=("$version")
     done < <(list_cached_versions)
-    VERSION_COUNT="${#CACHED_VERSIONS[@]}"
+    SANITIZED_VERSIONS=()
+    KEEP_LIMIT=8
 
-    KEEP_PREDECESSOR=""
-    if [ -n "$PREVIOUS_STABLE" ]; then
-        for version in "${CACHED_VERSIONS[@]}"; do
-            if [ "$version" = "$PREVIOUS_STABLE" ]; then
-                KEEP_PREDECESSOR="$PREVIOUS_STABLE"
-                break
+    for version in "${CACHED_VERSIONS[@]}"; do
+        if version_gt "$version" "$LATEST_STABLE"; then
+            emit_breadcrumb "  Removing version newer than verified stable: $version"
+            if ! rm -rf -- "${LARCH_CACHE_DIR:?}/${version:?}"; then
+                warn_prune_failure "$version"
+                SANITIZED_VERSIONS+=("$version")
             fi
-        done
-    fi
+            continue
+        fi
+        SANITIZED_VERSIONS+=("$version")
+    done
 
-    if [ -z "$KEEP_PREDECESSOR" ] && [ "$VERSION_COUNT" -gt 1 ]; then
-        for ((i=VERSION_COUNT-1; i>=0; i--)); do
-            if [ "${CACHED_VERSIONS[$i]}" != "$LATEST_STABLE" ] && ! version_gt "${CACHED_VERSIONS[$i]}" "$LATEST_STABLE"; then
-                KEEP_PREDECESSOR="${CACHED_VERSIONS[$i]}"
-                break
-            fi
-        done
-    fi
-
-    KEEP_COUNT=1
-    if [ -n "$KEEP_PREDECESSOR" ] && [ "$KEEP_PREDECESSOR" != "$LATEST_STABLE" ]; then
-        KEEP_COUNT=2
-    fi
-
-    if [ "$VERSION_COUNT" -gt "$KEEP_COUNT" ]; then
-        for version in "${CACHED_VERSIONS[@]}"; do
-            if [ "$version" = "$LATEST_STABLE" ] || [ "$version" = "$KEEP_PREDECESSOR" ]; then
+    VERSION_COUNT="${#SANITIZED_VERSIONS[@]}"
+    if [ "$VERSION_COUNT" -gt "$KEEP_LIMIT" ]; then
+        PRUNE_COUNT=$((VERSION_COUNT - KEEP_LIMIT))
+        for ((i=0; i<PRUNE_COUNT; i++)); do
+            version="${SANITIZED_VERSIONS[$i]}"
+            if [ "$version" = "$LATEST_STABLE" ]; then
                 continue
             fi
             emit_breadcrumb "  Removing old version: $version"

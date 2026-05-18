@@ -121,6 +121,22 @@ EOF
     chmod +x "$path"
 }
 
+write_stub_rm() {
+    local path="$1"
+    cat > "$path" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+target="${*: -1}"
+if [[ -n "${RM_FAIL_VERSION:-}" && "$target" == */"$RM_FAIL_VERSION" ]]; then
+    exit 1
+fi
+
+/bin/rm "$@"
+EOF
+    chmod +x "$path"
+}
+
 run_case() {
     local name="$1"
     local work="$TMP/$name"
@@ -137,6 +153,7 @@ run_case() {
     plugin_root=$(make_plugin_root "$cache_root" "${PLUGIN_ROOT_VERSION:-1.0.0}")
     write_stub_claude "$bin/claude"
     write_stub_gh "$bin/gh"
+    write_stub_rm "$bin/rm"
     cat > "$state_file" <<STATE
 INSTALLED_VERSION="${INITIAL_INSTALLED_VERSION:-}"
 INSTALL_FAIL="${INSTALL_FAIL:-0}"
@@ -170,6 +187,7 @@ JSON
         GH_STDERR_MESSAGE="${GH_STDERR_MESSAGE:-token=secret}" \
         INSTALL_RESULT_VERSION="${INSTALL_RESULT_VERSION:-}" \
         INSTALL_CACHE_VERSION="${INSTALL_CACHE_VERSION:-}" \
+        RM_FAIL_VERSION="${RM_FAIL_VERSION:-}" \
         LARCH_QUIET_BREADCRUMBS=1 \
         "$SCRIPT" 2>&1
     )
@@ -182,8 +200,7 @@ JSON
     CASE_CACHE_ROOT="$cache_root"
 }
 
-# Latest valid stable can appear after invalid gh/stderr-like lines, and previous
-# stable should be the next valid entry.
+# Latest valid stable can appear after invalid gh/stderr-like lines.
 GH_OUTPUT=$'error: noisy line\n31.0.0\npreview\n30.9.0\n'
 INITIAL_INSTALLED_VERSION="30.8.0"
 PLUGIN_ROOT_VERSION="30.8.0"
@@ -195,7 +212,9 @@ run_case stable-filter
 assert_contains "$CASE_OUTPUT" "Upgrading larch from 30.8.0 to 31.0.0..." "stable-filter latest"
 assert_contains "$CASE_OUTPUT" "Verified: larch 31.0.0 installed successfully." "stable-filter verify"
 assert_not_contains "$CASE_OUTPUT" "Upgrading larch from 30.8.0 to error: noisy line..." "stable-filter ignored invalid first line"
-[[ -d "$CASE_CACHE_ROOT/30.9.0" ]] || fail "stable-filter kept previous stable"
+for version in 29.0.0 30.8.0 30.9.0 31.0.0; do
+    [[ -d "$CASE_CACHE_ROOT/$version" ]] || fail "stable-filter should keep $version when within 8-version limit"
+done
 
 # Idempotency should use installed metadata, not the still-running plugin root.
 GH_OUTPUT=$'31.0.0\n30.9.0\n'
@@ -223,18 +242,72 @@ run_case verify-without-cache-dir
 assert_contains "$CASE_OUTPUT" "Verified: larch 31.0.0 installed successfully." "verify-without-cache-dir verify"
 assert_not_contains "$CASE_OUTPUT" "Upgrade incomplete" "verify-without-cache-dir no failure"
 
-# Fallback prune should not keep a stray cached version newer than the verified
-# stable when the API predecessor is absent on disk.
+# Pruning removes cached versions newer than the verified stable release even
+# when the cache is already under the 8-version limit.
 GH_OUTPUT=$'31.0.0\n30.9.0\n'
 INITIAL_INSTALLED_VERSION="30.8.0"
 PLUGIN_ROOT_VERSION="30.8.0"
 INSTALL_RESULT_VERSION="31.0.0"
 INSTALL_CACHE_VERSION="31.0.0"
-CACHED_VERSIONS="29.5.0 31.0.0 99.0.0"
-run_case bounded-prune-fallback
-[[ "$CASE_RC" -eq 0 ]] || fail "bounded-prune-fallback exit $CASE_RC"
-[[ -d "$CASE_CACHE_ROOT/30.8.0" ]] || fail "bounded-prune-fallback should keep a non-newer rollback candidate"
-[[ ! -d "$CASE_CACHE_ROOT/99.0.0" ]] || fail "bounded-prune-fallback should prune newer stray cache"
+CACHED_VERSIONS="29.0.0 30.0.0 31.0.0 99.0.0"
+run_case prune-stray-newer-under-cap
+[[ "$CASE_RC" -eq 0 ]] || fail "prune-stray-newer-under-cap exit $CASE_RC"
+[[ ! -d "$CASE_CACHE_ROOT/99.0.0" ]] || fail "prune-stray-newer-under-cap should prune 99.0.0"
+for version in 29.0.0 30.0.0 31.0.0; do
+    [[ -d "$CASE_CACHE_ROOT/$version" ]] || fail "prune-stray-newer-under-cap should keep $version"
+done
+
+# Pruning keeps the verified stable cache dir even when more than 8 cached
+# versions are present.
+GH_OUTPUT=$'31.0.0\n30.9.0\n'
+INITIAL_INSTALLED_VERSION="30.8.0"
+PLUGIN_ROOT_VERSION="30.9.0"
+INSTALL_RESULT_VERSION="31.0.0"
+INSTALL_CACHE_VERSION="31.0.0"
+CACHED_VERSIONS="31.0.0 32.0.0 33.0.0 34.0.0 35.0.0 36.0.0 37.0.0 38.0.0 39.0.0"
+run_case preserve-verified-stable
+[[ "$CASE_RC" -eq 0 ]] || fail "preserve-verified-stable exit $CASE_RC"
+[[ -d "$CASE_CACHE_ROOT/31.0.0" ]] || fail "preserve-verified-stable should keep 31.0.0"
+for version in 32.0.0 33.0.0 34.0.0 35.0.0 36.0.0 37.0.0 38.0.0 39.0.0; do
+    [[ ! -d "$CASE_CACHE_ROOT/$version" ]] || fail "preserve-verified-stable should prune $version"
+done
+
+# Pruning removes cached versions newer than the verified stable release before
+# enforcing the 8-version retention limit.
+GH_OUTPUT=$'31.0.0\n30.9.0\n'
+INITIAL_INSTALLED_VERSION="30.8.0"
+PLUGIN_ROOT_VERSION="30.9.0"
+INSTALL_RESULT_VERSION="31.0.0"
+INSTALL_CACHE_VERSION="31.0.0"
+CACHED_VERSIONS="20.0.0 21.0.0 22.0.0 23.0.0 24.0.0 25.0.0 26.0.0 27.0.0 28.0.0 29.0.0 30.9.0 31.0.0 99.0.0"
+run_case prune-oldest-after-sanitize
+[[ "$CASE_RC" -eq 0 ]] || fail "prune-oldest-after-sanitize exit $CASE_RC"
+[[ ! -d "$CASE_CACHE_ROOT/99.0.0" ]] || fail "prune-oldest-after-sanitize should prune 99.0.0"
+for version in 20.0.0 21.0.0 22.0.0 23.0.0; do
+    [[ ! -d "$CASE_CACHE_ROOT/$version" ]] || fail "prune-oldest-after-sanitize should prune $version"
+done
+for version in 24.0.0 25.0.0 26.0.0 27.0.0 28.0.0 29.0.0 30.9.0 31.0.0; do
+    [[ -d "$CASE_CACHE_ROOT/$version" ]] || fail "prune-oldest-after-sanitize should keep $version"
+done
+
+# Failed sanitize removals must remain in the retention set so later pruning
+# still counts the still-present directory.
+GH_OUTPUT=$'31.0.0\n30.9.0\n'
+INITIAL_INSTALLED_VERSION="30.8.0"
+PLUGIN_ROOT_VERSION="30.9.0"
+INSTALL_RESULT_VERSION="31.0.0"
+INSTALL_CACHE_VERSION="31.0.0"
+CACHED_VERSIONS="24.0.0 25.0.0 26.0.0 27.0.0 28.0.0 29.0.0 30.9.0 31.0.0 99.0.0"
+RM_FAIL_VERSION="99.0.0"
+run_case sanitize-failure-counts-toward-cap
+[[ "$CASE_RC" -eq 0 ]] || fail "sanitize-failure-counts-toward-cap exit $CASE_RC"
+[[ -d "$CASE_CACHE_ROOT/99.0.0" ]] || fail "sanitize-failure-counts-toward-cap should retain 99.0.0 on rm failure"
+assert_contains "$CASE_OUTPUT" "Warning: failed to prune cached larch version '99.0.0'." "sanitize-failure-counts-toward-cap warning"
+[[ ! -d "$CASE_CACHE_ROOT/24.0.0" ]] || fail "sanitize-failure-counts-toward-cap should prune 24.0.0 after failed sanitize removal"
+for version in 25.0.0 26.0.0 27.0.0 28.0.0 29.0.0 30.9.0 31.0.0; do
+    [[ -d "$CASE_CACHE_ROOT/$version" ]] || fail "sanitize-failure-counts-toward-cap should keep $version"
+done
+unset RM_FAIL_VERSION
 
 # gh failure output should not be echoed back verbatim.
 GH_FAIL=1
