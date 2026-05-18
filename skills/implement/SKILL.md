@@ -263,6 +263,16 @@ Then:
           --output-file "$IMPLEMENT_TMPDIR/claude-source-error.log" \
           --redact || true
   fi
+  if [[ -z "${dynamic_archetypes_value:-}" && -n "${SESSION_ENV_PATH:-}" && -r "$SESSION_ENV_PATH" ]]; then
+    caller_dynamic_archetypes=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$SESSION_ENV_PATH" --key LARCH_DYNAMIC_ARCHETYPES_MAX --default "")
+    case "$caller_dynamic_archetypes" in
+      "") ;;
+      [0-4]) dynamic_archetypes_value="$caller_dynamic_archetypes" ;;
+      *)
+        printf '**⚠ /implement: ignoring invalid LARCH_DYNAMIC_ARCHETYPES_MAX from --session-env (must be 0..4).**\n'
+        ;;
+    esac
+  fi
   session_env_args=(
     --output "$IMPLEMENT_TMPDIR/session-env.sh"
     --repo <value>
@@ -1345,7 +1355,7 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 
 Nested review token-context propagation through `review-and-fix.sh` is pinned by `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-implement-review-token-propagation.sh` and `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-implement-review-token-propagation.md`.
 
-`run-step5-review.sh` derives `round_cap` and `review_panel` from `POST_PLAN_WORKFLOW_PATH` in `$IMPLEMENT_TMPDIR/session-env.sh`: `SIMPLE` maps to `review_panel=simple` and `round_cap=5`; `HARD` maps to `review_panel=hard` and `round_cap=7`. Derive a local `dynamic_archetypes_cap` from `dynamic_archetypes_value` when Step 0 parsed an explicit flag; otherwise read `LARCH_DYNAMIC_ARCHETYPES_MAX` from `$IMPLEMENT_TMPDIR/session-env.sh` with fallback `4`. Before any prompt-side Step 5 gate compares `round_num` against `round_cap`, mirror that already-validated launcher mapping into a local `round_cap` shell variable so the gate snippets never read an empty value.
+`run-step5-review.sh` derives `round_cap` and `review_panel` from `POST_PLAN_WORKFLOW_PATH` in `$IMPLEMENT_TMPDIR/session-env.sh`: `SIMPLE` maps to `review_panel=simple` and `round_cap=5`; `HARD` maps to `review_panel=hard` and `round_cap=7`. Derive a local `dynamic_archetypes_cap` with the same precedence `review-and-fix.sh` uses at runtime: `dynamic_archetypes_value` when Step 0 parsed or inherited a validated explicit/session-env cap; otherwise non-empty process `LARCH_DYNAMIC_ARCHETYPES_MAX`; otherwise `LARCH_DYNAMIC_ARCHETYPES_MAX` from `$IMPLEMENT_TMPDIR/session-env.sh`; otherwise `4` (implement mode). Before any prompt-side Step 5 gate compares `round_num` against `round_cap`, mirror that already-validated launcher mapping into local `round_cap` and `dynamic_archetypes_cap` shell variables so the gate snippets and banner never drift from the runtime review cap.
 
 Quick mode prints: `> **🔶 /implement 5: code review — quick mode (review-and-fix.sh, up to 5 rounds; 3-judge panel votes every round; simple review panel: 6 Cursor specialists including Cursor edge-cases, Codex generalist; dynamic-archetypes cap=$dynamic_archetypes_cap)**`
 
