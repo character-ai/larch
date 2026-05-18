@@ -181,14 +181,36 @@
             }
           }
         ]
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 16,
+          "cache_read": 3587141,
+          "cache_create": 15898,
+          "output": 12443,
+          "total": 3615498
+        },
+        "skills": [
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 16,
+              "cache_read": 3587141,
+              "cache_create": 15898,
+              "output": 12443,
+              "total": 3615498
+            }
+          }
+        ]
       }
     ],
     "totals": {
-      "input": 159,
-      "cache_read": 27886574,
-      "cache_create": 1126849,
-      "output": 91451,
-      "total": 29105033
+      "input": 175,
+      "cache_read": 31473715,
+      "cache_create": 1142747,
+      "output": 103894,
+      "total": 32720531
     }
   },
   "codex": {
@@ -251,6 +273,14 @@
       },
       {
         "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8b — rebase",
         "totals": {
           "input": 0,
           "output": 0,
@@ -324,6 +354,14 @@
       },
       {
         "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8b — rebase",
         "totals": {
           "input": 0,
           "output": 0,

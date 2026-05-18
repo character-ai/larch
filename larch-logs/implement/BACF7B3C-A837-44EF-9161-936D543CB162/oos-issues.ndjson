@@ -1,0 +1,1 @@
+{"phase":"review","step":"9a.1","category":"OOS","body":"## Rejected / Out-of-Scope Observations (not filed)\n\n- FINDING_2: larch-logs in PR (EXON=2 → rejected)\n- FINDING_3: main-agent-vote-required docs (NO=1, EXON=1 → rejected)\n- FINDING_4: probe_rc pre-existing bug — <30 LOC per triage → not filed (neutral vote YES=1, NO=1)\n\nNo OOS issues filed for this run."}
