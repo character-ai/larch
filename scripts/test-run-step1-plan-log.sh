@@ -141,6 +141,39 @@ log_argv="$TMP/log-manifest.argv"
 RUN_STEP1_COMPOSE_SH="$COMPOSE_SPY" RUN_STEP1_LARCH_LOG_SH="$LOG_SPY" RUN_STEP1_COMPOSE_ARGV_FILE="$compose_argv" RUN_STEP1_LOG_ARGV_FILE="$log_argv" "$LAUNCHER" --implement-tmpdir "$case_dir" --goal-text "Ship manifest" >/dev/null
 assert_contains "$(cat "$log_argv")" "manifest-run" "manifest RUN_ID overrides session-id"
 
+echo "=== PLAN_FILE missing: fallback to design-export/plan.txt with loud warning (#2326) ==="
+case_dir="$TMP/plan-file-fallback"
+make_tmpdir "$case_dir"
+# Strip PLAN_FILE from session-env to simulate the silent-write bug.
+grep -v '^PLAN_FILE=' "$case_dir/session-env.sh" > "$case_dir/session-env.sh.new"
+mv "$case_dir/session-env.sh.new" "$case_dir/session-env.sh"
+# Provide design-export/plan.txt as the recovery source.
+mkdir -p "$case_dir/design-export"
+printf '%s\n' "Recovered plan body from design-export." > "$case_dir/design-export/plan.txt"
+compose_argv="$TMP/compose-fallback.argv"
+log_argv="$TMP/log-fallback.argv"
+set +e
+out="$(RUN_STEP1_COMPOSE_SH="$COMPOSE_SPY" RUN_STEP1_LARCH_LOG_SH="$LOG_SPY" RUN_STEP1_COMPOSE_ARGV_FILE="$compose_argv" RUN_STEP1_LOG_ARGV_FILE="$log_argv" "$LAUNCHER" --implement-tmpdir "$case_dir" --goal-text "Ship fallback" 2>&1)"
+rc=$?
+set -e
+if [[ "$rc" -eq 0 ]]; then pass "fallback continues (exit 0)"; else fail "fallback rc=$rc"; fi
+assert_contains "$out" "PLAN_FILE missing from session-env" "fallback emits PLAN_FILE-missing warning"
+assert_contains "$out" "recovering from design-export/plan.txt" "fallback names recovery source"
+assert_contains "$out" "THIS IS A BUG" "fallback flags as bug"
+assert_contains "$(cat "$compose_argv")" "$case_dir/design-export/plan.txt" "fallback passes design-export plan to compose"
+
+echo "=== PLAN_FILE missing AND design-export missing: fail loud ==="
+case_dir="$TMP/plan-file-fail"
+make_tmpdir "$case_dir"
+grep -v '^PLAN_FILE=' "$case_dir/session-env.sh" > "$case_dir/session-env.sh.new"
+mv "$case_dir/session-env.sh.new" "$case_dir/session-env.sh"
+set +e
+out="$("$LAUNCHER" --implement-tmpdir "$case_dir" --goal-text "Should fail" 2>&1)"
+rc=$?
+set -e
+if [[ "$rc" -eq 2 ]]; then pass "no PLAN_FILE and no design-export exits 2"; else fail "no fallback rc=$rc"; fi
+assert_contains "$out" "PLAN_FILE missing from session-env" "no-fallback error"
+
 TOTAL=$((PASS + FAIL))
 if [[ "$FAIL" -eq 0 ]]; then
     printf 'PASS: test-run-step1-plan-log.sh - %s/%s assertions\n' "$PASS" "$TOTAL"

@@ -110,7 +110,16 @@ LARCH_CLAUDE_SOURCE_FILE="$(session_get "$SESSION_ENV_PATH" LARCH_CLAUDE_SOURCE_
 LARCH_TIMING_LEDGER="$(session_get "$SESSION_ENV_PATH" LARCH_TIMING_LEDGER "")"
 export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 
-[[ -n "$PLAN_FILE" ]] || fail "PLAN_FILE missing from session-env"
+if [[ -z "$PLAN_FILE" ]]; then
+    # Belt-and-braces fallback: see run-step1-plan-log.sh for the rationale (#2326).
+    DESIGN_EXPORT_PLAN="$IMPLEMENT_TMPDIR/design-export/plan.txt"
+    if [[ -s "$DESIGN_EXPORT_PLAN" ]]; then
+        printf '**⚠ run-step5-review.sh: PLAN_FILE missing from session-env; recovering from design-export/plan.txt. THIS IS A BUG — investigate the Step 1 writer (persist-post-plan-keys.sh).**\n' >&2
+        PLAN_FILE="$DESIGN_EXPORT_PLAN"
+    else
+        fail "PLAN_FILE missing from session-env"
+    fi
+fi
 [[ -f "$PLAN_FILE" ]] || fail "PLAN_FILE not found: $PLAN_FILE"
 
 case "$WORKFLOW_PATH" in

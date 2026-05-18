@@ -177,11 +177,14 @@ grep -qE '^[[:space:]]*(source|\.)[[:space:]].*lib-finalize-state-keys\.sh' "$SH
   || fail "ship-pr.sh must source lib-finalize-state-keys.sh"
 
 # shellcheck disable=SC2016
-grep -Fq 'When `hard_mode=true`, skip the plan-size evaluation and always persist `POST_PLAN_WORKFLOW_PATH=HARD`' "$SKILL_MD" \
-  || fail "Post-plan router must guard hard_mode=true: always persist POST_PLAN_WORKFLOW_PATH=HARD"
+grep -Fq 'When `hard_mode=true`, skip the plan-size evaluation and set `WORKFLOW_PATH=HARD`' "$SKILL_MD" \
+  || fail "Post-plan router must guard hard_mode=true: set WORKFLOW_PATH=HARD"
 # shellcheck disable=SC2016
 grep -Fq 'When `hard_mode=false`, use plan size' "$SKILL_MD" \
   || fail "Post-plan router must gate plan-size heuristic under hard_mode=false"
+# shellcheck disable=SC2016
+grep -Fq 'scripts/persist-post-plan-keys.sh' "$SKILL_MD" \
+  || fail "Post-plan router must invoke scripts/persist-post-plan-keys.sh (#2326)"
 
 COMMIT_IMPL_SH="$REPO_ROOT/skills/implement/scripts/commit-implementation.sh"
 COMMIT_REVIEW_SH="$REPO_ROOT/skills/implement/scripts/commit-review-fixes.sh"
