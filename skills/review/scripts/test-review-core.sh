@@ -260,7 +260,14 @@ write_stubs
 out=$(TEST_FINDINGS=0 run_core "$TMP/zero")
 assert_contains "$out" 'REVIEW_CORE_STATUS=zero-findings'
 assert_contains "$out" 'PANEL_SHAPE=simple'
+assert_contains "$out" 'SCOUT_STATUS=na'
+assert_contains "$out" 'DYNAMIC_SLOTS=0'
 [[ -f "$TMP/zero/review-dirty-tree-summary.env" ]] || { echo "FAIL: missing review-dirty-tree-summary.env" >&2; exit 1; }
+
+out=$(TEST_FINDINGS=0 TEST_SCOUT_STATUS=ok TEST_DYNAMIC_SLOTS=3 run_core "$TMP/zero-scout")
+assert_contains "$out" 'REVIEW_CORE_STATUS=zero-findings'
+assert_contains "$out" 'SCOUT_STATUS=ok'
+assert_contains "$out" 'DYNAMIC_SLOTS=3'
 
 out=$(TEST_FINDINGS=1 TEST_ACCEPTED=1 TEST_REJECTED=0 run_core "$TMP/fix")
 assert_contains "$out" 'REVIEW_CORE_STATUS=fix-required'
@@ -273,9 +280,26 @@ out=$(TEST_FINDINGS=1 TEST_ACCEPTED=1 TEST_PANEL_MODE=both-down run_core "$TMP/b
 assert_contains "$out" 'REVIEW_CORE_STATUS=main-agent-vote-required'
 assert_contains "$out" 'PANEL_MODE=both-down'
 
+set +e
+out=$(TEST_FINDINGS=1 TEST_ACCEPTED=1 TEST_THRESHOLD_OK=false TEST_SCOUT_STATUS=ok TEST_DYNAMIC_SLOTS=2 run_core "$TMP/panel-failed")
+rc=$?
+set -e
+if [[ "$rc" -ne 2 ]]; then
+    echo "FAIL: panel-failed should exit 2" >&2
+    exit 1
+fi
+assert_contains "$out" 'REVIEW_CORE_STATUS=panel-failed'
+assert_contains "$out" 'SCOUT_STATUS=ok'
+assert_contains "$out" 'DYNAMIC_SLOTS=2'
+
 out=$(TEST_FINDINGS=1 TEST_TALLY_STATUS=main-agent-vote-required run_core "$TMP/main-agent")
 assert_contains "$out" 'REVIEW_CORE_STATUS=main-agent-vote-required'
 assert_contains "$out" 'ACCEPTED_COUNT=0'
+
+out=$(TEST_FINDINGS=1 TEST_TALLY_STATUS=main-agent-vote-required TEST_SCOUT_STATUS=ok TEST_DYNAMIC_SLOTS=4 run_core "$TMP/main-agent-scout")
+assert_contains "$out" 'REVIEW_CORE_STATUS=main-agent-vote-required'
+assert_contains "$out" 'SCOUT_STATUS=ok'
+assert_contains "$out" 'DYNAMIC_SLOTS=4'
 
 out=$(TEST_FINDINGS=1 TEST_ACCEPTED=1 run_core "$TMP/desc" description)
 assert_contains "$out" 'REVIEW_CORE_STATUS=ok'

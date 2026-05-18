@@ -31,7 +31,7 @@ Before executing, read `${CLAUDE_PLUGIN_ROOT}/skills/review/references/domain-ru
 
 Run the same mechanics documented in `/review` Steps 1-3:
 
-1. **Step 1**: gather branch context via `gather-branch-context.sh`.
+1. **Step 1**: gather branch context via `gather-context.sh`.
 2. **Step 2**: launch the full reviewer panel in parallel per the launch procedure and fallback matrix in `SKILL.md`.
 3. **Step 3**: collect, deduplicate, vote (rounds 1-3), implement fixes (Step 3e), re-review (Step 3f) — same round-state machine and safety limit (3 rounds) as the inline path. Pass `--dynamic-archetypes "$DYNAMIC_ARCHETYPES"` to each `review-core.sh` round, preserve the emitted scout KVs (`SCOUT_STATUS`, `DYNAMIC_SLOTS`, `SCOUT_MANIFEST`, `YIELD_TSV_FILE`) for the parent Step 4 log batches, return those KVs explicitly in the final worker footer when available, and write Step 3e code edits to the git working tree directly.
 

@@ -83,32 +83,34 @@ run_lint_fix_loop_capture() {
 }
 
 collect_ci_stage_paths() {
-    local vendor_dirty_file=$1 tracked_dirty_file=$2 untracked_dirty_file=$3 allowlisted_delta_file=$4
+    local vendor_tracked_dirty_file=$1 vendor_untracked_dirty_file=$2 tracked_dirty_file=$3 untracked_dirty_file=$4 allowlisted_delta_file=$5
     awk '
         FNR == NR {
-            if (NF && !seen[$0]++) {
-                staged[$0]=1
-                print
-            }
+            if (NF) vendor_tracked[$0]=1
             next
         }
         FILENAME == ARGV[2] {
-            if (NF && !seen[$0]++) {
-                staged[$0]=1
-                print
-            }
+            if (NF) vendor_untracked[$0]=1
             next
         }
         FILENAME == ARGV[3] {
-            if (NF) untracked[$0]=1
+            if (NF && !seen[$0]++) print
+            next
+        }
+        FILENAME == ARGV[4] {
+            if (NF) current_untracked[$0]=1
             next
         }
         {
             if (!NF || seen[$0]++) next
-            staged[$0]=1
-            print
+            if (current_untracked[$0]) print
         }
-    ' "$vendor_dirty_file" "$tracked_dirty_file" "$untracked_dirty_file" "${allowlisted_delta_file:-/dev/null}"
+    ' \
+        "${vendor_tracked_dirty_file:-/dev/null}" \
+        "${vendor_untracked_dirty_file:-/dev/null}" \
+        "${tracked_dirty_file:-/dev/null}" \
+        "${untracked_dirty_file:-/dev/null}" \
+        "${allowlisted_delta_file:-/dev/null}"
 }
 
 die_usage() {
@@ -973,7 +975,7 @@ rename_done_best_effort() {
 
 run_ci_fix_vendor() {
     local phase=$1 run_id=$2 output rc fail_file tool_label plan_file checks_site delta_paths_file
-    local plan_args=() vendor_dirty_paths_file tracked_dirty_paths_file untracked_dirty_paths_file
+    local plan_args=() vendor_tracked_dirty_paths_file vendor_untracked_dirty_paths_file tracked_dirty_paths_file untracked_dirty_paths_file
     output="$IMPLEMENT_TMPDIR/ci-fix-${phase}-$(date +%s).out"
     plan_file=$(resolve_plan_file)
     if [ -n "$plan_file" ]; then
@@ -1003,8 +1005,10 @@ run_ci_fix_vendor() {
     "$SCRIPT_DIR/append-token-record.sh" --input "${output}.token-record" --tmpdir "$IMPLEMENT_TMPDIR" > "$fail_file" 2>&1
     rc=$?
     [ "$rc" -eq 0 ] || record_failure "$phase" "append-token-record.sh" "$rc" "$fail_file" Warnings
-    vendor_dirty_paths_file="$IMPLEMENT_TMPDIR/${phase}-vendor-dirty-paths.txt"
-    capture_dirty_paths > "$vendor_dirty_paths_file"
+    vendor_tracked_dirty_paths_file="$IMPLEMENT_TMPDIR/${phase}-vendor-tracked-dirty-paths.txt"
+    vendor_untracked_dirty_paths_file="$IMPLEMENT_TMPDIR/${phase}-vendor-untracked-dirty-paths.txt"
+    capture_tracked_dirty_paths > "$vendor_tracked_dirty_paths_file"
+    capture_untracked_dirty_paths > "$vendor_untracked_dirty_paths_file"
     checks_site="$([ "$phase" = "ci-initial" ] && echo step10 || echo step12c)"
     if ! run_checks_with_lint_fix_loop "$phase" "$checks_site"; then
         return 1
@@ -1019,12 +1023,12 @@ run_ci_fix_vendor() {
         fail_file=$(failure_capture_path "$phase")
         delta_paths_file="$LAST_LINT_FIX_DELTA_PATHS_FILE"
         rc=0
-        if [[ -s "$vendor_dirty_paths_file" || -s "$tracked_dirty_paths_file" ]] || [[ -n "$delta_paths_file" && -f "$delta_paths_file" && -s "$delta_paths_file" ]]; then
+        if [[ -s "$vendor_tracked_dirty_paths_file" || -s "$vendor_untracked_dirty_paths_file" || -s "$tracked_dirty_paths_file" ]] || [[ -n "$delta_paths_file" && -f "$delta_paths_file" && -s "$delta_paths_file" ]]; then
             local stage_paths=() stage_path
             while IFS= read -r stage_path || [[ -n "$stage_path" ]]; do
                 [[ -n "$stage_path" ]] || continue
                 stage_paths+=("$stage_path")
-            done < <(collect_ci_stage_paths "$vendor_dirty_paths_file" "$tracked_dirty_paths_file" "$untracked_dirty_paths_file" "$delta_paths_file")
+            done < <(collect_ci_stage_paths "$vendor_tracked_dirty_paths_file" "$vendor_untracked_dirty_paths_file" "$tracked_dirty_paths_file" "$untracked_dirty_paths_file" "$delta_paths_file")
             if [[ "${#stage_paths[@]}" -gt 0 ]]; then
                 git add -- "${stage_paths[@]}" > "$fail_file" 2>&1
             else

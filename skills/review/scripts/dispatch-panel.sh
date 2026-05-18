@@ -234,7 +234,7 @@ scout_manifest_is_valid() {
             and ((.prompt_body | type) == "string")
             and ((.prompt_body | length) > 0)
             and ((.prompt_body | test("(?m)^---$")) | not)
-            and ((.prompt_body | contains("</reviewer_")) | not)
+            and ((.prompt_body | ascii_downcase | contains("</reviewer_")) | not)
             and ((.prompt_body | has_unsafe_wrapper_tag) | not)
         )
     ' "$scout_manifest" >/dev/null 2>&1
