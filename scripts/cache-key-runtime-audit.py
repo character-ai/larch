@@ -143,11 +143,11 @@ def content_to_text(value: Any) -> str:
                 parts.append(content_to_text(item))
         return "\n".join(part for part in parts if part != "")
     if isinstance(value, dict):
-        if "text" in value and isinstance(value["text"], str):
-            return value["text"]
         block_type = str(value.get("type") or "")
         if block_type not in ("", "text"):
             return summarize_attachment_block(value)
+        if "text" in value and isinstance(value["text"], str):
+            return value["text"]
         if "content" in value:
             return content_to_text(value["content"])
         return stable_json_text(value)
@@ -301,11 +301,12 @@ def _is_attachment_bearing(entry: TranscriptEntry) -> bool:
         message.get("content") if isinstance(message, dict)
         else raw.get("content")
     )
-    if not isinstance(content, list):
-        return False
-    for block in content:
-        if isinstance(block, dict) and str(block.get("type") or "") not in ("", "text"):
-            return True
+    if isinstance(content, dict):
+        return str(content.get("type") or "") not in ("", "text")
+    if isinstance(content, list):
+        for block in content:
+            if isinstance(block, dict) and str(block.get("type") or "") not in ("", "text"):
+                return True
     return False
 
 
@@ -331,6 +332,7 @@ def prefix_records(chain: list[TranscriptEntry]) -> list[PrefixRecord]:
         elif entry.entry_type == "user" and _is_attachment_bearing(entry):
             include = True
             reason = "user:attachment"
+            included_initial = True
         elif not included_initial and is_initial_user_message(entry, True):
             include = True
             reason = "user:initial"
