@@ -223,6 +223,10 @@ run_core() {
 
 run_core_with_log_stub() {
     local outdir="$1" session_env="$2"
+    # flush_round_log requires IMPLEMENT_TMPDIR/larch-logs; without it write-round
+    # is skipped and execution-issues never receives the failure record.
+    local impl_tmp="$TMP/implement-for-write-round"
+    mkdir -p "$impl_tmp"
     local log_stub="$TMP/larch-log-fail.sh"
     cat > "$log_stub" <<'STUB'
 #!/usr/bin/env bash
@@ -233,6 +237,7 @@ STUB
     chmod +x "$log_stub"
     local args=(--mode diff --output-dir "$outdir" --codex-available true --cursor-available true --panel simple --run-id test-run)
     [[ -n "$session_env" ]] && args+=(--session-env-path "$session_env")
+    IMPLEMENT_TMPDIR="$impl_tmp" \
     REVIEW_CORE_GATHER_CONTEXT_SH="$TMP/gather.sh" \
     REVIEW_CORE_DISPATCH_PANEL_SH="$TMP/dispatch.sh" \
     REVIEW_CORE_COLLECT_FINDINGS_SH="$TMP/collect.sh" \
