@@ -33,9 +33,10 @@ done
 if "$PLUGIN_ROOT/scripts/cleanup-tmpdir.sh" --dir "$IMPLEMENT_TMPDIR"; then
     emit_kv CLEANED true
     exit 0
+else
+    rc=$?
 fi
 
-rc=$?
 emit_kv CLEANED false
 emit_kv ERROR "cleanup-tmpdir failed"
 exit "$rc"

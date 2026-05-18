@@ -27,7 +27,7 @@ Four invariants enforced across multiple steps. Anchor cross-step questions here
 
 3. **Degraded-Git Fail-Closed** — `check-bump-version.sh STATUS != ok` MUST force `VERIFIED=false` at Step 12 regardless of `COMMITS_AFTER`. **Enforcement**: STATUS-first evaluation ordering in the Rebase + Re-bump Sub-procedure step 4 (see `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/bump-verification.md` Block β); Step 8 permissive, Step 12 strict (bail to 12d). **Why**: a coerced 0 baseline from a transient git error routes to a bogus "wrong commit count" mis-diagnosis — the fail-closed rule prevents silently wrong merged versions.
 
-4. **Tracking-Issue Sentinel Idempotency** (umbrella #348) — re-running `/implement` in the same session MUST NOT double-create a tracking issue or double-adopt the wrong issue. **Enforcement**: the `$IMPLEMENT_TMPDIR/parent-issue.md` sentinel detected at Step 0.5 entry; prior `ISSUE_NUMBER` and `RUN_ID` are recovered from it so no `tracking-issue-write.sh create-issue` call (Branch 4 path, which runs at Step 0.5 on first remote write) runs twice. Ordering invariant on Branch 4 first-creation: `create-issue` -> `larch-log.sh init` -> `tracking-issue-summary.sh upsert-summary` for the `larch:metadata` comment -> write sentinel last. The sentinel is written ONLY after `ISSUE_NUMBER`, `RUN_ID`, and the metadata summary comment have resolved successfully. If create-issue fails: `deferred=true`, skip sentinel. If `larch-log.sh init` (manifest write) fails: `deferred=true`, `STALL_TRACKING=true`, skip sentinel, skip to Step 18 — **preserve `$ISSUE_NUMBER`** so Step 18 can rename the created issue to `[STALLED]`. If metadata summary upsert fails: `deferred=true`, skip sentinel, proceed to Step 1. **Why**: `tracking-issue-summary.sh` searches by the marker literal for each of the four slim comments, but the local sentinel is still the byte-exact session-scope guard against double-creation on retry or resume. Parallel to Invariant #2 — sentinel-based byte-exact idempotency guards for distinct session artifacts.
+4. **Tracking-Issue Sentinel Idempotency** (umbrella #348) — re-running `/implement` in the same session MUST NOT double-create a tracking issue or double-adopt the wrong issue. **Enforcement**: the `$IMPLEMENT_TMPDIR/parent-issue.md` sentinel detected at Step 0.5 entry; prior `ISSUE_NUMBER` and `RUN_ID` are recovered from it so no `tracking-issue-write.sh create-issue` call (Branch 4 path, which runs at Step 0.5 on first remote write) runs twice. Ordering invariant on Branch 4 first-creation: `create-issue` -> `larch-log.sh init` -> `post-tracking-issue.sh` for the `larch:metadata` comment -> write sentinel last. The sentinel is written ONLY after `ISSUE_NUMBER`, `RUN_ID`, and the metadata summary comment have resolved successfully. If create-issue fails: `deferred=true`, skip sentinel. If `larch-log.sh init` (manifest write) fails: `deferred=true`, `STALL_TRACKING=true`, skip sentinel, skip to Step 18 — **preserve `$ISSUE_NUMBER`** so Step 18 can rename the created issue to `[STALLED]`. If metadata summary upsert fails: `deferred=true`, skip sentinel, proceed to Step 1. **Why**: `tracking-issue-summary.sh` searches by the marker literal for each of the four slim comments, but the local sentinel is still the byte-exact session-scope guard against double-creation on retry or resume. Parallel to Invariant #2 — sentinel-based byte-exact idempotency guards for distinct session artifacts.
 
 ## NEVER List
 
@@ -566,7 +566,7 @@ ${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/post-tracking-issue.sh \
   --repo "${REPO:-}"
 ```
 
-On `LOG_WRITTEN=false` with `ERROR=` from `larch-log.sh`, or `FAILED=true` from `tracking-issue-summary.sh`, print `**⚠ 0.5: tracking issue — metadata publication failed: $ERROR. Aborting.**` and skip to Step 18.
+On `LOG_WRITTEN=false` with `ERROR=` from `larch-log.sh`, or `POSTED=false` / non-zero exit from `post-tracking-issue.sh`, print `**⚠ 0.5: tracking issue — metadata publication failed: $ERROR. Aborting.**` and skip to Step 18.
 
 On either sub-branch, **rename the adopted issue to `[IN PROGRESS]`** so the title reflects the active run (matches the title-prefix lifecycle applied to fresh-created issues in Branch 4 — see `scripts/tracking-issue-write.md` "Title-prefix lifecycle"):
 
@@ -626,7 +626,7 @@ ${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/post-tracking-issue.sh \
   --repo "${REPO:-}"
 ```
 
-On `LOG_WRITTEN=false` with `ERROR=` from `larch-log.sh`, or `FAILED=true` from `tracking-issue-summary.sh`, print `**⚠ 0.5: tracking issue — metadata publication failed: $ERROR. Aborting.**` and skip to Step 18.
+On `LOG_WRITTEN=false` with `ERROR=` from `larch-log.sh`, or `POSTED=false` / non-zero exit from `post-tracking-issue.sh`, print `**⚠ 0.5: tracking issue — metadata publication failed: $ERROR. Aborting.**` and skip to Step 18.
 
 Then **rename the recovered issue to `[IN PROGRESS]`** so the title reflects the active run (matches Branch 2 / Branch 4):
 
@@ -707,7 +707,7 @@ Create the tracking issue **immediately** so subsequent summary comments and com
    ```
    On `LOG_WRITTEN=false` with `ERROR=` from `larch-log.sh init`, print `**⚠ 0.5: tracking issue — Branch 4 manifest initialization failed: $ERROR. Stalling to Step 18.**`, log to `Tool Failures`, set `deferred=true`, set `STALL_TRACKING=true`, and skip to Step 18 (skipping the sentinel write in step 6). **Do NOT clear `$ISSUE_NUMBER`** — the tracking issue was already created on GitHub at step 4, and Step 18 teardown needs `$ISSUE_NUMBER` to rename it from `[IN PROGRESS]` to `[STALLED]`.
 
-   On `FAILED=true` from `tracking-issue-summary.sh`, print `**⚠ 0.5: tracking issue — Branch 4 metadata publication failed: $ERROR. Continuing with deferred/absent tracking issue.**`, log to `Tool Failures`, set `deferred=true`, clear `$ISSUE_NUMBER`, and proceed to Step 1 (skipping the sentinel write in step 6).
+   On `POSTED=false` or non-zero exit from `post-tracking-issue.sh`, print `**⚠ 0.5: tracking issue — Branch 4 metadata publication failed: $ERROR. Continuing with deferred/absent tracking issue.**`, log to `Tool Failures`, set `deferred=true`, clear `$ISSUE_NUMBER`, and proceed to Step 1 (skipping the sentinel write in step 6).
 
 6. **Write the sentinel LAST**, only after `$ISSUE_NUMBER` and `$RUN_ID` are non-empty and step 5 succeeded (Load-Bearing Invariant #4 ordering):
    ```
@@ -1719,15 +1719,17 @@ The OOS cap helper contract remains `${CLAUDE_PLUGIN_ROOT}/skills/implement/scri
 
 **Execution-issues checkpoint**: `CI_PASSED=true` does not append execution-issues after green CI. The primary flush happens before the bump in Step 7a so the NDJSON record is part of the same PR tree that CI validates; appending after CI would either validate a different tree or create a post-CI audit-log delta. Later steps may still add new entries to `$IMPLEMENT_TMPDIR/execution-issues.md`; Step 7a writes a checkpoint marker even when the pre-bump flush is a skip, and the shared commit-tail / pre-push paths (`scripts/larch-log-flush.sh`, `scripts/refresh-run-logs.sh`) flush any later non-empty tail before the next log commit once that checkpoint exists. Step 18's teardown safety net remains the fallback if the normal path is missed. Invoke `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/flush-execution-issues.sh` per its contract (see `skills/implement/scripts/flush-execution-issues.md`; regression harness: `skills/implement/scripts/test-flush-execution-issues.sh` with sibling `skills/implement/scripts/test-flush-execution-issues.md`).
 
-Refresh the tracking metadata projection after execution-issues changes:
+Refresh the tracking metadata projection after execution-issues changes when a tracking issue exists. If `ISSUE_NUMBER` is empty or `0`, skip this helper entirely; do not call GitHub for issue `#0`.
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/refresh-execution-issues.sh \
-  --issue "${ISSUE_NUMBER:-0}" \
-  --run-id "$RUN_ID" \
-  --session-env "$IMPLEMENT_TMPDIR/session-env.sh" \
-  --implement-tmpdir "$IMPLEMENT_TMPDIR" \
-  --repo "${REPO:-}" || true
+if [ -n "${ISSUE_NUMBER:-}" ] && [ "${ISSUE_NUMBER:-0}" != "0" ]; then
+  ${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/refresh-execution-issues.sh \
+    --issue "$ISSUE_NUMBER" \
+    --run-id "$RUN_ID" \
+    --session-env "$IMPLEMENT_TMPDIR/session-env.sh" \
+    --implement-tmpdir "$IMPLEMENT_TMPDIR" \
+    --repo "${REPO:-}" || true
+fi
 ```
 
 The state machine writes `postbump-state.sh` for `implement-finalize.sh postbump`, writes `finalize-state.sh` for `postmerge`/`teardown`, parses postbump `STATUS=` from stdout, preserves `CALLER_KIND=step8b_rebase` for Step 8b conflicts, treats Step 10 `ACTION=merge` as a CI-passed checkpoint, and treats Step 12 `ACTION=merge` as permission to call `merge-pr.sh`. If CI failure metadata lacks a failed run id, use `${CLAUDE_PLUGIN_ROOT}/scripts/gh-pr-checks.sh` as the fallback diagnostic path before deciding whether to stall. Within `PHASE=ci-merge`, after merge succeeds ship-pr.sh delegates local cleanup (Step 14 equivalent) to `implement-finalize.sh postmerge`; after that returns, **Continue to Step 15.** (main verification, also inside postmerge). Do NOT end the turn between the merge output and the postmerge delegation.
@@ -1761,7 +1763,7 @@ Report unimplemented code review suggestions without reprinting the full finding
 ${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/write-rejected-findings.sh --implement-tmpdir "$IMPLEMENT_TMPDIR" --run-id "$RUN_ID" --log-root "$IMPLEMENT_TMPDIR/larch-logs" || true
 ```
 
-If `STATUS=ok`, the full content was already written through the `code-review-tally` log batch and copied to the run tmp log for operator inspection.
+If `STATUS=ok`, `write-rejected-findings.sh` found non-empty rejected findings, copied `rejected-findings.md` into the run tmp log for operator inspection, and emitted the Step 16 breadcrumb. The canonical full review tally remains the `code-review-tally` log batch written earlier at Step 5.
 
 > **Continue to Step 16a.** Do NOT end the turn after printing rejected findings.
 
@@ -1824,6 +1826,8 @@ ${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/write-final-report.sh \
   --implement-tmpdir "$IMPLEMENT_TMPDIR" \
   --repo "${REPO:-}"
 ```
+
+If `write-final-report.sh` exits non-zero or emits `STATUS=failed`, log the captured stdout/stderr to `Tool Failures` and continue to the token summary. `STATUS=skipped` is reserved for the no-tracking-issue path (`ISSUE=0`), not for GitHub upsert failures.
 
 Print a token summary to chat. When `LARCH_VERBOSE_TOKENS=true`, print the full per-step table; otherwise print a single grand-total line. The full breakdown is appended to the `token-report` and `timing-report` log batches at the pre-bump log flush (Step 7a tail); on each retry `scripts/refresh-run-logs.sh` (Triggers A-C in `ship-pr.sh`) re-renders and commits the batches before each push so the merged PR carries the most recent data (unless `--no-logs-commit` is set, in which case log files stay in the session tmpdir only).
 
@@ -1891,12 +1895,12 @@ LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.s
 LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
 export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --full --format json --output "$IMPLEMENT_TMPDIR/token-report-rendered.json" || true
-if [ "${forked_target:-false}" != "true" ] && [ -n "${ISSUE_NUMBER:-}" ] && [ "${repo_unavailable:-false}" != "true" ]; then
+if [ "${forked_target:-false}" != "true" ] && [ -n "${ISSUE_NUMBER:-}" ] && [ "${ISSUE_NUMBER:-0}" != "0" ] && [ "${repo_unavailable:-false}" != "true" ]; then
   ${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/write-final-report.sh --issue "$ISSUE_NUMBER" --run-id "$RUN_ID" --pr-url "${PR_URL:-N/A}" --stall-tracking "${STALL_TRACKING:-false}" --session-env "$IMPLEMENT_TMPDIR/session-env.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" --repo "${REPO:-}" || true
 fi
 ```
 
-For Step 18's `token-report.sh` and `tracking-issue-summary.sh upsert-summary`, preserve the best-effort behavior but capture any non-zero stdout/stderr to `$IMPLEMENT_TMPDIR/step18-<tool>.failure.log` and append with `append-tool-failure.sh` before continuing.
+For Step 18's `token-report.sh` and `write-final-report.sh`, preserve the best-effort behavior but capture any non-zero stdout/stderr to `$IMPLEMENT_TMPDIR/step18-<tool>.failure.log` and append with `append-tool-failure.sh` before continuing.
 
 Capture and commit the session transcript (best-effort — never fatal):
 

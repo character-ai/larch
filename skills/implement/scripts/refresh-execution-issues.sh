@@ -28,6 +28,10 @@ read_env_key() {
     awk -v k="$key" 'BEGIN{p=k"="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$file" 2>/dev/null
 }
 
+read_plugin_version() {
+    "$PLUGIN_ROOT/scripts/read-plugin-version.sh" 2>/dev/null | awk -F= '/^LARCH_PLUGIN_VERSION=/{print $2; exit}'
+}
+
 ISSUE=""
 RUN_ID=""
 SESSION_ENV=""
@@ -53,14 +57,36 @@ case "$ISSUE" in *[!0-9]*|"") fail_usage "--issue must be numeric" ;; esac
 [ -d "$IMPLEMENT_TMPDIR" ] || fail_usage "--implement-tmpdir not found"
 
 [ -n "$REPO" ] || REPO="$(read_env_key REPO "$SESSION_ENV")"
+if [ "$ISSUE" = "0" ]; then
+    emit_kv REFRESHED true
+    emit_kv REASON issue-not-set
+    exit 0
+fi
+
 issue_log="$IMPLEMENT_TMPDIR/execution-issues.md"
 summary="$IMPLEMENT_TMPDIR/summary-metadata.md"
+existing_summary=""
 count=0
 [ ! -s "$issue_log" ] || count="$(grep -c '^- ' "$issue_log" 2>/dev/null || printf '0')"
+[ ! -s "$summary" ] || existing_summary="$(cat "$summary")"
 
 {
-    printf 'Run ID: `%s`\n' "$RUN_ID"
-    printf 'Logs: `larch-logs/implement/%s/`\n' "$RUN_ID"
+    if [ -n "$existing_summary" ]; then
+        printf '%s\n' "$existing_summary" | awk '!/^Execution issues pending flush: `[^`]*`$/'
+    else
+        version="$(read_plugin_version)"
+        [ -n "$version" ] || version="unknown"
+        agent="$(read_env_key AGENT "$SESSION_ENV")"
+        coder="$(read_env_key CODER "$SESSION_ENV")"
+        [ -n "$agent" ] || agent="claude"
+        [ -n "$coder" ] || coder="claude"
+        printf 'Run ID: `%s`\n' "$RUN_ID"
+        printf 'Logs: `larch-logs/implement/%s/`\n' "$RUN_ID"
+        printf 'Tracking issue: #%s\n' "$ISSUE"
+        printf 'Agent: `%s`\n' "$agent"
+        printf 'Coder: `%s`\n' "$coder"
+        printf 'Larch version: `%s`\n' "$version"
+    fi
     printf 'Execution issues pending flush: `%s`\n' "$count"
 } > "$summary" || {
     emit_kv REFRESHED false

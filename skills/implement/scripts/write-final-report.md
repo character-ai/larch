@@ -15,5 +15,8 @@ Output:
 - `STATUS=ok|skipped|failed`
 - `ERROR=<message>` on failure
 
+`STATUS=skipped` is reserved for `--issue 0` (no tracking issue). GitHub
+upsert failures emit `STATUS=failed` and return non-zero.
+
 The script writes both `$IMPLEMENT_TMPDIR/summary-final.md` and
 `$IMPLEMENT_TMPDIR/larch-logs/implement/<RUN_ID>/final-summary.md`.

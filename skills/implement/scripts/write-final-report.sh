@@ -96,6 +96,6 @@ if "$PLUGIN_ROOT/scripts/tracking-issue-summary.sh" "${args[@]}" >"$IMPLEMENT_TM
 fi
 
 emit_kv COMMENT_URL ""
-emit_kv STATUS skipped
+emit_kv STATUS failed
 emit_kv ERROR "$(tr '\n' ' ' < "$IMPLEMENT_TMPDIR/write-final-report.err" | head -c 500)"
-exit 0
+exit 1

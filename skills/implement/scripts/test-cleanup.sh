@@ -22,6 +22,9 @@ cat > "$plugin/scripts/cleanup-tmpdir.sh" <<'STUB'
 dir=""
 while [ $# -gt 0 ]; do case "$1" in --dir) dir=$2; shift 2 ;; *) shift ;; esac; done
 printf '%s\n' "$dir" > "${CLEANUP_DIR_LOG:?}"
+if [ "${CLEANUP_FAIL:-false}" = "true" ]; then
+  exit "${CLEANUP_RC:-5}"
+fi
 rm -rf "$dir"
 STUB
 chmod +x "$plugin/scripts/cleanup-tmpdir.sh"
@@ -31,6 +34,15 @@ out=$(CLAUDE_PLUGIN_ROOT="$plugin" CLEANUP_DIR_LOG="$TMP_ROOT/dir.log" "$HELPER"
 assert_contains 'CLEANED=true' "$out" 'happy path cleaned'
 if [ ! -e "$target" ]; then pass 'target removed'; else fail 'target removed'; fi
 assert_contains "$target" "$(cat "$TMP_ROOT/dir.log")" 'passes target dir'
+
+target_fail="$TMP_ROOT/session-fail"; mkdir -p "$target_fail"
+set +e
+failed=$(CLAUDE_PLUGIN_ROOT="$plugin" CLEANUP_DIR_LOG="$TMP_ROOT/dir-fail.log" CLEANUP_FAIL=true CLEANUP_RC=6 "$HELPER" --implement-tmpdir "$target_fail" 2>/dev/null)
+rc=$?
+set -e
+if [ "$rc" -eq 6 ]; then pass 'cleanup failure preserves exit code'; else fail 'cleanup failure preserves exit code'; fi
+assert_contains 'CLEANED=false' "$failed" 'cleanup failure emits cleaned false'
+assert_contains 'ERROR=cleanup-tmpdir failed' "$failed" 'cleanup failure emits error'
 
 set +e
 bad=$(CLAUDE_PLUGIN_ROOT="$plugin" "$HELPER" 2>/dev/null)

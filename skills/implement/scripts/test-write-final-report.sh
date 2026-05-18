@@ -19,6 +19,10 @@ plugin="$TMP_ROOT/plugin"; mkdir -p "$plugin/scripts"
 cp "$REPO_ROOT/scripts/lib-quiet.sh" "$plugin/scripts/lib-quiet.sh"
 cat > "$plugin/scripts/tracking-issue-summary.sh" <<'STUB'
 #!/usr/bin/env bash
+if [ "${TRACKING_FAIL:-false}" = "true" ]; then
+  printf '%s' "${TRACKING_ERR:-summary failed}" >&2
+  exit "${TRACKING_RC:-1}"
+fi
 while [ $# -gt 0 ]; do case "$1" in --content-file) cp "$2" "${TRACKING_CONTENT_LOG:?}"; shift 2 ;; *) shift ;; esac; done
 printf 'COMMENT_URL=https://example.test/comment/final\n'
 STUB
@@ -30,6 +34,14 @@ assert_contains 'STATUS=ok' "$out" 'happy path status ok'
 assert_contains 'COMMENT_URL=https://example.test/comment/final' "$out" 'comment URL emitted'
 assert_contains 'PR: https://example.test/pr/5' "$(cat "$TMP_ROOT/content.md")" 'summary includes PR'
 if [ -s "$session/larch-logs/implement/run-5/final-summary.md" ]; then pass 'final summary file written'; else fail 'final summary file written'; fi
+
+set +e
+failed=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_FAIL=true TRACKING_ERR='gh auth failed' "$HELPER" --issue 7 --run-id run-5 --pr-url https://example.test/pr/5 --stall-tracking false --session-env "$session/session-env.sh" --implement-tmpdir "$session" 2>/dev/null)
+rc=$?
+set -e
+if [ "$rc" -eq 1 ]; then pass 'upsert failure exits non-zero'; else fail 'upsert failure exits non-zero'; fi
+assert_contains 'STATUS=failed' "$failed" 'upsert failure status failed'
+assert_contains 'ERROR=gh auth failed' "$failed" 'upsert failure emits error'
 
 set +e
 bad=$(CLAUDE_PLUGIN_ROOT="$plugin" "$HELPER" --issue 7 2>/dev/null)

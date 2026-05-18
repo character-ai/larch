@@ -43,9 +43,10 @@ if "$PLUGIN_ROOT/scripts/git-commit.sh" -m "$MESSAGE" "${FILES[@]}" >"$out_file"
     emit_kv COMMITTED true
     emit_kv SHA "$sha"
     exit 0
+else
+    rc=$?
 fi
 
-rc=$?
 emit_kv COMMITTED false
 emit_kv SHA ""
 emit_kv ERROR "$(tr '\n' ' ' < "$err_file" | head -c 500)"

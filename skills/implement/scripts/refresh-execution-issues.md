@@ -1,7 +1,7 @@
 # refresh-execution-issues.sh
 
-Refreshes the `larch:metadata` tracking-issue summary with a lightweight count
-of pending `execution-issues.md` entries.
+Refreshes the `larch:metadata` tracking-issue summary with the current
+execution-issue count while preserving the existing metadata fields.
 
 Usage:
 
@@ -12,4 +12,5 @@ refresh-execution-issues.sh --issue N --run-id ID --session-env PATH --implement
 Output:
 
 - `REFRESHED=true|false`
+- `REASON=issue-not-set` when `--issue 0` is passed and the helper skips cleanly
 - `ERROR=<message>` on failure

@@ -20,6 +20,7 @@ cp "$REPO_ROOT/scripts/lib-quiet.sh" "$plugin/scripts/lib-quiet.sh"
 cat > "$plugin/scripts/git-commit.sh" <<'STUB'
 #!/usr/bin/env bash
 printf '%s\n' "$*" > "${GIT_COMMIT_ARGS_LOG:?}"
+printf '%s' "${GIT_COMMIT_ERR:-}" >&2
 exit "${GIT_COMMIT_RC:-0}"
 STUB
 chmod +x "$plugin/scripts/git-commit.sh"
@@ -29,6 +30,14 @@ printf 'x\n' > "$repo/file.txt"; git -C "$repo" add file.txt; git -C "$repo" com
 out=$(cd "$repo" && CLAUDE_PLUGIN_ROOT="$plugin" GIT_COMMIT_ARGS_LOG="$TMP_ROOT/args.log" "$HELPER" file.txt)
 assert_contains 'COMMITTED=true' "$out" 'happy path emits committed true'
 assert_contains 'Address code review feedback' "$(cat "$TMP_ROOT/args.log")" 'default message used'
+
+set +e
+failed=$(cd "$repo" && CLAUDE_PLUGIN_ROOT="$plugin" GIT_COMMIT_ARGS_LOG="$TMP_ROOT/args.log" GIT_COMMIT_RC=9 GIT_COMMIT_ERR='commit hook failed' "$HELPER" file.txt 2>/dev/null)
+rc=$?
+set -e
+if [ "$rc" -eq 9 ]; then pass 'helper failure preserves exit code'; else fail 'helper failure preserves exit code'; fi
+assert_contains 'COMMITTED=false' "$failed" 'helper failure emits committed false'
+assert_contains 'ERROR=commit hook failed' "$failed" 'helper failure surfaces stderr'
 
 set +e
 bad=$(cd "$repo" && CLAUDE_PLUGIN_ROOT="$plugin" "$HELPER" --bogus 2>/dev/null)
