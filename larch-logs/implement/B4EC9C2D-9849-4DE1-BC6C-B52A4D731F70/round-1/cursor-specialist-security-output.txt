@@ -1,0 +1,33 @@
+Gathering the branch diff and commit history for a read-only security review.
+
+Read the full script around the regex lines to confirm semantics and any trust-boundary handling of `url`.
+
+## Review context
+
+**Commits since `merge-base(HEAD, main)`:** `main`..`HEAD`
+
+- `6c6d3a85` — Fix agnix AS-014 false positive on GitHub regexes  
+- `41d52a84` — chore(larch-logs): flush implement run B4EC9C2D-9849-4DE1-BC6C-B52A4D731F70  
+
+**Diff summary:** `.agnix.toml` adds `AS-014` to `disabled_rules`; `scripts/github-remote-repo.sh` replaces `github\.com` with `github[.]` in two `[[ =~ ]]` patterns; new `larch-logs/implement/...` artifacts (manifest, parent-issue, plan-goals-test, plan-review-tally).
+
+---
+
+### In-Scope Findings
+
+1. **Latent** — **security** — [.agnix.toml](.agnix.toml):41 — `AS-014` is disabled for the whole repository, not only for `scripts/github-remote-repo.sh`. That removes agnix coverage for whatever class of issues AS-014 is meant to enforce repo-wide, so a future true positive in another path would no longer fail `agent-lint` / strict agnix runs. The script change already removes the known false positive without needing a global disable, so the blind spot is optional from a pure-fix perspective. **Suggested fix:** Prefer keeping AS-014 enabled and relying on the `[.]` rewrites (and any other syntactic fixes) alone; if agnix supports file- or rule-scoped suppression, use that instead of listing `AS-014` in `disabled_rules`.
+
+**Security lens on `scripts/github-remote-repo.sh`:** The two regex edits only change how a literal dot is written in the host segment; they do not widen capture groups, change how `url` is produced from `git remote get-url` / the argument, or alter the redacted error path. No new command-injection or secret-exposure surface is apparent from this diff.
+
+**`larch-logs/implement/...`:** Treated as intentional run logs per your instructions; no scope or secrecy issues in the added JSON/Markdown beyond placeholders like `<OPERATOR_CWD>` / `<REPO_ROOT>`.
+
+---
+
+### Out-of-Scope Observations
+
+None.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	security	.agnix.toml:41	AS-014 added to disabled_rules for the entire repo	Any future file that would have failed AS-014 for a legitimate (non–false-positive) reason will no longer be reported in CI/agent-lint, weakening static checks for that rule class across the tree	Prefer Option C only (pattern rewrites) or path-scoped agnix suppression if available; drop global AS-014 disable unless required after that
+```

@@ -1,0 +1,7 @@
+Reading the ballot file to vote on each finding.
+
+Checking referenced files to validate findings and cast informed votes.
+
+Confirming the ballot: six findings. `plan-goals-test.md` is 32 lines (ballot line refs 95–99 are stale). Creating the plan record and delivering the required vote lines.
+
+
