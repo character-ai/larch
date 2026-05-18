@@ -212,9 +212,21 @@ if [[ -z "$LOCAL_HEAD" ]] || [[ "$LOCAL_HEAD" != "$PR_HEAD_OID" ]]; then
             ERROR=""
             exit 0
         fi
+        # GitHub's API often returns UNKNOWN immediately after a push due to
+        # propagation delay (#2342). Retry briefly before treating as a hard
+        # error so transient post-push UNKNOWN states don't stall the merge.
+        if [[ -z "$MERGE_STATE" ]] || [[ "$MERGE_STATE" == "UNKNOWN" ]]; then
+            for _retry in 1 2 3; do
+                sleep 5
+                refresh_pr_info
+                if [[ -n "$MERGE_STATE" ]] && [[ "$MERGE_STATE" != "UNKNOWN" ]]; then
+                    break
+                fi
+            done
+        fi
         if [[ -z "$MERGE_STATE" ]] || [[ "$MERGE_STATE" == "UNKNOWN" ]]; then
             MERGE_RESULT="error"
-            ERROR="could not read mergeStateStatus from gh pr view --json mergeStateStatus,headRefOid after force-push recovery (state=\"$MERGE_STATE\")"
+            ERROR="mergeStateStatus still UNKNOWN after 3 retries post-force-push (state=\"$MERGE_STATE\")"
             exit 0
         fi
         refresh_ci_state

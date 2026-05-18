@@ -49,6 +49,9 @@ case "$2" in
         # Compound call: returns JSON with both mergeStateStatus and headRefOid.
         # __EMPTY__ sentinel → null mergeStateStatus so jq // "" yields "".
         # GH_VIEW_SECOND_*: if set, return it on 2nd+ call (flush recovery).
+        # GH_VIEW_FLIP_AT_CALL / GH_VIEW_FLIP_MERGE_STATE: if set, override
+        # MERGE_STATE starting at the given call count (post-force-push UNKNOWN
+        # retry tests).
         HEAD_OID="${STUB_PR_HEAD_OID:-aaaa1111}"
         MERGE_STATE="${GH_MERGE_STATE:-CLEAN}"
         if [[ -n "${GH_VIEW_SECOND_HEAD_OID:-}" ]] && [[ -n "${GH_VIEW_COUNT_FILE:-}" ]]; then
@@ -57,6 +60,9 @@ case "$2" in
             if [[ "$_count" -ge 2 ]]; then
                 HEAD_OID="$GH_VIEW_SECOND_HEAD_OID"
                 MERGE_STATE="${GH_VIEW_SECOND_MERGE_STATE:-$MERGE_STATE}"
+            fi
+            if [[ -n "${GH_VIEW_FLIP_AT_CALL:-}" ]] && [[ "$_count" -ge "$GH_VIEW_FLIP_AT_CALL" ]]; then
+                MERGE_STATE="${GH_VIEW_FLIP_MERGE_STATE:-$MERGE_STATE}"
             fi
         fi
         if [[ "$MERGE_STATE" == "__EMPTY__" ]]; then
@@ -551,6 +557,42 @@ chore(larch-logs): flush implement run 6" \
 assert_stdout_contains "flush_recovery_cap" "MERGE_RESULT=error" "P1: >5 flush commits emit error"
 assert_stdout_contains "flush_recovery_cap" "ERROR=local HEAD (cccc3333) does not match PR head OID (aaaa1111); refusing to evaluate same-version gate" "P2: >5 flush commits preserve original OID error"
 assert_no_merge_commands "flush_recovery_cap" "P3: >5 flush commits skip merge commands"
+
+echo
+echo "Sub-test Q: post-force-push UNKNOWN retries before treating as error (#2342)"
+run_case "post_force_push_unknown_retry_success" \
+    env GH_MERGE_STATE=CLEAN \
+    STUB_HEAD_OID=cccc3333 \
+    STUB_PR_HEAD_OID=aaaa1111 \
+    GH_VIEW_SECOND_HEAD_OID=cccc3333 \
+    GH_VIEW_SECOND_MERGE_STATE=UNKNOWN \
+    GH_VIEW_FLIP_AT_CALL=5 \
+    GH_VIEW_FLIP_MERGE_STATE=CLEAN \
+    STUB_FLUSH_AHEAD_LOG="chore(larch-logs): flush implement run ABC" \
+    STUB_PUSH_EXIT=0 \
+    STUB_BRANCH_NAME=feature-branch \
+    STUB_REMOTE_OID=cccc3333 \
+    bash "$REPO_ROOT/scripts/merge-pr.sh" --pr 123 --repo owner/repo
+assert_stdout_contains "post_force_push_unknown_retry_success" "MERGE_RESULT=admin_merged" "Q1: UNKNOWN after force-push resolves on retry → admin_merged"
+assert_command_count "post_force_push_unknown_retry_success" "gh.log" "pr view 123 --repo owner/repo --json mergeStateStatus,headRefOid" "5" "Q2: pr view called 5x (initial + post-force-push + 3 retries)"
+
+echo
+echo "Sub-test R: post-force-push UNKNOWN persists, fails after 3 retries (#2342)"
+run_case "post_force_push_unknown_retry_failure" \
+    env GH_MERGE_STATE=CLEAN \
+    STUB_HEAD_OID=cccc3333 \
+    STUB_PR_HEAD_OID=aaaa1111 \
+    GH_VIEW_SECOND_HEAD_OID=cccc3333 \
+    GH_VIEW_SECOND_MERGE_STATE=UNKNOWN \
+    STUB_FLUSH_AHEAD_LOG="chore(larch-logs): flush implement run ABC" \
+    STUB_PUSH_EXIT=0 \
+    STUB_BRANCH_NAME=feature-branch \
+    STUB_REMOTE_OID=cccc3333 \
+    bash "$REPO_ROOT/scripts/merge-pr.sh" --pr 123 --repo owner/repo
+assert_stdout_contains "post_force_push_unknown_retry_failure" "MERGE_RESULT=error" "R1: UNKNOWN persists after 3 retries → error"
+assert_stdout_matches "post_force_push_unknown_retry_failure" "^ERROR=mergeStateStatus still UNKNOWN after 3 retries post-force-push" "R2: error message references retry count"
+assert_command_count "post_force_push_unknown_retry_failure" "gh.log" "pr view 123 --repo owner/repo --json mergeStateStatus,headRefOid" "5" "R3: pr view called 5x before bailing"
+assert_no_merge_commands "post_force_push_unknown_retry_failure" "R4: persistent UNKNOWN skips merge commands"
 
 echo
 if [[ "$FAIL_COUNT" -eq 0 ]]; then
