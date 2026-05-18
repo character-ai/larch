@@ -689,7 +689,7 @@ fi
 rm -rf "$call_dir"
 
 # ──────────────────────────────────────────────────────────────────────────────
-# --no-logs-commit: exported to commit primitive subprocess tree
+# --no-logs-commit: exported to lifecycle helper subprocess tree
 # ──────────────────────────────────────────────────────────────────────────────
 
 # Helper: override ci-wait.sh (rebase first call, merge second) and add stubs

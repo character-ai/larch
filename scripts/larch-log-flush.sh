@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# larch-log-flush.sh — best-effort tail-call flush for active /implement runs.
+# larch-log-flush.sh — best-effort explicit flush for active /implement runs.
 
 set -euo pipefail
 

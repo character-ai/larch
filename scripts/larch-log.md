@@ -83,9 +83,10 @@ captured at Step 18 of `/implement` for post-hoc auditability).
 ## Push Ownership
 
 `commit` never pushes. `/implement` log persistence is owned by
-`scripts/larch-log-flush.sh`, which is tail-called by commit primitives after
-business commits, and by the surrounding lifecycle push that carries those
-commits to the remote. Dedicated larch-log-only pushes are intentionally avoided.
+explicit lifecycle flush points: the external-implementer dispatcher flush,
+the pre-bump direct `larch-log.sh commit`, and `scripts/refresh-run-logs.sh`
+before lifecycle pushes. The surrounding lifecycle push carries those commits
+to the remote. Dedicated larch-log-only pushes are intentionally avoided.
 
 Related files: `scripts/lib-larch-log.sh`, `scripts/larch-log-batches.sh`, and
 the `scripts/larch-log-flush.sh` helper plus `scripts/test-larch-log.sh`

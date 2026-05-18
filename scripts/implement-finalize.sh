@@ -652,7 +652,7 @@ write_changelog_entry() {
 }
 
 maybe_update_changelog() {
-    local start out rc present forked_target has_bump bump_type new_version manifest_path tmpdir categories_md tmp_changelog status_out
+    local start out rc present forked_target has_bump bump_type new_version manifest_path tmpdir categories_md tmp_changelog status_out tool_label manifest_exists
     start=$(date +%s)
     CHANGELOG_STATUS="skipped-no-bump"
     set +e
@@ -693,7 +693,10 @@ maybe_update_changelog() {
     categories_md="$tmpdir/categories.md"
     if ! changelog_categories_to_markdown "$tmpdir/categories" "$categories_md"; then
         CHANGELOG_STATUS="skipped-no-bullets"
-        append_execution_issue "Step 8a changelog skipped because no summary bullets were available."
+        tool_label=$(read_state TOOL_LABEL 2>/dev/null || true)
+        manifest_exists=false
+        [ -n "$manifest_path" ] && [ -f "$manifest_path" ] && manifest_exists=true
+        append_execution_issue "Step 8a changelog skipped because no summary bullets were available. manifest_path='${manifest_path}' manifest_exists=$manifest_exists coder='${tool_label}'."
         warn_line '**⚠ 8a: changelog — no summary bullets available; amend skipped. Continuing.**'
         rm -rf "$tmpdir"
         return 0

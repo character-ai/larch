@@ -93,8 +93,8 @@ The script writes `$IMPLEMENT_TMPDIR/review-and-fix-summary.json` atomically wit
 
 When an orchestrator round exits `0` (cap-reached, clean, or fix-applied) and `--run-id` is non-empty, the script best-effort flushes the Step 5 implement run-log batches:
 
-- `code-review-tally` via `scripts/write-tally.sh`, with a body containing aggregate counts, the latest parent `review-round-summary.md` or per-round summaries, rejected code-review findings, and the latest round voting tally when present.
 - `review-findings-full` via `scripts/compose-review-findings.sh` followed by `scripts/larch-log.sh write`.
+- `code-review-tally` via `scripts/write-tally.sh`, with a body containing aggregate counts derived from the composed `[code-review/accepted]` / `[code-review/rejected]` sections, the latest parent `review-round-summary.md` or per-round summaries, rejected code-review findings, and the latest round voting tally when present.
 
 Batch flushing is intentionally non-blocking: failures are suppressed so review status remains governed by the review and fix results.
 

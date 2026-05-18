@@ -89,8 +89,8 @@ is_bool "$NO_LOGS_COMMIT" || die_usage "--no-logs-commit must be true or false"
 [ -z "$FORKED_TARGET" ] || is_bool "$FORKED_TARGET" || die_usage "--forked must be true or false"
 # Export so child processes inherit the session tmpdir path regardless of
 # whether the caller shell already had it exported (e.g. after a session
-# restart where the orchestrator env was fresh). The log-flush tail-call helper
-# resolves its run context from this tmpdir.
+# restart where the orchestrator env was fresh). Log helpers resolve their run
+# context from this tmpdir.
 export IMPLEMENT_TMPDIR
 export LARCH_NO_LOGS_COMMIT="$NO_LOGS_COMMIT"
 

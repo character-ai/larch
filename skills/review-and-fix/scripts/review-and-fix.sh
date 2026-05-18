@@ -404,7 +404,7 @@ write_summary_json() {
 flush_review_batches() {
     local impl_tmpdir="$1" run_id="$2" panel="$3" rounds="$4" accepted="$5" rejected="$6" exonerated="${7:-0}" neutral="${8:-0}"
     local batch_input_dir body_file findings_file design_dir="" voting_tally="" summary_file
-    local tally_out="" tally_rc=0
+    local tally_out="" tally_rc=0 derived_accepted=0 derived_rejected=0
     local -a round_summary_files=() round_summary_glob=() compose_args=()
 
     [[ -n "$impl_tmpdir" && -d "$impl_tmpdir" ]] || return 0
@@ -424,9 +424,25 @@ flush_review_batches() {
     body_file="$batch_input_dir/code-review-tally-body.md"
     findings_file="$batch_input_dir/review-findings-full.md"
 
+    [[ -d "$impl_tmpdir/design-export" ]] && design_dir="$impl_tmpdir/design-export"
+    compose_args=(
+        --implement-tmpdir "$impl_tmpdir"
+        --issue 0
+        --output "$findings_file"
+    )
+    [[ -n "$design_dir" ]] && compose_args=(--design-artifacts-dir "$design_dir" "${compose_args[@]}")
+    "$COMPOSE_REVIEW_FINDINGS_SH" "${compose_args[@]}" >/dev/null 2>&1 || return 0
+
+    derived_accepted=$(grep -c '\[code-review/accepted\]' "$findings_file" 2>/dev/null || true)
+    derived_accepted="${derived_accepted:-0}"
+    derived_rejected=$(grep -c '\[code-review/rejected\]' "$findings_file" 2>/dev/null || true)
+    derived_rejected="${derived_rejected:-0}"
+    [[ "$derived_accepted" =~ ^[0-9]+$ ]] || derived_accepted=0
+    [[ "$derived_rejected" =~ ^[0-9]+$ ]] || derived_rejected=0
+
     {
         printf 'Rounds: %s | Accepted: %s | Rejected: %s | Exonerated: %s | Neutral: %s\n' \
-            "$rounds" "$accepted" "$rejected" "$exonerated" "$neutral"
+            "$rounds" "$derived_accepted" "$derived_rejected" "$exonerated" "$neutral"
 
         if [[ -s "$impl_tmpdir/review-round-summary.md" ]]; then
             printf '\n'
@@ -492,8 +508,8 @@ flush_review_batches() {
         --phase code-review \
         --mode "$panel" \
         --rounds "$rounds" \
-        --accepted "$accepted" \
-        --rejected "$rejected" \
+        --accepted "$derived_accepted" \
+        --rejected "$derived_rejected" \
         --exonerated "$exonerated" \
         --neutral "$neutral" \
         --body-file "$body_file" 2>&1)"
@@ -503,15 +519,6 @@ flush_review_batches() {
         emit_breadcrumb "⚠ review-and-fix: failed to flush code-review-tally batch"
         [[ -n "$tally_out" ]] && larch_err "$tally_out"
     fi
-
-    [[ -d "$impl_tmpdir/design-export" ]] && design_dir="$impl_tmpdir/design-export"
-    compose_args=(
-        --implement-tmpdir "$impl_tmpdir"
-        --issue 0
-        --output "$findings_file"
-    )
-    [[ -n "$design_dir" ]] && compose_args=(--design-artifacts-dir "$design_dir" "${compose_args[@]}")
-    "$COMPOSE_REVIEW_FINDINGS_SH" "${compose_args[@]}" >/dev/null 2>&1 || return 0
 
     "$LARCH_LOG_SH" write \
         --log-root "$impl_tmpdir/larch-logs" \
