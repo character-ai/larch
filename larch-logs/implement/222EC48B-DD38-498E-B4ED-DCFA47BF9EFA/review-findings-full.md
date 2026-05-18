@@ -102,3 +102,67 @@
 - **Concern**: [nit] Install doc omits /private/tmp fallback present in script contract Operators on macOS may misunderstand which dirs participate in the prune guard Mention /private/tmp next to /tmp in installation-and-setup.md
 - **Suggested revision**: Address the concern above.
 
+### FINDING_11: panel [code-review/accepted]
+
+## risk-integration: skills/upgrade-larch/scripts/upgrade-larch.sh:107-114;skills/upgrade-larch/scripts/test-upgrade-larch-prune.sh
+
+- **Reviewer**: cursor-specialist-correctness-output.txt
+- **Concern**: [latent] Global /tmp claude-* session-env scan is always on; harness does not isolate /tmp. Host has unrelated /tmp/claude-*/session-env.sh pinning the same basename as a version the test expects pruned from an isolated fake cache; assertion on removal fails. Document CI-only assumption; or add test-only env to narrow fallback scan; or use a container with clean /tmp.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_12: panel [code-review/accepted]
+
+## risk-integration: skills/upgrade-larch/scripts/upgrade-larch.sh:292-293
+
+- **Reviewer**: cursor-specialist-security-output.txt
+- **Concern**: [nit] Warning text claims an active session while behavior is env-pin and stale-dir driven. Operators misinterpret logs or over-trust liveness semantics when diagnosing prune behavior. Reword warning to match upgrade-larch.md (session env pins / stale dirs).
+- **Suggested revision**: Address the concern above.
+
+### FINDING_13: panel [code-review/accepted]
+
+## security: skills/upgrade-larch/scripts/upgrade-larch.sh:121-127
+
+- **Reviewer**: cursor-specialist-security-output.txt
+- **Concern**: [latent] Primary LARCH_SESSIONS_DIR session-env.sh reads lack the ownership check used for /tmp fallback. If larch/sessions (or LARCH_SESSIONS_DIR) is writable by another local UID, a peer can plant or replace session-env files (or symlinks) affecting prune pins or triggering reads of unintended files under the awk read path. Require [ -O "$env_file" ] (or equivalent) before awk for all session-env.sh paths, not only /tmp and /private/tmp.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_3: panel [code-review/accepted]
+
+## code-quality: skills/upgrade-larch/scripts/upgrade-larch.sh:290-297
+
+- **Reviewer**: cursor-specialist-structure-output.txt
+- **Concern**: [nit] Redundant empty-array guard wraps the inner active-version loop. No concrete breakage; extra nesting without behavior change. Remove the outer length check and rely on the inner for-loop over an empty array.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_4: panel [code-review/accepted]
+
+## code-quality: skills/upgrade-larch/scripts/upgrade-larch.sh:292-294
+
+- **Reviewer**: cursor-specialist-structure-output.txt
+- **Concern**: [nit] Prune-skip warning says an active session is using the version while the documented contract is session-env pins including stale dirs on disk. An operator infers live-process detection from stderr and is surprised when pruning is delayed by abandoned session directories only. Rephrase the warning to reference session-env pins or stale session metadata so it matches upgrade-larch.md and installation docs.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_5: panel [code-review/accepted]
+
+## correctness: implementation_plan §Regression test structure case 2; skills/upgrade-larch/scripts/test-upgrade-larch-prune.sh; skills/upgrade-larch/scripts/upgrade-larch.sh
+
+- **Reviewer**: cursor-specialist-plan-fidelity-output.txt
+- **Concern**: [important] Written plan expected no-session prune to remove both 29.1.19 and 29.1.20; implementation preserves executing INSTALLED_VERSION and test keeps 29.1.20. A contributor or bot reconciling PR against the old acceptance table concludes the harness violates the plan or demands deletion of the executing cache slot. Update the authoritative plan / acceptance table: no session-env pins still preserve executing numeric cached PLUGIN_ROOT per delivered contract.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_6: panel [code-review/accepted]
+
+## correctness: skills/upgrade-larch/scripts/upgrade-larch.md:18;docs/installation-and-setup.md:40
+
+- **Reviewer**: cursor-specialist-testing-output.txt
+- **Concern**: [nit] Default LARCH_SESSIONS_DIR wording omits HOME fallback to /tmp used by the script and session-setup. Readers assume $HOME/.cache when HOME is unset; actual default is ${HOME:-/tmp}/.cache per upgrade-larch.sh:149. Update both doc strings to match upgrade-larch.sh:149 / session-setup session_cache_root().
+- **Suggested revision**: Address the concern above.
+
+### FINDING_8: panel [code-review/accepted]
+
+## correctness: skills/upgrade-larch/scripts/upgrade-larch.sh:292-294
+
+- **Reviewer**: cursor-specialist-correctness-output.txt
+- **Concern**: [nit] Warning says active session though stale env pins and executing PLUGIN_ROOT also trigger the skip. Operator infers live process detection from wording; behavior is broader. Align warning string with upgrade-larch.md pin semantics.
+- **Suggested revision**: Address the concern above.
+
