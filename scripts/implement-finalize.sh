@@ -471,7 +471,6 @@ write_version_reasoning_fragment() {
         set +e
         out=$("$SCRIPT_DIR/larch-log.sh" write --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$run_id" --batch version-bump-reasoning --input-file "$input_file")
         rc=$?
-        set +e
         written=$(kv_value LOG_WRITTEN "$out")
         unchanged=$(kv_value UNCHANGED "$out")
         if [ "$rc" -eq 0 ] && { [ "$written" = "true" ] || [ "$unchanged" = "true" ]; }; then

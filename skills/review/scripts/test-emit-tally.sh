@@ -41,7 +41,7 @@ EOF
 out=$("$SCRIPT" --tally-file "$TMP/tally.env" --accepted-findings-file "$TMP/accepted.md" --oos-file "$TMP/oos.md" --review-tmpdir "$TMP" --round 1 --mode diff)
 assert_stdout_cap "$out"
 grep -Fq 'EMIT_OK=true' <<< "$out"
-jq -e '.schema_version == 1 and .accepted_count == 1 and .rejected_count == 1' "$TMP/review-summary.json" >/dev/null
+jq -e '.schema_version == 1 and .accepted_count == 1 and .rejected_count == 1 and .exonerated_count == 0 and .neutral_count == 1' "$TMP/review-summary.json" >/dev/null
 grep -Fq 'Review Round 1' "$TMP/review-round-summary.md"
 grep -Fq 'Rejected findings: 1' "$TMP/review-round-summary.md"
 grep -Fq 'FINDING_3' "$TMP/rejected-findings-full.md"
