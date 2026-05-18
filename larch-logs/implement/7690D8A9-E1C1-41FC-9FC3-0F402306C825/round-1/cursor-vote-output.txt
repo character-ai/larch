@@ -1,0 +1,23 @@
+Reading the ballot file and voting on each finding.
+
+Verifying critical technical claims in the cited files (read-only).
+
+Verified `scripts/git-push.sh`: after a failed `git push`, the `if git push; then exit 0; fi` compound leaves `$?` as 0 when the `then` branch was not executed (Bash rule: exit status is 0 if no `then`/`elif`/`else` list ran), so `_last_exit` becomes 0 and the script can exit 0 after failed pushes — FINDING_1 stands.
+
+FINDING_1: YES  
+FINDING_2: YES  
+FINDING_3: EXONERATE -- doc drift is minor; no separate GitHub issue, fold into the next subprocedure touch  
+FINDING_4: EXONERATE -- header nit; body/docs already carry the detached-HEAD contract  
+FINDING_5: YES  
+FINDING_6: YES  
+FINDING_7: YES  
+FINDING_8: EXONERATE -- latent unless pre-escaped reviewer text is in scope; document input contract first  
+FINDING_9: EXONERATE -- same underlying concern as FINDING_15; one retry-policy pass suffices  
+FINDING_10: EXONERATE -- three-attempt loop makes first-backoff mismatch negligible  
+FINDING_11: EXONERATE -- fail_file / logs can disambiguate without new stall surface area  
+FINDING_12: NO -- duplicate of FINDING_5; one comment fix covers both  
+FINDING_13: NO -- duplicate of FINDING_6  
+FINDING_14: EXONERATE -- plan file listing is advisory; bundle may still be one coherent resilience change  
+FINDING_15: YES  
+FINDING_16: YES  
+FINDING_17: EXONERATE -- same STALL_STEP migration as FINDING_16; avoid duplicate tracking tickets

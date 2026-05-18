@@ -1,0 +1,62 @@
+Gathering the precomputed diff and commit history for a read-only review.
+
+Searching the large diff for planned files and reading key sections.
+
+Checking `agent-lint.toml`, `docs/linting.md`, and `ci-decide.sh` / `REBASE_COUNT` interactions.
+
+## Commits vs `main`
+
+`git log $(git merge-base HEAD main)..HEAD --oneline`:
+
+- `ad0e8bb0` Address code review feedback (round 2)
+- `45bd1bc3` Address code review feedback (round 1)
+- `5758aa96` ship-pr.sh resilience: apply-bump.sh phantom-file tolerance + retry storm guards
+- `75c59ffb` Bump version to 29.3.4 (#2310)
+
+---
+
+### In-Scope Findings
+
+1. **`risk-integration` (Important)** — [scripts/ship-pr.md](scripts/ship-pr.md):72  
+   The invariant bullet for `version_already_published` now says only that `run_rebase_rebump` enforces `REBASE_COUNT >= 5` before stalling, and no longer mentions the separate `ci-wait.sh` → `ci-decide.sh` decision matrix, which still applies `rebase_count >= 20` (`scripts/ci-decide.sh:118`, documented in `scripts/ci-decide.md`).  
+   **Scenario:** An operator or doc reader assumes “all rebase storms are capped at five,” while the outer CI loop can still classify actions under the 20-rebase matrix until that path bails.  
+   **Fix:** Restore explicit wording that there are two layers: the new `run_rebase_rebump` entry cap (5) and the existing `ci-decide.sh` rebase-count ceiling (20) for the polling loop.
+
+2. **`risk-integration` / `correctness` (Latent)** — [scripts/rebase-push.sh](scripts/rebase-push.sh):253–262  
+   `EXPECTED_REMOTE_OID` is built from `git rev-parse "$BASE_REMOTE/$CURRENT_BRANCH"`; when that ref does not exist yet, the OID is empty and the push becomes `git push --force-with-lease=refs/heads/<branch>:` with a bare colon.  
+   **Scenario:** First push of a branch that has no `origin/<branch>` yet (or a transient fetch miss) may behave differently than the historical plain `--force-with-lease`, risking an unexpected hard failure instead of a normal create.  
+   **Fix:** Define behavior for empty OID (e.g. fall back to `git push --force-with-lease` without an explicit expected OID, or document “remote branch must exist”) and add a harness or integration note for that branch-lifecycle edge.
+
+3. **`risk-integration` (Nit)** — [scripts/test-ship-pr.sh](scripts/test-ship-pr.sh) (vendor exhaustion case ~3580–3625 in diff)  
+   The harness was updated for five vendor attempts and check counts, but nothing asserts the new `STALL_STEP` tokens (`10-max-retries`, `12-max-retries`, `*-detached-head`) written to `ship-pr-state.sh`.  
+   **Scenario:** A typo or regression could change stall labels without failing CI.  
+   **Fix:** Add a narrow `grep`/assert on `STALL_STEP=` for the exhaustion fixture (and optionally one detached-head fixture if cheap).
+
+4. **`risk-integration` (Important, `plan`)** — [scripts/compose-review-findings.sh](scripts/compose-review-findings.sh), [scripts/compose-review-findings.md](scripts/compose-review-findings.md), [scripts/test-compose-review-findings.sh](scripts/test-compose-review-findings.sh)  
+   These HTML-escape / fixture changes are not in the implementation plan’s file list for “ship-pr resilience,” yet they ship in the same branch and expand the regression surface (markdown output shape, redacted-token assertions).  
+   **Scenario:** A failure in this path blocks `make lint` / shard 11 for a PR reviewers expect to be narrowly scoped to ship-pr / bump tooling.  
+   **Fix:** Split into a separate PR or call out clearly in the PR body so reviewers bisect failures correctly.
+
+5. **`risk-integration` (Nit)** — [.claude/skills/bump-version/scripts/apply-bump.sh](.claude/skills/bump-version/scripts/apply-bump.sh):106–107  
+   The tolerated-artifact WARN list uses `awk '{print $2}'`, which only prints the second whitespace-delimited field; unusual `git status --porcelain` paths (e.g. embedded spaces with quoting) would produce a truncated WARN line.  
+   **Scenario:** Operators chasing phantom files get an incomplete filename in the WARN line (filtering still uses full lines).  
+   **Fix:** Print `$0` with the `?? ` prefix stripped, or use a more porcelain-aware path extractor.
+
+---
+
+### Out-of-Scope Observations
+
+None. (Large `larch-logs/implement/` additions are treated as intentional run-log noise per your brief, not findings.)
+
+---
+
+**Positive (testing lens):** The branch adds [scripts/test-git-push.sh](scripts/test-git-push.sh) and [scripts/test-rebase-push-force-lease.sh](scripts/test-rebase-push-force-lease.sh) plus Makefile / [agent-lint.toml](agent-lint.toml) / [docs/linting.md](docs/linting.md) wiring — stronger than the original plan’s “no harness for `git-push.sh` retry.” Sub-test I in [scripts/test-apply-bump.sh](scripts/test-apply-bump.sh) matches the plan’s phantom-file tolerance and WARN expectations.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	scripts/ship-pr.md:72	version_already_published bullet omits ci-decide rebase_count>=20 while ci-wait still uses ci-decide.sh	Readers assume a global 5-rebase cap; outer loop can still hit the 20-rebase matrix limit separately	Document both layers: run_rebase_rebump cap (5) vs ci-decide.sh rebase_count ceiling (20)
+2	in_scope	latent	correctness	scripts/rebase-push.sh:253-262	force-with-lease uses empty EXPECTED_REMOTE_OID when origin branch ref is missing	First-remote push or missing tracking ref may fail or diverge from prior plain --force-with-lease behavior	Define empty-OID behavior; add test or explicit unsupported contract
+3	in_scope	nit	risk-integration	scripts/test-ship-pr.sh:3580-3625	vendor exhaustion test does not assert new STALL_STEP tokens	Regression in stall labels could slip past CI	Add assert on STALL_STEP for exhaustion (and detached-head if feasible)
+4	in_scope	important	risk-integration	scripts/compose-review-findings.sh:37-96	HTML-escape pipeline not in ship-pr resilience plan; bundled in same PR	Unrelated failures pollute a narrowly scoped ship-pr change review	Split PR or justify prominently in PR description
+5	in_scope	nit	risk-integration	.claude/skills/bump-version/scripts/apply-bump.sh:106-107	WARN list uses awk field 2 only	Unusual quoted paths yield truncated WARN filenames	Use full path after stripping status prefix or robust parsing
+```

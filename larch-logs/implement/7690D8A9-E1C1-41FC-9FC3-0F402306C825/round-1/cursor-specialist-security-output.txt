@@ -1,0 +1,33 @@
+Gathering the branch diff and commit history for a read-only security-focused review.
+
+Searching the large diff for relevant file hunks.
+
+Checking `REBASE_COUNT` semantics and `emit_kv` handling of `PUSH_ERROR` for injection or unsafe expansion.
+
+Checking whether `run_rebase_rebump`'s conflict-resolution stall steps were updated and scanning `compose-review-findings` for escaping edge cases.
+
+### In-Scope Findings
+
+1. **Important** `code-quality` [`scripts/ship-pr.sh:1131-1159`](scripts/ship-pr.sh) — The new comment claims the loop “Cap[s] at 5 total `FIX_ATTEMPTS` across all evaluate-failure calls for this phase,” but the implementation only increments `_fix_attempt` inside this single `run_evaluate_failure` invocation; every fresh call to `run_evaluate_failure` resets `_fix_attempt` to 0 and allows another five `run_ci_fix_vendor` attempts. **Concrete scenario:** a long-lived CI loop that re-enters `evaluate_failure` after each `ci-wait` cycle can still burn far more than five successful vendor pushes across the whole phase, so the “storm” bound is weaker than the comment implies and operators may mis-tune monitoring. **Suggested fix:** Rewrite the comment to describe a per-invocation cap, or implement a true phase-wide budget keyed off `read_state FIX_ATTEMPTS` (and document that in `ship-pr.md`).
+
+2. **Nit** `code-quality` [`scripts/test-apply-bump.sh:2730-2745`](scripts/test-apply-bump.sh) and [`scripts/test-apply-bump.md:2684`](scripts/test-apply-bump.md) — The contract text requires a `WARN` line on stderr naming tolerated artifacts, but sub-test I never inspects `stderr.log` for `WARN` or the filenames. **Suggested fix:** Add an assertion against the harness’s stderr capture (same pattern as other sub-tests) so the WARN contract cannot regress silently.
+
+3. **Latent** `risk-integration` [`scripts/ship-pr.sh:1159`](scripts/ship-pr.sh) and [`scripts/ship-pr.md:2532-2533`](scripts/ship-pr.md) — Exhausting the new evaluate-failure loop now stalls with `STALL_STEP=10-max-retries` / `12-max-retries` instead of the prior `10` / `12c` envelope for that failure class. **Concrete scenario:** external automation or a runbook that matches only `STALL_STEP=12c` after `ship-pr` would miss the new terminal state and never trigger its recovery branch. **Suggested fix:** Announce the token change to consumers of `STALL_STEP` and widen matchers (or centralize stall constants) wherever automation keys off historical values.
+
+### Out-of-Scope Observations
+
+1. **Latent** `risk-integration` [`skills/implement/references/rebase-rebump-subprocedure.md`](skills/implement/references/rebase-rebump-subprocedure.md) (unchanged in this branch) — The subprocedure still narrates “fall through to 12c” for the evaluate path; runtime stall tokens now include `12-max-retries`, `12-detached-head`, etc. **Why out of scope:** this file is not part of the provided diff. **Suggested fix (follow-up):** Align implement reference docs with the new `STALL_STEP` vocabulary when convenient.
+
+---
+
+**Commits reviewed** (`$(git merge-base HEAD main)..HEAD`): `75c59ffb` Bump version to 29.3.4 (#2310); `5758aa96` ship-pr.sh resilience: apply-bump.sh phantom-file tolerance + retry storm guards.
+
+**Security lens summary:** Retry/backoff and `git symbolic-ref` guards do not introduce new command interpolation or secret-bearing code paths; `apply-bump.sh` filtering is anchored to porcelain untracked lines and still fails on any staged or tracked dirty entry. `compose-review-findings.sh` changes improve safe rendering of angle brackets and `&` in composed markdown (defense-in-depth for downstream XML-ish linters), with redaction still applied before escaping. No hard-coded credentials or new network trust boundaries were identified in the reviewed hunks.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	code-quality	scripts/ship-pr.sh:1131-1159	Comment claims a phase-wide FIX_ATTEMPTS cap but the while loop only limits attempts per run_evaluate_failure call; each re-entry resets _fix_attempt.	A long CI loop that repeatedly calls run_evaluate_failure can still exceed five vendor fix pushes overall while operators believe a global cap exists.	Reword the comment to per-invocation semantics or enforce a true budget via read_state FIX_ATTEMPTS and document it.
+1	in_scope	nit	code-quality	scripts/test-apply-bump.sh:2730-2745 scripts/test-apply-bump.md:2684	Docs promise a WARN line on stderr for tolerated internal artifacts; sub-test I never asserts stderr.	WARN output could regress without CI noticing, undermining the phantom-file observability goal.	Assert stderr contains WARN and the tolerated basenames using the harness stderr log.
+1	in_scope	latent	risk-integration	scripts/ship-pr.sh:1159 scripts/ship-pr.md:2532-2533	Evaluate-failure exhaustion now uses STALL_STEP 10-max-retries / 12-max-retries instead of prior 10 / 12c-style tokens for that path.	Runbooks or scripts matching only STALL_STEP=12c miss the new terminal stall and skip recovery actions.	Document the migration and update external matchers or central stall constants.
+1	out_of_scope	latent	risk-integration	skills/implement/references/rebase-rebump-subprocedure.md	Reference text still emphasizes falling through to 12c while ship-pr now emits richer stall tokens.	Operators reading only the subprocedure may misunderstand new stall outcomes; file was not updated in this diff.	Optionally refresh the subprocedure doc to mention 12-max-retries / 12-detached-head tokens.
+```

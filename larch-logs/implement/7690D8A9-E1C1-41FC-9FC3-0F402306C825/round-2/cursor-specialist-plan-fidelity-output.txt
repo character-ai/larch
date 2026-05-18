@@ -1,0 +1,53 @@
+Gathering the pre-computed diff and commit list for a Plan Fidelity review (read-only).
+
+Searching the large diff for plan-relevant files and reading those sections.
+
+Verifying `REBASE_COUNT` semantics, `run_evaluate_failure` backoff, and whether unplanned files appear in the diff.
+
+Reviewed the pre-computed diff (focused on the plan’s script surfaces plus Makefile/agent-lint/docs deltas) and commit list. Per instructions, no file writes (no `.tsv` sidecar). Skipping `CreatePlan` here because the requested deliverable is the structured review, not an implementation plan.
+
+### In-Scope Findings
+
+1. **Important** (`risk-integration`) — **implementation_plan §Testing vs branch**  
+   The pasted plan explicitly says there is **no** harness for `git-push.sh` retry and that behavior relies on integration. The diff adds [`scripts/test-git-push.sh`](scripts/test-git-push.sh), [`scripts/test-git-push.md`](scripts/test-git-push.md), and Makefile wiring (`test-git-push`), which **contradicts** that testing decision and expands CI surface beyond the enumerated plan files.  
+   **Scenario:** Plan reviewers or `/implement` Step 9a treat the written plan as authoritative and assume no new harness maintenance.  
+   **Fix:** Either remove the harness and match the plan, or revise the plan to require `test-git-push` and list the new files as in-scope.
+
+2. **Important** (`correctness`) — **implementation_plan §Edge cases (`run_evaluate_failure` backoff) vs [`scripts/ship-pr.sh`](scripts/ship-pr.sh) ~1151–1157**  
+   The plan’s edge-case text caps the backoff story at **2s / 4s / 8s** (no fourth multiplier). The implementation uses `_base=$(( 2 * 2 ** (_fix_attempt - 1) ))`, so after the third failed attempt the sleep base becomes **16s** before the fifth `run_ci_fix_vendor` call. In-repo [`scripts/ship-pr.md`](scripts/ship-pr.md) documents `16s`, but that **diverges from the pasted implementation_plan** you supplied as the fidelity authority.  
+   **Scenario:** Operators or automation tuned to the plan’s “~8s max between tries” see up to ~16s+jitter instead.  
+   **Fix:** Update the authoritative plan text to include the fourth exponential step, or clamp the backoff series to match `2s/4s/8s` (e.g. cap `_base` at 8).
+
+3. **Latent** (`architecture`) — **Plan item 7 ([`scripts/rebase-push.sh`](scripts/rebase-push.sh) force-push retry) vs [`scripts/ship-pr.sh`](scripts/ship-pr.sh) `run_rebase_rebump` push path ~1338–1340**  
+   Item 7 correctly adds retry+jitter to `rebase-push.sh`’s **non–`--no-push`** force-push block. `run_rebase_rebump` still calls `rebase-push.sh --no-push` and then [`scripts/git-force-push.sh`](scripts/git-force-push.sh) for the actual publish step, so the **new `rebase-push.sh` push-loop behavior is not on the hot path** for ship-pr’s rebump force-push (that path keeps `git-force-push.sh`’s pre-existing single retry semantics).  
+   **Strict traceability:** item 7 is implemented where stated.  
+   **Intent risk (feature_description “ship-pr.sh resilience”):** rebump publishing does not inherit the same jittered micro-backoff policy unless extended to `git-force-push.sh` or the call pattern changes.
+
+4. **Important** (`risk-integration`) — **Out-of-plan file [`scripts/test-compose-review-findings.sh`](scripts/test-compose-review-findings.sh) (diff ~3182+)**  
+   The implementation plan’s file list does **not** include this harness; the diff still changes a fixture reviewer header string. That is **scope drift** relative to the stated “Files to modify” inventory.  
+   **Scenario:** Plan-to-PR traceability audits flag unrelated churn.  
+   **Fix:** Move unrelated fixture edits to another PR or add an explicit plan line if they are required for CI.
+
+5. **Nit** (`correctness`) — **[`scripts/test-apply-bump.md`](scripts/test-apply-bump.md) vs plan “sub-test I”**  
+   The plan names **sub-test I**; the contract doc numbers the new case as list item **9**. Functionally fine; naming is slightly misaligned with the plan’s letter label.
+
+6. **Nit** (`correctness`) — **Plan “~1s/2s ±25%” vs [`scripts/git-push.sh`](scripts/git-push.sh) sleep formula**  
+   For the second inter-attempt sleep, `_base=2` plus `_jitter` and the `- _base/4` adjustment can yield **~3s** in the worst case, a bit above a strict ±25% band around 2s. Minor mismatch with the plan’s informal timing budget.
+
+### Out-of-Scope Observations
+
+1. **Nit** (`architecture`) — **Mechanical wiring outside the plan’s narrative file list**  
+   [`Makefile`](Makefile), [`agent-lint.toml`](agent-lint.toml), and [`docs/linting.md`](docs/linting.md) change to register `test-git-push` / `test-rebase-push-force-lease`. Reasonable support for the added harnesses, but not spelled out in the pasted “Files to modify” section (paired with finding #1 if those harnesses stay).
+
+Committed `larch-logs/implement/...` and `.claude-plugin/plugin.json` bumps are **not** flagged as plan violations per your reviewer rules / normal `/implement` hygiene.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	implementation_plan §Testing vs scripts/test-git-push.sh (+ Makefile)	Explicit plan line says no git-push retry harness; diff adds test-git-push.sh/md and Makefile targets.	Plan fidelity and review scope assume no new harness; CI/Makefile/agent-lint surface grows beyond enumerated files.	Remove harness to match plan or revise plan to require and list test-git-push artifacts.
+2	in_scope	important	correctness	implementation_plan §Edge cases run_evaluate_failure backoff vs scripts/ship-pr.sh:1151-1157	Pasted plan documents 2s/4s/8s backoff; code uses exponential series including 16s before 5th vendor attempt.	Actual waits can exceed the plan-stated 8s-scale budget; pasted plan and ship-pr.md disagree with each other.	Update authoritative plan to include 16s or cap sleep at 8s for final gap.
+3	in_scope	latent	architecture	implementation_plan item 7 scripts/rebase-push.sh vs scripts/ship-pr.sh run_rebase_rebump ~1204-1340	New push retry loop is in rebase-push.sh when pushing; run_rebase_rebump uses --no-push then git-force-push.sh for publish.	Item 7 is satisfied literally, but ship-pr rebump publishing does not execute the new rebase-push push loop.	If intent is ship-pr parity, extend git-force-push.sh or route rebump through rebase-push with push enabled.
+4	in_scope	important	risk-integration	scripts/test-compose-review-findings.sh (diff hunk ~3182+)	Change not listed in implementation plan file-to-modify list.	Extra unrelated fixture churn complicates plan traceability for this PR.	Split unrelated change or amend plan with justification.
+5	in_scope	nit	correctness	scripts/test-apply-bump.md vs implementation_plan sub-test I	Plan calls the new case sub-test I; doc labels it as numbered item 9.	Minor naming inconsistency only.	Rename section header to match plan lettering or update plan to numeric scheme.
+6	in_scope	nit	correctness	implementation_plan git-push backoff vs scripts/git-push.sh sleep math	Informal plan budget ~1s/2s ±25%; second sleep can reach ~3s.	Slightly longer tail latency than the prose suggests.	Tighten jitter formula or relax plan prose to match measured bounds.
+7	out_of_scope	nit	architecture	Makefile; agent-lint.toml; docs/linting.md	Mechanical registration for new harness targets not enumerated in plan file list.	Supporting noise if harnesses are contested (see in-scope #1).	Expected if extra harnesses are kept; otherwise revert with harness removal.
+```

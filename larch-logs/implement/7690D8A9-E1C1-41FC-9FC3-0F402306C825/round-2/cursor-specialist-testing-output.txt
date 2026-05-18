@@ -1,0 +1,9 @@
+Gathering the branch diff and commit list for a read-only review (tests, CI, regression).
+
+Searching the large diff for planned files and reviewing those hunks.
+
+Checking `run_evaluate_failure` early-exit paths and whether `docs/linting.md` lists the apply-bump case.
+
+Having reviewed the diff and related call sites: the branch adds solid harness coverage (`test-apply-bump` sub-test I, `test-git-push`, `test-rebase-push-force-lease`) and wires them into the Makefile, `agent-lint.toml`, and `docs/linting.md`. A few integration and contract risks remain.
+
+

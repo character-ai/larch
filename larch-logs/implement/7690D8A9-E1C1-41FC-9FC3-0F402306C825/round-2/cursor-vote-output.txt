@@ -1,0 +1,22 @@
+Reading the ballot file to vote on each finding.
+
+Votes only (read-only review of the ballot; no file or git changes).
+
+FINDING_1: YES  
+FINDING_2: YES  
+FINDING_3: EXONERATE -- same lease class as FINDING_1 and pre-existing; no separate issue needed if push helpers are fixed holistically  
+FINDING_4: EXONERATE -- intentional deferral of repo-wide stall vocabulary, not worth an issue  
+FINDING_5: EXONERATE -- generic state-file hygiene, not introduced here and not issue-worthy alone  
+FINDING_6: EXONERATE -- doc drift is real but small; fix in a docs pass without a dedicated issue  
+FINDING_7: EXONERATE -- bisect purity is nice but splitting now adds merge/review overhead disproportionate to the escape change  
+FINDING_8: YES  
+FINDING_9: EXONERATE -- same split-PR concern as FINDING_7; exonerate for the same reasons  
+FINDING_10: EXONERATE -- DRY across three shell entrypoints often trades a few duplicated lines for clearer local behavior  
+FINDING_11: EXONERATE -- edge case is narrow; NUL-safe rewrite is heavier than the residual risk (bump fails safe)  
+FINDING_12: EXONERATE -- cosmetic WARN paths only; not worth a structural parse change for this bump path  
+FINDING_13: EXONERATE -- multi-remote mismatch is rare; fix only if multi-remote is a supported contract  
+FINDING_14: YES  
+FINDING_15: YES  
+FINDING_16: YES  
+FINDING_17: YES  
+FINDING_18: YES

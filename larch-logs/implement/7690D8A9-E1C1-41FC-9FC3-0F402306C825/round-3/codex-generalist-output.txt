@@ -1,0 +1,4 @@
+### In-Scope Findings
+
+1. **Important** `correctness` `scripts/rebase-push.sh:254-262`, `scripts/ship-pr.sh:1441-1449` — Fork-mode rebases now compute the force-with-lease expectation from `BASE_REMOTE`, so `/implement --forked` with `--base-remote upstream --base-ref main` fetches `upstream/<current-branch>` instead of the pushed branch on `origin`. Concrete failing scenario: fork PR branch `feature` exists on `origin`, `upstream` only has `main`; after rebase, line 255 leaves `EXPECTED_REMOTE_OID` empty, line 262 runs `git push --force-with-lease=refs/heads/feature:` and Git rejects because `origin/feature` already exists, so `ship-pr.sh` stalls on every fork rebase. Split base remote from push/lease remote, deriving the lease from the branch upstream or `origin/<branch>` while still rebasing against `upstream/main`; add a fork-mode regression test for `rebase-push.sh --base-remote upstream --base-ref main`.
+

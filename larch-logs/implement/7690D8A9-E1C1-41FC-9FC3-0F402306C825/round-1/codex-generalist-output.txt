@@ -1,0 +1,9 @@
+### In-Scope Findings
+
+1. **Important** `correctness` `scripts/git-push.sh:36-49` — Failed `git push` attempts are reported as success. After `if git push; then ... fi` runs with a failing push, `$?` at line 39 is the status of the `if` compound, which is `0`, so three failed pushes end with `exit 0`; `ship-pr.sh` can then treat an unpushed CI-fix commit as pushed. Store the push status in an `else` branch or run `git push; rc=$?` with `set +e`, then exit with that captured non-zero status. Add a stubbed failing-push regression test.
+
+2. **Important** `risk-integration` `scripts/rebase-push.sh:253-265` — The new force-push retry loop does not recover the lease race it documents. If `git push --force-with-lease` fails because the remote branch advanced after fetch, attempts 2 and 3 repeat the same stale lease without fetching/rebasing, so the retry only delays the same failure. Refresh and re-evaluate state between attempts, or route this push path through the existing lease recovery primitive and document the actual semantics.
+
+### Out-of-Scope Observations
+
+No out-of-scope observations.
