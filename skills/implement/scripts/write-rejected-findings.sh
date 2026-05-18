@@ -51,7 +51,12 @@ count="$(grep -Ec '^\[[^]]+\]|^- ' "$file" 2>/dev/null || printf '0')"
 
 if [ -n "$RUN_ID" ] && [ -n "$LOG_ROOT" ]; then
     mkdir -p "$LOG_ROOT/implement/$RUN_ID" 2>/dev/null || true
-    cp "$file" "$LOG_ROOT/implement/$RUN_ID/rejected-findings.md" 2>/dev/null || true
+    full_file="$IMPLEMENT_TMPDIR/rejected-findings-full.md"
+    if [ -s "$full_file" ]; then
+        cp "$full_file" "$LOG_ROOT/implement/$RUN_ID/rejected-findings.md" 2>/dev/null || true
+    else
+        cp "$file" "$LOG_ROOT/implement/$RUN_ID/rejected-findings.md" 2>/dev/null || true
+    fi
 fi
 
 emit "⚠ 16: rejected findings count=$count details=rejected-findings.md"

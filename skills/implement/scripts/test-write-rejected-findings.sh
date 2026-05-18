@@ -26,6 +26,24 @@ assert_contains 'STATUS=ok' "$out" 'nonempty status emitted'
 assert_contains 'REJECTED_COUNT=2' "$out" 'nonempty count emitted'
 if [ -s "$case_dir/logs/implement/run-3/rejected-findings.md" ]; then pass 'optional copy written'; else fail 'optional copy written'; fi
 
+# full-file preference: when rejected-findings-full.md exists it should be copied
+full_dir="$TMP_ROOT/full"; mkdir -p "$full_dir"
+printf 'bare\n' > "$full_dir/rejected-findings.md"
+printf '### [rejected] FINDING_1\n\nFull detail body.\n\nVote tally: YES=0 NO=2 EXON=0 NEUTRAL=0\n' \
+    > "$full_dir/rejected-findings-full.md"
+out=$("$HELPER" --implement-tmpdir "$full_dir" --run-id run-4 --log-root "$full_dir/logs")
+assert_contains 'STATUS=ok' "$out" 'full-file status ok'
+if grep -q 'Full detail body' "$full_dir/logs/implement/run-4/rejected-findings.md" 2>/dev/null; then
+    pass 'full file used when present'
+else
+    fail 'full file used when present'
+fi
+if grep -q '^bare$' "$full_dir/logs/implement/run-4/rejected-findings.md" 2>/dev/null; then
+    fail 'bare file must not be used when full exists'
+else
+    pass 'bare file not used when full exists'
+fi
+
 set +e
 bad=$("$HELPER" 2>/dev/null)
 rc=$?

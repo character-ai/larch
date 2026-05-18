@@ -37,13 +37,20 @@ cat > "$TMP/b-design/rejected-findings.md" <<'EOF'
 **Reason not implemented**: Out of scope.
 EOF
 cat > "$TMP/b-impl/rejected-findings.md" <<'EOF'
-### [Code Review] Cursor-Security
-This summary should not be selected when the full artifact exists.
+# Rejected Findings
+
+10:FINDING_1_OUTCOME=rejected
 EOF
 cat > "$TMP/b-impl/rejected-findings-full.md" <<'EOF'
-### [Code Review] Cursor-<Security & QA>
-**Finding**: token sk-ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD appears.
-**Reason not implemented**: fixture.
+### [rejected] FINDING_1
+
+### FINDING_1: Security token leak in <config> & test
+- **Reviewer**: Cursor-Security
+- **Concern**: token sk-ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD appears.
+- **Suggested revision**: Redact the token.
+
+Vote tally: YES=0 NO=2 EXON=0 NEUTRAL=0
+
 EOF
 cat > "$TMP/b-impl/round-1/accepted-findings.md" <<'EOF'
 ### FINDING_2: Runtime bug
@@ -56,21 +63,22 @@ cp "$TMP/b-impl/rejected-findings-full.md" "$TMP/b-impl/round-1/rejected-finding
 out="$TMP/b.md"
 stdout="$("$COMPOSE" --design-artifacts-dir "$TMP/b-design" --implement-tmpdir "$TMP/b-impl" --issue 7 --output "$out")"
 [[ "$stdout" == *"FINDINGS_TOTAL=4"* ]] || fail "total missing: $stdout"
-section_count="$(grep -c '^###' "$out" || true)"
-[ "$section_count" = "4" ] || fail "expected 4 sections, got $section_count"
+# Count only structured finding headers (the emit_record format): ### ID: reviewer [phase/outcome]
+structured_count="$(grep -cE '^### [^:]+: .+ \[(plan-review|code-review)/(accepted|rejected)\]' "$out" || true)"
+[ "$structured_count" = "4" ] || fail "expected 4 structured sections, got $structured_count"
 grep -Fq '### FINDING_1: panel [plan-review/accepted]' "$out" \
     || fail "accepted finding section missing"
 grep -Fq '### FINDING_2: panel [code-review/accepted]' "$out" \
     || fail "code accepted section missing"
 grep -Fq '### REJ_P1: Cursor-Architecture [plan-review/rejected]' "$out" \
     || fail "plan rejected section missing"
-grep -Fq '### REJ_C1: Cursor-&lt;Security &amp; QA&gt; [code-review/rejected]' "$out" \
+grep -Fq '### REJ_C1: FINDING_1 [code-review/rejected]' "$out" \
     || fail "code rejected section missing"
-if grep -qF '### REJ_C1: Cursor-<Security & QA> [code-review/rejected]' "$out"; then
-    fail "reviewer header was not HTML-escaped"
-fi
 grep -qF '&lt;REDACTED-TOKEN&gt;' "$out" || fail "token was not redacted (expected HTML-escaped form)"
-grep -Fq 'Reason not implemented' "$out" || fail "full rejected artifact was not used"
+grep -Fq 'Suggested revision' "$out" || fail "full rejected artifact body was not used"
+# Verify body HTML escaping: < and & in the body must be escaped
+grep -qF '&lt;config&gt;' "$out" || fail "angle brackets in body were not HTML-escaped"
+grep -qF '&amp; test' "$out" || fail "ampersand in body was not HTML-escaped"
 
 echo "=== HTML-escape XML-like tags in finding body ==="
 mkdir -p "$TMP/c-impl/round-1"
