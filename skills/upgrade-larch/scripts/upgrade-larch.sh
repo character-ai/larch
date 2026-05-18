@@ -98,12 +98,21 @@ list_cached_versions() {
 
 collect_active_session_versions() {
     local env_files=()
-    local env_file plugin_root version
-    [ -d "$LARCH_SESSIONS_DIR" ] || return 0
+    local env_file plugin_root version session_root
 
-    shopt -s nullglob
-    env_files=("$LARCH_SESSIONS_DIR"/*/session-env.sh)
-    shopt -u nullglob
+    for session_root in "$LARCH_SESSIONS_DIR" /tmp /private/tmp; do
+        [ -d "$session_root" ] || continue
+
+        shopt -s nullglob
+        if [ "$session_root" = "$LARCH_SESSIONS_DIR" ]; then
+            env_files+=("$session_root"/*/session-env.sh)
+        else
+            env_files+=("$session_root"/claude-*/session-env.sh)
+        fi
+        shopt -u nullglob
+    done
+
+    [ "${#env_files[@]}" -gt 0 ] || return 0
 
     for env_file in "${env_files[@]}"; do
         [ -f "$env_file" ] || continue
@@ -126,7 +135,7 @@ collect_active_session_versions() {
 # Parent directory that contains one subdirectory per installed larch version.
 LARCH_CACHE_DIR="$(dirname "$PLUGIN_ROOT")"
 # Parent directory that contains larch session temp dirs with session-env.sh.
-LARCH_SESSIONS_DIR="${LARCH_SESSIONS_DIR:-${HOME:-/tmp}/.cache/larch/sessions}"
+LARCH_SESSIONS_DIR="${LARCH_SESSIONS_DIR:-${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}/larch/sessions}"
 # Version string of the currently running larch installation (basename of PLUGIN_ROOT).
 INSTALLED_VERSION="$(basename "$PLUGIN_ROOT")"
 
@@ -232,6 +241,9 @@ if [ "$VERIFIED_TARGET" = true ]; then
         [ -n "$version" ] || continue
         ACTIVE_SESSION_VERSIONS+=("$version")
     done < <(collect_active_session_versions)
+    if is_safe_version "$INSTALLED_VERSION"; then
+        ACTIVE_SESSION_VERSIONS+=("$INSTALLED_VERSION")
+    fi
 
     for version in "${CACHED_VERSIONS[@]}"; do
         if version_gt "$version" "$LATEST_STABLE"; then

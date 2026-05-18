@@ -105,10 +105,11 @@ run_case() {
     local state_file="$work/state.sh"
     local cache_root="$work/cache"
     local sessions_root="$work/sessions"
-    local plugin_root session_idx
+    local xdg_cache_home="$work/xdg-cache"
+    local plugin_root session_idx tmp_session_name
     local output rc
 
-    mkdir -p "$home/.claude/plugins" "$bin" "$cache_root" "$sessions_root"
+    mkdir -p "$home/.claude/plugins" "$bin" "$cache_root" "$sessions_root" "$xdg_cache_home"
     plugin_root=$(make_plugin_root "$cache_root" "${PLUGIN_ROOT_VERSION:-29.1.20}")
     write_stub_claude "$bin/claude"
     write_stub_gh "$bin/gh"
@@ -127,22 +128,56 @@ STATE
         session_idx=$((session_idx + 1))
         write_session_env "$sessions_root" "claude-implement-larch-$session_idx" "$SESSION_PINNED_ROOT"
     fi
+    if [[ -n "${XDG_SESSION_PINNED_VERSIONS:-}" ]]; then
+        session_idx=0
+        for version in ${XDG_SESSION_PINNED_VERSIONS:-}; do
+            session_idx=$((session_idx + 1))
+            write_session_env "$xdg_cache_home/larch/sessions" "claude-implement-larch-xdg-$session_idx" "$cache_root/$version"
+        done
+    fi
+    if [[ -n "${TMP_SESSION_PINNED_VERSIONS:-}" ]]; then
+        session_idx=0
+        for version in ${TMP_SESSION_PINNED_VERSIONS:-}; do
+            session_idx=$((session_idx + 1))
+            tmp_session_name="claude-implement-larch-upgrade-prune-$session_idx-$$"
+            rm -rf "/tmp/$tmp_session_name"
+            write_session_env "/tmp" "$tmp_session_name" "$cache_root/$version"
+        done
+    fi
 
     set +e
-    output=$(
-        HOME="$home" \
-        PATH="$bin:$PATH" \
-        CLAUDE_PLUGIN_ROOT="$plugin_root" \
-        LARCH_SESSIONS_DIR="$sessions_root" \
-        TEST_STATE_FILE="$state_file" \
-        TEST_CACHE_DIR="$cache_root" \
-        GH_OUTPUT="${GH_OUTPUT:-}" \
-        INSTALL_RESULT_VERSION="${INSTALL_RESULT_VERSION:-}" \
-        LARCH_QUIET_BREADCRUMBS=1 \
-        "$SCRIPT" 2>&1
-    )
+    if [[ -n "${SET_LARCH_SESSIONS_DIR:-}" ]]; then
+        output=$(
+            HOME="$home" \
+            PATH="$bin:$PATH" \
+            CLAUDE_PLUGIN_ROOT="$plugin_root" \
+            XDG_CACHE_HOME="$xdg_cache_home" \
+            LARCH_SESSIONS_DIR="$sessions_root" \
+            TEST_STATE_FILE="$state_file" \
+            TEST_CACHE_DIR="$cache_root" \
+            GH_OUTPUT="${GH_OUTPUT:-}" \
+            INSTALL_RESULT_VERSION="${INSTALL_RESULT_VERSION:-}" \
+            LARCH_QUIET_BREADCRUMBS=1 \
+            "$SCRIPT" 2>&1
+        )
+    else
+        output=$(
+            HOME="$home" \
+            PATH="$bin:$PATH" \
+            CLAUDE_PLUGIN_ROOT="$plugin_root" \
+            XDG_CACHE_HOME="$xdg_cache_home" \
+            TEST_STATE_FILE="$state_file" \
+            TEST_CACHE_DIR="$cache_root" \
+            GH_OUTPUT="${GH_OUTPUT:-}" \
+            INSTALL_RESULT_VERSION="${INSTALL_RESULT_VERSION:-}" \
+            LARCH_QUIET_BREADCRUMBS=1 \
+            "$SCRIPT" 2>&1
+        )
+    fi
     rc=$?
     set -e
+
+    rm -rf /tmp/claude-implement-larch-upgrade-prune-*-"$$"
 
     CASE_OUTPUT="$output"
     CASE_RC="$rc"
@@ -161,6 +196,7 @@ PLUGIN_ROOT_VERSION="29.1.21"
 INSTALL_RESULT_VERSION="29.1.22"
 CACHED_VERSIONS="29.1.19 29.1.20 29.1.21 29.1.22"
 SESSION_PINNED_VERSIONS="29.1.20"
+SET_LARCH_SESSIONS_DIR=1
 unset SESSION_PINNED_ROOT
 run_case active-session-keeps-version
 [[ "$CASE_RC" -eq 0 ]] || fail "active-session-keeps-version exit $CASE_RC"
@@ -175,11 +211,12 @@ INITIAL_INSTALLED_VERSION="29.1.20"
 PLUGIN_ROOT_VERSION="29.1.20"
 INSTALL_RESULT_VERSION="29.1.22"
 CACHED_VERSIONS="29.1.19 29.1.20 29.1.21 29.1.22"
-unset SESSION_PINNED_VERSIONS SESSION_PINNED_ROOT
+unset SESSION_PINNED_VERSIONS SESSION_PINNED_ROOT XDG_SESSION_PINNED_VERSIONS TMP_SESSION_PINNED_VERSIONS
+SET_LARCH_SESSIONS_DIR=1
 run_case no-sessions-prunes-old
 [[ "$CASE_RC" -eq 0 ]] || fail "no-sessions-prunes-old exit $CASE_RC"
 [[ ! -d "$CASE_CACHE_ROOT/29.1.19" ]] || fail "no-sessions-prunes-old should prune oldest version"
-[[ ! -d "$CASE_CACHE_ROOT/29.1.20" ]] || fail "no-sessions-prunes-old should prune old current version"
+[[ -d "$CASE_CACHE_ROOT/29.1.20" ]] || fail "no-sessions-prunes-old should keep the executing cached version"
 [[ -d "$CASE_CACHE_ROOT/29.1.21" ]] || fail "no-sessions-prunes-old should keep predecessor"
 [[ -d "$CASE_CACHE_ROOT/29.1.22" ]] || fail "no-sessions-prunes-old should keep latest"
 
@@ -188,13 +225,45 @@ INITIAL_INSTALLED_VERSION="29.1.20"
 PLUGIN_ROOT_VERSION="29.1.20"
 INSTALL_RESULT_VERSION="29.1.22"
 CACHED_VERSIONS="29.1.19 29.1.20 29.1.21 29.1.22"
-unset SESSION_PINNED_VERSIONS
+SET_LARCH_SESSIONS_DIR=1
+unset SESSION_PINNED_VERSIONS XDG_SESSION_PINNED_VERSIONS TMP_SESSION_PINNED_VERSIONS
 SESSION_PINNED_ROOT="/cache/not-a-version"
 run_case unparseable-session-prunes-normally
 [[ "$CASE_RC" -eq 0 ]] || fail "unparseable-session-prunes-normally exit $CASE_RC"
 [[ ! -d "$CASE_CACHE_ROOT/29.1.19" ]] || fail "unparseable-session-prunes-normally should prune oldest version"
-[[ ! -d "$CASE_CACHE_ROOT/29.1.20" ]] || fail "unparseable-session-prunes-normally should prune old current version"
+[[ -d "$CASE_CACHE_ROOT/29.1.20" ]] || fail "unparseable-session-prunes-normally should keep the executing cached version"
 [[ -d "$CASE_CACHE_ROOT/29.1.21" ]] || fail "unparseable-session-prunes-normally should keep predecessor"
 [[ -d "$CASE_CACHE_ROOT/29.1.22" ]] || fail "unparseable-session-prunes-normally should keep latest"
+
+GH_OUTPUT=$'29.1.22\n29.1.21\n'
+INITIAL_INSTALLED_VERSION="29.1.21"
+PLUGIN_ROOT_VERSION="29.1.21"
+INSTALL_RESULT_VERSION="29.1.22"
+CACHED_VERSIONS="29.1.19 29.1.20 29.1.21 29.1.22"
+unset SESSION_PINNED_VERSIONS SESSION_PINNED_ROOT TMP_SESSION_PINNED_VERSIONS
+XDG_SESSION_PINNED_VERSIONS="29.1.20"
+unset SET_LARCH_SESSIONS_DIR
+run_case xdg-default-sessions-root-keeps-version
+[[ "$CASE_RC" -eq 0 ]] || fail "xdg-default-sessions-root-keeps-version exit $CASE_RC"
+[[ ! -d "$CASE_CACHE_ROOT/29.1.19" ]] || fail "xdg-default-sessions-root-keeps-version should prune unused old version"
+[[ -d "$CASE_CACHE_ROOT/29.1.20" ]] || fail "xdg-default-sessions-root-keeps-version should keep XDG-pinned version"
+[[ -d "$CASE_CACHE_ROOT/29.1.21" ]] || fail "xdg-default-sessions-root-keeps-version should keep predecessor"
+[[ -d "$CASE_CACHE_ROOT/29.1.22" ]] || fail "xdg-default-sessions-root-keeps-version should keep latest"
+assert_contains "$CASE_OUTPUT" "Warning: preserving cached larch version '29.1.20' because an active session is using it." "xdg-default-sessions-root-keeps-version warning"
+
+GH_OUTPUT=$'29.1.22\n29.1.21\n'
+INITIAL_INSTALLED_VERSION="29.1.21"
+PLUGIN_ROOT_VERSION="29.1.21"
+INSTALL_RESULT_VERSION="29.1.22"
+CACHED_VERSIONS="29.1.19 29.1.20 29.1.21 29.1.22"
+unset SESSION_PINNED_VERSIONS SESSION_PINNED_ROOT XDG_SESSION_PINNED_VERSIONS SET_LARCH_SESSIONS_DIR
+TMP_SESSION_PINNED_VERSIONS="29.1.20"
+run_case tmp-fallback-sessions-root-keeps-version
+[[ "$CASE_RC" -eq 0 ]] || fail "tmp-fallback-sessions-root-keeps-version exit $CASE_RC"
+[[ ! -d "$CASE_CACHE_ROOT/29.1.19" ]] || fail "tmp-fallback-sessions-root-keeps-version should prune unused old version"
+[[ -d "$CASE_CACHE_ROOT/29.1.20" ]] || fail "tmp-fallback-sessions-root-keeps-version should keep /tmp-pinned version"
+[[ -d "$CASE_CACHE_ROOT/29.1.21" ]] || fail "tmp-fallback-sessions-root-keeps-version should keep predecessor"
+[[ -d "$CASE_CACHE_ROOT/29.1.22" ]] || fail "tmp-fallback-sessions-root-keeps-version should keep latest"
+assert_contains "$CASE_OUTPUT" "Warning: preserving cached larch version '29.1.20' because an active session is using it." "tmp-fallback-sessions-root-keeps-version warning"
 
 printf 'PASS: test-upgrade-larch-prune.sh\n'
