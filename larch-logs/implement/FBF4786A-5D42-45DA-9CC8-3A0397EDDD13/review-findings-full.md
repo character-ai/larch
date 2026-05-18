@@ -259,7 +259,7 @@
 ## security: scripts/scout-dynamic-archetypes.sh:162-200 and skills/review/scripts/dispatch-panel.sh:144-161
 
 - **Reviewer**: cursor-specialist-security-output.txt
-- **Concern**: [important] Scout rationale/prompt_body are embedded inside a literal <scout_notes> wrapper but validation only blocks </reviewer_ and standalone --- lines, not the real closing tag used in synthesis. A compromised scout can emit </scout_notes> (including via multiline rationale) so following attacker text appears outside the untrusted-labeled region, smuggling instructions to the Cursor reviewer. Extend jq validation (or post-jq checks) to reject or neutralize delimiter substrings that match the synthesis envelope (at minimum literal </scout_notes>, ideally case-insensitive / other mirror tags); alternatively base64-wrap or otherwise structurally encode scout free text so it cannot terminate the wrapper.
+- **Concern**: [important] Scout rationale/prompt_body are embedded inside a literal `<scout_notes>` wrapper but validation only blocks `</reviewer_` and standalone `---` lines, not the real closing tag used in synthesis. A compromised scout can emit `<\/scout_notes>` (including via multiline rationale) so following attacker text appears outside the untrusted-labeled region, smuggling instructions to the Cursor reviewer. Extend jq validation (or post-jq checks) to reject or neutralize delimiter substrings that match the synthesis envelope (at minimum the literal closing scout-notes tag, ideally case-insensitive / other mirror tags); alternatively base64-wrap or otherwise structurally encode scout free text so it cannot terminate the wrapper.
 - **Suggested revision**: Address the concern above.
 
 ### FINDING_8: panel [code-review/accepted]
@@ -493,4 +493,3 @@
 - **Reviewer**: cursor-specialist-edge-cases-output.txt
 - **Concern**: [nit] Wrapper prose about scout reuse/sentinel is easy to misread vs per-round scout-round<N> filenames Operators may misunderstand whether multi-round standalone /review re-scouts when ROUND_NUM increments Align wording with dispatch-panel.md filenames and per-round semantics
 - **Suggested revision**: Address the concern above.
-
