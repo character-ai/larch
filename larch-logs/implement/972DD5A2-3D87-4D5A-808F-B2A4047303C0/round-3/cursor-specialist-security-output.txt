@@ -1,0 +1,35 @@
+Gathering the branch diff and commit list for a security-focused read-only review.
+
+Verifying exact line numbers in `scripts/harness-timer.sh` for accurate citations.
+
+## Review summary
+
+Reviewed the precomputed diff (Makefile shard wiring, `agent-lint.toml` excludes, `scripts/harness-timer.sh`, docs, and new `scripts/test-harness-timer.{sh,md}`) plus `git log $(git merge-base HEAD main)..HEAD --oneline` (3 commits). Primary security concern is **bash re-expansion** of captured timestamps when building the nested `python3 -c` string.
+
+### In-Scope Findings
+
+1. **Latent** (`security`) — [`scripts/harness-timer.sh:12`](scripts/harness-timer.sh)
+
+   **Issue:** `elapsed=$(python3 -c "print(f'{max(0.0, $end - $start):.2f}')")` expands `$start` and `$end` inside **double quotes** in the parent shell before the outer `python3` runs. Those values came from earlier command substitutions; if they ever contain shell metacharacters or command substitutions (e.g. `$(cmd)`), the parent shell can execute them during that expansion.
+
+   **Concrete scenario:** A **malicious or trojaned `python3`** on `PATH` (or a wrapper) prints crafted stdout for `print(time.time())` (for example a line that embeds `$(id)`), populating `start`/`end` with hostile text. When the `elapsed=` line runs, bash parses the expanded string and can run the injected command as the same user running the harness.
+
+   **Suggested fix:** Do not embed captured stdout into a double-quoted shell string. For example: use a **single-quoted** `python3 -c` that reads `sys.argv[1]`/`sys.argv[2]` after validating with a strict `^[0-9]+(\.[0-9]+)?$` regex in bash, or export sanitized values and read them in Python via `os.environ`, or compute elapsed in one Python invocation. Honest CPython output for `time.time()` is numeric-only; the gap is **trust in `python3` stdout being safe for bash parsing**.
+
+---
+
+### Out-of-Scope Observations
+
+1. **Nit** (`architecture`) — [`scripts/harness-timer.sh:8-9`](scripts/harness-timer.sh)
+
+   **`"$@"` executes the caller-supplied command** with no additional sandboxing. That was already the contract of this wrapper before the branch; the diff does not widen that surface in a meaningful way. Any hardening would be a deliberate redesign of the harness wrapper, not this timing change.
+
+---
+
+No other in-scope security issues identified (no new secrets, auth, network, or deserialization paths). Secondary correctness: the new tests use **numeric ranges** and `^[0-9]+\.[0-9]{2}s$` in awk rather than the feature text’s exact regexes (`^0\.[4-6][0-9]s$`, `^[12]\.[0-9]{2}s$`); that is a **spec/plan alignment** point, not a security finding.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	security	scripts/harness-timer.sh:12	elapsed= nests python3 -c in double quotes with $start/$end expanded by bash	Malicious or trojaned python3 can print $(...) into captured timestamps; bash expands it when building the outer python3 -c argv, running arbitrary commands as the harness user	Pass timestamps as separate argv to a single-quoted python -c (float(sys.argv[1/2])) or validate numeric form before any double-quoted reuse
+1	out_of_scope	nit	architecture	scripts/harness-timer.sh:8-9	Wrapper still forwards "$@" to arbitrary inner command	Pre-existing harness design; not introduced by fractional timing change	No change unless hardening the whole wrapper contract
+```

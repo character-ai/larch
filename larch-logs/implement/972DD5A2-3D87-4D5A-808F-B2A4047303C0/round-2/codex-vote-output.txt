@@ -1,0 +1,16 @@
+FINDING_1: NO -- bash has no errexit here, so python failures in assignments do not stop before printf or override the inner command's rc as claimed
+FINDING_2: YES
+FINDING_3: EXONERATE -- the regex mismatch is real, but restoring those tight regexes would reintroduce the CI flake the widened ranges were addressing
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: EXONERATE -- capping at the original regex range conflicts with the accepted need for CI slop on slow runners
+FINDING_7: EXONERATE -- legitimate wrapper hardening, but this pre-existing internal misuse case is not worth a follow-up issue
+FINDING_8: EXONERATE -- malformed timing under python failure is real, but python3 is a hard dependency and extra handling is not warranted here
+FINDING_9: NO -- the stub accurately documents the current harness ranges and points to the primary parser contract
+FINDING_10: EXONERATE -- the plan mismatch is real, but tightening back to those regexes trades a low-value fidelity fix for renewed flake risk
+FINDING_11: EXONERATE -- 0.7x timings can be legitimate CI jitter, so enforcing the original half-second regex is too brittle
+FINDING_12: EXONERATE -- allowing 3s+ was the point of the prior flake fix, so the requested regex/cap would be too strict
+FINDING_13: YES
+FINDING_14: EXONERATE -- the overhead concern is plausible, but combining the wrapper into a Python subprocess runner adds complexity without clear need
+FINDING_15: EXONERATE -- the relaxed 0.5s band is an intentional slop allowance, not a defect worth reverting to the plan regex
+FINDING_16: EXONERATE -- the broad 2s ceiling weakens precision, but tightening to the plan regex risks false failures on overloaded CI

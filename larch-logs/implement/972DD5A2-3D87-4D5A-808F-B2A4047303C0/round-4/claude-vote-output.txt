@@ -1,0 +1,21 @@
+FINDING_1: EXONERATE -- already documented in harness-timer.md; no new information to file as an issue
+FINDING_2: EXONERATE -- pre-existing gap in a simple pass-through wrapper; argv guard adds complexity that isn't warranted here
+FINDING_3: NO -- pre-existing Makefile convention unchanged by this PR; trivial structural observation
+FINDING_4: EXONERATE -- missing header comment is a style micro-nit; other test harnesses in this repo are also inconsistent on this point
+FINDING_5: YES -- `fail` variable shadowing `fail()` function diverges from repo's UPPERCASE counter convention and will confuse future readers/editors
+FINDING_6: EXONERATE -- duplicate of FINDING_5
+FINDING_7: EXONERATE -- duplicate of FINDING_5
+FINDING_8: YES -- shim's exact-string match on the python3 one-liner means any refactor of harness-timer.sh silently hollows out Test 4 without signaling a production regression
+FINDING_9: YES -- harness-timer.md Edit-In-Sync clause explicitly requires a same-PR update to `docs/linting.md "Refreshing harness shard balance"` when the output format changes; that file is absent from the diff
+FINDING_10: EXONERATE -- 0.00s ambiguity is real but immaterial for shard rebalancing; adding a distinct clamp marker introduces complexity disproportionate to the benefit
+FINDING_11: EXONERATE -- python3 unavailability would break every harness test; hardening this one script in isolation adds noise without meaningful protection
+FINDING_12: NO -- extra coverage beyond the plan is strictly better; not a defect worth tracking
+FINDING_13: EXONERATE -- 0.40s lower bound for `sleep 0.5` is reasonable; completing in 0.39s would require 110ms underdelivery on modern systems
+FINDING_14: YES -- on loaded CI, `sleep 2` can wall-clock past 2.99s; regex `^[12]\.[0-9]{2}s$` would cause flaky shard-12 failures despite correct timing logic
+FINDING_15: EXONERATE -- duplicate of FINDING_13
+FINDING_16: EXONERATE -- duplicate of FINDING_14
+FINDING_17: EXONERATE -- duplicate of FINDING_14
+FINDING_18: NO -- fourth test is extra coverage; not an issue worth filing
+FINDING_19: EXONERATE -- duplicate of FINDING_8
+FINDING_20: EXONERATE -- duplicate of FINDING_8
+FINDING_21: EXONERATE -- threat requires a compromised python3 binary; the security model for an internal CI timing wrapper does not warrant this hardening

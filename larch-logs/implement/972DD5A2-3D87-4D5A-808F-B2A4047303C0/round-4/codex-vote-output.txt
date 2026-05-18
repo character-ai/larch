@@ -1,0 +1,21 @@
+FINDING_1: EXONERATE -- documented interrupted-run limitation is legitimate but not issue-worthy.
+FINDING_2: YES
+FINDING_3: EXONERATE -- style concern is legitimate but not worth a tracking issue.
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: EXONERATE -- test coupling is real but documenting or abstracting the shim is not worth the added churn.
+FINDING_9: YES
+FINDING_10: EXONERATE -- 0.00s ambiguity is documented enough for current consumers and a distinct marker would complicate the contract.
+FINDING_11: YES
+FINDING_12: NO -- extra backward-clock coverage is documented and harmless despite exceeding the literal plan enumeration.
+FINDING_13: NO -- `sleep 0.5` should not legitimately complete as 0.39s absent interruption or clock movement.
+FINDING_14: YES
+FINDING_15: NO -- the alleged fast-host 0.39s case is not a normal valid outcome for `sleep 0.5`.
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: NO -- the extra regression is already documented and does not create a tracking-worthy mismatch.
+FINDING_19: EXONERATE -- exact shim coupling is a minor test-maintenance concern, not worth more machinery.
+FINDING_20: EXONERATE -- exact shim coupling is acceptable for this narrow regression test.
+FINDING_21: NO -- the RCE scenario requires already executing attacker-controlled `python3`; malformed probe output is covered by FINDING_11.

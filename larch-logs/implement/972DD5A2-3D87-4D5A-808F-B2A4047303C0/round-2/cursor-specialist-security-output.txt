@@ -1,0 +1,7 @@
+Gathering the branch diff and commit list for a read-only security-focused review.
+
+Verifying line numbers and the `false` test's exit-code capture for accuracy.
+
+Security lens: `harness-timer.sh` still only runs the caller-supplied `"$@"` and prints a timing line; `name` flows through `printf '%s'` (no new shell metacharacter expansion on the label). `start`/`end` come from `time.time()` output in the same process tree, not from external input, so the embedded `python3 -c "print(f'{$end - $start:.2f}')"` path does not introduce a practical command-injection surface beyond the wrapper’s existing “run arbitrary command” contract. No new secrets, auth, or network boundaries appear in the diff.
+
+

@@ -1,0 +1,7 @@
+### In-Scope Findings
+
+1. **Nit** `code-quality` `scripts/test-harness-timer.sh:44` — The `sleep 2` regression accepts `1.90s-4.99s`, but the requested contract was `^[12]\.[0-9]{2}s$`. This would let a future timer regression reporting `3.xx` or `4.xx` for a 2-second command pass the test. Tighten the assertion to the requested regex or cap the range at `2.99s`.
+
+### Out-of-Scope Observations
+
+No out-of-scope observations.

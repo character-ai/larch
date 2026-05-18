@@ -1,0 +1,21 @@
+Reading the ballot file and producing votes for each finding.
+
+Votes only (read-only review of the ballot; no file or repo changes).
+
+FINDING_1: YES  
+FINDING_2: NO -- pre-existing nit and explicitly optional separate change; not worth a tracking issue.  
+FINDING_3: NO -- strict exit-1 contract is intentional; reviewer defers broader change.  
+FINDING_4: EXONERATE -- minor plan/traceability drift; no security impact and not issue-worthy.  
+FINDING_5: EXONERATE -- overhead is negligible versus three tiny, readable `python3` calls.  
+FINDING_6: YES  
+FINDING_7: YES  
+FINDING_8: EXONERATE -- rare fast-scheduler edge; overlaps widening already implied by FINDING_7.  
+FINDING_9: YES  
+FINDING_10: EXONERATE -- same sleep-2 upper-bound flake as FINDING_9; one fix covers both.  
+FINDING_11: EXONERATE -- duplicate of FINDING_9’s loaded-CI timing concern.  
+FINDING_12: EXONERATE -- same cumulative-cost concern as FINDING_5; not worth a second integration action.  
+FINDING_13: EXONERATE -- cosmetic parity with peer harnesses; no functional gap.  
+FINDING_14: EXONERATE -- same tight sleep-0.5 window as FINDING_7; duplicate vote.  
+FINDING_15: YES  
+FINDING_16: EXONERATE -- duplicate of FINDING_9’s regex/CI-slowness issue.  
+FINDING_17: EXONERATE -- `date +%s` values are numeric; argv refactor is speculative hardening versus real risk today.

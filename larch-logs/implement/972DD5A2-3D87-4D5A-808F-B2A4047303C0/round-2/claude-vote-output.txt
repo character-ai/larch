@@ -1,0 +1,16 @@
+FINDING_1: EXONERATE -- without `set -e`, `exit "$rc"` still runs after any python3 timing failures, so the exit-code mirror contract holds; LARCH_HARNESS_TIMING is also emitted (with empty field at worst); python3 is already a hard dependency throughout the harness
+FINDING_2: YES -- 0.79s upper bound for `sleep 0.5` includes python3 subprocess overhead and is realistically exceeded on loaded CI hosts; widening to ~1.49s is a trivial one-line fix that removes flake risk
+FINDING_3: EXONERATE -- the implementation deliberately chose wider numeric bands over the plan's regexes for CI robustness; the plan was a design document, not a binding spec; the actual parser contract (`^[0-9]+(\.[0-9]+)?s$`) is correctly documented in harness-timer.md
+FINDING_4: YES -- negative elapsed from rare clock skew produces a timing token that fails the documented parser contract `^[0-9]+(\.[0-9]+)?s$`; clamping to `max(0, end-start)` is a one-line fix
+FINDING_5: YES -- the `false` case validates only non-emptiness of the timing field; a malformed non-empty value (e.g. empty string from python3 failure) would still pass; reusing `timing_in_range` is a simple fix
+FINDING_6: EXONERATE -- duplicate of FINDING_3; the wider 1.90-4.99 band is a deliberate CI-robustness choice over the plan's tighter regex; on a loaded host, `sleep 2` legitimately exceeds 2.xx seconds
+FINDING_7: NO -- pre-existing omission, unchanged by the diff, and the wrapper is always invoked from Makefile with correct positional args; not issue-worthy
+FINDING_8: EXONERATE -- duplicate of FINDING_1 reframed as "malformed timing column"; without `set -e`, `printf` still executes and exit code is mirrored; python3 is a hard dependency
+FINDING_9: EXONERATE -- the stub correctly documents the actual test behavior (range checks); the plan's regex was a design suggestion, not a contract requirement for the companion doc
+FINDING_10: EXONERATE -- duplicate of FINDING_3; wider numeric bands are intentional; the plan's regexes were design suggestions, not binding output contracts
+FINDING_11: EXONERATE -- the 0.40-0.79 band is intentionally wider than the plan's `^0\.[4-6][0-9]s$` regex to accommodate CI load; implementing the plan's narrower regex would increase flakiness
+FINDING_12: EXONERATE -- duplicate of FINDING_3/FINDING_6; wider upper bound is intentional
+FINDING_13: YES -- duplicate of FINDING_5; the `false` case should assert timing shape, not merely non-emptiness
+FINDING_14: EXONERATE -- three python3 subprocesses add ~60-150ms total overhead on typical hosts; acceptable for a timing wrapper; collapsing into one process adds complexity for negligible benefit
+FINDING_15: EXONERATE -- framing widened numeric bounds as a "deviation from plan" is backwards; the implementation correctly relaxed the plan's regex to be more CI-robust; tightening back to the plan's regex would increase flakiness
+FINDING_16: EXONERATE -- duplicate of FINDING_3/FINDING_6/FINDING_12; the 4.99s upper bound is generous but intentional given that CI scheduling can inflate sleep durations
