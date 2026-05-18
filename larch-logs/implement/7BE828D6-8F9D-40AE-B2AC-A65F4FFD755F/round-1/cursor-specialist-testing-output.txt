@@ -1,0 +1,28 @@
+Gathering the branch diff and commit list for a read-only review focused on tests, CI, and regression risk.
+
+Searching the cached diff for feature-related hunks — the diff file is very large.
+
+Searching the diff for helper definitions (`seed_stale_stall_state`, `make_repo`) and other changed files on this branch.
+
+Checking the workspace for test helpers referenced by the new tests — the cached diff shows only one `test-ship-pr.sh` hunk.
+
+Commits on this branch since `merge-base` with `main` (newest first):
+
+`d94873d1` Clear stall keys before skip-path advances to postmerge in ship-pr.sh  
+`75c59ffb` Bump version to 29.3.4 (#2310)
+
+### In-Scope Findings
+
+1. **Latent** (`risk-integration`) [scripts/test-compose-review-findings.sh:43-90](scripts/test-compose-review-findings.sh) — The `main...HEAD` diff also changes the compose-review harness (fixture header `Cursor-<Security & QA>`, HTML-escaped expectations, `&lt;REDACTED-TOKEN&gt;`, and the new “HTML-escape XML-like tags” block). That work is outside `<feature_description>` / `<implementation_plan>` (ship-pr stall keys only). If `make test-harnesses-11` / `test-compose-review-findings` regresses, it can block or confuse bisect for a PR titled around `ship-pr` skip paths even though `ship-pr` is unrelated. Prefer a separate PR/commit or an explicit note in the PR body that two independent changes ship together.
+
+2. **Nit** (`risk-integration`, `plan`) [scripts/test-ship-pr.sh:1332-1345](scripts/test-ship-pr.sh) with guard at [scripts/ship-pr.sh:1316-1323](scripts/ship-pr.sh) — Case A only forces `REPO_UNAVAILABLE=true` via `awk`; the production guard is `REPO_UNAVAILABLE=true` **or** empty `PR_NUMBER`. Behavior uses the same branch and `clear_stall_keys_for_postmerge` call, so risk is low, but the empty-`PR_NUMBER` disjunct has no dedicated regression. Add a tiny sibling case that blanks `PR_NUMBER` (with `REPO_UNAVAILABLE=false`) if you want parity with both skip reasons.
+
+### Out-of-Scope Observations
+
+None. Per your instructions, bulk `larch-logs/implement/` churn in the same diff is intentionally out of scope for this review.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	risk-integration	scripts/test-compose-review-findings.sh:43-90	Unrelated compose-review harness changes (HTML-escape fixtures/assertions) ride in the same branch diff as the ship-pr stall-key fix.	A failure or flake in test-compose-review-findings blocks or obscures bisect/merge attribution for a PR scoped to ship-pr skip-path behavior.	Ship compose harness changes in a separate commit/PR or document intentional bundling in the PR description.
+1	in_scope	nit	risk-integration	scripts/test-ship-pr.sh:1332-1345 / scripts/ship-pr.sh:1316-1323	Regression Case A only covers REPO_UNAVAILABLE=true, not the empty PR_NUMBER disjunct of the same guard.	Low: both disjuncts share one code path; a future refactor could split them and drop coverage for the empty-PR case.	Add a minimal test that clears PR_NUMBER while keeping REPO_UNAVAILABLE=false if you want explicit coverage of both skip reasons.
+```

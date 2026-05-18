@@ -55,7 +55,7 @@ redact_field() {
 }
 
 escape_finding_body() {
-    sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'
+    LC_ALL=C perl -pe 's/&(?!(?:#\d+|#x[0-9A-Fa-f]+|[A-Za-z][A-Za-z0-9]*);)/&amp;/g; s/</&lt;/g; s/>/&gt;/g'
 }
 
 TMP_OUT="$(mktemp "${TMPDIR:-/tmp}/review-findings-full.XXXXXX")" || fail "cannot create temp output"

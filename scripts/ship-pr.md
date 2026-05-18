@@ -20,6 +20,8 @@ ship-pr.sh --state-file PATH --implement-tmpdir PATH --merge true|false --draft 
 
 On every merge-success path (`merged`, `admin_merged`, and all `already_merged` variants), `BAIL_REASON`, `STALL_TRACKING`, and `STALL_STEP` are cleared in state (`"" false ""` respectively) before advancing to `postmerge`. This prevents stale stall-state from a prior `ci-merge` failure from propagating into `$IMPLEMENT_TMPDIR/final-bail-reason.txt` and `$IMPLEMENT_TMPDIR/finalize-state.sh` via `write_finalize_state()`: `BAIL_REASON` is written to the former, while `STALL_TRACKING`/`STALL_STEP` are written to the latter. Leaving those stale values in place would otherwise cause `implement-finalize.sh postmerge` to skip local branch cleanup (via `bail_reason_nonempty()`) and `implement-finalize.sh teardown` to write a false stall sentinel.
 
+The two `run_ci_phase` skip-paths that advance directly to `postmerge` without merging — the `REPO_UNAVAILABLE=true`/missing-`PR_NUMBER` else-branch and the skip-merge guard (`MERGE!=true`, `DRAFT=true`, or `FORKED_TARGET=true` during `ci-merge`) — also call `clear_stall_keys_for_postmerge()` before advancing. This is necessary because those branches also bypass the merge-success clears, and stale `BAIL_REASON`/`STALL_TRACKING`/`STALL_STEP` can persist there, especially after resuming from an earlier `ci-merge` stall.
+
 Checkpoint phases:
 
 - `checks`

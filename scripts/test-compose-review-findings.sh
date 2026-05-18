@@ -89,6 +89,21 @@ if grep -qF '</reviewer_diff>' "$out"; then fail "unescaped </reviewer_diff> sti
 if grep -qF '<scout_notes>' "$out"; then fail "unescaped <scout_notes> still present"; fi
 if grep -qF 'A & B' "$out"; then fail "unescaped ampersand still present"; fi
 
+echo "=== preserve existing HTML entities while escaping raw tags ==="
+mkdir -p "$TMP/d-impl/round-1"
+cat > "$TMP/d-impl/round-1/accepted-findings.md" <<'EOF'
+### FINDING_4: Preserve pre-escaped content
+- **Concern**: Already escaped &lt;tag&gt; and &#35; entity should survive, but raw <other> & marker should still escape.
+- **Suggested revision**: Preserve existing entities.
+EOF
+out="$TMP/d.md"
+stdout="$("$COMPOSE" --implement-tmpdir "$TMP/d-impl" --issue 43 --output "$out")"
+[[ "$stdout" == *"FINDINGS_TOTAL=1"* ]] || fail "entity preservation total: $stdout"
+grep -Fq 'Already escaped &lt;tag&gt; and &#35; entity should survive, but raw &lt;other&gt; &amp; marker should still escape.' "$out" \
+    || fail "existing entities were not preserved while raw markup escaped"
+if grep -qF '&amp;lt;tag&amp;gt;' "$out"; then fail "existing named entity was double-encoded"; fi
+if grep -qF '&amp;#35;' "$out"; then fail "existing numeric entity was double-encoded"; fi
+
 echo "=== invalid issue fails ==="
 set +e
 bad="$("$COMPOSE" --issue nope --output "$TMP/bad.md" 2>&1)"
