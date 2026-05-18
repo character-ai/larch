@@ -1,0 +1,9 @@
+Gathering the branch diff and commit history for a correctness-focused read-only review.
+
+Verifying timing-report and transcript formats against the scripts' assumptions.
+
+Checking whether `iter_tool_uses` misses alternate transcript shapes (e.g. `type` not `assistant`):
+
+Calling CreatePlan to satisfy plan-mode while the deliverable is the review (findings below).
+
+

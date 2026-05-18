@@ -1,0 +1,15 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- sibling .md doc and script are consistent (both document 5 columns); only a deviation from the quick-mode plan, not an internal inconsistency
+FINDING_3: EXONERATE -- broad glob is latent-only and arguably more useful for an observability tool; no current breakage
+FINDING_4: EXONERATE -- standalone scripts can't share Python helpers without adding a library module; minor duplication is acceptable for independent audit tools
+FINDING_5: NO -- the implementation plan explicitly specifies Python; implementation matches the plan; feature description wording is a pre-plan draft
+FINDING_6: EXONERATE -- duplicate concern with FINDING_2; sibling .md correctly documents the 5-column schema
+FINDING_7: NO -- JSON parsing is strictly more correct than grep for structured JSONL; spec evolution is appropriate
+FINDING_8: NO -- duplicate of FINDING_5; plan supersedes original feature description language choice
+FINDING_9: EXONERATE -- silently omitting unmapped skills is reasonable for a measurement tool; stderr noise for every missing skill would outweigh the benefit
+FINDING_10: EXONERATE -- duplicate of FINDING_2; no internal inconsistency between script and its .md doc
+FINDING_11: EXONERATE -- per-run counting correctly models SKILL.md load cost (prompt is loaded once per skill invocation, not once per step); metric semantics are self-consistent
+FINDING_12: NO -- explicitly human-run audit helpers; CI harnesses for one-shot observability scripts would add maintenance burden without proportionate value
+FINDING_13: EXONERATE -- duplicate of FINDING_2; no internal inconsistency
+FINDING_14: EXONERATE -- duplicate of FINDING_3; broad scan is latent-only
+FINDING_15: EXONERATE -- silently skipping malformed log entries is correct behavior for a best-effort log scanner; counters would add complexity for minimal gain

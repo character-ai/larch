@@ -1,0 +1,7 @@
+Reading the ballot file to vote on each finding.
+
+Spot-checking the codebase to validate ballot claims before voting.
+
+Verified key claims in `measure-references-heatmap.sh` and `measure-realized-cost.sh` (normalization, five-column TSV header, `larch-logs/*/*` glob, `set`-based per-run dedup, bare `except`). Calling CreatePlan to satisfy plan-mode, then delivering the required vote lines.
+
+

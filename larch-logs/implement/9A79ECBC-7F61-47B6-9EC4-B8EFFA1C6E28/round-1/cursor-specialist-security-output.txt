@@ -1,0 +1,9 @@
+Gathering the branch diff and commit list for a read-only security review.
+
+Verifying path-joining behavior for `skill` in `measure-realized-cost.sh` and checking `LARCH_MEASURE_DATE` handling across scripts.
+
+Confirming Python resolves `..` in joined paths when opening files:
+
+Having verified path traversal via `skill` segments containing `..`, preparing the review. Plan mode requests a plan artifact — creating a minimal plan that references the completed review.
+
+

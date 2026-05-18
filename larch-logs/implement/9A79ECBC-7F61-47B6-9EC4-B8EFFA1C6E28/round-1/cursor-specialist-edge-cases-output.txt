@@ -1,0 +1,9 @@
+Gathering the branch diff and commit history for a read-only review.
+
+Checking timing-report schemas and a sample manifest to validate aggregation semantics and silent-failure paths.
+
+Confirming transcript JSON shape: assistant `message.content` includes `tool_use` blocks — matches `iter_tool_uses`. Checking one `timing-report.md` for MD parsing and whether `measure-realized-cost` undercounts vs `per_step`.
+
+Having verified `per_step` contains multiple rows per skill per run while the script deduplicates to one increment per run, filing that as the primary correctness finding. Creating the plan document per plan-mode requirements.
+
+

@@ -1,0 +1,26 @@
+Gathering the diff and commit list for a read-only review focused on tests, CI, and regression risk.
+
+Checking CI workflows and how similar scripts are tested to complete the regression lens.
+
+Reading key script sections for accurate line numbers in findings.
+
+Shellcheck reports no issues on the four new Bash entrypoints. Commits on branch vs `main`: `067c975` (measurement tooling + lint/docs), `47c182e` (`chore(larch-logs)` flush for run `9A79ECBC-...`).
+
+### In-Scope Findings
+
+1. **`**Important**`, `risk-integration` (`requirements`)** — [`scripts/measure-realized-cost.sh:106-114`](scripts/measure-realized-cost.sh) — The shipped TSV includes an `issues_observed` column and five fields total, while `<feature_description>` specifies four columns (`skill`, `invocations`, `tokens_per_invocation`, `realized_tokens`) with no `issues_observed`. Any tooling or spreadsheet import built to that four-column contract (positional columns, fixed-width assumptions, or issue #2241 downstream) can shift columns or drop data. **Suggested fix:** Update the issue #2241 / public contract to match the five-column schema, or emit the extra column only behind a flag while default output matches the stated four columns.
+
+2. **`**Latent**`, `risk-integration` (`requirements`)** — [`scripts/measure-realized-cost.sh:52-87`](scripts/measure-realized-cost.sh) — Aggregation walks every `larch-logs/*/*` directory with `manifest.json` / timing artifacts, not only `larch-logs/implement/*` called out in `<feature_description>`. If other subtrees under `larch-logs/` use the same filenames with different semantics, invocation counts and skill sets can diverge from the “implement runs” story without tests catching it. **Suggested fix:** Restrict the glob to `larch-logs/implement/*` plus any explicitly named “similar” roots, or document and lock in the broader behavior in the sibling `.md` and tracking issue.
+
+3. **`**Latent**`, `risk-integration` (`plan`)** — [`scripts/measure-md-cost.sh:14-252`](scripts/measure-md-cost.sh), [`scripts/measure-realized-cost.sh:14-115`](scripts/measure-realized-cost.sh), [`scripts/measure-ngram-duplication.sh:14-359`](scripts/measure-ngram-duplication.sh), [`scripts/measure-references-heatmap.sh:14-619`](scripts/measure-references-heatmap.sh) (embedded Python) — The plan adds non-trivial parsing (`timing-report.json` / `.md`, JSONL `tool_use` shape, tiktoken) but there is no Makefile harness, fixture, or CI job that runs these scripts or pins expected output. Format drift in logs or Claude transcript JSON will surface only when someone runs a measure script manually. **Suggested fix:** Add a minimal offline harness (tiny synthetic `larch-logs/...` tree + golden TSV snippet) and one `make test-measure-*` target wired into the lightest harness shard if you want CI to guard the methodology.
+
+### Out-of-Scope Observations
+
+None. The `chore(larch-logs)` commit is in-scope for review per instructions, but it does not introduce a separate CI/testing defect beyond supplying data the new scripts consume.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	scripts/measure-realized-cost.sh:106-114	TSV schema adds issues_observed vs four-column requirement in feature_description	Downstream #2241 tooling or imports expecting exactly four columns mis-aligns columns or drops fields	Align public contract with five columns or gate extra column behind a flag and default to four columns
+1	in_scope	latent	risk-integration	scripts/measure-realized-cost.sh:52-87	Scan uses larch-logs/*/* not only larch-logs/implement/* per feature_description	Non-implement subtrees with timing/manifest artifacts inflate or skew invocation counts vs described scope	Narrow glob to implement plus named peers or document broad scan explicitly
+1	in_scope	latent	risk-integration	scripts/measure-md-cost.sh:14-252 scripts/measure-realized-cost.sh:14-115 scripts/measure-ngram-duplication.sh:14-359 scripts/measure-references-heatmap.sh:14-619	No CI harness or golden output for measure scripts	Embedded parsers can drift from log JSON/MD shapes; regressions only found on manual runs	Add minimal offline harness and optional Makefile/CI wiring
+```

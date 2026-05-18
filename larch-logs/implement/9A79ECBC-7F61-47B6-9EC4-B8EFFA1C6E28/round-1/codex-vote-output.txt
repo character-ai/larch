@@ -1,0 +1,15 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: NO -- The feature explicitly allows "similar subdirs", and current broad scan only counts dirs with timing/manifest-shaped artifacts.
+FINDING_4: EXONERATE -- The duplicate import parser is tiny and extracting a shared helper would add more machinery than this warrants.
+FINDING_5: NO -- The committed script/doc do not promise shell/awk, and the implementation plan explicitly allowed a Python core.
+FINDING_6: YES
+FINDING_7: NO -- Structured JSONL parsing is more correct than grep here, and the committed sibling doc describes parsing.
+FINDING_8: NO -- The implementation plan is the operative contract and it explicitly chose Python for n-gram processing.
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: NO -- A skill prompt is loaded once per run/invocation, so per-step timing rows would overcount realized prompt exposure.
+FINDING_12: EXONERATE -- A golden harness would be useful but is too much process for opt-in observability scripts in this patch.
+FINDING_13: YES
+FINDING_14: NO -- The original request said implement logs "and similar subdirs", so narrowing to implement-only would conflict with scope.
+FINDING_15: YES
