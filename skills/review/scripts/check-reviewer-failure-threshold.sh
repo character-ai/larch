@@ -30,9 +30,9 @@ done
 [[ "$PANEL" == "hard" || "$PANEL" == "simple" ]] || { larch_err "check-reviewer-failure-threshold.sh: --panel must be hard or simple"; exit 2; }
 
 # Intended static panel size: HARD=12 (6 Cursor + 6 Codex specialists),
-# SIMPLE=7 (6 Cursor + 1 Codex generalist). Dynamic scout reviewers widen the
-# counted population; when --launched-slots is present we treat the larger of
-# the static shape and launched slot count as the intended denominator.
+# SIMPLE=7 (6 Cursor + 1 Codex generalist). Dynamic scout reviewers are
+# excluded from the threshold denominator and should not affect the failure
+# rate that decides whether the static panel itself failed.
 case "$PANEL" in
     hard)   STATIC_INTENDED_SLOTS=12 ;;
     simple) STATIC_INTENDED_SLOTS=7  ;;
@@ -49,9 +49,16 @@ COUNTED_SLOTS=0
 
 if [[ -n "$COLLECTOR_RESULTS_FILE" && -f "$COLLECTOR_RESULTS_FILE" ]]; then
     # Parse blank-line-separated records; each has STATUS=<value>.
+    current_reviewer_file=""
     while IFS= read -r line || [[ -n "$line" ]]; do
         if [[ -z "$line" ]]; then
             if [[ -n "${current_status:-}" ]]; then
+                current_base=$(basename "${current_reviewer_file:-}")
+                if [[ "$current_base" == dyn-*-output.txt ]]; then
+                    current_status=""
+                    current_reviewer_file=""
+                    continue
+                fi
                 COUNTED_SLOTS=$((COUNTED_SLOTS + 1))
                 case "$current_status" in
                     OK|cap_hit) SUCCEEDED_SLOTS=$((SUCCEEDED_SLOTS + 1)) ;;
@@ -59,28 +66,30 @@ if [[ -n "$COLLECTOR_RESULTS_FILE" && -f "$COLLECTOR_RESULTS_FILE" ]]; then
                 esac
             fi
             current_status=""
+            current_reviewer_file=""
             continue
         fi
         case "$line" in
+            REVIEWER_FILE=*) current_reviewer_file="${line#REVIEWER_FILE=}" ;;
             STATUS=*) current_status="${line#STATUS=}" ;;
         esac
     done < "$COLLECTOR_RESULTS_FILE"
     # Handle trailing record without final blank line.
     if [[ -n "${current_status:-}" ]]; then
-        COUNTED_SLOTS=$((COUNTED_SLOTS + 1))
-        case "$current_status" in
-            OK|cap_hit) SUCCEEDED_SLOTS=$((SUCCEEDED_SLOTS + 1)) ;;
-            *)          FAILED_SLOTS=$((FAILED_SLOTS + 1)) ;;
-        esac
+        current_base=$(basename "${current_reviewer_file:-}")
+        if [[ "$current_base" != dyn-*-output.txt ]]; then
+            COUNTED_SLOTS=$((COUNTED_SLOTS + 1))
+            case "$current_status" in
+                OK|cap_hit) SUCCEEDED_SLOTS=$((SUCCEEDED_SLOTS + 1)) ;;
+                *)          FAILED_SLOTS=$((FAILED_SLOTS + 1)) ;;
+            esac
+        fi
     fi
 fi
 
 # Add never-launched slots as failures (vendor unhealthy → slot never dispatched).
 if [[ -n "$LAUNCHED_SLOTS" ]]; then
     case "$LAUNCHED_SLOTS" in ''|*[!0-9]*) larch_err "check-reviewer-failure-threshold.sh: --launched-slots must be a non-negative integer"; exit 2 ;; esac
-    if (( LAUNCHED_SLOTS > INTENDED_SLOTS )); then
-        INTENDED_SLOTS=$LAUNCHED_SLOTS
-    fi
     NEVER_LAUNCHED=$(( INTENDED_SLOTS - LAUNCHED_SLOTS ))
     (( NEVER_LAUNCHED < 0 )) && NEVER_LAUNCHED=0
     FAILED_SLOTS=$(( FAILED_SLOTS + NEVER_LAUNCHED ))

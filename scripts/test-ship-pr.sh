@@ -193,6 +193,9 @@ if [[ -n "${SHIP_PR_LAUNCH_SENTINEL_DIR:-}" ]]; then
 fi
 echo "LINT_FIX_STATUS=${STUB_LINT_FIX_STATUS:-failed}"
 echo "LINT_FIX_SITE=${site:-unknown}"
+if [[ -n "${STUB_LINT_FIX_DELTA_PATHS_FILE:-}" ]]; then
+  echo "LINT_FIX_DELTA_PATHS_FILE=${STUB_LINT_FIX_DELTA_PATHS_FILE}"
+fi
 SH
     cat > "$root/scripts/read-session-env-key.sh" <<'SH'
 #!/usr/bin/env bash
@@ -880,6 +883,89 @@ if grep -qx 'ship-pr-ci-initial' "$call_dir/lint-fix-sites.txt" 2>/dev/null; the
     ok "local fix loop: initial CI failures route through ship-pr-ci-initial lint-fix-loop site"
 else
     fail "local fix loop: expected ship-pr-ci-initial lint-fix-loop site"
+fi
+rm -rf "$call_dir"
+
+# Vendor CI fix: ship-pr stages the full lint-fix delta, including untracked files.
+root=$(make_repo ci_fix_vendor_untracked)
+tmp=$(make_tmpdir)
+call_dir=$(mktemp -d /tmp/ship-pr-vendor-untracked.XXXXXX)
+delta_file="$call_dir/delta-paths.txt"
+cat > "$delta_file" <<'EOF'
+README.md
+fixture.txt
+EOF
+cat > "$root/scripts/ci-wait.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+count_file="$call_dir/ci-wait-count"
+count=\$(cat "\$count_file" 2>/dev/null || echo 0)
+printf '%s\n' "\$((count + 1))" > "\$count_file"
+if [ "\$count" -eq 0 ]; then
+    printf 'ACTION=evaluate_failure\nCI_STATUS=fail\nBEHIND_COUNT=0\nFAILED_RUN_ID=run123\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n'
+else
+    printf 'ACTION=merge\nCI_STATUS=pass\nBEHIND_COUNT=0\nFAILED_RUN_ID=\nBAIL_REASON=\nITERATION=1\nELAPSED=1\n'
+fi
+STUB
+chmod +x "$root/scripts/ci-wait.sh"
+cat > "$root/scripts/run-relevant-checks-captured.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+count_file="$call_dir/checks-count"
+count=\$(cat "\$count_file" 2>/dev/null || echo 0)
+printf '%s\n' "\$((count + 1))" > "\$count_file"
+if [ "\$count" -eq 0 ]; then
+    log_file="$call_dir/redacted-\$count.log"
+    : > "\$log_file"
+    echo "STATUS=fail FAILURE_REASON=stubbed"
+    echo "REDACTED_LOG_FILE=\$log_file"
+    exit 1
+fi
+echo "RELEVANT_CHECKS_OK=true SITE=step10 COVERAGE=full"
+exit 0
+STUB
+chmod +x "$root/scripts/run-relevant-checks-captured.sh"
+cat > "$root/scripts/launch-cursor-ci.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+output=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --output) output="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+printf 'vendor fix\n' > "${output:-/tmp/ci-fix.out}"
+printf 'tracked vendor change\n' > README.md
+printf 'untracked vendor fixture\n' > fixture.txt
+printf 'TOKENS=1\n' > "${output}.token-record"
+STUB
+chmod +x "$root/scripts/launch-cursor-ci.sh"
+cat > "$root/scripts/git-commit.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+git diff --cached --name-only > "$call_dir/staged-before-commit.txt"
+git commit -q "\$@"
+STUB
+chmod +x "$root/scripts/git-commit.sh"
+write_state "$tmp/ship-pr-state.sh" ci-initial
+awk '/^TRANSIENT_RETRIES=/ {print "TRANSIENT_RETRIES=1"; next}
+     /^FAILED_RUN_ID=/ {print "FAILED_RUN_ID=run123"; next}
+     {print}' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" \
+    && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
+set +e
+(cd "$root" && PATH="$root/scripts:$PATH" STUB_LINT_FIX_STATUS=applied \
+    STUB_LINT_FIX_DELTA_PATHS_FILE="$delta_file" \
+    SHIP_PR_LAUNCH_SENTINEL_DIR="$call_dir" CLAUDE_PLUGIN_ROOT="$root" \
+    "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
+    --merge true --draft false --forked false --repo owner/repo > "$tmp/stdout" 2>&1)
+printf '%s' "$?" > "$tmp/rc"
+set -e
+assert_rc "$tmp/rc" 0 "vendor CI fix: exits 0 after committing full lint-fix delta"
+if grep -Fxq 'fixture.txt' "$call_dir/staged-before-commit.txt" 2>/dev/null; then
+    ok "vendor CI fix: follow-up commit includes untracked fixture from lint-fix delta"
+else
+    fail "vendor CI fix: expected staged follow-up commit to include fixture.txt from lint-fix delta"
 fi
 rm -rf "$call_dir"
 

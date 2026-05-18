@@ -38,6 +38,8 @@ Usage:
 USAGE
 }
 
+LAST_LINT_FIX_DELTA_PATHS_FILE=""
+
 die_usage() {
     larch_err "ship-pr.sh: $1"
     usage
@@ -483,7 +485,7 @@ run_checks_phase() {
             --site ship-pr-ci-initial \
             --checks-log "$redacted_log" 2>"$fail_file")
         fix_rc=$?
-        set -e
+        set +e
         printf '%s\n' "$fix_out" >> "$fail_file"
         fix_status=$(printf '%s\n' "$fix_out" | awk -F= '/^LINT_FIX_STATUS=/ { print $2; exit }')
         case "$fix_status" in
@@ -529,7 +531,9 @@ lint_fix_site_for_phase() {
 
 run_checks_with_lint_fix_loop() {
     local phase=$1 checks_site=$2 fix_site redacted_log fix_out fix_status fix_rc
-    local fail_category fail_file out rc attempt
+    local fail_category fail_file out rc attempt fix_delta_paths_file
+
+    LAST_LINT_FIX_DELTA_PATHS_FILE=""
 
     fix_site=$(lint_fix_site_for_phase "$phase") || return 2
     case "$phase" in
@@ -561,9 +565,10 @@ run_checks_with_lint_fix_loop() {
             --site "$fix_site" \
             --checks-log "$redacted_log" 2>"$fail_file")
         fix_rc=$?
-        set -e
+        set +e
         printf '%s\n' "$fix_out" >> "$fail_file"
         fix_status=$(printf '%s\n' "$fix_out" | awk -F= '/^LINT_FIX_STATUS=/ { print $2; exit }')
+        fix_delta_paths_file=$(printf '%s\n' "$fix_out" | awk -F= '/^LINT_FIX_DELTA_PATHS_FILE=/ { print substr($0, index($0,"=")+1); exit }')
         case "$fix_status" in
             applied|no-changes)
                 printf 'ship-pr %s: lint fix %s (attempt %d/3), re-running checks...\n' "$phase" "$fix_status" "$attempt"
@@ -572,6 +577,9 @@ run_checks_with_lint_fix_loop() {
                 rc=$?
                 printf '%s\n' "$out" >> "$fail_file"
                 if [ "$rc" -eq 0 ] && printf '%s\n' "$out" | grep -q '^RELEVANT_CHECKS_OK=true '; then
+                    if [[ "$fix_status" == "applied" && -n "$fix_delta_paths_file" ]]; then
+                        LAST_LINT_FIX_DELTA_PATHS_FILE="$fix_delta_paths_file"
+                    fi
                     return 0
                 fi
                 if [ "$fix_status" = "no-changes" ]; then
@@ -896,7 +904,7 @@ rename_done_best_effort() {
 }
 
 run_ci_fix_vendor() {
-    local phase=$1 run_id=$2 output rc fail_file tool_label plan_file checks_site vendor_attempt
+    local phase=$1 run_id=$2 output rc fail_file tool_label plan_file checks_site vendor_attempt delta_paths_file
     local plan_args=()
     output="$IMPLEMENT_TMPDIR/ci-fix-${phase}-$(date +%s).out"
     plan_file=$(resolve_plan_file)
@@ -937,10 +945,20 @@ run_ci_fix_vendor() {
         # git diff --quiet HEAD detects uncommitted changes (staged or unstaged);
         # git-commit.sh with no file args only commits staged ones — stage first.
         fail_file=$(failure_capture_path "$phase")
-        git add -u > "$fail_file" 2>&1
+        delta_paths_file="$LAST_LINT_FIX_DELTA_PATHS_FILE"
+        if [[ -n "$delta_paths_file" && -f "$delta_paths_file" && -s "$delta_paths_file" ]]; then
+            local delta_paths=() delta_path
+            while IFS= read -r delta_path || [[ -n "$delta_path" ]]; do
+                [[ -n "$delta_path" ]] || continue
+                delta_paths+=("$delta_path")
+            done < "$delta_paths_file"
+            git add -- "${delta_paths[@]}" > "$fail_file" 2>&1
+        else
+            git add -u > "$fail_file" 2>&1
+        fi
         rc=$?
         if [ "$rc" -ne 0 ]; then
-            record_failure "$phase" "git add -u" "$rc" "$fail_file" "CI Issues"
+            record_failure "$phase" "$([ -n "$delta_paths_file" ] && printf '%s' 'git add -- <lint-fix delta>' || printf '%s' 'git add -u')" "$rc" "$fail_file" "CI Issues"
             return 1
         fi
         fail_file=$(failure_capture_path "$phase")

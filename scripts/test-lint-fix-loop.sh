@@ -182,6 +182,7 @@ write_wrapper_modify_only "$WRAPPER3"
 case3_result=$(run_case "$SCRIPTS3" "$REPO3" "$SESSION3" "$CHECKS3" "$WRAPPER3" ship-pr-ci-initial)
 assert_contains "$case3_result" 'LINT_FIX_STATUS=applied' "case3 status"
 assert_contains "$case3_result" 'LINT_FIX_SITE=ship-pr-ci-initial' "case3 site"
+assert_contains "$case3_result" 'LINT_FIX_DELTA_PATHS_FILE=' "case3 delta paths file"
 
 # Case 4: ship-pr-ci-initial site — no-changes path (coder makes no changes).
 CASE4="$TMPROOT/case4"
@@ -230,5 +231,6 @@ write_wrapper_modify_only "$WRAPPER5"
 case5_result=$(run_case "$SCRIPTS5" "$REPO5" "$SESSION5" "$CHECKS5" "$WRAPPER5" ship-pr-ci-merge)
 assert_contains "$case5_result" 'LINT_FIX_STATUS=applied' "case5 status"
 assert_contains "$case5_result" 'LINT_FIX_SITE=ship-pr-ci-merge' "case5 site"
+assert_contains "$case5_result" 'LINT_FIX_DELTA_PATHS_FILE=' "case5 delta paths file"
 
 echo "test-lint-fix-loop: ok"

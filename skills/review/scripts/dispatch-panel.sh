@@ -186,35 +186,66 @@ synthesize_dynamic_slots() {
     done < <(jq -c '.archetypes[]?' "$scout_manifest")
 }
 
+write_empty_scout_manifest() {
+    local target="$1" tmp
+    mkdir -p "$(dirname "$target")"
+    tmp=$(mktemp "${target}.tmp.XXXXXX") || return 1
+    printf '{"archetypes":[]}\n' > "$tmp"
+    mv -f "$tmp" "$target"
+}
+
+derive_scout_status_from_manifest() {
+    local scout_manifest="$1" derived_count=""
+    [[ -s "$scout_manifest" ]] || return 1
+    if ! jq -e '.archetypes and (.archetypes | type == "array")' "$scout_manifest" >/dev/null 2>&1; then
+        return 1
+    fi
+    derived_count=$(jq -r '.archetypes | length' "$scout_manifest" 2>/dev/null || true)
+    case "$derived_count" in
+        ''|*[!0-9]*) return 1 ;;
+        0) printf '%s\n' empty ;;
+        *) printf '%s\n' ok ;;
+    esac
+}
+
 if [[ "$DYNAMIC_ARCHETYPES" != "0" && "$SCOUT_STATUS" == "na" ]]; then
     SCOUT_MANIFEST="$REVIEW_TMPDIR/scout-round${ROUND_NUM}-manifest.json"
     if [[ ! -s "$SCOUT_MANIFEST" ]]; then
-        scout_args=(--mode "$MODE" --max-archetypes "$DYNAMIC_ARCHETYPES" --output "$SCOUT_MANIFEST")
-        [[ -n "$SESSION_ENV_PATH" ]] && scout_args+=(--session-env-path "$SESSION_ENV_PATH")
-        [[ -n "$PLAN_FILE" && -f "$PLAN_FILE" ]] && scout_args+=(--plan-file "$PLAN_FILE")
-        if [[ "$MODE" == "diff" ]]; then
-            scout_args+=(--diff-file "$DIFF_FILE")
+        if [[ "$MODE" == "diff" && ! -f "$DIFF_FILE" ]]; then
+            write_empty_scout_manifest "$SCOUT_MANIFEST"
+            SCOUT_STATUS="missing-diff-file"
         else
-            scout_args+=(--scope-files "$SCOPE_FILES" --description-text "${DESCRIPTION_TEXT:-description review}")
+            scout_args=(--mode "$MODE" --max-archetypes "$DYNAMIC_ARCHETYPES" --output "$SCOUT_MANIFEST")
+            [[ -n "$SESSION_ENV_PATH" ]] && scout_args+=(--session-env-path "$SESSION_ENV_PATH")
+            [[ -n "$PLAN_FILE" && -f "$PLAN_FILE" ]] && scout_args+=(--plan-file "$PLAN_FILE")
+            if [[ "$MODE" == "diff" ]]; then
+                scout_args+=(--diff-file "$DIFF_FILE")
+            else
+                scout_args+=(--scope-files "$SCOPE_FILES" --description-text "${DESCRIPTION_TEXT:-description review}")
+            fi
+            scout_output=$("$PLUGIN_ROOT/scripts/scout-dynamic-archetypes.sh" "${scout_args[@]}")
+            while IFS= read -r line || [[ -n "$line" ]]; do
+                key="${line%%=*}"
+                value="${line#*=}"
+                case "$key" in
+                    SCOUT_STATUS) SCOUT_STATUS="$value" ;;
+                    SCOUT_OUTPUT) SCOUT_MANIFEST="$value" ;;
+                    WARN) emit_kv WARN "$value" ;;
+                esac
+            done <<< "$scout_output"
         fi
-        scout_output=$("$PLUGIN_ROOT/scripts/scout-dynamic-archetypes.sh" "${scout_args[@]}")
-        while IFS= read -r line || [[ -n "$line" ]]; do
-            key="${line%%=*}"
-            value="${line#*=}"
-            case "$key" in
-                SCOUT_STATUS) SCOUT_STATUS="$value" ;;
-                SCOUT_OUTPUT) SCOUT_MANIFEST="$value" ;;
-                WARN) emit_kv WARN "$value" ;;
-            esac
-        done <<< "$scout_output"
     else
         scout_status_file="$REVIEW_TMPDIR/scout-round${ROUND_NUM}-status.env"
         if [[ -s "$scout_status_file" ]]; then
             SCOUT_STATUS=$(awk -F= '$1=="SCOUT_STATUS"{print $2; exit}' "$scout_status_file")
             [[ -n "$SCOUT_STATUS" ]] || SCOUT_STATUS="na"
         else
-            SCOUT_STATUS="na"
-            SCOUT_MANIFEST=""
+            derived_status=$(derive_scout_status_from_manifest "$SCOUT_MANIFEST" || true)
+            if [[ -n "$derived_status" ]]; then
+                SCOUT_STATUS="$derived_status"
+            else
+                SCOUT_STATUS="parse-failed"
+            fi
         fi
     fi
     [[ "$SCOUT_STATUS" != "na" && -n "$SCOUT_MANIFEST" ]] && synthesize_dynamic_slots "$SCOUT_MANIFEST"

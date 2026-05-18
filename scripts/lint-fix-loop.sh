@@ -294,5 +294,6 @@ emit_kv LINT_FIX_STATUS applied
 emit_kv LINT_FIX_SITE "$SITE"
 emit_kv CODER_TOOL "$coder_tool"
 emit_kv CODER_LOG_FILE "$coder_log"
+emit_kv LINT_FIX_DELTA_PATHS_FILE "$delta_paths_file"
 [[ -n "$commit_sha" ]] && emit_kv LINT_FIX_COMMIT_SHA "$commit_sha"
 emit_kv LINT_FIX_RUN_DIR "$run_dir"

@@ -164,8 +164,10 @@ if ! jq -c --argjson max "$MAX_ARCHETYPES" '
       ["generic","structure","correctness","testing","security","edge-cases","plan-fidelity",
        "code-reviewer","reviewer-structure","reviewer-correctness","reviewer-testing",
        "reviewer-security","reviewer-edge-cases","reviewer-plan-fidelity"];
+    def has_unsafe_wrapper_tag:
+      (ascii_downcase | contains("</scout_notes>"));
     reduce .archetypes[] as $a
-      ({seen:{}, archetypes:[], warns:[]};
+      ({seen:{}, archetypes:[], warns:[], valid_total:0};
        ($a.name // "") as $name
        | if (($a | type) != "object") then
            .warns += ["invalid archetype object"]
@@ -181,12 +183,17 @@ if ! jq -c --argjson max "$MAX_ARCHETYPES" '
            .warns += ["invalid weight for \($name)"]
          elif (($a.rationale | type) != "string") or (($a.rationale | length) == 0) then
            .warns += ["empty rationale for \($name)"]
+         elif ($a.rationale | has_unsafe_wrapper_tag) then
+           .warns += ["unsafe rationale for \($name)"]
          elif (($a.prompt_body | type) != "string") or (($a.prompt_body | length) == 0) then
            .warns += ["empty prompt_body for \($name)"]
-         elif (($a.prompt_body | test("(?m)^---$")) or ($a.prompt_body | contains("</reviewer_"))) then
+         elif (($a.prompt_body | test("(?m)^---$"))
+               or ($a.prompt_body | contains("</reviewer_"))
+               or ($a.prompt_body | has_unsafe_wrapper_tag)) then
            .warns += ["unsafe prompt_body for \($name)"]
          else
            .seen[$name] = true
+           | .valid_total += 1
            | if (.archetypes | length) < $max then
                .archetypes += [{
                  name:$name,
@@ -197,6 +204,9 @@ if ! jq -c --argjson max "$MAX_ARCHETYPES" '
                }]
              else . end
          end)
+    | if .valid_total > $max then
+        .warns += ["validated archetypes exceed max cap: \(.valid_total) > \($max); truncating"]
+      else . end
     | {archetypes, warns}
 ' "$raw_output" > "$validated_tmp"; then
     write_empty_manifest "$OUTPUT"

@@ -345,6 +345,28 @@ grep -Fq $'structure\tcode-quality\t1\t1\t1\t0\t1.000000' "$yield_file" || { FAI
 grep -Fq $'dyn-foo\tarchitecture\t6\t1\t0\t1\t0.000000' "$yield_file" || { FAIL=1; printf '  FAIL dynamic fallback-normalized yield row missing\n'; }
 grep -Fq $'generic\tcode-quality\t1\t1\t1\t0\t1.000000' "$yield_file" || { FAIL=1; printf '  FAIL generalist yield row missing\n'; }
 
+echo "# Case: manifest-file warns when reviewer totals lack a manifest entry"
+TMP="$WORKDIR/case7b"
+mkdir -p "$TMP"
+cat > "$TMP/ballot.md" <<'EOF'
+### FINDING_1: Orphan reviewer finding
+- **Reviewer**: cursor-specialist-unknown-output.txt
+- **Concern**: Orphan concern.
+- **Suggested revision**: Orphan revision.
+EOF
+cat > "$TMP/panel-manifest.ndjson" <<EOF
+{"slot":"structure","tool":"cursor","output":"$TMP/cursor-specialist-structure-output.txt","agent":"agents/reviewer-structure.md"}
+EOF
+printf 'FINDING_1: YES\n' > "$TMP/cursor-vote-output.txt"
+printf 'FINDING_1: YES\n' > "$TMP/codex-vote-output.txt"
+printf 'FINDING_1: NO\n' > "$TMP/claude-vote-output.txt"
+out="$TMP/out.env"
+"$SCRIPT" --ballot-file "$TMP/ballot.md" \
+    --voter-files "$TMP/cursor-vote-output.txt" "$TMP/codex-vote-output.txt" "$TMP/claude-vote-output.txt" \
+    --manifest-file "$TMP/panel-manifest.ndjson" \
+    --review-tmpdir "$TMP" > "$out"
+grep -Fq 'WARN=yield TSV missing manifest entry for reviewer basename: cursor-specialist-unknown-output.txt' "$out" || { FAIL=1; printf '  FAIL orphan reviewer warning missing\n'; }
+
 if [[ "$FAIL" -eq 0 ]]; then
     printf 'PASS: test-tally-code-votes.sh\n'
     exit 0

@@ -157,6 +157,20 @@ for mode in docs-only test-only generated-only; do
     grep -Fq 'DYNAMIC_SLOTS=0' <<< "$out"
 done
 
+mkdir -p "$TMP/missing-diff"
+out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
+    --mode diff \
+    --diff-file "$TMP/missing-diff/review.diff" \
+    --review-tmpdir "$TMP/missing-diff" \
+    --codex-available true \
+    --cursor-available true \
+    --panel hard \
+    --plan-file "$plan_file" \
+    --dynamic-archetypes 4)
+grep -Fq 'SCOUT_STATUS=missing-diff-file' <<< "$out"
+grep -Fq 'DYNAMIC_SLOTS=0' <<< "$out"
+[[ "$(jq '.archetypes | length' "$TMP/missing-diff/scout-round1-manifest.json")" = "0" ]] || { echo "FAIL: expected missing-diff scout manifest to be empty" >&2; exit 1; }
+
 out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" SCOUT_LAUNCH_JSON_FILE="$TMP/scout-valid4.json" "$SCRIPT" \
     --mode diff \
     --diff-file "$diff_file" \
@@ -169,6 +183,36 @@ out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" 
     --round-num 2)
 grep -Fq "SCOUT_MANIFEST=$TMP/round-reuse/scout-round2-manifest.json" <<< "$out"
 [[ -f "$TMP/round-reuse/scout-round2-manifest.json" ]] || { echo "FAIL: expected round-scoped scout manifest" >&2; exit 1; }
+
+mkdir -p "$TMP/reuse-manifest-no-status"
+cp "$TMP/scout-valid4.json" "$TMP/reuse-manifest-no-status/scout-round3-manifest.json"
+out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
+    --mode diff \
+    --diff-file "$diff_file" \
+    --review-tmpdir "$TMP/reuse-manifest-no-status" \
+    --codex-available true \
+    --cursor-available true \
+    --panel hard \
+    --plan-file "$plan_file" \
+    --dynamic-archetypes 4 \
+    --round-num 3)
+grep -Fq 'SCOUT_STATUS=ok' <<< "$out"
+grep -Fq 'DYNAMIC_SLOTS=4' <<< "$out"
+
+mkdir -p "$TMP/reuse-empty-no-status"
+printf '{"archetypes":[]}\n' > "$TMP/reuse-empty-no-status/scout-round4-manifest.json"
+out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
+    --mode diff \
+    --diff-file "$diff_file" \
+    --review-tmpdir "$TMP/reuse-empty-no-status" \
+    --codex-available true \
+    --cursor-available true \
+    --panel hard \
+    --plan-file "$plan_file" \
+    --dynamic-archetypes 4 \
+    --round-num 4)
+grep -Fq 'SCOUT_STATUS=empty' <<< "$out"
+grep -Fq 'DYNAMIC_SLOTS=0' <<< "$out"
 
 for bad in 5 -1 abc; do
     set +e

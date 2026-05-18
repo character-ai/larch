@@ -415,6 +415,31 @@ if [[ -n "$MANIFEST_FILE" && -f "$MANIFEST_FILE" ]]; then
         }
       }
     ' "$archetype_map" "$score_rows" > "$YIELD_TSV_FILE"
+
+    while IFS= read -r orphan_base || [[ -n "$orphan_base" ]]; do
+        [[ -n "$orphan_base" ]] || continue
+        emit_kv WARN "yield TSV missing manifest entry for reviewer basename: $orphan_base"
+    done < <(
+        awk -F '\t' '
+          function norm(base, stem) {
+            sub(/^.*\//, "", base)
+            if (base ~ /\.txt$/) {
+              stem = base
+              sub(/\.txt$/, "", stem)
+              while (stem ~ /-(phase2|phase3|retry)$/) sub(/-(phase2|phase3|retry)$/, "", stem)
+              return stem ".txt"
+            }
+            stem = base
+            while (stem ~ /-(phase2|phase3|retry)$/) sub(/-(phase2|phase3|retry)$/, "", stem)
+            return stem
+          }
+          FNR == NR { seen[$1]=1; next }
+          {
+            base=norm($1)
+            if (!(base in seen) && !reported[base]++) print base
+          }
+        ' "$archetype_map" "$score_rows"
+    )
 fi
 
 {

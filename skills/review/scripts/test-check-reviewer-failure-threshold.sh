@@ -12,10 +12,17 @@ trap 'rm -rf "$WORKDIR"' EXIT
 
 emit_records() {
     local file="$1"; shift
+    local raw_status status reviewer_file
     : > "$file"
-    for status in "$@"; do
+    for raw_status in "$@"; do
+        status="$raw_status"
+        reviewer_file="$WORKDIR/dummy"
+        if [[ "$raw_status" == dyn:* ]]; then
+            status="${raw_status#dyn:}"
+            reviewer_file="$WORKDIR/dyn-extra-output.txt"
+        fi
         {
-            printf 'REVIEWER_FILE=%s/dummy\n' "$WORKDIR"
+            printf 'REVIEWER_FILE=%s\n' "$reviewer_file"
             printf 'TOOL=test\n'
             printf 'STATUS=%s\n' "$status"
             printf 'EXIT_CODE=0\n'
@@ -104,12 +111,16 @@ assert_eq "0 launched of 12 → FAILED_SLOTS=12" "$got" "12"
 got=$(printf '%s\n' "$out" | awk -F= '$1=="THRESHOLD_OK"{print $2}')
 assert_eq "0 launched → THRESHOLD_OK=false" "$got" "false"
 
-echo "# dynamic slots widen the denominator"
-out=$(run_case dynamic_hard hard --launched-slots 16 OK OK OK OK OK OK OK OK OK timeout timeout timeout timeout timeout timeout timeout 2>&1)
+echo "# dynamic slots are excluded from the static threshold math"
+out=$(run_case dynamic_hard hard --launched-slots 16 \
+    OK OK OK OK OK OK OK OK OK timeout timeout timeout \
+    dyn:timeout dyn:timeout dyn:timeout dyn:timeout 2>&1)
 got=$(printf '%s\n' "$out" | awk -F= '$1=="INTENDED_SLOTS"{print $2}')
-assert_eq "dynamic launched slots widen intended denominator" "$got" "16"
+assert_eq "dynamic slots do not widen intended denominator" "$got" "12"
 got=$(printf '%s\n' "$out" | awk -F= '$1=="THRESHOLD_OK"{print $2}')
-assert_eq "7/16 fail dynamic HARD → still OK" "$got" "true"
+assert_eq "3/12 static fail dynamic HARD reviewers ignored → still OK" "$got" "true"
+got=$(printf '%s\n' "$out" | awk -F= '$1=="COUNTED_SLOTS"{print $2}')
+assert_eq "only static slots are counted when dynamic reviewer files are present" "$got" "12"
 
 if [[ "$FAIL" -eq 0 ]]; then
     printf 'PASS: test-check-reviewer-failure-threshold.sh\n'

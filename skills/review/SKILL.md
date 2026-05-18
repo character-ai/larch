@@ -59,26 +59,28 @@ If `RUN_ID` is non-empty, write flat review larch-log batches with `${CLAUDE_PLU
 Write `review-scout-manifest` after the tally batch when `SCOUT_STATUS` is non-empty and not `na`: assemble the payload with a guarded jq block, redact path-bearing fields to basenames, then call `log-phase.sh --batch review-scout-manifest --action write --payload-file "$scout_payload_file"`. Use this exact pattern:
 
 ```bash
-scout_payload_file="$REVIEW_TMPDIR/review-scout-manifest.json"
-scout_manifest_base=""
-yield_tsv_base=""
-[[ -n "$SCOUT_MANIFEST" ]] && scout_manifest_base="$(basename "$SCOUT_MANIFEST")"
-[[ -n "$YIELD_TSV_FILE" ]] && yield_tsv_base="$(basename "$YIELD_TSV_FILE")"
-jq -cn \
-  --arg status "$SCOUT_STATUS" \
-  --argjson dynamic_slots "${DYNAMIC_SLOTS:-0}" \
-  --arg manifest_basename "$scout_manifest_base" \
-  --arg yield_tsv_basename "$yield_tsv_base" \
-  '{
-     status: $status,
-     dynamic_slots: $dynamic_slots,
-     manifest_basename: $manifest_basename,
-     yield_tsv_basename: $yield_tsv_basename
-   }' > "$scout_payload_file"
-"${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/log-phase.sh" \
-  --batch review-scout-manifest \
-  --action write \
-  --payload-file "$scout_payload_file"
+if [[ -n "${RUN_ID:-}" && "${SCOUT_STATUS:-na}" != "na" ]]; then
+  scout_payload_file="$REVIEW_TMPDIR/review-scout-manifest.json"
+  scout_manifest_base=""
+  yield_tsv_base=""
+  [[ -n "$SCOUT_MANIFEST" ]] && scout_manifest_base="$(basename "$SCOUT_MANIFEST")"
+  [[ -n "$YIELD_TSV_FILE" ]] && yield_tsv_base="$(basename "$YIELD_TSV_FILE")"
+  jq -cn \
+    --arg status "$SCOUT_STATUS" \
+    --argjson dynamic_slots "${DYNAMIC_SLOTS:-0}" \
+    --arg manifest_basename "$scout_manifest_base" \
+    --arg yield_tsv_basename "$yield_tsv_base" \
+    '{
+       status: $status,
+       dynamic_slots: $dynamic_slots,
+       manifest_basename: $manifest_basename,
+       yield_tsv_basename: $yield_tsv_basename
+     }' > "$scout_payload_file"
+  "${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/log-phase.sh" \
+    --batch review-scout-manifest \
+    --action write \
+    --payload-file "$scout_payload_file"
+fi
 ```
 
 The wrapper owns this larch-log write; `review-core.sh` only emits the KVs.

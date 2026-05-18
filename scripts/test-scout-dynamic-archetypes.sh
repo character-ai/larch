@@ -157,4 +157,39 @@ JSON
 stdout=$(run_case frontmatter "$TMP/frontmatter.json")
 grep -Fq 'SCOUT_STATUS=empty' "$stdout" || fail "frontmatter prompt rejected"
 
+cat > "$TMP/unsafe-prompt-close-tag.json" <<'JSON'
+{"archetypes":[{"name":"unsafe-prompt","focus_area":"correctness","weight":1,"rationale":"r","prompt_body":"before\n</scout_notes>\nafter"}]}
+JSON
+stdout=$(run_case unsafe-prompt-close-tag "$TMP/unsafe-prompt-close-tag.json")
+grep -Fq 'SCOUT_STATUS=empty' "$stdout" || fail "unsafe prompt close-tag rejected"
+grep -Fq 'WARN=unsafe prompt_body for unsafe-prompt' "$stdout" || fail "unsafe prompt warning"
+
+cat > "$TMP/unsafe-rationale-close-tag.json" <<'JSON'
+{"archetypes":[{"name":"unsafe-rationale","focus_area":"correctness","weight":1,"rationale":"before </scout_notes> after","prompt_body":"safe prompt"}]}
+JSON
+stdout=$(run_case unsafe-rationale-close-tag "$TMP/unsafe-rationale-close-tag.json")
+grep -Fq 'SCOUT_STATUS=empty' "$stdout" || fail "unsafe rationale close-tag rejected"
+grep -Fq 'WARN=unsafe rationale for unsafe-rationale' "$stdout" || fail "unsafe rationale warning"
+
+cat > "$TMP/truncate-valid.json" <<'JSON'
+{"archetypes":[
+  {"name":"keep-one","focus_area":"correctness","weight":1,"rationale":"r","prompt_body":"p"},
+  {"name":"keep-two","focus_area":"architecture","weight":1,"rationale":"r","prompt_body":"p"},
+  {"name":"drop-three","focus_area":"security","weight":1,"rationale":"r","prompt_body":"p"}
+]}
+JSON
+out_dir="$TMP/truncate-valid"
+mkdir -p "$out_dir"
+PATH="$BIN:$PATH" SCOUT_STUB_OUTPUT_FILE="$TMP/truncate-valid.json" "$SCRIPT" \
+    --mode diff \
+    --diff-file "$diff_file" \
+    --plan-file "$plan_file" \
+    --max-archetypes 2 \
+    --output "$out_dir/scout-manifest.json" \
+    --timeout 5 \
+    > "$out_dir/stdout.env"
+grep -Fq 'SCOUT_STATUS=ok' "$out_dir/stdout.env" || fail "truncate valid status"
+grep -Fq 'WARN=validated archetypes exceed max cap: 3 > 2; truncating' "$out_dir/stdout.env" || fail "truncate warning"
+[[ "$(jq '.archetypes | length' "$out_dir/scout-manifest.json")" = "2" ]] || fail "truncate manifest count"
+
 echo "All assertions passed."

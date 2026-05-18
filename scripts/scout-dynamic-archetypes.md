@@ -12,8 +12,9 @@ Invariants:
 - The scout is non-fatal. Claude failures, malformed JSON, timeout, and validation failures all write `{"archetypes":[]}` and emit a non-`ok` `SCOUT_STATUS`.
 - The script invokes `scripts/launch-claude-subprocess.sh`, not raw `claude`, so subprocess path validation, read-only preamble, context hardening, timing-ledger integration, and dirty-tree sidecars stay centralized.
 - The output JSON is validated before publication. Valid archetypes require a safe slug name, allowed focus area (`code-quality`, `risk-integration`, `correctness`, `architecture`, `security`), integer weight `1..8`, non-empty rationale, and non-empty prompt body.
-- Prompt bodies containing a standalone `---` line or literal `</reviewer_` closing tags are rejected so synthesized agent frontmatter and untrusted wrapper tags cannot be corrupted.
+- Prompt bodies containing a standalone `---` line, literal `</reviewer_` closing tags, or literal `</scout_notes>` wrapper terminators are rejected so synthesized agent frontmatter and untrusted wrapper tags cannot be corrupted. Rationale text is likewise rejected when it contains `</scout_notes>`.
 - Duplicate names keep the first archetype and emit `WARN`; reserved static slugs are rejected.
+- When validation yields more accepted archetypes than `--max-archetypes`, the script truncates to the cap and emits a `WARN`.
 - Dynamic archetypes are ephemeral files under the review tmpdir and bypass the `agent-sync` CI job.
 
 Stdout is `KEY=value`: `SCOUT_STATUS`, `SCOUT_OUTPUT`, `SCOUT_ARCHETYPE_COUNT`, `SCOUT_LATENCY_MS`, and optional `WARN`.
