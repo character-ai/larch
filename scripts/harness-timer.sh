@@ -9,6 +9,6 @@ start=$(python3 -c 'import time; print(time.time())')
 "$@"
 rc=$?
 end=$(python3 -c 'import time; print(time.time())')
-elapsed=$(python3 -c "print(f'{$end - $start:.2f}')")
+elapsed=$(python3 -c "print(f'{max(0.0, $end - $start):.2f}')")
 printf 'LARCH_HARNESS_TIMING\t%s\t%ss\n' "$name" "$elapsed"
 exit "$rc"

@@ -38,7 +38,8 @@ analysis tools to locate per-test timing rows. The timing token matches
   untrapped signal) can prevent emission; treat missing rows as interrupted
   runs, not zero-duration samples.
 - Duration uses `python3 time.time()` (fractional-second precision); the
-  emitted value has exactly 2 digits after the decimal point (e.g. `0.34s`,
+  emitted value is clamped at `0.00s` if the wall clock moves backward, and
+  otherwise has exactly 2 digits after the decimal point (e.g. `0.34s`,
   `7.62s`, `0.00s`).
 
 ## Makefile Wiring
