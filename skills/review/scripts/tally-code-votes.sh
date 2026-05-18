@@ -403,6 +403,8 @@ if [[ -n "$MANIFEST_FILE" && -f "$MANIFEST_FILE" ]]; then
         if ($3 == "accepted") {
           total[base]++
           accepted[base]++
+        } else if ($3 == "neutral" || $3 == "exonerated") {
+          total[base]++
         } else if ($3 == "rejected") {
           total[base]++
           rejected[base]++

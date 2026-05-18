@@ -316,4 +316,13 @@ if grep -Fq 'sk-ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD' "$issues_parent/ex
     exit 1
 fi
 
+set +e
+LARCH_DYNAMIC_ARCHETYPES_MAX='' run_core "$TMP/empty-env" >/dev/null 2>/dev/null
+rc=$?
+set -e
+if [[ "$rc" -ne 2 ]]; then
+    echo "FAIL: accepted empty LARCH_DYNAMIC_ARCHETYPES_MAX in review-core" >&2
+    exit 1
+fi
+
 echo "All assertions passed."

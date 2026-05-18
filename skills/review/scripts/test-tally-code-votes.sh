@@ -345,7 +345,7 @@ grep -Fq $'structure\tcode-quality\t1\t1\t1\t0\t1.000000' "$yield_file" || { FAI
 grep -Fq $'dyn-foo\tarchitecture\t6\t1\t0\t1\t0.000000' "$yield_file" || { FAIL=1; printf '  FAIL dynamic fallback-normalized yield row missing\n'; }
 grep -Fq $'generic\tcode-quality\t1\t1\t1\t0\t1.000000' "$yield_file" || { FAIL=1; printf '  FAIL generalist yield row missing\n'; }
 
-echo "# Case: manifest-file yield TSV ignores OOS and neutral/exonerated rows"
+echo "# Case: manifest-file yield TSV counts all in-scope outcomes and ignores OOS rows"
 TMP="$WORKDIR/case7a"
 mkdir -p "$TMP"
 cat > "$TMP/ballot.md" <<'EOF'
@@ -375,7 +375,7 @@ out="$TMP/out.env"
     --manifest-file "$TMP/panel-manifest.ndjson" \
     --review-tmpdir "$TMP" > "$out"
 yield_file=$(awk -F= '$1=="YIELD_TSV_FILE"{print $2}' "$out")
-grep -Fq $'dyn-yield\tcorrectness\t4\t1\t1\t0\t1.000000' "$yield_file" || { FAIL=1; printf '  FAIL yield TSV should count only accepted/rejected in-scope findings\n'; }
+grep -Fq $'dyn-yield\tcorrectness\t4\t2\t1\t0\t0.500000' "$yield_file" || { FAIL=1; printf '  FAIL yield TSV should count all in-scope findings in the denominator\n'; }
 
 echo "# Case: manifest-file warns when reviewer totals lack a manifest entry"
 TMP="$WORKDIR/case7b"

@@ -83,20 +83,32 @@ run_lint_fix_loop_capture() {
 }
 
 collect_ci_stage_paths() {
-    local tracked_dirty_file=$1 untracked_dirty_file=$2 allowlisted_untracked_file=$3
+    local vendor_dirty_file=$1 tracked_dirty_file=$2 untracked_dirty_file=$3 allowlisted_delta_file=$4
     awk '
         FNR == NR {
-            if (NF) allow[$0]=1
+            if (NF && !seen[$0]++) {
+                staged[$0]=1
+                print
+            }
             next
         }
         FILENAME == ARGV[2] {
-            if (NF && !seen[$0]++) print
+            if (NF && !seen[$0]++) {
+                staged[$0]=1
+                print
+            }
+            next
+        }
+        FILENAME == ARGV[3] {
+            if (NF) untracked[$0]=1
             next
         }
         {
-            if (NF && ($0 in allow) && !seen[$0]++) print
+            if (!NF || seen[$0]++) next
+            staged[$0]=1
+            print
         }
-    ' "${allowlisted_untracked_file:-/dev/null}" "$tracked_dirty_file" "$untracked_dirty_file"
+    ' "$vendor_dirty_file" "$tracked_dirty_file" "$untracked_dirty_file" "${allowlisted_delta_file:-/dev/null}"
 }
 
 die_usage() {
@@ -1002,17 +1014,17 @@ run_ci_fix_vendor() {
     capture_tracked_dirty_paths > "$tracked_dirty_paths_file"
     capture_untracked_dirty_paths > "$untracked_dirty_paths_file"
     # Only commit when the vendor or lint-fix path left dirty tracked changes,
-    # or allowlisted untracked files created by the lint-fix loop.
+    # or intended untracked files created by the vendor/lint-fix step.
     if [[ -s "$tracked_dirty_paths_file" || -s "$untracked_dirty_paths_file" ]]; then
         fail_file=$(failure_capture_path "$phase")
         delta_paths_file="$LAST_LINT_FIX_DELTA_PATHS_FILE"
         rc=0
-        if [[ -s "$tracked_dirty_paths_file" ]] || [[ -n "$delta_paths_file" && -f "$delta_paths_file" && -s "$delta_paths_file" ]]; then
+        if [[ -s "$vendor_dirty_paths_file" || -s "$tracked_dirty_paths_file" ]] || [[ -n "$delta_paths_file" && -f "$delta_paths_file" && -s "$delta_paths_file" ]]; then
             local stage_paths=() stage_path
             while IFS= read -r stage_path || [[ -n "$stage_path" ]]; do
                 [[ -n "$stage_path" ]] || continue
                 stage_paths+=("$stage_path")
-            done < <(collect_ci_stage_paths "$tracked_dirty_paths_file" "$untracked_dirty_paths_file" "$delta_paths_file")
+            done < <(collect_ci_stage_paths "$vendor_dirty_paths_file" "$tracked_dirty_paths_file" "$untracked_dirty_paths_file" "$delta_paths_file")
             if [[ "${#stage_paths[@]}" -gt 0 ]]; then
                 git add -- "${stage_paths[@]}" > "$fail_file" 2>&1
             else

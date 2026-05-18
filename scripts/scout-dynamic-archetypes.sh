@@ -24,6 +24,7 @@ SESSION_ENV_PATH="${SESSION_ENV_PATH:-}"
 TIMEOUT="180"
 LAUNCH_CLAUDE_SUBPROCESS_SH="${SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH:-$PLUGIN_ROOT/scripts/launch-claude-subprocess.sh}"
 MAX_CONTEXT_BYTES=262144
+IMPLEMENT_TMPDIR_ROOT="${IMPLEMENT_TMPDIR:-}"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -62,15 +63,46 @@ canonical_existing_file() {
     printf '%s/%s\n' "$dir" "$base"
 }
 
+canonical_existing_dir() {
+    local p="$1"
+    [[ -n "$p" ]] || return 1
+    has_control_chars "$p" && return 1
+    [[ "$p" != *..* ]] || return 1
+    [[ -d "$p" ]] || return 1
+    [[ ! -L "$p" ]] || return 1
+    (cd "$p" && pwd -P) || return 1
+}
+
 under_root() {
     local path="$1" root="$2"
     [[ "$path" == "$root" || "$path" == "$root/"* ]]
 }
 
+allowed_context_roots() {
+    local roots=() caller_session_root="" implement_root=""
+    roots+=("$PLUGIN_ROOT" "$SESSION_ROOT")
+    if [[ -n "$SESSION_ENV_PATH" && -f "$SESSION_ENV_PATH" && ! -L "$SESSION_ENV_PATH" ]]; then
+        caller_session_root=$(canonical_existing_dir "$(dirname "$SESSION_ENV_PATH")" || true)
+        [[ -n "$caller_session_root" ]] && roots+=("$caller_session_root")
+    fi
+    if [[ -n "$IMPLEMENT_TMPDIR_ROOT" ]]; then
+        implement_root=$(canonical_existing_dir "$IMPLEMENT_TMPDIR_ROOT" || true)
+        [[ -n "$implement_root" ]] && roots+=("$implement_root")
+    fi
+    printf '%s\n' "${roots[@]}"
+}
+
 validate_context_input_file() {
-    local label="$1" path="$2" canon size
+    local label="$1" path="$2" canon size root matched=0
     canon=$(canonical_existing_file "$path") || fail "invalid $label: $path"
-    under_root "$canon" "$PLUGIN_ROOT" || under_root "$canon" "$SESSION_ROOT" || fail "$label outside allowed roots: $path"
+    while IFS= read -r root || [[ -n "$root" ]]; do
+        [[ -n "$root" ]] || continue
+        if under_root "$canon" "$root"; then
+            matched=1
+            break
+        fi
+    done < <(allowed_context_roots)
+    (( matched )) || fail "$label outside allowed roots: $path"
     size=$(wc -c < "$canon" | tr -d ' ')
     (( size <= 262144 )) || fail "$label exceeds 256 KB: $path"
     printf '%s\n' "$canon"
@@ -218,6 +250,10 @@ if ! jq -c --argjson max "$MAX_ARCHETYPES" '
        "reviewer-security","reviewer-edge-cases","reviewer-plan-fidelity"];
     def has_unsafe_wrapper_tag:
       (ascii_downcase | contains("</scout_notes>"));
+    def has_unsafe_rationale:
+      has_unsafe_wrapper_tag
+      or test("\n")
+      or test("(?m)^---$");
     reduce .archetypes[] as $a
       ({seen:{}, archetypes:[], warns:[], valid_total:0};
        ($a.name // "") as $name
@@ -235,7 +271,7 @@ if ! jq -c --argjson max "$MAX_ARCHETYPES" '
            .warns += ["invalid weight for \($name)"]
          elif (($a.rationale | type) != "string") or (($a.rationale | length) == 0) then
            .warns += ["empty rationale for \($name)"]
-         elif ($a.rationale | has_unsafe_wrapper_tag) then
+         elif ($a.rationale | has_unsafe_rationale) then
            .warns += ["unsafe rationale for \($name)"]
          elif (($a.prompt_body | type) != "string") or (($a.prompt_body | length) == 0) then
            .warns += ["empty prompt_body for \($name)"]

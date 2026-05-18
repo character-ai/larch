@@ -10,10 +10,11 @@ Invariants:
 
 - Dynamic archetypes are opt-in and capped at 4.
 - The scout is non-fatal. Claude failures, malformed JSON, timeout, and validation failures all write `{"archetypes":[]}` and emit a non-`ok` `SCOUT_STATUS`.
-- The script invokes `scripts/launch-claude-subprocess.sh`, not raw `claude`, so subprocess path validation, read-only preamble, context hardening, timing-ledger integration, and dirty-tree sidecars stay centralized.
-- Diff, scope-file, and optional plan-file inputs are validated before prompt assembly with the same regular-file, non-symlink, allowed-root, and 256 KB-per-file constraints enforced by `launch-claude-subprocess.sh`.
+- The script invokes `scripts/launch-claude-subprocess.sh` by default, not raw `claude`, so subprocess path validation, read-only preamble, context hardening, timing-ledger integration, and dirty-tree sidecars stay centralized.
+- `SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH` may override that launcher path for tests or controlled integrations. Treat the override target as trusted executable configuration: it can change the subprocess binary and the hardening path applied to scout prompts.
+- Diff, scope-file, and optional plan-file inputs are validated before prompt assembly with the same regular-file, non-symlink, allowed-root, and 256 KB-per-file constraints enforced by `launch-claude-subprocess.sh`. Allowed roots are the plugin root, the scout output directory, and when available the caller session directory (`dirname "$SESSION_ENV_PATH"`) or `IMPLEMENT_TMPDIR`.
 - The output JSON is validated before publication. Valid archetypes require a safe slug name, allowed focus area (`code-quality`, `risk-integration`, `correctness`, `architecture`, `security`), integer weight `1..8`, non-empty rationale, and non-empty prompt body.
-- Prompt bodies containing a standalone `---` line, literal `</reviewer_` closing tags, or literal `</scout_notes>` wrapper terminators are rejected so synthesized agent frontmatter and untrusted wrapper tags cannot be corrupted. Rationale text is likewise rejected when it contains `</scout_notes>`.
+- Prompt bodies containing a standalone `---` line, literal `</reviewer_` closing tags, or literal `</scout_notes>` wrapper terminators are rejected so synthesized agent frontmatter and untrusted wrapper tags cannot be corrupted. Rationale text is likewise rejected when it contains newlines, a standalone `---` line, or `</scout_notes>`.
 - Duplicate names keep the first archetype and emit `WARN`; reserved static slugs are rejected.
 - When validation yields more accepted archetypes than `--max-archetypes`, the script truncates to the cap and emits a `WARN`.
 - Dynamic archetypes are ephemeral files under the review tmpdir and bypass the `agent-sync` CI job.

@@ -211,8 +211,9 @@ out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
     --plan-file "$TMP/reuse-manifest-no-status/plan.md" \
     --dynamic-archetypes 4 \
     --round-num 3)
-grep -Fq 'SCOUT_STATUS=ok' <<< "$out"
-grep -Fq 'DYNAMIC_SLOTS=4' <<< "$out"
+grep -Fq 'SCOUT_STATUS=parse-failed' <<< "$out"
+grep -Fq 'DYNAMIC_SLOTS=0' <<< "$out"
+[[ "$(jq '.archetypes | length' "$TMP/reuse-manifest-no-status/scout-round3-manifest.json")" = "0" ]] || { echo "FAIL: missing status sidecar should clear cached scout manifest" >&2; exit 1; }
 
 mkdir -p "$TMP/reuse-empty-no-status"
 seed_case_inputs "$TMP/reuse-empty-no-status"
@@ -295,6 +296,25 @@ grep -Fq 'DYNAMIC_SLOTS=0' <<< "$out"
 grep -Fq 'STATIC_SLOT_COUNT=12' <<< "$out"
 [[ -s "$TMP/oversized-diff/cursor-specialist-structure-output.txt" ]]
 
+parent_tmp="$TMP/implement-parent"
+round_tmp="$parent_tmp/round-1"
+mkdir -p "$parent_tmp/design-export" "$round_tmp"
+printf 'PLAN_FILE=%s\n' "$parent_tmp/design-export/plan.txt" > "$parent_tmp/session-env.sh"
+printf '# plan from parent tmpdir\n' > "$parent_tmp/design-export/plan.txt"
+cp "$diff_file" "$round_tmp/review.diff"
+out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" SCOUT_LAUNCH_JSON_FILE="$TMP/scout-valid4.json" "$SCRIPT" \
+    --mode diff \
+    --diff-file "$round_tmp/review.diff" \
+    --review-tmpdir "$round_tmp" \
+    --codex-available true \
+    --cursor-available true \
+    --panel hard \
+    --plan-file "$parent_tmp/design-export/plan.txt" \
+    --session-env-path "$parent_tmp/session-env.sh" \
+    --dynamic-archetypes 4)
+grep -Fq 'SCOUT_STATUS=ok' <<< "$out"
+grep -Fq 'DYNAMIC_SLOTS=4' <<< "$out"
+
 for bad in 5 -1 abc; do
     set +e
     PATH="$STUB_BIN:$PATH" "$SCRIPT" \
@@ -312,6 +332,21 @@ for bad in 5 -1 abc; do
         exit 1
     fi
 done
+
+set +e
+PATH="$STUB_BIN:$PATH" LARCH_DYNAMIC_ARCHETYPES_MAX='' "$SCRIPT" \
+    --mode diff \
+    --review-tmpdir "$TMP/empty-env" \
+    --codex-available true \
+    --cursor-available true \
+    --panel hard \
+    --plan-file "$plan_file" >/dev/null 2>/dev/null
+rc=$?
+set -e
+if [[ "$rc" -ne 2 ]]; then
+    echo "FAIL: accepted empty LARCH_DYNAMIC_ARCHETYPES_MAX" >&2
+    exit 1
+fi
 
 out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
     --mode diff \
