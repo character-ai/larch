@@ -1,0 +1,9 @@
+Gathering the branch diff and commit history for a read-only security-focused review.
+
+Checking `launch-claude-review.sh` for other context paths (e.g. `DESCRIPTION_TEXT`, `COMMIT_COUNT`, `MODE`) not covered by the diff hunk.
+
+Checking whether `--agent-file` is combined with `--role` anywhere and how `render-specialist-prompt.sh` uses those args.
+
+Confirming: the `--agent-file` branch still passes diff/plan/scope/feature to the renderer regardless of `ROLE`.
+
+

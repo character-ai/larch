@@ -11,12 +11,16 @@ Voter 1 is always Claude and is launched directly through `scripts/launch-claude
 - `--codex-available true|false`: whether Codex is present for Phase 1.
 - `--cursor-available true|false`: whether Cursor is present for Phase 1.
 - `--session-env-path FILE`: optional nested-session context.
-- `--diff-file FILE`: optional diff context for the Claude voter.
-- `--plan-file FILE`: optional plan context for the Claude voter.
+- `--diff-file FILE`: accepted for backward compatibility but not forwarded to voter launches; voters receive ballot only and Read cited files on demand.
+- `--plan-file FILE`: accepted for backward compatibility but not forwarded to voter launches; voters receive ballot only and Read cited files on demand.
+
+## Voter-role context shape
+
+All three voter dispatches use `mode=description` with no inline diff or plan context. The voter prompt directs the model to Read the ballot from disk; cited `<file>:<line>` references in each finding give it everything needed to verify on demand. This keeps the voter context under the 1 MB cap regardless of branch diff size.
 
 ## Behavior
 
-Voter 1 runs synchronously via `launch-claude-review.sh`. Voter 2 (Codex-first) and Voter 3 (Cursor-first) are dispatched together through `dispatch-with-waterfall.sh`:
+Voter 1 runs synchronously via `launch-claude-review.sh` with `--role voter`. Voter 2 (Codex-first) and Voter 3 (Cursor-first) are dispatched together through `dispatch-with-waterfall.sh`:
 
 - Phase 1: primary external tool (Codex for Voter 2, Cursor for Voter 3) when present.
 - Phase 2: alternate external tool when Phase 1 is absent or fails.

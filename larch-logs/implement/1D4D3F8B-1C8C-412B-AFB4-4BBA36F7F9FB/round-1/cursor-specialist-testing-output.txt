@@ -1,0 +1,34 @@
+Gathering the branch diff and commit history for a read-only review focused on tests, CI, and regression risk.
+
+Checking whether `test-launch-review.sh` invokes these scripts and whether CI covers the new tests (plan mentioned it).
+
+Checking whether `render-specialist-prompt` runs before subprocess validation (so `--role voter` + `--agent-file` could still bundle a diff):
+
+Commits on branch: `b32b2712 Drop diff bundling from Claude voter; add --role reviewer|voter to launcher`.
+
+### In-Scope Findings
+
+1. **Latent** (`risk-integration`) — [`scripts/launch-claude-review.sh:73-83`](scripts/launch-claude-review.sh) — `--role voter` only gates `append_context_file` (`scripts/launch-claude-review.sh:106-111`); the `--agent-file` branch still passes `--description-text`, `--scope-files`, `--diff-file`, `--commit-count`, `--plan-file`, and `--feature-file` into `render-specialist-prompt.sh` with no role check. Production code voting uses `--prompt-file` from [`scripts/dispatch-code-voters.sh`](scripts/dispatch-code-voters.sh), so today’s path is covered, but any future caller that combines `--agent-file` with `--role voter` will not match the “ballot-only / no diff bundling” story the plan describes for voters. Suggested fix: mirror the reviewer/voter split in the `render_args` construction (or document and test that `--agent-file` voters are unsupported / still receive render-time context).
+
+2. **Nit** (`risk-integration`, `plan`) — [`scripts/test-launch-claude-review.sh`](scripts/test-launch-claude-review.sh) vs implementation plan — The plan called out verifying [`scripts/test-launch-review.sh`](scripts/test-launch-review.sh) for `--role`; the diff adds `--role` coverage only to [`scripts/test-launch-claude-review.sh`](scripts/test-launch-claude-review.sh) (the correct launcher harness). [`scripts/test-launch-review.sh`](scripts/test-launch-review.sh) targets [`scripts/launch-review.sh`](scripts/launch-review.sh) and does not exercise `launch-claude-review.sh`. Suggested fix: treat the plan line as a typo resolved by `test-launch-claude-review.sh`, or add a thin integration assertion elsewhere if you truly want `launch-review` stack coverage.
+
+3. **Nit** (`risk-integration`) — [`scripts/test-launch-claude-review.sh:84-102`](scripts/test-launch-claude-review.sh) — `--role voter` is only asserted for the `--prompt-file` path (symlink diff not forwarded). There is no parallel test that `--role voter` plus `--agent-file` keeps the same “no symlink diff in subprocess context” invariant if you later gate `render_args` by role. Suggested fix: add a stubbed `--agent-file` + `--role voter` + symlink `--diff-file` case once `render_args` behavior is defined.
+
+### Out-of-Scope Observations
+
+1. **Nit** (`risk-integration`) — [`docs/linting.md`](docs/linting.md) (unchanged on branch) — The `make test-launch-claude-review` row still lists only prompt/agent passthrough, `.done`, and timeout validation, not the new `--role voter` / invalid `--role` / symlink-reviewer cases added in [`scripts/test-launch-claude-review.sh`](scripts/test-launch-claude-review.sh). Out of scope because the file is not part of the diff.
+
+2. **Nit** (`architecture`) — [`scripts/launch-claude-subprocess.md`](scripts/launch-claude-subprocess.md) (unchanged) — Narrative around `dispatch-code-voters.sh` forwarding diff context for Claude voters may now be stale relative to behavior. Out of scope: file not modified by the branch.
+
+---
+
+**Summary:** Integration coverage is strong for the real voter path (`test-dispatch-code-voters.sh` symlink + 2MB cases, `test-launch-claude-review.sh` symlink + invalid role). The main gap is **incomplete `--role` semantics for `--agent-file`** (untested, not used by current dispatch), plus **plan vs harness naming** and **docs drift** outside the touched files.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	risk-integration	scripts/launch-claude-review.sh:73-83	--role voter does not gate context flags passed to render-specialist-prompt.sh on the --agent-file path.	A future or alternate voter launch that uses --agent-file with --role voter could still feed diff/plan/scope into render-specialist-prompt.sh while only --context-files forwarding is suppressed, diverging from the ballot-only voter contract and leaving the path untested.	Gate render_args the same way as append_context_file for ROLE=voter, or explicitly document that agent-file voters are not supported and must use prompt-file.
+1	in_scope	nit	risk-integration	implementation_plan vs scripts/test-launch-review.sh	Plan asked to verify test-launch-review.sh for --role; diff only extends test-launch-claude-review.sh.	Maintainers may search test-launch-review.sh for coverage and wrongly conclude --role is untested.	Update the plan or add a one-line comment in test-launch-review.sh pointing to test-launch-claude-review.sh if cross-stack visibility matters.
+1	in_scope	nit	risk-integration	scripts/test-launch-claude-review.sh:84-102	No harness for --agent-file combined with --role voter.	If render_args is later gated incorrectly, regression may slip without a red test.	Add a stubbed --agent-file + --role voter case once behavior is finalized.
+1	out_of_scope	nit	risk-integration	docs/linting.md:202	linting doc row for test-launch-claude-review omits new --role scenarios.	Readers underestimate local harness coverage.	File not in branch diff; update docs/linting.md in a follow-up.
+1	out_of_scope	nit	architecture	scripts/launch-claude-subprocess.md	Companion doc may still describe voters receiving forwarded diff context via dispatch-code-voters.	Misleading operator mental model after voter context drop.	File not in branch diff; align in a follow-up.
+```

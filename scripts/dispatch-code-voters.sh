@@ -18,8 +18,6 @@ REVIEW_TMPDIR=""
 CODEX_AVAILABLE=""
 CURSOR_AVAILABLE=""
 SESSION_ENV_PATH="${SESSION_ENV_PATH:-}"
-DIFF_FILE=""
-PLAN_FILE=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -28,8 +26,8 @@ while [[ $# -gt 0 ]]; do
         --codex-available) CODEX_AVAILABLE="${2:?--codex-available requires a value}"; shift 2 ;;
         --cursor-available) CURSOR_AVAILABLE="${2:?--cursor-available requires a value}"; shift 2 ;;
         --session-env-path) SESSION_ENV_PATH="${2:?--session-env-path requires a value}"; shift 2 ;;
-        --diff-file) DIFF_FILE="${2:?--diff-file requires a value}"; shift 2 ;;
-        --plan-file) PLAN_FILE="${2:?--plan-file requires a value}"; shift 2 ;;
+        --diff-file) : "${2:?--diff-file requires a value}"; shift 2 ;;
+        --plan-file) : "${2:?--plan-file requires a value}"; shift 2 ;;
         --help) usage; exit 0 ;;
         *) larch_err "dispatch-code-voters.sh: unknown option: $1"; usage; exit 2 ;;
     esac
@@ -121,8 +119,8 @@ check_voter_parse_rate() {
 
 ctx_args=()
 mode="description"
-[[ -n "$DIFF_FILE" && -f "$DIFF_FILE" ]] && mode="diff" && ctx_args+=(--diff-file "$DIFF_FILE")
-[[ -n "$PLAN_FILE" && -f "$PLAN_FILE" ]] && ctx_args+=(--plan-file "$PLAN_FILE")
+# Voter role: ballot only — no inline diff/plan. --diff-file/--plan-file accepted for backward
+# compatibility but not forwarded; voter Reads cited <file>:<line> references on demand.
 
 VOTER_1_PATH="$REVIEW_TMPDIR/claude-vote-output.txt"
 claude_prompt=$(make_voter_prompt_file claude)
@@ -131,6 +129,7 @@ set +e
     --output "$VOTER_1_PATH" \
     --prompt-file "$claude_prompt" \
     --mode "$mode" \
+    --role voter \
     --timeout 1200 \
     --timing-task-kind claude-code-voter \
     "${ctx_args[@]+"${ctx_args[@]}"}" >/dev/null 2> "${VOTER_1_PATH}.launcher-stderr"

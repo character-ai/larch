@@ -1,0 +1,11 @@
+Gathering the branch diff and commit history for a read-only review.
+
+Reading `launch-claude-review.sh` for context forwarding, `DESCRIPTION_TEXT` handling, and subprocess invocation paths.
+
+Checking whether `dispatch-with-waterfall.sh` forwards diff/plan to Claude fallbacks — integration risk for voters 2/3.
+
+Checking whether `render-specialist-prompt.sh` inlines diff content (would bypass `--role voter` gating for `--agent-file`).
+
+Having enough context: `dispatch-code-voters` clears `ctx_args` before the waterfall, so Phase 3 Claude isn't worsened by this branch. One real gap: `--agent-file` + `--role voter` still forwards context into `render-specialist-prompt.sh`. Recording the plan and delivering the full review.
+
+
