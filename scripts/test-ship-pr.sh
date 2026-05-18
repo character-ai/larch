@@ -437,6 +437,27 @@ else
 fi
 rm -rf "$sentinel_dir"
 
+# Regression: stale BAIL_REASON and STALL_TRACKING from a prior stall are cleared
+# when the ci-merge resume succeeds. Without the fix, write_finalize_state() would
+# copy the stale BAIL_REASON into final-bail-reason.txt, causing
+# implement-finalize.sh postmerge to skip local branch cleanup.
+root=$(make_repo stale_stall_state_cleared_on_merge)
+tmp=$(make_tmpdir)
+write_state "$tmp/ship-pr-state.sh" ci-merge
+awk '
+  /^BAIL_REASON=/ { print "BAIL_REASON=local HEAD does not match PR head OID"; next }
+  /^STALL_TRACKING=/ { print "STALL_TRACKING=true"; next }
+  /^STALL_STEP=/ { print "STALL_STEP=12d"; next }
+  { print }
+' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" \
+    && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
+run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 0 "stale stall state: resume exits 0 after successful merge"
+assert_state_line "$tmp/ship-pr-state.sh" "PHASE=done" "stale stall state: PHASE=done after resume"
+assert_state_line "$tmp/ship-pr-state.sh" "BAIL_REASON=" "stale stall state: BAIL_REASON cleared on merge success"
+assert_state_line "$tmp/ship-pr-state.sh" "STALL_TRACKING=false" "stale stall state: STALL_TRACKING cleared on merge success"
+assert_state_line "$tmp/ship-pr-state.sh" "STALL_STEP=" "stale stall state: STALL_STEP cleared on merge success"
+
 root=$(make_repo malformed)
 tmp=$(make_tmpdir)
 write_state "$tmp/ship-pr-state.sh" checks

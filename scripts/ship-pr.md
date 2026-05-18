@@ -18,6 +18,8 @@ ship-pr.sh --state-file PATH --implement-tmpdir PATH --merge true|false --draft 
 
 `MERGE_RESULT` is written to state by `run_ci_phase` the moment a merge succeeds (`merged` or `admin_merged`), when CI reports the branch was already merged (`already_merged`), or when `merge-pr.sh` returns `version_already_published` and `gh pr view` confirms the PR is `MERGED` (also set to `already_merged`). Immediately before advancing to `postmerge`, the script also writes `$IMPLEMENT_TMPDIR/post-merge-sentinel`. `scripts/refresh-run-logs.sh` reads `MERGE_RESULT` as its fail-closed post-merge guard, while `scripts/larch-log-flush.sh` and `scripts/larch-log.sh commit` use the sentinel to suppress any remaining post-merge log commits.
 
+On every merge-success path (`merged`, `admin_merged`, and all `already_merged` variants), `BAIL_REASON`, `STALL_TRACKING`, and `STALL_STEP` are cleared in state (`"" false ""` respectively) before advancing to `postmerge`. This prevents stale stall-state from a prior `ci-merge` failure from propagating into `finalize-state.sh` via `write_finalize_state()`, which would otherwise cause `implement-finalize.sh postmerge` to skip local branch cleanup (via `bail_reason_nonempty()`) and `implement-finalize.sh teardown` to write a false stall sentinel.
+
 Checkpoint phases:
 
 - `checks`
