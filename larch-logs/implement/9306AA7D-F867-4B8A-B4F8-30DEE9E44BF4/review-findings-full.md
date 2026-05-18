@@ -182,3 +182,27 @@
 - **Concern**: [important] Inline awk duplicates lib-redact CMD_JSON trimming for codex-impl-transcript meta. Two implementations of the same trimmer can diverge; a fix in lib-redact.sh would not affect the pre-bump flush path. Call larch_redact_strip_meta_cmd_json from scripts/lib-redact.sh (or a one-line wrapper script) instead of inlining awk.
 - **Suggested revision**: Address the concern above.
 
+### FINDING_16: panel [code-review/accepted]
+
+## correctness: scripts/larch-log.sh:85-113
+
+- **Reviewer**: cursor-specialist-correctness-output.txt
+- **Concern**: [latent] stage_round_artifact may leak trim_tmp if larch_log_redact_file fails under set -e Redaction/validation error mid-write-round leaves a stray temp file in TMPDIR Wrap larch_log_redact_file with a trap that always rm -f trim_tmp
+- **Suggested revision**: Address the concern above.
+
+### FINDING_26: panel [code-review/accepted]
+
+## risk-integration: skills/review/scripts/review-core.sh:83-102 skills/review-and-fix/scripts/review-and-fix.sh:524-547
+
+- **Reviewer**: cursor-specialist-edge-cases-output.txt
+- **Concern**: [latent] write-round failures are non-fatal aside from breadcrumbs Larch-log volume errors drop all round diagnostics for a round with no execution-issues entry Reuse append_log_write_failure or equivalent so larch-log outages surface in execution-issues.ndjson
+- **Suggested revision**: Address the concern above.
+
+### FINDING_7: panel [code-review/accepted]
+
+## code-quality: docs/run-logs.md:181-191
+
+- **Reviewer**: cursor-specialist-structure-output.txt
+- **Concern**: [important] Round log contract claims write-round only at end of review-core.sh Downstream readers assume no post-review-core artifacts; actual branch refreshes round dir after coder via review-and-fix.sh:858 Document review-core snapshot plus optional late write-round after coder artifacts
+- **Suggested revision**: Address the concern above.
+
