@@ -6,7 +6,7 @@ The harness runs `skills/upgrade-larch/scripts/upgrade-larch.sh` end-to-end in a
 
 Covered cases:
 
-- active session pinned to an otherwise pruneable old version: keep the pinned version, the verified latest stable, and its predecessor; prune an unused older version
+- active session pinned to an otherwise pruneable old version: keep the pinned version, the verified latest stable, and its predecessor; prune an unused older version on the same `major.minor` train as `LATEST_STABLE` (below the rollback floor) even when the cache is under the 8-version cap
 - no sessions: prune old versions normally, but still preserve the executing cached plugin version alongside the latest stable and predecessor
 - unparseable session plugin root: ignore the malformed value and otherwise prune normally while preserving the executing cached plugin version
 - session plugin root with CRLF or trailing whitespace: trim the suffix noise, preserve the pinned numeric version, and prune only truly unused olds
