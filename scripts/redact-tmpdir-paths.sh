@@ -21,9 +21,15 @@ sed -E \
     -e 's#(^|[^[:alnum:]_./-])(/Users|/home)/([^/"\\[:space:]]+)/([^/"\\[:space:],]+),#\1<OPERATOR_REPO_PATH>,#g' \
     -e 's#(^|[^[:alnum:]_./-])(/Users|/home)/([^/"\\[:space:]]+)/([^/"\\[:space:];]+);#\1<OPERATOR_REPO_PATH>;#g' \
     -e 's#(^|[^[:alnum:]_./-])(/Users|/home)/([^/"\\[:space:]]+)/([^/"\\[:space:]:]+):#\1<OPERATOR_REPO_PATH>:#g' \
+    -e 's#(^|[^[:alnum:]_./-])(/Users|/home)/([^/"\\[:space:]]+)/([^/"\\[:space:]"}]+)"}#\1<OPERATOR_REPO_PATH>"}#g' \
+    -e 's#(^|[^[:alnum:]_./-])(/Users|/home)/([^/"\\[:space:]]+)/([^/"\\[:space:]"},]+)",#\1<OPERATOR_REPO_PATH>",#g' \
+    -e 's#(^|[^[:alnum:]_./-])(/Users|/home)/([^/"\\[:space:]]+)/([^/"\\[:space:]"]+)"$#\1<OPERATOR_REPO_PATH>"#g' \
     -e 's#(^|[^[:alnum:]_./-])(/Users|/home)/([^/"\\[:space:]]+)/([^/"\\[:space:]]+)$#\1<OPERATOR_REPO_PATH>#g' \
     -e 's#(\\n)(/Users|/home)/([^/"\\[:space:]]+)/([^/"\\[:space:]]+)/#\1<OPERATOR_REPO_PATH>/#g' \
     -e 's#(\\n)(/Users|/home)/([^/"\\[:space:]]+)/([^/"\\[:space:],]+),#\1<OPERATOR_REPO_PATH>,#g' \
     -e 's#(\\n)(/Users|/home)/([^/"\\[:space:]]+)/([^/"\\[:space:];]+);#\1<OPERATOR_REPO_PATH>;#g' \
     -e 's#(\\n)(/Users|/home)/([^/"\\[:space:]]+)/([^/"\\[:space:]:]+):#\1<OPERATOR_REPO_PATH>:#g' \
+    -e 's#(\\n)(/Users|/home)/([^/"\\[:space:]]+)/([^/"\\[:space:]"}]+)"}#\1<OPERATOR_REPO_PATH>"}#g' \
+    -e 's#(\\n)(/Users|/home)/([^/"\\[:space:]]+)/([^/"\\[:space:]"},]+)",#\1<OPERATOR_REPO_PATH>",#g' \
+    -e 's#(\\n)(/Users|/home)/([^/"\\[:space:]]+)/([^/"\\[:space:]"]+)"$#\1<OPERATOR_REPO_PATH>"#g' \
     -e 's#(\\n)(/Users|/home)/([^/"\\[:space:]]+)/([^/"\\[:space:]]+)$#\1<OPERATOR_REPO_PATH>#g'

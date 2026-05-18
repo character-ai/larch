@@ -60,6 +60,11 @@ if [[ "${STUB_APPLY_SAME_VERSION:-false}" == true ]]; then
   echo "ERROR=origin/main has already bumped to 1.0.1; re-classify needed"
   exit 1
 fi
+if [[ "${STUB_APPLY_VERSION_REGRESSION:-false}" == true ]]; then
+  echo "APPLIED=false"
+  echo "ERROR=version regression: 1.0.1 < origin/main 1.0.2; rebase conflict may have been resolved to branch stale version — re-resolve and re-bump"
+  exit 1
+fi
 echo "APPLIED=true"
 echo "COMMIT_SHA=abc123"
 SH
@@ -392,6 +397,13 @@ write_state "$tmp/ship-pr-state.sh" bump
 STUB_APPLY_SAME_VERSION=true run_subject "$root" "$tmp" "$tmp/rc"
 assert_rc "$tmp/rc" 5 "same-version bump exits 5"
 assert_state_line "$tmp/ship-pr-state.sh" "CALLER_KIND=step8b_same_version" "same-version writes caller kind"
+
+root=$(make_repo version_regression)
+tmp=$(make_tmpdir)
+write_state "$tmp/ship-pr-state.sh" bump
+STUB_APPLY_VERSION_REGRESSION=true run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 5 "version-regression bump exits 5"
+assert_state_line "$tmp/ship-pr-state.sh" "CALLER_KIND=step8b_same_version" "version-regression writes caller kind"
 
 root=$(make_repo ci_initial)
 tmp=$(make_tmpdir)

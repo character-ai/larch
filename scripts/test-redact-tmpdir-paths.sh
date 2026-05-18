@@ -39,6 +39,8 @@ assert_eq "$(run_redactor '/home/example/foo+bar/scripts/foo.sh')" '<OPERATOR_RE
 assert_eq "$(run_redactor 'OUTER_LAUNCHER_WORKDIR=/Users/example/my.repo')" 'OUTER_LAUNCHER_WORKDIR=<OPERATOR_REPO_PATH>' "operator repo root at end of value redacted"
 assert_eq "$(run_redactor 'cwd=/home/example/my.repo,')" 'cwd=<OPERATOR_REPO_PATH>,' "operator repo root before punctuation redacted"
 assert_eq "$(run_redactor 'cwd=/Users/example/my+repo,')" 'cwd=<OPERATOR_REPO_PATH>,' "operator repo root with plus-bearing repo name before punctuation redacted"
+assert_eq "$(run_redactor '{"cwd":"/Users/example/my.repo"}')" '{"cwd":"<OPERATOR_REPO_PATH>"}' "quoted JSON repo root at end of object redacted"
+assert_eq "$(run_redactor '{"cwd":"/Users/example/my.repo","x":1}')" '{"cwd":"<OPERATOR_REPO_PATH>","x":1}' "quoted JSON repo root before next field redacted"
 assert_eq "$(run_redactor 'see /tmp/claude-research-a_b-C/log.txt now')" 'see <TMPDIR>/log.txt now' "embedded path redacted in prose"
 assert_eq "$(run_redactor '/tmp/not-larch-session and /var/tmp/claude-implement-abc')" '/tmp/not-larch-session and /var/tmp/claude-implement-abc' "non-matching paths preserved"
 assert_eq "$(run_redactor '/var/folders/kf/abc123/T/claude-implement-larch5-XyZ')" '<TMPDIR>' "/var/folders macOS session path redacted"

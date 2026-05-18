@@ -782,6 +782,10 @@ run_bump_phase() {
                         state_set_many RESUME_PHASE bump CALLER_KIND step8b_same_version
                         exit 5
                         ;;
+                    version\ regression:*)
+                        state_set_many RESUME_PHASE bump CALLER_KIND step8b_same_version
+                        exit 5
+                        ;;
                     *) exit_stall 8 ;;
                 esac
             fi
