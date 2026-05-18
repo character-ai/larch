@@ -72,6 +72,93 @@ write_cache_invalidating_fixture() {
 JSONL
 }
 
+write_tool_result_mutation_fixture() {
+  local root="$1"
+  mkdir -p "$root/run1"
+  cat >"$root/run1/session-transcript.jsonl" <<'JSONL'
+{"type":"system","uuid":"sys1","parentUuid":null,"subtype":"init","message":{"content":"system prompt"}}
+{"type":"user","uuid":"usr1","parentUuid":"sys1","message":{"content":[{"type":"tool_result","tool_use_id":"T1","content":"result-A"}]}}
+{"type":"assistant","uuid":"ast1","parentUuid":"usr1","requestId":"req1","message":{"content":"response one"}}
+{"type":"user","uuid":"usr2","parentUuid":"sys1","message":{"content":[{"type":"tool_result","tool_use_id":"T1","content":"result-B"}]}}
+{"type":"assistant","uuid":"ast2","parentUuid":"usr2","requestId":"req2","message":{"content":"response two"}}
+JSONL
+}
+
+write_image_mutation_fixture() {
+  local root="$1"
+  mkdir -p "$root/run1"
+  cat >"$root/run1/session-transcript.jsonl" <<'JSONL'
+{"type":"system","uuid":"sys1","parentUuid":null,"subtype":"init","message":{"content":"system prompt"}}
+{"type":"user","uuid":"usr1","parentUuid":"sys1","message":{"content":[{"type":"image","source":{"type":"url","url":"http://example.com/img1.png"}}]}}
+{"type":"assistant","uuid":"ast1","parentUuid":"usr1","requestId":"req1","message":{"content":"response one"}}
+{"type":"user","uuid":"usr2","parentUuid":"sys1","message":{"content":[{"type":"image","source":{"type":"url","url":"http://example.com/img2.png"}}]}}
+{"type":"assistant","uuid":"ast2","parentUuid":"usr2","requestId":"req2","message":{"content":"response two"}}
+JSONL
+}
+
+write_attachment_stable_fixture() {
+  local root="$1"
+  mkdir -p "$root/run1"
+  cat >"$root/run1/session-transcript.jsonl" <<'JSONL'
+{"type":"system","uuid":"sys1","parentUuid":null,"subtype":"init","message":{"content":"system prompt"}}
+{"type":"user","uuid":"usr1","parentUuid":"sys1","message":{"content":[{"type":"tool_result","tool_use_id":"T1","content":"stable-result"}]}}
+{"type":"assistant","uuid":"ast1","parentUuid":"usr1","requestId":"req1","message":{"content":"response one"}}
+{"type":"user","uuid":"usr2","parentUuid":"ast1","message":{"content":[{"type":"tool_result","tool_use_id":"T1","content":"stable-result"}]}}
+{"type":"assistant","uuid":"ast2","parentUuid":"usr2","requestId":"req2","message":{"content":"response two"}}
+JSONL
+}
+
+write_attachment_dict_fixture() {
+  local root="$1"
+  mkdir -p "$root/run1"
+  cat >"$root/run1/session-transcript.jsonl" <<'JSONL'
+{"type":"system","uuid":"sys1","parentUuid":null,"subtype":"init","message":{"content":"system prompt"}}
+{"type":"user","uuid":"usr1","parentUuid":"sys1","message":{"content":{"type":"file","text":"TOP-SECRET-FILE-BODY","name":"secret.txt"}}}
+{"type":"assistant","uuid":"ast1","parentUuid":"usr1","requestId":"req1","message":{"content":"response one"}}
+{"type":"user","uuid":"usr2","parentUuid":"sys1","message":{"content":{"type":"file","text":"CHANGED-SECRET-FILE-BODY","name":"secret.txt"}}}
+{"type":"assistant","uuid":"ast2","parentUuid":"usr2","requestId":"req2","message":{"content":"response two"}}
+JSONL
+}
+
+write_tool_use_mutation_fixture() {
+  local root="$1"
+  mkdir -p "$root/run1"
+  cat >"$root/run1/session-transcript.jsonl" <<'JSONL'
+{"type":"system","uuid":"sys1","parentUuid":null,"subtype":"init","message":{"content":"system prompt"}}
+{"type":"user","uuid":"usr1","parentUuid":"sys1","message":{"content":[{"type":"tool_use","id":"toolu_1","name":"search","input":{"query":"alpha"}}]}}
+{"type":"assistant","uuid":"ast1","parentUuid":"usr1","requestId":"req1","message":{"content":"response one"}}
+{"type":"user","uuid":"usr2","parentUuid":"sys1","message":{"content":[{"type":"tool_use","id":"toolu_1","name":"search","input":{"query":"beta"}}]}}
+{"type":"assistant","uuid":"ast2","parentUuid":"usr2","requestId":"req2","message":{"content":"response two"}}
+JSONL
+}
+
+write_attachment_then_text_fixture() {
+  local root="$1"
+  mkdir -p "$root/run1"
+  cat >"$root/run1/session-transcript.jsonl" <<'JSONL'
+{"type":"system","uuid":"sys1","parentUuid":null,"subtype":"init","message":{"content":"system prompt"}}
+{"type":"user","uuid":"usr1","parentUuid":"sys1","message":{"content":[{"type":"tool_result","tool_use_id":"T1","content":"stable-result"}]}}
+{"type":"assistant","uuid":"ast1","parentUuid":"usr1","requestId":"req1","message":{"content":"response one"}}
+{"type":"user","uuid":"usr2","parentUuid":"ast1","message":{"content":"plain follow-up"}}
+{"type":"assistant","uuid":"ast2","parentUuid":"usr2","requestId":"req2","message":{"content":"response two"}}
+{"type":"user","uuid":"usr3","parentUuid":"ast2","message":{"content":"changed plain follow-up"}}
+{"type":"assistant","uuid":"ast3","parentUuid":"usr3","requestId":"req3","message":{"content":"response three"}}
+JSONL
+}
+
+write_top_level_attachment_mutation_fixture() {
+  local root="$1"
+  mkdir -p "$root/run1"
+  cat >"$root/run1/session-transcript.jsonl" <<'JSONL'
+{"type":"system","uuid":"sys1","parentUuid":null,"subtype":"init","message":{"content":"system prompt"}}
+{"type":"user","uuid":"usr1","parentUuid":"sys1","message":{"content":"initial request"}}
+{"type":"attachment","uuid":"att1","parentUuid":"usr1","attachment":{"type":"command_permissions","allowedTools":["Read"]}}
+{"type":"assistant","uuid":"ast1","parentUuid":"att1","requestId":"req1","message":{"content":"assistant response one"}}
+{"type":"attachment","uuid":"att2","parentUuid":"usr1","attachment":{"type":"command_permissions","allowedTools":["Read","Edit"]}}
+{"type":"assistant","uuid":"ast2","parentUuid":"att2","requestId":"req2","message":{"content":"assistant response two"}}
+JSONL
+}
+
 run_audit() {
   local root="$1"
 
@@ -130,6 +217,71 @@ if [[ "$(classification_sequence "$invalidating_root/run1/session-transcript.jso
   pass "cache-invalidating classification sequence"
 else
   fail "cache-invalidating classification sequence"
+fi
+
+tool_result_mutation_root="$TMPDIR/tool-result-mutation"
+image_mutation_root="$TMPDIR/image-mutation"
+attachment_stable_root="$TMPDIR/attachment-stable"
+attachment_dict_root="$TMPDIR/attachment-dict"
+tool_use_mutation_root="$TMPDIR/tool-use-mutation"
+attachment_then_text_root="$TMPDIR/attachment-then-text"
+top_level_attachment_mutation_root="$TMPDIR/top-level-attachment-mutation"
+
+write_tool_result_mutation_fixture "$tool_result_mutation_root"
+write_image_mutation_fixture "$image_mutation_root"
+write_attachment_stable_fixture "$attachment_stable_root"
+write_attachment_dict_fixture "$attachment_dict_root"
+write_tool_use_mutation_fixture "$tool_use_mutation_root"
+write_attachment_then_text_fixture "$attachment_then_text_root"
+write_top_level_attachment_mutation_fixture "$top_level_attachment_mutation_root"
+
+if [[ "$(classification_sequence "$tool_result_mutation_root/run1/session-transcript.jsonl")" == "BASELINE,CACHE-INVALIDATING" ]]; then
+  pass "tool_result mutation detected as CACHE-INVALIDATING"
+else
+  fail "tool_result mutation detected as CACHE-INVALIDATING"
+fi
+
+if [[ "$(classification_sequence "$image_mutation_root/run1/session-transcript.jsonl")" == "BASELINE,CACHE-INVALIDATING" ]]; then
+  pass "image attachment mutation detected as CACHE-INVALIDATING"
+else
+  fail "image attachment mutation detected as CACHE-INVALIDATING"
+fi
+
+if [[ "$(classification_sequence "$attachment_stable_root/run1/session-transcript.jsonl")" == "BASELINE,EXPECTED-GROWTH" ]]; then
+  pass "stable tool_result prefix produces EXPECTED-GROWTH"
+else
+  fail "stable tool_result prefix produces EXPECTED-GROWTH"
+fi
+
+attachment_dict_output="$(run_audit "$attachment_dict_root")"
+assert_contains "dict attachment report renders digest summary" "$attachment_dict_output" "\"payload_sha256\":"
+if [[ "$attachment_dict_output" != *"TOP-SECRET-FILE-BODY"* && "$attachment_dict_output" != *"CHANGED-SECRET-FILE-BODY"* ]]; then
+  pass "dict attachment report omits raw attachment bodies"
+else
+  fail "dict attachment report omits raw attachment bodies"
+fi
+if [[ "$(classification_sequence "$attachment_dict_root/run1/session-transcript.jsonl")" == "BASELINE,CACHE-INVALIDATING" ]]; then
+  pass "dict attachment mutation detected as CACHE-INVALIDATING"
+else
+  fail "dict attachment mutation detected as CACHE-INVALIDATING"
+fi
+
+if [[ "$(classification_sequence "$tool_use_mutation_root/run1/session-transcript.jsonl")" == "BASELINE,CACHE-INVALIDATING" ]]; then
+  pass "tool_use mutation detected as CACHE-INVALIDATING"
+else
+  fail "tool_use mutation detected as CACHE-INVALIDATING"
+fi
+
+if [[ "$(classification_sequence "$attachment_then_text_root/run1/session-transcript.jsonl")" == "BASELINE,EXPECTED-GROWTH,EXPECTED-GROWTH" ]]; then
+  pass "attachment then plain-user chain does not consume a second initial slot"
+else
+  fail "attachment then plain-user chain does not consume a second initial slot"
+fi
+
+if [[ "$(classification_sequence "$top_level_attachment_mutation_root/run1/session-transcript.jsonl")" == "BASELINE,CACHE-INVALIDATING" ]]; then
+  pass "top-level attachment mutation detected as CACHE-INVALIDATING"
+else
+  fail "top-level attachment mutation detected as CACHE-INVALIDATING"
 fi
 
 missing_root="$TMPDIR/does-not-exist"

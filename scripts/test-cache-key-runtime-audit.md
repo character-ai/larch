@@ -7,3 +7,5 @@
 **Contract owner**: `scripts/cache-key-runtime-audit.md` remains the primary audit contract for classifications, inputs, and report semantics.
 
 **Edit-in-sync**: When changing stable-prefix selection, classification labels, CLI error behavior, or Makefile wiring for the runtime audit, update this harness and document in the same PR.
+
+**Attachment fixtures**: The harness includes branched `tool_result`, image-attachment, and top-level `command_permissions` mutation cases so prefix-position attachment changes classify as `CACHE-INVALIDATING`, plus a second identical `tool_result` turn so unchanged attachment prefixes classify as `EXPECTED-GROWTH`.

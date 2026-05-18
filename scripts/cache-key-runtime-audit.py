@@ -22,6 +22,27 @@ DEFAULT_RUNS = 10
 DEFAULT_MAX_DIFF_CHARS = 2000
 
 
+def stable_json_text(value: Any) -> str:
+    return json.dumps(
+        stable_json(value),
+        sort_keys=True,
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+
+
+def digest_text(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8", errors="replace")).hexdigest()
+
+
+def summarize_attachment_block(item: dict[str, Any]) -> str:
+    summary = {
+        "type": str(item.get("type") or "unknown"),
+        "payload_sha256": digest_text(stable_json_text(item)),
+    }
+    return json.dumps(summary, sort_keys=True, ensure_ascii=False)
+
+
 @dataclass(frozen=True)
 class TranscriptEntry:
     index: int
@@ -109,37 +130,40 @@ def content_to_text(value: Any) -> str:
         parts: list[str] = []
         for item in value:
             if isinstance(item, dict):
-                if "text" in item and isinstance(item["text"], str):
+                block_type = str(item.get("type") or "")
+                if block_type not in ("", "text"):
+                    parts.append(summarize_attachment_block(item))
+                elif "text" in item and isinstance(item["text"], str):
                     parts.append(item["text"])
                 elif "content" in item:
                     parts.append(content_to_text(item["content"]))
                 else:
-                    parts.append(json.dumps(item, sort_keys=True, ensure_ascii=False))
+                    parts.append(stable_json_text(item))
             else:
                 parts.append(content_to_text(item))
         return "\n".join(part for part in parts if part != "")
     if isinstance(value, dict):
+        block_type = str(value.get("type") or "")
+        if block_type not in ("", "text"):
+            return summarize_attachment_block(value)
         if "text" in value and isinstance(value["text"], str):
             return value["text"]
         if "content" in value:
             return content_to_text(value["content"])
-        return json.dumps(value, sort_keys=True, ensure_ascii=False)
+        return stable_json_text(value)
     return str(value)
 
 
 def entry_content(entry: TranscriptEntry) -> str:
     raw = entry.raw
+    if entry.entry_type == "attachment" and "attachment" in raw:
+        return content_to_text(raw.get("attachment"))
     message = raw.get("message")
     if isinstance(message, dict) and "content" in message:
         return content_to_text(message.get("content"))
     if "content" in raw:
         return content_to_text(raw.get("content"))
-    return json.dumps(
-        stable_json(raw),
-        sort_keys=True,
-        ensure_ascii=False,
-        separators=(",", ":"),
-    )
+    return stable_json_text(raw)
 
 
 def stable_json(value: Any) -> Any:
@@ -271,6 +295,23 @@ def is_initial_user_message(entry: TranscriptEntry, before_first_assistant: bool
     return True
 
 
+def _is_attachment_bearing(entry: TranscriptEntry) -> bool:
+    """Return True if entry content has any non-text attachment blocks."""
+    raw = entry.raw
+    message = raw.get("message")
+    content = (
+        message.get("content") if isinstance(message, dict)
+        else raw.get("content")
+    )
+    if isinstance(content, dict):
+        return str(content.get("type") or "") not in ("", "text")
+    if isinstance(content, list):
+        for block in content:
+            if isinstance(block, dict) and str(block.get("type") or "") not in ("", "text"):
+                return True
+    return False
+
+
 def prefix_records(chain: list[TranscriptEntry]) -> list[PrefixRecord]:
     records: list[PrefixRecord] = []
     # chain comes from chain_to_root which walks parent->grandparent and never
@@ -287,9 +328,20 @@ def prefix_records(chain: list[TranscriptEntry]) -> list[PrefixRecord]:
         if entry.entry_type == "system":
             include = True
             reason = f"system:{entry.raw.get('subtype') or 'unknown'}"
+        elif entry.entry_type == "attachment":
+            include = True
+            attachment = entry.raw.get("attachment")
+            attachment_type = ""
+            if isinstance(attachment, dict):
+                attachment_type = str(attachment.get("type") or "")
+            reason = f"attachment:{attachment_type or 'unknown'}"
         elif entry.entry_type == "user" and entry.raw.get("isMeta") is True:
             include = True
             reason = "user:isMeta"
+        elif entry.entry_type == "user" and _is_attachment_bearing(entry):
+            include = True
+            reason = "user:attachment"
+            included_initial = True
         elif not included_initial and is_initial_user_message(entry, True):
             include = True
             reason = "user:initial"
