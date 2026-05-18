@@ -239,32 +239,43 @@
       {
         "step": "Step 8b — rebase",
         "totals": {
-          "input": 1,
-          "cache_read": 247190,
-          "cache_create": 454,
-          "output": 314,
-          "total": 247959
+          "input": 63,
+          "cache_read": 13975344,
+          "cache_create": 67921,
+          "output": 35215,
+          "total": 14078543
         },
         "skills": [
           {
             "skill": "inferred:Step 8b — rebase",
             "totals": {
-              "input": 1,
-              "cache_read": 247190,
-              "cache_create": 454,
-              "output": 314,
-              "total": 247959
+              "input": 63,
+              "cache_read": 13975344,
+              "cache_create": 67921,
+              "output": 35215,
+              "total": 14078543
             }
           }
         ]
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "cache_read": 0,
+          "cache_create": 0,
+          "output": 0,
+          "total": 0
+        },
+        "skills": []
       }
     ],
     "totals": {
-      "input": 211,
-      "cache_read": 38387229,
-      "cache_create": 1553756,
-      "output": 109695,
-      "total": 40050891
+      "input": 273,
+      "cache_read": 52115383,
+      "cache_create": 1621223,
+      "output": 144596,
+      "total": 53881475
     }
   },
   "codex": {
@@ -359,6 +370,14 @@
       },
       {
         "step": "Step 8b — rebase",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 6 — checks second pass",
         "totals": {
           "input": 0,
           "output": 0,
@@ -468,6 +487,14 @@
           "input": 2,
           "output": 2,
           "total": 4
+        }
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
         }
       }
     ],
