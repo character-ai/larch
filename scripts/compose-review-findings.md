@@ -28,8 +28,12 @@ as "no findings"; the script still writes an empty markdown file and emits
 `FINDINGS_TOTAL=0`.
 
 The helper redacts tmpdir paths and token-shaped secrets before writing
-sections. The old inline/archive split was removed when review findings moved
-from issue anchors to committed `larch-logs/` files.
+sections, then HTML-escapes `<`, `>`, and `&` in every finding body so that
+XML-like tag names cited in security findings (e.g. `</reviewer_diff>`,
+`<scout_notes>`) are encoded as `&lt;…&gt;` and do not trigger
+markdownlint/agent-lint XML-element warnings. The old inline/archive split was
+removed when review findings moved from issue anchors to committed
+`larch-logs/` files.
 
 On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.
 

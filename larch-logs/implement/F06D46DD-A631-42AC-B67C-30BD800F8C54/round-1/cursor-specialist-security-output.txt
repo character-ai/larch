@@ -1,0 +1,18 @@
+Gathering the precomputed diff and commit history for a read-only security review.
+
+Verifying the `sed` replacement pattern against `escape_prompt_data` for portability and checking redaction output shape.
+
+Reviewed the precomputed diff (three files) and commit `c2c35dfc`. `escape_finding_body` matches [`scripts/scout-dynamic-archetypes.sh`](scripts/scout-dynamic-archetypes.sh) `escape_prompt_data` (`sed` order: `&` then `<` then `>`). Finding text is passed to `sed` via `printf '%s'` on a pipe — no new eval/exec or shell word-splitting of body content beyond what `redact_field` already did.
+
+### In-Scope Findings
+
+No in-scope issues found.
+
+### Out-of-Scope Observations
+
+1. **Latent**, **security**, [`scripts/compose-review-findings.sh`](scripts/compose-review-findings.sh) (unchanged `emit_record` path: `reviewer_redacted` in the `printf` heading, approx. 65–72): Only the finding **body** is HTML-escaped after this change; the composed heading still prints `reviewer_redacted` without entity encoding. For **rejected** artifacts, `pending_reviewer` is taken from the rest of the markdown header line and could still contain `<`/`>` if a reviewer or tool ever emitted that in the title segment. **Why out of scope:** this asymmetry existed before the diff and is not introduced by it; escaping the body does not worsen execution risk, only leaves the same residual lint/parser edge case on the heading line. **Suggested fix (if you ever harden further):** pipe `reviewer_redacted` through the same escape helper (or share one function with `scout-dynamic-archetypes.sh`) before the heading `printf`.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	out_of_scope	latent	security	scripts/compose-review-findings.sh:65-72	Reviewer substring in the markdown heading is still not HTML-escaped while finding bodies are.	A committed rejected-finding header could still carry tag-like text in the reviewer segment and trigger the same class of markdownlint/XML warnings the body escape was meant to avoid.	Apply the same entity escape to reviewer_redacted (and optionally centralize with escape_prompt_data) if headings must be equally safe for linters.
+```
