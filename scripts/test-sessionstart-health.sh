@@ -444,6 +444,21 @@ stdout=$(cat "$tmp/c15b.out")
 assert_empty "$stdout" "case 15b: stdout empty after postbump state"
 assert_not_contains "$stdout" "post-/bump-version boundary" "case 15b: no bump boundary advisory"
 
+echo "=== Case 16: all three pending boundaries concatenate into one advisory ==="
+mkdir -p "$tmp/c16-cwd"
+impl=$(make_impl_tmpdir c16-all-boundaries "$tmp/c16-cwd")
+printf 'MANIFEST_OK=true\n' > "$impl/design-export/manifest.env"
+printf 'review summary\n' > "$impl/review-round-summary.md"
+touch "$impl/.bump-version-armed"
+rc=$(run_with_stdin "$tmp/real_bin" "$tmp/c16-cwd" '{"cwd":"'"$tmp/c16-cwd"'"}' "$XDG_TEST" "$tmp/c16.out" "$tmp/c16.err")
+assert_eq "$rc" "0" "case 16: exit code 0"
+stdout=$(cat "$tmp/c16.out")
+assert_valid_json "$stdout" "case 16"
+ctx=$(ctx_from_stdout "$stdout")
+assert_contains "$ctx" "post-/design boundary" "case 16: design boundary advisory"
+assert_contains "$ctx" "post-/review boundary" "case 16: review boundary advisory"
+assert_contains "$ctx" "post-/bump-version boundary" "case 16: bump boundary advisory"
+
 echo
 echo "=== Summary ==="
 echo "  passed: $PASS"

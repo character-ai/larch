@@ -9,7 +9,7 @@ Add boundary-state detection to `scripts/sessionstart-health.sh` so the SessionS
 ### Files to Modify
 1. **`scripts/sessionstart-health.sh`** — add stdin reading, cwd/session_id extraction, lib-resolve-implement-tmpdir.sh sourcing, and three boundary state checks
 2. **`scripts/sessionstart-health.md`** — update contract doc to describe new stdin reading and boundary detection
-3. **`scripts/test-sessionstart-health.sh`** — add test cases 12–16 covering all three boundary states and the sentinel suppression cases
+3. **`scripts/test-sessionstart-health.sh`** — add test cases 12–15b plus case 16 covering all three boundary states, the sentinel suppression cases, and the combined-boundary concatenation edge case
 4. **`scripts/test-sessionstart-health.md`** — update stub to reference new test coverage
 
 ### Approach
@@ -30,6 +30,7 @@ Add boundary-state detection to `scripts/sessionstart-health.sh` so the SessionS
        - Check `design-export/manifest.env` without `.boundary-gate-passed` → append advisory
        - Check `review-round-summary.md` without `.review-boundary-passed` → append advisory
        - Check `.bump-version-armed` without `postbump-state.sh` → append advisory
+       - If multiple boundary conditions hold, append each advisory into one combined message
 
 All advisory messages go through `append_msg`, which feeds into `jq -n --arg ctx "$MSG"` at emission time. This preserves the INVARIANT: dynamic content (including TMPDIR_BASENAME) is interpolated only via `jq -n --arg`.
 
@@ -45,16 +46,17 @@ All advisory messages go through `append_msg`, which feeds into `jq -n --arg ctx
    - **Case 14b**: review-round-summary.md WITH .review-boundary-passed → no advisory
    - **Case 15**: .bump-version-armed without postbump-state.sh → advisory contains "post-/bump-version boundary"
    - **Case 15b**: .bump-version-armed WITH postbump-state.sh → no advisory
+   - **Case 16**: manifest.env + review summary + bump armed all pending → one advisory contains post-/design, post-/review, and post-/bump-version substrings
 
 ### Edge Cases
 - Empty INPUT (stdin from /dev/null, existing tests): HOOK_CWD stays empty, boundary detection skipped — no regression
 - jq unavailable: boundary detection skipped (JQ_AVAILABLE=false gate), existing fixed-literal path unchanged
 - lib not found: `[[ -f "$LIB_RESOLVE" ]]` guard, fail-open
 - resolver returns empty: `[[ -n "$IMPLEMENT_TMPDIR" ]]` guard, fail-open
-- All three boundaries can fire simultaneously (MSG concatenated)
+- All three boundaries can fire simultaneously (MSG concatenated; assert in Case 16)
 
 ### Testing Strategy
-Run `bash scripts/test-sessionstart-health.sh` — all existing cases (1-11) plus new cases (12-15b) must pass.
+Run `bash scripts/test-sessionstart-health.sh` — all existing cases (1-11), new cases (12-15b), and combined-boundary case 16 must pass.
 Also run `make lint` to catch any linting regressions.
 
 ## Test plan

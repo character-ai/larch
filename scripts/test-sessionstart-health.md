@@ -11,4 +11,5 @@ Boundary coverage includes post-/design manifest detection plus
 `.boundary-gate-passed` and `.run-cleaned-up` suppression, post-/review
 summary detection plus `.review-boundary-passed` suppression, and
 post-/bump-version `.bump-version-armed` detection plus `postbump-state.sh`
-suppression.
+suppression. It also asserts the combined edge case where all three pending
+boundaries appear in one advisory payload.

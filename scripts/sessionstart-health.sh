@@ -127,7 +127,11 @@ if [[ -n "$HOOK_CWD" ]]; then
         source "$LIB_RESOLVE" 2>/dev/null || true
     fi
     if declare -F resolve_implement_tmpdir >/dev/null 2>&1; then
-        [[ -n "$SID" ]] && export LARCH_TOKEN_SESSION_ID="$SID"
+        if [[ -n "$SID" ]]; then
+            export LARCH_TOKEN_SESSION_ID="$SID"
+        else
+            unset LARCH_TOKEN_SESSION_ID || true
+        fi
         IMPLEMENT_TMPDIR=$(resolve_implement_tmpdir "$HOOK_CWD" 2>/dev/null) || IMPLEMENT_TMPDIR=""
         if [[ -n "$IMPLEMENT_TMPDIR" && ! -f "$IMPLEMENT_TMPDIR/.run-cleaned-up" ]]; then
             TMPDIR_BASENAME=$(basename "$IMPLEMENT_TMPDIR" 2>/dev/null) \
