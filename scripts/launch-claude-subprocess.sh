@@ -127,7 +127,7 @@ PROMPT_RENDERED=$(mktemp "${TMPDIR:-/tmp}/claude-subprocess-prompt.XXXXXX") || e
 OUTPUT_TMP="${OUTPUT_CANON}.tmp.$$"
 # shellcheck disable=SC2329,SC2317 # invoked by the EXIT trap.
 cleanup() {
-    rm -f "$PROMPT_RENDERED" "$OUTPUT_TMP"
+    rm -f "$PROMPT_RENDERED" "$OUTPUT_TMP" "${OUTPUT_TMP}.stderr"
 }
 trap cleanup EXIT
 
@@ -144,7 +144,7 @@ trap cleanup EXIT
     done
 } > "$PROMPT_RENDERED"
 
-CMD_JSON=$(jq -cn --arg model "$MODEL" --arg prompt "$PROMPT_RENDERED" '["claude","--model",$model,"--print","--no-markdown"]')
+CMD_JSON=$(jq -cn --arg model "$MODEL" --arg prompt "$PROMPT_RENDERED" '["claude","--model",$model,"--print"]')
 {
     printf 'OUTER_LAUNCHER=claude\n'
     printf 'TIMEOUT=%s\n' "$TIMEOUT"
@@ -155,14 +155,14 @@ CMD_JSON=$(jq -cn --arg model "$MODEL" --arg prompt "$PROMPT_RENDERED" '["claude
 status="OK"
 exit_code=0
 if command -v timeout >/dev/null 2>&1; then
-    if timeout "$TIMEOUT" claude --model "$MODEL" --print --no-markdown < "$PROMPT_RENDERED" > "$OUTPUT_TMP"; then
+    if timeout "$TIMEOUT" claude --model "$MODEL" --print < "$PROMPT_RENDERED" > "$OUTPUT_TMP" 2> "${OUTPUT_TMP}.stderr"; then
         exit_code=0
     else
         exit_code=$?
         [[ "$exit_code" -eq 124 ]] && status="TIMEOUT" || status="ERROR"
     fi
 else
-    if claude --model "$MODEL" --print --no-markdown < "$PROMPT_RENDERED" > "$OUTPUT_TMP"; then
+    if claude --model "$MODEL" --print < "$PROMPT_RENDERED" > "$OUTPUT_TMP" 2> "${OUTPUT_TMP}.stderr"; then
         exit_code=0
     else
         exit_code=$?
@@ -171,6 +171,13 @@ else
 fi
 
 mv "$OUTPUT_TMP" "$OUTPUT_CANON"
+mv "${OUTPUT_TMP}.stderr" "${OUTPUT_CANON}.stderr" 2>/dev/null || true
+# Fail-loud guard: a 0-byte output with a 0 exit code means the CLI likely
+# rejected an unknown flag silently; treat as ERROR so callers see a real failure.
+if [[ ! -s "$OUTPUT_CANON" && "$exit_code" -eq 0 ]]; then
+    exit_code=99
+    status="ERROR"
+fi
 printf '%s\n' "$exit_code" > "${OUTPUT_CANON}.done"
 printf 'STATUS=clean\nMODE=baseline\nREASON=claude-subprocess-prompt-read-only\n' > "${OUTPUT_CANON}.dirty-tree"
 
@@ -187,4 +194,4 @@ END_S=$(date +%s)
 emit_kv STATUS "$status"
 emit_kv OUTPUT_FILE "$OUTPUT_CANON"
 emit_kv ELAPSED "$((END_S - START_S))"
-exit 0
+exit "$exit_code"

@@ -79,4 +79,26 @@ if PATH="$BIN:$PATH" "$SCRIPT" \
 fi
 grep -Fq 'context file outside allowed roots' "$TMP/extra2-err" || fail "--allow-root: rejection message missing from stderr"
 
+# argv regression: --no-markdown must not appear in the script
+grep -qF -- '--no-markdown' "$SCRIPT" && fail "argv regression: --no-markdown found in $SCRIPT"
+
+# stderr artifact: happy-path run produces an ${out}.stderr sibling (even if empty)
+[[ -f "${out}.stderr" ]] || fail "happy-path run did not produce ${out}.stderr"
+
+# fail-loud: a stub that exits 0 but emits nothing must trigger the fail-loud guard
+cat > "$BIN/claude" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
+chmod +x "$BIN/claude"
+out_empty="$TMP/out-empty.txt"
+if PATH="$BIN:$PATH" "$SCRIPT" \
+        --prompt-file "$prompt" \
+        --output-file "$out_empty" \
+        --timeout 5 \
+        --timing-task-kind claude-review \
+        >/dev/null 2>/dev/null; then
+    fail "fail-loud: empty-output with exit 0 should have been treated as ERROR (non-zero exit)"
+fi
+
 echo "All assertions passed."

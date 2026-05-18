@@ -75,6 +75,7 @@ issues_log="$TMP/execution-issues.md"
 out=$(PATH="$STUB_BIN:$PATH" CLAUDE_STUB_MODE=empty LARCH_EXECUTION_ISSUES_LOG="$issues_log" "$SCRIPT" --ballot-file "$BALLOT" --review-tmpdir "$TMP/empty-voter1" --codex-available true --cursor-available true)
 grep -Fq 'VOTER_1_STATUS=failed' <<< "$out"
 grep -Fq 'dispatch-code-voters.sh voter1' "$issues_log"
-grep -Fq 'launch-claude-review.sh (claude voter) warning (exit 0)' "$issues_log"
+grep -Fq 'launch-claude-review.sh (claude voter) failed (exit 99)' "$issues_log"
+grep -Fq 'voter1_rc=99' "$issues_log"
 
 echo "PASS: test-dispatch-code-voters.sh"
