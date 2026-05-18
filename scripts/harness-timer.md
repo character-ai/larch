@@ -17,7 +17,7 @@ bash scripts/harness-timer.sh <test-name> <command> [args…]
 
 ## Output
 
-After `<command>` completes, the script prints one tab-separated line to stdout
+After `<command>` returns, the script prints one tab-separated line to stdout
 (columns separated by `\t`):
 
 ```
@@ -30,8 +30,11 @@ analysis tools to locate per-test timing rows.
 ## Invariants
 
 - Exit code mirrors `<command>`'s exit code.
-- Timing line is printed even when `<command>` fails, so partial shard runs
-  still contribute data.
+- Timing line is printed when `<command>` returns normally, including non-zero
+  exits, so failing shard runs still contribute data.
+- External termination of the wrapper shell (for example CI cancellation or an
+  untrapped signal) can prevent emission; treat missing rows as interrupted
+  runs, not zero-duration samples.
 - Duration uses `date +%s` (second granularity); sufficient for shard
   rebalancing purposes.
 
