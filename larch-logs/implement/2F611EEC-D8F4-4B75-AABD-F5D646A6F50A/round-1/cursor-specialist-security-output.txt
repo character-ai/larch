@@ -1,0 +1,27 @@
+Gathering the branch diff and commit list for a read-only security-focused review.
+
+Checking for stale references to 13 shards and verifying Makefile shard structure (read-only).
+
+Reviewed the cached diff ([`.github/workflows/ci.yaml`](.github/workflows/ci.yaml), [`Makefile`](Makefile), [`docs/linting.md`](docs/linting.md)), the single commit since `merge-base` with `main` (`7a0b2f5a` — *Rebalance test-harness matrix from 13 to 16 shards via LPT bin-packing*), and spot-checked the working tree for doc drift.
+
+**Security lens:** No new trust boundaries, secrets, shell interpolation from untrusted input, or workflow action version changes. The matrix still uses a fixed integer list; `make test-harnesses-${{ matrix.shard }}` is unchanged in structure. No in-scope security defects identified.
+
+### In-Scope Findings
+
+1. **`**Important**` · `correctness` · [`docs/linting.md`](docs/linting.md):22** — The **CI** bullet still says regression harnesses run via `` `make test-harnesses-1` through `make test-harnesses-13` `` while CI and the Makefile now define shards 1–16. Readers (including people configuring or reasoning about CI) get an incorrect picture of how many matrix legs exist. **Fix:** Update the range to `test-harnesses-16` (or rephrase to “shards 1–16” without hardcoding the upper bound).
+
+2. **`**Important**` · `correctness` · [`docs/linting.md`](docs/linting.md):187** — The command table still claims `` `make test-upgrade-larch` `` is pulled in through `test-harnesses-13`, but [`Makefile`](Makefile):51 places `test-upgrade-larch` on **`test-harnesses-9`**. Someone using the doc to map a failing harness to a CI shard will look at the wrong matrix job. **Fix:** Change the prerequisite reference to `test-harnesses-9` (or drop the shard suffix and say “via the sharded `test-harnesses` targets”).
+
+3. **`**Nit**` · `code-quality` · [`Makefile`](Makefile):32 and [`Makefile`](Makefile):57** — The same comment `# Shard-12 leads with the partition-invariant guard so partition bugs surface.` appears twice: once immediately above the umbrella `test-harnesses:` prerequisite list and once above `test-harnesses-12`. The umbrella-adjacent copy is easy to misread as describing the umbrella rather than shard 12. **Fix:** Keep a single comment directly above `test-harnesses-12:` and remove the duplicate.
+
+### Out-of-Scope Observations
+
+1. **`**Nit**` · `correctness` · [`scripts/test-harness-shards-coverage.md`](scripts/test-harness-shards-coverage.md):27** — Still states shards run through `test-harnesses-13`. That file is **not** in the branch diff, so this is pre-existing doc drift relative to the new shard count; worth a follow-up edit when tightening docs after merge.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	docs/linting.md:22	CI Usage bullet still documents harness matrix as test-harnesses-1 through test-harnesses-13.	Operators and contributors assume only 13 parallel harness shards exist and may misconfigure branch protection or misread CI behavior versus the actual 16-way matrix.	Update the prose to test-harnesses-16 or describe shards 1-16 without a stale upper bound.
+1	in_scope	important	correctness	docs/linting.md:187	Upgrade-larch row claims make lint pulls test-upgrade-larch via test-harnesses-13.	Makefile assigns test-upgrade-larch to test-harnesses-9; debugging or shard routing from the table points at the wrong GitHub Actions matrix cell.	Change the referenced shard to test-harnesses-9 or generalize the wording to the sharded test-harnesses targets.
+1	in_scope	nit	code-quality	Makefile:32 Makefile:57	Duplicate Shard-12 partition-guard comment appears above the umbrella test-harnesses line and again above test-harnesses-12.	Minor maintainability noise and possible confusion about which stanza the comment describes.	Remove the redundant copy; keep the comment immediately adjacent to test-harnesses-12 only.
+1	out_of_scope	nit	correctness	scripts/test-harness-shards-coverage.md:27	Doc still says test-harnesses-1 through test-harnesses-13.	File not modified by this branch diff; stale after shard expansion.	Update to sixteen shards in a separate doc pass if desired.
+```

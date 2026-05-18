@@ -1,0 +1,5 @@
+### In-Scope Findings
+
+1. **Nit** `code-quality` `scripts/test-harness-shards-coverage.md:27` still documents the current umbrella range as `test-harnesses-1` through `test-harnesses-13`, but this branch changes the Makefile and CI matrix to 16 shards. This sibling contract explicitly says shard layout changes must update it alongside `docs/linting.md`, so update the line to `test-harnesses-1` through `test-harnesses-16`.
+
+I found no out-of-scope observations. I could not run `make test-harness-shards-coverage` directly because the read-only sandbox blocked `mktemp`, but a read-only equivalent of the guard found no missing, duplicate, orphan, or `.PHONY` issues in the Makefile shard partition.

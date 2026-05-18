@@ -1,0 +1,13 @@
+FINDING_1: YES
+FINDING_2: NO -- historical changelog entries should preserve the shard counts that were true for those releases
+FINDING_3: EXONERATE -- legitimate stale contract text, but duplicate of the in-scope sibling-contract fix rather than a future issue
+FINDING_4: EXONERATE -- the snippet is awkward but works as written and the concern is not worth tracking separately
+FINDING_5: EXONERATE -- legitimate stale contract text, but duplicate of the in-scope sibling-contract fix rather than a future issue
+FINDING_6: EXONERATE -- generic shard wording trades lookup convenience for lower stale-doc risk, and docs already point to Makefile as source of truth
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: EXONERATE -- restoring per-row shard numbers would recreate high-churn stale documentation for limited benefit
+FINDING_10: YES
+FINDING_11: EXONERATE -- docs already describe the self-reference rule without hardcoding a brittle shard number
+FINDING_12: EXONERATE -- operationally legitimate, but the repo doc already lists checks 14-16 and actual branch protection is outside the diff
+FINDING_13: EXONERATE -- legitimate stale contract text, but duplicate of the in-scope sibling-contract fix rather than a future issue

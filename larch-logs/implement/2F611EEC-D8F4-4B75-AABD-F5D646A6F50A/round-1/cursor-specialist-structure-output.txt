@@ -1,0 +1,29 @@
+Gathering the pre-computed diff and commit history for a read-only review.
+
+Checking `docs/linting.md` for a stale `test-harnesses-13` reference in the CI bullet (diff hunk was truncated).
+
+Verifying whether `docs/linting.md` line 22 appears in the branch diff (scope for finding 1).
+
+## Review summary
+
+**Commits (`git merge-base HEAD main`..HEAD):** `7a0b2f5a Rebalance test-harness matrix from 13 to 16 shards via LPT bin-packing`
+
+**Scope note:** The cached diff at `~/.cache/larch/.../round-1/diff.txt` matches the **Makefile** and **CI** edits but **does not** include the full **`docs/linting.md`** delta that appears on the branch in `git diff main...HEAD` (for example the **CI Usage** line `13`→`16` and the bulk replacement of concrete `via test-harnesses-M` hints with `via the test-harnesses-N shard partition`). The assessment below uses **`git diff main...HEAD`** as authoritative for “branch vs main.”
+
+**Plan fidelity:** [`.github/workflows/ci.yaml`](.github/workflows/ci.yaml) matrix `1..16`, step label “of 16”, [Makefile](Makefile) `.PHONY` / umbrella / sixteen `test-harnesses-N:` lines and shard-12 leading `test-harness-shards-coverage` match the stated LPT layout; **208** unique harness prerequisites, **no duplicates** (spot-checked via parsing). The extra doc work (generic “shard partition” wording + CI bullet) **improves** maintainability versus hand-editing dozens of shard numbers on every rebalance.
+
+### In-Scope Findings
+
+No in-scope issues found.
+
+### Out-of-Scope Observations
+
+1. **`code-quality` / `Nit` — Session `round-1/diff.txt` vs repo:** The precomputed diff artifact is incomplete relative to `git diff main...HEAD` for [`docs/linting.md`](docs/linting.md), so a review confined to that file alone can **false-alarm** on doc consistency. **Why out of scope:** tooling/session output, not repository source.
+
+2. **`code-quality` / `Nit` — [`docs/linting.md`](docs/linting.md) LPT example:** The embedded Python still uses `bins.index(...)` inside the packing loop (quadratic); that pattern predates this change and was only extended from `range(13)` to `range(16)`. **Why out of scope:** not introduced by the shard rebalance; same structure as before.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	out_of_scope	nit	risk-integration	~<TMPDIR>/round-1/diff.txt	Stale partial diff for docs/linting.md	A reviewer using only the cached diff can miss CI Usage 13→16 and harness-table generalizations that exist on HEAD	Prefer git diff main...HEAD or a refreshed session artifact for authoritative review
+1	out_of_scope	nit	code-quality	docs/linting.md (LPT snippet)	Quadratic bins.index in example snippet	Unchanged algorithmic style aside from bin count 13→16	Accept as pre-existing doc example debt or rewrite LPT loop in a separate change
+```

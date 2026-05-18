@@ -1,0 +1,20 @@
+FINDING_1: NO -- current docs already say 16 shards and use generic shard wording in the table.
+FINDING_2: EXONERATE -- historical changelog entries are legitimate history and not issue-worthy.
+FINDING_3: EXONERATE -- the tiny doc-example inefficiency is pre-existing and not worth tracking.
+FINDING_4: NO -- current docs/linting.md table no longer has stale exact shard hints.
+FINDING_5: NO -- current docs/linting.md table uses generic shard wording, so there is no remaining table drift to track.
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: EXONERATE -- stale session cache artifacts are a real review-process caution but not worth a repo issue.
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: NO -- the referenced rows now use generic `test-harnesses-N` wording.
+FINDING_14: NO -- the table no longer contains the claimed stale exact shard assignments.
+FINDING_15: NO -- `test-upgrade-larch` now uses generic shard wording, not `test-harnesses-13`.
+FINDING_16: NO -- docs/linting.md now documents `test-harnesses-1` through `test-harnesses-16`.
+FINDING_17: NO -- docs/linting.md line 22 already reflects the 16-shard matrix.
+FINDING_18: NO -- CI usage prose already says the matrix runs through `test-harnesses-16`.
+FINDING_19: NO -- the `test-upgrade-larch` row no longer points at shard 13.
+FINDING_20: NO -- the CI prose already caps the matrix at `test-harnesses-16`.

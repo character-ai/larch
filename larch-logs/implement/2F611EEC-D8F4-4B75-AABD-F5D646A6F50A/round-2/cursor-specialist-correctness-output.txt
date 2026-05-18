@@ -1,0 +1,11 @@
+Gathering the branch diff and commit list for a read-only correctness review.
+
+Searching the diff for changed files and reading key sections.
+
+Reading the remainder of the diff and searching for stale shard references.
+
+Searching the repo for stale references to 13 harness shards (outside the diff).
+
+Confirming the diff: the `# Shard-12` line at the hunk boundary is context (unchanged); the branch keeps the comment above the umbrella and adds one above `test-harnesses-12` — matching the pre-merge `Makefile` structure. Verifying `ci.yaml` step name and calling CreatePlan.
+
+
