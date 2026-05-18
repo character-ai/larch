@@ -45,9 +45,9 @@ UPSTREAM_URL=$(git remote get-url upstream 2>/dev/null) || UPSTREAM_URL=""
 # SSH forms; the second handles HTTPS / scp-less forms.
 UPSTREAM_NWO=$(printf '%s\n' "$UPSTREAM_URL" \
   | sed -E \
-      -e 's#^(ssh://)?git@github\.com[:/]##' \
-      -e 's#^(https?://)?(www\.)?github\.com[:/]##' \
-      -e 's#\.git$##' \
+      -e 's#^(ssh://)?git@github[.]com[:/]##' \
+      -e 's#^(https?://)?(www[.])?github[.]com[:/]##' \
+      -e 's#[.]git$##' \
       -e 's#/+$##')
 if [[ "$UPSTREAM_NWO" != "$UPSTREAM_REPO" ]]; then
   echo "**ERROR: 'upstream' remote resolves to '$UPSTREAM_NWO' (raw: '$UPSTREAM_URL'), not '$UPSTREAM_REPO'. /agnix-fix only runs from a clone whose upstream is agent-sh/agnix.**"
