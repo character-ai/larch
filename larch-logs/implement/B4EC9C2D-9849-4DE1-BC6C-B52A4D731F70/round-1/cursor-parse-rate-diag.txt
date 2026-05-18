@@ -1,0 +1,10 @@
+voter_tool=cursor
+neutral_count=6
+total_findings=6
+voter_file=<TMPDIR>/round-1/cursor-vote-output.txt
+--- first 200 bytes of voter output ---
+Reading the ballot file to vote on each finding.
+
+Checking referenced files to validate findings and cast informed votes.
+
+Confirming the ballot: six findings. `plan-goals-test.md` is 32 lines (ballot

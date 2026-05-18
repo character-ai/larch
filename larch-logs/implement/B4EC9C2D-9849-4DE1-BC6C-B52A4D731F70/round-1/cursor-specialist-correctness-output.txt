@@ -1,0 +1,36 @@
+Gathering the pre-computed diff and commit history for a read-only correctness review.
+
+Checking `github-remote-repo.sh` for `=~` usage and capture-group indices to confirm regex semantics.
+
+## Commits (`merge-base..HEAD`)
+
+- `6c6d3a85` — Fix agnix AS-014 false positive on GitHub regexes  
+- `41d52a84` — chore(larch-logs): flush implement run B4EC9C2D-9849-4DE1-BC6C-B52A4D731F70  
+
+## Plan and requirements verification
+
+**Completeness (plan / requirements, `both`):** The branch implements what the feature and plan ask for: `"AS-014"` is added to `disabled_rules` in [`.agnix.toml`](.agnix.toml) with a false-positive comment, and both `[[ =~ ]]` patterns in [`scripts/github-remote-repo.sh`](scripts/github-remote-repo.sh) use `github[.]com` instead of `github\.com`. The extra `larch-logs/implement/...` tree matches the second commit and is consistent with shipped implement run logs; it is not a gap relative to the stated AS-014 fix.
+
+**Plan-correctness (`plan`):** The regex edits keep the same grouping structure: first branch still exposes owner/repo in `BASH_REMATCH[1]`/`[2]`; second branch still uses `[3]`/`[4]` for owner/repo. Replacing `\.` with `[.]` in POSIX ERE (bash `[[ =~ ]]`) still matches a literal `.` in the hostname, so accepted URLs and parsed `owner/repo` output stay the same for normal GitHub URLs.
+
+**Contradictions (`both`):** None. The diff follows the described “disable AS-014” **and** “rewrite patterns” approach.
+
+---
+
+### In-Scope Findings
+
+1. **`correctness` / `risk-integration` — `Latent` — [`/.agnix.toml:41`](.agnix.toml)**  
+   Disabling **AS-014 for the whole repository** removes that rule everywhere, not only for `[[ =~ ]]` false positives. **Impact:** Any future change that AS-014 would have caught as a true positive (outside the escaped-dot-in-bash-regex case) will pass `agent-lint` until caught by other means. **Scenario:** A contributor adds content that legitimately violates what AS-014 is meant to guard (non–false-positive case); CI stays green. **Mitigation:** Prefer a narrower suppression mechanism in agnix if it exists (path/rule scoping); otherwise keep relying on review and accept the documented trade-off (Option B).
+
+---
+
+### Out-of-Scope Observations
+
+None.
+
+---
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	risk-integration	.agnix.toml:41	Repo-wide AS-014 in disabled_rules removes that rule for all paths, not only bash [[ =~ ]] false positives.	A future edit violates AS-014 in a genuine (non-false-positive) way; agent-lint and strict agnix runs still pass and the issue ships.	Use path- or rule-scoped suppression in agnix if supported; otherwise document the trade-off and rely on other review signals.
+```

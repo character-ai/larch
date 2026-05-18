@@ -1,0 +1,19 @@
+Gathering the branch diff and commit history for a read-only review (tests, CI, regression).
+
+Checking for existing tests or CI references for `github-remote-repo.sh` and how `agent-lint` / agnix are invoked.
+
+Here is the read-only review. Research: precomputed diff, `git log` since merge-base, grep for `github-remote-repo` / Makefile targets, and the first 54 lines of [`scripts/test-github-remote-repo.sh`](scripts/test-github-remote-repo.sh).
+
+### In-Scope Findings
+
+1. **Latent** (`risk-integration`, plan) [.agnix.toml:26](.agnix.toml) — `AS-014` is disabled for the whole repo, so `make agent-lint` / pre-commit agnix no longer enforce that rule anywhere, not only for the bash `[[ =~ ]]` false positive. **Impact:** A later change that would have failed AS-014 for a real Windows-style path or other intended pattern can pass CI until caught elsewhere. **Fix:** Treat disabling as temporary: file an upstream agnix issue (if not already) and re-enable when fixed; if agnix supports file- or pattern-scoped suppression, prefer that over a global `disabled_rules` entry.
+
+2. **Nit** (`risk-integration`, plan) [larch-logs/implement/B4EC9C2D-9849-4DE1-BC6C-B52A4D731F70/plan-goals-test.md:95-99](larch-logs/implement/B4EC9C2D-9849-4DE1-BC6C-B52A4D731F70/plan-goals-test.md) — The committed “Test plan” lists `make agent-lint` (and optional `./agnix`) but not [`make test-github-remote-repo`](Makefile), even though [docs/linting.md](docs/linting.md) documents that harness for the same script. **Impact:** Someone following only the run log’s test plan might skip the offline parser regression suite after a regex edit. **Fix:** Add `make test-github-remote-repo` to the written test plan (or PR description) for this class of change.
+
+**Secondary scan:** The `github[.]com` / `github[.]com` rewrites match the same strings as `\.` under bash `[[ =~ ]]` ERE for the URL shapes covered by [`scripts/test-github-remote-repo.sh:22-27`](scripts/test-github-remote-repo.sh); no critical correctness or security issue identified from the diff. CI wiring was not changed in the diff; [`Makefile`](Makefile) still defines `test-github-remote-repo` and `agent-lint` via pre-commit.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	risk-integration	.agnix.toml:26	AS-014 added to global disabled_rules	Later edits that would have failed AS-014 for patterns the rule is meant to catch can pass agent-lint until caught by review or other tooling	Re-enable when agnix fixes the FP; use narrower suppression if the tool supports it
+1	in_scope	nit	risk-integration	larch-logs/implement/B4EC9C2D-9849-4DE1-BC6C-B52A4D731F70/plan-goals-test.md:95-99	Committed test plan omits parser harness	Operator runs only agent-lint and skips behavioral coverage for github-remote-repo.sh	Add make test-github-remote-repo to the documented verification checklist
+```
